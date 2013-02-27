@@ -16,7 +16,7 @@ set (SRC
     src/unitcell.cc
     src/v_base.cc
     src/v_compute.cc
-    src/voro++.cc
+#    src/voro++.cc
     src/wall.cc
     src/c_interface.cc
     
@@ -31,7 +31,7 @@ set (SRC
     src/unitcell.hh
     src/v_base.hh
     src/v_compute.hh
-    src/voro++.hh
+#    src/voro++.hh
     src/wall.hh
     src/worklist.hh
     src/c_interface.hh
