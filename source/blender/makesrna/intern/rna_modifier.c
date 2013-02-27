@@ -2187,6 +2187,22 @@ static void rna_def_modifier_explode(BlenderRNA *brna)
 {
 	StructRNA *srna;
 	PropertyRNA *prop;
+	
+    static EnumPropertyItem prop_mode_items[] = {
+        {eFractureMode_Cells, "CELLS", 0, "Voronoi Cells", "Fracture to voronoi cells and move them with particles"},
+        {eFractureMode_Faces, "FACES", 0, "Mesh Faces", "Move mesh faces with particles"},
+        {0, NULL, 0, NULL, NULL}
+    };
+	
+	static EnumPropertyItem prop_point_source_items[] = {
+        {eOwnParticles, "OWN_PARTICLES", 0, "Own Particles", "Use own particles as point cloud"},
+        {eOwnVerts, "OWN_VERTS", 0, "Own Vertices", "Use own vertices as point cloud"},
+		{eChildParticles, "CHILD_PARTICLES", 0, "Child Particles", "Use particles of child objects as point cloud"},
+        {eChildVerts, "CHILD_VERTS", 0, "Child Vertices", "Use child vertices as point cloud"},
+		{eGreasePencil, "GREASE_PENCIL", 0, "Grease Pencil", "Use grease pencil points as point cloud"},
+        {0, NULL, 0, NULL, NULL}
+    };
+
 
 	srna = RNA_def_struct(brna, "ExplodeModifier", "Modifier");
 	RNA_def_struct_ui_text(srna, "Explode Modifier", "Explosion effect modifier based on a particle system");
@@ -2233,6 +2249,55 @@ static void rna_def_modifier_explode(BlenderRNA *brna)
 	RNA_def_property_string_maxlength(prop, MAX_CUSTOMDATA_LAYER_NAME);
 	RNA_def_property_ui_text(prop, "Particle UV", "UV map to change with particle age");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+    
+    prop = RNA_def_property(srna, "mode", PROP_ENUM, PROP_NONE);
+    RNA_def_property_enum_items(prop, prop_mode_items);
+    RNA_def_property_ui_text(prop, "Mode", "Mode of fracture");
+    RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	
+	prop = RNA_def_property(srna, "point_source", PROP_ENUM, PROP_NONE);
+    RNA_def_property_enum_items(prop, prop_point_source_items);
+	RNA_def_property_flag(prop, PROP_ENUM_FLAG);
+	RNA_def_property_enum_default(prop, eOwnParticles);
+    RNA_def_property_ui_text(prop, "Point Source", "Source of point cloud");
+    RNA_def_property_update(prop, 0, "rna_Modifier_update");
+    
+    prop = RNA_def_property(srna, "use_boolean", PROP_BOOLEAN, PROP_NONE);
+    RNA_def_property_boolean_sdna(prop, NULL, "use_boolean", MOD_VORONOI_USEBOOLEAN);
+    RNA_def_property_ui_text(prop, "Use Boolean Intersection", "Intersect shards with original object shape");
+    RNA_def_property_update(prop, 0, "rna_Modifier_update");
+    
+    prop = RNA_def_property(srna, "refracture", PROP_BOOLEAN, PROP_NONE);
+    RNA_def_property_boolean_sdna(prop, NULL, "refracture", MOD_VORONOI_REFRACTURE);
+    RNA_def_property_ui_text(prop, "Keep Refracturing", "Refracture the object when particles move");
+    RNA_def_property_update(prop, 0, "rna_Modifier_update");
+    
+    prop = RNA_def_property(srna, "use_cache", PROP_BOOLEAN, PROP_NONE);
+    RNA_def_property_boolean_sdna(prop, NULL, "use_cache", MOD_VORONOI_USECACHE);
+    RNA_def_property_ui_text(prop, "Use Fracture Cache", "Store the fractured mesh in a cache for faster re-use");
+    RNA_def_property_update(prop, 0, "rna_Modifier_update");
+    
+    prop = RNA_def_property(srna, "flip_normal", PROP_BOOLEAN, PROP_NONE);
+    RNA_def_property_boolean_sdna(prop, NULL, "flip_normal", MOD_VORONOI_FLIPNORMAL);
+    RNA_def_property_ui_text(prop, "Flip Normals", "Flip the normals when using boolean intersection, to possibly fix odd looking shapes");
+    RNA_def_property_update(prop, 0, "rna_Modifier_update");
+    
+    prop = RNA_def_property(srna, "emit_continuously", PROP_BOOLEAN, PROP_NONE);
+    RNA_def_property_boolean_sdna(prop, NULL, "emit_continuously", MOD_VORONOI_EMITCONTINUOUSLY);
+    RNA_def_property_ui_text(prop, "Emit Continuously", "Keep re-emitting the voronoi cells until all particles are dead");
+    RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	
+	prop = RNA_def_property(srna, "map_delay", PROP_INT, PROP_NONE);
+	RNA_def_property_range(prop, 0, 1000); //TODO: get correct psys end value here ?
+	RNA_def_property_ui_text(prop, "Map Delay", "Delay in frames after which the object is broken up intially ");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	
+	prop = RNA_def_property(srna, "inner_material", PROP_POINTER, PROP_NONE);
+	RNA_def_property_ui_text(prop, "Inner Material", "");
+	RNA_def_property_flag(prop, PROP_EDITABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+
 }
 
 static void rna_def_modifier_cloth(BlenderRNA *brna)

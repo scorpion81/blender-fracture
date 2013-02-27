@@ -198,6 +198,10 @@ endif()
 	if(WITH_INTERNATIONAL)
 		list(APPEND BLENDER_SORTED_LIBS bf_intern_locale)
 	endif()
+    
+    if(WITH_MOD_VORONOI)
+        list(APPEND BLENDER_SORTED_LIBS extern_voro++)
+    endif()
 
 	foreach(SORTLIB ${BLENDER_SORTED_LIBS})
 		set(REMLIB ${SORTLIB})

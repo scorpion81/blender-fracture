@@ -132,6 +132,13 @@ if(WITH_MOD_OCEANSIM)
 	add_definitions(-DWITH_OCEANSIM)
 endif()
 
+if(WITH_MOD_VORONOI)
+	add_definitions(-DWITH_MOD_VORONOI)
+	list(APPEND INC
+		../../../extern/voro++
+	)
+endif()
+
 if(WITH_GAMEENGINE)
 	# for MOD_navmesh.c
 	add_definitions(-DWITH_GAMEENGINE)

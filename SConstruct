@@ -270,6 +270,7 @@ if 'blenderlite' in B.targets:
     target_env_defs['WITH_BF_SMOKE'] = False
     target_env_defs['WITH_BF_BOOLEAN'] = False
     target_env_defs['WITH_BF_REMESH'] = False
+    target_env_defs['WITH_BF_VORONOI'] = False
     target_env_defs['WITH_BF_PYTHON'] = False
     target_env_defs['WITH_BF_3DMOUSE'] = False
     target_env_defs['WITH_BF_LIBMV'] = False

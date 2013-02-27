@@ -1059,6 +1059,10 @@ endif()
 	if(WITH_INTERNATIONAL)
 		list(APPEND BLENDER_SORTED_LIBS bf_intern_locale)
 	endif()
+    
+    if(WITH_MOD_VORONOI)
+        list(APPEND BLENDER_SORTED_LIBS extern_voro++)
+    endif()
 
 	if(WITH_OPENNL)
 		list_insert_after(BLENDER_SORTED_LIBS "bf_render" "bf_intern_opennl")
