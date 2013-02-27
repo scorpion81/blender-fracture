@@ -645,6 +645,8 @@ enum {
     MOD_VORONOI_EMITCONTINUOUSLY = (1 << 5)
 };
 
+//typedef struct VoronoiCell VoronoiCell;
+
 typedef struct VoronoiCell {
     struct BMVert **vertices;
     float *vertco;
@@ -653,7 +655,7 @@ typedef struct VoronoiCell {
     int vertex_count;
     int particle_index;
     float centroid[3];
-	char pad[4];
+    char pad[4];
 } VoronoiCell;
 
 typedef struct VoronoiCells {

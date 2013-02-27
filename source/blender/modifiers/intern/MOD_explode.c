@@ -74,7 +74,7 @@
 #  include "../../../../extern/voro++/src/c_interface.hh"
 #endif
 
-void updateMesh(VoronoiCell* cell, Object* ob);
+//void updateMesh(VoronoiCell* cell, Object* ob);
 
 static void initData(ModifierData *md)
 {

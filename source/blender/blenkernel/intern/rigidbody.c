@@ -111,6 +111,9 @@ void BKE_rigidbody_free_world(RigidBodyWorld *rbw)
 	if (rbw->objects)
 		free(rbw->objects);
 
+    if (rbw->cache_index_map)
+        free(rbw->cache_index_map);
+
 	/* free cache */
 	BKE_ptcache_free_list(&(rbw->ptcaches));
 	rbw->pointcache = NULL;
@@ -221,11 +224,31 @@ void BKE_rigidbody_relink_constraint(RigidBodyCon *rbc)
 	ID_NEW(rbc->ob2);
 }
 
+int countShards(ListBase obs)
+{
+    int count = 0;
+    struct GroupObject *gob = NULL;
+    struct ModifierData *md = NULL;
+    struct ExplodeModifierData *emd = NULL;
+
+    for (gob = obs.first; gob; gob = gob->next) {
+        for (md = gob->ob->modifiers.first; md; md = md->next) {
+            if (md->type == eModifierType_Explode) {
+                emd = (ExplodeModifierData*)md;
+                if (emd->use_rigidbody) {
+                    count += emd->cells->count;
+                }
+            }
+        }
+    }
+    return count;
+}
+
 /* ************************************** */
 /* Setup Utilities - Validate Sim Instances */
 
 /* create collision shape of mesh - convex hull */
-static rbCollisionShape *rigidbody_get_shape_convexhull_from_mesh(Object *ob, float margin, bool *can_embed)
+/*static rbCollisionShape *rigidbody_get_shape_convexhull_from_mesh(Object *ob, float margin, bool *can_embed)
 {
 	rbCollisionShape *shape = NULL;
 	Mesh *me = NULL;
@@ -245,6 +268,102 @@ static rbCollisionShape *rigidbody_get_shape_convexhull_from_mesh(Object *ob, fl
 	}
 
 	return shape;
+}*/
+
+/* create collision shape of mesh - convex hull */
+static rbCollisionShape *rigidbody_get_shape_convexhull_from_mesh(Mesh* me, float margin, bool *can_embed)
+{
+    rbCollisionShape *shape = NULL;
+
+    if (me && me->totvert) {
+        shape = RB_shape_new_convex_hull((float *)me->mvert, sizeof(MVert), me->totvert, margin, can_embed);
+    }
+    else {
+        printf("ERROR: no vertices to define Convex Hull collision shape with\n");
+    }
+
+    return shape;
+}
+
+
+/* create collision shape of mesh - triangulated mesh
+ * returns NULL if creation fails.
+ */
+static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh_shard(Mesh *me, Object *ob)
+{
+    rbCollisionShape *shape = NULL;
+    DerivedMesh *dm = CDDM_from_mesh(me, NULL);
+
+    MVert *mvert;
+    MFace *mface;
+    int totvert;
+    int totface;
+
+    /* ensure mesh validity, then grab data */
+    DM_ensure_tessface(dm);
+
+    mvert   = (dm) ? dm->getVertArray(dm) : NULL;
+    totvert = (dm) ? dm->getNumVerts(dm) : 0;
+    mface   = (dm) ? dm->getTessFaceArray(dm) : NULL;
+    totface = (dm) ? dm->getNumTessFaces(dm) : 0;
+
+    /* sanity checking - potential case when no data will be present */
+    if ((totvert == 0) || (totface == 0)) {
+        printf("WARNING: no geometry data converted for Mesh Collision Shape (ob = %s)\n", ob->id.name + 2);
+    }
+    else {
+        rbMeshData *mdata;
+        int i;
+
+        /* init mesh data for collision shape */
+        mdata = RB_trimesh_data_new();
+
+        /* loop over all faces, adding them as triangles to the collision shape
+         * (so for some faces, more than triangle will get added)
+         */
+        for (i = 0; (i < totface) && (mface) && (mvert); i++, mface++) {
+            /* add first triangle - verts 1,2,3 */
+            {
+                MVert *va = (IN_RANGE(mface->v1, 0, totvert)) ? (mvert + mface->v1) : (mvert);
+                MVert *vb = (IN_RANGE(mface->v2, 0, totvert)) ? (mvert + mface->v2) : (mvert);
+                MVert *vc = (IN_RANGE(mface->v3, 0, totvert)) ? (mvert + mface->v3) : (mvert);
+
+                RB_trimesh_add_triangle(mdata, va->co, vb->co, vc->co);
+            }
+
+            /* add second triangle if needed - verts 1,3,4 */
+            if (mface->v4) {
+                MVert *va = (IN_RANGE(mface->v1, 0, totvert)) ? (mvert + mface->v1) : (mvert);
+                MVert *vb = (IN_RANGE(mface->v3, 0, totvert)) ? (mvert + mface->v3) : (mvert);
+                MVert *vc = (IN_RANGE(mface->v4, 0, totvert)) ? (mvert + mface->v4) : (mvert);
+
+                RB_trimesh_add_triangle(mdata, va->co, vb->co, vc->co);
+            }
+        }
+
+        /* construct collision shape
+         *
+         * These have been chosen to get better speed/accuracy tradeoffs with regards
+         * to limitations of each:
+         *    - BVH-Triangle Mesh: for passive objects only. Despite having greater
+         *                         speed/accuracy, they cannot be used for moving objects.
+         *    - GImpact Mesh:      for active objects. These are slower and less stable,
+         *                         but are more flexible for general usage.
+         */
+        if (ob->rigidbody_object->type == RBO_TYPE_PASSIVE) {
+            shape = RB_shape_new_trimesh(mdata);
+        }
+        else {
+            shape = RB_shape_new_gimpact_mesh(mdata);
+        }
+    }
+
+    /* cleanup temp data */
+    if (dm) {
+        dm->release(dm);
+    }
+
+    return shape;
 }
 
 /* create collision shape of mesh - triangulated mesh
@@ -409,7 +528,13 @@ void BKE_rigidbody_validate_sim_shape(Object *ob, short rebuild)
 
 			if (!(rbo->flag & RBO_FLAG_USE_MARGIN) && has_volume)
 				hull_margin = 0.04f;
-			new_shape = rigidbody_get_shape_convexhull_from_mesh(ob, hull_margin, &can_embed);
+            if (ob->type == OB_MESH && ob->data) {
+                new_shape = rigidbody_get_shape_convexhull_from_mesh((Mesh*)ob->data, hull_margin, &can_embed);
+            }
+            else {
+                printf("ERROR: cannot make Convex Hull collision shape for non-Mesh object\n");
+            }
+
 			if (!(rbo->flag & RBO_FLAG_USE_MARGIN))
 				rbo->margin = (can_embed && has_volume) ? 0.04f : 0.0f;  /* RB_TODO ideally we shouldn't directly change the margin here */
 			break;
@@ -429,6 +554,185 @@ void BKE_rigidbody_validate_sim_shape(Object *ob, short rebuild)
 		BKE_rigidbody_validate_sim_shape(ob, true);
 	}
 }
+
+
+/* Create new physics sim collision shape for object and store it,
+ * or remove the existing one first and replace...
+ */
+void BKE_rigidbody_validate_sim_shard_shape(VoronoiCell* vc, Object* ob, short rebuild)
+{
+    RigidBodyOb *rbo = vc->rigidbody;
+    rbCollisionShape *new_shape = NULL;
+    //BoundBox *bb = NULL;
+    float size[3] = {1.0f, 1.0f, 1.0f}, loc[3] = {0.0f, 0.0f, 0.0f};
+    float radius = 1.0f;
+    float height = 1.0f;
+    float capsule_height;
+    float hull_margin = 0.0f;
+    bool can_embed = true;
+    bool has_volume;
+    Mesh *me = BKE_mesh_add(G.main, "_mesh_");
+
+    /* sanity check */
+    if (rbo == NULL)
+        return;
+
+    /* don't create a new shape if we already have one and don't want to rebuild it */
+    if (rbo->physics_shape && !rebuild)
+        return;
+
+    /* if automatically determining dimensions, use the Object's boundbox
+     *	- assume that all quadrics are standing upright on local z-axis
+     *	- assume even distribution of mass around the Object's pivot
+     *	  (i.e. Object pivot is centralized in boundbox)
+     */
+    // XXX: all dimensions are auto-determined now... later can add stored settings for this
+    /* get object dimensions without scaling */
+    DM_to_mesh(vc->cell_mesh, me, NULL);
+    BKE_mesh_boundbox_calc(me, loc, size);
+
+    //dont need stupid mesh anymore... or ?
+  /*  BKE_libblock_free_us(&(G.main->object), emd->tempOb);
+    BKE_object_unlink(emd->tempOb);
+    BKE_object_free(emd->tempOb);
+    emd->tempOb = NULL;*/
+
+  /*  bb = BKE_object_boundbox_get(ob);
+    if (bb) {
+        size[0] = (bb->vec[4][0] - bb->vec[0][0]);
+        size[1] = (bb->vec[2][1] - bb->vec[0][1]);
+        size[2] = (bb->vec[1][2] - bb->vec[0][2]);
+    }
+    mul_v3_fl(size, 0.5f);*/
+
+    if (ELEM3(rbo->shape, RB_SHAPE_CAPSULE, RB_SHAPE_CYLINDER, RB_SHAPE_CONE)) {
+        /* take radius as largest x/y dimension, and height as z-dimension */
+        radius = MAX2(size[0], size[1]);
+        height = size[2];
+    }
+    else if (rbo->shape == RB_SHAPE_SPHERE) {
+        /* take radius to the the largest dimension to try and encompass everything */
+        radius = MAX3(size[0], size[1], size[2]);
+    }
+
+    /* create new shape */
+    switch (rbo->shape) {
+        case RB_SHAPE_BOX:
+            new_shape = RB_shape_new_box(size[0], size[1], size[2]);
+            break;
+
+        case RB_SHAPE_SPHERE:
+            new_shape = RB_shape_new_sphere(radius);
+            break;
+
+        case RB_SHAPE_CAPSULE:
+            capsule_height = (height - radius) * 2.0f;
+            new_shape = RB_shape_new_capsule(radius, (capsule_height > 0.0f) ? capsule_height : 0.0f);
+            break;
+        case RB_SHAPE_CYLINDER:
+            new_shape = RB_shape_new_cylinder(radius, height);
+            break;
+        case RB_SHAPE_CONE:
+            new_shape = RB_shape_new_cone(radius, height * 2.0f);
+            break;
+
+        case RB_SHAPE_CONVEXH:
+            /* try to emged collision margin */
+            has_volume = (MIN3(size[0], size[1], size[2]) > 0.0f);
+
+            if (!(rbo->flag & RBO_FLAG_USE_MARGIN) && has_volume)
+                hull_margin = 0.04f;
+            new_shape = rigidbody_get_shape_convexhull_from_mesh(me, hull_margin, &can_embed);
+            if (!(rbo->flag & RBO_FLAG_USE_MARGIN))
+                rbo->margin = (can_embed && has_volume) ? 0.04f : 0.0f;  /* RB_TODO ideally we shouldn't directly change the margin here */
+            break;
+        case RB_SHAPE_TRIMESH:
+            new_shape = rigidbody_get_shape_trimesh_from_mesh_shard(me, ob);
+            break;
+    }
+    /* assign new collision shape if creation was successful */
+    if (new_shape) {
+        if (rbo->physics_shape)
+            RB_shape_delete(rbo->physics_shape);
+        rbo->physics_shape = new_shape;
+        RB_shape_set_margin(rbo->physics_shape, RBO_GET_MARGIN(rbo));
+    }
+    else { /* otherwise fall back to box shape */
+        rbo->shape = RB_SHAPE_BOX;
+        BKE_rigidbody_validate_sim_shard_shape(vc, ob, true);
+    }
+}
+
+
+/* --------------------- */
+
+/* Create physics sim representation of shard given RigidBody settings
+ * < rebuild: even if an instance already exists, replace it
+ */
+void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, VoronoiCell* vc, Object *ob, short rebuild)
+{
+    RigidBodyOb *rbo = (vc) ? vc->rigidbody : NULL;
+    float loc[3];
+    float rot[4];
+
+    /* sanity checks:
+     *	- object doesn't have RigidBody info already: then why is it here?
+     */
+    if (rbo == NULL)
+        return;
+
+    /* make sure collision shape exists */
+    /* FIXME we shouldn't always have to rebuild collision shapes when rebuilding objects, but it's needed for constraints to update correctly */
+    if (rbo->physics_shape == NULL || rebuild)
+        BKE_rigidbody_validate_sim_shard_shape(vc, ob, true);
+
+    if (rbo->physics_object) {
+        if (rebuild == false)
+            RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
+    }
+    if (!rbo->physics_object || rebuild) {
+        /* remove rigid body if it already exists before creating a new one */
+        if (rbo->physics_object) {
+            RB_body_delete(rbo->physics_object);
+        }
+
+        mat4_to_loc_quat(loc, rot, ob->obmat);
+        //add/subtract offset ??
+        //sub_v3_v3(loc, vc->centroid);
+        copy_v3_v3(loc, vc->centroid);
+
+        rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot);
+
+        RB_body_set_friction(rbo->physics_object, rbo->friction);
+        RB_body_set_restitution(rbo->physics_object, rbo->restitution);
+
+        RB_body_set_damping(rbo->physics_object, rbo->lin_damping, rbo->ang_damping);
+        RB_body_set_sleep_thresh(rbo->physics_object, rbo->lin_sleep_thresh, rbo->ang_sleep_thresh);
+        RB_body_set_activation_state(rbo->physics_object, rbo->flag & RBO_FLAG_USE_DEACTIVATION);
+
+        if (rbo->type == RBO_TYPE_PASSIVE || rbo->flag & RBO_FLAG_START_DEACTIVATED)
+            RB_body_deactivate(rbo->physics_object);
+
+
+        RB_body_set_linear_factor(rbo->physics_object,
+                                  (ob->protectflag & OB_LOCK_LOCX) == 0,
+                                  (ob->protectflag & OB_LOCK_LOCY) == 0,
+                                  (ob->protectflag & OB_LOCK_LOCZ) == 0);
+        RB_body_set_angular_factor(rbo->physics_object,
+                                   (ob->protectflag & OB_LOCK_ROTX) == 0,
+                                   (ob->protectflag & OB_LOCK_ROTY) == 0,
+                                   (ob->protectflag & OB_LOCK_ROTZ) == 0);
+
+        RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
+        RB_body_set_kinematic_state(rbo->physics_object, rbo->flag & RBO_FLAG_KINEMATIC || rbo->flag & RBO_FLAG_DISABLED);
+    }
+
+    if (rbw && rbw->physics_world)
+        RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups);
+}
+
+
+
 
 /* --------------------- */
 
@@ -983,18 +1287,43 @@ void BKE_rigidbody_remove_constraint(Scene *scene, Object *ob)
 static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 {
 	GroupObject *go;
-	int i, n;
+    ModifierData *md;
+    ExplodeModifierData *emd;
+    int i, n, c, counter = 0;
+    int ismapped = FALSE;
 
-	n = BLI_countlist(&rbw->group->gobject);
+    n = BLI_countlist(&rbw->group->gobject) + countShards(rbw->group->gobject);
 
 	if (rbw->numbodies != n) {
 		rbw->numbodies = n;
 		rbw->objects = realloc(rbw->objects, sizeof(Object *) * rbw->numbodies);
+        rbw->cache_index_map = realloc(rbw->cache_index_map, sizeof(int) * rbw->numbodies);
 	}
 
 	for (go = rbw->group->gobject.first, i = 0; go; go = go->next, i++) {
 		Object *ob = go->ob;
 		rbw->objects[i] = ob;
+
+        for (md = ob->modifiers.first; md; md = md->next) {
+            if (md->type == eModifierType_Explode) {
+                emd = (ExplodeModifierData*)md;
+                if (emd->use_rigidbody) {
+                    for (c = 0; c < emd->cells->count; c++) {
+                        rbw->cache_index_map[counter] = i; //map all shards of an object to this object index
+                        counter++;
+                    }
+                    ismapped = TRUE;
+                    break;
+                }
+            }
+        }
+
+        if (!ismapped) {
+            rbw->cache_index_map[counter] = i; //1 object 1 index here (normal case)
+            counter++;
+        }
+
+        ismapped = FALSE;
 	}
 }
 
@@ -1233,7 +1562,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
                 rbc->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
             }
         }
-	}
+    }
 }
 
 static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
