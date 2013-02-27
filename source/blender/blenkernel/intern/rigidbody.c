@@ -58,13 +58,12 @@
 #include "BKE_animsys.h"
 #include "BKE_cdderivedmesh.h"
 #include "BKE_effect.h"
-#include "BKE_global.h"
 #include "BKE_group.h"
-#include "BKE_library.h"
-#include "BKE_mesh.h"
 #include "BKE_object.h"
+#include "BKE_mesh.h"
 #include "BKE_pointcache.h"
 #include "BKE_rigidbody.h"
+#include "BKE_global.h"
 #include "BKE_utildefines.h"
 
 #include "RNA_access.h"
@@ -288,18 +287,18 @@ static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh(Object *ob)
 			for (i = 0; (i < totface) && (mface) && (mvert); i++, mface++) {
 				/* add first triangle - verts 1,2,3 */
 				{
-					MVert *va = (mface->v1 < totvert) ? (mvert + mface->v1) : (mvert);
-					MVert *vb = (mface->v2 < totvert) ? (mvert + mface->v2) : (mvert);
-					MVert *vc = (mface->v3 < totvert) ? (mvert + mface->v3) : (mvert);
+					MVert *va = (IN_RANGE(mface->v1, 0, totvert)) ? (mvert + mface->v1) : (mvert);
+					MVert *vb = (IN_RANGE(mface->v2, 0, totvert)) ? (mvert + mface->v2) : (mvert);
+					MVert *vc = (IN_RANGE(mface->v3, 0, totvert)) ? (mvert + mface->v3) : (mvert);
 
 					RB_trimesh_add_triangle(mdata, va->co, vb->co, vc->co);
 				}
 
 				/* add second triangle if needed - verts 1,3,4 */
 				if (mface->v4) {
-					MVert *va = (mface->v1 < totvert) ? (mvert + mface->v1) : (mvert);
-					MVert *vb = (mface->v3 < totvert) ? (mvert + mface->v3) : (mvert);
-					MVert *vc = (mface->v4 < totvert) ? (mvert + mface->v4) : (mvert);
+					MVert *va = (IN_RANGE(mface->v1, 0, totvert)) ? (mvert + mface->v1) : (mvert);
+					MVert *vb = (IN_RANGE(mface->v3, 0, totvert)) ? (mvert + mface->v3) : (mvert);
+					MVert *vc = (IN_RANGE(mface->v4, 0, totvert)) ? (mvert + mface->v4) : (mvert);
 
 					RB_trimesh_add_triangle(mdata, va->co, vb->co, vc->co);
 				}
@@ -602,7 +601,7 @@ void BKE_rigidbody_validate_sim_constraint(RigidBodyWorld *rbw, Object *ob, shor
 					RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->spring_damping_z);
 
 					RB_constraint_set_equilibrium_6dof_spring(rbc->physics_constraint);
-					/* fall-through */
+				/* fall through */
 				case RBC_TYPE_6DOF:
 					if (rbc->type == RBC_TYPE_6DOF) /* a litte awkward but avoids duplicate code for limits */
 						rbc->physics_constraint = RB_constraint_new_6dof(loc, rot, rb1, rb2);
@@ -638,12 +637,12 @@ void BKE_rigidbody_validate_sim_constraint(RigidBodyWorld *rbw, Object *ob, shor
 						RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Z, 0.0f, -1.0f);
 					break;
 				case RBC_TYPE_MOTOR:
-					rbc->physics_constraint = RB_constraint_new_motor(loc, rot, rb1, rb2);
+				    rbc->physics_constraint = RB_constraint_new_motor(loc, rot, rb1, rb2);
 
-					RB_constraint_set_enable_motor(rbc->physics_constraint, rbc->flag & RBC_FLAG_USE_MOTOR_LIN, rbc->flag & RBC_FLAG_USE_MOTOR_ANG);
+				    RB_constraint_set_enable_motor(rbc->physics_constraint, rbc->flag & RBC_FLAG_USE_MOTOR_LIN, rbc->flag & RBC_FLAG_USE_MOTOR_ANG);
 					RB_constraint_set_max_impulse_motor(rbc->physics_constraint, rbc->motor_lin_max_impulse, rbc->motor_ang_max_impulse);
 					RB_constraint_set_target_velocity_motor(rbc->physics_constraint, rbc->motor_lin_target_velocity, rbc->motor_ang_target_velocity);
-					break;
+				    break;
 			}
 		}
 		else { /* can't create constraint without both rigid bodies */
@@ -725,34 +724,60 @@ RigidBodyWorld *BKE_rigidbody_create_world(Scene *scene)
 	return rbw;
 }
 
-RigidBodyWorld *BKE_rigidbody_world_copy(RigidBodyWorld *rbw)
+/* Add rigid body settings to the specified shard */
+RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, VoronoiCell *vc, short type)
 {
-	RigidBodyWorld *rbwn = MEM_dupallocN(rbw);
+    RigidBodyOb *rbo;
+    RigidBodyWorld *rbw = scene->rigidbody_world;
 
-	if (rbw->effector_weights)
-		rbwn->effector_weights = MEM_dupallocN(rbw->effector_weights);
-	if (rbwn->group)
-		id_us_plus(&rbwn->group->id);
-	if (rbwn->constraints)
-		id_us_plus(&rbwn->constraints->id);
+    /* sanity checks
+     *	- rigidbody world must exist
+     *	- shard must exist
+     *	- cannot add rigid body if it already exists
+     */
+    if (vc == NULL || (vc->rigidbody != NULL))
+        return NULL;
 
-	rbwn->pointcache = BKE_ptcache_copy_list(&rbwn->ptcaches, &rbw->ptcaches, FALSE);
+    /* create new settings data, and link it up */
+    rbo = MEM_callocN(sizeof(RigidBodyOb), "RigidBodyOb");
 
-	rbwn->objects = NULL;
-	rbwn->physics_world = NULL;
-	rbwn->numbodies = 0;
+    /* set default settings */
+    rbo->type = type;
 
-	return rbwn;
-}
+    rbo->mass = 1.0f;
 
-void BKE_rigidbody_world_groups_relink(RigidBodyWorld *rbw)
-{
-	if (rbw->group && rbw->group->id.newid)
-		rbw->group = (Group *)rbw->group->id.newid;
-	if (rbw->constraints && rbw->constraints->id.newid)
-		rbw->constraints = (Group *)rbw->constraints->id.newid;
-	if (rbw->effector_weights->group && rbw->effector_weights->group->id.newid)
-		rbw->effector_weights->group = (Group *)rbw->effector_weights->group->id.newid;
+    rbo->friction = 0.5f; /* best when non-zero. 0.5 is Bullet default */
+    rbo->restitution = 0.0f; /* best when zero. 0.0 is Bullet default */
+
+    rbo->margin = 0.04f; /* 0.04 (in meters) is Bullet default */
+
+    rbo->lin_sleep_thresh = 0.4f; /* 0.4 is half of Bullet default */
+    rbo->ang_sleep_thresh = 0.5f; /* 0.5 is half of Bullet default */
+
+    rbo->lin_damping = 0.04f; /* 0.04 is game engine default */
+    rbo->ang_damping = 0.1f; /* 0.1 is game engine default */
+
+    rbo->col_groups = 1;
+
+    /* use triangle meshes for passive objects
+     * use convex hulls for active objects since dynamic triangle meshes are very unstable
+     */
+    if (type == RBO_TYPE_ACTIVE)
+        rbo->shape = RB_SHAPE_CONVEXH;
+    else
+        rbo->shape = RB_SHAPE_TRIMESH;
+
+    /* set initial transform */
+    mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
+
+    //add initial "offset" (centroid), maybe subtract ob->obmat ?? (not sure)
+    add_v3_v3(rbo->pos, vc->centroid);
+
+    /* flag cache as outdated */
+    BKE_rigidbody_cache_reset(rbw);
+
+    /* return this object */
+    return rbo;
 }
 
 /* Add rigid body settings to the specified object */
@@ -914,10 +939,12 @@ void BKE_rigidbody_remove_object(Scene *scene, Object *ob)
 				if (obt && obt->rigidbody_constraint) {
 					rbc = obt->rigidbody_constraint;
 					if (rbc->ob1 == ob) {
-						BKE_rigidbody_remove_constraint(scene, obt);
+						rbc->ob1 = NULL;
+						rbc->flag |= RBC_FLAG_NEEDS_VALIDATE;
 					}
 					if (rbc->ob2 == ob) {
-						BKE_rigidbody_remove_constraint(scene, obt);
+						rbc->ob2 = NULL;
+						rbc->flag |= RBC_FLAG_NEEDS_VALIDATE;
 					}
 				}
 			}
@@ -936,9 +963,10 @@ void BKE_rigidbody_remove_constraint(Scene *scene, Object *ob)
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	RigidBodyCon *rbc = ob->rigidbody_constraint;
 
-	/* remove from rigidbody world, free object won't do this */
-	if (rbw && rbw->physics_world && rbc->physics_constraint) {
-		RB_dworld_remove_constraint(rbw->physics_world, rbc->physics_constraint);
+	if (rbw) {
+		/* remove from rigidbody world, free object won't do this */
+		if (rbw && rbw->physics_world && rbc->physics_constraint)
+			RB_dworld_remove_constraint(rbw->physics_world, rbc->physics_constraint);
 	}
 	/* remove object's settings */
 	BKE_rigidbody_free_constraint(ob);
@@ -1029,26 +1057,26 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 		/* get effectors present in the group specified by effector_weights */
 		effectors = pdInitEffectors(scene, ob, NULL, effector_weights);
 		if (effectors) {
-			float eff_force[3] = {0.0f, 0.0f, 0.0f};
-			float eff_loc[3], eff_vel[3];
+			float force[3] = {0.0f, 0.0f, 0.0f};
+			float loc[3], vel[3];
 
 			/* create dummy 'point' which represents last known position of object as result of sim */
 			// XXX: this can create some inaccuracies with sim position, but is probably better than using unsimulated vals?
-			RB_body_get_position(rbo->physics_object, eff_loc);
-			RB_body_get_linear_velocity(rbo->physics_object, eff_vel);
+			RB_body_get_position(rbo->physics_object, loc);
+			RB_body_get_linear_velocity(rbo->physics_object, vel);
 
-			pd_point_from_loc(scene, eff_loc, eff_vel, 0, &epoint);
+			pd_point_from_loc(scene, loc, vel, 0, &epoint);
 
 			/* calculate net force of effectors, and apply to sim object
 			 *	- we use 'central force' since apply force requires a "relative position" which we don't have...
 			 */
-			pdDoEffectors(effectors, NULL, effector_weights, &epoint, eff_force, NULL);
+			pdDoEffectors(effectors, NULL, effector_weights, &epoint, force, NULL);
 			if (G.f & G_DEBUG)
-				printf("\tapplying force (%f,%f,%f) to '%s'\n", eff_force[0], eff_force[1], eff_force[2], ob->id.name + 2);
+				printf("\tapplying force (%f,%f,%f) to '%s'\n", force[0], force[1], force[2], ob->id.name + 2);
 			/* activate object in case it is deactivated */
-			if (!is_zero_v3(eff_force))
+			if (!is_zero_v3(force))
 				RB_body_activate(rbo->physics_object);
-			RB_body_apply_central_force(rbo->physics_object, eff_force);
+			RB_body_apply_central_force(rbo->physics_object, force);
 		}
 		else if (G.f & G_DEBUG)
 			printf("\tno forces to apply to '%s'\n", ob->id.name + 2);
@@ -1166,7 +1194,7 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 		if (ob) {
 			RigidBodyOb *rbo = ob->rigidbody_object;
 			/* reset kinematic state for transformed objects */
-			if (rbo && (ob->flag & SELECT) && (G.moving & G_TRANSFORM_OBJ)) {
+			if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) {
 				RB_body_set_kinematic_state(rbo->physics_object, rbo->flag & RBO_FLAG_KINEMATIC || rbo->flag & RBO_FLAG_DISABLED);
 				RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
 				/* deactivate passive objects so they don't interfere with deactivation of active objects */
@@ -1176,12 +1204,6 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 		}
 	}
 }
-
-bool BKE_rigidbody_check_sim_running(RigidBodyWorld *rbw, float ctime)
-{
-	return (rbw && (rbw->flag & RBW_FLAG_MUTED) == 0 && ctime > rbw->pointcache->startframe);
-}
-
 /* Sync rigid body and object transformations */
 void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 {
@@ -1192,8 +1214,12 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 		return;
 
 	/* use rigid body transform after cache start frame if objects is not being transformed */
-	if (BKE_rigidbody_check_sim_running(rbw, ctime) && !(ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
+	if (ctime > rbw->pointcache->startframe && !(ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
 		float mat[4][4], size_mat[4][4], size[3];
+
+		/* keep original transform when the simulation is muted */
+		if (rbw->flag & RBW_FLAG_MUTED)
+			return;
 
 		normalize_qt(rbo->orn); // RB_TODO investigate why quaternion isn't normalized at this point
 		quat_to_mat4(mat, rbo->orn);
@@ -1201,7 +1227,7 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 
 		mat4_to_size(size, ob->obmat);
 		size_to_mat4(size_mat, size);
-		mul_m4_m4m4(mat, mat, size_mat);
+		mult_m4_m4m4(mat, mat, size_mat);
 
 		copy_m4_m4(ob->obmat, mat);
 	}
@@ -1211,7 +1237,7 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 	}
 }
 
-/* Used when canceling transforms - return rigidbody and object to initial states */
+/* Used when cancelling transforms - return rigidbody and object to initial states */
 void BKE_rigidbody_aftertrans_update(Object *ob, float loc[3], float rot[3], float quat[4], float rotAxis[3], float rotAngle)
 {
 	RigidBodyOb *rbo = ob->rigidbody_object;
@@ -1250,35 +1276,6 @@ void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw)
 
 /* ------------------ */
 
-/* Rebuild rigid body world */
-/* NOTE: this needs to be called before frame update to work correctly */
-void BKE_rigidbody_rebuild_world(Scene *scene, float ctime)
-{
-	RigidBodyWorld *rbw = scene->rigidbody_world;
-	PointCache *cache;
-	PTCacheID pid;
-	int startframe, endframe;
-
-	BKE_ptcache_id_from_rigidbody(&pid, NULL, rbw);
-	BKE_ptcache_id_time(&pid, scene, ctime, &startframe, &endframe, NULL);
-	cache = rbw->pointcache;
-
-	/* flag cache as outdated if we don't have a world or number of objects in the simulation has changed */
-	if (rbw->physics_world == NULL || rbw->numbodies != BLI_countlist(&rbw->group->gobject)) {
-		cache->flag |= PTCACHE_OUTDATED;
-	}
-
-	if (ctime <= startframe + 1 && rbw->ltime == startframe) {
-		if (cache->flag & PTCACHE_OUTDATED) {
-			BKE_ptcache_id_reset(scene, &pid, PTCACHE_RESET_OUTDATED);
-			rigidbody_update_simulation(scene, rbw, true);
-			BKE_ptcache_validate(cache, (int)ctime);
-			cache->last_exact = 0;
-			cache->flag &= ~PTCACHE_REDO_NEEDED;
-		}
-	}
-}
-
 /* Run RigidBody simulation for the specified physics world */
 void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 {
@@ -1292,9 +1289,29 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	BKE_ptcache_id_time(&pid, scene, ctime, &startframe, &endframe, NULL);
 	cache = rbw->pointcache;
 
+	rbw->flag &= ~RBW_FLAG_FRAME_UPDATE;
+
+	/* flag cache as outdated if we don't have a world or number of objects in the simulation has changed */
+	if (rbw->physics_world == NULL || rbw->numbodies != BLI_countlist(&rbw->group->gobject)) {
+		cache->flag |= PTCACHE_OUTDATED;
+	}
+
 	if (ctime <= startframe) {
 		rbw->ltime = startframe;
+		/* reset and rebuild simulation if necessary */
+		if (cache->flag & PTCACHE_OUTDATED) {
+			BKE_ptcache_id_reset(scene, &pid, PTCACHE_RESET_OUTDATED);
+			rigidbody_update_simulation(scene, rbw, true);
+			BKE_ptcache_validate(cache, (int)ctime);
+			cache->last_exact = 0;
+			cache->flag &= ~PTCACHE_REDO_NEEDED;
+		}
 		return;
+	}
+	/* rebuild world if it's outdated on second frame */
+	else if (ctime == startframe + 1 && rbw->ltime == startframe && cache->flag & PTCACHE_OUTDATED) {
+		BKE_ptcache_id_reset(scene, &pid, PTCACHE_RESET_OUTDATED);
+		rigidbody_update_simulation(scene, rbw, true);
 	}
 	/* make sure we don't go out of cache frame range */
 	else if (ctime > endframe) {
@@ -1360,8 +1377,6 @@ void BKE_rigidbody_validate_sim_object(RigidBodyWorld *rbw, Object *ob, short re
 void BKE_rigidbody_validate_sim_constraint(RigidBodyWorld *rbw, Object *ob, short rebuild) {}
 void BKE_rigidbody_validate_sim_world(Scene *scene, RigidBodyWorld *rbw, short rebuild) {}
 struct RigidBodyWorld *BKE_rigidbody_create_world(Scene *scene) { return NULL; }
-struct RigidBodyWorld *BKE_rigidbody_world_copy(RigidBodyWorld *rbw) { return NULL; }
-void BKE_rigidbody_world_groups_relink(struct RigidBodyWorld *rbw) {}
 struct RigidBodyOb *BKE_rigidbody_create_object(Scene *scene, Object *ob, short type) { return NULL; }
 struct RigidBodyCon *BKE_rigidbody_create_constraint(Scene *scene, Object *ob, short type) { return NULL; }
 struct RigidBodyWorld *BKE_rigidbody_get_world(Scene *scene) { return NULL; }
@@ -1369,9 +1384,7 @@ void BKE_rigidbody_remove_object(Scene *scene, Object *ob) {}
 void BKE_rigidbody_remove_constraint(Scene *scene, Object *ob) {}
 void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime) {}
 void BKE_rigidbody_aftertrans_update(Object *ob, float loc[3], float rot[3], float quat[4], float rotAxis[3], float rotAngle) {}
-bool BKE_rigidbody_check_sim_running(RigidBodyWorld *rbw, float ctime) { return false; }
 void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw) {}
-void BKE_rigidbody_rebuild_world(Scene *scene, float ctime) {}
 void BKE_rigidbody_do_simulation(Scene *scene, float ctime) {}
 
 #ifdef __GNUC__
