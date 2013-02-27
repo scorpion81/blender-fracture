@@ -1651,6 +1651,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 		emd->cells->data[emd->cells->count].vertco = MEM_mallocN(sizeof(float), "vertco");
 		emd->cells->data[emd->cells->count].vertex_count = 0;
 		emd->cells->data[emd->cells->count].particle_index = -1;
+        emd->cells->data[emd->cells->count].rigidbody = NULL;
 		
 
 		bmtemp = BM_mesh_create(&bm_mesh_chunksize_default);

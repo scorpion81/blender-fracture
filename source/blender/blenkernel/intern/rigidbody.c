@@ -1108,7 +1108,6 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 		Object *ob = go->ob;
         ModifierData *md = NULL;
         ExplodeModifierData *emd = NULL;
-        struct VoronoiCell *vc = NULL;
         int count = 0, i = 0;
 
 		if (ob && ob->type == OB_MESH) {
@@ -1126,7 +1125,8 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 
             if (emd && emd->use_rigidbody){
                 for (i = 0; i < count; i++) {
-                    vc = emd->cells->data + i;
+                    VoronoiCell *vc = NULL;
+                    vc = &emd->cells->data[i];
                     if (vc->rigidbody == NULL) {
                         vc->rigidbody = BKE_rigidbody_create_shard(scene, ob, vc, RBO_TYPE_ACTIVE);
                         BKE_rigidbody_validate_sim_shard(rbw, vc, ob, true);
