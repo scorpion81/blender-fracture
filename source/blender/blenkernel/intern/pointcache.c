@@ -1000,84 +1000,145 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUS
 {
 	RigidBodyWorld *rbw = rb_v;
 	Object *ob = NULL;
+    ModifierData *md = NULL;
+    ExplodeModifierData* emd = NULL;
+    RigidBodyOb *rbo = NULL;
+    int offset = 0;
+    int mapped = rbw->cache_index_map[index];
 	
+    if (index > mapped) {
+        offset = index - mapped;
+        index = mapped;
+    }
+
 	if (rbw->objects)
 		ob = rbw->objects[index];
 	
-	if (ob && ob->rigidbody_object) {
-		RigidBodyOb *rbo = ob->rigidbody_object;
+    for (md = ob->modifiers.first; md; md = md->next) {
+        if (md->type == eModifierType_Explode) {
+            emd = (ExplodeModifierData*)md;
+            if (emd->use_rigidbody) {
+                rbo = emd->cells->data[offset].rigidbody;
+                break;
+            }
+        }
+    }
+
+    //else...
+    if (!rbo && ob && ob->rigidbody_object) {
+        rbo = ob->rigidbody_object;
+    }
 		
-		if (rbo->type == RBO_TYPE_ACTIVE) {
+    if (rbo->type == RBO_TYPE_ACTIVE) {
 #ifdef WITH_BULLET
-			RB_body_get_position(rbo->physics_object, rbo->pos);
-			RB_body_get_orientation(rbo->physics_object, rbo->orn);
+        RB_body_get_position(rbo->physics_object, rbo->pos);
+        RB_body_get_orientation(rbo->physics_object, rbo->orn);
 #endif
-			PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, rbo->pos);
-			PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, rbo->orn);
-		}
+        PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, rbo->pos);
+        PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, rbo->orn);
 	}
 
 	return 1;
 }
 static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float UNUSED(cfra), float *old_data)
 {
-	RigidBodyWorld *rbw = rb_v;
-	Object *ob = NULL;
+    RigidBodyWorld *rbw = rb_v;
+    Object *ob = NULL;
+    ModifierData *md = NULL;
+    ExplodeModifierData* emd = NULL;
+    RigidBodyOb *rbo = NULL;
+    int offset = 0;
+    int mapped = rbw->cache_index_map[index];
+
+    if (index > mapped) {
+        offset = index - mapped;
+        index = mapped;
+    }
+
+    if (rbw->objects)
+        ob = rbw->objects[index];
+
+    for (md = ob->modifiers.first; md; md = md->next) {
+        if (md->type == eModifierType_Explode) {
+            emd = (ExplodeModifierData*)md;
+            if (emd->use_rigidbody) {
+                rbo = emd->cells->data[offset].rigidbody;
+                break;
+            }
+        }
+    }
 	
-	if (rbw->objects)
-		ob = rbw->objects[index];
-	
-	if (ob && ob->rigidbody_object) {
-		RigidBodyOb *rbo = ob->rigidbody_object;
+    if (!rbo && ob && ob->rigidbody_object) {
+        rbo = ob->rigidbody_object;
+    }
 		
-		if (rbo->type == RBO_TYPE_ACTIVE) {
+    if (rbo->type == RBO_TYPE_ACTIVE) {
 			
-			if (old_data) {
-				memcpy(rbo->pos, data, 3 * sizeof(float));
-				memcpy(rbo->orn, data + 3, 4 * sizeof(float));
-			}
-			else {
-				PTCACHE_DATA_TO(data, BPHYS_DATA_LOCATION, 0, rbo->pos);
-				PTCACHE_DATA_TO(data, BPHYS_DATA_ROTATION, 0, rbo->orn);
-			}
-		}
-	}
+        if (old_data) {
+            memcpy(rbo->pos, data, 3 * sizeof(float));
+            memcpy(rbo->orn, data + 3, 4 * sizeof(float));
+        }
+        else {
+            PTCACHE_DATA_TO(data, BPHYS_DATA_LOCATION, 0, rbo->pos);
+            PTCACHE_DATA_TO(data, BPHYS_DATA_ROTATION, 0, rbo->orn);
+        }
+    }
 }
 static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, float cfra, float cfra1, float cfra2, float *old_data)
 {
 	RigidBodyWorld *rbw = rb_v;
+    RigidBodyOb *rbo = NULL;
 	Object *ob = NULL;
 	ParticleKey keys[4];
 	float dfra;
+    ModifierData *md = NULL;
+    ExplodeModifierData* emd = NULL;
+    int offset = 0;
+    int mapped = rbw->cache_index_map[index];
+
+    if (index > mapped) {
+        offset = index - mapped;
+        index = mapped;
+    }
+
+    if (rbw->objects)
+        ob = rbw->objects[index];
+
+    for (md = ob->modifiers.first; md; md = md->next) {
+        if (md->type == eModifierType_Explode) {
+            emd = (ExplodeModifierData*)md;
+            if (emd->use_rigidbody) {
+                rbo = emd->cells->data[offset].rigidbody;
+                break;
+            }
+        }
+    }
 	
-	if (rbw->objects)
-		ob = rbw->objects[index];
-	
-	if (ob && ob->rigidbody_object) {
-		RigidBodyOb *rbo = ob->rigidbody_object;
+    if (!rbo && ob && ob->rigidbody_object) {
+        rbo = ob->rigidbody_object;
+    }
 		
-		if (rbo->type == RBO_TYPE_ACTIVE) {
+    if (rbo->type == RBO_TYPE_ACTIVE) {
 			
-			copy_v3_v3(keys[1].co, rbo->pos);
-			copy_v3_v3(keys[1].rot, rbo->orn);
-			
-			if (old_data) {
-				memcpy(keys[2].co, data, 3 * sizeof(float));
-				memcpy(keys[2].rot, data + 3, 4 * sizeof(float));
-			}
-			else {
-				BKE_ptcache_make_particle_key(keys+2, 0, data, cfra2);
-			}
-			
-			dfra = cfra2 - cfra1;
-		
-			psys_interpolate_particle(-1, keys, (cfra - cfra1) / dfra, keys, 1);
-			interp_qt_qtqt(keys->rot, keys[1].rot, keys[2].rot, (cfra - cfra1) / dfra);
-			
-			copy_v3_v3(rbo->pos, keys->co);
-			copy_v3_v3(rbo->orn, keys->rot);
-		}
-	}
+        copy_v3_v3(keys[1].co, rbo->pos);
+        copy_v3_v3(keys[1].rot, rbo->orn);
+
+        if (old_data) {
+            memcpy(keys[2].co, data, 3 * sizeof(float));
+            memcpy(keys[2].rot, data + 3, 4 * sizeof(float));
+        }
+        else {
+            BKE_ptcache_make_particle_key(keys+2, 0, data, cfra2);
+        }
+
+        dfra = cfra2 - cfra1;
+
+        psys_interpolate_particle(-1, keys, (cfra - cfra1) / dfra, keys, 1);
+        interp_qt_qtqt(keys->rot, keys[1].rot, keys[2].rot, (cfra - cfra1) / dfra);
+
+        copy_v3_v3(rbo->pos, keys->co);
+        copy_v3_v3(rbo->orn, keys->rot);
+    }
 }
 static int ptcache_rigidbody_totpoint(void *rb_v, int UNUSED(cfra))
 {

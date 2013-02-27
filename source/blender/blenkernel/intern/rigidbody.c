@@ -1106,81 +1106,133 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 	/* update objects */
 	for (go = rbw->group->gobject.first; go; go = go->next) {
 		Object *ob = go->ob;
+        ModifierData *md = NULL;
+        ExplodeModifierData *emd = NULL;
+        struct VoronoiCell *vc = NULL;
+        int count = 0, i = 0;
 
 		if (ob && ob->type == OB_MESH) {
-			/* validate that we've got valid object set up here... */
-			RigidBodyOb *rbo = ob->rigidbody_object;
-			/* update transformation matrix of the object so we don't get a frame of lag for simple animations */
-			BKE_object_where_is_calc(scene, ob);
 
-			if (rbo == NULL) {
-				/* Since this object is included in the sim group but doesn't have
-				 * rigid body settings (perhaps it was added manually), add!
-				 *	- assume object to be active? That is the default for newly added settings...
-				 */
-				ob->rigidbody_object = BKE_rigidbody_create_object(scene, ob, RBO_TYPE_ACTIVE);
-				BKE_rigidbody_validate_sim_object(rbw, ob, true);
+            /* check for fractured objects which want to participate first, then handle other normal objects*/
+            for (md = ob->modifiers.first; md; md = md->next) {
+                if (md->type == eModifierType_Explode) {
+                    emd = (ExplodeModifierData*)md;
+                    if (emd->use_rigidbody) {
+                        count = emd->cells->count;
+                        break;
+                    }
+                }
+            }
 
-				rbo = ob->rigidbody_object;
-			}
-			else {
-				/* perform simulation data updates as tagged */
-				/* refresh object... */
-				if (rebuild) {
-					/* World has been rebuilt so rebuild object */
-					BKE_rigidbody_validate_sim_object(rbw, ob, true);
-				}
-				else if (rbo->flag & RBO_FLAG_NEEDS_VALIDATE) {
-					BKE_rigidbody_validate_sim_object(rbw, ob, false);
-				}
-				/* refresh shape... */
-				if (rbo->flag & RBO_FLAG_NEEDS_RESHAPE) {
-					/* mesh/shape data changed, so force shape refresh */
-					BKE_rigidbody_validate_sim_shape(ob, true);
-					/* now tell RB sim about it */
-					// XXX: we assume that this can only get applied for active/passive shapes that will be included as rigidbodies
-					RB_body_set_collision_shape(rbo->physics_object, rbo->physics_shape);
-				}
-				rbo->flag &= ~(RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
-			}
+            if (emd && emd->use_rigidbody){
+                for (i = 0; i < count; i++) {
+                    vc = emd->cells->data + i;
+                    if (vc->rigidbody == NULL) {
+                        vc->rigidbody = BKE_rigidbody_create_shard(scene, ob, vc, RBO_TYPE_ACTIVE);
+                        BKE_rigidbody_validate_sim_shard(rbw, vc, ob, true);
 
-			/* update simulation object... */
-			rigidbody_update_sim_ob(scene, rbw, ob, rbo);
-		}
-	}
-	/* update constraints */
-	if (rbw->constraints == NULL) /* no constraints, move on */
-		return;
-	for (go = rbw->constraints->gobject.first; go; go = go->next) {
-		Object *ob = go->ob;
+                    }
+                    else {  //as usual, but for each shard now, and no constraints
+                        /* perform simulation data updates as tagged */
+                        /* refresh object... */
+                        if (rebuild) {
+                            /* World has been rebuilt so rebuild object */
+                            BKE_rigidbody_validate_sim_shard(rbw, ob, vc, true);
+                        }
+                        else if (vc->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE) {
+                            BKE_rigidbody_validate_sim_shard(rbw, ob, vc, false);
+                        }
+                        /* refresh shape... */
+                        if (vc->rigidbody->flag & RBO_FLAG_NEEDS_RESHAPE) {
+                            /* mesh/shape data changed, so force shape refresh */
+                            BKE_rigidbody_validate_sim_shard_shape(vc, ob, true);
+                            /* now tell RB sim about it */
+                            // XXX: we assume that this can only get applied for active/passive shapes that will be included as rigidbodies
+                            RB_body_set_collision_shape(vc->rigidbody->physics_object, vc->rigidbody->physics_shape);
+                        }
+                        vc->rigidbody->flag &= ~(RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
+                    }
 
-		if (ob) {
-			/* validate that we've got valid object set up here... */
-			RigidBodyCon *rbc = ob->rigidbody_constraint;
-			/* update transformation matrix of the object so we don't get a frame of lag for simple animations */
-			BKE_object_where_is_calc(scene, ob);
+                    /* update simulation object... */
+                   // rigidbody_update_sim_ob(scene, rbw, vc, vc->rigidbody); //probably necessary, but does not fit for fractured objs for now
+                }
+            }
+            else
+            {
+                /* validate that we've got valid object set up here... */
+                RigidBodyOb *rbo = ob->rigidbody_object;
+                /* update transformation matrix of the object so we don't get a frame of lag for simple animations */
+                BKE_object_where_is_calc(scene, ob);
 
-			if (rbc == NULL) {
-				/* Since this object is included in the group but doesn't have
-				 * constraint settings (perhaps it was added manually), add!
-				 */
-				ob->rigidbody_constraint = BKE_rigidbody_create_constraint(scene, ob, RBC_TYPE_FIXED);
-				BKE_rigidbody_validate_sim_constraint(rbw, ob, true);
+                if (rbo == NULL) {
+                    /* Since this object is included in the sim group but doesn't have
+                     * rigid body settings (perhaps it was added manually), add!
+                     *	- assume object to be active? That is the default for newly added settings...
+                     */
+                    ob->rigidbody_object = BKE_rigidbody_create_object(scene, ob, RBO_TYPE_ACTIVE);
+                    BKE_rigidbody_validate_sim_object(rbw, ob, true);
 
-				rbc = ob->rigidbody_constraint;
-			}
-			else {
-				/* perform simulation data updates as tagged */
-				if (rebuild) {
-					/* World has been rebuilt so rebuild constraint */
-					BKE_rigidbody_validate_sim_constraint(rbw, ob, true);
-				}
-				else if (rbc->flag & RBC_FLAG_NEEDS_VALIDATE) {
-					BKE_rigidbody_validate_sim_constraint(rbw, ob, false);
-				}
-				rbc->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
-			}
-		}
+                    rbo = ob->rigidbody_object;
+                }
+                else {
+                    /* perform simulation data updates as tagged */
+                    /* refresh object... */
+                    if (rebuild) {
+                        /* World has been rebuilt so rebuild object */
+                        BKE_rigidbody_validate_sim_object(rbw, ob, true);
+                    }
+                    else if (rbo->flag & RBO_FLAG_NEEDS_VALIDATE) {
+                        BKE_rigidbody_validate_sim_object(rbw, ob, false);
+                    }
+                    /* refresh shape... */
+                    if (rbo->flag & RBO_FLAG_NEEDS_RESHAPE) {
+                        /* mesh/shape data changed, so force shape refresh */
+                        BKE_rigidbody_validate_sim_shape(ob, true);
+                        /* now tell RB sim about it */
+                        // XXX: we assume that this can only get applied for active/passive shapes that will be included as rigidbodies
+                        RB_body_set_collision_shape(rbo->physics_object, rbo->physics_shape);
+                    }
+                    rbo->flag &= ~(RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
+                }
+
+                /* update simulation object... */
+                rigidbody_update_sim_ob(scene, rbw, ob, rbo);
+            }
+        }
+    }
+    /* update constraints */
+    if (rbw->constraints == NULL) /* no constraints, move on */
+        return;
+    for (go = rbw->constraints->gobject.first; go; go = go->next) {
+        Object *ob = go->ob;
+
+        if (ob) {
+            /* validate that we've got valid object set up here... */
+            RigidBodyCon *rbc = ob->rigidbody_constraint;
+            /* update transformation matrix of the object so we don't get a frame of lag for simple animations */
+            BKE_object_where_is_calc(scene, ob);
+
+            if (rbc == NULL) {
+                /* Since this object is included in the group but doesn't have
+                 * constraint settings (perhaps it was added manually), add!
+                 */
+                ob->rigidbody_constraint = BKE_rigidbody_create_constraint(scene, ob, RBC_TYPE_FIXED);
+                BKE_rigidbody_validate_sim_constraint(rbw, ob, true);
+
+                rbc = ob->rigidbody_constraint;
+            }
+            else {
+                /* perform simulation data updates as tagged */
+                if (rebuild) {
+                    /* World has been rebuilt so rebuild constraint */
+                    BKE_rigidbody_validate_sim_constraint(rbw, ob, true);
+                }
+                else if (rbc->flag & RBC_FLAG_NEEDS_VALIDATE) {
+                    BKE_rigidbody_validate_sim_constraint(rbw, ob, false);
+                }
+                rbc->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
+            }
+        }
 	}
 }
 
@@ -1292,7 +1344,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	rbw->flag &= ~RBW_FLAG_FRAME_UPDATE;
 
 	/* flag cache as outdated if we don't have a world or number of objects in the simulation has changed */
-	if (rbw->physics_world == NULL || rbw->numbodies != BLI_countlist(&rbw->group->gobject)) {
+    if (rbw->physics_world == NULL || rbw->numbodies != (BLI_countlist(&rbw->group->gobject) + countShards(rbw->group->gobject))) {
 		cache->flag |= PTCACHE_OUTDATED;
 	}
 

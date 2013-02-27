@@ -102,6 +102,7 @@ static void initData(ModifierData *md)
 	emd->inner_material = NULL;
 	emd->point_source = eOwnParticles;
 	emd->last_point_source = eOwnParticles;
+    emd->use_rigidbody = TRUE;
 }
 
 static void freeCells(ExplodeModifierData* emd)
@@ -2217,11 +2218,15 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
             else
             {
 				//BM_mesh_copy(emd->fracMesh); loses some faces too, hrm.
-				if (emd->map_delay != emd->last_map_delay) resetCells(emd);
-				emd->last_map_delay = emd->map_delay;
-				createParticleTree(emd, psmd, md->scene, ob);
-                mapCellsToParticles(emd, psmd, md->scene, ob);
-				explodeCells(emd, psmd, md->scene, ob);
+                if (!emd->use_rigidbody)
+                {
+                    if (emd->map_delay != emd->last_map_delay) resetCells(emd);
+                    emd->last_map_delay = emd->map_delay;
+                    createParticleTree(emd, psmd, md->scene, ob);
+                    mapCellsToParticles(emd, psmd, md->scene, ob);
+                    explodeCells(emd, psmd, md->scene, ob);
+                }
+
                 result = CDDM_from_bmesh(emd->fracMesh, TRUE);
 				
 				DM_ensure_tessface(result);

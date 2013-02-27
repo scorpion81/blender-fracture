@@ -71,6 +71,7 @@ typedef struct RigidBodyWorld {
 	
 	/* References to Physics Sim objects. Exist at runtime only ---------------------- */
 	void *physics_world;		/* Physics sim world (i.e. btDiscreteDynamicsWorld) */
+    int *cache_index_map;       /* Maps the linear RigidbodyOb index to the nested Object(Modifier)+Cell Index, at runtime*/
 } RigidBodyWorld;
 
 /* Flags for RigidBodyWorld */

@@ -72,6 +72,9 @@ void BKE_rigidbody_validate_sim_object(struct RigidBodyWorld *rbw, struct Object
 void BKE_rigidbody_validate_sim_shape(struct Object *ob, short rebuild);
 void BKE_rigidbody_validate_sim_constraint(struct RigidBodyWorld *rbw, struct Object *ob, short rebuild);
 
+void BKE_rigidbody_validate_sim_shard(struct RigidBodyWorld *rbw, struct VoronoiCell *vc, struct Object *ob, short rebuild);
+void BKE_rigidbody_validate_sim_shard_shape(struct VoronoiCell *vc, struct Object *ob, short rebuild);
+
 /* -------------- */
 /* Utilities */
 

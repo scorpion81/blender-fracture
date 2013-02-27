@@ -632,9 +632,57 @@ typedef enum {
 	eExplodeFlag_Dead =			(1<<5),
 } ExplodeModifierFlag;
 
+typedef enum {
+    eFractureMode_Cells = 0,
+    eFractureMode_Faces = 1,
+} eFractureMode;
+
+enum {
+	MOD_VORONOI_USEBOOLEAN = (1 << 1),
+    MOD_VORONOI_REFRACTURE = (1 << 2),
+    MOD_VORONOI_USECACHE = (1 << 3),
+    MOD_VORONOI_FLIPNORMAL = (1 << 4),
+    MOD_VORONOI_EMITCONTINUOUSLY = (1 << 5)
+};
+
+typedef struct VoronoiCell {
+    struct BMVert **vertices;
+    float *vertco;
+	struct DerivedMesh *cell_mesh;
+    struct RigidBodyOb *rigidbody;
+    int vertex_count;
+    int particle_index;
+    float centroid[3];
+	char pad[4];
+} VoronoiCell;
+
+typedef struct VoronoiCells {
+    VoronoiCell *data;
+    int count;
+    char pad[4];
+} VoronoiCells;
+
+typedef enum {
+	eOwnVerts = (1 << 0),
+	eOwnParticles = (1 << 1),
+	eChildVerts = (1 << 2),
+	eChildParticles = (1 << 3),
+	eGreasePencil = (1 << 4),
+	
+} eVoronoiPointSource;
+
 typedef struct ExplodeModifierData {
 	ModifierData modifier;
-	int *facepa;
+    
+    //for voronoi cell mode
+    VoronoiCells *cells;
+    struct BMesh *fracMesh;
+    struct Object *tempOb;
+	struct KDTree *patree;
+	struct Material *inner_material;
+    
+    //for face mode
+    int *facepa;
 	short flag, vgroup;
 	float protect;
     char uvname[64];	/* MAX_CUSTOMDATA_LAYER_NAME */
