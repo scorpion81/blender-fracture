@@ -72,7 +72,7 @@
 #ifdef WITH_BULLET
 
 
-static void updateCell(struct VoronoiCell *vc, Object* ob, float loc[3], float rot[4] )
+void BKE_updateCell(struct VoronoiCell *vc, Object* ob, float loc[3], float rot[4] )
 {
     float startco[3];// size[3] = {1,1,1}, rot[4], loc[3];
     int j;
@@ -1517,7 +1517,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 
                     /* update simulation object... */
                    // rigidbody_update_sim_ob(scene, rbw, vc, vc->rigidbody); //probably necessary, but does not fit for fractured objs for now
-                    updateCell(vc, ob, vc->rigidbody->pos, vc->rigidbody->orn);
+                    BKE_updateCell(vc, ob, vc->rigidbody->pos, vc->rigidbody->orn);
                 }
             }
             else
@@ -1711,8 +1711,8 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 		cache->flag |= PTCACHE_OUTDATED;
 	}
 
-	if (ctime <= startframe) {
-		rbw->ltime = startframe;
+    if (ctime <= startframe) {
+        rbw->ltime = startframe;
 		/* reset and rebuild simulation if necessary */
 		if (cache->flag & PTCACHE_OUTDATED) {
 			BKE_ptcache_id_reset(scene, &pid, PTCACHE_RESET_OUTDATED);

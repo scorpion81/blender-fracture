@@ -73,6 +73,7 @@
 #include "BKE_scene.h"
 #include "BKE_smoke.h"
 #include "BKE_softbody.h"
+#include "BKE_rigidbody.h"
 
 #include "BIK_api.h"
 
@@ -1019,6 +1020,7 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUS
             emd = (ExplodeModifierData*)md;
             if (emd->use_rigidbody) {
                 rbo = emd->cells->data[offset].rigidbody;
+                vc = &emd->cells->data[offset];
                 break;
             }
         }
@@ -1047,6 +1049,7 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float UNU
     ModifierData *md = NULL;
     ExplodeModifierData* emd = NULL;
     RigidBodyOb *rbo = NULL;
+    VoronoiCell *vc = NULL; //need to update mesh from cache as well, a bit dirty approach...
     int offset = 0;
     int mapped = rbw->cache_index_map[index];
 
@@ -1081,6 +1084,11 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float UNU
         else {
             PTCACHE_DATA_TO(data, BPHYS_DATA_LOCATION, 0, rbo->pos);
             PTCACHE_DATA_TO(data, BPHYS_DATA_ROTATION, 0, rbo->orn);
+        }
+
+        if (vc)
+        {
+            BKE_updateCell(vc, ob, rbo->pos, rbo->orn);
         }
     }
 }
