@@ -67,8 +67,38 @@
 #include "BKE_utildefines.h"
 
 #include "RNA_access.h"
+#include "bmesh.h"
 
 #ifdef WITH_BULLET
+
+
+static void updateCell(struct VoronoiCell *vc, Object* ob, float loc[3], float rot[4] )
+{
+    float startco[3];// size[3] = {1,1,1}, rot[4], loc[3];
+    int j;
+
+    //mat4_to_loc_quat(loc, rot, imat);
+    //loc_quat_size_to_mat4(imat, loc, rot, size);
+    for (j = 0; j < vc->vertex_count; j++)
+    {
+        // BMVert *vert = BM_vert_at_index(bm, ind);
+        struct BMVert* vert = vc->vertices[j];
+
+        //reset to original coords // stored at fracture time
+        startco[0] = vc->vertco[j*3];
+        startco[1] = vc->vertco[j*3+1];
+        startco[2] = vc->vertco[j*3+2];
+
+        copy_v3_v3(vert->co, startco);
+        //mul_m4_v3(ob->obmat, vert->co);
+        //sub_v3_v3(vert->co, vc->centroid);
+        //	sub_qt_qtqt(rot, cell->phys_rot, startro);
+        mul_qt_v3(rot, vert->co);
+        add_v3_v3(vert->co, loc);
+        //mul_v3_v3(vert->co, rbm->size);
+        mul_m4_v3(ob->imat, vert->co);
+    }
+}
 
 /* ************************************** */
 /* Memory Management */
@@ -1073,9 +1103,12 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, VoronoiCell *v
 
     /* set initial transform */
     mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
+   // rbo->pos = vc->centroid;
 
     //add initial "offset" (centroid), maybe subtract ob->obmat ?? (not sure)
-    add_v3_v3(rbo->pos, vc->centroid);
+  /*  copy_v3_v3(centr, vc->centroid);
+    mul_m4_v3(ob->imat, centr);*/
+   // add_v3_v3(rbo->pos, vc->centroid);
 
     /* flag cache as outdated */
     BKE_rigidbody_cache_reset(rbw);
@@ -1466,10 +1499,10 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
                         /* refresh object... */
                         if (rebuild) {
                             /* World has been rebuilt so rebuild object */
-                            BKE_rigidbody_validate_sim_shard(rbw, ob, vc, true);
+                            BKE_rigidbody_validate_sim_shard(rbw, vc, ob, true);
                         }
                         else if (vc->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE) {
-                            BKE_rigidbody_validate_sim_shard(rbw, ob, vc, false);
+                            BKE_rigidbody_validate_sim_shard(rbw, vc, ob, false);
                         }
                         /* refresh shape... */
                         if (vc->rigidbody->flag & RBO_FLAG_NEEDS_RESHAPE) {
@@ -1484,6 +1517,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 
                     /* update simulation object... */
                    // rigidbody_update_sim_ob(scene, rbw, vc, vc->rigidbody); //probably necessary, but does not fit for fractured objs for now
+                    updateCell(vc, ob, vc->rigidbody->pos, vc->rigidbody->orn);
                 }
             }
             else
