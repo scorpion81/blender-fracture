@@ -192,11 +192,13 @@ static void copyData(ModifierData *md, ModifierData *target)
     
     temd->mode = emd->mode;
 	temd->use_boolean = emd->use_boolean;
-    temd->fracMesh = emd->fracMesh;
+   // temd->fracMesh = emd->fracMesh; regenerate this ?
+    temd->fracMesh = NULL;
     temd->use_cache = emd->use_cache;
     temd->refracture = emd->refracture;
     temd->tempOb = emd->tempOb;
-    temd->cells = emd->cells;
+    //temd->cells = emd->cells; regenerate those too ?
+    temd->cells = NULL;
     temd->flip_normal = emd->flip_normal;
     temd->last_part = emd->last_part;
     temd->last_bool = emd->last_bool;

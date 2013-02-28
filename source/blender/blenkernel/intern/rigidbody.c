@@ -1313,6 +1313,28 @@ void BKE_rigidbody_remove_constraint(Scene *scene, Object *ob)
 }
 
 
+static int count_regular_rigidbody_objects(ListBase obs)
+{
+    int count = 0;
+    struct GroupObject *gob = NULL;
+    struct ModifierData *md = NULL;
+    struct ExplodeModifierData *emd = NULL;
+
+    for (gob = obs.first; gob; gob = gob->next) {
+        count++;
+        for (md = gob->ob->modifiers.first; md; md = md->next) {
+            if (md->type == eModifierType_Explode) {
+                emd = (ExplodeModifierData*)md;
+                if (emd->use_rigidbody) {
+                    count--;
+                    break;
+                }
+            }
+        }
+    }
+    return count;
+}
+
 /* ************************************** */
 /* Simulation Interface - Bullet */
 
@@ -1322,15 +1344,17 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 	GroupObject *go;
     ModifierData *md;
     ExplodeModifierData *emd;
-    int i, n, c, counter = 0;
+    int i, l, m, n, c, counter = 0;
     int ismapped = FALSE;
 
-    n = BLI_countlist(&rbw->group->gobject) + countShards(rbw->group->gobject);
+    l = BLI_countlist(&rbw->group->gobject); // all objects
+    m = count_regular_rigidbody_objects(rbw->group->gobject);
+    n = countShards(rbw->group->gobject);
 
-	if (rbw->numbodies != n) {
-		rbw->numbodies = n;
-		rbw->objects = realloc(rbw->objects, sizeof(Object *) * rbw->numbodies);
-        rbw->cache_index_map = realloc(rbw->cache_index_map, sizeof(int) * (rbw->numbodies+1));
+    if (rbw->numbodies != (m+n)) {
+        rbw->numbodies = m+n;
+        rbw->objects = realloc(rbw->objects, sizeof(Object *) * l);
+        rbw->cache_index_map = realloc(rbw->cache_index_map, sizeof(int) * rbw->numbodies);
 	}
 
 	for (go = rbw->group->gobject.first, i = 0; go; go = go->next, i++) {
@@ -1707,7 +1731,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	rbw->flag &= ~RBW_FLAG_FRAME_UPDATE;
 
 	/* flag cache as outdated if we don't have a world or number of objects in the simulation has changed */
-    if (rbw->physics_world == NULL || rbw->numbodies != (BLI_countlist(&rbw->group->gobject) + countShards(rbw->group->gobject))) {
+    if (rbw->physics_world == NULL || rbw->numbodies != (count_regular_rigidbody_objects(rbw->group->gobject) + countShards(rbw->group->gobject))) {
 		cache->flag |= PTCACHE_OUTDATED;
 	}
 

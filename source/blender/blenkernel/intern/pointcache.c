@@ -996,6 +996,39 @@ static int ptcache_dynamicpaint_read(PTCacheFile *pf, void *dp_v)
 	return 1;
 }
 
+static int count_previous_shards(RigidBodyWorld *rbw, int mapped)
+{
+    Object* ob = NULL;
+    ModifierData *md = NULL;
+    ExplodeModifierData* emd = NULL;
+    int count = 0, foundMod = FALSE, i = 0;
+
+    for (i = 0; i < mapped; i++) {
+        if (rbw->objects)
+            ob = rbw->objects[i];
+        else
+            return 0;
+
+        for (md = ob->modifiers.first; md; md = md->next) {
+            if (md->type == eModifierType_Explode) {
+                emd = (ExplodeModifierData*)md;
+                if (emd->use_rigidbody) {
+                    count += emd->cells->count;
+                    foundMod = TRUE;
+                    break;
+                }
+            }
+        }
+
+        /*if (!foundMod)
+        {
+            count++; //the object itself counts as shard too.
+        }*/
+    }
+
+    return count;
+}
+
 /* Rigid Body functions */
 static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUSED(cfra))
 {
@@ -1008,7 +1041,7 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUS
     int mapped = rbw->cache_index_map[index];
 	
     if (index > mapped) {
-        offset = index - mapped;
+        offset = index - count_previous_shards(rbw, mapped)-1;
         index = mapped;
     }
 
@@ -1054,7 +1087,7 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float UNU
     int mapped = rbw->cache_index_map[index];
 
     if (index > mapped) {
-        offset = index - mapped;
+        offset = index - count_previous_shards(rbw, mapped)-1;
         index = mapped;
     }
 
@@ -1105,7 +1138,7 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
     int mapped = rbw->cache_index_map[index];
 
     if (index > mapped) {
-        offset = index - mapped;
+        offset = index - count_previous_shards(rbw, mapped)-1;
         index = mapped;
     }
 
