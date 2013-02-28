@@ -334,11 +334,13 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
                 col.prop(md, "inner_material")
             if (md.refracture == False):
                 col.prop(md, "use_cache")
-            if (md.use_cache == False):
+                col.prop(md, "use_rigidbody")
+            if (md.use_cache == False and md.use_rigidbody == False):
                 col.prop(md, "refracture")
-            col.prop(md, "emit_continuously")
-            if (md.emit_continuously == False):
-                col.prop(md, "map_delay")
+            if (md.use_rigidbody == False):
+                col.prop(md, "emit_continuously")
+                if (md.emit_continuously == False):
+                    col.prop(md, "map_delay")
         elif (md.mode == 'FACES'):    
             col = split.column()
             col.label(text="Vertex group:")

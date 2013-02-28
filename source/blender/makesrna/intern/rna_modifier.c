@@ -2297,7 +2297,10 @@ static void rna_def_modifier_explode(BlenderRNA *brna)
 	RNA_def_property_flag(prop, PROP_EDITABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
-
+    prop = RNA_def_property(srna, "use_rigidbody", PROP_BOOLEAN, PROP_NONE);
+    RNA_def_property_boolean_sdna(prop, NULL, "use_rigidbody", MOD_VORONOI_USERIGIDBODY);
+    RNA_def_property_ui_text(prop, "Use RigidBody", "Use rigidbody simulation instead of the particle system to animate the cells");
+    RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 static void rna_def_modifier_cloth(BlenderRNA *brna)

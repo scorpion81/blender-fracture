@@ -642,7 +642,8 @@ enum {
     MOD_VORONOI_REFRACTURE = (1 << 2),
     MOD_VORONOI_USECACHE = (1 << 3),
     MOD_VORONOI_FLIPNORMAL = (1 << 4),
-    MOD_VORONOI_EMITCONTINUOUSLY = (1 << 5)
+    MOD_VORONOI_EMITCONTINUOUSLY = (1 << 5),
+    MOD_VORONOI_USERIGIDBODY = (1 << 6)
 };
 
 //typedef struct VoronoiCell VoronoiCell;

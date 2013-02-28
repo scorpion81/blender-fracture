@@ -1330,7 +1330,7 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 	if (rbw->numbodies != n) {
 		rbw->numbodies = n;
 		rbw->objects = realloc(rbw->objects, sizeof(Object *) * rbw->numbodies);
-        rbw->cache_index_map = realloc(rbw->cache_index_map, sizeof(int) * rbw->numbodies);
+        rbw->cache_index_map = realloc(rbw->cache_index_map, sizeof(int) * (rbw->numbodies+1));
 	}
 
 	for (go = rbw->group->gobject.first, i = 0; go; go = go->next, i++) {

@@ -102,7 +102,7 @@ static void initData(ModifierData *md)
 	emd->inner_material = NULL;
 	emd->point_source = eOwnParticles;
 	emd->last_point_source = eOwnParticles;
-    emd->use_rigidbody = TRUE;
+    emd->use_rigidbody = FALSE;
 }
 
 static void freeCells(ExplodeModifierData* emd)
@@ -2181,7 +2181,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				copy_m4_m4(oldobmat, ob->obmat);
 				mult_m4_m4m4(ob->obmat, imat, ob->obmat); //neutralize obmat
 				
-				if (emd->cells) BM_mesh_free(emd->fracMesh);
+                if ((emd->cells) && (emd->fracMesh)) BM_mesh_free(emd->fracMesh);
                 emd->fracMesh = fractureToCells(ob, derivedData, psmd, emd);
 				
 				copy_m4_m4(ob->obmat, oldobmat); // restore obmat
