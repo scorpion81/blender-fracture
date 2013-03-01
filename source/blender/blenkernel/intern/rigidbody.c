@@ -74,30 +74,30 @@
 
 void BKE_updateCell(struct VoronoiCell *vc, Object* ob, float loc[3], float rot[4] )
 {
-    float startco[3];// size[3] = {1,1,1}, rot[4], loc[3];
-    int j;
+	float startco[3];// size[3] = {1,1,1}, rot[4], loc[3];
+	int j;
 
-    //mat4_to_loc_quat(loc, rot, imat);
-    //loc_quat_size_to_mat4(imat, loc, rot, size);
-    for (j = 0; j < vc->vertex_count; j++)
-    {
-        // BMVert *vert = BM_vert_at_index(bm, ind);
-        struct BMVert* vert = vc->vertices[j];
+	//mat4_to_loc_quat(loc, rot, imat);
+	//loc_quat_size_to_mat4(imat, loc, rot, size);
+	for (j = 0; j < vc->vertex_count; j++)
+	{
+		// BMVert *vert = BM_vert_at_index(bm, ind);
+		struct BMVert* vert = vc->vertices[j];
 
-        //reset to original coords // stored at fracture time
-        startco[0] = vc->vertco[j*3];
-        startco[1] = vc->vertco[j*3+1];
-        startco[2] = vc->vertco[j*3+2];
+		//reset to original coords // stored at fracture time
+		startco[0] = vc->vertco[j*3];
+		startco[1] = vc->vertco[j*3+1];
+		startco[2] = vc->vertco[j*3+2];
 
-        copy_v3_v3(vert->co, startco);
-        //mul_m4_v3(ob->obmat, vert->co);
-        //sub_v3_v3(vert->co, vc->centroid);
-        //	sub_qt_qtqt(rot, cell->phys_rot, startro);
-        mul_qt_v3(rot, vert->co);
-        add_v3_v3(vert->co, loc);
-        //mul_v3_v3(vert->co, rbm->size);
-        mul_m4_v3(ob->imat, vert->co);
-    }
+		copy_v3_v3(vert->co, startco);
+		//mul_m4_v3(ob->obmat, vert->co);
+		//sub_v3_v3(vert->co, vc->centroid);
+		//	sub_qt_qtqt(rot, cell->phys_rot, startro);
+		mul_qt_v3(rot, vert->co);
+		add_v3_v3(vert->co, loc);
+		//mul_v3_v3(vert->co, rbm->size);
+		mul_m4_v3(ob->imat, vert->co);
+	}
 }
 
 /* ************************************** */
@@ -141,8 +141,8 @@ void BKE_rigidbody_free_world(RigidBodyWorld *rbw)
 	if (rbw->objects)
 		free(rbw->objects);
 
-    if (rbw->cache_index_map)
-        free(rbw->cache_index_map);
+	if (rbw->cache_index_map)
+		free(rbw->cache_index_map);
 
 	/* free cache */
 	BKE_ptcache_free_list(&(rbw->ptcaches));
@@ -256,22 +256,22 @@ void BKE_rigidbody_relink_constraint(RigidBodyCon *rbc)
 
 int countShards(ListBase obs)
 {
-    int count = 0;
-    struct GroupObject *gob = NULL;
-    struct ModifierData *md = NULL;
-    struct ExplodeModifierData *emd = NULL;
+	int count = 0;
+	struct GroupObject *gob = NULL;
+	struct ModifierData *md = NULL;
+	struct ExplodeModifierData *emd = NULL;
 
-    for (gob = obs.first; gob; gob = gob->next) {
-        for (md = gob->ob->modifiers.first; md; md = md->next) {
-            if (md->type == eModifierType_Explode) {
-                emd = (ExplodeModifierData*)md;
-                if (emd->use_rigidbody) {
-                    count += emd->cells->count;
-                }
-            }
-        }
-    }
-    return count;
+	for (gob = obs.first; gob; gob = gob->next) {
+		for (md = gob->ob->modifiers.first; md; md = md->next) {
+			if (md->type == eModifierType_Explode) {
+				emd = (ExplodeModifierData*)md;
+				if (emd->use_rigidbody) {
+					count += emd->cells->count;
+				}
+			}
+		}
+	}
+	return count;
 }
 
 /* ************************************** */
@@ -303,16 +303,16 @@ int countShards(ListBase obs)
 /* create collision shape of mesh - convex hull */
 static rbCollisionShape *rigidbody_get_shape_convexhull_from_mesh(Mesh* me, float margin, bool *can_embed)
 {
-    rbCollisionShape *shape = NULL;
+	rbCollisionShape *shape = NULL;
 
-    if (me && me->totvert) {
-        shape = RB_shape_new_convex_hull((float *)me->mvert, sizeof(MVert), me->totvert, margin, can_embed);
-    }
-    else {
-        printf("ERROR: no vertices to define Convex Hull collision shape with\n");
-    }
+	if (me && me->totvert) {
+		shape = RB_shape_new_convex_hull((float *)me->mvert, sizeof(MVert), me->totvert, margin, can_embed);
+	}
+	else {
+		printf("ERROR: no vertices to define Convex Hull collision shape with\n");
+	}
 
-    return shape;
+	return shape;
 }
 
 
@@ -321,79 +321,79 @@ static rbCollisionShape *rigidbody_get_shape_convexhull_from_mesh(Mesh* me, floa
  */
 static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh_shard(Mesh *me, Object *ob)
 {
-    rbCollisionShape *shape = NULL;
-    DerivedMesh *dm = CDDM_from_mesh(me, NULL);
+	rbCollisionShape *shape = NULL;
+	DerivedMesh *dm = CDDM_from_mesh(me, NULL);
 
-    MVert *mvert;
-    MFace *mface;
-    int totvert;
-    int totface;
+	MVert *mvert;
+	MFace *mface;
+	int totvert;
+	int totface;
 
-    /* ensure mesh validity, then grab data */
-    DM_ensure_tessface(dm);
+	/* ensure mesh validity, then grab data */
+	DM_ensure_tessface(dm);
 
-    mvert   = (dm) ? dm->getVertArray(dm) : NULL;
-    totvert = (dm) ? dm->getNumVerts(dm) : 0;
-    mface   = (dm) ? dm->getTessFaceArray(dm) : NULL;
-    totface = (dm) ? dm->getNumTessFaces(dm) : 0;
+	mvert   = (dm) ? dm->getVertArray(dm) : NULL;
+	totvert = (dm) ? dm->getNumVerts(dm) : 0;
+	mface   = (dm) ? dm->getTessFaceArray(dm) : NULL;
+	totface = (dm) ? dm->getNumTessFaces(dm) : 0;
 
-    /* sanity checking - potential case when no data will be present */
-    if ((totvert == 0) || (totface == 0)) {
-        printf("WARNING: no geometry data converted for Mesh Collision Shape (ob = %s)\n", ob->id.name + 2);
-    }
-    else {
-        rbMeshData *mdata;
-        int i;
+	/* sanity checking - potential case when no data will be present */
+	if ((totvert == 0) || (totface == 0)) {
+		printf("WARNING: no geometry data converted for Mesh Collision Shape (ob = %s)\n", ob->id.name + 2);
+	}
+	else {
+		rbMeshData *mdata;
+		int i;
 
-        /* init mesh data for collision shape */
-        mdata = RB_trimesh_data_new();
+		/* init mesh data for collision shape */
+		mdata = RB_trimesh_data_new();
 
-        /* loop over all faces, adding them as triangles to the collision shape
-         * (so for some faces, more than triangle will get added)
-         */
-        for (i = 0; (i < totface) && (mface) && (mvert); i++, mface++) {
-            /* add first triangle - verts 1,2,3 */
-            {
-                MVert *va = (IN_RANGE(mface->v1, 0, totvert)) ? (mvert + mface->v1) : (mvert);
-                MVert *vb = (IN_RANGE(mface->v2, 0, totvert)) ? (mvert + mface->v2) : (mvert);
-                MVert *vc = (IN_RANGE(mface->v3, 0, totvert)) ? (mvert + mface->v3) : (mvert);
+		/* loop over all faces, adding them as triangles to the collision shape
+		 * (so for some faces, more than triangle will get added)
+		 */
+		for (i = 0; (i < totface) && (mface) && (mvert); i++, mface++) {
+			/* add first triangle - verts 1,2,3 */
+			{
+				MVert *va = (IN_RANGE(mface->v1, 0, totvert)) ? (mvert + mface->v1) : (mvert);
+				MVert *vb = (IN_RANGE(mface->v2, 0, totvert)) ? (mvert + mface->v2) : (mvert);
+				MVert *vc = (IN_RANGE(mface->v3, 0, totvert)) ? (mvert + mface->v3) : (mvert);
 
-                RB_trimesh_add_triangle(mdata, va->co, vb->co, vc->co);
-            }
+				RB_trimesh_add_triangle(mdata, va->co, vb->co, vc->co);
+			}
 
-            /* add second triangle if needed - verts 1,3,4 */
-            if (mface->v4) {
-                MVert *va = (IN_RANGE(mface->v1, 0, totvert)) ? (mvert + mface->v1) : (mvert);
-                MVert *vb = (IN_RANGE(mface->v3, 0, totvert)) ? (mvert + mface->v3) : (mvert);
-                MVert *vc = (IN_RANGE(mface->v4, 0, totvert)) ? (mvert + mface->v4) : (mvert);
+			/* add second triangle if needed - verts 1,3,4 */
+			if (mface->v4) {
+				MVert *va = (IN_RANGE(mface->v1, 0, totvert)) ? (mvert + mface->v1) : (mvert);
+				MVert *vb = (IN_RANGE(mface->v3, 0, totvert)) ? (mvert + mface->v3) : (mvert);
+				MVert *vc = (IN_RANGE(mface->v4, 0, totvert)) ? (mvert + mface->v4) : (mvert);
 
-                RB_trimesh_add_triangle(mdata, va->co, vb->co, vc->co);
-            }
-        }
+				RB_trimesh_add_triangle(mdata, va->co, vb->co, vc->co);
+			}
+		}
 
-        /* construct collision shape
-         *
-         * These have been chosen to get better speed/accuracy tradeoffs with regards
-         * to limitations of each:
-         *    - BVH-Triangle Mesh: for passive objects only. Despite having greater
-         *                         speed/accuracy, they cannot be used for moving objects.
-         *    - GImpact Mesh:      for active objects. These are slower and less stable,
-         *                         but are more flexible for general usage.
-         */
-        if (ob->rigidbody_object->type == RBO_TYPE_PASSIVE) {
-            shape = RB_shape_new_trimesh(mdata);
-        }
-        else {
-            shape = RB_shape_new_gimpact_mesh(mdata);
-        }
-    }
+		/* construct collision shape
+		 *
+		 * These have been chosen to get better speed/accuracy tradeoffs with regards
+		 * to limitations of each:
+		 *    - BVH-Triangle Mesh: for passive objects only. Despite having greater
+		 *                         speed/accuracy, they cannot be used for moving objects.
+		 *    - GImpact Mesh:      for active objects. These are slower and less stable,
+		 *                         but are more flexible for general usage.
+		 */
+		if (ob->rigidbody_object->type == RBO_TYPE_PASSIVE) {
+			shape = RB_shape_new_trimesh(mdata);
+		}
+		else {
+			shape = RB_shape_new_gimpact_mesh(mdata);
+		}
+	}
 
-    /* cleanup temp data */
-    if (dm) {
-        dm->release(dm);
-    }
+	/* cleanup temp data */
+	if (dm) {
+		dm->release(dm);
+	}
 
-    return shape;
+	return shape;
 }
 
 /* create collision shape of mesh - triangulated mesh
@@ -533,44 +533,44 @@ void BKE_rigidbody_validate_sim_shape(Object *ob, short rebuild)
 
 	/* create new shape */
 	switch (rbo->shape) {
-		case RB_SHAPE_BOX:
-			new_shape = RB_shape_new_box(size[0], size[1], size[2]);
-			break;
+	case RB_SHAPE_BOX:
+		new_shape = RB_shape_new_box(size[0], size[1], size[2]);
+		break;
 
-		case RB_SHAPE_SPHERE:
-			new_shape = RB_shape_new_sphere(radius);
-			break;
+	case RB_SHAPE_SPHERE:
+		new_shape = RB_shape_new_sphere(radius);
+		break;
 
-		case RB_SHAPE_CAPSULE:
-			capsule_height = (height - radius) * 2.0f;
-			new_shape = RB_shape_new_capsule(radius, (capsule_height > 0.0f) ? capsule_height : 0.0f);
-			break;
-		case RB_SHAPE_CYLINDER:
-			new_shape = RB_shape_new_cylinder(radius, height);
-			break;
-		case RB_SHAPE_CONE:
-			new_shape = RB_shape_new_cone(radius, height * 2.0f);
-			break;
+	case RB_SHAPE_CAPSULE:
+		capsule_height = (height - radius) * 2.0f;
+		new_shape = RB_shape_new_capsule(radius, (capsule_height > 0.0f) ? capsule_height : 0.0f);
+		break;
+	case RB_SHAPE_CYLINDER:
+		new_shape = RB_shape_new_cylinder(radius, height);
+		break;
+	case RB_SHAPE_CONE:
+		new_shape = RB_shape_new_cone(radius, height * 2.0f);
+		break;
 
-		case RB_SHAPE_CONVEXH:
-			/* try to emged collision margin */
-			has_volume = (MIN3(size[0], size[1], size[2]) > 0.0f);
+	case RB_SHAPE_CONVEXH:
+		/* try to emged collision margin */
+		has_volume = (MIN3(size[0], size[1], size[2]) > 0.0f);
 
-			if (!(rbo->flag & RBO_FLAG_USE_MARGIN) && has_volume)
-				hull_margin = 0.04f;
-            if (ob->type == OB_MESH && ob->data) {
-                new_shape = rigidbody_get_shape_convexhull_from_mesh((Mesh*)ob->data, hull_margin, &can_embed);
-            }
-            else {
-                printf("ERROR: cannot make Convex Hull collision shape for non-Mesh object\n");
-            }
+		if (!(rbo->flag & RBO_FLAG_USE_MARGIN) && has_volume)
+			hull_margin = 0.04f;
+		if (ob->type == OB_MESH && ob->data) {
+			new_shape = rigidbody_get_shape_convexhull_from_mesh((Mesh*)ob->data, hull_margin, &can_embed);
+		}
+		else {
+			printf("ERROR: cannot make Convex Hull collision shape for non-Mesh object\n");
+		}
 
-			if (!(rbo->flag & RBO_FLAG_USE_MARGIN))
-				rbo->margin = (can_embed && has_volume) ? 0.04f : 0.0f;  /* RB_TODO ideally we shouldn't directly change the margin here */
-			break;
-		case RB_SHAPE_TRIMESH:
-			new_shape = rigidbody_get_shape_trimesh_from_mesh(ob);
-			break;
+		if (!(rbo->flag & RBO_FLAG_USE_MARGIN))
+			rbo->margin = (can_embed && has_volume) ? 0.04f : 0.0f;  /* RB_TODO ideally we shouldn't directly change the margin here */
+		break;
+	case RB_SHAPE_TRIMESH:
+		new_shape = rigidbody_get_shape_trimesh_from_mesh(ob);
+		break;
 	}
 	/* assign new collision shape if creation was successful */
 	if (new_shape) {
@@ -591,106 +591,106 @@ void BKE_rigidbody_validate_sim_shape(Object *ob, short rebuild)
  */
 void BKE_rigidbody_validate_sim_shard_shape(VoronoiCell* vc, Object* ob, short rebuild)
 {
-    RigidBodyOb *rbo = vc->rigidbody;
-    rbCollisionShape *new_shape = NULL;
-    //BoundBox *bb = NULL;
-    float size[3] = {1.0f, 1.0f, 1.0f}, loc[3] = {0.0f, 0.0f, 0.0f};
-    float radius = 1.0f;
-    float height = 1.0f;
-    float capsule_height;
-    float hull_margin = 0.0f;
-    bool can_embed = true;
-    bool has_volume;
-    Mesh *me = BKE_mesh_add(G.main, "_mesh_");
+	RigidBodyOb *rbo = vc->rigidbody;
+	rbCollisionShape *new_shape = NULL;
+	//BoundBox *bb = NULL;
+	float size[3] = {1.0f, 1.0f, 1.0f}, loc[3] = {0.0f, 0.0f, 0.0f};
+	float radius = 1.0f;
+	float height = 1.0f;
+	float capsule_height;
+	float hull_margin = 0.0f;
+	bool can_embed = true;
+	bool has_volume;
+	Mesh *me = BKE_mesh_add(G.main, "_mesh_");
 
-    /* sanity check */
-    if (rbo == NULL)
-        return;
+	/* sanity check */
+	if (rbo == NULL)
+		return;
 
-    /* don't create a new shape if we already have one and don't want to rebuild it */
-    if (rbo->physics_shape && !rebuild)
-        return;
+	/* don't create a new shape if we already have one and don't want to rebuild it */
+	if (rbo->physics_shape && !rebuild)
+		return;
 
-    /* if automatically determining dimensions, use the Object's boundbox
-     *	- assume that all quadrics are standing upright on local z-axis
-     *	- assume even distribution of mass around the Object's pivot
-     *	  (i.e. Object pivot is centralized in boundbox)
-     */
-    // XXX: all dimensions are auto-determined now... later can add stored settings for this
-    /* get object dimensions without scaling */
-    DM_to_mesh(vc->cell_mesh, me, NULL);
-    BKE_mesh_boundbox_calc(me, loc, size);
+	/* if automatically determining dimensions, use the Object's boundbox
+	 *	- assume that all quadrics are standing upright on local z-axis
+	 *	- assume even distribution of mass around the Object's pivot
+	 *	  (i.e. Object pivot is centralized in boundbox)
+	 */
+	// XXX: all dimensions are auto-determined now... later can add stored settings for this
+	/* get object dimensions without scaling */
+	DM_to_mesh(vc->cell_mesh, me, NULL);
+	BKE_mesh_boundbox_calc(me, loc, size);
 
-    //dont need stupid mesh anymore... or ?
-  /*  BKE_libblock_free_us(&(G.main->object), emd->tempOb);
-    BKE_object_unlink(emd->tempOb);
-    BKE_object_free(emd->tempOb);
-    emd->tempOb = NULL;*/
+	//dont need stupid mesh anymore... or ?
+	/*  BKE_libblock_free_us(&(G.main->object), emd->tempOb);
+	BKE_object_unlink(emd->tempOb);
+	BKE_object_free(emd->tempOb);
+	emd->tempOb = NULL;*/
 
-  /*  bb = BKE_object_boundbox_get(ob);
-    if (bb) {
-        size[0] = (bb->vec[4][0] - bb->vec[0][0]);
-        size[1] = (bb->vec[2][1] - bb->vec[0][1]);
-        size[2] = (bb->vec[1][2] - bb->vec[0][2]);
-    }
-    mul_v3_fl(size, 0.5f);*/
+	/*  bb = BKE_object_boundbox_get(ob);
+	if (bb) {
+		size[0] = (bb->vec[4][0] - bb->vec[0][0]);
+		size[1] = (bb->vec[2][1] - bb->vec[0][1]);
+		size[2] = (bb->vec[1][2] - bb->vec[0][2]);
+	}
+	mul_v3_fl(size, 0.5f);*/
 
-    if (ELEM3(rbo->shape, RB_SHAPE_CAPSULE, RB_SHAPE_CYLINDER, RB_SHAPE_CONE)) {
-        /* take radius as largest x/y dimension, and height as z-dimension */
-        radius = MAX2(size[0], size[1]);
-        height = size[2];
-    }
-    else if (rbo->shape == RB_SHAPE_SPHERE) {
-        /* take radius to the the largest dimension to try and encompass everything */
-        radius = MAX3(size[0], size[1], size[2]);
-    }
+	if (ELEM3(rbo->shape, RB_SHAPE_CAPSULE, RB_SHAPE_CYLINDER, RB_SHAPE_CONE)) {
+		/* take radius as largest x/y dimension, and height as z-dimension */
+		radius = MAX2(size[0], size[1]);
+		height = size[2];
+	}
+	else if (rbo->shape == RB_SHAPE_SPHERE) {
+		/* take radius to the the largest dimension to try and encompass everything */
+		radius = MAX3(size[0], size[1], size[2]);
+	}
 
-    /* create new shape */
-    switch (rbo->shape) {
-        case RB_SHAPE_BOX:
-            new_shape = RB_shape_new_box(size[0], size[1], size[2]);
-            break;
+	/* create new shape */
+	switch (rbo->shape) {
+	case RB_SHAPE_BOX:
+		new_shape = RB_shape_new_box(size[0], size[1], size[2]);
+		break;
 
-        case RB_SHAPE_SPHERE:
-            new_shape = RB_shape_new_sphere(radius);
-            break;
+	case RB_SHAPE_SPHERE:
+		new_shape = RB_shape_new_sphere(radius);
+		break;
 
-        case RB_SHAPE_CAPSULE:
-            capsule_height = (height - radius) * 2.0f;
-            new_shape = RB_shape_new_capsule(radius, (capsule_height > 0.0f) ? capsule_height : 0.0f);
-            break;
-        case RB_SHAPE_CYLINDER:
-            new_shape = RB_shape_new_cylinder(radius, height);
-            break;
-        case RB_SHAPE_CONE:
-            new_shape = RB_shape_new_cone(radius, height * 2.0f);
-            break;
+	case RB_SHAPE_CAPSULE:
+		capsule_height = (height - radius) * 2.0f;
+		new_shape = RB_shape_new_capsule(radius, (capsule_height > 0.0f) ? capsule_height : 0.0f);
+		break;
+	case RB_SHAPE_CYLINDER:
+		new_shape = RB_shape_new_cylinder(radius, height);
+		break;
+	case RB_SHAPE_CONE:
+		new_shape = RB_shape_new_cone(radius, height * 2.0f);
+		break;
 
-        case RB_SHAPE_CONVEXH:
-            /* try to emged collision margin */
-            has_volume = (MIN3(size[0], size[1], size[2]) > 0.0f);
+	case RB_SHAPE_CONVEXH:
+		/* try to emged collision margin */
+		has_volume = (MIN3(size[0], size[1], size[2]) > 0.0f);
 
-            if (!(rbo->flag & RBO_FLAG_USE_MARGIN) && has_volume)
-                hull_margin = 0.04f;
-            new_shape = rigidbody_get_shape_convexhull_from_mesh(me, hull_margin, &can_embed);
-            if (!(rbo->flag & RBO_FLAG_USE_MARGIN))
-                rbo->margin = (can_embed && has_volume) ? 0.04f : 0.0f;  /* RB_TODO ideally we shouldn't directly change the margin here */
-            break;
-        case RB_SHAPE_TRIMESH:
-            new_shape = rigidbody_get_shape_trimesh_from_mesh_shard(me, ob);
-            break;
-    }
-    /* assign new collision shape if creation was successful */
-    if (new_shape) {
-        if (rbo->physics_shape)
-            RB_shape_delete(rbo->physics_shape);
-        rbo->physics_shape = new_shape;
-        RB_shape_set_margin(rbo->physics_shape, RBO_GET_MARGIN(rbo));
-    }
-    else { /* otherwise fall back to box shape */
-        rbo->shape = RB_SHAPE_BOX;
-        BKE_rigidbody_validate_sim_shard_shape(vc, ob, true);
-    }
+		if (!(rbo->flag & RBO_FLAG_USE_MARGIN) && has_volume)
+			hull_margin = 0.04f;
+		new_shape = rigidbody_get_shape_convexhull_from_mesh(me, hull_margin, &can_embed);
+		if (!(rbo->flag & RBO_FLAG_USE_MARGIN))
+			rbo->margin = (can_embed && has_volume) ? 0.04f : 0.0f;  /* RB_TODO ideally we shouldn't directly change the margin here */
+		break;
+	case RB_SHAPE_TRIMESH:
+		new_shape = rigidbody_get_shape_trimesh_from_mesh_shard(me, ob);
+		break;
+	}
+	/* assign new collision shape if creation was successful */
+	if (new_shape) {
+		if (rbo->physics_shape)
+			RB_shape_delete(rbo->physics_shape);
+		rbo->physics_shape = new_shape;
+		RB_shape_set_margin(rbo->physics_shape, RBO_GET_MARGIN(rbo));
+	}
+	else { /* otherwise fall back to box shape */
+		rbo->shape = RB_SHAPE_BOX;
+		BKE_rigidbody_validate_sim_shard_shape(vc, ob, true);
+	}
 }
 
 
@@ -701,64 +701,64 @@ void BKE_rigidbody_validate_sim_shard_shape(VoronoiCell* vc, Object* ob, short r
  */
 void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, VoronoiCell* vc, Object *ob, short rebuild)
 {
-    RigidBodyOb *rbo = (vc) ? vc->rigidbody : NULL;
-    float loc[3];
-    float rot[4];
+	RigidBodyOb *rbo = (vc) ? vc->rigidbody : NULL;
+	float loc[3];
+	float rot[4];
+	float centr[3];
 
-    /* sanity checks:
-     *	- object doesn't have RigidBody info already: then why is it here?
-     */
-    if (rbo == NULL)
-        return;
+	/* sanity checks:
+	 *	- object doesn't have RigidBody info already: then why is it here?
+	 */
+	if (rbo == NULL)
+		return;
 
-    /* make sure collision shape exists */
-    /* FIXME we shouldn't always have to rebuild collision shapes when rebuilding objects, but it's needed for constraints to update correctly */
-    if (rbo->physics_shape == NULL || rebuild)
-        BKE_rigidbody_validate_sim_shard_shape(vc, ob, true);
+	/* make sure collision shape exists */
+	/* FIXME we shouldn't always have to rebuild collision shapes when rebuilding objects, but it's needed for constraints to update correctly */
+	if (rbo->physics_shape == NULL || rebuild)
+		BKE_rigidbody_validate_sim_shard_shape(vc, ob, true);
 
-    if (rbo->physics_object) {
-        if (rebuild == false)
-            RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
-    }
-    if (!rbo->physics_object || rebuild) {
-        /* remove rigid body if it already exists before creating a new one */
-        if (rbo->physics_object) {
-            RB_body_delete(rbo->physics_object);
-        }
+	if (rbo->physics_object) {
+		if (rebuild == false)
+			RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
+	}
+	if (!rbo->physics_object || rebuild) {
+		/* remove rigid body if it already exists before creating a new one */
+		if (rbo->physics_object) {
+			RB_body_delete(rbo->physics_object);
+		}
+		mat4_to_loc_quat(loc, rot, ob->obmat); //offset
+		/*  copy_v3_v3(centr, vc->centroid);
+		mul_m4_v3(ob->imat, centr);*/
+		//add_v3_v3(loc, vc->centroid);
 
-        mat4_to_loc_quat(loc, rot, ob->obmat);
-        //add/subtract offset ??
-        //sub_v3_v3(loc, vc->centroid);
-        copy_v3_v3(loc, vc->centroid);
+		rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot);
 
-        rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot);
+		RB_body_set_friction(rbo->physics_object, rbo->friction);
+		RB_body_set_restitution(rbo->physics_object, rbo->restitution);
 
-        RB_body_set_friction(rbo->physics_object, rbo->friction);
-        RB_body_set_restitution(rbo->physics_object, rbo->restitution);
+		RB_body_set_damping(rbo->physics_object, rbo->lin_damping, rbo->ang_damping);
+		RB_body_set_sleep_thresh(rbo->physics_object, rbo->lin_sleep_thresh, rbo->ang_sleep_thresh);
+		RB_body_set_activation_state(rbo->physics_object, rbo->flag & RBO_FLAG_USE_DEACTIVATION);
 
-        RB_body_set_damping(rbo->physics_object, rbo->lin_damping, rbo->ang_damping);
-        RB_body_set_sleep_thresh(rbo->physics_object, rbo->lin_sleep_thresh, rbo->ang_sleep_thresh);
-        RB_body_set_activation_state(rbo->physics_object, rbo->flag & RBO_FLAG_USE_DEACTIVATION);
-
-        if (rbo->type == RBO_TYPE_PASSIVE || rbo->flag & RBO_FLAG_START_DEACTIVATED)
-            RB_body_deactivate(rbo->physics_object);
+		if (rbo->type == RBO_TYPE_PASSIVE || rbo->flag & RBO_FLAG_START_DEACTIVATED)
+			RB_body_deactivate(rbo->physics_object);
 
 
-        RB_body_set_linear_factor(rbo->physics_object,
-                                  (ob->protectflag & OB_LOCK_LOCX) == 0,
-                                  (ob->protectflag & OB_LOCK_LOCY) == 0,
-                                  (ob->protectflag & OB_LOCK_LOCZ) == 0);
-        RB_body_set_angular_factor(rbo->physics_object,
-                                   (ob->protectflag & OB_LOCK_ROTX) == 0,
-                                   (ob->protectflag & OB_LOCK_ROTY) == 0,
-                                   (ob->protectflag & OB_LOCK_ROTZ) == 0);
+		RB_body_set_linear_factor(rbo->physics_object,
+								  (ob->protectflag & OB_LOCK_LOCX) == 0,
+								  (ob->protectflag & OB_LOCK_LOCY) == 0,
+								  (ob->protectflag & OB_LOCK_LOCZ) == 0);
+		RB_body_set_angular_factor(rbo->physics_object,
+								   (ob->protectflag & OB_LOCK_ROTX) == 0,
+								   (ob->protectflag & OB_LOCK_ROTY) == 0,
+								   (ob->protectflag & OB_LOCK_ROTZ) == 0);
 
-        RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
-        RB_body_set_kinematic_state(rbo->physics_object, rbo->flag & RBO_FLAG_KINEMATIC || rbo->flag & RBO_FLAG_DISABLED);
-    }
+		RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
+		RB_body_set_kinematic_state(rbo->physics_object, rbo->flag & RBO_FLAG_KINEMATIC || rbo->flag & RBO_FLAG_DISABLED);
+	}
 
-    if (rbw && rbw->physics_world)
-        RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups);
+	if (rbw && rbw->physics_world)
+		RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups);
 }
 
 
@@ -812,13 +812,13 @@ void BKE_rigidbody_validate_sim_object(RigidBodyWorld *rbw, Object *ob, short re
 
 
 		RB_body_set_linear_factor(rbo->physics_object,
-		                          (ob->protectflag & OB_LOCK_LOCX) == 0,
-		                          (ob->protectflag & OB_LOCK_LOCY) == 0,
-		                          (ob->protectflag & OB_LOCK_LOCZ) == 0);
+								  (ob->protectflag & OB_LOCK_LOCX) == 0,
+								  (ob->protectflag & OB_LOCK_LOCY) == 0,
+								  (ob->protectflag & OB_LOCK_LOCZ) == 0);
 		RB_body_set_angular_factor(rbo->physics_object,
-		                           (ob->protectflag & OB_LOCK_ROTX) == 0,
-		                           (ob->protectflag & OB_LOCK_ROTY) == 0,
-		                           (ob->protectflag & OB_LOCK_ROTZ) == 0);
+								   (ob->protectflag & OB_LOCK_ROTX) == 0,
+								   (ob->protectflag & OB_LOCK_ROTY) == 0,
+								   (ob->protectflag & OB_LOCK_ROTZ) == 0);
 
 		RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
 		RB_body_set_kinematic_state(rbo->physics_object, rbo->flag & RBO_FLAG_KINEMATIC || rbo->flag & RBO_FLAG_DISABLED);
@@ -878,105 +878,105 @@ void BKE_rigidbody_validate_sim_constraint(RigidBodyWorld *rbw, Object *ob, shor
 
 		if (rb1 && rb2) {
 			switch (rbc->type) {
-				case RBC_TYPE_POINT:
-					rbc->physics_constraint = RB_constraint_new_point(loc, rb1, rb2);
-					break;
-				case RBC_TYPE_FIXED:
-					rbc->physics_constraint = RB_constraint_new_fixed(loc, rot, rb1, rb2);
-					break;
-				case RBC_TYPE_HINGE:
-					rbc->physics_constraint = RB_constraint_new_hinge(loc, rot, rb1, rb2);
-					if (rbc->flag & RBC_FLAG_USE_LIMIT_ANG_Z) {
-						RB_constraint_set_limits_hinge(rbc->physics_constraint, rbc->limit_ang_z_lower, rbc->limit_ang_z_upper);
-					}
-					else
-						RB_constraint_set_limits_hinge(rbc->physics_constraint, 0.0f, -1.0f);
-					break;
-				case RBC_TYPE_SLIDER:
-					rbc->physics_constraint = RB_constraint_new_slider(loc, rot, rb1, rb2);
-					if (rbc->flag & RBC_FLAG_USE_LIMIT_LIN_X)
-						RB_constraint_set_limits_slider(rbc->physics_constraint, rbc->limit_lin_x_lower, rbc->limit_lin_x_upper);
-					else
-						RB_constraint_set_limits_slider(rbc->physics_constraint, 0.0f, -1.0f);
-					break;
-				case RBC_TYPE_PISTON:
-					rbc->physics_constraint = RB_constraint_new_piston(loc, rot, rb1, rb2);
-					if (rbc->flag & RBC_FLAG_USE_LIMIT_LIN_X) {
-						lin_lower = rbc->limit_lin_x_lower;
-						lin_upper = rbc->limit_lin_x_upper;
-					}
-					else {
-						lin_lower = 0.0f;
-						lin_upper = -1.0f;
-					}
-					if (rbc->flag & RBC_FLAG_USE_LIMIT_ANG_X) {
-						ang_lower = rbc->limit_ang_x_lower;
-						ang_upper = rbc->limit_ang_x_upper;
-					}
-					else {
-						ang_lower = 0.0f;
-						ang_upper = -1.0f;
-					}
-					RB_constraint_set_limits_piston(rbc->physics_constraint, lin_lower, lin_upper, ang_lower, ang_upper);
-					break;
-				case RBC_TYPE_6DOF_SPRING:
-					rbc->physics_constraint = RB_constraint_new_6dof_spring(loc, rot, rb1, rb2);
+			case RBC_TYPE_POINT:
+				rbc->physics_constraint = RB_constraint_new_point(loc, rb1, rb2);
+				break;
+			case RBC_TYPE_FIXED:
+				rbc->physics_constraint = RB_constraint_new_fixed(loc, rot, rb1, rb2);
+				break;
+			case RBC_TYPE_HINGE:
+				rbc->physics_constraint = RB_constraint_new_hinge(loc, rot, rb1, rb2);
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_ANG_Z) {
+					RB_constraint_set_limits_hinge(rbc->physics_constraint, rbc->limit_ang_z_lower, rbc->limit_ang_z_upper);
+				}
+				else
+					RB_constraint_set_limits_hinge(rbc->physics_constraint, 0.0f, -1.0f);
+				break;
+			case RBC_TYPE_SLIDER:
+				rbc->physics_constraint = RB_constraint_new_slider(loc, rot, rb1, rb2);
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_LIN_X)
+					RB_constraint_set_limits_slider(rbc->physics_constraint, rbc->limit_lin_x_lower, rbc->limit_lin_x_upper);
+				else
+					RB_constraint_set_limits_slider(rbc->physics_constraint, 0.0f, -1.0f);
+				break;
+			case RBC_TYPE_PISTON:
+				rbc->physics_constraint = RB_constraint_new_piston(loc, rot, rb1, rb2);
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_LIN_X) {
+					lin_lower = rbc->limit_lin_x_lower;
+					lin_upper = rbc->limit_lin_x_upper;
+				}
+				else {
+					lin_lower = 0.0f;
+					lin_upper = -1.0f;
+				}
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_ANG_X) {
+					ang_lower = rbc->limit_ang_x_lower;
+					ang_upper = rbc->limit_ang_x_upper;
+				}
+				else {
+					ang_lower = 0.0f;
+					ang_upper = -1.0f;
+				}
+				RB_constraint_set_limits_piston(rbc->physics_constraint, lin_lower, lin_upper, ang_lower, ang_upper);
+				break;
+			case RBC_TYPE_6DOF_SPRING:
+				rbc->physics_constraint = RB_constraint_new_6dof_spring(loc, rot, rb1, rb2);
 
-					RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, rbc->flag & RBC_FLAG_USE_SPRING_X);
-					RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, rbc->spring_stiffness_x);
-					RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, rbc->spring_damping_x);
+				RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, rbc->flag & RBC_FLAG_USE_SPRING_X);
+				RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, rbc->spring_stiffness_x);
+				RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, rbc->spring_damping_x);
 
-					RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Y, rbc->flag & RBC_FLAG_USE_SPRING_Y);
-					RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Y, rbc->spring_stiffness_y);
-					RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Y, rbc->spring_damping_y);
+				RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Y, rbc->flag & RBC_FLAG_USE_SPRING_Y);
+				RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Y, rbc->spring_stiffness_y);
+				RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Y, rbc->spring_damping_y);
 
-					RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->flag & RBC_FLAG_USE_SPRING_Z);
-					RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->spring_stiffness_z);
-					RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->spring_damping_z);
+				RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->flag & RBC_FLAG_USE_SPRING_Z);
+				RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->spring_stiffness_z);
+				RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->spring_damping_z);
 
-					RB_constraint_set_equilibrium_6dof_spring(rbc->physics_constraint);
+				RB_constraint_set_equilibrium_6dof_spring(rbc->physics_constraint);
 				/* fall through */
-				case RBC_TYPE_6DOF:
-					if (rbc->type == RBC_TYPE_6DOF) /* a litte awkward but avoids duplicate code for limits */
-						rbc->physics_constraint = RB_constraint_new_6dof(loc, rot, rb1, rb2);
+			case RBC_TYPE_6DOF:
+				if (rbc->type == RBC_TYPE_6DOF) /* a litte awkward but avoids duplicate code for limits */
+					rbc->physics_constraint = RB_constraint_new_6dof(loc, rot, rb1, rb2);
 
-					if (rbc->flag & RBC_FLAG_USE_LIMIT_LIN_X)
-						RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_X, rbc->limit_lin_x_lower, rbc->limit_lin_x_upper);
-					else
-						RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_X, 0.0f, -1.0f);
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_LIN_X)
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_X, rbc->limit_lin_x_lower, rbc->limit_lin_x_upper);
+				else
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_X, 0.0f, -1.0f);
 
-					if (rbc->flag & RBC_FLAG_USE_LIMIT_LIN_Y)
-						RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Y, rbc->limit_lin_y_lower, rbc->limit_lin_y_upper);
-					else
-						RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Y, 0.0f, -1.0f);
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_LIN_Y)
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Y, rbc->limit_lin_y_lower, rbc->limit_lin_y_upper);
+				else
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Y, 0.0f, -1.0f);
 
-					if (rbc->flag & RBC_FLAG_USE_LIMIT_LIN_Z)
-						RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->limit_lin_z_lower, rbc->limit_lin_z_upper);
-					else
-						RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Z, 0.0f, -1.0f);
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_LIN_Z)
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->limit_lin_z_lower, rbc->limit_lin_z_upper);
+				else
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Z, 0.0f, -1.0f);
 
-					if (rbc->flag & RBC_FLAG_USE_LIMIT_ANG_X)
-						RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_X, rbc->limit_ang_x_lower, rbc->limit_ang_x_upper);
-					else
-						RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_X, 0.0f, -1.0f);
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_ANG_X)
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_X, rbc->limit_ang_x_lower, rbc->limit_ang_x_upper);
+				else
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_X, 0.0f, -1.0f);
 
-					if (rbc->flag & RBC_FLAG_USE_LIMIT_ANG_Y)
-						RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Y, rbc->limit_ang_y_lower, rbc->limit_ang_y_upper);
-					else
-						RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Y, 0.0f, -1.0f);
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_ANG_Y)
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Y, rbc->limit_ang_y_lower, rbc->limit_ang_y_upper);
+				else
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Y, 0.0f, -1.0f);
 
-					if (rbc->flag & RBC_FLAG_USE_LIMIT_ANG_Z)
-						RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Z, rbc->limit_ang_z_lower, rbc->limit_ang_z_upper);
-					else
-						RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Z, 0.0f, -1.0f);
-					break;
-				case RBC_TYPE_MOTOR:
-				    rbc->physics_constraint = RB_constraint_new_motor(loc, rot, rb1, rb2);
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_ANG_Z)
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Z, rbc->limit_ang_z_lower, rbc->limit_ang_z_upper);
+				else
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Z, 0.0f, -1.0f);
+				break;
+			case RBC_TYPE_MOTOR:
+				rbc->physics_constraint = RB_constraint_new_motor(loc, rot, rb1, rb2);
 
-				    RB_constraint_set_enable_motor(rbc->physics_constraint, rbc->flag & RBC_FLAG_USE_MOTOR_LIN, rbc->flag & RBC_FLAG_USE_MOTOR_ANG);
-					RB_constraint_set_max_impulse_motor(rbc->physics_constraint, rbc->motor_lin_max_impulse, rbc->motor_ang_max_impulse);
-					RB_constraint_set_target_velocity_motor(rbc->physics_constraint, rbc->motor_lin_target_velocity, rbc->motor_ang_target_velocity);
-				    break;
+				RB_constraint_set_enable_motor(rbc->physics_constraint, rbc->flag & RBC_FLAG_USE_MOTOR_LIN, rbc->flag & RBC_FLAG_USE_MOTOR_ANG);
+				RB_constraint_set_max_impulse_motor(rbc->physics_constraint, rbc->motor_lin_max_impulse, rbc->motor_ang_max_impulse);
+				RB_constraint_set_target_velocity_motor(rbc->physics_constraint, rbc->motor_lin_target_velocity, rbc->motor_ang_target_velocity);
+				break;
 			}
 		}
 		else { /* can't create constraint without both rigid bodies */
@@ -1061,60 +1061,60 @@ RigidBodyWorld *BKE_rigidbody_create_world(Scene *scene)
 /* Add rigid body settings to the specified shard */
 RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, VoronoiCell *vc, short type)
 {
-    RigidBodyOb *rbo;
-    RigidBodyWorld *rbw = scene->rigidbody_world;
+	RigidBodyOb *rbo;
+	RigidBodyWorld *rbw = scene->rigidbody_world;
+	float centr[3];
 
-    /* sanity checks
-     *	- rigidbody world must exist
-     *	- shard must exist
-     *	- cannot add rigid body if it already exists
-     */
-    if (vc == NULL || (vc->rigidbody != NULL))
-        return NULL;
+	/* sanity checks
+	 *	- rigidbody world must exist
+	 *	- shard must exist
+	 *	- cannot add rigid body if it already exists
+	 */
+	if (vc == NULL || (vc->rigidbody != NULL))
+		return NULL;
 
-    /* create new settings data, and link it up */
-    rbo = MEM_callocN(sizeof(RigidBodyOb), "RigidBodyOb");
+	/* create new settings data, and link it up */
+	rbo = MEM_callocN(sizeof(RigidBodyOb), "RigidBodyOb");
 
-    /* set default settings */
-    rbo->type = type;
+	/* set default settings */
+	rbo->type = type;
 
-    rbo->mass = 1.0f;
+	rbo->mass = 1.0f;
 
-    rbo->friction = 0.5f; /* best when non-zero. 0.5 is Bullet default */
-    rbo->restitution = 0.0f; /* best when zero. 0.0 is Bullet default */
+	rbo->friction = 0.5f; /* best when non-zero. 0.5 is Bullet default */
+	rbo->restitution = 0.0f; /* best when zero. 0.0 is Bullet default */
 
-    rbo->margin = 0.04f; /* 0.04 (in meters) is Bullet default */
+	rbo->margin = 0.04f; /* 0.04 (in meters) is Bullet default */
 
-    rbo->lin_sleep_thresh = 0.4f; /* 0.4 is half of Bullet default */
-    rbo->ang_sleep_thresh = 0.5f; /* 0.5 is half of Bullet default */
+	rbo->lin_sleep_thresh = 0.4f; /* 0.4 is half of Bullet default */
+	rbo->ang_sleep_thresh = 0.5f; /* 0.5 is half of Bullet default */
 
-    rbo->lin_damping = 0.04f; /* 0.04 is game engine default */
-    rbo->ang_damping = 0.1f; /* 0.1 is game engine default */
+	rbo->lin_damping = 0.04f; /* 0.04 is game engine default */
+	rbo->ang_damping = 0.1f; /* 0.1 is game engine default */
 
-    rbo->col_groups = 1;
+	rbo->col_groups = 1;
 
-    /* use triangle meshes for passive objects
-     * use convex hulls for active objects since dynamic triangle meshes are very unstable
-     */
-    if (type == RBO_TYPE_ACTIVE)
-        rbo->shape = RB_SHAPE_CONVEXH;
-    else
-        rbo->shape = RB_SHAPE_TRIMESH;
+	/* use triangle meshes for passive objects
+	 * use convex hulls for active objects since dynamic triangle meshes are very unstable
+	 */
+	if (type == RBO_TYPE_ACTIVE)
+		rbo->shape = RB_SHAPE_CONVEXH;
+	else
+		rbo->shape = RB_SHAPE_TRIMESH;
 
-    /* set initial transform */
-    mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
-   // rbo->pos = vc->centroid;
+	/* set initial transform */
+	mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
 
-    //add initial "offset" (centroid), maybe subtract ob->obmat ?? (not sure)
-  /*  copy_v3_v3(centr, vc->centroid);
-    mul_m4_v3(ob->imat, centr);*/
-   // add_v3_v3(rbo->pos, vc->centroid);
+	//add initial "offset" (centroid), maybe subtract ob->obmat ?? (not sure)
+	/*  copy_v3_v3(centr, vc->centroid);
+	mul_m4_v3(ob->imat, centr);*/
+	// add_v3_v3(rbo->pos, vc->centroid);
 
-    /* flag cache as outdated */
-    BKE_rigidbody_cache_reset(rbw);
+	/* flag cache as outdated */
+	BKE_rigidbody_cache_reset(rbw);
 
-    /* return this object */
-    return rbo;
+	/* return this object */
+	return rbo;
 }
 
 /* Add rigid body settings to the specified object */
@@ -1315,24 +1315,24 @@ void BKE_rigidbody_remove_constraint(Scene *scene, Object *ob)
 
 static int count_regular_rigidbody_objects(ListBase obs)
 {
-    int count = 0;
-    struct GroupObject *gob = NULL;
-    struct ModifierData *md = NULL;
-    struct ExplodeModifierData *emd = NULL;
+	int count = 0;
+	struct GroupObject *gob = NULL;
+	struct ModifierData *md = NULL;
+	struct ExplodeModifierData *emd = NULL;
 
-    for (gob = obs.first; gob; gob = gob->next) {
-        count++;
-        for (md = gob->ob->modifiers.first; md; md = md->next) {
-            if (md->type == eModifierType_Explode) {
-                emd = (ExplodeModifierData*)md;
-                if (emd->use_rigidbody) {
-                    count--;
-                    break;
-                }
-            }
-        }
-    }
-    return count;
+	for (gob = obs.first; gob; gob = gob->next) {
+		count++;
+		for (md = gob->ob->modifiers.first; md; md = md->next) {
+			if (md->type == eModifierType_Explode) {
+				emd = (ExplodeModifierData*)md;
+				if (emd->use_rigidbody) {
+					count--;
+					break;
+				}
+			}
+		}
+	}
+	return count;
 }
 
 /* ************************************** */
@@ -1342,45 +1342,47 @@ static int count_regular_rigidbody_objects(ListBase obs)
 static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 {
 	GroupObject *go;
-    ModifierData *md;
-    ExplodeModifierData *emd;
-    int i, l, m, n, c, counter = 0;
-    int ismapped = FALSE;
+	ModifierData *md;
+	ExplodeModifierData *emd;
+	int i, l, m, n, c, counter = 0;
+	int ismapped = FALSE;
 
-    l = BLI_countlist(&rbw->group->gobject); // all objects
-    m = count_regular_rigidbody_objects(rbw->group->gobject);
-    n = countShards(rbw->group->gobject);
+	l = BLI_countlist(&rbw->group->gobject); // all objects
+	m = count_regular_rigidbody_objects(rbw->group->gobject);
+	n = countShards(rbw->group->gobject);
 
-    if (rbw->numbodies != (m+n)) {
-        rbw->numbodies = m+n;
-        rbw->objects = realloc(rbw->objects, sizeof(Object *) * l);
-        rbw->cache_index_map = realloc(rbw->cache_index_map, sizeof(int) * rbw->numbodies);
+	if (rbw->numbodies != (m+n)) {
+		rbw->numbodies = m+n;
+		rbw->objects = realloc(rbw->objects, sizeof(Object *) * l);
+		rbw->cache_index_map = realloc(rbw->cache_index_map, sizeof(int) * rbw->numbodies);
 	}
 
 	for (go = rbw->group->gobject.first, i = 0; go; go = go->next, i++) {
 		Object *ob = go->ob;
 		rbw->objects[i] = ob;
 
-        for (md = ob->modifiers.first; md; md = md->next) {
-            if (md->type == eModifierType_Explode) {
-                emd = (ExplodeModifierData*)md;
-                if (emd->use_rigidbody) {
-                    for (c = 0; c < emd->cells->count; c++) {
-                        rbw->cache_index_map[counter] = i; //map all shards of an object to this object index
-                        counter++;
-                    }
-                    ismapped = TRUE;
-                    break;
-                }
-            }
-        }
+		for (md = ob->modifiers.first; md; md = md->next) {
+			if (md->type == eModifierType_Explode) {
+				emd = (ExplodeModifierData*)md;
+				if (emd->use_rigidbody) {
+					for (c = 0; c < emd->cells->count; c++) {
+						rbw->cache_index_map[counter] = i; //map all shards of an object to this object index
+						//printf("index map:  %d %d\n", counter, i);
+						counter++;
+					}
+					ismapped = TRUE;
+					break;
+				}
+			}
+		}
 
-        if (!ismapped) {
-            rbw->cache_index_map[counter] = i; //1 object 1 index here (normal case)
-            counter++;
-        }
+		if (!ismapped) {
+			//printf("index map:  %d %d\n", counter, i);
+			rbw->cache_index_map[counter] = i; //1 object 1 index here (normal case)
+			counter++;
+		}
 
-        ismapped = FALSE;
+		ismapped = FALSE;
 	}
 }
 
@@ -1492,177 +1494,177 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 	/* update objects */
 	for (go = rbw->group->gobject.first; go; go = go->next) {
 		Object *ob = go->ob;
-        ModifierData *md = NULL;
-        ExplodeModifierData *emd = NULL;
-        int count = 0, i = 0;
+		ModifierData *md = NULL;
+		ExplodeModifierData *emd = NULL;
+		int count = 0, i = 0;
 
 		if (ob && ob->type == OB_MESH) {
 
-            /* check for fractured objects which want to participate first, then handle other normal objects*/
-            for (md = ob->modifiers.first; md; md = md->next) {
-                if (md->type == eModifierType_Explode) {
-                    emd = (ExplodeModifierData*)md;
-                    if (emd->use_rigidbody) {
-                        count = emd->cells->count;
-                        break;
-                    }
-                }
-            }
+			/* check for fractured objects which want to participate first, then handle other normal objects*/
+			for (md = ob->modifiers.first; md; md = md->next) {
+				if (md->type == eModifierType_Explode) {
+					emd = (ExplodeModifierData*)md;
+					if (emd->use_rigidbody) {
+						count = emd->cells->count;
+						break;
+					}
+				}
+			}
 
-            if (emd && emd->use_rigidbody){
-                for (i = 0; i < count; i++) {
-                    VoronoiCell *vc = NULL;
-                    vc = &emd->cells->data[i];
-                    if (vc->rigidbody == NULL) {
-                        vc->rigidbody = BKE_rigidbody_create_shard(scene, ob, vc, RBO_TYPE_ACTIVE);
-                        BKE_rigidbody_validate_sim_shard(rbw, vc, ob, true);
+			if (emd && emd->use_rigidbody){
+				for (i = 0; i < count; i++) {
+					VoronoiCell *vc = NULL;
+					vc = &emd->cells->data[i];
+					if (vc->rigidbody == NULL) {
+						vc->rigidbody = BKE_rigidbody_create_shard(scene, ob, vc, RBO_TYPE_ACTIVE);
+						BKE_rigidbody_validate_sim_shard(rbw, vc, ob, true);
 
-                    }
-                    else {  //as usual, but for each shard now, and no constraints
-                        /* perform simulation data updates as tagged */
-                        /* refresh object... */
-                        if (rebuild) {
-                            /* World has been rebuilt so rebuild object */
-                            BKE_rigidbody_validate_sim_shard(rbw, vc, ob, true);
-                        }
-                        else if (vc->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE) {
-                            BKE_rigidbody_validate_sim_shard(rbw, vc, ob, false);
-                        }
-                        /* refresh shape... */
-                        if (vc->rigidbody->flag & RBO_FLAG_NEEDS_RESHAPE) {
-                            /* mesh/shape data changed, so force shape refresh */
-                            BKE_rigidbody_validate_sim_shard_shape(vc, ob, true);
-                            /* now tell RB sim about it */
-                            // XXX: we assume that this can only get applied for active/passive shapes that will be included as rigidbodies
-                            RB_body_set_collision_shape(vc->rigidbody->physics_object, vc->rigidbody->physics_shape);
-                        }
-                        vc->rigidbody->flag &= ~(RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
-                    }
+					}
+					else {  //as usual, but for each shard now, and no constraints
+						/* perform simulation data updates as tagged */
+						/* refresh object... */
+						if (rebuild) {
+							/* World has been rebuilt so rebuild object */
+							BKE_rigidbody_validate_sim_shard(rbw, vc, ob, true);
+						}
+						else if (vc->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE) {
+							BKE_rigidbody_validate_sim_shard(rbw, vc, ob, false);
+						}
+						/* refresh shape... */
+						if (vc->rigidbody->flag & RBO_FLAG_NEEDS_RESHAPE) {
+							/* mesh/shape data changed, so force shape refresh */
+							BKE_rigidbody_validate_sim_shard_shape(vc, ob, true);
+							/* now tell RB sim about it */
+							// XXX: we assume that this can only get applied for active/passive shapes that will be included as rigidbodies
+							RB_body_set_collision_shape(vc->rigidbody->physics_object, vc->rigidbody->physics_shape);
+						}
+						vc->rigidbody->flag &= ~(RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
+					}
 
-                    /* update simulation object... */
-                   // rigidbody_update_sim_ob(scene, rbw, vc, vc->rigidbody); //probably necessary, but does not fit for fractured objs for now
-                }
-            }
-            else
-            {
-                /* validate that we've got valid object set up here... */
-                RigidBodyOb *rbo = ob->rigidbody_object;
-                /* update transformation matrix of the object so we don't get a frame of lag for simple animations */
-                BKE_object_where_is_calc(scene, ob);
+					/* update simulation object... */
+					// rigidbody_update_sim_ob(scene, rbw, vc, vc->rigidbody); //probably necessary, but does not fit for fractured objs for now
+				}
+			}
+			else
+			{
+				/* validate that we've got valid object set up here... */
+				RigidBodyOb *rbo = ob->rigidbody_object;
+				/* update transformation matrix of the object so we don't get a frame of lag for simple animations */
+				BKE_object_where_is_calc(scene, ob);
 
-                if (rbo == NULL) {
-                    /* Since this object is included in the sim group but doesn't have
-                     * rigid body settings (perhaps it was added manually), add!
-                     *	- assume object to be active? That is the default for newly added settings...
-                     */
-                    ob->rigidbody_object = BKE_rigidbody_create_object(scene, ob, RBO_TYPE_ACTIVE);
-                    BKE_rigidbody_validate_sim_object(rbw, ob, true);
+				if (rbo == NULL) {
+					/* Since this object is included in the sim group but doesn't have
+					 * rigid body settings (perhaps it was added manually), add!
+					 *	- assume object to be active? That is the default for newly added settings...
+					 */
+					ob->rigidbody_object = BKE_rigidbody_create_object(scene, ob, RBO_TYPE_ACTIVE);
+					BKE_rigidbody_validate_sim_object(rbw, ob, true);
 
-                    rbo = ob->rigidbody_object;
-                }
-                else {
-                    /* perform simulation data updates as tagged */
-                    /* refresh object... */
-                    if (rebuild) {
-                        /* World has been rebuilt so rebuild object */
-                        BKE_rigidbody_validate_sim_object(rbw, ob, true);
-                    }
-                    else if (rbo->flag & RBO_FLAG_NEEDS_VALIDATE) {
-                        BKE_rigidbody_validate_sim_object(rbw, ob, false);
-                    }
-                    /* refresh shape... */
-                    if (rbo->flag & RBO_FLAG_NEEDS_RESHAPE) {
-                        /* mesh/shape data changed, so force shape refresh */
-                        BKE_rigidbody_validate_sim_shape(ob, true);
-                        /* now tell RB sim about it */
-                        // XXX: we assume that this can only get applied for active/passive shapes that will be included as rigidbodies
-                        RB_body_set_collision_shape(rbo->physics_object, rbo->physics_shape);
-                    }
-                    rbo->flag &= ~(RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
-                }
+					rbo = ob->rigidbody_object;
+				}
+				else {
+					/* perform simulation data updates as tagged */
+					/* refresh object... */
+					if (rebuild) {
+						/* World has been rebuilt so rebuild object */
+						BKE_rigidbody_validate_sim_object(rbw, ob, true);
+					}
+					else if (rbo->flag & RBO_FLAG_NEEDS_VALIDATE) {
+						BKE_rigidbody_validate_sim_object(rbw, ob, false);
+					}
+					/* refresh shape... */
+					if (rbo->flag & RBO_FLAG_NEEDS_RESHAPE) {
+						/* mesh/shape data changed, so force shape refresh */
+						BKE_rigidbody_validate_sim_shape(ob, true);
+						/* now tell RB sim about it */
+						// XXX: we assume that this can only get applied for active/passive shapes that will be included as rigidbodies
+						RB_body_set_collision_shape(rbo->physics_object, rbo->physics_shape);
+					}
+					rbo->flag &= ~(RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
+				}
 
-                /* update simulation object... */
-                rigidbody_update_sim_ob(scene, rbw, ob, rbo);
-            }
-        }
-    }
-    /* update constraints */
-    if (rbw->constraints == NULL) /* no constraints, move on */
-        return;
-    for (go = rbw->constraints->gobject.first; go; go = go->next) {
-        Object *ob = go->ob;
+				/* update simulation object... */
+				rigidbody_update_sim_ob(scene, rbw, ob, rbo);
+			}
+		}
+	}
+	/* update constraints */
+	if (rbw->constraints == NULL) /* no constraints, move on */
+		return;
+	for (go = rbw->constraints->gobject.first; go; go = go->next) {
+		Object *ob = go->ob;
 
-        if (ob) {
-            /* validate that we've got valid object set up here... */
-            RigidBodyCon *rbc = ob->rigidbody_constraint;
-            /* update transformation matrix of the object so we don't get a frame of lag for simple animations */
-            BKE_object_where_is_calc(scene, ob);
+		if (ob) {
+			/* validate that we've got valid object set up here... */
+			RigidBodyCon *rbc = ob->rigidbody_constraint;
+			/* update transformation matrix of the object so we don't get a frame of lag for simple animations */
+			BKE_object_where_is_calc(scene, ob);
 
-            if (rbc == NULL) {
-                /* Since this object is included in the group but doesn't have
-                 * constraint settings (perhaps it was added manually), add!
-                 */
-                ob->rigidbody_constraint = BKE_rigidbody_create_constraint(scene, ob, RBC_TYPE_FIXED);
-                BKE_rigidbody_validate_sim_constraint(rbw, ob, true);
+			if (rbc == NULL) {
+				/* Since this object is included in the group but doesn't have
+				 * constraint settings (perhaps it was added manually), add!
+				 */
+				ob->rigidbody_constraint = BKE_rigidbody_create_constraint(scene, ob, RBC_TYPE_FIXED);
+				BKE_rigidbody_validate_sim_constraint(rbw, ob, true);
 
-                rbc = ob->rigidbody_constraint;
-            }
-            else {
-                /* perform simulation data updates as tagged */
-                if (rebuild) {
-                    /* World has been rebuilt so rebuild constraint */
-                    BKE_rigidbody_validate_sim_constraint(rbw, ob, true);
-                }
-                else if (rbc->flag & RBC_FLAG_NEEDS_VALIDATE) {
-                    BKE_rigidbody_validate_sim_constraint(rbw, ob, false);
-                }
-                rbc->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
-            }
-        }
-    }
+				rbc = ob->rigidbody_constraint;
+			}
+			else {
+				/* perform simulation data updates as tagged */
+				if (rebuild) {
+					/* World has been rebuilt so rebuild constraint */
+					BKE_rigidbody_validate_sim_constraint(rbw, ob, true);
+				}
+				else if (rbc->flag & RBC_FLAG_NEEDS_VALIDATE) {
+					BKE_rigidbody_validate_sim_constraint(rbw, ob, false);
+				}
+				rbc->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
+			}
+		}
+	}
 }
 
 static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 {
 	GroupObject *go;
-    ModifierData *md;
-    ExplodeModifierData *emd;
-    int i, modFound = FALSE;
-    RigidBodyOb *rbo;
-    VoronoiCell * vc;
+	ModifierData *md;
+	ExplodeModifierData *emd;
+	int i, modFound = FALSE;
+	RigidBodyOb *rbo;
+	VoronoiCell * vc;
 
 	for (go = rbw->group->gobject.first; go; go = go->next) {
 
-        Object *ob = go->ob;
-        //handle fractured rigidbodies, maybe test for psys as well ?
-        for (md = ob->modifiers.first; md; md = md->next) {
-            if (md->type == eModifierType_Explode) {
-                emd = (ExplodeModifierData*)md;
-                if (emd->use_rigidbody) {
-                    for (i = 0; i < emd->cells->count; i++) {
-                       rbo  = emd->cells->data[i].rigidbody;
-                       vc = &emd->cells->data[i];
-                       /* reset kinematic state for transformed objects */
-                       if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) {
-                           RB_body_set_kinematic_state(rbo->physics_object, rbo->flag & RBO_FLAG_KINEMATIC || rbo->flag & RBO_FLAG_DISABLED);
-                           RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
-                           /* deactivate passive objects so they don't interfere with deactivation of active objects */
-                           if (rbo->type == RBO_TYPE_PASSIVE)
-                               RB_body_deactivate(rbo->physics_object);
-                       }
-                       else
-                       {
-                           BKE_updateCell(vc, ob, vc->rigidbody->pos, vc->rigidbody->orn);
-                       }
-                    }
-                    modFound = TRUE;
-                    break;
-                }
-            }
-        }
+		Object *ob = go->ob;
+		//handle fractured rigidbodies, maybe test for psys as well ?
+		for (md = ob->modifiers.first; md; md = md->next) {
+			if (md->type == eModifierType_Explode) {
+				emd = (ExplodeModifierData*)md;
+				if (emd->use_rigidbody) {
+					for (i = 0; i < emd->cells->count; i++) {
+						rbo  = emd->cells->data[i].rigidbody;
+						vc = &emd->cells->data[i];
+						/* reset kinematic state for transformed objects */
+						if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) {
+							RB_body_set_kinematic_state(rbo->physics_object, rbo->flag & RBO_FLAG_KINEMATIC || rbo->flag & RBO_FLAG_DISABLED);
+							RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
+							/* deactivate passive objects so they don't interfere with deactivation of active objects */
+							if (rbo->type == RBO_TYPE_PASSIVE)
+								RB_body_deactivate(rbo->physics_object);
+						}
+						else
+						{
+							BKE_updateCell(vc, ob, vc->rigidbody->pos, vc->rigidbody->orn);
+						}
+					}
+					modFound = TRUE;
+					break;
+				}
+			}
+		}
 
-        //handle regular rigidbodies
-        if (ob && !modFound) {
+		//handle regular rigidbodies
+		if (ob && !modFound) {
 			RigidBodyOb *rbo = ob->rigidbody_object;
 			/* reset kinematic state for transformed objects */
 			if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) {
@@ -1763,12 +1765,12 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	rbw->flag &= ~RBW_FLAG_FRAME_UPDATE;
 
 	/* flag cache as outdated if we don't have a world or number of objects in the simulation has changed */
-    if (rbw->physics_world == NULL || rbw->numbodies != (count_regular_rigidbody_objects(rbw->group->gobject) + countShards(rbw->group->gobject))) {
+	if (rbw->physics_world == NULL || rbw->numbodies != (count_regular_rigidbody_objects(rbw->group->gobject) + countShards(rbw->group->gobject))) {
 		cache->flag |= PTCACHE_OUTDATED;
 	}
 
-    if (ctime <= startframe) {
-        rbw->ltime = startframe;
+	if (ctime <= startframe) {
+		rbw->ltime = startframe;
 		/* reset and rebuild simulation if necessary */
 		if (cache->flag & PTCACHE_OUTDATED) {
 			BKE_ptcache_id_reset(scene, &pid, PTCACHE_RESET_OUTDATED);
