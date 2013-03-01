@@ -1541,7 +1541,6 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 
                     /* update simulation object... */
                    // rigidbody_update_sim_ob(scene, rbw, vc, vc->rigidbody); //probably necessary, but does not fit for fractured objs for now
-                    BKE_updateCell(vc, ob, vc->rigidbody->pos, vc->rigidbody->orn);
                 }
             }
             else
@@ -1626,11 +1625,44 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 {
 	GroupObject *go;
+    ModifierData *md;
+    ExplodeModifierData *emd;
+    int i, modFound = FALSE;
+    RigidBodyOb *rbo;
+    VoronoiCell * vc;
 
 	for (go = rbw->group->gobject.first; go; go = go->next) {
-		Object *ob = go->ob;
 
-		if (ob) {
+        Object *ob = go->ob;
+        //handle fractured rigidbodies, maybe test for psys as well ?
+        for (md = ob->modifiers.first; md; md = md->next) {
+            if (md->type == eModifierType_Explode) {
+                emd = (ExplodeModifierData*)md;
+                if (emd->use_rigidbody) {
+                    for (i = 0; i < emd->cells->count; i++) {
+                       rbo  = emd->cells->data[i].rigidbody;
+                       vc = &emd->cells->data[i];
+                       /* reset kinematic state for transformed objects */
+                       if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) {
+                           RB_body_set_kinematic_state(rbo->physics_object, rbo->flag & RBO_FLAG_KINEMATIC || rbo->flag & RBO_FLAG_DISABLED);
+                           RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
+                           /* deactivate passive objects so they don't interfere with deactivation of active objects */
+                           if (rbo->type == RBO_TYPE_PASSIVE)
+                               RB_body_deactivate(rbo->physics_object);
+                       }
+                       else
+                       {
+                           BKE_updateCell(vc, ob, vc->rigidbody->pos, vc->rigidbody->orn);
+                       }
+                    }
+                    modFound = TRUE;
+                    break;
+                }
+            }
+        }
+
+        //handle regular rigidbodies
+        if (ob && !modFound) {
 			RigidBodyOb *rbo = ob->rigidbody_object;
 			/* reset kinematic state for transformed objects */
 			if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) {

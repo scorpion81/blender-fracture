@@ -1020,10 +1020,10 @@ static int count_previous_shards(RigidBodyWorld *rbw, int mapped)
             }
         }
 
-        /*if (!foundMod)
+        if (!foundMod)
         {
             count++; //the object itself counts as shard too.
-        }*/
+        }
     }
 
     return count;
@@ -1041,7 +1041,7 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUS
     int mapped = rbw->cache_index_map[index];
 	
     if (index > mapped) {
-        offset = index - count_previous_shards(rbw, mapped)-1;
+        offset = index - count_previous_shards(rbw, mapped);
         index = mapped;
     }
 
@@ -1087,7 +1087,7 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float UNU
     int mapped = rbw->cache_index_map[index];
 
     if (index > mapped) {
-        offset = index - count_previous_shards(rbw, mapped)-1;
+        offset = index - count_previous_shards(rbw, mapped);
         index = mapped;
     }
 
@@ -1138,7 +1138,7 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
     int mapped = rbw->cache_index_map[index];
 
     if (index > mapped) {
-        offset = index - count_previous_shards(rbw, mapped)-1;
+        offset = index - count_previous_shards(rbw, mapped);
         index = mapped;
     }
 
