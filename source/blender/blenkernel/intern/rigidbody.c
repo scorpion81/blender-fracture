@@ -1527,7 +1527,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 					}
 
 					/* update simulation object... */
-					// rigidbody_update_sim_ob(scene, rbw, mi, mi->rigidbody); //probably necessary, but does not fit for fractured objs for now
+					rigidbody_update_sim_ob(scene, rbw, ob, mi->rigidbody);
 				}
 			}
 			else
@@ -1657,6 +1657,7 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 					RB_body_deactivate(rbo->physics_object);
 			}
 		}
+		modFound = FALSE;
 	}
 }
 /* Sync rigid body and object transformations */
