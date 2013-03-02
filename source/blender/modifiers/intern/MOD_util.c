@@ -272,5 +272,6 @@ void modifier_type_init(ModifierTypeInfo *types[])
 	INIT_TYPE(UVWarp);
 	INIT_TYPE(MeshCache);
 	INIT_TYPE(LaplacianDeform);
+    INIT_TYPE(RigidBody);
 #undef INIT_TYPE
 }

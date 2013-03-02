@@ -40,7 +40,6 @@
 #include <string.h> // for strrchr strncmp strstr
 #include <math.h> // for fabs
 #include <stdarg.h> /* for va_start/end */
-#include <time.h> /* for gmtime */
 
 #include "BLI_utildefines.h"
 #ifndef WIN32
@@ -3361,8 +3360,6 @@ static void lib_link_curve(FileData *fd, Main *main)
 			
 			cu->ipo = newlibadr_us(fd, cu->id.lib, cu->ipo); // XXX deprecated - old animation system
 			cu->key = newlibadr_us(fd, cu->id.lib, cu->key);
-
-			cu->selboxes = NULL;  /* runtime, clear */
 			
 			cu->id.flag -= LIB_NEED_LINK;
 		}
@@ -4832,15 +4829,6 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			if (wmd->cmap_curve)
 				direct_link_curvemapping(fd, wmd->cmap_curve);
 		}
-		else if (md->type == eModifierType_LaplacianDeform) {
-			LaplacianDeformModifierData *lmd = (LaplacianDeformModifierData *)md;
-
-			lmd->vertexco = newdataadr(fd, lmd->vertexco);
-			if (fd->flags & FD_FLAGS_SWITCH_ENDIAN) {
-				BLI_endian_switch_float_array(lmd->vertexco, lmd->total_verts * 3);
-			}
-			lmd->cache_system = NULL;
-		}
 	}
 }
 
@@ -5952,7 +5940,7 @@ void blo_lib_link_screen_restore(Main *newmain, bScreen *curscreen, Scene *cursc
 					
 					/* not very nice, but could help */
 					if ((v3d->layact & v3d->lay) == 0) v3d->layact = v3d->lay;
-
+					
 					/* free render engines for now */
 					for (ar = sa->regionbase.first; ar; ar = ar->next) {
 						RegionView3D *rv3d= ar->regiondata;
@@ -7313,7 +7301,7 @@ static BHead *read_global(BlendFileData *bfd, FileData *fd, BHead *bhead)
 	bfd->main->subversionfile = fg->subversion;
 	bfd->main->minversionfile = fg->minversion;
 	bfd->main->minsubversionfile = fg->minsubversion;
-	bfd->main->build_commit_timestamp = fg->build_commit_timestamp;
+	BLI_strncpy(bfd->main->build_change, fg->build_change, sizeof(bfd->main->build_change));
 	BLI_strncpy(bfd->main->build_hash, fg->build_hash, sizeof(bfd->main->build_hash));
 	
 	bfd->winpos = fg->winpos;
@@ -7949,19 +7937,9 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 	/* WATCH IT!!!: pointers from libdata have not been converted */
 	
 	if (G.debug & G_DEBUG) {
-		char build_commit_datetime[32];
-		time_t temp_time = main->build_commit_timestamp;
-		struct tm *tm = gmtime(&temp_time);
-		if (LIKELY(tm)) {
-			strftime(build_commit_datetime, sizeof(build_commit_datetime), "%Y-%m-%d %H:%M", tm);
-		}
-		else {
-			BLI_strncpy(build_commit_datetime, "date-unknown", sizeof(build_commit_datetime));
-		}
-
-		printf("read file %s\n  Version %d sub %d date %s hash %s\n",
+		printf("read file %s\n  Version %d sub %d change %s hash %s\n",
 		       fd->relabase, main->versionfile, main->subversionfile,
-		       build_commit_datetime, main->build_hash);
+		       main->build_change, main->build_hash);
 	}
 	
 	blo_do_versions_pre250(fd, lib, main);

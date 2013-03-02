@@ -674,6 +674,9 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
     def PARTICLE_SYSTEM(self, layout, ob, md):
         layout.label(text="Settings can be found inside the Particle context")
 
+    def RIGID_BODY(self, layout, ob, md):
+        layout.label("Insert text here")
+
     def SCREW(self, layout, ob, md):
         split = layout.split()
 

@@ -79,6 +79,7 @@ typedef enum ModifierType {
 	eModifierType_Triangulate       = 44,
 	eModifierType_UVWarp            = 45,
 	eModifierType_MeshCache         = 46,
+	eModifierType_RigidBody         = 47,
 	NUM_MODIFIER_TYPES
 } ModifierType;
 
@@ -1276,6 +1277,23 @@ enum {
 	MOD_MESHCACHE_PLAY_CFEA = 0,
 	MOD_MESHCACHE_PLAY_EVAL = 1,
 };
+
+
+typedef struct MeshIsland {
+	struct MeshIsland *next, *prev;
+	struct BMVert **vertices;
+	float *vertco;
+	struct BMesh *physics_mesh; //convert to mesh later ??
+	struct RigidBodyOb *rigidbody;
+	int vertex_count;
+	float centroid[3];
+} MeshIsland;
+
+typedef struct RigidBodyModifierData {
+	ModifierData modifier;
+	struct BMesh *visible_mesh;
+	ListBase	meshIslands;
+} RigidBodyModifierData;
 
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */

@@ -61,6 +61,7 @@ void BKE_rigidbody_relink_constraint(struct RigidBodyCon *rbc);
 struct RigidBodyWorld *BKE_rigidbody_create_world(struct Scene *scene);
 struct RigidBodyOb *BKE_rigidbody_create_object(struct Scene *scene, struct Object *ob, short type);
 struct RigidBodyCon *BKE_rigidbody_create_constraint(struct Scene *scene, struct Object *ob, short type);
+struct RigidBodyOb *BKE_rigidbody_create_shard(struct Scene *scene, struct Object *ob, struct MeshIsland* mi, short type);
 
 /* copy */
 struct RigidBodyWorld *BKE_rigidbody_world_copy(struct RigidBodyWorld *rbw);
@@ -72,9 +73,9 @@ void BKE_rigidbody_validate_sim_object(struct RigidBodyWorld *rbw, struct Object
 void BKE_rigidbody_validate_sim_shape(struct Object *ob, short rebuild);
 void BKE_rigidbody_validate_sim_constraint(struct RigidBodyWorld *rbw, struct Object *ob, short rebuild);
 
-void BKE_rigidbody_validate_sim_shard(struct RigidBodyWorld *rbw, struct VoronoiCell *vc, struct Object *ob, short rebuild);
-void BKE_rigidbody_validate_sim_shard_shape(struct VoronoiCell *vc, struct Object *ob, short rebuild);
-void BKE_updateCell(struct VoronoiCell *vc, Object* ob, float loc[3], float rot[4] );
+void BKE_rigidbody_validate_sim_shard(struct RigidBodyWorld *rbw, struct MeshIsland *mi, struct Object *ob, short rebuild);
+void BKE_rigidbody_validate_sim_shard_shape(struct MeshIsland *mi, struct Object *ob, short rebuild);
+void BKE_updateCell(struct MeshIsland *mi, struct Object* ob, float loc[3], float rot[4] );
 
 /* -------------- */
 /* Utilities */

@@ -72,26 +72,26 @@
 #ifdef WITH_BULLET
 
 
-void BKE_updateCell(struct VoronoiCell *vc, Object* ob, float loc[3], float rot[4] )
+void BKE_updateCell(struct MeshIsland* mi, Object* ob, float loc[3], float rot[4] )
 {
 	float startco[3];// size[3] = {1,1,1}, rot[4], loc[3];
 	int j;
 
 	//mat4_to_loc_quat(loc, rot, imat);
 	//loc_quat_size_to_mat4(imat, loc, rot, size);
-	for (j = 0; j < vc->vertex_count; j++)
+	for (j = 0; j < mi->vertex_count; j++)
 	{
 		// BMVert *vert = BM_vert_at_index(bm, ind);
-		struct BMVert* vert = vc->vertices[j];
+		struct BMVert* vert = mi->vertices[j];
 
 		//reset to original coords // stored at fracture time
-		startco[0] = vc->vertco[j*3];
-		startco[1] = vc->vertco[j*3+1];
-		startco[2] = vc->vertco[j*3+2];
+		startco[0] = mi->vertco[j*3];
+		startco[1] = mi->vertco[j*3+1];
+		startco[2] = mi->vertco[j*3+2];
 
 		copy_v3_v3(vert->co, startco);
 		//mul_m4_v3(ob->obmat, vert->co);
-		//sub_v3_v3(vert->co, vc->centroid);
+		//sub_v3_v3(vert->co, mi->centroid);
 		//	sub_qt_qtqt(rot, cell->phys_rot, startro);
 		mul_qt_v3(rot, vert->co);
 		add_v3_v3(vert->co, loc);
@@ -259,15 +259,13 @@ int countShards(ListBase obs)
 	int count = 0;
 	struct GroupObject *gob = NULL;
 	struct ModifierData *md = NULL;
-	struct ExplodeModifierData *emd = NULL;
+	struct RigidBodyModifierData *rmd = NULL;
 
 	for (gob = obs.first; gob; gob = gob->next) {
 		for (md = gob->ob->modifiers.first; md; md = md->next) {
-			if (md->type == eModifierType_Explode) {
-				emd = (ExplodeModifierData*)md;
-				if (emd->use_rigidbody) {
-					count += emd->cells->count;
-				}
+			if (md->type == eModifierType_RigidBody) {
+				rmd = (RigidBodyModifierData*)md;
+				count += BLI_countlist(&rmd->meshIslands);
 			}
 		}
 	}
@@ -589,9 +587,9 @@ void BKE_rigidbody_validate_sim_shape(Object *ob, short rebuild)
 /* Create new physics sim collision shape for object and store it,
  * or remove the existing one first and replace...
  */
-void BKE_rigidbody_validate_sim_shard_shape(VoronoiCell* vc, Object* ob, short rebuild)
+void BKE_rigidbody_validate_sim_shard_shape(MeshIsland* mi, Object* ob, short rebuild)
 {
-	RigidBodyOb *rbo = vc->rigidbody;
+	RigidBodyOb *rbo = mi->rigidbody;
 	rbCollisionShape *new_shape = NULL;
 	//BoundBox *bb = NULL;
 	float size[3] = {1.0f, 1.0f, 1.0f}, loc[3] = {0.0f, 0.0f, 0.0f};
@@ -618,7 +616,7 @@ void BKE_rigidbody_validate_sim_shard_shape(VoronoiCell* vc, Object* ob, short r
 	 */
 	// XXX: all dimensions are auto-determined now... later can add stored settings for this
 	/* get object dimensions without scaling */
-	DM_to_mesh(vc->cell_mesh, me, NULL);
+	BM_mesh_bm_to_me(mi->physics_mesh, me, FALSE);
 	BKE_mesh_boundbox_calc(me, loc, size);
 
 	//dont need stupid mesh anymore... or ?
@@ -689,7 +687,7 @@ void BKE_rigidbody_validate_sim_shard_shape(VoronoiCell* vc, Object* ob, short r
 	}
 	else { /* otherwise fall back to box shape */
 		rbo->shape = RB_SHAPE_BOX;
-		BKE_rigidbody_validate_sim_shard_shape(vc, ob, true);
+		BKE_rigidbody_validate_sim_shard_shape(mi, ob, true);
 	}
 }
 
@@ -699,9 +697,9 @@ void BKE_rigidbody_validate_sim_shard_shape(VoronoiCell* vc, Object* ob, short r
 /* Create physics sim representation of shard given RigidBody settings
  * < rebuild: even if an instance already exists, replace it
  */
-void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, VoronoiCell* vc, Object *ob, short rebuild)
+void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, short rebuild)
 {
-	RigidBodyOb *rbo = (vc) ? vc->rigidbody : NULL;
+	RigidBodyOb *rbo = (mi) ? mi->rigidbody : NULL;
 	float loc[3];
 	float rot[4];
 	float centr[3];
@@ -715,7 +713,7 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, VoronoiCell* vc, Obje
 	/* make sure collision shape exists */
 	/* FIXME we shouldn't always have to rebuild collision shapes when rebuilding objects, but it's needed for constraints to update correctly */
 	if (rbo->physics_shape == NULL || rebuild)
-		BKE_rigidbody_validate_sim_shard_shape(vc, ob, true);
+		BKE_rigidbody_validate_sim_shard_shape(mi, ob, true);
 
 	if (rbo->physics_object) {
 		if (rebuild == false)
@@ -727,9 +725,9 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, VoronoiCell* vc, Obje
 			RB_body_delete(rbo->physics_object);
 		}
 		mat4_to_loc_quat(loc, rot, ob->obmat); //offset
-		/*  copy_v3_v3(centr, vc->centroid);
+		/*  copy_v3_v3(centr, mi->centroid);
 		mul_m4_v3(ob->imat, centr);*/
-		//add_v3_v3(loc, vc->centroid);
+		//add_v3_v3(loc, mi->centroid);
 
 		rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot);
 
@@ -1059,18 +1057,17 @@ RigidBodyWorld *BKE_rigidbody_create_world(Scene *scene)
 }
 
 /* Add rigid body settings to the specified shard */
-RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, VoronoiCell *vc, short type)
+RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi, short type)
 {
 	RigidBodyOb *rbo;
 	RigidBodyWorld *rbw = scene->rigidbody_world;
-	float centr[3];
 
 	/* sanity checks
 	 *	- rigidbody world must exist
 	 *	- shard must exist
 	 *	- cannot add rigid body if it already exists
 	 */
-	if (vc == NULL || (vc->rigidbody != NULL))
+	if (mi == NULL || (mi->rigidbody != NULL))
 		return NULL;
 
 	/* create new settings data, and link it up */
@@ -1106,9 +1103,9 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, VoronoiCell *v
 	mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
 
 	//add initial "offset" (centroid), maybe subtract ob->obmat ?? (not sure)
-	/*  copy_v3_v3(centr, vc->centroid);
+	/*  copy_v3_v3(centr, mi->centroid);
 	mul_m4_v3(ob->imat, centr);*/
-	// add_v3_v3(rbo->pos, vc->centroid);
+	// add_v3_v3(rbo->pos, mi->centroid);
 
 	/* flag cache as outdated */
 	BKE_rigidbody_cache_reset(rbw);
@@ -1318,17 +1315,13 @@ static int count_regular_rigidbody_objects(ListBase obs)
 	int count = 0;
 	struct GroupObject *gob = NULL;
 	struct ModifierData *md = NULL;
-	struct ExplodeModifierData *emd = NULL;
 
 	for (gob = obs.first; gob; gob = gob->next) {
 		count++;
 		for (md = gob->ob->modifiers.first; md; md = md->next) {
-			if (md->type == eModifierType_Explode) {
-				emd = (ExplodeModifierData*)md;
-				if (emd->use_rigidbody) {
-					count--;
-					break;
-				}
+			if (md->type == eModifierType_RigidBody) {
+				count--;
+				break;
 			}
 		}
 	}
@@ -1343,8 +1336,9 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 {
 	GroupObject *go;
 	ModifierData *md;
-	ExplodeModifierData *emd;
-	int i, l, m, n, c, counter = 0;
+	RigidBodyModifierData *rmd;
+	MeshIsland *mi;
+	int i, l, m, n, counter = 0;
 	int ismapped = FALSE;
 
 	l = BLI_countlist(&rbw->group->gobject); // all objects
@@ -1362,17 +1356,15 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 		rbw->objects[i] = ob;
 
 		for (md = ob->modifiers.first; md; md = md->next) {
-			if (md->type == eModifierType_Explode) {
-				emd = (ExplodeModifierData*)md;
-				if (emd->use_rigidbody) {
-					for (c = 0; c < emd->cells->count; c++) {
-						rbw->cache_index_map[counter] = i; //map all shards of an object to this object index
-						//printf("index map:  %d %d\n", counter, i);
-						counter++;
-					}
-					ismapped = TRUE;
-					break;
+			if (md->type == eModifierType_RigidBody) {
+				rmd = (RigidBodyModifierData*)md;
+				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+					rbw->cache_index_map[counter] = i; //map all shards of an object to this object index
+					//printf("index map:  %d %d\n", counter, i);
+					counter++;
 				}
+				ismapped = TRUE;
+				break;
 			}
 		}
 
@@ -1485,6 +1477,7 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int rebuild)
 {
 	GroupObject *go;
+	MeshIsland* mi = NULL;
 
 	/* update world */
 	if (rebuild)
@@ -1495,54 +1488,46 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 	for (go = rbw->group->gobject.first; go; go = go->next) {
 		Object *ob = go->ob;
 		ModifierData *md = NULL;
-		ExplodeModifierData *emd = NULL;
-		int count = 0, i = 0;
+		RigidBodyModifierData *rmd = NULL;
 
 		if (ob && ob->type == OB_MESH) {
 
 			/* check for fractured objects which want to participate first, then handle other normal objects*/
 			for (md = ob->modifiers.first; md; md = md->next) {
-				if (md->type == eModifierType_Explode) {
-					emd = (ExplodeModifierData*)md;
-					if (emd->use_rigidbody) {
-						count = emd->cells->count;
-						break;
-					}
+				if (md->type == eModifierType_RigidBody) {
+					rmd = (RigidBodyModifierData*)md;
 				}
 			}
 
-			if (emd && emd->use_rigidbody){
-				for (i = 0; i < count; i++) {
-					VoronoiCell *vc = NULL;
-					vc = &emd->cells->data[i];
-					if (vc->rigidbody == NULL) {
-						vc->rigidbody = BKE_rigidbody_create_shard(scene, ob, vc, RBO_TYPE_ACTIVE);
-						BKE_rigidbody_validate_sim_shard(rbw, vc, ob, true);
-
+			if (rmd){
+				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+					if (mi->rigidbody == NULL) {
+						mi->rigidbody = BKE_rigidbody_create_shard(scene, ob, mi, RBO_TYPE_ACTIVE);
+						BKE_rigidbody_validate_sim_shard(rbw, mi, ob, true);
 					}
 					else {  //as usual, but for each shard now, and no constraints
 						/* perform simulation data updates as tagged */
 						/* refresh object... */
 						if (rebuild) {
 							/* World has been rebuilt so rebuild object */
-							BKE_rigidbody_validate_sim_shard(rbw, vc, ob, true);
+							BKE_rigidbody_validate_sim_shard(rbw, mi, ob, true);
 						}
-						else if (vc->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE) {
-							BKE_rigidbody_validate_sim_shard(rbw, vc, ob, false);
+						else if (mi->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE) {
+							BKE_rigidbody_validate_sim_shard(rbw, mi, ob, false);
 						}
 						/* refresh shape... */
-						if (vc->rigidbody->flag & RBO_FLAG_NEEDS_RESHAPE) {
+						if (mi->rigidbody->flag & RBO_FLAG_NEEDS_RESHAPE) {
 							/* mesh/shape data changed, so force shape refresh */
-							BKE_rigidbody_validate_sim_shard_shape(vc, ob, true);
+							BKE_rigidbody_validate_sim_shard_shape(mi, ob, true);
 							/* now tell RB sim about it */
 							// XXX: we assume that this can only get applied for active/passive shapes that will be included as rigidbodies
-							RB_body_set_collision_shape(vc->rigidbody->physics_object, vc->rigidbody->physics_shape);
+							RB_body_set_collision_shape(mi->rigidbody->physics_object, mi->rigidbody->physics_shape);
 						}
-						vc->rigidbody->flag &= ~(RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
+						mi->rigidbody->flag &= ~(RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
 					}
 
 					/* update simulation object... */
-					// rigidbody_update_sim_ob(scene, rbw, vc, vc->rigidbody); //probably necessary, but does not fit for fractured objs for now
+					// rigidbody_update_sim_ob(scene, rbw, mi, mi->rigidbody); //probably necessary, but does not fit for fractured objs for now
 				}
 			}
 			else
@@ -1628,38 +1613,35 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 {
 	GroupObject *go;
 	ModifierData *md;
-	ExplodeModifierData *emd;
-	int i, modFound = FALSE;
+	RigidBodyModifierData *rmd;
+	int modFound = FALSE;
 	RigidBodyOb *rbo;
-	VoronoiCell * vc;
+	MeshIsland *mi;
 
 	for (go = rbw->group->gobject.first; go; go = go->next) {
 
 		Object *ob = go->ob;
 		//handle fractured rigidbodies, maybe test for psys as well ?
 		for (md = ob->modifiers.first; md; md = md->next) {
-			if (md->type == eModifierType_Explode) {
-				emd = (ExplodeModifierData*)md;
-				if (emd->use_rigidbody) {
-					for (i = 0; i < emd->cells->count; i++) {
-						rbo  = emd->cells->data[i].rigidbody;
-						vc = &emd->cells->data[i];
-						/* reset kinematic state for transformed objects */
-						if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) {
-							RB_body_set_kinematic_state(rbo->physics_object, rbo->flag & RBO_FLAG_KINEMATIC || rbo->flag & RBO_FLAG_DISABLED);
-							RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
-							/* deactivate passive objects so they don't interfere with deactivation of active objects */
-							if (rbo->type == RBO_TYPE_PASSIVE)
-								RB_body_deactivate(rbo->physics_object);
-						}
-						else
-						{
-							BKE_updateCell(vc, ob, vc->rigidbody->pos, vc->rigidbody->orn);
-						}
+			if (md->type == eModifierType_RigidBody) {
+				rmd = (RigidBodyModifierData*)md;
+				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+					rbo = mi->rigidbody;
+					/* reset kinematic state for transformed objects */
+					if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) {
+						RB_body_set_kinematic_state(rbo->physics_object, rbo->flag & RBO_FLAG_KINEMATIC || rbo->flag & RBO_FLAG_DISABLED);
+						RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
+						/* deactivate passive objects so they don't interfere with deactivation of active objects */
+						if (rbo->type == RBO_TYPE_PASSIVE)
+							RB_body_deactivate(rbo->physics_object);
 					}
-					modFound = TRUE;
-					break;
+					else
+					{
+						BKE_updateCell(mi, ob, mi->rigidbody->pos, mi->rigidbody->orn);
+					}
 				}
+				modFound = TRUE;
+				break;
 			}
 		}
 
