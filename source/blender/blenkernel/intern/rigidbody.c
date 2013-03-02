@@ -1662,33 +1662,78 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 /* Sync rigid body and object transformations */
 void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 {
-	RigidBodyOb *rbo = ob->rigidbody_object;
+	RigidBodyOb *rbo = NULL;
+	RigidBodyModifierData *rmd = NULL;
+	MeshIsland *mi;
+	ModifierData * md;
+	for (md = ob->modifiers.first; md; md = md->next)
+	{
+		if (md->type == eModifierType_RigidBody)
+		{
+			float mat[4][4];
+			rmd = (RigidBodyModifierData*)md;
+			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+				rbo = mi->rigidbody;
+				if (!rbo)
+					break;
+				/* use rigid body transform after cache start frame if objects is not being transformed */
+				if (ctime > rbw->pointcache->startframe && !(ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
+				//float mat[4][4], size_mat[4][4], size[3];
 
-	/* keep original transform for kinematic and passive objects */
-	if (ELEM(NULL, rbw, rbo) || rbo->flag & RBO_FLAG_KINEMATIC || rbo->type == RBO_TYPE_PASSIVE)
-		return;
+				/* keep original transform when the simulation is muted */
+					if (rbw->flag & RBW_FLAG_MUTED)
+						return;
 
-	/* use rigid body transform after cache start frame if objects is not being transformed */
-	if (ctime > rbw->pointcache->startframe && !(ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
-		float mat[4][4], size_mat[4][4], size[3];
+					normalize_qt(rbo->orn); // RB_TODO investigate why quaternion isn't normalized at this point
+					quat_to_mat4(mat, rbo->orn);
+					copy_v3_v3(mat[3], rbo->pos);
 
-		/* keep original transform when the simulation is muted */
-		if (rbw->flag & RBW_FLAG_MUTED)
+					//mat4_to_size(size, ob->obmat);
+					//size_to_mat4(size_mat, size);
+					mult_m4_m4m4(mat, mat, ob->obmat);
+					//mat4_to_loc_quat(rbo->pos, rbo->orn, mat);
+					//BKE_updateCell(mi, ob, rbo->pos, rbo->orn);
+				}
+				/* otherwise set rigid body transform to current obmat*/
+				else {
+					mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
+					BKE_updateCell(mi, ob, rbo->pos, rbo->orn);
+				}
+			}
+			break;
+		}
+	}
+
+	if (!rmd || !rbo)
+	{
+		rbo = ob->rigidbody_object;
+
+		/* keep original transform for kinematic and passive objects */
+		if (ELEM(NULL, rbw, rbo) || rbo->flag & RBO_FLAG_KINEMATIC || rbo->type == RBO_TYPE_PASSIVE)
 			return;
 
-		normalize_qt(rbo->orn); // RB_TODO investigate why quaternion isn't normalized at this point
-		quat_to_mat4(mat, rbo->orn);
-		copy_v3_v3(mat[3], rbo->pos);
+		/* use rigid body transform after cache start frame if objects is not being transformed */
+		if (ctime > rbw->pointcache->startframe && !(ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
+			float mat[4][4], size_mat[4][4], size[3];
 
-		mat4_to_size(size, ob->obmat);
-		size_to_mat4(size_mat, size);
-		mult_m4_m4m4(mat, mat, size_mat);
+			/* keep original transform when the simulation is muted */
+			if (rbw->flag & RBW_FLAG_MUTED)
+				return;
 
-		copy_m4_m4(ob->obmat, mat);
-	}
-	/* otherwise set rigid body transform to current obmat */
-	else {
-		mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
+			normalize_qt(rbo->orn); // RB_TODO investigate why quaternion isn't normalized at this point
+			quat_to_mat4(mat, rbo->orn);
+			copy_v3_v3(mat[3], rbo->pos);
+
+			mat4_to_size(size, ob->obmat);
+			size_to_mat4(size_mat, size);
+			mult_m4_m4m4(mat, mat, size_mat);
+
+			copy_m4_m4(ob->obmat, mat);
+		}
+		/* otherwise set rigid body transform to current obmat */
+		else {
+			mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
+		}
 	}
 }
 
