@@ -298,6 +298,9 @@ static int object_modifier_remove(Main *bmain, Object *ob, ModifierData *md,
 		*sort_depsgraph = 1;
 	}
 	else if (md->type == eModifierType_Surface) {
+		if (ob->pd && ob->pd->shape == PFIELD_SHAPE_SURFACE)
+			ob->pd->shape = PFIELD_SHAPE_PLANE;
+
 		*sort_depsgraph = 1;
 	}
 	else if (md->type == eModifierType_Multires) {
@@ -1853,7 +1856,7 @@ void OBJECT_OT_skin_armature_create(wmOperatorType *ot)
 
 static int meshdeform_poll(bContext *C)
 {
-	return edit_modifier_poll_generic(C, &RNA_MeshDeformModifier, 0);
+	return edit_modifier_poll_generic(C, &RNA_MeshDeformModifier, (1 << OB_MESH));
 }
 
 static int meshdeform_bind_exec(bContext *C, wmOperator *op)
@@ -2258,3 +2261,51 @@ void OBJECT_OT_laplaciandeform_bind(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 	edit_modifier_properties(ot);
 }
+
+/****************** rigidbody modifier refresh operator *********************/
+
+static int rigidbody_poll(bContext *C)
+{
+	return edit_modifier_poll_generic(C, &RNA_RigidBodyModifier, 0);
+}
+
+static int rigidbody_refresh_exec(bContext *C, wmOperator *op)
+{
+	Object *ob = ED_object_active_context(C);
+	RigidBodyModifierData *rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, ob, eModifierType_RigidBody);
+
+	if (!rmd)
+		return OPERATOR_CANCELLED;
+
+	rmd->refresh = TRUE;
+
+	DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
+	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
+
+	return OPERATOR_FINISHED;
+}
+
+static int rigidbody_refresh_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
+{
+	if (edit_modifier_invoke_properties(C, op))
+		return rigidbody_refresh_exec(C, op);
+	else
+		return OPERATOR_CANCELLED;
+}
+
+
+void OBJECT_OT_rigidbody_refresh(wmOperatorType *ot)
+{
+	ot->name = "RigidBody Refresh";
+	ot->description = "Refresh data in the Rigid Body modifier";
+	ot->idname = "OBJECT_OT_rigidbody_refresh";
+
+	ot->poll = rigidbody_poll;
+	ot->invoke = rigidbody_refresh_invoke;
+	ot->exec = rigidbody_refresh_exec;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
+	edit_modifier_properties(ot);
+}
+

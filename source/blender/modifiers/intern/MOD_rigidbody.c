@@ -58,6 +58,7 @@ static void initData(ModifierData *md)
 {
 	RigidBodyModifierData *rmd = (RigidBodyModifierData *) md;
 	rmd->visible_mesh = NULL;
+	rmd->refresh = TRUE;
 }
 
 static void copyData(ModifierData *md, ModifierData *target)
@@ -66,6 +67,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	RigidBodyModifierData *trmd = (RigidBodyModifierData *)target;
 	
 	//trmd->meshIslands = rmd->meshIslands;
+	trmd->refresh = TRUE;
 }
 
 static void freeData(ModifierData *md)
@@ -326,10 +328,12 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 	RigidBodyModifierData *rmd = (RigidBodyModifierData *) md;
 	//freeData(md); // reset on each run
-	if (BLI_countlist(&rmd->meshIslands) == 0)
+	if (rmd->refresh)
 	{
+		freeData(md);
 		rmd->visible_mesh = DM_to_bmesh(dm);
 		mesh_separate_loose(rmd, ob);
+		rmd->refresh = FALSE;
 	}
 
 	return CDDM_from_bmesh(rmd->visible_mesh, TRUE);

@@ -675,7 +675,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         layout.label(text="Settings can be found inside the Particle context")
 
     def RIGID_BODY(self, layout, ob, md):
-        layout.label("Insert text here")
+        layout.operator("object.rigidbody_refresh", text="Refresh")
 
     def SCREW(self, layout, ob, md):
         split = layout.split()

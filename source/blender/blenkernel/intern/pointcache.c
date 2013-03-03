@@ -1026,10 +1026,13 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 	if (rbw->objects)
 		ob = rbw->objects[index];
 
+	if (!ob) return;
+
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_RigidBody) {
 			rmd = (RigidBodyModifierData*)md;
 			mi = BLI_findlink(&rmd->meshIslands, offset);
+			if (!mi) return;
 			rbo = mi->rigidbody;
 			break;
 		}

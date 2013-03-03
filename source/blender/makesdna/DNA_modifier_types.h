@@ -1292,7 +1292,9 @@ typedef struct MeshIsland {
 typedef struct RigidBodyModifierData {
 	ModifierData modifier;
 	struct BMesh *visible_mesh;
-	ListBase	meshIslands;
+	ListBase meshIslands;
+	int refresh;
+	char pad[4];
 } RigidBodyModifierData;
 
 

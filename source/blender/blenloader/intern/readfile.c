@@ -4829,6 +4829,14 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			if (wmd->cmap_curve)
 				direct_link_curvemapping(fd, wmd->cmap_curve);
 		}
+		else if (md->type == eModifierType_RigidBody) {
+			RigidBodyModifierData *rmd = (RigidBodyModifierData *)md;
+			//clear all data
+			rmd->meshIslands.first = NULL;
+			rmd->meshIslands.last = NULL;
+			rmd->visible_mesh = NULL;
+			rmd->refresh = TRUE;
+		}
 	}
 }
 
