@@ -1398,7 +1398,7 @@ static void rigidbody_update_sim_world(Scene *scene, RigidBodyWorld *rbw)
 	rigidbody_update_ob_array(rbw);
 }
 
-static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *ob, RigidBodyOb *rbo)
+static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *ob, RigidBodyOb *rbo, float centroid[3])
 {
 	float loc[3];
 	float rot[4];
@@ -1409,6 +1409,7 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 		return;
 
 	mat4_decompose(loc, rot, scale, ob->obmat);
+	add_v3_v3(loc, centroid);
 
 	/* update scale for all objects */
 	RB_body_set_scale(rbo->physics_object, scale);
@@ -1478,6 +1479,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 {
 	GroupObject *go;
 	MeshIsland* mi = NULL;
+	float centroid[3] = {0, 0, 0};
 
 	/* update world */
 	if (rebuild)
@@ -1527,7 +1529,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 					}
 
 					/* update simulation object... */
-					rigidbody_update_sim_ob(scene, rbw, ob, mi->rigidbody);
+					rigidbody_update_sim_ob(scene, rbw, ob, mi->rigidbody, mi->centroid);
 				}
 			}
 			else
@@ -1569,7 +1571,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 				}
 
 				/* update simulation object... */
-				rigidbody_update_sim_ob(scene, rbw, ob, rbo);
+				rigidbody_update_sim_ob(scene, rbw, ob, rbo, centroid);
 			}
 		}
 	}
