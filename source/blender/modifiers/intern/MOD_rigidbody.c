@@ -81,6 +81,7 @@ static void freeData(ModifierData *md)
 		BM_mesh_free(mi->physics_mesh);
 		MEM_freeN(mi->rigidbody);
 		MEM_freeN(mi->vertco);
+		MEM_freeN(mi->vertices);
 		MEM_freeN(mi);
 	}
 

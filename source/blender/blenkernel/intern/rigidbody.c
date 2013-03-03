@@ -74,10 +74,11 @@
 
 void BKE_updateCell(struct MeshIsland* mi, Object* ob, float loc[3], float rot[4] )
 {
-	float startco[3];// size[3] = {1,1,1}, rot[4], loc[3];
+	float startco[3], centr[3];
 	int j;
 
-	//mat4_to_loc_quat(loc, rot, imat);
+	//mat4_to_loc_quat(obloc, obrot, ob->obmat);
+	//sub_qt_qtqt(rot, rot, obrot);
 	//loc_quat_size_to_mat4(imat, loc, rot, size);
 	for (j = 0; j < mi->vertex_count; j++)
 	{
@@ -91,9 +92,10 @@ void BKE_updateCell(struct MeshIsland* mi, Object* ob, float loc[3], float rot[4
 
 		copy_v3_v3(vert->co, startco);
 		//mul_m4_v3(ob->obmat, vert->co);
-		sub_v3_v3(vert->co, mi->centroid);
-		//	sub_qt_qtqt(rot, cell->phys_rot, startro);
 		mul_qt_v3(rot, vert->co);
+		copy_v3_v3(centr, mi->centroid);
+		mul_qt_v3(rot, centr);
+		sub_v3_v3(vert->co, centr);
 		add_v3_v3(vert->co, loc);
 		//mul_v3_v3(vert->co, rbm->size);
 		mul_m4_v3(ob->imat, vert->co);
@@ -703,6 +705,8 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 	float loc[3];
 	float rot[4];
 	float centr[3];
+	float axis[3] = {0.0f, 0.0f, 0.0f};
+	float angle[1] = {0.0f};
 
 	/* sanity checks:
 	 *	- object doesn't have RigidBody info already: then why is it here?
@@ -724,10 +728,11 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 		if (rbo->physics_object) {
 			RB_body_delete(rbo->physics_object);
 		}
+
+		copy_v3_v3(centr, mi->centroid);
 		mat4_to_loc_quat(loc, rot, ob->obmat); //offset
-		/*  copy_v3_v3(centr, mi->centroid);
-		mul_m4_v3(ob->imat, centr);*/
-		add_v3_v3(loc, mi->centroid);
+		mul_qt_v3(rot, centr);
+		add_v3_v3(loc, centr);
 
 		rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot);
 
@@ -1061,6 +1066,9 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi
 {
 	RigidBodyOb *rbo;
 	RigidBodyWorld *rbw = scene->rigidbody_world;
+	float centr[3];
+	float axis[3] = {0.0f, 0.0f, 0.0f};
+	float angle[1] = {0.0f};
 
 	/* sanity checks
 	 *	- rigidbody world must exist
@@ -1103,9 +1111,9 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi
 	mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
 
 	//add initial "offset" (centroid), maybe subtract ob->obmat ?? (not sure)
-	/*  copy_v3_v3(centr, mi->centroid);
-	mul_m4_v3(ob->imat, centr);*/
-	add_v3_v3(rbo->pos, mi->centroid);
+	copy_v3_v3(centr, mi->centroid);
+	mul_qt_v3(rbo->orn, centr);
+	add_v3_v3(rbo->pos, centr);
 
 	/* flag cache as outdated */
 	BKE_rigidbody_cache_reset(rbw);
@@ -1409,6 +1417,7 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 		return;
 
 	mat4_decompose(loc, rot, scale, ob->obmat);
+	//mul_qt_v3(rot, centroid);
 	add_v3_v3(loc, centroid);
 
 	/* update scale for all objects */
@@ -1669,11 +1678,12 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 	RigidBodyModifierData *rmd = NULL;
 	MeshIsland *mi;
 	ModifierData * md;
+	float centr[3];
+
 	for (md = ob->modifiers.first; md; md = md->next)
 	{
 		if (md->type == eModifierType_RigidBody)
 		{
-			float mat[4][4];
 			rmd = (RigidBodyModifierData*)md;
 			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 				rbo = mi->rigidbody;
@@ -1687,20 +1697,23 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 					if (rbw->flag & RBW_FLAG_MUTED)
 						return;
 
-					normalize_qt(rbo->orn); // RB_TODO investigate why quaternion isn't normalized at this point
-					quat_to_mat4(mat, rbo->orn);
-					copy_v3_v3(mat[3], rbo->pos);
+					//normalize_qt(rbo->orn); // RB_TODO investigate why quaternion isn't normalized at this point
+					//quat_to_mat4(mat, rbo->orn);
+					//copy_v3_v3(mat[3], rbo->pos);
 
 					//mat4_to_size(size, ob->obmat);
 					//size_to_mat4(size_mat, size);
-					mult_m4_m4m4(mat, mat, ob->obmat);
+					//mult_m4_m4m4(mat, mat, ob->obmat);
 					//mat4_to_loc_quat(rbo->pos, rbo->orn, mat);
 					//BKE_updateCell(mi, ob, rbo->pos, rbo->orn);
 				}
 				/* otherwise set rigid body transform to current obmat*/
 				else {
+					//offset
 					mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
-					add_v3_v3(rbo->pos, mi->centroid);
+					copy_v3_v3(centr, mi->centroid);
+					mul_qt_v3(rbo->orn, centr);
+					add_v3_v3(rbo->pos, centr);
 					BKE_updateCell(mi, ob, rbo->pos, rbo->orn);
 				}
 			}
