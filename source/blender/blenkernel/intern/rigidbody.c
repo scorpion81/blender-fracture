@@ -91,7 +91,7 @@ void BKE_updateCell(struct MeshIsland* mi, Object* ob, float loc[3], float rot[4
 
 		copy_v3_v3(vert->co, startco);
 		//mul_m4_v3(ob->obmat, vert->co);
-		//sub_v3_v3(vert->co, mi->centroid);
+		sub_v3_v3(vert->co, mi->centroid);
 		//	sub_qt_qtqt(rot, cell->phys_rot, startro);
 		mul_qt_v3(rot, vert->co);
 		add_v3_v3(vert->co, loc);
@@ -727,7 +727,7 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 		mat4_to_loc_quat(loc, rot, ob->obmat); //offset
 		/*  copy_v3_v3(centr, mi->centroid);
 		mul_m4_v3(ob->imat, centr);*/
-		//add_v3_v3(loc, mi->centroid);
+		add_v3_v3(loc, mi->centroid);
 
 		rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot);
 
@@ -1105,7 +1105,7 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi
 	//add initial "offset" (centroid), maybe subtract ob->obmat ?? (not sure)
 	/*  copy_v3_v3(centr, mi->centroid);
 	mul_m4_v3(ob->imat, centr);*/
-	// add_v3_v3(rbo->pos, mi->centroid);
+	add_v3_v3(rbo->pos, mi->centroid);
 
 	/* flag cache as outdated */
 	BKE_rigidbody_cache_reset(rbw);
@@ -1698,6 +1698,7 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 				/* otherwise set rigid body transform to current obmat*/
 				else {
 					mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
+					add_v3_v3(rbo->pos, mi->centroid);
 					BKE_updateCell(mi, ob, rbo->pos, rbo->orn);
 				}
 			}

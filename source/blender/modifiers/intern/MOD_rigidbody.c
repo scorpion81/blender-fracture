@@ -153,17 +153,17 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	//create rigidbody objects with island verts here
 	//invert_m4_m4(imat, ob->obmat);
 
-	/*BM_ITER_MESH (v, &iter, bm_new, BM_VERTS_OF_MESH) {
+	BM_ITER_MESH (v, &iter, bm_new, BM_VERTS_OF_MESH) {
 		//eliminate centroid in vertex coords ?
 		sub_v3_v3(v->co, centroid);
-	}*/
+	}
 
 	BM_ITER_MESH (v, &iter, bm_old, BM_VERTS_OF_MESH) {
 
 		if (BM_elem_flag_test(v, BM_ELEM_TAG)) {
 			verts = MEM_reallocN(verts, sizeof(BMVert*) * (vertcount + 1));
 			verts[vertcount] = v;
-		//	sub_v3_v3(v->co, centroid);
+			//sub_v3_v3(v->co, centroid);
 
 			startco = MEM_reallocN(startco, (vertcount+1) * 3 * sizeof(float));
 			startco[3 * vertcount] = v->co[0];
