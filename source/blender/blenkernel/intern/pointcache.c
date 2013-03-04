@@ -919,7 +919,7 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUS
 	RigidBodyOb *rbo = NULL;
 	int offset = 0;
 	int mapped = rbw->cache_index_map[index];
-	
+
 	if (index > mapped) {
 		offset = index - count_previous_shards(rbw, mapped);
 		index = mapped;
@@ -927,7 +927,10 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUS
 
 	if (rbw->objects)
 		ob = rbw->objects[index];
-	
+
+	if (ob == NULL)
+		return 0;
+
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_RigidBody) {
 			rmd = (RigidBodyModifierData*)md;
@@ -936,13 +939,11 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUS
 			break;
 		}
 	}
-
-	//else...
-	if (!rbo && ob && ob->rigidbody_object) {
+	/* don't have rigid body modifier, use regular object */
+	if (rbo == NULL)
 		rbo = ob->rigidbody_object;
-	}
 
-	if (rbo->type == RBO_TYPE_ACTIVE && rbo->physics_object) {
+	if (rbo && rbo->type == RBO_TYPE_ACTIVE && rbo->physics_object) {
 #ifdef WITH_BULLET
 		RB_body_get_position(rbo->physics_object, rbo->pos);
 		RB_body_get_orientation(rbo->physics_object, rbo->orn);
@@ -984,12 +985,11 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float UNU
 			break;
 		}
 	}
-	
-	if (!rbo && ob && ob->rigidbody_object) {
+	/* don't have rigid body modifier, use regular object */
+	if (rbo == NULL)
 		rbo = ob->rigidbody_object;
-	}
 
-	if (rbo->type == RBO_TYPE_ACTIVE) {
+	if (rbo && rbo->type == RBO_TYPE_ACTIVE) {
 
 		if (old_data) {
 			memcpy(rbo->pos, data, 3 * sizeof(float));
@@ -1026,6 +1026,9 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 
 	if (rbw->objects)
 		ob = rbw->objects[index];
+	
+	if (ob == NULL)
+		return;
 
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_RigidBody) {
@@ -1035,12 +1038,11 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 			break;
 		}
 	}
-	
-	if (!rbo && ob && ob->rigidbody_object) {
+	/* don't have rigid body modifier, use regular object */
+	if (rbo == NULL)
 		rbo = ob->rigidbody_object;
-	}
 
-	if (rbo->type == RBO_TYPE_ACTIVE) {
+	if (rbo && rbo->type == RBO_TYPE_ACTIVE) {
 
 		copy_v3_v3(keys[1].co, rbo->pos);
 		copy_v3_v3(keys[1].rot, rbo->orn);
