@@ -78,10 +78,18 @@ static void freeData(ModifierData *md)
 	while (rmd->meshIslands.first) {
 		mi = rmd->meshIslands.first;
 		BLI_remlink(&rmd->meshIslands, mi);
-		BM_mesh_free(mi->physics_mesh);
-		MEM_freeN(mi->rigidbody);
-		MEM_freeN(mi->vertco);
-		MEM_freeN(mi->vertices);
+		if (mi->physics_mesh)
+			BM_mesh_free(mi->physics_mesh);
+		mi->physics_mesh = NULL;
+		if (mi->rigidbody)
+			MEM_freeN(mi->rigidbody);
+		mi->rigidbody = NULL;
+		if (mi->vertco)
+			MEM_freeN(mi->vertco);
+		mi->vertco = NULL;
+		if (mi->vertices)
+			MEM_freeN(mi->vertices);
+		mi->vertices = NULL;
 		MEM_freeN(mi);
 	}
 
