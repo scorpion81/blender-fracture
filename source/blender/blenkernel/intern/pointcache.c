@@ -929,12 +929,11 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUS
 		ob = rbw->objects[index];
 	
 	for (md = ob->modifiers.first; md; md = md->next) {
-		if (md->type == eModifierType_Explode) {
-			emd = (ExplodeModifierData*)md;
-			if (emd->use_rigidbody) {
-				rbo = emd->cells->data[offset].rigidbody;
-				break;
-			}
+		if (md->type == eModifierType_RigidBody) {
+			rmd = (RigidBodyModifierData*)md;
+			mi = BLI_findlink(&rmd->meshIslands, offset);
+			rbo = mi->rigidbody;
+			break;
 		}
 	}
 
@@ -973,14 +972,16 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float UNU
 	if (rbw->objects)
 		ob = rbw->objects[index];
 
+	if (ob == NULL)
+		return;
+
 	for (md = ob->modifiers.first; md; md = md->next) {
-		if (md->type == eModifierType_Explode) {
-			emd = (ExplodeModifierData*)md;
-			if (emd->use_rigidbody) {
-				rbo = emd->cells->data[offset].rigidbody;
-				vc = &emd->cells->data[offset];
-				break;
-			}
+		if (md->type == eModifierType_RigidBody) {
+			rmd = (RigidBodyModifierData*)md;
+			mi = BLI_findlink(&rmd->meshIslands, offset);
+			if (!mi) return;
+			rbo = mi->rigidbody;
+			break;
 		}
 	}
 	
@@ -1026,13 +1027,10 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 	if (rbw->objects)
 		ob = rbw->objects[index];
 
-	if (!ob) return;
-
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_RigidBody) {
 			rmd = (RigidBodyModifierData*)md;
 			mi = BLI_findlink(&rmd->meshIslands, offset);
-			if (!mi) return;
 			rbo = mi->rigidbody;
 			break;
 		}
@@ -3672,7 +3670,7 @@ void BKE_ptcache_update_info(PTCacheID *pid)
 		BLI_snprintf(cache->info, sizeof(cache->info), IFACE_("%s, cache is outdated!"), mem_info);
 	}
 	else if (cache->flag & PTCACHE_FRAMES_SKIPPED) {
-		BLI_snprintf(cache->info, sizeof(cache->info), IFACE_("%s, not exact since frame %i."),
+		BLI_snprintf(cache->info, sizeof(cache->info), IFACE_("%s, not exact since frame %i"),
 		             mem_info, cache->last_exact);
 	}
 	else {
