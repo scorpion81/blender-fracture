@@ -943,7 +943,7 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUS
 		rbo = ob->rigidbody_object;
 	}
 
-	if (rbo->type == RBO_TYPE_ACTIVE) {
+	if (rbo->type == RBO_TYPE_ACTIVE && rbo->physics_object) {
 #ifdef WITH_BULLET
 		RB_body_get_position(rbo->physics_object, rbo->pos);
 		RB_body_get_orientation(rbo->physics_object, rbo->orn);
