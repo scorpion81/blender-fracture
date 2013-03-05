@@ -1258,7 +1258,7 @@ static int isChild(Object* ob, Object* child)
 	return FALSE;
 }
 
-static int getChildren(Scene* scene, Object* ob, Object* children)
+static int getChildren(Scene* scene, Object* ob, Object** children)
 {
 	Base* base;
 	int ctr = 0;
@@ -1267,8 +1267,8 @@ static int getChildren(Scene* scene, Object* ob, Object* children)
 	{
 		if (isChild(ob, base->object))
 		{
-			children = MEM_reallocN(children, sizeof(Object) * (ctr+1));
-			children[ctr] = *(base->object);
+			*children = MEM_reallocN(*children, sizeof(Object) * (ctr+1));
+			*children[ctr] = *(base->object);
 			ctr++;
 		}
 	}
@@ -1284,8 +1284,8 @@ static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float 
 
 	if (emd->point_source & (eChildParticles | eChildVerts ))
 	{
-		children = MEM_mallocN(sizeof(Object), "get_points->children");
-		totchildren += getChildren(scene, ob, children);
+		children = MEM_mallocN(sizeof(Object*), "get_points->children");
+		totchildren += getChildren(scene, ob, &children);
 	}
 	
 	if (emd->point_source & eOwnParticles)
@@ -1551,7 +1551,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 		//no points, cant do anything
 		if (totpoint == 0) {
 			MEM_freeN(points);
-			return DM_to_bmesh(derivedData);
+			return NULL;
 		}
 		
 		if (emd->point_source == eOwnVerts)
@@ -1625,11 +1625,10 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 		points = NULL;
 	}
 	
-	
-	bm = DM_to_bmesh(derivedData);
 	if (totpoint == 0)
-		return bm;
+		return NULL;
 
+	bm = DM_to_bmesh(derivedData);
 	//empty the mesh
 	BM_mesh_clear(bm);
 
@@ -2187,7 +2186,10 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				copy_m4_m4(oldobmat, ob->obmat);
 				mult_m4_m4m4(ob->obmat, imat, ob->obmat); //neutralize obmat
 				
-				if ((emd->cells) && (emd->fracMesh)) BM_mesh_free(emd->fracMesh);
+				if ((emd->cells) && (emd->fracMesh)) {
+					BM_mesh_free(emd->fracMesh);
+					emd->fracMesh = NULL;
+				}
 				emd->fracMesh = fractureToCells(ob, derivedData, psmd, emd);
 				
 				copy_m4_m4(ob->obmat, oldobmat); // restore obmat
@@ -2234,15 +2236,23 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					explodeCells(emd, psmd, md->scene, ob);
 				}
 
-				result = CDDM_from_bmesh(emd->fracMesh, TRUE);
+				if (emd->fracMesh)
+					result = CDDM_from_bmesh(emd->fracMesh, TRUE);
+				else
+					result = derivedData;
 				
-				DM_ensure_tessface(result);
+				/*DM_ensure_tessface(result);
 				CDDM_calc_edges_tessface(result);
 				CDDM_tessfaces_to_faces(result);
-				CDDM_calc_normals(result);
+				CDDM_calc_normals(result);*/
 				
 				if (emd->use_boolean)
 				{
+					DM_ensure_tessface(result);
+					CDDM_calc_edges_tessface(result);
+					CDDM_tessfaces_to_faces(result);
+					CDDM_calc_normals(result);
+
 					mtface = MEM_mallocN(sizeof(MTFace), "mtface");
 					mtps = MEM_mallocN(sizeof(MTexPoly), "mtps");
 					mluvs = MEM_mallocN(sizeof(MLoopUV), "mluvs");
