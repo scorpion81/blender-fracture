@@ -921,7 +921,7 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUS
 	int mapped = rbw->cache_index_map[index];
 
 	if (index > mapped) {
-		offset = index - count_previous_shards(rbw, mapped);
+		offset = (index+1) - count_previous_shards(rbw, mapped)-1;
 		index = mapped;
 	}
 
@@ -966,7 +966,7 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float UNU
 	int mapped = rbw->cache_index_map[index];
 
 	if (index > mapped) {
-		offset = index - count_previous_shards(rbw, mapped);
+		offset = (index+1) - count_previous_shards(rbw, mapped)-1;
 		index = mapped;
 	}
 
@@ -980,7 +980,7 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float UNU
 		if (md->type == eModifierType_RigidBody) {
 			rmd = (RigidBodyModifierData*)md;
 			mi = BLI_findlink(&rmd->meshIslands, offset);
-			if (!mi) return;
+			//if (!mi) return;
 			rbo = mi->rigidbody;
 			break;
 		}
@@ -1020,7 +1020,7 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 	int mapped = rbw->cache_index_map[index];
 
 	if (index > mapped) {
-		offset = index - count_previous_shards(rbw, mapped);
+		offset = (index+1) - count_previous_shards(rbw, mapped)-1;
 		index = mapped;
 	}
 
