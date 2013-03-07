@@ -65,6 +65,8 @@
 #include "BKE_rigidbody.h"
 #include "BKE_global.h"
 #include "BKE_utildefines.h"
+#include "BKE_library.h"
+#include "BKE_main.h"
 
 #include "RNA_access.h"
 #include "bmesh.h"
@@ -74,10 +76,11 @@
 
 void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], float rot[4] )
 {
-	float startco[3], centr[3];
+	float startco[3], centr[3], size[3], isize[3];
 	int j;
 
-	//mat4_to_loc_quat(obloc, obrot, ob->obmat);
+	mat4_to_size(isize, ob->imat);
+	mat4_to_size(size, ob->obmat);
 	//sub_qt_qtqt(rot, rot, obrot);
 	//loc_quat_size_to_mat4(imat, loc, rot, size);
 	for (j = 0; j < mi->vertex_count; j++) {
@@ -90,13 +93,12 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 		startco[2] = mi->vertco[j*3+2];
 
 		copy_v3_v3(vert->co, startco);
-		//mul_m4_v3(ob->obmat, vert->co);
 		mul_qt_v3(rot, vert->co);
 		copy_v3_v3(centr, mi->centroid);
 		mul_qt_v3(rot, centr);
+		mul_v3_v3(vert->co, size);
 		sub_v3_v3(vert->co, centr);
 		add_v3_v3(vert->co, loc);
-		//mul_v3_v3(vert->co, rbm->size);
 		mul_m4_v3(ob->imat, vert->co);
 	}
 }
@@ -582,7 +584,9 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland* mi, Object* ob, short re
 	float hull_margin = 0.0f;
 	bool can_embed = true;
 	bool has_volume;
-	Mesh *me = BKE_mesh_add(G.main, "_mesh_");
+	int v;
+	Mesh *me = BKE_mesh_add(G.main, "_mesh_"); // TODO need to delete this again
+
 
 	/* sanity check */
 	if (rbo == NULL)
@@ -600,21 +604,8 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland* mi, Object* ob, short re
 	// XXX: all dimensions are auto-determined now... later can add stored settings for this
 	/* get object dimensions without scaling */
 	BM_mesh_bm_to_me(mi->physics_mesh, me, FALSE);
+
 	BKE_mesh_boundbox_calc(me, loc, size);
-
-	//dont need stupid mesh anymore... or ?
-	/*  BKE_libblock_free_us(&(G.main->object), emd->tempOb);
-	BKE_object_unlink(emd->tempOb);
-	BKE_object_free(emd->tempOb);
-	emd->tempOb = NULL;*/
-
-	/*  bb = BKE_object_boundbox_get(ob);
-	if (bb) {
-		size[0] = (bb->vec[4][0] - bb->vec[0][0]);
-		size[1] = (bb->vec[2][1] - bb->vec[0][1]);
-		size[2] = (bb->vec[1][2] - bb->vec[0][2]);
-	}
-	mul_v3_fl(size, 0.5f);*/
 
 	if (ELEM3(rbo->shape, RB_SHAPE_CAPSULE, RB_SHAPE_CYLINDER, RB_SHAPE_CONE)) {
 		/* take radius as largest x/y dimension, and height as z-dimension */
@@ -648,6 +639,14 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland* mi, Object* ob, short re
 			break;
 	
 		case RB_SHAPE_CONVEXH:
+
+			//take object scale into account here, temporarily
+			/*mat4_to_size(size, ob->imat);
+			for (v = 0; v < me->totvert; v++) {
+				MVert* mv = &(me->mvert[v]);
+				mul_v3_v3(mv->co, size);
+			}*/
+
 			/* try to emged collision margin */
 			has_volume = (MIN3(size[0], size[1], size[2]) > 0.0f);
 
@@ -672,6 +671,11 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland* mi, Object* ob, short re
 		rbo->shape = RB_SHAPE_BOX;
 		BKE_rigidbody_validate_sim_shard_shape(mi, ob, true);
 	}
+
+	//delete mesh block, bullet shouldnt care about blender blocks
+	BKE_libblock_free_us(&(G.main->mesh), me);
+	BKE_mesh_free(me, TRUE);
+	me = NULL;
 }
 
 
@@ -686,8 +690,6 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 	float loc[3];
 	float rot[4];
 	float centr[3];
-	float axis[3] = {0.0f, 0.0f, 0.0f};
-	float angle[1] = {0.0f};
 
 	/* sanity checks:
 	 *	- object doesn't have RigidBody info already: then why is it here?
@@ -1048,8 +1050,6 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi
 	RigidBodyOb *rbo;
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	float centr[3];
-	float axis[3] = {0.0f, 0.0f, 0.0f};
-	float angle[1] = {0.0f};
 
 	/* sanity checks
 	 *	- rigidbody world must exist
