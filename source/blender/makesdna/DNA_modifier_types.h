@@ -1294,6 +1294,7 @@ typedef struct RigidBodyModifierData {
 	struct BMesh *visible_mesh;
 	ListBase meshIslands;
 	int refresh;
+	float origmat[4][4];
 	char pad[4];
 } RigidBodyModifierData;
 

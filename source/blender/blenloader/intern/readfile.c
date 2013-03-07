@@ -4836,6 +4836,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			rmd->meshIslands.last = NULL;
 			rmd->visible_mesh = NULL;
 			rmd->refresh = TRUE;
+			zero_m4(rmd->origmat);
 		}
 	}
 }

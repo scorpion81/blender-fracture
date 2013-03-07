@@ -1668,6 +1668,14 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 		modFound = FALSE;
 	}
 }
+
+int is_zero_m4(float mat[4][4]) {
+	return is_zero_v4(mat[0]) &&
+		   is_zero_v4(mat[1]) &&
+		   is_zero_v4(mat[2]) &&
+		   is_zero_v4(mat[3]);
+}
+
 /* Sync rigid body and object transformations */
 void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 {
@@ -1682,6 +1690,15 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 		if (md->type == eModifierType_RigidBody)
 		{
 			rmd = (RigidBodyModifierData*)md;
+
+			if ((ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
+				//update "original" matrix
+				copy_m4_m4(rmd->origmat, ob->obmat);
+			}
+
+			if (!is_zero_m4(rmd->origmat))
+				copy_m4_m4(ob->obmat, rmd->origmat);
+
 			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 				rbo = mi->rigidbody;
 				if (!rbo)

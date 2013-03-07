@@ -59,6 +59,7 @@ static void initData(ModifierData *md)
 	RigidBodyModifierData *rmd = (RigidBodyModifierData *) md;
 	rmd->visible_mesh = NULL;
 	rmd->refresh = TRUE;
+	zero_m4(rmd->origmat);
 }
 
 static void copyData(ModifierData *md, ModifierData *target)
@@ -340,6 +341,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	if (rmd->refresh)
 	{
 		freeData(md);
+		copy_m4_m4(rmd->origmat, ob->obmat);
 		rmd->visible_mesh = DM_to_bmesh(dm);
 		mesh_separate_loose(rmd, ob);
 		rmd->refresh = FALSE;
