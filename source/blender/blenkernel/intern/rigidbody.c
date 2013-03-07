@@ -93,10 +93,10 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 		startco[2] = mi->vertco[j*3+2];
 
 		copy_v3_v3(vert->co, startco);
+		mul_v3_v3(vert->co, size);
 		mul_qt_v3(rot, vert->co);
 		copy_v3_v3(centr, mi->centroid);
 		mul_qt_v3(rot, centr);
-		mul_v3_v3(vert->co, size);
 		sub_v3_v3(vert->co, centr);
 		add_v3_v3(vert->co, loc);
 		mul_m4_v3(ob->imat, vert->co);
@@ -1421,7 +1421,7 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 	copy_v3_v3(centr, centroid);
 	mat4_decompose(loc, rot, scale, ob->obmat);
 	//mul_qt_v3(rot, centroid);
-	mul_v3_v3(centr, scale);
+	//mul_v3_v3(centr, scale);
 	add_v3_v3(loc, centr);
 
 	/* update scale for all objects */
