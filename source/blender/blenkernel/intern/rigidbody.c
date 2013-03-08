@@ -640,14 +640,6 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland* mi, Object* ob, short re
 			break;
 	
 		case RB_SHAPE_CONVEXH:
-
-			//take object scale into account here, temporarily
-			/*mat4_to_size(size, ob->imat);
-			for (v = 0; v < me->totvert; v++) {
-				MVert* mv = &(me->mvert[v]);
-				mul_v3_v3(mv->co, size);
-			}*/
-
 			/* try to emged collision margin */
 			has_volume = (MIN3(size[0], size[1], size[2]) > 0.0f);
 
@@ -675,7 +667,6 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland* mi, Object* ob, short re
 
 	//delete mesh block, bullet shouldnt care about blender blocks
 	BKE_libblock_free_us(&(G.main->mesh), me);
-	BKE_mesh_free(me, TRUE);
 	me = NULL;
 }
 
@@ -1421,9 +1412,6 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 
 	copy_v3_v3(centr, centroid);
 	mat4_decompose(loc, rot, scale, ob->obmat);
-	//mul_qt_v3(rot, centroid);
-	//mul_v3_v3(centr, scale);
-	add_v3_v3(loc, centr);
 
 	/* update scale for all objects */
 	RB_body_set_scale(rbo->physics_object, scale);
@@ -1439,6 +1427,9 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 
 	/* update rigid body location and rotation for kinematic bodies */
 	if (rbo->flag & RBO_FLAG_KINEMATIC || (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
+		mul_v3_v3(centr, scale);
+		mul_qt_v3(rot, centr);
+		add_v3_v3(loc, centr);
 		RB_body_activate(rbo->physics_object);
 		RB_body_set_loc_rot(rbo->physics_object, loc, rot);
 	}

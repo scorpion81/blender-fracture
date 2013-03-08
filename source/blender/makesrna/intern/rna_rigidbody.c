@@ -257,7 +257,7 @@ static void calcMass(float vol_ob, float mass_ob, MeshIsland* mi)
 	if (vol_ob == 0)
 		return;
 
-	mass_mi = vol_mi / vol_ob * mass_ob;
+	mass_mi = (vol_mi / vol_ob) * mass_ob;
 	mi->rigidbody->mass = mass_mi;
 
 #ifdef WITH_BULLET
