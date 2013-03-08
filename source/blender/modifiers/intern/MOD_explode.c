@@ -1494,7 +1494,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 
 	DerivedMesh *dm = NULL, *boolresult = NULL;
 	MEdge* ed = NULL;
-	MFace* fa = NULL;
+	//MFace* fa = NULL;
 
 	int totvert, totedge, totpoly;
 	int v, e, f;
@@ -1821,7 +1821,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 					localverts = MEM_mallocN(sizeof(BMVert*) * totvert, "localverts");
 					localedges = MEM_mallocN(sizeof(BMEdge*) * totedge, "localedges");
 					ed = boolresult->getEdgeArray(boolresult);
-					fa = boolresult->getTessFaceArray(boolresult);
+					//fa = boolresult->getTessFaceArray(boolresult);
 					
 					
 					CustomData_bmesh_merge(&boolresult->vertData, &bm->vdata, CD_MASK_DERIVEDMESH,
