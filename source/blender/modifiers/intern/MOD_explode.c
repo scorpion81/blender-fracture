@@ -1484,7 +1484,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 	int vert_index = 0;
 	int read = 0;
 	BMVert **faceverts = NULL, **tempvert = NULL, *vert = NULL, **localverts = NULL;
-	BMEdge **faceedges = NULL, *edge = NULL;
+	BMEdge **faceedges = NULL, *edge = NULL, **localedges = NULL;
 	int *facevert_indexes = NULL;
 	int face_index = 0;
 	int edge_index = 0;
@@ -1496,7 +1496,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 	MEdge* ed = NULL;
 	MFace* fa = NULL;
 
-	int totvert, totedge, totface;
+	int totvert, totedge, totpoly;
 	int v, e, f;
 	int tempvert_index;
 	const char *file;
@@ -1645,7 +1645,6 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 	emd->cells->data = MEM_mallocN(sizeof(VoronoiCell), "emd->cells->data");
 	emd->cells->count = 0;
 
-
 	while(feof(fp) == 0)
 	{
 		//printf("Reading line...\n");
@@ -1730,14 +1729,8 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 					BM_face_normal_flip(bmtemp, face);
 				}
 
-				// MEM_freeN(faceedges);
-				// MEM_freeN(faceverts);
-				// MEM_freeN(facevert_indexes);
 				edge_index = 0;
 				face_index = 0;
-				//faceverts = MEM_mallocN(sizeof(BMVert*), "faceverts");
-				//faceedges = MEM_mallocN(sizeof(BMEdge*), "faceedges");
-				//facevert_indexes = MEM_mallocN(sizeof(int), "facevert_indexes");
 			}
 			else if ((c == 'f') || (feof(fp) != 0))
 			{
@@ -1747,23 +1740,21 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 					//is passed around and whose vertices are manipulated directly.
 					int mat_index = 0;
 					MPoly* mp;
+					MLoop* ml;
 					
 					dm = CDDM_from_bmesh(bmtemp, TRUE);
+					//printf(" %d Faces missing \n", (bmtemp->totface - dm->numPolyData));
 					BM_mesh_free(bmtemp);
 					bmtemp = NULL;
-					
-					DM_ensure_tessface(derivedData);
-					CDDM_calc_edges_tessface(derivedData);
-					CDDM_tessfaces_to_faces(derivedData);
-					CDDM_calc_normals(derivedData);
-					
-					DM_ensure_tessface(dm);
-					CDDM_calc_edges_tessface(dm);
-					CDDM_tessfaces_to_faces(dm);
-					CDDM_calc_normals(dm);
 
 					if (emd->use_boolean)
 					{
+						DM_ensure_tessface(derivedData);
+						DM_ensure_tessface(dm);
+						CDDM_calc_edges_tessface(dm);
+						CDDM_tessfaces_to_faces(dm);
+						CDDM_calc_normals(dm);
+
 						//put temp bmesh to temp object ? Necessary ? Seems so.
 						//TODO: maybe get along without temp object ?
 						if (!emd->tempOb)
@@ -1809,26 +1800,26 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 						{
 							DM_release(dm);
 							MEM_freeN(dm);
+							DM_ensure_tessface(boolresult);
+							CDDM_calc_edges_tessface(boolresult);
+							CDDM_tessfaces_to_faces(boolresult);
+							CDDM_calc_normals(boolresult);
 						}
 					}
 					else
 					{
 						boolresult = dm;
 					}
-
-					//DM_ensure_tessface(boolresult);
-					CDDM_calc_edges_tessface(boolresult);
-					CDDM_tessfaces_to_faces(boolresult);
-					CDDM_calc_normals(boolresult);
-					DM_ensure_tessface(boolresult);
 					
 					emd->cells->data[emd->cells->count].cell_mesh = boolresult;
 					
 					totvert = boolresult->getNumVerts(boolresult);
 					totedge = boolresult->getNumEdges(boolresult);
-					totface = boolresult->getNumTessFaces(boolresult);
+				//	totface = boolresult->getNumTessFaces(boolresult);
+					totpoly = boolresult->getNumPolys(boolresult);
 
 					localverts = MEM_mallocN(sizeof(BMVert*) * totvert, "localverts");
+					localedges = MEM_mallocN(sizeof(BMEdge*) * totedge, "localedges");
 					ed = boolresult->getEdgeArray(boolresult);
 					fa = boolresult->getTessFaceArray(boolresult);
 					
@@ -1879,37 +1870,45 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 						BMEdge* edge;
 						edge = BM_edge_create(bm, localverts[ed[e].v1], localverts[ed[e].v2], NULL, 0);
 						CustomData_to_bmesh_block(&boolresult->edgeData, &bm->edata, e, &edge->head.data , 0);
+						localedges[e] = edge;
 					}
 
 					mp = boolresult->getPolyArray(boolresult);
-					for (f = 0; f < totface; f++)
+					ml = boolresult->getLoopArray(boolresult);
+					for (p = 0; p < totpoly; p++)
 					{
+						MLoop* lo;
+						BMVert** ve = NULL;
+						BMEdge** ed = NULL;
 						BMLoop* loop;
 						BMIter liter;
-						int k = 0;
-						
-						if ((fa[f].v4 > 0) && (fa[f].v4 < totvert))
-						{   //create quad
-							face = BM_face_create_quad_tri(bm, localverts[fa[f].v1], localverts[fa[f].v2], localverts[fa[f].v3], localverts[fa[f].v4], NULL, 0);
-							face->mat_nr = fa[f].mat_nr;
+						int k = 0, l = (mp+p)->loopstart, t = (mp+p)->totloop;
+						ve = MEM_mallocN(sizeof(BMVert*)*t, "poly->verts");
+						ed = MEM_mallocN(sizeof(BMEdge*)*t, "poly->edges");
 
+						for (k = 0; k < t; k++) {
+							lo = ml+l+k;
+							ve[k] = localverts[lo->v];
+							ed[k] = localedges[lo->e];
 						}
-						else
-						{   //triangle only
-							face = BM_face_create_quad_tri(bm, localverts[fa[f].v1], localverts[fa[f].v2], localverts[fa[f].v3], NULL, NULL, 0);
-							face->mat_nr = fa[f].mat_nr;
-						}
+
+						face = BM_face_create(bm, ve, ed, t, 0);
+						face->mat_nr = (mp+p)->mat_nr;
 						
-						CustomData_to_bmesh_block(&boolresult->polyData, &bm->pdata, f, &face->head.data , 0);
+						CustomData_to_bmesh_block(&boolresult->polyData, &bm->pdata, p, &face->head.data , 0);
 						
 						loop = BM_iter_new(&liter, bm, BM_LOOPS_OF_FACE, face);
 						
-						for (k = (mp+f)->loopstart; loop; loop = BM_iter_step(&liter), k++) {
+						for (k = (mp+p)->loopstart; loop; loop = BM_iter_step(&liter), k++) {
 							CustomData_to_bmesh_block(&boolresult->loopData, &bm->ldata, k, &loop->head.data, 0);
 						}
+
+						MEM_freeN(ve);
+						MEM_freeN(ed);
 					}
 
 					MEM_freeN(localverts);
+					MEM_freeN(localedges);
 				}
 
 				edge_index = 0;
