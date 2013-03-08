@@ -2226,6 +2226,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			}
 			else
 			{
+				if (emd->fracMesh)
+					BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "recalc_face_normals faces=%hf use_flip=%b", BM_FACES_OF_MESH, FALSE);
 				//BM_mesh_copy(emd->fracMesh); loses some faces too, hrm.
 				if (!emd->use_rigidbody)
 				{
@@ -2240,11 +2242,6 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					result = CDDM_from_bmesh(emd->fracMesh, TRUE);
 				else
 					result = derivedData;
-				
-				/*DM_ensure_tessface(result);
-				CDDM_calc_edges_tessface(result);
-				CDDM_tessfaces_to_faces(result);
-				CDDM_calc_normals(result);*/
 				
 				if (emd->use_boolean)
 				{
