@@ -76,10 +76,10 @@
 
 void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], float rot[4] )
 {
-	float startco[3], centr[3], size[3], isize[3];
+	float startco[3], centr[3], size[3];
 	int j;
 
-	mat4_to_size(isize, ob->imat);
+	invert_m4_m4(ob->imat, ob->obmat);
 	mat4_to_size(size, ob->obmat);
 	//sub_qt_qtqt(rot, rot, obrot);
 	//loc_quat_size_to_mat4(imat, loc, rot, size);
