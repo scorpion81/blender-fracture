@@ -438,7 +438,7 @@ static void map_islands_to_clusters(RigidBodyModifierData* rmd, ParticleSystemMo
 
 		copy_v3_v3(center, mi->centroid);
 		//centroids were stored in object space, go to global space (particles are in global space)
-		//mul_m4_v3(ob->obmat, center);
+		mul_m4_v3(ob->obmat, center);
 		c = BLI_kdtree_find_nearest(rmd->cltree, center, NULL, NULL);
 
 		/*if (emd->emit_continuously) {
