@@ -37,6 +37,7 @@
 #include "BLI_utildefines.h"
 #include "BLI_math.h"
 #include "BLI_listbase.h"
+#include "BLI_kdtree.h"
 
 #include "BKE_cdderivedmesh.h"
 #include "BKE_modifier.h"
@@ -44,6 +45,7 @@
 #include "BKE_pointcache.h"
 #include "BKE_scene.h"
 #include "BKE_object.h"
+#include "BKE_particle.h"
 
 #include "bmesh.h"
 
@@ -59,6 +61,8 @@ static void initData(ModifierData *md)
 	RigidBodyModifierData *rmd = (RigidBodyModifierData *) md;
 	rmd->visible_mesh = NULL;
 	rmd->refresh = TRUE;
+	rmd->cltree = NULL;
+	rmd->ntree = NULL;
 	zero_m4(rmd->origmat);
 }
 
@@ -98,6 +102,18 @@ static void freeData(ModifierData *md)
 	{
 		BM_mesh_free(rmd->visible_mesh);
 		rmd->visible_mesh = NULL;
+	}
+
+	if (rmd->cltree)
+	{
+		MEM_freeN(rmd->cltree);
+		rmd->cltree = NULL;
+	}
+
+	if (rmd->ntree)
+	{
+		MEM_freeN(rmd->ntree);
+		rmd->ntree = NULL;
 	}
 }
 
@@ -194,13 +210,9 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	mi->physics_mesh = bm_new;
 	mi->vertex_count = vertcount;
 	copy_v3_v3(mi->centroid, centroid);
-	//TODO Unsure , maybe object loc is correct ?
-//	mi->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi, RBO_TYPE_ACTIVE);
-	//copy_v3_v3(mi->rigidbody->pos, centroid);
-//	mat4_to_loc_quat(dummyloc, rot, ob->obmat);
-//	copy_v4_v4(mi->rigidbody->orn, rot);
-//	copy_v3_v3(mi->rigidbody->pos, dummyloc);
-	//BKE_rigidbody_validate_sim_shard(rmd->modifier.scene->rigidbody_world, mi, ob, true);
+	mat4_to_loc_quat(dummyloc, rot, ob->obmat);
+	copy_v3_v3(mi->rot, rot);
+	mi->cluster_index = -1; //belongs to no cluster
 
 	/* deselect loose data - this used to get deleted,
 	 * we could de-select edges and verts only, but this turns out to be less complicated
@@ -331,6 +343,182 @@ void mesh_separate_loose(RigidBodyModifierData* rmd, Object* ob)
 	BLI_ghash_free(hash, NULL, NULL);
 }
 
+static ParticleSystemModifierData *findPrecedingParticlesystem(Object *ob)
+{
+	ModifierData *md;
+	ParticleSystemModifierData *psmd = NULL;
+
+	for (md = ob->modifiers.first; md; md = md->next) {
+		if (md->type == eModifierType_ParticleSystem) {
+			psmd = (ParticleSystemModifierData*) md;
+			return psmd;
+		}
+	}
+
+	return NULL;
+}
+
+static void create_neighborhood_tree(RigidBodyModifierData *rmd )
+{
+	MeshIsland* mi;
+	int i = 0;
+
+	if (rmd->ntree)
+	{
+		BLI_kdtree_free(rmd->ntree);
+		rmd->ntree = NULL;
+	}
+
+	rmd->ntree = BLI_kdtree_new(BLI_countlist(&rmd->meshIslands));
+	for (mi = rmd->meshIslands.first; mi; mi = mi->next, i++) {
+		BLI_kdtree_insert(rmd->ntree, i, mi->centroid, NULL);
+	}
+
+	BLI_kdtree_balance(rmd->ntree);
+}
+
+static void create_cluster_tree(RigidBodyModifierData *rmd, ParticleSystemModifierData *psmd, Scene* scene, Object* ob)
+{
+	ParticleSimulationData sim = {NULL};
+	ParticleSystem *psys = psmd->psys;
+	ParticleData *pa;
+	ParticleKey birth;
+	int p = 0, totpart = 0;
+
+	totpart = psys->totpart;
+	sim.scene = scene;
+	sim.ob = ob;
+	sim.psys = psmd->psys;
+	sim.psmd = psmd;
+
+	/* make tree of emitter locations */
+	if (rmd->cltree)
+	{
+		BLI_kdtree_free(rmd->cltree);
+		rmd->cltree = NULL;
+	}
+
+	rmd->cltree = BLI_kdtree_new(totpart);
+	for (p = 0, pa = psys->particles; p < totpart; p++, pa++)
+	{
+		if (ELEM3(pa->alive, PARS_ALIVE, PARS_DYING, PARS_DEAD))
+		{
+			psys_get_birth_coordinates(&sim, pa, &birth, 0, 0);
+			BLI_kdtree_insert(rmd->cltree, p, birth.co, NULL);
+		}
+	}
+
+	BLI_kdtree_balance(rmd->cltree);
+}
+
+static void map_islands_to_clusters(RigidBodyModifierData* rmd, ParticleSystemModifierData *psmd, Scene* scene, Object* ob)
+{
+	ParticleSystem *psys = psmd->psys;
+	MeshIsland *mi;
+	float center[3];
+	int c = 0;
+	//float cfra;
+	//cfra = BKE_scene_frame_get(scene);
+
+	for(mi = rmd->meshIslands.first; mi; mi = mi->next) {
+
+		copy_v3_v3(center, mi->centroid);
+		//centroids were stored in object space, go to global space (particles are in global space)
+		mul_m4_v3(ob->obmat, center);
+		c = BLI_kdtree_find_nearest(rmd->cltree, center, NULL, NULL);
+
+		/*if (emd->emit_continuously) {
+			if (ELEM3(psys->particles[p].alive, PARS_ALIVE, PARS_DYING, PARS_DEAD)) {
+				emd->cells->data[c].particle_index = p;
+			}
+			else {
+				emd->cells->data[c].particle_index = -1;
+			}
+		}
+		else {*/
+		if (mi->cluster_index == -1) {// && (cfra > (psys->part->sta + emd->map_delay))) {
+			//map once, with delay, the larger the delay, the more smaller chunks !
+			mi->cluster_index = c;
+		}
+	}
+}
+
+static void connect_clusters(RigidBodyModifierData *rmd) {
+
+	MeshIsland *mi, *mi2;
+	BMOperator op;
+	BMOpSlot *slot;
+	KDTreeNearest n;
+	int i, v, count = BLI_countlist(&rmd->meshIslands), shared = 0;
+
+
+	for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+		for (v = 0; v < mi->vertex_count; v++) {
+			BM_elem_flag_enable(mi->vertices[v], BM_ELEM_SELECT);
+		}
+
+		BLI_kdtree_find_n_nearest(rmd->ntree, count, mi->centroid, NULL, &n);
+
+		for (i = 0; i < count; i++) {
+			mi2 = BLI_findlink(&rmd->meshIslands, (&n+i)->index);
+			if (mi != mi2) {
+				//select "our" vertices
+				for (v = 0; v < mi2->vertex_count; v++) {
+					BM_elem_flag_enable(mi2->vertices[v], BM_ELEM_SELECT);
+				}
+
+				//do we share atleast 1 vertex in selection
+				BMO_op_initf(rmd->visible_mesh, &op, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "find_doubles verts=%hv dist=%f", BM_ELEM_SELECT, 0.0001f);
+				BMO_op_exec(rmd->visible_mesh, &op);
+				slot = BMO_slot_get(op.slots_out, "targetmap.out");
+				if (slot->data.ghash) {
+					shared = slot->data.ghash->nentries;
+				}
+				BMO_op_finish(rmd->visible_mesh, &op);
+
+				//deselect vertices
+				for (v = 0; v < mi2->vertex_count; v++) {
+					BM_elem_flag_disable(mi2->vertices[v], BM_ELEM_SELECT);
+				}
+
+				if (shared > 0) {
+					// shared vertices, so connect
+					RigidBodyShardCon *rbsc = BKE_rigidbody_create_shard_constraint(rmd->modifier.scene, mi, RBC_TYPE_FIXED);
+					if (rbsc != NULL) {
+						rbsc->mi1 = mi;
+						rbsc->mi2 = mi2;
+						mi->rigidbody_constraint = rbsc;
+						//mi2->rigidbody_constraint = rbsc;
+					}
+				}
+				else {
+					// as centroids should be sorted by distance, further ones wont share verts too if this one didnt
+					break;
+				}
+			}
+		}
+
+		for (v = 0; v < mi->vertex_count; v++) {
+			BM_elem_flag_disable(mi->vertices[v], BM_ELEM_SELECT);
+		}
+	}
+}
+
+static void create_constraints(RigidBodyModifierData *rmd, Object *ob) {
+	//pointsource determines cluster centers, default: own particles
+	ParticleSystemModifierData *psmd = NULL;
+	Scene *sc = rmd->modifier.scene;
+
+	psmd = findPrecedingParticlesystem(ob);
+
+	if (psmd) {
+		create_neighborhood_tree(rmd);
+		create_cluster_tree(rmd, psmd, sc, ob);
+		map_islands_to_clusters(rmd, psmd, sc, ob);
+		connect_clusters(rmd);
+	}
+}
+
 static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 								  DerivedMesh *dm,
 								  ModifierApplyFlag UNUSED(flag))
@@ -344,6 +532,9 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		copy_m4_m4(rmd->origmat, ob->obmat);
 		rmd->visible_mesh = DM_to_bmesh(dm);
 		mesh_separate_loose(rmd, ob);
+
+		//create inner constraints
+		create_constraints(rmd, ob);
 		rmd->refresh = FALSE;
 	}
 

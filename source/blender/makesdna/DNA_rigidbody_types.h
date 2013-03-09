@@ -71,7 +71,7 @@ typedef struct RigidBodyWorld {
 	
 	/* References to Physics Sim objects. Exist at runtime only ---------------------- */
 	void *physics_world;		/* Physics sim world (i.e. btDiscreteDynamicsWorld) */
-    int *cache_index_map;       /* Maps the linear RigidbodyOb index to the nested Object(Modifier)+Cell Index, at runtime*/
+	int *cache_index_map;		/* Maps the linear RigidbodyOb index to the nested Object(Modifier)+Cell Index, at runtime*/
 } RigidBodyWorld;
 
 /* Flags for RigidBodyWorld */
@@ -229,6 +229,60 @@ typedef struct RigidBodyCon {
 	/* References to Physics Sim object. Exist at runtime only */
 	void *physics_constraint;	/* Physics object representation (i.e. btTypedConstraint) */
 } RigidBodyCon;
+
+/* RigidBodyConstraint (rbc)
+ *
+ * Represents an constraint connecting two shard rigid bodies.
+ */
+typedef struct RigidBodyShardCon {
+
+	struct MeshIsland *mi1;			/* First meshisland influenced by the constraint */
+	struct MeshIsland *mi2;			/* Second meshisland influenced by the constraint */
+
+	/* General Settings for this RigidBodyCon */
+	short type;					/* (eRigidBodyCon_Type) role of RigidBody in sim  */
+	short num_solver_iterations;/* number of constraint solver iterations made per simulation step */
+
+	int flag;					/* (eRigidBodyCon_Flag) */
+
+	float breaking_threshold;	/* breaking impulse threshold */
+	float pad;
+
+	/* limits */
+	/* translation limits */
+	float limit_lin_x_lower;
+	float limit_lin_x_upper;
+	float limit_lin_y_lower;
+	float limit_lin_y_upper;
+	float limit_lin_z_lower;
+	float limit_lin_z_upper;
+	/* rotation limits */
+	float limit_ang_x_lower;
+	float limit_ang_x_upper;
+	float limit_ang_y_lower;
+	float limit_ang_y_upper;
+	float limit_ang_z_lower;
+	float limit_ang_z_upper;
+
+	/* spring settings */
+	/* resistance to deformation */
+	float spring_stiffness_x;
+	float spring_stiffness_y;
+	float spring_stiffness_z;
+	/* amount of velocity lost over time */
+	float spring_damping_x;
+	float spring_damping_y;
+	float spring_damping_z;
+
+	/* motor settings */
+	float motor_lin_target_velocity;	/* linear velocity the motor tries to hold */
+	float motor_ang_target_velocity;	/* angular velocity the motor tries to hold */
+	float motor_lin_max_impulse;		/* maximum force used to reach linear target velocity */
+	float motor_ang_max_impulse;		/* maximum force used to reach angular target velocity */
+
+	/* References to Physics Sim object. Exist at runtime only */
+	void *physics_constraint;	/* Physics object representation (i.e. btTypedConstraint) */
+} RigidBodyShardCon;
 
 
 /* Participation types for RigidBodyOb */

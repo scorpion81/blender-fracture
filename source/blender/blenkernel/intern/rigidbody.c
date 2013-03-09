@@ -981,6 +981,180 @@ void BKE_rigidbody_validate_sim_constraint(RigidBodyWorld *rbw, Object *ob, shor
 	}
 }
 
+/* Create physics sim representation of constraint given rigid body constraint settings
+ * < rebuild: even if an instance already exists, replace it
+ */
+void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, MeshIsland* mi, short rebuild)
+{
+	RigidBodyShardCon *rbc = (mi) ? mi->rigidbody_constraint : NULL;
+	float loc[3];
+	float rot[4];
+	float lin_lower;
+	float lin_upper;
+	float ang_lower;
+	float ang_upper;
+
+	/* sanity checks:
+	 *	- object should have a rigid body constraint
+	 *  - rigid body constraint should have at least one constrained object
+	 */
+	if (rbc == NULL) {
+		return;
+	}
+
+	if (ELEM4(NULL, rbc->mi1, rbc->mi1->rigidbody, rbc->mi2, rbc->mi2->rigidbody)) {
+		if (rbc->physics_constraint) {
+			RB_dworld_remove_constraint(rbw->physics_world, rbc->physics_constraint);
+			RB_constraint_delete(rbc->physics_constraint);
+			rbc->physics_constraint = NULL;
+		}
+		return;
+	}
+
+	if (rbc->physics_constraint) {
+		if (rebuild == false)
+			RB_dworld_remove_constraint(rbw->physics_world, rbc->physics_constraint);
+	}
+	if (rbc->physics_constraint == NULL || rebuild) {
+		rbRigidBody *rb1 = rbc->mi1->rigidbody->physics_object;
+		rbRigidBody *rb2 = rbc->mi2->rigidbody->physics_object;
+
+		/* remove constraint if it already exists before creating a new one */
+		if (rbc->physics_constraint) {
+			RB_constraint_delete(rbc->physics_constraint);
+			rbc->physics_constraint = NULL;
+		}
+
+		//mat4_to_loc_quat(loc, rot, ob->obmat);
+		//centroid calculation here...
+		copy_v3_v3(loc, mi->centroid);
+		copy_v4_v4(rot, mi->rot);
+
+		if (rb1 && rb2) {
+			switch (rbc->type) {
+				case RBC_TYPE_POINT:
+					rbc->physics_constraint = RB_constraint_new_point(loc, rb1, rb2);
+					break;
+				case RBC_TYPE_FIXED:
+					rbc->physics_constraint = RB_constraint_new_fixed(loc, rot, rb1, rb2);
+					break;
+				case RBC_TYPE_HINGE:
+					rbc->physics_constraint = RB_constraint_new_hinge(loc, rot, rb1, rb2);
+					if (rbc->flag & RBC_FLAG_USE_LIMIT_ANG_Z) {
+						RB_constraint_set_limits_hinge(rbc->physics_constraint, rbc->limit_ang_z_lower, rbc->limit_ang_z_upper);
+					}
+					else
+						RB_constraint_set_limits_hinge(rbc->physics_constraint, 0.0f, -1.0f);
+					break;
+				case RBC_TYPE_SLIDER:
+					rbc->physics_constraint = RB_constraint_new_slider(loc, rot, rb1, rb2);
+					if (rbc->flag & RBC_FLAG_USE_LIMIT_LIN_X)
+						RB_constraint_set_limits_slider(rbc->physics_constraint, rbc->limit_lin_x_lower, rbc->limit_lin_x_upper);
+					else
+						RB_constraint_set_limits_slider(rbc->physics_constraint, 0.0f, -1.0f);
+					break;
+				case RBC_TYPE_PISTON:
+					rbc->physics_constraint = RB_constraint_new_piston(loc, rot, rb1, rb2);
+					if (rbc->flag & RBC_FLAG_USE_LIMIT_LIN_X) {
+						lin_lower = rbc->limit_lin_x_lower;
+						lin_upper = rbc->limit_lin_x_upper;
+					}
+					else {
+						lin_lower = 0.0f;
+						lin_upper = -1.0f;
+					}
+					if (rbc->flag & RBC_FLAG_USE_LIMIT_ANG_X) {
+						ang_lower = rbc->limit_ang_x_lower;
+						ang_upper = rbc->limit_ang_x_upper;
+					}
+					else {
+						ang_lower = 0.0f;
+						ang_upper = -1.0f;
+					}
+					RB_constraint_set_limits_piston(rbc->physics_constraint, lin_lower, lin_upper, ang_lower, ang_upper);
+					break;
+				case RBC_TYPE_6DOF_SPRING:
+					rbc->physics_constraint = RB_constraint_new_6dof_spring(loc, rot, rb1, rb2);
+
+					RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, rbc->flag & RBC_FLAG_USE_SPRING_X);
+					RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, rbc->spring_stiffness_x);
+					RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, rbc->spring_damping_x);
+
+					RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Y, rbc->flag & RBC_FLAG_USE_SPRING_Y);
+					RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Y, rbc->spring_stiffness_y);
+					RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Y, rbc->spring_damping_y);
+
+					RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->flag & RBC_FLAG_USE_SPRING_Z);
+					RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->spring_stiffness_z);
+					RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->spring_damping_z);
+
+					RB_constraint_set_equilibrium_6dof_spring(rbc->physics_constraint);
+				/* fall through */
+				case RBC_TYPE_6DOF:
+					if (rbc->type == RBC_TYPE_6DOF) /* a litte awkward but avoids duplicate code for limits */
+						rbc->physics_constraint = RB_constraint_new_6dof(loc, rot, rb1, rb2);
+
+					if (rbc->flag & RBC_FLAG_USE_LIMIT_LIN_X)
+						RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_X, rbc->limit_lin_x_lower, rbc->limit_lin_x_upper);
+					else
+						RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_X, 0.0f, -1.0f);
+
+					if (rbc->flag & RBC_FLAG_USE_LIMIT_LIN_Y)
+						RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Y, rbc->limit_lin_y_lower, rbc->limit_lin_y_upper);
+					else
+						RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Y, 0.0f, -1.0f);
+
+					if (rbc->flag & RBC_FLAG_USE_LIMIT_LIN_Z)
+						RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->limit_lin_z_lower, rbc->limit_lin_z_upper);
+					else
+						RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Z, 0.0f, -1.0f);
+
+					if (rbc->flag & RBC_FLAG_USE_LIMIT_ANG_X)
+						RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_X, rbc->limit_ang_x_lower, rbc->limit_ang_x_upper);
+					else
+						RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_X, 0.0f, -1.0f);
+
+					if (rbc->flag & RBC_FLAG_USE_LIMIT_ANG_Y)
+						RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Y, rbc->limit_ang_y_lower, rbc->limit_ang_y_upper);
+					else
+						RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Y, 0.0f, -1.0f);
+
+					if (rbc->flag & RBC_FLAG_USE_LIMIT_ANG_Z)
+						RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Z, rbc->limit_ang_z_lower, rbc->limit_ang_z_upper);
+					else
+						RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Z, 0.0f, -1.0f);
+					break;
+				case RBC_TYPE_MOTOR:
+					rbc->physics_constraint = RB_constraint_new_motor(loc, rot, rb1, rb2);
+
+					RB_constraint_set_enable_motor(rbc->physics_constraint, rbc->flag & RBC_FLAG_USE_MOTOR_LIN, rbc->flag & RBC_FLAG_USE_MOTOR_ANG);
+					RB_constraint_set_max_impulse_motor(rbc->physics_constraint, rbc->motor_lin_max_impulse, rbc->motor_ang_max_impulse);
+					RB_constraint_set_target_velocity_motor(rbc->physics_constraint, rbc->motor_lin_target_velocity, rbc->motor_ang_target_velocity);
+					break;
+			}
+		}
+		else { /* can't create constraint without both rigid bodies */
+			return;
+		}
+
+		RB_constraint_set_enabled(rbc->physics_constraint, rbc->flag & RBC_FLAG_ENABLED);
+
+		if (rbc->flag & RBC_FLAG_USE_BREAKING)
+			RB_constraint_set_breaking_threshold(rbc->physics_constraint, rbc->breaking_threshold);
+		else
+			RB_constraint_set_breaking_threshold(rbc->physics_constraint, FLT_MAX);
+
+		if (rbc->flag & RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS)
+			RB_constraint_set_solver_iterations(rbc->physics_constraint, rbc->num_solver_iterations);
+		else
+			RB_constraint_set_solver_iterations(rbc->physics_constraint, -1);
+	}
+
+	if (rbw && rbw->physics_world && rbc->physics_constraint) {
+		RB_dworld_add_constraint(rbw->physics_world, rbc->physics_constraint, rbc->flag & RBC_FLAG_DISABLE_COLLISIONS);
+	}
+}
+
 /* --------------------- */
 
 /* Create physics sim world given RigidBody world settings */
@@ -1174,6 +1348,67 @@ RigidBodyCon *BKE_rigidbody_create_constraint(Scene *scene, Object *ob, short ty
 
 	rbc->ob1 = NULL;
 	rbc->ob2 = NULL;
+
+	rbc->flag |= RBC_FLAG_ENABLED;
+	rbc->flag |= RBC_FLAG_DISABLE_COLLISIONS;
+
+	rbc->breaking_threshold = 10.0f; /* no good default here, just use 10 for now */
+	rbc->num_solver_iterations = 10; /* 10 is Bullet default */
+
+	rbc->limit_lin_x_lower = -1.0f;
+	rbc->limit_lin_x_upper = 1.0f;
+	rbc->limit_lin_y_lower = -1.0f;
+	rbc->limit_lin_y_upper = 1.0f;
+	rbc->limit_lin_z_lower = -1.0f;
+	rbc->limit_lin_z_upper = 1.0f;
+	rbc->limit_ang_x_lower = -M_PI_4;
+	rbc->limit_ang_x_upper = M_PI_4;
+	rbc->limit_ang_y_lower = -M_PI_4;
+	rbc->limit_ang_y_upper = M_PI_4;
+	rbc->limit_ang_z_lower = -M_PI_4;
+	rbc->limit_ang_z_upper = M_PI_4;
+
+	rbc->spring_damping_x = 0.5f;
+	rbc->spring_damping_y = 0.5f;
+	rbc->spring_damping_z = 0.5f;
+	rbc->spring_stiffness_x = 10.0f;
+	rbc->spring_stiffness_y = 10.0f;
+	rbc->spring_stiffness_z = 10.0f;
+
+	rbc->motor_lin_max_impulse = 1.0f;
+	rbc->motor_lin_target_velocity = 1.0f;
+	rbc->motor_ang_max_impulse = 1.0f;
+	rbc->motor_ang_target_velocity = 1.0f;
+
+	/* flag cache as outdated */
+	BKE_rigidbody_cache_reset(rbw);
+
+	/* return this object */
+	return rbc;
+}
+
+/* Add rigid body constraint to the specified object */
+RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(Scene *scene, MeshIsland *mi, short type)
+{
+	RigidBodyShardCon *rbc;
+	RigidBodyWorld *rbw = scene->rigidbody_world;
+
+	/* sanity checks
+	 *	- rigidbody world must exist
+	 *	- object must exist
+	 *	- cannot add constraint if it already exists
+	 */
+	if (mi == NULL || (mi->rigidbody_constraint != NULL))
+		return NULL;
+
+	/* create new settings data, and link it up */
+	rbc = MEM_callocN(sizeof(RigidBodyCon), "RigidBodyCon");
+
+	/* set default settings */
+	rbc->type = type;
+
+	rbc->mi1 = NULL;
+	rbc->mi2 = NULL;
 
 	rbc->flag |= RBC_FLAG_ENABLED;
 	rbc->flag |= RBC_FLAG_DISABLE_COLLISIONS;
@@ -1483,7 +1718,7 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int rebuild)
 {
 	GroupObject *go;
-	MeshIsland* mi = NULL;
+	MeshIsland* mi = NULL, *rbsc = NULL;
 	float centroid[3] = {0, 0, 0};
 
 	/* update world */
@@ -1535,6 +1770,20 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 
 					/* update simulation object... */
 					rigidbody_update_sim_ob(scene, rbw, ob, mi->rigidbody, mi->centroid);
+
+					/*update shard constraints if any*/
+					if (mi->rigidbody_constraint != NULL) {
+
+						if (rebuild) {
+							/* World has been rebuilt so rebuild constraint */
+							BKE_rigidbody_validate_sim_shard_constraint(rbw, mi, true);
+						}
+						else if (mi->rigidbody_constraint->flag & RBC_FLAG_NEEDS_VALIDATE) {
+							BKE_rigidbody_validate_sim_shard_constraint(rbw, mi, false);
+						}
+
+						mi->rigidbody_constraint->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
+					}
 				}
 			}
 			else
@@ -1580,6 +1829,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 			}
 		}
 	}
+
 	/* update constraints */
 	if (rbw->constraints == NULL) /* no constraints, move on */
 		return;
