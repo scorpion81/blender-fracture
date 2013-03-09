@@ -984,9 +984,9 @@ void BKE_rigidbody_validate_sim_constraint(RigidBodyWorld *rbw, Object *ob, shor
 /* Create physics sim representation of constraint given rigid body constraint settings
  * < rebuild: even if an instance already exists, replace it
  */
-void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, MeshIsland* mi, short rebuild)
+void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyShardCon *rbc, Object *ob, short rebuild)
 {
-	RigidBodyShardCon *rbc = (mi) ? mi->rigidbody_constraint : NULL;
+	//RigidBodyShardCon *rbc = (mi) ? mi->rigidbody_constraint : NULL;
 	float loc[3];
 	float rot[4];
 	float lin_lower;
@@ -1026,9 +1026,12 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, MeshIsland
 		}
 
 		//mat4_to_loc_quat(loc, rot, ob->obmat);
-		//centroid calculation here...
-		copy_v3_v3(loc, mi->centroid);
-		copy_v4_v4(rot, mi->rot);
+		/*copy_v3_v3(loc, rbc->mi1->rigidbody->pos);
+		add_v3_v3(loc, rbc->mi2->rigidbody->pos);
+		mul_v3_fl(loc, 0.5f);*/
+
+		copy_v3_v3(loc, rbc->mi1->rigidbody->pos);
+		copy_v4_v4(rot, rbc->mi1->rigidbody->orn);
 
 		if (rb1 && rb2) {
 			switch (rbc->type) {
@@ -1388,7 +1391,7 @@ RigidBodyCon *BKE_rigidbody_create_constraint(Scene *scene, Object *ob, short ty
 }
 
 /* Add rigid body constraint to the specified object */
-RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(Scene *scene, MeshIsland *mi, short type)
+RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(Scene *scene, short type)
 {
 	RigidBodyShardCon *rbc;
 	RigidBodyWorld *rbw = scene->rigidbody_world;
@@ -1398,8 +1401,8 @@ RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(Scene *scene, MeshIslan
 	 *	- object must exist
 	 *	- cannot add constraint if it already exists
 	 */
-	if (mi == NULL || (mi->rigidbody_constraint != NULL))
-		return NULL;
+	/*if (mi == NULL || (mi->rigidbody_constraint != NULL))
+		return NULL;*/
 
 	/* create new settings data, and link it up */
 	rbc = MEM_callocN(sizeof(RigidBodyCon), "RigidBodyCon");
@@ -1412,8 +1415,9 @@ RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(Scene *scene, MeshIslan
 
 	rbc->flag |= RBC_FLAG_ENABLED;
 	rbc->flag |= RBC_FLAG_DISABLE_COLLISIONS;
+	rbc->flag |= RBC_FLAG_USE_BREAKING;
 
-	rbc->breaking_threshold = 10.0f; /* no good default here, just use 10 for now */
+	rbc->breaking_threshold = 1.0f; /* no good default here, just use 10 for now */
 	rbc->num_solver_iterations = 10; /* 10 is Bullet default */
 
 	rbc->limit_lin_x_lower = -1.0f;
@@ -1718,8 +1722,9 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int rebuild)
 {
 	GroupObject *go;
-	MeshIsland* mi = NULL, *rbsc = NULL;
+	MeshIsland* mi = NULL;
 	float centroid[3] = {0, 0, 0};
+	RigidBodyShardCon *rbsc;
 
 	/* update world */
 	if (rebuild)
@@ -1770,20 +1775,21 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 
 					/* update simulation object... */
 					rigidbody_update_sim_ob(scene, rbw, ob, mi->rigidbody, mi->centroid);
+				}
 
-					/*update shard constraints if any*/
-					if (mi->rigidbody_constraint != NULL) {
+				/*update shard constraints if any*/
+				for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
 
-						if (rebuild) {
-							/* World has been rebuilt so rebuild constraint */
-							BKE_rigidbody_validate_sim_shard_constraint(rbw, mi, true);
-						}
-						else if (mi->rigidbody_constraint->flag & RBC_FLAG_NEEDS_VALIDATE) {
-							BKE_rigidbody_validate_sim_shard_constraint(rbw, mi, false);
-						}
-
-						mi->rigidbody_constraint->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
+					if (rebuild) {
+						/* World has been rebuilt so rebuild constraint */
+						BKE_rigidbody_validate_sim_shard_constraint(rbw, rbsc, ob, true);
 					}
+
+					else if (rbsc->flag & RBC_FLAG_NEEDS_VALIDATE) {
+						BKE_rigidbody_validate_sim_shard_constraint(rbw, rbsc, ob, false);
+					}
+
+					rbsc->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
 				}
 			}
 			else
@@ -1932,13 +1938,14 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 	MeshIsland *mi;
 	ModifierData * md;
 	float centr[3], size[3];
+	int modFound = FALSE;
 
 	for (md = ob->modifiers.first; md; md = md->next)
 	{
 		if (md->type == eModifierType_RigidBody)
 		{
 			rmd = (RigidBodyModifierData*)md;
-
+			modFound = TRUE;
 			if ((ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
 				//update "original" matrix
 				copy_m4_m4(rmd->origmat, ob->obmat);
@@ -1983,9 +1990,11 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 			}
 			break;
 		}
+
+		modFound = FALSE;
 	}
 
-	if (!rmd || !rbo)
+	if (!modFound)
 	{
 		rbo = ob->rigidbody_object;
 

@@ -79,6 +79,7 @@ static void freeData(ModifierData *md)
 {
 	RigidBodyModifierData *rmd  = (RigidBodyModifierData *)md;
 	MeshIsland *mi;
+	RigidBodyShardCon *rbsc;
 
 	while (rmd->meshIslands.first) {
 		mi = rmd->meshIslands.first;
@@ -96,6 +97,12 @@ static void freeData(ModifierData *md)
 			MEM_freeN(mi->vertices);
 		mi->vertices = NULL;
 		MEM_freeN(mi);
+	}
+
+	while (rmd->meshConstraints.first) {
+		rbsc = rmd->meshConstraints.first;
+		BLI_remlink(&rmd->meshConstraints, rbsc);
+		MEM_freeN(rbsc);
 	}
 
 	if (rmd->visible_mesh)
@@ -461,6 +468,7 @@ static void connect_clusters(RigidBodyModifierData *rmd) {
 
 		for (i = 0; i < count; i++) {
 			mi2 = BLI_findlink(&rmd->meshIslands, (&n+i)->index);
+			if (mi2 == NULL) return;
 			if (mi != mi2) {
 				//select "our" vertices
 				for (v = 0; v < mi2->vertex_count; v++) {
@@ -483,12 +491,11 @@ static void connect_clusters(RigidBodyModifierData *rmd) {
 
 				if (shared > 0) {
 					// shared vertices, so connect
-					RigidBodyShardCon *rbsc = BKE_rigidbody_create_shard_constraint(rmd->modifier.scene, mi, RBC_TYPE_FIXED);
+					RigidBodyShardCon *rbsc = BKE_rigidbody_create_shard_constraint(rmd->modifier.scene, RBC_TYPE_FIXED);
 					if (rbsc != NULL) {
 						rbsc->mi1 = mi;
 						rbsc->mi2 = mi2;
-						mi->rigidbody_constraint = rbsc;
-						//mi2->rigidbody_constraint = rbsc;
+						BLI_addtail(&rmd->meshConstraints, rbsc);
 					}
 				}
 				else {

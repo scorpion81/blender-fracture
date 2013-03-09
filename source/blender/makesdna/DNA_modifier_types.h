@@ -1285,7 +1285,6 @@ typedef struct MeshIsland {
 	float *vertco;
 	struct BMesh *physics_mesh; //convert to mesh later ??
 	struct RigidBodyOb *rigidbody;
-	struct RigidBodyShardCon *rigidbody_constraint;
 	int vertex_count;
 	float centroid[3];
 	float rot[4]; //hrm, need this for constraints probably
@@ -1297,7 +1296,7 @@ typedef struct RigidBodyModifierData {
 	ModifierData modifier;
 	struct BMesh *visible_mesh;
 	struct KDTree *cltree, *ntree;
-	ListBase meshIslands;
+	ListBase meshIslands, meshConstraints;
 	int refresh;
 	float origmat[4][4];
 	char pad[4];

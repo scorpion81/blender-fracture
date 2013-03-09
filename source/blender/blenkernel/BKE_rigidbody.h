@@ -64,7 +64,7 @@ struct RigidBodyWorld *BKE_rigidbody_create_world(struct Scene *scene);
 struct RigidBodyOb *BKE_rigidbody_create_object(struct Scene *scene, struct Object *ob, short type);
 struct RigidBodyCon *BKE_rigidbody_create_constraint(struct Scene *scene, struct Object *ob, short type);
 struct RigidBodyOb *BKE_rigidbody_create_shard(struct Scene *scene, struct Object *ob, struct MeshIsland *mi, short type);
-struct RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(struct Scene *scene, struct MeshIsland *mi, short type);
+struct RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(struct Scene *scene, short type);
 
 /* copy */
 struct RigidBodyWorld *BKE_rigidbody_world_copy(struct RigidBodyWorld *rbw);
@@ -75,7 +75,7 @@ void BKE_rigidbody_validate_sim_world(struct Scene *scene, struct RigidBodyWorld
 void BKE_rigidbody_validate_sim_object(struct RigidBodyWorld *rbw, struct Object *ob, short rebuild);
 void BKE_rigidbody_validate_sim_shape(struct Object *ob, short rebuild);
 void BKE_rigidbody_validate_sim_constraint(struct RigidBodyWorld *rbw, struct Object *ob, short rebuild);
-void BKE_rigidbody_validate_sim_shard_constraint(struct RigidBodyWorld *rbw, struct MeshIsland* mi, short rebuild);
+void BKE_rigidbody_validate_sim_shard_constraint(struct RigidBodyWorld *rbw, struct RigidBodyShardCon *rbsc, struct Object* ob, short rebuild);
 
 void BKE_rigidbody_validate_sim_shard(struct RigidBodyWorld *rbw, struct MeshIsland *mi, struct Object *ob, short rebuild);
 void BKE_rigidbody_validate_sim_shard_shape(struct MeshIsland *mi, struct Object *ob, short rebuild);

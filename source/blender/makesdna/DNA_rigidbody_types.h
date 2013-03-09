@@ -236,6 +236,7 @@ typedef struct RigidBodyCon {
  */
 typedef struct RigidBodyShardCon {
 
+	struct RigidBodyShardCon *next, *prev;
 	struct MeshIsland *mi1;			/* First meshisland influenced by the constraint */
 	struct MeshIsland *mi2;			/* Second meshisland influenced by the constraint */
 
