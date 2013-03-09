@@ -64,6 +64,8 @@ static void initData(ModifierData *md)
 	rmd->cltree = NULL;
 	rmd->ntree = NULL;
 	zero_m4(rmd->origmat);
+	rmd->inner_breaking_threshold = 10.0f;
+	rmd->outer_breaking_threshold = 2.0f;
 }
 
 static void copyData(ModifierData *md, ModifierData *target)
@@ -104,6 +106,11 @@ static void freeData(ModifierData *md)
 		BLI_remlink(&rmd->meshConstraints, rbsc);
 		MEM_freeN(rbsc);
 	}
+
+	rmd->meshIslands.first = NULL;
+	rmd->meshIslands.last = NULL;
+	rmd->meshConstraints.first = NULL;
+	rmd->meshConstraints.last = NULL;
 
 	if (rmd->visible_mesh)
 	{
@@ -431,7 +438,7 @@ static void map_islands_to_clusters(RigidBodyModifierData* rmd, ParticleSystemMo
 
 		copy_v3_v3(center, mi->centroid);
 		//centroids were stored in object space, go to global space (particles are in global space)
-		mul_m4_v3(ob->obmat, center);
+		//mul_m4_v3(ob->obmat, center);
 		c = BLI_kdtree_find_nearest(rmd->cltree, center, NULL, NULL);
 
 		/*if (emd->emit_continuously) {
@@ -455,28 +462,28 @@ static void connect_clusters(RigidBodyModifierData *rmd) {
 	MeshIsland *mi, *mi2;
 	BMOperator op;
 	BMOpSlot *slot;
-	KDTreeNearest n;
-	int i, v, count = BLI_countlist(&rmd->meshIslands), shared = 0;
+	int m, i, v, count = BLI_countlist(&rmd->meshIslands), shared = 0;
+	KDTreeNearest *n = MEM_mallocN(sizeof(KDTreeNearest)*count, "kdtreenearest");
 
 
 	for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 		for (v = 0; v < mi->vertex_count; v++) {
-			BM_elem_flag_enable(mi->vertices[v], BM_ELEM_SELECT);
+			BM_elem_flag_enable(mi->vertices[v], BM_ELEM_TAG);
 		}
 
-		BLI_kdtree_find_n_nearest(rmd->ntree, count, mi->centroid, NULL, &n);
+		m = BLI_kdtree_find_n_nearest(rmd->ntree, count, mi->centroid, NULL, n);
 
-		for (i = 0; i < count; i++) {
-			mi2 = BLI_findlink(&rmd->meshIslands, (&n+i)->index);
-			if (mi2 == NULL) return;
-			if (mi != mi2) {
+		for (i = 0; i < m; i++) {
+			mi2 = BLI_findlink(&rmd->meshIslands, (n+i)->index);
+
+			if ((mi != mi2) && (mi2 != NULL)) {
 				//select "our" vertices
 				for (v = 0; v < mi2->vertex_count; v++) {
-					BM_elem_flag_enable(mi2->vertices[v], BM_ELEM_SELECT);
+					BM_elem_flag_enable(mi2->vertices[v], BM_ELEM_TAG);
 				}
 
 				//do we share atleast 1 vertex in selection
-				BMO_op_initf(rmd->visible_mesh, &op, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "find_doubles verts=%hv dist=%f", BM_ELEM_SELECT, 0.0001f);
+				BMO_op_initf(rmd->visible_mesh, &op, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "find_doubles verts=%hv dist=%f", BM_ELEM_TAG, 0.0001f);
 				BMO_op_exec(rmd->visible_mesh, &op);
 				slot = BMO_slot_get(op.slots_out, "targetmap.out");
 				if (slot->data.ghash) {
@@ -486,7 +493,7 @@ static void connect_clusters(RigidBodyModifierData *rmd) {
 
 				//deselect vertices
 				for (v = 0; v < mi2->vertex_count; v++) {
-					BM_elem_flag_disable(mi2->vertices[v], BM_ELEM_SELECT);
+					BM_elem_flag_disable(mi2->vertices[v], BM_ELEM_TAG);
 				}
 
 				if (shared > 0) {
@@ -495,6 +502,14 @@ static void connect_clusters(RigidBodyModifierData *rmd) {
 					if (rbsc != NULL) {
 						rbsc->mi1 = mi;
 						rbsc->mi2 = mi2;
+
+						if ((mi->cluster_index == mi2->cluster_index) && (mi->cluster_index != -1)) {
+							rbsc->breaking_threshold = rmd->inner_breaking_threshold;
+						}
+						else {
+							rbsc->breaking_threshold = rmd->outer_breaking_threshold;
+						}
+
 						BLI_addtail(&rmd->meshConstraints, rbsc);
 					}
 				}
@@ -502,13 +517,17 @@ static void connect_clusters(RigidBodyModifierData *rmd) {
 					// as centroids should be sorted by distance, further ones wont share verts too if this one didnt
 					break;
 				}
+
+				shared = 0;
 			}
 		}
 
 		for (v = 0; v < mi->vertex_count; v++) {
-			BM_elem_flag_disable(mi->vertices[v], BM_ELEM_SELECT);
+			BM_elem_flag_disable(mi->vertices[v], BM_ELEM_TAG);
 		}
 	}
+
+	MEM_freeN(n);
 }
 
 static void create_constraints(RigidBodyModifierData *rmd, Object *ob) {
@@ -519,11 +538,16 @@ static void create_constraints(RigidBodyModifierData *rmd, Object *ob) {
 	psmd = findPrecedingParticlesystem(ob);
 
 	if (psmd) {
-		create_neighborhood_tree(rmd);
 		create_cluster_tree(rmd, psmd, sc, ob);
 		map_islands_to_clusters(rmd, psmd, sc, ob);
-		connect_clusters(rmd);
+		BLI_kdtree_free(rmd->cltree);
+		rmd->cltree = NULL;
 	}
+
+	create_neighborhood_tree(rmd);
+	connect_clusters(rmd);
+	BLI_kdtree_free(rmd->ntree);
+	rmd->ntree = NULL;
 }
 
 static DerivedMesh *applyModifier(ModifierData *md, Object *ob,

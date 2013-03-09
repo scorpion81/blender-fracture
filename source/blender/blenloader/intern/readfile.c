@@ -4837,6 +4837,12 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			rmd->visible_mesh = NULL;
 			rmd->refresh = TRUE;
 			zero_m4(rmd->origmat);
+			rmd->meshConstraints.first = NULL;
+			rmd->meshConstraints.last = NULL;
+			rmd->inner_breaking_threshold = 10.0f;
+			rmd->outer_breaking_threshold = 2.0f;
+			rmd->cltree = NULL;
+			rmd->ntree = NULL;
 		}
 	}
 }

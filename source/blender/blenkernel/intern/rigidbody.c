@@ -1405,7 +1405,7 @@ RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(Scene *scene, short typ
 		return NULL;*/
 
 	/* create new settings data, and link it up */
-	rbc = MEM_callocN(sizeof(RigidBodyCon), "RigidBodyCon");
+	rbc = MEM_callocN(sizeof(RigidBodyShardCon), "RigidBodyCon");
 
 	/* set default settings */
 	rbc->type = type;

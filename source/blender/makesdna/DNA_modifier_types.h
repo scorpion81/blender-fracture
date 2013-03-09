@@ -1298,7 +1298,7 @@ typedef struct RigidBodyModifierData {
 	struct KDTree *cltree, *ntree;
 	ListBase meshIslands, meshConstraints;
 	int refresh;
-	float origmat[4][4];
+	float origmat[4][4], inner_breaking_threshold, outer_breaking_threshold;
 	char pad[4];
 } RigidBodyModifierData;
 

@@ -106,6 +106,7 @@ EnumPropertyItem modifier_type_items[] = {
 	{eModifierType_Smoke, "SMOKE", ICON_MOD_SMOKE, "Smoke", ""},
 	{eModifierType_Softbody, "SOFT_BODY", ICON_MOD_SOFT, "Soft Body", ""},
 	{eModifierType_Surface, "SURFACE", ICON_MOD_PHYSICS, "Surface", ""},
+	{eModifierType_RigidBody, "RIGID_BODY", ICON_MESH_ICOSPHERE, "Rigid Body", ""},
 	{0, NULL, 0, NULL, NULL}
 };
 
@@ -238,8 +239,6 @@ static StructRNA *rna_Modifier_refine(struct PointerRNA *ptr)
 			return &RNA_UVWarpModifier;
 		case eModifierType_MeshCache:
 			return &RNA_MeshCacheModifier;
-		case eModifierType_LaplacianDeform:
-			return &RNA_LaplacianDeformModifier;
 		case eModifierType_RigidBody:
 			return &RNA_RigidBodyModifier;
 		/* Default */
@@ -3760,6 +3759,31 @@ static void rna_def_modifier_meshcache(BlenderRNA *brna)
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
+static void rna_def_modifier_rigidbody(BlenderRNA *brna)
+{
+	StructRNA *srna;
+	PropertyRNA *prop;
+
+	srna= RNA_def_struct(brna, "RigidBodyModifier", "Modifier");
+	RNA_def_struct_ui_text(srna, "Rigid Body Modifier", "Add multiple rigid body objects (from mesh islands)");
+	RNA_def_struct_sdna(srna, "RigidBodyModifierData");
+	RNA_def_struct_ui_icon(srna, ICON_MESH_ICOSPHERE);
+
+	prop = RNA_def_property(srna, "inner_breaking_threshold", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "inner_breaking_threshold");
+	RNA_def_property_range(prop, 0.0f, FLT_MAX);
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_inner_threshold_set", NULL);
+	RNA_def_property_ui_text(prop, "Inner breaking threshold", "Threshold to break members of a cluster");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "outer_breaking_threshold", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "outer_breaking_threshold");
+	RNA_def_property_range(prop, 0.0f, FLT_MAX);
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_outer_threshold_set", NULL);
+	RNA_def_property_ui_text(prop, "Outer breaking threshold", "Threshold to break relationships between clusters");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+}
+
 void RNA_def_modifier(BlenderRNA *brna)
 {
 	StructRNA *srna;
@@ -3870,7 +3894,6 @@ void RNA_def_modifier(BlenderRNA *brna)
 	rna_def_modifier_laplaciansmooth(brna);
 	rna_def_modifier_triangulate(brna);
 	rna_def_modifier_meshcache(brna);
-	rna_def_modifier_laplaciandeform(brna);
 	rna_def_modifier_rigidbody(brna);
 }
 

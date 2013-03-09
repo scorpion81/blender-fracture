@@ -676,6 +676,8 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
 
     def RIGID_BODY(self, layout, ob, md):
         layout.operator("object.rigidbody_refresh", text="Refresh")
+        layout.prop(md, "inner_breaking_threshold")
+        layout.prop(md, "outer_breaking_threshold")
 
     def SCREW(self, layout, ob, md):
         split = layout.split()
