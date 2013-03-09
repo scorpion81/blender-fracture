@@ -66,6 +66,7 @@ static void initData(ModifierData *md)
 	zero_m4(rmd->origmat);
 	rmd->inner_breaking_threshold = 10.0f;
 	rmd->outer_breaking_threshold = 2.0f;
+	rmd->use_constraints = FALSE;
 }
 
 static void copyData(ModifierData *md, ModifierData *target)
@@ -565,7 +566,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		mesh_separate_loose(rmd, ob);
 
 		//create inner constraints
-		create_constraints(rmd, ob);
+		if (rmd->use_constraints)
+			create_constraints(rmd, ob);
 		rmd->refresh = FALSE;
 	}
 

@@ -4843,6 +4843,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			rmd->outer_breaking_threshold = 2.0f;
 			rmd->cltree = NULL;
 			rmd->ntree = NULL;
+			rmd->use_constraints = FALSE;
 		}
 	}
 }

@@ -35,6 +35,7 @@
 #include "DNA_object_types.h"
 #include "DNA_object_force.h"
 #include "DNA_scene_types.h"
+#include "DNA_rigidbody_types.h"
 
 #include "MEM_guardedalloc.h"
 
@@ -788,6 +789,43 @@ static void rna_UVWarpModifier_uvlayer_set(PointerRNA *ptr, const char *value)
 	UVWarpModifierData *umd = (UVWarpModifierData *)ptr->data;
 	rna_object_uvlayer_name_set(ptr, value, umd->uvlayer_name, sizeof(umd->uvlayer_name));
 }
+
+static void updateConstraints(RigidBodyModifierData *rmd) {
+	RigidBodyShardCon *rbsc;
+
+	for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
+		if ((rbsc->mi1->cluster_index == rbsc->mi2->cluster_index) && (rbsc->mi1->cluster_index != -1)) {
+			rbsc->breaking_threshold = rmd->inner_breaking_threshold;
+		}
+		else {
+			rbsc->breaking_threshold = rmd->outer_breaking_threshold;
+		}
+
+		rbsc->flag != RBC_FLAG_NEEDS_VALIDATE;
+	}
+}
+
+static void rna_RigidBodyModifier_inner_threshold_set(PointerRNA *ptr, float value)
+{
+	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	rmd->inner_breaking_threshold = value;
+	updateConstraints(rmd);
+}
+
+static void rna_RigidBodyModifier_outer_threshold_set(PointerRNA *ptr, float value)
+{
+	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	rmd->outer_breaking_threshold = value;
+	updateConstraints(rmd);
+}
+
+static void rna_RigidBodyModifier_use_constraints_set(PointerRNA* ptr, int value)
+{
+	RigidBodyModifierData *rmd = (RigidBodyModifierData *)ptr->data;
+	rmd->use_constraints = value;
+	rmd->refresh = TRUE;
+}
+
 
 #else
 
@@ -3781,6 +3819,11 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_outer_threshold_set", NULL);
 	RNA_def_property_ui_text(prop, "Outer breaking threshold", "Threshold to break relationships between clusters");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "use_constraints", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyModifier_use_constraints_set");
+	RNA_def_property_ui_text(prop, "Use Constraints", "Create constraints between all shards");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
