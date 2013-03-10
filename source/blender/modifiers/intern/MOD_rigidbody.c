@@ -414,11 +414,13 @@ static void create_cluster_tree(RigidBodyModifierData *rmd, ParticleSystemModifi
 	}
 
 	rmd->cltree = BLI_kdtree_new(totpart);
+	invert_m4_m4(ob->imat, ob->obmat);
 	for (p = 0, pa = psys->particles; p < totpart; p++, pa++)
 	{
 		if (ELEM3(pa->alive, PARS_ALIVE, PARS_DYING, PARS_DEAD))
 		{
 			psys_get_birth_coordinates(&sim, pa, &birth, 0, 0);
+			mul_m4_v3(ob->imat, birth.co);
 			BLI_kdtree_insert(rmd->cltree, p, birth.co, NULL);
 		}
 	}
@@ -439,7 +441,7 @@ static void map_islands_to_clusters(RigidBodyModifierData* rmd, ParticleSystemMo
 
 		copy_v3_v3(center, mi->centroid);
 		//centroids were stored in object space, go to global space (particles are in global space)
-		mul_m4_v3(ob->obmat, center);
+		//mul_m4_v3(ob->obmat, center);
 		c = BLI_kdtree_find_nearest(rmd->cltree, center, NULL, NULL);
 
 		/*if (emd->emit_continuously) {

@@ -1142,7 +1142,7 @@ static int dm_minmax(DerivedMesh* dm, float min[3], float max[3])
 	return (verts != 0);
 }
 
-static int points_from_verts(Object* ob, int totobj, float** points, int p_exist)
+static int points_from_verts(Object* ob, int totobj, float** points, int p_exist, float mat[4][4])
 {
 	int v, o, pt = p_exist;
 	float co[3];
@@ -1152,6 +1152,8 @@ static int points_from_verts(Object* ob, int totobj, float** points, int p_exist
 		if (ob[o].type == OB_MESH)
 		{
 			Mesh* me = (Mesh*)ob[o].data;
+			float imat[4][4];
+			invert_m4_m4(imat, mat);
 			for (v = 0; v < me->totvert; v++)
 			{
 				*points = MEM_reallocN(*points, ((pt+1)*3)*sizeof(float));
@@ -1160,7 +1162,8 @@ static int points_from_verts(Object* ob, int totobj, float** points, int p_exist
 				co[1] = me->mvert[v].co[1];
 				co[2] = me->mvert[v].co[2];
 				
-				mul_m4_v3(ob->obmat, co);
+				mul_m4_v3(ob[o].obmat, co);
+				mul_m4_v3(imat, co);
 				
 				(*points)[pt*3] = co[0];
 				(*points)[pt*3+1] = co[1];
@@ -1276,7 +1279,7 @@ static int getChildren(Scene* scene, Object* ob, Object** children)
 	return ctr;
 }
 
-static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float **points)
+static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float **points, float mat[4][4])
 {
 	int totpoint = 0, totchildren = 0;
 	//int fallback = FALSE;
@@ -1305,7 +1308,7 @@ static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float 
 	
 	if (emd->point_source & eChildVerts)
 	{
-		totpoint += points_from_verts(children, totchildren, points, totpoint);
+		totpoint += points_from_verts(children, totchildren, points, totpoint, mat);
 		/*if ((totpoint == 0) && (!(emd->point_source & eOwnVerts)) && (!fallback))
 		{	// if no childverts available, return original geometry
 			totpoint += points_from_verts(ob, 1, points, totpoint);
@@ -1326,7 +1329,7 @@ static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float 
 	
 	if (emd->point_source & eOwnVerts)
 	{
-		totpoint += points_from_verts(ob, 1, points, totpoint);
+		totpoint += points_from_verts(ob, 1, points, totpoint, mat);
 	}
 
 	
@@ -1468,7 +1471,7 @@ static void mergeUVs(ExplodeModifierData* emd, BMesh* bm)
 }
 
 // create the voronoi cell faces inside the existing mesh
-static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSystemModifierData* psmd, ExplodeModifierData* emd)
+static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSystemModifierData* psmd, ExplodeModifierData* emd, float mat[4][4])
 {
 	void* container = NULL;
 	void* particle_order = NULL;
@@ -1546,7 +1549,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 	if (!emd->refracture)
 	{
 		points = MEM_mallocN(sizeof(float), "points");
-		totpoint = get_points(emd, emd->modifier.scene, ob, &points);
+		totpoint = get_points(emd, emd->modifier.scene, ob, &points, mat);
 		
 		//no points, cant do anything
 		if (totpoint == 0) {
@@ -2183,13 +2186,13 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			{
 				invert_m4_m4(imat, ob->obmat);
 				copy_m4_m4(oldobmat, ob->obmat);
-				mult_m4_m4m4(ob->obmat, imat, ob->obmat); //neutralize obmat
+				mult_m4_m4m4(ob->obmat, imat, ob->obmat); //neutralize obmat due to rotation problem with container
 				
 				if ((emd->cells) && (emd->fracMesh)) {
 					BM_mesh_free(emd->fracMesh);
 					emd->fracMesh = NULL;
 				}
-				emd->fracMesh = fractureToCells(ob, derivedData, psmd, emd);
+				emd->fracMesh = fractureToCells(ob, derivedData, psmd, emd, oldobmat);
 				
 				copy_m4_m4(ob->obmat, oldobmat); // restore obmat
 
@@ -2210,7 +2213,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 						(emd->use_cache == FALSE))
 				{
 					if (emd->fracMesh) BM_mesh_free(emd->fracMesh);
-					emd->fracMesh = fractureToCells(ob, derivedData, psmd, emd);
+					emd->fracMesh = fractureToCells(ob, derivedData, psmd, emd, oldobmat);
 				}
 
 				emd->last_part = psmd->psys->totpart;
