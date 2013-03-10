@@ -1746,6 +1746,8 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 
 			}
 			else if ( c == ')') {
+				float area;
+
 				//end of face tuple, can create face now, but before create last edge to close the circle
 				if (faceverts[0] != faceverts[face_index-1]) {
 					faceedges = MEM_reallocN(faceedges, (edge_index + 1) * sizeof(BMEdge*));
@@ -1757,11 +1759,15 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 					face_index--;
 				}
 
-				if (face_index > 2) {
-					face = BM_face_create(bmtemp, faceverts, faceedges, face_index, 0);
-				}
-				else {
+				face = BM_face_create(bmtemp, faceverts, faceedges, face_index, 0);
+				area = BM_face_calc_area(face);
+				//printf("Face Area: %f\n", area);
+
+				if ((area < 0.000005f) || (face_index < 3)) {
+					//remove degenerate faces
 					int i;
+					BM_face_kill(bmtemp, face);
+
 					for (i = 0; i < edge_index; i++) {
 						BM_edge_kill(bmtemp, faceedges[i]);
 					}
@@ -1770,11 +1776,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 						BM_vert_kill(bmtemp, faceverts[i]);
 					}
 				}
-
-
-				//printf("Face Area: %f\n", BM_face_calc_area(face));
-
-				if (emd->flip_normal) {
+				else if (emd->flip_normal) {
 					BM_face_normal_flip(bmtemp, face);
 				}
 
@@ -2277,6 +2279,9 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			}
 			else
 			{
+				if (emd->cells == NULL)
+					return derivedData;
+
 				if (emd->fracMesh)
 					BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "recalc_face_normals faces=%hf use_flip=%b", BM_FACES_OF_MESH, FALSE);
 				//BM_mesh_copy(emd->fracMesh); loses some faces too, hrm.
