@@ -463,13 +463,13 @@ static void map_islands_to_clusters(RigidBodyModifierData* rmd, ParticleSystemMo
 static void connect_clusters(RigidBodyModifierData *rmd) {
 
 	MeshIsland *mi, *mi2;
-	BMOperator op;
 	BMOpSlot *slot;
 	int m, i, v, count = BLI_countlist(&rmd->meshIslands), shared = 0;
 	KDTreeNearest *n = MEM_mallocN(sizeof(KDTreeNearest)*count, "kdtreenearest");
 
 
 	for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+
 		for (v = 0; v < mi->vertex_count; v++) {
 			BM_elem_flag_enable(mi->vertices[v], BM_ELEM_TAG);
 		}
@@ -477,6 +477,7 @@ static void connect_clusters(RigidBodyModifierData *rmd) {
 		m = BLI_kdtree_find_n_nearest(rmd->ntree, count, mi->centroid, NULL, n);
 
 		for (i = 0; i < m; i++) {
+			BMOperator op;
 			mi2 = BLI_findlink(&rmd->meshIslands, (n+i)->index);
 
 			if ((mi != mi2) && (mi2 != NULL)) {
@@ -486,7 +487,7 @@ static void connect_clusters(RigidBodyModifierData *rmd) {
 				}
 
 				//do we share atleast 1 vertex in selection
-				BMO_op_initf(rmd->visible_mesh, &op, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "find_doubles verts=%hv dist=%f", BM_ELEM_TAG, 0.0001f);
+				BMO_op_initf(rmd->visible_mesh, &op, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "find_doubles verts=%hv dist=%f", BM_ELEM_TAG, 0.00001f);
 				BMO_op_exec(rmd->visible_mesh, &op);
 				slot = BMO_slot_get(op.slots_out, "targetmap.out");
 				if (slot->data.ghash) {
@@ -499,8 +500,10 @@ static void connect_clusters(RigidBodyModifierData *rmd) {
 					BM_elem_flag_disable(mi2->vertices[v], BM_ELEM_TAG);
 				}
 
-				if (shared > 0) {
-					// shared vertices, so connect
+				//printf("shared: %d\n", shared);
+
+				if (shared > 2) {
+					// shared vertices (atleast one face ?), so connect
 					RigidBodyShardCon *rbsc = BKE_rigidbody_create_shard_constraint(rmd->modifier.scene, RBC_TYPE_FIXED);
 					if (rbsc != NULL) {
 						rbsc->mi1 = mi;
