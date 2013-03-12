@@ -74,6 +74,136 @@
 #ifdef WITH_BULLET
 
 
+static int BM_mesh_minmax(BMesh *bm, float r_min[3], float r_max[3])
+{
+	BMVert* v;
+	BMIter iter;
+	BM_ITER_MESH (v, &iter, bm, BM_VERTS_OF_MESH) {
+		minmax_v3v3_v3(r_min, r_max, v->co);
+	}
+
+	//BM_mesh_normals_update(bm, FALSE);
+	return (bm->totvert != 0);
+}
+
+static void BM_mesh_boundbox(BMesh* bm, float r_loc[3], float r_size[3])
+{
+	float min[3], max[3];
+	float mloc[3], msize[3];
+
+	if (!r_loc) r_loc = mloc;
+	if (!r_size) r_size = msize;
+
+	INIT_MINMAX(min, max);
+	if (!BM_mesh_minmax(bm, min, max)) {
+		min[0] = min[1] = min[2] = -1.0f;
+		max[0] = max[1] = max[2] = 1.0f;
+	}
+
+	mid_v3_v3v3(r_loc, min, max);
+
+	r_size[0] = (max[0] - min[0]) / 2.0f;
+	r_size[1] = (max[1] - min[1]) / 2.0f;
+	r_size[2] = (max[2] - min[2]) / 2.0f;
+}
+
+/* helper function to calculate volume of rigidbody object */
+// TODO: allow a parameter to specify method used to calculate this?
+float BKE_rigidbody_calc_volume(BMesh *bm, RigidBodyOb *rbo)
+{
+	//RigidBodyOb *rbo = mi->rigidbody;
+
+	float loc[3]  = {0.0f, 0.0f, 0.0f};
+	float size[3]  = {1.0f, 1.0f, 1.0f};
+	float radius = 1.0f;
+	float height = 1.0f;
+
+	float volume = 0.0f;
+
+	/* if automatically determining dimensions, use the Object's boundbox
+	 *	- assume that all quadrics are standing upright on local z-axis
+	 *	- assume even distribution of mass around the Object's pivot
+	 *	  (i.e. Object pivot is centralised in boundbox)
+	 *	- boundbox gives full width
+	 */
+	// XXX: all dimensions are auto-determined now... later can add stored settings for this
+	//BKE_object_dimensions_get(ob, size);
+	BM_mesh_boundbox(bm, loc, size); //maybe *2 ??
+
+	if (ELEM3(rbo->shape, RB_SHAPE_CAPSULE, RB_SHAPE_CYLINDER, RB_SHAPE_CONE)) {
+		/* take radius as largest x/y dimension, and height as z-dimension */
+		radius = MAX2(size[0], size[1]) * 0.5f;
+		height = size[2];
+	}
+	else if (rbo->shape == RB_SHAPE_SPHERE) {
+		/* take radius to the the largest dimension to try and encompass everything */
+		radius = max_fff(size[0], size[1], size[2]) * 0.5f;
+	}
+
+	/* calculate volume as appropriate  */
+	switch (rbo->shape) {
+		case RB_SHAPE_BOX:
+			volume = size[0] * size[1] * size[2];
+			break;
+
+		case RB_SHAPE_SPHERE:
+			volume = 4.0f / 3.0f * (float)M_PI * radius * radius * radius;
+			break;
+
+		/* for now, assume that capsule is close enough to a cylinder... */
+		case RB_SHAPE_CAPSULE:
+		case RB_SHAPE_CYLINDER:
+			volume = (float)M_PI * radius * radius * height;
+			break;
+
+		case RB_SHAPE_CONE:
+			volume = (float)M_PI / 3.0f * radius * radius * height;
+			break;
+
+		/* for now, all mesh shapes are just treated as boxes...
+		 * NOTE: this may overestimate the volume, but other methods are overkill
+		 */
+		case RB_SHAPE_CONVEXH:
+		case RB_SHAPE_TRIMESH:
+			volume = size[0] * size[1] * size[2];
+			break;
+
+#if 0 // XXX: not defined yet
+		case RB_SHAPE_COMPOUND:
+			volume = 0.0f;
+			break;
+#endif
+	}
+
+	/* return the volume calculated */
+	return volume;
+}
+
+void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland* mi)
+{
+	BMesh *bm_mi, *bm_ob;
+	float vol_mi, mass_mi, vol_ob, mass_ob;
+
+	bm_ob = BM_mesh_create(&bm_mesh_chunksize_default);
+	BM_mesh_bm_from_me(bm_ob, ob->data, FALSE, 0);
+	vol_ob = BKE_rigidbody_calc_volume(bm_ob, ob->rigidbody_object);
+	mass_ob = ob->rigidbody_object->mass;
+	BM_mesh_free(bm_ob);
+
+	if (vol_ob == 0)
+		return;
+
+	bm_mi = mi->physics_mesh;
+	vol_mi = BKE_rigidbody_calc_volume(bm_mi, mi->rigidbody);
+	mass_mi = (vol_mi / vol_ob) * mass_ob;
+	mi->rigidbody->mass = mass_mi;
+	/* only active bodies need mass update */
+	if ((mi->rigidbody->physics_object) && (mi->rigidbody->type == RBO_TYPE_ACTIVE)) {
+		RB_body_set_mass(mi->rigidbody->physics_object, RBO_GET_MASS(mi->rigidbody));
+	}
+}
+
+
 void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], float rot[4] )
 {
 	float startco[3], centr[3], size[3];
@@ -1750,6 +1880,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 					if (mi->rigidbody == NULL) {
 						mi->rigidbody = BKE_rigidbody_create_shard(scene, ob, mi, RBO_TYPE_ACTIVE);
+						BKE_rigidbody_calc_shard_mass(ob, mi);
 						BKE_rigidbody_validate_sim_shard(rbw, mi, ob, true);
 					}
 					else {  //as usual, but for each shard now, and no constraints

@@ -140,134 +140,6 @@ static void rna_RigidBodyWorld_split_impulse_set(PointerRNA *ptr, int value)
 
 /* ------------------------------------------ */
 
-int BM_mesh_minmax(BMesh *bm, float r_min[3], float r_max[3])
-{
-	BMVert* v;
-	BMIter iter;
-	BM_ITER_MESH (v, &iter, bm, BM_VERTS_OF_MESH) {
-		minmax_v3v3_v3(r_min, r_max, v->co);
-	}
-
-	//BM_mesh_normals_update(bm, FALSE);
-	return (bm->totvert != 0);
-}
-
-void BM_mesh_boundbox(BMesh* bm, float r_loc[3], float r_size[3])
-{
-	float min[3], max[3];
-	float mloc[3], msize[3];
-
-	if (!r_loc) r_loc = mloc;
-	if (!r_size) r_size = msize;
-
-	INIT_MINMAX(min, max);
-	if (!BM_mesh_minmax(bm, min, max)) {
-		min[0] = min[1] = min[2] = -1.0f;
-		max[0] = max[1] = max[2] = 1.0f;
-	}
-
-	mid_v3_v3v3(r_loc, min, max);
-
-	r_size[0] = (max[0] - min[0]) / 2.0f;
-	r_size[1] = (max[1] - min[1]) / 2.0f;
-	r_size[2] = (max[2] - min[2]) / 2.0f;
-}
-
-/* helper function to calculate volume of rigidbody object */
-// TODO: allow a parameter to specify method used to calculate this?
-static float calc_rigidbody_ob_volume(BMesh *bm, RigidBodyOb *rbo)
-{
-	//RigidBodyOb *rbo = mi->rigidbody;
-
-	float loc[3]  = {0.0f, 0.0f, 0.0f};
-	float size[3]  = {1.0f, 1.0f, 1.0f};
-	float radius = 1.0f;
-	float height = 1.0f;
-
-	float volume = 0.0f;
-
-	/* if automatically determining dimensions, use the Object's boundbox
-	 *	- assume that all quadrics are standing upright on local z-axis
-	 *	- assume even distribution of mass around the Object's pivot
-	 *	  (i.e. Object pivot is centralised in boundbox)
-	 *	- boundbox gives full width
-	 */
-	// XXX: all dimensions are auto-determined now... later can add stored settings for this
-	//BKE_object_dimensions_get(ob, size);
-	BM_mesh_boundbox(bm, loc, size); //maybe *2 ??
-
-	if (ELEM3(rbo->shape, RB_SHAPE_CAPSULE, RB_SHAPE_CYLINDER, RB_SHAPE_CONE)) {
-		/* take radius as largest x/y dimension, and height as z-dimension */
-		radius = MAX2(size[0], size[1]) * 0.5f;
-		height = size[2];
-	}
-	else if (rbo->shape == RB_SHAPE_SPHERE) {
-		/* take radius to the the largest dimension to try and encompass everything */
-		radius = max_fff(size[0], size[1], size[2]) * 0.5f;
-	}
-
-	/* calculate volume as appropriate  */
-	switch (rbo->shape) {
-		case RB_SHAPE_BOX:
-			volume = size[0] * size[1] * size[2];
-			break;
-
-		case RB_SHAPE_SPHERE:
-			volume = 4.0f / 3.0f * (float)M_PI * radius * radius * radius;
-			break;
-
-		/* for now, assume that capsule is close enough to a cylinder... */
-		case RB_SHAPE_CAPSULE:
-		case RB_SHAPE_CYLINDER:
-			volume = (float)M_PI * radius * radius * height;
-			break;
-
-		case RB_SHAPE_CONE:
-			volume = (float)M_PI / 3.0f * radius * radius * height;
-			break;
-
-		/* for now, all mesh shapes are just treated as boxes...
-		 * NOTE: this may overestimate the volume, but other methods are overkill
-		 */
-		case RB_SHAPE_CONVEXH:
-		case RB_SHAPE_TRIMESH:
-			volume = size[0] * size[1] * size[2];
-			break;
-
-#if 0 // XXX: not defined yet
-		case RB_SHAPE_COMPOUND:
-			volume = 0.0f;
-			break;
-#endif
-	}
-
-	/* return the volume calculated */
-	return volume;
-}
-
-static void calcMass(float vol_ob, float mass_ob, MeshIsland* mi)
-{
-	float vol_mi;
-	float mass_mi;
-	BMesh* bm;
-
-	bm = mi->physics_mesh;
-	vol_mi = calc_rigidbody_ob_volume(bm, mi->rigidbody);
-
-	if (vol_ob == 0)
-		return;
-
-	mass_mi = (vol_mi / vol_ob) * mass_ob;
-	mi->rigidbody->mass = mass_mi;
-
-#ifdef WITH_BULLET
-	/* only active bodies need mass update */
-	if ((mi->rigidbody->physics_object) && (mi->rigidbody->type == RBO_TYPE_ACTIVE)) {
-		RB_body_set_mass(mi->rigidbody->physics_object, RBO_GET_MASS(mi->rigidbody));
-	}
-#endif
-}
-
 static void copyRigidBody(RigidBodyOb *source, RigidBodyOb *target)
 {
 	target->type = source->type;
@@ -288,14 +160,6 @@ static void rna_apply_to_all_shards(Object *ob)
 	ModifierData* md;
 	RigidBodyModifierData* rmd;
 	MeshIsland* mi;
-	float vol_ob, mass_ob;
-	BMesh* bm;
-
-	bm = BM_mesh_create(&bm_mesh_chunksize_default);
-	BM_mesh_bm_from_me(bm, ob->data, FALSE, 0);
-	vol_ob = calc_rigidbody_ob_volume(bm, rbo);
-	mass_ob = rbo->mass;
-	BM_mesh_free(bm);
 
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_RigidBody) {
@@ -303,8 +167,8 @@ static void rna_apply_to_all_shards(Object *ob)
 			//rmd->refresh = TRUE;
 			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 				if (!mi->rigidbody) continue;
+				BKE_rigidbody_calc_shard_mass(ob, mi);
 				copyRigidBody(rbo, mi->rigidbody);
-				calcMass(vol_ob, mass_ob, mi);
 				mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 			}
 		}

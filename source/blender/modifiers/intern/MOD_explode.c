@@ -1162,8 +1162,10 @@ static int points_from_verts(Object* ob, int totobj, float** points, int p_exist
 				co[1] = me->mvert[v].co[1];
 				co[2] = me->mvert[v].co[2];
 				
-				mul_m4_v3(ob[o].obmat, co);
-				mul_m4_v3(imat, co);
+				if (totobj > 1) {
+					mul_m4_v3(ob[o].obmat, co);
+					mul_m4_v3(imat, co);
+				}
 				
 				(*points)[pt*3] = co[0];
 				(*points)[pt*3+1] = co[1];
@@ -1213,7 +1215,7 @@ static int points_from_particles(Object* ob, int totobj, Scene* scene, float** p
 	return pt;
 }
 
-static int points_from_greasepencil(Object* ob, int totobj, float** points, int p_exist)
+static int points_from_greasepencil(Object* ob, int totobj, float** points, int p_exist, float mat[4][4])
 {
 	bGPDlayer* gpl;
 	bGPDframe* gpf;
@@ -1224,18 +1226,30 @@ static int points_from_greasepencil(Object* ob, int totobj, float** points, int 
 	{
 		if ((ob[o].gpd) && (ob[o].gpd->layers.first))
 		{
+			float imat[4][4];
+			invert_m4_m4(imat, mat);
 			for (gpl = ob[o].gpd->layers.first; gpl; gpl = gpl->next)
 			{
-				gpf = gpl->actframe;
-				for (gps = gpf->strokes.first; gps; gps = gps->next)
-				{
-					for (p = 0; p < gps->totpoints; p++)
+				for (gpf = gpl->frames.first; gpf; gpf = gpf->next) {
+				//gpf = gpl->actframe;
+					for (gps = gpf->strokes.first; gps; gps = gps->next)
 					{
-						*points = MEM_reallocN(*points, ((pt+1)*3)*sizeof(float));
-						(*points)[pt*3] = gps->points[p].x;
-						(*points)[pt*3+1] = gps->points[p].y;
-						(*points)[pt*3+2] = gps->points[p].z;
-						pt++;
+						for (p = 0; p < gps->totpoints; p++)
+						{
+							float point[3] = {0, 0, 0};
+							*points = MEM_reallocN(*points, ((pt+1)*3)*sizeof(float));
+
+							point[0] = gps->points[p].x;
+							point[1] = gps->points[p].y;
+							point[2] = gps->points[p].z;
+
+							mul_m4_v3(imat, point);
+
+							(*points)[pt*3] = point[0];
+							(*points)[pt*3+1] = point[1];
+							(*points)[pt*3+2] = point[2];
+							pt++;
+						}
 					}
 				}
 			}
@@ -1318,7 +1332,7 @@ static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float 
 	
 	if (emd->point_source & eGreasePencil)
 	{
-		totpoint += points_from_greasepencil(ob, 1, points, totpoint);
+		totpoint += points_from_greasepencil(ob, 1, points, totpoint, mat);
 		
 		/*if ((totpoint == 0) && (!(emd->point_source & eOwnVerts)) && (!fallback))
 		{	// if no greasepencil available, return original geometry
