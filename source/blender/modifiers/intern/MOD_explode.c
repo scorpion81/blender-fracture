@@ -116,12 +116,10 @@ static void freeCells(ExplodeModifierData* emd)
 				emd->cells->data[c].vertco = NULL;
 				MEM_freeN(emd->cells->data[c].vertices);
 				emd->cells->data[c].vertices = NULL;
-				DM_release(emd->cells->data[c].cell_mesh);
-				MEM_freeN(emd->cells->data[c].cell_mesh);
-				emd->cells->data[c].cell_mesh = NULL;
-				if (emd->cells->data[c].rigidbody) {
-					MEM_freeN(emd->cells->data[c].rigidbody);
-					emd->cells->data[c].rigidbody = NULL;
+				if (emd->cells->data[c].cell_mesh != NULL) {
+					DM_release(emd->cells->data[c].cell_mesh);
+					MEM_freeN(emd->cells->data[c].cell_mesh);
+					emd->cells->data[c].cell_mesh = NULL;
 				}
 			}
 
@@ -1655,7 +1653,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 		emd->cells->data[emd->cells->count].vertco = MEM_mallocN(sizeof(float), "vertco");
 		emd->cells->data[emd->cells->count].vertex_count = 0;
 		emd->cells->data[emd->cells->count].particle_index = -1;
-		emd->cells->data[emd->cells->count].rigidbody = NULL;
+//		emd->cells->data[emd->cells->count].rigidbody = NULL;
 		
 
 		bmtemp = BM_mesh_create(&bm_mesh_chunksize_default);
@@ -2149,8 +2147,11 @@ static void explodeCells(ExplodeModifierData *emd,
 
 		for (j = 0; j < emd->cells->data[i].vertex_count; j++)
 		{
-			// BMVert *vert = BM_vert_at_index(bm, ind);
-			BMVert* vert = emd->cells->data[i].vertices[j];
+			BMVert* vert = NULL;
+
+			if (emd->cells->data[i].vertices == NULL) return;
+
+			vert = emd->cells->data[i].vertices[j];
 
 			//reset to original coords // stored at fracture time
 			vert->co[0] = emd->cells->data[i].vertco[j*3];

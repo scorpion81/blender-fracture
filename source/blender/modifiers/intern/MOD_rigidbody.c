@@ -576,7 +576,12 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		rmd->refresh = FALSE;
 	}
 
-	return CDDM_from_bmesh(rmd->visible_mesh, TRUE);
+	if (rmd->visible_mesh != NULL) {
+		return CDDM_from_bmesh(rmd->visible_mesh, TRUE);
+	}
+	else {
+		return dm;
+	}
 }
 
 static int dependsOnTime(ModifierData *UNUSED(md))

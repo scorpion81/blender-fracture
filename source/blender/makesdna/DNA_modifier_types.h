@@ -650,20 +650,20 @@ enum {
 //typedef struct VoronoiCell VoronoiCell;
 
 typedef struct VoronoiCell {
-    struct BMVert **vertices;
-    float *vertco;
+	struct BMVert **vertices;
+	float *vertco;
 	struct DerivedMesh *cell_mesh;
-    struct RigidBodyOb *rigidbody;
-    int vertex_count;
-    int particle_index;
-    float centroid[3];
-    char pad[4];
+	//struct RigidBodyOb *rigidbody;
+	int vertex_count;
+	int particle_index;
+	float centroid[3];
+	char pad[4];
 } VoronoiCell;
 
 typedef struct VoronoiCells {
-    VoronoiCell *data;
-    int count;
-    char pad[4];
+	VoronoiCell *data;
+	int count;
+	char pad[4];
 } VoronoiCells;
 
 typedef enum {
