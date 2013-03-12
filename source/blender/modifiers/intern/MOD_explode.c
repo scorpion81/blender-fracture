@@ -1759,7 +1759,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 			}
 			else if ( c == ')') {
 				float area;
-
+				Mesh *me = (Mesh*)ob->data;
 				//end of face tuple, can create face now, but before create last edge to close the circle
 				if (faceverts[0] != faceverts[face_index-1]) {
 					faceedges = MEM_reallocN(faceedges, (edge_index + 1) * sizeof(BMEdge*));
@@ -1772,6 +1772,11 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 				}
 
 				face = BM_face_create(bmtemp, faceverts, faceedges, face_index, 0);
+
+				if (me->mpoly[0].flag & ME_SMOOTH) {
+					BM_elem_flag_enable(face, BM_ELEM_SMOOTH);
+				}
+
 				area = BM_face_calc_area(face);
 				//printf("Face Area: %f\n", area);
 
@@ -1957,6 +1962,9 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 
 						face = BM_face_create(bm, ve, ed, t, 0);
 						face->mat_nr = (mp+p)->mat_nr;
+
+						if ((mp+p)->flag & ME_SMOOTH)
+							BM_elem_flag_enable(face, BM_ELEM_SMOOTH);
 						
 						CustomData_to_bmesh_block(&boolresult->polyData, &bm->pdata, p, &face->head.data , 0);
 						
