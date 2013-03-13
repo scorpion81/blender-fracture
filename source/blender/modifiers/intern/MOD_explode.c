@@ -38,6 +38,7 @@
 #include "DNA_mesh_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_object_types.h"
+#include "DNA_group_types.h"
 
 #include "BLI_kdtree.h"
 #include "BLI_rand.h"
@@ -53,6 +54,7 @@
 #include "BKE_object.h"
 #include "BKE_particle.h"
 #include "BKE_scene.h"
+#include "BKE_group.h";
 
 
 #include "MEM_guardedalloc.h"
@@ -83,15 +85,15 @@ static void initData(ModifierData *md)
 	emd->mode = eFractureMode_Faces;
 	emd->use_boolean = FALSE;
 	emd->use_cache = MOD_VORONOI_USECACHE;
-	emd->refracture = FALSE;
+	//emd->refracture = FALSE;
 	emd->fracMesh = NULL;
 	emd->tempOb = NULL;
 	emd->cells = NULL;
-	emd->flip_normal = FALSE;
+	//emd->flip_normal = FALSE;
 
 	emd->last_part = 0;
 	emd->last_bool = FALSE;
-	emd->last_flip = FALSE;
+//	emd->last_flip = FALSE;
 
 	emd->facepa = NULL;
 	emd->emit_continuously = FALSE;
@@ -102,7 +104,9 @@ static void initData(ModifierData *md)
 	emd->inner_material = NULL;
 	emd->point_source = eOwnParticles;
 	emd->last_point_source = eOwnParticles;
-	emd->use_rigidbody = FALSE;
+	emd->use_animation = FALSE;
+	emd->noise = 0.0f;
+	emd->percentage = 100;
 }
 
 static void freeCells(ExplodeModifierData* emd)
@@ -196,21 +200,23 @@ static void copyData(ModifierData *md, ModifierData *target)
 	// temd->fracMesh = emd->fracMesh; regenerate this ?
 	temd->fracMesh = NULL;
 	temd->use_cache = emd->use_cache;
-	temd->refracture = emd->refracture;
+//	temd->refracture = emd->refracture;
 	temd->tempOb = emd->tempOb;
 	//temd->cells = emd->cells; regenerate those too ?
 	temd->cells = NULL;
-	temd->flip_normal = emd->flip_normal;
+//	temd->flip_normal = emd->flip_normal;
 	temd->last_part = emd->last_part;
 	temd->last_bool = emd->last_bool;
-	temd->last_flip = emd->last_flip;
+//	temd->last_flip = emd->last_flip;
 	temd->emit_continuously = emd->emit_continuously;
 	temd->map_delay = emd->map_delay;
 	temd->last_map_delay = emd->last_map_delay;
 	temd->inner_material = emd->inner_material;
 	temd->point_source = emd->point_source;
 	temd->last_point_source = emd->last_point_source;
-	temd->use_rigidbody = emd->use_rigidbody;
+	temd->use_animation = emd->use_animation;
+	temd->noise = emd->noise;
+	temd->percentage = emd->percentage;
 }
 
 static int dependsOnTime(ModifierData *UNUSED(md)) 
@@ -1140,7 +1146,7 @@ static int dm_minmax(DerivedMesh* dm, float min[3], float max[3])
 	return (verts != 0);
 }
 
-static int points_from_verts(Object* ob, int totobj, float** points, int p_exist, float mat[4][4])
+static int points_from_verts(Object* ob, int totobj, float** points, int p_exist, float mat[4][4], float thresh)
 {
 	int v, o, pt = p_exist;
 	float co[3];
@@ -1154,21 +1160,23 @@ static int points_from_verts(Object* ob, int totobj, float** points, int p_exist
 			invert_m4_m4(imat, mat);
 			for (v = 0; v < me->totvert; v++)
 			{
-				*points = MEM_reallocN(*points, ((pt+1)*3)*sizeof(float));
+				if (BLI_frand() < thresh) {
+					*points = MEM_reallocN(*points, ((pt+1)*3)*sizeof(float));
 				
-				co[0] = me->mvert[v].co[0];
-				co[1] = me->mvert[v].co[1];
-				co[2] = me->mvert[v].co[2];
+					co[0] = me->mvert[v].co[0];
+					co[1] = me->mvert[v].co[1];
+					co[2] = me->mvert[v].co[2];
 				
-				if (totobj > 1) {
+					//if (totobj > 1) {
 					mul_m4_v3(ob[o].obmat, co);
 					mul_m4_v3(imat, co);
-				}
+					//}
 				
-				(*points)[pt*3] = co[0];
-				(*points)[pt*3+1] = co[1];
-				(*points)[pt*3+2] = co[2];
-				pt++;
+					(*points)[pt*3] = co[0];
+					(*points)[pt*3+1] = co[1];
+					(*points)[pt*3+2] = co[2];
+					pt++;
+				}
 			}
 		}
 	}
@@ -1176,7 +1184,7 @@ static int points_from_verts(Object* ob, int totobj, float** points, int p_exist
 	return pt;
 }
 
-static int points_from_particles(Object* ob, int totobj, Scene* scene, float** points, int p_exist)
+static int points_from_particles(Object* ob, int totobj, Scene* scene, float** points, int p_exist, float thresh)
 {
 	int o, p, pt = p_exist;
 	ParticleSystemModifierData* psmd;
@@ -1199,12 +1207,14 @@ static int points_from_particles(Object* ob, int totobj, Scene* scene, float** p
 				
 				for (p = 0, pa = psmd->psys->particles; p < psmd->psys->totpart; p++, pa++)
 				{
-					psys_get_birth_coordinates(&sim, pa, &birth, 0, 0);
-					*points = MEM_reallocN(*points, ((pt+1)*3)* sizeof(float));
-					(*points)[pt*3] = birth.co[0];
-					(*points)[pt*3+1] = birth.co[1];
-					(*points)[pt*3+2] = birth.co[2];
-					pt++;
+					if (BLI_frand() < thresh) {
+						psys_get_birth_coordinates(&sim, pa, &birth, 0, 0);
+						*points = MEM_reallocN(*points, ((pt+1)*3)* sizeof(float));
+						(*points)[pt*3] = birth.co[0];
+						(*points)[pt*3+1] = birth.co[1];
+						(*points)[pt*3+2] = birth.co[2];
+						pt++;
+					}
 				}
 			}
 		}
@@ -1213,7 +1223,7 @@ static int points_from_particles(Object* ob, int totobj, Scene* scene, float** p
 	return pt;
 }
 
-static int points_from_greasepencil(Object* ob, int totobj, float** points, int p_exist, float mat[4][4])
+static int points_from_greasepencil(Object* ob, int totobj, float** points, int p_exist, float mat[4][4], float thresh)
 {
 	bGPDlayer* gpl;
 	bGPDframe* gpf;
@@ -1234,19 +1244,22 @@ static int points_from_greasepencil(Object* ob, int totobj, float** points, int 
 					{
 						for (p = 0; p < gps->totpoints; p++)
 						{
-							float point[3] = {0, 0, 0};
-							*points = MEM_reallocN(*points, ((pt+1)*3)*sizeof(float));
+							if (BLI_frand() < thresh)
+							{
+								float point[3] = {0, 0, 0};
+								*points = MEM_reallocN(*points, ((pt+1)*3)*sizeof(float));
 
-							point[0] = gps->points[p].x;
-							point[1] = gps->points[p].y;
-							point[2] = gps->points[p].z;
+								point[0] = gps->points[p].x;
+								point[1] = gps->points[p].y;
+								point[2] = gps->points[p].z;
 
-							mul_m4_v3(imat, point);
+								mul_m4_v3(imat, point);
 
-							(*points)[pt*3] = point[0];
-							(*points)[pt*3+1] = point[1];
-							(*points)[pt*3+2] = point[2];
-							pt++;
+								(*points)[pt*3] = point[0];
+								(*points)[pt*3+1] = point[1];
+								(*points)[pt*3+2] = point[2];
+								pt++;
+							}
 						}
 					}
 				}
@@ -1257,7 +1270,7 @@ static int points_from_greasepencil(Object* ob, int totobj, float** points, int 
 	return pt;
 }
 
-static int isChild(Object* ob, Object* child)
+/*static int isChild(Object* ob, Object* child)
 {
 	Object *par;
 	if (child->parent && child->parent == ob)
@@ -1289,68 +1302,100 @@ static int getChildren(Scene* scene, Object* ob, Object** children)
 	}
 	
 	return ctr;
+}*/
+
+static int getGroupObjects(Group *gr, Object **obs )
+{
+	int ctr = 0;
+	GroupObject *go;
+	if (gr == NULL) return 0;
+
+	for (go = gr->gobject.first; go; go = go->next) {
+
+		*obs = MEM_reallocN(*obs, sizeof(Object) * (ctr+1));
+		*obs[ctr] = *(go->ob);
+		ctr++;
+	}
+
+	return ctr;
 }
 
 static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float **points, float mat[4][4])
 {
-	int totpoint = 0, totchildren = 0;
-	//int fallback = FALSE;
-	Object* children = NULL;
+	int totpoint = 0, totgroup = 0, t = 0;
+	Object* go = MEM_mallocN(sizeof(Object), "groupobjects");
+	float thresh = (float)emd->percentage / 100.0f;
+	BoundBox* bb;
 
-	if (emd->point_source & (eChildParticles | eChildVerts ))
+	if (emd->point_source & (eExtraParticles | eExtraVerts ))
 	{
-		children = MEM_mallocN(sizeof(Object*), "get_points->children");
-		totchildren += getChildren(scene, ob, &children);
+		//children = MEM_mallocN(sizeof(Object*), "get_points->children");
+		totgroup += getGroupObjects(emd->extra_group, &go);
 	}
 	
 	if (emd->point_source & eOwnParticles)
 	{
-		totpoint += points_from_particles(ob, 1, scene, points, totpoint);
+		totpoint += points_from_particles(ob, 1, scene, points, totpoint, thresh);
 	}
 	
-	if (emd->point_source & eChildParticles)
+	if (emd->point_source & eExtraParticles)
 	{
-		totpoint += points_from_particles(children, totchildren, scene, points , totpoint);
-		/*if ((totpoint == 0) && (!(emd->point_source & eOwnVerts)) && (!fallback))
-		{	// if no child particles available, return original geometry
-			totpoint += points_from_verts(ob, 1, points, totpoint);
-			fallback = TRUE;
-		}*/
+		totpoint += points_from_particles(go, totgroup, scene, points , totpoint, thresh);
 	}
 	
-	if (emd->point_source & eChildVerts)
+	if (emd->point_source & eExtraVerts)
 	{
-		totpoint += points_from_verts(children, totchildren, points, totpoint, mat);
-		/*if ((totpoint == 0) && (!(emd->point_source & eOwnVerts)) && (!fallback))
-		{	// if no childverts available, return original geometry
-			totpoint += points_from_verts(ob, 1, points, totpoint);
-			fallback = TRUE;
-		}*/
+		totpoint += points_from_verts(go, totgroup, points, totpoint, mat, thresh);
 	}
 	
 	if (emd->point_source & eGreasePencil)
 	{
-		totpoint += points_from_greasepencil(ob, 1, points, totpoint, mat);
-		
-		/*if ((totpoint == 0) && (!(emd->point_source & eOwnVerts)) && (!fallback))
-		{	// if no greasepencil available, return original geometry
-			totpoint += points_from_verts(ob, 1, points, totpoint);
-			fallback = TRUE;
-		}*/
+		totpoint += points_from_greasepencil(ob, 1, points, totpoint, mat, thresh);
 	}
 	
 	if (emd->point_source & eOwnVerts)
 	{
-		totpoint += points_from_verts(ob, 1, points, totpoint, mat);
+		totpoint += points_from_verts(ob, 1, points, totpoint, mat, thresh);
 	}
 
 	
-	if (children)
+	/*if (children)
 	{
 		MEM_freeN(children);
 		children = NULL;
-	}
+	}*/
 	
+	//apply noise
+
+	bb = BKE_object_boundbox_get(ob);
+	for (t = 0; t < totpoint; t++) {
+		float pt[3], bbox_min[3], bbox_max[3];
+		pt[0] = (*points)[3*t];
+		pt[1] = (*points)[3*t+1];
+		pt[2] = (*points)[3*t+2];
+
+		if (emd->noise > 0.0f) {
+			float scalar, size[3], rand[3] = {0, 0, 0};
+			mul_v3_m4v3(bbox_min, ob->obmat, bb->vec[0]);
+			mul_v3_m4v3(bbox_max, ob->obmat, bb->vec[6]);
+			sub_v3_v3v3(size, bbox_max, bbox_min);
+
+			scalar = emd->noise * len_v3(size) / 2.0f;
+			rand[0] = 2.0f * BLI_frand() - 1.0f;
+			rand[1] = 2.0f * BLI_frand() - 1.0f;
+			rand[2] = 2.0f * BLI_frand() - 1.0f;
+
+			add_v3_v3(pt, rand);
+			mul_v3_fl(pt, scalar * BLI_frand());
+		}
+
+		(*points)[3*t] = pt[0];
+		(*points)[3*t+1] = pt[1];
+		(*points)[3*t+2] = pt[2];
+	}
+
+	MEM_freeN(bb);
+	MEM_freeN(go);
 	return totpoint;
 }
 
@@ -1520,12 +1565,12 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 
 	float* points = NULL;
 	int totpoint = 0;
-	int degenerate = FALSE;
+//	int degenerate = FALSE;
 
 	if (emd->use_boolean) {
 		//theta = -0.01f;
 		//make container bigger for boolean case,so cube and container dont have equal size which can lead to boolean errors
-		if (emd->flip_normal)
+		//if (emd->flip_normal)
 		{	//cubes usually need flip_normal, so enable theta only here, otherwise it will be subtracted
 			theta = 0.01f;
 		}
@@ -1545,13 +1590,13 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 
 	// printf("Container: %f;%f;%f;%f;%f;%f \n", min[0], max[0], min[1], max[1], min[2], max[2]);
 	//TODO: maybe support simple shapes without boolean, but eh...
-	container = container_new(min[0]-theta, max[0]+theta, min[1]-theta, max[1]+theta, min[2]-theta, max[2]+theta,
-							  n_size, n_size, n_size, FALSE, FALSE, FALSE, psmd->psys->totpart); //add number of parts here!
+	//container = container_new(min[0]-theta, max[0]+theta, min[1]-theta, max[1]+theta, min[2]-theta, max[2]+theta,
+	//						  n_size, n_size, n_size, FALSE, FALSE, FALSE, psmd->psys->totpart); //add number of parts here!
 	// particle_order = particle_order_new();
 
 	
 	//choose from point sources here
-	if (!emd->refracture)
+	//if (!emd->refracture)
 	{
 		points = MEM_mallocN(sizeof(float), "points");
 		totpoint = get_points(emd, emd->modifier.scene, ob, &points, mat);
@@ -1578,8 +1623,8 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 			container_put(container, particle_order, p, co[0], co[1], co[2]);
 		}
 	}
-	else
-	{
+	//else
+	/*{
 		container = container_new(min[0]-theta, max[0]+theta, min[1]-theta, max[1]+theta, min[2]-theta, max[2]+theta,
 								  n_size, n_size, n_size, FALSE, FALSE, FALSE, psmd->psys->totpart);
 		for (p = 0, pa = psmd->psys->particles; p < psmd->psys->totpart; p++, pa++)
@@ -1589,7 +1634,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 			co[2] = pa->state.co[2];
 			container_put(container, particle_order, p, co[0], co[1], co[2]);
 		}
-	}
+	}*/
 
 	//TODO: write results to temp file, ensure using the systems temp dir...
 	// this prints out vertex positions and face indexes
@@ -1659,7 +1704,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 		bmtemp = BM_mesh_create(&bm_mesh_chunksize_default);
 		tempvert = MEM_mallocN(sizeof(BMVert*), "tempvert");
 		tempvert_index = 0;
-		degenerate = FALSE;
+//		degenerate = FALSE;
 
 		// Read in the cell data, each line in the output file represents a voronoi cell
 		while (1)
@@ -1728,9 +1773,6 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 				// find vertices for each face, store indexes here
 				faceverts[face_index] = tempvert[real_indexes[facevert_index]];//emd->cells->data[emd->cells->count].vertices[facevert_index];
 
-			//	facevert_indexes = MEM_reallocN(facevert_indexes, sizeof(int) * (face_index+1));
-			//	facevert_indexes[face_index] = real_indexes[facevert_index];
-
 				if (face_index > 0) {
 					//argh, need to determine edges manually...
 					int i;
@@ -1773,17 +1815,15 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 
 				face = BM_face_create(bmtemp, faceverts, faceedges, face_index, 0);
 
-				if (me->mpoly[0].flag & ME_SMOOTH) {
-					BM_elem_flag_enable(face, BM_ELEM_SMOOTH);
-				}
-
-				area = BM_face_calc_area(face);
+				if (face != NULL)
+					area = BM_face_calc_area(face);
 				//printf("Face Area: %f\n", area);
 
-				if ((area < 0.000005f) || (face_index < 3)) {
+				if ((face != NULL) && ((area < 0.000005f) || (face_index < 3))) {
 					//remove degenerate faces
 					int i;
 					BM_face_kill(bmtemp, face);
+					face = NULL;
 
 					for (i = 0; i < edge_index; i++) {
 						BM_edge_kill(bmtemp, faceedges[i]);
@@ -1793,8 +1833,12 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 						BM_vert_kill(bmtemp, faceverts[i]);
 					}
 				}
-				else if (emd->flip_normal) {
+
+				if (face != NULL) { //&& (emd->flip_normal))
 					BM_face_normal_flip(bmtemp, face);
+					if (me->mpoly[0].flag & ME_SMOOTH) {
+						BM_elem_flag_enable(face, BM_ELEM_SMOOTH);
+					}
 				}
 
 				edge_index = 0;
@@ -2245,16 +2289,16 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	MPoly* mpa = NULL, *mp;
 	float imat[4][4], oldobmat[4][4];
 
-	if (psmd)
+	//if (psmd)
 	{
 		if (emd->mode == eFractureMode_Cells)
 		{
 #ifdef WITH_MOD_VORONOI
 
 			if ((emd->cells == NULL) ||
-					(emd->last_part != psmd->psys->totpart) ||
+					(psmd && (emd->last_part != psmd->psys->totpart)) ||
 					(emd->last_bool != emd->use_boolean) ||
-					(emd->last_flip != emd->flip_normal) ||
+					//(emd->last_flip != emd->flip_normal) ||
 					(emd->last_point_source != emd->point_source) ||
 					(emd->use_cache == FALSE))
 			{
@@ -2270,14 +2314,15 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				
 				copy_m4_m4(ob->obmat, oldobmat); // restore obmat
 
-				emd->last_part = psmd->psys->totpart;
+				if (psmd != NULL)
+					emd->last_part = psmd->psys->totpart;
 				emd->last_bool = emd->use_boolean;
-				emd->last_flip = emd->flip_normal;
+			//	emd->last_flip = emd->flip_normal;
 				emd->last_point_source = emd->point_source;
 				
 			}
 
-			if (emd->refracture)
+			/*if (emd->refracture)
 			{
 				if ((emd->cells == NULL) ||
 						(emd->last_part != psmd->psys->totpart) ||
@@ -2300,7 +2345,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				return result;
 
 			}
-			else
+			else*/
 			{
 				if (emd->cells == NULL)
 					return derivedData;
@@ -2308,7 +2353,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				if (emd->fracMesh)
 					BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "recalc_face_normals faces=%hf use_flip=%b", BM_FACES_OF_MESH, FALSE);
 				//BM_mesh_copy(emd->fracMesh); loses some faces too, hrm.
-				if (!emd->use_rigidbody)
+				if (emd->use_animation && psmd != NULL)
 				{
 					if (emd->map_delay != emd->last_map_delay) resetCells(emd);
 					emd->last_map_delay = emd->map_delay;
@@ -2340,9 +2385,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					for (i = 0; i < emd->cells->count; i++)
 					{
 						d = emd->cells->data[i].cell_mesh;
-						//f = d->numTessFaceData;
-						
-						//if (mtf) MEM_freeN(mtf);
+
 						//hope this merges the MTFace data... successfully...
 						mtf = DM_get_tessface_data_layer(d, CD_MTFACE);
 						if (!mtf)
@@ -2355,13 +2398,6 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 							break;
 						}
 						
-						
-						/*CDDM_calc_edges_tessface(d);
-						CDDM_tessfaces_to_faces(d);
-						CDDM_calc_normals(d);
-						DM_ensure_tessface(d);*/
-						//if (mpa) MEM_freeN(mpa);
-						//if (mla) MEM_freeN(mla);
 						mpa = d->getPolyArray(d);
 						mla = d->getLoopArray(d);
 						
@@ -2410,12 +2446,6 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 							mtface[f_index] = tf;
 							f_index++;
 						}
-						//MEM_freeN(mtf);
-						//MEM_freeN(mla);
-						//MEM_freeN(mpa);
-						
-						//if(!mtface)
-						//	break;
 					}
 					 
 					if (mtface)
@@ -2432,12 +2462,9 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 						MEM_freeN(mtface);
 						MEM_freeN(mtps);
 						MEM_freeN(mluvs);
-						//MEM_freeN(mtf);
-						//MEM_freeN(mla);
-						//MEM_freeN(mpa);
 					}
 				}
-				
+				emd->use_cache = TRUE;
 				return result;
 			}
 #else
@@ -2449,7 +2476,10 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 		else if (emd->mode == eFractureMode_Faces)
 		{
-			ParticleSystem *psys = psmd->psys;
+			ParticleSystem *psys;
+			if (psmd == NULL) return derivedData;
+
+			psys = psmd->psys;
 			DM_ensure_tessface(dm); /* BMESH - UNTIL MODIFIER IS UPDATED FOR MPoly */
 
 			if (psys == NULL || psys->totpart == 0) return derivedData;
@@ -2494,6 +2524,7 @@ static void foreachIDLink(ModifierData *md, Object *ob,
 	ExplodeModifierData *emd = (ExplodeModifierData *) md;
 	
 	walk(userData, ob, (ID **)&emd->inner_material);
+	walk(userData, ob, (ID **)&emd->extra_group);
 }
 
 

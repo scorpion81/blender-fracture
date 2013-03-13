@@ -689,15 +689,16 @@ typedef struct ExplodeModifierData {
     int *facepa;
 	short flag, vgroup;
 	float protect;
-    char uvname[64];	/* MAX_CUSTOMDATA_LAYER_NAME */
-    
-    //for voronoi cell mode
-    int use_boolean, refracture, use_cache, flip_normal;
-    int last_part, last_bool, last_flip, emit_continuously;
-    int mode, map_delay, last_map_delay, point_source;
-	int last_point_source;
+	char uvname[64];	/* MAX_CUSTOMDATA_LAYER_NAME */
+
+	//for voronoi cell mode
+	int use_boolean, use_cache, percentage;
+	int last_part, last_bool, emit_continuously;
+	int mode, map_delay, last_map_delay, point_source;
+	int last_point_source, use_animation;
+	float noise;
 	char pad[4];
-    
+
 } ExplodeModifierData;
 
 typedef struct MultiresModifierData {

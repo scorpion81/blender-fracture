@@ -61,11 +61,11 @@ static void initData(ModifierData *md)
 	RigidBodyModifierData *rmd = (RigidBodyModifierData *) md;
 	rmd->visible_mesh = NULL;
 	rmd->refresh = TRUE;
-	rmd->cltree = NULL;
+//	rmd->cltree = NULL;
 	rmd->ntree = NULL;
 	zero_m4(rmd->origmat);
-	rmd->inner_breaking_threshold = 10.0f;
-	rmd->outer_breaking_threshold = 2.0f;
+	rmd->breaking_threshold = 10.0f;
+//	rmd->outer_breaking_threshold = 2.0f;
 	rmd->use_constraints = FALSE;
 }
 
@@ -119,11 +119,11 @@ static void freeData(ModifierData *md)
 		rmd->visible_mesh = NULL;
 	}
 
-	if (rmd->cltree)
+/*	if (rmd->cltree)
 	{
 		MEM_freeN(rmd->cltree);
 		rmd->cltree = NULL;
-	}
+	}*/
 
 	if (rmd->ntree)
 	{
@@ -227,7 +227,7 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	copy_v3_v3(mi->centroid, centroid);
 	mat4_to_loc_quat(dummyloc, rot, ob->obmat);
 	copy_v3_v3(mi->rot, rot);
-	mi->cluster_index = -1; //belongs to no cluster
+//	mi->cluster_index = -1; //belongs to no cluster
 
 	/* deselect loose data - this used to get deleted,
 	 * we could de-select edges and verts only, but this turns out to be less complicated
@@ -392,7 +392,7 @@ static void create_neighborhood_tree(RigidBodyModifierData *rmd )
 	BLI_kdtree_balance(rmd->ntree);
 }
 
-static void create_cluster_tree(RigidBodyModifierData *rmd, ParticleSystemModifierData *psmd, Scene* scene, Object* ob)
+/*static void create_cluster_tree(RigidBodyModifierData *rmd, ParticleSystemModifierData *psmd, Scene* scene, Object* ob)
 {
 	ParticleSimulationData sim = {NULL};
 	ParticleSystem *psys = psmd->psys;
@@ -406,7 +406,7 @@ static void create_cluster_tree(RigidBodyModifierData *rmd, ParticleSystemModifi
 	sim.psys = psmd->psys;
 	sim.psmd = psmd;
 
-	/* make tree of emitter locations */
+	/* make tree of emitter locations *
 	if (rmd->cltree)
 	{
 		BLI_kdtree_free(rmd->cltree);
@@ -426,9 +426,9 @@ static void create_cluster_tree(RigidBodyModifierData *rmd, ParticleSystemModifi
 	}
 
 	BLI_kdtree_balance(rmd->cltree);
-}
+}*/
 
-static void map_islands_to_clusters(RigidBodyModifierData* rmd, ParticleSystemModifierData *psmd, Scene* scene, Object* ob)
+/*static void map_islands_to_clusters(RigidBodyModifierData* rmd, ParticleSystemModifierData *psmd, Scene* scene, Object* ob)
 {
 	ParticleSystem *psys = psmd->psys;
 	MeshIsland *mi;
@@ -444,7 +444,7 @@ static void map_islands_to_clusters(RigidBodyModifierData* rmd, ParticleSystemMo
 		//mul_m4_v3(ob->obmat, center);
 		c = BLI_kdtree_find_nearest(rmd->cltree, center, NULL, NULL);
 
-		/*if (emd->emit_continuously) {
+		if (emd->emit_continuously) {
 			if (ELEM3(psys->particles[p].alive, PARS_ALIVE, PARS_DYING, PARS_DEAD)) {
 				emd->cells->data[c].particle_index = p;
 			}
@@ -452,15 +452,15 @@ static void map_islands_to_clusters(RigidBodyModifierData* rmd, ParticleSystemMo
 				emd->cells->data[c].particle_index = -1;
 			}
 		}
-		else {*/
+		else {
 		if (mi->cluster_index == -1) {// && (cfra > (psys->part->sta + emd->map_delay))) {
 			//map once, with delay, the larger the delay, the more smaller chunks !
 			mi->cluster_index = c;
 		}
 	}
-}
+}*/
 
-static void connect_clusters(RigidBodyModifierData *rmd) {
+static void connect_constraints(RigidBodyModifierData *rmd) {
 
 	MeshIsland *mi, *mi2;
 	BMOpSlot *slot;
@@ -509,12 +509,13 @@ static void connect_clusters(RigidBodyModifierData *rmd) {
 						rbsc->mi1 = mi;
 						rbsc->mi2 = mi2;
 
-						if ((mi->cluster_index == mi2->cluster_index) && (mi->cluster_index != -1)) {
+						/*if ((mi->cluster_index == mi2->cluster_index) && (mi->cluster_index != -1)) {
 							rbsc->breaking_threshold = rmd->inner_breaking_threshold;
 						}
 						else {
 							rbsc->breaking_threshold = rmd->outer_breaking_threshold;
-						}
+						}*/
+						rbsc->breaking_threshold = rmd->breaking_threshold;
 
 						BLI_addtail(&rmd->meshConstraints, rbsc);
 					}
@@ -538,20 +539,20 @@ static void connect_clusters(RigidBodyModifierData *rmd) {
 
 static void create_constraints(RigidBodyModifierData *rmd, Object *ob) {
 	//pointsource determines cluster centers, default: own particles
-	ParticleSystemModifierData *psmd = NULL;
-	Scene *sc = rmd->modifier.scene;
+	//ParticleSystemModifierData *psmd = NULL;
+	//Scene *sc = rmd->modifier.scene;
 
-	psmd = findPrecedingParticlesystem(ob);
+	/*psmd = findPrecedingParticlesystem(ob);
 
 	if (psmd) {
 		create_cluster_tree(rmd, psmd, sc, ob);
 		map_islands_to_clusters(rmd, psmd, sc, ob);
 		BLI_kdtree_free(rmd->cltree);
 		rmd->cltree = NULL;
-	}
+	}*/
 
 	create_neighborhood_tree(rmd);
-	connect_clusters(rmd);
+	connect_constraints(rmd);
 	BLI_kdtree_free(rmd->ntree);
 	rmd->ntree = NULL;
 }

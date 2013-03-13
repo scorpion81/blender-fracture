@@ -1962,7 +1962,12 @@ static int explode_refresh_exec(bContext *C, wmOperator *op)
 	if (!emd)
 		return OPERATOR_CANCELLED;
 
-	emd->flag |= eExplodeFlag_CalcFaces;
+	if (emd->mode == eFractureMode_Cells) {
+		emd->use_cache = FALSE;
+	}
+	else {
+		emd->flag |= eExplodeFlag_CalcFaces;
+	}
 
 	DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
 	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);

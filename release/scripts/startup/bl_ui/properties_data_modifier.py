@@ -328,19 +328,23 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
             col = split.column()
             col.label("Point Source:")
             col.prop(md, "point_source")
+            col.prop(md, "extra_group")
+            col.prop(md, "noise")
+            col.prop(md, "percentage")
             col.prop(md, "use_boolean")
             if (md.use_boolean == True):
-                col.prop(md, "flip_normal")
+            #    col.prop(md, "flip_normal")
                 col.prop(md, "inner_material")
-            if (md.refracture == False):
-                col.prop(md, "use_cache")
-                col.prop(md, "use_rigidbody")
-            if (md.use_cache == False and md.use_rigidbody == False):
-                col.prop(md, "refracture")
-            if (md.use_rigidbody == False):
+            #if (md.refracture == False):
+            #    col.prop(md, "use_cache")
+            col.prop(md, "use_animation")
+            #if (md.use_cache == False and md.use_rigidbody == False):
+            #    col.prop(md, "refracture")
+            if (md.use_animation == True):
                 col.prop(md, "emit_continuously")
                 if (md.emit_continuously == False):
                     col.prop(md, "map_delay")
+            layout.operator("object.explode_refresh", text="Refresh")
         elif (md.mode == 'FACES'):    
             col = split.column()
             col.label(text="Vertex group:")
@@ -677,8 +681,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
     def RIGID_BODY(self, layout, ob, md):
         layout.operator("object.rigidbody_refresh", text="Refresh")
         layout.prop(md, "use_constraints")
-        layout.prop(md, "inner_breaking_threshold")
-        layout.prop(md, "outer_breaking_threshold")
+        layout.prop(md, "breaking_threshold")
 
     def SCREW(self, layout, ob, md):
         split = layout.split()

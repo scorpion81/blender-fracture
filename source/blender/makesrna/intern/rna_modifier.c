@@ -794,36 +794,49 @@ static void updateConstraints(RigidBodyModifierData *rmd) {
 	RigidBodyShardCon *rbsc;
 
 	for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
-		if ((rbsc->mi1->cluster_index == rbsc->mi2->cluster_index) && (rbsc->mi1->cluster_index != -1)) {
+		/*if ((rbsc->mi1->cluster_index == rbsc->mi2->cluster_index) && (rbsc->mi1->cluster_index != -1)) {
 			rbsc->breaking_threshold = rmd->inner_breaking_threshold;
 		}
 		else {
 			rbsc->breaking_threshold = rmd->outer_breaking_threshold;
-		}
+		}*/
+		rbsc->breaking_threshold = rmd->breaking_threshold;
 
 		rbsc->flag != RBC_FLAG_NEEDS_VALIDATE;
 	}
 }
 
-static void rna_RigidBodyModifier_inner_threshold_set(PointerRNA *ptr, float value)
+static void rna_RigidBodyModifier_threshold_set(PointerRNA *ptr, float value)
 {
 	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
-	rmd->inner_breaking_threshold = value;
+	rmd->breaking_threshold = value;
 	updateConstraints(rmd);
 }
 
-static void rna_RigidBodyModifier_outer_threshold_set(PointerRNA *ptr, float value)
+/*static void rna_RigidBodyModifier_outer_threshold_set(PointerRNA *ptr, float value)
 {
 	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
 	rmd->outer_breaking_threshold = value;
 	updateConstraints(rmd);
-}
+}*/
 
 static void rna_RigidBodyModifier_use_constraints_set(PointerRNA* ptr, int value)
 {
 	RigidBodyModifierData *rmd = (RigidBodyModifierData *)ptr->data;
 	rmd->use_constraints = value;
 	rmd->refresh = TRUE;
+}
+
+static void rna_ExplodeModifier_noise_set(PointerRNA *ptr, float value)
+{
+	ExplodeModifierData *emd = (ExplodeModifierData*)ptr->data;
+	emd->noise = value;
+}
+
+static void rna_ExplodeModifier_percentage_set(PointerRNA *ptr, int value)
+{
+	ExplodeModifierData *emd = (ExplodeModifierData*)ptr->data;
+	emd->percentage = value;
 }
 
 
@@ -2214,20 +2227,20 @@ static void rna_def_modifier_explode(BlenderRNA *brna)
 	StructRNA *srna;
 	PropertyRNA *prop;
 	
-    static EnumPropertyItem prop_mode_items[] = {
-        {eFractureMode_Cells, "CELLS", 0, "Voronoi Cells", "Fracture to voronoi cells and move them with particles"},
-        {eFractureMode_Faces, "FACES", 0, "Mesh Faces", "Move mesh faces with particles"},
-        {0, NULL, 0, NULL, NULL}
-    };
+	static EnumPropertyItem prop_mode_items[] = {
+		{eFractureMode_Cells, "CELLS", 0, "Voronoi Cells", "Fracture to voronoi cells and move them with particles"},
+		{eFractureMode_Faces, "FACES", 0, "Mesh Faces", "Move mesh faces with particles"},
+		{0, NULL, 0, NULL, NULL}
+	};
 	
 	static EnumPropertyItem prop_point_source_items[] = {
-        {eOwnParticles, "OWN_PARTICLES", 0, "Own Particles", "Use own particles as point cloud"},
-        {eOwnVerts, "OWN_VERTS", 0, "Own Vertices", "Use own vertices as point cloud"},
-		{eChildParticles, "CHILD_PARTICLES", 0, "Child Particles", "Use particles of child objects as point cloud"},
-        {eChildVerts, "CHILD_VERTS", 0, "Child Vertices", "Use child vertices as point cloud"},
+		{eOwnParticles, "OWN_PARTICLES", 0, "Own Particles", "Use own particles as point cloud"},
+		{eOwnVerts, "OWN_VERTS", 0, "Own Vertices", "Use own vertices as point cloud"},
+		{eExtraParticles, "EXTRA_PARTICLES", 0, "Extra Particles", "Use particles of group objects as point cloud"},
+		{eExtraVerts, "EXTRA_VERTS", 0, "Extra Vertices", "Use vertices of group objects as point cloud"},
 		{eGreasePencil, "GREASE_PENCIL", 0, "Grease Pencil", "Use grease pencil points as point cloud"},
-        {0, NULL, 0, NULL, NULL}
-    };
+		{0, NULL, 0, NULL, NULL}
+	};
 
 
 	srna = RNA_def_struct(brna, "ExplodeModifier", "Modifier");
@@ -2275,43 +2288,43 @@ static void rna_def_modifier_explode(BlenderRNA *brna)
 	RNA_def_property_string_maxlength(prop, MAX_CUSTOMDATA_LAYER_NAME);
 	RNA_def_property_ui_text(prop, "Particle UV", "UV map to change with particle age");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
-    
-    prop = RNA_def_property(srna, "mode", PROP_ENUM, PROP_NONE);
-    RNA_def_property_enum_items(prop, prop_mode_items);
-    RNA_def_property_ui_text(prop, "Mode", "Mode of fracture");
-    RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "mode", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_items(prop, prop_mode_items);
+	RNA_def_property_ui_text(prop, "Mode", "Mode of fracture");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 	
 	prop = RNA_def_property(srna, "point_source", PROP_ENUM, PROP_NONE);
-    RNA_def_property_enum_items(prop, prop_point_source_items);
+	RNA_def_property_enum_items(prop, prop_point_source_items);
 	RNA_def_property_flag(prop, PROP_ENUM_FLAG);
 	RNA_def_property_enum_default(prop, eOwnParticles);
-    RNA_def_property_ui_text(prop, "Point Source", "Source of point cloud");
-    RNA_def_property_update(prop, 0, "rna_Modifier_update");
-    
-    prop = RNA_def_property(srna, "use_boolean", PROP_BOOLEAN, PROP_NONE);
-    RNA_def_property_boolean_sdna(prop, NULL, "use_boolean", MOD_VORONOI_USEBOOLEAN);
-    RNA_def_property_ui_text(prop, "Use Boolean Intersection", "Intersect shards with original object shape");
-    RNA_def_property_update(prop, 0, "rna_Modifier_update");
-    
-    prop = RNA_def_property(srna, "refracture", PROP_BOOLEAN, PROP_NONE);
-    RNA_def_property_boolean_sdna(prop, NULL, "refracture", MOD_VORONOI_REFRACTURE);
-    RNA_def_property_ui_text(prop, "Keep Refracturing", "Refracture the object when particles move");
-    RNA_def_property_update(prop, 0, "rna_Modifier_update");
-    
-    prop = RNA_def_property(srna, "use_cache", PROP_BOOLEAN, PROP_NONE);
-    RNA_def_property_boolean_sdna(prop, NULL, "use_cache", MOD_VORONOI_USECACHE);
-    RNA_def_property_ui_text(prop, "Use Fracture Cache", "Store the fractured mesh in a cache for faster re-use");
-    RNA_def_property_update(prop, 0, "rna_Modifier_update");
-    
-    prop = RNA_def_property(srna, "flip_normal", PROP_BOOLEAN, PROP_NONE);
-    RNA_def_property_boolean_sdna(prop, NULL, "flip_normal", MOD_VORONOI_FLIPNORMAL);
-    RNA_def_property_ui_text(prop, "Flip Normals", "Flip the normals when using boolean intersection, to possibly fix odd looking shapes");
-    RNA_def_property_update(prop, 0, "rna_Modifier_update");
-    
-    prop = RNA_def_property(srna, "emit_continuously", PROP_BOOLEAN, PROP_NONE);
-    RNA_def_property_boolean_sdna(prop, NULL, "emit_continuously", MOD_VORONOI_EMITCONTINUOUSLY);
-    RNA_def_property_ui_text(prop, "Emit Continuously", "Keep re-emitting the voronoi cells until all particles are dead");
-    RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	RNA_def_property_ui_text(prop, "Point Source", "Source of point cloud");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "use_boolean", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "use_boolean", MOD_VORONOI_USEBOOLEAN);
+	RNA_def_property_ui_text(prop, "Use Boolean Intersection", "Intersect shards with original object shape");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	/*prop = RNA_def_property(srna, "refracture", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "refracture", MOD_VORONOI_REFRACTURE);
+	RNA_def_property_ui_text(prop, "Keep Refracturing", "Refracture the object when particles move");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
+
+	/*prop = RNA_def_property(srna, "use_cache", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "use_cache", MOD_VORONOI_USECACHE);
+	RNA_def_property_ui_text(prop, "Use Fracture Cache", "Store the fractured mesh in a cache for faster re-use");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
+
+	/*prop = RNA_def_property(srna, "flip_normal", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flip_normal", MOD_VORONOI_FLIPNORMAL);
+	RNA_def_property_ui_text(prop, "Flip Normals", "Flip the normals when using boolean intersection, to possibly fix odd looking shapes");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
+
+	prop = RNA_def_property(srna, "emit_continuously", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "emit_continuously", MOD_VORONOI_EMITCONTINUOUSLY);
+	RNA_def_property_ui_text(prop, "Emit Continuously", "Keep re-emitting the voronoi cells until all particles are dead");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 	
 	prop = RNA_def_property(srna, "map_delay", PROP_INT, PROP_NONE);
 	RNA_def_property_range(prop, 0, 1000); //TODO: get correct psys end value here ?
@@ -2323,10 +2336,29 @@ static void rna_def_modifier_explode(BlenderRNA *brna)
 	RNA_def_property_flag(prop, PROP_EDITABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
-    prop = RNA_def_property(srna, "use_rigidbody", PROP_BOOLEAN, PROP_NONE);
-    RNA_def_property_boolean_sdna(prop, NULL, "use_rigidbody", MOD_VORONOI_USERIGIDBODY);
-    RNA_def_property_ui_text(prop, "Use RigidBody", "Use rigidbody simulation instead of the particle system to animate the cells");
-    RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	prop = RNA_def_property(srna, "extra_group", PROP_POINTER, PROP_NONE);
+	RNA_def_property_ui_text(prop, "Extra Group", "");
+	RNA_def_property_flag(prop, PROP_EDITABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "use_animation", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "use_animation", MOD_VORONOI_USERIGIDBODY);
+	RNA_def_property_ui_text(prop, "Use Animation (Own Particles)", "Use the own particle system to animate the cells");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "noise", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "noise");
+	RNA_def_property_range(prop, 0.0f, 1.0f);
+	RNA_def_property_float_funcs(prop, NULL, "rna_ExplodeModifier_noise_set", NULL);
+	RNA_def_property_ui_text(prop, "Noise", "Noise to apply over pointcloud");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "percentage", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "percentage");
+	RNA_def_property_range(prop, 0, 100);
+	RNA_def_property_int_funcs(prop, NULL, "rna_ExplodeModifier_percentage_set", NULL);
+	RNA_def_property_ui_text(prop, "Percentage", "Percentage of points to actually use for fracture");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 static void rna_def_modifier_cloth(BlenderRNA *brna)
@@ -3807,19 +3839,19 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	RNA_def_struct_sdna(srna, "RigidBodyModifierData");
 	RNA_def_struct_ui_icon(srna, ICON_MESH_ICOSPHERE);
 
-	prop = RNA_def_property(srna, "inner_breaking_threshold", PROP_FLOAT, PROP_NONE);
-	RNA_def_property_float_sdna(prop, NULL, "inner_breaking_threshold");
+	prop = RNA_def_property(srna, "breaking_threshold", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "breaking_threshold");
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
-	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_inner_threshold_set", NULL);
-	RNA_def_property_ui_text(prop, "Inner breaking threshold", "Threshold to break members of a cluster");
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_threshold_set", NULL);
+	RNA_def_property_ui_text(prop, "Breaking threshold", "Threshold to break constraints between shards");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
-	prop = RNA_def_property(srna, "outer_breaking_threshold", PROP_FLOAT, PROP_NONE);
+	/*prop = RNA_def_property(srna, "outer_breaking_threshold", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "outer_breaking_threshold");
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_outer_threshold_set", NULL);
 	RNA_def_property_ui_text(prop, "Outer breaking threshold", "Threshold to break relationships between clusters");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
 
 	prop = RNA_def_property(srna, "use_constraints", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyModifier_use_constraints_set");

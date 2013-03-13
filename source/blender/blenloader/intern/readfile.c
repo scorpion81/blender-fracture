@@ -4787,6 +4787,8 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
             psmd->tempOb = NULL;
 			psmd->patree = NULL;
 			psmd->inner_material = NULL;
+			psmd->noise = 0.0f;
+			psmd->percentage = 100;
 		}
 		else if (md->type == eModifierType_MeshDeform) {
 			MeshDeformModifierData *mmd = (MeshDeformModifierData *)md;
@@ -4839,9 +4841,9 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			zero_m4(rmd->origmat);
 			rmd->meshConstraints.first = NULL;
 			rmd->meshConstraints.last = NULL;
-			rmd->inner_breaking_threshold = 10.0f;
-			rmd->outer_breaking_threshold = 2.0f;
-			rmd->cltree = NULL;
+			rmd->breaking_threshold = 10.0f;
+//			rmd->outer_breaking_threshold = 2.0f;
+//			rmd->cltree = NULL;
 			rmd->ntree = NULL;
 			rmd->use_constraints = FALSE;
 		}
