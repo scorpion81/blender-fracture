@@ -4789,6 +4789,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			psmd->inner_material = NULL;
 			psmd->noise = 0.0f;
 			psmd->percentage = 100;
+			psmd->use_cache = FALSE;
 		}
 		else if (md->type == eModifierType_MeshDeform) {
 			MeshDeformModifierData *mmd = (MeshDeformModifierData *)md;

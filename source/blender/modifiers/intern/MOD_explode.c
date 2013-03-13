@@ -149,7 +149,7 @@ static void freeData(ModifierData *md)
 		emd->fracMesh = NULL;
 	}
 
-	if ((emd->tempOb) && (emd->mode == eFractureMode_Cells)) {
+	if ((emd->tempOb) && (emd->tempOb->data) && (emd->mode == eFractureMode_Cells)) {
 		BKE_libblock_free_us(&(G.main->object), emd->tempOb);
 		BKE_object_unlink(emd->tempOb);
 		BKE_object_free(emd->tempOb);
@@ -1146,35 +1146,34 @@ static int dm_minmax(DerivedMesh* dm, float min[3], float max[3])
 	return (verts != 0);
 }
 
-static int points_from_verts(Object* ob, int totobj, float** points, int p_exist, float mat[4][4], float thresh)
+static int points_from_verts(Object** ob, int totobj, float*** points, int p_exist, float mat[4][4], float thresh, ExplodeModifierData *emd)
 {
 	int v, o, pt = p_exist;
 	float co[3];
 	
 	for (o = 0; o < totobj; o++)
 	{
-		if (ob[o].type == OB_MESH)
+		if (ob[o]->type == OB_MESH)
 		{
-			Mesh* me = (Mesh*)ob[o].data;
+			Mesh* me = (Mesh*)ob[o]->data;
 			float imat[4][4];
 			invert_m4_m4(imat, mat);
 			for (v = 0; v < me->totvert; v++)
 			{
 				if (BLI_frand() < thresh) {
-					*points = MEM_reallocN(*points, ((pt+1)*3)*sizeof(float));
+					*points = MEM_reallocN(*points, (pt+1)*sizeof(float*));
+					(*points)[pt] = MEM_callocN(3 * sizeof(float), "points[pt]");
 				
-					co[0] = me->mvert[v].co[0];
-					co[1] = me->mvert[v].co[1];
-					co[2] = me->mvert[v].co[2];
-				
-					//if (totobj > 1) {
-					mul_m4_v3(ob[o].obmat, co);
-					mul_m4_v3(imat, co);
-					//}
-				
-					(*points)[pt*3] = co[0];
-					(*points)[pt*3+1] = co[1];
-					(*points)[pt*3+2] = co[2];
+					copy_v3_v3(co, me->mvert[v].co);
+					if ((o > 0) ||
+					   ((emd->point_source & eExtraVerts) &&
+					   (!(emd->point_source & eOwnVerts)) && (o == 0)))
+					{
+						mul_m4_v3(ob[o]->obmat, co);
+						mul_m4_v3(imat, co);
+					}
+
+					copy_v3_v3((*points)[pt], co);
 					pt++;
 				}
 			}
@@ -1184,7 +1183,7 @@ static int points_from_verts(Object* ob, int totobj, float** points, int p_exist
 	return pt;
 }
 
-static int points_from_particles(Object* ob, int totobj, Scene* scene, float** points, int p_exist, float thresh)
+static int points_from_particles(Object** ob, int totobj, Scene* scene, float*** points, int p_exist, float thresh)
 {
 	int o, p, pt = p_exist;
 	ParticleSystemModifierData* psmd;
@@ -1195,13 +1194,13 @@ static int points_from_particles(Object* ob, int totobj, Scene* scene, float** p
 	
 	for (o = 0; o < totobj; o++)
 	{
-		for (mod = ob[o].modifiers.first; mod; mod = mod->next)
+		for (mod = ob[o]->modifiers.first; mod; mod = mod->next)
 		{
 			if (mod->type == eModifierType_ParticleSystem)
 			{
 				psmd = (ParticleSystemModifierData*)mod;
 				sim.scene = scene;
-				sim.ob = ob;
+				sim.ob = ob[o];
 				sim.psys = psmd->psys;
 				sim.psmd = psmd;
 				
@@ -1209,10 +1208,9 @@ static int points_from_particles(Object* ob, int totobj, Scene* scene, float** p
 				{
 					if (BLI_frand() < thresh) {
 						psys_get_birth_coordinates(&sim, pa, &birth, 0, 0);
-						*points = MEM_reallocN(*points, ((pt+1)*3)* sizeof(float));
-						(*points)[pt*3] = birth.co[0];
-						(*points)[pt*3+1] = birth.co[1];
-						(*points)[pt*3+2] = birth.co[2];
+						*points = MEM_reallocN(*points, (pt+1)*sizeof(float*));
+						(*points)[pt] = MEM_callocN(3*sizeof(float), "points[pt]");
+						copy_v3_v3((*points)[pt], birth.co);
 						pt++;
 					}
 				}
@@ -1223,7 +1221,7 @@ static int points_from_particles(Object* ob, int totobj, Scene* scene, float** p
 	return pt;
 }
 
-static int points_from_greasepencil(Object* ob, int totobj, float** points, int p_exist, float mat[4][4], float thresh)
+static int points_from_greasepencil(Object** ob, int totobj, float*** points, int p_exist, float mat[4][4], float thresh)
 {
 	bGPDlayer* gpl;
 	bGPDframe* gpf;
@@ -1232,11 +1230,11 @@ static int points_from_greasepencil(Object* ob, int totobj, float** points, int 
 	
 	for (o = 0; o < totobj; o++)
 	{
-		if ((ob[o].gpd) && (ob[o].gpd->layers.first))
+		if ((ob[o]->gpd) && (ob[o]->gpd->layers.first))
 		{
 			float imat[4][4];
 			invert_m4_m4(imat, mat);
-			for (gpl = ob[o].gpd->layers.first; gpl; gpl = gpl->next)
+			for (gpl = ob[o]->gpd->layers.first; gpl; gpl = gpl->next)
 			{
 				for (gpf = gpl->frames.first; gpf; gpf = gpf->next) {
 				//gpf = gpl->actframe;
@@ -1247,17 +1245,15 @@ static int points_from_greasepencil(Object* ob, int totobj, float** points, int 
 							if (BLI_frand() < thresh)
 							{
 								float point[3] = {0, 0, 0};
-								*points = MEM_reallocN(*points, ((pt+1)*3)*sizeof(float));
+								*points = MEM_reallocN(*points, (pt+1)*sizeof(float*));
+								(*points)[pt] = MEM_callocN(3*sizeof(float), "points[pt]");
 
 								point[0] = gps->points[p].x;
 								point[1] = gps->points[p].y;
 								point[2] = gps->points[p].z;
 
 								mul_m4_v3(imat, point);
-
-								(*points)[pt*3] = point[0];
-								(*points)[pt*3+1] = point[1];
-								(*points)[pt*3+2] = point[2];
+								copy_v3_v3((*points)[pt], point);
 								pt++;
 							}
 						}
@@ -1304,75 +1300,67 @@ static int getChildren(Scene* scene, Object* ob, Object** children)
 	return ctr;
 }*/
 
-static int getGroupObjects(Group *gr, Object **obs )
+static int getGroupObjects(Group *gr, Object ***obs, int g_exist)
 {
-	int ctr = 0;
+	int ctr = g_exist;
 	GroupObject *go;
-	if (gr == NULL) return 0;
+	if (gr == NULL) return ctr;
 
 	for (go = gr->gobject.first; go; go = go->next) {
 
-		*obs = MEM_reallocN(*obs, sizeof(Object) * (ctr+1));
-		*obs[ctr] = *(go->ob);
+		*obs = MEM_reallocN(*obs, sizeof(Object*) * (ctr+1));
+		(*obs)[ctr] = go->ob;
 		ctr++;
 	}
 
 	return ctr;
 }
 
-static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float **points, float mat[4][4])
+static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float ***points, float mat[4][4])
 {
 	int totpoint = 0, totgroup = 0, t = 0;
-	Object* go = MEM_mallocN(sizeof(Object), "groupobjects");
+	Object** go = MEM_mallocN(sizeof(Object*), "groupobjects");
 	float thresh = (float)emd->percentage / 100.0f;
 	BoundBox* bb;
 
 	if (emd->point_source & (eExtraParticles | eExtraVerts ))
 	{
-		//children = MEM_mallocN(sizeof(Object*), "get_points->children");
-		totgroup += getGroupObjects(emd->extra_group, &go);
+		if (((emd->point_source & eOwnParticles) && (emd->point_source & eExtraParticles)) ||
+			((emd->point_source & eOwnVerts) && (emd->point_source & eExtraVerts)))
+		{
+			go = MEM_reallocN(go, sizeof(Object*)*(totgroup+1));
+			go[totgroup] = ob;
+			totgroup++;
+		}
+
+		totgroup = getGroupObjects(emd->extra_group, &go, totgroup);
+	}
+	else
+	{
+		totgroup = 1;
+		go[0] = ob;
 	}
 	
-	if (emd->point_source & eOwnParticles)
+	if (emd->point_source & (eOwnParticles | eExtraParticles))
 	{
-		totpoint += points_from_particles(ob, 1, scene, points, totpoint, thresh);
+		totpoint = points_from_particles(go, totgroup, scene, points, totpoint, thresh);
 	}
 	
-	if (emd->point_source & eExtraParticles)
+	if (emd->point_source & (eOwnVerts | eExtraVerts))
 	{
-		totpoint += points_from_particles(go, totgroup, scene, points , totpoint, thresh);
-	}
-	
-	if (emd->point_source & eExtraVerts)
-	{
-		totpoint += points_from_verts(go, totgroup, points, totpoint, mat, thresh);
+		totpoint = points_from_verts(go, totgroup, points, totpoint, mat, thresh, emd);
 	}
 	
 	if (emd->point_source & eGreasePencil)
 	{
-		totpoint += points_from_greasepencil(ob, 1, points, totpoint, mat, thresh);
-	}
-	
-	if (emd->point_source & eOwnVerts)
-	{
-		totpoint += points_from_verts(ob, 1, points, totpoint, mat, thresh);
+		totpoint = points_from_greasepencil(go, totgroup, points, totpoint, mat, thresh);
 	}
 
-	
-	/*if (children)
-	{
-		MEM_freeN(children);
-		children = NULL;
-	}*/
-	
 	//apply noise
 
 	bb = BKE_object_boundbox_get(ob);
 	for (t = 0; t < totpoint; t++) {
 		float bbox_min[3], bbox_max[3];
-		/*pt[0] = (*points)[3*t];
-		pt[1] = (*points)[3*t+1];
-		pt[2] = (*points)[3*t+2];*/
 
 		if (emd->noise > 0.0f) {
 			float scalar, size[3], rand[3] = {0, 0, 0};
@@ -1387,17 +1375,13 @@ static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float 
 
 			//add_v3_v3(pt, rand);
 			//mul_v3_fl(pt, scalar * BLI_frand());
-			(*points)[3*t] += (rand[0] * scalar * BLI_frand());
-			(*points)[3*t+1] += (rand[1] * scalar * BLI_frand());
-			(*points)[3*t+2] += (rand[2] * scalar * BLI_frand());
+			(*points)[t][0] += (rand[0] * scalar * BLI_frand());
+			(*points)[t][1] += (rand[1] * scalar * BLI_frand());
+			(*points)[t][2] += (rand[2] * scalar * BLI_frand());
 		}
-
-		/**(points)[3*t] = pt[0];
-		*(points)[3*t+1] = pt[1];
-		*(points)[3*t+2] = pt[2];*/
 	}
 
-	MEM_freeN(bb);
+	//MEM_freeN(bb);
 	MEM_freeN(go);
 	return totpoint;
 }
@@ -1566,7 +1550,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 	float theta = 0.0f;
 	int n_size = 8;
 
-	float* points = NULL;
+	float** points = NULL;
 	int totpoint = 0;
 //	int degenerate = FALSE;
 
@@ -1601,44 +1585,30 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 	
 	//choose from point sources here
 	//if (!emd->refracture)
-	{
-		points = MEM_mallocN(sizeof(float)*3, "points");
-		totpoint = get_points(emd, emd->modifier.scene, ob, &points, mat);
-		
-		//no points, cant do anything
-		if (totpoint == 0) {
-			MEM_freeN(points);
-			return NULL;
-		}
-		
-		if (emd->point_source == eOwnVerts)
-		{
-			//make container a little bigger ?
-			if (!emd->use_boolean) theta = 0.01f;
-		}
-		container = container_new(min[0]-theta, max[0]+theta, min[1]-theta, max[1]+theta, min[2]-theta, max[2]+theta,
-								  n_size, n_size, n_size, FALSE, FALSE, FALSE, totpoint);
-		
-		for (p = 0; p < totpoint; p++)
-		{
-			co[0] = points[p*3];
-			co[1] = points[p*3+1];
-			co[2] = points[p*3+2];
-			container_put(container, particle_order, p, co[0], co[1], co[2]);
-		}
+
+	points = MEM_mallocN(sizeof(float*), "points");
+	totpoint = get_points(emd, emd->modifier.scene, ob, &points, mat);
+
+	//no points, cant do anything
+	if (totpoint == 0) {
+		MEM_freeN(points);
+		points = NULL;
+		return NULL;
 	}
-	//else
-	/*{
-		container = container_new(min[0]-theta, max[0]+theta, min[1]-theta, max[1]+theta, min[2]-theta, max[2]+theta,
-								  n_size, n_size, n_size, FALSE, FALSE, FALSE, psmd->psys->totpart);
-		for (p = 0, pa = psmd->psys->particles; p < psmd->psys->totpart; p++, pa++)
-		{
-			co[0] = pa->state.co[0];
-			co[1] = pa->state.co[1];
-			co[2] = pa->state.co[2];
-			container_put(container, particle_order, p, co[0], co[1], co[2]);
-		}
-	}*/
+
+	if (emd->point_source & eOwnVerts)
+	{
+		//make container a little bigger ?
+		if (!emd->use_boolean) theta = 0.01f;
+	}
+	container = container_new(min[0]-theta, max[0]+theta, min[1]-theta, max[1]+theta, min[2]-theta, max[2]+theta,
+							  n_size, n_size, n_size, FALSE, FALSE, FALSE, totpoint);
+
+	for (p = 0; p < totpoint; p++)
+	{
+		copy_v3_v3(co, points[p]);
+		container_put(container, particle_order, p, co[0], co[1], co[2]);
+	}
 
 	//TODO: write results to temp file, ensure using the systems temp dir...
 	// this prints out vertex positions and face indexes
@@ -1916,6 +1886,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 						{
 							DM_release(dm);
 							MEM_freeN(dm);
+							dm = NULL;
 							DM_ensure_tessface(boolresult);
 							CDDM_calc_edges_tessface(boolresult);
 							CDDM_tessfaces_to_faces(boolresult);

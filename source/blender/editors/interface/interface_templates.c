@@ -992,8 +992,8 @@ static uiLayout *draw_modifier(uiLayout *layout, Scene *scene, Object *ob,
 			uiBlockClearButLock(block);
 			uiBlockSetButLock(block, ob && ob->id.lib, ERROR_LIBDATA_MESSAGE);
 			
-			if (!ELEM6(md->type, eModifierType_Fluidsim, eModifierType_Softbody, eModifierType_ParticleSystem,
-			           eModifierType_Cloth, eModifierType_Smoke, eModifierType_RigidBody))
+			if (!ELEM7(md->type, eModifierType_Fluidsim, eModifierType_Softbody, eModifierType_ParticleSystem,
+			           eModifierType_Cloth, eModifierType_Smoke, eModifierType_RigidBody, eModifierType_Explode))
 			{
 				uiItemO(row, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Copy"), ICON_NONE,
 				        "OBJECT_OT_modifier_copy");
