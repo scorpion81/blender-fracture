@@ -1369,10 +1369,10 @@ static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float 
 
 	bb = BKE_object_boundbox_get(ob);
 	for (t = 0; t < totpoint; t++) {
-		float pt[3], bbox_min[3], bbox_max[3];
-		pt[0] = (*points)[3*t];
+		float bbox_min[3], bbox_max[3];
+		/*pt[0] = (*points)[3*t];
 		pt[1] = (*points)[3*t+1];
-		pt[2] = (*points)[3*t+2];
+		pt[2] = (*points)[3*t+2];*/
 
 		if (emd->noise > 0.0f) {
 			float scalar, size[3], rand[3] = {0, 0, 0};
@@ -1385,13 +1385,16 @@ static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float 
 			rand[1] = 2.0f * BLI_frand() - 1.0f;
 			rand[2] = 2.0f * BLI_frand() - 1.0f;
 
-			add_v3_v3(pt, rand);
-			mul_v3_fl(pt, scalar * BLI_frand());
+			//add_v3_v3(pt, rand);
+			//mul_v3_fl(pt, scalar * BLI_frand());
+			(*points)[3*t] += (rand[0] * scalar * BLI_frand());
+			(*points)[3*t+1] += (rand[1] * scalar * BLI_frand());
+			(*points)[3*t+2] += (rand[2] * scalar * BLI_frand());
 		}
 
-		(*points)[3*t] = pt[0];
-		(*points)[3*t+1] = pt[1];
-		(*points)[3*t+2] = pt[2];
+		/**(points)[3*t] = pt[0];
+		*(points)[3*t+1] = pt[1];
+		*(points)[3*t+2] = pt[2];*/
 	}
 
 	MEM_freeN(bb);
@@ -1567,6 +1570,8 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 	int totpoint = 0;
 //	int degenerate = FALSE;
 
+	INIT_MINMAX(min, max);
+
 	if (emd->use_boolean) {
 		//theta = -0.01f;
 		//make container bigger for boolean case,so cube and container dont have equal size which can lead to boolean errors
@@ -1574,13 +1579,12 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 		{	//cubes usually need flip_normal, so enable theta only here, otherwise it will be subtracted
 			theta = 0.01f;
 		}
-		
-		INIT_MINMAX(min, max);
 		BKE_mesh_minmax(ob->data, min, max);
 	}
 	else {
 		//con = voronoi.domain(xmin-theta,xmax+theta,ymin-theta,ymax+theta,zmin-theta,zmax+theta,nx,ny,nz,False, False, False, particles)
-		dm_minmax(derivedData, min, max);
+		//dm_minmax(derivedData, min, max);
+		BKE_mesh_minmax(ob->data, min, max);
 	}
 
 	//use global coordinates for container
@@ -1598,7 +1602,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 	//choose from point sources here
 	//if (!emd->refracture)
 	{
-		points = MEM_mallocN(sizeof(float), "points");
+		points = MEM_mallocN(sizeof(float)*3, "points");
 		totpoint = get_points(emd, emd->modifier.scene, ob, &points, mat);
 		
 		//no points, cant do anything
@@ -2362,10 +2366,13 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					explodeCells(emd, psmd, md->scene, ob);
 				}
 
-				if (emd->fracMesh)
+				if (emd->fracMesh) {
 					result = CDDM_from_bmesh(emd->fracMesh, TRUE);
-				else
+				}
+				else {
 					result = derivedData;
+					return result;
+				}
 				
 				if (emd->use_boolean)
 				{
