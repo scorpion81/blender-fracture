@@ -813,12 +813,12 @@ static void rna_RigidBodyModifier_threshold_set(PointerRNA *ptr, float value)
 	updateConstraints(rmd);
 }
 
-/*static void rna_RigidBodyModifier_outer_threshold_set(PointerRNA *ptr, float value)
+static void rna_RigidBodyModifier_contact_dist_set(PointerRNA *ptr, float value)
 {
 	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
-	rmd->outer_breaking_threshold = value;
-	updateConstraints(rmd);
-}*/
+	rmd->contact_dist = value;
+	//rmd->refresh = TRUE; //maybe slow, better hit refresh manually
+}
 
 static void rna_RigidBodyModifier_use_constraints_set(PointerRNA* ptr, int value)
 {
@@ -3846,16 +3846,21 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Breaking threshold", "Threshold to break constraints between shards");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
-	/*prop = RNA_def_property(srna, "outer_breaking_threshold", PROP_FLOAT, PROP_NONE);
-	RNA_def_property_float_sdna(prop, NULL, "outer_breaking_threshold");
-	RNA_def_property_range(prop, 0.0f, FLT_MAX);
-	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_outer_threshold_set", NULL);
-	RNA_def_property_ui_text(prop, "Outer breaking threshold", "Threshold to break relationships between clusters");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
-
 	prop = RNA_def_property(srna, "use_constraints", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyModifier_use_constraints_set");
 	RNA_def_property_ui_text(prop, "Use Constraints", "Create constraints between all shards");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "contact_dist", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "contact_dist");
+	RNA_def_property_range(prop, 0.0f, FLT_MAX);
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_contact_dist_set", NULL);
+	RNA_def_property_ui_text(prop, "Contact distance", "Distance up to which two vertices are considered to have contact");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "constraint_group", PROP_POINTER, PROP_NONE);
+	RNA_def_property_ui_text(prop, "Constraint Group", "Group of objects (must have rigidbody modifier on them) between whose shards constraints should be built");
+	RNA_def_property_flag(prop, PROP_EDITABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 

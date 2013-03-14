@@ -669,24 +669,25 @@ typedef struct VoronoiCells {
 typedef enum {
 	eOwnVerts = (1 << 0),
 	eOwnParticles = (1 << 1),
-	eChildVerts = (1 << 2),
-	eChildParticles = (1 << 3),
+	eExtraVerts = (1 << 2),
+	eExtraParticles = (1 << 3),
 	eGreasePencil = (1 << 4),
 	
 } eVoronoiPointSource;
 
 typedef struct ExplodeModifierData {
 	ModifierData modifier;
-    
-    //for voronoi cell mode
-    VoronoiCells *cells;
-    struct BMesh *fracMesh;
-    struct Object *tempOb;
+
+	//for voronoi cell mode
+	VoronoiCells *cells;
+	struct BMesh *fracMesh;
+	struct Object *tempOb;
 	struct KDTree *patree;
 	struct Material *inner_material;
-    
-    //for face mode
-    int *facepa;
+	struct Group *extra_group;
+
+	//for face mode
+	int *facepa;
 	short flag, vgroup;
 	float protect;
 	char uvname[64];	/* MAX_CUSTOMDATA_LAYER_NAME */
@@ -805,6 +806,8 @@ typedef struct SolidifyModifierData {
 	float offset;			/* new surface offset level*/
 	float offset_fac;		/* midpoint of the offset  */
 	float offset_fac_vg;	/* factor for the minimum weight to use when vgroups are used, avoids 0.0 weights giving duplicate geometry */
+	float offset_clamp;		/* clamp offset based on surrounding geometry */
+	float pad;
 	float crease_inner;
 	float crease_outer;
 	float crease_rim;
@@ -1289,17 +1292,18 @@ typedef struct MeshIsland {
 	int vertex_count;
 	float centroid[3];
 	float rot[4]; //hrm, need this for constraints probably
-	int cluster_index;  //the cluster this island belongs to
-	char pad[4];
+	//int cluster_index;  //the cluster this island belongs to
+	//char pad[4];
 } MeshIsland;
 
 typedef struct RigidBodyModifierData {
 	ModifierData modifier;
 	struct BMesh *visible_mesh;
-	struct KDTree *cltree, *ntree;
+	struct KDTree *ntree;
 	ListBase meshIslands, meshConstraints;
 	int refresh, use_constraints;
-	float origmat[4][4], inner_breaking_threshold, outer_breaking_threshold;
+	float origmat[4][4], breaking_threshold; //, outer_breaking_threshold;
+	float contact_dist;
 	//char pad[4];
 } RigidBodyModifierData;
 

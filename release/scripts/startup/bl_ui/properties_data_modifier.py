@@ -333,13 +333,8 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
             col.prop(md, "percentage")
             col.prop(md, "use_boolean")
             if (md.use_boolean == True):
-            #    col.prop(md, "flip_normal")
                 col.prop(md, "inner_material")
-            #if (md.refracture == False):
-            #    col.prop(md, "use_cache")
             col.prop(md, "use_animation")
-            #if (md.use_cache == False and md.use_rigidbody == False):
-            #    col.prop(md, "refracture")
             if (md.use_animation == True):
                 col.prop(md, "emit_continuously")
                 if (md.emit_continuously == False):
@@ -681,6 +676,8 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
     def RIGID_BODY(self, layout, ob, md):
         layout.operator("object.rigidbody_refresh", text="Refresh")
         layout.prop(md, "use_constraints")
+        layout.prop(md, "constraint_group")
+        layout.prop(md, "contact_dist")
         layout.prop(md, "breaking_threshold")
 
     def SCREW(self, layout, ob, md):

@@ -46,6 +46,7 @@
 #include "BKE_scene.h"
 #include "BKE_object.h"
 #include "BKE_particle.h"
+#include "BKE_group.h"
 
 #include "bmesh.h"
 
@@ -53,6 +54,7 @@
 #include "DNA_rigidbody_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_listBase.h"
+#include "DNA_group_types.h"
 
 #include "../../rigidbody/RBI_api.h"
 
@@ -67,6 +69,8 @@ static void initData(ModifierData *md)
 	rmd->breaking_threshold = 10.0f;
 //	rmd->outer_breaking_threshold = 2.0f;
 	rmd->use_constraints = FALSE;
+	rmd->constraint_group = NULL;
+	rmd->contact_dist = 0.00001f;
 }
 
 static void copyData(ModifierData *md, ModifierData *target)
@@ -373,7 +377,7 @@ static ParticleSystemModifierData *findPrecedingParticlesystem(Object *ob)
 	return NULL;
 }
 
-static void create_neighborhood_tree(RigidBodyModifierData *rmd )
+/*static void create_neighborhood_tree(RigidBodyModifierData *rmd )
 {
 	MeshIsland* mi;
 	int i = 0;
@@ -390,114 +394,47 @@ static void create_neighborhood_tree(RigidBodyModifierData *rmd )
 	}
 
 	BLI_kdtree_balance(rmd->ntree);
-}
-
-/*static void create_cluster_tree(RigidBodyModifierData *rmd, ParticleSystemModifierData *psmd, Scene* scene, Object* ob)
-{
-	ParticleSimulationData sim = {NULL};
-	ParticleSystem *psys = psmd->psys;
-	ParticleData *pa;
-	ParticleKey birth;
-	int p = 0, totpart = 0;
-
-	totpart = psys->totpart;
-	sim.scene = scene;
-	sim.ob = ob;
-	sim.psys = psmd->psys;
-	sim.psmd = psmd;
-
-	/* make tree of emitter locations *
-	if (rmd->cltree)
-	{
-		BLI_kdtree_free(rmd->cltree);
-		rmd->cltree = NULL;
-	}
-
-	rmd->cltree = BLI_kdtree_new(totpart);
-	invert_m4_m4(ob->imat, ob->obmat);
-	for (p = 0, pa = psys->particles; p < totpart; p++, pa++)
-	{
-		if (ELEM3(pa->alive, PARS_ALIVE, PARS_DYING, PARS_DEAD))
-		{
-			psys_get_birth_coordinates(&sim, pa, &birth, 0, 0);
-			mul_m4_v3(ob->imat, birth.co);
-			BLI_kdtree_insert(rmd->cltree, p, birth.co, NULL);
-		}
-	}
-
-	BLI_kdtree_balance(rmd->cltree);
 }*/
 
-/*static void map_islands_to_clusters(RigidBodyModifierData* rmd, ParticleSystemModifierData *psmd, Scene* scene, Object* ob)
-{
-	ParticleSystem *psys = psmd->psys;
-	MeshIsland *mi;
-	float center[3];
-	int c = 0;
-	//float cfra;
-	//cfra = BKE_scene_frame_get(scene);
 
-	for(mi = rmd->meshIslands.first; mi; mi = mi->next) {
-
-		copy_v3_v3(center, mi->centroid);
-		//centroids were stored in object space, go to global space (particles are in global space)
-		//mul_m4_v3(ob->obmat, center);
-		c = BLI_kdtree_find_nearest(rmd->cltree, center, NULL, NULL);
-
-		if (emd->emit_continuously) {
-			if (ELEM3(psys->particles[p].alive, PARS_ALIVE, PARS_DYING, PARS_DEAD)) {
-				emd->cells->data[c].particle_index = p;
-			}
-			else {
-				emd->cells->data[c].particle_index = -1;
-			}
-		}
-		else {
-		if (mi->cluster_index == -1) {// && (cfra > (psys->part->sta + emd->map_delay))) {
-			//map once, with delay, the larger the delay, the more smaller chunks !
-			mi->cluster_index = c;
-		}
-	}
-}*/
-
-static void connect_constraints(RigidBodyModifierData *rmd) {
+static void connect_constraints(RigidBodyModifierData *rmd, MeshIsland **meshIslands, int count, BMesh **combined_mesh, KDTree **combined_tree) {
 
 	MeshIsland *mi, *mi2;
 	BMOpSlot *slot;
-	int m, i, v, count = BLI_countlist(&rmd->meshIslands), shared = 0;
+	int m, i, j, v, shared = 0;
 	KDTreeNearest *n = MEM_mallocN(sizeof(KDTreeNearest)*count, "kdtreenearest");
 
 
-	for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
-
+	for (j = 0; j < count; j++) {
+		mi = meshIslands[j];
 		for (v = 0; v < mi->vertex_count; v++) {
-			BM_elem_flag_enable(mi->vertices[v], BM_ELEM_TAG);
+			BM_elem_flag_enable(BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]), BM_ELEM_TAG);
 		}
 
-		m = BLI_kdtree_find_n_nearest(rmd->ntree, count, mi->centroid, NULL, n);
+		m = BLI_kdtree_find_n_nearest(*combined_tree, count, mi->centroid, NULL, n);
 
 		for (i = 0; i < m; i++) {
 			BMOperator op;
-			mi2 = BLI_findlink(&rmd->meshIslands, (n+i)->index);
+			mi2 = meshIslands[(n+i)->index];
 
 			if ((mi != mi2) && (mi2 != NULL)) {
 				//select "our" vertices
 				for (v = 0; v < mi2->vertex_count; v++) {
-					BM_elem_flag_enable(mi2->vertices[v], BM_ELEM_TAG);
+					BM_elem_flag_enable(/*mi2->vertices[v]*/BM_vert_at_index(*combined_mesh, mi2->combined_index_map[v]), BM_ELEM_TAG);
 				}
 
 				//do we share atleast 1 vertex in selection
-				BMO_op_initf(rmd->visible_mesh, &op, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "find_doubles verts=%hv dist=%f", BM_ELEM_TAG, 0.00001f);
-				BMO_op_exec(rmd->visible_mesh, &op);
+				BMO_op_initf(*combined_mesh, &op, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "find_doubles verts=%hv dist=%f", BM_ELEM_TAG, rmd->contact_dist);
+				BMO_op_exec(*combined_mesh, &op);
 				slot = BMO_slot_get(op.slots_out, "targetmap.out");
 				if (slot->data.ghash) {
 					shared = slot->data.ghash->nentries;
 				}
-				BMO_op_finish(rmd->visible_mesh, &op);
+				BMO_op_finish(*combined_mesh, &op);
 
 				//deselect vertices
 				for (v = 0; v < mi2->vertex_count; v++) {
-					BM_elem_flag_disable(mi2->vertices[v], BM_ELEM_TAG);
+					BM_elem_flag_disable(BM_vert_at_index(*combined_mesh, mi2->combined_index_map[v]), BM_ELEM_TAG);
 				}
 
 				//printf("shared: %d\n", shared);
@@ -508,13 +445,6 @@ static void connect_constraints(RigidBodyModifierData *rmd) {
 					if (rbsc != NULL) {
 						rbsc->mi1 = mi;
 						rbsc->mi2 = mi2;
-
-						/*if ((mi->cluster_index == mi2->cluster_index) && (mi->cluster_index != -1)) {
-							rbsc->breaking_threshold = rmd->inner_breaking_threshold;
-						}
-						else {
-							rbsc->breaking_threshold = rmd->outer_breaking_threshold;
-						}*/
 						rbsc->breaking_threshold = rmd->breaking_threshold;
 
 						BLI_addtail(&rmd->meshConstraints, rbsc);
@@ -530,31 +460,99 @@ static void connect_constraints(RigidBodyModifierData *rmd) {
 		}
 
 		for (v = 0; v < mi->vertex_count; v++) {
-			BM_elem_flag_disable(mi->vertices[v], BM_ELEM_TAG);
+			BM_elem_flag_disable(BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]), BM_ELEM_TAG);
 		}
 	}
 
 	MEM_freeN(n);
 }
 
-static void create_constraints(RigidBodyModifierData *rmd, Object *ob) {
-	//pointsource determines cluster centers, default: own particles
-	//ParticleSystemModifierData *psmd = NULL;
-	//Scene *sc = rmd->modifier.scene;
+static int create_combined_neighborhood(RigidBodyModifierData *rmd, MeshIsland ***mesh_islands, BMesh **combined_mesh, KDTree **combined_tree)
+{
+	ModifierData* md;
+	RigidBodyModifierData* rmd2;
+	GroupObject* go;
+	MeshIsland* mi;
+	int v, i = 0, islands = 0, vert_counter = 0;
 
-	/*psmd = findPrecedingParticlesystem(ob);
+	//create a combined mesh over all part bmeshes, and a combined kdtree to find "outer" constraints as well
+	//handle single object here
+	*combined_mesh = BM_mesh_create(&bm_mesh_allocsize_default);
+	BM_mesh_elem_toolflags_ensure(*combined_mesh);
 
-	if (psmd) {
-		create_cluster_tree(rmd, psmd, sc, ob);
-		map_islands_to_clusters(rmd, psmd, sc, ob);
-		BLI_kdtree_free(rmd->cltree);
-		rmd->cltree = NULL;
-	}*/
+	islands = BLI_countlist(&rmd->meshIslands);
+	*mesh_islands = MEM_reallocN(*mesh_islands, islands*sizeof(MeshIsland*));
+	for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+		mi->combined_index_map = MEM_mallocN(mi->vertex_count*sizeof(int), "combined_index_map");
+		for (v = 0; v < mi->vertex_count; v++) {
+			BM_vert_create(*combined_mesh, mi->vertices[v]->co, NULL, 0);
+			mi->combined_index_map[v] = vert_counter;
+			vert_counter++;
+		}
+		(*mesh_islands)[i] = mi;
+		i++;
+	}
 
-	create_neighborhood_tree(rmd);
-	connect_constraints(rmd);
-	BLI_kdtree_free(rmd->ntree);
-	rmd->ntree = NULL;
+	//handle a group of objects to be taken account into as well
+	if (rmd->constraint_group != NULL) {
+		for (go = rmd->constraint_group->gobject.first; go; go = go->next) {
+			for (md = go->ob->modifiers.first; md; md = md->next) {
+				if (md->type == eModifierType_RigidBody) {
+					rmd2 = (RigidBodyModifierData*)md;
+					islands += BLI_countlist(&rmd->meshIslands);
+					*mesh_islands = MEM_reallocN(*mesh_islands, islands*sizeof(MeshIsland*));
+					for (mi = rmd2->meshIslands.first; mi; mi = mi->next) {
+						mi->combined_index_map = MEM_mallocN(mi->vertex_count*sizeof(int), "combined_index_map");
+						for (v = 0; v < mi->vertex_count; v++) {
+							BM_vert_create(*combined_mesh, mi->vertices[v]->co, NULL, 0);
+							mi->combined_index_map[v] = vert_counter;
+							vert_counter++;
+						}
+						(*mesh_islands)[i] = mi;
+						i++;
+					}
+				}
+			}
+		}
+	}
+
+	*combined_tree = BLI_kdtree_new(islands);
+	for (i = 0; i < islands; i++) {
+		BLI_kdtree_insert(*combined_tree, i, (*mesh_islands)[i]->centroid, NULL);
+		i++;
+	}
+
+	BLI_kdtree_balance(*combined_tree);
+
+	return islands;
+}
+
+static void create_constraints(RigidBodyModifierData *rmd) {
+	KDTree* combined_tree = NULL;
+	BMesh* combined_mesh = NULL;
+	MeshIsland** mesh_islands = MEM_mallocN(sizeof(MeshIsland*), "mesh_islands");
+	int count, i;
+
+	count = create_combined_neighborhood(rmd, &mesh_islands, &combined_mesh, &combined_tree);
+
+	if ((combined_mesh != NULL) && (combined_tree != NULL))
+		connect_constraints(rmd, mesh_islands, count, &combined_mesh, &combined_tree);
+
+	if (combined_tree != NULL) {
+		BLI_kdtree_free(combined_tree);
+		combined_tree = NULL;
+	}
+
+	if (combined_mesh != NULL) {
+		BM_mesh_free(combined_mesh);
+		combined_mesh = NULL;
+	}
+
+	for (i = 0; i < count; i++) {
+		MEM_freeN(mesh_islands[i]->combined_index_map);
+	}
+
+	MEM_freeN(mesh_islands);
 }
 
 static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
@@ -573,7 +571,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 		//create inner constraints
 		if (rmd->use_constraints)
-			create_constraints(rmd, ob);
+			create_constraints(rmd);
 		rmd->refresh = FALSE;
 	}
 
@@ -588,6 +586,14 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 static int dependsOnTime(ModifierData *UNUSED(md))
 {
 	return 1;
+}
+
+static void foreachIDLink(ModifierData *md, Object *ob,
+						  IDWalkFunc walk, void *userData)
+{
+	RigidBodyModifierData *rmd = (RigidBodyModifierData *) md;
+
+	walk(userData, ob, (ID **)&rmd->constraint_group);
 }
 
 ModifierTypeInfo modifierType_RigidBody = {
@@ -614,6 +620,6 @@ ModifierTypeInfo modifierType_RigidBody = {
 	/* dependsOnTime */     dependsOnTime,
 	/* dependsOnNormals */	NULL,
 	/* foreachObjectLink */ NULL,
-	/* foreachIDLink */     NULL,
+	/* foreachIDLink */     foreachIDLink,
 	/* foreachTexLink */    NULL
 };
