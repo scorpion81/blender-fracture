@@ -1636,6 +1636,12 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 	
 	if (points)
 	{
+		int t;
+
+		for (t = 0; t < totpoint; t++) {
+			MEM_freeN(points[t]);
+			points[t] = NULL;
+		}
 		MEM_freeN(points);
 		points = NULL;
 	}
