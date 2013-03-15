@@ -792,17 +792,20 @@ static void rna_UVWarpModifier_uvlayer_set(PointerRNA *ptr, const char *value)
 
 static void updateConstraints(RigidBodyModifierData *rmd) {
 	RigidBodyShardCon *rbsc;
+	int index1, index2;
 
 	for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
-		/*if ((rbsc->mi1->cluster_index == rbsc->mi2->cluster_index) && (rbsc->mi1->cluster_index != -1)) {
-			rbsc->breaking_threshold = rmd->inner_breaking_threshold;
+		index1 = BLI_findindex(&rmd->meshIslands, rbsc->mi1);
+		index2 = BLI_findindex(&rmd->meshIslands, rbsc->mi2);
+		if ((index1 == -1) || (index2 == -1)) {
+			rbsc->breaking_threshold = rmd->group_breaking_threshold;
 		}
-		else {
-			rbsc->breaking_threshold = rmd->outer_breaking_threshold;
-		}*/
-		rbsc->breaking_threshold = rmd->breaking_threshold;
+		else
+		{
+			rbsc->breaking_threshold = rmd->breaking_threshold;
+		}
 
-		rbsc->flag != RBC_FLAG_NEEDS_VALIDATE;
+		rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
 	}
 }
 
@@ -817,7 +820,8 @@ static void rna_RigidBodyModifier_contact_dist_set(PointerRNA *ptr, float value)
 {
 	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
 	rmd->contact_dist = value;
-	//rmd->refresh = TRUE; //maybe slow, better hit refresh manually
+	updateConstraints(rmd);
+	rmd->refresh = TRUE; //maybe slow, better hit refresh manually
 }
 
 static void rna_RigidBodyModifier_use_constraints_set(PointerRNA* ptr, int value)
@@ -844,15 +848,16 @@ static void rna_RigidBodyModifier_group_threshold_set(PointerRNA *ptr, float val
 	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
 	rmd->group_breaking_threshold = value;
 	updateConstraints(rmd);
+	rmd->refresh = TRUE;
 }
 
 static void rna_RigidBodyModifier_group_contact_dist_set(PointerRNA *ptr, float value)
 {
 	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
 	rmd->group_contact_dist = value;
-	//rmd->refresh = TRUE; //maybe slow, better hit refresh manually
+	updateConstraints(rmd);
+	rmd->refresh = TRUE; //maybe slow, better hit refresh manually
 }
-
 
 #else
 
@@ -869,7 +874,6 @@ static PropertyRNA *rna_def_property_subdivision_common(StructRNA *srna, const c
 	RNA_def_property_enum_items(prop, prop_subdivision_type_items);
 	RNA_def_property_ui_text(prop, "Subdivision Type", "Select type of subdivision algorithm");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
-
 	return prop;
 }
 

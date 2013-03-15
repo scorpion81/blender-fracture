@@ -1293,8 +1293,8 @@ typedef struct MeshIsland {
 	int vertex_count;
 	float centroid[3];
 	float rot[4]; //hrm, need this for constraints probably
-	//int cluster_index;  //the cluster this island belongs to
-	//char pad[4];
+	int linear_index;  //index in rigidbody world
+	char pad[4];
 } MeshIsland;
 
 typedef struct RigidBodyModifierData {

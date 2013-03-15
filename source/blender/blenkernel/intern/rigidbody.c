@@ -67,6 +67,7 @@
 #include "BKE_utildefines.h"
 #include "BKE_library.h"
 #include "BKE_main.h"
+#include "BKE_modifier.h"
 
 #include "RNA_access.h"
 #include "bmesh.h"
@@ -869,6 +870,8 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 
 	if (rbw && rbw->physics_world)
 		RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups);
+
+	//rbo->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
 }
 
 
@@ -1288,12 +1291,53 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 	}
 }
 
+int filterCallback(void* world, int index1, int index2) {
+	RigidBodyWorld* rbw = (RigidBodyWorld*)world;
+	int ob_index1, ob_index2;
+	Object *ob1, *ob2;
+	RigidBodyModifierData *rmd1, *rmd2;
+	ModifierData* md;
+	MeshIsland* mi1, *mi2;
+
+	ob_index1 = rbw->cache_index_map[index1];
+	ob_index2 = rbw->cache_index_map[index2];
+	ob1 = rbw->objects[ob_index1];
+	ob2 = rbw->objects[ob_index2];
+
+	if ((ob1 == NULL) || (ob2 == NULL)) {
+		return TRUE; //quick hack, investigate why it is null
+	}
+
+	for (md = ob1->modifiers.first; md; md = md->next) {
+		if (md->type == eModifierType_RigidBody) {
+			rmd1 = (RigidBodyModifierData*)md;
+		}
+	}
+
+	for (md = ob2->modifiers.first; md; md = md->next) {
+		if (md->type == eModifierType_RigidBody) {
+			rmd2 = (RigidBodyModifierData*)md;
+		}
+	}
+
+	if ((rmd1 == NULL) || (rmd2 == NULL)) {
+		return TRUE;
+	}
+	else {
+		mi1 = rmd1->meshIslands.first;
+		mi2 = rmd2->meshIslands.first;
+		if ((mi1->rigidbody->flag & RBO_FLAG_START_DEACTIVATED) &&
+		   (mi2->rigidbody->flag & RBO_FLAG_START_DEACTIVATED)) {
+			return ob_index1 != ob_index2; //only allow collision between different objects
+		}
+		else
+		{
+			return TRUE;
+		}
+	}
+}
+
 /* --------------------- */
-/*int filterCallback(rbRigidBody* rb1, rbRigidBody rb2) {
-
-	if (rb1-)
-}*/
-
 /* Create physics sim world given RigidBody world settings */
 // NOTE: this does NOT update object references that the scene uses, in case those aren't ready yet!
 void BKE_rigidbody_validate_sim_world(Scene *scene, RigidBodyWorld *rbw, short rebuild)
@@ -1306,7 +1350,7 @@ void BKE_rigidbody_validate_sim_world(Scene *scene, RigidBodyWorld *rbw, short r
 	if (rebuild || rbw->physics_world == NULL) {
 		if (rbw->physics_world)
 			RB_dworld_delete(rbw->physics_world);
-		rbw->physics_world = RB_dworld_new(scene->physics_settings.gravity, NULL); //hrm, need a back mapping physicsobject->rigidbody ??
+		rbw->physics_world = RB_dworld_new(scene->physics_settings.gravity, rbw, NULL /*filterCallback*/);
 	}
 
 	RB_dworld_set_solver_iterations(rbw->physics_world, rbw->num_solver_iterations);
@@ -1736,6 +1780,7 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 					rbw->cache_index_map[counter] = i; //map all shards of an object to this object index
 					//printf("index map:  %d %d\n", counter, i);
+					mi->linear_index = counter;
 					counter++;
 				}
 				ismapped = TRUE;
@@ -1746,6 +1791,7 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 		if (!ismapped) {
 			//printf("index map:  %d %d\n", counter, i);
 			rbw->cache_index_map[counter] = i; //1 object 1 index here (normal case)
+			//mi->linear_index = counter;
 			counter++;
 		}
 
@@ -1850,6 +1896,26 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 	 */
 }
 
+static void validateShard(RigidBodyWorld *rbw, MeshIsland* mi, Object* ob, int rebuild)
+{
+	if (rebuild) { // && (mi->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE)) {
+		/* World has been rebuilt so rebuild object */
+		BKE_rigidbody_validate_sim_shard(rbw, mi, ob, true);
+	}
+	else if (mi->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE) {
+		BKE_rigidbody_validate_sim_shard(rbw, mi, ob, false);
+	}
+	/* refresh shape... */
+	if (mi->rigidbody->flag & RBO_FLAG_NEEDS_RESHAPE) {
+		/* mesh/shape data changed, so force shape refresh */
+		BKE_rigidbody_validate_sim_shard_shape(mi, ob, true);
+		/* now tell RB sim about it */
+		// XXX: we assume that this can only get applied for active/passive shapes that will be included as rigidbodies
+		RB_body_set_collision_shape(mi->rigidbody->physics_object, mi->rigidbody->physics_shape);
+	}
+	mi->rigidbody->flag &= ~(RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
+}
+
 /* Updates and validates world, bodies and shapes.
  * < rebuild: rebuild entire simulation
  */
@@ -1881,31 +1947,30 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 			}
 
 			if (rmd){
+
+				//those all need to be revalidated (?)
+				for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
+					if (rbsc->mi1->rigidbody != NULL) {
+						rbsc->mi1->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+					}
+
+					if (rbsc->mi2->rigidbody != NULL) {
+						rbsc->mi2->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+					}
+				}
+
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 					if (mi->rigidbody == NULL) {
 						mi->rigidbody = BKE_rigidbody_create_shard(scene, ob, mi, RBO_TYPE_ACTIVE);
 						BKE_rigidbody_calc_shard_mass(ob, mi);
 						BKE_rigidbody_validate_sim_shard(rbw, mi, ob, true);
+						mi->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
 					}
 					else {  //as usual, but for each shard now, and no constraints
 						/* perform simulation data updates as tagged */
 						/* refresh object... */
-						if (rebuild) {
-							/* World has been rebuilt so rebuild object */
-							BKE_rigidbody_validate_sim_shard(rbw, mi, ob, true);
-						}
-						else if (mi->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE) {
-							BKE_rigidbody_validate_sim_shard(rbw, mi, ob, false);
-						}
-						/* refresh shape... */
-						if (mi->rigidbody->flag & RBO_FLAG_NEEDS_RESHAPE) {
-							/* mesh/shape data changed, so force shape refresh */
-							BKE_rigidbody_validate_sim_shard_shape(mi, ob, true);
-							/* now tell RB sim about it */
-							// XXX: we assume that this can only get applied for active/passive shapes that will be included as rigidbodies
-							RB_body_set_collision_shape(mi->rigidbody->physics_object, mi->rigidbody->physics_shape);
-						}
-						mi->rigidbody->flag &= ~(RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
+
+						validateShard(rbw, mi, ob, rebuild && (mi->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE));
 					}
 
 					/* update simulation object... */
@@ -1914,6 +1979,45 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 
 				/*update shard constraints if any*/
 				for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
+					int index1, index2;
+					index1 = BLI_findindex(&rmd->meshIslands, rbsc->mi1);
+					index2 = BLI_findindex(&rmd->meshIslands, rbsc->mi2);
+					//if there are "external" rigidbodies, validate them too !
+					if (index1 == -1) {
+						Object* obj = rbw->objects[rbw->cache_index_map[rbsc->mi1->linear_index]];
+						if (rbsc->mi1->rigidbody == NULL) {
+							rbsc->mi1->rigidbody = BKE_rigidbody_create_shard(scene, obj, rbsc->mi1, RBO_TYPE_ACTIVE);
+							BKE_rigidbody_calc_shard_mass(obj, rbsc->mi1);
+							BKE_rigidbody_validate_sim_shard(rbw, rbsc->mi1, obj, true);
+							rbsc->mi1->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
+						}
+						else
+						{
+							validateShard(rbw, rbsc->mi1, obj,
+											rebuild && (rbsc->mi1->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE));
+						}
+
+						rigidbody_update_sim_ob(scene, rbw, obj, rbsc->mi1->rigidbody, rbsc->mi1->centroid);
+					}
+
+					if (index2 == -1) {
+						Object* obj = rbw->objects[rbw->cache_index_map[rbsc->mi2->linear_index]];
+
+						if (rbsc->mi2->rigidbody == NULL) {
+							rbsc->mi2->rigidbody = BKE_rigidbody_create_shard(scene, obj, rbsc->mi2, RBO_TYPE_ACTIVE);
+							BKE_rigidbody_calc_shard_mass(obj, rbsc->mi2);
+							BKE_rigidbody_validate_sim_shard(rbw, rbsc->mi2, obj, true);
+							rbsc->mi2->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
+						}
+						else
+						{
+							validateShard(rbw, rbsc->mi2, obj,
+											rebuild && (rbsc->mi2->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE));
+						}
+
+						rigidbody_update_sim_ob(scene, rbw, obj, rbsc->mi2->rigidbody, rbsc->mi2->centroid);
+					}
+
 
 					if (rebuild) {
 						/* World has been rebuilt so rebuild constraint */

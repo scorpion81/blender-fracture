@@ -106,11 +106,14 @@ static void freeData(ModifierData *md)
 			MEM_freeN(mi->vertices);
 		mi->vertices = NULL;
 		MEM_freeN(mi);
+		mi = NULL;
 	}
 
 	while (rmd->meshConstraints.first) {
 		rbsc = rmd->meshConstraints.first;
 		BLI_remlink(&rmd->meshConstraints, rbsc);
+		/*if (rbsc->physics_constraint)
+			RB_dworld_remove_constraint(md->scene->rigidbody_world->physics_world, rbsc->physics_constraint);*/
 		MEM_freeN(rbsc);
 	}
 
@@ -410,6 +413,7 @@ static void connect_constraints(RigidBodyModifierData* rmd, MeshIsland **meshIsl
 
 	for (j = 0; j < count; j++) {
 		mi = meshIslands[j];
+
 		for (v = 0; v < mi->vertex_count; v++) {
 			BM_elem_flag_enable(BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]), BM_ELEM_TAG);
 		}
@@ -450,12 +454,21 @@ static void connect_constraints(RigidBodyModifierData* rmd, MeshIsland **meshIsl
 
 				if (shared > 2) {
 					// shared vertices (atleast one face ?), so connect
-					RigidBodyShardCon *rbsc = BKE_rigidbody_create_shard_constraint(rmd->modifier.scene, RBC_TYPE_FIXED);
-					if (rbsc != NULL) {
+					int con_found = FALSE;
+					RigidBodyShardCon *con, *rbsc;
+
+					for (con = rmd->meshConstraints.first; con; con = con->next) {
+						if (((con->mi1 == mi) && (con->mi2 == mi2)) ||
+							((con->mi1 == mi2 && (con->mi2 == mi)))) {
+							con_found = TRUE;
+							break;
+						}
+					}
+					if (!con_found || 1) {
+						rbsc = BKE_rigidbody_create_shard_constraint(rmd->modifier.scene, RBC_TYPE_FIXED);
 						rbsc->mi1 = mi;
 						rbsc->mi2 = mi2;
 						rbsc->breaking_threshold = thresh;
-
 						BLI_addtail(&rmd->meshConstraints, rbsc);
 					}
 				}
@@ -509,7 +522,7 @@ static int create_combined_neighborhood(RigidBodyModifierData *rmd, MeshIsland *
 				if (md->type == eModifierType_RigidBody) {
 					rmd2 = (RigidBodyModifierData*)md;
 					rmd2->constraint_group = rmd->constraint_group;
-					islands += BLI_countlist(&rmd->meshIslands);
+					islands += BLI_countlist(&rmd2->meshIslands);
 					*mesh_islands = MEM_reallocN(*mesh_islands, islands*sizeof(MeshIsland*));
 					for (mi = rmd2->meshIslands.first; mi; mi = mi->next) {
 						mi->combined_index_map = MEM_mallocN(mi->vertex_count*sizeof(int), "combined_index_map");
@@ -521,6 +534,7 @@ static int create_combined_neighborhood(RigidBodyModifierData *rmd, MeshIsland *
 						(*mesh_islands)[i] = mi;
 						i++;
 					}
+					//rmd2->refresh = TRUE;
 				}
 			}
 		}
@@ -575,19 +589,23 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	if (rmd->refresh)
 	{
 		//refresh only if we are not in another (external set) constraints group already
-		if (((rmd->constraint_group != NULL) &&
+		/*if (((rmd->constraint_group != NULL) &&
 		   (!object_in_group(ob, rmd->constraint_group))) ||
-		   (rmd->constraint_group == NULL)) {
+		   (rmd->constraint_group == NULL))*/
+		//{
+		freeData(md);
+		copy_m4_m4(rmd->origmat, ob->obmat);
+		rmd->visible_mesh = DM_to_bmesh(dm);
+		mesh_separate_loose(rmd, ob);
 
-			freeData(md);
-			copy_m4_m4(rmd->origmat, ob->obmat);
-			rmd->visible_mesh = DM_to_bmesh(dm);
-			mesh_separate_loose(rmd, ob);
-
-			if (rmd->use_constraints) {
+		if (rmd->use_constraints) {
+			if (((rmd->constraint_group != NULL) &&
+			   (!object_in_group(ob, rmd->constraint_group))) ||
+			   (rmd->constraint_group == NULL)) {
 				create_constraints(rmd);
 			}
 		}
+		//}
 		rmd->refresh = FALSE;
 	}
 
