@@ -93,9 +93,9 @@ struct rbCollisionShape {
 
 struct rbFilterCallback : public btOverlapFilterCallback
 {
-	void (*callback)(rbRigidBody* rb0, rbRigidBody* rb1, bool collides) = NULL;
+	bool (*callback)(rbRigidBody* rb0, rbRigidBody* rb1);
 
-	rbFilterCallback(void (*callback)(rbRigidBody* rb0, rbRigidBody* rb1, bool collides)) {
+	rbFilterCallback(bool (*callback)(rbRigidBody* rb0, rbRigidBody* rb1)) {
 		this->callback = callback;
 	}
 
@@ -109,7 +109,7 @@ struct rbFilterCallback : public btOverlapFilterCallback
 		collides = collides && (proxy1->m_collisionFilterGroup & proxy0->m_collisionFilterMask);
 		collides = collides && (rb0->col_groups & rb1->col_groups);
 		if (this->callback != NULL) {
-			this->callback(rb0, rb1, collides);
+			collides = collides && this->callback(rb0, rb1);
 		}
 
 		return collides;
@@ -135,7 +135,7 @@ static inline void copy_quat_btquat(float quat[4], const btQuaternion &btquat)
 
 /* Setup ---------------------------- */
 
-rbDynamicsWorld *RB_dworld_new(const float gravity[3], void (*collision_callback)(rbRigidBody* rb0, rbRigidBody*rb1, bool collides))
+rbDynamicsWorld *RB_dworld_new(const float gravity[3], bool (*collision_callback)(rbRigidBody* rb0, rbRigidBody*rb1))
 {
 	rbDynamicsWorld *world = new rbDynamicsWorld;
 	

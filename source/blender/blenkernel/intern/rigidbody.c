@@ -1289,6 +1289,10 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 }
 
 /* --------------------- */
+/*int filterCallback(rbRigidBody* rb1, rbRigidBody rb2) {
+
+	if (rb1-)
+}*/
 
 /* Create physics sim world given RigidBody world settings */
 // NOTE: this does NOT update object references that the scene uses, in case those aren't ready yet!

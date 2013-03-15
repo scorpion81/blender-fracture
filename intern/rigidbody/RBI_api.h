@@ -73,7 +73,7 @@ typedef struct rbConstraint rbConstraint;
 
 /* Create a new dynamics world instance */
 // TODO: add args to set the type of constraint solvers, etc.
-extern rbDynamicsWorld *RB_dworld_new(const float gravity[3], void (*callback)(rbRigidBody* rb0, rbRigidBody* rb1, bool collides));
+extern rbDynamicsWorld *RB_dworld_new(const float gravity[3], bool (*callback)(rbRigidBody* rb0, rbRigidBody* rb1));
 
 /* Delete the given dynamics world, and free any extra data it may require */
 extern void RB_dworld_delete(rbDynamicsWorld *world);
