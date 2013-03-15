@@ -1289,6 +1289,7 @@ typedef struct MeshIsland {
 	float *vertco;
 	struct BMesh *physics_mesh; //convert to mesh later ??
 	struct RigidBodyOb *rigidbody;
+	int *combined_index_map;
 	int vertex_count;
 	float centroid[3];
 	float rot[4]; //hrm, need this for constraints probably
@@ -1300,6 +1301,7 @@ typedef struct RigidBodyModifierData {
 	ModifierData modifier;
 	struct BMesh *visible_mesh;
 	struct KDTree *ntree;
+	struct Group *constraint_group;
 	ListBase meshIslands, meshConstraints;
 	int refresh, use_constraints;
 	float origmat[4][4], breaking_threshold; //, outer_breaking_threshold;

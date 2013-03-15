@@ -93,6 +93,12 @@ struct rbCollisionShape {
 
 struct rbFilterCallback : public btOverlapFilterCallback
 {
+	void (*callback)(rbRigidBody* rb0, rbRigidBody* rb1, bool collides) = NULL;
+
+	rbFilterCallback(void (*callback)(rbRigidBody* rb0, rbRigidBody* rb1, bool collides)) {
+		this->callback = callback;
+	}
+
 	virtual bool needBroadphaseCollision(btBroadphaseProxy *proxy0, btBroadphaseProxy *proxy1) const
 	{
 		rbRigidBody *rb0 = (rbRigidBody *)((btRigidBody *)proxy0->m_clientObject)->getUserPointer();
@@ -102,7 +108,10 @@ struct rbFilterCallback : public btOverlapFilterCallback
 		collides = (proxy0->m_collisionFilterGroup & proxy1->m_collisionFilterMask) != 0;
 		collides = collides && (proxy1->m_collisionFilterGroup & proxy0->m_collisionFilterMask);
 		collides = collides && (rb0->col_groups & rb1->col_groups);
-		
+		if (this->callback != NULL) {
+			this->callback(rb0, rb1, collides);
+		}
+
 		return collides;
 	}
 };
@@ -126,7 +135,7 @@ static inline void copy_quat_btquat(float quat[4], const btQuaternion &btquat)
 
 /* Setup ---------------------------- */
 
-rbDynamicsWorld *RB_dworld_new(const float gravity[3])
+rbDynamicsWorld *RB_dworld_new(const float gravity[3], void (*collision_callback)(rbRigidBody* rb0, rbRigidBody*rb1, bool collides))
 {
 	rbDynamicsWorld *world = new rbDynamicsWorld;
 	
@@ -138,7 +147,7 @@ rbDynamicsWorld *RB_dworld_new(const float gravity[3])
 	
 	world->pairCache = new btDbvtBroadphase();
 	
-	world->filterCallback = new rbFilterCallback();
+	world->filterCallback = new rbFilterCallback(collision_callback);
 	world->pairCache->getOverlappingPairCache()->setOverlapFilterCallback(world->filterCallback);
 
 	/* constraint solving */

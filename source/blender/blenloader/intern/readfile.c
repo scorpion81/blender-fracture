@@ -4843,7 +4843,9 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			rmd->meshConstraints.first = NULL;
 			rmd->meshConstraints.last = NULL;
 			rmd->breaking_threshold = 10.0f;
+			rmd->group_breaking_threshold = 1.0f;
 			rmd->contact_dist = 0.00001f;
+			rmd->group_contact_dist = 0.0001f;
 			rmd->use_constraints = FALSE;
 			rmd->constraint_group = NULL;
 		}

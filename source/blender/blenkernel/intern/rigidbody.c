@@ -1302,7 +1302,7 @@ void BKE_rigidbody_validate_sim_world(Scene *scene, RigidBodyWorld *rbw, short r
 	if (rebuild || rbw->physics_world == NULL) {
 		if (rbw->physics_world)
 			RB_dworld_delete(rbw->physics_world);
-		rbw->physics_world = RB_dworld_new(scene->physics_settings.gravity);
+		rbw->physics_world = RB_dworld_new(scene->physics_settings.gravity, NULL); //hrm, need a back mapping physicsobject->rigidbody ??
 	}
 
 	RB_dworld_set_solver_iterations(rbw->physics_world, rbw->num_solver_iterations);

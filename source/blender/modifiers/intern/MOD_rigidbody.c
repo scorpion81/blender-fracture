@@ -71,6 +71,8 @@ static void initData(ModifierData *md)
 	rmd->use_constraints = FALSE;
 	rmd->constraint_group = NULL;
 	rmd->contact_dist = 0.00001f;
+	rmd->group_breaking_threshold = 1.0f;
+	rmd->group_contact_dist = 0.0001f;
 }
 
 static void copyData(ModifierData *md, ModifierData *target)
@@ -231,6 +233,7 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	copy_v3_v3(mi->centroid, centroid);
 	mat4_to_loc_quat(dummyloc, rot, ob->obmat);
 	copy_v3_v3(mi->rot, rot);
+	mi->parent_mod = rmd;
 //	mi->cluster_index = -1; //belongs to no cluster
 
 	/* deselect loose data - this used to get deleted,
@@ -397,7 +400,7 @@ static ParticleSystemModifierData *findPrecedingParticlesystem(Object *ob)
 }*/
 
 
-static void connect_constraints(RigidBodyModifierData *rmd, MeshIsland **meshIslands, int count, BMesh **combined_mesh, KDTree **combined_tree) {
+static void connect_constraints(RigidBodyModifierData* rmd, MeshIsland **meshIslands, int count, BMesh **combined_mesh, KDTree **combined_tree) {
 
 	MeshIsland *mi, *mi2;
 	BMOpSlot *slot;
@@ -418,13 +421,19 @@ static void connect_constraints(RigidBodyModifierData *rmd, MeshIsland **meshIsl
 			mi2 = meshIslands[(n+i)->index];
 
 			if ((mi != mi2) && (mi2 != NULL)) {
+
+				//check whether we are in the same object or not
+				float thresh = ((mi->parent_mod == mi2->parent_mod) ? mi->parent_mod->breaking_threshold : rmd->group_breaking_threshold);
+				float dist = ((mi->parent_mod == mi2->parent_mod) ? mi->parent_mod->contact_dist : rmd->group_contact_dist);
+
 				//select "our" vertices
 				for (v = 0; v < mi2->vertex_count; v++) {
 					BM_elem_flag_enable(/*mi2->vertices[v]*/BM_vert_at_index(*combined_mesh, mi2->combined_index_map[v]), BM_ELEM_TAG);
 				}
 
 				//do we share atleast 1 vertex in selection
-				BMO_op_initf(*combined_mesh, &op, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "find_doubles verts=%hv dist=%f", BM_ELEM_TAG, rmd->contact_dist);
+
+				BMO_op_initf(*combined_mesh, &op, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "find_doubles verts=%hv dist=%f", BM_ELEM_TAG, dist);
 				BMO_op_exec(*combined_mesh, &op);
 				slot = BMO_slot_get(op.slots_out, "targetmap.out");
 				if (slot->data.ghash) {
@@ -445,7 +454,7 @@ static void connect_constraints(RigidBodyModifierData *rmd, MeshIsland **meshIsl
 					if (rbsc != NULL) {
 						rbsc->mi1 = mi;
 						rbsc->mi2 = mi2;
-						rbsc->breaking_threshold = rmd->breaking_threshold;
+						rbsc->breaking_threshold = thresh;
 
 						BLI_addtail(&rmd->meshConstraints, rbsc);
 					}
@@ -499,6 +508,7 @@ static int create_combined_neighborhood(RigidBodyModifierData *rmd, MeshIsland *
 			for (md = go->ob->modifiers.first; md; md = md->next) {
 				if (md->type == eModifierType_RigidBody) {
 					rmd2 = (RigidBodyModifierData*)md;
+					rmd2->constraint_group = rmd->constraint_group;
 					islands += BLI_countlist(&rmd->meshIslands);
 					*mesh_islands = MEM_reallocN(*mesh_islands, islands*sizeof(MeshIsland*));
 					for (mi = rmd2->meshIslands.first; mi; mi = mi->next) {
@@ -564,14 +574,20 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	//freeData(md); // reset on each run
 	if (rmd->refresh)
 	{
-		freeData(md);
-		copy_m4_m4(rmd->origmat, ob->obmat);
-		rmd->visible_mesh = DM_to_bmesh(dm);
-		mesh_separate_loose(rmd, ob);
+		//refresh only if we are not in another (external set) constraints group already
+		if (((rmd->constraint_group != NULL) &&
+		   (!object_in_group(ob, rmd->constraint_group))) ||
+		   (rmd->constraint_group == NULL)) {
 
-		//create inner constraints
-		if (rmd->use_constraints)
-			create_constraints(rmd);
+			freeData(md);
+			copy_m4_m4(rmd->origmat, ob->obmat);
+			rmd->visible_mesh = DM_to_bmesh(dm);
+			mesh_separate_loose(rmd, ob);
+
+			if (rmd->use_constraints) {
+				create_constraints(rmd);
+			}
+		}
 		rmd->refresh = FALSE;
 	}
 
