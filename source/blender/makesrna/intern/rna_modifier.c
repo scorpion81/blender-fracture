@@ -882,6 +882,12 @@ static void rna_RigidBodyModifier_mass_dependent_thresholds_set(PointerRNA* ptr,
 	//rmd->refresh = TRUE;
 }
 
+static int rna_RigidBodyModifier_is_slave_get(PointerRNA* ptr)
+{
+	RigidBodyModifierData *rmd = (RigidBodyModifierData *)ptr->data;
+	return rmd->is_slave;
+}
+
 #else
 
 static PropertyRNA *rna_def_property_subdivision_common(StructRNA *srna, const char type[])
@@ -3921,6 +3927,11 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "mass_dependent_thresholds", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyModifier_mass_dependent_thresholds_set");
 	RNA_def_property_ui_text(prop, "Use Mass Dependent Thresholds", "Match the breaking threshold according to the masses of the constrained shards");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "is_slave", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_funcs(prop,"rna_RigidBodyModifier_is_slave_get", NULL);
+	RNA_def_property_ui_text(prop, "This is a slave modifier.", "");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 

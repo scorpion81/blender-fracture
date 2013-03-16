@@ -1958,6 +1958,32 @@ static void validateShard(RigidBodyWorld *rbw, MeshIsland* mi, Object* ob, int r
 	mi->rigidbody->flag &= ~(RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
 }
 
+static int meshisland_is_congroup_slave(RigidBodyWorld *rbw, RigidBodyModifierData* rmd, MeshIsland* mi) {
+	RigidBodyModifierData* rmd2;
+	ModifierData* md;
+	Object* container = rbw->objects[rbw->cache_index_map[mi->linear_index]];
+
+
+	for (md = container->modifiers.first; md; md = md->next) {
+		if (md->type == eModifierType_RigidBody) {
+			rmd2 = (RigidBodyModifierData*)md;
+
+			if (rmd->constraint_group == NULL) {
+				//rmd2->is_slave = FALSE;
+				return FALSE;
+			}
+
+			if ((rmd->constraint_group != NULL) && (object_in_group(container, rmd->constraint_group))) {
+				//rmd2->is_slave = TRUE;
+				//return TRUE;
+				return FALSE; //deactivated for now, does not work correctly. hrms
+			}
+		}
+	}
+
+	return FALSE;
+}
+
 /* Updates and validates world, bodies and shapes.
  * < rebuild: rebuild entire simulation
  */
@@ -1992,13 +2018,20 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 				float max_con_mass = 0;
 
 				//those all need to be revalidated (?)
+
 				for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
-					if (rbsc->mi1->rigidbody != NULL) {
-						rbsc->mi1->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+					if (!(meshisland_is_congroup_slave(rbw, rmd, rbsc->mi1)))
+					{
+						if (rbsc->mi1->rigidbody != NULL) {
+							rbsc->mi1->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+						}
 					}
 
-					if (rbsc->mi2->rigidbody != NULL) {
-						rbsc->mi2->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+					if (!(meshisland_is_congroup_slave(rbw, rmd, rbsc->mi2)))
+					{
+						if (rbsc->mi2->rigidbody != NULL) {
+							rbsc->mi2->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+						}
 					}
 				}
 
@@ -2012,8 +2045,17 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 					else {  //as usual, but for each shard now, and no constraints
 						/* perform simulation data updates as tagged */
 						/* refresh object... */
+						int do_rebuild;
 
-						validateShard(rbw, mi, ob, rebuild && (mi->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE));
+						if ((BLI_countlist(&rmd->meshConstraints) == 0) && (rmd->constraint_group == NULL)) {
+							do_rebuild = rebuild;
+						}
+						else {
+							do_rebuild = rebuild && (mi->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE);
+						}
+
+
+						validateShard(rbw, mi, ob, do_rebuild);
 					}
 
 					/* update simulation object... */

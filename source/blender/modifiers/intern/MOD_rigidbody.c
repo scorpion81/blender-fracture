@@ -47,6 +47,7 @@
 #include "BKE_object.h"
 #include "BKE_particle.h"
 #include "BKE_group.h"
+#include "BKE_depsgraph.h"
 
 #include "bmesh.h"
 
@@ -74,6 +75,7 @@ static void initData(ModifierData *md)
 	rmd->group_breaking_threshold = 1.0f;
 	rmd->group_contact_dist = 0.0001f;
 	rmd->mass_dependent_thresholds = FALSE;
+	rmd->is_slave = FALSE;
 }
 
 static void copyData(ModifierData *md, ModifierData *target)
@@ -83,6 +85,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	
 	//trmd->meshIslands = rmd->meshIslands;
 	trmd->refresh = TRUE;
+	trmd->is_slave = rmd->is_slave;
 }
 
 static void freeData(ModifierData *md)
@@ -523,6 +526,10 @@ static int create_combined_neighborhood(RigidBodyModifierData *rmd, MeshIsland *
 				if (md->type == eModifierType_RigidBody) {
 					rmd2 = (RigidBodyModifierData*)md;
 					rmd2->constraint_group = rmd->constraint_group;
+					//rmd2->is_slave = TRUE;
+					//rmd2->refresh = TRUE;
+					//DAG_id_tag_update(&go->ob->id, OB_RECALC_OB);
+
 					islands += BLI_countlist(&rmd2->meshIslands);
 					*mesh_islands = MEM_reallocN(*mesh_islands, islands*sizeof(MeshIsland*));
 					for (mi = rmd2->meshIslands.first; mi; mi = mi->next) {
@@ -537,6 +544,7 @@ static int create_combined_neighborhood(RigidBodyModifierData *rmd, MeshIsland *
 					}
 					//rmd2->refresh = TRUE;
 				}
+				//break;
 			}
 		}
 	}

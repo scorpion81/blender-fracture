@@ -1304,10 +1304,10 @@ typedef struct RigidBodyModifierData {
 	struct KDTree *ntree;
 	struct Group *constraint_group;
 	ListBase meshIslands, meshConstraints;
-	int refresh, use_constraints;
+	int refresh, use_constraints, mass_dependent_thresholds, is_slave;
 	float origmat[4][4], breaking_threshold; //, outer_breaking_threshold;
 	float contact_dist, group_breaking_threshold, group_contact_dist;
-	//char pad[4];
+	char pad[4];
 } RigidBodyModifierData;
 
 
