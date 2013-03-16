@@ -140,7 +140,7 @@ static void rna_RigidBodyWorld_split_impulse_set(PointerRNA *ptr, int value)
 
 /* ------------------------------------------ */
 
-static void copyRigidBody(RigidBodyOb *source, RigidBodyOb *target)
+/*static void copyRigidBody(RigidBodyOb *source, RigidBodyOb *target)
 {
 	target->type = source->type;
 	target->shape = source->shape;
@@ -152,24 +152,31 @@ static void copyRigidBody(RigidBodyOb *source, RigidBodyOb *target)
 	target->margin = source->margin;
 	target->lin_damping = source->lin_damping;
 	target->lin_sleep_thresh = source->lin_sleep_thresh;
-}
+}*/
 
 static void rna_apply_to_all_shards(Object *ob)
 {
 	RigidBodyOb* rbo = ob->rigidbody_object;
 	ModifierData* md;
 	RigidBodyModifierData* rmd;
+	RigidBodyShardCon* con;
 	MeshIsland* mi;
+	float max_con_mass;
 
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_RigidBody) {
 			rmd = (RigidBodyModifierData*)md;
 			//rmd->refresh = TRUE;
 			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
-				if (!mi->rigidbody) continue;
+				mi->rigidbody = BKE_rigidbody_copy_object(ob);
 				BKE_rigidbody_calc_shard_mass(ob, mi);
-				copyRigidBody(rbo, mi->rigidbody);
-				mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+			}
+
+			if (rmd->mass_dependent_thresholds) {
+				max_con_mass = BKE_rigidbody_calc_max_con_mass(ob);
+				for (con = rmd->meshConstraints.first; con; con = con->next) {
+					BKE_rigidbody_calc_threshold(max_con_mass, rmd, con);
+				}
 			}
 		}
 	}

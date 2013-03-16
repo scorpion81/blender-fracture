@@ -75,6 +75,42 @@
 #ifdef WITH_BULLET
 
 
+float BKE_rigidbody_calc_max_con_mass(Object* ob)
+{
+	RigidBodyModifierData *rmd;
+	ModifierData *md;
+	RigidBodyShardCon *con;
+	float max_con_mass = 0, con_mass;
+
+	for (md = ob->modifiers.first; md; md = md->next) {
+		if (md->type == eModifierType_RigidBody) {
+			rmd = (RigidBodyModifierData*)md;
+			for (con = rmd->meshConstraints.first; con; con = con->next) {
+				con_mass = con->mi1->rigidbody->mass + con->mi2->rigidbody->mass;
+				if (con_mass > max_con_mass) {
+					max_con_mass = con_mass;
+				}
+			}
+
+			return max_con_mass;
+		}
+	}
+
+	return 0;
+}
+
+void BKE_rigidbody_calc_threshold(float max_con_mass, RigidBodyModifierData *rmd, RigidBodyShardCon *con) {
+
+	float max_thresh, thresh, con_mass;
+	if (max_con_mass == 0)
+		return;
+
+	max_thresh = ((con->mi1->parent_mod == con->mi2->parent_mod) ? con->mi1->parent_mod->breaking_threshold : rmd->group_breaking_threshold);
+	con_mass = con->mi1->rigidbody->mass + con->mi2->rigidbody->mass;
+	thresh = (con_mass / max_con_mass) * max_thresh;
+	con->breaking_threshold = thresh;
+}
+
 static int BM_mesh_minmax(BMesh *bm, float r_min[3], float r_max[3])
 {
 	BMVert* v;
@@ -1394,10 +1430,10 @@ RigidBodyWorld *BKE_rigidbody_create_world(Scene *scene)
 }
 
 /* Add rigid body settings to the specified shard */
-RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi, short type)
+RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi)
 {
 	RigidBodyOb *rbo;
-	RigidBodyWorld *rbw = scene->rigidbody_world;
+	RigidBodyWorld *rbw = BKE_rigidbody_get_world(scene);
 	float centr[3], size[3];
 
 	/* sanity checks
@@ -1408,34 +1444,40 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi
 	if (mi == NULL || (mi->rigidbody != NULL))
 		return NULL;
 
+	if (ob->type != OB_MESH) {
+		return NULL;
+	}
+	if (((Mesh *)ob->data)->totpoly == 0) {
+		return NULL;
+	}
+
+	/* Add rigid body world and group if they don't exist for convenience */
+	if (rbw == NULL) {
+		rbw = BKE_rigidbody_create_world(scene);
+		BKE_rigidbody_validate_sim_world(scene, rbw, false);
+		scene->rigidbody_world = rbw;
+	}
+	if (rbw->group == NULL) {
+		rbw->group = add_group(G.main, "RigidBodyWorld");
+	}
+
+	/* make rigidbody object settings */
+	if (ob->rigidbody_object == NULL) {
+		ob->rigidbody_object = BKE_rigidbody_create_object(scene, ob, RBO_TYPE_ACTIVE);
+	}
+	else {
+		ob->rigidbody_object->type = RBO_TYPE_ACTIVE;
+		ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_VALIDATE;
+
+		/* add object to rigid body group */
+		add_to_group(rbw->group, ob, scene, NULL);
+
+		//DAG_id_tag_update(&ob->id, OB_RECALC_OB);
+	}
+
+	//since we are always member of an object, dupe its settings,
 	/* create new settings data, and link it up */
-	rbo = MEM_callocN(sizeof(RigidBodyOb), "RigidBodyOb");
-
-	/* set default settings */
-	rbo->type = type;
-
-	rbo->mass = 1.0f;
-
-	rbo->friction = 0.5f; /* best when non-zero. 0.5 is Bullet default */
-	rbo->restitution = 0.0f; /* best when zero. 0.0 is Bullet default */
-
-	rbo->margin = 0.04f; /* 0.04 (in meters) is Bullet default */
-
-	rbo->lin_sleep_thresh = 0.4f; /* 0.4 is half of Bullet default */
-	rbo->ang_sleep_thresh = 0.5f; /* 0.5 is half of Bullet default */
-
-	rbo->lin_damping = 0.04f; /* 0.04 is game engine default */
-	rbo->ang_damping = 0.1f; /* 0.1 is game engine default */
-
-	rbo->col_groups = 1;
-
-	/* use triangle meshes for passive objects
-	 * use convex hulls for active objects since dynamic triangle meshes are very unstable
-	 */
-	if (type == RBO_TYPE_ACTIVE)
-		rbo->shape = RB_SHAPE_CONVEXH;
-	else
-		rbo->shape = RB_SHAPE_TRIMESH;
+	rbo = BKE_rigidbody_copy_object(ob);
 
 	/* set initial transform */
 	mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
@@ -1947,6 +1989,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 			}
 
 			if (rmd){
+				float max_con_mass = 0;
 
 				//those all need to be revalidated (?)
 				for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
@@ -1961,7 +2004,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 					if (mi->rigidbody == NULL) {
-						mi->rigidbody = BKE_rigidbody_create_shard(scene, ob, mi, RBO_TYPE_ACTIVE);
+						mi->rigidbody = BKE_rigidbody_create_shard(scene, ob, mi);
 						BKE_rigidbody_calc_shard_mass(ob, mi);
 						BKE_rigidbody_validate_sim_shard(rbw, mi, ob, true);
 						mi->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
@@ -1986,7 +2029,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 					if (index1 == -1) {
 						Object* obj = rbw->objects[rbw->cache_index_map[rbsc->mi1->linear_index]];
 						if (rbsc->mi1->rigidbody == NULL) {
-							rbsc->mi1->rigidbody = BKE_rigidbody_create_shard(scene, obj, rbsc->mi1, RBO_TYPE_ACTIVE);
+							rbsc->mi1->rigidbody = BKE_rigidbody_create_shard(scene, obj, rbsc->mi1);
 							BKE_rigidbody_calc_shard_mass(obj, rbsc->mi1);
 							BKE_rigidbody_validate_sim_shard(rbw, rbsc->mi1, obj, true);
 							rbsc->mi1->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
@@ -2004,7 +2047,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 						Object* obj = rbw->objects[rbw->cache_index_map[rbsc->mi2->linear_index]];
 
 						if (rbsc->mi2->rigidbody == NULL) {
-							rbsc->mi2->rigidbody = BKE_rigidbody_create_shard(scene, obj, rbsc->mi2, RBO_TYPE_ACTIVE);
+							rbsc->mi2->rigidbody = BKE_rigidbody_create_shard(scene, obj, rbsc->mi2);
 							BKE_rigidbody_calc_shard_mass(obj, rbsc->mi2);
 							BKE_rigidbody_validate_sim_shard(rbw, rbsc->mi2, obj, true);
 							rbsc->mi2->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
@@ -2017,7 +2060,15 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 
 						rigidbody_update_sim_ob(scene, rbw, obj, rbsc->mi2->rigidbody, rbsc->mi2->centroid);
 					}
+				}
 
+				if (rmd->mass_dependent_thresholds)
+					max_con_mass = BKE_rigidbody_calc_max_con_mass(ob);
+
+				for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
+
+					if (rmd->mass_dependent_thresholds)
+						BKE_rigidbody_calc_threshold(max_con_mass, rmd, rbsc);
 
 					if (rebuild) {
 						/* World has been rebuilt so rebuild constraint */

@@ -138,6 +138,7 @@ EnumPropertyItem modifier_triangulate_ngon_method_items[] = {
 #include "BKE_modifier.h"
 #include "BKE_object.h"
 #include "BKE_particle.h"
+#include "BKE_rigidbody.h"
 
 static void rna_UVProject_projectors_begin(CollectionPropertyIterator *iter, PointerRNA *ptr)
 {
@@ -790,9 +791,14 @@ static void rna_UVWarpModifier_uvlayer_set(PointerRNA *ptr, const char *value)
 	rna_object_uvlayer_name_set(ptr, value, umd->uvlayer_name, sizeof(umd->uvlayer_name));
 }
 
-static void updateConstraints(RigidBodyModifierData *rmd) {
+static void updateConstraints(RigidBodyModifierData *rmd, Object* ob) {
 	RigidBodyShardCon *rbsc;
 	int index1, index2;
+	float max_con_mass = 0;
+
+	if (rmd->mass_dependent_thresholds) {
+		max_con_mass = BKE_rigidbody_calc_max_con_mass(ob);
+	}
 
 	for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
 		index1 = BLI_findindex(&rmd->meshIslands, rbsc->mi1);
@@ -805,6 +811,10 @@ static void updateConstraints(RigidBodyModifierData *rmd) {
 			rbsc->breaking_threshold = rmd->breaking_threshold;
 		}
 
+		if (rmd->mass_dependent_thresholds) {
+			BKE_rigidbody_calc_threshold(max_con_mass, rmd, rbsc);
+		}
+
 		rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
 	}
 }
@@ -812,15 +822,17 @@ static void updateConstraints(RigidBodyModifierData *rmd) {
 static void rna_RigidBodyModifier_threshold_set(PointerRNA *ptr, float value)
 {
 	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	Object* ob = ptr->id.data;
 	rmd->breaking_threshold = value;
-	updateConstraints(rmd);
+	updateConstraints(rmd, ob);
 }
 
 static void rna_RigidBodyModifier_contact_dist_set(PointerRNA *ptr, float value)
 {
 	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	Object* ob = ptr->id.data;
 	rmd->contact_dist = value;
-	updateConstraints(rmd);
+	updateConstraints(rmd, ob);
 	rmd->refresh = TRUE; //maybe slow, better hit refresh manually
 }
 
@@ -846,17 +858,28 @@ static void rna_ExplodeModifier_percentage_set(PointerRNA *ptr, int value)
 static void rna_RigidBodyModifier_group_threshold_set(PointerRNA *ptr, float value)
 {
 	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	Object* ob = ptr->id.data;
 	rmd->group_breaking_threshold = value;
-	updateConstraints(rmd);
+	updateConstraints(rmd, ob);
 	rmd->refresh = TRUE;
 }
 
 static void rna_RigidBodyModifier_group_contact_dist_set(PointerRNA *ptr, float value)
 {
 	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	Object* ob = ptr->id.data;
 	rmd->group_contact_dist = value;
-	updateConstraints(rmd);
+	updateConstraints(rmd, ob);
 	rmd->refresh = TRUE; //maybe slow, better hit refresh manually
+}
+
+static void rna_RigidBodyModifier_mass_dependent_thresholds_set(PointerRNA* ptr, int value)
+{
+	RigidBodyModifierData *rmd = (RigidBodyModifierData *)ptr->data;
+	Object* ob = ptr->id.data;
+	rmd->mass_dependent_thresholds = value;
+	updateConstraints(rmd, ob);
+	//rmd->refresh = TRUE;
 }
 
 #else
@@ -3893,6 +3916,11 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "constraint_group", PROP_POINTER, PROP_NONE);
 	RNA_def_property_ui_text(prop, "Constraint Group", "Group of objects (must have rigidbody modifier on them) between whose shards constraints should be built");
 	RNA_def_property_flag(prop, PROP_EDITABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "mass_dependent_thresholds", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyModifier_mass_dependent_thresholds_set");
+	RNA_def_property_ui_text(prop, "Use Mass Dependent Thresholds", "Match the breaking threshold according to the masses of the constrained shards");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 

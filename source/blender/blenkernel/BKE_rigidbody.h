@@ -63,7 +63,7 @@ void BKE_rigidbody_relink_constraint(struct RigidBodyCon *rbc);
 struct RigidBodyWorld *BKE_rigidbody_create_world(struct Scene *scene);
 struct RigidBodyOb *BKE_rigidbody_create_object(struct Scene *scene, struct Object *ob, short type);
 struct RigidBodyCon *BKE_rigidbody_create_constraint(struct Scene *scene, struct Object *ob, short type);
-struct RigidBodyOb *BKE_rigidbody_create_shard(struct Scene *scene, struct Object *ob, struct MeshIsland *mi, short type);
+struct RigidBodyOb *BKE_rigidbody_create_shard(struct Scene *scene, struct Object *ob, struct MeshIsland *mi);
 struct RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(struct Scene *scene, short type);
 
 /* copy */
@@ -89,6 +89,8 @@ void BKE_rigidbody_remove_object(struct Scene *scene, struct Object *ob);
 void BKE_rigidbody_remove_constraint(struct Scene *scene, struct Object *ob);
 float BKE_rigidbody_calc_volume(struct BMesh *bm, struct RigidBodyOb *rbo);
 void BKE_rigidbody_calc_shard_mass(struct Object* ob, struct MeshIsland* mi);
+void BKE_rigidbody_calc_threshold(float max_con_mass, struct RigidBodyModifierData* rmd, struct RigidBodyShardCon *con);
+float BKE_rigidbody_calc_max_con_mass(struct Object* ob);
 /* -------------- */
 /* Utility Macros */
 

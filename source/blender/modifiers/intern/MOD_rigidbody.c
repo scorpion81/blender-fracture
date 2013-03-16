@@ -73,6 +73,7 @@ static void initData(ModifierData *md)
 	rmd->contact_dist = 0.00001f;
 	rmd->group_breaking_threshold = 1.0f;
 	rmd->group_contact_dist = 0.0001f;
+	rmd->mass_dependent_thresholds = FALSE;
 }
 
 static void copyData(ModifierData *md, ModifierData *target)

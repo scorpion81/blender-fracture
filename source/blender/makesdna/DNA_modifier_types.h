@@ -1289,6 +1289,7 @@ typedef struct MeshIsland {
 	float *vertco;
 	struct BMesh *physics_mesh; //convert to mesh later ??
 	struct RigidBodyOb *rigidbody;
+	struct RigidBodyModifierData *parent_mod; //needed to override thresholds/contact distance when using constraint groups
 	int *combined_index_map;
 	int vertex_count;
 	float centroid[3];
@@ -1305,7 +1306,7 @@ typedef struct RigidBodyModifierData {
 	ListBase meshIslands, meshConstraints;
 	int refresh, use_constraints;
 	float origmat[4][4], breaking_threshold; //, outer_breaking_threshold;
-	float contact_dist;
+	float contact_dist, group_breaking_threshold, group_contact_dist;
 	//char pad[4];
 } RigidBodyModifierData;
 
