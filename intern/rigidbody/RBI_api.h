@@ -73,7 +73,7 @@ typedef struct rbConstraint rbConstraint;
 
 /* Create a new dynamics world instance */
 // TODO: add args to set the type of constraint solvers, etc.
-extern rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, int (*callback)(void* world, int index1, int index2));
+extern rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, int (*callback)(void* world, void* island1, void* island2));
 
 /* Delete the given dynamics world, and free any extra data it may require */
 extern void RB_dworld_delete(rbDynamicsWorld *world);
@@ -105,7 +105,7 @@ void RB_dworld_export(rbDynamicsWorld *world, const char *filename);
 /* Setup ---------------------------- */
 
 /* Add RigidBody to dynamics world */
-extern void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *body, int col_groups);
+extern void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *body, int col_groups, void* meshIsland);
 
 /* Remove RigidBody from dynamics world */
 extern void RB_dworld_remove_body(rbDynamicsWorld *world, rbRigidBody *body);

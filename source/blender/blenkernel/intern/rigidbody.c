@@ -905,7 +905,7 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 	}
 
 	if (rbw && rbw->physics_world)
-		RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups);
+		RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups, mi);
 
 	//rbo->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
 }
@@ -974,7 +974,7 @@ void BKE_rigidbody_validate_sim_object(RigidBodyWorld *rbw, Object *ob, short re
 	}
 
 	if (rbw && rbw->physics_world)
-		RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups);
+		RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups, NULL);
 }
 
 /* --------------------- */
@@ -1327,49 +1327,29 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 	}
 }
 
-int filterCallback(void* world, int index1, int index2) {
+//this allows partial object activation, only some shards will be activated, called from bullet(!)
+int filterCallback(void* world, void* island1, void* island2) {
 	RigidBodyWorld* rbw = (RigidBodyWorld*)world;
-	int ob_index1, ob_index2;
-	Object *ob1, *ob2;
-	RigidBodyModifierData *rmd1, *rmd2;
-	ModifierData* md;
 	MeshIsland* mi1, *mi2;
+	int ob_index1, ob_index2;
 
-	ob_index1 = rbw->cache_index_map[index1];
-	ob_index2 = rbw->cache_index_map[index2];
-	ob1 = rbw->objects[ob_index1];
-	ob2 = rbw->objects[ob_index2];
+	mi1 = (MeshIsland*)island1;
+	mi2 = (MeshIsland*)island2;
 
-	if ((ob1 == NULL) || (ob2 == NULL)) {
-		return TRUE; //quick hack, investigate why it is null
-	}
-
-	for (md = ob1->modifiers.first; md; md = md->next) {
-		if (md->type == eModifierType_RigidBody) {
-			rmd1 = (RigidBodyModifierData*)md;
-		}
-	}
-
-	for (md = ob2->modifiers.first; md; md = md->next) {
-		if (md->type == eModifierType_RigidBody) {
-			rmd2 = (RigidBodyModifierData*)md;
-		}
-	}
-
-	if ((rmd1 == NULL) || (rmd2 == NULL)) {
+	if ((mi1 == NULL) || (mi2 == NULL)) {
 		return TRUE;
 	}
-	else {
-		mi1 = rmd1->meshIslands.first;
-		mi2 = rmd2->meshIslands.first;
-		if ((mi1->rigidbody->flag & RBO_FLAG_START_DEACTIVATED) &&
-		   (mi2->rigidbody->flag & RBO_FLAG_START_DEACTIVATED)) {
-			return ob_index1 != ob_index2; //only allow collision between different objects
-		}
-		else
-		{
-			return TRUE;
-		}
+
+	ob_index1 = rbw->cache_index_map[mi1->linear_index];
+	ob_index2 = rbw->cache_index_map[mi2->linear_index];
+
+	if ((mi1->rigidbody->flag & RBO_FLAG_START_DEACTIVATED) ||
+		(mi2->rigidbody->flag & RBO_FLAG_START_DEACTIVATED)) {
+		return ob_index1 != ob_index2; //only allow collision between different objects
+	}
+	else
+	{
+		return TRUE;
 	}
 }
 
@@ -1386,7 +1366,7 @@ void BKE_rigidbody_validate_sim_world(Scene *scene, RigidBodyWorld *rbw, short r
 	if (rebuild || rbw->physics_world == NULL) {
 		if (rbw->physics_world)
 			RB_dworld_delete(rbw->physics_world);
-		rbw->physics_world = RB_dworld_new(scene->physics_settings.gravity, rbw, NULL /*filterCallback*/);
+		rbw->physics_world = RB_dworld_new(scene->physics_settings.gravity, rbw, filterCallback);
 	}
 
 	RB_dworld_set_solver_iterations(rbw->physics_world, rbw->num_solver_iterations);

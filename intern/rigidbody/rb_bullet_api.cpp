@@ -85,7 +85,7 @@ struct rbDynamicsWorld {
 struct rbRigidBody {
 	btRigidBody *body;
 	int col_groups;
-	int index;
+	void *meshIsland;
 	rbDynamicsWorld *world;
 };
 
@@ -96,9 +96,9 @@ struct rbCollisionShape {
 
 struct rbFilterCallback : public btOverlapFilterCallback
 {
-	int (*callback)(void* world, int index1, int index2);
+	int (*callback)(void* world, void* island1, void* island2);
 
-	rbFilterCallback(int (*callback)(void* world, int index1, int index2)) {
+	rbFilterCallback(int (*callback)(void* world, void* island1, void* island2)) {
 		this->callback = callback;
 	}
 
@@ -112,7 +112,7 @@ struct rbFilterCallback : public btOverlapFilterCallback
 		collides = collides && (proxy1->m_collisionFilterGroup & proxy0->m_collisionFilterMask);
 		collides = collides && (rb0->col_groups & rb1->col_groups);
 		if (this->callback != NULL) {
-			int result = this->callback(rb0->world->blenderWorld, rb0->index, rb1->index);
+			int result = this->callback(rb0->world->blenderWorld, rb0->meshIsland, rb1->meshIsland);
 			collides = collides && (bool)result;
 		}
 
@@ -140,7 +140,7 @@ static inline void copy_quat_btquat(float quat[4], const btQuaternion &btquat)
 
 /* Setup ---------------------------- */
 
-rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, int (*callback)(void* world, int index1, int index2)) //yuck, but need a handle for the world somewhere for collision callback...
+rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, int (*callback)(void* world, void* island1, void* island2)) //yuck, but need a handle for the world somewhere for collision callback...
 {
 	rbDynamicsWorld *world = new rbDynamicsWorld;
 	
@@ -248,12 +248,12 @@ void RB_dworld_export(rbDynamicsWorld *world, const char *filename)
 
 /* Setup ---------------------------- */
 
-void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *object, int col_groups)
+void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *object, int col_groups, void* meshIsland)
 {
 	btRigidBody *body = object->body;
 	object->col_groups = col_groups;
 	
-	object->index = world->dynamicsWorld->getNumCollisionObjects();
+	object->meshIsland = meshIsland;
 	object->world = world;
 
 	world->dynamicsWorld->addRigidBody(body);
@@ -264,7 +264,7 @@ void RB_dworld_remove_body(rbDynamicsWorld *world, rbRigidBody *object)
 	btRigidBody *body = object->body;
 	
 	world->dynamicsWorld->removeRigidBody(body);
-	object->index = -1;
+	object->meshIsland = NULL;
 	object->world = NULL;
 }
 
