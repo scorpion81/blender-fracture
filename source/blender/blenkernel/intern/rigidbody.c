@@ -86,9 +86,11 @@ float BKE_rigidbody_calc_max_con_mass(Object* ob)
 		if (md->type == eModifierType_RigidBody) {
 			rmd = (RigidBodyModifierData*)md;
 			for (con = rmd->meshConstraints.first; con; con = con->next) {
-				con_mass = con->mi1->rigidbody->mass + con->mi2->rigidbody->mass;
-				if (con_mass > max_con_mass) {
-					max_con_mass = con_mass;
+				if ((con->mi1->rigidbody != NULL) && (con->mi2->rigidbody != NULL)) {
+					con_mass = con->mi1->rigidbody->mass + con->mi2->rigidbody->mass;
+					if (con_mass > max_con_mass) {
+						max_con_mass = con_mass;
+					}
 				}
 			}
 
