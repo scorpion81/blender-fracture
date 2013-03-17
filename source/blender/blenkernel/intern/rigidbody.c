@@ -2286,11 +2286,11 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 					break;
 				/* use rigid body transform after cache start frame if objects is not being transformed */
 				if ((ctime > rbw->pointcache->startframe && !(ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ))) {
-					//float loc[3], rot[4], imat[4][4];
 
 				/* keep original transform when the simulation is muted */
 					if (rbw->flag & RBW_FLAG_MUTED)
 						return;
+					BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn);
 				}
 				/* otherwise set rigid body transform to current obmat*/
 				else {

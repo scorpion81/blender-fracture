@@ -355,21 +355,6 @@ void mesh_separate_loose(RigidBodyModifierData* rmd, Object* ob)
 	BLI_ghash_free(hash, NULL, NULL);
 }
 
-static ParticleSystemModifierData *findPrecedingParticlesystem(Object *ob)
-{
-	ModifierData *md;
-	ParticleSystemModifierData *psmd = NULL;
-
-	for (md = ob->modifiers.first; md; md = md->next) {
-		if (md->type == eModifierType_ParticleSystem) {
-			psmd = (ParticleSystemModifierData*) md;
-			return psmd;
-		}
-	}
-
-	return NULL;
-}
-
 static void connect_constraints(RigidBodyModifierData* rmd, MeshIsland **meshIslands, int count, BMesh **combined_mesh, KDTree **combined_tree) {
 
 	MeshIsland *mi, *mi2;
