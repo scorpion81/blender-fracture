@@ -879,7 +879,7 @@ static void rna_RigidBodyModifier_mass_dependent_thresholds_set(PointerRNA* ptr,
 	Object* ob = ptr->id.data;
 	rmd->mass_dependent_thresholds = value;
 	updateConstraints(rmd, ob);
-	//rmd->refresh = TRUE;
+	rmd->refresh = TRUE;
 }
 
 static int rna_RigidBodyModifier_is_slave_get(PointerRNA* ptr)

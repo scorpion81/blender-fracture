@@ -1301,7 +1301,6 @@ typedef struct MeshIsland {
 typedef struct RigidBodyModifierData {
 	ModifierData modifier;
 	struct BMesh *visible_mesh;
-	struct KDTree *ntree;
 	struct Group *constraint_group;
 	ListBase meshIslands, meshConstraints;
 	int refresh, use_constraints, mass_dependent_thresholds, is_slave;

@@ -64,11 +64,8 @@ static void initData(ModifierData *md)
 	RigidBodyModifierData *rmd = (RigidBodyModifierData *) md;
 	rmd->visible_mesh = NULL;
 	rmd->refresh = TRUE;
-//	rmd->cltree = NULL;
-	rmd->ntree = NULL;
 	zero_m4(rmd->origmat);
 	rmd->breaking_threshold = 10.0f;
-//	rmd->outer_breaking_threshold = 2.0f;
 	rmd->use_constraints = FALSE;
 	rmd->constraint_group = NULL;
 	rmd->contact_dist = 0.00001f;
@@ -116,8 +113,6 @@ static void freeData(ModifierData *md)
 	while (rmd->meshConstraints.first) {
 		rbsc = rmd->meshConstraints.first;
 		BLI_remlink(&rmd->meshConstraints, rbsc);
-		/*if (rbsc->physics_constraint)
-			RB_dworld_remove_constraint(md->scene->rigidbody_world->physics_world, rbsc->physics_constraint);*/
 		MEM_freeN(rbsc);
 	}
 
@@ -130,18 +125,6 @@ static void freeData(ModifierData *md)
 	{
 		BM_mesh_free(rmd->visible_mesh);
 		rmd->visible_mesh = NULL;
-	}
-
-/*	if (rmd->cltree)
-	{
-		MEM_freeN(rmd->cltree);
-		rmd->cltree = NULL;
-	}*/
-
-	if (rmd->ntree)
-	{
-		MEM_freeN(rmd->ntree);
-		rmd->ntree = NULL;
 	}
 }
 
@@ -387,26 +370,6 @@ static ParticleSystemModifierData *findPrecedingParticlesystem(Object *ob)
 	return NULL;
 }
 
-/*static void create_neighborhood_tree(RigidBodyModifierData *rmd )
-{
-	MeshIsland* mi;
-	int i = 0;
-
-	if (rmd->ntree)
-	{
-		BLI_kdtree_free(rmd->ntree);
-		rmd->ntree = NULL;
-	}
-
-	rmd->ntree = BLI_kdtree_new(BLI_countlist(&rmd->meshIslands));
-	for (mi = rmd->meshIslands.first; mi; mi = mi->next, i++) {
-		BLI_kdtree_insert(rmd->ntree, i, mi->centroid, NULL);
-	}
-
-	BLI_kdtree_balance(rmd->ntree);
-}*/
-
-
 static void connect_constraints(RigidBodyModifierData* rmd, MeshIsland **meshIslands, int count, BMesh **combined_mesh, KDTree **combined_tree) {
 
 	MeshIsland *mi, *mi2;
@@ -594,14 +557,9 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 {
 
 	RigidBodyModifierData *rmd = (RigidBodyModifierData *) md;
-	//freeData(md); // reset on each run
+
 	if (rmd->refresh)
 	{
-		//refresh only if we are not in another (external set) constraints group already
-		/*if (((rmd->constraint_group != NULL) &&
-		   (!object_in_group(ob, rmd->constraint_group))) ||
-		   (rmd->constraint_group == NULL))*/
-		//{
 		freeData(md);
 		copy_m4_m4(rmd->origmat, ob->obmat);
 		rmd->visible_mesh = DM_to_bmesh(dm);
@@ -614,7 +572,6 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				create_constraints(rmd);
 			}
 		}
-		//}
 		rmd->refresh = FALSE;
 	}
 

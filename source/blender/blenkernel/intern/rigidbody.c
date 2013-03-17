@@ -1366,7 +1366,7 @@ void BKE_rigidbody_validate_sim_world(Scene *scene, RigidBodyWorld *rbw, short r
 	if (rebuild || rbw->physics_world == NULL) {
 		if (rbw->physics_world)
 			RB_dworld_delete(rbw->physics_world);
-		rbw->physics_world = RB_dworld_new(scene->physics_settings.gravity, rbw, filterCallback);
+		rbw->physics_world = RB_dworld_new(scene->physics_settings.gravity, rbw, NULL/*filterCallback*/);
 	}
 
 	RB_dworld_set_solver_iterations(rbw->physics_world, rbw->num_solver_iterations);
@@ -1991,6 +1991,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 			for (md = ob->modifiers.first; md; md = md->next) {
 				if (md->type == eModifierType_RigidBody) {
 					rmd = (RigidBodyModifierData*)md;
+					//BKE_rigidbody_sync_all_shards(ob);
 				}
 			}
 
@@ -2242,6 +2243,19 @@ int is_zero_m4(float mat[4][4]) {
 		   is_zero_v4(mat[3]);
 }
 
+/*static void copyRigidBody(RigidBodyOb *source, RigidBodyOb *target)
+{
+	target->type = source->type;
+	target->shape = source->shape;
+	target->flag = source->flag;
+	target->col_groups = source->col_groups;
+	target->friction = source->friction;
+	target->restitution = source->restitution;
+	target->margin = source->margin;
+	target->lin_damping = source->lin_damping;
+	target->lin_sleep_thresh = source->lin_sleep_thresh;
+}*/
+
 /* Sync rigid body and object transformations */
 void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 {
@@ -2258,7 +2272,7 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 		{
 			rmd = (RigidBodyModifierData*)md;
 			modFound = TRUE;
-			if ((ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
+			if ((ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) || (ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC)) {
 				//update "original" matrix
 				copy_m4_m4(rmd->origmat, ob->obmat);
 			}
@@ -2271,22 +2285,12 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 				if (!rbo)
 					break;
 				/* use rigid body transform after cache start frame if objects is not being transformed */
-				if (ctime > rbw->pointcache->startframe && !(ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
-				//float mat[4][4], size_mat[4][4], size[3];
+				if ((ctime > rbw->pointcache->startframe && !(ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ))) {
+					//float loc[3], rot[4], imat[4][4];
 
 				/* keep original transform when the simulation is muted */
 					if (rbw->flag & RBW_FLAG_MUTED)
 						return;
-
-					//normalize_qt(rbo->orn); // RB_TODO investigate why quaternion isn't normalized at this point
-					//quat_to_mat4(mat, rbo->orn);
-					//copy_v3_v3(mat[3], rbo->pos);
-
-					//mat4_to_size(size, ob->obmat);
-					//size_to_mat4(size_mat, size);
-					//mult_m4_m4m4(mat, mat, ob->obmat);
-					//mat4_to_loc_quat(rbo->pos, rbo->orn, mat);
-					//BKE_updateCell(mi, ob, rbo->pos, rbo->orn);
 				}
 				/* otherwise set rigid body transform to current obmat*/
 				else {
