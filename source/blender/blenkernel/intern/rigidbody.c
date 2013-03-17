@@ -2292,7 +2292,6 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 				/* keep original transform when the simulation is muted */
 					if (rbw->flag & RBW_FLAG_MUTED)
 						return;
-					BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn);
 				}
 				/* otherwise set rigid body transform to current obmat*/
 				else {
@@ -2303,8 +2302,9 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 					mul_v3_v3(centr, size);
 					mul_qt_v3(rbo->orn, centr);
 					add_v3_v3(rbo->pos, centr);
-					BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn);
 				}
+				BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn);
+
 			}
 			break;
 		}
