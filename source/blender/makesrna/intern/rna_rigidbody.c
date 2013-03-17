@@ -157,6 +157,23 @@ void foreach_shard_float(Object* ob, float value, void (*func)(RigidBodyOb* rbo,
 	}
 }
 
+void foreach_shard_mass(Object* ob)
+{
+	ModifierData *md;
+	RigidBodyModifierData* rmd;
+	MeshIsland* mi;
+	for (md = ob->modifiers.first; md; md = md->next) {
+		if (md->type == eModifierType_RigidBody) {
+			rmd = (RigidBodyModifierData*)md;
+			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+				if (mi->rigidbody != NULL) {
+					BKE_rigidbody_calc_shard_mass(ob, mi);
+				}
+			}
+		}
+	}
+}
+
 void foreach_shard_int(Object* ob, int value, void (*func)(RigidBodyOb* rbo, int value))
 {
 	ModifierData *md;
@@ -301,7 +318,8 @@ static void rna_RigidBodyOb_mass_set(PointerRNA *ptr, float value)
 	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
 	Object* ob = ptr->id.data;
 	set_mass(rbo, value);
-	foreach_shard_float(ob, value, set_mass);
+	//foreach_shard_float(ob, value, set_mass);
+	foreach_shard_mass(ob);
 }
 
 void set_friction(RigidBodyOb* rbo, float value)

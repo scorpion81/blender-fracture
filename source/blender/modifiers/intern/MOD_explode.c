@@ -54,7 +54,7 @@
 #include "BKE_object.h"
 #include "BKE_particle.h"
 #include "BKE_scene.h"
-#include "BKE_group.h";
+#include "BKE_group.h"
 
 
 #include "MEM_guardedalloc.h"
@@ -1129,7 +1129,7 @@ static ParticleSystemModifierData *findPrecedingParticlesystem(Object *ob, Modif
 	return psmd;
 }
 
-static int dm_minmax(DerivedMesh* dm, float min[3], float max[3])
+/*static int dm_minmax(DerivedMesh* dm, float min[3], float max[3])
 {
 
 	int verts = dm->getNumVerts(dm);
@@ -1144,7 +1144,7 @@ static int dm_minmax(DerivedMesh* dm, float min[3], float max[3])
 	}
 	
 	return (verts != 0);
-}
+}*/
 
 static int points_from_verts(Object** ob, int totobj, float*** points, int p_exist, float mat[4][4], float thresh, ExplodeModifierData *emd)
 {
@@ -1386,142 +1386,13 @@ static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float 
 	return totpoint;
 }
 
-static void mergeUVs(ExplodeModifierData* emd, BMesh* bm)
-{
-	DerivedMesh *d = NULL;
-	int i = 0, j = 0, f, f_index = 0, ml_index = 0;
-	MTFace* mtface = NULL;
-	MTFace* mtf = NULL;
-	MTFace tf;
-	//MTFaces not used in BMesh/further modifier processing , so need to split to MTexPoly/MLoopUV
-	MTexPoly* mtps,  mtp;
-	MLoopUV* mluvs, mluv;
-	MLoop* mla = NULL, *ml;
-	MPoly* mpa = NULL, *mp;
-	
-	mtface = MEM_mallocN(sizeof(MTFace), "mtface");
-	mtps = MEM_mallocN(sizeof(MTexPoly), "mtps");
-	mluvs = MEM_mallocN(sizeof(MLoopUV), "mluvs");
-	
-	f_index = 0;
-	ml_index = 0;
-	//Image* img;
-	
-	for (i = 0; i < emd->cells->count; i++)
-	{
-		d = emd->cells->data[i].cell_mesh;
-		//f = d->numTessFaceData;
-		
-		//if (mtf) MEM_freeN(mtf);
-		//hope this merges the MTFace data... successfully...
-		mtf = DM_get_tessface_data_layer(d, CD_MTFACE);
-		if (!mtf)
-		{
-			//argh, something went wrong, data will be missing...
-			MEM_freeN(mtface);
-			MEM_freeN(mtps);
-			MEM_freeN(mluvs);
-			mtface = NULL;
-			break;
-		}
-		
-		
-		/*CDDM_calc_edges_tessface(d);
-		 CDDM_tessfaces_to_faces(d);
-		 CDDM_calc_normals(d);
-		 DM_ensure_tessface(d);*/
-		//if (mpa) MEM_freeN(mpa);
-		//if (mla) MEM_freeN(mla);
-		mpa = d->getPolyArray(d);
-		mla = d->getLoopArray(d);
-		
-		for (f = 0; f < d->numTessFaceData; f++)
-		{
-			mtface = MEM_reallocN(mtface, sizeof(MTFace) * (f_index+1));
-			tf = mtf[f];
-			
-			//setting image with the crowbar, hrm...
-			/*if (tf.tpage)
-			 {
-			 img = tf.tpage;
-			 }
-			 if (!tf.tpage)
-			 {
-			 //free(mtface);
-			 //mtface = NULL;
-			 //break;
-			 tf.tpage = img;
-			 }*/
-			mtps = MEM_reallocN(mtps, sizeof(MTexPoly) * (f_index+1));
-			mtp.tpage = tf.tpage;
-			mtp.flag = tf.flag;
-			mtp.mode = tf.mode;
-			mtp.tile = tf.tile;
-			mtp.transp = tf.transp;
-			mtps[f_index] = mtp;
-			
-			//assume facecount = polycount and faces = polys since only tris and quads available
-			//because of boolean
-			
-			mp = mpa + f; // get Polygon according to face index
-			mluvs = MEM_reallocN(mluvs, sizeof(MLoopUV)* (mp->totloop + ml_index));
-			
-			for (j = mp->loopstart; j < mp->loopstart + mp->totloop; j++)
-			{
-				//assume vertindex = uvindex, sigh, is that so ?, and no more than 4 loops !
-				ml = mla + j;
-				//mluv.flag = MLOOPUV_PINNED;//; MLOOPUV_EDGESEL;// MLOOPUV_VERTSEL;
-				mluv.uv[0] = tf.uv[j-mp->loopstart][0];
-				mluv.uv[1] = tf.uv[j-mp->loopstart][1];
-				mluvs[ml_index] = mluv;
-				ml_index++;
-			}
-			
-			mtface[f_index] = tf;
-			f_index++;
-		}
-		//MEM_freeN(mtf);
-		//MEM_freeN(mla);
-		//MEM_freeN(mpa);
-		
-		//if(!mtface)
-		//	break;
-	}
-	
-	if (mtface)
-	{
-		CustomData *fdata, *pdata, *ldata;
-		//fdata = &fracMesh->
-		
-		/*CustomData_bmesh_init_pool(&emd->fracMesh->vdata, bm_mesh_allocsize_default.totvert, BM_VERT);
-		CustomData_bmesh_init_pool(&emd->fracMesh->edata, bm_mesh_allocsize_default.totedge, BM_EDGE);
-		CustomData_bmesh_init_pool(&emd->fracMesh->ldata, bm_mesh_allocsize_default.totloop, BM_LOOP);
-		CustomData_bmesh_init_pool(&emd->fracMesh->pdata, bm_mesh_allocsize_default.totface, BM_FACE);*/
-		
-		ldata = &bm->ldata;
-		pdata = &bm->pdata;
-		
-		//CustomData_add_layer(&fdata, CD_MTFACE , CD_DUPLICATE, mtface, f_index);
-		CustomData_add_layer(pdata, CD_MTEXPOLY, CD_DUPLICATE, mtps, f_index);
-		CustomData_add_layer(ldata, CD_MLOOPUV, CD_DUPLICATE, mluvs, ml_index);
-		
-		MEM_freeN(mtface);
-		MEM_freeN(mtps);
-		MEM_freeN(mluvs);
-		//MEM_freeN(mtf);
-		//MEM_freeN(mla);
-		//MEM_freeN(mpa);
-	}
-}
-
 // create the voronoi cell faces inside the existing mesh
-static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSystemModifierData* psmd, ExplodeModifierData* emd, float mat[4][4])
+static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModifierData* emd, float mat[4][4])
 {
 	void* container = NULL;
 	void* particle_order = NULL;
 	float min[3], max[3];
 	int p = 0;
-	ParticleData *pa = NULL;
 	float co[3], vco[3];
 	BMesh *bm = NULL, *bmtemp = NULL;
 
@@ -1542,7 +1413,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ParticleSyst
 	//MFace* fa = NULL;
 
 	int totvert, totedge, totpoly;
-	int v, e, f;
+	int v, e;
 	int tempvert_index;
 	const char *file;
 	char *path, *fullpath;
@@ -2291,166 +2162,124 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					BM_mesh_free(emd->fracMesh);
 					emd->fracMesh = NULL;
 				}
-				emd->fracMesh = fractureToCells(ob, derivedData, psmd, emd, oldobmat);
+				emd->fracMesh = fractureToCells(ob, derivedData, emd, oldobmat);
 				
 				copy_m4_m4(ob->obmat, oldobmat); // restore obmat
 
 				if (psmd != NULL)
 					emd->last_part = psmd->psys->totpart;
 				emd->last_bool = emd->use_boolean;
-			//	emd->last_flip = emd->flip_normal;
-				emd->last_point_source = emd->point_source;
-				
+				emd->last_point_source = emd->point_source;	
 			}
 
-			/*if (emd->refracture)
+			if (emd->cells == NULL)
+				return derivedData;
+
+			if (emd->fracMesh)
+				BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "recalc_face_normals faces=%hf use_flip=%b", BM_FACES_OF_MESH, FALSE);
+
+			if (emd->use_animation && psmd != NULL)
 			{
-				if ((emd->cells == NULL) ||
-						(emd->last_part != psmd->psys->totpart) ||
-						(emd->last_bool != emd->use_boolean) ||
-						(emd->last_flip != emd->flip_normal) ||
-						(emd->last_point_source != emd->point_source) ||
-						(emd->use_cache == FALSE))
-				{
-					if (emd->fracMesh) BM_mesh_free(emd->fracMesh);
-					emd->fracMesh = fractureToCells(ob, derivedData, psmd, emd, oldobmat);
-				}
+				if (emd->map_delay != emd->last_map_delay) resetCells(emd);
+				emd->last_map_delay = emd->map_delay;
+				createParticleTree(emd, psmd, md->scene, ob);
+				mapCellsToParticles(emd, psmd, md->scene, ob);
+				explodeCells(emd, psmd, md->scene, ob);
+			}
 
-				emd->last_part = psmd->psys->totpart;
-				emd->last_bool = emd->use_boolean;
-				emd->last_flip = emd->flip_normal;
-
+			if (emd->fracMesh) {
 				result = CDDM_from_bmesh(emd->fracMesh, TRUE);
-				BM_mesh_free(emd->fracMesh);
-				emd->fracMesh = NULL;
-				return result;
-
 			}
-			else*/
+			else {
+				result = derivedData;
+				return result;
+			}
+
+			if (emd->use_boolean)
 			{
-				if (emd->cells == NULL)
-					return derivedData;
+				DM_ensure_tessface(result);
+				CDDM_calc_edges_tessface(result);
+				CDDM_tessfaces_to_faces(result);
+				CDDM_calc_normals(result);
 
-				if (emd->fracMesh)
-					BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "recalc_face_normals faces=%hf use_flip=%b", BM_FACES_OF_MESH, FALSE);
-				//BM_mesh_copy(emd->fracMesh); loses some faces too, hrm.
-				if (emd->use_animation && psmd != NULL)
+				mtface = MEM_mallocN(sizeof(MTFace), "mtface");
+				mtps = MEM_mallocN(sizeof(MTexPoly), "mtps");
+				mluvs = MEM_mallocN(sizeof(MLoopUV), "mluvs");
+
+				f_index = 0;
+				ml_index = 0;
+
+				for (i = 0; i < emd->cells->count; i++)
 				{
-					if (emd->map_delay != emd->last_map_delay) resetCells(emd);
-					emd->last_map_delay = emd->map_delay;
-					createParticleTree(emd, psmd, md->scene, ob);
-					mapCellsToParticles(emd, psmd, md->scene, ob);
-					explodeCells(emd, psmd, md->scene, ob);
-				}
+					d = emd->cells->data[i].cell_mesh;
 
-				if (emd->fracMesh) {
-					result = CDDM_from_bmesh(emd->fracMesh, TRUE);
-				}
-				else {
-					result = derivedData;
-					return result;
-				}
-				
-				if (emd->use_boolean)
-				{
-					DM_ensure_tessface(result);
-					CDDM_calc_edges_tessface(result);
-					CDDM_tessfaces_to_faces(result);
-					CDDM_calc_normals(result);
-
-					mtface = MEM_mallocN(sizeof(MTFace), "mtface");
-					mtps = MEM_mallocN(sizeof(MTexPoly), "mtps");
-					mluvs = MEM_mallocN(sizeof(MLoopUV), "mluvs");
-					
-					f_index = 0;
-					ml_index = 0;
-					//Image* img;
-					
-					for (i = 0; i < emd->cells->count; i++)
+					//hope this merges the MTFace data... successfully...
+					mtf = DM_get_tessface_data_layer(d, CD_MTFACE);
+					if (!mtf)
 					{
-						d = emd->cells->data[i].cell_mesh;
-
-						//hope this merges the MTFace data... successfully...
-						mtf = DM_get_tessface_data_layer(d, CD_MTFACE);
-						if (!mtf)
-						{
-							//argh, something went wrong, data will be missing...
-							MEM_freeN(mtface);
-							MEM_freeN(mtps);
-							MEM_freeN(mluvs);
-							mtface = NULL;
-							break;
-						}
-						
-						mpa = d->getPolyArray(d);
-						mla = d->getLoopArray(d);
-						
-						for (f = 0; f < d->numTessFaceData; f++)
-						{
-							mtface = MEM_reallocN(mtface, sizeof(MTFace) * (f_index+1));
-							tf = mtf[f];
-							
-							//setting image with the crowbar, hrm...
-							/*if (tf.tpage)
-							{
-								img = tf.tpage;
-							}
-							if (!tf.tpage)
-							{
-								//free(mtface);
-								//mtface = NULL;
-								//break;
-								tf.tpage = img;
-							}*/
-							mtps = MEM_reallocN(mtps, sizeof(MTexPoly) * (f_index+1));
-							mtp.tpage = tf.tpage;
-							mtp.flag = tf.flag;
-							mtp.mode = tf.mode;
-							mtp.tile = tf.tile;
-							mtp.transp = tf.transp;
-							mtps[f_index] = mtp;
-							
-							//assume facecount = polycount and faces = polys since only tris and quads available
-							//because of boolean
-							
-							mp = mpa + f; // get Polygon according to face index
-							mluvs = MEM_reallocN(mluvs, sizeof(MLoopUV)* (mp->totloop + ml_index));
-							
-							for (j = mp->loopstart; j < mp->loopstart + mp->totloop; j++)
-							{
-								//assume vertindex = uvindex, sigh, is that so ?, and no more than 4 loops !
-								ml = mla + j;
-								//mluv.flag = MLOOPUV_PINNED;//; MLOOPUV_EDGESEL;// MLOOPUV_VERTSEL;
-								mluv.uv[0] = tf.uv[j-mp->loopstart][0];
-								mluv.uv[1] = tf.uv[j-mp->loopstart][1];
-								mluvs[ml_index] = mluv;
-								ml_index++;
-							}
-							
-							mtface[f_index] = tf;
-							f_index++;
-						}
-					}
-					 
-					if (mtface)
-					{
-						CustomData *fdata, *pdata, *ldata;
-						fdata = &result->faceData;
-						ldata = &result->loopData;
-						pdata = &result->polyData;
-						
-						CustomData_add_layer(fdata, CD_MTFACE , CD_DUPLICATE, mtface, f_index);
-						CustomData_add_layer(pdata, CD_MTEXPOLY, CD_DUPLICATE, mtps, f_index);
-						CustomData_add_layer(ldata, CD_MLOOPUV, CD_DUPLICATE, mluvs, ml_index);
-				
+						//argh, something went wrong, data will be missing...
 						MEM_freeN(mtface);
 						MEM_freeN(mtps);
 						MEM_freeN(mluvs);
+						mtface = NULL;
+						break;
+					}
+
+					mpa = d->getPolyArray(d);
+					mla = d->getLoopArray(d);
+
+					for (f = 0; f < d->numTessFaceData; f++)
+					{
+						mtface = MEM_reallocN(mtface, sizeof(MTFace) * (f_index+1));
+						tf = mtf[f];
+
+						mtps = MEM_reallocN(mtps, sizeof(MTexPoly) * (f_index+1));
+						mtp.tpage = tf.tpage;
+						mtp.flag = tf.flag;
+						mtp.mode = tf.mode;
+						mtp.tile = tf.tile;
+						mtp.transp = tf.transp;
+						mtps[f_index] = mtp;
+
+						//assume facecount = polycount and faces = polys since only tris and quads available
+						//because of boolean
+
+						mp = mpa + f; // get Polygon according to face index
+						mluvs = MEM_reallocN(mluvs, sizeof(MLoopUV)* (mp->totloop + ml_index));
+
+						for (j = mp->loopstart; j < mp->loopstart + mp->totloop; j++)
+						{
+							//assume vertindex = uvindex, sigh, is that so ?, and no more than 4 loops !
+							ml = mla + j;
+							mluv.uv[0] = tf.uv[j-mp->loopstart][0];
+							mluv.uv[1] = tf.uv[j-mp->loopstart][1];
+							mluvs[ml_index] = mluv;
+							ml_index++;
+						}
+
+						mtface[f_index] = tf;
+						f_index++;
 					}
 				}
-				emd->use_cache = TRUE;
-				return result;
+
+				if (mtface)
+				{
+					CustomData *fdata, *pdata, *ldata;
+					fdata = &result->faceData;
+					ldata = &result->loopData;
+					pdata = &result->polyData;
+
+					CustomData_add_layer(fdata, CD_MTFACE , CD_DUPLICATE, mtface, f_index);
+					CustomData_add_layer(pdata, CD_MTEXPOLY, CD_DUPLICATE, mtps, f_index);
+					CustomData_add_layer(ldata, CD_MLOOPUV, CD_DUPLICATE, mluvs, ml_index);
+
+					MEM_freeN(mtface);
+					MEM_freeN(mtps);
+					MEM_freeN(mluvs);
+				}
 			}
+			emd->use_cache = TRUE;
+			return result;
 #else
 			emd->mode = eFractureMode_Faces;
 			return derivedData;

@@ -1938,7 +1938,7 @@ static void validateShard(RigidBodyWorld *rbw, MeshIsland* mi, Object* ob, int r
 	mi->rigidbody->flag &= ~(RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
 }
 
-static int meshisland_is_congroup_slave(RigidBodyWorld *rbw, RigidBodyModifierData* rmd, MeshIsland* mi) {
+/*static int meshisland_is_congroup_slave(RigidBodyWorld *rbw, RigidBodyModifierData* rmd, MeshIsland* mi) {
 	RigidBodyModifierData* rmd2;
 	ModifierData* md;
 	Object* container = rbw->objects[rbw->cache_index_map[mi->linear_index]];
@@ -1962,7 +1962,7 @@ static int meshisland_is_congroup_slave(RigidBodyWorld *rbw, RigidBodyModifierDa
 	}
 
 	return FALSE;
-}
+}*/
 
 /* Updates and validates world, bodies and shapes.
  * < rebuild: rebuild entire simulation
@@ -2001,19 +2001,19 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 				//those all need to be revalidated (?)
 
 				for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
-					if (!(meshisland_is_congroup_slave(rbw, rmd, rbsc->mi1)))
-					{
-						if (rbsc->mi1->rigidbody != NULL) {
-							rbsc->mi1->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
-						}
+					//if (!(meshisland_is_congroup_slave(rbw, rmd, rbsc->mi1)))
+					//{
+					if (rbsc->mi1->rigidbody != NULL) {
+						rbsc->mi1->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 					}
+					//}
 
-					if (!(meshisland_is_congroup_slave(rbw, rmd, rbsc->mi2)))
-					{
-						if (rbsc->mi2->rigidbody != NULL) {
-							rbsc->mi2->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
-						}
+					//if (!(meshisland_is_congroup_slave(rbw, rmd, rbsc->mi2)))
+					//{
+					if (rbsc->mi2->rigidbody != NULL) {
+						rbsc->mi2->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 					}
+					//}
 				}
 
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
