@@ -108,9 +108,11 @@ void BKE_rigidbody_calc_threshold(float max_con_mass, RigidBodyModifierData *rmd
 		return;
 
 	max_thresh = ((con->mi1->parent_mod == con->mi2->parent_mod) ? con->mi1->parent_mod->breaking_threshold : rmd->group_breaking_threshold);
-	con_mass = con->mi1->rigidbody->mass + con->mi2->rigidbody->mass;
-	thresh = (con_mass / max_con_mass) * max_thresh;
-	con->breaking_threshold = thresh;
+	if ((con->mi1->rigidbody != NULL) && (con->mi2->rigidbody != NULL)) {
+		con_mass = con->mi1->rigidbody->mass + con->mi2->rigidbody->mass;
+		thresh = (con_mass / max_con_mass) * max_thresh;
+		con->breaking_threshold = thresh;
+	}
 }
 
 static int BM_mesh_minmax(BMesh *bm, float r_min[3], float r_max[3])
@@ -2274,7 +2276,8 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 		{
 			rmd = (RigidBodyModifierData*)md;
 			modFound = TRUE;
-			if ((ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) || (ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC)) {
+			if ((ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) ||
+			((ob->rigidbody_object) && (ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC))) {
 				//update "original" matrix
 				copy_m4_m4(rmd->origmat, ob->obmat);
 			}
