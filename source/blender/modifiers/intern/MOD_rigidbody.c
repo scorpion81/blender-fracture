@@ -83,6 +83,13 @@ static void copyData(ModifierData *md, ModifierData *target)
 	//trmd->meshIslands = rmd->meshIslands;
 	trmd->refresh = TRUE;
 	trmd->is_slave = rmd->is_slave;
+	trmd->breaking_threshold = rmd->breaking_threshold;
+	trmd->use_constraints = rmd->use_constraints;
+	trmd->constraint_group = rmd->constraint_group;
+	trmd->contact_dist = rmd->contact_dist;
+	trmd->group_breaking_threshold = rmd->group_breaking_threshold;
+	trmd->group_contact_dist = rmd->group_contact_dist;
+	trmd->mass_dependent_thresholds = rmd->mass_dependent_thresholds;
 }
 
 static void freeData(ModifierData *md)
@@ -128,7 +135,7 @@ static void freeData(ModifierData *md)
 	}
 }
 
-int BM_calc_center_centroid(BMesh *bm, float cent[3])
+int BM_calc_center_centroid(BMesh *bm, float cent[3], int tagged)
 {
 	BMFace *f;
 	BMIter iter;
@@ -140,11 +147,13 @@ int BM_calc_center_centroid(BMesh *bm, float cent[3])
 
 	/* calculate a weighted average of face centroids */
 	BM_ITER_MESH (f, &iter, bm, BM_FACES_OF_MESH) {
-		BM_face_calc_center_mean (f, face_cent);
-		face_area = BM_face_calc_area(f);
+		if (BM_elem_flag_test(f, BM_ELEM_TAG) || !tagged) {
+			BM_face_calc_center_mean (f, face_cent);
+			face_area = BM_face_calc_area(f);
 
-		madd_v3_v3fl(cent, face_cent, face_area);
-		total_area += face_area;
+			madd_v3_v3fl(cent, face_cent, face_area);
+			total_area += face_area;
+		}
 	}
 	/* otherwise we get NAN for 0 polys */
 	if (bm->totface) {
@@ -180,17 +189,13 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	BMO_op_callf(bm_old, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 	             "duplicate geom=%hvef dest=%p", BM_ELEM_TAG, bm_new);
 
-	//need to delete old geometry ?
-	//BMO_op_callf(bm_old, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-	//             "delete geom=%hvef context=%i", BM_ELEM_TAG, DEL_FACES);
-
-	BM_calc_center_centroid(bm_new, centroid);
+	BM_calc_center_centroid(bm_new, centroid, FALSE);
+	//printf("Centroid: %f %f %f \n", centroid[0], centroid[1], centroid[2]);
 	verts = MEM_callocN(sizeof(BMVert*), "mesh_separate_tagged->verts");
 	startco = MEM_callocN(sizeof(float), "mesh_separate_tagged->startco");
 
 	//store tagged vertices from old bmesh, important for later manipulation
 	//create rigidbody objects with island verts here
-	//invert_m4_m4(imat, ob->obmat);
 
 	BM_ITER_MESH (v, &iter, bm_new, BM_VERTS_OF_MESH) {
 		//eliminate centroid in vertex coords ?
@@ -359,11 +364,13 @@ static void connect_constraints(RigidBodyModifierData* rmd, MeshIsland **meshIsl
 
 	MeshIsland *mi, *mi2;
 	BMOpSlot *slot;
-	int m, i, j, v, shared = 0;
+	int m, i, j, v;
 	KDTreeNearest *n = MEM_mallocN(sizeof(KDTreeNearest)*count, "kdtreenearest");
 
 
 	for (j = 0; j < count; j++) {
+		int shared = 0;
+		int same = FALSE;
 		mi = meshIslands[j];
 
 		for (v = 0; v < mi->vertex_count; v++) {
@@ -379,12 +386,16 @@ static void connect_constraints(RigidBodyModifierData* rmd, MeshIsland **meshIsl
 			if ((mi != mi2) && (mi2 != NULL)) {
 
 				//check whether we are in the same object or not
-				float thresh = ((mi->parent_mod == mi2->parent_mod) ? mi->parent_mod->breaking_threshold : rmd->group_breaking_threshold);
-				float dist = ((mi->parent_mod == mi2->parent_mod) ? mi->parent_mod->contact_dist : rmd->group_contact_dist);
+				float thresh, dist;
+				int equal = mi->parent_mod == mi2->parent_mod;
+				//equal = equal && (mi->parent_mod == rmd);
+
+				thresh = equal ? rmd->breaking_threshold : rmd->group_breaking_threshold;
+				dist = equal ? rmd->contact_dist : rmd->group_contact_dist;
 
 				//select "our" vertices
 				for (v = 0; v < mi2->vertex_count; v++) {
-					BM_elem_flag_enable(/*mi2->vertices[v]*/BM_vert_at_index(*combined_mesh, mi2->combined_index_map[v]), BM_ELEM_TAG);
+					BM_elem_flag_enable(BM_vert_at_index(*combined_mesh, mi2->combined_index_map[v]), BM_ELEM_TAG);
 				}
 
 				//do we share atleast 1 vertex in selection
@@ -393,7 +404,36 @@ static void connect_constraints(RigidBodyModifierData* rmd, MeshIsland **meshIsl
 				BMO_op_exec(*combined_mesh, &op);
 				slot = BMO_slot_get(op.slots_out, "targetmap.out");
 				if (slot->data.ghash) {
+					GHashIterator it;
+					int found = TRUE, found2 = TRUE, found_all = TRUE, found_all2 = TRUE;
 					shared = slot->data.ghash->nentries;
+
+					GHASH_ITER(it, slot->data.ghash) {
+						BMVert* vert = BLI_ghashIterator_getKey(&it);
+						for (v = 0; v < mi->vertex_count; v++) {
+
+							//all verts in here ?
+							if ((vert == BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]))){
+								break;
+							}
+							found = FALSE;
+						}
+
+
+						for (v = 0; v < mi2->vertex_count; v++) {
+							// or all verts in here ?
+							if ((vert == BM_vert_at_index(*combined_mesh, mi2->combined_index_map[v]))) {
+								break;
+							}
+							found2 = FALSE;
+						}
+
+						found_all = found_all && found;
+						found_all2 = found_all2 && found2;
+					}
+
+					// verts are in different objects, ok, only if we have different modifiers as parent
+					same = ((equal && (found_all || found_all2)) || (!equal));
 				}
 				BMO_op_finish(*combined_mesh, &op);
 
@@ -405,7 +445,8 @@ static void connect_constraints(RigidBodyModifierData* rmd, MeshIsland **meshIsl
 				//printf("shared: %d\n", shared);
 
 				if (shared > 2) {
-					// shared vertices (atleast one face ?), so connect
+					// shared vertices (atleast one face ?), so connect...
+					// if all verts either in same object or not !
 					int con_found = FALSE;
 					RigidBodyShardCon *con, *rbsc;
 
@@ -416,7 +457,7 @@ static void connect_constraints(RigidBodyModifierData* rmd, MeshIsland **meshIsl
 							break;
 						}
 					}
-					if (!con_found || 1) {
+					if ((!con_found) && same) {
 						rbsc = BKE_rigidbody_create_shard_constraint(rmd->modifier.scene, RBC_TYPE_FIXED);
 						rbsc->mi1 = mi;
 						rbsc->mi2 = mi2;
@@ -425,12 +466,15 @@ static void connect_constraints(RigidBodyModifierData* rmd, MeshIsland **meshIsl
 					}
 				}
 				else {
-					// as centroids should be sorted by distance, further ones wont share verts too if this one didnt
+					// as centroids should be sorted by distance, further ones wont share verts too if this one didnt;
 					break;
 				}
 
-				shared = 0;
+				//shared = 0;
 			}
+
+			if (shared < 3)
+				break;
 		}
 
 		for (v = 0; v < mi->vertex_count; v++) {
@@ -459,7 +503,10 @@ static int create_combined_neighborhood(RigidBodyModifierData *rmd, MeshIsland *
 	for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 		mi->combined_index_map = MEM_mallocN(mi->vertex_count*sizeof(int), "combined_index_map");
 		for (v = 0; v < mi->vertex_count; v++) {
-			BM_vert_create(*combined_mesh, mi->vertices[v]->co, NULL, 0);
+			float co[3];
+			//add_v3_v3v3(co, mi->vertices[v]->co, mi->centroid);
+			copy_v3_v3(co, mi->vertices[v]->co);
+			BM_vert_create(*combined_mesh, co, NULL, 0);
 			mi->combined_index_map[v] = vert_counter;
 			vert_counter++;
 		}
@@ -474,16 +521,15 @@ static int create_combined_neighborhood(RigidBodyModifierData *rmd, MeshIsland *
 				if (md->type == eModifierType_RigidBody) {
 					rmd2 = (RigidBodyModifierData*)md;
 					rmd2->constraint_group = rmd->constraint_group;
-					//rmd2->is_slave = TRUE;
-					//rmd2->refresh = TRUE;
-					//DAG_id_tag_update(&go->ob->id, OB_RECALC_OB);
-
 					islands += BLI_countlist(&rmd2->meshIslands);
 					*mesh_islands = MEM_reallocN(*mesh_islands, islands*sizeof(MeshIsland*));
 					for (mi = rmd2->meshIslands.first; mi; mi = mi->next) {
 						mi->combined_index_map = MEM_mallocN(mi->vertex_count*sizeof(int), "combined_index_map");
 						for (v = 0; v < mi->vertex_count; v++) {
-							BM_vert_create(*combined_mesh, mi->vertices[v]->co, NULL, 0);
+							float co[3];
+							//add_v3_v3v3(co, mi->vertices[v]->co, mi->centroid);
+							copy_v3_v3(co, mi->vertices[v]->co);
+							BM_vert_create(*combined_mesh, co, NULL, 0);
 							mi->combined_index_map[v] = vert_counter;
 							vert_counter++;
 						}
