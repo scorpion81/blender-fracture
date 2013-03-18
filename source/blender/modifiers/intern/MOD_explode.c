@@ -200,14 +200,11 @@ static void copyData(ModifierData *md, ModifierData *target)
 	// temd->fracMesh = emd->fracMesh; regenerate this ?
 	temd->fracMesh = NULL;
 	temd->use_cache = emd->use_cache;
-//	temd->refracture = emd->refracture;
 	temd->tempOb = emd->tempOb;
 	//temd->cells = emd->cells; regenerate those too ?
 	temd->cells = NULL;
-//	temd->flip_normal = emd->flip_normal;
 	temd->last_part = emd->last_part;
 	temd->last_bool = emd->last_bool;
-//	temd->last_flip = emd->last_flip;
 	temd->emit_continuously = emd->emit_continuously;
 	temd->map_delay = emd->map_delay;
 	temd->last_map_delay = emd->last_map_delay;
