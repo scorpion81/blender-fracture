@@ -629,7 +629,7 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 							break;
 						}
 					}
-					if ((!con_found) && same) {
+					if ((!con_found) && same){
 						if (rmd->use_constraints) {
 							if (((rmd->constraint_group != NULL) &&
 								(!object_in_group(ob, rmd->constraint_group))) ||
@@ -808,7 +808,7 @@ void check_face_draw_by_constraint(RigidBodyModifierData* rmd, BMesh* merge_copy
 		BM_elem_flag_enable(face2, BM_ELEM_TAG);
 		if (BLI_countlist(&rmd->meshConstraints) > 0) {
 			RigidBodyShardCon* con = BLI_findlink(&rmd->meshConstraints,i);
-			if (con->physics_constraint) {
+			if (con && con->physics_constraint) {
 				if (RB_constraint_is_enabled(con->physics_constraint)) {
 					BM_elem_flag_enable(face, BM_ELEM_SELECT);
 					BM_elem_flag_enable(face2, BM_ELEM_SELECT);
