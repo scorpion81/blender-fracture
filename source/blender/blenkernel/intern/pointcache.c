@@ -980,7 +980,7 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float UNU
 		if (md->type == eModifierType_RigidBody) {
 			rmd = (RigidBodyModifierData*)md;
 			mi = BLI_findlink(&rmd->meshIslands, offset);
-			//if (!mi) return;
+			if (!mi) return; //workaround for changing count of rigidbodies/meshislands while cache is valid
 			rbo = mi->rigidbody;
 			break;
 		}
