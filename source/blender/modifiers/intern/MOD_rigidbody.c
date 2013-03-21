@@ -616,7 +616,7 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 					BM_elem_flag_disable(BM_vert_at_index(*combined_mesh, mi2->combined_index_map[v]), BM_ELEM_TAG);
 				}
 
-				if (shared > 2) {
+				if (shared > 0) {
 					// shared vertices (atleast one face ?), so connect...
 					// if all verts either in same object or not !
 					int con_found = FALSE;
@@ -794,6 +794,99 @@ BMFace* closest_available_face(RigidBodyModifierData* rmd, KDTree* tree, BMesh* 
 	return NULL;
 }
 
+void check_face_draw_by_constraint(RigidBodyModifierData* rmd, BMesh* merge_copy) {
+
+	int sel = rmd->sel_counter;
+	int i = 0;
+	BMFace *face, *face2;
+
+	for (i = 0; i < sel; i++)
+	{
+		face = BM_face_at_index(merge_copy, rmd->sel_indexes[i][0]);
+		face2 = BM_face_at_index(merge_copy, rmd->sel_indexes[i][1]);
+		BM_elem_flag_enable(face, BM_ELEM_TAG);
+		BM_elem_flag_enable(face2, BM_ELEM_TAG);
+		if (BLI_countlist(&rmd->meshConstraints) > 0) {
+			RigidBodyShardCon* con = BLI_findlink(&rmd->meshConstraints,i);
+			if (con->physics_constraint) {
+				if (RB_constraint_is_enabled(con->physics_constraint)) {
+					BM_elem_flag_enable(face, BM_ELEM_SELECT);
+					BM_elem_flag_enable(face2, BM_ELEM_SELECT);
+				}
+				else
+				{
+					BM_elem_flag_disable(face, BM_ELEM_SELECT);
+					BM_elem_flag_disable(face2, BM_ELEM_SELECT);
+				}
+			}
+			else
+			{
+				BM_elem_flag_disable(face, BM_ELEM_SELECT);
+				BM_elem_flag_disable(face2, BM_ELEM_SELECT);
+			}
+		}
+		else
+		{
+			BM_elem_flag_disable(face, BM_ELEM_SELECT);
+			BM_elem_flag_disable(face2, BM_ELEM_SELECT);
+		}
+	}
+}
+
+void check_face_draw_by_proximity(RigidBodyModifierData* rmd, BMesh* merge_copy) {
+
+	int sel = rmd->sel_counter;
+	int i = 0;
+	KDTree* tree;
+	BMFace* face;
+	BMIter iter;
+
+	//merge vertices
+	BMO_op_callf(merge_copy, BMO_FLAG_DEFAULTS, "automerge verts=%av dist=%f", BM_VERTS_OF_MESH, 0.00001f);
+
+	tree = BLI_kdtree_new(rmd->visible_mesh->totface);
+
+	//build tree of left selected faces
+	BM_ITER_MESH(face, &iter, merge_copy, BM_FACES_OF_MESH)
+	{
+		if (BM_elem_flag_test(face, BM_ELEM_TAG))
+		{
+			float co[3];
+			BM_face_calc_center_bounds(face, co);
+			BLI_kdtree_insert(tree, face->head.index, co, NULL);
+		}
+	}
+
+	BLI_kdtree_balance(tree);
+
+	//delete invisible inner faces, check which faces have been merged away, delete those who still there ?
+	for (i = 0; i < sel; i++) {
+
+		BMFace *f, *f2, *f3, *f4;
+		int index = rmd->sel_indexes[i][0];
+		int index2 = rmd->sel_indexes[i][1];
+
+		f = BM_face_at_index(merge_copy, index);
+		f2 = BM_face_at_index(rmd->visible_mesh, index);
+		f3 = closest_available_face(rmd, tree, merge_copy, f, f2);
+
+		f = BM_face_at_index(merge_copy, index2);
+		f2 = BM_face_at_index(rmd->visible_mesh, index2);
+		f4 = closest_available_face(rmd, tree, merge_copy, f, f2);
+
+		if (f3 != NULL) {
+			BM_elem_flag_enable(f3, BM_ELEM_SELECT);
+		}
+
+		if (f4 != NULL) {
+			BM_elem_flag_enable(f4, BM_ELEM_SELECT);
+		}
+	}
+
+	BLI_kdtree_free(tree);
+	tree = NULL;
+}
+
 static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 								  DerivedMesh *dm,
 								  ModifierApplyFlag UNUSED(flag))
@@ -827,73 +920,19 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 		DerivedMesh *dm_final;
 		if (rmd->auto_merge) {
-			int i = 0, j = 0;
-			BMIter iter;
-			BMFace* face;// **sel_faces = MEM_mallocN(sizeof(BMFace*) * rmd->sel_counter * 2 , "sel_faces");
 			BMesh* merge_copy = BM_mesh_copy(rmd->visible_mesh);
-			int sel = rmd->sel_counter;
-			KDTree* tree;
 
-
-			BM_ITER_MESH(face, &iter, merge_copy, BM_FACES_OF_MESH)
+			check_face_draw_by_constraint(rmd, merge_copy);
+			if (rmd->group_contact_dist > 0)
 			{
-				if (BM_elem_flag_test(face, BM_ELEM_SELECT))
-				{
-					BM_elem_flag_enable(face, BM_ELEM_TAG);
-					BM_elem_flag_disable(face, BM_ELEM_SELECT);
-					i++;
-				}
+				check_face_draw_by_proximity(rmd, merge_copy);
 			}
 
-			//merge vertices
-			BMO_op_callf(merge_copy, BMO_FLAG_DEFAULTS, "automerge verts=%av dist=%f", BM_VERTS_OF_MESH, rmd->group_contact_dist);
-
-			tree = BLI_kdtree_new(rmd->visible_mesh->totface);
-
-			//build tree of left selected faces
-			BM_ITER_MESH(face, &iter, merge_copy, BM_FACES_OF_MESH)
-			{
-				if (BM_elem_flag_test(face, BM_ELEM_TAG))
-				{
-					float co[3];
-					BM_face_calc_center_bounds(face, co);
-					BLI_kdtree_insert(tree, face->head.index, co, NULL);
-					j++;
-				}
-			}
-
-			BLI_kdtree_balance(tree);
-
-			//delete invisible inner faces, check which faces have been merged away, delete those who still there ?
-			for (i = 0; i < sel; i++) {
-
-				BMFace *f, *f2, *f3, *f4;
-				int index = rmd->sel_indexes[i][0];
-				int index2 = rmd->sel_indexes[i][1];
-
-				f = BM_face_at_index(merge_copy, index);
-				f2 = BM_face_at_index(rmd->visible_mesh, index);
-				f3 = closest_available_face(rmd, tree, merge_copy, f, f2);
-
-				f = BM_face_at_index(merge_copy, index2);
-				f2 = BM_face_at_index(rmd->visible_mesh, index2);
-				f4 = closest_available_face(rmd, tree, merge_copy, f, f2);
-
-				if (f3 != NULL) {
-					BM_elem_flag_enable(f3, BM_ELEM_SELECT);
-				}
-
-				if (f4 != NULL) {
-					BM_elem_flag_enable(f4, BM_ELEM_SELECT);
-				}
-			}
-
-			//BM_mesh_select_flush(merge_copy);
 			BMO_op_callf(merge_copy, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 						"delete geom=%hvef context=%i", BM_ELEM_SELECT, DEL_FACES);
 
-			BLI_kdtree_free(tree);
-			tree = NULL;
+			//final merge to close gaps
+			BMO_op_callf(merge_copy, BMO_FLAG_DEFAULTS, "automerge verts=%hv dist=%f", BM_ELEM_SELECT, rmd->group_contact_dist);
 
 			dm_final = CDDM_from_bmesh(merge_copy, TRUE);
 			BM_mesh_free(merge_copy);

@@ -960,6 +960,13 @@ void RB_constraint_set_enabled(rbConstraint *con, int enabled)
 	constraint->setEnabled(enabled);
 }
 
+int RB_constraint_is_enabled(rbConstraint *con)
+{
+	btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint*>(con);
+
+	return constraint->isEnabled();
+}
+
 void RB_constraint_set_limits_hinge(rbConstraint *con, float lower, float upper)
 {
 	btHingeConstraint *constraint = reinterpret_cast<btHingeConstraint*>(con);

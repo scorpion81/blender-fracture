@@ -275,6 +275,7 @@ extern void RB_constraint_delete(rbConstraint *con);
 
 /* Enable or disable constraint */
 extern void RB_constraint_set_enabled(rbConstraint *con, int enabled);
+extern int RB_constraint_is_enabled(rbConstraint *con);
 
 /* Limits */
 #define RB_LIMIT_LIN_X 0
