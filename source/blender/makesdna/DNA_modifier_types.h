@@ -1303,8 +1303,9 @@ typedef struct RigidBodyModifierData {
 	struct BMesh *visible_mesh;
 	struct Group *constraint_group;
 	ListBase meshIslands, meshConstraints;
-	int refresh, use_constraints, mass_dependent_thresholds, is_slave;
-	float origmat[4][4], breaking_threshold; //, outer_breaking_threshold;
+	int	**sel_indexes;
+	int refresh, use_constraints, mass_dependent_thresholds, auto_merge, sel_counter;
+	float origmat[4][4], breaking_threshold;
 	float contact_dist, group_breaking_threshold, group_contact_dist;
 	char pad[4];
 } RigidBodyModifierData;

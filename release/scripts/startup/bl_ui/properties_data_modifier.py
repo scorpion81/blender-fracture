@@ -675,16 +675,14 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
 
     def RIGID_BODY(self, layout, ob, md):
         layout.operator("object.rigidbody_refresh", text="Refresh")
-        if (md.is_slave == True):
-            layout.label("This is a constraint group slave.")
-        else:
-            layout.prop(md, "use_constraints")
+        layout.prop(md, "use_constraints")
         layout.prop(md, "constraint_group")
         layout.prop(md, "contact_dist")
         layout.prop(md, "group_contact_dist")
         layout.prop(md, "breaking_threshold")
         layout.prop(md, "group_breaking_threshold")
         layout.prop(md, "mass_dependent_thresholds")
+        layout.prop(md, "auto_merge")
 
     def SCREW(self, layout, ob, md):
         split = layout.split()
