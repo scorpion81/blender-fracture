@@ -175,6 +175,10 @@
 
 #include <errno.h>
 
+#include "bmesh.h" //needed for meshisland handling
+#include "BKE_cdderivedmesh.h"  //for fracture meshisland handling
+
+
 /*
  * Remark: still a weak point is the newaddress() function, that doesnt solve reading from
  * multiple files at the same time

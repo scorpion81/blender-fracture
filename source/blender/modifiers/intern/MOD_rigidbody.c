@@ -48,6 +48,9 @@
 #include "BKE_particle.h"
 #include "BKE_group.h"
 #include "BKE_depsgraph.h"
+#include "BKE_global.h"
+#include "BKE_library.h"
+#include "BKE_main.h"
 
 #include "bmesh.h"
 
@@ -64,7 +67,7 @@ static void initData(ModifierData *md)
 {
 	RigidBodyModifierData *rmd = (RigidBodyModifierData *) md;
 	rmd->visible_mesh = NULL;
-	rmd->refresh = TRUE;
+	rmd->refresh = FALSE;
 	zero_m4(rmd->origmat);
 	rmd->breaking_threshold = 10.0f;
 	rmd->use_constraints = FALSE;
@@ -76,6 +79,7 @@ static void initData(ModifierData *md)
 	rmd->auto_merge = FALSE;
 	rmd->sel_indexes = NULL;
 	rmd->sel_counter = 0;
+	rmd->storage = NULL;
 }
 
 static void copyData(ModifierData *md, ModifierData *target)
@@ -93,8 +97,11 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->group_breaking_threshold = rmd->group_breaking_threshold;
 	trmd->group_contact_dist = rmd->group_contact_dist;
 	trmd->mass_dependent_thresholds = rmd->mass_dependent_thresholds;
-	/*trmd->sel_indexes = rmd->sel_indexes;
-	trmd->sel_counter = rmd->sel_counter;*/
+	trmd->sel_indexes = rmd->sel_indexes;
+	trmd->sel_counter = rmd->sel_counter;
+	trmd->storage = rmd->storage;
+	trmd->meshIslands = rmd->meshIslands;
+	trmd->meshConstraints = rmd->meshConstraints;
 }
 
 static void freeData(ModifierData *md)
@@ -119,6 +126,16 @@ static void freeData(ModifierData *md)
 		if (mi->vertices)
 			MEM_freeN(mi->vertices);
 		mi->vertices = NULL;
+
+		/*if (mi->storage != NULL) {
+			BKE_libblock_free_us(&(G.main->mesh), mi->storage);
+			mi->storage = NULL;
+		}*/
+
+		if (mi->vert_indexes != NULL) {
+			MEM_freeN(mi->vert_indexes);
+			mi->vert_indexes = NULL;
+		}
 		MEM_freeN(mi);
 		mi = NULL;
 	}
@@ -134,7 +151,7 @@ static void freeData(ModifierData *md)
 	rmd->meshConstraints.first = NULL;
 	rmd->meshConstraints.last = NULL;
 
-	if (rmd->visible_mesh)
+	if (rmd->visible_mesh != NULL)
 	{
 		BM_mesh_free(rmd->visible_mesh);
 		rmd->visible_mesh = NULL;
@@ -149,6 +166,11 @@ static void freeData(ModifierData *md)
 		rmd->sel_indexes = NULL;
 		rmd->sel_counter = 0;
 	}
+
+	/*if (rmd->storage != NULL) {
+		BKE_libblock_free_us(&(G.main->mesh), rmd->storage);
+		rmd->storage = NULL;
+	}*/
 }
 
 int BM_calc_center_centroid(BMesh *bm, float cent[3], int tagged)
@@ -184,7 +206,7 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	BMesh *bm_new;
 	BMesh *bm_old = rmd->visible_mesh;
 	MeshIsland *mi;
-	int vertcount = 0;
+	int vertcount = 0, vert_index = 0, *vert_indexes;
 	float centroid[3], dummyloc[3], rot[4], *startco;
 	BMVert* v, **verts;
 	BMIter iter;
@@ -209,6 +231,7 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	//printf("Centroid: %f %f %f \n", centroid[0], centroid[1], centroid[2]);
 	verts = MEM_callocN(sizeof(BMVert*), "mesh_separate_tagged->verts");
 	startco = MEM_callocN(sizeof(float), "mesh_separate_tagged->startco");
+	vert_indexes = MEM_callocN(sizeof(int), "mesh_separate_tagged->vert_indexes");
 
 	//store tagged vertices from old bmesh, important for later manipulation
 	//create rigidbody objects with island verts here
@@ -229,14 +252,19 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 			startco[3 * vertcount] = v->co[0];
 			startco[3 * vertcount+1] = v->co[1];
 			startco[3 * vertcount+2] = v->co[2];
+			vert_indexes = MEM_reallocN(vert_indexes, (vertcount+1) * sizeof(int));
+			vert_indexes[vertcount] = vert_index;
 			vertcount++;
 		}
+		vert_index++;
 	}
 
 	// add 1 MeshIsland
 	mi = MEM_callocN(sizeof(MeshIsland), "meshIsland");
 	BLI_addtail(&rmd->meshIslands, mi);
 
+	mi->vert_indexes = vert_indexes;
+	mi->storage = NULL;
 	mi->vertices = verts;
 	mi->vertco = startco;
 	mi->physics_mesh = bm_new;
@@ -967,7 +995,7 @@ ModifierTypeInfo modifierType_RigidBody = {
 	/* structSize */        sizeof(RigidBodyModifierData),
 	/* type */              eModifierTypeType_Constructive,
 	/* flags */             eModifierTypeFlag_AcceptsMesh |
-							eModifierTypeFlag_UsesPointCache |
+							/*eModifierTypeFlag_UsesPointCache |*/
 							eModifierTypeFlag_Single,
 	
 	/* copyData */          copyData,

@@ -3290,14 +3290,13 @@ static void write_global(WriteData *wd, int fileflags, Main *mainvar)
 	fg.minsubversion= BLENDER_MINSUBVERSION;
 #ifdef WITH_BUILDINFO
 	{
-		extern unsigned long build_commit_timestamp;
-		extern char build_hash[];
+		extern char build_change[], build_hash[];
 		/* TODO(sergey): Add branch name to file as well? */
-		fg.build_commit_timestamp = build_commit_timestamp;
+		BLI_strncpy(fg.build_change, build_change, sizeof(fg.build_change));
 		BLI_strncpy(fg.build_hash, build_hash, sizeof(fg.build_hash));
 	}
 #else
-	fg.build_commit_timestamp = 0;
+	BLI_strncpy(fg.build_change, "unknown", sizeof(fg.build_change));
 	BLI_strncpy(fg.build_hash, "unknown", sizeof(fg.build_hash));
 #endif
 	writestruct(wd, GLOB, "FileGlobal", 1, &fg);

@@ -107,6 +107,7 @@ static void initData(ModifierData *md)
 	emd->use_animation = FALSE;
 	emd->noise = 0.0f;
 	emd->percentage = 100;
+	emd->storage = NULL;
 }
 
 static void freeCells(ExplodeModifierData* emd)
@@ -124,6 +125,17 @@ static void freeCells(ExplodeModifierData* emd)
 					DM_release(emd->cells->data[c].cell_mesh);
 					MEM_freeN(emd->cells->data[c].cell_mesh);
 					emd->cells->data[c].cell_mesh = NULL;
+				}
+				/*if (emd->cells->data[c].storage!= NULL)
+				{
+					BKE_libblock_free_us(&(G.main->mesh), emd->cells->data[c].storage);
+					emd->cells->data[c].storage = NULL;
+				}*/
+
+				if (emd->cells->data[c].vert_indexes != NULL)
+				{
+					MEM_freeN(emd->cells->data[c].vert_indexes);
+					emd->cells->data[c].vert_indexes = NULL;
 				}
 			}
 
@@ -171,6 +183,11 @@ static void freeData(ModifierData *md)
 		emd->inner_material = NULL;
 	}
 
+	/*if (emd->storage != NULL)
+	{
+		BKE_libblock_free_us(&(G.main->mesh), emd->storage);
+		emd->storage = NULL;
+	}*/
 }
 
 #else
@@ -1394,7 +1411,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 	BMesh *bm = NULL, *bmtemp = NULL;
 
 	FILE *fp = NULL;
-	int vert_index = 0;
+	int vert_index = 0, vert_index_global = 0;
 	int read = 0;
 	BMVert **faceverts = NULL, **tempvert = NULL, *vert = NULL, **localverts = NULL;
 	BMEdge **faceedges = NULL, *edge = NULL, **localedges = NULL;
@@ -1547,6 +1564,8 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 		emd->cells->data[emd->cells->count].vertex_count = 0;
 		emd->cells->data[emd->cells->count].particle_index = -1;
 //		emd->cells->data[emd->cells->count].rigidbody = NULL;
+		emd->cells->data[emd->cells->count].vert_indexes = MEM_mallocN(sizeof(int), "fractureToCells->vert_indexes");
+		emd->cells->data[emd->cells->count].storage = NULL;
 		
 
 		bmtemp = BM_mesh_create(&bm_mesh_chunksize_default);
@@ -1818,12 +1837,15 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 						emd->cells->data[emd->cells->count].vertco[3*vert_index] = vert->co[0];
 						emd->cells->data[emd->cells->count].vertco[3*vert_index+1] = vert->co[1];
 						emd->cells->data[emd->cells->count].vertco[3*vert_index+2] = vert->co[2];
-						
-						
+
+						emd->cells->data[emd->cells->count].vert_indexes =
+								MEM_reallocN(emd->cells->data[emd->cells->count].vert_indexes, sizeof(int) * (vert_index+1));
+						emd->cells->data[emd->cells->count].vert_indexes[vert_index] = vert_index;
+
 						CustomData_to_bmesh_block(&boolresult->vertData, &bm->vdata, v, &vert->head.data , 0);
 						
 						vert_index++;
-						
+						vert_index_global++;
 					}
 
 					for (e = 0; e < totedge; e++)

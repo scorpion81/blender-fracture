@@ -653,7 +653,8 @@ typedef struct VoronoiCell {
 	struct BMVert **vertices;
 	float *vertco;
 	struct DerivedMesh *cell_mesh;
-	//struct RigidBodyOb *rigidbody;
+	struct Mesh	*storage;
+	int *vert_indexes;
 	int vertex_count;
 	int particle_index;
 	float centroid[3];
@@ -685,6 +686,7 @@ typedef struct ExplodeModifierData {
 	struct KDTree *patree;
 	struct Material *inner_material;
 	struct Group *extra_group;
+	struct Mesh	*storage;
 
 	//for face mode
 	int *facepa;
@@ -1282,7 +1284,6 @@ enum {
 	MOD_MESHCACHE_PLAY_EVAL = 1,
 };
 
-
 typedef struct MeshIsland {
 	struct MeshIsland *next, *prev;
 	struct BMVert **vertices;
@@ -1291,6 +1292,8 @@ typedef struct MeshIsland {
 	struct RigidBodyOb *rigidbody;
 	struct RigidBodyModifierData *parent_mod; //needed to override thresholds/contact distance when using constraint groups
 	int *combined_index_map;
+	int *vert_indexes;//needed for storing the indexes into the original mesh;
+	struct Mesh *storage;
 	int vertex_count;
 	float centroid[3];
 	float rot[4]; //hrm, need this for constraints probably
@@ -1304,6 +1307,7 @@ typedef struct RigidBodyModifierData {
 	struct Group *constraint_group;
 	ListBase meshIslands, meshConstraints;
 	int	**sel_indexes;
+	struct Mesh *storage;
 	int refresh, use_constraints, mass_dependent_thresholds, auto_merge, sel_counter;
 	float origmat[4][4], breaking_threshold;
 	float contact_dist, group_breaking_threshold, group_contact_dist;
