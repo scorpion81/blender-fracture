@@ -72,6 +72,8 @@
 #include "BKE_main.h"
 #include "BKE_library.h"
 
+#include "BKE_submesh.h"
+
 #ifdef WITH_MOD_VORONOI
 #  include "../../../../extern/voro++/src/c_interface.hh"
 #endif
@@ -126,11 +128,10 @@ static void freeCells(ExplodeModifierData* emd)
 					MEM_freeN(emd->cells->data[c].cell_mesh);
 					emd->cells->data[c].cell_mesh = NULL;
 				}
-				/*if (emd->cells->data[c].storage!= NULL)
+				if (emd->cells->data[c].storage!= NULL)
 				{
-					BKE_libblock_free_us(&(G.main->mesh), emd->cells->data[c].storage);
-					emd->cells->data[c].storage = NULL;
-				}*/
+					BKE_submesh_free(emd->cells->data[c].storage);
+				}
 
 				if (emd->cells->data[c].vert_indexes != NULL)
 				{
@@ -183,11 +184,10 @@ static void freeData(ModifierData *md)
 		emd->inner_material = NULL;
 	}
 
-	/*if (emd->storage != NULL)
+	if (emd->storage != NULL)
 	{
-		BKE_libblock_free_us(&(G.main->mesh), emd->storage);
-		emd->storage = NULL;
-	}*/
+		BKE_submesh_free(emd->storage);
+	}
 }
 
 #else
@@ -1411,7 +1411,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 	BMesh *bm = NULL, *bmtemp = NULL;
 
 	FILE *fp = NULL;
-	int vert_index = 0, vert_index_global = 0;
+	int vert_index = 0, edg_index = 0, fac_index = 0;
 	int read = 0;
 	BMVert **faceverts = NULL, **tempvert = NULL, *vert = NULL, **localverts = NULL;
 	BMEdge **faceedges = NULL, *edge = NULL, **localedges = NULL;
@@ -1556,6 +1556,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 		//printf("Reading line...\n");
 		int *real_indexes = MEM_mallocN(sizeof(int*), "real_indexes");
 		int len_real_indexes = 0;
+		BMesh* bmsub;
 
 		//store cell data: centroid and associated vertex coords
 		emd->cells->data = MEM_reallocN(emd->cells->data, sizeof(VoronoiCell) * (emd->cells->count + 1));
@@ -1720,6 +1721,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 					int mat_index = 0;
 					MPoly* mp;
 					MLoop* ml;
+					boolresult = NULL;
 					
 					dm = CDDM_from_bmesh(bmtemp, TRUE);
 					//printf(" %d Faces missing \n", (bmtemp->totface - dm->numPolyData));
@@ -1792,6 +1794,15 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 					}
 					
 					emd->cells->data[emd->cells->count].cell_mesh = boolresult;
+					bmsub = DM_to_bmesh(boolresult);
+
+					CustomData_bmesh_init_pool(&bmsub->vdata, bm_mesh_allocsize_default.totvert, BM_VERT);
+					CustomData_bmesh_init_pool(&bmsub->edata, bm_mesh_allocsize_default.totedge, BM_EDGE);
+					CustomData_bmesh_init_pool(&bmsub->ldata, bm_mesh_allocsize_default.totloop, BM_LOOP);
+					CustomData_bmesh_init_pool(&bmsub->pdata, bm_mesh_allocsize_default.totface, BM_FACE);
+
+					emd->cells->data[emd->cells->count].storage = BKE_bmesh_to_submesh(bmsub);
+					BM_mesh_free(bmsub);
 					
 					totvert = boolresult->getNumVerts(boolresult);
 					totedge = boolresult->getNumEdges(boolresult);
@@ -1824,6 +1835,10 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 
 
 						vert = BM_vert_create(bm, co, NULL, 0);
+						if (BM_elem_index_get(vert) == -1) {
+							BM_elem_index_set(vert, vert_index);
+						}
+
 						localverts[v] = vert;
 						//vert = BM_vert_at_index(bm, vert_index);
 
@@ -1845,15 +1860,19 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 						CustomData_to_bmesh_block(&boolresult->vertData, &bm->vdata, v, &vert->head.data , 0);
 						
 						vert_index++;
-						vert_index_global++;
+						//vert_index_global++;
 					}
 
 					for (e = 0; e < totedge; e++)
 					{
-						BMEdge* edge;
-						edge = BM_edge_create(bm, localverts[ed[e].v1], localverts[ed[e].v2], NULL, 0);
-						CustomData_to_bmesh_block(&boolresult->edgeData, &bm->edata, e, &edge->head.data , 0);
-						localedges[e] = edge;
+						BMEdge* edg;
+						edg = BM_edge_create(bm, localverts[ed[e].v1], localverts[ed[e].v2], NULL, 0);
+						if (BM_elem_index_get(edg) == -1) {
+							BM_elem_index_set(edg, edg_index);
+						}
+						CustomData_to_bmesh_block(&boolresult->edgeData, &bm->edata, e, &edg->head.data , 0);
+						localedges[e] = edg;
+						edg_index++;
 					}
 
 					mp = boolresult->getPolyArray(boolresult);
@@ -1877,6 +1896,10 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 
 						face = BM_face_create(bm, ve, ed, t, 0);
 						face->mat_nr = (mp+p)->mat_nr;
+						if (BM_elem_index_get(face) == -1) {
+							BM_elem_index_set(face, fac_index);
+						}
+						fac_index++;
 
 						if ((mp+p)->flag & ME_SMOOTH)
 							BM_elem_flag_enable(face, BM_ELEM_SMOOTH);
@@ -1932,6 +1955,9 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 		}
 
 		vert_index = 0;
+		edg_index = 0;
+		fac_index = 0;
+
 		MEM_freeN(tempvert);
 		if (bmtemp) BM_mesh_free(bmtemp);
 		MEM_freeN(faceverts);
@@ -2182,6 +2208,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					emd->fracMesh = NULL;
 				}
 				emd->fracMesh = fractureToCells(ob, derivedData, emd, oldobmat);
+				emd->storage = BKE_bmesh_to_submesh(emd->fracMesh);
 				
 				copy_m4_m4(ob->obmat, oldobmat); // restore obmat
 
@@ -2194,10 +2221,11 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			if (emd->cells == NULL)
 				return derivedData;
 
-			if (emd->fracMesh)
+			if (emd->fracMesh) {
 				BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "recalc_face_normals faces=%af use_flip=%b", BM_FACES_OF_MESH, FALSE);
 				BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "dissolve_limit edges=%ae verts=%av angle_limit=%f use_dissolve_boundaries=%b",
 			                   BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, FALSE);
+			}
 
 			if (emd->use_animation && psmd != NULL)
 			{
@@ -2216,7 +2244,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				return result;
 			}
 
-			if (emd->use_boolean)
+			if (emd->use_boolean && !emd->use_cache)
 			{
 				DM_ensure_tessface(result);
 				CDDM_calc_edges_tessface(result);
@@ -2233,6 +2261,11 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				for (i = 0; i < emd->cells->count; i++)
 				{
 					d = emd->cells->data[i].cell_mesh;
+
+					DM_ensure_tessface(d);
+					CDDM_calc_edges_tessface(d);
+					CDDM_tessfaces_to_faces(d);
+					CDDM_calc_normals(d);
 
 					//hope this merges the MTFace data... successfully...
 					mtf = DM_get_tessface_data_layer(d, CD_MTFACE);

@@ -181,6 +181,7 @@
 #include "readfile.h"
 
 #include <errno.h>
+#include "bmesh.h" //needed for meshisland handling
 
 /* ********* my write, buffered writing with minimum size chunks ************ */
 
@@ -1364,6 +1365,7 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 	if (modbase == NULL) return;
 	for (md=modbase->first; md; md= md->next) {
 		ModifierTypeInfo *mti = modifierType_getInfo(md->type);
+		//printf("Saving %s\n", mti->structName);
 		if (mti == NULL) return;
 		
 		writestruct(wd, DATA, mti->structName, 1, md);

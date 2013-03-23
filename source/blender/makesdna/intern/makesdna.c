@@ -55,7 +55,7 @@
 #include "MEM_guardedalloc.h"
 #include "DNA_sdna_types.h"
 
-#include "../blenlib/BLI_sys_types.h" // for intptr_t support
+#include "BLO_sys_types.h" // for intptr_t support
 
 #define SDNA_MAX_FILENAME_LENGTH 255
 
@@ -134,8 +134,7 @@ static const char *includefiles[] = {
 	"DNA_dynamicpaint_types.h",
 	"DNA_mask_types.h",
 	"DNA_rigidbody_types.h",
-	"DNA_freestyle_types.h",
-	"DNA_linestyle_types.h",
+	"DNA_submesh_types.h",
 
 	/* empty string to indicate end of includefiles */
 	""
@@ -965,7 +964,7 @@ static int make_structDNA(const char *baseDirectory, FILE *file)
 	types = MEM_callocN(sizeof(char *) * maxnr, "types");
 	typelens_native = MEM_callocN(sizeof(short) * maxnr, "typelens_native");
 	typelens_64 = MEM_callocN(sizeof(short) * maxnr, "typelens_64");
-	structs = MEM_callocN(sizeof(short *) * maxnr, "structs");
+	structs = MEM_callocN(sizeof(short) * maxnr, "structs");
 
 	/* insertion of all known types */
 	/* watch it: uint is not allowed! use in structs an unsigned int */
@@ -1270,6 +1269,5 @@ int main(int argc, char **argv)
 #include "DNA_dynamicpaint_types.h"
 #include "DNA_mask_types.h"
 #include "DNA_rigidbody_types.h"
-#include "DNA_freestyle_types.h"
-#include "DNA_linestyle_types.h"
+#include "DNA_submesh_types.h"
 /* end of list */

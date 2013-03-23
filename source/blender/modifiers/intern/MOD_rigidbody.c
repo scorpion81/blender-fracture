@@ -51,6 +51,7 @@
 #include "BKE_global.h"
 #include "BKE_library.h"
 #include "BKE_main.h"
+#include "BKE_submesh.h";
 
 #include "bmesh.h"
 
@@ -127,10 +128,9 @@ static void freeData(ModifierData *md)
 			MEM_freeN(mi->vertices);
 		mi->vertices = NULL;
 
-		/*if (mi->storage != NULL) {
-			BKE_libblock_free_us(&(G.main->mesh), mi->storage);
-			mi->storage = NULL;
-		}*/
+		if (mi->storage != NULL) {
+			BKE_submesh_free(mi->storage);
+		}
 
 		if (mi->vert_indexes != NULL) {
 			MEM_freeN(mi->vert_indexes);
@@ -167,10 +167,9 @@ static void freeData(ModifierData *md)
 		rmd->sel_counter = 0;
 	}
 
-	/*if (rmd->storage != NULL) {
-		BKE_libblock_free_us(&(G.main->mesh), rmd->storage);
-		rmd->storage = NULL;
-	}*/
+	if (rmd->storage != NULL) {
+		BKE_submesh_free(rmd->storage);
+	}
 }
 
 int BM_calc_center_centroid(BMesh *bm, float cent[3], int tagged)
@@ -209,7 +208,10 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	int vertcount = 0, vert_index = 0, *vert_indexes;
 	float centroid[3], dummyloc[3], rot[4], *startco;
 	BMVert* v, **verts;
+	BMEdge *e;
+	BMFace* f;
 	BMIter iter;
+	int i = 0;
 
 	bm_new = BM_mesh_create(&bm_mesh_allocsize_default);
 	BM_mesh_elem_toolflags_ensure(bm_new);  /* needed for 'duplicate' bmo */
@@ -239,6 +241,20 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	BM_ITER_MESH (v, &iter, bm_new, BM_VERTS_OF_MESH) {
 		//eliminate centroid in vertex coords ?
 		sub_v3_v3(v->co, centroid);
+		BM_elem_index_set(v, i);
+		i++;
+	}
+
+	i = 0;
+	BM_ITER_MESH (e, &iter, bm_new, BM_EDGES_OF_MESH) {
+		BM_elem_index_set(e, i);
+		i++;
+	}
+
+	i = 0;
+	BM_ITER_MESH (f, &iter, bm_new, BM_FACES_OF_MESH) {
+		BM_elem_index_set(f, i);
+		i++;
 	}
 
 	BM_ITER_MESH (v, &iter, bm_old, BM_VERTS_OF_MESH) {
@@ -264,10 +280,11 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	BLI_addtail(&rmd->meshIslands, mi);
 
 	mi->vert_indexes = vert_indexes;
-	mi->storage = NULL;
 	mi->vertices = verts;
 	mi->vertco = startco;
 	mi->physics_mesh = bm_new;
+	mi->storage = BKE_bmesh_to_submesh(mi->physics_mesh);
+
 	mi->vertex_count = vertcount;
 	copy_v3_v3(mi->centroid, centroid);
 	mat4_to_loc_quat(dummyloc, rot, ob->obmat);
@@ -932,6 +949,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		freeData(md);
 		copy_m4_m4(rmd->origmat, ob->obmat);
 		rmd->visible_mesh = DM_to_bmesh(dm);
+		rmd->storage = BKE_bmesh_to_submesh(rmd->visible_mesh);
+
 		mesh_separate_loose(rmd, ob);
 
 		if ((rmd->use_constraints) || (rmd->auto_merge)) {

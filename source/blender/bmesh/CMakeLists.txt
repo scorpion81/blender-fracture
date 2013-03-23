@@ -32,7 +32,6 @@ set(INC
 	../../../intern/guardedalloc
 	../../../extern/rangetree
 	../../../intern/opennl/extern
-	../bmesh
 )
 
 set(INC_SYS

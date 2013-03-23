@@ -27,6 +27,7 @@
 
 #include "DNA_defs.h"
 #include "DNA_listBase.h"
+#include "DNA_submesh_types.h"
 
 /* WARNING ALERT! TYPEDEF VALUES ARE WRITTEN IN FILES! SO DO NOT CHANGE!
  * (ONLY ADD NEW ITEMS AT THE END) */
@@ -653,7 +654,7 @@ typedef struct VoronoiCell {
 	struct BMVert **vertices;
 	float *vertco;
 	struct DerivedMesh *cell_mesh;
-	struct Mesh	*storage;
+	struct SMesh *storage;
 	int *vert_indexes;
 	int vertex_count;
 	int particle_index;
@@ -686,7 +687,7 @@ typedef struct ExplodeModifierData {
 	struct KDTree *patree;
 	struct Material *inner_material;
 	struct Group *extra_group;
-	struct Mesh	*storage;
+	struct SMesh *storage;
 
 	//for face mode
 	int *facepa;
@@ -1293,7 +1294,7 @@ typedef struct MeshIsland {
 	struct RigidBodyModifierData *parent_mod; //needed to override thresholds/contact distance when using constraint groups
 	int *combined_index_map;
 	int *vert_indexes;//needed for storing the indexes into the original mesh;
-	struct Mesh *storage;
+	struct SMesh *storage;
 	int vertex_count;
 	float centroid[3];
 	float rot[4]; //hrm, need this for constraints probably
@@ -1307,7 +1308,7 @@ typedef struct RigidBodyModifierData {
 	struct Group *constraint_group;
 	ListBase meshIslands, meshConstraints;
 	int	**sel_indexes;
-	struct Mesh *storage;
+	struct SMesh *storage;
 	int refresh, use_constraints, mass_dependent_thresholds, auto_merge, sel_counter;
 	float origmat[4][4], breaking_threshold;
 	float contact_dist, group_breaking_threshold, group_contact_dist;
