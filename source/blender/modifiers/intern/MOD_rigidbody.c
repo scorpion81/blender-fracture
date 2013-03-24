@@ -951,7 +951,9 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		copy_m4_m4(rmd->origmat, ob->obmat);
 		rmd->visible_mesh = DM_to_bmesh(dm);
 		BKE_submesh_free(rmd->storage);
-		rmd->storage = BKE_bmesh_to_submesh(rmd->visible_mesh);
+		if (rmd->visible_mesh != NULL) {
+			rmd->storage = BKE_bmesh_to_submesh(rmd->visible_mesh);
+		}
 
 		mesh_separate_loose(rmd, ob);
 

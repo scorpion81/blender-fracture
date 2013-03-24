@@ -2214,7 +2214,10 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				}
 				emd->fracMesh = fractureToCells(ob, derivedData, emd, oldobmat);
 				BKE_submesh_free(emd->storage); // in case this is not the first call;
-				emd->storage = BKE_bmesh_to_submesh(emd->fracMesh);
+
+				if (emd->fracMesh != NULL) {
+					emd->storage = BKE_bmesh_to_submesh(emd->fracMesh);
+				}
 				
 				copy_m4_m4(ob->obmat, oldobmat); // restore obmat
 
