@@ -51,7 +51,7 @@
 #include "BKE_global.h"
 #include "BKE_library.h"
 #include "BKE_main.h"
-#include "BKE_submesh.h";
+#include "BKE_submesh.h"
 
 #include "bmesh.h"
 
@@ -283,6 +283,7 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	mi->vertices = verts;
 	mi->vertco = startco;
 	mi->physics_mesh = bm_new;
+	BKE_submesh_free(mi->storage);
 	mi->storage = BKE_bmesh_to_submesh(mi->physics_mesh);
 
 	mi->vertex_count = vertcount;
@@ -949,6 +950,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		freeData(md);
 		copy_m4_m4(rmd->origmat, ob->obmat);
 		rmd->visible_mesh = DM_to_bmesh(dm);
+		BKE_submesh_free(rmd->storage);
 		rmd->storage = BKE_bmesh_to_submesh(rmd->visible_mesh);
 
 		mesh_separate_loose(rmd, ob);

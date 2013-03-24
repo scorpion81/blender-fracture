@@ -1800,11 +1800,12 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 					emd->cells->data[emd->cells->count].cell_mesh = boolresult;
 					bmsub = DM_to_bmesh(boolresult);
 
-					CustomData_bmesh_init_pool(&bmsub->vdata, bm_mesh_allocsize_default.totvert, BM_VERT);
+					/*CustomData_bmesh_init_pool(&bmsub->vdata, bm_mesh_allocsize_default.totvert, BM_VERT);
 					CustomData_bmesh_init_pool(&bmsub->edata, bm_mesh_allocsize_default.totedge, BM_EDGE);
 					CustomData_bmesh_init_pool(&bmsub->ldata, bm_mesh_allocsize_default.totloop, BM_LOOP);
-					CustomData_bmesh_init_pool(&bmsub->pdata, bm_mesh_allocsize_default.totface, BM_FACE);
+					CustomData_bmesh_init_pool(&bmsub->pdata, bm_mesh_allocsize_default.totface, BM_FACE);*/
 
+					BKE_submesh_free(emd->cells->data[emd->cells->count].storage);
 					emd->cells->data[emd->cells->count].storage = BKE_bmesh_to_submesh(bmsub);
 					BM_mesh_free(bmsub);
 					
@@ -2212,6 +2213,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					emd->fracMesh = NULL;
 				}
 				emd->fracMesh = fractureToCells(ob, derivedData, emd, oldobmat);
+				BKE_submesh_free(emd->storage); // in case this is not the first call;
 				emd->storage = BKE_bmesh_to_submesh(emd->fracMesh);
 				
 				copy_m4_m4(ob->obmat, oldobmat); // restore obmat

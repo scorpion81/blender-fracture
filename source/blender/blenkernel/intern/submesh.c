@@ -149,10 +149,29 @@ static SMVert smvert_from_bmvert(BMVert* v) {
 
 void BKE_submesh_free(SMesh* sm)
 {
-	MEM_freeN(sm->vpool);
-	MEM_freeN(sm->epool);
-	MEM_freeN(sm->lpool);
-	MEM_freeN(sm->fpool);
+	if (sm == NULL) {
+		return;
+	}
+
+	if (sm->vpool != NULL) {
+		MEM_freeN(sm->vpool);
+		sm->vpool = NULL;
+	}
+
+	if (sm->epool != NULL) {
+		MEM_freeN(sm->epool);
+		sm->epool = NULL;
+	}
+
+	if (sm->lpool != NULL) {
+		MEM_freeN(sm->lpool);
+		sm->lpool = NULL;
+	}
+
+	if (sm->fpool != NULL) {
+		MEM_freeN(sm->fpool);
+		sm->fpool = NULL;
+	}
 
 	MEM_freeN(sm);
 	sm = NULL;
