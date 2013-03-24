@@ -4432,6 +4432,8 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 		/* if modifiers disappear, or for upward compatibility */
 		if (NULL == modifierType_getInfo(md->type))
 			md->type = eModifierType_None;
+
+		printf("Loading %s\n", modifierType_getInfo(md->type)->name);
 			
 		if (md->type == eModifierType_Subsurf) {
 			SubsurfModifierData *smd = (SubsurfModifierData *)md;

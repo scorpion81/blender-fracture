@@ -1791,6 +1791,10 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 					else
 					{
 						boolresult = dm;
+						DM_ensure_tessface(boolresult);
+						CDDM_calc_edges_tessface(boolresult);
+						CDDM_tessfaces_to_faces(boolresult);
+						CDDM_calc_normals(boolresult);
 					}
 					
 					emd->cells->data[emd->cells->count].cell_mesh = boolresult;
@@ -1835,9 +1839,9 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 
 
 						vert = BM_vert_create(bm, co, NULL, 0);
-						if (BM_elem_index_get(vert) == -1) {
+					/*	if (BM_elem_index_get(vert) == -1) {
 							BM_elem_index_set(vert, vert_index);
-						}
+						}*/
 
 						localverts[v] = vert;
 						//vert = BM_vert_at_index(bm, vert_index);
@@ -1867,9 +1871,9 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 					{
 						BMEdge* edg;
 						edg = BM_edge_create(bm, localverts[ed[e].v1], localverts[ed[e].v2], NULL, 0);
-						if (BM_elem_index_get(edg) == -1) {
+						/*if (BM_elem_index_get(edg) == -1) {
 							BM_elem_index_set(edg, edg_index);
-						}
+						}*/
 						CustomData_to_bmesh_block(&boolresult->edgeData, &bm->edata, e, &edg->head.data , 0);
 						localedges[e] = edg;
 						edg_index++;
@@ -1896,9 +1900,9 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 
 						face = BM_face_create(bm, ve, ed, t, 0);
 						face->mat_nr = (mp+p)->mat_nr;
-						if (BM_elem_index_get(face) == -1) {
+						/*if (BM_elem_index_get(face) == -1) {
 							BM_elem_index_set(face, fac_index);
-						}
+						}*/
 						fac_index++;
 
 						if ((mp+p)->flag & ME_SMOOTH)

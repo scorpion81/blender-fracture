@@ -208,10 +208,10 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	int vertcount = 0, vert_index = 0, *vert_indexes;
 	float centroid[3], dummyloc[3], rot[4], *startco;
 	BMVert* v, **verts;
-	BMEdge *e;
-	BMFace* f;
+/*	BMEdge *e;
+	BMFace* f;*/
 	BMIter iter;
-	int i = 0;
+//	int i = 0;
 
 	bm_new = BM_mesh_create(&bm_mesh_allocsize_default);
 	BM_mesh_elem_toolflags_ensure(bm_new);  /* needed for 'duplicate' bmo */
@@ -241,11 +241,11 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	BM_ITER_MESH (v, &iter, bm_new, BM_VERTS_OF_MESH) {
 		//eliminate centroid in vertex coords ?
 		sub_v3_v3(v->co, centroid);
-		BM_elem_index_set(v, i);
-		i++;
+//		BM_elem_index_set(v, i);
+//		i++;
 	}
 
-	i = 0;
+/*	i = 0;
 	BM_ITER_MESH (e, &iter, bm_new, BM_EDGES_OF_MESH) {
 		BM_elem_index_set(e, i);
 		i++;
@@ -255,7 +255,7 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	BM_ITER_MESH (f, &iter, bm_new, BM_FACES_OF_MESH) {
 		BM_elem_index_set(f, i);
 		i++;
-	}
+	}*/
 
 	BM_ITER_MESH (v, &iter, bm_old, BM_VERTS_OF_MESH) {
 

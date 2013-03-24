@@ -48,12 +48,14 @@ typedef struct SMVert {
 	float co[3];
 	float no[3];
 	int e;
+	char pad[4];
 } SMVert;
 
 typedef struct SMEdge {
 	SMHeader head;
 	int v1, v2;
 	int l;
+	char pad[4];
 } SMEdge;
 
 typedef struct SMLoop {
@@ -61,7 +63,7 @@ typedef struct SMLoop {
 	int v;
 	int e;
 	int f;
-
+	char pad[4];
 } SMLoop;
 
 typedef struct SMFace {
@@ -75,10 +77,10 @@ typedef struct SMFace {
 
 typedef struct SMesh {
 	int totvert, totedge, totloop, totface;
-	struct SMVert **vpool;
-	struct SMEdge **epool;
-	struct SMLoop **lpool;
-	struct SMFace **fpool;
+	struct SMVert *vpool;
+	struct SMEdge *epool;
+	struct SMLoop *lpool;
+	struct SMFace *fpool;
 
 	CustomData vdata, edata, ldata, pdata;
 

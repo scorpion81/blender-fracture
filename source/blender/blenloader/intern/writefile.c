@@ -1367,9 +1367,9 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 		ModifierTypeInfo *mti = modifierType_getInfo(md->type);
 		//printf("Saving %s\n", mti->structName);
 		if (mti == NULL) return;
-		
+
 		writestruct(wd, DATA, mti->structName, 1, md);
-			
+
 		if (md->type==eModifierType_Hook) {
 			HookModifierData *hmd = (HookModifierData*) md;
 			
