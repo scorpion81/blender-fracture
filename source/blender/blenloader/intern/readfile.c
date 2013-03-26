@@ -165,8 +165,6 @@
 
 #include <errno.h>
 
-#include "bmesh.h" //needed for meshisland handling
-#include "BKE_cdderivedmesh.h"  //for fracture meshisland handling
 
 
 /*
@@ -6821,7 +6819,7 @@ static BHead *read_libblock(FileData *fd, Main *main, BHead *bhead, int flag, ID
 			direct_link_mask(fd, (Mask *)id);
 			break;
 	}
-	
+
 	oldnewmap_free_unused(fd->datamap);
 	oldnewmap_clear(fd->datamap);
 	

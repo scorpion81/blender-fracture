@@ -181,7 +181,6 @@
 #include "readfile.h"
 
 #include <errno.h>
-#include "bmesh.h" //needed for meshisland handling
 
 
 /* ********* my write, buffered writing with minimum size chunks ************ */

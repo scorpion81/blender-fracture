@@ -37,6 +37,7 @@ BMesh* BKE_submesh_to_bmesh(SMesh* sm)
 	int i, j;
 
 	BMesh* bm = BM_mesh_create(&bm_mesh_allocsize_default);
+	BM_mesh_elem_toolflags_ensure(bm);
 
 	for (i = 0; i < sm->totvert; i++)
 	{

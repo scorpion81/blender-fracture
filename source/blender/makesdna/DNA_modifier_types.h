@@ -1312,7 +1312,6 @@ typedef struct RigidBodyModifierData {
 	int refresh, use_constraints, mass_dependent_thresholds, auto_merge, sel_counter;
 	float origmat[4][4], breaking_threshold;
 	float contact_dist, group_breaking_threshold, group_contact_dist, auto_merge_dist;
-	//char pad[4];
 } RigidBodyModifierData;
 
 

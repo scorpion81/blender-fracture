@@ -132,6 +132,7 @@ static void freeData(ModifierData *md)
 
 		if (mi->storage != NULL) {
 			BKE_submesh_free(mi->storage);
+			mi->storage = NULL;
 		}
 
 		if (mi->vert_indexes != NULL) {
@@ -171,6 +172,7 @@ static void freeData(ModifierData *md)
 
 	if (rmd->storage != NULL) {
 		BKE_submesh_free(rmd->storage);
+		rmd->storage = NULL;
 	}
 }
 
@@ -286,6 +288,7 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	mi->vertco = startco;
 	mi->physics_mesh = bm_new;
 	BKE_submesh_free(mi->storage);
+	mi->storage = NULL;
 	mi->storage = BKE_bmesh_to_submesh(mi->physics_mesh);
 
 	mi->vertex_count = vertcount;
@@ -832,12 +835,24 @@ BMFace* findClosestFace(KDTree* tree, BMesh* bm, BMFace* f)
 {
 	int index;
 	float co[3];
-	BMFace* f2;
+	BMFace *f1, *f2;
+	KDTreeNearest *n = MEM_mallocN(sizeof(KDTreeNearest)*2, "nearest");
 
 	BM_face_calc_center_bounds(f, co);
-	index = BLI_kdtree_find_nearest(tree, co, NULL, NULL);
+	BLI_kdtree_find_n_nearest(tree, 2, co, NULL, n);
+
+	index = n[0].index;
+	f1 = BM_face_at_index(bm, index);
+
+	index = n[1].index;
 	f2 = BM_face_at_index(bm, index);
-	return f2;
+
+	MEM_freeN(n);
+
+	if (f == f1){
+		return f2;
+	}
+	return f1;
 }
 
 BMFace* closest_available_face(RigidBodyModifierData* rmd, KDTree* tree, BMesh* bm,  BMFace* f, BMFace* f2)
@@ -856,11 +871,61 @@ BMFace* closest_available_face(RigidBodyModifierData* rmd, KDTree* tree, BMesh* 
 	return NULL;
 }
 
+KDTree* make_face_tree(RigidBodyModifierData* rmd, BMesh* merge_copy)
+{
+	KDTree *tree;
+	BMIter iter;
+	BMFace* face;
+
+	tree = BLI_kdtree_new(rmd->visible_mesh->totface);
+
+	//build tree of left selected faces
+	BM_ITER_MESH(face, &iter, merge_copy, BM_FACES_OF_MESH)
+	{
+		if (BM_elem_flag_test(face, BM_ELEM_TAG))
+		{
+			float co[3];
+			BM_face_calc_center_bounds(face, co);
+			BLI_kdtree_insert(tree, face->head.index, co, NULL);
+		}
+	}
+
+	BLI_kdtree_balance(tree);
+	return tree;
+}
+
+void check_face_by_adjacency(RigidBodyModifierData *rmd, BMesh *merge_copy, int i, KDTree *tree)
+{
+	BMFace *f, *f2, *f3, *f4;
+	int index = rmd->sel_indexes[i][0];
+	int index2 = rmd->sel_indexes[i][1];
+
+	f = BM_face_at_index(merge_copy, index);
+	f2 = BM_face_at_index(rmd->visible_mesh, index);
+	f3 = closest_available_face(rmd, tree, merge_copy, f, f2);
+
+	if (f3 != NULL) {
+		BM_elem_flag_enable(f3, BM_ELEM_SELECT);
+	}
+
+	f = BM_face_at_index(merge_copy, index2);
+	f2 = BM_face_at_index(rmd->visible_mesh, index2);
+	f4 = closest_available_face(rmd, tree, merge_copy, f, f2);
+
+
+	if (f4 != NULL) {
+		BM_elem_flag_enable(f4, BM_ELEM_SELECT);
+	}
+}
+
 void check_face_draw_by_constraint(RigidBodyModifierData* rmd, BMesh* merge_copy) {
 
 	int sel = rmd->sel_counter;
 	int i = 0;
 	BMFace *face, *face2;
+	KDTree* tree;
+
+	tree = make_face_tree(rmd, merge_copy);
 
 	for (i = 0; i < sel; i++)
 	{
@@ -887,6 +952,18 @@ void check_face_draw_by_constraint(RigidBodyModifierData* rmd, BMesh* merge_copy
 			{
 				//BM_elem_flag_disable(face, BM_ELEM_SELECT);
 				//BM_elem_flag_disable(face2, BM_ELEM_SELECT);
+				BMFace* f;
+				f = findClosestFace(tree, merge_copy, face);
+				if (f == face2)
+				{
+					//BM_elem_flag_enable(face, BM_ELEM_SELECT);
+					//BM_elem_flag_enable(face2, BM_ELEM_SELECT);
+				}
+				else
+				{
+					BM_elem_flag_disable(face, BM_ELEM_SELECT);
+					BM_elem_flag_disable(face2, BM_ELEM_SELECT);
+				}
 			}
 		}
 		else
@@ -895,6 +972,9 @@ void check_face_draw_by_constraint(RigidBodyModifierData* rmd, BMesh* merge_copy
 			BM_elem_flag_disable(face2, BM_ELEM_SELECT);
 		}
 	}
+
+	BLI_kdtree_free(tree);
+	tree = NULL;
 }
 
 void check_face_draw_by_proximity(RigidBodyModifierData* rmd, BMesh* merge_copy) {
@@ -902,49 +982,15 @@ void check_face_draw_by_proximity(RigidBodyModifierData* rmd, BMesh* merge_copy)
 	int sel = rmd->sel_counter;
 	int i = 0;
 	KDTree* tree;
-	BMFace* face;
-	BMIter iter;
 
 	//merge vertices
-	BMO_op_callf(merge_copy, BMO_FLAG_DEFAULTS, "automerge verts=%av dist=%f", BM_VERTS_OF_MESH, rmd->auto_merge_dist);
+	BMO_op_callf(merge_copy, BMO_FLAG_DEFAULTS, "automerge verts=%av dist=%f", BM_VERTS_OF_MESH, 0.000001f);
 
-	tree = BLI_kdtree_new(rmd->visible_mesh->totface);
-
-	//build tree of left selected faces
-	BM_ITER_MESH(face, &iter, merge_copy, BM_FACES_OF_MESH)
-	{
-		if (BM_elem_flag_test(face, BM_ELEM_TAG))
-		{
-			float co[3];
-			BM_face_calc_center_bounds(face, co);
-			BLI_kdtree_insert(tree, face->head.index, co, NULL);
-		}
-	}
-
-	BLI_kdtree_balance(tree);
+	tree = make_face_tree(rmd, merge_copy);
 
 	//delete invisible inner faces, check which faces have been merged away, delete those who still there ?
 	for (i = 0; i < sel; i++) {
-
-		BMFace *f, *f2, *f3, *f4;
-		int index = rmd->sel_indexes[i][0];
-		int index2 = rmd->sel_indexes[i][1];
-
-		f = BM_face_at_index(merge_copy, index);
-		f2 = BM_face_at_index(rmd->visible_mesh, index);
-		f3 = closest_available_face(rmd, tree, merge_copy, f, f2);
-
-		f = BM_face_at_index(merge_copy, index2);
-		f2 = BM_face_at_index(rmd->visible_mesh, index2);
-		f4 = closest_available_face(rmd, tree, merge_copy, f, f2);
-
-		if (f3 != NULL) {
-			BM_elem_flag_enable(f3, BM_ELEM_SELECT);
-		}
-
-		if (f4 != NULL) {
-			BM_elem_flag_enable(f4, BM_ELEM_SELECT);
-		}
+		check_face_by_adjacency(rmd, merge_copy, i, tree);
 	}
 
 	BLI_kdtree_free(tree);
@@ -958,18 +1004,14 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 	RigidBodyModifierData *rmd = (RigidBodyModifierData *) md;
 
-	/*if (rmd->sel_indexes == NULL) {
-		rmd->sel_indexes = MEM_callocN(sizeof(int*), "sel_indexes");
-		rmd->sel_counter = 0;
-	}*/
-
 	if (rmd->refresh)
 	{
 		freeData(md);
 		copy_m4_m4(rmd->origmat, ob->obmat);
 		rmd->visible_mesh = DM_to_bmesh(dm);
-		BKE_submesh_free(rmd->storage);
 		if (rmd->visible_mesh != NULL) {
+			BKE_submesh_free(rmd->storage);
+			rmd->storage = NULL;
 			rmd->storage = BKE_bmesh_to_submesh(rmd->visible_mesh);
 		}
 
