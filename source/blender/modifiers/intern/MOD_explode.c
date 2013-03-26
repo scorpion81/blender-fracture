@@ -2230,11 +2230,15 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			if (emd->cells == NULL)
 				return derivedData;
 
+#if 0
 			if (emd->fracMesh) {
-				BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "recalc_face_normals faces=%af use_flip=%b", BM_FACES_OF_MESH, FALSE);
-				BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "dissolve_limit edges=%ae verts=%av angle_limit=%f use_dissolve_boundaries=%b",
+				//BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "recalc_face_normals faces=%af use_flip=%b", BM_FACES_OF_MESH, FALSE);
+				if (emd->use_boolean) {
+					BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "dissolve_limit edges=%ae verts=%av angle_limit=%f use_dissolve_boundaries=%b",
 			                   BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, FALSE);
+				}
 			}
+#endif
 
 			if (emd->use_animation && psmd != NULL)
 			{

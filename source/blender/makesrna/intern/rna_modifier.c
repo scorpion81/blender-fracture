@@ -889,6 +889,15 @@ static void rna_RigidBodyModifier_auto_merge_set(PointerRNA* ptr, int value)
 	//rmd->refresh = TRUE;
 }
 
+static void rna_RigidBodyModifier_auto_merge_dist_set(PointerRNA *ptr, float value)
+{
+	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	Object* ob = ptr->id.data;
+	rmd->auto_merge_dist = value;
+	updateConstraints(rmd, ob);
+	//rmd->refresh = TRUE; //maybe slow, better hit refresh manually
+}
+
 #else
 
 static PropertyRNA *rna_def_property_subdivision_common(StructRNA *srna, const char type[])
@@ -3933,6 +3942,13 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "auto_merge", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyModifier_auto_merge_set");
 	RNA_def_property_ui_text(prop, "Use Auto Merge", "Automatically merge together close mesh-islands (visible mesh only)");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "auto_merge_dist", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "auto_merge_dist");
+	RNA_def_property_range(prop, 0.0f, FLT_MAX);
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_auto_merge_dist_set", NULL);
+	RNA_def_property_ui_text(prop, "Auto Merge distance", "Maximum distance between verts which should be merged together");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 

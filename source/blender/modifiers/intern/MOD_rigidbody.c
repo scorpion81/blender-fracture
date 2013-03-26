@@ -81,6 +81,7 @@ static void initData(ModifierData *md)
 	rmd->sel_indexes = NULL;
 	rmd->sel_counter = 0;
 	rmd->storage = NULL;
+	rmd->auto_merge_dist = 0.0001f;
 }
 
 static void copyData(ModifierData *md, ModifierData *target)
@@ -103,6 +104,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->storage = rmd->storage;
 	trmd->meshIslands = rmd->meshIslands;
 	trmd->meshConstraints = rmd->meshConstraints;
+	trmd->auto_merge_dist = rmd->auto_merge_dist;
 }
 
 static void freeData(ModifierData *md)
@@ -475,10 +477,192 @@ void select_inner_faces_of_vert(RigidBodyModifierData* rmd, KDTree* tree, BMVert
 	}
 }
 
+static void check_meshislands_adjacency(RigidBodyModifierData* rmd, MeshIsland* mi, MeshIsland* mi2, BMesh **combined_mesh, KDTree* face_tree, Object* ob)
+{
+	BMOperator op;
+	BMOpSlot *slot;
+	int same = TRUE;
+	int shared = 0, island_vert_key_index = 0, island_vert_map_index = 0;
+	int* island_verts_key = MEM_mallocN(sizeof(int), "island_verts_key");
+	int* island_verts_map = MEM_mallocN(sizeof(int), "island_verts_map");
+	int v;
+
+	//check whether we are in the same object or not
+	float thresh, dist;
+	int equal = mi->parent_mod == mi2->parent_mod;
+	//equal = equal && (mi->parent_mod == rmd);
+
+	thresh = equal ? rmd->breaking_threshold : rmd->group_breaking_threshold;
+	dist = equal ? rmd->contact_dist : rmd->group_contact_dist;
+
+	//select "our" vertices
+	for (v = 0; v < mi2->vertex_count; v++) {
+		BM_elem_flag_enable(BM_vert_at_index(*combined_mesh, mi2->combined_index_map[v]), BM_ELEM_TAG);
+	}
+
+	//do we share atleast 1 vertex in selection
+
+	BMO_op_initf(*combined_mesh, &op, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "find_doubles verts=%hv dist=%f", BM_ELEM_TAG, dist);
+	BMO_op_exec(*combined_mesh, &op);
+	slot = BMO_slot_get(op.slots_out, "targetmap.out");
+
+	if (slot->data.ghash && slot->data.ghash->nentries > 2) {
+		GHashIterator it;
+		int ind1 = 0, ind2 = 0;
+		GHASH_ITER(it, slot->data.ghash) {
+			BMVert *vert_key, *vert_map;
+			BMOElemMapping * mapping = BLI_ghashIterator_getValue(&it);
+			vert_key = BLI_ghashIterator_getKey(&it);
+			vert_map = mapping[1].element;
+
+			if (vert_key == vert_map)
+			{
+				printf("EQUAL! D'OH\n");
+			}
+
+			for (v = 0; v < mi->vertex_count; v++) {
+				if ((vert_key == BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]))) {
+					island_verts_key = MEM_reallocN(island_verts_key, sizeof(int) * (island_vert_key_index+1));
+					island_verts_key[island_vert_key_index] = mi->combined_index_map[v];
+					island_vert_key_index++;
+					ind1++;
+					break;
+				}
+
+				if ((vert_map == BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]))) {
+					island_verts_map = MEM_reallocN(island_verts_map, sizeof(int) * (island_vert_map_index+1));
+					island_verts_map[island_vert_map_index] = mi->combined_index_map[v];
+					island_vert_map_index++;
+					break;
+				}
+			}
+
+			for (v = 0; v < mi2->vertex_count; v++) {
+				if ((vert_key == BM_vert_at_index(*combined_mesh, mi2->combined_index_map[v]))) {
+					island_verts_key = MEM_reallocN(island_verts_key, sizeof(int) * (island_vert_key_index+1));
+					island_verts_key[island_vert_key_index] = mi2->combined_index_map[v];
+					island_vert_key_index++;
+					ind2++;
+					break;
+				}
+
+				if ((vert_map == BM_vert_at_index(*combined_mesh, mi2->combined_index_map[v]))) {
+					island_verts_map = MEM_reallocN(island_verts_map, sizeof(int) * (island_vert_map_index+1));
+					island_verts_map[island_vert_map_index] = mi2->combined_index_map[v];
+					island_vert_map_index++;
+					break;
+				}
+			}
+		}
+
+		// verts are in different objects, ok, only if we have different modifiers as parent
+		same = ((equal && ((ind1 == 0) || (ind2 == 0))) || (!equal));
+	}
+
+	//if ((slot->data.ghash) && (slot->data.ghash->nentries > 2))
+	//	printf("%d %d\n", island_vert_key_index, island_vert_map_index);
+
+	if (rmd->auto_merge && ((island_vert_key_index > 0) || (island_vert_map_index > 0))) {
+		BMVert **vert_arr, **vert_arr2;
+		int s;
+
+		vert_arr = MEM_mallocN(sizeof(BMVert*) * island_vert_key_index, "vert_arr");
+		vert_arr2 = MEM_mallocN(sizeof(BMVert*) * island_vert_map_index, "vert_arr2");
+
+		for (s = 0; s < island_vert_key_index; s++) {
+			vert_arr[s] = BM_vert_at_index(rmd->visible_mesh, island_verts_key[s]);
+		}
+
+		for (s = 0; s < island_vert_map_index; s++) {
+			vert_arr2[s] = BM_vert_at_index(rmd->visible_mesh, island_verts_map[s]);
+		}
+
+		//select_inner_faces_of_vert(rmd, face_tree, vert_arr[0]);
+		//select_inner_faces_of_vert(rmd, face_tree, vert_arr2[0]);
+		if (island_vert_key_index > 0) {
+			for (s = 0; s < island_vert_key_index; s++)
+			{
+				select_inner_faces_of_vert(rmd, face_tree, vert_arr[s]);
+			}
+		}
+
+		if (island_vert_map_index > 0) {
+			for (s = 0; s < island_vert_map_index; s++)
+			{
+				select_inner_faces_of_vert(rmd, face_tree, vert_arr2[s]);
+			}
+		}
+
+		MEM_freeN(vert_arr);
+		MEM_freeN(vert_arr2);
+		vert_arr = NULL;
+		vert_arr2 = NULL;
+	}
+
+	MEM_freeN(island_verts_map);
+	MEM_freeN(island_verts_key);
+	island_verts_map = NULL;
+	island_verts_key = NULL;
+	island_vert_key_index = 0;
+	island_vert_map_index = 0;
+
+	if (slot->data.ghash) {
+		shared = slot->data.ghash->nentries;
+	}
+	else
+	{
+		shared = 0;
+	}
+
+/*	if ((rmd->auto_merge) && (shared > 0)) {
+		float co[3], co2[3];
+		copy_v3_v3(co, mi->centroid);
+		copy_v3_v3(co2, mi2->centroid);
+		printf("MeshIsland: %d %d (%f, %f, %f) | (%f, %f, %f) - %d \n",
+			   j, (n+i)->index, co[0], co[1], co[2], co2[0], co2[1], co2[2], shared);
+	}*/
+
+	BMO_op_finish(*combined_mesh, &op);
+	slot = NULL;
+
+	//deselect vertices
+	for (v = 0; v < mi2->vertex_count; v++) {
+		BM_elem_flag_disable(BM_vert_at_index(*combined_mesh, mi2->combined_index_map[v]), BM_ELEM_TAG);
+	}
+
+	if (shared > 2) {
+		// shared vertices (atleast one face ?), so connect...
+		// if all verts either in same object or not !
+		int con_found = FALSE;
+		RigidBodyShardCon *con, *rbsc;
+
+		for (con = rmd->meshConstraints.first; con; con = con->next) {
+			if (((con->mi1 == mi) && (con->mi2 == mi2)) ||
+				((con->mi1 == mi2 && (con->mi2 == mi)))) {
+				con_found = TRUE;
+				break;
+			}
+		}
+		if ((!con_found) && same){
+			if (rmd->use_constraints) {
+				if (((rmd->constraint_group != NULL) &&
+					(!object_in_group(ob, rmd->constraint_group))) ||
+					(rmd->constraint_group == NULL)) {
+
+					rbsc = BKE_rigidbody_create_shard_constraint(rmd->modifier.scene, RBC_TYPE_FIXED);
+					rbsc->mi1 = mi;
+					rbsc->mi2 = mi2;
+					rbsc->breaking_threshold = thresh;
+					BLI_addtail(&rmd->meshConstraints, rbsc);
+				}
+			}
+		}
+	}
+}
+
 static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsland **meshIslands, int count, BMesh **combined_mesh, KDTree **combined_tree) {
 
-	MeshIsland *mi;
-	BMOpSlot *slot;
+	MeshIsland *mi, *first, *last;
 	int i, j, v, sel_counter;
 	KDTreeNearest *n = MEM_mallocN(sizeof(KDTreeNearest)*count, "kdtreenearest");
 	KDTreeNearest *n2 = MEM_mallocN(sizeof(KDTreeNearest)*count, "kdtreenearest2");
@@ -500,8 +684,9 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 	BLI_kdtree_find_n_nearest(*combined_tree, count, meshIslands[0]->centroid, NULL, n2);
 
 	for (j = 0; j < count; j++) {
-		int same = FALSE;
 		mi = meshIslands[(n2+j)->index];
+		if (j == 0)
+			first = mi;
 
 		for (v = 0; v < mi->vertex_count; v++) {
 			BM_elem_flag_enable(BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]), BM_ELEM_TAG);
@@ -514,181 +699,9 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 			//printf("Nearest: %d %d %f %f %f\n",m, (n+i)->index, (n+i)->co[0], (n+i)->co[2], (n+i)->co[2]);
 
 			if ((mi != mi2) && (mi2 != NULL)) {
-				BMOperator op;
-				int shared = 0, island_vert_key_index = 0, island_vert_map_index = 0;
-				int* island_verts_key = MEM_mallocN(sizeof(int), "island_verts_key");
-				int* island_verts_map = MEM_mallocN(sizeof(int), "island_verts_map");
-
-				//check whether we are in the same object or not
-				float thresh, dist;
-				int equal = mi->parent_mod == mi2->parent_mod;
-				//equal = equal && (mi->parent_mod == rmd);
-
-				thresh = equal ? rmd->breaking_threshold : rmd->group_breaking_threshold;
-				dist = equal ? rmd->contact_dist : rmd->group_contact_dist;
-
-				//select "our" vertices
-				for (v = 0; v < mi2->vertex_count; v++) {
-					BM_elem_flag_enable(BM_vert_at_index(*combined_mesh, mi2->combined_index_map[v]), BM_ELEM_TAG);
-				}
-
-				//do we share atleast 1 vertex in selection
-
-				BMO_op_initf(*combined_mesh, &op, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "find_doubles verts=%hv dist=%f", BM_ELEM_TAG, dist);
-				BMO_op_exec(*combined_mesh, &op);
-				slot = BMO_slot_get(op.slots_out, "targetmap.out");
-
-				if (slot->data.ghash) {
-					GHashIterator it;
-					int ind1 = 0, ind2 = 0;
-					GHASH_ITER(it, slot->data.ghash) {
-						BMVert *vert_key, *vert_map;
-						BMOElemMapping * mapping = BLI_ghashIterator_getValue(&it);
-						vert_key = BLI_ghashIterator_getKey(&it);
-						vert_map = mapping[1].element;
-
-						if (vert_key == vert_map)
-						{
-							printf("EQUAL! D'OH\n");
-						}
-
-						for (v = 0; v < mi->vertex_count; v++) {
-							if ((vert_key == BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]))) {
-								island_verts_key = MEM_reallocN(island_verts_key, sizeof(int) * (island_vert_key_index+1));
-								island_verts_key[island_vert_key_index] = mi->combined_index_map[v];
-								island_vert_key_index++;
-								ind1++;
-								break;
-							}
-
-							if ((vert_map == BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]))) {
-								island_verts_map = MEM_reallocN(island_verts_map, sizeof(int) * (island_vert_map_index+1));
-								island_verts_map[island_vert_map_index] = mi->combined_index_map[v];
-								island_vert_map_index++;
-								break;
-							}
-						}
-
-						for (v = 0; v < mi2->vertex_count; v++) {
-							if ((vert_key == BM_vert_at_index(*combined_mesh, mi2->combined_index_map[v]))) {
-								island_verts_key = MEM_reallocN(island_verts_key, sizeof(int) * (island_vert_key_index+1));
-								island_verts_key[island_vert_key_index] = mi2->combined_index_map[v];
-								island_vert_key_index++;
-								ind2++;
-								break;
-							}
-
-							if ((vert_map == BM_vert_at_index(*combined_mesh, mi2->combined_index_map[v]))) {
-								island_verts_map = MEM_reallocN(island_verts_map, sizeof(int) * (island_vert_map_index+1));
-								island_verts_map[island_vert_map_index] = mi2->combined_index_map[v];
-								island_vert_map_index++;
-								break;
-							}
-						}
-					}
-
-					// verts are in different objects, ok, only if we have different modifiers as parent
-					same = ((equal && ((ind1 == 0) || (ind2 == 0))) || (!equal));
-				}
-
-				//if ((slot->data.ghash) && (slot->data.ghash->nentries > 2))
-				//	printf("%d %d\n", island_vert_key_index, island_vert_map_index);
-
-				if (rmd->auto_merge && ((island_vert_key_index > 0) || (island_vert_map_index > 0))) {
-					BMVert **vert_arr, **vert_arr2;
-					int s;
-
-					vert_arr = MEM_mallocN(sizeof(BMVert*) * island_vert_key_index, "vert_arr");
-					vert_arr2 = MEM_mallocN(sizeof(BMVert*) * island_vert_map_index, "vert_arr2");
-
-					for (s = 0; s < island_vert_key_index; s++) {
-						vert_arr[s] = BM_vert_at_index(rmd->visible_mesh, island_verts_key[s]);
-					}
-
-					for (s = 0; s < island_vert_map_index; s++) {
-						vert_arr2[s] = BM_vert_at_index(rmd->visible_mesh, island_verts_map[s]);
-					}
-
-					//select_inner_faces_of_vert(rmd, face_tree, vert_arr[0]);
-					//select_inner_faces_of_vert(rmd, face_tree, vert_arr2[0]);
-					if (island_vert_key_index > 0) {
-						for (s = 0; s < island_vert_key_index; s++)
-						{
-							select_inner_faces_of_vert(rmd, face_tree, vert_arr[s]);
-						}
-					}
-
-					if (island_vert_map_index > 0) {
-						for (s = 0; s < island_vert_map_index; s++)
-						{
-							select_inner_faces_of_vert(rmd, face_tree, vert_arr2[s]);
-						}
-					}
-
-					MEM_freeN(vert_arr);
-					MEM_freeN(vert_arr2);
-					vert_arr = NULL;
-					vert_arr2 = NULL;
-				}
-
-				MEM_freeN(island_verts_map);
-				MEM_freeN(island_verts_key);
-				island_verts_map = NULL;
-				island_verts_key = NULL;
-				island_vert_key_index = 0;
-				island_vert_map_index = 0;
-
-				if (slot->data.ghash) {
-					shared = slot->data.ghash->nentries;
-				}
-				else
-				{
-					shared = 0;
-				}
-
-				if ((rmd->auto_merge) && (shared > 0)) {
-					float co[3], co2[3];
-					copy_v3_v3(co, mi->centroid);
-					copy_v3_v3(co2, mi2->centroid);
-					printf("MeshIsland: %d %d (%f, %f, %f) | (%f, %f, %f) - %d \n",
-						   j, (n+i)->index, co[0], co[1], co[2], co2[0], co2[1], co2[2], shared);
-				}
-
-				BMO_op_finish(*combined_mesh, &op);
-				slot = NULL;
-
-				//deselect vertices
-				for (v = 0; v < mi2->vertex_count; v++) {
-					BM_elem_flag_disable(BM_vert_at_index(*combined_mesh, mi2->combined_index_map[v]), BM_ELEM_TAG);
-				}
-
-				if (shared > 0) {
-					// shared vertices (atleast one face ?), so connect...
-					// if all verts either in same object or not !
-					int con_found = FALSE;
-					RigidBodyShardCon *con, *rbsc;
-
-					for (con = rmd->meshConstraints.first; con; con = con->next) {
-						if (((con->mi1 == mi) && (con->mi2 == mi2)) ||
-							((con->mi1 == mi2 && (con->mi2 == mi)))) {
-							con_found = TRUE;
-							break;
-						}
-					}
-					if ((!con_found) && same){
-						if (rmd->use_constraints) {
-							if (((rmd->constraint_group != NULL) &&
-								(!object_in_group(ob, rmd->constraint_group))) ||
-								(rmd->constraint_group == NULL)) {
-
-								rbsc = BKE_rigidbody_create_shard_constraint(rmd->modifier.scene, RBC_TYPE_FIXED);
-								rbsc->mi1 = mi;
-								rbsc->mi2 = mi2;
-								rbsc->breaking_threshold = thresh;
-								BLI_addtail(&rmd->meshConstraints, rbsc);
-							}
-						}
-					}
+				check_meshislands_adjacency(rmd, mi, mi2, combined_mesh, face_tree, ob);
+				if ((j == (count-1)) && (i == (count-2))) {
+					last = mi2;
 				}
 			}
 		}
@@ -697,6 +710,9 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 			BM_elem_flag_disable(BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]), BM_ELEM_TAG);
 		}
 	}
+
+	//compare last with first
+	check_meshislands_adjacency(rmd, last, first, combined_mesh, face_tree, ob);
 
 	sel_counter = 0;
 	BM_ITER_MESH(fa, &bmi, rmd->visible_mesh, BM_FACES_OF_MESH)
@@ -833,7 +849,7 @@ BMFace* closest_available_face(RigidBodyModifierData* rmd, KDTree* tree, BMesh* 
 	BM_face_calc_center_bounds(f, co);
 	BM_face_calc_center_bounds(f2, co2);
 
-	if (!compare_v3v3(co, co2, rmd->group_contact_dist)) {
+	if (!compare_v3v3(co, co2, rmd->auto_merge_dist)) {
 		return findClosestFace(tree, bm, f2);
 	}
 
@@ -850,6 +866,8 @@ void check_face_draw_by_constraint(RigidBodyModifierData* rmd, BMesh* merge_copy
 	{
 		face = BM_face_at_index(merge_copy, rmd->sel_indexes[i][0]);
 		face2 = BM_face_at_index(merge_copy, rmd->sel_indexes[i][1]);
+
+		if ((face == NULL) || (face2 == NULL)) continue;
 		BM_elem_flag_enable(face, BM_ELEM_TAG);
 		BM_elem_flag_enable(face2, BM_ELEM_TAG);
 		if (BLI_countlist(&rmd->meshConstraints) > 0) {
@@ -867,8 +885,8 @@ void check_face_draw_by_constraint(RigidBodyModifierData* rmd, BMesh* merge_copy
 			}
 			else
 			{
-				BM_elem_flag_disable(face, BM_ELEM_SELECT);
-				BM_elem_flag_disable(face2, BM_ELEM_SELECT);
+				//BM_elem_flag_disable(face, BM_ELEM_SELECT);
+				//BM_elem_flag_disable(face2, BM_ELEM_SELECT);
 			}
 		}
 		else
@@ -888,7 +906,7 @@ void check_face_draw_by_proximity(RigidBodyModifierData* rmd, BMesh* merge_copy)
 	BMIter iter;
 
 	//merge vertices
-	BMO_op_callf(merge_copy, BMO_FLAG_DEFAULTS, "automerge verts=%av dist=%f", BM_VERTS_OF_MESH, 0.00001f);
+	BMO_op_callf(merge_copy, BMO_FLAG_DEFAULTS, "automerge verts=%av dist=%f", BM_VERTS_OF_MESH, rmd->auto_merge_dist);
 
 	tree = BLI_kdtree_new(rmd->visible_mesh->totface);
 
@@ -974,16 +992,17 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			BMesh* merge_copy = BM_mesh_copy(rmd->visible_mesh);
 
 			check_face_draw_by_constraint(rmd, merge_copy);
-			if (rmd->group_contact_dist > 0)
+			if (rmd->auto_merge_dist > 0)
 			{
 				check_face_draw_by_proximity(rmd, merge_copy);
+				//check_face_draw_by_constraint(rmd, merge_copy);
 			}
 
 			BMO_op_callf(merge_copy, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 						"delete geom=%hvef context=%i", BM_ELEM_SELECT, DEL_FACES);
 
 			//final merge to close gaps
-			BMO_op_callf(merge_copy, BMO_FLAG_DEFAULTS, "automerge verts=%hv dist=%f", BM_ELEM_SELECT, rmd->group_contact_dist);
+			BMO_op_callf(merge_copy, BMO_FLAG_DEFAULTS, "automerge verts=%hv dist=%f", BM_ELEM_SELECT, rmd->auto_merge_dist);
 
 			dm_final = CDDM_from_bmesh(merge_copy, TRUE);
 			BM_mesh_free(merge_copy);

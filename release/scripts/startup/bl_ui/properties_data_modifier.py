@@ -683,6 +683,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         layout.prop(md, "group_breaking_threshold")
         layout.prop(md, "mass_dependent_thresholds")
         layout.prop(md, "auto_merge")
+        layout.prop(md, "auto_merge_dist");
 
     def SCREW(self, layout, ob, md):
         split = layout.split()
