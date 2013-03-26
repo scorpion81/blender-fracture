@@ -203,10 +203,31 @@ static void freeData(ModifierData *md)
 
 #endif
 
+static void copy_voronoicell(ExplodeModifierData* emd, VoronoiCell* dst, VoronoiCell src)
+{
+	int i = 0;
+	BMesh* bmtemp;
+	(*dst).vertco = MEM_dupallocN(src.vertco);
+	(*dst).vert_indexes = MEM_dupallocN(src.vert_indexes);
+	(*dst).vertices = MEM_mallocN(sizeof(BMVert*) * src.vertex_count, "voronoicell->dstvertices");
+	for (i = 0; i < src.vertex_count; i++)
+	{
+		(*dst).vertices[i] = BM_vert_at_index(emd->fracMesh, src.vert_indexes[i]);
+	}
+
+	bmtemp = DM_to_bmesh(src.cell_mesh);
+	(*dst).cell_mesh = CDDM_from_bmesh(bmtemp, TRUE);
+	(*dst).storage = BKE_bmesh_to_submesh(bmtemp);
+
+	BM_mesh_free(bmtemp);
+	bmtemp = NULL;
+}
+
 static void copyData(ModifierData *md, ModifierData *target)
 {
 	ExplodeModifierData *emd = (ExplodeModifierData *) md;
 	ExplodeModifierData *temd = (ExplodeModifierData *) target;
+	int i;
 
 	temd->facepa = NULL;
 	temd->flag = emd->flag;
@@ -214,12 +235,19 @@ static void copyData(ModifierData *md, ModifierData *target)
 	temd->vgroup = emd->vgroup;
 	temd->mode = emd->mode;
 	temd->use_boolean = emd->use_boolean;
-	// temd->fracMesh = emd->fracMesh; regenerate this ?
-	temd->fracMesh = NULL;
+
+	temd->fracMesh = BM_mesh_copy(emd->fracMesh);// better regenerate this ?
+	temd->storage = BKE_bmesh_to_submesh(temd->fracMesh);
+
 	temd->use_cache = emd->use_cache;
 	temd->tempOb = emd->tempOb;
-	//temd->cells = emd->cells; regenerate those too ?
-	temd->cells = NULL;
+	temd->cells = MEM_dupallocN(emd->cells);
+	temd->cells->data = MEM_dupallocN(emd->cells->data);
+
+	for (i = 0; i < emd->cells->count; i++) {
+		copy_voronoicell(temd, &temd->cells->data[i], emd->cells->data[i]);
+	}
+
 	temd->last_part = emd->last_part;
 	temd->last_bool = emd->last_bool;
 	temd->emit_continuously = emd->emit_continuously;
@@ -231,6 +259,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	temd->use_animation = emd->use_animation;
 	temd->noise = emd->noise;
 	temd->percentage = emd->percentage;
+
 }
 
 static int dependsOnTime(ModifierData *UNUSED(md)) 

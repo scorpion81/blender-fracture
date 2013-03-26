@@ -910,7 +910,7 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 		RB_body_set_kinematic_state(rbo->physics_object, rbo->flag & RBO_FLAG_KINEMATIC || rbo->flag & RBO_FLAG_DISABLED);
 	}
 
-	if (rbw && rbw->physics_world)
+	if (rbw && rbw->physics_world && rbo->physics_object)
 		RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups, mi);
 
 	//rbo->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
@@ -2010,14 +2010,16 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 					//if (!(meshisland_is_congroup_slave(rbw, rmd, rbsc->mi1)))
 					//{
 					if (rbsc->mi1->rigidbody != NULL) {
-						rbsc->mi1->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+						if (rbsc->mi1->parent_mod != rmd)
+							rbsc->mi1->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 					}
 					//}
 
 					//if (!(meshisland_is_congroup_slave(rbw, rmd, rbsc->mi2)))
 					//{
 					if (rbsc->mi2->rigidbody != NULL) {
-						rbsc->mi2->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+						if (rbsc->mi2->parent_mod != rmd)
+							rbsc->mi2->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 					}
 					//}
 				}

@@ -83,14 +83,38 @@ static void initData(ModifierData *md)
 	rmd->storage = NULL;
 	rmd->auto_merge_dist = 0.0001f;
 }
+void copy_meshisland(RigidBodyModifierData* rmd, MeshIsland *dst, MeshIsland *src)
+{
+	int i;
+	//dst->combined_index_map = MEM_dupallocN(src->combined_index_map); //length of this ??
+	dst->rigidbody = NULL;
+	src->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
+
+	dst->parent_mod = rmd;
+	dst->vert_indexes = MEM_dupallocN(src->vert_indexes);
+	dst->vertco = MEM_dupallocN(src->vertco);
+	dst->vertices = MEM_mallocN(sizeof(BMVert*) * src->vertex_count, "dst->vertices");
+	for (i = 0; i < src->vertex_count; i++)
+	{
+		//assure copying the bmesh BEFORE this !!
+		dst->vertices[i] = BM_vert_at_index(rmd->visible_mesh, src->vert_indexes[i]);
+	}
+
+	dst->physics_mesh = BM_mesh_copy(src->physics_mesh);
+	dst->storage = BKE_bmesh_to_submesh(dst->physics_mesh);
+
+}
 
 static void copyData(ModifierData *md, ModifierData *target)
 {
 	RigidBodyModifierData *rmd  = (RigidBodyModifierData *)md;
 	RigidBodyModifierData *trmd = (RigidBodyModifierData *)target;
-	
-	//trmd->meshIslands = rmd->meshIslands;
-	trmd->refresh = TRUE;
+	MeshIsland* mi;
+	int i = 0;
+	RigidBodyShardCon* con;
+
+	zero_m4(trmd->origmat);
+	trmd->refresh = rmd->refresh;
 	trmd->auto_merge = rmd->auto_merge;
 	trmd->breaking_threshold = rmd->breaking_threshold;
 	trmd->use_constraints = rmd->use_constraints;
@@ -99,11 +123,20 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->group_breaking_threshold = rmd->group_breaking_threshold;
 	trmd->group_contact_dist = rmd->group_contact_dist;
 	trmd->mass_dependent_thresholds = rmd->mass_dependent_thresholds;
-	trmd->sel_indexes = rmd->sel_indexes;
+	trmd->sel_indexes = MEM_dupallocN(rmd->sel_indexes);
 	trmd->sel_counter = rmd->sel_counter;
-	trmd->storage = rmd->storage;
-	trmd->meshIslands = rmd->meshIslands;
-	trmd->meshConstraints = rmd->meshConstraints;
+
+	trmd->visible_mesh = BM_mesh_copy(rmd->visible_mesh);
+	trmd->storage = BKE_bmesh_to_submesh(trmd->visible_mesh);
+
+	BLI_duplicatelist(&trmd->meshIslands, &rmd->meshIslands);
+	for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+		MeshIsland *dst = BLI_findlink(&trmd->meshIslands, i);
+		copy_meshisland(trmd, dst, mi);
+		i++;
+	}
+	BLI_duplicatelist(&trmd->meshConstraints, &rmd->meshConstraints);
+
 	trmd->auto_merge_dist = rmd->auto_merge_dist;
 }
 
