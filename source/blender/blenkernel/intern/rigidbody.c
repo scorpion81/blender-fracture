@@ -257,8 +257,8 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 	for (j = 0; j < mi->vertex_count; j++) {
 		// BMVert *vert = BM_vert_at_index(bm, ind);
 		struct BMVert* vert = mi->vertices[j];
-		if (vert == NULL) break;
-		if (vert->co == NULL) break;
+		if (vert == NULL) continue;
+		if (vert->co == NULL) continue;
 
 		//reset to original coords // stored at fracture time
 		startco[0] = mi->vertco[j*3];
@@ -1944,32 +1944,6 @@ static void validateShard(RigidBodyWorld *rbw, MeshIsland* mi, Object* ob, int r
 	mi->rigidbody->flag &= ~(RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
 }
 
-/*static int meshisland_is_congroup_slave(RigidBodyWorld *rbw, RigidBodyModifierData* rmd, MeshIsland* mi) {
-	RigidBodyModifierData* rmd2;
-	ModifierData* md;
-	Object* container = rbw->objects[rbw->cache_index_map[mi->linear_index]];
-
-
-	for (md = container->modifiers.first; md; md = md->next) {
-		if (md->type == eModifierType_RigidBody) {
-			rmd2 = (RigidBodyModifierData*)md;
-
-			if (rmd->constraint_group == NULL) {
-				//rmd2->is_slave = FALSE;
-				return FALSE;
-			}
-
-			if ((rmd->constraint_group != NULL) && (object_in_group(container, rmd->constraint_group))) {
-				//rmd2->is_slave = TRUE;
-				//return TRUE;
-				return FALSE; //deactivated for now, does not work correctly. hrms
-			}
-		}
-	}
-
-	return FALSE;
-}*/
-
 /* Updates and validates world, bodies and shapes.
  * < rebuild: rebuild entire simulation
  */
@@ -2007,21 +1981,15 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 				//those all need to be revalidated (?)
 
 				for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
-					//if (!(meshisland_is_congroup_slave(rbw, rmd, rbsc->mi1)))
-					//{
 					if (rbsc->mi1->rigidbody != NULL) {
 						if (rbsc->mi1->parent_mod != rmd)
 							rbsc->mi1->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 					}
-					//}
 
-					//if (!(meshisland_is_congroup_slave(rbw, rmd, rbsc->mi2)))
-					//{
 					if (rbsc->mi2->rigidbody != NULL) {
 						if (rbsc->mi2->parent_mod != rmd)
 							rbsc->mi2->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 					}
-					//}
 				}
 
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
@@ -2250,19 +2218,6 @@ int is_zero_m4(float mat[4][4]) {
 		   is_zero_v4(mat[2]) &&
 		   is_zero_v4(mat[3]);
 }
-
-/*static void copyRigidBody(RigidBodyOb *source, RigidBodyOb *target)
-{
-	target->type = source->type;
-	target->shape = source->shape;
-	target->flag = source->flag;
-	target->col_groups = source->col_groups;
-	target->friction = source->friction;
-	target->restitution = source->restitution;
-	target->margin = source->margin;
-	target->lin_damping = source->lin_damping;
-	target->lin_sleep_thresh = source->lin_sleep_thresh;
-}*/
 
 /* Sync rigid body and object transformations */
 void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)

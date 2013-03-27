@@ -1358,6 +1358,7 @@ static void write_defgroups(WriteData *wd, ListBase *defbase)
 		writestruct(wd, DATA, "bDeformGroup", 1, defgroup);
 }
 
+
 static void write_modifiers(WriteData *wd, ListBase *modbase)
 {
 	ModifierData *md;

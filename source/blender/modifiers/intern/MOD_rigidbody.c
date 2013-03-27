@@ -68,7 +68,7 @@ static void initData(ModifierData *md)
 {
 	RigidBodyModifierData *rmd = (RigidBodyModifierData *) md;
 	rmd->visible_mesh = NULL;
-	rmd->refresh = FALSE;
+	rmd->refresh = TRUE;
 	zero_m4(rmd->origmat);
 	rmd->breaking_threshold = 10.0f;
 	rmd->use_constraints = FALSE;
@@ -278,28 +278,13 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	BM_ITER_MESH (v, &iter, bm_new, BM_VERTS_OF_MESH) {
 		//eliminate centroid in vertex coords ?
 		sub_v3_v3(v->co, centroid);
-//		BM_elem_index_set(v, i);
-//		i++;
 	}
-
-/*	i = 0;
-	BM_ITER_MESH (e, &iter, bm_new, BM_EDGES_OF_MESH) {
-		BM_elem_index_set(e, i);
-		i++;
-	}
-
-	i = 0;
-	BM_ITER_MESH (f, &iter, bm_new, BM_FACES_OF_MESH) {
-		BM_elem_index_set(f, i);
-		i++;
-	}*/
 
 	BM_ITER_MESH (v, &iter, bm_old, BM_VERTS_OF_MESH) {
 
 		if (BM_elem_flag_test(v, BM_ELEM_TAG)) {
 			verts = MEM_reallocN(verts, sizeof(BMVert*) * (vertcount + 1));
 			verts[vertcount] = v;
-			//sub_v3_v3(v->co, centroid);
 
 			startco = MEM_reallocN(startco, (vertcount+1) * 3 * sizeof(float));
 			startco[3 * vertcount] = v->co[0];
@@ -329,7 +314,6 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	mat4_to_loc_quat(dummyloc, rot, ob->obmat);
 	copy_v3_v3(mi->rot, rot);
 	mi->parent_mod = rmd;
-//	mi->cluster_index = -1; //belongs to no cluster
 
 	/* deselect loose data - this used to get deleted,
 	 * we could de-select edges and verts only, but this turns out to be less complicated

@@ -167,6 +167,7 @@
 
 
 
+
 /*
  * Remark: still a weak point is the newaddress() function, that doesnt solve reading from
  * multiple files at the same time
@@ -4416,6 +4417,7 @@ static void direct_link_pose(FileData *fd, bPose *pose)
 		pose->ikparam = newdataadr(fd, pose->ikparam);
 	}
 }
+
 
 static void direct_link_modifiers(FileData *fd, ListBase *lb)
 {

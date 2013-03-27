@@ -2245,6 +2245,9 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				BKE_submesh_free(emd->storage); // in case this is not the first call;
 
 				if (emd->fracMesh != NULL) {
+					BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "recalc_face_normals faces=%af use_flip=%b", BM_FACES_OF_MESH, false);
+					BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "dissolve_limit edges=%ae verts=%av angle_limit=%f use_dissolve_boundaries=%b",
+				                   BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);
 					emd->storage = BKE_bmesh_to_submesh(emd->fracMesh);
 				}
 				
@@ -2253,19 +2256,11 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				if (psmd != NULL)
 					emd->last_part = psmd->psys->totpart;
 				emd->last_bool = emd->use_boolean;
-				emd->last_point_source = emd->point_source;	
+				emd->last_point_source = emd->point_source;
 			}
 
 			if (emd->cells == NULL)
 				return derivedData;
-
-			if (emd->fracMesh) {
-				BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "recalc_face_normals faces=%af use_flip=%b", BM_FACES_OF_MESH, FALSE);
-				if (emd->use_boolean) {
-					BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "dissolve_limit edges=%ae verts=%av angle_limit=%f use_dissolve_boundaries=%b",
-			                   BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, FALSE);
-				}
-			}
 
 			if (emd->use_animation && psmd != NULL)
 			{
