@@ -973,8 +973,8 @@ void check_face_draw_by_constraint(RigidBodyModifierData* rmd, BMesh* merge_copy
 				f = findClosestFace(tree, merge_copy, face);
 				if (f == face2)
 				{
-					//BM_elem_flag_enable(face, BM_ELEM_SELECT);
-					//BM_elem_flag_enable(face2, BM_ELEM_SELECT);
+					BM_elem_flag_enable(face, BM_ELEM_SELECT);
+					BM_elem_flag_enable(face2, BM_ELEM_SELECT);
 				}
 				else
 				{
@@ -1054,7 +1054,6 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			if (rmd->auto_merge_dist > 0)
 			{
 				check_face_draw_by_proximity(rmd, merge_copy);
-				//check_face_draw_by_constraint(rmd, merge_copy);
 			}
 
 			BMO_op_callf(merge_copy, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
