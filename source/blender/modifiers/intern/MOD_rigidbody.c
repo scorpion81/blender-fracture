@@ -666,7 +666,7 @@ static void check_meshislands_adjacency(RigidBodyModifierData* rmd, MeshIsland* 
 		if ((!con_found) && same){
 			if (rmd->use_constraints) {
 				if (((rmd->constraint_group != NULL) &&
-					(!object_in_group(ob, rmd->constraint_group))) ||
+					(!BKE_group_object_exists(ob, rmd->constraint_group))) ||
 					(rmd->constraint_group == NULL)) {
 
 					rbsc = BKE_rigidbody_create_shard_constraint(rmd->modifier.scene, RBC_TYPE_FIXED);
@@ -1035,7 +1035,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		mesh_separate_loose(rmd, ob);
 
 		if ((rmd->use_constraints) || (rmd->auto_merge)) {
-			if (((rmd->constraint_group != NULL) && (!object_in_group(ob, rmd->constraint_group))) ||
+			if (((rmd->constraint_group != NULL) && (!BKE_group_object_exists(ob, rmd->constraint_group))) ||
 					(rmd->constraint_group == NULL) || (rmd->auto_merge)) {
 				create_constraints(rmd, ob); //check for actually creating the constraints inside
 			}
