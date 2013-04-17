@@ -449,6 +449,9 @@ void select_inner_faces_of_vert(RigidBodyModifierData* rmd, KDTree* tree, BMVert
 	BMFace *face;
 	BMIter iter;
 
+	if (vert == NULL) //can happen with constraint groups, investigate why (TODO) but prevent crash for now
+		return;
+
 	BM_ITER_ELEM(face, &iter, vert, BM_FACES_OF_VERT) {
 		int n, i = 0;
 		float co[3];
