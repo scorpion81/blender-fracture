@@ -732,7 +732,7 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 	}
 
 	//compare last with first
-	check_meshislands_adjacency(rmd, last, first, combined_mesh, face_tree, ob);
+	//check_meshislands_adjacency(rmd, last, first, combined_mesh, face_tree, ob);
 
 	sel_counter = 0;
 	BM_ITER_MESH(fa, &bmi, rmd->visible_mesh, BM_FACES_OF_MESH)
@@ -1036,7 +1036,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 		if ((rmd->use_constraints) || (rmd->auto_merge)) {
 			if (((rmd->constraint_group != NULL) && (!BKE_group_object_exists(ob, rmd->constraint_group))) ||
-					(rmd->constraint_group == NULL) || (rmd->auto_merge)) {
+					(rmd->constraint_group == NULL)) { // { || (rmd->auto_merge)) {
 				create_constraints(rmd, ob); //check for actually creating the constraints inside
 			}
 		}

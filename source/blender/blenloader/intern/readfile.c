@@ -4418,6 +4418,76 @@ static void direct_link_pose(FileData *fd, bPose *pose)
 	}
 }
 
+static SMesh* read_smesh(FileData* fd, SMesh* sm, int use_customdata)
+{
+	sm = newdataadr(fd, sm);
+	if (sm != NULL) {
+		sm->vpool = newdataadr(fd, sm->vpool);
+		sm->epool = newdataadr(fd, sm->epool);
+		sm->lpool = newdataadr(fd, sm->lpool);
+		sm->fpool = newdataadr(fd, sm->fpool);
+
+		if (use_customdata == TRUE) {
+			direct_link_customdata(fd, &sm->vdata, sm->totvert);
+			direct_link_customdata(fd, &sm->edata, sm->totedge);
+			direct_link_customdata(fd, &sm->ldata, sm->totloop);
+			direct_link_customdata(fd, &sm->pdata, sm->totface);
+		}
+	}
+
+	return sm;
+}
+
+static void read_voronoicell(FileData* fd, VoronoiCell* vc, ExplodeModifierData* emd)
+{
+	BMVert* v;
+	int i;
+	BMesh* bmtemp;
+
+	vc->storage = read_smesh(fd, vc->storage, FALSE);
+	bmtemp = BKE_submesh_to_bmesh(vc->storage);
+	vc->cell_mesh = CDDM_from_bmesh(bmtemp, TRUE);
+	BM_mesh_free(bmtemp);
+
+	vc->vert_indexes = newdataadr(fd, vc->vert_indexes);
+	vc->vertices = MEM_mallocN(sizeof(BMVert*)*vc->vertex_count, "vc->vertices");
+	vc->vertco = MEM_mallocN(sizeof(float)*3*vc->vertex_count, "vc->vertco");
+	for (i = 0; i < vc->vertex_count; i++) {
+		int index = vc->vert_indexes[i];
+		v = BM_vert_at_index(emd->fracMesh, index);
+		vc->vertices[i] = v;
+		vc->vertco[3*i] = v->co[0];
+		vc->vertco[3*i+1] = v->co[1];
+		vc->vertco[3*i+2] = v->co[2];
+	}
+
+	vc->vertco = newdataadr(fd, vc->vertco);
+}
+
+static MeshIsland* read_meshisland(FileData *fd, MeshIsland *mi, RigidBodyModifierData* rmd)
+{
+	BMVert* v;
+	int i;
+
+	mi->storage = read_smesh(fd, mi->storage, FALSE);
+	mi->parent_mod = rmd;
+	mi->physics_mesh = BKE_submesh_to_bmesh(mi->storage);
+	mi->vert_indexes = newdataadr(fd, mi->vert_indexes);
+	mi->rigidbody = newdataadr(fd, mi->rigidbody);
+
+	mi->vertices = MEM_mallocN(sizeof(BMVert*) * mi->vertex_count, "mi->vertices");
+	mi->vertco = MEM_mallocN(sizeof(float)*3*mi->vertex_count, "mi->vertco");
+
+	for (i = 0; i < mi->vertex_count; i++) {
+		v = BM_vert_at_index(rmd->visible_mesh, mi->vert_indexes[i]);
+		mi->vertices[i] = v;
+		mi->vertco[3*i] = v->co[0];
+		mi->vertco[3*i+1] = v->co[1];
+		mi->vertco[3*i+2] = v->co[2];
+	}
+
+	return mi;
+}
 
 static void direct_link_modifiers(FileData *fd, ListBase *lb)
 {
@@ -4627,16 +4697,34 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			psmd->flag |= eParticleSystemFlag_file_loaded;
 		}
 		else if (md->type == eModifierType_Explode) {
-			ExplodeModifierData *psmd = (ExplodeModifierData *)md;
-			
-			psmd->facepa = NULL;
+			ExplodeModifierData *emd = (ExplodeModifierData *)md;
+			int i;
 
-			//should all be regenerated
-			psmd->fracMesh = NULL;
-			psmd->cells = NULL;
-			psmd->tempOb = NULL;
-			psmd->patree = NULL;
-			psmd->use_cache = FALSE;
+			emd->facepa = NULL;
+			emd->tempOb = NULL;
+			emd->storage = read_smesh(fd, emd->storage, TRUE);
+
+			if (emd->storage != NULL)
+			{
+				emd->use_cache = MOD_VORONOI_USECACHE;
+				emd->fracMesh = BKE_submesh_to_bmesh(emd->storage);
+				emd->patree = newdataadr(fd, emd->patree);
+				emd->cells = newdataadr(fd, emd->cells);
+				emd->cells->data = newdataadr(fd, emd->cells->data);
+				for (i = 0; i < emd->cells->count; i++)
+				{
+					read_voronoicell(fd, &emd->cells->data[i], emd);
+				}
+			}
+			else
+			{
+				//fallback, regenerate all
+				emd->fracMesh = NULL;
+				emd->cells = NULL;
+				emd->patree = NULL;
+				emd->use_cache = FALSE;
+				emd->storage = NULL;
+			}
 		}
 		else if (md->type == eModifierType_MeshDeform) {
 			MeshDeformModifierData *mmd = (MeshDeformModifierData *)md;

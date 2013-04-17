@@ -86,7 +86,8 @@ float BKE_rigidbody_calc_max_con_mass(Object* ob)
 		if (md->type == eModifierType_RigidBody) {
 			rmd = (RigidBodyModifierData*)md;
 			for (con = rmd->meshConstraints.first; con; con = con->next) {
-				if ((con->mi1->rigidbody != NULL) && (con->mi2->rigidbody != NULL)) {
+				if ((con->mi1 != NULL && con->mi1->rigidbody != NULL) &&
+				(con->mi2 != NULL && con->mi2->rigidbody != NULL)) {
 					con_mass = con->mi1->rigidbody->mass + con->mi2->rigidbody->mass;
 					if (con_mass > max_con_mass) {
 						max_con_mass = con_mass;
@@ -105,6 +106,9 @@ void BKE_rigidbody_calc_threshold(float max_con_mass, RigidBodyModifierData *rmd
 
 	float max_thresh, thresh, con_mass;
 	if (max_con_mass == 0)
+		return;
+
+	if ((con->mi1 == NULL) || (con->mi2 == NULL))
 		return;
 
 	max_thresh = ((con->mi1->parent_mod == con->mi2->parent_mod) ? con->mi1->parent_mod->breaking_threshold : rmd->group_breaking_threshold);
@@ -1981,12 +1985,12 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 				//those all need to be revalidated (?)
 
 				for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
-					if (rbsc->mi1->rigidbody != NULL) {
+					if (rbsc->mi1 != NULL && rbsc->mi1->rigidbody != NULL) {
 						if (rbsc->mi1->parent_mod != rmd)
 							rbsc->mi1->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 					}
 
-					if (rbsc->mi2->rigidbody != NULL) {
+					if (rbsc->mi2 != NULL && rbsc->mi2->rigidbody != NULL) {
 						if (rbsc->mi2->parent_mod != rmd)
 							rbsc->mi2->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 					}
@@ -2025,7 +2029,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 					index1 = BLI_findindex(&rmd->meshIslands, rbsc->mi1);
 					index2 = BLI_findindex(&rmd->meshIslands, rbsc->mi2);
 					//if there are "external" rigidbodies, validate them too !
-					if (index1 == -1) {
+					if (index1 == -1 && rbsc->mi1 != NULL) {
 						Object* obj = rbw->objects[rbw->cache_index_map[rbsc->mi1->linear_index]];
 						if (rbsc->mi1->rigidbody == NULL) {
 							rbsc->mi1->rigidbody = BKE_rigidbody_create_shard(scene, obj, rbsc->mi1);
@@ -2042,7 +2046,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 						rigidbody_update_sim_ob(scene, rbw, obj, rbsc->mi1->rigidbody, rbsc->mi1->centroid);
 					}
 
-					if (index2 == -1) {
+					if (index2 == -1 && rbsc->mi2 != NULL) {
 						Object* obj = rbw->objects[rbw->cache_index_map[rbsc->mi2->linear_index]];
 
 						if (rbsc->mi2->rigidbody == NULL) {
