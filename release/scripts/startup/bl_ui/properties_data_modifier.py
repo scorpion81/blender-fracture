@@ -681,6 +681,9 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         layout.prop(md, "group_contact_dist")
         layout.prop(md, "breaking_threshold")
         layout.prop(md, "group_breaking_threshold")
+        layout.prop(md, "inner_constraint_type")
+        layout.prop(md, "outer_constraint_type")
+        layout.prop(md, "outer_constraint_location")
         layout.prop(md, "mass_dependent_thresholds")
         layout.prop(md, "auto_merge")
         layout.prop(md, "auto_merge_dist");

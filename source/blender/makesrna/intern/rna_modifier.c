@@ -3891,6 +3891,35 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	StructRNA *srna;
 	PropertyRNA *prop;
 
+	static EnumPropertyItem prop_constraint_types[] = {
+		{RBC_TYPE_POINT, "POINT", 0, "Point", "Let bodies rotate around a specified point"},
+		{RBC_TYPE_HINGE, "HINGE", 0, "Hinge", "Let bodies rotate around a specified axis"},
+		//{RBC_TYPE_HINGE2, "HINGE2", 0, "Hinge2","Simulates wheel suspension"},
+		{RBC_TYPE_SLIDER, "SLIDER", 0, "Slider", "Restricts movent to a specified axis"},
+		//{RBC_TYPE_CONE_TWIST,"CONE", 0, "Cone", "Let objects rotate within a specified cone"},
+		{RBC_TYPE_6DOF, "6DOF", 0, "6DOF", "Allows user to specify constraint axes"},
+		{RBC_TYPE_6DOF_SPRING,"6DOF_SPRING", 0, "6DOF Spring", "like 6DOF but has springs"},
+		//{RBC_TYPE_UNIVERSAL,"UNIVERSAL", 0, "Universal", "simulates a universal joint"},
+		{RBC_TYPE_FIXED, "FIXED", 0, "Fixed", "Glues two bodies together"},
+		{RBC_TYPE_PISTON, "PISTON", 0, "Piston", "Similar to slider but also allows rotation around slider axis"},
+		//{RBC_TYPE_SPRING, "SPRING", 0, "Spring", "Simplified spring constraint with only one axis thats automatically placed between the connected bodies"},
+		{RBC_TYPE_MOTOR, "MOTOR", 0, "Motor", "Drives bodies by applying linear and angular forces"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
+	static EnumPropertyItem prop_constraint_loc[] = {
+		{MOD_RIGIDBODY_SELECTED, "SELECTED", 0, "Slave", "Place constraint at selected object"},
+		{MOD_RIGIDBODY_ACTIVE, "ACTIVE", 0, "Master", "Place constraint at active object"},
+		{MOD_RIGIDBODY_CENTER, "CENTER", 0, "Center", "Place Constraint between selected and active object"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
+	static EnumPropertyItem prop_constraint_pattern[] = {
+		{MOD_RIGIDBODY_SELECTED_TO_ACTIVE, "SELECTED_TO_ACTIVE", 0, "Selected to Active", "Connect selected objects to active object"},
+		{MOD_RIGIDBODY_CHAIN_DISTANCE, "CHAIN_DISTANCE", 0, "Chain Distance", "Build a chain of objects"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
 	srna= RNA_def_struct(brna, "RigidBodyModifier", "Modifier");
 	RNA_def_struct_ui_text(srna, "Rigid Body Modifier", "Add multiple rigid body objects (from mesh islands)");
 	RNA_def_struct_sdna(srna, "RigidBodyModifierData");
@@ -3900,14 +3929,14 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	RNA_def_property_float_sdna(prop, NULL, "breaking_threshold");
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_threshold_set", NULL);
-	RNA_def_property_ui_text(prop, "Breaking threshold", "Threshold to break constraints between shards in the same object");
+	RNA_def_property_ui_text(prop, "Inner Breaking threshold", "Threshold to break constraints between shards in the same object");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "group_breaking_threshold", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "group_breaking_threshold");
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_group_threshold_set", NULL);
-	RNA_def_property_ui_text(prop, "Group Breaking threshold", "Threshold to break constraints between shards of different objects");
+	RNA_def_property_ui_text(prop, "Outer Breaking threshold", "Threshold to break constraints between shards of different objects");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "use_constraints", PROP_BOOLEAN, PROP_NONE);
@@ -3950,6 +3979,42 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_auto_merge_dist_set", NULL);
 	RNA_def_property_ui_text(prop, "Auto Merge distance", "Maximum distance between verts which should be merged together");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "inner_constraint_type", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_sdna(prop, NULL, "inner_constraint_type");
+	RNA_def_property_enum_items(prop, prop_constraint_types);
+	RNA_def_property_ui_text(prop, "Inner Constraint Type", "");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	/*prop = RNA_def_property(srna, "inner_constraint_location", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_sdna(prop, NULL, "inner_constraint_type");
+	RNA_def_property_enum_items(prop, prop_constraint_loc);
+	RNA_def_property_ui_text(prop, "Inner Constraint Location", "");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "inner_constraint_pattern", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_sdna(prop, NULL, "inner_constraint_pattern");
+	RNA_def_property_enum_items(prop, prop_constraint_pattern);
+	RNA_def_property_ui_text(prop, "Inner Constraint Pattern", "");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
+
+	prop = RNA_def_property(srna, "outer_constraint_type", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_sdna(prop, NULL, "outer_constraint_type");
+	RNA_def_property_enum_items(prop, prop_constraint_types);
+	RNA_def_property_ui_text(prop, "Outer Constraint Type", "");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "outer_constraint_location", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_sdna(prop, NULL, "outer_constraint_location");
+	RNA_def_property_enum_items(prop, prop_constraint_loc);
+	RNA_def_property_ui_text(prop, "Outer Constraint Location", "");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	/*prop = RNA_def_property(srna, "outer_constraint_pattern", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_sdna(prop, NULL, "outer_constraint_pattern");
+	RNA_def_property_enum_items(prop, prop_constraint_pattern);
+	RNA_def_property_ui_text(prop, "Outer Constraint Pattern", "");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
 }
 
 void RNA_def_modifier(BlenderRNA *brna)

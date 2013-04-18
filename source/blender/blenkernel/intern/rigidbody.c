@@ -1166,6 +1166,8 @@ void BKE_rigidbody_validate_sim_constraint(RigidBodyWorld *rbw, Object *ob, shor
 void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyShardCon *rbc, Object *ob, short rebuild)
 {
 	//RigidBodyShardCon *rbc = (mi) ? mi->rigidbody_constraint : NULL;
+	RigidBodyModifierData* rmd = NULL;
+	ModifierData* md = NULL;
 	float loc[3];
 	float rot[4];
 	float lin_lower;
@@ -1209,7 +1211,37 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 		add_v3_v3(loc, rbc->mi2->rigidbody->pos);
 		mul_v3_fl(loc, 0.5f);*/
 
+		//do this for all inner constraints
 		copy_v3_v3(loc, rbc->mi1->rigidbody->pos);
+
+		for (md = ob->modifiers.first; md; md = md->next) {
+			if (md->type == eModifierType_RigidBody) {
+				int index1, index2;
+				rmd = (RigidBodyModifierData*)md;
+
+				index1 = BLI_findindex(&rmd->meshIslands, rbc->mi1);
+				index2 = BLI_findindex(&rmd->meshIslands, rbc->mi2);
+
+				if ((index1 == -1) || (index2 == -1)) //outer constraint if not both meshislands in same object
+				{
+					if (rmd->outer_constraint_location == MOD_RIGIDBODY_ACTIVE)
+					{
+						copy_v3_v3(loc, rbc->mi2->rigidbody->pos);
+					}
+					else if (rmd->outer_constraint_location == MOD_RIGIDBODY_SELECTED)
+					{
+						copy_v3_v3(loc, rbc->mi1->rigidbody->pos);
+					}
+					else if (rmd->outer_constraint_location == MOD_RIGIDBODY_CENTER)
+					{
+						copy_v3_v3(loc, rbc->mi1->rigidbody->pos);
+						add_v3_v3(loc, rbc->mi2->rigidbody->pos);
+						mul_v3_fl(loc, 0.5f);
+					}
+				}
+			}
+		}
+
 		copy_v4_v4(rot, rbc->mi1->rigidbody->orn);
 
 		if (rb1 && rb2) {

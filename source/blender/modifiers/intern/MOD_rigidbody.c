@@ -82,13 +82,18 @@ static void initData(ModifierData *md)
 	rmd->sel_counter = 0;
 	rmd->storage = NULL;
 	rmd->auto_merge_dist = 0.0001f;
+	rmd->inner_constraint_type = RBC_TYPE_FIXED;
+	rmd->outer_constraint_type = RBC_TYPE_FIXED;
+	rmd->outer_constraint_location = MOD_RIGIDBODY_CENTER;
+	rmd->outer_constraint_pattern = MOD_RIGIDBODY_SELECTED_TO_ACTIVE;
 }
 void copy_meshisland(RigidBodyModifierData* rmd, MeshIsland *dst, MeshIsland *src)
 {
 	int i;
 	//dst->combined_index_map = MEM_dupallocN(src->combined_index_map); //length of this ??
 	dst->rigidbody = NULL;
-	src->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
+	if (src->rigidbody != NULL)
+		src->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
 
 	dst->parent_mod = rmd;
 	dst->vert_indexes = MEM_dupallocN(src->vert_indexes);
@@ -512,11 +517,12 @@ static void check_meshislands_adjacency(RigidBodyModifierData* rmd, MeshIsland* 
 
 	//check whether we are in the same object or not
 	float thresh, dist;
-	int equal = mi->parent_mod == mi2->parent_mod;
+	int con_type, equal = mi->parent_mod == mi2->parent_mod;
 	//equal = equal && (mi->parent_mod == rmd);
 
 	thresh = equal ? rmd->breaking_threshold : rmd->group_breaking_threshold;
 	dist = equal ? rmd->contact_dist : rmd->group_contact_dist;
+	con_type = equal ? rmd->inner_constraint_type : rmd->outer_constraint_type;
 
 	//select "our" vertices
 	for (v = 0; v < mi2->vertex_count; v++) {
@@ -672,7 +678,7 @@ static void check_meshislands_adjacency(RigidBodyModifierData* rmd, MeshIsland* 
 					(!BKE_group_object_exists(ob, rmd->constraint_group))) ||
 					(rmd->constraint_group == NULL)) {
 
-					rbsc = BKE_rigidbody_create_shard_constraint(rmd->modifier.scene, RBC_TYPE_FIXED);
+					rbsc = BKE_rigidbody_create_shard_constraint(rmd->modifier.scene, con_type);
 					rbsc->mi1 = mi;
 					rbsc->mi2 = mi2;
 					rbsc->breaking_threshold = thresh;
