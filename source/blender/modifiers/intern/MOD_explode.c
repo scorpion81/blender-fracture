@@ -131,6 +131,7 @@ static void freeCells(ExplodeModifierData* emd)
 				if (emd->cells->data[c].storage!= NULL)
 				{
 					BKE_submesh_free(emd->cells->data[c].storage);
+					emd->cells->data[c].storage = NULL;
 				}
 
 				if (emd->cells->data[c].vert_indexes != NULL)
@@ -187,6 +188,7 @@ static void freeData(ModifierData *md)
 	if (emd->storage != NULL)
 	{
 		BKE_submesh_free(emd->storage);
+		emd->storage = NULL;
 	}
 }
 
@@ -1470,12 +1472,12 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 
 	INIT_MINMAX(min, max);
 
-	if (emd->use_boolean) {
+	/*if (emd->use_boolean) {
 		//theta = -0.01f;
 		//make container bigger for boolean case,so cube and container dont have equal size which can lead to boolean errors
 		//if (emd->flip_normal)
 		{	//cubes usually need flip_normal, so enable theta only here, otherwise it will be subtracted
-			theta = 0.01f;
+			//theta = 0.0001f;
 		}
 		BKE_mesh_minmax(ob->data, min, max);
 	}
@@ -1483,8 +1485,13 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 		//con = voronoi.domain(xmin-theta,xmax+theta,ymin-theta,ymax+theta,zmin-theta,zmax+theta,nx,ny,nz,False, False, False, particles)
 		//dm_minmax(derivedData, min, max);
 		BKE_mesh_minmax(ob->data, min, max);
+	}*/
+
+	if (emd->use_boolean) {
+		theta = 0.0001f;
 	}
 
+	BKE_mesh_minmax(ob->data, min, max);
 	//use global coordinates for container
 	mul_v3_m4v3(min, ob->obmat, min);
 	mul_v3_m4v3(max, ob->obmat, max);
@@ -1512,8 +1519,10 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 
 	if (emd->point_source & eOwnVerts)
 	{
-		//make container a little bigger ?
-		if (!emd->use_boolean) theta = 0.01f;
+		//make container a little bigger ? or some noise ?
+		if (!emd->use_boolean) {
+			theta = 0.0001f;
+		}
 	}
 	container = container_new(min[0]-theta, max[0]+theta, min[1]-theta, max[1]+theta, min[2]-theta, max[2]+theta,
 							  n_size, n_size, n_size, FALSE, FALSE, FALSE, totpoint);
@@ -1835,6 +1844,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 					CustomData_bmesh_init_pool(&bmsub->pdata, bm_mesh_allocsize_default.totface, BM_FACE);*/
 
 					BKE_submesh_free(emd->cells->data[emd->cells->count].storage);
+					emd->cells->data[emd->cells->count].storage = NULL;
 					emd->cells->data[emd->cells->count].storage = BKE_bmesh_to_submesh(bmsub);
 					BM_mesh_free(bmsub);
 					
@@ -1986,6 +1996,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 			//EOF reached, free last vertco/vertices
 			MEM_freeN(emd->cells->data[emd->cells->count].vertco);
 			MEM_freeN(emd->cells->data[emd->cells->count].vertices);
+			MEM_freeN(emd->cells->data[emd->cells->count].vert_indexes);
 		}
 
 		vert_index = 0;
@@ -2243,6 +2254,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				}
 				emd->fracMesh = fractureToCells(ob, derivedData, emd, oldobmat);
 				BKE_submesh_free(emd->storage); // in case this is not the first call;
+				emd->storage = NULL;
 
 				if (emd->fracMesh != NULL) {
 					BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "recalc_face_normals faces=%af use_flip=%b", BM_FACES_OF_MESH, false);

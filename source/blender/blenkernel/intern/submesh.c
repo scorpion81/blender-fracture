@@ -131,7 +131,10 @@ static SMEdge smedge_from_bmedge(BMEdge* e)
 	SMEdge se;
 	se.v1 = e->v1->head.index;
 	se.v2 = e->v2->head.index;
-	se.l = e->l->head.index;
+	if (e->l)
+		se.l = e->l->head.index;
+	else
+		se.l = -1;
 	se.head.index = e->head.index;
 	se.head.data = e->head.data;
 
@@ -144,7 +147,10 @@ static SMVert smvert_from_bmvert(BMVert* v) {
 	sv.head.data = v->head.data;
 	copy_v3_v3(sv.co, v->co);
 	copy_v3_v3(sv.no, v->no);
-	sv.e = v->e->head.index;
+	if (v->e)
+		sv.e = v->e->head.index;
+	else
+		sv.e = -1;
 	return sv;
 }
 
