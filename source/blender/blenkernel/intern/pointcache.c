@@ -934,9 +934,11 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUS
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_RigidBody) {
 			rmd = (RigidBodyModifierData*)md;
-			mi = BLI_findlink(&rmd->meshIslands, offset);
-			rbo = mi->rigidbody;
-			break;
+			if ((rmd != NULL) && (rmd->modifier.mode & eModifierMode_Realtime)) {
+				mi = BLI_findlink(&rmd->meshIslands, offset);
+				rbo = mi->rigidbody;
+				break;
+			}
 		}
 	}
 	/* don't have rigid body modifier, use regular object */
@@ -979,10 +981,13 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float UNU
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_RigidBody) {
 			rmd = (RigidBodyModifierData*)md;
-			mi = BLI_findlink(&rmd->meshIslands, offset);
-			if (!mi) continue; //workaround for changing count of rigidbodies/meshislands while cache is valid
-			rbo = mi->rigidbody;
-			break;
+			if ((rmd != NULL) && (rmd->modifier.mode & eModifierMode_Realtime))
+			{
+				mi = BLI_findlink(&rmd->meshIslands, offset);
+				if (!mi) continue; //workaround for changing count of rigidbodies/meshislands while cache is valid
+				rbo = mi->rigidbody;
+				break;
+			}
 		}
 	}
 	/* don't have rigid body modifier, use regular object */
@@ -1033,9 +1038,11 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_RigidBody) {
 			rmd = (RigidBodyModifierData*)md;
-			mi = BLI_findlink(&rmd->meshIslands, offset);
-			rbo = mi->rigidbody;
-			break;
+			if ((rmd != NULL) && (rmd->modifier.mode & eModifierMode_Realtime)) {
+				mi = BLI_findlink(&rmd->meshIslands, offset);
+				rbo = mi->rigidbody;
+				break;
+			}
 		}
 	}
 	/* don't have rigid body modifier, use regular object */

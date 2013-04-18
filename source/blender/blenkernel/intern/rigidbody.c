@@ -1448,7 +1448,7 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi
 		scene->rigidbody_world = rbw;
 	}
 	if (rbw->group == NULL) {
-		rbw->group = add_group(G.main, "RigidBodyWorld");
+		rbw->group = BKE_group_add(G.main, "RigidBodyWorld");
 	}
 
 	/* make rigidbody object settings */
@@ -1460,7 +1460,7 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi
 		ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_VALIDATE;
 
 		/* add object to rigid body group */
-		add_to_group(rbw->group, ob, scene, NULL);
+		BKE_group_object_add(rbw->group, ob, scene, NULL);
 
 		//DAG_id_tag_update(&ob->id, OB_RECALC_OB);
 	}
@@ -2253,12 +2253,12 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 			if (!is_zero_m4(rmd->origmat))
 				copy_m4_m4(ob->obmat, rmd->origmat);
 
-			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
-				rbo = mi->rigidbody;
-				if (!rbo)
-					break;
-				/* use rigid body transform after cache start frame if objects is not being transformed */
-				if ((ctime > rbw->pointcache->startframe && !(ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ))) {
+				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+					rbo = mi->rigidbody;
+					if (!rbo)
+						break;
+					/* use rigid body transform after cache start frame if objects is not being transformed */
+					if (BKE_rigidbody_check_sim_running(rbw, ctime) & !(ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
 
 				/* keep original transform when the simulation is muted */
 					if (rbw->flag & RBW_FLAG_MUTED)
@@ -2295,29 +2295,25 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 		if (BKE_rigidbody_check_sim_running(rbw, ctime) && !(ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
 			float mat[4][4], size_mat[4][4], size[3];
 
-	/* use rigid body transform after cache start frame if objects is not being transformed */
-	if (BKE_rigidbody_check_sim_running(rbw, ctime) && !(ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
-		float mat[4][4], size_mat[4][4], size[3];
-
-		normalize_qt(rbo->orn); // RB_TODO investigate why quaternion isn't normalized at this point
-		quat_to_mat4(mat, rbo->orn);
-		copy_v3_v3(mat[3], rbo->pos);
-
-			/* keep original transform when the simulation is muted */
-			if (rbw->flag & RBW_FLAG_MUTED)
-				return;
-
 			normalize_qt(rbo->orn); // RB_TODO investigate why quaternion isn't normalized at this point
 			quat_to_mat4(mat, rbo->orn);
 			copy_v3_v3(mat[3], rbo->pos);
 
-			mat4_to_size(size, ob->obmat);
-			size_to_mat4(size_mat, size);
-			mult_m4_m4m4(mat, mat, size_mat);
+				/* keep original transform when the simulation is muted */
+				if (rbw->flag & RBW_FLAG_MUTED)
+					return;
 
-			copy_m4_m4(ob->obmat, mat);
+				normalize_qt(rbo->orn); // RB_TODO investigate why quaternion isn't normalized at this point
+				quat_to_mat4(mat, rbo->orn);
+				copy_v3_v3(mat[3], rbo->pos);
+
+				mat4_to_size(size, ob->obmat);
+				size_to_mat4(size_mat, size);
+				mult_m4_m4m4(mat, mat, size_mat);
+
+				copy_m4_m4(ob->obmat, mat);
 		}
-		/* otherwise set rigid body transform to current obmat */
+			/* otherwise set rigid body transform to current obmat */
 		else {
 			mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
 		}
