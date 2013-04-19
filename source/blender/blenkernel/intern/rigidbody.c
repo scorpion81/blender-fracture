@@ -872,8 +872,8 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 		BKE_rigidbody_validate_sim_shard_shape(mi, ob, true);
 
 	if (rbo->physics_object) {
-		if (rebuild == false)
-			RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
+		//if (rebuild == false)
+		RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
 	}
 	if (!rbo->physics_object || rebuild) {
 		/* remove rigid body if it already exists before creating a new one */
@@ -917,7 +917,7 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 	if (rbw && rbw->physics_world && rbo->physics_object)
 		RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups, mi);
 
-	//rbo->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
+	rbo->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
 }
 
 
