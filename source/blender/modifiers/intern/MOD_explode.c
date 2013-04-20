@@ -1787,7 +1787,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 
 						if (!emd->tempOb->data)
 						{
-							emd->tempOb->data = BKE_object_obdata_add_from_type(OB_MESH);
+							emd->tempOb->data = BKE_object_obdata_add_from_type(G.main, OB_MESH);
 							//object_add_material_slot(emd->tempOb);
 						}
 
