@@ -1228,7 +1228,8 @@ static int points_from_verts(Object** ob, int totobj, float*** points, int p_exi
 	return pt;
 }
 
-static int points_from_particles(Object** ob, int totobj, Scene* scene, float*** points, int p_exist, float thresh)
+static int points_from_particles(Object** ob, int totobj, Scene* scene, float*** points, int p_exist, float mat[4][4],
+								 float thresh, ExplodeModifierData* emd)
 {
 	int o, p, pt = p_exist;
 	ParticleSystemModifierData* psmd;
@@ -1243,19 +1244,31 @@ static int points_from_particles(Object** ob, int totobj, Scene* scene, float***
 		{
 			if (mod->type == eModifierType_ParticleSystem)
 			{
+				float imat[4][4];
 				psmd = (ParticleSystemModifierData*)mod;
 				sim.scene = scene;
 				sim.ob = ob[o];
 				sim.psys = psmd->psys;
 				sim.psmd = psmd;
-				
+				invert_m4_m4(imat, mat);
+
 				for (p = 0, pa = psmd->psys->particles; p < psmd->psys->totpart; p++, pa++)
 				{
 					if (BLI_frand() < thresh) {
+						float co[3];
 						psys_get_birth_coordinates(&sim, pa, &birth, 0, 0);
 						*points = MEM_reallocN(*points, (pt+1)*sizeof(float*));
 						(*points)[pt] = MEM_callocN(3*sizeof(float), "points[pt]");
-						copy_v3_v3((*points)[pt], birth.co);
+						copy_v3_v3(co, birth.co);
+
+						if ((o > 0) ||
+						   ((emd->point_source & eExtraParticles) &&
+						   (!(emd->point_source & eOwnParticles)) && (o == 0)))
+						{
+							//mul_m4_v3(ob[o]->obmat, co);
+							mul_m4_v3(imat, co);
+						}
+						copy_v3_v3((*points)[pt], co);
 						pt++;
 					}
 				}
@@ -1311,40 +1324,6 @@ static int points_from_greasepencil(Object** ob, int totobj, float*** points, in
 	return pt;
 }
 
-/*static int isChild(Object* ob, Object* child)
-{
-	Object *par;
-	if (child->parent && child->parent == ob)
-	{
-		return TRUE;
-	}
-	
-	for (par = child->parent; par; par = par->parent) {
-		if (par == ob) {
-			return TRUE;
-		}
-	}
-	return FALSE;
-}
-
-static int getChildren(Scene* scene, Object* ob, Object** children)
-{
-	Base* base;
-	int ctr = 0;
-	
-	for (base = scene->base.first; base; base = base->next)
-	{
-		if (isChild(ob, base->object))
-		{
-			*children = MEM_reallocN(*children, sizeof(Object) * (ctr+1));
-			*children[ctr] = *(base->object);
-			ctr++;
-		}
-	}
-	
-	return ctr;
-}*/
-
 static int getGroupObjects(Group *gr, Object ***obs, int g_exist)
 {
 	int ctr = g_exist;
@@ -1371,7 +1350,9 @@ static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float 
 	if (emd->point_source & (eExtraParticles | eExtraVerts ))
 	{
 		if (((emd->point_source & eOwnParticles) && (emd->point_source & eExtraParticles)) ||
-			((emd->point_source & eOwnVerts) && (emd->point_source & eExtraVerts)))
+			((emd->point_source & eOwnVerts) && (emd->point_source & eExtraVerts)) ||
+			((emd->point_source & eGreasePencil) && (emd->point_source & eExtraParticles)) ||
+			(emd->point_source & eGreasePencil) && (emd->point_source & eExtraVerts))
 		{
 			go = MEM_reallocN(go, sizeof(Object*)*(totgroup+1));
 			go[totgroup] = ob;
@@ -1388,7 +1369,7 @@ static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float 
 	
 	if (emd->point_source & (eOwnParticles | eExtraParticles))
 	{
-		totpoint = points_from_particles(go, totgroup, scene, points, totpoint, thresh);
+		totpoint = points_from_particles(go, totgroup, scene, points, totpoint, mat, thresh, emd);
 	}
 	
 	if (emd->point_source & (eOwnVerts | eExtraVerts))
@@ -1408,21 +1389,43 @@ static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float 
 		float bbox_min[3], bbox_max[3];
 
 		if (emd->noise > 0.0f) {
-			float scalar, size[3], rand[3] = {0, 0, 0};
+			float scalar, size[3], rand[3] = {0, 0, 0}, temp_x[3], temp_y[3], temp_z[3], rand_x[3], rand_y[3], rand_z[3];
 			mul_v3_m4v3(bbox_min, ob->obmat, bb->vec[0]);
 			mul_v3_m4v3(bbox_max, ob->obmat, bb->vec[6]);
 			sub_v3_v3v3(size, bbox_max, bbox_min);
 
 			scalar = emd->noise * len_v3(size) / 2.0f;
-			rand[0] = 2.0f * BLI_frand() - 1.0f;
-			rand[1] = 2.0f * BLI_frand() - 1.0f;
-			rand[2] = 2.0f * BLI_frand() - 1.0f;
+			rand[0] = 2.0f * (BLI_frand() - 0.5f);
+			rand[1] = 2.0f * (BLI_frand() - 0.5f);
+			rand[2] = 2.0f * (BLI_frand() - 0.5f);
 
-			//add_v3_v3(pt, rand);
-			//mul_v3_fl(pt, scalar * BLI_frand());
-			(*points)[t][0] += (rand[0] * scalar * BLI_frand());
-			(*points)[t][1] += (rand[1] * scalar * BLI_frand());
-			(*points)[t][2] += (rand[2] * scalar * BLI_frand());
+			rand[0] *= (scalar * BLI_frand());
+			rand[1] *= (scalar * BLI_frand());
+			rand[2] *= (scalar * BLI_frand());
+
+			//test each component separately
+			zero_v3(rand_x);
+			rand_x[0] = rand[0];
+
+			zero_v3(rand_y);
+			rand_y[1] = rand[1];
+
+			zero_v3(rand_z);
+			rand_z[2] = rand[2];
+
+			add_v3_v3v3(temp_x, (*points)[t], rand_x);
+			add_v3_v3v3(temp_y, (*points)[t], rand_y);
+			add_v3_v3v3(temp_z, (*points)[t], rand_z);
+
+			//stay inside bounds !!
+			if ((temp_x[0] >= bb->vec[0][0]) && (temp_x[0] <= bb->vec[6][0]))
+				add_v3_v3((*points)[t], rand_x);
+
+			if ((temp_y[1] >= bb->vec[0][1]) && (temp_y[1] <= bb->vec[6][1]))
+				add_v3_v3((*points)[t], rand_y);
+
+			if ((temp_z[2] >= bb->vec[0][2]) && (temp_z[2] <= bb->vec[6][2]))
+				add_v3_v3((*points)[t], rand_z);
 		}
 	}
 
