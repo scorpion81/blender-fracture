@@ -39,10 +39,22 @@ BMesh* BKE_submesh_to_bmesh(SMesh* sm)
 	BMesh* bm = BM_mesh_create(&bm_mesh_allocsize_default);
 	BM_mesh_elem_toolflags_ensure(bm);
 
+	CustomData_copy(&sm->vdata, &bm->vdata, CD_MASK_BMESH, CD_CALLOC, sm->totvert);
+	CustomData_copy(&sm->edata, &bm->edata, CD_MASK_BMESH, CD_CALLOC, sm->totedge);
+	CustomData_copy(&sm->ldata, &bm->ldata, CD_MASK_BMESH, CD_CALLOC, sm->totloop);
+	CustomData_copy(&sm->pdata, &bm->pdata, CD_MASK_BMESH, CD_CALLOC, sm->totface);
+
+	CustomData_bmesh_init_pool(&bm->vdata, sm->totvert, BM_VERT);
+	CustomData_bmesh_init_pool(&bm->edata, sm->totedge, BM_EDGE);
+	CustomData_bmesh_init_pool(&bm->ldata, sm->totloop, BM_LOOP);
+	CustomData_bmesh_init_pool(&bm->pdata, sm->totface, BM_FACE);
+
+
 	for (i = 0; i < sm->totvert; i++)
 	{
 		SMVert sv = sm->vpool[i];
-		BM_vert_create(bm, sv.co, NULL, 0);
+		BMVert* v = BM_vert_create(bm, sv.co, NULL, BM_CREATE_SKIP_CD);
+		CustomData_to_bmesh_block(&sm->vdata, &bm->vdata, i, &v->head.data, false);
 	}
 
 	for (i = 0; i < sm->totedge; i++)
@@ -50,15 +62,19 @@ BMesh* BKE_submesh_to_bmesh(SMesh* sm)
 		SMEdge se = sm->epool[i];
 		BMVert* v1 = BM_vert_at_index(bm, se.v1);
 		BMVert* v2 = BM_vert_at_index(bm, se.v2);
-
-		BM_edge_create(bm, v1, v2, NULL, 0);
+		BMEdge* e = BM_edge_create(bm, v1, v2, NULL, BM_CREATE_SKIP_CD);
+		CustomData_to_bmesh_block(&sm->edata, &bm->edata, i, &e->head.data, true);
 	}
 
 	for (i = 0; i < sm->totface; i++)
 	{
+		BMFace* f = NULL;
 		BMVert** ve = MEM_mallocN(sizeof(BMVert*), "read_submesh->ve");
 		BMEdge** ed = MEM_mallocN(sizeof(BMEdge*), "read_submesh->ed");
 		SMFace sf = sm->fpool[i];
+		BMIter iter;
+		int k = 0;
+		BMLoop* l;
 
 		for (j = sf.l_first; j < sf.l_first + sf.len; j++)
 		{
@@ -72,16 +88,17 @@ BMesh* BKE_submesh_to_bmesh(SMesh* sm)
 			ve[j-sf.l_first] = v;
 		}
 
-		BM_face_create(bm, ve, ed, sf.len, 0);
-		//BM_elem_index_set(face, i);
+		f = BM_face_create(bm, ve, ed, sf.len, BM_CREATE_SKIP_CD);
+		CustomData_to_bmesh_block(&sm->pdata, &bm->pdata, i, &f->head.data, true);
+
+		BM_ITER_ELEM(l, &iter, f, BM_LOOPS_OF_FACE) {
+			CustomData_to_bmesh_block(&sm->ldata, &bm->ldata, k, &l->head.data, true);
+			k++;
+		}
+
 		MEM_freeN(ve);
 		MEM_freeN(ed);
 	}
-
-	CustomData_copy(&sm->vdata, &bm->vdata, CD_MASK_BMESH, CD_DUPLICATE, sm->totvert);
-	CustomData_copy(&sm->edata, &bm->edata, CD_MASK_BMESH, CD_DUPLICATE, sm->totedge);
-	CustomData_copy(&sm->ldata, &bm->ldata, CD_MASK_BMESH, CD_DUPLICATE, sm->totloop);
-	CustomData_copy(&sm->pdata, &bm->pdata, CD_MASK_BMESH, CD_DUPLICATE, sm->totface);
 
 	return bm;
 }
@@ -105,7 +122,7 @@ static SMFace smface_from_bmface(BMFace* f)
 {
 	SMFace sf;
 	sf.head.index = f->head.index;
-	sf.head.data = f->head.data;
+	sf.head.data = NULL;
 	sf.l_first = f->l_first->head.index;
 	sf.len = f->len;
 	sf.mat_nr = f->mat_nr;
@@ -118,7 +135,7 @@ static SMLoop smloop_from_bmloop(BMLoop* l)
 {
 	SMLoop sl;
 	sl.head.index = l->head.index;
-	sl.head.data = l->head.data;
+	sl.head.data = NULL;
 	sl.e = l->e->head.index;
 	sl.v = l->v->head.index;
 	sl.f = l->f->head.index;
@@ -136,15 +153,14 @@ static SMEdge smedge_from_bmedge(BMEdge* e)
 	else
 		se.l = -1;
 	se.head.index = e->head.index;
-	se.head.data = e->head.data;
-
+	se.head.data = NULL;
 	return se;
 }
 
 static SMVert smvert_from_bmvert(BMVert* v) {
 	SMVert sv;
 	sv.head.index = v->head.index;
-	sv.head.data = v->head.data;
+	sv.head.data = NULL;
 	copy_v3_v3(sv.co, v->co);
 	copy_v3_v3(sv.no, v->no);
 	if (v->e)
@@ -194,6 +210,11 @@ SMesh* BKE_bmesh_to_submesh(BMesh* bm)
 	SMesh* sm = submesh_create();
 	int i = 0, j = 0;
 
+	CustomData_copy(&bm->vdata, &sm->vdata, CD_MASK_BMESH, CD_CALLOC, bm->totvert);
+	CustomData_copy(&bm->edata, &sm->edata, CD_MASK_BMESH, CD_CALLOC, bm->totedge);
+	CustomData_copy(&bm->ldata, &sm->ldata, CD_MASK_BMESH, CD_CALLOC, bm->totloop);
+	CustomData_copy(&bm->pdata, &sm->pdata, CD_MASK_BMESH, CD_CALLOC, bm->totface);
+
 	//first set indexes everywhere,
 	BM_ITER_MESH(v, &iter, bm, BM_VERTS_OF_MESH)
 	{
@@ -225,6 +246,7 @@ SMesh* BKE_bmesh_to_submesh(BMesh* bm)
 	BM_ITER_MESH(v, &iter, bm, BM_VERTS_OF_MESH)
 	{
 		SMVert sv = smvert_from_bmvert(v);
+		CustomData_from_bmesh_block(&bm->vdata, &sm->vdata, v->head.data, v->head.index);
 		sm->vpool = MEM_reallocN(sm->vpool, sizeof(SMVert) * (sm->totvert+1));
 		sm->vpool[sm->totvert] = sv;
 		sm->totvert++;
@@ -234,6 +256,7 @@ SMesh* BKE_bmesh_to_submesh(BMesh* bm)
 	BM_ITER_MESH(e, &iter, bm, BM_EDGES_OF_MESH)
 	{
 		SMEdge se = smedge_from_bmedge(e);
+		CustomData_from_bmesh_block(&bm->edata, &sm->edata, e->head.data, e->head.index);
 		sm->epool = MEM_reallocN(sm->epool, sizeof(SMEdge) * (sm->totedge+1));
 		sm->epool[sm->totedge] = se;
 		sm->totedge++;
@@ -242,6 +265,7 @@ SMesh* BKE_bmesh_to_submesh(BMesh* bm)
 	BM_ITER_MESH(f, &iter, bm, BM_FACES_OF_MESH)
 	{
 		SMFace sf = smface_from_bmface(f);
+		CustomData_from_bmesh_block(&bm->pdata, &sm->pdata, f->head.data, f->head.index);
 		sm->fpool = MEM_reallocN(sm->fpool, sizeof(SMFace) * (sm->totface+1));
 		sm->fpool[sm->totface] = sf;
 		sm->totface++;
@@ -249,16 +273,12 @@ SMesh* BKE_bmesh_to_submesh(BMesh* bm)
 		BM_ITER_ELEM(l, &iter2, f, BM_LOOPS_OF_FACE)
 		{
 			SMLoop sl = smloop_from_bmloop(l);
+			CustomData_from_bmesh_block(&bm->ldata, &sm->ldata, l->head.data, l->head.index);
 			sm->lpool = MEM_reallocN(sm->lpool, sizeof(SMLoop) * (sm->totloop+1));
 			sm->lpool[sm->totloop] = sl;
 			sm->totloop++;
 		}
 	}
-
-	CustomData_copy(&bm->vdata, &sm->vdata, CD_MASK_BMESH, CD_DUPLICATE, sm->totvert);
-	CustomData_copy(&bm->edata, &sm->edata, CD_MASK_BMESH, CD_DUPLICATE, sm->totedge);
-	CustomData_copy(&bm->ldata, &sm->ldata, CD_MASK_BMESH, CD_DUPLICATE, sm->totloop);
-	CustomData_copy(&bm->pdata, &sm->pdata, CD_MASK_BMESH, CD_DUPLICATE, sm->totface);
 
 	return sm;
 }

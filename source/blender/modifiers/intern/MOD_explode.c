@@ -1352,7 +1352,7 @@ static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float 
 		if (((emd->point_source & eOwnParticles) && (emd->point_source & eExtraParticles)) ||
 			((emd->point_source & eOwnVerts) && (emd->point_source & eExtraVerts)) ||
 			((emd->point_source & eGreasePencil) && (emd->point_source & eExtraParticles)) ||
-			(emd->point_source & eGreasePencil) && (emd->point_source & eExtraVerts))
+			((emd->point_source & eGreasePencil) && (emd->point_source & eExtraVerts)))
 		{
 			go = MEM_reallocN(go, sizeof(Object*)*(totgroup+1));
 			go[totgroup] = ob;
@@ -2368,6 +2368,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 				if (mtface)
 				{
+					BMesh* bm_result;
 					CustomData *fdata, *pdata, *ldata;
 					fdata = &result->faceData;
 					ldata = &result->loopData;
@@ -2380,9 +2381,15 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					MEM_freeN(mtface);
 					MEM_freeN(mtps);
 					MEM_freeN(mluvs);
+
+					//store bmesh again in this case, here the customdata should be added already
+					bm_result = DM_to_bmesh(result);
+					BKE_submesh_free(emd->storage);
+					emd->storage = BKE_bmesh_to_submesh(bm_result);
+					BM_mesh_free(bm_result);
 				}
 			}
-			emd->use_cache = TRUE;
+			emd->use_cache = MOD_VORONOI_USECACHE;
 			return result;
 #else
 			emd->mode = eFractureMode_Faces;
