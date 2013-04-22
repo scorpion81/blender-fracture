@@ -2368,7 +2368,6 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 				if (mtface)
 				{
-					BMesh* bm_result;
 					CustomData *fdata, *pdata, *ldata;
 					fdata = &result->faceData;
 					ldata = &result->loopData;
@@ -2381,12 +2380,6 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					MEM_freeN(mtface);
 					MEM_freeN(mtps);
 					MEM_freeN(mluvs);
-
-					//store bmesh again in this case, here the customdata should be added already
-					bm_result = DM_to_bmesh(result);
-					BKE_submesh_free(emd->storage);
-					emd->storage = BKE_bmesh_to_submesh(bm_result);
-					BM_mesh_free(bm_result);
 				}
 			}
 			emd->use_cache = MOD_VORONOI_USECACHE;

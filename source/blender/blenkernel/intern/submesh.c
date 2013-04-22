@@ -196,6 +196,12 @@ void BKE_submesh_free(SMesh* sm)
 		sm->fpool = NULL;
 	}
 
+	CustomData_free(&sm->vdata, sm->totvert);
+	CustomData_free(&sm->edata, sm->totedge);
+	CustomData_free(&sm->ldata, sm->totloop);
+	CustomData_free(&sm->pdata, sm->totface);
+
+
 	MEM_freeN(sm);
 	sm = NULL;
 }
