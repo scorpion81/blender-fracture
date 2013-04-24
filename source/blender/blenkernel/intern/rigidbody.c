@@ -1207,9 +1207,9 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 		}
 
 		//mat4_to_loc_quat(loc, rot, ob->obmat);
-		/*copy_v3_v3(loc, rbc->mi1->rigidbody->pos);
-		add_v3_v3(loc, rbc->mi2->rigidbody->pos);
-		mul_v3_fl(loc, 0.5f);*/
+		//copy_v3_v3(loc, rbc->mi1->rigidbody->pos);
+		//add_v3_v3(loc, rbc->mi2->rigidbody->pos);
+		//mul_v3_fl(loc, 0.5f);
 
 		//do this for all inner constraints
 		copy_v3_v3(loc, rbc->mi1->rigidbody->pos);
@@ -1224,19 +1224,46 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 
 				if ((index1 == -1) || (index2 == -1)) //outer constraint if not both meshislands in same object
 				{
+					float master[3], slave[3], center[3];
+					copy_v3_v3(master, rbw->objects[rbw->cache_index_map[rbc->mi1->linear_index]]->loc);
+					copy_v3_v3(slave, rbw->objects[rbw->cache_index_map[rbc->mi2->linear_index]]->loc);
+					add_v3_v3v3(center, master, slave);
+					mul_v3_fl(center, 0.5f);
+
 					if (rmd->outer_constraint_location == MOD_RIGIDBODY_ACTIVE)
 					{
-						copy_v3_v3(loc, rbc->mi2->rigidbody->pos);
+						if (rbc->type == RBC_TYPE_FIXED)
+						{
+							copy_v3_v3(loc, rbc->mi2->rigidbody->pos);
+						}
+						else
+						{
+							copy_v3_v3(loc, slave);
+						}
 					}
 					else if (rmd->outer_constraint_location == MOD_RIGIDBODY_SELECTED)
 					{
-						copy_v3_v3(loc, rbc->mi1->rigidbody->pos);
+						if (rbc->type == RBC_TYPE_FIXED)
+						{
+							copy_v3_v3(loc, rbc->mi1->rigidbody->pos);
+						}
+						else
+						{
+							copy_v3_v3(loc, master);
+						}
 					}
 					else if (rmd->outer_constraint_location == MOD_RIGIDBODY_CENTER)
 					{
-						copy_v3_v3(loc, rbc->mi1->rigidbody->pos);
-						add_v3_v3(loc, rbc->mi2->rigidbody->pos);
-						mul_v3_fl(loc, 0.5f);
+						if (rbc->type == RBC_TYPE_FIXED)
+						{
+							copy_v3_v3(loc, rbc->mi1->rigidbody->pos);
+							add_v3_v3(loc, rbc->mi2->rigidbody->pos);
+							mul_v3_fl(loc, 0.5f);
+						}
+						else
+						{
+							copy_v3_v3(loc, center);
+						}
 					}
 				}
 			}
@@ -2064,6 +2091,10 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 					if (index1 == -1 && rbsc->mi1 != NULL) {
 						Object* obj = rbw->objects[rbw->cache_index_map[rbsc->mi1->linear_index]];
 						if (rbsc->mi1->rigidbody == NULL) {
+							if (rbsc->mi1->physics_mesh == NULL) {
+								//eeek... should not happen
+								continue;
+							}
 							rbsc->mi1->rigidbody = BKE_rigidbody_create_shard(scene, obj, rbsc->mi1);
 							BKE_rigidbody_calc_shard_mass(obj, rbsc->mi1);
 							BKE_rigidbody_validate_sim_shard(rbw, rbsc->mi1, obj, true);
@@ -2082,6 +2113,10 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 						Object* obj = rbw->objects[rbw->cache_index_map[rbsc->mi2->linear_index]];
 
 						if (rbsc->mi2->rigidbody == NULL) {
+							if (rbsc->mi2->physics_mesh == NULL) {
+								//eeek... should not happen
+								continue;
+							}
 							rbsc->mi2->rigidbody = BKE_rigidbody_create_shard(scene, obj, rbsc->mi2);
 							BKE_rigidbody_calc_shard_mass(obj, rbsc->mi2);
 							BKE_rigidbody_validate_sim_shard(rbw, rbsc->mi2, obj, true);

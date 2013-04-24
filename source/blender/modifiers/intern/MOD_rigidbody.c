@@ -521,8 +521,9 @@ static void check_meshislands_adjacency(RigidBodyModifierData* rmd, MeshIsland* 
 	//equal = equal && (mi->parent_mod == rmd);
 
 	thresh = equal ? rmd->breaking_threshold : rmd->group_breaking_threshold;
-	dist = equal ? rmd->contact_dist : rmd->group_contact_dist;
 	con_type = equal ? rmd->inner_constraint_type : rmd->outer_constraint_type;
+	dist = equal ? rmd->contact_dist : rmd->outer_constraint_type == RBC_TYPE_FIXED ? rmd->group_contact_dist : 0;
+	//connect here only in "fixed" case, otherwise its done separately
 
 	//select "our" vertices
 	for (v = 0; v < mi2->vertex_count; v++) {
@@ -709,6 +710,169 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 	}
 
 	BLI_kdtree_balance(face_tree);
+
+	//handle outer constraints here, connect the closest pairs of meshislands (1 per object) only
+	if (rmd->use_constraints && rmd->constraint_group != NULL) {
+		GroupObject *go, *go2;
+		ModifierData *md, *md2;
+		RigidBodyModifierData* rbmd;
+		MeshIsland* mil;
+		GHash* trees = BLI_ghash_ptr_new("trees");
+		GHash* closest_all = BLI_ghash_ptr_new("closest_all");
+		GHashIterator it, it2, it3, it4;
+
+		KDTree *tree, *obtree;
+		int count, x = 0, y = 0, obcount;
+
+		count = BLI_countlist(&rmd->meshIslands);
+		obcount = BLI_countlist(&rmd->constraint_group->gobject)+1;
+		tree = BLI_kdtree_new(count);
+		obtree = BLI_kdtree_new(obcount);
+		for (mil = rmd->meshIslands.first; mil; mil = mil->next) {
+			BLI_kdtree_insert(tree, x, mil->centroid, NULL);
+			x++;
+		}
+
+		BLI_kdtree_balance(tree);
+		BLI_ghash_insert(trees, ob, tree);
+
+		x = 0;
+		for (go = rmd->constraint_group->gobject.first; go; go = go->next) {
+
+			for (md = go->ob->modifiers.first; md; md = md->next) {
+				if (md->type == eModifierType_RigidBody) {
+					rbmd = (RigidBodyModifierData*)md;
+					count = BLI_countlist(&rbmd->meshIslands);
+					tree = BLI_kdtree_new(count);
+					for (mil = rbmd->meshIslands.first; mil; mil = mil->next) {
+						BLI_kdtree_insert(tree, x, mil->centroid, NULL);
+						x++;
+					}
+
+					BLI_kdtree_balance(tree);
+					BLI_ghash_insert(trees, go->ob, tree);
+					BLI_kdtree_insert(obtree, y, go->ob->loc, NULL);
+					y++;
+				}
+			}
+		}
+
+		BLI_kdtree_insert(obtree, y, ob->loc, NULL);
+		BLI_kdtree_balance(obtree);
+
+		for (go = rmd->constraint_group->gobject.first; go; go = go->next) {
+			GHash* closest_ob = BLI_ghash_ptr_new("closest_ob");
+			for (md = go->ob->modifiers.first; md; md = md->next)
+			{
+				if (md->type == eModifierType_RigidBody) {
+					int index;
+
+					rbmd = (RigidBodyModifierData*)md;
+					tree = BLI_ghash_lookup(trees, ob);
+					index = BLI_kdtree_find_nearest(tree, go->ob->loc, NULL, NULL);
+					mil = BLI_findlink(&rmd->meshIslands, index);
+					BLI_ghash_insert(closest_ob, go->ob, mil);
+				}
+			}
+			BLI_ghash_insert(closest_all, ob, closest_ob);
+		}
+
+		for (go = rmd->constraint_group->gobject.first; go; go = go->next) {
+			for (md = go->ob->modifiers.first; md; md = md->next)
+			{
+				if (md->type == eModifierType_RigidBody) {
+					GHash* closest_ob = BLI_ghash_ptr_new("closest_ob");
+					int index;
+					rbmd = (RigidBodyModifierData*)md;
+					tree = BLI_ghash_lookup(trees, go->ob);
+					//handle ob here too
+					index = BLI_kdtree_find_nearest(tree, ob->loc, NULL, NULL);
+					mil = BLI_findlink(&rbmd->meshIslands, index);
+					BLI_ghash_insert(closest_ob, ob, mil);
+
+					for (go2 = rmd->constraint_group->gobject.first; go2; go2 = go2->next) {
+						if (go2->ob != go->ob) {
+							for (md2 = go2->ob->modifiers.first; md2; md2 = md2->next) {
+								if (md2->type == eModifierType_RigidBody) {
+									index = BLI_kdtree_find_nearest(tree, go2->ob->loc, NULL, NULL);
+									mil = BLI_findlink(&rbmd->meshIslands, index);
+									BLI_ghash_insert(closest_ob, go2->ob, mil);
+								}
+							}
+						}
+					}
+
+					BLI_ghash_insert(closest_all, go->ob, closest_ob);
+				}
+			}
+		}
+
+		//connect the closestobjects
+		GHASH_ITER(it2, closest_all) {
+			MeshIsland* mil1, *mil2;
+			Object *ob1 = BLI_ghashIterator_getKey(&it2);
+			Object *ob2;
+
+			GHash* ob1_closest = BLI_ghashIterator_getValue(&it2);
+			GHash* ob2_closest;
+
+			RigidBodyShardCon* rbsc, *con;
+			int index, con_found = FALSE;
+
+			//find 2 nearest because the first is the object itself !!
+			KDTreeNearest* near = MEM_mallocN(sizeof(KDTreeNearest)*2, "near");
+			BLI_kdtree_find_n_nearest(obtree, 2, ob1->loc, NULL, near);
+			index = near[1].index;
+
+			if ((index < obcount-1) && (index >= 0)) {
+				GroupObject* go = BLI_findlink(&rmd->constraint_group->gobject, index);
+				ob2 = go->ob;
+			}
+			else if (index == obcount-1) {
+				ob2 = ob;
+			}
+
+			ob2_closest = BLI_ghash_lookup(closest_all, ob2);
+
+			//find closest pair of mesh islands for object pair
+			mil1 = BLI_ghash_lookup(ob1_closest, ob2);
+			mil2 = BLI_ghash_lookup(ob2_closest, ob1);
+
+			for (con = rmd->meshConstraints.first; con; con = con->next) {
+				if (((con->mi1 == mil1) && (con->mi2 == mil2)) ||
+					((con->mi1 == mil2 && (con->mi2 == mil1)))) {
+					con_found = TRUE;
+					break;
+				}
+			}
+
+			if (!con_found)
+			{
+				rbsc = BKE_rigidbody_create_shard_constraint(rmd->modifier.scene, rmd->outer_constraint_type);
+				rbsc->mi1 = mil1;
+				rbsc->mi2 = mil2;
+				rbsc->breaking_threshold = rmd->group_breaking_threshold;
+				BLI_addtail(&rmd->meshConstraints, rbsc);
+			}
+			//BLI_ghash_free(ob1_closest, NULL, NULL);
+			//BLI_ghash_free(ob2_closest, NULL, NULL);
+		}
+
+		GHASH_ITER(it3, closest_all)
+		{
+			GHash* h = BLI_ghashIterator_getValue(&it3);
+			BLI_ghash_free(h, NULL, NULL);
+		}
+
+		GHASH_ITER(it4, trees)
+		{
+			KDTree* t = BLI_ghashIterator_getValue(&it4);
+			BLI_kdtree_free(t);
+		}
+		BLI_ghash_free(trees, NULL, NULL);
+		BLI_ghash_free(closest_all, NULL, NULL);
+	}
+
 
 	BLI_kdtree_find_n_nearest(*combined_tree, count, meshIslands[0]->centroid, NULL, n2);
 
