@@ -3951,12 +3951,12 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Contact distance", "Distance up to which two vertices are considered to have contact");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
-	/*prop = RNA_def_property(srna, "group_contact_dist", PROP_FLOAT, PROP_NONE);
+	prop = RNA_def_property(srna, "group_contact_dist", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "group_contact_dist");
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_group_contact_dist_set", NULL);
-	RNA_def_property_ui_text(prop, "Group Contact distance", "Distance up to which two vertices belonging to shards of different object are considered to have contact");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
+	RNA_def_property_ui_text(prop, "Group Contact distance (Fixed Only)", "Distance up to which two vertices belonging to shards of different object are considered to have contact");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "constraint_group", PROP_POINTER, PROP_NONE);
 	RNA_def_property_ui_text(prop, "Constraint Group", "Group of objects (must have rigidbody modifier on them) between whose shards constraints should be built");

@@ -678,7 +678,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         layout.prop(md, "use_constraints")
         layout.prop(md, "constraint_group")
         layout.prop(md, "contact_dist")
-        #layout.prop(md, "group_contact_dist")
+        layout.prop(md, "group_contact_dist")
         layout.prop(md, "breaking_threshold")
         layout.prop(md, "group_breaking_threshold")
         layout.prop(md, "inner_constraint_type")

@@ -1515,7 +1515,7 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi
 		ob->rigidbody_object = BKE_rigidbody_create_object(scene, ob, RBO_TYPE_ACTIVE);
 	}
 	else {
-		ob->rigidbody_object->type = RBO_TYPE_ACTIVE;
+		//ob->rigidbody_object->type = RBO_TYPE_ACTIVE;
 		ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_VALIDATE;
 
 		/* add object to rigid body group */
