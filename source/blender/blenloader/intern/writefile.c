@@ -1515,6 +1515,7 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 				write_meshisland(wd, mi);
 			}
 
+			//WORKAROUND for Automerge
 			for (con = rmd->meshConstraints.first; con; con = con->next) {
 				con->physics_constraint = NULL;
 				con->flag |= RBC_FLAG_NEEDS_VALIDATE;

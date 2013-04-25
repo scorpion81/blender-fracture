@@ -875,8 +875,8 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 		BKE_rigidbody_validate_sim_shard_shape(mi, ob, true);
 
 	if (rbo->physics_object) {
-		//if (rebuild == false)
-		RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
+		if (rebuild == false)
+			RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
 	}
 	if (!rbo->physics_object || rebuild) {
 		/* remove rigid body if it already exists before creating a new one */
@@ -1999,7 +1999,7 @@ static void validateShard(RigidBodyWorld *rbw, MeshIsland* mi, Object* ob, int r
 		/* World has been rebuilt so rebuild object */
 		BKE_rigidbody_validate_sim_shard(rbw, mi, ob, true);
 	}
-	else if (mi->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE) {
+	else { // if (mi->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE) {
 		BKE_rigidbody_validate_sim_shard(rbw, mi, ob, false);
 	}
 	/* refresh shape... */
@@ -2049,7 +2049,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 
 				//those all need to be revalidated (?)
 
-				for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
+				/*for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
 					if (rbsc->mi1 != NULL && rbsc->mi1->rigidbody != NULL) {
 						if (rbsc->mi1->parent_mod != rmd)
 							rbsc->mi1->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
@@ -2059,7 +2059,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 						if (rbsc->mi2->parent_mod != rmd)
 							rbsc->mi2->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 					}
-				}
+				}*/
 
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 					if (mi->rigidbody == NULL) {
@@ -2108,6 +2108,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 						}
 						else
 						{
+							rbsc->mi1->rigidbody->flag |= RBO_FLAG_NEEDS_RESHAPE;
 							validateShard(rbw, rbsc->mi1, obj,
 											rebuild && (rbsc->mi1->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE));
 						}
@@ -2130,6 +2131,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 						}
 						else
 						{
+							rbsc->mi2->rigidbody->flag |= RBO_FLAG_NEEDS_RESHAPE;
 							validateShard(rbw, rbsc->mi2, obj,
 											rebuild && (rbsc->mi2->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE));
 						}
