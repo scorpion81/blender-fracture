@@ -4468,6 +4468,12 @@ static MeshIsland* read_meshisland(FileData *fd, MeshIsland *mi, RigidBodyModifi
 	mi->physics_mesh = BKE_submesh_to_bmesh(mi->storage);
 	mi->vert_indexes = newdataadr(fd, mi->vert_indexes);
 	mi->rigidbody = newdataadr(fd, mi->rigidbody);
+	if (mi->rigidbody != NULL) {
+		mi->rigidbody->physics_object = NULL;
+		mi->rigidbody->physics_shape = NULL;
+		mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+		mi->rigidbody->flag |= RBO_FLAG_NEEDS_RESHAPE;
+	}
 
 	mi->vertices = MEM_mallocN(sizeof(BMVert*) * mi->vertex_count, "mi->vertices");
 	for (i = 0; i < mi->vertex_count; i++) {

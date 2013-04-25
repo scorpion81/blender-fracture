@@ -116,7 +116,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	RigidBodyModifierData *trmd = (RigidBodyModifierData *)target;
 	MeshIsland* mi;
 	int i = 0;
-	RigidBodyShardCon* con;
+	//RigidBodyShardCon* con;
 
 	zero_m4(trmd->origmat);
 	trmd->refresh = rmd->refresh;

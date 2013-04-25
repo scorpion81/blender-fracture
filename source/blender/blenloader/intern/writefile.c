@@ -1477,10 +1477,50 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 			if (wmd->cmap_curve)
 				write_curvemapping(wd, wmd->cmap_curve);
 		}
-		else if(md->type==eModifierType_LaplacianDeform) {
-			LaplacianDeformModifierData *lmd = (LaplacianDeformModifierData*) md;
+		else if (md->type == eModifierType_Explode) {
+			ExplodeModifierData *emd = (ExplodeModifierData*) md;
+			if (emd->mode == eFractureMode_Cells) {
+				int i = 0;
 
-			writedata(wd, DATA, sizeof(float)*lmd->total_verts * 3, lmd->vertexco);
+				if (emd->cells == NULL) continue;
+				if (emd->storage == NULL) continue;
+				write_smesh(wd, emd->storage);
+				writestruct(wd, DATA, "KDTree", 1, emd->patree);
+				writestruct(wd, DATA, "VoronoiCells", 1, emd->cells);
+				writestruct(wd, DATA, "VoronoiCell", emd->cells->count, emd->cells->data);
+
+				for (i = 0; i < emd->cells->count; i++) {
+					write_voronoicell(wd, &emd->cells->data[i]);
+				}
+			}
+		}
+
+		else if (md->type == eModifierType_RigidBody) {
+
+			RigidBodyModifierData *rmd = (RigidBodyModifierData*)md;
+			MeshIsland *mi;
+			RigidBodyShardCon *con;
+			int i;
+
+			if (rmd->storage == NULL) continue;
+			write_smesh(wd, rmd->storage);
+			writedata(wd, DATA, rmd->sel_counter * sizeof(int*), rmd->sel_indexes);
+			for (i = 0; i < rmd->sel_counter; i++)
+			{
+				writedata(wd, DATA, sizeof(int)*2, rmd->sel_indexes[i]);
+			}
+
+			writelist(wd, DATA, "MeshIsland", &rmd->meshIslands);
+			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+				write_meshisland(wd, mi);
+			}
+
+			for (con = rmd->meshConstraints.first; con; con = con->next) {
+				con->physics_constraint = NULL;
+				con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+			}
+
+			writelist(wd, DATA, "RigidBodyShardCon", &rmd->meshConstraints);
 		}
 	}
 }

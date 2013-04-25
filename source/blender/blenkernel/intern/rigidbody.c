@@ -2265,9 +2265,6 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 							if (rbo->type == RBO_TYPE_PASSIVE)
 								RB_body_deactivate(rbo->physics_object);
 						}
-						else {
-							BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn);
-						}
 					}
 					modFound = TRUE;
 					break;
@@ -2334,7 +2331,7 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 					if (!rbo)
 						break;
 					/* use rigid body transform after cache start frame if objects is not being transformed */
-					if (BKE_rigidbody_check_sim_running(rbw, ctime) & !(ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
+					if (BKE_rigidbody_check_sim_running(rbw, ctime) && !(ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
 
 					/* keep original transform when the simulation is muted */
 						if (rbw->flag & RBW_FLAG_MUTED)
