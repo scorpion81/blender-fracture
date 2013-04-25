@@ -74,6 +74,9 @@
 
 #ifdef WITH_BULLET
 
+static bool isModifierActive(RigidBodyModifierData* rmd) {
+	return ((rmd != NULL) && (rmd->modifier.mode & eModifierMode_Realtime));// rmd->modifier.mode & eModifierMode_Render));
+}
 
 float BKE_rigidbody_calc_max_con_mass(Object* ob)
 {
@@ -1831,7 +1834,8 @@ static int rigidbody_count_shards(ListBase obs)
 		for (md = gob->ob->modifiers.first; md; md = md->next) {
 			if (md->type == eModifierType_RigidBody) {
 				rmd = (RigidBodyModifierData*)md;
-				count += BLI_countlist(&rmd->meshIslands);
+				if (isModifierActive(rmd))
+					count += BLI_countlist(&rmd->meshIslands);
 			}
 		}
 	}
@@ -1868,14 +1872,16 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 		for (md = ob->modifiers.first; md; md = md->next) {
 			if (md->type == eModifierType_RigidBody) {
 				rmd = (RigidBodyModifierData*)md;
-				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
-					rbw->cache_index_map[counter] = i; //map all shards of an object to this object index
-					//printf("index map:  %d %d\n", counter, i);
-					mi->linear_index = counter;
-					counter++;
+				if (isModifierActive(rmd)) {
+					for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+						rbw->cache_index_map[counter] = i; //map all shards of an object to this object index
+						//printf("index map:  %d %d\n", counter, i);
+						mi->linear_index = counter;
+						counter++;
+					}
+					ismapped = TRUE;
+					break;
 				}
-				ismapped = TRUE;
-				break;
 			}
 		}
 
@@ -2038,7 +2044,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 				}
 			}
 
-			if (rmd){
+			if (isModifierActive(rmd)) {
 				float max_con_mass = 0;
 
 				//those all need to be revalidated (?)
@@ -2248,22 +2254,24 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 		for (md = ob->modifiers.first; md; md = md->next) {
 			if (md->type == eModifierType_RigidBody) {
 				rmd = (RigidBodyModifierData*)md;
-				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
-					rbo = mi->rigidbody;
-					/* reset kinematic state for transformed objects */
-					if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) {
-						RB_body_set_kinematic_state(rbo->physics_object, rbo->flag & RBO_FLAG_KINEMATIC || rbo->flag & RBO_FLAG_DISABLED);
-						RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
-						/* deactivate passive objects so they don't interfere with deactivation of active objects */
-						if (rbo->type == RBO_TYPE_PASSIVE)
-							RB_body_deactivate(rbo->physics_object);
+				if (isModifierActive(rmd)) {
+					for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+						rbo = mi->rigidbody;
+						/* reset kinematic state for transformed objects */
+						if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) {
+							RB_body_set_kinematic_state(rbo->physics_object, rbo->flag & RBO_FLAG_KINEMATIC || rbo->flag & RBO_FLAG_DISABLED);
+							RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
+							/* deactivate passive objects so they don't interfere with deactivation of active objects */
+							if (rbo->type == RBO_TYPE_PASSIVE)
+								RB_body_deactivate(rbo->physics_object);
+						}
+						else {
+							BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn);
+						}
 					}
-					else {
-						BKE_rigidbody_update_cell(mi, ob, mi->rigidbody->pos, mi->rigidbody->orn);
-					}
+					modFound = TRUE;
+					break;
 				}
-				modFound = TRUE;
-				break;
 			}
 		}
 
@@ -2310,15 +2318,16 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 		if (md->type == eModifierType_RigidBody)
 		{
 			rmd = (RigidBodyModifierData*)md;
-			modFound = TRUE;
-			if ((ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) ||
-			((ob->rigidbody_object) && (ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC))) {
-				//update "original" matrix
-				copy_m4_m4(rmd->origmat, ob->obmat);
-			}
+			if (isModifierActive(rmd)) {
+				modFound = TRUE;
+				if ((ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) ||
+				((ob->rigidbody_object) && (ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC))) {
+					//update "original" matrix
+					copy_m4_m4(rmd->origmat, ob->obmat);
+				}
 
-			if (!is_zero_m4(rmd->origmat))
-				copy_m4_m4(ob->obmat, rmd->origmat);
+				if (!is_zero_m4(rmd->origmat))
+					copy_m4_m4(ob->obmat, rmd->origmat);
 
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 					rbo = mi->rigidbody;
@@ -2327,24 +2336,25 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 					/* use rigid body transform after cache start frame if objects is not being transformed */
 					if (BKE_rigidbody_check_sim_running(rbw, ctime) & !(ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
 
-				/* keep original transform when the simulation is muted */
-					if (rbw->flag & RBW_FLAG_MUTED)
-						return;
-				}
-				/* otherwise set rigid body transform to current obmat*/
-				else {
-					//offset
-					mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
-					mat4_to_size(size, ob->obmat);
-					copy_v3_v3(centr, mi->centroid);
-					mul_v3_v3(centr, size);
-					mul_qt_v3(rbo->orn, centr);
-					add_v3_v3(rbo->pos, centr);
-				}
-				BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn);
+					/* keep original transform when the simulation is muted */
+						if (rbw->flag & RBW_FLAG_MUTED)
+							return;
+					}
+					/* otherwise set rigid body transform to current obmat*/
+					else {
+						//offset
+						mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
+						mat4_to_size(size, ob->obmat);
+						copy_v3_v3(centr, mi->centroid);
+						mul_v3_v3(centr, size);
+						mul_qt_v3(rbo->orn, centr);
+						add_v3_v3(rbo->pos, centr);
+					}
+					BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn);
 
+				}
+				break;
 			}
-			break;
 		}
 
 		modFound = FALSE;
