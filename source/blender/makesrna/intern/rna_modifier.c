@@ -833,14 +833,14 @@ static void rna_RigidBodyModifier_contact_dist_set(PointerRNA *ptr, float value)
 	Object* ob = ptr->id.data;
 	rmd->contact_dist = value;
 	updateConstraints(rmd, ob);
-	rmd->refresh = TRUE; //maybe slow, better hit refresh manually
+	//rmd->refresh = TRUE; //maybe slow, better hit refresh manually
 }
 
 static void rna_RigidBodyModifier_use_constraints_set(PointerRNA* ptr, int value)
 {
 	RigidBodyModifierData *rmd = (RigidBodyModifierData *)ptr->data;
 	rmd->use_constraints = value;
-	rmd->refresh = TRUE;
+	//rmd->refresh = TRUE;
 }
 
 static void rna_ExplodeModifier_noise_set(PointerRNA *ptr, float value)
@@ -861,7 +861,7 @@ static void rna_RigidBodyModifier_group_threshold_set(PointerRNA *ptr, float val
 	Object* ob = ptr->id.data;
 	rmd->group_breaking_threshold = value;
 	updateConstraints(rmd, ob);
-	rmd->refresh = TRUE;
+	//rmd->refresh = TRUE;
 }
 
 static void rna_RigidBodyModifier_group_contact_dist_set(PointerRNA *ptr, float value)
@@ -870,7 +870,7 @@ static void rna_RigidBodyModifier_group_contact_dist_set(PointerRNA *ptr, float 
 	Object* ob = ptr->id.data;
 	rmd->group_contact_dist = value;
 	updateConstraints(rmd, ob);
-	rmd->refresh = TRUE; //maybe slow, better hit refresh manually
+	//rmd->refresh = TRUE; //maybe slow, better hit refresh manually
 }
 
 static void rna_RigidBodyModifier_mass_dependent_thresholds_set(PointerRNA* ptr, int value)
@@ -879,7 +879,7 @@ static void rna_RigidBodyModifier_mass_dependent_thresholds_set(PointerRNA* ptr,
 	Object* ob = ptr->id.data;
 	rmd->mass_dependent_thresholds = value;
 	updateConstraints(rmd, ob);
-	rmd->refresh = TRUE;
+	//rmd->refresh = TRUE;
 }
 
 static void rna_RigidBodyModifier_auto_merge_set(PointerRNA* ptr, int value)
