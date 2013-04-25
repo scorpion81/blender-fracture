@@ -1174,7 +1174,7 @@ static ParticleSystemModifierData *findPrecedingParticlesystem(Object *ob, Modif
 	return psmd;
 }
 
-/*static int dm_minmax(DerivedMesh* dm, float min[3], float max[3])
+static int dm_minmax(DerivedMesh* dm, float min[3], float max[3])
 {
 
 	int verts = dm->getNumVerts(dm);
@@ -1189,9 +1189,9 @@ static ParticleSystemModifierData *findPrecedingParticlesystem(Object *ob, Modif
 	}
 	
 	return (verts != 0);
-}*/
+}
 
-static int points_from_verts(Object** ob, int totobj, float*** points, int p_exist, float mat[4][4], float thresh, ExplodeModifierData *emd)
+static int points_from_verts(Object** ob, int totobj, float*** points, int p_exist, float mat[4][4], float thresh, ExplodeModifierData *emd, DerivedMesh* dm, Object* obj)
 {
 	int v, o, pt = p_exist;
 	float co[3];
@@ -1200,16 +1200,32 @@ static int points_from_verts(Object** ob, int totobj, float*** points, int p_exi
 	{
 		if (ob[o]->type == OB_MESH)
 		{
-			Mesh* me = (Mesh*)ob[o]->data;
 			float imat[4][4];
+			//Mesh* me = (Mesh*)ob[o]->data;
+			DerivedMesh *d;
+			MVert* vert;
+
+			if (ob[o] == obj)
+			{
+				d = dm;
+			}
+			else
+			{
+				d = mesh_get_derived_final(emd->modifier.scene, ob[o], 0);
+			}
+
 			invert_m4_m4(imat, mat);
-			for (v = 0; v < me->totvert; v++)
+			vert = d->getVertArray(d);
+
+			for (v = 0; v < d->getNumVerts(d); v++)
 			{
 				if (BLI_frand() < thresh) {
 					*points = MEM_reallocN(*points, (pt+1)*sizeof(float*));
 					(*points)[pt] = MEM_callocN(3 * sizeof(float), "points[pt]");
 				
-					copy_v3_v3(co, me->mvert[v].co);
+					//copy_v3_v3(co, me->mvert[v].co);
+					copy_v3_v3(co, vert[v].co);
+
 					if ((o > 0) ||
 					   ((emd->point_source & eExtraVerts) &&
 					   (!(emd->point_source & eOwnVerts)) && (o == 0)))
@@ -1340,7 +1356,7 @@ static int getGroupObjects(Group *gr, Object ***obs, int g_exist)
 	return ctr;
 }
 
-static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float ***points, float mat[4][4])
+static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float ***points, float mat[4][4], DerivedMesh *derivedData)
 {
 	int totpoint = 0, totgroup = 0, t = 0;
 	Object** go = MEM_mallocN(sizeof(Object*), "groupobjects");
@@ -1374,7 +1390,7 @@ static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float 
 	
 	if (emd->point_source & (eOwnVerts | eExtraVerts))
 	{
-		totpoint = points_from_verts(go, totgroup, points, totpoint, mat, thresh, emd);
+		totpoint = points_from_verts(go, totgroup, points, totpoint, mat, thresh, emd, derivedData, ob);
 	}
 	
 	if (emd->point_source & eGreasePencil)
@@ -1494,7 +1510,8 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 		theta = 0.0001f;
 	}
 
-	BKE_mesh_minmax(ob->data, min, max);
+	//BKE_mesh_minmax(ob->data, min, max);
+	dm_minmax(derivedData, min, max);
 	//use global coordinates for container
 	mul_v3_m4v3(min, ob->obmat, min);
 	mul_v3_m4v3(max, ob->obmat, max);
@@ -1511,7 +1528,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 	//if (!emd->refracture)
 
 	points = MEM_mallocN(sizeof(float*), "points");
-	totpoint = get_points(emd, emd->modifier.scene, ob, &points, mat);
+	totpoint = get_points(emd, emd->modifier.scene, ob, &points, mat, derivedData);
 
 	//no points, cant do anything
 	if (totpoint == 0) {

@@ -522,7 +522,7 @@ static void check_meshislands_adjacency(RigidBodyModifierData* rmd, MeshIsland* 
 
 	thresh = equal ? rmd->breaking_threshold : rmd->group_breaking_threshold;
 	con_type = equal ? rmd->inner_constraint_type : rmd->outer_constraint_type;
-	dist = equal ? rmd->contact_dist : rmd->outer_constraint_type == RBC_TYPE_FIXED ? rmd->group_contact_dist : 0;
+	dist = equal ? rmd->contact_dist : rmd->outer_constraint_type == RBC_TYPE_FIXED ? rmd->contact_dist : 0;
 	//connect here only in "fixed" case, otherwise its done separately
 
 	//select "our" vertices
@@ -854,8 +854,7 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 				rbsc->breaking_threshold = rmd->group_breaking_threshold;
 				BLI_addtail(&rmd->meshConstraints, rbsc);
 			}
-			//BLI_ghash_free(ob1_closest, NULL, NULL);
-			//BLI_ghash_free(ob2_closest, NULL, NULL);
+			MEM_freeN(near);
 		}
 
 		GHASH_ITER(it3, closest_all)
@@ -869,6 +868,7 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 			KDTree* t = BLI_ghashIterator_getValue(&it4);
 			BLI_kdtree_free(t);
 		}
+		BLI_kdtree_free(obtree);
 		BLI_ghash_free(trees, NULL, NULL);
 		BLI_ghash_free(closest_all, NULL, NULL);
 	}
