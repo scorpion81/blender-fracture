@@ -4697,13 +4697,29 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 
 			emd->facepa = NULL;
 			emd->tempOb = NULL;
-					
-		    //fallback, regenerate all
-			emd->fracMesh = NULL;
-			emd->cells = NULL;
-			emd->patree = NULL;
-			emd->use_cache = FALSE;
-	
+			emd->storage = read_smesh(fd, emd->storage);
+
+			if (emd->storage != NULL)
+			{
+				emd->use_cache = MOD_VORONOI_USECACHE;
+				emd->fracMesh = BKE_submesh_to_bmesh(emd->storage);
+				emd->patree = newdataadr(fd, emd->patree);
+				emd->cells = newdataadr(fd, emd->cells);
+				emd->cells->data = newdataadr(fd, emd->cells->data);
+				for (i = 0; i < emd->cells->count; i++)
+				{
+					read_voronoicell(fd, &emd->cells->data[i], emd);
+				}
+			}
+			else
+			{
+				//fallback, regenerate all
+				emd->fracMesh = NULL;
+				emd->cells = NULL;
+				emd->patree = NULL;
+				emd->use_cache = FALSE;
+				emd->storage = NULL;
+			}
 		}
 		else if (md->type == eModifierType_MeshDeform) {
 			MeshDeformModifierData *mmd = (MeshDeformModifierData *)md;

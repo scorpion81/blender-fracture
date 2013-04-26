@@ -2047,20 +2047,6 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 			if (isModifierActive(rmd)) {
 				float max_con_mass = 0;
 
-				//those all need to be revalidated (?)
-
-				/*for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
-					if (rbsc->mi1 != NULL && rbsc->mi1->rigidbody != NULL) {
-						if (rbsc->mi1->parent_mod != rmd)
-							rbsc->mi1->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
-					}
-
-					if (rbsc->mi2 != NULL && rbsc->mi2->rigidbody != NULL) {
-						if (rbsc->mi2->parent_mod != rmd)
-							rbsc->mi2->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
-					}
-				}*/
-
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 					if (mi->rigidbody == NULL) {
 						mi->rigidbody = BKE_rigidbody_create_shard(scene, ob, mi);
@@ -2108,7 +2094,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 						}
 						else
 						{
-							rbsc->mi1->rigidbody->flag |= RBO_FLAG_NEEDS_RESHAPE;
+							//rbsc->mi1->rigidbody->flag |= RBO_FLAG_NEEDS_RESHAPE;
 							validateShard(rbw, rbsc->mi1, obj,
 											rebuild && (rbsc->mi1->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE));
 						}
@@ -2131,7 +2117,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 						}
 						else
 						{
-							rbsc->mi2->rigidbody->flag |= RBO_FLAG_NEEDS_RESHAPE;
+							//rbsc->mi2->rigidbody->flag |= RBO_FLAG_NEEDS_RESHAPE;
 							validateShard(rbw, rbsc->mi2, obj,
 											rebuild && (rbsc->mi2->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE));
 						}
@@ -2153,7 +2139,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 						BKE_rigidbody_validate_sim_shard_constraint(rbw, rbsc, ob, true);
 					}
 
-					else if (rbsc->flag & RBC_FLAG_NEEDS_VALIDATE) {
+					else { // if (rbsc->flag & RBC_FLAG_NEEDS_VALIDATE) {
 						BKE_rigidbody_validate_sim_shard_constraint(rbw, rbsc, ob, false);
 					}
 
@@ -2325,8 +2311,9 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 					copy_m4_m4(rmd->origmat, ob->obmat);
 				}
 
-				if (!is_zero_m4(rmd->origmat))
+				if (!is_zero_m4(rmd->origmat)) {
 					copy_m4_m4(ob->obmat, rmd->origmat);
+				}
 
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 					rbo = mi->rigidbody;

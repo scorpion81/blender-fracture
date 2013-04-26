@@ -250,10 +250,7 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	int vertcount = 0, vert_index = 0, *vert_indexes;
 	float centroid[3], dummyloc[3], rot[4], *startco;
 	BMVert* v, **verts;
-/*	BMEdge *e;
-	BMFace* f;*/
 	BMIter iter;
-//	int i = 0;
 
 	bm_new = BM_mesh_create(&bm_mesh_allocsize_default);
 	BM_mesh_elem_toolflags_ensure(bm_new);  /* needed for 'duplicate' bmo */
