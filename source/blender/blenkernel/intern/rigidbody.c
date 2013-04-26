@@ -1476,6 +1476,8 @@ RigidBodyWorld *BKE_rigidbody_create_world(Scene *scene)
 
 	rbw->pointcache = BKE_ptcache_add(&(rbw->ptcaches));
 	rbw->pointcache->step = 1;
+	rbw->object_changed = FALSE;
+	rbw->refresh_modifiers = FALSE;
 
 	/* return this sim world */
 	return rbw;
@@ -1522,7 +1524,8 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi
 		ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_VALIDATE;
 
 		/* add object to rigid body group */
-		BKE_group_object_add(rbw->group, ob, scene, NULL);
+		if (!BKE_group_object_exists(rbw->group, ob))
+			BKE_group_object_add(rbw->group, ob, scene, NULL);
 
 		//DAG_id_tag_update(&ob->id, OB_RECALC_OB);
 	}
@@ -1745,44 +1748,85 @@ void BKE_rigidbody_remove_object(Scene *scene, Object *ob)
 	RigidBodyOb *rbo = ob->rigidbody_object;
 	RigidBodyCon *rbc;
 	GroupObject *go;
+	ModifierData* md;
+	RigidBodyModifierData* rmd;
+	RigidBodyShardCon* con;
+	MeshIsland* mi;
 	int i;
+	int modFound = FALSE;
 
 	if (rbw) {
-		/* remove from rigidbody world, free object won't do this */
-		if (rbw->physics_world && rbo->physics_object)
-			RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
+		for (md = ob->modifiers.first; md; md = md->next) {
 
-		/* remove object from array */
-		if (rbw && rbw->objects) {
-			for (i = 0; i < rbw->numbodies; i++) {
-				if (rbw->objects[i] == ob) {
-					rbw->objects[i] = NULL;
-					break;
+			if (md->type == eModifierType_RigidBody)
+			{
+				rmd = (RigidBodyModifierData*)md;
+				modFound = TRUE;
+				for (con = rmd->meshConstraints.first; con; con = con->next) {
+					if (rbw && rbw->physics_world && con->physics_constraint) {
+						RB_dworld_remove_constraint(rbw->physics_world, con->physics_constraint);
+						RB_constraint_delete(con->physics_constraint);
+						con->physics_constraint = NULL;
+					}
+				}
+
+				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+					if (mi->rigidbody != NULL) {
+						if (rbw->physics_world && mi->rigidbody && mi->rigidbody->physics_object)
+							RB_dworld_remove_body(rbw->physics_world, mi->rigidbody->physics_object);
+						if (mi->rigidbody->physics_object) {
+							RB_body_delete(mi->rigidbody->physics_object);
+							mi->rigidbody->physics_object = NULL;
+						}
+
+						if (mi->rigidbody->physics_shape) {
+							RB_shape_delete(mi->rigidbody->physics_shape);
+							mi->rigidbody->physics_shape = NULL;
+						}
+
+						MEM_freeN(mi->rigidbody);
+						mi->rigidbody = NULL;
+					}
+				}
+			}
+		}
+		if (!modFound) {
+			/* remove from rigidbody world, free object won't do this */
+			if (rbw->physics_world && rbo->physics_object)
+				RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
+
+			/* remove object from array */
+			if (rbw && rbw->objects) {
+				for (i = 0; i < rbw->numbodies; i++) {
+					if (rbw->objects[i] == ob) {
+						rbw->objects[i] = NULL;
+						break;
+					}
+				}
+			}
+
+			/* remove object from rigid body constraints */
+			if (rbw->constraints) {
+				for (go = rbw->constraints->gobject.first; go; go = go->next) {
+					Object *obt = go->ob;
+					if (obt && obt->rigidbody_constraint) {
+						rbc = obt->rigidbody_constraint;
+						if (rbc->ob1 == ob) {
+							rbc->ob1 = NULL;
+							rbc->flag |= RBC_FLAG_NEEDS_VALIDATE;
+						}
+						if (rbc->ob2 == ob) {
+							rbc->ob2 = NULL;
+							rbc->flag |= RBC_FLAG_NEEDS_VALIDATE;
+						}
+					}
 				}
 			}
 		}
 
-		/* remove object from rigid body constraints */
-		if (rbw->constraints) {
-			for (go = rbw->constraints->gobject.first; go; go = go->next) {
-				Object *obt = go->ob;
-				if (obt && obt->rigidbody_constraint) {
-					rbc = obt->rigidbody_constraint;
-					if (rbc->ob1 == ob) {
-						rbc->ob1 = NULL;
-						rbc->flag |= RBC_FLAG_NEEDS_VALIDATE;
-					}
-					if (rbc->ob2 == ob) {
-						rbc->ob2 = NULL;
-						rbc->flag |= RBC_FLAG_NEEDS_VALIDATE;
-					}
-				}
-			}
-		}
+		/* remove object's settings */
+		BKE_rigidbody_free_object(ob);
 	}
-
-	/* remove object's settings */
-	BKE_rigidbody_free_object(ob);
 
 	/* flag cache as outdated */
 	BKE_rigidbody_cache_reset(rbw);
@@ -2022,6 +2066,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 	MeshIsland* mi = NULL;
 	float centroid[3] = {0, 0, 0};
 	RigidBodyShardCon *rbsc;
+	int rebuildcon = rebuild;
 
 	/* update world */
 	if (rebuild)
@@ -2041,12 +2086,22 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 				if (md->type == eModifierType_RigidBody) {
 					rmd = (RigidBodyModifierData*)md;
 					//BKE_rigidbody_sync_all_shards(ob);
+					if (rbw->refresh_modifiers)
+					{
+						//trigger refresh of modifier at next execution (if we jumped back to startframea after changing an object)
+						rmd->refresh = TRUE;
+						BKE_rigidbody_remove_object(scene, ob);
+						//rbw->refresh_modifiers = FALSE;
+						rbw->object_changed = FALSE;
+						//rebuildcon = TRUE;
+					}
 				}
 			}
 
 			if (isModifierActive(rmd)) {
 				float max_con_mass = 0;
 
+				//BKE_object_where_is_calc(scene, ob);
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 					if (mi->rigidbody == NULL) {
 						mi->rigidbody = BKE_rigidbody_create_shard(scene, ob, mi);
@@ -2063,67 +2118,14 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 							do_rebuild = rebuild;
 						}
 						else {
-							do_rebuild = rebuild && (mi->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE);
+							do_rebuild = rebuild;// && (mi->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE);
 						}
-
 
 						validateShard(rbw, mi, ob, do_rebuild);
 					}
 
 					/* update simulation object... */
 					rigidbody_update_sim_ob(scene, rbw, ob, mi->rigidbody, mi->centroid);
-				}
-
-				/*update shard constraints if any*/
-				for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
-					int index1, index2;
-					index1 = BLI_findindex(&rmd->meshIslands, rbsc->mi1);
-					index2 = BLI_findindex(&rmd->meshIslands, rbsc->mi2);
-					//if there are "external" rigidbodies, validate them too !
-					if (index1 == -1 && rbsc->mi1 != NULL) {
-						Object* obj = rbw->objects[rbw->cache_index_map[rbsc->mi1->linear_index]];
-						if (rbsc->mi1->rigidbody == NULL) {
-							if (rbsc->mi1->physics_mesh == NULL) {
-								//eeek... should not happen
-								continue;
-							}
-							rbsc->mi1->rigidbody = BKE_rigidbody_create_shard(scene, obj, rbsc->mi1);
-							BKE_rigidbody_calc_shard_mass(obj, rbsc->mi1);
-							BKE_rigidbody_validate_sim_shard(rbw, rbsc->mi1, obj, true);
-							rbsc->mi1->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
-						}
-						else
-						{
-							//rbsc->mi1->rigidbody->flag |= RBO_FLAG_NEEDS_RESHAPE;
-							validateShard(rbw, rbsc->mi1, obj,
-											rebuild && (rbsc->mi1->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE));
-						}
-
-						rigidbody_update_sim_ob(scene, rbw, obj, rbsc->mi1->rigidbody, rbsc->mi1->centroid);
-					}
-
-					if (index2 == -1 && rbsc->mi2 != NULL) {
-						Object* obj = rbw->objects[rbw->cache_index_map[rbsc->mi2->linear_index]];
-
-						if (rbsc->mi2->rigidbody == NULL) {
-							if (rbsc->mi2->physics_mesh == NULL) {
-								//eeek... should not happen
-								continue;
-							}
-							rbsc->mi2->rigidbody = BKE_rigidbody_create_shard(scene, obj, rbsc->mi2);
-							BKE_rigidbody_calc_shard_mass(obj, rbsc->mi2);
-							BKE_rigidbody_validate_sim_shard(rbw, rbsc->mi2, obj, true);
-							rbsc->mi2->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
-						}
-						else
-						{
-							//rbsc->mi2->rigidbody->flag |= RBO_FLAG_NEEDS_RESHAPE;
-							validateShard(rbw, rbsc->mi2, obj,
-											rebuild && (rbsc->mi2->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE));
-						}
-
-						rigidbody_update_sim_ob(scene, rbw, obj, rbsc->mi2->rigidbody, rbsc->mi2->centroid);
-					}
 				}
 
 				if (rmd->mass_dependent_thresholds)
@@ -2188,6 +2190,8 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 				rigidbody_update_sim_ob(scene, rbw, ob, rbo, centroid);
 			}
 		}
+
+		rbw->refresh_modifiers = FALSE;
 	}
 
 	/* update constraints */
@@ -2309,9 +2313,13 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 				((ob->rigidbody_object) && (ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC))) {
 					//update "original" matrix
 					copy_m4_m4(rmd->origmat, ob->obmat);
+					if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)
+					{
+						rbw->object_changed = TRUE;
+					}
 				}
 
-				if (!is_zero_m4(rmd->origmat)) {
+				if (!is_zero_m4(rmd->origmat) && !rbw->object_changed) {
 					copy_m4_m4(ob->obmat, rmd->origmat);
 				}
 
@@ -2378,6 +2386,8 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 		}
 			/* otherwise set rigid body transform to current obmat */
 		else {
+			if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)
+				rbw->object_changed = TRUE;
 			mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
 		}
 	}
@@ -2466,6 +2476,12 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 
 	if (ctime <= startframe) {
 		rbw->ltime = startframe;
+		if ((rbw->object_changed))
+		{	//flag modifier refresh at their next execution
+			rbw->refresh_modifiers = TRUE;
+			rbw->object_changed = FALSE;
+			rigidbody_update_simulation(scene, rbw, true);
+		}
 		return;
 	}
 	/* make sure we don't go out of cache frame range */
