@@ -905,7 +905,7 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 	//check_meshislands_adjacency(rmd, last, first, combined_mesh, face_tree, ob);
 
 	sel_counter = 0;
-	BM_ITER_MESH(fa, &bmi, rmd->visible_mesh, BM_FACES_OF_MESH)
+	/*BM_ITER_MESH(fa, &bmi, rmd->visible_mesh, BM_FACES_OF_MESH)
 	{
 		if (!BM_elem_flag_test(fa, BM_ELEM_TAG) && rmd->auto_merge)
 		{
@@ -916,7 +916,7 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 		}
 	}
 
-	printf(" %d faces selected\n", sel_counter);
+	printf(" %d faces selected\n", sel_counter);*/
 
 	MEM_freeN(n);
 	MEM_freeN(n2);
