@@ -321,7 +321,7 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	 * we could de-select edges and verts only, but this turns out to be less complicated
 	 * since de-selecting all skips selection flushing logic */
 	//BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT, FALSE);
-	BM_mesh_normals_update(bm_new, FALSE);
+	BM_mesh_normals_update(bm_new);
 }
 
 /* flush a hflag to from verts to edges/faces */

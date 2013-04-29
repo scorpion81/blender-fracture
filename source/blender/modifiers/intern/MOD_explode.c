@@ -2277,7 +2277,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				emd->storage = NULL;
 
 				if (emd->fracMesh != NULL) {
-					BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "recalc_face_normals faces=%af use_flip=%b", BM_FACES_OF_MESH, false);
+					BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "recalc_face_normals faces=%af use_flip=%b", BM_FACES_OF_MESH, true);
+					BM_mesh_normals_update(emd->fracMesh);
 					BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "dissolve_limit edges=%ae verts=%av angle_limit=%f use_dissolve_boundaries=%b",
 				                   BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);
 					emd->storage = BKE_bmesh_to_submesh(emd->fracMesh);
