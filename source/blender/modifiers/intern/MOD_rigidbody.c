@@ -502,7 +502,7 @@ void select_inner_faces_of_vert(RigidBodyModifierData* rmd, KDTree* tree, BMVert
 	}
 }
 
-static void check_meshislands_adjacency(RigidBodyModifierData* rmd, MeshIsland* mi, MeshIsland* mi2, BMesh **combined_mesh, KDTree* face_tree, Object* ob)
+static int check_meshislands_adjacency(RigidBodyModifierData* rmd, MeshIsland* mi, MeshIsland* mi2, BMesh **combined_mesh, KDTree* face_tree, Object* ob)
 {
 	BMOperator op;
 	BMOpSlot *slot;
@@ -527,7 +527,7 @@ static void check_meshislands_adjacency(RigidBodyModifierData* rmd, MeshIsland* 
 		BM_elem_flag_enable(BM_vert_at_index(*combined_mesh, mi2->combined_index_map[v]), BM_ELEM_TAG);
 	}
 
-	//do we share atleast 1 vertex in selection
+	//do we share atleast 3 verts in selection
 
 	BMO_op_initf(*combined_mesh, &op, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "find_doubles verts=%hv dist=%f", BM_ELEM_TAG, dist);
 	BMO_op_exec(*combined_mesh, &op);
@@ -685,6 +685,8 @@ static void check_meshislands_adjacency(RigidBodyModifierData* rmd, MeshIsland* 
 			}
 		}
 	}
+
+	return shared;
 }
 
 static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsland **meshIslands, int count, BMesh **combined_mesh, KDTree **combined_tree) {
@@ -874,6 +876,7 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 	BLI_kdtree_find_n_nearest(*combined_tree, count, meshIslands[0]->centroid, NULL, n2);
 
 	for (j = 0; j < count; j++) {
+		int shared = 0;
 		mi = meshIslands[(n2+j)->index];
 		if (j == 0)
 			first = mi;
@@ -889,12 +892,16 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 			//printf("Nearest: %d %d %f %f %f\n",m, (n+i)->index, (n+i)->co[0], (n+i)->co[2], (n+i)->co[2]);
 
 			if ((mi != mi2) && (mi2 != NULL)) {
-				check_meshislands_adjacency(rmd, mi, mi2, combined_mesh, face_tree, ob);
-				if ((j == (count-1)) && (i == (count-2))) {
+				shared = check_meshislands_adjacency(rmd, mi, mi2, combined_mesh, face_tree, ob);
+				if (shared == 0) break;
+
+				/*if ((j == (count-1)) && (i == (count-2))) {
 					last = mi2;
-				}
+				}*/
 			}
 		}
+
+		//if (shared == 0) break; // should be too far away already, farther than dist
 
 		for (v = 0; v < mi->vertex_count; v++) {
 			BM_elem_flag_disable(BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]), BM_ELEM_TAG);
