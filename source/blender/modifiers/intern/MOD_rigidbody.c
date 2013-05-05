@@ -711,7 +711,7 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 	BLI_kdtree_balance(face_tree);
 
 	//handle outer constraints here, connect the closest pairs of meshislands (1 per object) only
-	if (rmd->use_constraints && rmd->constraint_group != NULL) {
+	if (rmd->use_constraints && rmd->constraint_group != NULL && rmd->outer_constraint_type != RBC_TYPE_FIXED) {
 		GroupObject *go, *go2;
 		ModifierData *md, *md2;
 		RigidBodyModifierData* rbmd;
@@ -893,7 +893,8 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 
 			if ((mi != mi2) && (mi2 != NULL)) {
 				shared = check_meshislands_adjacency(rmd, mi, mi2, combined_mesh, face_tree, ob);
-				if (shared == 0) break;
+				if ((shared == 0) && (rmd->inner_constraint_type == RBC_TYPE_FIXED) && (rmd->outer_constraint_type == RBC_TYPE_FIXED))
+					break; //load faster when both constraint types are FIXED, otherwise its too slow or incorrect
 
 				/*if ((j == (count-1)) && (i == (count-2))) {
 					last = mi2;
