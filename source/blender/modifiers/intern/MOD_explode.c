@@ -1824,7 +1824,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 							assign_material(emd->tempOb, emd->inner_material, 1, BKE_MAT_ASSIGN_OBDATA);
 						}
 						
-						DM_to_mesh(dm, emd->tempOb->data, emd->tempOb);
+						DM_to_mesh(dm, emd->tempOb->data, emd->tempOb, 0);
 						copy_m4_m4(emd->tempOb->obmat, ob->obmat);
 						
 						boolresult = NewBooleanDerivedMesh(dm, emd->tempOb, derivedData, ob, eBooleanModifierOp_Intersect);
