@@ -219,7 +219,8 @@ static void copy_voronoicell(ExplodeModifierData* emd, VoronoiCell* dst, Voronoi
 
 	bmtemp = DM_to_bmesh(src.cell_mesh);
 	(*dst).cell_mesh = CDDM_from_bmesh(bmtemp, TRUE);
-	(*dst).storage = BKE_bmesh_to_submesh(bmtemp);
+	//(*dst).storage = BKE_bmesh_to_submesh(bmtemp);
+	(*dst).storage = NULL;
 
 	BM_mesh_free(bmtemp);
 	bmtemp = NULL;
@@ -239,7 +240,8 @@ static void copyData(ModifierData *md, ModifierData *target)
 	temd->use_boolean = emd->use_boolean;
 
 	temd->fracMesh = BM_mesh_copy(emd->fracMesh);// better regenerate this ?
-	temd->storage = BKE_bmesh_to_submesh(temd->fracMesh);
+	//temd->storage = BKE_bmesh_to_submesh(temd->fracMesh);
+	temd->storage = NULL;
 
 	temd->use_cache = emd->use_cache;
 	temd->tempOb = emd->tempOb;
@@ -1856,7 +1858,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 					}
 					
 					emd->cells->data[emd->cells->count].cell_mesh = boolresult;
-					bmsub = DM_to_bmesh(boolresult);
+					//bmsub = DM_to_bmesh(boolresult);
 
 					/*CustomData_bmesh_init_pool(&bmsub->vdata, bm_mesh_allocsize_default.totvert, BM_VERT);
 					CustomData_bmesh_init_pool(&bmsub->edata, bm_mesh_allocsize_default.totedge, BM_EDGE);
@@ -1865,8 +1867,8 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 
 					BKE_submesh_free(emd->cells->data[emd->cells->count].storage);
 					emd->cells->data[emd->cells->count].storage = NULL;
-					emd->cells->data[emd->cells->count].storage = BKE_bmesh_to_submesh(bmsub);
-					BM_mesh_free(bmsub);
+					//emd->cells->data[emd->cells->count].storage = BKE_bmesh_to_submesh(bmsub);
+					//BM_mesh_free(bmsub);
 					
 					totvert = boolresult->getNumVerts(boolresult);
 					totedge = boolresult->getNumEdges(boolresult);
@@ -2281,7 +2283,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					BM_mesh_normals_update(emd->fracMesh);
 					BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "dissolve_limit edges=%ae verts=%av angle_limit=%f use_dissolve_boundaries=%b",
 				                   BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);
-					emd->storage = BKE_bmesh_to_submesh(emd->fracMesh);
+				//	emd->storage = BKE_bmesh_to_submesh(emd->fracMesh);
 				}
 				
 				copy_m4_m4(ob->obmat, oldobmat); // restore obmat

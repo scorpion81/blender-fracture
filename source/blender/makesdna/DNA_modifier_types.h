@@ -1295,6 +1295,7 @@ typedef struct MeshIsland {
 	int *combined_index_map;
 	int *vert_indexes;//needed for storing the indexes into the original mesh;
 	struct SMesh *storage;
+	struct BoundBox *bb;
 	int vertex_count;
 	float centroid[3];
 	float rot[4]; //hrm, need this for constraints probably

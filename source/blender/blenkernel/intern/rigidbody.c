@@ -2313,13 +2313,13 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 				((ob->rigidbody_object) && (ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC))) {
 					//update "original" matrix
 					copy_m4_m4(rmd->origmat, ob->obmat);
-					if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)
+					if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ && rbw)
 					{
 						rbw->object_changed = TRUE;
 					}
 				}
 
-				if (!is_zero_m4(rmd->origmat) && !rbw->object_changed) {
+				if (!is_zero_m4(rmd->origmat) && rbw && !rbw->object_changed) {
 					copy_m4_m4(ob->obmat, rmd->origmat);
 				}
 

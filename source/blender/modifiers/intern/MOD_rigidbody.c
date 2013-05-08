@@ -106,7 +106,8 @@ void copy_meshisland(RigidBodyModifierData* rmd, MeshIsland *dst, MeshIsland *sr
 	}
 
 	dst->physics_mesh = BM_mesh_copy(src->physics_mesh);
-	dst->storage = BKE_bmesh_to_submesh(dst->physics_mesh);
+	//dst->storage = BKE_bmesh_to_submesh(dst->physics_mesh);
+	dst->storage = NULL;
 
 }
 
@@ -132,7 +133,8 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->sel_counter = rmd->sel_counter;
 
 	trmd->visible_mesh = BM_mesh_copy(rmd->visible_mesh);
-	trmd->storage = BKE_bmesh_to_submesh(trmd->visible_mesh);
+	//trmd->storage = BKE_bmesh_to_submesh(trmd->visible_mesh);
+	trmd->storage = NULL;
 
 	BLI_duplicatelist(&trmd->meshIslands, &rmd->meshIslands);
 	for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
@@ -242,13 +244,26 @@ int BM_calc_center_centroid(BMesh *bm, float cent[3], int tagged)
 	return (bm->totface != 0);
 }
 
+static int BM_mesh_minmax(BMesh *bm, float r_min[3], float r_max[3])
+{
+	BMVert* v;
+	BMIter iter;
+	INIT_MINMAX(r_min, r_max);
+	BM_ITER_MESH (v, &iter, bm, BM_VERTS_OF_MESH) {
+		minmax_v3v3_v3(r_min, r_max, v->co);
+	}
+
+	//BM_mesh_normals_update(bm, FALSE);
+	return (bm->totvert != 0);
+}
+
 static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 {
 	BMesh *bm_new;
 	BMesh *bm_old = rmd->visible_mesh;
 	MeshIsland *mi;
 	int vertcount = 0, vert_index = 0, *vert_indexes;
-	float centroid[3], dummyloc[3], rot[4], *startco;
+	float centroid[3], dummyloc[3], rot[4], *startco, min[3], max[3];
 	BMVert* v, **verts;
 	BMIter iter;
 
@@ -309,13 +324,16 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	mi->physics_mesh = bm_new;
 	BKE_submesh_free(mi->storage);
 	mi->storage = NULL;
-	mi->storage = BKE_bmesh_to_submesh(mi->physics_mesh);
+	//mi->storage = BKE_bmesh_to_submesh(mi->physics_mesh);
 
 	mi->vertex_count = vertcount;
 	copy_v3_v3(mi->centroid, centroid);
 	mat4_to_loc_quat(dummyloc, rot, ob->obmat);
 	copy_v3_v3(mi->rot, rot);
 	mi->parent_mod = rmd;
+	BM_mesh_minmax(mi->physics_mesh, min, max);
+	mi->bb = BKE_boundbox_alloc_unit();
+	BKE_boundbox_init_from_minmax(mi->bb, min, max);
 
 	/* deselect loose data - this used to get deleted,
 	 * we could de-select edges and verts only, but this turns out to be less complicated
@@ -689,6 +707,40 @@ static int check_meshislands_adjacency(RigidBodyModifierData* rmd, MeshIsland* m
 	return shared;
 }
 
+static int bbox_intersect(MeshIsland *mi, MeshIsland *mi2)
+{
+	float cent_vec[3], test_x1[3], test_y1[3], test_z1[3], test_x2[3], test_y2[3], test_z2[3];
+
+	//pre test with bounding boxes
+	//vec between centroids -> v, if v[0] > bb1[4] - bb1[0] / 2 + bb2[4] - bb[0] / 2 in x range ?
+	// analogous y and z, if one overlaps, bboxes touch, make expensive test then
+
+	sub_v3_v3v3(cent_vec, mi->centroid, mi2->centroid);
+	sub_v3_v3v3(test_x1, mi->bb->vec[4], mi->bb->vec[0]);
+	sub_v3_v3v3(test_x2, mi2->bb->vec[4], mi2->bb->vec[0]);
+	mul_v3_fl(test_x1, 0.5f);
+	mul_v3_fl(test_x2, 0.5f);
+
+	sub_v3_v3v3(test_y1, mi->bb->vec[3], mi->bb->vec[0]);
+	sub_v3_v3v3(test_y2, mi2->bb->vec[3], mi2->bb->vec[0]);
+	mul_v3_fl(test_y1, 0.5f);
+	mul_v3_fl(test_y2, 0.5f);
+
+	sub_v3_v3v3(test_z1, mi->bb->vec[1], mi->bb->vec[0]);
+	sub_v3_v3v3(test_z2, mi2->bb->vec[1], mi2->bb->vec[0]);
+	mul_v3_fl(test_z1, 0.5f);
+	mul_v3_fl(test_z2, 0.5f);
+
+	if (fabs(test_x1[0] + test_x2[0]) >= fabs(cent_vec[0])) {
+		if (fabs(test_y1[1] + test_y2[1]) >= fabs(cent_vec[1])) {
+			if (fabs(test_z1[2] + test_z2[2]) >= fabs(cent_vec[2])) {
+				return TRUE;
+			}
+		}
+	}
+	return FALSE;
+}
+
 static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsland **meshIslands, int count, BMesh **combined_mesh, KDTree **combined_tree) {
 
 	MeshIsland *mi, *first, *last;
@@ -890,8 +942,13 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 		for (i = 0; i < count; i++) {
 			MeshIsland *mi2 = meshIslands[(n+i)->index];
 			//printf("Nearest: %d %d %f %f %f\n",m, (n+i)->index, (n+i)->co[0], (n+i)->co[2], (n+i)->co[2]);
-
 			if ((mi != mi2) && (mi2 != NULL)) {
+				//pre test with bounding boxes
+				//vec between centroids -> v, if v[0] > bb1[4] - bb1[0] / 2 + bb2[4] - bb[0] / 2 in x range ?
+				// analogous y and z, if one overlaps, bboxes touch, make expensive test then
+				if (!bbox_intersect(mi, mi2))
+					break;
+
 				shared = check_meshislands_adjacency(rmd, mi, mi2, combined_mesh, face_tree, ob);
 				if ((shared == 0) && (rmd->inner_constraint_type == RBC_TYPE_FIXED) && (rmd->outer_constraint_type == RBC_TYPE_FIXED))
 					break; //load faster when both constraint types are FIXED, otherwise its too slow or incorrect
@@ -1207,7 +1264,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		if (rmd->visible_mesh != NULL) {
 			BKE_submesh_free(rmd->storage);
 			rmd->storage = NULL;
-			rmd->storage = BKE_bmesh_to_submesh(rmd->visible_mesh);
+			//rmd->storage = BKE_bmesh_to_submesh(rmd->visible_mesh);
 		}
 
 		mesh_separate_loose(rmd, ob);
