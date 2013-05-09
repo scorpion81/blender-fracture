@@ -179,6 +179,11 @@ static void freeData(ModifierData *md)
 			MEM_freeN(mi->vert_indexes);
 			mi->vert_indexes = NULL;
 		}
+
+		if (mi->bb != NULL) {
+			MEM_freeN(mi->bb);
+			mi->bb = NULL;
+		}
 		MEM_freeN(mi);
 		mi = NULL;
 	}
@@ -292,8 +297,11 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	//store tagged vertices from old bmesh, important for later manipulation
 	//create rigidbody objects with island verts here
 
+	//use unmodified coords for bbox here
+	//BM_mesh_minmax(bm_new, min, max);
+
 	BM_ITER_MESH (v, &iter, bm_new, BM_VERTS_OF_MESH) {
-		//eliminate centroid in vertex coords ?
+		//then eliminate centroid in vertex coords ?
 		sub_v3_v3(v->co, centroid);
 	}
 
@@ -331,14 +339,14 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	mat4_to_loc_quat(dummyloc, rot, ob->obmat);
 	copy_v3_v3(mi->rot, rot);
 	mi->parent_mod = rmd;
-	BM_mesh_minmax(mi->physics_mesh, min, max);
+	BM_mesh_minmax(bm_new, min, max);
 	mi->bb = BKE_boundbox_alloc_unit();
 	BKE_boundbox_init_from_minmax(mi->bb, min, max);
 
 	/* deselect loose data - this used to get deleted,
 	 * we could de-select edges and verts only, but this turns out to be less complicated
 	 * since de-selecting all skips selection flushing logic */
-	//BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT, FALSE);
+	BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, FALSE);
 	BM_mesh_normals_update(bm_new);
 }
 
@@ -394,7 +402,7 @@ void mesh_separate_loose(RigidBodyModifierData* rmd, Object* ob)
 	max_iter = bm_old->totvert;
 
 	/* Clear all selected vertices */
-	BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, FALSE);
+	BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, FALSE);
 
 	/* A "while (true)" loop should work here as each iteration should
 	 * select and remove at least one vertex and when all vertices
@@ -403,16 +411,18 @@ void mesh_separate_loose(RigidBodyModifierData* rmd, Object* ob)
 	 * original mesh.*/
 	for (i = 0; i < max_iter; i++) {
 		//int tot = 0;
-		BMIter iter;
-		BM_ITER_MESH (v_seed, &iter, bm_old, BM_VERTS_OF_MESH) {
-			/* Get a seed vertex to start the walk */
+		//BMIter iter;
+		//BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, FALSE);
+		v_seed = BM_iter_at_index(bm_old, BM_VERTS_OF_MESH, NULL, tot);
+		/*BM_ITER_MESH (v_seed, &iter, bm_old, BM_VERTS_OF_MESH) {
+			// Get a seed vertex to start the walk
 			//v_seed = BM_iter_at_index(bm_old, BM_VERTS_OF_MESH, NULL, 0);
 			if (!BM_elem_flag_test(v_seed, BM_ELEM_TAG) && !BLI_ghash_haskey(hash, v_seed)) {	//find untagged vertex, better iterate over all verts ?
 				//delete old tags HERE, if found untagged vertex, should be on right island now, but... must not be existing yet
 				BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT| BM_ELEM_TAG, FALSE);
 				break;
 			}
-		}
+		}*/
 
 		/* No vertices available, can't do anything */
 		if (v_seed == NULL){
@@ -707,13 +717,15 @@ static int check_meshislands_adjacency(RigidBodyModifierData* rmd, MeshIsland* m
 	return shared;
 }
 
-static int bbox_intersect(MeshIsland *mi, MeshIsland *mi2)
+static int bbox_intersect(RigidBodyModifierData *rmd, MeshIsland *mi, MeshIsland *mi2)
 {
 	float cent_vec[3], test_x1[3], test_y1[3], test_z1[3], test_x2[3], test_y2[3], test_z2[3];
 
 	//pre test with bounding boxes
 	//vec between centroids -> v, if v[0] > bb1[4] - bb1[0] / 2 + bb2[4] - bb[0] / 2 in x range ?
 	// analogous y and z, if one overlaps, bboxes touch, make expensive test then
+	int equal = mi->parent_mod == mi2->parent_mod;
+	float dist = equal ? rmd->contact_dist : rmd->group_contact_dist;
 
 	sub_v3_v3v3(cent_vec, mi->centroid, mi2->centroid);
 	sub_v3_v3v3(test_x1, mi->bb->vec[4], mi->bb->vec[0]);
@@ -731,9 +743,9 @@ static int bbox_intersect(MeshIsland *mi, MeshIsland *mi2)
 	mul_v3_fl(test_z1, 0.5f);
 	mul_v3_fl(test_z2, 0.5f);
 
-	if (fabs(test_x1[0] + test_x2[0]) >= fabs(cent_vec[0])) {
-		if (fabs(test_y1[1] + test_y2[1]) >= fabs(cent_vec[1])) {
-			if (fabs(test_z1[2] + test_z2[2]) >= fabs(cent_vec[2])) {
+	if (fabs(test_x1[0] + test_x2[0] + dist) >= fabs(cent_vec[0])) {
+		if (fabs(test_y1[1] + test_y2[1] + dist) >= fabs(cent_vec[1])) {
+			if (fabs(test_z1[2] + test_z2[2] + dist) >= fabs(cent_vec[2])) {
 				return TRUE;
 			}
 		}
@@ -946,7 +958,9 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 				//pre test with bounding boxes
 				//vec between centroids -> v, if v[0] > bb1[4] - bb1[0] / 2 + bb2[4] - bb[0] / 2 in x range ?
 				// analogous y and z, if one overlaps, bboxes touch, make expensive test then
-				if (!bbox_intersect(mi, mi2))
+				int bbox_int = bbox_intersect(rmd, mi, mi2);
+				//printf("Overlap %d %d %d\n", bbox_int, (n2+j)->index, (n+i)->index);
+				if (bbox_int == FALSE)
 					break;
 
 				shared = check_meshislands_adjacency(rmd, mi, mi2, combined_mesh, face_tree, ob);
