@@ -1636,6 +1636,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 		emd->cells->data[emd->cells->count].storage = NULL;
 		emd->cells->data[emd->cells->count].neighbor_ids = MEM_mallocN(sizeof(int), "neighbor_ids");
 		emd->cells->data[emd->cells->count].neighbor_count = 0;
+		emd->cells->data[emd->cells->count].is_at_boundary = FALSE;
 		
 
 		bmtemp = BM_mesh_create(&bm_mesh_chunksize_default);
@@ -2011,15 +2012,23 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 		mul_m4_v3(imat, emd->cells->data[emd->cells->count].centroid);
 
 		//read neighbor id list (its PER FACE !!!) -> store in face customdata ?
+		// no its per cell (i hope)
 		neighbor_index = 0;
 		while (feof(fp) == 0) {
 			c = fgetc(fp);
 			if (c != 'n') // end mark, cant use isdigit because negative numbers possible -> -
 			{
+				int n_index;
 				//seek back one char,
 				fseek(fp, -sizeof(char), SEEK_CUR);
 				emd->cells->data[emd->cells->count].neighbor_ids = MEM_reallocN(emd->cells->data[emd->cells->count].neighbor_ids, sizeof(int)*(neighbor_index+1));
-				fscanf(fp, "%d ", &emd->cells->data[emd->cells->count].neighbor_ids[neighbor_index]);
+				fscanf(fp, "%d ", &n_index);
+
+				if (n_index < 0)//cell is at the boundary of object
+				{
+					emd->cells->data[emd->cells->count].is_at_boundary = TRUE;
+				}
+				emd->cells->data[emd->cells->count].neighbor_ids[neighbor_index] = n_index;
 				neighbor_index++;
 				emd->cells->data[emd->cells->count].neighbor_count++;
 			}

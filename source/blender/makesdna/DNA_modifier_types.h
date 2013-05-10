@@ -657,9 +657,9 @@ typedef struct VoronoiCell {
 	struct SMesh *storage;
 	int *vert_indexes, *neighbor_ids;
 	int vertex_count, neighbor_count;
-	int particle_index, pid;
+	int particle_index, pid, is_at_boundary;
 	float centroid[3];
-	char pad[4];
+	//char pad[4];
 } VoronoiCell;
 
 typedef struct VoronoiCells {
@@ -1297,11 +1297,11 @@ typedef struct MeshIsland {
 	int *neighbor_ids;
 	struct SMesh *storage;
 	struct BoundBox *bb;
-	int vertex_count, id, neighbor_count;
+	int vertex_count, id, neighbor_count, is_at_boundary;
 	float centroid[3];
 	float rot[4]; //hrm, need this for constraints probably
 	int linear_index;  //index in rigidbody world
-	char pad[4];
+	//char pad[4];
 } MeshIsland;
 
 typedef struct RigidBodyModifierData {
@@ -1315,8 +1315,10 @@ typedef struct RigidBodyModifierData {
 	int refresh, use_constraints, mass_dependent_thresholds, auto_merge, sel_counter;
 	int inner_constraint_type;
 	int outer_constraint_type, outer_constraint_location, outer_constraint_pattern;
+	int explo_shared;
 	float origmat[4][4], breaking_threshold;
 	float contact_dist, group_breaking_threshold, group_contact_dist, auto_merge_dist;
+	char pad[4];
 } RigidBodyModifierData;
 
 
