@@ -139,6 +139,12 @@ static void freeCells(ExplodeModifierData* emd)
 					MEM_freeN(emd->cells->data[c].vert_indexes);
 					emd->cells->data[c].vert_indexes = NULL;
 				}
+
+				if (emd->cells->data[c].neighbor_ids != NULL)
+				{
+					MEM_freeN(emd->cells->data[c].neighbor_ids);
+					emd->cells->data[c].neighbor_ids = NULL;
+				}
 			}
 
 			MEM_freeN(emd->cells->data);
@@ -1490,6 +1496,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 	float** points = NULL;
 	int totpoint = 0;
 //	int degenerate = FALSE;
+	int neighbor_index = 0;
 
 	INIT_MINMAX(min, max);
 
@@ -1575,7 +1582,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 	// %C the centroid of the voronoi cell, used to find nearest particle in createCellpa
 
 	//%i the particle index
-	container_print_custom(container, "%P v %t f %C", fp);
+	container_print_custom(container, "%i %P v %t f %C %n n", fp);
 	fflush(fp);
 	rewind(fp);
 	
@@ -1627,6 +1634,8 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 //		emd->cells->data[emd->cells->count].rigidbody = NULL;
 		emd->cells->data[emd->cells->count].vert_indexes = MEM_mallocN(sizeof(int), "fractureToCells->vert_indexes");
 		emd->cells->data[emd->cells->count].storage = NULL;
+		emd->cells->data[emd->cells->count].neighbor_ids = MEM_mallocN(sizeof(int), "neighbor_ids");
+		emd->cells->data[emd->cells->count].neighbor_count = 0;
 		
 
 		bmtemp = BM_mesh_create(&bm_mesh_chunksize_default);
@@ -1637,6 +1646,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 		// Read in the cell data, each line in the output file represents a voronoi cell
 		while (1)
 		{
+			fscanf(fp, "%d ", &emd->cells->data[emd->cells->count].pid);
 			// Read in the vertex coordinates of the cell vertices
 			read = fscanf(fp, "(%f,%f,%f) ", &vco[0], &vco[1], &vco[2]);
 			if (read < 3) break;
@@ -1993,12 +2003,32 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 		}
 
 		//read centroid
-		fscanf(fp, " %f %f %f", &emd->cells->data[emd->cells->count].centroid[0],
+		fscanf(fp, " %f %f %f ", &emd->cells->data[emd->cells->count].centroid[0],
 				&emd->cells->data[emd->cells->count].centroid[1],
 				&emd->cells->data[emd->cells->count].centroid[2]);
 		
 		invert_m4_m4(imat, ob->obmat);
 		mul_m4_v3(imat, emd->cells->data[emd->cells->count].centroid);
+
+		//read neighbor id list (its PER FACE !!!) -> store in face customdata ?
+		neighbor_index = 0;
+		while (feof(fp) == 0) {
+			c = fgetc(fp);
+			if (c != 'n') // end mark, cant use isdigit because negative numbers possible -> -
+			{
+				//seek back one char,
+				fseek(fp, -sizeof(char), SEEK_CUR);
+				emd->cells->data[emd->cells->count].neighbor_ids = MEM_reallocN(emd->cells->data[emd->cells->count].neighbor_ids, sizeof(int)*(neighbor_index+1));
+				fscanf(fp, "%d ", &emd->cells->data[emd->cells->count].neighbor_ids[neighbor_index]);
+				neighbor_index++;
+				emd->cells->data[emd->cells->count].neighbor_count++;
+			}
+			else
+			{
+				//fseek(fp, -sizeof(char), SEEK_CUR);
+				break;
+			}
+		}
 		
 		//skip newline
 		if (feof(fp) == 0)

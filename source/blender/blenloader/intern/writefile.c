@@ -1507,27 +1507,6 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 				con->physics_constraint = NULL;
 				con->flag |= RBC_FLAG_NEEDS_VALIDATE;
 			}
-
-			if (rmd->storage == NULL) continue;
-			write_smesh(wd, rmd->storage);
-			writedata(wd, DATA, rmd->sel_counter * sizeof(int*), rmd->sel_indexes);
-			for (i = 0; i < rmd->sel_counter; i++)
-			{
-				writedata(wd, DATA, sizeof(int)*2, rmd->sel_indexes[i]);
-			}
-
-			writelist(wd, DATA, "MeshIsland", &rmd->meshIslands);
-			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
-				write_meshisland(wd, mi);
-			}
-
-			//WORKAROUND for Automerge
-			/*for (con = rmd->meshConstraints.first; con; con = con->next) {
-				con->physics_constraint = NULL;
-				con->flag |= RBC_FLAG_NEEDS_VALIDATE;
-			}*/
-
-			writelist(wd, DATA, "RigidBodyShardCon", &rmd->meshConstraints);
 		}
 	}
 }

@@ -86,6 +86,7 @@ static void initData(ModifierData *md)
 	rmd->outer_constraint_type = RBC_TYPE_FIXED;
 	rmd->outer_constraint_location = MOD_RIGIDBODY_CENTER;
 	rmd->outer_constraint_pattern = MOD_RIGIDBODY_SELECTED_TO_ACTIVE;
+	rmd->idmap = NULL;
 }
 void copy_meshisland(RigidBodyModifierData* rmd, MeshIsland *dst, MeshIsland *src)
 {
@@ -135,6 +136,9 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->visible_mesh = BM_mesh_copy(rmd->visible_mesh);
 	//trmd->storage = BKE_bmesh_to_submesh(trmd->visible_mesh);
 	trmd->storage = NULL;
+	trmd->idmap = MEM_dupallocN(rmd->idmap);
+	trmd->id_storage = MEM_dupallocN(rmd->id_storage);
+	trmd->index_storage = MEM_dupallocN(rmd->index_storage);
 
 	BLI_duplicatelist(&trmd->meshIslands, &rmd->meshIslands);
 	for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
@@ -219,6 +223,21 @@ static void freeData(ModifierData *md)
 		BKE_submesh_free(rmd->storage);
 		rmd->storage = NULL;
 	}
+
+	if (rmd->idmap != NULL) {
+		MEM_freeN(rmd->idmap);
+		rmd->idmap = NULL;
+	}
+
+	if (rmd->index_storage != NULL) {
+		MEM_freeN(rmd->index_storage);
+		rmd->index_storage = NULL;
+	}
+
+	if (rmd->id_storage != NULL) {
+		MEM_freeN(rmd->id_storage);
+		rmd->id_storage = NULL;
+	}
 }
 
 int BM_calc_center_centroid(BMesh *bm, float cent[3], int tagged)
@@ -260,6 +279,17 @@ static int BM_mesh_minmax(BMesh *bm, float r_min[3], float r_max[3])
 
 	//BM_mesh_normals_update(bm, FALSE);
 	return (bm->totvert != 0);
+	
+static ExplodeModifierData *findPrecedingExploModifier(Object *ob, RigidBodyModifierData *rmd)
+{
+	ModifierData *md;
+	ExplodeModifierData *emd = NULL;
+
+	for (md = ob->modifiers.first; rmd != md; md = md->next) {
+		if (md->type == eModifierType_Explode)
+			emd = (ExplodeModifierData *) md;
+	}
+	return emd;
 }
 
 static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
@@ -271,6 +301,9 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	float centroid[3], dummyloc[3], rot[4], *startco, min[3], max[3];
 	BMVert* v, **verts;
 	BMIter iter;
+	ExplodeModifierData *emd;
+	VoronoiCell* vc;
+	int i = 0, index;
 
 	bm_new = BM_mesh_create(&bm_mesh_allocsize_default);
 	BM_mesh_elem_toolflags_ensure(bm_new);  /* needed for 'duplicate' bmo */
@@ -325,6 +358,7 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	// add 1 MeshIsland
 	mi = MEM_callocN(sizeof(MeshIsland), "meshIsland");
 	BLI_addtail(&rmd->meshIslands, mi);
+	index = BLI_findindex(&rmd->meshIslands, mi);
 
 	mi->vert_indexes = vert_indexes;
 	mi->vertices = verts;
@@ -342,6 +376,24 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	BM_mesh_minmax(bm_new, min, max);
 	mi->bb = BKE_boundbox_alloc_unit();
 	BKE_boundbox_init_from_minmax(mi->bb, min, max);
+
+	//grab neighborhood info if available, if explo before rmd
+	emd = findPrecedingExploModifier(ob, rmd);
+	if (emd != NULL)
+	{
+	//for (i = 0; i < emd->cells->count; i++) {
+		vc = &emd->cells->data[index];
+		//if (compare_v3v3(vc->centroid, centroid, 0.0001f))
+		//{
+		mi->id = vc->pid;
+		BLI_ghash_insert(rmd->idmap, mi->id, index);
+		mi->neighbor_ids = MEM_dupallocN(vc->neighbor_ids);
+		mi->neighbor_count = vc->neighbor_count;
+	//}
+	//}
+	}
+
+
 
 	/* deselect loose data - this used to get deleted,
 	 * we could de-select edges and verts only, but this turns out to be less complicated
@@ -764,6 +816,7 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 	int i, j, v, sel_counter;
 	KDTreeNearest *n = MEM_mallocN(sizeof(KDTreeNearest)*count, "kdtreenearest");
 	KDTreeNearest *n2 = MEM_mallocN(sizeof(KDTreeNearest)*count, "kdtreenearest2");
+	ExplodeModifierData *emd = NULL;
 
 	KDTree* face_tree;
 	BMFace *fa;
@@ -788,6 +841,7 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 		GHash* trees = BLI_ghash_ptr_new("trees");
 		GHash* closest_all = BLI_ghash_ptr_new("closest_all");
 		GHashIterator it, it2, it3, it4;
+
 
 		KDTree *tree, *obtree;
 		int count, x = 0, y = 0, obcount;
@@ -942,19 +996,63 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 	}
 
 
-	BLI_kdtree_find_n_nearest(*combined_tree, count, meshIslands[0]->centroid, NULL, n2);
+	//Do we have a explo modifier, if yes, use its neighborhood info before calculating (inner) neighborhoods here
 
-	for (j = 0; j < count; j++) {
-		int shared = 0;
-		mi = meshIslands[(n2+j)->index];
-		if (j == 0)
-			first = mi;
+	emd = findPrecedingExploModifier(ob, rmd);
+	if (emd != NULL) {
+		int i = 0, j = 0;
+		for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+			MeshIsland* mi2;
+			int shared = 0;
 
-		for (v = 0; v < mi->vertex_count; v++) {
-			BM_elem_flag_enable(BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]), BM_ELEM_TAG);
+			for (v = 0; v < mi->vertex_count; v++) {
+				BM_elem_flag_enable(BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]), BM_ELEM_TAG);
+			}
+
+			for (i = 0; i < mi->neighbor_count; i++) {
+				int id = mi->neighbor_ids[i];
+				int index;
+				if (id >= 0){
+					index = BLI_ghash_lookup(rmd->idmap, id);
+					mi2 = BLI_findlink(&rmd->meshIslands, index);
+					if ((mi != mi2) && (mi2 != NULL)) {
+						shared = check_meshislands_adjacency(rmd, mi, mi2, combined_mesh, face_tree, ob);
+					}
+					if (shared == 0) break;
+				}
+			}
+
+			if (rmd->constraint_group != NULL) {
+				//prepare for outer constraints, neighborhood is negative then (if we reach a boundary)
+				BLI_kdtree_find_n_nearest(*combined_tree, count, mi->centroid, NULL, n);
+				for (j = 0; j < count; j++) {
+					mi2 = meshIslands[(n+j)->index];
+					if ((mi != mi2) && (mi2 != NULL) && (mi2->parent_mod != rmd)) {
+						shared = check_meshislands_adjacency(rmd, mi, mi2, combined_mesh, face_tree, ob);
+						if (shared == 0) break;
+					}
+				}
+			}
+
+			for (v = 0; v < mi->vertex_count; v++) {
+				BM_elem_flag_disable(BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]), BM_ELEM_TAG);
+			}
 		}
+	}
+	else
+	{
+		BLI_kdtree_find_n_nearest(*combined_tree, count, meshIslands[0]->centroid, NULL, n2);
+		for (j = 0; j < count; j++) {
+			int shared = 0;
+			mi = meshIslands[(n2+j)->index];
+			if (j == 0)
+				first = mi;
 
-		BLI_kdtree_find_n_nearest(*combined_tree, count, mi->centroid, NULL, n);
+			for (v = 0; v < mi->vertex_count; v++) {
+				BM_elem_flag_enable(BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]), BM_ELEM_TAG);
+			}
+
+			BLI_kdtree_find_n_nearest(*combined_tree, count, mi->centroid, NULL, n);
 
 		for (i = 0; i < count; i++) {
 			MeshIsland *mi2 = meshIslands[(n+i)->index];
@@ -972,35 +1070,37 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 				if ((shared == 0) && (rmd->inner_constraint_type == RBC_TYPE_FIXED) && (rmd->outer_constraint_type == RBC_TYPE_FIXED))
 					break; //load faster when both constraint types are FIXED, otherwise its too slow or incorrect
 
-				/*if ((j == (count-1)) && (i == (count-2))) {
-					last = mi2;
-				}*/
+					/*if ((j == (count-1)) && (i == (count-2))) {
+						last = mi2;
+					}*/
+				}
+			}
+
+			//if (shared == 0) break; // should be too far away already, farther than dist
+
+			for (v = 0; v < mi->vertex_count; v++) {
+				BM_elem_flag_disable(BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]), BM_ELEM_TAG);
 			}
 		}
 
-		//if (shared == 0) break; // should be too far away already, farther than dist
+		//compare last with first
+		//check_meshislands_adjacency(rmd, last, first, combined_mesh, face_tree, ob);
 
-		for (v = 0; v < mi->vertex_count; v++) {
-			BM_elem_flag_disable(BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]), BM_ELEM_TAG);
-		}
-	}
-
-	//compare last with first
-	//check_meshislands_adjacency(rmd, last, first, combined_mesh, face_tree, ob);
-
-	sel_counter = 0;
-	/*BM_ITER_MESH(fa, &bmi, rmd->visible_mesh, BM_FACES_OF_MESH)
-	{
-		if (!BM_elem_flag_test(fa, BM_ELEM_TAG) && rmd->auto_merge)
+		sel_counter = 0;
+		/*BM_ITER_MESH(fa, &bmi, rmd->visible_mesh, BM_FACES_OF_MESH)
 		{
-			printf("Face %d NOT visited\n", fa->head.index);
+			if (!BM_elem_flag_test(fa, BM_ELEM_TAG) && rmd->auto_merge)
+			{
+				printf("Face %d NOT visited\n", fa->head.index);
+			}
+			if (BM_elem_flag_test(fa, BM_ELEM_SELECT)) {
+				sel_counter++;
+			}
 		}
-		if (BM_elem_flag_test(fa, BM_ELEM_SELECT)) {
-			sel_counter++;
-		}
-	}
 
-	printf(" %d faces selected\n", sel_counter);*/
+		printf(" %d faces selected\n", sel_counter);*/
+
+	}
 
 	MEM_freeN(n);
 	MEM_freeN(n2);
@@ -1074,7 +1174,8 @@ static int create_combined_neighborhood(RigidBodyModifierData *rmd, MeshIsland *
 	return islands;
 }
 
-static void create_constraints(RigidBodyModifierData *rmd, Object* ob) {
+static void create_constraints(RigidBodyModifierData *rmd, Object* ob)
+{
 	KDTree* combined_tree = NULL;
 	BMesh* combined_mesh = NULL;
 	MeshIsland** mesh_islands = MEM_mallocN(sizeof(MeshIsland*), "mesh_islands");
@@ -1277,7 +1378,9 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 	if (rmd->refresh)
 	{
+		int len = 0;
 		freeData(md);
+		rmd->idmap = BLI_ghash_int_new("rmd->idmap");
 		copy_m4_m4(rmd->origmat, ob->obmat);
 		rmd->visible_mesh = DM_to_bmesh(dm);
 		if (rmd->visible_mesh != NULL) {
@@ -1296,6 +1399,9 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		}
 
 		rmd->refresh = FALSE;
+		len = BLI_countlist(&rmd->meshIslands);
+		rmd->id_storage = MEM_mallocN(sizeof(int) * len, "rmd->id_storage");
+		rmd->index_storage = MEM_mallocN(sizeof(int) * len, "rmd->index_storage");
 	}
 
 	if (rmd->visible_mesh != NULL) {

@@ -655,9 +655,9 @@ typedef struct VoronoiCell {
 	float *vertco;
 	struct DerivedMesh *cell_mesh;
 	struct SMesh *storage;
-	int *vert_indexes;
-	int vertex_count;
-	int particle_index;
+	int *vert_indexes, *neighbor_ids;
+	int vertex_count, neighbor_count;
+	int particle_index, pid;
 	float centroid[3];
 	char pad[4];
 } VoronoiCell;
@@ -1293,10 +1293,11 @@ typedef struct MeshIsland {
 	struct RigidBodyOb *rigidbody;
 	struct RigidBodyModifierData *parent_mod; //needed to override thresholds/contact distance when using constraint groups
 	int *combined_index_map;
-	int *vert_indexes;//needed for storing the indexes into the original mesh;
+	int *vert_indexes;//needed for storing the indexes into the original mesh
+	int *neighbor_ids;
 	struct SMesh *storage;
 	struct BoundBox *bb;
-	int vertex_count;
+	int vertex_count, id, neighbor_count;
 	float centroid[3];
 	float rot[4]; //hrm, need this for constraints probably
 	int linear_index;  //index in rigidbody world
@@ -1308,7 +1309,8 @@ typedef struct RigidBodyModifierData {
 	struct BMesh *visible_mesh;
 	struct Group *constraint_group;
 	ListBase meshIslands, meshConstraints;
-	int	**sel_indexes;
+	int	**sel_indexes, *index_storage, *id_storage;
+	struct GHash *idmap;
 	struct SMesh *storage;
 	int refresh, use_constraints, mass_dependent_thresholds, auto_merge, sel_counter;
 	int inner_constraint_type;
