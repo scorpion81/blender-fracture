@@ -1502,6 +1502,12 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 			RigidBodyShardCon *con;
 			int i;
 
+			//WORKAROUND for Automerge, so that after filling cache and pulling timeline to frame 0 all faces are visible
+			for (con = rmd->meshConstraints.first; con; con = con->next) {
+				con->physics_constraint = NULL;
+				con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+			}
+
 			if (rmd->storage == NULL) continue;
 			write_smesh(wd, rmd->storage);
 			writedata(wd, DATA, rmd->sel_counter * sizeof(int*), rmd->sel_indexes);
@@ -1516,10 +1522,10 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 			}
 
 			//WORKAROUND for Automerge
-			for (con = rmd->meshConstraints.first; con; con = con->next) {
+			/*for (con = rmd->meshConstraints.first; con; con = con->next) {
 				con->physics_constraint = NULL;
 				con->flag |= RBC_FLAG_NEEDS_VALIDATE;
-			}
+			}*/
 
 			writelist(wd, DATA, "RigidBodyShardCon", &rmd->meshConstraints);
 		}

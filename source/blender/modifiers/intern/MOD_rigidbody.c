@@ -727,6 +727,11 @@ static int bbox_intersect(RigidBodyModifierData *rmd, MeshIsland *mi, MeshIsland
 	int equal = mi->parent_mod == mi2->parent_mod;
 	float dist = equal ? rmd->contact_dist : rmd->group_contact_dist;
 
+	if ((mi->bb == NULL) || (mi2->bb == NULL)) {
+		//compat with older files, where bb test missed
+		return TRUE;
+	}
+
 	sub_v3_v3v3(cent_vec, mi->centroid, mi2->centroid);
 	sub_v3_v3v3(test_x1, mi->bb->vec[4], mi->bb->vec[0]);
 	sub_v3_v3v3(test_x2, mi2->bb->vec[4], mi2->bb->vec[0]);

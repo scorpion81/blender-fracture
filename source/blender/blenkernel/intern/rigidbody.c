@@ -2009,6 +2009,9 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 			/* create dummy 'point' which represents last known position of object as result of sim */
 			// XXX: this can create some inaccuracies with sim position, but is probably better than using unsimulated vals?
 			RB_body_get_position(rbo->physics_object, eff_loc);
+			mul_v3_v3(centr, scale);
+			add_v3_v3(eff_loc, centr);
+
 			RB_body_get_linear_velocity(rbo->physics_object, eff_vel);
 
 			pd_point_from_loc(scene, eff_loc, eff_vel, 0, &epoint);
