@@ -2122,8 +2122,15 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 		{
 			//EOF reached, free last vertco/vertices
 			MEM_freeN(emd->cells->data[emd->cells->count].vertco);
+			emd->cells->data[emd->cells->count].vertco = NULL;
 			MEM_freeN(emd->cells->data[emd->cells->count].vertices);
+			emd->cells->data[emd->cells->count].vertices = NULL;
 			MEM_freeN(emd->cells->data[emd->cells->count].vert_indexes);
+			emd->cells->data[emd->cells->count].vert_indexes = NULL;
+			MEM_freeN(emd->cells->data[emd->cells->count].global_face_map);
+			emd->cells->data[emd->cells->count].global_face_map = NULL;
+			MEM_freeN(emd->cells->data[emd->cells->count].neighbor_ids);
+			emd->cells->data[emd->cells->count].neighbor_ids = NULL;
 		}
 
 		vert_index = 0;

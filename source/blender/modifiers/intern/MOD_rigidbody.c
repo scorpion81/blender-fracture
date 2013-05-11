@@ -139,8 +139,8 @@ static void copyData(ModifierData *md, ModifierData *target)
 	//trmd->storage = BKE_bmesh_to_submesh(trmd->visible_mesh);
 	trmd->storage = NULL;
 	trmd->idmap = MEM_dupallocN(rmd->idmap);
-	trmd->id_storage = MEM_dupallocN(rmd->id_storage);
-	trmd->index_storage = MEM_dupallocN(rmd->index_storage);
+	//trmd->id_storage = MEM_dupallocN(rmd->id_storage);
+	//trmd->index_storage = MEM_dupallocN(rmd->index_storage);
 
 	BLI_duplicatelist(&trmd->meshIslands, &rmd->meshIslands);
 	for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
@@ -236,11 +236,11 @@ static void freeData(ModifierData *md)
 	}
 
 	if (rmd->idmap != NULL) {
-		MEM_freeN(rmd->idmap);
+		BLI_ghash_free(rmd->idmap, NULL, NULL);
 		rmd->idmap = NULL;
 	}
 
-	if (rmd->index_storage != NULL) {
+/*	if (rmd->index_storage != NULL) {
 		MEM_freeN(rmd->index_storage);
 		rmd->index_storage = NULL;
 	}
@@ -248,7 +248,7 @@ static void freeData(ModifierData *md)
 	if (rmd->id_storage != NULL) {
 		MEM_freeN(rmd->id_storage);
 		rmd->id_storage = NULL;
-	}
+	}*/
 }
 
 int BM_calc_center_centroid(BMesh *bm, float cent[3], int tagged)
@@ -1505,7 +1505,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 	if (rmd->refresh)
 	{
-		int len = 0;
+		//int len = 0;
 		freeData(md);
 		rmd->idmap = BLI_ghash_int_new("rmd->idmap");
 		copy_m4_m4(rmd->origmat, ob->obmat);
@@ -1565,7 +1565,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 				mi->id = vc->pid;
 				BLI_ghash_insert(rmd->idmap, mi->id, i);
-				mi->neighbor_ids = MEM_dupallocN(vc->neighbor_ids);
+				mi->neighbor_ids = vc->neighbor_ids;
 				mi->neighbor_count = vc->neighbor_count;
 				mi->global_face_map = vc->global_face_map;
 			//}
@@ -1586,9 +1586,9 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			}
 		}
 
-		len = BLI_countlist(&rmd->meshIslands);
-		rmd->id_storage = MEM_mallocN(sizeof(int) * len, "rmd->id_storage");
-		rmd->index_storage = MEM_mallocN(sizeof(int) * len, "rmd->index_storage");
+//		len = BLI_countlist(&rmd->meshIslands);
+//		rmd->id_storage = MEM_mallocN(sizeof(int) * len, "rmd->id_storage");
+//		rmd->index_storage = MEM_mallocN(sizeof(int) * len, "rmd->index_storage");
 		rmd->refresh = FALSE;
 	}
 
