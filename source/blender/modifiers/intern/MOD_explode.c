@@ -1191,6 +1191,21 @@ static ParticleSystemModifierData *findPrecedingParticlesystem(Object *ob, Modif
 	return psmd;
 }
 
+static RigidBodyModifierData *findFollowingRigidBodyModifier(Object *ob, ExplodeModifierData *emd)
+{
+	ModifierData *md;
+	RigidBodyModifierData *rmd = NULL;
+
+	md = &emd->modifier;
+	md = md->next;
+
+	if (md && md->type == eModifierType_RigidBody) {
+		rmd = (RigidBodyModifierData*)md;
+	}
+
+	return rmd;
+}
+
 static int dm_minmax(DerivedMesh* dm, float min[3], float max[3])
 {
 
@@ -2330,6 +2345,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	DerivedMesh *dm = derivedData;
 	ExplodeModifierData *emd = (ExplodeModifierData *) md;
 	ParticleSystemModifierData *psmd = findPrecedingParticlesystem(ob, md);
+	RigidBodyModifierData* rmd = findFollowingRigidBodyModifier(ob, md);
 
 	DerivedMesh *result = NULL, *d = NULL;
 	int i = 0, j = 0, f, f_index = 0, ml_index = 0;
@@ -2382,6 +2398,10 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					emd->last_part = psmd->psys->totpart;
 				emd->last_bool = emd->use_boolean;
 				emd->last_point_source = emd->point_source;
+
+				//trigger refresh of possible following rmd too
+				if (rmd)
+					rmd->refresh = TRUE;
 			}
 
 			if (emd->cells == NULL)

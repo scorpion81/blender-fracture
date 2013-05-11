@@ -1592,11 +1592,6 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		rmd->refresh = FALSE;
 	}
 
-	if ((emd == NULL) && (rmd->explo_shared == TRUE)) {
-		//something messed up in the middle of refresh, bail out
-		return dm;
-	}
-
 	if (rmd->visible_mesh != NULL) {
 
 		DerivedMesh *dm_final;
