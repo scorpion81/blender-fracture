@@ -800,7 +800,7 @@ static int check_meshislands_adjacency(RigidBodyModifierData* rmd, MeshIsland* m
 				break;
 			}
 		}
-		if ((!con_found) && same){
+		if ((!con_found)/* && same*/){
 			if (rmd->use_constraints) {
 				if (((rmd->constraint_group != NULL) &&
 					(!BKE_group_object_exists(rmd->constraint_group, ob))) ||
@@ -827,7 +827,8 @@ static int bbox_intersect(RigidBodyModifierData *rmd, MeshIsland *mi, MeshIsland
 	//vec between centroids -> v, if v[0] > bb1[4] - bb1[0] / 2 + bb2[4] - bb[0] / 2 in x range ?
 	// analogous y and z, if one overlaps, bboxes touch, make expensive test then
 	int equal = mi->parent_mod == mi2->parent_mod;
-	float dist = equal ? rmd->contact_dist : rmd->group_contact_dist;
+	//float dist = equal ? rmd->contact_dist : rmd->group_contact_dist;
+	float dist = equal ? rmd->contact_dist : rmd->outer_constraint_type == RBC_TYPE_FIXED ? rmd->group_contact_dist : 0;
 
 	if ((mi->bb == NULL) || (mi2->bb == NULL)) {
 		//compat with older files, where bb test missed
@@ -1006,9 +1007,16 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 
 			ob2_closest = BLI_ghash_lookup(closest_all, ob2);
 
-			//find closest pair of mesh islands for object pair
-			mil1 = BLI_ghash_lookup(ob1_closest, ob2);
-			mil2 = BLI_ghash_lookup(ob2_closest, ob1);
+			if (ob2_closest) {
+				//find closest pair of mesh islands for object pair
+				mil1 = BLI_ghash_lookup(ob1_closest, ob2);
+				mil2 = BLI_ghash_lookup(ob2_closest, ob1);
+			}
+			else
+			{
+				mil1 = NULL;
+				mil2 = NULL;
+			}
 
 			for (con = rmd->meshConstraints.first; con; con = con->next) {
 				if (((con->mi1 == mil1) && (con->mi2 == mil2)) ||
@@ -1189,7 +1197,7 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 				// analogous y and z, if one overlaps, bboxes touch, make expensive test then
 				int bbox_int = bbox_intersect(rmd, mi, mi2);
 				//printf("Overlap %d %d %d\n", bbox_int, (n2+j)->index, (n+i)->index);
-				if (bbox_int == FALSE)
+				if ((bbox_int == FALSE) && (mi->parent_mod == mi2->parent_mod))
 					break;
 
 				shared = check_meshislands_adjacency(rmd, mi, mi2, combined_mesh, face_tree, ob);
