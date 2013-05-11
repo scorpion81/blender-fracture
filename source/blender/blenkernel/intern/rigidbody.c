@@ -75,7 +75,7 @@
 #ifdef WITH_BULLET
 
 static bool isModifierActive(RigidBodyModifierData* rmd) {
-	return ((rmd != NULL) && (rmd->modifier.mode & eModifierMode_Realtime));// rmd->modifier.mode & eModifierMode_Render));
+	return ((rmd != NULL) && (rmd->modifier.mode & eModifierMode_Realtime) && (rmd->refresh == FALSE));// rmd->modifier.mode & eModifierMode_Render));
 }
 
 float BKE_rigidbody_calc_max_con_mass(Object* ob)
@@ -2512,6 +2512,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 		/* write cache for first frame when on second frame */
 		if (rbw->ltime == startframe && (cache->flag & PTCACHE_OUTDATED || cache->last_exact == 0)) {
 			BKE_ptcache_write(&pid, startframe);
+			//rbw->object_changed = TRUE; //flag refresh of modifiers ONCE if cache is empty
 		}
 
 		/* update and validate simulation */
