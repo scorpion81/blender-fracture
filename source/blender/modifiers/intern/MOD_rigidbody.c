@@ -1586,10 +1586,15 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			}
 		}
 
-		rmd->refresh = FALSE;
 		len = BLI_countlist(&rmd->meshIslands);
 		rmd->id_storage = MEM_mallocN(sizeof(int) * len, "rmd->id_storage");
 		rmd->index_storage = MEM_mallocN(sizeof(int) * len, "rmd->index_storage");
+		rmd->refresh = FALSE;
+	}
+
+	if ((emd == NULL) && (rmd->explo_shared == TRUE)) {
+		//something messed up in the middle of refresh, bail out
+		return dm;
 	}
 
 	if (rmd->visible_mesh != NULL) {

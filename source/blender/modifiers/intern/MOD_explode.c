@@ -114,7 +114,7 @@ static void initData(ModifierData *md)
 
 static void freeCells(ExplodeModifierData* emd)
 {
-	int c = 0;
+	int c = 0, v = 0;
 	
 	if ((emd->cells) && (emd->mode == eFractureMode_Cells)) {
 		if (emd->cells->data) {
@@ -122,6 +122,9 @@ static void freeCells(ExplodeModifierData* emd)
 				MEM_freeN(emd->cells->data[c].vertco);
 				emd->cells->data[c].vertco = NULL;
 				MEM_freeN(emd->cells->data[c].vertices);
+				for (v = 0; v < emd->cells->data[c].vertex_count; v++) {
+					emd->cells->data[c].vertices[v] = NULL;
+				}
 				emd->cells->data[c].vertices = NULL;
 				if (emd->cells->data[c].cell_mesh != NULL) {
 					DM_release(emd->cells->data[c].cell_mesh);

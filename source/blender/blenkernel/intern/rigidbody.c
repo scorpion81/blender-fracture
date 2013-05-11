@@ -266,6 +266,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 		struct BMVert* vert = mi->vertices[j];
 		if (vert == NULL) continue;
 		if (vert->co == NULL) continue;
+		if (mi->parent_mod->refresh == TRUE) break; //if refresh in progress, dont try to access stuff here
 
 		//reset to original coords // stored at fracture time
 		startco[0] = mi->vertco[j*3];
@@ -2009,8 +2010,8 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 			/* create dummy 'point' which represents last known position of object as result of sim */
 			// XXX: this can create some inaccuracies with sim position, but is probably better than using unsimulated vals?
 			RB_body_get_position(rbo->physics_object, eff_loc);
-			mul_v3_v3(centr, scale);
-			add_v3_v3(eff_loc, centr);
+			//mul_v3_v3(centr, scale);
+			//add_v3_v3(eff_loc, centr);
 
 			RB_body_get_linear_velocity(rbo->physics_object, eff_vel);
 
