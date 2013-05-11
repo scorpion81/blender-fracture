@@ -1051,39 +1051,50 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 	emd = findPrecedingExploModifier(ob, rmd);
 	if (emd != NULL) {
 		int i = 0, j;
+		GHash* visited_ids = BLI_ghash_pair_new("visited_ids");
 		for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 			MeshIsland* mi2;
 			int shared = 0;
 
-			/*for (v = 0; v < mi->vertex_count; v++) {
-				//BMVert* ve = BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]);
-				BMVert* ve = mi->vertices[v];
-				BM_elem_flag_enable(ve, BM_ELEM_TAG);
-			}*/
+			if (rmd->auto_merge && mi->is_at_boundary) {
+				for (v = 0; v < mi->vertex_count; v++) {
+					//BMVert* ve = BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]);
+					BMVert* ve = mi->vertices[v];
+					select_inner_faces_of_vert(rmd, face_tree, ve);
+				}
+			}
 
-			select_inner_faces(rmd, face_tree, mi);
 
 			for (i = 0; i < mi->neighbor_count; i++) {
 				int id = mi->neighbor_ids[i];
 				int index;
-				if (id >= 0){
+				if (id >= 0) {
 					index = BLI_ghash_lookup(rmd->idmap, id);
 					mi2 = BLI_findlink(&rmd->meshIslands, index);
 					if ((mi != mi2) && (mi2 != NULL)) {
-						//shared = check_meshislands_adjacency(rmd, mi, mi2, combined_mesh, face_tree, ob);
-						RigidBodyShardCon *con;
-						int con_found = FALSE;
+						GHashPair* id_pair = BLI_ghashutil_pairalloc(id, mi->id);
 
-						select_inner_faces(rmd, face_tree, mi2);
-
-						for (con = rmd->meshConstraints.first; con; con = con->next) {
-							if (((con->mi1 == mi) && (con->mi2 == mi2)) ||
-								((con->mi1 == mi2 && (con->mi2 == mi)))) {
-								con_found = TRUE;
-								break;
+						if (rmd->auto_merge && mi2->is_at_boundary) {
+							for (v = 0; v < mi2->vertex_count; v++) {
+								BMVert* ve2 = mi2->vertices[v];
+								select_inner_faces_of_vert(rmd, face_tree, ve2);
 							}
 						}
-						if ((!con_found)){
+
+						if (!BLI_ghash_haskey(visited_ids, id_pair)) {
+							//shared = check_meshislands_adjacency(rmd, mi, mi2, combined_mesh, face_tree, ob);
+							//RigidBodyShardCon *con;
+							//int con_found = FALSE;
+							BLI_ghash_insert(visited_ids, id_pair, i);
+
+							/*for (con = rmd->meshConstraints.first; con; con = con->next) {
+								if (((con->mi1 == mi) && (con->mi2 == mi2)) ||
+									((con->mi1 == mi2 && (con->mi2 == mi)))) {
+									con_found = TRUE;
+									break;
+								}
+							}
+							if ((!con_found)){*/
 							if (rmd->use_constraints) {
 								if (((rmd->constraint_group != NULL) &&
 									(!BKE_group_object_exists(rmd->constraint_group, ob))) ||
@@ -1096,6 +1107,28 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 									BLI_addtail(&rmd->meshConstraints, rbsc);
 								}
 							}
+						}
+						else
+						{
+							if (!mi->is_at_boundary && !mi2->is_at_boundary)
+							{
+								//use fast path for interior shards
+
+								int glob, glob2;
+								//now, if cell not altered by boolean, can select inner faces
+								// i is index of face in mi, need to find face index of visitor id
+								int secondface = BLI_ghash_lookup(visited_ids, id_pair);
+								//get global face index and select them
+								glob = mi->global_face_map[i];
+								glob2 = mi2->global_face_map[secondface]; //was "pair" necessary here ???
+
+								rmd->sel_indexes = MEM_reallocN(rmd->sel_indexes, sizeof(int*) * (rmd->sel_counter+1));
+								rmd->sel_indexes[rmd->sel_counter] = MEM_callocN(sizeof(int)*2, "sel_index_pair");
+								rmd->sel_indexes[rmd->sel_counter][0] = glob;
+								rmd->sel_indexes[rmd->sel_counter][1] = glob2;
+								rmd->sel_counter++;
+							}
+							BLI_ghashutil_pairfree(id_pair);
 						}
 					}
 				}
@@ -1128,6 +1161,9 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 				BM_elem_flag_disable(BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]), BM_ELEM_TAG);
 			}
 		}
+
+		BLI_ghash_free(visited_ids, BLI_ghashutil_pairfree, NULL);
+		visited_ids = NULL;
 	}
 	else
 	{
@@ -1473,12 +1509,12 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		freeData(md);
 		rmd->idmap = BLI_ghash_int_new("rmd->idmap");
 		copy_m4_m4(rmd->origmat, ob->obmat);
-		rmd->visible_mesh = DM_to_bmesh(dm);
-		if (rmd->visible_mesh != NULL) {
+	//	rmd->visible_mesh = DM_to_bmesh(dm);
+	/*	if (rmd->visible_mesh != NULL) {
 			BKE_submesh_free(rmd->storage);
 			rmd->storage = NULL;
 			//rmd->storage = BKE_bmesh_to_submesh(rmd->visible_mesh);
-		}
+		}*/
 
 
 		//grab neighborhood info (and whole fracture info -> cells) if available, if explo before rmd
@@ -1531,12 +1567,14 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				BLI_ghash_insert(rmd->idmap, mi->id, i);
 				mi->neighbor_ids = MEM_dupallocN(vc->neighbor_ids);
 				mi->neighbor_count = vc->neighbor_count;
+				mi->global_face_map = vc->global_face_map;
 			//}
 			}
 		}
 		else
 		{
 			//split to meshislands now
+			rmd->visible_mesh = DM_to_bmesh(dm);
 			rmd->explo_shared = FALSE;
 			mesh_separate_loose(rmd, ob);
 		}

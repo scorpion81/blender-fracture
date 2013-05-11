@@ -145,6 +145,12 @@ static void freeCells(ExplodeModifierData* emd)
 					MEM_freeN(emd->cells->data[c].neighbor_ids);
 					emd->cells->data[c].neighbor_ids = NULL;
 				}
+
+				if (emd->cells->data[c].global_face_map != NULL)
+				{
+					MEM_freeN(emd->cells->data[c].global_face_map);
+					emd->cells->data[c].global_face_map = NULL;
+				}
 			}
 
 			MEM_freeN(emd->cells->data);
@@ -1482,7 +1488,8 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 
 	DerivedMesh *dm = NULL, *boolresult = NULL;
 	MEdge* ed = NULL;
-	//MFace* fa = NULL;
+	MVert* ve_old = NULL, *ve_new = NULL;
+	int totvert_old = 0, totvert_new = 0;
 
 	int totvert, totedge, totpoly;
 	int v, e;
@@ -1497,6 +1504,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 	int totpoint = 0;
 //	int degenerate = FALSE;
 	int neighbor_index = 0;
+	int global_face_index = 0;
 
 	INIT_MINMAX(min, max);
 
@@ -1637,6 +1645,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 		emd->cells->data[emd->cells->count].neighbor_ids = MEM_mallocN(sizeof(int), "neighbor_ids");
 		emd->cells->data[emd->cells->count].neighbor_count = 0;
 		emd->cells->data[emd->cells->count].is_at_boundary = FALSE;
+		emd->cells->data[emd->cells->count].global_face_map = MEM_mallocN(sizeof(int), "global_face_map");
 		
 
 		bmtemp = BM_mesh_create(&bm_mesh_chunksize_default);
@@ -1850,13 +1859,16 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 						}
 						else
 						{
-							DM_release(dm);
-							MEM_freeN(dm);
-							dm = NULL;
+
 							DM_ensure_tessface(boolresult);
 							CDDM_calc_edges_tessface(boolresult);
 							CDDM_tessfaces_to_faces(boolresult);
 							CDDM_calc_normals(boolresult);
+
+
+							/*DM_release(dm);
+							MEM_freeN(dm);
+							dm = NULL;*/
 						}
 					}
 					else
@@ -1889,7 +1901,39 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 					localverts = MEM_mallocN(sizeof(BMVert*) * totvert, "localverts");
 					localedges = MEM_mallocN(sizeof(BMEdge*) * totedge, "localedges");
 					ed = boolresult->getEdgeArray(boolresult);
-					//fa = boolresult->getTessFaceArray(boolresult);
+
+					if (dm != boolresult) {
+						ve_new = boolresult->getVertArray(boolresult);
+						ve_old = dm->getVertArray(dm);
+						totvert_old = dm->getNumVerts(dm);
+						totvert_new = boolresult->getNumVerts(boolresult);
+
+						if (totvert_new == totvert_old)
+						{
+							int v;
+							for (v = 0; v < totvert_old; v++)
+							{
+								//if vertex coords differ, we had a bool op, at must be at boundary of object now
+								if (compare_v3v3(ve_old[v].co, ve_new[v].co, 0.000001f)) {
+									emd->cells->data[emd->cells->count].is_at_boundary = TRUE;
+									break;
+								}
+							}
+						}
+						else
+						{
+							emd->cells->data[emd->cells->count].is_at_boundary = TRUE;
+						}
+
+					/*	MEM_freeN(ve_old);
+						ve_old = NULL;
+						MEM_freeN(ve_new);
+						ve_new = NULL;*/
+
+						DM_release(dm);
+						MEM_freeN(dm);
+						dm = NULL;
+					}
 					
 					
 					CustomData_bmesh_merge(&boolresult->vertData, &bm->vdata, CD_MASK_DERIVEDMESH,
@@ -1976,7 +2020,11 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 						/*if (BM_elem_index_get(face) == -1) {
 							BM_elem_index_set(face, fac_index);
 						}*/
+						emd->cells->data[emd->cells->count].global_face_map = MEM_reallocN(emd->cells->data[emd->cells->count].global_face_map, sizeof(int) * (fac_index+1));
+						emd->cells->data[emd->cells->count].global_face_map[fac_index] = global_face_index;
+						emd->cells->data[emd->cells->count].face_count = fac_index+1;
 						fac_index++;
+						global_face_index++;
 
 						if ((mp+p)->flag & ME_SMOOTH)
 							BM_elem_flag_enable(face, BM_ELEM_SMOOTH);

@@ -655,11 +655,11 @@ typedef struct VoronoiCell {
 	float *vertco;
 	struct DerivedMesh *cell_mesh;
 	struct SMesh *storage;
-	int *vert_indexes, *neighbor_ids;
-	int vertex_count, neighbor_count;
+	int *vert_indexes, *neighbor_ids, *global_face_map;
+	int vertex_count, neighbor_count, face_count;
 	int particle_index, pid, is_at_boundary;
 	float centroid[3];
-	//char pad[4];
+	char pad[4];
 } VoronoiCell;
 
 typedef struct VoronoiCells {
@@ -1295,6 +1295,7 @@ typedef struct MeshIsland {
 	int *combined_index_map;
 	int *vert_indexes;//needed for storing the indexes into the original mesh
 	int *neighbor_ids;
+	int *global_face_map;
 	struct SMesh *storage;
 	struct BoundBox *bb;
 	int vertex_count, id, neighbor_count, is_at_boundary;
