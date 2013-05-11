@@ -1897,7 +1897,7 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 	ModifierData *md;
 	RigidBodyModifierData *rmd;
 	MeshIsland *mi;
-	int i, l, m, n, counter = 0;
+	int i, j, l, m, n, counter = 0;
 	int ismapped = FALSE;
 
 	l = BLI_countlist(&rbw->group->gobject); // all objects
@@ -1908,6 +1908,7 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 		rbw->numbodies = m+n;
 		rbw->objects = realloc(rbw->objects, sizeof(Object *) * l);
 		rbw->cache_index_map = realloc(rbw->cache_index_map, sizeof(int) * rbw->numbodies);
+		rbw->cache_offset_map = realloc(rbw->cache_offset_map, sizeof(int) * rbw->numbodies);
 	}
 
 	for (go = rbw->group->gobject.first, i = 0; go; go = go->next, i++) {
@@ -1918,11 +1919,13 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 			if (md->type == eModifierType_RigidBody) {
 				rmd = (RigidBodyModifierData*)md;
 				if (isModifierActive(rmd)) {
-					for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+					for (mi = rmd->meshIslands.first, j = 0; mi; mi = mi->next) {
 						rbw->cache_index_map[counter] = i; //map all shards of an object to this object index
 						//printf("index map:  %d %d\n", counter, i);
+						rbw->cache_offset_map[counter] = j;
 						mi->linear_index = counter;
 						counter++;
+						j++;
 					}
 					ismapped = TRUE;
 					break;
