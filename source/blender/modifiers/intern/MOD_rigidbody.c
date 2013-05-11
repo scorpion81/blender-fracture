@@ -713,7 +713,8 @@ static int check_meshislands_adjacency(RigidBodyModifierData* rmd, MeshIsland* m
 		}
 
 		// verts are in different objects, ok, only if we have different modifiers as parent
-		same = ((equal && ((ind1 == 0) || (ind2 == 0))) || (!equal));
+		same = ((equal && ((ind1 == 0) || (ind2 == 0))) || (!equal) || (rmd->inner_constraint_type != RBC_TYPE_FIXED));
+		//"same" does not work anymore for other constraint types than FIXED, so use it for this as distinction only
 	}
 
 	//if ((slot->data.ghash) && (slot->data.ghash->nentries > 2))
@@ -800,7 +801,7 @@ static int check_meshislands_adjacency(RigidBodyModifierData* rmd, MeshIsland* m
 				break;
 			}
 		}
-		if ((!con_found)/* && same*/){
+		if ((!con_found) && same){
 			if (rmd->use_constraints) {
 				if (((rmd->constraint_group != NULL) &&
 					(!BKE_group_object_exists(rmd->constraint_group, ob))) ||

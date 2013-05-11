@@ -324,10 +324,19 @@ void BKE_rigidbody_free_world(RigidBodyWorld *rbw)
 		RB_dworld_delete(rbw->physics_world);
 	}
 	if (rbw->objects)
-		free(rbw->objects);
+		MEM_freeN(rbw->objects);
 
 	if (rbw->cache_index_map)
-		free(rbw->cache_index_map);
+	{
+		MEM_freeN(rbw->cache_index_map);
+		rbw->cache_index_map = NULL;
+	}
+
+	if (rbw->cache_offset_map) {
+		MEM_freeN(rbw->cache_offset_map);
+		rbw->cache_offset_map = NULL;
+	}
+
 
 	/* free cache */
 	BKE_ptcache_free_list(&(rbw->ptcaches));
@@ -1480,6 +1489,10 @@ RigidBodyWorld *BKE_rigidbody_create_world(Scene *scene)
 	rbw->object_changed = FALSE;
 	rbw->refresh_modifiers = FALSE;
 
+	rbw->objects = MEM_mallocN(sizeof(Object*), "objects");
+	rbw->cache_index_map = MEM_mallocN(sizeof(int), "cache_index_map");
+	rbw->cache_offset_map = MEM_mallocN(sizeof(int), "cache_offset_map");
+
 	/* return this sim world */
 	return rbw;
 }
@@ -1906,9 +1919,9 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 
 	if (rbw->numbodies != (m+n)) {
 		rbw->numbodies = m+n;
-		rbw->objects = realloc(rbw->objects, sizeof(Object *) * l);
-		rbw->cache_index_map = realloc(rbw->cache_index_map, sizeof(int) * rbw->numbodies);
-		rbw->cache_offset_map = realloc(rbw->cache_offset_map, sizeof(int) * rbw->numbodies);
+		rbw->objects = MEM_reallocN(rbw->objects, sizeof(Object *) * l);
+		rbw->cache_index_map = MEM_reallocN(rbw->cache_index_map, sizeof(int) * rbw->numbodies);
+		rbw->cache_offset_map = MEM_reallocN(rbw->cache_offset_map, sizeof(int) * rbw->numbodies);
 	}
 
 	for (go = rbw->group->gobject.first, i = 0; go; go = go->next, i++) {
