@@ -220,7 +220,7 @@ static void freeData(ModifierData *md)
 		}
 	}
 
-	if (rmd->sel_indexes != NULL) {
+	if (rmd->sel_indexes != NULL && rmd->refresh == FALSE) {
 		for (i = 0; i < rmd->sel_counter; i++) {
 			MEM_freeN(rmd->sel_indexes[i]);
 			rmd->sel_indexes[i] = NULL;
