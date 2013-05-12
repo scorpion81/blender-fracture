@@ -448,7 +448,7 @@ void mesh_separate_loose(RigidBodyModifierData* rmd, Object* ob)
 	max_iter = bm_old->totvert;
 
 	/* Clear all selected vertices */
-	BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, FALSE);
+	//BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, FALSE);
 
 	/* A "while (true)" loop should work here as each iteration should
 	 * select and remove at least one vertex and when all vertices
@@ -457,10 +457,10 @@ void mesh_separate_loose(RigidBodyModifierData* rmd, Object* ob)
 	 * original mesh.*/
 	for (i = 0; i < max_iter; i++) {
 		//int tot = 0;
-		//BMIter iter;
+		BMIter iter;
 		//BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, FALSE);
-		v_seed = BM_iter_at_index(bm_old, BM_VERTS_OF_MESH, NULL, tot);
-		/*BM_ITER_MESH (v_seed, &iter, bm_old, BM_VERTS_OF_MESH) {
+		//v_seed = BM_iter_at_index(bm_old, BM_VERTS_OF_MESH, NULL, tot);
+		BM_ITER_MESH (v_seed, &iter, bm_old, BM_VERTS_OF_MESH) {
 			// Get a seed vertex to start the walk
 			//v_seed = BM_iter_at_index(bm_old, BM_VERTS_OF_MESH, NULL, 0);
 			if (!BM_elem_flag_test(v_seed, BM_ELEM_TAG) && !BLI_ghash_haskey(hash, v_seed)) {	//find untagged vertex, better iterate over all verts ?
@@ -468,7 +468,7 @@ void mesh_separate_loose(RigidBodyModifierData* rmd, Object* ob)
 				BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT| BM_ELEM_TAG, FALSE);
 				break;
 			}
-		}*/
+		}
 
 		/* No vertices available, can't do anything */
 		if (v_seed == NULL){
@@ -511,6 +511,7 @@ void mesh_separate_loose(RigidBodyModifierData* rmd, Object* ob)
 
 		/* Move selection into a separate object */
 		mesh_separate_tagged(rmd, ob);
+		//printf("mesh_separate_tagged: %d %d\n", tot, bm_old->totvert);
 
 		if ((tot >= bm_old->totvert) && (BLI_countlist(&rmd->meshIslands) > 1)) {
 			// Nothing more to select, work is done
