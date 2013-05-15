@@ -316,10 +316,10 @@ static ExplodeModifierData *findPrecedingExploModifier(Object *ob, RigidBodyModi
 	return emd;
 }
 
-static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob, BMVert** v_tag, int v_count, float** startco)
+static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob, BMVert** v_tag, int v_count, float** startco, BMesh* bm_work)
 {
 	BMesh *bm_new;
-	BMesh *bm_old = rmd->visible_mesh;
+	BMesh *bm_old = bm_work;
 	MeshIsland *mi;
 	float centroid[3], dummyloc[3], rot[4], min[3], max[3];
 	BMVert* v;
@@ -416,40 +416,47 @@ unsigned int vertHash(BMVert* v) {
 	return v->head.index;
 }
 
-void mesh_separate_loose_partition(RigidBodyModifierData* rmd, Object* ob, int start, int end, GHash** hash)
+void mesh_separate_loose_partition(RigidBodyModifierData* rmd, Object* ob, BMesh* bm_work, GHash* vhash)
 {
 	int i, j;
 	BMEdge *e;
 	BMVert *v_seed, **v_tag;
 	BMWalker walker;
-	int max_iter = end;
+	int max_iter;
 	int tot = 0;
 	int seed_counter = 0;
-	BMesh* bm_old = rmd->visible_mesh;
+	BMesh* bm_old = bm_work; //rmd->visible_mesh;
+	GHash* hash = BLI_ghash_int_new("VertHash");
 
-	float* startco;
-	//max_iter = end; //bm_old->totvert;
+	float* startco;;
+	max_iter = bm_old->totvert;
 
 	/* Clear all selected vertices */
-
+	BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, FALSE);
 
 	/* A "while (true)" loop should work here as each iteration should
 	 * select and remove at least one vertex and when all vertices
 	 * are selected the loop will break out. But guard against bad
 	 * behavior by limiting iterations to the number of vertices in the
 	 * original mesh.*/
-	for (i = start; i < max_iter; i++) {
+	for (i = 0; i < max_iter; i++) {
 		int tag_counter = 0;
 		int h_seed;
 		//BMIter iter;
-		//v_seed = BM_iter_at_index(bm_old, BM_VERTS_OF_MESH, NULL, seed_counter);
-		v_seed = BM_vert_at_index(bm_old, seed_counter+start);
-		//h_seed = vertHash(v_seed);
-		/*if (BM_elem_flag_test(v_seed, BM_ELEM_TAG) || (BLI_ghash_haskey(*hash, h_seed))) {
+		v_seed = BM_iter_at_index(bm_old, BM_VERTS_OF_MESH, NULL, seed_counter);
+		//v_seed = BM_vert_at_index(bm_old, seed_counter);
+
+		/* No vertices available, can't do anything */
+		if (v_seed == NULL){
+			break;
+		}
+
+		h_seed = vertHash(v_seed);
+		if (BM_elem_flag_test(v_seed, BM_ELEM_TAG) || (BLI_ghash_haskey(hash, h_seed))) {
 			//printf("Seed already used: %d\n", seed_counter);
 			seed_counter++;
 			continue;
-		}*/
+		}
 
 		//BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, FALSE);
 		v_tag = MEM_callocN(sizeof(BMVert*), "v_tag");
@@ -466,17 +473,16 @@ void mesh_separate_loose_partition(RigidBodyModifierData* rmd, Object* ob, int s
 		}*/
 
 		/* No vertices available, can't do anything */
-		if (v_seed == NULL){
+		/*if (v_seed == NULL){
 			break;
-		}
+		}*/
 
 		/* Select the seed explicitly, in case it has no edges */
-		if (!BM_elem_flag_test(v_seed, BM_ELEM_TAG) && !BLI_ghash_haskey(*hash, h_seed)) {
-			BLI_ghash_insert(*hash, h_seed, h_seed);
+		if (!BM_elem_flag_test(v_seed, BM_ELEM_TAG) && !BLI_ghash_haskey(hash, h_seed)) {
+			BLI_ghash_insert(hash, h_seed, h_seed);
 			BM_elem_flag_enable(v_seed, BM_ELEM_TAG);
-			//BLI_remlink(&avail_verts, v_seed);
 			v_tag = MEM_reallocN(v_tag, sizeof(BMVert*) * (tag_counter+1));
-			v_tag[tag_counter] = v_seed;//BM_vert_at_index(bm_old, v_seed->head.index);
+			v_tag[tag_counter] = (BMVert*)BLI_ghash_lookup(vhash, v_seed->co); //BM_vert_at_index(rmd->visible_mesh, v_seed->head.index);
 
 			startco = MEM_reallocN(startco, (tag_counter+1) * 3 * sizeof(float));
 			startco[3 * tag_counter] = v_seed->co[0];
@@ -497,11 +503,11 @@ void mesh_separate_loose_partition(RigidBodyModifierData* rmd, Object* ob, int s
 		for (; e; e = BMW_step(&walker)) {
 			unsigned int h1 = vertHash(e->v1);
 			unsigned int h2 = vertHash(e->v2);
-			if (!BM_elem_flag_test(e->v1, BM_ELEM_TAG) && !BLI_ghash_haskey(*hash, h1)){
-				BLI_ghash_insert(*hash, h1, h1);
+			if (!BM_elem_flag_test(e->v1, BM_ELEM_TAG) && !BLI_ghash_haskey(hash, h1)){
+				BLI_ghash_insert(hash, h1, h1);
 				BM_elem_flag_enable(e->v1, BM_ELEM_TAG);
 				v_tag = MEM_reallocN(v_tag, sizeof(BMVert*) * (tag_counter+1));
-				v_tag[tag_counter] = e->v1; //BM_vert_at_index(bm_old, e->v1->head.index);
+				v_tag[tag_counter] = (BMVert*)BLI_ghash_lookup(vhash, e->v1->co); //BM_vert_at_index(rmd->visible_mesh, e->v1->head.index);
 
 				startco = MEM_reallocN(startco, (tag_counter+1) * 3 * sizeof(float));
 				startco[3 * tag_counter] = e->v1->co[0];
@@ -510,11 +516,11 @@ void mesh_separate_loose_partition(RigidBodyModifierData* rmd, Object* ob, int s
 				tot++;
 				tag_counter++;
 			}
-			if (!BM_elem_flag_test(e->v2, BM_ELEM_TAG) && !BLI_ghash_haskey(*hash, h2)) {
-				BLI_ghash_insert(*hash, h2, h2);
+			if (!BM_elem_flag_test(e->v2, BM_ELEM_TAG) && !BLI_ghash_haskey(hash, h2)) {
+				BLI_ghash_insert(hash, h2, h2);
 				BM_elem_flag_enable(e->v2, BM_ELEM_TAG);
 				v_tag = MEM_reallocN(v_tag, sizeof(BMVert*) * (tag_counter+1));
-				v_tag[tag_counter] = e->v2;// BM_vert_at_index(bm_old, e->v2->head.index);
+				v_tag[tag_counter] = (BMVert*)BLI_ghash_lookup(vhash, e->v2->co); //BM_vert_at_index(rmd->visible_mesh, e->v2->head.index);
 
 				startco = MEM_reallocN(startco, (tag_counter+1) * 3 * sizeof(float));
 				startco[3 * tag_counter] = e->v2->co[0];
@@ -531,55 +537,181 @@ void mesh_separate_loose_partition(RigidBodyModifierData* rmd, Object* ob, int s
 		bm_mesh_hflag_flush_vert(bm_old, BM_ELEM_TAG);
 
 		/* Move selection into a separate object */
-		mesh_separate_tagged(rmd, ob, v_tag, tag_counter, &startco /*, bm_work*/);
-		//printf("mesh_separate_tagged: %d %d %d\n", tot, start, end);//bm_old->totvert);
+		mesh_separate_tagged(rmd, ob, v_tag, tag_counter, &startco, bm_old);
+		printf("mesh_separate_tagged: %d %d\n", tot, bm_old->totvert);
 
-		if (tot >= (end-start)) {// bm_old->totvert) /*&& (BLI_countlist(&rmd->meshIslands) > 1)*/) {
+		if (tot >= bm_old->totvert) { /*&& (BLI_countlist(&rmd->meshIslands) > 1)*/
 			// Nothing more to select, work is done
 			break;
 		}
 
 		seed_counter = tot;
 	}
-	//BLI_ghash_free(hash, NULL, NULL);
+	BLI_ghash_free(hash, NULL, NULL);
 }
 
-void halve(RigidBodyModifierData* rmd, Object* ob, int start, int end, int minsize, GHash** hash)
+static void select_linked(BMesh* bm_work)
 {
-	int leftstart = start;
+	BMIter iter;
+	BMVert *v;
+	BMEdge *e;
+	BMWalker walker;
+
+	/*if (em->selectmode == SCE_SELECT_FACE) {
+		BMFace *efa;
+
+		BM_ITER_MESH (efa, &iter, em->bm, BM_FACES_OF_MESH) {
+			BM_elem_flag_set(efa, BM_ELEM_TAG, (BM_elem_flag_test(efa, BM_ELEM_SELECT) &&
+												!BM_elem_flag_test(efa, BM_ELEM_HIDDEN)));
+		}
+
+		BMW_init(&walker, bm, BMW_ISLAND,
+				 BMW_MASK_NOP, BMW_MASK_NOP, BMW_MASK_NOP,
+				 BMW_FLAG_TEST_HIDDEN,
+				 BMW_NIL_LAY);
+
+		BM_ITER_MESH (efa, &iter, em->bm, BM_FACES_OF_MESH) {
+			if (BM_elem_flag_test(efa, BM_ELEM_TAG)) {
+				for (efa = BMW_begin(&walker, efa); efa; efa = BMW_step(&walker)) {
+					BM_face_select_set(bm, efa, true);
+				}
+			}
+		}
+		BMW_end(&walker);
+
+		if (limit) {
+			BM_mesh_elem_toolflags_clear(bm);
+		}
+	}*/
+	//else {
+		BM_ITER_MESH (v, &iter, bm_work, BM_VERTS_OF_MESH) {
+			if (BM_elem_flag_test(v, BM_ELEM_SELECT)) {
+				BM_elem_flag_enable(v, BM_ELEM_TAG);
+			}
+			else {
+				BM_elem_flag_disable(v, BM_ELEM_TAG);
+			}
+		}
+
+		BMW_init(&walker, bm_work , BMW_SHELL,
+				 BMW_MASK_NOP, BMW_MASK_NOP, BMW_MASK_NOP,
+				 BMW_FLAG_TEST_HIDDEN,
+				 BMW_NIL_LAY);
+
+		BM_ITER_MESH (v, &iter, bm_work, BM_VERTS_OF_MESH) {
+			if (BM_elem_flag_test(v, BM_ELEM_TAG)) {
+				for (e = BMW_begin(&walker, v); e; e = BMW_step(&walker)) {
+					BM_edge_select_set(bm_work, e, true);
+				}
+			}
+		}
+		BMW_end(&walker);
+
+		BM_mesh_select_flush(bm_work);
+	//}
+}
+
+void mesh_separate_selected(BMesh* bm_work, BMesh** bm_out)
+{
+	BMesh *bm_old = bm_work;
+	BMesh *bm_new = *bm_out;
+	BM_mesh_elem_hflag_disable_all(bm_old, BM_FACE | BM_EDGE | BM_VERT, BM_ELEM_TAG, false);
+	/* sel -> tag */
+	BM_mesh_elem_hflag_enable_test(bm_old, BM_FACE | BM_EDGE | BM_VERT, BM_ELEM_TAG, true, BM_ELEM_SELECT);
+
+	BM_mesh_elem_toolflags_ensure(bm_new);  /* needed for 'duplicate' bmo */
+
+	CustomData_copy(&bm_old->vdata, &bm_new->vdata, CD_MASK_BMESH, CD_CALLOC, 0);
+	CustomData_copy(&bm_old->edata, &bm_new->edata, CD_MASK_BMESH, CD_CALLOC, 0);
+	CustomData_copy(&bm_old->ldata, &bm_new->ldata, CD_MASK_BMESH, CD_CALLOC, 0);
+	CustomData_copy(&bm_old->pdata, &bm_new->pdata, CD_MASK_BMESH, CD_CALLOC, 0);
+
+	CustomData_bmesh_init_pool(&bm_new->vdata, bm_mesh_allocsize_default.totvert, BM_VERT);
+	CustomData_bmesh_init_pool(&bm_new->edata, bm_mesh_allocsize_default.totedge, BM_EDGE);
+	CustomData_bmesh_init_pool(&bm_new->ldata, bm_mesh_allocsize_default.totloop, BM_LOOP);
+	CustomData_bmesh_init_pool(&bm_new->pdata, bm_mesh_allocsize_default.totface, BM_FACE);
+
+	BMO_op_callf(bm_old, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+				 "duplicate geom=%hvef dest=%p", BM_ELEM_TAG, bm_new);
+	BMO_op_callf(bm_old, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+				 "delete geom=%hvef context=%i", BM_ELEM_TAG, DEL_FACES);
+
+	/* deselect loose data - this used to get deleted,
+	 * we could de-select edges and verts only, but this turns out to be less complicated
+	 * since de-selecting all skips selection flushing logic */
+	//BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, false);
+
+	BM_mesh_normals_update(bm_new);
+}
+
+void halve(RigidBodyModifierData* rmd, Object* ob, int minsize, BMesh** bm_work, GHash* vhash)
+{
+	/*int leftstart = start;
 	int leftend = (int)((end-start)/2) + start;
 	int rightstart = (int)((end-start)/2)+ start + 1;
-	int rightend = end;
+	int rightend = end;*/
+	int half;
+	int i = 0;
+	BMIter iter;
+	BMVert* v;
+	BMesh* bm_old = *bm_work;
+	BMesh* bm_new = BM_mesh_create(&bm_mesh_allocsize_default);
 
-	if ((end-start) > minsize) {
-		//printf("Halving left...%d %d\n", leftstart, leftend);
-		halve(rmd, ob, leftstart, leftend, minsize, hash);
-	}
+	half = bm_old->totvert / 2;
+	BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, FALSE);
 
-	if ((end-start) > minsize) {
-		//printf("Halving right...%d %d\n", rightstart, rightend);
-		halve(rmd, ob, rightstart, rightend, minsize, hash);
-	}
+	printf("Halving...%d\n", half);
 
-	if ((end > start) && (end - start) <= minsize)
+	BM_ITER_MESH(v, &iter, bm_old, BM_VERTS_OF_MESH)
 	{
-		mesh_separate_loose_partition(rmd, ob, start, end, hash);
+		if (i >= half) {
+			break;
+		}
+		BM_elem_select_set(bm_old, v, true);
+		i++;
 	}
+	select_linked(bm_old);
+	mesh_separate_selected(bm_old, &bm_new);
+
+	if (half > minsize) {
+		halve(rmd, ob, minsize, &bm_old, vhash);
+	}
+
+	mesh_separate_loose_partition(rmd, ob, bm_old, vhash);
+
+	if (half > minsize) {
+		halve(rmd, ob, minsize, &bm_new, vhash);
+	}
+	BM_mesh_free(bm_new);
+	bm_new = NULL;
+
 }
 
 void mesh_separate_loose(RigidBodyModifierData* rmd, Object* ob)
 {
 	//clock_t start, end;
-	int minsize = 10000;
-	GHash* hash = BLI_ghash_int_new("VertHash");
+	int minsize = 1000;
+	GHash* vhash = BLI_ghash_ptr_new("VertHash");
+	BMesh* bm_work;
+	BMVert* v;
+	BMIter iter;
 	BM_mesh_elem_hflag_disable_all(rmd->visible_mesh, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, FALSE);
 	//start = clock();
+	bm_work = BM_mesh_copy(rmd->visible_mesh);
 
-	halve(rmd, ob, 0, rmd->visible_mesh->totvert, minsize, &hash);
+	//associate new verts with old verts, here indexes should match still
+	BM_ITER_MESH(v, &iter, rmd->visible_mesh, BM_VERTS_OF_MESH)
+	{
+		BLI_ghash_insert(vhash, v->co, v);
+	}
+
+	halve(rmd, ob, minsize, &bm_work, vhash);
 
 	//end = clock();
 	//printf("Minsize: %d, Time %.2f\n", minsize, (float)(end-start));
-	BLI_ghash_free(hash, NULL, NULL);
+	BLI_ghash_free(vhash, NULL, NULL);
+	BM_mesh_free(bm_work);
+	bm_work = NULL;
 }
 
 void select_inner_faces(RigidBodyModifierData* rmd, KDTree* tree, MeshIsland* mi) {
@@ -1707,6 +1839,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			rmd->explo_shared = FALSE;
 			mesh_separate_loose(rmd, ob);
 		}
+
+		printf("Islands: %d\n", BLI_countlist(&rmd->meshIslands));
 
 		if ((rmd->use_constraints) || (rmd->auto_merge)) {
 			if (((rmd->constraint_group != NULL) && (!BKE_group_object_exists(rmd->constraint_group, ob))) ||
