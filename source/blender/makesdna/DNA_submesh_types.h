@@ -37,8 +37,8 @@
 #include "DNA_ID.h"
 #include "DNA_customdata_types.h"
 
-typedef struct SMHeader {
-	void *data; /* customdata layers */
+/*typedef struct SMHeader {
+	void *data; // customdata layers
 	int index; //index in SubMesh
 	char pad[4];
 } SMHeader;
@@ -84,6 +84,6 @@ typedef struct SMesh {
 
 	CustomData vdata, edata, ldata, pdata;
 
-} SMesh;
+} SMesh;*/
 
 #endif /*__DNA_SUBMESH_TYPES_H__*/

@@ -898,6 +898,12 @@ static void rna_RigidBodyModifier_auto_merge_dist_set(PointerRNA *ptr, float val
 	//rmd->refresh = TRUE; //maybe slow, better hit refresh manually
 }
 
+static void rna_RigidBodyModifier_constraint_limit_set(PointerRNA *ptr, int value)
+{
+	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	rmd->constraint_limit = value;
+}
+
 #else
 
 static PropertyRNA *rna_def_property_subdivision_common(StructRNA *srna, const char type[])
@@ -4015,6 +4021,13 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	RNA_def_property_enum_items(prop, prop_constraint_pattern);
 	RNA_def_property_ui_text(prop, "Outer Constraint Pattern", "");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
+
+	prop = RNA_def_property(srna, "constraint_limit", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "constraint_limit");
+	RNA_def_property_range(prop, 0, INT_MAX);
+	RNA_def_property_int_funcs(prop, NULL, "rna_RigidBodyModifier_constraint_limit_set", NULL);
+	RNA_def_property_ui_text(prop, "Constraint Search Limit", "Maximum number of neighbors being searched per mesh island during constraint creation");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 void RNA_def_modifier(BlenderRNA *brna)

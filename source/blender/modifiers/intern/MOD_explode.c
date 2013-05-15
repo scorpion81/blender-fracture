@@ -131,17 +131,17 @@ static void freeCells(ExplodeModifierData* emd)
 					MEM_freeN(emd->cells->data[c].cell_mesh);
 					emd->cells->data[c].cell_mesh = NULL;
 				}
-				if (emd->cells->data[c].storage!= NULL)
+/*				if (emd->cells->data[c].storage!= NULL)
 				{
 					BKE_submesh_free(emd->cells->data[c].storage);
 					emd->cells->data[c].storage = NULL;
-				}
+				}*/
 
-				if (emd->cells->data[c].vert_indexes != NULL)
+/*				if (emd->cells->data[c].vert_indexes != NULL)
 				{
 					MEM_freeN(emd->cells->data[c].vert_indexes);
 					emd->cells->data[c].vert_indexes = NULL;
-				}
+				}*/
 
 				if (emd->cells->data[c].neighbor_ids != NULL)
 				{
@@ -200,11 +200,11 @@ static void freeData(ModifierData *md)
 		emd->inner_material = NULL;
 	}
 
-	if (emd->storage != NULL)
+/*	if (emd->storage != NULL)
 	{
 		BKE_submesh_free(emd->storage);
 		emd->storage = NULL;
-	}
+	}*/
 }
 
 #else
@@ -220,12 +220,12 @@ static void freeData(ModifierData *md)
 
 #endif
 
-static void copy_voronoicell(ExplodeModifierData* emd, VoronoiCell* dst, VoronoiCell src)
+/*static void copy_voronoicell(ExplodeModifierData* emd, VoronoiCell* dst, VoronoiCell src)
 {
 	int i = 0;
 	BMesh* bmtemp;
 	(*dst).vertco = MEM_dupallocN(src.vertco);
-	(*dst).vert_indexes = MEM_dupallocN(src.vert_indexes);
+//	(*dst).vert_indexes = MEM_dupallocN(src.vert_indexes);
 	(*dst).vertices = MEM_mallocN(sizeof(BMVert*) * src.vertex_count, "voronoicell->dstvertices");
 	for (i = 0; i < src.vertex_count; i++)
 	{
@@ -235,17 +235,17 @@ static void copy_voronoicell(ExplodeModifierData* emd, VoronoiCell* dst, Voronoi
 	bmtemp = DM_to_bmesh(src.cell_mesh);
 	(*dst).cell_mesh = CDDM_from_bmesh(bmtemp, TRUE);
 	//(*dst).storage = BKE_bmesh_to_submesh(bmtemp);
-	(*dst).storage = NULL;
+	//(*dst).storage = NULL;
 
 	BM_mesh_free(bmtemp);
 	bmtemp = NULL;
-}
+}*/
 
 static void copyData(ModifierData *md, ModifierData *target)
 {
 	ExplodeModifierData *emd = (ExplodeModifierData *) md;
 	ExplodeModifierData *temd = (ExplodeModifierData *) target;
-	int i;
+//	int i;
 
 	temd->facepa = NULL;
 	temd->flag = emd->flag;
@@ -254,18 +254,18 @@ static void copyData(ModifierData *md, ModifierData *target)
 	temd->mode = emd->mode;
 	temd->use_boolean = emd->use_boolean;
 
-	temd->fracMesh = BM_mesh_copy(emd->fracMesh);// better regenerate this ?
+	temd->fracMesh = NULL; //BM_mesh_copy(emd->fracMesh);// better regenerate this ?
 	//temd->storage = BKE_bmesh_to_submesh(temd->fracMesh);
-	temd->storage = NULL;
+	//temd->storage = NULL;
 
 	temd->use_cache = emd->use_cache;
 	temd->tempOb = emd->tempOb;
-	temd->cells = MEM_dupallocN(emd->cells);
-	temd->cells->data = MEM_dupallocN(emd->cells->data);
+	temd->cells = NULL; //MEM_dupallocN(emd->cells);
+	//temd->cells->data = MEM_dupallocN(emd->cells->data);
 
-	for (i = 0; i < emd->cells->count; i++) {
+	/*for (i = 0; i < emd->cells->count; i++) {
 		copy_voronoicell(temd, &temd->cells->data[i], emd->cells->data[i]);
-	}
+	}*/
 
 	temd->last_part = emd->last_part;
 	temd->last_bool = emd->last_bool;
@@ -278,7 +278,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	temd->use_animation = emd->use_animation;
 	temd->noise = emd->noise;
 	temd->percentage = emd->percentage;
-
+	temd->use_cache = FALSE;
 }
 
 static int dependsOnTime(ModifierData *UNUSED(md)) 
@@ -1658,7 +1658,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 		emd->cells->data[emd->cells->count].vertex_count = 0;
 		emd->cells->data[emd->cells->count].particle_index = -1;
 //		emd->cells->data[emd->cells->count].rigidbody = NULL;
-		emd->cells->data[emd->cells->count].vert_indexes = MEM_mallocN(sizeof(int), "fractureToCells->vert_indexes");
+//		emd->cells->data[emd->cells->count].vert_indexes = MEM_mallocN(sizeof(int), "fractureToCells->vert_indexes");
 		emd->cells->data[emd->cells->count].storage = NULL;
 		emd->cells->data[emd->cells->count].neighbor_ids = MEM_mallocN(sizeof(int), "neighbor_ids");
 		emd->cells->data[emd->cells->count].neighbor_count = 0;
@@ -1906,8 +1906,8 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 					CustomData_bmesh_init_pool(&bmsub->ldata, bm_mesh_allocsize_default.totloop, BM_LOOP);
 					CustomData_bmesh_init_pool(&bmsub->pdata, bm_mesh_allocsize_default.totface, BM_FACE);*/
 
-					BKE_submesh_free(emd->cells->data[emd->cells->count].storage);
-					emd->cells->data[emd->cells->count].storage = NULL;
+//					BKE_submesh_free(emd->cells->data[emd->cells->count].storage);
+//					emd->cells->data[emd->cells->count].storage = NULL;
 					//emd->cells->data[emd->cells->count].storage = BKE_bmesh_to_submesh(bmsub);
 					//BM_mesh_free(bmsub);
 					
@@ -1992,9 +1992,9 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 						emd->cells->data[emd->cells->count].vertco[3*vert_index+1] = vert->co[1];
 						emd->cells->data[emd->cells->count].vertco[3*vert_index+2] = vert->co[2];
 
-						emd->cells->data[emd->cells->count].vert_indexes =
+/*						emd->cells->data[emd->cells->count].vert_indexes =
 								MEM_reallocN(emd->cells->data[emd->cells->count].vert_indexes, sizeof(int) * (vert_index+1));
-						emd->cells->data[emd->cells->count].vert_indexes[vert_index] = vert_index;
+						emd->cells->data[emd->cells->count].vert_indexes[vert_index] = vert_index;*/
 
 						CustomData_to_bmesh_block(&boolresult->vertData, &bm->vdata, v, &vert->head.data , 0);
 						
@@ -2125,8 +2125,8 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 			emd->cells->data[emd->cells->count].vertco = NULL;
 			MEM_freeN(emd->cells->data[emd->cells->count].vertices);
 			emd->cells->data[emd->cells->count].vertices = NULL;
-			MEM_freeN(emd->cells->data[emd->cells->count].vert_indexes);
-			emd->cells->data[emd->cells->count].vert_indexes = NULL;
+//			MEM_freeN(emd->cells->data[emd->cells->count].vert_indexes);
+//			emd->cells->data[emd->cells->count].vert_indexes = NULL;
 			MEM_freeN(emd->cells->data[emd->cells->count].global_face_map);
 			emd->cells->data[emd->cells->count].global_face_map = NULL;
 			MEM_freeN(emd->cells->data[emd->cells->count].neighbor_ids);
@@ -2388,8 +2388,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					emd->fracMesh = NULL;
 				}
 				emd->fracMesh = fractureToCells(ob, derivedData, emd, oldobmat);
-				BKE_submesh_free(emd->storage); // in case this is not the first call;
-				emd->storage = NULL;
+//				BKE_submesh_free(emd->storage); // in case this is not the first call;
+//				emd->storage = NULL;
 
 				if (emd->fracMesh != NULL) {
 					BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "recalc_face_normals faces=%af use_face_tag=%b", BM_FACES_OF_MESH, false);

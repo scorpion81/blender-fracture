@@ -32,7 +32,7 @@
 #include "BKE_customdata.h"
 #include "BLI_math_vector.h"
 
-BMesh* BKE_submesh_to_bmesh(SMesh* sm)
+/*BMesh* BKE_submesh_to_bmesh(SMesh* sm)
 {
 	int i, j;
 
@@ -287,4 +287,4 @@ SMesh* BKE_bmesh_to_submesh(BMesh* bm)
 	}
 
 	return sm;
-}
+}*/

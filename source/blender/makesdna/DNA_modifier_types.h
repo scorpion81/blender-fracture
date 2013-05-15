@@ -645,7 +645,7 @@ enum {
     MOD_VORONOI_USECACHE = (1 << 3),
     MOD_VORONOI_FLIPNORMAL = (1 << 4),
     MOD_VORONOI_EMITCONTINUOUSLY = (1 << 5),
-    MOD_VORONOI_USERIGIDBODY = (1 << 6)
+    MOD_VORONOI_USERIGIDBODY = (1 << 6),
 };
 
 //typedef struct VoronoiCell VoronoiCell;
@@ -655,7 +655,7 @@ typedef struct VoronoiCell {
 	float *vertco;
 	struct DerivedMesh *cell_mesh;
 	struct SMesh *storage;
-	int *vert_indexes, *neighbor_ids, *global_face_map;
+	int /**vert_indexes,*/ *neighbor_ids, *global_face_map;
 	int vertex_count, neighbor_count, face_count;
 	int particle_index, pid, is_at_boundary;
 	float centroid[3];
@@ -1293,10 +1293,10 @@ typedef struct MeshIsland {
 	struct RigidBodyOb *rigidbody;
 	struct RigidBodyModifierData *parent_mod; //needed to override thresholds/contact distance when using constraint groups
 	int *combined_index_map;
-	int *vert_indexes;//needed for storing the indexes into the original mesh
+	//int *vert_indexes;//needed for storing the indexes into the original mesh
 	int *neighbor_ids;
 	int *global_face_map;
-	struct SMesh *storage;
+	//struct SMesh *storage;
 	struct BoundBox *bb;
 	int vertex_count, id, neighbor_count, is_at_boundary;
 	float centroid[3];
@@ -1312,14 +1312,14 @@ typedef struct RigidBodyModifierData {
 	ListBase meshIslands, meshConstraints;
 	int	**sel_indexes, *index_storage, *id_storage;
 	struct GHash *idmap;
-	struct SMesh *storage;
+	//struct SMesh *storage;
 	int refresh, use_constraints, mass_dependent_thresholds, auto_merge, sel_counter;
 	int inner_constraint_type;
 	int outer_constraint_type, outer_constraint_location, outer_constraint_pattern;
-	int explo_shared;
+	int explo_shared, constraint_limit;
 	float origmat[4][4], breaking_threshold;
 	float contact_dist, group_breaking_threshold, group_contact_dist, auto_merge_dist;
-	char pad[4];
+	//char pad[4];
 } RigidBodyModifierData;
 
 

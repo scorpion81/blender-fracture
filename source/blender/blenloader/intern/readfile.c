@@ -4419,71 +4419,7 @@ static void direct_link_pose(FileData *fd, bPose *pose)
 	}
 }
 
-static SMesh* read_smesh(FileData* fd, SMesh* sm)
-{
-	sm = newdataadr(fd, sm);
-	if (sm != NULL) {
-		direct_link_customdata(fd, &sm->vdata, sm->totvert);
-		direct_link_customdata(fd, &sm->edata, sm->totedge);
-		direct_link_customdata(fd, &sm->ldata, sm->totloop);
-		direct_link_customdata(fd, &sm->pdata, sm->totface);
-
-		sm->vpool = newdataadr(fd, sm->vpool);
-		sm->epool = newdataadr(fd, sm->epool);
-		sm->lpool = newdataadr(fd, sm->lpool);
-		sm->fpool = newdataadr(fd, sm->fpool);
-	}
-
-	return sm;
-}
-
-static void read_voronoicell(FileData* fd, VoronoiCell* vc, ExplodeModifierData* emd)
-{
-	BMVert* v;
-	int i;
-	BMesh* bmtemp;
-
-	vc->storage = read_smesh(fd, vc->storage);
-	bmtemp = BKE_submesh_to_bmesh(vc->storage);
-	vc->cell_mesh = CDDM_from_bmesh(bmtemp, TRUE);
-	BM_mesh_free(bmtemp);
-
-	vc->vert_indexes = newdataadr(fd, vc->vert_indexes);
-	vc->vertices = MEM_mallocN(sizeof(BMVert*)*vc->vertex_count, "vc->vertices");
-	for (i = 0; i < vc->vertex_count; i++) {
-		int index = vc->vert_indexes[i];
-		v = BM_vert_at_index(emd->fracMesh, index);
-		vc->vertices[i] = v;
-	}
-
-	vc->vertco = newdataadr(fd, vc->vertco);
-}
-
-static MeshIsland* read_meshisland(FileData *fd, MeshIsland *mi, RigidBodyModifierData* rmd)
-{
-	BMVert* v;
-	int i;
-
-	mi->storage = read_smesh(fd, mi->storage);
-	mi->parent_mod = rmd;
-	mi->physics_mesh = BKE_submesh_to_bmesh(mi->storage);
-	mi->vert_indexes = newdataadr(fd, mi->vert_indexes);
-	mi->rigidbody = newdataadr(fd, mi->rigidbody);
-	if (mi->rigidbody != NULL) {
-		mi->rigidbody->physics_object = NULL;
-		mi->rigidbody->physics_shape = NULL;
-		mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
-		mi->rigidbody->flag |= RBO_FLAG_NEEDS_RESHAPE;
-	}
-
-	mi->vertices = MEM_mallocN(sizeof(BMVert*) * mi->vertex_count, "mi->vertices");
-	for (i = 0; i < mi->vertex_count; i++) {
-		v = BM_vert_at_index(rmd->visible_mesh, mi->vert_indexes[i]);
-		mi->vertices[i] = v;
-	}
-
-	return mi;
-}
+ 
 
 static void direct_link_modifiers(FileData *fd, ListBase *lb)
 {

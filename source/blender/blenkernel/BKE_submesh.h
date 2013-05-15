@@ -35,11 +35,11 @@
 #include "BLI_utildefines.h"
 #include "bmesh.h"
 
-struct BMesh;
+/*struct BMesh;
 struct SMesh;
 
 SMesh* BKE_bmesh_to_submesh(BMesh* bm);
 BMesh* BKE_submesh_to_bmesh(SMesh* sm);
-void BKE_submesh_free(SMesh* sm);
+void BKE_submesh_free(SMesh* sm);*/
 
 #endif /* __BKE_SUBMESH_H__ */

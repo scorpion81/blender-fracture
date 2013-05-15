@@ -1477,24 +1477,7 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 			if (wmd->cmap_curve)
 				write_curvemapping(wd, wmd->cmap_curve);
 		}
-		else if (md->type == eModifierType_Explode) {
-			ExplodeModifierData *emd = (ExplodeModifierData*) md;
-			if (emd->mode == eFractureMode_Cells) {
-				int i = 0;
-
-				if (emd->cells == NULL) continue;
-				if (emd->storage == NULL) continue;
-				write_smesh(wd, emd->storage);
-				writestruct(wd, DATA, "KDTree", 1, emd->patree);
-				writestruct(wd, DATA, "VoronoiCells", 1, emd->cells);
-				writestruct(wd, DATA, "VoronoiCell", emd->cells->count, emd->cells->data);
-
-				for (i = 0; i < emd->cells->count; i++) {
-					write_voronoicell(wd, &emd->cells->data[i]);
-				}
-			}
-		}
-
+		
 		else if (md->type == eModifierType_RigidBody) {
 
 			RigidBodyModifierData *rmd = (RigidBodyModifierData*)md;
@@ -1506,7 +1489,9 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 			for (con = rmd->meshConstraints.first; con; con = con->next) {
 				con->physics_constraint = NULL;
 				con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+ 
 			}
+ 
 		}
 	}
 }

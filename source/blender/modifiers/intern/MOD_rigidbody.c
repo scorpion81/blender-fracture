@@ -38,6 +38,8 @@
 #include "BLI_math.h"
 #include "BLI_listbase.h"
 #include "BLI_kdtree.h"
+#include "BLI_memarena.h"
+#include "BLI_linklist.h"
 
 #include "BKE_cdderivedmesh.h"
 #include "BKE_modifier.h"
@@ -62,6 +64,7 @@
 #include "DNA_group_types.h"
 
 #include "../../rigidbody/RBI_api.h"
+#include <time.h>
 
 
 static void initData(ModifierData *md)
@@ -80,7 +83,7 @@ static void initData(ModifierData *md)
 	rmd->auto_merge = FALSE;
 	rmd->sel_indexes = NULL;
 	rmd->sel_counter = 0;
-	rmd->storage = NULL;
+//	rmd->storage = NULL;
 	rmd->auto_merge_dist = 0.0001f;
 	rmd->inner_constraint_type = RBC_TYPE_FIXED;
 	rmd->outer_constraint_type = RBC_TYPE_FIXED;
@@ -88,8 +91,9 @@ static void initData(ModifierData *md)
 	rmd->outer_constraint_pattern = MOD_RIGIDBODY_SELECTED_TO_ACTIVE;
 	rmd->idmap = NULL;
 	rmd->explo_shared = FALSE;
+	rmd->constraint_limit = 0;
 }
-void copy_meshisland(RigidBodyModifierData* rmd, MeshIsland *dst, MeshIsland *src)
+/*void copy_meshisland(RigidBodyModifierData* rmd, MeshIsland *dst, MeshIsland *src)
 {
 	int i;
 	//dst->combined_index_map = MEM_dupallocN(src->combined_index_map); //length of this ??
@@ -109,16 +113,16 @@ void copy_meshisland(RigidBodyModifierData* rmd, MeshIsland *dst, MeshIsland *sr
 
 	dst->physics_mesh = BM_mesh_copy(src->physics_mesh);
 	//dst->storage = BKE_bmesh_to_submesh(dst->physics_mesh);
-	dst->storage = NULL;
+	//dst->storage = NULL;
 
-}
+}*/
 
 static void copyData(ModifierData *md, ModifierData *target)
 {
 	RigidBodyModifierData *rmd  = (RigidBodyModifierData *)md;
 	RigidBodyModifierData *trmd = (RigidBodyModifierData *)target;
-	MeshIsland* mi;
-	int i = 0;
+//	MeshIsland* mi;
+//	int i = 0;
 	//RigidBodyShardCon* con;
 
 	zero_m4(trmd->origmat);
@@ -135,22 +139,28 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->sel_counter = rmd->sel_counter;
 	trmd->explo_shared = rmd->explo_shared;
 
-	trmd->visible_mesh = BM_mesh_copy(rmd->visible_mesh);
+	trmd->visible_mesh = NULL;// BM_mesh_copy(rmd->visible_mesh);
 	//trmd->storage = BKE_bmesh_to_submesh(trmd->visible_mesh);
-	trmd->storage = NULL;
-	trmd->idmap = MEM_dupallocN(rmd->idmap);
+	//trmd->storage = NULL;
+	trmd->idmap = NULL; //MEM_dupallocN(rmd->idmap);
 	//trmd->id_storage = MEM_dupallocN(rmd->id_storage);
 	//trmd->index_storage = MEM_dupallocN(rmd->index_storage);
 
-	BLI_duplicatelist(&trmd->meshIslands, &rmd->meshIslands);
+	/*BLI_duplicatelist(&trmd->meshIslands, &rmd->meshIslands);
 	for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 		MeshIsland *dst = BLI_findlink(&trmd->meshIslands, i);
 		copy_meshisland(trmd, dst, mi);
 		i++;
 	}
-	BLI_duplicatelist(&trmd->meshConstraints, &rmd->meshConstraints);
+	BLI_duplicatelist(&trmd->meshConstraints, &rmd->meshConstraints);*/
+	trmd->meshIslands.first = NULL;
+	trmd->meshIslands.last = NULL;
+	trmd->meshConstraints.first = NULL;
+	trmd->meshConstraints.last = NULL;
 
 	trmd->auto_merge_dist = rmd->auto_merge_dist;
+	trmd->refresh = TRUE;
+	trmd->constraint_limit = rmd->constraint_limit;
 }
 
 static void freeData(ModifierData *md)
@@ -163,35 +173,37 @@ static void freeData(ModifierData *md)
 	while (rmd->meshIslands.first) {
 		mi = rmd->meshIslands.first;
 		BLI_remlink(&rmd->meshIslands, mi);
-		if (mi->physics_mesh)
+		if (mi->physics_mesh/* && rmd->refresh == FALSE*/) {
 			BM_mesh_free(mi->physics_mesh);
-		mi->physics_mesh = NULL;
-		if (mi->rigidbody)
+			mi->physics_mesh = NULL;
+		}
+		if (mi->rigidbody) {
 			MEM_freeN(mi->rigidbody);
-		mi->rigidbody = NULL;
+			mi->rigidbody = NULL;
+		}
 
 		if (!rmd->explo_shared) {
-			if (mi->vertco) {
+			if (mi->vertco /*&& rmd->refresh == FALSE*/) {
 				MEM_freeN(mi->vertco);
 				mi->vertco = NULL;
 			}
-			if (mi->vertices) {
+			if (mi->vertices /*&& rmd->refresh == FALSE*/) {
 				MEM_freeN(mi->vertices);
 				mi->vertices = NULL; //borrowed only !!!
 			}
 		}
 
-		if (mi->storage != NULL) {
+/*		if (mi->storage != NULL) {
 			BKE_submesh_free(mi->storage);
 			mi->storage = NULL;
-		}
+		}*/
 
-		if (!rmd->explo_shared) {
+/*		if (!rmd->explo_shared) {
 			if (mi->vert_indexes != NULL) {
 				MEM_freeN(mi->vert_indexes);
 				mi->vert_indexes = NULL;
 			}
-		}
+		}*/
 
 		if (mi->bb != NULL) {
 			MEM_freeN(mi->bb);
@@ -230,10 +242,10 @@ static void freeData(ModifierData *md)
 		rmd->sel_counter = 0;
 	}
 
-	if (rmd->storage != NULL) {
+/*	if (rmd->storage != NULL) {
 		BKE_submesh_free(rmd->storage);
 		rmd->storage = NULL;
-	}
+	}*/
 
 	if (rmd->idmap != NULL) {
 		BLI_ghash_free(rmd->idmap, NULL, NULL);
@@ -304,18 +316,14 @@ static ExplodeModifierData *findPrecedingExploModifier(Object *ob, RigidBodyModi
 	return emd;
 }
 
-static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
+static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob, BMVert** v_tag, int v_count, float** startco)
 {
 	BMesh *bm_new;
 	BMesh *bm_old = rmd->visible_mesh;
 	MeshIsland *mi;
-	int vertcount = 0, vert_index = 0, *vert_indexes;
-	float centroid[3], dummyloc[3], rot[4], *startco, min[3], max[3];
-	BMVert* v, **verts;
+	float centroid[3], dummyloc[3], rot[4], min[3], max[3];
+	BMVert* v;
 	BMIter iter;
-	//ExplodeModifierData *emd;
-	//VoronoiCell* vc;
-	int i = 0, index;
 
 	bm_new = BM_mesh_create(&bm_mesh_allocsize_default);
 	BM_mesh_elem_toolflags_ensure(bm_new);  /* needed for 'duplicate' bmo */
@@ -334,13 +342,6 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 	             "duplicate geom=%hvef dest=%p", BM_ELEM_TAG, bm_new);
 
 	BM_calc_center_centroid(bm_new, centroid, FALSE);
-	//printf("Centroid: %f %f %f \n", centroid[0], centroid[1], centroid[2]);
-	verts = MEM_callocN(sizeof(BMVert*), "mesh_separate_tagged->verts");
-	startco = MEM_callocN(sizeof(float), "mesh_separate_tagged->startco");
-	vert_indexes = MEM_callocN(sizeof(int), "mesh_separate_tagged->vert_indexes");
-
-	//store tagged vertices from old bmesh, important for later manipulation
-	//create rigidbody objects with island verts here
 
 	//use unmodified coords for bbox here
 	//BM_mesh_minmax(bm_new, min, max);
@@ -350,37 +351,14 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob)
 		sub_v3_v3(v->co, centroid);
 	}
 
-	BM_ITER_MESH (v, &iter, bm_old, BM_VERTS_OF_MESH) {
-
-		if (BM_elem_flag_test(v, BM_ELEM_TAG)) {
-			verts = MEM_reallocN(verts, sizeof(BMVert*) * (vertcount + 1));
-			verts[vertcount] = v;
-
-			startco = MEM_reallocN(startco, (vertcount+1) * 3 * sizeof(float));
-			startco[3 * vertcount] = v->co[0];
-			startco[3 * vertcount+1] = v->co[1];
-			startco[3 * vertcount+2] = v->co[2];
-			vert_indexes = MEM_reallocN(vert_indexes, (vertcount+1) * sizeof(int));
-			vert_indexes[vertcount] = vert_index;
-			vertcount++;
-		}
-		vert_index++;
-	}
-
 	// add 1 MeshIsland
 	mi = MEM_callocN(sizeof(MeshIsland), "meshIsland");
 	BLI_addtail(&rmd->meshIslands, mi);
-	index = BLI_findindex(&rmd->meshIslands, mi);
 
-	mi->vert_indexes = vert_indexes;
-	mi->vertices = verts;
-	mi->vertco = startco;
+	mi->vertices = v_tag;
+	mi->vertco = *startco;
 	mi->physics_mesh = bm_new;
-	BKE_submesh_free(mi->storage);
-	mi->storage = NULL;
-	//mi->storage = BKE_bmesh_to_submesh(mi->physics_mesh);
-
-	mi->vertex_count = vertcount;
+	mi->vertex_count = v_count;
 	copy_v3_v3(mi->centroid, centroid);
 	mat4_to_loc_quat(dummyloc, rot, ob->obmat);
 	copy_v3_v3(mi->rot, rot);
@@ -433,34 +411,51 @@ static void bm_mesh_hflag_flush_vert(BMesh *bm, const char hflag)
 	}
 }
 
+unsigned int vertHash(BMVert* v) {
+	//return (int)(v->co[0] * 100) ^ (int)(v->co[1] * 1000) ^ (int)(v->co[2] * 10000);
+	return v->head.index;
+}
 
-void mesh_separate_loose(RigidBodyModifierData* rmd, Object* ob)
+void mesh_separate_loose_partition(RigidBodyModifierData* rmd, Object* ob, int start, int end, GHash** hash)
 {
-	int i;
+	int i, j;
 	BMEdge *e;
-	BMVert *v_seed;
+	BMVert *v_seed, **v_tag;
 	BMWalker walker;
-	int max_iter = 0;
+	int max_iter = end;
 	int tot = 0;
+	int seed_counter = 0;
 	BMesh* bm_old = rmd->visible_mesh;
-	GHash* hash = BLI_ghash_ptr_new("VertIslands");
 
-	max_iter = bm_old->totvert;
+	float* startco;
+	//max_iter = end; //bm_old->totvert;
 
 	/* Clear all selected vertices */
-	//BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, FALSE);
+
 
 	/* A "while (true)" loop should work here as each iteration should
 	 * select and remove at least one vertex and when all vertices
 	 * are selected the loop will break out. But guard against bad
 	 * behavior by limiting iterations to the number of vertices in the
 	 * original mesh.*/
-	for (i = 0; i < max_iter; i++) {
-		//int tot = 0;
-		BMIter iter;
+	for (i = start; i < max_iter; i++) {
+		int tag_counter = 0;
+		int h_seed;
+		//BMIter iter;
+		//v_seed = BM_iter_at_index(bm_old, BM_VERTS_OF_MESH, NULL, seed_counter);
+		v_seed = BM_vert_at_index(bm_old, seed_counter+start);
+		//h_seed = vertHash(v_seed);
+		/*if (BM_elem_flag_test(v_seed, BM_ELEM_TAG) || (BLI_ghash_haskey(*hash, h_seed))) {
+			//printf("Seed already used: %d\n", seed_counter);
+			seed_counter++;
+			continue;
+		}*/
+
 		//BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, FALSE);
-		//v_seed = BM_iter_at_index(bm_old, BM_VERTS_OF_MESH, NULL, tot);
-		BM_ITER_MESH (v_seed, &iter, bm_old, BM_VERTS_OF_MESH) {
+		v_tag = MEM_callocN(sizeof(BMVert*), "v_tag");
+		startco = MEM_callocN(sizeof(float), "mesh_separate_loose->startco");
+
+		/*BM_ITER_MESH (v_seed, &iter, bm_old, BM_VERTS_OF_MESH) {
 			// Get a seed vertex to start the walk
 			//v_seed = BM_iter_at_index(bm_old, BM_VERTS_OF_MESH, NULL, 0);
 			if (!BM_elem_flag_test(v_seed, BM_ELEM_TAG) && !BLI_ghash_haskey(hash, v_seed)) {	//find untagged vertex, better iterate over all verts ?
@@ -468,7 +463,7 @@ void mesh_separate_loose(RigidBodyModifierData* rmd, Object* ob)
 				BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT| BM_ELEM_TAG, FALSE);
 				break;
 			}
-		}
+		}*/
 
 		/* No vertices available, can't do anything */
 		if (v_seed == NULL){
@@ -476,10 +471,19 @@ void mesh_separate_loose(RigidBodyModifierData* rmd, Object* ob)
 		}
 
 		/* Select the seed explicitly, in case it has no edges */
-		if (!BM_elem_flag_test(v_seed, BM_ELEM_TAG) && !BLI_ghash_haskey(hash, v_seed)) {
-			BLI_ghash_insert(hash, v_seed, v_seed);
+		if (!BM_elem_flag_test(v_seed, BM_ELEM_TAG) && !BLI_ghash_haskey(*hash, h_seed)) {
+			BLI_ghash_insert(*hash, h_seed, h_seed);
 			BM_elem_flag_enable(v_seed, BM_ELEM_TAG);
+			//BLI_remlink(&avail_verts, v_seed);
+			v_tag = MEM_reallocN(v_tag, sizeof(BMVert*) * (tag_counter+1));
+			v_tag[tag_counter] = v_seed;//BM_vert_at_index(bm_old, v_seed->head.index);
+
+			startco = MEM_reallocN(startco, (tag_counter+1) * 3 * sizeof(float));
+			startco[3 * tag_counter] = v_seed->co[0];
+			startco[3 * tag_counter+1] = v_seed->co[1];
+			startco[3 * tag_counter+2] = v_seed->co[2];
 			tot++;
+			tag_counter++;
 		}
 
 		/* Walk from the single vertex, selecting everything connected
@@ -491,15 +495,33 @@ void mesh_separate_loose(RigidBodyModifierData* rmd, Object* ob)
 
 		e = BMW_begin(&walker, v_seed);
 		for (; e; e = BMW_step(&walker)) {
-			if (!BM_elem_flag_test(e->v1, BM_ELEM_TAG) && !BLI_ghash_haskey(hash, e->v1)){
-				BLI_ghash_insert(hash, e->v1, e->v1);
+			unsigned int h1 = vertHash(e->v1);
+			unsigned int h2 = vertHash(e->v2);
+			if (!BM_elem_flag_test(e->v1, BM_ELEM_TAG) && !BLI_ghash_haskey(*hash, h1)){
+				BLI_ghash_insert(*hash, h1, h1);
 				BM_elem_flag_enable(e->v1, BM_ELEM_TAG);
+				v_tag = MEM_reallocN(v_tag, sizeof(BMVert*) * (tag_counter+1));
+				v_tag[tag_counter] = e->v1; //BM_vert_at_index(bm_old, e->v1->head.index);
+
+				startco = MEM_reallocN(startco, (tag_counter+1) * 3 * sizeof(float));
+				startco[3 * tag_counter] = e->v1->co[0];
+				startco[3 * tag_counter+1] = e->v1->co[1];
+				startco[3 * tag_counter+2] = e->v1->co[2];
 				tot++;
+				tag_counter++;
 			}
-			if (!BM_elem_flag_test(e->v2, BM_ELEM_TAG) && !BLI_ghash_haskey(hash, e->v2)) {
-				BLI_ghash_insert(hash, e->v2, e->v2);
+			if (!BM_elem_flag_test(e->v2, BM_ELEM_TAG) && !BLI_ghash_haskey(*hash, h2)) {
+				BLI_ghash_insert(*hash, h2, h2);
 				BM_elem_flag_enable(e->v2, BM_ELEM_TAG);
+				v_tag = MEM_reallocN(v_tag, sizeof(BMVert*) * (tag_counter+1));
+				v_tag[tag_counter] = e->v2;// BM_vert_at_index(bm_old, e->v2->head.index);
+
+				startco = MEM_reallocN(startco, (tag_counter+1) * 3 * sizeof(float));
+				startco[3 * tag_counter] = e->v2->co[0];
+				startco[3 * tag_counter+1] = e->v2->co[1];
+				startco[3 * tag_counter+2] = e->v2->co[2];
 				tot++;
+				tag_counter++;
 			}
 		}
 		BMW_end(&walker);
@@ -508,16 +530,55 @@ void mesh_separate_loose(RigidBodyModifierData* rmd, Object* ob)
 		 * the vertex selection */
 		bm_mesh_hflag_flush_vert(bm_old, BM_ELEM_TAG);
 
-
 		/* Move selection into a separate object */
-		mesh_separate_tagged(rmd, ob);
-		//printf("mesh_separate_tagged: %d %d\n", tot, bm_old->totvert);
+		mesh_separate_tagged(rmd, ob, v_tag, tag_counter, &startco /*, bm_work*/);
+		//printf("mesh_separate_tagged: %d %d %d\n", tot, start, end);//bm_old->totvert);
 
-		if ((tot >= bm_old->totvert) && (BLI_countlist(&rmd->meshIslands) > 1)) {
+		if (tot >= (end-start)) {// bm_old->totvert) /*&& (BLI_countlist(&rmd->meshIslands) > 1)*/) {
 			// Nothing more to select, work is done
 			break;
 		}
+
+		seed_counter = tot;
 	}
+	//BLI_ghash_free(hash, NULL, NULL);
+}
+
+void halve(RigidBodyModifierData* rmd, Object* ob, int start, int end, int minsize, GHash** hash)
+{
+	int leftstart = start;
+	int leftend = (int)((end-start)/2) + start;
+	int rightstart = (int)((end-start)/2)+ start + 1;
+	int rightend = end;
+
+	if ((end-start) > minsize) {
+		//printf("Halving left...%d %d\n", leftstart, leftend);
+		halve(rmd, ob, leftstart, leftend, minsize, hash);
+	}
+
+	if ((end-start) > minsize) {
+		//printf("Halving right...%d %d\n", rightstart, rightend);
+		halve(rmd, ob, rightstart, rightend, minsize, hash);
+	}
+
+	if ((end > start) && (end - start) <= minsize)
+	{
+		mesh_separate_loose_partition(rmd, ob, start, end, hash);
+	}
+}
+
+void mesh_separate_loose(RigidBodyModifierData* rmd, Object* ob)
+{
+	//clock_t start, end;
+	int minsize = 10000;
+	GHash* hash = BLI_ghash_int_new("VertHash");
+	BM_mesh_elem_hflag_disable_all(rmd->visible_mesh, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, FALSE);
+	//start = clock();
+
+	halve(rmd, ob, 0, rmd->visible_mesh->totvert, minsize, &hash);
+
+	//end = clock();
+	//printf("Minsize: %d, Time %.2f\n", minsize, (float)(end-start));
 	BLI_ghash_free(hash, NULL, NULL);
 }
 
@@ -866,7 +927,7 @@ static int bbox_intersect(RigidBodyModifierData *rmd, MeshIsland *mi, MeshIsland
 static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsland **meshIslands, int count, BMesh **combined_mesh, KDTree **combined_tree) {
 
 	MeshIsland *mi, *first, *last;
-	int i, j, v, sel_counter;
+	int i, j, v; //, sel_counter;
 	KDTreeNearest *n = MEM_mallocN(sizeof(KDTreeNearest)*count, "kdtreenearest");
 	KDTreeNearest *n2 = MEM_mallocN(sizeof(KDTreeNearest)*count, "kdtreenearest2");
 	ExplodeModifierData *emd = NULL;
@@ -1177,65 +1238,121 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 	}
 	else
 	{
-		BLI_kdtree_find_n_nearest(*combined_tree, count, meshIslands[0]->centroid, NULL, n2);
-		for (j = 0; j < count; j++) {
-			int shared = 0;
-			mi = meshIslands[(n2+j)->index];
-			if (j == 0)
-				first = mi;
+		//without explo modifier, automerge is useless in most cases (have non-adjacent stuff mostly)
 
-			for (v = 0; v < mi->vertex_count; v++) {
-				BM_elem_flag_enable(BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]), BM_ELEM_TAG);
+		//USE hash for inner constraints only for now, OUTER constraints use old code as fallback
+		//use omp here ?
+		/*for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+			for (v = 0; v < mi->vertex_count; v++)
+			{
+				BMVert* vert = mi->vertices[v];
+				int hash = vertHash(vert);
+				LinkNode **islands = BLI_ghash_lookup(vert_hash, hash);
+				while(islands) {
+					MeshIsland* mi2 = (MeshIsland*)islands->link;
+					if (mi != mi2) {
+
+					}
+				}
+
 			}
+		}*/
 
-			BLI_kdtree_find_n_nearest(*combined_tree, count, mi->centroid, NULL, n);
 
-		for (i = 0; i < count; i++) {
-			MeshIsland *mi2 = meshIslands[(n+i)->index];
-			//printf("Nearest: %d %d %f %f %f\n",m, (n+i)->index, (n+i)->co[0], (n+i)->co[2], (n+i)->co[2]);
-			if ((mi != mi2) && (mi2 != NULL)) {
-				//pre test with bounding boxes
-				//vec between centroids -> v, if v[0] > bb1[4] - bb1[0] / 2 + bb2[4] - bb[0] / 2 in x range ?
-				// analogous y and z, if one overlaps, bboxes touch, make expensive test then
-				int bbox_int = bbox_intersect(rmd, mi, mi2);
-				//printf("Overlap %d %d %d\n", bbox_int, (n2+j)->index, (n+i)->index);
-				if ((bbox_int == FALSE) && (mi->parent_mod == mi2->parent_mod))
-					break;
+		//BLI_kdtree_find_n_nearest(*combined_tree, count, meshIslands[0]->centroid, NULL, n2);
+		for (j = 0; j < count; j++) {
+			//int shared = 0;
+			int r = 0;
+			KDTreeNearest* n3;
+			float dist, obj_centr[3];
 
-				shared = check_meshislands_adjacency(rmd, mi, mi2, combined_mesh, face_tree, ob);
-				if ((shared == 0) && (rmd->inner_constraint_type == RBC_TYPE_FIXED) && (rmd->outer_constraint_type == RBC_TYPE_FIXED))
-					break; //load faster when both constraint types are FIXED, otherwise its too slow or incorrect
+			mi = meshIslands[j/*(n2+j)->index*/];
+			//if (j == 0)
+			//	first = mi;
 
-					/*if ((j == (count-1)) && (i == (count-2))) {
-						last = mi2;
-					}*/
+		/*	for (v = 0; v < mi->vertex_count; v++) {
+				BM_elem_flag_enable(BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]), BM_ELEM_TAG);
+			}*/
+
+			//BLI_kdtree_find_n_nearest(*combined_tree, count, mi->centroid, NULL, n);
+			dist = mi->parent_mod == rmd ? rmd->contact_dist : rmd->group_contact_dist;
+			mul_v3_m4v3(obj_centr, mi->parent_mod->origmat, mi->centroid );
+			r = BLI_kdtree_range_search(*combined_tree, rmd->contact_dist, obj_centr, NULL, &n3);
+
+			//use centroid dist based approach here, together with limit ?
+			for (i = 0; i < r; i++)
+			{
+				MeshIsland* mi2 = meshIslands[(n3+i)->index];
+				if ((mi != mi2) && (mi2 != NULL))
+				{
+					RigidBodyShardCon *rbsc, *con;
+					float thresh;
+					int con_type, equal, con_found = FALSE, ok;
+					equal = mi->parent_mod == mi2->parent_mod;
+					ok = equal || (!equal && rmd->outer_constraint_type == RBC_TYPE_FIXED);
+					thresh = equal ? rmd->breaking_threshold : rmd->group_breaking_threshold;
+					con_type = equal ? rmd->inner_constraint_type : rmd->outer_constraint_type;
+
+					if ((i >= rmd->constraint_limit) && (rmd->constraint_limit > 0) || !ok)
+					{
+						break;
+					}
+
+					for (con = rmd->meshConstraints.first; con; con = con->next) {
+						if (((con->mi1 == mi) && (con->mi2 == mi2)) ||
+							((con->mi1 == mi2 && (con->mi2 == mi)))) {
+							con_found = TRUE;
+							break;
+						}
+					}
+
+					if (!con_found)
+					{
+						rbsc = BKE_rigidbody_create_shard_constraint(rmd->modifier.scene, con_type);
+						rbsc->mi1 = mi;
+						rbsc->mi2 = mi2;
+						rbsc->breaking_threshold = thresh;
+						BLI_addtail(&rmd->meshConstraints, rbsc);
+					}
 				}
 			}
 
-			//if (shared == 0) break; // should be too far away already, farther than dist
+			MEM_freeN(n3);
+			/*for (i = 0; i < count; i++) {
+				MeshIsland *mi2 = meshIslands[(n+i)->index];
+				//printf("Nearest: %d %d %f %f %f\n",m, (n+i)->index, (n+i)->co[0], (n+i)->co[2], (n+i)->co[2]);
+				if ((mi != mi2) && (mi2 != NULL)) {
+					//pre test with bounding boxes
+					//vec between centroids -> v, if v[0] > bb1[4] - bb1[0] / 2 + bb2[4] - bb[0] / 2 in x range ?
+					// analogous y and z, if one overlaps, bboxes touch, make expensive test then
+					int bbox_int = bbox_intersect(rmd, mi, mi2);
+					//printf("Overlap %d %d %d\n", bbox_int, (n2+j)->index, (n+i)->index);
+					if ((bbox_int == FALSE) && (mi->parent_mod == mi2->parent_mod))
+						break;
+
+					shared = check_meshislands_adjacency(rmd, mi, mi2, combined_mesh, face_tree, ob);
+					if ((shared == 0) && (rmd->inner_constraint_type == RBC_TYPE_FIXED) && (rmd->outer_constraint_type == RBC_TYPE_FIXED))
+						break; //load faster when both constraint types are FIXED, otherwise its too slow or incorrect
+
+						*if ((j == (count-1)) && (i == (count-2))) {
+							last = mi2;
+						}*
+
+					if ((rmd->constraint_limit > 0) && (i >= rmd->constraint_limit))
+					{
+						break;
+					}
+				}
+				//if (shared == 0) break; // should be too far away already, farther than dist
+			}
 
 			for (v = 0; v < mi->vertex_count; v++) {
 				BM_elem_flag_disable(BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]), BM_ELEM_TAG);
-			}
+			}*/
 		}
 
 		//compare last with first
 		//check_meshislands_adjacency(rmd, last, first, combined_mesh, face_tree, ob);
-
-		sel_counter = 0;
-		/*BM_ITER_MESH(fa, &bmi, rmd->visible_mesh, BM_FACES_OF_MESH)
-		{
-			if (!BM_elem_flag_test(fa, BM_ELEM_TAG) && rmd->auto_merge)
-			{
-				printf("Face %d NOT visited\n", fa->head.index);
-			}
-			if (BM_elem_flag_test(fa, BM_ELEM_SELECT)) {
-				sel_counter++;
-			}
-		}
-
-		printf(" %d faces selected\n", sel_counter);*/
-
 	}
 
 	MEM_freeN(n);
@@ -1302,7 +1419,9 @@ static int create_combined_neighborhood(RigidBodyModifierData *rmd, MeshIsland *
 
 	*combined_tree = BLI_kdtree_new(islands);
 	for (i = 0; i < islands; i++) {
-		BLI_kdtree_insert(*combined_tree, i, (*mesh_islands)[i]->centroid, NULL);
+		float obj_centr[3];
+		mul_v3_m4v3(obj_centr, (*mesh_islands)[i]->parent_mod->origmat, (*mesh_islands)[i]->centroid );
+		BLI_kdtree_insert(*combined_tree, i, obj_centr, NULL);
 	}
 
 	BLI_kdtree_balance(*combined_tree);
@@ -1550,7 +1669,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				BLI_addtail(&rmd->meshIslands, mi);
 				//index = BLI_findindex(&rmd->meshIslands, mi);
 				mi->is_at_boundary = vc->is_at_boundary;
-				mi->vert_indexes = vc->vert_indexes;
+//				mi->vert_indexes = vc->vert_indexes;
 				mi->vertices = vc->vertices;
 				mi->vertco = vc->vertco;
 				mi->physics_mesh = DM_to_bmesh(vc->cell_mesh);
@@ -1560,8 +1679,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					sub_v3_v3(v->co, vc->centroid); //or better calc this again
 				}
 
-				BKE_submesh_free(mi->storage);
-				mi->storage = NULL;
+//				BKE_submesh_free(mi->storage);
+//				mi->storage = NULL;
 				//mi->storage = BKE_bmesh_to_submesh(mi->physics_mesh);
 
 				mi->vertex_count = vc->vertex_count;

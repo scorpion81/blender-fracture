@@ -2063,7 +2063,7 @@ static void validateShard(RigidBodyWorld *rbw, MeshIsland* mi, Object* ob, int r
 		/* World has been rebuilt so rebuild object */
 		BKE_rigidbody_validate_sim_shard(rbw, mi, ob, true);
 	}
-	else { // if (mi->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE) {
+	else if (mi->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE) {
 		BKE_rigidbody_validate_sim_shard(rbw, mi, ob, false);
 	}
 	/* refresh shape... */
@@ -2086,7 +2086,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 	MeshIsland* mi = NULL;
 	float centroid[3] = {0, 0, 0};
 	RigidBodyShardCon *rbsc;
-	int rebuildcon = rebuild;
+	//int rebuildcon = rebuild;
 
 	/* update world */
 	if (rebuild)
@@ -2132,14 +2132,14 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 					else {  //as usual, but for each shard now, and no constraints
 						/* perform simulation data updates as tagged */
 						/* refresh object... */
-						int do_rebuild;
+						int do_rebuild = rebuild;
 
-						if ((BLI_countlist(&rmd->meshConstraints) == 0) && (rmd->constraint_group == NULL)) {
+						/*if ((BLI_countlist(&rmd->meshConstraints) == 0) && (rmd->constraint_group == NULL)) {
 							do_rebuild = rebuild;
 						}
 						else {
 							do_rebuild = rebuild;// && (mi->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE);
-						}
+						}*/
 
 						validateShard(rbw, mi, ob, do_rebuild);
 					}
@@ -2161,7 +2161,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 						BKE_rigidbody_validate_sim_shard_constraint(rbw, rbsc, ob, true);
 					}
 
-					else { // if (rbsc->flag & RBC_FLAG_NEEDS_VALIDATE) {
+					else if (rbsc->flag & RBC_FLAG_NEEDS_VALIDATE) {
 						BKE_rigidbody_validate_sim_shard_constraint(rbw, rbsc, ob, false);
 					}
 
