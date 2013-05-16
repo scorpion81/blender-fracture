@@ -699,18 +699,11 @@ void halve(RigidBodyModifierData* rmd, Object* ob, int minsize, BMesh** bm_work,
 		//BM_mesh_elem_hflag_disable_all(bm_new, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, FALSE);
 	}
 
-	if (bm_old->totvert <= minsize || (bm_new->totvert == 0)) {
-		/*if (bm_new->totvert == 0) //did not halve
-		{
-			mesh_separate_loose_partition(rmd, ob, bm_old, orig_old);
-		}
-		else*/
-		{
-			mesh_separate_loose_partition(rmd, ob, bm_old, orig_mod);
-		}
+	if ((bm_old->totvert <= minsize) || (bm_new->totvert == 0)) {
+		mesh_separate_loose_partition(rmd, ob, bm_old, orig_mod);
 	}
 
-	if (bm_new->totvert <= minsize && bm_new->totvert > 0) {
+	if ((bm_new->totvert <= minsize && bm_new->totvert > 0) || (bm_old->totvert == 0)) {
 		mesh_separate_loose_partition(rmd, ob, bm_new, orig_new);
 	}
 
