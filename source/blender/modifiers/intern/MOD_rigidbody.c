@@ -557,7 +557,7 @@ static void select_linked(BMesh** bm_in)
 	BMesh *bm_work = *bm_in;
 
 
-	BMFace *efa;
+/*	BMFace *efa;
 
 	BM_ITER_MESH (efa, &iter, bm_work, BM_FACES_OF_MESH) {
 		BM_elem_flag_set(efa, BM_ELEM_TAG, (BM_elem_flag_test(efa, BM_ELEM_SELECT) &&
@@ -576,10 +576,10 @@ static void select_linked(BMesh** bm_in)
 			}
 		}
 	}
-	BMW_end(&walker);
+	BMW_end(&walker);*/
 
 
-	/*BM_ITER_MESH (v, &iter, bm_work, BM_VERTS_OF_MESH) {
+	BM_ITER_MESH (v, &iter, bm_work, BM_VERTS_OF_MESH) {
 		if (BM_elem_flag_test(v, BM_ELEM_SELECT)) {
 			BM_elem_flag_enable(v, BM_ELEM_TAG);
 		}
@@ -600,7 +600,9 @@ static void select_linked(BMesh** bm_in)
 			}
 		}
 	}
-	BMW_end(&walker);*/
+	BMW_end(&walker);
+
+	BM_mesh_select_flush(bm_work);
 }
 
 void mesh_separate_selected(BMesh** bm_work, BMesh** bm_out, BMVert** orig_work, BMVert*** orig_out1, BMVert*** orig_out2)
@@ -669,25 +671,25 @@ void halve(RigidBodyModifierData* rmd, Object* ob, int minsize, BMesh** bm_work,
 	int i = 0, new_count = 0;
 	BMIter iter;
 	BMVert **orig_old = *orig_work, **orig_new, **orig_mod;
-	BMFace *f;
+	BMVert *v;
 	BMesh* bm_old = *bm_work;
 	BMesh* bm_new = BM_mesh_create(&bm_mesh_allocsize_default);
 
 	//if (bm_old->totvert > minsize)
 	{
-		half = bm_old->totface / 2;
+		half = bm_old->totvert / 2;
 		BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, FALSE);
 
-		BM_ITER_MESH(f, &iter, bm_old, BM_FACES_OF_MESH)
+		BM_ITER_MESH(v, &iter, bm_old, BM_FACES_OF_MESH)
 		{
 			if (i >= half) {
 				break;
 			}
-			BM_elem_select_set(bm_old, f, true);
+			BM_elem_select_set(bm_old, v, true);
 			i++;
 		}
 
-		//Go over faces here (instead of verts...)
+		bm_mesh_hflag_flush_vert(bm_old, BM_ELEM_SELECT);
 		select_linked(&bm_old);
 
 		new_count = bm_old->totvertsel;
