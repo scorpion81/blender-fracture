@@ -416,7 +416,7 @@ unsigned int vertHash(BMVert* v) {
 	return v->head.index;
 }
 
-void mesh_separate_loose_partition(RigidBodyModifierData* rmd, Object* ob, BMesh* bm_work, GHash* vhash)
+void mesh_separate_loose_partition(RigidBodyModifierData* rmd, Object* ob, BMesh* bm_work, BMVert** orig_work)
 {
 	int i, j;
 	BMEdge *e;
@@ -482,7 +482,7 @@ void mesh_separate_loose_partition(RigidBodyModifierData* rmd, Object* ob, BMesh
 			BLI_ghash_insert(hash, h_seed, h_seed);
 			BM_elem_flag_enable(v_seed, BM_ELEM_TAG);
 			v_tag = MEM_reallocN(v_tag, sizeof(BMVert*) * (tag_counter+1));
-			v_tag[tag_counter] = (BMVert*)BLI_ghash_lookup(vhash, v_seed->co); //BM_vert_at_index(rmd->visible_mesh, v_seed->head.index);
+			v_tag[tag_counter] = orig_work[v_seed->head.index]; //BM_vert_at_index(rmd->visible_mesh, v_seed->head.index);
 
 			startco = MEM_reallocN(startco, (tag_counter+1) * 3 * sizeof(float));
 			startco[3 * tag_counter] = v_seed->co[0];
@@ -507,7 +507,7 @@ void mesh_separate_loose_partition(RigidBodyModifierData* rmd, Object* ob, BMesh
 				BLI_ghash_insert(hash, h1, h1);
 				BM_elem_flag_enable(e->v1, BM_ELEM_TAG);
 				v_tag = MEM_reallocN(v_tag, sizeof(BMVert*) * (tag_counter+1));
-				v_tag[tag_counter] = (BMVert*)BLI_ghash_lookup(vhash, e->v1->co); //BM_vert_at_index(rmd->visible_mesh, e->v1->head.index);
+				v_tag[tag_counter] = orig_work[e->v1->head.index];
 
 				startco = MEM_reallocN(startco, (tag_counter+1) * 3 * sizeof(float));
 				startco[3 * tag_counter] = e->v1->co[0];
@@ -520,7 +520,7 @@ void mesh_separate_loose_partition(RigidBodyModifierData* rmd, Object* ob, BMesh
 				BLI_ghash_insert(hash, h2, h2);
 				BM_elem_flag_enable(e->v2, BM_ELEM_TAG);
 				v_tag = MEM_reallocN(v_tag, sizeof(BMVert*) * (tag_counter+1));
-				v_tag[tag_counter] = (BMVert*)BLI_ghash_lookup(vhash, e->v2->co); //BM_vert_at_index(rmd->visible_mesh, e->v2->head.index);
+				v_tag[tag_counter] = orig_work[e->v2->head.index];
 
 				startco = MEM_reallocN(startco, (tag_counter+1) * 3 * sizeof(float));
 				startco[3 * tag_counter] = e->v2->co[0];
@@ -550,40 +550,41 @@ void mesh_separate_loose_partition(RigidBodyModifierData* rmd, Object* ob, BMesh
 	BLI_ghash_free(hash, NULL, NULL);
 }
 
-static void select_linked(BMesh* bm_work)
+static void select_linked(BMesh** bm_in)
 {
 	BMIter iter;
 	BMVert *v;
 	BMEdge *e;
 	BMWalker walker;
+	BMesh *bm_work = *bm_in;
 
-	/*if (em->selectmode == SCE_SELECT_FACE) {
+	/*if (em->selectmode == SCE_SELECT_FACE) {*/
 		BMFace *efa;
 
-		BM_ITER_MESH (efa, &iter, em->bm, BM_FACES_OF_MESH) {
+		BM_ITER_MESH (efa, &iter, bm_work, BM_FACES_OF_MESH) {
 			BM_elem_flag_set(efa, BM_ELEM_TAG, (BM_elem_flag_test(efa, BM_ELEM_SELECT) &&
 												!BM_elem_flag_test(efa, BM_ELEM_HIDDEN)));
 		}
 
-		BMW_init(&walker, bm, BMW_ISLAND,
+		BMW_init(&walker, bm_work, BMW_ISLAND,
 				 BMW_MASK_NOP, BMW_MASK_NOP, BMW_MASK_NOP,
 				 BMW_FLAG_TEST_HIDDEN,
 				 BMW_NIL_LAY);
 
-		BM_ITER_MESH (efa, &iter, em->bm, BM_FACES_OF_MESH) {
+		BM_ITER_MESH (efa, &iter, bm_work, BM_FACES_OF_MESH) {
 			if (BM_elem_flag_test(efa, BM_ELEM_TAG)) {
 				for (efa = BMW_begin(&walker, efa); efa; efa = BMW_step(&walker)) {
-					BM_face_select_set(bm, efa, true);
+					BM_face_select_set(bm_work, efa, true);
 				}
 			}
 		}
 		BMW_end(&walker);
 
-		if (limit) {
+	/*	if (limit) {
 			BM_mesh_elem_toolflags_clear(bm);
-		}
-	}*/
-	//else {
+		}*/
+	//}
+	/*else {
 		BM_ITER_MESH (v, &iter, bm_work, BM_VERTS_OF_MESH) {
 			if (BM_elem_flag_test(v, BM_ELEM_SELECT)) {
 				BM_elem_flag_enable(v, BM_ELEM_TAG);
@@ -608,13 +609,17 @@ static void select_linked(BMesh* bm_work)
 		BMW_end(&walker);
 
 		BM_mesh_select_flush(bm_work);
-	//}
+	}*/
 }
 
-void mesh_separate_selected(BMesh* bm_work, BMesh** bm_out)
+void mesh_separate_selected(BMesh** bm_work, BMesh** bm_out, BMVert** orig_work, BMVert*** orig_out1, BMVert*** orig_out2)
 {
-	BMesh *bm_old = bm_work;
+	BMesh *bm_old = *bm_work;
 	BMesh *bm_new = *bm_out;
+	BMVert* v, **orig_new = *orig_out1, **orig_mod = *orig_out2;
+	BMIter iter;
+	int new_index = 0, mod_index = 0;
+
 	BM_mesh_elem_hflag_disable_all(bm_old, BM_FACE | BM_EDGE | BM_VERT, BM_ELEM_TAG, false);
 	/* sel -> tag */
 	BM_mesh_elem_hflag_enable_test(bm_old, BM_FACE | BM_EDGE | BM_VERT, BM_ELEM_TAG, true, BM_ELEM_SELECT);
@@ -633,83 +638,126 @@ void mesh_separate_selected(BMesh* bm_work, BMesh** bm_out)
 
 	BMO_op_callf(bm_old, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 				 "duplicate geom=%hvef dest=%p", BM_ELEM_TAG, bm_new);
+
+	//lets hope the order of elements in new mesh is the same as it was in old mesh
+	BM_ITER_MESH(v, &iter, bm_old, BM_VERTS_OF_MESH)
+	{
+		if (BM_elem_flag_test(v, BM_ELEM_TAG)) {
+			orig_new[new_index] = orig_work[v->head.index];
+			new_index++;
+		}
+		else
+		{
+			orig_mod[mod_index] = orig_work[v->head.index];
+			mod_index++;
+		}
+	}
+
+	new_index = 0;
+	BM_ITER_MESH(v, &iter, bm_new, BM_VERTS_OF_MESH)
+	{
+		v->head.index = new_index;
+		new_index++;
+	}
+
 	BMO_op_callf(bm_old, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 				 "delete geom=%hvef context=%i", BM_ELEM_TAG, DEL_FACES);
 
 	/* deselect loose data - this used to get deleted,
 	 * we could de-select edges and verts only, but this turns out to be less complicated
 	 * since de-selecting all skips selection flushing logic */
-	//BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, false);
+	BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, false);
 
 	BM_mesh_normals_update(bm_new);
 }
 
-void halve(RigidBodyModifierData* rmd, Object* ob, int minsize, BMesh** bm_work, GHash* vhash)
+void halve(RigidBodyModifierData* rmd, Object* ob, int minsize, BMesh** bm_work, BMVert*** orig_work)
 {
-	/*int leftstart = start;
-	int leftend = (int)((end-start)/2) + start;
-	int rightstart = (int)((end-start)/2)+ start + 1;
-	int rightend = end;*/
+
 	int half;
-	int i = 0;
+	int i = 0, new_count = 0;
 	BMIter iter;
-	BMVert* v;
+	BMVert* v, **orig_old = *orig_work, **orig_new, **orig_mod;
 	BMesh* bm_old = *bm_work;
 	BMesh* bm_new = BM_mesh_create(&bm_mesh_allocsize_default);
 
-	half = bm_old->totvert / 2;
-	BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, FALSE);
-
-	printf("Halving...%d\n", half);
-
-	BM_ITER_MESH(v, &iter, bm_old, BM_VERTS_OF_MESH)
+	//if (bm_old->totvert > minsize)
 	{
-		if (i >= half) {
-			break;
+		half = bm_old->totvert / 2;
+		BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, FALSE);
+
+		printf("Halving...%d\n", bm_old->totvert);
+
+		BM_ITER_MESH(v, &iter, bm_old, BM_VERTS_OF_MESH)
+		{
+			if (i >= half) {
+				break;
+			}
+			BM_elem_select_set(bm_old, v, true);
+			i++;
 		}
-		BM_elem_select_set(bm_old, v, true);
-		i++;
-	}
-	select_linked(bm_old);
-	mesh_separate_selected(bm_old, &bm_new);
+		//Flush selection to edges/faces
+		bm_mesh_hflag_flush_vert(bm_old, BM_ELEM_SELECT);
 
-	if (half > minsize) {
-		halve(rmd, ob, minsize, &bm_old, vhash);
+		//Go over faces here (instead of verts...)
+		select_linked(&bm_old);
+
+		new_count = bm_old->totvertsel;
+		orig_new = MEM_callocN(sizeof(BMVert*) * new_count, "orig_new");
+		orig_mod = MEM_callocN(sizeof(BMVert*) * bm_old->totvert - new_count, "orig_mod");
+		mesh_separate_selected(&bm_old, &bm_new, orig_old, &orig_new, &orig_mod);
+		BM_mesh_elem_hflag_disable_all(bm_new, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, FALSE);
 	}
 
-	mesh_separate_loose_partition(rmd, ob, bm_old, vhash);
-
-	if (half > minsize) {
-		halve(rmd, ob, minsize, &bm_new, vhash);
+	if (bm_old->totvert <= minsize) {
+		mesh_separate_loose_partition(rmd, ob, bm_old, orig_mod);
 	}
+
+	if (bm_new->totvert <= minsize) {
+		mesh_separate_loose_partition(rmd, ob, bm_new, orig_new);
+	}
+
+	if (bm_old->totvert > minsize) {
+		halve(rmd, ob, minsize, &bm_old, &orig_mod);
+	}
+
+	if (bm_new->totvert > minsize) {
+		halve(rmd, ob, minsize, &bm_new, &orig_new);
+	}
+
 	BM_mesh_free(bm_new);
 	bm_new = NULL;
-
+	MEM_freeN(orig_mod);
+	MEM_freeN(orig_new);
 }
 
 void mesh_separate_loose(RigidBodyModifierData* rmd, Object* ob)
 {
 	//clock_t start, end;
 	int minsize = 1000;
-	GHash* vhash = BLI_ghash_ptr_new("VertHash");
+	//GHash* vhash = BLI_ghash_ptr_new("VertHash");
 	BMesh* bm_work;
-	BMVert* v;
+	BMVert* v, **orig_start;
 	BMIter iter;
+
 	BM_mesh_elem_hflag_disable_all(rmd->visible_mesh, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, FALSE);
 	//start = clock();
 	bm_work = BM_mesh_copy(rmd->visible_mesh);
 
+	orig_start = MEM_callocN(sizeof(BMVert*) * rmd->visible_mesh->totvert, "orig_start");
 	//associate new verts with old verts, here indexes should match still
 	BM_ITER_MESH(v, &iter, rmd->visible_mesh, BM_VERTS_OF_MESH)
 	{
-		BLI_ghash_insert(vhash, v->co, v);
+		orig_start[v->head.index] = v;
 	}
 
-	halve(rmd, ob, minsize, &bm_work, vhash);
+	halve(rmd, ob, minsize, &bm_work, &orig_start);
 
 	//end = clock();
 	//printf("Minsize: %d, Time %.2f\n", minsize, (float)(end-start));
-	BLI_ghash_free(vhash, NULL, NULL);
+//	BLI_ghash_free(vhash, NULL, NULL);
+	MEM_freeN(orig_start);
+	orig_start = NULL;
 	BM_mesh_free(bm_work);
 	bm_work = NULL;
 }
