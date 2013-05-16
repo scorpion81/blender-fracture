@@ -310,8 +310,16 @@ static ExplodeModifierData *findPrecedingExploModifier(Object *ob, RigidBodyModi
 	ExplodeModifierData *emd = NULL;
 
 	for (md = ob->modifiers.first; rmd != md; md = md->next) {
-		if (md->type == eModifierType_Explode)
+		if (md->type == eModifierType_Explode) {
 			emd = (ExplodeModifierData *) md;
+			if (emd->mode == eFractureMode_Cells) {
+				return emd;
+			}
+			else
+			{
+				return NULL;
+			}
+		}
 	}
 	return emd;
 }
