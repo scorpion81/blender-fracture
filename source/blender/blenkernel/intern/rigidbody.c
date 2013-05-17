@@ -105,19 +105,75 @@ float BKE_rigidbody_calc_max_con_mass(Object* ob)
 	return 0;
 }
 
-void BKE_rigidbody_calc_threshold(float max_con_mass, RigidBodyModifierData *rmd, RigidBodyShardCon *con) {
+float BKE_rigidbody_calc_min_con_dist(Object* ob)
+{
+	RigidBodyModifierData *rmd;
+	ModifierData *md;
+	RigidBodyShardCon *con;
+	float min_con_dist = FLT_MAX, con_dist, con_vec[3];
 
-	float max_thresh, thresh, con_mass;
-	if (max_con_mass == 0)
+	for (md = ob->modifiers.first; md; md = md->next) {
+		if (md->type == eModifierType_RigidBody) {
+			rmd = (RigidBodyModifierData*)md;
+			for (con = rmd->meshConstraints.first; con; con = con->next) {
+				if ((con->mi1 != NULL && con->mi1->rigidbody != NULL) &&
+						(con->mi2 != NULL && con->mi2->rigidbody != NULL)) {
+					sub_v3_v3v3(con_vec, con->mi1->centroid, con->mi2->centroid);
+					con_dist = len_v3(con_vec);
+					if (con_dist < min_con_dist) {
+						min_con_dist = con_dist;
+					}
+				}
+			}
+
+			return min_con_dist;
+		}
+	}
+
+	return FLT_MAX;
+}
+
+
+void BKE_rigidbody_calc_threshold(float max_con_mass, float min_con_dist,  RigidBodyModifierData *rmd, RigidBodyShardCon *con) {
+
+	float max_thresh, thresh, con_mass, con_dist, con_vec[3];
+	if ((max_con_mass == 0) && (rmd->mass_dependent_thresholds))
+	{
 		return;
+	}
+
+	if ((min_con_dist == FLT_MAX) && (rmd->dist_dependent_thresholds))
+	{
+		return;
+	}
 
 	if ((con->mi1 == NULL) || (con->mi2 == NULL))
+	{
 		return;
+	}
 
 	max_thresh = ((con->mi1->parent_mod == con->mi2->parent_mod) ? con->mi1->parent_mod->breaking_threshold : rmd->group_breaking_threshold);
 	if ((con->mi1->rigidbody != NULL) && (con->mi2->rigidbody != NULL)) {
 		con_mass = con->mi1->rigidbody->mass + con->mi2->rigidbody->mass;
-		thresh = (con_mass / max_con_mass) * max_thresh;
+		sub_v3_v3v3(con_vec, con->mi1->centroid, con->mi2->centroid);
+		con_dist = len_v3(con_vec);
+
+		if (rmd->mass_dependent_thresholds && rmd->dist_dependent_thresholds)
+		{
+			//multiply both factors if desired
+			float thresh1 = 0;
+			thresh1 = (con_mass / max_con_mass) * max_thresh;
+			thresh = (min_con_dist / con_dist) * thresh1;
+		}
+		else if (rmd->mass_dependent_thresholds)
+		{
+			thresh = (con_mass / max_con_mass) * max_thresh;
+		}
+		else if (rmd->dist_dependent_thresholds)
+		{
+			thresh = (min_con_dist / con_dist) * max_thresh;
+		}
+
 		con->breaking_threshold = thresh;
 	}
 }
@@ -2123,6 +2179,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 
 			if (isModifierActive(rmd)) {
 				float max_con_mass = 0;
+				float min_con_dist = FLT_MAX;
 
 				//BKE_object_where_is_calc(scene, ob);
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
@@ -2152,12 +2209,21 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 				}
 
 				if (rmd->mass_dependent_thresholds)
+				{
 					max_con_mass = BKE_rigidbody_calc_max_con_mass(ob);
+				}
+
+				if (rmd->dist_dependent_thresholds)
+				{
+					min_con_dist = BKE_rigidbody_calc_min_con_dist(ob);
+				}
 
 				for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
 
-					if (rmd->mass_dependent_thresholds)
-						BKE_rigidbody_calc_threshold(max_con_mass, rmd, rbsc);
+					if ((rmd->mass_dependent_thresholds) || (rmd->dist_dependent_thresholds))
+					{
+						BKE_rigidbody_calc_threshold(max_con_mass, min_con_dist, rmd, rbsc);
+					}
 
 					if (rebuild) {
 						/* World has been rebuilt so rebuild constraint */

@@ -686,6 +686,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         layout.prop(md, "outer_constraint_type")
         layout.prop(md, "outer_constraint_location")
         layout.prop(md, "mass_dependent_thresholds")
+        layout.prop(md, "dist_dependent_thresholds")
         layout.prop(md, "auto_merge")
         layout.prop(md, "auto_merge_dist");
 

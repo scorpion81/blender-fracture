@@ -1314,12 +1314,12 @@ typedef struct RigidBodyModifierData {
 	struct GHash *idmap;
 	//struct SMesh *storage;
 	int refresh, use_constraints, mass_dependent_thresholds, auto_merge, sel_counter;
-	int inner_constraint_type;
+    int inner_constraint_type, dist_dependent_thresholds;
 	int outer_constraint_type, outer_constraint_location, outer_constraint_pattern;
 	int explo_shared, constraint_limit;
 	float origmat[4][4], breaking_threshold;
 	float contact_dist, group_breaking_threshold, group_contact_dist, auto_merge_dist;
-	//char pad[4];
+    char pad[4];
 } RigidBodyModifierData;
 
 

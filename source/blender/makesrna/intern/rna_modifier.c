@@ -794,10 +794,14 @@ static void rna_UVWarpModifier_uvlayer_set(PointerRNA *ptr, const char *value)
 static void updateConstraints(RigidBodyModifierData *rmd, Object* ob) {
 	RigidBodyShardCon *rbsc;
 	int index1, index2;
-	float max_con_mass = 0;
+	float max_con_mass = 0, min_con_dist = FLT_MAX;
 
 	if (rmd->mass_dependent_thresholds) {
 		max_con_mass = BKE_rigidbody_calc_max_con_mass(ob);
+	}
+
+	if (rmd->dist_dependent_thresholds) {
+		min_con_dist = BKE_rigidbody_calc_min_con_dist(ob);
 	}
 
 	for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
@@ -811,8 +815,8 @@ static void updateConstraints(RigidBodyModifierData *rmd, Object* ob) {
 			rbsc->breaking_threshold = rmd->breaking_threshold;
 		}
 
-		if (rmd->mass_dependent_thresholds) {
-			BKE_rigidbody_calc_threshold(max_con_mass, rmd, rbsc);
+		if ((rmd->mass_dependent_thresholds) || (rmd->dist_dependent_thresholds)) {
+			BKE_rigidbody_calc_threshold(max_con_mass, min_con_dist, rmd, rbsc);
 		}
 
 		rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
@@ -902,6 +906,15 @@ static void rna_RigidBodyModifier_constraint_limit_set(PointerRNA *ptr, int valu
 {
 	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
 	rmd->constraint_limit = value;
+}
+
+static void rna_RigidBodyModifier_dist_dependent_thresholds_set(PointerRNA* ptr, int value)
+{
+	RigidBodyModifierData *rmd = (RigidBodyModifierData *)ptr->data;
+	Object* ob = ptr->id.data;
+	rmd->dist_dependent_thresholds = value;
+	updateConstraints(rmd, ob);
+	//rmd->refresh = TRUE;
 }
 
 #else
@@ -4027,6 +4040,11 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	RNA_def_property_range(prop, 0, INT_MAX);
 	RNA_def_property_int_funcs(prop, NULL, "rna_RigidBodyModifier_constraint_limit_set", NULL);
 	RNA_def_property_ui_text(prop, "Constraint Search Limit", "Maximum number of neighbors being searched per mesh island during constraint creation");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "dist_dependent_thresholds", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyModifier_dist_dependent_thresholds_set");
+	RNA_def_property_ui_text(prop, "Use Distance Dependent Thresholds", "Match the breaking threshold according to the distance of the constrained shards");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 

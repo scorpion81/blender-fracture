@@ -92,6 +92,7 @@ static void initData(ModifierData *md)
 	rmd->idmap = NULL;
 	rmd->explo_shared = FALSE;
 	rmd->constraint_limit = 0;
+	rmd->dist_dependent_thresholds = FALSE;
 }
 /*void copy_meshisland(RigidBodyModifierData* rmd, MeshIsland *dst, MeshIsland *src)
 {
@@ -1813,19 +1814,18 @@ void check_face_draw_by_proximity(RigidBodyModifierData* rmd, BMesh* merge_copy)
 
 static int dm_minmax(DerivedMesh* dm, float min[3], float max[3])
 {
+	int verts = dm->getNumVerts(dm);
+	MVert *mverts = dm->getVertArray(dm);
+	MVert *mvert;
+	int i = 0;
 
-    int verts = dm->getNumVerts(dm);
-    MVert *mverts = dm->getVertArray(dm);
-    MVert *mvert;
-    int i = 0;
+	INIT_MINMAX(min, max);
+	for (i = 0; i < verts; i++) {
+		mvert = &mverts[i];
+		minmax_v3v3_v3(min, max, mvert->co);
+	}
 
-    INIT_MINMAX(min, max);
-    for (i = 0; i < verts; i++) {
-        mvert = &mverts[i];
-        minmax_v3v3_v3(min, max, mvert->co);
-    }
-
-    return (verts != 0);
+	return (verts != 0);
 }
 
 static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
@@ -1835,8 +1835,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 	RigidBodyModifierData *rmd = (RigidBodyModifierData *) md;
 	ExplodeModifierData *emd = NULL;
-    BMesh* temp = NULL;
-    int exploOK = FALSE;
+	BMesh* temp = NULL;
+	int exploOK = FALSE;
 
 	if (rmd->refresh)
 	{
