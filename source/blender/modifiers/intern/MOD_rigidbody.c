@@ -1924,22 +1924,22 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		rmd->refresh = FALSE;
 	}
 
-    emd = findPrecedingExploModifier(ob, rmd);
-    exploOK = !rmd->explo_shared || (rmd->explo_shared && emd);
+	emd = findPrecedingExploModifier(ob, rmd);
+	exploOK = !rmd->explo_shared || (rmd->explo_shared && emd);
 
-    if (!exploOK)
-    {
-        MeshIsland* mi;
-        //nullify invalid data
-        for (mi = rmd->meshIslands.first; mi; mi = mi->next)
-        {
-            mi->vertco = NULL;
-            mi->vertex_count = 0;
-            mi->vertices = NULL;
-        }
-    }
+	if (!exploOK)
+	{
+		MeshIsland* mi;
+		//nullify invalid data
+		for (mi = rmd->meshIslands.first; mi; mi = mi->next)
+		{
+			mi->vertco = NULL;
+			mi->vertex_count = 0;
+			mi->vertices = NULL;
+		}
+	}
 
-    if ((rmd->visible_mesh != NULL) && exploOK) {
+	if ((rmd->visible_mesh != NULL) && exploOK) {
 		DerivedMesh *dm_final;
 		if (rmd->auto_merge) {
 			BMesh* merge_copy = BM_mesh_copy(rmd->visible_mesh);
@@ -1966,11 +1966,14 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		return dm_final;
 	}
 	else {
+		if (rmd->visible_mesh == NULL)
+		{
+			//oops, something went definitely wrong...
+			freeData(rmd);
+		}
+		
 		return dm;
 	}
-
-    //errors out without this... hrm
-    //return dm;
 }
 
 static int dependsOnTime(ModifierData *UNUSED(md))
