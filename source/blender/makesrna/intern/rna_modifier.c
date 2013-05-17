@@ -3939,6 +3939,12 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 
+	static EnumPropertyItem prop_contact_dist[] = {
+		{MOD_RIGIDBODY_CENTROIDS, "CENTROIDS", 0, "Centroids", ""},
+		{MOD_RIGIDBODY_VERTICES, "VERTICES", 0, "Vertices", ""},
+		{0, NULL, 0, NULL, NULL}
+	};
+
 	srna= RNA_def_struct(brna, "RigidBodyModifier", "Modifier");
 	RNA_def_struct_ui_text(srna, "Rigid Body Modifier", "Add multiple rigid body objects (from mesh islands)");
 	RNA_def_struct_sdna(srna, "RigidBodyModifierData");
@@ -4045,6 +4051,12 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "dist_dependent_thresholds", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyModifier_dist_dependent_thresholds_set");
 	RNA_def_property_ui_text(prop, "Use Distance Dependent Thresholds", "Match the breaking threshold according to the distance of the constrained shards");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "contact_dist_meaning", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_sdna(prop, NULL, "contact_dist_meaning");
+	RNA_def_property_enum_items(prop, prop_contact_dist);
+	RNA_def_property_ui_text(prop, "Contact Distance Target", "Distance shall be between centroids or vertices");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 

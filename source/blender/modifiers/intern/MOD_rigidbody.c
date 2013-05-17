@@ -93,6 +93,7 @@ static void initData(ModifierData *md)
 	rmd->explo_shared = FALSE;
 	rmd->constraint_limit = 0;
 	rmd->dist_dependent_thresholds = FALSE;
+	rmd->contact_dist_meaning = MOD_RIGIDBODY_CENTROIDS;
 }
 /*void copy_meshisland(RigidBodyModifierData* rmd, MeshIsland *dst, MeshIsland *src)
 {
@@ -175,8 +176,8 @@ static void freeData(ModifierData *md)
 		mi = rmd->meshIslands.first;
 		BLI_remlink(&rmd->meshIslands, mi);
 		if (mi->physics_mesh/* && rmd->refresh == FALSE*/) {
-            DM_release(mi->physics_mesh);
-            MEM_freeN(mi->physics_mesh);
+			DM_release(mi->physics_mesh);
+			MEM_freeN(mi->physics_mesh);
 			mi->physics_mesh = NULL;
 		}
 		if (mi->rigidbody) {
@@ -1426,109 +1427,100 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 	}
 	else
 	{
-		//without explo modifier, automerge is useless in most cases (have non-adjacent stuff mostly)
-
-		//USE hash for inner constraints only for now, OUTER constraints use old code as fallback
-		//use omp here ?
-		/*for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
-			for (v = 0; v < mi->vertex_count; v++)
-			{
-				BMVert* vert = mi->vertices[v];
-				int hash = vertHash(vert);
-				LinkNode **islands = BLI_ghash_lookup(vert_hash, hash);
-				while(islands) {
-					MeshIsland* mi2 = (MeshIsland*)islands->link;
-					if (mi != mi2) {
-
-					}
-				}
-
-			}
-		}*/
-
+		//without explo modifier, automerge is useless in most cases (have non-adjacent stuff mostly
 
 		//BLI_kdtree_find_n_nearest(*combined_tree, count, meshIslands[0]->centroid, NULL, n2);
 		for (j = 0; j < count; j++) {
-			//int shared = 0;
-			int r = 0;
-			KDTreeNearest* n3;
-			float dist, obj_centr[3];
 
-			mi = meshIslands[j/*(n2+j)->index*/];
-			//if (j == 0)
-			//	first = mi;
-
-		/*	for (v = 0; v < mi->vertex_count; v++) {
-				BM_elem_flag_enable(BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]), BM_ELEM_TAG);
-			}*/
-
-			//BLI_kdtree_find_n_nearest(*combined_tree, count, mi->centroid, NULL, n);
-			dist = mi->parent_mod == rmd ? rmd->contact_dist : rmd->group_contact_dist;
-			mul_v3_m4v3(obj_centr, mi->parent_mod->origmat, mi->centroid );
-			r = BLI_kdtree_range_search(*combined_tree, rmd->contact_dist, obj_centr, NULL, &n3);
-
-			//use centroid dist based approach here, together with limit ?
-			for (i = 0; i < r; i++)
+			if (rmd->contact_dist_meaning == MOD_RIGIDBODY_CENTROIDS)
 			{
-				MeshIsland* mi2 = meshIslands[(n3+i)->index];
-				if ((mi != mi2) && (mi2 != NULL))
+				int r = 0;
+				KDTreeNearest* n3;
+				float dist, obj_centr[3];
+
+				mi = meshIslands[j/*(n2+j)->index*/];
+				//if (j == 0)
+				//	first = mi;
+
+				dist = mi->parent_mod == rmd ? rmd->contact_dist : rmd->group_contact_dist;
+				mul_v3_m4v3(obj_centr, mi->parent_mod->origmat, mi->centroid );
+				r = BLI_kdtree_range_search(*combined_tree, rmd->contact_dist, obj_centr, NULL, &n3);
+
+				//use centroid dist based approach here, together with limit ?
+				for (i = 0; i < r; i++)
 				{
-					RigidBodyShardCon *rbsc, *con;
-					float thresh;
-					int con_type, equal, con_found = FALSE, ok;
-					equal = mi->parent_mod == mi2->parent_mod;
-					ok = equal || (!equal && rmd->outer_constraint_type == RBC_TYPE_FIXED);
-					thresh = equal ? rmd->breaking_threshold : rmd->group_breaking_threshold;
-					con_type = equal ? rmd->inner_constraint_type : rmd->outer_constraint_type;
-
-					if ((i >= rmd->constraint_limit) && (rmd->constraint_limit > 0) || !ok)
+					MeshIsland* mi2 = meshIslands[(n3+i)->index];
+					if ((mi != mi2) && (mi2 != NULL))
 					{
-						break;
-					}
+						RigidBodyShardCon *rbsc, *con;
+						float thresh;
+						int con_type, equal, con_found = FALSE, ok;
+						equal = mi->parent_mod == mi2->parent_mod;
+						ok = equal || (!equal && rmd->outer_constraint_type == RBC_TYPE_FIXED);
+						thresh = equal ? rmd->breaking_threshold : rmd->group_breaking_threshold;
+						con_type = equal ? rmd->inner_constraint_type : rmd->outer_constraint_type;
 
-					for (con = rmd->meshConstraints.first; con; con = con->next) {
-						if (((con->mi1 == mi) && (con->mi2 == mi2)) ||
-							((con->mi1 == mi2 && (con->mi2 == mi)))) {
-							con_found = TRUE;
+						if ((i >= rmd->constraint_limit) && (rmd->constraint_limit > 0) || !ok)
+						{
 							break;
 						}
-					}
 
-					if (!con_found)
-					{
-						rbsc = BKE_rigidbody_create_shard_constraint(rmd->modifier.scene, con_type);
-						rbsc->mi1 = mi;
-						rbsc->mi2 = mi2;
-						rbsc->breaking_threshold = thresh;
-						BLI_addtail(&rmd->meshConstraints, rbsc);
+						for (con = rmd->meshConstraints.first; con; con = con->next) {
+							if (((con->mi1 == mi) && (con->mi2 == mi2)) ||
+								((con->mi1 == mi2 && (con->mi2 == mi)))) {
+								con_found = TRUE;
+								break;
+							}
+						}
+
+						if (!con_found)
+						{
+							rbsc = BKE_rigidbody_create_shard_constraint(rmd->modifier.scene, con_type);
+							rbsc->mi1 = mi;
+							rbsc->mi2 = mi2;
+							rbsc->breaking_threshold = thresh;
+							BLI_addtail(&rmd->meshConstraints, rbsc);
+						}
 					}
 				}
+
+				MEM_freeN(n3);
 			}
+			else if (rmd->contact_dist_meaning == MOD_RIGIDBODY_VERTICES)//use vertex distance as FALLBACK
+			{
+				int shared = 0;
+				BLI_kdtree_find_n_nearest(*combined_tree, count, meshIslands[0]->centroid, NULL, n2);
+				mi = meshIslands[(n2+j)->index];
 
-			MEM_freeN(n3);
-			/*for (i = 0; i < count; i++) {
-				MeshIsland *mi2 = meshIslands[(n+i)->index];
-				//printf("Nearest: %d %d %f %f %f\n",m, (n+i)->index, (n+i)->co[0], (n+i)->co[2], (n+i)->co[2]);
-				if ((mi != mi2) && (mi2 != NULL)) {
-					//pre test with bounding boxes
-					//vec between centroids -> v, if v[0] > bb1[4] - bb1[0] / 2 + bb2[4] - bb[0] / 2 in x range ?
-					// analogous y and z, if one overlaps, bboxes touch, make expensive test then
-					int bbox_int = bbox_intersect(rmd, mi, mi2);
-					//printf("Overlap %d %d %d\n", bbox_int, (n2+j)->index, (n+i)->index);
-					if ((bbox_int == FALSE) && (mi->parent_mod == mi2->parent_mod))
-						break;
+				for (v = 0; v < mi->vertex_count; v++) {
+					BM_elem_flag_enable(BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]), BM_ELEM_TAG);
+				}
 
-					shared = check_meshislands_adjacency(rmd, mi, mi2, combined_mesh, face_tree, ob);
-					if ((shared == 0) && (rmd->inner_constraint_type == RBC_TYPE_FIXED) && (rmd->outer_constraint_type == RBC_TYPE_FIXED))
-						break; //load faster when both constraint types are FIXED, otherwise its too slow or incorrect
+				BLI_kdtree_find_n_nearest(*combined_tree, count, mi->centroid, NULL, n);
+				for (i = 0; i < count; i++) {
+					MeshIsland *mi2 = meshIslands[(n+i)->index];
+					//printf("Nearest: %d %d %f %f %f\n",m, (n+i)->index, (n+i)->co[0], (n+i)->co[2], (n+i)->co[2]);
+					if ((mi != mi2) && (mi2 != NULL)) {
+						//pre test with bounding boxes
+						//vec between centroids -> v, if v[0] > bb1[4] - bb1[0] / 2 + bb2[4] - bb[0] / 2 in x range ?
+						// analogous y and z, if one overlaps, bboxes touch, make expensive test then
+						int bbox_int = bbox_intersect(rmd, mi, mi2);
+						//printf("Overlap %d %d %d\n", bbox_int, (n2+j)->index, (n+i)->index);
+						if ((bbox_int == FALSE) && (mi->parent_mod == mi2->parent_mod))
+							break;
 
-						*if ((j == (count-1)) && (i == (count-2))) {
+						shared = check_meshislands_adjacency(rmd, mi, mi2, combined_mesh, face_tree, ob);
+						if ((shared == 0) && (rmd->inner_constraint_type == RBC_TYPE_FIXED) && (rmd->outer_constraint_type == RBC_TYPE_FIXED))
+							break; //load faster when both constraint types are FIXED, otherwise its too slow or incorrect
+
+						/*if ((j == (count-1)) && (i == (count-2))) {
 							last = mi2;
-						}*
+						}*/
 
-					if ((rmd->constraint_limit > 0) && (i >= rmd->constraint_limit))
-					{
-						break;
+						if ((rmd->constraint_limit > 0) && (i >= rmd->constraint_limit))
+						{
+							break;
+						}
 					}
 				}
 				//if (shared == 0) break; // should be too far away already, farther than dist
@@ -1536,7 +1528,7 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 
 			for (v = 0; v < mi->vertex_count; v++) {
 				BM_elem_flag_disable(BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]), BM_ELEM_TAG);
-			}*/
+			}
 		}
 
 		//compare last with first
@@ -1858,8 +1850,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			MeshIsland* mi;
 			VoronoiCell *vc;
 			BMIter iter;
-            int i, j;
-            BMVert *v;
+			int i, j;
+			BMVert *v;
 			float dummyloc[3], rot[4], min[3], max[3];
 
 			//good idea to simply reference this ? Hmm, what about removing the explo modifier later, crash ?)
@@ -1877,20 +1869,20 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 //				mi->vert_indexes = vc->vert_indexes;
 				mi->vertices = vc->vertices;
 				mi->vertco = vc->vertco;
-                temp = DM_to_bmesh(vc->cell_mesh);
+				temp = DM_to_bmesh(vc->cell_mesh);
 
-                BM_ITER_MESH (v, &iter, temp, BM_VERTS_OF_MESH) {
+				BM_ITER_MESH (v, &iter, temp, BM_VERTS_OF_MESH) {
 					//then eliminate centroid in vertex coords ?
 					sub_v3_v3(v->co, vc->centroid); //or better calc this again
-                }
+				}
 
 //				BKE_submesh_free(mi->storage);
 //				mi->storage = NULL;
 				//mi->storage = BKE_bmesh_to_submesh(mi->physics_mesh);
-                BM_mesh_minmax(temp, min, max);
-                mi->physics_mesh = CDDM_from_bmesh(temp, TRUE);
-                BM_mesh_free(temp);
-                temp = NULL;
+				BM_mesh_minmax(temp, min, max);
+				mi->physics_mesh = CDDM_from_bmesh(temp, TRUE);
+				BM_mesh_free(temp);
+				temp = NULL;
 
 				mi->vertex_count = vc->vertex_count;
 				copy_v3_v3(mi->centroid, vc->centroid);

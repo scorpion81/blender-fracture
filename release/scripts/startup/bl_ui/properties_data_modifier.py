@@ -676,8 +676,9 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
     def RIGID_BODY(self, layout, ob, md):
         layout.operator("object.rigidbody_refresh", text="Refresh")
         layout.prop(md, "use_constraints")
-        layout.prop(md, "constraint_group")
+        layout.prop(md, "constraint_group") 
         layout.prop(md, "constraint_limit")
+        layout.prop(md, "contact_dist_meaning")
         layout.prop(md, "contact_dist")
         layout.prop(md, "group_contact_dist")
         layout.prop(md, "breaking_threshold")

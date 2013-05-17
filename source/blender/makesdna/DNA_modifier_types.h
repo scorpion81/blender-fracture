@@ -1289,7 +1289,7 @@ typedef struct MeshIsland {
 	struct MeshIsland *next, *prev;
 	struct BMVert **vertices;
 	float *vertco;
-    struct DerivedMesh *physics_mesh; //convert to mesh later ??
+	struct DerivedMesh *physics_mesh; //convert to mesh later ??
 	struct RigidBodyOb *rigidbody;
 	struct RigidBodyModifierData *parent_mod; //needed to override thresholds/contact distance when using constraint groups
 	int *combined_index_map;
@@ -1314,12 +1314,12 @@ typedef struct RigidBodyModifierData {
 	struct GHash *idmap;
 	//struct SMesh *storage;
 	int refresh, use_constraints, mass_dependent_thresholds, auto_merge, sel_counter;
-    int inner_constraint_type, dist_dependent_thresholds;
+	int inner_constraint_type, dist_dependent_thresholds;
 	int outer_constraint_type, outer_constraint_location, outer_constraint_pattern;
-	int explo_shared, constraint_limit;
+	int explo_shared, constraint_limit, contact_dist_meaning;
 	float origmat[4][4], breaking_threshold;
 	float contact_dist, group_breaking_threshold, group_contact_dist, auto_merge_dist;
-    char pad[4];
+	//char pad[4];
 } RigidBodyModifierData;
 
 
@@ -1332,6 +1332,11 @@ enum {
 	MOD_RIGIDBODY_SELECTED = 0,
 	MOD_RIGIDBODY_ACTIVE = 1,
 	MOD_RIGIDBODY_CENTER = 2,
+};
+
+enum {
+	MOD_RIGIDBODY_CENTROIDS = 0,
+	MOD_RIGIDBODY_VERTICES = 1,
 };
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */
