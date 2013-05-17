@@ -241,8 +241,10 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland* mi)
 	if (vol_ob == 0)
 		return;
 
-	bm_mi = mi->physics_mesh;
+    bm_mi = DM_to_bmesh(mi->physics_mesh);
 	vol_mi = BKE_rigidbody_calc_volume(bm_mi, mi->rigidbody);
+    BM_mesh_free(bm_mi);
+
 	mass_mi = (vol_mi / vol_ob) * mass_ob;
 	mi->rigidbody->mass = mass_mi;
 	/* only active bodies need mass update */
@@ -794,7 +796,8 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland* mi, Object* ob, short re
 	 */
 	// XXX: all dimensions are auto-determined now... later can add stored settings for this
 	/* get object dimensions without scaling */
-	BM_mesh_bm_to_me(mi->physics_mesh, me, FALSE);
+    //BM_mesh_bm_to_me(mi->physics_mesh, me, FALSE);
+    DM_to_mesh(mi->physics_mesh, me, NULL, 0);
 
 	BKE_mesh_boundbox_calc(me, loc, size);
 

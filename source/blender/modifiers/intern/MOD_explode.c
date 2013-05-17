@@ -2384,7 +2384,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				mult_m4_m4m4(ob->obmat, imat, ob->obmat); //neutralize obmat due to rotation problem with container
 				
 				if ((emd->cells) && (emd->fracMesh)) {
-					BM_mesh_free(emd->fracMesh);
+                    BM_mesh_free(emd->fracMesh);
 					emd->fracMesh = NULL;
 				}
 				emd->fracMesh = fractureToCells(ob, derivedData, emd, oldobmat);

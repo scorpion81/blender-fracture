@@ -682,7 +682,7 @@ typedef struct ExplodeModifierData {
 
 	//for voronoi cell mode
 	VoronoiCells *cells;
-	struct BMesh *fracMesh;
+    struct BMesh *fracMesh;
 	struct Object *tempOb;
 	struct KDTree *patree;
 	struct Material *inner_material;
@@ -1289,7 +1289,7 @@ typedef struct MeshIsland {
 	struct MeshIsland *next, *prev;
 	struct BMVert **vertices;
 	float *vertco;
-	struct BMesh *physics_mesh; //convert to mesh later ??
+    struct DerivedMesh *physics_mesh; //convert to mesh later ??
 	struct RigidBodyOb *rigidbody;
 	struct RigidBodyModifierData *parent_mod; //needed to override thresholds/contact distance when using constraint groups
 	int *combined_index_map;

@@ -174,7 +174,8 @@ static void freeData(ModifierData *md)
 		mi = rmd->meshIslands.first;
 		BLI_remlink(&rmd->meshIslands, mi);
 		if (mi->physics_mesh/* && rmd->refresh == FALSE*/) {
-			BM_mesh_free(mi->physics_mesh);
+            DM_release(mi->physics_mesh);
+            MEM_freeN(mi->physics_mesh);
 			mi->physics_mesh = NULL;
 		}
 		if (mi->rigidbody) {
@@ -332,8 +333,9 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob, BMVert*
 	float centroid[3], dummyloc[3], rot[4], min[3], max[3];
 	BMVert* v;
 	BMIter iter;
+    DerivedMesh *dm = NULL;
 
-	bm_new = BM_mesh_create(&bm_mesh_allocsize_default);
+    bm_new = BM_mesh_create(&bm_mesh_allocsize_default);
 	BM_mesh_elem_toolflags_ensure(bm_new);  /* needed for 'duplicate' bmo */
 
 	CustomData_copy(&bm_old->vdata, &bm_new->vdata, CD_MASK_BMESH, CD_CALLOC, 0);
@@ -341,10 +343,10 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob, BMVert*
 	CustomData_copy(&bm_old->ldata, &bm_new->ldata, CD_MASK_BMESH, CD_CALLOC, 0);
 	CustomData_copy(&bm_old->pdata, &bm_new->pdata, CD_MASK_BMESH, CD_CALLOC, 0);
 
-	CustomData_bmesh_init_pool(&bm_new->vdata, bm_mesh_allocsize_default.totvert, BM_VERT);
-	CustomData_bmesh_init_pool(&bm_new->edata, bm_mesh_allocsize_default.totedge, BM_EDGE);
-	CustomData_bmesh_init_pool(&bm_new->ldata, bm_mesh_allocsize_default.totloop, BM_LOOP);
-	CustomData_bmesh_init_pool(&bm_new->pdata, bm_mesh_allocsize_default.totface, BM_FACE);
+    CustomData_bmesh_init_pool(&bm_new->vdata, bm_mesh_allocsize_default.totvert, BM_VERT);
+    CustomData_bmesh_init_pool(&bm_new->edata, bm_mesh_allocsize_default.totedge, BM_EDGE);
+    CustomData_bmesh_init_pool(&bm_new->ldata, bm_mesh_allocsize_default.totloop, BM_LOOP);
+    CustomData_bmesh_init_pool(&bm_new->pdata, bm_mesh_allocsize_default.totface, BM_FACE);
 
 	BMO_op_callf(bm_old, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 	             "duplicate geom=%hvef dest=%p", BM_ELEM_TAG, bm_new);
@@ -363,27 +365,40 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob, BMVert*
 		sub_v3_v3(v->co, centroid);
 	}
 
+
 	// add 1 MeshIsland
 	mi = MEM_callocN(sizeof(MeshIsland), "meshIsland");
 	BLI_addtail(&rmd->meshIslands, mi);
 
 	mi->vertices = v_tag;
 	mi->vertco = *startco;
-	mi->physics_mesh = bm_new;
+
+    BM_mesh_normals_update(bm_new);
+    BM_mesh_minmax(bm_new, min, max);
+    dm = CDDM_from_bmesh(bm_new, true);
+    BM_mesh_free(bm_new);
+    bm_new = NULL;
+
+    mi->physics_mesh = dm;
 	mi->vertex_count = v_count;
 	copy_v3_v3(mi->centroid, centroid);
 	mat4_to_loc_quat(dummyloc, rot, ob->obmat);
 	copy_v3_v3(mi->rot, rot);
 	mi->parent_mod = rmd;
-	BM_mesh_minmax(bm_new, min, max);
-	mi->bb = BKE_boundbox_alloc_unit();
-	BKE_boundbox_init_from_minmax(mi->bb, min, max);
+    mi->bb = BKE_boundbox_alloc_unit();
+    BKE_boundbox_init_from_minmax(mi->bb, min, max);
+
+    //takes VERY long...
+  /*  mi->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi);
+    BKE_rigidbody_calc_shard_mass(ob, mi);
+    BKE_rigidbody_validate_sim_shard(rmd->modifier.scene->rigidbody_world, mi, ob, true);
+    mi->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;*/
 
 	/* deselect loose data - this used to get deleted,
 	 * we could de-select edges and verts only, but this turns out to be less complicated
 	 * since de-selecting all skips selection flushing logic */
 	BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, FALSE);
-	BM_mesh_normals_update(bm_new);
+    //BM_mesh_normals_update(bm_new);
 }
 
 /* flush a hflag to from verts to edges/faces */
@@ -535,7 +550,7 @@ void mesh_separate_loose_partition(RigidBodyModifierData* rmd, Object* ob, BMesh
 		bm_mesh_hflag_flush_vert(bm_old, BM_ELEM_TAG);
 
 		/* Move selection into a separate object */
-		mesh_separate_tagged(rmd, ob, v_tag, tag_counter, &startco, bm_old);
+        mesh_separate_tagged(rmd, ob, v_tag, tag_counter, &startco, bm_old);
 		printf("mesh_separate_tagged: %d %d\n", tot, bm_old->totvert);
 
 		if (tot >= bm_old->totvert) {
@@ -726,7 +741,7 @@ void halve(RigidBodyModifierData* rmd, Object* ob, int minsize, BMesh** bm_work,
 void mesh_separate_loose(RigidBodyModifierData* rmd, Object* ob)
 {
 	//clock_t start, end;
-	int minsize = 1000;
+    int minsize = 1000;
 	//GHash* vhash = BLI_ghash_ptr_new("VertHash");
 	BMesh* bm_work;
 	BMVert* v, **orig_start;
@@ -1796,6 +1811,23 @@ void check_face_draw_by_proximity(RigidBodyModifierData* rmd, BMesh* merge_copy)
 	tree = NULL;
 }
 
+static int dm_minmax(DerivedMesh* dm, float min[3], float max[3])
+{
+
+    int verts = dm->getNumVerts(dm);
+    MVert *mverts = dm->getVertArray(dm);
+    MVert *mvert;
+    int i = 0;
+
+    INIT_MINMAX(min, max);
+    for (i = 0; i < verts; i++) {
+        mvert = &mverts[i];
+        minmax_v3v3_v3(min, max, mvert->co);
+    }
+
+    return (verts != 0);
+}
+
 static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 								  DerivedMesh *dm,
 								  ModifierApplyFlag UNUSED(flag))
@@ -1803,6 +1835,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 	RigidBodyModifierData *rmd = (RigidBodyModifierData *) md;
 	ExplodeModifierData *emd = NULL;
+    BMesh* temp = NULL;
 
 	if (rmd->refresh)
 	{
@@ -1817,7 +1850,6 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			//rmd->storage = BKE_bmesh_to_submesh(rmd->visible_mesh);
 		}*/
 
-
 		//grab neighborhood info (and whole fracture info -> cells) if available, if explo before rmd
 		emd = findPrecedingExploModifier(ob, rmd);
 		if (emd != NULL)
@@ -1825,8 +1857,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			MeshIsland* mi;
 			VoronoiCell *vc;
 			BMIter iter;
-			int i;
-			BMVert *v;
+            int i, j;
+            BMVert *v;
 			float dummyloc[3], rot[4], min[3], max[3];
 
 			//good idea to simply reference this ? Hmm, what about removing the explo modifier later, crash ?)
@@ -1844,23 +1876,27 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 //				mi->vert_indexes = vc->vert_indexes;
 				mi->vertices = vc->vertices;
 				mi->vertco = vc->vertco;
-				mi->physics_mesh = DM_to_bmesh(vc->cell_mesh);
+                temp = DM_to_bmesh(vc->cell_mesh);
 
-				BM_ITER_MESH (v, &iter, mi->physics_mesh, BM_VERTS_OF_MESH) {
+                BM_ITER_MESH (v, &iter, temp, BM_VERTS_OF_MESH) {
 					//then eliminate centroid in vertex coords ?
 					sub_v3_v3(v->co, vc->centroid); //or better calc this again
-				}
+                }
 
 //				BKE_submesh_free(mi->storage);
 //				mi->storage = NULL;
 				//mi->storage = BKE_bmesh_to_submesh(mi->physics_mesh);
+                BM_mesh_minmax(temp, min, max);
+                mi->physics_mesh = CDDM_from_bmesh(temp, TRUE);
+                BM_mesh_free(temp);
+                temp = NULL;
 
 				mi->vertex_count = vc->vertex_count;
 				copy_v3_v3(mi->centroid, vc->centroid);
 				mat4_to_loc_quat(dummyloc, rot, ob->obmat);
 				copy_v3_v3(mi->rot, rot);
 				mi->parent_mod = rmd;
-				BM_mesh_minmax(mi->physics_mesh, min, max);
+
 				mi->bb = BKE_boundbox_alloc_unit();
 				BKE_boundbox_init_from_minmax(mi->bb, min, max);
 
