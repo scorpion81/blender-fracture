@@ -278,7 +278,7 @@ float BKE_rigidbody_calc_volume(BMesh *bm, RigidBodyOb *rbo)
 			}
 			else if (size[2] == 0)
 			{
-				volume = size[1] * size[2];
+				volume = size[0] * size[1];
 			}
 			break;
 
@@ -304,15 +304,14 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland* mi)
 	mass_ob = ob->rigidbody_object->mass;
 	BM_mesh_free(bm_ob);
 
-	if (vol_ob == 0)
-		return;
-
-	bm_mi = DM_to_bmesh(mi->physics_mesh);
-	vol_mi = BKE_rigidbody_calc_volume(bm_mi, mi->rigidbody);
-	BM_mesh_free(bm_mi);
-
-	mass_mi = (vol_mi / vol_ob) * mass_ob;
-	mi->rigidbody->mass = mass_mi;
+	if (vol_ob > 0)
+	{
+		bm_mi = DM_to_bmesh(mi->physics_mesh);
+		vol_mi = BKE_rigidbody_calc_volume(bm_mi, mi->rigidbody);
+		BM_mesh_free(bm_mi);
+		mass_mi = (vol_mi / vol_ob) * mass_ob;
+		mi->rigidbody->mass = mass_mi;
+	}
 	/* only active bodies need mass update */
 	if ((mi->rigidbody->physics_object) && (mi->rigidbody->type == RBO_TYPE_ACTIVE)) {
 		if (mi->rigidbody->mass == 0)
