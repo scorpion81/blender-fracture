@@ -1039,7 +1039,7 @@ static int check_meshislands_adjacency(RigidBodyModifierData* rmd, MeshIsland* m
 		BM_elem_flag_disable(BM_vert_at_index(*combined_mesh, mi2->combined_index_map[v]), BM_ELEM_TAG);
 	}
 
-	if (shared > 2) {
+	if (shared > 0) {
 		// shared vertices (atleast one face ?), so connect...
 		// if all verts either in same object or not !
 		int con_found = FALSE;
@@ -1103,9 +1103,16 @@ static int bbox_intersect(RigidBodyModifierData *rmd, MeshIsland *mi, MeshIsland
 	mul_v3_fl(test_z1, 0.5f);
 	mul_v3_fl(test_z2, 0.5f);
 
-	if (fabs(test_x1[0] + test_x2[0] + dist) >= fabs(cent_vec[0])) {
-		if (fabs(test_y1[1] + test_y2[1] + dist) >= fabs(cent_vec[1])) {
-			if (fabs(test_z1[2] + test_z2[2] + dist) >= fabs(cent_vec[2])) {
+	/*printf("X: %f %f\n", fabs(test_x1[0] + test_x2[0]) + dist, fabs(cent_vec[0]));
+	printf("Y: %f %f\n", fabs(test_y1[1] + test_y2[1]) + dist, fabs(cent_vec[1]));
+	printf("Z: %f %f\n", fabs(test_z1[2] + test_z2[2]) + dist, fabs(cent_vec[2]));*/
+
+	if (fabs(test_x1[0] + test_x2[0]) + dist >= fabs(cent_vec[0])) {
+		//printf("X ok\n");
+		if (fabs(test_y1[1] + test_y2[1]) + dist >= fabs(cent_vec[1])) {
+			//printf("Y ok\n");
+			if (fabs(test_z1[2] + test_z2[2]) + dist >= fabs(cent_vec[2])) {
+				//printf("Z ok\n");
 				return TRUE;
 			}
 		}
@@ -1409,7 +1416,7 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 						int bbox_int = bbox_intersect(rmd, mi, mi2);
 						//printf("Overlap %d %d %d\n", bbox_int, (n2+j)->index, (n+i)->index);
 						if (bbox_int == FALSE)
-							break;
+							continue;
 
 						shared = check_meshislands_adjacency(rmd, mi, mi2, combined_mesh, face_tree, ob);
 						if (shared == 0) break;
@@ -1507,11 +1514,11 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 						int bbox_int = bbox_intersect(rmd, mi, mi2);
 						//printf("Overlap %d %d %d\n", bbox_int, (n2+j)->index, (n+i)->index);
 						if ((bbox_int == FALSE) && (mi->parent_mod == mi2->parent_mod))
-							break;
+							continue;
 
 						shared = check_meshislands_adjacency(rmd, mi, mi2, combined_mesh, face_tree, ob);
-						if ((shared == 0) && (rmd->inner_constraint_type == RBC_TYPE_FIXED) && (rmd->outer_constraint_type == RBC_TYPE_FIXED))
-							break; //load faster when both constraint types are FIXED, otherwise its too slow or incorrect
+						//if ((shared == 0) && (rmd->inner_constraint_type == RBC_TYPE_FIXED) && (rmd->outer_constraint_type == RBC_TYPE_FIXED))
+						//	break; //load faster when both constraint types are FIXED, otherwise its too slow or incorrect
 
 						/*if ((j == (count-1)) && (i == (count-2))) {
 							last = mi2;
@@ -1917,6 +1924,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				create_constraints(rmd, ob); //check for actually creating the constraints inside
 			}
 		}
+		
+		printf("Constraints: %d\n", BLI_countlist(&rmd->meshConstraints));
 
 //		len = BLI_countlist(&rmd->meshIslands);
 //		rmd->id_storage = MEM_mallocN(sizeof(int) * len, "rmd->id_storage");
