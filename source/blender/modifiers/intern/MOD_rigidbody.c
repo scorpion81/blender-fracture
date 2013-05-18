@@ -1517,8 +1517,8 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 							continue;
 
 						shared = check_meshislands_adjacency(rmd, mi, mi2, combined_mesh, face_tree, ob);
-						if ((shared == 0) && (rmd->inner_constraint_type == RBC_TYPE_FIXED) && (rmd->outer_constraint_type == RBC_TYPE_FIXED))
-							break; //load faster when both constraint types are FIXED, otherwise its too slow or incorrect
+//						if ((shared == 0) && (rmd->inner_constraint_type == RBC_TYPE_FIXED) && (rmd->outer_constraint_type == RBC_TYPE_FIXED))
+//							break; //load faster when both constraint types are FIXED, otherwise its too slow or incorrect
 
 						/*if ((j == (count-1)) && (i == (count-2))) {
 							last = mi2;
