@@ -246,10 +246,7 @@ float BKE_rigidbody_calc_volume(BMesh *bm, RigidBodyOb *rbo)
 
 	/* calculate volume as appropriate  */
 	switch (rbo->shape) {
-		case RB_SHAPE_BOX:
-			volume = size[0] * size[1] * size[2];
-			break;
-
+	
 		case RB_SHAPE_SPHERE:
 			volume = 4.0f / 3.0f * (float)M_PI * radius * radius * radius;
 			break;
@@ -267,9 +264,22 @@ float BKE_rigidbody_calc_volume(BMesh *bm, RigidBodyOb *rbo)
 		/* for now, all mesh shapes are just treated as boxes...
 		 * NOTE: this may overestimate the volume, but other methods are overkill
 		 */
+		case RB_SHAPE_BOX:
 		case RB_SHAPE_CONVEXH:
 		case RB_SHAPE_TRIMESH:
 			volume = size[0] * size[1] * size[2];
+			if (size[0] == 0)
+			{
+				volume = size[1] * size[2];
+			}
+			else if (size[1] == 0)
+			{
+				volume = size[0] * size[2];
+			}
+			else if (size[2] == 0)
+			{
+				volume = size[1] * size[2];
+			}
 			break;
 
 #if 0 // XXX: not defined yet
@@ -297,14 +307,16 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland* mi)
 	if (vol_ob == 0)
 		return;
 
-    bm_mi = DM_to_bmesh(mi->physics_mesh);
+	bm_mi = DM_to_bmesh(mi->physics_mesh);
 	vol_mi = BKE_rigidbody_calc_volume(bm_mi, mi->rigidbody);
-    BM_mesh_free(bm_mi);
+	BM_mesh_free(bm_mi);
 
 	mass_mi = (vol_mi / vol_ob) * mass_ob;
 	mi->rigidbody->mass = mass_mi;
 	/* only active bodies need mass update */
 	if ((mi->rigidbody->physics_object) && (mi->rigidbody->type == RBO_TYPE_ACTIVE)) {
+		if (mi->rigidbody->mass == 0)
+			mi->rigidbody->mass = 0.001; //set a minimum mass for active objects 
 		RB_body_set_mass(mi->rigidbody->physics_object, RBO_GET_MASS(mi->rigidbody));
 	}
 }
