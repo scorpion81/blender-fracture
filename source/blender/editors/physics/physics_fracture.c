@@ -63,6 +63,7 @@
 #include "BKE_material.h"
 #include "BKE_library.h"
 #include "BKE_main.h"
+#include "BKE_scene.h"
 
 #include "RNA_access.h"
 #include "RNA_define.h"
@@ -73,10 +74,13 @@
 
 #include "ED_physics.h"
 #include "ED_screen.h"
+#include "ED_object.h"
 
 #include "physics_intern.h"
 #include "bmesh.h"
 #include "MOD_boolean_util.h"
+#include "UI_interface.h"
+#include "UI_interface_icons.h"
 
 #ifdef WITH_MOD_VORONOI
 #  include "../../../../extern/voro++/src/c_interface.hh"
@@ -264,7 +268,7 @@ static int get_points(Scene *scene, Object *ob, float ***points, float mat[4][4]
 	float thresh = (float)percentage / 100.0f;
 	BoundBox* bb;
 	int point_source = RNA_enum_get(op->ptr, "point_source");
-	Group* extra_group = (Group*)RNA_pointer_get(op->ptr, "extra_group").id.data;
+	Group* extra_group = NULL;// (Group*)RNA_pointer_get(op->ptr, "extra_group").id.data;
 	float noise = RNA_float_get(op->ptr, "noise");
 
 	if (point_source & (eExtraParticles | eExtraVerts ))
@@ -406,7 +410,7 @@ int fractureToCells(Object *ob, float mat[4][4], wmOperator* op, Scene* scene, O
 	float centroid[3];
 	Object* o = NULL, *tempOb = NULL;
 	int objcount = 0;
-	Material* inner_material = NULL; // (Material*)RNA_pointer_get(op->ptr, "inner_material").id.data;
+	Material* inner_material = NULL;// (Material*)RNA_pointer_get(op->ptr, "inner_material").data;
 	DerivedMesh* derivedData = mesh_get_derived_final(scene, ob, 0);
 	
 	int use_boolean = RNA_boolean_get(op->ptr, "use_boolean");
@@ -652,8 +656,8 @@ int fractureToCells(Object *ob, float mat[4][4], wmOperator* op, Scene* scene, O
 					//Intersection, use elements from temporary per-cell bmeshes and write to global bmesh, which
 					//is passed around and whose vertices are manipulated directly.
 					int mat_index = 0;
-					MPoly* mp; //hmm, might need this as well for each object too
-					MLoop* ml;
+					//MPoly* mp; //hmm, might need this as well for each object too
+					//MLoop* ml;
 					boolresult = NULL;
 					
 					dm = CDDM_from_bmesh(bmtemp, TRUE);
@@ -868,8 +872,7 @@ void convertTessFaceToLoopPoly(Object** shards, int count)
 		int ml_index = 0;
 		
 		DerivedMesh* d = CDDM_from_mesh(shards[i]->data, shards[i]);
-		//d = emd->cells->data[i].cell_mesh;
-
+		
 		DM_ensure_tessface(d);
 		CDDM_calc_edges_tessface(d);
 		CDDM_tessfaces_to_faces(d);
@@ -884,6 +887,11 @@ void convertTessFaceToLoopPoly(Object** shards, int count)
 			MEM_freeN(mtps);
 			MEM_freeN(mluvs);
 			mtface = NULL;
+			
+			DM_to_mesh(d, shards[i]->data, shards[i], 0);
+			DM_release(d);
+			MEM_freeN(d);
+			d = NULL;
 			break;
 		}
 
@@ -933,10 +941,15 @@ void convertTessFaceToLoopPoly(Object** shards, int count)
 			CustomData_add_layer(fdata, CD_MTFACE , CD_DUPLICATE, mtface, f_index);
 			CustomData_add_layer(pdata, CD_MTEXPOLY, CD_DUPLICATE, mtps, f_index);
 			CustomData_add_layer(ldata, CD_MLOOPUV, CD_DUPLICATE, mluvs, ml_index);
-	
+			
 			MEM_freeN(mtface);
 			MEM_freeN(mtps);
 			MEM_freeN(mluvs);
+			
+			DM_to_mesh(d, shards[i]->data, shards[i], 0);
+			DM_release(d);
+			MEM_freeN(d);
+			d = NULL;
 		}
 	}
 }
@@ -984,25 +997,31 @@ int object_fracture_exec(bContext *C, wmOperator *op)
 			name = BLI_strncpy(name, ob->id.name, 64);
 			name = strncat(name, "_con", 64);
 			cons = getGroup(name);
+			MEM_freeN(name);
+			name = NULL;
 			
 			for (go = cons->gobject.first; go; go = go->next)
 			{
+				Base *bas = BKE_scene_base_find(scene, go->ob);
 				ED_rigidbody_constraint_remove(scene, go->ob);
 				BKE_group_object_unlink(cons, go->ob, scene, NULL);
 				BKE_libblock_free_us(&(G.main->object), go->ob);
 				BKE_object_unlink(go->ob);
 				BKE_object_free(go->ob);
+				ED_base_object_free_and_unlink(G.main, scene, bas);
 				go->ob = NULL;
 			}
 			
 			//clean up old objects, if desired (add user option)
 			for (go = rbos->gobject.first; go; go = go->next)
 			{
+				Base *bas = BKE_scene_base_find(scene, go->ob);
 				ED_rigidbody_object_remove(scene, go->ob);
 				BKE_group_object_unlink(rbos, go->ob, scene, NULL);
 				BKE_libblock_free_us(&(G.main->object), go->ob);
 				BKE_object_unlink(go->ob);
 				BKE_object_free(go->ob);
+				ED_base_object_free_and_unlink(G.main, scene, bas);
 				go->ob = NULL;
 			}
 			
@@ -1069,6 +1088,8 @@ int object_fracture_exec(bContext *C, wmOperator *op)
 			BLI_ghash_free(pid_to_index, NULL, NULL);
 			MEM_freeN(n);
 			n = NULL;
+			MEM_freeN(shards);
+			shards = NULL;
 		}
 	}
 	CTX_DATA_END;
@@ -1079,6 +1100,18 @@ int object_fracture_exec(bContext *C, wmOperator *op)
 	return OPERATOR_CANCELLED;
 #endif
 }
+
+/*void object_fracture_ui(bContext* C, wmOperator* op)
+{
+	uiLayout* layout = op->layout;
+	PointerRNA group, group_key, mat, mat_key;
+	Main* main = CTX_data_main(C);
+	RNA_pointer_create(NULL, op->type->srna, op->properties, &group);
+	RNA_id_pointer_create((ID *)main->group.first, &group_key);
+	
+	uiItemPointerR(layout, &group, "extra_group", &group_key, "group", "", ICON_SIZE_ICON);
+}*/
+
 
 void OBJECT_OT_fracture(wmOperatorType *ot)
 {
@@ -1101,37 +1134,24 @@ void OBJECT_OT_fracture(wmOperatorType *ot)
 	/* callbacks */
 	ot->exec = object_fracture_exec;
 	ot->poll = ED_operator_object_active_editable;
-
+	//ot->ui = object_fracture_ui;
+	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	/* properties */
-	prop = RNA_def_property(ot->srna, "point_source", PROP_ENUM, PROP_NONE);
-	RNA_def_property_enum_items(prop, prop_point_source_items);
+	prop = RNA_def_enum(ot->srna, "point_source", prop_point_source_items, eOwnParticles, "Point Source", "Source of point cloud");
 	RNA_def_property_flag(prop, PROP_ENUM_FLAG);
-	RNA_def_property_enum_default(prop, eOwnParticles);
-	RNA_def_property_ui_text(prop, "Point Source", "Source of point cloud");
 
-	prop = RNA_def_property(ot->srna, "use_boolean", PROP_BOOLEAN, PROP_NONE);
-	//RNA_def_property_boolean_sdna(prop, NULL, "use_boolean", MOD_VORONOI_USEBOOLEAN);
-	RNA_def_property_ui_text(prop, "Use Boolean Intersection", "Intersect shards with original object shape");
+	RNA_def_boolean(ot->srna, "use_boolean", FALSE, "Use Boolean Intersection", "Intersect shards with original object shape");
 	
-	/*prop = RNA_def_property(ot->srna, "inner_material", PROP_POINTER, PROP_NONE);
-	RNA_def_property_ui_text(prop, "Inner Material", "");
+	/*prop = RNA_def_pointer(ot->srna, "inner_material", "Material", "Inner Material", "Material to be applied on inner faces (boolean only)");
 	RNA_def_property_flag(prop, PROP_EDITABLE);
 
-	prop = RNA_def_property(ot->srna, "extra_group", PROP_POINTER, PROP_NONE);
-	RNA_def_property_ui_text(prop, "Extra Group", "");
+	prop = RNA_def_pointer(ot->srna, "extra_group", "Group", "Extra Group", "Group of helper objects being used for creating pointcloud");
 	RNA_def_property_flag(prop, PROP_EDITABLE);*/
+	
+	RNA_def_float(ot->srna, "noise", 0.0f, 0.0f, 1.0f, "Noise", "Noise to apply over pointcloud", 0.0f, 1.0f);
+	RNA_def_int(ot->srna, "percentage", 100, 0, 100, "Percentage", "Percentage of point to actually use for fracture", 0, 100);
 
-	prop = RNA_def_property(ot->srna, "noise", PROP_FLOAT, PROP_NONE);
-	//RNA_def_property_float_sdna(prop, NULL, "noise");
-	RNA_def_property_range(prop, 0.0f, 1.0f);
-	RNA_def_property_ui_text(prop, "Noise", "Noise to apply over pointcloud");
-
-	prop = RNA_def_property(ot->srna, "percentage", PROP_INT, PROP_NONE);
-	//RNA_def_property_int_sdna(prop, NULL, "percentage");
-	RNA_def_property_range(prop, 0, 100);
-	RNA_def_property_int_default(prop, 100);
-	RNA_def_property_ui_text(prop, "Percentage", "Percentage of points to actually use for fracture");
 }
