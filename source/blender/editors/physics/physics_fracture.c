@@ -384,8 +384,8 @@ int fractureToCells(Object *ob, float mat[4][4], wmOperator* op, Scene* scene, O
 	FILE *fp = NULL;
 	int vert_index = 0, edg_index = 0, fac_index = 0;
 	int read = 0;
-	BMVert **faceverts = NULL, **tempvert = NULL, *vert = NULL, **localverts = NULL;
-	BMEdge **faceedges = NULL, *edge = NULL, **localedges = NULL;
+	BMVert **faceverts = NULL, **tempvert = NULL, *vert = NULL;
+	BMEdge **faceedges = NULL, *edge = NULL;
 	int face_index = 0;
 	int edge_index = 0;
 	char c;
@@ -393,9 +393,6 @@ int fractureToCells(Object *ob, float mat[4][4], wmOperator* op, Scene* scene, O
 	BMFace *face = NULL;
 
 	DerivedMesh *dm = NULL, *boolresult = NULL;
-	MEdge* ed = NULL;
-
-	int totvert, totedge, totpoly;
 	int tempvert_index;
 	const char *file;
 	char *path, *fullpath;
@@ -407,11 +404,10 @@ int fractureToCells(Object *ob, float mat[4][4], wmOperator* op, Scene* scene, O
 	int totpoint = 0;
 	int neighbor_index = 0;
 	float centroid[3];
-	Object* o, *tempOb;
+	Object* o = NULL, *tempOb = NULL;
 	int objcount = 0;
 	Material* inner_material = NULL; // (Material*)RNA_pointer_get(op->ptr, "inner_material").id.data;
 	DerivedMesh* derivedData = mesh_get_derived_final(scene, ob, 0);
-	Mesh *me;
 	
 	int use_boolean = RNA_boolean_get(op->ptr, "use_boolean");
 	int point_source = RNA_enum_get(op->ptr, "point_source");
@@ -495,33 +491,28 @@ int fractureToCells(Object *ob, float mat[4][4], wmOperator* op, Scene* scene, O
 	if (totpoint == 0)
 		return 0;
 
-	//bm = DM_to_bmesh(derivedData);
-	//empty the mesh
-	//BM_mesh_clear(bm);
-
 	while(feof(fp) == 0)
 	{
 		//printf("Reading line...\n");
 		int *real_indexes = MEM_mallocN(sizeof(int*), "real_indexes");
 		int len_real_indexes = 0;
 		int pid;
-		neighborhood *x;
 		
-		/*neighbor_ids = MEM_mallocN(sizeof(int), "neighbor_ids");
-		neighbor_count = 0;
-		is_at_boundary = FALSE;*/
-
 		bmtemp = BM_mesh_create(&bm_mesh_chunksize_default);
 		tempvert = MEM_mallocN(sizeof(BMVert*), "tempvert");
 		tempvert_index = 0;
 		
 		// Read in the cell data, each line in the output file represents a voronoi cell
 		fscanf(fp, "%d ", &pid);
-		BLI_ghash_insert(*pid_to_index, pid, objcount);
 		
-		*n = MEM_reallocN(*n, sizeof(neighborhood*) * (objcount+1));
-		(*n)[objcount] = MEM_mallocN(sizeof(neighborhood), "neighbor");
-		(*n)[objcount]->pid = pid;
+		if (feof(fp) == 0) {
+			
+			BLI_ghash_insert(*pid_to_index, pid, objcount);
+			*n = MEM_reallocN(*n, sizeof(neighborhood*) * (objcount+1));
+			(*n)[objcount] = MEM_mallocN(sizeof(neighborhood), "neighbor");
+			(*n)[objcount]->pid = pid;
+			(*n)[objcount]->neighborcount = 0;
+		}
 		
 		while (1)
 		{
@@ -647,11 +638,8 @@ int fractureToCells(Object *ob, float mat[4][4], wmOperator* op, Scene* scene, O
 					}
 				}
 
-				if (face != NULL) { //&& (emd->flip_normal))
+				if (face != NULL) {
 					BM_face_normal_flip(bmtemp, face);
-					/*if (me->mpoly[0].flag & ME_SMOOTH) {
-						BM_elem_flag_enable(face, BM_ELEM_SMOOTH);
-					}*/
 				}
 
 				edge_index = 0;
@@ -740,39 +728,7 @@ int fractureToCells(Object *ob, float mat[4][4], wmOperator* op, Scene* scene, O
 						CDDM_calc_normals(boolresult);
 					}
 					
-					//emd->cells->data[emd->cells->count].cell_mesh = boolresult;
-					
-					totvert = boolresult->getNumVerts(boolresult);
-					totedge = boolresult->getNumEdges(boolresult);
-					totpoly = boolresult->getNumPolys(boolresult);
-
-					localverts = MEM_mallocN(sizeof(BMVert*) * totvert, "localverts");
-					localedges = MEM_mallocN(sizeof(BMEdge*) * totedge, "localedges");
-					ed = boolresult->getEdgeArray(boolresult);
-
 					if (dm != boolresult) {
-					/*	ve_new = boolresult->getVertArray(boolresult);
-						ve_old = dm->getVertArray(dm);
-						totvert_old = dm->getNumVerts(dm);
-						totvert_new = boolresult->getNumVerts(boolresult);
-
-						if (totvert_new == totvert_old)
-						{
-							int v;
-							for (v = 0; v < totvert_old; v++)
-							{
-								//if vertex coords differ, we had a bool op, at must be at boundary of object now
-								if (compare_v3v3(ve_old[v].co, ve_new[v].co, 0.000001f)) {
-									emd->cells->data[emd->cells->count].is_at_boundary = TRUE;
-									break;
-								}
-							}
-						}
-						else
-						{
-							emd->cells->data[emd->cells->count].is_at_boundary = TRUE;
-						}*/
-
 						DM_release(dm);
 						MEM_freeN(dm);
 						dm = NULL;
@@ -782,103 +738,6 @@ int fractureToCells(Object *ob, float mat[4][4], wmOperator* op, Scene* scene, O
 					DM_release(boolresult);
 					MEM_freeN(boolresult);
 					boolresult = NULL;
-					
-					
-					/*CustomData_bmesh_merge(&boolresult->vertData, &bm->vdata, CD_MASK_DERIVEDMESH,
-									 CD_CALLOC, bm, BM_VERT);
-					CustomData_bmesh_merge(&boolresult->edgeData, &bm->edata, CD_MASK_DERIVEDMESH,
-									 CD_CALLOC, bm, BM_EDGE);
-					CustomData_bmesh_merge(&boolresult->loopData, &bm->ldata, CD_MASK_DERIVEDMESH,
-									 CD_CALLOC, bm, BM_LOOP);
-					CustomData_bmesh_merge(&boolresult->polyData, &bm->pdata, CD_MASK_DERIVEDMESH,
-									 CD_CALLOC, bm, BM_FACE);
-					
-					for (v = 0; v < totvert; v++)
-					{
-						boolresult->getVertCo(boolresult, v, co);
-
-						emd->cells->data[emd->cells->count].vertices =
-								MEM_reallocN(emd->cells->data[emd->cells->count].vertices, (vert_index + 1)* sizeof(BMVert));
-
-						emd->cells->data[emd->cells->count].vertex_count++;
-
-
-						vert = BM_vert_create(bm, co, NULL, 0);
-
-						localverts[v] = vert;
-						//vert = BM_vert_at_index(bm, vert_index);
-
-						emd->cells->data[emd->cells->count].vertices[vert_index] = vert;
-
-						//store original coordinates for later re-use
-
-						emd->cells->data[emd->cells->count].vertco =
-								MEM_reallocN(emd->cells->data[emd->cells->count].vertco, (vert_index + 1)* (3*sizeof(float)));
-
-						emd->cells->data[emd->cells->count].vertco[3*vert_index] = vert->co[0];
-						emd->cells->data[emd->cells->count].vertco[3*vert_index+1] = vert->co[1];
-						emd->cells->data[emd->cells->count].vertco[3*vert_index+2] = vert->co[2];
-
-						CustomData_to_bmesh_block(&boolresult->vertData, &bm->vdata, v, &vert->head.data , 0);
-						
-						vert_index++;
-						//vert_index_global++;
-					}
-
-					for (e = 0; e < totedge; e++)
-					{
-						BMEdge* edg;
-						edg = BM_edge_create(bm, localverts[ed[e].v1], localverts[ed[e].v2], NULL, 0);
-						CustomData_to_bmesh_block(&boolresult->edgeData, &bm->edata, e, &edg->head.data , 0);
-						localedges[e] = edg;
-						edg_index++;
-					}
-
-					mp = boolresult->getPolyArray(boolresult);
-					ml = boolresult->getLoopArray(boolresult);
-					for (p = 0; p < totpoly; p++)
-					{
-						MLoop* lo;
-						BMVert** ve = NULL;
-						BMEdge** ed = NULL;
-						BMLoop* loop;
-						BMIter liter;
-						int k = 0, l = (mp+p)->loopstart, t = (mp+p)->totloop;
-						ve = MEM_mallocN(sizeof(BMVert*)*t, "poly->verts");
-						ed = MEM_mallocN(sizeof(BMEdge*)*t, "poly->edges");
-
-						for (k = 0; k < t; k++) {
-							lo = ml+l+k;
-							ve[k] = localverts[lo->v];
-							ed[k] = localedges[lo->e];
-						}
-
-						face = BM_face_create(bm, ve, ed, t, 0);
-						face->mat_nr = (mp+p)->mat_nr;
-						emd->cells->data[emd->cells->count].global_face_map = MEM_reallocN(emd->cells->data[emd->cells->count].global_face_map, sizeof(int) * (fac_index+1));
-						emd->cells->data[emd->cells->count].global_face_map[fac_index] = global_face_index;
-						emd->cells->data[emd->cells->count].face_count = fac_index+1;
-						fac_index++;
-						global_face_index++;
-
-						if ((mp+p)->flag & ME_SMOOTH)
-							BM_elem_flag_enable(face, BM_ELEM_SMOOTH);
-						
-						CustomData_to_bmesh_block(&boolresult->polyData, &bm->pdata, p, &face->head.data , 0);
-						
-						loop = BM_iter_new(&liter, bm, BM_LOOPS_OF_FACE, face);
-						
-						for (k = (mp+p)->loopstart; loop; loop = BM_iter_step(&liter), k++) {
-							CustomData_to_bmesh_block(&boolresult->loopData, &bm->ldata, k, &loop->head.data, 0);
-						}
-
-						MEM_freeN(ve);
-						MEM_freeN(ed);
-					}
-
-					MEM_freeN(localverts);
-					MEM_freeN(localedges);
-					*/
 				}
 
 				edge_index = 0;
@@ -889,12 +748,12 @@ int fractureToCells(Object *ob, float mat[4][4], wmOperator* op, Scene* scene, O
 
 		//read centroid, set origin of object there
 		fscanf(fp, " %f %f %f ", &centroid[0], &centroid[1], &centroid[2]);
-		
-		//invert_m4_m4(imat, ob->obmat);
-		//mul_m4_v3(imat, centroid);
 
 		//read neighbor id list - its per cell
-		(*n)[objcount]->neighbor_pids = MEM_mallocN(sizeof(int), "neighbor_pids");
+		if (feof(fp) == 0)
+		{
+			(*n)[objcount]->neighbor_pids = MEM_mallocN(sizeof(int), "neighbor_pids");
+		}
 		neighbor_index = 0;
 		while (feof(fp) == 0) {
 			c = fgetc(fp);
@@ -903,18 +762,15 @@ int fractureToCells(Object *ob, float mat[4][4], wmOperator* op, Scene* scene, O
 				int n_index;
 				//seek back one char,
 				fseek(fp, -sizeof(char), SEEK_CUR);
-				//emd->cells->data[emd->cells->count].neighbor_ids = MEM_reallocN(emd->cells->data[emd->cells->count].neighbor_ids, sizeof(int)*(neighbor_index+1));
 				fscanf(fp, "%d ", &n_index);
-
-				/*if (n_index < 0)//cell is at the boundary of object
-				{
-					emd->cells->data[emd->cells->count].is_at_boundary = TRUE;
-				}*/
 				
-				(*n)[objcount]->neighbor_pids = MEM_reallocN((*n)[objcount]->neighbor_pids, sizeof(int)*(neighbor_index+1));
-				(*n)[objcount]->neighbor_pids[neighbor_index] = n_index;
-				(*n)[objcount]->neighborcount = (neighbor_index+1);
-				neighbor_index++;
+				if (n_index > 0)
+				{
+					(*n)[objcount]->neighbor_pids = MEM_reallocN((*n)[objcount]->neighbor_pids, sizeof(int)*(neighbor_index+1));
+					(*n)[objcount]->neighbor_pids[neighbor_index] = n_index;
+					(*n)[objcount]->neighborcount++;
+					neighbor_index++;
+				}
 			}
 			else
 			{
@@ -926,7 +782,8 @@ int fractureToCells(Object *ob, float mat[4][4], wmOperator* op, Scene* scene, O
 		//skip newline
 		if (feof(fp) == 0)
 		{
-
+			Mesh* me;
+			int i;
 #ifdef _WIN32
 			//skip \r\n
 			fseek(fp, 2*sizeof(char), SEEK_CUR);
@@ -934,25 +791,29 @@ int fractureToCells(Object *ob, float mat[4][4], wmOperator* op, Scene* scene, O
 			//skip \n
 			fseek(fp, sizeof(char), SEEK_CUR);
 #endif
-			if (bm->totface > 0)
+			BMO_op_callf(bm,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "recalc_face_normals faces=%af use_face_tag=%b", BM_FACES_OF_MESH, false);
+			BM_mesh_normals_update(bm);
+			BMO_op_callf(bm,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "dissolve_limit edges=%ae verts=%av angle_limit=%f use_dissolve_boundaries=%b",
+						BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);
+			
+			//create objects and put them into listbase here
+			o = BKE_object_add(G.main, scene, OB_MESH);
+			BM_mesh_bm_to_me(bm, o->data, false);
+			BM_mesh_free(bm);
+			bm = NULL;
+			
+			me = (Mesh*)o->data;
+			for (i = 0; i < me->totvert; i++)
 			{
-				BMO_op_callf(bm,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "recalc_face_normals faces=%af use_face_tag=%b", BM_FACES_OF_MESH, false);
-				BM_mesh_normals_update(bm);
-				BMO_op_callf(bm,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "dissolve_limit edges=%ae verts=%av angle_limit=%f use_dissolve_boundaries=%b",
-							BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);
-				
-				//create objects and put them into listbase here
-				o = BKE_object_add(G.main, scene, OB_MESH);
-				BM_mesh_bm_to_me(bm, o->data, false);
-				BM_mesh_free(bm);
-				bm = NULL;
-				
-				//recenter... to centroid ?
-				copy_v3_v3(ob->loc, centroid);
-				
-				*shards = MEM_reallocN(*shards, sizeof(Object*) * (objcount+1));
-				(*shards)[objcount] = o;
+				sub_v3_v3(me->mvert[i].co, centroid);
 			}
+			
+			//recenter... to centroid ?
+			add_v3_v3(o->loc, centroid);
+			mul_m4_v3(mat, o->loc);
+			
+			*shards = MEM_reallocN(*shards, sizeof(Object*) * (objcount+1));
+			(*shards)[objcount] = o;
 			objcount++;
 		}
 		else
@@ -969,7 +830,6 @@ int fractureToCells(Object *ob, float mat[4][4], wmOperator* op, Scene* scene, O
 		MEM_freeN(tempvert);
 		if (bmtemp) BM_mesh_free(bmtemp);
 		MEM_freeN(faceverts);
-	//	MEM_freeN(facevert_indexes);
 		MEM_freeN(faceedges);
 
 		MEM_freeN(real_indexes);
@@ -980,10 +840,13 @@ int fractureToCells(Object *ob, float mat[4][4], wmOperator* op, Scene* scene, O
 	MEM_freeN(path);
 	
 	//remove tempOb here
-	BKE_libblock_free_us(&(G.main->object), tempOb);
-//	BKE_object_unlink(tempOb);
-//	BKE_object_free(tempOb);
-	tempOb = NULL;
+	if (tempOb != NULL)
+	{
+		BKE_libblock_free_us(&(G.main->object), tempOb);
+		BKE_object_unlink(tempOb);
+		BKE_object_free(tempOb);
+		tempOb = NULL;
+	}
 	
 	printf("%d cells missing\n", totpoint - objcount); //use totpoint here
 	
@@ -1078,6 +941,26 @@ void convertTessFaceToLoopPoly(Object** shards, int count)
 	}
 }
 
+Group* getGroup(const char* name) 
+{
+	ID *id;
+	
+	for (id = G.main->group.first; id; id = id->next)
+	{
+		int len = strlen(id->name);
+		char idname[len-2];
+		strncpy(idname, &id->name[2], len-2);
+		idname[len-2] = '\0';
+		
+		if (strcmp(idname, name) == 0)
+		{
+			return (Group*)id;
+		}
+	}
+	
+	return BKE_group_add(G.main, name);
+}
+
 int object_fracture_exec(bContext *C, wmOperator *op)
 {
 	//go through all selected objects !
@@ -1090,10 +973,38 @@ int object_fracture_exec(bContext *C, wmOperator *op)
 	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
 		if (ob->type == OB_MESH)
 		{
+			GroupObject* go;
+			char *name = MEM_callocN(sizeof(char)*128, "NAME");
 			int i,j, shardcount = 0;
-			neighborhood* n = MEM_mallocN(sizeof(neighborhood), "neighborhood");
+			neighborhood** n = MEM_mallocN(sizeof(neighborhood*), "neighborhood");
 			GHash* pid_to_index = BLI_ghash_int_new("pid_to_index");
 			Object** shards = MEM_mallocN(sizeof(Object*), "shards");
+			Group* rbos = getGroup(ob->id.name);
+			Group* cons;
+			name = BLI_strncpy(name, ob->id.name, 64);
+			name = strncat(name, "_con", 64);
+			cons = getGroup(name);
+			
+			for (go = cons->gobject.first; go; go = go->next)
+			{
+				ED_rigidbody_constraint_remove(scene, go->ob);
+				BKE_group_object_unlink(cons, go->ob, scene, NULL);
+				BKE_libblock_free_us(&(G.main->object), go->ob);
+				BKE_object_unlink(go->ob);
+				BKE_object_free(go->ob);
+				go->ob = NULL;
+			}
+			
+			//clean up old objects, if desired (add user option)
+			for (go = rbos->gobject.first; go; go = go->next)
+			{
+				ED_rigidbody_object_remove(scene, go->ob);
+				BKE_group_object_unlink(rbos, go->ob, scene, NULL);
+				BKE_libblock_free_us(&(G.main->object), go->ob);
+				BKE_object_unlink(go->ob);
+				BKE_object_free(go->ob);
+				go->ob = NULL;
+			}
 			
 			invert_m4_m4(imat, ob->obmat);
 			copy_m4_m4(oldobmat, ob->obmat);
@@ -1109,16 +1020,49 @@ int object_fracture_exec(bContext *C, wmOperator *op)
 			for (i = 0; i < shardcount; i++)
 			{
 				Object* ob1 = shards[i];
+				BKE_group_object_add(rbos, ob1, scene, NULL);
+				
 				ED_rigidbody_object_add(scene, ob1, RBO_TYPE_ACTIVE, op->reports);
-				for (j = 0; j < n[i].neighborcount; j++)
+				for (j = 0; j < n[i]->neighborcount; j++)
 				{
-					int pid = n[i].neighbor_pids[j];
+					Object* con;
+					float loc[3];
+					bool con_found = false;
+					GroupObject* go;
+					
+					int pid = n[i]->neighbor_pids[j];
 					int index = BLI_ghash_lookup(pid_to_index, pid);
 					Object* ob2 = shards[index];
 					ED_rigidbody_object_add(scene, ob2, RBO_TYPE_ACTIVE, op->reports);
 					//add testwise constraints to check correctness of neighborhood info
-					ED_rigidbody_constraint_add(scene, ob1, RBC_TYPE_FIXED, op->reports);
+					
+					//avoid constraints in both directions
+					for (go = cons->gobject.first; go; go = go->next)
+					{
+						RigidBodyCon *rbc = go->ob->rigidbody_constraint;
+						if ((rbc != NULL) && ( ((rbc->ob1 == ob1) && (rbc->ob2 == ob2)) ||
+							((rbc->ob2 == ob1) && (rbc->ob1 == ob2)))){
+							con_found = true;
+							break;
+						}
+					}
+					if (con_found == false)
+					{
+						con = BKE_object_add(G.main, scene, OB_EMPTY);
+						BKE_group_object_add(cons, con, scene, NULL);
+						sub_v3_v3v3(loc, ob1->loc, ob2->loc);
+						mul_v3_fl(loc, 0.5f);
+						add_v3_v3(loc, ob1->loc);
+						copy_v3_v3(con->loc, loc);
+					
+						ED_rigidbody_constraint_add(scene, con, RBC_TYPE_FIXED, op->reports);
+						con->rigidbody_constraint->ob1 = ob1;
+						con->rigidbody_constraint->ob2 = ob2;
+					}
 				}
+				MEM_freeN(n[i]->neighbor_pids);
+				MEM_freeN(n[i]);
+				n[i] = NULL;
 			}
 			
 			//or how to alloc/free this correctly ??
