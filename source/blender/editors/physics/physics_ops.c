@@ -102,6 +102,7 @@ static void operatortypes_particle(void)
 	WM_operatortype_append(RIGIDBODY_OT_world_add);
 	WM_operatortype_append(RIGIDBODY_OT_world_remove);
 //	WM_operatortype_append(RIGIDBODY_OT_world_export);
+	WM_operatortype_append(OBJECT_OT_fracture);
 }
 
 static void keymap_particle(wmKeyConfig *keyconf)
