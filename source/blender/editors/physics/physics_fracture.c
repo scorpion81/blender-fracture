@@ -976,12 +976,16 @@ Group* getGroup(const char* name)
 	return BKE_group_add(G.main, name);
 }
 
+#define NAMELEN 64 //namebased, yuck... better dont try longer names.... NOT happy with this, but how to find according group else ? cant store it anywhere
 int object_fracture_exec(bContext *C, wmOperator *op)
 {
 	//go through all selected objects !
 	Scene* scene = CTX_data_scene(C);
 	float imat[4][4], oldobmat[4][4];
 	int use_boolean = RNA_boolean_get(op->ptr, "use_boolean");
+	int solver_iterations = RNA_int_get(op->ptr, "iterations");
+	int breaking_threshold = RNA_float_get(op->ptr, "threshold");
+	
 
 #ifdef WITH_MOD_VORONOI
 	
@@ -989,24 +993,30 @@ int object_fracture_exec(bContext *C, wmOperator *op)
 		if (ob->type == OB_MESH)
 		{
 			GroupObject* go;
-			char *name = MEM_callocN(sizeof(char)*128, "NAME");
+			char name[NAMELEN];
 			int i,j, shardcount = 0;
 			neighborhood** n = MEM_mallocN(sizeof(neighborhood*), "neighborhood");
 			GHash* pid_to_index = BLI_ghash_int_new("pid_to_index");
 			Object** shards = MEM_mallocN(sizeof(Object*), "shards");
 			Group* rbos = getGroup(ob->id.name);
 			Group* cons;
-			name = BLI_strncpy(name, ob->id.name, 64);
-			name = strncat(name, "_con", 64);
+			Group* combined;
+			
+			strncpy(name, ob->id.name, NAMELEN);
+			strncat(name, "_con", NAMELEN);
 			cons = getGroup(name);
-			MEM_freeN(name);
-			name = NULL;
+			
+			strncpy(name, ob->id.name, NAMELEN);
+			strncat(name, "_com", NAMELEN);
+			combined = getGroup(name);
+			
 			
 			for (go = cons->gobject.first; go; go = go->next)
 			{
 				Base *bas = BKE_scene_base_find(scene, go->ob);
 				ED_rigidbody_constraint_remove(scene, go->ob);
 				BKE_group_object_unlink(cons, go->ob, scene, NULL);
+				BKE_group_object_unlink(combined, go->ob, scene, NULL);
 				BKE_libblock_free_us(&(G.main->object), go->ob);
 				BKE_object_unlink(go->ob);
 				BKE_object_free(go->ob);
@@ -1020,6 +1030,7 @@ int object_fracture_exec(bContext *C, wmOperator *op)
 				Base *bas = BKE_scene_base_find(scene, go->ob);
 				ED_rigidbody_object_remove(scene, go->ob);
 				BKE_group_object_unlink(rbos, go->ob, scene, NULL);
+				BKE_group_object_unlink(combined, go->ob, scene, NULL);
 				BKE_libblock_free_us(&(G.main->object), go->ob);
 				BKE_object_unlink(go->ob);
 				BKE_object_free(go->ob);
@@ -1042,6 +1053,7 @@ int object_fracture_exec(bContext *C, wmOperator *op)
 			{
 				Object* ob1 = shards[i];
 				BKE_group_object_add(rbos, ob1, scene, NULL);
+				BKE_group_object_add(combined, ob1, scene, NULL);
 				
 				ED_rigidbody_object_add(scene, ob1, RBO_TYPE_ACTIVE, op->reports);
 				for (j = 0; j < n[i]->neighborcount; j++)
@@ -1071,14 +1083,23 @@ int object_fracture_exec(bContext *C, wmOperator *op)
 					{
 						con = BKE_object_add(G.main, scene, OB_EMPTY);
 						BKE_group_object_add(cons, con, scene, NULL);
-						sub_v3_v3v3(loc, ob1->loc, ob2->loc);
-						mul_v3_fl(loc, 0.5f);
-						add_v3_v3(loc, ob1->loc);
-						copy_v3_v3(con->loc, loc);
-					
+						BKE_group_object_add(combined, con, scene, NULL);
+						//add_v3_v3v3(loc, ob1->loc, ob2->loc);
+						//mul_v3_fl(loc, 0.5f);
+						
 						ED_rigidbody_constraint_add(scene, con, RBC_TYPE_FIXED, op->reports);
 						con->rigidbody_constraint->ob1 = ob1;
 						con->rigidbody_constraint->ob2 = ob2;
+						con->rigidbody_constraint->flag |= RBC_FLAG_USE_BREAKING;
+						con->rigidbody_constraint->breaking_threshold = breaking_threshold;
+						con->rigidbody_constraint->num_solver_iterations = solver_iterations;
+						
+						//parent and hide by default
+						//con->parent = ob1;
+						//sub_v3_v3(loc, ob1->loc);
+						copy_v3_v3(con->loc, ob1->loc);
+						//con->restrictflag |= OB_RESTRICT_VIEW;
+						
 					}
 				}
 				MEM_freeN(n[i]->neighbor_pids);
@@ -1158,5 +1179,7 @@ void OBJECT_OT_fracture(wmOperatorType *ot)
 	
 	RNA_def_float(ot->srna, "noise", 0.0f, 0.0f, 1.0f, "Noise", "Noise to apply over pointcloud", 0.0f, 1.0f);
 	RNA_def_int(ot->srna, "percentage", 100, 0, 100, "Percentage", "Percentage of point to actually use for fracture", 0, 100);
-
+	
+	RNA_def_float(ot->srna, "threshold", 10.0f, 0.0f, FLT_MAX, "Breaking threshold", "Noise to apply over pointcloud", 0.0f, FLT_MAX);
+	RNA_def_int(ot->srna, "iterations", 30, 0, INT_MAX , "Solver Iterations", "Percentage of point to actually use for fracture", 0, INT_MAX);
 }
