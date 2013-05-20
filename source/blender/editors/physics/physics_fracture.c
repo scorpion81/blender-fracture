@@ -981,6 +981,12 @@ int object_fracture_exec(bContext *C, wmOperator *op)
 {
 	//go through all selected objects !
 	Scene* scene = CTX_data_scene(C);
+	
+	//needed for correctly update DAG after delete
+	Main *bmain = CTX_data_main(C);
+	wmWindowManager *wm = CTX_wm_manager(C);
+	wmWindow *win;
+	
 	float imat[4][4], oldobmat[4][4];
 	int use_boolean = RNA_boolean_get(op->ptr, "use_boolean");
 	int solver_iterations = RNA_int_get(op->ptr, "iterations");
@@ -1017,11 +1023,7 @@ int object_fracture_exec(bContext *C, wmOperator *op)
 				ED_rigidbody_constraint_remove(scene, go->ob);
 				BKE_group_object_unlink(cons, go->ob, scene, NULL);
 				BKE_group_object_unlink(combined, go->ob, scene, NULL);
-				BKE_libblock_free_us(&(G.main->object), go->ob);
-				BKE_object_unlink(go->ob);
-				BKE_object_free(go->ob);
 				ED_base_object_free_and_unlink(G.main, scene, bas);
-				go->ob = NULL;
 			}
 			
 			//clean up old objects, if desired (add user option)
@@ -1031,11 +1033,23 @@ int object_fracture_exec(bContext *C, wmOperator *op)
 				ED_rigidbody_object_remove(scene, go->ob);
 				BKE_group_object_unlink(rbos, go->ob, scene, NULL);
 				BKE_group_object_unlink(combined, go->ob, scene, NULL);
-				BKE_libblock_free_us(&(G.main->object), go->ob);
-				BKE_object_unlink(go->ob);
-				BKE_object_free(go->ob);
 				ED_base_object_free_and_unlink(G.main, scene, bas);
-				go->ob = NULL;
+			}
+			
+			
+			/* delete has to handle all open scenes */ //copied from delete operator
+			flag_listbase_ids(&bmain->scene, LIB_DOIT, 1);
+			for (win = wm->windows.first; win; win = win->next) {
+				scene = win->screen->scene;
+				
+				if (scene->id.flag & LIB_DOIT) {
+					scene->id.flag &= ~LIB_DOIT;
+					
+					DAG_relations_tag_update(bmain);
+		
+					WM_event_add_notifier(C, NC_SCENE | ND_OB_ACTIVE, scene);
+					WM_event_add_notifier(C, NC_SCENE | ND_LAYER_CONTENT, scene);
+				}
 			}
 			
 			invert_m4_m4(imat, ob->obmat);
