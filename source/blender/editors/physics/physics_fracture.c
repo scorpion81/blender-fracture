@@ -807,14 +807,16 @@ int fractureToCells(Object *ob, float mat[4][4], wmOperator* op, Scene* scene, O
 			bm = NULL;
 			
 			me = (Mesh*)o->data;
+			copy_m4_m4(o->obmat, mat);
+			mul_m4_v3(o->obmat, centroid);
 			for (i = 0; i < me->totvert; i++)
 			{
+				mul_m4_v3(o->obmat, me->mvert[i].co);
 				sub_v3_v3(me->mvert[i].co, centroid);
 			}
 			
 			//recenter... to centroid ?
 			add_v3_v3(o->loc, centroid);
-			mul_m4_v3(mat, o->loc);
 			
 			*shards = MEM_reallocN(*shards, sizeof(Object*) * (objcount+1));
 			(*shards)[objcount] = o;
@@ -961,7 +963,7 @@ Group* getGroup(const char* name)
 	for (id = G.main->group.first; id; id = id->next)
 	{
 		int len = strlen(id->name);
-		char idname[len-2];
+		char idname[64];
 		strncpy(idname, &id->name[2], len-2);
 		idname[len-2] = '\0';
 		
@@ -1093,6 +1095,9 @@ int object_fracture_exec(bContext *C, wmOperator *op)
 		}
 	}
 	CTX_DATA_END;
+	
+	WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
+	WM_event_add_notifier(C, NC_OBJECT | ND_POINTCACHE, NULL);
 	
 	return OPERATOR_FINISHED;
 #else
