@@ -320,10 +320,14 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland* mi)
 		mass_mi = (vol_mi / vol_ob) * mass_ob;
 		mi->rigidbody->mass = mass_mi;
 	}
-	/* only active bodies need mass update */
-	if ((mi->rigidbody->physics_object) && (mi->rigidbody->type == RBO_TYPE_ACTIVE)) {
+	
+	if (mi->rigidbody->type == RBO_TYPE_ACTIVE)
+	{
 		if (mi->rigidbody->mass == 0)
 			mi->rigidbody->mass = 0.001; //set a minimum mass for active objects 
+	}
+	/* only active bodies need mass update */
+	if ((mi->rigidbody->physics_object) && (mi->rigidbody->type == RBO_TYPE_ACTIVE)) {
 		RB_body_set_mass(mi->rigidbody->physics_object, RBO_GET_MASS(mi->rigidbody));
 	}
 }
@@ -338,6 +342,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 	mat4_to_size(size, ob->obmat);
 	//sub_qt_qtqt(rot, rot, obrot);
 	//loc_quat_size_to_mat4(imat, loc, rot, size);
+	printf("Loc: %f %f %f\n", loc[0], loc[1], loc[2]);
 	for (j = 0; j < mi->vertex_count; j++) {
 		// BMVert *vert = BM_vert_at_index(bm, ind);
 		struct BMVert* vert = mi->vertices[j];
@@ -1593,7 +1598,8 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi
 	if (ob->type != OB_MESH) {
 		return NULL;
 	}
-	if (((Mesh *)ob->data)->totpoly == 0) {
+	
+	if (((Mesh *)ob->data)->totvert == 0) {
 		return NULL;
 	}
 
