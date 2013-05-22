@@ -1559,8 +1559,8 @@ RigidBodyWorld *BKE_rigidbody_create_world(Scene *scene)
 	rbw->object_changed = FALSE;
 	rbw->refresh_modifiers = FALSE;
 
-	rbw->objects = MEM_mallocN(sizeof(Object*), "objects");
-	rbw->cache_index_map = MEM_mallocN(sizeof(RigidBodyOb*), "cache_index_map");
+	//rbw->objects = MEM_mallocN(sizeof(Object*), "objects");
+	//rbw->cache_index_map = MEM_mallocN(sizeof(RigidBodyOb*), "cache_index_map");
 	//rbw->cache_offset_map = MEM_mallocN(sizeof(int), "cache_offset_map");
 
 	/* return this sim world */
@@ -2046,7 +2046,7 @@ static void rigidbody_update_sim_world(Scene *scene, RigidBodyWorld *rbw)
 	RB_dworld_set_gravity(rbw->physics_world, adj_gravity);
 
 	/* update object array in case there are changes */
-	rigidbody_update_ob_array(rbw);
+	//rigidbody_update_ob_array(rbw);
 }
 
 static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *ob, RigidBodyOb *rbo, float centroid[3])
@@ -2198,8 +2198,8 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 					if (mi->rigidbody == NULL) {
 						mi->rigidbody = BKE_rigidbody_create_shard(scene, ob, mi);
-						//BKE_rigidbody_calc_shard_mass(ob, mi);
-						mi->rigidbody->mass = 0.01f;
+						BKE_rigidbody_calc_shard_mass(ob, mi);
+						//mi->rigidbody->mass = 0.01f;
 						BKE_rigidbody_validate_sim_shard(rbw, mi, ob, true);
 						mi->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
 					}
@@ -2293,7 +2293,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 				rigidbody_update_sim_ob(scene, rbw, ob, rbo, centroid);
 			}
 		}
-
+		rigidbody_update_ob_array(rbw);
 		rbw->refresh_modifiers = FALSE;
 	}
 
@@ -2595,7 +2595,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	/* don't try to run the simulation if we don't have a world yet but allow reading baked cache */
 	if (rbw->physics_world == NULL && !(cache->flag & PTCACHE_BAKED))
 		return;
-	else if (rbw->objects == NULL)
+	else if ((rbw->objects == NULL) || (rbw->cache_index_map == NULL))
 		rigidbody_update_ob_array(rbw);
 
 	/* try to read from cache */
