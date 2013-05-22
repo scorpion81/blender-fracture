@@ -681,7 +681,7 @@ void mesh_separate_selected(BMesh** bm_work, BMesh** bm_out, BMVert** orig_work,
 	BM_mesh_normals_update(bm_new);
 }
 
-void halve(RigidBodyModifierData* rmd, Object* ob, int minsize, BMesh** bm_work, BMVert*** orig_work)
+void halve(RigidBodyModifierData* rmd, Object* ob, int minsize, BMesh** bm_work, BMVert*** orig_work, bool separated)
 {
 
 	int half;
@@ -691,6 +691,7 @@ void halve(RigidBodyModifierData* rmd, Object* ob, int minsize, BMesh** bm_work,
 	BMVert *v;
 	BMesh* bm_old = *bm_work;
 	BMesh* bm_new = BM_mesh_create(&bm_mesh_allocsize_default);
+	separated = false;
 
 	//if (bm_old->totvert > minsize)
 	{
@@ -718,20 +719,23 @@ void halve(RigidBodyModifierData* rmd, Object* ob, int minsize, BMesh** bm_work,
 		//BM_mesh_elem_hflag_disable_all(bm_new, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, FALSE);
 	}
 
-	if ((bm_old->totvert <= minsize) || (bm_new->totvert == 0)) {
+	printf("Old New: %d %d\n", bm_old->totvert, bm_new->totvert);
+	if ((bm_old->totvert <= minsize && bm_old->totvert > 0) || (bm_new->totvert == 0)) {
 		mesh_separate_loose_partition(rmd, ob, bm_old, orig_mod);
+		separated = true;
 	}
 
 	if ((bm_new->totvert <= minsize && bm_new->totvert > 0) || (bm_old->totvert == 0)) {
 		mesh_separate_loose_partition(rmd, ob, bm_new, orig_new);
+		separated = true;
 	}
 
-	if (bm_old->totvert > minsize && bm_new->totvert > 0) {
-		halve(rmd, ob, minsize, &bm_old, &orig_mod);
+	if ((bm_old->totvert > minsize && bm_new->totvert > 0) || (bm_new->totvert == 0 && !separated)) {
+		halve(rmd, ob, minsize, &bm_old, &orig_mod, separated);
 	}
 
-	if (bm_new->totvert > minsize && bm_old->totvert > 0) {
-		halve(rmd, ob, minsize, &bm_new, &orig_new);
+	if ((bm_new->totvert > minsize && bm_old->totvert > 0) || (bm_old->totvert == 0 && !separated)) {
+		halve(rmd, ob, minsize, &bm_new, &orig_new, separated);
 	}
 
 	MEM_freeN(orig_mod);
@@ -760,7 +764,7 @@ void mesh_separate_loose(RigidBodyModifierData* rmd, Object* ob)
 		orig_start[v->head.index] = v;
 	}
 
-	halve(rmd, ob, minsize, &bm_work, &orig_start);
+	halve(rmd, ob, minsize, &bm_work, &orig_start, false);
 
 	//end = clock();
 	//printf("Minsize: %d, Time %.2f\n", minsize, (float)(end-start));
