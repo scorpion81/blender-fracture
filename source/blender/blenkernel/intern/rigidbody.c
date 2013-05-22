@@ -1875,7 +1875,9 @@ void BKE_rigidbody_remove_object(Scene *scene, Object *ob)
 							RB_shape_delete(mi->rigidbody->physics_shape);
 							mi->rigidbody->physics_shape = NULL;
 						}
-
+						
+						//this SHOULD be the correct global index
+						rbw->cache_index_map[mi->linear_index] = NULL;
 						MEM_freeN(mi->rigidbody);
 						mi->rigidbody = NULL;
 					}
