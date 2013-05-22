@@ -1308,8 +1308,8 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 				if ((index1 == -1) || (index2 == -1)) //outer constraint if not both meshislands in same object
 				{
 					float master[3], slave[3], center[3];
-					copy_v3_v3(master, rbw->objects[rbw->cache_index_map[rbc->mi1->linear_index]]->loc);
-					copy_v3_v3(slave, rbw->objects[rbw->cache_index_map[rbc->mi2->linear_index]]->loc);
+					copy_v3_v3(master, rbw->objects[rbw->cache_offset_map[rbc->mi1->linear_index]]->loc);
+					copy_v3_v3(slave, rbw->objects[rbw->cache_offset_map[rbc->mi2->linear_index]]->loc);
 					add_v3_v3v3(center, master, slave);
 					mul_v3_fl(center, 0.5f);
 
@@ -1560,8 +1560,8 @@ RigidBodyWorld *BKE_rigidbody_create_world(Scene *scene)
 	rbw->refresh_modifiers = FALSE;
 
 	rbw->objects = MEM_mallocN(sizeof(Object*), "objects");
-	rbw->cache_index_map = MEM_mallocN(sizeof(int), "cache_index_map");
-	rbw->cache_offset_map = MEM_mallocN(sizeof(int), "cache_offset_map");
+	rbw->cache_index_map = MEM_mallocN(sizeof(RigidBodyOb*), "cache_index_map");
+	//rbw->cache_offset_map = MEM_mallocN(sizeof(int), "cache_offset_map");
 
 	/* return this sim world */
 	return rbw;
@@ -1991,7 +1991,7 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 	if (rbw->numbodies != (m+n)) {
 		rbw->numbodies = m+n;
 		rbw->objects = MEM_reallocN(rbw->objects, sizeof(Object *) * l);
-		rbw->cache_index_map = MEM_reallocN(rbw->cache_index_map, sizeof(int) * rbw->numbodies);
+		rbw->cache_index_map = MEM_reallocN(rbw->cache_index_map, sizeof(RigidBodyOb*) * rbw->numbodies);
 		rbw->cache_offset_map = MEM_reallocN(rbw->cache_offset_map, sizeof(int) * rbw->numbodies);
 	}
 
@@ -2004,9 +2004,9 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 				rmd = (RigidBodyModifierData*)md;
 				if (isModifierActive(rmd)) {
 					for (mi = rmd->meshIslands.first, j = 0; mi; mi = mi->next) {
-						rbw->cache_index_map[counter] = i; //map all shards of an object to this object index
+						rbw->cache_index_map[counter] = mi->rigidbody; //map all shards of an object to this object index
 						//printf("index map:  %d %d\n", counter, i);
-						rbw->cache_offset_map[counter] = j;
+						rbw->cache_offset_map[counter] = counter;
 						mi->linear_index = counter;
 						counter++;
 						j++;
@@ -2019,7 +2019,8 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 
 		if (!ismapped) {
 			//printf("index map:  %d %d\n", counter, i);
-			rbw->cache_index_map[counter] = i; //1 object 1 index here (normal case)
+			rbw->cache_index_map[counter] = ob->rigidbody_object; //i; 1 object 1 index here (normal case)
+			rbw->cache_offset_map[counter] = i;
 			//mi->linear_index = counter;
 			counter++;
 		}
@@ -2197,7 +2198,8 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 					if (mi->rigidbody == NULL) {
 						mi->rigidbody = BKE_rigidbody_create_shard(scene, ob, mi);
-						BKE_rigidbody_calc_shard_mass(ob, mi);
+						//BKE_rigidbody_calc_shard_mass(ob, mi);
+						mi->rigidbody->mass = 0.01f;
 						BKE_rigidbody_validate_sim_shard(rbw, mi, ob, true);
 						mi->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
 					}

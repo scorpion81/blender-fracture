@@ -46,6 +46,8 @@ struct EffectorWeights;
  *
  * Represents a "simulation scene" existing within the parent scene.
  */
+typedef struct RigidBodyOb RigidBodyOb;
+
 typedef struct RigidBodyWorld {
 	/* Sim World Settings ------------------------------------------------------------- */
 	struct EffectorWeights *effector_weights; /* effectors info */
@@ -71,7 +73,7 @@ typedef struct RigidBodyWorld {
 	
 	/* References to Physics Sim objects. Exist at runtime only ---------------------- */
 	void *physics_world;		/* Physics sim world (i.e. btDiscreteDynamicsWorld) */
-	int *cache_index_map;		/* Maps the linear RigidbodyOb index to the nested Object(Modifier) Index, at runtime*/
+	RigidBodyOb **cache_index_map;		/* Maps the linear RigidbodyOb index to the nested Object(Modifier) Index, at runtime*/
 	int *cache_offset_map;		/* Maps the linear RigidbodyOb index to the nested Object(Modifier) cell offset, at runtime, so it does not need to be calced in cache*/
 	int refresh_modifiers;		/* If we have rigidbody modifiers, time to refresh them if flag is set*/
 	int object_changed;			/* Flag changes to objects (especially those with modifiers)*/

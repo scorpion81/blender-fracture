@@ -1000,11 +1000,11 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUS
 {
 	RigidBodyWorld *rbw = rb_v;
 	Object *ob = NULL;
-	ModifierData *md = NULL;
-	RigidBodyModifierData* rmd = NULL;
-	MeshIsland *mi = NULL;
+	//ModifierData *md = NULL;
+	//RigidBodyModifierData* rmd = NULL;
+	//MeshIsland *mi = NULL;
 	RigidBodyOb *rbo = NULL;
-	int offset = 0;
+	/*int offset = 0;
 	int mapped = rbw->cache_index_map[index];
 
 	if (index > mapped) {
@@ -1029,8 +1029,10 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUS
 		}
 	}
 	/* don't have rigid body modifier, use regular object */
-	if (rbo == NULL)
-		rbo = ob->rigidbody_object;
+	//if (rbo == NULL)
+	//	rbo = ob->rigidbody_object;*/
+	
+	rbo = rbw->cache_index_map[index];
 
 	if (rbo && rbo->type == RBO_TYPE_ACTIVE && rbo->physics_object) {
 #ifdef WITH_BULLET
@@ -1050,8 +1052,8 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float UNU
 	ModifierData *md = NULL;
 	RigidBodyModifierData* rmd = NULL;
 	RigidBodyOb *rbo = NULL;
-	MeshIsland *mi = NULL; //need to update mesh from cache as well, a bit dirty approach...
-	int offset = 0;
+	//MeshIsland *mi = NULL; //need to update mesh from cache as well, a bit dirty approach...
+	/*int offset = 0;
 	int mapped = rbw->cache_index_map[index];
 
 	if (index > mapped) {
@@ -1060,12 +1062,12 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float UNU
 	}
 
 	if (rbw->objects)
-		ob = rbw->objects[index];
+		ob = rbw->objects[index];*/
 
-	if (ob == NULL)
-		return;
+//	if (ob == NULL)
+//		return;
 
-	for (md = ob->modifiers.first; md; md = md->next) {
+	/*for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_RigidBody) {
 			rmd = (RigidBodyModifierData*)md;
 			if ((rmd != NULL) && (rmd->modifier.mode & eModifierMode_Realtime))
@@ -1076,10 +1078,12 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float UNU
 				break;
 			}
 		}
-	}
+	}*/
 	/* don't have rigid body modifier, use regular object */
-	if (rbo == NULL)
-		rbo = ob->rigidbody_object;
+	//if (rbo == NULL)
+	//	rbo = ob->rigidbody_object;
+	
+	rbo = rbw->cache_index_map[index];
 
 	if (rbo && rbo->type == RBO_TYPE_ACTIVE) {
 
@@ -1104,10 +1108,10 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 	Object *ob = NULL;
 	ParticleKey keys[4];
 	float dfra;
-	ModifierData *md = NULL;
-	RigidBodyModifierData* rmd = NULL;
-	MeshIsland* mi = NULL;
-	int offset = 0;
+	//ModifierData *md = NULL;
+	//RigidBodyModifierData* rmd = NULL;
+	//MeshIsland* mi = NULL;
+	/*int offset = 0;
 	int mapped = rbw->cache_index_map[index];
 
 	if (index > mapped) {
@@ -1130,11 +1134,13 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 				break;
 			}
 		}
-	}
+	}*/
 	/* don't have rigid body modifier, use regular object */
-	if (rbo == NULL)
-		rbo = ob->rigidbody_object;
+	//if (rbo == NULL)
+	//	rbo = ob->rigidbody_object;
 
+	rbo = rbw->cache_index_map[index];
+	
 	if (rbo && rbo->type == RBO_TYPE_ACTIVE) {
 
 		copy_v3_v3(keys[1].co, rbo->pos);
