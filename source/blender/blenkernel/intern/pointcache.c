@@ -1033,6 +1033,9 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUS
 	//	rbo = ob->rigidbody_object;*/
 	
 	rbo = rbw->cache_index_map[index];
+	
+	if (rbo == NULL)
+		return 0;
 
 	if (rbo && rbo->type == RBO_TYPE_ACTIVE && rbo->physics_object) {
 #ifdef WITH_BULLET
@@ -1084,6 +1087,9 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float UNU
 	//	rbo = ob->rigidbody_object;
 	
 	rbo = rbw->cache_index_map[index];
+	
+	if (rbo == NULL)
+		return;
 
 	if (rbo && rbo->type == RBO_TYPE_ACTIVE) {
 
@@ -1140,6 +1146,8 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 	//	rbo = ob->rigidbody_object;
 
 	rbo = rbw->cache_index_map[index];
+	if (rbo == NULL)
+		return;
 	
 	if (rbo && rbo->type == RBO_TYPE_ACTIVE) {
 

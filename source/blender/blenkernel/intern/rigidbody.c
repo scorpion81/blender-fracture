@@ -2006,7 +2006,7 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 					for (mi = rmd->meshIslands.first, j = 0; mi; mi = mi->next) {
 						rbw->cache_index_map[counter] = mi->rigidbody; //map all shards of an object to this object index
 						//printf("index map:  %d %d\n", counter, i);
-						rbw->cache_offset_map[counter] = counter;
+						rbw->cache_offset_map[counter] = i;
 						mi->linear_index = counter;
 						counter++;
 						j++;
