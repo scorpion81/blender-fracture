@@ -1890,9 +1890,13 @@ void BKE_rigidbody_remove_object(Scene *scene, Object *ob)
 			/* remove object from array */
 			if (rbw && rbw->objects) {
 				for (i = 0; i < rbw->numbodies; i++) {
-					int index = rbw->cache_index_map[i];
+					int index = rbw->cache_offset_map[i];
 					if (rbw->objects[index] == ob) {
 						rbw->objects[index] = NULL;
+					}
+					
+					if (rbo == rbw->cache_index_map[i]){
+						rbw->cache_index_map[i] = NULL;
 						break;
 					}
 				}
