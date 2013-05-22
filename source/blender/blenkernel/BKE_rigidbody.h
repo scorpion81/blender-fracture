@@ -87,7 +87,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, struct Object* ob, float l
 struct RigidBodyWorld *BKE_rigidbody_get_world(struct Scene *scene);
 void BKE_rigidbody_remove_object(struct Scene *scene, struct Object *ob);
 void BKE_rigidbody_remove_constraint(struct Scene *scene, struct Object *ob);
-float BKE_rigidbody_calc_volume(struct BMesh *bm, struct RigidBodyOb *rbo);
+float BKE_rigidbody_calc_volume(struct DerivedMesh *dm, struct RigidBodyOb *rbo);
 void BKE_rigidbody_calc_shard_mass(struct Object* ob, struct MeshIsland* mi);
 void BKE_rigidbody_calc_threshold(float max_con_mass, float min_con_dist, struct RigidBodyModifierData* rmd, struct RigidBodyShardCon *con);
 float BKE_rigidbody_calc_max_con_mass(struct Object* ob);

@@ -178,19 +178,25 @@ void BKE_rigidbody_calc_threshold(float max_con_mass, float min_con_dist,  Rigid
 	}
 }
 
-static int BM_mesh_minmax(BMesh *bm, float r_min[3], float r_max[3])
+static int DM_mesh_minmax(DerivedMesh *dm, float r_min[3], float r_max[3])
 {
-	BMVert* v;
-	BMIter iter;
-	BM_ITER_MESH (v, &iter, bm, BM_VERTS_OF_MESH) {
+	MVert* v;
+	int i = 0;
+	//BMIter iter;
+	/*BM_ITER_MESH (v, &iter, bm, BM_VERTS_OF_MESH) {
+		minmax_v3v3_v3(r_min, r_max, v->co);
+	}*/
+	for (i = 0; i < dm->numVertData; i++)
+	{
+		v = CDDM_get_vert(dm, i);
 		minmax_v3v3_v3(r_min, r_max, v->co);
 	}
 
 	//BM_mesh_normals_update(bm, FALSE);
-	return (bm->totvert != 0);
+	return (dm->numVertData != 0);
 }
 
-static void BM_mesh_boundbox(BMesh* bm, float r_loc[3], float r_size[3])
+static void DM_mesh_boundbox(DerivedMesh* bm, float r_loc[3], float r_size[3])
 {
 	float min[3], max[3];
 	float mloc[3], msize[3];
@@ -199,7 +205,7 @@ static void BM_mesh_boundbox(BMesh* bm, float r_loc[3], float r_size[3])
 	if (!r_size) r_size = msize;
 
 	INIT_MINMAX(min, max);
-	if (!BM_mesh_minmax(bm, min, max)) {
+	if (!DM_mesh_minmax(bm, min, max)) {
 		min[0] = min[1] = min[2] = -1.0f;
 		max[0] = max[1] = max[2] = 1.0f;
 	}
@@ -213,7 +219,7 @@ static void BM_mesh_boundbox(BMesh* bm, float r_loc[3], float r_size[3])
 
 /* helper function to calculate volume of rigidbody object */
 // TODO: allow a parameter to specify method used to calculate this?
-float BKE_rigidbody_calc_volume(BMesh *bm, RigidBodyOb *rbo)
+float BKE_rigidbody_calc_volume(DerivedMesh *dm, RigidBodyOb *rbo)
 {
 	//RigidBodyOb *rbo = mi->rigidbody;
 
@@ -232,7 +238,7 @@ float BKE_rigidbody_calc_volume(BMesh *bm, RigidBodyOb *rbo)
 	 */
 	// XXX: all dimensions are auto-determined now... later can add stored settings for this
 	//BKE_object_dimensions_get(ob, size);
-	BM_mesh_boundbox(bm, loc, size); //maybe *2 ??
+	DM_mesh_boundbox(dm, loc, size); //maybe *2 ??
 
 	if (ELEM3(rbo->shape, RB_SHAPE_CAPSULE, RB_SHAPE_CYLINDER, RB_SHAPE_CONE)) {
 		/* take radius as largest x/y dimension, and height as z-dimension */
@@ -295,20 +301,22 @@ float BKE_rigidbody_calc_volume(BMesh *bm, RigidBodyOb *rbo)
 
 void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland* mi)
 {
-	BMesh *bm_mi, *bm_ob;
+	DerivedMesh *dm_ob, *dm_mi;
 	float vol_mi, mass_mi, vol_ob, mass_ob;
 
-	bm_ob = BM_mesh_create(&bm_mesh_chunksize_default);
-	BM_mesh_bm_from_me(bm_ob, ob->data, FALSE, 0);
-	vol_ob = BKE_rigidbody_calc_volume(bm_ob, ob->rigidbody_object);
+	//bm_ob = BM_mesh_create(&bm_mesh_chunksize_default);
+	//BM_mesh_bm_from_me(bm_ob, ob->data, FALSE, 0);
+	dm_ob = ob->derivedFinal;
+	vol_ob = BKE_rigidbody_calc_volume(dm_ob, ob->rigidbody_object);
 	mass_ob = ob->rigidbody_object->mass;
-	BM_mesh_free(bm_ob);
+	//BM_mesh_free(bm_ob);
 
 	if (vol_ob > 0)
 	{
-		bm_mi = DM_to_bmesh(mi->physics_mesh);
-		vol_mi = BKE_rigidbody_calc_volume(bm_mi, mi->rigidbody);
-		BM_mesh_free(bm_mi);
+		//bm_mi = DM_to_bmesh(mi->physics_mesh);
+		dm_mi = mi->physics_mesh;
+		vol_mi = BKE_rigidbody_calc_volume(dm_mi, mi->rigidbody);
+		//BM_mesh_free(bm_mi);
 		mass_mi = (vol_mi / vol_ob) * mass_ob;
 		mi->rigidbody->mass = mass_mi;
 	}
