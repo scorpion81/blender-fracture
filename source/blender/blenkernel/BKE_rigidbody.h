@@ -92,6 +92,7 @@ void BKE_rigidbody_calc_shard_mass(struct Object* ob, struct MeshIsland* mi);
 void BKE_rigidbody_calc_threshold(float max_con_mass, float min_con_dist, struct RigidBodyModifierData* rmd, struct RigidBodyShardCon *con);
 float BKE_rigidbody_calc_max_con_mass(struct Object* ob);
 float BKE_rigidbody_calc_min_con_dist(struct Object* ob);
+void BKE_rigidbody_start_dist_angle(struct RigidBodyShardCon* con);
 /* -------------- */
 /* Utility Macros */
 

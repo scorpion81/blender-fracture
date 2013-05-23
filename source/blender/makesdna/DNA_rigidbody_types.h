@@ -252,6 +252,8 @@ typedef struct RigidBodyShardCon {
 	int flag;					/* (eRigidBodyCon_Flag) */
 
 	float breaking_threshold;	/* breaking impulse threshold */
+	float start_angle;			//needed for breaking by angle and dist
+	float start_dist;
 	float pad;
 
 	/* limits */

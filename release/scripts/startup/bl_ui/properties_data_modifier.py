@@ -676,6 +676,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
     def RIGID_BODY(self, layout, ob, md):
         layout.operator("object.rigidbody_refresh", text="Refresh")
         layout.prop(md, "use_constraints")
+        layout.prop(md, "use_both_directions")
         layout.prop(md, "constraint_group") 
         layout.prop(md, "constraint_limit")
         layout.prop(md, "contact_dist_meaning")
@@ -688,8 +689,11 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         layout.prop(md, "outer_constraint_location")
         layout.prop(md, "mass_dependent_thresholds")
         layout.prop(md, "dist_dependent_thresholds")
+        layout.prop(md, "breaking_percentage")
+        layout.prop(md, "breaking_angle")
+        layout.prop(md, "breaking_distance")
         layout.prop(md, "auto_merge")
-        layout.prop(md, "auto_merge_dist");
+        layout.prop(md, "auto_merge_dist")
 
     def SCREW(self, layout, ob, md):
         split = layout.split()

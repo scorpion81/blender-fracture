@@ -83,7 +83,6 @@ static void initData(ModifierData *md)
 	rmd->auto_merge = FALSE;
 	rmd->sel_indexes = NULL;
 	rmd->sel_counter = 0;
-//	rmd->storage = NULL;
 	rmd->auto_merge_dist = 0.0001f;
 	rmd->inner_constraint_type = RBC_TYPE_FIXED;
 	rmd->outer_constraint_type = RBC_TYPE_FIXED;
@@ -94,6 +93,10 @@ static void initData(ModifierData *md)
 	rmd->constraint_limit = 0;
 	rmd->dist_dependent_thresholds = FALSE;
 	rmd->contact_dist_meaning = MOD_RIGIDBODY_CENTROIDS;
+	rmd->breaking_distance = 0;
+	rmd->breaking_angle = 0;
+	rmd->breaking_percentage = 0; //disable by default
+	rmd->use_both_directions = FALSE;
 }
 /*void copy_meshisland(RigidBodyModifierData* rmd, MeshIsland *dst, MeshIsland *src)
 {
@@ -212,6 +215,14 @@ static void freeData(ModifierData *md)
 			MEM_freeN(mi->bb);
 			mi->bb = NULL;
 		}
+		
+		if (mi->participating_constraints != NULL)
+		{
+			MEM_freeN(mi->participating_constraints);
+			mi->participating_constraints = NULL;
+			mi->participating_constraint_count = 0;
+		}
+		
 		MEM_freeN(mi);
 		mi = NULL;
 	}
@@ -393,9 +404,11 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob, BMVert*
 	mi->parent_mod = rmd;
 	mi->bb = BKE_boundbox_alloc_unit();
 	BKE_boundbox_init_from_minmax(mi->bb, min, max);
+	mi->participating_constraints = NULL;
+	mi->participating_constraint_count = 0;
 	
 	//takes VERY long...
-	/*  mi->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi);
+	/*mi->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi);
 	BKE_rigidbody_calc_shard_mass(ob, mi);
 	BKE_rigidbody_validate_sim_shard(rmd->modifier.scene->rigidbody_world, mi, ob, true);
 	mi->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;*/
@@ -891,6 +904,59 @@ void select_inner_faces_of_vert(RigidBodyModifierData* rmd, KDTree* tree, BMVert
 	}
 }
 
+static void connect_meshislands(RigidBodyModifierData* rmd, Object* ob, MeshIsland* mi1, MeshIsland* mi2, int con_type, float thresh)
+{
+	int con_found = FALSE;
+	RigidBodyShardCon *con, *rbsc;
+	
+	if (!rmd->use_both_directions)
+	{
+		for (con = rmd->meshConstraints.first; con; con = con->next) {
+			if (((con->mi1 == mi1) && (con->mi2 == mi2)) ||
+				((con->mi1 == mi2 && (con->mi2 == mi1)))) {
+				con_found = TRUE;
+				break;
+			}
+		}
+	}
+
+	if (!con_found)
+	{
+		if (rmd->use_constraints) {
+			if (((rmd->constraint_group != NULL) &&
+				(!BKE_group_object_exists(rmd->constraint_group, ob))) ||
+				(rmd->constraint_group == NULL)) {
+				
+				rbsc = BKE_rigidbody_create_shard_constraint(rmd->modifier.scene, con_type);
+				rbsc->mi1 = mi1;
+				rbsc->mi2 = mi2;
+				rbsc->breaking_threshold = thresh;
+				//BKE_rigidbody_start_dist_angle(rbsc);
+				BLI_addtail(&rmd->meshConstraints, rbsc);
+				
+				//store constraints per meshisland too, to allow breaking percentage
+				if (mi1->participating_constraints == NULL)
+				{
+					mi1->participating_constraints = MEM_callocN(sizeof(RigidBodyShardCon*), "part_constraints_mi1");
+					mi1->participating_constraint_count = 0;
+				}
+				mi1->participating_constraints = MEM_reallocN(mi1->participating_constraints, sizeof(RigidBodyShardCon*) * (mi1->participating_constraint_count+1));
+				mi1->participating_constraints[mi1->participating_constraint_count] = rbsc;
+				mi1->participating_constraint_count++;
+				
+				if (mi2->participating_constraints == NULL)
+				{
+					mi2->participating_constraints = MEM_callocN(sizeof(RigidBodyShardCon*), "part_constraints_mi2");
+					mi2->participating_constraint_count = 0;
+				}
+				mi2->participating_constraints = MEM_reallocN(mi2->participating_constraints, sizeof(RigidBodyShardCon*) * (mi2->participating_constraint_count+1));
+				mi2->participating_constraints[mi2->participating_constraint_count] = rbsc;
+				mi2->participating_constraint_count++;
+			}
+		}
+	}
+}
+
 static int check_meshislands_adjacency(RigidBodyModifierData* rmd, MeshIsland* mi, MeshIsland* mi2, BMesh **combined_mesh, KDTree* face_tree, Object* ob)
 {
 	BMOperator op;
@@ -1050,30 +1116,8 @@ static int check_meshislands_adjacency(RigidBodyModifierData* rmd, MeshIsland* m
 	if (shared > 0) {
 		// shared vertices (atleast one face ?), so connect...
 		// if all verts either in same object or not !
-		int con_found = FALSE;
-		RigidBodyShardCon *con, *rbsc;
-
-		for (con = rmd->meshConstraints.first; con; con = con->next) {
-			if (((con->mi1 == mi) && (con->mi2 == mi2)) ||
-				((con->mi1 == mi2 && (con->mi2 == mi)))) {
-				con_found = TRUE;
-				break;
-			}
-		}
-		if ((!con_found) && same){
-			if (rmd->use_constraints) {
-				if (((rmd->constraint_group != NULL) &&
-					(!BKE_group_object_exists(rmd->constraint_group, ob))) ||
-					(rmd->constraint_group == NULL)) {
-
-					rbsc = BKE_rigidbody_create_shard_constraint(rmd->modifier.scene, con_type);
-					rbsc->mi1 = mi;
-					rbsc->mi2 = mi2;
-					rbsc->breaking_threshold = thresh;
-					BLI_addtail(&rmd->meshConstraints, rbsc);
-				}
-			}
-		}
+		if (same)
+			connect_meshislands(rmd, ob, mi, mi2, con_type, thresh);
 	}
 
 	return shared;
@@ -1256,8 +1300,8 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 			GHash* ob1_closest = BLI_ghashIterator_getValue(&it2);
 			GHash* ob2_closest;
 
-			RigidBodyShardCon* rbsc, *con;
-			int index, con_found = FALSE;
+			//RigidBodyShardCon* rbsc, *con;
+			int index;
 
 			//find 2 nearest because the first is the object itself !!
 			KDTreeNearest* near = MEM_mallocN(sizeof(KDTreeNearest)*2, "near");
@@ -1285,22 +1329,7 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 				mil2 = NULL;
 			}
 
-			for (con = rmd->meshConstraints.first; con; con = con->next) {
-				if (((con->mi1 == mil1) && (con->mi2 == mil2)) ||
-					((con->mi1 == mil2 && (con->mi2 == mil1)))) {
-					con_found = TRUE;
-					break;
-				}
-			}
-
-			if (!con_found)
-			{
-				rbsc = BKE_rigidbody_create_shard_constraint(rmd->modifier.scene, rmd->outer_constraint_type);
-				rbsc->mi1 = mil1;
-				rbsc->mi2 = mil2;
-				rbsc->breaking_threshold = rmd->group_breaking_threshold;
-				BLI_addtail(&rmd->meshConstraints, rbsc);
-			}
+			connect_meshislands(rmd, ob, mil1, mil2, rmd->outer_constraint_type, rmd->group_breaking_threshold);
 			MEM_freeN(near);
 		}
 
@@ -1361,27 +1390,8 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 							//RigidBodyShardCon *con;
 							//int con_found = FALSE;
 							BLI_ghash_insert(visited_ids, id_pair, i);
-
-							/*for (con = rmd->meshConstraints.first; con; con = con->next) {
-								if (((con->mi1 == mi) && (con->mi2 == mi2)) ||
-									((con->mi1 == mi2 && (con->mi2 == mi)))) {
-									con_found = TRUE;
-									break;
-								}
-							}
-							if ((!con_found)){*/
-							if (rmd->use_constraints) {
-								if (((rmd->constraint_group != NULL) &&
-									(!BKE_group_object_exists(rmd->constraint_group, ob))) ||
-									(rmd->constraint_group == NULL)) {
-
-									RigidBodyShardCon *rbsc = BKE_rigidbody_create_shard_constraint(rmd->modifier.scene, rmd->inner_constraint_type);
-									rbsc->mi1 = mi;
-									rbsc->mi2 = mi2;
-									rbsc->breaking_threshold = rmd->breaking_threshold;
-									BLI_addtail(&rmd->meshConstraints, rbsc);
-								}
-							}
+							
+							connect_meshislands(rmd, ob, mi, mi2, rmd->inner_constraint_type, rmd->breaking_threshold);
 						}
 						else
 						{
@@ -1467,35 +1477,19 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 					MeshIsland* mi2 = meshIslands[(n3+i)->index];
 					if ((mi != mi2) && (mi2 != NULL))
 					{
-						RigidBodyShardCon *rbsc, *con;
 						float thresh;
-						int con_type, equal, con_found = FALSE, ok;
+						int con_type, equal, ok;
 						equal = mi->parent_mod == mi2->parent_mod;
 						ok = equal || (!equal && rmd->outer_constraint_type == RBC_TYPE_FIXED);
 						thresh = equal ? rmd->breaking_threshold : rmd->group_breaking_threshold;
 						con_type = equal ? rmd->inner_constraint_type : rmd->outer_constraint_type;
 
-						if ((i >= rmd->constraint_limit) && (rmd->constraint_limit > 0) || !ok)
+						if (((i >= rmd->constraint_limit) && (rmd->constraint_limit > 0)) || !ok)
 						{
 							break;
 						}
-
-						for (con = rmd->meshConstraints.first; con; con = con->next) {
-							if (((con->mi1 == mi) && (con->mi2 == mi2)) ||
-								((con->mi1 == mi2 && (con->mi2 == mi)))) {
-								con_found = TRUE;
-								break;
-							}
-						}
-
-						if (!con_found)
-						{
-							rbsc = BKE_rigidbody_create_shard_constraint(rmd->modifier.scene, con_type);
-							rbsc->mi1 = mi;
-							rbsc->mi2 = mi2;
-							rbsc->breaking_threshold = thresh;
-							BLI_addtail(&rmd->meshConstraints, rbsc);
-						}
+						
+						connect_meshislands(rmd, ob, mi, mi2, con_type, thresh);
 					}
 				}
 
@@ -1879,9 +1873,11 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				// add 1 MeshIsland
 				mi = MEM_callocN(sizeof(MeshIsland), "meshIsland");
 				BLI_addtail(&rmd->meshIslands, mi);
-				//index = BLI_findindex(&rmd->meshIslands, mi);
+				
+				mi->participating_constraints = NULL;
+				mi->participating_constraint_count = 0;
+				
 				mi->is_at_boundary = vc->is_at_boundary;
-//				mi->vert_indexes = vc->vert_indexes;
 				mi->vertices = vc->vertices;
 				mi->vertco = vc->vertco;
 				temp = DM_to_bmesh(vc->cell_mesh);
@@ -1890,10 +1886,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					//then eliminate centroid in vertex coords ?
 					sub_v3_v3(v->co, vc->centroid); //or better calc this again
 				}
-
-//				BKE_submesh_free(mi->storage);
-//				mi->storage = NULL;
-				//mi->storage = BKE_bmesh_to_submesh(mi->physics_mesh);
+				
 				BM_mesh_minmax(temp, min, max);
 				mi->physics_mesh = CDDM_from_bmesh(temp, TRUE);
 				BM_mesh_free(temp);

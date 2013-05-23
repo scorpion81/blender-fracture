@@ -819,6 +819,8 @@ static void updateConstraints(RigidBodyModifierData *rmd, Object* ob) {
 			BKE_rigidbody_calc_threshold(max_con_mass, min_con_dist, rmd, rbsc);
 		}
 
+		//reenable all
+		rbsc->flag |= RBC_FLAG_ENABLED;
 		rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
 	}
 }
@@ -915,6 +917,30 @@ static void rna_RigidBodyModifier_dist_dependent_thresholds_set(PointerRNA* ptr,
 	rmd->dist_dependent_thresholds = value;
 	updateConstraints(rmd, ob);
 	//rmd->refresh = TRUE;
+}
+
+static void rna_RigidBodyModifier_breaking_percentage_set(PointerRNA *ptr, int value)
+{
+	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	Object* ob = ptr->id.data;
+	rmd->breaking_percentage = value;
+	updateConstraints(rmd, ob);
+}
+
+static void rna_RigidBodyModifier_breaking_angle_set(PointerRNA *ptr, int value)
+{
+	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	Object* ob = ptr->id.data;
+	rmd->breaking_angle = value;
+	updateConstraints(rmd, ob);
+}
+
+static void rna_RigidBodyModifier_breaking_distance_set(PointerRNA *ptr, float value)
+{
+	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	Object* ob = ptr->id.data;
+	rmd->breaking_distance = value;
+	updateConstraints(rmd, ob);
 }
 
 #else
@@ -4057,6 +4083,32 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	RNA_def_property_enum_sdna(prop, NULL, "contact_dist_meaning");
 	RNA_def_property_enum_items(prop, prop_contact_dist);
 	RNA_def_property_ui_text(prop, "Contact Distance Target", "Distance shall be between centroids or vertices");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	
+	prop = RNA_def_property(srna, "use_both_directions", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "use_both_directions", FALSE);
+	RNA_def_property_ui_text(prop, "Use Both Directions", "Build constraints in both directions between rigidbodies");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	
+	prop = RNA_def_property(srna, "breaking_percentage", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "breaking_percentage");
+	RNA_def_property_range(prop, 0, 100);
+	RNA_def_property_int_funcs(prop, NULL, "rna_RigidBodyModifier_breaking_percentage_set", NULL);
+	RNA_def_property_ui_text(prop, "Breaking Percentage", "Percentage of broken constraints per island which leads to breaking of all others");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	
+	prop = RNA_def_property(srna, "breaking_angle", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "breaking_angle");
+	RNA_def_property_range(prop, 0, 180);
+	RNA_def_property_int_funcs(prop, NULL, "rna_RigidBodyModifier_breaking_angle_set", NULL);
+	RNA_def_property_ui_text(prop, "Breaking Angle", "Angle in degrees above which constraint should break");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	
+	prop = RNA_def_property(srna, "breaking_distance", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "breaking_distance");
+	RNA_def_property_range(prop, 0, FLT_MAX);
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_breaking_distance_set", NULL);
+	RNA_def_property_ui_text(prop, "Breaking Distance", "Distance above which constraint should break");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 

@@ -1293,16 +1293,16 @@ typedef struct MeshIsland {
 	struct RigidBodyOb *rigidbody;
 	struct RigidBodyModifierData *parent_mod; //needed to override thresholds/contact distance when using constraint groups
 	int *combined_index_map;
-	//int *vert_indexes;//needed for storing the indexes into the original mesh
 	int *neighbor_ids;
 	int *global_face_map;
-	//struct SMesh *storage;
 	struct BoundBox *bb;
+	struct RigidBodyShardCon **participating_constraints;
+	int participating_constraint_count;
 	int vertex_count, id, neighbor_count, is_at_boundary;
 	float centroid[3];
 	float rot[4]; //hrm, need this for constraints probably
 	int linear_index;  //index in rigidbody world
-	//char pad[4];
+	char pad[4];
 } MeshIsland;
 
 typedef struct RigidBodyModifierData {
@@ -1312,11 +1312,12 @@ typedef struct RigidBodyModifierData {
 	ListBase meshIslands, meshConstraints;
 	int	**sel_indexes, *index_storage, *id_storage;
 	struct GHash *idmap;
-	//struct SMesh *storage;
 	int refresh, use_constraints, mass_dependent_thresholds, auto_merge, sel_counter;
 	int inner_constraint_type, dist_dependent_thresholds;
 	int outer_constraint_type, outer_constraint_location, outer_constraint_pattern;
-	int explo_shared, constraint_limit, contact_dist_meaning;
+	int explo_shared, constraint_limit, contact_dist_meaning, use_both_directions;
+	int breaking_angle, breaking_percentage;
+	float breaking_distance;
 	float origmat[4][4], breaking_threshold;
 	float contact_dist, group_breaking_threshold, group_contact_dist, auto_merge_dist;
 	//char pad[4];

@@ -78,6 +78,29 @@ static bool isModifierActive(RigidBodyModifierData* rmd) {
 	return ((rmd != NULL) && (rmd->modifier.mode & eModifierMode_Realtime) && (rmd->refresh == FALSE));// rmd->modifier.mode & eModifierMode_Render));
 }
 
+void calc_dist_angle(RigidBodyShardCon* con, float* dist, float* angle)
+{
+	float q1[4], q2[4], qdiff[4], axis[3];
+	sub_v3_v3v3(axis, con->mi1->rigidbody->pos, con->mi2->rigidbody->pos);
+	*dist = len_v3(axis);
+	copy_qt_qt(q1, con->mi1->rigidbody->orn);
+	copy_qt_qt(q2, con->mi2->rigidbody->orn);
+	invert_qt(q1);
+	mul_qt_qtqt(qdiff, q1, q2);
+	quat_to_axis_angle(axis, angle, qdiff);
+	
+	*angle = RAD2DEGF(*angle);
+}
+
+void BKE_rigidbody_start_dist_angle(RigidBodyShardCon* con)
+{
+	//store starting angle and distance per constraint
+	float dist, angle;
+	calc_dist_angle(con, &dist, &angle);
+	con->start_dist = dist;
+	con->start_angle = angle;
+}
+
 float BKE_rigidbody_calc_max_con_mass(Object* ob)
 {
 	RigidBodyModifierData *rmd;
@@ -342,7 +365,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 	mat4_to_size(size, ob->obmat);
 	//sub_qt_qtqt(rot, rot, obrot);
 	//loc_quat_size_to_mat4(imat, loc, rot, size);
-	printf("Loc: %f %f %f\n", loc[0], loc[1], loc[2]);
+	//printf("Loc: %f %f %f\n", loc[0], loc[1], loc[2]);
 	for (j = 0; j < mi->vertex_count; j++) {
 		// BMVert *vert = BM_vert_at_index(bm, ind);
 		struct BMVert* vert = mi->vertices[j];
@@ -1313,6 +1336,7 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 		for (md = ob->modifiers.first; md; md = md->next) {
 			if (md->type == eModifierType_RigidBody) {
 				int index1, index2;
+				float angle, dist, vec1[3], vec2[3];
 				rmd = (RigidBodyModifierData*)md;
 
 				index1 = BLI_findindex(&rmd->meshIslands, rbc->mi1);
@@ -2227,14 +2251,55 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 						/* perform simulation data updates as tagged */
 						/* refresh object... */
 						int do_rebuild = rebuild;
-
+						
 						/*if ((BLI_countlist(&rmd->meshConstraints) == 0) && (rmd->constraint_group == NULL)) {
 							do_rebuild = rebuild;
 						}
 						else {
 							do_rebuild = rebuild;// && (mi->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE);
 						}*/
-
+						
+						if (rmd->breaking_percentage > 0)
+						{
+							int broken_cons = 0, cons = 0, i = 0;
+							RigidBodyShardCon* con;
+							
+							cons = mi->participating_constraint_count;
+							//calc ratio of broken cons here, per Mi and flag the rest to be broken too
+							for (i = 0; i < cons; i++)
+							{
+								con = mi->participating_constraints[i];
+								if (con && con->physics_constraint)
+								{
+									if (!RB_constraint_is_enabled(con->physics_constraint))
+									{
+										broken_cons++;
+									}
+								}
+							}
+							
+							if (cons > 0)
+							{
+								if ((float)broken_cons / (float)cons * 100 >= rmd->breaking_percentage) {
+									//break all cons if over percentage
+									for (i = 0; i < cons; i++)
+									{
+										con = mi->participating_constraints[i];
+										if (con)
+										{
+											con->flag &= ~RBC_FLAG_ENABLED;
+											con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+											
+											if (con->physics_constraint)
+											{
+												RB_constraint_set_enabled(con->physics_constraint, FALSE);
+											}
+										}
+									}
+								}
+							}
+						}
+						
 						validateShard(rbw, mi, ob, do_rebuild);
 					}
 
@@ -2258,10 +2323,43 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 					{
 						BKE_rigidbody_calc_threshold(max_con_mass, min_con_dist, rmd, rbsc);
 					}
+					
+					if (((rmd->breaking_angle > 0) || (rmd->breaking_distance > 0)) && !rebuild)
+					{
+						float dist, angle, distdiff, anglediff;
+						calc_dist_angle(rbsc, &dist, &angle);
+						
+						anglediff = fabs(angle - rbsc->start_angle);
+						distdiff = fabs(dist - rbsc->start_dist);
+						
+						
+						if ((rmd->breaking_angle > 0) && (anglediff > rmd->breaking_angle))
+						{
+							rbsc->flag &= ~RBC_FLAG_ENABLED;
+							rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
+							
+							if (rbsc->physics_constraint)
+							{
+								RB_constraint_set_enabled(rbsc->physics_constraint, FALSE);
+							}
+						}
+						
+						if ((rmd->breaking_distance > 0) && (distdiff > rmd->breaking_distance))
+						{
+							rbsc->flag &= ~RBC_FLAG_ENABLED;
+							rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
+							
+							if (rbsc->physics_constraint)
+							{
+								RB_constraint_set_enabled(rbsc->physics_constraint, FALSE);
+							}
+						}
+					}
 
 					if (rebuild) {
 						/* World has been rebuilt so rebuild constraint */
 						BKE_rigidbody_validate_sim_shard_constraint(rbw, rbsc, ob, true);
+						BKE_rigidbody_start_dist_angle(rbsc);
 					}
 
 					else if (rbsc->flag & RBC_FLAG_NEEDS_VALIDATE) {
