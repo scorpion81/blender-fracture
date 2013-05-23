@@ -852,6 +852,15 @@ static void rna_RigidBodyModifier_use_constraints_set(PointerRNA* ptr, int value
 static void rna_ExplodeModifier_noise_set(PointerRNA *ptr, float value)
 {
 	ExplodeModifierData *emd = (ExplodeModifierData*)ptr->data;
+	
+	//purge old noisemap when changes occur
+	if (emd->noisemap)
+	{
+		MEM_freeN(emd->noisemap);
+		emd->noisemap = NULL;
+		emd->noise_count = 0;
+	}
+	
 	emd->noise = value;
 }
 

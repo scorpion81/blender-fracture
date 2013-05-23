@@ -1441,10 +1441,6 @@ static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float 
 	{
 		noisemap = MEM_callocN(sizeof(float)*3 *totpoint, "noisemap");
 	}
-	else
-	{
-		noisemap = NULL;
-	}
 	
 	for (t = 0; t < totpoint; t++) {
 		float bbox_min[3], bbox_max[3];
