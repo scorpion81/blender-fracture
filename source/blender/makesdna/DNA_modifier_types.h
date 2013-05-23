@@ -654,7 +654,6 @@ typedef struct VoronoiCell {
 	struct BMVert **vertices;
 	float *vertco;
 	struct DerivedMesh *cell_mesh;
-	struct SMesh *storage;
 	int /**vert_indexes,*/ *neighbor_ids, *global_face_map;
 	int vertex_count, neighbor_count, face_count;
 	int particle_index, pid, is_at_boundary;
@@ -682,12 +681,12 @@ typedef struct ExplodeModifierData {
 
 	//for voronoi cell mode
 	VoronoiCells *cells;
-    struct BMesh *fracMesh;
+	struct BMesh *fracMesh;
 	struct Object *tempOb;
 	struct KDTree *patree;
 	struct Material *inner_material;
 	struct Group *extra_group;
-	struct SMesh *storage;
+	float *noisemap; 
 
 	//for face mode
 	int *facepa;
@@ -699,9 +698,9 @@ typedef struct ExplodeModifierData {
 	int use_boolean, use_cache, percentage;
 	int last_part, last_bool, emit_continuously;
 	int mode, map_delay, last_map_delay, point_source;
-	int last_point_source, use_animation;
+	int last_point_source, use_animation, noise_count;
 	float noise;
-	char pad[4];
+	//char pad[4];
 
 } ExplodeModifierData;
 

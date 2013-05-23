@@ -109,7 +109,8 @@ static void initData(ModifierData *md)
 	emd->use_animation = FALSE;
 	emd->noise = 0.0f;
 	emd->percentage = 100;
-	emd->storage = NULL;
+	emd->noisemap = NULL;
+	emd->noise_count = 0;
 }
 
 static void freeCells(ExplodeModifierData* emd)
@@ -199,12 +200,13 @@ static void freeData(ModifierData *md)
 		//will be freed by walk/foreachIDLink ?
 		emd->inner_material = NULL;
 	}
-
-/*	if (emd->storage != NULL)
+	
+	if (emd->noisemap)
 	{
-		BKE_submesh_free(emd->storage);
-		emd->storage = NULL;
-	}*/
+		MEM_freeN(emd->noisemap);
+		emd->noisemap = NULL;
+		emd->noise_count = 0;
+	}
 }
 
 #else
@@ -1394,6 +1396,7 @@ static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float 
 	Object** go = MEM_mallocN(sizeof(Object*), "groupobjects");
 	float thresh = (float)emd->percentage / 100.0f;
 	BoundBox* bb;
+	float* noisemap = NULL;
 
 	if (emd->point_source & (eExtraParticles | eExtraVerts ))
 	{
@@ -1433,49 +1436,87 @@ static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float 
 	//apply noise
 
 	bb = BKE_object_boundbox_get(ob);
+	
+	if (emd->noisemap == NULL)
+	{
+		noisemap = MEM_callocN(sizeof(float)*3 *totpoint, "noisemap");
+	}
+	else
+	{
+		noisemap = NULL;
+	}
+	
 	for (t = 0; t < totpoint; t++) {
 		float bbox_min[3], bbox_max[3];
 
-		if (emd->noise > 0.0f) {
-			float scalar, size[3], rand[3] = {0, 0, 0}, temp_x[3], temp_y[3], temp_z[3], rand_x[3], rand_y[3], rand_z[3];
-			mul_v3_m4v3(bbox_min, ob->obmat, bb->vec[0]);
-			mul_v3_m4v3(bbox_max, ob->obmat, bb->vec[6]);
-			sub_v3_v3v3(size, bbox_max, bbox_min);
-
-			scalar = emd->noise * len_v3(size) / 2.0f;
-			rand[0] = 2.0f * (BLI_frand() - 0.5f);
-			rand[1] = 2.0f * (BLI_frand() - 0.5f);
-			rand[2] = 2.0f * (BLI_frand() - 0.5f);
-
-			rand[0] *= (scalar * BLI_frand());
-			rand[1] *= (scalar * BLI_frand());
-			rand[2] *= (scalar * BLI_frand());
-
-			//test each component separately
-			zero_v3(rand_x);
-			rand_x[0] = rand[0];
-
-			zero_v3(rand_y);
-			rand_y[1] = rand[1];
-
-			zero_v3(rand_z);
-			rand_z[2] = rand[2];
-
-			add_v3_v3v3(temp_x, (*points)[t], rand_x);
-			add_v3_v3v3(temp_y, (*points)[t], rand_y);
-			add_v3_v3v3(temp_z, (*points)[t], rand_z);
-
+		if (emd->noise > 0.0f) 
+			if (emd->noisemap != NULL) {
+				float noise[3];
+				noise[0] = emd->noisemap[3*t];
+				noise[1] = emd->noisemap[3*t+1];
+				noise[2] = emd->noisemap[3*t+2];
+				add_v3_v3((*points)[t], noise);
+			}
+			else
+			{
+				float scalar, size[3], rand[3] = {0, 0, 0}, temp_x[3], temp_y[3], temp_z[3], rand_x[3], rand_y[3], rand_z[3];
+				noisemap[3*t] = 0.0f;
+				noisemap[3*t+1] = 0.0f;
+				noisemap[3*t+2] = 0.0f;
+				
+				mul_v3_m4v3(bbox_min, ob->obmat, bb->vec[0]);
+				mul_v3_m4v3(bbox_max, ob->obmat, bb->vec[6]);
+				sub_v3_v3v3(size, bbox_max, bbox_min);
+		
+				scalar = emd->noise * len_v3(size) / 2.0f;
+				rand[0] = 2.0f * (BLI_frand() - 0.5f);
+				rand[1] = 2.0f * (BLI_frand() - 0.5f);
+				rand[2] = 2.0f * (BLI_frand() - 0.5f);
+		
+				rand[0] *= (scalar * BLI_frand());
+				rand[1] *= (scalar * BLI_frand());
+				rand[2] *= (scalar * BLI_frand());
+		
+				//test each component separately
+				zero_v3(rand_x);
+				rand_x[0] = rand[0];
+		
+				zero_v3(rand_y);
+				rand_y[1] = rand[1];
+		
+				zero_v3(rand_z);
+				rand_z[2] = rand[2];
+		
+				add_v3_v3v3(temp_x, (*points)[t], rand_x);
+				add_v3_v3v3(temp_y, (*points)[t], rand_y);
+				add_v3_v3v3(temp_z, (*points)[t], rand_z);
+		
+				
 			//stay inside bounds !!
-			if ((temp_x[0] >= bb->vec[0][0]) && (temp_x[0] <= bb->vec[6][0]))
+			if ((temp_x[0] >= bb->vec[0][0]) && (temp_x[0] <= bb->vec[6][0])) {
 				add_v3_v3((*points)[t], rand_x);
+				noisemap[3*t] = rand_x[1];
+			}
 
-			if ((temp_y[1] >= bb->vec[0][1]) && (temp_y[1] <= bb->vec[6][1]))
+			if ((temp_y[1] >= bb->vec[0][1]) && (temp_y[1] <= bb->vec[6][1])) {
 				add_v3_v3((*points)[t], rand_y);
+				noisemap[3*t+1] = rand_y[1];
+			}
 
-			if ((temp_z[2] >= bb->vec[0][2]) && (temp_z[2] <= bb->vec[6][2]))
+			if ((temp_z[2] >= bb->vec[0][2]) && (temp_z[2] <= bb->vec[6][2])) {
 				add_v3_v3((*points)[t], rand_z);
+				noisemap[3*t+2] = rand_z[2];
+			}
 		}
 	}
+	
+	if (emd->noisemap == NULL)
+	{
+		emd->noisemap = noisemap;
+		emd->noise_count = totpoint;
+	}
+	
+	
 
 	//MEM_freeN(bb);
 	MEM_freeN(go);
@@ -1486,7 +1527,8 @@ static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float 
 static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModifierData* emd, float mat[4][4])
 {
 	void* container = NULL;
-	void* particle_order = NULL;
+	particle_order* p_order = NULL;
+	loop_order* l_order = NULL;
 	float min[3], max[3];
 	int p = 0;
 	float co[3], vco[3];
@@ -1520,26 +1562,11 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 
 	float** points = NULL;
 	int totpoint = 0;
-//	int degenerate = FALSE;
 	int neighbor_index = 0;
 	int global_face_index = 0;
 
 	INIT_MINMAX(min, max);
 
-	/*if (emd->use_boolean) {
-		//theta = -0.01f;
-		//make container bigger for boolean case,so cube and container dont have equal size which can lead to boolean errors
-		//if (emd->flip_normal)
-		{	//cubes usually need flip_normal, so enable theta only here, otherwise it will be subtracted
-			//theta = 0.0001f;
-		}
-		BKE_mesh_minmax(ob->data, min, max);
-	}
-	else {
-		//con = voronoi.domain(xmin-theta,xmax+theta,ymin-theta,ymax+theta,zmin-theta,zmax+theta,nx,ny,nz,False, False, False, particles)
-		//dm_minmax(derivedData, min, max);
-		BKE_mesh_minmax(ob->data, min, max);
-	}*/
 
 	if (emd->use_boolean) {
 		theta = 0.1f;
@@ -1550,17 +1577,6 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 	//use global coordinates for container
 	mul_v3_m4v3(min, ob->obmat, min);
 	mul_v3_m4v3(max, ob->obmat, max);
-
-
-	// printf("Container: %f;%f;%f;%f;%f;%f \n", min[0], max[0], min[1], max[1], min[2], max[2]);
-	//TODO: maybe support simple shapes without boolean, but eh...
-	//container = container_new(min[0]-theta, max[0]+theta, min[1]-theta, max[1]+theta, min[2]-theta, max[2]+theta,
-	//						  n_size, n_size, n_size, FALSE, FALSE, FALSE, psmd->psys->totpart); //add number of parts here!
-	// particle_order = particle_order_new();
-
-	
-	//choose from point sources here
-	//if (!emd->refracture)
 
 	points = MEM_mallocN(sizeof(float*), "points");
 	totpoint = get_points(emd, emd->modifier.scene, ob, &points, mat, derivedData);
@@ -1581,12 +1597,17 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 	}
 	container = container_new(min[0]-theta, max[0]+theta, min[1]-theta, max[1]+theta, min[2]-theta, max[2]+theta,
 							  n_size, n_size, n_size, FALSE, FALSE, FALSE, totpoint);
-
+	
+	p_order = particle_order_new();
+	
 	for (p = 0; p < totpoint; p++)
 	{
 		copy_v3_v3(co, points[p]);
-		container_put(container, particle_order, p, co[0], co[1], co[2]);
+		container_put(container, p_order, p, co[0], co[1], co[2]);
+		//printf("Order: %d %d %d\n", p, p_order->o[p], p_order->op[p]);
 	}
+	
+	l_order = loop_order_new(container, p_order);
 
 	//TODO: write results to temp file, ensure using the systems temp dir...
 	// this prints out vertex positions and face indexes
@@ -1608,7 +1629,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 	// %C the centroid of the voronoi cell, used to find nearest particle in createCellpa
 
 	//%i the particle index
-	container_print_custom(container, "%i %P v %t f %C %n n", fp);
+	container_print_custom(l_order, container, "%i %P v %t f %C %n n", fp);
 	fflush(fp);
 	rewind(fp);
 	
@@ -1657,9 +1678,6 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 		emd->cells->data[emd->cells->count].vertco = MEM_mallocN(sizeof(float), "vertco");
 		emd->cells->data[emd->cells->count].vertex_count = 0;
 		emd->cells->data[emd->cells->count].particle_index = -1;
-//		emd->cells->data[emd->cells->count].rigidbody = NULL;
-//		emd->cells->data[emd->cells->count].vert_indexes = MEM_mallocN(sizeof(int), "fractureToCells->vert_indexes");
-		emd->cells->data[emd->cells->count].storage = NULL;
 		emd->cells->data[emd->cells->count].neighbor_ids = MEM_mallocN(sizeof(int), "neighbor_ids");
 		emd->cells->data[emd->cells->count].neighbor_count = 0;
 		emd->cells->data[emd->cells->count].is_at_boundary = FALSE;
@@ -1669,7 +1687,6 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 		bmtemp = BM_mesh_create(&bm_mesh_chunksize_default);
 		tempvert = MEM_mallocN(sizeof(BMVert*), "tempvert");
 		tempvert_index = 0;
-//		degenerate = FALSE;
 
 		// Read in the cell data, each line in the output file represents a voronoi cell
 		while (1)

@@ -1373,7 +1373,7 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 				int id = mi->neighbor_ids[i];
 				int index;
 				if (id >= 0) {
-					index = BLI_ghash_lookup(rmd->idmap, id);
+					index = GET_INT_FROM_POINTER(BLI_ghash_lookup(rmd->idmap, SET_INT_IN_POINTER(id)));
 					mi2 = BLI_findlink(&rmd->meshIslands, index);
 					if ((mi != mi2) && (mi2 != NULL)) {
 						GHashPair* id_pair = BLI_ghashutil_pairalloc(id, mi->id);
@@ -1389,7 +1389,7 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 							//shared = check_meshislands_adjacency(rmd, mi, mi2, combined_mesh, face_tree, ob);
 							//RigidBodyShardCon *con;
 							//int con_found = FALSE;
-							BLI_ghash_insert(visited_ids, id_pair, i);
+							BLI_ghash_insert(visited_ids, id_pair, SET_INT_IN_POINTER(i));
 							
 							connect_meshislands(rmd, ob, mi, mi2, rmd->inner_constraint_type, rmd->breaking_threshold);
 						}
@@ -1402,7 +1402,7 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 								int glob, glob2;
 								//now, if cell not altered by boolean, can select inner faces
 								// i is index of face in mi, need to find face index of visitor id
-								int secondface = BLI_ghash_lookup(visited_ids, id_pair);
+								int secondface = GET_INT_FROM_POINTER(BLI_ghash_lookup(visited_ids, id_pair));
 								//get global face index and select them
 								glob = mi->global_face_map[i];
 								glob2 = mi2->global_face_map[secondface]; //was "pair" necessary here ???
@@ -1902,7 +1902,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				BKE_boundbox_init_from_minmax(mi->bb, min, max);
 
 				mi->id = vc->pid;
-				BLI_ghash_insert(rmd->idmap, mi->id, i);
+				BLI_ghash_insert(rmd->idmap, SET_INT_IN_POINTER(mi->id), SET_INT_IN_POINTER(i));
 				mi->neighbor_ids = vc->neighbor_ids;
 				mi->neighbor_count = vc->neighbor_count;
 				mi->global_face_map = vc->global_face_map;
@@ -1916,10 +1916,10 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			rmd->explo_shared = FALSE;
 			mesh_separate_loose(rmd, ob);
 		}
-
+		
 		printf("Islands: %d\n", BLI_countlist(&rmd->meshIslands));
 
-		if ((rmd->use_constraints) || (rmd->auto_merge)) {
+		if ((rmd->visible_mesh != NULL) && ((rmd->use_constraints) || (rmd->auto_merge))) {
 			if (((rmd->constraint_group != NULL) && (!BKE_group_object_exists(rmd->constraint_group, ob))) ||
 					(rmd->constraint_group == NULL)) { // { || (rmd->auto_merge)) {
 				create_constraints(rmd, ob); //check for actually creating the constraints inside
@@ -1937,7 +1937,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	emd = findPrecedingExploModifier(ob, rmd);
 	exploOK = !rmd->explo_shared || (rmd->explo_shared && emd);
 
-	if (!exploOK)
+	if (!exploOK || rmd->visible_mesh == NULL)
 	{
 		MeshIsland* mi;
 		//nullify invalid data

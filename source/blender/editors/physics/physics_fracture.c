@@ -379,7 +379,8 @@ int dm_minmax(DerivedMesh* dm, float min[3], float max[3])
 int fractureToCells(Object *ob, float mat[4][4], wmOperator* op, Scene* scene, Object*** shards, neighborhood*** n, GHash** pid_to_index)
 {
 	void* container = NULL;
-	void* particle_order = NULL;
+	particle_order* p_order = NULL;
+	loop_order* l_order = NULL;
 	float min[3], max[3];
 	int p = 0;
 	float co[3], vco[3];
@@ -449,11 +450,14 @@ int fractureToCells(Object *ob, float mat[4][4], wmOperator* op, Scene* scene, O
 	container = container_new(min[0]-theta, max[0]+theta, min[1]-theta, max[1]+theta, min[2]-theta, max[2]+theta,
 							  n_size, n_size, n_size, FALSE, FALSE, FALSE, totpoint);
 
+	p_order = particle_order_new();
 	for (p = 0; p < totpoint; p++)
 	{
 		copy_v3_v3(co, points[p]);
-		container_put(container, particle_order, p, co[0], co[1], co[2]);
+		container_put(container, p_order, p, co[0], co[1], co[2]);
 	}
+	
+	l_order = loop_order_new(container, p_order);
 
 	//TODO: write results to temp file, ensure using the systems temp dir...
 	// this prints out vertex positions and face indexes
@@ -476,7 +480,7 @@ int fractureToCells(Object *ob, float mat[4][4], wmOperator* op, Scene* scene, O
 	// n the neighbor delimiter
 
 	//%i the particle index
-	container_print_custom(container, "%i %P v %t f %C %n n", fp);
+	container_print_custom(l_order, container, "%i %P v %t f %C %n n", fp);
 	fflush(fp);
 	rewind(fp);
 	

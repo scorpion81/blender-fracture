@@ -356,7 +356,7 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland* mi)
 }
 
 
-void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], float rot[4] )
+void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], float rot[4])
 {
 	float startco[3], centr[3], size[3];
 	int j;
@@ -366,11 +366,18 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 	//sub_qt_qtqt(rot, rot, obrot);
 	//loc_quat_size_to_mat4(imat, loc, rot, size);
 	//printf("Loc: %f %f %f\n", loc[0], loc[1], loc[2]);
+	//if (sync)
+	//{
+		/*float d[3];
+		sub_v3_v3v3(d, mi->centroid, loc);
+		printf("Diff: %f %f %f\n", d[0], d[1], d[2]);*/
+	//}
+	
 	for (j = 0; j < mi->vertex_count; j++) {
 		// BMVert *vert = BM_vert_at_index(bm, ind);
 		struct BMVert* vert = mi->vertices[j];
-		if (vert == NULL) continue;
-		if (vert->co == NULL) continue;
+		if (vert == NULL) break;
+		if (vert->co == NULL) break;
 		if (mi->parent_mod->refresh == TRUE) break; //if refresh in progress, dont try to access stuff here
 
 		//reset to original coords // stored at fracture time
@@ -2231,6 +2238,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 						rbw->object_changed = FALSE;
 						//rebuildcon = TRUE;
 					}
+					break;
 				}
 			}
 
@@ -2518,17 +2526,28 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 {
 	RigidBodyOb *rbo = NULL;
 	RigidBodyModifierData *rmd = NULL;
+	ExplodeModifierData *emd = NULL;
 	MeshIsland *mi;
 	ModifierData * md;
 	float centr[3], size[3];
 	int modFound = FALSE;
+	bool exploPresent = false, exploOK = false;
 
 	for (md = ob->modifiers.first; md; md = md->next)
 	{
+		if (md->type == eModifierType_Explode)
+		{
+			emd = (ExplodeModifierData*)md;
+			if (emd->mode == eFractureMode_Cells){
+				exploPresent = true;
+			}
+		}
 		if (md->type == eModifierType_RigidBody)
 		{
 			rmd = (RigidBodyModifierData*)md;
-			if (isModifierActive(rmd)) {
+			exploOK = !rmd->explo_shared || (rmd->explo_shared && exploPresent);
+			
+			if (isModifierActive(rmd) && exploOK) {
 				modFound = TRUE;
 				if ((ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) ||
 				((ob->rigidbody_object) && (ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC))) {
@@ -2591,19 +2610,19 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 			quat_to_mat4(mat, rbo->orn);
 			copy_v3_v3(mat[3], rbo->pos);
 
-				/* keep original transform when the simulation is muted */
-				if (rbw->flag & RBW_FLAG_MUTED)
-					return;
+			/* keep original transform when the simulation is muted */
+			if (rbw->flag & RBW_FLAG_MUTED)
+				return;
 
-				normalize_qt(rbo->orn); // RB_TODO investigate why quaternion isn't normalized at this point
-				quat_to_mat4(mat, rbo->orn);
-				copy_v3_v3(mat[3], rbo->pos);
+			/*normalize_qt(rbo->orn); // RB_TODO investigate why quaternion isn't normalized at this point
+			quat_to_mat4(mat, rbo->orn);
+			copy_v3_v3(mat[3], rbo->pos);*/
 
-				mat4_to_size(size, ob->obmat);
-				size_to_mat4(size_mat, size);
-				mult_m4_m4m4(mat, mat, size_mat);
+			mat4_to_size(size, ob->obmat);
+			size_to_mat4(size_mat, size);
+			mult_m4_m4m4(mat, mat, size_mat);
 
-				copy_m4_m4(ob->obmat, mat);
+			copy_m4_m4(ob->obmat, mat);
 		}
 			/* otherwise set rigid body transform to current obmat */
 		else {
@@ -2715,7 +2734,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 		return;
 	else if ((rbw->objects == NULL) || (rbw->cache_index_map == NULL))
 		rigidbody_update_ob_array(rbw);
-
+	
 	/* try to read from cache */
 	// RB_TODO deal with interpolated, old and baked results
 	if (BKE_ptcache_read(&pid, ctime)) {

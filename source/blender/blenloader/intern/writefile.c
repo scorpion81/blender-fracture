@@ -1489,7 +1489,6 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 			for (con = rmd->meshConstraints.first; con; con = con->next) {
 				con->physics_constraint = NULL;
 				con->flag |= RBC_FLAG_NEEDS_VALIDATE;
- 
 			}
  
 		}

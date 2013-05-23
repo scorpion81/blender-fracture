@@ -4639,7 +4639,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			emd->cells = NULL;
 			emd->patree = NULL;
 			emd->use_cache = FALSE;
-			emd->storage = NULL;
+			
 			
 		}
 		else if (md->type == eModifierType_MeshDeform) {
@@ -4695,6 +4695,8 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			rmd->meshConstraints.last = NULL;
 			rmd->sel_counter = 0;
 			rmd->sel_indexes = NULL;
+			rmd->explo_shared = FALSE;
+			rmd->refresh = TRUE;
 		}
 	}
 }
