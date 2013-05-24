@@ -2636,32 +2636,73 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 /* Used when cancelling transforms - return rigidbody and object to initial states */
 void BKE_rigidbody_aftertrans_update(Object *ob, float loc[3], float rot[3], float quat[4], float rotAxis[3], float rotAngle)
 {
-	RigidBodyOb *rbo = ob->rigidbody_object;
-
-	/* return rigid body and object to their initial states */
-	copy_v3_v3(rbo->pos, ob->loc);
-	copy_v3_v3(ob->loc, loc);
-
-	if (ob->rotmode > 0) {
-		eulO_to_quat(rbo->orn, ob->rot, ob->rotmode);
-		copy_v3_v3(ob->rot, rot);
+	RigidBodyOb *rbo;
+	ModifierData *md;
+	RigidBodyModifierData *rmd;
+	
+	md = modifiers_findByType(ob, eModifierType_RigidBody);
+	if (md != NULL)
+	{
+		MeshIsland* mi;
+		rmd = (RigidBodyModifierData*)md;
+		copy_m4_m4(rmd->origmat, ob->obmat);
+		for (mi = rmd->meshIslands.first; mi; mi = mi->next)
+		{
+			rbo = mi->rigidbody;
+			/* return rigid body and object to their initial states */
+			copy_v3_v3(rbo->pos, ob->loc);
+			add_v3_v3(rbo->pos, mi->centroid);
+			copy_v3_v3(ob->loc, loc);
+		
+			if (ob->rotmode > 0) {
+				eulO_to_quat(rbo->orn, ob->rot, ob->rotmode);
+				copy_v3_v3(ob->rot, rot);
+			}
+			else if (ob->rotmode == ROT_MODE_AXISANGLE) {
+				axis_angle_to_quat(rbo->orn, ob->rotAxis, ob->rotAngle);
+				copy_v3_v3(ob->rotAxis, rotAxis);
+				ob->rotAngle = rotAngle;
+			}
+			else {
+				copy_qt_qt(rbo->orn, ob->quat);
+				copy_qt_qt(ob->quat, quat);
+			}
+			if (rbo->physics_object) {
+				/* allow passive objects to return to original transform */
+				if (rbo->type == RBO_TYPE_PASSIVE)
+					RB_body_set_kinematic_state(rbo->physics_object, TRUE);
+				RB_body_set_loc_rot(rbo->physics_object, rbo->pos, rbo->orn);
+			}
+		}
 	}
-	else if (ob->rotmode == ROT_MODE_AXISANGLE) {
-		axis_angle_to_quat(rbo->orn, ob->rotAxis, ob->rotAngle);
-		copy_v3_v3(ob->rotAxis, rotAxis);
-		ob->rotAngle = rotAngle;
+	else
+	{
+		rbo = ob->rigidbody_object;
+		/* return rigid body and object to their initial states */
+		copy_v3_v3(rbo->pos, ob->loc);
+		copy_v3_v3(ob->loc, loc);
+	
+		if (ob->rotmode > 0) {
+			eulO_to_quat(rbo->orn, ob->rot, ob->rotmode);
+			copy_v3_v3(ob->rot, rot);
+		}
+		else if (ob->rotmode == ROT_MODE_AXISANGLE) {
+			axis_angle_to_quat(rbo->orn, ob->rotAxis, ob->rotAngle);
+			copy_v3_v3(ob->rotAxis, rotAxis);
+			ob->rotAngle = rotAngle;
+		}
+		else {
+			copy_qt_qt(rbo->orn, ob->quat);
+			copy_qt_qt(ob->quat, quat);
+		}
+		if (rbo->physics_object) {
+			/* allow passive objects to return to original transform */
+			if (rbo->type == RBO_TYPE_PASSIVE)
+				RB_body_set_kinematic_state(rbo->physics_object, TRUE);
+			RB_body_set_loc_rot(rbo->physics_object, rbo->pos, rbo->orn);
+		}
+		// RB_TODO update rigid body physics object's loc/rot for dynamic objects here as well (needs to be done outside bullet's update loop)
 	}
-	else {
-		copy_qt_qt(rbo->orn, ob->quat);
-		copy_qt_qt(ob->quat, quat);
-	}
-	if (rbo->physics_object) {
-		/* allow passive objects to return to original transform */
-		if (rbo->type == RBO_TYPE_PASSIVE)
-			RB_body_set_kinematic_state(rbo->physics_object, TRUE);
-		RB_body_set_loc_rot(rbo->physics_object, rbo->pos, rbo->orn);
-	}
-	// RB_TODO update rigid body physics object's loc/rot for dynamic objects here as well (needs to be done outside bullet's update loop)
 }
 
 void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw)
