@@ -2555,7 +2555,15 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 					copy_m4_m4(rmd->origmat, ob->obmat);
 					if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ && rbw)
 					{
+						RigidBodyShardCon* con;
+						
 						rbw->object_changed = TRUE;
+						BKE_rigidbody_cache_reset(rbw);
+						//re-enable all constraints as well
+						for (con = rmd->meshConstraints.first; con; con = con->next) {
+							con->flag |= RBC_FLAG_ENABLED;
+							con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+						}
 					}
 				}
 
