@@ -1496,7 +1496,7 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 						ratio = bbox_vol(mi->bb) / rmd->max_vol;
 					}
 					
-					if (rmd->use_proportional_limit)
+					if (rmd->use_proportional_limit && (limit > 0))
 					{
 						limit = (int)(ratio * limit)+1;
 					}
