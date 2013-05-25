@@ -97,6 +97,9 @@ static void initData(ModifierData *md)
 	rmd->breaking_angle = 0;
 	rmd->breaking_percentage = 0; //disable by default
 	rmd->use_both_directions = FALSE;
+	rmd->use_proportional_distance = FALSE;
+	rmd->use_proportional_limit = FALSE;
+	rmd->max_vol = 0;
 }
 /*void copy_meshisland(RigidBodyModifierData* rmd, MeshIsland *dst, MeshIsland *src)
 {
@@ -277,6 +280,17 @@ static void freeData(ModifierData *md)
 	}*/
 }
 
+float bbox_vol(BoundBox* bb)
+{
+	float x[3], y[3], z[3];
+	
+	sub_v3_v3v3(x, bb->vec[4], bb->vec[0]);
+	sub_v3_v3v3(y, bb->vec[3], bb->vec[0]);
+	sub_v3_v3v3(z, bb->vec[1], bb->vec[0]);
+	
+	return len_v3(x) * len_v3(y) * len_v3(z);
+}
+
 int BM_calc_center_centroid(BMesh *bm, float cent[3], int tagged)
 {
 	BMFace *f;
@@ -347,7 +361,7 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob, BMVert*
 	BMesh *bm_new;
 	BMesh *bm_old = bm_work;
 	MeshIsland *mi;
-	float centroid[3], dummyloc[3], rot[4], min[3], max[3];
+	float centroid[3], dummyloc[3], rot[4], min[3], max[3], vol = 0;
 	BMVert* v;
 	BMIter iter;
 	DerivedMesh *dm = NULL;
@@ -406,6 +420,12 @@ static void mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob, BMVert*
 	BKE_boundbox_init_from_minmax(mi->bb, min, max);
 	mi->participating_constraints = NULL;
 	mi->participating_constraint_count = 0;
+	
+	vol = bbox_vol(mi->bb);
+	if (vol > rmd->max_vol)
+	{
+		rmd->max_vol = vol;
+	}
 	
 	//takes VERY long...
 	/*mi->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi);
@@ -1459,18 +1479,38 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 
 			if (rmd->contact_dist_meaning == MOD_RIGIDBODY_CENTROIDS)
 			{
-				int r = 0;
+				int r = 0, limit = 0;
 				KDTreeNearest* n3;
-				float dist, obj_centr[3];
+				float dist, obj_centr[3], ratio = 1;
 
 				mi = meshIslands[j/*(n2+j)->index*/];
 				//if (j == 0)
 				//	first = mi;
-
+				limit = rmd->constraint_limit;
 				dist = mi->parent_mod == rmd ? rmd->contact_dist : rmd->group_contact_dist;
+				
+				if (rmd->use_proportional_distance || rmd->use_proportional_limit)
+				{
+					if (rmd->max_vol > 0)
+					{
+						ratio = bbox_vol(mi->bb) / rmd->max_vol;
+					}
+					
+					if (rmd->use_proportional_limit)
+					{
+						limit = (int)(ratio * limit)+1;
+					}
+					
+					if (rmd->use_proportional_distance)
+					{
+						dist = ratio * dist;
+					}
+				}
+				
 				mul_v3_m4v3(obj_centr, mi->parent_mod->origmat, mi->centroid );
-				r = BLI_kdtree_range_search(*combined_tree, rmd->contact_dist, obj_centr, NULL, &n3);
-
+				r = BLI_kdtree_range_search(*combined_tree, dist, obj_centr, NULL, &n3);
+				
+				
 				//use centroid dist based approach here, together with limit ?
 				for (i = 0; i < r; i++)
 				{
@@ -1484,7 +1524,7 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 						thresh = equal ? rmd->breaking_threshold : rmd->group_breaking_threshold;
 						con_type = equal ? rmd->inner_constraint_type : rmd->outer_constraint_type;
 
-						if (((i >= rmd->constraint_limit) && (rmd->constraint_limit > 0)) || !ok)
+						if (((i >= limit) && (limit > 0)) || !ok)
 						{
 							break;
 						}

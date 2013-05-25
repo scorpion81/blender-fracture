@@ -4119,6 +4119,16 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_breaking_distance_set", NULL);
 	RNA_def_property_ui_text(prop, "Breaking Distance", "Distance above which constraint should break");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	
+	prop = RNA_def_property(srna, "use_proportional_limit", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "use_proportional_limit", FALSE);
+	RNA_def_property_ui_text(prop, "Use Proportional Limit", "Reduce constraint limit with smaller shards");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	
+	prop = RNA_def_property(srna, "use_proportional_distance", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "use_proportional_distance", FALSE);
+	RNA_def_property_ui_text(prop, "Use Proportional Distance", "Reduce contact distance with smaller shards (centroid only)");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 void RNA_def_modifier(BlenderRNA *brna)
