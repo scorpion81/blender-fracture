@@ -1300,6 +1300,8 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 	float lin_upper;
 	float ang_lower;
 	float ang_upper;
+	rbRigidBody *rb1;
+	rbRigidBody *rb2;
 
 	/* sanity checks:
 	 *	- object should have a rigid body constraint
@@ -1317,15 +1319,29 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 		}
 		return;
 	}
+	
+	rb1 = rbc->mi1->rigidbody->physics_object;
+	rb2 = rbc->mi2->rigidbody->physics_object;
+	
+	if (rb1 && rb2) // rbc->physics_constraint && RB_constraint_is_enabled(rbc->physics_constraint))
+	{
+		//printf("STATE %d %d\n", RB_body_get_activation_state(rb1), RB_body_get_activation_state(rb2));
+		if ((RB_body_get_activation_state(rb1) == RBO_STATE_ISLAND_SLEEPING) ||
+			(RB_body_get_activation_state(rb2) == RBO_STATE_ISLAND_SLEEPING))
+		{
+			//deactivate both islands if one is sleeping
+			RB_body_deactivate(rb1);
+			RB_body_deactivate(rb2);
+		}
+	}
 
 	if (rbc->physics_constraint) {
 		if (rebuild == false)
 			RB_dworld_remove_constraint(rbw->physics_world, rbc->physics_constraint);
 	}
 	if (rbc->physics_constraint == NULL || rebuild) {
-		rbRigidBody *rb1 = rbc->mi1->rigidbody->physics_object;
-		rbRigidBody *rb2 = rbc->mi2->rigidbody->physics_object;
-
+		//rbRigidBody *rb1 = rbc->mi1->rigidbody->physics_object;
+		//rbRigidBody *rb2 = rbc->mi2->rigidbody->physics_object;
 		/* remove constraint if it already exists before creating a new one */
 		if (rbc->physics_constraint) {
 			RB_constraint_delete(rbc->physics_constraint);
@@ -1343,7 +1359,6 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 		for (md = ob->modifiers.first; md; md = md->next) {
 			if (md->type == eModifierType_RigidBody) {
 				int index1, index2;
-				float angle, dist, vec1[3], vec2[3];
 				rmd = (RigidBodyModifierData*)md;
 
 				index1 = BLI_findindex(&rmd->meshIslands, rbc->mi1);

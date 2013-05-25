@@ -130,6 +130,15 @@ typedef struct RigidBodyOb {
 	float pad1;
 } RigidBodyOb;
 
+/*Activation State*/
+typedef enum eRigidBodyOb_ActivationState
+{
+	RBO_STATE_ACTIVE_TAG = 1,
+	RBO_STATE_ISLAND_SLEEPING = 2,
+	RBO_STATE_WANTS_DEACTIVATION = 3,
+	RBO_STATE_DISABLE_DEACTIVATION = 4,
+	RBO_STATE_DISABLE_SIMULATION = 5,
+} eRigidBodyOb_ActivationState;
 
 /* Participation types for RigidBodyOb */
 typedef enum eRigidBodyOb_Type {

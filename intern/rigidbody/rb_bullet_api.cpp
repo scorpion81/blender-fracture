@@ -569,6 +569,12 @@ void RB_body_deactivate(rbRigidBody *object)
 	body->setActivationState(ISLAND_SLEEPING);
 }
 
+int RB_body_get_activation_state(rbRigidBody* object)
+{
+	btRigidBody* body = object->body;
+	return body->getActivationState();
+}
+
 /* ............ */
 
 
