@@ -66,6 +66,10 @@
 #include "../../rigidbody/RBI_api.h"
 #include "PIL_time.h"
 
+//#ifdef _OPENMP
+//#include <omp.h>
+//#endif
+
 
 static void initData(ModifierData *md)
 {
@@ -946,6 +950,11 @@ static void connect_meshislands(RigidBodyModifierData* rmd, Object* ob, MeshIsla
 				rbsc = BKE_rigidbody_create_shard_constraint(rmd->modifier.scene, con_type);
 				rbsc->mi1 = mi1;
 				rbsc->mi2 = mi2;
+				if (thresh == 0)
+				{
+					rbsc->flag &= ~RBC_FLAG_USE_BREAKING;
+				}
+					
 				rbsc->breaking_threshold = thresh;
 				//BKE_rigidbody_start_dist_angle(rbsc);
 				BLI_addtail(&rmd->meshConstraints, rbsc);
@@ -1471,6 +1480,9 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 		//without explo modifier, automerge is useless in most cases (have non-adjacent stuff mostly
 
 		//BLI_kdtree_find_n_nearest(*combined_tree, count, meshIslands[0]->centroid, NULL, n2);
+		//KDTreeNearest* n3;
+		//MeshIsland* mi2;
+		//#pragma omp parallel for firstprivate(n3)
 		for (j = 0; j < count; j++) {
 
 			if (rmd->contact_dist_meaning == MOD_RIGIDBODY_CENTROIDS)
@@ -1510,7 +1522,7 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 				//use centroid dist based approach here, together with limit ?
 				for (i = 0; i < r; i++)
 				{
-					MeshIsland* mi2 = meshIslands[(n3+i)->index];
+					MeshIsland *mi2 = meshIslands[(n3+i)->index];
 					if ((mi != mi2) && (mi2 != NULL))
 					{
 						float thresh;
@@ -1525,6 +1537,7 @@ static void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsl
 							break;
 						}
 						
+						//#pragma omp critical
 						connect_meshislands(rmd, ob, mi, mi2, con_type, thresh);
 					}
 				}

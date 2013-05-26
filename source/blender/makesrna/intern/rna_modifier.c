@@ -814,8 +814,17 @@ static void updateConstraints(RigidBodyModifierData *rmd, Object* ob) {
 		{
 			rbsc->breaking_threshold = rmd->breaking_threshold;
 		}
+		
+		if (rbsc->breaking_threshold == 0)
+		{
+			rbsc->flag &= ~RBC_FLAG_USE_BREAKING;
+		}
+		else
+		{
+			rbsc->flag |= RBC_FLAG_USE_BREAKING;
+		}
 
-		if ((rmd->mass_dependent_thresholds) || (rmd->dist_dependent_thresholds)) {
+		if (((rmd->mass_dependent_thresholds) || (rmd->dist_dependent_thresholds)) && (rbsc->breaking_threshold > 0)) {
 			BKE_rigidbody_calc_threshold(max_con_mass, min_con_dist, rmd, rbsc);
 		}
 
