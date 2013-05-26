@@ -64,7 +64,7 @@
 #include "DNA_group_types.h"
 
 #include "../../rigidbody/RBI_api.h"
-#include <time.h>
+#include "PIL_time.h"
 
 
 static void initData(ModifierData *md)
@@ -783,15 +783,13 @@ void halve(RigidBodyModifierData* rmd, Object* ob, int minsize, BMesh** bm_work,
 
 void mesh_separate_loose(RigidBodyModifierData* rmd, Object* ob)
 {
-	//clock_t start, end;
-    int minsize = 1000;
+	int minsize = 1000;
 	//GHash* vhash = BLI_ghash_ptr_new("VertHash");
 	BMesh* bm_work;
 	BMVert* v, **orig_start;
 	BMIter iter;
 
 	BM_mesh_elem_hflag_disable_all(rmd->visible_mesh, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, FALSE);
-	//start = clock();
 	bm_work = BM_mesh_copy(rmd->visible_mesh);
 
 	orig_start = MEM_callocN(sizeof(BMVert*) * rmd->visible_mesh->totvert, "orig_start");
@@ -803,8 +801,6 @@ void mesh_separate_loose(RigidBodyModifierData* rmd, Object* ob)
 
 	halve(rmd, ob, minsize, &bm_work, &orig_start, false);
 
-	//end = clock();
-	//printf("Minsize: %d, Time %.2f\n", minsize, (float)(end-start));
 //	BLI_ghash_free(vhash, NULL, NULL);
 	MEM_freeN(orig_start);
 	orig_start = NULL;
@@ -1878,6 +1874,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	ExplodeModifierData *emd = NULL;
 	BMesh* temp = NULL;
 	int exploOK = FALSE;
+	double start;
 
 	if (rmd->refresh)
 	{
@@ -1954,11 +1951,15 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			//split to meshislands now
 			rmd->visible_mesh = DM_to_bmesh(dm);
 			rmd->explo_shared = FALSE;
+			
+			start = PIL_check_seconds_timer();
 			mesh_separate_loose(rmd, ob);
+			printf("Splitting to islands done, %g\n", PIL_check_seconds_timer() - start);
 		}
 		
 		printf("Islands: %d\n", BLI_countlist(&rmd->meshIslands));
-
+	
+		start = PIL_check_seconds_timer();
 		if ((rmd->visible_mesh != NULL) && ((rmd->use_constraints) || (rmd->auto_merge))) {
 			if (((rmd->constraint_group != NULL) && (!BKE_group_object_exists(rmd->constraint_group, ob))) ||
 					(rmd->constraint_group == NULL)) { // { || (rmd->auto_merge)) {
@@ -1966,8 +1967,9 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			}
 		}
 		
+		printf("Building constraints done, %g\n", PIL_check_seconds_timer() - start); 
 		printf("Constraints: %d\n", BLI_countlist(&rmd->meshConstraints));
-
+		
 //		len = BLI_countlist(&rmd->meshIslands);
 //		rmd->id_storage = MEM_mallocN(sizeof(int) * len, "rmd->id_storage");
 //		rmd->index_storage = MEM_mallocN(sizeof(int) * len, "rmd->index_storage");
