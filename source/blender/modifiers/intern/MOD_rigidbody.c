@@ -1376,10 +1376,12 @@ void search_cell_based(RigidBodyModifierData *rmd, Object* ob,  MeshIsland *mi, 
 	KDTreeNearest *n = NULL;
 	//use search distance based on cell volume ?
 	int i, r = 0;
-	float cell[3], obj_centr[3];
-	//float vol = bbox_vol(mi->bb);
+	float cell[3], obj_centr[3], dim[3], dist;
+	bbox_dim(mi->bb, dim);
+	
+	dist = MAX3(dim[0], dim[1], dim[2]);
 	mul_v3_m4v3(obj_centr, ob->obmat, mi->centroid);
-	r = BLI_kdtree_range_search(*cells, rmd->contact_dist, obj_centr, NULL, &n);
+	r = BLI_kdtree_range_search(*cells, dist, obj_centr, NULL, &n);
 	
 	for (i = 0; i < r; i++)
 	{
