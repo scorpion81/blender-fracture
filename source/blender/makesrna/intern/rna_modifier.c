@@ -961,6 +961,13 @@ static void rna_RigidBodyModifier_breaking_distance_set(PointerRNA *ptr, float v
 	updateConstraints(rmd, ob);
 }
 
+static void rna_RigidBodyModifier_axis_cells_set(PointerRNA* ptr, int *values)
+{
+	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	rmd->axis_cells[0] = values[0];
+	rmd->axis_cells[1] = values[1];
+	rmd->axis_cells[2] = values[2];
+}
 #else
 
 static PropertyRNA *rna_def_property_subdivision_common(StructRNA *srna, const char type[])
@@ -4137,6 +4144,19 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "use_proportional_distance", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "use_proportional_distance", FALSE);
 	RNA_def_property_ui_text(prop, "Use Proportional Distance", "Reduce contact distance with smaller shards (centroid only)");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	
+	prop = RNA_def_property(srna, "use_cellbased_search", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "use_cellbased_search", FALSE);
+	RNA_def_property_ui_text(prop, "Use Cell Based Search", "Search for meshislands via a cell grid");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	
+	prop = RNA_def_property(srna, "axis_cells", PROP_INT, PROP_XYZ);
+	RNA_def_property_int_sdna(prop, NULL, "axis_cells");
+	RNA_def_property_array(prop, 3);
+	RNA_def_property_range(prop, 1, INT_MAX);
+	RNA_def_property_ui_text(prop, "Cells per Axis", "How many cells per axis should be built");
+	RNA_def_property_int_funcs(prop, NULL, /*"rna_RigidBodyModifier_axis_cells_get"*/ "rna_RigidBodyModifier_axis_cells_set", NULL);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
