@@ -971,13 +971,25 @@ static void connect_meshislands(RigidBodyModifierData* rmd, Object* ob, MeshIsla
 	
 	if (!rmd->use_both_directions)
 	{
-		for (con = rmd->meshConstraints.first; con; con = con->next) {
+		//search local constraint list instead of global one !!! saves lots of time
+		int i;
+		for (i = 0; i < mi1->participating_constraint_count; i++)
+		{
+			con = mi1->participating_constraints[i];
 			if (((con->mi1 == mi1) && (con->mi2 == mi2)) ||
 				((con->mi1 == mi2 && (con->mi2 == mi1)))) {
 				con_found = TRUE;
 				break;
 			}
 		}
+		
+		/*for (con = rmd->meshConstraints.first; con; con = con->next) {
+			if (((con->mi1 == mi1) && (con->mi2 == mi2)) ||
+				((con->mi1 == mi2 && (con->mi2 == mi1)))) {
+				con_found = TRUE;
+				break;
+			}
+		}*/
 	}
 
 	if (!con_found)
