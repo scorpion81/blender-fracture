@@ -4697,6 +4697,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			rmd->sel_indexes = NULL;
 			rmd->explo_shared = FALSE;
 			rmd->refresh = TRUE;
+			rmd->refresh_constraints = FALSE;
 			rmd->max_vol = 0;
 			rmd->cells.first = NULL;
 			rmd->cells.last = NULL;

@@ -105,6 +105,7 @@ static void initData(ModifierData *md)
 	rmd->use_proportional_limit = FALSE;
 	rmd->max_vol = 0;
 	rmd->cell_size = 1.0f;
+	rmd->refresh_constraints = FALSE;
 }
 /*void copy_meshisland(RigidBodyModifierData* rmd, MeshIsland *dst, MeshIsland *src)
 {
@@ -183,56 +184,83 @@ static void freeData(ModifierData *md)
 	RigidBodyShardCon *rbsc;
 	int i;
 
-	while (rmd->meshIslands.first) {
-		mi = rmd->meshIslands.first;
-		BLI_remlink(&rmd->meshIslands, mi);
-		if (mi->physics_mesh/* && rmd->refresh == FALSE*/) {
-			DM_release(mi->physics_mesh);
-			MEM_freeN(mi->physics_mesh);
-			mi->physics_mesh = NULL;
-		}
-		if (mi->rigidbody) {
-			MEM_freeN(mi->rigidbody);
-			mi->rigidbody = NULL;
-		}
-
-		if (!rmd->explo_shared) {
-			if (mi->vertco /*&& rmd->refresh == FALSE*/) {
-				MEM_freeN(mi->vertco);
-				mi->vertco = NULL;
+	if (!rmd->refresh_constraints)
+	{
+		while (rmd->meshIslands.first) {
+			mi = rmd->meshIslands.first;
+			BLI_remlink(&rmd->meshIslands, mi);
+			if (mi->physics_mesh/* && rmd->refresh == FALSE*/) {
+				DM_release(mi->physics_mesh);
+				MEM_freeN(mi->physics_mesh);
+				mi->physics_mesh = NULL;
 			}
-			if (mi->vertices /*&& rmd->refresh == FALSE*/) {
-				MEM_freeN(mi->vertices);
-				mi->vertices = NULL; //borrowed only !!!
+			if (mi->rigidbody) {
+				MEM_freeN(mi->rigidbody);
+				mi->rigidbody = NULL;
 			}
-		}
-
-/*		if (mi->storage != NULL) {
-			BKE_submesh_free(mi->storage);
-			mi->storage = NULL;
-		}*/
-
-/*		if (!rmd->explo_shared) {
-			if (mi->vert_indexes != NULL) {
-				MEM_freeN(mi->vert_indexes);
-				mi->vert_indexes = NULL;
+	
+			if (!rmd->explo_shared) {
+				if (mi->vertco /*&& rmd->refresh == FALSE*/) {
+					MEM_freeN(mi->vertco);
+					mi->vertco = NULL;
+				}
+				if (mi->vertices /*&& rmd->refresh == FALSE*/) {
+					MEM_freeN(mi->vertices);
+					mi->vertices = NULL; //borrowed only !!!
+				}
 			}
-		}*/
-
-		if (mi->bb != NULL) {
-			MEM_freeN(mi->bb);
-			mi->bb = NULL;
+	
+			if (mi->bb != NULL) {
+				MEM_freeN(mi->bb);
+				mi->bb = NULL;
+			}
+			
+			if (mi->participating_constraints != NULL)
+			{
+				MEM_freeN(mi->participating_constraints);
+				mi->participating_constraints = NULL;
+				mi->participating_constraint_count = 0;
+			}
+			
+			MEM_freeN(mi);
+			mi = NULL;
 		}
 		
-		if (mi->participating_constraints != NULL)
+		rmd->meshIslands.first = NULL;
+		rmd->meshIslands.last = NULL;
+		
+		while (rmd->cells.first)
 		{
-			MEM_freeN(mi->participating_constraints);
-			mi->participating_constraints = NULL;
-			mi->participating_constraint_count = 0;
+			NeighborhoodCell* c = rmd->cells.first;
+			BLI_remlink(&rmd->cells, c);
+			MEM_freeN(c->islands);
+			MEM_freeN(c);
 		}
-		
-		MEM_freeN(mi);
-		mi = NULL;
+		rmd->cells.first = NULL;
+		rmd->cells.last = NULL;
+	
+		if (!rmd->explo_shared) {
+			if (rmd->visible_mesh != NULL)
+			{
+				BM_mesh_free(rmd->visible_mesh);
+				rmd->visible_mesh = NULL;
+			}
+		}
+	
+		if (rmd->sel_indexes != NULL && rmd->refresh == FALSE) {
+			for (i = 0; i < rmd->sel_counter; i++) {
+				MEM_freeN(rmd->sel_indexes[i]);
+				rmd->sel_indexes[i] = NULL;
+			}
+			MEM_freeN(rmd->sel_indexes);
+			rmd->sel_indexes = NULL;
+			rmd->sel_counter = 0;
+		}
+	
+		if (rmd->idmap != NULL) {
+			BLI_ghash_free(rmd->idmap, NULL, NULL);
+			rmd->idmap = NULL;
+		}
 	}
 
 	while (rmd->meshConstraints.first) {
@@ -241,58 +269,8 @@ static void freeData(ModifierData *md)
 		MEM_freeN(rbsc);
 	}
 	
-	while (rmd->cells.first)
-	{
-		NeighborhoodCell* c = rmd->cells.first;
-		BLI_remlink(&rmd->cells, c);
-		MEM_freeN(c->islands);
-		MEM_freeN(c);
-	}
-
-	rmd->meshIslands.first = NULL;
-	rmd->meshIslands.last = NULL;
 	rmd->meshConstraints.first = NULL;
 	rmd->meshConstraints.last = NULL;
-	rmd->cells.first = NULL;
-	rmd->cells.last = NULL;
-
-	if (!rmd->explo_shared) {
-		if (rmd->visible_mesh != NULL)
-		{
-			BM_mesh_free(rmd->visible_mesh);
-			rmd->visible_mesh = NULL;
-		}
-	}
-
-	if (rmd->sel_indexes != NULL && rmd->refresh == FALSE) {
-		for (i = 0; i < rmd->sel_counter; i++) {
-			MEM_freeN(rmd->sel_indexes[i]);
-			rmd->sel_indexes[i] = NULL;
-		}
-		MEM_freeN(rmd->sel_indexes);
-		rmd->sel_indexes = NULL;
-		rmd->sel_counter = 0;
-	}
-
-/*	if (rmd->storage != NULL) {
-		BKE_submesh_free(rmd->storage);
-		rmd->storage = NULL;
-	}*/
-
-	if (rmd->idmap != NULL) {
-		BLI_ghash_free(rmd->idmap, NULL, NULL);
-		rmd->idmap = NULL;
-	}
-
-/*	if (rmd->index_storage != NULL) {
-		MEM_freeN(rmd->index_storage);
-		rmd->index_storage = NULL;
-	}
-
-	if (rmd->id_storage != NULL) {
-		MEM_freeN(rmd->id_storage);
-		rmd->id_storage = NULL;
-	}*/
 }
 
 static int dm_minmax(DerivedMesh* dm, float min[3], float max[3])
@@ -2108,88 +2086,92 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	int exploOK = FALSE;
 	double start;
 
-	if (rmd->refresh)
+	if (rmd->refresh || rmd->refresh_constraints)
 	{
 		//int len = 0;
 		freeData(md);
-		rmd->idmap = BLI_ghash_int_new("rmd->idmap");
-		copy_m4_m4(rmd->origmat, ob->obmat);
-	//	rmd->visible_mesh = DM_to_bmesh(dm);
-	/*	if (rmd->visible_mesh != NULL) {
-			BKE_submesh_free(rmd->storage);
-			rmd->storage = NULL;
-			//rmd->storage = BKE_bmesh_to_submesh(rmd->visible_mesh);
-		}*/
-
-		//grab neighborhood info (and whole fracture info -> cells) if available, if explo before rmd
-		emd = findPrecedingExploModifier(ob, rmd);
-		if (emd != NULL)
-		{
-			MeshIsland* mi;
-			VoronoiCell *vc;
-			BMIter iter;
-			int i, j;
-			BMVert *v;
-			float dummyloc[3], rot[4], min[3], max[3];
-
-			//good idea to simply reference this ? Hmm, what about removing the explo modifier later, crash ?)
-			rmd->explo_shared = TRUE;
-			rmd->visible_mesh = emd->fracMesh;
-			for (i = 0; i < emd->cells->count; i++) {
-				vc = &emd->cells->data[i];
-			//if (compare_v3v3(vc->centroid, centroid, 0.0001f))
-			//{
-				// add 1 MeshIsland
-				mi = MEM_callocN(sizeof(MeshIsland), "meshIsland");
-				BLI_addtail(&rmd->meshIslands, mi);
-				
-				mi->participating_constraints = NULL;
-				mi->participating_constraint_count = 0;
-				
-				mi->is_at_boundary = vc->is_at_boundary;
-				mi->vertices = vc->vertices;
-				mi->vertco = vc->vertco;
-				temp = DM_to_bmesh(vc->cell_mesh);
-
-				BM_ITER_MESH (v, &iter, temp, BM_VERTS_OF_MESH) {
-					//then eliminate centroid in vertex coords ?
-					sub_v3_v3(v->co, vc->centroid); //or better calc this again
-				}
-				
-				BM_mesh_minmax(temp, min, max);
-				mi->physics_mesh = CDDM_from_bmesh(temp, TRUE);
-				BM_mesh_free(temp);
-				temp = NULL;
-
-				mi->vertex_count = vc->vertex_count;
-				copy_v3_v3(mi->centroid, vc->centroid);
-				mat4_to_loc_quat(dummyloc, rot, ob->obmat);
-				copy_v3_v3(mi->rot, rot);
-				mi->parent_mod = rmd;
-
-				mi->bb = BKE_boundbox_alloc_unit();
-				BKE_boundbox_init_from_minmax(mi->bb, min, max);
-
-				mi->id = vc->pid;
-				BLI_ghash_insert(rmd->idmap, SET_INT_IN_POINTER(mi->id), SET_INT_IN_POINTER(i));
-				mi->neighbor_ids = vc->neighbor_ids;
-				mi->neighbor_count = vc->neighbor_count;
-				mi->global_face_map = vc->global_face_map;
-			//}
-			}
-		}
-		else
-		{
-			//split to meshislands now
-			rmd->visible_mesh = DM_to_bmesh(dm);
-			rmd->explo_shared = FALSE;
-			
-			start = PIL_check_seconds_timer();
-			mesh_separate_loose(rmd, ob);
-			printf("Splitting to islands done, %g\n", PIL_check_seconds_timer() - start);
-		}
 		
-		printf("Islands: %d\n", BLI_countlist(&rmd->meshIslands));
+		if (rmd->refresh)
+		{
+			rmd->idmap = BLI_ghash_int_new("rmd->idmap");
+			copy_m4_m4(rmd->origmat, ob->obmat);
+		//	rmd->visible_mesh = DM_to_bmesh(dm);
+		/*	if (rmd->visible_mesh != NULL) {
+				BKE_submesh_free(rmd->storage);
+				rmd->storage = NULL;
+				//rmd->storage = BKE_bmesh_to_submesh(rmd->visible_mesh);
+			}*/
+	
+			//grab neighborhood info (and whole fracture info -> cells) if available, if explo before rmd
+			emd = findPrecedingExploModifier(ob, rmd);
+			if (emd != NULL)
+			{
+				MeshIsland* mi;
+				VoronoiCell *vc;
+				BMIter iter;
+				int i, j;
+				BMVert *v;
+				float dummyloc[3], rot[4], min[3], max[3];
+	
+				//good idea to simply reference this ? Hmm, what about removing the explo modifier later, crash ?)
+				rmd->explo_shared = TRUE;
+				rmd->visible_mesh = emd->fracMesh;
+				for (i = 0; i < emd->cells->count; i++) {
+					vc = &emd->cells->data[i];
+				//if (compare_v3v3(vc->centroid, centroid, 0.0001f))
+				//{
+					// add 1 MeshIsland
+					mi = MEM_callocN(sizeof(MeshIsland), "meshIsland");
+					BLI_addtail(&rmd->meshIslands, mi);
+					
+					mi->participating_constraints = NULL;
+					mi->participating_constraint_count = 0;
+					
+					mi->is_at_boundary = vc->is_at_boundary;
+					mi->vertices = vc->vertices;
+					mi->vertco = vc->vertco;
+					temp = DM_to_bmesh(vc->cell_mesh);
+	
+					BM_ITER_MESH (v, &iter, temp, BM_VERTS_OF_MESH) {
+						//then eliminate centroid in vertex coords ?
+						sub_v3_v3(v->co, vc->centroid); //or better calc this again
+					}
+					
+					BM_mesh_minmax(temp, min, max);
+					mi->physics_mesh = CDDM_from_bmesh(temp, TRUE);
+					BM_mesh_free(temp);
+					temp = NULL;
+	
+					mi->vertex_count = vc->vertex_count;
+					copy_v3_v3(mi->centroid, vc->centroid);
+					mat4_to_loc_quat(dummyloc, rot, ob->obmat);
+					copy_v3_v3(mi->rot, rot);
+					mi->parent_mod = rmd;
+	
+					mi->bb = BKE_boundbox_alloc_unit();
+					BKE_boundbox_init_from_minmax(mi->bb, min, max);
+	
+					mi->id = vc->pid;
+					BLI_ghash_insert(rmd->idmap, SET_INT_IN_POINTER(mi->id), SET_INT_IN_POINTER(i));
+					mi->neighbor_ids = vc->neighbor_ids;
+					mi->neighbor_count = vc->neighbor_count;
+					mi->global_face_map = vc->global_face_map;
+				//}
+				}
+			}
+			else
+			{
+				//split to meshislands now
+				rmd->visible_mesh = DM_to_bmesh(dm);
+				rmd->explo_shared = FALSE;
+				
+				start = PIL_check_seconds_timer();
+				mesh_separate_loose(rmd, ob);
+				printf("Splitting to islands done, %g\n", PIL_check_seconds_timer() - start);
+			}
+			
+			printf("Islands: %d\n", BLI_countlist(&rmd->meshIslands));
+		}
 	
 		start = PIL_check_seconds_timer();
 		if ((rmd->visible_mesh != NULL) && ((rmd->use_constraints) || (rmd->auto_merge))) {
@@ -2206,6 +2188,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 //		rmd->id_storage = MEM_mallocN(sizeof(int) * len, "rmd->id_storage");
 //		rmd->index_storage = MEM_mallocN(sizeof(int) * len, "rmd->index_storage");
 		rmd->refresh = FALSE;
+		rmd->refresh_constraints = FALSE;
 	}
 
 	emd = findPrecedingExploModifier(ob, rmd);

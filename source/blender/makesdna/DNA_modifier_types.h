@@ -1312,14 +1312,14 @@ typedef struct RigidBodyModifierData {
 	int	**sel_indexes, *index_storage, *id_storage;
 	struct GHash *idmap;
 	int refresh, use_constraints, mass_dependent_thresholds, auto_merge, sel_counter;
-	int inner_constraint_type, dist_dependent_thresholds;
+	int inner_constraint_type, dist_dependent_thresholds, refresh_constraints;
 	int outer_constraint_type, outer_constraint_location, outer_constraint_pattern;
 	int explo_shared, constraint_limit, contact_dist_meaning, use_both_directions;
 	int breaking_angle, breaking_percentage, use_proportional_distance, use_proportional_limit;
 	float breaking_distance, max_vol, cell_size;
 	float origmat[4][4], breaking_threshold;
 	float contact_dist, group_breaking_threshold, group_contact_dist, auto_merge_dist;
-	//char pad[4];
+	char pad[4];
 } RigidBodyModifierData;
 
 typedef struct NeighborhoodCell {

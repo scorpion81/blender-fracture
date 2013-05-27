@@ -674,7 +674,8 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         layout.label(text="Settings can be found inside the Particle context")
 
     def RIGID_BODY(self, layout, ob, md):
-        layout.operator("object.rigidbody_refresh", text="Refresh")
+        layout.operator("object.rigidbody_refresh", text="Refresh All Data")
+        layout.operator("object.rigidbody_constraints_refresh", text="Refresh Constraints Only")
         layout.prop(md, "use_constraints")
         layout.prop(md, "use_both_directions")
         layout.prop(md, "constraint_group") 
@@ -690,7 +691,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         layout.prop(md, "outer_constraint_type")
         layout.prop(md, "outer_constraint_location")
         box = layout.box()
-        box.label("Needs no refresh after update")
+        box.label("Needs no constraint refresh after update")
         box.prop(md, "breaking_threshold")
         box.prop(md, "group_breaking_threshold")
         box.prop(md, "mass_dependent_thresholds")

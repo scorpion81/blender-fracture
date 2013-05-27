@@ -2314,3 +2314,45 @@ void OBJECT_OT_rigidbody_refresh(wmOperatorType *ot)
 	edit_modifier_properties(ot);
 }
 
+/****************** rigidbody constraint refresh operator *********************/
+
+static int rigidbody_refresh_constraints_exec(bContext *C, wmOperator *op)
+{
+	Object *ob = ED_object_active_context(C);
+	RigidBodyModifierData *rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, ob, eModifierType_RigidBody);
+
+	if (!rmd)
+		return OPERATOR_CANCELLED;
+
+	rmd->refresh_constraints = TRUE;
+
+	DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
+	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
+
+	return OPERATOR_FINISHED;
+}
+
+static int rigidbody_refresh_constraints_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
+{
+	if (edit_modifier_invoke_properties(C, op))
+		return rigidbody_refresh_constraints_exec(C, op);
+	else
+		return OPERATOR_CANCELLED;
+}
+
+
+void OBJECT_OT_rigidbody_constraints_refresh(wmOperatorType *ot)
+{
+	ot->name = "RigidBody Constraints Refresh";
+	ot->description = "Refresh constraints in the Rigid Body modifier";
+	ot->idname = "OBJECT_OT_rigidbody_constraints_refresh";
+
+	ot->poll = rigidbody_poll;
+	ot->invoke = rigidbody_refresh_constraints_invoke;
+	ot->exec = rigidbody_refresh_constraints_exec;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
+	edit_modifier_properties(ot);
+}
+

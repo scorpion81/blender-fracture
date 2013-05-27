@@ -151,6 +151,7 @@ void ED_operatortypes_object(void)
 	WM_operatortype_append(OBJECT_OT_explode_refresh);
 	WM_operatortype_append(OBJECT_OT_ocean_bake);
 	WM_operatortype_append(OBJECT_OT_rigidbody_refresh);
+	WM_operatortype_append(OBJECT_OT_rigidbody_constraints_refresh);
 	
 	WM_operatortype_append(OBJECT_OT_constraint_add);
 	WM_operatortype_append(OBJECT_OT_constraint_add_with_targets);
