@@ -1308,7 +1308,7 @@ typedef struct RigidBodyModifierData {
 	ModifierData modifier;
 	struct BMesh *visible_mesh;
 	struct Group *constraint_group;
-	ListBase meshIslands, meshConstraints;
+	ListBase meshIslands, meshConstraints, cells;
 	int	**sel_indexes, *index_storage, *id_storage;
 	struct GHash *idmap;
 	int refresh, use_constraints, mass_dependent_thresholds, auto_merge, sel_counter;
@@ -1316,12 +1316,18 @@ typedef struct RigidBodyModifierData {
 	int outer_constraint_type, outer_constraint_location, outer_constraint_pattern;
 	int explo_shared, constraint_limit, contact_dist_meaning, use_both_directions;
 	int breaking_angle, breaking_percentage, use_proportional_distance, use_proportional_limit;
-	int use_cellbased_search, axis_cells[3];
-	float breaking_distance, max_vol;
+	float breaking_distance, max_vol, cell_size;
 	float origmat[4][4], breaking_threshold;
 	float contact_dist, group_breaking_threshold, group_contact_dist, auto_merge_dist;
-	char pad[4];
+	//char pad[4];
 } RigidBodyModifierData;
+
+typedef struct NeighborhoodCell {
+	struct NeighborhoodCell *prev, *next; 
+	struct MeshIsland **islands;
+	int island_count;
+	float co[3];
+} NeighborhoodCell;
 
 
 enum {
@@ -1338,6 +1344,7 @@ enum {
 enum {
 	MOD_RIGIDBODY_CENTROIDS = 0,
 	MOD_RIGIDBODY_VERTICES = 1,
+	MOD_RIGIDBODY_CELLS = 2,
 };
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */

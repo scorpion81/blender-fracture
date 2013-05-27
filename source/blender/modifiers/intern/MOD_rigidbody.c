@@ -104,9 +104,7 @@ static void initData(ModifierData *md)
 	rmd->use_proportional_distance = FALSE;
 	rmd->use_proportional_limit = FALSE;
 	rmd->max_vol = 0;
-	rmd->axis_cells[0] = 1;
-	rmd->axis_cells[1] = 1;
-	rmd->axis_cells[2] = 1;
+	rmd->cell_size = 1.0f;
 }
 /*void copy_meshisland(RigidBodyModifierData* rmd, MeshIsland *dst, MeshIsland *src)
 {
@@ -242,11 +240,21 @@ static void freeData(ModifierData *md)
 		BLI_remlink(&rmd->meshConstraints, rbsc);
 		MEM_freeN(rbsc);
 	}
+	
+	while (rmd->cells.first)
+	{
+		NeighborhoodCell* c = rmd->cells.first;
+		BLI_remlink(&rmd->cells, c);
+		MEM_freeN(c->islands);
+		MEM_freeN(c);
+	}
 
 	rmd->meshIslands.first = NULL;
 	rmd->meshIslands.last = NULL;
 	rmd->meshConstraints.first = NULL;
 	rmd->meshConstraints.last = NULL;
+	rmd->cells.first = NULL;
+	rmd->cells.last = NULL;
 
 	if (!rmd->explo_shared) {
 		if (rmd->visible_mesh != NULL)
@@ -1251,7 +1259,7 @@ static int bbox_intersect(RigidBodyModifierData *rmd, MeshIsland *mi, MeshIsland
 	return FALSE;
 }
 
-static void search_centroid_based(RigidBodyModifierData *rmd, Object* ob, MeshIsland* mi, MeshIsland** meshIslands, KDTree**combined_tree, float centr[3])
+static void search_centroid_based(RigidBodyModifierData *rmd, Object* ob, MeshIsland* mi, MeshIsland** meshIslands, KDTree**combined_tree)
 {
 	int r = 0, limit = 0, i = 0;
 	KDTreeNearest* n3 = NULL;
@@ -1281,17 +1289,7 @@ static void search_centroid_based(RigidBodyModifierData *rmd, Object* ob, MeshIs
 		}
 	}
 	
-	
-	if (rmd->use_cellbased_search)
-	{
-		//mul_v3_m4v3(obj_centr, mi->parent_mod->origmat, centr);
-		copy_v3_v3(obj_centr, centr);
-	}
-	else
-	{
-		mul_v3_m4v3(obj_centr, mi->parent_mod->origmat, mi->centroid );
-	}
-	
+	mul_v3_m4v3(obj_centr, mi->parent_mod->origmat, mi->centroid );
 	r = BLI_kdtree_range_search(*combined_tree, dist, obj_centr, NULL, &n3);
 	
 	//use centroid dist based approach here, together with limit ?
@@ -1326,7 +1324,7 @@ static void search_centroid_based(RigidBodyModifierData *rmd, Object* ob, MeshIs
 
 KDTree* make_cell_tree(RigidBodyModifierData* rmd, Object* ob)
 {
-	float min[3], max[3], start[3], dim[3], csize[3], co[3];
+	float min[3], max[3], start[3], dim[3], co[3], csize;
 	int cells[3], index = 0, i, j, k;
 	KDTree* tree;
 	BoundBox* bb = BKE_boundbox_alloc_unit();
@@ -1336,13 +1334,11 @@ KDTree* make_cell_tree(RigidBodyModifierData* rmd, Object* ob)
 	copy_v3_v3(start, bb->vec[0]);
 	bbox_dim(bb, dim);
 	
-	cells[0] = rmd->axis_cells[0];
-	cells[1] = rmd->axis_cells[1];
-	cells[2] = rmd->axis_cells[2];
+	csize = rmd->cell_size;
 	
-	csize[0] = dim[0] / (float)cells[0];
-	csize[1] = dim[1] / (float)cells[1];
-	csize[2] = dim[2] / (float)cells[2];
+	cells[0] = (int)(dim[0] / csize)+1;
+	cells[1] = (int)(dim[1] / csize)+1;
+	cells[2] = (int)(dim[2] / csize)+1;
 	
 	tree = BLI_kdtree_new(cells[0]*cells[1]*cells[2]);
 	
@@ -1352,13 +1348,19 @@ KDTree* make_cell_tree(RigidBodyModifierData* rmd, Object* ob)
 		{
 			for (k = 0; k < cells[2]; k++)
 			{
-				co[0] = start[0] + (i-1) * csize[0] + csize[0]/2;
-				co[1] = start[1] + (j-1) * csize[1] + csize[1]/2;
-				co[2] = start[2] + (k-1) * csize[2] + csize[2]/2;
+				NeighborhoodCell* cell = MEM_callocN(sizeof(NeighborhoodCell), "cell");
+				cell->islands = MEM_callocN(sizeof(MeshIsland*), "islands");
+				
+				co[0] = start[0] + (i-1) * csize + csize/2;
+				co[1] = start[1] + (j-1) * csize + csize/2;
+				co[2] = start[2] + (k-1) * csize + csize/2;
 				mul_m4_v3(ob->obmat, co);
 				BLI_kdtree_insert(tree, index, co, NULL);
 				index++;
 				
+				copy_v3_v3(cell->co, co);
+				BLI_addtail(&rmd->cells, cell);
+				//cell->size = csize; //hmm not necessary to store -> equal
 			}
 		}
 	}
@@ -1371,22 +1373,25 @@ KDTree* make_cell_tree(RigidBodyModifierData* rmd, Object* ob)
 	return tree;
 }
 
-void search_cell_based(RigidBodyModifierData *rmd, Object* ob,  MeshIsland *mi, MeshIsland** meshIslands, KDTree** combined_tree, KDTree** cells)
+void search_cell_based(RigidBodyModifierData *rmd, Object* ob,  MeshIsland *mi, KDTree** cells)
 {
 	KDTreeNearest *n = NULL;
 	//use search distance based on cell volume ?
-	int i, r = 0;
-	float cell[3], obj_centr[3], dim[3], dist;
+	int i, r = 0, j;
+	float obj_centr[3], dim[3], dist;
 	bbox_dim(mi->bb, dim);
 	
-	dist = MAX3(dim[0], dim[1], dim[2]);
+	dist = MAX3(dim[0], dim[1], dim[2]) + rmd->contact_dist;
 	mul_v3_m4v3(obj_centr, ob->obmat, mi->centroid);
 	r = BLI_kdtree_range_search(*cells, dist, obj_centr, NULL, &n);
 	
 	for (i = 0; i < r; i++)
 	{
-		copy_v3_v3(cell, (n+i)->co);
-		search_centroid_based(rmd, ob, mi, meshIslands, combined_tree, cell);
+		int index = (n+i)->index;
+		NeighborhoodCell* c = BLI_findlink(&rmd->cells, index);
+		c->islands = MEM_reallocN(c->islands, sizeof(MeshIsland*) * (c->island_count+1));
+		c->islands[c->island_count] = mi;
+		c->island_count++;
 	}
 
 	if (n != NULL) {
@@ -1677,7 +1682,7 @@ void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsland **m
 	{
 		KDTree* cells = NULL;
 		
-		if (rmd->use_cellbased_search)
+		if (rmd->contact_dist_meaning == MOD_RIGIDBODY_CELLS)
 		{
 			cells = make_cell_tree(rmd, ob);
 		}
@@ -1691,13 +1696,11 @@ void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsland **m
 
 			if (rmd->contact_dist_meaning == MOD_RIGIDBODY_CENTROIDS)
 			{
-				if (rmd->use_cellbased_search) {
-					search_cell_based(rmd, ob, meshIslands[j], meshIslands, combined_tree, &cells);
-				}
-				else
-				{
-					search_centroid_based(rmd, ob, meshIslands[j], meshIslands, combined_tree, NULL);
-				}
+				search_centroid_based(rmd, ob, meshIslands[j], meshIslands, combined_tree);
+			}
+			else if (rmd->contact_dist_meaning == MOD_RIGIDBODY_CELLS) 
+			{
+				search_cell_based(rmd, ob, meshIslands[j], &cells);
 			}
 			else if (rmd->contact_dist_meaning == MOD_RIGIDBODY_VERTICES)//use vertex distance as FALLBACK
 			{
@@ -1745,12 +1748,44 @@ void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsland **m
 		}
 		//compare last with first
 		//check_meshislands_adjacency(rmd, last, first, combined_mesh, face_tree, ob);
-		
-		if (cells != NULL)
+		if (rmd->contact_dist_meaning == MOD_RIGIDBODY_CELLS)
 		{
-			//maybe create this once, and not per refresh (its the same always...)
-			BLI_kdtree_free(cells);
-			cells = NULL;
+			NeighborhoodCell* cell;
+			for (cell = rmd->cells.first; cell; cell = cell->next)
+			{
+				for (i = 0; i < cell->island_count; i++)
+				{
+					MeshIsland* mi = cell->islands[i];
+					for (j = 0; j < cell->island_count; j++)
+					{
+						float thresh;
+						int con_type, equal, ok, limit;
+						MeshIsland* mi2 = cell->islands[j];
+						if (mi != mi2)
+						{
+							equal = mi->parent_mod == mi2->parent_mod;
+							ok = equal || (!equal && rmd->outer_constraint_type == RBC_TYPE_FIXED);
+							thresh = equal ? rmd->breaking_threshold : rmd->group_breaking_threshold;
+							con_type = equal ? rmd->inner_constraint_type : rmd->outer_constraint_type;
+							limit = rmd->constraint_limit;
+				
+							if (((i >= limit) && (limit > 0)) || !ok)
+							{
+								break;
+							}
+							
+							connect_meshislands(rmd, ob, mi, mi2, con_type, thresh);
+						}
+					}
+				}
+			}
+			
+			if (cells != NULL)
+			{
+				//maybe create this once, and not per refresh (its the same always...)
+				BLI_kdtree_free(cells);
+				cells = NULL;
+			}
 		}
 	}
 

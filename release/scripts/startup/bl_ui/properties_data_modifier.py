@@ -677,13 +677,12 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         layout.operator("object.rigidbody_refresh", text="Refresh")
         layout.prop(md, "use_constraints")
         layout.prop(md, "use_both_directions")
-        layout.prop(md, "use_cellbased_search")
-        if (md.use_cellbased_search == True):
-            layout.prop(md, "axis_cells")
         layout.prop(md, "constraint_group") 
         layout.prop(md, "constraint_limit")
         layout.prop(md, "use_proportional_limit")
         layout.prop(md, "contact_dist_meaning")
+        if (md.contact_dist_meaning == 'CELLS'):
+            layout.prop(md, "cell_size")
         layout.prop(md, "contact_dist")
         layout.prop(md, "group_contact_dist")
         layout.prop(md, "use_proportional_distance")

@@ -4698,6 +4698,8 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			rmd->explo_shared = FALSE;
 			rmd->refresh = TRUE;
 			rmd->max_vol = 0;
+			rmd->cells.first = NULL;
+			rmd->cells.last = NULL;
 		}
 	}
 }
