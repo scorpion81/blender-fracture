@@ -681,7 +681,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         layout.prop(md, "constraint_limit")
         layout.prop(md, "use_proportional_limit")
         layout.prop(md, "contact_dist_meaning")
-        if (md.contact_dist_meaning == 'CELLS'):
+        if (md.contact_dist_meaning == 'CELLS') or (md.contact_dist_meaning == 'CELL_CENTROIDS'):
             layout.prop(md, "cell_size")
         layout.prop(md, "contact_dist")
         layout.prop(md, "group_contact_dist")

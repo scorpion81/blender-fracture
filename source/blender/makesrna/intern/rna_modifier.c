@@ -4002,6 +4002,7 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 		{MOD_RIGIDBODY_CENTROIDS, "CENTROIDS", 0, "Centroids", ""},
 		{MOD_RIGIDBODY_VERTICES, "VERTICES", 0, "Vertices", ""},
 		{MOD_RIGIDBODY_CELLS, "CELLS", 0, "Cells", "" },
+		{MOD_RIGIDBODY_CELL_CENTROIDS, "CELL_CENTROIDS", 0, "Cells + Centroids", "" },
 		{0, NULL, 0, NULL, NULL}
 	};
 

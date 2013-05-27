@@ -1259,7 +1259,7 @@ static int bbox_intersect(RigidBodyModifierData *rmd, MeshIsland *mi, MeshIsland
 	return FALSE;
 }
 
-static void search_centroid_based(RigidBodyModifierData *rmd, Object* ob, MeshIsland* mi, MeshIsland** meshIslands, KDTree**combined_tree)
+static void search_centroid_based(RigidBodyModifierData *rmd, Object* ob, MeshIsland* mi, MeshIsland** meshIslands, KDTree**combined_tree, float centr[3])
 {
 	int r = 0, limit = 0, i = 0;
 	KDTreeNearest* n3 = NULL;
@@ -1289,7 +1289,15 @@ static void search_centroid_based(RigidBodyModifierData *rmd, Object* ob, MeshIs
 		}
 	}
 	
-	mul_v3_m4v3(obj_centr, mi->parent_mod->origmat, mi->centroid );
+	if (rmd->contact_dist_meaning == MOD_RIGIDBODY_CELL_CENTROIDS)
+	{
+		copy_v3_v3(obj_centr, centr);
+	}
+	else
+	{
+		mul_v3_m4v3(obj_centr, mi->parent_mod->origmat, mi->centroid );
+	}
+	
 	r = BLI_kdtree_range_search(*combined_tree, dist, obj_centr, NULL, &n3);
 	
 	//use centroid dist based approach here, together with limit ?
@@ -1394,6 +1402,29 @@ void search_cell_based(RigidBodyModifierData *rmd, Object* ob,  MeshIsland *mi, 
 		c->island_count++;
 	}
 
+	if (n != NULL) {
+		MEM_freeN(n);
+		n = NULL;
+	}
+}
+
+void search_cell_centroid_based(RigidBodyModifierData *rmd, Object* ob,  MeshIsland *mi, MeshIsland** meshIslands, KDTree** combined_tree, KDTree** cells)
+{
+	KDTreeNearest *n = NULL;
+	//use search distance based on cell volume ?
+	int i, r = 0, j;
+	float obj_centr[3], dim[3], dist, co[3];
+	bbox_dim(mi->bb, dim);
+	
+	dist = MAX2(MAX3(dim[0], dim[1], dim[2]), rmd->cell_size);
+	mul_v3_m4v3(obj_centr, ob->obmat, mi->centroid);
+	r = BLI_kdtree_range_search(*cells, dist, obj_centr, NULL, &n);
+	for (i = 0; i < r; i++)
+	{
+		copy_v3_v3(co, (n+i)->co);
+		search_centroid_based(rmd, ob, mi, meshIslands, combined_tree, co);
+	}
+	
 	if (n != NULL) {
 		MEM_freeN(n);
 		n = NULL;
@@ -1682,7 +1713,7 @@ void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsland **m
 	{
 		KDTree* cells = NULL;
 		
-		if (rmd->contact_dist_meaning == MOD_RIGIDBODY_CELLS)
+		if (rmd->contact_dist_meaning == MOD_RIGIDBODY_CELLS || rmd->contact_dist_meaning == MOD_RIGIDBODY_CELL_CENTROIDS)
 		{
 			cells = make_cell_tree(rmd, ob);
 		}
@@ -1696,11 +1727,15 @@ void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsland **m
 
 			if (rmd->contact_dist_meaning == MOD_RIGIDBODY_CENTROIDS)
 			{
-				search_centroid_based(rmd, ob, meshIslands[j], meshIslands, combined_tree);
+				search_centroid_based(rmd, ob, meshIslands[j], meshIslands, combined_tree, NULL);
 			}
 			else if (rmd->contact_dist_meaning == MOD_RIGIDBODY_CELLS) 
 			{
 				search_cell_based(rmd, ob, meshIslands[j], &cells);
+			}
+			else if (rmd->contact_dist_meaning == MOD_RIGIDBODY_CELL_CENTROIDS)
+			{
+				search_cell_centroid_based(rmd, ob, meshIslands[j], meshIslands, combined_tree, &cells);
 			}
 			else if (rmd->contact_dist_meaning == MOD_RIGIDBODY_VERTICES)//use vertex distance as FALLBACK
 			{
@@ -1779,7 +1814,10 @@ void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsland **m
 					}
 				}
 			}
-			
+		}
+		
+		if(rmd->contact_dist_meaning == MOD_RIGIDBODY_CELLS ||  rmd->contact_dist_meaning == MOD_RIGIDBODY_CELL_CENTROIDS)
+		{
 			if (cells != NULL)
 			{
 				//maybe create this once, and not per refresh (its the same always...)
