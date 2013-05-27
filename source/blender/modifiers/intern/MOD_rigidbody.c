@@ -1359,9 +1359,9 @@ KDTree* make_cell_tree(RigidBodyModifierData* rmd, Object* ob)
 				NeighborhoodCell* cell = MEM_callocN(sizeof(NeighborhoodCell), "cell");
 				cell->islands = MEM_callocN(sizeof(MeshIsland*), "islands");
 				
-				co[0] = start[0] + (i-1) * csize + csize/2;
-				co[1] = start[1] + (j-1) * csize + csize/2;
-				co[2] = start[2] + (k-1) * csize + csize/2;
+				co[0] = start[0] + i * csize; //+ csize/2;
+				co[1] = start[1] + j * csize; // + csize/2;
+				co[2] = start[2] + k * csize; //+ csize/2;
 				mul_m4_v3(ob->obmat, co);
 				BLI_kdtree_insert(tree, index, co, NULL);
 				index++;
@@ -1389,7 +1389,7 @@ void search_cell_based(RigidBodyModifierData *rmd, Object* ob,  MeshIsland *mi, 
 	float obj_centr[3], dim[3], dist;
 	bbox_dim(mi->bb, dim);
 	
-	dist = MAX3(dim[0], dim[1], dim[2]) + rmd->contact_dist;
+	dist = MAX3(dim[0], dim[1], dim[2]) + rmd->cell_size + rmd->contact_dist;
 	mul_v3_m4v3(obj_centr, ob->obmat, mi->centroid);
 	r = BLI_kdtree_range_search(*cells, dist, obj_centr, NULL, &n);
 	
