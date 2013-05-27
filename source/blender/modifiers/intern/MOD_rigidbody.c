@@ -262,6 +262,19 @@ static void freeData(ModifierData *md)
 			rmd->idmap = NULL;
 		}
 	}
+	
+	if (rmd->refresh_constraints || !rmd->refresh)
+	{
+		for (mi = rmd->meshIslands.first; mi; mi = mi->next)
+		{
+			if (mi->participating_constraints != NULL)
+			{
+				MEM_freeN(mi->participating_constraints);
+				mi->participating_constraints = NULL;
+				mi->participating_constraint_count = 0;
+			}
+		}
+	}
 
 	while (rmd->meshConstraints.first) {
 		rbsc = rmd->meshConstraints.first;
@@ -976,10 +989,21 @@ static void connect_meshislands(RigidBodyModifierData* rmd, Object* ob, MeshIsla
 		for (i = 0; i < mi1->participating_constraint_count; i++)
 		{
 			con = mi1->participating_constraints[i];
-			if (((con->mi1 == mi1) && (con->mi2 == mi2)) ||
-				((con->mi1 == mi2 && (con->mi2 == mi1)))) {
+			if ((con->mi1 == mi2) || (con->mi2 == mi2)) {
 				con_found = TRUE;
 				break;
+			}
+		}
+	
+		if (!con_found)
+		{
+			for (i = 0; i < mi2->participating_constraint_count; i++)
+			{
+				con = mi2->participating_constraints[i];
+				if ((con->mi1 == mi1) || (con->mi2 == mi1)){
+					con_found = TRUE;
+					break;
+				}
 			}
 		}
 		
