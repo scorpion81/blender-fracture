@@ -327,12 +327,9 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland* mi)
 	DerivedMesh *dm_ob, *dm_mi;
 	float vol_mi, mass_mi, vol_ob, mass_ob;
 
-	//bm_ob = BM_mesh_create(&bm_mesh_chunksize_default);
-	//BM_mesh_bm_from_me(bm_ob, ob->data, FALSE, 0);
-	dm_ob = ob->derivedFinal;
+	dm_ob = CDDM_from_mesh(ob->data, ob); //ob->derivedFinal;
 	vol_ob = BKE_rigidbody_calc_volume(dm_ob, ob->rigidbody_object);
 	mass_ob = ob->rigidbody_object->mass;
-	//BM_mesh_free(bm_ob);
 
 	if (vol_ob > 0)
 	{
@@ -353,6 +350,9 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland* mi)
 	if ((mi->rigidbody->physics_object) && (mi->rigidbody->type == RBO_TYPE_ACTIVE)) {
 		RB_body_set_mass(mi->rigidbody->physics_object, RBO_GET_MASS(mi->rigidbody));
 	}
+	
+	DM_release(dm_ob);
+	MEM_freeN(dm_ob);
 }
 
 
@@ -2260,13 +2260,22 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 			if (isModifierActive(rmd)) {
 				float max_con_mass = 0;
 				float min_con_dist = FLT_MAX;
+				
+				if (rmd->use_cellbased_sim) //bullet crash, todo...
+				{
+					for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+						if (mi->participating_constraint_count == 0 /*&& rmd->vol_check(rmd, mi)*/)
+						{
+							rmd->split(rmd, ob, mi);
+						}
+					}
+				}
 
 				//BKE_object_where_is_calc(scene, ob);
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 					if (mi->rigidbody == NULL) {
 						mi->rigidbody = BKE_rigidbody_create_shard(scene, ob, mi);
 						BKE_rigidbody_calc_shard_mass(ob, mi);
-						//mi->rigidbody->mass = 0.01f;
 						BKE_rigidbody_validate_sim_shard(rbw, mi, ob, true);
 						mi->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
 					}

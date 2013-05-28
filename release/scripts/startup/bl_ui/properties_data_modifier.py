@@ -684,6 +684,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         layout.prop(md, "contact_dist_meaning")
         if (md.contact_dist_meaning == 'CELLS') or (md.contact_dist_meaning == 'CELL_CENTROIDS'):
             layout.prop(md, "cell_size")
+            layout.prop(md, "use_cellbased_sim")
         layout.prop(md, "contact_dist")
         layout.prop(md, "group_contact_dist")
         layout.prop(md, "use_proportional_distance")

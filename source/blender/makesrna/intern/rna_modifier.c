@@ -4156,25 +4156,18 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Use Proportional Distance", "Reduce contact distance with smaller shards (centroid only)");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 	
-	/*prop = RNA_def_property(srna, "use_cellbased_search", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "use_cellbased_search", FALSE);
-	RNA_def_property_ui_text(prop, "Use Cell Based Search", "Search for meshislands via a cell grid");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
+	prop = RNA_def_property(srna, "use_cellbased_sim", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "use_cellbased_sim", FALSE);
+	RNA_def_property_ui_text(prop, "Use Cell Based Simulation", "Simulate MeshIslands in the size of the cells");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 	
 	prop = RNA_def_property(srna, "cell_size", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "cell_size");
-	RNA_def_property_range(prop, 0.0001, FLT_MAX);
+	RNA_def_property_range(prop, 0.0001f, FLT_MAX);
+	RNA_def_property_float_default(prop, 1.0f);
 	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_cell_size_set", NULL);
 	RNA_def_property_ui_text(prop, "Cell Size", "Size of a cell in the constraint searching grid");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
-	
-	/*prop = RNA_def_property(srna, "axis_cells", PROP_INT, PROP_XYZ);
-	RNA_def_property_int_sdna(prop, NULL, "axis_cells");
-	RNA_def_property_array(prop, 3);
-	RNA_def_property_range(prop, 1, INT_MAX);
-	RNA_def_property_ui_text(prop, "Cells per Axis", "How many cells per axis should be built");
-	RNA_def_property_int_funcs(prop, NULL, /*"rna_RigidBodyModifier_axis_cells_get"* "rna_RigidBodyModifier_axis_cells_set", NULL);
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
 }
 
 void RNA_def_modifier(BlenderRNA *brna)

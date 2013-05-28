@@ -1912,21 +1912,9 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 					}
 					
 					emd->cells->data[emd->cells->count].cell_mesh = boolresult;
-					//bmsub = DM_to_bmesh(boolresult);
-
-					/*CustomData_bmesh_init_pool(&bmsub->vdata, bm_mesh_allocsize_default.totvert, BM_VERT);
-					CustomData_bmesh_init_pool(&bmsub->edata, bm_mesh_allocsize_default.totedge, BM_EDGE);
-					CustomData_bmesh_init_pool(&bmsub->ldata, bm_mesh_allocsize_default.totloop, BM_LOOP);
-					CustomData_bmesh_init_pool(&bmsub->pdata, bm_mesh_allocsize_default.totface, BM_FACE);*/
-
-//					BKE_submesh_free(emd->cells->data[emd->cells->count].storage);
-//					emd->cells->data[emd->cells->count].storage = NULL;
-					//emd->cells->data[emd->cells->count].storage = BKE_bmesh_to_submesh(bmsub);
-					//BM_mesh_free(bmsub);
 					
 					totvert = boolresult->getNumVerts(boolresult);
 					totedge = boolresult->getNumEdges(boolresult);
-				//	totface = boolresult->getNumTessFaces(boolresult);
 					totpoly = boolresult->getNumPolys(boolresult);
 
 					localverts = MEM_mallocN(sizeof(BMVert*) * totvert, "localverts");
@@ -1955,12 +1943,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 						{
 							emd->cells->data[emd->cells->count].is_at_boundary = TRUE;
 						}
-
-					/*	MEM_freeN(ve_old);
-						ve_old = NULL;
-						MEM_freeN(ve_new);
-						ve_new = NULL;*/
-
+						
 						DM_release(dm);
 						MEM_freeN(dm);
 						dm = NULL;
@@ -1987,9 +1970,6 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 
 
 						vert = BM_vert_create(bm, co, NULL, 0);
-					/*	if (BM_elem_index_get(vert) == -1) {
-							BM_elem_index_set(vert, vert_index);
-						}*/
 
 						localverts[v] = vert;
 						//vert = BM_vert_at_index(bm, vert_index);

@@ -1286,6 +1286,7 @@ enum {
 
 typedef struct MeshIsland {
 	struct MeshIsland *next, *prev;
+	struct MeshIsland **compound_children;
 	struct BMVert **vertices;
 	float *vertco;
 	struct DerivedMesh *physics_mesh; //convert to mesh later ??
@@ -1301,7 +1302,8 @@ typedef struct MeshIsland {
 	float centroid[3];
 	float rot[4]; //hrm, need this for constraints probably
 	int linear_index;  //index in rigidbody world
-	char pad[4];
+	int compound_count;
+	//char pad[4];
 } MeshIsland;
 
 typedef struct RigidBodyModifierData {
@@ -1310,16 +1312,19 @@ typedef struct RigidBodyModifierData {
 	struct Group *constraint_group;
 	ListBase meshIslands, meshConstraints, cells;
 	int	**sel_indexes, *index_storage, *id_storage;
+	int (*vol_check)(struct RigidBodyModifierData *rmd, struct MeshIsland *mi);
+	void (*split)(struct RigidBodyModifierData *rmd, struct Object *ob, struct MeshIsland *mi);
 	struct GHash *idmap;
 	int refresh, use_constraints, mass_dependent_thresholds, auto_merge, sel_counter;
 	int inner_constraint_type, dist_dependent_thresholds, refresh_constraints;
 	int outer_constraint_type, outer_constraint_location, outer_constraint_pattern;
 	int explo_shared, constraint_limit, contact_dist_meaning, use_both_directions;
 	int breaking_angle, breaking_percentage, use_proportional_distance, use_proportional_limit;
+	int use_cellbased_sim;
 	float breaking_distance, max_vol, cell_size;
 	float origmat[4][4], breaking_threshold;
 	float contact_dist, group_breaking_threshold, group_contact_dist, auto_merge_dist;
-	char pad[4];
+	//char pad[4];
 } RigidBodyModifierData;
 
 typedef struct NeighborhoodCell {
