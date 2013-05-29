@@ -162,7 +162,7 @@ void freeMeshIsland(RigidBodyModifierData* rmd, MeshIsland* mi)
 	{
 		for (i = 0; i < mi->compound_count; i++)
 		{
-			freeMeshIsland(rmd, mi->compound_children[i]);
+			//freeMeshIsland(rmd, mi->compound_children[i]);
 			mi->compound_children[i]->compound_parent = NULL;
 			mi->compound_children[i] = NULL;
 		}
@@ -268,6 +268,7 @@ static void freeData(ModifierData *md)
 		rbsc = rmd->meshConstraints.first;
 		BLI_remlink(&rmd->meshConstraints, rbsc);
 		MEM_freeN(rbsc);
+		rbsc = NULL;
 	}
 	
 	rmd->meshConstraints.first = NULL;
@@ -492,11 +493,15 @@ static float mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob, BMVert
 	//(*mi_array)[*mi_count] = mi;
 	//(*mi_count)++;
 	
+	mi->rigidbody = NULL;
 	//takes VERY long...
-	mi->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi);
-	BKE_rigidbody_calc_shard_mass(ob, mi);
-	BKE_rigidbody_validate_sim_shard(rmd->modifier.scene->rigidbody_world, mi, ob, true);
-	mi->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
+	if (!rmd->use_cellbased_sim)
+	{
+		mi->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi);
+		BKE_rigidbody_calc_shard_mass(ob, mi);
+		BKE_rigidbody_validate_sim_shard(rmd->modifier.scene->rigidbody_world, mi, ob, true);
+		mi->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
+	}
 	
 	/* deselect loose data - this used to get deleted,
 	 * we could de-select edges and verts only, but this turns out to be less complicated
@@ -1010,28 +1015,6 @@ void destroy_compound(RigidBodyModifierData* rmd, Object* ob, MeshIsland *mi)
 	//add all children and remove ourself
 	int i = 0;
 	
-	if (mi->compound_count > 0)
-	{
-		int j = 0;
-		RigidBodyShardCon *con;
-		BLI_remlink(&rmd->meshIslands, mi);
-		for (j = 0; j < mi->participating_constraint_count; j++)
-		{
-			con = mi->participating_constraints[i];
-			BLI_remlink(&rmd->meshConstraints, con);
-		}
-	}
-	else
-	{
-		if (mi->rigidbody == NULL)
-		{
-			mi->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi);
-			BKE_rigidbody_calc_shard_mass(ob, mi);
-			BKE_rigidbody_validate_sim_shard(rmd->modifier.scene->rigidbody_world, mi, ob, true);
-			mi->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
-		}
-	}
-	
 	for (i = 0; i < mi->compound_count; i++)
 	{
 		MeshIsland* mi2 = mi->compound_children[i];
@@ -1039,28 +1022,40 @@ void destroy_compound(RigidBodyModifierData* rmd, Object* ob, MeshIsland *mi)
 		{
 			mi2->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi2);
 			BKE_rigidbody_calc_shard_mass(ob, mi2);
-			BKE_rigidbody_validate_sim_shard(rmd->modifier.scene->rigidbody_world, mi2, ob, true);
-			mi2->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
-		}
-		else
-		{
-			if (mi2->rigidbody->physics_object)
-			{
-				RB_body_activate(mi2->rigidbody->physics_object);
-			}
+			mi2->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+		//	BKE_rigidbody_validate_sim_shard(rmd->modifier.scene->rigidbody_world, mi2, ob, true);
+		//	mi2->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
 		}
 		
-		BLI_addtail(&rmd->meshIslands, mi2);
+		//BLI_addtail(&rmd->meshIslands, mi2);
 		//mi2->compound_parent = NULL;
 		//mi->compound_children[i] = NULL;
 	}
 	
-	/*if (mi->compound_count > 0)
+	if (mi->compound_count > 0)
 	{
-		MEM_freeN(mi->compound_children);
-		mi->compound_children = NULL;
-		mi->compound_count = 0;
-	}*/
+		int j = 0;
+		RigidBodyShardCon *con;
+		//BLI_remlink(&rmd->meshIslands, mi);
+	/*	for (j = 0; j < mi->participating_constraint_count; j++)
+		{
+			con = mi->participating_constraints[i];
+			if (con != NULL)
+			{	//weird... should not happen!
+				BLI_remlink(&rmd->meshConstraints, con);
+				MEM_freeN(con);
+				con = NULL;
+			}
+		}*/
+		
+		MEM_freeN(mi->rigidbody);
+		mi->rigidbody = NULL;
+		
+		//MEM_freeN(mi->compound_children);
+		//mi->compound_children = NULL;
+		//mi->compound_count = 0;
+		//BKE_rigidbody_cache_reset(rmd->modifier.scene->rigidbody_world);
+	}
 }
 
 void select_inner_faces(RigidBodyModifierData* rmd, KDTree* tree, MeshIsland* mi) {
@@ -1180,7 +1175,7 @@ static void connect_meshislands(RigidBodyModifierData* rmd, Object* ob, MeshIsla
 	int con_found = FALSE;
 	RigidBodyShardCon *con, *rbsc;
 	
-	if (!rmd->use_both_directions)
+	if (!rmd->use_both_directions && mi1->rigidbody && mi2->rigidbody)
 	{
 		//search local constraint list instead of global one !!! saves lots of time
 		int i;
@@ -1214,7 +1209,7 @@ static void connect_meshislands(RigidBodyModifierData* rmd, Object* ob, MeshIsla
 		}*/
 	}
 
-	if (!con_found)
+	if (!con_found && mi1->rigidbody && mi2->rigidbody)
 	{
 		if (rmd->use_constraints) {
 			if (((rmd->constraint_group != NULL) &&
@@ -2342,17 +2337,6 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 		mul_v3_m4v3(obj_centr, ob->obmat, mi->centroid);
 		BLI_kdtree_insert(centroidtree, index, obj_centr, NULL);
 		index++;
-		
-		if (mi->compound_count > 0)
-		{
-			for (i = 0; i < mi->compound_count; i++)
-			{
-				mi->compound_children[i]->compound_parent = NULL;
-			}
-			MEM_freeN(mi->compound_children);
-			mi->compound_count = 0;
-		}
-		mi->compound_parent = NULL;
 	}
 	
 	BLI_kdtree_balance(centroidtree);
@@ -2375,6 +2359,7 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 		mi_compound->compound_children = MEM_callocN(sizeof(MeshIsland*), "compoundchilds");
 		mi_compound->compound_count = 0;
 		mi_compound->compound_parent = NULL;
+		mi_compound->participating_constraint_count = 0;
 		
 		printf("Joining %d islands to compound\n", r);
 		for (i = 0; i < r; i++)
@@ -2382,7 +2367,7 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 			MeshIsland *mi = BLI_findlink(&rmd->meshIslands, n[i].index);
 			BMesh *bm;
 			if (mi->compound_parent != NULL || mi->compound_count > 0)
-			{
+			{	//dont compound shards with a parent or with children (no recursion)
 				continue;
 			}
 			
@@ -2420,11 +2405,19 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 			count++;
 		}
 		
-		
 		if (n != NULL)
 		{
 			MEM_freeN(n);
 			n = NULL;
+		}
+		
+		if (bm_compound->totvert == 0)
+		{
+			MEM_freeN(mi_compound->vertices);
+			MEM_freeN(mi_compound->vertco);
+			MEM_freeN(mi_compound->compound_children);
+			MEM_freeN(mi_compound);
+			continue;
 		}
 		
 		//join derived mesh, hmm, maybe via bmesh
@@ -2432,7 +2425,8 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 		for (i = 0; i < mi_compound->compound_count; i++)
 		{
 			//set proper relative starting centroid
-			sub_v3_v3v3(mi_compound->compound_children[i]->start_co, mi_compound->compound_children[i]->centroid, centroid);
+			//sub_v3_v3v3(mi_compound->compound_children[i]->start_co, mi_compound->compound_children[i]->centroid, centroid);
+			copy_v3_v3(mi_compound->compound_children[i]->start_co, mi_compound->compound_children[i]->centroid);
 		}
 		
 		//invert_m4_m4(ob->imat, ob->obmat);
@@ -2454,14 +2448,21 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 		BKE_boundbox_init_from_minmax(mi_compound->bb, min, max);
 		mi_compound->participating_constraints = NULL;
 		mi_compound->participating_constraint_count = 0;
+		
+		mi_compound->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi_compound);
+		BKE_rigidbody_calc_shard_mass(ob, mi_compound);
+		mi_compound->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+		//BKE_rigidbody_validate_sim_shard(rmd->modifier.scene->rigidbody_world, mi_compound, ob, true);
+		//mi_compound->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
+		
 		BLI_addtail(&rmd->meshIslands, mi_compound);
 	}
 	
 	//clean up compound children
-	for (i = 0; i < to_remove_count; i++)
+	/*for (i = 0; i < to_remove_count; i++)
 	{
 		BLI_remlink(&rmd->meshIslands, to_remove[i]);
-	}
+	}*/
 	
 	if (to_remove != NULL)
 		MEM_freeN(to_remove);
@@ -2570,7 +2571,11 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			start = PIL_check_seconds_timer();
 			for (mi = rmd->meshIslands.first; mi; mi = mi->next)
 			{
-				destroy_compound(rmd, ob, mi); //clean up old compounds first...
+				if (mi->compound_count > 0)	//clean up old compounds first
+				{
+					BLI_remlink(&rmd->meshIslands, mi);
+					freeMeshIsland(rmd, mi);
+				}
 			}
 			buildCompounds(rmd, ob);
 			printf("Building compounds done, %g\n", PIL_check_seconds_timer() - start);

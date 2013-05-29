@@ -81,6 +81,14 @@ static bool isModifierActive(RigidBodyModifierData* rmd) {
 void calc_dist_angle(RigidBodyShardCon* con, float* dist, float* angle)
 {
 	float q1[4], q2[4], qdiff[4], axis[3];
+	if ((con->mi1->rigidbody == NULL) ||
+	   (con->mi2->rigidbody == NULL))
+	{
+		*dist = 0;
+		*angle = 0;
+		return;
+	}
+	
 	sub_v3_v3v3(axis, con->mi1->rigidbody->pos, con->mi2->rigidbody->pos);
 	*dist = len_v3(axis);
 	copy_qt_qt(q1, con->mi1->rigidbody->orn);
@@ -360,12 +368,18 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 {
 	float startco[3], centr[3], size[3];
 	int i, j;
+	
+	if ((loc[0] == NAN) || (rot[0] == NAN))
+	{
+		//skip dummy cache entries
+		return;
+	}
 
 	invert_m4_m4(ob->imat, ob->obmat);
 	mat4_to_size(size, ob->obmat);
 	
 	//update compound children centroids if any
-	for (i = 0; i < mi->compound_count; i++)
+	/*for (i = 0; i < mi->compound_count; i++)
 	{
 		//hrm, maybe need compound startco as well
 		float co[3];
@@ -377,9 +391,9 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 		mul_qt_v3(rot, centr);
 		sub_v3_v3(co, centr);
 		add_v3_v3(co, loc);
-		mul_m4_v3(ob->imat, co);
+		//mul_m4_v3(ob->imat, co);
 		copy_v3_v3(mi->compound_children[i]->centroid, co);
-	}
+	}*/
 	
 	for (j = 0; j < mi->vertex_count; j++) {
 		// BMVert *vert = BM_vert_at_index(bm, ind);
@@ -907,10 +921,10 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland* mi, Object* ob, short re
 	if (rbo->physics_shape && !rebuild)
 		return;
 	
-	if (mi->physics_mesh->numVertData < 1)
+	/*if (mi->physics_mesh->numVertData < 1)
 	{
 		return;
-	}
+	}*/
 
 	/* if automatically determining dimensions, use the Object's boundbox
 	 *	- assume that all quadrics are standing upright on local z-axis
@@ -1010,11 +1024,6 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 	if (rbo->physics_shape == NULL || rebuild)
 		BKE_rigidbody_validate_sim_shard_shape(mi, ob, true);
 	
-	if (rbo->physics_shape == NULL)
-	{	//in case shape is invalid somehow
-		return;
-	}
-
 	if (rbo->physics_object) {
 		if (rebuild == false)
 			RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
@@ -1320,6 +1329,7 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 	float ang_upper;
 	rbRigidBody *rb1;
 	rbRigidBody *rb2;
+	bool use_deact = false;
 
 	/* sanity checks:
 	 *	- object should have a rigid body constraint
@@ -1340,8 +1350,10 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 	
 	rb1 = rbc->mi1->rigidbody->physics_object;
 	rb2 = rbc->mi2->rigidbody->physics_object;
+	use_deact = ((rbc->mi1->rigidbody->flag & RBO_FLAG_USE_DEACTIVATION) && (rbc->mi2->rigidbody->flag & RBO_FLAG_USE_DEACTIVATION));
 	
-	if (rb1 && rb2) // rbc->physics_constraint && RB_constraint_is_enabled(rbc->physics_constraint))
+	
+	if (rb1 && rb2 && use_deact) // rbc->physics_constraint && RB_constraint_is_enabled(rbc->physics_constraint))
 	{
 		//printf("STATE %d %d\n", RB_body_get_activation_state(rb1), RB_body_get_activation_state(rb2));
 		if ((RB_body_get_activation_state(rb1) == RBO_STATE_ISLAND_SLEEPING) ||
@@ -2077,8 +2089,8 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 		rbw->objects = MEM_reallocN(rbw->objects, sizeof(Object *) * l);
 		rbw->cache_index_map = MEM_reallocN(rbw->cache_index_map, sizeof(RigidBodyOb*) * rbw->numbodies);
 		rbw->cache_offset_map = MEM_reallocN(rbw->cache_offset_map, sizeof(int) * rbw->numbodies);
+		printf("RigidbodyCount changed: %d\n", rbw->numbodies);
 	}
-
 	for (go = rbw->group->gobject.first, i = 0; go; go = go->next, i++) {
 		Object *ob = go->ob;
 		rbw->objects[i] = ob;
@@ -2089,7 +2101,6 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 				if (isModifierActive(rmd)) {
 					for (mi = rmd->meshIslands.first, j = 0; mi; mi = mi->next) {
 						rbw->cache_index_map[counter] = mi->rigidbody; //map all shards of an object to this object index
-						//printf("index map:  %d %d\n", counter, i);
 						rbw->cache_offset_map[counter] = i;
 						mi->linear_index = counter;
 						counter++;
@@ -2215,6 +2226,11 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 
 static void validateShard(RigidBodyWorld *rbw, MeshIsland* mi, Object* ob, int rebuild)
 {
+	if (mi->rigidbody == NULL)
+	{
+		return;
+	}
+	
 	if (rebuild) { // && (mi->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE)) {
 		/* World has been rebuilt so rebuild object */
 		BKE_rigidbody_validate_sim_shard(rbw, mi, ob, true);
@@ -2228,10 +2244,31 @@ static void validateShard(RigidBodyWorld *rbw, MeshIsland* mi, Object* ob, int r
 		BKE_rigidbody_validate_sim_shard_shape(mi, ob, true);
 		/* now tell RB sim about it */
 		// XXX: we assume that this can only get applied for active/passive shapes that will be included as rigidbodies
-		if (mi->rigidbody->physics_shape != NULL)
-			RB_body_set_collision_shape(mi->rigidbody->physics_object, mi->rigidbody->physics_shape);
+		//if (mi->rigidbody->physics_shape != NULL)
+		RB_body_set_collision_shape(mi->rigidbody->physics_object, mi->rigidbody->physics_shape);
 	}
 	mi->rigidbody->flag &= ~(RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
+}
+
+bool isDisconnected(MeshIsland *mi)
+{
+	int cons = 0, broken_cons = 0, i;
+	RigidBodyShardCon* con;
+	cons = mi->participating_constraint_count;
+	//calc ratio of broken cons here, per Mi and flag the rest to be broken too
+	for (i = 0; i < cons; i++)
+	{
+		con = mi->participating_constraints[i];
+		if (con && con->physics_constraint)
+		{
+			if (!RB_constraint_is_enabled(con->physics_constraint))
+			{
+				broken_cons++;
+			}
+		}
+	}
+	
+	return (cons == broken_cons) && (cons > 0);
 }
 
 /* Updates and validates world, bodies and shapes.
@@ -2272,6 +2309,11 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 						rbw->object_changed = FALSE;
 						//rebuildcon = TRUE;
 					}
+					
+					/*if (rbw->rebuild_comp_con) {
+						rmd->refresh_constraints = TRUE;
+						rbw->rebuild_comp_con = FALSE;
+					}*/
 					break;
 				}
 			}
@@ -2280,35 +2322,35 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 				float max_con_mass = 0;
 				float min_con_dist = FLT_MAX;
 				
-			/*	if (rmd->use_cellbased_sim) //bullet crash, todo...
+				if (rmd->use_cellbased_sim) //bullet crash, todo...
 				{
 					for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
-						if (mi->participating_constraint_count == 0)
+						if (isDisconnected(mi))
 						{
 							rmd->split(rmd, ob, mi);
 						}
 					}
-				}*/
+					
+					//rigidbody_update_ob_array(rbw);
+				}
 
 				//BKE_object_where_is_calc(scene, ob);
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 					if (mi->rigidbody == NULL) {
-						mi->rigidbody = BKE_rigidbody_create_shard(scene, ob, mi);
-						BKE_rigidbody_calc_shard_mass(ob, mi);
-						BKE_rigidbody_validate_sim_shard(rbw, mi, ob, true);
-						mi->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
+						continue;
+						/*if (mi->compound_count == 0)
+						{
+							//treat compound parents separately - do not reassign deleted rigidbodies
+							mi->rigidbody = BKE_rigidbody_create_shard(scene, ob, mi);
+							BKE_rigidbody_calc_shard_mass(ob, mi);
+							BKE_rigidbody_validate_sim_shard(rbw, mi, ob, true);
+							mi->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
+						}*/
 					}
 					else {  //as usual, but for each shard now, and no constraints
 						/* perform simulation data updates as tagged */
 						/* refresh object... */
 						int do_rebuild = rebuild;
-						
-						/*if ((BLI_countlist(&rmd->meshConstraints) == 0) && (rmd->constraint_group == NULL)) {
-							do_rebuild = rebuild;
-						}
-						else {
-							do_rebuild = rebuild;// && (mi->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE);
-						}*/
 						
 						if (rmd->breaking_percentage > 0)
 						{
@@ -2347,19 +2389,6 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 											}
 										}
 									}
-									
-									//and break compound
-									if (rmd->use_cellbased_sim)
-									{
-										rmd->split(rmd, ob, mi);
-									}
-								}
-							}
-							else
-							{
-								if (rmd->use_cellbased_sim)
-								{
-									rmd->split(rmd, ob, mi);
 								}
 							}
 						}
@@ -2371,10 +2400,10 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 					rigidbody_update_sim_ob(scene, rbw, ob, mi->rigidbody, mi->centroid);
 				}
 				
-				if (rmd->use_cellbased_sim)
+				/*if (rmd->use_cellbased_sim)
 				{
 					rigidbody_update_ob_array(rbw);
-				}
+				}*/
 
 				if (rmd->mass_dependent_thresholds)
 				{
@@ -2635,7 +2664,7 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 					rbo = mi->rigidbody;
 					if (!rbo)
-						break;
+						continue;
 					/* use rigid body transform after cache start frame if objects is not being transformed */
 					if (BKE_rigidbody_check_sim_running(rbw, ctime) && !(ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
 
@@ -2832,6 +2861,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 			rbw->object_changed = FALSE;
 			rigidbody_update_simulation(scene, rbw, true);
 		}
+		rbw->rebuild_comp_con = FALSE;
 		return;
 	}
 	/* make sure we don't go out of cache frame range */

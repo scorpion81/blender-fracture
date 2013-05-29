@@ -77,6 +77,8 @@ typedef struct RigidBodyWorld {
 	int *cache_offset_map;		/* Maps the linear RigidbodyOb index to the nested Object(Modifier) cell offset, at runtime, so it does not need to be calced in cache*/
 	int refresh_modifiers;		/* If we have rigidbody modifiers, time to refresh them if flag is set*/
 	int object_changed;			/* Flag changes to objects (especially those with modifiers)*/
+	int rebuild_comp_con;
+	char pad2[4];
 } RigidBodyWorld;
 
 /* Flags for RigidBodyWorld */

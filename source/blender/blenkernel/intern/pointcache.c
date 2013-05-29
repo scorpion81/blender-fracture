@@ -963,79 +963,22 @@ static int ptcache_dynamicpaint_read(PTCacheFile *pf, void *dp_v)
 	return 1;
 }
 
-/*static int count_previous_shards(RigidBodyWorld *rbw, int mapped)
-{
-	Object* ob = NULL;
-	ModifierData *md = NULL;
-	RigidBodyModifierData* rmd = NULL;
-	int count = 0, foundMod = FALSE, i = 0;
-
-	for (i = 0; i < mapped; i++) {
-		if (rbw->objects)
-			ob = rbw->objects[i];
-		else
-			return 0;
-
-		for (md = ob->modifiers.first; md; md = md->next) {
-			if (md->type == eModifierType_RigidBody) {
-				rmd = (RigidBodyModifierData*)md;
-				count += BLI_countlist(&rmd->meshIslands);
-				foundMod = TRUE;
-				break;
-			}
-		}
-
-		if (!foundMod) {
-			count++; //the object itself counts as shard too.
-		}
-
-		foundMod = FALSE;
-	}
-
-	return count;
-}*/
-
 /* Rigid Body functions */
 static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUSED(cfra))
 {
 	RigidBodyWorld *rbw = rb_v;
-	Object *ob = NULL;
-	//ModifierData *md = NULL;
-	//RigidBodyModifierData* rmd = NULL;
-	//MeshIsland *mi = NULL;
 	RigidBodyOb *rbo = NULL;
-	/*int offset = 0;
-	int mapped = rbw->cache_index_map[index];
-
-	if (index > mapped) {
-		offset = rbw->cache_offset_map[index];//(index+1) - count_previous_shards(rbw, mapped)-1;
-		index = mapped;
-	}
-
-	if (rbw->objects)
-		ob = rbw->objects[index];
-
-	if (ob == NULL)
-		return 0;
-
-	for (md = ob->modifiers.first; md; md = md->next) {
-		if (md->type == eModifierType_RigidBody) {
-			rmd = (RigidBodyModifierData*)md;
-			if ((rmd != NULL) && (rmd->modifier.mode & eModifierMode_Realtime)) {
-				mi = BLI_findlink(&rmd->meshIslands, offset);
-				rbo = mi->rigidbody;
-				break;
-			}
-		}
-	}
-	/* don't have rigid body modifier, use regular object */
-	//if (rbo == NULL)
-	//	rbo = ob->rigidbody_object;*/
-	
 	rbo = rbw->cache_index_map[index];
 	
 	if (rbo == NULL)
-		return 0;
+	{
+		float dummyloc[3] = {NAN, NAN, NAN};
+		float dummyrot[4] = {NAN, NAN, NAN, NAN};
+		
+		//need to write dummy data obviously... hmm
+		PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, dummyloc);
+		PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, dummyrot);
+	}
 
 	if (rbo && rbo->type == RBO_TYPE_ACTIVE && rbo->physics_object) {
 #ifdef WITH_BULLET
@@ -1051,40 +994,7 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUS
 static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float UNUSED(cfra), float *old_data)
 {
 	RigidBodyWorld *rbw = rb_v;
-	Object *ob = NULL;
-	ModifierData *md = NULL;
-	RigidBodyModifierData* rmd = NULL;
 	RigidBodyOb *rbo = NULL;
-	//MeshIsland *mi = NULL; //need to update mesh from cache as well, a bit dirty approach...
-	/*int offset = 0;
-	int mapped = rbw->cache_index_map[index];
-
-	if (index > mapped) {
-		offset = rbw->cache_offset_map[index];//(index+1) - count_previous_shards(rbw, mapped)-1;
-		index = mapped;
-	}
-
-	if (rbw->objects)
-		ob = rbw->objects[index];*/
-
-//	if (ob == NULL)
-//		return;
-
-	/*for (md = ob->modifiers.first; md; md = md->next) {
-		if (md->type == eModifierType_RigidBody) {
-			rmd = (RigidBodyModifierData*)md;
-			if ((rmd != NULL) && (rmd->modifier.mode & eModifierMode_Realtime))
-			{
-				mi = BLI_findlink(&rmd->meshIslands, offset);
-				if (!mi) continue; //workaround for changing count of rigidbodies/meshislands while cache is valid
-				rbo = mi->rigidbody;
-				break;
-			}
-		}
-	}*/
-	/* don't have rigid body modifier, use regular object */
-	//if (rbo == NULL)
-	//	rbo = ob->rigidbody_object;
 	
 	rbo = rbw->cache_index_map[index];
 	
@@ -1111,40 +1021,9 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 {
 	RigidBodyWorld *rbw = rb_v;
 	RigidBodyOb *rbo = NULL;
-	Object *ob = NULL;
 	ParticleKey keys[4];
 	float dfra;
-	//ModifierData *md = NULL;
-	//RigidBodyModifierData* rmd = NULL;
-	//MeshIsland* mi = NULL;
-	/*int offset = 0;
-	int mapped = rbw->cache_index_map[index];
-
-	if (index > mapped) {
-		offset = rbw->cache_offset_map[index];// (index+1) - count_previous_shards(rbw, mapped)-1;
-		index = mapped;
-	}
-
-	if (rbw->objects)
-		ob = rbw->objects[index];
 	
-	if (ob == NULL)
-		return;
-
-	for (md = ob->modifiers.first; md; md = md->next) {
-		if (md->type == eModifierType_RigidBody) {
-			rmd = (RigidBodyModifierData*)md;
-			if ((rmd != NULL) && (rmd->modifier.mode & eModifierMode_Realtime)) {
-				mi = BLI_findlink(&rmd->meshIslands, offset);
-				rbo = mi->rigidbody;
-				break;
-			}
-		}
-	}*/
-	/* don't have rigid body modifier, use regular object */
-	//if (rbo == NULL)
-	//	rbo = ob->rigidbody_object;
-
 	rbo = rbw->cache_index_map[index];
 	if (rbo == NULL)
 		return;
