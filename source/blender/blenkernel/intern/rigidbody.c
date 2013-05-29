@@ -365,7 +365,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 	mat4_to_size(size, ob->obmat);
 	
 	//update compound children centroids if any
-	/*for (i = 0; i < mi->compound_count; i++)
+	for (i = 0; i < mi->compound_count; i++)
 	{
 		//hrm, maybe need compound startco as well
 		float co[3];
@@ -379,7 +379,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 		add_v3_v3(co, loc);
 		mul_m4_v3(ob->imat, co);
 		copy_v3_v3(mi->compound_children[i]->centroid, co);
-	}*/
+	}
 	
 	for (j = 0; j < mi->vertex_count; j++) {
 		// BMVert *vert = BM_vert_at_index(bm, ind);

@@ -1042,6 +1042,13 @@ void destroy_compound(RigidBodyModifierData* rmd, Object* ob, MeshIsland *mi)
 			BKE_rigidbody_validate_sim_shard(rmd->modifier.scene->rigidbody_world, mi2, ob, true);
 			mi2->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
 		}
+		else
+		{
+			if (mi2->rigidbody->physics_object)
+			{
+				RB_body_activate(mi2->rigidbody->physics_object);
+			}
+		}
 		
 		BLI_addtail(&rmd->meshIslands, mi2);
 		//mi2->compound_parent = NULL;
