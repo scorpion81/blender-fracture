@@ -1287,6 +1287,7 @@ enum {
 typedef struct MeshIsland {
 	struct MeshIsland *next, *prev;
 	struct MeshIsland **compound_children;
+	struct MeshIsland *compound_parent;
 	struct BMVert **vertices;
 	float *vertco;
 	struct DerivedMesh *physics_mesh; //convert to mesh later ??
@@ -1299,11 +1300,11 @@ typedef struct MeshIsland {
 	struct RigidBodyShardCon **participating_constraints;
 	int participating_constraint_count;
 	int vertex_count, id, neighbor_count, is_at_boundary;
-	float centroid[3];
+	float centroid[3], start_co[3];
 	float rot[4]; //hrm, need this for constraints probably
 	int linear_index;  //index in rigidbody world
 	int compound_count;
-	//char pad[4];
+	char pad[4];
 } MeshIsland;
 
 typedef struct RigidBodyModifierData {
@@ -1328,7 +1329,7 @@ typedef struct RigidBodyModifierData {
 } RigidBodyModifierData;
 
 typedef struct NeighborhoodCell {
-	struct NeighborhoodCell *prev, *next; 
+	struct NeighborhoodCell *next, *prev; 
 	struct MeshIsland **islands;
 	int island_count;
 	float co[3];

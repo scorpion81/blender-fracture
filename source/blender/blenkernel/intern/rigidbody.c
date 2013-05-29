@@ -359,19 +359,27 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland* mi)
 void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], float rot[4])
 {
 	float startco[3], centr[3], size[3];
-	int j;
+	int i, j;
 
 	invert_m4_m4(ob->imat, ob->obmat);
 	mat4_to_size(size, ob->obmat);
-	//sub_qt_qtqt(rot, rot, obrot);
-	//loc_quat_size_to_mat4(imat, loc, rot, size);
-	//printf("Loc: %f %f %f\n", loc[0], loc[1], loc[2]);
-	//if (sync)
-	//{
-		/*float d[3];
-		sub_v3_v3v3(d, mi->centroid, loc);
-		printf("Diff: %f %f %f\n", d[0], d[1], d[2]);*/
-	//}
+	
+	//update compound children centroids if any
+	/*for (i = 0; i < mi->compound_count; i++)
+	{
+		//hrm, maybe need compound startco as well
+		float co[3];
+		copy_v3_v3(co, mi->compound_children[i]->start_co);
+		mul_v3_v3(co, size);
+		mul_qt_v3(rot, co);
+		copy_v3_v3(centr, mi->centroid);
+		mul_v3_v3(centr, size);
+		mul_qt_v3(rot, centr);
+		sub_v3_v3(co, centr);
+		add_v3_v3(co, loc);
+		mul_m4_v3(ob->imat, co);
+		copy_v3_v3(mi->compound_children[i]->centroid, co);
+	}*/
 	
 	for (j = 0; j < mi->vertex_count; j++) {
 		// BMVert *vert = BM_vert_at_index(bm, ind);
@@ -898,6 +906,11 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland* mi, Object* ob, short re
 	/* don't create a new shape if we already have one and don't want to rebuild it */
 	if (rbo->physics_shape && !rebuild)
 		return;
+	
+	if (mi->physics_mesh->numVertData < 1)
+	{
+		return;
+	}
 
 	/* if automatically determining dimensions, use the Object's boundbox
 	 *	- assume that all quadrics are standing upright on local z-axis
@@ -996,6 +1009,11 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 	/* FIXME we shouldn't always have to rebuild collision shapes when rebuilding objects, but it's needed for constraints to update correctly */
 	if (rbo->physics_shape == NULL || rebuild)
 		BKE_rigidbody_validate_sim_shard_shape(mi, ob, true);
+	
+	if (rbo->physics_shape == NULL)
+	{	//in case shape is invalid somehow
+		return;
+	}
 
 	if (rbo->physics_object) {
 		if (rebuild == false)
@@ -2210,7 +2228,8 @@ static void validateShard(RigidBodyWorld *rbw, MeshIsland* mi, Object* ob, int r
 		BKE_rigidbody_validate_sim_shard_shape(mi, ob, true);
 		/* now tell RB sim about it */
 		// XXX: we assume that this can only get applied for active/passive shapes that will be included as rigidbodies
-		RB_body_set_collision_shape(mi->rigidbody->physics_object, mi->rigidbody->physics_shape);
+		if (mi->rigidbody->physics_shape != NULL)
+			RB_body_set_collision_shape(mi->rigidbody->physics_object, mi->rigidbody->physics_shape);
 	}
 	mi->rigidbody->flag &= ~(RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
 }
@@ -2261,15 +2280,15 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 				float max_con_mass = 0;
 				float min_con_dist = FLT_MAX;
 				
-				if (rmd->use_cellbased_sim) //bullet crash, todo...
+			/*	if (rmd->use_cellbased_sim) //bullet crash, todo...
 				{
 					for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
-						if (mi->participating_constraint_count == 0 /*&& rmd->vol_check(rmd, mi)*/)
+						if (mi->participating_constraint_count == 0)
 						{
 							rmd->split(rmd, ob, mi);
 						}
 					}
-				}
+				}*/
 
 				//BKE_object_where_is_calc(scene, ob);
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
@@ -2328,6 +2347,19 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 											}
 										}
 									}
+									
+									//and break compound
+									if (rmd->use_cellbased_sim)
+									{
+										rmd->split(rmd, ob, mi);
+									}
+								}
+							}
+							else
+							{
+								if (rmd->use_cellbased_sim)
+								{
+									rmd->split(rmd, ob, mi);
 								}
 							}
 						}
@@ -2337,6 +2369,11 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 
 					/* update simulation object... */
 					rigidbody_update_sim_ob(scene, rbw, ob, mi->rigidbody, mi->centroid);
+				}
+				
+				if (rmd->use_cellbased_sim)
+				{
+					rigidbody_update_ob_array(rbw);
 				}
 
 				if (rmd->mass_dependent_thresholds)

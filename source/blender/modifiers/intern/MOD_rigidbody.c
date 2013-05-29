@@ -144,6 +144,61 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->constraint_limit = rmd->constraint_limit;
 }
 
+void freeMeshIsland(RigidBodyModifierData* rmd, MeshIsland* mi)
+{
+	int i;
+	
+	if (mi->physics_mesh) {
+		DM_release(mi->physics_mesh);
+		MEM_freeN(mi->physics_mesh);
+		mi->physics_mesh = NULL;
+	}
+	if (mi->rigidbody) {
+		MEM_freeN(mi->rigidbody);
+		mi->rigidbody = NULL;
+	}
+	
+	if (mi->compound_count > 0)
+	{
+		for (i = 0; i < mi->compound_count; i++)
+		{
+			freeMeshIsland(rmd, mi->compound_children[i]);
+			mi->compound_children[i]->compound_parent = NULL;
+			mi->compound_children[i] = NULL;
+		}
+		
+		MEM_freeN(mi->compound_children);
+		mi->compound_count = 0;
+		mi->compound_parent = NULL;
+	}
+
+	if (!rmd->explo_shared) {
+		if (mi->vertco /*&& rmd->refresh == FALSE*/) {
+			MEM_freeN(mi->vertco);
+			mi->vertco = NULL;
+		}
+		if (mi->vertices /*&& rmd->refresh == FALSE*/) {
+			MEM_freeN(mi->vertices);
+			mi->vertices = NULL; //borrowed only !!!
+		}
+	}
+
+	if (mi->bb != NULL) {
+		MEM_freeN(mi->bb);
+		mi->bb = NULL;
+	}
+	
+	if (mi->participating_constraints != NULL)
+	{
+		MEM_freeN(mi->participating_constraints);
+		mi->participating_constraints = NULL;
+		mi->participating_constraint_count = 0;
+	}
+	
+	MEM_freeN(mi);
+	mi = NULL;
+}
+
 static void freeData(ModifierData *md)
 {
 	RigidBodyModifierData *rmd  = (RigidBodyModifierData *)md;
@@ -156,43 +211,9 @@ static void freeData(ModifierData *md)
 		while (rmd->meshIslands.first) {
 			mi = rmd->meshIslands.first;
 			BLI_remlink(&rmd->meshIslands, mi);
-			if (mi->physics_mesh/* && rmd->refresh == FALSE*/) {
-				DM_release(mi->physics_mesh);
-				MEM_freeN(mi->physics_mesh);
-				mi->physics_mesh = NULL;
-			}
-			if (mi->rigidbody) {
-				MEM_freeN(mi->rigidbody);
-				mi->rigidbody = NULL;
-			}
-	
-			if (!rmd->explo_shared) {
-				if (mi->vertco /*&& rmd->refresh == FALSE*/) {
-					MEM_freeN(mi->vertco);
-					mi->vertco = NULL;
-				}
-				if (mi->vertices /*&& rmd->refresh == FALSE*/) {
-					MEM_freeN(mi->vertices);
-					mi->vertices = NULL; //borrowed only !!!
-				}
-			}
-	
-			if (mi->bb != NULL) {
-				MEM_freeN(mi->bb);
-				mi->bb = NULL;
-			}
-			
-			if (mi->participating_constraints != NULL)
-			{
-				MEM_freeN(mi->participating_constraints);
-				mi->participating_constraints = NULL;
-				mi->participating_constraint_count = 0;
-			}
-			
-			MEM_freeN(mi);
-			mi = NULL;
+			freeMeshIsland(rmd, mi);
 		}
-		
+			
 		rmd->meshIslands.first = NULL;
 		rmd->meshIslands.last = NULL;
 		
@@ -200,7 +221,7 @@ static void freeData(ModifierData *md)
 		{
 			NeighborhoodCell* c = rmd->cells.first;
 			BLI_remlink(&rmd->cells, c);
-			MEM_freeN(c->islands);
+		//	MEM_freeN(c->islands);
 			MEM_freeN(c);
 		}
 		rmd->cells.first = NULL;
@@ -392,7 +413,7 @@ static ExplodeModifierData *findPrecedingExploModifier(Object *ob, RigidBodyModi
 	return emd;
 }
 
-static float mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob, BMVert** v_tag, int v_count, float** startco, BMesh* bm_work, MeshIsland*** mi_array, int* mi_count)
+static float mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob, BMVert** v_tag, int v_count, float** startco, BMesh* bm_work /*, MeshIsland*** mi_array, int* mi_count*/)
 {
 	BMesh *bm_new;
 	BMesh *bm_old = bm_work;
@@ -402,7 +423,7 @@ static float mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob, BMVert
 	BMIter iter;
 	DerivedMesh *dm = NULL;
 	
-	*mi_array = MEM_reallocN(*mi_array, sizeof(MeshIsland*) * (*mi_count+1));
+	//*mi_array = MEM_reallocN(*mi_array, sizeof(MeshIsland*) * (*mi_count+1));
 	bm_new = BM_mesh_create(&bm_mesh_allocsize_default);
 	BM_mesh_elem_toolflags_ensure(bm_new);  /* needed for 'duplicate' bmo */
 	
@@ -442,6 +463,8 @@ static float mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob, BMVert
 	mi->vertco = *startco;
 	mi->compound_children = NULL;
 	mi->compound_count = 0;
+	mi->compound_parent = NULL;
+	zero_v3(mi->start_co);
 	
 	BM_mesh_normals_update(bm_new);
 	BM_mesh_minmax(bm_new, min, max, FALSE);
@@ -466,8 +489,8 @@ static float mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob, BMVert
 		rmd->max_vol = vol;
 	}
 	
-	(*mi_array)[*mi_count] = mi;
-	(*mi_count)++;
+	//(*mi_array)[*mi_count] = mi;
+	//(*mi_count)++;
 	
 	//takes VERY long...
 	mi->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi);
@@ -590,7 +613,7 @@ void BM_mesh_join(BMesh** dest, BMesh* src)
 	MEM_freeN(edges);
 }
 
-void mesh_separate_loose_partition(RigidBodyModifierData* rmd, Object* ob, BMesh* bm_work, BMVert** orig_work, int doSplit)
+void mesh_separate_loose_partition(RigidBodyModifierData* rmd, Object* ob, BMesh* bm_work, BMVert** orig_work/*, int doSplit*/)
 {
 	int i, j, tag_counter = 0;
 	BMEdge *e;
@@ -603,13 +626,13 @@ void mesh_separate_loose_partition(RigidBodyModifierData* rmd, Object* ob, BMesh
 	BoundBox* bb;
 	float* startco, min[3], max[3], vol_old = 0, cell_vol = 0;
 	float vol = 0;
-	int mi_count = 0;
-	MeshIsland** mi_array = MEM_callocN(sizeof(MeshIsland*), "mi_array");
+	//int mi_count = 0;
+	//MeshIsland** mi_array = MEM_callocN(sizeof(MeshIsland*), "mi_array");
 
 	/* Clear all selected vertices */
 	BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_INTERNAL_TAG | BM_ELEM_TAG, FALSE);
 	
-	if (rmd->use_cellbased_sim && bm_old->totvert > 0 && !doSplit)
+/*	if (rmd->use_cellbased_sim && bm_old->totvert > 0 && !doSplit)
 	{
 		bb = BKE_boundbox_alloc_unit();
 		BM_mesh_minmax(bm_old, min, max, FALSE);
@@ -620,7 +643,7 @@ void mesh_separate_loose_partition(RigidBodyModifierData* rmd, Object* ob, BMesh
 		MEM_freeN(bb);
 	}
 	
-	cell_vol = rmd->cell_size * rmd->cell_size * rmd->cell_size;
+	cell_vol = rmd->cell_size * rmd->cell_size * rmd->cell_size;*/
 	
 
 	/* A "while (true)" loop should work here as each iteration should
@@ -638,9 +661,6 @@ void mesh_separate_loose_partition(RigidBodyModifierData* rmd, Object* ob, BMesh
 			if (!BM_elem_flag_test(v_seed, BM_ELEM_TAG) && !BM_elem_flag_test(v_seed, BM_ELEM_INTERNAL_TAG)) {
 				break;
 			}
-			//v_seed = BM_iter_at_index(bm_old, BM_VERTS_OF_MESH, NULL, i);
-			//printf("Seed already used %d\n", seedcounter);
-			//seedcounter++;
 		}
 
 		/* No vertices available, can't do anything */
@@ -714,7 +734,7 @@ void mesh_separate_loose_partition(RigidBodyModifierData* rmd, Object* ob, BMesh
 
 		/* Move selection into a separate object */
 		//printf("splitting...\n");
-		vol = mesh_separate_tagged(rmd, ob, v_tag, tag_counter, &startco, bm_old, &mi_array, &mi_count);
+		mesh_separate_tagged(rmd, ob, v_tag, tag_counter, &startco, bm_old /*, &mi_array, &mi_count*/);
 		printf("mesh_separate_tagged: %d %d\n", tot, bm_old->totvert);
 
 		if (tot >= bm_old->totvert) {
@@ -723,105 +743,9 @@ void mesh_separate_loose_partition(RigidBodyModifierData* rmd, Object* ob, BMesh
 
 		seedcounter = tot;
 	}
-
-	//join new meshislands into 1 new, remove other ones
-	if (rmd->use_cellbased_sim && bm_old->totvert > 0 && !doSplit)
-	{
-		int i, j, comp_start = 0, comp_end = 0, l = 0, count = 0;
-		float centroid[3], dummyloc[3], rot[4], min[3], max[3], vol_sum = 0;
-		
-		while (comp_end < mi_count) {
-			
-			BMesh *bm_compound = BM_mesh_create(&bm_mesh_allocsize_default);
-			MeshIsland *mi_compound = MEM_callocN(sizeof(MeshIsland), "mi_compound");
-			mi_compound->vertices = MEM_callocN(sizeof(BMVert*), "compoundverts");
-			mi_compound->vertco = MEM_callocN(sizeof(float), "compoundvertco");
-			mi_compound->vertex_count = 0;
-			mi_compound->compound_children = MEM_callocN(sizeof(MeshIsland*), "compoundchilds");
-			mi_compound->compound_count = 0;
-			
-			for (i = comp_start; i < mi_count; i++)
-			{
-				MeshIsland* mi = mi_array[i];
-				float vol = bbox_vol(mi->bb);
-				
-				if (vol >= cell_vol)
-				{
-					comp_start++;
-					comp_end++;
-				}
-				
-				if ((vol_sum + vol) < cell_vol)
-				{
-					comp_end++;
-					vol_sum += vol;
-				}
-				else
-				{
-					break;
-				}
-			}
-		
-			printf("Joining %d islands with volume %f\n", comp_end - comp_start, vol_sum);
-			for (l = comp_start; l < comp_end; l++)
-			{
-				MeshIsland* mi = mi_array[l];
-				BMesh* bm = DM_to_bmesh(mi->physics_mesh);
-				mi_compound->vertices = MEM_reallocN(mi_compound->vertices, sizeof(BMVert*) * (mi_compound->vertex_count + mi->vertex_count));
-				mi_compound->vertco = MEM_reallocN(mi_compound->vertco, sizeof(float)*3 *(mi_compound->vertex_count + mi->vertex_count));
-				//copy verts and vertco
-				for (j = 0; j < mi->vertex_count; j++)
-				{
-					mi_compound->vertices[mi_compound->vertex_count+j] = mi->vertices[j];
-					mi_compound->vertco[(mi_compound->vertex_count + j)*3] = mi->vertco[j*3];
-					mi_compound->vertco[(mi_compound->vertex_count + j)*3+1] = mi->vertco[j*3+1];
-					mi_compound->vertco[(mi_compound->vertex_count + j)*3+2] = mi->vertco[j*3+2];
-				}
-				mi_compound->vertex_count += mi->vertex_count;
-				
-				BM_mesh_join(&bm_compound, bm); // write this...
-				
-				BLI_remlink(&rmd->meshIslands, mi);
-				mi_compound->compound_children = MEM_reallocN(mi_compound->compound_children, sizeof(MeshIsland*) * (mi_compound->compound_count+1));
-				mi_compound->compound_children[mi_compound->compound_count] = mi; //memorize them and re add them simply later
-				mi_compound->compound_count++;
-				
-				BM_mesh_free(bm);
-				count++;
-			}
-			
-			if (comp_start != comp_end)
-			{
-				//join derived mesh, hmm, maybe via bmesh
-				BM_calc_center_centroid(bm_compound, centroid, FALSE);
-				BM_mesh_minmax(bm_compound, min, max, FALSE);
-				mi_compound->physics_mesh = CDDM_from_bmesh(bm_compound, TRUE);
-				BM_mesh_free(bm_compound);
-				copy_v3_v3(mi_compound->centroid, centroid);
-				mat4_to_loc_quat(dummyloc, rot, ob->obmat);
-				copy_v3_v3(mi_compound->rot, rot);
-				mi_compound->parent_mod = rmd;
-				mi_compound->bb = BKE_boundbox_alloc_unit();
-				BKE_boundbox_init_from_minmax(mi_compound->bb, min, max);
-				mi_compound->participating_constraints = NULL;
-				mi_compound->participating_constraint_count = 0;
-				BLI_addtail(&rmd->meshIslands, mi_compound);
-				
-				comp_start = comp_end;
-				vol_sum = 0;
-			}
-			/*else
-			{
-				comp_end++;
-				comp_start = comp_end;
-			}*/
-		}
-		
-		printf("Total islands examined: %d\n", count);
-	}
 	
-	MEM_freeN(mi_array);
-	mi_count = 0;
+	//MEM_freeN(mi_array);
+	//mi_count = 0;
 }
 
 static void select_linked(BMesh** bm_in)
@@ -952,7 +876,7 @@ float calc_bb_vol(BMesh* bm)
 	return vol;
 }
 
-void halve(RigidBodyModifierData* rmd, Object* ob, int minsize, BMesh** bm_work, BMVert*** orig_work, bool separated, bool doSplit)
+void halve(RigidBodyModifierData* rmd, Object* ob, int minsize, BMesh** bm_work, BMVert*** orig_work, bool separated/*, bool doSplit*/)
 {
 
 	int half;
@@ -968,7 +892,7 @@ void halve(RigidBodyModifierData* rmd, Object* ob, int minsize, BMesh** bm_work,
 	{
 		BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, FALSE);
 		
-		if (rmd->use_cellbased_sim && 0)
+		/*if (rmd->use_cellbased_sim && 0)
 		{
 			float half_vol = vol_old * 0.5f;
 			BM_ITER_MESH(v, &iter, bm_old, BM_VERTS_OF_MESH)
@@ -983,7 +907,7 @@ void halve(RigidBodyModifierData* rmd, Object* ob, int minsize, BMesh** bm_work,
 				}
 			}
 		}
-		else
+		else*/
 		{
 			half = bm_old->totvert / 2;
 			BM_ITER_MESH(v, &iter, bm_old, BM_VERTS_OF_MESH)
@@ -1010,21 +934,21 @@ void halve(RigidBodyModifierData* rmd, Object* ob, int minsize, BMesh** bm_work,
 
 	printf("Old New: %d %d\n", bm_old->totvert, bm_new->totvert);
 	if ((bm_old->totvert <= minsize && bm_old->totvert > 0) || (bm_new->totvert == 0)) {
-		mesh_separate_loose_partition(rmd, ob, bm_old, orig_mod, doSplit);
+		mesh_separate_loose_partition(rmd, ob, bm_old, orig_mod);
 		separated = true;
 	}
 
 	if ((bm_new->totvert <= minsize && bm_new->totvert > 0) || (bm_old->totvert == 0)) {
-		mesh_separate_loose_partition(rmd, ob, bm_new, orig_new, doSplit);
+		mesh_separate_loose_partition(rmd, ob, bm_new, orig_new);
 		separated = true;
 	}
 
 	if ((bm_old->totvert > minsize && bm_new->totvert > 0) || (bm_new->totvert == 0 && !separated)) {
-		halve(rmd, ob, minsize, &bm_old, &orig_mod, separated, doSplit);
+		halve(rmd, ob, minsize, &bm_old, &orig_mod, separated);
 	}
 
 	if ((bm_new->totvert > minsize && bm_old->totvert > 0) || (bm_old->totvert == 0 && !separated)) {
-		halve(rmd, ob, minsize, &bm_new, &orig_new, separated, doSplit);
+		halve(rmd, ob, minsize, &bm_new, &orig_new, separated);
 	}
 
 	MEM_freeN(orig_mod);
@@ -1051,7 +975,7 @@ void mesh_separate_loose(RigidBodyModifierData* rmd, Object* ob)
 		orig_start[v->head.index] = v;
 	}
 
-	halve(rmd, ob, minsize, &bm_work, &orig_start, false, false);
+	halve(rmd, ob, minsize, &bm_work, &orig_start, false);
 
 //	BLI_ghash_free(vhash, NULL, NULL);
 	MEM_freeN(orig_start);
@@ -1088,7 +1012,24 @@ void destroy_compound(RigidBodyModifierData* rmd, Object* ob, MeshIsland *mi)
 	
 	if (mi->compound_count > 0)
 	{
+		int j = 0;
+		RigidBodyShardCon *con;
 		BLI_remlink(&rmd->meshIslands, mi);
+		for (j = 0; j < mi->participating_constraint_count; j++)
+		{
+			con = mi->participating_constraints[i];
+			BLI_remlink(&rmd->meshConstraints, con);
+		}
+	}
+	else
+	{
+		if (mi->rigidbody == NULL)
+		{
+			mi->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi);
+			BKE_rigidbody_calc_shard_mass(ob, mi);
+			BKE_rigidbody_validate_sim_shard(rmd->modifier.scene->rigidbody_world, mi, ob, true);
+			mi->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
+		}
 	}
 	
 	for (i = 0; i < mi->compound_count; i++)
@@ -1103,18 +1044,16 @@ void destroy_compound(RigidBodyModifierData* rmd, Object* ob, MeshIsland *mi)
 		}
 		
 		BLI_addtail(&rmd->meshIslands, mi2);
+		//mi2->compound_parent = NULL;
+		//mi->compound_children[i] = NULL;
 	}
 	
-	if (mi->compound_count > 0)
+	/*if (mi->compound_count > 0)
 	{
-		MEM_freeN(mi->physics_mesh);
-		MEM_freeN(mi->vertices);
-		MEM_freeN(mi->vertco);
-		MEM_freeN(mi->bb);
 		MEM_freeN(mi->compound_children);
+		mi->compound_children = NULL;
 		mi->compound_count = 0;
-		MEM_freeN(mi);
-	}
+	}*/
 }
 
 void select_inner_faces(RigidBodyModifierData* rmd, KDTree* tree, MeshIsland* mi) {
@@ -1616,6 +1555,14 @@ KDTree* make_cell_tree(RigidBodyModifierData* rmd, Object* ob)
 	
 	tree = BLI_kdtree_new(cells[0]*cells[1]*cells[2]);
 	
+	while (rmd->cells.first)
+	{
+		BLI_remlink(&rmd->cells, rmd->cells.first);
+		MEM_freeN(rmd->cells.first);
+	}
+	rmd->cells.first = NULL;
+	rmd->cells.last = NULL;
+	
 	for (i = 0; i < cells[0]; i++)
 	{
 		for (j = 0; j < cells[1]; j++)
@@ -1623,7 +1570,7 @@ KDTree* make_cell_tree(RigidBodyModifierData* rmd, Object* ob)
 			for (k = 0; k < cells[2]; k++)
 			{
 				NeighborhoodCell* cell = MEM_callocN(sizeof(NeighborhoodCell), "cell");
-				cell->islands = MEM_callocN(sizeof(MeshIsland*), "islands");
+				//cell->islands = MEM_callocN(sizeof(MeshIsland*), "islands");
 				
 				co[0] = start[0] + i * csize; //+ csize/2;
 				co[1] = start[1] + j * csize; // + csize/2;
@@ -1639,6 +1586,7 @@ KDTree* make_cell_tree(RigidBodyModifierData* rmd, Object* ob)
 		}
 	}
 	
+	printf("Cells %d\n", BLI_countlist(&rmd->cells));
 	BLI_kdtree_balance(tree);
 	MEM_freeN(bb);
 	dm->release(dm);
@@ -2363,6 +2311,156 @@ void check_face_draw_by_proximity(RigidBodyModifierData* rmd, BMesh* merge_copy)
 	tree = NULL;
 }
 
+void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
+{
+	//join new meshislands into 1 new, remove other ones
+	float centroid[3], dummyloc[3], rot[4], min[3], max[3];
+	int count = BLI_countlist(&rmd->meshIslands);
+	int index = 0, i = 0, j = 0;
+	KDTree *centroidtree = BLI_kdtree_new(count);
+	NeighborhoodCell* cell;
+	KDTreeNearest* n = NULL;
+	MeshIsland** to_remove, *mi;
+	int to_remove_count = 0;
+	
+	//create cell array... / tree (ugh, how inefficient..)
+	KDTree* celltree = make_cell_tree(rmd, ob);
+	BLI_kdtree_free(celltree); //silly but only temporary...
+	to_remove = MEM_callocN(sizeof(MeshIsland*), "to_remove");
+	
+	for (mi = rmd->meshIslands.first; mi; mi = mi->next)
+	{
+		//do this in object space maybe... ? TODO
+		float obj_centr[3];
+		mul_v3_m4v3(obj_centr, ob->obmat, mi->centroid);
+		BLI_kdtree_insert(centroidtree, index, obj_centr, NULL);
+		index++;
+		
+		if (mi->compound_count > 0)
+		{
+			for (i = 0; i < mi->compound_count; i++)
+			{
+				mi->compound_children[i]->compound_parent = NULL;
+			}
+			MEM_freeN(mi->compound_children);
+			mi->compound_count = 0;
+		}
+		mi->compound_parent = NULL;
+	}
+	
+	BLI_kdtree_balance(centroidtree);
+	
+	for (cell = rmd->cells.first; cell; cell = cell->next)
+	{
+		BMesh *bm_compound;
+		BMVert* v;
+		BMIter iter;
+		MeshIsland *mi_compound;
+		int r = BLI_kdtree_range_search(centroidtree, rmd->cell_size, cell->co, NULL, &n);
+		if (r == 0)
+			continue;
+		
+		bm_compound = BM_mesh_create(&bm_mesh_allocsize_default);
+		mi_compound = MEM_callocN(sizeof(MeshIsland), "mi_compound");
+		mi_compound->vertices = MEM_callocN(sizeof(BMVert*), "compoundverts");
+		mi_compound->vertco = MEM_callocN(sizeof(float), "compoundvertco");
+		mi_compound->vertex_count = 0;
+		mi_compound->compound_children = MEM_callocN(sizeof(MeshIsland*), "compoundchilds");
+		mi_compound->compound_count = 0;
+		mi_compound->compound_parent = NULL;
+		
+		printf("Joining %d islands to compound\n", r);
+		for (i = 0; i < r; i++)
+		{
+			MeshIsland *mi = BLI_findlink(&rmd->meshIslands, n[i].index);
+			BMesh *bm;
+			if (mi->compound_parent != NULL || mi->compound_count > 0)
+			{
+				continue;
+			}
+			
+			bm = DM_to_bmesh(mi->physics_mesh);
+			
+			BM_ITER_MESH (v, &iter, bm, BM_VERTS_OF_MESH) {
+				add_v3_v3(v->co, mi->centroid);
+			}
+			
+			mi_compound->vertices = MEM_reallocN(mi_compound->vertices, sizeof(BMVert*) * (mi_compound->vertex_count + mi->vertex_count));
+			mi_compound->vertco = MEM_reallocN(mi_compound->vertco, sizeof(float)*3 *(mi_compound->vertex_count + mi->vertex_count));
+			//copy verts and vertco
+			for (j = 0; j < mi->vertex_count; j++)
+			{
+				mi_compound->vertices[mi_compound->vertex_count+j] = mi->vertices[j];
+				mi_compound->vertco[(mi_compound->vertex_count + j)*3] = mi->vertco[j*3];
+				mi_compound->vertco[(mi_compound->vertex_count + j)*3+1] = mi->vertco[j*3+1];
+				mi_compound->vertco[(mi_compound->vertex_count + j)*3+2] = mi->vertco[j*3+2];
+			}
+			mi_compound->vertex_count += mi->vertex_count;
+			
+			BM_mesh_join(&bm_compound, bm); // write this...
+			
+			//BLI_remlink(&rmd->meshIslands, mi);
+			to_remove = MEM_reallocN(to_remove, sizeof(MeshIsland*) * (to_remove_count+1));
+			to_remove[to_remove_count] = mi;
+			to_remove_count++;
+			
+			mi_compound->compound_children = MEM_reallocN(mi_compound->compound_children, sizeof(MeshIsland*) * (mi_compound->compound_count+1));
+			mi_compound->compound_children[mi_compound->compound_count] = mi; //memorize them and re add them simply later
+			mi->compound_parent = mi_compound;
+			mi_compound->compound_count++;
+			
+			BM_mesh_free(bm);
+			count++;
+		}
+		
+		
+		if (n != NULL)
+		{
+			MEM_freeN(n);
+			n = NULL;
+		}
+		
+		//join derived mesh, hmm, maybe via bmesh
+		BM_calc_center_centroid(bm_compound, centroid, FALSE);
+		for (i = 0; i < mi_compound->compound_count; i++)
+		{
+			//set proper relative starting centroid
+			sub_v3_v3v3(mi_compound->compound_children[i]->start_co, mi_compound->compound_children[i]->centroid, centroid);
+		}
+		
+		//invert_m4_m4(ob->imat, ob->obmat);
+		BM_ITER_MESH (v, &iter, bm_compound, BM_VERTS_OF_MESH) {
+			//then eliminate centroid in vertex coords ?
+			//float obj_centr[3];
+			//mul_v3_m4v3(obj_centr, ob->imat, centroid);
+			sub_v3_v3(v->co, centroid);
+		}
+		
+		BM_mesh_minmax(bm_compound, min, max, FALSE);
+		mi_compound->physics_mesh = CDDM_from_bmesh(bm_compound, TRUE);
+		BM_mesh_free(bm_compound);
+		copy_v3_v3(mi_compound->centroid, centroid);
+		mat4_to_loc_quat(dummyloc, rot, ob->obmat);
+		copy_v3_v3(mi_compound->rot, rot);
+		mi_compound->parent_mod = rmd;
+		mi_compound->bb = BKE_boundbox_alloc_unit();
+		BKE_boundbox_init_from_minmax(mi_compound->bb, min, max);
+		mi_compound->participating_constraints = NULL;
+		mi_compound->participating_constraint_count = 0;
+		BLI_addtail(&rmd->meshIslands, mi_compound);
+	}
+	
+	//clean up compound children
+	for (i = 0; i < to_remove_count; i++)
+	{
+		BLI_remlink(&rmd->meshIslands, to_remove[i]);
+	}
+	
+	if (to_remove != NULL)
+		MEM_freeN(to_remove);
+	BLI_kdtree_free(centroidtree);
+}
+
 static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 								  DerivedMesh *dm,
 								  ModifierApplyFlag UNUSED(flag))
@@ -2385,12 +2483,6 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		{
 			rmd->idmap = BLI_ghash_int_new("rmd->idmap");
 			copy_m4_m4(rmd->origmat, ob->obmat);
-		//	rmd->visible_mesh = DM_to_bmesh(dm);
-		/*	if (rmd->visible_mesh != NULL) {
-				BKE_submesh_free(rmd->storage);
-				rmd->storage = NULL;
-				//rmd->storage = BKE_bmesh_to_submesh(rmd->visible_mesh);
-			}*/
 	
 			//grab neighborhood info (and whole fracture info -> cells) if available, if explo before rmd
 			emd = findPrecedingExploModifier(ob, rmd);
@@ -2462,6 +2554,21 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			
 			printf("Islands: %d\n", BLI_countlist(&rmd->meshIslands));
 		}
+		
+		if (rmd->use_cellbased_sim)
+		{
+			MeshIsland* mi;
+			//create Compounds HERE....go through all cells, find meshislands around cell centroids (make separate island tree)
+			//and compound them together (storing in first=closest compound, removing from meshisland list, adding the compound...
+			start = PIL_check_seconds_timer();
+			for (mi = rmd->meshIslands.first; mi; mi = mi->next)
+			{
+				destroy_compound(rmd, ob, mi); //clean up old compounds first...
+			}
+			buildCompounds(rmd, ob);
+			printf("Building compounds done, %g\n", PIL_check_seconds_timer() - start);
+			printf("Compound Islands: %d\n", BLI_countlist(&rmd->meshIslands));
+		}
 	
 		start = PIL_check_seconds_timer();
 		if ((rmd->visible_mesh != NULL) && ((rmd->use_constraints) || (rmd->auto_merge))) {
@@ -2474,9 +2581,6 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		printf("Building constraints done, %g\n", PIL_check_seconds_timer() - start); 
 		printf("Constraints: %d\n", BLI_countlist(&rmd->meshConstraints));
 		
-//		len = BLI_countlist(&rmd->meshIslands);
-//		rmd->id_storage = MEM_mallocN(sizeof(int) * len, "rmd->id_storage");
-//		rmd->index_storage = MEM_mallocN(sizeof(int) * len, "rmd->index_storage");
 		rmd->refresh = FALSE;
 		rmd->refresh_constraints = FALSE;
 	}
