@@ -1302,9 +1302,10 @@ typedef struct MeshIsland {
 	int vertex_count, id, neighbor_count, is_at_boundary;
 	float centroid[3], start_co[3];
 	float rot[4]; //hrm, need this for constraints probably
+	float destruction_frame;
 	int linear_index;  //index in rigidbody world
 	int compound_count;
-	char pad[4];
+	//char pad[4];
 } MeshIsland;
 
 typedef struct RigidBodyModifierData {
@@ -1314,7 +1315,7 @@ typedef struct RigidBodyModifierData {
 	ListBase meshIslands, meshConstraints, cells;
 	int	**sel_indexes, *index_storage, *id_storage;
 	int (*vol_check)(struct RigidBodyModifierData *rmd, struct MeshIsland *mi);
-	void (*split)(struct RigidBodyModifierData *rmd, struct Object *ob, struct MeshIsland *mi);
+	void (*split)(struct RigidBodyModifierData *rmd, struct Object *ob, struct MeshIsland *mi, float cfra);
 	struct GHash *idmap;
 	int refresh, use_constraints, mass_dependent_thresholds, auto_merge, sel_counter;
 	int inner_constraint_type, dist_dependent_thresholds, refresh_constraints;

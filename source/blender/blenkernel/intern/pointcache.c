@@ -978,6 +978,7 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUS
 		//need to write dummy data obviously... hmm
 		PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, dummyloc);
 		PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, dummyrot);
+		return 1;
 	}
 
 	if (rbo && rbo->type == RBO_TYPE_ACTIVE && rbo->physics_object) {

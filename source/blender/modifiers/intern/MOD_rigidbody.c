@@ -71,7 +71,7 @@
 //#endif
 
 int vol_check(RigidBodyModifierData *rmd, MeshIsland* mi);
-void destroy_compound(RigidBodyModifierData* rmd, Object *ob, MeshIsland* mi);
+void destroy_compound(RigidBodyModifierData* rmd, Object *ob, MeshIsland* mi, float cfra);
 
 static void initData(ModifierData *md)
 {
@@ -483,6 +483,7 @@ static float mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob, BMVert
 	BKE_boundbox_init_from_minmax(mi->bb, min, max);
 	mi->participating_constraints = NULL;
 	mi->participating_constraint_count = 0;
+	mi->destruction_frame = -1;
 	
 	vol = bbox_vol(mi->bb);
 	if (vol > rmd->max_vol)
@@ -1010,7 +1011,7 @@ void mesh_separate_loose(RigidBodyModifierData* rmd, Object* ob)
 	bm_work = NULL;
 }*/
 
-void destroy_compound(RigidBodyModifierData* rmd, Object* ob, MeshIsland *mi)
+void destroy_compound(RigidBodyModifierData* rmd, Object* ob, MeshIsland *mi, float cfra)
 {
 	//add all children and remove ourself
 	int i = 0;
@@ -1025,6 +1026,7 @@ void destroy_compound(RigidBodyModifierData* rmd, Object* ob, MeshIsland *mi)
 			mi2->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi2);
 			BKE_rigidbody_calc_shard_mass(ob, mi2);
 			mi2->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+			mi2->rigidbody->flag |= RBO_FLAG_INACTIVE_COMPOUND; // do not build constraints between those
 			//linear, angular velocities too ?!
 		//	BKE_rigidbody_validate_sim_shard(rmd->modifier.scene->rigidbody_world, mi2, ob, true);
 		//	mi2->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
@@ -1057,11 +1059,16 @@ void destroy_compound(RigidBodyModifierData* rmd, Object* ob, MeshIsland *mi)
 			}
 		}*/
 		
-		if (mi->rigidbody != NULL)
+		/*if (mi->rigidbody != NULL)
 		{
-			MEM_freeN(mi->rigidbody);
-			mi->rigidbody = NULL;
-		}
+			//MEM_freeN(mi->rigidbody);
+			//mi->rigidbody = NULL;
+		}*/
+		mi->rigidbody->flag &= ~RBO_FLAG_INACTIVE_COMPOUND;
+		mi->destruction_frame = cfra;
+		MEM_freeN(mi->compound_children);
+		mi->compound_children = NULL;
+		mi->compound_count = 0;
 	}
 }
 
@@ -1181,8 +1188,10 @@ static void connect_meshislands(RigidBodyModifierData* rmd, Object* ob, MeshIsla
 {
 	int con_found = FALSE;
 	RigidBodyShardCon *con, *rbsc;
+	bool ok = mi1->rigidbody && !(mi1->rigidbody->flag & RBO_FLAG_INACTIVE_COMPOUND);
+	ok = ok && mi2->rigidbody && !(mi2->rigidbody->flag & RBO_FLAG_INACTIVE_COMPOUND);
 	
-	if (!rmd->use_both_directions && mi1->rigidbody && mi2->rigidbody)
+	if (!rmd->use_both_directions && ok)
 	{
 		//search local constraint list instead of global one !!! saves lots of time
 		int i;
@@ -1216,7 +1225,7 @@ static void connect_meshislands(RigidBodyModifierData* rmd, Object* ob, MeshIsla
 		}*/
 	}
 
-	if (!con_found && mi1->rigidbody && mi2->rigidbody)
+	if (!con_found && ok)
 	{
 		if (rmd->use_constraints) {
 			if (((rmd->constraint_group != NULL) &&
@@ -2367,6 +2376,7 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 		mi_compound->compound_count = 0;
 		mi_compound->compound_parent = NULL;
 		mi_compound->participating_constraint_count = 0;
+		mi_compound->destruction_frame = -1;
 		
 		printf("Joining %d islands to compound\n", r);
 		for (i = 0; i < r; i++)
@@ -2460,6 +2470,7 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 		mi_compound->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi_compound);
 		BKE_rigidbody_calc_shard_mass(ob, mi_compound);
 		mi_compound->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+		mi_compound->rigidbody->flag &= ~RBO_FLAG_INACTIVE_COMPOUND;
 		//BKE_rigidbody_validate_sim_shard(rmd->modifier.scene->rigidbody_world, mi_compound, ob, true);
 		//mi_compound->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
 		

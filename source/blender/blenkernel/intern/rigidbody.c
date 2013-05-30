@@ -58,12 +58,13 @@
 #include "BKE_animsys.h"
 #include "BKE_cdderivedmesh.h"
 #include "BKE_effect.h"
+#include "BKE_global.h"
 #include "BKE_group.h"
-#include "BKE_object.h"
+#include "BKE_library.h"
 #include "BKE_mesh.h"
+#include "BKE_object.h"
 #include "BKE_pointcache.h"
 #include "BKE_rigidbody.h"
-#include "BKE_global.h"
 #include "BKE_utildefines.h"
 #include "BKE_library.h"
 #include "BKE_main.h"
@@ -1727,6 +1728,36 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi
 	return rbo;
 }
 
+RigidBodyWorld *BKE_rigidbody_world_copy(RigidBodyWorld *rbw)
+{
+	RigidBodyWorld *rbwn = MEM_dupallocN(rbw);
+
+	if (rbw->effector_weights)
+		rbwn->effector_weights = MEM_dupallocN(rbw->effector_weights);
+	if (rbwn->group)
+		id_us_plus(&rbwn->group->id);
+	if (rbwn->constraints)
+		id_us_plus(&rbwn->constraints->id);
+
+	rbwn->pointcache = BKE_ptcache_copy_list(&rbwn->ptcaches, &rbw->ptcaches, FALSE);
+
+	rbwn->objects = NULL;
+	rbwn->physics_world = NULL;
+	rbwn->numbodies = 0;
+
+	return rbwn;
+}
+
+void BKE_rigidbody_world_groups_relink(RigidBodyWorld *rbw)
+{
+	if (rbw->group && rbw->group->id.newid)
+		rbw->group = (Group *)rbw->group->id.newid;
+	if (rbw->constraints && rbw->constraints->id.newid)
+		rbw->constraints = (Group *)rbw->constraints->id.newid;
+	if (rbw->effector_weights->group && rbw->effector_weights->group->id.newid)
+		rbw->effector_weights->group = (Group *)rbw->effector_weights->group->id.newid;
+}
+
 /* Add rigid body settings to the specified object */
 RigidBodyOb *BKE_rigidbody_create_object(Scene *scene, Object *ob, short type)
 {
@@ -2681,7 +2712,6 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 						add_v3_v3(rbo->pos, centr);
 					}
 					BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn);
-
 				}
 				break;
 			}
@@ -2927,6 +2957,8 @@ void BKE_rigidbody_validate_sim_object(RigidBodyWorld *rbw, Object *ob, short re
 void BKE_rigidbody_validate_sim_constraint(RigidBodyWorld *rbw, Object *ob, short rebuild) {}
 void BKE_rigidbody_validate_sim_world(Scene *scene, RigidBodyWorld *rbw, short rebuild) {}
 struct RigidBodyWorld *BKE_rigidbody_create_world(Scene *scene) { return NULL; }
+struct RigidBodyWorld *BKE_rigidbody_world_copy(RigidBodyWorld *rbw) { return NULL; }
+void BKE_rigidbody_world_groups_relink(struct RigidBodyWorld *rbw) {}
 struct RigidBodyOb *BKE_rigidbody_create_object(Scene *scene, Object *ob, short type) { return NULL; }
 struct RigidBodyCon *BKE_rigidbody_create_constraint(Scene *scene, Object *ob, short type) { return NULL; }
 struct RigidBodyWorld *BKE_rigidbody_get_world(Scene *scene) { return NULL; }
