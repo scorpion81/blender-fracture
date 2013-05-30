@@ -1034,13 +1034,15 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 			RB_body_delete(rbo->physics_object);
 		}
 
-		copy_v3_v3(centr, mi->centroid);
+		/*copy_v3_v3(centr, mi->centroid);
 		mat4_to_loc_quat(loc, rot, ob->obmat); //offset
 		mat4_to_size(size, ob->obmat);
 		mul_v3_v3(centr, size);
 		mul_qt_v3(rot, centr);
-		add_v3_v3(loc, centr);
-
+		add_v3_v3(loc, centr);*/
+		copy_v3_v3(loc, rbo->pos);
+		copy_v4_v4(rot, rbo->orn);
+		
 		rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot);
 
 		RB_body_set_friction(rbo->physics_object, rbo->friction);
@@ -1719,7 +1721,7 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi
 	add_v3_v3(rbo->pos, centr);
 
 	/* flag cache as outdated */
-	BKE_rigidbody_cache_reset(rbw);
+	//BKE_rigidbody_cache_reset(rbw);
 
 	/* return this object */
 	return rbo;
@@ -2310,10 +2312,10 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 						//rebuildcon = TRUE;
 					}
 					
-					/*if (rbw->rebuild_comp_con) {
-						rmd->refresh_constraints = TRUE;
+					if (rbw->rebuild_comp_con) {
+						//rmd->refresh_constraints = TRUE;
 						rbw->rebuild_comp_con = FALSE;
-					}*/
+					}
 					break;
 				}
 			}
@@ -2321,19 +2323,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 			if (isModifierActive(rmd)) {
 				float max_con_mass = 0;
 				float min_con_dist = FLT_MAX;
-				
-				if (rmd->use_cellbased_sim) //bullet crash, todo...
-				{
-					for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
-						if (isDisconnected(mi))
-						{
-							rmd->split(rmd, ob, mi);
-						}
-					}
-					
-					//rigidbody_update_ob_array(rbw);
-				}
-
+			
 				//BKE_object_where_is_calc(scene, ob);
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 					if (mi->rigidbody == NULL) {
@@ -2399,11 +2389,6 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 					/* update simulation object... */
 					rigidbody_update_sim_ob(scene, rbw, ob, mi->rigidbody, mi->centroid);
 				}
-				
-				/*if (rmd->use_cellbased_sim)
-				{
-					rigidbody_update_ob_array(rbw);
-				}*/
 
 				if (rmd->mass_dependent_thresholds)
 				{
@@ -2465,6 +2450,19 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 					}
 
 					rbsc->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
+					
+					if (rmd->use_cellbased_sim) //bullet crash, todo...
+					{
+						for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+							if (isDisconnected(mi))
+							{
+								rmd->split(rmd, ob, mi);
+								
+							}
+							//validateShard(rbw, mi, ob, rebuild);
+						}
+						
+					}
 				}
 			}
 			else
@@ -2861,7 +2859,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 			rbw->object_changed = FALSE;
 			rigidbody_update_simulation(scene, rbw, true);
 		}
-		rbw->rebuild_comp_con = FALSE;
+		rbw->rebuild_comp_con = TRUE;
 		return;
 	}
 	/* make sure we don't go out of cache frame range */

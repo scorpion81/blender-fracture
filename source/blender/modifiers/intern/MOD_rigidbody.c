@@ -1014,6 +1014,8 @@ void destroy_compound(RigidBodyModifierData* rmd, Object* ob, MeshIsland *mi)
 {
 	//add all children and remove ourself
 	int i = 0;
+	float centr[3], size[3];
+	mat4_to_size(size, ob->obmat);
 	
 	for (i = 0; i < mi->compound_count; i++)
 	{
@@ -1023,13 +1025,20 @@ void destroy_compound(RigidBodyModifierData* rmd, Object* ob, MeshIsland *mi)
 			mi2->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi2);
 			BKE_rigidbody_calc_shard_mass(ob, mi2);
 			mi2->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+			//linear, angular velocities too ?!
 		//	BKE_rigidbody_validate_sim_shard(rmd->modifier.scene->rigidbody_world, mi2, ob, true);
 		//	mi2->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
 		}
 		
-		//BLI_addtail(&rmd->meshIslands, mi2);
-		//mi2->compound_parent = NULL;
-		//mi->compound_children[i] = NULL;
+		if (mi->rigidbody != NULL)
+		{
+			copy_v3_v3(mi2->rigidbody->pos, mi->rigidbody->pos);
+			copy_qt_qt(mi2->rigidbody->orn, mi->rigidbody->orn);
+			copy_v3_v3(centr, mi2->centroid);
+			mul_v3_v3(centr, size);
+			mul_qt_v3(mi2->rigidbody->orn, centr);
+			add_v3_v3(mi2->rigidbody->pos, centr);
+		}
 	}
 	
 	if (mi->compound_count > 0)
@@ -1048,13 +1057,11 @@ void destroy_compound(RigidBodyModifierData* rmd, Object* ob, MeshIsland *mi)
 			}
 		}*/
 		
-		MEM_freeN(mi->rigidbody);
-		mi->rigidbody = NULL;
-		
-		//MEM_freeN(mi->compound_children);
-		//mi->compound_children = NULL;
-		//mi->compound_count = 0;
-		//BKE_rigidbody_cache_reset(rmd->modifier.scene->rigidbody_world);
+		if (mi->rigidbody != NULL)
+		{
+			MEM_freeN(mi->rigidbody);
+			mi->rigidbody = NULL;
+		}
 	}
 }
 
@@ -2322,13 +2329,13 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 	KDTree *centroidtree = BLI_kdtree_new(count);
 	NeighborhoodCell* cell;
 	KDTreeNearest* n = NULL;
-	MeshIsland** to_remove, *mi;
-	int to_remove_count = 0;
+	MeshIsland *mi;
+	//int to_remove_count = 0;
 	
 	//create cell array... / tree (ugh, how inefficient..)
 	KDTree* celltree = make_cell_tree(rmd, ob);
 	BLI_kdtree_free(celltree); //silly but only temporary...
-	to_remove = MEM_callocN(sizeof(MeshIsland*), "to_remove");
+	//to_remove = MEM_callocN(sizeof(MeshIsland*), "to_remove");
 	
 	for (mi = rmd->meshIslands.first; mi; mi = mi->next)
 	{
@@ -2392,9 +2399,9 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 			BM_mesh_join(&bm_compound, bm); // write this...
 			
 			//BLI_remlink(&rmd->meshIslands, mi);
-			to_remove = MEM_reallocN(to_remove, sizeof(MeshIsland*) * (to_remove_count+1));
+			/*to_remove = MEM_reallocN(to_remove, sizeof(MeshIsland*) * (to_remove_count+1));
 			to_remove[to_remove_count] = mi;
-			to_remove_count++;
+			to_remove_count++;*/
 			
 			mi_compound->compound_children = MEM_reallocN(mi_compound->compound_children, sizeof(MeshIsland*) * (mi_compound->compound_count+1));
 			mi_compound->compound_children[mi_compound->compound_count] = mi; //memorize them and re add them simply later
@@ -2417,6 +2424,7 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 			MEM_freeN(mi_compound->vertco);
 			MEM_freeN(mi_compound->compound_children);
 			MEM_freeN(mi_compound);
+			BM_mesh_free(bm_compound);
 			continue;
 		}
 		
@@ -2464,8 +2472,8 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 		BLI_remlink(&rmd->meshIslands, to_remove[i]);
 	}*/
 	
-	if (to_remove != NULL)
-		MEM_freeN(to_remove);
+	//if (to_remove != NULL)
+	//	MEM_freeN(to_remove);
 	BLI_kdtree_free(centroidtree);
 }
 
@@ -2566,6 +2574,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		if (rmd->use_cellbased_sim)
 		{
 			MeshIsland* mi;
+			int i;
 			//create Compounds HERE....go through all cells, find meshislands around cell centroids (make separate island tree)
 			//and compound them together (storing in first=closest compound, removing from meshisland list, adding the compound...
 			start = PIL_check_seconds_timer();
@@ -2573,6 +2582,15 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			{
 				if (mi->compound_count > 0)	//clean up old compounds first
 				{
+					for (i = 0; i < mi->compound_count; i++)
+					{
+						MeshIsland* mi2 = mi->compound_children[i];
+						if (mi2->rigidbody != NULL)
+						{
+							MEM_freeN(mi2->rigidbody);
+							mi2->rigidbody = NULL;
+						}
+					}
 					BLI_remlink(&rmd->meshIslands, mi);
 					freeMeshIsland(rmd, mi);
 				}
