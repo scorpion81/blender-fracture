@@ -1675,7 +1675,8 @@ int filterCallback(void* world, void* island1, void* island2) {
 		return TRUE;
 	}
 	
-	if ((mi1->compound_count > 0) && (mi2->compound_count > 0))
+	if ((mi1->compound_count > 0 && mi1->participating_constraint_count > 0) && 
+		(mi2->compound_count > 0 && mi2->participating_constraint_count > 0))
 	{
 		//disallow collision between intact compounds
 		return FALSE;
