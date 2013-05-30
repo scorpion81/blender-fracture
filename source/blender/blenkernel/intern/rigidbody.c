@@ -847,9 +847,10 @@ static rbCollisionShape *rigidbody_get_shape_compound_from_mi(MeshIsland* mi, Ob
 		BKE_mesh_boundbox_calc(me, loc, size);
 		has_volume = (MIN3(size[0], size[1], size[2]) > 0.0f);
 		
-		mat4_to_loc_quat(loc, rot, ob->obmat);
+		//mat4_to_loc_quat(loc, rot, ob->obmat);
 		mat4_to_size(size, ob->obmat);
-		zero_v3(loc); //use rot / size only
+		zero_v3(loc); //size only
+		unit_qt(rot); //needs to be zeroized, hmm
 		
 		if (!(rbo->flag & RBO_FLAG_USE_MARGIN) && has_volume) {
 			hull_margin = 0.04f;
