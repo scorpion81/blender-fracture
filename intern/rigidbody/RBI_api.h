@@ -224,6 +224,9 @@ extern rbCollisionShape *RB_shape_new_cylinder(float radius, float height);
 
 extern rbCollisionShape *RB_shape_new_convex_hull(float *verts, int stride, int count, float margin, bool *can_embed);
 
+extern rbCollisionShape *RB_shape_new_compound();
+extern void RB_shape_add_compound_child(rbCollisionShape** compound, rbCollisionShape* child, float loc[3], float rot[4]);
+
 /* Setup (Triangle Mesh) ---------- */
 
 /* 1 */

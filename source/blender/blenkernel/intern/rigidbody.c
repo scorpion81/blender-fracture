@@ -798,6 +798,84 @@ static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh(Object *ob)
 	return shape;
 }
 
+static rbCollisionShape *rigidbody_get_shape_compound_from_mi(MeshIsland* mi, Object* ob)
+{
+	int i = 0;
+	rbCollisionShape *child;
+	rbCollisionShape *compound;
+	RigidBodyOb *rbo = mi->rigidbody;
+	
+	if (mi->compound_count > 0)
+	{
+		compound = RB_shape_new_compound();
+	}
+	else
+	{
+		//fall back to convex hull if no children available
+		bool has_volume, can_embed;
+		float hull_margin, loc[3] = {0,0,0}, size[3] = {1,1,1};
+		Mesh* me = BKE_mesh_add(G.main, "_mesh_");
+		
+		DM_to_mesh(mi->physics_mesh, me, NULL, 0);
+		BKE_mesh_boundbox_calc(me, loc, size);
+		has_volume = (MIN3(size[0], size[1], size[2]) > 0.0f);
+		
+		if (!(rbo->flag & RBO_FLAG_USE_MARGIN) && has_volume) {
+			hull_margin = 0.04f;
+			compound = rigidbody_get_shape_convexhull_from_mesh(me, hull_margin, &can_embed);
+			
+			if (!(rbo->flag & RBO_FLAG_USE_MARGIN))
+				rbo->margin = (can_embed && has_volume) ? 0.04f : 0.0f;  /* RB_TODO ideally we shouldn't directly change the margin here */
+		}
+		else {
+			printf("ERROR: cannot make Convex Hull collision shape for non-Mesh object\n");
+		}
+		
+		BKE_libblock_free_us(&(G.main->mesh), me);
+		me = NULL;
+		return compound;
+	}
+	
+	for (i = 0; i < mi->compound_count; i++)
+	{
+		MeshIsland *mi2 = mi->compound_children[i];
+		Mesh* me = BKE_mesh_add(G.main, "_mesh_"); 
+		bool has_volume, can_embed;
+		float hull_margin, loc[3] = {0,0,0}, size[3] = {1,1,1}, rot[4], centr[3];
+		
+		DM_to_mesh(mi2->physics_mesh, me, NULL, 0);
+		BKE_mesh_boundbox_calc(me, loc, size);
+		has_volume = (MIN3(size[0], size[1], size[2]) > 0.0f);
+		
+		mat4_to_loc_quat(loc, rot, ob->obmat);
+		mat4_to_size(size, ob->obmat);
+		zero_v3(loc); //use rot / size only
+		
+		if (!(rbo->flag & RBO_FLAG_USE_MARGIN) && has_volume) {
+			hull_margin = 0.04f;
+			child = rigidbody_get_shape_convexhull_from_mesh(me, hull_margin, &can_embed);
+			
+			if (!(rbo->flag & RBO_FLAG_USE_MARGIN))
+				rbo->margin = (can_embed && has_volume) ? 0.04f : 0.0f;  /* RB_TODO ideally we shouldn't directly change the margin here */
+			
+			copy_v3_v3(centr, mi2->centroid);
+			mul_v3_v3(centr, size);
+			mul_qt_v3(rot, centr);
+			add_v3_v3(loc, centr);
+			
+			RB_shape_add_compound_child(&compound, child, loc, rot);
+		}
+		else {
+			printf("ERROR: cannot make Convex Hull collision shape for non-Mesh object\n");
+		}
+
+		BKE_libblock_free_us(&(G.main->mesh), me);
+		me = NULL;
+	}
+	
+	return compound;
+}
+
 /* Create new physics sim collision shape for object and store it,
  * or remove the existing one first and replace...
  */
@@ -869,6 +947,7 @@ void BKE_rigidbody_validate_sim_shape(Object *ob, short rebuild)
 			break;
 
 		case RB_SHAPE_CONVEXH:
+		case RB_SHAPE_COMPOUND: //for now... 
 			/* try to emged collision margin */
 			has_volume = (MIN3(size[0], size[1], size[2]) > 0.0f);
 	
@@ -918,9 +997,8 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland* mi, Object* ob, short re
 	bool can_embed = true;
 	bool has_volume;
 	int v;
-	Mesh *me = BKE_mesh_add(G.main, "_mesh_"); // TODO need to delete this again
-
-
+	Mesh *me;
+	
 	/* sanity check */
 	if (rbo == NULL)
 		return;
@@ -929,33 +1007,33 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland* mi, Object* ob, short re
 	if (rbo->physics_shape && !rebuild)
 		return;
 	
-	/*if (mi->physics_mesh->numVertData < 1)
+	if (rbo->shape != RB_SHAPE_COMPOUND)
 	{
-		return;
-	}*/
-
-	/* if automatically determining dimensions, use the Object's boundbox
-	 *	- assume that all quadrics are standing upright on local z-axis
-	 *	- assume even distribution of mass around the Object's pivot
-	 *	  (i.e. Object pivot is centralized in boundbox)
-	 */
-	// XXX: all dimensions are auto-determined now... later can add stored settings for this
-	/* get object dimensions without scaling */
-    //BM_mesh_bm_to_me(mi->physics_mesh, me, FALSE);
-    DM_to_mesh(mi->physics_mesh, me, NULL, 0);
-
-	BKE_mesh_boundbox_calc(me, loc, size);
-
-	if (ELEM3(rbo->shape, RB_SHAPE_CAPSULE, RB_SHAPE_CYLINDER, RB_SHAPE_CONE)) {
-		/* take radius as largest x/y dimension, and height as z-dimension */
-		radius = MAX2(size[0], size[1]);
-		height = size[2];
+		me = BKE_mesh_add(G.main, "_mesh_"); // TODO need to delete this again
+		
+		/* if automatically determining dimensions, use the Object's boundbox
+		 *	- assume that all quadrics are standing upright on local z-axis
+		 *	- assume even distribution of mass around the Object's pivot
+		 *	  (i.e. Object pivot is centralized in boundbox)
+		 */
+		// XXX: all dimensions are auto-determined now... later can add stored settings for this
+		/* get object dimensions without scaling */
+		//BM_mesh_bm_to_me(mi->physics_mesh, me, FALSE);
+		DM_to_mesh(mi->physics_mesh, me, NULL, 0);
+	
+		BKE_mesh_boundbox_calc(me, loc, size);
+	
+		if (ELEM3(rbo->shape, RB_SHAPE_CAPSULE, RB_SHAPE_CYLINDER, RB_SHAPE_CONE)) {
+			/* take radius as largest x/y dimension, and height as z-dimension */
+			radius = MAX2(size[0], size[1]);
+			height = size[2];
+		}
+		else if (rbo->shape == RB_SHAPE_SPHERE) {
+			/* take radius to the the largest dimension to try and encompass everything */
+			radius = MAX3(size[0], size[1], size[2]);
+		}
 	}
-	else if (rbo->shape == RB_SHAPE_SPHERE) {
-		/* take radius to the the largest dimension to try and encompass everything */
-		radius = MAX3(size[0], size[1], size[2]);
-	}
-
+	
 	/* create new shape */
 	switch (rbo->shape) {
 		case RB_SHAPE_BOX:
@@ -990,6 +1068,9 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland* mi, Object* ob, short re
 		case RB_SHAPE_TRIMESH:
 			new_shape = rigidbody_get_shape_trimesh_from_mesh_shard(me, ob);
 			break;
+		case RB_SHAPE_COMPOUND:
+			new_shape = rigidbody_get_shape_compound_from_mi(mi, ob);
+			break;
 	}
 	/* assign new collision shape if creation was successful */
 	if (new_shape) {
@@ -1004,8 +1085,11 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland* mi, Object* ob, short re
 	}
 
 	//delete mesh block, bullet shouldnt care about blender blocks
-	BKE_libblock_free_us(&(G.main->mesh), me);
-	me = NULL;
+	if (rbo->shape != RB_SHAPE_COMPOUND)
+	{
+		BKE_libblock_free_us(&(G.main->mesh), me);
+		me = NULL;
+	}
 }
 
 
@@ -1582,7 +1666,7 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 int filterCallback(void* world, void* island1, void* island2) {
 	RigidBodyWorld* rbw = (RigidBodyWorld*)world;
 	MeshIsland* mi1, *mi2;
-	int ob_index1, ob_index2;
+	//int ob_index1, ob_index2;
 
 	mi1 = (MeshIsland*)island1;
 	mi2 = (MeshIsland*)island2;
@@ -1590,8 +1674,21 @@ int filterCallback(void* world, void* island1, void* island2) {
 	if ((mi1 == NULL) || (mi2 == NULL)) {
 		return TRUE;
 	}
+	
+	if ((mi1->compound_count > 0) && (mi2->compound_count > 0))
+	{
+		//disallow collision between intact compounds
+		return FALSE;
+	}
+	
+	if ((mi1->destruction_frame > -1) || (mi2->destruction_frame > -1))
+	{
+		//disallow collision between destroyed compounds...
+		return FALSE;
+	}
+	return TRUE;
 
-	ob_index1 = rbw->cache_index_map[mi1->linear_index];
+	/*ob_index1 = rbw->cache_index_map[mi1->linear_index];
 	ob_index2 = rbw->cache_index_map[mi2->linear_index];
 
 	if ((mi1->rigidbody->flag & RBO_FLAG_START_DEACTIVATED) ||
@@ -1601,7 +1698,7 @@ int filterCallback(void* world, void* island1, void* island2) {
 	else
 	{
 		return TRUE;
-	}
+	}*/
 }
 
 /* --------------------- */
@@ -1617,7 +1714,7 @@ void BKE_rigidbody_validate_sim_world(Scene *scene, RigidBodyWorld *rbw, short r
 	if (rebuild || rbw->physics_world == NULL) {
 		if (rbw->physics_world)
 			RB_dworld_delete(rbw->physics_world);
-		rbw->physics_world = RB_dworld_new(scene->physics_settings.gravity, rbw, NULL/*filterCallback*/);
+		rbw->physics_world = RB_dworld_new(scene->physics_settings.gravity, rbw, filterCallback);
 	}
 
 	RB_dworld_set_solver_iterations(rbw->physics_world, rbw->num_solver_iterations);

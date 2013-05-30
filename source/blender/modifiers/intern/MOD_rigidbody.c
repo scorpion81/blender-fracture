@@ -494,12 +494,12 @@ static float mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob, BMVert
 	//(*mi_array)[*mi_count] = mi;
 	//(*mi_count)++;
 	
-	mi->rigidbody = NULL;
-	//takes VERY long...
 	if (!rmd->use_cellbased_sim)
 	{
 		mi->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi);
 		BKE_rigidbody_calc_shard_mass(ob, mi);
+	//mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+	//mi->rigidbody->flag |= RBO_FLAG_INACTIVE_COMPOUND;
 		BKE_rigidbody_validate_sim_shard(rmd->modifier.scene->rigidbody_world, mi, ob, true);
 		mi->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
 	}

@@ -716,6 +716,26 @@ rbCollisionShape *RB_shape_new_convex_hull(float *verts, int stride, int count, 
 	return shape;
 }
 
+//compound shapes
+rbCollisionShape *RB_shape_new_compound()
+{
+	rbCollisionShape *shape = new rbCollisionShape;
+	shape->cshape = new btCompoundShape();
+	shape->mesh = NULL;
+	return shape;
+}
+
+void RB_shape_add_compound_child(rbCollisionShape** compound, rbCollisionShape* child, float loc[3], float rot[4])
+{
+	btCompoundShape *comp = reinterpret_cast<btCompoundShape*>((*compound)->cshape);
+	btCollisionShape* ch = child->cshape;
+	btTransform trans;
+	trans.setOrigin(btVector3(loc[0], loc[1], loc[2]));
+	trans.setRotation(btQuaternion(rot[1], rot[2], rot[3], rot[0]));
+	
+	comp->addChildShape(trans, ch);
+}
+
 /* Setup (Triangle Mesh) ---------- */
 
 /* Need to call rbTriMeshNewData() followed by rbTriMeshAddTriangle() several times 
