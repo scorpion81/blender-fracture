@@ -820,16 +820,13 @@ static rbCollisionShape *rigidbody_get_shape_compound_from_mi(MeshIsland* mi, Ob
 		BKE_mesh_boundbox_calc(me, loc, size);
 		has_volume = (MIN3(size[0], size[1], size[2]) > 0.0f);
 		
-		if (!(rbo->flag & RBO_FLAG_USE_MARGIN) && has_volume) {
+		if (!(rbo->flag & RBO_FLAG_USE_MARGIN) && has_volume) 
 			hull_margin = 0.04f;
-			compound = rigidbody_get_shape_convexhull_from_mesh(me, hull_margin, &can_embed);
+		
+		compound = rigidbody_get_shape_convexhull_from_mesh(me, hull_margin, &can_embed);
 			
-			if (!(rbo->flag & RBO_FLAG_USE_MARGIN))
-				rbo->margin = (can_embed && has_volume) ? 0.04f : 0.0f;  /* RB_TODO ideally we shouldn't directly change the margin here */
-		}
-		else {
-			printf("ERROR: cannot make Convex Hull collision shape for non-Mesh object\n");
-		}
+		if (!(rbo->flag & RBO_FLAG_USE_MARGIN))
+			rbo->margin = (can_embed && has_volume) ? 0.04f : 0.0f;  /* RB_TODO ideally we shouldn't directly change the margin here */
 		
 		BKE_libblock_free_us(&(G.main->mesh), me);
 		me = NULL;
@@ -852,23 +849,20 @@ static rbCollisionShape *rigidbody_get_shape_compound_from_mi(MeshIsland* mi, Ob
 		zero_v3(loc); //size only
 		unit_qt(rot); //needs to be zeroized, hmm
 		
-		if (!(rbo->flag & RBO_FLAG_USE_MARGIN) && has_volume) {
+		if (!(rbo->flag & RBO_FLAG_USE_MARGIN) && has_volume) 
 			hull_margin = 0.04f;
-			child = rigidbody_get_shape_convexhull_from_mesh(me, hull_margin, &can_embed);
+		
+		child = rigidbody_get_shape_convexhull_from_mesh(me, hull_margin, &can_embed);
 			
-			if (!(rbo->flag & RBO_FLAG_USE_MARGIN))
-				rbo->margin = (can_embed && has_volume) ? 0.04f : 0.0f;  /* RB_TODO ideally we shouldn't directly change the margin here */
+		if (!(rbo->flag & RBO_FLAG_USE_MARGIN))
+			rbo->margin = (can_embed && has_volume) ? 0.04f : 0.0f;  /* RB_TODO ideally we shouldn't directly change the margin here */
 			
-			copy_v3_v3(centr, mi2->centroid);
-			mul_v3_v3(centr, size);
-			mul_qt_v3(rot, centr);
-			add_v3_v3(loc, centr);
+		copy_v3_v3(centr, mi2->centroid);
+		mul_v3_v3(centr, size);
+		mul_qt_v3(rot, centr);
+		add_v3_v3(loc, centr);
 			
-			RB_shape_add_compound_child(&compound, child, loc, rot);
-		}
-		else {
-			printf("ERROR: cannot make Convex Hull collision shape for non-Mesh object\n");
-		}
+		RB_shape_add_compound_child(&compound, child, loc, rot);
 
 		BKE_libblock_free_us(&(G.main->mesh), me);
 		me = NULL;
