@@ -106,6 +106,13 @@
 #  include "BLI_winstuff.h"
 #endif
 
+#ifdef WIN32
+    #ifndef NAN
+        static const unsigned long __nan[2] = {0xffffffff, 0x7fffffff};
+        #define NAN (*(const float *) __nan)
+    #endif
+#endif
+
 #define PTCACHE_DATA_FROM(data, type, from)  \
 	if (data[type]) { \
 		memcpy(data[type], from, ptcache_data_size[type]); \

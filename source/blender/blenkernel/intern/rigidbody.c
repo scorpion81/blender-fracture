@@ -73,6 +73,13 @@
 #include "RNA_access.h"
 #include "bmesh.h"
 
+#ifdef WIN32
+    #ifndef NAN
+        static const unsigned long __nan[2] = {0xffffffff, 0x7fffffff};
+        #define NAN (*(const float *) __nan)
+    #endif
+#endif
+
 #ifdef WITH_BULLET
 
 static bool isModifierActive(RigidBodyModifierData* rmd) {
