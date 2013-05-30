@@ -1662,6 +1662,27 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 	}
 }
 
+bool isDisconnected(MeshIsland *mi)
+{
+	int cons = 0, broken_cons = 0, i;
+	RigidBodyShardCon* con;
+	cons = mi->participating_constraint_count;
+	//calc ratio of broken cons here, per Mi and flag the rest to be broken too
+	for (i = 0; i < cons; i++)
+	{
+		con = mi->participating_constraints[i];
+		if (con && con->physics_constraint)
+		{
+			if (!RB_constraint_is_enabled(con->physics_constraint))
+			{
+				broken_cons++;
+			}
+		}
+	}
+	
+	return (cons == broken_cons) && (cons > 0);
+}
+
 //this allows partial object activation, only some shards will be activated, called from bullet(!)
 int filterCallback(void* world, void* island1, void* island2) {
 	RigidBodyWorld* rbw = (RigidBodyWorld*)world;
@@ -1675,8 +1696,8 @@ int filterCallback(void* world, void* island1, void* island2) {
 		return TRUE;
 	}
 	
-	if ((mi1->compound_count > 0 && mi1->participating_constraint_count > 0) && 
-		(mi2->compound_count > 0 && mi2->participating_constraint_count > 0))
+	if ((mi1->compound_count > 0 && !isDisconnected(mi1)) && 
+		(mi2->compound_count > 0 && !isDisconnected(mi2)))
 	{
 		//disallow collision between intact compounds
 		return FALSE;
@@ -2054,6 +2075,47 @@ RigidBodyWorld *BKE_rigidbody_get_world(Scene *scene)
 	return scene->rigidbody_world;
 }
 
+void BKE_rigidbody_remove_shard_con(Scene* scene, RigidBodyShardCon* con)
+{
+	RigidBodyWorld *rbw = scene->rigidbody_world;
+	if (rbw && rbw->physics_world && con->physics_constraint) {
+		RB_dworld_remove_constraint(rbw->physics_world, con->physics_constraint);
+		RB_constraint_delete(con->physics_constraint);
+		con->physics_constraint = NULL;
+	}
+}
+
+void BKE_rigidbody_remove_shard(Scene* scene, MeshIsland *mi)
+{
+	RigidBodyWorld *rbw = scene->rigidbody_world;
+	int i = 0;
+	
+	if (mi->rigidbody != NULL) {
+		
+		RigidBodyShardCon *con;
+		for (i = 0; i < mi->participating_constraint_count; i++)
+		{	
+			con = mi->participating_constraints[i];
+			BKE_rigidbody_remove_shard_con(scene, con);
+		}
+		
+		if (rbw->physics_world && mi->rigidbody && mi->rigidbody->physics_object)
+			RB_dworld_remove_body(rbw->physics_world, mi->rigidbody->physics_object);
+		if (mi->rigidbody->physics_object) {
+			RB_body_delete(mi->rigidbody->physics_object);
+			mi->rigidbody->physics_object = NULL;
+		}
+
+		if (mi->rigidbody->physics_shape) {
+			RB_shape_delete(mi->rigidbody->physics_shape);
+			mi->rigidbody->physics_shape = NULL;
+		}
+		
+		//this SHOULD be the correct global index
+		rbw->cache_index_map[mi->linear_index] = NULL;
+	}
+}
+
 void BKE_rigidbody_remove_object(Scene *scene, Object *ob)
 {
 	RigidBodyWorld *rbw = scene->rigidbody_world;
@@ -2386,27 +2448,6 @@ static void validateShard(RigidBodyWorld *rbw, MeshIsland* mi, Object* ob, int r
 		RB_body_set_collision_shape(mi->rigidbody->physics_object, mi->rigidbody->physics_shape);
 	}
 	mi->rigidbody->flag &= ~(RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
-}
-
-bool isDisconnected(MeshIsland *mi)
-{
-	int cons = 0, broken_cons = 0, i;
-	RigidBodyShardCon* con;
-	cons = mi->participating_constraint_count;
-	//calc ratio of broken cons here, per Mi and flag the rest to be broken too
-	for (i = 0; i < cons; i++)
-	{
-		con = mi->participating_constraints[i];
-		if (con && con->physics_constraint)
-		{
-			if (!RB_constraint_is_enabled(con->physics_constraint))
-			{
-				broken_cons++;
-			}
-		}
-	}
-	
-	return (cons == broken_cons) && (cons > 0);
 }
 
 /* Updates and validates world, bodies and shapes.

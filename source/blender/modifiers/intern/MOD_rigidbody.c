@@ -216,16 +216,6 @@ static void freeData(ModifierData *md)
 			
 		rmd->meshIslands.first = NULL;
 		rmd->meshIslands.last = NULL;
-		
-		while (rmd->cells.first)
-		{
-			NeighborhoodCell* c = rmd->cells.first;
-			BLI_remlink(&rmd->cells, c);
-		//	MEM_freeN(c->islands);
-			MEM_freeN(c);
-		}
-		rmd->cells.first = NULL;
-		rmd->cells.last = NULL;
 	
 		if (!rmd->explo_shared) {
 			if (rmd->visible_mesh != NULL)
@@ -263,6 +253,15 @@ static void freeData(ModifierData *md)
 			}
 		}
 	}
+	
+	while (rmd->cells.first)
+	{
+		NeighborhoodCell* c = rmd->cells.first;
+		BLI_remlink(&rmd->cells, c);
+		MEM_freeN(c);
+	}
+	rmd->cells.first = NULL;
+	rmd->cells.last = NULL;
 
 	while (rmd->meshConstraints.first) {
 		rbsc = rmd->meshConstraints.first;
@@ -500,8 +499,8 @@ static float mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob, BMVert
 		BKE_rigidbody_calc_shard_mass(ob, mi);
 	//mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 	//mi->rigidbody->flag |= RBO_FLAG_INACTIVE_COMPOUND;
-		BKE_rigidbody_validate_sim_shard(rmd->modifier.scene->rigidbody_world, mi, ob, true);
-		mi->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
+		//BKE_rigidbody_validate_sim_shard(rmd->modifier.scene->rigidbody_world, mi, ob, true);
+		//mi->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
 	}
 	
 	/* deselect loose data - this used to get deleted,
@@ -1026,7 +1025,7 @@ void destroy_compound(RigidBodyModifierData* rmd, Object* ob, MeshIsland *mi, fl
 			mi2->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi2);
 			BKE_rigidbody_calc_shard_mass(ob, mi2);
 			mi2->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
-			mi2->rigidbody->flag |= RBO_FLAG_INACTIVE_COMPOUND; // do not build constraints between those
+			mi2->rigidbody->flag |= RBO_FLAG_ACTIVE_COMPOUND; // do not build constraints between those
 			//linear, angular velocities too ?!
 		//	BKE_rigidbody_validate_sim_shard(rmd->modifier.scene->rigidbody_world, mi2, ob, true);
 		//	mi2->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
@@ -1045,30 +1044,14 @@ void destroy_compound(RigidBodyModifierData* rmd, Object* ob, MeshIsland *mi, fl
 	
 	if (mi->compound_count > 0)
 	{
-		int j = 0;
-		RigidBodyShardCon *con;
-		//BLI_remlink(&rmd->meshIslands, mi);
-	/*	for (j = 0; j < mi->participating_constraint_count; j++)
+		mi->rigidbody->flag &= ~RBO_FLAG_ACTIVE_COMPOUND;
+		if (mi->destruction_frame < 0)
 		{
-			con = mi->participating_constraints[i];
-			if (con != NULL)
-			{	//weird... should not happen!
-				BLI_remlink(&rmd->meshConstraints, con);
-				MEM_freeN(con);
-				con = NULL;
-			}
-		}*/
-		
-		/*if (mi->rigidbody != NULL)
-		{
-			//MEM_freeN(mi->rigidbody);
-			//mi->rigidbody = NULL;
-		}*/
-		mi->rigidbody->flag &= ~RBO_FLAG_INACTIVE_COMPOUND;
-		mi->destruction_frame = cfra;
-		MEM_freeN(mi->compound_children);
+			mi->destruction_frame = cfra;
+		}
+		/*MEM_freeN(mi->compound_children);
 		mi->compound_children = NULL;
-		mi->compound_count = 0;
+		mi->compound_count = 0;*/
 	}
 }
 
@@ -1188,8 +1171,8 @@ static void connect_meshislands(RigidBodyModifierData* rmd, Object* ob, MeshIsla
 {
 	int con_found = FALSE;
 	RigidBodyShardCon *con, *rbsc;
-	bool ok = mi1->rigidbody && !(mi1->rigidbody->flag & RBO_FLAG_INACTIVE_COMPOUND);
-	ok = ok && mi2->rigidbody && !(mi2->rigidbody->flag & RBO_FLAG_INACTIVE_COMPOUND);
+	bool ok = mi1->rigidbody && !(mi1->rigidbody->flag & RBO_FLAG_ACTIVE_COMPOUND);
+	ok = ok && mi2->rigidbody && !(mi2->rigidbody->flag & RBO_FLAG_ACTIVE_COMPOUND);
 	
 	if (!rmd->use_both_directions && ok)
 	{
@@ -1590,9 +1573,9 @@ KDTree* make_cell_tree(RigidBodyModifierData* rmd, Object* ob)
 				NeighborhoodCell* cell = MEM_callocN(sizeof(NeighborhoodCell), "cell");
 				//cell->islands = MEM_callocN(sizeof(MeshIsland*), "islands");
 				
-				co[0] = start[0] + i * csize; //+ csize/2;
-				co[1] = start[1] + j * csize; // + csize/2;
-				co[2] = start[2] + k * csize; //+ csize/2;
+				co[0] = start[0] + i * csize + csize * 0.5f;
+				co[1] = start[1] + j * csize + csize * 0.5f;
+				co[2] = start[2] + k * csize + csize * 0.5f;
 				mul_m4_v3(ob->obmat, co);
 				BLI_kdtree_insert(tree, index, co, NULL);
 				index++;
@@ -2470,7 +2453,7 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 		mi_compound->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi_compound);
 		BKE_rigidbody_calc_shard_mass(ob, mi_compound);
 		mi_compound->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
-		mi_compound->rigidbody->flag &= ~RBO_FLAG_INACTIVE_COMPOUND;
+		mi_compound->rigidbody->flag &= ~RBO_FLAG_ACTIVE_COMPOUND;
 		//BKE_rigidbody_validate_sim_shard(rmd->modifier.scene->rigidbody_world, mi_compound, ob, true);
 		//mi_compound->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
 		
@@ -2598,10 +2581,14 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 						MeshIsland* mi2 = mi->compound_children[i];
 						if (mi2->rigidbody != NULL)
 						{
+							BKE_rigidbody_remove_shard(rmd->modifier.scene, mi2);
 							MEM_freeN(mi2->rigidbody);
 							mi2->rigidbody = NULL;
 						}
+						mi2->destruction_frame = -1;
+						mi2->compound_parent = NULL;
 					}
+					BKE_rigidbody_remove_shard(rmd->modifier.scene, mi);
 					BLI_remlink(&rmd->meshIslands, mi);
 					freeMeshIsland(rmd, mi);
 				}
