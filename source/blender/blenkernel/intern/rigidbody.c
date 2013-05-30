@@ -1696,8 +1696,8 @@ int filterCallback(void* world, void* island1, void* island2) {
 		return TRUE;
 	}
 	
-	if ((mi1->compound_count > 0 && !isDisconnected(mi1)) && 
-		(mi2->compound_count > 0 && !isDisconnected(mi2)))
+	if ((mi1->compound_count > 0 && mi1->participating_constraint_count > 0) && 
+		(mi2->compound_count > 0 && mi2->participating_constraint_count > 0))
 	{
 		//disallow collision between intact compounds
 		return FALSE;
@@ -2112,7 +2112,8 @@ void BKE_rigidbody_remove_shard(Scene* scene, MeshIsland *mi)
 		}
 		
 		//this SHOULD be the correct global index
-		rbw->cache_index_map[mi->linear_index] = NULL;
+		if (rbw->cache_index_map != NULL)
+			rbw->cache_index_map[mi->linear_index] = NULL;
 	}
 }
 
