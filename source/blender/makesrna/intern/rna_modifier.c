@@ -2495,6 +2495,11 @@ static void rna_def_modifier_explode(BlenderRNA *brna)
 	RNA_def_property_int_funcs(prop, NULL, "rna_ExplodeModifier_percentage_set", NULL);
 	RNA_def_property_ui_text(prop, "Percentage", "Percentage of points to actually use for fracture");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	
+	prop = RNA_def_property(srna, "use_clipping", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "use_clipping", MOD_VORONOI_USECLIPPING);
+	RNA_def_property_ui_text(prop, "Use Clipping", "Clip the existing mesh at the voronoi cell planes");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 static void rna_def_modifier_cloth(BlenderRNA *brna)

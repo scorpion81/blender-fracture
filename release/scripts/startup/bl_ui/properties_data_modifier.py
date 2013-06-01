@@ -332,6 +332,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
             col.prop(md, "noise")
             col.prop(md, "percentage")
             col.prop(md, "use_boolean")
+            col.prop(md, "use_clipping")
             if (md.use_boolean == True):
                 col.prop(md, "inner_material")
             col.prop(md, "use_animation")

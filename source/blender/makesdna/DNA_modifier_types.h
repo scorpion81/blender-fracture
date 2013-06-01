@@ -641,11 +641,12 @@ typedef enum {
 
 enum {
 	MOD_VORONOI_USEBOOLEAN = (1 << 1),
-    MOD_VORONOI_REFRACTURE = (1 << 2),
-    MOD_VORONOI_USECACHE = (1 << 3),
-    MOD_VORONOI_FLIPNORMAL = (1 << 4),
-    MOD_VORONOI_EMITCONTINUOUSLY = (1 << 5),
-    MOD_VORONOI_USERIGIDBODY = (1 << 6),
+	MOD_VORONOI_REFRACTURE = (1 << 2),
+	MOD_VORONOI_USECACHE = (1 << 3),
+	MOD_VORONOI_FLIPNORMAL = (1 << 4),
+	MOD_VORONOI_EMITCONTINUOUSLY = (1 << 5),
+	MOD_VORONOI_USERIGIDBODY = (1 << 6),
+	MOD_VORONOI_USECLIPPING = (1 << 7),
 };
 
 //typedef struct VoronoiCell VoronoiCell;
@@ -695,12 +696,12 @@ typedef struct ExplodeModifierData {
 	char uvname[64];	/* MAX_CUSTOMDATA_LAYER_NAME */
 
 	//for voronoi cell mode
-	int use_boolean, use_cache, percentage;
+	int use_boolean, use_cache, percentage, use_clipping;
 	int last_part, last_bool, emit_continuously;
 	int mode, map_delay, last_map_delay, point_source;
 	int last_point_source, use_animation, noise_count;
 	float noise;
-	//char pad[4];
+	char pad[4];
 
 } ExplodeModifierData;
 
