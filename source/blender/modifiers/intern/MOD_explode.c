@@ -132,6 +132,7 @@ void BM_mesh_join2(BMesh** dest, BMesh* src)
 
 			ve = MEM_reallocN(ve, sizeof(BMVert*) * (lcount+1));
 			ve[lcount] = v;
+			lcount++;
 		}
 
 		BM_face_create(*dest, ve, ed, lcount, 0);
@@ -142,21 +143,6 @@ void BM_mesh_join2(BMesh** dest, BMesh* src)
 	MEM_freeN(verts);
 	MEM_freeN(edges);
 }
-
-
-/*void face_as_planes(float ***planes, int* face_index, BMFace *f)
-{
-	copy_v3_v3(no, f->no);
-	normalize_v3(no);
-	scalar = dot_v3v3(no, f->l_first->v->co);
-	*planes = MEM_reallocN(*planes, sizeof(float*) * ((*face_index)+1));
-	(*planes)[*face_index] = MEM_callocN(sizeof(float) * 4, "face_index"); 
-	(*planes)[*face_index][0] = f->no[0];
-	(*planes)[*face_index][1] = f->no[1];
-	(*planes)[*face_index][2] = f->no[2];
-	(*planes)[*face_index][3] = scalar;
-	(*face_index)++;
-}*/
 
 void face_as_plane(BMFace *f, float plane[4])
 {
@@ -172,187 +158,18 @@ void face_as_plane(BMFace *f, float plane[4])
 	plane[3] = scalar;
 }
 
-bool clip_face_face(BMFace *f, BMFace*f2, BMesh** part, int* vert_index)
+int vertbyindex(const void *e1, const void *e2)
 {
-	float plane[4];
-	BMEdge *e;
-	BMIter iter;
-	bool clipresult;
-	float p1[3], p2[3];
-	int count = 0, i;
-	BMVert** verts = MEM_callocN(sizeof(BMVert*), "clipverts");
-	
-	face_as_plane(f2, plane);
-	
-	BM_ITER_ELEM(e, &iter, f, BM_EDGES_OF_FACE)
-	{
-		copy_v3_v3(p1, e->v1->co);
-		copy_v3_v3(p2, e->v2->co);
-		clipresult = clip_segment_v3_plane(p1, p2, plane);
-		
-		if (clipresult)
-		{
-			BMVert *v;
-			
-			if (compare_v3v3(p1, e->v1->co, 0.0001f) && compare_v3v3(p2, e->v2->co, 0.0001f))
-			{
-				//do nothing
-			}
-			else 
-			{
-				float len_old, len_new;
-				//use this as from vert, calc percentage...of other vert
-				len_old = len_v3v3(e->v1->co, e->v2->co);
-				len_new = len_v3v3(p1, p2);
-				
-				if ((compare_v3v3(p1, e->v1->co, 0.0001f)))
-				{
-					verts = MEM_reallocN(verts, sizeof(BMVert*) * (count+1));
-					v = BM_edge_split(*part, e, e->v1, NULL, len_new / len_old);
-					verts[count] = v;
-					v->head.index = *vert_index;
-					count++;
-					(*vert_index)++;
-				}
-				else
-				{
-					verts = MEM_reallocN(verts, sizeof(BMVert*) * (count+1));
-					v = BM_edge_split(*part, e, e->v2, NULL, len_new / len_old);
-					verts[count] = v;
-					v->head.index = *vert_index;
-					count++;
-					(*vert_index)++;
-				}
-			}
-		}
-	}
-	
-	for (i = 0; i < count-1; i++) {
-		BMFace* f_new = BM_face_split(*part, f, verts[i], verts[i+1], NULL, NULL, false);
-	}
-	MEM_freeN(verts);
-	
-	return clipresult;
+	const BMVert *v1 = *(void **)e1, *v2 = *(void **)e2;
+	int x1 = v1->head.index;
+	int x2 = v2->head.index;
+
+	if      (x1 > x2) return  1;
+	else if (x1 < x2) return -1;
+	else return 0;
 }
 
-void clip_cell_mesh2(BMesh *cell, BMesh* mesh, BMesh** result)
-{
-	//clip each edge of mesh against each plane/face of cell
-	//float **planes = MEM_callocN(sizeof(float*), "planes");
-	int vert_index = 0, i;
-	BMIter iter, iter2;
-	BMFace *f, *fa;
-	BMesh *part = BM_mesh_create(&bm_mesh_allocsize_default);
-	BM_mesh_elem_hflag_disable_all(mesh, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, FALSE);
-	
-	
-	CustomData_copy(&mesh->vdata, &part->vdata, CD_MASK_BMESH, CD_CALLOC, 0);
-	CustomData_copy(&mesh->edata, &part->edata, CD_MASK_BMESH, CD_CALLOC, 0);
-	CustomData_copy(&mesh->ldata, &part->ldata, CD_MASK_BMESH, CD_CALLOC, 0);
-	CustomData_copy(&mesh->pdata, &part->pdata, CD_MASK_BMESH, CD_CALLOC, 0);
-	
-	CustomData_bmesh_init_pool(&part->vdata, bm_mesh_allocsize_default.totvert, BM_VERT);
-	CustomData_bmesh_init_pool(&part->edata, bm_mesh_allocsize_default.totedge, BM_EDGE);
-	CustomData_bmesh_init_pool(&part->ldata, bm_mesh_allocsize_default.totloop, BM_LOOP);
-	CustomData_bmesh_init_pool(&part->pdata, bm_mesh_allocsize_default.totface, BM_FACE);
-
-	BM_mesh_normals_update(cell);
-	
-	BM_ITER_MESH(f, &iter, mesh, BM_FACES_OF_MESH)
-	{
-		BMVert **verts = MEM_callocN(sizeof(BMVert*), "faceverts"), *v;
-		BMEdge **edges = MEM_callocN(sizeof(BMEdge*), "faceedges");
-		BMFace *fac;
-		int count = 0;
-		
-		BM_ITER_ELEM(v, &iter2, f, BM_VERTS_OF_FACE)
-		{
-			verts = MEM_reallocN(verts, sizeof(BMVert*) *(count+1));
-			verts[count] = BM_vert_create(part, v->co, NULL, 0);
-			verts[count]->head.index = vert_index;
-			count++;
-			vert_index++;
-		}
-		
-		for (i = 0; i < count-1; i++) {
-			edges = MEM_reallocN(edges, sizeof(BMEdge*)*(i+1));
-			edges[i] = BM_edge_create(part, verts[i], verts[i+1], NULL, 0);
-		}
-		
-		if (count > 0) {
-			edges = MEM_reallocN(edges, sizeof(BMEdge*)* count);
-			edges[count-1] = BM_edge_create(part, verts[count-1], verts[0], NULL, 0);
-		}
-		
-		fac = BM_face_create(part, verts, edges, count, 0);
-		
-		/*BM_ITER_MESH(fa, &iter2, cell, BM_FACES_OF_MESH)
-		{
-			clipresult = clipresult && clip_face_face(fac, fa, &part, &vert_index);
-		}*/
-		
-		//if ()
-		
-		MEM_freeN(verts);
-		MEM_freeN(edges);
-	}
-	
-	//BM_mesh_join2(result, part); //put those into utility file rigidfracture_util.c
-	*result = part;
-	//BM_mesh_free(part);
-}
-
-bool is_on_clipplane(BMVert *v1, BMVert *v2, BMesh* cell)
-{
-	BMFace *f;
-	BMIter iter;
-	float dp[3], no[3], div;
-	float epsilon = 0.0001f;
-	
-	BM_mesh_normals_update(cell);
-	BM_ITER_MESH(f, &iter, cell, BM_FACES_OF_MESH)
-	{
-		//normalize_v3_v3(no, f->no);
-		sub_v3_v3v3(dp, v2->co, v1->co);
-		div = dot_v3v3(dp, f->no);
-		if (div == 0.0f)
-		{
-			printf("Parallel!\n");
-			return true;
-		}
-	}
-	
-	printf("NOT parallel!\n");
-	return false;
-}
-
-bool common_vert_by_proximity(BMEdge *e1, BMEdge *e2)
-{
-	float limit = 0.000001f;
-	bool common_vert = false;
-	common_vert = common_vert || compare_v3v3(e1->v1->co, e2->v1->co, limit);
-	common_vert = common_vert || compare_v3v3(e1->v2->co, e2->v2->co, limit);
-	common_vert = common_vert || compare_v3v3(e1->v1->co, e2->v2->co, limit); 
-	common_vert = common_vert || compare_v3v3(e1->v2->co, e2->v1->co, limit); 
-	
-	return common_vert;
-}
-
-bool attached_by_proximity(BMVert* v, BMesh* bm)
-{
-	BMVert *ve; 
-	BMIter iter;
-	float limit = 0.000001f;
-	
-	BM_ITER_MESH(ve, &iter, bm, BM_VERTS_OF_MESH)
-	{
-		if ((compare_v3v3(v->co, ve->co, limit)) && (ve != v))
-			return true;
-	}
-	return false;
-}
-
-void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result)
+void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell)
 {
 	//clip each edge of mesh against each plane/face of cell
 	//float **planes = MEM_callocN(sizeof(float*), "planes");
@@ -361,8 +178,7 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result)
 	int vert_index = 0, i;
 	BMesh *part = BM_mesh_create(&bm_mesh_allocsize_default);
 	
-	
-	BM_mesh_elem_hflag_disable_all(mesh, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, FALSE);
+	BM_mesh_elem_hflag_disable_all(mesh, BM_EDGE, BM_ELEM_TAG, FALSE);
 	
 	CustomData_copy(&mesh->vdata, &part->vdata, CD_MASK_BMESH, CD_CALLOC, 0);
 	CustomData_copy(&mesh->edata, &part->edata, CD_MASK_BMESH, CD_CALLOC, 0);
@@ -379,18 +195,22 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result)
 	BM_ITER_MESH(f, &iter, mesh, BM_FACES_OF_MESH)
 	{
 		BMVert **verts = MEM_callocN(sizeof(BMVert*), "faceverts");
-		BMVert **changed = MEM_callocN(sizeof(BMVert*), "changed");
-		BMEdge **edges = MEM_callocN(sizeof(BMEdge*), "faceedges"), *ed, *e;
-		BMFace *fac;
-		int count = 0, changed_count = 0;
+		BMEdge **edges = MEM_callocN(sizeof(BMEdge*), "faceedges"), *ed;
+		BMLoop *l;
+		int count = 0, edge_count = 0, clip_count = 0;
+		BMVert *first_v1 = NULL, *last_v2 = NULL;
 		
-		BM_ITER_ELEM(e, &iter2, f, BM_EDGES_OF_FACE)
+		BM_ITER_ELEM(l, &iter2, f, BM_LOOPS_OF_FACE)
 		{
 			float p1[3], p2[3];
 			bool clipresult = true;
 			
-			copy_v3_v3(p1, e->v1->co);
-			copy_v3_v3(p2, e->v2->co);
+			if (BM_elem_flag_test(l->e, BM_ELEM_TAG))
+				continue;
+			
+			//BM_elem_flag_enable(l->e, BM_ELEM_TAG);
+			copy_v3_v3(p1, l->v->co);
+			copy_v3_v3(p2, l->next->v->co);
 			
 			BM_ITER_MESH(fa, &iter3, cell, BM_FACES_OF_MESH)
 			{
@@ -405,97 +225,72 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result)
 				verts = MEM_reallocN(verts, sizeof(BMVert*) *(count+1));
 				v1 = BM_vert_create(part, p1, NULL, 0);
 				v1->head.index = vert_index;
-				verts[count] = v1;
 				vert_index++;
 					
 				v2 = BM_vert_create(part, p2, NULL, 0);
 				v2->head.index = vert_index;
 				vert_index++;
 				
-				if (!compare_v3v3(e->v1->co, p1, 0.0001f)) 
-				{
-					changed = MEM_reallocN(changed, sizeof(BMVert*) * (changed_count+1));
-					changed[changed_count] = v1;
-					changed_count++;
-				}
-				
-				if (!compare_v3v3(e->v2->co, p2, 0.0001f)) 
-				{
-					changed = MEM_reallocN(changed, sizeof(BMVert*) * (changed_count+1));
-					changed[changed_count] = v2;
-					changed_count++;
-				}
-				
 				edges = MEM_reallocN(edges, sizeof(BMEdge*) * (count+1));
 				ed = BM_edge_create(part, v1, v2, NULL, 0);
 				edges[count] = ed;
 				count++;
+				
+				if (first_v1 == NULL) {
+					first_v1 = v1;
+				} 
+				
+				if (last_v2 != NULL) {
+					edges = MEM_reallocN(edges, sizeof(BMEdge*) * (count+1));
+					ed = BM_edge_create(part, last_v2, v1, NULL, 0);
+					edges[count] = ed;
+					count++;
+				}
+				
+				last_v2 = v2;
+				clip_count++;
+			}
+			
+			//BM_elem_flag_enable(e, BM_ELEM_TAG);
+			edge_count++;
+			if (edge_count == f->len && clip_count > 0)
+			{
+				edges = MEM_reallocN(edges, sizeof(BMEdge*) * (count+1));
+				ed = BM_edge_create(part, last_v2, first_v1, NULL, 0);
+				edges[count] = ed;
+				count++;
+			}
+			if (edge_count == f->len)
+			{
+				//printf("Face len :%d\n", count);
+				
+				for (i = 0; i < count; i++)
+				{
+					//try to order verts by index
+					verts = MEM_reallocN(verts, sizeof(BMVert*) * (i+1));
+					verts[i] = edges[i]->v1;
+					//printf("Vert Index: %d\n", verts[i]->head.index);
+				}
+				
+				qsort(verts, count, sizeof(BMVert *), vertbyindex);
+				
+				BM_face_create(part, verts, edges, count, 0);
+				first_v1 = NULL;
 			}
 		}
 		
-		printf("CHANGED COUNT: %d\n", changed_count);
-		for (i = 0; i < changed_count; i++)
-		{
-			int a, b;
-			if (i < changed_count-1)
-			{
-				a = i;
-				b = i+1;
-			}
-			else
-			{
-				a = changed_count-1;
-				b = 0;
-			}
-			
-			if ((changed[a] == NULL) || (changed[b] == NULL))
-			{
-				continue;
-			}
-			
-			if (!BM_edge_exists(changed[a], changed[b]))
-			{
-				if (changed_count > f->len)
-				{
-					BMVert* othera = BM_edge_other_vert(changed[a]->e, changed[a]);
-					BMVert* otherb = BM_edge_other_vert(changed[b]->e, changed[b]);
-					
-					bool sharedvert = common_vert_by_proximity(changed[a]->e, changed[b]->e);
-					bool attached = attached_by_proximity(changed[a], part) && attached_by_proximity(changed[b], part);
-					//bool crossover = ((BM_vert_edge_count(changed[a]) == 1) && (BM_vert_edge_count(othera) == 1) &&
-					//				  (BM_vert_edge_count(changed[b]) == 1) && (BM_vert_edge_count(otherb) == 1));
-					//bool attached_crossover = !attached && crossover;
-					
-					//dont connect clipped away edges in certain cases
-					if (attached && !sharedvert)
-					{
-						//dont connect crossover....in case we have 2 separate edges
-						BM_edge_create(part, changed[a], otherb, NULL, 0);
-						BM_edge_create(part, othera, changed[b], NULL, 0);
-					}
-					else if (!sharedvert)
-					{
-						BM_edge_create(part, changed[a], changed[b], NULL, 0);
-					}
-				}
-				else
-				{
-					BM_edge_create(part, changed[a], changed[b], NULL, 0);
-				}
-			}
-		}
-		
-		BMO_op_callf(part, BMO_FLAG_DEFAULTS, "remove_doubles verts=%av dist=%f", BM_VERTS_OF_MESH, 0.000001f);
-		
-		MEM_freeN(changed);
 		MEM_freeN(verts);
 		MEM_freeN(edges);
-		changed_count = 0;
+		count = 0;
+		clip_count = 0;
+		BMO_op_callf(part, BMO_FLAG_DEFAULTS, "remove_doubles verts=%av dist=%f", BM_VERTS_OF_MESH, 0.000001f);
 	}
 	
-	//BM_mesh_join2(result, part); //put those into utility file rigidfracture_util.c
-	*result = part;
-	//BM_mesh_free(part);
+	BM_mesh_join2(result, part); //put those into utility file rigidfracture_util.c
+	//*result = part;
+	DM_release(vcell->cell_mesh);
+	vcell->cell_mesh = CDDM_from_bmesh(part, TRUE);
+	BM_mesh_free(part);
 }
 
 //fitting ? (bullet convexhull + approximative, paper)
@@ -2985,22 +2780,22 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				emd->last_bool = emd->use_boolean;
 				emd->last_point_source = emd->point_source;
 				
-				if (emd->use_clipping)
+				if (emd->use_clipping && emd->fracMesh)
 				{
 					BMesh* origmesh = DM_to_bmesh(derivedData);
 					BMesh* clipped = BM_mesh_create(&bm_mesh_allocsize_default);
 					
 					for (i = 0; i < emd->cells->count; i++)
 					{
-						if (i == 4)
+						//if ((i == 9))
 						{
 							BMesh* cellmesh = DM_to_bmesh(emd->cells->data[i].cell_mesh);
-							clip_cell_mesh(cellmesh, origmesh, &clipped);
+							clip_cell_mesh(cellmesh, origmesh, &clipped, &emd->cells->data[i]);
 							BM_mesh_free(cellmesh);
 						}
 					}
 					
-				
+					BM_mesh_free(emd->fracMesh);
 					emd->fracMesh = clipped; //BM_mesh_free(clipped);
 					BM_mesh_free(origmesh);
 				}
