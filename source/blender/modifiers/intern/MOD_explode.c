@@ -46,6 +46,7 @@
 #include "BLI_edgehash.h"
 #include "BLI_utildefines.h"
 #include "BLI_math_geom.h"
+#include "BLI_listbase.h"
 
 #include "BKE_cdderivedmesh.h"
 #include "BKE_deform.h"
@@ -79,13 +80,22 @@
 #  include "../../../../extern/voro++/src/c_interface.hh"
 #endif
 
-void BM_mesh_join2(BMesh** dest, BMesh* src)
+typedef struct FaceMap {
+	BMFace *face;
+	//float **vco;
+	//int vcount;
+	int index;
+	BMFace *newface;
+}FaceMap;
+
+void BM_mesh_join2(BMesh** dest, BMesh* src, FaceMap*** facemap)
 {
 	BMIter iter;
 	BMVert* v, **verts;
 	BMEdge *e, **edges;
 	BMFace *f;
-	int vcount = 0, ecount = 0;
+	int vtot = (*dest)->totvert, etot = (*dest)->totedge, ftot = (*dest)->totface;
+	int vcount = 0, ecount = 0,fcount = 0;
 	
 	verts = MEM_mallocN(sizeof(BMVert*), "verts");
 	edges = MEM_mallocN(sizeof(BMEdge*), "edges");
@@ -99,6 +109,11 @@ void BM_mesh_join2(BMesh** dest, BMesh* src)
 	{
 		BMVert *vert = BM_vert_create(*dest, v->co, NULL, 0);
 		verts = MEM_reallocN(verts, sizeof(BMVert*) *(vcount+1));
+		vert->head.index = vtot + vcount;
+		
+		if (BM_elem_flag_test(v, BM_ELEM_SELECT))
+			BM_elem_select_set(*dest, vert, true);
+		
 		verts[vcount] = vert;
 		vcount++;
 	}
@@ -110,6 +125,7 @@ void BM_mesh_join2(BMesh** dest, BMesh* src)
 		BMVert* v2 = verts[e->v2->head.index];
 		edge = BM_edge_create(*dest, v1, v2, NULL, 0);
 		edges = MEM_reallocN(edges, sizeof(BMEdge*) * (ecount+1));
+		edge->head.index = etot + ecount;
 		edges[ecount] = edge;
 		ecount++;
 	}
@@ -118,9 +134,11 @@ void BM_mesh_join2(BMesh** dest, BMesh* src)
 	{
 		BMIter iter2;
 		BMLoop* l;
+		BMFace *fa2;
 		BMVert **ve = MEM_mallocN(sizeof(BMVert*), "face_verts");
 		BMEdge **ed = MEM_mallocN(sizeof(BMEdge*), "face_edges");
 		int lcount = 0;
+		FaceMap *mapentry = (*facemap)[ftot+fcount];
 
 		BM_ITER_ELEM(l, &iter2, f, BM_LOOPS_OF_FACE)
 		{
@@ -135,7 +153,15 @@ void BM_mesh_join2(BMesh** dest, BMesh* src)
 			lcount++;
 		}
 
-		BM_face_create(*dest, ve, ed, lcount, 0);
+		fa2 = BM_face_create(*dest, ve, ed, lcount, 0);
+		//printf("INDEX: %d\n", fa2->l_first->v->head.index);
+		fa2->head.index = ftot + fcount;
+		
+		if (mapentry->index == f->head.index)
+			mapentry->newface = fa2;
+		
+		fcount++;
+		
 		MEM_freeN(ve);
 		MEM_freeN(ed);
 	}
@@ -169,13 +195,166 @@ int vertbyindex(const void *e1, const void *e2)
 	else return 0;
 }
 
-void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell)
+int facebyindex(const void *e1, const void *e2)
+{
+	const FaceMap *f1 = *(void **)e1, *f2 = *(void **)e2;
+	int x1 = f1->face->head.index;
+	int x2 = f2->face->head.index;
+	
+	int y1 = f1->newface->head.index;
+	int y2 = f2->newface->head.index;
+
+	if      (x1 > x2) return  1;
+	else if (x1 < x2) return -1;
+	else if ((x1 == x2) && (y1 > y2)) return 1;
+	else if ((x1 == x2) && (y1 < y2)) return -1;
+	else return 0;
+}
+
+int edgebyindex(const void *e1, const void *e2)
+{
+	const BMEdge *ed1 = *(void **)e1, *ed2 = *(void **)e2;
+	int x1 = ed1->v1->head.index;
+	int x2 = ed2->v1->head.index;
+
+	if      (x1 > x2) return  1;
+	else if (x1 < x2) return -1;
+	else return 0;
+}
+
+bool check_in_verts(BMVert** verts, int count, int index)
+{
+	int i = 0;
+	for (i = 0; i < count; i++)
+	{
+		if (verts[i]->head.index == index)
+		{
+			return true;
+		}
+	}
+	
+	return false;
+}
+
+BMVert* insert_vert_checked(BMesh** mesh, float co[3], int* index, BMVert*** verts, int* count, BMVert* ve, bool doubles)
+{
+	BMVert *v, *vert = NULL;
+	BMIter iter;
+	int i;
+	float limit = 0.00001f;
+	
+	if (ve == NULL)
+	{
+		if (!doubles)
+		{
+			BM_ITER_MESH(v, &iter, *mesh, BM_VERTS_OF_MESH)
+			{
+				if (compare_v3v3(v->co, co, limit))
+				{
+					vert = v;
+					break;
+				}
+			}
+		}
+		else
+		{
+			vert = NULL;
+		}
+		
+		if (vert == NULL)
+		{
+			vert = BM_vert_create(*mesh, co, NULL, 0);
+			vert->head.index = *index;
+			(*index)++;
+		}
+	}
+	else
+	{
+		vert = ve;
+	}
+	
+	for (i = 0; i < *count; i++)
+	{
+		BMVert* v = (*verts)[i];
+		if ( v == vert)
+			return vert;
+		
+		if (doubles) {
+			if (compare_v3v3(v->co, vert->co, limit))
+			{
+				// do not store verts in this mode
+				return vert;
+			}
+		}
+	}
+	
+	*verts = MEM_reallocN(*verts, sizeof(BMVert*) * (*count+1));
+	(*verts)[*count] = vert;
+	(*count)++;
+	
+	return vert;
+}
+
+bool edge_vert_test(BMesh *bm, BMVert *v1, BMVert *v2) {
+	
+	BMEdge *e;
+	BMIter iter;
+	float limit = 0.00001f;
+	
+	BM_ITER_MESH(e, &iter, bm, BM_EDGES_OF_MESH)
+	{
+		if ((compare_v3v3(e->v1->co, v1->co, limit)) && (compare_v3v3(e->v2->co, v2->co, limit)))
+		{
+			return true;
+		}
+	}
+	
+	return false;
+}
+
+BMEdge* insert_edge_checked(BMesh** mesh, BMVert* v1, BMVert *v2, int *edge_index, BMEdge*** edges, int *count, BMEdge *e)
+{
+	BMEdge *ed;
+	int i;
+	
+	if (e == NULL)
+	{
+		ed = BM_edge_exists(v1, v2);
+		
+		if ((ed == NULL) /* && (!edge_vert_test(*mesh, v1, v2))*/) {
+			ed = BM_edge_create(*mesh, v1, v2, NULL, 0);
+			ed->head.index = *edge_index;
+			(*edge_index)++;
+		}
+	}
+	else
+	{
+		ed = e;
+	}
+	
+	for (i = 0; i < *count; i++)
+	{
+		if ((*edges)[i] == ed)
+			return ed;
+	}
+	
+	if (ed != NULL) {
+		*edges = MEM_reallocN(*edges, sizeof(BMEdge*) * (*count+1));
+		(*edges)[*count] = ed;
+		(*count)++;
+	}
+	
+	return ed;
+}
+
+void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell, FaceMap*** facemap, int* facemapcount)
 {
 	//clip each edge of mesh against each plane/face of cell
 	//float **planes = MEM_callocN(sizeof(float*), "planes");
+	BMVert* v;
 	BMIter iter, iter2, iter3;
 	BMFace *f, *fa;
-	int vert_index = 0, i;
+	int vert_index = 0, edge_index = 0, i, face_index = *facemapcount, face_count = 0;
 	BMesh *part = BM_mesh_create(&bm_mesh_allocsize_default);
 	
 	BM_mesh_elem_hflag_disable_all(mesh, BM_EDGE, BM_ELEM_TAG, FALSE);
@@ -197,7 +376,7 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 		BMVert **verts = MEM_callocN(sizeof(BMVert*), "faceverts");
 		BMEdge **edges = MEM_callocN(sizeof(BMEdge*), "faceedges"), *ed;
 		BMLoop *l;
-		int count = 0, edge_count = 0, clip_count = 0;
+		int count = 0, edge_count = 0, clip_count = 0, vcount = 0;
 		BMVert *first_v1 = NULL, *last_v2 = NULL;
 		
 		BM_ITER_ELEM(l, &iter2, f, BM_LOOPS_OF_FACE)
@@ -205,8 +384,8 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 			float p1[3], p2[3];
 			bool clipresult = true;
 			
-			if (BM_elem_flag_test(l->e, BM_ELEM_TAG))
-				continue;
+			//if (BM_elem_flag_test(l->e, BM_ELEM_TAG))
+			//	continue;
 			
 			//BM_elem_flag_enable(l->e, BM_ELEM_TAG);
 			copy_v3_v3(p1, l->v->co);
@@ -222,29 +401,34 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 			if (clipresult)
 			{
 				BMVert *v1, *v2;
-				verts = MEM_reallocN(verts, sizeof(BMVert*) *(count+1));
-				v1 = BM_vert_create(part, p1, NULL, 0);
-				v1->head.index = vert_index;
-				vert_index++;
-					
-				v2 = BM_vert_create(part, p2, NULL, 0);
-				v2->head.index = vert_index;
-				vert_index++;
+				v1 = insert_vert_checked(&part, p1, &vert_index, &verts, &vcount, NULL, false);
+				v2 = insert_vert_checked(&part, p2, &vert_index, &verts, &vcount, NULL, false);
 				
-				edges = MEM_reallocN(edges, sizeof(BMEdge*) * (count+1));
-				ed = BM_edge_create(part, v1, v2, NULL, 0);
-				edges[count] = ed;
-				count++;
+				//select new verts
+				if (!compare_v3v3(p1, l->v->co, 0.000001f))
+				{
+					BM_elem_select_set(part, v1, true);
+				}
 				
+				if (!compare_v3v3(p2, l->next->v->co, 0.000001f))
+				{
+					BM_elem_select_set(part, v2, true);
+				}
+				
+				if ((!compare_v3v3(p1, l->v->co, 0.000001f)) && (!compare_v3v3(p2, l->next->v->co, 0.000001f)))
+				{
+					//dont select both ...
+					BM_elem_select_set(part, v1, false);
+					BM_elem_select_set(part, v2, false);
+				}
+			
+				insert_edge_checked(&part, v1, v2, &edge_index, &edges, &count, NULL);
 				if (first_v1 == NULL) {
 					first_v1 = v1;
 				} 
 				
 				if (last_v2 != NULL) {
-					edges = MEM_reallocN(edges, sizeof(BMEdge*) * (count+1));
-					ed = BM_edge_create(part, last_v2, v1, NULL, 0);
-					edges[count] = ed;
-					count++;
+					insert_edge_checked(&part, last_v2, v1, &edge_index, &edges, &count, NULL);
 				}
 				
 				last_v2 = v2;
@@ -255,27 +439,75 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 			edge_count++;
 			if (edge_count == f->len && clip_count > 0)
 			{
-				edges = MEM_reallocN(edges, sizeof(BMEdge*) * (count+1));
-				ed = BM_edge_create(part, last_v2, first_v1, NULL, 0);
-				edges[count] = ed;
-				count++;
+				insert_edge_checked(&part, last_v2, first_v1, &edge_index, &edges, &count, NULL);
 			}
 			if (edge_count == f->len)
 			{
-				//printf("Face len :%d\n", count);
+				BMFace *fac;
+				FaceMap* mapentry;
+				int j = 0;
+				BMEdge** final_edges;
 				
-				for (i = 0; i < count; i++)
-				{
-					//try to order verts by index
-					verts = MEM_reallocN(verts, sizeof(BMVert*) * (i+1));
-					verts[i] = edges[i]->v1;
-					//printf("Vert Index: %d\n", verts[i]->head.index);
+				if (count < 3)
+					continue;
+				
+				final_edges = MEM_callocN(sizeof(BMEdge*) * vcount, "final_edges");
+				//printf("Count e,v: %d %d\n", count, vcount);
+				//qsort(verts, vcount, sizeof(BMVert*), vertbyindex);
+				//qsort(edges, count, sizeof(BMEdge*), edgebyindex);
+				
+				for (i = 0; i < count; i++) {
+					
+					int v1_index = edges[i]->v1->head.index;
+					int v2_index = edges[i]->v2->head.index;
+					
+					if ((check_in_verts(verts, vcount, v1_index)) && (check_in_verts(verts, vcount, v2_index)))
+					{
+						//printf("Edge (%d %d)\n", v1_index, v2_index);
+						final_edges[j] = edges[i];
+						j++;
+					}
+					/*else
+					{
+						printf("Invalid edge found (%d %d)\n", v1_index, v2_index);
+					}*/
 				}
 				
-				qsort(verts, count, sizeof(BMVert *), vertbyindex);
+				fac = BM_face_create(part, verts, final_edges, vcount, 0);
+				if (fac->len > 3 && 0) {
+					int len = fac->len -2;
+					BMFace **newfaces = MEM_callocN(sizeof(BMFace*) * len, "newfaces");
+					BM_face_triangulate(part, fac, newfaces, false, false);
+					
+					for (i = 0; i < len; i++)
+					{
+						*facemap = MEM_reallocN(*facemap, sizeof(FaceMap*) * (face_index+1));
+						mapentry = MEM_callocN(sizeof(FaceMap), "mapentry");
+						(*facemap)[face_index] = mapentry;
+						face_index++;
+						mapentry->face = f;	
+						newfaces[i]->head.index = face_count;
+						mapentry->index = face_count;
+						face_count++;
+					}
+					
+					MEM_freeN(newfaces);
+				}
+				else
+				{
+					*facemap = MEM_reallocN(*facemap, sizeof(FaceMap*) * (face_index+1));
+					mapentry = MEM_callocN(sizeof(FaceMap), "mapentry");
+					(*facemap)[face_index] = mapentry;
+					face_index++;
+					mapentry->face = f;	
+					fac->head.index = face_count;
+					mapentry->index = face_count;
+					face_count++;
+				}
 				
-				BM_face_create(part, verts, edges, count, 0);
 				first_v1 = NULL;
+				
+				MEM_freeN(final_edges);
 			}
 		}
 		
@@ -283,10 +515,14 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 		MEM_freeN(edges);
 		count = 0;
 		clip_count = 0;
-		BMO_op_callf(part, BMO_FLAG_DEFAULTS, "remove_doubles verts=%av dist=%f", BM_VERTS_OF_MESH, 0.000001f);
 	}
 	
-	BM_mesh_join2(result, part); //put those into utility file rigidfracture_util.c
+	//BMO_op_callf(part, BMO_FLAG_DEFAULTS, "remove_doubles verts=%av dist=%f", BM_VERTS_OF_MESH, 0.000001f);
+
+	BM_mesh_join2(result, part, facemap); //put those into utility file rigidfracture_util.c
+	//need to get faceref from here, grr...
+	*facemapcount = face_index;
+	
 	//*result = part;
 	DM_release(vcell->cell_mesh);
 	vcell->cell_mesh = CDDM_from_bmesh(part, TRUE);
@@ -458,7 +694,6 @@ F.Append(faces[i]);
 //welding/compounds ? -> join analogous to compound function
 
 //Ghost convex....
-
 
 static void initData(ModifierData *md)
 {
@@ -2718,6 +2953,266 @@ static void resetCells(ExplodeModifierData *emd)
 	}
 }
 
+BMVert* shared_vert_by_proximity(BMFace* face, BMFace *face2)
+{
+	BMVert *v, *v2;
+	BMIter iter, iter2;
+	float vec[3] = {0, 0, -1}; //strange value...always occurring, but looks like undefined or so ? hmm...
+	float limit = 0.00001f;
+	
+	BM_ITER_ELEM(v, &iter, face, BM_VERTS_OF_FACE)
+	{
+		BM_ITER_ELEM(v2, &iter2, face2, BM_VERTS_OF_FACE)
+		{
+			if (compare_v3v3(v->co, v2->co, limit) &&
+			   !compare_v3v3(v->co, vec, limit) &&
+			   !compare_v3v3(v2->co, vec, limit))
+			{
+				return v;
+			}
+		}
+	}
+	
+	return NULL;
+}
+
+void flip_verts_checked(BMVert*** verts, int count)
+{
+	BMVert* a, *b; 
+	
+	if (count < 2)
+		return;
+	
+	a = (*verts)[count-2];
+	b = (*verts)[count-1];
+	
+	if (a->head.index > b->head.index)
+	{
+		printf("Flipping... (%d %d)\n", a->head.index, b->head.index);
+		(*verts)[count-2] = b;
+		(*verts)[count-1] = a;
+	}
+}
+
+void project_on_face(float res[2], float p[3], BMFace *f)
+{
+	float x[3], n[3], o[3], cross[3];
+	sub_v3_v3v3(x, f->l_first->v->co, f->l_first->next->v->co);
+	normalize_v3(x);
+	copy_v3_v3(n, f->no);
+	normalize_v3(n);
+	copy_v3_v3(o, f->l_first->v->co);
+	
+	sub_v3_v3(p, o);
+	res[0] = dot_v3v3(p, x);
+	cross_v3_v3v3(cross, n, x);
+	res[1] = dot_v3v3(p, cross);
+}
+
+int vert_edge_count(BMVert *v)
+{
+	int count = 0;
+	BMIter iter;
+	BMEdge *e;
+	BM_ITER_ELEM_INDEX(e, &iter, v, BM_EDGES_OF_VERT, count)
+	{
+	}
+	
+	return count;
+}
+
+int vert_face_count(BMVert *v)
+{
+	int count = 0;
+	BMIter iter;
+	BMFace *f;
+	BM_ITER_ELEM_INDEX(f, &iter, v, BM_FACES_OF_VERT, count)
+	{
+	}
+	
+	return count;
+}
+
+void fill_holes(BMesh** clipped, FaceMap** facemap, int facemapcount)
+{
+	int starti = 0, i;
+	int last_index = -1;
+	float area = 0, totarea = 0;
+	int vindex = (*clipped)->totvert;
+	int eindex = (*clipped)->totedge;
+	int index = 0;
+	KDTree *verttree;
+	BMVert *v;
+	BMIter iter;
+	
+	//used to check "what if" the mesh would be merged (facecount/edgecount, but actually the mesh isnt
+	BMesh *mergecopy = BM_mesh_copy(*clipped);
+	BMO_op_callf(mergecopy, BMO_FLAG_DEFAULTS, "remove_doubles verts=%av dist=%f", BM_VERTS_OF_MESH, 0.00001f);
+	
+	verttree = BLI_kdtree_new(mergecopy->totvert);
+	BM_ITER_MESH_INDEX(v, &iter, mergecopy, BM_VERTS_OF_MESH, index)
+	{
+		BLI_kdtree_insert(verttree, index, v->co, NULL);
+	}
+	BLI_kdtree_balance(verttree);
+	
+	//fix holes....
+	for (i = 0; i < facemapcount; i++)
+	{
+		BMFace* f = facemap[i]->face;
+		int j, k;
+		
+		printf("INDEX: %d %d\n", f->head.index, i);
+		
+		if ((last_index != f->head.index && last_index != -1))
+		{
+			BMIter viter;
+			BMVert* v;
+			
+			if ((area - totarea) > 0.001f && totarea > 0.0f)
+			{
+				int vcount = 0, ecount = 0, reversecount = 0, keepcount = 0;
+				float centr[3], a[2], b[2];
+				BMVert **holeverts = MEM_callocN(sizeof(BMVert*), "holeverts");
+				BMEdge **holeedges = MEM_callocN(sizeof(BMVert*), "holeedges");
+				printf("Missing face parts...%d %d\n", starti, i);
+				printf("Area: %f; %f\n", area, totarea);
+				
+				BM_face_calc_center_bounds(facemap[starti]->face, centr);
+				project_on_face(a, centr, facemap[starti]->face);
+				
+				for (j = starti; j < i; j++)
+				{
+					float ncentr[3];
+					BM_face_calc_center_bounds(facemap[j]->newface, ncentr);
+					project_on_face(b, ncentr, facemap[starti]->face);
+					
+					if (b[1] < a[1])
+					{
+						reversecount++;
+					}
+					else
+					{
+						keepcount++;
+					}
+				}
+				
+				//find shared verts = corners!
+				for (j = starti; j < i; j++)
+				{
+					int part = 0;
+					float ncentr[3];
+					BMIter iter;
+					BMLoop* l;
+					BMVert** partial = MEM_callocN(sizeof(BMVert*), "partial");
+					
+					BM_face_calc_center_bounds(facemap[j]->newface, ncentr);
+					//on face (2d) is newcenter smaller or bigger... do flip dependent of that ?
+					project_on_face(b, ncentr, facemap[starti]->face);
+					
+					BM_ITER_ELEM(l, &iter, facemap[j]->newface, BM_LOOPS_OF_FACE)
+					{
+						if (BM_elem_flag_test(l->e->v1, BM_ELEM_SELECT) && BM_elem_flag_test(l->e->v2, BM_ELEM_SELECT))
+						{
+							BMVert *v1, *v2;
+							int index1, index2;
+							int vertcount1, edgecount1, vertcount2, edgecount2;
+							
+							index1 = BLI_kdtree_find_nearest(verttree, l->e->v1->co, NULL, NULL);
+							index2 = BLI_kdtree_find_nearest(verttree, l->e->v2->co, NULL, NULL);
+							v1 = BM_vert_at_index(mergecopy, index1);
+							v2 = BM_vert_at_index(mergecopy, index2);
+							
+							vertcount1 = vert_face_count(v1);
+							edgecount1 = vert_edge_count(v1);
+							vertcount2 = vert_face_count(v2);
+							edgecount2 = vert_edge_count(v2);
+							
+							printf("Counts: (%d, %d) (%d, %d)\n", vertcount1, edgecount1, vertcount2, edgecount2);
+							
+							//if (vertcount1 < 4 || edgecount1 == 4)
+							{
+								insert_vert_checked(clipped, NULL, 0, &partial, &part, l->e->v1, true);
+							}
+							//BM_elem_select_set(clipped, l->e->v1, false);
+							
+							//if (vertcount2 < 4 || edgecount2 == 4)
+							{
+								insert_vert_checked(clipped, NULL, 0, &partial, &part, l->e->v2, true);
+							}
+							//BM_elem_select_set(clipped, l->e->v2, false);
+						}
+					}
+					
+					if ((b[1] < a[1]) && (reversecount > keepcount)) { //&& (i-starti) % 2 == 0) {
+						printf("Reversing order...");
+						for (k = 0; k < part; k++)
+						{
+							insert_vert_checked(clipped, NULL, 0, &holeverts, &vcount, partial[part-1-k], true);
+						}
+					}
+					else
+					{
+						printf("Keeping order...");
+						for (k = 0; k < part; k++)
+						{
+							insert_vert_checked(clipped, NULL, 0, &holeverts, &vcount, partial[k], true);
+						}
+					}
+					
+					MEM_freeN(partial);
+				}
+				
+				for (j = 0; j < vcount-1; j++)
+				{
+					insert_edge_checked(clipped, holeverts[j], holeverts[j+1], &eindex, &holeedges, &ecount, NULL);
+				}
+				
+				if (vcount > 1)
+				{
+					insert_edge_checked(clipped, holeverts[vcount-1], holeverts[0], &eindex, &holeedges, &ecount, NULL);
+				}
+				
+				//fill hole... finally...
+				if (vcount == ecount) {
+					printf("Filling...\n");
+					for (j = 0; j < vcount; j++)
+					{
+						printf("%d ", holeverts[j]->head.index);
+					}
+					BM_face_create(*clipped, holeverts, holeedges, vcount, 0);
+				}
+				
+				MEM_freeN(holeverts);
+				MEM_freeN(holeedges);
+			}
+			
+			printf("RESETTING...\n");
+			starti = i;
+			area = BM_face_calc_area(f);
+			totarea = BM_face_calc_area(facemap[starti]->newface);
+		}
+		else if ((last_index != -1) && (last_index == f->head.index))
+		{
+			BMFace* fnew = facemap[i]->newface;
+			if (fnew != NULL)
+				totarea += BM_face_calc_area(fnew);
+			printf("ADDING UP...\n");
+		}
+		else
+		{	
+			BMFace* fnew = facemap[i]->newface;
+			if (fnew != NULL)
+				totarea = BM_face_calc_area(fnew);
+			area = BM_face_calc_area(f);
+			starti = i;
+			printf("INIT...\n");
+		}
+		
+		last_index = f->head.index;
+	}
+}
+
 
 static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 									DerivedMesh *derivedData,
@@ -2782,18 +3277,39 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				
 				if (emd->use_clipping && emd->fracMesh)
 				{
-					BMesh* origmesh = DM_to_bmesh(derivedData);
-					BMesh* clipped = BM_mesh_create(&bm_mesh_allocsize_default);
+					BMFace *face;
+					BMIter iter;
+				
+					BMesh* origmesh; 
+					BMesh* clipped;
+					FaceMap** facemap;
+					int index = 0;
+					int facemapcount = 0;
+					
+					origmesh = DM_to_bmesh(derivedData);
+					clipped = BM_mesh_create(&bm_mesh_allocsize_default);
+					facemap = MEM_callocN(sizeof(FaceMap*), "facemap");
 					
 					for (i = 0; i < emd->cells->count; i++)
 					{
-						//if ((i == 9))
+						//if ((i == 4) || ( i == 7 ))
 						{
 							BMesh* cellmesh = DM_to_bmesh(emd->cells->data[i].cell_mesh);
-							clip_cell_mesh(cellmesh, origmesh, &clipped, &emd->cells->data[i]);
+							clip_cell_mesh(cellmesh, origmesh, &clipped, &emd->cells->data[i], &facemap, &facemapcount);
 							BM_mesh_free(cellmesh);
 						}
 					}
+					
+					qsort(facemap, facemapcount, sizeof(FaceMap *), facebyindex);
+					fill_holes(&clipped, facemap, facemapcount);
+					//BMO_op_callf(clipped, BMO_FLAG_DEFAULTS, "remove_doubles verts=%av dist=%f", BM_VERTS_OF_MESH, 0.00001f);
+					
+					for (i = 0; i < facemapcount; i++)
+					{
+						MEM_freeN(facemap[i]);
+					}
+					
+					MEM_freeN(facemap);
 					
 					BM_mesh_free(emd->fracMesh);
 					emd->fracMesh = clipped; //BM_mesh_free(clipped);
