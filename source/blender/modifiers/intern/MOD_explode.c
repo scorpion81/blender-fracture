@@ -75,6 +75,7 @@
 #include "BKE_library.h"
 
 #include "BKE_submesh.h"
+#include "PIL_time.h"
 
 #ifdef WITH_MOD_VORONOI
 #  include "../../../../extern/voro++/src/c_interface.hh"
@@ -524,8 +525,8 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 	*facemapcount = face_index;
 	
 	//*result = part;
-	DM_release(vcell->cell_mesh);
-	vcell->cell_mesh = CDDM_from_bmesh(part, TRUE);
+	//DM_release(vcell->cell_mesh);
+	//vcell->cell_mesh = CDDM_from_bmesh(part, TRUE);
 	BM_mesh_free(part);
 }
 
@@ -2180,8 +2181,8 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 	INIT_MINMAX(min, max);
 
 
-	if (emd->use_boolean) {
-		theta = 0.1f;
+	if (emd->use_boolean || emd->use_clipping) {
+		theta = 0.25f;
 	}
 
 	//BKE_mesh_minmax(ob->data, min, max);
@@ -3009,7 +3010,7 @@ void project_on_face(float res[2], float p[3], BMFace *f)
 	res[1] = dot_v3v3(p, cross);
 }
 
-int vert_edge_count(BMVert *v)
+/*int vert_edge_count(BMVert *v)
 {
 	int count = 0;
 	BMIter iter;
@@ -3031,6 +3032,14 @@ int vert_face_count(BMVert *v)
 	}
 	
 	return count;
+}*/
+
+bool sel_test(BMVert* v1, BMVert *v2)
+{
+	printf("Counts: (%d %d) (%d %d)", BM_vert_face_count(v1), BM_vert_edge_count(v1), BM_vert_face_count(v2), BM_vert_edge_count(v2));
+	return BM_elem_flag_test(v1, BM_ELEM_SELECT) && BM_elem_flag_test(v2, BM_ELEM_SELECT) &&
+		   ((BM_vert_face_count(v1) < 4) || //BM_vert_edge_count(v1)) || 
+			(BM_vert_face_count(v2) < 4)); //BM_vert_edge_count(v2)));
 }
 
 void fill_holes(BMesh** clipped, FaceMap** facemap, int facemapcount)
@@ -3040,14 +3049,25 @@ void fill_holes(BMesh** clipped, FaceMap** facemap, int facemapcount)
 	float area = 0, totarea = 0;
 	int vindex = (*clipped)->totvert;
 	int eindex = (*clipped)->totedge;
+	//int ecopyindex = eindex;
 	int index = 0;
 	KDTree *verttree;
 	BMVert *v;
+	BMEdge *e;
 	BMIter iter;
 	
 	//used to check "what if" the mesh would be merged (facecount/edgecount, but actually the mesh isnt
 	BMesh *mergecopy = BM_mesh_copy(*clipped);
-	BMO_op_callf(mergecopy, BMO_FLAG_DEFAULTS, "remove_doubles verts=%av dist=%f", BM_VERTS_OF_MESH, 0.00001f);
+	BMO_op_callf(mergecopy, BMO_FLAG_DEFAULTS, "remove_doubles verts=%av dist=%f", BM_VERTS_OF_MESH, 0.0001f);
+	
+	BM_mesh_elem_hflag_disable_all(mergecopy, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT, false);
+	BM_ITER_MESH(e, &iter, mergecopy, BM_EDGES_OF_MESH)
+	{
+		if (BM_edge_face_count(e) == 1)
+		{
+			BM_elem_select_set(mergecopy, e, true);
+		}
+	}
 	
 	verttree = BLI_kdtree_new(mergecopy->totvert);
 	BM_ITER_MESH_INDEX(v, &iter, mergecopy, BM_VERTS_OF_MESH, index)
@@ -3062,19 +3082,17 @@ void fill_holes(BMesh** clipped, FaceMap** facemap, int facemapcount)
 		BMFace* f = facemap[i]->face;
 		int j, k;
 		
-		printf("INDEX: %d %d\n", f->head.index, i);
+		//printf("INDEX: %d %d\n", f->head.index, i);
 		
 		if ((last_index != f->head.index && last_index != -1))
 		{
-			BMIter viter;
-			BMVert* v;
-			
 			if ((area - totarea) > 0.001f && totarea > 0.0f)
 			{
 				int vcount = 0, ecount = 0, reversecount = 0, keepcount = 0;
 				float centr[3], a[2], b[2];
 				BMVert **holeverts = MEM_callocN(sizeof(BMVert*), "holeverts");
 				BMEdge **holeedges = MEM_callocN(sizeof(BMVert*), "holeedges");
+				
 				printf("Missing face parts...%d %d\n", starti, i);
 				printf("Area: %f; %f\n", area, totarea);
 				
@@ -3112,40 +3130,48 @@ void fill_holes(BMesh** clipped, FaceMap** facemap, int facemapcount)
 					
 					BM_ITER_ELEM(l, &iter, facemap[j]->newface, BM_LOOPS_OF_FACE)
 					{
-						if (BM_elem_flag_test(l->e->v1, BM_ELEM_SELECT) && BM_elem_flag_test(l->e->v2, BM_ELEM_SELECT))
+						if ((BM_elem_flag_test(l->v, BM_ELEM_SELECT) && BM_elem_flag_test(l->next->v, BM_ELEM_SELECT)))
 						{
 							BMVert *v1, *v2;
 							int index1, index2;
-							int vertcount1, edgecount1, vertcount2, edgecount2;
-							
-							index1 = BLI_kdtree_find_nearest(verttree, l->e->v1->co, NULL, NULL);
-							index2 = BLI_kdtree_find_nearest(verttree, l->e->v2->co, NULL, NULL);
+													
+							index1 = BLI_kdtree_find_nearest(verttree, l->v->co, NULL, NULL);
+							index2 = BLI_kdtree_find_nearest(verttree, l->next->v->co, NULL, NULL);
 							v1 = BM_vert_at_index(mergecopy, index1);
 							v2 = BM_vert_at_index(mergecopy, index2);
 							
-							vertcount1 = vert_face_count(v1);
-							edgecount1 = vert_edge_count(v1);
-							vertcount2 = vert_face_count(v2);
-							edgecount2 = vert_edge_count(v2);
-							
-							printf("Counts: (%d, %d) (%d, %d)\n", vertcount1, edgecount1, vertcount2, edgecount2);
-							
-							//if (vertcount1 < 4 || edgecount1 == 4)
+							if ((BM_elem_flag_test(v1, BM_ELEM_SELECT) && BM_vert_face_count(v1) != BM_vert_edge_count(v1)) &&
+								(BM_elem_flag_test(v2, BM_ELEM_SELECT) && BM_vert_face_count(v2) != BM_vert_edge_count(v2)))
 							{
-								insert_vert_checked(clipped, NULL, 0, &partial, &part, l->e->v1, true);
+								printf("Count 1: (%d %d)\n", BM_vert_face_count(v1), BM_vert_edge_count(v1));
+								printf("Count 2: (%d %d)\n", BM_vert_face_count(v1), BM_vert_edge_count(v1));
+								insert_vert_checked(clipped, NULL, 0, &partial, &part, l->v, true);
+								insert_vert_checked(clipped, NULL, 0, &partial, &part, l->next->v, true);
 							}
-							//BM_elem_select_set(clipped, l->e->v1, false);
-							
-							//if (vertcount2 < 4 || edgecount2 == 4)
-							{
-								insert_vert_checked(clipped, NULL, 0, &partial, &part, l->e->v2, true);
-							}
-							//BM_elem_select_set(clipped, l->e->v2, false);
 						}
+					/*	else if ((BM_elem_flag_test(l->v, BM_ELEM_SELECT) && BM_elem_flag_test(l->prev->v, BM_ELEM_SELECT)))
+						{
+							BMVert *v1, *v2;
+							int index1, index2;
+													
+							index1 = BLI_kdtree_find_nearest(verttree, l->v->co, NULL, NULL);
+							index2 = BLI_kdtree_find_nearest(verttree, l->prev->v->co, NULL, NULL);
+							v1 = BM_vert_at_index(mergecopy, index1);
+							v2 = BM_vert_at_index(mergecopy, index2);
+							
+							if ((BM_elem_flag_test(v1, BM_ELEM_SELECT) && BM_vert_face_count(v1) != BM_vert_edge_count(v1)) &&
+								(BM_elem_flag_test(v2, BM_ELEM_SELECT) && BM_vert_face_count(v2) != BM_vert_edge_count(v2)))
+							{
+								printf("Count 1: (%d %d)\n", BM_vert_face_count(v1), BM_vert_edge_count(v1));
+								printf("Count 2: (%d %d)\n", BM_vert_face_count(v1), BM_vert_edge_count(v1));
+								insert_vert_checked(clipped, NULL, 0, &partial, &part, l->v, true);
+								insert_vert_checked(clipped, NULL, 0, &partial, &part, l->prev->v, true);
+							}
+						}*/
 					}
 					
-					if ((b[1] < a[1]) && (reversecount > keepcount)) { //&& (i-starti) % 2 == 0) {
-						printf("Reversing order...");
+					if ((b[1] < a[1])  && (reversecount > keepcount)) { 
+						printf("Reversing order...\n");
 						for (k = 0; k < part; k++)
 						{
 							insert_vert_checked(clipped, NULL, 0, &holeverts, &vcount, partial[part-1-k], true);
@@ -3153,7 +3179,7 @@ void fill_holes(BMesh** clipped, FaceMap** facemap, int facemapcount)
 					}
 					else
 					{
-						printf("Keeping order...");
+						printf("Keeping order...\n");
 						for (k = 0; k < part; k++)
 						{
 							insert_vert_checked(clipped, NULL, 0, &holeverts, &vcount, partial[k], true);
@@ -3175,10 +3201,14 @@ void fill_holes(BMesh** clipped, FaceMap** facemap, int facemapcount)
 				
 				//fill hole... finally...
 				if (vcount == ecount) {
+					BMFace* fac;
 					printf("Filling...\n");
 					for (j = 0; j < vcount; j++)
 					{
-						printf("%d ", holeverts[j]->head.index);
+						if (j < vcount-1)
+							printf("%d ", holeverts[j]->head.index);
+						else
+							printf("%d\n", holeverts[j]->head.index);
 					}
 					BM_face_create(*clipped, holeverts, holeedges, vcount, 0);
 				}
@@ -3187,7 +3217,7 @@ void fill_holes(BMesh** clipped, FaceMap** facemap, int facemapcount)
 				MEM_freeN(holeedges);
 			}
 			
-			printf("RESETTING...\n");
+			//printf("RESETTING...\n");
 			starti = i;
 			area = BM_face_calc_area(f);
 			totarea = BM_face_calc_area(facemap[starti]->newface);
@@ -3197,7 +3227,7 @@ void fill_holes(BMesh** clipped, FaceMap** facemap, int facemapcount)
 			BMFace* fnew = facemap[i]->newface;
 			if (fnew != NULL)
 				totarea += BM_face_calc_area(fnew);
-			printf("ADDING UP...\n");
+			//printf("ADDING UP...\n");
 		}
 		else
 		{	
@@ -3206,11 +3236,14 @@ void fill_holes(BMesh** clipped, FaceMap** facemap, int facemapcount)
 				totarea = BM_face_calc_area(fnew);
 			area = BM_face_calc_area(f);
 			starti = i;
-			printf("INIT...\n");
+			//printf("INIT...\n");
 		}
 		
 		last_index = f->head.index;
 	}
+	
+	BLI_kdtree_free(verttree);
+	BM_mesh_free(mergecopy);
 }
 
 
@@ -3277,15 +3310,21 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				
 				if (emd->use_clipping && emd->fracMesh)
 				{
-					BMFace *face;
+					BMEdge *e;
 					BMIter iter;
+					BMFace *face;
+					Mesh *me;
 				
 					BMesh* origmesh; 
 					BMesh* clipped;
 					FaceMap** facemap;
 					int index = 0;
 					int facemapcount = 0;
+					int start;
 					
+					start = PIL_check_seconds_timer();
+					
+					me = (Mesh*)ob->data;
 					origmesh = DM_to_bmesh(derivedData);
 					clipped = BM_mesh_create(&bm_mesh_allocsize_default);
 					facemap = MEM_callocN(sizeof(FaceMap*), "facemap");
@@ -3302,7 +3341,15 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					
 					qsort(facemap, facemapcount, sizeof(FaceMap *), facebyindex);
 					fill_holes(&clipped, facemap, facemapcount);
-					//BMO_op_callf(clipped, BMO_FLAG_DEFAULTS, "remove_doubles verts=%av dist=%f", BM_VERTS_OF_MESH, 0.00001f);
+					/*BMO_op_callf(clipped, BMO_FLAG_DEFAULTS, "remove_doubles verts=%av dist=%f", BM_VERTS_OF_MESH, 0.0001f);
+					BM_mesh_elem_hflag_disable_all(clipped, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT, false);
+					BM_ITER_MESH(e, &iter, clipped, BM_EDGES_OF_MESH)
+					{
+						if (BM_edge_face_count(e) == 1)
+						{
+							BM_elem_select_set(clipped, e, true);
+						}
+					}*/
 					
 					for (i = 0; i < facemapcount; i++)
 					{
@@ -3313,7 +3360,19 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					
 					BM_mesh_free(emd->fracMesh);
 					emd->fracMesh = clipped; //BM_mesh_free(clipped);
+					
+					BM_mesh_normals_update(emd->fracMesh);
+					//enable smooth
+					if (me->mpoly[0].flag & ME_SMOOTH)
+					{
+						BM_ITER_MESH(face, &iter, emd->fracMesh, BM_FACES_OF_MESH)
+						{
+							BM_elem_flag_enable(face, BM_ELEM_SMOOTH);
+						}
+					}
+					
 					BM_mesh_free(origmesh);
+					printf("Clipping done, %g\n", PIL_check_seconds_timer() - start);
 				}
 
 				//trigger refresh of possible following rmd too

@@ -1827,7 +1827,7 @@ void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsland **m
 	//Do we have a explo modifier, if yes, use its neighborhood info before calculating (inner) neighborhoods here
 
 	emd = findPrecedingExploModifier(ob, rmd);
-	if (emd != NULL) {
+	if (emd != NULL && !emd->use_clipping) {
 		int i = 0, j;
 		GHash* visited_ids = BLI_ghash_pair_new("visited_ids");
 		for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
@@ -2496,7 +2496,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	
 			//grab neighborhood info (and whole fracture info -> cells) if available, if explo before rmd
 			emd = findPrecedingExploModifier(ob, rmd);
-			if (emd != NULL)
+			if (emd != NULL && !emd->use_clipping)
 			{
 				MeshIsland* mi;
 				VoronoiCell *vc;
