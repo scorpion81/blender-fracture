@@ -3174,6 +3174,7 @@ void fill_holes(BMesh** clipped, FaceMap** facemap, int facemapcount)
 					BMIter iter;
 					BMLoop* l;
 					BMVert** partial = MEM_callocN(sizeof(BMVert*), "partial");
+					BMVert *v3 = NULL;
 					
 					BM_face_calc_center_bounds(facemap[j]->newface, ncentr);
 					//on face (2d) is newcenter smaller or bigger... do flip dependent of that ?
@@ -3200,25 +3201,21 @@ void fill_holes(BMesh** clipped, FaceMap** facemap, int facemapcount)
 								insert_vert_checked(clipped, l->next->v->co, &vindex, &partial, &part, NULL, true);
 							}
 						}
-					/*	else if ((BM_elem_flag_test(l->v, BM_ELEM_SELECT) && BM_elem_flag_test(l->prev->v, BM_ELEM_SELECT)))
+						else if (BM_elem_flag_test(l->v, BM_ELEM_SELECT))
 						{
-							BMVert *v1, *v2;
-							int index1, index2;
-													
-							index1 = BLI_kdtree_find_nearest(verttree, l->v->co, NULL, NULL);
-							index2 = BLI_kdtree_find_nearest(verttree, l->prev->v->co, NULL, NULL);
-							v1 = BM_vert_at_index(mergecopy, index1);
-							v2 = BM_vert_at_index(mergecopy, index2);
-							
-							if ((BM_elem_flag_test(v1, BM_ELEM_SELECT) && BM_vert_face_count(v1) != BM_vert_edge_count(v1)) &&
-								(BM_elem_flag_test(v2, BM_ELEM_SELECT) && BM_vert_face_count(v2) != BM_vert_edge_count(v2)))
-							{
-								printf("Count 1: (%d %d)\n", BM_vert_face_count(v1), BM_vert_edge_count(v1));
-								printf("Count 2: (%d %d)\n", BM_vert_face_count(v1), BM_vert_edge_count(v1));
-								insert_vert_checked(clipped, NULL, 0, &partial, &part, l->v, true);
-								insert_vert_checked(clipped, NULL, 0, &partial, &part, l->prev->v, true);
-							}
-						}*/
+							int index = BLI_kdtree_find_nearest(verttree, l->v->co, NULL, NULL);
+							v3 = BM_vert_at_index(mergecopy, index); 
+						}
+					}
+					
+					if ((part == 0) && (v3 != NULL))
+					{
+						if (BM_elem_flag_test(v3, BM_ELEM_SELECT))
+						{
+							printf("Inserting THIRD vertex...\n");
+							insert_vert_checked(clipped, v3->co, &vindex, &partial, &part, NULL, true);
+						}
+						v3 = NULL;
 					}
 					
 					if ((b[1] < a[1])  && (reversecount > keepcount)) { 
