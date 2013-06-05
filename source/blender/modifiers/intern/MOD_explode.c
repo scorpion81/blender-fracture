@@ -348,14 +348,47 @@ BMEdge* insert_edge_checked(BMesh** mesh, BMVert* v1, BMVert *v2, int *edge_inde
 	return ed;
 }
 
-void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell, FaceMap*** facemap, int* facemapcount)
+static int BM_mesh_minmax(BMesh *bm, float r_min[3], float r_max[3], int tagged)
+{
+	BMVert* v;
+	BMIter iter;
+	INIT_MINMAX(r_min, r_max);
+	BM_ITER_MESH (v, &iter, bm, BM_VERTS_OF_MESH) {
+		if ((tagged && BM_elem_flag_test(v, BM_ELEM_SELECT)) || (!tagged))
+		{
+			minmax_v3v3_v3(r_min, r_max, v->co);
+		}
+	}
+
+	//BM_mesh_normals_update(bm, FALSE);
+	return (bm->totvert != 0);
+}
+
+static void bbox_dim(BoundBox* bb, float dim[3])
+{
+	float x[3], y[3], z[3];
+	
+	sub_v3_v3v3(x, bb->vec[4], bb->vec[0]);
+	sub_v3_v3v3(y, bb->vec[3], bb->vec[0]);
+	sub_v3_v3v3(z, bb->vec[1], bb->vec[0]);
+	
+	dim[0] = len_v3(x);
+	dim[1] = len_v3(y);
+	dim[2] = len_v3(z);
+}
+
+void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell, FaceMap*** facemap, int* facemapcount, KDTree* facetree)
 {
 	//clip each edge of mesh against each plane/face of cell
 	//float **planes = MEM_callocN(sizeof(float*), "planes");
 	BMVert* v;
 	BMIter iter, iter2, iter3;
 	BMFace *f, *fa;
-	int vert_index = 0, edge_index = 0, i, face_index = *facemapcount, face_count = 0;
+	BoundBox *bb;
+	float dim[3];
+	int vert_index = 0, edge_index = 0, i, face_index = *facemapcount, face_count = 0, r = 0, s = 0;
+	float min[3], max[3], radius;
+	KDTreeNearest *n = NULL;
 	BMesh *part = BM_mesh_create(&bm_mesh_allocsize_default);
 	
 	BM_mesh_elem_hflag_disable_all(mesh, BM_EDGE, BM_ELEM_TAG, FALSE);
@@ -371,14 +404,29 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 	CustomData_bmesh_init_pool(&part->pdata, bm_mesh_allocsize_default.totface, BM_FACE);
 
 	//BM_mesh_normals_update(cell);
+/*	BM_mesh_minmax(cell, min, max, false);
+	bb = BKE_boundbox_alloc_unit();
+	BKE_boundbox_init_from_minmax(bb, min, max);
+	bbox_dim(bb, dim);
+	radius = dim[max_axis_v3(dim)];
+	
+	r = BLI_kdtree_range_search(facetree, radius, vcell->centroid, NULL, &n);*/
 	
 	BM_ITER_MESH(f, &iter, mesh, BM_FACES_OF_MESH)
+	//for (s = 0; s < r; s++)
 	{
 		BMVert **verts = MEM_callocN(sizeof(BMVert*), "faceverts");
 		BMEdge **edges = MEM_callocN(sizeof(BMEdge*), "faceedges"), *ed;
 		BMLoop *l;
-		int count = 0, edge_count = 0, clip_count = 0, vcount = 0;
+		int count = 0, edge_count = 0, clip_count = 0, vcount = 0, index = -1;
 		BMVert *first_v1 = NULL, *last_v2 = NULL;
+		//BMFace *f;
+		
+		//index = n[s].index;
+		//f = BM_face_at_index(mesh, index);
+		
+		//if (f == NULL)
+		//	continue;
 		
 		BM_ITER_ELEM(l, &iter2, f, BM_LOOPS_OF_FACE)
 		{
@@ -528,6 +576,9 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 	//DM_release(vcell->cell_mesh);
 	//vcell->cell_mesh = CDDM_from_bmesh(part, TRUE);
 	BM_mesh_free(part);
+	//MEM_freeN(bb);
+	if (n != NULL)
+		MEM_freeN(n);
 }
 
 //fitting ? (bullet convexhull + approximative, paper)
@@ -3144,9 +3195,9 @@ void fill_holes(BMesh** clipped, FaceMap** facemap, int facemapcount)
 								(BM_elem_flag_test(v2, BM_ELEM_SELECT) && BM_vert_face_count(v2) != BM_vert_edge_count(v2)))
 							{
 								printf("Count 1: (%d %d)\n", BM_vert_face_count(v1), BM_vert_edge_count(v1));
-								printf("Count 2: (%d %d)\n", BM_vert_face_count(v1), BM_vert_edge_count(v1));
-								insert_vert_checked(clipped, NULL, 0, &partial, &part, l->v, true);
-								insert_vert_checked(clipped, NULL, 0, &partial, &part, l->next->v, true);
+								printf("Count 2: (%d %d)\n", BM_vert_face_count(v2), BM_vert_edge_count(v2));
+								insert_vert_checked(clipped, l->v->co, &vindex, &partial, &part, NULL, true);
+								insert_vert_checked(clipped, l->next->v->co, &vindex, &partial, &part, NULL, true);
 							}
 						}
 					/*	else if ((BM_elem_flag_test(l->v, BM_ELEM_SELECT) && BM_elem_flag_test(l->prev->v, BM_ELEM_SELECT)))
@@ -3321,6 +3372,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					int index = 0;
 					int facemapcount = 0;
 					int start;
+					KDTree* facetree;
 					
 					start = PIL_check_seconds_timer();
 					
@@ -3329,12 +3381,23 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					clipped = BM_mesh_create(&bm_mesh_allocsize_default);
 					facemap = MEM_callocN(sizeof(FaceMap*), "facemap");
 					
+					facetree = BLI_kdtree_new(origmesh->totface);
+					BM_ITER_MESH(face, &iter, origmesh, BM_FACES_OF_MESH)
+					{
+						float co[3];
+						BM_face_calc_center_bounds(face, co);
+						BLI_kdtree_insert(facetree, face->head.index, co, NULL);
+					}
+					BLI_kdtree_balance(facetree);
+					
 					for (i = 0; i < emd->cells->count; i++)
 					{
 						//if ((i == 4) || ( i == 7 ))
 						{
+							//maybe accelerate this by using a range query of "necessary verts only" (radius = cellboundbox)
 							BMesh* cellmesh = DM_to_bmesh(emd->cells->data[i].cell_mesh);
-							clip_cell_mesh(cellmesh, origmesh, &clipped, &emd->cells->data[i], &facemap, &facemapcount);
+							printf("Clipping mesh against cell: %d\n", i);
+							clip_cell_mesh(cellmesh, origmesh, &clipped, &emd->cells->data[i], &facemap, &facemapcount, facetree);
 							BM_mesh_free(cellmesh);
 						}
 					}
@@ -3372,6 +3435,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					}
 					
 					BM_mesh_free(origmesh);
+					BLI_kdtree_free(facetree);
 					printf("Clipping done, %g\n", PIL_check_seconds_timer() - start);
 				}
 
