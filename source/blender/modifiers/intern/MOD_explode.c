@@ -3137,7 +3137,7 @@ void fill_holes(BMesh** clipped, FaceMap** facemap, int facemapcount)
 		
 		if ((last_index != f->head.index && last_index != -1))
 		{
-			if ((area - totarea) > 0.001f && totarea > 0.0f)
+			if ((area - totarea) > 0.0001f && totarea > 0.0f)
 			{
 				int vcount = 0, ecount = 0, reversecount = 0, keepcount = 0;
 				float centr[3], a[2], b[2];
@@ -3192,11 +3192,8 @@ void fill_holes(BMesh** clipped, FaceMap** facemap, int facemapcount)
 							v1 = BM_vert_at_index(mergecopy, index1);
 							v2 = BM_vert_at_index(mergecopy, index2);
 							
-							if ((BM_elem_flag_test(v1, BM_ELEM_SELECT) && BM_vert_face_count(v1) != BM_vert_edge_count(v1)) &&
-								(BM_elem_flag_test(v2, BM_ELEM_SELECT) && BM_vert_face_count(v2) != BM_vert_edge_count(v2)))
+							if (BM_elem_flag_test(v1, BM_ELEM_SELECT) && BM_elem_flag_test(v2, BM_ELEM_SELECT))
 							{
-								printf("Count 1: (%d %d)\n", BM_vert_face_count(v1), BM_vert_edge_count(v1));
-								printf("Count 2: (%d %d)\n", BM_vert_face_count(v2), BM_vert_edge_count(v2));
 								insert_vert_checked(clipped, l->v->co, &vindex, &partial, &part, NULL, true);
 								insert_vert_checked(clipped, l->next->v->co, &vindex, &partial, &part, NULL, true);
 							}
@@ -3204,11 +3201,11 @@ void fill_holes(BMesh** clipped, FaceMap** facemap, int facemapcount)
 						else if (BM_elem_flag_test(l->v, BM_ELEM_SELECT))
 						{
 							int index = BLI_kdtree_find_nearest(verttree, l->v->co, NULL, NULL);
-							v3 = BM_vert_at_index(mergecopy, index); 
+							v3 = BM_vert_at_index(mergecopy, index);
 						}
 					}
 					
-					if ((part == 0) && (v3 != NULL))
+					if ((part == 0) && (v3 != NULL) && i-starti == 2)
 					{
 						if (BM_elem_flag_test(v3, BM_ELEM_SELECT))
 						{
@@ -3218,7 +3215,7 @@ void fill_holes(BMesh** clipped, FaceMap** facemap, int facemapcount)
 						v3 = NULL;
 					}
 					
-					if ((b[1] < a[1])  && (reversecount > keepcount)) { 
+					if ((b[1] < a[1])  && (reversecount > keepcount) && 0) { 
 						printf("Reversing order...\n");
 						for (k = 0; k < part; k++)
 						{
@@ -3227,7 +3224,7 @@ void fill_holes(BMesh** clipped, FaceMap** facemap, int facemapcount)
 					}
 					else
 					{
-						printf("Keeping order...\n");
+						//printf("Keeping order...\n");
 						for (k = 0; k < part; k++)
 						{
 							insert_vert_checked(clipped, NULL, 0, &holeverts, &vcount, partial[k], true);
@@ -3409,7 +3406,10 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 						{
 							BM_elem_select_set(clipped, e, true);
 						}
-					}*/
+					}
+					BM_mesh_select_flush(clipped);
+					
+					BMO_op_callf(clipped, BMO_FLAG_DEFAULTS, "triangle_fill edges=%ae use_beauty=%b", BM_EDGES_OF_MESH, false);*/
 					
 					for (i = 0; i < facemapcount; i++)
 					{
