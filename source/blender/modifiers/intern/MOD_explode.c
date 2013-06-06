@@ -2242,7 +2242,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 
 
 	if (emd->use_boolean || emd->use_clipping) {
-		theta = 0.25f;
+		theta = 2.0f;
 	}
 
 	//BKE_mesh_minmax(ob->data, min, max);
