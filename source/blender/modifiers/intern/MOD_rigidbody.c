@@ -1558,8 +1558,12 @@ KDTree* make_cell_tree(RigidBodyModifierData* rmd, Object* ob)
 	
 	while (rmd->cells.first)
 	{
-		BLI_remlink(&rmd->cells, rmd->cells.first);
-		MEM_freeN(rmd->cells.first);
+		NeighborhoodCell *cell = rmd->cells.first;
+		if (cell != NULL)
+		{
+			BLI_remlink(&rmd->cells, cell);
+			MEM_freeN(cell);
+		}
 	}
 	rmd->cells.first = NULL;
 	rmd->cells.last = NULL;
