@@ -376,7 +376,7 @@ static void bbox_dim(BoundBox* bb, float dim[3])
 	dim[2] = len_v3(z);
 }
 
-void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell, FaceMap*** facemap, int* facemapcount, int faceoffset)
+void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell, FaceMap*** facemap, int* facemapcount, GHash* facehash)
 {
 	//clip each edge of mesh against each plane/face of cell
 	//float **planes = MEM_callocN(sizeof(float*), "planes");
@@ -518,44 +518,25 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 					
 					if ((check_in_verts(verts, vcount, v1_index)) && (check_in_verts(verts, vcount, v2_index)))
 					{
-						//printf("Edge (%d %d)\n", v1_index, v2_index);
 						final_edges[j] = edges[i];
 						j++;
 					}
-					/*else
-					{
-						printf("Invalid edge found (%d %d)\n", v1_index, v2_index);
-					}*/
 				}
 				
 				fac = BM_face_create(part, verts, final_edges, vcount, 0);
-				/*if (fac->len > 3 && 0) {
-					int len = fac->len -2;
-					BMFace **newfaces = MEM_callocN(sizeof(BMFace*) * len, "newfaces");
-					BM_face_triangulate(part, fac, newfaces, false, false);
-					
-					for (i = 0; i < len; i++)
-					{
-						*facemap = MEM_reallocN(*facemap, sizeof(FaceMap*) * (face_index+1));
-						mapentry = MEM_callocN(sizeof(FaceMap), "mapentry");
-						(*facemap)[face_index] = mapentry;
-						face_index++;
-						mapentry->face = f;	
-						newfaces[i]->head.index = face_count;
-						mapentry->index = face_count;
-						face_count++;
-					}
-					
-					MEM_freeN(newfaces);
-				}
-				else*/
 				{
+					int index2;
+					float centr[3];
+					
+					BM_face_calc_center_bounds(f, centr);
+					index2 = BLI_ghash_lookup(facehash, centr);
+					
 					*facemap = MEM_reallocN(*facemap, sizeof(FaceMap*) * (face_index+1));
 					mapentry = MEM_callocN(sizeof(FaceMap), "mapentry");
 					(*facemap)[face_index] = mapentry;
 					face_index++;
 					mapentry->oldarea = BM_face_calc_area(f);
-					mapentry->oldindex = f->head.index + faceoffset;
+					mapentry->oldindex = index2;
 					fac->head.index = face_count;
 					mapentry->newindex = face_count;
 					face_count++;
@@ -574,8 +555,8 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 	}
 	
 	BM_mesh_select_flush(mesh);
-	//BMO_op_callf(mesh, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-	//			 "delete geom=%hvef context=%i", BM_ELEM_SELECT, DEL_FACES);
+	BMO_op_callf(mesh, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+				 "delete geom=%hvef context=%i", BM_ELEM_SELECT, DEL_FACES);
 
 	BM_mesh_join2(result, part, facemap); //put those into utility file rigidfracture_util.c
 	//need to get faceref from here, grr...
@@ -3264,6 +3245,30 @@ void fill_holes(BMesh** clipped, FaceMap** facemap, int facemapcount)
 	BM_mesh_free(mergecopy);
 }
 
+unsigned int coordHash(void *val)
+{
+	float* coords = (float*)val;
+	int a = (int)(coords[0]*1000.0f);
+	int b = (int)(coords[1]*10000.0f);
+	int c = (int)(coords[2]*100000.0f);
+	int hashval = a ^ b ^ c;
+	unsigned int hash = (unsigned int)hashval;
+	return hash;
+}
+
+int coordComp(const void *a, const void *b)
+{
+	float* c1 = (float*)a;
+	float* c2 = (float*)b;
+	float limit = 0.0001f;
+	
+	if (compare_v3v3(c1, c2, limit))
+	{
+		return 0;
+	}
+	
+	return 1;
+}
 
 static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 									DerivedMesh *derivedData,
@@ -3340,6 +3345,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					int facemapcount = 0;
 					int start;
 					int startface;
+					GHash *facehash = BLI_ghash_new(coordHash, coordComp, "facehash");
 					
 					start = PIL_check_seconds_timer();
 					
@@ -3347,6 +3353,13 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					origmesh = DM_to_bmesh(derivedData);
 					clipped = BM_mesh_create(&bm_mesh_allocsize_default);
 					facemap = MEM_callocN(sizeof(FaceMap*), "facemap");
+					
+					BM_ITER_MESH(face, &iter, origmesh, BM_FACES_OF_MESH)
+					{
+						float* centr = MEM_callocN(sizeof(float) * 3, "centr");
+						BM_face_calc_center_bounds(face, centr);
+						BLI_ghash_insert(facehash, centr, face->head.index);
+					}
 					
 					startface = origmesh->totface;
 					for (i = 0; i < emd->cells->count; i++)
@@ -3356,7 +3369,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 							//maybe accelerate this by using a range query of "necessary verts only" (radius = cellboundbox)
 							BMesh* cellmesh = DM_to_bmesh(emd->cells->data[i].cell_mesh);
 							printf("Clipping mesh against cell: %d\n", i);
-							clip_cell_mesh(cellmesh, origmesh, &clipped, &emd->cells->data[i], &facemap, &facemapcount, startface - origmesh->totface);
+							clip_cell_mesh(cellmesh, origmesh, &clipped, &emd->cells->data[i], &facemap, &facemapcount, facehash);
 							BM_mesh_free(cellmesh);
 						}
 					}
@@ -3397,6 +3410,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 						}
 					}
 					
+					BLI_ghash_free(facehash, BLI_ghashutil_pairfree, NULL);
 					BM_mesh_free(origmesh);
 					printf("Clipping done, %g\n", PIL_check_seconds_timer() - start);
 				}
