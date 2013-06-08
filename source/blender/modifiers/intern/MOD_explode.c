@@ -1883,6 +1883,19 @@ static int dm_minmax(DerivedMesh* dm, float min[3], float max[3])
 	return (verts != 0);
 }
 
+static void recenter_dm(DerivedMesh *dm, float center[3])
+{
+	int verts = dm->getNumVerts(dm);
+	MVert *mverts = dm->getVertArray(dm);
+	MVert *mvert;
+	int i = 0;
+	
+	for (i = 0; i < verts; i++) {
+		mvert = &mverts[i];
+		sub_v3_v3(mvert->co, center);
+	}
+}
+
 static int points_from_verts(Object** ob, int totobj, float*** points, int p_exist, float mat[4][4], float thresh, ExplodeModifierData *emd, DerivedMesh* dm, Object* obj)
 {
 	int v, o, pt = p_exist;
@@ -2183,9 +2196,9 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 	void* container = NULL;
 	particle_order* p_order = NULL;
 	loop_order* l_order = NULL;
-	float min[3], max[3];
+	float min[3], max[3], size[3];
 	int p = 0;
-	float co[3], vco[3];
+	float co[3], vco[3], loc[3], quat[4], centr[3];
 	BMesh *bm = NULL, *bmtemp = NULL;
 
 	FILE *fp = NULL;
@@ -2222,15 +2235,18 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 	INIT_MINMAX(min, max);
 
 
-	if (emd->use_boolean || emd->use_clipping) {
-		theta = 2.0f;
+	if (emd->use_boolean) {
+		theta = 0.1f;
 	}
 
+	BKE_mesh_boundbox_calc(ob->data, centr, size);
 	//BKE_mesh_minmax(ob->data, min, max);
-	dm_minmax(derivedData, min, max);
+	//dm_minmax(derivedData, min, max);
 	//use global coordinates for container
-	mul_v3_m4v3(min, ob->obmat, min);
-	mul_v3_m4v3(max, ob->obmat, max);
+	mat4_to_loc_quat(loc, quat, mat);
+	mul_v3_v3fl(min, size, -1);
+	mul_v3_v3fl(max, size, 1);
+	recenter_dm(derivedData, centr);
 
 	points = MEM_mallocN(sizeof(float*), "points");
 	totpoint = get_points(emd, emd->modifier.scene, ob, &points, mat, derivedData);
@@ -3309,22 +3325,19 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				mult_m4_m4m4(ob->obmat, imat, ob->obmat); //neutralize obmat due to rotation problem with container
 				
 				if ((emd->cells) && (emd->fracMesh)) {
-                    BM_mesh_free(emd->fracMesh);
+					BM_mesh_free(emd->fracMesh);
 					emd->fracMesh = NULL;
 				}
 				emd->fracMesh = fractureToCells(ob, derivedData, emd, oldobmat);
-//				BKE_submesh_free(emd->storage); // in case this is not the first call;
-//				emd->storage = NULL;
 
 				if (emd->fracMesh != NULL) {
 					BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "recalc_face_normals faces=%af use_face_tag=%b", BM_FACES_OF_MESH, false);
 					BM_mesh_normals_update(emd->fracMesh);
 					BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "dissolve_limit edges=%ae verts=%av angle_limit=%f use_dissolve_boundaries=%b",
-				                   BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);
-				//	emd->storage = BKE_bmesh_to_submesh(emd->fracMesh);
+							BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);
 				}
 				
-				copy_m4_m4(ob->obmat, oldobmat); // restore obmat
+				//copy_m4_m4(ob->obmat, oldobmat); // restore obmat
 
 				if (psmd != NULL)
 					emd->last_part = psmd->psys->totpart;
@@ -3333,7 +3346,6 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				
 				if (emd->use_clipping && emd->fracMesh)
 				{
-					BMEdge *e;
 					BMIter iter;
 					BMFace *face;
 					Mesh *me;
@@ -3341,10 +3353,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					BMesh* origmesh; 
 					BMesh* clipped;
 					FaceMap** facemap;
-					int index = 0;
 					int facemapcount = 0;
 					int start;
-					int startface;
 					GHash *facehash = BLI_ghash_new(coordHash, coordComp, "facehash");
 					
 					start = PIL_check_seconds_timer();
@@ -3361,7 +3371,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 						BLI_ghash_insert(facehash, centr, face->head.index);
 					}
 					
-					startface = origmesh->totface;
+					invert_m4_m4(ob->imat, ob->obmat);
 					for (i = 0; i < emd->cells->count; i++)
 					{
 						//if ((i == 4) || ( i == 7 ))
@@ -3398,7 +3408,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					MEM_freeN(facemap);
 					
 					BM_mesh_free(emd->fracMesh);
-					emd->fracMesh = clipped; //BM_mesh_free(clipped);
+					emd->fracMesh = clipped;
 					
 					BM_mesh_normals_update(emd->fracMesh);
 					//enable smooth
@@ -3414,7 +3424,20 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					BM_mesh_free(origmesh);
 					printf("Clipping done, %g\n", PIL_check_seconds_timer() - start);
 				}
-
+				
+				{
+					BMVert* vert;
+					BMIter iter;
+					float centr[3], size[3];
+					BKE_mesh_boundbox_calc(ob->data, centr, size);
+					BM_ITER_MESH(vert, &iter, emd->fracMesh, BM_VERTS_OF_MESH)
+					{
+						add_v3_v3(vert->co, centr);
+					}
+				}
+				
+				copy_m4_m4(ob->obmat, oldobmat); // restore obmat
+				
 				//trigger refresh of possible following rmd too
 				if (rmd)
 					rmd->refresh = TRUE;
