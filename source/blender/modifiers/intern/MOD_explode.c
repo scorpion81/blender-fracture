@@ -387,7 +387,7 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 	BoundBox *bb;
 	float dim[3], limit = 0.000001f;
 	int vert_index = 0, edge_index = 0, i, face_index = *facemapcount, face_count = 0, r = 0, s = 0;
-	float min[3], max[3], radius, search[3];
+	float min[3], max[3], radius, radiusmin, radiusmax, search[3];
 	KDTreeNearest *n = NULL;
 	BMesh *part = BM_mesh_create(&bm_mesh_allocsize_default);
 	
@@ -408,7 +408,10 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 	bb = BKE_boundbox_alloc_unit();
 	BKE_boundbox_init_from_minmax(bb, min, max);
 	bbox_dim(bb, dim);
-	radius = dim[max_axis_v3(dim)];
+	radiusmax = dim[max_axis_v3(dim)];
+	radiusmin = dim[min_axis_v3(dim)];
+	
+	radius = MIN2(radiusmax, 2.0f*radiusmin);
 	
 	mul_v3_v3fl(search, vcell->centroid, -1);
 	r = BLI_kdtree_range_search(facetree, radius, search, NULL, &n);
@@ -507,7 +510,7 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 				if (count < 3)
 					continue;
 				
-				final_edges = MEM_callocN(sizeof(BMEdge*) * vcount, "final_edges");
+				final_edges = MEM_callocN(sizeof(BMEdge*) * count, "final_edges");
 				//printf("Count e,v: %d %d\n", count, vcount);
 				//qsort(verts, vcount, sizeof(BMVert*), vertbyindex);
 				//qsort(edges, count, sizeof(BMEdge*), edgebyindex);
