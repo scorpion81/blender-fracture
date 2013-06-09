@@ -160,13 +160,6 @@ void freeMeshIsland(RigidBodyModifierData* rmd, MeshIsland* mi)
 	
 	if (mi->compound_count > 0)
 	{
-		for (i = 0; i < mi->compound_count; i++)
-		{
-			//freeMeshIsland(rmd, mi->compound_children[i]);
-			mi->compound_children[i]->compound_parent = NULL;
-			mi->compound_children[i] = NULL;
-		}
-		
 		MEM_freeN(mi->compound_children);
 		mi->compound_count = 0;
 		mi->compound_parent = NULL;
