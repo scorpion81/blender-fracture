@@ -1323,11 +1323,11 @@ typedef struct RigidBodyModifierData {
 	int outer_constraint_type, outer_constraint_location, outer_constraint_pattern;
 	int explo_shared, constraint_limit, contact_dist_meaning, use_both_directions;
 	int breaking_angle, breaking_percentage, use_proportional_distance, use_proportional_limit;
-	int use_cellbased_sim;
+	int use_cellbased_sim, use_experimental;
 	float breaking_distance, max_vol, cell_size;
 	float origmat[4][4], breaking_threshold;
 	float contact_dist, group_breaking_threshold, group_contact_dist, auto_merge_dist;
-	//char pad[4];
+	char pad[4];
 } RigidBodyModifierData;
 
 typedef struct NeighborhoodCell {

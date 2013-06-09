@@ -4007,7 +4007,7 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	static EnumPropertyItem prop_contact_dist[] = {
 		{MOD_RIGIDBODY_CENTROIDS, "CENTROIDS", 0, "Centroids", ""},
 		{MOD_RIGIDBODY_VERTICES, "VERTICES", 0, "Vertices", ""},
-		{MOD_RIGIDBODY_CELLS, "CELLS", 0, "Cells", "" },
+		//{MOD_RIGIDBODY_CELLS, "CELLS", 0, "Cells", "" },
 		{MOD_RIGIDBODY_CELL_CENTROIDS, "CELL_CENTROIDS", 0, "Cells + Centroids", "" },
 		{0, NULL, 0, NULL, NULL}
 	};
@@ -4039,6 +4039,7 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "contact_dist", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "contact_dist");
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
+	RNA_def_property_float_default(prop, 1.0f);
 	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_contact_dist_set", NULL);
 	RNA_def_property_ui_text(prop, "Contact distance", "Distance up to which two vertices are considered to have contact");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
@@ -4164,7 +4165,7 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	
 	prop = RNA_def_property(srna, "use_cellbased_sim", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "use_cellbased_sim", FALSE);
-	RNA_def_property_ui_text(prop, "Use Cell Based Simulation", "Simulate MeshIslands in the size of the cells");
+	RNA_def_property_ui_text(prop, "Use Cell Based Simulation", "Simulate MeshIsland Compounds in the size of the cells");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 	
 	prop = RNA_def_property(srna, "cell_size", PROP_FLOAT, PROP_NONE);
@@ -4173,6 +4174,11 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	RNA_def_property_float_default(prop, 1.0f);
 	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_cell_size_set", NULL);
 	RNA_def_property_ui_text(prop, "Cell Size", "Size of a cell in the constraint searching grid");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	
+	prop = RNA_def_property(srna, "use_experimental", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "use_experimental", FALSE);
+	RNA_def_property_ui_text(prop, "Use Experimental", "Experimental features, work in progress. Use at own risk!");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 

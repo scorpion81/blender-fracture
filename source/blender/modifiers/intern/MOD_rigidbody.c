@@ -82,7 +82,7 @@ static void initData(ModifierData *md)
 	rmd->breaking_threshold = 10.0f;
 	rmd->use_constraints = FALSE;
 	rmd->constraint_group = NULL;
-	rmd->contact_dist = 0.00001f;
+	rmd->contact_dist = 1.0f;
 	rmd->group_breaking_threshold = 1.0f;
 	rmd->group_contact_dist = 0.0001f;
 	rmd->mass_dependent_thresholds = FALSE;

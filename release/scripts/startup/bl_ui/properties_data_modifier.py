@@ -32,6 +32,13 @@ class ModifierButtonsPanel():
 class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
     bl_label = "Modifiers"
 
+    def icon(self, bool):
+        if bool:
+            return 'TRIA_DOWN'
+        else:
+            return 'TRIA_RIGHT'
+
+
     def draw(self, context):
         layout = self.layout
 
@@ -675,34 +682,43 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         layout.label(text="Settings can be found inside the Particle context")
 
     def RIGID_BODY(self, layout, ob, md):
+        #standard stuff
         layout.operator("object.rigidbody_refresh", text="Refresh All Data")
         layout.operator("object.rigidbody_constraints_refresh", text="Refresh Constraints Only")
+        layout.label("Constraint Building Settings")
         layout.prop(md, "use_constraints")
-        layout.prop(md, "use_both_directions")
-        layout.prop(md, "constraint_group") 
-        layout.prop(md, "constraint_limit")
-        layout.prop(md, "use_proportional_limit")
+        layout.prop(md, "constraint_limit", text="Constraint limit, per MeshIsland")
         layout.prop(md, "contact_dist_meaning")
         if (md.contact_dist_meaning == 'CELLS') or (md.contact_dist_meaning == 'CELL_CENTROIDS'):
             layout.prop(md, "cell_size")
-            layout.prop(md, "use_cellbased_sim")
+            layout.prop(md, "use_cellbased_sim", text="Use Compounds")
         layout.prop(md, "contact_dist")
-        layout.prop(md, "group_contact_dist")
-        layout.prop(md, "use_proportional_distance")
-        layout.prop(md, "inner_constraint_type")
-        layout.prop(md, "outer_constraint_type")
-        layout.prop(md, "outer_constraint_location")
+        layout.label("Constraint Breaking Settings")
+        col = layout.column(align=True)
+        row = col.row(align=True)
+        row.prop(md, "breaking_threshold", text="Threshold")
+        row.prop(md, "breaking_percentage", text="Percentage")
+        row = col.row(align=True)
+        row.prop(md, "breaking_angle", text="Angle")
+        row.prop(md, "breaking_distance", text="Distance")
+        
+        #experimental stuff
         box = layout.box()
-        box.label("Needs no constraint refresh after update")
-        box.prop(md, "breaking_threshold")
-        box.prop(md, "group_breaking_threshold")
-        box.prop(md, "mass_dependent_thresholds")
-        box.prop(md, "dist_dependent_thresholds")
-        box.prop(md, "breaking_percentage")
-        box.prop(md, "breaking_angle")
-        box.prop(md, "breaking_distance")
-        box.prop(md, "auto_merge")
-        box.prop(md, "auto_merge_dist")
+        box.prop(md, "use_experimental", text="Experimental, use with caution !", icon=self.icon(md.use_experimental), emboss = False)
+        if md.use_experimental:
+            box.prop(md, "use_both_directions")
+            box.prop(md, "constraint_group")
+            box.prop(md, "group_contact_dist")
+            box.prop(md, "inner_constraint_type")
+            box.prop(md, "outer_constraint_type")
+            box.prop(md, "outer_constraint_location")
+            box.prop(md, "use_proportional_limit")
+            box.prop(md, "use_proportional_distance")
+            box.prop(md, "group_breaking_threshold")
+            box.prop(md, "mass_dependent_thresholds")
+            box.prop(md, "dist_dependent_thresholds")
+            box.prop(md, "auto_merge")
+            box.prop(md, "auto_merge_dist")
 
     def SCREW(self, layout, ob, md):
         split = layout.split()
