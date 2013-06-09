@@ -319,12 +319,19 @@ BMEdge* insert_edge_checked(BMesh** mesh, BMVert* v1, BMVert *v2, int *edge_inde
 	
 	if (e == NULL)
 	{
-		ed = BM_edge_exists(v1, v2);
-		
-		if ((ed == NULL) /* && (!edge_vert_test(*mesh, v1, v2))*/) {
-			ed = BM_edge_create(*mesh, v1, v2, NULL, 0);
-			ed->head.index = *edge_index;
-			(*edge_index)++;
+		if (v1 != v2)
+		{
+			ed = BM_edge_exists(v1, v2);
+			
+			if ((ed == NULL) /* && (!edge_vert_test(*mesh, v1, v2))*/) {
+				ed = BM_edge_create(*mesh, v1, v2, NULL, 0);
+				ed->head.index = *edge_index;
+				(*edge_index)++;
+			}
+		}
+		else
+		{
+			return NULL;
 		}
 	}
 	else
