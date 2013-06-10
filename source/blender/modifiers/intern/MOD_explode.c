@@ -3197,7 +3197,7 @@ void fill_holes(BMesh** clipped, FaceMap** facemap, int facemapcount)
 						}
 					}
 					
-					if ((part == 0) && (v3 != NULL) && i-starti == 2)
+					if ((part == 0) && (v3 != NULL) /* && i-starti == 2*/)
 					{
 						if (BM_elem_flag_test(v3, BM_ELEM_SELECT))
 						{
