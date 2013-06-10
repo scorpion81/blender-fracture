@@ -158,14 +158,7 @@ void freeMeshIsland(RigidBodyModifierData* rmd, MeshIsland* mi)
 		mi->rigidbody = NULL;
 	}
 	
-	if (mi->compound_count > 0)
-	{
-		MEM_freeN(mi->compound_children);
-		mi->compound_count = 0;
-		mi->compound_parent = NULL;
-	}
-
-	if (!rmd->explo_shared) {
+	if (!rmd->explo_shared || mi->compound_count > 0) {
 		if (mi->vertco /*&& rmd->refresh == FALSE*/) {
 			MEM_freeN(mi->vertco);
 			mi->vertco = NULL;
@@ -174,6 +167,13 @@ void freeMeshIsland(RigidBodyModifierData* rmd, MeshIsland* mi)
 			MEM_freeN(mi->vertices);
 			mi->vertices = NULL; //borrowed only !!!
 		}
+	}
+	
+	if (mi->compound_count > 0)
+	{
+		MEM_freeN(mi->compound_children);
+		mi->compound_count = 0;
+		mi->compound_parent = NULL;
 	}
 
 	if (mi->bb != NULL) {
@@ -1042,9 +1042,6 @@ void destroy_compound(RigidBodyModifierData* rmd, Object* ob, MeshIsland *mi, fl
 		{
 			mi->destruction_frame = cfra;
 		}
-		/*MEM_freeN(mi->compound_children);
-		mi->compound_children = NULL;
-		mi->compound_count = 0;*/
 	}
 }
 
@@ -1543,9 +1540,13 @@ KDTree* make_cell_tree(RigidBodyModifierData* rmd, Object* ob)
 	
 	csize = rmd->cell_size;
 	
-	cells[0] = (int)(dim[0] / csize)+1;
+	/*cells[0] = (int)(dim[0] / csize)+1;
 	cells[1] = (int)(dim[1] / csize)+1;
-	cells[2] = (int)(dim[2] / csize)+1;
+	cells[2] = (int)(dim[2] / csize)+1;*/
+	
+	cells[0] = (int)(ceil(dim[0] / csize));
+	cells[1] = (int)(ceil(dim[1] / csize));
+	cells[2] = (int)(ceil(dim[2] / csize));
 	
 	tree = BLI_kdtree_new(cells[0]*cells[1]*cells[2]);
 	
@@ -1824,7 +1825,7 @@ void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsland **m
 	//Do we have a explo modifier, if yes, use its neighborhood info before calculating (inner) neighborhoods here
 
 	emd = findPrecedingExploModifier(ob, rmd);
-	if (emd != NULL && !emd->use_clipping) {
+	if (emd != NULL && !emd->use_clipping && !rmd->use_cellbased_sim) {
 		int i = 0, j;
 		GHash* visited_ids = BLI_ghash_pair_new("visited_ids");
 		for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
@@ -2545,6 +2546,13 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					mi->neighbor_ids = vc->neighbor_ids;
 					mi->neighbor_count = vc->neighbor_count;
 					mi->global_face_map = vc->global_face_map;
+					
+					if (!rmd->use_cellbased_sim)
+					{
+						mi->destruction_frame = -1;
+						mi->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi);
+						BKE_rigidbody_calc_shard_mass(ob, mi);
+					}
 				//}
 				}
 			}

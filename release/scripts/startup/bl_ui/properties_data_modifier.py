@@ -687,7 +687,6 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         layout.operator("object.rigidbody_constraints_refresh", text="Refresh Constraints Only")
         layout.label("Constraint Building Settings")
         layout.prop(md, "use_constraints")
-        layout.prop(md, "constraint_limit", text="Constraint limit, per MeshIsland")
         layout.prop(md, "contact_dist_meaning")
         if (md.contact_dist_meaning == 'CELLS') or (md.contact_dist_meaning == 'CELL_CENTROIDS'):
             layout.prop(md, "cell_size")
@@ -707,6 +706,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         box.prop(md, "use_experimental", text="Experimental, use with caution !", icon=self.icon(md.use_experimental), emboss = False)
         if md.use_experimental:
             box.prop(md, "use_both_directions")
+            box.prop(md, "constraint_limit", text="Constraint limit, per MeshIsland")
             box.prop(md, "constraint_group")
             box.prop(md, "group_contact_dist")
             box.prop(md, "inner_constraint_type")
