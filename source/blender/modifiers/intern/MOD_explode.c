@@ -427,10 +427,8 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 	for (s = 0; s < r; s++)
 	{
 		BMVert **verts = MEM_callocN(sizeof(BMVert*), "faceverts");
-		BMEdge **edges = MEM_callocN(sizeof(BMEdge*), "faceedges"), *ed;
 		BMLoop *l;
 		int count = 0, edge_count = 0, clip_count = 0, vcount = 0, index = -1;
-		BMVert *first_v1 = NULL, *last_v2 = NULL;
 		
 		index = n[s].index;
 		f = facearray[index];
@@ -443,10 +441,6 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 			float p1[3], p2[3];
 			bool clipresult = true;
 			
-			//if (BM_elem_flag_test(l->e, BM_ELEM_TAG))
-			//	continue;
-			
-			//BM_elem_flag_enable(l->e, BM_ELEM_TAG);
 			copy_v3_v3(p1, l->v->co);
 			copy_v3_v3(p2, l->next->v->co);
 			
@@ -487,26 +481,11 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 					BM_elem_flag_enable(l->v, BM_ELEM_SELECT);
 					BM_elem_flag_enable(l->next->v, BM_ELEM_SELECT);
 				}
-			
-				insert_edge_checked(&part, v1, v2, &edge_index, &edges, &count, NULL);
-				if (first_v1 == NULL) {
-					first_v1 = v1;
-				} 
-				
-				if (last_v2 != NULL) {
-					insert_edge_checked(&part, last_v2, v1, &edge_index, &edges, &count, NULL);
-				}
-				
-				last_v2 = v2;
 				clip_count++;
 			}
 			
-			//BM_elem_flag_enable(e, BM_ELEM_TAG);
 			edge_count++;
-			if (edge_count == f->len && clip_count > 0)
-			{
-				insert_edge_checked(&part, last_v2, first_v1, &edge_index, &edges, &count, NULL);
-			}
+			
 			if (edge_count == f->len)
 			{
 				BMFace *fac;
@@ -514,25 +493,17 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 				int j = 0;
 				BMEdge** final_edges;
 				
-				if (count < 3)
+				if (vcount < 3)
 					continue;
 				
-				final_edges = MEM_callocN(sizeof(BMEdge*) * count, "final_edges");
-				//printf("Count e,v: %d %d\n", count, vcount);
-				//qsort(verts, vcount, sizeof(BMVert*), vertbyindex);
-				//qsort(edges, count, sizeof(BMEdge*), edgebyindex);
+				final_edges = MEM_callocN(sizeof(BMEdge*) * vcount, "final_edges");
 				
-				for (i = 0; i < count; i++) {
-					
-					int v1_index = edges[i]->v1->head.index;
-					int v2_index = edges[i]->v2->head.index;
-					
-					if ((check_in_verts(verts, vcount, v1_index)) && (check_in_verts(verts, vcount, v2_index)))
-					{
-						final_edges[j] = edges[i];
-						j++;
-					}
+				for (i = 0; i < vcount-1; i++) 
+				{
+					insert_edge_checked(&part, verts[i], verts[i+1], &edge_index, &final_edges, &count, NULL);
 				}
+				
+				insert_edge_checked(&part, verts[vcount-1], verts[0], &edge_index, &final_edges, &count, NULL);
 				
 				fac = BM_face_create(part, verts, final_edges, vcount, 0);
 				{
@@ -553,14 +524,11 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 					face_count++;
 				}
 				
-				first_v1 = NULL;
-				
 				MEM_freeN(final_edges);
 			}
 		}
 		
 		MEM_freeN(verts);
-		MEM_freeN(edges);
 		count = 0;
 		clip_count = 0;
 	}
