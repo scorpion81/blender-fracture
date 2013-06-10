@@ -3448,6 +3448,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					printf("Clipping done, %g\n", PIL_check_seconds_timer() - start);
 				}
 				
+				if (emd->fracMesh != NULL)
 				{
 					BMVert* vert;
 					BMIter iter;
