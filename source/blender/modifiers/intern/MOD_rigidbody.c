@@ -142,6 +142,20 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->auto_merge_dist = rmd->auto_merge_dist;
 	trmd->refresh = TRUE;
 	trmd->constraint_limit = rmd->constraint_limit;
+	trmd->breaking_angle = rmd->breaking_angle;
+	trmd->breaking_distance= rmd->breaking_distance;
+	trmd->breaking_percentage = rmd->breaking_percentage;
+	trmd->cell_size = rmd->cell_size;
+	trmd->contact_dist_meaning = rmd->contact_dist_meaning;
+	trmd->use_cellbased_sim = rmd->use_cellbased_sim;
+	trmd->use_experimental = rmd->use_experimental;
+	trmd->use_both_directions = rmd->use_both_directions;
+	trmd->dist_dependent_thresholds = rmd->dist_dependent_thresholds;
+	trmd->refresh_constraints = TRUE;
+	trmd->outer_constraint_location = rmd->outer_constraint_location;
+	trmd->outer_constraint_pattern = rmd->outer_constraint_pattern;
+	trmd->outer_constraint_type = rmd->outer_constraint_type;
+	trmd->inner_constraint_type = rmd->inner_constraint_type;
 }
 
 void freeMeshIsland(RigidBodyModifierData* rmd, MeshIsland* mi)
