@@ -168,6 +168,8 @@ typedef enum eRigidBodyOb_Flag {
 	RBO_FLAG_USE_MARGIN			= (1 << 6),
 	/* active compound parents before destruction */
 	RBO_FLAG_ACTIVE_COMPOUND	= (1 << 7),
+	/* baked state of compound*/
+	RBO_FLAG_BAKED_COMPOUND		= (1 << 8),
 } eRigidBodyOb_Flag;
 
 /* RigidBody Collision Shape */

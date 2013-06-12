@@ -1357,7 +1357,6 @@ static void write_defgroups(WriteData *wd, ListBase *defbase)
 	for (defgroup=defbase->first; defgroup; defgroup=defgroup->next)
 		writestruct(wd, DATA, "bDeformGroup", 1, defgroup);
 }
- 
 
 static void write_modifiers(WriteData *wd, ListBase *modbase)
 {
@@ -1490,7 +1489,6 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 				con->physics_constraint = NULL;
 				con->flag |= RBC_FLAG_NEEDS_VALIDATE;
 			}
- 
 		}
 	}
 }

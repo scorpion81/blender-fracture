@@ -1315,9 +1315,12 @@ typedef struct RigidBodyModifierData {
 	struct Group *constraint_group;
 	ListBase meshIslands, meshConstraints, cells;
 	int	**sel_indexes, *index_storage, *id_storage;
-	int (*vol_check)(struct RigidBodyModifierData *rmd, struct MeshIsland *mi);
+	//int (*vol_check)(struct RigidBodyModifierData *rmd, struct MeshIsland *mi);
+	void (*join)(struct RigidBodyModifierData *rmd, struct Object* ob);
 	void (*split)(struct RigidBodyModifierData *rmd, struct Object *ob, struct MeshIsland *mi, float cfra);
 	struct GHash *idmap;
+	float *framemap;
+	int framecount;
 	int refresh, use_constraints, mass_dependent_thresholds, auto_merge, sel_counter;
 	int inner_constraint_type, dist_dependent_thresholds, refresh_constraints;
 	int outer_constraint_type, outer_constraint_location, outer_constraint_pattern;
@@ -1327,7 +1330,7 @@ typedef struct RigidBodyModifierData {
 	float breaking_distance, max_vol, cell_size;
 	float origmat[4][4], breaking_threshold;
 	float contact_dist, group_breaking_threshold, group_contact_dist, auto_merge_dist;
-	char pad[4];
+	//char pad[4];
 } RigidBodyModifierData;
 
 typedef struct NeighborhoodCell {

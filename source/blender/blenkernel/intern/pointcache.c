@@ -979,8 +979,8 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUS
 	
 	if (rbo == NULL)
 	{
-		float dummyloc[3] = {NAN, NAN, NAN};
-		float dummyrot[4] = {NAN, NAN, NAN, NAN};
+		float dummyloc[3] = {FLT_MIN, FLT_MIN, FLT_MIN};
+		float dummyrot[4] = {FLT_MIN, FLT_MIN, FLT_MIN, FLT_MIN};
 		
 		//need to write dummy data obviously... hmm
 		PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, dummyloc);

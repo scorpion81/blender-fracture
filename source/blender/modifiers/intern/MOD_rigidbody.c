@@ -72,6 +72,7 @@
 
 int vol_check(RigidBodyModifierData *rmd, MeshIsland* mi);
 void destroy_compound(RigidBodyModifierData* rmd, Object *ob, MeshIsland* mi, float cfra);
+void buildCompounds(RigidBodyModifierData *rmd, Object *ob);
 
 static void initData(ModifierData *md)
 {
@@ -109,8 +110,10 @@ static void initData(ModifierData *md)
 	rmd->cell_size = 1.0f;
 	rmd->refresh_constraints = FALSE;
 	rmd->split = destroy_compound;
-	rmd->vol_check = vol_check;
+	rmd->join = buildCompounds;
 	rmd->use_cellbased_sim = FALSE;
+	rmd->framecount = 0;
+	rmd->framemap = NULL;
 }
 
 static void copyData(ModifierData *md, ModifierData *target)
@@ -156,6 +159,11 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->outer_constraint_pattern = rmd->outer_constraint_pattern;
 	trmd->outer_constraint_type = rmd->outer_constraint_type;
 	trmd->inner_constraint_type = rmd->inner_constraint_type;
+	
+	trmd->framecount = 0;
+	trmd->framemap = NULL;
+	trmd->join = buildCompounds;
+	trmd->split = destroy_compound;
 }
 
 void freeMeshIsland(RigidBodyModifierData* rmd, MeshIsland* mi)
@@ -245,6 +253,16 @@ static void freeData(ModifierData *md)
 		if (rmd->idmap != NULL) {
 			BLI_ghash_free(rmd->idmap, NULL, NULL);
 			rmd->idmap = NULL;
+		}
+		
+		if (!rmd->refresh)
+		{
+			if (rmd->framemap)
+			{
+				MEM_freeN(rmd->framemap);
+				rmd->framemap = NULL;
+				rmd->framecount = 0;
+			}
 		}
 	}
 	
@@ -1033,6 +1051,7 @@ void destroy_compound(RigidBodyModifierData* rmd, Object* ob, MeshIsland *mi, fl
 			BKE_rigidbody_calc_shard_mass(ob, mi2);
 			mi2->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 			mi2->rigidbody->flag |= RBO_FLAG_ACTIVE_COMPOUND; // do not build constraints between those
+			mi2->rigidbody->flag |= RBO_FLAG_BAKED_COMPOUND;
 			//linear, angular velocities too ?!
 		//	BKE_rigidbody_validate_sim_shard(rmd->modifier.scene->rigidbody_world, mi2, ob, true);
 		//	mi2->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
@@ -1049,12 +1068,24 @@ void destroy_compound(RigidBodyModifierData* rmd, Object* ob, MeshIsland *mi, fl
 		}
 	}
 	
+	
 	if (mi->compound_count > 0)
 	{
+		bool baked = rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED;
 		mi->rigidbody->flag &= ~RBO_FLAG_ACTIVE_COMPOUND;
+		mi->rigidbody->flag &= ~RBO_FLAG_BAKED_COMPOUND;
+		
 		if (mi->destruction_frame < 0)
 		{
 			mi->destruction_frame = cfra;
+			//dont update framemap in baked mode
+			if (rmd->framemap != NULL && !baked)
+			{
+				if (mi->linear_index < rmd->framecount)
+				{
+					rmd->framemap[mi->linear_index] = cfra;
+				}
+			}
 		}
 	}
 }
@@ -2341,6 +2372,29 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 	BLI_kdtree_free(celltree); //silly but only temporary...
 	//to_remove = MEM_callocN(sizeof(MeshIsland*), "to_remove");
 	
+	
+	for (mi = rmd->meshIslands.first; mi; mi = mi->next)
+	{
+		if (mi->compound_count > 0)	//clean up old compounds first
+		{
+			for (i = 0; i < mi->compound_count; i++)
+			{
+				MeshIsland* mi2 = mi->compound_children[i];
+				if (mi2->rigidbody != NULL)
+				{
+					BKE_rigidbody_remove_shard(rmd->modifier.scene, mi2);
+					MEM_freeN(mi2->rigidbody);
+					mi2->rigidbody = NULL;
+				}
+				mi2->destruction_frame = -1;
+				mi2->compound_parent = NULL;
+			}
+			BKE_rigidbody_remove_shard(rmd->modifier.scene, mi);
+			BLI_remlink(&rmd->meshIslands, mi);
+			freeMeshIsland(rmd, mi);
+		}
+	}
+	
 	for (mi = rmd->meshIslands.first; mi; mi = mi->next)
 	{
 		//do this in object space maybe... ? TODO
@@ -2466,10 +2520,20 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 		BKE_rigidbody_calc_shard_mass(ob, mi_compound);
 		mi_compound->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 		mi_compound->rigidbody->flag &= ~RBO_FLAG_ACTIVE_COMPOUND;
+		mi_compound->rigidbody->flag |= RBO_FLAG_BAKED_COMPOUND;
 		//BKE_rigidbody_validate_sim_shard(rmd->modifier.scene->rigidbody_world, mi_compound, ob, true);
 		//mi_compound->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
 		
 		BLI_addtail(&rmd->meshIslands, mi_compound);
+		
+		if (rmd->framemap != NULL && (rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED))
+		{
+			if (rmd->framecount >= BLI_countlist(&rmd->meshIslands))
+			{
+				int index = BLI_findindex(&rmd->meshIslands, mi_compound);
+				mi_compound->destruction_frame = rmd->framemap[index];
+			}
+		}
 	}
 	
 	//clean up compound children
@@ -2499,7 +2563,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		//int len = 0;
 		freeData(md);
 		rmd->split = destroy_compound;
-		rmd->vol_check = vol_check;
+		rmd->join = buildCompounds;
+		//rmd->vol_check = vol_check;
 		
 		if (rmd->refresh)
 		{
@@ -2587,11 +2652,11 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		if (rmd->use_cellbased_sim)
 		{
 			MeshIsland* mi;
-			int i;
+			int i, count;
 			//create Compounds HERE....go through all cells, find meshislands around cell centroids (make separate island tree)
 			//and compound them together (storing in first=closest compound, removing from meshisland list, adding the compound...
 			start = PIL_check_seconds_timer();
-			for (mi = rmd->meshIslands.first; mi; mi = mi->next)
+			/*for (mi = rmd->meshIslands.first; mi; mi = mi->next)
 			{
 				if (mi->compound_count > 0)	//clean up old compounds first
 				{
@@ -2611,10 +2676,33 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					BLI_remlink(&rmd->meshIslands, mi);
 					freeMeshIsland(rmd, mi);
 				}
-			}
+			}*/
 			buildCompounds(rmd, ob);
 			printf("Building compounds done, %g\n", PIL_check_seconds_timer() - start);
-			printf("Compound Islands: %d\n", BLI_countlist(&rmd->meshIslands));
+			count = BLI_countlist(&rmd->meshIslands);
+			printf("Compound Islands: %d\n", count);
+			
+			if (!rmd->refresh_constraints)
+			{
+				//rebuild framemap after using it
+				/*if (rmd->framemap != NULL)
+				{
+					MEM_freeN(rmd->framemap);
+					rmd->framemap = NULL;
+					rmd->framecount = 0;
+				}*/
+				
+				if (rmd->framemap == NULL)
+				{
+					rmd->framemap = MEM_callocN(sizeof(float) * count, "framemap");
+					rmd->framecount = count;
+					
+					for (i = 0; i < count; i++)
+					{
+						rmd->framemap[i] = -1;
+					}
+				}
+			}
 		}
 	
 		start = PIL_check_seconds_timer();

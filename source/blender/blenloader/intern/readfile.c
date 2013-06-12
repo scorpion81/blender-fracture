@@ -4701,6 +4701,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			rmd->max_vol = 0;
 			rmd->cells.first = NULL;
 			rmd->cells.last = NULL;
+			rmd->framemap = newdataadr(fd, rmd->framemap);
 		}
 	}
 }

@@ -69,6 +69,7 @@
 #include "BKE_library.h"
 #include "BKE_main.h"
 #include "BKE_modifier.h"
+#include "BKE_scene.h"
 
 #include "RNA_access.h"
 #include "bmesh.h"
@@ -372,13 +373,16 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland* mi)
 }
 
 
-void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], float rot[4])
+void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], float rot[4], float cfra, bool baked)
 {
 	float startco[3], centr[3], size[3];
 	int i, j;
 	
-	if ((loc[0] == NAN) || (rot[0] == NAN))
+	if ((loc[0] == FLT_MIN) || (rot[0] == FLT_MIN) || 
+		((mi->destruction_frame >= 0) && (cfra > mi->destruction_frame) && !baked) ||
+		(!(mi->rigidbody->flag & RBO_FLAG_BAKED_COMPOUND) && baked && mi->destruction_frame < 0))
 	{
+		//printf("Frames %f %f\n", mi->destruction_frame, cfra);
 		//skip dummy cache entries
 		return;
 	}
@@ -1436,6 +1440,17 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 		}
 		return;
 	}
+	
+	/*if ((rbc->mi1->rigidbody->flag & RBO_FLAG_INACTIVE_COMPOUND) || (rbc->mi2->rigidbody->flag & RBO_FLAG_INACTIVE_COMPOUND))
+	{
+		//disable those constraints....
+		if (rbc->physics_constraint) {
+			RB_dworld_remove_constraint(rbw->physics_world, rbc->physics_constraint);
+			RB_constraint_delete(rbc->physics_constraint);
+			rbc->physics_constraint = NULL;
+		}
+		return;
+	}*/
 	
 	rb1 = rbc->mi1->rigidbody->physics_object;
 	rb2 = rbc->mi2->rigidbody->physics_object;
@@ -2630,8 +2645,8 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 						for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 							if (isDisconnected(mi))
 							{
-								rmd->split(rmd, ob, mi);
-								
+								float cfra = BKE_scene_frame_get(scene);
+								rmd->split(rmd, ob, mi, cfra);
 							}
 							//validateShard(rbw, mi, ob, rebuild);
 						}
@@ -2854,7 +2869,8 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 						mul_qt_v3(rbo->orn, centr);
 						add_v3_v3(rbo->pos, centr);
 					}
-					BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn);
+					BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn, ctime, 
+											 rbw->pointcache->flag & PTCACHE_BAKED);
 				}
 				break;
 			}
@@ -2979,6 +2995,7 @@ void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw)
 	if (rbw)
 		rbw->pointcache->flag |= PTCACHE_OUTDATED;
 }
+
 
 /* ------------------ */
 
