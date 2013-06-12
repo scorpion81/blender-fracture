@@ -2869,51 +2869,6 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 				if (!is_zero_m4(rmd->origmat) && rbw && !rbw->object_changed) {
 					copy_m4_m4(ob->obmat, rmd->origmat);
 				}
-				
-				if (rmd->use_cellbased_sim && 0)
-				{
-					/*if (rbw->rebuild_comp_con) {
-						if (rbw->pointcache->flag & PTCACHE_BAKED)
-						{
-							//rmd->join(rmd, ob);
-							for (mi = rmd->meshIslands.first; mi; mi = mi->next)
-							{
-								if (mi->compound_count > 0) {
-									mi->rigidbody->flag |= RBO_FLAG_BAKED_COMPOUND;
-									//mi->destruction_frame = -1;
-								}
-								*else if (mi->rigidbody == NULL)
-								{
-									mi->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi);
-									BKE_rigidbody_calc_shard_mass(ob, mi);
-									mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
-									mi->rigidbody->flag |= RBO_FLAG_ACTIVE_COMPOUND; // do not build constraints between those
-									mi->rigidbody->flag |= RBO_FLAG_BAKED_COMPOUND;
-								}*
-								
-							}
-							//rigidbody_update_ob_array(rbw);
-						}
-						rbw->rebuild_comp_con = FALSE;
-					}*/
-					
-					for (mi = rmd->meshIslands.first; mi; mi = mi->next)
-					{
-						float cfra = BKE_scene_frame_get(rmd->modifier.scene);
-						//bool splitOKSim = isDisconnected(mi) && mi->destruction_frame < 0;
-						bool splitOKCache = cfra >= mi->destruction_frame && mi->destruction_frame > -1 && 
-							(rbw->pointcache->flag & PTCACHE_BAKED) && (mi->rigidbody->flag & RBO_FLAG_BAKED_COMPOUND);
-						    //for baking store frames
-						
-						if (splitOKCache)
-						{
-							rmd->split(rmd, ob, mi, cfra);
-							mi->destruction_frame = -1;
-						}
-					}
-					
-					//rigidbody_update_ob_array(rbw);
-				}
 
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 					rbo = mi->rigidbody;
@@ -2940,7 +2895,7 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 						add_v3_v3(rbo->pos, centr);
 					}
 					BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn, ctime, 
-											 rbw->pointcache->flag & PTCACHE_BAKED);
+											 rbw->pointcache->flag & PTCACHE_BAKED && rmd->use_cellbased_sim);
 				}
 				
 				break;
