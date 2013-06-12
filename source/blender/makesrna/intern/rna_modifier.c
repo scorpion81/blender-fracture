@@ -4170,7 +4170,7 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	
 	prop = RNA_def_property(srna, "cell_size", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "cell_size");
-	RNA_def_property_range(prop, 0.0001f, FLT_MAX);
+	RNA_def_property_range(prop, 0.1f, FLT_MAX);
 	RNA_def_property_float_default(prop, 1.0f);
 	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_cell_size_set", NULL);
 	RNA_def_property_ui_text(prop, "Cell Size", "Size of a cell in the constraint searching grid");

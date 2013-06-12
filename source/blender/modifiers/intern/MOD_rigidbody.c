@@ -1579,7 +1579,7 @@ static void search_centroid_based(RigidBodyModifierData *rmd, Object* ob, MeshIs
 
 KDTree* make_cell_tree(RigidBodyModifierData* rmd, Object* ob)
 {
-	float min[3], max[3], start[3], dim[3], co[3], csize;
+	float min[3], max[3], start[3], dim[3], co[3], csize, size[3];
 	int cells[3], index = 0, i, j, k;
 	KDTree* tree;
 	BoundBox* bb = BKE_boundbox_alloc_unit();
@@ -1589,6 +1589,8 @@ KDTree* make_cell_tree(RigidBodyModifierData* rmd, Object* ob)
 	copy_v3_v3(start, bb->vec[0]);
 	bbox_dim(bb, dim);
 	
+	mat4_to_size(size, ob->obmat);
+	mul_v3_v3(dim, size);
 	csize = rmd->cell_size;
 	
 	/*cells[0] = (int)(dim[0] / csize)+1;
@@ -1630,6 +1632,7 @@ KDTree* make_cell_tree(RigidBodyModifierData* rmd, Object* ob)
 				index++;
 				
 				copy_v3_v3(cell->co, co);
+				//printf("CELL: (%f %f %f)")
 				BLI_addtail(&rmd->cells, cell);
 				//cell->size = csize; //hmm not necessary to store -> equal
 			}
@@ -1682,6 +1685,7 @@ void search_cell_centroid_based(RigidBodyModifierData *rmd, Object* ob,  MeshIsl
 	
 	dist = MAX2(MAX3(dim[0], dim[1], dim[2]), rmd->cell_size);
 	mul_v3_m4v3(obj_centr, ob->obmat, mi->centroid);
+	//copy_v3_v3(obj_centr, mi->centroid);
 	r = BLI_kdtree_range_search(*cells, dist, obj_centr, NULL, &n);
 	for (i = 0; i < r; i++)
 	{
@@ -2407,20 +2411,26 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 	{
 		//do this in object space maybe... ? TODO
 		float obj_centr[3];
-		mul_v3_m4v3(obj_centr, ob->obmat, mi->centroid);
+		//mul_v3_m4v3(obj_centr, ob->obmat, mi->centroid);
+		copy_v3_v3(obj_centr, mi->centroid);
 		BLI_kdtree_insert(centroidtree, index, obj_centr, NULL);
 		index++;
 	}
 	
 	BLI_kdtree_balance(centroidtree);
 	
+	invert_m4_m4(ob->imat, ob->obmat);
 	for (cell = rmd->cells.first; cell; cell = cell->next)
 	{
 		BMesh *bm_compound;
 		BMVert* v;
 		BMIter iter;
 		MeshIsland *mi_compound;
-		int r = BLI_kdtree_range_search(centroidtree, rmd->cell_size, cell->co, NULL, &n);
+		float co[3];
+		int r;
+		
+		mul_v3_m4v3(co, ob->imat, cell->co);
+		r = BLI_kdtree_range_search(centroidtree, rmd->cell_size, co, NULL, &n);
 		if (r == 0)
 			continue;
 		
@@ -2507,8 +2517,6 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 		//invert_m4_m4(ob->imat, ob->obmat);
 		BM_ITER_MESH (v, &iter, bm_compound, BM_VERTS_OF_MESH) {
 			//then eliminate centroid in vertex coords ?
-			//float obj_centr[3];
-			//mul_v3_m4v3(obj_centr, ob->imat, centroid);
 			sub_v3_v3(v->co, centroid);
 		}
 		
