@@ -74,12 +74,12 @@
 #include "RNA_access.h"
 #include "bmesh.h"
 
-#ifdef WIN32
+/*#ifdef WIN32
     #ifndef NAN
         static const unsigned long __nan[2] = {0xffffffff, 0x7fffffff};
         #define NAN (*(const float *) __nan)
     #endif
-#endif
+#endif*/
 
 #ifdef WITH_BULLET
 
@@ -384,6 +384,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 	{
 		//printf("Frames %f %f\n", mi->destruction_frame, cfra);
 		//skip dummy cache entries
+		printf("SKIPPED: %d %e %f %d\n", mi->linear_index, loc[0], mi->destruction_frame, mi->rigidbody->flag);
 		return;
 	}
 
@@ -2501,10 +2502,10 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 						//rebuildcon = TRUE;
 					}
 					
-					if (rbw->rebuild_comp_con) {
-						//rmd->refresh_constraints = TRUE;
+					/*if (rbw->rebuild_comp_con) {
+						rmd->refresh_constraints = TRUE;
 						rbw->rebuild_comp_con = FALSE;
-					}
+					}*/
 					break;
 				}
 			}
@@ -2648,9 +2649,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 								float cfra = BKE_scene_frame_get(scene);
 								rmd->split(rmd, ob, mi, cfra);
 							}
-							//validateShard(rbw, mi, ob, rebuild);
 						}
-						
 					}
 				}
 			}
@@ -2825,7 +2824,10 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 			exploOK = !rmd->explo_shared || (rmd->explo_shared && exploPresent);
 			
 			if (isModifierActive(rmd) && exploOK) {
+				int count;
 				modFound = TRUE;
+				count = BLI_countlist(&rmd->meshIslands);
+				
 				if ((ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) ||
 				((ob->rigidbody_object) && (ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC))) {
 					//update "original" matrix
@@ -2847,11 +2849,59 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 				if (!is_zero_m4(rmd->origmat) && rbw && !rbw->object_changed) {
 					copy_m4_m4(ob->obmat, rmd->origmat);
 				}
+				
+				if (rmd->use_cellbased_sim && 0)
+				{
+					/*if (rbw->rebuild_comp_con) {
+						if (rbw->pointcache->flag & PTCACHE_BAKED)
+						{
+							//rmd->join(rmd, ob);
+							for (mi = rmd->meshIslands.first; mi; mi = mi->next)
+							{
+								if (mi->compound_count > 0) {
+									mi->rigidbody->flag |= RBO_FLAG_BAKED_COMPOUND;
+									//mi->destruction_frame = -1;
+								}
+								*else if (mi->rigidbody == NULL)
+								{
+									mi->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi);
+									BKE_rigidbody_calc_shard_mass(ob, mi);
+									mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+									mi->rigidbody->flag |= RBO_FLAG_ACTIVE_COMPOUND; // do not build constraints between those
+									mi->rigidbody->flag |= RBO_FLAG_BAKED_COMPOUND;
+								}*
+								
+							}
+							//rigidbody_update_ob_array(rbw);
+						}
+						rbw->rebuild_comp_con = FALSE;
+					}*/
+					
+					for (mi = rmd->meshIslands.first; mi; mi = mi->next)
+					{
+						float cfra = BKE_scene_frame_get(rmd->modifier.scene);
+						//bool splitOKSim = isDisconnected(mi) && mi->destruction_frame < 0;
+						bool splitOKCache = cfra >= mi->destruction_frame && mi->destruction_frame > -1 && 
+							(rbw->pointcache->flag & PTCACHE_BAKED) && (mi->rigidbody->flag & RBO_FLAG_BAKED_COMPOUND);
+						    //for baking store frames
+						
+						if (splitOKCache)
+						{
+							rmd->split(rmd, ob, mi, cfra);
+							mi->destruction_frame = -1;
+						}
+					}
+					
+					//rigidbody_update_ob_array(rbw);
+				}
 
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 					rbo = mi->rigidbody;
 					if (!rbo)
+					{
 						continue;
+					}
+					
 					/* use rigid body transform after cache start frame if objects is not being transformed */
 					if (BKE_rigidbody_check_sim_running(rbw, ctime) && !(ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
 

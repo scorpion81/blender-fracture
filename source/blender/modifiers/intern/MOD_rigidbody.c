@@ -518,10 +518,12 @@ static float mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob, BMVert
 	//(*mi_array)[*mi_count] = mi;
 	//(*mi_count)++;
 	
-	if (!rmd->use_cellbased_sim)
+	if (!rmd->use_cellbased_sim || rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED)
 	{
 		mi->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi);
 		BKE_rigidbody_calc_shard_mass(ob, mi);
+		mi->rigidbody->flag |= RBO_FLAG_ACTIVE_COMPOUND;
+		//mi->rigidbody->flag |= RBO_FLAG_BAKED_COMPOUND;
 	//mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 	//mi->rigidbody->flag |= RBO_FLAG_INACTIVE_COMPOUND;
 		//BKE_rigidbody_validate_sim_shard(rmd->modifier.scene->rigidbody_world, mi, ob, true);
@@ -1072,14 +1074,16 @@ void destroy_compound(RigidBodyModifierData* rmd, Object* ob, MeshIsland *mi, fl
 	if (mi->compound_count > 0)
 	{
 		bool baked = rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED;
-		mi->rigidbody->flag &= ~RBO_FLAG_ACTIVE_COMPOUND;
-		mi->rigidbody->flag &= ~RBO_FLAG_BAKED_COMPOUND;
+		if (!baked) {
+			mi->rigidbody->flag &= ~RBO_FLAG_ACTIVE_COMPOUND;
+			mi->rigidbody->flag &= ~RBO_FLAG_BAKED_COMPOUND;
+		}
 		
 		if (mi->destruction_frame < 0)
 		{
 			mi->destruction_frame = cfra;
 			//dont update framemap in baked mode
-			if (rmd->framemap != NULL && !baked)
+			if (rmd->framemap != NULL/* && !baked*/)
 			{
 				if (mi->linear_index < rmd->framecount)
 				{
@@ -2372,26 +2376,28 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 	BLI_kdtree_free(celltree); //silly but only temporary...
 	//to_remove = MEM_callocN(sizeof(MeshIsland*), "to_remove");
 	
-	
-	for (mi = rmd->meshIslands.first; mi; mi = mi->next)
+	if (!(rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED))
 	{
-		if (mi->compound_count > 0)	//clean up old compounds first
+		for (mi = rmd->meshIslands.first; mi; mi = mi->next)
 		{
-			for (i = 0; i < mi->compound_count; i++)
+			if (mi->compound_count > 0)	//clean up old compounds first
 			{
-				MeshIsland* mi2 = mi->compound_children[i];
-				if (mi2->rigidbody != NULL)
+				for (i = 0; i < mi->compound_count; i++)
 				{
-					BKE_rigidbody_remove_shard(rmd->modifier.scene, mi2);
-					MEM_freeN(mi2->rigidbody);
-					mi2->rigidbody = NULL;
+					MeshIsland* mi2 = mi->compound_children[i];
+					if (mi2->rigidbody != NULL)
+					{
+						BKE_rigidbody_remove_shard(rmd->modifier.scene, mi2);
+						MEM_freeN(mi2->rigidbody);
+						mi2->rigidbody = NULL;
+					}
+					mi2->destruction_frame = -1;
+					mi2->compound_parent = NULL;
 				}
-				mi2->destruction_frame = -1;
-				mi2->compound_parent = NULL;
+				BKE_rigidbody_remove_shard(rmd->modifier.scene, mi);
+				BLI_remlink(&rmd->meshIslands, mi);
+				freeMeshIsland(rmd, mi);
 			}
-			BKE_rigidbody_remove_shard(rmd->modifier.scene, mi);
-			BLI_remlink(&rmd->meshIslands, mi);
-			freeMeshIsland(rmd, mi);
 		}
 	}
 	
@@ -2681,6 +2687,16 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			printf("Building compounds done, %g\n", PIL_check_seconds_timer() - start);
 			count = BLI_countlist(&rmd->meshIslands);
 			printf("Compound Islands: %d\n", count);
+			
+			/*if (rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED)
+			{
+				for (mi = rmd->meshIslands.first; mi; mi = mi->next)
+				{
+					destroy_compound(rmd, ob, mi, rmd->framemap[mi->linear_index]);
+					if (mi->rigidbody)
+						mi->rigidbody->flag &= ~RBO_FLAG_BAKED_COMPOUND;
+				}
+			}*/
 			
 			if (!rmd->refresh_constraints)
 			{
