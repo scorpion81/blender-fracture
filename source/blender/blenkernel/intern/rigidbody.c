@@ -2310,6 +2310,16 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 	if (rbw->numbodies != (m+n)) {
 		rbw->numbodies = m+n;
 		rbw->objects = MEM_reallocN(rbw->objects, sizeof(Object *) * l);
+		if (rbw->cache_index_map == NULL)
+		{
+			rbw->cache_index_map = MEM_callocN(sizeof(RigidBodyOb*), "cache_index_map");
+		}
+		
+		if (rbw->cache_offset_map == NULL)
+		{
+			rbw->cache_offset_map = MEM_callocN(sizeof(int), "cache_offset_map");
+		}
+		
 		rbw->cache_index_map = MEM_reallocN(rbw->cache_index_map, sizeof(RigidBodyOb*) * rbw->numbodies);
 		rbw->cache_offset_map = MEM_reallocN(rbw->cache_offset_map, sizeof(int) * rbw->numbodies);
 		printf("RigidbodyCount changed: %d\n", rbw->numbodies);
