@@ -95,7 +95,6 @@ float BKE_rigidbody_calc_min_con_dist(struct Object* ob);
 void BKE_rigidbody_start_dist_angle(struct RigidBodyShardCon* con);
 void BKE_rigidbody_remove_shard_con(struct Scene* scene, struct RigidBodyShardCon* con);
 void BKE_rigidbody_remove_shard(struct Scene* scene, struct MeshIsland *mi);
-void BKE_rigidbody_update_ob_array(struct RigidBodyWorld* rbw);
 /* -------------- */
 /* Utility Macros */
 

@@ -1086,9 +1086,10 @@ void destroy_compound(RigidBodyModifierData* rmd, Object* ob, MeshIsland *mi, fl
 			//dont update framemap in baked mode
 			if (rmd->framemap != NULL && !baked)
 			{
-				if (mi->linear_index < rmd->framecount)
+				int index = BLI_findindex(&rmd->meshIslands, mi);
+				if (index < rmd->framecount)
 				{
-					rmd->framemap[mi->linear_index] = cfra;
+					rmd->framemap[index] = cfra;
 				}
 			}
 		}
@@ -2370,17 +2371,14 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 	NeighborhoodCell* cell;
 	KDTreeNearest* n = NULL;
 	MeshIsland *mi;
-	
 	RigidBodyWorld *rbw = rmd->modifier.scene->rigidbody_world;
+	
 	//create cell array... / tree (ugh, how inefficient..)
 	KDTree* celltree = make_cell_tree(rmd, ob);
 	BLI_kdtree_free(celltree); //silly but only temporary...
 	
-	BKE_rigidbody_update_ob_array(rbw); //unsure if this has been called already, so call it myself here to know how many
-										//other rigidbodies exist already
-	rbcount = rbw->numbodies;
 	
-	if (!(rbw->pointcache->flag & PTCACHE_BAKED))
+	if (rbw && !(rbw->pointcache->flag & PTCACHE_BAKED))
 	{
 		for (mi = rmd->meshIslands.first; mi; mi = mi->next)
 		{
@@ -2541,7 +2539,7 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 			if (rmd->framecount >= rbcount)
 			{
 				int index = BLI_findindex(&rmd->meshIslands, mi_compound);
-				mi_compound->destruction_frame = rmd->framemap[rbcount+index];
+				mi_compound->destruction_frame = rmd->framemap[index];
 			}
 		}
 	}
@@ -2662,42 +2660,23 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		if (rmd->use_cellbased_sim)
 		{
 			MeshIsland* mi;
-			int i, count, rbcount; 
+			int i, count;
 			//create Compounds HERE....go through all cells, find meshislands around cell centroids (make separate island tree)
 			//and compound them together (storing in first=closest compound, removing from meshisland list, adding the compound...
 			start = PIL_check_seconds_timer();
-			/*for (mi = rmd->meshIslands.first; mi; mi = mi->next)
-			{
-				if (mi->compound_count > 0)	//clean up old compounds first
-				{
-					for (i = 0; i < mi->compound_count; i++)
-					{
-						MeshIsland* mi2 = mi->compound_children[i];
-						if (mi2->rigidbody != NULL)
-						{
-							BKE_rigidbody_remove_shard(rmd->modifier.scene, mi2);
-							MEM_freeN(mi2->rigidbody);
-							mi2->rigidbody = NULL;
-						}
-						mi2->destruction_frame = -1;
-						mi2->compound_parent = NULL;
-					}
-					BKE_rigidbody_remove_shard(rmd->modifier.scene, mi);
-					BLI_remlink(&rmd->meshIslands, mi);
-					freeMeshIsland(rmd, mi);
-				}
-			}*/
 			buildCompounds(rmd, ob);
 			printf("Building compounds done, %g\n", PIL_check_seconds_timer() - start);
-			rbcount = rmd->modifier.scene->rigidbody_world->numbodies;
+			
 			count = BLI_countlist(&rmd->meshIslands);
 			printf("Compound Islands: %d\n", count);
 			
 			if (rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED)
 			{
+				int index = 0;
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next)
 				{
-					destroy_compound(rmd, ob, mi, rmd->framemap[mi->linear_index]);
+					destroy_compound(rmd, ob, mi, rmd->framemap[index]);
+					index++;
 					//if (mi->rigidbody)
 						//mi->rigidbody->flag &= ~RBO_FLAG_BAKED_COMPOUND;
 				}
@@ -2706,16 +2685,19 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			if (!rmd->refresh_constraints)
 			{
 				//rebuild framemap after using it
-				/*if (rmd->framemap != NULL)
+				if (!(rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED))
 				{
-					MEM_freeN(rmd->framemap);
-					rmd->framemap = NULL;
-					rmd->framecount = 0;
-				}*/
+					if (rmd->framemap != NULL)
+					{
+						MEM_freeN(rmd->framemap);
+						rmd->framemap = NULL;
+						rmd->framecount = 0;
+					}
+				}
 				
 				if (rmd->framemap == NULL)
 				{
-					rmd->framecount = count+rbcount;
+					rmd->framecount = count;
 					rmd->framemap = MEM_callocN(sizeof(float) * rmd->framecount, "framemap");
 					for (i = 0; i < rmd->framecount; i++)
 					{
