@@ -1053,11 +1053,12 @@ void destroy_compound(RigidBodyModifierData* rmd, Object* ob, MeshIsland *mi, fl
 			BKE_rigidbody_calc_shard_mass(ob, mi2);
 			mi2->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 			mi2->rigidbody->flag |= RBO_FLAG_ACTIVE_COMPOUND; // do not build constraints between those
-			mi2->rigidbody->flag |= RBO_FLAG_BAKED_COMPOUND;
+			//mi2->rigidbody->flag |= RBO_FLAG_BAKED_COMPOUND;
 			//linear, angular velocities too ?!
 		//	BKE_rigidbody_validate_sim_shard(rmd->modifier.scene->rigidbody_world, mi2, ob, true);
 		//	mi2->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
 		}
+		mi2->rigidbody->flag |= RBO_FLAG_BAKED_COMPOUND;
 		
 		if (mi->rigidbody != NULL)
 		{
@@ -1083,7 +1084,7 @@ void destroy_compound(RigidBodyModifierData* rmd, Object* ob, MeshIsland *mi, fl
 		{
 			mi->destruction_frame = cfra;
 			//dont update framemap in baked mode
-			if (rmd->framemap != NULL/* && !baked*/)
+			if (rmd->framemap != NULL && !baked)
 			{
 				if (mi->linear_index < rmd->framecount)
 				{
@@ -2688,7 +2689,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			count = BLI_countlist(&rmd->meshIslands);
 			printf("Compound Islands: %d\n", count);
 			
-			/*if (rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED)
+			if (rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED)
 			{
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next)
 				{
@@ -2696,7 +2697,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					if (mi->rigidbody)
 						mi->rigidbody->flag &= ~RBO_FLAG_BAKED_COMPOUND;
 				}
-			}*/
+			}
 			
 			if (!rmd->refresh_constraints)
 			{
