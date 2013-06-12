@@ -2365,19 +2365,22 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 	//join new meshislands into 1 new, remove other ones
 	float centroid[3], dummyloc[3], rot[4], min[3], max[3];
 	int count = BLI_countlist(&rmd->meshIslands);
-	int index = 0, i = 0, j = 0;
+	int index = 0, i = 0, j = 0, rbcount = 0;
 	KDTree *centroidtree = BLI_kdtree_new(count);
 	NeighborhoodCell* cell;
 	KDTreeNearest* n = NULL;
 	MeshIsland *mi;
-	//int to_remove_count = 0;
 	
+	RigidBodyWorld *rbw = rmd->modifier.scene->rigidbody_world;
 	//create cell array... / tree (ugh, how inefficient..)
 	KDTree* celltree = make_cell_tree(rmd, ob);
 	BLI_kdtree_free(celltree); //silly but only temporary...
-	//to_remove = MEM_callocN(sizeof(MeshIsland*), "to_remove");
 	
-	if (!(rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED))
+	BKE_rigidbody_update_ob_array(rbw); //unsure if this has been called already, so call it myself here to know how many
+										//other rigidbodies exist already
+	rbcount = rbw->numbodies;
+	
+	if (!(rbw->pointcache->flag & PTCACHE_BAKED))
 	{
 		for (mi = rmd->meshIslands.first; mi; mi = mi->next)
 		{
@@ -2535,10 +2538,10 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 		
 		if (rmd->framemap != NULL && (rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED))
 		{
-			if (rmd->framecount >= BLI_countlist(&rmd->meshIslands))
+			if (rmd->framecount >= rbcount)
 			{
 				int index = BLI_findindex(&rmd->meshIslands, mi_compound);
-				mi_compound->destruction_frame = rmd->framemap[index];
+				mi_compound->destruction_frame = rmd->framemap[rbcount+index];
 			}
 		}
 	}
@@ -2659,7 +2662,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		if (rmd->use_cellbased_sim)
 		{
 			MeshIsland* mi;
-			int i, count;
+			int i, count, rbcount; 
 			//create Compounds HERE....go through all cells, find meshislands around cell centroids (make separate island tree)
 			//and compound them together (storing in first=closest compound, removing from meshisland list, adding the compound...
 			start = PIL_check_seconds_timer();
@@ -2686,6 +2689,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			}*/
 			buildCompounds(rmd, ob);
 			printf("Building compounds done, %g\n", PIL_check_seconds_timer() - start);
+			rbcount = rmd->modifier.scene->rigidbody_world->numbodies;
 			count = BLI_countlist(&rmd->meshIslands);
 			printf("Compound Islands: %d\n", count);
 			
@@ -2694,8 +2698,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next)
 				{
 					destroy_compound(rmd, ob, mi, rmd->framemap[mi->linear_index]);
-					if (mi->rigidbody)
-						mi->rigidbody->flag &= ~RBO_FLAG_BAKED_COMPOUND;
+					//if (mi->rigidbody)
+						//mi->rigidbody->flag &= ~RBO_FLAG_BAKED_COMPOUND;
 				}
 			}
 			
@@ -2711,10 +2715,9 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				
 				if (rmd->framemap == NULL)
 				{
-					rmd->framemap = MEM_callocN(sizeof(float) * count, "framemap");
-					rmd->framecount = count;
-					
-					for (i = 0; i < count; i++)
+					rmd->framecount = count+rbcount;
+					rmd->framemap = MEM_callocN(sizeof(float) * rmd->framecount, "framemap");
+					for (i = 0; i < rmd->framecount; i++)
 					{
 						rmd->framemap[i] = -1;
 					}

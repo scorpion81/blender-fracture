@@ -377,10 +377,20 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 {
 	float startco[3], centr[3], size[3];
 	int i, j;
+	bool invalidData, invalidFrame, invalidBake, invalidBakeFrame;
 	
-	if ((loc[0] == FLT_MIN) || (rot[0] == FLT_MIN) || 
-		((mi->destruction_frame >= 0) && (cfra > mi->destruction_frame) && !baked) ||
-		(!(mi->rigidbody->flag & RBO_FLAG_BAKED_COMPOUND) && baked && mi->destruction_frame < 0))
+	if ((mi->destruction_frame >= 0) && (cfra > mi->destruction_frame))
+	{
+		if (mi->rigidbody)
+			mi->rigidbody->flag &= ~RBO_FLAG_BAKED_COMPOUND;
+	}
+	
+	invalidData = (loc[0] == FLT_MIN) || (rot[0] == FLT_MIN);
+	invalidFrame = (mi->destruction_frame >= 0) && (cfra > mi->destruction_frame) && !baked;
+	invalidBake = !(mi->rigidbody->flag & RBO_FLAG_BAKED_COMPOUND) && baked;
+	invalidBakeFrame = ((mi->destruction_frame >= 0) && (cfra > mi->destruction_frame)) || (mi->destruction_frame < 0);
+	
+	if (invalidData || invalidFrame || (invalidBake && invalidBakeFrame))
 	{
 		//printf("Frames %f %f\n", mi->destruction_frame, cfra);
 		//skip dummy cache entries
@@ -2922,6 +2932,7 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 					BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn, ctime, 
 											 rbw->pointcache->flag & PTCACHE_BAKED);
 				}
+				
 				break;
 			}
 		}
