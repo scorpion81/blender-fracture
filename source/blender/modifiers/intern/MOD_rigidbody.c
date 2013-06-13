@@ -2511,7 +2511,7 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 		
 		//join derived mesh, hmm, maybe via bmesh
 		BM_mesh_minmax(bm_compound, min, max, FALSE);
-		if (ob->rigidbody_object->shape == RB_SHAPE_COMPOUND || 1)
+		if (ob->rigidbody_object->shape == RB_SHAPE_COMPOUND || rmd->use_constraints)
 		{
 			//compounds need center of mass
 			BM_calc_center_centroid(bm_compound, centroid, FALSE);
@@ -2596,6 +2596,10 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		rmd->split = destroy_compound;
 		rmd->join = buildCompounds;
 		//rmd->vol_check = vol_check;
+		if (rmd->contact_dist_meaning != MOD_RIGIDBODY_CELL_CENTROIDS)
+		{
+			rmd->use_cellbased_sim = FALSE;
+		}
 		
 		if (rmd->refresh)
 		{
@@ -2604,7 +2608,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	
 			//grab neighborhood info (and whole fracture info -> cells) if available, if explo before rmd
 			emd = findPrecedingExploModifier(ob, rmd);
-			if (emd != NULL && !emd->use_clipping && !rmd->use_cellbased_sim)
+			if (emd != NULL && !emd->use_clipping && !rmd->use_cellbased_sim && !emd->use_boolean)
 			{
 				MeshIsland* mi;
 				VoronoiCell *vc;
