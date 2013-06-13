@@ -114,6 +114,7 @@ static void initData(ModifierData *md)
 	rmd->use_cellbased_sim = FALSE;
 	rmd->framecount = 0;
 	rmd->framemap = NULL;
+	rmd->disable_self_collision = TRUE;
 }
 
 static void copyData(ModifierData *md, ModifierData *target)
@@ -164,6 +165,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->framemap = NULL;
 	trmd->join = buildCompounds;
 	trmd->split = destroy_compound;
+	trmd->disable_self_collision = rmd->disable_self_collision;
 }
 
 void freeMeshIsland(RigidBodyModifierData* rmd, MeshIsland* mi)
@@ -1264,6 +1266,11 @@ static void connect_meshislands(RigidBodyModifierData* rmd, Object* ob, MeshIsla
 				if (thresh == 0)
 				{
 					rbsc->flag &= ~RBC_FLAG_USE_BREAKING;
+				}
+				
+				if (rmd->disable_self_collision)
+				{
+					rbsc->flag |= RBC_FLAG_DISABLE_COLLISIONS;
 				}
 					
 				rbsc->breaking_threshold = thresh;

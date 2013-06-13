@@ -706,6 +706,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         box.prop(md, "use_experimental", text="Experimental, use with caution !", icon=self.icon(md.use_experimental), emboss = False)
         if md.use_experimental:
             box.prop(md, "use_both_directions")
+            box.prop(md, "disable_self_collision")
             box.prop(md, "constraint_limit", text="Constraint limit, per MeshIsland")
             box.prop(md, "constraint_group")
             box.prop(md, "group_contact_dist")

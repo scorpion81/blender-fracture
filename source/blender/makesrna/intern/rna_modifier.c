@@ -4180,6 +4180,11 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	RNA_def_property_boolean_sdna(prop, NULL, "use_experimental", FALSE);
 	RNA_def_property_ui_text(prop, "Use Experimental", "Experimental features, work in progress. Use at own risk!");
 	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	
+	prop = RNA_def_property(srna, "disable_self_collision", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "disable_self_collision", TRUE);
+	RNA_def_property_ui_text(prop, "Disable Self Collision", "Let constrained objects collide or not");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 void RNA_def_modifier(BlenderRNA *brna)
