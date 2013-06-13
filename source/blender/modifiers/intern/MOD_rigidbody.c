@@ -1590,8 +1590,10 @@ KDTree* make_cell_tree(RigidBodyModifierData* rmd, Object* ob)
 	copy_v3_v3(start, bb->vec[0]);
 	bbox_dim(bb, dim);
 	
-	mat4_to_size(size, ob->obmat);
-	mul_v3_v3(dim, size);
+	//invert_m4_m4(ob->imat, ob->obmat);
+	//mat4_to_size(size, ob->obmat);
+	//mul_v3_v3(dim, size);
+	//mul_v3_v3(start, size);
 	csize = rmd->cell_size;
 	
 	/*cells[0] = (int)(dim[0] / csize)+1;
@@ -2519,7 +2521,7 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 			mid_v3_v3v3(centroid, min, max);
 		}
 		
-		mul_v3_v3(centroid, size);
+		//mul_v3_v3(centroid, size);
 		
 		for (i = 0; i < mi_compound->compound_count; i++)
 		{
