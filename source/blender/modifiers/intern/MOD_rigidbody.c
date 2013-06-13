@@ -522,7 +522,8 @@ static float mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob, BMVert
 	{
 		mi->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi);
 		BKE_rigidbody_calc_shard_mass(ob, mi);
-		mi->rigidbody->flag |= RBO_FLAG_ACTIVE_COMPOUND;
+		if (rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED)
+			mi->rigidbody->flag |= RBO_FLAG_ACTIVE_COMPOUND;
 		//mi->rigidbody->flag |= RBO_FLAG_BAKED_COMPOUND;
 	//mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 	//mi->rigidbody->flag |= RBO_FLAG_INACTIVE_COMPOUND;
@@ -1883,7 +1884,7 @@ void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsland **m
 	//Do we have a explo modifier, if yes, use its neighborhood info before calculating (inner) neighborhoods here
 
 	emd = findPrecedingExploModifier(ob, rmd);
-	if (emd != NULL && !emd->use_clipping && !rmd->use_cellbased_sim) {
+	if (emd != NULL && ((!emd->use_clipping && !rmd->use_cellbased_sim  && !emd->use_boolean) || rmd->contact_dist_meaning == MOD_RIGIDBODY_VERTICES)) {
 		int i = 0, j;
 		GHash* visited_ids = BLI_ghash_pair_new("visited_ids");
 		for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
@@ -2608,7 +2609,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	
 			//grab neighborhood info (and whole fracture info -> cells) if available, if explo before rmd
 			emd = findPrecedingExploModifier(ob, rmd);
-			if (emd != NULL && !emd->use_clipping && !rmd->use_cellbased_sim && !emd->use_boolean)
+			if (emd != NULL && ((!emd->use_clipping && !rmd->use_cellbased_sim  && !emd->use_boolean) || rmd->contact_dist_meaning == MOD_RIGIDBODY_VERTICES)) 
 			{
 				MeshIsland* mi;
 				VoronoiCell *vc;
@@ -2665,6 +2666,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					{
 						mi->destruction_frame = -1;
 						mi->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi);
+						mi->rigidbody->flag &= ~RBO_FLAG_ACTIVE_COMPOUND;
 						BKE_rigidbody_calc_shard_mass(ob, mi);
 					}
 				//}
