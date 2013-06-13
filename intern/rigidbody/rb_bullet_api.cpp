@@ -736,6 +736,12 @@ void RB_shape_add_compound_child(rbCollisionShape** compound, rbCollisionShape* 
 	comp->addChildShape(trans, ch);
 }
 
+void RB_shape_compound_set_scaling(rbCollisionShape* compound, float scaling[3])
+{
+	btCompoundShape *comp = reinterpret_cast<btCompoundShape*>(compound->cshape);
+	comp->setLocalScaling(btVector3(scaling[0], scaling[1], scaling[2]));
+}
+
 /* Setup (Triangle Mesh) ---------- */
 
 /* Need to call rbTriMeshNewData() followed by rbTriMeshAddTriangle() several times 

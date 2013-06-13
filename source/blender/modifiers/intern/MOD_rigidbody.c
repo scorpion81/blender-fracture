@@ -1042,6 +1042,7 @@ void destroy_compound(RigidBodyModifierData* rmd, Object* ob, MeshIsland *mi, fl
 	//add all children and remove ourself
 	int i = 0;
 	float centr[3], size[3];
+	invert_m4_m4(ob->imat, ob->obmat);
 	mat4_to_size(size, ob->obmat);
 	
 	for (i = 0; i < mi->compound_count; i++)
@@ -2368,7 +2369,7 @@ void check_face_draw_by_proximity(RigidBodyModifierData* rmd, BMesh* merge_copy)
 void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 {
 	//join new meshislands into 1 new, remove other ones
-	float centroid[3], dummyloc[3], rot[4], min[3], max[3];
+	float centroid[3], dummyloc[3], rot[4], min[3], max[3], size[3];
 	int count = BLI_countlist(&rmd->meshIslands);
 	int index = 0, i = 0, j = 0, rbcount = 0;
 	KDTree *centroidtree = BLI_kdtree_new(count);
@@ -2420,6 +2421,7 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 	BLI_kdtree_balance(centroidtree);
 	
 	invert_m4_m4(ob->imat, ob->obmat);
+	mat4_to_size(size, ob->imat);
 	for (cell = rmd->cells.first; cell; cell = cell->next)
 	{
 		BMesh *bm_compound;
@@ -2506,7 +2508,19 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 		}
 		
 		//join derived mesh, hmm, maybe via bmesh
-		BM_calc_center_centroid(bm_compound, centroid, FALSE);
+		BM_mesh_minmax(bm_compound, min, max, FALSE);
+		if (ob->rigidbody_object->shape == RB_SHAPE_COMPOUND || 1)
+		{
+			//compounds need center of mass
+			BM_calc_center_centroid(bm_compound, centroid, FALSE);
+		}
+		else
+		{	//other shapes like convexhull look better this way...
+			mid_v3_v3v3(centroid, min, max);
+		}
+		
+		mul_v3_v3(centroid, size);
+		
 		for (i = 0; i < mi_compound->compound_count; i++)
 		{
 			//set proper relative starting centroid
@@ -2520,7 +2534,6 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 			sub_v3_v3(v->co, centroid);
 		}
 		
-		BM_mesh_minmax(bm_compound, min, max, FALSE);
 		mi_compound->physics_mesh = CDDM_from_bmesh(bm_compound, TRUE);
 		BM_mesh_free(bm_compound);
 		copy_v3_v3(mi_compound->centroid, centroid);

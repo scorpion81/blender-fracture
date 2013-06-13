@@ -819,6 +819,11 @@ static rbCollisionShape *rigidbody_get_shape_compound_from_mi(MeshIsland* mi, Ob
 	rbCollisionShape *child;
 	rbCollisionShape *compound;
 	RigidBodyOb *rbo = mi->rigidbody;
+	float size[3];
+	
+	invert_m4_m4(ob->imat, ob->obmat);
+	mat4_to_size(size, ob->imat);
+	//copy_v3_v3(size, ob->size);
 	
 	if (mi->compound_count > 0)
 	{
@@ -853,14 +858,15 @@ static rbCollisionShape *rigidbody_get_shape_compound_from_mi(MeshIsland* mi, Ob
 		MeshIsland *mi2 = mi->compound_children[i];
 		Mesh* me = BKE_mesh_add(G.main, "_mesh_"); 
 		bool has_volume, can_embed;
-		float hull_margin, loc[3] = {0,0,0}, size[3] = {1,1,1}, rot[4], centr[3];
+		float hull_margin, loc[3] = {0,0,0}, bbsize[3] = {1,1,1}, rot[4], centr[3];
 		
 		DM_to_mesh(mi2->physics_mesh, me, NULL, 0);
-		BKE_mesh_boundbox_calc(me, loc, size);
-		has_volume = (MIN3(size[0], size[1], size[2]) > 0.0f);
+		
+		BKE_mesh_boundbox_calc(me, loc, bbsize);
+		has_volume = (MIN3(bbsize[0], bbsize[1], bbsize[2]) > 0.0f);
 		
 		//mat4_to_loc_quat(loc, rot, ob->obmat);
-		mat4_to_size(size, ob->obmat);
+		
 		zero_v3(loc); //size only
 		unit_qt(rot); //needs to be zeroized, hmm
 		
@@ -873,7 +879,7 @@ static rbCollisionShape *rigidbody_get_shape_compound_from_mi(MeshIsland* mi, Ob
 			rbo->margin = (can_embed && has_volume) ? 0.04f : 0.0f;  /* RB_TODO ideally we shouldn't directly change the margin here */
 			
 		copy_v3_v3(centr, mi2->centroid);
-		mul_v3_v3(centr, size);
+		//mul_v3_v3(centr, size);
 		mul_qt_v3(rot, centr);
 		add_v3_v3(loc, centr);
 			
@@ -881,6 +887,11 @@ static rbCollisionShape *rigidbody_get_shape_compound_from_mi(MeshIsland* mi, Ob
 
 		BKE_libblock_free_us(&(G.main->mesh), me);
 		me = NULL;
+	}
+	
+	if (mi->compound_count > 0)
+	{
+		RB_shape_compound_set_scaling(compound, size);
 	}
 	
 	return compound;
