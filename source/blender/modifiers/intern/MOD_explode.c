@@ -384,7 +384,7 @@ static void bbox_dim(BoundBox* bb, float dim[3])
 }
 
 void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell, FaceMap*** facemap, int* facemapcount, 
-					GHash* facehash, KDTree *facetree, BMFace ** facearray)
+					GHash* facehash, KDTree *facetree, BMFace ** facearray, BMFace **longfaces, int longcount)
 {
 	//clip each edge of mesh against each plane/face of cell
 	//float **planes = MEM_callocN(sizeof(float*), "planes");
@@ -3326,14 +3326,15 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				if (emd->use_clipping && emd->fracMesh)
 				{
 					BMIter iter;
-					BMFace *face;
+					BMFace *face, **longfaces = MEM_mallocN(sizeof(BMFace*), "longfaces");
 					Mesh *me;
 				
 					BMesh* origmesh; 
 					BMesh* clipped;
 					FaceMap** facemap;
 					int facemapcount = 0;
-					int start;
+					int start, longcount = 0;
+					float radiusmax = 0, dim[3];
 					
 					BMFace** facearray;
 					KDTree *facetree;
@@ -3348,10 +3349,38 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					facearray = MEM_callocN(sizeof(BMFace*) * origmesh->totface, "facearray");
 					facetree = BLI_kdtree_new(origmesh->totface);
 					
+					//filter out faces larger than largest cell, to be considered extra
+					for (i = 0; i < emd->cells->count; i++)
+					{
+						BoundBox* bb;
+						float radius, min[3], max[3];
+						dm_minmax(emd->cells->data[i].cell_mesh, min, max);
+						bb = BKE_boundbox_alloc_unit();
+						BKE_boundbox_init_from_minmax(bb, min, max);
+						bbox_dim(bb, dim);
+						radius = dim[max_axis_v3(dim)];
+						
+						if (radius > radiusmax)
+							radiusmax = radius;
+					}
+					
 					BM_ITER_MESH(face, &iter, origmesh, BM_FACES_OF_MESH)
 					{
+						BMEdge* ed;
+						BMIter iter2;
 						float* centr = MEM_callocN(sizeof(float) * 3, "centr");
 						BM_face_calc_center_bounds(face, centr);
+						BM_ITER_ELEM(ed, &iter2, face, BM_EDGES_OF_FACE)
+						{
+							float len = BM_edge_calc_length(ed);
+							if (len > radiusmax)
+							{
+								longfaces = MEM_reallocN(longfaces, sizeof(BMFace*) * (longcount+1));
+								longfaces[longcount] = face;
+								longcount++;
+							}
+						}
+						
 						BLI_ghash_insert(facehash, centr, face->head.index);
 						BLI_kdtree_insert(facetree, face->head.index, centr, face->no);
 						facearray[face->head.index] = face;
@@ -3368,7 +3397,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 							BMesh* cellmesh = DM_to_bmesh(emd->cells->data[i].cell_mesh);
 							printf("Clipping mesh against cell: %d\n", i);
 							clip_cell_mesh(cellmesh, origmesh, &clipped, &emd->cells->data[i], &facemap, &facemapcount, facehash, 
-										   facetree, facearray);
+										   facetree, facearray, longfaces, longcount);
 							BM_mesh_free(cellmesh);
 						}
 					}
@@ -3413,6 +3442,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					MEM_freeN(facearray);
 					BLI_ghash_free(facehash, BLI_ghashutil_pairfree, NULL);
 					BM_mesh_free(origmesh);
+					MEM_freeN(longfaces);
+					longcount = 0;
 					printf("Clipping done, %g\n", PIL_check_seconds_timer() - start);
 				}
 				
