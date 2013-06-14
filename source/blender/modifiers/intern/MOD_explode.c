@@ -436,6 +436,122 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 		if (f == NULL)
 			continue;
 		
+		BM_elem_flag_enable(f, BM_ELEM_TAG);
+		
+		BM_ITER_ELEM(l, &iter2, f, BM_LOOPS_OF_FACE)
+		{
+			float p1[3], p2[3];
+			bool clipresult = true;
+			
+			copy_v3_v3(p1, l->v->co);
+			copy_v3_v3(p2, l->next->v->co);
+			
+			BM_ITER_MESH(fa, &iter3, cell, BM_FACES_OF_MESH)
+			{
+				float plane[4];
+				face_as_plane(fa, plane);
+				clipresult = clipresult && clip_segment_v3_plane(p1, p2, plane);
+			}
+			
+			if (clipresult)
+			{
+				BMVert *v1, *v2;
+				v1 = insert_vert_checked(&part, p1, &vert_index, &verts, &vcount, NULL, false);
+				v2 = insert_vert_checked(&part, p2, &vert_index, &verts, &vcount, NULL, false);
+				
+				//select new verts
+				if (!compare_v3v3(p1, l->v->co, limit))
+				{
+					BM_elem_select_set(part, v1, true);
+				}
+				
+				if (!compare_v3v3(p2, l->next->v->co,limit))
+				{
+					BM_elem_select_set(part, v2, true);
+				}
+				
+				if ((!compare_v3v3(p1, l->v->co, limit)) && (!compare_v3v3(p2, l->next->v->co, limit)))
+				{
+					//dont select both ...
+					BM_elem_select_set(part, v1, false);
+					BM_elem_select_set(part, v2, false);
+				}
+				
+				if ((compare_v3v3(p1, l->v->co, limit)) && (compare_v3v3(p2, l->next->v->co, limit)))
+				{
+					//you can remove inner verts from origmesh
+					BM_elem_flag_enable(l->v, BM_ELEM_SELECT);
+					BM_elem_flag_enable(l->next->v, BM_ELEM_SELECT);
+				}
+				clip_count++;
+			}
+			
+			edge_count++;
+			
+			if (edge_count == f->len)
+			{
+				BMFace *fac;
+				FaceMap* mapentry;
+				int j = 0;
+				BMEdge** final_edges;
+				
+				if (vcount < 3)
+					continue;
+				
+				final_edges = MEM_callocN(sizeof(BMEdge*) * vcount, "final_edges");
+				
+				for (i = 0; i < vcount-1; i++) 
+				{
+					insert_edge_checked(&part, verts[i], verts[i+1], &edge_index, &final_edges, &count, NULL);
+				}
+				
+				insert_edge_checked(&part, verts[vcount-1], verts[0], &edge_index, &final_edges, &count, NULL);
+				
+				fac = BM_face_create(part, verts, final_edges, vcount, 0);
+				{
+					int index2;
+					float centr[3];
+					
+					BM_face_calc_center_bounds(f, centr);
+					index2 = BLI_ghash_lookup(facehash, centr);
+					
+					*facemap = MEM_reallocN(*facemap, sizeof(FaceMap*) * (face_index+1));
+					mapentry = MEM_callocN(sizeof(FaceMap), "mapentry");
+					(*facemap)[face_index] = mapentry;
+					face_index++;
+					mapentry->oldarea = BM_face_calc_area(f);
+					mapentry->oldindex = index2;
+					fac->head.index = face_count;
+					mapentry->newindex = face_count;
+					face_count++;
+				}
+				
+				MEM_freeN(final_edges);
+			}
+		}
+		
+		MEM_freeN(verts);
+		count = 0;
+		clip_count = 0;
+	}
+	
+	
+	//ugh, very ugly, need to refactor this, but messed it up once already, hrm.
+	for (s = 0; s < longcount; s++)
+	{
+		BMVert **verts = MEM_callocN(sizeof(BMVert*), "faceverts");
+		BMLoop *l;
+		int count = 0, edge_count = 0, clip_count = 0, vcount = 0, index = -1;
+		
+		f = longfaces[s];
+		if (f == NULL)
+			continue;
+		
+		if (BM_elem_flag_test(f, BM_ELEM_TAG))
+		{
+			continue;
+		}
+		
 		BM_ITER_ELEM(l, &iter2, f, BM_LOOPS_OF_FACE)
 		{
 			float p1[3], p2[3];
@@ -3362,6 +3478,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 						
 						if (radius > radiusmax)
 							radiusmax = radius;
+						
+						MEM_freeN(bb);
 					}
 					
 					BM_ITER_MESH(face, &iter, origmesh, BM_FACES_OF_MESH)
@@ -3388,6 +3506,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					
 					BLI_kdtree_balance(facetree);
 					
+					//longcount = 0;
 					invert_m4_m4(ob->imat, ob->obmat);
 					for (i = 0; i < emd->cells->count; i++)
 					{

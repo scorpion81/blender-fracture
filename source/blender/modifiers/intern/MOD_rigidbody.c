@@ -637,7 +637,7 @@ void BM_mesh_join(BMesh** dest, BMesh* src)
 
 			ve = MEM_reallocN(ve, sizeof(BMVert*) * (lcount+1));
 			ve[lcount] = v;
-			lcount++;
+			//lcount++;
 		}
 
 		BM_face_create(*dest, ve, ed, lcount, 0);
