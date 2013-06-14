@@ -418,10 +418,10 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 	radiusmax = dim[max_axis_v3(dim)];
 	radiusmin = dim[min_axis_v3(dim)];
 	
-	radius = MIN2(radiusmax, 2.0f*radiusmin);
+	//radius = MIN2(radiusmax, 2.0f*radiusmin);
 	
 	mul_v3_v3fl(search, vcell->centroid, -1);
-	r = BLI_kdtree_range_search(facetree, radius, search, NULL, &n);
+	r = BLI_kdtree_range_search(facetree, radiusmax, search, NULL, &n);
 	
 	//BM_ITER_MESH(f, &iter, mesh, BM_FACES_OF_MESH)
 	for (s = 0; s < r; s++)
@@ -436,7 +436,7 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 		if (f == NULL)
 			continue;
 		
-		BM_elem_flag_enable(f, BM_ELEM_TAG);
+		//BM_elem_flag_enable(f, BM_ELEM_TAG);
 		
 		BM_ITER_ELEM(l, &iter2, f, BM_LOOPS_OF_FACE)
 		{
@@ -547,10 +547,10 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 		if (f == NULL)
 			continue;
 		
-		if (BM_elem_flag_test(f, BM_ELEM_TAG))
+		/*if (BM_elem_flag_test(f, BM_ELEM_TAG))
 		{
 			continue;
-		}
+		}*/
 		
 		BM_ITER_ELEM(l, &iter2, f, BM_LOOPS_OF_FACE)
 		{
@@ -650,6 +650,9 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 	}
 	
 	BM_mesh_select_flush(mesh);
+	
+	BM_mesh_elem_hflag_disable_test(mesh, BM_FACE | BM_EDGE | BM_VERT, BM_ELEM_SELECT, false, BM_ELEM_TAG);
+	
 	BMO_op_callf(mesh, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 				 "delete geom=%hvef context=%i", BM_ELEM_SELECT, DEL_FACES);
 
@@ -3469,12 +3472,14 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					for (i = 0; i < emd->cells->count; i++)
 					{
 						BoundBox* bb;
-						float radius, min[3], max[3];
+						float radius, radius1, radius2, min[3], max[3];
 						dm_minmax(emd->cells->data[i].cell_mesh, min, max);
 						bb = BKE_boundbox_alloc_unit();
 						BKE_boundbox_init_from_minmax(bb, min, max);
 						bbox_dim(bb, dim);
-						radius = dim[max_axis_v3(dim)];
+						radius1 = dim[max_axis_v3(dim)];
+						radius2 = dim[min_axis_v3(dim)];
+						radius = MIN2(radius1, 2.0f*radius2);
 						
 						if (radius > radiusmax)
 							radiusmax = radius;
@@ -3495,7 +3500,10 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 							{
 								longfaces = MEM_reallocN(longfaces, sizeof(BMFace*) * (longcount+1));
 								longfaces[longcount] = face;
+								BM_elem_flag_enable(face, BM_ELEM_TAG);
+								printf("Long face found: %f !\n", len);
 								longcount++;
+								break;
 							}
 						}
 						
@@ -3507,6 +3515,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					BLI_kdtree_balance(facetree);
 					
 					//longcount = 0;
+					printf("Long faces %d\n", longcount);
 					invert_m4_m4(ob->imat, ob->obmat);
 					for (i = 0; i < emd->cells->count; i++)
 					{
