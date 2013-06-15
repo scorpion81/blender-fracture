@@ -1809,9 +1809,9 @@ RigidBodyWorld *BKE_rigidbody_create_world(Scene *scene)
 	rbw->object_changed = FALSE;
 	rbw->refresh_modifiers = FALSE;
 
-	//rbw->objects = MEM_mallocN(sizeof(Object*), "objects");
-	//rbw->cache_index_map = MEM_mallocN(sizeof(RigidBodyOb*), "cache_index_map");
-	//rbw->cache_offset_map = MEM_mallocN(sizeof(int), "cache_offset_map");
+	rbw->objects = MEM_mallocN(sizeof(Object*), "objects");
+	rbw->cache_index_map = MEM_mallocN(sizeof(RigidBodyOb*), "cache_index_map");
+	rbw->cache_offset_map = MEM_mallocN(sizeof(int), "cache_offset_map");
 
 	/* return this sim world */
 	return rbw;
