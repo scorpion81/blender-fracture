@@ -1037,6 +1037,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	temd->noise = emd->noise;
 	temd->percentage = emd->percentage;
 	temd->use_cache = FALSE;
+	temd->use_clipping = emd->use_clipping;
 }
 
 static int dependsOnTime(ModifierData *UNUSED(md)) 

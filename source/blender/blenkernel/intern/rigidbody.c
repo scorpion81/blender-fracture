@@ -2845,7 +2845,7 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 		if (md->type == eModifierType_Explode)
 		{
 			emd = (ExplodeModifierData*)md;
-			if (emd->mode == eFractureMode_Cells){
+			if (emd->mode == eFractureMode_Cells && emd->cells != NULL){
 				exploPresent = true;
 			}
 		}
