@@ -1956,21 +1956,24 @@ static int explode_poll(bContext *C)
 
 static int explode_refresh_exec(bContext *C, wmOperator *op)
 {
-	Object *ob = ED_object_active_context(C);
-	ExplodeModifierData *emd = (ExplodeModifierData *)edit_modifier_property_get(op, ob, eModifierType_Explode);
+	//Object *ob = ED_object_active_context(C);
+	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
+		ExplodeModifierData *emd = (ExplodeModifierData *)edit_modifier_property_get(op, ob, eModifierType_Explode);
+		
+		if (!emd)
+			continue;
 	
-	if (!emd)
-		return OPERATOR_CANCELLED;
-
-	if (emd->mode == eFractureMode_Cells) {
-		emd->use_cache = FALSE;
+		if (emd->mode == eFractureMode_Cells) {
+			emd->use_cache = FALSE;
+		}
+		else {
+			emd->flag |= eExplodeFlag_CalcFaces;
+		}
+	
+		DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
+		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
 	}
-	else {
-		emd->flag |= eExplodeFlag_CalcFaces;
-	}
-
-	DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
-	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
+	CTX_DATA_END;
 	
 	return OPERATOR_FINISHED;
 }
@@ -2276,22 +2279,25 @@ static int rigidbody_poll(bContext *C)
 
 static int rigidbody_refresh_exec(bContext *C, wmOperator *op)
 {
-	Object *ob = ED_object_active_context(C);
-	RigidBodyModifierData *rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, ob, eModifierType_RigidBody);
-
-	if (!rmd)
-		return OPERATOR_CANCELLED;
-
-	rmd->refresh = TRUE;
-
-	DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
-	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
-
+	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
+		
+		RigidBodyModifierData *rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, ob, eModifierType_RigidBody);
+		if (!rmd)
+			continue;
+		
+		rmd->refresh = TRUE;
+		DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
+		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
+	}
+	CTX_DATA_END;
+	//Object *ob = ED_object_active_context(C);
+	
 	return OPERATOR_FINISHED;
 }
 
 static int rigidbody_refresh_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
 {
+	
 	if (edit_modifier_invoke_properties(C, op))
 		return rigidbody_refresh_exec(C, op);
 	else
@@ -2318,16 +2324,19 @@ void OBJECT_OT_rigidbody_refresh(wmOperatorType *ot)
 
 static int rigidbody_refresh_constraints_exec(bContext *C, wmOperator *op)
 {
-	Object *ob = ED_object_active_context(C);
-	RigidBodyModifierData *rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, ob, eModifierType_RigidBody);
-
-	if (!rmd)
-		return OPERATOR_CANCELLED;
-
-	rmd->refresh_constraints = TRUE;
-
-	DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
-	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
+	//Object *ob = ED_object_active_context(C);
+	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
+		RigidBodyModifierData *rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, ob, eModifierType_RigidBody);
+	
+		if (!rmd)
+			continue;
+	
+		rmd->refresh_constraints = TRUE;
+	
+		DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
+		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
+	}
+	CTX_DATA_END;
 
 	return OPERATOR_FINISHED;
 }
