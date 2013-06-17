@@ -4634,13 +4634,14 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 
 			emd->facepa = NULL;
 			emd->tempOb = NULL;
+			emd->vertpahash = NULL;
+
 			//fallback, regenerate all
 			emd->fracMesh = NULL;
 			emd->cells = NULL;
 			emd->patree = NULL;
 			emd->use_cache = FALSE;
-			
-			
+			emd->noisemap = newdataadr(fd, emd->noisemap);
 		}
 		else if (md->type == eModifierType_MeshDeform) {
 			MeshDeformModifierData *mmd = (MeshDeformModifierData *)md;
@@ -4685,16 +4686,19 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 		}
 		else if (md->type == eModifierType_RigidBody) {
 			RigidBodyModifierData *rmd = (RigidBodyModifierData *)md;
-			//clear all generated data
+			
+			//fallback, regenerate data
 			rmd->meshIslands.first = NULL;
 			rmd->meshIslands.last = NULL;
 			rmd->visible_mesh = NULL;
-			rmd->refresh = TRUE;
 			zero_m4(rmd->origmat);
 			rmd->meshConstraints.first = NULL;
 			rmd->meshConstraints.last = NULL;
 			rmd->sel_counter = 0;
 			rmd->sel_indexes = NULL;
+			rmd->idmap = NULL;
+			rmd->id_storage = NULL;
+			rmd->index_storage = NULL;
 			rmd->explo_shared = FALSE;
 			rmd->refresh = TRUE;
 			rmd->refresh_constraints = FALSE;

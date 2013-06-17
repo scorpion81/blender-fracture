@@ -864,6 +864,7 @@ static void initData(ModifierData *md)
 	emd->noisemap = NULL;
 	emd->noise_count = 0;
 	emd->use_clipping = FALSE;
+	emd->vertpahash = NULL;
 }
 
 static void freeCells(ExplodeModifierData* emd)
@@ -931,7 +932,10 @@ static void freeData(ModifierData *md)
 	//if (emd->mode == eFractureMode_Faces)
 	{
 		if (emd->facepa) MEM_freeN(emd->facepa);
-		if (emd->vertpahash) BLI_edgehash_free(emd->vertpahash, NULL);
+		if (emd->vertpahash) {
+			BLI_edgehash_free(emd->vertpahash, NULL);
+			emd->vertpahash = NULL;
+		}
 	}
 	
 	if (emd->patree) {

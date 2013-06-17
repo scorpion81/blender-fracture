@@ -1019,15 +1019,12 @@ void mesh_separate_loose(RigidBodyModifierData* rmd, ExplodeModifierData *emd, O
 	BMIter iter;
 	//int lastparticle = -1;
 	//VertParticle **fps = MEM_callocN(sizeof(VertParticle*) * rmd->visible_mesh->totface, "faceparticles");
-	GHash *verthash = BLI_ghash_ptr_new("verthash");
-	
 	//IF HAVE CLASSIC EXPLO, DO NOT SPLIT, TAKE ITS ISLANDS AS IS...
 	if (emd && emd->mode == eFractureMode_Faces)
 	{
+		GHash *verthash = BLI_ghash_ptr_new("verthash");
 		if (emd->vertpahash)
 		{
-			int i = 0;
-			BMFace* face;
 			MeshIsland *mi = NULL;
 			EdgeHashIterator *ehi = BLI_edgehashIterator_new(emd->vertpahash);
 			GHashIterator ghi;
