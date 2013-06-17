@@ -691,6 +691,7 @@ typedef struct ExplodeModifierData {
 
 	//for face mode
 	int *facepa;
+	struct EdgeHash *vertpahash;
 	short flag, vgroup;
 	float protect;
 	char uvname[64];	/* MAX_CUSTOMDATA_LAYER_NAME */

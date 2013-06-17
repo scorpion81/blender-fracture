@@ -842,15 +842,12 @@ static void initData(ModifierData *md)
 	emd->mode = eFractureMode_Faces;
 	emd->use_boolean = FALSE;
 	emd->use_cache = MOD_VORONOI_USECACHE;
-	//emd->refracture = FALSE;
 	emd->fracMesh = NULL;
 	emd->tempOb = NULL;
 	emd->cells = NULL;
-	//emd->flip_normal = FALSE;
-
+	
 	emd->last_part = 0;
 	emd->last_bool = FALSE;
-//	emd->last_flip = FALSE;
 
 	emd->facepa = NULL;
 	emd->emit_continuously = FALSE;
@@ -888,17 +885,6 @@ static void freeCells(ExplodeModifierData* emd)
 					MEM_freeN(emd->cells->data[c].cell_mesh);
 					emd->cells->data[c].cell_mesh = NULL;
 				}
-/*				if (emd->cells->data[c].storage!= NULL)
-				{
-					BKE_submesh_free(emd->cells->data[c].storage);
-					emd->cells->data[c].storage = NULL;
-				}*/
-
-/*				if (emd->cells->data[c].vert_indexes != NULL)
-				{
-					MEM_freeN(emd->cells->data[c].vert_indexes);
-					emd->cells->data[c].vert_indexes = NULL;
-				}*/
 
 				if (emd->cells->data[c].neighbor_ids != NULL)
 				{
@@ -945,6 +931,7 @@ static void freeData(ModifierData *md)
 	//if (emd->mode == eFractureMode_Faces)
 	{
 		if (emd->facepa) MEM_freeN(emd->facepa);
+		if (emd->vertpahash) BLI_edgehash_free(emd->vertpahash, NULL);
 	}
 	
 	if (emd->patree) {
@@ -978,32 +965,10 @@ static void freeData(ModifierData *md)
 
 #endif
 
-/*static void copy_voronoicell(ExplodeModifierData* emd, VoronoiCell* dst, VoronoiCell src)
-{
-	int i = 0;
-	BMesh* bmtemp;
-	(*dst).vertco = MEM_dupallocN(src.vertco);
-//	(*dst).vert_indexes = MEM_dupallocN(src.vert_indexes);
-	(*dst).vertices = MEM_mallocN(sizeof(BMVert*) * src.vertex_count, "voronoicell->dstvertices");
-	for (i = 0; i < src.vertex_count; i++)
-	{
-		(*dst).vertices[i] = BM_vert_at_index(emd->fracMesh, src.vert_indexes[i]);
-	}
-
-	bmtemp = DM_to_bmesh(src.cell_mesh);
-	(*dst).cell_mesh = CDDM_from_bmesh(bmtemp, TRUE);
-	//(*dst).storage = BKE_bmesh_to_submesh(bmtemp);
-	//(*dst).storage = NULL;
-
-	BM_mesh_free(bmtemp);
-	bmtemp = NULL;
-}*/
-
 static void copyData(ModifierData *md, ModifierData *target)
 {
 	ExplodeModifierData *emd = (ExplodeModifierData *) md;
 	ExplodeModifierData *temd = (ExplodeModifierData *) target;
-//	int i;
 
 	temd->facepa = NULL;
 	temd->flag = emd->flag;
@@ -1012,18 +977,11 @@ static void copyData(ModifierData *md, ModifierData *target)
 	temd->mode = emd->mode;
 	temd->use_boolean = emd->use_boolean;
 
-	temd->fracMesh = NULL; //BM_mesh_copy(emd->fracMesh);// better regenerate this ?
-	//temd->storage = BKE_bmesh_to_submesh(temd->fracMesh);
-	//temd->storage = NULL;
+	temd->fracMesh = NULL;
 
 	temd->use_cache = emd->use_cache;
 	temd->tempOb = emd->tempOb;
-	temd->cells = NULL; //MEM_dupallocN(emd->cells);
-	//temd->cells->data = MEM_dupallocN(emd->cells->data);
-
-	/*for (i = 0; i < emd->cells->count; i++) {
-		copy_voronoicell(temd, &temd->cells->data[i], emd->cells->data[i]);
-	}*/
+	temd->cells = NULL; 
 
 	temd->last_part = emd->last_part;
 	temd->last_bool = emd->last_bool;
@@ -1923,7 +1881,9 @@ static DerivedMesh *explodeMesh(ExplodeModifierData *emd,
 	}
 
 	/* cleanup */
-	BLI_edgehash_free(vertpahash, NULL);
+	if (emd->vertpahash)
+		BLI_edgehash_free(emd->vertpahash, NULL);
+	emd->vertpahash = vertpahash;
 
 	/* finalization */
 	CDDM_calc_edges_tessface(explode);

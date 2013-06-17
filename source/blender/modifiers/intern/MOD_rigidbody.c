@@ -38,8 +38,7 @@
 #include "BLI_math.h"
 #include "BLI_listbase.h"
 #include "BLI_kdtree.h"
-#include "BLI_memarena.h"
-#include "BLI_linklist.h"
+#include "BLI_edgehash.h"
 
 #include "BKE_cdderivedmesh.h"
 #include "BKE_modifier.h"
@@ -428,7 +427,7 @@ static ExplodeModifierData *findPrecedingExploModifier(Object *ob, RigidBodyModi
 	for (md = ob->modifiers.first; rmd != md; md = md->next) {
 		if (md->type == eModifierType_Explode) {
 			emd = (ExplodeModifierData *) md;
-			if (emd->mode == eFractureMode_Cells) {
+			if (emd->mode == eFractureMode_Cells || 1) {
 				return emd;
 			}
 			else
@@ -993,31 +992,204 @@ void halve(RigidBodyModifierData* rmd, Object* ob, int minsize, BMesh** bm_work,
 	bm_new = NULL;
 }
 
-void mesh_separate_loose(RigidBodyModifierData* rmd, Object* ob)
+typedef struct VertParticle
+{
+	BMVert** verts;
+	int vertcount;
+	float *vertco;
+} VertParticle;
+
+/*int facebyparticle(const void *e1, const void *e2)
+{
+	const VertParticle *fp1 = *(void **)e1, *fp2 = *(void **)e2;
+	int x1 = fp1->particle;
+	int x2 = fp2->particle;
+
+	if      (x1 > x2) return  1;
+	else if (x1 < x2) return -1;
+	else return 0;
+}*/
+
+void mesh_separate_loose(RigidBodyModifierData* rmd, ExplodeModifierData *emd, Object* ob)
 {
 	int minsize = 1000;
 	//GHash* vhash = BLI_ghash_ptr_new("VertHash");
 	BMesh* bm_work;
-	BMVert* v, **orig_start;
+	BMVert* vert, **orig_start;
 	BMIter iter;
-
-	BM_mesh_elem_hflag_disable_all(rmd->visible_mesh, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, FALSE);
-	bm_work = BM_mesh_copy(rmd->visible_mesh);
-
-	orig_start = MEM_callocN(sizeof(BMVert*) * rmd->visible_mesh->totvert, "orig_start");
-	//associate new verts with old verts, here indexes should match still
-	BM_ITER_MESH(v, &iter, rmd->visible_mesh, BM_VERTS_OF_MESH)
+	//int lastparticle = -1;
+	//VertParticle **fps = MEM_callocN(sizeof(VertParticle*) * rmd->visible_mesh->totface, "faceparticles");
+	GHash *verthash = BLI_ghash_ptr_new("verthash");
+	
+	//IF HAVE CLASSIC EXPLO, DO NOT SPLIT, TAKE ITS ISLANDS AS IS...
+	if (emd && emd->mode == eFractureMode_Faces)
 	{
-		orig_start[v->head.index] = v;
+		if (emd->vertpahash)
+		{
+			int i = 0;
+			BMFace* face;
+			MeshIsland *mi = NULL;
+			EdgeHashIterator *ehi = BLI_edgehashIterator_new(emd->vertpahash);
+			GHashIterator ghi;
+			
+			//faster than BM_vert_at_index...
+			BMVert** vertarray = MEM_callocN(sizeof(BMVert*) * rmd->visible_mesh->totvert, "vertarray");
+			BM_ITER_MESH(vert, &iter, rmd->visible_mesh, BM_VERTS_OF_MESH)
+			{
+				vertarray[vert->head.index] = vert;
+			}	
+			
+			//contains vertex index and particle index at ed_v1 and at ed_v2;
+			for (; !BLI_edgehashIterator_isDone(ehi); BLI_edgehashIterator_step(ehi)) {
+				unsigned int ed_v1, ed_v2;
+				void* lookup;
+				VertParticle *vertpa;
+				int v;
+				
+				BLI_edgehashIterator_getKey(ehi, &ed_v1, &ed_v2);
+				ed_v2 -= rmd->visible_mesh->totvert; //is shifted to help distiguish vert indexes from particle indexes
+				v = GET_INT_FROM_POINTER(BLI_edgehashIterator_getValue(ehi));
+		
+				//need v and ed_v2, group v by ed_v2
+				lookup = BLI_ghash_lookup(verthash, SET_INT_IN_POINTER(ed_v2));
+				if (!lookup)
+				{
+					vertpa = MEM_callocN(sizeof(VertParticle), "vertpa");
+					vertpa->verts = MEM_callocN(sizeof(BMVert*), "vertlist");
+					vertpa->vertco = MEM_callocN(sizeof(float)*3, "vertco");
+					vertpa->verts[0] = vertarray[v];
+					vertpa->vertco[0] = vertarray[v]->co[0];
+					vertpa->vertco[1] = vertarray[v]->co[1];
+					vertpa->vertco[2] = vertarray[v]->co[2];
+					vertpa->vertcount = 1;
+					BLI_ghash_insert(verthash, SET_INT_IN_POINTER(ed_v2), vertpa);
+				}
+				else
+				{
+					vertpa = (VertParticle*)lookup;
+					vertpa->verts = MEM_reallocN(vertpa->verts, sizeof(BMVert*) * (vertpa->vertcount+1));
+					vertpa->vertco = MEM_reallocN(vertpa->vertco, sizeof(float)*3*(vertpa->vertcount+1));
+					vertpa->verts[vertpa->vertcount] = vertarray[v];
+					vertpa->vertco[vertpa->vertcount * 3] = vertarray[v]->co[0];
+					vertpa->vertco[vertpa->vertcount * 3+1] = vertarray[v]->co[1];
+					vertpa->vertco[vertpa->vertcount * 3+2] = vertarray[v]->co[2];
+					vertpa->vertcount++;
+				}
+			}
+			
+			BLI_edgehashIterator_free(ehi);
+			
+			//BMO_op_callf(rmd->visible_mesh, BMO_FLAG_DEFAULTS, "remove_doubles verts=%av dist=%f", BM_VERTS_OF_MESH, 0.0001f);
+			BM_mesh_elem_hflag_disable_all(rmd->visible_mesh, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, FALSE);
+			GHASH_ITER(ghi, verthash)
+			{
+				float centroid[3], min[3], max[3], rot[4], vol, dummyloc[3];
+				int j;
+				VertParticle* vpa = (VertParticle*)(BLI_ghashIterator_getValue(&ghi));
+				DerivedMesh* dm = NULL;
+				BMesh* bm_old = rmd->visible_mesh;
+				BMesh *bm_new = BM_mesh_create(&bm_mesh_allocsize_default);
+				BM_mesh_elem_toolflags_ensure(bm_new);
+				
+				mi = MEM_callocN(sizeof(MeshIsland), "meshIsland");
+				BLI_addtail(&rmd->meshIslands, mi);
+				
+				mi->vertices = vpa->verts;
+				mi->vertex_count = vpa->vertcount;
+				mi->vertco = vpa->vertco;
+				
+				for (j = 0; j < mi->vertex_count; j++)
+				{
+					BM_elem_flag_enable(mi->vertices[j], BM_ELEM_TAG);
+				}
+				
+				bm_mesh_hflag_flush_vert(bm_old, BM_ELEM_TAG);
+				
+				mi->compound_children = NULL;
+				mi->compound_count = 0;
+				mi->compound_parent = NULL;
+				zero_v3(mi->start_co);
+				
+				mi->participating_constraints = NULL;
+				mi->participating_constraint_count = 0;
+				mi->destruction_frame = -1;
+				
+				CustomData_copy(&bm_old->vdata, &bm_new->vdata, CD_MASK_BMESH, CD_CALLOC, 0);
+				CustomData_copy(&bm_old->edata, &bm_new->edata, CD_MASK_BMESH, CD_CALLOC, 0);
+				CustomData_copy(&bm_old->ldata, &bm_new->ldata, CD_MASK_BMESH, CD_CALLOC, 0);
+				CustomData_copy(&bm_old->pdata, &bm_new->pdata, CD_MASK_BMESH, CD_CALLOC, 0);
+				
+				CustomData_bmesh_init_pool(&bm_new->vdata, bm_mesh_allocsize_default.totvert, BM_VERT);
+				CustomData_bmesh_init_pool(&bm_new->edata, bm_mesh_allocsize_default.totedge, BM_EDGE);
+				CustomData_bmesh_init_pool(&bm_new->ldata, bm_mesh_allocsize_default.totloop, BM_LOOP);
+				CustomData_bmesh_init_pool(&bm_new->pdata, bm_mesh_allocsize_default.totface, BM_FACE);
+				
+				
+				BMO_op_callf(bm_old, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+							 "duplicate geom=%hvef dest=%p", BM_ELEM_TAG, bm_new);
+				
+				BM_calc_center_centroid(bm_new, centroid, FALSE);
+				BM_ITER_MESH (vert, &iter, bm_new, BM_VERTS_OF_MESH) {
+					sub_v3_v3(vert->co, centroid);
+				}
+				
+				BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, FALSE);
+				
+				BM_mesh_normals_update(bm_new);
+				BM_mesh_minmax(bm_new, min, max, FALSE);
+				dm = CDDM_from_bmesh(bm_new, true);
+				BM_mesh_free(bm_new);
+				bm_new = NULL;
+				mi->physics_mesh = dm;
+				
+				copy_v3_v3(mi->centroid, centroid);
+				mat4_to_loc_quat(dummyloc, rot, ob->obmat);
+				copy_v3_v3(mi->rot, rot);
+				mi->parent_mod = rmd;
+				mi->bb = BKE_boundbox_alloc_unit();
+				BKE_boundbox_init_from_minmax(mi->bb, min, max);
+				
+				vol = bbox_vol(mi->bb);
+				if (vol > rmd->max_vol)
+				{
+					rmd->max_vol = vol;
+				}
+				
+				if (!rmd->use_cellbased_sim || rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED)
+				{
+					mi->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi);
+					BKE_rigidbody_calc_shard_mass(ob, mi);
+					if (rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED)
+						mi->rigidbody->flag |= RBO_FLAG_ACTIVE_COMPOUND;
+				}
+				
+				MEM_freeN(vpa);
+			}
+			
+			MEM_freeN(vertarray);
+		}
+		BLI_ghash_free(verthash, NULL, NULL);
 	}
-
-	halve(rmd, ob, minsize, &bm_work, &orig_start, false);
-
-//	BLI_ghash_free(vhash, NULL, NULL);
-	MEM_freeN(orig_start);
-	orig_start = NULL;
-	BM_mesh_free(bm_work);
-	bm_work = NULL;
+	else
+	{
+		BM_mesh_elem_hflag_disable_all(rmd->visible_mesh, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, FALSE);
+		bm_work = BM_mesh_copy(rmd->visible_mesh);
+	
+		orig_start = MEM_callocN(sizeof(BMVert*) * rmd->visible_mesh->totvert, "orig_start");
+		//associate new verts with old verts, here indexes should match still
+		BM_ITER_MESH(vert, &iter, rmd->visible_mesh, BM_VERTS_OF_MESH)
+		{
+			orig_start[vert->head.index] = vert;
+		}	
+	
+		halve(rmd, ob, minsize, &bm_work, &orig_start, false);
+	
+	//	BLI_ghash_free(vhash, NULL, NULL);
+		MEM_freeN(orig_start);
+		orig_start = NULL;
+		BM_mesh_free(bm_work);
+		bm_work = NULL;
+	}
 }
 
 /*void mesh_separate_island(RigidBodyModifierData* rmd, Object* ob, MeshIsland* mi)
@@ -2687,7 +2859,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				rmd->explo_shared = FALSE;
 				
 				start = PIL_check_seconds_timer();
-				mesh_separate_loose(rmd, ob);
+				mesh_separate_loose(rmd, emd, ob);
 				printf("Splitting to islands done, %g\n", PIL_check_seconds_timer() - start);
 			}
 			
