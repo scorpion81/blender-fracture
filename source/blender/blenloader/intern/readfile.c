@@ -4640,7 +4640,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			emd->fracMesh = NULL;
 			emd->cells = NULL;
 			emd->patree = NULL;
-			emd->use_cache = FALSE;
+			emd->use_cache = MOD_VORONOI_USECACHE; // do not construct modifier
 			emd->noisemap = newdataadr(fd, emd->noisemap);
 		}
 		else if (md->type == eModifierType_MeshDeform) {
@@ -4700,7 +4700,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			rmd->id_storage = NULL;
 			rmd->index_storage = NULL;
 			rmd->explo_shared = FALSE;
-			rmd->refresh = TRUE;
+			rmd->refresh = FALSE;  // do not construct modifier
 			rmd->refresh_constraints = FALSE;
 			rmd->max_vol = 0;
 			rmd->cells.first = NULL;

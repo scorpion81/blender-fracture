@@ -2152,12 +2152,12 @@ static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float 
 		go[0] = ob;
 	}
 	
-	if (emd->point_source & (eOwnParticles | eExtraParticles))
+	if (emd->point_source & (eOwnParticles | eExtraParticles) && emd->use_cache == FALSE)
 	{
 		totpoint = points_from_particles(go, totgroup, scene, points, totpoint, mat, thresh, emd);
 	}
 	
-	if (emd->point_source & (eOwnVerts | eExtraVerts))
+	if (emd->point_source & (eOwnVerts | eExtraVerts) && emd->use_cache == FALSE)
 	{
 		totpoint = points_from_verts(go, totgroup, points, totpoint, mat, thresh, emd, derivedData, ob);
 	}
