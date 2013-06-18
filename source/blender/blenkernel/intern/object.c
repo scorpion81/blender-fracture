@@ -1279,6 +1279,10 @@ Object *BKE_object_copy_ex(Main *bmain, Object *ob, int copy_caches)
 	if (ob->bb) obn->bb = MEM_dupallocN(ob->bb);
 	obn->flag &= ~OB_FROMGROUP;
 	
+	//copy rigidbody object before modifiers because of rigidbody modifier might occur
+	obn->rigidbody_object = BKE_rigidbody_copy_object(ob);
+	obn->rigidbody_constraint = BKE_rigidbody_copy_constraint(ob);
+	
 	obn->modifiers.first = obn->modifiers.last = NULL;
 	
 	for (md = ob->modifiers.first; md; md = md->next) {
@@ -1328,8 +1332,8 @@ Object *BKE_object_copy_ex(Main *bmain, Object *ob, int copy_caches)
 	}
 	obn->soft = copy_softbody(ob->soft, copy_caches);
 	obn->bsoft = copy_bulletsoftbody(ob->bsoft);
-	obn->rigidbody_object = BKE_rigidbody_copy_object(ob);
-	obn->rigidbody_constraint = BKE_rigidbody_copy_constraint(ob);
+	//obn->rigidbody_object = BKE_rigidbody_copy_object(ob);
+	//obn->rigidbody_constraint = BKE_rigidbody_copy_constraint(ob);
 
 	BKE_object_copy_particlesystems(obn, ob);
 	
