@@ -2482,7 +2482,7 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 
 static void validateShard(RigidBodyWorld *rbw, MeshIsland* mi, Object* ob, int rebuild)
 {
-	if (mi->rigidbody == NULL)
+	if (mi == NULL || mi->rigidbody == NULL)
 	{
 		return;
 	}
@@ -2616,7 +2616,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 							}
 						}
 						
-						validateShard(rbw, mi, ob, do_rebuild);
+						validateShard(rbw, rmd->meshIslands.first == rmd->meshIslands.last ? NULL : mi, ob, do_rebuild);
 					}
 
 					/* update simulation object... */
