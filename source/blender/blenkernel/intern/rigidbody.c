@@ -2237,10 +2237,13 @@ void BKE_rigidbody_remove_object(Scene *scene, Object *ob)
 					}
 				}
 			}
+			
+			/* remove object's settings */
+			BKE_rigidbody_free_object(ob);
 		}
 
 		/* remove object's settings */
-		BKE_rigidbody_free_object(ob);
+		//BKE_rigidbody_free_object(ob);
 	}
 
 	/* flag cache as outdated */
