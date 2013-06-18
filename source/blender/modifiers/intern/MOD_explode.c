@@ -2309,7 +2309,9 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 	mat4_to_loc_quat(loc, quat, mat);
 	mul_v3_v3fl(min, size, -1);
 	mul_v3_v3fl(max, size, 1);
-	recenter_dm(derivedData, centr);
+	add_v3_v3(min, centr);
+	add_v3_v3(max, centr);
+//	recenter_dm(derivedData, centr);
 
 	points = MEM_mallocN(sizeof(float*), "points");
 	totpoint = get_points(emd, emd->modifier.scene, ob, &points, mat, derivedData);
@@ -2881,6 +2883,16 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 	MEM_freeN(path);
 	
 	printf("%d cells missing\n", totpoint - emd->cells->count); //use totpoint here
+	
+	{
+		BMVert *v;
+		BMIter iter;
+		
+		BM_ITER_MESH(v, &iter, bm, BM_VERTS_OF_MESH)
+		{
+			sub_v3_v3(v->co, centr);
+		}
+	}
 	
 	return bm;
 }
