@@ -2152,12 +2152,12 @@ static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float 
 		go[0] = ob;
 	}
 	
-	if (emd->point_source & (eOwnParticles | eExtraParticles) && emd->use_cache == FALSE)
+	if (emd->point_source & (eOwnParticles | eExtraParticles))
 	{
 		totpoint = points_from_particles(go, totgroup, scene, points, totpoint, mat, thresh, emd);
 	}
 	
-	if (emd->point_source & (eOwnVerts | eExtraVerts) && emd->use_cache == FALSE)
+	if (emd->point_source & (eOwnVerts | eExtraVerts))
 	{
 		totpoint = points_from_verts(go, totgroup, points, totpoint, mat, thresh, emd, derivedData, ob);
 	}
@@ -2311,7 +2311,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 	mul_v3_v3fl(max, size, 1);
 	add_v3_v3(min, centr);
 	add_v3_v3(max, centr);
-//	recenter_dm(derivedData, centr);
+	recenter_dm(derivedData, centr);
 
 	points = MEM_mallocN(sizeof(float*), "points");
 	totpoint = get_points(emd, emd->modifier.scene, ob, &points, mat, derivedData);
@@ -3384,7 +3384,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 	//if (psmd)
 	{
-		if (emd->mode == eFractureMode_Cells)
+		if (emd->mode == eFractureMode_Cells && emd->use_cache == FALSE)
 		{
 #ifdef WITH_MOD_VORONOI
 
@@ -3729,7 +3729,10 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				return explodeMesh(emd, psmd, md->scene, ob, derivedData);
 		}
 	}
-	return derivedData;
+	if (emd->fracMesh != NULL)
+		return CDDM_from_bmesh(emd->fracMesh, TRUE);
+	else
+		return derivedData;
 }
 
 static void foreachIDLink(ModifierData *md, Object *ob,
