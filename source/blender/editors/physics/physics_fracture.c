@@ -742,7 +742,7 @@ int fractureToCells(Object *ob, float mat[4][4], wmOperator* op, Scene* scene, O
 						dm = NULL;
 					}
 					
-					bm = DM_to_bmesh(boolresult);
+					bm = DM_to_bmesh(boolresult, true);
 					DM_release(boolresult);
 					MEM_freeN(boolresult);
 					boolresult = NULL;
@@ -1058,7 +1058,7 @@ int object_fracture_exec(bContext *C, wmOperator *op)
 			
 			invert_m4_m4(imat, ob->obmat);
 			copy_m4_m4(oldobmat, ob->obmat);
-			mult_m4_m4m4(ob->obmat, imat, ob->obmat); //neutralize obmat due to rotation problem with container
+			mul_m4_m4m4(ob->obmat, imat, ob->obmat); //neutralize obmat due to rotation problem with container
 			shardcount = fractureToCells(ob, oldobmat, op, scene, &shards, &n, &pid_to_index);
 			copy_m4_m4(ob->obmat, oldobmat); // restore obmat
 			

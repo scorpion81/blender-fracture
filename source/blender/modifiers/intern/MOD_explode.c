@@ -2383,7 +2383,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 	if (totpoint == 0)
 		return NULL;
 
-	bm = DM_to_bmesh(derivedData);
+	bm = DM_to_bmesh(derivedData, true);
 	//empty the mesh
 	BM_mesh_clear(bm);
 
@@ -3397,7 +3397,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			{
 				invert_m4_m4(imat, ob->obmat);
 				copy_m4_m4(oldobmat, ob->obmat);
-				mult_m4_m4m4(ob->obmat, imat, ob->obmat); //neutralize obmat due to rotation problem with container
+				mul_m4_m4m4(ob->obmat, imat, ob->obmat); //neutralize obmat due to rotation problem with container
 				
 				if ((emd->cells) && (emd->fracMesh)) {
 					BM_mesh_free(emd->fracMesh);
@@ -3439,7 +3439,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					start = PIL_check_seconds_timer();
 					
 					me = (Mesh*)ob->data;
-					origmesh = DM_to_bmesh(derivedData);
+					origmesh = DM_to_bmesh(derivedData, true);
 					clipped = BM_mesh_create(&bm_mesh_allocsize_default);
 					facemap = MEM_callocN(sizeof(FaceMap*), "facemap");
 					facearray = MEM_callocN(sizeof(BMFace*) * origmesh->totface, "facearray");
@@ -3499,7 +3499,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 						//if ((i == 4) || ( i == 7 ))
 						{
 							//maybe accelerate this by using a range query of "necessary verts only" (radius = cellboundbox)
-							BMesh* cellmesh = DM_to_bmesh(emd->cells->data[i].cell_mesh);
+							BMesh* cellmesh = DM_to_bmesh(emd->cells->data[i].cell_mesh, true);
 							printf("Clipping mesh against cell: %d\n", i);
 							clip_cell_mesh(cellmesh, origmesh, &clipped, &emd->cells->data[i], &facemap, &facemapcount, facehash, 
 										   facetree, facearray, longfaces, longcount);

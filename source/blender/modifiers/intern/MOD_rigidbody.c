@@ -2637,7 +2637,7 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 				continue;
 			}
 			
-			bm = DM_to_bmesh(mi->physics_mesh);
+			bm = DM_to_bmesh(mi->physics_mesh, true);
 			
 			BM_ITER_MESH (v, &iter, bm, BM_VERTS_OF_MESH) {
 				add_v3_v3(v->co, mi->centroid);
@@ -2812,7 +2812,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					mi->is_at_boundary = vc->is_at_boundary;
 					mi->vertices = vc->vertices;
 					mi->vertco = vc->vertco;
-					temp = DM_to_bmesh(vc->cell_mesh);
+					temp = DM_to_bmesh(vc->cell_mesh, true);
 	
 					BM_ITER_MESH (v, &iter, temp, BM_VERTS_OF_MESH) {
 						//then eliminate centroid in vertex coords ?
@@ -2852,7 +2852,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			else
 			{
 				//split to meshislands now
-				rmd->visible_mesh = DM_to_bmesh(dm);
+				rmd->visible_mesh = DM_to_bmesh(dm, true);
 				rmd->explo_shared = FALSE;
 				
 				start = PIL_check_seconds_timer();
