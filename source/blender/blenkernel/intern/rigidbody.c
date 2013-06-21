@@ -1040,7 +1040,7 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland* mi, Object* ob, short re
 		// XXX: all dimensions are auto-determined now... later can add stored settings for this
 		/* get object dimensions without scaling */
 		//BM_mesh_bm_to_me(mi->physics_mesh, me, FALSE);
-		DM_to_mesh(mi->physics_mesh, me, NULL, 0);
+		DM_to_mesh(mi->physics_mesh, me, ob, 0);
 	
 		BKE_mesh_boundbox_calc(me, loc, size);
 	
