@@ -2558,6 +2558,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 				float min_con_dist = FLT_MAX;
 			
 				//BKE_object_where_is_calc(scene, ob);
+				int count = BLI_countlist(&rmd->meshIslands);
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 					if (mi->rigidbody == NULL) {
 						continue;
@@ -2616,7 +2617,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 							}
 						}
 						
-						validateShard(rbw, rmd->meshIslands.first == rmd->meshIslands.last ? NULL : mi, ob, do_rebuild);
+						validateShard(rbw, count == 0 ? NULL : mi, ob, do_rebuild);
 					}
 
 					/* update simulation object... */
@@ -2797,6 +2798,7 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 				if (isModifierActive(rmd)) {
 					for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 						rbo = mi->rigidbody;
+						if (!rbo) continue;
 						/* reset kinematic state for transformed objects */
 						if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) {
 							RB_body_set_kinematic_state(rbo->physics_object, rbo->flag & RBO_FLAG_KINEMATIC || rbo->flag & RBO_FLAG_DISABLED);
