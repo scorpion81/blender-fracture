@@ -3744,6 +3744,11 @@ static void foreachIDLink(ModifierData *md, Object *ob,
 	walk(userData, ob, (ID **)&emd->extra_group);
 }
 
+static bool dependsOnNormals(ModifierData *UNUSED(md))
+{
+	return true;
+}
+
 
 ModifierTypeInfo modifierType_Explode = {
 	/* name */              "Explode",
@@ -3765,7 +3770,7 @@ ModifierTypeInfo modifierType_Explode = {
 	/* isDisabled */        NULL,
 	/* updateDepgraph */    NULL,
 	/* dependsOnTime */     dependsOnTime,
-	/* dependsOnNormals */  NULL,
+	/* dependsOnNormals */  dependsOnNormals,
 	/* foreachObjectLink */ NULL,
 	/* foreachIDLink */     foreachIDLink,
 	/* foreachTexLink */    NULL,

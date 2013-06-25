@@ -2985,6 +2985,11 @@ static int dependsOnTime(ModifierData *UNUSED(md))
 	return 1;
 }
 
+static bool dependsOnNormals(ModifierData *UNUSED(md))
+{
+	return true;
+}
+
 static void foreachIDLink(ModifierData *md, Object *ob,
 						  IDWalkFunc walk, void *userData)
 {
@@ -3015,7 +3020,7 @@ ModifierTypeInfo modifierType_RigidBody = {
 	/* isDisabled */        NULL,
 	/* updateDepgraph */    NULL,
 	/* dependsOnTime */     dependsOnTime,
-	/* dependsOnNormals */	NULL,
+	/* dependsOnNormals */	dependsOnNormals,
 	/* foreachObjectLink */ NULL,
 	/* foreachIDLink */     foreachIDLink,
 	/* foreachTexLink */    NULL
