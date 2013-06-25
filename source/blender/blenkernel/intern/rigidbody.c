@@ -860,7 +860,7 @@ static rbCollisionShape *rigidbody_get_shape_compound_from_mi(MeshIsland* mi, Ob
 		bool has_volume, can_embed;
 		float hull_margin, loc[3] = {0,0,0}, bbsize[3] = {1,1,1}, rot[4], centr[3];
 		
-		DM_to_mesh(mi2->physics_mesh, me, NULL, 0);
+		DM_to_mesh(mi2->physics_mesh, me, ob, 0);
 		
 		BKE_mesh_boundbox_calc(me, loc, bbsize);
 		has_volume = (MIN3(bbsize[0], bbsize[1], bbsize[2]) > 0.0f);
