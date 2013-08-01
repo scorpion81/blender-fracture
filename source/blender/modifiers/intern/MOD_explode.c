@@ -924,8 +924,8 @@ static void freeData(ModifierData *md)
 
 	if ((emd->tempOb) && (emd->tempOb->data) && (emd->mode == eFractureMode_Cells)) {
 		BKE_libblock_free_us(&(G.main->object), emd->tempOb);
-		BKE_object_unlink(emd->tempOb);
-		BKE_object_free(emd->tempOb);
+		//BKE_object_unlink(emd->tempOb);
+		//BKE_object_free(emd->tempOb);
 		emd->tempOb = NULL;
 	}
 
@@ -3384,7 +3384,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 	//if (psmd)
 	{
-		if (emd->mode == eFractureMode_Cells && emd->use_cache == FALSE)
+		if (emd->mode == eFractureMode_Cells && emd->use_cache == FALSE || (emd->use_animation && psmd != NULL))
 		{
 #ifdef WITH_MOD_VORONOI
 
@@ -3393,7 +3393,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					(emd->last_bool != emd->use_boolean) ||
 					//(emd->last_flip != emd->flip_normal) ||
 					(emd->last_point_source != emd->point_source) ||
-					(emd->use_cache == FALSE))
+					(emd->use_cache == FALSE)/* || (emd->use_animation && psmd != NULL)*/)
 			{
 				invert_m4_m4(imat, ob->obmat);
 				copy_m4_m4(oldobmat, ob->obmat);

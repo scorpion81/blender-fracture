@@ -2061,7 +2061,8 @@ void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsland **m
 	//Do we have a explo modifier, if yes, use its neighborhood info before calculating (inner) neighborhoods here
 
 	emd = findPrecedingExploModifier(ob, rmd);
-	if (emd != NULL && emd->cells != NULL && ((!emd->use_clipping && !rmd->use_cellbased_sim  && !emd->use_boolean) || rmd->contact_dist_meaning == MOD_RIGIDBODY_VERTICES)) {
+	if (emd != NULL && emd->cells != NULL && ((!emd->use_clipping && !rmd->use_cellbased_sim  && !emd->use_boolean) || 
+		((rmd->contact_dist_meaning == MOD_RIGIDBODY_VERTICES) && (rmd->contact_dist == 0.0f)))) {
 		int i = 0, j;
 		GHash* visited_ids = BLI_ghash_pair_new("visited_ids");
 		for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
