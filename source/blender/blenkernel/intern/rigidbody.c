@@ -2830,12 +2830,12 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 	}
 }
 
-int is_zero_m4(float mat[4][4]) {
+/*int is_zero_m4(float mat[4][4]) {
 	return is_zero_v4(mat[0]) &&
 		   is_zero_v4(mat[1]) &&
 		   is_zero_v4(mat[2]) &&
 		   is_zero_v4(mat[3]);
-}
+}*/
 
 bool BKE_rigidbody_check_sim_running(RigidBodyWorld *rbw, float ctime)
 {
