@@ -1091,6 +1091,7 @@ void mesh_separate_loose(RigidBodyModifierData* rmd, ExplodeModifierData *emd, O
 				mi = MEM_callocN(sizeof(MeshIsland), "meshIsland");
 				BLI_addtail(&rmd->meshIslands, mi);
 				
+				mi->particle_index = -1;
 				mi->vertices = vpa->verts;
 				mi->vertex_count = vpa->vertcount;
 				mi->vertco = vpa->vertco;
@@ -1442,8 +1443,16 @@ static void connect_meshislands(RigidBodyModifierData* rmd, Object* ob, MeshIsla
 				{
 					rbsc->flag |= RBC_FLAG_DISABLE_COLLISIONS;
 				}
-					
-				rbsc->breaking_threshold = thresh;
+				
+				if ((mi1->particle_index != -1) && (mi2->particle_index != -1) && (mi1->particle_index == mi2->particle_index))
+				{
+					rbsc->breaking_threshold = 1000.0f;
+				}
+				else
+				{
+					rbsc->breaking_threshold = thresh;
+				}
+						
 				//BKE_rigidbody_start_dist_angle(rbsc);
 				BLI_addtail(&rmd->meshConstraints, rbsc);
 				
@@ -2835,6 +2844,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					BKE_boundbox_init_from_minmax(mi->bb, min, max);
 	
 					mi->id = vc->pid;
+					mi->particle_index = vc->particle_index;
 					BLI_ghash_insert(rmd->idmap, SET_INT_IN_POINTER(mi->id), SET_INT_IN_POINTER(i));
 					mi->neighbor_ids = vc->neighbor_ids;
 					mi->neighbor_count = vc->neighbor_count;

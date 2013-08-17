@@ -1306,8 +1306,8 @@ typedef struct MeshIsland {
 	float rot[4]; //hrm, need this for constraints probably
 	float destruction_frame;
 	int linear_index;  //index in rigidbody world
-	int compound_count;
-	//char pad[4];
+	int compound_count, particle_index;
+	char pad[4];
 } MeshIsland;
 
 typedef struct RigidBodyModifierData {

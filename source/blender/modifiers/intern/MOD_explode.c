@@ -3580,7 +3580,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				emd->last_map_delay = emd->map_delay;
 				createParticleTree(emd, psmd, md->scene, ob);
 				mapCellsToParticles(emd, psmd, md->scene, ob);
-				explodeCells(emd, psmd, md->scene, ob);
+				if (rmd == NULL)
+					explodeCells(emd, psmd, md->scene, ob);
 			}
 
 			if (emd->fracMesh) {
