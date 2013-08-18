@@ -850,11 +850,12 @@ static void initData(ModifierData *md)
 	emd->last_bool = FALSE;
 
 	emd->facepa = NULL;
-	emd->emit_continuously = FALSE;
+	emd->cluster_percentage = 100;
+	emd->last_cluster_percentage = 100;
 	emd->flag |= eExplodeFlag_Unborn + eExplodeFlag_Alive + eExplodeFlag_Dead;
 	emd->patree = NULL;
-	emd->map_delay = 1;
-	emd->last_map_delay = 1;
+	emd->cluster_size = 1;
+	emd->last_cluster_size = 1;
 	emd->inner_material = NULL;
 	emd->point_source = eOwnParticles;
 	emd->last_point_source = eOwnParticles;
@@ -989,9 +990,10 @@ static void copyData(ModifierData *md, ModifierData *target)
 
 	temd->last_part = emd->last_part;
 	temd->last_bool = emd->last_bool;
-	temd->emit_continuously = emd->emit_continuously;
-	temd->map_delay = emd->map_delay;
-	temd->last_map_delay = emd->last_map_delay;
+	temd->cluster_percentage = emd->cluster_percentage;
+	temd->last_cluster_percentage = emd->last_cluster_percentage;
+	temd->cluster_size = emd->cluster_size;
+	temd->last_cluster_size = emd->last_cluster_size;
 	temd->inner_material = emd->inner_material;
 	temd->point_source = emd->point_source;
 	temd->last_point_source = emd->last_point_source;
@@ -2910,6 +2912,10 @@ static void createParticleTree(ExplodeModifierData *emd, ParticleSystemModifierD
 	sim.ob = ob;
 	sim.psys = psmd->psys;
 	sim.psmd = psmd;
+	
+	//older blends might crash otherwise
+	if (emd->cluster_size == 0)
+		emd->cluster_size = 1;
 
 	/* make tree of emitter locations */
 	if (emd->patree)
@@ -2921,12 +2927,12 @@ static void createParticleTree(ExplodeModifierData *emd, ParticleSystemModifierD
 	emd->patree = BLI_kdtree_new(totpart);
 	for (p = 0, pa = psys->particles; p < totpart; p++, pa++)
 	{
-		if (emd->emit_continuously)
+		/*if (emd->emit_continuously)
 		{
 			psys_get_birth_coordinates(&sim, pa, &birth, 0, 0);
 			BLI_kdtree_insert(emd->patree, p, birth.co, NULL);
 		}
-		else if (ELEM3(pa->alive, PARS_ALIVE, PARS_DYING, PARS_DEAD))
+		else*/ if (p % emd->cluster_size == 0) // if (ELEM3(pa->alive, PARS_ALIVE, PARS_DYING, PARS_DEAD))
 		{
 			//psys_particle_on_emitter(psmd, psys->part->from, pa->num, pa->num_dmcache, pa->fuv, pa->foffset, co, NULL, NULL, NULL, NULL, NULL);
 			psys_get_birth_coordinates(&sim, pa, &birth, 0, 0);
@@ -2943,30 +2949,20 @@ static void mapCellsToParticles(ExplodeModifierData *emd, ParticleSystemModifier
 	ParticleSystem *psys = psmd->psys;
 	float center[3];
 	int p = 0, c;
-	// if voronoi: need to set centroids of cells to nearest particle, apply same(?) matrix to a group of verts
-	float cfra;
-	cfra = BKE_scene_frame_get(scene);
-
+	float thresh = (float)emd->cluster_percentage / 100.0f;
+	
 	for(c = 0; c < emd->cells->count; c++) {
-		center[0] = emd->cells->data[c].centroid[0];
-		center[1] = emd->cells->data[c].centroid[1];
-		center[2] = emd->cells->data[c].centroid[2];
-
-		//centroids were stored in object space, go to global space (particles are in global space)
-		mul_m4_v3(ob->obmat, center);
-		p = BLI_kdtree_find_nearest(emd->patree, center, NULL, NULL);
-
-		if (emd->emit_continuously) {
-			if (ELEM3(psys->particles[p].alive, PARS_ALIVE, PARS_DYING, PARS_DEAD)) {
-				emd->cells->data[c].particle_index = p;
-			}
-			else {
-				emd->cells->data[c].particle_index = -1;
-			}
-		}
-		else {
-			if ((emd->cells->data[c].particle_index == -1) && (cfra > (psys->part->sta + emd->map_delay))) {
-				//map once, with delay, the larger the delay, the more smaller chunks !
+		
+		if (BLI_frand() < thresh)
+		{
+			center[0] = emd->cells->data[c].centroid[0];
+			center[1] = emd->cells->data[c].centroid[1];
+			center[2] = emd->cells->data[c].centroid[2];
+	
+			//centroids were stored in object space, go to global space (particles are in global space)
+			mul_m4_v3(ob->obmat, center);
+			p = BLI_kdtree_find_nearest(emd->patree, center, NULL, NULL);
+			if (emd->cells->data[c].particle_index == -1) { 
 				emd->cells->data[c].particle_index = p;
 			}
 		}
@@ -3028,7 +3024,7 @@ static void explodeCells(ExplodeModifierData *emd,
 			vert->co[1] = emd->cells->data[i].vertco[j*3+1];
 			vert->co[2] = emd->cells->data[i].vertco[j*3+2];
 			
-			if ((p < 0) || (p > totpart-1) || ((!emd->emit_continuously) && (pa->alive == PARS_UNBORN)))
+			if ((p < 0) || (p > totpart-1) || /*((!emd->emit_continuously) && */(pa->alive == PARS_UNBORN))
 			{
 				continue;
 			}
@@ -3574,14 +3570,21 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			if (emd->cells == NULL)
 				return derivedData;
 
-			if (emd->use_animation && psmd != NULL)
+			if (psmd != NULL)
 			{
-				if (emd->map_delay != emd->last_map_delay) resetCells(emd);
-				emd->last_map_delay = emd->map_delay;
-				createParticleTree(emd, psmd, md->scene, ob);
-				mapCellsToParticles(emd, psmd, md->scene, ob);
-				if (rmd == NULL)
+				if ((emd->cluster_size != emd->last_cluster_size) || 
+					(emd->cluster_percentage != emd->last_cluster_percentage))
+				{
+					resetCells(emd);
+					emd->last_cluster_size = emd->cluster_size;
+					emd->last_cluster_percentage = emd->cluster_percentage;
+					createParticleTree(emd, psmd, md->scene, ob);
+					mapCellsToParticles(emd, psmd, md->scene, ob);
+				}
+				
+				if ((rmd == NULL) && (emd->use_animation)) {
 					explodeCells(emd, psmd, md->scene, ob);
+				}
 			}
 
 			if (emd->fracMesh) {

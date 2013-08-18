@@ -114,6 +114,7 @@ static void initData(ModifierData *md)
 	rmd->framecount = 0;
 	rmd->framemap = NULL;
 	rmd->disable_self_collision = TRUE;
+	rmd->cluster_breaking_threshold = 1000.0f;
 }
 
 static void copyData(ModifierData *md, ModifierData *target)
@@ -165,6 +166,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->join = buildCompounds;
 	trmd->split = destroy_compound;
 	trmd->disable_self_collision = rmd->disable_self_collision;
+	trmd->cluster_breaking_threshold = rmd->cluster_breaking_threshold;
 }
 
 void freeMeshIsland(RigidBodyModifierData* rmd, MeshIsland* mi)
@@ -1446,7 +1448,7 @@ static void connect_meshislands(RigidBodyModifierData* rmd, Object* ob, MeshIsla
 				
 				if ((mi1->particle_index != -1) && (mi2->particle_index != -1) && (mi1->particle_index == mi2->particle_index))
 				{
-					rbsc->breaking_threshold = 1000.0f;
+					rbsc->breaking_threshold = rmd->cluster_breaking_threshold;
 				}
 				else
 				{

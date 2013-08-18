@@ -343,10 +343,9 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
             if (md.use_boolean == True):
                 col.prop(md, "inner_material")
             col.prop(md, "use_animation")
-            if (md.use_animation == True):
-                col.prop(md, "emit_continuously")
-                if (md.emit_continuously == False):
-                    col.prop(md, "map_delay")
+            row = col.row(align=True)
+            row.prop(md, "cluster_size")
+            row.prop(md, "cluster_percentage")
             layout.operator("object.explode_refresh", text="Refresh")
         elif (md.mode == 'FACES'):    
             col = split.column()
@@ -720,6 +719,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
             box.prop(md, "dist_dependent_thresholds")
             box.prop(md, "auto_merge")
             box.prop(md, "auto_merge_dist")
+            box.prop(md, "cluster_breaking_threshold")
 
     def SCREW(self, layout, ob, md):
         split = layout.split()

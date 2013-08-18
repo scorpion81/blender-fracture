@@ -641,10 +641,10 @@ typedef enum {
 
 enum {
 	MOD_VORONOI_USEBOOLEAN = (1 << 1),
-	MOD_VORONOI_REFRACTURE = (1 << 2),
+	//MOD_VORONOI_REFRACTURE = (1 << 2),
 	MOD_VORONOI_USECACHE = (1 << 3),
-	MOD_VORONOI_FLIPNORMAL = (1 << 4),
-	MOD_VORONOI_EMITCONTINUOUSLY = (1 << 5),
+	//MOD_VORONOI_FLIPNORMAL = (1 << 4),
+	//MOD_VORONOI_EMITCONTINUOUSLY = (1 << 5),
 	MOD_VORONOI_USERIGIDBODY = (1 << 6),
 	MOD_VORONOI_USECLIPPING = (1 << 7),
 };
@@ -698,11 +698,11 @@ typedef struct ExplodeModifierData {
 
 	//for voronoi cell mode
 	int use_boolean, use_cache, percentage, use_clipping;
-	int last_part, last_bool, emit_continuously;
-	int mode, map_delay, last_map_delay, point_source;
+	int last_part, last_bool, cluster_percentage, last_cluster_percentage;
+	int mode, cluster_size, last_cluster_size, point_source;
 	int last_point_source, use_animation, noise_count;
 	float noise;
-	char pad[4];
+	//char pad[4];
 
 } ExplodeModifierData;
 
@@ -1329,9 +1329,9 @@ typedef struct RigidBodyModifierData {
 	int breaking_angle, breaking_percentage, use_proportional_distance, use_proportional_limit;
 	int use_cellbased_sim, use_experimental;
 	float breaking_distance, max_vol, cell_size;
-	float origmat[4][4], breaking_threshold;
+	float origmat[4][4], breaking_threshold, cluster_breaking_threshold;
 	float contact_dist, group_breaking_threshold, group_contact_dist, auto_merge_dist;
-	char pad[4];
+	//char pad[4];
 } RigidBodyModifierData;
 
 typedef struct NeighborhoodCell {

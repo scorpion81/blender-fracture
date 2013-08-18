@@ -977,6 +977,14 @@ static void rna_RigidBodyModifier_cell_size_set(PointerRNA *ptr, float value)
 	}
 }
 
+static void rna_RigidBodyModifier_cluster_threshold_set(PointerRNA *ptr, float value)
+{
+	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	Object* ob = ptr->id.data;
+	rmd->cluster_breaking_threshold = value;
+	updateConstraints(rmd, ob);
+}
+
 #else
 
 static PropertyRNA *rna_def_property_subdivision_common(StructRNA *srna, const char type[])
@@ -2457,7 +2465,7 @@ static void rna_def_modifier_explode(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Flip Normals", "Flip the normals when using boolean intersection, to possibly fix odd looking shapes");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
 
-	prop = RNA_def_property(srna, "emit_continuously", PROP_BOOLEAN, PROP_NONE);
+/*	prop = RNA_def_property(srna, "emit_continuously", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "emit_continuously", MOD_VORONOI_EMITCONTINUOUSLY);
 	RNA_def_property_ui_text(prop, "Emit Continuously", "Keep re-emitting the voronoi cells until all particles are dead");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
@@ -2465,6 +2473,17 @@ static void rna_def_modifier_explode(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "map_delay", PROP_INT, PROP_NONE);
 	RNA_def_property_range(prop, 0, 1000); //TODO: get correct psys end value here ?
 	RNA_def_property_ui_text(prop, "Map Delay", "Delay in frames after which the object is broken up intially ");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
+	
+	prop = RNA_def_property(srna, "cluster_size", PROP_INT, PROP_NONE);
+	RNA_def_property_range(prop, 1, 100000); //TODO: get correct psys end value here ?
+	RNA_def_property_ui_text(prop, "Cluster Size", "Number of shards which should build up a cluster");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	
+	prop = RNA_def_property(srna, "cluster_percentage", PROP_INT, PROP_NONE);
+	RNA_def_property_range(prop, 0, 100); 
+	RNA_def_property_int_default(prop, 100);
+	RNA_def_property_ui_text(prop, "Cluster Percentage", "Percentage of shards which should belong to a cluster");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 	
 	prop = RNA_def_property(srna, "inner_material", PROP_POINTER, PROP_NONE);
@@ -4184,6 +4203,13 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "disable_self_collision", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "disable_self_collision", TRUE);
 	RNA_def_property_ui_text(prop, "Disable Self Collision", "Let constrained objects collide or not");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	
+	prop = RNA_def_property(srna, "cluster_breaking_threshold", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "cluster_breaking_threshold");
+	RNA_def_property_range(prop, 0.0f, FLT_MAX);
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_cluster_threshold_set", NULL);
+	RNA_def_property_ui_text(prop, "Cluster Breaking threshold", "Threshold to break constraints INSIDE a cluster of shards");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
