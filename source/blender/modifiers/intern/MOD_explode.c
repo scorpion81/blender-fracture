@@ -3573,7 +3573,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			if (psmd != NULL)
 			{
 				if ((emd->cluster_size != emd->last_cluster_size) || 
-					(emd->cluster_percentage != emd->last_cluster_percentage))
+					(emd->cluster_percentage != emd->last_cluster_percentage) ||
+					(!emd->use_cache))
 				{
 					resetCells(emd);
 					emd->last_cluster_size = emd->cluster_size;
