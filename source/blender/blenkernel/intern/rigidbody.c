@@ -1736,13 +1736,13 @@ int filterCallback(void* world, void* island1, void* island2) {
 		(mi2->compound_count > 0 && mi2->participating_constraint_count > 0))
 	{
 		//disallow collision between intact compounds of same object
-		return ob_index1 != ob_index2; //FALSE;
+		return (ob_index1 != ob_index2) || (mi1->rigidbody->shape == RB_SHAPE_COMPOUND);  //FALSE;
 	}
 	
 	if ((mi1->destruction_frame > -1) || (mi2->destruction_frame > -1))
 	{
 		//disallow collision between destroyed compounds... of same object
-		return ob_index1 != ob_index2; //FALSE;
+		return (ob_index1 != ob_index2) || (mi1->rigidbody->shape == RB_SHAPE_COMPOUND); //FALSE;
 	}
 	return TRUE;
 
