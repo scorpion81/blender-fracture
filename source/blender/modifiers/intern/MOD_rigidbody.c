@@ -1448,7 +1448,15 @@ static void connect_meshislands(RigidBodyModifierData* rmd, Object* ob, MeshIsla
 				
 				if ((mi1->particle_index != -1) && (mi2->particle_index != -1) && (mi1->particle_index == mi2->particle_index))
 				{
-					rbsc->breaking_threshold = rmd->cluster_breaking_threshold;
+					ExplodeModifierData *emd = findPrecedingExploModifier(ob, rmd);
+					if ((emd != NULL) && (emd->cluster_size > 1))
+					{
+						rbsc->breaking_threshold = rmd->cluster_breaking_threshold;
+					}
+					else
+					{
+						rbsc->breaking_threshold = thresh;
+					}
 				}
 				else
 				{
