@@ -2806,7 +2806,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	
 			//grab neighborhood info (and whole fracture info -> cells) if available, if explo before rmd
 			emd = findPrecedingExploModifier(ob, rmd);
-			if (emd != NULL && emd->cells != NULL && ((!emd->use_clipping && !rmd->use_cellbased_sim  && !emd->use_boolean) || rmd->contact_dist_meaning == MOD_RIGIDBODY_VERTICES)) 
+			if (emd != NULL && emd->cells != NULL && ((!emd->use_clipping && !rmd->use_cellbased_sim /* && !emd->use_boolean*/) || rmd->contact_dist_meaning == MOD_RIGIDBODY_VERTICES)) 
 			{
 				MeshIsland* mi;
 				VoronoiCell *vc;
