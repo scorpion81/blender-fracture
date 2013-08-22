@@ -42,6 +42,7 @@
 #include "DNA_meshdata_types.h"
 #include "DNA_object_force.h"
 #include "DNA_scene_types.h"
+#include "DNA_rigidbody_types.h"
 
 #include "BLI_bitmap.h"
 #include "BLI_math.h"
@@ -71,6 +72,7 @@
 #include "BKE_particle.h"
 #include "BKE_softbody.h"
 #include "BKE_editmesh.h"
+#include "BKE_scene.h"
 
 #include "RNA_access.h"
 #include "RNA_define.h"
@@ -1957,12 +1959,17 @@ static int explode_poll(bContext *C)
 static int explode_refresh_exec(bContext *C, wmOperator *op)
 {
 	Object *obact = ED_object_active_context(C);
-	ExplodeModifierData *emd; 
+	Scene *scene = CTX_data_scene(C);
+	float cfra = BKE_scene_frame_get(scene);
+	ExplodeModifierData *emd;
+	RigidBodyModifierData *rmd;
 	
 	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
 		emd = (ExplodeModifierData *)edit_modifier_property_get(op, ob, eModifierType_Explode);
+		rmd = (RigidBodyModifierData *)modifiers_findByType(ob, eModifierType_RigidBody);
 		
-		if (!emd)
+		//force in case of rigidbody modifier refreshing on STARTFRAME only!!! or there are nasty crashes in bullet (collision filter callback, freed but not nulled stuff)
+		if (!emd || (rmd && cfra != scene->rigidbody_world->pointcache->startframe))
 			continue;
 	
 		if (emd->mode == eFractureMode_Cells) {
@@ -1978,8 +1985,9 @@ static int explode_refresh_exec(bContext *C, wmOperator *op)
 	CTX_DATA_END;
 	
 	emd = (ExplodeModifierData *)edit_modifier_property_get(op, obact, eModifierType_Explode);
+	rmd = (RigidBodyModifierData *)modifiers_findByType(obact, eModifierType_RigidBody);
 	
-	if (!emd)
+	if (!emd || (rmd && cfra != scene->rigidbody_world->pointcache->startframe))
 		return OPERATOR_CANCELLED;
 
 	if (emd->mode == eFractureMode_Cells) {
@@ -2297,11 +2305,13 @@ static int rigidbody_poll(bContext *C)
 static int rigidbody_refresh_exec(bContext *C, wmOperator *op)
 {
 	Object *obact = ED_object_active_context(C);
+	Scene *scene = CTX_data_scene(C);
+	float cfra = BKE_scene_frame_get(scene);
 	RigidBodyModifierData *rmd;
 	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
 		
 		rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, ob, eModifierType_RigidBody);
-		if (!rmd)
+		if (!rmd || cfra != scene->rigidbody_world->pointcache->startframe)
 			continue;
 		
 		rmd->refresh = TRUE;
@@ -2311,7 +2321,7 @@ static int rigidbody_refresh_exec(bContext *C, wmOperator *op)
 	CTX_DATA_END;
 	
 	rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, obact, eModifierType_RigidBody);
-	if (!rmd)
+	if (!rmd || cfra != scene->rigidbody_world->pointcache->startframe)
 		return OPERATOR_CANCELLED;
 	
 	rmd->refresh = TRUE;
@@ -2352,11 +2362,13 @@ static int rigidbody_refresh_constraints_exec(bContext *C, wmOperator *op)
 {
 	Object *obact = ED_object_active_context(C);
 	RigidBodyModifierData *rmd;
+	Scene *scene = CTX_data_scene(C);
+	float cfra = BKE_scene_frame_get(scene);
 	
 	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
 		rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, ob, eModifierType_RigidBody);
 	
-		if (!rmd)
+		if (!rmd || cfra != scene->rigidbody_world->pointcache->startframe)
 			continue;
 	
 		rmd->refresh_constraints = TRUE;
@@ -2368,7 +2380,7 @@ static int rigidbody_refresh_constraints_exec(bContext *C, wmOperator *op)
 	
 	rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, obact, eModifierType_RigidBody);
 
-	if (!rmd)
+	if (!rmd || cfra != scene->rigidbody_world->pointcache->startframe)
 		return OPERATOR_CANCELLED;
 
 	rmd->refresh_constraints = TRUE;
