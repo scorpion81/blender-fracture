@@ -1480,14 +1480,16 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 		else if (md->type == eModifierType_RigidBody) {
 
 			RigidBodyModifierData *rmd = (RigidBodyModifierData*)md;
-			MeshIsland *mi;
 			RigidBodyShardCon *con;
-			int i;
-
+			
 			//WORKAROUND for Automerge, so that after filling cache and pulling timeline to frame 0 all faces are visible
 			for (con = rmd->meshConstraints.first; con; con = con->next) {
 				con->physics_constraint = NULL;
 				con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+			}
+			
+			if (rmd->framecount > 0) {
+				writedata(wd, DATA, sizeof(float) * rmd->framecount, rmd->framemap);
 			}
 		}
 	}

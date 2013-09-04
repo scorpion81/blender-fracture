@@ -258,8 +258,9 @@ static void freeData(ModifierData *md)
 			rmd->idmap = NULL;
 		}
 		
-		if (!rmd->refresh)
+		if ((!rmd->refresh) && (!rmd->explo_shared))
 		{
+			//explo might not be initialized yet, so dont delete framemap !!
 			if (rmd->framemap)
 			{
 				MEM_freeN(rmd->framemap);
@@ -2897,7 +2898,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			count = BLI_countlist(&rmd->meshIslands);
 			printf("Compound Islands: %d\n", count);
 			
-			if (rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED)
+			if (rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED && rmd->framemap != NULL)
 			{
 				int index = 0;
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next)
@@ -2911,7 +2912,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			
 			if (!rmd->refresh_constraints)
 			{
-				//rebuild framemap after using it
+				//rebuild framemap after using it when refreshing all data
 				if (!(rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED))
 				{
 					if (rmd->framemap != NULL)
@@ -2994,6 +2995,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		if (rmd->visible_mesh == NULL)
 		{
 			//oops, something went definitely wrong...
+			if (emd)
+				rmd->explo_shared = TRUE;
 			freeData(rmd);
 		}
 		
