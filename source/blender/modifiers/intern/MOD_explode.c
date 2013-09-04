@@ -81,6 +81,50 @@
 #  include "../../../../extern/voro++/src/c_interface.hh"
 #endif
 
+
+void select_by_material(BMesh *bm, const short index, const short select)
+{
+	BMIter iter;
+	BMFace *efa;
+
+	BM_ITER_MESH (efa, &iter, bm, BM_FACES_OF_MESH) {
+		if (BM_elem_flag_test(efa, BM_ELEM_HIDDEN))
+			continue;
+		if (efa->mat_nr == index) {
+			BM_face_select_set(bm, efa, select);
+		}
+	}
+}
+
+void mark_sharp(Object* ob, BMesh* bm, bool clear)
+{
+	Mesh *me = ((Mesh *)ob->data);
+	BMEdge *eed;
+	BMIter iter;
+
+	/* auto-enable sharp edge drawing */
+	if (clear == 0) {
+		me->drawflag |= ME_DRAWSHARP;
+	}
+
+	if (!clear) {
+		BM_ITER_MESH (eed, &iter, bm, BM_EDGES_OF_MESH) {
+			if (!BM_elem_flag_test(eed, BM_ELEM_SELECT) || BM_elem_flag_test(eed, BM_ELEM_HIDDEN))
+				continue;
+			
+			BM_elem_flag_disable(eed, BM_ELEM_SMOOTH);
+		}
+	}
+	else {
+		BM_ITER_MESH (eed, &iter, bm, BM_EDGES_OF_MESH) {
+			if (!BM_elem_flag_test(eed, BM_ELEM_SELECT) || BM_elem_flag_test(eed, BM_ELEM_HIDDEN))
+				continue;
+			
+			BM_elem_flag_enable(eed, BM_ELEM_SMOOTH);
+		}
+	}
+}
+
 typedef struct FaceMap {
 	float oldarea;
 	int oldindex;
@@ -3377,6 +3421,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	MLoop* mla = NULL, *ml;
 	MPoly* mpa = NULL, *mp;
 	float imat[4][4], oldobmat[4][4];
+	short mat_index = 0;
 
 	//if (psmd)
 	{
@@ -3406,6 +3451,15 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					BM_mesh_normals_update(emd->fracMesh);
 					BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "dissolve_limit edges=%ae verts=%av angle_limit=%f use_dissolve_boundaries=%b",
 							BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);
+					
+					//select inner material and mark sharp
+					if (!emd->use_clipping) {
+						mat_index = find_material_index(ob, emd->inner_material);
+						if (mat_index > 0) {
+							select_by_material(emd->fracMesh, mat_index-1, 1);
+							mark_sharp(ob, emd->fracMesh, 0);
+						}
+					}
 				}
 				
 				//copy_m4_m4(ob->obmat, oldobmat); // restore obmat
@@ -3537,6 +3591,13 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 						{
 							BM_elem_flag_enable(face, BM_ELEM_SMOOTH);
 						}
+					}
+					
+					//select inner material and mark sharp (clipping)
+					mat_index = find_material_index(ob, emd->inner_material);
+					if (mat_index > 0) {
+						select_by_material(emd->fracMesh, mat_index-1, 1);
+						mark_sharp(ob, emd->fracMesh, 0);
 					}
 					
 					BLI_kdtree_free(facetree);
