@@ -1044,7 +1044,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	temd->use_animation = emd->use_animation;
 	temd->noise = emd->noise;
 	temd->percentage = emd->percentage;
-	temd->use_cache = FALSE;
+	temd->use_cache = MOD_VORONOI_USECACHE; // refresh better manually
 	temd->use_clipping = emd->use_clipping;
 }
 

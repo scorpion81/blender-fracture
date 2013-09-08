@@ -699,6 +699,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         row = col.row(align=True)
         row.prop(md, "breaking_angle", text="Angle")
         row.prop(md, "breaking_distance", text="Distance")
+        layout.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")
         
         #experimental stuff
         box = layout.box()

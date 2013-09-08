@@ -51,6 +51,7 @@
 #include "BLI_string_utf8.h"
 #include "BLI_path_util.h"
 #include "BLI_utildefines.h"
+#include "BLI_kdtree.h"
 
 #include "BKE_animsys.h"
 #include "BKE_curve.h"
@@ -73,6 +74,9 @@
 #include "BKE_softbody.h"
 #include "BKE_editmesh.h"
 #include "BKE_scene.h"
+#include "BKE_material.h"
+#include "BKE_library.h"
+#include "BKE_rigidbody.h"
 
 #include "RNA_access.h"
 #include "RNA_define.h"
@@ -83,6 +87,7 @@
 #include "ED_screen.h"
 #include "ED_sculpt.h"
 #include "ED_mesh.h"
+#include "ED_physics.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
@@ -2409,6 +2414,202 @@ void OBJECT_OT_rigidbody_constraints_refresh(wmOperatorType *ot)
 	ot->poll = rigidbody_poll;
 	ot->invoke = rigidbody_refresh_constraints_invoke;
 	ot->exec = rigidbody_refresh_constraints_exec;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
+	edit_modifier_properties(ot);
+}
+
+void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, RigidBodyModifierData *rmd)
+{
+	ParticleSystemModifierData *pmd = modifiers_findByType(ob, eModifierType_ParticleSystem);
+	ExplodeModifierData *emd = modifiers_findByType(ob, eModifierType_Explode);
+	Base *base_new, *base_old = BKE_scene_base_find(scene, ob);
+	Object *ob_new = NULL;
+	MeshIsland *mi;
+	RigidBodyShardCon* con;
+	int i = 0, result = 0;
+	
+	//if explo modifier present before, refresh and apply it too (triggers refresh of rmd too)
+	if (emd) {
+		
+		emd->use_cache = FALSE;
+		result = modifier_apply_obdata(reports, scene, ob, emd);
+		emd->use_cache = MOD_VORONOI_USECACHE;
+	}
+	
+	if (rmd)
+	{
+		//apply just rigidbody modifier
+		rmd->refresh = TRUE;
+		result = modifier_apply_obdata(reports, scene, ob, rmd);
+		rmd->refresh = FALSE;
+	}
+	
+	if (pmd)
+	{
+		BLI_remlink(&ob->modifiers, pmd);
+		modifier_free(pmd);
+	}
+
+	if (result)
+	{
+		int count = BLI_countlist(&rmd->meshIslands);
+		KDTree* objtree = BLI_kdtree_new(count);
+		Object** objs = MEM_callocN(sizeof(Object*) * count, "convert_objs");
+		rmd->refresh = FALSE;
+	
+		for (mi = rmd->meshIslands.first; mi; mi = mi->next)
+		{
+			float cent[3];
+			RigidBodyModifierData *rmd; 
+			ExplodeModifierData *emd;
+			
+			//create separate objects for meshislands
+			base_new = ED_object_add_duplicate(G.main, scene, base_old, USER_DUP_MESH);
+			//ob_new = BKE_object_add(G.main, scene, OB_MESH);
+			ob_new = base_new->object;
+			rmd = modifiers_findByType(ob_new, eModifierType_RigidBody);
+			emd = modifiers_findByType(ob_new, eModifierType_Explode);
+			
+			//remove duplicated modifiers now
+			if (emd)
+			{
+				emd->tempOb = NULL;
+				BLI_remlink(&ob_new->modifiers, emd);
+				modifier_free(emd);
+			}
+			
+			if (rmd)
+			{
+				BLI_remlink(&ob_new->modifiers, rmd);
+				modifier_free(rmd);
+			}
+			
+			//have new objects named after old object, but ensure they are unique as well
+			//BLI_strncpy(ob_new->id.name, ob->id.name, sizeof(ob->id.name));
+			//new_id(&G.main->object, &ob_new->id, NULL);
+			
+			assign_matarar(ob_new, give_matarar(ob), *give_totcolp(ob));
+			DM_to_mesh(mi->physics_mesh, ob_new->data, ob_new, 0);
+			
+			((Mesh *)ob_new->data)->edit_btmesh = NULL;
+			
+			//set origin to centroid
+			copy_v3_v3(cent, mi->centroid);
+			mul_m4_v3(ob_new->obmat, cent);
+			copy_v3_v3(ob_new->loc, cent);
+			
+			//set mass
+			//ED_rigidbody_object_add(scene, ob_new, ob->rigidbody_object->type, reports);
+			//ob_new->rigidbody_object = BKE_rigidbody_copy_object(ob);
+			ob_new->rigidbody_object->mass = mi->rigidbody->mass;
+			
+			//store obj indexes in kdtree and objs in array
+			BLI_kdtree_insert(objtree, i, mi->centroid, NULL);
+			objs[i] = ob_new;
+			i++;
+		}
+	
+		BLI_kdtree_balance(objtree);
+		
+		//go through constraints and find objects by position
+		//constrain them with regular constraints
+		
+		for (con = rmd->meshConstraints.first; con; con = con->next)
+		{
+			int index1 = BLI_kdtree_find_nearest(objtree, con->mi1->centroid, NULL, NULL);
+			int index2 =  BLI_kdtree_find_nearest(objtree, con->mi2->centroid, NULL, NULL);
+			Object* ob1 = objs[index1];
+			Object* ob2 = objs[index2];
+			Object* rbcon = BKE_object_add(G.main, scene, OB_EMPTY);
+			add_v3_v3v3(rbcon->loc, ob1->loc, ob2->loc); //set in center
+			mul_v3_fl(rbcon->loc, 0.5f);
+			ED_rigidbody_constraint_add(scene, rbcon, con->type, reports);
+			
+			rbcon->rigidbody_constraint->ob1 = ob1;
+			rbcon->rigidbody_constraint->ob2 = ob2;
+			rbcon->rigidbody_constraint->num_solver_iterations = con->num_solver_iterations;
+			rbcon->rigidbody_constraint->breaking_threshold = con->breaking_threshold;
+			rbcon->rigidbody_constraint->flag |= RBC_FLAG_USE_BREAKING;
+		}
+		
+		//remove original modifiers now
+		if (emd)
+		{
+			emd->tempOb = NULL;
+			BLI_remlink(&ob->modifiers, emd);
+			modifier_free(emd);
+		}
+		
+		if (rmd)
+		{
+			BLI_remlink(&ob->modifiers, rmd);
+			modifier_free(rmd);
+		}
+		
+		//remove object as well ? -> crashes...
+		//BKE_libblock_free_us(&(G.main->object), ob);
+		
+		//remove from rigidbody sim and hide
+		ED_rigidbody_object_remove(scene, ob);
+		ob->restrictflag |= OB_RESTRICT_RENDER;
+		ob->restrictflag |= OB_RESTRICT_VIEW;
+		
+		// free array and kdtree
+		MEM_freeN(objs);
+		BLI_kdtree_free(objtree);
+	}
+}
+
+static int rigidbody_convert_exec(bContext *C, wmOperator *op)
+{
+	Object *obact = ED_object_active_context(C);
+	Scene *scene = CTX_data_scene(C);
+	float cfra = BKE_scene_frame_get(scene);
+	RigidBodyModifierData *rmd;
+	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
+		
+		rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, ob, eModifierType_RigidBody);
+		if (!rmd || cfra != scene->rigidbody_world->pointcache->startframe)
+			continue;
+		
+		convert_modifier_to_objects(op->reports, scene, ob, rmd);
+		DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
+		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
+	}
+	CTX_DATA_END;
+	
+	rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, obact, eModifierType_RigidBody);
+	if (!rmd || cfra != scene->rigidbody_world->pointcache->startframe)
+		return OPERATOR_CANCELLED;
+	
+	convert_modifier_to_objects(op->reports, scene, obact, rmd);
+	DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
+	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
+	
+	return OPERATOR_FINISHED;
+}
+
+static int rigidbody_convert_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
+{
+	
+	if (edit_modifier_invoke_properties(C, op))
+		return rigidbody_convert_exec(C, op);
+	else
+		return OPERATOR_CANCELLED;
+}
+
+
+void OBJECT_OT_rigidbody_convert_to_objects(wmOperatorType *ot)
+{
+	ot->name = "RigidBody Convert To Objects";
+	ot->description = "Convert the Rigid Body modifier shards to real objects";
+	ot->idname = "OBJECT_OT_rigidbody_convert_to_objects";
+
+	ot->poll = rigidbody_poll;
+	ot->invoke = rigidbody_convert_invoke;
+	ot->exec = rigidbody_convert_exec;
 
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;

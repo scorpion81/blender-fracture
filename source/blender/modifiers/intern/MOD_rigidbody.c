@@ -123,7 +123,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	RigidBodyModifierData *trmd = (RigidBodyModifierData *)target;
 
 	zero_m4(trmd->origmat);
-	trmd->refresh = rmd->refresh;
+	//trmd->refresh = rmd->refresh;
 	trmd->auto_merge = rmd->auto_merge;
 	trmd->breaking_threshold = rmd->breaking_threshold;
 	trmd->use_constraints = rmd->use_constraints;
@@ -144,7 +144,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->meshConstraints.last = NULL;
 
 	trmd->auto_merge_dist = rmd->auto_merge_dist;
-	trmd->refresh = TRUE;
+	trmd->refresh = FALSE;
 	trmd->constraint_limit = rmd->constraint_limit;
 	trmd->breaking_angle = rmd->breaking_angle;
 	trmd->breaking_distance= rmd->breaking_distance;
