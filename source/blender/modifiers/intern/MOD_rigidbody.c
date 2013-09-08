@@ -217,11 +217,11 @@ void freeMeshIsland(RigidBodyModifierData* rmd, MeshIsland* mi)
 	mi = NULL;
 }
 
-static void freeData(ModifierData *md)
+static void freeData(ModifierData* md)
 {
-	RigidBodyModifierData *rmd  = (RigidBodyModifierData *)md;
 	MeshIsland *mi;
 	RigidBodyShardCon *rbsc;
+	RigidBodyModifierData *rmd = (RigidBodyModifierData*)md;
 	int i;
 
 	if (!rmd->refresh_constraints)
@@ -258,9 +258,8 @@ static void freeData(ModifierData *md)
 			rmd->idmap = NULL;
 		}
 		
-		if ((!rmd->refresh) && (!rmd->explo_shared))
+		if (!rmd->refresh)
 		{
-			//explo might not be initialized yet, so dont delete framemap !!
 			if (rmd->framemap)
 			{
 				MEM_freeN(rmd->framemap);
@@ -2791,7 +2790,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	if (rmd->refresh || rmd->refresh_constraints)
 	{
 		//int len = 0;
-		freeData(md);
+		
+		freeData(rmd);
 		rmd->split = destroy_compound;
 		rmd->join = buildCompounds;
 		//rmd->vol_check = vol_check;
@@ -2996,8 +2996,9 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		{
 			//oops, something went definitely wrong...
 			if (emd)
-				rmd->explo_shared = TRUE;
+				rmd->refresh = TRUE;
 			freeData(rmd);
+			rmd->refresh = FALSE;
 		}
 		
 		return dm;
