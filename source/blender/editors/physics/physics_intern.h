@@ -118,6 +118,7 @@ void RIGIDBODY_OT_mass_calculate(struct wmOperatorType *ot);
 /* rigidbody_constraint.c */
 void RIGIDBODY_OT_constraint_add(struct wmOperatorType *ot);
 void RIGIDBODY_OT_constraint_remove(struct wmOperatorType *ot);
+void RIGIDBODY_OT_constraints_remove(struct wmOperatorType *ot);
 
 /*rigidbody_world.c */
 void RIGIDBODY_OT_world_add(struct wmOperatorType *ot);

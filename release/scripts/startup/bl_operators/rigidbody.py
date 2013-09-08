@@ -117,10 +117,13 @@ class BakeToKeyframes(Operator):
         frames_step = range(self.frame_start, self.frame_end + 1, self.step)
         frames_full = range(self.frame_start, self.frame_end + 1)
 
+        constraints = []
         # filter objects selection
         for obj in context.selected_objects:
-            if not obj.rigid_body or obj.rigid_body.type != 'ACTIVE':
+            if (not obj.rigid_body or obj.rigid_body.type != 'ACTIVE'):
                 obj.select = False
+            if (obj.rigid_body_constraint):
+               constraints.append(obj)
 
         objects = context.selected_objects
 
@@ -161,6 +164,12 @@ class BakeToKeyframes(Operator):
 
             # remove baked objects from simulation
             bpy.ops.rigidbody.objects_remove()
+            
+            #remove (selected) constraints as well
+            for obj in constraints:
+                obj.select = True
+
+            bpy.ops.rigidbody.constraints_remove()
 
             # clean up keyframes
             for obj in objects:
