@@ -77,6 +77,7 @@
 #include "BKE_material.h"
 #include "BKE_library.h"
 #include "BKE_rigidbody.h"
+#include "BKE_group.h"
 
 #include "RNA_access.h"
 #include "RNA_define.h"
@@ -2504,7 +2505,7 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			//ED_rigidbody_object_add(scene, ob_new, ob->rigidbody_object->type, reports);
 			//ob_new->rigidbody_object = BKE_rigidbody_copy_object(ob);
 			ob_new->rigidbody_object->mass = mi->rigidbody->mass;
-			ED_base_object_select(base_new, BA_SELECT);
+			//ED_base_object_select(base_new, BA_SELECT);
 			
 			//store obj indexes in kdtree and objs in array
 			BLI_kdtree_insert(objtree, i, mi->centroid, NULL);
@@ -2570,6 +2571,8 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 	Scene *scene = CTX_data_scene(C);
 	float cfra = BKE_scene_frame_get(scene);
 	RigidBodyModifierData *rmd;
+	RigidBodyWorld *rbw = scene->rigidbody_world;
+	
 	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
 		
 		rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, ob, eModifierType_RigidBody);
@@ -2579,19 +2582,43 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 		convert_modifier_to_objects(op->reports, scene, ob, rmd);
 		DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
 		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
+		
+		//DAG_print_dependencies(G.main, scene, ob);
 	}
 	CTX_DATA_END;
 	
-	WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, scene);
-	
 	rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, obact, eModifierType_RigidBody);
-	if (!rmd || cfra != scene->rigidbody_world->pointcache->startframe)
-		return OPERATOR_CANCELLED;
+	if (rmd && cfra == scene->rigidbody_world->pointcache->startframe) {
+		convert_modifier_to_objects(op->reports, scene, obact, rmd);
+		DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
+		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
+	}
 	
-	convert_modifier_to_objects(op->reports, scene, obact, rmd);
-	DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
-	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
+	if (rbw) {
+		//flatten the cache and throw away all traces of the modifiers (try to...)
+		short steps_per_second = rbw->steps_per_second;
+		short num_solver_iterations = rbw->num_solver_iterations;
+		int flag = rbw->flag;
+		float time_scale = rbw->time_scale;
+		struct Group* constraints = rbw->constraints;
+		struct Group* group = rbw->group;
+		RigidBodyWorld *rbwn = NULL;
+		
+		BKE_rigidbody_cache_reset(rbw);
+		BKE_rigidbody_free_world(rbw);
+		scene->rigidbody_world = NULL;
+		rbwn = BKE_rigidbody_create_world(scene);
+		rbwn->time_scale = time_scale;
+		rbwn->flag = flag | RBW_FLAG_NEEDS_REBUILD;
+		rbwn->num_solver_iterations = num_solver_iterations;
+		rbwn->steps_per_second = steps_per_second;
+		rbwn->group = group;
+		rbwn->constraints = constraints;
+		
+		scene->rigidbody_world = rbwn;
+	}
 	
+	//WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, scene);
 	return OPERATOR_FINISHED;
 }
 

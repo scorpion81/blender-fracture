@@ -179,6 +179,7 @@ void freeMeshIsland(RigidBodyModifierData* rmd, MeshIsland* mi)
 		mi->physics_mesh = NULL;
 	}
 	if (mi->rigidbody) {
+		BKE_rigidbody_remove_shard(rmd->modifier.scene, mi);
 		MEM_freeN(mi->rigidbody);
 		mi->rigidbody = NULL;
 	}
@@ -294,6 +295,7 @@ static void freeData(ModifierData* md)
 	while (rmd->meshConstraints.first) {
 		rbsc = rmd->meshConstraints.first;
 		BLI_remlink(&rmd->meshConstraints, rbsc);
+		BKE_rigidbody_remove_shard_con(md->scene, rbsc);
 		MEM_freeN(rbsc);
 		rbsc = NULL;
 	}
