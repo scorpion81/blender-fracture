@@ -2504,6 +2504,7 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			//ED_rigidbody_object_add(scene, ob_new, ob->rigidbody_object->type, reports);
 			//ob_new->rigidbody_object = BKE_rigidbody_copy_object(ob);
 			ob_new->rigidbody_object->mass = mi->rigidbody->mass;
+			ED_base_object_select(base_new, BA_SELECT);
 			
 			//store obj indexes in kdtree and objs in array
 			BLI_kdtree_insert(objtree, i, mi->centroid, NULL);
@@ -2523,13 +2524,14 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			Object* ob1 = objs[index1];
 			Object* ob2 = objs[index2];
 			Object* rbcon = BKE_object_add(G.main, scene, OB_EMPTY);
-			add_v3_v3v3(rbcon->loc, ob1->loc, ob2->loc); //set in center
-			mul_v3_fl(rbcon->loc, 0.5f);
+			//add_v3_v3v3(rbcon->loc, ob1->loc, ob2->loc); //set in center
+			//mul_v3_fl(rbcon->loc, 0.5f);
+			copy_v3_v3(rbcon->loc, ob1->loc); //use same settings as in modifier
 			ED_rigidbody_constraint_add(scene, rbcon, con->type, reports);
 			
 			rbcon->rigidbody_constraint->ob1 = ob1;
 			rbcon->rigidbody_constraint->ob2 = ob2;
-			rbcon->rigidbody_constraint->num_solver_iterations = con->num_solver_iterations;
+			//rbcon->rigidbody_constraint->num_solver_iterations = con->num_solver_iterations;
 			rbcon->rigidbody_constraint->breaking_threshold = con->breaking_threshold;
 			rbcon->rigidbody_constraint->flag |= RBC_FLAG_USE_BREAKING;
 		}
@@ -2579,6 +2581,8 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
 	}
 	CTX_DATA_END;
+	
+	WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, scene);
 	
 	rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, obact, eModifierType_RigidBody);
 	if (!rmd || cfra != scene->rigidbody_world->pointcache->startframe)
