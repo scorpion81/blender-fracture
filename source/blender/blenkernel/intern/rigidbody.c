@@ -2346,37 +2346,38 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 		rbw->cache_index_map = MEM_reallocN(rbw->cache_index_map, sizeof(RigidBodyOb*) * rbw->numbodies);
 		rbw->cache_offset_map = MEM_reallocN(rbw->cache_offset_map, sizeof(int) * rbw->numbodies);
 		printf("RigidbodyCount changed: %d\n", rbw->numbodies);
-	}
-	for (go = rbw->group->gobject.first, i = 0; go; go = go->next, i++) {
-		Object *ob = go->ob;
-		rbw->objects[i] = ob;
-
-		for (md = ob->modifiers.first; md; md = md->next) {
-			if (md->type == eModifierType_RigidBody) {
-				rmd = (RigidBodyModifierData*)md;
-				if (isModifierActive(rmd)) {
-					for (mi = rmd->meshIslands.first, j = 0; mi; mi = mi->next) {
-						rbw->cache_index_map[counter] = mi->rigidbody; //map all shards of an object to this object index
-						rbw->cache_offset_map[counter] = i;
-						mi->linear_index = counter;
-						counter++;
-						j++;
+		
+		for (go = rbw->group->gobject.first, i = 0; go; go = go->next, i++) {
+			Object *ob = go->ob;
+			rbw->objects[i] = ob;
+	
+			for (md = ob->modifiers.first; md; md = md->next) {
+				if (md->type == eModifierType_RigidBody) {
+					rmd = (RigidBodyModifierData*)md;
+					if (isModifierActive(rmd)) {
+						for (mi = rmd->meshIslands.first, j = 0; mi; mi = mi->next) {
+							rbw->cache_index_map[counter] = mi->rigidbody; //map all shards of an object to this object index
+							rbw->cache_offset_map[counter] = i;
+							mi->linear_index = counter;
+							counter++;
+							j++;
+						}
+						ismapped = TRUE;
+						break;
 					}
-					ismapped = TRUE;
-					break;
 				}
 			}
+	
+			if (!ismapped) {
+				//printf("index map:  %d %d\n", counter, i);
+				rbw->cache_index_map[counter] = ob->rigidbody_object; //i; 1 object 1 index here (normal case)
+				rbw->cache_offset_map[counter] = i;
+				//mi->linear_index = counter;
+				counter++;
+			}
+	
+			ismapped = FALSE;
 		}
-
-		if (!ismapped) {
-			//printf("index map:  %d %d\n", counter, i);
-			rbw->cache_index_map[counter] = ob->rigidbody_object; //i; 1 object 1 index here (normal case)
-			rbw->cache_offset_map[counter] = i;
-			//mi->linear_index = counter;
-			counter++;
-		}
-
-		ismapped = FALSE;
 	}
 }
 
@@ -2739,7 +2740,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 				rigidbody_update_sim_ob(scene, rbw, ob, rbo, centroid);
 			}
 		}
-		rigidbody_update_ob_array(rbw);
+		//rigidbody_update_ob_array(rbw);
 		rbw->refresh_modifiers = FALSE;
 	}
 
