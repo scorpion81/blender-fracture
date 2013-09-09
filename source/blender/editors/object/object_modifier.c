@@ -2465,6 +2465,7 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			float cent[3];
 			RigidBodyModifierData *rmd; 
 			ExplodeModifierData *emd;
+			BMesh *bm;
 			
 			//create separate objects for meshislands
 			base_new = ED_object_add_duplicate(G.main, scene, base_old, USER_DUP_MESH);
@@ -2487,12 +2488,19 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 				modifier_free(rmd);
 			}
 			
-			//have new objects named after old object, but ensure they are unique as well
-			//BLI_strncpy(ob_new->id.name, ob->id.name, sizeof(ob->id.name));
-			//new_id(&G.main->object, &ob_new->id, NULL);
-			
 			assign_matarar(ob_new, give_matarar(ob), *give_totcolp(ob));
-			DM_to_mesh(mi->physics_mesh, ob_new->data, ob_new, 0);
+			
+			bm = DM_to_bmesh(mi->physics_mesh, true);
+			//BMO_op_callf(bm,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+			//			 "recalc_face_normals faces=%af",  BM_FACES_OF_MESH);
+			//BM_mesh_normals_update(bm);
+			BMO_op_callf(bm,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), 
+						 "dissolve_limit edges=%ae verts=%av angle_limit=%f use_dissolve_boundaries=%b",
+					BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);
+			
+			BM_mesh_bm_to_me(bm, ob_new->data, false);
+			BM_mesh_free(bm);
+			//DM_to_mesh(mi->physics_mesh, ob_new->data, ob_new, 0);
 			
 			((Mesh *)ob_new->data)->edit_btmesh = NULL;
 			
