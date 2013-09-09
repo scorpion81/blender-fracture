@@ -625,7 +625,7 @@ int fractureToCells(Object *ob, float mat[4][4], wmOperator* op, Scene* scene, O
 					face_index--;
 				}
 
-				face = BM_face_create(bmtemp, faceverts, faceedges, face_index, 0);
+				face = BM_face_create(bmtemp, faceverts, faceedges, face_index, NULL, 0);
 
 				if (face != NULL)
 					area = BM_face_calc_area(face);

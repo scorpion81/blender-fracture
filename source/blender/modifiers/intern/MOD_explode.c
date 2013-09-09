@@ -197,7 +197,7 @@ void BM_mesh_join2(BMesh** dest, BMesh* src, FaceMap*** facemap)
 			lcount++;
 		}
 
-		fa2 = BM_face_create(*dest, ve, ed, lcount, 0);
+		fa2 = BM_face_create(*dest, ve, ed, lcount, NULL, 0);
 		//printf("INDEX: %d\n", fa2->l_first->v->head.index);
 		fa2->head.index = ftot + fcount;
 		
@@ -465,7 +465,7 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 	//radius = MIN2(radiusmax, 2.0f*radiusmin);
 	
 	mul_v3_v3fl(search, vcell->centroid, -1);
-	r = BLI_kdtree_range_search(facetree, radiusmax, search, NULL, &n);
+	r = BLI_kdtree_range_search(facetree, search, NULL, &n, radiusmax);
 	
 	//BM_ITER_MESH(f, &iter, mesh, BM_FACES_OF_MESH)
 	for (s = 0; s < r; s++)
@@ -551,7 +551,7 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 				
 				insert_edge_checked(&part, verts[vcount-1], verts[0], &edge_index, &final_edges, &count, NULL);
 				
-				fac = BM_face_create(part, verts, final_edges, vcount, 0);
+				fac = BM_face_create(part, verts, final_edges, vcount, NULL, 0);
 				{
 					int index2;
 					float centr[3];
@@ -665,7 +665,7 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 				
 				insert_edge_checked(&part, verts[vcount-1], verts[0], &edge_index, &final_edges, &count, NULL);
 				
-				fac = BM_face_create(part, verts, final_edges, vcount, 0);
+				fac = BM_face_create(part, verts, final_edges, vcount, NULL,  0);
 				{
 					int index2;
 					float centr[3];
@@ -2577,7 +2577,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 					face_index--;
 				}
 
-				face = BM_face_create(bmtemp, faceverts, faceedges, face_index, 0);
+				face = BM_face_create(bmtemp, faceverts, faceedges, face_index, NULL, 0);
 
 				if (face != NULL)
 					area = BM_face_calc_area(face);
@@ -2811,7 +2811,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 							ed[k] = localedges[lo->e];
 						}
 
-						face = BM_face_create(bm, ve, ed, t, 0);
+						face = BM_face_create(bm, ve, ed, t, NULL, 0);
 						face->mat_nr = (mp+p)->mat_nr;
 						/*if (BM_elem_index_get(face) == -1) {
 							BM_elem_index_set(face, fac_index);
@@ -3038,7 +3038,7 @@ static void explodeCells(ExplodeModifierData *emd,
 
 	/* getting back to object space */ // do i need this ?
 	invert_m4_m4(imat, ob->obmat);
-	psmd->psys->lattice = psys_get_lattice(&sim);
+	psmd->psys->lattice_deform_data = psys_create_lattice_deform_data(&sim);
 
 	//create a new mesh aka "explode" from new vertex positions. use bmesh for that now.
 
@@ -3108,9 +3108,9 @@ static void explodeCells(ExplodeModifierData *emd,
 		}
 	}
 
-	if (psmd->psys->lattice) {
-		end_latt_deform(psmd->psys->lattice);
-		psmd->psys->lattice = NULL;
+	if (psmd->psys->lattice_deform_data) {
+		end_latt_deform(psmd->psys->lattice_deform_data);
+		psmd->psys->lattice_deform_data = NULL;
 	}
 
 	//return bm;
@@ -3340,7 +3340,7 @@ void fill_holes(BMesh** clipped, FaceMap** facemap, int facemapcount)
 						else
 							printf("%d\n", holeverts[j]->head.index);
 					}
-					BM_face_create(*clipped, holeverts, holeedges, vcount, 0);
+					BM_face_create(*clipped, holeverts, holeedges, vcount, NULL, 0);
 				}
 				
 				MEM_freeN(holeverts);

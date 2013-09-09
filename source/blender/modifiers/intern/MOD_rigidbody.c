@@ -39,6 +39,7 @@
 #include "BLI_listbase.h"
 #include "BLI_kdtree.h"
 #include "BLI_edgehash.h"
+#include "BLI_ghash.h"
 
 #include "BKE_cdderivedmesh.h"
 #include "BKE_modifier.h"
@@ -643,7 +644,7 @@ void BM_mesh_join(BMesh** dest, BMesh* src)
 			//lcount++;
 		}
 
-		BM_face_create(*dest, ve, ed, lcount, 0);
+		BM_face_create(*dest, ve, ed, lcount, NULL, 0);
 		MEM_freeN(ve);
 		MEM_freeN(ed);
 	}
@@ -1345,7 +1346,7 @@ void select_inner_faces_of_vert(RigidBodyModifierData* rmd, KDTree* tree, BMVert
 		BMFace* f;
 		KDTreeNearest *face_near = MEM_mallocN(sizeof(KDTreeNearest) * 2, "kdtreenearest_face");
 		BM_face_calc_center_bounds(face, co);
-		n = BLI_kdtree_find_n_nearest(tree, 2, co, face->no, face_near);
+		n = BLI_kdtree_find_nearest_n(tree, co, face->no, face_near, 2);
 		//BM_elem_flag_enable(face, BM_ELEM_SELECT);
 
 		for (i = 0; i < n; i++) {
@@ -1522,14 +1523,15 @@ static int check_meshislands_adjacency(RigidBodyModifierData* rmd, MeshIsland* m
 	BMO_op_exec(*combined_mesh, &op);
 	slot = BMO_slot_get(op.slots_out, "targetmap.out");
 
-	if (slot->data.ghash && slot->data.ghash->nentries > 2) {
+	if (slot->data.ghash && BLI_ghash_size(slot->data.ghash) > 2) {
 		GHashIterator it;
 		int ind1 = 0, ind2 = 0;
 		GHASH_ITER(it, slot->data.ghash) {
 			BMVert *vert_key, *vert_map;
-			BMOElemMapping * mapping = BLI_ghashIterator_getValue(&it);
+			//BMOElemMapping * mapping = BLI_ghashIterator_getValue(&it);
 			vert_key = BLI_ghashIterator_getKey(&it);
-			vert_map = mapping[1].element;
+			//vert_map = mapping[1].element;
+			vert_map = BMO_slot_map_elem_get(slot, vert_key);
 
 			if (vert_key == vert_map)
 			{
@@ -1624,7 +1626,7 @@ static int check_meshislands_adjacency(RigidBodyModifierData* rmd, MeshIsland* m
 	island_vert_map_index = 0;
 
 	if (slot->data.ghash) {
-		shared = slot->data.ghash->nentries;
+		shared = BLI_ghash_size(slot->data.ghash);
 	}
 	else
 	{
@@ -1745,7 +1747,7 @@ static void search_centroid_based(RigidBodyModifierData *rmd, Object* ob, MeshIs
 		mul_v3_m4v3(obj_centr, mi->parent_mod->origmat, mi->centroid );
 	}
 	
-	r = BLI_kdtree_range_search(*combined_tree, dist, obj_centr, NULL, &n3);
+	r = BLI_kdtree_range_search(*combined_tree, obj_centr, NULL, &n3, dist);
 	
 	//use centroid dist based approach here, together with limit ?
 	for (i = 0; i < r; i++)
@@ -1860,7 +1862,7 @@ void search_cell_based(RigidBodyModifierData *rmd, Object* ob,  MeshIsland *mi, 
 	
 	dist = MAX3(dim[0], dim[1], dim[2]) + rmd->cell_size + rmd->contact_dist;
 	mul_v3_m4v3(obj_centr, ob->obmat, mi->centroid);
-	r = BLI_kdtree_range_search(*cells, dist, obj_centr, NULL, &n);
+	r = BLI_kdtree_range_search(*cells, obj_centr, NULL, &n, dist);
 	
 	for (i = 0; i < r; i++)
 	{
@@ -1888,7 +1890,7 @@ void search_cell_centroid_based(RigidBodyModifierData *rmd, Object* ob,  MeshIsl
 	dist = MAX2(MAX3(dim[0], dim[1], dim[2]), rmd->cell_size);
 	mul_v3_m4v3(obj_centr, ob->obmat, mi->centroid);
 	//copy_v3_v3(obj_centr, mi->centroid);
-	r = BLI_kdtree_range_search(*cells, dist, obj_centr, NULL, &n);
+	r = BLI_kdtree_range_search(*cells, obj_centr, NULL, &n, dist);
 	for (i = 0; i < r; i++)
 	{
 		copy_v3_v3(co, (n+i)->co);
@@ -2034,7 +2036,7 @@ void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsland **m
 
 			//find 2 nearest because the first is the object itself !!
 			KDTreeNearest* near = MEM_mallocN(sizeof(KDTreeNearest)*2, "near");
-			BLI_kdtree_find_n_nearest(obtree, 2, ob1->loc, NULL, near);
+			BLI_kdtree_find_nearest_n(obtree, ob1->loc, NULL, near, 2);
 			index = near[1].index;
 
 			if ((index < obcount-1) && (index >= 0)) {
@@ -2157,7 +2159,7 @@ void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsland **m
 				}
 
 				//prepare for outer constraints, neighborhood is negative then (if we reach a boundary)
-				BLI_kdtree_find_n_nearest(*combined_tree, count, mi->centroid, NULL, n);
+				BLI_kdtree_find_nearest_n(*combined_tree, mi->centroid, NULL, n, count);
 				for (j = 0; j < count; j++) {
 					mi2 = meshIslands[(n+j)->index];
 					if ((mi != mi2) && (mi2 != NULL) && (mi2->parent_mod != rmd)) {
@@ -2211,14 +2213,14 @@ void connect_constraints(RigidBodyModifierData* rmd,  Object* ob, MeshIsland **m
 			else if (rmd->contact_dist_meaning == MOD_RIGIDBODY_VERTICES)//use vertex distance as FALLBACK
 			{
 				int shared = 0;
-				BLI_kdtree_find_n_nearest(*combined_tree, count, meshIslands[0]->centroid, NULL, n2);
+				BLI_kdtree_find_nearest_n(*combined_tree, meshIslands[0]->centroid, NULL, n2, count);
 				mi = meshIslands[(n2+j)->index];
 
 				for (v = 0; v < mi->vertex_count; v++) {
 					BM_elem_flag_enable(BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]), BM_ELEM_TAG);
 				}
 
-				BLI_kdtree_find_n_nearest(*combined_tree, count, mi->centroid, NULL, n);
+				BLI_kdtree_find_nearest_n(*combined_tree, mi->centroid, NULL, n, count);
 				for (i = 0; i < count; i++) {
 					MeshIsland *mi2 = meshIslands[(n+i)->index];
 					//printf("Nearest: %d %d %f %f %f\n",m, (n+i)->index, (n+i)->co[0], (n+i)->co[2], (n+i)->co[2]);
@@ -2409,7 +2411,7 @@ BMFace* findClosestFace(KDTree* tree, BMesh* bm, BMFace* f)
 	KDTreeNearest *n = MEM_mallocN(sizeof(KDTreeNearest)*2, "nearest");
 
 	BM_face_calc_center_bounds(f, co);
-	BLI_kdtree_find_n_nearest(tree, 2, co, NULL, n);
+	BLI_kdtree_find_nearest_n(tree, co, NULL, n, 2);
 
 	index = n[0].index;
 	f1 = BM_face_at_index(bm, index);
@@ -2634,7 +2636,7 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 		int r;
 		
 		mul_v3_m4v3(co, ob->imat, cell->co);
-		r = BLI_kdtree_range_search(centroidtree, rmd->cell_size, co, NULL, &n);
+		r = BLI_kdtree_range_search(centroidtree, co, NULL, &n, rmd->cell_size);
 		if (r == 0)
 			continue;
 		
