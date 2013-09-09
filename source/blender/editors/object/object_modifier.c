@@ -2580,27 +2580,32 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 {
 	Object *obact = ED_object_active_context(C);
 	Scene *scene = CTX_data_scene(C);
+	Main* bmain = CTX_data_main(C);
 	float cfra = BKE_scene_frame_get(scene);
 	RigidBodyModifierData *rmd;
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	
 	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
 		
+		Base *base = BKE_scene_base_find(scene, ob);
 		rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, ob, eModifierType_RigidBody);
 		if (!rmd || cfra != scene->rigidbody_world->pointcache->startframe)
 			continue;
 		
 		convert_modifier_to_objects(op->reports, scene, ob, rmd);
+		
+		ED_base_object_free_and_unlink(bmain, scene, base);
 		DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
 		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
-		
-		//DAG_print_dependencies(G.main, scene, ob);
 	}
 	CTX_DATA_END;
 	
 	rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, obact, eModifierType_RigidBody);
 	if (rmd && cfra == scene->rigidbody_world->pointcache->startframe) {
+		Base *base = BKE_scene_base_find(scene, obact);
 		convert_modifier_to_objects(op->reports, scene, obact, rmd);
+		
+		ED_base_object_free_and_unlink(bmain, scene, base);
 		DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
 		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
 	}
@@ -2628,6 +2633,10 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 		
 		scene->rigidbody_world = rbwn;
 	}
+	
+	DAG_relations_tag_update(bmain);
+	WM_event_add_notifier(C, NC_SCENE | ND_OB_ACTIVE, scene);
+	WM_event_add_notifier(C, NC_SCENE | ND_LAYER_CONTENT, scene);
 	
 	//WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, scene);
 	return OPERATOR_FINISHED;
