@@ -171,6 +171,9 @@ class BakeToKeyframes(Operator):
 
             bpy.ops.rigidbody.constraints_remove()
 
+            for obj in constraints:
+                obj.hide = True
+
             # clean up keyframes
             for obj in objects:
                 action = obj.animation_data.action
