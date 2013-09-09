@@ -2464,7 +2464,7 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 		{
 			float cent[3];
 			RigidBodyModifierData *rmd; 
-			ExplodeModifierData *emd;
+			ExplodeModifierData *emd2;
 			BMesh *bm;
 			
 			//create separate objects for meshislands
@@ -2472,14 +2472,14 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			//ob_new = BKE_object_add(G.main, scene, OB_MESH);
 			ob_new = base_new->object;
 			rmd = modifiers_findByType(ob_new, eModifierType_RigidBody);
-			emd = modifiers_findByType(ob_new, eModifierType_Explode);
+			emd2 = modifiers_findByType(ob_new, eModifierType_Explode);
 			
 			//remove duplicated modifiers now
-			if (emd)
+			if (emd2)
 			{
-				emd->tempOb = NULL;
-				BLI_remlink(&ob_new->modifiers, emd);
-				modifier_free(emd);
+				emd2->tempOb = NULL;
+				BLI_remlink(&ob_new->modifiers, emd2);
+				modifier_free(emd2);
 			}
 			
 			if (rmd)
@@ -2494,9 +2494,12 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			//BMO_op_callf(bm,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 			//			 "recalc_face_normals faces=%af",  BM_FACES_OF_MESH);
 			//BM_mesh_normals_update(bm);
-			BMO_op_callf(bm,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), 
+			if (emd && emd->mode == eFractureMode_Cells)
+			{
+				BMO_op_callf(bm,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), 
 						 "dissolve_limit edges=%ae verts=%av angle_limit=%f use_dissolve_boundaries=%b",
-					BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);
+						 BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);
+			}
 			
 			BM_mesh_bm_to_me(bm, ob_new->data, false);
 			BM_mesh_free(bm);
