@@ -885,7 +885,7 @@ static void initData(ModifierData *md)
 
 	emd->mode = eFractureMode_Faces;
 	emd->use_boolean = FALSE;
-	emd->use_cache = MOD_VORONOI_USECACHE;
+	emd->use_cache = FALSE;
 	emd->fracMesh = NULL;
 	emd->tempOb = NULL;
 	emd->cells = NULL;
@@ -2619,10 +2619,12 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 					MLoop* ml;
 					boolresult = NULL;
 					
+					BMO_op_callf(bmtemp,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+								 "recalc_face_normals faces=%af",  BM_FACES_OF_MESH);
+					BM_mesh_normals_update(bmtemp);
+					
 					dm = CDDM_from_bmesh(bmtemp, TRUE);
 					//printf(" %d Faces missing \n", (bmtemp->totface - dm->numPolyData));
-					BM_mesh_free(bmtemp);
-					bmtemp = NULL;
 
 					if (emd->use_boolean)
 					{
@@ -2662,7 +2664,8 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 							assign_material(emd->tempOb, emd->inner_material, 1, BKE_MAT_ASSIGN_OBDATA);
 						}
 						
-						DM_to_mesh(dm, emd->tempOb->data, emd->tempOb, 0);
+						//DM_to_mesh(dm, emd->tempOb->data, emd->tempOb, 0);
+						BM_mesh_bm_to_me(bmtemp, emd->tempOb->data, true);
 						copy_m4_m4(emd->tempOb->obmat, ob->obmat);
 						
 						boolresult = NewBooleanDerivedMesh(dm, emd->tempOb, derivedData, ob, eBooleanModifierOp_Intersect);
@@ -2695,6 +2698,9 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 						CDDM_tessfaces_to_faces(boolresult);
 						CDDM_calc_normals(boolresult);
 					}
+					
+					BM_mesh_free(bmtemp);
+					bmtemp = NULL;
 					
 					emd->cells->data[emd->cells->count].cell_mesh = boolresult;
 					
