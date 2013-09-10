@@ -2490,16 +2490,14 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			
 			assign_matarar(ob_new, give_matarar(ob), *give_totcolp(ob));
 			
+			//converting to bmesh first retains the textures
 			bm = DM_to_bmesh(mi->physics_mesh, true);
-			//BMO_op_callf(bm,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-			//			 "recalc_face_normals faces=%af",  BM_FACES_OF_MESH);
-			//BM_mesh_normals_update(bm);
-			if (emd && emd->mode == eFractureMode_Cells)
+			/*if (emd && emd->mode == eFractureMode_Cells)
 			{
 				BMO_op_callf(bm,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), 
 						 "dissolve_limit edges=%ae verts=%av angle_limit=%f use_dissolve_boundaries=%b",
 						 BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);
-			}
+			}*/
 			
 			BM_mesh_bm_to_me(bm, ob_new->data, false);
 			BM_mesh_free(bm);
@@ -2513,10 +2511,7 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			copy_v3_v3(ob_new->loc, cent);
 			
 			//set mass
-			//ED_rigidbody_object_add(scene, ob_new, ob->rigidbody_object->type, reports);
-			//ob_new->rigidbody_object = BKE_rigidbody_copy_object(ob);
 			ob_new->rigidbody_object->mass = mi->rigidbody->mass;
-			//ED_base_object_select(base_new, BA_SELECT);
 			
 			//store obj indexes in kdtree and objs in array
 			BLI_kdtree_insert(objtree, i, mi->centroid, NULL);
@@ -2584,11 +2579,13 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 	float cfra = BKE_scene_frame_get(scene);
 	RigidBodyModifierData *rmd;
 	RigidBodyWorld *rbw = scene->rigidbody_world;
+	bool selected = false;
 	
 	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
 		
 		Base *base = BKE_scene_base_find(scene, ob);
 		rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, ob, eModifierType_RigidBody);
+		selected = true;
 		if (!rmd || cfra != scene->rigidbody_world->pointcache->startframe)
 			continue;
 		
@@ -2600,14 +2597,17 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 	}
 	CTX_DATA_END;
 	
-	rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, obact, eModifierType_RigidBody);
-	if (rmd && cfra == scene->rigidbody_world->pointcache->startframe) {
-		Base *base = BKE_scene_base_find(scene, obact);
-		convert_modifier_to_objects(op->reports, scene, obact, rmd);
-		
-		ED_base_object_free_and_unlink(bmain, scene, base);
-		DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
-		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
+	if (!selected)
+	{
+		rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, obact, eModifierType_RigidBody);
+		if (rmd && cfra == scene->rigidbody_world->pointcache->startframe) {
+			Base *base = BKE_scene_base_find(scene, obact);
+			convert_modifier_to_objects(op->reports, scene, obact, rmd);
+			
+			ED_base_object_free_and_unlink(bmain, scene, base);
+			DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
+			WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
+		}
 	}
 	
 	if (rbw) {

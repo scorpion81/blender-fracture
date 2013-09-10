@@ -3661,6 +3661,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			
 			if (emd->use_boolean && !emd->use_cache)
 			{
+				
 				DM_ensure_tessface(result);
 				CDDM_calc_edges_tessface(result);
 				CDDM_tessfaces_to_faces(result);
@@ -3673,6 +3674,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				f_index = 0;
 				ml_index = 0;
 
+				mat_index = find_material_index(ob, emd->inner_material);
+				
 				for (i = 0; i < emd->cells->count; i++)
 				{
 					d = emd->cells->data[i].cell_mesh;
@@ -3745,6 +3748,30 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					MEM_freeN(mtface);
 					MEM_freeN(mtps);
 					MEM_freeN(mluvs);
+				}
+				
+				for (i = 0; i < emd->cells->count; i++)
+				{
+					BMesh* bmtemp;
+					d = emd->cells->data[i].cell_mesh;
+					
+					bmtemp = DM_to_bmesh(d, true);
+					BMO_op_callf(bmtemp,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), 
+								 "dissolve_limit edges=%ae verts=%av angle_limit=%f use_dissolve_boundaries=%b",
+							BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);
+					
+					//mark edges as sharp
+					if (mat_index > 0) {
+						select_by_material(bmtemp, mat_index-1, 1);
+						mark_sharp(ob, bmtemp, 0);
+					}
+					
+					DM_release(d);
+					MEM_freeN(d);
+					d = NULL;
+					
+					emd->cells->data[i].cell_mesh = CDDM_from_bmesh(bmtemp, true);
+					BM_mesh_free(bmtemp);
 				}
 			}
 			emd->use_cache = MOD_VORONOI_USECACHE;
