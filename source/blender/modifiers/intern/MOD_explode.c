@@ -1028,7 +1028,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 
 	temd->fracMesh = NULL;
 
-	temd->use_cache = emd->use_cache;
+	//temd->use_cache = emd->use_cache;
 	temd->tempOb = emd->tempOb;
 	temd->cells = NULL; 
 

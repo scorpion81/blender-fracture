@@ -156,7 +156,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->use_experimental = rmd->use_experimental;
 	trmd->use_both_directions = rmd->use_both_directions;
 	trmd->dist_dependent_thresholds = rmd->dist_dependent_thresholds;
-	trmd->refresh_constraints = TRUE;
+	trmd->refresh_constraints = FALSE;
 	trmd->outer_constraint_location = rmd->outer_constraint_location;
 	trmd->outer_constraint_pattern = rmd->outer_constraint_pattern;
 	trmd->outer_constraint_type = rmd->outer_constraint_type;
