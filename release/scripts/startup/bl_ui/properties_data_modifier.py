@@ -699,7 +699,11 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         row = col.row(align=True)
         row.prop(md, "breaking_angle", text="Angle")
         row.prop(md, "breaking_distance", text="Distance")
-        layout.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")
+        row = layout.row(align=True)
+        op = row.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")
+        op.parent = False;
+        op = row.operator("object.rigidbody_convert_to_objects", text = "Convert For Object Destruction")
+        op.parent = True;
         
         #experimental stuff
         box = layout.box()

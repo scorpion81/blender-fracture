@@ -2421,7 +2421,7 @@ void OBJECT_OT_rigidbody_constraints_refresh(wmOperatorType *ot)
 	edit_modifier_properties(ot);
 }
 
-void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, RigidBodyModifierData *rmd)
+void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, RigidBodyModifierData *rmd, Object* par)
 {
 	ParticleSystemModifierData *pmd = modifiers_findByType(ob, eModifierType_ParticleSystem);
 	ExplodeModifierData *emd = modifiers_findByType(ob, eModifierType_Explode);
@@ -2431,9 +2431,14 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 	RigidBodyShardCon* con;
 	int i = 0, result = 0;
 	
+	/*if (pmd && !pmd->dm)
+	{
+		//HACK... otherwise repeated execution of operator CRASHES in psys...
+		return;
+	}*/
+	
 	//if explo modifier present before, refresh and apply it too (triggers refresh of rmd too)
 	if (emd) {
-		
 		emd->use_cache = FALSE;
 		result = modifier_apply_obdata(reports, scene, ob, emd);
 		emd->use_cache = MOD_VORONOI_USECACHE;
@@ -2519,6 +2524,15 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			BLI_kdtree_insert(objtree, i, mi->centroid, NULL);
 			objs[i] = ob_new;
 			i++;
+			
+			//parent to an empty, optionally, convenient for usage with blender destructability editor
+			if (par)
+			{
+				ED_object_parent_set(reports, G.main, scene, ob_new, par, PAR_OBJECT, false, false, NULL);
+			}
+			
+			//simply keep overwriting the active object ? last one will keep active i hope...
+			//ED_base_object_activate(C, base_new);
 		}
 	
 		BLI_kdtree_balance(objtree);
@@ -2599,6 +2613,8 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 	RigidBodyModifierData *rmd;
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	bool selected = false;
+	int parent = RNA_boolean_get(op->ptr, "parent");
+	Object* par = NULL;
 	
 	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
 		
@@ -2608,20 +2624,46 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 		if (!rmd || cfra != scene->rigidbody_world->pointcache->startframe)
 			continue;
 		
-		convert_modifier_to_objects(op->reports, scene, ob, rmd);
+		if (parent) {
+			/*char namebuf[MAX_ID_NAME];
+			const char* name =  "X_\0";
+			strncpy(namebuf, name, strlen(name));
+			strncat(namebuf, ob->id.name, strlen(ob->id.name));*/
+			par = BKE_object_add(G.main, scene, OB_EMPTY);
+			//rename_id(&(par->id), namebuf);
+			
+			copy_v3_v3(par->loc, ob->loc);
+		}
 		
+		convert_modifier_to_objects(op->reports, scene, ob, rmd, par);
+
 		ED_base_object_free_and_unlink(bmain, scene, base);
 		DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
 		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
 	}
 	CTX_DATA_END;
 	
+	par = NULL;
+	
 	if (!selected)
 	{
 		rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, obact, eModifierType_RigidBody);
 		if (rmd && cfra == scene->rigidbody_world->pointcache->startframe) {
+			float loc[3];
 			Base *base = BKE_scene_base_find(scene, obact);
-			convert_modifier_to_objects(op->reports, scene, obact, rmd);
+			
+			if (parent) {
+				/*char namebuf[MAX_ID_NAME];
+				const char* name =  "X_";
+				strncpy(namebuf, name, strlen(name));
+				strncat(namebuf, obact->id.name, strlen(obact->id.name));*/
+				par = BKE_object_add(G.main, scene, OB_EMPTY);
+				//rename_id(&(par->id), namebuf);
+				
+				copy_v3_v3(par->loc, obact->loc);
+			}
+			
+			convert_modifier_to_objects(op->reports, scene, obact, rmd, par);
 			
 			ED_base_object_free_and_unlink(bmain, scene, base);
 			DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
@@ -2684,5 +2726,7 @@ void OBJECT_OT_rigidbody_convert_to_objects(wmOperatorType *ot)
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 	edit_modifier_properties(ot);
+	
+	RNA_def_boolean(ot->srna, "parent", FALSE, "Parent to Empty", "Parent to empty, to be used in conjunction with Destructability Editor/ Loose Parts Option");
 }
 
