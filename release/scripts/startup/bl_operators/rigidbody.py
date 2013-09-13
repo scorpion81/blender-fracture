@@ -162,17 +162,18 @@ class BakeToKeyframes(Operator):
 
                 bpy.ops.anim.keyframe_insert(type='BUILTIN_KSI_LocRot', confirm_success=False)
 
-            # remove baked objects from simulation
-            bpy.ops.rigidbody.objects_remove()
-            
-            #remove (selected) constraints as well
+            #remove (selected) constraints first
             for obj in constraints:
                 obj.select = True
 
             bpy.ops.rigidbody.constraints_remove()
 
             for obj in constraints:
+                obj.select = False
                 obj.hide = True
+            
+            # remove baked objects from simulation
+            bpy.ops.rigidbody.objects_remove()
 
             # clean up keyframes
             for obj in objects:
