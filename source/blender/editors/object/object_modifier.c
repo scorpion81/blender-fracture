@@ -2458,6 +2458,8 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 		int count = BLI_countlist(&rmd->meshIslands);
 		KDTree* objtree = BLI_kdtree_new(count);
 		Object** objs = MEM_callocN(sizeof(Object*) * count, "convert_objs");
+		float max_con_mass = 0;
+		float min_con_dist = FLT_MAX;
 		rmd->refresh = FALSE;
 	
 		for (mi = rmd->meshIslands.first; mi; mi = mi->next)
@@ -2499,7 +2501,7 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 						 BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);
 			}*/
 			
-			BM_mesh_bm_to_me(bm, ob_new->data, false);
+			BM_mesh_bm_to_me(bm, ob_new->data, true);
 			BM_mesh_free(bm);
 			//DM_to_mesh(mi->physics_mesh, ob_new->data, ob_new, 0);
 			
@@ -2524,6 +2526,16 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 		//go through constraints and find objects by position
 		//constrain them with regular constraints
 		
+		if (rmd->mass_dependent_thresholds)
+		{
+			max_con_mass = BKE_rigidbody_calc_max_con_mass(ob);
+		}
+
+		if (rmd->dist_dependent_thresholds)
+		{
+			min_con_dist = BKE_rigidbody_calc_min_con_dist(ob);
+		}
+		
 		for (con = rmd->meshConstraints.first; con; con = con->next)
 		{
 			int index1 = BLI_kdtree_find_nearest(objtree, con->mi1->centroid, NULL, NULL);
@@ -2531,6 +2543,12 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			Object* ob1 = objs[index1];
 			Object* ob2 = objs[index2];
 			Object* rbcon = BKE_object_add(G.main, scene, OB_EMPTY);
+			
+			if ((rmd->mass_dependent_thresholds) || (rmd->dist_dependent_thresholds))
+			{
+				BKE_rigidbody_calc_threshold(max_con_mass, min_con_dist, rmd, con);
+			}
+			
 			//add_v3_v3v3(rbcon->loc, ob1->loc, ob2->loc); //set in center
 			//mul_v3_fl(rbcon->loc, 0.5f);
 			copy_v3_v3(rbcon->loc, ob1->loc); //use same settings as in modifier
@@ -2542,6 +2560,7 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			rbcon->rigidbody_constraint->breaking_threshold = con->breaking_threshold;
 			rbcon->rigidbody_constraint->flag |= RBC_FLAG_USE_BREAKING;
 		}
+		
 		
 		//remove original modifiers now
 		if (emd)

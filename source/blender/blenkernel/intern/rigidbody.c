@@ -1473,10 +1473,20 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 		}
 		return;
 	}*/
+	if (rbc->mi1->rigidbody)
+	{
+		rb1 = rbc->mi1->rigidbody->physics_object;
+	}
 	
-	rb1 = rbc->mi1->rigidbody->physics_object;
-	rb2 = rbc->mi2->rigidbody->physics_object;
-	use_deact = ((rbc->mi1->rigidbody->flag & RBO_FLAG_USE_DEACTIVATION) && (rbc->mi2->rigidbody->flag & RBO_FLAG_USE_DEACTIVATION));
+	if (rbc->mi2->rigidbody)
+	{
+		rb2 = rbc->mi2->rigidbody->physics_object;
+	}
+	
+	if (rb1 && rb2)
+	{
+		use_deact = ((rbc->mi1->rigidbody->flag & RBO_FLAG_USE_DEACTIVATION) && (rbc->mi2->rigidbody->flag & RBO_FLAG_USE_DEACTIVATION));
+	}
 	
 	
 	if (rb1 && rb2 && use_deact) // rbc->physics_constraint && RB_constraint_is_enabled(rbc->physics_constraint))

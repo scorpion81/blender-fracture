@@ -523,6 +523,7 @@ static float mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob, BMVert
 	
 	//(*mi_array)[*mi_count] = mi;
 	//(*mi_count)++;
+	mi->rigidbody = NULL;
 	
 	if (!rmd->use_cellbased_sim || rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED)
 	{
@@ -1392,10 +1393,10 @@ static void connect_meshislands(RigidBodyModifierData* rmd, Object* ob, MeshIsla
 {
 	int con_found = FALSE;
 	RigidBodyShardCon *con, *rbsc;
-	bool ok = mi1->rigidbody && !(mi1->rigidbody->flag & RBO_FLAG_ACTIVE_COMPOUND);
-	ok = ok && mi2->rigidbody && !(mi2->rigidbody->flag & RBO_FLAG_ACTIVE_COMPOUND);
+	bool ok = mi1 && mi1->rigidbody && !(mi1->rigidbody->flag & RBO_FLAG_ACTIVE_COMPOUND);
+	ok = ok && mi2 && mi2->rigidbody && !(mi2->rigidbody->flag & RBO_FLAG_ACTIVE_COMPOUND);
 	
-	if (!rmd->use_both_directions && ok)
+	if (((!rmd->use_both_directions) || (mi1->parent_mod != mi2->parent_mod)) && ok)
 	{
 		//search local constraint list instead of global one !!! saves lots of time
 		int i;
@@ -2865,6 +2866,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					mi->neighbor_count = vc->neighbor_count;
 					mi->global_face_map = vc->global_face_map;
 					
+					mi->rigidbody = NULL;
 					if (!rmd->use_cellbased_sim)
 					{
 						mi->destruction_frame = -1;
