@@ -339,9 +339,9 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
             col.prop(md, "noise")
             col.prop(md, "percentage")
             col.prop(md, "use_boolean")
-            col.prop(md, "use_clipping")
             if (md.use_boolean == True):
                 col.prop(md, "inner_material")
+            col.prop(md, "use_clipping")
             col.prop(md, "use_animation")
             row = col.row(align=True)
             row.prop(md, "cluster_size")
@@ -700,10 +700,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         row.prop(md, "breaking_angle", text="Angle")
         row.prop(md, "breaking_distance", text="Distance")
         row = layout.row(align=True)
-        op = row.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")
-        op.parent = False;
-        op = row.operator("object.rigidbody_convert_to_objects", text = "Convert For Object Destruction")
-        op.parent = True;
+        row.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")
         
         #experimental stuff
         box = layout.box()

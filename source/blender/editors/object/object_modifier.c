@@ -2528,11 +2528,11 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			//parent to an empty, optionally, convenient for usage with blender destructability editor
 			if (par)
 			{
+				sub_v3_v3(ob_new->loc, par->loc);
 				ED_object_parent_set(reports, G.main, scene, ob_new, par, PAR_OBJECT, false, false, NULL);
 			}
 			
-			//simply keep overwriting the active object ? last one will keep active i hope...
-			//ED_base_object_activate(C, base_new);
+			ED_base_object_select(base_new, BA_SELECT);
 		}
 	
 		BLI_kdtree_balance(objtree);
@@ -2566,6 +2566,7 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			//add_v3_v3v3(rbcon->loc, ob1->loc, ob2->loc); //set in center
 			//mul_v3_fl(rbcon->loc, 0.5f);
 			copy_v3_v3(rbcon->loc, ob1->loc); //use same settings as in modifier
+			add_v3_v3(rbcon->loc, par->loc); // correct parenting calculation
 			ED_rigidbody_constraint_add(scene, rbcon, con->type, reports);
 			
 			rbcon->rigidbody_constraint->ob1 = ob1;
@@ -2613,7 +2614,7 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 	RigidBodyModifierData *rmd;
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	bool selected = false;
-	int parent = RNA_boolean_get(op->ptr, "parent");
+	int parent = TRUE; // RNA_boolean_get(op->ptr, "parent");
 	Object* par = NULL;
 	
 	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
@@ -2727,6 +2728,6 @@ void OBJECT_OT_rigidbody_convert_to_objects(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 	edit_modifier_properties(ot);
 	
-	RNA_def_boolean(ot->srna, "parent", FALSE, "Parent to Empty", "Parent to empty, to be used in conjunction with Destructability Editor/ Loose Parts Option");
+	//RNA_def_boolean(ot->srna, "parent", FALSE, "Parent to Empty", "Parent to empty, to be used in conjunction with Destructability Editor/ Loose Parts Option");
 }
 
