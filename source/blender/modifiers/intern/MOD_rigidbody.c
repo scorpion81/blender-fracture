@@ -78,6 +78,7 @@ static void initData(ModifierData *md)
 {
 	RigidBodyModifierData *rmd = (RigidBodyModifierData *) md;
 	rmd->visible_mesh = NULL;
+	rmd->visible_mesh_cached = NULL;
 	rmd->refresh = TRUE;
 	zero_m4(rmd->origmat);
 	rmd->breaking_threshold = 10.0f;
@@ -138,6 +139,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->explo_shared = rmd->explo_shared;
 
 	trmd->visible_mesh = NULL;
+	trmd->visible_mesh_cached = NULL;
 	trmd->idmap = NULL; 
 	trmd->meshIslands.first = NULL;
 	trmd->meshIslands.last = NULL;
@@ -196,6 +198,12 @@ void freeMeshIsland(RigidBodyModifierData* rmd, MeshIsland* mi)
 		}
 	}
 	
+	if (mi->vertices_cached)
+	{
+		MEM_freeN(mi->vertices_cached);
+		mi->vertices_cached = NULL;
+	}
+	
 	if (mi->compound_count > 0)
 	{
 		MEM_freeN(mi->compound_children);
@@ -232,6 +240,7 @@ static void freeData(ModifierData* md)
 			mi = rmd->meshIslands.first;
 			BLI_remlink(&rmd->meshIslands, mi);
 			freeMeshIsland(rmd, mi);
+			mi = NULL;
 		}
 			
 		rmd->meshIslands.first = NULL;
@@ -243,6 +252,13 @@ static void freeData(ModifierData* md)
 				BM_mesh_free(rmd->visible_mesh);
 				rmd->visible_mesh = NULL;
 			}
+		}
+		
+		if (rmd->visible_mesh_cached)
+		{
+			DM_release(rmd->visible_mesh_cached);
+			MEM_freeN(rmd->visible_mesh_cached);
+			rmd->visible_mesh_cached = NULL;
 		}
 	
 		if (rmd->sel_indexes != NULL && rmd->refresh == FALSE) {
@@ -524,6 +540,7 @@ static float mesh_separate_tagged(RigidBodyModifierData* rmd, Object *ob, BMVert
 	//(*mi_array)[*mi_count] = mi;
 	//(*mi_count)++;
 	mi->rigidbody = NULL;
+	mi->vertices_cached = NULL;
 	
 	if (!rmd->use_cellbased_sim || rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED)
 	{
@@ -2651,6 +2668,7 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 		mi_compound->compound_parent = NULL;
 		mi_compound->participating_constraint_count = 0;
 		mi_compound->destruction_frame = -1;
+		mi_compound->vertices_cached = NULL;
 		
 		printf("Joining %d islands to compound\n", r);
 		for (i = 0; i < r; i++)
@@ -2781,6 +2799,39 @@ void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 	BLI_kdtree_free(centroidtree);
 }
 
+static DerivedMesh* createCache(RigidBodyModifierData *rmd)
+{
+	MeshIsland *mi;
+	BMVert* v;
+	DerivedMesh *dm;
+	MVert *verts;
+	
+	dm = CDDM_from_bmesh(rmd->visible_mesh, TRUE);
+	DM_ensure_tessface(dm);
+	DM_ensure_normals(dm);
+	
+	verts = dm->getVertArray(dm);
+	for (mi = rmd->meshIslands.first; mi; mi = mi->next)
+	{
+		int i = 0;
+		mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * mi->vertex_count, "mi->vertices_cached");
+		for (i = 0; i < mi->vertex_count; i++)
+		{	
+			int index = mi->vertices[i]->head.index;
+			if (index >= 0 && index <= rmd->visible_mesh->totvert)
+			{
+				mi->vertices_cached[i] = verts + index;
+			}
+			else
+			{
+				mi->vertices_cached[i] = NULL;
+			}
+		}
+	}
+	
+	return dm;
+}
+
 static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 								  DerivedMesh *dm,
 								  ModifierApplyFlag UNUSED(flag))
@@ -2797,6 +2848,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		//int len = 0;
 		
 		freeData(rmd);
+		rmd->visible_mesh_cached = NULL;
 		rmd->split = destroy_compound;
 		rmd->join = buildCompounds;
 		//rmd->vol_check = vol_check;
@@ -2867,6 +2919,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					mi->global_face_map = vc->global_face_map;
 					
 					mi->rigidbody = NULL;
+					mi->vertices_cached = NULL;
 					if (!rmd->use_cellbased_sim)
 					{
 						mi->destruction_frame = -1;
@@ -2880,7 +2933,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			else
 			{
 				//split to meshislands now
-				rmd->visible_mesh = DM_to_bmesh(dm, true);
+				rmd->visible_mesh = DM_to_bmesh(dm, true); //ensures indexes automatically
 				rmd->explo_shared = FALSE;
 				
 				start = PIL_check_seconds_timer();
@@ -2951,6 +3004,11 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		
 		printf("Building constraints done, %g\n", PIL_check_seconds_timer() - start); 
 		printf("Constraints: %d\n", BLI_countlist(&rmd->meshConstraints));
+	
+		start = PIL_check_seconds_timer();
+		//post process ... convert to DerivedMesh only at refresh times, saves permanent conversion during execution
+		rmd->visible_mesh_cached = createCache(rmd);
+		printf("Building cached DerivedMesh done, %g\n", PIL_check_seconds_timer() - start);
 		
 		rmd->refresh = FALSE;
 		rmd->refresh_constraints = FALSE;
@@ -2968,6 +3026,18 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			mi->vertco = NULL;
 			mi->vertex_count = 0;
 			mi->vertices = NULL;
+			if (mi->vertices_cached)
+			{
+				MEM_freeN(mi->vertices_cached);
+				mi->vertices_cached = NULL;
+			}
+		}
+		
+		if (rmd->visible_mesh_cached)
+		{
+			DM_release(rmd->visible_mesh_cached);
+			MEM_freeN(rmd->visible_mesh_cached);
+			rmd->visible_mesh_cached = NULL;
 		}
 	}
 
@@ -2993,17 +3063,22 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		}
 		else
 		{
-			dm_final = CDDM_from_bmesh(rmd->visible_mesh, TRUE);
+			dm_final = CDDM_copy(rmd->visible_mesh_cached);
+			//dm_final = CDDM_from_bmesh(rmd->visible_mesh, TRUE);
 		}
+		
 		return dm_final;
 	}
 	else {
 		if (rmd->visible_mesh == NULL)
 		{
 			//oops, something went definitely wrong...
-			if (emd)
+			if (emd) 
+			{
 				rmd->refresh = TRUE;
+			}
 			freeData(rmd);
+			rmd->visible_mesh_cached = NULL;
 			rmd->refresh = FALSE;
 		}
 		

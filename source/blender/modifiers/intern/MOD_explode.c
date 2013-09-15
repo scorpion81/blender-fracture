@@ -885,7 +885,7 @@ static void initData(ModifierData *md)
 
 	emd->mode = eFractureMode_Faces;
 	emd->use_boolean = FALSE;
-	emd->use_cache = FALSE;
+	emd->use_cache = MOD_VORONOI_USECACHE;
 	emd->fracMesh = NULL;
 	emd->tempOb = NULL;
 	emd->cells = NULL;
@@ -2311,7 +2311,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 	BMesh *bm = NULL, *bmtemp = NULL;
 
 	FILE *fp = NULL;
-	int vert_index = 0, edg_index = 0, fac_index = 0;
+	int vert_index = 0, edg_index = 0, fac_index = 0, vert_index_global = 0;
 	int read = 0;
 	BMVert **faceverts = NULL, **tempvert = NULL, *vert = NULL, **localverts = NULL;
 	BMEdge **faceedges = NULL, *edge = NULL, **localedges = NULL;
@@ -2488,6 +2488,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 			tempvert[tempvert_index] = vert;
 			real_indexes = MEM_reallocN(real_indexes, sizeof(int*) * (len_real_indexes+1));
 			real_indexes[len_real_indexes] = tempvert_index;
+			//vert->head.index = tempvert_index;
 
 			if (tempvert_index > 0){
 				int i;
@@ -2761,7 +2762,8 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 
 
 						vert = BM_vert_create(bm, co, NULL, 0);
-
+						BM_elem_index_set(vert, vert_index_global);
+						
 						localverts[v] = vert;
 						//vert = BM_vert_at_index(bm, vert_index);
 
@@ -2783,7 +2785,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 						CustomData_to_bmesh_block(&boolresult->vertData, &bm->vdata, v, &vert->head.data , 0);
 						
 						vert_index++;
-						//vert_index_global++;
+						vert_index_global++;
 					}
 
 					for (e = 0; e < totedge; e++)

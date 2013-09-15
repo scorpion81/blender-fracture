@@ -4691,6 +4691,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			rmd->meshIslands.first = NULL;
 			rmd->meshIslands.last = NULL;
 			rmd->visible_mesh = NULL;
+			rmd->visible_mesh_cached = NULL;
 			zero_m4(rmd->origmat);
 			rmd->meshConstraints.first = NULL;
 			rmd->meshConstraints.last = NULL;

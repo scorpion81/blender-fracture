@@ -420,10 +420,19 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 	
 	for (j = 0; j < mi->vertex_count; j++) {
 		// BMVert *vert = BM_vert_at_index(bm, ind);
-		struct BMVert* vert = mi->vertices[j];
-		if (vert == NULL) break;
+		//struct BMVert* vert = mi->vertices[j];
+		struct MVert* vert;
+		
+		if (!mi->vertices_cached)
+		{
+			return;
+		}
+		
+		vert = mi->vertices_cached[j];
+		if (vert == NULL) continue;
 		if (vert->co == NULL) break;
-		if (mi->parent_mod->refresh == TRUE) break; //if refresh in progress, dont try to access stuff here
+		if (mi->parent_mod->refresh == TRUE) break; 
+		//if refresh in progress, dont try to access stuff here
 
 		//reset to original coords // stored at fracture time
 		startco[0] = mi->vertco[j*3];

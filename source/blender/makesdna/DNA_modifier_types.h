@@ -1291,6 +1291,7 @@ typedef struct MeshIsland {
 	struct MeshIsland **compound_children;
 	struct MeshIsland *compound_parent;
 	struct BMVert **vertices;
+	struct MVert **vertices_cached;
 	float *vertco;
 	struct DerivedMesh *physics_mesh; //convert to mesh later ??
 	struct RigidBodyOb *rigidbody;
@@ -1313,6 +1314,7 @@ typedef struct MeshIsland {
 typedef struct RigidBodyModifierData {
 	ModifierData modifier;
 	struct BMesh *visible_mesh;
+	struct DerivedMesh *visible_mesh_cached;
 	struct Group *constraint_group;
 	ListBase meshIslands, meshConstraints, cells;
 	int	**sel_indexes, *index_storage, *id_storage;
