@@ -253,13 +253,6 @@ static void freeData(ModifierData* md)
 				rmd->visible_mesh = NULL;
 			}
 		}
-		
-		if (rmd->visible_mesh_cached)
-		{
-			DM_release(rmd->visible_mesh_cached);
-			MEM_freeN(rmd->visible_mesh_cached);
-			rmd->visible_mesh_cached = NULL;
-		}
 	
 		if (rmd->sel_indexes != NULL && rmd->refresh == FALSE) {
 			for (i = 0; i < rmd->sel_counter; i++) {
@@ -298,6 +291,13 @@ static void freeData(ModifierData* md)
 				mi->participating_constraint_count = 0;
 			}
 		}
+	}
+	
+	if (rmd->visible_mesh_cached)
+	{
+		DM_release(rmd->visible_mesh_cached);
+		MEM_freeN(rmd->visible_mesh_cached);
+		rmd->visible_mesh_cached = NULL;
 	}
 	
 	while (rmd->cells.first)
@@ -2814,6 +2814,12 @@ static DerivedMesh* createCache(RigidBodyModifierData *rmd)
 	for (mi = rmd->meshIslands.first; mi; mi = mi->next)
 	{
 		int i = 0;
+		if (mi->vertices_cached)
+		{
+			MEM_freeN(mi->vertices_cached);
+			mi->vertices_cached = NULL;
+		}
+		
 		mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * mi->vertex_count, "mi->vertices_cached");
 		for (i = 0; i < mi->vertex_count; i++)
 		{	
