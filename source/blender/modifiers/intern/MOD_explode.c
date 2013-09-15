@@ -885,7 +885,7 @@ static void initData(ModifierData *md)
 
 	emd->mode = eFractureMode_Faces;
 	emd->use_boolean = FALSE;
-	emd->use_cache = MOD_VORONOI_USECACHE;
+	emd->use_cache = FALSE;
 	emd->fracMesh = NULL;
 	emd->tempOb = NULL;
 	emd->cells = NULL;
