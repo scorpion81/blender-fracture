@@ -3011,10 +3011,13 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		printf("Building constraints done, %g\n", PIL_check_seconds_timer() - start); 
 		printf("Constraints: %d\n", BLI_countlist(&rmd->meshConstraints));
 	
-		start = PIL_check_seconds_timer();
-		//post process ... convert to DerivedMesh only at refresh times, saves permanent conversion during execution
-		rmd->visible_mesh_cached = createCache(rmd);
-		printf("Building cached DerivedMesh done, %g\n", PIL_check_seconds_timer() - start);
+		if (rmd->visible_mesh != NULL)
+		{
+			start = PIL_check_seconds_timer();
+			//post process ... convert to DerivedMesh only at refresh times, saves permanent conversion during execution
+			rmd->visible_mesh_cached = createCache(rmd);
+			printf("Building cached DerivedMesh done, %g\n", PIL_check_seconds_timer() - start);
+		}
 		
 		rmd->refresh = FALSE;
 		rmd->refresh_constraints = FALSE;
@@ -3069,6 +3072,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		}
 		else
 		{
+			//dm_final = rmd->visible_mesh_cached;
 			dm_final = CDDM_copy(rmd->visible_mesh_cached);
 			//dm_final = CDDM_from_bmesh(rmd->visible_mesh, TRUE);
 		}
