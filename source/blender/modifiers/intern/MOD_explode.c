@@ -887,6 +887,7 @@ static void initData(ModifierData *md)
 	emd->use_boolean = FALSE;
 	emd->use_cache = FALSE;
 	emd->fracMesh = NULL;
+	emd->cached_fracMesh = NULL;
 	emd->tempOb = NULL;
 	emd->cells = NULL;
 	
@@ -966,6 +967,13 @@ static void freeData(ModifierData *md)
 		BM_mesh_free(emd->fracMesh);
 		emd->fracMesh = NULL;
 	}
+	
+	if ((emd->cached_fracMesh) && (emd->mode == eFractureMode_Cells))
+	{
+		DM_release(emd->cached_fracMesh);
+		MEM_freeN(emd->cached_fracMesh);
+		emd->cached_fracMesh = NULL;
+	}
 
 	if ((emd->tempOb) && (emd->tempOb->data) && (emd->mode == eFractureMode_Cells)) {
 		BKE_libblock_free_us(&(G.main->object), emd->tempOb);
@@ -1027,6 +1035,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	temd->use_boolean = emd->use_boolean;
 
 	temd->fracMesh = NULL;
+	temd->cached_fracMesh = NULL;
 
 	//temd->use_cache = emd->use_cache;
 	temd->tempOb = emd->tempOb;
@@ -3658,18 +3667,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					explodeCells(emd, psmd, md->scene, ob);
 				}
 			}
-
-			if (emd->fracMesh && !emd->use_boolean && !rmd) {
-				//this modifier shares data directly, no need to convert this for it
-				result = CDDM_from_bmesh(emd->fracMesh, TRUE);
-			}
-			else {
-				emd->use_cache = MOD_VORONOI_USECACHE;
-				result = derivedData;
-				return result;
-			}
 			
-			if (emd->use_boolean && !emd->use_cache && emd->fracMesh)
+			if (emd->fracMesh && emd->use_boolean && !emd->use_cache)
 			{
 				//only convert once while refreshing in boolean case
 				result = CDDM_from_bmesh(emd->fracMesh, TRUE);
@@ -3784,9 +3783,35 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					emd->cells->data[i].cell_mesh = CDDM_from_bmesh(bmtemp, true);
 					BM_mesh_free(bmtemp);
 				}
+				
+				emd->use_cache = MOD_VORONOI_USECACHE;
+				if (emd->cached_fracMesh != NULL)
+				{
+					DM_release(emd->cached_fracMesh);
+					MEM_freeN(emd->cached_fracMesh);
+					emd->cached_fracMesh = NULL;
+				}
+				emd->cached_fracMesh = CDDM_copy(result);
+				return result;
 			}
-			emd->use_cache = MOD_VORONOI_USECACHE;
-			return result;
+			else if (emd->fracMesh && !emd->use_cache) {
+				if (emd->cached_fracMesh != NULL)
+				{
+					DM_release(emd->cached_fracMesh);
+					MEM_freeN(emd->cached_fracMesh);
+					emd->cached_fracMesh = NULL;
+				}
+				emd->cached_fracMesh = CDDM_from_bmesh(emd->fracMesh, TRUE);
+				emd->use_cache = MOD_VORONOI_USECACHE;
+				return CDDM_copy(emd->cached_fracMesh);
+			}
+			else {
+				emd->use_cache = MOD_VORONOI_USECACHE;
+				result = derivedData;
+				return result;
+			}
+			//emd->use_cache = MOD_VORONOI_USECACHE;
+			//return result;
 #else
 			emd->mode = eFractureMode_Faces;
 			return derivedData;
@@ -3835,11 +3860,21 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				return explodeMesh(emd, psmd, md->scene, ob, derivedData);
 		}
 	}
-	if (emd->fracMesh != NULL)
+	if (emd->cached_fracMesh != NULL) {
 		//return CDDM_from_bmesh(emd->fracMesh, TRUE);
-		return result;
+	
+		/*if (rmd)
+		{	//can borrow a ref...
+			return emd->cached_fracMesh;
+		}*/
+		
+		//all other modifiers need a copy
+		return CDDM_copy(emd->cached_fracMesh);
+	}
 	else
+	{
 		return derivedData;
+	}
 }
 
 static void foreachIDLink(ModifierData *md, Object *ob,

@@ -4638,6 +4638,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 
 			//fallback, regenerate all
 			emd->fracMesh = NULL;
+			emd->cached_fracMesh = NULL;
 			emd->cells = NULL;
 			emd->patree = NULL;
 			emd->use_cache = MOD_VORONOI_USECACHE; // do not construct modifier

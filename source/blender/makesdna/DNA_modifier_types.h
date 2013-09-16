@@ -683,6 +683,7 @@ typedef struct ExplodeModifierData {
 	//for voronoi cell mode
 	VoronoiCells *cells;
 	struct BMesh *fracMesh;
+	struct DerivedMesh *cached_fracMesh;
 	struct Object *tempOb;
 	struct KDTree *patree;
 	struct Material *inner_material;
