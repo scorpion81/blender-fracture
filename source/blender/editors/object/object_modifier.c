@@ -2438,18 +2438,22 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 	}*/
 	
 	//if explo modifier present before, refresh and apply it too (triggers refresh of rmd too)
-	if (emd) {
+	if (emd && rmd) {
 		emd->use_cache = FALSE;
+		rmd->refresh = TRUE;
 		result = modifier_apply_obdata(reports, scene, ob, emd);
 		emd->use_cache = MOD_VORONOI_USECACHE;
+		result = modifier_apply_obdata(reports, scene, ob, rmd);
+		rmd->refresh = FALSE;
+		BLI_remlink(&ob->modifiers, emd);
+		BLI_remlink(&ob->modifiers, rmd);
 	}
-	
-	if (rmd)
+	else if (rmd)
 	{
 		//apply just rigidbody modifier
 		rmd->refresh = TRUE;
 		result = modifier_apply_obdata(reports, scene, ob, rmd);
-		rmd->refresh = FALSE;
+		BLI_remlink(&ob->modifiers, rmd);
 	}
 	
 	if (pmd)
@@ -2581,13 +2585,13 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 		if (emd)
 		{
 			emd->tempOb = NULL;
-			BLI_remlink(&ob->modifiers, emd);
+			//BLI_remlink(&ob->modifiers, emd);
 			modifier_free(emd);
 		}
 		
 		if (rmd)
 		{
-			BLI_remlink(&ob->modifiers, rmd);
+			//BLI_remlink(&ob->modifiers, rmd);
 			modifier_free(rmd);
 		}
 		
