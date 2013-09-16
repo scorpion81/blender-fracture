@@ -3659,17 +3659,20 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				}
 			}
 
-			if (emd->fracMesh) {
+			if (emd->fracMesh && !emd->use_boolean && !rmd) {
+				//this modifier shares data directly, no need to convert this for it
 				result = CDDM_from_bmesh(emd->fracMesh, TRUE);
 			}
 			else {
+				emd->use_cache = MOD_VORONOI_USECACHE;
 				result = derivedData;
 				return result;
 			}
 			
-			if (emd->use_boolean && !emd->use_cache)
+			if (emd->use_boolean && !emd->use_cache && emd->fracMesh)
 			{
-				
+				//only convert once while refreshing in boolean case
+				result = CDDM_from_bmesh(emd->fracMesh, TRUE);
 				DM_ensure_tessface(result);
 				CDDM_calc_edges_tessface(result);
 				CDDM_tessfaces_to_faces(result);
@@ -3833,7 +3836,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		}
 	}
 	if (emd->fracMesh != NULL)
-		return CDDM_from_bmesh(emd->fracMesh, TRUE);
+		//return CDDM_from_bmesh(emd->fracMesh, TRUE);
+		return result;
 	else
 		return derivedData;
 }

@@ -2431,12 +2431,6 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 	RigidBodyShardCon* con;
 	int i = 0, result = 0;
 	
-	/*if (pmd && !pmd->dm)
-	{
-		//HACK... otherwise repeated execution of operator CRASHES in psys...
-		return;
-	}*/
-	
 	//if explo modifier present before, refresh and apply it too (triggers refresh of rmd too)
 	if (emd && rmd) {
 		emd->use_cache = FALSE;
@@ -2536,7 +2530,8 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 				ED_object_parent_set(reports, G.main, scene, ob_new, par, PAR_OBJECT, false, false, NULL);
 			}
 			
-			ED_base_object_select(base_new, BA_SELECT);
+			//ED_base_object_select(base_new, BA_SELECT);
+			BKE_rigidbody_remove_shard(scene, mi);
 		}
 	
 		BLI_kdtree_balance(objtree);
@@ -2578,6 +2573,8 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			//rbcon->rigidbody_constraint->num_solver_iterations = con->num_solver_iterations;
 			rbcon->rigidbody_constraint->breaking_threshold = con->breaking_threshold;
 			rbcon->rigidbody_constraint->flag |= RBC_FLAG_USE_BREAKING;
+			
+			BKE_rigidbody_remove_shard_con(scene, con);
 		}
 		
 		
@@ -2643,8 +2640,8 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 		convert_modifier_to_objects(op->reports, scene, ob, rmd, par);
 
 		ED_base_object_free_and_unlink(bmain, scene, base);
-		DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
-		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
+		//DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
+		//WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
 	}
 	CTX_DATA_END;
 	
@@ -2671,8 +2668,8 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 			convert_modifier_to_objects(op->reports, scene, obact, rmd, par);
 			
 			ED_base_object_free_and_unlink(bmain, scene, base);
-			DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
-			WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
+			//DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
+			//WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
 		}
 	}
 	
