@@ -3625,7 +3625,17 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					BM_mesh_free(origmesh);
 					MEM_freeN(longfaces);
 					longcount = 0;
+					
+					if (emd->cached_fracMesh != NULL)
+					{
+						DM_release(emd->cached_fracMesh);
+						MEM_freeN(emd->cached_fracMesh);
+						emd->cached_fracMesh = NULL;
+					}
+					emd->cached_fracMesh = CDDM_from_bmesh(emd->fracMesh, TRUE);
+					
 					printf("Clipping done, %g\n", PIL_check_seconds_timer() - start);
+					emd->use_cache = MOD_VORONOI_USECACHE;
 				}
 				
 				if (emd->fracMesh != NULL)
@@ -3805,7 +3815,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				emd->use_cache = MOD_VORONOI_USECACHE;
 				return CDDM_copy(emd->cached_fracMesh);
 			}
-			else {
+			else if (!emd->use_clipping){
 				emd->use_cache = MOD_VORONOI_USECACHE;
 				result = derivedData;
 				return result;
