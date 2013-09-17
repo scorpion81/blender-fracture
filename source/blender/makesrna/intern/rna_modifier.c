@@ -795,6 +795,7 @@ static void updateConstraints(RigidBodyModifierData *rmd, Object* ob) {
 	RigidBodyShardCon *rbsc;
 	int index1, index2;
 	float max_con_mass = 0, min_con_dist = FLT_MAX;
+	int iterations;
 
 	if (rmd->mass_dependent_thresholds) {
 		max_con_mass = BKE_rigidbody_calc_max_con_mass(ob);
@@ -826,6 +827,32 @@ static void updateConstraints(RigidBodyModifierData *rmd, Object* ob) {
 
 		if (((rmd->mass_dependent_thresholds) || (rmd->dist_dependent_thresholds)) && (rbsc->breaking_threshold > 0)) {
 			BKE_rigidbody_calc_threshold(max_con_mass, min_con_dist, rmd, rbsc);
+		}
+		
+		
+		if (rmd->solver_iterations_override == 0)
+		{
+			iterations = rmd->modifier.scene->rigidbody_world->num_solver_iterations;
+		}
+		else
+		{
+			iterations = rmd->solver_iterations_override;
+		}
+		
+		if (rmd->use_proportional_solver_iterations)
+		{
+			float con_mass = 0;
+			if (rbsc->mi1 && rbsc->mi1->rigidbody && rbsc->mi2 && rbsc->mi2->rigidbody) {
+				con_mass = rbsc->mi1->rigidbody->mass + rbsc->mi2->rigidbody->mass;
+			}
+			
+			iterations = (int)((con_mass / max_con_mass) * (float)iterations);
+		}
+		
+		if (iterations > 0)
+		{
+			rbsc->flag |= RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS;
+			rbsc->num_solver_iterations = iterations;
 		}
 
 		//reenable all
@@ -982,6 +1009,22 @@ static void rna_RigidBodyModifier_cluster_threshold_set(PointerRNA *ptr, float v
 	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
 	Object* ob = ptr->id.data;
 	rmd->cluster_breaking_threshold = value;
+	updateConstraints(rmd, ob);
+}
+
+static void rna_RigidBodyModifier_solver_iterations_override_set(PointerRNA *ptr, float value)
+{
+	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	Object* ob = ptr->id.data;
+	rmd->solver_iterations_override = value;
+	updateConstraints(rmd, ob);
+}
+
+static void rna_RigidBodyModifier_proportional_solver_iterations_override_set(PointerRNA *ptr, int value)
+{
+	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	Object* ob = ptr->id.data;
+	rmd->use_proportional_solver_iterations = value;
 	updateConstraints(rmd, ob);
 }
 
@@ -4210,6 +4253,18 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_cluster_threshold_set", NULL);
 	RNA_def_property_ui_text(prop, "Cluster Breaking threshold", "Threshold to break constraints INSIDE a cluster of shards");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	
+	prop = RNA_def_property(srna, "use_proportional_solver_iterations", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "use_proportional_solver_iterations", FALSE);
+	RNA_def_property_ui_text(prop, "Use Proportional Solver Iterations", "Adjust solver iterations proportional to shard volume / mass");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	
+	prop = RNA_def_property(srna, "solver_iterations_override", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "solver_iterations_override");
+	RNA_def_property_range(prop, 0, INT_MAX);
+	RNA_def_property_int_funcs(prop, NULL, "rna_RigidBodyModifier_solver_iterations_override_set", NULL);
+	RNA_def_property_ui_text(prop, "Solver Iterations Override", "Override the world constraint solver iteration value with this value, 0 means no override");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 

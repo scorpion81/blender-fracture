@@ -2439,15 +2439,16 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 		emd->use_cache = MOD_VORONOI_USECACHE;
 		result = modifier_apply_obdata(reports, scene, ob, rmd);
 		rmd->refresh = FALSE;
-		BLI_remlink(&ob->modifiers, emd);
-		BLI_remlink(&ob->modifiers, rmd);
+		//BLI_remlink(&ob->modifiers, emd);
+		//BLI_remlink(&ob->modifiers, rmd);
 	}
 	else if (rmd)
 	{
 		//apply just rigidbody modifier
 		rmd->refresh = TRUE;
 		result = modifier_apply_obdata(reports, scene, ob, rmd);
-		BLI_remlink(&ob->modifiers, rmd);
+		rmd->refresh = FALSE;
+		//BLI_remlink(&ob->modifiers, rmd);
 	}
 	
 	if (pmd)
@@ -2539,7 +2540,7 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 		//go through constraints and find objects by position
 		//constrain them with regular constraints
 		
-		if (rmd->mass_dependent_thresholds)
+		if (rmd->mass_dependent_thresholds || rmd->use_proportional_solver_iterations)
 		{
 			max_con_mass = BKE_rigidbody_calc_max_con_mass(ob);
 		}
@@ -2556,6 +2557,32 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			Object* ob1 = objs[index1];
 			Object* ob2 = objs[index2];
 			Object* rbcon = BKE_object_add(G.main, scene, OB_EMPTY);
+			int iterations;
+			
+			if (rmd->solver_iterations_override == 0)
+			{
+				iterations = rmd->modifier.scene->rigidbody_world->num_solver_iterations;
+			}
+			else
+			{
+				iterations = rmd->solver_iterations_override;
+			}
+			
+			if (rmd->use_proportional_solver_iterations)
+			{
+				float con_mass = 0;
+				if (con->mi1 && con->mi1->rigidbody && con->mi2 && con->mi2->rigidbody) {
+					con_mass = con->mi1->rigidbody->mass + con->mi2->rigidbody->mass;
+				}
+				
+				iterations = (int)((con_mass / max_con_mass) * (float)iterations);
+			}
+			
+			if (iterations > 0)
+			{
+				con->flag |= RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS;
+				con->num_solver_iterations = iterations;
+			}
 			
 			if ((rmd->mass_dependent_thresholds) || (rmd->dist_dependent_thresholds))
 			{
@@ -2574,6 +2601,12 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			rbcon->rigidbody_constraint->breaking_threshold = con->breaking_threshold;
 			rbcon->rigidbody_constraint->flag |= RBC_FLAG_USE_BREAKING;
 			
+			if (con->flag & RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS)
+			{
+				rbcon->rigidbody_constraint->flag |= RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS;
+				rbcon->rigidbody_constraint->num_solver_iterations = iterations;
+			}
+			
 			BKE_rigidbody_remove_shard_con(scene, con);
 		}
 		
@@ -2582,13 +2615,13 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 		if (emd)
 		{
 			emd->tempOb = NULL;
-			//BLI_remlink(&ob->modifiers, emd);
+			BLI_remlink(&ob->modifiers, emd);
 			modifier_free(emd);
 		}
 		
 		if (rmd)
 		{
-			//BLI_remlink(&ob->modifiers, rmd);
+			BLI_remlink(&ob->modifiers, rmd);
 			modifier_free(rmd);
 		}
 		

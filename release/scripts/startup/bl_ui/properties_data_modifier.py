@@ -719,6 +719,8 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
             box.prop(md, "group_breaking_threshold")
             box.prop(md, "mass_dependent_thresholds")
             box.prop(md, "dist_dependent_thresholds")
+            box.prop(md, "solver_iterations_override")
+            box.prop(md, "use_proportional_solver_iterations")
             box.prop(md, "auto_merge")
             box.prop(md, "auto_merge_dist")
             box.prop(md, "cluster_breaking_threshold")

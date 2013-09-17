@@ -2644,7 +2644,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 					rigidbody_update_sim_ob(scene, rbw, ob, mi->rigidbody, mi->centroid);
 				}
 
-				if (rmd->mass_dependent_thresholds)
+				if (rmd->mass_dependent_thresholds || rmd->use_proportional_solver_iterations)
 				{
 					max_con_mass = BKE_rigidbody_calc_max_con_mass(ob);
 				}
@@ -2656,6 +2656,32 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 
 				for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
 
+					int iterations;
+					if (rmd->solver_iterations_override == 0)
+					{
+						iterations = rbw->num_solver_iterations;
+					}
+					else
+					{
+						iterations = rmd->solver_iterations_override;
+					}
+					
+					if (rmd->use_proportional_solver_iterations)
+					{
+						float con_mass = 0;
+						if (rbsc->mi1 && rbsc->mi1->rigidbody && rbsc->mi2 && rbsc->mi2->rigidbody) {
+							con_mass = rbsc->mi1->rigidbody->mass + rbsc->mi2->rigidbody->mass;
+						}
+						
+						iterations = (int)((con_mass / max_con_mass) * (float)iterations);
+					}
+					
+					if (iterations > 0)
+					{
+						rbsc->flag |= RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS;
+						rbsc->num_solver_iterations = iterations;
+					}
+					
 					if ((rmd->mass_dependent_thresholds) || (rmd->dist_dependent_thresholds))
 					{
 						BKE_rigidbody_calc_threshold(max_con_mass, min_con_dist, rmd, rbsc);

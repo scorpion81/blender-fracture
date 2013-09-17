@@ -117,6 +117,8 @@ static void initData(ModifierData *md)
 	rmd->framemap = NULL;
 	rmd->disable_self_collision = TRUE;
 	rmd->cluster_breaking_threshold = 1000.0f;
+	rmd->use_proportional_solver_iterations = FALSE;
+	rmd->solver_iterations_override = 0;
 }
 
 static void copyData(ModifierData *md, ModifierData *target)
@@ -170,6 +172,8 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->split = destroy_compound;
 	trmd->disable_self_collision = rmd->disable_self_collision;
 	trmd->cluster_breaking_threshold = rmd->cluster_breaking_threshold;
+	trmd->use_proportional_solver_iterations = rmd->use_proportional_solver_iterations;
+	trmd->solver_iterations_override = rmd->solver_iterations_override;
 }
 
 void freeMeshIsland(RigidBodyModifierData* rmd, MeshIsland* mi)
