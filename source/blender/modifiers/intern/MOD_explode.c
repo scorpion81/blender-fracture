@@ -76,6 +76,7 @@
 
 #include "BKE_submesh.h"
 #include "PIL_time.h"
+#include "depsgraph_private.h"
 
 #ifdef WITH_MOD_VORONOI
 #  include "../../../../extern/voro++/src/c_interface.hh"
@@ -3908,6 +3909,24 @@ static bool dependsOnNormals(ModifierData *UNUSED(md))
 	return true;
 }
 
+static void updateDepgraph(ModifierData *md, DagForest *forest,
+                           struct Scene *UNUSED(scene),
+                           Object *UNUSED(ob),
+                           DagNode *obNode)
+{
+	ExplodeModifierData *emd = (ExplodeModifierData *) md;
+
+	if (emd->extra_group) {
+		GroupObject* go;
+		for (go = emd->extra_group->gobject.first; go; go = go->next)
+		{
+			DagNode *curNode = dag_get_node(forest, go->ob);
+			dag_add_relation(forest, curNode, obNode,
+					DAG_RL_DATA_DATA | DAG_RL_OB_DATA, "Explode Modifier");
+		}
+	}
+}
+
 
 ModifierTypeInfo modifierType_Explode = {
 	/* name */              "Explode",
@@ -3927,7 +3946,7 @@ ModifierTypeInfo modifierType_Explode = {
 	/* requiredDataMask */  requiredDataMask,
 	/* freeData */          freeData,
 	/* isDisabled */        NULL,
-	/* updateDepgraph */    NULL,
+	/* updateDepgraph */    updateDepgraph,
 	/* dependsOnTime */     dependsOnTime,
 	/* dependsOnNormals */  dependsOnNormals,
 	/* foreachObjectLink */ NULL,
