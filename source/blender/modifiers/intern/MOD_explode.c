@@ -3660,7 +3660,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				copy_m4_m4(ob->obmat, oldobmat); // restore obmat
 				
 				//trigger refresh of possible following rmd too, only when not baked, then just refresh constraints ?
-				if (rmd)
+				if (rmd && !emd->use_autorefresh)
 					rmd->refresh = TRUE;
 			}
 

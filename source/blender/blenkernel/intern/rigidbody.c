@@ -394,9 +394,10 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 	{
 		//printf("Frames %f %f\n", mi->destruction_frame, cfra);
 		//skip dummy cache entries
-		printf("SKIPPED: %d %e %f %d\n", mi->linear_index, loc[0], mi->destruction_frame, mi->rigidbody->flag);
+		//printf("SKIPPED: %d %e %f %d\n", mi->linear_index, loc[0], mi->destruction_frame, mi->rigidbody->flag);
 		return;
 	}
+	//printf("DRAWN: %d %e %f %d\n", mi->linear_index, loc[0], mi->destruction_frame, mi->rigidbody->flag);
 
 	invert_m4_m4(ob->imat, ob->obmat);
 	mat4_to_size(size, ob->obmat);
@@ -776,18 +777,18 @@ static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh(Object *ob)
 			for (i = 0; (i < totface) && (mface) && (mvert); i++, mface++) {
 				/* add first triangle - verts 1,2,3 */
 				{
-					MVert *va = (IN_RANGE(mface->v1, 0, totvert)) ? (mvert + mface->v1) : (mvert);
-					MVert *vb = (IN_RANGE(mface->v2, 0, totvert)) ? (mvert + mface->v2) : (mvert);
-					MVert *vc = (IN_RANGE(mface->v3, 0, totvert)) ? (mvert + mface->v3) : (mvert);
+					MVert *va = (mface->v1 < totvert) ? (mvert + mface->v1) : (mvert);
+					MVert *vb = (mface->v2 < totvert) ? (mvert + mface->v2) : (mvert);
+					MVert *vc = (mface->v3 < totvert) ? (mvert + mface->v3) : (mvert);
 
 					RB_trimesh_add_triangle(mdata, va->co, vb->co, vc->co);
 				}
 
 				/* add second triangle if needed - verts 1,3,4 */
 				if (mface->v4) {
-					MVert *va = (IN_RANGE(mface->v1, 0, totvert)) ? (mvert + mface->v1) : (mvert);
-					MVert *vb = (IN_RANGE(mface->v3, 0, totvert)) ? (mvert + mface->v3) : (mvert);
-					MVert *vc = (IN_RANGE(mface->v4, 0, totvert)) ? (mvert + mface->v4) : (mvert);
+					MVert *va = (mface->v1 < totvert) ? (mvert + mface->v1) : (mvert);
+					MVert *vb = (mface->v3 < totvert) ? (mvert + mface->v3) : (mvert);
+					MVert *vc = (mface->v4 < totvert) ? (mvert + mface->v4) : (mvert);
 
 					RB_trimesh_add_triangle(mdata, va->co, vb->co, vc->co);
 				}
@@ -1371,7 +1372,7 @@ void BKE_rigidbody_validate_sim_constraint(RigidBodyWorld *rbw, Object *ob, shor
 					RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->spring_damping_z);
 
 					RB_constraint_set_equilibrium_6dof_spring(rbc->physics_constraint);
-				/* fall through */
+					/* fall-through */
 				case RBC_TYPE_6DOF:
 					if (rbc->type == RBC_TYPE_6DOF) /* a litte awkward but avoids duplicate code for limits */
 						rbc->physics_constraint = RB_constraint_new_6dof(loc, rot, rb1, rb2);
@@ -2278,10 +2279,9 @@ void BKE_rigidbody_remove_constraint(Scene *scene, Object *ob)
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	RigidBodyCon *rbc = ob->rigidbody_constraint;
 
-	if (rbw) {
-		/* remove from rigidbody world, free object won't do this */
-		if (rbw && rbw->physics_world && rbc->physics_constraint)
-			RB_dworld_remove_constraint(rbw->physics_world, rbc->physics_constraint);
+	/* remove from rigidbody world, free object won't do this */
+	if (rbw && rbw->physics_world && rbc->physics_constraint) {
+		RB_dworld_remove_constraint(rbw->physics_world, rbc->physics_constraint);
 	}
 	/* remove object's settings */
 	BKE_rigidbody_free_constraint(ob);
@@ -2365,38 +2365,37 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 		rbw->cache_index_map = MEM_reallocN(rbw->cache_index_map, sizeof(RigidBodyOb*) * rbw->numbodies);
 		rbw->cache_offset_map = MEM_reallocN(rbw->cache_offset_map, sizeof(int) * rbw->numbodies);
 		printf("RigidbodyCount changed: %d\n", rbw->numbodies);
-		
-		for (go = rbw->group->gobject.first, i = 0; go; go = go->next, i++) {
-			Object *ob = go->ob;
-			rbw->objects[i] = ob;
-	
-			for (md = ob->modifiers.first; md; md = md->next) {
-				if (md->type == eModifierType_RigidBody) {
-					rmd = (RigidBodyModifierData*)md;
-					if (isModifierActive(rmd)) {
-						for (mi = rmd->meshIslands.first, j = 0; mi; mi = mi->next) {
-							rbw->cache_index_map[counter] = mi->rigidbody; //map all shards of an object to this object index
-							rbw->cache_offset_map[counter] = i;
-							mi->linear_index = counter;
-							counter++;
-							j++;
-						}
-						ismapped = TRUE;
-						break;
+	}
+	for (go = rbw->group->gobject.first, i = 0; go; go = go->next, i++) {
+		Object *ob = go->ob;
+		rbw->objects[i] = ob;
+
+		for (md = ob->modifiers.first; md; md = md->next) {
+			if (md->type == eModifierType_RigidBody) {
+				rmd = (RigidBodyModifierData*)md;
+				if (isModifierActive(ob, rmd)) {
+					for (mi = rmd->meshIslands.first, j = 0; mi; mi = mi->next) {
+						rbw->cache_index_map[counter] = mi->rigidbody; //map all shards of an object to this object index
+						rbw->cache_offset_map[counter] = i;
+						mi->linear_index = counter;
+						counter++;
+						j++;
 					}
+					ismapped = TRUE;
+					break;
 				}
 			}
-	
-			if (!ismapped) {
-				//printf("index map:  %d %d\n", counter, i);
-				rbw->cache_index_map[counter] = ob->rigidbody_object; //i; 1 object 1 index here (normal case)
-				rbw->cache_offset_map[counter] = i;
-				//mi->linear_index = counter;
-				counter++;
-			}
-	
-			ismapped = FALSE;
 		}
+
+		if (!ismapped) {
+			//printf("index map:  %d %d\n", counter, i);
+			rbw->cache_index_map[counter] = ob->rigidbody_object; //i; 1 object 1 index here (normal case)
+			rbw->cache_offset_map[counter] = i;
+			//mi->linear_index = counter;
+			counter++;
+		}
+
+		ismapped = FALSE;
 	}
 }
 
@@ -2785,7 +2784,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 				rigidbody_update_sim_ob(scene, rbw, ob, rbo, centroid);
 			}
 		}
-		//rigidbody_update_ob_array(rbw);
+		rigidbody_update_ob_array(rbw);
 		rbw->refresh_modifiers = FALSE;
 	}
 
@@ -3002,7 +3001,7 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 
 			mat4_to_size(size, ob->obmat);
 			size_to_mat4(size_mat, size);
-			mult_m4_m4m4(mat, mat, size_mat);
+			mul_m4_m4m4(mat, mat, size_mat);
 
 			copy_m4_m4(ob->obmat, mat);
 		}
