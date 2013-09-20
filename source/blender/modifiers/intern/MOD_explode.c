@@ -890,6 +890,7 @@ static void initData(ModifierData *md)
 	emd->cached_fracMesh = NULL;
 	emd->tempOb = NULL;
 	emd->cells = NULL;
+	emd->use_autorefresh = FALSE;
 	
 	emd->last_part = 0;
 	emd->last_bool = FALSE;
@@ -1053,7 +1054,8 @@ static void copyData(ModifierData *md, ModifierData *target)
 	temd->use_animation = emd->use_animation;
 	temd->noise = emd->noise;
 	temd->percentage = emd->percentage;
-	temd->use_cache = MOD_VORONOI_USECACHE; // refresh better manually
+	temd->use_autorefresh = FALSE;
+	temd->use_cache = MOD_VORONOI_USECACHE; // refresh better manually on duplication
 	temd->use_clipping = emd->use_clipping;
 }
 
@@ -2093,7 +2095,12 @@ static int points_from_particles(Object** ob, int totobj, Scene* scene, float***
 
 				for (p = 0, pa = psmd->psys->particles; p < psmd->psys->totpart; p++, pa++)
 				{
-					if (BLI_frand() < thresh) {
+					bool particle_unborn = pa->alive == PARS_UNBORN && (emd->flag & eExplodeFlag_Unborn);
+					bool particle_alive = pa->alive == PARS_ALIVE && (emd->flag & eExplodeFlag_Alive);
+					bool particle_dead = pa->alive == PARS_DEAD && (emd->flag & eExplodeFlag_Dead);
+					bool particle_mask = particle_unborn || particle_alive || particle_dead;
+				
+					if ((BLI_frand() < thresh) && particle_mask) {
 						float co[3];
 						psys_get_birth_coordinates(&sim, pa, &birth, 0, 0);
 						*points = MEM_reallocN(*points, (pt+1)*sizeof(float*));
@@ -3635,7 +3642,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					emd->cached_fracMesh = CDDM_from_bmesh(emd->fracMesh, TRUE);
 					
 					printf("Clipping done, %g\n", PIL_check_seconds_timer() - start);
-					emd->use_cache = MOD_VORONOI_USECACHE;
+					emd->use_cache = !emd->use_autorefresh; //MOD_VORONOI_USECACHE;
 				}
 				
 				if (emd->fracMesh != NULL)
@@ -3794,7 +3801,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					BM_mesh_free(bmtemp);
 				}
 				
-				emd->use_cache = MOD_VORONOI_USECACHE;
+				emd->use_cache = !emd->use_autorefresh; //MOD_VORONOI_USECACHE;
 				if (emd->cached_fracMesh != NULL)
 				{
 					DM_release(emd->cached_fracMesh);
@@ -3812,11 +3819,11 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					emd->cached_fracMesh = NULL;
 				}
 				emd->cached_fracMesh = CDDM_from_bmesh(emd->fracMesh, TRUE);
-				emd->use_cache = MOD_VORONOI_USECACHE;
+				emd->use_cache = !emd->use_autorefresh;//MOD_VORONOI_USECACHE;
 				return CDDM_copy(emd->cached_fracMesh);
 			}
 			else if (!emd->use_clipping){
-				emd->use_cache = MOD_VORONOI_USECACHE;
+				emd->use_cache = !emd->use_autorefresh;// MOD_VORONOI_USECACHE;
 				result = derivedData;
 				return result;
 			}

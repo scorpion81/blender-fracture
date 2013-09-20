@@ -701,9 +701,9 @@ typedef struct ExplodeModifierData {
 	int use_boolean, use_cache, percentage, use_clipping;
 	int last_part, last_bool, cluster_percentage, last_cluster_percentage;
 	int mode, cluster_size, last_cluster_size, point_source;
-	int last_point_source, use_animation, noise_count;
+	int last_point_source, use_animation, noise_count, use_autorefresh;
 	float noise;
-	//char pad[4];
+	char pad[4];
 
 } ExplodeModifierData;
 

@@ -336,6 +336,11 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
             col.label("Point Source:")
             col.prop(md, "point_source")
             col.prop(md, "extra_group")
+            if 'OWN_PARTICLES' in md.point_source or 'EXTRA_PARTICLES' in md.point_source:
+                 row = col.row(align=True)
+                 row.prop(md, "show_unborn")
+                 row.prop(md, "show_alive")
+                 row.prop(md, "show_dead")
             col.prop(md, "noise")
             col.prop(md, "percentage")
             col.prop(md, "use_boolean")
@@ -346,6 +351,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
             row = col.row(align=True)
             row.prop(md, "cluster_size")
             row.prop(md, "cluster_percentage")
+            layout.prop(md, "use_autorefresh")
             layout.operator("object.explode_refresh", text="Refresh")
         elif (md.mode == 'FACES'):    
             col = split.column()
