@@ -2498,14 +2498,14 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			
 			//converting to bmesh first retains the textures
 			bm = DM_to_bmesh(mi->physics_mesh, true);
-			/*if (emd && emd->mode == eFractureMode_Cells)
+			if (emd && emd->mode == eFractureMode_Cells)
 			{
 				BMO_op_callf(bm,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), 
 						 "dissolve_limit edges=%ae verts=%av angle_limit=%f use_dissolve_boundaries=%b",
 						 BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);
-			}*/
+			}
 			
-			BM_mesh_bm_to_me(bm, ob_new->data, true);
+			BM_mesh_bm_to_me(bm, ob_new->data, false);
 			BM_mesh_free(bm);
 			//DM_to_mesh(mi->physics_mesh, ob_new->data, ob_new, 0);
 			
