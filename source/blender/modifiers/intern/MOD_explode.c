@@ -443,7 +443,7 @@ void clip_cell_mesh(BMesh *cell, BMesh* mesh, BMesh** result, VoronoiCell* vcell
 	KDTreeNearest *n = NULL;
 	BMesh *part = BM_mesh_create(&bm_mesh_allocsize_default);
 	
-	BM_mesh_elem_hflag_disable_all(mesh, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT, FALSE);
+	BM_mesh_elem_hflag_disable_all(mesh, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT, false);
 	
 	CustomData_copy(&mesh->vdata, &part->vdata, CD_MASK_BMESH, CD_CALLOC, 0);
 	CustomData_copy(&mesh->edata, &part->edata, CD_MASK_BMESH, CD_CALLOC, 0);
@@ -885,16 +885,16 @@ static void initData(ModifierData *md)
 	ExplodeModifierData *emd = (ExplodeModifierData *) md;
 
 	emd->mode = eFractureMode_Faces;
-	emd->use_boolean = FALSE;
-	emd->use_cache = FALSE;
+	emd->use_boolean = false;
+	emd->use_cache = false;
 	emd->fracMesh = NULL;
 	emd->cached_fracMesh = NULL;
 	emd->tempOb = NULL;
 	emd->cells = NULL;
-	emd->use_autorefresh = FALSE;
+	emd->use_autorefresh = false;
 	
 	emd->last_part = 0;
-	emd->last_bool = FALSE;
+	emd->last_bool = false;
 
 	emd->facepa = NULL;
 	emd->cluster_percentage = 100;
@@ -906,12 +906,12 @@ static void initData(ModifierData *md)
 	emd->inner_material = NULL;
 	emd->point_source = eOwnParticles;
 	emd->last_point_source = eOwnParticles;
-	emd->use_animation = FALSE;
+	emd->use_animation = false;
 	emd->noise = 0.0f;
 	emd->percentage = 100;
 	emd->noisemap = NULL;
 	emd->noise_count = 0;
-	emd->use_clipping = FALSE;
+	emd->use_clipping = false;
 	emd->vertpahash = NULL;
 }
 
@@ -1055,7 +1055,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	temd->use_animation = emd->use_animation;
 	temd->noise = emd->noise;
 	temd->percentage = emd->percentage;
-	temd->use_autorefresh = FALSE;
+	temd->use_autorefresh = false;
 	temd->use_cache = MOD_VORONOI_USECACHE; // refresh better manually on duplication
 	temd->use_clipping = emd->use_clipping;
 }
@@ -2394,7 +2394,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 		}
 	}
 	container = container_new(min[0]-theta, max[0]+theta, min[1]-theta, max[1]+theta, min[2]-theta, max[2]+theta,
-							  n_size, n_size, n_size, FALSE, FALSE, FALSE, totpoint);
+							  n_size, n_size, n_size, false, false, false, totpoint);
 	
 	p_order = particle_order_new();
 	
@@ -2478,7 +2478,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 		emd->cells->data[emd->cells->count].particle_index = -1;
 		emd->cells->data[emd->cells->count].neighbor_ids = MEM_mallocN(sizeof(int), "neighbor_ids");
 		emd->cells->data[emd->cells->count].neighbor_count = 0;
-		emd->cells->data[emd->cells->count].is_at_boundary = FALSE;
+		emd->cells->data[emd->cells->count].is_at_boundary = false;
 		emd->cells->data[emd->cells->count].global_face_map = MEM_mallocN(sizeof(int), "global_face_map");
 		
 
@@ -2545,7 +2545,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 			c = fgetc(fp);
 			if (isdigit(c)) //maybe atoi !! (ascii value to int ?)
 			{
-				int double_vert = FALSE;
+				int double_vert = false;
 
 				//put/seek back and better do fscanf !
 				fseek(fp, -sizeof(char), SEEK_CUR);
@@ -2564,7 +2564,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 							//avoid 2 equal verts in an edge or a face
 							faceverts = MEM_reallocN(faceverts, (face_index) * sizeof(BMVert*));
 							face_index--;
-							double_vert = TRUE;
+							double_vert = true;
 							break;
 						}
 					}
@@ -2641,7 +2641,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 								 "recalc_face_normals faces=%af",  BM_FACES_OF_MESH);
 					BM_mesh_normals_update(bmtemp);
 					
-					dm = CDDM_from_bmesh(bmtemp, TRUE);
+					dm = CDDM_from_bmesh(bmtemp, true);
 					//printf(" %d Faces missing \n", (bmtemp->totface - dm->numPolyData));
 
 					if (emd->use_boolean)
@@ -2743,14 +2743,14 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 							{
 								//if vertex coords differ, we had a bool op, at must be at boundary of object now
 								if (compare_v3v3(ve_old[v].co, ve_new[v].co, 0.000001f)) {
-									emd->cells->data[emd->cells->count].is_at_boundary = TRUE;
+									emd->cells->data[emd->cells->count].is_at_boundary = true;
 									break;
 								}
 							}
 						}
 						else
 						{
-							emd->cells->data[emd->cells->count].is_at_boundary = TRUE;
+							emd->cells->data[emd->cells->count].is_at_boundary = true;
 						}
 						
 						DM_release(dm);
@@ -2895,7 +2895,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 
 				if (n_index < 0)//cell is at the boundary of object
 				{
-					emd->cells->data[emd->cells->count].is_at_boundary = TRUE;
+					emd->cells->data[emd->cells->count].is_at_boundary = true;
 				}
 				emd->cells->data[emd->cells->count].neighbor_ids[neighbor_index] = n_index;
 				neighbor_index++;
@@ -3450,7 +3450,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 	//if (psmd)
 	{
-		if (emd->mode == eFractureMode_Cells && emd->use_cache == FALSE || (emd->use_animation && psmd != NULL))
+		if (emd->mode == eFractureMode_Cells && emd->use_cache == false || (emd->use_animation && psmd != NULL))
 		{
 #ifdef WITH_MOD_VORONOI
 
@@ -3459,7 +3459,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					(emd->last_bool != emd->use_boolean) ||
 					//(emd->last_flip != emd->flip_normal) ||
 					(emd->last_point_source != emd->point_source) ||
-					(emd->use_cache == FALSE)/* || (emd->use_animation && psmd != NULL)*/)
+					(emd->use_cache == false)/* || (emd->use_animation && psmd != NULL)*/)
 			{
 				invert_m4_m4(imat, ob->obmat);
 				copy_m4_m4(oldobmat, ob->obmat);
@@ -3640,7 +3640,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 						MEM_freeN(emd->cached_fracMesh);
 						emd->cached_fracMesh = NULL;
 					}
-					emd->cached_fracMesh = CDDM_from_bmesh(emd->fracMesh, TRUE);
+					emd->cached_fracMesh = CDDM_from_bmesh(emd->fracMesh, true);
 					
 					printf("Clipping done, %g\n", PIL_check_seconds_timer() - start);
 					emd->use_cache = !emd->use_autorefresh; //MOD_VORONOI_USECACHE;
@@ -3662,7 +3662,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				
 				//trigger refresh of possible following rmd too, only when not baked, then just refresh constraints ?
 				if (rmd && !emd->use_autorefresh)
-					rmd->refresh = TRUE;
+					rmd->refresh = true;
 			}
 
 			if (emd->cells == NULL)
@@ -3689,7 +3689,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			if (emd->fracMesh && emd->use_boolean && !emd->use_cache)
 			{
 				//only convert once while refreshing in boolean case
-				result = CDDM_from_bmesh(emd->fracMesh, TRUE);
+				result = CDDM_from_bmesh(emd->fracMesh, true);
 				DM_ensure_tessface(result);
 				CDDM_calc_edges_tessface(result);
 				CDDM_tessfaces_to_faces(result);
@@ -3819,7 +3819,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					MEM_freeN(emd->cached_fracMesh);
 					emd->cached_fracMesh = NULL;
 				}
-				emd->cached_fracMesh = CDDM_from_bmesh(emd->fracMesh, TRUE);
+				emd->cached_fracMesh = CDDM_from_bmesh(emd->fracMesh, true);
 				emd->use_cache = !emd->use_autorefresh;//MOD_VORONOI_USECACHE;
 				return CDDM_copy(emd->cached_fracMesh);
 			}
