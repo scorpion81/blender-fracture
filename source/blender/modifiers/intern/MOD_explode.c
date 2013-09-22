@@ -3475,9 +3475,10 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 								 "recalc_face_normals faces=%af",  BM_FACES_OF_MESH);
 					BM_mesh_normals_update(emd->fracMesh);
-					BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), 
+					/*BMO_op_callf(emd->fracMesh,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), 
 								 "dissolve_limit edges=%ae verts=%av angle_limit=%f use_dissolve_boundaries=%b",
-							BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);
+							BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);*/
+					BM_mesh_decimate_dissolve(emd->fracMesh, 0.087f, false, 0);
 					
 					//select inner material and mark sharp
 					if (!emd->use_clipping) {
@@ -3785,9 +3786,10 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					d = emd->cells->data[i].cell_mesh;
 					
 					bmtemp = DM_to_bmesh(d, true);
-					BMO_op_callf(bmtemp,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), 
+					/*BMO_op_callf(bmtemp,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), 
 								 "dissolve_limit edges=%ae verts=%av angle_limit=%f use_dissolve_boundaries=%b",
-							BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);
+							BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);*/
+					BM_mesh_decimate_dissolve(bmtemp, 0.087f, false, 0);
 					
 					//mark edges as sharp
 					if (mat_index > 0) {
@@ -3805,9 +3807,10 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				
 				//make ngons
 				bmtemp = DM_to_bmesh(result, true);
-				BMO_op_callf(bmtemp,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), 
+				/*BMO_op_callf(bmtemp,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), 
 							 "dissolve_limit edges=%ae verts=%av angle_limit=%f use_dissolve_boundaries=%b",
-						BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);
+						BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);*/
+				BM_mesh_decimate_dissolve(bmtemp, 0.087f, false, 0);
 				
 				emd->use_cache = !emd->use_autorefresh; //MOD_VORONOI_USECACHE;
 				if (emd->cached_fracMesh != NULL)
