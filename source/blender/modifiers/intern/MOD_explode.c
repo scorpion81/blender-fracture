@@ -3825,7 +3825,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				
 				return CDDM_copy(emd->cached_fracMesh);
 			}
-			else if (emd->fracMesh && !emd->use_cache) {
+			else if (emd->fracMesh && (!emd->use_cache || emd->use_animation)) {
 				if (emd->cached_fracMesh != NULL)
 				{
 					DM_release(emd->cached_fracMesh);
@@ -3838,11 +3838,16 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			}
 			else if (!emd->use_clipping){
 				emd->use_cache = !emd->use_autorefresh;// MOD_VORONOI_USECACHE;
-				result = derivedData;
-				return result;
+				if (emd->cached_fracMesh != NULL) {
+					return CDDM_copy(emd->cached_fracMesh);
+				}
+				else
+				{
+					return derivedData;
+				}
+				//result = derivedData;
+				//return result;
 			}
-			//emd->use_cache = MOD_VORONOI_USECACHE;
-			//return result;
 #else
 			emd->mode = eFractureMode_Faces;
 			return derivedData;
@@ -3893,13 +3898,6 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	}
 	if (emd->cached_fracMesh != NULL) {
 		//return CDDM_from_bmesh(emd->fracMesh, TRUE);
-	
-		/*if (rmd)
-		{	//can borrow a ref...
-			return emd->cached_fracMesh;
-		}*/
-		
-		//all other modifiers need a copy
 		return CDDM_copy(emd->cached_fracMesh);
 	}
 	else
