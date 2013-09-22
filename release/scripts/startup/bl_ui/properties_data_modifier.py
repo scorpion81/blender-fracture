@@ -338,6 +338,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
             col.prop(md, "extra_group")
             if 'OWN_PARTICLES' in md.point_source or 'EXTRA_PARTICLES' in md.point_source:
                  row = col.row(align=True)
+                 row.label("Particle Mask:")
                  row.prop(md, "show_unborn")
                  row.prop(md, "show_alive")
                  row.prop(md, "show_dead")
