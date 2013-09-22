@@ -3688,6 +3688,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			
 			if (emd->fracMesh && emd->use_boolean && !emd->use_cache)
 			{
+				BMesh *bmtemp;
 				//only convert once while refreshing in boolean case
 				result = CDDM_from_bmesh(emd->fracMesh, true);
 				DM_ensure_tessface(result);
@@ -3802,6 +3803,12 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					BM_mesh_free(bmtemp);
 				}
 				
+				//make ngons
+				bmtemp = DM_to_bmesh(result, true);
+				BMO_op_callf(bmtemp,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), 
+							 "dissolve_limit edges=%ae verts=%av angle_limit=%f use_dissolve_boundaries=%b",
+						BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);
+				
 				emd->use_cache = !emd->use_autorefresh; //MOD_VORONOI_USECACHE;
 				if (emd->cached_fracMesh != NULL)
 				{
@@ -3809,8 +3816,14 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					MEM_freeN(emd->cached_fracMesh);
 					emd->cached_fracMesh = NULL;
 				}
-				emd->cached_fracMesh = CDDM_copy(result);
-				return result;
+				emd->cached_fracMesh = CDDM_from_bmesh(bmtemp, true);//CDDM_copy(result);
+				BM_mesh_free(bmtemp);
+				
+				DM_release(result);
+				MEM_freeN(result);
+				result = NULL;
+				
+				return CDDM_copy(emd->cached_fracMesh);
 			}
 			else if (emd->fracMesh && !emd->use_cache) {
 				if (emd->cached_fracMesh != NULL)
