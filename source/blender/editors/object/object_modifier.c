@@ -2500,9 +2500,10 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			bm = DM_to_bmesh(mi->physics_mesh, true);
 			if (emd && emd->mode == eFractureMode_Cells)
 			{
-				BMO_op_callf(bm,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), 
+				/*BMO_op_callf(bm,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), 
 						 "dissolve_limit edges=%ae verts=%av angle_limit=%f use_dissolve_boundaries=%b",
-						 BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);
+						 BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);*/
+				BM_mesh_decimate_dissolve(bm, 0.087f, false, 0);
 			}
 			
 			BM_mesh_bm_to_me(bm, ob_new->data, false);
