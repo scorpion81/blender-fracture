@@ -2004,6 +2004,7 @@ static int explode_refresh_exec(bContext *C, wmOperator *op)
 	}
 
 	DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
+	DAG_scene_relations_rebuild(G.main, scene);
 	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
 	
 	return OPERATOR_FINISHED;

@@ -886,7 +886,7 @@ static void initData(ModifierData *md)
 
 	emd->mode = eFractureMode_Faces;
 	emd->use_boolean = false;
-	emd->use_cache = false;
+	emd->use_cache = true;
 	emd->fracMesh = NULL;
 	emd->cached_fracMesh = NULL;
 	emd->tempOb = NULL;
@@ -1056,7 +1056,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	temd->noise = emd->noise;
 	temd->percentage = emd->percentage;
 	temd->use_autorefresh = false;
-	temd->use_cache = MOD_VORONOI_USECACHE; // refresh better manually on duplication
+	temd->use_cache = true; //MOD_VORONOI_USECACHE; // refresh better manually on duplication
 	temd->use_clipping = emd->use_clipping;
 }
 
@@ -3899,6 +3899,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				return explodeMesh(emd, psmd, md->scene, ob, derivedData);
 		}
 	}
+	emd->use_cache = !emd->use_autorefresh;
 	if (emd->cached_fracMesh != NULL) {
 		//return CDDM_from_bmesh(emd->fracMesh, TRUE);
 		return CDDM_copy(emd->cached_fracMesh);
