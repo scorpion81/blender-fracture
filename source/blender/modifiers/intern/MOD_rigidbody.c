@@ -3124,6 +3124,7 @@ ModifierTypeInfo modifierType_RigidBody = {
 	/* structSize */        sizeof(RigidBodyModifierData),
 	/* type */              eModifierTypeType_Constructive,
 	/* flags */             eModifierTypeFlag_AcceptsMesh |
+							eModifierTypeFlag_AcceptsCVs |
 							/*eModifierTypeFlag_UsesPointCache |*/
 							eModifierTypeFlag_Single,
 	

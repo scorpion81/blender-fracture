@@ -1856,11 +1856,11 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi
 	if (mi == NULL || (mi->rigidbody != NULL))
 		return NULL;
 
-	if (ob->type != OB_MESH) {
+	if (ob->type != OB_MESH && ob->type != OB_FONT && ob->type != OB_CURVE && ob->type != OB_SURF) {
 		return NULL;
 	}
 	
-	if (((Mesh *)ob->data)->totvert == 0) {
+	if ((((Mesh *)ob->data)->totvert == 0) && (ob->type == OB_MESH)) {
 		return NULL;
 	}
 
@@ -2547,7 +2547,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, int r
 		ModifierData *md = NULL;
 		RigidBodyModifierData *rmd = NULL;
 
-		if (ob && ob->type == OB_MESH) {
+		if (ob && (ob->type == OB_MESH || ob->type == OB_CURVE || ob->type == OB_SURF || ob->type == OB_FONT)) {
 
 			/* check for fractured objects which want to participate first, then handle other normal objects*/
 			for (md = ob->modifiers.first; md; md = md->next) {

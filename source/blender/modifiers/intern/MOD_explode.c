@@ -77,6 +77,8 @@
 #include "BKE_submesh.h"
 #include "PIL_time.h"
 #include "depsgraph_private.h"
+#include "BKE_curve.h"
+#include "BKE_displist.h"
 
 #ifdef WITH_MOD_VORONOI
 #  include "../../../../extern/voro++/src/c_interface.hh"
@@ -2014,6 +2016,7 @@ static void recenter_dm(DerivedMesh *dm, float center[3])
 	for (i = 0; i < verts; i++) {
 		mvert = &mverts[i];
 		sub_v3_v3(mvert->co, center);
+		//add_v3_v3(mvert->co, center);
 	}
 }
 
@@ -2316,6 +2319,17 @@ static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float 
 	return totpoint;
 }
 
+static void curvetomesh(Scene *scene, Object *ob) 
+{
+	if (ELEM(NULL, ob->curve_cache, ob->curve_cache->disp.first))
+		BKE_displist_make_curveTypes(scene, ob, 0);  /* force creation */
+
+	BKE_mesh_from_nurbs(ob); /* also does users */
+
+	if (ob->type == OB_MESH)
+		BKE_object_free_modifiers(ob);
+}
+
 // create the voronoi cell faces inside the existing mesh
 static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModifierData* emd, float mat[4][4])
 {
@@ -2324,7 +2338,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 	loop_order* l_order = NULL;
 	float min[3], max[3], size[3];
 	int p = 0;
-	float co[3], vco[3], loc[3], quat[4], centr[3];
+	float co[3], vco[3], loc[3], quat[4], centr[3], diff[3] = {0, 0, 0};
 	BMesh *bm = NULL, *bmtemp = NULL;
 
 	FILE *fp = NULL;
@@ -2365,17 +2379,39 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 		theta = 0.1f;
 	}
 
-	BKE_mesh_boundbox_calc(ob->data, centr, size);
-	//BKE_mesh_minmax(ob->data, min, max);
-	//dm_minmax(derivedData, min, max);
-	//use global coordinates for container
-	mat4_to_loc_quat(loc, quat, mat);
-	mul_v3_v3fl(min, size, -1);
-	mul_v3_v3fl(max, size, 1);
-	add_v3_v3(min, centr);
-	add_v3_v3(max, centr);
-	recenter_dm(derivedData, centr);
-
+	if (ob->type == OB_FONT || ob->type == OB_CURVE || ob->type == OB_SURF)
+	{
+		Object* tempOb = BKE_object_copy(ob);
+		float invcentr[3];
+		tempOb->data = BKE_curve_copy(ob->data);
+		curvetomesh(emd->modifier.scene, tempOb);
+		BKE_mesh_boundbox_calc(tempOb->data, centr, size);
+		BKE_libblock_free_us(&(G.main->object), tempOb);
+		mat4_to_loc_quat(loc, quat, mat);
+		
+		//sub_v3_v3v3(diff, centr, loc);
+		copy_v3_v3(diff, centr);
+		mul_v3_v3fl(min, size, -1);
+		mul_v3_v3fl(max, size, 1);
+		add_v3_v3(min, centr);
+		add_v3_v3(max, centr);
+		add_v3_v3(min, diff);
+		add_v3_v3(max, diff);
+		mul_v3_v3fl(invcentr, centr, -1);
+		recenter_dm(derivedData, invcentr);
+	}
+	else if (ob->type == OB_MESH)
+	{
+		//use global coordinates for container
+		BKE_mesh_boundbox_calc(ob->data, centr, size);
+		//mat4_to_loc_quat(loc, quat, mat);
+		mul_v3_v3fl(min, size, -1);
+		mul_v3_v3fl(max, size, 1);
+		add_v3_v3(min, centr);
+		add_v3_v3(max, centr);
+		recenter_dm(derivedData, centr);
+	}
+	
 	points = MEM_mallocN(sizeof(float*), "points");
 	totpoint = get_points(emd, emd->modifier.scene, ob, &points, mat, derivedData);
 
@@ -2498,6 +2534,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 
 			invert_m4_m4(imat, ob->obmat);
 			mul_v3_m4v3(vco, imat, vco);
+			//sub_v3_v3(vco, diff);
 
 
 			tempvert = MEM_reallocN(tempvert, sizeof(BMVert*) * (tempvert_index + 1));
@@ -2583,7 +2620,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 			}
 			else if ( c == ')') {
 				float area;
-				Mesh *me = (Mesh*)ob->data;
+				//Mesh *me = (Mesh*)ob->data;
 				//end of face tuple, can create face now, but before create last edge to close the circle
 				if (faceverts[0] != faceverts[face_index-1]) {
 					faceedges = MEM_reallocN(faceedges, (edge_index + 1) * sizeof(BMEdge*));
@@ -2618,7 +2655,8 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 
 				if (face != NULL) { //&& (emd->flip_normal))
 					BM_face_normal_flip(bmtemp, face);
-					if (me->mpoly[0].flag & ME_SMOOTH) {
+					//if (me->mpoly[0].flag & ME_SMOOTH) {
+					if (derivedData->getPolyArray(derivedData)[0].flag & ME_SMOOTH) {
 						BM_elem_flag_enable(face, BM_ELEM_SMOOTH);
 					}
 				}
@@ -2791,9 +2829,9 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 						emd->cells->data[emd->cells->count].vertco =
 								MEM_reallocN(emd->cells->data[emd->cells->count].vertco, (vert_index + 1)* (3*sizeof(float)));
 
-						emd->cells->data[emd->cells->count].vertco[3*vert_index] = vert->co[0];
-						emd->cells->data[emd->cells->count].vertco[3*vert_index+1] = vert->co[1];
-						emd->cells->data[emd->cells->count].vertco[3*vert_index+2] = vert->co[2];
+						emd->cells->data[emd->cells->count].vertco[3*vert_index] = vert->co[0] - diff[0];
+						emd->cells->data[emd->cells->count].vertco[3*vert_index+1] = vert->co[1] - diff[1];
+						emd->cells->data[emd->cells->count].vertco[3*vert_index+2] = vert->co[2] - diff[2];
 
 /*						emd->cells->data[emd->cells->count].vert_indexes =
 								MEM_reallocN(emd->cells->data[emd->cells->count].vert_indexes, sizeof(int) * (vert_index+1));
@@ -2878,6 +2916,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 				&emd->cells->data[emd->cells->count].centroid[2]);
 		
 		invert_m4_m4(imat, ob->obmat);
+		sub_v3_v3(emd->cells->data[emd->cells->count].centroid, diff);
 		mul_m4_v3(imat, emd->cells->data[emd->cells->count].centroid);
 
 		//read neighbor id list (its PER FACE !!!) -> store in face customdata ?
@@ -3949,6 +3988,7 @@ ModifierTypeInfo modifierType_Explode = {
 	/* structSize */        sizeof(ExplodeModifierData),
 	/* type */              eModifierTypeType_Constructive,
 	/* flags */             eModifierTypeFlag_AcceptsMesh |
+							eModifierTypeFlag_AcceptsCVs |
 							eModifierTypeFlag_Single,	//more modifiers dont really make sense
 	/* copyData */          copyData,
 	/* deformVerts */       NULL,
