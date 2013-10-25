@@ -84,6 +84,43 @@
 #  include "../../../../extern/voro++/src/c_interface.hh"
 #endif
 
+int DM_calc_center_centroid(DerivedMesh *dm, float cent[3])
+{
+	BMFace *f;
+	BMIter iter;
+	float face_area;
+	float total_area = 0.0f;
+	float face_cent[3];
+	int totface = 0;
+	BMesh* bm = DM_to_bmesh(dm, true);
+
+	zero_v3(cent);
+
+	/* calculate a weighted average of face centroids */
+	BM_ITER_MESH (f, &iter, bm, BM_FACES_OF_MESH) {
+		//if (BM_elem_flag_test(f, BM_ELEM_TAG) || !tagged) 
+		{
+			BM_face_calc_center_mean (f, face_cent);
+			face_area = BM_face_calc_area(f);
+
+			madd_v3_v3fl(cent, face_cent, face_area);
+			total_area += face_area;
+		}
+	}
+	/* otherwise we get NAN for 0 polys */
+	if (bm->totface) {
+		mul_v3_fl(cent, 1.0f / total_area);
+	}
+	else if (bm->totvert == 1)
+	{
+		copy_v3_v3(cent, BM_vert_at_index(bm, 0)->co);
+	}
+
+	totface = bm->totface;
+	BM_mesh_free(bm);
+	return (totface != 0);
+}
+
 
 void select_by_material(BMesh *bm, const short index, const short select)
 {
@@ -2919,14 +2956,15 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 			}
 		}
 
-		//read centroid
+		//read centroid... really ? What about boolean... it should be recalculated here... but do fscanf at all
+		//so the parsing routine does not get messed up...
 		fscanf(fp, " %f %f %f ", &emd->cells->data[emd->cells->count].centroid[0],
 				&emd->cells->data[emd->cells->count].centroid[1],
 				&emd->cells->data[emd->cells->count].centroid[2]);
 		
-		invert_m4_m4(imat, ob->obmat);
-		sub_v3_v3(emd->cells->data[emd->cells->count].centroid, diff);
-		mul_m4_v3(imat, emd->cells->data[emd->cells->count].centroid);
+		//invert_m4_m4(imat, ob->obmat);
+		//sub_v3_v3(emd->cells->data[emd->cells->count].centroid, diff);
+		//mul_m4_v3(imat, emd->cells->data[emd->cells->count].centroid);
 
 		//read neighbor id list (its PER FACE !!!) -> store in face customdata ?
 		// no its per cell (i hope)
@@ -2967,6 +3005,21 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 			//skip \n
 			fseek(fp, sizeof(char), SEEK_CUR);
 #endif
+			if (emd->use_boolean)
+			{
+				float centroid[3] = {0, 0, 0};
+				DM_calc_center_centroid(emd->cells->data[emd->cells->count].cell_mesh, centroid);
+				copy_v3_v3(emd->cells->data[emd->cells->count].centroid, centroid);
+			}
+			
+			invert_m4_m4(imat, ob->obmat);
+			sub_v3_v3(emd->cells->data[emd->cells->count].centroid, diff);
+			
+			if (!emd->use_boolean)
+			{
+				mul_m4_v3(imat, emd->cells->data[emd->cells->count].centroid);
+			}
+			
 			emd->cells->count++;
 		}
 		else
