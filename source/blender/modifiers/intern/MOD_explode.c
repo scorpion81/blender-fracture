@@ -983,6 +983,7 @@ static void freeData(ModifierData *md)
 		BKE_libblock_free_us(&(G.main->object), emd->tempOb);
 		//BKE_object_unlink(emd->tempOb);
 		//BKE_object_free(emd->tempOb);
+		emd->tempOb->data = NULL;
 		emd->tempOb = NULL;
 	}
 
@@ -2482,6 +2483,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 	if (totpoint == 0)
 		return NULL;
 
+	//if i empty the mesh afterwards, hmm why do i generate it from derivedData in the first place... ? Odd...
 	bm = DM_to_bmesh(derivedData, true);
 	//empty the mesh
 	BM_mesh_clear(bm);
@@ -2695,6 +2697,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 						if (!emd->tempOb)
 						{
 							emd->tempOb = BKE_object_add_only_object(G.main, OB_MESH, "Intersect");
+							emd->tempOb->data = NULL;
 							//emd->tempOb = BKE_object_add(emd->modifier.scene, OB_MESH);
 						}
 
@@ -2757,6 +2760,12 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 					
 					BM_mesh_free(bmtemp);
 					bmtemp = NULL;
+					
+					if ((emd->tempOb) && (emd->tempOb->data) && (emd->mode == eFractureMode_Cells)) {
+						BKE_libblock_free_us(&(G.main->object), emd->tempOb);
+						emd->tempOb->data = NULL;
+						emd->tempOb = NULL;
+					}
 					
 					emd->cells->data[emd->cells->count].cell_mesh = boolresult;
 					
