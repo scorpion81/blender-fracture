@@ -2403,6 +2403,7 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 	char *path, *fullpath;
 	float imat[4][4];
 	float theta = 0.0f;
+	float newcentr[3] = {0, 0, 0};
 	int n_size = 8;
 
 	float** points = NULL;
@@ -2420,35 +2421,26 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 	if (ob->type == OB_FONT || ob->type == OB_CURVE || ob->type == OB_SURF)
 	{
 		Object* tempOb = BKE_object_copy(ob);
-		float invcentr[3];
+		//float invcentr[3];
 		tempOb->data = BKE_curve_copy(ob->data);
 		curvetomesh(emd->modifier.scene, tempOb);
 		BKE_mesh_boundbox_calc(tempOb->data, centr, size);
 		BKE_libblock_free_us(&(G.main->object), tempOb);
-		mat4_to_loc_quat(loc, quat, mat);
-		
-		//sub_v3_v3v3(diff, centr, loc);
-		copy_v3_v3(diff, centr);
-		mul_v3_v3fl(min, size, -1);
-		mul_v3_v3fl(max, size, 1);
-		add_v3_v3(min, centr);
-		add_v3_v3(max, centr);
-		add_v3_v3(min, diff);
-		add_v3_v3(max, diff);
-		mul_v3_v3fl(invcentr, centr, -1);
-		recenter_dm(derivedData, invcentr);
 	}
 	else if (ob->type == OB_MESH)
 	{
 		//use global coordinates for container
 		BKE_mesh_boundbox_calc(ob->data, centr, size);
-		//mat4_to_loc_quat(loc, quat, mat);
+	}
+	
+	//	mat4_to_loc_quat(loc, quat, mat);
+	//	sub_v3_v3v3(diff, loc, centr);
+	//	add_v3_v3v3(newcentr, centr, loc);
 		mul_v3_v3fl(min, size, -1);
 		mul_v3_v3fl(max, size, 1);
-		add_v3_v3(min, centr);
-		add_v3_v3(max, centr);
+		//add_v3_v3(min, centr);
+		//add_v3_v3(max, centr);
 		recenter_dm(derivedData, centr);
-	}
 	
 	points = MEM_mallocN(sizeof(float*), "points");
 	totpoint = get_points(emd, emd->modifier.scene, ob, &points, mat, derivedData);
@@ -2875,9 +2867,9 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 						emd->cells->data[emd->cells->count].vertco =
 								MEM_reallocN(emd->cells->data[emd->cells->count].vertco, (vert_index + 1)* (3*sizeof(float)));
 
-						emd->cells->data[emd->cells->count].vertco[3*vert_index] = vert->co[0] - diff[0];
-						emd->cells->data[emd->cells->count].vertco[3*vert_index+1] = vert->co[1] - diff[1];
-						emd->cells->data[emd->cells->count].vertco[3*vert_index+2] = vert->co[2] - diff[2];
+						emd->cells->data[emd->cells->count].vertco[3*vert_index] = vert->co[0] + centr[0];
+						emd->cells->data[emd->cells->count].vertco[3*vert_index+1] = vert->co[1] + centr[1];
+						emd->cells->data[emd->cells->count].vertco[3*vert_index+2] = vert->co[2] + centr[2];
 
 /*						emd->cells->data[emd->cells->count].vert_indexes =
 								MEM_reallocN(emd->cells->data[emd->cells->count].vert_indexes, sizeof(int) * (vert_index+1));
@@ -3013,9 +3005,9 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 			}
 			
 			invert_m4_m4(imat, ob->obmat);
-			sub_v3_v3(emd->cells->data[emd->cells->count].centroid, diff);
+			add_v3_v3(emd->cells->data[emd->cells->count].centroid, centr);
 			
-			if (!emd->use_boolean)
+			//if (!emd->use_boolean)
 			{
 				mul_m4_v3(imat, emd->cells->data[emd->cells->count].centroid);
 			}
@@ -3056,15 +3048,15 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 	
 	printf("%d cells missing\n", totpoint - emd->cells->count); //use totpoint here
 	
-	{
+	/*{
 		BMVert *v;
 		BMIter iter;
 		
 		BM_ITER_MESH(v, &iter, bm, BM_VERTS_OF_MESH)
 		{
-			sub_v3_v3(v->co, centr);
+			add_v3_v3(v->co, centr);
 		}
-	}
+	}*/
 	
 	return bm;
 }
