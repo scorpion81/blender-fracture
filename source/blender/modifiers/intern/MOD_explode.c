@@ -2112,7 +2112,7 @@ static int points_from_verts(Object** ob, int totobj, float*** points, int p_exi
 }
 
 static int points_from_particles(Object** ob, int totobj, Scene* scene, float*** points, int p_exist, float mat[4][4],
-								 float thresh, ExplodeModifierData* emd)
+								 float thresh, ExplodeModifierData* emd, float centr[3])
 {
 	int o, p, pt = p_exist;
 	ParticleSystemModifierData* psmd;
@@ -2155,6 +2155,7 @@ static int points_from_particles(Object** ob, int totobj, Scene* scene, float***
 						{
 							//mul_m4_v3(ob[o]->obmat, co);
 							mul_m4_v3(imat, co);
+							//add_v3_v3(co, centr);
 						}
 						copy_v3_v3((*points)[pt], co);
 						pt++;
@@ -2228,7 +2229,7 @@ static int getGroupObjects(Group *gr, Object ***obs, int g_exist)
 	return ctr;
 }
 
-static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float ***points, float mat[4][4], DerivedMesh *derivedData)
+static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float ***points, float mat[4][4], DerivedMesh *derivedData, float centr[3])
 {
 	int totpoint = 0, totgroup = 0, t = 0;
 	Object** go = MEM_mallocN(sizeof(Object*), "groupobjects");
@@ -2258,7 +2259,7 @@ static int get_points(ExplodeModifierData *emd, Scene *scene, Object *ob, float 
 	
 	if (emd->point_source & (eOwnParticles | eExtraParticles))
 	{
-		totpoint = points_from_particles(go, totgroup, scene, points, totpoint, mat, thresh, emd);
+		totpoint = points_from_particles(go, totgroup, scene, points, totpoint, mat, thresh, emd, centr);
 	}
 	
 	if (emd->point_source & (eOwnVerts | eExtraVerts))
@@ -2432,17 +2433,19 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 		//use global coordinates for container
 		BKE_mesh_boundbox_calc(ob->data, centr, size);
 	}
-		mul_v3_v3fl(min, size, -1);
-		mul_v3_v3fl(max, size, 1);
-		if (emd->use_clipping && !emd->use_boolean)
-		{	//this will mess up existing baked files if not done (i guess, because 1 testfile shows this behavior)
-			add_v3_v3(min, centr);
-			add_v3_v3(max, centr);
-		}
+	
+	mul_v3_v3fl(min, size, -1);
+	mul_v3_v3fl(max, size, 1);
+	add_v3_v3(min, centr);
+	add_v3_v3(max, centr);
+	
+	if (emd->use_clipping)
+	{	//prevent cut off parts of the mesh there
 		recenter_dm(derivedData, centr);
+	}
 	
 	points = MEM_mallocN(sizeof(float*), "points");
-	totpoint = get_points(emd, emd->modifier.scene, ob, &points, mat, derivedData);
+	totpoint = get_points(emd, emd->modifier.scene, ob, &points, mat, derivedData, centr);
 
 	//no points, cant do anything
 	if (totpoint == 0) {
@@ -2866,22 +2869,9 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 						emd->cells->data[emd->cells->count].vertco =
 								MEM_reallocN(emd->cells->data[emd->cells->count].vertco, (vert_index + 1)* (3*sizeof(float)));
 
-						if (emd->use_clipping && !emd->use_boolean)
-						{	
-							emd->cells->data[emd->cells->count].vertco[3*vert_index] = vert->co[0];
-							emd->cells->data[emd->cells->count].vertco[3*vert_index+1] = vert->co[1];
-							emd->cells->data[emd->cells->count].vertco[3*vert_index+2] = vert->co[2];
-						}
-						else
-						{
-							emd->cells->data[emd->cells->count].vertco[3*vert_index] = vert->co[0] + centr[0];
-							emd->cells->data[emd->cells->count].vertco[3*vert_index+1] = vert->co[1] + centr[1];
-							emd->cells->data[emd->cells->count].vertco[3*vert_index+2] = vert->co[2] + centr[2];
-						}
-
-/*						emd->cells->data[emd->cells->count].vert_indexes =
-								MEM_reallocN(emd->cells->data[emd->cells->count].vert_indexes, sizeof(int) * (vert_index+1));
-						emd->cells->data[emd->cells->count].vert_indexes[vert_index] = vert_index;*/
+						emd->cells->data[emd->cells->count].vertco[3*vert_index] = vert->co[0];
+						emd->cells->data[emd->cells->count].vertco[3*vert_index+1] = vert->co[1];
+						emd->cells->data[emd->cells->count].vertco[3*vert_index+2] = vert->co[2];
 
 						CustomData_to_bmesh_block(&boolresult->vertData, &bm->vdata, v, &vert->head.data , 0);
 						
@@ -3010,16 +3000,10 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 				float centroid[3] = {0, 0, 0};
 				DM_calc_center_centroid(emd->cells->data[emd->cells->count].cell_mesh, centroid);
 				copy_v3_v3(emd->cells->data[emd->cells->count].centroid, centroid);
-				add_v3_v3(emd->cells->data[emd->cells->count].centroid, centr);
 			}
 			
 			invert_m4_m4(imat, ob->obmat);
-			//add_v3_v3(emd->cells->data[emd->cells->count].centroid, centr);
-			
-			//if (!emd->use_boolean)
-			{
-				mul_m4_v3(imat, emd->cells->data[emd->cells->count].centroid);
-			}
+			mul_m4_v3(imat, emd->cells->data[emd->cells->count].centroid);
 			
 			emd->cells->count++;
 		}
@@ -3056,17 +3040,6 @@ static BMesh* fractureToCells(Object *ob, DerivedMesh* derivedData, ExplodeModif
 	MEM_freeN(path);
 	
 	printf("%d cells missing\n", totpoint - emd->cells->count); //use totpoint here
-	
-	if (ob->type != OB_MESH)
-	{
-		BMVert *v;
-		BMIter iter;
-		
-		BM_ITER_MESH(v, &iter, bm, BM_VERTS_OF_MESH)
-		{
-			add_v3_v3(v->co, centr);
-		}
-	}
 	
 	return bm;
 }
@@ -3750,7 +3723,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					emd->use_cache = !emd->use_autorefresh; //MOD_VORONOI_USECACHE;
 				}
 				
-				if (emd->fracMesh != NULL)
+				/*if (emd->fracMesh != NULL)
 				{
 					BMVert* vert;
 					BMIter iter;
@@ -3760,7 +3733,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					{
 						add_v3_v3(vert->co, centr);
 					}
-				}
+				}*/
 				
 				copy_m4_m4(ob->obmat, oldobmat); // restore obmat
 				
