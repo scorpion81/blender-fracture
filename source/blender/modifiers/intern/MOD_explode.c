@@ -3555,15 +3555,6 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 								 "dissolve_limit edges=%ae verts=%av angle_limit=%f use_dissolve_boundaries=%b",
 							BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);*/
 					BM_mesh_decimate_dissolve(emd->fracMesh, 0.087f, false, 0);
-					
-					//select inner material and mark sharp
-					if (!emd->use_clipping) {
-						mat_index = find_material_index(ob, emd->inner_material);
-						if (mat_index > 0) {
-							select_by_material(emd->fracMesh, mat_index-1, 1);
-							mark_sharp(ob, emd->fracMesh, 0);
-						}
-					}
 				}
 				
 				//copy_m4_m4(ob->obmat, oldobmat); // restore obmat
@@ -3767,6 +3758,16 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			{
 				BMesh *bmtemp;
 				//only convert once while refreshing in boolean case
+				
+				//select inner material and mark sharp
+				if (!emd->use_clipping) {
+					mat_index = find_material_index(ob, emd->inner_material);
+					if (mat_index > 0) {
+						select_by_material(emd->fracMesh, mat_index-1, 1);
+						mark_sharp(ob, emd->fracMesh, 0);
+					}
+				}
+				
 				result = CDDM_from_bmesh(emd->fracMesh, true);
 				DM_ensure_tessface(result);
 				CDDM_calc_edges_tessface(result);
