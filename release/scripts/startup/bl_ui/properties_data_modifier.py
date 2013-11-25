@@ -262,12 +262,14 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
             layout.prop(md, "use_collapse_triangulate")
         elif decimate_type == 'UNSUBDIV':
             layout.prop(md, "iterations")
-        else:  # decimate_type == 'DISSOLVE':
+        elif decimate_type == 'DISSOLVE':
             layout.prop(md, "angle_limit")
             layout.prop(md, "use_dissolve_boundaries")
             layout.label("Delimit:")
             row = layout.row()
             row.prop(md, "delimit")
+        else:  # decimate_type == 'REMDOUBLES':
+            layout.prop(md, "merge_threshold") 
 
         layout.label(text=iface_("Face Count: %d") % md.face_count, translate=False)
 

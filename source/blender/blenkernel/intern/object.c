@@ -153,7 +153,7 @@ void BKE_object_free_particlesystems(Object *ob)
 void BKE_object_free_softbody(Object *ob)
 {
 	if (ob->soft) {
-		sbFree(ob->soft);
+		sbFree(ob->soft, ob);
 		ob->soft = NULL;
 	}
 }
@@ -375,7 +375,7 @@ void BKE_object_free(Object *ob)
 	BKE_rigidbody_free_object(ob);
 	BKE_rigidbody_free_constraint(ob);
 
-	if (ob->soft) sbFree(ob->soft);
+	if(ob->soft) sbFree(ob->soft, ob);
 	if (ob->bsoft) bsbFree(ob->bsoft);
 	if (ob->gpulamp.first) GPU_lamp_free(ob);
 

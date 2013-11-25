@@ -143,6 +143,7 @@ class PHYSICS_PT_softbody_edge(PhysicButtonsPanel, Panel):
         col.prop(softbody, "plastic")
         col.prop(softbody, "bend")
         col.prop(softbody, "spring_length", text="Length")
+        col.prop(softbody, "demolitionlimit")
         col.prop_search(softbody, "vertex_group_spring", ob, "vertex_groups", text="Springs:")
 
         col = split.column()
