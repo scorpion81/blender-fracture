@@ -966,6 +966,16 @@ int buttons_context(const bContext *C, const char *member, bContextDataResult *r
 			return 1;
 		}
 	}
+	else if (CTX_data_equals(member, "fracture")) {
+		PointerRNA *ptr = get_pointer_type(path, &RNA_Object);
+
+		if (ptr && ptr->data) {
+			Object *ob = ptr->data;
+			ModifierData *md = modifiers_findByType(ob, eModifierType_Fracture);
+			CTX_data_pointer_set(result, &ob->id, &RNA_FractureModifier, md);
+			return 1;
+		}
+	}
 	else {
 		return 0; /* not found */
 	}

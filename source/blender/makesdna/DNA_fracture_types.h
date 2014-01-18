@@ -4,7 +4,11 @@
 #include "DNA_mesh_types.h"
 #include "DNA_object_types.h"
 #include "BLI_utildefines.h"
-#include "bmesh.h"
+#include "../bmesh/bmesh_class.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 typedef struct PointCloud {
 	float **points;	// just a bunch of positions in space
@@ -35,12 +39,16 @@ typedef struct FracMesh {
 } FracMesh;
 
 typedef struct FracHistory {
-	FracMesh** frac_states; // "indexed" by frames ? handle this in iterator...?
+	FracMesh **frac_states; // "indexed" by frames ? handle this in iterator...?
 	int *frame_map; // only step in iterator when past or before according frame... important for replaying from cache
 					// need a framemap; to trigger step changes by frame since we dont have neither user interaction nor feedback from the sim
 					// this must be part of the history and could be in pointcache as well
 	int state_count;
 	char pad[4];
 } FracHistory;
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // DNA_FRACTURE_TYPES_H

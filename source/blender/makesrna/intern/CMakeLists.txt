@@ -50,6 +50,7 @@ set(DEFSRC
 	rna_dynamicpaint.c
 	rna_fcurve.c
 	rna_fluidsim.c
+	rna_fracture.c
 	rna_gpencil.c
 	rna_group.c
 	rna_image.c

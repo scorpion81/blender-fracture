@@ -1288,4 +1288,5 @@ int main(int argc, char **argv)
 #include "DNA_rigidbody_types.h"
 #include "DNA_freestyle_types.h"
 #include "DNA_linestyle_types.h"
+#include "DNA_fracture_types.h"
 /* end of list */

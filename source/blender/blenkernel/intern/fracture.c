@@ -5,8 +5,14 @@
 #include "BLI_math_vector.h"
 #include "BKE_mesh.h"
 #include "RBI_api.h"
+#include "bmesh.h"
 
-static float point[3]; //hrrrrm, need this in sorting algorithm as part of the key, cant pass it directly
+//static float point[3]; //hrrrrm, need this in sorting algorithm as part of the key, cant pass it directly
+
+//mesh construction functions... from voro++ rawdata and boolean intersection
+static BMesh* construct_mesh(FILE *rawdata);
+static Shard* construct_cell(BMesh** bm, FILE *rawdata);
+static void intersect_cell(BMesh** bm, Shard**shard, Object* cutter);
 
 /* iterator functions for efficient looping over shards */
 ShardIterator* BKE_shards_begin(FracMesh *mesh) {
@@ -87,7 +93,86 @@ ShardList fracture_shard_by_points(FracMesh* mesh, ShardID id, PointCloud* point
 	//do cell fracture code here on shardbbox, AND intersect with boolean, hmm would need a temp object for this ? or bisect with cell planes.
 	//lets test bisect but this is a bmesh operator, so need to convert, do bisection and convert back, slow. and cellfrac also uses bmesh, hmm
 	//so better keep this around
+//#ifdef WITH_VORO++
+	//FracMesh will be initialized with a shard set. First need to check whether the id is there at all. Shard Id 0 intially is the first shard
+	Shard* s = BKE_shard_by_id(*mesh,  id);
+	
+	// that will become the voro++ container...
+	
+	//dummyfrac
+	BMesh* bm = mesh->fractured_mesh;
+	BoundBox *bb = s->bb;
+	float dim[3];
+	int i;
+	
+	sub_v3_v3v3(dim, bb->vec[4], bb->vec[0]);
+	mul_v3_fl(dim, 0.5f);
+	
+	//scale and translate
+	for (i = 0; i < s->vertex_count; i++)
+	{
+		s->vertices[i]->co[0] * 0.5f;
+		s->vertices[i]->co[0] - dim[0];
+	}
+	
+	BMesh* bmcopy = BM_mesh_copy(bm); // need to merge... somehow
+	
+	for (i = 0; i < s->vertex_count; i++)
+	{
+		float vco[3];
+		copy_v3_v3(vco, s->vertices[i]->co);
+		vco[0] = vco[0] + (dim[0] * 2.0f);
+		
+	}
+	
+	
+	
+	
+	//scale down the original geometry in X direction by 0.5 and translate by halfbbox
+	//duplicate it (add all verts again, + 
+	
+	
+	//build the voro++ container now
+	
+	//add pointcloud points into container
+	
+	//and trigger voro++
+	
+	
+	//parse result (new function)
+	
+
+//#else
+		
+//#endif
 	return NULL;
+}
+
+//use a memfile for this...
+static BMesh* construct_mesh(FILE* rawdata)
+{
+	//init bmesh
+	//loop
+	//parse vertices
+	
+	//loop
+	//parse faces
+	
+	//build cell...
+	
+	//intersect cell...
+	//parse centroids
+	return NULL;
+}
+
+static Shard* construct_cell(BMesh **bm, FILE* rawdata)
+{
+	return NULL;
+}
+
+static void intersect_cell(BMesh **bm, Shard** shard, Object* orig)
+{
+	
 }
 
 /*static int point_cmp(void *v1, void *v2)
@@ -181,10 +266,6 @@ ShardList fracture_shard_by_points(FracMesh* mesh, ShardID id, PointCloud* point
 		}
 	}
 }*/
-
-#ifdef WITH_VORO++
-#endif
-
 
 /*ShardList fracture_by_points(FracMesh *fmesh, PointCloud *pointcloud) {
 	//find shards by positions in pointcloud ? and dont forget updating the kdtree as well...

@@ -3,18 +3,18 @@
 
 #include "DNA_fracture_types.h"
 #include "DNA_meshdata_types.h"
+#include "DNA_group_types.h"
 #include "BLI_sys_types.h"
 #include "RBI_api.h"
 
 typedef int ShardID;
 
-typedef Shard* ShardList;
+typedef Shard** ShardList;
 
 typedef struct ShardIterator {
 	FracMesh* frac_mesh;
 	int		current;
 } ShardIterator;
-
 
 
 typedef struct FracMeshIterator {
@@ -51,8 +51,8 @@ void BKE_get_shard_bbox(FracMesh* mesh, ShardID id, BoundBox* bbox);
 //container hierarchy -> write info to fracmesh / shard (like parent id and child ids) 
 //tag small shards for "standardbrösel" -> instances of simple primitives, selected from a group, randomly rotated scaled in a certain range
 FracMesh* BKE_create_fracture_container(Object* ob); //check for mesh; for curves / fonts... convert to mesh automatically, warn user (fonts, ensure remeshing before)
-FracMesh* BKE_close_fracture_container(Group* g);
-Group* BKE_open_fracture_container(FracMesh* fm);
+//FracMesh* BKE_close_fracture_container(Group* g);
+//Group* BKE_open_fracture_container(FracMesh* fm);
 void BKE_drop_fracture_container(Object* ob);
 
 //hmm maybe a listbase of steps, its dynamically created by user interaction(THIS is in hierarchy!!! prefractured) or a dynafrac step (THIS suits.)

@@ -348,6 +348,11 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
     def FLUID_SIMULATION(self, layout, ob, md):
         layout.label(text="Settings can be found inside the Physics context")
 
+    def FRACTURE(self, layout, ob, md):
+        layout.label(text="BLAH")
+        #layout.prop(md, "system")
+        #layout.label(text="0: lorentz 1: gravity")
+
     def HOOK(self, layout, ob, md):
         split = layout.split()
 

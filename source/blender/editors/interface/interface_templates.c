@@ -821,8 +821,8 @@ static int modifier_can_delete(ModifierData *md)
 static int modifier_is_simulation(ModifierData *md)
 {
 	/* Physic Tab */
-	if (ELEM7(md->type, eModifierType_Cloth, eModifierType_Collision, eModifierType_Fluidsim, eModifierType_Smoke,
-	          eModifierType_Softbody, eModifierType_Surface, eModifierType_DynamicPaint))
+	if (ELEM8(md->type, eModifierType_Cloth, eModifierType_Collision, eModifierType_Fluidsim, eModifierType_Smoke,
+	          eModifierType_Softbody, eModifierType_Surface, eModifierType_DynamicPaint, eModifierType_Fracture))
 	{
 		return 1;
 	}
@@ -992,8 +992,8 @@ static uiLayout *draw_modifier(uiLayout *layout, Scene *scene, Object *ob,
 			uiBlockClearButLock(block);
 			uiBlockSetButLock(block, ob && ob->id.lib, ERROR_LIBDATA_MESSAGE);
 			
-			if (!ELEM5(md->type, eModifierType_Fluidsim, eModifierType_Softbody, eModifierType_ParticleSystem,
-			           eModifierType_Cloth, eModifierType_Smoke))
+			if (!ELEM6(md->type, eModifierType_Fluidsim, eModifierType_Softbody, eModifierType_ParticleSystem,
+			           eModifierType_Cloth, eModifierType_Smoke, eModifierType_Fracture))
 			{
 				uiItemO(row, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Copy"), ICON_NONE,
 				        "OBJECT_OT_modifier_copy");

@@ -81,6 +81,7 @@ EnumPropertyItem modifier_type_items[] = {
 	{eModifierType_Subsurf, "SUBSURF", ICON_MOD_SUBSURF, "Subdivision Surface", ""},
 	{eModifierType_Triangulate, "TRIANGULATE", ICON_MOD_TRIANGULATE, "Triangulate", ""},
 	{eModifierType_Wireframe, "WIREFRAME", ICON_MOD_WIREFRAME, "Wireframe", "Generate a wireframe on the edges of a mesh"},
+	{eModifierType_Fracture, "FRACTURE", ICON_MOD_EXPLODE, "Fracture", ""},
 	{0, "", 0, N_("Deform"), ""},
 	{eModifierType_Armature, "ARMATURE", ICON_MOD_ARMATURE, "Armature", ""},
 	{eModifierType_Cast, "CAST", ICON_MOD_CAST, "Cast", ""},
@@ -244,6 +245,8 @@ static StructRNA *rna_Modifier_refine(struct PointerRNA *ptr)
 			return &RNA_LaplacianDeformModifier;
 		case eModifierType_Wireframe:
 			return &RNA_WireframeModifier;
+		case eModifierType_Fracture:
+			return &RNA_FractureModifier;
 		/* Default */
 		case eModifierType_None:
 		case eModifierType_ShapeKey:
@@ -3793,6 +3796,26 @@ static void rna_def_modifier_wireframe(BlenderRNA *brna)
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
+static void rna_def_modifier_fracture(BlenderRNA *brna)
+{
+	StructRNA *srna;
+	PropertyRNA *prop;
+
+	srna = RNA_def_struct(brna, "FractureModifier", "Modifier");
+	RNA_def_struct_ui_text(srna, "Fracture Modifier", "Add a fracture container to this object");
+	RNA_def_struct_sdna(srna, "FractureModifierData");
+	RNA_def_struct_ui_icon(srna, ICON_MOD_EXPLODE);
+	
+	//prop= RNA_def_property(srna, "system", PROP_INT, PROP_NONE);
+	//RNA_def_property_int_sdna(prop, NULL, "system");
+	// we should use an enum but this is hacked together for now
+	// this range is to allow the user to select a different system
+	//RNA_def_property_ui_range(prop, 0, 2, 1, 0);
+	//RNA_def_property_ui_text(prop, "Systems", "Available particle systems");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+}
+
 void RNA_def_modifier(BlenderRNA *brna)
 {
 	StructRNA *srna;
@@ -3905,6 +3928,7 @@ void RNA_def_modifier(BlenderRNA *brna)
 	rna_def_modifier_meshcache(brna);
 	rna_def_modifier_laplaciandeform(brna);
 	rna_def_modifier_wireframe(brna);
+	rna_def_modifier_fracture(brna);
 }
 
 #endif
