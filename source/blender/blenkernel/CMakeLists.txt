@@ -93,6 +93,7 @@ set(SRC
 	intern/fluidsim.c
 	intern/fmodifier.c
 	intern/font.c
+	intern/fracture.c
 	intern/freestyle.c
 	intern/gpencil.c
 	intern/group.c
@@ -200,6 +201,7 @@ set(SRC
 	BKE_fcurve.h
 	BKE_fluidsim.h
 	BKE_font.h
+	BKE_fracture.h
 	BKE_freestyle.h
 	BKE_global.h
 	BKE_gpencil.h
@@ -436,6 +438,13 @@ endif()
 
 if(WITH_FREESTYLE)
 	add_definitions(-DWITH_FREESTYLE)
+endif()
+
+if(WITH_VORO++)
+	add_definitions(-DWITH_VORO++)
+	list(APPEND INC
+		../../../extern/voro++
+	)
 endif()
 
 ## Warnings as errors, this is too strict!
