@@ -40,6 +40,7 @@ set(SRC
 	particle_edit.c
 	particle_object.c
 	physics_fluid.c
+	physics_fracture.c
 	physics_ops.c
 	physics_pointcache.c
 	rigidbody_constraint.c

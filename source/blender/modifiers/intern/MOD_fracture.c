@@ -24,24 +24,47 @@
 */
 
 #include "DNA_fracture_types.h"
+#include "BKE_fracture.h"
 #include "BKE_cdderivedmesh.h"
 #include "MOD_util.h"
 
 static void initData(ModifierData *md)
 {
         FractureModifierData *fmd = (FractureModifierData*) md;
+		//...
+}
+
+static void freeData(ModifierData *md)
+{
+	FractureModifierData *fmd = (FractureModifierData*) md;
+	BKE_fracmesh_free(fmd->frac_mesh);
 }
 
 static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
                                   DerivedMesh *derivedData,
                                   ModifierApplyFlag UNUSED(flag))
 {
-		return derivedData;		//need to pass rendermesh out... created outside !!
+		//need to pass rendermesh out... created outside !!
 		//also show single islands via selected index... hmm but how to apply to it ?
 		//apply to selected shards; this must be in kernel as well (via index) but there prepare
 		//an array of indexes; for multiselection
 		//outliner ? hmm
 		//all not so good...
+	
+		FractureModifierData *fmd = (FractureModifierData*) md;
+		
+		if (fmd->frac_mesh == NULL) {
+			fmd->frac_mesh = BKE_create_fracture_container(derivedData);
+		}
+		
+		if (fmd->frac_mesh->render_mesh != NULL)
+		{
+			return CDDM_copy(fmd->frac_mesh->render_mesh);
+		}
+		else
+		{
+			return derivedData;
+		}
 }
 
 ModifierTypeInfo modifierType_Fracture = {
@@ -59,7 +82,7 @@ ModifierTypeInfo modifierType_Fracture = {
         /* applyModifierEM */ NULL,
         /* initData */ initData,
         /* requiredDataMask */ NULL,
-        /* freeData */ NULL,
+        /* freeData */ freeData,
         /* isDisabled */ NULL,
         /* updateDepgraph */ NULL,
         /* dependsOnTime */ NULL,//dependsOnTime,

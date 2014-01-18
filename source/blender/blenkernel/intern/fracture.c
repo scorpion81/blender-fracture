@@ -6,8 +6,62 @@
 #include "BKE_mesh.h"
 #include "RBI_api.h"
 #include "bmesh.h"
+#include "BKE_DerivedMesh.h"
+#include "BKE_cdderivedmesh.h"
+#include "BKE_object.h"
 
 //static float point[3]; //hrrrrm, need this in sorting algorithm as part of the key, cant pass it directly
+
+//utility... bbox / centroid calc
+void BKE_shard_calc_centroid(Shard* s, float cent[3])
+{
+	float face_area;
+	float total_area = 0.0f;
+	float face_cent[3];
+	BMFace **faces = s->faces;
+	int fcount = s->face_count;
+	int i = 0;
+	
+	zero_v3(cent);
+
+	/* calculate a weighted average of face centroids */
+	for (i = 0; i < fcount; i++) 
+	{
+		BMFace* f = faces[i];
+		BM_face_calc_center_mean (f, face_cent);
+		face_area = BM_face_calc_area(f);
+
+		madd_v3_v3fl(cent, face_cent, face_area);
+		total_area += face_area;
+	}
+	
+	if (s->vertex_count == 1)
+	{
+		copy_v3_v3(cent, s->vertices[0]->co);
+	}
+	else if (fcount > 0) {
+		/* otherwise we get NAN for 0 polys */
+		mul_v3_fl(cent, 1.0f / total_area);
+	}
+}
+
+BoundBox* BKE_shard_calc_boundbox(Shard* s)
+{
+	float min[3], max[3];
+	BoundBox* bb = BKE_boundbox_alloc_unit();
+	int i = 0;
+	
+	INIT_MINMAX(min, max);
+	for (i = 0; i < s->vertex_count; i++)
+	{
+		BMVert *v = s->vertices[i];
+		minmax_v3v3_v3(min, max, v->co);
+	}
+	
+	BKE_boundbox_init_from_minmax(bb, min, max);
+	
+	return bb;
+}
 
 //mesh construction functions... from voro++ rawdata and boolean intersection
 static BMesh* construct_mesh(FILE *rawdata);
@@ -48,7 +102,7 @@ Shard* BKE_shard_by_iterator(ShardIterator *iter) {
 
 /*access shard directly by index / id*/
 Shard *BKE_shard_by_id(FracMesh* mesh, ShardID id) {
-	if ((index < mesh->shard_count) && (id >= 0))
+	if ((id < mesh->shard_count) && (id >= 0))
 	{
 		return mesh->shard_map[id];
 	}
@@ -79,29 +133,127 @@ void BKE_get_shard_bbox(FracMesh* mesh, ShardID id, BoundBox* bbox)
 	}
 }
 
-/*FracMesh* BKE_dm_to_fracmesh(DerivedMesh* dm) {
-	FracMesh* fmesh = MEM_mallocN(sizeof(FracMesh), __func__);
-	fmesh->fractured_mesh = dm;
-	fmesh->shard_list = MEM_mallocN(sizeof(ShardList), __func__);
-	fmesh->shard_list->shards = MEM_mallocN(sizeof(Shard) * 100, __func__); //allocate in chunks, better use proper blender functions for this
-	fmesh->shard_list->shard_count = 1; //the original "shard"
-	fmesh->shard_list->shards[0].vertex_count = dm->getNumVerts(dm);
-	fmesh->shard_list->shards[0].vertices = dm->getVertArray(dm);
-}*/
+Shard* BKE_create_fracture_shard(BMVert **v, BMEdge **e, BMFace **f, int vcount, int ecount, int fcount)
+{
+	Shard* s = MEM_mallocN(sizeof(Shard), __func__);
+	s->vertex_count = vcount;
+	s->edge_count = ecount;
+	s->face_count = fcount;
+	
+	s->vertices = v;
+	s->edges = e;
+	s->faces = f;
+	
+	s->bb = BKE_shard_calc_boundbox(s);
+	BKE_shard_calc_centroid(s, s->centroid);
+	
+	//neighborhood info ? optional from fracture process...
+	//id is created when inserted into fracmesh, externally then...
+	return s;
+}
 
-ShardList fracture_shard_by_points(FracMesh* mesh, ShardID id, PointCloud* pointcloud) {
+FracMesh* BKE_create_fracture_container(DerivedMesh* dm)
+{
+	//take mesh and init fracmesh and bmesh inside, create initial shard
+	//add modifier to object
+	//init modifier with fracmesh, hmmm...can i put it there, or let modifier create and return? better this is, from derivedmesh...
+	//no, let modifier call this in its init method... it will store the returned fracmesh in its data...
+	
+	Shard* s;
+	BMesh* bm;
+	BMIter iter;
+	BMVert* v;
+	BMEdge* e;
+	BMFace* f;
+	BMVert** verts;
+	BMEdge** edges;
+	BMFace** faces;
+	
+	FracMesh* fmesh = MEM_mallocN(sizeof(FracMesh), __func__);
+	int i = 0;
+	
+	bm = DM_to_bmesh(dm, true);
+	fmesh->fractured_mesh = bm;
+	fmesh->render_mesh = NULL;
+	
+	//make utility functions !!! 
+	verts = MEM_mallocN(sizeof(BMVert*) * bm->totvert, __func__);
+	edges = MEM_mallocN(sizeof(BMEdge*) * bm->totedge, __func__);
+	faces = MEM_mallocN(sizeof(BMFace*) * bm->totface, __func__);
+	
+	BM_ITER_MESH(v, &iter, bm, BM_VERTS_OF_MESH)
+	{
+		verts[i] = v;
+		i++;
+	}
+	
+	i = 0;
+	BM_ITER_MESH(e, &iter, bm, BM_EDGES_OF_MESH)
+	{
+		edges[i] = e;
+		i++;
+	}
+	
+	i = 0;
+	BM_ITER_MESH(f, &iter, bm, BM_FACES_OF_MESH)
+	{
+		faces[i] = f;
+		i++;
+	}
+	
+	fmesh->shard_map = MEM_mallocN(sizeof(Shard*), __func__); //allocate in chunks ?, better use proper blender functions for this
+	fmesh->shard_count = 1;
+	s = BKE_create_fracture_shard(verts, edges, faces, bm->totvert, bm->totedge, bm->totface);
+	s->shard_id = 0; //the original "shard"
+	fmesh->shard_map[0] = s;
+	
+	return fmesh;
+}
+
+DerivedMesh* BKE_fracmesh_to_rendermesh(FracMesh* fm, bool do_merge)
+{
+	DerivedMesh* dm_final;
+	
+	if (do_merge)
+	{
+		BMesh* merge_copy = BM_mesh_copy(fm->fractured_mesh);
+		
+		//delete inner geometry, entirely ? only on still connected ones, hmm need neighborhood info for this to work efficiently
+		//BMO_op_callf(merge_copy, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+		//			"delete geom=%hvef context=%i", BM_ELEM_SELECT, DEL_FACES);
+	
+		//final merge to close gaps
+		BMO_op_callf(merge_copy, BMO_FLAG_DEFAULTS, "automerge verts=%hv dist=%f", BM_ELEM_SELECT, 0.0001f);
+		dm_final = CDDM_from_bmesh(merge_copy, TRUE);
+		BM_mesh_free(merge_copy);
+	}
+	else
+	{
+		dm_final = CDDM_from_bmesh(fm->fractured_mesh, TRUE);
+	}
+	
+	return dm_final;
+}
+
+ShardList BKE_fracture_shard_by_points(FracMesh* mesh, ShardID id, PointCloud* pointcloud) {
 	//do cell fracture code here on shardbbox, AND intersect with boolean, hmm would need a temp object for this ? or bisect with cell planes.
 	//lets test bisect but this is a bmesh operator, so need to convert, do bisection and convert back, slow. and cellfrac also uses bmesh, hmm
 	//so better keep this around
 //#ifdef WITH_VORO++
 	//FracMesh will be initialized with a shard set. First need to check whether the id is there at all. Shard Id 0 intially is the first shard
-	Shard* s = BKE_shard_by_id(*mesh,  id);
+	Shard* s = BKE_shard_by_id(mesh,  id);
+	Shard* s2;
 	
 	// that will become the voro++ container...
 	
-	//dummyfrac
+	ShardList sl = MEM_mallocN(sizeof(Shard*) * 2, __func__);
 	BMesh* bm = mesh->fractured_mesh;
 	BoundBox *bb = s->bb;
+	BMVert** verts = MEM_mallocN(sizeof(BMVert*) * s->vertex_count, __func__);
+	BMEdge** edges = MEM_mallocN(sizeof(BMEdge*) * s->edge_count, __func__);
+	BMFace** faces = MEM_mallocN(sizeof(BMFace*) * s->face_count, __func__);
+	
+	//dummyfrac
 	float dim[3];
 	int i;
 	
@@ -111,22 +263,68 @@ ShardList fracture_shard_by_points(FracMesh* mesh, ShardID id, PointCloud* point
 	//scale and translate
 	for (i = 0; i < s->vertex_count; i++)
 	{
-		s->vertices[i]->co[0] * 0.5f;
-		s->vertices[i]->co[0] - dim[0];
+		s->vertices[i]->co[0] *= 0.5f;
+		s->vertices[i]->co[0] -= dim[0];
+		s->vertices[i]->head.index = i;
 	}
 	
-	BMesh* bmcopy = BM_mesh_copy(bm); // need to merge... somehow
+	//store old shard as 1st new
+	sl[0] = s;
 	
+	//need to calc bbox...argh, need a mesh for it, dumb.
+	//bb2 = MEM_mallocN(sizeof(BoundBox), __func__);
+	//bb2->flag = bb->flag;
+	
+	// create new verts in same bmesh
 	for (i = 0; i < s->vertex_count; i++)
 	{
 		float vco[3];
 		copy_v3_v3(vco, s->vertices[i]->co);
 		vco[0] = vco[0] + (dim[0] * 2.0f);
-		
+		verts[i] = BM_vert_create(bm, vco, NULL, 0);
+		verts[i]->head.index = i + s->vertex_count;
 	}
 	
+	//now rebuild topology on new verts
+	//i = 0;
+	for (i = 0; i < s->edge_count; i++)
+	{
+		BMEdge* e = s->edges[i];
+		BMVert* v1 = verts[e->v1->head.index];
+		BMVert* v2 = verts[e->v2->head.index];
+		edges[i] = BM_edge_create(bm, v1, v2, NULL, 0);
+		edges[i]->head.index = i + s->edge_count;
+	}
 	
+	for (i = 0; i < s->face_count; i++)
+	{
+		BMFace* f = s->faces[i];
+		BMVert** ve = MEM_mallocN(sizeof(BMVert*) * f->len, __func__);
+		BMEdge** ed = MEM_mallocN(sizeof(BMEdge*) * f->len, __func__);
+		BMVert* v;
+		BMEdge* e;
+		BMIter eiter, viter;
+		int j = 0;
+		
+		BM_ITER_ELEM(v, &viter, f, BM_VERTS_OF_FACE) {
+			ve[j] = verts[v->head.index];
+			j++;
+		}
+		
+		j = 0;
+		BM_ITER_ELEM(e, &eiter, f, BM_EDGES_OF_FACE) {
+			ed[j] = edges[e->head.index];
+			j++;
+		}
+		
+		faces[i] = BM_face_create(bm, ve, ed, f->len, NULL, 0);
+		faces[i]->head.index = i + s->face_count;
+	}
+
+	s2 = BKE_create_fracture_shard(verts, edges, faces, s->vertex_count, s->edge_count, s->face_count);
+	s2->shard_id = mesh->shard_count + 1;
 	
+	sl[1] = s2;
 	
 	//scale down the original geometry in X direction by 0.5 and translate by halfbbox
 	//duplicate it (add all verts again, + 
@@ -145,7 +343,26 @@ ShardList fracture_shard_by_points(FracMesh* mesh, ShardID id, PointCloud* point
 //#else
 		
 //#endif
-	return NULL;
+	return sl;
+}
+
+void BKE_fracmesh_free(FracMesh* fm)
+{
+	int i = 0;
+	for (i = 0; i < fm->shard_count; i++)
+	{
+		Shard* s = fm->shard_map[i];
+		MEM_freeN(s->bb);
+		MEM_freeN(s->vertices);
+		MEM_freeN(s->edges);
+		MEM_freeN(s->faces);
+	}
+	
+	MEM_freeN(fm->shard_map);
+	BM_mesh_free(fm->fractured_mesh);
+	
+	DM_release(fm->render_mesh);
+	MEM_freeN(fm->render_mesh);
 }
 
 //use a memfile for this...

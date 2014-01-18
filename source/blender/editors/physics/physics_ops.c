@@ -202,6 +202,11 @@ static void operatortypes_dynamicpaint(void)
 	WM_operatortype_append(DPAINT_OT_output_toggle);
 }
 
+static void operatortypes_fracture(void)
+{
+	WM_operatortype_append(OBJECT_OT_fracture);
+}
+
 //static void keymap_pointcache(wmWindowManager *wm)
 //{
 //	wmKeyMap *keymap = WM_keymap_find(wm, "Pointcache", 0, 0);
@@ -221,6 +226,7 @@ void ED_operatortypes_physics(void)
 	operatortypes_fluid();
 	operatortypes_pointcache();
 	operatortypes_dynamicpaint();
+	operatortypes_fracture();
 }
 
 void ED_keymap_physics(wmKeyConfig *keyconf)
