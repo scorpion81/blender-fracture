@@ -31,6 +31,8 @@
  *
  */
 
+#include "DNA_object_types.h"
+
 #include "BKE_fracture.h"
 #include "BKE_modifier.h"
 #include "BKE_context.h"
@@ -41,9 +43,10 @@
 #include "WM_types.h"
 #include "WM_api.h"
 
+#include "physics_intern.h" // own include
 
 //#define NAMELEN 64 //namebased, yuck... better dont try longer names.... NOT happy with this, but how to find according group else ? cant store it anywhere
-int mesh_fracture_exec(bContext *C, wmOperator *op)
+static int mesh_fracture_exec(bContext *C, wmOperator *UNUSED(op))
 {
 	//go through all selected objects !
 	/*Scene* scene = CTX_data_scene(C);
@@ -59,22 +62,22 @@ int mesh_fracture_exec(bContext *C, wmOperator *op)
 	int breaking_threshold = RNA_float_get(op->ptr, "threshold");*/
 	
 	//call kernel functions... just the fracture ! but need current ob
-	Object* o = CTX_data_active_object(C);
+	Object *ob = CTX_data_active_object(C);
 	FractureModifierData* fracmd;
 	
 	//find modifierdata, getFracmesh
-	fracmd = (FractureModifierData *)modifiers_findByType(o, eModifierType_Fracture);
+	fracmd = (FractureModifierData *)modifiers_findByType(ob, eModifierType_Fracture);
 	if (fracmd->frac_mesh != NULL)
 	{
 		//pick 1st shard, hardcoded by now
 		//execute fracture....
 		BKE_fracture_shard_by_points(fracmd->frac_mesh, 0, NULL);
-		fracmd->frac_mesh->render_mesh = BKE_fracmesh_to_rendermesh(fracmd->frac_mesh, false);
+		BKE_fracture_create_dm(fracmd, false);
 		
 		//WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
 		//WM_event_add_notifier(C, NC_OBJECT | ND_POINTCACHE, NULL);
-		DAG_id_tag_update(&o->id, OB_RECALC_DATA);
-		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, o);
+		DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
+		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
 		
 		return OPERATOR_FINISHED;
 	}

@@ -4815,6 +4815,11 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			}
 			lmd->cache_system = NULL;
 		}
+		else if (md->type == eModifierType_Fracture) {
+			FractureModifierData *fmd = (FractureModifierData *)md;
+			
+			fmd->dm = NULL;
+		}
 	}
 }
 

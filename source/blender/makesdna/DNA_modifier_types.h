@@ -1347,6 +1347,7 @@ enum {
 typedef struct FractureModifierData {
 	ModifierData modifier;
 	struct FracMesh *frac_mesh; //store only the current fracmesh here first, later maybe an entire history...
+	struct DerivedMesh *dm;
 } FractureModifierData;
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */

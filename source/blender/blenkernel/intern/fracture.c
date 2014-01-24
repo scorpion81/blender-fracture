@@ -1,14 +1,23 @@
-#include "BKE_fracture.h"
 #include "MEM_guardedalloc.h"
+
+#include "BLI_math_vector.h"
 #include "BLI_mempool.h"
 #include "BLI_utildefines.h"
-#include "BLI_math_vector.h"
-#include "BKE_mesh.h"
-#include "RBI_api.h"
-#include "bmesh.h"
+
+#include "DNA_fracture_types.h"
+#include "DNA_group_types.h"
+#include "DNA_meshdata_types.h"
+#include "DNA_modifier_types.h"
+
 #include "BKE_DerivedMesh.h"
 #include "BKE_cdderivedmesh.h"
+#include "BKE_fracture.h"
+#include "BKE_mesh.h"
 #include "BKE_object.h"
+
+#include "bmesh.h"
+
+#include "RBI_api.h"
 
 //static float point[3]; //hrrrrm, need this in sorting algorithm as part of the key, cant pass it directly
 
@@ -110,14 +119,17 @@ Shard *BKE_shard_by_id(FracMesh* mesh, ShardID id) {
 	return NULL;
 }
 
+#if 0
 Shard *BKE_shard_by_position(FracMesh* mesh, float position[3]) {
 	//find centroid via kdtree, should be fast
 	return NULL;
 	
 }
+#endif
 
 void BKE_get_shard_geometry(FracMesh* mesh, ShardID id, MVert** vert, int *totvert)
 {
+	/* XXX incompatible pointer types, bad! */
 	Shard* shard = BKE_shard_by_id(mesh, id);
 	if (shard != NULL) {
 		vert = shard->vertices;
@@ -174,7 +186,6 @@ FracMesh* BKE_create_fracture_container(DerivedMesh* dm)
 	
 	bm = DM_to_bmesh(dm, true);
 	fmesh->fractured_mesh = bm;
-	fmesh->render_mesh = NULL;
 	
 	//make utility functions !!! 
 	verts = MEM_mallocN(sizeof(BMVert*) * bm->totvert, __func__);
@@ -208,31 +219,6 @@ FracMesh* BKE_create_fracture_container(DerivedMesh* dm)
 	fmesh->shard_map[0] = s;
 	
 	return fmesh;
-}
-
-DerivedMesh* BKE_fracmesh_to_rendermesh(FracMesh* fm, bool do_merge)
-{
-	DerivedMesh* dm_final;
-	
-	if (do_merge)
-	{
-		BMesh* merge_copy = BM_mesh_copy(fm->fractured_mesh);
-		
-		//delete inner geometry, entirely ? only on still connected ones, hmm need neighborhood info for this to work efficiently
-		//BMO_op_callf(merge_copy, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-		//			"delete geom=%hvef context=%i", BM_ELEM_SELECT, DEL_FACES);
-	
-		//final merge to close gaps
-		BMO_op_callf(merge_copy, BMO_FLAG_DEFAULTS, "automerge verts=%hv dist=%f", BM_ELEM_SELECT, 0.0001f);
-		dm_final = CDDM_from_bmesh(merge_copy, TRUE);
-		BM_mesh_free(merge_copy);
-	}
-	else
-	{
-		dm_final = CDDM_from_bmesh(fm->fractured_mesh, TRUE);
-	}
-	
-	return dm_final;
 }
 
 ShardList BKE_fracture_shard_by_points(FracMesh* mesh, ShardID id, PointCloud* pointcloud) {
@@ -360,10 +346,51 @@ void BKE_fracmesh_free(FracMesh* fm)
 	
 	MEM_freeN(fm->shard_map);
 	BM_mesh_free(fm->fractured_mesh);
-	
-	DM_release(fm->render_mesh);
-	MEM_freeN(fm->render_mesh);
 }
+
+
+/* DerivedMesh */
+
+void BKE_fracture_release_dm(FractureModifierData *fmd)
+{
+	if (fmd->dm) {
+		fmd->dm->needsFree = 1;
+		fmd->dm->release(fmd->dm);
+		fmd->dm = NULL;
+	}
+}
+
+void BKE_fracture_create_dm(FractureModifierData *fmd, bool do_merge)
+{
+	DerivedMesh *dm_final;
+	
+	if (fmd->dm) {
+		fmd->dm->needsFree = 1;
+		fmd->dm->release(fmd->dm);
+		fmd->dm = NULL;
+	}
+	
+	if (do_merge)
+	{
+		BMesh *merge_copy = BM_mesh_copy(fmd->frac_mesh->fractured_mesh);
+		
+		//delete inner geometry, entirely ? only on still connected ones, hmm need neighborhood info for this to work efficiently
+		//BMO_op_callf(merge_copy, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+		//			"delete geom=%hvef context=%i", BM_ELEM_SELECT, DEL_FACES);
+	
+		//final merge to close gaps
+		BMO_op_callf(merge_copy, BMO_FLAG_DEFAULTS, "automerge verts=%hv dist=%f", BM_ELEM_SELECT, 0.0001f);
+		dm_final = CDDM_from_bmesh(merge_copy, TRUE);
+		BM_mesh_free(merge_copy);
+	}
+	else
+	{
+		dm_final = CDDM_from_bmesh(fmd->frac_mesh->fractured_mesh, TRUE);
+	}
+	
+	fmd->dm = dm_final;
+}
+
 
 //use a memfile for this...
 static BMesh* construct_mesh(FILE* rawdata)
@@ -413,7 +440,8 @@ static void intersect_cell(BMesh **bm, Shard** shard, Object* orig)
 
 
 /* note: this function could be optimized by some spatial structure */
-/*void points_in_planes(float (*planes)[4], unsigned int planes_len, float (*verts)[3], unsigned int* verts_len, int *plane_indices, unsigned int* used_planes_len)
+#if 0
+void points_in_planes(float (*planes)[4], unsigned int planes_len, float (*verts)[3], unsigned int* verts_len, int *plane_indices, unsigned int* used_planes_len)
 {
 	const float eps = 0.0001f;
 	const unsigned int len = (unsigned int)planes_len;
@@ -458,7 +486,7 @@ static void intersect_cell(BMesh **bm, Shard** shard, Object* orig)
 									}
 								}
 
-								if (l == len) { /* ok *
+								if (l == len) { /* ok */
 									verts = MEM_reallocN(verts, sizeof(float) * 3 *(*verts_len)+1);
 									verts[(*verts_len)] = potentialVertex;
 									(*verts_len)++;
@@ -473,7 +501,7 @@ static void intersect_cell(BMesh **bm, Shard** shard, Object* orig)
 
 		MEM_freeN(planes);
 
-		/* now make a list of used planes *
+		/* now make a list of used planes */
 		for (i = 0; i < len; i++) {
 			if (planes_used[i]) {
 				plane_indices = MEM_reallocN(plane_indices, sizeof((int) * (*plane_indices_len)+1));
@@ -482,9 +510,11 @@ static void intersect_cell(BMesh **bm, Shard** shard, Object* orig)
 			}
 		}
 	}
-}*/
+}
+#endif
 
-/*ShardList fracture_by_points(FracMesh *fmesh, PointCloud *pointcloud) {
+#if 0
+ShardList fracture_by_points(FracMesh *fmesh, PointCloud *pointcloud) {
 	//find shards by positions in pointcloud ? and dont forget updating the kdtree as well...
 	//iterate over pointcloud positions, find according shards and refracture 'em
 	
@@ -567,7 +597,8 @@ static void intersect_cell(BMesh **bm, Shard** shard, Object* orig)
 				
 			}
 	
-	/*def points_as_bmesh_cells(verts,
+#if 0 /* XXX cellfracture py code (?) */
+	def points_as_bmesh_cells(verts,
 	                          points,
 	                          points_scale=None,
 	                          margin_bounds=0.05,
@@ -851,7 +882,6 @@ static void intersect_cell(BMesh **bm, Shard** shard, Object* orig)
 			          game.collision_bounds_type = 'CONVEX_HULL'
 			  
 			      return objects*
-	
-}*/
-
-
+	#endif
+}
+#endif

@@ -37,6 +37,13 @@ static void initData(ModifierData *md)
 static void freeData(ModifierData *md)
 {
 	FractureModifierData *fmd = (FractureModifierData*) md;
+	
+	if (fmd->dm) {
+		fmd->dm->needsFree = 1;
+		fmd->dm->release(fmd->dm);
+		fmd->dm = NULL;
+	}
+	
 	BKE_fracmesh_free(fmd->frac_mesh);
 }
 
@@ -44,27 +51,25 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
                                   DerivedMesh *derivedData,
                                   ModifierApplyFlag UNUSED(flag))
 {
-		//need to pass rendermesh out... created outside !!
-		//also show single islands via selected index... hmm but how to apply to it ?
-		//apply to selected shards; this must be in kernel as well (via index) but there prepare
-		//an array of indexes; for multiselection
-		//outliner ? hmm
-		//all not so good...
+	//also show single islands via selected index... hmm but how to apply to it ?
+	//apply to selected shards; this must be in kernel as well (via index) but there prepare
+	//an array of indexes; for multiselection
+	//outliner ? hmm
+	//all not so good...
+
+	FractureModifierData *fmd = (FractureModifierData*) md;
+	DerivedMesh *final_dm;
 	
-		FractureModifierData *fmd = (FractureModifierData*) md;
-		
-		if (fmd->frac_mesh == NULL) {
-			fmd->frac_mesh = BKE_create_fracture_container(derivedData);
-		}
-		
-		if (fmd->frac_mesh->render_mesh != NULL)
-		{
-			return CDDM_copy(fmd->frac_mesh->render_mesh);
-		}
-		else
-		{
-			return derivedData;
-		}
+	if (fmd->frac_mesh == NULL) {
+		fmd->frac_mesh = BKE_create_fracture_container(derivedData);
+	}
+	
+	if (fmd->dm)
+		final_dm = CDDM_copy(fmd->dm);
+	else
+		final_dm = derivedData;
+	
+	return final_dm;
 }
 
 ModifierTypeInfo modifierType_Fracture = {
