@@ -80,6 +80,6 @@ if(WITH_GHOST_XDND)
 	endif()
 endif()
 
-if(WITH_VORO++)
+if(WITH_VORO)
 	add_subdirectory(voro++)
 endif()

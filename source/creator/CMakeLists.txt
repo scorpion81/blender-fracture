@@ -1072,8 +1072,8 @@ endif()
 		list_insert_after(BLENDER_SORTED_LIBS "ge_logic_ngnetwork" "extern_bullet")
 	endif()
 	
-	if(WITH_VORO++)
-		list(APPEND BLENDER_SORTED_LIBS extern_voro++)
+	if(WITH_VORO)
+		list(APPEND BLENDER_SORTED_LIBS extern_voro)
 	endif()
 
 	foreach(SORTLIB ${BLENDER_SORTED_LIBS})

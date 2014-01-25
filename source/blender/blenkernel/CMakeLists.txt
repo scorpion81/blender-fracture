@@ -440,8 +440,8 @@ if(WITH_FREESTYLE)
 	add_definitions(-DWITH_FREESTYLE)
 endif()
 
-if(WITH_VORO++)
-	add_definitions(-DWITH_VORO++)
+if(WITH_VORO)
+	add_definitions(-DWITH_VORO)
 	list(APPEND INC
 		../../../extern/voro++
 	)

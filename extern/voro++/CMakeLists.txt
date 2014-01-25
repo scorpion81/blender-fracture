@@ -37,4 +37,4 @@ set (SRC
     src/c_interface.hh
 )
 
-blender_add_lib(extern_voro++ "${SRC}" "${INC}" "${INC_SYS}")
+blender_add_lib(extern_voro "${SRC}" "${INC}" "${INC_SYS}")

@@ -140,7 +140,7 @@ option(WITH_GAMEENGINE    "Enable Game Engine" ON)
 option(WITH_PLAYER        "Build Player" OFF)
 option(WITH_OPENCOLORIO   "Enable OpenColorIO color management" ON)
 option(WITH_COMPOSITOR    "Enable the tile based nodal compositor" ON)
-option(WITH_VORO++        "Enable Voronoi Fracture based on Voro++" ON)
+option(WITH_VORO    "Enable Voronoi Fracture based on Voro++" ON)
 
 # GHOST Windowing Library Options
 option(WITH_GHOST_DEBUG   "Enable debugging output for the GHOST library" OFF)
@@ -2319,7 +2319,7 @@ if(FIRST_RUN)
 	info_cfg_option(WITH_CYCLES)
 	info_cfg_option(WITH_FREESTYLE)
 	info_cfg_option(WITH_OPENCOLORIO)
-	info_cfg_option(WITH_VORO++)
+	info_cfg_option(WITH_VORO)
 
 	info_cfg_text("Compiler Options:")
 	info_cfg_option(WITH_BUILDINFO)
