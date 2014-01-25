@@ -30,6 +30,146 @@
 
 //utility... bbox / centroid calc
 
+/*prototypes*/
+static void parse_stream(char *bp, FracMesh *fm);
+static Shard *parse_shard(char *bp);
+static int parse_verts(char *bp, MVert *vert);
+static void parse_polys(char *bp, MPoly *poly, MLoop *loop, int *totpoly, int *totloop);
+static int parse_neighbors(char *bp, int *neighbors);
+static void add_shard(FracMesh *fm, Shard *s);
+
+static void add_shard(FracMesh *fm, Shard *s)
+{
+	fm->shard_map = MEM_reallocN(fm->shard_map, sizeof(Shard*) * (fm->shard_count+1));
+	fm->shard_map[fm->shard_count] = s;
+	fm->shard_count++;
+}
+
+/* parse the voro++ raw data */
+static void parse_stream(char *bp, FracMesh *fm)
+{
+	/*Parse voronoi raw data*/
+	int i = 0;
+	Shard* s;
+	char *token = strtok(bp, "\n"); /*caution at windoze, \r\n*/
+	while (token)
+	{
+		printf("Parsing shard: %d\n", i);
+		s = parse_shard(token);
+		add_shard(fm, s);
+		token = strtok(NULL, "\n");
+		i++;
+	}
+}
+
+
+static Shard* parse_shard(char *bp)
+{
+	Shard* s;
+	MVert* vert = MEM_mallocN(sizeof(MVert), __func__);
+	MPoly* poly = MEM_mallocN(sizeof(MPoly), __func__);
+	MLoop *loop = MEM_mallocN(sizeof(MLoop), __func__);
+	int* neighbors = MEM_mallocN(sizeof(int), __func__);
+	int totpoly = 0, totloop = 0, totvert = 0, totn = 0;
+	float centr[3];
+
+	totvert = parse_verts(bp, vert);
+	parse_polys(bp, poly, loop, &totpoly, &totloop);
+
+	/* parse centroid */
+	bp = strtok(bp, "c");
+	sscanf(bp, "(%f,%f,%f)", &centr[0], &centr[1], &centr[2]);
+
+	totn = parse_neighbors(bp, neighbors);
+
+	s = BKE_create_fracture_shard(vert, poly, loop, totvert, totpoly, totloop);
+	s->neighbor_ids = neighbors;
+	s->neighbor_count = totn;
+	copy_v3_v3(s->centroid, centr);
+
+	return s;
+}
+
+static int parse_verts(char* bp, MVert* vert)
+{
+	int totvert = 0;
+	int shard_id;
+	char *token = strtok(bp, "v");
+	sscanf(token, "%d", &shard_id);
+
+	while (1)
+	{
+		int readco = 0;
+		float co[3];
+
+		readco = sscanf(token, "(%f,%f,%f)", &co[0], &co[1], &co[2]);
+		if (readco < 3) break;
+		copy_v3_v3(vert[totvert].co, co);
+		vert = MEM_reallocN(vert, sizeof(MVert) * (totvert+1));
+		totvert++;
+	}
+
+	return totvert;
+}
+
+static void parse_polys(char *bp, MPoly *poly, MLoop *loop, int *totpoly, int *totloop)
+{
+	int read_index = 0;
+	int index = -1;
+	char *faces = strtok(bp, "f");
+	/* how on earth create edge indexes for loop ? */
+	char *token = strtok(faces, ")");
+
+	while (token) {
+		int faceloop = 0;
+		read_index = sscanf(token, "(%d", &index);
+		if (read_index == 0) {
+			return;
+		}
+		//loop = MEM_reallocN(loop, sizeof(MLoop) * ((*totloop)+1));
+		loop[*totloop].v = index;
+		(*totloop)++;
+
+		faceloop++;
+
+		while (read_index)
+		{
+			read_index = sscanf(token, ",%d", &index);
+			// loop[totloop].e = ?
+			loop = MEM_reallocN(loop, sizeof(MLoop) * ((*totloop)+1));
+			loop[*totloop].v = index;
+			(*totloop)++;
+			faceloop++;
+		}
+
+		/* faceloop, 3 loops at least necessary ?, prevent degenerates... disable for now */
+		poly = MEM_reallocN(poly, sizeof(MPoly) * ((*totpoly)+1));
+		poly[*totpoly].loopstart = totloop - faceloop;
+		poly[*totpoly].totloop = faceloop;
+		(*totpoly)++;
+
+		token = strtok(faces, ")");
+	}
+}
+
+static int parse_neighbors(char* bp, int* neighbors)
+{
+	int totn = 0;
+	char *token = strtok(bp, "n");
+	token = strtok(token, " ");
+
+	while (token) {
+		int n;
+		sscanf(token, "%d", &n);
+		neighbors = MEM_reallocN(neighbors, sizeof(int) * (totn+1));
+		neighbors[totn] = n;
+		totn++;
+		token = strtok(token, " ");
+	}
+
+	return totn;
+}
+
 /* modified from BKE_mesh_center_median */
 bool BKE_fracture_shard_center_median(Shard *shard, float cent[3])
 {
@@ -206,6 +346,8 @@ FracMesh *BKE_create_fracture_container(DerivedMesh* dm)
 	return fmesh;
 }
 
+
+
 void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud) {
 	int n_size = 8;
 	
@@ -259,11 +401,11 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	 */
 	
 	stream = open_memstream(&bp, &size);
-	container_print_custom(voro_loop_order, voro_container, "%i %P v %t f %C %n n", stream);
+	container_print_custom(voro_loop_order, voro_container, "%i%Pv%tf%Ccn%n", stream);
 	fflush(stream);
-	
+	/*rewind(stream);
+	parse_stream(bp, fmesh);* doesnt work for now */
 	printf("%s", bp);
-	
 	fclose (stream);
 
 #if 0
