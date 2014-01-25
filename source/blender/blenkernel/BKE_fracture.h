@@ -25,11 +25,15 @@ typedef struct ShardIterator {
 	int		current;
 } ShardIterator;
 
-
 typedef struct FracMeshIterator {
 	struct FracHistory* frac_history;
 	int		current_step;
 } FracMeshIterator;
+
+typedef struct PointCloud {
+	float **points;	// just a bunch of positions in space
+	int totpoints; // number of positions
+} PointCloud;
 
 /* iterator functions for efficient looping over shards */
 struct ShardIterator* BKE_shards_begin(struct FracMesh *fmesh);
@@ -43,7 +47,7 @@ struct Shard* BKE_shard_by_id(struct FracMesh* mesh, ShardID id);
 
 /* detailed info to the particular shards */
 void BKE_get_shard_geometry(struct FracMesh* mesh, ShardID id, struct MVert** vert, int *totvert);
-void BKE_get_shard_bbox(struct FracMesh* mesh, ShardID id, struct BoundBox* bbox);
+void BKE_get_shard_minmax(struct FracMesh* mesh, ShardID id, float min_r[3], float max_r[3]);
 
 /* container object handling functions */
 //create container -> for each island or for whole mesh create shards in a fracmesh, init fracmodifier (function for opening container makes here a fracmesh, operator will
@@ -80,7 +84,7 @@ void BKE_fracture_steps_end(struct FracMeshIterator* iter);
 //utility functions
 bool BKE_fracture_shard_center_median(struct Shard *shard, float cent[3]);
 bool BKE_fracture_shard_center_centroid(struct Shard *shard, float cent[3]);
-void BKE_shard_calc_boundbox(struct Shard *shard, struct BoundBox *bb);
+void BKE_shard_calc_minmax(struct Shard *shard);
 
 void BKE_fracmesh_free(struct FracMesh* fm);
 

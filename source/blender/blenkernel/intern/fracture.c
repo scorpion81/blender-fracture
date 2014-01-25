@@ -1,3 +1,6 @@
+#include <stdio.h>
+#include <stdlib.h>
+
 #include "MEM_guardedalloc.h"
 
 #include "BLI_math_vector.h"
@@ -18,6 +21,10 @@
 #include "bmesh.h"
 
 #include "RBI_api.h"
+
+//#ifdef WITH_VORO++
+#include "../../../../extern/voro++/src/c_interface.hh"
+//#endif
 
 //static float point[3]; //hrrrrm, need this in sorting algorithm as part of the key, cant pass it directly
 
@@ -71,7 +78,7 @@ bool BKE_fracture_shard_center_centroid(Shard *shard, float cent[3])
 	return (shard->totpoly != 0);
 }
 
-void BKE_shard_calc_boundbox(Shard *shard, BoundBox *bb)
+void BKE_shard_calc_minmax(Shard *shard)
 {
 	float min[3], max[3];
 	int i;
@@ -81,7 +88,8 @@ void BKE_shard_calc_boundbox(Shard *shard, BoundBox *bb)
 		minmax_v3v3_v3(min, max, shard->mvert[i].co);
 	}
 	
-	BKE_boundbox_init_from_minmax(bb, min, max);
+	copy_v3_v3(shard->min, min);
+	copy_v3_v3(shard->max, max);
 }
 
 //mesh construction functions... from voro++ rawdata and boolean intersection
@@ -149,11 +157,12 @@ void BKE_get_shard_geometry(FracMesh* mesh, ShardID id, MVert** vert, int *totve
 	}
 }
 
-void BKE_get_shard_bbox(FracMesh* mesh, ShardID id, BoundBox* bbox)
+void BKE_get_shard_minmax(FracMesh* mesh, ShardID id, float min_r[3], float max_r[3])
 {
 	Shard* shard = BKE_shard_by_id(mesh, id);
 	if (shard != NULL) {
-		*bbox = shard->bb;
+		copy_v3_v3(min_r, shard->min);
+		copy_v3_v3(max_r, shard->max);
 	}
 }
 
@@ -171,7 +180,7 @@ Shard *BKE_create_fracture_shard(MVert *mvert, MPoly *mpoly, MLoop *mloop, int t
 	memcpy(shard->mpoly, mpoly, sizeof(MPoly) * totpoly);
 	memcpy(shard->mloop, mloop, sizeof(MLoop) * totloop);
 	
-	BKE_shard_calc_boundbox(shard, &shard->bb);
+	BKE_shard_calc_minmax(shard);
 	BKE_fracture_shard_center_centroid(shard, shard->centroid);
 	
 	//neighborhood info ? optional from fracture process...
@@ -197,7 +206,67 @@ FracMesh *BKE_create_fracture_container(DerivedMesh* dm)
 	return fmesh;
 }
 
-void BKE_fracture_shard_by_points(FracMesh* mesh, ShardID id, PointCloud* pointcloud) {
+void BKE_fracture_shard_by_points(FracMesh* fmesh, ShardID id, PointCloud* pointcloud) {
+	int n_size = 8;
+	
+	Shard *shard;
+	
+	float min[3], max[3];
+	float theta = 0.1f; /* TODO */
+	int p;
+	
+	container *voro_container;
+	particle_order *voro_particle_order;
+	loop_order *voro_loop_order;
+	
+	char *bp;
+	size_t size;
+	FILE *stream;
+	
+	shard = BKE_shard_by_id(fmesh, id);
+	if (!shard)
+		return;
+	
+	/* calculate bounding box with theta margin */
+	copy_v3_v3(min, shard->min);
+	copy_v3_v3(max, shard->max);
+	add_v3_fl(min, -theta);
+	add_v3_fl(max, theta);
+	
+	voro_container = container_new(min[0], max[0], min[1], max[1], min[2], max[2],
+	                               n_size, n_size, n_size, false, false, false,
+	                               pointcloud->totpoints);
+	
+	voro_particle_order = particle_order_new();
+	for (p = 0; p < pointcloud->totpoints; p++) {
+		float *co = pointcloud->points[p];
+		container_put(voro_container, voro_particle_order, p, co[0], co[1], co[2]);
+	}
+	
+	voro_loop_order = loop_order_new(voro_container, voro_particle_order);
+	
+	/* Compute the voronoi cells and place output in stream
+	 * See voro++ homepage for detailed description
+	 * http://math.lbl.gov/voro++/
+	 */
+
+	/* %i the particle index
+	 * %P global vertex coordinates of voronoi vertices
+	 * v  the vertex -> face delimiter
+	 * %t the indexes to the cell vertices, describes which vertices build each face
+	 * f  the face -> centroid section delimiter
+	 * %C the centroid of the voronoi cell
+	 */
+	
+	stream = open_memstream(&bp, &size);
+	container_print_custom(voro_loop_order, voro_container, "%i %P v %t f %C %n n", stream);
+	fflush(stream);
+	
+	printf("%s", bp);
+	
+	fclose (stream);
+
+#if 0
 	//do cell fracture code here on shardbbox, AND intersect with boolean, hmm would need a temp object for this ? or bisect with cell planes.
 	//lets test bisect but this is a bmesh operator, so need to convert, do bisection and convert back, slow. and cellfrac also uses bmesh, hmm
 	//so better keep this around
@@ -256,6 +325,7 @@ void BKE_fracture_shard_by_points(FracMesh* mesh, ShardID id, PointCloud* pointc
 //#else
 		
 //#endif
+#endif
 }
 
 void BKE_fracmesh_free(FracMesh* fm)

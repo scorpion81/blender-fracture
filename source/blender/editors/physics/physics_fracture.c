@@ -33,10 +33,14 @@
 
 #include "MEM_guardedalloc.h"
 
+#include "BLI_math.h"
+#include "BLI_rand.h"
+
 #include "DNA_object_types.h"
 
 #include "BKE_fracture.h"
 #include "BKE_modifier.h"
+#include "BKE_object.h"
 #include "BKE_context.h"
 #include "BKE_depsgraph.h"
 
@@ -71,9 +75,34 @@ static int mesh_fracture_exec(bContext *C, wmOperator *UNUSED(op))
 	fracmd = (FractureModifierData *)modifiers_findByType(ob, eModifierType_Fracture);
 	if (fracmd->frac_mesh != NULL)
 	{
+		BoundBox *bb;
+		float min[3], max[3];
+		/* dummy point cloud, random */
+		float *co;
+		PointCloud points;
+		int i;
+		
+		bb = BKE_object_boundbox_get(ob);
+		for (i = 0; i < 8; i++)
+			minmax_v3v3_v3(min, max, bb->vec[i]);
+		
+		points.totpoints = 10;
+		
+		co = MEM_mallocN(3 * sizeof(float) * points.totpoints, "random points");
+		BLI_srandom(12345);
+		for (i = 0; i < points.totpoints; ++i) {
+			co[3*i + 0] = min[0] + (max[0] - min[0]) * BLI_frand();
+			co[3*i + 1] = min[1] + (max[1] - min[1]) * BLI_frand();
+			co[3*i + 2] = min[2] + (max[2] - min[2]) * BLI_frand();
+			points.points[i] = &co[3*i];
+		}
+		
 		//pick 1st shard, hardcoded by now
 		//execute fracture....
-		BKE_fracture_shard_by_points(fracmd->frac_mesh, 0, NULL);
+		BKE_fracture_shard_by_points(fracmd->frac_mesh, 0, &points);
+		
+		MEM_freeN(co);
+		
 		BKE_fracture_create_dm(fracmd, false);
 		
 		//WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);

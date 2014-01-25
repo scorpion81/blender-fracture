@@ -11,12 +11,6 @@ extern "C" {
 
 struct DerivedMesh;
 
-typedef struct PointCloud {
-	float **points;	// just a bunch of positions in space
-	int totpoints; // number of positions
-	char pad[4];
-} PointCloud;
-				
 typedef struct Shard {
 	struct MVert *mvert;
 	struct MPoly *mpoly;
@@ -24,7 +18,7 @@ typedef struct Shard {
 	int totvert, totpoly, totloop;
 	int pad;
 	
-	BoundBox bb; // might be useful for collision tests
+	float min[3], max[3];
 	float *vertco;		// hmm this was necessary for simulation itself, storing the restposition of the verts
 	float centroid[3];	// centroid of shard, calculated during fracture
 	float start_co[3];	// hmm this was necessary for simulation itself, storing the restposition of the centroid
