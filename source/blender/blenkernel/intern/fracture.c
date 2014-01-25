@@ -206,7 +206,7 @@ FracMesh *BKE_create_fracture_container(DerivedMesh* dm)
 	return fmesh;
 }
 
-void BKE_fracture_shard_by_points(FracMesh* fmesh, ShardID id, PointCloud* pointcloud) {
+void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud) {
 	int n_size = 8;
 	
 	Shard *shard;
@@ -239,7 +239,7 @@ void BKE_fracture_shard_by_points(FracMesh* fmesh, ShardID id, PointCloud* point
 	
 	voro_particle_order = particle_order_new();
 	for (p = 0; p < pointcloud->totpoints; p++) {
-		float *co = pointcloud->points[p];
+		float *co = pointcloud->points[p].co;
 		container_put(voro_container, voro_particle_order, p, co[0], co[1], co[2]);
 	}
 	

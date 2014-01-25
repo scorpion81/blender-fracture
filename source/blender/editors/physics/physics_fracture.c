@@ -78,8 +78,7 @@ static int mesh_fracture_exec(bContext *C, wmOperator *UNUSED(op))
 		BoundBox *bb;
 		float min[3], max[3];
 		/* dummy point cloud, random */
-		float *co;
-		PointCloud points;
+		FracPointCloud points;
 		int i;
 		
 		bb = BKE_object_boundbox_get(ob);
@@ -89,20 +88,20 @@ static int mesh_fracture_exec(bContext *C, wmOperator *UNUSED(op))
 		
 		points.totpoints = 10;
 		
-		co = MEM_mallocN(3 * sizeof(float) * points.totpoints, "random points");
+		points.points = MEM_mallocN(sizeof(FracPoint) * points.totpoints, "random points");
 		BLI_srandom(12345);
 		for (i = 0; i < points.totpoints; ++i) {
-			co[3*i + 0] = min[0] + (max[0] - min[0]) * BLI_frand();
-			co[3*i + 1] = min[1] + (max[1] - min[1]) * BLI_frand();
-			co[3*i + 2] = min[2] + (max[2] - min[2]) * BLI_frand();
-			points.points[i] = &co[3*i];
+			float *co = points.points[i].co;
+			co[0] = min[0] + (max[0] - min[0]) * BLI_frand();
+			co[1] = min[1] + (max[1] - min[1]) * BLI_frand();
+			co[2] = min[2] + (max[2] - min[2]) * BLI_frand();
 		}
 		
 		//pick 1st shard, hardcoded by now
 		//execute fracture....
 		BKE_fracture_shard_by_points(fracmd->frac_mesh, 0, &points);
 		
-		MEM_freeN(co);
+		MEM_freeN(points.points);
 		
 		BKE_fracture_create_dm(fracmd, false);
 		
