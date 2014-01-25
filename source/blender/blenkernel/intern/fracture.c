@@ -344,6 +344,67 @@ void BKE_fracture_release_dm(FractureModifierData *fmd)
 	}
 }
 
+static DerivedMesh *create_dm(FracMesh *fracmesh)
+{
+	int shard_count = fracmesh->shard_count;
+	Shard **shard_map = fracmesh->shard_map;
+	Shard *shard;
+	int s;
+	
+	int num_verts, num_polys, num_loops;
+	int vertstart, polystart, loopstart;
+	DerivedMesh *result;
+	MVert *mverts;
+	MPoly *mpolys;
+	MLoop *mloops;
+	
+	num_verts = num_polys = num_loops = 0;
+	for (s = 0; s < shard_count; ++s) {
+		shard = shard_map[s];
+		
+		num_verts += shard->totvert;
+		num_polys += shard->totpoly;
+		num_loops += shard->totloop;
+	}
+	
+	result = CDDM_new(num_verts, 0, 0, num_loops, num_polys);
+	mverts = CDDM_get_verts(result);
+	mloops = CDDM_get_loops(result);
+	mpolys = CDDM_get_polys(result);
+	
+	vertstart = polystart = loopstart = 0;
+	for (s = 0; s < shard_count; ++s) {
+		MPoly *mp;
+		MLoop *ml;
+		int i;
+		shard = shard_map[s];
+		
+		memcpy(mverts + vertstart, shard->mvert, shard->totvert * sizeof(MVert));
+		
+		memcpy(mpolys + polystart, shard->mpoly, shard->totpoly * sizeof(MPoly));
+		for (i = 0, mp = mpolys + polystart; i < shard->totpoly; ++i, ++mp) {
+			/* adjust loopstart index */
+			mp->loopstart += loopstart;
+		}
+		
+		memcpy(mloops + loopstart, shard->mloop, shard->totloop * sizeof(MLoop));
+		for (i = 0, ml = mloops + loopstart; i < shard->totloop; ++i, ++ml) {
+			/* adjust vertex index */
+			ml->v += vertstart;
+		}
+		
+		vertstart += shard->totvert;
+		polystart += shard->totpoly;
+		loopstart += shard->totloop;
+	}
+	
+	CDDM_calc_edges(result);
+	
+	result->dirty |= DM_DIRTY_NORMALS;
+	
+	return result;
+}
+
 void BKE_fracture_create_dm(FractureModifierData *fmd, bool do_merge)
 {
 	DerivedMesh *dm_final;
@@ -354,25 +415,7 @@ void BKE_fracture_create_dm(FractureModifierData *fmd, bool do_merge)
 		fmd->dm = NULL;
 	}
 	
-#if 0
-	if (do_merge)
-	{
-		BMesh *merge_copy = BM_mesh_copy(fmd->frac_mesh->fractured_mesh);
-		
-		//delete inner geometry, entirely ? only on still connected ones, hmm need neighborhood info for this to work efficiently
-		//BMO_op_callf(merge_copy, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-		//			"delete geom=%hvef context=%i", BM_ELEM_SELECT, DEL_FACES);
-	
-		//final merge to close gaps
-		BMO_op_callf(merge_copy, BMO_FLAG_DEFAULTS, "automerge verts=%hv dist=%f", BM_ELEM_SELECT, 0.0001f);
-		dm_final = CDDM_from_bmesh(merge_copy, TRUE);
-		BM_mesh_free(merge_copy);
-	}
-	else
-	{
-		dm_final = CDDM_from_bmesh(fmd->frac_mesh->fractured_mesh, TRUE);
-	}
-#endif
+	dm_final = create_dm(fmd->frac_mesh);
 	
 	fmd->dm = dm_final;
 }
