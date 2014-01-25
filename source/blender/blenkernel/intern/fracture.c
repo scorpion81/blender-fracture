@@ -375,7 +375,6 @@ void BKE_fracmesh_free(FracMesh* fm)
 	}
 	
 	MEM_freeN(fm->shard_map);
-	BM_mesh_free(fm->fractured_mesh);
 }
 
 
@@ -400,6 +399,7 @@ void BKE_fracture_create_dm(FractureModifierData *fmd, bool do_merge)
 		fmd->dm = NULL;
 	}
 	
+#if 0
 	if (do_merge)
 	{
 		BMesh *merge_copy = BM_mesh_copy(fmd->frac_mesh->fractured_mesh);
@@ -417,6 +417,7 @@ void BKE_fracture_create_dm(FractureModifierData *fmd, bool do_merge)
 	{
 		dm_final = CDDM_from_bmesh(fmd->frac_mesh->fractured_mesh, TRUE);
 	}
+#endif
 	
 	fmd->dm = dm_final;
 }
