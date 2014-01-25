@@ -198,23 +198,18 @@ FracMesh *BKE_create_fracture_container(DerivedMesh* dm)
 }
 
 ShardList BKE_fracture_shard_by_points(FracMesh* mesh, ShardID id, PointCloud* pointcloud) {
-#if 0 /* XXX TODO convert to plain Mesh types */
 	//do cell fracture code here on shardbbox, AND intersect with boolean, hmm would need a temp object for this ? or bisect with cell planes.
 	//lets test bisect but this is a bmesh operator, so need to convert, do bisection and convert back, slow. and cellfrac also uses bmesh, hmm
 	//so better keep this around
 //#ifdef WITH_VORO++
 	//FracMesh will be initialized with a shard set. First need to check whether the id is there at all. Shard Id 0 intially is the first shard
-	Shard* s = BKE_shard_by_id(mesh,  id);
-	Shard* s2;
+	Shard* shard = BKE_shard_by_id(mesh,  id);
+	Shard* shard2;
 	
 	// that will become the voro++ container...
 	
 	ShardList sl = MEM_mallocN(sizeof(Shard*) * 2, __func__);
-	BMesh* bm = mesh->fractured_mesh;
-	BoundBox *bb = s->bb;
-	BMVert** verts = MEM_mallocN(sizeof(BMVert*) * s->vertex_count, __func__);
-	BMEdge** edges = MEM_mallocN(sizeof(BMEdge*) * s->edge_count, __func__);
-	BMFace** faces = MEM_mallocN(sizeof(BMFace*) * s->face_count, __func__);
+	BoundBox *bb = &shard->bb;
 	
 	//dummyfrac
 	float dim[3];
@@ -223,77 +218,31 @@ ShardList BKE_fracture_shard_by_points(FracMesh* mesh, ShardID id, PointCloud* p
 	sub_v3_v3v3(dim, bb->vec[4], bb->vec[0]);
 	mul_v3_fl(dim, 0.5f);
 	
-	//scale and translate
-	for (i = 0; i < s->vertex_count; i++)
-	{
-		s->vertices[i]->co[0] *= 0.5f;
-		s->vertices[i]->co[0] -= dim[0];
-		s->vertices[i]->head.index = i;
-	}
-	
-	//store old shard as 1st new
-	sl[0] = s;
-	
 	//need to calc bbox...argh, need a mesh for it, dumb.
 	//bb2 = MEM_mallocN(sizeof(BoundBox), __func__);
 	//bb2->flag = bb->flag;
 	
-	// create new verts in same bmesh
-	for (i = 0; i < s->vertex_count; i++)
-	{
-		float vco[3];
-		copy_v3_v3(vco, s->vertices[i]->co);
-		vco[0] = vco[0] + (dim[0] * 2.0f);
-		verts[i] = BM_vert_create(bm, vco, NULL, 0);
-		verts[i]->head.index = i + s->vertex_count;
+	// copy shard
+	shard2 = BKE_create_fracture_shard(shard->mvert, shard->mpoly, shard->mloop, shard->totvert, shard->totpoly, shard->totloop);
+	shard2->shard_id = mesh->shard_count;
+	
+	//scale and translate
+	for (i = 0; i < shard->totvert; i++) {
+		shard->mvert[i].co[0] *= 0.5f;
+		shard->mvert[i].co[0] -= dim[0];
+	}
+	for (i = 0; i < shard2->totvert; ++i) {
+		shard2->mvert[i].co[0] *= 0.5f;
+		shard2->mvert[i].co[0] += dim[0];
 	}
 	
-	//now rebuild topology on new verts
-	//i = 0;
-	for (i = 0; i < s->edge_count; i++)
-	{
-		BMEdge* e = s->edges[i];
-		BMVert* v1 = verts[e->v1->head.index];
-		BMVert* v2 = verts[e->v2->head.index];
-		edges[i] = BM_edge_create(bm, v1, v2, NULL, 0);
-		edges[i]->head.index = i + s->edge_count;
-	}
-	
-	for (i = 0; i < s->face_count; i++)
-	{
-		BMFace* f = s->faces[i];
-		BMVert** ve = MEM_mallocN(sizeof(BMVert*) * f->len, __func__);
-		BMEdge** ed = MEM_mallocN(sizeof(BMEdge*) * f->len, __func__);
-		BMVert* v;
-		BMEdge* e;
-		BMIter eiter, viter;
-		int j = 0;
-		
-		BM_ITER_ELEM(v, &viter, f, BM_VERTS_OF_FACE) {
-			ve[j] = verts[v->head.index];
-			j++;
-		}
-		
-		j = 0;
-		BM_ITER_ELEM(e, &eiter, f, BM_EDGES_OF_FACE) {
-			ed[j] = edges[e->head.index];
-			j++;
-		}
-		
-		faces[i] = BM_face_create(bm, ve, ed, f->len, NULL, 0);
-		faces[i]->head.index = i + s->face_count;
-
-		MEM_freeN(ve);
-		MEM_freeN(ed);
-	}
-
-	s2 = BKE_create_fracture_shard(verts, edges, faces, s->vertex_count, s->edge_count, s->face_count);
-	s2->shard_id = mesh->shard_count;
 	mesh->shard_map = MEM_reallocN(mesh->shard_map, sizeof(Shard*) * (mesh->shard_count+1));
-	mesh->shard_map[mesh->shard_count] = s2;
+	mesh->shard_map[mesh->shard_count] = shard2;
 	mesh->shard_count++;
 	
-	sl[1] = s2;
+	// store shards in list
+	sl[0] = shard;
+	sl[1] = shard2;
 	
 	//scale down the original geometry in X direction by 0.5 and translate by halfbbox
 	//duplicate it (add all verts again, + 
@@ -313,9 +262,6 @@ ShardList BKE_fracture_shard_by_points(FracMesh* mesh, ShardID id, PointCloud* p
 		
 //#endif
 	return sl;
-#else
-	return NULL;
-#endif
 }
 
 void BKE_fracmesh_free(FracMesh* fm)
