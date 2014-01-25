@@ -20,8 +20,6 @@ struct PointCloud;
 
 typedef int ShardID;
 
-typedef struct Shard** ShardList;
-
 typedef struct ShardIterator {
 	struct FracMesh* frac_mesh;
 	int		current;
@@ -103,7 +101,7 @@ void BKE_fracture_create_dm(struct FractureModifierData *fmd, bool do_merge);
 // dann muss der caller über alle shards loopen um die neuen sub-shards zu behandeln
 
 // erzeuge shards aus dem basis mesh und einer liste von points (nicht weiter spezifiziert, können auch particles oder so sein)
-ShardList BKE_fracture_shard_by_points(struct FracMesh *fmesh, ShardID id, struct PointCloud *points);
+void BKE_fracture_shard_by_points(struct FracMesh *fmesh, ShardID id, struct PointCloud *points);
 
 // Zerbreche ein einzelnes shard basierend auf collision
 // btManifoldPoint ist eine Bullet class, das sollte wahrscheinlich etwas abstrahiert werden

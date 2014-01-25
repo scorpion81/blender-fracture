@@ -197,7 +197,7 @@ FracMesh *BKE_create_fracture_container(DerivedMesh* dm)
 	return fmesh;
 }
 
-ShardList BKE_fracture_shard_by_points(FracMesh* mesh, ShardID id, PointCloud* pointcloud) {
+void BKE_fracture_shard_by_points(FracMesh* mesh, ShardID id, PointCloud* pointcloud) {
 	//do cell fracture code here on shardbbox, AND intersect with boolean, hmm would need a temp object for this ? or bisect with cell planes.
 	//lets test bisect but this is a bmesh operator, so need to convert, do bisection and convert back, slow. and cellfrac also uses bmesh, hmm
 	//so better keep this around
@@ -208,7 +208,6 @@ ShardList BKE_fracture_shard_by_points(FracMesh* mesh, ShardID id, PointCloud* p
 	
 	// that will become the voro++ container...
 	
-	ShardList sl = MEM_mallocN(sizeof(Shard*) * 2, __func__);
 	BoundBox *bb = &shard->bb;
 	
 	//dummyfrac
@@ -240,10 +239,6 @@ ShardList BKE_fracture_shard_by_points(FracMesh* mesh, ShardID id, PointCloud* p
 	mesh->shard_map[mesh->shard_count] = shard2;
 	mesh->shard_count++;
 	
-	// store shards in list
-	sl[0] = shard;
-	sl[1] = shard2;
-	
 	//scale down the original geometry in X direction by 0.5 and translate by halfbbox
 	//duplicate it (add all verts again, + 
 	
@@ -261,7 +256,6 @@ ShardList BKE_fracture_shard_by_points(FracMesh* mesh, ShardID id, PointCloud* p
 //#else
 		
 //#endif
-	return sl;
 }
 
 void BKE_fracmesh_free(FracMesh* fm)

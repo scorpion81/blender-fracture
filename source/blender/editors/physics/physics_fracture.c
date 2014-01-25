@@ -73,8 +73,7 @@ static int mesh_fracture_exec(bContext *C, wmOperator *UNUSED(op))
 	{
 		//pick 1st shard, hardcoded by now
 		//execute fracture....
-		ShardList sl = BKE_fracture_shard_by_points(fracmd->frac_mesh, 0, NULL);
-		MEM_freeN(sl); // not needed yet
+		BKE_fracture_shard_by_points(fracmd->frac_mesh, 0, NULL);
 		BKE_fracture_create_dm(fracmd, false);
 		
 		//WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
