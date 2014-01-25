@@ -24,7 +24,7 @@ typedef struct Shard {
 	int totvert, totpoly, totloop;
 	int pad;
 	
-	struct BoundBox bb; // might be useful for collision tests
+	BoundBox bb; // might be useful for collision tests
 	float *vertco;		// hmm this was necessary for simulation itself, storing the restposition of the verts
 	float centroid[3];	// centroid of shard, calculated during fracture
 	float start_co[3];	// hmm this was necessary for simulation itself, storing the restposition of the centroid

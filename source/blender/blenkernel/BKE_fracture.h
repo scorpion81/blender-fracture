@@ -11,11 +11,10 @@ struct FractureModifierData;
 struct DerivedMesh;
 struct Object;
 
-struct MVert;
 struct BoundBox;
-struct BMVert;
-struct BMEdge;
-struct BMFace;
+struct MVert;
+struct MPoly;
+struct MLoop;
 
 struct PointCloud;
 
@@ -62,11 +61,11 @@ void BKE_get_shard_bbox(struct FracMesh* mesh, ShardID id, struct BoundBox* bbox
 //object topology will remain same... transforms can be altered, and written AS IS into fracmesh, 
 //container hierarchy -> write info to fracmesh / shard (like parent id and child ids) 
 //tag small shards for "standardbrösel" -> instances of simple primitives, selected from a group, randomly rotated scaled in a certain range
-struct FracMesh* BKE_create_fracture_container(struct DerivedMesh* dm); //check for mesh; for curves / fonts... convert to mesh automatically, warn user (fonts, ensure remeshing before)
+struct FracMesh *BKE_create_fracture_container(struct DerivedMesh* dm); //check for mesh; for curves / fonts... convert to mesh automatically, warn user (fonts, ensure remeshing before)
 //FracMesh* BKE_close_fracture_container(Group* g);
 //Group* BKE_open_fracture_container(FracMesh* fm);
 //void BKE_drop_fracture_container(Object* ob); //delete in modifier->free...
-struct Shard* BKE_create_fracture_shard(struct BMVert** v, struct BMEdge** e, struct BMFace**, int vcount, int ecount, int fcount);
+struct Shard *BKE_create_fracture_shard(struct MVert *mvert, struct MPoly *mpoly, struct MLoop *mloop, int totvert, int totpoly, int totloop);
 
 //hmm maybe a listbase of steps, its dynamically created by user interaction(THIS is in hierarchy!!! prefractured) or a dynafrac step (THIS suits.)
 void BKE_add_fracture_step(struct FracHistory* fh, struct FracMesh* ob);
@@ -82,8 +81,8 @@ void BKE_fracture_steps_end(struct FracMeshIterator* iter);
 
 //utility functions
 bool BKE_fracture_shard_center_median(struct Shard *shard, float cent[3]);
-bool BKE_fracture_shard_center_centroid(struct Shard* shard, float cent[3]);
-struct BoundBox* BKE_shard_calc_boundbox(struct Shard* shard);
+bool BKE_fracture_shard_center_centroid(struct Shard *shard, float cent[3]);
+void BKE_shard_calc_boundbox(struct Shard *shard, struct BoundBox *bb);
 
 void BKE_fracmesh_free(struct FracMesh* fm);
 

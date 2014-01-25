@@ -41,7 +41,7 @@ bool BKE_fracture_shard_center_median(Shard *shard, float cent[3])
 }
 
 /* modified from BKE_mesh_center_centroid */
-bool BKE_fracture_shard_center_centroid(Shard* shard, float cent[3])
+bool BKE_fracture_shard_center_centroid(Shard *shard, float cent[3])
 {
 	int i = shard->totpoly;
 	MPoly *mpoly;
@@ -71,11 +71,10 @@ bool BKE_fracture_shard_center_centroid(Shard* shard, float cent[3])
 	return (shard->totpoly != 0);
 }
 
-BoundBox* BKE_shard_calc_boundbox(Shard* shard)
+void BKE_shard_calc_boundbox(Shard *shard, BoundBox *bb)
 {
 	float min[3], max[3];
-	BoundBox* bb = BKE_boundbox_alloc_unit();
-	int i = 0;
+	int i;
 	
 	INIT_MINMAX(min, max);
 	for (i = 0; i < shard->totvert; i++) {
@@ -83,8 +82,6 @@ BoundBox* BKE_shard_calc_boundbox(Shard* shard)
 	}
 	
 	BKE_boundbox_init_from_minmax(bb, min, max);
-	
-	return bb;
 }
 
 //mesh construction functions... from voro++ rawdata and boolean intersection
@@ -160,86 +157,44 @@ void BKE_get_shard_bbox(FracMesh* mesh, ShardID id, BoundBox* bbox)
 	}
 }
 
-#if 0 /* TODO */
-Shard* BKE_create_fracture_shard(BMVert **v, BMEdge **e, BMFace **f, int vcount, int ecount, int fcount)
+Shard *BKE_create_fracture_shard(MVert *mvert, MPoly *mpoly, MLoop *mloop, int totvert, int totpoly, int totloop)
 {
 	Shard* shard = MEM_mallocN(sizeof(Shard), __func__);
-	shard->vertex_count = vcount;
-	s->edge_count = ecount;
-	s->face_count = fcount;
+	shard->totvert = totvert;
+	shard->totpoly = totpoly;
+	shard->totloop = totloop;
 	
-	s->vertices = v;
-	s->edges = e;
-	s->faces = f;
+	shard->mvert = MEM_mallocN(sizeof(MVert) * totvert, "shard vertices");
+	shard->mpoly = MEM_mallocN(sizeof(MPoly) * totpoly, "shard polys");
+	shard->mloop = MEM_mallocN(sizeof(MLoop) * totloop, "shard loops");
+	memcpy(shard->mvert, mvert, sizeof(MVert) * totvert);
+	memcpy(shard->mpoly, mpoly, sizeof(MPoly) * totpoly);
+	memcpy(shard->mloop, mloop, sizeof(MLoop) * totloop);
 	
-	s->bb = BKE_shard_calc_boundbox(s);
-	BKE_fracture_shard_center_centroid(s, s->centroid);
+	BKE_shard_calc_boundbox(shard, &shard->bb);
+	BKE_fracture_shard_center_centroid(shard, shard->centroid);
 	
 	//neighborhood info ? optional from fracture process...
 	//id is created when inserted into fracmesh, externally then...
-	return s;
+	return shard;
 }
-#endif
 
-FracMesh* BKE_create_fracture_container(DerivedMesh* dm)
+FracMesh *BKE_create_fracture_container(DerivedMesh* dm)
 {
-#if 0 /* XXX TODO convert to plain Mesh types */
-	//take mesh and init fracmesh and bmesh inside, create initial shard
-	//add modifier to object
-	//init modifier with fracmesh, hmmm...can i put it there, or let modifier create and return? better this is, from derivedmesh...
-	//no, let modifier call this in its init method... it will store the returned fracmesh in its data...
+	FracMesh* fmesh;
+	Shard *shard;
 	
-	Shard* s;
-	BMesh* bm;
-	BMIter iter;
-	BMVert* v;
-	BMEdge* e;
-	BMFace* f;
-	BMVert** verts;
-	BMEdge** edges;
-	BMFace** faces;
-	
-	FracMesh* fmesh = MEM_mallocN(sizeof(FracMesh), __func__);
-	int i = 0;
-	
-	bm = DM_to_bmesh(dm, true);
-	fmesh->fractured_mesh = bm;
-	
-	//make utility functions !!! 
-	verts = MEM_mallocN(sizeof(BMVert*) * bm->totvert, __func__);
-	edges = MEM_mallocN(sizeof(BMEdge*) * bm->totedge, __func__);
-	faces = MEM_mallocN(sizeof(BMFace*) * bm->totface, __func__);
-	
-	BM_ITER_MESH(v, &iter, bm, BM_VERTS_OF_MESH)
-	{
-		verts[i] = v;
-		i++;
-	}
-	
-	i = 0;
-	BM_ITER_MESH(e, &iter, bm, BM_EDGES_OF_MESH)
-	{
-		edges[i] = e;
-		i++;
-	}
-	
-	i = 0;
-	BM_ITER_MESH(f, &iter, bm, BM_FACES_OF_MESH)
-	{
-		faces[i] = f;
-		i++;
-	}
+	fmesh = MEM_mallocN(sizeof(FracMesh), __func__);
 	
 	fmesh->shard_map = MEM_mallocN(sizeof(Shard*), __func__); //allocate in chunks ?, better use proper blender functions for this
 	fmesh->shard_count = 1;
-	s = BKE_create_fracture_shard(verts, edges, faces, bm->totvert, bm->totedge, bm->totface);
-	s->shard_id = 0; //the original "shard"
-	fmesh->shard_map[0] = s;
+	
+	shard = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
+	                                  dm->numVertData, dm->numPolyData, dm->numLoopData);
+	shard->shard_id = 0; //the original "shard"
+	fmesh->shard_map[0] = shard;
 	
 	return fmesh;
-#else
-	return NULL;
-#endif
 }
 
 ShardList BKE_fracture_shard_by_points(FracMesh* mesh, ShardID id, PointCloud* pointcloud) {
