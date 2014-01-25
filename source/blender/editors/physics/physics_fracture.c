@@ -83,6 +83,7 @@ static int mesh_fracture_exec(bContext *C, wmOperator *UNUSED(op))
 		int i;
 		
 		bb = BKE_object_boundbox_get(ob);
+		INIT_MINMAX(min, max);
 		for (i = 0; i < 8; i++)
 			minmax_v3v3_v3(min, max, bb->vec[i]);
 		

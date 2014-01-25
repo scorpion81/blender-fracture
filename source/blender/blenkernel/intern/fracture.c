@@ -22,9 +22,9 @@
 
 #include "RBI_api.h"
 
-//#ifdef WITH_VORO++
+#ifdef WITH_VORO
 #include "../../../../extern/voro++/src/c_interface.hh"
-//#endif
+#endif
 
 //static float point[3]; //hrrrrm, need this in sorting algorithm as part of the key, cant pass it directly
 
