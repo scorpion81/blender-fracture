@@ -81,8 +81,9 @@ bool BKE_fracture_steps_valid(struct FracMeshIterator* iter);
 void BKE_fracture_steps_end(struct FracMeshIterator* iter); 
 
 //utility functions
-void BKE_shard_calc_centroid(struct Shard* s, float cent[3]);
-struct BoundBox* BKE_shard_calc_boundbox(struct Shard* s);
+bool BKE_fracture_shard_center_median(struct Shard *shard, float cent[3]);
+bool BKE_fracture_shard_center_centroid(struct Shard* shard, float cent[3]);
+struct BoundBox* BKE_shard_calc_boundbox(struct Shard* shard);
 
 void BKE_fracmesh_free(struct FracMesh* fm);
 

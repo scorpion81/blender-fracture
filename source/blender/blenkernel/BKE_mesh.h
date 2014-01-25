@@ -192,6 +192,9 @@ void BKE_mesh_calc_poly_center(
 float BKE_mesh_calc_poly_area(
         struct MPoly *mpoly, struct MLoop *loopstart,
         struct MVert *mvarray, const float polynormal[3]);
+float BKE_mesh_calc_poly_planar_area_centroid(
+        struct MPoly *mpoly, struct MLoop *loopstart,
+        struct MVert *mvarray, float cent[3]);
 void BKE_mesh_calc_poly_angles(
         struct MPoly *mpoly, struct MLoop *loopstart,
         struct MVert *mvarray, float angles[]);

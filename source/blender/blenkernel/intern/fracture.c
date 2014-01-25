@@ -22,49 +22,64 @@
 //static float point[3]; //hrrrrm, need this in sorting algorithm as part of the key, cant pass it directly
 
 //utility... bbox / centroid calc
-void BKE_shard_calc_centroid(Shard* s, float cent[3])
+
+/* modified from BKE_mesh_center_median */
+bool BKE_fracture_shard_center_median(Shard *shard, float cent[3])
 {
-	float face_area;
-	float total_area = 0.0f;
-	float face_cent[3];
-	BMFace **faces = s->faces;
-	int fcount = s->face_count;
-	int i = 0;
-	
+	int i = shard->totvert;
+	MVert *mvert;
 	zero_v3(cent);
+	for (mvert = shard->mvert; i--; mvert++) {
+		add_v3_v3(cent, mvert->co);
+	}
+	/* otherwise we get NAN for 0 verts */
+	if (shard->totvert) {
+		mul_v3_fl(cent, 1.0f / (float)shard->totvert);
+	}
 
-	/* calculate a weighted average of face centroids */
-	for (i = 0; i < fcount; i++) 
-	{
-		BMFace* f = faces[i];
-		BM_face_calc_center_mean (f, face_cent);
-		face_area = BM_face_calc_area(f);
-
-		madd_v3_v3fl(cent, face_cent, face_area);
-		total_area += face_area;
-	}
-	
-	if (s->vertex_count == 1)
-	{
-		copy_v3_v3(cent, s->vertices[0]->co);
-	}
-	else if (fcount > 0) {
-		/* otherwise we get NAN for 0 polys */
-		mul_v3_fl(cent, 1.0f / total_area);
-	}
+	return (shard->totvert != 0);
 }
 
-BoundBox* BKE_shard_calc_boundbox(Shard* s)
+/* modified from BKE_mesh_center_centroid */
+bool BKE_fracture_shard_center_centroid(Shard* shard, float cent[3])
+{
+	int i = shard->totpoly;
+	MPoly *mpoly;
+	float poly_area;
+	float total_area = 0.0f;
+	float poly_cent[3];
+
+	zero_v3(cent);
+
+	/* calculate a weighted average of polygon centroids */
+	for (mpoly = shard->mpoly; i--; mpoly++) {
+		poly_area = BKE_mesh_calc_poly_planar_area_centroid(mpoly, shard->mloop + mpoly->loopstart, shard->mvert, poly_cent);
+
+		madd_v3_v3fl(cent, poly_cent, poly_area);
+		total_area += poly_area;
+	}
+	/* otherwise we get NAN for 0 polys */
+	if (shard->totpoly) {
+		mul_v3_fl(cent, 1.0f / total_area);
+	}
+
+	/* zero area faces cause this, fallback to median */
+	if (UNLIKELY(!is_finite_v3(cent))) {
+		return BKE_fracture_shard_center_median(shard, cent);
+	}
+
+	return (shard->totpoly != 0);
+}
+
+BoundBox* BKE_shard_calc_boundbox(Shard* shard)
 {
 	float min[3], max[3];
 	BoundBox* bb = BKE_boundbox_alloc_unit();
 	int i = 0;
 	
 	INIT_MINMAX(min, max);
-	for (i = 0; i < s->vertex_count; i++)
-	{
-		BMVert *v = s->vertices[i];
-		minmax_v3v3_v3(min, max, v->co);
+	for (i = 0; i < shard->totvert; i++) {
+		minmax_v3v3_v3(min, max, shard->mvert[i].co);
 	}
 	
 	BKE_boundbox_init_from_minmax(bb, min, max);
@@ -132,8 +147,8 @@ void BKE_get_shard_geometry(FracMesh* mesh, ShardID id, MVert** vert, int *totve
 	/* XXX incompatible pointer types, bad! */
 	Shard* shard = BKE_shard_by_id(mesh, id);
 	if (shard != NULL) {
-		vert = shard->vertices;
-		totvert = &shard->vertex_count;
+		*vert = shard->mvert;
+		*totvert = shard->totvert;
 	}
 }
 
@@ -141,14 +156,15 @@ void BKE_get_shard_bbox(FracMesh* mesh, ShardID id, BoundBox* bbox)
 {
 	Shard* shard = BKE_shard_by_id(mesh, id);
 	if (shard != NULL) {
-		bbox = shard->bb;
+		*bbox = shard->bb;
 	}
 }
 
+#if 0 /* TODO */
 Shard* BKE_create_fracture_shard(BMVert **v, BMEdge **e, BMFace **f, int vcount, int ecount, int fcount)
 {
-	Shard* s = MEM_mallocN(sizeof(Shard), __func__);
-	s->vertex_count = vcount;
+	Shard* shard = MEM_mallocN(sizeof(Shard), __func__);
+	shard->vertex_count = vcount;
 	s->edge_count = ecount;
 	s->face_count = fcount;
 	
@@ -157,15 +173,17 @@ Shard* BKE_create_fracture_shard(BMVert **v, BMEdge **e, BMFace **f, int vcount,
 	s->faces = f;
 	
 	s->bb = BKE_shard_calc_boundbox(s);
-	BKE_shard_calc_centroid(s, s->centroid);
+	BKE_fracture_shard_center_centroid(s, s->centroid);
 	
 	//neighborhood info ? optional from fracture process...
 	//id is created when inserted into fracmesh, externally then...
 	return s;
 }
+#endif
 
 FracMesh* BKE_create_fracture_container(DerivedMesh* dm)
 {
+#if 0 /* XXX TODO convert to plain Mesh types */
 	//take mesh and init fracmesh and bmesh inside, create initial shard
 	//add modifier to object
 	//init modifier with fracmesh, hmmm...can i put it there, or let modifier create and return? better this is, from derivedmesh...
@@ -219,9 +237,13 @@ FracMesh* BKE_create_fracture_container(DerivedMesh* dm)
 	fmesh->shard_map[0] = s;
 	
 	return fmesh;
+#else
+	return NULL;
+#endif
 }
 
 ShardList BKE_fracture_shard_by_points(FracMesh* mesh, ShardID id, PointCloud* pointcloud) {
+#if 0 /* XXX TODO convert to plain Mesh types */
 	//do cell fracture code here on shardbbox, AND intersect with boolean, hmm would need a temp object for this ? or bisect with cell planes.
 	//lets test bisect but this is a bmesh operator, so need to convert, do bisection and convert back, slow. and cellfrac also uses bmesh, hmm
 	//so better keep this around
@@ -336,6 +358,9 @@ ShardList BKE_fracture_shard_by_points(FracMesh* mesh, ShardID id, PointCloud* p
 		
 //#endif
 	return sl;
+#else
+	return NULL;
+#endif
 }
 
 void BKE_fracmesh_free(FracMesh* fm)
@@ -344,10 +369,9 @@ void BKE_fracmesh_free(FracMesh* fm)
 	for (i = 0; i < fm->shard_count; i++)
 	{
 		Shard* s = fm->shard_map[i];
-		MEM_freeN(s->bb);
-		MEM_freeN(s->vertices);
-		MEM_freeN(s->edges);
-		MEM_freeN(s->faces);
+		MEM_freeN(s->mvert);
+		MEM_freeN(s->mpoly);
+		MEM_freeN(s->mloop);
 	}
 	
 	MEM_freeN(fm->shard_map);

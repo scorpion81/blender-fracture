@@ -18,20 +18,19 @@ typedef struct PointCloud {
 } PointCloud;
 				
 typedef struct Shard {
-	struct BMVert **vertices;
-	struct BMEdge **edges;
-	struct BMFace **faces; //need all geometry quickly possibly, for cutting tool, stanztools, for all, because there are no intermediate objects... 
-	struct BoundBox *bb; // might be useful for collision tests
+	struct MVert *mvert;
+	struct MPoly *mpoly;
+	struct MLoop *mloop;
+	int totvert, totpoly, totloop;
+	int pad;
+	
+	struct BoundBox bb; // might be useful for collision tests
 	float *vertco;		// hmm this was necessary for simulation itself, storing the restposition of the verts
 	float centroid[3];	// centroid of shard, calculated during fracture
 	float start_co[3];	// hmm this was necessary for simulation itself, storing the restposition of the centroid
 	int *neighbor_ids;	// neighbors of me... might be necessary for easier compounding or fracture, dont need to iterate over all.... searchradius ?
 	int shard_id;	// the identifier
-	int vertex_count; // number of verts in this shard, need counts for edge face too
-	int edge_count;
-	int face_count;
 	int neighbor_count; // counts of neighbor islands
-	char pad[4];
 } Shard;
 
 typedef struct FracMesh {
