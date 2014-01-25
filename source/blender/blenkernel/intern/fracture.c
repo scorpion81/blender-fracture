@@ -371,11 +371,9 @@ void BKE_fracture_create_dm(FractureModifierData *fmd, bool do_merge)
 	DerivedMesh *dm_final;
 	
 	if (fmd->dm) {
-		/*fmd->dm->needsFree = 1;
+		fmd->dm->needsFree = 1;
 		fmd->dm->release(fmd->dm);
-		fmd->dm = NULL;*/
-		DM_release(fmd->dm);
-		MEM_freeN(fmd->dm);
+		fmd->dm = NULL;
 	}
 	
 	if (do_merge)
