@@ -31,6 +31,8 @@
  *
  */
 
+#include "MEM_guardedalloc.h"
+
 #include "DNA_object_types.h"
 
 #include "BKE_fracture.h"
@@ -71,7 +73,8 @@ static int mesh_fracture_exec(bContext *C, wmOperator *UNUSED(op))
 	{
 		//pick 1st shard, hardcoded by now
 		//execute fracture....
-		BKE_fracture_shard_by_points(fracmd->frac_mesh, 0, NULL);
+		ShardList sl = BKE_fracture_shard_by_points(fracmd->frac_mesh, 0, NULL);
+		MEM_freeN(sl); // not needed yet
 		BKE_fracture_create_dm(fracmd, false);
 		
 		//WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);

@@ -305,10 +305,16 @@ ShardList BKE_fracture_shard_by_points(FracMesh* mesh, ShardID id, PointCloud* p
 		
 		faces[i] = BM_face_create(bm, ve, ed, f->len, NULL, 0);
 		faces[i]->head.index = i + s->face_count;
+
+		MEM_freeN(ve);
+		MEM_freeN(ed);
 	}
 
 	s2 = BKE_create_fracture_shard(verts, edges, faces, s->vertex_count, s->edge_count, s->face_count);
-	s2->shard_id = mesh->shard_count + 1;
+	s2->shard_id = mesh->shard_count;
+	mesh->shard_map = MEM_reallocN(mesh->shard_map, sizeof(Shard*) * (mesh->shard_count+1));
+	mesh->shard_map[mesh->shard_count] = s2;
+	mesh->shard_count++;
 	
 	sl[1] = s2;
 	
@@ -365,9 +371,11 @@ void BKE_fracture_create_dm(FractureModifierData *fmd, bool do_merge)
 	DerivedMesh *dm_final;
 	
 	if (fmd->dm) {
-		fmd->dm->needsFree = 1;
+		/*fmd->dm->needsFree = 1;
 		fmd->dm->release(fmd->dm);
-		fmd->dm = NULL;
+		fmd->dm = NULL;*/
+		DM_release(fmd->dm);
+		MEM_freeN(fmd->dm);
 	}
 	
 	if (do_merge)

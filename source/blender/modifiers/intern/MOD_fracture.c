@@ -27,6 +27,7 @@
 #include "BKE_fracture.h"
 #include "BKE_cdderivedmesh.h"
 #include "MOD_util.h"
+#include "MEM_guardedalloc.h"
 
 static void initData(ModifierData *md)
 {
@@ -39,12 +40,15 @@ static void freeData(ModifierData *md)
 	FractureModifierData *fmd = (FractureModifierData*) md;
 	
 	if (fmd->dm) {
-		fmd->dm->needsFree = 1;
+		/*fmd->dm->needsFree = 1;
 		fmd->dm->release(fmd->dm);
-		fmd->dm = NULL;
+		fmd->dm = NULL;*/
+		DM_release(fmd->dm);
+		MEM_freeN(fmd->dm);
 	}
 	
 	BKE_fracmesh_free(fmd->frac_mesh);
+	MEM_freeN(fmd->frac_mesh);
 }
 
 static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
