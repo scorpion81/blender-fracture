@@ -151,20 +151,23 @@ static void parse_polys(FILE *fp, MPoly **poly, MLoop **loop, int *totpoly, int 
 
 		*loop = MEM_reallocN(*loop, sizeof(MLoop) * ((*totloop)+1));
 		(*loop)[*totloop].v = index;
+		(*loop)[*totloop].e = *totloop;
 		(*totloop)++;
 
 		faceloop++;
 
-		while (read_index)
+		while (1)
 		{
 			read_index = fscanf(fp, ",%d", &index);
+			if (!read_index) break;
 			// loop[totloop].e =  how on earth create edge indexes for loop ? */
 			*loop = MEM_reallocN(*loop, sizeof(MLoop) * ((*totloop)+1));
 			(*loop)[*totloop].v = index;
-			(*loop)[*totloop].e = index;
+			(*loop)[*totloop].e = *totloop;
 			(*totloop)++;
 			faceloop++;
 		}
+
 
 		/* skip ") "*/
 		fseek(fp, 2*sizeof(char), SEEK_CUR);
@@ -173,6 +176,7 @@ static void parse_polys(FILE *fp, MPoly **poly, MLoop **loop, int *totpoly, int 
 		*poly = MEM_reallocN(*poly, sizeof(MPoly) * ((*totpoly)+1));
 		(*poly)[*totpoly].loopstart = (*totloop) - faceloop;
 		(*poly)[*totpoly].totloop = faceloop;
+		(*poly)[*totpoly].mat_nr = 0;
 		(*totpoly)++;
 	}
 }
