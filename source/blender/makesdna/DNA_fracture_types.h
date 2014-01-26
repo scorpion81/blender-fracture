@@ -19,7 +19,6 @@ typedef struct Shard {
 	int pad;
 	
 	float min[3], max[3];
-	float *vertco;		// hmm this was necessary for simulation itself, storing the restposition of the verts
 	float centroid[3];	// centroid of shard, calculated during fracture
 	float start_co[3];	// hmm this was necessary for simulation itself, storing the restposition of the centroid
 	int *neighbor_ids;	// neighbors of me... might be necessary for easier compounding or fracture, dont need to iterate over all.... searchradius ?
