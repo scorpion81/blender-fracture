@@ -65,6 +65,7 @@
 #include "DNA_dynamicpaint_types.h"
 #include "DNA_effect_types.h"
 #include "DNA_fileglobal_types.h"
+#include "DNA_fracture_types.h"
 #include "DNA_genfile.h"
 #include "DNA_group_types.h"
 #include "DNA_gpencil_types.h"
@@ -125,6 +126,7 @@
 #include "BKE_depsgraph.h"
 #include "BKE_effect.h"
 #include "BKE_fcurve.h"
+#include "BKE_fracture.h"
 #include "BKE_global.h" // for G
 #include "BKE_group.h"
 #include "BKE_image.h"
@@ -4816,9 +4818,29 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			lmd->cache_system = NULL;
 		}
 		else if (md->type == eModifierType_Fracture) {
+			int i = 0;
 			FractureModifierData *fmd = (FractureModifierData *)md;
-			
-			fmd->dm = NULL;
+			FracMesh* fm = newdataadr(fd, fmd->frac_mesh);
+			if (fm == NULL)
+			{
+				fmd->dm = NULL;
+			}
+			else
+			{
+				fm->shard_map = newdataadr(fd, fm->shard_map);
+				for (i = 0; i < fm->shard_count; i++)
+				{
+					Shard* s = newdataadr(fd, fm->shard_map[i]);
+					s->mvert = newdataadr(fd, s->mvert);
+					s->mpoly = newdataadr(fd, s->mpoly);
+					s->mloop = newdataadr(fd, s->mloop);
+					s->neighbor_ids = newdataadr(fd, s->neighbor_ids);
+					fm->shard_map[i] = s;
+				}
+				fmd->frac_mesh = fm;
+				fmd->dm = NULL;
+				BKE_fracture_create_dm(fmd, false);
+			}
 		}
 	}
 }

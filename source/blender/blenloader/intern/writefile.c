@@ -108,6 +108,7 @@
 #include "DNA_group_types.h"
 #include "DNA_gpencil_types.h"
 #include "DNA_fileglobal_types.h"
+#include "DNA_fracture_types.h"
 #include "DNA_key_types.h"
 #include "DNA_lattice_types.h"
 #include "DNA_lamp_types.h"
@@ -1480,9 +1481,23 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 			writedata(wd, DATA, sizeof(float)*lmd->total_verts * 3, lmd->vertexco);
 		}
 		else if (md->type==eModifierType_Fracture) {
+			int i = 0;
 			FractureModifierData *fmd = (FractureModifierData*)md;
-			//writestruct(wd, DATA, "FracMesh", 1, fmd->frac_mesh);
-			//writestruct(wd, DATA, "Shard", fmd->frac_mesh->
+			FracMesh* fm = fmd->frac_mesh;
+			if (fm)
+			{
+				writestruct(wd, DATA, "FracMesh", 1, fm);
+				writedata(wd, DATA, sizeof(Shard*) * fm->shard_count, fm->shard_map);
+				for (i = 0; i < fm->shard_count; i++)
+				{
+					Shard *s = fm->shard_map[i];
+					writestruct(wd, DATA, "Shard", 1, s);
+					writestruct(wd, DATA, "MVert", s->totvert, s->mvert);
+					writestruct(wd, DATA, "MPoly", s->totpoly, s->mpoly);
+					writestruct(wd, DATA, "MLoop", s->totloop, s->mloop);
+					writedata(wd, DATA, sizeof(int)*s->neighbor_count, s->neighbor_ids);
+				}
+			}
 		}
 	}
 }
