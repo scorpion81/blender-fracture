@@ -1479,6 +1479,11 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 
 			writedata(wd, DATA, sizeof(float)*lmd->total_verts * 3, lmd->vertexco);
 		}
+		else if (md->type==eModifierType_Fracture) {
+			FractureModifierData *fmd = (FractureModifierData*)md;
+			//writestruct(wd, DATA, "FracMesh", 1, fmd->frac_mesh);
+			//writestruct(wd, DATA, "Shard", fmd->frac_mesh->
+		}
 	}
 }
 

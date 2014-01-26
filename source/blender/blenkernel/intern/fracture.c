@@ -57,6 +57,10 @@ static void parse_stream(FILE *fp, int expected_shards, FracMesh *fm)
 	MEM_freeN(s->mvert);
 	MEM_freeN(s->mloop);
 	MEM_freeN(s->mpoly);
+	if (s->neighbor_ids)
+		MEM_freeN(s->neighbor_ids);
+	MEM_freeN(s);
+
 	fm->shard_map[0] = NULL;
 	fm->shard_count = 0;
 
@@ -97,6 +101,10 @@ static Shard* parse_shard(FILE *fp)
 	s->neighbor_count = totn;
 	s->shard_id = shard_id;
 	copy_v3_v3(s->centroid, centr);
+
+	MEM_freeN(vert);
+	MEM_freeN(poly);
+	MEM_freeN(loop);
 
 	/* if not at end of file yet, skip newlines */
 	if (feof(fp) == 0)
@@ -177,6 +185,7 @@ static void parse_polys(FILE *fp, MPoly **poly, MLoop **loop, int *totpoly, int 
 		(*poly)[*totpoly].loopstart = (*totloop) - faceloop;
 		(*poly)[*totpoly].totloop = faceloop;
 		(*poly)[*totpoly].mat_nr = 0;
+		(*poly)[*totpoly].flag = 0;
 		(*totpoly)++;
 	}
 }
@@ -184,10 +193,11 @@ static void parse_polys(FILE *fp, MPoly **poly, MLoop **loop, int *totpoly, int 
 static int parse_neighbors(FILE* fp, int** neighbors)
 {
 	int totn = 0;
-	int read_n = 1;
-	while (read_n) {
+	int read_n = 0;
+	while (1) {
 		int n;
 		read_n = fscanf(fp, "%d ", &n);
+		if (!read_n) break;
 		*neighbors = MEM_reallocN(*neighbors, sizeof(int) * (totn+1));
 		(*neighbors)[totn] = n;
 		totn++;
@@ -373,6 +383,8 @@ FracMesh *BKE_create_fracture_container(DerivedMesh* dm)
 	                                  dm->numVertData, dm->numPolyData, dm->numLoopData);
 	shard->shard_id = 0; //the original "shard"
 	fmesh->shard_map[0] = shard;
+	shard->neighbor_ids = NULL;
+	shard->neighbor_count = 0;
 	
 	return fmesh;
 }
@@ -438,6 +450,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	parse_stream(stream, pointcloud->totpoints, fmesh);
 	//printf("%s", bp);
 	fclose (stream);
+	free(bp);
 
 #if 0
 	//do cell fracture code here on shardbbox, AND intersect with boolean, hmm would need a temp object for this ? or bisect with cell planes.
@@ -510,6 +523,8 @@ void BKE_fracmesh_free(FracMesh* fm)
 		MEM_freeN(s->mvert);
 		MEM_freeN(s->mpoly);
 		MEM_freeN(s->mloop);
+		if (s->neighbor_ids)
+			MEM_freeN(s->neighbor_ids);
 	}
 	
 	MEM_freeN(fm->shard_map);
