@@ -191,25 +191,21 @@ static void FaceIt_Fill(CSG_IteratorPtr it, CSG_IFace *face)
 	{
 		int i = 0;
 		int mp = mpoly->loopstart + mpoly->totloop;
-		int t = mpoly->loopstart + mpoly->totloop / 2; /*swap first half of loops with second half; first with last etc.*/
-		MLoop l;
 		face->vertex_number = mpoly->totloop;
 
 		if (face_it->flip != 0)
 		{
-			for (i = mpoly->loopstart; i < t; i++)
+			for (i = mpoly->loopstart; i < mp; i++)
 			{
-				/* swap loops, hope this will flip the poly */
-				int j = mp - i;
-				l = mloops[i];
-				mloops[i] = mloops[j];
-				mloops[j] = mloops[i];
+				face->vertex_index[i-mpoly->loopstart] = mloops[mp-i+mpoly->loopstart-1].v;
 			}
 		}
-
-		for (i = mpoly->loopstart; i < mp; i++)
+		else
 		{
-			face->vertex_index[i-mpoly->loopstart] = mloops[i].v;
+			for (i = mpoly->loopstart; i < mp; i++)
+			{
+				face->vertex_index[i-mpoly->loopstart] = mloops[i].v;
+			}
 		}
 
 		face->orig_face = face_it->offset + face_it->pos;
@@ -611,14 +607,17 @@ Shard *BKE_fracture_shard_boolean(Shard *parent, Shard* child, float obmat[4][4]
 		FreeMeshDescriptors(&fd_2, &vd_2);
 	}
 
-	/*XXX TODO this might be wrong by now ... */
-	result->neighbor_count = child->neighbor_count;
-	result->neighbor_ids = MEM_mallocN(sizeof(int) * child->neighbor_count, __func__);
-	memcpy(result->neighbor_ids, child->neighbor_ids, sizeof(int) * child->neighbor_count);
-	BKE_fracture_shard_center_centroid(result, result->centroid);
+	if (result != NULL)
+	{
+		/*XXX TODO this might be wrong by now ... */
+		result->neighbor_count = child->neighbor_count;
+		result->neighbor_ids = MEM_mallocN(sizeof(int) * child->neighbor_count, __func__);
+		memcpy(result->neighbor_ids, child->neighbor_ids, sizeof(int) * child->neighbor_count);
+		BKE_fracture_shard_center_centroid(result, result->centroid);
 
-	/*free the bbox shard*/
-	BKE_shard_free(child);
+		/*free the bbox shard*/
+		BKE_shard_free(child);
+	}
 
 	return result;
 }
