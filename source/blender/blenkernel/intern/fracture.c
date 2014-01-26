@@ -96,15 +96,11 @@ static Shard* parse_shard(FILE *fp)
 
 	totn = parse_neighbors(fp, &neighbors);
 
-	s = BKE_create_fracture_shard(vert, poly, loop, totvert, totpoly, totloop);
+	s = BKE_create_fracture_shard(vert, poly, loop, totvert, totpoly, totloop, false);
 	s->neighbor_ids = neighbors;
 	s->neighbor_count = totn;
 	s->shard_id = shard_id;
 	copy_v3_v3(s->centroid, centr);
-
-	MEM_freeN(vert);
-	MEM_freeN(poly);
-	MEM_freeN(loop);
 
 	/* if not at end of file yet, skip newlines */
 	if (feof(fp) == 0)
@@ -345,19 +341,26 @@ void BKE_get_shard_minmax(FracMesh* mesh, ShardID id, float min_r[3], float max_
 	}
 }
 
-Shard *BKE_create_fracture_shard(MVert *mvert, MPoly *mpoly, MLoop *mloop, int totvert, int totpoly, int totloop)
+Shard *BKE_create_fracture_shard(MVert *mvert, MPoly *mpoly, MLoop *mloop, int totvert, int totpoly, int totloop, bool copy)
 {
 	Shard* shard = MEM_mallocN(sizeof(Shard), __func__);
 	shard->totvert = totvert;
 	shard->totpoly = totpoly;
 	shard->totloop = totloop;
 	
-	shard->mvert = MEM_mallocN(sizeof(MVert) * totvert, "shard vertices");
-	shard->mpoly = MEM_mallocN(sizeof(MPoly) * totpoly, "shard polys");
-	shard->mloop = MEM_mallocN(sizeof(MLoop) * totloop, "shard loops");
-	memcpy(shard->mvert, mvert, sizeof(MVert) * totvert);
-	memcpy(shard->mpoly, mpoly, sizeof(MPoly) * totpoly);
-	memcpy(shard->mloop, mloop, sizeof(MLoop) * totloop);
+	if (copy) {
+		shard->mvert = MEM_mallocN(sizeof(MVert) * totvert, "shard vertices");
+		shard->mpoly = MEM_mallocN(sizeof(MPoly) * totpoly, "shard polys");
+		shard->mloop = MEM_mallocN(sizeof(MLoop) * totloop, "shard loops");
+		memcpy(shard->mvert, mvert, sizeof(MVert) * totvert);
+		memcpy(shard->mpoly, mpoly, sizeof(MPoly) * totpoly);
+		memcpy(shard->mloop, mloop, sizeof(MLoop) * totloop);
+	}
+	else {
+		shard->mvert = mvert;
+		shard->mpoly = mpoly;
+		shard->mloop = mloop;
+	}
 	
 	BKE_shard_calc_minmax(shard);
 
@@ -380,7 +383,7 @@ FracMesh *BKE_create_fracture_container(DerivedMesh* dm)
 	fmesh->shard_count = 1;
 	
 	shard = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
-	                                  dm->numVertData, dm->numPolyData, dm->numLoopData);
+	                                  dm->numVertData, dm->numPolyData, dm->numLoopData, true);
 	shard->shard_id = 0; //the original "shard"
 	fmesh->shard_map[0] = shard;
 	shard->neighbor_ids = NULL;

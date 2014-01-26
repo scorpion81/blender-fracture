@@ -69,7 +69,7 @@ struct FracMesh *BKE_create_fracture_container(struct DerivedMesh* dm); //check 
 //FracMesh* BKE_close_fracture_container(Group* g);
 //Group* BKE_open_fracture_container(FracMesh* fm);
 //void BKE_drop_fracture_container(Object* ob); //delete in modifier->free...
-struct Shard *BKE_create_fracture_shard(struct MVert *mvert, struct MPoly *mpoly, struct MLoop *mloop, int totvert, int totpoly, int totloop);
+struct Shard *BKE_create_fracture_shard(struct MVert *mvert, struct MPoly *mpoly, struct MLoop *mloop, int totvert, int totpoly, int totloop, bool copy);
 
 //hmm maybe a listbase of steps, its dynamically created by user interaction(THIS is in hierarchy!!! prefractured) or a dynafrac step (THIS suits.)
 void BKE_add_fracture_step(struct FracHistory* fh, struct FracMesh* ob);
