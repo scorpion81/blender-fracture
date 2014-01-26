@@ -94,6 +94,7 @@ set(SRC
 	intern/fmodifier.c
 	intern/font.c
 	intern/fracture.c
+	intern/fracture_util.c
 	intern/freestyle.c
 	intern/gpencil.c
 	intern/group.c
@@ -202,6 +203,7 @@ set(SRC
 	BKE_fluidsim.h
 	BKE_font.h
 	BKE_fracture.h
+	BKE_fracture_util.h
 	BKE_freestyle.h
 	BKE_global.h
 	BKE_gpencil.h

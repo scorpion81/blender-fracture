@@ -15,12 +15,16 @@
 #include "BKE_DerivedMesh.h"
 #include "BKE_cdderivedmesh.h"
 #include "BKE_fracture.h"
+#include "BKE_fracture_util.h"
 #include "BKE_mesh.h"
 #include "BKE_object.h"
 
 #include "bmesh.h"
 
 #include "RBI_api.h"
+
+/*boolean support */
+#include "CSG_BooleanOps.h"
 
 #ifdef WITH_VORO
 #include "../../../../extern/voro++/src/c_interface.hh"
@@ -31,7 +35,7 @@
 //utility... bbox / centroid calc
 
 /*prototypes*/
-static void parse_stream(FILE *fp, int expected_shards, FracMesh *fm);
+static void parse_stream(FILE *fp, int expected_shards, ShardID shard_id, FracMesh *fm);
 static Shard *parse_shard(FILE *fp);
 static int parse_verts(FILE *fp, MVert **vert);
 static void parse_polys(FILE *fp, MPoly **poly, MLoop **loop, int *totpoly, int *totloop);
@@ -42,18 +46,24 @@ static void add_shard(FracMesh *fm, Shard *s)
 {
 	fm->shard_map = MEM_reallocN(fm->shard_map, sizeof(Shard*) * (fm->shard_count+1));
 	fm->shard_map[fm->shard_count] = s;
+	s->shard_id = fm->shard_count;
 	fm->shard_count++;
 }
 
 /* parse the voro++ raw data */
-static void parse_stream(FILE *fp, int expected_shards, FracMesh *fm)
+static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracMesh *fm)
 {
 	/*Parse voronoi raw data*/
 	int i = 0;
-	Shard* s;
+	Shard* s, *p = BKE_shard_by_id(fm, parent_id);
+	float obmat[4][4]; /* use unit matrix for now */
+
+	p->flag = 0;
+	p->flag |= SHARD_FRACTURED;
+	unit_m4(obmat);
 
 	// FOR NOW, delete OLD shard...
-	s = fm->shard_map[0];
+	/*s = fm->shard_map[0];
 	MEM_freeN(s->mvert);
 	MEM_freeN(s->mloop);
 	MEM_freeN(s->mpoly);
@@ -62,7 +72,7 @@ static void parse_stream(FILE *fp, int expected_shards, FracMesh *fm)
 	MEM_freeN(s);
 
 	fm->shard_map[0] = NULL;
-	fm->shard_count = 0;
+	fm->shard_count = 0;*/
 
 	//while (feof(fp) == 0) doesnt work with memory stream...
 	/* TODO, might occur that we have LESS than expected shards, what then...*/
@@ -70,10 +80,17 @@ static void parse_stream(FILE *fp, int expected_shards, FracMesh *fm)
 	{
 		printf("Parsing shard: %d\n", i);
 		s = parse_shard(fp);
-		add_shard(fm, s);
+		s->parent_id = parent_id;
+		s->flag = SHARD_INTACT;
+
+		/* XXX TODO, need object for material as well, or atleast a material index... */
+		s = BKE_fracture_shard_boolean(p, s, obmat);
+		if (s != NULL)
+		{
+			add_shard(fm, s);
+		}
 	}
 }
-
 
 static Shard* parse_shard(FILE *fp)
 {
@@ -99,7 +116,7 @@ static Shard* parse_shard(FILE *fp)
 	s = BKE_create_fracture_shard(vert, poly, loop, totvert, totpoly, totloop, false);
 	s->neighbor_ids = neighbors;
 	s->neighbor_count = totn;
-	s->shard_id = shard_id;
+	//s->shard_id = shard_id;
 	copy_v3_v3(s->centroid, centr);
 
 	/* if not at end of file yet, skip newlines */
@@ -249,8 +266,19 @@ bool BKE_fracture_shard_center_centroid(Shard *shard, float cent[3])
 	if (UNLIKELY(!is_finite_v3(cent))) {
 		return BKE_fracture_shard_center_median(shard, cent);
 	}
+	copy_v3_v3(shard->centroid, cent);
 
 	return (shard->totpoly != 0);
+}
+
+void BKE_shard_free(Shard *s)
+{
+	MEM_freeN(s->mvert);
+	MEM_freeN(s->mloop);
+	MEM_freeN(s->mpoly);
+	if (s->neighbor_ids)
+		MEM_freeN(s->neighbor_ids);
+	MEM_freeN(s);
 }
 
 void BKE_shard_calc_minmax(Shard *shard)
@@ -361,11 +389,12 @@ Shard *BKE_create_fracture_shard(MVert *mvert, MPoly *mpoly, MLoop *mloop, int t
 		shard->mpoly = mpoly;
 		shard->mloop = mloop;
 	}
-	
+
+	shard->flag |= SHARD_INTACT;
 	BKE_shard_calc_minmax(shard);
 
 	//omit for now, makes problems...
-	//BKE_fracture_shard_center_centroid(shard, shard->centroid);
+	BKE_fracture_shard_center_centroid(shard, shard->centroid);
 	
 	//neighborhood info ? optional from fracture process...
 	//id is created when inserted into fracmesh, externally then...
@@ -388,6 +417,7 @@ FracMesh *BKE_create_fracture_container(DerivedMesh* dm)
 	fmesh->shard_map[0] = shard;
 	shard->neighbor_ids = NULL;
 	shard->neighbor_count = 0;
+	shard->parent_id = -1; //no backup id means this shard has not been re-fractured
 	
 	return fmesh;
 }
@@ -450,7 +480,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	container_print_custom(voro_loop_order, voro_container, "%i %P v %t f %C n %n x", stream);
 	fflush(stream);
 	rewind(stream);
-	parse_stream(stream, pointcloud->totpoints, fmesh);
+	parse_stream(stream, pointcloud->totpoints, id, fmesh);
 	//printf("%s", bp);
 	fclose (stream);
 	free(bp);

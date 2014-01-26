@@ -11,6 +11,11 @@ extern "C" {
 
 struct DerivedMesh;
 
+enum {
+	SHARD_INTACT   = 1 << 0,
+	SHARD_FRACTURED = 1 << 1,
+};
+
 typedef struct Shard {
 	struct MVert *mvert;
 	struct MPoly *mpoly;
@@ -24,6 +29,8 @@ typedef struct Shard {
 	int *neighbor_ids;	// neighbors of me... might be necessary for easier compounding or fracture, dont need to iterate over all.... searchradius ?
 	int shard_id;	// the identifier
 	int neighbor_count; // counts of neighbor islands
+	int parent_id;	//the shard from which this shard originates, we keep all shards in the shardmap
+	int flag;		//flag for: isValid, ...
 } Shard;
 
 typedef struct FracMesh {

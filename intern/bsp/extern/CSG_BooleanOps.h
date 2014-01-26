@@ -61,10 +61,16 @@ extern "C" {
 #endif
 
 typedef struct  {
-	int vertex_index[4];
+	int vertex_index[20]; //XXXXX TODO, use better a dynamic array here!!!
 	int vertex_number;
 	int orig_face;
 } CSG_IFace;
+
+/*typedef struct  {
+	int *vertex_index;
+	int vertex_number;
+	int orig_face;
+} CSG_IPoly;*/
 
 /**
  * CSG_IVertex -- an interface vertex structure.
@@ -118,6 +124,7 @@ typedef void* CSG_IteratorPtr;
 
 typedef int (*CSG_FaceItDoneFunc)(CSG_IteratorPtr it);
 typedef void (*CSG_FaceItFillFunc)(CSG_IteratorPtr it,CSG_IFace *face);
+//typedef void (*CSG_FacePolyItFillFunc)(CSG_IteratorPtr it, CSG_IPoly *poly);
 typedef void (*CSG_FaceItStepFunc)(CSG_IteratorPtr it);
 typedef void (*CSG_FaceItResetFunc)(CSG_IteratorPtr it);
 
@@ -129,6 +136,15 @@ typedef struct CSG_FaceIteratorDescriptor {
 	CSG_FaceItResetFunc Reset;
 	unsigned int num_elements;
 } CSG_FaceIteratorDescriptor; 
+
+/*typedef struct CSG_PolyIteratorDescriptor {
+	CSG_IteratorPtr it;
+	CSG_FaceItDoneFunc Done;
+	CSG_FacePolyItFillFunc Fill;
+	CSG_FaceItStepFunc Step;
+	CSG_FaceItResetFunc Reset;
+	unsigned int num_elements;
+} CSG_PolyIteratorDescriptor;*/
 
 /**
  * Similarly to walk through the vertex arrays we have.

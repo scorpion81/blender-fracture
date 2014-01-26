@@ -380,41 +380,59 @@ static MeshSet<3> *Carve_addMesh(CSG_FaceIteratorDescriptor &face_it,
 	while (!face_it.Done(face_it.it)) {
 		face_it.Fill(face_it.it,&face);
 
-		if (isFacePlanar(face, vertices)) {
-			f.push_back(face.vertex_number);
-			f.push_back(face.vertex_index[0]);
-			f.push_back(face.vertex_index[1]);
-			f.push_back(face.vertex_index[2]);
+		if (1) //face.vertex_number > 4)
+		{	// handle potential ngons... XXX TODO now assumed they ARE planar (coming from voronoi cells)
+			int i = 0;
 
-			if (face.vertex_number == 4)
-				f.push_back(face.vertex_index[3]);
+			f.push_back(face.vertex_number);
+			for (i = 0; i < face.vertex_number; i++)
+			{
+				f.push_back(face.vertex_index[i]);
+			}
 
 			forig.push_back(face.orig_face);
 			++numfaces;
 			face_it.Step(face_it.it);
 			++num_origfaces;
 		}
-		else {
-			f.push_back(3);
-			f.push_back(face.vertex_index[0]);
-			f.push_back(face.vertex_index[1]);
-			f.push_back(face.vertex_index[2]);
-
-			forig.push_back(face.orig_face);
-			++numfaces;
-
-			if (face.vertex_number == 4) {
-				f.push_back(3);
+		else
+		{
+			if (isFacePlanar(face, vertices)) {
+				f.push_back(face.vertex_number);
 				f.push_back(face.vertex_index[0]);
+				f.push_back(face.vertex_index[1]);
 				f.push_back(face.vertex_index[2]);
-				f.push_back(face.vertex_index[3]);
+
+				if (face.vertex_number == 4)
+					f.push_back(face.vertex_index[3]);
 
 				forig.push_back(face.orig_face);
 				++numfaces;
+				face_it.Step(face_it.it);
+				++num_origfaces;
 			}
+			else {
+				f.push_back(3);
+				f.push_back(face.vertex_index[0]);
+				f.push_back(face.vertex_index[1]);
+				f.push_back(face.vertex_index[2]);
 
-			face_it.Step(face_it.it);
-			++num_origfaces;
+				forig.push_back(face.orig_face);
+				++numfaces;
+
+				if (face.vertex_number == 4) {
+					f.push_back(3);
+					f.push_back(face.vertex_index[0]);
+					f.push_back(face.vertex_index[2]);
+					f.push_back(face.vertex_index[3]);
+
+					forig.push_back(face.orig_face);
+					++numfaces;
+				}
+
+				face_it.Step(face_it.it);
+				++num_origfaces;
+			}
 		}
 	}
 
