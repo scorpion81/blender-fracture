@@ -15,33 +15,26 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * The Original Code is Copyright (C) 2001-2002 by NaN Holding BV.
+ * The Original Code is Copyright (C) 2014 Blender Foundation.
  * All rights reserved.
  *
- * The Original Code is: all of this file.
- *
- * Contributor(s): none yet.
+ * Contributor(s): Blender Foundation,
+ *                 Sergey Sharybin
  *
  * ***** END GPL LICENSE BLOCK *****
  */
+
+#ifndef __CARVE_UTIL_H__
+#define __CARVE_UTIL_H__
+#include <carve/mesh.hpp>
+#include <carve/geom3d.hpp>
+
+void carve_getRescaleMinMax(const carve::mesh::MeshSet<3> *left,
+                            const carve::mesh::MeshSet<3> *right,
+                            carve::geom3d::Vector *min,
+                            carve::geom3d::Vector *max);
  
-/** \file BOP_Interface.h
- *  \ingroup bsp
- */
-
-#ifndef __BOP_INTERFACE_H__
-#define __BOP_INTERFACE_H__
-
-#include "BSP_CSGMesh.h"
-
-typedef enum EnumBoolOpState {BOP_OK, BOP_NO_SOLID, BOP_ERROR} BoolOpState;
-typedef enum EnumBoolOpType {BOP_INTERSECTION=e_csg_intersection, BOP_UNION=e_csg_union, BOP_DIFFERENCE=e_csg_difference} BoolOpType;
-
-BoolOpState BOP_performBooleanOperation(BoolOpType                   opType,
-					BSP_CSGMesh**                outputMesh,
-					CSG_FaceIteratorDescriptor   obAFaces,
-					CSG_VertexIteratorDescriptor obAVertices,
-					CSG_FaceIteratorDescriptor   obBFaces,
-					CSG_VertexIteratorDescriptor obBVertices);
-
-#endif
+void carve_unionIntersections(carve::mesh::MeshSet<3> **left_r,
+                              carve::mesh::MeshSet<3> **right_r);
+ 
+#endif  // __CARVE_UTIL_H__
