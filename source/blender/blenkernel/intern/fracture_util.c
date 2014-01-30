@@ -102,7 +102,7 @@ static int importer_GetPolyNumVerts(ImportMeshData *import_data, int index)
 static void importer_GetPolyVerts(ImportMeshData *import_data, int index, int *verts)
 {
 	MPoly *mpoly = &import_data->mpoly[index];
-	MLoop *mloop = import_data->mloop + mpoly->loopstart;
+	MLoop *mloop = import_data->mloop + mpoly->loopstart;// + mpoly->totloop-1;
 	int i;
 	BLI_assert(index >= 0 && index < import_data->s->totpoly);
 	for (i = 0; i < mpoly->totloop; i++, mloop++) {
@@ -223,7 +223,7 @@ static int operation_from_optype(int int_op_type)
 	return operation;
 }
 
-static void prepare_import_data(float obmat[4][4], Shard *s, ImportMeshData *import_data)
+static void prepare_import_data(float obmat[4][4], Shard *s, ImportMeshData *import_data, bool flip)
 {
 	//create dm, temp... doesnt work as well...
 	/*MVert *mverts;
@@ -244,13 +244,35 @@ static void prepare_import_data(float obmat[4][4], Shard *s, ImportMeshData *imp
 	copy_m4_m4(import_data->obmat, obmat);
 	import_data->mvert = s->mvert;
 	import_data->mloop = s->mloop;
+
+	if (flip)
+	{
+		//swap loops, per poly
+		int i, j;
+		MPoly *p = s->mpoly;
+		import_data->mloop = MEM_mallocN(sizeof(MLoop) * s->totloop, __func__);
+		for (i = 0; i < s->totpoly; i++, p++)
+		{
+			MLoop* l = &s->mloop[p->loopstart + p->totloop - 1];
+			for (j = 0; j < p->totloop; j++, l--)
+			{
+				import_data->mloop[j + p->loopstart].v = l->v;
+				import_data->mloop[j + p->loopstart].e = l->e;
+			}
+		}
+	}
+	else
+	{
+		import_data->mloop = s->mloop;
+	}
+
 	import_data->mpoly = s->mpoly;
 }
 
-static struct MeshSet3D *carve_mesh_from_shard(float obmat[4][4], Shard *s)
+static struct MeshSet3D *carve_mesh_from_shard(float obmat[4][4], Shard *s, bool flip)
 {
 	ImportMeshData import_data;
-	prepare_import_data(obmat, s, &import_data);
+	prepare_import_data(obmat, s, &import_data, flip);
 	return carve_addMesh(&import_data, &MeshImporter);
 }
 
@@ -297,8 +319,8 @@ Shard *BKE_fracture_shard_boolean(Shard *parent, Shard* child, float obmat[4][4]
 		return NULL;
 	}
 
-	left = carve_mesh_from_shard(offs_mat, child);
-	right = carve_mesh_from_shard(obmat, parent);
+	left = carve_mesh_from_shard(obmat, child, true);
+	right = carve_mesh_from_shard(obmat, parent, false);
 
 	result = carve_performBooleanOperation(left, right, operation, &output);
 
@@ -307,7 +329,7 @@ Shard *BKE_fracture_shard_boolean(Shard *parent, Shard* child, float obmat[4][4]
 
 	if (result) {
 		ExportMeshData export_data;
-		prepare_export_data(offs_mat, &export_data);
+		prepare_export_data(obmat, &export_data);
 
 		carve_exportMesh(output, &MeshExporter, &export_data);
 		output_dm = export_data.dm;

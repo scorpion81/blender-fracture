@@ -87,6 +87,8 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 		s = BKE_fracture_shard_boolean(p, s, obmat);
 		if (s != NULL)
 		{
+			s->parent_id = parent_id;
+			s->flag = SHARD_INTACT;
 			add_shard(fm, s);
 		}
 	}
