@@ -446,6 +446,7 @@ if(WITH_VORO)
 	add_definitions(-DWITH_VORO)
 	list(APPEND INC
 		../../../extern/voro++
+		../../../extern/carve
 	)
 endif()
 

@@ -30,6 +30,9 @@
  *  \ingroup blenkernel
  */
 
+//#include "carve-util.h"
+#include "stdbool.h"
+#include "carve-capi.h"
 
 #include "DNA_material_types.h"
 #include "DNA_mesh_types.h"
@@ -54,492 +57,228 @@
 #include "BKE_fracture.h"
 #include "BKE_fracture_util.h"
 
-#include "CSG_BooleanOps.h"
 
-
-/**
- * Here's the vertex iterator structure used to walk through
- * the blender vertex structure.
- */
-
-typedef struct {
+/* **** Importer from shard to Carve ****  */
+typedef struct ImportMeshData {
 	Shard *s;
 	float obmat[4][4];
-	int pos;
-} VertexIt;
+	MVert *mvert;
+	MLoop *mloop;
+	MPoly *mpoly;
+} ImportMeshData;
 
-/**
- * Implementations of local vertex iterator functions.
- * These describe a blender mesh to the CSG module.
- */
-
-static void VertexIt_Destruct(CSG_VertexIteratorDescriptor *iterator)
+/* Get number of vertices. */
+static int importer_GetNumVerts(ImportMeshData *import_data)
 {
-	if (iterator->it) {
-		/* deallocate memory for iterator */
-		MEM_freeN(iterator->it);
-		iterator->it = NULL;
+	Shard *s = import_data->s;
+	return s->totvert;
+}
+
+/* Get number of polys. */
+static int importer_GetNumPolys(ImportMeshData *import_data)
+{
+	Shard *s = import_data->s;
+	return s->totpoly;
+}
+
+/* Get 3D coordinate of vertex with given index. */
+static void importer_GetVertexCoord(ImportMeshData *import_data, int index, float coord[3])
+{
+	MVert *mvert = import_data->mvert;
+
+	BLI_assert(index >= 0 && index < import_data->s->totvert);
+
+	mul_v3_m4v3(coord, import_data->obmat, mvert[index].co);
+}
+
+/* Get number of adjucent vertices to the poly specified by it's index. */
+static int importer_GetPolyNumVerts(ImportMeshData *import_data, int index)
+{
+	MPoly *mpoly = import_data->mpoly;
+	return mpoly[index].totloop;
+}
+
+/* Get list of adjucent vertices to the poly specified by it's index. */
+static void importer_GetPolyVerts(ImportMeshData *import_data, int index, int *verts)
+{
+	MPoly *mpoly = &import_data->mpoly[index];
+	MLoop *mloop = import_data->mloop + mpoly->loopstart;
+	int i;
+	BLI_assert(index >= 0 && index < import_data->s->totpoly);
+	for (i = 0; i < mpoly->totloop; i++, mloop++) {
+		verts[i] = mloop->v;
 	}
-	iterator->Done = NULL;
-	iterator->Fill = NULL;
-	iterator->Reset = NULL;
-	iterator->Step = NULL;
-	iterator->num_elements = 0;
-
 }
 
-static int VertexIt_Done(CSG_IteratorPtr it)
+static CarveMeshImporter MeshImporter = {
+	importer_GetNumVerts,
+	importer_GetNumPolys,
+	importer_GetVertexCoord,
+	importer_GetPolyNumVerts,
+	importer_GetPolyVerts
+};
+
+
+/* **** Exporter from Carve to derivedmesh ****  */
+
+typedef struct ExportMeshData {
+	DerivedMesh *dm;
+	float obimat[4][4];
+	MVert *mvert;
+	MEdge *medge;
+	MLoop *mloop;
+	MPoly *mpoly;
+} ExportMeshData;
+
+/* Create new external mesh */
+static void exporter_InitGeomArrays(ExportMeshData *export_data,
+                                    int num_verts, int num_edges,
+                                    int num_loops, int num_polys)
 {
-	VertexIt *iterator = (VertexIt *)it;
-	return(iterator->pos >= iterator->s->totvert);
+	DerivedMesh *dm = CDDM_new(num_verts, num_edges, 0,
+	                           num_loops, num_polys);
+	export_data->dm = dm;
+	export_data->mvert = dm->getVertArray(dm);
+	export_data->medge = dm->getEdgeArray(dm);
+	export_data->mloop = dm->getLoopArray(dm);
+	export_data->mpoly = dm->getPolyArray(dm);
 }
 
-static void VertexIt_Fill(CSG_IteratorPtr it, CSG_IVertex *vert)
+/* Set coordinate of vertex with given index. */
+static void exporter_SetVertexCoord(ExportMeshData *export_data, int index, float coord[3])
 {
-	VertexIt *iterator = (VertexIt *)it;
-	MVert *verts = iterator->s->mvert;
-
-	float global_pos[3];
-
-	/* boolean happens in global space, transform both with obmat */
-	mul_v3_m4v3(
-	    global_pos,
-	    iterator->obmat,
-	    verts[iterator->pos].co
-	    );
-
-	vert->position[0] = global_pos[0];
-	vert->position[1] = global_pos[1];
-	vert->position[2] = global_pos[2];
+	MVert *mvert = export_data->mvert;
+	mul_v3_m4v3(mvert[index].co, export_data->obimat, coord);
 }
 
-static void VertexIt_Step(CSG_IteratorPtr it)
+/* Set vertices which are adjucent to the edge specified by it's index. */
+static void exporter_SetEdgeVerts(ExportMeshData *export_data, int index, int v1, int v2)
 {
-	VertexIt *iterator = (VertexIt *)it;
-	iterator->pos++;
+	MEdge *medge = &export_data->medge[index];
+
+	BLI_assert(index >= 0 && index < export_data->dm->getNumEdges(export_data->dm));
+	BLI_assert(v1 >= 0 && v1 < export_data->dm->getNumVerts(export_data->dm));
+	BLI_assert(v2 >= 0 && v2 < export_data->dm->getNumVerts(export_data->dm));
+
+	medge->v1 = v1;
+	medge->v2 = v2;
+
+	medge->flag |= ME_EDGEDRAW | ME_EDGERENDER;
 }
 
-static void VertexIt_Reset(CSG_IteratorPtr it)
+// Set list of adjucent loops to the poly specified by it's index.
+static void exporter_SetPolyLoops(ExportMeshData *export_data, int index, int start_loop, int num_loops)
 {
-	VertexIt *iterator = (VertexIt *)it;
-	iterator->pos = 0;
+	MPoly *mpoly = &export_data->mpoly[index];
+
+	BLI_assert(index >= 0 && index < export_data->dm->getNumPolys(export_data->dm));
+	BLI_assert(start_loop >= 0 && start_loop <= export_data->dm->getNumLoops(export_data->dm) - num_loops);
+	BLI_assert(num_loops >= 3);
+
+	mpoly->loopstart = start_loop;
+	mpoly->totloop = num_loops;
 }
 
-static void VertexIt_Construct(CSG_VertexIteratorDescriptor *output, Shard *s, float obmat[4][4])
+/* Set list vertex and edge which are adjucent to loop with given index. */
+static void exporter_SetLoopVertEdge(ExportMeshData *export_data, int index, int vertex, int edge)
 {
+	MLoop *mloop = &export_data->mloop[index];
 
-	VertexIt *it;
-	if (output == NULL) return;
+	BLI_assert(index >= 0 && index < export_data->dm->getNumLoops(export_data->dm));
+	BLI_assert(vertex >= 0 && vertex < export_data->dm->getNumVerts(export_data->dm));
+	BLI_assert(edge >= 0 && vertex < export_data->dm->getNumEdges(export_data->dm));
 
-	/* allocate some memory for blender iterator */
-	it = (VertexIt *)(MEM_mallocN(sizeof(VertexIt), "Boolean_VIt"));
-	if (it == NULL) {
-		return;
-	}
-	/* assign blender specific variables */
-	it->s = s;
-	copy_m4_m4(it->obmat, obmat); /* needed for obmat transformations */
-
-	it->pos = 0;
-
-	/* assign iterator function pointers. */
-	output->Step = VertexIt_Step;
-	output->Fill = VertexIt_Fill;
-	output->Done = VertexIt_Done;
-	output->Reset = VertexIt_Reset;
-	output->num_elements = it->s->totvert;
-	output->it = it;
+	mloop->v = vertex;
+	mloop->e = edge;
 }
 
-/**
- * Blender Face iterator
- */
+static CarveMeshExporter MeshExporter = {
+	exporter_InitGeomArrays,
+	exporter_SetVertexCoord,
+	exporter_SetEdgeVerts,
+	exporter_SetPolyLoops,
+	exporter_SetLoopVertEdge
+};
 
-typedef struct {
-	Shard *s;
-	int pos;
-	int offset;
-	int flip;
-} FaceIt;
-
-static void FaceIt_Destruct(CSG_FaceIteratorDescriptor *iterator)
+static int operation_from_optype(int int_op_type)
 {
-	MEM_freeN(iterator->it);
-	iterator->Done = NULL;
-	iterator->Fill = NULL;
-	iterator->Reset = NULL;
-	iterator->Step = NULL;
-	iterator->num_elements = 0;
-}
+	int operation;
 
-static int FaceIt_Done(CSG_IteratorPtr it)
-{
-	/* assume CSG_IteratorPtr is of the correct type. */
-	FaceIt *iterator = (FaceIt *)it;
-	return(iterator->pos >= iterator->s->totpoly);
-}
-
-static void FaceIt_Fill(CSG_IteratorPtr it, CSG_IFace *face)
-{
-	/* assume CSG_IteratorPtr is of the correct type. */
-	FaceIt *face_it = (FaceIt *)it;
-	MPoly *mpolys = face_it->s->mpoly;
-	MPoly *mpoly = &mpolys[face_it->pos];
-
-	//todo reverse loops ?
-	MLoop *mloops = face_it->s->mloop;
-	{
-		int i = 0;
-		int mp = mpoly->loopstart + mpoly->totloop;
-		face->vertex_number = mpoly->totloop;
-
-		if (face_it->flip != 0)
-		{
-			for (i = mpoly->loopstart; i < mp; i++)
-			{
-				face->vertex_index[i-mpoly->loopstart] = mloops[mp-i+mpoly->loopstart-1].v;
-			}
-		}
-		else
-		{
-			for (i = mpoly->loopstart; i < mp; i++)
-			{
-				face->vertex_index[i-mpoly->loopstart] = mloops[i].v;
-			}
-		}
-
-		face->orig_face = face_it->offset + face_it->pos;
-	}
-
-	/* reverse face vertices if necessary */
-	/*face->vertex_index[1] = mface->v2;
-	if (face_it->flip == 0) {
-		face->vertex_index[0] = mface->v1;
-		face->vertex_index[2] = mface->v3;
-	}
-	else {
-		face->vertex_index[2] = mface->v1;
-		face->vertex_index[0] = mface->v3;
-	}
-	if (mface->v4) {
-		face->vertex_index[3] = mface->v4;
-		face->vertex_number = 4;
-	}
-	else {
-		face->vertex_number = 3;
+	switch (int_op_type) {
+		case 1:
+			operation = CARVE_OP_INTERSECTION;
+			break;
+		case 2:
+			operation = CARVE_OP_UNION;
+			break;
+		case 3:
+			operation = CARVE_OP_A_MINUS_B;
+			break;
+		default:
+			BLI_assert(!"Should not happen");
+			operation = -1;
+			break;
 	}
 
-	face->orig_face = face_it->offset + face_it->pos;*/
+	return operation;
 }
 
-static void FaceIt_Step(CSG_IteratorPtr it)
+static void prepare_import_data(float obmat[4][4], Shard *s, ImportMeshData *import_data)
 {
-	FaceIt *face_it = (FaceIt *)it;
-	face_it->pos++;
+	//create dm, temp... doesnt work as well...
+	/*MVert *mverts;
+	MLoop *mloops;
+	MPoly *mpolys;
+
+	import_data->dm  = CDDM_new(s->totvert, 0, 0, s->totloop, s->totpoly);
+	mverts = CDDM_get_verts(import_data->dm);
+	mloops = CDDM_get_loops(import_data->dm);
+	mpolys = CDDM_get_polys(import_data->dm);
+	memcpy(mverts, s->mvert, s->totvert * sizeof(MVert));
+	memcpy(mloops, s->mloop, s->totloop * sizeof(MLoop));
+	memcpy(mpolys, s->mpoly, s->totpoly * sizeof(MPoly));
+	CDDM_calc_edges(import_data->dm);
+	import_data->dm->dirty |= DM_DIRTY_NORMALS;*/
+
+	import_data->s = s;
+	copy_m4_m4(import_data->obmat, obmat);
+	import_data->mvert = s->mvert;
+	import_data->mloop = s->mloop;
+	import_data->mpoly = s->mpoly;
 }
 
-static void FaceIt_Reset(CSG_IteratorPtr it)
+static struct MeshSet3D *carve_mesh_from_shard(float obmat[4][4], Shard *s)
 {
-	FaceIt *face_it = (FaceIt *)it;
-	face_it->pos = 0;
+	ImportMeshData import_data;
+	prepare_import_data(obmat, s, &import_data);
+	return carve_addMesh(&import_data, &MeshImporter);
 }
 
-static void FaceIt_Construct(
-        CSG_FaceIteratorDescriptor *output, Shard *s, int offset, float obmat[4][4])
+static void prepare_export_data(float obmat[4][4], ExportMeshData *export_data)
 {
-	FaceIt *it;
-	float size[3];
-
-	if (output == NULL) return;
-	mat4_to_size(size, obmat);
-
-	/* allocate some memory for blender iterator */
-	it = (FaceIt *)(MEM_mallocN(sizeof(FaceIt), "Boolean_FIt"));
-	if (it == NULL) {
-		return;
-	}
-	/* assign blender specific variables */
-	it->s = s;
-	it->offset = offset;
-	it->pos = 0;
-
-
-	/* determine if we will need to reverse order of face vertices */
-	if (size[0] < 0.0f) {
-		if (size[1] < 0.0f && size[2] < 0.0f) {
-			it->flip = 1;
-		}
-		else if (size[1] >= 0.0f && size[2] >= 0.0f) {
-			it->flip = 1;
-		}
-		else {
-			it->flip = 0;
-		}
-	}
-	else {
-		if (size[1] < 0.0f && size[2] < 0.0f) {
-			it->flip = 0;
-		}
-		else if (size[1] >= 0.0f && size[2] >= 0.0f) {
-			it->flip = 0;
-		}
-		else {
-			it->flip = 1;
-		}
-	}
-
-	/* assign iterator function pointers. */
-	output->Step = FaceIt_Step;
-	output->Fill = FaceIt_Fill;
-	output->Done = FaceIt_Done;
-	output->Reset = FaceIt_Reset;
-	output->num_elements = it->s->totpoly;
-	output->it = it;
-}
-
-#if 0
-static void InterpCSGFace(
-        DerivedMesh *dm, DerivedMesh *orig_dm, int index, int orig_index, int nr,
-        float mapmat[4][4])
-{
-	float obco[3], *co[4], *orig_co[4], w[4][4];
-	MFace *mface, *orig_mface;
-	int j;
-
-	mface = CDDM_get_tessface(dm, index);
-	orig_mface = orig_dm->getTessFaceArray(orig_dm) + orig_index;
-
-	/* get the vertex coordinates from the original mesh */
-	orig_co[0] = (orig_dm->getVertArray(orig_dm) + orig_mface->v1)->co;
-	orig_co[1] = (orig_dm->getVertArray(orig_dm) + orig_mface->v2)->co;
-	orig_co[2] = (orig_dm->getVertArray(orig_dm) + orig_mface->v3)->co;
-	orig_co[3] = (orig_mface->v4) ? (orig_dm->getVertArray(orig_dm) + orig_mface->v4)->co : NULL;
-
-	/* get the vertex coordinates from the new derivedmesh */
-	co[0] = CDDM_get_vert(dm, mface->v1)->co;
-	co[1] = CDDM_get_vert(dm, mface->v2)->co;
-	co[2] = CDDM_get_vert(dm, mface->v3)->co;
-	co[3] = (nr == 4) ? CDDM_get_vert(dm, mface->v4)->co : NULL;
-
-	for (j = 0; j < nr; j++) {
-		/* get coordinate into the space of the original mesh */
-		if (mapmat)
-			mul_v3_m4v3(obco, mapmat, co[j]);
-		else
-			copy_v3_v3(obco, co[j]);
-
-		interp_weights_face_v3(w[j], orig_co[0], orig_co[1], orig_co[2], orig_co[3], obco);
-	}
-
-	CustomData_interp(&orig_dm->faceData, &dm->faceData, &orig_index, NULL, (float *)w, 1, index);
-}
-#endif
-
-/* Iterate over the CSG Output Descriptors and create a new DerivedMesh
- * from them */
-static Shard *ConvertCSGDescriptorsToShard(
-        CSG_FaceIteratorDescriptor *face_it,
-        CSG_VertexIteratorDescriptor *vertex_it,
-        float parinv[4][4],
-        float mapmat[4][4],
-        //Material **mat,
-        //int *totmat,
-        Shard *s1,
-        Shard *s2)
-{
-	Shard *result; //, *orig_dm;
-	/*GHash *material_hash = NULL;
-	Mesh *me1 = (Mesh *)ob1->data;
-	Mesh *me2 = (Mesh *)ob2->data;*/
-	int i; //*origindex_layer;
-	int totloop = 0;
-	int totvert = vertex_it->num_elements;
-	int totpoly = face_it->num_elements;
-
-	MVert* mvert = MEM_mallocN(sizeof(MVert) * totvert, __func__);
-	MPoly* mpolys = MEM_mallocN(sizeof(MPoly) * totpoly, __func__);
-	MLoop* mloops = MEM_mallocN(sizeof(MLoop), __func__);
-
-	/* create a new Shard */
-	//result = BKE_create_fracture_shard()
-	/*result = CDDM_new(vertex_it->num_elements, 0, face_it->num_elements, 0, 0);
-	CustomData_merge(&dm1->faceData, &result->faceData, CD_MASK_DERIVEDMESH & ~CD_MASK_ORIGINDEX,
-	                 CD_DEFAULT, face_it->num_elements);
-	CustomData_merge(&dm2->faceData, &result->faceData, CD_MASK_DERIVEDMESH & ~CD_MASK_ORIGINDEX,
-	                 CD_DEFAULT, face_it->num_elements);*/
-
-	/* step through the vertex iterators: */
-	for (i = 0; !vertex_it->Done(vertex_it->it); i++) {
-		CSG_IVertex csgvert;
-		MVert *vert = &mvert[i];
-
-		/* retrieve a csg vertex from the boolean module */
-		vertex_it->Fill(vertex_it->it, &csgvert);
-		vertex_it->Step(vertex_it->it);
-
-		/* we have to map the vertex coordinates back in the coordinate frame
-		 * of the resulting object, since it was computed in world space */
-		mul_v3_m4v3(vert->co, parinv, csgvert.position);
-	}
-
-	/* a hash table to remap materials to indices */
-	/*material_hash = BLI_ghash_ptr_new("CSG_mat gh");
-
-	if (mat)
-		*totmat = 0;
-
-	origindex_layer = result->getTessFaceDataArray(result, CD_ORIGINDEX);*/
-
-	/* step through the face iterators */
-	for (i = 0; !face_it->Done(face_it->it); i++) {
-		/*Mesh *orig_me;
-		Object *orig_ob;
-		Material *orig_mat;*/
-		CSG_IFace csgface;
-		MPoly *mpoly = &mpolys[i];
-		//int orig_index, mat_nr;
-		int j;
-
-		/* retrieve a csg face from the boolean module */
-		face_it->Fill(face_it->it, &csgface);
-		face_it->Step(face_it->it);
-
-		/*set mpoly and mloop */
-
-		mpoly->loopstart = totloop;
-		mpoly->totloop = csgface.vertex_number;
-		mpoly->mat_nr = 0; /*for now... */
-
-		for (j = 0; j < csgface.vertex_number; j++)
-		{
-			mloops = MEM_reallocN(mloops, sizeof(MLoop) * (totloop+1));
-			mloops[totloop].v = csgface.vertex_index[j];
-			mloops[totloop].e = j;
-			totloop++;
-		}
-	}
-
-	result = BKE_create_fracture_shard(mvert, mpolys, mloops, totvert, totpoly, totloop, false);
-	return result;
-}
-
-#if 0
-		/* find the original mesh and data */
-		orig_ob = (csgface.orig_face < dm1->getNumTessFaces(dm1)) ? ob1 : ob2;
-		orig_dm = (csgface.orig_face < dm1->getNumTessFaces(dm1)) ? dm1 : dm2;
-		orig_me = (orig_ob == ob1) ? me1 : me2;
-		orig_index = (orig_ob == ob1) ? csgface.orig_face : csgface.orig_face - dm1->getNumTessFaces(dm1);
-
-		/* copy all face layers, including mface */
-		CustomData_copy_data(&orig_dm->faceData, &result->faceData, orig_index, i, 1);
-
-		/* set mface */
-		mface = CDDM_get_tessface(result, i);
-		mface->v1 = csgface.vertex_index[0];
-		mface->v2 = csgface.vertex_index[1];
-		mface->v3 = csgface.vertex_index[2];
-		mface->v4 = (csgface.vertex_number == 4) ? csgface.vertex_index[3] : 0;
-
-		/* set material, based on lookup in hash table */
-
-
-		orig_mat = give_current_material(orig_ob, mface->mat_nr + 1);
-
-		if (mat && orig_mat) {
-			if (!BLI_ghash_haskey(material_hash, orig_mat)) {
-				mat[*totmat] = orig_mat;
-				mat_nr = mface->mat_nr = (*totmat)++;
-				BLI_ghash_insert(material_hash, orig_mat, SET_INT_IN_POINTER(mat_nr));
-			}
-			else
-				mface->mat_nr = GET_INT_FROM_POINTER(BLI_ghash_lookup(material_hash, orig_mat));
-		}
-		else if (orig_mat) {
-			if (orig_ob == ob1) {
-				/* No need to change materian index for faces from left operand */
-			}
-			else {
-				/* for faces from right operand checn if there's needed material in left operand and if it is,
-				 * use index of that material, otherwise fallback to first material (material with index=0) */
-				if (!BLI_ghash_haskey(material_hash, orig_mat)) {
-					int a;
-
-					mat_nr = 0;
-					for (a = 0; a < ob1->totcol; a++) {
-						if (give_current_material(ob1, a + 1) == orig_mat) {
-							mat_nr = a;
-							break;
-						}
-					}
-
-					BLI_ghash_insert(material_hash, orig_mat, SET_INT_IN_POINTER(mat_nr));
-
-					mface->mat_nr = mat_nr;
-				}
-				else
-					mface->mat_nr = GET_INT_FROM_POINTER(BLI_ghash_lookup(material_hash, orig_mat));
-			}
-		}
-		elsef
-			mface->mat_nr = 0;
-
-		/*InterpCSGFace(result, orig_dm, i, orig_index, csgface.vertex_number,
-		              (orig_me == me2) ? mapmat : NULL);
-
-		test_index_face(mface, &result->faceData, i, csgface.vertex_number);
-
-		if (origindex_layer && orig_ob == ob2)
-			origindex_layer[i] = ORIGINDEX_NONE;*/
-	}
-
-	/*if (material_hash)
-		BLI_ghash_free(material_hash, NULL, NULL);
-
-	CDDM_calc_edges_tessface(result);
-
-	CDDM_tessfaces_to_faces(result);*/ /*builds ngon faces from tess (mface) faces*/
-
-	/* this fixes shading issues but SHOULD NOT.
-	 * TODO, find out why face normals are wrong & flicker - campbell */
-#if 0
-	DM_debug_print(result);
-
-	CustomData_free(&result->faceData, result->numTessFaceData);
-	result->numTessFaceData = 0;
-	DM_ensure_tessface(result);
-#endif
-
-	//result->dirty |= DM_DIRTY_NORMALS;
-
-	return result;
-#endif
-
-static void BuildMeshDescriptors(
-        struct Shard *s,
-        float obmat[4][4],
-        int face_offset,
-        struct CSG_FaceIteratorDescriptor *face_it,
-        struct CSG_VertexIteratorDescriptor *vertex_it)
-{
-	VertexIt_Construct(vertex_it, s, obmat);
-	FaceIt_Construct(face_it, s, face_offset, obmat);
-}
-
-static void FreeMeshDescriptors(
-        struct CSG_FaceIteratorDescriptor *face_it,
-        struct CSG_VertexIteratorDescriptor *vertex_it)
-{
-	VertexIt_Destruct(vertex_it);
-	FaceIt_Destruct(face_it);
+	/* Only initialize inverse object matrix here, all the rest will be
+	 * initialized in initGeomArrays
+	 */
+	invert_m4_m4(export_data->obimat, obmat);
 }
 
 Shard *BKE_fracture_shard_boolean(Shard *parent, Shard* child, float obmat[4][4])
 {
-	float inv_mat[4][4];
-	float map_mat[4][4];
+	//float inv_mat[4][4];
+	//float map_mat[4][4];
 	float offs_mat[4][4];
+	bool result;
 
-	Shard *result = NULL;
+	Shard *output_s;
+	DerivedMesh *output_dm;
+	struct MeshSet3D *left, *right, *output = NULL;
+	int operation = -1;
+	int int_op_type = 1;
+
+	if (parent == NULL || child == NULL) {
+		return NULL;
+	}
+
 	if ((parent->totpoly == 0) || (child->totpoly == 0)) return NULL;
 
 	copy_m4_m4(offs_mat, obmat);
@@ -549,77 +288,60 @@ Shard *BKE_fracture_shard_boolean(Shard *parent, Shard* child, float obmat[4][4]
 	/* we map the final object back into ob's local coordinate space. For this
 	 * we need to compute the inverse transform from global to ob (inv_mat),
 	 * and the transform from ob to ob_select for use in interpolation (map_mat) */
-	invert_m4_m4(inv_mat, obmat);
-	mul_m4_m4m4(map_mat, inv_mat, offs_mat);
-	invert_m4_m4(inv_mat, offs_mat);
+	//invert_m4_m4(inv_mat, obmat);
+	//mul_m4_m4m4(map_mat, inv_mat, offs_mat);
+	//invert_m4_m4(inv_mat, offs_mat);
 
-	{
-		/* interface with the boolean module:
-		 *
-		 * the idea is, we pass the boolean module verts and faces using the
-		 * provided descriptors. once the boolean operation is performed, we
-		 * get back output descriptors, from which we then build a DerivedMesh */
-
-		CSG_VertexIteratorDescriptor vd_1, vd_2;
-		CSG_FaceIteratorDescriptor fd_1, fd_2;
-		CSG_OperationType op_type;
-		CSG_BooleanOperation *bool_op;
-
-		int int_op_type = 1;
-
-		/* work out the operation they chose and pick the appropriate
-		 * enum from the csg module. */
-		switch (int_op_type) {
-			case 1: op_type = e_csg_intersection; break;
-			case 2: op_type = e_csg_union; break;
-			case 3: op_type = e_csg_difference; break;
-			case 4: op_type = e_csg_classify; break;
-			default: op_type = e_csg_intersection;
-		}
-
-		BuildMeshDescriptors(child, offs_mat, 0, &fd_1, &vd_1);
-		BuildMeshDescriptors(parent, obmat, child->totpoly, &fd_2, &vd_2);
-
-		bool_op = CSG_NewBooleanFunction();
-
-		/* perform the operation */
-		if (CSG_PerformBooleanOperation(bool_op, op_type, fd_1, vd_1, fd_2, vd_2)) {
-			CSG_VertexIteratorDescriptor vd_o;
-			CSG_FaceIteratorDescriptor fd_o;
-
-			CSG_OutputFaceDescriptor(bool_op, &fd_o);
-			CSG_OutputVertexDescriptor(bool_op, &vd_o);
-
-			/* iterate through results of operation and insert
-			 * into new object */
-			result = ConvertCSGDescriptorsToShard(&fd_o, &vd_o, inv_mat, map_mat, child, parent);
-
-			/* free up the memory */
-			CSG_FreeVertexDescriptor(&vd_o);
-			CSG_FreeFaceDescriptor(&fd_o);
-		}
-		else
-			printf("Unknown internal error in boolean\n");
-
-		CSG_FreeBooleanOperation(bool_op);
-
-		FreeMeshDescriptors(&fd_1, &vd_1);
-		FreeMeshDescriptors(&fd_2, &vd_2);
+	operation = operation_from_optype(int_op_type);
+	if (operation == -1) {
+		return NULL;
 	}
 
-	if (result != NULL)
-	{
-		/*XXX TODO this might be wrong by now ... */
-		result->neighbor_count = child->neighbor_count;
-		result->neighbor_ids = MEM_mallocN(sizeof(int) * child->neighbor_count, __func__);
-		memcpy(result->neighbor_ids, child->neighbor_ids, sizeof(int) * child->neighbor_count);
-		BKE_fracture_shard_center_centroid(result, result->centroid);
+	left = carve_mesh_from_shard(offs_mat, child);
+	right = carve_mesh_from_shard(obmat, parent);
 
-		/*free the bbox shard*/
-		BKE_shard_free(child);
+	result = carve_performBooleanOperation(left, right, operation, &output);
+
+	carve_deleteMesh(left);
+	carve_deleteMesh(right);
+
+	if (result) {
+		ExportMeshData export_data;
+		prepare_export_data(offs_mat, &export_data);
+
+		carve_exportMesh(output, &MeshExporter, &export_data);
+		output_dm = export_data.dm;
+		output_dm->dirty |= DM_DIRTY_NORMALS;
+		carve_deleteMesh(output);
+
+		if (output_dm)
+		{
+			output_s = BKE_create_fracture_shard(output_dm->getVertArray(output_dm),
+			                                     output_dm->getPolyArray(output_dm),
+			                                     output_dm->getLoopArray(output_dm),
+			                                     output_dm->getNumVerts(output_dm),
+			                                     output_dm->getNumPolys(output_dm),
+			                                     output_dm->getNumLoops(output_dm),
+			                                     true);
+
+			/*XXX TODO this might be wrong by now ... */
+			output_s->neighbor_count = child->neighbor_count;
+			output_s->neighbor_ids = MEM_mallocN(sizeof(int) * child->neighbor_count, __func__);
+			memcpy(output_s->neighbor_ids, child->neighbor_ids, sizeof(int) * child->neighbor_count);
+			BKE_fracture_shard_center_centroid(output_s, output_s->centroid);
+
+			/*free the bbox shard*/
+			BKE_shard_free(child);
+
+			/*free the temp derivedmesh*/
+			output_dm->needsFree = 1;
+			output_dm->release(output_dm);
+			output_dm = NULL;
+
+			return output_s;
+		}
+
+		return NULL;
 	}
-
-	return result;
+	return NULL;
 }
-
-
