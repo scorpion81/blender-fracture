@@ -319,7 +319,7 @@ Shard *BKE_fracture_shard_boolean(Shard *parent, Shard* child, float obmat[4][4]
 		return NULL;
 	}
 
-	left = carve_mesh_from_shard(obmat, child, true);
+	left = carve_mesh_from_shard(obmat, child, false);
 	right = carve_mesh_from_shard(obmat, parent, false);
 
 	result = carve_performBooleanOperation(left, right, operation, &output);
