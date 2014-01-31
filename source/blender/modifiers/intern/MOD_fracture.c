@@ -31,8 +31,8 @@
 
 static void initData(ModifierData *md)
 {
-        FractureModifierData *fmd = (FractureModifierData*) md;
-		//...
+		FractureModifierData *fmd = (FractureModifierData*) md;
+		fmd->frac_algorithm = MOD_FRACTURE_BOOLEAN;
 }
 
 static void freeData(ModifierData *md)

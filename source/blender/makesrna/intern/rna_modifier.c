@@ -3801,19 +3801,20 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	StructRNA *srna;
 	PropertyRNA *prop;
 
+	static EnumPropertyItem prop_fracture_algorithm[] = {
+		{MOD_FRACTURE_BOOLEAN, "BOOLEAN", 0, "Boolean", "Use boolean intersection as fracture algorithm"},
+		{MOD_FRACTURE_BISECT, "BISECT", 0, "Bisect", "Use mesh bisect as fracture algorithm"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
 	srna = RNA_def_struct(brna, "FractureModifier", "Modifier");
 	RNA_def_struct_ui_text(srna, "Fracture Modifier", "Add a fracture container to this object");
 	RNA_def_struct_sdna(srna, "FractureModifierData");
 	RNA_def_struct_ui_icon(srna, ICON_MOD_EXPLODE);
-	
-	//prop= RNA_def_property(srna, "system", PROP_INT, PROP_NONE);
-	//RNA_def_property_int_sdna(prop, NULL, "system");
-	// we should use an enum but this is hacked together for now
-	// this range is to allow the user to select a different system
-	//RNA_def_property_ui_range(prop, 0, 2, 1, 0);
-	//RNA_def_property_ui_text(prop, "Systems", "Available particle systems");
-	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
+	prop = RNA_def_property(srna, "frac_algorithm", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_items(prop, prop_fracture_algorithm);
+	RNA_def_property_ui_text(prop, "Fracture Algorithm", "Select type of fracture algorithm");
 }
 
 void RNA_def_modifier(BlenderRNA *brna)

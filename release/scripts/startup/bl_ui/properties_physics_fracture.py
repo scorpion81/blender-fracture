@@ -47,9 +47,8 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
     def draw(self, context):
         layout = self.layout
 
-        #md = context.fracture
-        #layout.prop(md, "propname")
-        #md.settings ?
+        md = context.fracture
+        layout.prop(md, "frac_algorithm")
         layout.operator("object.fracture", icon="MOD_EXPLODE")
 
 if __name__ == "__main__":  # only for live edit.

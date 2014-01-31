@@ -33,7 +33,7 @@
 //utility... bbox / centroid calc
 
 /*prototypes*/
-static void parse_stream(FILE *fp, int expected_shards, ShardID shard_id, FracMesh *fm);
+static void parse_stream(FILE *fp, int expected_shards, ShardID shard_id, FracMesh *fm, int algorithm);
 static Shard *parse_shard(FILE *fp);
 static int parse_verts(FILE *fp, MVert **vert);
 static void parse_polys(FILE *fp, MPoly **poly, MLoop **loop, int *totpoly, int *totloop);
@@ -49,7 +49,7 @@ static void add_shard(FracMesh *fm, Shard *s)
 }
 
 /* parse the voro++ raw data */
-static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracMesh *fm)
+static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracMesh *fm, int algorithm)
 {
 	/*Parse voronoi raw data*/
 	int i = 0;
@@ -82,8 +82,14 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 		s->flag = SHARD_INTACT;
 
 		/* XXX TODO, need object for material as well, or atleast a material index... */
-		//s = BKE_fracture_shard_boolean(p, s, obmat);
-		s = BKE_fracture_shard_bisect(p, s, obmat);
+		if (algorithm == MOD_FRACTURE_BOOLEAN)
+		{
+			s = BKE_fracture_shard_boolean(p, s, obmat);
+		}
+		else if (algorithm == MOD_FRACTURE_BISECT)
+		{
+			s = BKE_fracture_shard_bisect(p, s, obmat);
+		}
 		if (s != NULL)
 		{
 			s->parent_id = parent_id;
@@ -420,7 +426,7 @@ FracMesh *BKE_create_fracture_container(DerivedMesh* dm)
 
 
 
-void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud) {
+void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud, int algorithm) {
 	int n_size = 8;
 	
 	Shard *shard;
@@ -476,7 +482,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	container_print_custom(voro_loop_order, voro_container, "%i %P v %t f %C n %n x", stream);
 	fflush(stream);
 	rewind(stream);
-	parse_stream(stream, pointcloud->totpoints, id, fmesh);
+	parse_stream(stream, pointcloud->totpoints, id, fmesh, algorithm);
 	//printf("%s", bp);
 	fclose (stream);
 	free(bp);

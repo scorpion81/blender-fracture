@@ -1344,10 +1344,17 @@ enum {
 	MOD_WIREFRAME_CREASE        = (1 << 5),
 };
 
+enum {
+	MOD_FRACTURE_BOOLEAN        = (1 << 0),
+	MOD_FRACTURE_BISECT         = (1 << 1),
+};
+
 typedef struct FractureModifierData {
 	ModifierData modifier;
 	struct FracMesh *frac_mesh; //store only the current fracmesh here first, later maybe an entire history...
 	struct DerivedMesh *dm;
+	int frac_algorithm;
+	char pad[4];
 } FractureModifierData;
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */
