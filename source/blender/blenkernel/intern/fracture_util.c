@@ -389,11 +389,22 @@ Shard *BKE_fracture_shard_bisect(Shard* parent, Shard* child, float obmat[4][4])
 			BMOperator bmop_attr;
 
 			normalize_v3_v3(normal_fill, plane_no);
-			if (clear_outer == true && clear_inner == false) {
+			{//if (clear_outer == true && clear_inner == false) {
 				negate_v3(normal_fill);
 			}
 
 			/* Fill */
+			/*BMO_op_initf(
+			        bm_parent, &bmop_fill,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+			        "triangle_fill edges=%S use_beauty=%b",
+			        &bmop, "geom_cut.out", true);
+			BMO_op_exec(bm_parent, &bmop_fill);*/
+
+			/*BMO_op_initf(bm_parent, &bmop_fill, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+			            "contextual_create geom=%S mat_nr=%i use_smooth=%b",
+			            &bmop, "geom_cut.out", 0, false);
+			BMO_op_exec(bm_parent, &bmop_fill);*/
+
 			BMO_op_initf(
 			        bm_parent, &bmop_fill,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 			        "triangle_fill edges=%S normal=%v use_dissolve=%b",
@@ -407,6 +418,13 @@ Shard *BKE_fracture_shard_bisect(Shard* parent, Shard* child, float obmat[4][4])
 			BMO_op_exec(bm_parent, &bmop_fill);*/
 
 			/* Copy Attributes */
+			/*BMO_op_initf(bm_parent, &bmop_attr, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+			             "face_attribute_fill faces=%S use_normals=%b use_data=%b",
+			             &bmop_fill, "faces.out", false, true);
+			BMO_op_exec(bm_parent, &bmop_attr);
+
+			BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "faces.out", BM_FACE, BM_ELEM_SELECT, true);*/
+
 			BMO_op_initf(bm_parent, &bmop_attr, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 			             "face_attribute_fill faces=%S use_normals=%b use_data=%b",
 			             &bmop_fill, "geom.out", false, true);
