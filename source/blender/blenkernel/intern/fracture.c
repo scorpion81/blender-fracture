@@ -76,7 +76,7 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 	/* TODO, might occur that we have LESS than expected shards, what then...*/
 	for (i = 0; i < expected_shards; i++)
 	{
-		printf("Parsing shard: %d\n", i);
+		//printf("Parsing shard: %d\n", i);
 		s = parse_shard(fp);
 		s->parent_id = parent_id;
 		s->flag = SHARD_INTACT;
@@ -444,7 +444,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	FILE *stream;
 	
 	shard = BKE_shard_by_id(fmesh, id);
-	if (!shard)
+	if (!shard || shard->flag & SHARD_FRACTURED)
 		return;
 	
 	/* calculate bounding box with theta margin */
@@ -594,6 +594,12 @@ static DerivedMesh *create_dm(FracMesh *fracmesh)
 	num_verts = num_polys = num_loops = 0;
 	for (s = 0; s < shard_count; ++s) {
 		shard = shard_map[s];
+
+		if (shard->shard_id == 0 && shard->flag & SHARD_FRACTURED)
+		{
+			//dont display first shard when its fractured (relevant for plain voronoi only)
+			continue;
+		}
 		
 		num_verts += shard->totvert;
 		num_polys += shard->totpoly;
@@ -611,6 +617,12 @@ static DerivedMesh *create_dm(FracMesh *fracmesh)
 		MLoop *ml;
 		int i;
 		shard = shard_map[s];
+
+		if (shard->shard_id == 0 && shard->flag & SHARD_FRACTURED)
+		{
+			//dont display first shard when its fractured (relevant for plain voronoi only)
+			continue;
+		}
 		
 		memcpy(mverts + vertstart, shard->mvert, shard->totvert * sizeof(MVert));
 		

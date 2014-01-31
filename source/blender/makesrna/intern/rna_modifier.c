@@ -3802,8 +3802,9 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	PropertyRNA *prop;
 
 	static EnumPropertyItem prop_fracture_algorithm[] = {
-		{MOD_FRACTURE_BOOLEAN, "BOOLEAN", 0, "Boolean", "Use boolean intersection as fracture algorithm"},
-		{MOD_FRACTURE_BISECT, "BISECT", 0, "Bisect", "Use mesh bisect as fracture algorithm"},
+		{MOD_FRACTURE_VORONOI, "VORONOI", 0, "Voronoi", "Use plain voronoi as fracture algorithm"},
+		{MOD_FRACTURE_BOOLEAN, "BOOLEAN", 0, "Voronoi + Boolean", "Use voronoi and boolean intersection as fracture algorithm"},
+		{MOD_FRACTURE_BISECT, "BISECT", 0, "Voronoi + Bisect", "Use voronoi and mesh bisect as fracture algorithm"},
 		{0, NULL, 0, NULL, NULL}
 	};
 
@@ -3815,6 +3816,20 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "frac_algorithm", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_items(prop, prop_fracture_algorithm);
 	RNA_def_property_ui_text(prop, "Fracture Algorithm", "Select type of fracture algorithm");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "shard_count", PROP_INT, PROP_NONE);
+	RNA_def_property_range(prop, 1, 10000);
+	RNA_def_property_int_default(prop, 10);
+	RNA_def_property_ui_text(prop, "Shard Count", "How many sub-shards should be generated from the current shard");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "shard_id", PROP_INT, PROP_NONE);
+	RNA_def_property_range(prop, 0, 100000);
+	RNA_def_property_int_default(prop, 0);
+	RNA_def_property_ui_text(prop, "Shard ID", "Which Shard ID should be fractured now (WIP)");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
 }
 
 void RNA_def_modifier(BlenderRNA *brna)
