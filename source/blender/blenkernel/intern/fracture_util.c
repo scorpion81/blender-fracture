@@ -34,28 +34,16 @@
 #include "stdbool.h"
 #include "carve-capi.h"
 
-#include "DNA_material_types.h"
-#include "DNA_mesh_types.h"
-#include "DNA_meshdata_types.h"
-#include "DNA_object_types.h"
-#include "DNA_scene_types.h"
 #include "DNA_fracture_types.h"
 
 #include "MEM_guardedalloc.h"
 
 #include "BLI_math.h"
-#include "BLI_utildefines.h"
-#include "BLI_listbase.h"
-#include "BLI_ghash.h"
-
+#include "BKE_editmesh.h"
 #include "BKE_cdderivedmesh.h"
-#include "BKE_depsgraph.h"
-#include "BKE_global.h"
-#include "BKE_material.h"
-#include "BKE_mesh.h"
-#include "BKE_object.h"
 #include "BKE_fracture.h"
 #include "BKE_fracture_util.h"
+#include "bmesh.h"
 
 
 /* **** Importer from shard to Carve ****  */
@@ -225,21 +213,6 @@ static int operation_from_optype(int int_op_type)
 
 static void prepare_import_data(float obmat[4][4], Shard *s, ImportMeshData *import_data, bool flip)
 {
-	//create dm, temp... doesnt work as well...
-	/*MVert *mverts;
-	MLoop *mloops;
-	MPoly *mpolys;
-
-	import_data->dm  = CDDM_new(s->totvert, 0, 0, s->totloop, s->totpoly);
-	mverts = CDDM_get_verts(import_data->dm);
-	mloops = CDDM_get_loops(import_data->dm);
-	mpolys = CDDM_get_polys(import_data->dm);
-	memcpy(mverts, s->mvert, s->totvert * sizeof(MVert));
-	memcpy(mloops, s->mloop, s->totloop * sizeof(MLoop));
-	memcpy(mpolys, s->mpoly, s->totpoly * sizeof(MPoly));
-	CDDM_calc_edges(import_data->dm);
-	import_data->dm->dirty |= DM_DIRTY_NORMALS;*/
-
 	import_data->s = s;
 	copy_m4_m4(import_data->obmat, obmat);
 	import_data->mvert = s->mvert;
@@ -366,4 +339,122 @@ Shard *BKE_fracture_shard_boolean(Shard *parent, Shard* child, float obmat[4][4]
 		return NULL;
 	}
 	return NULL;
+}
+
+
+Shard *BKE_fracture_shard_bisect(Shard* parent, Shard* child, float obmat[4][4])
+{
+
+	Shard *output_s;
+	DerivedMesh *dm_parent = BKE_shard_create_dm(parent);
+	DerivedMesh *dm_child = BKE_shard_create_dm(child);
+	DerivedMesh *dm_out;
+	BMesh *bm_parent = DM_to_bmesh(dm_parent, true);
+	BMesh *bm_child = DM_to_bmesh(dm_child, true);
+	BMIter iter;
+	BMFace *f;
+
+	BMOperator bmop;
+	float plane_co[3];
+	float plane_no[3];
+	float imat[4][4];
+
+	float thresh = 0.00001f;
+	bool clear_inner = true;
+	bool clear_outer = false;
+	bool use_fill = true;
+
+	invert_m4_m4(imat, obmat);
+
+	BM_ITER_MESH(f, &iter, bm_child, BM_FACES_OF_MESH)
+	{
+		copy_v3_v3(plane_co, f->l_first->v->co);
+		copy_v3_v3(plane_no, f->no);
+
+		mul_m4_v3(imat, plane_co);
+		mul_mat3_m4_v3(imat, plane_no);
+
+		BM_mesh_elem_hflag_enable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT, false);
+
+		BMO_op_initf(bm_parent, &bmop, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+		             "bisect_plane geom=%hvef plane_co=%v plane_no=%v dist=%f clear_inner=%b clear_outer=%b",
+		             BM_ELEM_SELECT, plane_co, plane_no, thresh, clear_inner, clear_outer);
+		BMO_op_exec(bm_parent, &bmop);
+
+		BM_mesh_elem_hflag_disable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT, false);
+
+		if (use_fill) {
+			float normal_fill[3];
+			BMOperator bmop_fill;
+			BMOperator bmop_attr;
+
+			normalize_v3_v3(normal_fill, plane_no);
+			if (clear_outer == true && clear_inner == false) {
+				negate_v3(normal_fill);
+			}
+
+			/* Fill */
+			BMO_op_initf(
+			        bm_parent, &bmop_fill,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+			        "triangle_fill edges=%S normal=%v use_dissolve=%b",
+			        &bmop, "geom_cut.out", normal_fill, true);
+			BMO_op_exec(bm_parent, &bmop_fill);
+
+			/*BMO_op_initf(
+			        bm_parent, &bmop_fill,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+			       "edgenet_fill edges=%S mat_nr=%i use_smooth=%b sides=%i",
+			        &bmop, "geom_cut.out", 0, false, 1);
+			BMO_op_exec(bm_parent, &bmop_fill);*/
+
+			/* Copy Attributes */
+			BMO_op_initf(bm_parent, &bmop_attr, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+			             "face_attribute_fill faces=%S use_normals=%b use_data=%b",
+			             &bmop_fill, "geom.out", false, true);
+			BMO_op_exec(bm_parent, &bmop_attr);
+
+			BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "geom.out", BM_FACE, BM_ELEM_SELECT, true);
+
+			BMO_op_finish(bm_parent, &bmop_attr);
+			BMO_op_finish(bm_parent, &bmop_fill);
+		}
+
+		BMO_slot_buffer_hflag_enable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, BM_ELEM_SELECT, true);
+
+		BMO_op_finish(bm_parent, &bmop);
+		BM_mesh_select_flush(bm_parent);
+	}
+
+	dm_out = CDDM_from_bmesh(bm_parent, true);
+	output_s = BKE_create_fracture_shard(dm_out->getVertArray(dm_out),
+	                                   dm_out->getPolyArray(dm_out),
+	                                   dm_out->getLoopArray(dm_out),
+	                                   dm_out->getNumVerts(dm_out),
+	                                   dm_out->getNumPolys(dm_out),
+	                                   dm_out->getNumLoops(dm_out), true);
+
+	/*XXX TODO this might be wrong by now ... */
+	output_s->neighbor_count = child->neighbor_count;
+	output_s->neighbor_ids = MEM_mallocN(sizeof(int) * child->neighbor_count, __func__);
+	memcpy(output_s->neighbor_ids, child->neighbor_ids, sizeof(int) * child->neighbor_count);
+	BKE_fracture_shard_center_centroid(output_s, output_s->centroid);
+
+	/*free the bbox shard*/
+	BKE_shard_free(child);
+
+	BM_mesh_free(bm_child);
+	BM_mesh_free(bm_parent);
+
+	dm_parent->needsFree = 1;
+	dm_parent->release(dm_parent);
+	dm_parent = NULL;
+
+	dm_child->needsFree = 1;
+	dm_child->release(dm_child);
+	dm_child = NULL;
+
+	dm_out->needsFree = 1;
+	dm_out->release(dm_out);
+	dm_out = NULL;
+
+	return output_s;
 }
