@@ -1347,7 +1347,8 @@ enum {
 enum {
 	MOD_FRACTURE_VORONOI        = (1 << 0),
 	MOD_FRACTURE_BOOLEAN        = (1 << 1),
-	MOD_FRACTURE_BISECT         = (1 << 2),
+	MOD_FRACTURE_BISECT_FILL    = (1 << 2),
+	MOD_FRACTURE_BISECT         = (1 << 3),
 };
 
 typedef struct FractureModifierData {

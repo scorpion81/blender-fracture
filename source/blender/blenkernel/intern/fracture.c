@@ -88,9 +88,9 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 		{
 			s = BKE_fracture_shard_boolean(p, s, obmat);
 		}
-		else if (algorithm == MOD_FRACTURE_BISECT)
+		else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL)
 		{
-			s = BKE_fracture_shard_bisect(p, s, obmat);
+			s = BKE_fracture_shard_bisect(p, s, obmat, algorithm == MOD_FRACTURE_BISECT_FILL);
 		}
 		if (s != NULL)
 		{

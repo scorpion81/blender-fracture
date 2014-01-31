@@ -342,7 +342,7 @@ Shard *BKE_fracture_shard_boolean(Shard *parent, Shard* child, float obmat[4][4]
 }
 
 
-Shard *BKE_fracture_shard_bisect(Shard* parent, Shard* child, float obmat[4][4])
+Shard *BKE_fracture_shard_bisect(Shard* parent, Shard* child, float obmat[4][4], bool use_fill)
 {
 
 	Shard *output_s;
@@ -362,7 +362,6 @@ Shard *BKE_fracture_shard_bisect(Shard* parent, Shard* child, float obmat[4][4])
 	float thresh = 0.00001f;
 	bool clear_inner = true;
 	bool clear_outer = false;
-	bool use_fill = true;
 
 	invert_m4_m4(imat, obmat);
 
