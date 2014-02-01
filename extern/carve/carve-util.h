@@ -26,15 +26,17 @@
 
 #ifndef __CARVE_UTIL_H__
 #define __CARVE_UTIL_H__
-#include <carve/mesh.hpp>
+#include <carve/csg.hpp>
 #include <carve/geom3d.hpp>
+#include <carve/mesh.hpp>
 
 void carve_getRescaleMinMax(const carve::mesh::MeshSet<3> *left,
                             const carve::mesh::MeshSet<3> *right,
                             carve::geom3d::Vector *min,
                             carve::geom3d::Vector *max);
- 
-void carve_unionIntersections(carve::mesh::MeshSet<3> **left_r,
+
+void carve_unionIntersections(carve::csg::CSG *csg,
+                              carve::mesh::MeshSet<3> **left_r, 
                               carve::mesh::MeshSet<3> **right_r);
  
 #endif  // __CARVE_UTIL_H__

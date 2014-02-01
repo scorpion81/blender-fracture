@@ -31,7 +31,7 @@
 extern "C" {
 #endif
 
-struct MeshSet3D;
+struct CarveMeshDescr;
 
 //
 // Importer from external storage to Carve module
@@ -42,22 +42,30 @@ struct ImportMeshData;
 // Get number of vertices.
 typedef int (*CarveImporter_GetNumVerts) (struct ImportMeshData *import_data);
 
+// Get number of edges.
+typedef int (*CarveImporter_GetNumEdges) (struct ImportMeshData *import_data);
+
 // Get number of polys.
 typedef int (*CarveImporter_GetNumPolys) (struct ImportMeshData *import_data);
 
 // Get 3D coordinate of vertex with given index.
-typedef void (*CarveImporter_GetVertexCoord) (struct ImportMeshData *import_data, int index, float coord[3]);
+typedef void (*CarveImporter_GetVertCoord) (struct ImportMeshData *import_data, int vert_index, float coord[3]);
+
+// Get index of vertices which are adjucent to edge specified by it's index.
+typedef void (*CarveImporter_GetEdgeVerts) (struct ImportMeshData *import_data, int edge_index, int *v1, int *v2);
 
 // Get number of adjucent vertices to the poly specified by it's index.
-typedef int (*CarveImporter_GetPolyNumVerts) (struct ImportMeshData *import_data, int index);
+typedef int (*CarveImporter_GetPolyNumVerts) (struct ImportMeshData *import_data, int poly_index);
 
 // Get list of adjucent vertices to the poly specified by it's index.
-typedef void (*CarveImporter_GetPolyVerts) (struct ImportMeshData *import_data, int index, int *verts);
+typedef void (*CarveImporter_GetPolyVerts) (struct ImportMeshData *import_data, int poly_index, int *verts);
 
 typedef struct CarveMeshImporter {
 	CarveImporter_GetNumVerts getNumVerts;
+	CarveImporter_GetNumEdges getNumEdges;
 	CarveImporter_GetNumPolys getNumPolys;
-	CarveImporter_GetVertexCoord getVertexCoord;
+	CarveImporter_GetVertCoord getVertCoord;
+	CarveImporter_GetEdgeVerts getEdgeVerts;
 	CarveImporter_GetPolyNumVerts getNumPolyVerts;
 	CarveImporter_GetPolyVerts getPolyVerts;
 } CarveMeshImporter;
@@ -74,23 +82,34 @@ typedef void (*CarveExporter_InitGeomArrays) (struct ExportMeshData *export_data
                                               int num_polys, int num_loops);
 
 // Set coordinate of vertex with given index.
-typedef void (*CarveExporter_SetVertexCoord) (struct ExportMeshData *export_data, int index, float coord[3]);
+typedef void (*CarveExporter_SetVert) (struct ExportMeshData *export_data, int vert_index, float coord[3]);
 
 // Set vertices which are adjucent to the edge specified by it's index.
-typedef void (*CarveExporter_SetEdgeVerts) (struct ExportMeshData *export_data, int index, int v1, int v2);
+typedef void (*CarveExporter_SetEdge) (struct ExportMeshData *export_data,
+                                       int edge_index, int v1, int v2,
+                                       int which_orig_mesh, int orig_edge_index);
 
 // Set adjucent loops to the poly specified by it's index.
-typedef void (*CarveExporter_SetPolyLoops) (struct ExportMeshData *export_data, int index, int start_loop, int num_loops);
+typedef void (*CarveExporter_SetPoly) (struct ExportMeshData *export_data,
+                                       int poly_index, int start_loop, int num_loops,
+                                       int which_orig_mesh, int orig_poly_index);
 
 // Set list vertex and edge which are adjucent to loop with given index.
-typedef void (*CarveExporter_SetLoopVertEdge) (struct ExportMeshData *export_data, int index, int vertex, int edge);
+typedef void (*CarveExporter_SetLoop) (struct ExportMeshData *export_data,
+                                       int loop_index, int vertex, int edge,
+                                       int which_orig_mesh, int orig_loop_index);
+
+// Interpolate poly data after all it's loops and itself are exported.
+typedef void (*CarveExporter_InterpPoly) (struct ExportMeshData *export_data,
+                                          int poly_index, int which_orig_mesh, int orig_poly_index);
 
 typedef struct CarveMeshExporter {
 	CarveExporter_InitGeomArrays initGeomArrays;
-	CarveExporter_SetVertexCoord setVertexCoord;
-	CarveExporter_SetEdgeVerts setEdgeVerts;
-	CarveExporter_SetPolyLoops setPolyLoops;
-	CarveExporter_SetLoopVertEdge setLoopVertEdge;
+	CarveExporter_SetVert setVert;
+	CarveExporter_SetEdge setEdge;
+	CarveExporter_SetPoly setPoly;
+	CarveExporter_SetLoop setLoop;
+	CarveExporter_InterpPoly interpPoly;
 } CarveMeshExporter;
 
 enum {
@@ -99,19 +118,27 @@ enum {
 	CARVE_OP_A_MINUS_B,
 };
 
-struct MeshSet3D *carve_addMesh(struct ImportMeshData *import_data,
-                                CarveMeshImporter *mesh_importer);
+enum {
+	CARVE_MESH_NONE,
+	CARVE_MESH_LEFT,
+	CARVE_MESH_RIGHT
+};
 
-void carve_deleteMesh(struct MeshSet3D *mesh);
+struct CarveMeshDescr *carve_addMesh(struct ImportMeshData *import_data,
+                                     CarveMeshImporter *mesh_importer);
 
-bool carve_performBooleanOperation(struct MeshSet3D *left_mesh,
-                                   struct MeshSet3D *right_mesh,
+void carve_deleteMesh(struct CarveMeshDescr *mesh_descr);
+
+bool carve_performBooleanOperation(struct CarveMeshDescr *left_mesh,
+                                   struct CarveMeshDescr *right_mesh,
                                    int operation,
-                                   struct MeshSet3D **output_mesh);
+                                   struct CarveMeshDescr **output_mesh);
 
-void carve_exportMesh(struct MeshSet3D *mesh,
+void carve_exportMesh(struct CarveMeshDescr *mesh_descr,
                       CarveMeshExporter *mesh_exporter,
                       struct ExportMeshData *export_data);
+
+void carve_unionIntersections(struct CarveMeshDescr **left_mesh_r, struct CarveMeshDescr **right_mesh_r);
 
 #ifdef __cplusplus
 }  // extern "C"

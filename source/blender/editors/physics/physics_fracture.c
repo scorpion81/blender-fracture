@@ -99,7 +99,7 @@ static int mesh_fracture_exec(bContext *C, wmOperator *UNUSED(op))
 		
 		//pick 1st shard, hardcoded by now
 		//execute fracture....
-		BKE_fracture_shard_by_points(fracmd->frac_mesh, 0, &points, fracmd->frac_algorithm);
+		BKE_fracture_shard_by_points(fracmd->frac_mesh, 0, &points, fracmd->frac_algorithm, ob);
 		
 		MEM_freeN(points.points);
 		

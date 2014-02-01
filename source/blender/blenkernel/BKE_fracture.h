@@ -109,7 +109,7 @@ struct DerivedMesh *BKE_shard_create_dm(struct Shard *s);
 // dann muss der caller über alle shards loopen um die neuen sub-shards zu behandeln
 
 // erzeuge shards aus dem basis mesh und einer liste von points (nicht weiter spezifiziert, können auch particles oder so sein)
-void BKE_fracture_shard_by_points(struct FracMesh *fmesh, ShardID id, struct FracPointCloud *points, int algorithm);
+void BKE_fracture_shard_by_points(struct FracMesh *fmesh, ShardID id, struct FracPointCloud *points, int algorithm, Object *obj);
 
 // Zerbreche ein einzelnes shard basierend auf collision
 // btManifoldPoint ist eine Bullet class, das sollte wahrscheinlich etwas abstrahiert werden

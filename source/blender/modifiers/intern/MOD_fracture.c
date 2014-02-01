@@ -30,7 +30,7 @@
 #include "MOD_util.h"
 #include "MEM_guardedalloc.h"
 
-static void do_fracture(FractureModifierData *fracmd, ShardID id);
+static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj);
 
 static void initData(ModifierData *md)
 {
@@ -85,7 +85,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		fmd->frac_mesh = BKE_create_fracture_container(derivedData);
 	}
 	
-	do_fracture(fmd, fmd->shard_id);
+	do_fracture(fmd, fmd->shard_id, ob);
 
 	if (fmd->dm)
 		final_dm = CDDM_copy(fmd->dm);
@@ -95,7 +95,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	return final_dm;
 }
 
-static void do_fracture(FractureModifierData *fracmd, ShardID id)
+static void do_fracture(FractureModifierData *fracmd, ShardID id, Object* obj)
 {
 	float min[3], max[3];
 	/* dummy point cloud, random */
@@ -115,7 +115,7 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id)
 		co[2] = min[2] + (max[2] - min[2]) * BLI_frand();
 	}
 
-	BKE_fracture_shard_by_points(fracmd->frac_mesh, id, &points, fracmd->frac_algorithm);
+	BKE_fracture_shard_by_points(fracmd->frac_mesh, id, &points, fracmd->frac_algorithm, obj);
 	MEM_freeN(points.points);
 	BKE_fracture_create_dm(fracmd, false);
 }

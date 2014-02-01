@@ -35,7 +35,7 @@
 //utility... bbox / centroid calc
 
 /*prototypes*/
-static void parse_stream(FILE *fp, int expected_shards, ShardID shard_id, FracMesh *fm, int algorithm);
+static void parse_stream(FILE *fp, int expected_shards, ShardID shard_id, FracMesh *fm, int algorithm, Object *obj);
 static Shard *parse_shard(FILE *fp);
 static int parse_verts(FILE *fp, MVert **vert);
 static void parse_polys(FILE *fp, MPoly **poly, MLoop **loop, int *totpoly, int *totloop);
@@ -51,16 +51,16 @@ static void add_shard(FracMesh *fm, Shard *s)
 }
 
 /* parse the voro++ raw data */
-static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracMesh *fm, int algorithm)
+static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracMesh *fm, int algorithm, Object* obj)
 {
 	/*Parse voronoi raw data*/
 	int i = 0;
 	Shard* s = NULL, *p = BKE_shard_by_id(fm, parent_id);
-	float obmat[4][4]; /* use unit matrix for now */
+	//float obmat[4][4]; /* use unit matrix for now */
 
 	p->flag = 0;
 	p->flag |= SHARD_FRACTURED;
-	unit_m4(obmat);
+	//unit_m4(obmat);
 
 	// FOR NOW, delete OLD shard...
 	/*s = fm->shard_map[0];
@@ -88,11 +88,11 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 		/* XXX TODO, need object for material as well, or atleast a material index... */
 		if (algorithm == MOD_FRACTURE_BOOLEAN)
 		{
-			s = BKE_fracture_shard_boolean(p, s, obmat);
+			s = BKE_fracture_shard_boolean(obj, p, s);
 		}
 		else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL)
 		{
-			s = BKE_fracture_shard_bisect(p, s, obmat, algorithm == MOD_FRACTURE_BISECT_FILL);
+			s = BKE_fracture_shard_bisect(p, s, obj->obmat, algorithm == MOD_FRACTURE_BISECT_FILL);
 		}
 		if (s != NULL)
 		{
@@ -469,7 +469,7 @@ FracMesh *BKE_create_fracture_container(DerivedMesh* dm)
 
 
 
-void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud, int algorithm) {
+void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud, int algorithm, Object* obj) {
 	int n_size = 8;
 	
 	Shard *shard;
@@ -540,7 +540,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 
 	printf("Print custom done, %g\n", PIL_check_seconds_timer() - start);
 	start = PIL_check_seconds_timer();
-	parse_stream(stream, pointcloud->totpoints, id, fmesh, algorithm);
+	parse_stream(stream, pointcloud->totpoints, id, fmesh, algorithm, obj);
 	//printf("%s", bp);
 	fclose (stream);
 //	free(bp);
