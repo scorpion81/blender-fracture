@@ -363,7 +363,7 @@ void IMAGE_OT_view_pan(wmOperatorType *ot)
 	ot->poll = space_image_main_area_poll;
 
 	/* flags */
-	ot->flag = OPTYPE_BLOCKING | OPTYPE_GRAB_POINTER;
+	ot->flag = OPTYPE_BLOCKING | OPTYPE_GRAB_POINTER | OPTYPE_LOCK_BYPASS;
 	
 	/* properties */
 	RNA_def_float_vector(ot->srna, "offset", 2, NULL, -FLT_MAX, FLT_MAX,
@@ -577,7 +577,7 @@ void IMAGE_OT_view_zoom(wmOperatorType *ot)
 	ot->poll = space_image_main_area_poll;
 
 	/* flags */
-	ot->flag = OPTYPE_BLOCKING;
+	ot->flag = OPTYPE_BLOCKING | OPTYPE_LOCK_BYPASS;
 	
 	/* properties */
 	RNA_def_float(ot->srna, "factor", 0.0f, -FLT_MAX, FLT_MAX,
@@ -640,6 +640,9 @@ void IMAGE_OT_view_ndof(wmOperatorType *ot)
 	
 	/* api callbacks */
 	ot->invoke = image_view_ndof_invoke;
+
+	/* flags */
+	ot->flag = OPTYPE_LOCK_BYPASS;
 }
 
 /********************** view all operator *********************/
@@ -817,6 +820,9 @@ void IMAGE_OT_view_zoom_in(wmOperatorType *ot)
 	ot->exec = image_view_zoom_in_exec;
 	ot->poll = space_image_main_area_poll;
 
+	/* flags */
+	ot->flag = OPTYPE_LOCK_BYPASS;
+
 	/* properties */
 	RNA_def_float_vector(ot->srna, "location", 2, NULL, -FLT_MAX, FLT_MAX, "Location", "Cursor location in screen coordinates", -10.0f, 10.0f);
 }
@@ -858,6 +864,9 @@ void IMAGE_OT_view_zoom_out(wmOperatorType *ot)
 	ot->invoke = image_view_zoom_out_invoke;
 	ot->exec = image_view_zoom_out_exec;
 	ot->poll = space_image_main_area_poll;
+
+	/* flags */
+	ot->flag = OPTYPE_LOCK_BYPASS;
 
 	/* properties */
 	RNA_def_float_vector(ot->srna, "location", 2, NULL, -FLT_MAX, FLT_MAX, "Location", "Cursor location in screen coordinates", -10.0f, 10.0f);
@@ -901,6 +910,9 @@ void IMAGE_OT_view_zoom_ratio(wmOperatorType *ot)
 	ot->exec = image_view_zoom_ratio_exec;
 	ot->poll = space_image_main_area_poll;
 
+	/* flags */
+	ot->flag = OPTYPE_LOCK_BYPASS;
+
 	/* properties */
 	RNA_def_float(ot->srna, "ratio", 0.0f, -FLT_MAX, FLT_MAX,
 	              "Ratio", "Zoom ratio, 1.0 is 1:1, higher is zoomed in, lower is zoomed out", -FLT_MAX, FLT_MAX);
@@ -915,12 +927,23 @@ static void image_filesel(bContext *C, wmOperator *op, const char *path)
 
 /******************** open image operator ********************/
 
+typedef struct ImageOpenData {
+	PropertyPointerRNA pprop;
+	ImageUser *iuser;
+} ImageOpenData;
+
+typedef struct ImageFrame {
+	struct ImageFrame *next, *prev;
+	int framenr;
+} ImageFrame;
+
 static void image_open_init(bContext *C, wmOperator *op)
 {
-	PropertyPointerRNA *pprop;
+	ImageOpenData *iod;
 
-	op->customdata = pprop = MEM_callocN(sizeof(PropertyPointerRNA), "OpenPropertyPointerRNA");
-	uiIDContextProperty(C, &pprop->ptr, &pprop->prop);
+	op->customdata = iod = MEM_callocN(sizeof(ImageOpenData), __func__);
+	iod->iuser = CTX_data_pointer_get_type(C, "image_user", &RNA_ImageUser).data;
+	uiIDContextProperty(C, &iod->pprop.ptr, &iod->pprop.prop);
 }
 
 static void image_open_cancel(bContext *UNUSED(C), wmOperator *op)
@@ -929,45 +952,145 @@ static void image_open_cancel(bContext *UNUSED(C), wmOperator *op)
 	op->customdata = NULL;
 }
 
+/**
+ * @brief Get a list of frames from the list of image files matching the first file name sequence pattern
+ * @param ptr [in] the RNA pointer containing the "directory" entry and "files" collection
+ * @param frames [out] the list of frame numbers found in the files matching the first one by name
+ * @param path [out] the full path of the first file in the list of image files
+ */
+static void image_sequence_get_frames(PointerRNA *ptr, ListBase *frames, char *path, const size_t maxlen)
+{
+	char dir[FILE_MAXDIR];
+	bool is_first_entry = true;
+
+	RNA_string_get(ptr, "directory", dir);
+	RNA_BEGIN (ptr, itemptr, "files")
+	{
+		char base_head[FILE_MAX], base_tail[FILE_MAX];
+		char head[FILE_MAX], tail[FILE_MAX];
+		unsigned short digits;
+		char *filename = RNA_string_get_alloc(&itemptr, "name", NULL, 0);
+		ImageFrame *frame = MEM_callocN(sizeof(ImageFrame), "image_frame");
+
+		/* use the first file in the list as base filename */
+		if (is_first_entry) {
+			BLI_join_dirfile(path, maxlen, dir, filename);
+			frame->framenr = BLI_stringdec(filename, base_head, base_tail, &digits);
+			BLI_addtail(frames, frame);
+			is_first_entry = false;
+		}
+		else {
+			frame->framenr = BLI_stringdec(filename, head, tail, &digits);
+
+			/* still in the same sequence */
+			if ((STREQLEN(base_head, head, FILE_MAX)) &&
+			    (STREQLEN(base_tail, tail, FILE_MAX)))
+			{
+				BLI_addtail(frames, frame);
+			}
+			else {
+				/* different file base name found, is ignored */
+				MEM_freeN(frame);
+				break;
+			}
+		}
+
+		MEM_freeN(filename);
+	}
+	RNA_END
+}
+
+static int image_cmp_frame(void *a, void *b)
+{
+	ImageFrame *frame_a = (ImageFrame *)a;
+	ImageFrame *frame_b = (ImageFrame *)b;
+
+	if (frame_a->framenr < frame_b->framenr) return -1;
+	if (frame_a->framenr > frame_b->framenr) return 1;
+	return 0;
+}
+
+/**
+ * @brief Return the start (offset) and the length of the sequence of continuous frames in the list of frames
+ * @param frames [in] the list of frame numbers, as a side-effect the list is sorted
+ * @param ofs [out] offest, the first frame number in the sequence
+ * @return the number of continuos frames in the sequence
+ */
+static int image_sequence_get_len(ListBase *frames, int *ofs)
+{
+	ImageFrame *frame;
+
+	BLI_sortlist(frames, image_cmp_frame);
+
+	frame = frames->first;
+	if (frame) {
+		int frame_curr = frame->framenr;
+		(*ofs) = frame_curr;
+		while (frame && (frame->framenr == frame_curr)) {
+			frame_curr++;
+			frame = frame->next;
+		}
+		return frame_curr - (*ofs);
+	}
+	return 0;
+}
+
 static int image_open_exec(bContext *C, wmOperator *op)
 {
 	SpaceImage *sima = CTX_wm_space_image(C); /* XXX other space types can call */
 	Scene *scene = CTX_data_scene(C);
 	Object *obedit = CTX_data_edit_object(C);
 	ImageUser *iuser = NULL;
-	PropertyPointerRNA *pprop;
+	ImageOpenData *iod;
 	PointerRNA idptr;
 	Image *ima = NULL;
-	char str[FILE_MAX];
+	char path[FILE_MAX];
+	int frame_seq_len = 0;
+	int frame_ofs = 1;
 
-	RNA_string_get(op->ptr, "filepath", str);
-	/* default to frame 1 if there's no scene in context */
+	if (RNA_struct_property_is_set(op->ptr, "files") && RNA_struct_property_is_set(op->ptr, "directory")) {	
+		ListBase frames;
+
+		frames.first = frames.last = NULL;
+		image_sequence_get_frames(op->ptr, &frames, path, sizeof(path));
+		frame_seq_len = image_sequence_get_len(&frames, &frame_ofs);
+		BLI_freelistN(&frames);
+	}
+	else {
+		RNA_string_get(op->ptr, "filepath", path);
+	}
 
 	errno = 0;
 
-	ima = BKE_image_load_exists(str);
+	ima = BKE_image_load_exists(path);
 
 	if (!ima) {
 		if (op->customdata) MEM_freeN(op->customdata);
 		BKE_reportf(op->reports, RPT_ERROR, "Cannot read '%s': %s",
-		            str, errno ? strerror(errno) : TIP_("unsupported image format"));
+		            path, errno ? strerror(errno) : TIP_("unsupported image format"));
 		return OPERATOR_CANCELLED;
 	}
-	
+
 	if (!op->customdata)
 		image_open_init(C, op);
 
 	/* hook into UI */
-	pprop = op->customdata;
+	iod = op->customdata;
 
-	if (pprop->prop) {
+	if (iod->pprop.prop) {
 		/* when creating new ID blocks, use is already 1, but RNA
 		 * pointer se also increases user, so this compensates it */
 		ima->id.us--;
-
+		if ((frame_seq_len > 1) && ima->source == IMA_SRC_FILE) {
+			ima->source = IMA_SRC_SEQUENCE;
+		}
 		RNA_id_pointer_create(&ima->id, &idptr);
-		RNA_property_pointer_set(&pprop->ptr, pprop->prop, idptr);
-		RNA_property_update(C, &pprop->ptr, pprop->prop);
+		RNA_property_pointer_set(&iod->pprop.ptr, iod->pprop.prop, idptr);
+		RNA_property_update(C, &iod->pprop.ptr, iod->pprop.prop);
+	}
+
+	if (iod->iuser) {
+		iuser = iod->iuser;
 	}
 	else if (sima) {
 		ED_space_image_set(sima, scene, obedit, ima);
@@ -975,15 +1098,17 @@ static int image_open_exec(bContext *C, wmOperator *op)
 	}
 	else {
 		Tex *tex = CTX_data_pointer_get_type(C, "texture", &RNA_Texture).data;
-		if (tex && tex->type == TEX_IMAGE)
+		if (tex && tex->type == TEX_IMAGE) {
 			iuser = &tex->iuser;
-		
+		}
 	}
-	
+
 	/* initialize because of new image */
 	if (iuser) {
+		iuser->frames = frame_seq_len;
 		iuser->sfra = 1;
-		iuser->offset = 0;
+		iuser->framenr = 1;
+		iuser->offset = frame_ofs - 1;
 		iuser->fie_ima = 2;
 	}
 
@@ -1065,7 +1190,7 @@ void IMAGE_OT_open(wmOperatorType *ot)
 
 	/* properties */
 	WM_operator_properties_filesel(ot, FOLDERFILE | IMAGEFILE | MOVIEFILE, FILE_SPECIAL, FILE_OPENFILE,
-	                               WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY);
+	                               WM_FILESEL_FILEPATH | WM_FILESEL_DIRECTORY | WM_FILESEL_FILES | WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY);
 }
 
 /******************** Match movie length operator ********************/
@@ -1231,12 +1356,12 @@ static int save_image_options_init(SaveImageOptions *simopts, SpaceImage *sima, 
 
 	if (ibuf) {
 		Image *ima = sima->image;
-		short is_depth_set = FALSE;
+		bool is_depth_set = false;
 
 		if (ELEM(ima->type, IMA_TYPE_R_RESULT, IMA_TYPE_COMPOSITE)) {
 			/* imtype */
 			simopts->im_format = scene->r.im_format;
-			is_depth_set = TRUE;
+			is_depth_set = true;
 		}
 		else {
 			if (ima->source == IMA_SRC_GENERATED) {
@@ -1263,7 +1388,7 @@ static int save_image_options_init(SaveImageOptions *simopts, SpaceImage *sima, 
 		}
 
 		/* depth, account for float buffer and format support */
-		if (is_depth_set == FALSE) {
+		if (is_depth_set == false) {
 			simopts->im_format.depth = imtype_best_depth(ibuf, simopts->im_format.imtype);
 		}
 
@@ -1990,7 +2115,7 @@ void IMAGE_OT_invert(wmOperatorType *ot)
 
 /********************* pack operator *********************/
 
-static int image_pack_test(bContext *C, wmOperator *op)
+static bool image_pack_test(bContext *C, wmOperator *op)
 {
 	Image *ima = CTX_data_edit_image(C);
 	int as_png = RNA_boolean_get(op->ptr, "as_png");
@@ -2158,7 +2283,7 @@ void IMAGE_OT_unpack(wmOperatorType *ot)
 	
 	/* properties */
 	RNA_def_enum(ot->srna, "method", unpack_method_items, PF_USE_LOCAL, "Method", "How to unpack");
-	RNA_def_string(ot->srna, "id", "", MAX_ID_NAME - 2, "Image Name", "Image datablock name to unpack"); /* XXX, weark!, will fail with library, name collisions */
+	RNA_def_string(ot->srna, "id", NULL, MAX_ID_NAME - 2, "Image Name", "Image datablock name to unpack"); /* XXX, weark!, will fail with library, name collisions */
 }
 
 /******************** sample image operator ********************/
@@ -2198,12 +2323,12 @@ static void image_sample_draw(const bContext *C, ARegion *ar, void *arg_info)
 
 /* returns color in SRGB */
 /* matching ED_space_node_color_sample() */
-int ED_space_image_color_sample(SpaceImage *sima, ARegion *ar, int mval[2], float r_col[3])
+bool ED_space_image_color_sample(SpaceImage *sima, ARegion *ar, int mval[2], float r_col[3])
 {
 	void *lock;
 	ImBuf *ibuf = ED_space_image_acquire_buffer(sima, &lock);
 	float fx, fy;
-	int ret = FALSE;
+	bool ret = false;
 
 	if (ibuf == NULL) {
 		ED_space_image_release_buffer(sima, ibuf, lock);

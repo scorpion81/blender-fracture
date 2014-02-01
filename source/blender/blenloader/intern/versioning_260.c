@@ -2655,4 +2655,35 @@ void blo_do_versions_260(FileData *fd, Library *UNUSED(lib), Main *main)
 			}
 		}
 	}
+	
+	if (!MAIN_VERSION_ATLEAST(main, 269, 9)) {
+		Object *ob;
+		
+		for (ob = main->object.first; ob; ob = ob->id.next) {
+			ModifierData *md;
+			for (md = ob->modifiers.first; md; md = md->next) {
+				if (md->type == eModifierType_Build) {
+					BuildModifierData *bmd = (BuildModifierData *)md;
+					if (bmd->randomize) {
+						bmd->flag |= MOD_BUILD_FLAG_RANDOMIZE;
+					}
+				}
+			}
+		}
+	}
+
+	if (!DNA_struct_elem_find(fd->filesdna, "BevelModifierData", "float", "profile")) {
+		Object *ob;
+
+		for (ob = main->object.first; ob; ob = ob->id.next) {
+			ModifierData *md;
+			for (md = ob->modifiers.first; md; md = md->next) {
+				if (md->type == eModifierType_Bevel) {
+					BevelModifierData *bmd = (BevelModifierData *)md;
+					bmd->profile = 0.5f;
+					bmd->val_flags = MOD_BEVEL_AMT_OFFSET;
+				}
+			}
+		}
+	}
 }

@@ -82,8 +82,8 @@ const char *BLI_get_folder_version(const int id, const int ver, const bool do_ch
 #define ALTSEP '\\'
 #endif
 
-void BLI_setenv(const char *env, const char *val);
-void BLI_setenv_if_new(const char *env, const char *val);
+void BLI_setenv(const char *env, const char *val) ATTR_NONNULL(1);
+void BLI_setenv_if_new(const char *env, const char *val) ATTR_NONNULL(1);
 
 void BLI_make_file_string(const char *relabase, char *string,  const char *dir, const char *file);
 void BLI_make_exist(char *dir);
@@ -95,7 +95,7 @@ void BLI_path_append(char *__restrict dst, const size_t maxlen,
                      const char *__restrict file) ATTR_NONNULL();
 void BLI_join_dirfile(char *__restrict string, const size_t maxlen,
                       const char *__restrict dir, const char *__restrict file) ATTR_NONNULL();
-const char *BLI_path_basename(const char *path);
+const char *BLI_path_basename(const char *path) ATTR_NONNULL() ATTR_WARN_UNUSED_RESULT;
 
 typedef enum bli_rebase_state {
 	BLI_REBASE_NO_SRCDIR = 0,
@@ -105,18 +105,19 @@ typedef enum bli_rebase_state {
 
 int BLI_rebase_path(char *abs, size_t abs_len, char *rel, size_t rel_len, const char *base_dir, const char *src_dir, const char *dest_dir);
 
-const char *BLI_last_slash(const char *string);
-int         BLI_add_slash(char *string);
-void        BLI_del_slash(char *string);
-const char *BLI_first_slash(const char *string);
+const char *BLI_last_slash(const char *string) ATTR_NONNULL() ATTR_WARN_UNUSED_RESULT;
+int         BLI_add_slash(char *string) ATTR_NONNULL();
+void        BLI_del_slash(char *string) ATTR_NONNULL();
+const char *BLI_first_slash(const char *string) ATTR_NONNULL() ATTR_WARN_UNUSED_RESULT;
 
 void BLI_getlastdir(const char *dir, char *last, const size_t maxlen);
-bool BLI_testextensie(const char *str, const char *ext);
-bool BLI_testextensie_array(const char *str, const char **ext_array);
-bool BLI_testextensie_glob(const char *str, const char *ext_fnmatch);
-bool BLI_replace_extension(char *path, size_t maxlen, const char *ext);
-bool BLI_ensure_extension(char *path, size_t maxlen, const char *ext);
-bool BLI_ensure_filename(char *filepath, size_t maxlen, const char *filename);
+bool BLI_testextensie(const char *str, const char *ext) ATTR_NONNULL() ATTR_WARN_UNUSED_RESULT;
+bool BLI_testextensie_n(const char *str, ...) ATTR_NONNULL(1) ATTR_SENTINEL(0);
+bool BLI_testextensie_array(const char *str, const char **ext_array) ATTR_NONNULL() ATTR_WARN_UNUSED_RESULT;
+bool BLI_testextensie_glob(const char *str, const char *ext_fnmatch) ATTR_NONNULL() ATTR_WARN_UNUSED_RESULT;
+bool BLI_replace_extension(char *path, size_t maxlen, const char *ext) ATTR_NONNULL();
+bool BLI_ensure_extension(char *path, size_t maxlen, const char *ext) ATTR_NONNULL();
+bool BLI_ensure_filename(char *filepath, size_t maxlen, const char *filename) ATTR_NONNULL();
 void BLI_uniquename(struct ListBase *list, void *vlink, const char *defname, char delim, int name_offs, int len);
 bool BLI_uniquename_cb(bool (*unique_check)(void *arg, const char *name),
                        void *arg, const char *defname, char delim, char *name, int name_len);
@@ -133,15 +134,16 @@ void BLI_clean(char *path) ATTR_NONNULL();
  * converts it to a regular full path.
  * Also removes garbage from directory paths, like /../ or double slashes etc 
  */
-void BLI_cleanup_file(const char *relabase, char *path); /* removes trailing slash */
-void BLI_cleanup_dir(const char *relabase, char *dir); /* same as above but adds a trailing slash */
-void BLI_cleanup_path(const char *relabase, char *path); /* doesn't touch trailing slash */
+
+/* removes trailing slash */
+void BLI_cleanup_file(const char *relabase, char *path) ATTR_NONNULL(2);
+/* same as above but adds a trailing slash */
+void BLI_cleanup_dir(const char *relabase, char *dir) ATTR_NONNULL(2);
+/* doesn't touch trailing slash */
+void BLI_cleanup_path(const char *relabase, char *path) ATTR_NONNULL(2);
 
 /* go back one directory */
-bool BLI_parent_dir(char *path);
-
-/* return whether directory is root and thus has no parent dir */
-bool BLI_has_parent(char *path);
+bool BLI_parent_dir(char *path) ATTR_NONNULL();
 
 /**
  * Blender's path code replacement function.
@@ -155,14 +157,14 @@ bool BLI_has_parent(char *path);
  * \a framenum The framenumber to replace the frame code with.
  * \retval Returns true if the path was relative (started with "//").
  */
-bool BLI_path_abs(char *path, const char *basepath);
-bool BLI_path_frame(char *path, int frame, int digits);
-bool BLI_path_frame_range(char *path, int sta, int end, int digits);
-bool BLI_path_frame_check_chars(const char *path);
-bool BLI_path_cwd(char *path);
-void BLI_path_rel(char *file, const char *relfile);
+bool BLI_path_abs(char *path, const char *basepath)  ATTR_NONNULL();
+bool BLI_path_frame(char *path, int frame, int digits) ATTR_NONNULL();
+bool BLI_path_frame_range(char *path, int sta, int end, int digits) ATTR_NONNULL();
+bool BLI_path_frame_check_chars(const char *path) ATTR_NONNULL();
+bool BLI_path_cwd(char *path) ATTR_NONNULL();
+void BLI_path_rel(char *file, const char *relfile) ATTR_NONNULL();
 
-bool BLI_path_is_rel(const char *path);
+bool BLI_path_is_rel(const char *path) ATTR_NONNULL() ATTR_WARN_UNUSED_RESULT;
 
 /* path string comparisons: case-insensitive for Windows, case-sensitive otherwise */
 #if defined(WIN32)

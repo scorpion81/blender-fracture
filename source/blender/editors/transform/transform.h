@@ -424,6 +424,7 @@ typedef struct TransInfo {
 
 	/* alternative transformation. used to add offset to tracking markers */
 #define T_ALT_TRANSFORM		(1 << 24)
+#define T_TOGGLE_HIDDEN		(1 << 25)	/* node editor: toggle state of the hidden flags */
 
 /* TransInfo->modifiers */
 #define	MOD_CONSTRAINT_SELECT	0x01
@@ -431,6 +432,11 @@ typedef struct TransInfo {
 #define	MOD_SNAP				0x04
 #define	MOD_SNAP_INVERT			0x08
 #define	MOD_CONSTRAINT_PLANE	0x10
+
+/* use node center for transform instead of upper-left corner.
+ * disabled since it makes absolute snapping not work so nicely
+ */
+// #define USE_NODE_CENTER
 
 
 /* ******************************************************************************** */
@@ -472,6 +478,7 @@ typedef struct TransInfo {
 #define TD_MOVEHANDLE2		(1 << 18)
 #define TD_PBONE_LOCAL_MTX_P (1 << 19)	/* exceptional case with pose bone rotating when a parent bone has 'Local Location' option enabled and rotating also transforms it. */
 #define TD_PBONE_LOCAL_MTX_C (1 << 20)	/* same as above but for a child bone */
+#define TD_HIDDEN		(1 << 21)	/* for hide toggling node editor */
 
 /* transsnap->status */
 #define SNAP_FORCED		1

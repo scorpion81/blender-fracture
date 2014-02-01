@@ -1555,6 +1555,10 @@ static void write_objects(WriteData *wd, ListBase *idbase)
 				writestruct(wd, DATA, "RigidBodyCon", 1, ob->rigidbody_constraint);
 			}
 
+			if (ob->type == OB_EMPTY && ob->empty_drawtype == OB_EMPTY_IMAGE) {
+				writestruct(wd, DATA, "ImageUser", 1, ob->iuser);
+			}
+
 			write_particlesystems(wd, &ob->particlesystem);
 			write_modifiers(wd, &ob->modifiers);
 
@@ -3290,6 +3294,7 @@ static void write_global(WriteData *wd, int fileflags, Main *mainvar)
 	/* prevent mem checkers from complaining */
 	fg.pads= 0;
 	memset(fg.filename, 0, sizeof(fg.filename));
+	memset(fg.build_hash, 0, sizeof(fg.build_hash));
 
 	current_screen_compat(mainvar, &screen);
 

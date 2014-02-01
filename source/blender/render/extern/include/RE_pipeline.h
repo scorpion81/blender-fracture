@@ -68,7 +68,7 @@ typedef struct Render Render;
 typedef struct RenderPass {
 	struct RenderPass *next, *prev;
 	int passtype, channels;
-	char name[16];		/* amount defined in openexr_multi.h */
+	char name[64];		/* amount defined in openexr_multi.h */
 	char chan_id[8];	/* amount defined in openexr_multi.h */
 	float *rect;
 	int rectx, recty;
@@ -289,6 +289,8 @@ void RE_GetCameraWindow(struct Render *re, struct Object *camera, int frame, flo
 struct Scene *RE_GetScene(struct Render *re);
 
 int RE_is_rendering_allowed(struct Scene *scene, struct Object *camera_override, struct ReportList *reports);
+
+bool RE_allow_render_generic_object(struct Object *ob);
 
 #endif /* __RE_PIPELINE_H__ */
 

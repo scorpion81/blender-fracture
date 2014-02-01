@@ -165,7 +165,7 @@ Curve *BKE_curve_add(Main *bmain, const char *name, int type)
 {
 	Curve *cu;
 
-	cu = BKE_libblock_alloc(&bmain->curve, ID_CU, name);
+	cu = BKE_libblock_alloc(bmain, ID_CU, name);
 	copy_v3_fl(cu->size, 1.0f);
 	cu->flag = CU_FRONT | CU_BACK | CU_DEFORM_BOUNDS_OFF | CU_PATH_RADIUS;
 	cu->pathlen = 100;
@@ -224,7 +224,6 @@ Curve *BKE_curve_copy(Curve *cu)
 
 	cun->editnurb = NULL;
 	cun->editfont = NULL;
-	cun->lastsel = NULL;
 
 #if 0   // XXX old animation system
 	/* single user ipo too */
@@ -878,7 +877,7 @@ void BKE_nurb_bezt_calc_plane(struct Nurb *nu, struct BezTriple *bezt, float r_p
 /* ~~~~~~~~~~~~~~~~~~~~Non Uniform Rational B Spline calculations ~~~~~~~~~~~ */
 
 
-static void calcknots(float *knots, const short pnts, const short order, const short flag)
+static void calcknots(float *knots, const int pnts, const short order, const short flag)
 {
 	/* knots: number of pnts NOT corrected for cyclic */
 	const int pnts_order = pnts + order;
@@ -924,7 +923,7 @@ static void calcknots(float *knots, const short pnts, const short order, const s
 	}
 }
 
-static void makecyclicknots(float *knots, short pnts, short order)
+static void makecyclicknots(float *knots, int pnts, short order)
 /* pnts, order: number of pnts NOT corrected for cyclic */
 {
 	int a, b, order2, c;
@@ -1004,7 +1003,7 @@ void BKE_nurb_knot_calc_v(Nurb *nu)
 	makeknots(nu, 2);
 }
 
-static void basisNurb(float t, short order, short pnts, float *knots, float *basis, int *start, int *end)
+static void basisNurb(float t, short order, int pnts, float *knots, float *basis, int *start, int *end)
 {
 	float d, e;
 	int i, i1 = 0, i2 = 0, j, orderpluspnts, opp2, o2;
@@ -1146,7 +1145,7 @@ void BKE_nurb_makeFaces(Nurb *nu, float *coord_array, int rowstride, int resolu,
 	basis = basisv;
 	curv = totv;
 	while (curv--) {
-		basisNurb(v, nu->orderv, (short)(nu->pntsv + cycl), nu->knotsv, basis, jstart + curv, jend + curv);
+		basisNurb(v, nu->orderv, nu->pntsv + cycl, nu->knotsv, basis, jstart + curv, jend + curv);
 		basis += KNOTSV(nu);
 		v += vstep;
 	}
@@ -1159,7 +1158,7 @@ void BKE_nurb_makeFaces(Nurb *nu, float *coord_array, int rowstride, int resolu,
 	u = ustart;
 	curu = totu;
 	while (curu--) {
-		basisNurb(u, nu->orderu, (short)(nu->pntsu + cycl), nu->knotsu, basisu, &istart, &iend);
+		basisNurb(u, nu->orderu, nu->pntsu + cycl, nu->knotsu, basisu, &istart, &iend);
 
 		basis = basisv;
 		curv = totv;
@@ -1296,7 +1295,7 @@ void BKE_nurb_makeCurve(Nurb *nu, float *coord_array, float *tilt_array, float *
 
 	u = ustart;
 	while (resolu--) {
-		basisNurb(u, nu->orderu, (short)(nu->pntsu + cycl), nu->knotsu, basisu, &istart, &iend);
+		basisNurb(u, nu->orderu, nu->pntsu + cycl, nu->knotsu, basisu, &istart, &iend);
 
 		/* calc sum */
 		sumdiv = 0.0;
@@ -3103,7 +3102,7 @@ static void calchandleNurb_intern(BezTriple *bezt, BezTriple *prev, BezTriple *n
 static void calchandlesNurb_intern(Nurb *nu, int skip_align)
 {
 	BezTriple *bezt, *prev, *next;
-	short a;
+	int a;
 
 	if (nu->type != CU_BEZIER)
 		return;
@@ -3205,7 +3204,7 @@ void BKE_nurb_bezt_handle_test(BezTriple *bezt, const bool use_handle)
 void BKE_nurb_handles_test(Nurb *nu, const bool use_handle)
 {
 	BezTriple *bezt;
-	short a;
+	int a;
 
 	if (nu->type != CU_BEZIER)
 		return;
@@ -3316,7 +3315,8 @@ void BKE_nurbList_handles_set(ListBase *editnurb, short code)
 	/* code==6: Clear align, like 3 but no toggle */
 	Nurb *nu;
 	BezTriple *bezt;
-	short a, ok = 0;
+	int a;
+	short ok = 0;
 
 	if (code == 1 || code == 2) {
 		nu = editnurb->first;
@@ -3930,6 +3930,105 @@ ListBase *BKE_curve_nurbs_get(Curve *cu)
 	return &cu->nurb;
 }
 
+void BKE_curve_nurb_active_set(Curve *cu, Nurb *nu)
+{
+	if (nu == NULL) {
+		cu->actnu = -1;
+	}
+	else {
+		ListBase *nurbs = BKE_curve_editNurbs_get(cu);
+		cu->actnu = BLI_findindex(nurbs, nu);
+	}
+}
+
+Nurb *BKE_curve_nurb_active_get(Curve *cu)
+{
+	ListBase *nurbs = BKE_curve_editNurbs_get(cu);
+	return BLI_findlink(nurbs, cu->actnu);
+}
+
+/* Get active vert for curve */
+void *BKE_curve_vert_active_get(Curve *cu)
+{
+	Nurb *nu = NULL;
+	void *vert = NULL;
+
+	BKE_curve_nurb_vert_active_get(cu, &nu, &vert);
+	return vert;
+}
+
+/* Set active nurb and active vert for curve */
+void BKE_curve_nurb_vert_active_set(Curve *cu, Nurb *nu, void *vert)
+{
+	if (nu) {
+		BKE_curve_nurb_active_set(cu, nu);
+
+		if (nu->type == CU_BEZIER) {
+			BLI_assert(ARRAY_HAS_ITEM((BezTriple *)vert, nu->bezt, nu->pntsu));
+			cu->actvert = (BezTriple *)vert - nu->bezt;
+		}
+		else {
+			BLI_assert(ARRAY_HAS_ITEM((BPoint *)vert, nu->bp, nu->pntsu * nu->pntsv));
+			cu->actvert = (BPoint *)vert - nu->bp;
+		}
+	}
+	else {
+		cu->actnu = cu->actvert = CU_ACT_NONE;
+	}
+}
+
+/* Get points to active active nurb and active vert for curve */
+bool BKE_curve_nurb_vert_active_get(Curve *cu, Nurb **r_nu, void **r_vert)
+{
+	Nurb *nu = NULL;
+	void *vert = NULL;
+
+	if (cu->actvert != CU_ACT_NONE) {
+		ListBase *nurbs = BKE_curve_editNurbs_get(cu);
+		nu = BLI_findlink(nurbs, cu->actnu);
+
+		if (nu) {
+			if (nu->type == CU_BEZIER) {
+				BLI_assert(nu->pntsu > cu->actvert);
+				vert = &nu->bezt[cu->actvert];
+			}
+			else {
+				BLI_assert((nu->pntsu * nu->pntsv) > cu->actvert);
+				vert = &nu->bp[cu->actvert];
+			}
+		}
+		/* get functions should never set! */
+#if 0
+		else {
+			cu->actnu = cu->actvert = CU_ACT_NONE;
+		}
+#endif
+	}
+
+	*r_nu = nu;
+	*r_vert = vert;
+
+	return (*r_vert != NULL);
+}
+
+void BKE_curve_nurb_vert_active_validate(Curve *cu)
+{
+	Nurb *nu;
+	void *vert;
+
+	if (BKE_curve_nurb_vert_active_get(cu, &nu, &vert)) {
+		if (nu->type == CU_BEZIER) {
+			if ((((BezTriple *)vert)->f1 & SELECT) == 0) {
+				cu->actvert = CU_ACT_NONE;
+			}
+		}
+		else {
+			if ((((BPoint *)vert)->f1 & SELECT) == 0) {
+				cu->actvert = CU_ACT_NONE;
+			}
+		}
+	}
+}
 
 /* basic vertex data functions */
 bool BKE_curve_minmax(Curve *cu, bool use_radius, float min[3], float max[3])

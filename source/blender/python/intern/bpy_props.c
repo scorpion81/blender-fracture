@@ -197,7 +197,7 @@ static void bpy_prop_update_cb(struct bContext *C, struct PointerRNA *ptr, struc
 	PyObject *args;
 	PyObject *self;
 	PyObject *ret;
-	const int is_write_ok = pyrna_write_check();
+	const bool is_write_ok = pyrna_write_check();
 
 	BLI_assert(py_data != NULL);
 
@@ -248,7 +248,7 @@ static int bpy_prop_boolean_get_cb(struct PointerRNA *ptr, struct PropertyRNA *p
 	PyObject *ret;
 	PyGILState_STATE gilstate;
 	bool use_gil;
-	const int is_write_ok = pyrna_write_check();
+	const bool is_write_ok = pyrna_write_check();
 	int value;
 
 	BLI_assert(py_data != NULL);
@@ -306,7 +306,7 @@ static void bpy_prop_boolean_set_cb(struct PointerRNA *ptr, struct PropertyRNA *
 	PyObject *ret;
 	PyGILState_STATE gilstate;
 	bool use_gil;
-	const int is_write_ok = pyrna_write_check();
+	const bool is_write_ok = pyrna_write_check();
 
 	BLI_assert(py_data != NULL);
 
@@ -360,7 +360,7 @@ static void bpy_prop_boolean_array_get_cb(struct PointerRNA *ptr, struct Propert
 	PyObject *ret;
 	PyGILState_STATE gilstate;
 	bool use_gil;
-	const int is_write_ok = pyrna_write_check();
+	const bool is_write_ok = pyrna_write_check();
 	int i, len = RNA_property_array_length(ptr, prop);
 
 	BLI_assert(py_data != NULL);
@@ -422,7 +422,7 @@ static void bpy_prop_boolean_array_set_cb(struct PointerRNA *ptr, struct Propert
 	PyObject *py_values;
 	PyGILState_STATE gilstate;
 	bool use_gil;
-	const int is_write_ok = pyrna_write_check();
+	const bool is_write_ok = pyrna_write_check();
 	int len = RNA_property_array_length(ptr, prop);
 
 	BLI_assert(py_data != NULL);
@@ -482,7 +482,7 @@ static int bpy_prop_int_get_cb(struct PointerRNA *ptr, struct PropertyRNA *prop)
 	PyObject *ret;
 	PyGILState_STATE gilstate;
 	bool use_gil;
-	const int is_write_ok = pyrna_write_check();
+	const bool is_write_ok = pyrna_write_check();
 	int value;
 
 	BLI_assert(py_data != NULL);
@@ -540,7 +540,7 @@ static void bpy_prop_int_set_cb(struct PointerRNA *ptr, struct PropertyRNA *prop
 	PyObject *ret;
 	PyGILState_STATE gilstate;
 	bool use_gil;
-	const int is_write_ok = pyrna_write_check();
+	const bool is_write_ok = pyrna_write_check();
 
 	BLI_assert(py_data != NULL);
 
@@ -594,7 +594,7 @@ static void bpy_prop_int_array_get_cb(struct PointerRNA *ptr, struct PropertyRNA
 	PyObject *ret;
 	PyGILState_STATE gilstate;
 	bool use_gil;
-	const int is_write_ok = pyrna_write_check();
+	const bool is_write_ok = pyrna_write_check();
 	int i, len = RNA_property_array_length(ptr, prop);
 
 	BLI_assert(py_data != NULL);
@@ -656,7 +656,7 @@ static void bpy_prop_int_array_set_cb(struct PointerRNA *ptr, struct PropertyRNA
 	PyObject *py_values;
 	PyGILState_STATE gilstate;
 	bool use_gil;
-	const int is_write_ok = pyrna_write_check();
+	const bool is_write_ok = pyrna_write_check();
 	int len = RNA_property_array_length(ptr, prop);
 
 	BLI_assert(py_data != NULL);
@@ -716,7 +716,7 @@ static float bpy_prop_float_get_cb(struct PointerRNA *ptr, struct PropertyRNA *p
 	PyObject *ret;
 	PyGILState_STATE gilstate;
 	bool use_gil;
-	const int is_write_ok = pyrna_write_check();
+	const bool is_write_ok = pyrna_write_check();
 	float value;
 
 	BLI_assert(py_data != NULL);
@@ -774,7 +774,7 @@ static void bpy_prop_float_set_cb(struct PointerRNA *ptr, struct PropertyRNA *pr
 	PyObject *ret;
 	PyGILState_STATE gilstate;
 	bool use_gil;
-	const int is_write_ok = pyrna_write_check();
+	const bool is_write_ok = pyrna_write_check();
 
 	BLI_assert(py_data != NULL);
 
@@ -828,7 +828,7 @@ static void bpy_prop_float_array_get_cb(struct PointerRNA *ptr, struct PropertyR
 	PyObject *ret;
 	PyGILState_STATE gilstate;
 	bool use_gil;
-	const int is_write_ok = pyrna_write_check();
+	const bool is_write_ok = pyrna_write_check();
 	int i, len = RNA_property_array_length(ptr, prop);
 
 	BLI_assert(py_data != NULL);
@@ -890,7 +890,7 @@ static void bpy_prop_float_array_set_cb(struct PointerRNA *ptr, struct PropertyR
 	PyObject *py_values;
 	PyGILState_STATE gilstate;
 	bool use_gil;
-	const int is_write_ok = pyrna_write_check();
+	const bool is_write_ok = pyrna_write_check();
 	int len = RNA_property_array_length(ptr, prop);
 
 	BLI_assert(py_data != NULL);
@@ -950,7 +950,7 @@ static void bpy_prop_string_get_cb(struct PointerRNA *ptr, struct PropertyRNA *p
 	PyObject *ret;
 	PyGILState_STATE gilstate;
 	bool use_gil;
-	const int is_write_ok = pyrna_write_check();
+	const bool is_write_ok = pyrna_write_check();
 
 	BLI_assert(py_data != NULL);
 
@@ -1009,7 +1009,7 @@ static int bpy_prop_string_length_cb(struct PointerRNA *ptr, struct PropertyRNA 
 	PyObject *ret;
 	PyGILState_STATE gilstate;
 	bool use_gil;
-	const int is_write_ok = pyrna_write_check();
+	const bool is_write_ok = pyrna_write_check();
 	int length;
 
 	BLI_assert(py_data != NULL);
@@ -1071,7 +1071,7 @@ static void bpy_prop_string_set_cb(struct PointerRNA *ptr, struct PropertyRNA *p
 	PyObject *ret;
 	PyGILState_STATE gilstate;
 	bool use_gil;
-	const int is_write_ok = pyrna_write_check();
+	const bool is_write_ok = pyrna_write_check();
 	PyObject *py_value;
 
 	BLI_assert(py_data != NULL);
@@ -1132,7 +1132,7 @@ static int bpy_prop_enum_get_cb(struct PointerRNA *ptr, struct PropertyRNA *prop
 	PyObject *ret;
 	PyGILState_STATE gilstate;
 	bool use_gil;
-	const int is_write_ok = pyrna_write_check();
+	const bool is_write_ok = pyrna_write_check();
 	int value;
 
 	BLI_assert(py_data != NULL);
@@ -1190,7 +1190,7 @@ static void bpy_prop_enum_set_cb(struct PointerRNA *ptr, struct PropertyRNA *pro
 	PyObject *ret;
 	PyGILState_STATE gilstate;
 	bool use_gil;
-	const int is_write_ok = pyrna_write_check();
+	const bool is_write_ok = pyrna_write_check();
 
 	BLI_assert(py_data != NULL);
 
@@ -2012,8 +2012,8 @@ PyDoc_STRVAR(BPy_IntProperty_doc,
 ".. function:: IntProperty(name=\"\", "
                           "description=\"\", "
                           "default=0, "
-                          "min=-sys.maxint, max=sys.maxint, "
-                          "soft_min=-sys.maxint, soft_max=sys.maxint, "
+                          "min=-2**31, max=2**31-1, "
+                          "soft_min=-2**31, soft_max=2**31-1, "
                           "step=1, "
                           "options={'ANIMATABLE'}, "
                           "subtype='NONE', "
@@ -2098,9 +2098,9 @@ static PyObject *BPy_IntProperty(PyObject *self, PyObject *args, PyObject *kw)
 PyDoc_STRVAR(BPy_IntVectorProperty_doc,
 ".. function:: IntVectorProperty(name=\"\", "
                                 "description=\"\", "
-                                "default=(0, 0, 0), min=-sys.maxint, max=sys.maxint, "
-                                "soft_min=-sys.maxint, "
-                                "soft_max=sys.maxint, "
+                                "default=(0, 0, 0), min=-2**31, max=2**31-1, "
+                                "soft_min=-2**31, "
+                                "soft_max=2**31-1, "
                                 "options={'ANIMATABLE'}, "
                                 "subtype='NONE', "
                                 "size=3, "
@@ -2444,7 +2444,7 @@ BPY_PROPDEF_NAME_DOC
 BPY_PROPDEF_DESC_DOC
 "   :arg options: Enumerator in ['HIDDEN', 'SKIP_SAVE', 'ANIMATABLE', 'LIBRARY_EDITABLE'].\n"
 "   :type options: set\n"
-"   :arg subtype: Enumerator in ['FILE_PATH', 'DIR_PATH', 'FILE_NAME', 'NONE'].\n"
+"   :arg subtype: Enumerator in ['FILE_PATH', 'DIR_PATH', 'FILE_NAME', 'PASSWORD', 'NONE'].\n"
 "   :type subtype: string\n"
 BPY_PROPDEF_UPDATE_DOC
 );
@@ -2493,7 +2493,7 @@ static PyObject *BPy_StringProperty(PyObject *self, PyObject *args, PyObject *kw
 
 		prop = RNA_def_property(srna, id, PROP_STRING, subtype);
 		if (maxlen != 0) RNA_def_property_string_maxlength(prop, maxlen + 1);  /* +1 since it includes null terminator */
-		if (def) RNA_def_property_string_default(prop, def);
+		if (def && def[0]) RNA_def_property_string_default(prop, def);
 		RNA_def_property_ui_text(prop, name ? name : id, description);
 
 		if (pyopts) {

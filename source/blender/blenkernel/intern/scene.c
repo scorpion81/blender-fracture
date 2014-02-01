@@ -219,7 +219,9 @@ Scene *BKE_scene_copy(Scene *sce, int type)
 		BLI_strncpy(scen->sequencer_colorspace_settings.name, sce->sequencer_colorspace_settings.name,
 		            sizeof(scen->sequencer_colorspace_settings.name));
 
-		/* remove animation used by sequencer */
+		/* copy action and remove animation used by sequencer */
+		BKE_copy_animdata_id_action(&scen->id);
+
 		if (type != SCE_COPY_FULL)
 			remove_sequencer_fcurves(scen);
 
@@ -290,7 +292,6 @@ Scene *BKE_scene_copy(Scene *sce, int type)
 
 	/* world */
 	if (type == SCE_COPY_FULL) {
-		BKE_copy_animdata_id_action((ID *)scen);
 		if (scen->world) {
 			id_us_plus((ID *)scen->world);
 			scen->world = BKE_world_copy(scen->world);
@@ -419,7 +420,7 @@ Scene *BKE_scene_add(Main *bmain, const char *name)
 	int a;
 	const char *colorspace_name;
 
-	sce = BKE_libblock_alloc(&bmain->scene, ID_SCE, name);
+	sce = BKE_libblock_alloc(bmain, ID_SCE, name);
 	sce->lay = sce->layact = 1;
 	
 	sce->r.mode = R_GAMMA | R_OSA | R_SHADOW | R_SSS | R_ENVMAP | R_RAYTRACE;
@@ -450,6 +451,7 @@ Scene *BKE_scene_add(Main *bmain, const char *name)
 	sce->r.blurfac = 0.5;
 	sce->r.frs_sec = 24;
 	sce->r.frs_sec_base = 1;
+	sce->r.edgeint = 10;
 	sce->r.ocres = 128;
 
 	/* OCIO_TODO: for forwards compatibility only, so if no tonecurve are used,
@@ -733,7 +735,7 @@ void BKE_scene_unlink(Main *bmain, Scene *sce, Scene *newsce)
 		if (sc->scene == sce)
 			sc->scene = newsce;
 
-	BKE_libblock_free(&bmain->scene, sce);
+	BKE_libblock_free(bmain, sce);
 }
 
 /* used by metaballs
@@ -746,7 +748,7 @@ int BKE_scene_base_iter_next(EvaluationContext *eval_ctx, SceneBaseIter *iter,
 	
 	/* init */
 	if (val == 0) {
-		iter->fase = F_START;
+		iter->phase = F_START;
 		iter->dupob = NULL;
 		iter->duplilist = NULL;
 	}
@@ -756,11 +758,11 @@ int BKE_scene_base_iter_next(EvaluationContext *eval_ctx, SceneBaseIter *iter,
 			run_again = 0;
 
 			/* the first base */
-			if (iter->fase == F_START) {
+			if (iter->phase == F_START) {
 				*base = (*scene)->base.first;
 				if (*base) {
 					*ob = (*base)->object;
-					iter->fase = F_SCENE;
+					iter->phase = F_SCENE;
 				}
 				else {
 					/* exception: empty scene */
@@ -769,20 +771,20 @@ int BKE_scene_base_iter_next(EvaluationContext *eval_ctx, SceneBaseIter *iter,
 						if ((*scene)->base.first) {
 							*base = (*scene)->base.first;
 							*ob = (*base)->object;
-							iter->fase = F_SCENE;
+							iter->phase = F_SCENE;
 							break;
 						}
 					}
 				}
 			}
 			else {
-				if (*base && iter->fase != F_DUPLI) {
+				if (*base && iter->phase != F_DUPLI) {
 					*base = (*base)->next;
 					if (*base) {
 						*ob = (*base)->object;
 					}
 					else {
-						if (iter->fase == F_SCENE) {
+						if (iter->phase == F_SCENE) {
 							/* (*scene) is finished, now do the set */
 							while ((*scene)->set) {
 								(*scene) = (*scene)->set;
@@ -798,10 +800,10 @@ int BKE_scene_base_iter_next(EvaluationContext *eval_ctx, SceneBaseIter *iter,
 			}
 			
 			if (*base == NULL) {
-				iter->fase = F_START;
+				iter->phase = F_START;
 			}
 			else {
-				if (iter->fase != F_DUPLI) {
+				if (iter->phase != F_DUPLI) {
 					if ( (*base)->object->transflag & OB_DUPLI) {
 						/* groups cannot be duplicated for mballs yet, 
 						 * this enters eternal loop because of 
@@ -819,20 +821,21 @@ int BKE_scene_base_iter_next(EvaluationContext *eval_ctx, SceneBaseIter *iter,
 				/* handle dupli's */
 				if (iter->dupob) {
 					
+					copy_m4_m4(iter->omat, iter->dupob->ob->obmat);
 					copy_m4_m4(iter->dupob->ob->obmat, iter->dupob->mat);
 					
 					(*base)->flag |= OB_FROMDUPLI;
 					*ob = iter->dupob->ob;
-					iter->fase = F_DUPLI;
+					iter->phase = F_DUPLI;
 					
 					iter->dupob = iter->dupob->next;
 				}
-				else if (iter->fase == F_DUPLI) {
-					iter->fase = F_SCENE;
+				else if (iter->phase == F_DUPLI) {
+					iter->phase = F_SCENE;
 					(*base)->flag &= ~OB_FROMDUPLI;
 					
 					for (iter->dupob = iter->duplilist->first; iter->dupob; iter->dupob = iter->dupob->next) {
-						copy_m4_m4(iter->dupob->ob->obmat, iter->dupob->omat);
+						copy_m4_m4(iter->dupob->ob->obmat, iter->omat);
 					}
 					
 					free_object_duplilist(iter->duplilist);
@@ -849,7 +852,7 @@ int BKE_scene_base_iter_next(EvaluationContext *eval_ctx, SceneBaseIter *iter,
 	}
 #endif
 
-	return iter->fase;
+	return iter->phase;
 }
 
 Object *BKE_scene_camera_find(Scene *sc)
@@ -1260,7 +1263,7 @@ static void scene_update_object_func(TaskPool *pool, void *taskdata, int threadi
 
 		PRINT("Thread %d: update object %s\n", threadid, object->id.name);
 
-		if (G.debug & G_DEBUG) {
+		if (G.debug & G_DEBUG_DEPSGRAPH) {
 			start_time = PIL_check_seconds_timer();
 
 			if (object->recalc & OB_RECALC_ALL) {
@@ -1271,7 +1274,7 @@ static void scene_update_object_func(TaskPool *pool, void *taskdata, int threadi
 
 		/* We only update object itself here, dupli-group will be updated
 		 * separately from main thread because of we've got no idea about
-		 * dependnecies inside the group.
+		 * dependencies inside the group.
 		 */
 		BKE_object_handle_update_ex(eval_ctx, scene_parent, object, scene->rigidbody_world);
 
@@ -1309,7 +1312,7 @@ static void print_threads_statistics(ThreadedObjectUpdateState *state)
 {
 	int i, tot_thread;
 
-	if ((G.debug & G_DEBUG) == 0) {
+	if ((G.debug & G_DEBUG_DEPSGRAPH) == 0) {
 		return;
 	}
 
@@ -1434,7 +1437,7 @@ static void scene_update_objects(EvaluationContext *eval_ctx, Main *bmain, Scene
 	state.scene_parent = scene_parent;
 
 	/* Those are only needed when blender is run with --debug argument. */
-	if (G.debug & G_DEBUG) {
+	if (G.debug & G_DEBUG_DEPSGRAPH) {
 		memset(state.statistics, 0, sizeof(state.statistics));
 		state.has_updated_objects = false;
 		state.base_time = PIL_check_seconds_timer();
@@ -1450,7 +1453,7 @@ static void scene_update_objects(EvaluationContext *eval_ctx, Main *bmain, Scene
 	BLI_task_pool_work_and_wait(task_pool);
 	BLI_task_pool_free(task_pool);
 
-	if (G.debug & G_DEBUG) {
+	if (G.debug & G_DEBUG_DEPSGRAPH) {
 		print_threads_statistics(&state);
 	}
 

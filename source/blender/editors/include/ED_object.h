@@ -138,7 +138,7 @@ void ED_object_editmode_enter(struct bContext *C, int flag);
 bool ED_object_editmode_load(struct Object *obedit);
 
 void ED_object_location_from_view(struct bContext *C, float loc[3]);
-void ED_object_rotation_from_view(struct bContext *C, float rot[3]);
+void ED_object_rotation_from_view(struct bContext *C, float rot[3], const char align_axis);
 void ED_object_base_init_transform(struct bContext *C, struct Base *base, const float loc[3], const float rot[3]);
 float ED_object_new_primitive_matrix(struct bContext *C, struct Object *editob,
                                      const float loc[3], const float rot[3], float primmat[4][4],
@@ -146,7 +146,8 @@ float ED_object_new_primitive_matrix(struct bContext *C, struct Object *editob,
 
 void ED_object_add_unit_props(struct wmOperatorType *ot);
 void ED_object_add_generic_props(struct wmOperatorType *ot, bool do_editmode);
-bool ED_object_add_generic_get_opts(struct bContext *C, struct wmOperator *op,  float loc[3], float rot[3],
+bool ED_object_add_generic_get_opts(struct bContext *C, struct wmOperator *op, const char view_align_axis,
+                                    float loc[3], float rot[3],
                                     bool *enter_editmode, unsigned int *layer, bool *is_view_aligned);
 
 struct Object *ED_object_add_type(struct bContext *C, int type, const float loc[3], const float rot[3],
@@ -186,8 +187,8 @@ enum {
 
 struct ModifierData *ED_object_modifier_add(struct ReportList *reports, struct Main *bmain, struct Scene *scene,
                                             struct Object *ob, const char *name, int type);
-int ED_object_modifier_remove(struct ReportList *reports, struct Main *bmain,
-                              struct Object *ob, struct ModifierData *md);
+bool ED_object_modifier_remove(struct ReportList *reports, struct Main *bmain,
+                               struct Object *ob, struct ModifierData *md);
 void ED_object_modifier_clear(struct Main *bmain, struct Object *ob);
 int ED_object_modifier_move_down(struct ReportList *reports, struct Object *ob, struct ModifierData *md);
 int ED_object_modifier_move_up(struct ReportList *reports, struct Object *ob, struct ModifierData *md);
@@ -197,11 +198,11 @@ int ED_object_modifier_apply(struct ReportList *reports, struct Scene *scene,
                              struct Object *ob, struct ModifierData *md, int mode);
 int ED_object_modifier_copy(struct ReportList *reports, struct Object *ob, struct ModifierData *md);
 
-int ED_object_iter_other(struct Main *bmain, struct Object *orig_ob, const bool include_orig,
-                         int (*callback)(struct Object *ob, void *callback_data),
-                         void *callback_data);
+bool ED_object_iter_other(struct Main *bmain, struct Object *orig_ob, const bool include_orig,
+                          bool (*callback)(struct Object *ob, void *callback_data),
+                          void *callback_data);
 
-int ED_object_multires_update_totlevels_cb(struct Object *ob, void *totlevel_v);
+bool ED_object_multires_update_totlevels_cb(struct Object *ob, void *totlevel_v);
 
 /* object_select.c */
 void ED_object_select_linked_by_id(struct bContext *C, struct ID *id);

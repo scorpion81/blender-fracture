@@ -126,6 +126,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         col = split.column()
         col.prop(md, "width")
         col.prop(md, "segments")
+        col.prop(md, "profile")
 
         col = split.column()
         col.prop(md, "use_only_vertices")
@@ -138,8 +139,9 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         elif md.limit_method == 'VGROUP':
             layout.label(text="Vertex Group:")
             layout.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
-        # elif md.limit_method == 'WEIGHT':
-        #    layout.row().prop(md, "edge_weight_method", expand=True)
+ 
+        layout.label(text="Width Method:")
+        layout.row().prop(md, "offset_type", expand=True)
 
     def BOOLEAN(self, layout, ob, md):
         split = layout.split()
@@ -158,6 +160,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         col = split.column()
         col.prop(md, "frame_start")
         col.prop(md, "frame_duration")
+        col.prop(md, "use_reverse")
 
         col = split.column()
         col.prop(md, "use_random_order")
@@ -585,7 +588,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         col = split.column()
         col.prop(md, "wave_alignment", text="Alignment")
         sub = col.column()
-        sub.active = md.wave_alignment > 0
+        sub.active = (md.wave_alignment > 0.0)
         sub.prop(md, "wave_direction", text="Direction")
         sub.prop(md, "damping")
 

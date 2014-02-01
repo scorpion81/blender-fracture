@@ -259,7 +259,7 @@ static int dynamicPaint_surfaceNumOfPoints(DynamicPaintSurface *surface)
 }
 
 /* checks whether surface's format/type has realtime preview */
-int dynamicPaint_surfaceHasColorPreview(DynamicPaintSurface *surface)
+bool dynamicPaint_surfaceHasColorPreview(DynamicPaintSurface *surface)
 {
 	if (surface->format == MOD_DPAINT_SURFACE_F_IMAGESEQ) {
 		return 0;
@@ -321,7 +321,7 @@ static void dynamicPaint_setPreview(DynamicPaintSurface *t_surface)
 	}
 }
 
-int dynamicPaint_outputLayerExists(struct DynamicPaintSurface *surface, Object *ob, int output)
+bool dynamicPaint_outputLayerExists(struct DynamicPaintSurface *surface, Object *ob, int output)
 {
 	char *name;
 
@@ -641,7 +641,7 @@ static int surface_getBrushFlags(DynamicPaintSurface *surface, Scene *scene)
 
 static int brush_usesMaterial(DynamicPaintBrushSettings *brush, Scene *scene)
 {
-	return ((brush->flags & MOD_DPAINT_USE_MATERIAL) && (!strcmp(scene->r.engine, "BLENDER_RENDER")));
+	return ((brush->flags & MOD_DPAINT_USE_MATERIAL) && (!BKE_scene_use_new_shading_nodes(scene)));
 }
 
 /* check whether two bounds intersect */

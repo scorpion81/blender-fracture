@@ -69,7 +69,12 @@ class RENDER_PT_render(RenderButtonsPanel, Panel):
         row.operator("render.render", text="Animation", icon='RENDER_ANIMATION').animation = True
         row.operator("sound.mixdown", text="Audio", icon='PLAY_AUDIO')
 
-        layout.prop(rd, "display_mode", text="Display")
+        split = layout.split(percentage=0.33)
+
+        split.label(text="Display:")
+        row = split.row(align=True)
+        row.prop(rd, "display_mode", text="")
+        row.prop(rd, "use_lock_interface", icon_only=True)
 
 
 class RENDER_PT_dimensions(RenderButtonsPanel, Panel):
@@ -316,6 +321,13 @@ class RENDER_PT_post_processing(RenderButtonsPanel, Panel):
         sub.active = rd.use_fields
         sub.row().prop(rd, "field_order", expand=True)
         sub.prop(rd, "use_fields_still", text="Still")
+
+        col = split.column()
+        col.prop(rd, "use_edge_enhance")
+        sub = col.column()
+        sub.active = rd.use_edge_enhance
+        sub.prop(rd, "edge_threshold", text="Threshold", slider=True)
+        sub.prop(rd, "edge_color", text="")
 
 
 class RENDER_PT_stamp(RenderButtonsPanel, Panel):

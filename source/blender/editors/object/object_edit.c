@@ -455,7 +455,7 @@ void ED_object_editmode_enter(bContext *C, int flag)
 	ob = base->object;
 
 	/* this checks actual object->data, for cases when other scenes have it in editmode context */
-	if ( BKE_object_is_in_editmode(ob) )
+	if (BKE_object_is_in_editmode(ob))
 		return;
 	
 	if (BKE_object_obdata_is_libdata(ob)) {
@@ -1341,13 +1341,20 @@ void OBJECT_OT_paths_clear(wmOperatorType *ot)
 
 static int shade_smooth_exec(bContext *C, wmOperator *op)
 {
+	ID *data;
 	Curve *cu;
 	Nurb *nu;
 	int clear = (strcmp(op->idname, "OBJECT_OT_shade_flat") == 0);
-	int done = FALSE;
+	bool done = false, linked_data = false;
 
 	CTX_DATA_BEGIN(C, Object *, ob, selected_editable_objects)
 	{
+		data = ob->data;
+
+		if (data && data->lib) {
+			linked_data = true;
+			continue;
+		}
 
 		if (ob->type == OB_MESH) {
 			BKE_mesh_smooth_flag_set(ob, !clear);
@@ -1355,7 +1362,7 @@ static int shade_smooth_exec(bContext *C, wmOperator *op)
 			DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
 			WM_event_add_notifier(C, NC_OBJECT | ND_DRAW, ob);
 
-			done = TRUE;
+			done = true;
 		}
 		else if (ELEM(ob->type, OB_SURF, OB_CURVE)) {
 			cu = ob->data;
@@ -1368,10 +1375,13 @@ static int shade_smooth_exec(bContext *C, wmOperator *op)
 			DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
 			WM_event_add_notifier(C, NC_OBJECT | ND_DRAW, ob);
 
-			done = TRUE;
+			done = true;
 		}
 	}
 	CTX_DATA_END;
+
+	if (linked_data)
+		BKE_report(op->reports, RPT_WARNING, "Can't edit linked mesh or curve data");
 
 	return (done) ? OPERATOR_FINISHED : OPERATOR_CANCELLED;
 }
@@ -1721,7 +1731,7 @@ void OBJECT_OT_game_property_new(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	RNA_def_enum(ot->srna, "type", gameproperty_type_items, GPROP_FLOAT, "Type", "Type of game property to add");
-	RNA_def_string(ot->srna, "name", "", MAX_NAME, "Name", "Name of the game property to add");
+	RNA_def_string(ot->srna, "name", NULL, MAX_NAME, "Name", "Name of the game property to add");
 }
 
 static int game_property_remove_exec(bContext *C, wmOperator *op)

@@ -338,7 +338,7 @@ void MASK_OT_new(wmOperatorType *ot)
 	ot->poll = ED_operator_mask;
 
 	/* properties */
-	RNA_def_string(ot->srna, "name", "", MAX_ID_NAME - 2, "Name", "Name of new mask");
+	RNA_def_string(ot->srna, "name", NULL, MAX_ID_NAME - 2, "Name", "Name of new mask");
 }
 
 /******************** create new masklay *********************/
@@ -373,7 +373,7 @@ void MASK_OT_layer_new(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	/* properties */
-	RNA_def_string(ot->srna, "name", "", MAX_ID_NAME - 2, "Name", "Name of new mask layer");
+	RNA_def_string(ot->srna, "name", NULL, MAX_ID_NAME - 2, "Name", "Name of new mask layer");
 }
 
 /******************** remove mask layer *********************/
@@ -1595,6 +1595,75 @@ void MASK_OT_duplicate(wmOperatorType *ot)
 	/* api callbacks */
 	ot->exec = mask_duplicate_exec;
 	ot->poll = ED_maskedit_mask_poll;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+}
+
+/********************** copy splines to clipboard operator *********************/
+
+static int copy_splines_exec(bContext *C, wmOperator *UNUSED(op))
+{
+	Mask *mask = CTX_data_edit_mask(C);
+	MaskLayer *mask_layer = BKE_mask_layer_active(mask);
+
+	BKE_mask_clipboard_copy_from_layer(mask_layer);
+
+	return OPERATOR_FINISHED;
+}
+
+void MASK_OT_copy_splines(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Copy Splines";
+	ot->description = "Copy selected splines to clipboard";
+	ot->idname = "MASK_OT_copy_splines";
+
+	/* api callbacks */
+	ot->exec = copy_splines_exec;
+	ot->poll = ED_maskedit_mask_poll;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER;
+}
+
+/********************** paste tracks from clipboard operator *********************/
+
+static int paste_splines_poll(bContext *C)
+{
+	if (ED_maskedit_mask_poll(C)) {
+		return BKE_mask_clipboard_is_empty() == false;
+	}
+
+	return 0;
+}
+
+static int paste_splines_exec(bContext *C, wmOperator *UNUSED(op))
+{
+	Scene *scene = CTX_data_scene(C);
+	Mask *mask = CTX_data_edit_mask(C);
+	MaskLayer *mask_layer = BKE_mask_layer_active(mask);
+
+	BKE_mask_clipboard_paste_to_layer(CTX_data_main(C), mask_layer);
+
+	/* TODO: only update edited splines */
+	BKE_mask_update_display(mask, CFRA);
+
+	WM_event_add_notifier(C, NC_MASK | NA_EDITED, mask);
+
+	return OPERATOR_FINISHED;
+}
+
+void MASK_OT_paste_splines(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Paste Splines";
+	ot->description = "Paste splines from clipboard";
+	ot->idname = "MASK_OT_paste_splines";
+
+	/* api callbacks */
+	ot->exec = paste_splines_exec;
+	ot->poll = paste_splines_poll;
 
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;

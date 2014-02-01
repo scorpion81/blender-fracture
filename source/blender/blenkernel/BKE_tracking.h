@@ -98,6 +98,8 @@ struct MovieTrackingTrack *BKE_tracking_track_get_active(struct MovieTracking *t
 float *BKE_tracking_track_get_mask(int frame_width, int frame_height, struct MovieTrackingTrack *track,
                                    struct MovieTrackingMarker *marker);
 
+float BKE_tracking_track_get_weight_for_marker(struct MovieClip *clip, struct MovieTrackingTrack *track, struct MovieTrackingMarker *marker);
+
 /* selection */
 void BKE_tracking_track_select(struct ListBase *tracksbase, struct MovieTrackingTrack *track, int area, bool extend);
 void BKE_tracking_track_deselect(struct MovieTrackingTrack *track, int area);
@@ -241,6 +243,10 @@ void BKE_tracking_reconstruction_scale(struct MovieTracking *tracking, float sca
 void BKE_tracking_detect_fast(struct MovieTracking *tracking, struct ListBase *tracksbase, struct ImBuf *imbuf,
                               int framenr, int margin, int min_trackness, int min_distance, struct bGPDlayer *layer,
                               bool place_outside_layer);
+
+void BKE_tracking_detect_harris(struct MovieTracking *tracking, struct ListBase *tracksbase, struct ImBuf *ibuf,
+                                int framenr, int margin, float threshold, int min_distance, struct bGPDlayer *layer,
+                                bool place_outside_layer);
 
 /* **** 2D stabilization **** */
 void BKE_tracking_stabilization_data_get(struct MovieTracking *tracking, int framenr, int width, int height,

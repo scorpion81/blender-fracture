@@ -38,6 +38,7 @@ set(SRC_HEADERS
 	util_dynlib.h
 	util_foreach.h
 	util_function.h
+	util_half.h
 	util_hash.h
 	util_image.h
 	util_list.h
@@ -46,6 +47,7 @@ set(SRC_HEADERS
 	util_md5.h
 	util_opencl.h
 	util_opengl.h
+	util_optimization.h
 	util_param.h
 	util_path.h
 	util_progress.h

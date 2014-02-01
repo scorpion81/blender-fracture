@@ -1358,23 +1358,29 @@ int transformEvent(TransInfo *t, const wmEvent *event)
 				break;
 			case CKEY:
 				if (event->alt) {
-					t->flag ^= T_PROP_CONNECTED;
-					sort_trans_data_dist(t);
-					calculatePropRatio(t);
-					t->redraw = TREDRAW_HARD;
-					handled = true;
+					if (!(t->options & CTX_NO_PET)) {
+						t->flag ^= T_PROP_CONNECTED;
+						sort_trans_data_dist(t);
+						calculatePropRatio(t);
+						t->redraw = TREDRAW_HARD;
+						handled = true;
+					}
 				}
 				else {
-					stopConstraint(t);
-					t->redraw |= TREDRAW_HARD;
-					handled = true;
+					if (!(t->flag & T_NO_CONSTRAINT)) {
+						stopConstraint(t);
+						t->redraw |= TREDRAW_HARD;
+						handled = true;
+					}
 				}
 				break;
 			case XKEY:
 			case YKEY:
 			case ZKEY:
-				transform_event_xyz_constraint(t, event->type, cmode);
-				handled = true;
+				if (!(t->flag & T_NO_CONSTRAINT)) {
+					transform_event_xyz_constraint(t, event->type, cmode);
+					handled = true;
+				}
 				break;
 			case OKEY:
 				if (t->flag & T_PROP_EDIT && event->shift) {
@@ -1428,6 +1434,13 @@ int transformEvent(TransInfo *t, const wmEvent *event)
 			case RIGHTALTKEY:
 				if (ELEM(t->spacetype, SPACE_SEQ, SPACE_VIEW3D)) {
 					t->flag |= T_ALT_TRANSFORM;
+					t->redraw |= TREDRAW_HARD;
+					handled = true;
+				}
+				break;
+			case HKEY:
+				if (t->spacetype == SPACE_NODE) {
+					t->flag ^= T_TOGGLE_HIDDEN;
 					t->redraw |= TREDRAW_HARD;
 					handled = true;
 				}
@@ -5134,7 +5147,7 @@ static bool bm_loop_calc_opposite_co(BMLoop *l_tmp,
 			const float fac = line_point_factor_v3(tvec, l_iter->v->co, l_iter->next->v->co);
 			/* allow some overlap to avoid missing the intersection because of float precision */
 			if ((fac > -FLT_EPSILON) && (fac < 1.0f + FLT_EPSILON)) {
-				/* likelyhood of multiple intersections per ngon is quite low,
+				/* likelihood of multiple intersections per ngon is quite low,
 				 * it would have to loop back on its self, but better support it
 				 * so check for the closest opposite edge */
 				const float tdist = len_v3v3(l_tmp->v->co, tvec);

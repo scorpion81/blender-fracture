@@ -46,7 +46,6 @@
 #include "WM_api.h"
 #include "WM_types.h"
 
-
 #include "ED_screen.h"
 
 #include "UI_view2d.h"
@@ -663,6 +662,8 @@ static void view_zoomstep_apply(bContext *C, wmOperator *op)
 /* cleanup temp customdata  */
 static void view_zoomstep_exit(wmOperator *op)
 {
+	UI_view2d_zoom_cache_reset();
+
 	if (op->customdata) {
 		MEM_freeN(op->customdata);
 		op->customdata = NULL;
@@ -894,6 +895,8 @@ static void view_zoomdrag_apply(bContext *C, wmOperator *op)
 /* cleanup temp customdata  */
 static void view_zoomdrag_exit(bContext *C, wmOperator *op)
 {
+	UI_view2d_zoom_cache_reset();
+
 	if (op->customdata) {
 		v2dViewZoomData *vzd = op->customdata;
 		
@@ -1363,6 +1366,10 @@ static int view2d_smoothview_invoke(bContext *C, wmOperator *UNUSED(op), const w
 	UI_view2d_curRect_validate(v2d);
 	UI_view2d_sync(CTX_wm_screen(C), CTX_wm_area(C), v2d, V2D_LOCK_COPY);
 	ED_region_tag_redraw(ar);
+
+	if (v2d->sms == NULL) {
+		UI_view2d_zoom_cache_reset();
+	}
 
 	return OPERATOR_FINISHED;
 }
@@ -1856,9 +1863,11 @@ static int reset_exec(bContext *C, wmOperator *UNUSED(op))
 	ED_region_tag_redraw(ar);
 	UI_view2d_sync(CTX_wm_screen(C), CTX_wm_area(C), v2d, V2D_LOCK_COPY);
 	
+	UI_view2d_zoom_cache_reset();
+
 	return OPERATOR_FINISHED;
 }
- 
+
 static void VIEW2D_OT_reset(wmOperatorType *ot)
 {
 	/* identifiers */

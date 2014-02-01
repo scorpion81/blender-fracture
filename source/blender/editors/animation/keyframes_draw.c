@@ -595,41 +595,56 @@ void draw_keyframe_shape(float x, float y, float xscale, float hsize, short sel,
 	
 	/* draw! */
 	if (ELEM(mode, KEYFRAME_SHAPE_INSIDE, KEYFRAME_SHAPE_BOTH)) {
-		/* interior - hardcoded colors (for selected and unselected only) */
+		float inner_col[4];
+		
+		/* get interior colors from theme (for selected and unselected only) */
 		switch (key_type) {
-			case BEZT_KEYTYPE_BREAKDOWN: /* bluish frames for now */
+			case BEZT_KEYTYPE_BREAKDOWN: /* bluish frames (default theme) */
 			{
-				if (sel) glColor4f(0.33f, 0.75f, 0.93f, alpha);
-				else glColor4f(0.70f, 0.86f, 0.91f, alpha);
+				if (sel)  UI_GetThemeColor4fv(TH_KEYTYPE_BREAKDOWN_SELECT, inner_col);
+				else UI_GetThemeColor4fv(TH_KEYTYPE_BREAKDOWN, inner_col);
 				break;
 			}
-			case BEZT_KEYTYPE_EXTREME: /* redish frames for now */
+			case BEZT_KEYTYPE_EXTREME: /* reddish frames (default theme) */
 			{
-				if (sel) glColor4f(0.95f, 0.5f, 0.5f, alpha);
-				else glColor4f(0.91f, 0.70f, 0.80f, alpha);
+				if (sel) UI_GetThemeColor4fv(TH_KEYTYPE_EXTREME_SELECT, inner_col);
+				else UI_GetThemeColor4fv(TH_KEYTYPE_EXTREME, inner_col);
 				break;
 			}
-			case BEZT_KEYTYPE_JITTER: /* greenish frames for now? */
+			case BEZT_KEYTYPE_JITTER: /* greenish frames (default theme) */
 			{
-				if (sel) glColor4f(0.38f, 0.75f, 0.26f, alpha);
-				else glColor4f(0.58f, 0.90f, 0.46f, alpha);
+				if (sel) UI_GetThemeColor4fv(TH_KEYTYPE_JITTER_SELECT, inner_col);
+				else UI_GetThemeColor4fv(TH_KEYTYPE_JITTER, inner_col);
 				break;
 			}
-			case BEZT_KEYTYPE_KEYFRAME: /* traditional yellowish frames for now */
+			case BEZT_KEYTYPE_KEYFRAME: /* traditional yellowish frames (default theme) */
 			default:
 			{
-				if (sel) UI_ThemeColorShadeAlpha(TH_STRIP_SELECT, 50, -255 * (1.0f - alpha));
-				else glColor4f(0.91f, 0.91f, 0.91f, alpha);
+				if (sel) UI_GetThemeColor4fv(TH_KEYTYPE_KEYFRAME_SELECT, inner_col);
+				else UI_GetThemeColor4fv(TH_KEYTYPE_KEYFRAME, inner_col);
 				break;
 			}
 		}
 		
+		/* NOTE: we don't use the straight alpha from the theme, or else effects such as 
+		 * greying out protected/muted channels doesn't work correctly! 
+		 */
+		inner_col[3] *= alpha;
+		glColor4fv(inner_col);
+		
+		/* draw the "filled in" interior poly now */
 		glCallList(displist2);
 	}
 	
 	if (ELEM(mode, KEYFRAME_SHAPE_FRAME, KEYFRAME_SHAPE_BOTH)) {
+		float border_col[4];
+		
 		/* exterior - black frame */
-		glColor4f(0.0f, 0.0f, 0.0f, alpha);
+		if (sel)  UI_GetThemeColor4fv(TH_KEYBORDER_SELECT, border_col);
+		else  UI_GetThemeColor4fv(TH_KEYBORDER, border_col);
+		
+		border_col[3] *= alpha;
+		glColor4fv(border_col);
 		
 		glCallList(displist1);
 	}
@@ -645,6 +660,7 @@ static void draw_keylist(View2D *v2d, DLRBT_Tree *keys, DLRBT_Tree *blocks, floa
 {
 	ActKeyColumn *ak;
 	ActKeyBlock *ab;
+	float alpha;
 	float xscale;
 	float iconsize = U.widget_unit / 4.0f;
 	glEnable(GL_BLEND);
@@ -652,15 +668,24 @@ static void draw_keylist(View2D *v2d, DLRBT_Tree *keys, DLRBT_Tree *blocks, floa
 	/* get View2D scaling factor */
 	UI_view2d_getscale(v2d, &xscale, NULL);
 	
+	/* locked channels are less strongly shown, as feedback for locked channels in DopeSheet */
+	/* TODO: allow this opacity factor to be themed? */
+	alpha = (channelLocked) ? 0.25f : 1.0f;
+	
 	/* draw keyblocks */
 	if (blocks) {
 		for (ab = blocks->first; ab; ab = ab->next) {
 			if (actkeyblock_is_valid(ab, keys)) {
+				float color[4];
+				
 				/* draw block */
 				if (ab->sel)
-					UI_ThemeColor4(TH_STRIP_SELECT);
+					UI_GetThemeColor4fv(TH_STRIP_SELECT, color);
 				else
-					UI_ThemeColor4(TH_STRIP);
+					UI_GetThemeColor4fv(TH_STRIP, color);
+					
+				color[3] *= alpha;
+				glColor4fv(color);
 				
 				glRectf(ab->start, ypos - iconsize, ab->end, ypos + iconsize);
 			}
@@ -669,10 +694,6 @@ static void draw_keylist(View2D *v2d, DLRBT_Tree *keys, DLRBT_Tree *blocks, floa
 	
 	/* draw keys */
 	if (keys) {
-		/* locked channels are less strongly shown, as feedback for locked channels in DopeSheet */
-		/* TODO: allow this opacity factor to be themed? */
-		float kalpha = (channelLocked) ? 0.25f : 1.0f;
-		
 		for (ak = keys->first; ak; ak = ak->next) {
 			/* optimization: if keyframe doesn't appear within 5 units (screenspace) in visible area, don't draw
 			 *	- this might give some improvements, since we current have to flip between view/region matrices
@@ -683,7 +704,7 @@ static void draw_keylist(View2D *v2d, DLRBT_Tree *keys, DLRBT_Tree *blocks, floa
 			/* draw using OpenGL - uglier but faster */
 			/* NOTE1: a previous version of this didn't work nice for some intel cards
 			 * NOTE2: if we wanted to go back to icons, these are  icon = (ak->sel & SELECT) ? ICON_SPACE2 : ICON_SPACE3; */
-			draw_keyframe_shape(ak->cfra, ypos, xscale, iconsize, (ak->sel & SELECT), ak->key_type, KEYFRAME_SHAPE_BOTH, kalpha);
+			draw_keyframe_shape(ak->cfra, ypos, xscale, iconsize, (ak->sel & SELECT), ak->key_type, KEYFRAME_SHAPE_BOTH, alpha);
 		}
 	}
 

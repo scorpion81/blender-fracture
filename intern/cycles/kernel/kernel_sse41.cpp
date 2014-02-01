@@ -18,8 +18,6 @@
  * optimization flags and nearly all functions inlined, while kernel.cpp
  * is compiled without for other CPU's. */
 
-#ifdef WITH_OPTIMIZED_KERNEL
-
 /* SSE optimization disabled for now on 32 bit, see bug #36316 */
 #if !(defined(__GNUC__) && (defined(i386) || defined(_M_IX86)))
 #define __KERNEL_SSE2__
@@ -27,6 +25,10 @@
 #define __KERNEL_SSSE3__
 #define __KERNEL_SSE41__
 #endif
+
+#include "util_optimization.h"
+
+#ifdef WITH_CYCLES_OPTIMIZED_KERNEL_SSE41
 
 #include "kernel.h"
 #include "kernel_compat_cpu.h"
@@ -71,6 +73,10 @@ void kernel_cpu_sse41_shader(KernelGlobals *kg, uint4 *input, float4 *output, in
 }
 
 CCL_NAMESPACE_END
+#else
+
+/* needed for some linkers in combination with scons making empty compilation unit in a library */
+void __dummy_function_cycles_sse41(void);
+void __dummy_function_cycles_sse41(void){}
 
 #endif
-

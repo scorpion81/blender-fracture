@@ -26,8 +26,9 @@
 
 /** \file blender/windowmanager/intern/wm_dragdrop.c
  *  \ingroup wm
+ *
+ * Our own drag-and-drop, drag state and drop boxes.
  */
-
 
 #include <string.h>
 
@@ -227,7 +228,7 @@ static void wm_drop_operator_options(bContext *C, wmDrag *drag, wmEvent *event)
 	drag->opname[0] = 0;
 	
 	/* check buttons (XXX todo rna and value) */
-	if (UI_but_active_drop_name(C) ) {
+	if (UI_but_active_drop_name(C)) {
 		BLI_strncpy(drag->opname, IFACE_("Paste name"), sizeof(drag->opname));
 	}
 	else {

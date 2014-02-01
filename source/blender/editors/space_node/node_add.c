@@ -100,7 +100,7 @@ bNode *node_add_node(const bContext *C, const char *idname, int type, float locx
 }
 
 /* ********************** Add reroute operator ***************** */
-static int add_reroute_intersect_check(bNodeLink *link, float mcoords[][2], int tot, float result[2])
+static bool add_reroute_intersect_check(bNodeLink *link, float mcoords[][2], int tot, float result[2])
 {
 	float coord_array[NODE_LINK_RESOL + 1][2];
 	int i, b;
@@ -192,8 +192,8 @@ static bNodeSocketLink *add_reroute_do_socket_section(bContext *C, bNodeSocketLi
 		/* average cut point from shared links */
 		mul_v2_fl(insert_point, 1.0f / num_links);
 		
-		reroute_node->locx = insert_point[0];
-		reroute_node->locy = insert_point[1];
+		reroute_node->locx = insert_point[0] / UI_DPI_FAC;
+		reroute_node->locy = insert_point[1] / UI_DPI_FAC;
 	}
 	
 	return socklink;

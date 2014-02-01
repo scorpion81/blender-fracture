@@ -57,7 +57,6 @@
 #include "BKE_animsys.h"
 #include "BKE_action.h"
 #include "BKE_armature.h"
-#include "BKE_constraint.h"
 #include "BKE_depsgraph.h"
 #include "BKE_fcurve.h"
 #include "BKE_main.h"
@@ -779,16 +778,9 @@ static float visualkey_get_value(PointerRNA *ptr, PropertyRNA *prop, int array_i
 		rotmode = ob->rotmode;
 	}
 	else if (ptr->type == &RNA_PoseBone) {
-		Object *ob = (Object *)ptr->id.data; /* we assume that this is always set, and is an object */
 		bPoseChannel *pchan = (bPoseChannel *)ptr->data;
 		
-		/* Although it is not strictly required for this particular space conversion, 
-		 * arg1 must not be null, as there is a null check for the other conversions to
-		 * be safe. Therefore, the active object is passed here, and in many cases, this
-		 * will be what owns the pose-channel that is getting this anyway.
-		 */
-		copy_m4_m4(tmat, pchan->pose_mat);
-		BKE_constraint_mat_convertspace(ob, pchan, tmat, CONSTRAINT_SPACE_POSE, CONSTRAINT_SPACE_LOCAL);
+		BKE_armature_mat_pose_to_bone(pchan, pchan->pose_mat, tmat);
 		rotmode = pchan->rotmode;
 		
 		/* Loc code is specific... */
@@ -1257,20 +1249,10 @@ static int modify_key_op_poll(bContext *C)
 {
 	ScrArea *sa = CTX_wm_area(C);
 	Scene *scene = CTX_data_scene(C);
-	SpaceOops *so = CTX_wm_space_outliner(C);
 	
 	/* if no area or active scene */
 	if (ELEM(NULL, sa, scene)) 
 		return 0;
-	
-	/* if Outliner, don't allow in some views */
-	if (so) {
-		if (ELEM4(so->outlinevis, SO_GROUPS, SO_LIBRARIES, SO_SEQUENCE, SO_USERDEF)) {
-			return 0;
-		}
-	}
-	
-	/* TODO: checks for other space types can be added here */
 	
 	/* should be fine */
 	return 1;
@@ -1984,7 +1966,7 @@ static short object_frame_has_keyframe(Object *ob, float frame, short filter)
 	}
 	
 	/* try shapekey keyframes (if available, and allowed by filter) */
-	if (!(filter & ANIMFILTER_KEYS_LOCAL) && !(filter & ANIMFILTER_KEYS_NOSKEY) ) {
+	if (!(filter & ANIMFILTER_KEYS_LOCAL) && !(filter & ANIMFILTER_KEYS_NOSKEY)) {
 		Key *key = BKE_key_from_object(ob);
 		
 		/* shapekeys can have keyframes ('Relative Shape Keys') 
@@ -2000,7 +1982,7 @@ static short object_frame_has_keyframe(Object *ob, float frame, short filter)
 	}
 
 	/* try materials */
-	if (!(filter & ANIMFILTER_KEYS_LOCAL) && !(filter & ANIMFILTER_KEYS_NOMAT) ) {
+	if (!(filter & ANIMFILTER_KEYS_LOCAL) && !(filter & ANIMFILTER_KEYS_NOMAT)) {
 		/* if only active, then we can skip a lot of looping */
 		if (filter & ANIMFILTER_KEYS_ACTIVE) {
 			Material *ma = give_current_material(ob, (ob->actcol + 1));

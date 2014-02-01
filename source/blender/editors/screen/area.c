@@ -1184,7 +1184,12 @@ static void area_calc_totrct(ScrArea *sa, int sizex, int sizey)
 /* used for area initialize below */
 static void region_subwindow(wmWindow *win, ARegion *ar)
 {
-	if (ar->flag & (RGN_FLAG_HIDDEN | RGN_FLAG_TOO_SMALL)) {
+	bool hidden = (ar->flag & (RGN_FLAG_HIDDEN | RGN_FLAG_TOO_SMALL)) != 0;
+
+	if ((ar->alignment & RGN_SPLIT_PREV) && ar->prev)
+		hidden = hidden || (ar->prev->flag & (RGN_FLAG_HIDDEN | RGN_FLAG_TOO_SMALL));
+
+	if (hidden) {
 		if (ar->swinid)
 			wm_subwindow_close(win, ar->swinid);
 		ar->swinid = 0;
@@ -1528,39 +1533,6 @@ int ED_area_header_switchbutton(const bContext *C, uiBlock *block, int yco)
 	return xco + 1.7 * U.widget_unit;
 }
 
-int ED_area_header_standardbuttons(const bContext *C, uiBlock *block, int yco)
-{
-	ScrArea *sa = CTX_wm_area(C);
-	int xco = 0.4 * U.widget_unit;
-	uiBut *but;
-	
-	if (!sa->full)
-		xco = ED_area_header_switchbutton(C, block, yco);
-
-	uiBlockSetEmboss(block, UI_EMBOSSN);
-
-	if (sa->flag & HEADER_NO_PULLDOWN) {
-		but = uiDefIconButBitS(block, TOG, HEADER_NO_PULLDOWN, 0,
-		                       ICON_DISCLOSURE_TRI_RIGHT,
-		                       xco, yco, U.widget_unit, U.widget_unit * 0.9f,
-		                       &(sa->flag), 0, 0, 0, 0,
-		                       TIP_("Show pulldown menus"));
-	}
-	else {
-		but = uiDefIconButBitS(block, TOG, HEADER_NO_PULLDOWN, 0,
-		                       ICON_DISCLOSURE_TRI_DOWN,
-		                       xco, yco, U.widget_unit, U.widget_unit * 0.9f,
-		                       &(sa->flag), 0, 0, 0, 0,
-		                       TIP_("Hide pulldown menus"));
-	}
-
-	uiButClearFlag(but, UI_BUT_UNDO); /* skip undo on screen buttons */
-
-	uiBlockSetEmboss(block, UI_EMBOSS);
-	
-	return xco + U.widget_unit;
-}
-
 /************************ standard UI regions ************************/
 
 void ED_region_panels(const bContext *C, ARegion *ar, int vertical, const char *context, int contextnr)
@@ -1585,7 +1557,7 @@ void ED_region_panels(const bContext *C, ARegion *ar, int vertical, const char *
 
 	BLI_SMALLSTACK_DECLARE(pt_stack, PanelType *);
 
-	if (contextnr >= 0)
+	if (contextnr != -1)
 		is_context_new = UI_view2d_tab_set(v2d, contextnr);
 	
 	/* before setting the view */
@@ -1691,7 +1663,7 @@ void ED_region_panels(const bContext *C, ARegion *ar, int vertical, const char *
 			if (pt->draw_header && !(pt->flag & PNL_NO_HEADER) && (open || vertical)) {
 				/* for enabled buttons */
 				panel->layout = uiBlockLayout(block, UI_LAYOUT_HORIZONTAL, UI_LAYOUT_HEADER,
-				                              triangle, (UI_UNIT_Y * 1.1f) + style->panelspace, UI_UNIT_Y, 1, style);
+				                              triangle, (UI_UNIT_Y * 1.1f) + style->panelspace, UI_UNIT_Y, 1, 0, style);
 
 				pt->draw_header(C, panel);
 
@@ -1713,7 +1685,7 @@ void ED_region_panels(const bContext *C, ARegion *ar, int vertical, const char *
 					panelContext = UI_LAYOUT_PANEL;
 
 				panel->layout = uiBlockLayout(block, UI_LAYOUT_VERTICAL, panelContext,
-				                              style->panelspace, 0, w - 2 * style->panelspace, em, style);
+				                              style->panelspace, 0, w - 2 * style->panelspace, em, 0, style);
 
 				pt->draw(C, panel);
 
@@ -1836,7 +1808,7 @@ void ED_region_header(const bContext *C, ARegion *ar)
 	/* draw all headers types */
 	for (ht = ar->type->headertypes.first; ht; ht = ht->next) {
 		block = uiBeginBlock(C, ar, ht->idname, UI_EMBOSS);
-		layout = uiBlockLayout(block, UI_LAYOUT_HORIZONTAL, UI_LAYOUT_HEADER, xco, yco, UI_UNIT_Y, 1, style);
+		layout = uiBlockLayout(block, UI_LAYOUT_HORIZONTAL, UI_LAYOUT_HEADER, xco, yco, UI_UNIT_Y, 1, 0, style);
 
 		if (ht->draw) {
 			header.type = ht;

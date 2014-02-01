@@ -65,6 +65,7 @@
 #include "BKE_fcurve.h"
 #include "BKE_global.h"
 #include "BKE_group.h"
+#include "BKE_image.h"
 #include "BKE_key.h"
 #include "BKE_library.h"
 #include "BKE_main.h"
@@ -689,6 +690,8 @@ static void build_dag_object(DagForest *dag, DagNode *scenenode, Scene *scene, O
 			if (ob->type == OB_FONT) {
 				if (cu->textoncurve) {
 					node2 = dag_get_node(dag, cu->textoncurve);
+					/* Text on curve requires path to be evaluated for the target curve. */
+					node2->eval_flags |= DAG_EVAL_NEED_CURVE_PATH;
 					dag_add_relation(dag, node2, node, DAG_RL_DATA_DATA | DAG_RL_OB_DATA, "Texture On Curve");
 				}
 			}
@@ -1952,6 +1955,12 @@ static void dag_object_time_update_flags(Main *bmain, Scene *scene, Object *ob)
 			case OB_MBALL:
 				if (ob->transflag & OB_DUPLI) ob->recalc |= OB_RECALC_DATA;
 				break;
+			case OB_EMPTY:
+				/* update animated images */
+				if (ob->empty_drawtype == OB_EMPTY_IMAGE && ob->data)
+					if (BKE_image_is_animated(ob->data))
+						ob->recalc |= OB_RECALC_DATA;
+				break;
 		}
 		
 		if (animdata_use_time(adt)) {
@@ -2079,16 +2088,35 @@ static void dag_current_scene_layers(Main *bmain, ListBase *lb)
 		for (win = wm->windows.first; win; win = win->next) {
 			if (win->screen && win->screen->scene->theDag) {
 				Scene *scene = win->screen->scene;
-				
+				DagSceneLayer *dsl;
+
 				if (scene->id.flag & LIB_DOIT) {
-					DagSceneLayer *dsl = MEM_mallocN(sizeof(DagSceneLayer), "dag scene layer");
-					
+					dsl = MEM_mallocN(sizeof(DagSceneLayer), "dag scene layer");
+
 					BLI_addtail(lb, dsl);
-					
+
 					dsl->scene = scene;
 					dsl->layer = BKE_screen_visible_layers(win->screen, scene);
-					
+
 					scene->id.flag &= ~LIB_DOIT;
+				}
+				else {
+					/* It is possible that multiple windows shares the same scene
+					 * and have different layers visible.
+					 *
+					 * Here we deal with such cases by squashing layers bits from
+					 * multiple windoew to the DagSceneLayer.
+					 *
+					 * TODO(sergey): Such a lookup could be optimized perhaps,
+					 * however should be fine for now since we usually have only
+					 * few open windows.
+					 */
+					for (dsl = lb->first; dsl; dsl = dsl->next) {
+						if (dsl->scene == scene) {
+							dsl->layer |= BKE_screen_visible_layers(win->screen, scene);
+							break;
+						}
+					}
 				}
 			}
 		}
@@ -2222,7 +2250,7 @@ static void dag_id_flush_update(Main *bmain, Scene *sce, ID *id)
 		BKE_ptcache_object_reset(sce, ob, PTCACHE_RESET_DEPSGRAPH);
 
 		/* So if someone tagged object recalc directly,
-		 * id_tag_update biffield stays relevant
+		 * id_tag_update bit-field stays relevant
 		 */
 		if (ob->recalc & OB_RECALC_ALL) {
 			DAG_id_type_tag(bmain, GS(id->name));
@@ -2472,6 +2500,43 @@ void DAG_ids_clear_recalc(Main *bmain)
 
 #ifdef POST_UPDATE_HANDLER_WORKAROUND
 	bool have_updated_objects = false;
+
+	if (DAG_id_type_tagged(bmain, ID_OB)) {
+		ListBase listbase;
+		DagSceneLayer *dsl;
+
+		/* We need to check all visible scenes, otherwise resetting
+		 * OB_ID changed flag will only work fine for first scene of
+		 * multiple visible and all the rest will skip update.
+		 *
+		 * This could also lead to wrong behavior scene update handlers
+		 * because of missing ID datablock changed flags.
+		 *
+		 * This is a bit of a bummer to allocate list here, but likely
+		 * it wouldn't become too much bad because it only happens when
+		 * objects were actually changed.
+		 */
+		dag_current_scene_layers(bmain, &listbase);
+
+		for (dsl = listbase.first; dsl; dsl = dsl->next) {
+			Scene *scene = dsl->scene;
+			DagNode *node;
+			for (node = scene->theDag->DagNode.first;
+			     node != NULL && have_updated_objects == false;
+			     node = node->next)
+			{
+				if (node->type == ID_OB) {
+					Object *object = (Object *) node->ob;
+					if (object->recalc & OB_RECALC_ALL) {
+						have_updated_objects = true;
+						break;
+					}
+				}
+			}
+		}
+
+		BLI_freelistN(&listbase);
+	}
 #endif
 
 	/* loop over all ID types */
@@ -2487,15 +2552,6 @@ void DAG_ids_clear_recalc(Main *bmain)
 			for (; id; id = id->next) {
 				if (id->flag & (LIB_ID_RECALC | LIB_ID_RECALC_DATA))
 					id->flag &= ~(LIB_ID_RECALC | LIB_ID_RECALC_DATA);
-
-#ifdef POST_UPDATE_HANDLER_WORKAROUND
-				if (GS(id->name) == ID_OB) {
-					Object *object = (Object *) id;
-					if (object->recalc & OB_RECALC_ALL) {
-						have_updated_objects = true;
-					}
-				}
-#endif
 
 				/* some ID's contain semi-datablock nodetree */
 				ntree = ntreeFromID(id);
@@ -2903,8 +2959,30 @@ const char *DAG_get_node_name(void *node_v)
 
 short DAG_get_eval_flags_for_object(struct Scene *scene, void *object)
 {
-	DagNode *node = dag_get_node(scene->theDag, object);
-	return node->eval_flags;
+	DagNode *node;
+
+	if (scene->theDag == NULL) {
+		/* Happens when converting objects to mesh from a python script
+		 * after modifying scene graph.
+		 *
+		 * Currently harmless because it's only called for temporary
+		 * objects which are out of the DAG anyway.
+		 */
+		return 0;
+	}
+
+	node = dag_find_node(scene->theDag, object);;
+
+	if (node) {
+		return node->eval_flags;
+	}
+	else {
+		/* Happens when external render engine exports temporary objects
+		 * which are not in the DAG.
+		 */
+		/* TODO(sergey): Doublecheck objects with Curve Deform exports all fine. */
+		return 0;
+	}
 }
 
 bool DAG_is_acyclic(Scene *scene)

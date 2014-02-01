@@ -98,11 +98,11 @@ int ED_node_is_texture(struct SpaceNode *snode);
 void ED_node_shader_default(const struct bContext *C, struct ID *id);
 void ED_node_composit_default(const struct bContext *C, struct Scene *scene);
 void ED_node_texture_default(const struct bContext *C, struct Tex *tex);
-int  ED_node_select_check(ListBase *lb);
+bool ED_node_select_check(ListBase *lb);
 void ED_node_post_apply_transform(struct bContext *C, struct bNodeTree *ntree);
 void ED_node_set_active(struct Main *bmain, struct bNodeTree *ntree, struct bNode *node);
 
-void ED_node_composite_job(const bContext *C, struct bNodeTree *nodetree, struct Scene *scene_owner);
+void ED_node_composite_job(const struct bContext *C, struct bNodeTree *nodetree, struct Scene *scene_owner);
 
 /* node_ops.c */
 void ED_operatormacros_node(void);

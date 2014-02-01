@@ -56,6 +56,7 @@
 #include "BKE_key.h"
 #include "BKE_modifier.h"
 #include "BKE_mesh.h"
+#include "BKE_mesh_mapping.h"
 #include "BKE_object.h"
 #include "BKE_object_deform.h"
 #include "BKE_paint.h"
@@ -423,7 +424,7 @@ void DM_ensure_tessface(DerivedMesh *dm)
 /* NOTE: Assumes dm has valid tessellated data! */
 void DM_update_tessface_data(DerivedMesh *dm)
 {
-	MFace *mf = dm->getTessFaceArray(dm);
+	MFace *mf, *mface = dm->getTessFaceArray(dm);
 	MPoly *mp = dm->getPolyArray(dm);
 	MLoop *ml = dm->getLoopArray(dm);
 
@@ -431,16 +432,11 @@ void DM_update_tessface_data(DerivedMesh *dm)
 	CustomData *pdata = dm->getPolyDataLayout(dm);
 	CustomData *ldata = dm->getLoopDataLayout(dm);
 
-	const int numTex = CustomData_number_of_layers(pdata, CD_MTEXPOLY);
-	const int numCol = CustomData_number_of_layers(ldata, CD_MLOOPCOL);
-	const int hasPCol = CustomData_has_layer(ldata, CD_PREVIEW_MLOOPCOL);
-	const int hasOrigSpace = CustomData_has_layer(ldata, CD_ORIGSPACE_MLOOP);
-
-	int *polyindex = CustomData_get_layer(fdata, CD_ORIGINDEX);
-
 	const int totface = dm->getNumTessFaces(dm);
 	int mf_idx;
-	int ml_idx[4];
+
+	int *polyindex = CustomData_get_layer(fdata, CD_ORIGINDEX);
+	unsigned int (*loopindex)[4];
 
 	/* Should never occure, but better abort than segfault! */
 	if (!polyindex)
@@ -448,36 +444,37 @@ void DM_update_tessface_data(DerivedMesh *dm)
 
 	CustomData_from_bmeshpoly(fdata, pdata, ldata, totface);
 
-	for (mf_idx = 0; mf_idx < totface; mf_idx++, mf++) {
-		const int mf_len = mf->v4 ? 4 : 3;
-		int i, not_done;
+	if (CustomData_has_layer(fdata, CD_MTFACE) ||
+	    CustomData_has_layer(fdata, CD_MCOL) ||
+	    CustomData_has_layer(fdata, CD_PREVIEW_MCOL) ||
+	    CustomData_has_layer(fdata, CD_ORIGSPACE))
+	{
+		loopindex = MEM_mallocN(sizeof(*loopindex) * totface, __func__);
 
-		/* Find out loop indices. */
-		/* XXX Is there a better way to do this? */
-		/* NOTE: This assumes tessface are valid and in sync with loop/poly... Else, most likely, segfault! */
-		for (i = mp[polyindex[mf_idx]].loopstart, not_done = mf_len; not_done; i++) {
-			MLoop *tml = &ml[i];
-			if (tml->v == mf->v1) {
-				ml_idx[0] = i;
-				not_done--;
-			}
-			else if (tml->v == mf->v2) {
-				ml_idx[1] = i;
-				not_done--;
-			}
-			else if (tml->v == mf->v3) {
-				ml_idx[2] = i;
-				not_done--;
-			}
-			else if (mf_len == 4 && tml->v == mf->v4) {
-				ml_idx[3] = i;
-				not_done--;
+		for (mf_idx = 0, mf = mface; mf_idx < totface; mf_idx++, mf++) {
+			const int mf_len = mf->v4 ? 4 : 3;
+			unsigned int *ml_idx = loopindex[mf_idx];
+			int i, not_done;
+
+			/* Find out loop indices. */
+			/* NOTE: This assumes tessface are valid and in sync with loop/poly... Else, most likely, segfault! */
+			for (i = mp[polyindex[mf_idx]].loopstart, not_done = mf_len; not_done; i++) {
+				const int tf_v = BKE_MESH_TESSFACE_VINDEX_ORDER(mf, ml[i].v);
+				if (tf_v != -1) {
+					ml_idx[tf_v] = i;
+					not_done--;
+				}
 			}
 		}
-		BKE_mesh_loops_to_mface_corners(fdata, ldata, pdata,
-		                                ml_idx, mf_idx, polyindex[mf_idx],
-		                                mf_len,
-		                                numTex, numCol, hasPCol, hasOrigSpace);
+
+		/* NOTE: quad detection issue - forth vertidx vs forth loopidx:
+		 * Here, our tfaces' forth vertex index is never 0 for a quad. However, we know our forth loop index may be
+		 * 0 for quads (because our quads may have been rotated compared to their org poly, see tessellation code).
+		 * So we pass the MFace's, and BKE_mesh_loops_to_tessdata will use MFace->v4 index as quad test.
+		 */
+		BKE_mesh_loops_to_tessdata(fdata, ldata, pdata, mface, polyindex, loopindex, totface);
+
+		MEM_freeN(loopindex);
 	}
 
 	if (G.debug & G_DEBUG)
@@ -952,7 +949,7 @@ static DerivedMesh *create_orco_dm(Object *ob, Mesh *me, BMEditMesh *em, int lay
 	float (*orco)[3];
 	int free;
 
-	if (em) dm = CDDM_from_editbmesh(em, FALSE, FALSE);
+	if (em) dm = CDDM_from_editbmesh(em, false, false);
 	else dm = CDDM_from_mesh(me);
 
 	orco = get_orco_coords_dm(ob, em, layer, &free);
@@ -1432,20 +1429,21 @@ static void mesh_calc_modifiers(Scene *scene, Object *ob, float (*inputVertexCos
 	DerivedMesh *dm = NULL, *orcodm, *clothorcodm, *finaldm;
 	int numVerts = me->totvert;
 	int required_mode;
-	int isPrevDeform = FALSE;
-	int skipVirtualArmature = (useDeform < 0);
+	bool isPrevDeform = false;
+	const bool skipVirtualArmature = (useDeform < 0);
 	MultiresModifierData *mmd = get_multires_modifier(scene, ob, 0);
-	int has_multires = mmd != NULL, multires_applied = 0;
-	int sculpt_mode = ob->mode & OB_MODE_SCULPT && ob->sculpt;
-	int sculpt_dyntopo = (sculpt_mode && ob->sculpt->bm);
-	int draw_flag = dm_drawflag_calc(scene->toolsettings);
+	const bool has_multires = (mmd && mmd->sculptlvl != 0);
+	bool multires_applied = false;
+	const bool sculpt_mode = ob->mode & OB_MODE_SCULPT && ob->sculpt;
+	const bool sculpt_dyntopo = (sculpt_mode && ob->sculpt->bm);
+	const int draw_flag = dm_drawflag_calc(scene->toolsettings);
 
 	/* Generic preview only in object mode! */
-	const int do_mod_mcol = (ob->mode == OB_MODE_OBJECT);
+	const bool do_mod_mcol = (ob->mode == OB_MODE_OBJECT);
 #if 0 /* XXX Will re-enable this when we have global mod stack options. */
-	const int do_final_wmcol = (scene->toolsettings->weights_preview == WP_WPREVIEW_FINAL) && do_wmcol;
+	const bool do_final_wmcol = (scene->toolsettings->weights_preview == WP_WPREVIEW_FINAL) && do_wmcol;
 #endif
-	const int do_final_wmcol = FALSE;
+	const bool do_final_wmcol = FALSE;
 	int do_init_wmcol = ((dataMask & CD_MASK_PREVIEW_MCOL) && (ob->mode & OB_MODE_WEIGHT_PAINT) && !do_final_wmcol);
 	/* XXX Same as above... For now, only weights preview in WPaint mode. */
 	const int do_mod_wmcol = do_init_wmcol;
@@ -1458,9 +1456,6 @@ static void mesh_calc_modifiers(Scene *scene, Object *ob, float (*inputVertexCos
 		app_flags |= MOD_APPLY_USECACHE;
 	if (useDeform)
 		deform_app_flags |= MOD_APPLY_USECACHE;
-
-	if (mmd && !mmd->sculptlvl)
-		has_multires = 0;
 
 	if (!skipVirtualArmature) {
 		firstmd = modifiers_getVirtualModifierList(ob, &virtualModifierData);
@@ -1573,7 +1568,7 @@ static void mesh_calc_modifiers(Scene *scene, Object *ob, float (*inputVertexCos
 		if (sculpt_mode &&
 		    (!has_multires || multires_applied || ob->sculpt->bm))
 		{
-			int unsupported = 0;
+			bool unsupported = false;
 
 			if (md->type == eModifierType_Multires && ((MultiresModifierData *)md)->sculptlvl == 0) {
 				/* If multires is on level 0 skip it silently without warning message. */
@@ -1581,10 +1576,10 @@ static void mesh_calc_modifiers(Scene *scene, Object *ob, float (*inputVertexCos
 			}
 
 			if (sculpt_dyntopo && !useRenderParams)
-				unsupported = TRUE;
+				unsupported = true;
 
 			if (scene->toolsettings->sculpt->flags & SCULPT_ONLY_DEFORM)
-				unsupported |= mti->type != eModifierTypeType_OnlyDeform;
+				unsupported |= (mti->type != eModifierTypeType_OnlyDeform);
 
 			unsupported |= multires_applied;
 
@@ -1789,8 +1784,9 @@ static void mesh_calc_modifiers(Scene *scene, Object *ob, float (*inputVertexCos
 		if ((index >= 0) && (BLI_findindex(&ob->modifiers, md) >= index))
 			break;
 
-		if (sculpt_mode && md->type == eModifierType_Multires)
-			multires_applied = 1;
+		if (sculpt_mode && md->type == eModifierType_Multires) {
+			multires_applied = true;
+		}
 	}
 
 	for (md = firstmd; md; md = md->next)
@@ -1973,10 +1969,10 @@ static void editbmesh_calc_modifiers(Scene *scene, Object *ob, BMEditMesh *em, D
 #if 0 /* XXX Will re-enable this when we have global mod stack options. */
 	const int do_final_wmcol = (scene->toolsettings->weights_preview == WP_WPREVIEW_FINAL) && do_wmcol;
 #endif
-	const int do_final_wmcol = FALSE;
-	int do_init_wmcol = ((((Mesh *)ob->data)->drawflag & ME_DRAWEIGHT) && !do_final_wmcol);
-	int do_init_statvis = ((((Mesh *)ob->data)->drawflag & ME_DRAW_STATVIS) && !do_init_wmcol);
-	const int do_mod_wmcol = do_init_wmcol;
+	const bool do_final_wmcol = FALSE;
+	const bool do_init_wmcol = ((((Mesh *)ob->data)->drawflag & ME_DRAWEIGHT) && !do_final_wmcol);
+	const bool do_init_statvis = ((((Mesh *)ob->data)->drawflag & ME_DRAW_STATVIS) && !do_init_wmcol);
+	const bool do_mod_wmcol = do_init_wmcol;
 	VirtualModifierData virtualModifierData;
 
 	modifiers_clearErrors(ob);
@@ -2065,7 +2061,7 @@ static void editbmesh_calc_modifiers(Scene *scene, Object *ob, BMEditMesh *em, D
 
 			}
 			else {
-				dm = CDDM_from_editbmesh(em, FALSE, FALSE);
+				dm = CDDM_from_editbmesh(em, false, false);
 				ASSERT_IS_VALID_DM(dm);
 
 				if (deformedVerts) {

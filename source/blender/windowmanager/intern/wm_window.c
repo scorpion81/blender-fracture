@@ -26,6 +26,8 @@
 
 /** \file blender/windowmanager/intern/wm_window.c
  *  \ingroup wm
+ *
+ * Window management, wrap GHOST.
  */
 
 #include <math.h>
@@ -306,7 +308,7 @@ void wm_window_close(bContext *C, wmWindowManager *wm, wmWindow *win)
 		/* if temp screen, delete it after window free (it stops jobs that can access it) */
 		if (screen->temp) {
 			Main *bmain = CTX_data_main(C);
-			BKE_libblock_free(&bmain->screen, screen);
+			BKE_libblock_free(bmain, screen);
 		}
 	}		
 }
@@ -482,7 +484,7 @@ void wm_window_add_ghostwindows(wmWindowManager *wm)
 /* new window, no screen yet, but we open ghostwindow for it */
 /* also gets the window level handlers */
 /* area-rip calls this */
-wmWindow *WM_window_open(bContext *C, rcti *rect)
+wmWindow *WM_window_open(bContext *C, const rcti *rect)
 {
 	wmWindow *win = wm_window_new(C);
 	

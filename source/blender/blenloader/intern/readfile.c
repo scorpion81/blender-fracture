@@ -551,7 +551,7 @@ static Main *blo_find_main(FileData *fd, const char *filepath, const char *relab
 	m = BKE_main_new();
 	BLI_addtail(mainlist, m);
 	
-	lib = BKE_libblock_alloc(&m->library, ID_LI, "lib");
+	lib = BKE_libblock_alloc(m, ID_LI, "lib");
 	BLI_strncpy(lib->name, filepath, sizeof(lib->name));
 	BLI_strncpy(lib->filepath, name1, sizeof(lib->filepath));
 	
@@ -1153,14 +1153,13 @@ void blo_freefiledata(FileData *fd)
 
 /* ************ DIV ****************** */
 
-int BLO_has_bfile_extension(const char *str)
+bool BLO_has_bfile_extension(const char *str)
 {
-	return (BLI_testextensie(str, ".ble") || 
-	        BLI_testextensie(str, ".blend") || 
-	        BLI_testextensie(str, ".blend.gz"));
+	const char *ext_test[4] = {".blend", ".ble", ".blend.gz", NULL};
+	return BLI_testextensie_array(str, ext_test);
 }
 
-int BLO_is_a_library(const char *path, char *dir, char *group)
+bool BLO_is_a_library(const char *path, char *dir, char *group)
 {
 	/* return ok when a blenderfile, in dir is the filename,
 	 * in group the type of libdata
@@ -1195,7 +1194,7 @@ int BLO_is_a_library(const char *path, char *dir, char *group)
 		/* now we know that we are in a blend file and it is safe to 
 		 * assume that gp actually points to a group */
 		if (strcmp("Screen", gp) != 0)
-			BLI_strncpy(group, gp, GROUP_MAX);
+			BLI_strncpy(group, gp, BLO_GROUP_MAX);
 	}
 	return 1;
 }
@@ -3390,7 +3389,6 @@ static void direct_link_curve(FileData *fd, Curve *cu)
 	}
 
 	cu->editnurb = NULL;
-	cu->lastsel = NULL;
 	cu->editfont = NULL;
 	
 	for (nu = cu->nurb.first; nu; nu = nu->next) {
@@ -4856,6 +4854,11 @@ static void direct_link_object(FileData *fd, Object *ob)
 	/* weak weak... this was only meant as draw flag, now is used in give_base_to_objects too */
 	ob->flag &= ~OB_FROMGROUP;
 
+	/* This is a transient flag; clear in order to avoid unneeded object update pending from
+	 * time when file was saved.
+	 */
+	ob->recalc = 0;
+
 	/* loading saved files with editmode enabled works, but for undo we like
 	 * to stay in object mode during undo presses so keep editmode disabled.
 	 *
@@ -5051,6 +5054,11 @@ static void direct_link_object(FileData *fd, Object *ob)
 		MEM_freeN(hook);
 	}
 	
+	ob->iuser = newdataadr(fd, ob->iuser);
+	if (ob->type == OB_EMPTY && ob->empty_drawtype == OB_EMPTY_IMAGE && !ob->iuser) {
+		BKE_object_empty_draw_type_set(ob, ob->empty_drawtype);
+	}
+
 	ob->customdata_mask = 0;
 	ob->bb = NULL;
 	ob->derivedDeform = NULL;
@@ -5572,6 +5580,7 @@ static void direct_link_windowmanager(FileData *fd, wmWindowManager *wm)
 	wm->winactive = NULL;
 	wm->initialized = 0;
 	wm->op_undo_depth = 0;
+	wm->is_interface_locked = 0;
 }
 
 static void lib_link_windowmanager(FileData *fd, Main *main)
@@ -7324,7 +7333,7 @@ static BHead *read_libblock(FileData *fd, Main *main, BHead *bhead, int flag, ID
 	oldnewmap_clear(fd->datamap);
 	
 	if (wrong_id) {
-		BKE_libblock_free(lb, id);
+		BKE_libblock_free(main, id);
 	}
 	
 	return (bhead);

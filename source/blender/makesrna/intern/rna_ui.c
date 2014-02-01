@@ -358,30 +358,34 @@ static void uilist_filter_items(uiList *ui_list, bContext *C, PointerRNA *datapt
 	parm = RNA_function_find_parameter(NULL, func, "filter_flags");
 	ret_len = RNA_parameter_dynamic_length_get(&list, parm);
 	if (ret_len != len && ret_len != 0) {
-		printf("%s: Error, py func returned %d items in %s, %d or none were expected.\n", AT,
+		printf("%s: Error, py func returned %d items in %s, %d or none were expected.\n", __func__,
 		       RNA_parameter_dynamic_length_get(&list, parm), "filter_flags", len);
-		RNA_parameter_list_free(&list);
-		return;
+		/* Note: we cannot return here, we would let flt_data in inconsistent state... see T38356. */
+		filter_flags = NULL;
 	}
-	RNA_parameter_get(&list, parm, &ret1);
-	filter_flags = (int *)ret1;
+	else {
+		RNA_parameter_get(&list, parm, &ret1);
+		filter_flags = (int *)ret1;
+	}
 
 	parm = RNA_function_find_parameter(NULL, func, "filter_neworder");
 	ret_len = RNA_parameter_dynamic_length_get(&list, parm);
 	if (ret_len != len && ret_len != 0) {
-		printf("%s: Error, py func returned %d items in %s, %d or none were expected.\n", AT,
+		printf("%s: Error, py func returned %d items in %s, %d or none were expected.\n", __func__,
 		       RNA_parameter_dynamic_length_get(&list, parm), "filter_neworder", len);
-		RNA_parameter_list_free(&list);
-		return;
+		/* Note: we cannot return here, we would let flt_data in inconsistent state... see T38356. */
+		filter_neworder = NULL;
 	}
-	RNA_parameter_get(&list, parm, &ret2);
-	filter_neworder = (int *)ret2;
+	else {
+		RNA_parameter_get(&list, parm, &ret2);
+		filter_neworder = (int *)ret2;
+	}
 
 	/* We have to do some final checks and transforms... */
 	{
 		int i, filter_exclude = ui_list->filter_flag & UILST_FLT_EXCLUDE;
 		if (filter_flags) {
-			flt_data->items_filter_flags = MEM_mallocN(sizeof(int) * len, AT);
+			flt_data->items_filter_flags = MEM_mallocN(sizeof(int) * len, __func__);
 			memcpy(flt_data->items_filter_flags, filter_flags, sizeof(int) * len);
 
 			if (filter_neworder) {
@@ -397,7 +401,7 @@ static void uilist_filter_items(uiList *ui_list, bContext *C, PointerRNA *datapt
 					}
 				}
 				items_shown = flt_data->items_shown = shown_idx;
-				flt_data->items_filter_neworder = MEM_mallocN(sizeof(int) * items_shown, AT);
+				flt_data->items_filter_neworder = MEM_mallocN(sizeof(int) * items_shown, __func__);
 				/* And now, bring back new indices into the [0, items_shown[ range!
 				 * XXX This is O(N²)... :/
 				 */
@@ -429,7 +433,7 @@ static void uilist_filter_items(uiList *ui_list, bContext *C, PointerRNA *datapt
 			flt_data->items_shown = len;
 
 			if (filter_neworder) {
-				flt_data->items_filter_neworder = MEM_mallocN(sizeof(int) * len, AT);
+				flt_data->items_filter_neworder = MEM_mallocN(sizeof(int) * len, __func__);
 				memcpy(flt_data->items_filter_neworder, filter_neworder, sizeof(int) * len);
 			}
 		}
@@ -1086,7 +1090,7 @@ static void rna_def_uilist(BlenderRNA *brna)
 	parm = RNA_def_pointer(func, "active_data", "AnyType", "",
 	                       "Data from which to take property for the active element");
 	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_RNAPTR | PROP_NEVER_NULL);
-	parm = RNA_def_string(func, "active_property", "", 0, "",
+	parm = RNA_def_string(func, "active_property", NULL, 0, "",
 	                      "Identifier of property in active_data, for the active element");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 	RNA_def_int(func, "index", 0, 0, INT_MAX, "", "Index of the item in the collection", 0, INT_MAX);
@@ -1113,7 +1117,7 @@ static void rna_def_uilist(BlenderRNA *brna)
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 	parm = RNA_def_pointer(func, "data", "AnyType", "", "Data from which to take Collection property");
 	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_RNAPTR);
-	parm = RNA_def_string(func, "property", "", 0, "", "Identifier of property in data, for the collection");
+	parm = RNA_def_string(func, "property", NULL, 0, "", "Identifier of property in data, for the collection");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 	prop = RNA_def_property(func, "filter_flags", PROP_INT, PROP_UNSIGNED);
 	RNA_def_property_flag(prop, PROP_REQUIRED | PROP_DYNAMIC);

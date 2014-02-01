@@ -1078,7 +1078,7 @@ bNodeTree *ntreeAddTree(Main *bmain, const char *name, const char *idname)
 	 * node groups and other tree types are created as library data.
 	 */
 	if (bmain) {
-		ntree = BKE_libblock_alloc(&bmain->nodetree, ID_NT, name);
+		ntree = BKE_libblock_alloc(bmain, ID_NT, name);
 	}
 	else {
 		ntree = MEM_callocN(sizeof(bNodeTree), "new node tree");
@@ -1209,7 +1209,7 @@ static bNodeTree *ntreeCopyTree_internal(bNodeTree *ntree, Main *bmain, bool do_
 	return newtree;
 }
 
-bNodeTree *ntreeCopyTree_ex(bNodeTree *ntree, const short do_id_user)
+bNodeTree *ntreeCopyTree_ex(bNodeTree *ntree, const bool do_id_user)
 {
 	return ntreeCopyTree_internal(ntree, G.main, do_id_user, TRUE, TRUE);
 }
@@ -1219,7 +1219,7 @@ bNodeTree *ntreeCopyTree(bNodeTree *ntree)
 }
 
 /* use when duplicating scenes */
-void ntreeSwitchID_ex(bNodeTree *ntree, ID *id_from, ID *id_to, const short do_id_user)
+void ntreeSwitchID_ex(bNodeTree *ntree, ID *id_from, ID *id_to, const bool do_id_user)
 {
 	bNode *node;
 
@@ -1590,11 +1590,14 @@ static void node_unlink_attached(bNodeTree *ntree, bNode *parent)
 }
 
 /** \note caller needs to manage node->id user */
-static void node_free_node_ex(bNodeTree *ntree, bNode *node, bool use_api_free_cb)
+static void node_free_node_ex(bNodeTree *ntree, bNode *node, bool remove_animdata, bool use_api_free_cb)
 {
 	bNodeSocket *sock, *nextsock;
-	char propname_esc[MAX_IDPROP_NAME * 2];
-	char prefix[MAX_IDPROP_NAME * 2];
+	
+	/* don't remove node animdata if the tree is localized,
+	 * Action is shared with the original tree (T38221)
+	 */
+	remove_animdata &= ntree && !(ntree->flag & NTREE_IS_LOCALIZED);
 	
 	/* extra free callback */
 	if (use_api_free_cb && node->typeinfo->freefunc_api) {
@@ -1614,10 +1617,15 @@ static void node_free_node_ex(bNodeTree *ntree, bNode *node, bool use_api_free_c
 		
 		BLI_remlink(&ntree->nodes, node);
 		
-		BLI_strescape(propname_esc, node->name, sizeof(propname_esc));
-		BLI_snprintf(prefix, sizeof(prefix), "nodes[\"%s\"]", propname_esc);
+		if (remove_animdata) {
+			char propname_esc[MAX_IDPROP_NAME * 2];
+			char prefix[MAX_IDPROP_NAME * 2];
 
-		BKE_animdata_fix_paths_remove((ID *)ntree, prefix);
+			BLI_strescape(propname_esc, node->name, sizeof(propname_esc));
+			BLI_snprintf(prefix, sizeof(prefix), "nodes[\"%s\"]", propname_esc);
+
+			BKE_animdata_fix_paths_remove((ID *)ntree, prefix);
+		}
 
 		if (ntree->typeinfo->free_node_cache)
 			ntree->typeinfo->free_node_cache(ntree, node);
@@ -1658,7 +1666,7 @@ static void node_free_node_ex(bNodeTree *ntree, bNode *node, bool use_api_free_c
 
 void nodeFreeNode(bNodeTree *ntree, bNode *node)
 {
-	node_free_node_ex(ntree, node, true);
+	node_free_node_ex(ntree, node, true, true);
 }
 
 static void node_socket_interface_free(bNodeTree *UNUSED(ntree), bNodeSocket *sock)
@@ -1694,7 +1702,7 @@ static void free_localized_node_groups(bNodeTree *ntree)
 }
 
 /* do not free ntree itself here, BKE_libblock_free calls this function too */
-void ntreeFreeTree_ex(bNodeTree *ntree, const short do_id_user)
+void ntreeFreeTree_ex(bNodeTree *ntree, const bool do_id_user)
 {
 	bNodeTree *tntree;
 	bNode *node, *next;
@@ -1748,7 +1756,7 @@ void ntreeFreeTree_ex(bNodeTree *ntree, const short do_id_user)
 		(void)do_id_user;
 #endif
 
-		node_free_node_ex(ntree, node, false);
+		node_free_node_ex(ntree, node, false, false);
 	}
 
 	/* free interface sockets */
@@ -2281,7 +2289,7 @@ void ntreeInterfaceTypeUpdate(bNodeTree *ntree)
 
 /* ************ find stuff *************** */
 
-int ntreeHasType(bNodeTree *ntree, int type)
+bool ntreeHasType(const bNodeTree *ntree, int type)
 {
 	bNode *node;
 	
@@ -2290,6 +2298,21 @@ int ntreeHasType(bNodeTree *ntree, int type)
 			if (node->type == type)
 				return 1;
 	return 0;
+}
+
+bool ntreeHasTree(const bNodeTree *ntree, const bNodeTree *lookup)
+{
+	bNode *node;
+
+	if (ntree == lookup)
+		return true;
+
+	for (node = ntree->nodes.first; node; node = node->next)
+		if (node->type == NODE_GROUP && node->id)
+			if (ntreeHasTree((bNodeTree *)node->id, lookup))
+				return true;
+
+	return false;
 }
 
 bNodeLink *nodeFindLink(bNodeTree *ntree, bNodeSocket *from, bNodeSocket *to)
@@ -2519,7 +2542,7 @@ void BKE_node_clipboard_clear(void)
 	
 	for (node = node_clipboard.nodes.first; node; node = node_next) {
 		node_next = node->next;
-		node_free_node_ex(NULL, node, false);
+		node_free_node_ex(NULL, node, false, false);
 	}
 	node_clipboard.nodes.first = node_clipboard.nodes.last = NULL;
 
@@ -2529,9 +2552,9 @@ void BKE_node_clipboard_clear(void)
 }
 
 /* return FALSE when one or more ID's are lost */
-int BKE_node_clipboard_validate(void)
+bool BKE_node_clipboard_validate(void)
 {
-	int ok = TRUE;
+	bool ok = true;
 
 #ifdef USE_NODE_CB_VALIDATE
 	bNodeClipboardExtraInfo *node_info;
@@ -2562,7 +2585,7 @@ int BKE_node_clipboard_validate(void)
 				node->id = BLI_findstring(lb, node_info->id_name + 2, offsetof(ID, name) + 2);
 
 				if (node->id == NULL) {
-					ok = FALSE;
+					ok = false;
 				}
 			}
 		}

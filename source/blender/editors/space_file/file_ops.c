@@ -378,7 +378,7 @@ static int file_select_all_exec(bContext *C, wmOperator *UNUSED(op))
 	FileSelection sel;
 	int numfiles = filelist_numfiles(sfile->files);
 	int i;
-	int is_selected = 0;
+	bool is_selected = false;
 
 	sel.first = 0; 
 	sel.last = numfiles - 1;
@@ -386,7 +386,7 @@ static int file_select_all_exec(bContext *C, wmOperator *UNUSED(op))
 	/* Is any file selected ? */
 	for (i = 0; i < numfiles; ++i) {
 		if (filelist_is_selected(sfile->files, i, CHECK_ALL)) {
-			is_selected = 1;
+			is_selected = true;
 			break;
 		}
 	}
@@ -451,7 +451,7 @@ void FILE_OT_select_bookmark(wmOperatorType *ot)
 	ot->poll = ED_operator_file_active;
 
 	/* properties */
-	prop = RNA_def_string(ot->srna, "dir", "", FILE_MAXDIR, "Dir", "");
+	prop = RNA_def_string(ot->srna, "dir", NULL, FILE_MAXDIR, "Dir", "");
 	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 }
 
@@ -849,8 +849,7 @@ int file_parent_exec(bContext *C, wmOperator *UNUSED(unused))
 	SpaceFile *sfile = CTX_wm_space_file(C);
 	
 	if (sfile->params) {
-		if (BLI_has_parent(sfile->params->dir)) {
-			BLI_parent_dir(sfile->params->dir);
+		if (BLI_parent_dir(sfile->params->dir)) {
 			BLI_cleanup_dir(G.main->name, sfile->params->dir);
 			file_change_dir(C, 0);
 			WM_event_add_notifier(C, NC_SPACE | ND_SPACE_FILE_LIST, NULL);
@@ -1161,7 +1160,7 @@ void FILE_OT_directory_new(struct wmOperatorType *ot)
 	ot->exec = file_directory_new_exec;
 	ot->poll = ED_operator_file_active; /* <- important, handler is on window level */
 
-	prop = RNA_def_string_dir_path(ot->srna, "directory", "", FILE_MAX, "Directory", "Name of new directory");
+	prop = RNA_def_string_dir_path(ot->srna, "directory", NULL, FILE_MAX, "Directory", "Name of new directory");
 	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 	prop = RNA_def_boolean(ot->srna, "open", false, "Open", "Open new directory");
 	RNA_def_property_flag(prop, PROP_SKIP_SAVE);

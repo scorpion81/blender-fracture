@@ -309,6 +309,7 @@ static void rna_Object_ray_cast(Object *ob, ReportList *reports, float ray_start
 				copy_v3_v3(r_location, hit.co);
 				copy_v3_v3(r_normal, hit.no);
 				*index = dm_tessface_to_poly_index(ob->derivedFinal, hit.index);
+				free_bvhtree_from_mesh(&treeData);
 				return;
 			}
 		}
@@ -317,6 +318,7 @@ static void rna_Object_ray_cast(Object *ob, ReportList *reports, float ray_start
 	zero_v3(r_location);
 	zero_v3(r_normal);
 	*index = -1;
+	free_bvhtree_from_mesh(&treeData);
 }
 
 static void rna_Object_closest_point_on_mesh(Object *ob, ReportList *reports, float point_co[3], float max_dist,
@@ -348,6 +350,7 @@ static void rna_Object_closest_point_on_mesh(Object *ob, ReportList *reports, fl
 			copy_v3_v3(n_location, nearest.co);
 			copy_v3_v3(n_normal, nearest.no);
 			*index = dm_tessface_to_poly_index(ob->derivedFinal, nearest.index);
+			free_bvhtree_from_mesh(&treeData);
 			return;
 		}
 	}
@@ -355,6 +358,7 @@ static void rna_Object_closest_point_on_mesh(Object *ob, ReportList *reports, fl
 	zero_v3(n_location);
 	zero_v3(n_normal);
 	*index = -1;
+	free_bvhtree_from_mesh(&treeData);
 }
 
 /* ObjectBase */
@@ -588,7 +592,7 @@ void RNA_api_object(StructRNA *srna)
 	parm = RNA_def_enum(func, "type", mesh_dm_info_items, 0, "", "Modifier settings to apply");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 	/* weak!, no way to return dynamic string type */
-	parm = RNA_def_string(func, "result", "", 16384, "result", "");
+	parm = RNA_def_string(func, "result", NULL, 16384, "result", "");
 	RNA_def_property_flag(parm, PROP_THICK_WRAP); /* needed for string return value */
 	RNA_def_function_output(func, parm);
 #endif /* NDEBUG */

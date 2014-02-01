@@ -184,7 +184,7 @@ static VFontData *vfont_get_data(Main *bmain, VFont *vfont)
 				printf("Font file doesn't exist: %s\n", vfont->name);
 
 				/* DON'T DO THIS
-				 * missing file shouldn't modifty path! - campbell */
+				 * missing file shouldn't modify path! - campbell */
 #if 0
 				strcpy(vfont->name, FO_BUILTIN_NAME);
 #endif
@@ -232,7 +232,7 @@ VFont *BKE_vfont_load(Main *bmain, const char *name)
 
 		vfd = BLI_vfontdata_from_freetypefont(pf);
 		if (vfd) {
-			vfont = BKE_libblock_alloc(&bmain->vfont, ID_VF, filename);
+			vfont = BKE_libblock_alloc(bmain, ID_VF, filename);
 			vfont->data = vfd;
 
 			/* if there's a font name, use it for the ID name */
@@ -865,11 +865,6 @@ makebreak:
 	/* TEXT ON CURVE */
 	/* Note: Only OB_CURVE objects could have a path  */
 	if (cu->textoncurve && cu->textoncurve->type == OB_CURVE) {
-		Curve *cucu = cu->textoncurve->data;
-		int oldflag = cucu->flag;
-		
-		cucu->flag |= (CU_PATH + CU_FOLLOW);
-
 		BLI_assert(cu->textoncurve->curve_cache != NULL);
 		if (cu->textoncurve->curve_cache->path) {
 			float distfac, imat[4][4], imat3[3][3], cmat[3][3];
@@ -966,7 +961,6 @@ makebreak:
 				}
 				
 			}
-			cucu->flag = oldflag;
 		}
 	}
 

@@ -165,7 +165,7 @@ int ED_operator_objectmode(bContext *C)
 
 	if (scene == NULL || scene->id.lib)
 		return 0;
-	if (CTX_data_edit_object(C) )
+	if (CTX_data_edit_object(C))
 		return 0;
 	
 	/* add a check for ob->mode too? */
@@ -176,7 +176,7 @@ int ED_operator_objectmode(bContext *C)
 }
 
 
-static int ed_spacetype_test(bContext *C, int type)
+static bool ed_spacetype_test(bContext *C, int type)
 {
 	if (ED_operator_areaactive(C)) {
 		SpaceLink *sl = (SpaceLink *)CTX_wm_space_data(C);
@@ -2163,20 +2163,20 @@ static int marker_jump_exec(bContext *C, wmOperator *op)
 	Main *bmain = CTX_data_main(C);
 	Scene *scene = CTX_data_scene(C);
 	TimeMarker *marker;
-	int closest;
+	int closest = CFRA;
 	short next = RNA_boolean_get(op->ptr, "next");
 	bool found = false;
 
 	/* find matching marker in the right direction */
 	for (marker = scene->markers.first; marker; marker = marker->next) {
 		if (next) {
-			if (marker->frame > CFRA && (!found || closest > marker->frame)) {
+			if ((marker->frame > CFRA) && (!found || closest > marker->frame)) {
 				closest = marker->frame;
 				found = true;
 			}
 		}
 		else {
-			if (marker->frame < CFRA && (!found || closest < marker->frame)) {
+			if ((marker->frame < CFRA) && (!found || closest < marker->frame)) {
 				closest = marker->frame;
 				found = true;
 			}
@@ -3046,9 +3046,9 @@ static int header_toggle_menus_exec(bContext *C, wmOperator *UNUSED(op))
 static void SCREEN_OT_header_toggle_menus(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name = "Show/Hide Header Menus";
+	ot->name = "Expand/Collapse Header Menus";
 	ot->idname = "SCREEN_OT_header_toggle_menus";
-	ot->description = "Show or hide the header pulldown menus";
+	ot->description = "Expand or collapse the header pulldown menus";
 	
 	/* api callbacks */
 	ot->exec = header_toggle_menus_exec;
@@ -3069,10 +3069,9 @@ void ED_screens_header_tools_menu_create(bContext *C, uiLayout *layout, void *UN
 	else
 		uiItemO(layout, IFACE_("Flip to Top"), ICON_NONE, "SCREEN_OT_header_flip");
 
-	if (sa->flag & HEADER_NO_PULLDOWN)
-		uiItemO(layout, IFACE_("Show Menus"), ICON_NONE, "SCREEN_OT_header_toggle_menus");
-	else
-		uiItemO(layout, IFACE_("Hide Menus"), ICON_NONE, "SCREEN_OT_header_toggle_menus");
+	uiItemO(layout, IFACE_("Collapse Menus"),
+	        (sa->flag & HEADER_NO_PULLDOWN) ? ICON_CHECKBOX_HLT : ICON_CHECKBOX_DEHLT,
+	        "SCREEN_OT_header_toggle_menus");
 
 	uiItemS(layout);
 
@@ -3649,6 +3648,7 @@ static int scene_new_exec(bContext *C, wmOperator *op)
 			ED_object_single_users(bmain, newscene, false, true);
 		}
 		else if (type == SCE_COPY_FULL) {
+			ED_editors_flush_edits(C, false);
 			ED_object_single_users(bmain, newscene, true, true);
 		}
 	}
@@ -3753,7 +3753,7 @@ float ED_region_blend_factor(ARegion *ar)
 }
 
 /* assumes region has running region-blend timer */
-static void region_blend_end(bContext *C, ARegion *ar, int is_running)
+static void region_blend_end(bContext *C, ARegion *ar, const bool is_running)
 {
 	RegionAlphaInfo *rgi = ar->regiontimer->customdata;
 	
@@ -3789,7 +3789,7 @@ void region_blend_start(bContext *C, ScrArea *sa, ARegion *ar)
 	/* end running timer */
 	if (ar->regiontimer) {
 
-		region_blend_end(C, ar, 1);
+		region_blend_end(C, ar, true);
 	}
 	rgi = MEM_callocN(sizeof(RegionAlphaInfo), "RegionAlphaInfo");
 	
@@ -3835,7 +3835,7 @@ static int region_blend_invoke(bContext *C, wmOperator *UNUSED(op), const wmEven
 	
 	/* end timer? */
 	if (rgi->ar->regiontimer->duration > (double)TIMEOUT) {
-		region_blend_end(C, rgi->ar, 0);
+		region_blend_end(C, rgi->ar, false);
 		return (OPERATOR_FINISHED | OPERATOR_PASS_THROUGH);
 	}
 

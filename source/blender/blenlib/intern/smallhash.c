@@ -27,14 +27,21 @@
 
 /** \file blender/blenlib/intern/smallhash.c
  *  \ingroup bli
+ *
+ * A light stack-friendly hash library, it uses stack space for smallish hash tables
+ * but falls back to heap memory once the stack limits reached.
+ *
+ * based on a doubling non-chaining approach
  */
 
 #include <string.h>
+#include <stdlib.h>
 
 #include "MEM_guardedalloc.h"
 #include "BLI_utildefines.h"
 
 #include "BLI_smallhash.h"
+
 #include "BLI_strict_flags.h"
 
 /* SMHASH_CELL_UNUSED means this cell is inside a key series,
@@ -43,10 +50,11 @@
  * no chance of anyone shoving INT32_MAX-2 into a *val pointer, I
  * imagine.  hopefully.
  *
- * note: these have the SMHASH suffix because we may want to make them public.
+ * note: these have the SMHASH prefix because we may want to make them public.
  */
 #define SMHASH_CELL_UNUSED  ((void *)0x7FFFFFFF)
 #define SMHASH_CELL_FREE    ((void *)0x7FFFFFFD)
+#define SMHASH_KEY_UNUSED ((uintptr_t)-1)
 
 /* typically this re-assigns 'h' */
 #define SMHASH_NEXT(h, hoff)  ( \
@@ -57,176 +65,190 @@
 
 extern const unsigned int hashsizes[];
 
-void BLI_smallhash_init(SmallHash *hash)
+/**
+ * Check if the number of items in the smallhash is large enough to require more buckets.
+ */
+BLI_INLINE bool smallhash_test_expand_buckets(const unsigned int nentries, const unsigned int nbuckets)
+{
+	return nentries * 3 > nbuckets;
+}
+
+BLI_INLINE void smallhash_init_empty(SmallHash *sh)
 {
 	unsigned int i;
 
-	memset(hash, 0, sizeof(*hash));
-
-	hash->table = hash->_stacktable;
-	hash->curhash = 2;
-	hash->size = hashsizes[hash->curhash];
-
-	hash->copytable = hash->_copytable;
-	hash->stacktable = hash->_stacktable;
-
-	for (i = 0; i < hash->size; i++) {
-		hash->table[i].val = SMHASH_CELL_FREE;
+	for (i = 0; i < sh->nbuckets; i++) {
+		sh->buckets[i].key = SMHASH_KEY_UNUSED;
+		sh->buckets[i].val = SMHASH_CELL_FREE;
 	}
 }
 
-/*NOTE: does *not* free *hash itself!  only the direct data!*/
-void BLI_smallhash_release(SmallHash *hash)
+BLI_INLINE SmallHashEntry *smallhash_lookup(SmallHash *sh, const uintptr_t key)
 {
-	if (hash->table != hash->stacktable) {
-		MEM_freeN(hash->table);
-	}
-}
-
-void BLI_smallhash_insert(SmallHash *hash, uintptr_t key, void *item)
-{
-	unsigned int h, hoff = 1;
-
-	if (hash->size < hash->used * 3) {
-		unsigned int newsize = hashsizes[++hash->curhash];
-		SmallHashEntry *tmp;
-		unsigned int i = 0;
-
-		if (hash->table != hash->stacktable || newsize > SMSTACKSIZE) {
-			tmp = MEM_callocN(sizeof(*hash->table) * newsize, __func__);
-		}
-		else {
-			SWAP(SmallHashEntry *, hash->stacktable, hash->copytable);
-			tmp = hash->stacktable;
-		}
-
-		SWAP(SmallHashEntry *, tmp, hash->table);
-
-		hash->size = newsize;
-
-		for (i = 0; i < hash->size; i++) {
-			hash->table[i].val = SMHASH_CELL_FREE;
-		}
-
-		for (i = 0; i < hashsizes[hash->curhash - 1]; i++) {
-			if (ELEM(tmp[i].val, SMHASH_CELL_UNUSED, SMHASH_CELL_FREE)) {
-				continue;
-			}
-
-			h = (unsigned int)(tmp[i].key);
-			hoff = 1;
-			while (!ELEM(hash->table[h % newsize].val, SMHASH_CELL_UNUSED, SMHASH_CELL_FREE)) {
-				h = SMHASH_NEXT(h, hoff);
-			}
-
-			h %= newsize;
-
-			hash->table[h].key = tmp[i].key;
-			hash->table[h].val = tmp[i].val;
-		}
-
-		if (tmp != hash->stacktable && tmp != hash->copytable) {
-			MEM_freeN(tmp);
-		}
-	}
-
-	h = (unsigned int)(key);
-	hoff = 1;
-
-	while (!ELEM(hash->table[h % hash->size].val, SMHASH_CELL_UNUSED, SMHASH_CELL_FREE)) {
-		h = SMHASH_NEXT(h, hoff);
-	}
-
-	h %= hash->size;
-	hash->table[h].key = key;
-	hash->table[h].val = item;
-
-	hash->used++;
-}
-
-void BLI_smallhash_remove(SmallHash *hash, uintptr_t key)
-{
-	unsigned int h, hoff = 1;
-
-	h = (unsigned int)(key);
-
-	while ((hash->table[h % hash->size].key != key) ||
-	       (hash->table[h % hash->size].val == SMHASH_CELL_UNUSED))
-	{
-		if (hash->table[h % hash->size].val == SMHASH_CELL_FREE) {
-			return;
-		}
-
-		h = SMHASH_NEXT(h, hoff);
-	}
-
-	h %= hash->size;
-	hash->table[h].key = 0;
-	hash->table[h].val = SMHASH_CELL_UNUSED;
-}
-
-void *BLI_smallhash_lookup(SmallHash *hash, uintptr_t key)
-{
-	unsigned int h, hoff = 1;
-	void *v;
-
-	h = (unsigned int)(key);
-
-	while ((hash->table[h % hash->size].key != key) ||
-	       (hash->table[h % hash->size].val == SMHASH_CELL_UNUSED))
-	{
-		if (hash->table[h % hash->size].val == SMHASH_CELL_FREE) {
-			return NULL;
-		}
-
-		h = SMHASH_NEXT(h, hoff);
-	}
-
-	v = hash->table[h % hash->size].val;
-	if (ELEM(v, SMHASH_CELL_UNUSED, SMHASH_CELL_FREE)) {
-		return NULL;
-	}
-
-	return v;
-}
-
-
-int BLI_smallhash_haskey(SmallHash *hash, uintptr_t key)
-{
-	unsigned int h = (unsigned int)(key);
+	SmallHashEntry *e;
+	unsigned int h = (unsigned int)key;
 	unsigned int hoff = 1;
 
-	while ((hash->table[h % hash->size].key != key) ||
-	       (hash->table[h % hash->size].val == SMHASH_CELL_UNUSED))
-	{
-		if (hash->table[h % hash->size].val == SMHASH_CELL_FREE) {
-			return 0;
-		}
+	BLI_assert(key != SMHASH_KEY_UNUSED);
 
-		h = SMHASH_NEXT(h, hoff);
+	/* note: there are always more buckets then entries,
+	 * so we know there will always be a free bucket if the key isn't found. */
+	for (e = &sh->buckets[h % sh->nbuckets];
+	     e->val != SMHASH_CELL_FREE;
+	     h = SMHASH_NEXT(h, hoff), e = &sh->buckets[h % sh->nbuckets])
+	{
+		if (e->key == key) {
+			/* should never happen because unused keys are zero'd */
+			BLI_assert(e->val != SMHASH_CELL_UNUSED);
+			return e;
+		}
 	}
 
-	return !ELEM(hash->table[h % hash->size].val, SMHASH_CELL_UNUSED, SMHASH_CELL_FREE);
+	return NULL;
 }
 
-int BLI_smallhash_count(SmallHash *hash)
+BLI_INLINE SmallHashEntry *smallhash_lookup_first_free(SmallHash *sh, const uintptr_t key)
 {
-	return (int)hash->used;
+	SmallHashEntry *e;
+	unsigned int h = (unsigned int)key;
+	unsigned int hoff = 1;
+
+	for (e = &sh->buckets[h % sh->nbuckets];
+	     !ELEM(e->val, SMHASH_CELL_UNUSED, SMHASH_CELL_FREE);
+	     h = SMHASH_NEXT(h, hoff), e = &sh->buckets[h % sh->nbuckets])
+	{
+		/* pass */
+	}
+
+	return e;
+}
+
+BLI_INLINE void smallhash_resize_buckets(SmallHash *sh, const unsigned int nbuckets)
+{
+	SmallHashEntry *buckets_old = sh->buckets;
+	const unsigned int nbuckets_old = sh->nbuckets;
+	unsigned int i = 0;
+
+	BLI_assert(sh->nbuckets != nbuckets);
+
+	if (buckets_old == sh->buckets_stack && nbuckets <= SMSTACKSIZE) {
+		SWAP(SmallHashEntry *, sh->buckets_stack, sh->buckets_copy);
+		sh->buckets = sh->buckets_stack;
+	}
+	else {
+		sh->buckets = MEM_mallocN(sizeof(*sh->buckets) * nbuckets, __func__);
+	}
+
+	sh->nbuckets = nbuckets;
+
+	smallhash_init_empty(sh);
+
+	for (i = 0; i < nbuckets_old; i++) {
+		if (!ELEM(buckets_old[i].val, SMHASH_CELL_UNUSED, SMHASH_CELL_FREE)) {
+			SmallHashEntry *e = smallhash_lookup_first_free(sh, buckets_old[i].key);
+			e->key = buckets_old[i].key;
+			e->val = buckets_old[i].val;
+		}
+	}
+
+	if (buckets_old != sh->buckets_stack && buckets_old != sh->buckets_copy) {
+		MEM_freeN(buckets_old);
+	}
+}
+
+void BLI_smallhash_init(SmallHash *sh)
+{
+	/* assume 'sh' is uninitialized */
+
+	sh->nentries = 0;
+	sh->cursize = 2;
+	sh->nbuckets = hashsizes[sh->cursize];
+
+	sh->buckets         = sh->_buckets_stack;
+	sh->buckets_copy    = sh->_buckets_copy;
+	sh->buckets_stack   = sh->_buckets_stack;
+
+	smallhash_init_empty(sh);
+}
+
+/*NOTE: does *not* free *sh itself!  only the direct data!*/
+void BLI_smallhash_release(SmallHash *sh)
+{
+	if (sh->buckets != sh->buckets_stack) {
+		MEM_freeN(sh->buckets);
+	}
+}
+
+void BLI_smallhash_insert(SmallHash *sh, uintptr_t key, void *val)
+{
+	SmallHashEntry *e;
+
+	BLI_assert(key != SMHASH_KEY_UNUSED);
+	BLI_assert(!ELEM(val, SMHASH_CELL_UNUSED, SMHASH_CELL_FREE));
+	BLI_assert(BLI_smallhash_haskey(sh, key) == false);
+
+	if (UNLIKELY(smallhash_test_expand_buckets(++sh->nentries, sh->nbuckets))) {
+		smallhash_resize_buckets(sh, hashsizes[++sh->cursize]);
+	}
+
+	e = smallhash_lookup_first_free(sh, key);
+	e->key = key;
+	e->val = val;
+}
+
+bool BLI_smallhash_remove(SmallHash *sh, uintptr_t key)
+{
+	SmallHashEntry *e = smallhash_lookup(sh, key);
+
+	if (e) {
+		e->key = SMHASH_KEY_UNUSED;
+		e->val = SMHASH_CELL_UNUSED;
+		sh->nentries--;
+
+		return true;
+	}
+	else {
+		return false;
+	}
+}
+
+void *BLI_smallhash_lookup(SmallHash *sh, uintptr_t key)
+{
+	SmallHashEntry *e = smallhash_lookup(sh, key);
+
+	return e ? e->val : NULL;
+}
+
+void **BLI_smallhash_lookup_p(SmallHash *sh, uintptr_t key)
+{
+	SmallHashEntry *e = smallhash_lookup(sh, key);
+
+	return e ? &e->val : NULL;
+}
+
+bool BLI_smallhash_haskey(SmallHash *sh, uintptr_t key)
+{
+	SmallHashEntry *e = smallhash_lookup(sh, key);
+
+	return (e != NULL);
+}
+
+int BLI_smallhash_count(SmallHash *sh)
+{
+	return (int)sh->nentries;
 }
 
 void *BLI_smallhash_iternext(SmallHashIter *iter, uintptr_t *key)
 {
-	while (iter->i < iter->hash->size) {
-		if ((iter->hash->table[iter->i].val != SMHASH_CELL_UNUSED) &&
-		    (iter->hash->table[iter->i].val != SMHASH_CELL_FREE))
+	while (iter->i < iter->sh->nbuckets) {
+		if ((iter->sh->buckets[iter->i].val != SMHASH_CELL_UNUSED) &&
+		    (iter->sh->buckets[iter->i].val != SMHASH_CELL_FREE))
 		{
 			if (key) {
-				*key = iter->hash->table[iter->i].key;
+				*key = iter->sh->buckets[iter->i].key;
 			}
 
-			iter->i++;
-
-			return iter->hash->table[iter->i - 1].val;
+			return iter->sh->buckets[iter->i++].val;
 		}
 
 		iter->i++;
@@ -235,9 +257,9 @@ void *BLI_smallhash_iternext(SmallHashIter *iter, uintptr_t *key)
 	return NULL;
 }
 
-void *BLI_smallhash_iternew(SmallHash *hash, SmallHashIter *iter, uintptr_t *key)
+void *BLI_smallhash_iternew(SmallHash *sh, SmallHashIter *iter, uintptr_t *key)
 {
-	iter->hash = hash;
+	iter->sh = sh;
 	iter->i = 0;
 
 	return BLI_smallhash_iternext(iter, key);
@@ -246,23 +268,23 @@ void *BLI_smallhash_iternew(SmallHash *hash, SmallHashIter *iter, uintptr_t *key
 /* note, this was called _print_smhash in knifetool.c
  * it may not be intended for general use - campbell */
 #if 0
-void BLI_smallhash_print(SmallHash *hash)
+void BLI_smallhash_print(SmallHash *sh)
 {
-	int i, linecol = 79, c = 0;
+	unsigned int i, linecol = 79, c = 0;
 
 	printf("{");
-	for (i = 0; i < hash->size; i++) {
-		if (hash->table[i].val == SMHASH_CELL_UNUSED) {
+	for (i = 0; i < sh->nbuckets; i++) {
+		if (sh->buckets[i].val == SMHASH_CELL_UNUSED) {
 			printf("--u-");
 		}
-		else if (hash->table[i].val == SMHASH_CELL_FREE) {
+		else if (sh->buckets[i].val == SMHASH_CELL_FREE) {
 			printf("--f-");
 		}
 		else {
-			printf("%2x", (unsigned int)hash->table[i].key);
+			printf("%2x", (unsigned int)sh->buckets[i].key);
 		}
 
-		if (i != hash->size - 1)
+		if (i != sh->nbuckets - 1)
 			printf(", ");
 
 		c += 6;

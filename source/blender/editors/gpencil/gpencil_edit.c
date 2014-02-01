@@ -921,6 +921,8 @@ static void gp_stroke_to_path(bContext *C, bGPDlayer *gpl, bGPDstroke *gps, Curv
 		float p1[3], p2[3], p[3], next_p[3];
 		float dt1 = 0.0f, dt2 = 0.0f;
 
+		BLI_assert(gps->prev != NULL);
+
 		prev_bp = NULL;
 		if ((old_nbp > 1) && (gps->prev->totpoints > 1)) {
 			/* Only use last curve segment if previous stroke was not a single-point one! */
@@ -1029,7 +1031,7 @@ static void gp_stroke_to_path(bContext *C, bGPDlayer *gpl, bGPDstroke *gps, Curv
 			p[0] += GAP_DFAC;  /* Rather arbitrary... */
 			dt = GAP_DFAC;  /* Rather arbitrary too! */
 		}
-		/* Note bp has alredy been incremented in main loop above, so it points to the right place. */
+		/* Note bp has already been incremented in main loop above, so it points to the right place. */
 		gp_stroke_to_path_add_point(gtd, bp, p, prev_bp->vec, do_gtd, gps->inittime, dt, 0.0f, rad_fac, minmax_weights);
 	}
 
@@ -1128,6 +1130,8 @@ static void gp_stroke_to_bezier(bContext *C, bGPDlayer *gpl, bGPDstroke *gps, Cu
 
 	/* If needed, make the link between both strokes with two zero-radius additional points */
 	if (curnu && old_nbezt) {
+		BLI_assert(gps->prev != NULL);
+
 		/* Update last point's second handle */
 		if (stitch) {
 			bezt = &nu->bezt[old_nbezt - 1];
@@ -1150,7 +1154,7 @@ static void gp_stroke_to_bezier(bContext *C, bGPDlayer *gpl, bGPDstroke *gps, Cu
 			float dt1 = 0.0f, dt2 = 0.0f;
 
 			prev_bezt = NULL;
-			if (old_nbezt > 1 && gps->prev && gps->prev->totpoints > 1) {
+			if ((old_nbezt > 1) && (gps->prev->totpoints > 1)) {
 				/* Only use last curve segment if previous stroke was not a single-point one! */
 				prev_bezt = &nu->bezt[old_nbezt - 2];
 			}
@@ -1293,7 +1297,7 @@ static void gp_stroke_to_bezier(bContext *C, bGPDlayer *gpl, bGPDstroke *gps, Cu
 		/* The end point */
 		interp_v3_v3v3(h1, p, prev_bezt->vec[1], BEZT_HANDLE_FAC);
 		interp_v3_v3v3(h2, p, prev_bezt->vec[1], -BEZT_HANDLE_FAC);
-		/* Note bezt has alredy been incremented in main loop above, so it points to the right place. */
+		/* Note bezt has already been incremented in main loop above, so it points to the right place. */
 		gp_stroke_to_bezier_add_point(gtd, bezt, p, h1, h2, prev_bezt->vec[1], do_gtd, gps->inittime, dt,
 		                              0.0f, rad_fac, minmax_weights);
 	}

@@ -1360,6 +1360,11 @@ static void widget_draw_text_icon(uiFontStyle *fstyle, uiWidgetColors *wcol, uiB
 		const bool show_menu_icon = ui_but_draw_menu_icon(but);
 		const float icon_size = ICON_SIZE_FROM_BUTRECT(rect);
 
+		/* menu item - add some more padding so menus don't feel cramped. it must
+		 * be part of the button so that this area is still clickable */
+		if (ui_block_is_menu(but->block))
+			rect->xmin += 0.3f * U.widget_unit;
+
 		widget_draw_icon(but, but->icon + but->iconadd, alpha, rect, show_menu_icon);
 
 		rect->xmin += icon_size;
@@ -2356,7 +2361,7 @@ static void ui_draw_separator(const rcti *rect,  uiWidgetColors *wcol)
 	col[0] = wcol->text[0];
 	col[1] = wcol->text[1];
 	col[2] = wcol->text[2];
-	col[3] = 7;
+	col[3] = 30;
 	
 	glEnable(GL_BLEND);
 	glColor4ubv(col);
@@ -2658,6 +2663,7 @@ static void widget_numslider(uiBut *but, uiWidgetColors *wcol, rcti *rect, int s
 	
 	/* draw left/right parts only when not in text editing */
 	if (!(state & UI_TEXTINPUT)) {
+		int roundboxalign_slider;
 		
 		/* slider part */
 		copy_v3_v3_char(outline, wcol->outline);
@@ -2682,11 +2688,15 @@ static void widget_numslider(uiBut *but, uiWidgetColors *wcol, rcti *rect, int s
 		rect1.xmax = rect1.xmin + fac + offs;
 		rect1.xmin +=  floor(offs - U.pixelsize);
 		
-		if (rect1.xmax + offs > rect->xmax)
+		if (rect1.xmax + offs > rect->xmax) {
+			roundboxalign_slider = roundboxalign & ~(UI_CNR_TOP_LEFT | UI_CNR_BOTTOM_LEFT);
 			offs *= (rect1.xmax + offs - rect->xmax) / offs;
-		else 
+		}
+		else {
+			roundboxalign_slider = 0;
 			offs = 0.0f;
-		round_box_edges(&wtb1, roundboxalign & ~(UI_CNR_TOP_LEFT | UI_CNR_BOTTOM_LEFT), &rect1, offs);
+		}
+		round_box_edges(&wtb1, roundboxalign_slider, &rect1, offs);
 		
 		widgetbase_draw(&wtb1, wcol);
 		copy_v3_v3_char(wcol->outline, outline);
@@ -3308,7 +3318,7 @@ void ui_draw_but(const bContext *C, ARegion *ar, uiStyle *style, uiBut *but, rct
 			case LABEL:
 				widget_draw_text_icon(&style->widgetlabel, &tui->wcol_menu_back, but, rect);
 				break;
-			case SEPR:
+			case SEPRLINE:
 				ui_draw_separator(rect, &tui->wcol_menu_item);
 				break;
 			default:
@@ -3333,6 +3343,7 @@ void ui_draw_but(const bContext *C, ARegion *ar, uiStyle *style, uiBut *but, rct
 				break;
 
 			case SEPR:
+			case SEPRLINE:
 				break;
 				
 			case BUT:

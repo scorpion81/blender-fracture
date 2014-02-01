@@ -118,6 +118,7 @@ set(APISRC
 	rna_scene_api.c
 	rna_sensor_api.c
 	rna_sequencer_api.c
+	rna_space_api.c
 	rna_text_api.c
 	rna_ui_api.c
 	rna_wm_api.c
@@ -212,6 +213,9 @@ if(WITH_CODEC_QUICKTIME)
 endif()
 
 if(WITH_CODEC_FFMPEG)
+	list(APPEND INC
+		../../../../intern/ffmpeg
+	)
 	list(APPEND INC_SYS
 		${FFMPEG_INCLUDE_DIRS}
 	)

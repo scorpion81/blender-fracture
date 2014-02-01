@@ -91,13 +91,12 @@ void UI_template_fix_linking(void)
 
 /********************** Header Template *************************/
 
-void uiTemplateHeader(uiLayout *layout, bContext *C, int menus)
+void uiTemplateHeader(uiLayout *layout, bContext *C)
 {
 	uiBlock *block;
 
 	block = uiLayoutAbsoluteBlock(layout);
-	if (menus) ED_area_header_standardbuttons(C, block, 0);
-	else ED_area_header_switchbutton(C, block, 0);
+	ED_area_header_switchbutton(C, block, 0);
 }
 
 /********************** Search Callbacks *************************/
@@ -1551,6 +1550,7 @@ void uiTemplateColorRamp(uiLayout *layout, PointerRNA *ptr, const char *propname
 	PointerRNA cptr;
 	RNAUpdateCb *cb;
 	uiBlock *block;
+	ID *id;
 	rctf rect;
 
 	if (!prop || RNA_property_type(prop) != PROP_POINTER)
@@ -1568,7 +1568,13 @@ void uiTemplateColorRamp(uiLayout *layout, PointerRNA *ptr, const char *propname
 	rect.ymin = 0; rect.ymax = 19.5f * UI_UNIT_X;
 
 	block = uiLayoutAbsoluteBlock(layout);
+
+	id = cptr.id.data;
+	uiBlockSetButLock(block, (id && id->lib), ERROR_LIBDATA_MESSAGE);
+
 	colorband_buttons_layout(layout, block, cptr.data, &rect, cb, expand);
+
+	uiBlockClearButLock(block);
 
 	MEM_freeN(cb);
 }
@@ -2175,6 +2181,8 @@ void uiTemplateCurveMapping(uiLayout *layout, PointerRNA *ptr, const char *propn
 	RNAUpdateCb *cb;
 	PropertyRNA *prop = RNA_struct_find_property(ptr, propname);
 	PointerRNA cptr;
+	ID *id;
+	uiBlock *block = uiLayoutGetBlock(layout);
 
 	if (!prop) {
 		RNA_warning("curve property not found: %s.%s",
@@ -2196,7 +2204,12 @@ void uiTemplateCurveMapping(uiLayout *layout, PointerRNA *ptr, const char *propn
 	cb->ptr = *ptr;
 	cb->prop = prop;
 
+	id = cptr.id.data;
+	uiBlockSetButLock(block, (id && id->lib), ERROR_LIBDATA_MESSAGE);
+
 	curvemap_buttons_layout(layout, &cptr, type, levels, brush, cb);
+
+	uiBlockClearButLock(block);
 
 	MEM_freeN(cb);
 }
@@ -2806,14 +2819,8 @@ void uiTemplateList(uiLayout *layout, bContext *C, const char *listtype_name, co
 	ui_list->layout_type = layout_type;
 
 	/* Reset filtering data. */
-	if (dyn_data->items_filter_flags) {
-		MEM_freeN(dyn_data->items_filter_flags);
-		dyn_data->items_filter_flags = NULL;
-	}
-	if (dyn_data->items_filter_neworder) {
-		MEM_freeN(dyn_data->items_filter_neworder);
-		dyn_data->items_filter_neworder = NULL;
-	}
+	MEM_SAFE_FREE(dyn_data->items_filter_flags);
+	MEM_SAFE_FREE(dyn_data->items_filter_neworder);
 	dyn_data->items_len = dyn_data->items_shown = -1;
 
 	/* When active item changed since last draw, scroll to it. */
@@ -2925,8 +2932,7 @@ void uiTemplateList(uiLayout *layout, bContext *C, const char *listtype_name, co
 					sub = uiLayoutRow(overlap, false);
 
 					but = uiDefButR_prop(subblock, LISTROW, 0, "", 0, 0, UI_UNIT_X * 10, UI_UNIT_Y,
-					                     active_dataptr, activeprop, 0, 0, org_i, 0, 0, NULL);
-					uiButSetDrawFlag(but, UI_BUT_NO_TOOLTIP);
+					                     active_dataptr, activeprop, 0, 0, org_i, 0, 0, "Double click to rename");
 
 					sub = uiLayoutRow(overlap, false);
 
@@ -3486,7 +3492,7 @@ static uiBlock *component_menu(bContext *C, ARegion *ar, void *args_v)
 	block = uiBeginBlock(C, ar, __func__, UI_EMBOSS);
 	uiBlockSetFlag(block, UI_BLOCK_KEEP_OPEN);
 	
-	layout = uiLayoutColumn(uiBlockLayout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, 0, 0, UI_UNIT_X * 6, UI_UNIT_Y, UI_GetStyle()), 0);
+	layout = uiLayoutColumn(uiBlockLayout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, 0, 0, UI_UNIT_X * 6, UI_UNIT_Y, 0, UI_GetStyle()), 0);
 	
 	uiItemR(layout, &args->ptr, args->propname, UI_ITEM_R_EXPAND, "", ICON_NONE);
 	

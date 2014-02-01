@@ -58,6 +58,7 @@
 #include "BKE_main.h"
 #include "BKE_node.h"
 #include "BKE_multires.h"
+#include "BKE_object.h"
 #include "BKE_paint.h"
 #include "BKE_report.h"
 #include "BKE_sequencer.h"
@@ -70,6 +71,7 @@
 #include "ED_object.h"
 #include "ED_render.h"
 #include "ED_screen.h"
+#include "ED_util.h"
 #include "ED_view3d.h"
 
 #include "RE_pipeline.h"
@@ -115,6 +117,7 @@ typedef struct RenderJob {
 	ScrArea *sa;
 	ColorManagedViewSettings view_settings;
 	ColorManagedDisplaySettings display_settings;
+	bool interface_locked;
 } RenderJob;
 
 /* called inside thread! */
@@ -281,8 +284,8 @@ static int screen_render_exec(bContext *C, wmOperator *op)
 	View3D *v3d = CTX_wm_view3d(C);
 	Main *mainp = CTX_data_main(C);
 	unsigned int lay_override;
-	const short is_animation = RNA_boolean_get(op->ptr, "animation");
-	const short is_write_still = RNA_boolean_get(op->ptr, "write_still");
+	const bool is_animation = RNA_boolean_get(op->ptr, "animation");
+	const bool is_write_still = RNA_boolean_get(op->ptr, "write_still");
 	struct Object *camera_override = v3d ? V3D_CAMERA_LOCAL(v3d) : NULL;
 
 	/* custom scene and single layer re-render */
@@ -661,6 +664,29 @@ static void render_endjob(void *rjv)
 
 		BKE_image_release_ibuf(ima, ibuf, lock);
 	}
+
+	/* Finally unlock the user interface (if it was locked). */
+	if (rj->interface_locked) {
+		Scene *scene;
+
+		/* Interface was locked, so window manager couldn't have been changed
+		 * and using one from Global will unlock exactly the same manager as
+		 * was locked before running the job.
+		 */
+		WM_set_locked_interface(G.main->wm.first, false);
+
+		/* We've freed all the derived caches before rendering, which is
+		 * effectively the same as if we re-loaded the file.
+		 *
+		 * So let's not try being smart here and just reset all updated
+		 * scene layers and use generic DAG_on_visible_update.
+		 */
+		for (scene = G.main->scene.first; scene; scene = scene->id.next) {
+			scene->lay_updated = 0;
+		}
+
+		DAG_on_visible_update(G.main, false);
+	}
 }
 
 /* called by render, check job 'stop' value or the global */
@@ -686,10 +712,14 @@ static int render_break(void *UNUSED(rjv))
 
 /* runs in thread, no cursor setting here works. careful with notifiers too (malloc conflicts) */
 /* maybe need a way to get job send notifer? */
-static void render_drawlock(void *UNUSED(rjv), int lock)
+static void render_drawlock(void *rjv, int lock)
 {
-	BKE_spacedata_draw_locks(lock);
-	
+	RenderJob *rj = rjv;
+
+	/* If interface is locked, renderer callback shall do nothing. */
+	if (!rj->interface_locked) {
+		BKE_spacedata_draw_locks(lock);
+	}
 }
 
 /* catch esc */
@@ -720,6 +750,36 @@ static void screen_render_cancel(bContext *C, wmOperator *op)
 	WM_jobs_kill_type(wm, scene, WM_JOB_TYPE_RENDER);
 }
 
+static void clean_viewport_memory(Main *bmain, Scene *scene, int renderlay)
+{
+	Object *object;
+	Scene *sce_iter;
+	Base *base;
+
+	for (object = bmain->object.first; object; object = object->id.next) {
+		object->id.flag |= LIB_DOIT;
+	}
+
+	for (SETLOOPER(scene, sce_iter, base)) {
+		if ((base->lay & renderlay) == 0) {
+			continue;
+		}
+
+		if (RE_allow_render_generic_object(base->object)) {
+			base->object->id.flag &= ~LIB_DOIT;
+		}
+	}
+
+	for (object = bmain->object.first; object; object = object->id.next) {
+		if ((object->id.flag & LIB_DOIT) == 0) {
+			continue;
+		}
+		object->id.flag &= ~LIB_DOIT;
+
+		BKE_object_free_derived_caches(object);
+	}
+}
+
 /* using context, starts job */
 static int screen_render_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
@@ -738,7 +798,6 @@ static int screen_render_invoke(bContext *C, wmOperator *op, const wmEvent *even
 	View3D *v3d = use_viewport ? CTX_wm_view3d(C) : NULL;
 	struct Object *camera_override = v3d ? V3D_CAMERA_LOCAL(v3d) : NULL;
 	const char *name;
-	Object *active_object = CTX_data_active_object(C);
 	ScrArea *sa;
 	
 	/* only one render job at a time */
@@ -772,20 +831,14 @@ static int screen_render_invoke(bContext *C, wmOperator *op, const wmEvent *even
 	/* handle UI stuff */
 	WM_cursor_wait(1);
 
-	/* flush multires changes (for sculpt) */
-	multires_force_render_update(active_object);
-
-	/* flush changes from dynamic topology sculpt */
-	sculptsession_bm_to_me_for_render(active_object);
+	/* flush sculpt and editmode changes */
+	ED_editors_flush_edits(C, true);
 
 	/* cleanup sequencer caches before starting user triggered render.
 	 * otherwise, invalidated cache entries can make their way into
 	 * the output rendering. We can't put that into RE_BlenderFrame,
 	 * since sequence rendering can call that recursively... (peter) */
 	BKE_sequencer_cache_cleanup();
-
-	/* get editmode results */
-	ED_object_editmode_load(CTX_data_edit_object(C));
 
 	// store spare
 	// get view3d layer, local layer, make this nice api call to render
@@ -836,6 +889,26 @@ static int screen_render_invoke(bContext *C, wmOperator *op, const wmEvent *even
 
 		if (v3d->localvd)
 			rj->lay_override |= v3d->localvd->lay;
+	}
+
+	/* Lock the user interface depending on render settings. */
+	if (scene->r.use_lock_interface) {
+		int renderlay = rj->lay_override ? rj->lay_override : scene->lay;
+
+		WM_set_locked_interface(CTX_wm_manager(C), true);
+
+		/* Set flag interface need to be unlocked.
+		 *
+		 * This is so because we don't have copy of render settings
+		 * accessible from render job and copy is needed in case
+		 * of non-locked rendering, so we wouldn't try to unlock
+		 * anything if option was initially unset but then was
+		 * enabled during rendering.
+		 */
+		rj->interface_locked = true;
+
+		/* Clean memory used by viewport? */
+		clean_viewport_memory(rj->main, scene, renderlay);
 	}
 
 	/* setup job */
@@ -907,9 +980,9 @@ void RENDER_OT_render(wmOperatorType *ot)
 	RNA_def_boolean(ot->srna, "animation", 0, "Animation", "Render files from the animation range of this scene");
 	RNA_def_boolean(ot->srna, "write_still", 0, "Write Image", "Save rendered the image to the output path (used only when animation is disabled)");
 	RNA_def_boolean(ot->srna, "use_viewport", 0, "Use 3D Viewport", "When inside a 3D viewport, use layers and camera of the viewport");
-	prop = RNA_def_string(ot->srna, "layer", "", RE_MAXNAME, "Render Layer", "Single render layer to re-render (used only when animation is disabled)");
+	prop = RNA_def_string(ot->srna, "layer", NULL, RE_MAXNAME, "Render Layer", "Single render layer to re-render (used only when animation is disabled)");
 	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
-	prop = RNA_def_string(ot->srna, "scene", "", MAX_ID_NAME - 2, "Scene", "Scene to render, current scene if not specified");
+	prop = RNA_def_string(ot->srna, "scene", NULL, MAX_ID_NAME - 2, "Scene", "Scene to render, current scene if not specified");
 	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 }
 

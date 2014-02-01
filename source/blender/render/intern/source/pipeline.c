@@ -1602,6 +1602,18 @@ static bool rlayer_node_uses_alpha(bNodeTree *ntree, bNode *node)
 	return false;
 }
 
+bool RE_allow_render_generic_object(Object *ob)
+{
+	/* override not showing object when duplis are used with particles */
+	if (ob->transflag & OB_DUPLIPARTS) {
+		/* pass */  /* let particle system(s) handle showing vs. not showing */
+	}
+	else if ((ob->transflag & OB_DUPLI) && !(ob->transflag & OB_DUPLIFRAMES)) {
+		return false;
+	}
+	return true;
+}
+
 /* Issue here is that it's possible that object which is used by boolean,
  * array or shrinkwrap modifiers weren't displayed in the viewport before
  * rendering. This leads to situations when apply() of this modifiers
@@ -1619,18 +1631,6 @@ static bool rlayer_node_uses_alpha(bNodeTree *ntree, bNode *node)
 #define DEPSGRAPH_WORKAROUND_HACK
 
 #ifdef DEPSGRAPH_WORKAROUND_HACK
-static bool allow_render_mesh_object(Object *ob)
-{
-	/* override not showing object when duplis are used with particles */
-	if (ob->transflag & OB_DUPLIPARTS) {
-		/* pass */  /* let particle system(s) handle showing vs. not showing */
-	}
-	else if ((ob->transflag & OB_DUPLI) && !(ob->transflag & OB_DUPLIFRAMES)) {
-		return false;
-	}
-	return true;
-}
-
 static void tag_dependend_objects_for_render(Scene *scene, int renderlay)
 {
 	Scene *sce_iter;
@@ -1643,7 +1643,7 @@ static void tag_dependend_objects_for_render(Scene *scene, int renderlay)
 		}
 
 		if (object->type == OB_MESH) {
-			if (allow_render_mesh_object(object)) {
+			if (RE_allow_render_generic_object(object)) {
 				ModifierData *md;
 				VirtualModifierData virtualModifierData;
 
@@ -2214,7 +2214,7 @@ static void do_render_seq(Render *re)
 		                                        re->result->rectx, re->result->recty, 100);
 	}
 
-	out = BKE_sequencer_give_ibuf(context, cfra, 0);
+	out = BKE_sequencer_give_ibuf(&context, cfra, 0);
 
 	if (out) {
 		ibuf = IMB_dupImBuf(out);
@@ -2335,7 +2335,7 @@ static int check_valid_camera(Scene *scene, Object *camera_override, ReportList 
 	if (camera_override == NULL && scene->camera == NULL)
 		scene->camera = BKE_scene_camera_find(scene);
 
-	if (scene->r.scemode & R_DOSEQ) {
+	if (RE_seq_render_active(scene, &scene->r)) {
 		if (scene->ed) {
 			Sequence *seq = scene->ed->seqbase.first;
 
@@ -2414,6 +2414,13 @@ int RE_is_rendering_allowed(Scene *scene, Object *camera_override, ReportList *r
 			BKE_report(reports, RPT_ERROR, "Cannot save render buffers, check the temp default path");
 			return 0;
 		}
+		
+		/* no fullsample and edge */
+		if ((scemode & R_FULL_SAMPLE) && (scene->r.mode & R_EDGE)) {
+			BKE_report(reports, RPT_ERROR, "Full sample does not support edge enhance");
+			return 0;
+		}
+		
 	}
 	
 	if (scemode & R_DOCOMP) {

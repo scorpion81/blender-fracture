@@ -46,6 +46,9 @@ class CopyRigidbodySettings(Operator):
         "linear_damping",
         "angular_damping",
         "collision_groups",
+        "mesh_source",
+        "use_deform",
+        "enabled",
         )
 
     @classmethod
@@ -138,7 +141,6 @@ class BakeToKeyframes(Operator):
             # apply transformations as keyframes
             for i, f in enumerate(frames_step):
                 scene.frame_set(f)
-                obj_prev = objects[0]
                 for j, obj in enumerate(objects):
                     mat = bake[i][j]
 
@@ -146,16 +148,21 @@ class BakeToKeyframes(Operator):
 
                     rot_mode = obj.rotation_mode
                     if rot_mode == 'QUATERNION':
-                        obj.rotation_quaternion = mat.to_quaternion()
+                        q1 = obj.rotation_quaternion
+                        q2 = mat.to_quaternion()
+                        # make quaternion compatible with the previous one
+                        if q1.dot(q2) < 0.0:
+                            obj.rotation_quaternion = -q2
+                        else:
+                            obj.rotation_quaternion = q2
                     elif rot_mode == 'AXIS_ANGLE':
                         # this is a little roundabout but there's no better way right now
                         aa = mat.to_quaternion().to_axis_angle()
                         obj.rotation_axis_angle = (aa[1], ) + aa[0][:]
                     else:  # euler
                         # make sure euler rotation is compatible to previous frame
-                        obj.rotation_euler = mat.to_euler(rot_mode, obj_prev.rotation_euler)
-
-                    obj_prev = obj
+                        # NOTE: assume that on first frame, the starting rotation is appropriate
+                        obj.rotation_euler = mat.to_euler(rot_mode, obj.rotation_euler)
 
                 bpy.ops.anim.keyframe_insert(type='BUILTIN_KSI_LocRot', confirm_success=False)
 

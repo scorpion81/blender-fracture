@@ -68,6 +68,7 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_threads.h"
+#include "BLI_timecode.h"  /* for stamp timecode format */
 #include "BLI_utildefines.h"
 
 #include "BKE_bmfont.h"
@@ -295,7 +296,7 @@ static Image *image_alloc(Main *bmain, const char *name, short source, short typ
 {
 	Image *ima;
 
-	ima = BKE_libblock_alloc(&bmain->image, ID_IM, name);
+	ima = BKE_libblock_alloc(bmain, ID_IM, name);
 	if (ima) {
 		ima->ok = IMA_OK;
 
@@ -555,7 +556,7 @@ void BKE_image_merge(Image *dest, Image *source)
 		}
 		BLI_spin_unlock(&image_spin);
 
-		BKE_libblock_free(&G.main->image, source);
+		BKE_libblock_free(G.main, source);
 	}
 }
 
@@ -597,18 +598,19 @@ static void image_init_color_management(Image *ima)
 	}
 }
 
-void BKE_image_alpha_mode_from_extension(Image *image)
+char BKE_image_alpha_mode_from_extension_ex(const char *filepath)
 {
-	if (BLI_testextensie(image->name, ".exr") ||
-	    BLI_testextensie(image->name, ".cin") ||
-	    BLI_testextensie(image->name, ".dpx") ||
-	    BLI_testextensie(image->name, ".hdr"))
-	{
-		image->alpha_mode = IMA_ALPHA_PREMUL;
+	if (BLI_testextensie_n(filepath, ".exr", ".cin", ".dpx", ".hdr", NULL)) {
+		return IMA_ALPHA_PREMUL;
 	}
 	else {
-		image->alpha_mode = IMA_ALPHA_STRAIGHT;
+		return IMA_ALPHA_STRAIGHT;
 	}
+}
+
+void BKE_image_alpha_mode_from_extension(Image *image)
+{
+	image->alpha_mode = BKE_image_alpha_mode_from_extension_ex(image->name);
 }
 
 Image *BKE_image_load(Main *bmain, const char *filepath)
@@ -1010,7 +1012,7 @@ void BKE_image_all_free_anim_ibufs(int cfra)
 	Image *ima;
 
 	for (ima = G.main->image.first; ima; ima = ima->id.next)
-		if (ELEM(ima->source, IMA_SRC_SEQUENCE, IMA_SRC_MOVIE))
+		if (BKE_image_is_animated(ima))
 			BKE_image_free_anim_ibufs(ima, cfra);
 }
 
@@ -1265,98 +1267,93 @@ char BKE_imtype_from_arg(const char *imtype_arg)
 static int do_add_image_extension(char *string, const char imtype, const ImageFormatData *im_format)
 {
 	const char *extension = NULL;
+	const char *extension_test;
 	(void)im_format;  /* may be unused, depends on build options */
 
 	if (imtype == R_IMF_IMTYPE_IRIS) {
-		if (!BLI_testextensie(string, ".rgb"))
-			extension = ".rgb";
+		if (!BLI_testextensie(string, extension_test = ".rgb"))
+			extension = extension_test;
 	}
 	else if (imtype == R_IMF_IMTYPE_IRIZ) {
-		if (!BLI_testextensie(string, ".rgb"))
-			extension = ".rgb";
+		if (!BLI_testextensie(string, extension_test = ".rgb"))
+			extension = extension_test;
 	}
 #ifdef WITH_HDR
 	else if (imtype == R_IMF_IMTYPE_RADHDR) {
-		if (!BLI_testextensie(string, ".hdr"))
-			extension = ".hdr";
+		if (!BLI_testextensie(string, extension_test = ".hdr"))
+			extension = extension_test;
 	}
 #endif
 	else if (ELEM5(imtype, R_IMF_IMTYPE_PNG, R_IMF_IMTYPE_FFMPEG, R_IMF_IMTYPE_H264, R_IMF_IMTYPE_THEORA, R_IMF_IMTYPE_XVID)) {
-		if (!BLI_testextensie(string, ".png"))
-			extension = ".png";
+		if (!BLI_testextensie(string, extension_test = ".png"))
+			extension = extension_test;
 	}
 #ifdef WITH_DDS
 	else if (imtype == R_IMF_IMTYPE_DDS) {
-		if (!BLI_testextensie(string, ".dds"))
-			extension = ".dds";
+		if (!BLI_testextensie(string, extension_test = ".dds"))
+			extension = extension_test;
 	}
 #endif
-	else if (imtype == R_IMF_IMTYPE_RAWTGA) {
-		if (!BLI_testextensie(string, ".tga"))
-			extension = ".tga";
+	else if (ELEM(imtype, R_IMF_IMTYPE_TARGA, R_IMF_IMTYPE_RAWTGA)) {
+		if (!BLI_testextensie(string, extension_test = ".tga"))
+			extension = extension_test;
 	}
 	else if (imtype == R_IMF_IMTYPE_BMP) {
-		if (!BLI_testextensie(string, ".bmp"))
-			extension = ".bmp";
+		if (!BLI_testextensie(string, extension_test = ".bmp"))
+			extension = extension_test;
 	}
 #ifdef WITH_TIFF
 	else if (imtype == R_IMF_IMTYPE_TIFF) {
-		if (!BLI_testextensie(string, ".tif") &&
-		    !BLI_testextensie(string, ".tiff"))
-		{
-			extension = ".tif";
+		if (!BLI_testextensie_n(string, extension_test = ".tif", ".tiff", NULL)) {
+			extension = extension_test;
 		}
 	}
 #endif
 #ifdef WITH_OPENIMAGEIO
 	else if (imtype == R_IMF_IMTYPE_PSD) {
-		if (!BLI_testextensie(string, ".psd"))
-			extension = ".psd";
+		if (!BLI_testextensie(string, extension_test = ".psd"))
+			extension = extension_test;
 	}
 #endif
 #ifdef WITH_OPENEXR
 	else if (ELEM(imtype, R_IMF_IMTYPE_OPENEXR, R_IMF_IMTYPE_MULTILAYER)) {
-		if (!BLI_testextensie(string, ".exr"))
-			extension = ".exr";
+		if (!BLI_testextensie(string, extension_test = ".exr"))
+			extension = extension_test;
 	}
 #endif
 #ifdef WITH_CINEON
 	else if (imtype == R_IMF_IMTYPE_CINEON) {
-		if (!BLI_testextensie(string, ".cin"))
-			extension = ".cin";
+		if (!BLI_testextensie(string, extension_test = ".cin"))
+			extension = extension_test;
 	}
 	else if (imtype == R_IMF_IMTYPE_DPX) {
-		if (!BLI_testextensie(string, ".dpx"))
-			extension = ".dpx";
+		if (!BLI_testextensie(string, extension_test = ".dpx"))
+			extension = extension_test;
 	}
 #endif
-	else if (imtype == R_IMF_IMTYPE_TARGA) {
-		if (!BLI_testextensie(string, ".tga"))
-			extension = ".tga";
-	}
 #ifdef WITH_OPENJPEG
 	else if (imtype == R_IMF_IMTYPE_JP2) {
 		if (im_format) {
 			if (im_format->jp2_codec == R_IMF_JP2_CODEC_JP2) {
-				if (!BLI_testextensie(string, ".jp2"))
-					extension = ".jp2";
+				if (!BLI_testextensie(string, extension_test = ".jp2"))
+					extension = extension_test;
 			}
 			else if (im_format->jp2_codec == R_IMF_JP2_CODEC_J2K) {
-				if (!BLI_testextensie(string, ".j2c"))
-					extension = ".j2c";
+				if (!BLI_testextensie(string, extension_test = ".j2c"))
+					extension = extension_test;
 			}
 			else
 				BLI_assert(!"Unsupported jp2 codec was specified in im_format->jp2_codec");
 		}
 		else {
-			if (!BLI_testextensie(string, ".jp2"))
-				extension = ".jp2";
+			if (!BLI_testextensie(string, extension_test = ".jp2"))
+				extension = extension_test;
 		}
 	}
 #endif
 	else { //   R_IMF_IMTYPE_AVIRAW, R_IMF_IMTYPE_AVIJPEG, R_IMF_IMTYPE_JPEG90, R_IMF_IMTYPE_QUICKTIME etc
-		if (!(BLI_testextensie(string, ".jpg") || BLI_testextensie(string, ".jpeg")))
-			extension = ".jpg";
+		if (!(BLI_testextensie_n(string, extension_test = ".jpg", ".jpeg", NULL)))
+			extension = extension_test;
 	}
 
 	if (extension) {
@@ -1520,30 +1517,6 @@ void BKE_imbuf_to_image_format(struct ImageFormatData *im_format, const ImBuf *i
 
 }
 
-static void timecode_simple_string(char *text, size_t text_size, const int cfra, int const frs_sec)
-{
-	int f = (int)(cfra % frs_sec);
-	int s = (int)(cfra / frs_sec);
-	int h = 0;
-	int m = 0;
-
-	if (s) {
-		m = (int)(s / 60);
-		s %= 60;
-
-		if (m) {
-			h = (int)(m / 60);
-			m %= 60;
-		}
-	}
-
-	if (frs_sec < 100) {
-		BLI_snprintf(text, text_size, "%02d:%02d:%02d.%02d", h, m, s, f);
-	}
-	else {
-		BLI_snprintf(text, text_size, "%02d:%02d:%02d.%03d", h, m, s, f);
-	}
-}
 
 #define STAMP_NAME_SIZE ((MAX_ID_NAME - 2) + 16)
 /* could allow access externally - 512 is for long names,
@@ -1607,8 +1580,9 @@ static void stampdata(Scene *scene, Object *camera, StampData *stamp_data, int d
 	}
 
 	if (scene->r.stamp & R_STAMP_TIME) {
-		timecode_simple_string(text, sizeof(text), scene->r.cfra, scene->r.frs_sec);
-		BLI_snprintf(stamp_data->time, sizeof(stamp_data->time), do_prefix ? "Time %s" : "%s", text);
+		const short timecode_style = USER_TIMECODE_SMPTE_FULL;
+		BLI_timecode_string_from_time(text, sizeof(text), 0, FRA2TIME(scene->r.cfra), FPS, timecode_style);
+		BLI_snprintf(stamp_data->time, sizeof(stamp_data->time), do_prefix ? "Timecode %s" : "%s", text);
 	}
 	else {
 		stamp_data->time[0] = '\0';
@@ -1912,7 +1886,7 @@ void BKE_imbuf_stamp_info(Scene *scene, Object *camera, struct ImBuf *ibuf)
 	if (stamp_data.rendertime[0]) IMB_metadata_change_field(ibuf, "RenderTime", stamp_data.rendertime);
 }
 
-int BKE_imbuf_alpha_test(ImBuf *ibuf)
+bool BKE_imbuf_alpha_test(ImBuf *ibuf)
 {
 	int tot;
 	if (ibuf->rect_float) {
@@ -2254,7 +2228,7 @@ static void image_tag_frame_recalc(Image *ima, ImageUser *iuser, void *customdat
 {
 	Image *changed_image = customdata;
 
-	if (ima == changed_image && ELEM(ima->source, IMA_SRC_MOVIE, IMA_SRC_SEQUENCE)) {
+	if (ima == changed_image && BKE_image_is_animated(ima)) {
 		iuser->flag |= IMA_NEED_FRAME_RECALC;
 	}
 }
@@ -3025,7 +2999,7 @@ static ImBuf *image_get_cached_ibuf(Image *ima, ImageUser *iuser, int *frame_r, 
 	return ibuf;
 }
 
-BLI_INLINE int image_quick_test(Image *ima, ImageUser *iuser)
+BLI_INLINE bool image_quick_test(Image *ima, ImageUser *iuser)
 {
 	if (ima == NULL)
 		return FALSE;
@@ -3550,6 +3524,16 @@ int BKE_image_sequence_guess_offset(Image *image)
 	BLI_strncpy(num, image->name + strlen(head), numlen + 1);
 
 	return atoi(num);
+}
+
+/**
+ * Checks the image buffer changes (not keyframed values)
+ *
+ * to see if we need to call #BKE_image_user_check_frame_calc
+ */
+bool BKE_image_is_animated(Image *image)
+{
+	return ELEM(image->source, IMA_SRC_MOVIE, IMA_SRC_SEQUENCE);
 }
 
 bool BKE_image_is_dirty(Image *image)

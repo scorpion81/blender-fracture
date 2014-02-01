@@ -555,7 +555,7 @@ static int edit_constraint_poll(bContext *C)
 
 static void edit_constraint_properties(wmOperatorType *ot)
 {
-	RNA_def_string(ot->srna, "constraint", "", MAX_NAME, "Constraint", "Name of the constraint to edit");
+	RNA_def_string(ot->srna, "constraint", NULL, MAX_NAME, "Constraint", "Name of the constraint to edit");
 	RNA_def_enum(ot->srna, "owner", constraint_owner_items, 0, "Owner", "The owner of this constraint");
 }
 
@@ -1171,7 +1171,7 @@ static int constraint_delete_exec(bContext *C, wmOperator *UNUSED(op))
 	Object *ob = ptr.id.data;
 	bConstraint *con = ptr.data;
 	ListBase *lb = get_constraint_lb(ob, con, NULL);
-	const short is_ik = ELEM(con->type, CONSTRAINT_TYPE_KINEMATIC, CONSTRAINT_TYPE_SPLINEIK);
+	const bool is_ik = ELEM(con->type, CONSTRAINT_TYPE_KINEMATIC, CONSTRAINT_TYPE_SPLINEIK);
 
 	/* free the constraint */
 	if (BKE_remove_constraint(lb, con)) {
@@ -1716,7 +1716,7 @@ static int constraint_add_exec(bContext *C, wmOperator *op, Object *ob, ListBase
 		DAG_id_tag_update(&ob->id, OB_RECALC_DATA | OB_RECALC_OB);
 	}
 	else
-		DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
+		DAG_id_tag_update(&ob->id, OB_RECALC_OB);
 	
 	/* notifiers for updates */
 	WM_event_add_notifier(C, NC_OBJECT | ND_CONSTRAINT | NA_ADDED, ob);
