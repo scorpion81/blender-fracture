@@ -55,7 +55,7 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 {
 	/*Parse voronoi raw data*/
 	int i = 0;
-	Shard* s, *p = BKE_shard_by_id(fm, parent_id);
+	Shard* s = NULL, *p = BKE_shard_by_id(fm, parent_id);
 	float obmat[4][4]; /* use unit matrix for now */
 
 	p->flag = 0;
@@ -74,15 +74,17 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 	fm->shard_map[0] = NULL;
 	fm->shard_count = 0;*/
 
-	//while (feof(fp) == 0) doesnt work with memory stream...
+	//while (feof(fp) != 0) //doesnt work with memory stream...
 	/* TODO, might occur that we have LESS than expected shards, what then...*/
 	for (i = 0; i < expected_shards; i++)
 	{
 		//printf("Parsing shard: %d\n", i);
 		s = parse_shard(fp);
-		s->parent_id = parent_id;
-		s->flag = SHARD_INTACT;
-
+		if (s != NULL)
+		{
+			s->parent_id = parent_id;
+			s->flag = SHARD_INTACT;
+		}
 		/* XXX TODO, need object for material as well, or atleast a material index... */
 		if (algorithm == MOD_FRACTURE_BOOLEAN)
 		{
@@ -103,11 +105,11 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 
 static Shard* parse_shard(FILE *fp)
 {
-	Shard* s;
-	MVert* vert = MEM_mallocN(sizeof(MVert), __func__);
-	MPoly* poly = MEM_mallocN(sizeof(MPoly), __func__);
-	MLoop *loop = MEM_mallocN(sizeof(MLoop), __func__);
-	int* neighbors = MEM_mallocN(sizeof(int), __func__);
+	Shard *s;
+	MVert *vert = NULL;
+	MPoly *poly = NULL;
+	MLoop *loop = NULL;
+	int *neighbors = NULL;
 	int totpoly = 0, totloop = 0, totvert = 0, totn = 0;
 	float centr[3];
 	int shard_id;
@@ -122,11 +124,22 @@ static Shard* parse_shard(FILE *fp)
 
 	totn = parse_neighbors(fp, &neighbors);
 
+	if ((totvert == 0) || (totloop == 0) || (totloop == 0) || (totn == 0))
+	{
+		MEM_freeN(vert);
+		MEM_freeN(poly);
+		MEM_freeN(loop);
+		MEM_freeN(neighbors);
+		return NULL;
+	}
+
 	s = BKE_create_fracture_shard(vert, poly, loop, totvert, totpoly, totloop, false);
 	s->neighbor_ids = neighbors;
 	s->neighbor_count = totn;
 	//s->shard_id = shard_id;
 	copy_v3_v3(s->centroid, centr);
+
+
 
 	/* if not at end of file yet, skip newlines */
 	if (feof(fp) == 0)
@@ -154,7 +167,14 @@ static int parse_verts(FILE* fp, MVert** vert)
 
 		readco = fscanf(fp, "(%f,%f,%f) ", &co[0], &co[1], &co[2]);
 		if (readco < 3) break;
-		*vert = MEM_reallocN(*vert, sizeof(MVert) * (totvert+1));
+		if (totvert == 0)
+		{
+			*vert = MEM_mallocN(sizeof(MVert), __func__);
+		}
+		else
+		{
+			*vert = MEM_reallocN(*vert, sizeof(MVert) * (totvert+1));
+		}
 		copy_v3_v3((*vert)[totvert].co, co);
 		totvert++;
 	}
@@ -179,7 +199,14 @@ static void parse_polys(FILE *fp, MPoly **poly, MLoop **loop, int *totpoly, int 
 			return;
 		}
 
-		*loop = MEM_reallocN(*loop, sizeof(MLoop) * ((*totloop)+1));
+		if (*totloop == 0)
+		{
+			*loop = MEM_mallocN(sizeof(MLoop), __func__);
+		}
+		else
+		{
+			*loop = MEM_reallocN(*loop, sizeof(MLoop) * ((*totloop)+1));
+		}
 		(*loop)[*totloop].v = index;
 		(*loop)[*totloop].e = *totloop;
 		(*totloop)++;
@@ -203,7 +230,14 @@ static void parse_polys(FILE *fp, MPoly **poly, MLoop **loop, int *totpoly, int 
 		fseek(fp, 2*sizeof(char), SEEK_CUR);
 
 		/* faceloop, 3 loops at least necessary ?, prevent degenerates... disable for now */
-		*poly = MEM_reallocN(*poly, sizeof(MPoly) * ((*totpoly)+1));
+		if (*totpoly == 0)
+		{
+			*poly = MEM_mallocN(sizeof(MPoly), __func__);
+		}
+		else
+		{
+			*poly = MEM_reallocN(*poly, sizeof(MPoly) * ((*totpoly)+1));
+		}
 		(*poly)[*totpoly].loopstart = (*totloop) - faceloop;
 		(*poly)[*totpoly].totloop = faceloop;
 		(*poly)[*totpoly].mat_nr = 0;
@@ -220,7 +254,14 @@ static int parse_neighbors(FILE* fp, int** neighbors)
 		int n;
 		read_n = fscanf(fp, "%d ", &n);
 		if (!read_n) break;
-		*neighbors = MEM_reallocN(*neighbors, sizeof(int) * (totn+1));
+		if (totn == 0)
+		{
+			*neighbors = MEM_mallocN(sizeof(int), __func__);
+		}
+		else
+		{
+			*neighbors = MEM_reallocN(*neighbors, sizeof(int) * (totn+1));
+		}
 		(*neighbors)[totn] = n;
 		totn++;
 	}
@@ -505,6 +546,10 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 //	free(bp);
 	printf("Parse stream done, %g\n", PIL_check_seconds_timer() - start);
 
+	MEM_freeN(path);
+	free(voro_particle_order);
+	free(voro_loop_order);
+	free(voro_container);
 
 #if 0
 	//do cell fracture code here on shardbbox, AND intersect with boolean, hmm would need a temp object for this ? or bisect with cell planes.
@@ -579,6 +624,7 @@ void BKE_fracmesh_free(FracMesh* fm)
 		MEM_freeN(s->mloop);
 		if (s->neighbor_ids)
 			MEM_freeN(s->neighbor_ids);
+		MEM_freeN(s);
 	}
 	
 	MEM_freeN(fm->shard_map);
