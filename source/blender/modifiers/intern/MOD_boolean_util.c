@@ -166,6 +166,7 @@ typedef struct ExportMeshData {
 	MEdge *medge;
 	MLoop *mloop;
 	MPoly *mpoly;
+	int *vert_origindex;
 	int *edge_origindex;
 	int *poly_origindex;
 	int *loop_origindex;
@@ -256,22 +257,49 @@ static void exporter_InitGeomArrays(ExportMeshData *export_data,
 	CustomData_merge(&dm_left->polyData, &dm->polyData, merge_mask, CD_DEFAULT, num_polys);
 	CustomData_merge(&dm_right->polyData, &dm->polyData, merge_mask, CD_DEFAULT, num_polys);
 
+	export_data->vert_origindex = dm->getVertDataArray(dm, CD_ORIGINDEX);
 	export_data->edge_origindex = dm->getEdgeDataArray(dm, CD_ORIGINDEX);
 	export_data->poly_origindex = dm->getPolyDataArray(dm, CD_ORIGINDEX);
 	export_data->loop_origindex = dm->getLoopDataArray(dm, CD_ORIGINDEX);
 }
 
 /* Set coordinate of vertex with given index. */
-static void exporter_SetVert(ExportMeshData *export_data, int vert_index, float coord[3])
+static void exporter_SetVert(ExportMeshData *export_data,
+                             int vert_index, float coord[3],
+                             int which_orig_mesh, int orig_vert_index)
 {
 	DerivedMesh *dm = export_data->dm;
+	DerivedMesh *dm_orig;
 	MVert *mvert = export_data->mvert;
 
 	BLI_assert(vert_index >= 0 && vert_index <= dm->getNumVerts(dm));
 
-	mul_v3_m4v3(mvert[vert_index].co, export_data->obimat, coord);
+	dm_orig = which_dm(export_data, which_orig_mesh);
+	if (dm_orig) {
+		BLI_assert(orig_vert_index >= 0 && orig_vert_index < dm_orig->getNumVerts(dm_orig));
 
-	CustomData_copy_data(&export_data->dm_left->vertData, &dm->vertData, 0, 0, 1);
+#ifdef NDEBUG
+		/* Original and result vertex are to have the same exact coordinate. */
+		{
+			MVert *orig_mvert = dm_orig->getVertArray(dm_orig)[orig_vert_index];
+			BLI_assert(equals_v3_v3(orig_mvert->co, coord));
+		}
+#endif
+
+		CustomData_copy_data(&export_data->dm_left->vertData, &dm->vertData, orig_vert_index, vert_index, 1);
+	}
+
+	/* Set original index of the vertex. */
+	if (export_data->vert_origindex) {
+		if (which_orig_mesh == CARVE_MESH_LEFT) {
+			export_data->vert_origindex[vert_index] = orig_vert_index;
+		}
+		else {
+			export_data->vert_origindex[vert_index] = ORIGINDEX_NONE;
+		}
+	}
+
+	mul_v3_m4v3(mvert[vert_index].co, export_data->obimat, coord);
 }
 
 /* Set vertices which are adjucent to the edge specified by it's index. */

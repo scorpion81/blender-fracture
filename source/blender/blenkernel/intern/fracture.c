@@ -56,11 +56,11 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 	/*Parse voronoi raw data*/
 	int i = 0;
 	Shard* s = NULL, *p = BKE_shard_by_id(fm, parent_id);
-	//float obmat[4][4]; /* use unit matrix for now */
+	float obmat[4][4]; /* use unit matrix for now */
 
 	p->flag = 0;
 	p->flag |= SHARD_FRACTURED;
-	//unit_m4(obmat);
+	unit_m4(obmat);
 
 	// FOR NOW, delete OLD shard...
 	/*s = fm->shard_map[0];
@@ -92,7 +92,7 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 		}
 		else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL)
 		{
-			s = BKE_fracture_shard_bisect(p, s, obj->obmat, algorithm == MOD_FRACTURE_BISECT_FILL);
+			s = BKE_fracture_shard_bisect(p, s, obmat, algorithm == MOD_FRACTURE_BISECT_FILL);
 		}
 		if (s != NULL)
 		{

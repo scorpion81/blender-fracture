@@ -82,7 +82,9 @@ typedef void (*CarveExporter_InitGeomArrays) (struct ExportMeshData *export_data
                                               int num_polys, int num_loops);
 
 // Set coordinate of vertex with given index.
-typedef void (*CarveExporter_SetVert) (struct ExportMeshData *export_data, int vert_index, float coord[3]);
+typedef void (*CarveExporter_SetVert) (struct ExportMeshData *export_data,
+                                       int vert_index, float coord[3],
+                                       int which_orig_mesh, int orig_edge_index);
 
 // Set vertices which are adjucent to the edge specified by it's index.
 typedef void (*CarveExporter_SetEdge) (struct ExportMeshData *export_data,

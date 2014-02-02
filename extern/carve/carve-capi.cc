@@ -35,6 +35,7 @@ using carve::mesh::MeshSet;
 
 typedef std::pair<int, int> OrigIndex;
 typedef std::pair<MeshSet<3>::vertex_t *, MeshSet<3>::vertex_t *> VertexPair;
+typedef carve::interpolate::FaceVertexAttr<OrigIndex> OrigFaceVertMapping;
 typedef carve::interpolate::FaceAttr<OrigIndex> OrigFaceMapping;
 
 // Optimization trick, we store both original edge and loop indices as a pair
@@ -49,6 +50,9 @@ typedef struct CarveMeshDescr {
 
 	// The folloving mapping is only filled in for output mesh.
 
+	// Mapping from the face verts back to original vert index.
+	OrigFaceVertMapping orig_face_vert_mapping;
+
 	// Mapping from the face edges back to (original edge index, original loop index).
 	OrigFaceEdgeMapping orig_face_edge_mapping;
 
@@ -57,6 +61,36 @@ typedef struct CarveMeshDescr {
 } CarveMeshDescr;
 
 namespace {
+
+// Original index could not be interpolated, so we hack this around a bit.
+//
+// Weighting is only allowed to happen with weight of 1.0. In this case
+// result is the same exact as input weight. For weight != 1.0 we output
+// ORIGINDEX_NONE.
+//
+// Sum is a bit more tricky, but basically it is supposed to only output
+// original index of single non-ORIGINDEX_NONE item and if there're more
+// than one such items we output ORIGINDEX_NONE.
+OrigIndex operator*(double w, const OrigIndex &index)
+{
+	if (w == 1.0) {
+		return index;
+	}
+	return std::make_pair((int)CARVE_MESH_NONE, -1);
+}
+
+OrigIndex operator+=(OrigIndex &a, const OrigIndex &b)
+{
+	if (a.first != CARVE_MESH_NONE && b.first != CARVE_MESH_NONE) {
+		a.first = CARVE_MESH_NONE;
+		a.second = -1;
+	}
+	else if (b.first != CARVE_MESH_NONE) {
+		a.first = b.first;
+		a.second = b.second;
+	}
+	return a;
+}
 
 template <typename T1, typename T2>
 void edgeIndexMap_put(std::map<std::pair<T1, T1>, T2 > *edge_map,
@@ -94,6 +128,7 @@ inline int indexOf(const T *element, const std::vector<T> &vector_from)
 
 void initOrigIndexMeshFaceMapping(CarveMeshDescr *mesh,
                                   int which_mesh,
+                                  OrigFaceVertMapping *orig_face_vert_mapping,
                                   OrigFaceEdgeMapping *orig_face_edge_mapping,
                                   OrigFaceMapping *orig_face_attr)
 {
@@ -116,10 +151,16 @@ void initOrigIndexMeshFaceMapping(CarveMeshDescr *mesh,
 			const MeshSet<3>::edge_t &edge = *edge_iter;
 			int v1 = indexOf(edge.vert, poly->vertex_storage),
 			    v2 = indexOf(edge.next->vert, poly->vertex_storage);
-			int index = edgeIndexMap_get(mesh->edge_index_map, v1, v2);
+
+			// Mapping from carve face vertex back to original vertex index.
+			orig_face_vert_mapping->setAttribute(face,
+			                                     edge_iter.idx(),
+			                                     std::make_pair(which_mesh, v1));
+
+			int edge_index = edgeIndexMap_get(mesh->edge_index_map, v1, v2);
 
 			// Mapping from carve face edge back to original edge index.
-			OrigIndex orig_edge_index = std::make_pair(which_mesh, index);
+			OrigIndex orig_edge_index = std::make_pair(which_mesh, edge_index);
 
 			// Mapping from carve face edge back to original loop index.
 			OrigIndex orig_loop_index = std::make_pair(which_mesh, loop_index);
@@ -133,16 +174,19 @@ void initOrigIndexMeshFaceMapping(CarveMeshDescr *mesh,
 
 void initOrigIndexMapping(CarveMeshDescr *left_mesh,
                           CarveMeshDescr *right_mesh,
+                          OrigFaceVertMapping *orig_face_vert_mapping,
                           OrigFaceEdgeMapping *orig_face_edge_mapping,
                           OrigFaceMapping *orig_face_mapping)
 {
 	initOrigIndexMeshFaceMapping(left_mesh,
 	                             CARVE_MESH_LEFT,
+	                             orig_face_vert_mapping,
 	                             orig_face_edge_mapping,
 	                             orig_face_mapping);
 
 	initOrigIndexMeshFaceMapping(right_mesh,
 	                             CARVE_MESH_RIGHT,
+	                             orig_face_vert_mapping,
 	                             orig_face_edge_mapping,
 	                             orig_face_mapping);
 }
@@ -271,11 +315,13 @@ bool carve_performBooleanOperation(CarveMeshDescr *left_mesh,
 		// Initialize attributes for maping from boolean result mesh back to
 		// original geometry indices.
 		initOrigIndexMapping(left_mesh, right_mesh,
+		                     &output_descr->orig_face_vert_mapping,
 		                     &output_descr->orig_face_edge_mapping,
 		                     &output_descr->orig_face_mapping);
 
 		carve::csg::CSG csg;
 
+		output_descr->orig_face_vert_mapping.installHooks(csg);
 		output_descr->orig_face_edge_mapping.installHooks(csg);
 		output_descr->orig_face_mapping.installHooks(csg);
 
@@ -338,21 +384,12 @@ void carve_exportMesh(CarveMeshDescr *mesh_descr,
 	// Initialize arrays for geometry in exported mesh.
 	mesh_exporter->initGeomArrays(export_data, num_vertices, num_edges, num_loops, num_polys);
 
-	// Export all the vertices.
-	std::vector<MeshSet<3>::vertex_t>::iterator vertex_iter = poly->vertex_storage.begin();
-	for (int i = 0; vertex_iter != poly->vertex_storage.end(); ++i, ++vertex_iter) {
-		MeshSet<3>::vertex_t *vertex = &(*vertex_iter);
-		float coord[3];
-		coord[0] = vertex->v[0];
-		coord[1] = vertex->v[1];
-		coord[2] = vertex->v[2];
-		mesh_exporter->setVert(export_data, i, coord);
-	}
-
-	// Get mapping from edge denoted by vertex pair to original edge index.
+	// Get mapping from edge denoted by vertex pair to original edge index,
+	// also get mapping from face-vertex back to original vertex index.
 	//
 	// This is needed because internally Carve interpolates data for per-face
 	// edges rather then having some global edge storage.
+	std::map<MeshSet<3>::vertex_t*, OrigIndex> vert_origindex_map;
 	std::map<VertexPair, OrigIndex> edge_origindex_map;
 	for (MeshSet<3>::face_iter face_iter = poly->faceBegin();
 	     face_iter != poly->faceEnd();
@@ -363,16 +400,46 @@ void carve_exportMesh(CarveMeshDescr *mesh_descr,
 		     edge_iter != face->end();
 		     ++edge_iter)
 		{
+			MeshSet<3>::edge_t &edge = *edge_iter;
+
+			// TODO(sergey): Use pointers instead.
+			vert_origindex_map[edge.vert] =
+				mesh_descr->orig_face_vert_mapping.getAttribute(face,
+				                                                edge_iter.idx(),
+				                                                origindex_none);
+
 			const OrigIndex &orig_edge_index =
 				mesh_descr->orig_face_edge_mapping.getAttribute(face,
 				                                                edge_iter.idx(),
 				                                                origindex_pair_none).first;
-			MeshSet<3>::edge_t &edge = *edge_iter;
 			MeshSet<3>::vertex_t *v1 = edge.vert;
 			MeshSet<3>::vertex_t *v2 = edge.next->vert;
 
 			edgeIndexMap_put(&edge_origindex_map, v1, v2, orig_edge_index);
 		}
+	}
+
+	// Export all the vertices.
+	std::vector<MeshSet<3>::vertex_t>::iterator vertex_iter = poly->vertex_storage.begin();
+	for (int i = 0; vertex_iter != poly->vertex_storage.end(); ++i, ++vertex_iter) {
+		MeshSet<3>::vertex_t *vertex = &(*vertex_iter);
+
+		OrigIndex orig_vert_index;
+		std::map<MeshSet<3>::vertex_t*, OrigIndex>::iterator found =
+			vert_origindex_map.find(vertex);
+		if (found != vert_origindex_map.end()) {
+			orig_vert_index = found->second;
+		} else {
+			orig_vert_index = origindex_none;
+		}
+
+		float coord[3];
+		coord[0] = vertex->v[0];
+		coord[1] = vertex->v[1];
+		coord[2] = vertex->v[2];
+		mesh_exporter->setVert(export_data, i, coord,
+			                   orig_vert_index.first,
+			                   orig_vert_index.second);
 	}
 
 	// Export all the edges.
