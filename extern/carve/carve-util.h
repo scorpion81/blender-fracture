@@ -15,45 +15,29 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * The Original Code is Copyright (C) 2001-2002 by NaN Holding BV.
+ * The Original Code is Copyright (C) 2014 Blender Foundation.
  * All rights reserved.
  *
- * The Original Code is: all of this file.
- *
- * Contributor(s): none yet.
+ * Contributor(s): Blender Foundation,
+ *                 Sergey Sharybin
  *
  * ***** END GPL LICENSE BLOCK *****
  */
 
-/** \file bsp/intern/BSP_CSGException.h
- *  \ingroup bsp
- */
+#ifndef __CARVE_UTIL_H__
+#define __CARVE_UTIL_H__
 
+#include <carve/csg.hpp>
+#include <carve/geom3d.hpp>
+#include <carve/mesh.hpp>
 
-#ifndef __BSP_CSGEXCEPTION_H__
-#define __BSP_CSGEXCEPTION_H__
+void carve_getRescaleMinMax(const carve::mesh::MeshSet<3> *left,
+                            const carve::mesh::MeshSet<3> *right,
+                            carve::geom3d::Vector *min,
+                            carve::geom3d::Vector *max);
 
-// stick in more error types as you think of them
+void carve_unionIntersections(carve::csg::CSG *csg,
+                              carve::mesh::MeshSet<3> **left_r,
+                              carve::mesh::MeshSet<3> **right_r);
 
-enum BSP_ExceptionType{
-	e_split_error,
-	e_mesh_error,
-	e_mesh_input_error,
-	e_param_error,
-	e_tree_build_error
-};
-
-
-class BSP_CSGException {
-public :
-	BSP_ExceptionType m_e_type;
-
-	BSP_CSGException (
-		BSP_ExceptionType type
-	) : m_e_type (type)
-	{
-	}
-};
-
-#endif
-
+#endif  // __CARVE_UTIL_H__
