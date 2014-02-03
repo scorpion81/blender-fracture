@@ -148,7 +148,7 @@ static void rna_tracking_active_track_set(PointerRNA *ptr, PointerRNA value)
 	ListBase *tracksbase = BKE_tracking_get_active_tracks(&clip->tracking);
 	int index = BLI_findindex(tracksbase, track);
 
-	if (index >= 0)
+	if (index != -1)
 		clip->tracking.act_track = track;
 	else
 		clip->tracking.act_track = NULL;
@@ -169,7 +169,7 @@ static void rna_tracking_active_plane_track_set(PointerRNA *ptr, PointerRNA valu
 	ListBase *plane_tracks_base = BKE_tracking_get_active_plane_tracks(&clip->tracking);
 	int index = BLI_findindex(plane_tracks_base, plane_track);
 
-	if (index >= 0)
+	if (index != -1)
 		clip->tracking.act_plane_track = plane_track;
 	else
 		clip->tracking.act_plane_track = NULL;
@@ -187,11 +187,11 @@ static void rna_trackingTrack_name_set(PointerRNA *ptr, const char *value)
 	/* TODO: it's a bit difficult to find list track came from knowing just
 	 *       movie clip ID and MovieTracking structure, so keep this naive
 	 *       search for a while */
-	if (BLI_findindex(tracksbase, track) < 0) {
+	if (BLI_findindex(tracksbase, track) == -1) {
 		MovieTrackingObject *object = tracking->objects.first;
 
 		while (object) {
-			if (BLI_findindex(&object->tracks, track)) {
+			if (BLI_findindex(&object->tracks, track) != -1) {
 				tracksbase = &object->tracks;
 				break;
 			}
@@ -285,11 +285,11 @@ static void rna_trackingPlaneTrack_name_set(PointerRNA *ptr, const char *value)
 	/* TODO: it's a bit difficult to find list track came from knowing just
 	 *       movie clip ID and MovieTracking structure, so keep this naive
 	 *       search for a while */
-	if (BLI_findindex(plane_tracks_base, plane_track) < 0) {
+	if (BLI_findindex(plane_tracks_base, plane_track) == -1) {
 		MovieTrackingObject *object = tracking->objects.first;
 
 		while (object) {
-			if (BLI_findindex(&object->plane_tracks, plane_track)) {
+			if (BLI_findindex(&object->plane_tracks, plane_track) != -1) {
 				plane_tracks_base = &object->plane_tracks;
 				break;
 			}
@@ -441,7 +441,7 @@ static void rna_tracking_active_object_set(PointerRNA *ptr, PointerRNA value)
 	MovieTrackingObject *object = (MovieTrackingObject *)value.data;
 	int index = BLI_findindex(&clip->tracking.objects, object);
 
-	if (index >= 0) clip->tracking.objectnr = index;
+	if (index != -1) clip->tracking.objectnr = index;
 	else clip->tracking.objectnr = 0;
 }
 
@@ -1662,7 +1662,7 @@ static void rna_def_trackingTracks(BlenderRNA *brna)
 	func = RNA_def_function(srna, "new", "rna_trackingTracks_new");
 	RNA_def_function_flag(func, FUNC_USE_SELF_ID);
 	RNA_def_function_ui_description(func, "Create new motion track in this movie clip");
-	RNA_def_string(func, "name", "", 0, "", "Name of new track");
+	RNA_def_string(func, "name", NULL, 0, "", "Name of new track");
 	RNA_def_int(func, "frame", 1, MINFRAME, MAXFRAME, "Frame", "Frame number to add track on", MINFRAME, MAXFRAME);
 	parm = RNA_def_pointer(func, "track", "MovieTrackingTrack", "", "Newly created track");
 	RNA_def_function_return(func, parm);
@@ -1709,7 +1709,7 @@ static void rna_def_trackingObjectTracks(BlenderRNA *brna)
 	func = RNA_def_function(srna, "new", "rna_trackingObject_tracks_new");
 	RNA_def_function_flag(func, FUNC_USE_SELF_ID);
 	RNA_def_function_ui_description(func, "create new motion track in this movie clip");
-	RNA_def_string(func, "name", "", 0, "", "Name of new track");
+	RNA_def_string(func, "name", NULL, 0, "", "Name of new track");
 	RNA_def_int(func, "frame", 1, MINFRAME, MAXFRAME, "Frame", "Frame number to add tracks on", MINFRAME, MAXFRAME);
 	parm = RNA_def_pointer(func, "track", "MovieTrackingTrack", "", "Newly created track");
 	RNA_def_function_return(func, parm);
@@ -1824,7 +1824,7 @@ static void rna_def_trackingObjects(BlenderRNA *brna, PropertyRNA *cprop)
 
 	func = RNA_def_function(srna, "new", "rna_trackingObject_new");
 	RNA_def_function_ui_description(func, "Add tracking object to this movie clip");
-	parm = RNA_def_string(func, "name", "", 0, "", "Name of new object");
+	parm = RNA_def_string(func, "name", NULL, 0, "", "Name of new object");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 	parm = RNA_def_pointer(func, "object", "MovieTrackingObject", "", "New motion tracking object");
 	RNA_def_function_return(func, parm);

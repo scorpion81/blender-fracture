@@ -838,13 +838,17 @@ void RNA_def_struct_sdna(StructRNA *srna, const char *structname)
 
 	ds = rna_find_def_struct(srna);
 
-	if (!DNA_struct_find_nr(DefRNA.sdna, structname)) {
+	/* there are far too many structs which initialize without valid DNA struct names,
+	 * this can't be checked without adding an option to disable (tested this and it means changes all over - Campbell) */
+#if 0
+	if (DNA_struct_find_nr(DefRNA.sdna, structname) == -1) {
 		if (!DefRNA.silent) {
 			fprintf(stderr, "%s: %s not found.\n", __func__, structname);
 			DefRNA.error = 1;
 		}
 		return;
 	}
+#endif
 
 	ds->dnaname = structname;
 }
@@ -865,7 +869,7 @@ void RNA_def_struct_sdna_from(StructRNA *srna, const char *structname, const cha
 		return;
 	}
 
-	if (!DNA_struct_find_nr(DefRNA.sdna, structname)) {
+	if (DNA_struct_find_nr(DefRNA.sdna, structname) == -1) {
 		if (!DefRNA.silent) {
 			fprintf(stderr, "%s: %s not found.\n", __func__, structname);
 			DefRNA.error = 1;
@@ -1301,7 +1305,7 @@ void RNA_def_property_ui_text(PropertyRNA *prop, const char *name, const char *d
 	prop->description = description;
 }
 
-void RNA_def_property_ui_icon(PropertyRNA *prop, int icon, int consecutive)
+void RNA_def_property_ui_icon(PropertyRNA *prop, int icon, bool consecutive)
 {
 	prop->icon = icon;
 	if (consecutive)
@@ -1655,6 +1659,20 @@ void RNA_def_property_string_default(PropertyRNA *prop, const char *value)
 		case PROP_STRING:
 		{
 			StringPropertyRNA *sprop = (StringPropertyRNA *)prop;
+
+			if (value == NULL) {
+				fprintf(stderr, "%s: \"%s.%s\", NULL string passed (dont call in this case).\n", __func__, srna->identifier, prop->identifier);
+				DefRNA.error = 1;
+				break;
+			}
+
+			if (!value[0]) {
+				fprintf(stderr, "%s: \"%s.%s\", empty string passed (dont call in this case).\n", __func__, srna->identifier, prop->identifier);
+				DefRNA.error = 1;
+				// BLI_assert(0);
+				break;
+			}
+
 			sprop->defaultvalue = value;
 			break;
 		}
@@ -2635,7 +2653,9 @@ PropertyRNA *RNA_def_string(StructOrFunctionRNA *cont_, const char *identifier, 
 {
 	ContainerRNA *cont = cont_;
 	PropertyRNA *prop;
-	
+
+	BLI_assert(default_value == NULL || default_value[0]);
+
 	prop = RNA_def_property(cont, identifier, PROP_STRING, PROP_NONE);
 	if (maxlen != 0) RNA_def_property_string_maxlength(prop, maxlen);
 	if (default_value) RNA_def_property_string_default(prop, default_value);
@@ -2649,7 +2669,9 @@ PropertyRNA *RNA_def_string_file_path(StructOrFunctionRNA *cont_, const char *id
 {
 	ContainerRNA *cont = cont_;
 	PropertyRNA *prop;
-	
+
+	BLI_assert(default_value == NULL || default_value[0]);
+
 	prop = RNA_def_property(cont, identifier, PROP_STRING, PROP_FILEPATH);
 	if (maxlen != 0) RNA_def_property_string_maxlength(prop, maxlen);
 	if (default_value) RNA_def_property_string_default(prop, default_value);
@@ -2663,7 +2685,9 @@ PropertyRNA *RNA_def_string_dir_path(StructOrFunctionRNA *cont_, const char *ide
 {
 	ContainerRNA *cont = cont_;
 	PropertyRNA *prop;
-	
+
+	BLI_assert(default_value == NULL || default_value[0]);
+
 	prop = RNA_def_property(cont, identifier, PROP_STRING, PROP_DIRPATH);
 	if (maxlen != 0) RNA_def_property_string_maxlength(prop, maxlen);
 	if (default_value) RNA_def_property_string_default(prop, default_value);
@@ -2677,7 +2701,9 @@ PropertyRNA *RNA_def_string_file_name(StructOrFunctionRNA *cont_, const char *id
 {
 	ContainerRNA *cont = cont_;
 	PropertyRNA *prop;
-	
+
+	BLI_assert(default_value == NULL || default_value[0]);
+
 	prop = RNA_def_property(cont, identifier, PROP_STRING, PROP_FILENAME);
 	if (maxlen != 0) RNA_def_property_string_maxlength(prop, maxlen);
 	if (default_value) RNA_def_property_string_default(prop, default_value);

@@ -304,8 +304,9 @@ char *rna_TextureSlot_path(PointerRNA *ptr)
 			if (prop) {
 				int index = RNA_property_collection_lookup_index(&id_ptr, prop, ptr);
 
-				if (index >= 0)
+				if (index != -1) {
 					return BLI_sprintfN("texture_slots[%d]", index);
+				}
 			}
 		}
 	}
@@ -2009,6 +2010,11 @@ static void rna_def_texture(BlenderRNA *brna)
 	RNA_def_property_enum_items(prop, texture_type_items);
 	RNA_def_property_enum_funcs(prop, NULL, "rna_Texture_type_set", NULL);
 	RNA_def_property_ui_text(prop, "Type", "");
+	RNA_def_property_update(prop, 0, "rna_Texture_update");
+
+	prop = RNA_def_property(srna, "use_clamp", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_negative_sdna(prop, NULL, "flag", TEX_NO_CLAMP);
+	RNA_def_property_ui_text(prop, "Clamp", "Set negative texture RGB and intensity values to zero, for some uses like displacement this option can be disabled to get the full range");
 	RNA_def_property_update(prop, 0, "rna_Texture_update");
 	
 	prop = RNA_def_property(srna, "use_color_ramp", PROP_BOOLEAN, PROP_NONE);

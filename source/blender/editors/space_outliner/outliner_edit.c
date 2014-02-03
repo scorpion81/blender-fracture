@@ -149,7 +149,7 @@ TreeElement *outliner_dropzone_find(const SpaceOops *soops, const float fmval[2]
 
 /* Toggle Open/Closed ------------------------------------------- */
 
-static int do_outliner_item_openclose(bContext *C, SpaceOops *soops, TreeElement *te, int all, const float mval[2])
+static int do_outliner_item_openclose(bContext *C, SpaceOops *soops, TreeElement *te, const bool all, const float mval[2])
 {
 	
 	if (mval[1] > te->ys && mval[1] < te->ys + UI_UNIT_Y) {
@@ -183,7 +183,7 @@ static int outliner_item_openclose(bContext *C, wmOperator *op, const wmEvent *e
 	SpaceOops *soops = CTX_wm_space_outliner(C);
 	TreeElement *te;
 	float fmval[2];
-	int all = RNA_boolean_get(op->ptr, "all");
+	const bool all = RNA_boolean_get(op->ptr, "all");
 	
 	UI_view2d_region_to_view(&ar->v2d, event->mval[0], event->mval[1], fmval, fmval + 1);
 	
@@ -307,7 +307,7 @@ void OUTLINER_OT_item_rename(wmOperatorType *ot)
 
 /* Apply Settings ------------------------------- */
 
-static int outliner_count_levels(SpaceOops *soops, ListBase *lb, int curlevel)
+static int outliner_count_levels(SpaceOops *soops, ListBase *lb, const int curlevel)
 {
 	TreeElement *te;
 	int level = curlevel, lev;
@@ -320,7 +320,7 @@ static int outliner_count_levels(SpaceOops *soops, ListBase *lb, int curlevel)
 	return level;
 }
 
-int outliner_has_one_flag(SpaceOops *soops, ListBase *lb, short flag, short curlevel)
+int outliner_has_one_flag(SpaceOops *soops, ListBase *lb, short flag, const int curlevel)
 {
 	TreeElement *te;
 	TreeStoreElem *tselem;
@@ -852,7 +852,7 @@ static int outliner_one_level_exec(bContext *C, wmOperator *op)
 {
 	SpaceOops *soops = CTX_wm_space_outliner(C);
 	ARegion *ar = CTX_wm_region(C);
-	int add = RNA_boolean_get(op->ptr, "open");
+	const bool add = RNA_boolean_get(op->ptr, "open");
 	int level;
 	
 	level = outliner_has_one_flag(soops, &soops->tree, TSE_CLOSED, 1);
@@ -1533,85 +1533,77 @@ static int parent_drop_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 		}
 		else {
 			/* Menu creation */
+			wmOperatorType *ot = WM_operatortype_find("OUTLINER_OT_parent_drop", false);
 			uiPopupMenu *pup = uiPupMenuBegin(C, IFACE_("Set Parent To"), ICON_NONE);
 			uiLayout *layout = uiPupMenuLayout(pup);
 			
 			PointerRNA ptr;
 			
-			WM_operator_properties_create(&ptr, "OUTLINER_OT_parent_drop");
+			WM_operator_properties_create_ptr(&ptr, ot);
 			RNA_string_set(&ptr, "parent", parname);
 			RNA_string_set(&ptr, "child", childname);
 			RNA_enum_set(&ptr, "type", PAR_OBJECT);
 			/* Cannot use uiItemEnumO()... have multiple properties to set. */
-			uiItemFullO(layout, "OUTLINER_OT_parent_drop", IFACE_("Object"),
-			            0, ptr.data, WM_OP_EXEC_DEFAULT, 0);
+			uiItemFullO_ptr(layout, ot, IFACE_("Object"), 0, ptr.data, WM_OP_EXEC_DEFAULT, 0);
 			
 			/* par becomes parent, make the associated menus */
 			if (par->type == OB_ARMATURE) {
-				WM_operator_properties_create(&ptr, "OUTLINER_OT_parent_drop");
+				WM_operator_properties_create_ptr(&ptr, ot);
 				RNA_string_set(&ptr, "parent", parname);
 				RNA_string_set(&ptr, "child", childname);
 				RNA_enum_set(&ptr, "type", PAR_ARMATURE);
-				uiItemFullO(layout, "OUTLINER_OT_parent_drop", IFACE_("Armature Deform"),
-				            0, ptr.data, WM_OP_EXEC_DEFAULT, 0);
+				uiItemFullO_ptr(layout, ot, IFACE_("Armature Deform"), 0, ptr.data, WM_OP_EXEC_DEFAULT, 0);
 				
-				WM_operator_properties_create(&ptr, "OUTLINER_OT_parent_drop");
+				WM_operator_properties_create_ptr(&ptr, ot);
 				RNA_string_set(&ptr, "parent", parname);
 				RNA_string_set(&ptr, "child", childname);
 				RNA_enum_set(&ptr, "type", PAR_ARMATURE_NAME);
-				uiItemFullO(layout, "OUTLINER_OT_parent_drop", IFACE_("   With Empty Groups"),
-				            0, ptr.data, WM_OP_EXEC_DEFAULT, 0);
+				uiItemFullO_ptr(layout, ot, IFACE_("   With Empty Groups"), 0, ptr.data, WM_OP_EXEC_DEFAULT, 0);
 				
-				WM_operator_properties_create(&ptr, "OUTLINER_OT_parent_drop");
+				WM_operator_properties_create_ptr(&ptr, ot);
 				RNA_string_set(&ptr, "parent", parname);
 				RNA_string_set(&ptr, "child", childname);
 				RNA_enum_set(&ptr, "type", PAR_ARMATURE_ENVELOPE);
-				uiItemFullO(layout, "OUTLINER_OT_parent_drop", IFACE_("   With Envelope Weights"),
-				            0, ptr.data, WM_OP_EXEC_DEFAULT, 0);
+				uiItemFullO_ptr(layout, ot, IFACE_("   With Envelope Weights"), 0, ptr.data, WM_OP_EXEC_DEFAULT, 0);
 				
-				WM_operator_properties_create(&ptr, "OUTLINER_OT_parent_drop");
+				WM_operator_properties_create_ptr(&ptr, ot);
 				RNA_string_set(&ptr, "parent", parname);
 				RNA_string_set(&ptr, "child", childname);
 				RNA_enum_set(&ptr, "type", PAR_ARMATURE_AUTO);
-				uiItemFullO(layout, "OUTLINER_OT_parent_drop", IFACE_("   With Automatic Weights"),
-				            0, ptr.data, WM_OP_EXEC_DEFAULT, 0);
+				uiItemFullO_ptr(layout, ot, IFACE_("   With Automatic Weights"), 0, ptr.data, WM_OP_EXEC_DEFAULT, 0);
 				
-				WM_operator_properties_create(&ptr, "OUTLINER_OT_parent_drop");
+				WM_operator_properties_create_ptr(&ptr, ot);
 				RNA_string_set(&ptr, "parent", parname);
 				RNA_string_set(&ptr, "child", childname);
 				RNA_enum_set(&ptr, "type", PAR_BONE);
-				uiItemFullO(layout, "OUTLINER_OT_parent_drop", IFACE_("Bone"),
+				uiItemFullO_ptr(layout, ot, IFACE_("Bone"),
 				            0, ptr.data, WM_OP_EXEC_DEFAULT, 0);
 			}
 			else if (par->type == OB_CURVE) {
-				WM_operator_properties_create(&ptr, "OUTLINER_OT_parent_drop");
+				WM_operator_properties_create_ptr(&ptr, ot);
 				RNA_string_set(&ptr, "parent", parname);
 				RNA_string_set(&ptr, "child", childname);
 				RNA_enum_set(&ptr, "type", PAR_CURVE);
-				uiItemFullO(layout, "OUTLINER_OT_parent_drop", IFACE_("Curve Deform"),
-				            0, ptr.data, WM_OP_EXEC_DEFAULT, 0);
+				uiItemFullO_ptr(layout, ot, IFACE_("Curve Deform"), 0, ptr.data, WM_OP_EXEC_DEFAULT, 0);
 				
-				WM_operator_properties_create(&ptr, "OUTLINER_OT_parent_drop");
+				WM_operator_properties_create_ptr(&ptr, ot);
 				RNA_string_set(&ptr, "parent", parname);
 				RNA_string_set(&ptr, "child", childname);
 				RNA_enum_set(&ptr, "type", PAR_FOLLOW);
-				uiItemFullO(layout, "OUTLINER_OT_parent_drop", IFACE_("Follow Path"),
-				            0, ptr.data, WM_OP_EXEC_DEFAULT, 0);
+				uiItemFullO_ptr(layout, ot, IFACE_("Follow Path"), 0, ptr.data, WM_OP_EXEC_DEFAULT, 0);
 				
-				WM_operator_properties_create(&ptr, "OUTLINER_OT_parent_drop");
+				WM_operator_properties_create_ptr(&ptr, ot);
 				RNA_string_set(&ptr, "parent", parname);
 				RNA_string_set(&ptr, "child", childname);
 				RNA_enum_set(&ptr, "type", PAR_PATH_CONST);
-				uiItemFullO(layout, "OUTLINER_OT_parent_drop", IFACE_("Path Constraint"),
-				            0, ptr.data, WM_OP_EXEC_DEFAULT, 0);
+				uiItemFullO_ptr(layout, ot, IFACE_("Path Constraint"), 0, ptr.data, WM_OP_EXEC_DEFAULT, 0);
 			}
 			else if (par->type == OB_LATTICE) {
-				WM_operator_properties_create(&ptr, "OUTLINER_OT_parent_drop");
+				WM_operator_properties_create_ptr(&ptr, ot);
 				RNA_string_set(&ptr, "parent", parname);
 				RNA_string_set(&ptr, "child", childname);
 				RNA_enum_set(&ptr, "type", PAR_LATTICE);
-				uiItemFullO(layout, "OUTLINER_OT_parent_drop", IFACE_("Lattice Deform"),
-				            0, ptr.data, WM_OP_EXEC_DEFAULT, 0);
+				uiItemFullO_ptr(layout, ot, IFACE_("Lattice Deform"), 0, ptr.data, WM_OP_EXEC_DEFAULT, 0);
 			}
 			
 			uiPupMenuEnd(C, pup);

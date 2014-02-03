@@ -55,7 +55,7 @@
 #include "mask_intern.h"  /* own include */
 
 /* 'check' select */
-int ED_mask_spline_select_check(MaskSpline *spline)
+bool ED_mask_spline_select_check(MaskSpline *spline)
 {
 	int i;
 
@@ -69,7 +69,7 @@ int ED_mask_spline_select_check(MaskSpline *spline)
 	return FALSE;
 }
 
-int ED_mask_layer_select_check(MaskLayer *masklay)
+bool ED_mask_layer_select_check(MaskLayer *masklay)
 {
 	MaskSpline *spline;
 
@@ -86,7 +86,7 @@ int ED_mask_layer_select_check(MaskLayer *masklay)
 	return FALSE;
 }
 
-int ED_mask_select_check(Mask *mask)
+bool ED_mask_select_check(Mask *mask)
 {
 	MaskLayer *masklay;
 
@@ -256,7 +256,7 @@ static int select_exec(bContext *C, wmOperator *op)
 	bool deselect = RNA_boolean_get(op->ptr, "deselect");
 	bool toggle = RNA_boolean_get(op->ptr, "toggle");
 
-	int is_handle = 0;
+	bool is_handle = 0;
 	const float threshold = 19;
 
 	RNA_float_get_array(op->ptr, "location", co);
@@ -703,7 +703,7 @@ static int mask_select_linked_pick_invoke(bContext *C, wmOperator *op, const wmE
 	float co[2];
 	int do_select = !RNA_boolean_get(op->ptr, "deselect");
 
-	int is_handle = 0;
+	bool is_handle = false;
 	const float threshold = 19;
 	bool changed = false;
 

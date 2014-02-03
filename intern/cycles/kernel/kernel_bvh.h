@@ -640,8 +640,7 @@ ccl_device_inline bool bvh_curve_intersect(KernelGlobals *kg, Intersection *isec
 		if(t > 0.0f && t < isect->t && z >= 0 && z <= l) {
 
 			if (flags & CURVE_KN_ENCLOSEFILTER) {
-
-				float enc_ratio = kernel_data.curve.encasing_ratio;
+				float enc_ratio = 1.01f;
 				if((dot(P - p1, tg) > -r1 * enc_ratio) && (dot(P - p2, tg) < r2 * enc_ratio)) {
 					float a2 = 1.0f - (dirz*dirz*(1 + gd*gd*enc_ratio*enc_ratio));
 					float c2 = dot(dif,dif) - difz * difz * (1 + gd*gd*enc_ratio*enc_ratio) - r1*r1*enc_ratio*enc_ratio - 2*r1*difz*gd*enc_ratio;
@@ -1044,10 +1043,10 @@ ccl_device_inline float3 curvetangent(float t, float3 p0, float3 p1, float3 p2, 
 	float fc = 0.71f;
 	float data[4];
 	float t2 = t * t;
-    data[0] = -3.0f * fc          * t2  + 4.0f * fc * t                  - fc;
-    data[1] =  3.0f * (2.0f - fc) * t2  + 2.0f * (fc - 3.0f) * t;
-    data[2] =  3.0f * (fc - 2.0f) * t2  + 2.0f * (3.0f - 2.0f * fc) * t  + fc;
-    data[3] =  3.0f * fc          * t2  - 2.0f * fc * t;
+	data[0] = -3.0f * fc          * t2  + 4.0f * fc * t                  - fc;
+	data[1] =  3.0f * (2.0f - fc) * t2  + 2.0f * (fc - 3.0f) * t;
+	data[2] =  3.0f * (fc - 2.0f) * t2  + 2.0f * (3.0f - 2.0f * fc) * t  + fc;
+	data[3] =  3.0f * fc          * t2  - 2.0f * fc * t;
 	return data[0] * p0 + data[1] * p1 + data[2] * p2 + data[3] * p3;
 }
 

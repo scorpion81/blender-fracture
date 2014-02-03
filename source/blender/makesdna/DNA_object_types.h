@@ -285,6 +285,7 @@ typedef struct Object {
 	struct RigidBodyCon *rigidbody_constraint;	/* settings for Bullet constraint */
 
 	float ima_ofs[2];		/* offset for image empties */
+	ImageUser *iuser;		/* must be non-null when oject is an empty image */
 
 	ListBase lodlevels;		/* contains data for levels of detail */
 	LodLevel *currentlod;
@@ -316,7 +317,7 @@ typedef struct DupliObject {
 	struct DupliObject *next, *prev;
 	struct Object *ob;
 	unsigned int origlay, pad;
-	float mat[4][4], omat[4][4];
+	float mat[4][4];
 	float orco[3], uv[2];
 
 	short type; /* from Object.transflag */

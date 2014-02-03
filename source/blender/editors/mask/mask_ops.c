@@ -59,8 +59,8 @@
 
 /******************** utility functions *********************/
 
-MaskSplinePoint *ED_mask_point_find_nearest(const bContext *C, Mask *mask, float normal_co[2], int threshold,
-                                            MaskLayer **masklay_r, MaskSpline **spline_r, int *is_handle_r,
+MaskSplinePoint *ED_mask_point_find_nearest(const bContext *C, Mask *mask, const float normal_co[2], const float threshold,
+                                            MaskLayer **masklay_r, MaskSpline **spline_r, bool *is_handle_r,
                                             float *score)
 {
 	ScrArea *sa = CTX_wm_area(C);
@@ -71,7 +71,8 @@ MaskSplinePoint *ED_mask_point_find_nearest(const bContext *C, Mask *mask, float
 	MaskSpline *point_spline = NULL;
 	MaskSplinePoint *point = NULL;
 	float co[2];
-	float len = FLT_MAX, scalex, scaley;
+	const float threshold_sq = threshold * threshold;
+	float len_sq = FLT_MAX, scalex, scaley;
 	int is_handle = FALSE, width, height;
 
 	ED_mask_get_size(sa, &width, &height);
@@ -95,7 +96,7 @@ MaskSplinePoint *ED_mask_point_find_nearest(const bContext *C, Mask *mask, float
 			for (i = 0; i < spline->tot_point; i++) {
 				MaskSplinePoint *cur_point = &spline->points[i];
 				MaskSplinePoint *cur_point_deform = &points_array[i];
-				float cur_len, vec[2], handle[2];
+				float cur_len_sq, vec[2], handle[2];
 
 				vec[0] = cur_point_deform->bezt.vec[1][0] * scalex;
 				vec[1] = cur_point_deform->bezt.vec[1][1] * scaley;
@@ -105,31 +106,31 @@ MaskSplinePoint *ED_mask_point_find_nearest(const bContext *C, Mask *mask, float
 					handle[0] *= scalex;
 					handle[1] *= scaley;
 
-					cur_len = len_v2v2(co, handle);
+					cur_len_sq = len_squared_v2v2(co, handle);
 
-					if (cur_len < len) {
+					if (cur_len_sq < len_sq) {
 						point_masklay = masklay;
 						point_spline = spline;
 						point = cur_point;
-						len = cur_len;
+						len_sq = cur_len_sq;
 						is_handle = TRUE;
 					}
 				}
 
-				cur_len = len_v2v2(co, vec);
+				cur_len_sq = len_squared_v2v2(co, vec);
 
-				if (cur_len < len) {
+				if (cur_len_sq < len_sq) {
 					point_spline = spline;
 					point_masklay = masklay;
 					point = cur_point;
-					len = cur_len;
+					len_sq = cur_len_sq;
 					is_handle = FALSE;
 				}
 			}
 		}
 	}
 
-	if (len < threshold) {
+	if (len_sq < threshold_sq) {
 		if (masklay_r)
 			*masklay_r = point_masklay;
 
@@ -140,7 +141,7 @@ MaskSplinePoint *ED_mask_point_find_nearest(const bContext *C, Mask *mask, float
 			*is_handle_r = is_handle;
 
 		if (score)
-			*score = len;
+			*score = sqrtf(len_sq);
 
 		return point;
 	}
@@ -157,9 +158,9 @@ MaskSplinePoint *ED_mask_point_find_nearest(const bContext *C, Mask *mask, float
 	return NULL;
 }
 
-int ED_mask_feather_find_nearest(const bContext *C, Mask *mask, float normal_co[2], int threshold,
-                                 MaskLayer **masklay_r, MaskSpline **spline_r, MaskSplinePoint **point_r,
-                                 MaskSplinePointUW **uw_r, float *score)
+bool ED_mask_feather_find_nearest(const bContext *C, Mask *mask, const float normal_co[2], const float threshold,
+                                  MaskLayer **masklay_r, MaskSpline **spline_r, MaskSplinePoint **point_r,
+                                  MaskSplinePointUW **uw_r, float *score)
 {
 	ScrArea *sa = CTX_wm_area(C);
 	ARegion *ar = CTX_wm_region(C);
@@ -168,6 +169,7 @@ int ED_mask_feather_find_nearest(const bContext *C, Mask *mask, float normal_co[
 	MaskSpline *point_spline = NULL;
 	MaskSplinePoint *point = NULL;
 	MaskSplinePointUW *uw = NULL;
+	const float threshold_sq = threshold * threshold;
 	float len = FLT_MAX, co[2];
 	float scalex, scaley;
 	int width, height;
@@ -198,14 +200,14 @@ int ED_mask_feather_find_nearest(const bContext *C, Mask *mask, float normal_co[
 				MaskSplinePoint *cur_point = &spline->points[i];
 
 				for (j = 0; j <= cur_point->tot_uw; j++) {
-					float cur_len, vec[2];
+					float cur_len_sq, vec[2];
 
 					vec[0] = (*fp)[0] * scalex;
 					vec[1] = (*fp)[1] * scaley;
 
-					cur_len = len_v2v2(vec, co);
+					cur_len_sq = len_squared_v2v2(vec, co);
 
-					if (point == NULL || cur_len < len) {
+					if (point == NULL || cur_len_sq < len) {
 						if (j == 0)
 							uw = NULL;
 						else
@@ -214,7 +216,7 @@ int ED_mask_feather_find_nearest(const bContext *C, Mask *mask, float normal_co[
 						point_masklay = masklay;
 						point_spline = spline;
 						point = cur_point;
-						len = cur_len;
+						len = cur_len_sq;
 					}
 
 					fp++;
@@ -225,7 +227,7 @@ int ED_mask_feather_find_nearest(const bContext *C, Mask *mask, float normal_co[
 		}
 	}
 
-	if (len < threshold) {
+	if (len < threshold_sq) {
 		if (masklay_r)
 			*masklay_r = point_masklay;
 
@@ -239,7 +241,7 @@ int ED_mask_feather_find_nearest(const bContext *C, Mask *mask, float normal_co[
 			*uw_r = uw;
 
 		if (score)
-			*score = len;
+			*score = sqrtf(len);
 
 		return TRUE;
 	}
@@ -338,7 +340,7 @@ void MASK_OT_new(wmOperatorType *ot)
 	ot->poll = ED_operator_mask;
 
 	/* properties */
-	RNA_def_string(ot->srna, "name", "", MAX_ID_NAME - 2, "Name", "Name of new mask");
+	RNA_def_string(ot->srna, "name", NULL, MAX_ID_NAME - 2, "Name", "Name of new mask");
 }
 
 /******************** create new masklay *********************/
@@ -373,7 +375,7 @@ void MASK_OT_layer_new(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	/* properties */
-	RNA_def_string(ot->srna, "name", "", MAX_ID_NAME - 2, "Name", "Name of new mask layer");
+	RNA_def_string(ot->srna, "name", NULL, MAX_ID_NAME - 2, "Name", "Name of new mask layer");
 }
 
 /******************** remove mask layer *********************/
@@ -469,8 +471,9 @@ static void *slide_point_customdata(bContext *C, wmOperator *op, const wmEvent *
 	MaskSpline *spline, *cv_spline, *feather_spline;
 	MaskSplinePoint *point, *cv_point, *feather_point;
 	MaskSplinePointUW *uw = NULL;
-	int is_handle = FALSE, width, height, action = SLIDE_ACTION_NONE;
-	int slide_feather = RNA_boolean_get(op->ptr, "slide_feather");
+	int width, height, action = SLIDE_ACTION_NONE;
+	bool is_handle = false;
+	const bool slide_feather = RNA_boolean_get(op->ptr, "slide_feather");
 	float co[2], cv_score, feather_score;
 	const float threshold = 19;
 
@@ -1595,6 +1598,75 @@ void MASK_OT_duplicate(wmOperatorType *ot)
 	/* api callbacks */
 	ot->exec = mask_duplicate_exec;
 	ot->poll = ED_maskedit_mask_poll;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+}
+
+/********************** copy splines to clipboard operator *********************/
+
+static int copy_splines_exec(bContext *C, wmOperator *UNUSED(op))
+{
+	Mask *mask = CTX_data_edit_mask(C);
+	MaskLayer *mask_layer = BKE_mask_layer_active(mask);
+
+	BKE_mask_clipboard_copy_from_layer(mask_layer);
+
+	return OPERATOR_FINISHED;
+}
+
+void MASK_OT_copy_splines(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Copy Splines";
+	ot->description = "Copy selected splines to clipboard";
+	ot->idname = "MASK_OT_copy_splines";
+
+	/* api callbacks */
+	ot->exec = copy_splines_exec;
+	ot->poll = ED_maskedit_mask_poll;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER;
+}
+
+/********************** paste tracks from clipboard operator *********************/
+
+static int paste_splines_poll(bContext *C)
+{
+	if (ED_maskedit_mask_poll(C)) {
+		return BKE_mask_clipboard_is_empty() == false;
+	}
+
+	return 0;
+}
+
+static int paste_splines_exec(bContext *C, wmOperator *UNUSED(op))
+{
+	Scene *scene = CTX_data_scene(C);
+	Mask *mask = CTX_data_edit_mask(C);
+	MaskLayer *mask_layer = BKE_mask_layer_active(mask);
+
+	BKE_mask_clipboard_paste_to_layer(CTX_data_main(C), mask_layer);
+
+	/* TODO: only update edited splines */
+	BKE_mask_update_display(mask, CFRA);
+
+	WM_event_add_notifier(C, NC_MASK | NA_EDITED, mask);
+
+	return OPERATOR_FINISHED;
+}
+
+void MASK_OT_paste_splines(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Paste Splines";
+	ot->description = "Paste splines from clipboard";
+	ot->idname = "MASK_OT_paste_splines";
+
+	/* api callbacks */
+	ot->exec = paste_splines_exec;
+	ot->poll = paste_splines_poll;
 
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;

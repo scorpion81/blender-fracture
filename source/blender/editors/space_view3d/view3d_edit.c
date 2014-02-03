@@ -295,19 +295,19 @@ static void view3d_boxview_sync(ScrArea *sa, ARegion *ar)
 			if (rv3dtest->viewlock) {
 				rv3dtest->dist = rv3d->dist;
 
-				if (ELEM(rv3d->view, RV3D_VIEW_TOP, RV3D_VIEW_BOTTOM) ) {
+				if (ELEM(rv3d->view, RV3D_VIEW_TOP, RV3D_VIEW_BOTTOM)) {
 					if (ELEM(rv3dtest->view, RV3D_VIEW_FRONT, RV3D_VIEW_BACK))
 						rv3dtest->ofs[0] = rv3d->ofs[0];
 					else if (ELEM(rv3dtest->view, RV3D_VIEW_RIGHT, RV3D_VIEW_LEFT))
 						rv3dtest->ofs[1] = rv3d->ofs[1];
 				}
-				else if (ELEM(rv3d->view, RV3D_VIEW_FRONT, RV3D_VIEW_BACK) ) {
+				else if (ELEM(rv3d->view, RV3D_VIEW_FRONT, RV3D_VIEW_BACK)) {
 					if (ELEM(rv3dtest->view, RV3D_VIEW_TOP, RV3D_VIEW_BOTTOM))
 						rv3dtest->ofs[0] = rv3d->ofs[0];
 					else if (ELEM(rv3dtest->view, RV3D_VIEW_RIGHT, RV3D_VIEW_LEFT))
 						rv3dtest->ofs[2] = rv3d->ofs[2];
 				}
-				else if (ELEM(rv3d->view, RV3D_VIEW_RIGHT, RV3D_VIEW_LEFT) ) {
+				else if (ELEM(rv3d->view, RV3D_VIEW_RIGHT, RV3D_VIEW_LEFT)) {
 					if (ELEM(rv3dtest->view, RV3D_VIEW_TOP, RV3D_VIEW_BOTTOM))
 						rv3dtest->ofs[1] = rv3d->ofs[1];
 					if (ELEM(rv3dtest->view, RV3D_VIEW_FRONT, RV3D_VIEW_BACK))
@@ -834,7 +834,7 @@ static void viewrotate_apply(ViewOpsData *vod, int x, int y)
 		}
 
 		/* Perform the orbital rotation */
-		axis_angle_to_quat(q1, zvec_global, sensitivity * vod->reverse * (x - vod->oldx));
+		axis_angle_normalized_to_quat(q1, zvec_global, sensitivity * vod->reverse * (x - vod->oldx));
 		mul_qt_qtqt(vod->viewquat, vod->viewquat, q1);
 
 		if (vod->use_dyn_ofs) {
@@ -1211,7 +1211,7 @@ static int ndof_orbit_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 			const float zoom_sensitivity = 1.f;
 #endif
 			const float pan_sensitivity = 1.f;
-			const int has_rotation = rv3d->viewlock != RV3D_LOCKED && !is_zero_v3(ndof->rvec);
+			const bool has_rotation = rv3d->viewlock != RV3D_LOCKED && !is_zero_v3(ndof->rvec);
 
 			float view_inv[4];
 			invert_qt_qt(view_inv, rv3d->viewquat);
@@ -1295,7 +1295,7 @@ static int ndof_orbit_zoom_invoke(bContext *C, wmOperator *op, const wmEvent *ev
 			const float zoom_sensitivity = 1.f;
 
 			const float pan_sensitivity = 1.f;
-			const int has_rotation = rv3d->viewlock != RV3D_LOCKED && !is_zero_v3(ndof->rvec);
+			const bool has_rotation = rv3d->viewlock != RV3D_LOCKED && !is_zero_v3(ndof->rvec);
 
 			float view_inv[4];
 			invert_qt_qt(view_inv, rv3d->viewquat);
@@ -3562,7 +3562,7 @@ static int vieworbit_exec(bContext *C, wmOperator *op)
 				}
 
 				/* z-axis */
-				axis_angle_to_quat(quat_mul, zvec, angle);
+				axis_angle_normalized_to_quat(quat_mul, zvec, angle);
 			}
 			else {
 
@@ -3615,7 +3615,7 @@ static void view_roll_angle(ARegion *ar, float quat[4], const float orig_quat[4]
 	float quat_mul[4];
 
 	/* camera axis */
-	axis_angle_to_quat(quat_mul, dvec, angle);
+	axis_angle_normalized_to_quat(quat_mul, dvec, angle);
 
 	mul_qt_qtqt(quat, orig_quat, quat_mul);
 	rv3d->view = RV3D_VIEW_USER;

@@ -64,7 +64,7 @@ void BKE_texture_free(struct Tex *t);
 
 void init_colorband(struct ColorBand *coba, bool rangetype);
 struct ColorBand *add_colorband(bool rangetype);
-int do_colorband(const struct ColorBand *coba, float in, float out[4]);
+bool do_colorband(const struct ColorBand *coba, float in, float out[4]);
 void colorband_table_RGBA(struct ColorBand *coba, float **array, int *size);
 struct CBData *colorband_element_add(struct ColorBand *coba, float position);
 int colorband_element_remove(struct ColorBand *coba, int index);
@@ -100,7 +100,7 @@ void set_current_material_texture(struct Material *ma, struct Tex *tex);
 void set_current_lamp_texture(struct Lamp *la, struct Tex *tex);
 void set_current_particle_texture(struct ParticleSettings *part, struct Tex *tex);
 
-int has_current_material_texture(struct Material *ma);
+bool has_current_material_texture(struct Material *ma);
 
 struct TexMapping *add_tex_mapping(int type);
 void default_tex_mapping(struct TexMapping *texmap, int type);

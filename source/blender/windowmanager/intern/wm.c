@@ -26,6 +26,10 @@
 
 /** \file blender/windowmanager/intern/wm.c
  *  \ingroup wm
+ *
+ * Internal functions for managing UI registrable types (operator, UI and menu types)
+ *
+ * Also Blenders main event loop (WM_main)
  */
 
 #include <string.h>
@@ -226,7 +230,7 @@ uiListType *WM_uilisttype_find(const char *idname, bool quiet)
 	return NULL;
 }
 
-int WM_uilisttype_add(uiListType *ult)
+bool WM_uilisttype_add(uiListType *ult)
 {
 	BLI_ghash_insert(uilisttypes_hash, (void *)ult->idname, ult);
 	return 1;
@@ -234,7 +238,12 @@ int WM_uilisttype_add(uiListType *ult)
 
 void WM_uilisttype_freelink(uiListType *ult)
 {
-	BLI_ghash_remove(uilisttypes_hash, ult->idname, NULL, MEM_freeN);
+	bool ok;
+
+	ok = BLI_ghash_remove(uilisttypes_hash, ult->idname, NULL, MEM_freeN);
+
+	BLI_assert(ok);
+	(void)ok;
 }
 
 /* called on initialize WM_init() */
@@ -279,15 +288,20 @@ MenuType *WM_menutype_find(const char *idname, bool quiet)
 	return NULL;
 }
 
-int WM_menutype_add(MenuType *mt)
+bool WM_menutype_add(MenuType *mt)
 {
 	BLI_ghash_insert(menutypes_hash, (void *)mt->idname, mt);
-	return 1;
+	return true;
 }
 
 void WM_menutype_freelink(MenuType *mt)
 {
-	BLI_ghash_remove(menutypes_hash, mt->idname, NULL, MEM_freeN);
+	bool ok;
+
+	ok = BLI_ghash_remove(menutypes_hash, mt->idname, NULL, MEM_freeN);
+
+	BLI_assert(ok);
+	(void)ok;
 }
 
 /* called on initialize WM_init() */
@@ -402,7 +416,7 @@ void wm_clear_default_size(bContext *C)
 /* on startup, it adds all data, for matching */
 void wm_add_default(bContext *C)
 {
-	wmWindowManager *wm = BKE_libblock_alloc(&CTX_data_main(C)->wm, ID_WM, "WinMan");
+	wmWindowManager *wm = BKE_libblock_alloc(CTX_data_main(C), ID_WM, "WinMan");
 	wmWindow *win;
 	bScreen *screen = CTX_wm_screen(C); /* XXX from file read hrmf */
 	

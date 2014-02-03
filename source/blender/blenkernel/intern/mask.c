@@ -35,6 +35,7 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_utildefines.h"
+#include "BLI_ghash.h"
 #include "BLI_path_util.h"
 #include "BLI_string.h"
 #include "BLI_listbase.h"
@@ -60,6 +61,11 @@
 #include "BKE_image.h"
 
 #include "NOD_composite.h"
+
+static struct {
+	ListBase splines;
+	struct GHash *id_hash;
+} mask_clipboard = {{NULL}};
 
 static MaskSplinePoint *mask_spline_point_next(MaskSpline *spline, MaskSplinePoint *points_array, MaskSplinePoint *point)
 {
@@ -352,8 +358,8 @@ void BKE_mask_spline_direction_switch(MaskLayer *masklay, MaskSpline *spline)
 float BKE_mask_spline_project_co(MaskSpline *spline, MaskSplinePoint *point,
                                  float start_u, const float co[2], const eMaskSign sign)
 {
-	const float proj_eps         = 1e-3;
-	const float proj_eps_squared = proj_eps * proj_eps;
+	const float proj_eps    = 1e-3;
+	const float proj_eps_sq = proj_eps * proj_eps;
 	const int N = 1000;
 	float u = -1.0f, du = 1.0f / N, u1 = start_u, u2 = start_u;
 	float ang = -1.0f;
@@ -375,7 +381,7 @@ float BKE_mask_spline_project_co(MaskSpline *spline, MaskSplinePoint *point,
 			    ((sign == MASK_PROJ_POS) && (dot_v2v2(v1, n1) >= 0.0f)))
 			{
 
-				if (len_squared_v2(v1) > proj_eps_squared) {
+				if (len_squared_v2(v1) > proj_eps_sq) {
 					ang1 = angle_v2v2(v1, n1);
 					if (ang1 > (float)M_PI / 2.0f)
 						ang1 = (float)M_PI - ang1;
@@ -402,7 +408,7 @@ float BKE_mask_spline_project_co(MaskSpline *spline, MaskSplinePoint *point,
 			    ((sign == MASK_PROJ_POS) && (dot_v2v2(v2, n2) >= 0.0f)))
 			{
 
-				if (len_squared_v2(v2) > proj_eps_squared) {
+				if (len_squared_v2(v2) > proj_eps_sq) {
 					ang2 = angle_v2v2(v2, n2);
 					if (ang2 > (float)M_PI / 2.0f)
 						ang2 = (float)M_PI - ang2;
@@ -428,7 +434,7 @@ float BKE_mask_spline_project_co(MaskSpline *spline, MaskSplinePoint *point,
 
 /* point */
 
-int BKE_mask_point_has_handle(MaskSplinePoint *point)
+bool BKE_mask_point_has_handle(MaskSplinePoint *point)
 {
 	BezTriple *bezt = &point->bezt;
 
@@ -665,7 +671,7 @@ void BKE_mask_point_add_uw(MaskSplinePoint *point, float u, float w)
 	BKE_mask_point_sort_uw(point, &point->uw[point->tot_uw - 1]);
 }
 
-void BKE_mask_point_select_set(MaskSplinePoint *point, const short do_select)
+void BKE_mask_point_select_set(MaskSplinePoint *point, const bool do_select)
 {
 	int i;
 
@@ -686,7 +692,7 @@ void BKE_mask_point_select_set(MaskSplinePoint *point, const short do_select)
 	}
 }
 
-void BKE_mask_point_select_set_handle(MaskSplinePoint *point, const short do_select)
+void BKE_mask_point_select_set_handle(MaskSplinePoint *point, const bool do_select)
 {
 	if (do_select) {
 		MASKPOINT_SEL_HANDLE(point);
@@ -701,7 +707,7 @@ static Mask *mask_alloc(Main *bmain, const char *name)
 {
 	Mask *mask;
 
-	mask = BKE_libblock_alloc(&bmain->mask, ID_MSK, name);
+	mask = BKE_libblock_alloc(bmain, ID_MSK, name);
 
 	mask->id.flag |= LIB_FAKEUSER;
 
@@ -1172,7 +1178,7 @@ static void mask_calc_point_handle(MaskSplinePoint *point, MaskSplinePoint *poin
 		sub_v3_v3v3(v2, bezt->vec[2], bezt->vec[1]);
 		add_v3_v3v3(vec, v1, v2);
 
-		if (len_v3(vec) > 1e-3) {
+		if (len_squared_v3(vec) > (1e-3f * 1e-3f)) {
 			h[0] = vec[1];
 			h[1] = -vec[0];
 			h[2] = 0.0f;
@@ -1197,7 +1203,7 @@ void BKE_mask_get_handle_point_adjacent(MaskSpline *spline, MaskSplinePoint *poi
 	*r_point_next = mask_spline_point_next(spline, points_array, point);
 }
 
-/* calculates the tanget of a point by its previous and next
+/* calculates the tangent of a point by its previous and next
  * (ignoring handles - as if its a poly line) */
 void BKE_mask_calc_tangent_polyline(MaskSpline *spline, MaskSplinePoint *point, float t[2])
 {
@@ -1292,7 +1298,7 @@ void BKE_mask_calc_handle_adjacent_interp(MaskSpline *spline, MaskSplinePoint *p
  * Useful for giving sane defaults.
  */
 void BKE_mask_calc_handle_point_auto(MaskSpline *spline, MaskSplinePoint *point,
-                                     const short do_recalc_length)
+                                     const bool do_recalc_length)
 {
 	MaskSplinePoint *point_prev, *point_next;
 	const char h_back[2] = {point->bezt.h1, point->bezt.h2};
@@ -1934,4 +1940,96 @@ void BKE_mask_layer_shape_changed_remove(MaskLayer *masklay, int index, int coun
 int BKE_mask_get_duration(Mask *mask)
 {
 	return max_ii(1, mask->efra - mask->sfra);
+}
+
+/*********************** clipboard *************************/
+
+static void mask_clipboard_free_ex(bool final_free)
+{
+	BKE_mask_spline_free_list(&mask_clipboard.splines);
+	mask_clipboard.splines.first = mask_clipboard.splines.last = NULL;
+	if (mask_clipboard.id_hash) {
+		if (final_free) {
+			BLI_ghash_free(mask_clipboard.id_hash, NULL, MEM_freeN);
+		}
+		else {
+			BLI_ghash_clear(mask_clipboard.id_hash, NULL, MEM_freeN);
+		}
+	}
+}
+
+/* Free the clipboard. */
+void BKE_mask_clipboard_free(void)
+{
+	mask_clipboard_free_ex(true);
+}
+
+/* Copy selected visible splines from the given layer to clipboard. */
+void BKE_mask_clipboard_copy_from_layer(MaskLayer *mask_layer)
+{
+	MaskSpline *spline;
+
+	/* Nothing to do if selection if disabled for the given layer. */
+	if (mask_layer->restrictflag & MASK_RESTRICT_SELECT) {
+		return;
+	}
+
+	mask_clipboard_free_ex(false);
+	if (mask_clipboard.id_hash == NULL) {
+		mask_clipboard.id_hash = BLI_ghash_ptr_new("mask clipboard ID hash");
+	}
+
+	for (spline = mask_layer->splines.first; spline; spline = spline->next) {
+		if (spline->flag & SELECT) {
+			MaskSpline *spline_new = BKE_mask_spline_copy(spline);
+			int i;
+			for (i = 0; i < spline_new->tot_point; i++) {
+				MaskSplinePoint *point = &spline_new->points[i];
+				if (point->parent.id) {
+					if (!BLI_ghash_lookup(mask_clipboard.id_hash, point->parent.id)) {
+						int len = strlen(point->parent.id->name);
+						char *name_copy = MEM_mallocN(len + 1, "mask clipboard ID name");
+						strcpy(name_copy, point->parent.id->name);
+						BLI_ghash_insert(mask_clipboard.id_hash,
+						                 point->parent.id,
+						                 name_copy);
+					}
+				}
+			}
+
+			BLI_addtail(&mask_clipboard.splines, spline_new);
+		}
+	}
+}
+
+/* Check clipboard is empty. */
+bool BKE_mask_clipboard_is_empty(void)
+{
+	return mask_clipboard.splines.first == NULL;
+}
+
+/* Paste the contents of clipboard to given mask layer */
+void BKE_mask_clipboard_paste_to_layer(Main *bmain, MaskLayer *mask_layer)
+{
+	MaskSpline *spline;
+
+	for (spline = mask_clipboard.splines.first; spline; spline = spline->next) {
+		MaskSpline *spline_new = BKE_mask_spline_copy(spline);
+		int i;
+
+		for (i = 0; i < spline_new->tot_point; i++) {
+			MaskSplinePoint *point = &spline_new->points[i];
+			if (point->parent.id) {
+				char *id_name = BLI_ghash_lookup(mask_clipboard.id_hash, point->parent.id);
+				ListBase *listbase;
+
+				BLI_assert(id_name != NULL);
+
+				listbase = which_libbase(bmain, GS(id_name));
+				point->parent.id = BLI_findstring(listbase, id_name + 2, offsetof(ID, name) + 2);
+			}
+		}
+
+		BLI_addtail(&mask_layer->splines, spline_new);
+	}
 }

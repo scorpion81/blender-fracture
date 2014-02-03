@@ -135,7 +135,7 @@ Brush *BKE_brush_add(Main *bmain, const char *name)
 {
 	Brush *brush;
 
-	brush = BKE_libblock_alloc(&bmain->brush, ID_BR, name);
+	brush = BKE_libblock_alloc(bmain, ID_BR, name);
 
 	/* enable fake user by default */
 	brush->id.flag |= LIB_FAKEUSER;
@@ -920,7 +920,7 @@ void BKE_brush_jitter_pos(const Scene *scene, Brush *brush, const float pos[2], 
 		do {
 			rand_pos[0] = BLI_rng_get_float(brush_rng) - 0.5f;
 			rand_pos[1] = BLI_rng_get_float(brush_rng) - 0.5f;
-		} while (len_v2(rand_pos) > 0.5f);
+		} while (len_squared_v2(rand_pos) > (0.5f * 0.5f));
 
 
 		if (brush->flag & BRUSH_ABSOLUTE_JITTER) {

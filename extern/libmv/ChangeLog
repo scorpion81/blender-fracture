@@ -1,3 +1,101 @@
+commit da4607f010bca0b3532cd4444afbb10bc774fc32
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Jan 28 18:32:39 2014 +0600
+
+    Implemented scoped_array and use it in detector
+    
+    scoped_array is pretty much the same as scoped_ptr
+    with the only difference that it'll free memory using
+    delete[] operator.
+    
+    It also gives some additional API functions to access
+    array elements.
+    
+    Currently it only used to manage images denoted as byte
+    arrays in detector.
+    
+    Reviewers: keir
+    
+    Reviewed By: keir
+    
+    Differential Revision: https://developer.blender.org/D266
+
+commit cd7eb3eff2e69ce5e08570ead83ae6d35ee48857
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Jan 28 17:23:47 2014 +0600
+
+    Improvements to weighted tracks behavior
+    
+    First thing changed by this commit is making it so
+    Euclidean intersection takes track weight into account
+    when solving minimization problem. This behaves the
+    same exact way as it is for BA step.
+    
+    Second thing is related on how average reprojection error
+    is being calculated. It didn't take track weight into
+    account which could confuse users. Now average reprojection
+    error will give the same result as intersection/BA uses
+    during minimization which gives much more predictable
+    behavior.
+    
+    Reviewers: keir
+    
+    Reviewed By: keir
+    
+    CC: sebastian_k
+    
+    Differential Revision: https://developer.blender.org/D265
+
+commit 6559b36dc14369175bfa0830323146acd3426483
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Jan 28 16:39:14 2014 +0600
+
+    Fixes for keyframe selection
+    
+    Using tracks with constant zero weight used to crash
+    keyframe selection since it was trying to use missing
+    parameter blocks for Jacobian evaluation,
+    
+    Also fixed possible issues with wrong camera block being
+    marked as variable. This could technically happen when
+    having zero weighted tracks. Made it so all camera blocks
+    are marked as variable for now.
+
+commit 557d531b061aa69d114e89cbb325c5175389afec
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Jan 28 16:10:33 2014 +0600
+
+    Style cleanup: wrong indentation of wrapped line
+
+commit ca15262cf07a873268173965ee1fb84f9729b744
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Jan 28 15:21:36 2014 +0600
+
+    Rework detector API and implement Harris detector
+    
+    Switch the detector API to a single function which accepts
+    a float image and detector options. This makes usage of
+    feature detection more unified across different algorithms.
+    
+    Options structure is pretty much straightforward and contains
+    detector to be used and all the detector-specific settings.
+    
+    Also implemented Harris feature detection algorithm which
+    is not as fast as FAST one but is expected to detect more
+    robust feature points.
+    
+    Reviewers: keir
+    
+    Reviewed By: keir
+    
+    Differential Revision: https://developer.blender.org/D258
+
+commit 6458915f64fceba108c5279b7320ca8c76e8a742
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Jan 24 19:14:18 2014 +0600
+
+    Add arcanist configuration file
+
 commit 0a69fadadc5aacbd339f839ac5bd12c3571278b1
 Author: Sergey Sharybin <sergey.vfx@gmail.com>
 Date:   Thu Jan 9 15:50:11 2014 +0600
@@ -600,88 +698,3 @@ Date:   Sat Apr 6 20:49:05 2013 +0600
     Discovered when was doing unit-tests for brute region tracker.
     
     This reverts commit daa354c0735b954b0cd7725626e9a3d67416d46b.
-
-commit 5bd89d9b8fb620e7e88bcbfa74165309b872f529
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Sat Apr 6 18:37:37 2013 +0600
-
-    Added basic test for brute region tracker
-    
-    It is failing at this moment and this is caused because
-    of how SampleLinear works - seems it's assumption about
-    pixel center is not correct for internal sampling.
-
-commit d449b820fb3352cd981e06d737f2838adb3d36bd
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Sat Apr 6 16:54:08 2013 +0600
-
-    Tweak to KLT region tracker test
-    
-    KLT is usually used to track relatively small
-    motions, and in this case motion almost equals
-    to half window size. This confuses math and
-    leads to not so much expected result.
-    
-    Further, not actually sure this is nice idea
-    to use KLT in such synthetic case.
-
-commit 1e54624875284e9532f4880c067e80e474444b2e
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Sat Apr 6 16:40:59 2013 +0600
-
-    Pyramid tracker unit test fix
-    
-    Issue was caused by trackers modifying guessed
-    point location even in case of failure. So made
-    id so both level 0 and level 3 of pyramid are
-    starting from the same initial guessed location.
-    
-    Modifying locations in case tracker returns false
-    is not actually a bug - someone could still want
-    to use that location. False in this case  means
-    more like "returned location is not so much
-    accurate".
-
-commit b46c48e0e1862828df6dca711148c11b1f60777c
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Sat Apr 6 00:38:40 2013 +0600
-
-    Intersect unit test fix
-    
-    EuclideanIntersect is not aware of camera calibration
-    matrix yet and always assumes it to be an identity.
-    
-    So using non-identity matrix to construct sample case
-    leads to wrong projection results.
-    
-    For now made it so test case uses identity matrix for
-    calibration.
-    
-    Also fixed variable shadowing which lead to wrong
-    markers positions (were either zero or undefined).
-
-commit a597ca9291ff7c6e209e0500945568afa84d8b4e
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Sat Apr 6 00:12:12 2013 +0600
-
-    Camera intrinsics unit tests fixes
-    
-    - Existing test ApplyIsInvertibleSimple was not
-      doing right thing - distortion model used there
-      was ininvertible.
-    
-      Tweaked parameters in a way model is invertible now.
-    
-    - Added some own tests which tests;
-    
-      * Principal point always maps from pixel space to
-        zero normalized position.
-    
-      * Some basic tests to check whether individual
-        apply/invert works correct.
-
-commit a9a3016c7beb02e62655221d46783b206010d04c
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Thu Apr 4 02:59:58 2013 +0600
-
-    Suppress strict compiler warnings in glags/glog libraries

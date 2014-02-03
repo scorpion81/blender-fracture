@@ -176,7 +176,7 @@ Text *BKE_text_add(Main *bmain, const char *name)
 	Text *ta;
 	TextLine *tmp;
 	
-	ta = BKE_libblock_alloc(&bmain->text, ID_TXT, name);
+	ta = BKE_libblock_alloc(bmain, ID_TXT, name);
 	ta->id.us = 1;
 	
 	ta->name = NULL;
@@ -379,7 +379,7 @@ Text *BKE_text_load_ex(Main *bmain, const char *file, const char *relpath, const
 	fp = BLI_fopen(str, "r");
 	if (fp == NULL) return NULL;
 	
-	ta = BKE_libblock_alloc(&bmain->text, ID_TXT, BLI_path_basename(str));
+	ta = BKE_libblock_alloc(bmain, ID_TXT, BLI_path_basename(str));
 	ta->id.us = 1;
 
 	ta->lines.first = ta->lines.last = NULL;
@@ -657,6 +657,62 @@ void BKE_text_write(Text *text, const char *str) /* called directly from rna */
 	txt_set_undostate(oldstate);
 
 	txt_make_dirty(text);
+}
+
+
+/* returns 0 if file on disk is the same or Text is in memory only
+ * returns 1 if file has been modified on disk since last local edit
+ * returns 2 if file on disk has been deleted
+ * -1 is returned if an error occurs */
+
+int BKE_text_file_modified_check(Text *text)
+{
+	struct stat st;
+	int result;
+	char file[FILE_MAX];
+
+	if (!text || !text->name)
+		return 0;
+
+	BLI_strncpy(file, text->name, FILE_MAX);
+	BLI_path_abs(file, G.main->name);
+
+	if (!BLI_exists(file))
+		return 2;
+
+	result = BLI_stat(file, &st);
+
+	if (result == -1)
+		return -1;
+
+	if ((st.st_mode & S_IFMT) != S_IFREG)
+		return -1;
+
+	if (st.st_mtime > text->mtime)
+		return 1;
+
+	return 0;
+}
+
+void BKE_text_file_modified_ignore(Text *text)
+{
+	struct stat st;
+	int result;
+	char file[FILE_MAX];
+
+	if (!text || !text->name) return;
+
+	BLI_strncpy(file, text->name, FILE_MAX);
+	BLI_path_abs(file, G.main->name);
+
+	if (!BLI_exists(file)) return;
+
+	result = BLI_stat(file, &st);
+
+	if (result == -1 || (st.st_mode & S_IFMT) != S_IFREG)
+		return;
+
+	text->mtime = st.st_mtime;
 }
 
 /*****************************/
@@ -1174,7 +1230,7 @@ void txt_order_cursors(Text *text, const bool reverse)
 	}
 }
 
-int txt_has_sel(Text *text)
+bool txt_has_sel(Text *text)
 {
 	return ((text->curl != text->sell) || (text->curc != text->selc));
 }
@@ -2620,7 +2676,11 @@ int txt_replace_char(Text *text, unsigned int add)
 	/* Should probably create a new op for this */
 	if (!undoing) {
 		txt_undo_add_charop(text, UNDO_INSERT_1, add);
+		text->curc -= add_size;
+		txt_pop_sel(text);
 		txt_undo_add_charop(text, UNDO_DEL_1, del);
+		text->curc += add_size;
+		txt_pop_sel(text);
 	}
 	return 1;
 }
@@ -2950,7 +3010,7 @@ int text_check_bracket(const char ch)
 }
 
 /* TODO, have a function for operators - http://docs.python.org/py3k/reference/lexical_analysis.html#operators */
-int text_check_delim(const char ch)
+bool text_check_delim(const char ch)
 {
 	int a;
 	char delims[] = "():\"\' ~!%^&*-+=[]{};/<>|.#\t,@";
@@ -2962,14 +3022,14 @@ int text_check_delim(const char ch)
 	return 0;
 }
 
-int text_check_digit(const char ch)
+bool text_check_digit(const char ch)
 {
 	if (ch < '0') return 0;
 	if (ch <= '9') return 1;
 	return 0;
 }
 
-int text_check_identifier(const char ch)
+bool text_check_identifier(const char ch)
 {
 	if (ch < '0') return 0;
 	if (ch <= '9') return 1;
@@ -2980,7 +3040,7 @@ int text_check_identifier(const char ch)
 	return 0;
 }
 
-int text_check_identifier_nodigit(const char ch)
+bool text_check_identifier_nodigit(const char ch)
 {
 	if (ch <= '9') return 0;
 	if (ch < 'A') return 0;
@@ -2991,18 +3051,18 @@ int text_check_identifier_nodigit(const char ch)
 }
 
 #ifndef WITH_PYTHON
-int text_check_identifier_unicode(const unsigned int ch)
+bool text_check_identifier_unicode(const unsigned int ch)
 {
 	return (ch < 255 && text_check_identifier((char)ch));
 }
 
-int text_check_identifier_nodigit_unicode(const unsigned int ch)
+bool text_check_identifier_nodigit_unicode(const unsigned int ch)
 {
 	return (ch < 255 && text_check_identifier_nodigit((char)ch));
 }
 #endif  /* WITH_PYTHON */
 
-int text_check_whitespace(const char ch)
+bool text_check_whitespace(const char ch)
 {
 	if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n')
 		return 1;

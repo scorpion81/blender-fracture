@@ -440,7 +440,7 @@ void CONSOLE_OT_insert(wmOperatorType *ot)
 	ot->poll = ED_operator_console_active;
 
 	/* properties */
-	prop = RNA_def_string(ot->srna, "text", "", 0, "Text", "Text to insert at the cursor position");
+	prop = RNA_def_string(ot->srna, "text", NULL, 0, "Text", "Text to insert at the cursor position");
 	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 }
 
@@ -668,8 +668,8 @@ static int console_clear_exec(bContext *C, wmOperator *op)
 	SpaceConsole *sc = CTX_wm_space_console(C);
 	ARegion *ar = CTX_wm_region(C);
 	
-	short scrollback = RNA_boolean_get(op->ptr, "scrollback");
-	short history = RNA_boolean_get(op->ptr, "history");
+	const bool scrollback = RNA_boolean_get(op->ptr, "scrollback");
+	const bool history = RNA_boolean_get(op->ptr, "history");
 	
 	/*ConsoleLine *ci = */ console_history_verify(C);
 	
@@ -715,7 +715,7 @@ static int console_history_cycle_exec(bContext *C, wmOperator *op)
 	ARegion *ar = CTX_wm_region(C);
 
 	ConsoleLine *ci = console_history_verify(C); /* TODO - stupid, just prevents crashes when no command line */
-	short reverse = RNA_boolean_get(op->ptr, "reverse"); /* assumes down, reverse is up */
+	const bool reverse = RNA_boolean_get(op->ptr, "reverse"); /* assumes down, reverse is up */
 	int prev_len = ci->len;
 
 	/* keep a copy of the line above so when history is cycled
@@ -783,7 +783,7 @@ static int console_history_append_exec(bContext *C, wmOperator *op)
 	ConsoleLine *ci = console_history_verify(C);
 	char *str = RNA_string_get_alloc(op->ptr, "text", NULL, 0); /* own this text in the new line, don't free */
 	int cursor = RNA_int_get(op->ptr, "current_character");
-	short rem_dupes = RNA_boolean_get(op->ptr, "remove_duplicates");
+	const bool rem_dupes = RNA_boolean_get(op->ptr, "remove_duplicates");
 	int prev_len = ci->len;
 
 	if (rem_dupes) {
@@ -825,7 +825,7 @@ void CONSOLE_OT_history_append(wmOperatorType *ot)
 	ot->poll = ED_operator_console_active;
 	
 	/* properties */
-	RNA_def_string(ot->srna, "text", "", 0, "Text", "Text to insert at the cursor position");
+	RNA_def_string(ot->srna, "text", NULL, 0, "Text", "Text to insert at the cursor position");
 	RNA_def_int(ot->srna, "current_character", 0, 0, INT_MAX, "Cursor", "The index of the cursor", 0, 10000);
 	RNA_def_boolean(ot->srna, "remove_duplicates", 0, "Remove Duplicates", "Remove duplicate items in the history");
 }
@@ -880,7 +880,7 @@ void CONSOLE_OT_scrollback_append(wmOperatorType *ot)
 	ot->poll = ED_operator_console_active;
 	
 	/* properties */
-	RNA_def_string(ot->srna, "text", "", 0, "Text", "Text to insert at the cursor position");
+	RNA_def_string(ot->srna, "text", NULL, 0, "Text", "Text to insert at the cursor position");
 	RNA_def_enum(ot->srna, "type", console_line_type_items, CONSOLE_LINE_OUTPUT, "Type", "Console output type");
 }
 

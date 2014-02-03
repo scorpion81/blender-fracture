@@ -34,15 +34,7 @@ class INFO_HT_header(Header):
         row = layout.row(align=True)
         row.template_header()
 
-        if context.area.show_menus:
-            sub = row.row(align=True)
-            sub.menu("INFO_MT_file")
-            if rd.use_game_engine:
-                sub.menu("INFO_MT_game")
-            else:
-                sub.menu("INFO_MT_render")
-            sub.menu("INFO_MT_window")
-            sub.menu("INFO_MT_help")
+        INFO_MT_editor_menus.draw_collapsible(context, layout)
 
         if window.screen.show_fullscreen:
             layout.operator("screen.back_to_previous", icon='SCREEN_BACK', text="Back to Previous")
@@ -79,17 +71,40 @@ class INFO_HT_header(Header):
         row.label(text=scene.statistics(), translate=False)
 
 
+class INFO_MT_editor_menus(Menu):
+    bl_idname = "INFO_MT_editor_menus"
+    bl_label = ""
+
+    def draw(self, context):
+        self.draw_menus(self.layout, context)
+
+    @staticmethod
+    def draw_menus(layout, context):
+        scene = context.scene
+        rd = scene.render
+
+        layout.menu("INFO_MT_file")
+
+        if rd.use_game_engine:
+            layout.menu("INFO_MT_game")
+        else:
+            layout.menu("INFO_MT_render")
+
+        layout.menu("INFO_MT_window")
+        layout.menu("INFO_MT_help")
+
+
 class INFO_MT_file(Menu):
     bl_label = "File"
 
     def draw(self, context):
-        import sys
         layout = self.layout
 
         layout.operator_context = 'INVOKE_AREA'
         layout.operator("wm.read_homefile", text="New", icon='NEW')
         layout.operator("wm.open_mainfile", text="Open...", icon='FILE_FOLDER')
         layout.menu("INFO_MT_file_open_recent", icon='OPEN_RECENT')
+        layout.operator("wm.revert_mainfile", icon='FILE_REFRESH')
         layout.operator("wm.recover_last_session", icon='RECOVER_LAST')
         layout.operator("wm.recover_auto_save", text="Recover Auto Save...", icon='RECOVER_AUTO')
 
@@ -132,8 +147,8 @@ class INFO_MT_file(Menu):
         layout.separator()
 
         layout.operator_context = 'EXEC_AREA'
-        if sys.platform == "darwin":
-            layout.operator_context = 'INVOKE_SCREEN' # quit dialog
+        if bpy.data.is_dirty and context.user_preferences.view.use_quit_dialog:
+            layout.operator_context = 'INVOKE_SCREEN'  # quit dialog
         layout.operator("wm.quit_blender", text="Quit", icon='QUIT')
 
 

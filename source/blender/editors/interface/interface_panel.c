@@ -573,7 +573,7 @@ void ui_draw_aligned_panel(uiStyle *style, uiBlock *block, const rcti *rect, con
 		glEnable(GL_BLEND);
 		UI_icon_draw_aspect(headrect.xmax - ((PNL_ICON * 2.2f) / block->aspect), headrect.ymin + (5.0f / block->aspect),
 		                    (panel->flag & PNL_PIN) ? ICON_PINNED : ICON_UNPINNED,
-		                    (block->aspect / UI_DPI_FAC) / U.pixelsize, 1.0f);
+		                    (block->aspect / UI_DPI_FAC), 1.0f);
 		glDisable(GL_BLEND);
 	}
 
@@ -821,8 +821,8 @@ static bool uiAlignPanelStep(ScrArea *sa, ARegion *ar, const float fac, const bo
 	for (a = 0; a < tot; a++, ps++) {
 		if ((ps->pa->flag & PNL_SELECT) == 0) {
 			if ((ps->orig->ofsx != ps->pa->ofsx) || (ps->orig->ofsy != ps->pa->ofsy)) {
-				ps->orig->ofsx = floorf(0.5f + fac * (float)ps->pa->ofsx + (1.0f - fac) * (float)ps->orig->ofsx);
-				ps->orig->ofsy = floorf(0.5f + fac * (float)ps->pa->ofsy + (1.0f - fac) * (float)ps->orig->ofsy);
+				ps->orig->ofsx = iroundf(fac * (float)ps->pa->ofsx + (1.0f - fac) * (float)ps->orig->ofsx);
+				ps->orig->ofsy = iroundf(fac * (float)ps->pa->ofsy + (1.0f - fac) * (float)ps->orig->ofsy);
 				done = true;
 			}
 		}
@@ -1384,7 +1384,7 @@ static void ui_panel_category_draw_tab(int mode, float minx, float miny, float m
 void UI_panel_category_draw_all(ARegion *ar, const char *category_id_active)
 {
 	/* no tab outlines for */
-#define USE_FLAT_INACTIVE
+// #define USE_FLAT_INACTIVE
 	View2D *v2d = &ar->v2d;
 	uiStyle *style = UI_GetStyle();
 	const uiFontStyle *fstyle = &style->widget;
@@ -1394,11 +1394,11 @@ void UI_panel_category_draw_all(ARegion *ar, const char *category_id_active)
 	PanelCategoryDyn *pc_dyn;
 	const float aspect = ((uiBlock *)ar->uiblocks.first)->aspect;
 	const float zoom = 1.0f / aspect;
-	const int px = max_ii(1.0, (int)U.pixelsize + 0.5f);
-	const int category_tabs_width = UI_PANEL_CATEGORY_MARGIN_WIDTH * zoom;
+	const int px = max_ii(1, iroundf(U.pixelsize));
+	const int category_tabs_width = iroundf(UI_PANEL_CATEGORY_MARGIN_WIDTH * zoom);
 	const float dpi_fac = UI_DPI_FAC;
-	const int tab_v_pad_text = (2 + ((px * 3) * dpi_fac)) * zoom;  /* pading of tabs around text */
-	const int tab_v_pad = (4 + (2 * px * dpi_fac)) * zoom;  /* padding between tabs */
+	const int tab_v_pad_text = iroundf((2 + ((px * 3) * dpi_fac)) * zoom);  /* pading of tabs around text */
+	const int tab_v_pad = iroundf((4 + (2 * px * dpi_fac)) * zoom);  /* padding between tabs */
 	const float tab_curve_radius = ((px * 3) * dpi_fac) * zoom;
 	const int roundboxtype = UI_CNR_TOP_LEFT | UI_CNR_BOTTOM_LEFT;
 	bool do_scaletabs = false;
@@ -1407,7 +1407,7 @@ void UI_panel_category_draw_all(ARegion *ar, const char *category_id_active)
 #endif
 	float scaletabs = 1.0f;
 	/* same for all tabs */
-	const int rct_xmin = v2d->mask.xmin + (3 * px);
+	const int rct_xmin = v2d->mask.xmin + 3;  /* intentionally dont scale by 'px' */
 	const int rct_xmax = v2d->mask.xmin + category_tabs_width;
 	const int text_v_ofs = (rct_xmax - rct_xmin) * 0.3f;
 
@@ -1418,25 +1418,29 @@ void UI_panel_category_draw_all(ARegion *ar, const char *category_id_active)
 	unsigned char theme_col_text[4];
 	unsigned char theme_col_text_hi[4];
 
-	/* Secondary theme colors */
+	/* Tab colors */
 	unsigned char theme_col_tab_bg[4];
+	unsigned char theme_col_tab_active[4];
 	unsigned char theme_col_tab_inactive[4];
+
+	/* Secondary theme colors */
 	unsigned char theme_col_tab_outline[4];
 	unsigned char theme_col_tab_divider[4];  /* line that divides tabs from the main area */
 	unsigned char theme_col_tab_highlight[4];
 	unsigned char theme_col_tab_highlight_inactive[4];
 
 
+
 	UI_GetThemeColor4ubv(TH_BACK, theme_col_back);
 	UI_GetThemeColor4ubv(TH_TEXT, theme_col_text);
 	UI_GetThemeColor4ubv(TH_TEXT_HI, theme_col_text_hi);
 
+	UI_GetThemeColor4ubv(TH_TAB_BACK, theme_col_tab_bg);
+	UI_GetThemeColor4ubv(TH_TAB_ACTIVE, theme_col_tab_active);
+	UI_GetThemeColor4ubv(TH_TAB_INACTIVE, theme_col_tab_inactive);
+	UI_GetThemeColor4ubv(TH_TAB_OUTLINE, theme_col_tab_outline);
 
-	blend_color_interpolate_byte(theme_col_tab_bg, theme_col_back, theme_col_text, 0.12f);
-	blend_color_interpolate_byte(theme_col_tab_inactive, theme_col_back, theme_col_text, 0.1f);
-	blend_color_interpolate_byte(theme_col_tab_outline, theme_col_back, theme_col_text, 0.3f);
-	blend_color_interpolate_byte(theme_col_tab_divider, theme_col_back, theme_col_text, 0.3f);
-
+	blend_color_interpolate_byte(theme_col_tab_divider, theme_col_back, theme_col_tab_outline, 0.3f);
 	blend_color_interpolate_byte(theme_col_tab_highlight, theme_col_back, theme_col_text_hi, 0.2f);
 	blend_color_interpolate_byte(theme_col_tab_highlight_inactive, theme_col_tab_inactive, theme_col_text_hi, 0.12f);
 
@@ -1447,8 +1451,12 @@ void UI_panel_category_draw_all(ARegion *ar, const char *category_id_active)
 	BLF_enable(fontid, BLF_ROTATION);
 	BLF_rotation(fontid, M_PI / 2);
 	//uiStyleFontSet(&style->widget);
-	ui_fontscale(&fstyle_points, aspect);
-	BLF_size(fontid, (fstyle_points * U.pixelsize), U.dpi);
+	ui_fontscale(&fstyle_points, aspect / (U.pixelsize * 1.1f));
+	BLF_size(fontid, fstyle_points, U.dpi);
+
+	BLF_enable(fontid, BLF_SHADOW);
+	BLF_shadow(fontid, 3, 1.0f, 1.0f, 1.0f, 0.25f);
+	BLF_shadow_offset(fontid, -1, -1);
 
 	BLI_assert(UI_panel_category_is_visible(ar));
 
@@ -1505,7 +1513,7 @@ void UI_panel_category_draw_all(ARegion *ar, const char *category_id_active)
 		if (is_active)
 #endif
 		{
-			glColor3ubv(is_active ? theme_col_back : theme_col_tab_inactive);
+			glColor3ubv(is_active ? theme_col_tab_active : theme_col_tab_inactive);
 			ui_panel_category_draw_tab(GL_POLYGON, rct->xmin, rct->ymin, rct->xmax, rct->ymax,
 			                           tab_curve_radius - px, roundboxtype, true, true, NULL);
 
@@ -1541,7 +1549,12 @@ void UI_panel_category_draw_all(ARegion *ar, const char *category_id_active)
 
 		BLF_position(fontid, rct->xmax - text_v_ofs, rct->ymin + tab_v_pad_text, 0.0f);
 
+		/* tab titles */
+
+		/* draw white shadow to give text more depth */
 		glColor3ubv(theme_col_text);
+
+		/* main tab title */
 		BLF_draw(fontid, category_id_draw, category_draw_len);
 
 		glDisable(GL_BLEND);
@@ -1574,11 +1587,16 @@ void UI_panel_category_draw_all(ARegion *ar, const char *category_id_active)
 
 		is_active_prev = is_active;
 #endif
+
+		/* not essential, but allows events to be handled right up until the region edge [#38171] */
+		pc_dyn->rect.xmin = v2d->mask.xmin;
 	}
 
 	glDisable(GL_LINE_SMOOTH);
 
 	BLF_disable(fontid, BLF_ROTATION);
+
+	BLF_disable(fontid, BLF_SHADOW);
 
 	if (fstyle->kerning == 1) {
 		BLF_disable(fstyle->uifont_id, BLF_KERNING_DEFAULT);

@@ -57,7 +57,7 @@ void    BKE_image_free(struct Image *me);
 
 void    BKE_imbuf_stamp_info(struct Scene *scene, struct Object *camera, struct ImBuf *ibuf);
 void    BKE_stamp_buf(struct Scene *scene, struct Object *camera, unsigned char *rect, float *rectf, int width, int height, int channels);
-int     BKE_imbuf_alpha_test(struct ImBuf *ibuf);
+bool    BKE_imbuf_alpha_test(struct ImBuf *ibuf);
 int     BKE_imbuf_write_stamp(struct Scene *scene, struct Object *camera, struct ImBuf *ibuf, const char *name, struct ImageFormatData *imf);
 int     BKE_imbuf_write(struct ImBuf *ibuf, const char *name, struct ImageFormatData *imf);
 int     BKE_imbuf_write_as(struct ImBuf *ibuf, const char *name, struct ImageFormatData *imf, const short is_copy);
@@ -140,7 +140,7 @@ enum {
 #define IMA_CHAN_FLAG_ALPHA 4
 
 /* checks whether there's an image buffer for given image and user */
-int BKE_image_has_ibuf(struct Image *ima, struct ImageUser *iuser);
+bool BKE_image_has_ibuf(struct Image *ima, struct ImageUser *iuser);
 
 /* same as above, but can be used to retrieve images being rendered in
  * a thread safe way, always call both acquire and release */
@@ -153,6 +153,7 @@ struct ImBuf *BKE_image_pool_acquire_ibuf(struct Image *ima, struct ImageUser *i
 void BKE_image_pool_release_ibuf(struct Image *ima, struct ImBuf *ibuf, struct ImagePool *pool);
 
 /* set an alpha mode based on file extension */
+char  BKE_image_alpha_mode_from_extension_ex(const char *filepath);
 void BKE_image_alpha_mode_from_extension(struct Image *image);
 
 /* returns a new image or NULL if it can't load */
@@ -180,7 +181,7 @@ void BKE_image_assign_ibuf(struct Image *ima, struct ImBuf *ibuf);
 /* called on frame change or before render */
 void BKE_image_user_frame_calc(struct ImageUser *iuser, int cfra, int fieldnr);
 void BKE_image_user_check_frame_calc(struct ImageUser *iuser, int cfra, int fieldnr);
-int  BKE_image_user_frame_get(const struct ImageUser *iuser, int cfra, int fieldnr, short *r_is_in_range);
+int  BKE_image_user_frame_get(const struct ImageUser *iuser, int cfra, int fieldnr, bool *r_is_in_range);
 void BKE_image_user_file_path(struct ImageUser *iuser, struct Image *ima, char *path); 
 void BKE_image_update_frame(const struct Main *bmain, int cfra);
 
@@ -215,10 +216,10 @@ struct Image *BKE_image_copy(struct Main *bmain, struct Image *ima);
 void BKE_image_merge(struct Image *dest, struct Image *source);
 
 /* scale the image */
-int BKE_image_scale(struct Image *image, int width, int height);
+bool BKE_image_scale(struct Image *image, int width, int height);
 
 /* check if texture has alpha (depth=32) */
-int BKE_image_has_alpha(struct Image *image);
+bool BKE_image_has_alpha(struct Image *image);
 
 void BKE_image_get_size(struct Image *image, struct ImageUser *iuser, int *width, int *height);
 void BKE_image_get_size_fl(struct Image *image, struct ImageUser *iuser, float size[2]);
@@ -236,6 +237,7 @@ float *BKE_image_get_float_pixels_for_frame(struct Image *image, int frame);
 /* Guess offset for the first frame in the sequence */
 int BKE_image_sequence_guess_offset(struct Image *image);
 
+bool BKE_image_is_animated(struct Image *image);
 bool BKE_image_is_dirty(struct Image *image);
 void BKE_image_file_format_set(struct Image *image, int ftype);
 bool BKE_image_has_loaded_ibuf(struct Image *image);

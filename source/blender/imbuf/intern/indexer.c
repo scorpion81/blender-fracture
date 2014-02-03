@@ -456,8 +456,6 @@ struct proxy_output_ctx {
 	AVCodec *codec;
 	struct SwsContext *sws_ctx;
 	AVFrame *frame;
-	uint8_t *video_buffer;
-	int video_buffersize;
 	int cfra;
 	int proxy_size;
 	int orig_height;
@@ -504,7 +502,7 @@ static struct proxy_output_ctx *alloc_proxy_output_ffmpeg(
 
 	rv->c = rv->st->codec;
 	rv->c->codec_type = AVMEDIA_TYPE_VIDEO;
-	rv->c->codec_id = CODEC_ID_MJPEG;
+	rv->c->codec_id = AV_CODEC_ID_MJPEG;
 	rv->c->width = width;
 	rv->c->height = height;
 
@@ -552,10 +550,6 @@ static struct proxy_output_ctx *alloc_proxy_output_ffmpeg(
 
 	avcodec_open2(rv->c, rv->codec, NULL);
 
-	rv->video_buffersize = 2000000;
-	rv->video_buffer = (uint8_t *)MEM_mallocN(
-	        rv->video_buffersize, "FFMPEG video buffer");
-
 	rv->orig_height = av_get_cropped_height_from_codec(st->codec);
 
 	if (st->codec->width != width || st->codec->height != height ||
@@ -592,7 +586,10 @@ static struct proxy_output_ctx *alloc_proxy_output_ffmpeg(
 static int add_to_proxy_output_ffmpeg(
         struct proxy_output_ctx *ctx, AVFrame *frame)
 {
-	int outsize = 0;
+	AVPacket packet = { 0 };
+	int ret, got_output;
+
+	av_init_packet(&packet);
 
 	if (!ctx) {
 		return 0;
@@ -613,31 +610,26 @@ static int add_to_proxy_output_ffmpeg(
 		frame->pts = ctx->cfra++;
 	}
 
-	outsize = avcodec_encode_video(
-	        ctx->c, ctx->video_buffer, ctx->video_buffersize,
-	        frame);
-
-	if (outsize < 0) {
+	ret = avcodec_encode_video2(ctx->c, &packet, frame, &got_output);
+	if (ret < 0) {
 		fprintf(stderr, "Error encoding proxy frame %d for '%s'\n", 
 		        ctx->cfra - 1, ctx->of->filename);
 		return 0;
 	}
 
-	if (outsize != 0) {
-		AVPacket packet;
-		av_init_packet(&packet);
-
-		if (ctx->c->coded_frame->pts != AV_NOPTS_VALUE) {
-			packet.pts = av_rescale_q(ctx->c->coded_frame->pts,
+	if (got_output) {
+		if (packet.pts != AV_NOPTS_VALUE) {
+			packet.pts = av_rescale_q(packet.pts,
 			                          ctx->c->time_base,
 			                          ctx->st->time_base);
 		}
-		if (ctx->c->coded_frame->key_frame)
-			packet.flags |= AV_PKT_FLAG_KEY;
+		if (packet.dts != AV_NOPTS_VALUE) {
+			packet.dts = av_rescale_q(packet.dts,
+			                          ctx->c->time_base,
+			                          ctx->st->time_base);
+		}
 
 		packet.stream_index = ctx->st->index;
-		packet.data = ctx->video_buffer;
-		packet.size = outsize;
 
 		if (av_interleaved_write_frame(ctx->of, &packet) != 0) {
 			fprintf(stderr, "Error writing proxy frame %d "
@@ -679,8 +671,6 @@ static void free_proxy_output_ffmpeg(struct proxy_output_ctx *ctx,
 		}
 	}
 	avformat_free_context(ctx->of);
-
-	MEM_freeN(ctx->video_buffer);
 
 	if (ctx->sws_ctx) {
 		sws_freeContext(ctx->sws_ctx);
@@ -757,7 +747,7 @@ static IndexBuildContext *index_ffmpeg_create_context(struct anim *anim, IMB_Tim
 	}
 
 	if (avformat_find_stream_info(context->iFormatCtx, NULL) < 0) {
-		av_close_input_file(context->iFormatCtx);
+		avformat_close_input(&context->iFormatCtx);
 		MEM_freeN(context);
 		return NULL;
 	}
@@ -777,7 +767,7 @@ static IndexBuildContext *index_ffmpeg_create_context(struct anim *anim, IMB_Tim
 		}
 
 	if (context->videoStream == -1) {
-		av_close_input_file(context->iFormatCtx);
+		avformat_close_input(&context->iFormatCtx);
 		MEM_freeN(context);
 		return NULL;
 	}
@@ -788,7 +778,7 @@ static IndexBuildContext *index_ffmpeg_create_context(struct anim *anim, IMB_Tim
 	context->iCodec = avcodec_find_decoder(context->iCodecCtx->codec_id);
 
 	if (context->iCodec == NULL) {
-		av_close_input_file(context->iFormatCtx);
+		avformat_close_input(&context->iFormatCtx);
 		MEM_freeN(context);
 		return NULL;
 	}
@@ -796,7 +786,7 @@ static IndexBuildContext *index_ffmpeg_create_context(struct anim *anim, IMB_Tim
 	context->iCodecCtx->workaround_bugs = 1;
 
 	if (avcodec_open2(context->iCodecCtx, context->iCodec, NULL) < 0) {
-		av_close_input_file(context->iFormatCtx);
+		avformat_close_input(&context->iFormatCtx);
 		MEM_freeN(context);
 		return NULL;
 	}
@@ -920,7 +910,7 @@ static int index_rebuild_ffmpeg(FFmpegIndexBuilderContext *context,
 
 	stream_size = avio_size(context->iFormatCtx->pb);
 
-	context->frame_rate = av_q2d(context->iStream->r_frame_rate);
+	context->frame_rate = av_q2d(context->iStream->avg_frame_rate);
 	context->pts_time_base = av_q2d(context->iStream->time_base);
 
 	while (av_read_frame(context->iFormatCtx, &next_packet) >= 0) {

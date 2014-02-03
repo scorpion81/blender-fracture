@@ -23,6 +23,7 @@
 /** \file blender/bmesh/intern/bmesh_core.c
  *  \ingroup bmesh
  *
+ * Core BMesh functions for adding, removing BMesh elements.
  */
 
 #include "MEM_guardedalloc.h"
@@ -1970,7 +1971,7 @@ void bmesh_vert_separate(BMesh *bm, BMVert *v, BMVert ***r_vout, int *r_vout_len
 	int i, maxindex;
 	BMLoop *l_new;
 
-	BLI_smallhash_init(&visithash);
+	BLI_smallhash_init_ex(&visithash, v_edgetot);
 
 	STACK_INIT(stack);
 

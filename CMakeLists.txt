@@ -174,10 +174,7 @@ if(UNIX AND NOT APPLE)
 	option(WITH_X11_XF86VMODE "Enable X11 video mode switching"	ON)
 	option(WITH_SYSTEM_GLEW "Use GLEW OpenGL wrapper library provided by the operating system" ON)
 
-	# freebsd doesn't seems to support XDND
-	if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
-		option(WITH_GHOST_XDND   "Enable drag'n'drop support on Linux using XDND protocol" ON)
-	endif()
+	option(WITH_GHOST_XDND   "Enable drag'n'drop support on X11 using XDND protocol" ON)
 else()
 	# not an option for other OS's
 	set(WITH_SYSTEM_GLEW OFF)
@@ -376,14 +373,14 @@ if(APPLE)
 		message(STATUS "OSX_SYSROOT_PREFIX: " ${OSX_SYSROOT_PREFIX})
 		set(OSX_DEVELOPER_PREFIX /Developer/SDKs/MacOSX${OSX_SYSTEM}.sdk) # use guaranteed existing sdk
 		set(CMAKE_OSX_SYSROOT ${OSX_SYSROOT_PREFIX}/${OSX_DEVELOPER_PREFIX} CACHE PATH "" FORCE)
-        if(${CMAKE_GENERATOR} MATCHES "Xcode")
-            set(CMAKE_XCODE_ATTRIBUTE_SDKROOT macosx${OSX_SYSTEM}) # to silence sdk not found warning, just overrides CMAKE_OSX_SYSROOT
-        endif()
+		if(${CMAKE_GENERATOR} MATCHES "Xcode")
+			set(CMAKE_XCODE_ATTRIBUTE_SDKROOT macosx${OSX_SYSTEM}) # to silence sdk not found warning, just overrides CMAKE_OSX_SYSROOT
+		endif()
 	endif()
 
-    if(OSX_SYSTEM MATCHES 10.9)
-        set(CMAKE_FIND_ROOT_PATH ${CMAKE_OSX_SYSROOT}) # make sure syslibs and headers are looked up in sdk ( expecially for 10.9 openGL atm. )
-    endif()
+	if(OSX_SYSTEM MATCHES 10.9)
+		set(CMAKE_FIND_ROOT_PATH ${CMAKE_OSX_SYSROOT}) # make sure syslibs and headers are looked up in sdk ( expecially for 10.9 openGL atm. )
+	endif()
 
 	if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
 		set(CMAKE_OSX_DEPLOYMENT_TARGET "10.6" CACHE STRING "" FORCE) # 10.6 is our min. target, if you use higher sdk, weak linking happens
@@ -404,7 +401,7 @@ endif()
 # Check for conflicting/unsupported configurations
 
 if(NOT WITH_BLENDER AND NOT WITH_PLAYER AND NOT WITH_CYCLES_STANDALONE)
-	message(FATAL_ERROR "At least one of WITH_BLENDER or WITH_PLAYER must be enabled, nothing to do!")
+	message(FATAL_ERROR "At least one of WITH_BLENDER or WITH_PLAYER or WITH_CYCLES_STANDALONE must be enabled, nothing to do!")
 endif()
 
 if(NOT WITH_GAMEENGINE AND WITH_PLAYER)
@@ -515,12 +512,12 @@ endif()
 
 #-----------------------------------------------------------------------------
 # Check for valid directories
-# ... svn extern paths can be missing because of svn-git.
+# ... a partial checkout may cause this.
 
 if(WITH_INTERNATIONAL)
 	if(NOT EXISTS "${CMAKE_SOURCE_DIR}/release/datafiles/locale")
 		message(WARNING "Translation path '${CMAKE_SOURCE_DIR}/release/datafiles/locale' is missing, "
-						"This is an 'svn external', which are known not to work with bridges to other version "
+						"This is a 'git submodule', which are known not to work with bridges to other version "
 						"control systems, disabling 'WITH_INTERNATIONAL'.")
 		set(WITH_INTERNATIONAL OFF)
 	endif()
@@ -529,7 +526,7 @@ endif()
 if(WITH_PYTHON)
 	if(NOT EXISTS "${CMAKE_SOURCE_DIR}/release/scripts/addons")
 		message(WARNING "Addons path '${CMAKE_SOURCE_DIR}/release/scripts/addons' is missing, "
-						"This is an 'svn external', which are known not to work with bridges to other version "
+						"This is a 'git submodule', which are known not to work with bridges to other version "
 						"control systems: * CONTINUING WITHOUT ADDONS *")
 	endif()
 endif()
@@ -1206,7 +1203,11 @@ elseif(WIN32)
 				message(WARNING "USING HARDCODED boost locations")
 				set(BOOST ${LIBDIR}/boost)
 				set(BOOST_INCLUDE_DIR ${BOOST}/include)
-				if(MSVC11)
+				if(MSVC12)
+					set(BOOST_LIBPATH ${BOOST}/lib)
+					set(BOOST_POSTFIX "vc120-mt-s-1_55.lib")
+					set(BOOST_DEBUG_POSTFIX "vc120-mt-sgd-1_55.lib")
+				elseif(MSVC11)
 					set(BOOST_LIBPATH ${BOOST}/lib)
 					set(BOOST_POSTFIX "vc110-mt-s-1_53.lib")
 					set(BOOST_DEBUG_POSTFIX "vc110-mt-sgd-1_53.lib")
@@ -1507,12 +1508,12 @@ elseif(WIN32)
 	if(WITH_OPENAL)
 		set(OPENAL ${LIBDIR}/openal)
 		set(OPENALDIR ${LIBDIR}/openal)
-        set(OPENAL_INCLUDE_DIR ${OPENAL}/include)
-        if(MSVC11 OR MSVC12)
-            set(OPENAL_LIBRARY openal32)
-        else()
-            set(OPENAL_LIBRARY wrap_oal)
-        endif()
+		set(OPENAL_INCLUDE_DIR ${OPENAL}/include)
+		if(MSVC11 OR MSVC12)
+			set(OPENAL_LIBRARY openal32)
+		else()
+			set(OPENAL_LIBRARY wrap_oal)
+		endif()
 		set(OPENAL_LIBPATH ${OPENAL}/lib)
 	endif()
 
@@ -2256,10 +2257,16 @@ endif()
 #-----------------------------------------------------------------------------
 # Libraries
 
-add_subdirectory(source)
-add_subdirectory(intern)
-add_subdirectory(extern)
-
+if(WITH_BLENDER OR WITH_PLAYER)
+	add_subdirectory(source)
+	add_subdirectory(intern)
+	add_subdirectory(extern)
+elseif(WITH_CYCLES_STANDALONE)
+	add_subdirectory(intern/cycles)
+	if(NOT WITH_SYSTEM_GLEW)
+		add_subdirectory(extern/glew)
+	endif()
+endif()
 
 #-----------------------------------------------------------------------------
 # Blender Application

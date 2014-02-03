@@ -458,14 +458,9 @@ void RAS_MeshObject::RemoveFromBuckets(void *clientobj)
 		if (!msp)
 			continue;
 
-		/* see [#37920] */
-#if 0
 		RAS_MeshSlot *ms = *msp;
 
-		it->m_bucket->RemoveMeshSlot(ms);
-#else
-		it->m_bucket->RemoveMesh(this);
-#endif
+		it->m_bucket->RemoveMesh(ms);
 		it->m_slots.remove(clientobj);
 	}
 }
@@ -543,12 +538,12 @@ void RAS_MeshObject::SortPolygons(RAS_MeshSlot& ms, const MT_Transform &transfor
 
 bool RAS_MeshObject::HasColliderPolygon()
 {
-   int numpolys= NumPolygons();
-   for (int p=0; p<numpolys; p++)
-	   if (m_Polygons[p]->IsCollider())
-		   return true;
+	int numpolys= NumPolygons();
+	for (int p=0; p<numpolys; p++)
+		if (m_Polygons[p]->IsCollider())
+			return true;
 
-   return false;
+	return false;
 }
 
 void RAS_MeshObject::SchedulePolygons(int drawingmode)

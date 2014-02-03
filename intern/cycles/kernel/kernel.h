@@ -17,7 +17,7 @@
 #ifndef __KERNEL_H__
 #define __KERNEL_H__
 
-/* CPU Kernel Interfae */
+/* CPU Kernel Interface */
 
 #include "util_types.h"
 
@@ -43,7 +43,7 @@ void kernel_cpu_convert_to_half_float(KernelGlobals *kg, uchar4 *rgba, float *bu
 void kernel_cpu_shader(KernelGlobals *kg, uint4 *input, float4 *output,
 	int type, int i);
 
-#ifdef WITH_OPTIMIZED_KERNEL
+#ifdef WITH_CYCLES_OPTIMIZED_KERNEL_SSE2
 void kernel_cpu_sse2_path_trace(KernelGlobals *kg, float *buffer, unsigned int *rng_state,
 	int sample, int x, int y, int offset, int stride);
 void kernel_cpu_sse2_convert_to_byte(KernelGlobals *kg, uchar4 *rgba, float *buffer,
@@ -52,7 +52,9 @@ void kernel_cpu_sse2_convert_to_half_float(KernelGlobals *kg, uchar4 *rgba, floa
 	float sample_scale, int x, int y, int offset, int stride);
 void kernel_cpu_sse2_shader(KernelGlobals *kg, uint4 *input, float4 *output,
 	int type, int i);
+#endif
 
+#ifdef WITH_CYCLES_OPTIMIZED_KERNEL_SSE3
 void kernel_cpu_sse3_path_trace(KernelGlobals *kg, float *buffer, unsigned int *rng_state,
 	int sample, int x, int y, int offset, int stride);
 void kernel_cpu_sse3_convert_to_byte(KernelGlobals *kg, uchar4 *rgba, float *buffer,
@@ -61,7 +63,9 @@ void kernel_cpu_sse3_convert_to_half_float(KernelGlobals *kg, uchar4 *rgba, floa
 	float sample_scale, int x, int y, int offset, int stride);
 void kernel_cpu_sse3_shader(KernelGlobals *kg, uint4 *input, float4 *output,
 	int type, int i);
+#endif
 
+#ifdef WITH_CYCLES_OPTIMIZED_KERNEL_SSE41
 void kernel_cpu_sse41_path_trace(KernelGlobals *kg, float *buffer, unsigned int *rng_state,
 	int sample, int x, int y, int offset, int stride);
 void kernel_cpu_sse41_convert_to_byte(KernelGlobals *kg, uchar4 *rgba, float *buffer,
@@ -69,6 +73,17 @@ void kernel_cpu_sse41_convert_to_byte(KernelGlobals *kg, uchar4 *rgba, float *bu
 void kernel_cpu_sse41_convert_to_half_float(KernelGlobals *kg, uchar4 *rgba, float *buffer,
 	float sample_scale, int x, int y, int offset, int stride);
 void kernel_cpu_sse41_shader(KernelGlobals *kg, uint4 *input, float4 *output,
+	int type, int i);
+#endif
+
+#ifdef WITH_CYCLES_OPTIMIZED_KERNEL_AVX
+void kernel_cpu_avx_path_trace(KernelGlobals *kg, float *buffer, unsigned int *rng_state,
+	int sample, int x, int y, int offset, int stride);
+void kernel_cpu_avx_convert_to_byte(KernelGlobals *kg, uchar4 *rgba, float *buffer,
+	float sample_scale, int x, int y, int offset, int stride);
+void kernel_cpu_avx_convert_to_half_float(KernelGlobals *kg, uchar4 *rgba, float *buffer,
+	float sample_scale, int x, int y, int offset, int stride);
+void kernel_cpu_avx_shader(KernelGlobals *kg, uint4 *input, float4 *output,
 	int type, int i);
 #endif
 

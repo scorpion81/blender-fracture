@@ -40,7 +40,7 @@ PyDoc_STRVAR(orientedViewEdgeIterator_doc,
 "Class representing an iterator over oriented ViewEdges around a\n"
 ":class:`ViewVertex`.  This iterator allows a CCW iteration (in the image\n"
 "plane).  An instance of an orientedViewEdgeIterator can only be\n"
-"obtained from a ViewVertex by calling edgesBegin() or edgesEnd().\n"
+"obtained from a ViewVertex by calling edges_begin() or edges_end().\n"
 "\n"
 ".. method:: __init__()\n"
 "\n"
@@ -60,35 +60,52 @@ static int orientedViewEdgeIterator_init(BPy_orientedViewEdgeIterator *self, PyO
 
 	if (!PyArg_ParseTupleAndKeywords(args, kwds, "|O!", (char **)kwlist, &orientedViewEdgeIterator_Type, &brother))
 		return -1;
-	if (!brother)
+	if (!brother) {
 		self->ove_it = new ViewVertexInternal::orientedViewEdgeIterator();
-	else
+		self->at_start = true;
+		self->reversed = false;
+	}
+	else {
 		self->ove_it = new ViewVertexInternal::orientedViewEdgeIterator(*(((BPy_orientedViewEdgeIterator *)brother)->ove_it));
+		self->at_start = ((BPy_orientedViewEdgeIterator *)brother)->at_start;
+		self->reversed = ((BPy_orientedViewEdgeIterator *)brother)->reversed;
+	}
 	self->py_it.it = self->ove_it;
-	self->reversed = 0;
 	return 0;
+}
+
+static PyObject *orientedViewEdgeIterator_iter(BPy_orientedViewEdgeIterator *self)
+{
+	Py_INCREF(self);
+	self->at_start = true;
+	return (PyObject *) self;
 }
 
 static PyObject *orientedViewEdgeIterator_iternext(BPy_orientedViewEdgeIterator *self)
 {
-	ViewVertex::directedViewEdge *dve;
-
 	if (self->reversed) {
 		if (self->ove_it->isBegin()) {
 			PyErr_SetNone(PyExc_StopIteration);
 			return NULL;
 		}
 		self->ove_it->decrement();
-		dve = self->ove_it->operator->();
 	}
 	else {
 		if (self->ove_it->isEnd()) {
 			PyErr_SetNone(PyExc_StopIteration);
 			return NULL;
 		}
-		dve = self->ove_it->operator->();
-		self->ove_it->increment();
+		if (self->at_start)
+			self->at_start = false;
+		else {
+			self->ove_it->increment();
+			if (self->ove_it->isEnd()) {
+				PyErr_SetNone(PyExc_StopIteration);
+				return NULL;
+			}
+		}
 	}
+	ViewVertex::directedViewEdge *dve = self->ove_it->operator->();
 	return BPy_directedViewEdge_from_directedViewEdge(*dve);
 }
 
@@ -96,7 +113,7 @@ static PyObject *orientedViewEdgeIterator_iternext(BPy_orientedViewEdgeIterator 
 
 PyDoc_STRVAR(orientedViewEdgeIterator_object_doc,
 "The oriented ViewEdge (i.e., a tuple of the pointed ViewEdge and a boolean\n"
-"value) currently pointed by this iterator. If the boolean value is true,\n"
+"value) currently pointed to by this iterator. If the boolean value is true,\n"
 "the ViewEdge is incoming.\n"
 "\n"
 ":type: (:class:`directedViewEdge`, bool)");
@@ -144,7 +161,7 @@ PyTypeObject orientedViewEdgeIterator_Type = {
 	0,                              /* tp_clear */
 	0,                              /* tp_richcompare */
 	0,                              /* tp_weaklistoffset */
-	PyObject_SelfIter,              /* tp_iter */
+	(getiterfunc)orientedViewEdgeIterator_iter, /* tp_iter */
 	(iternextfunc)orientedViewEdgeIterator_iternext, /* tp_iternext */
 	0,                              /* tp_methods */
 	0,                              /* tp_members */

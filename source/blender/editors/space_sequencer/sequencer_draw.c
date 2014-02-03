@@ -846,11 +846,11 @@ ImBuf *sequencer_ibuf_get(struct Main *bmain, Scene *scene, SpaceSeq *sseq, int 
 	G.is_break = FALSE;
 
 	if (special_seq_update)
-		ibuf = BKE_sequencer_give_ibuf_direct(context, cfra + frame_ofs, special_seq_update);
+		ibuf = BKE_sequencer_give_ibuf_direct(&context, cfra + frame_ofs, special_seq_update);
 	else if (!U.prefetchframes) // XXX || (G.f & G_PLAYANIM) == 0) {
-		ibuf = BKE_sequencer_give_ibuf(context, cfra + frame_ofs, sseq->chanshown);
+		ibuf = BKE_sequencer_give_ibuf(&context, cfra + frame_ofs, sseq->chanshown);
 	else
-		ibuf = BKE_sequencer_give_ibuf_threaded(context, cfra + frame_ofs, sseq->chanshown);
+		ibuf = BKE_sequencer_give_ibuf_threaded(&context, cfra + frame_ofs, sseq->chanshown);
 
 	/* restore state so real rendering would be canceled (if needed) */
 	G.is_break = is_break;
@@ -1483,7 +1483,7 @@ void draw_timeline_seq(const bContext *C, ARegion *ar)
 	UI_view2d_view_restore(C);
 
 	/* scrollers */
-	unit = (sseq->flag & SEQ_DRAWFRAMES) ? V2D_UNIT_FRAMES : V2D_UNIT_SECONDSSEQ;
+	unit = (sseq->flag & SEQ_DRAWFRAMES) ? V2D_UNIT_FRAMES : V2D_UNIT_SECONDS;
 	scrollers = UI_view2d_scrollers_calc(C, v2d, unit, V2D_GRID_CLAMP, V2D_UNIT_VALUES, V2D_GRID_CLAMP);
 	UI_view2d_scrollers_draw(C, v2d, scrollers);
 	UI_view2d_scrollers_free(scrollers);

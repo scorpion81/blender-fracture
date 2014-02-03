@@ -631,7 +631,7 @@ static void txt_add_object(bContext *C, TextLine *firstline, int totline, const 
 	WM_event_add_notifier(C, NC_OBJECT | NA_ADDED, obedit);
 }
 
-void ED_text_to_object(bContext *C, Text *text, int split_lines)
+void ED_text_to_object(bContext *C, Text *text, const bool split_lines)
 {
 	RegionView3D *rv3d = CTX_wm_region_view3d(C);
 	TextLine *line;
@@ -1469,7 +1469,7 @@ void FONT_OT_text_insert(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	/* properties */
-	RNA_def_string(ot->srna, "text", "", 0, "Text", "Text to insert at the cursor position");
+	RNA_def_string(ot->srna, "text", NULL, 0, "Text", "Text to insert at the cursor position");
 	RNA_def_boolean(ot->srna, "accent", 0, "Accent mode", "Next typed character will strike through previous, for special character input");
 }
 

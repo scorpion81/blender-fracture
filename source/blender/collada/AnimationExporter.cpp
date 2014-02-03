@@ -705,7 +705,7 @@ void AnimationExporter::add_source_parameters(COLLADASW::SourceBase::ParameterNa
 	}
 }
 
-void AnimationExporter::get_source_values(BezTriple *bezt, COLLADASW::InputSemantic::Semantics semantic, bool is_rotation, float *values, int *length)
+void AnimationExporter::get_source_values(BezTriple *bezt, COLLADASW::InputSemantic::Semantics semantic, bool is_angle, float *values, int *length)
 {
 	switch (semantic) {
 		case COLLADASW::InputSemantic::INPUT:
@@ -714,7 +714,7 @@ void AnimationExporter::get_source_values(BezTriple *bezt, COLLADASW::InputSeman
 			break;
 		case COLLADASW::InputSemantic::OUTPUT:
 			*length = 1;
-			if (is_rotation) {
+			if (is_angle) {
 				values[0] = RAD2DEGF(bezt->vec[1][1]);
 			}
 			else {
@@ -730,7 +730,7 @@ void AnimationExporter::get_source_values(BezTriple *bezt, COLLADASW::InputSeman
 				values[0] = 0;
 				values[1] = 0;
 			}
-			else if (is_rotation) {
+			else if (is_angle) {
 				values[1] = RAD2DEGF(bezt->vec[0][1]);
 			}
 			else {
@@ -746,7 +746,7 @@ void AnimationExporter::get_source_values(BezTriple *bezt, COLLADASW::InputSeman
 				values[0] = 0;
 				values[1] = 0;
 			}
-			else if (is_rotation) {
+			else if (is_angle) {
 				values[1] = RAD2DEGF(bezt->vec[2][1]);
 			}
 			else {
@@ -763,10 +763,10 @@ std::string AnimationExporter::create_source_from_fcurve(COLLADASW::InputSemanti
 {
 	std::string source_id = anim_id + get_semantic_suffix(semantic);
 
-	//bool is_rotation = !strcmp(fcu->rna_path, "rotation");
+	//bool is_angle = !strcmp(fcu->rna_path, "rotation");
 	bool is_angle = false;
 
-	if (strstr(fcu->rna_path, "rotation")) is_angle = true;
+	if (strstr(fcu->rna_path, "rotation") || strstr(fcu->rna_path,"spot_size")) is_angle = true;
 
 	COLLADASW::FloatSourceF source(mSW);
 	source.setId(source_id);
@@ -1196,7 +1196,7 @@ std::string AnimationExporter::get_camera_param_sid(char *rna_path, int tm_type,
 std::string AnimationExporter::get_transform_sid(char *rna_path, int tm_type, const char *axis_name, bool append_axis)
 {
 	std::string tm_name;
-	bool is_rotation = false;
+	bool is_angle = false;
 	// when given rna_path, determine tm_type from it
 	if (rna_path) {
 		char *name = extract_transform_name(rna_path);
@@ -1228,7 +1228,7 @@ std::string AnimationExporter::get_transform_sid(char *rna_path, int tm_type, co
 		case 0:
 		case 1:
 			tm_name = "rotation";
-			is_rotation = true;
+			is_angle = true;
 			break;
 		case 2:
 			tm_name = "scale";
@@ -1258,7 +1258,7 @@ std::string AnimationExporter::get_transform_sid(char *rna_path, int tm_type, co
 	}
 
 	if (tm_name.size()) {
-		if (is_rotation)
+		if (is_angle)
 			return tm_name + std::string(axis_name) + ".ANGLE";
 		else
 		if (axis_name[0])
@@ -1279,19 +1279,20 @@ char *AnimationExporter::extract_transform_name(char *rna_path)
 //find keyframes of all the objects animations
 void AnimationExporter::find_frames(Object *ob, std::vector<float> &fra)
 {
-	FCurve *fcu = (FCurve *)ob->adt->action->curves.first;
+	if (ob->adt && ob->adt->action) {
+		FCurve *fcu = (FCurve *)ob->adt->action->curves.first;
 
-	for (; fcu; fcu = fcu->next) {
-
-		for (unsigned int i = 0; i < fcu->totvert; i++) {
-			float f = fcu->bezt[i].vec[1][0];
-			if (std::find(fra.begin(), fra.end(), f) == fra.end())   
-				fra.push_back(f);
+		for (; fcu; fcu = fcu->next) {
+			for (unsigned int i = 0; i < fcu->totvert; i++) {
+				float f = fcu->bezt[i].vec[1][0];
+				if (std::find(fra.begin(), fra.end(), f) == fra.end())
+					fra.push_back(f);
+			}
 		}
-	}
 
-	// keep the keys in ascending order
-	std::sort(fra.begin(), fra.end());
+		// keep the keys in ascending order
+		std::sort(fra.begin(), fra.end());
+	}
 }
 
 
@@ -1371,24 +1372,26 @@ void AnimationExporter::find_rotation_frames(Object *ob, std::vector<float> &fra
 
 void AnimationExporter::find_frames(Object *ob, std::vector<float> &fra, const char *prefix, const char *tm_name)
 {
-	FCurve *fcu = (FCurve *)ob->adt->action->curves.first;
+	if (ob->adt && ob->adt->action) {
+		FCurve *fcu = (FCurve *)ob->adt->action->curves.first;
 
-	for (; fcu; fcu = fcu->next) {
-		if (prefix && strncmp(prefix, fcu->rna_path, strlen(prefix)))
-			continue;
+		for (; fcu; fcu = fcu->next) {
+			if (prefix && strncmp(prefix, fcu->rna_path, strlen(prefix)))
+				continue;
 
-		char *name = extract_transform_name(fcu->rna_path);
-		if (!strcmp(name, tm_name)) {
-			for (unsigned int i = 0; i < fcu->totvert; i++) {
-				float f = fcu->bezt[i].vec[1][0];
-				if (std::find(fra.begin(), fra.end(), f) == fra.end())   
-					fra.push_back(f);
+			char *name = extract_transform_name(fcu->rna_path);
+			if (!strcmp(name, tm_name)) {
+				for (unsigned int i = 0; i < fcu->totvert; i++) {
+					float f = fcu->bezt[i].vec[1][0];
+					if (std::find(fra.begin(), fra.end(), f) == fra.end())
+						fra.push_back(f);
+				}
 			}
 		}
-	}
 
-	// keep the keys in ascending order
-	std::sort(fra.begin(), fra.end());
+		// keep the keys in ascending order
+		std::sort(fra.begin(), fra.end());
+	}
 }
 
 void AnimationExporter::write_bone_animation(Object *ob_arm, Bone *bone)

@@ -555,7 +555,7 @@ static int edit_constraint_poll(bContext *C)
 
 static void edit_constraint_properties(wmOperatorType *ot)
 {
-	RNA_def_string(ot->srna, "constraint", "", MAX_NAME, "Constraint", "Name of the constraint to edit");
+	RNA_def_string(ot->srna, "constraint", NULL, MAX_NAME, "Constraint", "Name of the constraint to edit");
 	RNA_def_enum(ot->srna, "owner", constraint_owner_items, 0, "Owner", "The owner of this constraint");
 }
 
@@ -1171,7 +1171,7 @@ static int constraint_delete_exec(bContext *C, wmOperator *UNUSED(op))
 	Object *ob = ptr.id.data;
 	bConstraint *con = ptr.data;
 	ListBase *lb = get_constraint_lb(ob, con, NULL);
-	const short is_ik = ELEM(con->type, CONSTRAINT_TYPE_KINEMATIC, CONSTRAINT_TYPE_SPLINEIK);
+	const bool is_ik = ELEM(con->type, CONSTRAINT_TYPE_KINEMATIC, CONSTRAINT_TYPE_SPLINEIK);
 
 	/* free the constraint */
 	if (BKE_remove_constraint(lb, con)) {
@@ -1613,7 +1613,7 @@ static short get_new_constraint_target(bContext *C, int con_type, Object **tar_o
 }
 
 /* used by add constraint operators to add the constraint required */
-static int constraint_add_exec(bContext *C, wmOperator *op, Object *ob, ListBase *list, int type, short setTarget)
+static int constraint_add_exec(bContext *C, wmOperator *op, Object *ob, ListBase *list, int type, const bool setTarget)
 {
 	Main *bmain = CTX_data_main(C);
 	bPoseChannel *pchan;
@@ -1716,7 +1716,7 @@ static int constraint_add_exec(bContext *C, wmOperator *op, Object *ob, ListBase
 		DAG_id_tag_update(&ob->id, OB_RECALC_DATA | OB_RECALC_OB);
 	}
 	else
-		DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
+		DAG_id_tag_update(&ob->id, OB_RECALC_OB);
 	
 	/* notifiers for updates */
 	WM_event_add_notifier(C, NC_OBJECT | ND_CONSTRAINT | NA_ADDED, ob);
@@ -1907,7 +1907,7 @@ static int pose_ik_add_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED
 static int pose_ik_add_exec(bContext *C, wmOperator *op)
 {
 	Object *ob = CTX_data_active_object(C);
-	int with_targets = RNA_boolean_get(op->ptr, "with_targets");
+	const bool with_targets = RNA_boolean_get(op->ptr, "with_targets");
 	
 	/* add the constraint - all necessary checks should have been done by the invoke() callback already... */
 	return constraint_add_exec(C, op, ob, get_active_constraints(ob), CONSTRAINT_TYPE_KINEMATIC, with_targets);

@@ -139,21 +139,6 @@ void ED_node_tag_update_id(ID *id)
 	}
 }
 
-static int has_nodetree(bNodeTree *ntree, bNodeTree *lookup)
-{
-	bNode *node;
-	
-	if (ntree == lookup)
-		return 1;
-	
-	for (node = ntree->nodes.first; node; node = node->next)
-		if (node->type == NODE_GROUP && node->id)
-			if (has_nodetree((bNodeTree *)node->id, lookup))
-				return 1;
-	
-	return 0;
-}
-
 void ED_node_tag_update_nodetree(Main *bmain, bNodeTree *ntree)
 {
 	if (!ntree)
@@ -162,7 +147,7 @@ void ED_node_tag_update_nodetree(Main *bmain, bNodeTree *ntree)
 	/* look through all datablocks, to support groups */
 	FOREACH_NODETREE(bmain, tntree, id) {
 		/* check if nodetree uses the group */
-		if (has_nodetree(tntree, ntree))
+		if (ntreeHasTree(tntree, ntree))
 			ED_node_tag_update_id(id);
 	} FOREACH_NODETREE_END
 	
@@ -347,7 +332,7 @@ static void node_update_basis(const bContext *C, bNodeTree *ntree, bNode *node)
 		RNA_pointer_create(&ntree->id, &RNA_NodeSocket, nsock, &sockptr);
 		
 		layout = uiBlockLayout(node->block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL,
-		                       locx + NODE_DYS, dy, NODE_WIDTH(node) - NODE_DY, NODE_DY, UI_GetStyle());
+		                       locx + NODE_DYS, dy, NODE_WIDTH(node) - NODE_DY, NODE_DY, 0, UI_GetStyle());
 		/* context pointers for current node and socket */
 		uiLayoutSetContextPointer(layout, "node", &nodeptr);
 		uiLayoutSetContextPointer(layout, "socket", &sockptr);
@@ -418,7 +403,7 @@ static void node_update_basis(const bContext *C, bNodeTree *ntree, bNode *node)
 		
 			
 		layout = uiBlockLayout(node->block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL,
-		                       locx + NODE_DYS, dy, node->butr.xmax, 0, UI_GetStyle());
+		                       locx + NODE_DYS, dy, node->butr.xmax, 0, 0, UI_GetStyle());
 		uiLayoutSetContextPointer(layout, "node", &nodeptr);
 		
 		node->typeinfo->draw_buttons(layout, (bContext *)C, &nodeptr);
@@ -437,7 +422,7 @@ static void node_update_basis(const bContext *C, bNodeTree *ntree, bNode *node)
 		RNA_pointer_create(&ntree->id, &RNA_NodeSocket, nsock, &sockptr);
 		
 		layout = uiBlockLayout(node->block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL,
-		                       locx + NODE_DYS, dy, NODE_WIDTH(node) - NODE_DY, NODE_DY, UI_GetStyle());
+		                       locx + NODE_DYS, dy, NODE_WIDTH(node) - NODE_DY, NODE_DY, 0, UI_GetStyle());
 		/* context pointers for current node and socket */
 		uiLayoutSetContextPointer(layout, "node", &nodeptr);
 		uiLayoutSetContextPointer(layout, "socket", &sockptr);

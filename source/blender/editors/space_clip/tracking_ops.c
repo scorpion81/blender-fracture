@@ -307,7 +307,7 @@ static int delete_marker_exec(bContext *C, wmOperator *UNUSED(op))
 	MovieTrackingTrack *track = tracksbase->first, *next;
 	MovieTrackingPlaneTrack *plane_track, *plane_track_next;
 	int framenr = ED_space_clip_get_clip_frame_number(sc);
-	int has_selection = 0;
+	bool has_selection = false;
 	bool changed = false;
 
 	while (track) {
@@ -542,14 +542,15 @@ static int get_mouse_pattern_corner(SpaceClip *sc, MovieTrackingMarker *marker, 
 	float len = FLT_MAX, dx, dy;
 
 	for (i = 0; i < 4; i++) {
-		float cur_len;
+		float cur_len_sq;
 
 		next = (i + 1) % 4;
 
-		cur_len = len_v2v2(marker->pattern_corners[i], marker->pattern_corners[next]);
+		cur_len_sq = len_squared_v2v2(marker->pattern_corners[i], marker->pattern_corners[next]);
 
-		len = min_ff(cur_len, len);
+		len = min_ff(cur_len_sq, len);
 	}
+	len = sqrtf(len);
 
 	dx = 12.0f / width / sc->zoom;
 	dy = 12.0f / height / sc->zoom;
@@ -913,7 +914,7 @@ static int slide_marker_modal(bContext *C, wmOperator *op, const wmEvent *event)
 
 					sub_v2_v2(start, data->old_pos);
 
-					if (len_v2(start) > 0.0f) {
+					if (len_squared_v2(start) != 0.0f) {
 						float mval[2];
 
 						if (data->accurate) {
@@ -986,7 +987,7 @@ static int slide_marker_modal(bContext *C, wmOperator *op, const wmEvent *event)
 					ED_clip_point_stable_pos(sc, ar, mval[0], mval[1], &end[0], &end[1]);
 					sub_v2_v2(end, data->old_pos);
 
-					if (len_v2(start) > 0.0f) {
+					if (len_squared_v2(start) != 0.0f) {
 						scale = len_v2(end) / len_v2(start);
 
 						if (scale < 0.0f) {
@@ -1334,8 +1335,8 @@ static int track_markers_exec(bContext *C, wmOperator *op)
 	struct MovieTrackingContext *context;
 	MovieClipUser *user, fake_user = {0};
 	int framenr, sfra, efra;
-	int backwards = RNA_boolean_get(op->ptr, "backwards");
-	int sequence = RNA_boolean_get(op->ptr, "sequence");
+	const bool backwards = RNA_boolean_get(op->ptr, "backwards");
+	const bool sequence = RNA_boolean_get(op->ptr, "sequence");
 	int frames_limit;
 
 	if (RNA_struct_property_is_set(op->ptr, "clip")) {
@@ -1522,7 +1523,7 @@ void CLIP_OT_track_markers(wmOperatorType *ot)
 	/* properties */
 	RNA_def_boolean(ot->srna, "backwards", 0, "Backwards", "Do backwards tracking");
 	RNA_def_boolean(ot->srna, "sequence", 0, "Track Sequence", "Track marker during image sequence rather than single image");
-	prop = RNA_def_string(ot->srna, "clip", "", MAX_NAME, "Movie Clip", "Movie Clip to be tracked");
+	prop = RNA_def_string(ot->srna, "clip", NULL, MAX_NAME, "Movie Clip", "Movie Clip to be tracked");
 	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 }
 
@@ -1845,7 +1846,7 @@ static int clear_track_path_exec(bContext *C, wmOperator *op)
 	MovieTrackingTrack *track;
 	ListBase *tracksbase = BKE_tracking_get_active_tracks(tracking);
 	int action = RNA_enum_get(op->ptr, "action");
-	int clear_active = RNA_boolean_get(op->ptr, "clear_active");
+	const bool clear_active = RNA_boolean_get(op->ptr, "clear_active");
 	int framenr = ED_space_clip_get_clip_frame_number(sc);
 
 	if (clear_active) {
@@ -2185,7 +2186,7 @@ static void set_axis(Scene *scene,  Object *ob, MovieClip *clip, MovieTrackingOb
                      MovieTrackingTrack *track, char axis)
 {
 	Object *camera = get_camera_with_movieclip(scene, clip);
-	int is_camera = tracking_object->flag & TRACKING_OBJECT_CAMERA;
+	const bool is_camera = (tracking_object->flag & TRACKING_OBJECT_CAMERA) != 0;
 	bool flip = false;
 	float mat[4][4], vec[3], obmat[4][4], dvec[3];
 
@@ -2207,7 +2208,7 @@ static void set_axis(Scene *scene,  Object *ob, MovieClip *clip, MovieTrackingOb
 		sub_v3_v3(vec, obmat[3]);
 	}
 
-	if (len_v2(vec) < 1e-3f)
+	if (len_squared_v2(vec) < (1e-3f * 1e-3f))
 		return;
 
 	unit_m4(mat);
@@ -2913,8 +2914,8 @@ static int detect_features_exec(bContext *C, wmOperator *op)
 	MovieTrackingTrack *track = tracksbase->first;
 	int placement = RNA_enum_get(op->ptr, "placement");
 	int margin = RNA_int_get(op->ptr, "margin");
-	int min_trackability = RNA_int_get(op->ptr, "min_trackability");
 	int min_distance = RNA_int_get(op->ptr, "min_distance");
+	float threshold = RNA_float_get(op->ptr, "threshold");
 	int place_outside_layer = 0;
 	int framenr = ED_space_clip_get_clip_frame_number(sc);
 	bGPDlayer *layer = NULL;
@@ -2938,8 +2939,8 @@ static int detect_features_exec(bContext *C, wmOperator *op)
 		track = track->next;
 	}
 
-	BKE_tracking_detect_fast(tracking, tracksbase, ibuf, framenr, margin,
-	                         min_trackability, min_distance, layer, place_outside_layer);
+	BKE_tracking_detect_harris(tracking, tracksbase, ibuf, framenr, margin,
+	                           threshold / 100000.0f, min_distance, layer, place_outside_layer);
 
 	IMB_freeImBuf(ibuf);
 
@@ -2972,9 +2973,9 @@ void CLIP_OT_detect_features(wmOperatorType *ot)
 
 	/* properties */
 	RNA_def_enum(ot->srna, "placement", placement_items, 0, "Placement", "Placement for detected features");
-	RNA_def_int(ot->srna, "margin", 16, 0, INT_MAX, "Margin", "Only corners further than margin pixels from the image edges are considered", 0, 300);
-	RNA_def_int(ot->srna, "min_trackability", 16, 0, INT_MAX, "Trackability", "Minimum trackability score to add a corner", 0, 300);
-	RNA_def_int(ot->srna, "min_distance", 120, 0, INT_MAX, "Distance", "Minimal distance accepted between two corners", 0, 300);
+	RNA_def_int(ot->srna, "margin", 16, 0, INT_MAX, "Margin", "Only features further than margin pixels from the image edges are considered", 0, 300);
+	RNA_def_float(ot->srna, "threshold", 1.0f, 0.0001f, FLT_MAX, "Threshold", "Threshold level to consider feature good enough for tracking", 0.0001f, FLT_MAX);
+	RNA_def_int(ot->srna, "min_distance", 120, 0, INT_MAX, "Distance", "Minimal distance accepted between two features", 0, 300);
 }
 
 /********************** frame jump operator *********************/

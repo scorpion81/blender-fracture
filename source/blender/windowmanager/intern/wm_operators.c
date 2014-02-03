@@ -26,6 +26,9 @@
 
 /** \file blender/windowmanager/intern/wm_operators.c
  *  \ingroup wm
+ *
+ * Functions for dealing with wmOperator, adding, removing, calling
+ * as well as some generic operators and shared operator properties.
  */
 
 
@@ -458,14 +461,10 @@ static void wm_operatortype_free_macro(wmOperatorType *ot)
 	BLI_freelistN(&ot->macro);
 }
 
-
-int WM_operatortype_remove(const char *idname)
+void WM_operatortype_remove_ptr(wmOperatorType *ot)
 {
-	wmOperatorType *ot = WM_operatortype_find(idname, 0);
+	BLI_assert(ot == WM_operatortype_find(ot->idname, false));
 
-	if (ot == NULL)
-		return 0;
-	
 	RNA_struct_free(&BLENDER_RNA, ot->srna);
 
 	if (ot->last_properties) {
@@ -478,8 +477,21 @@ int WM_operatortype_remove(const char *idname)
 
 	BLI_ghash_remove(global_ops_hash, (void *)ot->idname, NULL, NULL);
 
+	WM_keyconfig_update_operatortype();
+
 	MEM_freeN(ot);
-	return 1;
+}
+
+bool WM_operatortype_remove(const char *idname)
+{
+	wmOperatorType *ot = WM_operatortype_find(idname, 0);
+
+	if (ot == NULL)
+		return false;
+
+	WM_operatortype_remove_ptr(ot);
+
+	return true;
 }
 
 /* SOME_OT_op -> some.op */
@@ -1163,13 +1175,13 @@ void WM_operator_properties_filesel(wmOperatorType *ot, int filter, short type, 
 
 
 	if (flag & WM_FILESEL_FILEPATH)
-		RNA_def_string_file_path(ot->srna, "filepath", "", FILE_MAX, "File Path", "Path to file");
+		RNA_def_string_file_path(ot->srna, "filepath", NULL, FILE_MAX, "File Path", "Path to file");
 
 	if (flag & WM_FILESEL_DIRECTORY)
-		RNA_def_string_dir_path(ot->srna, "directory", "", FILE_MAX, "Directory", "Directory of the file");
+		RNA_def_string_dir_path(ot->srna, "directory", NULL, FILE_MAX, "Directory", "Directory of the file");
 
 	if (flag & WM_FILESEL_FILENAME)
-		RNA_def_string_file_name(ot->srna, "filename", "", FILE_MAX, "File Name", "Name of the file");
+		RNA_def_string_file_name(ot->srna, "filename", NULL, FILE_MAX, "File Name", "Name of the file");
 
 	if (flag & WM_FILESEL_FILES)
 		RNA_def_collection_runtime(ot->srna, "files", &RNA_OperatorFileListElement, "Files", "");
@@ -1387,7 +1399,7 @@ static uiBlock *wm_block_create_redo(bContext *C, ARegion *ar, void *arg_op)
 	assert(op->type->flag & OPTYPE_REGISTER);
 
 	uiBlockSetHandleFunc(block, wm_block_redo_cb, arg_op);
-	layout = uiBlockLayout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, 0, 0, width, UI_UNIT_Y, style);
+	layout = uiBlockLayout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, 0, 0, width, UI_UNIT_Y, 0, style);
 
 	if (op == WM_operator_last_redo(C))
 		if (!WM_operator_check_ui_enabled(C, op->type->name))
@@ -1422,7 +1434,7 @@ static void dialog_exec_cb(bContext *C, void *arg1, void *arg2)
 	wmOpPopUp *data = arg1;
 	uiBlock *block = arg2;
 
-	WM_operator_call(C, data->op);
+	WM_operator_call_ex(C, data->op, true);
 
 	/* let execute handle freeing it */
 	//data->free_op = FALSE;
@@ -1460,7 +1472,7 @@ static uiBlock *wm_block_dialog_create(bContext *C, ARegion *ar, void *userData)
 	 * where quitting by accident is very annoying */
 	uiBlockSetFlag(block, UI_BLOCK_KEEP_OPEN);
 
-	layout = uiBlockLayout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, 0, 0, data->width, data->height, style);
+	layout = uiBlockLayout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, 0, 0, data->width, data->height, 0, style);
 	
 	uiBlockSetFunc(block, dialog_check_cb, op, NULL);
 
@@ -1501,7 +1513,7 @@ static uiBlock *wm_operator_ui_create(bContext *C, ARegion *ar, void *userData)
 	uiBlockClearFlag(block, UI_BLOCK_LOOP);
 	uiBlockSetFlag(block, UI_BLOCK_KEEP_OPEN | UI_BLOCK_MOVEMOUSE_QUIT);
 
-	layout = uiBlockLayout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, 0, 0, data->width, data->height, style);
+	layout = uiBlockLayout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, 0, 0, data->width, data->height, 0, style);
 
 	/* since ui is defined the auto-layout args are not used */
 	uiLayoutOperatorButs(C, layout, op, NULL, 'V', 0);
@@ -1536,7 +1548,7 @@ static void wm_operator_ui_popup_ok(struct bContext *C, void *arg, int retval)
 	wmOperator *op = data->op;
 
 	if (op && retval > 0)
-		WM_operator_call(C, op);
+		WM_operator_call_ex(C, op, true);
 	
 	MEM_freeN(data);
 }
@@ -1801,7 +1813,7 @@ static uiBlock *wm_block_create_splash(bContext *C, ARegion *ar, void *UNUSED(ar
 	}
 #endif  /* WITH_BUILDINFO */
 	
-	layout = uiBlockLayout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, 10, 2, U.pixelsize * 480, U.pixelsize * 110, style);
+	layout = uiBlockLayout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, 10, 2, U.pixelsize * 480, U.pixelsize * 110, 0, style);
 	
 	uiBlockSetEmboss(block, UI_EMBOSS);
 	/* show the splash menu (containing interaction presets), using python */
@@ -1983,7 +1995,7 @@ static void WM_OT_call_menu(wmOperatorType *ot)
 
 	ot->flag = OPTYPE_INTERNAL;
 
-	RNA_def_string(ot->srna, "name", "", BKE_ST_MAXNAME, "Name", "Name of the menu");
+	RNA_def_string(ot->srna, "name", NULL, BKE_ST_MAXNAME, "Name", "Name of the menu");
 }
 
 /* ************ window / screen operator definitions ************** */
@@ -2094,7 +2106,7 @@ static void WM_OT_read_homefile(wmOperatorType *ot)
 	ot->invoke = WM_operator_confirm;
 	ot->exec = wm_homefile_read_exec;
 
-	prop = RNA_def_string_file_path(ot->srna, "filepath", "", 
+	prop = RNA_def_string_file_path(ot->srna, "filepath", NULL,
 	                                FILE_MAX, "File Path", 
 	                                "Path to an alternative start-up file");
 	RNA_def_property_flag(prop, PROP_HIDDEN);
@@ -2114,6 +2126,27 @@ static void WM_OT_read_factory_settings(wmOperatorType *ot)
 }
 
 /* *************** open file **************** */
+
+/**
+ * Wrap #WM_file_read, shared by file reading operators.
+ */
+static bool wm_file_read_opwrap(bContext *C, const char *filepath, ReportList *reports,
+                                const bool autoexec_init)
+{
+	bool success;
+
+	/* XXX wm in context is not set correctly after WM_file_read -> crash */
+	/* do it before for now, but is this correct with multiple windows? */
+	WM_event_add_notifier(C, NC_WINDOW, NULL);
+
+	if (autoexec_init) {
+		WM_file_autoexec_init(filepath);
+	}
+
+	success = WM_file_read(C, filepath, reports);
+
+	return success;
+}
 
 /* currently fits in a pointer */
 struct FileRuntime {
@@ -2174,9 +2207,10 @@ static int wm_open_mainfile_invoke(bContext *C, wmOperator *op, const wmEvent *U
 
 static int wm_open_mainfile_exec(bContext *C, wmOperator *op)
 {
-	char path[FILE_MAX];
+	char filepath[FILE_MAX];
+	bool success;
 
-	RNA_string_get(op->ptr, "filepath", path);
+	RNA_string_get(op->ptr, "filepath", filepath);
 
 	/* re-use last loaded setting so we can reload a file without changing */
 	open_set_load_ui(op, false);
@@ -2192,20 +2226,17 @@ static int wm_open_mainfile_exec(bContext *C, wmOperator *op)
 	else
 		G.f &= ~G_SCRIPT_AUTOEXEC;
 	
-	/* XXX wm in context is not set correctly after WM_file_read -> crash */
-	/* do it before for now, but is this correct with multiple windows? */
-	WM_event_add_notifier(C, NC_WINDOW, NULL);
-
-	/* autoexec is already set correctly for invoke() for exec() though we need to initialize */
-	if (!RNA_struct_property_is_set(op->ptr, "use_scripts")) {
-		WM_file_autoexec_init(path);
-	}
-	WM_file_read(C, path, op->reports);
+	success = wm_file_read_opwrap(C, filepath, op->reports, !(G.f & G_SCRIPT_AUTOEXEC));
 
 	/* for file open also popup for warnings, not only errors */
 	BKE_report_print_level_set(op->reports, RPT_WARNING);
 
-	return OPERATOR_FINISHED;
+	if (success) {
+		return OPERATOR_FINISHED;
+	}
+	else {
+		return OPERATOR_CANCELLED;
+	}
 }
 
 static bool wm_open_mainfile_check(bContext *UNUSED(C), wmOperator *op)
@@ -2278,6 +2309,38 @@ static void WM_OT_open_mainfile(wmOperatorType *ot)
 	                "Allow .blend file to execute scripts automatically, default available from system preferences");
 }
 
+
+/* *************** revert file **************** */
+
+static int wm_revert_mainfile_exec(bContext *C, wmOperator *op)
+{
+	bool success;
+
+	success = wm_file_read_opwrap(C, G.main->name, op->reports, true);
+
+	if (success) {
+		return OPERATOR_FINISHED;
+	}
+	else {
+		return OPERATOR_CANCELLED;
+	}
+}
+
+static int wm_revert_mainfile_poll(bContext *UNUSED(C))
+{
+	return G.relbase_valid;
+}
+
+static void WM_OT_revert_mainfile(wmOperatorType *ot)
+{
+	ot->name = "Revert";
+	ot->idname = "WM_OT_revert_mainfile";
+	ot->description = "Reload the saved file";
+
+	ot->exec = wm_revert_mainfile_exec;
+	ot->poll = wm_revert_mainfile_poll;
+}
+
 /* **************** link/append *************** */
 
 static int wm_link_append_poll(bContext *C)
@@ -2337,7 +2400,7 @@ static int wm_link_append_exec(bContext *C, wmOperator *op)
 	Main *mainl = NULL;
 	BlendHandle *bh;
 	PropertyRNA *prop;
-	char name[FILE_MAX], dir[FILE_MAX], libname[FILE_MAX], group[GROUP_MAX];
+	char name[FILE_MAX], dir[FILE_MAX], libname[FILE_MAX], group[BLO_GROUP_MAX];
 	int idcode, totfiles = 0;
 	short flag;
 
@@ -2486,20 +2549,14 @@ static void WM_OT_link_append(wmOperatorType *ot)
 
 void WM_recover_last_session(bContext *C, ReportList *reports)
 {
-	char filename[FILE_MAX];
+	char filepath[FILE_MAX];
 	
-	BLI_make_file_string("/", filename, BLI_temporary_dir(), BLENDER_QUIT_FILE);
+	BLI_make_file_string("/", filepath, BLI_temporary_dir(), BLENDER_QUIT_FILE);
 	/* if reports==NULL, it's called directly without operator, we add a quick check here */
-	if (reports || BLI_exists(filename)) {
+	if (reports || BLI_exists(filepath)) {
 		G.fileflags |= G_FILE_RECOVER;
 		
-		/* XXX wm in context is not set correctly after WM_file_read -> crash */
-		/* do it before for now, but is this correct with multiple windows? */
-		WM_event_add_notifier(C, NC_WINDOW, NULL);
-		
-		/* load file */
-		WM_file_autoexec_init(filename);
-		WM_file_read(C, filename, reports);
+		wm_file_read_opwrap(C, filepath, reports, true);
 	
 		G.fileflags &= ~G_FILE_RECOVER;
 		
@@ -2533,23 +2590,23 @@ static void WM_OT_recover_last_session(wmOperatorType *ot)
 
 static int wm_recover_auto_save_exec(bContext *C, wmOperator *op)
 {
-	char path[FILE_MAX];
+	char filepath[FILE_MAX];
+	bool success;
 
-	RNA_string_get(op->ptr, "filepath", path);
+	RNA_string_get(op->ptr, "filepath", filepath);
 
 	G.fileflags |= G_FILE_RECOVER;
 
-	/* XXX wm in context is not set correctly after WM_file_read -> crash */
-	/* do it before for now, but is this correct with multiple windows? */
-	WM_event_add_notifier(C, NC_WINDOW, NULL);
-
-	/* load file */
-	WM_file_autoexec_init(path);
-	WM_file_read(C, path, op->reports);
+	success = wm_file_read_opwrap(C, filepath, op->reports, true);
 
 	G.fileflags &= ~G_FILE_RECOVER;
 	
-	return OPERATOR_FINISHED;
+	if (success) {
+		return OPERATOR_FINISHED;
+	}
+	else {
+		return OPERATOR_CANCELLED;
+	}
 }
 
 static int wm_recover_auto_save_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
@@ -2728,7 +2785,7 @@ static int wm_save_mainfile_invoke(bContext *C, wmOperator *op, const wmEvent *U
 	
 	RNA_string_set(op->ptr, "filepath", name);
 
-	/* if we're saving for the first time and prefer relative paths - any existign paths will be absolute,
+	/* if we're saving for the first time and prefer relative paths - any existing paths will be absolute,
 	 * enable the option to remap paths to avoid confusion [#37240] */
 	if ((G.relbase_valid == false) && (U.flag & USER_RELPATHS)) {
 		PropertyRNA *prop = RNA_struct_find_property(op->ptr, "relative_remap");
@@ -2897,8 +2954,9 @@ static int border_apply(bContext *C, wmOperator *op, int gesture_mode)
 		return 0;
 	
 	/* XXX weak; border should be configured for this without reading event types */
-	if (RNA_struct_find_property(op->ptr, "gesture_mode") )
+	if (RNA_struct_find_property(op->ptr, "gesture_mode")) {
 		RNA_int_set(op->ptr, "gesture_mode", gesture_mode);
+	}
 
 	retval = op->type->exec(C, op);
 	OPERATOR_RETVAL_CHECK(retval);
@@ -2915,8 +2973,9 @@ static void wm_gesture_end(bContext *C, wmOperator *op)
 
 	ED_area_tag_redraw(CTX_wm_area(C));
 	
-	if (RNA_struct_find_property(op->ptr, "cursor") )
+	if (RNA_struct_find_property(op->ptr, "cursor")) {
 		WM_cursor_modal_restore(CTX_wm_window(C));
+	}
 }
 
 int WM_border_select_invoke(bContext *C, wmOperator *op, const wmEvent *event)
@@ -3194,8 +3253,9 @@ void wm_tweakevent_test(bContext *C, wmEvent *event, int action)
 	if (win->tweak == NULL) {
 		if (CTX_wm_region(C)) {
 			if (event->val == KM_PRESS) {
-				if (ELEM3(event->type, LEFTMOUSE, MIDDLEMOUSE, RIGHTMOUSE) )
+				if (ELEM3(event->type, LEFTMOUSE, MIDDLEMOUSE, RIGHTMOUSE)) {
 					win->tweak = WM_gesture_new(C, event, WM_GESTURE_TWEAK);
+				}
 			}
 		}
 	}
@@ -3220,8 +3280,9 @@ int WM_gesture_lasso_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 	
 	wm_gesture_tag_redraw(C);
 	
-	if (RNA_struct_find_property(op->ptr, "cursor") )
+	if (RNA_struct_find_property(op->ptr, "cursor")) {
 		WM_cursor_modal_set(CTX_wm_window(C), RNA_int_get(op->ptr, "cursor"));
+	}
 	
 	return OPERATOR_RUNNING_MODAL;
 }
@@ -3235,8 +3296,9 @@ int WM_gesture_lines_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 	
 	wm_gesture_tag_redraw(C);
 	
-	if (RNA_struct_find_property(op->ptr, "cursor") )
+	if (RNA_struct_find_property(op->ptr, "cursor")) {
 		WM_cursor_modal_set(CTX_wm_window(C), RNA_int_get(op->ptr, "cursor"));
+	}
 	
 	return OPERATOR_RUNNING_MODAL;
 }
@@ -3448,8 +3510,9 @@ int WM_gesture_straightline_invoke(bContext *C, wmOperator *op, const wmEvent *e
 	
 	wm_gesture_tag_redraw(C);
 	
-	if (RNA_struct_find_property(op->ptr, "cursor") )
+	if (RNA_struct_find_property(op->ptr, "cursor")) {
 		WM_cursor_modal_set(CTX_wm_window(C), RNA_int_get(op->ptr, "cursor"));
+	}
 		
 	return OPERATOR_RUNNING_MODAL;
 }
@@ -4048,28 +4111,28 @@ static void WM_OT_radial_control(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_BLOCKING;
 
 	/* all paths relative to the context */
-	prop = RNA_def_string(ot->srna, "data_path_primary", "", 0, "Primary Data Path", "Primary path of property to be set by the radial control");
+	prop = RNA_def_string(ot->srna, "data_path_primary", NULL, 0, "Primary Data Path", "Primary path of property to be set by the radial control");
 	RNA_def_property_flag(prop, PROP_HIDDEN);
 
-	prop = RNA_def_string(ot->srna, "data_path_secondary", "", 0, "Secondary Data Path", "Secondary path of property to be set by the radial control");
+	prop = RNA_def_string(ot->srna, "data_path_secondary", NULL, 0, "Secondary Data Path", "Secondary path of property to be set by the radial control");
 	RNA_def_property_flag(prop, PROP_HIDDEN);
 
-	prop = RNA_def_string(ot->srna, "use_secondary", "", 0, "Use Secondary", "Path of property to select between the primary and secondary data paths");
+	prop = RNA_def_string(ot->srna, "use_secondary", NULL, 0, "Use Secondary", "Path of property to select between the primary and secondary data paths");
 	RNA_def_property_flag(prop, PROP_HIDDEN);
 
-	prop = RNA_def_string(ot->srna, "rotation_path", "", 0, "Rotation Path", "Path of property used to rotate the texture display");
+	prop = RNA_def_string(ot->srna, "rotation_path", NULL, 0, "Rotation Path", "Path of property used to rotate the texture display");
 	RNA_def_property_flag(prop, PROP_HIDDEN);
 
-	prop = RNA_def_string(ot->srna, "color_path", "", 0, "Color Path", "Path of property used to set the color of the control");
+	prop = RNA_def_string(ot->srna, "color_path", NULL, 0, "Color Path", "Path of property used to set the color of the control");
 	RNA_def_property_flag(prop, PROP_HIDDEN);
 
-	prop = RNA_def_string(ot->srna, "fill_color_path", "", 0, "Fill Color Path", "Path of property used to set the fill color of the control");
+	prop = RNA_def_string(ot->srna, "fill_color_path", NULL, 0, "Fill Color Path", "Path of property used to set the fill color of the control");
 	RNA_def_property_flag(prop, PROP_HIDDEN);
 
-	prop = RNA_def_string(ot->srna, "zoom_path", "", 0, "Zoom Path", "Path of property used to set the zoom level for the control");
+	prop = RNA_def_string(ot->srna, "zoom_path", NULL, 0, "Zoom Path", "Path of property used to set the zoom level for the control");
 	RNA_def_property_flag(prop, PROP_HIDDEN);
 
-	prop = RNA_def_string(ot->srna, "image_id", "", 0, "Image ID", "Path of ID that is used to generate an image for the control");
+	prop = RNA_def_string(ot->srna, "image_id", NULL, 0, "Image ID", "Path of ID that is used to generate an image for the control");
 	RNA_def_property_flag(prop, PROP_HIDDEN);
 
 	prop = RNA_def_boolean(ot->srna, "secondary_tex", 0, "Secondary Texture", "Tweak brush secondary/mask texture");
@@ -4336,6 +4399,7 @@ void wm_operatortype_init(void)
 	WM_operatortype_append(WM_OT_window_fullscreen_toggle);
 	WM_operatortype_append(WM_OT_quit_blender);
 	WM_operatortype_append(WM_OT_open_mainfile);
+	WM_operatortype_append(WM_OT_revert_mainfile);
 	WM_operatortype_append(WM_OT_link_append);
 	WM_operatortype_append(WM_OT_recover_last_session);
 	WM_operatortype_append(WM_OT_recover_auto_save);

@@ -78,7 +78,7 @@ bArmature *BKE_armature_add(Main *bmain, const char *name)
 {
 	bArmature *arm;
 
-	arm = BKE_libblock_alloc(&bmain->armature, ID_AR, name);
+	arm = BKE_libblock_alloc(bmain, ID_AR, name);
 	arm->deformflag = ARM_DEF_VGROUP | ARM_DEF_ENVELOPE;
 	arm->flag = ARM_COL_CUSTOM; /* custom bone-group colors */
 	arm->layer = 1;
@@ -431,21 +431,17 @@ void b_bone_spline_setup(bPoseChannel *pchan, int rest, Mat4 result_array[MAX_BB
 	float h1[3], h2[3], scale[3], length, hlength1, hlength2, roll1 = 0.0f, roll2;
 	float mat3[3][3], imat[4][4], posemat[4][4], scalemat[4][4], iscalemat[4][4];
 	float data[MAX_BBONE_SUBDIV + 1][4], *fp;
-	int a, do_scale = 0;
+	int a;
+	bool do_scale = false;
 
 	length = bone->length;
 
 	if (!rest) {
 		/* check if we need to take non-uniform bone scaling into account */
-		scale[0] = len_v3(pchan->pose_mat[0]);
-		scale[1] = len_v3(pchan->pose_mat[1]);
-		scale[2] = len_v3(pchan->pose_mat[2]);
+		mat4_to_size(scale, pchan->pose_mat);
 
 		if (fabsf(scale[0] - scale[1]) > 1e-6f || fabsf(scale[1] - scale[2]) > 1e-6f) {
-			unit_m4(scalemat);
-			scalemat[0][0] = scale[0];
-			scalemat[1][1] = scale[1];
-			scalemat[2][2] = scale[2];
+			size_to_mat4(scalemat, scale);
 			invert_m4_m4(iscalemat, scalemat);
 
 			length *= scale[1];
@@ -667,7 +663,7 @@ static void b_bone_deform(bPoseChanDeform *pdef_info, Bone *bone, float co[3], D
 /* using vec with dist to bone b1 - b2 */
 float distfactor_to_bone(const float vec[3], const float b1[3], const float b2[3], float rad1, float rad2, float rdist)
 {
-	float dist = 0.0f;
+	float dist_sq;
 	float bdelta[3];
 	float pdelta[3];
 	float hsqr, a, l, rad;
@@ -682,16 +678,16 @@ float distfactor_to_bone(const float vec[3], const float b1[3], const float b2[3
 
 	if (a < 0.0f) {
 		/* If we're past the end of the bone, do a spherical field attenuation thing */
-		dist = len_squared_v3v3(b1, vec);
+		dist_sq = len_squared_v3v3(b1, vec);
 		rad = rad1;
 	}
 	else if (a > l) {
 		/* If we're past the end of the bone, do a spherical field attenuation thing */
-		dist = len_squared_v3v3(b2, vec);
+		dist_sq = len_squared_v3v3(b2, vec);
 		rad = rad2;
 	}
 	else {
-		dist = (hsqr - (a * a));
+		dist_sq = (hsqr - (a * a));
 
 		if (l != 0.0f) {
 			rad = a / l;
@@ -702,15 +698,15 @@ float distfactor_to_bone(const float vec[3], const float b1[3], const float b2[3
 	}
 
 	a = rad * rad;
-	if (dist < a)
+	if (dist_sq < a)
 		return 1.0f;
 	else {
 		l = rad + rdist;
 		l *= l;
-		if (rdist == 0.0f || dist >= l)
+		if (rdist == 0.0f || dist_sq >= l)
 			return 0.0f;
 		else {
-			a = sqrtf(dist) - rad;
+			a = sqrtf(dist_sq) - rad;
 			return 1.0f - (a * a) / (rdist * rdist);
 		}
 	}

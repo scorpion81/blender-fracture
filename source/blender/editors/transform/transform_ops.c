@@ -250,9 +250,9 @@ static void TRANSFORM_OT_delete_orientation(struct wmOperatorType *ot)
 static int create_orientation_exec(bContext *C, wmOperator *op)
 {
 	char name[MAX_NAME];
-	int use = RNA_boolean_get(op->ptr, "use");
-	int overwrite = RNA_boolean_get(op->ptr, "overwrite");
-	int use_view = RNA_boolean_get(op->ptr, "use_view");
+	const bool use = RNA_boolean_get(op->ptr, "use");
+	const bool overwrite = RNA_boolean_get(op->ptr, "overwrite");
+	const bool use_view = RNA_boolean_get(op->ptr, "use_view");
 
 	RNA_string_get(op->ptr, "name", name);
 
@@ -281,7 +281,7 @@ static void TRANSFORM_OT_create_orientation(struct wmOperatorType *ot)
 	ot->exec   = create_orientation_exec;
 	ot->poll   = ED_operator_areaactive;
 
-	RNA_def_string(ot->srna, "name", "", MAX_NAME, "Name", "Name of the new custom orientation");
+	RNA_def_string(ot->srna, "name", NULL, MAX_NAME, "Name", "Name of the new custom orientation");
 	RNA_def_boolean(ot->srna, "use_view", FALSE, "Use View",
 	                "Use the current view instead of the active object to create the new orientation");
 	RNA_def_boolean(ot->srna, "use", FALSE, "Use after creation", "Select orientation after its creation");

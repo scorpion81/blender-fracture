@@ -259,7 +259,7 @@ void removenotused_scredges(bScreen *sc)
 	}
 }
 
-int scredge_is_horizontal(ScrEdge *se)
+bool scredge_is_horizontal(ScrEdge *se)
 {
 	return (se->v1->vec.y == se->v2->vec.y);
 }
@@ -466,7 +466,7 @@ bScreen *ED_screen_add(wmWindow *win, Scene *scene, const char *name)
 	bScreen *sc;
 	ScrVert *sv1, *sv2, *sv3, *sv4;
 	
-	sc = BKE_libblock_alloc(&G.main->screen, ID_SCR, name);
+	sc = BKE_libblock_alloc(G.main, ID_SCR, name);
 	sc->scene = scene;
 	sc->do_refresh = TRUE;
 	sc->redraws_flag = TIME_ALL_3D_WIN | TIME_ALL_ANIM_WIN;
@@ -580,7 +580,7 @@ int screen_area_join(bContext *C, bScreen *scr, ScrArea *sa1, ScrArea *sa2)
 	dir = area_getorientation(sa1, sa2);
 	/*printf("dir is : %i\n", dir);*/
 	
-	if (dir < 0) {
+	if (dir == -1) {
 		if (sa1) sa1->flag &= ~AREA_FLAG_DRAWJOINFROM;
 		if (sa2) sa2->flag &= ~AREA_FLAG_DRAWJOINTO;
 		return 0;
@@ -1142,7 +1142,7 @@ void ED_screen_draw(wmWindow *win)
 	/* blended join arrow */
 	if (sa1 && sa2) {
 		dir = area_getorientation(sa1, sa2);
-		if (dir >= 0) {
+		if (dir != -1) {
 			switch (dir) {
 				case 0: /* W */
 					dir = 'r';
@@ -1545,8 +1545,13 @@ void ED_screen_set(bContext *C, bScreen *sc)
 		 */
 		if (oldscene != sc->scene) {
 			BKE_scene_set_background(bmain, sc->scene);
-			DAG_on_visible_update(bmain, FALSE);
 		}
+
+		/* Always do visible update since it's possible new screen will
+		 * have different layers visible in 3D viewpots. This is possible
+		 * because of view3d.lock_camera_and_layers option.
+		 */
+		DAG_on_visible_update(bmain, FALSE);
 	}
 }
 
@@ -1596,7 +1601,7 @@ void ED_screen_delete(bContext *C, bScreen *sc)
 	ED_screen_set(C, newsc);
 
 	if (delete && win->screen != sc)
-		BKE_libblock_free(&bmain->screen, sc);
+		BKE_libblock_free(bmain, sc);
 }
 
 static void ed_screen_set_3dview_camera(Scene *scene, bScreen *sc, ScrArea *sa, View3D *v3d)
@@ -1834,7 +1839,7 @@ ScrArea *ED_screen_full_toggle(bContext *C, wmWindow *win, ScrArea *sa)
 		ED_screen_set(C, sc);
 
 		BKE_screen_free(oldscreen);
-		BKE_libblock_free(&CTX_data_main(C)->screen, oldscreen);
+		BKE_libblock_free(CTX_data_main(C), oldscreen);
 
 	}
 	else {

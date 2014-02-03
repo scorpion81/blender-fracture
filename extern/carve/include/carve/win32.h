@@ -53,3 +53,8 @@ typedef unsigned __int64 uint64_t;
 #    include <stdint.h>
 #  endif
 #endif
+
+#if defined(_MSC_VER)
+#  include <BaseTsd.h>
+typedef SSIZE_T ssize_t;
+#endif

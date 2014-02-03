@@ -104,19 +104,6 @@
 #include <omp.h>
 #endif
 
-void ED_sculpt_force_update(bContext *C)
-{
-	Object *ob = CTX_data_active_object(C);
-
-	if (ob && (ob->mode & OB_MODE_SCULPT)) {
-		multires_force_update(ob);
-
-		/* Set reorder=false so that saving the file doesn't reorder
-		 * the BMesh's elements */
-		sculptsession_bm_to_me(ob, FALSE);
-	}
-}
-
 void ED_sculpt_get_average_stroke(Object *ob, float stroke[3])
 {
 	if (ob->sculpt->last_stroke_valid && ob->sculpt->average_stroke_counter > 0) {
@@ -1008,7 +995,7 @@ typedef struct {
 } SculptSearchSphereData;
 
 /* Test AABB against sphere */
-static int sculpt_search_sphere_cb(PBVHNode *node, void *data_v)
+static bool sculpt_search_sphere_cb(PBVHNode *node, void *data_v)
 {
 	SculptSearchSphereData *data = data_v;
 	float *center = data->ss->cache->location, nearest[3];
@@ -3565,7 +3552,7 @@ void sculpt_update_mesh_elements(Scene *scene, Sculpt *sd, Object *ob,
 	MultiresModifierData *mmd = sculpt_multires_active(scene, ob);
 
 	ss->modifiers_active = sculpt_modifiers_active(scene, sd, ob);
-	ss->show_diffuse_color = sd->flags & SCULPT_SHOW_DIFFUSE;
+	ss->show_diffuse_color = (sd->flags & SCULPT_SHOW_DIFFUSE) != 0;
 
 	if (need_mask) {
 		if (mmd == NULL) {

@@ -486,7 +486,7 @@ static int startffmpeg(struct anim *anim)
 	}
 
 	if (avformat_find_stream_info(pFormatCtx, NULL) < 0) {
-		av_close_input_file(pFormatCtx);
+		avformat_close_input(&pFormatCtx);
 		return -1;
 	}
 
@@ -507,7 +507,7 @@ static int startffmpeg(struct anim *anim)
 		}
 
 	if (videoStream == -1) {
-		av_close_input_file(pFormatCtx);
+		avformat_close_input(&pFormatCtx);
 		return -1;
 	}
 
@@ -516,23 +516,23 @@ static int startffmpeg(struct anim *anim)
 	/* Find the decoder for the video stream */
 	pCodec = avcodec_find_decoder(pCodecCtx->codec_id);
 	if (pCodec == NULL) {
-		av_close_input_file(pFormatCtx);
+		avformat_close_input(&pFormatCtx);
 		return -1;
 	}
 
 	pCodecCtx->workaround_bugs = 1;
 
 	if (avcodec_open2(pCodecCtx, pCodec, NULL) < 0) {
-		av_close_input_file(pFormatCtx);
+		avformat_close_input(&pFormatCtx);
 		return -1;
 	}
 
 	anim->duration = ceil(pFormatCtx->duration *
-	                      av_q2d(pFormatCtx->streams[videoStream]->r_frame_rate) /
+	                      av_q2d(pFormatCtx->streams[videoStream]->avg_frame_rate) /
 	                      AV_TIME_BASE);
 
-	frs_num = pFormatCtx->streams[videoStream]->r_frame_rate.num;
-	frs_den = pFormatCtx->streams[videoStream]->r_frame_rate.den;
+	frs_num = pFormatCtx->streams[videoStream]->avg_frame_rate.num;
+	frs_den = pFormatCtx->streams[videoStream]->avg_frame_rate.den;
 
 	frs_den *= AV_TIME_BASE;
 
@@ -575,7 +575,7 @@ static int startffmpeg(struct anim *anim)
 		fprintf(stderr,
 		        "ffmpeg has changed alloc scheme ... ARGHHH!\n");
 		avcodec_close(anim->pCodecCtx);
-		av_close_input_file(anim->pFormatCtx);
+		avformat_close_input(&anim->pFormatCtx);
 		av_free(anim->pFrameRGB);
 		av_free(anim->pFrameDeinterlaced);
 		av_free(anim->pFrame);
@@ -616,7 +616,7 @@ static int startffmpeg(struct anim *anim)
 		fprintf(stderr,
 		        "Can't transform color space??? Bailing out...\n");
 		avcodec_close(anim->pCodecCtx);
-		av_close_input_file(anim->pFormatCtx);
+		avformat_close_input(&anim->pFormatCtx);
 		av_free(anim->pFrameRGB);
 		av_free(anim->pFrameDeinterlaced);
 		av_free(anim->pFrame);
@@ -970,7 +970,7 @@ static ImBuf *ffmpeg_fetchibuf(struct anim *anim, int position,
 
 	v_st = anim->pFormatCtx->streams[anim->videoStream];
 
-	frame_rate = av_q2d(v_st->r_frame_rate);
+	frame_rate = av_q2d(v_st->avg_frame_rate);
 
 	st_time = anim->pFormatCtx->start_time;
 	pts_time_base = av_q2d(v_st->time_base);
@@ -1142,7 +1142,7 @@ static void free_anim_ffmpeg(struct anim *anim)
 
 	if (anim->pCodecCtx) {
 		avcodec_close(anim->pCodecCtx);
-		av_close_input_file(anim->pFormatCtx);
+		avformat_close_input(&anim->pFormatCtx);
 		av_free(anim->pFrameRGB);
 		av_free(anim->pFrame);
 

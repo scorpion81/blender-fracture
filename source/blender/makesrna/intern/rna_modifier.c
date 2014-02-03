@@ -1095,8 +1095,13 @@ static void rna_def_modifier_build(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Length", "Total time the build effect requires");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
+	prop = RNA_def_property(srna, "use_reverse", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", MOD_BUILD_FLAG_REVERSE);
+	RNA_def_property_ui_text(prop, "Reversed", "Deconstruct the mesh instead of building it");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	
 	prop = RNA_def_property(srna, "use_random_order", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "randomize", 1);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", MOD_BUILD_FLAG_RANDOMIZE);
 	RNA_def_property_ui_text(prop, "Randomize", "Randomize the faces or edges during build");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
@@ -2321,7 +2326,15 @@ static void rna_def_modifier_bevel(BlenderRNA *brna)
 		{MOD_BEVEL_WEIGHT, "WEIGHT", 0, "Weight",
 		                   "Use bevel weights to determine how much bevel is applied in edge mode"},
 		{MOD_BEVEL_VGROUP, "VGROUP", 0, "Vertex Group",
-		                   "Use vertex group weights to determine how much bevel is applied in vertex mode"},
+		                   "Use vertex group weights to select whether vertex or edge is beveled"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
+	static EnumPropertyItem prop_val_type_items[] = {
+		{MOD_BEVEL_AMT_OFFSET, "OFFSET", 0, "Offset", "Amount is offset of new edges from original"},
+		{MOD_BEVEL_AMT_WIDTH, "WIDTH", 0, "Width", "Amount is width of new face"},
+		{MOD_BEVEL_AMT_DEPTH, "DEPTH", 0, "Depth", "Amount is perpendicular distance from original edge to bevel face"},
+		{MOD_BEVEL_AMT_PERCENT, "PERCENT", 0, "Percent", "Amount is percent of adjacent edge length"},
 		{0, NULL, 0, NULL, NULL}
 	};
 
@@ -2341,7 +2354,7 @@ static void rna_def_modifier_bevel(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "width", PROP_FLOAT, PROP_DISTANCE);
 	RNA_def_property_float_sdna(prop, NULL, "value");
 	RNA_def_property_range(prop, 0, FLT_MAX);
-	RNA_def_property_ui_range(prop, 0, 10, 0.1, 4);
+	RNA_def_property_ui_range(prop, 0.0f, 100.0f, 0.1, 4);
 	RNA_def_property_ui_text(prop, "Width", "Bevel value/amount");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
@@ -2385,6 +2398,18 @@ static void rna_def_modifier_bevel(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "use_clamp_overlap", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_negative_sdna(prop, NULL, "flags", MOD_BEVEL_OVERLAP_OK);
 	RNA_def_property_ui_text(prop, "Clamp Overlap", "Clamp the width to avoid overlap");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "offset_type", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_sdna(prop, NULL, "val_flags");
+	RNA_def_property_enum_items(prop, prop_val_type_items);
+	RNA_def_property_ui_text(prop, "Amount Type", "What distance Width measures");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "profile", PROP_FLOAT, PROP_FACTOR);
+	RNA_def_property_range(prop, 0.0f, 1.0f);
+	RNA_def_property_ui_range(prop, 0.15f, 1.0f, 0.05, 2);
+	RNA_def_property_ui_text(prop, "Profile", "The profile shape (0.5 = round)");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
@@ -3774,7 +3799,7 @@ static void rna_def_modifier_wireframe(BlenderRNA *brna)
 	RNA_def_property_float_sdna(prop, NULL, "crease_weight");
 	RNA_def_property_range(prop, -FLT_MAX, FLT_MAX);
 	RNA_def_property_ui_range(prop, 0.0f, 1.0f, 0.1, 1);
-	RNA_def_property_ui_text(prop, "Weigth", "Crease weight (if active)");
+	RNA_def_property_ui_text(prop, "Weight", "Crease weight (if active)");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "material_offset", PROP_INT, PROP_NONE);

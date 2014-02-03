@@ -80,7 +80,7 @@
 
 /* check if we can do partial updates and have them draw realtime
  * (without rebuilding the 'derivedFinal') */
-static int vertex_paint_use_fast_update_check(Object *ob)
+static bool vertex_paint_use_fast_update_check(Object *ob)
 {
 	DerivedMesh *dm = ob->derivedFinal;
 
@@ -97,7 +97,7 @@ static int vertex_paint_use_fast_update_check(Object *ob)
 /* if the polygons from the mesh and the 'derivedFinal' match
  * we can assume that no modifiers are applied and that its worth adding tessellated faces
  * so 'vertex_paint_use_fast_update_check()' returns TRUE */
-static int vertex_paint_use_tessface_check(Object *ob, Mesh *me)
+static bool vertex_paint_use_tessface_check(Object *ob, Mesh *me)
 {
 	DerivedMesh *dm = ob->derivedFinal;
 
@@ -280,12 +280,13 @@ static void do_shared_vertex_tesscol(Mesh *me, bool *mfacetag)
 	MEM_freeN(scolmain);
 }
 
-static void do_shared_vertexcol(Mesh *me, bool *mlooptag, bool *mfacetag, int do_tessface)
+static void do_shared_vertexcol(Mesh *me, bool *mlooptag, bool *mfacetag, const bool do_tessface)
 {
 	const int use_face_sel = (me->editflag & ME_EDIT_PAINT_FACE_SEL);
 	MPoly *mp;
 	int (*scol)[4];
-	int i, j, has_shared = 0;
+	int i, j;
+	bool has_shared = false;
 
 	/* if no mloopcol: do not do */
 	/* if mtexpoly: only the involved faces, otherwise all */
@@ -917,11 +918,11 @@ static float calc_vp_strength_col_dl(VPaint *vp, ViewContext *vc, const float co
 	                                   co, co_ss,
 	                                   V3D_PROJ_TEST_CLIP_BB | V3D_PROJ_TEST_CLIP_NEAR) == V3D_PROJ_RET_OK)
 	{
-		const float dist_squared = len_squared_v2v2(mval, co_ss);
+		const float dist_sq = len_squared_v2v2(mval, co_ss);
 
-		if (dist_squared <= brush_size_pressure * brush_size_pressure) {
+		if (dist_sq <= brush_size_pressure * brush_size_pressure) {
 			Brush *brush = BKE_paint_brush(&vp->paint);
-			const float dist = sqrtf(dist_squared);
+			const float dist = sqrtf(dist_sq);
 			float factor;
 
 			if (brush->mtex.tex && rgba) {
@@ -1376,7 +1377,7 @@ static void do_weight_paint_normalize_all_active(MDeformVert *dvert, const int d
 /*
  * See if the current deform vertex has a locked group
  */
-static char has_locked_group(MDeformVert *dvert, const int defbase_tot,
+static bool has_locked_group(MDeformVert *dvert, const int defbase_tot,
                              const bool *bone_groups, const bool *lock_flags)
 {
 	int i;
@@ -1405,8 +1406,8 @@ static bool has_locked_group_selected(int defbase_tot, const bool *defbase_sel, 
 
 
 #if 0 /* UNUSED */
-static int has_unselected_unlocked_bone_group(int defbase_tot, bool *defbase_sel, int selected,
-                                              const bool *lock_flags, const bool *vgroup_validmap)
+static bool has_unselected_unlocked_bone_group(int defbase_tot, bool *defbase_sel, int selected,
+                                               const bool *lock_flags, const bool *vgroup_validmap)
 {
 	int i;
 	if (defbase_tot == selected) {
@@ -1464,7 +1465,7 @@ static void multipaint_selection(MDeformVert *dvert, const int defbase_tot, floa
 static float redistribute_change(MDeformVert *ndv, const int defbase_tot,
                                  char *change_status, const char change_me, int changeto,
                                  float totchange, float total_valid,
-                                 char do_auto_normalize)
+                                 bool do_auto_normalize)
 {
 	bool changed;
 	float change;
@@ -1523,7 +1524,7 @@ static float get_mp_change(MDeformVert *odv, const int defbase_tot, const bool *
 static void enforce_locks(MDeformVert *odv, MDeformVert *ndv,
                           const int defbase_tot, const bool *defbase_sel,
                           const bool *lock_flags, const bool *vgroup_validmap,
-                          char do_auto_normalize, char do_multipaint)
+                          bool do_auto_normalize, bool do_multipaint)
 {
 	float totchange = 0.0f;
 	float totchange_allowed = 0.0f;
@@ -1697,9 +1698,9 @@ typedef struct WeightPaintInfo {
 	const bool *vgroup_validmap; /* same as WeightPaintData.vgroup_validmap,
 	                              * only added here for convenience */
 
-	char do_flip;
-	char do_multipaint;
-	char do_auto_normalize;
+	bool do_flip;
+	bool do_multipaint;
+	bool do_auto_normalize;
 
 	float brush_alpha_value;  /* result of BKE_brush_alpha_get() */
 } WeightPaintInfo;
@@ -2847,15 +2848,6 @@ static int vpaint_stroke_test_start(bContext *C, struct wmOperator *op, const fl
 	return 1;
 }
 
-BLI_INLINE int mesh_tessface_vertex_index(MFace *tessface, unsigned int v)
-{
-	if (tessface->v1 == v) return 0;
-	if (tessface->v2 == v) return 1;
-	if (tessface->v3 == v) return 2;
-	if (v && (tessface->v4 == v)) return 3;
-	return -1;
-}
-
 static void vpaint_paint_poly(VPaint *vp, VPaintData *vpd, Mesh *me,
                               const unsigned int index, const float mval[2],
                               const float brush_size_pressure, const float brush_alpha_pressure)
@@ -2945,7 +2937,7 @@ static void vpaint_paint_poly(VPaint *vp, VPaintData *vpd, Mesh *me,
 
 			for (j = 0; j < totloop; j++, ml++, mlc++) {
 				/* search for the loop vertex within the tessface */
-				const int fidx = mesh_tessface_vertex_index(mf, ml->v);
+				const int fidx = BKE_MESH_TESSFACE_VINDEX_ORDER(mf, ml->v);
 				if (fidx != -1) {
 					MESH_MLOOPCOL_TO_MCOL(mlc, mc + fidx);
 					if (mlooptag) {

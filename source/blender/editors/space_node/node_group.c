@@ -145,7 +145,7 @@ static int node_group_edit_exec(bContext *C, wmOperator *op)
 	SpaceNode *snode = CTX_wm_space_node(C);
 	const char *node_idname = group_node_idname(C);
 	bNode *gnode;
-	int exit = RNA_boolean_get(op->ptr, "exit");
+	const bool exit = RNA_boolean_get(op->ptr, "exit");
 	
 	ED_preview_kill_jobs(C);
 	
@@ -275,12 +275,12 @@ static int node_group_ungroup(bNodeTree *ntree, bNode *gnode)
 		
 		/* free temp action too */
 		if (waction) {
-			BKE_libblock_free(&G.main->action, waction);
+			BKE_libblock_free(G.main, waction);
 		}
 	}
 	
 	/* free the group tree (takes care of user count) */
-	BKE_libblock_free(&G.main->nodetree, wgroup);
+	BKE_libblock_free(G.main, wgroup);
 	
 	/* restore external links to and from the gnode */
 	/* note: the nodes have been copied to intermediate wgroup first (so need to use new_node),
