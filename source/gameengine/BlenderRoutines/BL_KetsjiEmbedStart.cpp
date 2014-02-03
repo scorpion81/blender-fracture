@@ -151,9 +151,8 @@ static int BL_KetsjiNextFrame(KX_KetsjiEngine *ketsjiengine, bContext *C, wmWind
 	while (wmEvent *event= (wmEvent *)win->queue.first) {
 		short val = 0;
 		//unsigned short event = 0; //XXX extern_qread(&val);
-		unsigned int unicode = event->utf8_buf[0] ? BLI_str_utf8_as_unicode(event->utf8_buf) : event->ascii;
 
-		if (keyboarddevice->ConvertBlenderEvent(event->type, event->val, unicode))
+		if (keyboarddevice->ConvertBlenderEvent(event->type,event->val))
 			exitrequested = KX_EXIT_REQUEST_BLENDER_ESC;
 
 		/* Coordinate conversion... where
@@ -162,13 +161,13 @@ static int BL_KetsjiNextFrame(KX_KetsjiEngine *ketsjiengine, bContext *C, wmWind
 		if (event->type == MOUSEMOVE) {
 			/* Note, not nice! XXX 2.5 event hack */
 			val = event->x - ar->winrct.xmin;
-			mousedevice->ConvertBlenderEvent(MOUSEX, val, 0);
+			mousedevice->ConvertBlenderEvent(MOUSEX, val);
 
 			val = ar->winy - (event->y - ar->winrct.ymin) - 1;
-			mousedevice->ConvertBlenderEvent(MOUSEY, val, 0);
+			mousedevice->ConvertBlenderEvent(MOUSEY, val);
 		}
 		else {
-			mousedevice->ConvertBlenderEvent(event->type, event->val, 0);
+			mousedevice->ConvertBlenderEvent(event->type,event->val);
 		}
 
 		BLI_remlink(&win->queue, event);

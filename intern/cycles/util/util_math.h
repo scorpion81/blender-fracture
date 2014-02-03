@@ -904,7 +904,7 @@ ccl_device_inline void print_float4(const char *label, const float4& a)
 
 ccl_device_inline int3 min(int3 a, int3 b)
 {
-#if defined(__KERNEL_SSE__) && defined(__KERNEL_SSE41__)
+#ifdef __KERNEL_SSE__
 	return _mm_min_epi32(a.m128, b.m128);
 #else
 	return make_int3(min(a.x, b.x), min(a.y, b.y), min(a.z, b.z));
@@ -913,7 +913,7 @@ ccl_device_inline int3 min(int3 a, int3 b)
 
 ccl_device_inline int3 max(int3 a, int3 b)
 {
-#if defined(__KERNEL_SSE__) && defined(__KERNEL_SSE41__)
+#ifdef __KERNEL_SSE__
 	return _mm_max_epi32(a.m128, b.m128);
 #else
 	return make_int3(max(a.x, b.x), max(a.y, b.y), max(a.z, b.z));
@@ -978,7 +978,7 @@ ccl_device_inline int4 operator>>(const int4& a, int i)
 
 ccl_device_inline int4 min(int4 a, int4 b)
 {
-#if defined(__KERNEL_SSE__) && defined(__KERNEL_SSE41__)
+#ifdef __KERNEL_SSE__
 	return _mm_min_epi32(a.m128, b.m128);
 #else
 	return make_int4(min(a.x, b.x), min(a.y, b.y), min(a.z, b.z), min(a.w, b.w));
@@ -987,7 +987,7 @@ ccl_device_inline int4 min(int4 a, int4 b)
 
 ccl_device_inline int4 max(int4 a, int4 b)
 {
-#if defined(__KERNEL_SSE__) && defined(__KERNEL_SSE41__)
+#ifdef __KERNEL_SSE__
 	return _mm_max_epi32(a.m128, b.m128);
 #else
 	return make_int4(max(a.x, b.x), max(a.y, b.y), max(a.z, b.z), max(a.w, b.w));
@@ -1192,20 +1192,26 @@ ccl_device_inline float safe_sqrtf(float f)
 
 ccl_device float safe_asinf(float a)
 {
-	return asinf(clamp(a, -1.0f, 1.0f));
+	if(a <= -1.0f)
+		return -M_PI_2_F;
+	else if(a >= 1.0f)
+		return M_PI_2_F;
+
+	return asinf(a);
 }
 
 ccl_device float safe_acosf(float a)
 {
-	return acosf(clamp(a, -1.0f, 1.0f));
+	if(a <= -1.0f)
+		return M_PI_F;
+	else if(a >= 1.0f)
+		return 0.0f;
+
+	return acosf(a);
 }
 
 ccl_device float compatible_powf(float x, float y)
 {
-#ifdef __KERNEL_GPU__
-	if(y == 0.0f) /* x^0 -> 1, including 0^0 */
-		return 1.0f;
-
 	/* GPU pow doesn't accept negative x, do manual checks here */
 	if(x < 0.0f) {
 		if(fmodf(-y, 2.0f) == 0.0f)
@@ -1215,15 +1221,19 @@ ccl_device float compatible_powf(float x, float y)
 	}
 	else if(x == 0.0f)
 		return 0.0f;
-#endif
+
 	return powf(x, y);
 }
 
 ccl_device float safe_powf(float a, float b)
 {
+	if(b == 0.0f)
+		return 1.0f;
+	if(a == 0.0f)
+		return 0.0f;
 	if(a < 0.0f && b != float_to_int(b))
 		return 0.0f;
-
+	
 	return compatible_powf(a, b);
 }
 

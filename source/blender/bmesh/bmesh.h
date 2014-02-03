@@ -244,7 +244,6 @@ extern "C" {
 
 #include "intern/bmesh_core.h"
 #include "intern/bmesh_construct.h"
-#include "intern/bmesh_delete.h"
 #include "intern/bmesh_edgeloop.h"
 #include "intern/bmesh_interp.h"
 #include "intern/bmesh_iterators.h"

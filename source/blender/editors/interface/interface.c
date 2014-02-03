@@ -214,7 +214,7 @@ static void ui_text_bounds_block(uiBlock *block, float offset)
 	uiStyleFontSet(&style->widget);
 	
 	for (bt = block->buttons.first; bt; bt = bt->next) {
-		if (!ELEM(bt->type, SEPR, SEPRLINE)) {
+		if (bt->type != SEPR) {
 			j = BLF_width(style->widget.uifont_id, bt->drawstr, sizeof(bt->drawstr));
 
 			if (j > i) i = j;
@@ -1185,14 +1185,9 @@ void uiDrawBlock(const bContext *C, uiBlock *block)
 
 /* ************* EVENTS ************* */
 
-/**
- * Check if the button is pushed, this is only meaningful for some button types.
- *
- * \return (0 == UNSELECT), (1 == SELECT), (-1 == DO-NOTHING)
- */
 int ui_is_but_push_ex(uiBut *but, double *value)
 {
-	int is_push = false;
+	int is_push = false;  /* (0 == UNSELECT), (1 == SELECT), (-1 == DO-NOHING) */
 
 	if (but->bit) {
 		const bool state = ELEM3(but->type, TOGN, ICONTOGN, OPTIONN) ? false : true;
@@ -1945,7 +1940,7 @@ bool ui_set_but_string(bContext *C, uiBut *but, const char *str)
 				PointerRNA ptr, rptr;
 				PropertyRNA *prop;
 
-				if (str[0] == '\0') {
+				if (str == NULL || str[0] == '\0') {
 					RNA_property_pointer_set(&but->rnapoin, but->rnaprop, PointerRNA_NULL);
 					return true;
 				}
@@ -2556,9 +2551,9 @@ void uiBlockEndAlign(uiBlock *block)
 	block->flag &= ~UI_BUT_ALIGN;  /* all 4 flags */
 }
 
-bool ui_but_can_align(uiBut *but)
+int ui_but_can_align(uiBut *but)
 {
-	return !ELEM5(but->type, LABEL, OPTION, OPTIONN, SEPR, SEPRLINE);
+	return !ELEM4(but->type, LABEL, OPTION, OPTIONN, SEPR);
 }
 
 static void ui_block_do_align_but(uiBut *first, short nr)
@@ -2860,7 +2855,7 @@ static uiBut *ui_def_but(uiBlock *block, int type, int retval, const char *str,
 	}
 
 	/* keep track of UI_interface.h */
-	if      (ELEM10(but->type, BLOCK, BUT, LABEL, PULLDOWN, ROUNDBOX, LISTBOX, BUTM, SCROLL, SEPR, SEPRLINE)) {}
+	if      (ELEM9(but->type, BLOCK, BUT, LABEL, PULLDOWN, ROUNDBOX, LISTBOX, BUTM, SCROLL, SEPR)) {}
 	else if (but->type >= SEARCH_MENU) {}
 	else but->flag |= UI_BUT_UNDO;
 

@@ -453,10 +453,7 @@ void bmo_create_monkey_exec(BMesh *bm, BMOperator *op)
 	for (i = 0; i < monkeynv; i++) {
 		float v[3];
 
-		/* rotate to face in the -Y axis */
-		v[0] = (monkeyv[i][0] + 127) / 128.0;
-		v[2] = monkeyv[i][1] / 128.0;
-		v[1] = monkeyv[i][2] / -128.0;
+		v[0] = (monkeyv[i][0] + 127) / 128.0, v[1] = monkeyv[i][1] / 128.0, v[2] = monkeyv[i][2] / 128.0;
 
 		tv[i] = BM_vert_create(bm, v, NULL, BM_CREATE_NOP);
 		BMO_elem_flag_enable(bm, tv[i], VERT_MARK);

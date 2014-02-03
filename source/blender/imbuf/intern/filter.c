@@ -565,12 +565,19 @@ void IMB_premultiply_rect(unsigned int *rect, char planes, int w, int h)
 	}
 }
 
-void IMB_premultiply_rect_float(float *rect_float, int channels, int w, int h)
+void IMB_premultiply_rect_float(float *rect_float, char planes, int w, int h)
 {
 	float val, *cp;
 	int x, y;
 
-	if (channels == 4) {
+	if (planes == 24) {   /* put alpha at 1.0 */
+		cp = rect_float;
+
+		for (y = 0; y < h; y++)
+			for (x = 0; x < w; x++, cp += 4)
+				cp[3] = 1.0;
+	}
+	else {
 		cp = rect_float;
 		for (y = 0; y < h; y++) {
 			for (x = 0; x < w; x++, cp += 4) {
@@ -593,7 +600,7 @@ void IMB_premultiply_alpha(ImBuf *ibuf)
 		IMB_premultiply_rect(ibuf->rect, ibuf->planes, ibuf->x, ibuf->y);
 
 	if (ibuf->rect_float)
-		IMB_premultiply_rect_float(ibuf->rect_float, ibuf->channels, ibuf->x, ibuf->y);
+		IMB_premultiply_rect_float(ibuf->rect_float, ibuf->planes, ibuf->x, ibuf->y);
 }
 
 void IMB_unpremultiply_rect(unsigned int *rect, char planes, int w, int h)
@@ -623,12 +630,19 @@ void IMB_unpremultiply_rect(unsigned int *rect, char planes, int w, int h)
 	}
 }
 
-void IMB_unpremultiply_rect_float(float *rect_float, int channels, int w, int h)
+void IMB_unpremultiply_rect_float(float *rect_float, char planes, int w, int h)
 {
 	float val, *fp;
 	int x, y;
 
-	if (channels == 4) {
+	if (planes == 24) {   /* put alpha at 1.0 */
+		fp = rect_float;
+
+		for (y = 0; y < h; y++)
+			for (x = 0; x < w; x++, fp += 4)
+				fp[3] = 1.0;
+	}
+	else {
 		fp = rect_float;
 		for (y = 0; y < h; y++) {
 			for (x = 0; x < w; x++, fp += 4) {
@@ -651,5 +665,5 @@ void IMB_unpremultiply_alpha(ImBuf *ibuf)
 		IMB_unpremultiply_rect(ibuf->rect, ibuf->planes, ibuf->x, ibuf->y);
 
 	if (ibuf->rect_float)
-		IMB_unpremultiply_rect_float(ibuf->rect_float, ibuf->channels, ibuf->x, ibuf->y);
+		IMB_unpremultiply_rect_float(ibuf->rect_float, ibuf->planes, ibuf->x, ibuf->y);
 }

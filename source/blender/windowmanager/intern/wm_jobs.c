@@ -26,9 +26,8 @@
 
 /** \file blender/windowmanager/intern/wm_jobs.c
  *  \ingroup wm
- *
- * Threaded job manager (high level job access).
  */
+
 
 #include <string.h>
 
@@ -56,6 +55,8 @@
 #include "wm.h"
 
 #include "PIL_time.h"
+
+/* ********************** Threaded Jobs Manager ****************************** */
 
 /*
  * Add new job

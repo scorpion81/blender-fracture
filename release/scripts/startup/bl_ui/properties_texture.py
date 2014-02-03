@@ -269,9 +269,6 @@ class TEXTURE_PT_colors(TextureButtonsPanel, Panel):
         col.prop(tex, "contrast")
         col.prop(tex, "saturation")
 
-        col = layout.column()
-        col.prop(tex, "use_clamp", text="Clamp")
-
 # Texture Slot Panels #
 
 

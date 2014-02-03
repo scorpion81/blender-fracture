@@ -891,14 +891,7 @@ static int imb_exr_split_channel_name(ExrChannel *echan, char *layname, char *pa
 	if (name[1] == 0) {
 		echan->chan_id = name[0];
 		layname[0] = '\0';
-
-		if (ELEM4(name[0], 'R', 'G', 'B', 'A'))
-			strcpy(passname, "Combined");
-		else if (name[0] == 'Z')
-			strcpy(passname, "Depth");
-		else
-			strcpy(passname, name);
-
+		strcpy(passname, "Combined");
 		return 1;
 	}
 

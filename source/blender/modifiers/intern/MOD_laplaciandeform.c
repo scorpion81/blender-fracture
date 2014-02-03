@@ -452,10 +452,6 @@ static void laplacianDeformPreview(LaplacianSystem *sys, float (*vertexCos)[3])
 	n = sys->total_verts;
 	na = sys->total_anchors;
 
-#ifdef OPENNL_THREADING_HACK
-	modifier_opennl_lock();
-#endif
-
 	if (!sys->is_matrix_computed) {
 		nlNewContext();
 		sys->context = nlGetCurrent();
@@ -534,9 +530,12 @@ static void laplacianDeformPreview(LaplacianSystem *sys, float (*vertexCos)[3])
 			sys->has_solution = false;
 		}
 		sys->is_matrix_computed = true;
-
 	}
-	else if (sys->has_solution) {
+	else {
+		if (!sys->has_solution) {
+			return;
+		}
+
 		nlBegin(NL_SYSTEM);
 		nlBegin(NL_MATRIX);
 
@@ -590,10 +589,6 @@ static void laplacianDeformPreview(LaplacianSystem *sys, float (*vertexCos)[3])
 			sys->has_solution = false;
 		}
 	}
-
-#ifdef OPENNL_THREADING_HACK
-	modifier_opennl_unlock();
-#endif
 }
 
 static bool isValidVertexGroup(LaplacianDeformModifierData *lmd, Object *ob, DerivedMesh *dm)

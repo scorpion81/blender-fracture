@@ -30,7 +30,6 @@ Import ('env')
 sources = ['stubs.c']
 
 incs = [
-    '..',
     '#/intern/guardedalloc',
     '#/source/blender/makesdna',
     '#/source/blender/makesrna',

@@ -113,9 +113,8 @@ static void constraint_bone_name_fix(Object *ob, ListBase *conlist, const char *
 			
 			for (ct = targets.first; ct; ct = ct->next) {
 				if (ct->tar == ob) {
-					if (STREQ(ct->subtarget, oldname)) {
+					if (!strcmp(ct->subtarget, oldname) )
 						BLI_strncpy(ct->subtarget, newname, MAXBONENAME);
-					}
 				}
 			}
 			

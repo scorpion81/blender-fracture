@@ -157,9 +157,9 @@ namespace carve {
       return pointInPoly(points, p2_adapt_ident(), p);
     }
 
-    static int lineSegmentPolyIntersections(const P2Vector &points,
-                                            LineSegment2 line,
-                                            std::vector<PolyIntersectionInfo> &out) {
+    int lineSegmentPolyIntersections(const P2Vector &points,
+                                     LineSegment2 line,
+                                     std::vector<PolyIntersectionInfo> &out) {
       int count = 0;
 
       if (line.v2 < line.v1) { line.flip(); }
@@ -239,9 +239,9 @@ namespace carve {
       }
     };
 
-    static int sortedLineSegmentPolyIntersections(const P2Vector &points,
-                                                  LineSegment2 line,
-                                                  std::vector<PolyIntersectionInfo> &out) {
+    int sortedLineSegmentPolyIntersections(const P2Vector &points,
+                                           LineSegment2 line,
+                                           std::vector<PolyIntersectionInfo> &out) {
 
       bool swapped = line.v2 < line.v1;
 

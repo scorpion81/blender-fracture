@@ -58,14 +58,6 @@
 #include "libmv/simple_pipeline/reconstruction_scale.h"
 #include "libmv/simple_pipeline/keyframe_selection.h"
 
-#include "libmv/multiview/homography.h"
-
-#include "libmv/image/convolve.h"
-
-#ifdef _MSC_VER
-#  define snprintf _snprintf
-#endif
-
 struct libmv_Reconstruction {
 	libmv::EuclideanReconstruction reconstruction;
 
@@ -77,7 +69,7 @@ struct libmv_Reconstruction {
 };
 
 struct libmv_Features {
-	int count;
+	int count, margin;
 	libmv::Feature *features;
 };
 
@@ -114,21 +106,6 @@ void libmv_setLoggingVerbosity(int verbosity)
 }
 
 /* ************ Utility ************ */
-
-static void byteBufToImage(const unsigned char *buf, int width, int height, int channels, libmv::FloatImage *image)
-{
-	int x, y, k, a = 0;
-
-	image->Resize(height, width, channels);
-
-	for (y = 0; y < height; y++) {
-		for (x = 0; x < width; x++) {
-			for (k = 0; k < channels; k++) {
-				(*image)(y, x, k) = (float)buf[a++] / 255.0f;
-			}
-		}
-	}
-}
 
 static void floatBufToImage(const float *buf, int width, int height, int channels, libmv::FloatImage *image)
 {
@@ -760,19 +737,18 @@ double libmv_reprojectionErrorForTrack(const struct libmv_Reconstruction *libmv_
 	double total_error = 0.0;
 
 	for (int i = 0; i < markers.size(); ++i) {
-		double weight = markers[i].weight;
 		const libmv::EuclideanCamera *camera = reconstruction->CameraForImage(markers[i].image);
 		const libmv::EuclideanPoint *point = reconstruction->PointForTrack(markers[i].track);
 
-		if (!camera || !point || weight == 0.0) {
+		if (!camera || !point) {
 			continue;
 		}
 
 		num_reprojected++;
 
 		libmv::Marker reprojected_marker = ProjectMarker(*point, *camera, *intrinsics);
-		double ex = (reprojected_marker.x - markers[i].x) * weight;
-		double ey = (reprojected_marker.y - markers[i].y) * weight;
+		double ex = reprojected_marker.x - markers[i].x;
+		double ey = reprojected_marker.y - markers[i].y;
 
 		total_error += sqrt(ex * ex + ey * ey);
 	}
@@ -857,88 +833,63 @@ struct libmv_CameraIntrinsics *libmv_reconstructionExtractIntrinsics(struct libm
 
 /* ************ Feature detector ************ */
 
-static libmv_Features *libmv_featuresFromVector(
-	const libmv::vector<libmv::Feature> &features)
+struct libmv_Features *libmv_detectFeaturesFAST(const unsigned char *data,
+                                                int width, int height, int stride,
+                                                int margin, int min_trackness, int min_distance)
 {
+	libmv::Feature *features = NULL;
+	std::vector<libmv::Feature> v;
 	struct libmv_Features *libmv_features = LIBMV_STRUCT_NEW(libmv_Features, 1);
-	int count = features.size();
-	if (count) {
-		libmv_features->features = LIBMV_STRUCT_NEW(libmv::Feature, count);
+	int i = 0, count;
 
-		for (int i = 0; i < count; i++) {
-			libmv_features->features[i] = features.at(i);
+	if (margin) {
+		data += margin * stride+margin;
+		width -= 2 * margin;
+		height -= 2 * margin;
+	}
+
+	v = libmv::DetectFAST(data, width, height, stride, min_trackness, min_distance);
+
+	count = v.size();
+
+	if (count) {
+		features = LIBMV_STRUCT_NEW(libmv::Feature, count);
+
+		for(std::vector<libmv::Feature>::iterator it = v.begin(); it != v.end(); it++) {
+			features[i++] = *it;
 		}
 	}
-	else {
-		libmv_features->features = NULL;
+
+	libmv_features->features = features;
+	libmv_features->count = count;
+	libmv_features->margin = margin;
+
+	return (struct libmv_Features *)libmv_features;
+}
+
+struct libmv_Features *libmv_detectFeaturesMORAVEC(const unsigned char *data,
+                                                   int width, int height, int stride,
+                                                   int margin, int count, int min_distance)
+{
+	libmv::Feature *features = NULL;
+	struct libmv_Features *libmv_features = LIBMV_STRUCT_NEW(libmv_Features, 1);
+
+	if (count) {
+		if (margin) {
+			data += margin * stride+margin;
+			width -= 2 * margin;
+			height -= 2 * margin;
+		}
+
+		features = LIBMV_STRUCT_NEW(libmv::Feature, count);
+		libmv::DetectMORAVEC(data, stride, width, height, features, &count, min_distance, NULL);
 	}
 
 	libmv_features->count = count;
+	libmv_features->margin = margin;
+	libmv_features->features = features;
 
 	return libmv_features;
-}
-
-static void libmv_convertDetectorOptions(libmv_DetectOptions *options,
-                                         libmv::DetectOptions *detector_options)
-{
-	switch (options->detector) {
-#define LIBMV_CONVERT(the_detector) \
-	case LIBMV_DETECTOR_ ## the_detector: \
-		detector_options->type = libmv::DetectOptions::the_detector; \
-		break;
-		LIBMV_CONVERT(FAST)
-		LIBMV_CONVERT(MORAVEC)
-		LIBMV_CONVERT(HARRIS)
-#undef LIBMV_CONVERT
-	}
-	detector_options->margin = options->margin;
-	detector_options->min_distance = options->min_distance;
-	detector_options->fast_min_trackness = options->fast_min_trackness;
-	detector_options->moravec_max_count = options->moravec_max_count;
-	detector_options->moravec_pattern = options->moravec_pattern;
-	detector_options->harris_threshold = options->harris_threshold;
-}
-
-struct libmv_Features *libmv_detectFeaturesByte(const unsigned char *image_buffer,
-                                                int width, int height, int channels,
-                                                libmv_DetectOptions *options)
-{
-	// Prepare the image.
-	libmv::FloatImage image;
-	byteBufToImage(image_buffer, width, height, channels, &image);
-
-	// Configure detector.
-	libmv::DetectOptions detector_options;
-	libmv_convertDetectorOptions(options, &detector_options);
-
-	// Run the detector.
-	libmv::vector<libmv::Feature> detected_features;
-	libmv::Detect(image, detector_options, &detected_features);
-
-	// Convert result to C-API.
-	libmv_Features *result = libmv_featuresFromVector(detected_features);
-	return result;
-}
-
-struct libmv_Features *libmv_detectFeaturesFloat(const float *image_buffer,
-                                                 int width, int height, int channels,
-                                                 libmv_DetectOptions *options)
-{
-	// Prepare the image.
-	libmv::FloatImage image;
-	floatBufToImage(image_buffer, width, height, channels, &image);
-
-	// Configure detector.
-	libmv::DetectOptions detector_options;
-	libmv_convertDetectorOptions(options, &detector_options);
-
-	// Run the detector.
-	libmv::vector<libmv::Feature> detected_features;
-	libmv::Detect(image, detector_options, &detected_features);
-
-	// Convert result to C-API.
-	libmv_Features *result = libmv_featuresFromVector(detected_features);
-	return result;
 }
 
 void libmv_featuresDestroy(struct libmv_Features *libmv_features)
@@ -959,8 +910,8 @@ void libmv_getFeature(const struct libmv_Features *libmv_features, int number, d
 {
 	libmv::Feature feature = libmv_features->features[number];
 
-	*x = feature.x;
-	*y = feature.y;
+	*x = feature.x + libmv_features->margin;
+	*y = feature.y + libmv_features->margin;
 	*score = feature.score;
 	*size = feature.size;
 }

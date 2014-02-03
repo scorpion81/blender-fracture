@@ -23,7 +23,6 @@
 
 #include "kernel_types.h"
 
-#include "util_half.h"
 #include "util_string.h"
 #include "util_thread.h"
 #include "util_types.h"

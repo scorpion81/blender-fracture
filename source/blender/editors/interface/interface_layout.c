@@ -83,7 +83,6 @@ typedef struct uiLayoutRoot {
 	int opcontext;
 
 	int emw, emh;
-	int padding;
 
 	uiMenuHandleFunc handlefunc;
 	void *argv;
@@ -728,7 +727,7 @@ PointerRNA uiItemFullO_ptr(uiLayout *layout, wmOperatorType *ot, const char *nam
 	int w;
 
 	if (!name) {
-		if (ot && ot->srna && (flag & UI_ITEM_R_ICON_ONLY) == 0)
+		if (ot && ot->srna)
 			name = RNA_struct_ui_name(ot->srna);
 		else
 			name = "";
@@ -1159,15 +1158,8 @@ void uiItemFullR(uiLayout *layout, PointerRNA *ptr, PropertyRNA *prop, int index
 	len = (is_array) ? RNA_property_array_length(ptr, prop) : 0;
 
 	/* set name and icon */
-	if (!name) {
-		if ((flag & UI_ITEM_R_ICON_ONLY) == 0) {
-			name = RNA_property_ui_name(prop);
-		}
-		else {
-			name = "";
-		}
-	}
-
+	if (!name)
+		name = RNA_property_ui_name(prop);
 	if (icon == ICON_NONE)
 		icon = RNA_property_ui_icon(prop);
 	
@@ -1626,14 +1618,10 @@ static void ui_item_menu(uiLayout *layout, const char *name, int icon, uiMenuCre
 	h = UI_UNIT_Y;
 
 	if (layout->root->type == UI_LAYOUT_HEADER) { /* ugly .. */
-		if (force_menu) {
+		if (force_menu)
 			w += UI_UNIT_Y;
-		}
-		else {
-			if (name[0]) {
-				w -= UI_UNIT_Y / 2;
-			}
-		}
+		else
+			w -= UI_UNIT_Y / 2;
 	}
 
 	if (name[0] && icon)
@@ -1763,11 +1751,9 @@ void uiItemV(uiLayout *layout, const char *name, int icon, int argval)
 void uiItemS(uiLayout *layout)
 {
 	uiBlock *block = layout->root->block;
-	bool is_menu = ui_block_is_menu(block);
-	int space = (is_menu) ? 0.45f * UI_UNIT_X : 0.3f * UI_UNIT_X;
 
 	uiBlockSetCurLayout(block, layout);
-	uiDefBut(block, (is_menu) ? SEPRLINE : SEPR, 0, "", 0, 0, space, space, NULL, 0.0, 0.0, 0, 0, "");
+	uiDefBut(block, SEPR, 0, "", 0, 0, 0.3f * UI_UNIT_X, 0.3f * UI_UNIT_Y, NULL, 0.0, 0.0, 0, 0, "");
 }
 
 /* level items */
@@ -2865,20 +2851,7 @@ static void ui_layout_free(uiLayout *layout)
 	MEM_freeN(layout);
 }
 
-static void ui_layout_add_padding_button(uiLayoutRoot *root)
-{
-	if (root->padding) {
-		/* add an invisible button for padding */
-		uiBlock *block = root->block;
-		uiLayout *prev_layout = block->curlayout;
-
-		block->curlayout = root->layout;
-		uiDefBut(block, SEPR, 0, "", 0, 0, root->padding, root->padding, NULL, 0.0, 0.0, 0, 0, "");
-		block->curlayout = prev_layout;
-	}
-}
-
-uiLayout *uiBlockLayout(uiBlock *block, int dir, int type, int x, int y, int size, int em, int padding, uiStyle *style)
+uiLayout *uiBlockLayout(uiBlock *block, int dir, int type, int x, int y, int size, int em, uiStyle *style)
 {
 	uiLayout *layout;
 	uiLayoutRoot *root;
@@ -2887,7 +2860,6 @@ uiLayout *uiBlockLayout(uiBlock *block, int dir, int type, int x, int y, int siz
 	root->type = type;
 	root->style = style;
 	root->block = block;
-	root->padding = padding;
 	root->opcontext = WM_OP_INVOKE_REGION_WIN;
 
 	layout = MEM_callocN(sizeof(uiLayout), "uiLayout");
@@ -2916,8 +2888,6 @@ uiLayout *uiBlockLayout(uiBlock *block, int dir, int type, int x, int y, int siz
 	block->curlayout = layout;
 	root->layout = layout;
 	BLI_addtail(&block->layouts, root);
-
-	ui_layout_add_padding_button(root);
 	
 	return layout;
 }
@@ -2974,8 +2944,6 @@ void uiBlockLayoutResolve(uiBlock *block, int *x, int *y)
 	block->curlayout = NULL;
 
 	for (root = block->layouts.first; root; root = root->next) {
-		ui_layout_add_padding_button(root);
-
 		/* NULL in advance so we don't interfere when adding button */
 		ui_layout_end(block, root->layout, x, y);
 		ui_layout_free(root->layout);

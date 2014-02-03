@@ -113,7 +113,23 @@ bool Cache::lookup(CacheData& key, CacheData& value)
 
 void Cache::clear_except(const string& name, const set<string>& except)
 {
-	path_cache_clear_except(name, except);
+	string dir = path_user_get("cache");
+
+	if(boost::filesystem::exists(dir)) {
+		boost::filesystem::directory_iterator it(dir), it_end;
+
+		for(; it != it_end; it++) {
+#if (BOOST_FILESYSTEM_VERSION == 2)
+			string filename = it->path().filename();
+#else
+			string filename = it->path().filename().string();
+#endif
+
+			if(boost::starts_with(filename, name))
+				if(except.find(filename) == except.end())
+					boost::filesystem::remove(it->path());
+		}
+	}
 }
 
 CCL_NAMESPACE_END

@@ -34,14 +34,6 @@ IF(NOT OPENEXR_ROOT_DIR AND NOT $ENV{OPENEXR_ROOT_DIR} STREQUAL "")
   SET(OPENEXR_ROOT_DIR $ENV{OPENEXR_ROOT_DIR})
 ENDIF()
 
-SET(_openexr_FIND_COMPONENTS
-  Half
-  Iex
-  IlmImf
-  IlmThread
-  Imath
-)
-
 SET(_openexr_SEARCH_DIRS
   ${OPENEXR_ROOT_DIR}
   /usr/local
@@ -95,7 +87,24 @@ IF(OPENEXR_INCLUDE_DIR)
   ENDIF()
 ENDIF()
 
-STRING(REGEX REPLACE "([0-9]+)[.]([0-9]+).*" "\\1_\\2" _openexr_libs_ver ${OPENEXR_VERSION})
+IF(${OPENEXR_VERSION} VERSION_LESS "2.1")
+  SET(_openexr_FIND_COMPONENTS
+    Half
+    Iex
+    IlmImf
+    IlmThread
+    Imath
+  )
+ELSE()
+  STRING(REGEX REPLACE "([0-9]+)[.]([0-9]+).*" "\\1_\\2" _openexr_libs_ver ${OPENEXR_VERSION})
+  SET(_openexr_FIND_COMPONENTS
+    Half
+    Iex-${_openexr_libs_ver}
+    IlmImf-${_openexr_libs_ver}
+    IlmThread-${_openexr_libs_ver}
+    Imath-${_openexr_libs_ver}
+  )
+ENDIF()
 
 SET(_openexr_LIBRARIES)
 FOREACH(COMPONENT ${_openexr_FIND_COMPONENTS})
@@ -103,7 +112,7 @@ FOREACH(COMPONENT ${_openexr_FIND_COMPONENTS})
 
   FIND_LIBRARY(OPENEXR_${UPPERCOMPONENT}_LIBRARY
     NAMES
-      ${COMPONENT}-${_openexr_libs_ver} ${COMPONENT} 
+      ${COMPONENT}
     HINTS
       ${_openexr_SEARCH_DIRS}
     PATH_SUFFIXES
@@ -111,8 +120,6 @@ FOREACH(COMPONENT ${_openexr_FIND_COMPONENTS})
     )
   LIST(APPEND _openexr_LIBRARIES "${OPENEXR_${UPPERCOMPONENT}_LIBRARY}")
 ENDFOREACH()
-
-UNSET(_openexr_libs_ver)
 
 # handle the QUIETLY and REQUIRED arguments and set OPENEXR_FOUND to TRUE if 
 # all listed variables are TRUE

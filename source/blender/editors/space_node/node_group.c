@@ -275,12 +275,12 @@ static int node_group_ungroup(bNodeTree *ntree, bNode *gnode)
 		
 		/* free temp action too */
 		if (waction) {
-			BKE_libblock_free(G.main, waction);
+			BKE_libblock_free(&G.main->action, waction);
 		}
 	}
 	
 	/* free the group tree (takes care of user count) */
-	BKE_libblock_free(G.main, wgroup);
+	BKE_libblock_free(&G.main->nodetree, wgroup);
 	
 	/* restore external links to and from the gnode */
 	/* note: the nodes have been copied to intermediate wgroup first (so need to use new_node),

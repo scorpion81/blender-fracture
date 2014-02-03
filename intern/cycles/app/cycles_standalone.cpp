@@ -45,7 +45,7 @@ struct Options {
 	int width, height;
 	SceneParams scene_params;
 	SessionParams session_params;
-	bool quiet, show_help;
+	bool quiet;
 } options;
 
 static void session_print(const string& str)
@@ -163,13 +163,10 @@ static void display_info(Progress& progress)
 	if(substatus != "")
 		status += ": " + substatus;
 
-	str = string_printf("%s        Time: %.2f        Latency: %.4f        Sample: %d        Average: %.4f",
-						status.c_str(), total_time, latency, sample, sample_time);
+	str = string_printf("latency: %.4f        sample: %d        total: %.4f        average: %.4f        %s",
+		latency, sample, total_time, sample_time, status.c_str());
 
 	view_display_info(str.c_str());
-	
-	if(options.show_help)
-		view_display_help();
 }
 
 static void display()
@@ -192,8 +189,6 @@ static void keyboard(unsigned char key)
 {
 	if(key == 'r')
 		options.session->reset(session_buffer_params(), options.session_params.samples);
-	else if(key == 'h')
-		options.show_help = !(options.show_help);
 	else if(key == 27) // escape
 		options.session->progress.set_cancel("Canceled");
 }
@@ -231,6 +226,11 @@ static void options_parse(int argc, const char **argv)
 
 	/* shading system */
 	string ssname = "svm";
+	string shadingsystems = "Shading system to use: svm";
+
+#ifdef WITH_OSL
+	shadingsystems += ", osl"; 
+#endif
 
 	/* parse options */
 	ArgParse ap;
@@ -239,9 +239,7 @@ static void options_parse(int argc, const char **argv)
 	ap.options ("Usage: cycles [options] file.xml",
 		"%*", files_parse, "",
 		"--device %s", &devicename, ("Devices to use: " + device_names).c_str(),
-#ifdef WITH_OSL
 		"--shadingsys %s", &ssname, "Shading system to use: svm, osl",
-#endif
 		"--background", &options.session_params.background, "Render in background, without user interface",
 		"--quiet", &options.quiet, "In background mode, don't print progress messages",
 		"--samples %d", &options.session_params.samples, "Number of samples to render",
@@ -310,6 +308,9 @@ static void options_parse(int argc, const char **argv)
 	}
 #ifdef WITH_OSL
 	else if(!(ssname == "osl" || ssname == "svm")) {
+#else
+	else if(!(ssname == "svm")) {
+#endif
 		fprintf(stderr, "Unknown shading system: %s\n", ssname.c_str());
 		exit(EXIT_FAILURE);
 	}
@@ -317,7 +318,6 @@ static void options_parse(int argc, const char **argv)
 		fprintf(stderr, "OSL shading system only works with CPU device\n");
 		exit(EXIT_FAILURE);
 	}
-#endif
 	else if(options.session_params.samples < 0) {
 		fprintf(stderr, "Invalid number of samples: %d\n", options.session_params.samples);
 		exit(EXIT_FAILURE);

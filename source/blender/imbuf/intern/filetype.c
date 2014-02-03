@@ -62,6 +62,17 @@ static int imb_ftype_iris(ImFileType *type, ImBuf *ibuf)
 	(void)type;
 	return (ibuf->ftype == IMAGIC);
 }
+#ifdef WITH_QUICKTIME
+static int imb_ftype_quicktime(ImFileType *UNUSED(type), ImBuf *UNUSED(ibuf))
+{
+	return 0; /* XXX */
+}
+#endif
+
+#ifdef WITH_QUICKTIME
+void quicktime_init(void);
+void quicktime_exit(void);
+#endif
 
 ImFileType IMB_FILE_TYPES[] = {
 	{NULL, NULL, imb_is_a_jpeg, NULL, imb_ftype_default, imb_load_jpeg, NULL, imb_savejpeg, NULL, 0, JPG, COLOR_ROLE_DEFAULT_BYTE},
@@ -88,6 +99,9 @@ ImFileType IMB_FILE_TYPES[] = {
 #ifdef WITH_DDS
 	{NULL, NULL, imb_is_a_dds, NULL, imb_ftype_default, imb_load_dds, NULL, NULL, NULL, 0, DDS, COLOR_ROLE_DEFAULT_BYTE},
 #endif
+#ifdef WITH_QUICKTIME
+	{quicktime_init, quicktime_exit, imb_is_a_quicktime, NULL, imb_ftype_quicktime, imb_quicktime_decode, NULL, NULL, 0, QUICKTIME, COLOR_ROLE_DEFAULT_BYTE},
+#endif
 #ifdef WITH_OPENIMAGEIO
 	{NULL, NULL, NULL, imb_is_a_photoshop, imb_ftype_default, NULL, imb_load_photoshop, NULL, NULL, IM_FTYPE_FLOAT, PSD, COLOR_ROLE_DEFAULT_FLOAT},
 #endif
@@ -103,10 +117,6 @@ void imb_filetypes_init(void)
 	for (type = IMB_FILE_TYPES; type < IMB_FILE_TYPES_LAST; type++)
 		if (type->init)
 			type->init();
-
-#ifdef WITH_QUICKTIME
-	quicktime_init();
-#endif
 }
 
 void imb_filetypes_exit(void)
@@ -116,9 +126,5 @@ void imb_filetypes_exit(void)
 	for (type = IMB_FILE_TYPES; type < IMB_FILE_TYPES_LAST; type++)
 		if (type->exit)
 			type->exit();
-
-#ifdef WITH_QUICKTIME
-	quicktime_exit();
-#endif
 }
 

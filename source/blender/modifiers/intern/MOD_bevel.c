@@ -58,10 +58,9 @@ static void initData(ModifierData *md)
 	bmd->value = 0.1f;
 	bmd->res = 1;
 	bmd->flags = 0;
-	bmd->val_flags = MOD_BEVEL_AMT_OFFSET;
+	bmd->val_flags = 0;
 	bmd->lim_flags = 0;
 	bmd->e_flags = 0;
-	bmd->profile = 0.5f;
 	bmd->bevel_angle = DEG2RADF(30.0f);
 	bmd->defgrp_name[0] = '\0';
 }
@@ -77,7 +76,6 @@ static void copyData(ModifierData *md, ModifierData *target)
 	tbmd->val_flags = bmd->val_flags;
 	tbmd->lim_flags = bmd->lim_flags;
 	tbmd->e_flags = bmd->e_flags;
-	tbmd->profile = bmd->profile;
 	tbmd->bevel_angle = bmd->bevel_angle;
 	BLI_strncpy(tbmd->defgrp_name, bmd->defgrp_name, sizeof(tbmd->defgrp_name));
 }
@@ -105,28 +103,27 @@ static DerivedMesh *applyModifier(ModifierData *md, struct Object *ob,
 	BMIter iter;
 	BMEdge *e;
 	BMVert *v;
-	float weight, weight2;
+	float weight;
 	int vgroup = -1;
 	MDeformVert *dvert = NULL;
 	BevelModifierData *bmd = (BevelModifierData *) md;
 	const float threshold = cosf(bmd->bevel_angle + 0.000000175f);
 	const bool vertex_only = (bmd->flags & MOD_BEVEL_VERT) != 0;
 	const bool do_clamp = !(bmd->flags & MOD_BEVEL_OVERLAP_OK);
-	const int offset_type = bmd->val_flags;
 
 	bm = DM_to_bmesh(dm, true);
-	if ((bmd->lim_flags & MOD_BEVEL_VGROUP) && bmd->defgrp_name[0])
-		modifier_get_vgroup(ob, dm, bmd->defgrp_name, &dvert, &vgroup);
 
 	if (vertex_only) {
+		if ((bmd->lim_flags & MOD_BEVEL_VGROUP) && bmd->defgrp_name[0]) {
+			modifier_get_vgroup(ob, dm, bmd->defgrp_name, &dvert, &vgroup);
+		}
 		BM_ITER_MESH (v, &iter, bm, BM_VERTS_OF_MESH) {
 			if (!BM_vert_is_manifold(v))
 				continue;
 			if (vgroup != -1) {
+				/* Is it safe to assume bmesh indices and dvert array line up?? */
 				weight = defvert_array_find_weight_safe(dvert, BM_elem_index_get(v), vgroup);
-				/* Check is against 0.5 rather than != 0.0 because cascaded bevel modifiers will
-				 * interpolate weights for newly created vertices, and may cause unexpected "selection" */
-				if (weight < 0.5f)
+				if (weight <= 0.0f)
 					continue;
 			}
 			BM_elem_flag_enable(v, BM_ELEM_TAG);
@@ -154,12 +151,6 @@ static DerivedMesh *applyModifier(ModifierData *md, struct Object *ob,
 					if (weight == 0.0f)
 						continue;
 				}
-				else if (vgroup != -1) {
-					weight = defvert_array_find_weight_safe(dvert, BM_elem_index_get(e->v1), vgroup);
-					weight2 = defvert_array_find_weight_safe(dvert, BM_elem_index_get(e->v2), vgroup);
-					if (weight < 0.5f || weight2 < 0.5f)
-						continue;
-				}
 				BM_elem_flag_enable(e, BM_ELEM_TAG);
 				BM_elem_flag_enable(e->v1, BM_ELEM_TAG);
 				BM_elem_flag_enable(e->v2, BM_ELEM_TAG);
@@ -167,11 +158,12 @@ static DerivedMesh *applyModifier(ModifierData *md, struct Object *ob,
 		}
 	}
 
-	BM_mesh_bevel(bm, bmd->value, offset_type, bmd->res, bmd->profile,
+	/* TODO: add offset_kind to modifier properties to, and pass in as 3rd arg here */
+	BM_mesh_bevel(bm, bmd->value, 0, bmd->res, 0.5f,
 	              vertex_only, bmd->lim_flags & MOD_BEVEL_WEIGHT, do_clamp,
 	              dvert, vgroup);
 
-	result = CDDM_from_bmesh(bm, true);
+	result = CDDM_from_bmesh(bm, TRUE);
 
 	BLI_assert(bm->vtoolflagpool == NULL &&
 	           bm->etoolflagpool == NULL &&

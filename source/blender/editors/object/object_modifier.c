@@ -177,8 +177,8 @@ ModifierData *ED_object_modifier_add(ReportList *reports, Main *bmain, Scene *sc
 
 /* Return TRUE if the object has a modifier of type 'type' other than
  * the modifier pointed to be 'exclude', otherwise returns FALSE. */
-static bool object_has_modifier(const Object *ob, const ModifierData *exclude,
-                                ModifierType type)
+static int object_has_modifier(const Object *ob, const ModifierData *exclude,
+                               ModifierType type)
 {
 	ModifierData *md;
 
@@ -198,9 +198,9 @@ static bool object_has_modifier(const Object *ob, const ModifierData *exclude,
  * If the callback ever returns TRUE, iteration will stop and the
  * function value will be TRUE. Otherwise the function returns FALSE.
  */
-bool ED_object_iter_other(Main *bmain, Object *orig_ob, const bool include_orig,
-                          bool (*callback)(Object *ob, void *callback_data),
-                          void *callback_data)
+int ED_object_iter_other(Main *bmain, Object *orig_ob, const bool include_orig,
+                         int (*callback)(Object *ob, void *callback_data),
+                         void *callback_data)
 {
 	ID *ob_data_id = orig_ob->data;
 	int users = ob_data_id->us;
@@ -233,7 +233,7 @@ bool ED_object_iter_other(Main *bmain, Object *orig_ob, const bool include_orig,
 	return FALSE;
 }
 
-static bool object_has_modifier_cb(Object *ob, void *data)
+static int object_has_modifier_cb(Object *ob, void *data)
 {
 	ModifierType type = *((ModifierType *)data);
 
@@ -243,7 +243,7 @@ static bool object_has_modifier_cb(Object *ob, void *data)
 /* Use with ED_object_iter_other(). Sets the total number of levels
  * for any multires modifiers on the object to the int pointed to by
  * callback_data. */
-bool ED_object_multires_update_totlevels_cb(Object *ob, void *totlevel_v)
+int ED_object_multires_update_totlevels_cb(Object *ob, void *totlevel_v)
 {
 	ModifierData *md;
 	int totlevel = *((int *)totlevel_v);
@@ -258,17 +258,17 @@ bool ED_object_multires_update_totlevels_cb(Object *ob, void *totlevel_v)
 }
 
 /* Return TRUE if no modifier of type 'type' other than 'exclude' */
-static bool object_modifier_safe_to_delete(Main *bmain, Object *ob,
-                                           ModifierData *exclude,
-                                           ModifierType type)
+static int object_modifier_safe_to_delete(Main *bmain, Object *ob,
+                                          ModifierData *exclude,
+                                          ModifierType type)
 {
 	return (!object_has_modifier(ob, exclude, type) &&
 	        !ED_object_iter_other(bmain, ob, FALSE,
 	                              object_has_modifier_cb, &type));
 }
 
-static bool object_modifier_remove(Main *bmain, Object *ob, ModifierData *md,
-                                   bool *r_sort_depsgraph)
+static int object_modifier_remove(Main *bmain, Object *ob, ModifierData *md,
+                                  int *sort_depsgraph)
 {
 	/* It seems on rapid delete it is possible to
 	 * get called twice on same modifier, so make
@@ -296,10 +296,10 @@ static bool object_modifier_remove(Main *bmain, Object *ob, ModifierData *md,
 		if (ob->pd)
 			ob->pd->deflect = 0;
 
-		*r_sort_depsgraph = true;
+		*sort_depsgraph = 1;
 	}
 	else if (md->type == eModifierType_Surface) {
-		*r_sort_depsgraph = true;
+		*sort_depsgraph = 1;
 	}
 	else if (md->type == eModifierType_Multires) {
 		/* Delete MDisps layer if not used by another multires modifier */
@@ -324,10 +324,10 @@ static bool object_modifier_remove(Main *bmain, Object *ob, ModifierData *md,
 	return 1;
 }
 
-bool ED_object_modifier_remove(ReportList *reports, Main *bmain, Object *ob, ModifierData *md)
+int ED_object_modifier_remove(ReportList *reports, Main *bmain, Object *ob, ModifierData *md)
 {
-	bool sort_depsgraph = false;
-	bool ok;
+	int sort_depsgraph = 0;
+	int ok;
 
 	ok = object_modifier_remove(bmain, ob, md, &sort_depsgraph);
 
@@ -345,7 +345,7 @@ bool ED_object_modifier_remove(ReportList *reports, Main *bmain, Object *ob, Mod
 void ED_object_modifier_clear(Main *bmain, Object *ob)
 {
 	ModifierData *md = ob->modifiers.first;
-	bool sort_depsgraph = false;
+	int sort_depsgraph = 0;
 
 	if (!md)
 		return;
@@ -826,7 +826,7 @@ static int edit_modifier_poll(bContext *C)
 
 static void edit_modifier_properties(wmOperatorType *ot)
 {
-	RNA_def_string(ot->srna, "modifier", NULL, MAX_NAME, "Modifier", "Name of the modifier to edit");
+	RNA_def_string(ot->srna, "modifier", "", MAX_NAME, "Modifier", "Name of the modifier to edit");
 }
 
 static int edit_modifier_invoke_properties(bContext *C, wmOperator *op)

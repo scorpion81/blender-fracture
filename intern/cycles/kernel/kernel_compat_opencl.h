@@ -113,7 +113,6 @@
 /* define NULL */
 #define NULL 0
 
-#include "util_half.h"
 #include "util_types.h"
 
 #endif /* __KERNEL_COMPAT_OPENCL_H__ */

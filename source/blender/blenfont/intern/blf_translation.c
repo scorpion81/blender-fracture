@@ -26,9 +26,6 @@
 
 /** \file blender/blenfont/intern/blf_translation.c
  *  \ingroup blf
- *
- * Manages translation files and provides translation functions.
- * (which are optional and can be disabled as a preference).
  */
 
 #include <stdlib.h>

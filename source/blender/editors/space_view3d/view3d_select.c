@@ -62,7 +62,6 @@
 
 #include "BKE_armature.h"
 #include "BKE_context.h"
-#include "BKE_curve.h"
 #include "BKE_depsgraph.h"
 #include "BKE_mball.h"
 #include "BKE_mesh.h"
@@ -538,6 +537,7 @@ static void do_lasso_select_curve__doSelect(void *userData, Nurb *UNUSED(nu), BP
 	if (BLI_lasso_is_point_inside(data->mcords, data->moves, screen_co[0], screen_co[1], IS_CLIPPED)) {
 		if (bp) {
 			bp->f1 = data->select ? (bp->f1 | SELECT) : (bp->f1 & ~SELECT);
+			if (bp == cu->lastsel && !(bp->f1 & SELECT)) cu->lastsel = NULL;
 		}
 		else {
 			if (cu->drawflag & CU_HIDE_HANDLES) {
@@ -555,6 +555,8 @@ static void do_lasso_select_curve__doSelect(void *userData, Nurb *UNUSED(nu), BP
 					bezt->f3 = data->select ? (bezt->f3 | SELECT) : (bezt->f3 & ~SELECT);
 				}
 			}
+
+			if (bezt == cu->lastsel && !(bezt->f2 & SELECT)) cu->lastsel = NULL;
 		}
 	}
 }
@@ -569,11 +571,10 @@ static void do_lasso_select_curve(ViewContext *vc, const int mcords[][2], short 
 	view3d_userdata_lassoselect_init(&data, vc, &rect, mcords, moves, select);
 
 	if (extend == false && select)
-		ED_curve_deselect_all(vc->obedit->data);
+		CU_deselect_all(vc->obedit);
 
 	ED_view3d_init_mats_rv3d(vc->obedit, vc->rv3d); /* for foreach's screen/vert projection */
 	nurbs_foreachScreenVert(vc, do_lasso_select_curve__doSelect, &data, V3D_PROJ_TEST_CLIP_DEFAULT);
-	BKE_curve_nurb_vert_active_validate(vc->obedit->data);
 }
 
 static void do_lasso_select_lattice__doSelect(void *userData, BPoint *bp, const float screen_co[2])
@@ -1709,6 +1710,7 @@ static void do_nurbs_box_select__doSelect(void *userData, Nurb *UNUSED(nu), BPoi
 	if (BLI_rctf_isect_pt_v(data->rect_fl, screen_co)) {
 		if (bp) {
 			bp->f1 = data->select ? (bp->f1 | SELECT) : (bp->f1 & ~SELECT);
+			if (bp == cu->lastsel && !(bp->f1 & SELECT)) cu->lastsel = NULL;
 		}
 		else {
 			if (cu->drawflag & CU_HIDE_HANDLES) {
@@ -1726,6 +1728,8 @@ static void do_nurbs_box_select__doSelect(void *userData, Nurb *UNUSED(nu), BPoi
 					bezt->f3 = data->select ? (bezt->f3 | SELECT) : (bezt->f3 & ~SELECT);
 				}
 			}
+
+			if (bezt == cu->lastsel && !(bezt->f2 & SELECT)) cu->lastsel = NULL;
 		}
 	}
 }
@@ -1736,11 +1740,10 @@ static int do_nurbs_box_select(ViewContext *vc, rcti *rect, bool select, bool ex
 	view3d_userdata_boxselect_init(&data, vc, rect, select);
 
 	if (extend == false && select)
-		ED_curve_deselect_all(vc->obedit->data);
+		CU_deselect_all(vc->obedit);
 
 	ED_view3d_init_mats_rv3d(vc->obedit, vc->rv3d); /* for foreach's screen/vert projection */
 	nurbs_foreachScreenVert(vc, do_nurbs_box_select__doSelect, &data, V3D_PROJ_TEST_CLIP_DEFAULT);
-	BKE_curve_nurb_vert_active_validate(vc->obedit->data);
 
 	return OPERATOR_FINISHED;
 }
@@ -2219,7 +2222,7 @@ static int view3d_select_exec(bContext *C, wmOperator *op)
 	bool toggle = RNA_boolean_get(op->ptr, "toggle");
 	bool center = RNA_boolean_get(op->ptr, "center");
 	bool enumerate = RNA_boolean_get(op->ptr, "enumerate");
-	bool object = (RNA_boolean_get(op->ptr, "object") && obedit);  /* only force object select for editmode */
+	bool object = RNA_boolean_get(op->ptr, "object");
 	bool retval = false;
 	int location[2];
 
@@ -2471,6 +2474,8 @@ static void nurbscurve_circle_doSelect(void *userData, Nurb *UNUSED(nu), BPoint 
 	if (len_squared_v2v2(data->mval_fl, screen_co) <= data->radius_squared) {
 		if (bp) {
 			bp->f1 = data->select ? (bp->f1 | SELECT) : (bp->f1 & ~SELECT);
+
+			if (bp == cu->lastsel && !(bp->f1 & SELECT)) cu->lastsel = NULL;
 		}
 		else {
 			if (cu->drawflag & CU_HIDE_HANDLES) {
@@ -2488,6 +2493,8 @@ static void nurbscurve_circle_doSelect(void *userData, Nurb *UNUSED(nu), BPoint 
 					bezt->f3 = data->select ? (bezt->f3 | SELECT) : (bezt->f3 & ~SELECT);
 				}
 			}
+
+			if (bezt == cu->lastsel && !(bezt->f2 & SELECT)) cu->lastsel = NULL;
 		}
 	}
 }
@@ -2499,7 +2506,6 @@ static void nurbscurve_circle_select(ViewContext *vc, const bool select, const i
 
 	ED_view3d_init_mats_rv3d(vc->obedit, vc->rv3d); /* for foreach's screen/vert projection */
 	nurbs_foreachScreenVert(vc, nurbscurve_circle_doSelect, &data, V3D_PROJ_TEST_CLIP_DEFAULT);
-	BKE_curve_nurb_vert_active_validate(vc->obedit->data);
 }
 
 

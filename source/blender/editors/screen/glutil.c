@@ -874,7 +874,7 @@ void bglBegin(int mode)
 		glGetFloatv(GL_POINT_SIZE_RANGE, value);
 		if (value[1] < 2.0f) {
 			glGetFloatv(GL_POINT_SIZE, value);
-			pointhack = iroundf(value[0]);
+			pointhack = floor(value[0] + 0.5f);
 			if (pointhack > 4) pointhack = 4;
 		}
 		else {

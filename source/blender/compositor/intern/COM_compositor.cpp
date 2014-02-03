@@ -36,7 +36,7 @@ extern "C" {
 #include "COM_MovieDistortionOperation.h"
 
 static ThreadMutex s_compositorMutex;
-static bool is_compositorMutex_init = FALSE;
+static char is_compositorMutex_init = FALSE;
 
 static void intern_freeCompositorCaches()
 {

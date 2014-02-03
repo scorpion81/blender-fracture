@@ -23,7 +23,6 @@
 /** \file blender/bmesh/intern/bmesh_core.c
  *  \ingroup bmesh
  *
- * Core BMesh functions for adding, removing BMesh elements.
  */
 
 #include "MEM_guardedalloc.h"

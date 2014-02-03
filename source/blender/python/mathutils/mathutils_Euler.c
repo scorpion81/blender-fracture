@@ -411,7 +411,7 @@ static int Euler_ass_item(EulerObject *self, int i, PyObject *value)
 	if (f == -1 && PyErr_Occurred()) {  /* parsed item not a number */
 		PyErr_SetString(PyExc_TypeError,
 		                "euler[attribute] = x: "
-		                "assigned value not a number");
+		                "argument not a number");
 		return -1;
 	}
 

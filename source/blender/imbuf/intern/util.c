@@ -332,9 +332,16 @@ static int isffmpeg(const char *filename)
 	AVCodec *pCodec;
 	AVCodecContext *pCodecCtx;
 
-	if (BLI_testextensie_n(
-	        filename,
-	        ".swf", ".jpg", ".png", ".dds", ".tga", ".bmp", ".tif", ".exr", ".cin", ".wav", NULL))
+	if (BLI_testextensie(filename, ".swf") ||
+	    BLI_testextensie(filename, ".jpg") ||
+	    BLI_testextensie(filename, ".png") ||
+	    BLI_testextensie(filename, ".dds") ||
+	    BLI_testextensie(filename, ".tga") ||
+	    BLI_testextensie(filename, ".bmp") ||
+	    BLI_testextensie(filename, ".tif") ||
+	    BLI_testextensie(filename, ".exr") ||
+	    BLI_testextensie(filename, ".cin") ||
+	    BLI_testextensie(filename, ".wav"))
 	{
 		return 0;
 	}
@@ -346,7 +353,7 @@ static int isffmpeg(const char *filename)
 
 	if (avformat_find_stream_info(pFormatCtx, NULL) < 0) {
 		if (UTIL_DEBUG) fprintf(stderr, "isffmpeg: avformat_find_stream_info failed\n");
-		avformat_close_input(&pFormatCtx);
+		av_close_input_file(pFormatCtx);
 		return 0;
 	}
 
@@ -365,7 +372,7 @@ static int isffmpeg(const char *filename)
 		}
 
 	if (videoStream == -1) {
-		avformat_close_input(&pFormatCtx);
+		av_close_input_file(pFormatCtx);
 		return 0;
 	}
 
@@ -374,17 +381,17 @@ static int isffmpeg(const char *filename)
 	/* Find the decoder for the video stream */
 	pCodec = avcodec_find_decoder(pCodecCtx->codec_id);
 	if (pCodec == NULL) {
-		avformat_close_input(&pFormatCtx);
+		av_close_input_file(pFormatCtx);
 		return 0;
 	}
 
 	if (avcodec_open2(pCodecCtx, pCodec, NULL) < 0) {
-		avformat_close_input(&pFormatCtx);
+		av_close_input_file(pFormatCtx);
 		return 0;
 	}
 
 	avcodec_close(pCodecCtx);
-	avformat_close_input(&pFormatCtx);
+	av_close_input_file(pFormatCtx);
 
 	return 1;
 }

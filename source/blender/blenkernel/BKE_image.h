@@ -57,7 +57,7 @@ void    BKE_image_free(struct Image *me);
 
 void    BKE_imbuf_stamp_info(struct Scene *scene, struct Object *camera, struct ImBuf *ibuf);
 void    BKE_stamp_buf(struct Scene *scene, struct Object *camera, unsigned char *rect, float *rectf, int width, int height, int channels);
-bool    BKE_imbuf_alpha_test(struct ImBuf *ibuf);
+int     BKE_imbuf_alpha_test(struct ImBuf *ibuf);
 int     BKE_imbuf_write_stamp(struct Scene *scene, struct Object *camera, struct ImBuf *ibuf, const char *name, struct ImageFormatData *imf);
 int     BKE_imbuf_write(struct ImBuf *ibuf, const char *name, struct ImageFormatData *imf);
 int     BKE_imbuf_write_as(struct ImBuf *ibuf, const char *name, struct ImageFormatData *imf, const short is_copy);
@@ -153,7 +153,6 @@ struct ImBuf *BKE_image_pool_acquire_ibuf(struct Image *ima, struct ImageUser *i
 void BKE_image_pool_release_ibuf(struct Image *ima, struct ImBuf *ibuf, struct ImagePool *pool);
 
 /* set an alpha mode based on file extension */
-char  BKE_image_alpha_mode_from_extension_ex(const char *filepath);
 void BKE_image_alpha_mode_from_extension(struct Image *image);
 
 /* returns a new image or NULL if it can't load */
@@ -237,7 +236,6 @@ float *BKE_image_get_float_pixels_for_frame(struct Image *image, int frame);
 /* Guess offset for the first frame in the sequence */
 int BKE_image_sequence_guess_offset(struct Image *image);
 
-bool BKE_image_is_animated(struct Image *image);
 bool BKE_image_is_dirty(struct Image *image);
 void BKE_image_file_format_set(struct Image *image, int ftype);
 bool BKE_image_has_loaded_ibuf(struct Image *image);

@@ -18,12 +18,6 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-/** \file blender/blenlib/intern/task.c
- *  \ingroup bli
- *
- * A generic task system which can be used for any task based subsystem.
- */
-
 #include <stdlib.h>
 
 #include "MEM_guardedalloc.h"

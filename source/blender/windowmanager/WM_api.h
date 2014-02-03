@@ -87,7 +87,7 @@ void		WM_init_splash		(struct bContext *C);
 
 void		WM_check			(struct bContext *C);
 
-struct wmWindow	*WM_window_open	(struct bContext *C, const struct rcti *rect);
+struct wmWindow	*WM_window_open	(struct bContext *C, struct rcti *rect);
 
 int			WM_window_pixels_x		(struct wmWindow *win);
 int			WM_window_pixels_y		(struct wmWindow *win);
@@ -106,7 +106,7 @@ bool		WM_is_draw_triple(struct wmWindow *win);
 
 			/* files */
 void		WM_file_autoexec_init(const char *filepath);
-bool		WM_file_read(struct bContext *C, const char *filepath, struct ReportList *reports);
+void		WM_file_read(struct bContext *C, const char *filepath, struct ReportList *reports);
 void		WM_autosave_init(struct wmWindowManager *wm);
 void		WM_recover_last_session(struct bContext *C, struct ReportList *reports);
 
@@ -137,7 +137,7 @@ int			WM_userdef_event_map(int kmitype);
 
 struct wmEventHandler *WM_event_add_keymap_handler(ListBase *handlers, wmKeyMap *keymap);
 						/* boundbox, optional subwindow boundbox for offset */
-struct wmEventHandler *WM_event_add_keymap_handler_bb(ListBase *handlers, wmKeyMap *keymap, const rcti *bb, const rcti *swinbb);
+struct wmEventHandler *WM_event_add_keymap_handler_bb(ListBase *handlers, wmKeyMap *keymap, rcti *bb, rcti *swinbb);
 						/* priority not implemented, it adds in begin */
 struct wmEventHandler *WM_event_add_keymap_handler_priority(ListBase *handlers, wmKeyMap *keymap, int priority);
 
@@ -218,8 +218,7 @@ struct GHashIterator  *WM_operatortype_iter(void);
 void		WM_operatortype_append(void (*opfunc)(struct wmOperatorType *));
 void		WM_operatortype_append_ptr(void (*opfunc)(struct wmOperatorType *, void *), void *userdata);
 void		WM_operatortype_append_macro_ptr(void (*opfunc)(struct wmOperatorType *, void *), void *userdata);
-void        WM_operatortype_remove_ptr(struct wmOperatorType *ot);
-bool        WM_operatortype_remove(const char *idname);
+int			WM_operatortype_remove(const char *idname);
 
 struct wmOperatorType *WM_operatortype_append_macro(const char *idname, const char *name, const char *description, int flag);
 struct wmOperatorTypeMacro *WM_operatortype_macro_define(struct wmOperatorType *ot, const char *idname);
@@ -227,13 +226,12 @@ struct wmOperatorTypeMacro *WM_operatortype_macro_define(struct wmOperatorType *
 
 int			WM_operator_poll		(struct bContext *C, struct wmOperatorType *ot);
 int			WM_operator_poll_context(struct bContext *C, struct wmOperatorType *ot, short context);
-int         WM_operator_call_ex(struct bContext *C, struct wmOperator *op, const bool store);
 int			WM_operator_call		(struct bContext *C, struct wmOperator *op);
 int			WM_operator_call_notest(struct bContext *C, struct wmOperator *op);
 int			WM_operator_repeat		(struct bContext *C, struct wmOperator *op);
 int			WM_operator_repeat_check(const struct bContext *C, struct wmOperator *op);
 int			WM_operator_name_call	(struct bContext *C, const char *opstring, short context, struct PointerRNA *properties);
-int			WM_operator_call_py(struct bContext *C, struct wmOperatorType *ot, short context, struct PointerRNA *properties, struct ReportList *reports, const bool is_undo);
+int			WM_operator_call_py(struct bContext *C, struct wmOperatorType *ot, short context, struct PointerRNA *properties, struct ReportList *reports, short is_undo);
 
 void		WM_operator_properties_alloc(struct PointerRNA **ptr, struct IDProperty **properties, const char *opstring); /* used for keymap and macro items */
 void		WM_operator_properties_sanitize(struct PointerRNA *ptr, const bool no_context); /* make props context sensitive or not */
@@ -289,14 +287,14 @@ void		WM_operator_py_idname(char *to, const char *from);
 /* *************** uilist types ******************** */
 void                WM_uilisttype_init(void);
 struct uiListType  *WM_uilisttype_find(const char *idname, bool quiet);
-bool                WM_uilisttype_add(struct uiListType *ult);
+int                 WM_uilisttype_add(struct uiListType *ult);
 void                WM_uilisttype_freelink(struct uiListType *ult);
 void                WM_uilisttype_free(void);
 
 /* *************** menu types ******************** */
 void                WM_menutype_init(void);
 struct MenuType    *WM_menutype_find(const char *idname, bool quiet);
-bool                WM_menutype_add(struct MenuType *mt);
+int                 WM_menutype_add(struct MenuType *mt);
 void                WM_menutype_freelink(struct MenuType *mt);
 void                WM_menutype_free(void);
 
@@ -427,9 +425,6 @@ void        WM_main_playanim(int argc, const char **argv);
 
 /* debugging only, convenience function to write on crash */
 bool write_crash_blend(void);
-
-			/* Lock the interface for any communication */
-void        WM_set_locked_interface(struct wmWindowManager *wm, bool lock);
 
 #ifdef __cplusplus
 }

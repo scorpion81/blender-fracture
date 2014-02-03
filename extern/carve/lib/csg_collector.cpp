@@ -21,7 +21,6 @@
 
 #include <carve/csg.hpp>
 #include <iostream>
-#include "csg_collector.hpp"
 #include "intersect_debug.hpp"
 
 #if defined(CARVE_DEBUG_WRITE_PLY_DATA)

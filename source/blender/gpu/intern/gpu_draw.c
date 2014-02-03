@@ -27,14 +27,8 @@
 
 /** \file blender/gpu/intern/gpu_draw.c
  *  \ingroup gpu
- *
- * Utility functions for dealing with OpenGL texture & material context,
- * mipmap generation and light objects.
- *
- * These are some obscure rendering functions shared between the
- * game engine and the blender, in this module to avoid duplication
- * and abstract them away from the rest a bit.
  */
+
 
 #include <string.h>
 
@@ -80,6 +74,10 @@
 
 extern Material defmaterial; /* from material.c */
 
+/* These are some obscure rendering functions shared between the
+ * game engine and the blender, in this module to avoid duplicaten
+ * and abstract them away from the rest a bit */
+
 /* Text Rendering */
 
 static void gpu_mcol(unsigned int ucol)
@@ -96,8 +94,7 @@ void GPU_render_text(MTFace *tface, int mode,
 	if ((mode & GEMAT_TEXT) && (textlen>0) && tface->tpage) {
 		Image* ima = (Image *)tface->tpage;
 		ImBuf *first_ibuf;
-		const size_t textlen_st = textlen;
-		size_t index;
+		int index, character;
 		float centerx, centery, sizex, sizey, transx, transy, movex, movey, advance;
 		float advance_tab;
 		
@@ -128,12 +125,11 @@ void GPU_render_text(MTFace *tface, int mode,
 		advance_tab= advance * 4; /* tab width could also be an option */
 		
 		
-		for (index = 0; index < textlen_st; ) {
-			unsigned int character;
+		for (index = 0; index < textlen; index++) {
 			float uv[4][2];
 
 			// lets calculate offset stuff
-			character = BLI_str_utf8_as_unicode_and_size_safe(textstr + index, &index);
+			character = textstr[index];
 			
 			if (character=='\n') {
 				glTranslatef(line_start, -line_height, 0.0);
@@ -145,10 +141,6 @@ void GPU_render_text(MTFace *tface, int mode,
 				line_start -= advance_tab; /* so we can go back to the start of the line */
 				continue;
 				
-			}
-			else if (character > USHRT_MAX) {
-				/* not much we can do here bmfonts take ushort */
-				character = '?';
 			}
 			
 			// space starts at offset 1
@@ -1306,7 +1298,7 @@ void GPU_free_images_anim(void)
 
 	if (G.main)
 		for (ima=G.main->image.first; ima; ima=ima->id.next)
-			if (BKE_image_is_animated(ima))
+			if (ELEM(ima->source, IMA_SRC_SEQUENCE, IMA_SRC_MOVIE))
 				GPU_free_image(ima);
 }
 

@@ -64,8 +64,9 @@ KX_RaySensor::KX_RaySensor(class SCA_EventManager* eventmgr,
 					m_bXRay(bXRay),
 					m_distance(distance),
 					m_scene(ketsjiScene),
-					m_axis(axis),
-					m_hitMaterial("")
+					m_axis(axis)
+
+				
 {
 	Init();
 }
@@ -143,7 +144,6 @@ bool KX_RaySensor::RayHit(KX_ClientObjectInfo *client, KX_RayCast *result, void 
 		m_hitNormal[1] = result->m_hitNormal[1];
 		m_hitNormal[2] = result->m_hitNormal[2];
 			
-		m_hitMaterial = (client->m_auxilary_info ? (char*)client->m_auxilary_info : "");
 	}
 	// no multi-hit search yet
 	return true;
@@ -356,7 +356,6 @@ PyAttributeDef KX_RaySensor::Attributes[] = {
 	KX_PYATTRIBUTE_FLOAT_ARRAY_RO("hitPosition", KX_RaySensor, m_hitPosition, 3),
 	KX_PYATTRIBUTE_FLOAT_ARRAY_RO("rayDirection", KX_RaySensor, m_rayDirection, 3),
 	KX_PYATTRIBUTE_FLOAT_ARRAY_RO("hitNormal", KX_RaySensor, m_hitNormal, 3),
-	KX_PYATTRIBUTE_STRING_RO("hitMaterial", KX_RaySensor, m_hitMaterial),
 	KX_PYATTRIBUTE_RO_FUNCTION("hitObject", KX_RaySensor, pyattr_get_hitobject),
 	{ NULL }	//Sentinel
 };

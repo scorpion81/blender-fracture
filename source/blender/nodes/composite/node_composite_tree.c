@@ -366,7 +366,7 @@ int ntreeCompositTagAnimated(bNodeTree *ntree)
 		/* otherwise always tag these node types */
 		if (node->type == CMP_NODE_IMAGE) {
 			Image *ima = (Image *)node->id;
-			if (ima && BKE_image_is_animated(ima)) {
+			if (ima && ELEM(ima->source, IMA_SRC_MOVIE, IMA_SRC_SEQUENCE)) {
 				nodeUpdate(ntree, node);
 				tagged = 1;
 			}
@@ -377,7 +377,7 @@ int ntreeCompositTagAnimated(bNodeTree *ntree)
 		}
 		/* here was tag render layer, but this is called after a render, so re-composites fail */
 		else if (node->type == NODE_GROUP) {
-			if (ntreeCompositTagAnimated((bNodeTree *)node->id)) {
+			if (ntreeCompositTagAnimated((bNodeTree *)node->id) ) {
 				nodeUpdate(ntree, node);
 			}
 		}

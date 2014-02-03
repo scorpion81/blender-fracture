@@ -582,7 +582,7 @@ Tex *add_texture(Main *bmain, const char *name)
 {
 	Tex *tex;
 
-	tex = BKE_libblock_alloc(bmain, ID_TE, name);
+	tex = BKE_libblock_alloc(&bmain->tex, ID_TE, name);
 	
 	default_tex(tex);
 	
@@ -1121,7 +1121,7 @@ void set_current_material_texture(Material *ma, Tex *newtex)
 	}
 }
 
-bool has_current_material_texture(Material *ma)
+int has_current_material_texture(Material *ma)
 {
 	bNode *node;
 
@@ -1422,7 +1422,9 @@ void BKE_free_oceantex(struct OceanTex *ot)
 /* ------------------------------------------------------------------------- */
 bool BKE_texture_dependsOnTime(const struct Tex *texture)
 {
-	if (texture->ima && BKE_image_is_animated(texture->ima)) {
+	if (texture->ima &&
+	    ELEM(texture->ima->source, IMA_SRC_SEQUENCE, IMA_SRC_MOVIE))
+	{
 		return 1;
 	}
 	else if (texture->adt) {

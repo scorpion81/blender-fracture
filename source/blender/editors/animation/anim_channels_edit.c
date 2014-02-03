@@ -787,7 +787,7 @@ static AnimChanRearrangeFp rearrange_get_mode_func(short mode)
 static void rearrange_animchannel_add_to_islands(ListBase *islands, ListBase *srcList, Link *channel, short type)
 {
 	tReorderChannelIsland *island = islands->last;  /* always try to add to last island if possible */
-	bool is_sel = false, is_untouchable = false;
+	short is_sel = 0, is_untouchable = 0;
 	
 	/* get flags - selected and untouchable from the channel */
 	switch (type) {

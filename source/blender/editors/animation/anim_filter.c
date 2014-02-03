@@ -1766,7 +1766,7 @@ static size_t animdata_filter_ds_material(bAnimContext *ac, ListBase *anim_data,
 
 static size_t animdata_filter_ds_materials(bAnimContext *ac, ListBase *anim_data, bDopeSheet *ads, Object *ob, int filter_mode)
 {
-	bool has_nested = false;
+	short has_nested = 0;
 	size_t items = 0;
 	int a = 0;
 	
@@ -1780,9 +1780,8 @@ static size_t animdata_filter_ds_materials(bAnimContext *ac, ListBase *anim_data
 			items += animdata_filter_ds_material(ac, anim_data, ads, ma, filter_mode);
 			
 			/* for optimising second pass - check if there's a nested material here to come back for */
-			if (has_nested == false) {
-				has_nested = (give_node_material(ma) != NULL);
-			}
+			if (has_nested == 0)
+				has_nested = give_node_material(ma) != NULL;
 		}
 	}
 	

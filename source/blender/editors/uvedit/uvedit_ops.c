@@ -91,7 +91,7 @@ static void uv_select_flush_from_tag_loop(SpaceImage *sima, Scene *scene, Object
 
 /************************* state testing ************************/
 
-bool ED_uvedit_test(Object *obedit)
+int ED_uvedit_test(Object *obedit)
 {
 	BMEditMesh *em;
 	int ret;
@@ -132,12 +132,12 @@ static int UNUSED_FUNCTION(ED_operator_uvmap_mesh) (bContext *C)
 }
 /**************************** object active image *****************************/
 
-static bool is_image_texture_node(bNode *node)
+static int is_image_texture_node(bNode *node)
 {
 	return ELEM(node->type, SH_NODE_TEX_IMAGE, SH_NODE_TEX_ENVIRONMENT);
 }
 
-bool ED_object_get_active_image(Object *ob, int mat_nr, Image **ima, ImageUser **iuser, bNode **node_r)
+int ED_object_get_active_image(Object *ob, int mat_nr, Image **ima, ImageUser **iuser, bNode **node_r)
 {
 	Material *ma = give_current_material(ob, mat_nr);
 	bNode *node = (ma && ma->use_nodes) ? nodeGetActiveTexture(ma->nodetree) : NULL;
@@ -866,7 +866,7 @@ void uv_find_nearest_vert(Scene *scene, Image *ima, BMEditMesh *em,
 	}
 }
 
-bool ED_uvedit_nearest_uv(Scene *scene, Object *obedit, Image *ima, const float co[2], float r_uv[2])
+int ED_uvedit_nearest_uv(Scene *scene, Object *obedit, Image *ima, const float co[2], float r_uv[2])
 {
 	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	BMFace *efa;
@@ -875,7 +875,7 @@ bool ED_uvedit_nearest_uv(Scene *scene, Object *obedit, Image *ima, const float 
 	MTexPoly *tf;
 	MLoopUV *luv;
 	float mindist, dist;
-	bool found = false;
+	int found = FALSE;
 
 	const int cd_loop_uv_offset  = CustomData_get_offset(&em->bm->ldata, CD_MLOOPUV);
 	const int cd_poly_tex_offset = CustomData_get_offset(&em->bm->pdata, CD_MTEXPOLY);
@@ -896,7 +896,7 @@ bool ED_uvedit_nearest_uv(Scene *scene, Object *obedit, Image *ima, const float 
 				mindist = dist;
 
 				copy_v2_v2(r_uv, luv->uv);
-				found = true;
+				found = TRUE;
 			}
 		}
 	}
@@ -2475,8 +2475,8 @@ static int uv_select_split_exec(bContext *C, wmOperator *op)
 
 
 	BM_ITER_MESH (efa, &iter, bm, BM_FACES_OF_MESH) {
-		bool is_sel = false;
-		bool is_unsel = false;
+		int is_sel = FALSE;
+		int is_unsel = FALSE;
 		tf = BM_ELEM_CD_GET_VOID_P(efa, cd_poly_tex_offset);
 
 		if (!uvedit_face_visible_test(scene, ima, efa, tf))
@@ -2856,7 +2856,7 @@ static int uv_border_select_exec(bContext *C, wmOperator *op)
 			BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
 				luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
 
-				if (!pinned || (ts->uv_flag & UV_SYNC_SELECTION)) {
+				if (!pinned || (ts->uv_flag & UV_SYNC_SELECTION) ) {
 
 					/* UV_SYNC_SELECTION - can't do pinned selection */
 					if (BLI_rctf_isect_pt_v(&rectf, luv->uv)) {

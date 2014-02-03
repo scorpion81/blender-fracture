@@ -35,7 +35,6 @@
 #include "BLI_sys_types.h"
 
 #include "BLI_utildefines.h"
-#include "BLI_math_base.h"
 
 #include "DNA_anim_types.h"
 #include "DNA_scene_types.h"
@@ -127,7 +126,7 @@ static int frame_from_event(bContext *C, const wmEvent *event)
 	UI_view2d_region_to_view(&region->v2d, event->mval[0], event->mval[1], &viewx, NULL);
 	
 	/* round result to nearest int (frames are ints!) */
-	frame = iroundf(viewx);
+	frame = (int)floor(viewx + 0.5f);
 
 	if (scene->r.flag & SCER_LOCK_FRAME_SELECTION) {
 		CLAMP(frame, PSFRA, PEFRA);
@@ -224,8 +223,8 @@ static int previewrange_define_exec(bContext *C, wmOperator *op)
 	if (efra < sfra) efra = sfra;
 	
 	scene->r.flag |= SCER_PRV_RANGE;
-	scene->r.psfra = iroundf(sfra);
-	scene->r.pefra = iroundf(efra);
+	scene->r.psfra = (int)floor(sfra + 0.5f);
+	scene->r.pefra = (int)floor(efra + 0.5f);
 	
 	/* send notifiers */
 	WM_event_add_notifier(C, NC_SCENE | ND_FRAME, scene);

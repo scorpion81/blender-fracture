@@ -29,7 +29,7 @@ class FILEBROWSER_HT_header(Header):
 
         st = context.space_data
 
-        layout.template_header()
+        layout.template_header(menus=False)
 
         row = layout.row()
         row.separator()

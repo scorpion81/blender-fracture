@@ -63,7 +63,6 @@ class SpellChecker():
         "autoexec",
         "autoexecution",
         "autoname",
-        "autopack",
         "autosave",
         "autoscale",
         "autosmooth",
@@ -279,7 +278,6 @@ class SpellChecker():
         "xy", "xz", "yx", "yz", "zx", "zy",
 
         # General computer/science terms
-        "bitangent",
         "boid", "boids",
         "equisolid",
         "euler", "eulers",
@@ -440,7 +438,6 @@ class SpellChecker():
         "hosek",
         "kutta",
         "lennard",
-        "mikktspace",
         "minkowski",
         "minnaert",
         "musgrave",

@@ -241,7 +241,7 @@ static void preview_cb(ScrArea *sa, struct uiBlock *block)
 
 }
 
-static bool is_preview_allowed(ScrArea *cur)
+static int is_preview_allowed(ScrArea *cur)
 {
 	SpaceImage *sima = cur->spacedata.first;
 	ScrArea *sa;
@@ -677,13 +677,13 @@ void uiTemplateImage(uiLayout *layout, bContext *C, PointerRNA *ptr, const char 
 			if (ima->source != IMA_SRC_GENERATED) {
 				if (compact == 0) { /* background image view doesnt need these */
 					ImBuf *ibuf = BKE_image_acquire_ibuf(ima, iuser, NULL);
-					bool has_alpha = true;
+					int has_alpha = TRUE;
 
 					if (ibuf) {
 						int imtype = BKE_ftype_to_imtype(ibuf->ftype);
 						char valid_channels = BKE_imtype_valid_channels(imtype);
 
-						has_alpha = (valid_channels & IMA_CHAN_FLAG_ALPHA) != 0;
+						has_alpha = valid_channels & IMA_CHAN_FLAG_ALPHA;
 
 						BKE_image_release_ibuf(ima, ibuf, NULL);
 					}
@@ -701,7 +701,7 @@ void uiTemplateImage(uiLayout *layout, bContext *C, PointerRNA *ptr, const char 
 					col = uiLayoutColumn(split, FALSE);
 					/* XXX Why only display fields_per_frame only for video image types?
 					 *     And why allow fields for non-video image types at all??? */
-					if (BKE_image_is_animated(ima)) {
+					if (ELEM(ima->source, IMA_SRC_MOVIE, IMA_SRC_SEQUENCE)) {
 						uiLayout *subsplit = uiLayoutSplit(col, 0.0f, FALSE);
 						uiLayout *subcol = uiLayoutColumn(subsplit, FALSE);
 						uiItemR(subcol, &imaptr, "use_fields", 0, NULL, ICON_NONE);
@@ -717,7 +717,7 @@ void uiTemplateImage(uiLayout *layout, bContext *C, PointerRNA *ptr, const char 
 				}
 			}
 
-			if (BKE_image_is_animated(ima)) {
+			if (ELEM(ima->source, IMA_SRC_MOVIE, IMA_SRC_SEQUENCE)) {
 				uiItemS(layout);
 
 				split = uiLayoutSplit(layout, 0.0f, FALSE);
@@ -764,7 +764,7 @@ void uiTemplateImageSettings(uiLayout *layout, PointerRNA *imfptr, int color_man
 	PropertyRNA *prop;
 	const int depth_ok = BKE_imtype_valid_depths(imf->imtype);
 	/* some settings depend on this being a scene thats rendered */
-	const bool is_render_out = (id && GS(id->name) == ID_SCE);
+	const short is_render_out = (id && GS(id->name) == ID_SCE);
 
 	uiLayout *col, *row, *split, *sub;
 	int show_preview = FALSE;

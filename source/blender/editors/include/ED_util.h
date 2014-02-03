@@ -46,8 +46,6 @@ struct Mesh;
 void    ED_editors_init(struct bContext *C);
 void    ED_editors_exit(struct bContext *C);
 
-void    ED_editors_flush_edits(const struct bContext *C, bool for_render);
-
 /* ************** Undo ************************ */
 
 /* undo.c */

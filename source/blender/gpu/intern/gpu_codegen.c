@@ -27,9 +27,8 @@
 
 /** \file blender/gpu/intern/gpu_codegen.c
  *  \ingroup gpu
- *
- * Convert material node-trees to GLSL.
  */
+
 
 #include "GL/glew.h"
 

@@ -51,17 +51,15 @@ public:
 		KX_JUSTRELEASED,
 	};
 
-	SCA_InputEvent(SCA_EnumInputs status=KX_NO_INPUTSTATUS,int eventval=0, int unicode=0)
+	SCA_InputEvent(SCA_EnumInputs status=KX_NO_INPUTSTATUS,int eventval=0)
 		:	m_status(status),
-		m_eventval(eventval),
-		m_unicode(unicode)
+		m_eventval(eventval)
 	{
 
 	}
 
 	SCA_EnumInputs m_status;
 	int		m_eventval;
-	unsigned int m_unicode;
 };
 
 /* Originally from wm_event_types.h, now only used by GameEngine */

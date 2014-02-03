@@ -668,9 +668,8 @@ void heat_bone_weighting(Object *ob, Mesh *me, float (*verts)[3], int numsource,
 		return;
 
 	/* count triangles and create mask */
-	if (ob->mode == OB_MODE_WEIGHT_PAINT &&
-	    ((use_face_sel = ((me->editflag & ME_EDIT_PAINT_FACE_SEL) != 0)) ||
-	     (use_vert_sel = ((me->editflag & ME_EDIT_PAINT_VERT_SEL) != 0))))
+	if ((use_face_sel = ((me->editflag & ME_EDIT_PAINT_FACE_SEL) != 0)) ||
+	    (use_vert_sel = ((me->editflag & ME_EDIT_PAINT_VERT_SEL) != 0)))
 	{
 		mask = MEM_callocN(sizeof(int) * me->totvert, "heat_bone_weighting mask");
 

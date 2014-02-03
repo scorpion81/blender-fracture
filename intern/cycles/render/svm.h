@@ -141,7 +141,6 @@ protected:
 	int max_stack_use;
 	uint mix_weight_offset;
 	bool use_multi_closure;
-	bool compile_failed;
 };
 
 CCL_NAMESPACE_END

@@ -26,9 +26,8 @@
 
 /** \file blender/windowmanager/intern/wm_gesture.c
  *  \ingroup wm
- *
- * Gestures (cursor motions) creating, evaluating and drawing, shared between operators.
  */
+
 
 #include "DNA_screen_types.h"
 #include "DNA_vec_types.h"
@@ -39,6 +38,7 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
+#include "BLI_scanfill.h"   /* lasso tessellation */
 #include "BLI_utildefines.h"
 #include "BLI_lasso.h"
 
@@ -136,8 +136,8 @@ int wm_gesture_evaluate(wmGesture *gesture)
 		rcti *rect = gesture->customdata;
 		int dx = BLI_rcti_size_x(rect);
 		int dy = BLI_rcti_size_y(rect);
-		if (abs(dx) + abs(dy) > U.tweak_threshold) {
-			int theta = iroundf(4.0f * atan2f((float)dy, (float)dx) / (float)M_PI);
+		if (ABS(dx) + ABS(dy) > U.tweak_threshold) {
+			int theta = (int)floor(4.0f * atan2f((float)dy, (float)dx) / (float)M_PI + 0.5f);
 			int val = EVT_GESTURE_W;
 
 			if (theta == 0) val = EVT_GESTURE_E;

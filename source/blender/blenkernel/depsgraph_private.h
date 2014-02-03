@@ -122,7 +122,7 @@ typedef struct DagNodeQueue {
 	struct DagNodeQueue *freenodes;
 } DagNodeQueue;
 
-/* forest as we may have more than one DAG unconnected */
+// forest as we may have more than one DAG unnconected
 typedef struct DagForest {
 	ListBase DagNode;
 	struct GHash *nodeHash;

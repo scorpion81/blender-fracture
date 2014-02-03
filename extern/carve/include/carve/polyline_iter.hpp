@@ -29,12 +29,12 @@ namespace carve {
 
     struct polyline_vertex_iter : public std::iterator<std::random_access_iterator_tag, Vertex *> {
       Polyline *base;
-      ssize_t idx;
+      size_t idx;
 
       polyline_vertex_iter(Polyline *_base) : base(_base), idx(0) {
       }
 
-      polyline_vertex_iter(Polyline *_base, ssize_t _idx) : base(_base), idx(_idx) {
+      polyline_vertex_iter(Polyline *_base, size_t _idx) : base(_base), idx(_idx) {
       }
 
       polyline_vertex_iter operator++(int) { return polyline_vertex_iter(base, idx++); }
@@ -46,15 +46,14 @@ namespace carve {
       polyline_vertex_iter &operator-=(int v) { idx -= v; return *this; }
 
       Vertex *operator*() const {
-        CARVE_ASSERT(idx >= 0 && idx < base->vertexCount());
-        return base->vertex((size_t)idx);
+        return base->vertex(idx);
       }
     };
 
 
 
-    static inline ssize_t operator-(const polyline_vertex_iter &a, const polyline_vertex_iter &b) { return a.idx - b.idx; }
-
+    static inline ptrdiff_t operator-(const polyline_vertex_iter &a, const polyline_vertex_iter &b) { return a.idx - b.idx; }
+                
     static inline bool operator==(const polyline_vertex_iter&a, const polyline_vertex_iter &b) { return a.idx == b.idx; }
     static inline bool operator!=(const polyline_vertex_iter&a, const polyline_vertex_iter &b) { return a.idx != b.idx; }
     static inline bool operator<(const polyline_vertex_iter&a, const polyline_vertex_iter &b) { return a.idx < b.idx; }
@@ -66,12 +65,12 @@ namespace carve {
 
     struct polyline_vertex_const_iter : public std::iterator<std::random_access_iterator_tag, Vertex *> {
       const Polyline *base;
-      ssize_t idx;
+      size_t idx;
 
       polyline_vertex_const_iter(const Polyline *_base) : base(_base), idx(0) {
       }
 
-      polyline_vertex_const_iter(const Polyline *_base, ssize_t _idx) : base(_base), idx(_idx) {
+      polyline_vertex_const_iter(const Polyline *_base, size_t _idx) : base(_base), idx(_idx) {
       }
 
       polyline_vertex_const_iter operator++(int) { return polyline_vertex_const_iter(base, idx++); }
@@ -83,14 +82,13 @@ namespace carve {
       polyline_vertex_const_iter &operator-=(int v) { idx -= v; return *this; }
 
       const Vertex *operator*() const {
-        CARVE_ASSERT(idx >= 0 && idx < base->vertexCount());
-        return base->vertex((size_t)idx);
+        return base->vertex(idx);
       }
     };
 
 
 
-    static inline ssize_t operator-(const polyline_vertex_const_iter &a, const polyline_vertex_const_iter &b) { return a.idx - b.idx; }
+    static inline ptrdiff_t operator-(const polyline_vertex_const_iter &a, const polyline_vertex_const_iter &b) { return a.idx - b.idx; }
                 
     static inline bool operator==(const polyline_vertex_const_iter&a, const polyline_vertex_const_iter &b) { return a.idx == b.idx; }
     static inline bool operator!=(const polyline_vertex_const_iter&a, const polyline_vertex_const_iter &b) { return a.idx != b.idx; }
@@ -103,25 +101,25 @@ namespace carve {
       return polyline_vertex_const_iter(this, 0);
     }
     inline polyline_vertex_const_iter Polyline::vend() const { 
-      return polyline_vertex_const_iter(this, (ssize_t)vertexCount());
+      return polyline_vertex_const_iter(this, vertexCount());
     }
     inline polyline_vertex_iter Polyline::vbegin() { 
       return polyline_vertex_iter(this, 0);
     }
     inline polyline_vertex_iter Polyline::vend() { 
-      return polyline_vertex_iter(this, (ssize_t)vertexCount());
+      return polyline_vertex_iter(this, vertexCount());
     }
 
 
 
     struct polyline_edge_iter : public std::iterator<std::random_access_iterator_tag, PolylineEdge *> {
       Polyline *base;
-      ssize_t idx;
+      size_t idx;
 
       polyline_edge_iter(Polyline *_base) : base(_base), idx(0) {
       }
 
-      polyline_edge_iter(Polyline *_base, ssize_t _idx) : base(_base), idx(_idx) {
+      polyline_edge_iter(Polyline *_base, size_t _idx) : base(_base), idx(_idx) {
       }
 
       polyline_edge_iter operator++(int) { return polyline_edge_iter(base, idx++); }
@@ -133,14 +131,13 @@ namespace carve {
       polyline_edge_iter &operator-=(int v) { idx -= v; return *this; }
 
       PolylineEdge *operator*() const {
-        CARVE_ASSERT(idx >= 0 && idx < base->edgeCount());
-        return base->edge((size_t)idx);
+        return base->edge(idx);
       }
     };
 
 
 
-    static inline ssize_t operator-(const polyline_edge_iter&a, const polyline_edge_iter &b) { return a.idx - b.idx; }
+    static inline int operator-(const polyline_edge_iter&a, const polyline_edge_iter &b) { return a.idx - b.idx; }
                 
     static inline bool operator==(const polyline_edge_iter&a, const polyline_edge_iter &b) { return a.idx == b.idx; }
     static inline bool operator!=(const polyline_edge_iter&a, const polyline_edge_iter &b) { return a.idx != b.idx; }
@@ -153,12 +150,12 @@ namespace carve {
 
     struct polyline_edge_const_iter : public std::iterator<std::random_access_iterator_tag, PolylineEdge *> {
       const Polyline *base;
-      ssize_t idx;
+      size_t idx;
 
       polyline_edge_const_iter(const Polyline *_base) : base(_base), idx(0) {
       }
 
-      polyline_edge_const_iter(const Polyline *_base, ssize_t _idx) : base(_base), idx(_idx) {
+      polyline_edge_const_iter(const Polyline *_base, size_t _idx) : base(_base), idx(_idx) {
       }
 
       polyline_edge_const_iter operator++(int) { return polyline_edge_const_iter(base, idx++); }
@@ -170,14 +167,13 @@ namespace carve {
       polyline_edge_const_iter &operator-=(int v) { idx -= v; return *this; }
 
       const PolylineEdge *operator*() const {
-        CARVE_ASSERT(idx >= 0 && idx < base->edgeCount());
-        return base->edge((size_t)idx);
+        return base->edge(idx);
       }
     };
 
 
 
-    static inline ssize_t operator-(const polyline_edge_const_iter&a, const polyline_edge_const_iter &b) { return a.idx - b.idx; }
+    static inline int operator-(const polyline_edge_const_iter&a, const polyline_edge_const_iter &b) { return a.idx - b.idx; }
                 
     static inline bool operator==(const polyline_edge_const_iter&a, const polyline_edge_const_iter &b) { return a.idx == b.idx; }
     static inline bool operator!=(const polyline_edge_const_iter&a, const polyline_edge_const_iter &b) { return a.idx != b.idx; }
@@ -190,13 +186,13 @@ namespace carve {
       return polyline_edge_const_iter(this, 0);
     }
     inline polyline_edge_const_iter Polyline::eend() const { 
-      return polyline_edge_const_iter(this, (ssize_t)edgeCount());
+      return polyline_edge_const_iter(this, edgeCount());
     }
     inline polyline_edge_iter Polyline::ebegin() { 
       return polyline_edge_iter(this, 0);
     }
     inline polyline_edge_iter Polyline::eend() { 
-      return polyline_edge_iter(this, (ssize_t)edgeCount());
+      return polyline_edge_iter(this, edgeCount());
     }
 
   }

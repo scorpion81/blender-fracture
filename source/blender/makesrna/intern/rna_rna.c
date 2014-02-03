@@ -465,14 +465,14 @@ static void rna_Property_name_get(PointerRNA *ptr, char *value)
 {
 	PropertyRNA *prop = (PropertyRNA *)ptr->data;
 	rna_idproperty_check(&prop, ptr);
-	strcpy(value, prop->name ? prop->name : "");
+	strcpy(value, prop->name);
 }
 
 static int rna_Property_name_length(PointerRNA *ptr)
 {
 	PropertyRNA *prop = (PropertyRNA *)ptr->data;
 	rna_idproperty_check(&prop, ptr);
-	return prop->name ? strlen(prop->name) : 0;
+	return strlen(prop->name);
 }
 
 static void rna_Property_description_get(PointerRNA *ptr, char *value)

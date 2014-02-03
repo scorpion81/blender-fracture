@@ -1002,22 +1002,22 @@ PyTypeObject BPy_IDGroup_Type = {
 
 /********Array Wrapper********/
 
-static PyTypeObject *idp_array_py_type(BPy_IDArray *self, bool *r_is_double)
+static PyTypeObject *idp_array_py_type(BPy_IDArray *self, short *is_double)
 {
 	switch (self->prop->subtype) {
 		case IDP_FLOAT:
-			*r_is_double = false;
+			*is_double = 0;
 			return &PyFloat_Type;
 		case IDP_DOUBLE:
-			*r_is_double = true;
+			*is_double = 1;
 			return &PyFloat_Type;
 		case IDP_INT:
-			*r_is_double = false;
+			*is_double = 0;
 			return &PyLong_Type;
-		default:
-			*r_is_double = false;
-			return NULL;
 	}
+
+	*is_double = 0;
+	return NULL;
 }
 
 static PyObject *BPy_IDArray_repr(BPy_IDArray *self)
@@ -1188,7 +1188,7 @@ static PyObject *BPy_IDArray_slice(BPy_IDArray *self, int begin, int end)
 static int BPy_IDArray_ass_slice(BPy_IDArray *self, int begin, int end, PyObject *seq)
 {
 	IDProperty *prop = self->prop;
-	bool is_double;
+	short is_double = 0;
 	const PyTypeObject *py_type = idp_array_py_type(self, &is_double);
 	const size_t elem_size = is_double ? sizeof(double) : sizeof(float);
 	size_t alloc_len;

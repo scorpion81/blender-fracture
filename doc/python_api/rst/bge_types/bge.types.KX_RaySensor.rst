@@ -51,12 +51,6 @@ base class --- :class:`SCA_ISensor`
 
       :type: list [x, y, z]
 
-   .. attribute:: hitMaterial
-
-      The material of the object in the face hit by the ray. (read-only).
-
-      :type: string
-
    .. attribute:: rayDirection
 
       The direction from the ray (in worldcoordinates). (read-only).

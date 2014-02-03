@@ -54,17 +54,16 @@
 #include "RE_pipeline.h"
 
 #ifdef WITH_QUICKTIME
-#  include "quicktime_export.h"
+#include "quicktime_export.h"
 #  ifdef WITH_AUDASPACE
 #    include "AUD_Space.h"
 #  endif
 #endif
 
 #ifdef WITH_FFMPEG
-#  include "BKE_writeffmpeg.h"
-#  include <libavcodec/avcodec.h>
-#  include <libavformat/avformat.h>
-#  include "ffmpeg_compat.h"
+#include "BKE_writeffmpeg.h"
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
 #endif
 
 #include "ED_render.h"
@@ -1271,6 +1270,8 @@ static void object_simplify_update(Object *ob)
 
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (ELEM3(md->type, eModifierType_Subsurf, eModifierType_Multires, eModifierType_ParticleSystem)) {
+			/* TODO(sergey): Figure out what da heck we're using PSYS flag on object.  */
+			ob->recalc |= PSYS_RECALC_CHILD;
 			DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
 		}
 	}
@@ -2321,12 +2322,6 @@ void rna_def_render_layer_common(StructRNA *srna, int scene)
 	RNA_def_property_boolean_sdna(prop, NULL, "layflag", SCE_LAY_SKY);
 	RNA_def_property_ui_text(prop, "Sky", "Render Sky in this Layer");
 	if (scene) RNA_def_property_update(prop, NC_SCENE | ND_RENDER_OPTIONS, "rna_Scene_glsl_update");
-	else RNA_def_property_clear_flag(prop, PROP_EDITABLE);
-
-	prop = RNA_def_property(srna, "use_edge_enhance", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "layflag", SCE_LAY_EDGE);
-	RNA_def_property_ui_text(prop, "Edge", "Render Edge-enhance in this Layer (only works for Solid faces)");
-	if (scene) RNA_def_property_update(prop, NC_SCENE | ND_RENDER_OPTIONS, NULL);
 	else RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 
 	prop = RNA_def_property(srna, "use_strand", PROP_BOOLEAN, PROP_NONE);
@@ -3757,31 +3752,31 @@ static void rna_def_scene_ffmpeg_settings(BlenderRNA *brna)
 	};
 
 	static EnumPropertyItem ffmpeg_codec_items[] = {
-		{AV_CODEC_ID_NONE, "NONE", 0, "None", ""},
-		{AV_CODEC_ID_MPEG1VIDEO, "MPEG1", 0, "MPEG-1", ""},
-		{AV_CODEC_ID_MPEG2VIDEO, "MPEG2", 0, "MPEG-2", ""},
-		{AV_CODEC_ID_MPEG4, "MPEG4", 0, "MPEG-4(divx)", ""},
-		{AV_CODEC_ID_HUFFYUV, "HUFFYUV", 0, "HuffYUV", ""},
-		{AV_CODEC_ID_DVVIDEO, "DV", 0, "DV", ""},
-		{AV_CODEC_ID_H264, "H264", 0, "H.264", ""},
-		{AV_CODEC_ID_THEORA, "THEORA", 0, "Theora", ""},
-		{AV_CODEC_ID_FLV1, "FLASH", 0, "Flash Video", ""},
-		{AV_CODEC_ID_FFV1, "FFV1", 0, "FFmpeg video codec #1", ""},
-		{AV_CODEC_ID_QTRLE, "QTRLE", 0, "QT rle / QT Animation", ""},
-		{AV_CODEC_ID_DNXHD, "DNXHD", 0, "DNxHD", ""},
-		{AV_CODEC_ID_PNG, "PNG", 0, "PNG", ""},
+		{CODEC_ID_NONE, "NONE", 0, "None", ""},
+		{CODEC_ID_MPEG1VIDEO, "MPEG1", 0, "MPEG-1", ""},
+		{CODEC_ID_MPEG2VIDEO, "MPEG2", 0, "MPEG-2", ""},
+		{CODEC_ID_MPEG4, "MPEG4", 0, "MPEG-4(divx)", ""},
+		{CODEC_ID_HUFFYUV, "HUFFYUV", 0, "HuffYUV", ""},
+		{CODEC_ID_DVVIDEO, "DV", 0, "DV", ""},
+		{CODEC_ID_H264, "H264", 0, "H.264", ""},
+		{CODEC_ID_THEORA, "THEORA", 0, "Theora", ""},
+		{CODEC_ID_FLV1, "FLASH", 0, "Flash Video", ""},
+		{CODEC_ID_FFV1, "FFV1", 0, "FFmpeg video codec #1", ""},
+		{CODEC_ID_QTRLE, "QTRLE", 0, "QT rle / QT Animation", ""},
+		{CODEC_ID_DNXHD, "DNXHD", 0, "DNxHD", ""},
+		{CODEC_ID_PNG, "PNG", 0, "PNG", ""},
 		{0, NULL, 0, NULL, NULL}
 	};
 
 	static EnumPropertyItem ffmpeg_audio_codec_items[] = {
-		{AV_CODEC_ID_NONE, "NONE", 0, "None", ""},
-		{AV_CODEC_ID_MP2, "MP2", 0, "MP2", ""},
-		{AV_CODEC_ID_MP3, "MP3", 0, "MP3", ""},
-		{AV_CODEC_ID_AC3, "AC3", 0, "AC3", ""},
-		{AV_CODEC_ID_AAC, "AAC", 0, "AAC", ""},
-		{AV_CODEC_ID_VORBIS, "VORBIS", 0, "Vorbis", ""},
-		{AV_CODEC_ID_FLAC, "FLAC", 0, "FLAC", ""},
-		{AV_CODEC_ID_PCM_S16LE, "PCM", 0, "PCM", ""},
+		{CODEC_ID_NONE, "NONE", 0, "None", ""},
+		{CODEC_ID_MP2, "MP2", 0, "MP2", ""},
+		{CODEC_ID_MP3, "MP3", 0, "MP3", ""},
+		{CODEC_ID_AC3, "AC3", 0, "AC3", ""},
+		{CODEC_ID_AAC, "AAC", 0, "AAC", ""},
+		{CODEC_ID_VORBIS, "VORBIS", 0, "Vorbis", ""},
+		{CODEC_ID_FLAC, "FLAC", 0, "FLAC", ""},
+		{CODEC_ID_PCM_S16LE, "PCM", 0, "PCM", ""},
 		{0, NULL, 0, NULL, NULL}
 	};
 #endif
@@ -4348,23 +4343,6 @@ static void rna_def_scene_render_data(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Textures", "Use textures to affect material properties");
 	RNA_def_property_update(prop, NC_SCENE | ND_RENDER_OPTIONS, NULL);
 	
-	prop = RNA_def_property(srna, "use_edge_enhance", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "mode", R_EDGE);
-	RNA_def_property_ui_text(prop, "Edge", "Create a toon outline around the edges of geometry");
-	RNA_def_property_update(prop, NC_SCENE | ND_RENDER_OPTIONS, NULL);
-	
-	prop = RNA_def_property(srna, "edge_threshold", PROP_INT, PROP_NONE);
-	RNA_def_property_int_sdna(prop, NULL, "edgeint");
-	RNA_def_property_range(prop, 0, 255);
-	RNA_def_property_ui_text(prop, "Edge Threshold", "Threshold for drawing outlines on geometry edges");
-	RNA_def_property_update(prop, NC_SCENE | ND_RENDER_OPTIONS, NULL);
-	
-	prop = RNA_def_property(srna, "edge_color", PROP_FLOAT, PROP_COLOR);
-	RNA_def_property_float_sdna(prop, NULL, "edgeR");
-	RNA_def_property_array(prop, 3);
-	RNA_def_property_ui_text(prop, "Edge Color", "Edge color");
-	RNA_def_property_update(prop, NC_SCENE | ND_RENDER_OPTIONS, NULL);
-	
 	prop = RNA_def_property(srna, "use_freestyle", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "mode", R_EDGE_FRS);
 	RNA_def_property_ui_text(prop, "Edge", "Draw stylized strokes using Freestyle");
@@ -4537,12 +4515,6 @@ static void rna_def_scene_render_data(BlenderRNA *brna)
 	RNA_def_property_enum_bitflag_sdna(prop, NULL, "displaymode");
 	RNA_def_property_enum_items(prop, display_mode_items);
 	RNA_def_property_ui_text(prop, "Display", "Select where rendered images will be displayed");
-	RNA_def_property_update(prop, NC_SCENE | ND_RENDER_OPTIONS, NULL);
-
-	prop = RNA_def_property(srna, "use_lock_interface", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "use_lock_interface", 1);
-	RNA_def_property_ui_icon(prop, ICON_UNLOCKED, true);
-	RNA_def_property_ui_text(prop, "Lock Interface", "Lock interface during rendering in favor of giving more memory to the renderer");
 	RNA_def_property_update(prop, NC_SCENE | ND_RENDER_OPTIONS, NULL);
 
 	prop = RNA_def_property(srna, "filepath", PROP_STRING, PROP_FILEPATH);
@@ -5399,7 +5371,7 @@ void RNA_def_scene(BlenderRNA *brna)
 
 	/* Statistics */
 	func = RNA_def_function(srna, "statistics", "ED_info_stats_string");
-	prop = RNA_def_string(func, "statistics", NULL, 0, "Statistics", "");
+	prop = RNA_def_string(func, "statistics", "", 0, "Statistics", "");
 	RNA_def_function_return(func, prop);
 	
 	/* Grease Pencil */

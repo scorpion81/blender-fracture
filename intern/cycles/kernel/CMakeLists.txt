@@ -14,8 +14,6 @@ set(SRC
 	kernel.cpp
 	kernel_sse2.cpp
 	kernel_sse3.cpp
-	kernel_sse41.cpp
-	kernel_avx.cpp
 	kernel.cl
 	kernel.cu
 )
@@ -120,7 +118,6 @@ set(SRC_SVM_HEADERS
 
 set(SRC_UTIL_HEADERS
 	../util/util_color.h
-	../util/util_half.h
 	../util/util_math.h
 	../util/util_transform.h
 	../util/util_types.h
@@ -195,10 +192,17 @@ endif()
 include_directories(${INC})
 include_directories(SYSTEM ${INC_SYS})
 
-set_source_files_properties(kernel_sse2.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_SSE2_KERNEL_FLAGS}")
-set_source_files_properties(kernel_sse3.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_SSE3_KERNEL_FLAGS}")
-set_source_files_properties(kernel_sse41.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_SSE41_KERNEL_FLAGS}")
-set_source_files_properties(kernel_avx.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_AVX_KERNEL_FLAGS}")
+if(WITH_CYCLES_OPTIMIZED_KERNEL)
+	set_source_files_properties(kernel_sse2.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_SSE2_KERNEL_FLAGS}")
+	set_source_files_properties(kernel_sse3.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_SSE3_KERNEL_FLAGS}")
+endif()
+
+if(WITH_CYCLES_OPTIMIZED_KERNEL_SSE41)
+	set_source_files_properties(kernel_sse41.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_SSE41_KERNEL_FLAGS}")
+	list(APPEND SRC
+		kernel_sse41.cpp
+	)
+endif()
 
 add_library(cycles_kernel ${SRC} ${SRC_HEADERS} ${SRC_CLOSURE_HEADERS} ${SRC_SVM_HEADERS})
 

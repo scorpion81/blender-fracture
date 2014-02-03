@@ -138,7 +138,7 @@ ScrArea *render_view_open(bContext *C, int mx, int my)
 	Scene *scene = CTX_data_scene(C);
 	ScrArea *sa = NULL;
 	SpaceImage *sima;
-	bool area_was_image = false;
+	int area_was_image = 0;
 
 	if (scene->r.displaymode == R_OUTPUT_NONE)
 		return NULL;

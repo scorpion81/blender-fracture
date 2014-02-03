@@ -131,8 +131,7 @@ typedef struct Nurb {
 	short type;
 	short mat_nr;		/* index into material list */
 	short hide, flag;
-	int pntsu, pntsv;		/* number of points in the U or V directions */
-	short pad[2];
+	short pntsu, pntsv;		/* number of points in the U or V directions */
 	short resolu, resolv;	/* tessellation resolution in the U or V directions */
 	short orderu, orderv;
 	short flagu, flagv;
@@ -209,10 +208,9 @@ typedef struct Curve {
 
 	/* edit, index in nurb list */
 	int actnu;
-	/* edit, index in active nurb (BPoint or BezTriple) */
-	int actvert;
+	/* edit, last selected point */
+	void *lastsel;
 
-	char pad[4];
 
 	/* font part */
 	short lines;
@@ -249,7 +247,7 @@ typedef struct Curve {
 	float ctime;			/* current evaltime - for use by Objects parented to curves */
 	float bevfac1, bevfac2;
 
-	char pad2[4];
+	char pad[4];
 } Curve;
 
 /* **************** CURVE ********************* */
@@ -325,8 +323,6 @@ typedef struct Curve {
 #define CU_NURB_CYCLIC		1
 #define CU_NURB_ENDPOINT	2
 #define CU_NURB_BEZIER		4
-
-#define CU_ACT_NONE		-1
 
 /* *************** BEZTRIPLE **************** */
 

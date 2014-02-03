@@ -857,7 +857,7 @@ static void sss_create_tree_mat(Render *re, Material *mat)
 	RenderResult *rr;
 	ListBase points;
 	float (*co)[3] = NULL, (*color)[3] = NULL, *area = NULL;
-	int totpoint = 0, osa, osaflag, frsflag, partsdone;
+	int totpoint = 0, osa, osaflag, partsdone;
 
 	if (re->test_break(re->tbh))
 		return;
@@ -872,11 +872,10 @@ static void sss_create_tree_mat(Render *re, Material *mat)
 	rr= re->result;
 	osa= re->osa;
 	osaflag= re->r.mode & R_OSA;
-	frsflag= re->r.mode & R_EDGE_FRS;
 	partsdone= re->i.partsdone;
 
 	re->osa= 0;
-	re->r.mode &= ~(R_OSA | R_EDGE_FRS);
+	re->r.mode &= ~R_OSA;
 	re->sss_points= &points;
 	re->sss_mat= mat;
 	re->i.partsdone = 0;
@@ -899,7 +898,6 @@ static void sss_create_tree_mat(Render *re, Material *mat)
 	re->sss_points= NULL;
 	re->osa= osa;
 	if (osaflag) re->r.mode |= R_OSA;
-	if (frsflag) re->r.mode |= R_EDGE_FRS;
 
 	/* no points? no tree */
 	if (!points.first)

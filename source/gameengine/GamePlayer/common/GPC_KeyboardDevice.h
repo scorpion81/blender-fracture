@@ -82,7 +82,7 @@ public:
 		return m_reverseKeyTranslateTable[incode];
 	}
 
-	virtual bool ConvertEvent(int incode, int val, unsigned int unicode);
+	virtual bool ConvertEvent(int incode, int val);
 	
 	virtual void HookEscape();
 };

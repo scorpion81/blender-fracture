@@ -112,7 +112,6 @@
 #include "BKE_softbody.h"
 #include "BKE_material.h"
 #include "BKE_camera.h"
-#include "BKE_image.h"
 
 #ifdef WITH_MOD_FLUID
 #include "LBM_fluidsim.h"
@@ -370,8 +369,6 @@ void BKE_object_free_ex(Object *ob, bool do_id_user)
 	if (ob->matbits) MEM_freeN(ob->matbits);
 	ob->mat = NULL;
 	ob->matbits = NULL;
-	if (ob->iuser) MEM_freeN(ob->iuser);
-	ob->iuser = NULL;
 	if (ob->bb) MEM_freeN(ob->bb); 
 	ob->bb = NULL;
 	if (ob->adt) BKE_free_animdata((ID *)ob);
@@ -945,7 +942,7 @@ Object *BKE_object_add_only_object(Main *bmain, int type, const char *name)
 	if (!name)
 		name = get_obdata_defname(type);
 
-	ob = BKE_libblock_alloc(bmain, ID_OB, name);
+	ob = BKE_libblock_alloc(&bmain->object, ID_OB, name);
 
 	/* default object vars */
 	ob->type = type;
@@ -1282,7 +1279,6 @@ static ParticleSystem *copy_particlesystem(ParticleSystem *psys)
 	psysn->frand = NULL;
 	psysn->pdd = NULL;
 	psysn->effectors = NULL;
-	psysn->tree = NULL;
 	
 	psysn->pathcachebufs.first = psysn->pathcachebufs.last = NULL;
 	psysn->childcachebufs.first = psysn->childcachebufs.last = NULL;
@@ -1453,8 +1449,6 @@ Object *BKE_object_copy_ex(Main *bmain, Object *ob, int copy_caches)
 		obn->matbits = MEM_dupallocN(ob->matbits);
 		obn->totcol = ob->totcol;
 	}
-
-	if (ob->iuser) obn->iuser = MEM_dupallocN(ob->iuser);
 	
 	if (ob->bb) obn->bb = MEM_dupallocN(ob->bb);
 	obn->flag &= ~OB_FROMGROUP;
@@ -2657,27 +2651,6 @@ void BKE_object_minmax(Object *ob, float min_r[3], float max_r[3], const bool us
 	}
 }
 
-void BKE_object_empty_draw_type_set(Object *ob, const int value)
-{
-    ob->empty_drawtype = value;
-
-    if (ob->type == OB_EMPTY && ob->empty_drawtype == OB_EMPTY_IMAGE) {
-        if (!ob->iuser) {
-            ob->iuser = MEM_callocN(sizeof(ImageUser), "image user");
-            ob->iuser->ok = 1;
-            ob->iuser->frames = 100;
-            ob->iuser->sfra = 1;
-            ob->iuser->fie_ima = 2;
-        }
-    }
-    else {
-        if (ob->iuser) {
-            MEM_freeN(ob->iuser);
-            ob->iuser = NULL;
-        }
-    }
-}
-
 bool BKE_object_minmax_dupli(Scene *scene, Object *ob, float r_min[3], float r_max[3], const bool use_hidden)
 {
 	bool ok = false;
@@ -2877,7 +2850,7 @@ void BKE_object_handle_update_ex(EvaluationContext *eval_ctx,
 		/* XXX: should this case be OB_RECALC_OB instead? */
 		if (ob->recalc & OB_RECALC_ALL) {
 			
-			if (G.debug & G_DEBUG_DEPSGRAPH)
+			if (G.debug & G_DEBUG)
 				printf("recalcob %s\n", ob->id.name + 2);
 			
 			/* handle proxy copy for target */
@@ -2904,7 +2877,7 @@ void BKE_object_handle_update_ex(EvaluationContext *eval_ctx,
 			Key *key;
 			float ctime = BKE_scene_frame_get(scene);
 			
-			if (G.debug & G_DEBUG_DEPSGRAPH)
+			if (G.debug & G_DEBUG)
 				printf("recalcdata %s\n", ob->id.name + 2);
 
 			if (adt) {
@@ -2957,12 +2930,6 @@ void BKE_object_handle_update_ex(EvaluationContext *eval_ctx,
 				
 				case OB_LATTICE:
 					BKE_lattice_modifiers_calc(scene, ob);
-					break;
-
-				case OB_EMPTY:
-					if (ob->empty_drawtype == OB_EMPTY_IMAGE && ob->data)
-						if (BKE_image_is_animated(ob->data))
-							BKE_image_user_check_frame_calc(ob->iuser, (int)ctime, 0);
 					break;
 			}
 			
@@ -3131,8 +3098,7 @@ int BKE_object_obdata_texspace_get(Object *ob, short **r_texflag, float **r_loc,
  * Test a bounding box for ray intersection
  * assumes the ray is already local to the boundbox space
  */
-bool BKE_boundbox_ray_hit_check(struct BoundBox *bb, const float ray_start[3], const float ray_normal[3],
-                                float *r_lambda)
+bool BKE_boundbox_ray_hit_check(struct BoundBox *bb, const float ray_start[3], const float ray_normal[3])
 {
 	const int triangle_indexes[12][3] = {
 	    {0, 1, 2}, {0, 2, 3},
@@ -3144,23 +3110,16 @@ bool BKE_boundbox_ray_hit_check(struct BoundBox *bb, const float ray_start[3], c
 
 	bool result = false;
 	int i;
-
-	for (i = 0; i < 12 && (!result || r_lambda); i++) {
+	
+	for (i = 0; i < 12 && result == 0; i++) {
 		float lambda;
 		int v1, v2, v3;
 		v1 = triangle_indexes[i][0];
 		v2 = triangle_indexes[i][1];
 		v3 = triangle_indexes[i][2];
-		if (isect_ray_tri_v3(ray_start, ray_normal, bb->vec[v1], bb->vec[v2], bb->vec[v3], &lambda, NULL) &&
-		    (!r_lambda || *r_lambda > lambda))
-		{
-			result = true;
-			if (r_lambda) {
-				*r_lambda = lambda;
-			}
-		}
+		result = isect_ray_tri_v3(ray_start, ray_normal, bb->vec[v1], bb->vec[v2], bb->vec[v3], &lambda, NULL);
 	}
-
+	
 	return result;
 }
 
@@ -3512,7 +3471,7 @@ static Object *obrel_armature_find(Object *ob)
 	return ob_arm;
 }
 
-static bool obrel_list_test(Object *ob)
+static int obrel_list_test(Object *ob)
 {
 	return ob && !(ob->id.flag & LIB_DOIT);
 }

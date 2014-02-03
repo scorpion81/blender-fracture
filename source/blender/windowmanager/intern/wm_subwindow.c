@@ -30,9 +30,8 @@
 
 /** \file blender/windowmanager/intern/wm_subwindow.c
  *  \ingroup wm
- *
- * Internal subwindows used for OpenGL state, used for regions and screens.
  */
+
 
 #include <string.h>
 

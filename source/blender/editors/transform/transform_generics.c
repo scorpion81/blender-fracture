@@ -497,7 +497,7 @@ static void recalcData_nla(TransInfo *t)
 			pExceeded = ((strip->prev) && (strip->prev->type != NLASTRIP_TYPE_TRANSITION) && (tdn->h1[0] < strip->prev->end));
 			nExceeded = ((strip->next) && (strip->next->type != NLASTRIP_TYPE_TRANSITION) && (tdn->h2[0] > strip->next->start));
 			
-			if ((pExceeded && nExceeded) || (iter == 4)) {
+			if ((pExceeded && nExceeded) || (iter == 4) ) {
 				/* both endpoints exceeded (or iteration ping-pong'd meaning that we need a compromise)
 				 *	- simply crop strip to fit within the bounds of the strips bounding it
 				 *	- if there were no neighbors, clear the transforms (make it default to the strip's current values)
@@ -796,7 +796,8 @@ static void recalcData_view3d(TransInfo *t)
 				}
 			}
 			
-			if (!ELEM3(t->mode, TFM_BONE_ROLL, TFM_BONE_ENVELOPE, TFM_BONESIZE)) {
+			
+			if (t->mode != TFM_BONE_ROLL) {
 				/* fix roll */
 				for (i = 0; i < t->total; i++, td++) {
 					if (td->extra) {
@@ -805,28 +806,21 @@ static void recalcData_view3d(TransInfo *t)
 						float roll;
 						
 						ebo = td->extra;
-
-						if (t->state == TRANS_CANCEL) {
-							/* restore roll */
-							ebo->roll = td->ival;
+						copy_v3_v3(up_axis, td->axismtx[2]);
+						
+						if (t->mode != TFM_ROTATION) {
+							sub_v3_v3v3(vec, ebo->tail, ebo->head);
+							normalize_v3(vec);
+							rotation_between_vecs_to_quat(qrot, td->axismtx[1], vec);
+							mul_qt_v3(qrot, up_axis);
 						}
 						else {
-							copy_v3_v3(up_axis, td->axismtx[2]);
-							
-							if (t->mode != TFM_ROTATION) {
-								sub_v3_v3v3(vec, ebo->tail, ebo->head);
-								normalize_v3(vec);
-								rotation_between_vecs_to_quat(qrot, td->axismtx[1], vec);
-								mul_qt_v3(qrot, up_axis);
-							}
-							else {
-								mul_m3_v3(t->mat, up_axis);
-							}
-							
-							/* roll has a tendency to flip in certain orientations - [#34283], [#33974] */
-							roll = ED_rollBoneToVector(ebo, up_axis, false);
-							ebo->roll = angle_compat_rad(roll, td->ival);
+							mul_m3_v3(t->mat, up_axis);
 						}
+						
+						/* roll has a tendency to flip in certain orientations - [#34283], [#33974] */
+						roll = ED_rollBoneToVector(ebo, up_axis, false);
+						ebo->roll = angle_compat_rad(roll, ebo->roll);
 					}
 				}
 			}
@@ -1673,7 +1667,7 @@ void calculateCenter(TransInfo *t)
 					float center[3];
 					Curve *cu = (Curve *)t->obedit->data;
 
-					if (ED_curve_active_center(cu, center)) {
+					if (ED_curve_actSelection(cu, center)) {
 						copy_v3_v3(t->center, center);
 						calculateCenter2D(t);
 						break;

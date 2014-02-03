@@ -26,9 +26,8 @@
 
 /** \file blender/windowmanager/intern/wm_keymap.c
  *  \ingroup wm
- *
- * Configurable key-maps - add/remove/find/compare/patch...
  */
+
 
 #include <string.h>
 
@@ -96,56 +95,6 @@ static void wm_keymap_item_properties_set(wmKeyMapItem *kmi)
 {
 	WM_operator_properties_alloc(&(kmi->ptr), &(kmi->properties), kmi->idname);
 	WM_operator_properties_sanitize(kmi->ptr, 1);
-}
-
-/**
- * Similar to #wm_keymap_item_properties_set but checks for the wmOperatorType having changed, see [#38042]
- */
-static void wm_keymap_item_properties_update_ot(wmKeyMapItem *kmi)
-{
-	if (kmi->idname[0] == 0) {
-		BLI_assert(kmi->ptr == NULL);
-		return;
-	}
-
-	if (kmi->ptr == NULL) {
-		wm_keymap_item_properties_set(kmi);
-	}
-	else {
-		wmOperatorType *ot = WM_operatortype_find(kmi->idname, 0);
-		if (ot) {
-			if (ot->srna != kmi->ptr->type) {
-				/* matches wm_keymap_item_properties_set but doesnt alloc new ptr */
-				WM_operator_properties_create_ptr(kmi->ptr, ot);
-				WM_operator_properties_sanitize(kmi->ptr, 1);
-			}
-		}
-		else {
-			/* zombie keymap item */
-			MEM_SAFE_FREE(kmi->ptr);
-		}
-	}
-}
-
-static void wm_keyconfig_properties_update_ot(ListBase *km_lb)
-{
-	wmKeyMap *km;
-	wmKeyMapItem *kmi;
-
-	for (km = km_lb->first; km; km = km->next) {
-		wmKeyMapDiffItem *kmdi;
-
-		for (kmi = km->items.first; kmi; kmi = kmi->next) {
-			wm_keymap_item_properties_update_ot(kmi);
-		}
-
-		for (kmdi = km->diff_items.first; kmdi; kmdi = kmdi->next) {
-			if (kmdi->add_item)
-				wm_keymap_item_properties_update_ot(kmdi->add_item);
-			if (kmdi->remove_item)
-				wm_keymap_item_properties_update_ot(kmdi->remove_item);
-		}
-	}
 }
 
 static int wm_keymap_item_equals_result(wmKeyMapItem *a, wmKeyMapItem *b)
@@ -928,7 +877,7 @@ int WM_keymap_item_to_string(wmKeyMapItem *kmi, char *str, const int len)
 
 static wmKeyMapItem *wm_keymap_item_find_handlers(
         const bContext *C, ListBase *handlers, const char *opname, int UNUSED(opcontext),
-        IDProperty *properties, const bool is_strict, const bool is_hotkey, wmKeyMap **keymap_r)
+        IDProperty *properties, int is_strict, int hotkey, wmKeyMap **keymap_r)
 {
 	wmWindowManager *wm = CTX_wm_manager(C);
 	wmEventHandler *handler;
@@ -943,7 +892,7 @@ static wmKeyMapItem *wm_keymap_item_find_handlers(
 			for (kmi = keymap->items.first; kmi; kmi = kmi->next) {
 				
 				if (strcmp(kmi->idname, opname) == 0 && WM_key_event_string(kmi->type)[0]) {
-					if (is_hotkey)
+					if (hotkey)
 						if (!ISHOTKEY(kmi->type))
 							continue;
 
@@ -982,7 +931,7 @@ static wmKeyMapItem *wm_keymap_item_find_handlers(
 
 static wmKeyMapItem *wm_keymap_item_find_props(
         const bContext *C, const char *opname, int opcontext,
-        IDProperty *properties, const bool is_strict, const bool is_hotkey, wmKeyMap **keymap_r)
+        IDProperty *properties, int is_strict, int hotkey, wmKeyMap **keymap_r)
 {
 	wmWindow *win = CTX_wm_window(C);
 	ScrArea *sa = CTX_wm_area(C);
@@ -991,10 +940,10 @@ static wmKeyMapItem *wm_keymap_item_find_props(
 
 	/* look into multiple handler lists to find the item */
 	if (win)
-		found = wm_keymap_item_find_handlers(C, &win->handlers, opname, opcontext, properties, is_strict, is_hotkey, keymap_r);
+		found = wm_keymap_item_find_handlers(C, &win->handlers, opname, opcontext, properties, is_strict, hotkey, keymap_r);
 
 	if (sa && found == NULL)
-		found = wm_keymap_item_find_handlers(C, &sa->handlers, opname, opcontext, properties, is_strict, is_hotkey, keymap_r);
+		found = wm_keymap_item_find_handlers(C, &sa->handlers, opname, opcontext, properties, is_strict, hotkey, keymap_r);
 
 	if (found == NULL) {
 		if (ELEM(opcontext, WM_OP_EXEC_REGION_WIN, WM_OP_INVOKE_REGION_WIN)) {
@@ -1003,7 +952,7 @@ static wmKeyMapItem *wm_keymap_item_find_props(
 					ar = BKE_area_find_region_type(sa, RGN_TYPE_WINDOW);
 				
 				if (ar)
-					found = wm_keymap_item_find_handlers(C, &ar->handlers, opname, opcontext, properties, is_strict, is_hotkey, keymap_r);
+					found = wm_keymap_item_find_handlers(C, &ar->handlers, opname, opcontext, properties, is_strict, hotkey, keymap_r);
 			}
 		}
 		else if (ELEM(opcontext, WM_OP_EXEC_REGION_CHANNELS, WM_OP_INVOKE_REGION_CHANNELS)) {
@@ -1011,18 +960,18 @@ static wmKeyMapItem *wm_keymap_item_find_props(
 				ar = BKE_area_find_region_type(sa, RGN_TYPE_CHANNELS);
 
 			if (ar)
-				found = wm_keymap_item_find_handlers(C, &ar->handlers, opname, opcontext, properties, is_strict, is_hotkey, keymap_r);
+				found = wm_keymap_item_find_handlers(C, &ar->handlers, opname, opcontext, properties, is_strict, hotkey, keymap_r);
 		}
 		else if (ELEM(opcontext, WM_OP_EXEC_REGION_PREVIEW, WM_OP_INVOKE_REGION_PREVIEW)) {
 			if (!(ar && ar->regiontype == RGN_TYPE_PREVIEW))
 				ar = BKE_area_find_region_type(sa, RGN_TYPE_PREVIEW);
 
 			if (ar)
-				found = wm_keymap_item_find_handlers(C, &ar->handlers, opname, opcontext, properties, is_strict, is_hotkey, keymap_r);
+				found = wm_keymap_item_find_handlers(C, &ar->handlers, opname, opcontext, properties, is_strict, hotkey, keymap_r);
 		}
 		else {
 			if (ar)
-				found = wm_keymap_item_find_handlers(C, &ar->handlers, opname, opcontext, properties, is_strict, is_hotkey, keymap_r);
+				found = wm_keymap_item_find_handlers(C, &ar->handlers, opname, opcontext, properties, is_strict, hotkey, keymap_r);
 		}
 	}
 
@@ -1031,9 +980,9 @@ static wmKeyMapItem *wm_keymap_item_find_props(
 
 static wmKeyMapItem *wm_keymap_item_find(
         const bContext *C, const char *opname, int opcontext,
-        IDProperty *properties, const bool is_hotkey, const bool is_strict, wmKeyMap **keymap_r)
+        IDProperty *properties, const short hotkey, const bool strict, wmKeyMap **keymap_r)
 {
-	wmKeyMapItem *found = wm_keymap_item_find_props(C, opname, opcontext, properties, is_strict, is_hotkey, keymap_r);
+	wmKeyMapItem *found = wm_keymap_item_find_props(C, opname, opcontext, properties, strict, hotkey, keymap_r);
 
 	if (!found && properties) {
 		wmOperatorType *ot = WM_operatortype_find(opname, TRUE);
@@ -1046,14 +995,14 @@ static wmKeyMapItem *wm_keymap_item_find(
 			RNA_pointer_create(NULL, ot->srna, properties_default, &opptr);
 
 			if (WM_operator_properties_default(&opptr, true) ||
-			    (!is_strict && ot->prop && RNA_property_is_set(&opptr, ot->prop)))
+			    (!strict && ot->prop && RNA_property_is_set(&opptr, ot->prop)))
 			{
 				/* for operator that has enum menu, unset it so it always matches */
-				if (!is_strict && ot->prop) {
+				if (!strict && ot->prop) {
 					RNA_property_unset(&opptr, ot->prop);
 				}
 
-				found = wm_keymap_item_find_props(C, opname, opcontext, properties_default, false, is_hotkey, keymap_r);
+				found = wm_keymap_item_find_props(C, opname, opcontext, properties_default, false, hotkey, keymap_r);
 			}
 
 			IDP_FreeProperty(properties_default);
@@ -1066,9 +1015,9 @@ static wmKeyMapItem *wm_keymap_item_find(
 
 char *WM_key_event_operator_string(
         const bContext *C, const char *opname, int opcontext,
-        IDProperty *properties, const bool is_strict, char *str, int len)
+        IDProperty *properties, const bool strict, char *str, int len)
 {
-	wmKeyMapItem *kmi = wm_keymap_item_find(C, opname, opcontext, properties, false, is_strict, NULL);
+	wmKeyMapItem *kmi = wm_keymap_item_find(C, opname, opcontext, properties, 0, strict, NULL);
 	
 	if (kmi) {
 		WM_keymap_item_to_string(kmi, str, len);
@@ -1080,9 +1029,9 @@ char *WM_key_event_operator_string(
 
 int WM_key_event_operator_id(
         const bContext *C, const char *opname, int opcontext,
-        IDProperty *properties, const bool is_hotkey, wmKeyMap **keymap_r)
+        IDProperty *properties, int hotkey, wmKeyMap **keymap_r)
 {
-	wmKeyMapItem *kmi = wm_keymap_item_find(C, opname, opcontext, properties, is_hotkey, true, keymap_r);
+	wmKeyMapItem *kmi = wm_keymap_item_find(C, opname, opcontext, properties, hotkey, true, keymap_r);
 	
 	if (kmi)
 		return kmi->id;
@@ -1137,30 +1086,17 @@ int WM_keymap_item_compare(wmKeyMapItem *k1, wmKeyMapItem *k2)
  * the preset, addon and user preferences keymaps. We also test if the final
  * configuration changed and write the changes to the user preferences. */
 
-/* so operator removal can trigger update */
-enum {
-	WM_KEYMAP_UPDATE_RECONFIGURE    = (1 << 0),
-
-	/* ensure all wmKeyMap have their operator types validated after removing an operator */
-	WM_KEYMAP_UPDATE_OPERATORTYPE   = (1 << 1),
-};
-
-static char wm_keymap_update_flag = 0;
+static int WM_KEYMAP_UPDATE = 0;
 
 void WM_keyconfig_update_tag(wmKeyMap *km, wmKeyMapItem *kmi)
 {
 	/* quick tag to do delayed keymap updates */
-	wm_keymap_update_flag |= WM_KEYMAP_UPDATE_RECONFIGURE;
+	WM_KEYMAP_UPDATE = 1;
 
 	if (km)
 		km->flag |= KEYMAP_UPDATE;
 	if (kmi)
 		kmi->flag |= KMI_UPDATE;
-}
-
-void WM_keyconfig_update_operatortype(void)
-{
-	wm_keymap_update_flag |= WM_KEYMAP_UPDATE_OPERATORTYPE;
 }
 
 static int wm_keymap_test_and_clear_update(wmKeyMap *km)
@@ -1196,43 +1132,12 @@ void WM_keyconfig_update(wmWindowManager *wm)
 	wmKeyMap *km, *defaultmap, *addonmap, *usermap, *kmn;
 	wmKeyMapItem *kmi;
 	wmKeyMapDiffItem *kmdi;
-	bool compat_update = false;
+	int compat_update = 0;
 
 	if (G.background)
 		return;
-
-	if (wm_keymap_update_flag == 0)
+	if (!WM_KEYMAP_UPDATE)
 		return;
-
-	if (wm_keymap_update_flag & WM_KEYMAP_UPDATE_OPERATORTYPE) {
-		/* an operatortype has been removed, this wont happen often
-		 * but when it does we have to check _every_ keymap item */
-		wmKeyConfig *kc;
-
-		ListBase *keymaps_lb[] = {
-		    &U.user_keymaps,
-		    &wm->userconf->keymaps,
-		    &wm->defaultconf->keymaps,
-		    &wm->addonconf->keymaps,
-		    NULL};
-
-		int i;
-
-		for (i = 0; keymaps_lb[i]; i++) {
-			wm_keyconfig_properties_update_ot(keymaps_lb[i]);
-		}
-
-		for (kc = wm->keyconfigs.first; kc; kc = kc->next) {
-			wm_keyconfig_properties_update_ot(&kc->keymaps);
-		}
-
-		wm_keymap_update_flag &= ~WM_KEYMAP_UPDATE_OPERATORTYPE;
-	}
-
-
-	if (wm_keymap_update_flag == 0)
-		return;
-
 	
 	/* update operator properties for non-modal user keymaps */
 	for (km = U.user_keymaps.first; km; km = km->next) {
@@ -1282,12 +1187,9 @@ void WM_keyconfig_update(wmWindowManager *wm)
 
 		/* in case of old non-diff keymaps, force extra update to create diffs */
 		compat_update = compat_update || (usermap && !(usermap->flag & KEYMAP_DIFF));
-
 	}
 
-	wm_keymap_update_flag &= ~WM_KEYMAP_UPDATE_RECONFIGURE;
-
-	BLI_assert(wm_keymap_update_flag == 0);
+	WM_KEYMAP_UPDATE = 0;
 
 	if (compat_update) {
 		WM_keyconfig_update_tag(NULL, NULL);

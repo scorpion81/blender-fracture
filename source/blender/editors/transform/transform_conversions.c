@@ -124,6 +124,9 @@
 #include "transform.h"
 #include "bmesh.h"
 
+/* disabled since it makes absolute snapping not work so nicely */
+// #define USE_NODE_CENTER
+
 /**
  * Transforming around ourselves is no use, fallback to individual origins,
  * useful for curve/armatures.
@@ -1012,7 +1015,7 @@ static void createTransPose(TransInfo *t, Object *ob)
 
 	if (arm->flag & ARM_RESTPOS) {
 		if (ELEM(t->mode, TFM_DUMMY, TFM_BONESIZE) == 0) {
-			BKE_report(t->reports, RPT_ERROR, "Cannot change Pose when 'Rest Position' is enabled");
+			BKE_report(t->reports, RPT_ERROR, "Cannot select linked when sync selection is enabled");
 			return;
 		}
 	}
@@ -1197,7 +1200,6 @@ static void createTransArmatureVerts(TransInfo *t)
 
 					if ((ebo->flag & BONE_ROOTSEL) == 0) {
 						td->extra = ebo;
-						td->ival = ebo->roll;
 					}
 
 					td->ext = NULL;
@@ -1220,7 +1222,6 @@ static void createTransArmatureVerts(TransInfo *t)
 					ED_armature_ebone_to_mat3(ebo, td->axismtx);
 
 					td->extra = ebo; /* to fix roll */
-					td->ival = ebo->roll;
 
 					td->ext = NULL;
 					td->val = NULL;
@@ -2232,7 +2233,7 @@ static void createTransEditVerts(TransInfo *t)
 	}
 
 	/* detect CrazySpace [tm] */
-	if (modifiers_getCageIndex(t->scene, t->obedit, NULL, 1) != -1) {
+	if (modifiers_getCageIndex(t->scene, t->obedit, NULL, 1) >= 0) {
 		int totleft = -1;
 		if (modifiers_isCorrectableDeformed(t->scene, t->obedit)) {
 			/* check if we can use deform matrices for modifier from the
@@ -2374,7 +2375,6 @@ cleanup:
 void flushTransNodes(TransInfo *t)
 {
 	const float dpi_fac = UI_DPI_FAC;
-	bool hidden_state;
 	int a;
 	TransData *td;
 	TransData2D *td2d;
@@ -2393,18 +2393,6 @@ void flushTransNodes(TransInfo *t)
 		node->locx = td2d->loc[0] / dpi_fac;
 		node->locy = td2d->loc[1] / dpi_fac;
 #endif
-		/* update node hidden state with transform data TD_HIDDEN + transformInfo T_TOGGLE_HIDDEN */
-		hidden_state = (td->flag & TD_HIDDEN) != 0;
-		if (t->state != TRANS_CANCEL) {
-			hidden_state ^= (t->flag & T_TOGGLE_HIDDEN) > 0;
-		}
-
-		if (hidden_state) {
-			node->flag |= NODE_HIDDEN;
-		}
-		else {
-			node->flag &= ~NODE_HIDDEN;
-		}
 	}
 	
 	/* handle intersection with noodles */
@@ -2441,7 +2429,7 @@ void flushTransSeq(TransInfo *t)
 		tdsq = (TransDataSeq *)td->extra;
 		seq = tdsq->seq;
 		old_start = seq->start;
-		new_frame = iroundf(td2d->loc[0]);
+		new_frame = (int)floor(td2d->loc[0] + 0.5f);
 
 		switch (tdsq->sel_flag) {
 			case SELECT:
@@ -2453,7 +2441,7 @@ void flushTransSeq(TransInfo *t)
 					seq->start = new_frame - tdsq->start_offset;
 #endif
 				if (seq->depth == 0) {
-					seq->machine = iroundf(td2d->loc[1]);
+					seq->machine = (int)floor(td2d->loc[1] + 0.5f);
 					CLAMP(seq->machine, 1, MAXSEQ);
 				}
 				break;
@@ -3402,7 +3390,7 @@ void flushTransIntFrameActionData(TransInfo *t)
 
 	/* flush data! */
 	for (i = 0; i < t->total; i++, tfd++) {
-		*(tfd->sdata) = iroundf(tfd->val);
+		*(tfd->sdata) = (int)floor(tfd->val + 0.5f);
 	}
 }
 
@@ -4503,7 +4491,7 @@ static void freeSeqData(TransInfo *t)
 				}
 
 				if (overlap) {
-					bool has_effect = false;
+					int has_effect = 0;
 					for (seq = seqbasep->first; seq; seq = seq->next)
 						seq->tmp = NULL;
 
@@ -4514,7 +4502,7 @@ static void freeSeqData(TransInfo *t)
 						if ((seq != seq_prev)) {
 							/* check effects strips, we cant change their time */
 							if ((seq->type & SEQ_TYPE_EFFECT) && seq->seq1) {
-								has_effect = true;
+								has_effect = TRUE;
 							}
 							else {
 								/* Tag seq with a non zero value, used by BKE_sequence_base_shuffle_time to identify the ones to shuffle */
@@ -4917,12 +4905,9 @@ static void set_trans_object_base_flags(TransInfo *t)
 	/* makes sure base flags and object flags are identical */
 	BKE_scene_base_flag_to_objects(t->scene);
 
-	/* Make sure depsgraph is here. */
-	DAG_scene_relations_update(G.main, t->scene);
-
 	/* handle pending update events, otherwise they got copied below */
 	for (base = scene->base.first; base; base = base->next) {
-		if (base->object->recalc & OB_RECALC_ALL) {
+		if (base->object->recalc) {
 			/* TODO(sergey): Ideally, it's not needed. */
 			BKE_object_handle_update(G.main->eval_ctx, t->scene, base->object);
 		}
@@ -4963,6 +4948,7 @@ static void set_trans_object_base_flags(TransInfo *t)
 	}
 
 	/* all recalc flags get flushed to all layers, so a layer flip later on works fine */
+	DAG_scene_relations_update(G.main, t->scene);
 	DAG_scene_flush_update(G.main, t->scene, -1, 0);
 
 	/* and we store them temporal in base (only used for transform code) */
@@ -5999,9 +5985,6 @@ static void NodeToTransData(TransData *td, TransData2D *td2d, bNode *node, const
 	td->ext = NULL; td->val = NULL;
 
 	td->flag |= TD_SELECTED;
-	if (node->flag & NODE_HIDDEN) {
-		td->flag |= TD_HIDDEN;
-	}
 	td->dist = 0.0;
 
 	unit_m3(td->mtx);
@@ -6010,7 +5993,7 @@ static void NodeToTransData(TransData *td, TransData2D *td2d, bNode *node, const
 	td->extra = node;
 }
 
-static bool is_node_parent_select(bNode *node)
+static int is_node_parent_select(bNode *node)
 {
 	while ((node = node->parent)) {
 		if (node->flag & NODE_TRANSFORM) {
@@ -6036,8 +6019,6 @@ static void createTransNodeData(bContext *UNUSED(C), TransInfo *t)
 
 	/* nodes dont support PET and probably never will */
 	t->flag &= ~T_PROP_EDIT_ALL;
-	/* initial: do not toggle hidden */
-	t->flag &= ~T_TOGGLE_HIDDEN;
 
 	/* set transform flags on nodes */
 	for (node = snode->edittree->nodes.first; node; node = node->next) {
@@ -6626,7 +6607,7 @@ void flushTransTracking(TransInfo *t)
 /* * masking * */
 
 typedef struct TransDataMasking {
-	bool is_handle;
+	int is_handle;
 
 	float handle[2], orig_handle[2];
 	float vec[3][3];
@@ -6640,8 +6621,8 @@ static void MaskPointToTransData(Scene *scene, MaskSplinePoint *point,
                                  const int propmode, const float asp[2])
 {
 	BezTriple *bezt = &point->bezt;
-	const bool is_sel_point = MASKPOINT_ISSEL_KNOT(point);
-	const bool is_sel_any = MASKPOINT_ISSEL_ANY(point);
+	short is_sel_point = MASKPOINT_ISSEL_KNOT(point);
+	short is_sel_any = MASKPOINT_ISSEL_ANY(point);
 	float parent_matrix[3][3], parent_inverse_matrix[3][3];
 
 	tdm->point = point;

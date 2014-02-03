@@ -115,7 +115,6 @@ SVMCompiler::SVMCompiler(ShaderManager *shader_manager_, ImageManager *image_man
 	background = false;
 	mix_weight_offset = SVM_STACK_INVALID;
 	use_multi_closure = use_multi_closure_;
-	compile_failed = false;
 }
 
 int SVMCompiler::stack_size(ShaderSocketType type)
@@ -165,12 +164,10 @@ int SVMCompiler::stack_find_offset(ShaderSocketType type)
 		}
 	}
 
-	if(!compile_failed) {
-		compile_failed = true;
-		fprintf(stderr, "Cycles: out of SVM stack space, shader \"%s\" too big.\n", current_shader->name.c_str());
-	}
+	fprintf(stderr, "Out of SVM stack space.\n");
+	assert(0);
 
-	return 0;
+	return offset;
 }
 
 void SVMCompiler::stack_clear_offset(ShaderSocketType type, int offset)
@@ -655,12 +652,6 @@ void SVMCompiler::compile_type(Shader *shader, ShaderGraph *graph, ShaderType ty
 
 		/* compile output node */
 		node->compile(*this);
-	}
-
-	/* if compile failed, generate empty shader */
-	if(compile_failed) {
-		svm_nodes.clear();
-		compile_failed = false;
 	}
 
 	add_node(NODE_END, 0, 0, 0);

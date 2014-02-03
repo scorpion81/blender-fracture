@@ -50,7 +50,7 @@ typedef struct wmEventHandler {
 
 	/* keymap handler */
 	wmKeyMap *keymap;                   /* pointer to builtin/custom keymaps */
-	const rcti *bblocal, *bbwin;              /* optional local and windowspace bb */
+	rcti *bblocal, *bbwin;              /* optional local and windowspace bb */
 
 	/* modal operator handler */
 	wmOperator *op;                     /* for derived/modal handlers */

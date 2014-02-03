@@ -64,7 +64,7 @@ void GPC_KeyboardDevice::NextFrame()
  * ConvertBPEvent translates Windows keyboard events into ketsji kbd events.
  * Extra event information is stored, like ramp-mode (just released/pressed)
  */
-bool GPC_KeyboardDevice::ConvertEvent(int incode, int val, unsigned int unicode)
+bool GPC_KeyboardDevice::ConvertEvent(int incode, int val)
 {
 	bool result = false;
 
@@ -83,7 +83,6 @@ bool GPC_KeyboardDevice::ConvertEvent(int incode, int val, unsigned int unicode)
 
 			// todo: convert val ??
 			m_eventStatusTables[m_currentTable][kxevent].m_eventval = val ; //???
-			m_eventStatusTables[m_currentTable][kxevent].m_unicode = unicode ;
 
 			switch (m_eventStatusTables[previousTable][kxevent].m_status)
 			{
