@@ -40,4 +40,7 @@ void carve_unionIntersections(carve::csg::CSG *csg,
                               carve::mesh::MeshSet<3> **left_r,
                               carve::mesh::MeshSet<3> **right_r);
 
+std::pair<int, int> operator*(double w, const std::pair<int, int> &index);
+std::pair<int, int> operator+=(std::pair<int, int> &a, const std::pair<int, int>&b);
+
 #endif  // __CARVE_UTIL_H__

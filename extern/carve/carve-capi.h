@@ -101,17 +101,12 @@ typedef void (*CarveExporter_SetLoop) (struct ExportMeshData *export_data,
                                        int loop_index, int vertex, int edge,
                                        int which_orig_mesh, int orig_loop_index);
 
-// Interpolate poly data after all it's loops and itself are exported.
-typedef void (*CarveExporter_InterpPoly) (struct ExportMeshData *export_data,
-                                          int poly_index, int which_orig_mesh, int orig_poly_index);
-
 typedef struct CarveMeshExporter {
 	CarveExporter_InitGeomArrays initGeomArrays;
 	CarveExporter_SetVert setVert;
 	CarveExporter_SetEdge setEdge;
 	CarveExporter_SetPoly setPoly;
 	CarveExporter_SetLoop setLoop;
-	CarveExporter_InterpPoly interpPoly;
 } CarveMeshExporter;
 
 enum {

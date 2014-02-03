@@ -25,11 +25,10 @@
  */
 
 #include "carve-capi.h"
+#include "carve-util.h"
 
 #include <carve/interpolator.hpp>
 #include <carve/rescale.hpp>
-
-#include "carve-util.h"
 
 using carve::mesh::MeshSet;
 
@@ -61,36 +60,6 @@ typedef struct CarveMeshDescr {
 } CarveMeshDescr;
 
 namespace {
-
-// Original index could not be interpolated, so we hack this around a bit.
-//
-// Weighting is only allowed to happen with weight of 1.0. In this case
-// result is the same exact as input weight. For weight != 1.0 we output
-// ORIGINDEX_NONE.
-//
-// Sum is a bit more tricky, but basically it is supposed to only output
-// original index of single non-ORIGINDEX_NONE item and if there're more
-// than one such items we output ORIGINDEX_NONE.
-OrigIndex operator*(double w, const OrigIndex &index)
-{
-	if (w == 1.0) {
-		return index;
-	}
-	return std::make_pair((int)CARVE_MESH_NONE, -1);
-}
-
-OrigIndex operator+=(OrigIndex &a, const OrigIndex &b)
-{
-	if (a.first != CARVE_MESH_NONE && b.first != CARVE_MESH_NONE) {
-		a.first = CARVE_MESH_NONE;
-		a.second = -1;
-	}
-	else if (b.first != CARVE_MESH_NONE) {
-		a.first = b.first;
-		a.second = b.second;
-	}
-	return a;
-}
 
 template <typename T1, typename T2>
 void edgeIndexMap_put(std::map<std::pair<T1, T1>, T2 > *edge_map,
@@ -353,6 +322,33 @@ bool carve_performBooleanOperation(CarveMeshDescr *left_mesh,
 	return output_descr->poly != NULL;
 }
 
+static void exportMesh_handle_edges_list(MeshSet<3> *poly,
+                                         const std::vector<MeshSet<3>::edge_t*> &edges,
+                                         int start_edge_index,
+                                         CarveMeshExporter *mesh_exporter,
+                                         struct ExportMeshData *export_data,
+                                         const std::map<VertexPair, OrigIndex> &edge_origindex_map,
+                                         std::map<VertexPair, int> *edge_map)
+{
+	for (int i = 0, edge_index = start_edge_index; i < edges.size(); ++i, ++edge_index) {
+		MeshSet<3>::edge_t *edge = edges.at(i);
+		MeshSet<3>::vertex_t *v1 = edge->vert;
+		MeshSet<3>::vertex_t *v2 = edge->next->vert;
+
+		const OrigIndex &orig_edge_index =
+			edgeIndexMap_get(edge_origindex_map, v1, v2);
+
+		mesh_exporter->setEdge(export_data,
+		                       edge_index,
+		                       indexOf(v1, poly->vertex_storage),
+		                       indexOf(v2, poly->vertex_storage),
+		                       orig_edge_index.first,
+		                       orig_edge_index.second);
+
+		edgeIndexMap_put(edge_map, v1, v2, edge_index);
+	}
+}
+
 void carve_exportMesh(CarveMeshDescr *mesh_descr,
                       CarveMeshExporter *mesh_exporter,
                       struct ExportMeshData *export_data)
@@ -369,7 +365,7 @@ void carve_exportMesh(CarveMeshDescr *mesh_descr,
 	// Count edges from all manifolds.
 	for (int i = 0; i < poly->meshes.size(); ++i) {
 		carve::mesh::Mesh<3> *mesh = poly->meshes[i];
-		num_edges += mesh->closed_edges.size()/* + mesh->open_edges.size()*/;
+		num_edges += mesh->closed_edges.size() + mesh->open_edges.size();
 	}
 
 	// Count polys and loops from all manifolds.
@@ -443,26 +439,29 @@ void carve_exportMesh(CarveMeshDescr *mesh_descr,
 	}
 
 	// Export all the edges.
-	std::map<VertexPair, int > edge_map;
+	std::map<VertexPair, int> edge_map;
 	for (int i = 0, edge_index = 0; i < poly->meshes.size(); ++i) {
 		carve::mesh::Mesh<3> *mesh = poly->meshes[i];
-		for (int j = 0; j < mesh->closed_edges.size(); ++j, ++edge_index) {
-			MeshSet<3>::edge_t *edge = mesh->closed_edges.at(j);
-			MeshSet<3>::vertex_t *v1 = edge->vert;
-			MeshSet<3>::vertex_t *v2 = edge->next->vert;
 
-			const OrigIndex &orig_edge_index =
-				edgeIndexMap_get(edge_origindex_map, v1, v2);
+		// Export closed edges.
+		exportMesh_handle_edges_list(poly,
+		                             mesh->closed_edges,
+		                             edge_index,
+		                             mesh_exporter,
+		                             export_data,
+		                             edge_origindex_map,
+		                             &edge_map);
 
-			mesh_exporter->setEdge(export_data,
-			                       edge_index,
-			                       indexOf(v1, poly->vertex_storage),
-			                       indexOf(v2, poly->vertex_storage),
-			                       orig_edge_index.first,
-			                       orig_edge_index.second);
+		// Export open edges.
+		exportMesh_handle_edges_list(poly,
+		                             mesh->open_edges,
+		                             edge_index,
+		                             mesh_exporter,
+		                             export_data,
+		                             edge_origindex_map,
+		                             &edge_map);
 
-			edgeIndexMap_put(&edge_map, v1, v2, edge_index);
-		}
+		edge_index += mesh->closed_edges.size();
 	}
 
 	// Export all the loops and polys.
@@ -471,13 +470,10 @@ void carve_exportMesh(CarveMeshDescr *mesh_descr,
 	     face_iter != poly->faceEnd();
 	     ++face_iter, ++poly_index)
 	{
+		int start_loop_index = loop_index;
 		MeshSet<3>::face_t *face = *face_iter;
 		const OrigIndex &orig_face_index =
 			mesh_descr->orig_face_mapping.getAttribute(face, origindex_none);
-
-		mesh_exporter->setPoly(export_data,
-		                       poly_index, loop_index, face->n_edges,
-		                       orig_face_index.first, orig_face_index.second);
 
 		for (MeshSet<3>::face_t::edge_iter_t edge_iter = face->begin();
 		     edge_iter != face->end();
@@ -497,7 +493,8 @@ void carve_exportMesh(CarveMeshDescr *mesh_descr,
 		                           orig_loop_index.second);
 		}
 
-		mesh_exporter->interpPoly(export_data, poly_index,
-		                          orig_face_index.first, orig_face_index.second);
+		mesh_exporter->setPoly(export_data,
+		                       poly_index, start_loop_index, face->n_edges,
+		                       orig_face_index.first, orig_face_index.second);
 	}
 }

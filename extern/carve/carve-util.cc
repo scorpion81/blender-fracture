@@ -25,6 +25,7 @@
  */
 
 #include "carve-util.h"
+#include "carve-capi.h"
 
 #include <carve/csg.hpp>
 #include <carve/rtree.hpp>
@@ -416,4 +417,34 @@ void carve_unionIntersections(carve::csg::CSG *csg,
 
 	*left_r = left;
 	*right_r = right;
+}
+
+// Original index could not be interpolated, so we hack this around a bit.
+//
+// Weighting is only allowed to happen with weight of 1.0. In this case
+// result is the same exact as input weight. For weight != 1.0 we output
+// ORIGINDEX_NONE.
+//
+// Sum is a bit more tricky, but basically it is supposed to only output
+// original index of single non-ORIGINDEX_NONE item and if there're more
+// than one such items we output ORIGINDEX_NONE.
+std::pair<int, int> operator*(double w, const std::pair<int, int> &index)
+{
+	if (w == 1.0) {
+		return index;
+	}
+	return std::make_pair((int)CARVE_MESH_NONE, -1);
+}
+
+std::pair<int, int> operator+=(std::pair<int, int> &a, const std::pair<int, int>&b)
+{
+	if (a.first != CARVE_MESH_NONE && b.first != CARVE_MESH_NONE) {
+		a.first = CARVE_MESH_NONE;
+		a.second = -1;
+	}
+	else if (b.first != CARVE_MESH_NONE) {
+		a.first = b.first;
+		a.second = b.second;
+	}
+	return a;
 }
