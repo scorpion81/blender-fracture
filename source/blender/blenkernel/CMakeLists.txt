@@ -269,6 +269,7 @@ set(SRC
 	nla_private.h
 	tracking_private.h
 	intern/CCGSubSurf.h
+	intern/fracture_util.h
 	intern/pbvh_intern.h
 )
 
