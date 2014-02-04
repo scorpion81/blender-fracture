@@ -632,8 +632,8 @@ Shard *BKE_fracture_shard_boolean(Object* obj, Shard *parent, Shard* child)
 	Shard *output_s;
 	DerivedMesh *left_dm, *right_dm, *output_dm;
 
-	left_dm = BKE_shard_create_dm(child);
-	right_dm = BKE_shard_create_dm(parent);
+	left_dm = BKE_shard_create_dm(child, true);
+	right_dm = BKE_shard_create_dm(parent, false);
 
 	output_dm = NewBooleanDerivedMesh(right_dm, obj, left_dm, obj, 1);
 
@@ -680,8 +680,8 @@ Shard *BKE_fracture_shard_bisect(Shard* parent, Shard* child, float obmat[4][4],
 {
 
 	Shard *output_s;
-	DerivedMesh *dm_parent = BKE_shard_create_dm(parent);
-	DerivedMesh *dm_child = BKE_shard_create_dm(child);
+	DerivedMesh *dm_parent = BKE_shard_create_dm(parent, false);
+	DerivedMesh *dm_child = BKE_shard_create_dm(child, false);
 	DerivedMesh *dm_out;
 	BMesh *bm_parent = DM_to_bmesh(dm_parent, true);
 	BMesh *bm_child = DM_to_bmesh(dm_child, true);

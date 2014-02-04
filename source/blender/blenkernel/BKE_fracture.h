@@ -95,7 +95,7 @@ void BKE_shard_free(struct Shard* s);
 /* DerivedMesh */
 void BKE_fracture_release_dm(struct FractureModifierData *fmd);
 void BKE_fracture_create_dm(struct FractureModifierData *fmd, bool do_merge);
-struct DerivedMesh *BKE_shard_create_dm(struct Shard *s);
+struct DerivedMesh *BKE_shard_create_dm(struct Shard *s, bool do_flip);
 
 
 /*** Bullet API erweiterungen für fracturing ***/
