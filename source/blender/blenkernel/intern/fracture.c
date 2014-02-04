@@ -6,7 +6,6 @@
 #include "BLI_math_vector.h"
 #include "BLI_mempool.h"
 #include "BLI_utildefines.h"
-#include "BLI_path_util.h"
 
 #include "DNA_fracture_types.h"
 #include "DNA_group_types.h"
@@ -23,10 +22,16 @@
 #include "bmesh.h"
 
 #include "RBI_api.h"
-#include "PIL_time.h"
 
 /*boolean support */
 //#include "CSG_BooleanOps.h"
+
+/* debug timing */
+//#define USE_DEBUG_TIMER
+
+#ifdef USE_DEBUG_TIMER
+#include "PIL_time.h"
+#endif
 
 #ifdef WITH_VORO
 #include "../../../../extern/voro++/src/c_interface.hh"
@@ -485,15 +490,13 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	char *bp;
 	size_t size;
 	FILE *stream;
-
-
-	double start;
-	char *file, *path, *fullpath;
-
+#ifdef USE_DEBUG_TIMER
+	double time_start;
+#endif
+	
 	shard = BKE_shard_by_id(fmesh, id);
 	if (!shard || shard->flag & SHARD_FRACTURED)
 		return;
-
 	
 	/* calculate bounding box with theta margin */
 	copy_v3_v3(min, shard->min);
@@ -526,30 +529,27 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	 * %C the centroid of the voronoi cell
 	 */
 	
-	start = PIL_check_seconds_timer();
-
-	file = "test.out";
-	path = MEM_mallocN(((strlen(BLI_temporary_dir()) + strlen(file) + 2) * sizeof(char)), "path");
-	path = strcpy(path, BLI_temporary_dir());
-	fullpath = strcat(path, file);
-	stream = fopen(fullpath, "w+");
-	//stream = open_memstream(&bp, &size); //this is DEADLY for performance, Better use a real file...
+	stream = open_memstream(&bp, &size);
 	container_print_custom(voro_loop_order, voro_container, "%i %P v %t f %C n %n x", stream);
-	fflush(stream);
-	rewind(stream);
-
-	printf("Print custom done, %g\n", PIL_check_seconds_timer() - start);
-	start = PIL_check_seconds_timer();
-	parse_stream(stream, pointcloud->totpoints, id, fmesh, algorithm, obj);
-	//printf("%s", bp);
 	fclose (stream);
-//	free(bp);
-	printf("Parse stream done, %g\n", PIL_check_seconds_timer() - start);
-
-	MEM_freeN(path);
+	
 	free(voro_particle_order);
 	free(voro_loop_order);
 	free(voro_container);
+	
+#ifdef USE_DEBUG_TIMER
+	time_start = PIL_check_seconds_timer();
+#endif
+	
+	stream = fmemopen(bp, size, "r");
+	parse_stream(stream, pointcloud->totpoints, id, fmesh, algorithm, obj);
+	fclose (stream);
+	
+#ifdef USE_DEBUG_TIMER
+	printf("Parse stream done, %g\n", PIL_check_seconds_timer() - time_start);
+#endif
+	
+	free(bp);
 
 #if 0
 	//do cell fracture code here on shardbbox, AND intersect with boolean, hmm would need a temp object for this ? or bisect with cell planes.
