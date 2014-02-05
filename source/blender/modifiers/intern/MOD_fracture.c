@@ -95,6 +95,28 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	return final_dm;
 }
 
+static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
+                                    struct BMEditMesh *UNUSED(editData),
+                                    DerivedMesh *derivedData,
+                                    ModifierApplyFlag UNUSED(flag))
+{
+	FractureModifierData *fmd = (FractureModifierData*) md;
+	DerivedMesh *final_dm;
+
+	if (fmd->frac_mesh == NULL) {
+		fmd->frac_mesh = BKE_create_fracture_container(derivedData);
+	}
+	
+	do_fracture(fmd, fmd->shard_id, ob);
+	
+	if (fmd->dm)
+		final_dm = CDDM_copy(fmd->dm);
+	else
+		final_dm = derivedData;
+	
+	return final_dm;
+}
+
 static void do_fracture(FractureModifierData *fracmd, ShardID id, Object* obj)
 {
 	float min[3], max[3];
@@ -121,25 +143,27 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object* obj)
 }
 
 ModifierTypeInfo modifierType_Fracture = {
-        /* name */ "Fracture",
-        /* structName */ "FractureModifierData",
-        /* structSize */ sizeof(FractureModifierData),
-        /* type */ eModifierTypeType_Constructive,
-        /* flags */ eModifierTypeFlag_AcceptsMesh | eModifierTypeFlag_Single,
-        /* copyData */ NULL,//copyData,
-        /* deformVerts */ NULL, // deformVerts,
-        /* deformMatrices */ NULL,
-        /* deformVertsEM */ NULL,
-        /* deformMatricesEM */ NULL,
-        /* applyModifier */ applyModifier,
-        /* applyModifierEM */ NULL,
-        /* initData */ initData,
-        /* requiredDataMask */ NULL,
-        /* freeData */ freeData,
-        /* isDisabled */ NULL,
-        /* updateDepgraph */ NULL,
-        /* dependsOnTime */ NULL,//dependsOnTime,
-        /* dependsOnNormals */ NULL,
+        /* name */              "Fracture",
+        /* structName */        "FractureModifierData",
+        /* structSize */        sizeof(FractureModifierData),
+        /* type */              eModifierTypeType_Constructive,
+        /* flags */             eModifierTypeFlag_AcceptsMesh |
+                                eModifierTypeFlag_Single |
+                                eModifierTypeFlag_SupportsEditmode,
+        /* copyData */          NULL,
+        /* deformVerts */       NULL,
+        /* deformMatrices */    NULL,
+        /* deformVertsEM */     NULL,
+        /* deformMatricesEM */  NULL,
+        /* applyModifier */     applyModifier,
+        /* applyModifierEM */   applyModifierEM,
+        /* initData */          initData,
+        /* requiredDataMask */  NULL,
+        /* freeData */          freeData,
+        /* isDisabled */        NULL,
+        /* updateDepgraph */    NULL,
+        /* dependsOnTime */     NULL,//dependsOnTime,
+        /* dependsOnNormals */  NULL,
         /* foreachObjectLink */ NULL,
-        /* foreachIDLink */ NULL,
+        /* foreachIDLink */     NULL,
 };
