@@ -45,7 +45,7 @@ static Shard *parse_shard(FILE *fp);
 static void parse_verts(FILE *fp, MVert *mvert, int totvert);
 static void parse_polys(FILE *fp, MPoly *mpoly, int totpoly, int *r_totloop);
 static void parse_loops(FILE *fp, MLoop *mloop, int totloop, MPoly *mpoly, int totpoly);
-static int parse_neighbors(FILE *fp, int **neighbors, int totn);
+static void parse_neighbors(FILE *fp, int *neighbors, int totpoly);
 static void add_shard(FracMesh *fm, Shard *s);
 static DerivedMesh *flip_normals(DerivedMesh* dm);
 
@@ -140,7 +140,7 @@ static Shard* parse_shard(FILE *fp)
 	MPoly *mpoly = NULL;
 	MLoop *mloop = NULL;
 	int *neighbors = NULL;
-	int totpoly, totloop, totvert, totn;
+	int totpoly, totloop, totvert;
 	float centr[3];
 	int shard_id;
 
@@ -168,33 +168,28 @@ static Shard* parse_shard(FILE *fp)
 		parse_loops(fp, mloop, totloop, mpoly, totpoly);
 	}
 	
+	if (totpoly > 0) {
+		neighbors = MEM_callocN(sizeof(int) * totpoly, __func__);
+		parse_neighbors(fp, neighbors, totpoly);
+	}
+	
 	/* skip "f "*/
 	fseek(fp, 2*sizeof(char), SEEK_CUR);
-
+	
 	/* parse centroid */
-	fscanf(fp, "%f %f %f n ", &centr[0], &centr[1], &centr[2]);
-
-	/* parse neighbors */
-	totn = parse_neighbors(fp, &neighbors, totpoly);
-
-	if ((totn == 0) || (totn < totpoly))
-	{
-		MEM_freeN(mvert);
-		MEM_freeN(mpoly);
-		MEM_freeN(mloop);
-		return NULL;
-	}
-
+	fscanf(fp, "%f %f %f ", &centr[0], &centr[1], &centr[2]);
+	
+	/* skip "c "*/
+	fseek(fp, 2*sizeof(char), SEEK_CUR);
+	
 	s = BKE_create_fracture_shard(mvert, mpoly, mloop, totvert, totpoly, totloop, false);
 	s->neighbor_ids = neighbors;
-	s->neighbor_count = totn;
+	s->neighbor_count = totpoly;
 	//s->shard_id = shard_id;
 	copy_v3_v3(s->centroid, centr);
-
+	
 	/* if not at end of file yet, skip newlines */
-	if (feof(fp) == 0)
-	{
-
+	if (feof(fp) == 0) {
 #ifdef _WIN32
 		//skip \r\n
 		fseek(fp, 2*sizeof(char), SEEK_CUR);
@@ -263,29 +258,15 @@ static void parse_loops(FILE *fp, MLoop *mloop, int UNUSED(totloop), MPoly *mpol
 	}
 }
 
-static int parse_neighbors(FILE* fp, int** neighbors, int totn)
+static void parse_neighbors(FILE* fp, int *neighbors, int totpoly)
 {
-	int i = 0;
-	int read_n = 0;
-	*neighbors = MEM_mallocN(sizeof(int) * totn, __func__);
+	int i;
 
-	for (i = 0; i < totn; i++)
-	{
+	for (i = 0; i < totpoly; i++) {
 		int n;
-		read_n = fscanf(fp, "%d ", &n);
-		if (!read_n)
-		{
-			MEM_freeN(*neighbors);
-			*neighbors = NULL;
-			return 0;
-		}
-		(*neighbors)[i] = n;
+		fscanf(fp, "%d ", &n);
+		neighbors[i] = n;
 	}
-
-	//skip "x"
-	fseek(fp, 1*sizeof(char), SEEK_CUR);
-
-	return totn;
 }
 
 /* modified from BKE_mesh_center_median */
@@ -532,16 +513,24 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	 * http://math.lbl.gov/voro++/
 	 */
 
-	/* %i the particle index
-	 * %P global vertex coordinates of voronoi vertices
-	 * v  the vertex -> face delimiter
-	 * %t the indexes to the cell vertices, describes which vertices build each face
-	 * f  the face -> centroid section delimiter
+	/* %i the particle/cell index
+	 * 
+	 * %w number of vertices (totvert)
+	 * %P global vertex coordinates
+	 * v  vertex section delimiter
+	 * 
+	 * %s number of faces (totpoly)
+	 * %a number of vertices in each face (sum is totloop)
+	 * %t the indices to the cell vertices, describes which vertices build each face
+	 * %n neighboring cell index for each face
+	 * f  face section delimiter
+	 * 
 	 * %C the centroid of the voronoi cell
+	 * c  centroid section delimiter
 	 */
 	
 	stream = open_memstream(&bp, &size);
-	container_print_custom(voro_loop_order, voro_container, "%i %w %P v %s %a %t f %C n %n x", stream);
+	container_print_custom(voro_loop_order, voro_container, "%i %w %P v %s %a %t %n f %C c", stream);
 #if 0
 	{ /* DEBUG PRINT */
 		fflush (stream);
