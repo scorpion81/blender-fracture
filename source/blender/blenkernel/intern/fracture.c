@@ -42,13 +42,14 @@
 /*prototypes*/
 static void parse_stream(FILE *fp, int expected_shards, ShardID shard_id, FracMesh *fm, int algorithm, Object *obj);
 static Shard *parse_shard(FILE *fp);
-static int parse_verts(FILE *fp, MVert **vert);
-static void parse_polys(FILE *fp, MPoly **poly, MLoop **loop, int *totpoly, int* totloop);
+static void parse_verts(FILE *fp, MVert *mvert, int totvert);
+static void parse_polys(FILE *fp, MPoly *mpoly, int totpoly, int *r_totloop);
+static void parse_loops(FILE *fp, MLoop *mloop, int totloop, MPoly *mpoly, int totpoly);
 static int parse_neighbors(FILE *fp, int **neighbors, int totn);
 static void add_shard(FracMesh *fm, Shard *s);
 static DerivedMesh *flip_normals(DerivedMesh* dm);
 
-static DerivedMesh* flip_normals(DerivedMesh* dm)
+static DerivedMesh *flip_normals(DerivedMesh *dm)
 {
 	BMesh *bm;
 	BMFace *f;
@@ -135,29 +136,40 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 static Shard* parse_shard(FILE *fp)
 {
 	Shard *s;
-	MVert *vert = NULL;
-	MPoly *poly = NULL;
-	MLoop *loop = NULL;
+	MVert *mvert = NULL;
+	MPoly *mpoly = NULL;
+	MLoop *mloop = NULL;
 	int *neighbors = NULL;
-	int totpoly = 0, totloop = 0, totvert = 0, totn = 0;
+	int totpoly, totloop, totvert, totn;
 	float centr[3];
 	int shard_id;
 
 	fscanf(fp, "%d ", &shard_id);
 
-	totvert = parse_verts(fp, &vert);
-
-	if (totvert == 0)
-	{
-		return NULL;
+	fscanf(fp, "%d ", &totvert);
+	if (totvert > 0) {
+		mvert = MEM_callocN(sizeof(MVert) * totvert, __func__);
+		parse_verts(fp, mvert, totvert);
 	}
-
-	parse_polys(fp, &poly, &loop, &totpoly, &totloop);
-
-	if ((totloop == 0) || (totloop == 0))
-	{
-		return NULL;
+	
+	/* skip "v "*/
+	fseek(fp, 2*sizeof(char), SEEK_CUR);
+	
+	fscanf(fp, "%d ", &totpoly);
+	if (totpoly > 0) {
+		mpoly = MEM_callocN(sizeof(MPoly) * totpoly, __func__);
+		parse_polys(fp, mpoly, totpoly, &totloop);
 	}
+	else
+		totloop = 0;
+	
+	if (totloop > 0) {
+		mloop = MEM_callocN(sizeof(MLoop) * totloop, __func__);
+		parse_loops(fp, mloop, totloop, mpoly, totpoly);
+	}
+	
+	/* skip "f "*/
+	fseek(fp, 2*sizeof(char), SEEK_CUR);
 
 	/* parse centroid */
 	fscanf(fp, "%f %f %f n ", &centr[0], &centr[1], &centr[2]);
@@ -167,19 +179,17 @@ static Shard* parse_shard(FILE *fp)
 
 	if ((totn == 0) || (totn < totpoly))
 	{
-		MEM_freeN(vert);
-		MEM_freeN(poly);
-		MEM_freeN(loop);
+		MEM_freeN(mvert);
+		MEM_freeN(mpoly);
+		MEM_freeN(mloop);
 		return NULL;
 	}
 
-	s = BKE_create_fracture_shard(vert, poly, loop, totvert, totpoly, totloop, false);
+	s = BKE_create_fracture_shard(mvert, mpoly, mloop, totvert, totpoly, totloop, false);
 	s->neighbor_ids = neighbors;
 	s->neighbor_count = totn;
 	//s->shard_id = shard_id;
 	copy_v3_v3(s->centroid, centr);
-
-
 
 	/* if not at end of file yet, skip newlines */
 	if (feof(fp) == 0)
@@ -197,139 +207,59 @@ static Shard* parse_shard(FILE *fp)
 	return s;
 }
 
-static int parse_verts(FILE* fp, MVert** vert)
+static void parse_verts(FILE *fp, MVert *mvert, int totvert)
 {
-	int totvert = 0, i;
-	int readvert = fscanf(fp, " %d ", &totvert);
+	int i;
 
-	if (readvert == 0)
-	{
-		*vert = NULL;
-		return 0;
+	for (i = 0; i < totvert; i++) {
+		float *co = mvert[i].co;
+		fscanf(fp, "(%f,%f,%f) ", &co[0], &co[1], &co[2]);
 	}
-
-	*vert = MEM_mallocN(sizeof(MVert) * totvert, __func__);
-	for (i = 0; i < totvert; i++)
-	{
-		int readco = 0;
-		float co[3];
-
-		readco = fscanf(fp, "(%f,%f,%f) ", &co[0], &co[1], &co[2]);
-		if (readco < 3)
-		{	/* invalid cell, break and return 0, NULL */
-			MEM_freeN(*vert);
-			*vert = NULL;
-			return 0;
-		}
-		copy_v3_v3((*vert)[i].co, co);
-	}
-
-	/* skip "v "*/
-	fseek(fp, 2*sizeof(char), SEEK_CUR);
-
-	if (i < totvert)
-	{
-		MEM_freeN(*vert);
-		*vert = NULL;
-		return 0;
-	}
-
-	return totvert;
 }
 
-static void parse_polys(FILE *fp, MPoly **poly, MLoop **loop, int *totpoly, int *totloop)
+static void parse_polys(FILE *fp, MPoly *mpoly, int totpoly, int *r_totloop)
 {
-	int read_index = 0;
-	int index = -1;
-	int i = 0;
+	int i;
+	int totloop = 0;
 
-	int readpoly = fscanf(fp, " %d ", totpoly);
-
-	if (readpoly == 0)
-	{
-		*poly = NULL;
-		*loop = NULL;
-		*totpoly = 0;
-		*totloop = 0;
-		return;
+	for (i = 0; i < totpoly; ++i) {
+		int numloop;
+		
+		fscanf(fp, "%d ", &numloop);
+		
+		mpoly[i].loopstart = totloop;
+		mpoly[i].totloop = numloop;
+		
+		totloop += numloop;
 	}
+	
+	*r_totloop = totloop;
+}
 
-	*poly = MEM_mallocN(sizeof(MPoly) * (*totpoly), __func__);
+static void parse_loops(FILE *fp, MLoop *mloop, int UNUSED(totloop), MPoly *mpoly, int totpoly)
+{
+	int i, k;
 
-	while(1)
-	{
-		int faceloop = 0;
-		read_index = fscanf(fp, "(%d", &index);
-		if (read_index == 0) {
-			/* skip ") f "*/
-			fseek(fp, 3*sizeof(char), SEEK_CUR);
-			return;
+	for (i = 0; i < totpoly; ++i) {
+		int loopstart = mpoly[i].loopstart;
+		int numloop = mpoly[i].totloop;
+		
+		/* skip "(" */
+		fseek(fp, sizeof(char), SEEK_CUR);
+		
+		for (k = 0; k < numloop; ++k) {
+			int index;
+			
+			fscanf(fp, "%d", &index);
+			
+			mloop[loopstart + k].v = index;
+			
+			/* skip "," or ")" */
+			fseek(fp, sizeof(char), SEEK_CUR);
 		}
-
-		if (*totloop == 0)
-		{
-			*loop = MEM_mallocN(sizeof(MLoop), __func__);
-		}
-		else
-		{
-			*loop = MEM_reallocN(*loop, sizeof(MLoop) * ((*totloop)+1));
-		}
-
-		(*loop)[*totloop].v = index;
-		(*loop)[*totloop].e = *totloop;
-		faceloop++;
-		(*totloop)++;
-
-		while (1)
-		{
-			read_index = fscanf(fp, ",%d", &index);
-			if (!read_index) {
-				char test= ' ';
-				fscanf(fp, "%c", &test);
-				// if end marker not reached...
-				if (test != ')')
-				{
-					//invalid cell, throw away...
-					MEM_freeN(*poly);
-					MEM_freeN(*loop);
-					*poly = NULL;
-					*loop = NULL;
-					*totpoly = 0;
-					return;
-				}
-				else
-				{
-					break;
-				}
-			}
-			// loop[totloop].e =  how on earth create edge indexes for loop ? */
-			*loop = MEM_reallocN(*loop, sizeof(MLoop) * ((*totloop)+1));
-			(*loop)[*totloop].v = index;
-			(*loop)[*totloop].e = *totloop;
-			faceloop++;
-			(*totloop)++;
-		}
-
-
-		/* skip ") "*/
-		fseek(fp, 1*sizeof(char), SEEK_CUR);
-
-		/* faceloop, 3 loops at least necessary ?, prevent degenerates... disable for now */
-		(*poly)[i].loopstart = *totloop - faceloop;
-		(*poly)[i].totloop = faceloop;
-		(*poly)[i].mat_nr = 0;
-		(*poly)[i].flag = 0;
-		i++;
-	}
-
-	if (i < *totpoly)
-	{
-		MEM_freeN(*poly);
-		MEM_freeN(*loop);
-		*poly = NULL;
-		*loop = NULL;
-		*totpoly = 0;
-		*totloop = 0;
+		
+		/* skip " " */
+		fseek(fp, sizeof(char), SEEK_CUR);
 	}
 }
 
@@ -611,7 +541,15 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	 */
 	
 	stream = open_memstream(&bp, &size);
-	container_print_custom(voro_loop_order, voro_container, "%i %w %P v %s %t f %C n %n x", stream);
+	container_print_custom(voro_loop_order, voro_container, "%i %w %P v %s %a %t f %C n %n x", stream);
+#if 0
+	{ /* DEBUG PRINT */
+		fflush (stream);
+		printf("================================\n");
+		printf(bp);
+		printf("================================\n");
+	}
+#endif
 	fclose (stream);
 	
 	free(voro_particle_order);
