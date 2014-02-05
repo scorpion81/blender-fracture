@@ -179,8 +179,8 @@ static Shard* parse_shard(FILE *fp)
 	/* parse centroid */
 	fscanf(fp, "%f %f %f ", &centr[0], &centr[1], &centr[2]);
 	
-	/* skip "c "*/
-	fseek(fp, 2*sizeof(char), SEEK_CUR);
+	/* skip "c"*/
+	fseek(fp, sizeof(char), SEEK_CUR);
 	
 	s = BKE_create_fracture_shard(mvert, mpoly, mloop, totvert, totpoly, totloop, false);
 	s->neighbor_ids = neighbors;
