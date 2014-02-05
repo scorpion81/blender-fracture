@@ -47,30 +47,6 @@ static void parse_polys(FILE *fp, MPoly *mpoly, int totpoly, int *r_totloop);
 static void parse_loops(FILE *fp, MLoop *mloop, int totloop, MPoly *mpoly, int totpoly);
 static void parse_neighbors(FILE *fp, int *neighbors, int totpoly);
 static void add_shard(FracMesh *fm, Shard *s);
-static DerivedMesh *flip_normals(DerivedMesh* dm);
-
-static DerivedMesh *flip_normals(DerivedMesh *dm)
-{
-	BMesh *bm;
-	BMFace *f;
-	BMIter iter;
-
-	bm = DM_to_bmesh(dm, true);
-
-	BM_ITER_MESH(f, &iter, bm, BM_FACES_OF_MESH)
-	{
-		BM_face_normal_flip(bm, f);
-	}
-
-	dm->needsFree = 1;
-	dm->release(dm);
-	dm = NULL;
-
-	dm = CDDM_from_bmesh(bm, true);
-	BM_mesh_free(bm);
-	
-	return dm;
-}
 
 static void add_shard(FracMesh *fm, Shard *s)
 {
@@ -247,7 +223,10 @@ static void parse_loops(FILE *fp, MLoop *mloop, int UNUSED(totloop), MPoly *mpol
 			
 			fscanf(fp, "%d", &index);
 			
-			mloop[loopstart + k].v = index;
+			/* note: invert vertex order here,
+			 * otherwise normals are pointing inward
+			 */
+			mloop[loopstart + (numloop - 1) - k].v = index;
 			
 			/* skip "," or ")" */
 			fseek(fp, sizeof(char), SEEK_CUR);
@@ -677,14 +656,13 @@ void BKE_fracture_create_dm(FractureModifierData *fmd, bool do_merge)
 	fmd->dm = dm_final;
 }
 
-DerivedMesh *BKE_shard_create_dm(Shard *s, bool do_flip)
+DerivedMesh *BKE_shard_create_dm(Shard *s)
 {
 	DerivedMesh *dm;
 	MVert *mverts;
 	MLoop *mloops;
 	MPoly *mpolys;
 	
-
 	dm  = CDDM_new(s->totvert, 0, 0, s->totloop, s->totpoly);
 	mverts = CDDM_get_verts(dm);
 	mloops = CDDM_get_loops(dm);
@@ -692,13 +670,10 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool do_flip)
 	memcpy(mverts, s->mvert, s->totvert * sizeof(MVert));
 	memcpy(mloops, s->mloop, s->totloop * sizeof(MLoop));
 	memcpy(mpolys, s->mpoly, s->totpoly * sizeof(MPoly));
+	
 	CDDM_calc_edges(dm);
 	dm->dirty |= DM_DIRTY_NORMALS;
 	CDDM_calc_normals_mapping(dm);
 
-	if (do_flip == true)
-	{
-		dm = flip_normals(dm);
-	}
 	return dm;
 }
