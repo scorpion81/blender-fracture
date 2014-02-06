@@ -323,7 +323,7 @@ static void exporter_SetVert(ExportMeshData *export_data,
 	dm_orig = which_dm(export_data, which_orig_mesh);
 	if (dm_orig) {
 		BLI_assert(orig_vert_index >= 0 && orig_vert_index < dm_orig->getNumVerts(dm_orig));
-		CustomData_copy_data(&export_data->dm_left->vertData, &dm->vertData, orig_vert_index, vert_index, 1);
+		CustomData_copy_data(&dm_orig->vertData, &dm->vertData, orig_vert_index, vert_index, 1);
 	}
 
 	/* Set original index of the vertex. */
