@@ -270,8 +270,8 @@ bool carve_performBooleanOperation(CarveMeshDescr *left_mesh,
 		MeshSet<3> *left = left_mesh->poly, *right = right_mesh->poly;
 		carve::geom3d::Vector min, max;
 
-		// TODO(sergey): Make importer/exporter to care about re-scale to save extra
-		// mesh iteration here.
+		// TODO(sergey): Make importer/exporter to care about re-scale
+		// to save extra mesh iteration here.
 		carve_getRescaleMinMax(left, right, &min, &max);
 
 		carve::rescale::rescale scaler(min.x, min.y, min.z, max.x, max.y, max.z);
@@ -296,13 +296,23 @@ bool carve_performBooleanOperation(CarveMeshDescr *left_mesh,
 
 		// Prepare operands for actual boolean operation.
 		//
-		// It's needed because operands might consist of several intersecting meshes and in case
-		// of another operands intersect an edge loop of intersecting that meshes tessellation of
-		// operation result can't be done properly. The only way to make such situations working is
-		// to union intersecting meshes of the same operand.
+		// It's needed because operands might consist of several intersecting
+		// meshes and in caseof another operands intersect an edge loop of
+		// intersecting that meshes tessellation of operation result can't be
+		// done properly. The only way to make such situations working is to
+		// union intersecting meshes of the same operand.
 		carve_unionIntersections(&csg, &left, &right);
 		left_mesh->poly = left;
 		right_mesh->poly = right;
+
+		if (left->meshes.size() == 0 || right->meshes.size() == 0) {
+			// Normally shouldn't happen (zero-faces objects are handled by
+			// modifier itself), but unioning intersecting meshes which doesn't
+			// have consistent normals might lead to empty result which
+			// wouldn't work here.
+
+			return false;
+		}
 
 		output_descr->poly = csg.compute(left, right, op, NULL, carve::csg::CSG::CLASSIFY_EDGE);
 		if (output_descr->poly) {
@@ -313,8 +323,7 @@ bool carve_performBooleanOperation(CarveMeshDescr *left_mesh,
 		std::cerr << "CSG failed, exception " << e.str() << std::endl;
 	}
 	catch (...) {
-		delete output_descr;
-		throw "Unknown error in Carve library";
+		std::cerr << "Unknown error in Carve library" << std::endl;
 	}
 
 	*output_mesh = output_descr;
