@@ -37,19 +37,24 @@
 #include "BLI_rand.h"
 
 #include "DNA_object_types.h"
+#include "DNA_fracture_types.h"
 
 #include "BKE_fracture.h"
 #include "BKE_modifier.h"
 #include "BKE_object.h"
 #include "BKE_context.h"
 #include "BKE_depsgraph.h"
+#include "BKE_DerivedMesh.h"
+#include "BKE_cdderivedmesh.h"
 
 #include "ED_screen.h"
+#include "ED_view3d.h"
 
 #include "WM_types.h"
 #include "WM_api.h"
 
 #include "physics_intern.h" // own include
+//#include "bmesh.h"
 
 //#define NAMELEN 64 //namebased, yuck... better dont try longer names.... NOT happy with this, but how to find according group else ? cant store it anywhere
 static int mesh_fracture_exec(bContext *C, wmOperator *UNUSED(op))
@@ -196,4 +201,115 @@ void FRACTURE_OT_fracturemode_toggle(wmOperatorType* ot)
 
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
+
+#if 0
+/**
+ * Face selection in fracture mode,
+ * to be extended to the entire shard via select linked
+ *
+ * \return boolean true == Found
+ */
+bool fracture_mesh_pick_face(bContext *C, DerivedMesh *dm, const int mval[2], unsigned int *index, int size)
+{
+	ViewContext vc;
+
+	if (!dm || dm->getNumPolys(dm) == 0)
+		return false;
+
+	view3d_set_viewcontext(C, &vc);
+
+	if (size) {
+		/* sample rect to increase chances of selecting, so that when clicking
+		 * on an edge in the backbuf, we can still select a face */
+
+		float dummy_dist;
+		*index = view3d_sample_backbuf_rect(&vc, mval, size, 1, dm->getNumPolys(dm) + 1, &dummy_dist, 0, NULL, NULL);
+	}
+	else {
+		/* sample only on the exact position */
+		*index = view3d_sample_backbuf(&vc, mval[0], mval[1]);
+	}
+
+	if ((*index) == 0 || (*index) > (unsigned int)dm->getNumPolys(dm))
+		return false;
+
+	(*index)--;
+
+	return true;
+}
+
+int fracture_pick_shard(bContext *C, const int mval[2], bool extend, bool deselect, bool toggle)
+{
+	unsigned int index;
+	Base* bas;
+	Object* ob;
+	FractureModifierData *fmd;
+	FracMesh* fm;
+	int i = 0;
+
+	/*pick the object first ?*/
+	bas = ED_view3d_give_base_under_cursor(C, mval);
+	if (bas == NULL)
+	{
+		return false;
+	}
+	ob = bas->object;
+
+	/*do we have a frac modifier at all ?*/
+	fmd = modifiers_findByType(ob, eModifierType_Fracture);
+	if (fmd == NULL)
+	{
+		return false;
+	}
+
+	/* test all shards ? */
+	fm = fmd->frac_mesh;
+
+	for (i = 0; i < fm->shard_count; i++)
+	{
+		Shard *s = fm->shard_map[i], *s2;
+		DerivedMesh *dm = BKE_shard_create_dm(s);
+		BMesh* bm = DM_to_bmesh(dm, true);
+		BMFace *f;
+
+		/* Get the face under the cursor */
+		if (!fracture_mesh_pick_face(C, dm, mval, &index, ED_MESH_PICK_DEFAULT_FACE_SIZE))
+			return false;
+
+		if (index >= dm->getNumPolys(dm))
+			return false;
+
+		f = BM_face_at_index(bm, index);
+		if (f == NULL)
+			return false;
+
+		/* walk */
+		BMW_init(&walker, bm, BMW_ISLAND,
+		         BMW_MASK_NOP, limit ? BMO_ELE_TAG : BMW_MASK_NOP, BMW_MASK_NOP,
+		         BMW_FLAG_TEST_HIDDEN,
+		         BMW_NIL_LAY);
+
+		for (f = BMW_begin(&walker, f); f; f = BMW_step(&walker)) {
+			BM_face_select_set(bm, f, sel);
+			f->mat_nr = 1;
+		}
+
+		BMW_end(&walker);
+
+		dm->needsFree = 1;
+		dm->release(dm);
+
+		dm = CDDM_from_bmesh(bm, true);
+		BM_mesh_free(bm);
+
+		//s2 = BKE_create_fracture_shard(dm)
+		//BKE_shard_free(s);
+	}
+
+	/* image window redraw */
+	WM_event_add_notifier(C, NC_GEOM | ND_SELECT, ob->data);
+	ED_region_tag_redraw(CTX_wm_region(C)); // XXX - should redraw all 3D views
+	return true;
+}
+#endif
 

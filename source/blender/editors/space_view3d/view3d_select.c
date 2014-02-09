@@ -2254,6 +2254,8 @@ static int view3d_select_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	else if (obact && obact->mode & OB_MODE_PARTICLE_EDIT)
 		return PE_mouse_particles(C, location, extend, deselect, toggle);
+	/*else if (obact && obact->mode & OB_MODE_FRACTURE)
+		retval = fracture_pick_shard(C, location, extend, deselect, toggle);*/
 	else if (obact && paint_facesel_test(obact))
 		retval = paintface_mouse_select(C, obact, location, extend, deselect, toggle);
 	else if (paint_vertsel_test(obact))
