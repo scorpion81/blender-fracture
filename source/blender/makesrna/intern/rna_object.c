@@ -67,6 +67,7 @@ EnumPropertyItem object_mode_items[] = {
 	{OB_MODE_TEXTURE_PAINT, "TEXTURE_PAINT", ICON_TPAINT_HLT, "Texture Paint", ""},
 	{OB_MODE_PARTICLE_EDIT, "PARTICLE_EDIT", ICON_PARTICLEMODE, "Particle Edit", ""},
 	{OB_MODE_POSE, "POSE", ICON_POSE_HLT, "Pose Mode", ""},
+	{OB_MODE_FRACTURE, "FRACTURE", ICON_MOD_EXPLODE, "Fracture Edit Mode", ""},
 	{0, NULL, 0, NULL, NULL}
 };
 

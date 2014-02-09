@@ -155,3 +155,45 @@ void OBJECT_OT_fracture(wmOperatorType *ot)
 	RNA_def_int(ot->srna, "iterations", 30, 0, INT_MAX , "Solver Iterations", "Percentage of point to actually use for fracture", 0, INT_MAX);*/
 }
 
+static int fracture_mode_toggle_exec(bContext *C, wmOperator *UNUSED(op))
+{
+	Object *ob = CTX_data_active_object(C);
+	const int mode_flag = OB_MODE_FRACTURE;
+	const bool is_mode_set = (ob->mode & mode_flag) != 0;
+
+	/*if (!is_mode_set) {
+		if (!ED_object_mode_compat_set(C, ob, mode_flag, op->reports)) {
+			return OPERATOR_CANCELLED;
+		}
+	}*/
+
+	if (is_mode_set)
+	{
+		/* Leave fracturemode */
+		ob->mode &= ~mode_flag;
+
+		//could also set modifier here automagically, hmm, but leave this as is for now
+	}
+	else
+	{
+		/* Enter fracturemode */
+		ob->mode |= mode_flag;
+	}
+
+	return OPERATOR_FINISHED;
+}
+
+void FRACTURE_OT_fracturemode_toggle(wmOperatorType* ot)
+{
+	/* identifiers */
+	ot->idname = "FRACTURE_OT_fracturemode_toggle";
+	ot->name = "Fracture Mode";
+	ot->description = "Toggle fracture mode in 3D view";
+
+	/* api callbacks */
+	ot->exec = fracture_mode_toggle_exec;
+	ot->poll = ED_operator_object_active_editable_mesh;
+
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+}
+

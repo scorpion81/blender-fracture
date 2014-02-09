@@ -673,6 +673,7 @@ typedef enum ObjectMode {
 	OB_MODE_TEXTURE_PAINT = 1 << 4,
 	OB_MODE_PARTICLE_EDIT = 1 << 5,
 	OB_MODE_POSE          = 1 << 6,
+	OB_MODE_FRACTURE      = 1 << 7,
 } ObjectMode;
 
 /* any mode where the brush system is used */

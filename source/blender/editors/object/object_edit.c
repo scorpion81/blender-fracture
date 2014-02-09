@@ -1499,10 +1499,13 @@ static EnumPropertyItem *object_mode_set_itemsf(bContext *C, PointerRNA *UNUSED(
 	if (ob) {
 		const bool use_mode_particle_edit = (ob->particlesystem.first != NULL) || (ob->soft != NULL) ||
 		                                    (modifiers_findByType(ob, eModifierType_Cloth) != NULL);
+		const bool use_mode_fracture_edit = (modifiers_findByType(ob, eModifierType_Fracture) != NULL);
+
 		while (input->identifier) {
 			if ((input->value == OB_MODE_EDIT && OB_TYPE_SUPPORT_EDITMODE(ob->type)) ||
 			    (input->value == OB_MODE_POSE && (ob->type == OB_ARMATURE)) ||
 			    (input->value == OB_MODE_PARTICLE_EDIT && use_mode_particle_edit) ||
+			    (input->value == OB_MODE_FRACTURE && use_mode_fracture_edit) ||
 			    (ELEM4(input->value, OB_MODE_SCULPT, OB_MODE_VERTEX_PAINT,
 			           OB_MODE_WEIGHT_PAINT, OB_MODE_TEXTURE_PAINT) && (ob->type == OB_MESH)) ||
 			    (input->value == OB_MODE_OBJECT))
@@ -1540,6 +1543,8 @@ static const char *object_mode_op_string(int mode)
 		return "PARTICLE_OT_particle_edit_toggle";
 	if (mode == OB_MODE_POSE)
 		return "OBJECT_OT_posemode_toggle";
+	if (mode == OB_MODE_FRACTURE)
+		return "FRACTURE_OT_fracturemode_toggle";
 	return NULL;
 }
 
@@ -1555,7 +1560,8 @@ static bool object_mode_compat_test(Object *ob, ObjectMode mode)
 		switch (ob->type) {
 			case OB_MESH:
 				if (mode & (OB_MODE_EDIT | OB_MODE_SCULPT | OB_MODE_VERTEX_PAINT | OB_MODE_WEIGHT_PAINT |
-				            OB_MODE_TEXTURE_PAINT | OB_MODE_PARTICLE_EDIT))
+				            OB_MODE_TEXTURE_PAINT | OB_MODE_PARTICLE_EDIT) ||
+				            ((mode & (OB_MODE_FRACTURE)) && modifiers_findByType(ob, eModifierType_Fracture)))
 				{
 					return true;
 				}
