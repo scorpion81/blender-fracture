@@ -481,7 +481,7 @@ static void namebutton_cb(bContext *C, void *tsep, char *oldname)
 					char newname[sizeof(bone->name)];
 					
 					/* always make current object active */
-					tree_element_active(C, scene, soops, te, OL_SETSEL_NORMAL);
+					tree_element_active(C, scene, soops, te, OL_SETSEL_NORMAL, true);
 					ob = OBACT;
 					
 					/* restore bone name */
@@ -498,8 +498,10 @@ static void namebutton_cb(bContext *C, void *tsep, char *oldname)
 					char newname[sizeof(pchan->name)];
 					
 					/* always make current pose-bone active */
-					tree_element_active(C, scene, soops, te, OL_SETSEL_NORMAL);
+					tree_element_active(C, scene, soops, te, OL_SETSEL_NORMAL, true);
 					ob = OBACT;
+
+					BLI_assert(ob->type == OB_ARMATURE);
 					
 					/* restore bone name */
 					BLI_strncpy(newname, pchan->name, sizeof(pchan->name));
@@ -1122,7 +1124,7 @@ static void tselem_draw_icon(uiBlock *block, int xmax, float x, float y, TreeSto
 			case ID_LI:
 				tselem_draw_icon_uibut(&arg, ICON_LIBRARY_DATA_DIRECT); break;
 			case ID_LS:
-				tselem_draw_icon_uibut(&arg, ICON_BRUSH_DATA); break; /* FIXME proper icon */
+				tselem_draw_icon_uibut(&arg, ICON_LINE_DATA); break;
 		}
 	}
 }
@@ -1154,7 +1156,7 @@ static void outliner_draw_iconrow(bContext *C, uiBlock *block, Scene *scene, Spa
 					active = OL_DRAWSEL_NORMAL;
 				}
 				else {
-					active = tree_element_active(C, scene, soops, te, OL_SETSEL_NONE);
+					active = tree_element_active(C, scene, soops, te, OL_SETSEL_NONE, false);
 				}
 			}
 			else {
@@ -1295,7 +1297,7 @@ static void outliner_draw_tree_element(bContext *C, uiBlock *block, Scene *scene
 				active = OL_DRAWSEL_ACTIVE;
 			}
 			else {
-				if (tree_element_active(C, scene, soops, te, OL_SETSEL_NONE)) {
+				if (tree_element_active(C, scene, soops, te, OL_SETSEL_NONE, false)) {
 					glColor4ub(220, 220, 255, alpha);
 					active = OL_DRAWSEL_ACTIVE;
 				}
@@ -1422,7 +1424,7 @@ static void outliner_draw_hierarchy(SpaceOops *soops, ListBase *lb, int startx, 
 	TreeStoreElem *tselem;
 	int y1, y2;
 	
-	if (lb->first == NULL) return;
+	if (BLI_listbase_is_empty(lb)) return;
 	
 	y1 = y2 = *starty; /* for vertical lines between objects */
 	for (te = lb->first; te; te = te->next) {

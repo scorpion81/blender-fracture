@@ -316,38 +316,30 @@ ccl_device_inline void path_radiance_reset_indirect(PathRadiance *L)
 #endif
 }
 
-ccl_device_inline float3 path_radiance_sum(KernelGlobals *kg, PathRadiance *L)
+ccl_device_inline float3 path_radiance_clamp_and_sum(KernelGlobals *kg, PathRadiance *L)
 {
+	float3 L_sum, L_direct, L_indirect;
+	float clamp_direct = kernel_data.integrator.sample_clamp_direct;
+	float clamp_indirect = kernel_data.integrator.sample_clamp_indirect;
+
+	/* Light Passes are used */
 #ifdef __PASSES__
 	if(L->use_light_pass) {
 		path_radiance_sum_indirect(L);
 
-		float3 L_sum = L->emission
-			+ L->direct_diffuse + L->direct_glossy + L->direct_transmission + L->direct_subsurface
-			+ L->indirect_diffuse + L->indirect_glossy + L->indirect_transmission + L->indirect_subsurface;
+		L_direct = L->direct_diffuse + L->direct_glossy + L->direct_transmission + L->direct_subsurface + L->emission;
+		L_indirect = L->indirect_diffuse + L->indirect_glossy + L->indirect_transmission + L->indirect_subsurface;
 
 		if(!kernel_data.background.transparent)
-			L_sum += L->background;
+			L_direct += L->background;
 
-		return L_sum;
-	}
-	else
-		return L->emission;
-#else
-	return *L;
-#endif
-}
+		L_sum = L_direct + L_indirect;
+		float sum = fabsf((L_sum).x) + fabsf((L_sum).y) + fabsf((L_sum).z);
 
-ccl_device_inline void path_radiance_clamp(PathRadiance *L, float3 *L_sum, float clamp)
-{
-	float sum = fabsf((*L_sum).x) + fabsf((*L_sum).y) + fabsf((*L_sum).z);
+		/* Reject invalid value */
+		if(!isfinite(sum)) {
+			L_sum = make_float3(0.0f, 0.0f, 0.0f);
 
-	if(!isfinite(sum)) {
-		/* invalid value, reject */
-		*L_sum = make_float3(0.0f, 0.0f, 0.0f);
-
-#ifdef __PASSES__
-		if(L->use_light_pass) {
 			L->direct_diffuse = make_float3(0.0f, 0.0f, 0.0f);
 			L->direct_glossy = make_float3(0.0f, 0.0f, 0.0f);
 			L->direct_transmission = make_float3(0.0f, 0.0f, 0.0f);
@@ -360,30 +352,59 @@ ccl_device_inline void path_radiance_clamp(PathRadiance *L, float3 *L_sum, float
 
 			L->emission = make_float3(0.0f, 0.0f, 0.0f);
 		}
-#endif
-	}
-	else if(sum > clamp) {
-		/* value to high, scale down */
-		float scale = clamp/sum;
 
-		*L_sum *= scale;
+		/* Clamp direct and indirect samples */
+#ifdef __CLAMP_SAMPLE__
+		else if(sum > clamp_direct || sum > clamp_indirect) {
+			float scale;
 
-#ifdef __PASSES__
-		if(L->use_light_pass) {
-			L->direct_diffuse *= scale;
-			L->direct_glossy *= scale;
-			L->direct_transmission *= scale;
-			L->direct_subsurface *= scale;
+			/* Direct */
+			float sum_direct = fabsf(L_direct.x) + fabsf(L_direct.y) + fabsf(L_direct.z);
+			if(sum_direct > clamp_direct) {
+				scale = clamp_direct/sum_direct;
+				L_direct *= scale;
 
-			L->indirect_diffuse *= scale;
-			L->indirect_glossy *= scale;
-			L->indirect_transmission *= scale;
-			L->indirect_subsurface *= scale;
+				L->direct_diffuse *= scale;
+				L->direct_glossy *= scale;
+				L->direct_transmission *= scale;
+				L->direct_subsurface *= scale;
+				L->emission *= scale;
+				L->background *= scale;
+			}
 
-			L->emission *= scale;
+			/* Indirect */
+			float sum_indirect = fabsf(L_indirect.x) + fabsf(L_indirect.y) + fabsf(L_indirect.z);
+			if(sum_indirect > clamp_indirect) {
+				scale = clamp_indirect/sum_indirect;
+				L_indirect *= scale;
+
+				L->indirect_diffuse *= scale;
+				L->indirect_glossy *= scale;
+				L->indirect_transmission *= scale;
+				L->indirect_subsurface *= scale;
+			}
+
+			/* Sum again, after clamping */
+			L_sum = L_direct + L_indirect;
 		}
 #endif
+
+		return L_sum;
 	}
+
+	/* No Light Passes */
+	else
+		L_sum = L->emission;
+#else
+	L_sum = *L;
+#endif
+
+	/* Reject invalid value */
+	float sum = fabsf((L_sum).x) + fabsf((L_sum).y) + fabsf((L_sum).z);
+	if(!isfinite(sum))
+		L_sum = make_float3(0.0f, 0.0f, 0.0f);
+
+	return L_sum;
 }
 
 CCL_NAMESPACE_END

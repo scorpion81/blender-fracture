@@ -393,7 +393,7 @@ void filelist_init_icons(void)
 	ImBuf *bbuf;
 	ImBuf *ibuf;
 
-	BLI_assert(G.background == FALSE);
+	BLI_assert(G.background == false);
 
 #ifdef WITH_HEADLESS
 	bbuf = NULL;
@@ -421,7 +421,7 @@ void filelist_free_icons(void)
 {
 	int i;
 
-	BLI_assert(G.background == FALSE);
+	BLI_assert(G.background == false);
 
 	for (i = 0; i < SPECIAL_IMG_MAX; ++i) {
 		IMB_freeImBuf(gSpecialFileImages[i]);
@@ -624,7 +624,7 @@ ImBuf *filelist_getimage(struct FileList *filelist, int index)
 	ImBuf *ibuf = NULL;
 	int fidx = 0;
 
-	BLI_assert(G.background == FALSE);
+	BLI_assert(G.background == false);
 
 	if ((index < 0) || (index >= filelist->numfiltered)) {
 		return NULL;
@@ -641,7 +641,7 @@ ImBuf *filelist_geticon(struct FileList *filelist, int index)
 	struct direntry *file = NULL;
 	int fidx = 0;
 
-	BLI_assert(G.background == FALSE);
+	BLI_assert(G.background == false);
 
 	if ((index < 0) || (index >= filelist->numfiltered)) {
 		return NULL;
@@ -745,19 +745,17 @@ void filelist_setfilter_types(struct FileList *filelist, const char *filter_glob
 }
 
 /* would recognize .blend as well */
-static int file_is_blend_backup(const char *str)
+static bool file_is_blend_backup(const char *str)
 {
-	short a, b;
-	int retval = 0;
-	
-	a = strlen(str);
-	b = 7;
-	
+	const size_t a = strlen(str);
+	size_t b = 7;
+	bool retval = 0;
+
 	if (a == 0 || b >= a) {
 		/* pass */
 	}
 	else {
-		char *loc;
+		const char *loc;
 		
 		if (a > b + 1)
 			b++;
@@ -1035,7 +1033,7 @@ bool filelist_islibrary(struct FileList *filelist, char *dir, char *group)
 
 static int groupname_to_code(const char *group)
 {
-	char buf[32];
+	char buf[BLO_GROUP_MAX];
 	char *lslash;
 	
 	BLI_strncpy(buf, group, sizeof(buf));
@@ -1043,7 +1041,7 @@ static int groupname_to_code(const char *group)
 	if (lslash)
 		lslash[0] = '\0';
 
-	return BKE_idcode_from_name(buf);
+	return buf[0] ? BKE_idcode_from_name(buf) : 0;
 }
  
 void filelist_from_library(struct FileList *filelist)
@@ -1335,7 +1333,7 @@ static void thumbnails_startjob(void *tjv, short *stop, short *do_update, float 
 				limg->flags |= MOVIEFILE_ICON;
 			}
 		}
-		*do_update = TRUE;
+		*do_update = true;
 		PIL_sleep_ms(10);
 		limg = limg->next;
 	}
@@ -1355,7 +1353,7 @@ static void thumbnails_update(void *tjv)
 					tj->filelist->filelist[limg->index].flags &= ~MOVIEFILE;
 					tj->filelist->filelist[limg->index].flags |= MOVIEFILE_ICON;
 				}
-				limg->done = TRUE;
+				limg->done = true;
 			}
 			limg = limg->next;
 		}

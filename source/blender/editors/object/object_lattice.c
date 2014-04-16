@@ -523,7 +523,7 @@ static int lattice_select_ungrouped_exec(bContext *C, wmOperator *op)
 	BPoint *bp;
 	int a, tot;
 
-	if (obedit->defbase.first == NULL || lt->dvert == NULL) {
+	if (BLI_listbase_is_empty(&obedit->defbase) || lt->dvert == NULL) {
 		BKE_report(op->reports, RPT_ERROR, "No weights/vertex groups on object");
 		return OPERATOR_CANCELLED;
 	}
@@ -867,7 +867,7 @@ static BPoint *findnearestLattvert(ViewContext *vc, const int mval[2], int sel)
 	/* return 0 1 2: handlepunt */
 	struct { BPoint *bp; float dist; int select; float mval_fl[2]; } data = {NULL};
 
-	data.dist = 100;
+	data.dist = ED_view3d_select_dist_px();
 	data.select = sel;
 	data.mval_fl[0] = mval[0];
 	data.mval_fl[1] = mval[1];
@@ -886,7 +886,7 @@ bool mouse_lattice(bContext *C, const int mval[2], bool extend, bool deselect, b
 
 	view3d_set_viewcontext(C, &vc);
 	lt = ((Lattice *)vc.obedit->data)->editlatt->latt;
-	bp = findnearestLattvert(&vc, mval, TRUE);
+	bp = findnearestLattvert(&vc, mval, true);
 
 	if (bp) {
 		if (extend) {

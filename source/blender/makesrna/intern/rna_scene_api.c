@@ -69,7 +69,8 @@ static void rna_Scene_frame_set(Scene *scene, int frame, float subframe)
 	BPy_BEGIN_ALLOW_THREADS;
 #endif
 
-	BKE_scene_update_for_newframe(G.main->eval_ctx, G.main, scene, (1 << 20) - 1);
+	/* It's possible that here we're including layers which were never visible before. */
+	BKE_scene_update_for_newframe_ex(G.main->eval_ctx, G.main, scene, (1 << 20) - 1, true);
 
 #ifdef WITH_PYTHON
 	BPy_END_ALLOW_THREADS;
@@ -107,8 +108,8 @@ static void rna_SceneRender_get_frame_path(RenderData *rd, int frame, char *name
 	if (BKE_imtype_is_movie(rd->im_format.imtype))
 		BKE_movie_filepath_get(name, rd);
 	else
-		BKE_makepicstring(name, rd->pic, G.main->name, (frame == INT_MIN) ? rd->cfra : frame, &rd->im_format,
-		                  rd->scemode & R_EXTENSION, TRUE);
+		BKE_makepicstring(name, rd->pic, G.main->name, (frame == INT_MIN) ? rd->cfra : frame,
+		                  &rd->im_format, (rd->scemode & R_EXTENSION) != 0, true);
 }
 
 static void rna_Scene_ray_cast(Scene *scene, float ray_start[3], float ray_end[3],

@@ -587,13 +587,16 @@ void buttons_context_compute(const bContext *C, SpaceButs *sbuts)
 	PointerRNA *ptr;
 	int a, pflag = 0, flag = 0;
 
-	buttons_texture_context_compute(C, sbuts);
-
 	if (!sbuts->path)
 		sbuts->path = MEM_callocN(sizeof(ButsContextPath), "ButsContextPath");
-	
+
 	path = sbuts->path;
-	
+
+	/* We need to set Scene path now! Else, buttons_texture_context_compute() might not get a valid scene. */
+	buttons_context_path(C, path, BCONTEXT_SCENE, pflag);
+
+	buttons_texture_context_compute(C, sbuts);
+
 	/* for each context, see if we can compute a valid path to it, if
 	 * this is the case, we know we have to display the button */
 	for (a = 0; a < BCONTEXT_TOT; a++) {
@@ -656,7 +659,7 @@ void buttons_context_compute(const bContext *C, SpaceButs *sbuts)
 /************************* Context Callback ************************/
 
 const char *buttons_context_dir[] = {
-	"texture_slot", "world", "object", "mesh", "armature", "lattice", "curve",
+	"texture_slot", "scene", "world", "object", "mesh", "armature", "lattice", "curve",
 	"meta_ball", "lamp", "speaker", "camera", "material", "material_slot",
 	"texture", "texture_user", "texture_user_property", "bone", "edit_bone",
 	"pose_bone", "particle_system", "particle_system_editable", "particle_settings",
@@ -680,6 +683,10 @@ int buttons_context(const bContext *C, const char *member, bContextDataResult *r
 		else
 			CTX_data_dir_set(result, buttons_context_dir);
 		return 1;
+	}
+	else if (CTX_data_equals(member, "scene")) {
+		/* Do not return one here if scene not found in path, in this case we want to get default context scene! */
+		return set_pointer_type(path, result, &RNA_Scene);
 	}
 	else if (CTX_data_equals(member, "world")) {
 		set_pointer_type(path, result, &RNA_World);
@@ -1012,13 +1019,13 @@ void buttons_context_draw(const bContext *C, uiLayout *layout)
 	if (!path)
 		return;
 
-	row = uiLayoutRow(layout, TRUE);
+	row = uiLayoutRow(layout, true);
 	uiLayoutSetAlignment(row, UI_LAYOUT_ALIGN_LEFT);
 
 	block = uiLayoutGetBlock(row);
 	uiBlockSetEmboss(block, UI_EMBOSSN);
 	but = uiDefIconButBitC(block, ICONTOG, SB_PIN_CONTEXT, 0, ICON_UNPINNED, 0, 0, UI_UNIT_X, UI_UNIT_Y, &sbuts->flag,
-	                       0, 0, 0, 0, IFACE_("Follow context or keep fixed datablock displayed"));
+	                       0, 0, 0, 0, TIP_("Follow context or keep fixed datablock displayed"));
 	uiButClearFlag(but, UI_BUT_UNDO); /* skip undo on screen buttons */
 	uiButSetFunc(but, pin_cb, NULL, NULL);
 

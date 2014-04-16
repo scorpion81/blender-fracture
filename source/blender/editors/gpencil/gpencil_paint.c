@@ -275,9 +275,9 @@ static void gp_stroke_convertcoords(tGPsdata *p, const int mval[2], float out[3]
 			 */
 		}
 		else {
-			int mval_prj[2];
+			float mval_prj[2];
 			float rvec[3], dvec[3];
-			float mval_f[2];
+			float mval_f[2] = {UNPACK2(mval)};
 			float zfac;
 			
 			/* Current method just converts each point in screen-coordinates to
@@ -291,11 +291,9 @@ static void gp_stroke_convertcoords(tGPsdata *p, const int mval[2], float out[3]
 			
 			gp_get_3d_reference(p, rvec);
 			zfac = ED_view3d_calc_zfac(p->ar->regiondata, rvec, NULL);
-			
-			/* method taken from editview.c - mouse_cursor() */
-			/* TODO, use ED_view3d_project_float_global */
-			if (ED_view3d_project_int_global(p->ar, rvec, mval_prj, V3D_PROJ_TEST_NOP) == V3D_PROJ_RET_OK) {
-				VECSUB2D(mval_f, mval_prj, mval);
+
+			if (ED_view3d_project_float_global(p->ar, rvec, mval_prj, V3D_PROJ_TEST_NOP) == V3D_PROJ_RET_OK) {
+				sub_v2_v2v2(mval_f, mval_prj, mval_f);
 				ED_view3d_win_to_delta(p->ar, mval_f, dvec, zfac);
 				sub_v3_v3v3(out, rvec, dvec);
 			}
@@ -668,16 +666,16 @@ static void gp_stroke_newfrombuffer(tGPsdata *p)
 				if ((ED_view3d_autodist_depth(p->ar, mval, depth_margin, depth_arr + i) == 0) &&
 				    (i && (ED_view3d_autodist_depth_seg(p->ar, mval, mval_prev, depth_margin + 1, depth_arr + i) == 0)))
 				{
-					interp_depth = TRUE;
+					interp_depth = true;
 				}
 				else {
-					found_depth = TRUE;
+					found_depth = true;
 				}
 				
 				copy_v2_v2_int(mval_prev, mval);
 			}
 			
-			if (found_depth == FALSE) {
+			if (found_depth == false) {
 				/* eeh... not much we can do.. :/, ignore depth in this case, use the 3D cursor */
 				for (i = gpd->sbuffer_size - 1; i >= 0; i--)
 					depth_arr[i] = 0.9999f;
@@ -704,7 +702,7 @@ static void gp_stroke_newfrombuffer(tGPsdata *p)
 					for (i = first_valid + 1; i < last_valid; i++)
 						depth_arr[i] = FLT_MAX;
 					
-					interp_depth = TRUE;
+					interp_depth = true;
 				}
 				
 				if (interp_depth) {
@@ -886,11 +884,11 @@ static short gp_stroke_eraser_strokeinside(const int mval[2], const int UNUSED(m
 	const float screen_co_b[2] = {x1, y1};
 	
 	if (edge_inside_circle(mval_fl, rad, screen_co_a, screen_co_b)) {
-		return TRUE;
+		return true;
 	}
 	
 	/* not inside */
-	return FALSE;
+	return false;
 } 
 
 static void gp_point_to_xy(ARegion *ar, View2D *v2d, rctf *subrect, bGPDstroke *gps, bGPDspoint *pt,
@@ -1145,7 +1143,7 @@ static int gp_session_initdata(bContext *C, tGPsdata *p)
 				MovieClip *clip = ED_space_clip_get_clip(sc);
 				int framenr = ED_space_clip_get_clip_frame_number(sc);
 				MovieTrackingTrack *track = BKE_tracking_track_get_active(&clip->tracking);
-				MovieTrackingMarker *marker = BKE_tracking_marker_get_exact(track, framenr);
+				MovieTrackingMarker *marker = BKE_tracking_marker_get(track, framenr);
 				
 				p->imat[3][0] -= marker->pos[0];
 				p->imat[3][1] -= marker->pos[1];
@@ -1280,7 +1278,7 @@ static void gp_paint_initstroke(tGPsdata *p, short paintmode)
 			
 			/* for camera view set the subrect */
 			if (rv3d->persp == RV3D_CAMOB) {
-				ED_view3d_calc_camera_border(p->scene, p->ar, v3d, rv3d, &p->subrect_data, TRUE); /* no shift */
+				ED_view3d_calc_camera_border(p->scene, p->ar, v3d, rv3d, &p->subrect_data, true); /* no shift */
 				p->subrect = &p->subrect_data;
 			}
 		}
@@ -1438,7 +1436,7 @@ static void gpencil_draw_exit(bContext *C, wmOperator *op)
 		/* check size of buffer before cleanup, to determine if anything happened here */
 		if (p->paintmode == GP_PAINTMODE_ERASER) {
 			/* turn off radial brush cursor */
-			gpencil_draw_toggle_eraser_cursor(C, p, FALSE);
+			gpencil_draw_toggle_eraser_cursor(C, p, false);
 			
 			/* if successful, store the new eraser size to be used again next time */
 			if (p->status == GP_STATUS_DONE)
@@ -1758,7 +1756,7 @@ static int gpencil_draw_invoke(bContext *C, wmOperator *op, const wmEvent *event
 
 	/* if eraser is on, draw radial aid */
 	if (p->paintmode == GP_PAINTMODE_ERASER) {
-		gpencil_draw_toggle_eraser_cursor(C, p, TRUE);
+		gpencil_draw_toggle_eraser_cursor(C, p, true);
 	}
 	
 	/* set cursor */

@@ -497,9 +497,9 @@ void *MEM_guarded_mallocN(size_t len, const char *str)
 	
 	memh = (MemHead *)malloc(len + sizeof(MemHead) + sizeof(MemTail));
 
-	if (memh) {
+	if (LIKELY(memh)) {
 		make_memhead_header(memh, len, str);
-		if (malloc_debug_memset && len)
+		if (UNLIKELY(malloc_debug_memset && len))
 			memset(memh + 1, 255, len);
 
 #ifdef DEBUG_MEMCOUNTER
@@ -544,7 +544,7 @@ void *MEM_guarded_mapallocN(size_t len, const char *str)
 	/* on 64 bit, simply use calloc instead, as mmap does not support
 	 * allocating > 4 GB on Windows. the only reason mapalloc exists
 	 * is to get around address space limitations in 32 bit OSes. */
-	if(sizeof(void*) >= 8)
+	if (sizeof(void *) >= 8)
 		return MEM_guarded_callocN(len, str);
 
 	len = SIZET_ALIGN_4(len);
@@ -735,7 +735,7 @@ static void MEM_guarded_printmemlist_internal(int pydict)
 			            membl->_count);
 #else
 			print_error("%s len: " SIZET_FORMAT " %p\n",
-			            membl->name, SIZET_ARG(membl->len), membl + 1);
+			            membl->name, SIZET_ARG(membl->len), (void *)(membl + 1));
 #endif
 #ifdef DEBUG_BACKTRACE
 			print_memhead_backtrace(membl);
@@ -951,7 +951,7 @@ static void rem_memblock(MemHead *memh)
 #endif
 	}
 	else {
-		if (malloc_debug_memset && memh->len)
+		if (UNLIKELY(malloc_debug_memset && memh->len))
 			memset(memh + 1, 255, memh->len);
 		free(memh);
 	}

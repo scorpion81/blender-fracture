@@ -75,6 +75,8 @@ int     BLI_system_thread_count(void); /* gets the number of threads the system 
 void    BLI_system_num_threads_override_set(int num);
 int     BLI_system_num_threads_override_get(void);
 
+int     BLI_omp_thread_count(void); /* gets the number of openmp threads the system can make use of */
+	
 /* Global Mutex Locks
  * 
  * One custom lock available now. can be extended. */
@@ -88,6 +90,7 @@ int     BLI_system_num_threads_override_get(void);
 #define LOCK_NODES      6
 #define LOCK_MOVIECLIP  7
 #define LOCK_COLORMANAGE 8
+#define LOCK_FFTW       9
 
 void    BLI_lock_thread(int type);
 void    BLI_unlock_thread(int type);

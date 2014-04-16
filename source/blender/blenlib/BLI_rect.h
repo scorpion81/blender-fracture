@@ -52,6 +52,8 @@ void BLI_rctf_init_minmax(struct rctf *rect);
 void BLI_rcti_do_minmax_v(struct rcti *rect, const int xy[2]);
 void BLI_rctf_do_minmax_v(struct rctf *rect, const float xy[2]);
 
+void BLI_rctf_transform_pt_v(const rctf *dst, const rctf *src, float xy_dst[2], const float xy_src[2]);
+
 void BLI_rctf_translate(struct rctf *rect, float x, float y);
 void BLI_rcti_translate(struct rcti *rect, int x, int y);
 void BLI_rcti_recenter(struct rcti *rect, int x, int y);
@@ -89,6 +91,9 @@ void BLI_rctf_rcti_copy(struct rctf *dst, const struct rcti *src);
 
 void print_rctf(const char *str, const struct rctf *rect);
 void print_rcti(const char *str, const struct rcti *rect);
+
+#define print_rctf_id(rect) print_rctf(STRINGIFY(rect), rect)
+#define print_rcti_id(rect) print_rcti(STRINGIFY(rect), rect)
 
 BLI_INLINE float BLI_rcti_cent_x_fl(const struct rcti *rct) { return (float)(rct->xmin + rct->xmax) / 2.0f; }
 BLI_INLINE float BLI_rcti_cent_y_fl(const struct rcti *rct) { return (float)(rct->ymin + rct->ymax) / 2.0f; }

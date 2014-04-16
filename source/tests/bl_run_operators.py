@@ -105,7 +105,7 @@ def blend_list(mainpath):
 
     def is_blend(filename):
         ext = splitext(filename)[1]
-        return (ext in {".blend",})
+        return (ext in {".blend", })
 
     return list(sorted(file_list(mainpath, is_blend)))
 
@@ -450,7 +450,7 @@ def main():
     for operators_test in ((), operators):
         # Run the operator tests in different contexts
         run_ops(operators_test, setup_func=lambda: None)
-        
+
         if USE_FILES:
             continue
 

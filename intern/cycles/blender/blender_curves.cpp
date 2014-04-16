@@ -174,8 +174,8 @@ bool ObtainCacheParticleData(Mesh *mesh, BL::Mesh *b_mesh, BL::Object *b_ob, Par
 				CData->curvekey_time.reserve(CData->curvekey_time.size() + num_add*(ren_step+1));
 
 				for(; pa_no < totparts+totchild; pa_no++) {
+					int keynum = 0;
 					CData->curve_firstkey.push_back(keyno);
-					CData->curve_keynum.push_back(ren_step+1);
 					
 					float curve_length = 0.0f;
 					float3 pcKey;
@@ -184,14 +184,20 @@ bool ObtainCacheParticleData(Mesh *mesh, BL::Mesh *b_mesh, BL::Object *b_ob, Par
 						b_psys.co_hair(*b_ob, pa_no, step_no, nco);
 						float3 cKey = make_float3(nco[0], nco[1], nco[2]);
 						cKey = transform_point(&itfm, cKey);
-						if(step_no > 0)
-							curve_length += len(cKey - pcKey);
+						if(step_no > 0) {
+							float step_length = len(cKey - pcKey);
+							if(step_length == 0.0f)
+								continue;
+							curve_length += step_length;
+						}
 						CData->curvekey_co.push_back(cKey);
 						CData->curvekey_time.push_back(curve_length);
 						pcKey = cKey;
 						keyno++;
+						keynum++;
 					}
 
+					CData->curve_keynum.push_back(keynum);
 					CData->curve_length.push_back(curve_length);
 					curvenum++;
 				}
@@ -431,7 +437,7 @@ void ExportCurveTriangleGeometry(Mesh *mesh, ParticleCurveData *CData, int resol
 				continue;
 
 			float3 firstxbasis = cross(make_float3(1.0f,0.0f,0.0f),CData->curvekey_co[CData->curve_firstkey[curve]+1] - CData->curvekey_co[CData->curve_firstkey[curve]]);
-			if(len_squared(firstxbasis)!= 0.0f)
+			if(!is_zero(firstxbasis))
 				firstxbasis = normalize(firstxbasis);
 			else
 				firstxbasis = normalize(cross(make_float3(0.0f,1.0f,0.0f),CData->curvekey_co[CData->curve_firstkey[curve]+1] - CData->curvekey_co[CData->curve_firstkey[curve]]));
@@ -582,7 +588,7 @@ void ExportCurveSegments(Scene *scene, Mesh *mesh, ParticleCurveData *CData)
 				float radius = shaperadius(CData->psys_shape[sys], CData->psys_rootradius[sys], CData->psys_tipradius[sys], time);
 
 				if(CData->psys_closetip[sys] && (curvekey == CData->curve_firstkey[curve] + CData->curve_keynum[curve] - 1))
-					radius =0.0f;
+					radius = 0.0f;
 
 				mesh->add_curve_key(ickey_loc, radius);
 				if(attr_intercept)
@@ -606,16 +612,23 @@ void ExportCurveSegments(Scene *scene, Mesh *mesh, ParticleCurveData *CData)
 	}
 }
 
-static void ExportCurveSegmentsMotion(Scene *scene, Mesh *mesh, ParticleCurveData *CData, int motion)
+static void ExportCurveSegmentsMotion(Scene *scene, Mesh *mesh, ParticleCurveData *CData, int time_index)
 {
+	/* find attribute */
+	Attribute *attr_mP = mesh->curve_attributes.find(ATTR_STD_MOTION_VERTEX_POSITION);
+	bool new_attribute = false;
+
+	/* add new attribute if it doesn't exist already */
+	if(!attr_mP) {
+		attr_mP = mesh->curve_attributes.add(ATTR_STD_MOTION_VERTEX_POSITION);
+		new_attribute = true;
+	}
+
 	/* export motion vectors for curve keys */
-	AttributeStandard std = (motion == -1)? ATTR_STD_MOTION_PRE: ATTR_STD_MOTION_POST;
-	Attribute *attr_motion = mesh->curve_attributes.add(std);
-	float3 *data_motion = attr_motion->data_float3();
-	float3 *current_motion = data_motion;
-	size_t size = mesh->curve_keys.size();
-	size_t i = 0;
+	size_t numkeys = mesh->curve_keys.size();
+	float4 *mP = attr_mP->data_float4() + time_index*numkeys;
 	bool have_motion = false;
+	int i = 0;
 
 	for(int sys = 0; sys < CData->psys_firstcurve.size(); sys++) {
 		if(CData->psys_curvenum[sys] == 0)
@@ -627,15 +640,21 @@ static void ExportCurveSegmentsMotion(Scene *scene, Mesh *mesh, ParticleCurveDat
 
 			for(int curvekey = CData->curve_firstkey[curve]; curvekey < CData->curve_firstkey[curve] + CData->curve_keynum[curve]; curvekey++) {
 				if(i < mesh->curve_keys.size()) {
-					*current_motion = CData->curvekey_co[curvekey];
+					float3 ickey_loc = CData->curvekey_co[curvekey];
+					float time = CData->curvekey_time[curvekey]/CData->curve_length[curve];
+					float radius = shaperadius(CData->psys_shape[sys], CData->psys_rootradius[sys], CData->psys_tipradius[sys], time);
+
+					if(CData->psys_closetip[sys] && (curvekey == CData->curve_firstkey[curve] + CData->curve_keynum[curve] - 1))
+						radius = 0.0f;
+
+					mP[i] = float3_to_float4(ickey_loc);
+					mP[i].w = radius;
 
 					/* unlike mesh coordinates, these tend to be slightly different
 					 * between frames due to particle transforms into/out of object
 					 * space, so we use an epsilon to detect actual changes */
-					if(len_squared(*current_motion - mesh->curve_keys[i].co) > 1e-5f*1e-5f)
+					if(len_squared(mP[i] - mesh->curve_keys[i]) > 1e-5f*1e-5f)
 						have_motion = true;
-
-					current_motion++;
 				}
 
 				i++;
@@ -643,8 +662,23 @@ static void ExportCurveSegmentsMotion(Scene *scene, Mesh *mesh, ParticleCurveDat
 		}
 	}
 
-	if(i != size || !have_motion)
-		mesh->curve_attributes.remove(std);
+	/* in case of new attribute, we verify if there really was any motion */
+	if(new_attribute) {
+		if(i != numkeys || !have_motion) {
+			/* no motion, remove attributes again */
+			mesh->curve_attributes.remove(ATTR_STD_MOTION_VERTEX_POSITION);
+		}
+		else if(time_index > 0) {
+			/* motion, fill up previous steps that we might have skipped because
+			 * they had no motion, but we need them anyway now */
+			for(int step = 0; step < time_index; step++) {
+				float4 *mP = attr_mP->data_float4() + step*numkeys;
+
+				for(int key = 0; key < numkeys; key++)
+					mP[key] = mesh->curve_keys[key];
+			}
+		}
+	}
 }
 
 void ExportCurveTriangleUV(Mesh *mesh, ParticleCurveData *CData, int vert_offset, int resol, float3 *uvdata)
@@ -790,7 +824,7 @@ void BlenderSync::sync_curve_settings()
 		curve_system_manager->tag_update(scene);
 }
 
-void BlenderSync::sync_curves(Mesh *mesh, BL::Mesh b_mesh, BL::Object b_ob, int motion)
+void BlenderSync::sync_curves(Mesh *mesh, BL::Mesh b_mesh, BL::Object b_ob, bool motion, int time_index)
 {
 	if(!motion) {
 		/* Clear stored curve data */
@@ -802,7 +836,7 @@ void BlenderSync::sync_curves(Mesh *mesh, BL::Mesh b_mesh, BL::Object b_ob, int 
 	/* obtain general settings */
 	bool use_curves = scene->curve_system_manager->use_curves;
 
-	if(!(use_curves && b_ob.mode() == b_ob.mode_OBJECT)) {
+	if(!(use_curves && b_ob.mode() != b_ob.mode_PARTICLE_EDIT)) {
 		if(!motion)
 			mesh->compute_bounds();
 		return;
@@ -845,7 +879,7 @@ void BlenderSync::sync_curves(Mesh *mesh, BL::Mesh b_mesh, BL::Object b_ob, int 
 	}
 	else {
 		if(motion)
-			ExportCurveSegmentsMotion(scene, mesh, &CData, motion);
+			ExportCurveSegmentsMotion(scene, mesh, &CData, time_index);
 		else
 			ExportCurveSegments(scene, mesh, &CData);
 	}
@@ -870,7 +904,7 @@ void BlenderSync::sync_curves(Mesh *mesh, BL::Mesh b_mesh, BL::Object b_ob, int 
 				size_t i = 0;
 
 				foreach(Mesh::Curve& curve, mesh->curves) {
-					float3 co = mesh->curve_keys[curve.first_key].co;
+					float3 co = float4_to_float3(mesh->curve_keys[curve.first_key]);
 					generated[i++] = co*size - loc;
 				}
 			}

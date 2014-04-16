@@ -173,12 +173,12 @@ bool modifier_isPreview(ModifierData *md)
 	ModifierTypeInfo *mti = modifierType_getInfo(md->type);
 
 	if (!(mti->flags & eModifierTypeFlag_UsesPreview))
-		return FALSE;
+		return false;
 
 	if (md->mode & eModifierMode_Realtime)
-		return TRUE;
+		return true;
 
-	return FALSE;
+	return false;
 }
 
 ModifierData *modifiers_findByType(Object *ob, ModifierType type)
@@ -337,15 +337,15 @@ void modifier_setError(ModifierData *md, const char *_format, ...)
  * then is NULL) 
  * also used for some mesh tools to give warnings
  */
-int modifiers_getCageIndex(struct Scene *scene, Object *ob, int *lastPossibleCageIndex_r, int virtual_)
+int modifiers_getCageIndex(struct Scene *scene, Object *ob, int *r_lastPossibleCageIndex, bool is_virtual)
 {
 	VirtualModifierData virtualModifierData;
-	ModifierData *md = (virtual_) ? modifiers_getVirtualModifierList(ob, &virtualModifierData) : ob->modifiers.first;
+	ModifierData *md = (is_virtual) ? modifiers_getVirtualModifierList(ob, &virtualModifierData) : ob->modifiers.first;
 	int i, cageIndex = -1;
 
-	if (lastPossibleCageIndex_r) {
+	if (r_lastPossibleCageIndex) {
 		/* ensure the value is initialized */
-		*lastPossibleCageIndex_r = -1;
+		*r_lastPossibleCageIndex = -1;
 	}
 
 	/* Find the last modifier acting on the cage. */
@@ -354,8 +354,6 @@ int modifiers_getCageIndex(struct Scene *scene, Object *ob, int *lastPossibleCag
 
 		md->scene = scene;
 
-		if (!(md->mode & eModifierMode_Realtime)) continue;
-		if (!(md->mode & eModifierMode_Editmode)) continue;
 		if (mti->isDisabled && mti->isDisabled(md, 0)) continue;
 		if (!(mti->flags & eModifierTypeFlag_SupportsEditmode)) continue;
 		if (md->mode & eModifierMode_DisableTemporary) continue;
@@ -363,7 +361,13 @@ int modifiers_getCageIndex(struct Scene *scene, Object *ob, int *lastPossibleCag
 		if (!modifier_supportsMapping(md))
 			break;
 
-		if (lastPossibleCageIndex_r) *lastPossibleCageIndex_r = i;
+		if (r_lastPossibleCageIndex) {
+			*r_lastPossibleCageIndex = i;
+		}
+
+		if (!(md->mode & eModifierMode_Realtime)) continue;
+		if (!(md->mode & eModifierMode_Editmode)) continue;
+
 		if (md->mode & eModifierMode_OnCage)
 			cageIndex = i;
 	}

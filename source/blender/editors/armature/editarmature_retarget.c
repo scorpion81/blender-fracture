@@ -159,11 +159,11 @@ static float rollBoneByQuatAligned(EditBone *bone, float old_up_axis[3], float q
 	
 	if (angle_normalized_v3v3(x_axis, new_up_axis) < angle_normalized_v3v3(z_axis, new_up_axis)) {
 		rotation_between_vecs_to_quat(qroll, new_up_axis, x_axis); /* set roll rotation quat */
-		return ED_rollBoneToVector(bone, x_axis, FALSE);
+		return ED_rollBoneToVector(bone, x_axis, false);
 	}
 	else {
 		rotation_between_vecs_to_quat(qroll, new_up_axis, z_axis); /* set roll rotation quat */
-		return ED_rollBoneToVector(bone, z_axis, FALSE);
+		return ED_rollBoneToVector(bone, z_axis, false);
 	}
 }
 
@@ -208,7 +208,7 @@ static float rollBoneByQuatJoint(RigEdge *edge, RigEdge *previous, float qrot[4]
 		/* real qroll between normal and up_axis */
 		rotation_between_vecs_to_quat(qroll, new_up_axis, normal);
 
-		return ED_rollBoneToVector(edge->bone, normal, FALSE);
+		return ED_rollBoneToVector(edge->bone, normal, false);
 	}
 }
 
@@ -219,7 +219,7 @@ float rollBoneByQuat(EditBone *bone, float old_up_axis[3], float qrot[4])
 	copy_v3_v3(new_up_axis, old_up_axis);
 	mul_qt_v3(qrot, new_up_axis);
 	
-	return ED_rollBoneToVector(bone, new_up_axis, FALSE);
+	return ED_rollBoneToVector(bone, new_up_axis, false);
 }
 
 /************************************ DESTRUCTORS ******************************************************/
@@ -708,7 +708,7 @@ static void RIG_reconnectControlBones(RigGraph *rg)
 		/* DO SOME MAGIC HERE */
 		for (pchan = rg->ob->pose->chanbase.first; pchan; pchan = pchan->next) {
 			for (con = pchan->constraints.first; con; con = con->next) {
-				bConstraintTypeInfo *cti = BKE_constraint_get_typeinfo(con);
+				bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
 				ListBase targets = {NULL, NULL};
 				bConstraintTarget *ct;
 				
@@ -833,7 +833,7 @@ static void RIG_reconnectControlBones(RigGraph *rg)
 				/* DO SOME MAGIC HERE */
 				for (pchan = rg->ob->pose->chanbase.first; pchan; pchan = pchan->next) {
 					for (con = pchan->constraints.first; con; con = con->next) {
-						bConstraintTypeInfo *cti = BKE_constraint_get_typeinfo(con);
+						bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
 						ListBase targets = {NULL, NULL};
 						bConstraintTarget *ct;
 						
@@ -944,7 +944,7 @@ static void RIG_joinArcs(RigGraph *rg, RigNode *node, RigArc *joined_arc1, RigAr
 	
 	joined_arc1->tail = joined_arc2->tail;
 	
-	joined_arc2->edges.first = joined_arc2->edges.last = NULL;
+	BLI_listbase_clear(&joined_arc2->edges);
 	
 	BLI_removeArc((BGraph *)rg, (BArc *)joined_arc2);
 	
@@ -1129,7 +1129,7 @@ static void RIG_removeUneededOffsets(RigGraph *rg)
 	}
 }
 
-static void RIG_arcFromBoneChain(RigGraph *rg, ListBase *list, EditBone *root_bone, RigNode *starting_node, int selected)
+static void RIG_arcFromBoneChain(RigGraph *rg, ListBase *list, EditBone *root_bone, RigNode *starting_node, bool selected)
 {
 	EditBone *bone, *last_bone = root_bone;
 	RigArc *arc = NULL;
@@ -2593,7 +2593,7 @@ void BIF_retargetArc(bContext *C, ReebArc *earc, RigGraph *template_rigg)
 		template_rigg = armatureSelectedToGraph(C, ob, ob->data);
 	}
 	
-	if (template_rigg->arcs.first == NULL) {
+	if (BLI_listbase_is_empty(&template_rigg->arcs)) {
 //		XXX
 //		error("No Template and no deforming bones selected");
 		return;

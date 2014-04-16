@@ -150,6 +150,7 @@ MaskLayer *BKE_mask_layer_new(Mask *mask, const char *name)
 
 	masklay->blend = MASK_BLEND_MERGE_ADD;
 	masklay->alpha = 1.0f;
+	masklay->flag = MASK_LAYERFLAG_FILL_DISCRETE | MASK_LAYERFLAG_FILL_OVERLAP;
 
 	return masklay;
 }
@@ -262,7 +263,7 @@ MaskSpline *BKE_mask_spline_add(MaskLayer *masklay)
 
 bool BKE_mask_spline_remove(MaskLayer *mask_layer, MaskSpline *spline)
 {
-	if (BLI_remlink_safe(&mask_layer->splines, spline) == FALSE) {
+	if (BLI_remlink_safe(&mask_layer->splines, spline) == false) {
 		return false;
 	}
 
@@ -434,58 +435,87 @@ float BKE_mask_spline_project_co(MaskSpline *spline, MaskSplinePoint *point,
 
 /* point */
 
-bool BKE_mask_point_has_handle(MaskSplinePoint *point)
+eMaskhandleMode BKE_mask_point_handles_mode_get(MaskSplinePoint *point)
 {
 	BezTriple *bezt = &point->bezt;
 
-	return bezt->h1 == HD_ALIGN;
+	if (bezt->h1 == bezt->h2 && bezt->h1 == HD_ALIGN) {
+		return MASK_HANDLE_MODE_STICK;
+	}
+
+	return MASK_HANDLE_MODE_INDIVIDUAL_HANDLES;
 }
 
-void BKE_mask_point_handle(MaskSplinePoint *point, float handle[2])
+void BKE_mask_point_handle(MaskSplinePoint *point, eMaskWhichHandle which_handle, float handle[2])
 {
-	float vec[2];
+	BezTriple *bezt = &point->bezt;
 
-	sub_v2_v2v2(vec, point->bezt.vec[0], point->bezt.vec[1]);
+	if (which_handle == MASK_WHICH_HANDLE_STICK) {
+		float vec[2];
 
-	handle[0] = (point->bezt.vec[1][0] + vec[1]);
-	handle[1] = (point->bezt.vec[1][1] - vec[0]);
+		sub_v2_v2v2(vec, bezt->vec[0], bezt->vec[1]);
+
+		handle[0] = (bezt->vec[1][0] + vec[1]);
+		handle[1] = (bezt->vec[1][1] - vec[0]);
+	}
+	else if (which_handle == MASK_WHICH_HANDLE_LEFT) {
+		copy_v2_v2(handle, bezt->vec[0]);
+	}
+	else if (which_handle == MASK_WHICH_HANDLE_RIGHT) {
+		copy_v2_v2(handle, bezt->vec[2]);
+	}
+	else {
+		BLI_assert(!"Unknown handle passed to BKE_mask_point_handle");
+	}
 }
 
-void BKE_mask_point_set_handle(MaskSplinePoint *point, float loc[2], bool keep_direction,
+void BKE_mask_point_set_handle(MaskSplinePoint *point, eMaskWhichHandle which_handle,
+                               float loc[2], bool keep_direction,
                                float orig_handle[2], float orig_vec[3][3])
 {
 	BezTriple *bezt = &point->bezt;
-	float v1[2], v2[2], vec[2];
 
-	if (keep_direction) {
-		sub_v2_v2v2(v1, loc, orig_vec[1]);
-		sub_v2_v2v2(v2, orig_handle, orig_vec[1]);
+	if (which_handle == MASK_WHICH_HANDLE_STICK) {
+		float v1[2], v2[2], vec[2];
+		if (keep_direction) {
+			sub_v2_v2v2(v1, loc, orig_vec[1]);
+			sub_v2_v2v2(v2, orig_handle, orig_vec[1]);
 
-		project_v2_v2v2(vec, v1, v2);
+			project_v2_v2v2(vec, v1, v2);
 
-		if (dot_v2v2(v2, vec) > 0) {
-			float len = len_v2(vec);
+			if (dot_v2v2(v2, vec) > 0) {
+				float len = len_v2(vec);
 
-			sub_v2_v2v2(v1, orig_vec[0], orig_vec[1]);
+				sub_v2_v2v2(v1, orig_vec[0], orig_vec[1]);
 
-			mul_v2_fl(v1, len / len_v2(v1));
+				mul_v2_fl(v1, len / len_v2(v1));
 
-			add_v2_v2v2(bezt->vec[0], bezt->vec[1], v1);
-			sub_v2_v2v2(bezt->vec[2], bezt->vec[1], v1);
+				add_v2_v2v2(bezt->vec[0], bezt->vec[1], v1);
+				sub_v2_v2v2(bezt->vec[2], bezt->vec[1], v1);
+			}
+			else {
+				copy_v3_v3(bezt->vec[0], bezt->vec[1]);
+				copy_v3_v3(bezt->vec[2], bezt->vec[1]);
+			}
 		}
 		else {
-			copy_v3_v3(bezt->vec[0], bezt->vec[1]);
-			copy_v3_v3(bezt->vec[2], bezt->vec[1]);
+			sub_v2_v2v2(v1, loc, bezt->vec[1]);
+
+			v2[0] = -v1[1];
+			v2[1] =  v1[0];
+
+			add_v2_v2v2(bezt->vec[0], bezt->vec[1], v2);
+			sub_v2_v2v2(bezt->vec[2], bezt->vec[1], v2);
 		}
 	}
+	else if (which_handle == MASK_WHICH_HANDLE_LEFT) {
+		copy_v2_v2(bezt->vec[0], loc);
+	}
+	else if (which_handle == MASK_WHICH_HANDLE_RIGHT) {
+		copy_v2_v2(bezt->vec[2], loc);
+	}
 	else {
-		sub_v2_v2v2(v1, loc, bezt->vec[1]);
-
-		v2[0] = -v1[1];
-		v2[1] =  v1[0];
-
-		add_v2_v2v2(bezt->vec[0], bezt->vec[1], v2);
-		sub_v2_v2v2(bezt->vec[2], bezt->vec[1], v2);
+		BLI_assert(!"unknown handle passed to BKE_mask_point_set_handle");
 	}
 }
 
@@ -513,36 +543,68 @@ void BKE_mask_point_segment_co(MaskSpline *spline, MaskSplinePoint *point, float
 	interp_v2_v2v2(co, r0, r1, u);
 }
 
+BLI_INLINE void orthogonal_direction_get(float vec[2], float result[2])
+{
+	result[0] = -vec[1];
+	result[1] = vec[0];
+	normalize_v2(result);
+}
+
+/* TODO(sergey): This function will re-calculate loads of stuff again and again
+ *               when differentiating feather points. This might be easily cached
+ *               in the callee function for this case.
+ */
 void BKE_mask_point_normal(MaskSpline *spline, MaskSplinePoint *point, float u, float n[2])
 {
-	MaskSplinePoint *points_array = BKE_mask_spline_point_array_from_point(spline, point);
 
-	BezTriple *bezt = &point->bezt, *bezt_next;
-	float q0[2], q1[2], q2[2], r0[2], r1[2], vec[2];
+	MaskSplinePoint *point_prev, *point_next;
 
-	bezt_next = BKE_mask_spline_point_next_bezt(spline, points_array, point);
+	/* TODO(sergey): This actually depends on a resolution. */
+	const float du = 0.05f;
 
-	if (!bezt_next) {
-		BKE_mask_point_handle(point, vec);
+	BKE_mask_get_handle_point_adjacent(spline, point, &point_prev, &point_next);
 
-		sub_v2_v2v2(n, vec, bezt->vec[1]);
-		normalize_v2(n);
-		return;
+	if (u - du < 0.0f && point_prev == NULL) {
+		float co[2], dir[2];
+		BKE_mask_point_segment_co(spline, point, u + du, co);
+		sub_v2_v2v2(dir, co, point->bezt.vec[1]);
+		orthogonal_direction_get(dir, n);
 	}
+	else if (u + du > 1.0f && point_next == NULL) {
+		float co[2], dir[2];
+		BKE_mask_point_segment_co(spline, point, u - du, co);
+		sub_v2_v2v2(dir, point->bezt.vec[1], co);
+		orthogonal_direction_get(dir, n);
+	}
+	else {
+		float prev_co[2], next_co[2], co[2];
+		float dir1[2], dir2[2], dir[2];
 
-	interp_v2_v2v2(q0, bezt->vec[1], bezt->vec[2], u);
-	interp_v2_v2v2(q1, bezt->vec[2], bezt_next->vec[0], u);
-	interp_v2_v2v2(q2, bezt_next->vec[0], bezt_next->vec[1], u);
+		if (u - du < 0.0f) {
+			BKE_mask_point_segment_co(spline, point_prev, 1.0f + (u - du), prev_co);
+		}
+		else {
+			BKE_mask_point_segment_co(spline, point, u - du, prev_co);
+		}
 
-	interp_v2_v2v2(r0, q0, q1, u);
-	interp_v2_v2v2(r1, q1, q2, u);
+		BKE_mask_point_segment_co(spline, point, u, co);
 
-	sub_v2_v2v2(vec, r1, r0);
+		if (u + du > 1.0f) {
+			BKE_mask_point_segment_co(spline, point_next, u + du - 1.0f, next_co);
+		}
+		else {
+			BKE_mask_point_segment_co(spline, point, u + du, next_co);
+		}
 
-	n[0] = -vec[1];
-	n[1] =  vec[0];
+		sub_v2_v2v2(dir1, co, prev_co);
+		sub_v2_v2v2(dir2, next_co, co);
 
-	normalize_v2(n);
+		normalize_v2(dir1);
+		normalize_v2(dir2);
+		add_v2_v2v2(dir, dir1, dir2);
+
+		orthogonal_direction_get(dir, n);
+	}
 }
 
 static float mask_point_interp_weight(BezTriple *bezt, BezTriple *bezt_next, const float u)
@@ -692,13 +754,37 @@ void BKE_mask_point_select_set(MaskSplinePoint *point, const bool do_select)
 	}
 }
 
-void BKE_mask_point_select_set_handle(MaskSplinePoint *point, const bool do_select)
+void BKE_mask_point_select_set_handle(MaskSplinePoint *point, const eMaskWhichHandle which_handle, const bool do_select)
 {
 	if (do_select) {
-		MASKPOINT_SEL_HANDLE(point);
+		if (ELEM(which_handle, MASK_WHICH_HANDLE_STICK, MASK_WHICH_HANDLE_BOTH)) {
+			point->bezt.f1 |= SELECT;
+			point->bezt.f3 |= SELECT;
+		}
+		else if (which_handle == MASK_WHICH_HANDLE_LEFT) {
+			point->bezt.f1 |= SELECT;
+		}
+		else if (which_handle == MASK_WHICH_HANDLE_RIGHT) {
+			point->bezt.f3 |= SELECT;
+		}
+		else {
+			BLI_assert(!"Wrong which_handle passed to BKE_mask_point_select_set_handle");
+		}
 	}
 	else {
-		MASKPOINT_DESEL_HANDLE(point);
+		if (ELEM(which_handle, MASK_WHICH_HANDLE_STICK, MASK_WHICH_HANDLE_BOTH)) {
+			point->bezt.f1 &= ~SELECT;
+			point->bezt.f3 &= ~SELECT;
+		}
+		else if (which_handle == MASK_WHICH_HANDLE_LEFT) {
+			point->bezt.f1 &= ~SELECT;
+		}
+		else if (which_handle == MASK_WHICH_HANDLE_RIGHT) {
+			point->bezt.f3 &= ~SELECT;
+		}
+		else {
+			BLI_assert(!"Wrong which_handle passed to BKE_mask_point_select_set_handle");
+		}
 	}
 }
 
@@ -733,6 +819,7 @@ Mask *BKE_mask_new(Main *bmain, const char *name)
 	return mask;
 }
 
+/* TODO(sergey): Use generic BKE_libblock_copy_nolib() instead. */
 Mask *BKE_mask_copy_nolib(Mask *mask)
 {
 	Mask *mask_new;
@@ -742,8 +829,7 @@ Mask *BKE_mask_copy_nolib(Mask *mask)
 	/*take care here! - we may want to copy anim data  */
 	mask_new->adt = NULL;
 
-	mask_new->masklayers.first = NULL;
-	mask_new->masklayers.last = NULL;
+	BLI_listbase_clear(&mask_new->masklayers);
 
 	BKE_mask_layer_copy_list(&mask_new->masklayers, &mask->masklayers);
 
@@ -762,8 +848,7 @@ Mask *BKE_mask_copy(Mask *mask)
 
 	mask_new = BKE_libblock_copy(&mask->id);
 
-	mask_new->masklayers.first = NULL;
-	mask_new->masklayers.last = NULL;
+	BLI_listbase_clear(&mask_new->masklayers);
 
 	BKE_mask_layer_copy_list(&mask_new->masklayers, &mask->masklayers);
 
@@ -1170,7 +1255,7 @@ static void mask_calc_point_handle(MaskSplinePoint *point, MaskSplinePoint *poin
 	else if (handle_type == HD_AUTO) {
 		BKE_nurb_handle_calc(bezt, bezt_prev, bezt_next, 0);
 	}
-	else if (handle_type == HD_ALIGN) {
+	else if (handle_type == HD_ALIGN || handle_type == HD_ALIGN_DOUBLESIDE) {
 		float v1[3], v2[3];
 		float vec[3], h[3];
 
@@ -1317,7 +1402,7 @@ void BKE_mask_calc_handle_point_auto(MaskSpline *spline, MaskSplinePoint *point,
 	point->bezt.h2 = h_back[1];
 
 	/* preserve length by applying it back */
-	if (do_recalc_length == FALSE) {
+	if (do_recalc_length == false) {
 		dist_ensure_v2_v2fl(point->bezt.vec[0], point->bezt.vec[1], length_average);
 		dist_ensure_v2_v2fl(point->bezt.vec[2], point->bezt.vec[1], length_average);
 	}
@@ -1404,7 +1489,7 @@ void BKE_mask_layer_evaluate(MaskLayer *masklay, const float ctime, const bool d
 
 		for (spline = masklay->splines.first; spline; spline = spline->next) {
 			int i;
-			int need_handle_recalc = FALSE;
+			bool need_handle_recalc = false;
 
 			BKE_mask_spline_ensure_deform(spline);
 
@@ -1420,7 +1505,7 @@ void BKE_mask_layer_evaluate(MaskLayer *masklay, const float ctime, const bool d
 				mask_evaluate_apply_point_parent(point_deform, ctime);
 
 				if (ELEM(point->bezt.h1, HD_AUTO, HD_VECT)) {
-					need_handle_recalc = TRUE;
+					need_handle_recalc = true;
 				}
 			}
 
@@ -1947,7 +2032,7 @@ int BKE_mask_get_duration(Mask *mask)
 static void mask_clipboard_free_ex(bool final_free)
 {
 	BKE_mask_spline_free_list(&mask_clipboard.splines);
-	mask_clipboard.splines.first = mask_clipboard.splines.last = NULL;
+	BLI_listbase_clear(&mask_clipboard.splines);
 	if (mask_clipboard.id_hash) {
 		if (final_free) {
 			BLI_ghash_free(mask_clipboard.id_hash, NULL, MEM_freeN);
@@ -2005,7 +2090,7 @@ void BKE_mask_clipboard_copy_from_layer(MaskLayer *mask_layer)
 /* Check clipboard is empty. */
 bool BKE_mask_clipboard_is_empty(void)
 {
-	return mask_clipboard.splines.first == NULL;
+	return BLI_listbase_is_empty(&mask_clipboard.splines);
 }
 
 /* Paste the contents of clipboard to given mask layer */

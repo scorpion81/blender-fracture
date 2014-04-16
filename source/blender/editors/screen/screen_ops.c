@@ -193,10 +193,10 @@ int ED_operator_view3d_active(bContext *C)
 int ED_operator_region_view3d_active(bContext *C)
 {
 	if (CTX_wm_region_view3d(C))
-		return TRUE;
+		return true;
 
 	CTX_wm_operator_poll_msg_set(C, "expected a view3d region");
-	return FALSE;
+	return false;
 }
 
 /* generic for any view2d which uses anim_ops */
@@ -205,7 +205,7 @@ int ED_operator_animview_active(bContext *C)
 	if (ED_operator_areaactive(C)) {
 		SpaceLink *sl = (SpaceLink *)CTX_wm_space_data(C);
 		if (sl && (ELEM5(sl->spacetype, SPACE_SEQ, SPACE_ACTION, SPACE_NLA, SPACE_IPO, SPACE_TIME)))
-			return TRUE;
+			return true;
 	}
 
 	CTX_wm_operator_poll_msg_set(C, "expected a timeline/animation area to be active");
@@ -279,6 +279,11 @@ int ED_operator_graphedit_active(bContext *C)
 int ED_operator_sequencer_active(bContext *C)
 {
 	return ed_spacetype_test(C, SPACE_SEQ);
+}
+
+int ED_operator_sequencer_active_editable(bContext *C)
+{
+	return ed_spacetype_test(C, SPACE_SEQ) && ED_operator_scene_editable(C);
 }
 
 int ED_operator_image_active(bContext *C)
@@ -448,10 +453,10 @@ int ED_operator_uvmap(bContext *C)
 	}
 	
 	if (em && (em->bm->totface)) {
-		return TRUE;
+		return true;
 	}
 	
-	return FALSE;
+	return false;
 }
 
 int ED_operator_editsurfcurve(bContext *C)
@@ -547,7 +552,7 @@ int ED_operator_mask(bContext *C)
 		}
 	}
 
-	return FALSE;
+	return false;
 }
 
 /* *************************** action zone operator ************************** */
@@ -657,7 +662,7 @@ static void actionzone_apply(bContext *C, wmOperator *op, int type)
 		event.type = EVT_ACTIONZONE_REGION;
 	event.val = 0;
 	event.customdata = op->customdata;
-	event.customdatafree = TRUE;
+	event.customdatafree = true;
 	op->customdata = NULL;
 	
 	wm_event_add(win, &event);
@@ -771,7 +776,8 @@ static void SCREEN_OT_actionzone(wmOperatorType *ot)
 	ot->poll = actionzone_area_poll;
 	ot->cancel = actionzone_cancel;
 	
-	ot->flag = OPTYPE_BLOCKING;
+	/* flags */
+	ot->flag = OPTYPE_BLOCKING | OPTYPE_INTERNAL;
 	
 	RNA_def_int(ot->srna, "modifier", 0, 0, 2, "Modifier", "Modifier state", 0, 2);
 }
@@ -933,7 +939,7 @@ static int area_dupli_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 	newwin->screen = newsc;
 	
 	/* copy area to new screen */
-	area_copy_data((ScrArea *)newsc->areabase.first, sa, 0);
+	ED_area_data_copy((ScrArea *)newsc->areabase.first, sa, true);
 
 	ED_area_tag_redraw((ScrArea *)newsc->areabase.first);
 
@@ -1246,7 +1252,8 @@ static void SCREEN_OT_area_move(wmOperatorType *ot)
 	ot->modal = area_move_modal;
 	ot->poll = ED_operator_screen_mainwinactive; /* when mouse is over area-edge */
 	
-	ot->flag = OPTYPE_BLOCKING;
+	/* flags */
+	ot->flag = OPTYPE_BLOCKING | OPTYPE_INTERNAL;
 	
 	/* rna */
 	RNA_def_int(ot->srna, "x", 0, INT_MIN, INT_MAX, "X", "", INT_MIN, INT_MAX);
@@ -1618,7 +1625,7 @@ static int area_split_modal(bContext *C, wmOperator *op, const wmEvent *event)
 					}
 				}
 				
-				CTX_wm_window(C)->screen->do_draw = TRUE;
+				CTX_wm_window(C)->screen->do_draw = true;
 
 			}
 			
@@ -1698,7 +1705,9 @@ static void SCREEN_OT_area_split(wmOperatorType *ot)
 	ot->cancel = area_split_cancel;
 	
 	ot->poll = screen_active_editable;
-	ot->flag = OPTYPE_BLOCKING;
+
+	/* flags */
+	ot->flag = OPTYPE_BLOCKING | OPTYPE_INTERNAL;
 	
 	/* rna */
 	RNA_def_enum(ot->srna, "direction", prop_direction_items, 'h', "Direction", "");
@@ -1968,7 +1977,8 @@ static void SCREEN_OT_region_scale(wmOperatorType *ot)
 	
 	ot->poll = ED_operator_areaactive;
 	
-	ot->flag = OPTYPE_BLOCKING;
+	/* flags */
+	ot->flag = OPTYPE_BLOCKING | OPTYPE_INTERNAL;
 }
 
 
@@ -2113,20 +2123,20 @@ static int keyframe_jump_exec(bContext *C, wmOperator *op)
 			if (CFRA != (int)ak->cfra) {
 				/* this changes the frame, so set the frame and we're done */
 				CFRA = (int)ak->cfra;
-				done = TRUE;
+				done = true;
 			}
 			else {
 				/* make this the new starting point for the search */
 				cfra = ak->cfra;
 			}
 		}
-	} while ((ak != NULL) && (done == FALSE));
+	} while ((ak != NULL) && (done == false));
 
 	/* free temp stuff */
 	BLI_dlrbTree_free(&keys);
 
 	/* any success? */
-	if (done == FALSE) {
+	if (done == false) {
 		BKE_report(op->reports, RPT_INFO, "No more keyframes to jump to in this direction");
 
 		return OPERATOR_CANCELLED;
@@ -2152,7 +2162,7 @@ static void SCREEN_OT_keyframe_jump(wmOperatorType *ot)
 	ot->flag = OPTYPE_UNDO;
 	
 	/* properties */
-	RNA_def_boolean(ot->srna, "next", TRUE, "Next Keyframe", "");
+	RNA_def_boolean(ot->srna, "next", true, "Next Keyframe", "");
 }
 
 /* ************** jump to marker operator ***************************** */
@@ -2212,12 +2222,12 @@ static void SCREEN_OT_marker_jump(wmOperatorType *ot)
 	ot->flag = OPTYPE_UNDO;
 
 	/* properties */
-	RNA_def_boolean(ot->srna, "next", TRUE, "Next Marker", "");
+	RNA_def_boolean(ot->srna, "next", true, "Next Marker", "");
 }
 
 /* ************** switch screen operator ***************************** */
 
-static int screen_set_is_ok(bScreen *screen, bScreen *screen_prev)
+static bool screen_set_is_ok(bScreen *screen, bScreen *screen_prev)
 {
 	return ((screen->winid == 0)    &&
 	        (screen->full == 0)     &&
@@ -2282,7 +2292,7 @@ static void SCREEN_OT_screen_set(wmOperatorType *ot)
 	
 	ot->exec = screen_set_exec;
 	ot->poll = ED_operator_screenactive;
-	
+
 	/* rna */
 	RNA_def_int(ot->srna, "delta", 0, INT_MIN, INT_MAX, "Delta", "", INT_MIN, INT_MAX);
 }
@@ -2606,6 +2616,7 @@ static void SCREEN_OT_area_join(wmOperatorType *ot)
 	ot->poll = screen_active_editable;
 	ot->cancel = area_join_cancel;
 	
+	/* flags */
 	ot->flag = OPTYPE_BLOCKING | OPTYPE_INTERNAL;
 	
 	/* rna */
@@ -2668,6 +2679,9 @@ static void SCREEN_OT_area_options(wmOperatorType *ot)
 	ot->invoke = screen_area_options_invoke;
 	
 	ot->poll = ED_operator_screen_mainwinactive;
+
+	/* flags */
+	ot->flag = OPTYPE_INTERNAL;
 }
 
 
@@ -2753,7 +2767,8 @@ static int repeat_history_invoke(bContext *C, wmOperator *op, const wmEvent *UNU
 	layout = uiPupMenuLayout(pup);
 	
 	for (i = items - 1, lastop = wm->operators.last; lastop; lastop = lastop->prev, i--)
-		uiItemIntO(layout, RNA_struct_ui_name(lastop->type->srna), ICON_NONE, op->type->idname, "index", i);
+		if (WM_operator_repeat_check(C, lastop))
+			uiItemIntO(layout, RNA_struct_ui_name(lastop->type->srna), ICON_NONE, op->type->idname, "index", i);
 	
 	uiPupMenuEnd(C, pup);
 	
@@ -2833,6 +2848,10 @@ static void region_quadview_init_rv3d(ScrArea *sa, ARegion *ar,
 {
 	RegionView3D *rv3d = ar->regiondata;
 
+	if (persp == RV3D_CAMOB) {
+		ED_view3d_lastview_store(rv3d);
+	}
+
 	rv3d->viewlock = viewlock;
 	rv3d->view = view;
 	rv3d->persp = persp;
@@ -2895,6 +2914,7 @@ static int region_quadview_exec(bContext *C, wmOperator *op)
 		/* lock views and set them */
 		if (sa->spacetype == SPACE_VIEW3D) {
 			View3D *v3d = sa->spacedata.first;
+			int index_qsplit = 0;
 
 			/* run ED_view3d_lock() so the correct 'rv3d->viewquat' is set,
 			 * otherwise when restoring rv3d->localvd the 'viewquat' won't
@@ -2906,11 +2926,11 @@ static int region_quadview_exec(bContext *C, wmOperator *op)
 			const char viewlock = (rv3d->viewlock_quad & RV3D_VIEWLOCK_INIT) ?
 			                      (rv3d->viewlock_quad & ~RV3D_VIEWLOCK_INIT) : RV3D_LOCKED;
 
-			region_quadview_init_rv3d(sa, ar,              viewlock, RV3D_VIEW_FRONT, RV3D_ORTHO);
-			region_quadview_init_rv3d(sa, (ar = ar->next), viewlock, RV3D_VIEW_TOP,   RV3D_ORTHO);
-			region_quadview_init_rv3d(sa, (ar = ar->next), viewlock, RV3D_VIEW_RIGHT, RV3D_ORTHO);
-			if (v3d->camera) region_quadview_init_rv3d(sa, (ar = ar->next), 0, RV3D_VIEW_CAMERA,     RV3D_CAMOB);
-			else             region_quadview_init_rv3d(sa, (ar = ar->next), 0, RV3D_VIEW_PERSPORTHO, RV3D_PERSP);
+			region_quadview_init_rv3d(sa, ar,              viewlock, ED_view3d_lock_view_from_index(index_qsplit++), RV3D_ORTHO);
+			region_quadview_init_rv3d(sa, (ar = ar->next), viewlock, ED_view3d_lock_view_from_index(index_qsplit++), RV3D_ORTHO);
+			region_quadview_init_rv3d(sa, (ar = ar->next), viewlock, ED_view3d_lock_view_from_index(index_qsplit++), RV3D_ORTHO);
+			if (v3d->camera) region_quadview_init_rv3d(sa, (ar = ar->next), 0, RV3D_VIEW_CAMERA, RV3D_CAMOB);
+			else             region_quadview_init_rv3d(sa, (ar = ar->next), 0, RV3D_VIEW_USER,   RV3D_PERSP);
 
 		}
 		ED_area_tag_redraw(sa);
@@ -3218,7 +3238,7 @@ static int screen_animation_step(bContext *C, wmOperator *UNUSED(op), const wmEv
 		else sync = (scene->flag & SCE_FRAME_DROP);
 		
 		if ((scene->audio.flag & AUDIO_SYNC) &&
-		    (sad->flag & ANIMPLAY_FLAG_REVERSE) == FALSE &&
+		    (sad->flag & ANIMPLAY_FLAG_REVERSE) == false &&
 		    finite(time = sound_sync_scene(scene)))
 		{
 			scene->r.cfra = (double)time * FPS + 0.5;
@@ -3453,7 +3473,7 @@ static void SCREEN_OT_animation_cancel(wmOperatorType *ot)
 	
 	ot->poll = ED_operator_screenactive;
 
-	RNA_def_boolean(ot->srna, "restore_frame", TRUE, "Restore Frame", "Restore the frame when animation was initialized");
+	RNA_def_boolean(ot->srna, "restore_frame", true, "Restore Frame", "Restore the frame when animation was initialized");
 }
 
 /* ************** border select operator (template) ***************************** */
@@ -3643,7 +3663,7 @@ static int scene_new_exec(bContext *C, wmOperator *op)
 	else { /* different kinds of copying */
 		newscene = BKE_scene_copy(scene, type);
 
-		/* these can't be handled in blenkernel curently, so do them here */
+		/* these can't be handled in blenkernel currently, so do them here */
 		if (type == SCE_COPY_LINK_DATA) {
 			ED_object_single_users(bmain, newscene, false, true);
 		}
@@ -3853,7 +3873,7 @@ static void SCREEN_OT_region_blend(wmOperatorType *ot)
 	ot->invoke = region_blend_invoke;
 	
 	/* flags */
-	ot->flag = 0;
+	ot->flag = OPTYPE_INTERNAL;
 	
 	/* properties */
 }
@@ -4032,10 +4052,10 @@ void ED_keymap_screen(wmKeyConfig *keyconf)
 	
 	/* render */
 	kmi = WM_keymap_add_item(keymap, "RENDER_OT_render", F12KEY, KM_PRESS, 0, 0);
-	RNA_boolean_set(kmi->ptr, "use_viewport", TRUE);
+	RNA_boolean_set(kmi->ptr, "use_viewport", true);
 	kmi = WM_keymap_add_item(keymap, "RENDER_OT_render", F12KEY, KM_PRESS, KM_CTRL, 0);
-	RNA_boolean_set(kmi->ptr, "animation", TRUE);
-	RNA_boolean_set(kmi->ptr, "use_viewport", TRUE);
+	RNA_boolean_set(kmi->ptr, "animation", true);
+	RNA_boolean_set(kmi->ptr, "use_viewport", true);
 	WM_keymap_add_item(keymap, "RENDER_OT_view_cancel", ESCKEY, KM_PRESS, 0, 0);
 	WM_keymap_add_item(keymap, "RENDER_OT_view_show", F11KEY, KM_PRESS, 0, 0);
 	WM_keymap_add_item(keymap, "RENDER_OT_play_rendered_anim", F11KEY, KM_PRESS, KM_CTRL, 0);
@@ -4059,27 +4079,27 @@ void ED_keymap_screen(wmKeyConfig *keyconf)
 	RNA_int_set(WM_keymap_add_item(keymap, "SCREEN_OT_frame_offset", WHEELDOWNMOUSE, KM_PRESS, KM_ALT, 0)->ptr, "delta", 1);
 	RNA_int_set(WM_keymap_add_item(keymap, "SCREEN_OT_frame_offset", WHEELUPMOUSE, KM_PRESS, KM_ALT, 0)->ptr, "delta", -1);
 	
-	RNA_boolean_set(WM_keymap_add_item(keymap, "SCREEN_OT_frame_jump", UPARROWKEY, KM_PRESS, KM_CTRL | KM_SHIFT, 0)->ptr, "end", TRUE);
-	RNA_boolean_set(WM_keymap_add_item(keymap, "SCREEN_OT_frame_jump", DOWNARROWKEY, KM_PRESS, KM_CTRL | KM_SHIFT, 0)->ptr, "end", FALSE);
-	RNA_boolean_set(WM_keymap_add_item(keymap, "SCREEN_OT_frame_jump", RIGHTARROWKEY, KM_PRESS, KM_SHIFT, 0)->ptr, "end", TRUE);
-	RNA_boolean_set(WM_keymap_add_item(keymap, "SCREEN_OT_frame_jump", LEFTARROWKEY, KM_PRESS, KM_SHIFT, 0)->ptr, "end", FALSE);
+	RNA_boolean_set(WM_keymap_add_item(keymap, "SCREEN_OT_frame_jump", UPARROWKEY, KM_PRESS, KM_CTRL | KM_SHIFT, 0)->ptr, "end", true);
+	RNA_boolean_set(WM_keymap_add_item(keymap, "SCREEN_OT_frame_jump", DOWNARROWKEY, KM_PRESS, KM_CTRL | KM_SHIFT, 0)->ptr, "end", false);
+	RNA_boolean_set(WM_keymap_add_item(keymap, "SCREEN_OT_frame_jump", RIGHTARROWKEY, KM_PRESS, KM_SHIFT, 0)->ptr, "end", true);
+	RNA_boolean_set(WM_keymap_add_item(keymap, "SCREEN_OT_frame_jump", LEFTARROWKEY, KM_PRESS, KM_SHIFT, 0)->ptr, "end", false);
 	
 	kmi = WM_keymap_add_item(keymap, "SCREEN_OT_keyframe_jump", UPARROWKEY, KM_PRESS, 0, 0);
-	RNA_boolean_set(kmi->ptr, "next", TRUE);
+	RNA_boolean_set(kmi->ptr, "next", true);
 
 	kmi = WM_keymap_add_item(keymap, "SCREEN_OT_keyframe_jump", DOWNARROWKEY, KM_PRESS, 0, 0);
-	RNA_boolean_set(kmi->ptr, "next", FALSE);
+	RNA_boolean_set(kmi->ptr, "next", false);
 	
 	kmi = WM_keymap_add_item(keymap, "SCREEN_OT_keyframe_jump", MEDIALAST, KM_PRESS, 0, 0);
-	RNA_boolean_set(kmi->ptr, "next", TRUE);
+	RNA_boolean_set(kmi->ptr, "next", true);
 
 	kmi = WM_keymap_add_item(keymap, "SCREEN_OT_keyframe_jump", MEDIAFIRST, KM_PRESS, 0, 0);
-	RNA_boolean_set(kmi->ptr, "next", FALSE);
+	RNA_boolean_set(kmi->ptr, "next", false);
 
 	
 	/* play (forward and backwards) */
 	WM_keymap_add_item(keymap, "SCREEN_OT_animation_play", AKEY, KM_PRESS, KM_ALT, 0);
-	RNA_boolean_set(WM_keymap_add_item(keymap, "SCREEN_OT_animation_play", AKEY, KM_PRESS, KM_ALT | KM_SHIFT, 0)->ptr, "reverse", TRUE);
+	RNA_boolean_set(WM_keymap_add_item(keymap, "SCREEN_OT_animation_play", AKEY, KM_PRESS, KM_ALT | KM_SHIFT, 0)->ptr, "reverse", true);
 	WM_keymap_add_item(keymap, "SCREEN_OT_animation_cancel", ESCKEY, KM_PRESS, 0, 0);
 	
 	WM_keymap_add_item(keymap, "SCREEN_OT_animation_play", MEDIAPLAY, KM_PRESS, 0, 0);
@@ -4089,11 +4109,11 @@ void ED_keymap_screen(wmKeyConfig *keyconf)
 #if 0 /* XXX: disabled for restoring later... bad implementation */
 	keymap = WM_keymap_find(keyconf, "Frames", 0, 0);
 	kmi = WM_keymap_add_item(keymap, "SCREEN_OT_animation_play", RIGHTARROWKEY, KM_PRESS, KM_ALT, 0);
-	RNA_boolean_set(kmi->ptr, "cycle_speed", TRUE);
+	RNA_boolean_set(kmi->ptr, "cycle_speed", true);
 	
 	kmi = WM_keymap_add_item(keymap, "SCREEN_OT_animation_play", LEFTARROWKEY, KM_PRESS, KM_ALT, 0);
-	RNA_boolean_set(kmi->ptr, "reverse", TRUE);
-	RNA_boolean_set(kmi->ptr, "cycle_speed", TRUE);
+	RNA_boolean_set(kmi->ptr, "reverse", true);
+	RNA_boolean_set(kmi->ptr, "cycle_speed", true);
 	
 	WM_keymap_add_item(keymap, "SCREEN_OT_animation_play", DOWNARROWKEY, KM_PRESS, KM_ALT, 0);
 #endif

@@ -40,6 +40,8 @@ public:
 
 	~BlenderSession();
 
+	void create();
+
 	/* session */
 	void create_session();
 	void free_session();
@@ -90,12 +92,14 @@ public:
 	int width, height;
 	double start_resize_time;
 
+	void *python_thread_state;
+
 protected:
 	void do_write_update_render_result(BL::RenderResult b_rr, BL::RenderLayer b_rlay, RenderTile& rtile, bool do_update_only);
 	void do_write_update_render_tile(RenderTile& rtile, bool do_update_only);
 
 	int builtin_image_frame(const string &builtin_name);
-	void builtin_image_info(const string &builtin_name, void *builtin_data, bool &is_float, int &width, int &height, int &channels);
+	void builtin_image_info(const string &builtin_name, void *builtin_data, bool &is_float, int &width, int &height, int &depth, int &channels);
 	bool builtin_image_pixels(const string &builtin_name, void *builtin_data, unsigned char *pixels);
 	bool builtin_image_float_pixels(const string &builtin_name, void *builtin_data, float *pixels);
 };

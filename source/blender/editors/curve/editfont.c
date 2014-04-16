@@ -72,6 +72,7 @@
 #include "ED_object.h"
 #include "ED_screen.h"
 #include "ED_util.h"
+#include "ED_view3d.h"
 
 #include "UI_interface.h"
 
@@ -248,7 +249,7 @@ static int insert_into_textbuf(Object *obedit, uintptr_t c)
 		return 0;
 }
 
-static void text_update_edited(bContext *C, Object *obedit, const bool recalc, int mode)
+static void text_update_edited(bContext *C, Object *obedit, int mode)
 {
 	struct Main *bmain = CTX_data_main(C);
 	Curve *cu = obedit->data;
@@ -265,10 +266,14 @@ static void text_update_edited(bContext *C, Object *obedit, const bool recalc, i
 		}
 	}
 
-	BKE_vfont_to_curve(bmain, obedit, mode);
-
-	if (recalc)
+	if (mode == FO_EDIT) {
+		/* re-tesselllate */
 		DAG_id_tag_update(obedit->data, 0);
+	}
+	else {
+		/* depsgraph runs above, but since we're not tagging for update, call direct */
+		BKE_vfont_to_curve(bmain, obedit, mode);
+	}
 
 	WM_event_add_notifier(C, NC_GEOM | ND_DATA, obedit->data);
 }
@@ -437,7 +442,7 @@ static int paste_from_file(bContext *C, ReportList *reports, const char *filenam
 
 
 	if (strp && font_paste_utf8(C, strp, filelen)) {
-		text_update_edited(C, obedit, 1, FO_EDIT);
+		text_update_edited(C, obedit, FO_EDIT);
 		retval = OPERATOR_FINISHED;
 
 	}
@@ -520,7 +525,7 @@ static int paste_from_clipboard(bContext *C, ReportList *reports)
 	}
 
 	if ((filelen <= MAXTEXT) && font_paste_utf8(C, strp, filelen)) {
-		text_update_edited(C, obedit, 1, FO_EDIT);
+		text_update_edited(C, obedit, FO_EDIT);
 		retval = OPERATOR_FINISHED;
 	}
 	else {
@@ -711,7 +716,7 @@ static EnumPropertyItem style_items[] = {
 	{0, NULL, 0, NULL, NULL}
 };
 
-static int set_style(bContext *C, const int style, const int clear)
+static int set_style(bContext *C, const int style, const bool clear)
 {
 	Object *obedit = CTX_data_edit_object(C);
 	Curve *cu = obedit->data;
@@ -737,7 +742,7 @@ static int set_style(bContext *C, const int style, const int clear)
 static int set_style_exec(bContext *C, wmOperator *op)
 {
 	const int style = RNA_enum_get(op->ptr, "style");
-	const int clear = RNA_boolean_get(op->ptr, "clear");
+	const bool clear = RNA_boolean_get(op->ptr, "clear");
 
 	return set_style(C, style, clear);
 }
@@ -813,7 +818,7 @@ static int font_select_all_exec(bContext *C, wmOperator *UNUSED(op))
 		ef->selend = ef->len;
 		ef->pos = ef->len;
 
-		text_update_edited(C, obedit, true, FO_SELCHANGE);
+		text_update_edited(C, obedit, FO_SELCHANGE);
 
 		return OPERATOR_FINISHED;
 	}
@@ -889,7 +894,7 @@ static int cut_text_exec(bContext *C, wmOperator *UNUSED(op))
 	copy_selection(obedit);
 	kill_selection(obedit, 0);
 
-	text_update_edited(C, obedit, 1, FO_EDIT);
+	text_update_edited(C, obedit, FO_EDIT);
 
 	return OPERATOR_FINISHED;
 }
@@ -933,7 +938,7 @@ static int paste_text_exec(bContext *C, wmOperator *op)
 	if (!paste_selection(obedit, op->reports))
 		return OPERATOR_CANCELLED;
 
-	text_update_edited(C, obedit, 1, FO_EDIT);
+	text_update_edited(C, obedit, FO_EDIT);
 
 	return OPERATOR_FINISHED;
 }
@@ -968,7 +973,7 @@ static EnumPropertyItem move_type_items[] = {
 	{NEXT_PAGE, "NEXT_PAGE", 0, "Next Page", ""},
 	{0, NULL, 0, NULL, NULL}};
 
-static int move_cursor(bContext *C, int type, int select)
+static int move_cursor(bContext *C, int type, const bool select)
 {
 	Object *obedit = CTX_data_edit_object(C);
 	Curve *cu = obedit->data;
@@ -1066,10 +1071,10 @@ static int move_cursor(bContext *C, int type, int select)
 		}
 	}
 
-	text_update_edited(C, obedit, select, cursmove);
-
 	if (select)
 		ef->selend = ef->pos;
+
+	text_update_edited(C, obedit, cursmove);
 
 	return OPERATOR_FINISHED;
 }
@@ -1078,7 +1083,7 @@ static int move_exec(bContext *C, wmOperator *op)
 {
 	int type = RNA_enum_get(op->ptr, "type");
 
-	return move_cursor(C, type, 0);
+	return move_cursor(C, type, false);
 }
 
 void FONT_OT_move(wmOperatorType *ot)
@@ -1105,7 +1110,7 @@ static int move_select_exec(bContext *C, wmOperator *op)
 {
 	int type = RNA_enum_get(op->ptr, "type");
 
-	return move_cursor(C, type, 1);
+	return move_cursor(C, type, true);
 }
 
 void FONT_OT_move_select(wmOperatorType *ot)
@@ -1144,7 +1149,7 @@ static int change_spacing_exec(bContext *C, wmOperator *op)
 
 	ef->textbufinfo[ef->pos - 1].kern = kern;
 
-	text_update_edited(C, obedit, 1, FO_EDIT);
+	text_update_edited(C, obedit, FO_EDIT);
 
 	return OPERATOR_FINISHED;
 }
@@ -1188,7 +1193,7 @@ static int change_character_exec(bContext *C, wmOperator *op)
 
 	ef->textbuf[ef->pos - 1] = character;
 
-	text_update_edited(C, obedit, 1, FO_EDIT);
+	text_update_edited(C, obedit, FO_EDIT);
 
 	return OPERATOR_FINISHED;
 }
@@ -1223,7 +1228,7 @@ static int line_break_exec(bContext *C, wmOperator *UNUSED(op))
 
 	ef->selstart = ef->selend = 0;
 
-	text_update_edited(C, obedit, 1, FO_EDIT);
+	text_update_edited(C, obedit, FO_EDIT);
 
 	return OPERATOR_FINISHED;
 }
@@ -1309,7 +1314,7 @@ static int delete_exec(bContext *C, wmOperator *op)
 			return OPERATOR_CANCELLED;
 	}
 
-	text_update_edited(C, obedit, 1, FO_EDIT);
+	text_update_edited(C, obedit, FO_EDIT);
 
 	return OPERATOR_FINISHED;
 }
@@ -1357,7 +1362,7 @@ static int insert_text_exec(bContext *C, wmOperator *op)
 	MEM_freeN(inserted_utf8);
 
 	kill_selection(obedit, 1);
-	text_update_edited(C, obedit, 1, FO_EDIT);
+	text_update_edited(C, obedit, FO_EDIT);
 
 	return OPERATOR_FINISHED;
 }
@@ -1427,12 +1432,12 @@ static int insert_text_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 			}
 			
 			kill_selection(obedit, 1);
-			text_update_edited(C, obedit, 1, FO_EDIT);
+			text_update_edited(C, obedit, FO_EDIT);
 		}
 		else {
 			inserted_text[0] = ascii;
 			insert_into_textbuf(obedit, ascii);
-			text_update_edited(C, obedit, 1, FO_EDIT);
+			text_update_edited(C, obedit, FO_EDIT);
 		}
 	}
 	else
@@ -1660,7 +1665,7 @@ static int set_case(bContext *C, int ccase)
 			}
 		}
 
-		text_update_edited(C, obedit, 1, FO_EDIT);
+		text_update_edited(C, obedit, FO_EDIT);
 	}
 
 	return OPERATOR_FINISHED;
@@ -1923,4 +1928,90 @@ static void *get_undoFont(bContext *C)
 void undo_push_font(bContext *C, const char *name)
 {
 	undo_editmode_push(C, name, get_undoFont, free_undoFont, undoFont_to_editFont, editFont_to_undoFont, NULL);
+}
+
+/**
+ * TextBox selection
+ */
+bool mouse_font(bContext *C, const int mval[2], bool extend, bool deselect, bool toggle)
+{
+	Object *obedit = CTX_data_edit_object(C);
+	Curve *cu = obedit->data;
+	ViewContext vc;
+	/* bias against the active, in pixels, allows cycling */
+	const float active_bias_px = 4.0f;
+	const float mval_fl[2] = {UNPACK2(mval)};
+	const int i_actbox = max_ii(0, cu->actbox - 1);
+	int i_iter, actbox_select = -1;
+	const float dist = ED_view3d_select_dist_px();
+	float dist_sq_best = dist * dist;
+
+	view3d_set_viewcontext(C, &vc);
+
+	ED_view3d_init_mats_rv3d(vc.obedit, vc.rv3d);
+
+	/* currently only select active */
+	(void)extend;
+	(void)deselect;
+	(void)toggle;
+
+	for (i_iter = 0; i_iter < cu->totbox; i_iter++) {
+		int i = (i_iter + i_actbox) % cu->totbox;
+		float dist_sq_min;
+		int j, j_prev;
+
+		float obedit_co[4][3];
+		float screen_co[4][2];
+		rctf rect;
+		int project_ok = 0;
+
+
+		BKE_curve_rect_from_textbox(cu, &cu->tb[i], &rect);
+
+		copy_v3_fl3(obedit_co[0], rect.xmin, rect.ymin, 0.0f);
+		copy_v3_fl3(obedit_co[1], rect.xmin, rect.ymax, 0.0f);
+		copy_v3_fl3(obedit_co[2], rect.xmax, rect.ymax, 0.0f);
+		copy_v3_fl3(obedit_co[3], rect.xmax, rect.ymin, 0.0f);
+
+		for (j = 0; j < 4; j++) {
+			if (ED_view3d_project_float_object(vc.ar, obedit_co[j], screen_co[j],
+			                                   V3D_PROJ_TEST_CLIP_BB) == V3D_PROJ_RET_OK)
+			{
+				project_ok |= (1 << j);
+			}
+		}
+
+		dist_sq_min = dist_sq_best;
+		for (j = 0, j_prev = 3; j < 4; j_prev = j++) {
+			if ((project_ok & (1 << j)) &&
+			    (project_ok & (1 << j_prev)))
+			{
+				const float dist_test_sq = dist_squared_to_line_segment_v2(mval_fl, screen_co[j_prev], screen_co[j]);
+				if (dist_sq_min > dist_test_sq) {
+					dist_sq_min = dist_test_sq;
+				}
+			}
+		}
+
+		/* bias in pixels to cycle seletion */
+		if (i_iter == 0) {
+			dist_sq_min += active_bias_px;
+		}
+
+		if (dist_sq_min < dist_sq_best) {
+			dist_sq_best = dist_sq_min;
+			actbox_select = i + 1;
+		}
+	}
+
+	if (actbox_select != -1) {
+		if (cu->actbox != actbox_select) {
+			cu->actbox = actbox_select;
+			WM_event_add_notifier(C, NC_GEOM | ND_DATA, obedit->data);
+		}
+		return true;
+	}
+	else {
+		return false;
+	}
 }

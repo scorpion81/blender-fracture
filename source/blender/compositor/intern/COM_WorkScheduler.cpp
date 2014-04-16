@@ -81,12 +81,17 @@ static int g_highlightIndex;
 static void **g_highlightedNodes;
 static void **g_highlightedNodesRead;
 
+/* XXX highlighting disabled for now
+ * This requires pointers back to DNA data (bNodeTree/bNode) in operations, which is bad!
+ * Instead IF we want to keep this feature it should use a weak reference such as bNodeInstanceKey
+ */
+#if 0
 #if COM_CURRENT_THREADING_MODEL == COM_TM_QUEUE
 #define HIGHLIGHT(wp) \
 { \
 	ExecutionGroup *group = wp->getExecutionGroup(); \
 	if (group->isComplex()) { \
-		NodeOperation *operation = group->getOutputNodeOperation(); \
+		NodeOperation *operation = group->getOutputOperation(); \
 		if (operation->isWriteBufferOperation()) { \
 			WriteBufferOperation *writeOperation = (WriteBufferOperation *)operation; \
 			NodeOperation *complexOperation = writeOperation->getInput(); \
@@ -105,6 +110,9 @@ static void **g_highlightedNodesRead;
 	} \
 }
 #endif  /* COM_CURRENT_THREADING_MODEL == COM_TM_QUEUE */
+#else
+#define HIGHLIGHT(wp) {}
+#endif
 
 void COM_startReadHighlights()
 {
@@ -327,7 +335,7 @@ void WorkScheduler::initialize(bool use_opencl, int num_cpu_threads)
 			error = clGetPlatformIDs(0, 0, &numberOfPlatforms);
 			if (error == -1001) { }   /* GPU not supported */
 			else if (error != CL_SUCCESS) { printf("CLERROR[%d]: %s\n", error, clewErrorString(error));  }
-			if (G.f & G_DEBUG) printf("%d number of platforms\n", numberOfPlatforms);
+			if (G.f & G_DEBUG) printf("%u number of platforms\n", numberOfPlatforms);
 			cl_platform_id *platforms = (cl_platform_id *)MEM_mallocN(sizeof(cl_platform_id) * numberOfPlatforms, __func__);
 			error = clGetPlatformIDs(numberOfPlatforms, platforms, 0);
 			unsigned int indexPlatform;

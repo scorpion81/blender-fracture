@@ -200,7 +200,7 @@ typedef struct PChart {
 		} lscm;
 		struct PChartPack {
 			float rescale, area;
-			float size[2], trans[2];
+			float size[2] /* , trans[2] */;
 		} pack;
 	} u;
 
@@ -1100,7 +1100,7 @@ static PFace *p_face_add(PHandle *handle)
 }
 
 static PFace *p_face_add_construct(PHandle *handle, ParamKey key, ParamKey *vkeys,
-                                   float *co[3], float *uv[3], int i1, int i2, int i3,
+                                   float *co[4], float *uv[4], int i1, int i2, int i3,
                                    ParamBool *pin, ParamBool *select)
 {
 	PFace *f = p_face_add(handle);
@@ -2821,9 +2821,9 @@ static void p_chart_pin_positions(PChart *chart, PVert **pin1, PVert **pin2)
 		float sub[3];
 
 		sub_v3_v3v3(sub, (*pin1)->co, (*pin2)->co);
-		sub[0] = fabs(sub[0]);
-		sub[1] = fabs(sub[1]);
-		sub[2] = fabs(sub[2]);
+		sub[0] = fabsf(sub[0]);
+		sub[1] = fabsf(sub[1]);
+		sub[2] = fabsf(sub[2]);
 
 		if ((sub[0] > sub[1]) && (sub[0] > sub[2])) {
 			dirx = 0;
@@ -4148,7 +4148,7 @@ ParamHandle *param_construct_begin(void)
 	handle->arena = BLI_memarena_new(MEM_SIZE_OPTIMAL(1 << 16), "param construct arena");
 	handle->aspx = 1.0f;
 	handle->aspy = 1.0f;
-	handle->do_aspect = FALSE;
+	handle->do_aspect = false;
 
 	handle->hash_verts = phash_new((PHashLink **)&handle->construction_chart->verts, 1);
 	handle->hash_edges = phash_new((PHashLink **)&handle->construction_chart->edges, 1);
@@ -4163,7 +4163,7 @@ void param_aspect_ratio(ParamHandle *handle, float aspx, float aspy)
 
 	phandle->aspx = aspx;
 	phandle->aspy = aspy;
-	phandle->do_aspect = TRUE;
+	phandle->do_aspect = true;
 }
 
 void param_delete(ParamHandle *handle)
@@ -4250,7 +4250,7 @@ static void p_add_ngon(ParamHandle *handle, ParamKey key, int nverts,
 }
 
 void param_face_add(ParamHandle *handle, ParamKey key, int nverts,
-                    ParamKey *vkeys, float **co, float **uv,
+                    ParamKey *vkeys, float *co[4], float *uv[4],
                     ParamBool *pin, ParamBool *select, float normal[3])
 {
 	PHandle *phandle = (PHandle *)handle;

@@ -51,7 +51,7 @@ namespace Freestyle {
 // XXX Grmll... G is used as template's typename parameter :/
 static const Global &_global = G;
 
-#define LOGGING FALSE
+#define LOGGING 0
 
 using namespace std;
 
@@ -138,28 +138,28 @@ static void findOccludee(FEdge *fe, G& grid, I& occluders, real epsilon, WFace *
 
 			if (p->rayIntersect(A, v, t, t_u, t_v)) {
 #if LOGGING
-			if (_global.debug & G_DEBUG_FREESTYLE) {
-				cout << "\t\tRay " << A << " * " << v << " intersects at time " << t << endl;
-				cout << "\t\t(v * normal) == " << (v * p->getNormal()) << " for normal " << p->getNormal() << endl;
-			}
+				if (_global.debug & G_DEBUG_FREESTYLE) {
+					cout << "\t\tRay " << A << " * " << v << " intersects at time " << t << endl;
+					cout << "\t\t(v * normal) == " << (v * p->getNormal()) << " for normal " << p->getNormal() << endl;
+				}
 #endif
-			if (fabs(v * p->getNormal()) > 0.0001) {
-				if ((t > 0.0)) { // && (t<1.0))
-					if (t < mint) {
-						*oaWFace = oface;
-						mint = t;
-						noIntersection = false;
-						fe->setOccludeeIntersection(Vec3r(A + t * v));
+				if (fabs(v * p->getNormal()) > 0.0001) {
+					if ((t > 0.0)) { // && (t<1.0))
+						if (t < mint) {
+							*oaWFace = oface;
+							mint = t;
+							noIntersection = false;
+							fe->setOccludeeIntersection(Vec3r(A + t * v));
 #if LOGGING
-						if (_global.debug & G_DEBUG_FREESTYLE) {
-							cout << "\t\tIs occludee" << endl;
-						}
+							if (_global.debug & G_DEBUG_FREESTYLE) {
+								cout << "\t\tIs occludee" << endl;
+							}
 #endif
+						}
 					}
 				}
-			}
 
-			occluders.reportDepth(A, v, t);
+				occluders.reportDepth(A, v, t);
 			}
 		}
 
@@ -246,146 +246,146 @@ static int computeVisibility(ViewMap *viewMap, FEdge *fe, G& grid, real epsilon,
 	I occluders(grid, center, epsilon);
 
 	for (occluders.initBeforeTarget(); occluders.validBeforeTarget(); occluders.nextOccluder()) {
-	// If we're dealing with an exact silhouette, check whether we must take care of this occluder of not.
-	// (Indeed, we don't consider the occluders that share at least one vertex with the face containing this edge).
-	//-----------
-	oface = occluders.getWFace();
-	Polygon3r *p = occluders.getCameraSpacePolygon();
-	real t, t_u, t_v;
+		// If we're dealing with an exact silhouette, check whether we must take care of this occluder of not.
+		// (Indeed, we don't consider the occluders that share at least one vertex with the face containing this edge).
+		//-----------
+		oface = occluders.getWFace();
+		Polygon3r *p = occluders.getCameraSpacePolygon();
+		real t, t_u, t_v;
 #if LOGGING
-	if (_global.debug & G_DEBUG_FREESTYLE) {
-		cout << "\t\tEvaluating intersection for occluder " << (p->getVertices())[0] << (p->getVertices())[1] <<
-		        (p->getVertices())[2] << endl << "\t\t\tand ray " << vp << " * " << u << " (center " << center <<
-		        ")" << endl;
-	}
+		if (_global.debug & G_DEBUG_FREESTYLE) {
+			cout << "\t\tEvaluating intersection for occluder " << (p->getVertices())[0] << (p->getVertices())[1] <<
+			        (p->getVertices())[2] << endl << "\t\t\tand ray " << vp << " * " << u << " (center " << center <<
+			        ")" << endl;
+		}
 #endif
 
 #if LOGGING
-	Vec3r v(vp - center);
-	real rl = v.norm();
-	v.normalize();
-	vector<Vec3r> points;
-	// Iterate over vertices, storing projections in points
-	for (vector<WOEdge*>::const_iterator woe = oface->getEdgeList().begin(), woend = oface->getEdgeList().end();
-		 woe != woend;
-		 woe++)
-	{
-		points.push_back(Vec3r((*woe)->GetaVertex()->GetVertex()));
-	}
-	Polygon3r p1(points, oface->GetNormal());
-	Vec3r v1((p1.getVertices())[0]);
-	real d = -(v1 * p->getNormal());
-	if (_global.debug & G_DEBUG_FREESTYLE) {
-		cout << "\t\tp:  " << (p->getVertices())[0] << (p->getVertices())[1] << (p->getVertices())[2] << ", norm: " <<
-		        p->getNormal() << endl;
-		cout << "\t\tp1: " << (p1.getVertices())[0] << (p1.getVertices())[1] << (p1.getVertices())[2] << ", norm: " <<
-		        p1.getNormal() << endl;
-	}
+		Vec3r v(vp - center);
+		real rl = v.norm();
+		v.normalize();
+		vector<Vec3r> points;
+		// Iterate over vertices, storing projections in points
+		for (vector<WOEdge*>::const_iterator woe = oface->getEdgeList().begin(), woend = oface->getEdgeList().end();
+		     woe != woend;
+		     woe++)
+		{
+			points.push_back(Vec3r((*woe)->GetaVertex()->GetVertex()));
+		}
+		Polygon3r p1(points, oface->GetNormal());
+		Vec3r v1((p1.getVertices())[0]);
+		real d = -(v1 * p->getNormal());
+		if (_global.debug & G_DEBUG_FREESTYLE) {
+			cout << "\t\tp:  " << (p->getVertices())[0] << (p->getVertices())[1] << (p->getVertices())[2] << ", norm: " <<
+			        p->getNormal() << endl;
+			cout << "\t\tp1: " << (p1.getVertices())[0] << (p1.getVertices())[1] << (p1.getVertices())[2] << ", norm: " <<
+			        p1.getNormal() << endl;
+		}
 #else
-	real d = -((p->getVertices())[0] * p->getNormal());
+		real d = -((p->getVertices())[0] * p->getNormal());
 #endif
 
-	if (face) {
-#if LOGGING
-		if (_global.debug & G_DEBUG_FREESTYLE) {
-			cout << "\t\tDetermining face adjacency...";
-		}
-#endif
-		skipFace = false;
-
-		if (face == oface) {
+		if (face) {
 #if LOGGING
 			if (_global.debug & G_DEBUG_FREESTYLE) {
-				cout << "  Rejecting occluder for face concurrency." << endl;
+				cout << "\t\tDetermining face adjacency...";
 			}
 #endif
-			continue;
-		}
+			skipFace = false;
 
-
-		for (vector<WVertex*>::iterator fv = faceVertices.begin(), fvend = faceVertices.end(); fv != fvend; ++fv) {
-			if ((*fv)->isBoundary())
-				continue;
-
-			WVertex::incoming_edge_iterator iebegin = (*fv)->incoming_edges_begin();
-			WVertex::incoming_edge_iterator ieend = (*fv)->incoming_edges_end();
-			for (ie = iebegin; ie != ieend; ++ie) {
-				if ((*ie) == 0)
-					continue;
-
-				WFace *sface = (*ie)->GetbFace();
-				//WFace *sfacea = (*ie)->GetaFace();
-				//if ((sface == oface) || (sfacea == oface))
-				if (sface == oface) {
-					skipFace = true;
-					break;
-				}
-			}
-			if (skipFace)
-			break;
-		}
-		if (skipFace) {
-#if LOGGING
-			if (_global.debug & G_DEBUG_FREESTYLE) {
-				cout << "  Rejecting occluder for face adjacency." << endl;
-			}
-#endif
-			continue;
-		}
-	}
-	else {
-		// check whether the edge and the polygon plane are coincident:
-		//-------------------------------------------------------------
-		//first let us compute the plane equation.
-		if (GeomUtils::COINCIDENT == GeomUtils::intersectRayPlane(origin, edge, p->getNormal(), d, t, epsilon)) {
-#if LOGGING
-			if (_global.debug & G_DEBUG_FREESTYLE) {
-				cout << "\t\tRejecting occluder for target coincidence." << endl;
-			}
-#endif
-			continue;
-		}
-	}
-
-#if LOGGING
-	if (_global.debug & G_DEBUG_FREESTYLE) {
-		real x;
-		if (p1.rayIntersect(center, v, x, t_u, t_v)) {
-			cout << "\t\tRay should intersect at time " << (rl - x) << ". Center: " << center << ", V: " << v <<
-			        ", RL: " << rl << ", T:" << x << endl;
-		}
-		else {
-			cout << "\t\tRay should not intersect. Center: " << center << ", V: " << v <<  ", RL: " << rl << endl;
-		}
-	}
-#endif
-
-	if (p->rayIntersect(center, u, t, t_u, t_v)) {
-#if LOGGING
-		if (_global.debug & G_DEBUG_FREESTYLE) {
-			cout << "\t\tRay " << center << " * " << u << " intersects at time " << t << " (raylength is " <<
-			        raylength << ")" << endl;
-			cout << "\t\t(u * normal) == " << (u * p->getNormal()) << " for normal " << p->getNormal() << endl;
-		}
-#endif
-		if (fabs(u * p->getNormal()) > 0.0001) {
-			if ((t > 0.0) && (t < raylength)) {
+			if (face == oface) {
 #if LOGGING
 				if (_global.debug & G_DEBUG_FREESTYLE) {
-					cout << "\t\tIs occluder" << endl;
+					cout << "  Rejecting occluder for face concurrency." << endl;
 				}
 #endif
-				if ( foundOccluders != NULL ) {
-					ViewShape *vshape = viewMap->viewShape(oface->GetVertex(0)->shape()->GetId());
-					foundOccluders->insert(vshape);
-				}
-				++qi;
-
-				if (! grid.enableQI())
-					break;
+				continue;
 			}
 
-			occluders.reportDepth(center, u, t);
+
+			for (vector<WVertex*>::iterator fv = faceVertices.begin(), fvend = faceVertices.end(); fv != fvend; ++fv) {
+				if ((*fv)->isBoundary())
+					continue;
+
+				WVertex::incoming_edge_iterator iebegin = (*fv)->incoming_edges_begin();
+				WVertex::incoming_edge_iterator ieend = (*fv)->incoming_edges_end();
+				for (ie = iebegin; ie != ieend; ++ie) {
+					if ((*ie) == 0)
+						continue;
+
+					WFace *sface = (*ie)->GetbFace();
+					//WFace *sfacea = (*ie)->GetaFace();
+					//if ((sface == oface) || (sfacea == oface))
+					if (sface == oface) {
+						skipFace = true;
+						break;
+					}
+				}
+				if (skipFace)
+					break;
+			}
+			if (skipFace) {
+#if LOGGING
+				if (_global.debug & G_DEBUG_FREESTYLE) {
+					cout << "  Rejecting occluder for face adjacency." << endl;
+				}
+#endif
+				continue;
+			}
+		}
+		else {
+			// check whether the edge and the polygon plane are coincident:
+			//-------------------------------------------------------------
+			//first let us compute the plane equation.
+			if (GeomUtils::COINCIDENT == GeomUtils::intersectRayPlane(origin, edge, p->getNormal(), d, t, epsilon)) {
+#if LOGGING
+				if (_global.debug & G_DEBUG_FREESTYLE) {
+					cout << "\t\tRejecting occluder for target coincidence." << endl;
+				}
+#endif
+				continue;
+			}
+		}
+
+#if LOGGING
+		if (_global.debug & G_DEBUG_FREESTYLE) {
+			real x;
+			if (p1.rayIntersect(center, v, x, t_u, t_v)) {
+				cout << "\t\tRay should intersect at time " << (rl - x) << ". Center: " << center << ", V: " << v <<
+				        ", RL: " << rl << ", T:" << x << endl;
+			}
+			else {
+				cout << "\t\tRay should not intersect. Center: " << center << ", V: " << v <<  ", RL: " << rl << endl;
+			}
+		}
+#endif
+
+		if (p->rayIntersect(center, u, t, t_u, t_v)) {
+#if LOGGING
+			if (_global.debug & G_DEBUG_FREESTYLE) {
+				cout << "\t\tRay " << center << " * " << u << " intersects at time " << t << " (raylength is " <<
+				        raylength << ")" << endl;
+				cout << "\t\t(u * normal) == " << (u * p->getNormal()) << " for normal " << p->getNormal() << endl;
+			}
+#endif
+			if (fabs(u * p->getNormal()) > 0.0001) {
+				if ((t > 0.0) && (t < raylength)) {
+#if LOGGING
+					if (_global.debug & G_DEBUG_FREESTYLE) {
+						cout << "\t\tIs occluder" << endl;
+					}
+#endif
+					if ( foundOccluders != NULL ) {
+						ViewShape *vshape = viewMap->viewShape(oface->GetVertex(0)->shape()->GetId());
+						foundOccluders->insert(vshape);
+					}
+					++qi;
+
+					if (! grid.enableQI())
+						break;
+				}
+
+				occluders.reportDepth(center, u, t);
 			}
 		}
 	}
@@ -2332,14 +2332,16 @@ void ViewMapBuilder::ComputeSweepLineIntersections(ViewMap *ioViewMap, real epsi
 			if ((Ta < -epsilon) || (Ta > 1 + epsilon) || (Tb < -epsilon) || (Tb > 1 + epsilon)) {
 				printf("ta %.12e\n", ta);
 				printf("tb %.12e\n", tb);
-				printf("a1 %e, %e -- b1 %e, %e\n", a1[0], a1[1], b1[0], b1[1]);
-				printf("a2 %e, %e -- b2 %e, %e\n", a2[0], a2[1], b2[0], b2[1]);
+				printf("a1 %e, %e -- a2 %e, %e\n", a1[0], a1[1], a2[0], a2[1]);
+				printf("b1 %e, %e -- b2 %e, %e\n", b1[0], b1[1], b2[0], b2[1]);
+				//printf("line([%e, %e], [%e, %e]);\n", a1[0], a2[0], a1[1], a2[1]);
+				//printf("line([%e, %e], [%e, %e]);\n", b1[0], b2[0], b1[1], b2[1]);
 				if ((Ta < -epsilon) || (Ta > 1 + epsilon))
-				printf("Ta %.12e\n", Ta);
+					printf("Ta %.12e\n", Ta);
 				if ((Tb < -epsilon) || (Tb > 1 + epsilon))
-				printf("Tb %.12e\n", Tb);
-				printf("A1 %e, %e, %e -- B1 %e, %e, %e\n", A1[0], A1[1], A1[2], B1[0], B1[1], B1[2]);
-				printf("A2 %e, %e, %e -- B2 %e, %e, %e\n", A2[0], A2[1], A2[2], B2[0], B2[1], B2[2]);
+					printf("Tb %.12e\n", Tb);
+				printf("A1 %e, %e, %e -- A2 %e, %e, %e\n", A1[0], A1[1], A1[2], A2[0], A2[1], A2[2]);
+				printf("B1 %e, %e, %e -- B2 %e, %e, %e\n", B1[0], B1[1], B1[2], B2[0], B2[1], B2[2]);
 			}
 		}
 #endif

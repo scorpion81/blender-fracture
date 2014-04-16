@@ -20,8 +20,8 @@
 */
 
 /** \file blender/modifiers/intern/MOD_wireframe.c
-*  \ingroup modifiers
-*/
+ *  \ingroup modifiers
+ */
 
 #include "MEM_guardedalloc.h"
 
@@ -80,7 +80,7 @@ static DerivedMesh *WireframeModifier_do( WireframeModifierData *wmd, Object *ob
 	DerivedMesh *result;
 	BMesh *bm;
 
-	const int defgrp_index = defgroup_name_index(ob, wmd->defgrp_name);;
+	const int defgrp_index = defgroup_name_index(ob, wmd->defgrp_name);
 
 	bm = DM_to_bmesh(dm, true);
 

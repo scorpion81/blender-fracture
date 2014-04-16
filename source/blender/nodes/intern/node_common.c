@@ -94,10 +94,10 @@ int node_group_poll_instance(bNode *node, bNodeTree *nodetree)
 		if (grouptree)
 			return nodeGroupPoll(nodetree, grouptree);
 		else
-			return TRUE;    /* without a linked node tree, group node is always ok */
+			return true;    /* without a linked node tree, group node is always ok */
 	}
 	else
-		return FALSE;
+		return false;
 }
 
 int nodeGroupPoll(bNodeTree *nodetree, bNodeTree *grouptree)
@@ -392,7 +392,7 @@ static void node_group_input_update(bNodeTree *ntree, bNode *node)
 	ListBase tmplinks;
 	
 	/* find links from the extension socket and store them */
-	tmplinks.first = tmplinks.last = NULL;
+	BLI_listbase_clear(&tmplinks);
 	for (link = ntree->links.first; link; link = link->next) {
 		if (nodeLinkIsHidden(link))
 			continue;
@@ -479,7 +479,7 @@ static void node_group_output_update(bNodeTree *ntree, bNode *node)
 	ListBase tmplinks;
 	
 	/* find links to the extension socket and store them */
-	tmplinks.first = tmplinks.last = NULL;
+	BLI_listbase_clear(&tmplinks);
 	for (link = ntree->links.first; link; link = link->next) {
 		if (nodeLinkIsHidden(link))
 			continue;

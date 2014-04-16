@@ -110,7 +110,7 @@ void ED_keymap_proportional_cycle(struct wmKeyConfig *keyconf, struct wmKeyMap *
 void ED_keymap_proportional_obmode(struct wmKeyConfig *keyconf, struct wmKeyMap *keymap);
 void ED_keymap_proportional_maskmode(struct wmKeyConfig *keyconf, struct wmKeyMap *keymap);
 void ED_keymap_proportional_editmode(struct wmKeyConfig *keyconf, struct wmKeyMap *keymap,
-                                     const short do_connected);
+                                     const bool do_connected);
 
 /* send your own notifier for select! */
 void ED_base_object_select(struct Base *base, short mode);
@@ -162,7 +162,7 @@ void ED_objects_recalculate_paths(struct bContext *C, struct Scene *scene);
 
 /* constraints */
 struct ListBase *get_active_constraints(struct Object *ob);
-struct ListBase *get_constraint_lb(struct Object *ob, struct bConstraint *con, struct bPoseChannel **pchan_r);
+struct ListBase *get_constraint_lb(struct Object *ob, struct bConstraint *con, struct bPoseChannel **r_pchan);
 struct bConstraint *get_active_constraint(struct Object *ob);
 
 void object_test_constraints(struct Object *ob);

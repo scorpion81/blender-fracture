@@ -380,7 +380,7 @@ static BMFace *bev_create_ngon(BMesh *bm, BMVert **vert_arr, const int totv,
 					interp_f = facerep;
 				}
 				if (interp_f)
-					BM_loop_interp_from_face(bm, l, interp_f, TRUE, TRUE);
+					BM_loop_interp_from_face(bm, l, interp_f, true, true);
 				i++;
 			}
 		}
@@ -504,7 +504,7 @@ static BMFace *bev_create_quad_straddle(BMesh *bm, BMVert *v1, BMVert *v2, BMVer
 		else
 			facerep = f2;
 		if (facerep)
-			BM_loop_interp_from_face(bm, l, facerep, TRUE, TRUE);
+			BM_loop_interp_from_face(bm, l, facerep, true, true);
 	}
 	return f;
 }
@@ -550,6 +550,15 @@ static void slide_dist(EdgeHalf *e, BMVert *v, float d, float slideco[3])
 		d = len - (float)(50.0 * BEVEL_EPSILON_D);
 	copy_v3_v3(slideco, v->co);
 	madd_v3_v3fl(slideco, dir, -d);
+}
+
+/* Is co not on the edge e? */
+static bool is_outside_edge(EdgeHalf *e, const float co[3])
+{
+	float d_squared;
+
+	d_squared = dist_squared_to_line_segment_v3(co, e->e->v1->co, e->e->v2->co);
+	return d_squared > 10000.0f * BEVEL_EPSILON_SQ;
 }
 
 /*
@@ -601,10 +610,12 @@ static void offset_meet(EdgeHalf *e1, EdgeHalf *e2, BMVert *v, BMFace *f, float 
 	else {
 		/* Get normal to plane where meet point should be,
 		 * using cross product instead of f->no in case f is non-planar.
-		 * If e1-v-e2 is a reflex angle (viewed from vertex normal side), need to flip*/
+		 * If e1-v-e2 is a reflex angle (viewed from vertex normal side), need to flip.
+		 * Use f->no to figure out which side to look at angle from, as even if
+		 * f is non-planar, will be more accurate than vertex normal */
 		cross_v3_v3v3(norm_v, dir2, dir1);
 		normalize_v3(norm_v);
-		if (dot_v3v3(norm_v, v->no) < 0.0f)
+		if (dot_v3v3(norm_v, f ? f->no : v->no) < 0.0f)
 			negate_v3(norm_v);
 
 		/* get vectors perp to each edge, perp to norm_v, and pointing into face */
@@ -630,6 +641,20 @@ static void offset_meet(EdgeHalf *e1, EdgeHalf *e2, BMVert *v, BMFace *f, float 
 			d = dist_to_line_v3(meetco, v->co, BM_edge_other_vert(e2->e, v)->co);
 			if (fabsf(d - e2->offset_l) > BEVEL_EPSILON)
 				e2->offset_l = d;
+		}
+		else {
+			/* The lines intersect, but is it at a reasonable place?
+			 * One problem to check: if one of the offsets is 0, then don't
+			 * want an intersection that is outside that edge itself.
+			 * This can happen if angle between them is > 180 degrees. */
+			if (e1->offset_r == 0.0f && is_outside_edge(e1, meetco)) {
+				copy_v3_v3(meetco, v->co);
+				e2->offset_l = 0.0f;
+			}
+			if (e2->offset_l == 0.0f && is_outside_edge(e2, meetco)) {
+				copy_v3_v3(meetco, v->co);
+				e1->offset_r = 0.0f;
+			}
 		}
 	}
 }
@@ -806,10 +831,10 @@ static void offset_in_two_planes(BevelParams *bp, EdgeHalf *e1, EdgeHalf *e2, Ed
 	}
 }
 
-/* Offset by e->offset in plane with normal plane_no, on left if left==TRUE,
+/* Offset by e->offset in plane with normal plane_no, on left if left==true,
  * else on right.  If no is NULL, choose an arbitrary plane different
  * from eh's direction. */
-static void offset_in_plane(EdgeHalf *e, const float plane_no[3], int left, float r[3])
+static void offset_in_plane(EdgeHalf *e, const float plane_no[3], bool left, float r[3])
 {
 	float dir[3], no[3], fdir[3];
 	BMVert *v;
@@ -982,8 +1007,8 @@ static int bev_ccw_test(BMEdge *a, BMEdge *b, BMFace *f)
 /* Fill matrix r_mat so that a point in the sheared parallelogram with corners
  * va, vmid, vb (and the 4th that is implied by it being a parallelogram)
  * is the result of transforming the unit square by multiplication with r_mat.
- * If it can't be done because the parallelogram is degenerate, return FALSE
- * else return TRUE.
+ * If it can't be done because the parallelogram is degenerate, return false
+ * else return true.
  * Method:
  * Find vo, the origin of the parallelogram with other three points va, vmid, vb.
  * Also find vd, which is in direction normal to parallelogram and 1 unit away
@@ -999,8 +1024,8 @@ static int bev_ccw_test(BMEdge *a, BMEdge *b, BMFace *f)
  * and B has the right side as columns - both extended into homogeneous coords.
  * So M = B*(Ainverse).  Doing Ainverse by hand gives the code below.
  */
-static int make_unit_square_map(const float va[3], const float vmid[3], const float vb[3],
-                                float r_mat[4][4])
+static bool make_unit_square_map(const float va[3], const float vmid[3], const float vb[3],
+                                 float r_mat[4][4])
 {
 	float vo[3], vd[3], vb_vmid[3], va_vmid[3], vddir[3];
 
@@ -1027,10 +1052,10 @@ static int make_unit_square_map(const float va[3], const float vmid[3], const fl
 		sub_v3_v3(&r_mat[3][0], vmid);
 		r_mat[3][3] = 1.0f;
 
-		return TRUE;
+		return true;
 	}
 	else
-		return FALSE;
+		return false;
 }
 
 /* Like make_unit_square_map, but this one makes a matrix that transforms the
@@ -1162,7 +1187,7 @@ static void get_profile_point(BevelParams *bp, const Profile *pro, int i, int n,
 	}
 }
 
-/* Calculcate the actual coordinate values for bndv's profile.
+/* Calculate the actual coordinate values for bndv's profile.
  * This is only needed if bp->seg > 1.
  * Allocate the space for them if that hasn't been done already.
  * If bp->seg is not a power of 2, also need to calculate
@@ -1381,7 +1406,7 @@ static void build_boundary(BevelParams *bp, BevVert *bv, bool construct)
 	if (bv->edgecount == 2 && bv->selcount == 1) {
 		/* special case: beveled edge meets non-beveled one at valence 2 vert */
 		no = e->fprev ? e->fprev->no : (e->fnext ? e->fnext->no : NULL);
-		offset_in_plane(e, no, TRUE, co);
+		offset_in_plane(e, no, true, co);
 		if (construct) {
 			v = add_new_bound_vert(mem_arena, vm, co);
 			v->efirst = v->elast = v->ebev = e;
@@ -1391,7 +1416,7 @@ static void build_boundary(BevelParams *bp, BevVert *bv, bool construct)
 			adjust_bound_vert(e->leftv, co);
 		}
 		no = e->fnext ? e->fnext->no : (e->fprev ? e->fprev->no : NULL);
-		offset_in_plane(e, no, FALSE, co);
+		offset_in_plane(e, no, false, co);
 		if (construct) {
 			v = add_new_bound_vert(mem_arena, vm, co);
 			v->efirst = v->elast = e;
@@ -1681,7 +1706,7 @@ static BoundVert *pipe_test(BevVert *bv)
 	for (e = &bv->edges[0]; e != &bv->edges[bv->edgecount]; e++) {
 		if (e->fnext) {
 			if (dot_v3v3(dir1, e->fnext->no) > BEVEL_EPSILON)
-				return FALSE;
+				return NULL;
 		}
 	}
 	return v1;
@@ -2510,8 +2535,6 @@ static void bevel_build_rings(BevelParams *bp, BMesh *bm, BevVert *bv)
 		v = vm->boundstart;
 		do {
 			i = v->index;
-			f = boundvert_rep_face(v);
-			f2 = boundvert_rep_face(v->next);
 			if (!v->any_seam) {
 				for (ring = 1; ring < ns2; ring++) {
 					BMVert *v_uv = mesh_vert(vm, i, ring, ns2)->v;
@@ -2600,7 +2623,7 @@ static void bevel_build_trifan(BMesh *bm, BevVert *bv)
 			BMLoop *l_new;
 			BMFace *f_new;
 			BLI_assert(v_fan == l_fan->v);
-			f_new = BM_face_split(bm, f, l_fan, l_fan->next->next, &l_new, NULL, FALSE);
+			f_new = BM_face_split(bm, f, l_fan, l_fan->next->next, &l_new, NULL, false);
 
 			if (f_new->len > f->len) {
 				f = f_new;
@@ -2645,7 +2668,7 @@ static void bevel_build_quadstrip(BMesh *bm, BevVert *bv)
 				l_b = l_b->next;
 			}
 			else {
-				BM_face_split(bm, f, l_a, l_b, &l_new, NULL, FALSE);
+				BM_face_split(bm, f, l_a, l_b, &l_new, NULL, false);
 				f = l_new->f;
 
 				/* walk around the new face to get the next verts to split */
@@ -2895,11 +2918,11 @@ static BevVert *bevel_vert_construct(BMesh *bm, BevelParams *bp, BMVert *v)
 		bme = e->e;
 		BM_BEVEL_EDGE_TAG_ENABLE(bme);
 		if (BM_elem_flag_test(bme, BM_ELEM_TAG) && !bp->vertex_only) {
-			e->is_bev = TRUE;
+			e->is_bev = true;
 			e->seg = bp->seg;
 		}
 		else {
-			e->is_bev = FALSE;
+			e->is_bev = false;
 			e->seg = 0;
 		}
 		e->is_rev = (bme->v2 == v);
@@ -3060,7 +3083,7 @@ static bool bev_rebuild_polygon(BMesh *bm, BevelParams *bp, BMFace *f)
 				BLI_array_append(vv, v->nv.v);
 			}
 
-			do_rebuild = TRUE;
+			do_rebuild = true;
 		}
 		else {
 			BLI_array_append(vv, l->v);

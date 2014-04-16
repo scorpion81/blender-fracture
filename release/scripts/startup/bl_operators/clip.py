@@ -121,6 +121,7 @@ def CLIP_default_settings_from_track(clip, track, framenr):
     settings.use_default_red_channel = track.use_red_channel
     settings.use_default_green_channel = track.use_green_channel
     settings.use_default_blue_channel = track.use_blue_channel
+    settings.default_weight = track.weight
 
 
 class CLIP_OT_track_to_empty(Operator):
@@ -188,6 +189,15 @@ class CLIP_OT_bundles_to_mesh(Operator):
 
         new_verts = []
 
+        scene = context.scene
+        camera = scene.camera
+        matrix = Matrix.Identity(4)
+        if camera:
+            reconstruction = tracking_object.reconstruction
+            framenr = scene.frame_current - clip.frame_start + 1
+            reconstructed_matrix = reconstruction.cameras.matrix_from_frame(framenr)
+            matrix = camera.matrix_world * reconstructed_matrix.inverted()
+
         mesh = bpy.data.meshes.new(name="Tracks")
         for track in tracking_object.tracks:
             if track.has_bundle:
@@ -198,6 +208,8 @@ class CLIP_OT_bundles_to_mesh(Operator):
             mesh.vertices.foreach_set("co", unpack_list(new_verts))
 
         ob = bpy.data.objects.new(name="Tracks", object_data=mesh)
+
+        ob.matrix_world = matrix
 
         context.scene.objects.link(ob)
 

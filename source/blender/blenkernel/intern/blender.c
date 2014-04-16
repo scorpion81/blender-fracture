@@ -204,7 +204,7 @@ static void setup_app_data(bContext *C, BlendFileData *bfd, const char *filepath
 	char mode;
 
 	/* 'u' = undo save, 'n' = no UI load */
-	if (bfd->main->screen.first == NULL) mode = 'u';
+	if (BLI_listbase_is_empty(&bfd->main->screen)) mode = 'u';
 	else if (G.fileflags & G_FILE_NO_UI) mode = 'n';
 	else mode = 0;
 
@@ -554,7 +554,7 @@ int blender_test_break(void)
 			blender_test_break_cb();
 	}
 	
-	return (G.is_break == TRUE);
+	return (G.is_break == true);
 }
 
 
@@ -598,7 +598,7 @@ static int read_undosave(bContext *C, UndoElem *uel)
 
 	if (success) {
 		/* important not to update time here, else non keyed tranforms are lost */
-		DAG_on_visible_update(G.main, FALSE);
+		DAG_on_visible_update(G.main, false);
 	}
 
 	return success;

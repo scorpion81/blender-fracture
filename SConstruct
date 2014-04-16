@@ -33,14 +33,6 @@
 # TODO: directory copy functions are far too complicated, see:
 #       http://wiki.blender.org/index.php/User:Ideasman42/SConsNotSimpleInstallingFiles
 
-import platform as pltfrm
-
-# Need a better way to do this. Automagical maybe is not the best thing, maybe it is.
-if pltfrm.architecture()[0] == '64bit':
-    bitness = 64
-else:
-    bitness = 32
-
 import sys
 import os
 import os.path
@@ -112,15 +104,9 @@ btools.print_targets(B.targets, B.bc)
 # handling cmd line arguments & config file
 
 # bitness stuff
-tempbitness = int(B.arguments.get('BF_BITNESS', bitness)) # default to bitness found as per starting python
-if tempbitness in (32, 64): # only set if 32 or 64 has been given
-    bitness = int(tempbitness)
-
-if bitness:
-    B.bitness = bitness
-else:
+tempbitness = int(B.arguments.get('BF_BITNESS', B.bitness)) # default to bitness found as per starting python
+if tempbitness in B.allowed_bitnesses.values() :
     B.bitness = tempbitness
-
 
 # first check cmdline for toolset and we create env to work on
 quickie = B.arguments.get('BF_QUICK', None)
@@ -149,7 +135,7 @@ if toolset:
         if env:
             btools.SetupSpawn(env)
 else:
-    if bitness==64 and platform=='win32':
+    if B.bitness==64 and platform=='win32':
         env = BlenderEnvironment(ENV = os.environ, MSVS_ARCH='amd64', TARGET_ARCH='x86_64', MSVC_VERSION=vcver)
     else:
         env = BlenderEnvironment(ENV = os.environ, TARGET_ARCH='x86', MSVC_VERSION=vcver)
@@ -167,9 +153,9 @@ if cxx:
 
 if sys.platform=='win32':
     if env['CC'] in ['cl', 'cl.exe']:
-        platform = 'win64-vc' if bitness == 64 else 'win32-vc'
+        platform = 'win64-vc' if B.bitness == 64 else 'win32-vc'
     elif env['CC'] in ['gcc']:
-        platform = 'win64-mingw' if bitness == 64 else 'win32-mingw'
+        platform = 'win64-mingw' if B.bitness == 64 else 'win32-mingw'
 
 if 'mingw' in platform:
     print "Setting custom spawn function"
@@ -219,7 +205,7 @@ opts = btools.read_opts(env, optfiles, B.arguments)
 opts.Update(env)
 
 if sys.platform=='win32':
-    if bitness==64:
+    if B.bitness==64:
         env.Append(CPPFLAGS=['-DWIN64']) # -DWIN32 needed too, as it's used all over to target Windows generally
 
 if not env['BF_FANCY']:
@@ -301,14 +287,20 @@ if env['OURPLATFORM']=='darwin':
     command = ["%s"%env['CC'], "--version"]
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=None, shell=False)
     line = process.communicate()[0]
-    ver = re.search(r'[0-9]+(\.[0-9]+)+', line)
+    ver = re.search(r'[0-9]+(\.[0-9]+[svn]+)+', line) or re.search(r'[0-9]+(\.[0-9]+)+', line) # read the "based on LLVM x.xsvn" version here, not the Apple version
     if ver:
-        env['CCVERSION'] = ver.group(0)
+        env['CCVERSION'] = ver.group(0).strip('svn')
     frontend = re.search(r'gcc', line) or re.search(r'clang', line) or re.search(r'llvm-gcc', line)  or re.search(r'icc', line)
     if frontend:
         env['C_COMPILER_ID'] = frontend.group(0)
+		
+    vendor = re.search(r'Apple', line)
+    if vendor:
+        C_VENDOR = vendor.group(0)
+    else:
+        C_VENDOR = 'Open Source'
 
-    print B.bc.OKGREEN + "Using Compiler: " + B.bc.ENDC + env['C_COMPILER_ID'] + '-' + env['CCVERSION']
+    print B.bc.OKGREEN + "Using Compiler: " + B.bc.ENDC  +  env['C_COMPILER_ID'] + '-' + env['CCVERSION'] + ' ( ' + C_VENDOR + ' )'
 
     cmd = 'sw_vers -productVersion'
     MAC_CUR_VER=cmd_res=commands.getoutput(cmd)
@@ -387,7 +379,7 @@ if env['OURPLATFORM']=='darwin':
     #Intel Macs are CoreDuo and Up
     if env['MACOSX_ARCHITECTURE'] == 'i386' or env['MACOSX_ARCHITECTURE'] == 'x86_64':
         env['REL_CCFLAGS'] = env['REL_CCFLAGS']+['-msse','-msse2','-msse3']
-        if env['C_COMPILER_ID'] != 'clang' or (env['C_COMPILER_ID'] == 'clang' and env['CCVERSION'] >= '5.0'):
+        if env['C_COMPILER_ID'] != 'clang' or (env['C_COMPILER_ID'] == 'clang' and env['CCVERSION'] >= '3.3'):
             env['REL_CCFLAGS'] = env['REL_CCFLAGS']+['-ftree-vectorize'] # clang xcode 4 does not accept flag
     else:
         env['CCFLAGS'] =  env['CCFLAGS']+['-fno-strict-aliasing']
@@ -396,7 +388,7 @@ if env['OURPLATFORM']=='darwin':
     if env['MACOSX_ARCHITECTURE'] == 'x86_64':
         env['REL_CCFLAGS'] = env['REL_CCFLAGS']+['-mssse3']
 
-    if env['C_COMPILER_ID'] == 'clang' and env['CCVERSION'] >= '5.0':
+    if env['C_COMPILER_ID'] == 'clang' and env['CCVERSION'] >= '3.3':
         env['CCFLAGS'].append('-ftemplate-depth=1024') # only valid for clang bundled with xcode 5
 
     # 3DconnexionClient.framework, optionally install
@@ -424,9 +416,13 @@ if env['OURPLATFORM']=='darwin':
     #Defaults openMP to true if compiler handles it ( only gcc 4.6.1 and newer )
     # if your compiler does not have accurate suffix you may have to enable it by hand !
     if env['WITH_BF_OPENMP'] == 1:
-        if env['C_COMPILER_ID'] == 'gcc' and env['CCVERSION'] >= '4.6.1': # strip down to version string if any
+        if env['C_COMPILER_ID'] == 'gcc' and env['CCVERSION'] >= '4.6.1' or env['C_COMPILER_ID'] == 'clang' and env['CCVERSION'] >= '3.4' and C_VENDOR != 'Apple':
             env['WITH_BF_OPENMP'] = 1  # multithreading for fluids, cloth, sculpt and smoke
             print B.bc.OKGREEN + "Using OpenMP"
+            if env['C_COMPILER_ID'] == 'clang' and env['CCVERSION'] >= '3.4':
+                OSX_OMP_LIBPATH = Dir(env.subst(env['LCGDIR'])).abspath
+                env.Append(BF_PROGRAM_LINKFLAGS=['-L'+OSX_OMP_LIBPATH+'/openmp/lib','-liomp5'])
+                env['CCFLAGS'].append('-I'+OSX_OMP_LIBPATH+'/openmp/include') # include for omp.h
         else:
             env['WITH_BF_OPENMP'] = 0
             print B.bc.OKGREEN + "Disabled OpenMP, not supported by compiler"
@@ -434,7 +430,7 @@ if env['OURPLATFORM']=='darwin':
     if env['WITH_BF_CYCLES_OSL'] == 1:
         OSX_OSL_LIBPATH = Dir(env.subst(env['BF_OSL_LIBPATH'])).abspath
         # we need 2 variants of passing the oslexec with the force_load option, string and list type atm
-        if env['C_COMPILER_ID'] == 'gcc' and env['CCVERSION'] >= '4.8': # strip down to version string if any
+        if env['C_COMPILER_ID'] == 'gcc' and env['CCVERSION'] >= '4.8' or env['C_COMPILER_ID'] == 'clang' and env['CCVERSION'] >= '3.4':
             env.Append(LINKFLAGS=['-L'+OSX_OSL_LIBPATH,'-loslcomp','-loslexec','-loslquery'])
         else:
             env.Append(LINKFLAGS=['-L'+OSX_OSL_LIBPATH,'-loslcomp','-force_load '+ OSX_OSL_LIBPATH +'/liboslexec.a','-loslquery'])
@@ -509,7 +505,6 @@ else:
 env['CPPFLAGS'].append('-DWITH_AUDASPACE')
 env['CPPFLAGS'].append('-DWITH_AVI')
 env['CPPFLAGS'].append('-DWITH_OPENNL')
-env['CPPFLAGS'].append('-DWITH_BOOL_COMPAT')
 if env['OURPLATFORM'] in ('win32-vc', 'win64-vc') and env['MSVC_VERSION'] == '11.0':
     env['CPPFLAGS'].append('-D_ALLOW_KEYWORD_MACROS')
 
@@ -698,6 +693,7 @@ if B.targets != ['cudakernels']:
     data_to_c_simple("release/datafiles/bmonofont.ttf")
 
     data_to_c_simple("release/datafiles/splash.png")
+    data_to_c_simple("release/datafiles/splash_2x.png")
 
     # data_to_c_simple("release/datafiles/blender_icons16.png")
     # data_to_c_simple("release/datafiles/blender_icons32.png")
@@ -899,6 +895,7 @@ if env['OURPLATFORM']!='darwin':
             source.remove('CMakeLists.txt')
             source.remove('svm')
             source.remove('closure')
+            source.remove('geom')
             source.remove('shaders')
             source.remove('osl')
             source=['intern/cycles/kernel/'+s for s in source]
@@ -919,6 +916,12 @@ if env['OURPLATFORM']!='darwin':
             source=os.listdir('intern/cycles/kernel/closure')
             if '__pycache__' in source: source.remove('__pycache__')
             source=['intern/cycles/kernel/closure/'+s for s in source]
+            scriptinstall.append(env.Install(dir=dir,source=source))
+            # geom
+            dir=os.path.join(env['BF_INSTALLDIR'], VERSION, 'scripts', 'addons','cycles', 'kernel', 'geom')
+            source=os.listdir('intern/cycles/kernel/geom')
+            if '__pycache__' in source: source.remove('__pycache__')
+            source=['intern/cycles/kernel/geom/'+s for s in source]
             scriptinstall.append(env.Install(dir=dir,source=source))
 
             # licenses
@@ -1111,7 +1114,7 @@ if env['OURPLATFORM'] in ('win32-vc', 'win32-mingw', 'win64-vc', 'linuxcross'):
     # Since the thumb handler is loaded by Explorer, architecture is
     # strict: the x86 build fails on x64 Windows. We need to ship
     # both builds in x86 packages.
-    if bitness == 32:
+    if B.bitness == 32:
         dllsources.append('${LCGDIR}/thumbhandler/lib/BlendThumb.dll')
     dllsources.append('${LCGDIR}/thumbhandler/lib/BlendThumb64.dll')
 

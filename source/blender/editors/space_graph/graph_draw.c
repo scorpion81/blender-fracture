@@ -571,7 +571,7 @@ static void draw_fcurve_curve_samples(bAnimContext *ac, ID *id, FCurve *fcu, Vie
 			v[1] = prevfpt->vec[1];
 		}
 		else {
-			/* extrapolate linear dosnt use the handle, use the next points center instead */
+			/* extrapolate linear doesn't use the handle, use the next points center instead */
 			fac = (prevfpt->vec[0] - fpt->vec[0]) / (prevfpt->vec[0] - v[0]);
 			if (fac) fac = 1.0f / fac;
 			v[1] = prevfpt->vec[1] - fac * (prevfpt->vec[1] - fpt->vec[1]);
@@ -609,7 +609,7 @@ static void draw_fcurve_curve_samples(bAnimContext *ac, ID *id, FCurve *fcu, Vie
 			v[1] = prevfpt->vec[1];
 		}
 		else {
-			/* extrapolate linear dosnt use the handle, use the previous points center instead */
+			/* extrapolate linear doesn't use the handle, use the previous points center instead */
 			fpt = prevfpt - 1;
 			fac = (prevfpt->vec[0] - fpt->vec[0]) / (prevfpt->vec[0] - v[0]);
 			if (fac) fac = 1.0f / fac;
@@ -623,6 +623,7 @@ static void draw_fcurve_curve_samples(bAnimContext *ac, ID *id, FCurve *fcu, Vie
 	glPopMatrix();
 }
 
+#if 0
 /* helper func - draw one repeat of an F-Curve */
 static void draw_fcurve_curve_bezts(bAnimContext *ac, ID *id, FCurve *fcu, View2D *v2d)
 {
@@ -778,7 +779,8 @@ static void draw_fcurve_curve_bezts(bAnimContext *ac, ID *id, FCurve *fcu, View2
 	
 	glEnd();
 	glPopMatrix();
-} 
+}
+#endif
 
 /* Debugging -------------------------------- */
 
@@ -801,7 +803,7 @@ static void graph_draw_driver_debug(bAnimContext *ac, ID *id, FCurve *fcu)
 	/* No curve to modify/visualise the result? 
 	 * => We still want to show the 1-1 default... 
 	 */
-	if ((fcu->totvert == 0) && (fcu->modifiers.first == NULL)) {
+	if ((fcu->totvert == 0) && BLI_listbase_is_empty(&fcu->modifiers)) {
 		float t;
 		
 		/* draw with thin dotted lines in style of what curve would have been */
@@ -995,7 +997,8 @@ void graph_draw_curves(bAnimContext *ac, SpaceIpo *sipo, ARegion *ar, View2DGrid
 			else if (((fcu->bezt) || (fcu->fpt)) && (fcu->totvert)) {
 				/* just draw curve based on defined data (i.e. no modifiers) */
 				if (fcu->bezt)
-					draw_fcurve_curve_bezts(ac, ale->id, fcu, &ar->v2d);
+					//draw_fcurve_curve_bezts(ac, ale->id, fcu, &ar->v2d);
+					draw_fcurve_curve(ac, ale->id, fcu, &ar->v2d, grid);  // XXX: better to do an optimised integration here instead, but for now, this works
 				else if (fcu->fpt)
 					draw_fcurve_curve_samples(ac, ale->id, fcu, &ar->v2d);
 			}
@@ -1030,7 +1033,7 @@ void graph_draw_curves(bAnimContext *ac, SpaceIpo *sipo, ARegion *ar, View2DGrid
 				glScalef(1.0f, unit_scale, 1.0f);
 
 				if (fcu->bezt) {
-					int do_handles = draw_fcurve_handles_check(sipo, fcu);
+					bool do_handles = draw_fcurve_handles_check(sipo, fcu);
 					
 					if (do_handles) {
 						/* only draw handles/vertices on keyframes */

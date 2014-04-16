@@ -197,7 +197,10 @@ int BKE_fcm_envelope_find_index(struct FCM_EnvelopeData *array, float frame, int
 
 /* ************** F-Curves API ******************** */
 
-/* -------- Data Managemnt  --------  */
+/* threshold for binary-searching keyframes - threshold here should be good enough for now, but should become userpref */
+#define BEZT_BINARYSEARCH_THRESH   0.01f /* was 0.00001, but giving errors */
+
+/* -------- Data Management  --------  */
 
 void free_fcurve(struct FCurve *fcu);
 struct FCurve *copy_fcurve(struct FCurve *fcu);
@@ -250,7 +253,7 @@ void testhandles_fcurve(struct FCurve *fcu, const bool use_handle);
 void sort_time_fcurve(struct FCurve *fcu);
 short test_time_fcurve(struct FCurve *fcu);
 
-void correct_bezpart(float *v1, float *v2, float *v3, float *v4);
+void correct_bezpart(float v1[2], float v2[2], float v3[2], float v4[2]);
 
 /* -------- Evaluation --------  */
 

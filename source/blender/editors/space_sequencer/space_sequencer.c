@@ -458,17 +458,17 @@ static int sequencer_context(const bContext *C, const char *member, bContextData
 	if (CTX_data_dir(member)) {
 		CTX_data_dir_set(result, sequencer_context_dir);
 
-		return TRUE;
+		return true;
 	}
 	else if (CTX_data_equals(member, "edit_mask")) {
 		Mask *mask = BKE_sequencer_mask_get(scene);
 		if (mask) {
 			CTX_data_id_pointer_set(result, &mask->id);
 		}
-		return TRUE;
+		return true;
 	}
 
-	return FALSE;
+	return false;
 }
 
 
@@ -544,7 +544,7 @@ static void sequencer_preview_area_draw(const bContext *C, ARegion *ar)
 	if (sseq->mainb == SEQ_DRAW_SEQUENCE) sseq->mainb = SEQ_DRAW_IMG_IMBUF;
 
 	if (!show_split || sseq->overlay_type != SEQ_DRAW_OVERLAY_REFERENCE)
-		draw_image_seq(C, scene, ar, sseq, scene->r.cfra, 0, FALSE);
+		draw_image_seq(C, scene, ar, sseq, scene->r.cfra, 0, false);
 
 	if (show_split && sseq->overlay_type != SEQ_DRAW_OVERLAY_CURRENT) {
 		int over_cfra;
@@ -555,7 +555,7 @@ static void sequencer_preview_area_draw(const bContext *C, ARegion *ar)
 			over_cfra = scene->r.cfra + scene->ed->over_ofs;
 
 		if (over_cfra != scene->r.cfra || sseq->overlay_type != SEQ_DRAW_OVERLAY_RECT)
-			draw_image_seq(C, scene, ar, sseq, scene->r.cfra, over_cfra - scene->r.cfra, TRUE);
+			draw_image_seq(C, scene, ar, sseq, scene->r.cfra, over_cfra - scene->r.cfra, true);
 	}
 
 	if ((U.uiflag & USER_SHOW_FPS) && ED_screen_animation_playing(wm)) {

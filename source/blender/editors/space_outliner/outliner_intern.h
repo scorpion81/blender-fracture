@@ -162,7 +162,6 @@ typedef enum {
 
 /* outliner_tree.c ----------------------------------------------- */
 
-void outliner_rebuild_treehash(struct SpaceOops *soops);
 void outliner_free_tree(ListBase *lb);
 void outliner_cleanup_tree(struct SpaceOops *soops);
 
@@ -181,9 +180,8 @@ void restrictbutton_gr_restrict_flag(void *poin, void *poin2, int flag);
 eOLDrawState tree_element_type_active(
         struct bContext *C, struct Scene *scene, struct SpaceOops *soops,
         TreeElement *te, TreeStoreElem *tselem, const eOLSetState set, bool recursive);
-eOLDrawState tree_element_active(
-        struct bContext *C, struct Scene *scene, SpaceOops *soops,
-        TreeElement *te, const eOLSetState set);
+eOLDrawState tree_element_active(struct bContext *C, struct Scene *scene, SpaceOops *soops,
+                                 TreeElement *te, const eOLSetState set, const bool handle_all_types);
 int outliner_item_do_activate(struct bContext *C, int x, int y, bool extend, bool recursive);
 
 /* outliner_edit.c ---------------------------------------------- */

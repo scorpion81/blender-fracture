@@ -45,6 +45,9 @@ typedef int (*CarveImporter_GetNumVerts) (struct ImportMeshData *import_data);
 // Get number of edges.
 typedef int (*CarveImporter_GetNumEdges) (struct ImportMeshData *import_data);
 
+// Get number of loops.
+typedef int (*CarveImporter_GetNumLoops) (struct ImportMeshData *import_data);
+
 // Get number of polys.
 typedef int (*CarveImporter_GetNumPolys) (struct ImportMeshData *import_data);
 
@@ -60,14 +63,21 @@ typedef int (*CarveImporter_GetPolyNumVerts) (struct ImportMeshData *import_data
 // Get list of adjucent vertices to the poly specified by it's index.
 typedef void (*CarveImporter_GetPolyVerts) (struct ImportMeshData *import_data, int poly_index, int *verts);
 
+// Triangulate 2D polygon.
+typedef int (*CarveImporter_Triangulate2DPoly) (struct ImportMeshData *import_data,
+                                                const float (*vertices)[2], int num_vertices,
+                                                unsigned int (*triangles)[3]);
+
 typedef struct CarveMeshImporter {
 	CarveImporter_GetNumVerts getNumVerts;
 	CarveImporter_GetNumEdges getNumEdges;
+	CarveImporter_GetNumLoops getNumLoops;
 	CarveImporter_GetNumPolys getNumPolys;
 	CarveImporter_GetVertCoord getVertCoord;
 	CarveImporter_GetEdgeVerts getEdgeVerts;
 	CarveImporter_GetPolyNumVerts getNumPolyVerts;
 	CarveImporter_GetPolyVerts getPolyVerts;
+	CarveImporter_Triangulate2DPoly triangulate2DPoly;
 } CarveMeshImporter;
 
 //
@@ -101,12 +111,22 @@ typedef void (*CarveExporter_SetLoop) (struct ExportMeshData *export_data,
                                        int loop_index, int vertex, int edge,
                                        int which_orig_mesh, int orig_loop_index);
 
+// Get edge index from a loop index for a given original mesh.
+//
+// A bit of a bummer to access original operands data on export stage,
+// but Blender side still does have this information in derived meshes
+// and we use API to get this data instead of duplicating it in Carve
+// API side. This is because of optimizations reasons.
+typedef int (*CarveExporter_MapLoopToEdge) (struct ExportMeshData *export_data,
+                                            int which_mesh, int loop_index);
+
 typedef struct CarveMeshExporter {
 	CarveExporter_InitGeomArrays initGeomArrays;
 	CarveExporter_SetVert setVert;
 	CarveExporter_SetEdge setEdge;
 	CarveExporter_SetPoly setPoly;
 	CarveExporter_SetLoop setLoop;
+	CarveExporter_MapLoopToEdge mapLoopToEdge;
 } CarveMeshExporter;
 
 enum {

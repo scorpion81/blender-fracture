@@ -158,6 +158,19 @@ static void imageToFloatBuf(const libmv::FloatImage *image, int channels, float 
 	}
 }
 
+static void imageToByteBuf(const libmv::FloatImage *image, int channels, unsigned char *buf)
+{
+	int x, y, k, a = 0;
+
+	for (y = 0; y < image->Height(); y++) {
+		for (x = 0; x < image->Width(); x++) {
+			for (k = 0; k < channels; k++) {
+				buf[a++] = (*image)(y, x, k) * 255.0f;
+			}
+		}
+	}
+}
+
 #if defined(DUMP_FAILURE) || defined (DUMP_ALWAYS)
 static void savePNGImage(png_bytep *row_pointers, int width, int height, int depth, int color_type,
                          const char *file_name)
@@ -330,8 +343,15 @@ int libmv_trackRegion(const libmv_TrackRegionOptions *options,
 	track_region_options.image1_mask = NULL;
 	track_region_options.use_brute_initialization = options->use_brute;
 	/* TODO(keir): This will make some cases better, but may be a regression until
-	 * the motion model is in. Since this is on trunk, enable it for now. */
-	track_region_options.attempt_refine_before_brute = true;
+	 * the motion model is in. Since this is on trunk, enable it for now.
+	 *
+	 * TODO(sergey): This gives much worse results on mango footage (see 04_2e)
+	 * so disabling for now for until proper prediction model is landed.
+	 *
+	 * The thing is, currently blender sends input coordinates as the guess to
+	 * region tracker and in case of fast motion such an early out ruins the track.
+	 */
+	track_region_options.attempt_refine_before_brute = false;
 	track_region_options.use_normalized_intensities = options->use_normalization;
 
 	if (options->image1_mask) {
@@ -378,10 +398,12 @@ int libmv_trackRegion(const libmv_TrackRegionOptions *options,
 	return tracking_result;
 }
 
-void libmv_samplePlanarPatch(const float *image, int width, int height,
-                             int channels, const double *xs, const double *ys,
+void libmv_samplePlanarPatch(const float *image,
+                             int width, int height, int channels,
+                             const double *xs, const double *ys,
                              int num_samples_x, int num_samples_y,
-                             const float *mask, float *patch,
+                             const float *mask,
+                             float *patch,
                              double *warped_position_x, double *warped_position_y)
 {
 	libmv::FloatImage libmv_image, libmv_patch, libmv_mask;
@@ -395,11 +417,43 @@ void libmv_samplePlanarPatch(const float *image, int width, int height,
 		libmv_mask_for_sample = &libmv_mask;
 	}
 
-	libmv::SamplePlanarPatch(libmv_image, xs, ys, num_samples_x, num_samples_y,
-	                         libmv_mask_for_sample, &libmv_patch,
-	                         warped_position_x, warped_position_y);
+	libmv::SamplePlanarPatch(libmv_image, xs, ys,
+	                         num_samples_x, num_samples_y,
+	                         libmv_mask_for_sample,
+	                         &libmv_patch,
+	                         warped_position_x,
+	                         warped_position_y);
 
 	imageToFloatBuf(&libmv_patch, channels, patch);
+}
+
+ void libmv_samplePlanarPatchByte(const unsigned char *image,
+                                  int width, int height, int channels,
+                                  const double *xs, const double *ys,
+                                  int num_samples_x, int num_samples_y,
+                                  const float *mask,
+                                  unsigned char *patch,
+                                  double *warped_position_x, double *warped_position_y)
+{
+	libmv::FloatImage libmv_image, libmv_patch, libmv_mask;
+	libmv::FloatImage *libmv_mask_for_sample = NULL;
+
+	byteBufToImage(image, width, height, channels, &libmv_image);
+
+	if (mask) {
+		floatBufToImage(mask, width, height, 1, &libmv_mask);
+
+		libmv_mask_for_sample = &libmv_mask;
+	}
+
+	libmv::SamplePlanarPatch(libmv_image, xs, ys,
+	                         num_samples_x, num_samples_y,
+	                         libmv_mask_for_sample,
+	                         &libmv_patch,
+	                         warped_position_x,
+	                         warped_position_y);
+
+	imageToByteBuf(&libmv_patch, channels, patch);
 }
 
 /* ************ Tracks ************ */

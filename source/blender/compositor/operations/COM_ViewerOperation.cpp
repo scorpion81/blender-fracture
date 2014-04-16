@@ -21,7 +21,6 @@
  */
 
 #include "COM_ViewerOperation.h"
-#include "COM_SocketConnection.h"
 #include "BLI_listbase.h"
 #include "BKE_image.h"
 #include "WM_api.h"
@@ -143,7 +142,9 @@ void ViewerOperation::initImage()
 		IMB_freezbuffloatImBuf(ibuf);
 		ibuf->x = getWidth();
 		ibuf->y = getHeight();
-		imb_addrectfloatImBuf(ibuf);
+		/* zero size can happen if no image buffers exist to define a sensible resolution */
+		if (ibuf->x > 0 && ibuf->y > 0)
+			imb_addrectfloatImBuf(ibuf);
 		ima->ok = IMA_OK_LOADED;
 
 		ibuf->userflags |= IB_DISPLAY_BUFFER_INVALID;

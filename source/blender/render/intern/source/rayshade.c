@@ -41,8 +41,7 @@
 #include "DNA_lamp_types.h"
 
 #include "BLI_blenlib.h"
-#include "BLI_cpu.h"
-#include "BLI_jitter.h"
+#include "BLI_system.h"
 #include "BLI_math.h"
 #include "BLI_rand.h"
 #include "BLI_utildefines.h"
@@ -120,8 +119,6 @@ RayObject *RE_rayobject_create(int type, int size, int octree_resolution)
 		
 	if (type == R_RAYSTRUCTURE_OCTREE) //TODO dynamic ocres
 		res = RE_rayobject_octree_create(octree_resolution, size);
-	else if (type == R_RAYSTRUCTURE_BLIBVH)
-		res = RE_rayobject_blibvh_create(size);
 	else if (type == R_RAYSTRUCTURE_VBVH)
 		res = RE_rayobject_vbvh_create(size);
 	else if (type == R_RAYSTRUCTURE_SIMD_SVBVH)
@@ -563,6 +560,7 @@ void shade_ray(Isect *is, ShadeInput *shi, ShadeResult *shr)
 		
 		/* raytrace likes to separate the spec color */
 		sub_v3_v3v3(shr->diff, shr->combined, shr->spec);
+		copy_v3_v3(shr->diffshad, shr->diff);
 	}
 
 }
@@ -749,7 +747,7 @@ static void traceray(ShadeInput *origshi, ShadeResult *origshr, short depth, con
 		shi.lay= origshi->lay;
 		shi.passflag= SCE_PASS_COMBINED; /* result of tracing needs no pass info */
 		shi.combinedflag= 0xFFFFFF;		 /* ray trace does all options */
-		//shi.do_preview = FALSE; // memset above, so don't need this
+		//shi.do_preview = false; // memset above, so don't need this
 		shi.light_override= origshi->light_override;
 		shi.mat_override= origshi->mat_override;
 		
@@ -1205,13 +1203,13 @@ static QMCSampler *get_thread_qmcsampler(Render *re, int thread, int type, int t
 
 	for (qsa=re->qmcsamplers[thread].first; qsa; qsa=qsa->next) {
 		if (qsa->type == type && qsa->tot == tot && !qsa->used) {
-			qsa->used = TRUE;
+			qsa->used = true;
 			return qsa;
 		}
 	}
 
 	qsa= QMC_initSampler(type, tot);
-	qsa->used = TRUE;
+	qsa->used = true;
 	BLI_addtail(&re->qmcsamplers[thread], qsa);
 
 	return qsa;
@@ -1672,18 +1670,6 @@ static void ray_trace_shadow_tra(Isect *is, ShadeInput *origshi, int depth, int 
 
 
 /* aolight: function to create random unit sphere vectors for total random sampling */
-static void RandomSpherical(RNG *rng, float v[3])
-{
-	float r;
-	v[2] = 2.f*BLI_rng_get_float(rng)-1.f;
-	if ((r = 1.f - v[2]*v[2])>0.f) {
-		float a = 6.283185307f*BLI_rng_get_float(rng);
-		r = sqrt(r);
-		v[0] = r * cosf(a);
-		v[1] = r * sinf(a);
-	}
-	else v[2] = 1.f;
-}
 
 /* calc distributed spherical energy */
 static void DS_energy(float *sphere, int tot, float vec[3])
@@ -1729,7 +1715,7 @@ void init_ao_sphere(World *wrld)
 	/* init */
 	fp= wrld->aosphere;
 	for (a=0; a<tot; a++, fp+= 3) {
-		RandomSpherical(rng, fp);
+		BLI_rng_get_float_unit_v3(rng, fp);
 	}
 	
 	while (iter--) {
@@ -1780,7 +1766,7 @@ static float *sphere_sampler(int type, int resol, int thread, int xs, int ys, in
 
 		vec= sphere;
 		for (a=0; a<tot; a++, vec+=3) {
-			RandomSpherical(rng, vec);
+			BLI_rng_get_float_unit_v3(rng, vec);
 		}
 
 		BLI_rng_free(rng);
@@ -2168,7 +2154,8 @@ static void ray_shadow_qmc(ShadeInput *shi, LampRen *lar, const float lampco[3],
 	float adapt_thresh = lar->adapt_thresh;
 	int min_adapt_samples=4, max_samples = lar->ray_totsamp;
 	float start[3];
-	int do_soft = TRUE, full_osa = FALSE, i;
+	bool do_soft = true, full_osa = false;
+	int i;
 
 	float min[3], max[3];
 	RayHint bb_hint;
@@ -2183,8 +2170,8 @@ static void ray_shadow_qmc(ShadeInput *shi, LampRen *lar, const float lampco[3],
 	else
 		shadfac[3]= 1.0f;
 	
-	if (lar->ray_totsamp < 2) do_soft = FALSE;
-	if ((R.r.mode & R_OSA) && (R.osa > 0) && (shi->vlr->flag & R_FULL_OSA)) full_osa = TRUE;
+	if (lar->ray_totsamp < 2) do_soft = false;
+	if ((R.r.mode & R_OSA) && (R.osa > 0) && (shi->vlr->flag & R_FULL_OSA)) full_osa = true;
 	
 	if (full_osa) {
 		if (do_soft) max_samples  = max_samples/R.osa + 1;

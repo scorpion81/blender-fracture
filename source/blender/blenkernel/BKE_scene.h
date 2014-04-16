@@ -117,6 +117,7 @@ void  BKE_scene_frame_set(struct Scene *scene, double cfra);
 /* **  Scene evaluation ** */
 void BKE_scene_update_tagged(struct EvaluationContext *eval_ctx, struct Main *bmain, struct Scene *sce);
 void BKE_scene_update_for_newframe(struct EvaluationContext *eval_ctx, struct Main *bmain, struct Scene *sce, unsigned int lay);
+void BKE_scene_update_for_newframe_ex(struct EvaluationContext *eval_ctx, struct Main *bmain, struct Scene *sce, unsigned int lay, bool do_invisible_flush);
 
 struct SceneRenderLayer *BKE_scene_add_render_layer(struct Scene *sce, const char *name);
 bool BKE_scene_remove_render_layer(struct Main *main, struct Scene *scene, struct SceneRenderLayer *srl);
@@ -136,6 +137,7 @@ bool BKE_scene_check_rigidbody_active(const struct Scene *scene);
 int BKE_scene_num_threads(const struct Scene *scene);
 int BKE_render_num_threads(const struct RenderData *r);
 
+int BKE_scene_num_omp_threads(const struct Scene *scene);
 #ifdef __cplusplus
 }
 #endif

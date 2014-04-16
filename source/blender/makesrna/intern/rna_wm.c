@@ -519,7 +519,7 @@ static PointerRNA rna_Operator_properties_get(PointerRNA *ptr)
 static PointerRNA rna_OperatorMacro_properties_get(PointerRNA *ptr)
 {
 	wmOperatorTypeMacro *otmacro = (wmOperatorTypeMacro *)ptr->data;
-	wmOperatorType *ot = WM_operatortype_find(otmacro->idname, TRUE);
+	wmOperatorType *ot = WM_operatortype_find(otmacro->idname, true);
 	return rna_pointer_inherit_refine(ptr, ot->srna, otmacro->properties);
 }
 
@@ -862,7 +862,7 @@ static int rna_wmClipboard_length(PointerRNA *UNUSED(ptr))
 
 static void rna_wmClipboard_set(PointerRNA *UNUSED(ptr), const char *value)
 {
-	WM_clipboard_text_set((void *) value, FALSE);
+	WM_clipboard_text_set((void *) value, false);
 }
 
 #ifdef WITH_PYTHON
@@ -1157,7 +1157,7 @@ static StructRNA *rna_Operator_register(Main *bmain, ReportList *reports, void *
 
 	/* check if we have registered this operator type before, and remove it */
 	{
-		wmOperatorType *ot = WM_operatortype_find(dummyot.idname, TRUE);
+		wmOperatorType *ot = WM_operatortype_find(dummyot.idname, true);
 		if (ot && ot->ext.srna)
 			rna_Operator_unregister(bmain, ot->ext.srna);
 	}
@@ -1249,7 +1249,7 @@ static StructRNA *rna_MacroOperator_register(Main *bmain, ReportList *reports, v
 
 	/* check if we have registered this operator type before, and remove it */
 	{
-		wmOperatorType *ot = WM_operatortype_find(dummyot.idname, TRUE);
+		wmOperatorType *ot = WM_operatortype_find(dummyot.idname, true);
 		if (ot && ot->ext.srna)
 			rna_Operator_unregister(bmain, ot->ext.srna);
 	}
@@ -1378,7 +1378,7 @@ static void rna_def_operator(BlenderRNA *brna)
 	RNA_def_property_string_maxlength(prop, OP_MAX_TYPENAME - 3);
 	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_Operator_bl_idname_set");
 	/* RNA_def_property_clear_flag(prop, PROP_EDITABLE); */
-	RNA_def_property_flag(prop, PROP_REGISTER | PROP_NEVER_CLAMP);
+	RNA_def_property_flag(prop, PROP_REGISTER);
 	RNA_def_struct_name_property(srna, prop);
 
 	prop = RNA_def_property(srna, "bl_label", PROP_STRING, PROP_NONE);
@@ -1451,7 +1451,7 @@ static void rna_def_macro_operator(BlenderRNA *brna)
 	RNA_def_property_string_maxlength(prop, OP_MAX_TYPENAME); /* else it uses the pointer size! */
 	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_Operator_bl_idname_set");
 	/* RNA_def_property_clear_flag(prop, PROP_EDITABLE); */
-	RNA_def_property_flag(prop, PROP_REGISTER | PROP_NEVER_CLAMP);
+	RNA_def_property_flag(prop, PROP_REGISTER);
 	RNA_def_struct_name_property(srna, prop);
 
 	prop = RNA_def_property(srna, "bl_label", PROP_STRING, PROP_NONE);

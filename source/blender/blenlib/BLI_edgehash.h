@@ -32,9 +32,13 @@
 #include "BLI_compiler_attrs.h"
 
 struct EdgeHash;
-struct EdgeHashIterator;
 typedef struct EdgeHash EdgeHash;
-typedef struct EdgeHashIterator EdgeHashIterator;
+
+typedef struct EdgeHashIterator {
+	EdgeHash *eh;
+	struct EdgeEntry *curEntry;
+	unsigned int curBucket;
+} EdgeHashIterator;
 
 typedef void (*EdgeHashFreeFP)(void *key);
 
@@ -59,13 +63,29 @@ void            BLI_edgehash_flag_set(EdgeHash *eh, unsigned int flag);
 void            BLI_edgehash_flag_clear(EdgeHash *eh, unsigned int flag);
 
 EdgeHashIterator   *BLI_edgehashIterator_new(EdgeHash *eh) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
+void                BLI_edgehashIterator_init(EdgeHashIterator *ehi, EdgeHash *eh);
 void                BLI_edgehashIterator_free(EdgeHashIterator *ehi);
-void                BLI_edgehashIterator_getKey(EdgeHashIterator *ehi, unsigned int *v0_r, unsigned int *v1_r);
-void               *BLI_edgehashIterator_getValue(EdgeHashIterator *ehi) ATTR_WARN_UNUSED_RESULT;
-void              **BLI_edgehashIterator_getValue_p(EdgeHashIterator *ehi) ATTR_WARN_UNUSED_RESULT;
-void                BLI_edgehashIterator_setValue(EdgeHashIterator *ehi, void *val);
 void                BLI_edgehashIterator_step(EdgeHashIterator *ehi);
-bool                BLI_edgehashIterator_isDone(EdgeHashIterator *ehi) ATTR_WARN_UNUSED_RESULT;
+
+BLI_INLINE bool   BLI_edgehashIterator_isDone(EdgeHashIterator *ehi) ATTR_WARN_UNUSED_RESULT;
+BLI_INLINE void   BLI_edgehashIterator_getKey(EdgeHashIterator *ehi, unsigned int *r_v0, unsigned int *r_v1);
+BLI_INLINE void  *BLI_edgehashIterator_getValue(EdgeHashIterator *ehi) ATTR_WARN_UNUSED_RESULT;
+BLI_INLINE void **BLI_edgehashIterator_getValue_p(EdgeHashIterator *ehi) ATTR_WARN_UNUSED_RESULT;
+BLI_INLINE void   BLI_edgehashIterator_setValue(EdgeHashIterator *ehi, void *val);
+
+struct _eh_Entry { void *next; unsigned int v0, v1; void *val; };
+BLI_INLINE void   BLI_edgehashIterator_getKey(EdgeHashIterator *ehi, unsigned int *r_v0, unsigned int *r_v1)
+{ *r_v0 = ((struct _eh_Entry *)ehi->curEntry)->v0; *r_v1 = ((struct _eh_Entry *)ehi->curEntry)->v1; }
+BLI_INLINE void  *BLI_edgehashIterator_getValue(EdgeHashIterator *ehi) { return ((struct _eh_Entry *)ehi->curEntry)->val; }
+BLI_INLINE void **BLI_edgehashIterator_getValue_p(EdgeHashIterator *ehi) { return &((struct _eh_Entry *)ehi->curEntry)->val; }
+BLI_INLINE void   BLI_edgehashIterator_setValue(EdgeHashIterator *ehi, void *val) { ((struct _eh_Entry *)ehi->curEntry)->val = val; }
+BLI_INLINE bool   BLI_edgehashIterator_isDone(EdgeHashIterator *ehi) { return (((struct _eh_Entry *)ehi->curEntry) == NULL); }
+/* disallow further access */
+#ifdef __GNUC__
+#  pragma GCC poison _eh_Entry
+#else
+#  define _eh_Entry void
+#endif
 
 #define BLI_EDGEHASH_SIZE_GUESS_FROM_LOOPS(totloop)  ((totloop) / 2)
 #define BLI_EDGEHASH_SIZE_GUESS_FROM_POLYS(totpoly)  ((totpoly) * 2)
@@ -89,7 +109,7 @@ void     BLI_edgeset_free(EdgeSet *es);
 /* rely on inline api for now */
 BLI_INLINE EdgeSetIterator *BLI_edgesetIterator_new(EdgeSet *gs) { return (EdgeSetIterator *)BLI_edgehashIterator_new((EdgeHash *)gs); }
 BLI_INLINE void BLI_edgesetIterator_free(EdgeSetIterator *esi) { BLI_edgehashIterator_free((EdgeHashIterator *)esi); }
-BLI_INLINE void BLI_edgesetIterator_getKey(EdgeSetIterator *esi, unsigned int *v0_r, unsigned int *v1_r) { BLI_edgehashIterator_getKey((EdgeHashIterator *)esi, v0_r, v1_r); }
+BLI_INLINE void BLI_edgesetIterator_getKey(EdgeSetIterator *esi, unsigned int *r_v0, unsigned int *r_v1) { BLI_edgehashIterator_getKey((EdgeHashIterator *)esi, r_v0, r_v1); }
 BLI_INLINE void BLI_edgesetIterator_step(EdgeSetIterator *esi) { BLI_edgehashIterator_step((EdgeHashIterator *)esi); }
 BLI_INLINE bool BLI_edgesetIterator_isDone(EdgeSetIterator *esi) { return BLI_edgehashIterator_isDone((EdgeHashIterator *)esi); }
 

@@ -800,6 +800,36 @@ static PyObject *Vector_to_track_quat(VectorObject *self, PyObject *args)
 	return Quaternion_CreatePyObject(quat, Py_NEW, NULL);
 }
 
+PyDoc_STRVAR(Vector_orthogonal_doc,
+".. method:: orthogonal()\n"
+"\n"
+"   Return a perpendicular vector.\n"
+"\n"
+"   :return: a new vector 90 degrees from this vector.\n"
+"   :rtype: :class:`Vector`\n"
+"\n"
+"   .. note:: the axis is undefined, only use when any orthogonal vector is acceptable.\n"
+);
+static PyObject *Vector_orthogonal(VectorObject *self)
+{
+	float vec[3];
+
+	if (self->size != 3) {
+		PyErr_SetString(PyExc_TypeError,
+		                "Vector.orthogonal(): "
+		                "Vector must be 3D");
+		return NULL;
+	}
+
+	if (BaseMath_ReadCallback(self) == -1)
+		return NULL;
+
+	ortho_v3_v3(vec, self->vec);
+
+	return Vector_CreatePyObject(vec, self->size, Py_NEW, Py_TYPE(self));
+}
+
+
 /*
  * Vector.reflect(mirror): return a reflected vector on the mirror normal
  *  vec - ((2 * DotVecs(vec, mirror)) * mirror)
@@ -855,30 +885,36 @@ PyDoc_STRVAR(Vector_cross_doc,
 "   :arg other: The other vector to perform the cross product with.\n"
 "   :type other: :class:`Vector`\n"
 "   :return: The cross product.\n"
-"   :rtype: :class:`Vector`\n"
+"   :rtype: :class:`Vector` or float when 2D vectors are used\n"
 "\n"
-"   .. note:: both vectors must be 3D\n"
+"   .. note:: both vectors must be 2D or 3D\n"
 );
 static PyObject *Vector_cross(VectorObject *self, PyObject *value)
 {
-	VectorObject *ret;
-	float tvec[MAX_DIMENSIONS];
+	PyObject *ret;
+	float tvec[3];
 
 	if (BaseMath_ReadCallback(self) == -1)
 		return NULL;
 
-	if (mathutils_array_parse(tvec, self->size, self->size, value, "Vector.cross(other), invalid 'other' arg") == -1)
-		return NULL;
-
-	if (self->size != 3) {
+	if (self->size > 3) {
 		PyErr_SetString(PyExc_ValueError,
-		                "Vector must be 3D");
+		                "Vector must be 2D or 3D");
 		return NULL;
 	}
 
-	ret = (VectorObject *)Vector_CreatePyObject(NULL, 3, Py_NEW, Py_TYPE(self));
-	cross_v3_v3v3(ret->vec, self->vec, tvec);
-	return (PyObject *)ret;
+	if (mathutils_array_parse(tvec, self->size, self->size, value, "Vector.cross(other), invalid 'other' arg") == -1)
+		return NULL;
+
+	if (self->size == 3) {
+		ret = Vector_CreatePyObject(NULL, 3, Py_NEW, Py_TYPE(self));
+		cross_v3_v3v3(((VectorObject *)ret)->vec, self->vec, tvec);
+	}
+	else {
+		/* size == 2 */
+		ret = PyFloat_FromDouble(cross_v2v2(self->vec, tvec));
+	}
+	return ret;
 }
 
 PyDoc_STRVAR(Vector_dot_doc,
@@ -909,13 +945,13 @@ static PyObject *Vector_dot(VectorObject *self, PyObject *value)
 }
 
 PyDoc_STRVAR(Vector_angle_doc,
-".. function:: angle(other, fallback)\n"
+".. function:: angle(other, fallback=None)\n"
 "\n"
 "   Return the angle between two vectors.\n"
 "\n"
 "   :arg other: another vector to compare the angle with\n"
 "   :type other: :class:`Vector`\n"
-"   :arg fallback: return this value when the angle cant be calculated\n"
+"   :arg fallback: return this value when the angle can't be calculated\n"
 "      (zero length vector)\n"
 "   :type fallback: any\n"
 "   :return: angle in radians or fallback when given\n"
@@ -979,7 +1015,7 @@ PyDoc_STRVAR(Vector_angle_signed_doc,
 "\n"
 "   :arg other: another vector to compare the angle with\n"
 "   :type other: :class:`Vector`\n"
-"   :arg fallback: return this value when the angle cant be calculated\n"
+"   :arg fallback: return this value when the angle can't be calculated\n"
 "      (zero length vector)\n"
 "   :type fallback: any\n"
 "   :return: angle in radians or fallback when given\n"
@@ -1160,6 +1196,107 @@ static PyObject *Vector_lerp(VectorObject *self, PyObject *args)
 	PyMem_Free(tvec);
 
 	return Vector_CreatePyObject_alloc(vec, size, Py_TYPE(self));
+}
+
+PyDoc_STRVAR(Vector_slerp_doc,
+".. function:: slerp(other, factor, fallback=None)\n"
+"\n"
+"   Returns the interpolation of two unit vectors (spherical coordinates).\n"
+"\n"
+"   :arg other: value to interpolate with.\n"
+"   :type other: :class:`Vector`\n"
+"   :arg factor: The interpolation value in [0.0, 1.0].\n"
+"   :type factor: float\n"
+"   :arg fallback: return this value when the vector can't be calculated\n"
+"      (zero length vector or direct opposites)\n"
+"   :type fallback: any\n"
+"   :return: The interpolated vector.\n"
+"   :rtype: :class:`Vector`\n"
+);
+static PyObject *Vector_slerp(VectorObject *self, PyObject *args)
+{
+	const int size = self->size;
+	PyObject *value = NULL;
+	float fac, cosom, w[2];
+	float tvec[3], vec[3];
+	double self_len_sq, other_len_sq;
+	int x;
+	PyObject *fallback = NULL;
+
+	if (!PyArg_ParseTuple(args, "Of|O:slerp", &value, &fac, &fallback))
+		return NULL;
+
+	if (BaseMath_ReadCallback(self) == -1) {
+		return NULL;
+	}
+
+	if (self->size > 3) {
+		PyErr_SetString(PyExc_ValueError,
+		                "Vector must be 2D or 3D");
+		return NULL;
+	}
+
+	if (mathutils_array_parse(tvec, size, size, value, "Vector.slerp(other), invalid 'other' arg") == -1) {
+		return NULL;
+	}
+
+	self_len_sq  = len_squared_vn(self->vec, size);
+	other_len_sq = len_squared_vn(tvec,      size);
+
+	/* use fallbacks for zero length vectors */
+	if (UNLIKELY((self_len_sq  < (double)FLT_EPSILON) ||
+	             (other_len_sq < (double)FLT_EPSILON)))
+	{
+		/* avoid exception */
+		if (fallback) {
+			Py_INCREF(fallback);
+			return fallback;
+		}
+		else {
+			PyErr_SetString(PyExc_ValueError,
+			                "Vector.slerp(): "
+			                "zero length vectors unsupported");
+			return NULL;
+		}
+	}
+
+	/* no attempt made to normalize, no fallback */
+	if (UNLIKELY((fabs(self_len_sq  - 1.0) > (double)FLT_EPSILON) ||
+	             (fabs(other_len_sq - 1.0) > (double)FLT_EPSILON)))
+	{
+		PyErr_SetString(PyExc_ValueError,
+		                "Vector.slerp(): "
+		                "both vectors must be unit length");
+		return NULL;
+	}
+
+	/* We have sane state, execute slerp */
+	cosom = (float)dot_vn_vn(self->vec, tvec, size);
+
+	/* direct opposite, can't slerp */
+	if (UNLIKELY(cosom < (-1.0f + FLT_EPSILON))) {
+		/* avoid exception */
+		if (fallback) {
+			Py_INCREF(fallback);
+			return fallback;
+		}
+		else {
+			PyErr_SetString(PyExc_ValueError,
+			                "Vector.slerp(): "
+			                "opposite vectors unsupported");
+			return NULL;
+		}
+	}
+
+	interp_dot_slerp(fac, cosom, w);
+
+	for (x = 0; x < size; x++) {
+		vec[x] = (w[0] * self->vec[x]) + (w[1] * tvec[x]);
+	}
+
+	interp_v3_v3v3_slerp_safe(vec, self->vec, tvec, fac);
+
+	return Vector_CreatePyObject(vec, size, Py_NEW, Py_TYPE(self));
 }
 
 PyDoc_STRVAR(Vector_rotate_doc,
@@ -1852,17 +1989,6 @@ static PyObject *Vector_neg(VectorObject *self)
 	return Vector_CreatePyObject_alloc(tvec, self->size, Py_TYPE(self));
 }
 
-/*------------------------vec_magnitude_nosqrt (internal) - for comparing only */
-static double vec_magnitude_nosqrt(const float *data, int size)
-{
-	/* return (double)sqrt(dot);*/
-	/* warning, line above removed because we are not using the length,
-	 * rather the comparing the sizes and for this we do not need the sqrt
-	 * for the actual length, the dot must be sqrt'd */
-	return dot_vn_vn(data, data, size);
-}
-
-
 /*------------------------tp_richcmpr
  * returns -1 exception, 0 false, 1 true */
 static PyObject *Vector_richcmpr(PyObject *objectA, PyObject *objectB, int comparison_type)
@@ -1897,15 +2023,15 @@ static PyObject *Vector_richcmpr(PyObject *objectA, PyObject *objectB, int compa
 
 	switch (comparison_type) {
 		case Py_LT:
-			lenA = vec_magnitude_nosqrt(vecA->vec, vecA->size);
-			lenB = vec_magnitude_nosqrt(vecB->vec, vecB->size);
+			lenA = len_squared_vn(vecA->vec, vecA->size);
+			lenB = len_squared_vn(vecB->vec, vecB->size);
 			if (lenA < lenB) {
 				result = 1;
 			}
 			break;
 		case Py_LE:
-			lenA = vec_magnitude_nosqrt(vecA->vec, vecA->size);
-			lenB = vec_magnitude_nosqrt(vecB->vec, vecB->size);
+			lenA = len_squared_vn(vecA->vec, vecA->size);
+			lenB = len_squared_vn(vecB->vec, vecB->size);
 			if (lenA < lenB) {
 				result = 1;
 			}
@@ -1920,15 +2046,15 @@ static PyObject *Vector_richcmpr(PyObject *objectA, PyObject *objectB, int compa
 			result = !EXPP_VectorsAreEqual(vecA->vec, vecB->vec, vecA->size, 1);
 			break;
 		case Py_GT:
-			lenA = vec_magnitude_nosqrt(vecA->vec, vecA->size);
-			lenB = vec_magnitude_nosqrt(vecB->vec, vecB->size);
+			lenA = len_squared_vn(vecA->vec, vecA->size);
+			lenB = len_squared_vn(vecB->vec, vecB->size);
 			if (lenA > lenB) {
 				result = 1;
 			}
 			break;
 		case Py_GE:
-			lenA = vec_magnitude_nosqrt(vecA->vec, vecA->size);
-			lenB = vec_magnitude_nosqrt(vecB->vec, vecB->size);
+			lenA = len_squared_vn(vecA->vec, vecA->size);
+			lenB = len_squared_vn(vecB->vec, vecB->size);
 			if (lenA > lenB) {
 				result = 1;
 			}
@@ -2762,6 +2888,7 @@ static struct PyMethodDef Vector_methods[] = {
 	{"resize_4d", (PyCFunction) Vector_resize_4d, METH_NOARGS, Vector_resize_4d_doc},
 	{"to_tuple", (PyCFunction) Vector_to_tuple, METH_VARARGS, Vector_to_tuple_doc},
 	{"to_track_quat", (PyCFunction) Vector_to_track_quat, METH_VARARGS, Vector_to_track_quat_doc},
+	{"orthogonal", (PyCFunction) Vector_orthogonal, METH_NOARGS, Vector_orthogonal_doc},
 
 	/* operation between 2 or more types  */
 	{"reflect", (PyCFunction) Vector_reflect, METH_O, Vector_reflect_doc},
@@ -2772,6 +2899,7 @@ static struct PyMethodDef Vector_methods[] = {
 	{"rotation_difference", (PyCFunction) Vector_rotation_difference, METH_O, Vector_rotation_difference_doc},
 	{"project", (PyCFunction) Vector_project, METH_O, Vector_project_doc},
 	{"lerp", (PyCFunction) Vector_lerp, METH_VARARGS, Vector_lerp_doc},
+	{"slerp", (PyCFunction) Vector_slerp, METH_VARARGS, Vector_slerp_doc},
 	{"rotate", (PyCFunction) Vector_rotate, METH_O, Vector_rotate_doc},
 
 	{"copy", (PyCFunction) Vector_copy, METH_NOARGS, Vector_copy_doc},

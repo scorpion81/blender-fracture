@@ -347,13 +347,10 @@ void _bmo_slot_copy(BMOpSlot slot_args_src[BMO_OP_MAX_SLOTS], const char *slot_n
 		}
 	}
 	else if (slot_dst->slot_type == BMO_OP_SLOT_MAPPING) {
-		GHashIterator it;
-		for (BLI_ghashIterator_init(&it, slot_src->data.ghash);
-		     BLI_ghashIterator_done(&it) == false;
-		     BLI_ghashIterator_step(&it))
-		{
-			void *key = BLI_ghashIterator_getKey(&it);
-			void *val = BLI_ghashIterator_getValue(&it);
+		GHashIterator gh_iter;
+		GHASH_ITER (gh_iter, slot_src->data.ghash) {
+			void *key = BLI_ghashIterator_getKey(&gh_iter);
+			void *val = BLI_ghashIterator_getValue(&gh_iter);
 			BLI_ghash_insert(slot_dst->data.ghash, key, val);
 		}
 	}
@@ -722,17 +719,15 @@ void *bmo_slot_buffer_grow(BMesh *bm, BMOperator *op, int slot_code, int totadd)
 void BMO_slot_map_to_flag(BMesh *bm, BMOpSlot slot_args[BMO_OP_MAX_SLOTS], const char *slot_name,
                           const char htype, const short oflag)
 {
-	GHashIterator it;
+	GHashIterator gh_iter;
 	BMOpSlot *slot = BMO_slot_get(slot_args, slot_name);
 	BMElemF *ele_f;
 
 	BLI_assert(slot->slot_type == BMO_OP_SLOT_MAPPING);
 
 
-	for (BLI_ghashIterator_init(&it, slot->data.ghash);
-	     (ele_f = BLI_ghashIterator_getKey(&it));
-	     BLI_ghashIterator_step(&it))
-	{
+	GHASH_ITER (gh_iter, slot->data.ghash) {
+		ele_f = BLI_ghashIterator_getKey(&gh_iter);
 		if (ele_f->head.htype & htype) {
 			BMO_elem_flag_enable(bm, ele_f, oflag);
 		}
@@ -1167,9 +1162,9 @@ static void bmo_flag_layer_alloc(BMesh *bm)
 
 	bm->totflags++;
 
-	bm->vtoolflagpool = BLI_mempool_create(sizeof(BMFlagLayer) * bm->totflags, max_ii(512, bm->totvert), 512, 0);
-	bm->etoolflagpool = BLI_mempool_create(sizeof(BMFlagLayer) * bm->totflags, max_ii(512, bm->totedge), 512, 0);
-	bm->ftoolflagpool = BLI_mempool_create(sizeof(BMFlagLayer) * bm->totflags, max_ii(512, bm->totface), 512, 0);
+	bm->vtoolflagpool = BLI_mempool_create(sizeof(BMFlagLayer) * bm->totflags, bm->totvert, 512, BLI_MEMPOOL_NOP);
+	bm->etoolflagpool = BLI_mempool_create(sizeof(BMFlagLayer) * bm->totflags, bm->totedge, 512, BLI_MEMPOOL_NOP);
+	bm->ftoolflagpool = BLI_mempool_create(sizeof(BMFlagLayer) * bm->totflags, bm->totface, 512, BLI_MEMPOOL_NOP);
 
 #pragma omp parallel sections if (bm->totvert + bm->totedge + bm->totface >= BM_OMP_LIMIT)
 	{
@@ -1248,9 +1243,9 @@ static void bmo_flag_layer_free(BMesh *bm)
 	/* de-increment the totflags first.. */
 	bm->totflags--;
 
-	bm->vtoolflagpool = BLI_mempool_create(new_totflags_size, bm->totvert, 512, 0);
-	bm->etoolflagpool = BLI_mempool_create(new_totflags_size, bm->totedge, 512, 0);
-	bm->ftoolflagpool = BLI_mempool_create(new_totflags_size, bm->totface, 512, 0);
+	bm->vtoolflagpool = BLI_mempool_create(new_totflags_size, bm->totvert, 512, BLI_MEMPOOL_NOP);
+	bm->etoolflagpool = BLI_mempool_create(new_totflags_size, bm->totedge, 512, BLI_MEMPOOL_NOP);
+	bm->ftoolflagpool = BLI_mempool_create(new_totflags_size, bm->totface, 512, BLI_MEMPOOL_NOP);
 
 #pragma omp parallel sections if (bm->totvert + bm->totedge + bm->totface >= BM_OMP_LIMIT)
 	{
@@ -1314,13 +1309,10 @@ static void bmo_flag_layer_free(BMesh *bm)
 
 static void bmo_flag_layer_clear(BMesh *bm)
 {
-	BMElemF *ele;
 	/* set the index values since we are looping over all data anyway,
 	 * may save time later on */
-	int i;
 	const BMFlagLayer zero_flag = {0};
 
-	BMIter iter;
 	const int totflags_offset = bm->totflags - 1;
 
 #pragma omp parallel sections if (bm->totvert + bm->totedge + bm->totface >= BM_OMP_LIMIT)
@@ -1328,6 +1320,9 @@ static void bmo_flag_layer_clear(BMesh *bm)
 		/* now go through and memcpy all the flag */
 #pragma omp section
 		{
+			BMIter iter;
+			BMElemF *ele;
+			int i;
 			BM_ITER_MESH_INDEX (ele, &iter, bm, BM_VERTS_OF_MESH, i) {
 				ele->oflags[totflags_offset] = zero_flag;
 				BM_elem_index_set(ele, i); /* set_inline */
@@ -1335,6 +1330,9 @@ static void bmo_flag_layer_clear(BMesh *bm)
 		}
 #pragma omp section
 		{
+			BMIter iter;
+			BMElemF *ele;
+			int i;
 			BM_ITER_MESH_INDEX (ele, &iter, bm, BM_EDGES_OF_MESH, i) {
 				ele->oflags[totflags_offset] = zero_flag;
 				BM_elem_index_set(ele, i); /* set_inline */
@@ -1342,6 +1340,9 @@ static void bmo_flag_layer_clear(BMesh *bm)
 		}
 #pragma omp section
 		{
+			BMIter iter;
+			BMElemF *ele;
+			int i;
 			BM_ITER_MESH_INDEX (ele, &iter, bm, BM_FACES_OF_MESH, i) {
 				ele->oflags[totflags_offset] = zero_flag;
 				BM_elem_index_set(ele, i); /* set_inline */
@@ -1418,10 +1419,19 @@ void *BMO_iter_step(BMOIter *iter)
 		return ele;
 	}
 	else if (slot->slot_type == BMO_OP_SLOT_MAPPING) {
-		void *ret = BLI_ghashIterator_getKey(&iter->giter);
-		iter->val = BLI_ghashIterator_getValue_p(&iter->giter);
+		void *ret;
 
-		BLI_ghashIterator_step(&iter->giter);
+
+		if (BLI_ghashIterator_done(&iter->giter) == false) {
+			ret = BLI_ghashIterator_getKey(&iter->giter);
+			iter->val = BLI_ghashIterator_getValue_p(&iter->giter);
+
+			BLI_ghashIterator_step(&iter->giter);
+		}
+		else {
+			ret = NULL;
+			iter->val = NULL;
+		}
 
 		return ret;
 	}
@@ -1498,7 +1508,7 @@ void BMO_error_raise(BMesh *bm, BMOperator *owner, int errcode, const char *msg)
 
 bool BMO_error_occurred(BMesh *bm)
 {
-	return bm->errorstack.first != NULL;
+	return (BLI_listbase_is_empty(&bm->errorstack) == false);
 }
 
 /* returns error code or 0 if no error */

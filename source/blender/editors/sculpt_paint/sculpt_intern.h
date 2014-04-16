@@ -42,6 +42,7 @@
 
 struct bContext;
 struct Brush;
+struct BMesh;
 struct KeyBlock;
 struct Mesh;
 struct MultiresModifierData;
@@ -60,13 +61,14 @@ int sculpt_mode_poll_view3d(struct bContext *C);
 int sculpt_poll(struct bContext *C);
 int sculpt_poll_view3d(struct bContext *C);
 void sculpt_update_mesh_elements(struct Scene *scene, struct Sculpt *sd, struct Object *ob,
-                                 int need_pmap, int need_mask);
+                                 bool need_pmap, bool need_mask);
 
 /* Stroke */
-int sculpt_stroke_get_location(bContext *C, float out[3], const float mouse[2]);
+bool sculpt_stroke_get_location(bContext *C, float out[3], const float mouse[2]);
 
 /* Dynamic topology */
 void sculpt_pbvh_clear(Object *ob);
+void sculpt_dyntopo_node_layers_reset(struct BMesh *bm);
 void sculpt_update_after_dynamic_topology_toggle(bContext *C);
 void sculpt_dynamic_topology_enable(struct bContext *C);
 void sculpt_dynamic_topology_disable(struct bContext *C,
@@ -111,7 +113,7 @@ typedef struct SculptUndoNode {
 
 	/* bmesh */
 	struct BMLogEntry *bm_entry;
-	int applied;
+	bool applied;
 	CustomData bm_enter_vdata;
 	CustomData bm_enter_edata;
 	CustomData bm_enter_ldata;
@@ -131,5 +133,7 @@ void sculpt_undo_push_begin(const char *name);
 void sculpt_undo_push_end(void);
 
 void sculpt_vertcos_to_key(Object *ob, KeyBlock *kb, float (*vertCos)[3]);
+
+void sculpt_update_object_bounding_box(struct Object *ob);
 
 #endif

@@ -404,13 +404,29 @@ float normalize_qt_qt(float r[4], const float q[4])
 void rotation_between_vecs_to_quat(float q[4], const float v1[3], const float v2[3])
 {
 	float axis[3];
-	float angle;
 
 	cross_v3_v3v3(axis, v1, v2);
 
-	angle = angle_normalized_v3v3(v1, v2);
+	if (normalize_v3(axis) > FLT_EPSILON) {
+		float angle;
 
-	axis_angle_to_quat(q, axis, angle);
+		angle = angle_normalized_v3v3(v1, v2);
+
+		axis_angle_normalized_to_quat(q, axis, angle);
+	}
+	else {
+		/* degenerate case */
+
+		if (dot_v3v3(v1, v2) > 0.0f) {
+			/* Same vectors, zero rotation... */
+			unit_qt(q);
+		}
+		else {
+			/* Colinear but opposed vectors, 180 rotation... */
+			ortho_v3_v3(axis, v1);
+			axis_angle_to_quat(q, axis, (float)M_PI);
+		}
+	}
 }
 
 void rotation_between_quats_to_quat(float q[4], const float q1[4], const float q2[4])
@@ -422,6 +438,44 @@ void rotation_between_quats_to_quat(float q[4], const float q1[4], const float q
 	mul_qt_fl(tquat, 1.0f / dot_qtqt(tquat, tquat));
 
 	mul_qt_qtqt(q, tquat, q2);
+}
+
+
+float angle_normalized_qt(const float q[4])
+{
+	BLI_ASSERT_UNIT_QUAT(q);
+	return 2.0f * saacos(q[0]);
+}
+
+float angle_qt(const float q[4])
+{
+	float tquat[4];
+
+	normalize_qt_qt(tquat, q);
+
+	return angle_normalized_qt(tquat);
+}
+
+float angle_normalized_qtqt(const float q1[4], const float q2[4])
+{
+	float qdelta[4];
+
+	BLI_ASSERT_UNIT_QUAT(q1);
+	BLI_ASSERT_UNIT_QUAT(q2);
+
+	rotation_between_quats_to_quat(qdelta, q1, q2);
+
+	return angle_normalized_qt(qdelta);
+}
+
+float angle_qtqt(const float q1[4], const float q2[4])
+{
+	float quat1[4], quat2[4];
+
+	normalize_qt_qt(quat1, q1);
+	normalize_qt_qt(quat2, q2);
+
+	return angle_normalized_qtqt(quat1, quat2);
 }
 
 void vec_to_quat(float q[4], const float vec[3], short axis, const short upflag)
@@ -569,9 +623,42 @@ void QuatInterpolW(float *result, float quat1[4], float quat2[4], float t)
 }
 #endif
 
+/**
+ * Generic function for implementing slerp
+ * (quaternions and spherical vector coords).
+ *
+ * \param t: factor in [0..1]
+ * \param cosom: dot product from normalized vectors/quats.
+ * \param r_w: calculated weights.
+ */
+void interp_dot_slerp(const float t, const float cosom, float r_w[2])
+{
+	const float eps = 0.0001f;
+
+	BLI_assert(IN_RANGE_INCL(cosom, -1.0001f, 1.0001f));
+
+	/* within [-1..1] range, avoid aligned axis */
+	if (LIKELY(fabsf(cosom) < (1.0f - eps))) {
+		float omega, sinom;
+
+		omega = acosf(cosom);
+		sinom = sinf(omega);
+		r_w[0] = sinf((1.0f - t) * omega) / sinom;
+		r_w[1] = sinf(t * omega) / sinom;
+	}
+	else {
+		/* fallback to lerp */
+		r_w[0] = 1.0f - t;
+		r_w[1] = t;
+	}
+}
+
 void interp_qt_qtqt(float result[4], const float quat1[4], const float quat2[4], const float t)
 {
-	float quat[4], omega, cosom, sinom, sc1, sc2;
+	float quat[4], cosom, w[2];
+
+	BLI_ASSERT_UNIT_QUAT(quat1);
+	BLI_ASSERT_UNIT_QUAT(quat2);
 
 	cosom = dot_qtqt(quat1, quat2);
 
@@ -584,21 +671,12 @@ void interp_qt_qtqt(float result[4], const float quat1[4], const float quat2[4],
 		copy_qt_qt(quat, quat1);
 	}
 
-	if ((1.0f - cosom) > 0.0001f) {
-		omega = acosf(cosom);
-		sinom = sinf(omega);
-		sc1 = sinf((1.0f - t) * omega) / sinom;
-		sc2 = sinf(t * omega) / sinom;
-	}
-	else {
-		sc1 = 1.0f - t;
-		sc2 = t;
-	}
+	interp_dot_slerp(t, cosom, w);
 
-	result[0] = sc1 * quat[0] + sc2 * quat2[0];
-	result[1] = sc1 * quat[1] + sc2 * quat2[1];
-	result[2] = sc1 * quat[2] + sc2 * quat2[2];
-	result[3] = sc1 * quat[3] + sc2 * quat2[3];
+	result[0] = w[0] * quat[0] + w[1] * quat2[0];
+	result[1] = w[0] * quat[1] + w[1] * quat2[1];
+	result[2] = w[0] * quat[2] + w[1] * quat2[2];
+	result[3] = w[0] * quat[3] + w[1] * quat2[3];
 }
 
 void add_qt_qtqt(float result[4], const float quat1[4], const float quat2[4], const float t)
@@ -663,11 +741,17 @@ void tri_to_quat_ex(float quat[4], const float v1[3], const float v2[3], const f
 	mul_qt_qtqt(quat, q1, q2);
 }
 
-void tri_to_quat(float quat[4], const float v1[3], const float v2[3], const float v3[3])
+/**
+ * \return the length of the normal, use to test for degenerate triangles.
+ */
+float tri_to_quat(float quat[4], const float v1[3], const float v2[3], const float v3[3])
 {
 	float vec[3];
-	normal_tri_v3(vec, v1, v2, v3);
+	float len;
+
+	len = normal_tri_v3(vec, v1, v2, v3);
 	tri_to_quat_ex(quat, v1, v2, v3, vec);
+	return len;
 }
 
 void print_qt(const char *str, const float q[4])
@@ -951,7 +1035,7 @@ static void mat3_to_eul2(float tmat[3][3], float eul1[3], float eul2[3])
 	copy_m3_m3(mat, tmat);
 	normalize_m3(mat);
 
-	cy = (float)sqrt(mat[0][0] * mat[0][0] + mat[0][1] * mat[0][1]);
+	cy = sqrtf(mat[0][0] * mat[0][0] + mat[0][1] * mat[0][1]);
 
 	if (cy > 16.0f * FLT_EPSILON) {
 

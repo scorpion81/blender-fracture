@@ -49,7 +49,7 @@ typedef struct bArgDoc {
 	const char *short_arg;
 	const char *long_arg;
 	const char *documentation;
-	int done;
+	bool done;
 } bArgDoc;
 
 typedef struct bAKey {
@@ -122,7 +122,7 @@ bArgs *BLI_argsInit(int argc, const char **argv)
 	bArgs *ba = MEM_callocN(sizeof(bArgs), "bArgs");
 	ba->passes = MEM_callocN(sizeof(int) * argc, "bArgs passes");
 	ba->items = BLI_ghash_new(keyhash, keycmp, "bArgs passes gh");
-	ba->docs.first = ba->docs.last = NULL;
+	BLI_listbase_clear(&ba->docs);
 	ba->argc = argc;
 	ba->argv = argv;
 
@@ -243,7 +243,7 @@ void BLI_argsPrintArgDoc(struct bArgs *ba, const char *arg)
 
 		internalDocPrint(d);
 
-		d->done = TRUE;
+		d->done = true;
 	}
 }
 

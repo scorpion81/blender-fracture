@@ -178,7 +178,7 @@ bool ED_view3d_context_user_region(bContext *C, View3D **r_v3d, ARegion **r_ar)
 
 		if (ar) {
 			RegionView3D *rv3d = ar->regiondata;
-			if (rv3d && rv3d->viewlock == 0) {
+			if (rv3d && (rv3d->viewlock & RV3D_LOCKED) == 0) {
 				*r_v3d = v3d;
 				*r_ar = ar;
 				return true;
@@ -190,7 +190,7 @@ bool ED_view3d_context_user_region(bContext *C, View3D **r_v3d, ARegion **r_ar)
 					/* find the first unlocked rv3d */
 					if (ar->regiondata && ar->regiontype == RGN_TYPE_WINDOW) {
 						rv3d = ar->regiondata;
-						if (rv3d->viewlock == 0) {
+						if ((rv3d->viewlock & RV3D_LOCKED) == 0) {
 							ar_unlock = ar;
 							if (rv3d->persp == RV3D_PERSP || rv3d->persp == RV3D_CAMOB) {
 								ar_unlock_user = ar;
@@ -318,7 +318,7 @@ static SpaceLink *view3d_new(const bContext *C)
 		v3d->lay = v3d->layact = scene->lay;
 		v3d->camera = scene->camera;
 	}
-	v3d->scenelock = TRUE;
+	v3d->scenelock = true;
 	v3d->grid = 1.0f;
 	v3d->gridlines = 16;
 	v3d->gridsubdiv = 10;
@@ -494,10 +494,6 @@ static void view3d_main_area_init(wmWindowManager *wm, ARegion *ar)
 	WM_event_add_keymap_handler(&ar->handlers, keymap);
 	
 	keymap = WM_keymap_find(wm->defaultconf, "Lattice", 0, 0);
-	WM_event_add_keymap_handler(&ar->handlers, keymap);
-
-	/* armature sketching needs to take over mouse */
-	keymap = WM_keymap_find(wm->defaultconf, "Armature Sketch", 0, 0);
 	WM_event_add_keymap_handler(&ar->handlers, keymap);
 
 	keymap = WM_keymap_find(wm->defaultconf, "Particle", 0, 0);

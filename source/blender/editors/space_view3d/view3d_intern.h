@@ -106,8 +106,12 @@ void VIEW3D_OT_clear_render_border(struct wmOperatorType *ot);
 void VIEW3D_OT_zoom_border(struct wmOperatorType *ot);
 
 void view3d_boxview_copy(ScrArea *sa, ARegion *ar);
-void ndof_to_quat(const struct wmNDOFMotionData *ndof, float q[4]);
-float ndof_to_axis_angle(const struct wmNDOFMotionData *ndof, float axis[3]);
+
+void view3d_ndof_fly(
+        const struct wmNDOFMotionData *ndof,
+        struct View3D *v3d, struct RegionView3D *rv3d,
+        const bool use_precision, const short protectflag,
+        bool *r_has_translate, bool *r_has_rotate);
 
 /* view3d_fly.c */
 void view3d_keymap(struct wmKeyConfig *keyconf);
@@ -139,6 +143,8 @@ void view3d_cached_text_draw_begin(void);
 void view3d_cached_text_draw_add(const float co[3], const char *str, short xoffs, short flag, const unsigned char col[4]);
 void view3d_cached_text_draw_end(View3D *v3d, ARegion *ar, bool depth_write, float mat[4][4]);
 
+bool check_object_draw_texture(struct Scene *scene, struct View3D *v3d, const char drawtype);
+
 enum {
 	V3D_CACHE_TEXT_ZBUF         = (1 << 0),
 	V3D_CACHE_TEXT_WORLDSPACE   = (1 << 1),
@@ -158,7 +164,11 @@ void draw_mesh_textured(Scene *scene, View3D *v3d, RegionView3D *rv3d,
 void draw_mesh_face_select(struct RegionView3D *rv3d, struct Mesh *me, struct DerivedMesh *dm);
 void draw_mesh_paint_weight_faces(struct DerivedMesh *dm, const bool do_light,
                                   void *facemask_cb, void *user_data);
-void draw_mesh_paint_weight_edges(RegionView3D *rv3d, struct DerivedMesh *dm, const bool use_depth,
+void draw_mesh_paint_vcolor_faces(struct DerivedMesh *dm, const bool use_light,
+                                  void *facemask_cb, void *user_data,
+                                  const struct Mesh *me);
+void draw_mesh_paint_weight_edges(RegionView3D *rv3d, struct DerivedMesh *dm,
+                                  const bool use_depth, const bool use_alpha,
                                   void *edgemask_cb, void *user_data);
 void draw_mesh_paint(View3D *v3d, RegionView3D *rv3d,
                      struct Object *ob, struct DerivedMesh *dm, const int draw_flags);
@@ -189,7 +199,8 @@ void VIEW3D_OT_localview(struct wmOperatorType *ot);
 void VIEW3D_OT_game_start(struct wmOperatorType *ot);
 
 
-bool ED_view3d_boundbox_clip(RegionView3D *rv3d, float obmat[4][4], const struct BoundBox *bb);
+bool ED_view3d_boundbox_clip_ex(RegionView3D *rv3d, const struct BoundBox *bb, float obmat[4][4]);
+bool ED_view3d_boundbox_clip(RegionView3D *rv3d, const struct BoundBox *bb);
 
 void ED_view3d_smooth_view(struct bContext *C, struct View3D *v3d, struct ARegion *ar, struct Object *, struct Object *,
                            float *ofs, float *quat, float *dist, float *lens,

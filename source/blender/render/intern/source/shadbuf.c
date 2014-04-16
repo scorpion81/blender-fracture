@@ -141,7 +141,7 @@ static float *give_jitter_tab(int samp)
 
 	if (ctab[samp]==0) {
 		ctab[samp]= 1;
-		BLI_jitter_init(jit[offset], samp*samp);
+		BLI_jitter_init((float (*)[2])jit[offset], samp*samp);
 	}
 		
 	return jit[offset];
@@ -1702,7 +1702,7 @@ static int point_behind_strand(const float p[3], BSPFace *face)
 			
 			rc[0]= pt[0]-p[0];
 			rc[1]= pt[1]-p[1];
-			dist= (float)sqrt(rc[0]*rc[0]+ rc[1]*rc[1]);
+			dist= sqrtf(rc[0]*rc[0]+ rc[1]*rc[1]);
 			
 			if (dist < face->radline) {
 				float zval= face->vec1[2] + lambda*face->rc[2];

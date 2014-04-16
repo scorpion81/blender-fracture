@@ -210,6 +210,7 @@ def draw_kmi(display_keymaps, kc, km, kmi, layout, level):
 
 _EVENT_TYPES = set()
 _EVENT_TYPE_MAP = {}
+_EVENT_TYPE_MAP_EXTRA = {}
 
 
 def draw_filtered(display_keymaps, filter_type, filter_text, layout):
@@ -226,7 +227,7 @@ def draw_filtered(display_keymaps, filter_type, filter_text, layout):
                                     for key, item in enum.items()})
 
             del enum
-            _EVENT_TYPE_MAP.update({
+            _EVENT_TYPE_MAP_EXTRA.update({
                 "`": 'ACCENT_GRAVE',
                 "*": 'NUMPAD_ASTERIX',
                 "/": 'NUMPAD_SLASH',
@@ -234,7 +235,7 @@ def draw_filtered(display_keymaps, filter_type, filter_text, layout):
                 "LMB": 'LEFTMOUSE',
                 "MMB": 'MIDDLEMOUSE',
                 })
-            _EVENT_TYPE_MAP.update({
+            _EVENT_TYPE_MAP_EXTRA.update({
                 "%d" % i: "NUMPAD_%d" % i for i in range(9)
                 })
         # done with once off init
@@ -254,6 +255,9 @@ def draw_filtered(display_keymaps, filter_type, filter_text, layout):
         # KeyMapItem like dict, use for comparing against
         # attr: {states, ...}
         kmi_test_dict = {}
+        # Special handling of 'type' using a list if sets,
+        # keymap items must match against all.
+        kmi_test_type = []
 
         # initialize? - so if a if a kmi has a MOD assigned it wont show up.
         #~ for kv in key_mod.values():
@@ -264,38 +268,60 @@ def draw_filtered(display_keymaps, filter_type, filter_text, layout):
             if kk in filter_text_split:
                 filter_text_split.remove(kk)
                 kmi_test_dict[kv] = {True}
+
         # whats left should be the event type
-        if len(filter_text_split) > 1:
-            return False
-        elif filter_text_split:
-            kmi_type = filter_text_split[0].upper()
+        def kmi_type_set_from_string(kmi_type):
+            kmi_type = kmi_type.upper()
             kmi_type_set = set()
 
             if kmi_type in _EVENT_TYPES:
                 kmi_type_set.add(kmi_type)
-            else:
+
+            if not kmi_type_set or len(kmi_type) > 1:
                 # replacement table
-                kmi_type_test = _EVENT_TYPE_MAP.get(kmi_type)
-                if kmi_type_test is not None:
-                    kmi_type_set.add(kmi_type_test)
-                else:
-                    # print("Unknown Type:", kmi_type)
+                for event_type_map in (_EVENT_TYPE_MAP, _EVENT_TYPE_MAP_EXTRA):
+                    kmi_type_test = event_type_map.get(kmi_type)
+                    if kmi_type_test is not None:
+                        kmi_type_set.add(kmi_type_test)
+                    else:
+                        # print("Unknown Type:", kmi_type)
 
-                    # Partial match
-                    for k, v in _EVENT_TYPE_MAP.items():
-                        if (kmi_type in k) or (kmi_type in v):
-                            kmi_type_set.add(v)
+                        # Partial match
+                        for k, v in event_type_map.items():
+                            if (kmi_type in k) or (kmi_type in v):
+                                kmi_type_set.add(v)
+            return kmi_type_set
 
-                    if not kmi_type_set:
-                        return False
+        kmi_type_set_combine = None
+        for i, kmi_type in enumerate(filter_text_split):
+            kmi_type_set = kmi_type_set_from_string(kmi_type)
 
-            kmi_test_dict["type"] = kmi_type_set
+            if not kmi_type_set:
+                return False
+
+            kmi_test_type.append(kmi_type_set)
+        # tiny optimization, sort sets so the smallest is first
+        # improve chances of failing early
+        kmi_test_type.sort(key=lambda kmi_type_set: len(kmi_type_set))
 
         # main filter func, runs many times
         def filter_func(kmi):
             for kk, ki in kmi_test_dict.items():
-                if getattr(kmi, kk) not in ki:
+                val = getattr(kmi, kk)
+                if val not in ki:
                     return False
+
+            # special handling of 'type'
+            for ki in kmi_test_type:
+                val = kmi.type
+                if val == 'NONE' or val not in ki:
+                    # exception for 'type'
+                    # also inspect 'key_modifier' as a fallback
+                    val = kmi.key_modifier
+                    if not (val == 'NONE' or val not in ki):
+                        continue
+                    return False
+
             return True
 
     for km, kc in display_keymaps:
@@ -349,7 +375,7 @@ def draw_keymaps(context, layout):
 
     row = subcol.row(align=True)
 
-    #~ row.prop_search(wm.keyconfigs, "active", wm, "keyconfigs", text="Key Config:")
+    #~ row.prop_search(wm.keyconfigs, "active", wm, "keyconfigs", text="Key Config")
     text = bpy.path.display_name(wm.keyconfigs.active.name)
     if not text:
         text = "Blender (default)"

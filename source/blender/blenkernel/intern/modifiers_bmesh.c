@@ -79,7 +79,7 @@ void DM_to_bmesh_ex(DerivedMesh *dm, BMesh *bm, const bool calc_face_normal)
 	int cd_edge_bweight_offset;
 	int cd_edge_crease_offset;
 
-	if (is_init == FALSE) {
+	if (is_init == false) {
 		/* check if we have an origflag */
 		has_orig_hflag |= CustomData_has_layer(&bm->vdata, CD_ORIGINDEX) ? BM_VERT : 0;
 		has_orig_hflag |= CustomData_has_layer(&bm->edata, CD_ORIGINDEX) ? BM_EDGE : 0;
@@ -104,8 +104,8 @@ void DM_to_bmesh_ex(DerivedMesh *dm, BMesh *bm, const bool calc_face_normal)
 	totedge = dm->getNumEdges(dm);
 	/* totface = dm->getNumPolys(dm); */ /* UNUSED */
 
-	vtable = MEM_callocN(sizeof(void **) * totvert, __func__);
-	etable = MEM_callocN(sizeof(void **) * totedge, __func__);
+	vtable = MEM_mallocN(sizeof(*vtable) * totvert, __func__);
+	etable = MEM_mallocN(sizeof(*etable) * totedge, __func__);
 
 	/*do verts*/
 	mv = mvert = is_cddm ? dm->getVertArray(dm) : dm->dupVertArray(dm);
@@ -176,7 +176,8 @@ void DM_to_bmesh_ex(DerivedMesh *dm, BMesh *bm, const bool calc_face_normal)
 		l_iter = l_first = BM_FACE_FIRST_LOOP(f);
 		do {
 			/* Save index of correspsonding MLoop */
-			CustomData_to_bmesh_block(&dm->loopData, &bm->ldata, j++, &l_iter->head.data, true);
+			CustomData_to_bmesh_block(&dm->loopData, &bm->ldata, j, &l_iter->head.data, true);
+			BM_elem_index_set(l_iter, j++); /* set_inline */
 		} while ((l_iter = l_iter->next) != l_first);
 
 		CustomData_to_bmesh_block(&dm->polyData, &bm->pdata, i, &f->head.data, true);
@@ -195,7 +196,7 @@ void DM_to_bmesh_ex(DerivedMesh *dm, BMesh *bm, const bool calc_face_normal)
 			*orig_index = ORIGINDEX_NONE;
 		}
 	}
-	if (is_init) bm->elem_index_dirty &= ~BM_FACE;
+	if (is_init) bm->elem_index_dirty &= ~(BM_FACE | BM_LOOP);
 
 	MEM_freeN(vtable);
 	MEM_freeN(etable);

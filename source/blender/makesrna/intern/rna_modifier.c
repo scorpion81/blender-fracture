@@ -123,8 +123,8 @@ EnumPropertyItem modifier_triangulate_quad_method_items[] = {
 };
 
 EnumPropertyItem modifier_triangulate_ngon_method_items[] = {
-	{MOD_TRIANGULATE_NGON_SCANFILL, "SCANFILL", 0, "Scanfill", "Split the polygons using a scanfill algorithm"},
-	{MOD_TRIANGULATE_NGON_BEAUTY, "BEAUTY", 0, "Beauty", "Arrange the new triangles nicely, slower method"},
+	{MOD_TRIANGULATE_NGON_BEAUTY, "BEAUTY", 0, "Beauty", "Arrange the new triangles evenly (slow)"},
+	{MOD_TRIANGULATE_NGON_EARCLIP, "CLIP", 0, "Clip", "Split the polygons with an ear clipping algorithm"},
 	{0, NULL, 0, NULL, NULL}
 };
 
@@ -299,32 +299,42 @@ static void rna_Modifier_dependency_update(Main *bmain, Scene *scene, PointerRNA
 	DAG_relations_tag_update(bmain);
 }
 
-static void rna_Smoke_set_type(Main *bmain, Scene *scene, PointerRNA *ptr)
-{
-	SmokeModifierData *smd = (SmokeModifierData *)ptr->data;
-	Object *ob = (Object *)ptr->id.data;
+/* Vertex Groups */
 
-	/* nothing changed */
-	if ((smd->type & MOD_SMOKE_TYPE_DOMAIN) && smd->domain)
-		return;
-		
-	smokeModifier_free(smd); /* XXX TODO: completely free all 3 pointers */
-	smokeModifier_createType(smd); /* create regarding of selected type */
-
-	switch (smd->type) {
-		case MOD_SMOKE_TYPE_DOMAIN:
-			ob->dt = OB_WIRE;
-			break;
-		case MOD_SMOKE_TYPE_FLOW:
-		case MOD_SMOKE_TYPE_COLL:
-		case 0:
-		default:
-			break;
-	}
-	
-	/* update dependency since a domain - other type switch could have happened */
-	rna_Modifier_dependency_update(bmain, scene, ptr);
+#define RNA_MOD_VGROUP_NAME_SET(_type, _prop)                                               \
+static void rna_##_type##Modifier_##_prop##_set(PointerRNA *ptr, const char *value)         \
+{                                                                                           \
+	_type##ModifierData *tmd = (_type##ModifierData *)ptr->data;                            \
+	rna_object_vgroup_name_set(ptr, value, tmd->_prop, sizeof(tmd->_prop));                 \
 }
+
+RNA_MOD_VGROUP_NAME_SET(Armature, defgrp_name);
+RNA_MOD_VGROUP_NAME_SET(Bevel, defgrp_name);
+RNA_MOD_VGROUP_NAME_SET(Cast, defgrp_name);
+RNA_MOD_VGROUP_NAME_SET(Curve, name);
+RNA_MOD_VGROUP_NAME_SET(Decimate, defgrp_name);
+RNA_MOD_VGROUP_NAME_SET(Displace, defgrp_name);
+RNA_MOD_VGROUP_NAME_SET(Hook, name);
+RNA_MOD_VGROUP_NAME_SET(LaplacianDeform, anchor_grp_name);
+RNA_MOD_VGROUP_NAME_SET(LaplacianSmooth, defgrp_name);
+RNA_MOD_VGROUP_NAME_SET(Lattice, name);
+RNA_MOD_VGROUP_NAME_SET(Mask, vgroup);
+RNA_MOD_VGROUP_NAME_SET(MeshDeform, defgrp_name);
+RNA_MOD_VGROUP_NAME_SET(Shrinkwrap, vgroup_name);
+RNA_MOD_VGROUP_NAME_SET(SimpleDeform, vgroup_name);
+RNA_MOD_VGROUP_NAME_SET(Smooth, defgrp_name);
+RNA_MOD_VGROUP_NAME_SET(Solidify, defgrp_name);
+RNA_MOD_VGROUP_NAME_SET(UVWarp, vgroup_name);
+RNA_MOD_VGROUP_NAME_SET(Warp, defgrp_name);
+RNA_MOD_VGROUP_NAME_SET(Wave, defgrp_name);
+RNA_MOD_VGROUP_NAME_SET(WeightVGEdit, defgrp_name);
+RNA_MOD_VGROUP_NAME_SET(WeightVGEdit, mask_defgrp_name);
+RNA_MOD_VGROUP_NAME_SET(WeightVGMix, defgrp_name_a);
+RNA_MOD_VGROUP_NAME_SET(WeightVGMix, defgrp_name_b);
+RNA_MOD_VGROUP_NAME_SET(WeightVGMix, mask_defgrp_name);
+RNA_MOD_VGROUP_NAME_SET(WeightVGProximity, defgrp_name);
+RNA_MOD_VGROUP_NAME_SET(WeightVGProximity, mask_defgrp_name);
+RNA_MOD_VGROUP_NAME_SET(Wireframe, defgrp_name);
 
 static void rna_ExplodeModifier_vgroup_get(PointerRNA *ptr, char *value)
 {
@@ -344,175 +354,109 @@ static void rna_ExplodeModifier_vgroup_set(PointerRNA *ptr, const char *value)
 	rna_object_vgroup_name_index_set(ptr, value, &emd->vgroup);
 }
 
-static void rna_SimpleDeformModifier_vgroup_set(PointerRNA *ptr, const char *value)
-{
-	SimpleDeformModifierData *smd = (SimpleDeformModifierData *)ptr->data;
-	rna_object_vgroup_name_set(ptr, value, smd->vgroup_name, sizeof(smd->vgroup_name));
+#undef RNA_MOD_VGROUP_NAME_SET
+
+/* UV layers */
+
+#define RNA_MOD_UVLAYER_NAME_SET(_type, _prop)                                              \
+static void rna_##_type##Modifier_##_prop##_set(PointerRNA *ptr, const char *value)         \
+{                                                                                           \
+	_type##ModifierData *tmd = (_type##ModifierData *)ptr->data;                            \
+	rna_object_uvlayer_name_set(ptr, value, tmd->_prop, sizeof(tmd->_prop));                \
 }
 
-static void rna_ShrinkwrapModifier_vgroup_set(PointerRNA *ptr, const char *value)
-{
-	ShrinkwrapModifierData *smd = (ShrinkwrapModifierData *)ptr->data;
-	rna_object_vgroup_name_set(ptr, value, smd->vgroup_name, sizeof(smd->vgroup_name));
-}
+RNA_MOD_UVLAYER_NAME_SET(MappingInfo, uvlayer_name);
+RNA_MOD_UVLAYER_NAME_SET(UVProject, uvlayer_name);
+RNA_MOD_UVLAYER_NAME_SET(UVWarp, uvlayer_name);
+RNA_MOD_UVLAYER_NAME_SET(WeightVGEdit, mask_tex_uvlayer_name);
+RNA_MOD_UVLAYER_NAME_SET(WeightVGMix, mask_tex_uvlayer_name);
+RNA_MOD_UVLAYER_NAME_SET(WeightVGProximity, mask_tex_uvlayer_name);
 
-static void rna_LatticeModifier_vgroup_set(PointerRNA *ptr, const char *value)
-{
-	LatticeModifierData *lmd = (LatticeModifierData *)ptr->data;
-	rna_object_vgroup_name_set(ptr, value, lmd->name, sizeof(lmd->name));
-}
+#undef RNA_MOD_UVLAYER_NAME_SET
 
-static void rna_ArmatureModifier_vgroup_set(PointerRNA *ptr, const char *value)
-{
-	ArmatureModifierData *lmd = (ArmatureModifierData *)ptr->data;
-	rna_object_vgroup_name_set(ptr, value, lmd->defgrp_name, sizeof(lmd->defgrp_name));
-}
+/* Objects */
 
-static void rna_CurveModifier_vgroup_set(PointerRNA *ptr, const char *value)
+static void modifier_object_set(Object *self, Object **ob_p, int type, PointerRNA value)
 {
-	CurveModifierData *lmd = (CurveModifierData *)ptr->data;
-	rna_object_vgroup_name_set(ptr, value, lmd->name, sizeof(lmd->name));
-}
+	Object *ob = value.data;
 
-static void rna_DisplaceModifier_vgroup_set(PointerRNA *ptr, const char *value)
-{
-	DisplaceModifierData *lmd = (DisplaceModifierData *)ptr->data;
-	rna_object_vgroup_name_set(ptr, value, lmd->defgrp_name, sizeof(lmd->defgrp_name));
-}
-
-static void rna_HookModifier_vgroup_set(PointerRNA *ptr, const char *value)
-{
-	HookModifierData *lmd = (HookModifierData *)ptr->data;
-	rna_object_vgroup_name_set(ptr, value, lmd->name, sizeof(lmd->name));
-}
-
-static void rna_MaskModifier_vgroup_set(PointerRNA *ptr, const char *value)
-{
-	MaskModifierData *lmd = (MaskModifierData *)ptr->data;
-	rna_object_vgroup_name_set(ptr, value, lmd->vgroup, sizeof(lmd->vgroup));
-}
-
-static void rna_MeshDeformModifier_vgroup_set(PointerRNA *ptr, const char *value)
-{
-	MeshDeformModifierData *lmd = (MeshDeformModifierData *)ptr->data;
-	rna_object_vgroup_name_set(ptr, value, lmd->defgrp_name, sizeof(lmd->defgrp_name));
-}
-
-static void rna_SmoothModifier_vgroup_set(PointerRNA *ptr, const char *value)
-{
-	SmoothModifierData *lmd = (SmoothModifierData *)ptr->data;
-	rna_object_vgroup_name_set(ptr, value, lmd->defgrp_name, sizeof(lmd->defgrp_name));
-}
-
-static void rna_LaplacianSmoothModifier_vgroup_set(PointerRNA *ptr, const char *value)
-{
-	LaplacianSmoothModifierData *lmd = (LaplacianSmoothModifierData *)ptr->data;
-	rna_object_vgroup_name_set(ptr, value, lmd->defgrp_name, sizeof(lmd->defgrp_name));
-}
-
-static void rna_WaveModifier_vgroup_set(PointerRNA *ptr, const char *value)
-{
-	WaveModifierData *lmd = (WaveModifierData *)ptr->data;
-	rna_object_vgroup_name_set(ptr, value, lmd->defgrp_name, sizeof(lmd->defgrp_name));
-}
-
-static void rna_CastModifier_vgroup_set(PointerRNA *ptr, const char *value)
-{
-	CastModifierData *lmd = (CastModifierData *)ptr->data;
-	rna_object_vgroup_name_set(ptr, value, lmd->defgrp_name, sizeof(lmd->defgrp_name));
-}
-
-static void rna_SolidifyModifier_vgroup_set(PointerRNA *ptr, const char *value)
-{
-	SolidifyModifierData *smd = (SolidifyModifierData *)ptr->data;
-	rna_object_vgroup_name_set(ptr, value, smd->defgrp_name, sizeof(smd->defgrp_name));
-}
-
-static void rna_DecimateModifier_vgroup_set(PointerRNA *ptr, const char *value)
-{
-	DecimateModifierData *dmd = (DecimateModifierData *)ptr->data;
-	rna_object_vgroup_name_set(ptr, value, dmd->defgrp_name, sizeof(dmd->defgrp_name));
-}
-
-static void rna_WeightVGModifier_vgroup_set(PointerRNA *ptr, const char *value)
-{
-	ModifierData *md = (ModifierData *)ptr->data;
-	if (md->type == eModifierType_WeightVGEdit) {
-		WeightVGEditModifierData *wmd = (WeightVGEditModifierData *)md;
-		rna_object_vgroup_name_set(ptr, value, wmd->defgrp_name, sizeof(wmd->defgrp_name));
-	}
-	else if (md->type == eModifierType_WeightVGMix) {
-		WeightVGMixModifierData *wmd = (WeightVGMixModifierData *)md;
-		rna_object_vgroup_name_set(ptr, value, wmd->defgrp_name_a, sizeof(wmd->defgrp_name_a));
-	}
-	else if (md->type == eModifierType_WeightVGProximity) {
-		WeightVGProximityModifierData *wmd = (WeightVGProximityModifierData *)md;
-		rna_object_vgroup_name_set(ptr, value, wmd->defgrp_name, sizeof(wmd->defgrp_name));
+	if (!self || ob != self) {
+		if (!ob || type == OB_EMPTY || ob->type == type) {
+			id_lib_extern((ID *)ob);
+			*ob_p = ob;
+		}
 	}
 }
 
-static void rna_WeightVGModifier_mask_vgroup_set(PointerRNA *ptr, const char *value)
-{
-	ModifierData *md = (ModifierData *)ptr->data;
-	if (md->type == eModifierType_WeightVGEdit) {
-		WeightVGEditModifierData *wmd = (WeightVGEditModifierData *)md;
-		rna_object_vgroup_name_set(ptr, value, wmd->mask_defgrp_name, sizeof(wmd->mask_defgrp_name));
-	}
-	else if (md->type == eModifierType_WeightVGMix) {
-		WeightVGMixModifierData *wmd = (WeightVGMixModifierData *)md;
-		rna_object_vgroup_name_set(ptr, value, wmd->mask_defgrp_name, sizeof(wmd->mask_defgrp_name));
-	}
-	else if (md->type == eModifierType_WeightVGProximity) {
-		WeightVGProximityModifierData *wmd = (WeightVGProximityModifierData *)md;
-		rna_object_vgroup_name_set(ptr, value, wmd->mask_defgrp_name, sizeof(wmd->mask_defgrp_name));
-	}
+#define RNA_MOD_OBJECT_SET(_type, _prop, _obtype)                                           \
+static void rna_##_type##Modifier_##_prop##_set(PointerRNA *ptr, PointerRNA value)          \
+{                                                                                           \
+	_type##ModifierData *tmd = (_type##ModifierData *)ptr->data;                            \
+	modifier_object_set(ptr->id.data, &tmd->_prop, _obtype, value);                         \
 }
 
-static void rna_WeightVGMixModifier_vgroup2_set(PointerRNA *ptr, const char *value)
+RNA_MOD_OBJECT_SET(Armature, object, OB_ARMATURE);
+RNA_MOD_OBJECT_SET(Array, start_cap, OB_MESH);
+RNA_MOD_OBJECT_SET(Array, end_cap, OB_MESH);
+RNA_MOD_OBJECT_SET(Array, curve_ob, OB_CURVE);
+RNA_MOD_OBJECT_SET(Boolean, object, OB_MESH);
+RNA_MOD_OBJECT_SET(Cast, object, OB_EMPTY);
+RNA_MOD_OBJECT_SET(Curve, object, OB_CURVE);
+RNA_MOD_OBJECT_SET(Lattice, object, OB_LATTICE);
+RNA_MOD_OBJECT_SET(Mask, ob_arm, OB_ARMATURE);
+RNA_MOD_OBJECT_SET(MeshDeform, object, OB_MESH);
+RNA_MOD_OBJECT_SET(Shrinkwrap, target, OB_MESH);
+RNA_MOD_OBJECT_SET(Shrinkwrap, auxTarget, OB_MESH);
+
+static void rna_HookModifier_object_set(PointerRNA *ptr, PointerRNA value)
 {
-	WeightVGMixModifierData *wmd = (WeightVGMixModifierData *)ptr->data;
-	rna_object_vgroup_name_set(ptr, value, wmd->defgrp_name_b, sizeof(wmd->defgrp_name_b));
+	HookModifierData *hmd = ptr->data;
+
+	hmd->object = (Object *)value.data;
+	BKE_object_modifier_hook_reset((Object *)ptr->id.data, hmd);
 }
 
-static void rna_MappingInfo_uvlayer_set(PointerRNA *ptr, const char *value)
+static PointerRNA rna_UVProjector_object_get(PointerRNA *ptr)
 {
-	MappingInfoModifierData *mmd = (MappingInfoModifierData *)ptr->data;
-	rna_object_uvlayer_name_set(ptr, value, mmd->uvlayer_name, sizeof(mmd->uvlayer_name));
+	Object **ob = (Object **)ptr->data;
+	return rna_pointer_inherit_refine(ptr, &RNA_Object, *ob);
 }
 
-static void rna_UVProjectModifier_uvlayer_set(PointerRNA *ptr, const char *value)
+static void rna_UVProjector_object_set(PointerRNA *ptr, PointerRNA value)
 {
-	UVProjectModifierData *umd = (UVProjectModifierData *)ptr->data;
-	rna_object_uvlayer_name_set(ptr, value, umd->uvlayer_name, sizeof(umd->uvlayer_name));
+	Object **ob = (Object **)ptr->data;
+	*ob = value.data;
 }
 
-static void RNA_WarpModifier_vgroup_set(PointerRNA *ptr, const char *value)
-{
-	WarpModifierData *tmd = (WarpModifierData *)ptr->data;
-	rna_object_vgroup_name_set(ptr, value, tmd->defgrp_name, sizeof(tmd->defgrp_name));
-}
+#undef RNA_MOD_OBJECT_SET
 
-static void RNA_WireframeModifier_vgroup_set(PointerRNA *ptr, const char *value)
-{
-	WireframeModifierData *wmd = (WireframeModifierData *)ptr->data;
-	rna_object_vgroup_name_set(ptr, value, wmd->defgrp_name, sizeof(wmd->defgrp_name));
-}
+/* Other rna callbacks */
 
-static void rna_WeightVGModifier_mask_uvlayer_set(PointerRNA *ptr, const char *value)
+static void rna_Smoke_set_type(Main *bmain, Scene *scene, PointerRNA *ptr)
 {
-	ModifierData *md = (ModifierData *)ptr->data;
-	if (md->type == eModifierType_WeightVGEdit) {
-		WeightVGEditModifierData *wmd = (WeightVGEditModifierData *)md;
-		rna_object_uvlayer_name_set(ptr, value, wmd->mask_tex_uvlayer_name, sizeof(wmd->mask_tex_uvlayer_name));
+	SmokeModifierData *smd = (SmokeModifierData *)ptr->data;
+	Object *ob = (Object *)ptr->id.data;
+
+	/* nothing changed */
+	if ((smd->type & MOD_SMOKE_TYPE_DOMAIN) && smd->domain)
+		return;
+
+	smokeModifier_free(smd); /* XXX TODO: completely free all 3 pointers */
+	smokeModifier_createType(smd); /* create regarding of selected type */
+
+	switch (smd->type) {
+		case MOD_SMOKE_TYPE_DOMAIN:
+			ob->dt = OB_WIRE;
+			break;
+		case MOD_SMOKE_TYPE_FLOW:
+		case MOD_SMOKE_TYPE_COLL:
+		case 0:
+		default:
+			break;
 	}
-	else if (md->type == eModifierType_WeightVGMix) {
-		WeightVGMixModifierData *wmd = (WeightVGMixModifierData *)md;
-		rna_object_uvlayer_name_set(ptr, value, wmd->mask_tex_uvlayer_name, sizeof(wmd->mask_tex_uvlayer_name));
-	}
-	else if (md->type == eModifierType_WeightVGProximity) {
-		WeightVGProximityModifierData *wmd = (WeightVGProximityModifierData *)md;
-		rna_object_uvlayer_name_set(ptr, value, wmd->mask_tex_uvlayer_name, sizeof(wmd->mask_tex_uvlayer_name));
-	}
+
+	/* update dependency since a domain - other type switch could have happened */
+	rna_Modifier_dependency_update(bmain, scene, ptr);
 }
 
 static void rna_MultiresModifier_type_set(PointerRNA *ptr, int value)
@@ -568,66 +512,6 @@ static int rna_MultiresModifier_filepath_length(PointerRNA *ptr)
 	return strlen((external) ? external->filename : "");
 }
 
-static void rna_HookModifier_object_set(PointerRNA *ptr, PointerRNA value)
-{
-	HookModifierData *hmd = ptr->data;
-
-	hmd->object = (Object *)value.data;
-	BKE_object_modifier_hook_reset((Object *)ptr->id.data, hmd);
-}
-
-static void modifier_object_set(Object *self, Object **ob_p, int type, PointerRNA value)
-{
-	Object *ob = value.data;
-
-	if (!self || ob != self) {
-		if (!ob || type == OB_EMPTY || ob->type == type) {
-			id_lib_extern((ID *)ob);
-			*ob_p = ob;
-		}
-	}
-}
-
-static void rna_LatticeModifier_object_set(PointerRNA *ptr, PointerRNA value)
-{
-	modifier_object_set(ptr->id.data, &((LatticeModifierData *)ptr->data)->object, OB_LATTICE, value);
-}
-
-static void rna_BooleanModifier_object_set(PointerRNA *ptr, PointerRNA value)
-{
-	modifier_object_set(ptr->id.data, &((BooleanModifierData *)ptr->data)->object, OB_MESH, value);
-}
-
-static void rna_CurveModifier_object_set(PointerRNA *ptr, PointerRNA value)
-{
-	modifier_object_set(ptr->id.data, &((CurveModifierData *)ptr->data)->object, OB_CURVE, value);
-}
-
-static void rna_CastModifier_object_set(PointerRNA *ptr, PointerRNA value)
-{
-	modifier_object_set(ptr->id.data, &((CastModifierData *)ptr->data)->object, OB_EMPTY, value);
-}
-
-static void rna_ArmatureModifier_object_set(PointerRNA *ptr, PointerRNA value)
-{
-	modifier_object_set(ptr->id.data, &((ArmatureModifierData *)ptr->data)->object, OB_ARMATURE, value);
-}
-
-static void rna_MaskModifier_armature_set(PointerRNA *ptr, PointerRNA value)
-{
-	modifier_object_set(ptr->id.data, &((MaskModifierData *)ptr->data)->ob_arm, OB_ARMATURE, value);
-}
-
-static void rna_ShrinkwrapModifier_auxiliary_target_set(PointerRNA *ptr, PointerRNA value)
-{
-	modifier_object_set(ptr->id.data, &((ShrinkwrapModifierData *)ptr->data)->auxTarget, OB_MESH, value);
-}
-
-static void rna_ShrinkwrapModifier_target_set(PointerRNA *ptr, PointerRNA value)
-{
-	modifier_object_set(ptr->id.data, &((ShrinkwrapModifierData *)ptr->data)->target, OB_MESH, value);
-}
-
 static int rna_ShrinkwrapModifier_face_cull_get(PointerRNA *ptr)
 {
 	ShrinkwrapModifierData *swm = (ShrinkwrapModifierData *)ptr->data;
@@ -640,26 +524,6 @@ static void rna_ShrinkwrapModifier_face_cull_set(struct PointerRNA *ptr, int val
 	
 	swm->shrinkOpts =
 	    (swm->shrinkOpts & ~(MOD_SHRINKWRAP_CULL_TARGET_FRONTFACE | MOD_SHRINKWRAP_CULL_TARGET_BACKFACE)) | value;
-}
-
-static void rna_MeshDeformModifier_object_set(PointerRNA *ptr, PointerRNA value)
-{
-	modifier_object_set(ptr->id.data, &((MeshDeformModifierData *)ptr->data)->object, OB_MESH, value);
-}
-
-static void rna_ArrayModifier_end_cap_set(PointerRNA *ptr, PointerRNA value)
-{
-	modifier_object_set(ptr->id.data, &((ArrayModifierData *)ptr->data)->end_cap, OB_MESH, value);
-}
-
-static void rna_ArrayModifier_start_cap_set(PointerRNA *ptr, PointerRNA value)
-{
-	modifier_object_set(ptr->id.data, &((ArrayModifierData *)ptr->data)->start_cap, OB_MESH, value);
-}
-
-static void rna_ArrayModifier_curve_set(PointerRNA *ptr, PointerRNA value)
-{
-	modifier_object_set(ptr->id.data, &((ArrayModifierData *)ptr->data)->curve_ob, OB_CURVE, value);
 }
 
 static int rna_MeshDeformModifier_is_bound_get(PointerRNA *ptr)
@@ -683,24 +547,6 @@ static PointerRNA rna_CollisionModifier_settings_get(PointerRNA *ptr)
 {
 	Object *ob = (Object *)ptr->id.data;
 	return rna_pointer_inherit_refine(ptr, &RNA_CollisionSettings, ob->pd);
-}
-
-static PointerRNA rna_UVProjector_object_get(PointerRNA *ptr)
-{
-	Object **ob = (Object **)ptr->data;
-	return rna_pointer_inherit_refine(ptr, &RNA_Object, *ob);
-}
-
-static void rna_UVProjector_object_set(PointerRNA *ptr, PointerRNA value)
-{
-	Object **ob = (Object **)ptr->data;
-
-	if (*ob)
-		id_us_min((ID *)*ob);
-	if (value.data)
-		id_us_plus((ID *)value.data);
-
-	*ob = value.data;
 }
 
 static void rna_UVProjectModifier_num_projectors_set(PointerRNA *ptr, int value)
@@ -753,30 +599,6 @@ static void rna_OceanModifier_ocean_chop_set(PointerRNA *ptr, float value)
 		omd->refresh |= MOD_OCEAN_REFRESH_RESET;
 		omd->refresh |= MOD_OCEAN_REFRESH_CLEAR_CACHE;
 	}
-}
-
-static void rna_BevelModifier_defgrp_name_set(PointerRNA *ptr, const char *value)
-{
-	BevelModifierData *md = (BevelModifierData *)ptr->data;
-	rna_object_vgroup_name_set(ptr, value, md->defgrp_name, sizeof(md->defgrp_name));
-}
-
-static void rna_UVWarpModifier_vgroup_set(PointerRNA *ptr, const char *value)
-{
-	UVWarpModifierData *umd = (UVWarpModifierData *)ptr->data;
-	rna_object_vgroup_name_set(ptr, value, umd->vgroup_name, sizeof(umd->vgroup_name));
-}
-
-static void rna_UVWarpModifier_uvlayer_set(PointerRNA *ptr, const char *value)
-{
-	UVWarpModifierData *umd = (UVWarpModifierData *)ptr->data;
-	rna_object_uvlayer_name_set(ptr, value, umd->uvlayer_name, sizeof(umd->uvlayer_name));
-}
-
-static void rna_LaplacianDeformModifier_vgroup_set(PointerRNA *ptr, const char *value)
-{
-	LaplacianDeformModifierData *lmd = (LaplacianDeformModifierData *)ptr->data;
-	rna_object_vgroup_name_set(ptr, value, lmd->anchor_grp_name, sizeof(lmd->anchor_grp_name));
 }
 
 static int rna_LaplacianDeformModifier_is_bind_get(PointerRNA *ptr)
@@ -868,7 +690,7 @@ static void rna_def_modifier_generic_map_info(StructRNA *srna)
 	prop = RNA_def_property(srna, "uv_layer", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "uvlayer_name");
 	RNA_def_property_ui_text(prop, "UV Map", "UV map name");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_MappingInfo_uvlayer_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_MappingInfoModifier_uvlayer_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "texture_coords_object", PROP_POINTER, PROP_NONE);
@@ -939,7 +761,7 @@ static void rna_def_modifier_warp(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "vertex_group", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "defgrp_name");
 	RNA_def_property_ui_text(prop, "Vertex Group", "Vertex group name for modulating the deform");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "RNA_WarpModifier_vgroup_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_WarpModifier_defgrp_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	rna_def_modifier_generic_map_info(srna);
@@ -1023,7 +845,7 @@ static void rna_def_modifier_lattice(BlenderRNA *brna)
 	RNA_def_property_string_sdna(prop, NULL, "name");
 	RNA_def_property_ui_text(prop, "Vertex Group",
 	                         "Name of Vertex Group which determines influence of modifier per point");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_LatticeModifier_vgroup_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_LatticeModifier_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 	
 	prop = RNA_def_property(srna, "strength", PROP_FLOAT, PROP_NONE);
@@ -1063,7 +885,7 @@ static void rna_def_modifier_curve(BlenderRNA *brna)
 	RNA_def_property_string_sdna(prop, NULL, "name");
 	RNA_def_property_ui_text(prop, "Vertex Group",
 	                         "Name of Vertex Group which determines influence of modifier per point");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_CurveModifier_vgroup_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_CurveModifier_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "deform_axis", PROP_ENUM, PROP_NONE);
@@ -1226,7 +1048,7 @@ static void rna_def_modifier_decimate(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "vertex_group", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "defgrp_name");
 	RNA_def_property_ui_text(prop, "Vertex Group", "Vertex group name (collapse only)");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_DecimateModifier_vgroup_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_DecimateModifier_defgrp_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "invert_vertex_group", PROP_BOOLEAN, PROP_NONE);
@@ -1356,7 +1178,7 @@ static void rna_def_modifier_wave(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "vertex_group", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "defgrp_name");
 	RNA_def_property_ui_text(prop, "Vertex Group", "Vertex group name for modulating the wave");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_WaveModifier_vgroup_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_WaveModifier_defgrp_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "speed", PROP_FLOAT, PROP_NONE);
@@ -1430,7 +1252,7 @@ static void rna_def_modifier_armature(BlenderRNA *brna)
 	RNA_def_property_string_sdna(prop, NULL, "defgrp_name");
 	RNA_def_property_ui_text(prop, "Vertex Group",
 	                         "Name of Vertex Group which determines influence of modifier per point");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_ArmatureModifier_vgroup_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_ArmatureModifier_defgrp_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "invert_vertex_group", PROP_BOOLEAN, PROP_NONE);
@@ -1476,7 +1298,7 @@ static void rna_def_modifier_hook(BlenderRNA *brna)
 	RNA_def_property_string_sdna(prop, NULL, "name");
 	RNA_def_property_ui_text(prop, "Vertex Group",
 	                         "Name of Vertex Group which determines influence of modifier per point");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_HookModifier_vgroup_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_HookModifier_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
@@ -1573,7 +1395,7 @@ static void rna_def_modifier_array(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "curve", PROP_POINTER, PROP_NONE);
 	RNA_def_property_pointer_sdna(prop, NULL, "curve_ob");
 	RNA_def_property_ui_text(prop, "Curve", "Curve object to fit array length to");
-	RNA_def_property_pointer_funcs(prop, NULL, "rna_ArrayModifier_curve_set", NULL, "rna_Curve_object_poll");
+	RNA_def_property_pointer_funcs(prop, NULL, "rna_ArrayModifier_curve_ob_set", NULL, "rna_Curve_object_poll");
 	RNA_def_property_flag(prop, PROP_EDITABLE | PROP_ID_SELF_CHECK);
 	RNA_def_property_update(prop, 0, "rna_Modifier_dependency_update");
 
@@ -1699,7 +1521,7 @@ static void rna_def_modifier_displace(BlenderRNA *brna)
 	RNA_def_property_string_sdna(prop, NULL, "defgrp_name");
 	RNA_def_property_ui_text(prop, "Vertex Group",
 	                         "Name of Vertex Group which determines influence of modifier per point");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_DisplaceModifier_vgroup_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_DisplaceModifier_defgrp_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "mid_level", PROP_FLOAT, PROP_FACTOR);
@@ -1736,7 +1558,7 @@ static void rna_def_modifier_uvproject(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "uv_layer", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "uvlayer_name");
 	RNA_def_property_ui_text(prop, "UV Map", "UV map name");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_UVProjectModifier_uvlayer_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_UVProjectModifier_uvlayer_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "projector_count", PROP_INT, PROP_NONE);
@@ -1759,6 +1581,7 @@ static void rna_def_modifier_uvproject(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "aspect_x", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "aspectx");
+	RNA_def_property_flag(prop, PROP_PROPORTIONAL);
 	RNA_def_property_range(prop, 1, FLT_MAX);
 	RNA_def_property_ui_range(prop, 1, 1000, 1, 3);
 	RNA_def_property_ui_text(prop, "Horizontal Aspect Ratio", "");
@@ -1766,6 +1589,7 @@ static void rna_def_modifier_uvproject(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "aspect_y", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "aspecty");
+	RNA_def_property_flag(prop, PROP_PROPORTIONAL);
 	RNA_def_property_range(prop, 1, FLT_MAX);
 	RNA_def_property_ui_range(prop, 1, 1000, 1, 3);
 	RNA_def_property_ui_text(prop, "Vertical Aspect Ratio", "");
@@ -1773,6 +1597,7 @@ static void rna_def_modifier_uvproject(BlenderRNA *brna)
 	
 	prop = RNA_def_property(srna, "scale_x", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "scalex");
+	RNA_def_property_flag(prop, PROP_PROPORTIONAL);
 	RNA_def_property_range(prop, 0, FLT_MAX);
 	RNA_def_property_ui_range(prop, 0, 1000, 1, 3);
 	RNA_def_property_ui_text(prop, "Horizontal Scale", "");
@@ -1780,6 +1605,7 @@ static void rna_def_modifier_uvproject(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "scale_y", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "scaley");
+	RNA_def_property_flag(prop, PROP_PROPORTIONAL);
 	RNA_def_property_range(prop, 0, FLT_MAX);
 	RNA_def_property_ui_range(prop, 0, 1000, 1, 3);
 	RNA_def_property_ui_text(prop, "Vertical Scale", "");
@@ -1843,7 +1669,7 @@ static void rna_def_modifier_smooth(BlenderRNA *brna)
 	RNA_def_property_string_sdna(prop, NULL, "defgrp_name");
 	RNA_def_property_ui_text(prop, "Vertex Group",
 	                         "Name of Vertex Group which determines influence of modifier per point");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_SmoothModifier_vgroup_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_SmoothModifier_defgrp_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
@@ -1906,7 +1732,7 @@ static void rna_def_modifier_laplaciansmooth(BlenderRNA *brna)
 	RNA_def_property_string_sdna(prop, NULL, "defgrp_name");
 	RNA_def_property_ui_text(prop, "Vertex Group",
 	                         "Name of Vertex Group which determines influence of modifier per point");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_LaplacianSmoothModifier_vgroup_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_LaplacianSmoothModifier_defgrp_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
@@ -1989,7 +1815,7 @@ static void rna_def_modifier_cast(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "vertex_group", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "defgrp_name");
 	RNA_def_property_ui_text(prop, "Vertex Group", "Vertex group name");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_CastModifier_vgroup_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_CastModifier_defgrp_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
@@ -2029,7 +1855,7 @@ static void rna_def_modifier_meshdeform(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "vertex_group", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "defgrp_name");
 	RNA_def_property_ui_text(prop, "Vertex Group", "Vertex group name");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_MeshDeformModifier_vgroup_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_MeshDeformModifier_defgrp_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "precision", PROP_INT, PROP_NONE);
@@ -2465,15 +2291,14 @@ static void rna_def_modifier_shrinkwrap(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "auxiliary_target", PROP_POINTER, PROP_NONE);
 	RNA_def_property_pointer_sdna(prop, NULL, "auxTarget");
 	RNA_def_property_ui_text(prop, "Auxiliary Target", "Additional mesh target to shrink to");
-	RNA_def_property_pointer_funcs(prop, NULL, "rna_ShrinkwrapModifier_auxiliary_target_set", NULL,
-	                               "rna_Mesh_object_poll");
+	RNA_def_property_pointer_funcs(prop, NULL, "rna_ShrinkwrapModifier_auxTarget_set", NULL, "rna_Mesh_object_poll");
 	RNA_def_property_flag(prop, PROP_EDITABLE | PROP_ID_SELF_CHECK);
 	RNA_def_property_update(prop, 0, "rna_Modifier_dependency_update");
 
 	prop = RNA_def_property(srna, "vertex_group", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "vgroup_name");
 	RNA_def_property_ui_text(prop, "Vertex Group", "Vertex group name");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_ShrinkwrapModifier_vgroup_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_ShrinkwrapModifier_vgroup_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "offset", PROP_FLOAT, PROP_NONE);
@@ -2570,7 +2395,7 @@ static void rna_def_modifier_mask(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "armature", PROP_POINTER, PROP_NONE);
 	RNA_def_property_pointer_sdna(prop, NULL, "ob_arm");
 	RNA_def_property_ui_text(prop, "Armature", "Armature to use as source of bones to mask");
-	RNA_def_property_pointer_funcs(prop, NULL, "rna_MaskModifier_armature_set", NULL, "rna_Armature_object_poll");
+	RNA_def_property_pointer_funcs(prop, NULL, "rna_MaskModifier_ob_arm_set", NULL, "rna_Armature_object_poll");
 	RNA_def_property_flag(prop, PROP_EDITABLE | PROP_ID_SELF_CHECK);
 	RNA_def_property_update(prop, 0, "rna_Modifier_dependency_update");
 
@@ -2615,7 +2440,7 @@ static void rna_def_modifier_simpledeform(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "vertex_group", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "vgroup_name");
 	RNA_def_property_ui_text(prop, "Vertex Group", "Vertex group name");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_SimpleDeformModifier_vgroup_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_SimpleDeformModifier_vgroup_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "origin", PROP_POINTER, PROP_NONE);
@@ -2743,7 +2568,7 @@ static void rna_def_modifier_solidify(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "vertex_group", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "defgrp_name");
 	RNA_def_property_ui_text(prop, "Vertex Group", "Vertex group name");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_SolidifyModifier_vgroup_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_SolidifyModifier_defgrp_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "use_rim", PROP_BOOLEAN, PROP_NONE);
@@ -2931,17 +2756,18 @@ static void rna_def_modifier_uvwarp(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "vertex_group", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "vgroup_name");
 	RNA_def_property_ui_text(prop, "Vertex Group", "Vertex group name");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_UVWarpModifier_vgroup_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_UVWarpModifier_vgroup_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "uv_layer", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "uvlayer_name");
 	RNA_def_property_ui_text(prop, "UV Layer", "UV Layer name");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_UVWarpModifier_uvlayer_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_UVWarpModifier_uvlayer_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
-static void rna_def_modifier_weightvg_mask(BlenderRNA *UNUSED(brna), StructRNA *srna)
+static void rna_def_modifier_weightvg_mask(BlenderRNA *UNUSED(brna), StructRNA *srna,
+                                           const char *mask_vgroup_setter, const char *mask_uvlayer_setter)
 {
 	static EnumPropertyItem weightvg_mask_tex_map_items[] = {
 		{MOD_DISP_MAP_LOCAL, "LOCAL", 0, "Local", "Use local generated coordinates"},
@@ -2974,7 +2800,7 @@ static void rna_def_modifier_weightvg_mask(BlenderRNA *UNUSED(brna), StructRNA *
 	prop = RNA_def_property(srna, "mask_vertex_group", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "mask_defgrp_name");
 	RNA_def_property_ui_text(prop, "Mask VGroup", "Masking vertex group name");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_WeightVGModifier_mask_vgroup_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, mask_vgroup_setter);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "mask_texture", PROP_POINTER, PROP_NONE);
@@ -2996,7 +2822,7 @@ static void rna_def_modifier_weightvg_mask(BlenderRNA *UNUSED(brna), StructRNA *
 	prop = RNA_def_property(srna, "mask_tex_uv_layer", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "mask_tex_uvlayer_name");
 	RNA_def_property_ui_text(prop, "UV Map", "UV map name");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_WeightVGModifier_mask_uvlayer_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, mask_uvlayer_setter);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "mask_tex_map_object", PROP_POINTER, PROP_NONE);
@@ -3034,7 +2860,7 @@ static void rna_def_modifier_weightvgedit(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "vertex_group", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "defgrp_name");
 	RNA_def_property_ui_text(prop, "Vertex Group", "Vertex group name");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_WeightVGModifier_vgroup_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_WeightVGEditModifier_defgrp_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "falloff_type", PROP_ENUM, PROP_NONE);
@@ -3084,7 +2910,8 @@ static void rna_def_modifier_weightvgedit(BlenderRNA *brna)
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	/* Common masking properties. */
-	rna_def_modifier_weightvg_mask(brna, srna);
+	rna_def_modifier_weightvg_mask(brna, srna, "rna_WeightVGEditModifier_mask_defgrp_name_set",
+	                               "rna_WeightVGEditModifier_mask_tex_uvlayer_name_set");
 }
 
 static void rna_def_modifier_weightvgmix(BlenderRNA *brna)
@@ -3122,13 +2949,13 @@ static void rna_def_modifier_weightvgmix(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "vertex_group_a", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "defgrp_name_a");
 	RNA_def_property_ui_text(prop, "Vertex Group A", "First vertex group name");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_WeightVGModifier_vgroup_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_WeightVGMixModifier_defgrp_name_a_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "vertex_group_b", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "defgrp_name_b");
 	RNA_def_property_ui_text(prop, "Vertex Group B", "Second vertex group name");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_WeightVGMixModifier_vgroup2_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_WeightVGMixModifier_defgrp_name_b_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "default_weight_a", PROP_FLOAT, PROP_NONE);
@@ -3157,7 +2984,8 @@ static void rna_def_modifier_weightvgmix(BlenderRNA *brna)
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	/* Common masking properties. */
-	rna_def_modifier_weightvg_mask(brna, srna);
+	rna_def_modifier_weightvg_mask(brna, srna, "rna_WeightVGMixModifier_mask_defgrp_name_set",
+	                               "rna_WeightVGMixModifier_mask_tex_uvlayer_name_set");
 }
 
 static void rna_def_modifier_weightvgproximity(BlenderRNA *brna)
@@ -3204,7 +3032,7 @@ static void rna_def_modifier_weightvgproximity(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "vertex_group", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "defgrp_name");
 	RNA_def_property_ui_text(prop, "Vertex Group", "Vertex group name");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_WeightVGModifier_vgroup_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_WeightVGProximityModifier_defgrp_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "proximity_mode", PROP_ENUM, PROP_NONE);
@@ -3248,7 +3076,8 @@ static void rna_def_modifier_weightvgproximity(BlenderRNA *brna)
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	/* Common masking properties. */
-	rna_def_modifier_weightvg_mask(brna, srna);
+	rna_def_modifier_weightvg_mask(brna, srna, "rna_WeightVGProximityModifier_mask_defgrp_name_set",
+	                               "rna_WeightVGProximityModifier_mask_tex_uvlayer_name_set");
 }
 
 static void rna_def_modifier_remesh(BlenderRNA *brna)
@@ -3721,7 +3550,7 @@ static void rna_def_modifier_laplaciandeform(BlenderRNA *brna)
 	RNA_def_property_string_sdna(prop, NULL, "anchor_grp_name");
 	RNA_def_property_ui_text(prop, "Vertex Group for Anchors",
 	                         "Name of Vertex Group which determines Anchors");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_LaplacianDeformModifier_vgroup_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_LaplacianDeformModifier_anchor_grp_name_set");
 
 	prop = RNA_def_property(srna, "iterations", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "repeat");
@@ -3812,7 +3641,7 @@ static void rna_def_modifier_wireframe(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "vertex_group", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "defgrp_name");
 	RNA_def_property_ui_text(prop, "Vertex Group", "Vertex group name for selecting the affected areas");
-	RNA_def_property_string_funcs(prop, NULL, NULL, "RNA_WireframeModifier_vgroup_set");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_WireframeModifier_defgrp_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "invert_vertex_group", PROP_BOOLEAN, PROP_NONE);

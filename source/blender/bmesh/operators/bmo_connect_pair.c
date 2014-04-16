@@ -386,9 +386,8 @@ void bmo_connect_vert_pair_exec(BMesh *bm, BMOperator *op)
 
 	/* setup context */
 	{
-		pc.state_lb.first = NULL;
-		pc.state_lb.last = NULL;
-		pc.link_pool = BLI_mempool_create(sizeof(PathLink), 1, 512, BLI_MEMPOOL_SYSMALLOC);
+		BLI_listbase_clear(&pc.state_lb);
+		pc.link_pool = BLI_mempool_create(sizeof(PathLink), 0, 512, BLI_MEMPOOL_NOP);
 	}
 
 	/* calculate matrix */
@@ -486,7 +485,7 @@ void bmo_connect_vert_pair_exec(BMesh *bm, BMOperator *op)
 		}
 	}
 
-	if (pc.state_lb.first == NULL) {
+	if (BLI_listbase_is_empty(&pc.state_lb)) {
 		found_all = false;
 	}
 
@@ -530,6 +529,8 @@ void bmo_connect_vert_pair_exec(BMesh *bm, BMOperator *op)
 
 #if 1
 	if (found_all) {
+		/* leave 'check_degenerate' off, if a user tries to cut with 2 verts,
+		 * always connect even when resulting faces are degenerate [#39418] */
 		BMOperator op_sub;
 		BMO_op_initf(bm, &op_sub, 0,
 		             "connect_verts verts=%fv", VERT_OUT);

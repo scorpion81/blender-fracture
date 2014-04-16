@@ -178,7 +178,7 @@ static int object_hide_view_set_exec(bContext *C, wmOperator *op)
 	Main *bmain = CTX_data_main(C);
 	Scene *scene = CTX_data_scene(C);
 	bool changed = false;
-	const int unselected = RNA_boolean_get(op->ptr, "unselected");
+	const bool unselected = RNA_boolean_get(op->ptr, "unselected");
 	
 	CTX_DATA_BEGIN(C, Base *, base, visible_bases)
 	{
@@ -273,7 +273,7 @@ void OBJECT_OT_hide_render_clear(wmOperatorType *ot)
 
 static int object_hide_render_set_exec(bContext *C, wmOperator *op)
 {
-	const int unselected = RNA_boolean_get(op->ptr, "unselected");
+	const bool unselected = RNA_boolean_get(op->ptr, "unselected");
 
 	CTX_DATA_BEGIN(C, Base *, base, visible_bases)
 	{
@@ -338,8 +338,8 @@ static bool ED_object_editmode_load_ex(Object *obedit, const bool freedata)
 			me->edit_btmesh = NULL;
 		}
 		if (obedit->restore_mode & OB_MODE_WEIGHT_PAINT) {
-			mesh_octree_table(NULL, NULL, NULL, 'e');
-			mesh_mirrtopo_table(NULL, 'e');
+			ED_mesh_mirror_spatial_table(NULL, NULL, NULL, 'e');
+			ED_mesh_mirror_topo_table(NULL, 'e');
 		}
 	}
 	else if (obedit->type == OB_ARMATURE) {
@@ -432,7 +432,7 @@ void ED_object_editmode_enter(bContext *C, int flag)
 	Object *ob;
 	ScrArea *sa = CTX_wm_area(C);
 	View3D *v3d = NULL;
-	int ok = 0;
+	bool ok = false;
 
 	if (scene->id.lib) return;
 
@@ -990,7 +990,7 @@ static void copy_attr(Main *bmain, Scene *scene, View3D *v3d, short event)
 				}
 				else if (event == 22) {
 					/* Copy the constraint channels over */
-					BKE_copy_constraints(&base->object->constraints, &ob->constraints, TRUE);
+					BKE_constraints_copy(&base->object->constraints, &ob->constraints, true);
 					
 					do_depgraph_update = true;
 				}
@@ -998,7 +998,7 @@ static void copy_attr(Main *bmain, Scene *scene, View3D *v3d, short event)
 					base->object->softflag = ob->softflag;
 					if (base->object->soft) sbFree(base->object->soft);
 					
-					base->object->soft = copy_softbody(ob->soft, FALSE);
+					base->object->soft = copy_softbody(ob->soft, false);
 
 					if (!modifiers_findByType(base->object, eModifierType_Softbody)) {
 						BLI_addhead(&base->object->modifiers, modifier_new(eModifierType_Softbody));
@@ -1439,7 +1439,7 @@ static void UNUSED_FUNCTION(image_aspect) (Scene *scene, View3D *v3d)
 	for (base = FIRSTBASE; base; base = base->next) {
 		if (TESTBASELIB(v3d, base)) {
 			ob = base->object;
-			done = FALSE;
+			done = false;
 			
 			for (a = 1; a <= ob->totcol; a++) {
 				ma = give_current_material(ob, a);
@@ -1469,7 +1469,7 @@ static void UNUSED_FUNCTION(image_aspect) (Scene *scene, View3D *v3d)
 								if (x > y) ob->size[0] = ob->size[1] * x / y;
 								else ob->size[1] = ob->size[0] * y / x;
 								
-								done = TRUE;
+								done = true;
 								DAG_id_tag_update(&ob->id, OB_RECALC_OB);
 
 								BKE_image_release_ibuf(tex->ima, ibuf, NULL);
@@ -1497,7 +1497,8 @@ static EnumPropertyItem *object_mode_set_itemsf(bContext *C, PointerRNA *UNUSED(
 
 	ob = CTX_data_active_object(C);
 	if (ob) {
-		const bool use_mode_particle_edit = (ob->particlesystem.first != NULL) || (ob->soft != NULL) ||
+		const bool use_mode_particle_edit = (BLI_listbase_is_empty(&ob->particlesystem) == false) ||
+		                                    (ob->soft != NULL) ||
 		                                    (modifiers_findByType(ob, eModifierType_Cloth) != NULL);
 		const bool use_mode_fracture_edit = (modifiers_findByType(ob, eModifierType_Fracture) != NULL);
 

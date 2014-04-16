@@ -99,6 +99,11 @@
 
 #include "view3d_intern.h"  /* own include */
 
+float ED_view3d_select_dist_px(void)
+{
+	return 75.0f * U.pixelsize;
+}
+
 /* TODO: should return whether there is valid context to continue */
 void view3d_set_viewcontext(bContext *C, ViewContext *vc)
 {
@@ -276,7 +281,7 @@ static int view3d_selectable_data(bContext *C)
 		}
 		else {
 			if ((ob->mode & (OB_MODE_VERTEX_PAINT | OB_MODE_WEIGHT_PAINT | OB_MODE_TEXTURE_PAINT)) &&
-			    !paint_facesel_test(ob) && !paint_vertsel_test(ob))
+			    !BKE_paint_select_elem_test(ob))
 			{
 				return 0;
 			}
@@ -569,8 +574,10 @@ static void do_lasso_select_curve(ViewContext *vc, const int mcords[][2], short 
 
 	view3d_userdata_lassoselect_init(&data, vc, &rect, mcords, moves, select);
 
-	if (extend == false && select)
-		ED_curve_deselect_all(vc->obedit->data);
+	if (extend == false && select) {
+		Curve *curve = (Curve *) vc->obedit->data;
+		ED_curve_deselect_all(curve->editnurb);
+	}
 
 	ED_view3d_init_mats_rv3d(vc->obedit, vc->rv3d); /* for foreach's screen/vert projection */
 	nurbs_foreachScreenVert(vc, do_lasso_select_curve__doSelect, &data, V3D_PROJ_TEST_CLIP_DEFAULT);
@@ -821,9 +828,9 @@ static void view3d_lasso_select(bContext *C, ViewContext *vc,
 	Object *ob = CTX_data_active_object(C);
 
 	if (vc->obedit == NULL) { /* Object Mode */
-		if (paint_facesel_test(ob))
+		if (BKE_paint_select_face_test(ob))
 			do_lasso_select_paintface(vc, mcords, moves, extend, select);
-		else if (paint_vertsel_test(ob))
+		else if (BKE_paint_select_vert_test(ob))
 			do_lasso_select_paintvert(vc, mcords, moves, extend, select);
 		else if (ob && (ob->mode & (OB_MODE_VERTEX_PAINT | OB_MODE_WEIGHT_PAINT | OB_MODE_TEXTURE_PAINT))) {
 			/* pass */
@@ -1381,8 +1388,8 @@ static bool mouse_select(bContext *C, const int mval[2],
 	Scene *scene = CTX_data_scene(C);
 	Base *base, *startbase = NULL, *basact = NULL, *oldbasact = NULL;
 	bool is_obedit;
-	float dist = 100.0f;
-	int retval = false;
+	float dist = ED_view3d_select_dist_px() * 1.3333f;
+	bool retval = false;
 	short hits;
 	const float mval_fl[2] = {(float)mval[0], (float)mval[1]};
 
@@ -1736,8 +1743,10 @@ static int do_nurbs_box_select(ViewContext *vc, rcti *rect, bool select, bool ex
 	
 	view3d_userdata_boxselect_init(&data, vc, rect, select);
 
-	if (extend == false && select)
-		ED_curve_deselect_all(vc->obedit->data);
+	if (extend == false && select) {
+		Curve *curve = (Curve *) vc->obedit->data;
+		ED_curve_deselect_all(curve->editnurb);
+	}
 
 	ED_view3d_init_mats_rv3d(vc->obedit, vc->rv3d); /* for foreach's screen/vert projection */
 	nurbs_foreachScreenVert(vc, do_nurbs_box_select__doSelect, &data, V3D_PROJ_TEST_CLIP_DEFAULT);
@@ -2123,10 +2132,10 @@ static int view3d_borderselect_exec(bContext *C, wmOperator *op)
 		if (vc.obact && vc.obact->mode & OB_MODE_SCULPT) {
 			ret = do_sculpt_mask_box_select(&vc, &rect, select, extend);
 		}
-		else if (vc.obact && paint_facesel_test(vc.obact)) {
+		else if (vc.obact && BKE_paint_select_face_test(vc.obact)) {
 			ret = do_paintface_box_select(&vc, &rect, select, extend);
 		}
-		else if (vc.obact && paint_vertsel_test(vc.obact)) {
+		else if (vc.obact && BKE_paint_select_vert_test(vc.obact)) {
 			ret = do_paintvert_box_select(&vc, &rect, select, extend);
 		}
 		else if (vc.obact && vc.obact->mode & OB_MODE_PARTICLE_EDIT) {
@@ -2220,7 +2229,14 @@ static int view3d_select_exec(bContext *C, wmOperator *op)
 	bool toggle = RNA_boolean_get(op->ptr, "toggle");
 	bool center = RNA_boolean_get(op->ptr, "center");
 	bool enumerate = RNA_boolean_get(op->ptr, "enumerate");
-	bool object = (RNA_boolean_get(op->ptr, "object") && obedit);  /* only force object select for editmode */
+	/* only force object select for editmode to support vertex parenting,
+	 * or paint-select to allow pose bone select with vert/face select */
+	bool object = (RNA_boolean_get(op->ptr, "object") &&
+	               (obedit ||
+	                BKE_paint_select_elem_test(obact) ||
+	                /* so its possible to select bones in weightpaint mode (LMB select) */
+	                (obact && (obact->mode & OB_MODE_WEIGHT_PAINT) && BKE_object_pose_armature_get(obact))));
+
 	bool retval = false;
 	int location[2];
 
@@ -2249,17 +2265,17 @@ static int view3d_select_exec(bContext *C, wmOperator *op)
 			retval = mouse_nurb(C, location, extend, deselect, toggle);
 		else if (obedit->type == OB_MBALL)
 			retval = mouse_mball(C, location, extend, deselect, toggle);
+		else if (obedit->type == OB_FONT)
+			retval = mouse_font(C, location, extend, deselect, toggle);
 			
 	}
-	else if (obact && obact->mode & OB_MODE_SCULPT)
-		return OPERATOR_CANCELLED;
 	else if (obact && obact->mode & OB_MODE_PARTICLE_EDIT)
 		return PE_mouse_particles(C, location, extend, deselect, toggle);
 	else if (obact && obact->mode & OB_MODE_FRACTURE)
 		retval = ED_fracture_pick_shard(C, location, extend, deselect, toggle);
-	else if (obact && paint_facesel_test(obact))
+	else if (obact && BKE_paint_select_face_test(obact))
 		retval = paintface_mouse_select(C, obact, location, extend, deselect, toggle);
-	else if (paint_vertsel_test(obact))
+	else if (BKE_paint_select_vert_test(obact))
 		retval = mouse_weight_paint_vertex_select(C, location, extend, deselect, toggle, obact);
 	else
 		retval = mouse_select(C, location, extend, deselect, toggle, center, enumerate, object);
@@ -2771,7 +2787,7 @@ static int view3d_circle_select_exec(bContext *C, wmOperator *op)
 	const int mval[2] = {RNA_int_get(op->ptr, "x"),
 	                     RNA_int_get(op->ptr, "y")};
 
-	if (CTX_data_edit_object(C) || paint_facesel_test(obact) || paint_vertsel_test(obact) ||
+	if (CTX_data_edit_object(C) || BKE_paint_select_elem_test(obact) ||
 	    (obact && (obact->mode & (OB_MODE_PARTICLE_EDIT | OB_MODE_POSE))) )
 	{
 		ViewContext vc;
@@ -2784,11 +2800,11 @@ static int view3d_circle_select_exec(bContext *C, wmOperator *op)
 			obedit_circle_select(&vc, select, mval, (float)radius);
 			WM_event_add_notifier(C, NC_GEOM | ND_SELECT, obact->data);
 		}
-		else if (paint_facesel_test(obact)) {
+		else if (BKE_paint_select_face_test(obact)) {
 			paint_facesel_circle_select(&vc, select, mval, (float)radius);
 			WM_event_add_notifier(C, NC_GEOM | ND_SELECT, obact->data);
 		}
-		else if (paint_vertsel_test(obact)) {
+		else if (BKE_paint_select_vert_test(obact)) {
 			paint_vertsel_circle_select(&vc, select, mval, (float)radius);
 			WM_event_add_notifier(C, NC_GEOM | ND_SELECT, obact->data);
 		}

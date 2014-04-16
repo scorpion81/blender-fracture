@@ -76,6 +76,7 @@ int GPU_enable_material(int nr, void *attribs);
 void GPU_disable_material(void);
 
 void GPU_material_diffuse_get(int nr, float diff[4]);
+bool GPU_material_use_matcaps_get(void);
 
 void GPU_set_material_alpha_blend(int alphablend);
 int GPU_get_material_alpha_blend(void);
@@ -125,10 +126,11 @@ void GPU_set_gpu_mipmapping(int gpu_mipmap);
 void GPU_paint_update_image(struct Image *ima, int x, int y, int w, int h);
 void GPU_update_images_framechange(void);
 int GPU_update_image_time(struct Image *ima, double time);
-int GPU_verify_image(struct Image *ima, struct ImageUser *iuser, int tftile, int compare, int mipmap, bool is_data);
-void GPU_create_gl_tex(unsigned int *bind, unsigned int *pix, float *frect, int rectw, int recth, int mipmap, int use_hight_bit_depth, struct Image *ima);
+int GPU_verify_image(struct Image *ima, struct ImageUser *iuser, int tftile, bool compare, bool mipmap, bool is_data);
+void GPU_create_gl_tex(unsigned int *bind, unsigned int *pix, float *frect, int rectw, int recth,
+                       bool mipmap, bool use_hight_bit_depth, struct Image *ima);
 void GPU_create_gl_tex_compressed(unsigned int *bind, unsigned int *pix, int x, int y, int mipmap, struct Image *ima, struct ImBuf *ibuf);
-int GPU_upload_dxt_texture(struct ImBuf *ibuf);
+bool GPU_upload_dxt_texture(struct ImBuf *ibuf);
 void GPU_free_image(struct Image *ima);
 void GPU_free_images(void);
 void GPU_free_images_anim(void);

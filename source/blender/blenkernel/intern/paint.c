@@ -265,7 +265,7 @@ void BKE_paint_brush_set(Paint *p, Brush *br)
 }
 
 /* are we in vertex paint or weight pain face select mode? */
-bool paint_facesel_test(Object *ob)
+bool BKE_paint_select_face_test(Object *ob)
 {
 	return ( (ob != NULL) &&
 	         (ob->type == OB_MESH) &&
@@ -276,7 +276,7 @@ bool paint_facesel_test(Object *ob)
 }
 
 /* are we in weight paint vertex select mode? */
-bool paint_vertsel_test(Object *ob)
+bool BKE_paint_select_vert_test(Object *ob)
 {
 	return ( (ob != NULL) &&
 	         (ob->type == OB_MESH) &&
@@ -284,6 +284,16 @@ bool paint_vertsel_test(Object *ob)
 	         (((Mesh *)ob->data)->editflag & ME_EDIT_PAINT_VERT_SEL) &&
 	         (ob->mode & OB_MODE_WEIGHT_PAINT)
 	         );
+}
+
+/**
+ * used to check if selection is possible
+ * (when we don't care if its face or vert)
+ */
+bool BKE_paint_select_elem_test(Object *ob)
+{
+	return (BKE_paint_select_vert_test(ob) ||
+	        BKE_paint_select_face_test(ob));
 }
 
 void BKE_paint_init(Paint *p, const char col[3])
@@ -298,8 +308,6 @@ void BKE_paint_init(Paint *p, const char col[3])
 
 	memcpy(p->paint_cursor_col, col, 3);
 	p->paint_cursor_col[3] = 128;
-
-	p->flags |= PAINT_SHOW_BRUSH;
 }
 
 void BKE_paint_free(Paint *paint)
@@ -340,7 +348,7 @@ bool paint_is_grid_face_hidden(const unsigned int *grid_hidden,
 	        BLI_BITMAP_GET(grid_hidden, (y + 1) * gridsize + x));
 }
 
-/* Return TRUE if all vertices in the face are visible, FALSE otherwise */
+/* Return true if all vertices in the face are visible, false otherwise */
 bool paint_is_bmesh_face_hidden(BMFace *f)
 {
 	BMLoop *l_iter;
@@ -405,17 +413,16 @@ static void sculptsession_bm_to_me_update_data_only(Object *ob, bool reorder)
 			BMIter iter;
 			BMFace *efa;
 			BM_ITER_MESH (efa, &iter, ss->bm, BM_FACES_OF_MESH) {
-				BM_elem_flag_set(efa, BM_ELEM_SMOOTH,
-				                 ss->bm_smooth_shading);
+				BM_elem_flag_set(efa, BM_ELEM_SMOOTH, ss->bm_smooth_shading);
 			}
 			if (reorder)
 				BM_log_mesh_elems_reorder(ss->bm, ss->bm_log);
-			BM_mesh_bm_to_me(ss->bm, ob->data, FALSE);
+			BM_mesh_bm_to_me(ss->bm, ob->data, false);
 		}
 	}
 }
 
-void sculptsession_bm_to_me(Object *ob, int reorder)
+void sculptsession_bm_to_me(Object *ob, bool reorder)
 {
 	if (ob && ob->sculpt) {
 		sculptsession_bm_to_me_update_data_only(ob, reorder);
@@ -459,7 +466,7 @@ void free_sculptsession(Object *ob)
 		DerivedMesh *dm = ob->derivedFinal;
 
 		if (ss->bm) {
-			sculptsession_bm_to_me(ob, TRUE);
+			sculptsession_bm_to_me(ob, true);
 			BM_mesh_free(ss->bm);
 		}
 

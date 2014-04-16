@@ -48,6 +48,7 @@ public:
 	int cuDevArchitecture;
 	bool first_error;
 	bool use_texture_storage;
+	unsigned int target_update_frequency;
 
 	struct PixelMem {
 		GLuint cuPBO;
@@ -179,6 +180,8 @@ public:
 		first_error = true;
 		background = background_;
 		use_texture_storage = true;
+		/* we try an update / sync every 1000 ms */
+		target_update_frequency = 1000;
 
 		cuDevId = info.num;
 		cuDevice = 0;
@@ -233,15 +236,23 @@ public:
 		cuda_assert(cuCtxDestroy(cuContext))
 	}
 
-	bool support_device(bool experimental)
+	bool support_device(bool experimental, bool branched)
 	{
 		int major, minor;
 		cuDeviceComputeCapability(&major, &minor, cuDevId);
-
+		
+		/* We only support sm_20 and above */
 		if(major < 2) {
 			cuda_error_message(string_printf("CUDA device supported only with compute capability 2.0 or up, found %d.%d.", major, minor));
 			return false;
 		}
+		
+		/* Currently no Branched Path on sm_30 */
+		if(branched) {
+			cuda_error_message(string_printf("CUDA device: Branched Path is currently disabled, due to compile errors."));
+			return false;
+		}
+		
 
 		return true;
 	}
@@ -309,7 +320,7 @@ public:
 		/* CUDA 5.x build flags for different archs */
 		if(major == 2) {
 			/* sm_2x */
-			arch_flags = "--maxrregcount=32 --use_fast_math";
+			arch_flags = "--maxrregcount=40 --use_fast_math";
 		}
 		else if(major == 3) {
 			/* sm_3x */
@@ -349,8 +360,8 @@ public:
 		if(cuContext == 0)
 			return false;
 		
-		/* check if GPU is supported with current feature set */
-		if(!support_device(experimental))
+		/* check if GPU is supported */
+		if(!support_device(experimental, false))
 			return false;
 
 		/* get kernel */
@@ -448,13 +459,15 @@ public:
 		cuda_pop_context();
 	}
 
-	void tex_alloc(const char *name, device_memory& mem, bool interpolation, bool periodic)
+	void tex_alloc(const char *name, device_memory& mem, InterpolationType interpolation, bool periodic)
 	{
+		/* todo: support 3D textures, only CPU for now */
+
 		/* determine format */
 		CUarray_format_enum format;
 		size_t dsize = datatype_size(mem.data_type);
 		size_t size = mem.memory_size();
-		bool use_texture = interpolation || use_texture_storage;
+		bool use_texture = (interpolation != INTERPOLATION_NONE) || use_texture_storage;
 
 		if(use_texture) {
 
@@ -476,7 +489,7 @@ public:
 				return;
 			}
 
-			if(interpolation) {
+			if(interpolation != INTERPOLATION_NONE) {
 				CUarray handle = NULL;
 				CUDA_ARRAY_DESCRIPTOR desc;
 
@@ -510,7 +523,15 @@ public:
 
 				cuda_assert(cuTexRefSetArray(texref, handle, CU_TRSA_OVERRIDE_FORMAT))
 
-				cuda_assert(cuTexRefSetFilterMode(texref, CU_TR_FILTER_MODE_LINEAR))
+				if(interpolation == INTERPOLATION_CLOSEST) {
+					cuda_assert(cuTexRefSetFilterMode(texref, CU_TR_FILTER_MODE_POINT))
+				}
+				else if (interpolation == INTERPOLATION_LINEAR){
+					cuda_assert(cuTexRefSetFilterMode(texref, CU_TR_FILTER_MODE_LINEAR))
+				}
+				else {/* CUBIC and SMART are unsupported for CUDA */
+					cuda_assert(cuTexRefSetFilterMode(texref, CU_TR_FILTER_MODE_LINEAR))
+				}
 				cuda_assert(cuTexRefSetFlags(texref, CU_TRSF_NORMALIZED_COORDINATES))
 
 				mem.device_pointer = (device_ptr)handle;
@@ -567,7 +588,7 @@ public:
 			cuda_pop_context();
 		}
 
-		tex_interp_map[mem.device_pointer] = interpolation;
+		tex_interp_map[mem.device_pointer] = (interpolation != INTERPOLATION_NONE);
 	}
 
 	void tex_free(device_memory& mem)
@@ -602,7 +623,7 @@ public:
 		CUdeviceptr d_rng_state = cuda_device_ptr(rtile.rng_state);
 
 		/* get kernel function */
-		if(branched)
+		if(branched && support_device(true, branched))
 			cuda_assert(cuModuleGetFunction(&cuPathTrace, cuModule, "kernel_cuda_branched_path_trace"))
 		else
 			cuda_assert(cuModuleGetFunction(&cuPathTrace, cuModule, "kernel_cuda_path_trace"))
@@ -653,9 +674,6 @@ public:
 		cuda_assert(cuFuncSetCacheConfig(cuPathTrace, CU_FUNC_CACHE_PREFER_L1))
 		cuda_assert(cuFuncSetBlockShape(cuPathTrace, xthreads, ythreads, 1))
 		cuda_assert(cuLaunchGridAsync(cuPathTrace, xblocks, yblocks, cuStream))
-
-		cuda_assert(cuEventRecord(tileDone, cuStream ))
-		cuda_assert(cuEventSynchronize(tileDone))
 
 		cuda_pop_context();
 	}
@@ -900,7 +918,8 @@ public:
 		}
 	}
 
-	void draw_pixels(device_memory& mem, int y, int w, int h, int dy, int width, int height, bool transparent)
+	void draw_pixels(device_memory& mem, int y, int w, int h, int dy, int width, int height, bool transparent,
+		const DeviceDrawParams &draw_params)
 	{
 		if(!background) {
 			PixelMem pmem = pixel_mem_map[mem.device_pointer];
@@ -933,6 +952,10 @@ public:
 
 			glColor3f(1.0f, 1.0f, 1.0f);
 
+			if(draw_params.bind_display_space_shader_cb) {
+				draw_params.bind_display_space_shader_cb();
+			}
+
 			glPushMatrix();
 			glTranslatef(0.0f, (float)dy, 0.0f);
 				
@@ -951,6 +974,10 @@ public:
 
 			glPopMatrix();
 
+			if(draw_params.unbind_display_space_shader_cb) {
+				draw_params.unbind_display_space_shader_cb();
+			}
+
 			if(transparent)
 				glDisable(GL_BLEND);
 			
@@ -962,7 +989,7 @@ public:
 			return;
 		}
 
-		Device::draw_pixels(mem, y, w, h, dy, width, height, transparent);
+		Device::draw_pixels(mem, y, w, h, dy, width, height, transparent, draw_params);
 	}
 
 	void thread_run(DeviceTask *task)
@@ -972,10 +999,15 @@ public:
 			
 			bool branched = task->integrator_branched;
 			
+
 			/* keep rendering tiles until done */
 			while(task->acquire_tile(this, tile)) {
 				int start_sample = tile.start_sample;
 				int end_sample = tile.start_sample + tile.num_samples;
+
+				boost::posix_time::ptime start_time(boost::posix_time::microsec_clock::local_time());
+				boost::posix_time::ptime last_time = start_time;
+				int sync_sample = 10;
 
 				for(int sample = start_sample; sample < end_sample; sample++) {
 					if (task->get_cancel()) {
@@ -986,8 +1018,28 @@ public:
 					path_trace(tile, sample, branched);
 
 					tile.sample = sample + 1;
-
 					task->update_progress(tile);
+
+					if(sample == sync_sample){
+						cuda_push_context();
+						cuda_assert(cuEventRecord(tileDone, cuStream ))
+						cuda_assert(cuEventSynchronize(tileDone))
+
+						/* Do some time keeping to find out if we need to sync less */
+						boost::posix_time::ptime current_time(boost::posix_time::microsec_clock::local_time());
+						boost::posix_time::time_duration sample_duration = current_time - last_time;
+
+						long msec = sample_duration.total_milliseconds();
+						float scaling_factor = (float)target_update_frequency / (float)msec;
+
+						/* sync at earliest next sample and probably later */
+						sync_sample = (sample + 1) + sync_sample * ceil(scaling_factor);
+
+						sync_sample = min(end_sample - 1, sync_sample); // make sure we sync the last sample always
+
+						last_time = current_time;
+						cuda_pop_context();
+					}
 				}
 
 				task->release_tile(tile);

@@ -231,6 +231,9 @@ MINLINE int is_power_of_2_i(int n);
 MINLINE int power_of_2_max_i(int n);
 MINLINE int power_of_2_min_i(int n);
 
+MINLINE unsigned int power_of_2_max_u(unsigned int x);
+MINLINE unsigned int power_of_2_min_u(unsigned int x);
+
 MINLINE int iroundf(float a);
 MINLINE int divide_round_i(int a, int b);
 MINLINE int mod_i(int i, int n);
@@ -240,7 +243,7 @@ MINLINE unsigned short highest_order_bit_s(unsigned short n);
 
 MINLINE float shell_angle_to_dist(const float angle);
 
-#if (defined(WIN32) || defined(WIN64)) && !defined(FREE_WINDOWS)
+#if defined(_MSC_VER) && (_MSC_VER < 1800)
 extern double copysign(double x, double y);
 extern double round(double x);
 #endif
@@ -269,6 +272,12 @@ double double_round(double x, int ndigits);
 	           (fabsf(_test_unit)        < BLI_ASSERT_UNIT_EPSILON));         \
 } (void)0
 
+#  define BLI_ASSERT_UNIT_QUAT(q)  {                                          \
+	const float _test_unit = dot_qtqt(q, q);                                  \
+	BLI_assert((fabsf(_test_unit - 1.0f) < BLI_ASSERT_UNIT_EPSILON * 10) ||   \
+	           (fabsf(_test_unit)        < BLI_ASSERT_UNIT_EPSILON * 10));    \
+} (void)0
+
 #  define BLI_ASSERT_ZERO_M3(m)  {                                            \
 	BLI_assert(dot_vn_vn((const float *)m, (const float *)m, 9) != 0.0);     \
 } (void)0
@@ -279,6 +288,7 @@ double double_round(double x, int ndigits);
 #else
 #  define BLI_ASSERT_UNIT_V2(v) (void)(v)
 #  define BLI_ASSERT_UNIT_V3(v) (void)(v)
+#  define BLI_ASSERT_UNIT_QUAT(v) (void)(v)
 #  define BLI_ASSERT_ZERO_M3(m) (void)(m)
 #  define BLI_ASSERT_ZERO_M4(m) (void)(m)
 #endif
