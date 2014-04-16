@@ -49,6 +49,7 @@
 
 #include "ED_screen.h"
 #include "ED_view3d.h"
+#include "ED_physics.h"
 
 #include "WM_types.h"
 #include "WM_api.h"
@@ -202,20 +203,21 @@ void FRACTURE_OT_fracturemode_toggle(wmOperatorType* ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
 
-#if 0
+
 /**
  * Face selection in fracture mode,
  * to be extended to the entire shard via select linked
  *
  * \return boolean true == Found
  */
-bool fracture_mesh_pick_face(bContext *C, DerivedMesh *dm, const int mval[2], unsigned int *index, int size)
+bool fracture_mesh_pick_face(bContext *C, Shard* s, const int mval[2], unsigned int *index, int size)
 {
 	ViewContext vc;
 
-	if (!dm || dm->getNumPolys(dm) == 0)
+	if (!s || s->totpoly == 0)
 		return false;
 
+	view3d_operator_needs_opengl(C);
 	view3d_set_viewcontext(C, &vc);
 
 	if (size) {
@@ -223,14 +225,14 @@ bool fracture_mesh_pick_face(bContext *C, DerivedMesh *dm, const int mval[2], un
 		 * on an edge in the backbuf, we can still select a face */
 
 		float dummy_dist;
-		*index = view3d_sample_backbuf_rect(&vc, mval, size, 1, dm->getNumPolys(dm) + 1, &dummy_dist, 0, NULL, NULL);
+		*index = view3d_sample_backbuf_rect(&vc, mval, size, 1, s->totpoly + 1, &dummy_dist, 0, NULL, NULL);
 	}
 	else {
 		/* sample only on the exact position */
 		*index = view3d_sample_backbuf(&vc, mval[0], mval[1]);
 	}
 
-	if ((*index) == 0 || (*index) > (unsigned int)dm->getNumPolys(dm))
+	if ((*index) == 0 || (*index) > (unsigned int)s->totpoly)
 		return false;
 
 	(*index)--;
@@ -238,7 +240,7 @@ bool fracture_mesh_pick_face(bContext *C, DerivedMesh *dm, const int mval[2], un
 	return true;
 }
 
-int fracture_pick_shard(bContext *C, const int mval[2], bool extend, bool deselect, bool toggle)
+int ED_fracture_pick_shard(bContext *C, const int mval[2], bool extend, bool deselect, bool toggle)
 {
 	unsigned int index;
 	Base* bas;
@@ -267,18 +269,29 @@ int fracture_pick_shard(bContext *C, const int mval[2], bool extend, bool desele
 
 	for (i = 0; i < fm->shard_count; i++)
 	{
-		Shard *s = fm->shard_map[i], *s2;
-		DerivedMesh *dm = BKE_shard_create_dm(s);
-		BMesh* bm = DM_to_bmesh(dm, true);
-		BMFace *f;
+		Shard *s = fm->shard_map[i];
+		//DerivedMesh *dm = BKE_shard_create_dm(s);
+		MPoly *mp = s->mpoly;
+		int j = 0;
+		//BMesh* bm = DM_to_bmesh(dm, true);
+		//BMFace *f;
 
 		/* Get the face under the cursor */
-		if (!fracture_mesh_pick_face(C, dm, mval, &index, ED_MESH_PICK_DEFAULT_FACE_SIZE))
+		/*ED_MESH_PICK_DEFAULT_FACE_SIZE = 3*/
+		if (!fracture_mesh_pick_face(C, s, mval, &index, 3))
 			return false;
 
-		if (index >= dm->getNumPolys(dm))
+		if (index >= s->totpoly)
 			return false;
 
+		/* if index is valid, assign new mat to this shard as visual aid */
+		for (j = 0; j < s->totpoly; j++, mp++)
+		{
+			mp->mat_nr = 1;
+		}
+
+
+#if 0
 		f = BM_face_at_index(bm, index);
 		if (f == NULL)
 			return false;
@@ -304,6 +317,7 @@ int fracture_pick_shard(bContext *C, const int mval[2], bool extend, bool desele
 
 		//s2 = BKE_create_fracture_shard(dm)
 		//BKE_shard_free(s);
+#endif
 	}
 
 	/* image window redraw */
@@ -311,5 +325,4 @@ int fracture_pick_shard(bContext *C, const int mval[2], bool extend, bool desele
 	ED_region_tag_redraw(CTX_wm_region(C)); // XXX - should redraw all 3D views
 	return true;
 }
-#endif
 
