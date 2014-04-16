@@ -278,8 +278,8 @@ bool BKE_fracture_shard_center_centroid(Shard *shard, float cent[3])
 
 	/* calculate a weighted average of polygon centroids */
 	for (mpoly = shard->mpoly; i--; mpoly++) {
-		poly_area = BKE_mesh_calc_poly_planar_area_centroid(mpoly, shard->mloop + mpoly->loopstart, shard->mvert, poly_cent);
-
+		BKE_mesh_calc_poly_center(mpoly, shard->mloop + mpoly->loopstart, shard->mvert, poly_cent);
+		poly_area = BKE_mesh_calc_poly_area(mpoly, shard->mloop + mpoly->loopstart, shard->mvert);
 		madd_v3_v3fl(cent, poly_cent, poly_area);
 		total_area += poly_area;
 	}
