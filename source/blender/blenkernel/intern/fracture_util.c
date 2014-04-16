@@ -694,8 +694,8 @@ Shard *BKE_fracture_shard_bisect(Shard* parent, Shard* child, float obmat[4][4],
 	float imat[4][4];
 
 	float thresh = 0.00001f;
-	bool clear_inner = true;
-	bool clear_outer = false;
+	bool clear_inner = false;
+	bool clear_outer = true;
 
 	invert_m4_m4(imat, obmat);
 
@@ -710,8 +710,8 @@ Shard *BKE_fracture_shard_bisect(Shard* parent, Shard* child, float obmat[4][4],
 		BM_mesh_elem_hflag_enable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT, false);
 
 		BMO_op_initf(bm_parent, &bmop, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-		             "bisect_plane geom=%hvef plane_co=%v plane_no=%v dist=%f clear_inner=%b clear_outer=%b",
-		             BM_ELEM_SELECT, plane_co, plane_no, thresh, clear_inner, clear_outer);
+		             "bisect_plane geom=%hvef dist=%f plane_co=%v plane_no=%v use_snap_center=%b clear_inner=%b clear_outer=%b",
+		             BM_ELEM_SELECT, thresh, plane_co, plane_no, false, clear_inner, clear_outer);
 		BMO_op_exec(bm_parent, &bmop);
 
 		BM_mesh_elem_hflag_disable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT, false);
