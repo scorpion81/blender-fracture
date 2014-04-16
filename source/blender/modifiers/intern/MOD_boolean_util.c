@@ -552,6 +552,7 @@ static void exporter_SetPoly(ExportMeshData *export_data,
 			                         i + mpoly->loopstart);
 		}
 	}
+}
 
 /* Set list vertex and edge which are adjucent to loop with given index. */
 static void exporter_SetLoop(ExportMeshData *export_data,
