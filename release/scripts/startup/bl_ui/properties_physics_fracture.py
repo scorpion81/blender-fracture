@@ -48,10 +48,17 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         layout = self.layout
 
         md = context.fracture
-        layout.prop(md, "frac_algorithm")
-        layout.prop(md, "shard_count")
-        layout.prop(md, "shard_id")
+        col = layout.column()
+        col.prop(md, "frac_algorithm")
+        col.prop(md, "shard_count")
+        #layout.prop(md, "shard_id")
+        col.label("Point Source:")
+        col.prop(md, "point_source")
+        col.prop(md, "extra_group")
+        col.prop(md, "noise")
+        col.prop(md, "percentage")
         #layout.operator("object.fracture", icon="MOD_EXPLODE")
+        col.prop(md, "point_seed")
 
 if __name__ == "__main__":  # only for live edit.
     bpy.utils.register_module(__name__)

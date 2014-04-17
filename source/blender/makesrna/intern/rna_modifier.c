@@ -3656,10 +3656,21 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	PropertyRNA *prop;
 
 	static EnumPropertyItem prop_fracture_algorithm[] = {
+		{MOD_FRACTURE_NONE, "NONE", 0, "None", "Do not fracture the raw mesh (just simulate existing parts)"},
 		{MOD_FRACTURE_VORONOI, "VORONOI", 0, "Voronoi", "Use plain voronoi as fracture algorithm"},
 		{MOD_FRACTURE_BOOLEAN, "BOOLEAN", 0, "Voronoi + Boolean", "Use voronoi and boolean intersection as fracture algorithm"},
 		{MOD_FRACTURE_BISECT_FILL, "BISECT_FILL", 0, "Voronoi + Bisect + Fill", "Use voronoi and mesh bisect as fracture algorithm, fill cut faces"},
 		{MOD_FRACTURE_BISECT, "BISECT", 0, "Voronoi + Bisect", "Use voronoi and mesh bisect as fracture algorithm, don't fill cut faces"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
+	static EnumPropertyItem prop_point_source_items[] = {
+		{MOD_FRACTURE_OWN_PARTICLES, "OWN_PARTICLES", 0, "Own Particles", "Use own particles as point cloud"},
+		{MOD_FRACTURE_OWN_VERTS, "OWN_VERTS", 0, "Own Vertices", "Use own vertices as point cloud"},
+		{MOD_FRACTURE_EXTRA_PARTICLES, "EXTRA_PARTICLES", 0, "Extra Particles", "Use particles of group objects as point cloud"},
+		{MOD_FRACTURE_EXTRA_VERTS, "EXTRA_VERTS", 0, "Extra Vertices", "Use vertices of group objects as point cloud"},
+		//{MOD_FRACTURE_GREASEPENCIL, "GREASE_PENCIL", 0, "Grease Pencil", "Use grease pencil points as point cloud"},
+		{MOD_FRACTURE_UNIFORM, "UNIFORM", 0, "Uniform", "Use a random uniform pointcloud generated over the bounding box"},
 		{0, NULL, 0, NULL, NULL}
 	};
 
@@ -3679,12 +3690,42 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Shard Count", "How many sub-shards should be generated from the current shard");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
-	prop = RNA_def_property(srna, "shard_id", PROP_INT, PROP_NONE);
+	/*prop = RNA_def_property(srna, "shard_id", PROP_INT, PROP_NONE);
 	RNA_def_property_range(prop, 0, 100000);
 	RNA_def_property_int_default(prop, 0);
 	RNA_def_property_ui_text(prop, "Shard ID", "Which Shard ID should be fractured now (WIP)");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
+
+	prop = RNA_def_property(srna, "point_source", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_items(prop, prop_point_source_items);
+	RNA_def_property_flag(prop, PROP_ENUM_FLAG);
+	RNA_def_property_enum_default(prop, MOD_FRACTURE_UNIFORM);
+	RNA_def_property_ui_text(prop, "Point Source", "Source of point cloud");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
+	prop = RNA_def_property(srna, "point_seed", PROP_INT, PROP_NONE);
+	RNA_def_property_range(prop, 0, 100000);
+	RNA_def_property_ui_text(prop, "Seed", "Seed for uniform pointcloud");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "noise", PROP_FLOAT, PROP_NONE);
+	//RNA_def_property_float_sdna(prop, NULL, "noise");
+	RNA_def_property_range(prop, 0.0f, 1.0f);
+	//RNA_def_property_float_funcs(prop, NULL, "rna_ExplodeModifier_noise_set", NULL);
+	RNA_def_property_ui_text(prop, "Noise", "Noise to apply over pointcloud");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "percentage", PROP_INT, PROP_NONE);
+	//RNA_def_property_int_sdna(prop, NULL, "percentage");
+	RNA_def_property_range(prop, 0, 100);
+	//RNA_def_property_int_funcs(prop, NULL, "rna_ExplodeModifier_percentage_set", NULL);
+	RNA_def_property_ui_text(prop, "Percentage", "Percentage of points to actually use for fracture");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "extra_group", PROP_POINTER, PROP_NONE);
+	RNA_def_property_ui_text(prop, "Extra Group", "");
+	RNA_def_property_flag(prop, PROP_EDITABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 void RNA_def_modifier(BlenderRNA *brna)

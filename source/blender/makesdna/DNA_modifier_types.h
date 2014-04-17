@@ -1364,20 +1364,38 @@ enum {
 };
 
 enum {
-	MOD_FRACTURE_VORONOI        = (1 << 0),
-	MOD_FRACTURE_BOOLEAN        = (1 << 1),
-	MOD_FRACTURE_BISECT_FILL    = (1 << 2),
-	MOD_FRACTURE_BISECT         = (1 << 3),
+	MOD_FRACTURE_NONE           = (1 << 0),
+	MOD_FRACTURE_VORONOI        = (1 << 1),
+	MOD_FRACTURE_BOOLEAN        = (1 << 2),
+	MOD_FRACTURE_BISECT_FILL    = (1 << 3),
+	MOD_FRACTURE_BISECT         = (1 << 4),
+};
+
+enum {
+	MOD_FRACTURE_OWN_VERTS       = (1 << 0),
+	MOD_FRACTURE_OWN_PARTICLES   = (1 << 1),
+	MOD_FRACTURE_EXTRA_VERTS     = (1 << 2),
+	MOD_FRACTURE_EXTRA_PARTICLES = (1 << 3),
+	MOD_FRACTURE_GREASEPENCIL    = (1 << 4),
+	MOD_FRACTURE_UNIFORM         = (1 << 5),
 };
 
 typedef struct FractureModifierData {
 	ModifierData modifier;
 	struct FracMesh *frac_mesh; //store only the current fracmesh here first, later maybe an entire history...
 	struct DerivedMesh *dm;
+	struct Group *extra_group;
+	float *noisemap;
+
 	int frac_algorithm;
 	int shard_count;
 	int shard_id;
-	char pad[4];
+	int point_source;
+	int point_seed;
+	int percentage;
+	float noise;
+	int noise_count;
+	//char pad[4];
 } FractureModifierData;
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */
