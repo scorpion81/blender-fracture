@@ -75,6 +75,7 @@
 #include "BKE_scene.h"
 #include "BKE_smoke.h"
 #include "BKE_softbody.h"
+#include "BKE_rigidbody.h"
 
 #include "BIK_api.h"
 
@@ -104,6 +105,13 @@
 #  include <dirent.h>
 #else
 #  include "BLI_winstuff.h"
+#endif
+
+#ifdef WIN32
+    #ifndef NAN
+        static const unsigned long __nan[2] = {0xffffffff, 0x7fffffff};
+        #define NAN (*(const float *) __nan)
+    #endif
 #endif
 
 #define PTCACHE_DATA_FROM(data, type, from)  \
@@ -999,22 +1007,27 @@ static int ptcache_dynamicpaint_read(PTCacheFile *pf, void *dp_v)
 static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUSED(cfra))
 {
 	RigidBodyWorld *rbw = rb_v;
-	Object *ob = NULL;
+	RigidBodyOb *rbo = NULL;
+	rbo = rbw->cache_index_map[index];
 	
-	if (rbw->objects)
-		ob = rbw->objects[index];
-	
-	if (ob && ob->rigidbody_object) {
-		RigidBodyOb *rbo = ob->rigidbody_object;
+	if (rbo == NULL)
+	{
+		float dummyloc[3] = {FLT_MIN, FLT_MIN, FLT_MIN};
+		float dummyrot[4] = {FLT_MIN, FLT_MIN, FLT_MIN, FLT_MIN};
 		
-		if (rbo->type == RBO_TYPE_ACTIVE) {
+		//need to write dummy data obviously... hmm
+		PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, dummyloc);
+		PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, dummyrot);
+		return 1;
+	}
+
+	if (rbo && rbo->type == RBO_TYPE_ACTIVE && rbo->physics_object) {
 #ifdef WITH_BULLET
-			RB_body_get_position(rbo->physics_object, rbo->pos);
-			RB_body_get_orientation(rbo->physics_object, rbo->orn);
+		RB_body_get_position(rbo->physics_object, rbo->pos);
+		RB_body_get_orientation(rbo->physics_object, rbo->orn);
 #endif
-			PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, rbo->pos);
-			PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, rbo->orn);
-		}
+		PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, rbo->pos);
+		PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, rbo->orn);
 	}
 
 	return 1;
@@ -1022,36 +1035,39 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUS
 static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float UNUSED(cfra), float *old_data)
 {
 	RigidBodyWorld *rbw = rb_v;
-	Object *ob = NULL;
+	RigidBodyOb *rbo = NULL;
 	
-	if (rbw->objects)
-		ob = rbw->objects[index];
+	rbo = rbw->cache_index_map[index];
 	
-	if (ob && ob->rigidbody_object) {
-		RigidBodyOb *rbo = ob->rigidbody_object;
-		
-		if (rbo->type == RBO_TYPE_ACTIVE) {
-			
-			if (old_data) {
-				memcpy(rbo->pos, data, 3 * sizeof(float));
-				memcpy(rbo->orn, data + 3, 4 * sizeof(float));
-			}
-			else {
-				PTCACHE_DATA_TO(data, BPHYS_DATA_LOCATION, 0, rbo->pos);
-				PTCACHE_DATA_TO(data, BPHYS_DATA_ROTATION, 0, rbo->orn);
-			}
+	if (rbo == NULL)
+		return;
+
+	if (rbo && rbo->type == RBO_TYPE_ACTIVE) {
+
+		if (old_data) {
+			memcpy(rbo->pos, data, 3 * sizeof(float));
+			memcpy(rbo->orn, data + 3, 4 * sizeof(float));
 		}
+		else {
+			PTCACHE_DATA_TO(data, BPHYS_DATA_LOCATION, 0, rbo->pos);
+			PTCACHE_DATA_TO(data, BPHYS_DATA_ROTATION, 0, rbo->orn);
+		}
+
+		//if (mi) {
+		 //	BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn);
+		//}
 	}
 }
 static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, float cfra, float cfra1, float cfra2, float *old_data)
 {
 	RigidBodyWorld *rbw = rb_v;
-	Object *ob = NULL;
+	RigidBodyOb *rbo = NULL;
 	ParticleKey keys[4];
 	float dfra;
 	
-	if (rbw->objects)
-		ob = rbw->objects[index];
+	rbo = rbw->cache_index_map[index];
+	if (rbo == NULL)
+		return;
 	
 	if (ob && ob->rigidbody_object) {
 		RigidBodyOb *rbo = ob->rigidbody_object;

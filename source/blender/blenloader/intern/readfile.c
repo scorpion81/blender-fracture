@@ -177,6 +177,9 @@
 
 #include <errno.h>
 
+#include "BKE_cdderivedmesh.h"  //for fracture meshisland handling
+
+
 /*
  * Remark: still a weak point is the newaddress() function, that doesnt solve reading from
  * multiple files at the same time
@@ -4814,6 +4817,30 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			}
 			lmd->cache_system = NULL;
 		}
+		else if (md->type == eModifierType_RigidBody) {
+			RigidBodyModifierData *rmd = (RigidBodyModifierData *)md;
+			
+			//fallback, regenerate data
+			rmd->meshIslands.first = NULL;
+			rmd->meshIslands.last = NULL;
+			rmd->visible_mesh = NULL;
+			rmd->visible_mesh_cached = NULL;
+			zero_m4(rmd->origmat);
+			rmd->meshConstraints.first = NULL;
+			rmd->meshConstraints.last = NULL;
+			rmd->sel_counter = 0;
+			rmd->sel_indexes = NULL;
+			rmd->idmap = NULL;
+			rmd->id_storage = NULL;
+			rmd->index_storage = NULL;
+			rmd->explo_shared = FALSE;
+			rmd->refresh = FALSE;  // do not construct modifier
+			rmd->refresh_constraints = FALSE;
+			rmd->max_vol = 0;
+			rmd->cells.first = NULL;
+			rmd->cells.last = NULL;
+			rmd->framemap = newdataadr(fd, rmd->framemap);
+		}
 		else if (md->type == eModifierType_Fracture) {
 			int i = 0;
 			FractureModifierData *fmd = (FractureModifierData *)md;
@@ -5515,6 +5542,8 @@ static void direct_link_scene(FileData *fd, Scene *sce)
 		rbw->physics_world = NULL;
 		rbw->objects = NULL;
 		rbw->numbodies = 0;
+		rbw->cache_index_map = NULL;
+		rbw->cache_offset_map = NULL;
 
 		/* set effector weights */
 		rbw->effector_weights = newdataadr(fd, rbw->effector_weights);
@@ -7336,7 +7365,7 @@ static BHead *read_libblock(FileData *fd, Main *main, BHead *bhead, int flag, ID
 			direct_link_linestyle(fd, (FreestyleLineStyle *)id);
 			break;
 	}
-	
+
 	oldnewmap_free_unused(fd->datamap);
 	oldnewmap_clear(fd->datamap);
 	
@@ -7594,7 +7623,7 @@ static BHead *read_userdef(BlendFileData *bfd, FileData *fd, BHead *bhead)
 	for (addon = user->addons.first; addon; addon = addon->next) {
 		addon->prop = newdataadr(fd, addon->prop);
 		IDP_DirectLinkGroup_OrFree(&addon->prop, (fd->flags & FD_FLAGS_SWITCH_ENDIAN), fd);
-	}
+		}
 
 	// XXX
 	user->uifonts.first = user->uifonts.last= NULL;

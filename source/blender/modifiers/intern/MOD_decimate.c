@@ -66,6 +66,7 @@ static void initData(ModifierData *md)
 
 	dmd->percent = 1.0;
 	dmd->angle   = DEG2RADF(5.0f);
+	dmd->merge_dist = 0.001;
 }
 
 static void copyData(ModifierData *md, ModifierData *target)
@@ -181,6 +182,11 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		{
 			const int do_dissolve_boundaries = (dmd->flag & MOD_DECIM_FLAG_ALL_BOUNDARY_VERTS) != 0;
 			BM_mesh_decimate_dissolve(bm, dmd->angle, do_dissolve_boundaries, (BMO_Delimit)dmd->delimit);
+			break;
+		}
+		case MOD_DECIM_MODE_REMDOUBLES:
+		{
+			BMO_op_callf(bm, BMO_FLAG_DEFAULTS, "automerge verts=%av dist=%f" ,dmd->merge_dist);
 			break;
 		}
 	}

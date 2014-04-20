@@ -1363,10 +1363,11 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 	if (modbase == NULL) return;
 	for (md=modbase->first; md; md= md->next) {
 		ModifierTypeInfo *mti = modifierType_getInfo(md->type);
+		//printf("Saving %s\n", mti->structName);
 		if (mti == NULL) return;
-		
+
 		writestruct(wd, DATA, mti->structName, 1, md);
-			
+
 		if (md->type==eModifierType_Hook) {
 			HookModifierData *hmd = (HookModifierData*) md;
 			
@@ -1473,10 +1474,26 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 			if (wmd->cmap_curve)
 				write_curvemapping(wd, wmd->cmap_curve);
 		}
+
 		else if (md->type==eModifierType_LaplacianDeform) {
 			LaplacianDeformModifierData *lmd = (LaplacianDeformModifierData*) md;
 
 			writedata(wd, DATA, sizeof(float)*lmd->total_verts * 3, lmd->vertexco);
+		}
+		else if (md->type == eModifierType_RigidBody) {
+
+			RigidBodyModifierData *rmd = (RigidBodyModifierData*)md;
+			RigidBodyShardCon *con;
+			
+			//WORKAROUND for Automerge, so that after filling cache and pulling timeline to frame 0 all faces are visible
+			for (con = rmd->meshConstraints.first; con; con = con->next) {
+				con->physics_constraint = NULL;
+				con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+			}
+			
+			if (rmd->framecount > 0) {
+				writedata(wd, DATA, sizeof(float) * rmd->framecount, rmd->framemap);
+			}
 		}
 		else if (md->type==eModifierType_Fracture) {
 			int i = 0;
@@ -3322,7 +3339,7 @@ static void write_global(WriteData *wd, int fileflags, Main *mainvar)
 #ifdef WITH_BUILDINFO
 	{
 		extern unsigned long build_commit_timestamp;
-		extern char build_hash[];
+		extern char build_change[], build_hash[];
 		/* TODO(sergey): Add branch name to file as well? */
 		fg.build_commit_timestamp = build_commit_timestamp;
 		BLI_strncpy(fg.build_hash, build_hash, sizeof(fg.build_hash));

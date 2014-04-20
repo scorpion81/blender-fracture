@@ -80,10 +80,13 @@ struct rbDynamicsWorld {
 	btBroadphaseInterface *pairCache;
 	btConstraintSolver *constraintSolver;
 	btOverlapFilterCallback *filterCallback;
+	void *blenderWorld;
 };
 struct rbRigidBody {
 	btRigidBody *body;
 	int col_groups;
+	void *meshIsland;
+	rbDynamicsWorld *world;
 };
 
 struct rbVert {
@@ -108,6 +111,12 @@ struct rbCollisionShape {
 
 struct rbFilterCallback : public btOverlapFilterCallback
 {
+	int (*callback)(void* world, void* island1, void* island2);
+
+	rbFilterCallback(int (*callback)(void* world, void* island1, void* island2)) {
+		this->callback = callback;
+	}
+
 	virtual bool needBroadphaseCollision(btBroadphaseProxy *proxy0, btBroadphaseProxy *proxy1) const
 	{
 		rbRigidBody *rb0 = (rbRigidBody *)((btRigidBody *)proxy0->m_clientObject)->getUserPointer();
@@ -117,7 +126,11 @@ struct rbFilterCallback : public btOverlapFilterCallback
 		collides = (proxy0->m_collisionFilterGroup & proxy1->m_collisionFilterMask) != 0;
 		collides = collides && (proxy1->m_collisionFilterGroup & proxy0->m_collisionFilterMask);
 		collides = collides && (rb0->col_groups & rb1->col_groups);
-		
+		if (this->callback != NULL) {
+			int result = this->callback(rb0->world->blenderWorld, rb0->meshIsland, rb1->meshIsland);
+			collides = collides && (bool)result;
+		}
+
 		return collides;
 	}
 };
@@ -136,12 +149,13 @@ static inline void copy_quat_btquat(float quat[4], const btQuaternion &btquat)
 	quat[3] = btquat.getZ();
 }
 
+
 /* ********************************** */
 /* Dynamics World Methods */
 
 /* Setup ---------------------------- */
 
-rbDynamicsWorld *RB_dworld_new(const float gravity[3])
+rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, int (*callback)(void* world, void* island1, void* island2)) //yuck, but need a handle for the world somewhere for collision callback...
 {
 	rbDynamicsWorld *world = new rbDynamicsWorld;
 	
@@ -153,7 +167,7 @@ rbDynamicsWorld *RB_dworld_new(const float gravity[3])
 	
 	world->pairCache = new btDbvtBroadphase();
 	
-	world->filterCallback = new rbFilterCallback();
+	world->filterCallback = new rbFilterCallback(callback);
 	world->pairCache->getOverlappingPairCache()->setOverlapFilterCallback(world->filterCallback);
 
 	/* constraint solving */
@@ -164,6 +178,7 @@ rbDynamicsWorld *RB_dworld_new(const float gravity[3])
 	                                                   world->pairCache,
 	                                                   world->constraintSolver,
 	                                                   world->collisionConfiguration);
+	world->blenderWorld = blenderWorld;
 
 	RB_dworld_set_gravity(world, gravity);
 	
@@ -248,11 +263,14 @@ void RB_dworld_export(rbDynamicsWorld *world, const char *filename)
 
 /* Setup ---------------------------- */
 
-void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *object, int col_groups)
+void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *object, int col_groups, void* meshIsland)
 {
 	btRigidBody *body = object->body;
 	object->col_groups = col_groups;
 	
+	object->meshIsland = meshIsland;
+	object->world = world;
+
 	world->dynamicsWorld->addRigidBody(body);
 }
 
@@ -261,6 +279,8 @@ void RB_dworld_remove_body(rbDynamicsWorld *world, rbRigidBody *object)
 	btRigidBody *body = object->body;
 	
 	world->dynamicsWorld->removeRigidBody(body);
+	object->meshIsland = NULL;
+	object->world = NULL;
 }
 
 /* Collision detection */
@@ -567,6 +587,12 @@ void RB_body_deactivate(rbRigidBody *object)
 	body->setActivationState(ISLAND_SLEEPING);
 }
 
+int RB_body_get_activation_state(rbRigidBody* object)
+{
+	btRigidBody* body = object->body;
+	return body->getActivationState();
+}
+
 /* ............ */
 
 
@@ -706,6 +732,32 @@ rbCollisionShape *RB_shape_new_convex_hull(float *verts, int stride, int count, 
 	shape->cshape = hull_shape;
 	shape->mesh = NULL;
 	return shape;
+}
+
+//compound shapes
+rbCollisionShape *RB_shape_new_compound()
+{
+	rbCollisionShape *shape = new rbCollisionShape;
+	shape->cshape = new btCompoundShape();
+	shape->mesh = NULL;
+	return shape;
+}
+
+void RB_shape_add_compound_child(rbCollisionShape** compound, rbCollisionShape* child, float loc[3], float rot[4])
+{
+	btCompoundShape *comp = reinterpret_cast<btCompoundShape*>((*compound)->cshape);
+	btCollisionShape* ch = child->cshape;
+	btTransform trans;
+	trans.setOrigin(btVector3(loc[0], loc[1], loc[2]));
+	trans.setRotation(btQuaternion(rot[1], rot[2], rot[3], rot[0]));
+	
+	comp->addChildShape(trans, ch);
+}
+
+void RB_shape_compound_set_scaling(rbCollisionShape* compound, float scaling[3])
+{
+	btCompoundShape *comp = reinterpret_cast<btCompoundShape*>(compound->cshape);
+	comp->setLocalScaling(btVector3(scaling[0], scaling[1], scaling[2]));
 }
 
 /* Setup (Triangle Mesh) ---------- */
@@ -993,6 +1045,13 @@ void RB_constraint_set_enabled(rbConstraint *con, int enabled)
 	btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint*>(con);
 	
 	constraint->setEnabled(enabled);
+}
+
+int RB_constraint_is_enabled(rbConstraint *con)
+{
+	btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint*>(con);
+
+	return constraint->isEnabled();
 }
 
 void RB_constraint_set_limits_hinge(rbConstraint *con, float lower, float upper)

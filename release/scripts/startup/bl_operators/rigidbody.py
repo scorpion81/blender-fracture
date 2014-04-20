@@ -120,10 +120,13 @@ class BakeToKeyframes(Operator):
         frames_step = range(self.frame_start, self.frame_end + 1, self.step)
         frames_full = range(self.frame_start, self.frame_end + 1)
 
+        constraints = []
         # filter objects selection
         for obj in context.selected_objects:
-            if not obj.rigid_body or obj.rigid_body.type != 'ACTIVE':
+            if (not obj.rigid_body or obj.rigid_body.type != 'ACTIVE'):
                 obj.select = False
+            if (obj.rigid_body_constraint):
+               constraints.append(obj)
 
         objects = context.selected_objects
 
@@ -166,6 +169,16 @@ class BakeToKeyframes(Operator):
 
                 bpy.ops.anim.keyframe_insert(type='BUILTIN_KSI_LocRot', confirm_success=False)
 
+            #remove (selected) constraints first
+            for obj in constraints:
+                obj.select = True
+
+            bpy.ops.rigidbody.constraints_remove()
+
+            for obj in constraints:
+                obj.select = False
+                obj.hide = True
+            
             # remove baked objects from simulation
             bpy.ops.rigidbody.objects_remove()
 

@@ -183,7 +183,7 @@ bool EDBM_op_init(BMEditMesh *em, BMOperator *bmop, wmOperator *op, const char *
 
 	va_start(list, fmt);
 
-	if (!BMO_op_vinitf(bm, bmop, BMO_FLAG_DEFAULTS, fmt, list)) {
+	if (!BMO_op_vinitf(bm, bmop, BMO_FLAG_DEFAULTS, fmt, &list)) {
 		BKE_reportf(op->reports, RPT_ERROR, "Parse error in %s", __func__);
 		va_end(list);
 		return false;
@@ -252,7 +252,7 @@ bool EDBM_op_callf(BMEditMesh *em, wmOperator *op, const char *fmt, ...)
 
 	va_start(list, fmt);
 
-	if (!BMO_op_vinitf(bm, &bmop, BMO_FLAG_DEFAULTS, fmt, list)) {
+	if (!BMO_op_vinitf(bm, &bmop, BMO_FLAG_DEFAULTS, fmt, &list)) {
 		BKE_reportf(op->reports, RPT_ERROR, "Parse error in %s", __func__);
 		va_end(list);
 		return false;
@@ -280,7 +280,7 @@ bool EDBM_op_call_and_selectf(BMEditMesh *em, wmOperator *op,
 
 	va_start(list, fmt);
 
-	if (!BMO_op_vinitf(bm, &bmop, BMO_FLAG_DEFAULTS, fmt, list)) {
+	if (!BMO_op_vinitf(bm, &bmop, BMO_FLAG_DEFAULTS, fmt, &list)) {
 		BKE_reportf(op->reports, RPT_ERROR, "Parse error in %s", __func__);
 		va_end(list);
 		return false;
@@ -314,7 +314,7 @@ bool EDBM_op_call_silentf(BMEditMesh *em, const char *fmt, ...)
 
 	va_start(list, fmt);
 
-	if (!BMO_op_vinitf(bm, &bmop, BMO_FLAG_DEFAULTS, fmt, list)) {
+	if (!BMO_op_vinitf(bm, &bmop, BMO_FLAG_DEFAULTS, fmt, &list)) {
 		va_end(list);
 		return false;
 	}

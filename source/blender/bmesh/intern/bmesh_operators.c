@@ -1652,9 +1652,9 @@ bool BMO_op_vinitf(BMesh *bm, BMOperator *op, const int flag, const char *_fmt, 
 //	BMOpDefine *def;
 	char *opname, *ofmt, *fmt;
 	char slot_name[64] = {0};
-	int i, type;
-	bool noslot, state;
+	int i /*, n = strlen(fmt) */, stop /*, slot_code = -1 */, type, state;
 	char htype;
+	int noslot = 0;
 
 
 	/* basic useful info to help find where bmop formatting strings fail */
@@ -1675,7 +1675,7 @@ bool BMO_op_vinitf(BMesh *bm, BMOperator *op, const int flag, const char *_fmt, 
 	i = strcspn(fmt, " ");
 
 	opname = fmt;
-	noslot = (opname[i] == '\0');
+	if (!opname[i]) noslot = 1;
 	opname[i] = '\0';
 
 	fmt += i + (noslot ? 0 : 1);
@@ -1692,7 +1692,7 @@ bool BMO_op_vinitf(BMesh *bm, BMOperator *op, const int flag, const char *_fmt, 
 //	def = bmo_opdefines[i];
 	
 	i = 0;
-	state = true;  /* false: not inside slot_code name, true: inside slot_code name */
+	state = 1; /* 0: not inside slot_code name, 1: inside slot_code name */
 
 	while (*fmt) {
 		if (state) {
@@ -1718,7 +1718,7 @@ bool BMO_op_vinitf(BMesh *bm, BMOperator *op, const int flag, const char *_fmt, 
 			
 			BLI_strncpy(slot_name, fmt, sizeof(slot_name));
 			
-			state = false;
+			state = 0;
 			fmt += i;
 		}
 		else {
@@ -1739,13 +1739,13 @@ bool BMO_op_vinitf(BMesh *bm, BMOperator *op, const int flag, const char *_fmt, 
 					else GOTO_ERROR("matrix size was not 3 or 4");
 
 					BMO_slot_mat_set(op, op->slots_in, slot_name, va_arg(vlist, void *), size);
-					state = true;
+					state = 1;
 					break;
 				}
 				case 'v':
 				{
 					BMO_slot_vec_set(op->slots_in, slot_name, va_arg(vlist, float *));
-					state = true;
+					state = 1;
 					break;
 				}
 				case 'e':  /* single vert/edge/face */
@@ -1755,7 +1755,7 @@ bool BMO_op_vinitf(BMesh *bm, BMOperator *op, const int flag, const char *_fmt, 
 
 					BMO_slot_buffer_from_single(op, slot, ele);
 
-					state = true;
+					state = 1;
 					break;
 				}
 				case 's':
@@ -1774,20 +1774,20 @@ bool BMO_op_vinitf(BMesh *bm, BMOperator *op, const int flag, const char *_fmt, 
 						BMO_slot_copy(op_other, slots_out, slot_name_other,
 						              op,       slots_in, slot_name);
 					}
-					state = true;
+					state = 1;
 					break;
 				}
 				case 'i':
 					BMO_slot_int_set(op->slots_in, slot_name, va_arg(vlist, int));
-					state = true;
+					state = 1;
 					break;
 				case 'b':
 					BMO_slot_bool_set(op->slots_in, slot_name, va_arg(vlist, int));
-					state = true;
+					state = 1;
 					break;
 				case 'p':
 					BMO_slot_ptr_set(op->slots_in, slot_name, va_arg(vlist, void *));
-					state = true;
+					state = 1;
 					break;
 				case 'f':
 				case 'F':
@@ -1800,16 +1800,15 @@ bool BMO_op_vinitf(BMesh *bm, BMOperator *op, const int flag, const char *_fmt, 
 						BMO_slot_float_set(op->slots_in, slot_name, va_arg(vlist, double));
 					}
 					else {
-						bool stop = false;
-
 						htype = 0;
+						stop = 0;
 						while (1) {
 							switch (NEXT_CHAR(fmt)) {
 								case 'f': htype |= BM_FACE; break;
 								case 'e': htype |= BM_EDGE; break;
 								case 'v': htype |= BM_VERT; break;
 								default:
-									stop = true;
+									stop = 1;
 									break;
 							}
 							if (stop) {
@@ -1836,11 +1835,11 @@ bool BMO_op_vinitf(BMesh *bm, BMOperator *op, const int flag, const char *_fmt, 
 						}
 					}
 
-					state = true;
+					state = 1;
 					break;
 				default:
 					fprintf(stderr,
-					        "%s: unrecognized bmop format char: '%c', %d in '%s'\n",
+					        "%s: unrecognized bmop format char: %c, %d in '%s'\n",
 					        __func__, *fmt, (int)(fmt - ofmt), ofmt);
 					break;
 			}

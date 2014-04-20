@@ -29,7 +29,6 @@
 #include <string.h>
 
 #include "RNA_define.h"
-#include "RNA_enum_types.h"
 
 #include "rna_internal.h"
 
@@ -37,20 +36,22 @@
 #include "DNA_object_types.h"
 #include "DNA_rigidbody_types.h"
 #include "DNA_scene_types.h"
+#include "DNA_modifier_types.h"
 
 #include "BLI_utildefines.h"
 #include "BLI_math.h"
 
 #include "WM_types.h"
+#include "bmesh.h"
 
 /* roles of objects in RigidBody Sims */
-EnumPropertyItem rigidbody_object_type_items[] = {
+EnumPropertyItem rigidbody_ob_type_items[] = {
 	{RBO_TYPE_ACTIVE, "ACTIVE", 0, "Active", "Object is directly controlled by simulation results"},
 	{RBO_TYPE_PASSIVE, "PASSIVE", 0, "Passive", "Object is directly controlled by animation system"},
 	{0, NULL, 0, NULL, NULL}};
 
 /* collision shapes of objects in rigid body sim */
-EnumPropertyItem rigidbody_object_shape_items[] = {
+EnumPropertyItem rigidbody_ob_shape_items[] = {
 	{RB_SHAPE_BOX, "BOX", ICON_MESH_CUBE, "Box", "Box-like shapes (i.e. cubes), including planes (i.e. ground planes)"},
 	{RB_SHAPE_SPHERE, "SPHERE", ICON_MESH_UVSPHERE, "Sphere", ""},
 	{RB_SHAPE_CAPSULE, "CAPSULE", ICON_OUTLINER_OB_META, "Capsule", ""},
@@ -61,10 +62,11 @@ EnumPropertyItem rigidbody_object_shape_items[] = {
 	                   "fewer vertices)"},
 	{RB_SHAPE_TRIMESH, "MESH", ICON_MESH_MONKEY, "Mesh",
 	                   "Mesh consisting of triangles only, allowing for more detailed interactions than convex hulls"},
+	{RB_SHAPE_COMPOUND, "COMPOUND", ICON_MOD_BUILD, "Compound", "A mesh constructed by adding together simpler child meshes"},
 	{0, NULL, 0, NULL, NULL}};
 
 /* collision shapes of constraints in rigid body sim */
-EnumPropertyItem rigidbody_constraint_type_items[] = {
+EnumPropertyItem rigidbody_con_type_items[] = {
 	{RBC_TYPE_FIXED, "FIXED", ICON_NONE, "Fixed", "Glue rigid bodies together"},
 	{RBC_TYPE_POINT, "POINT", ICON_NONE, "Point", "Constrain rigid bodies to move around common pivot point"},
 	{RBC_TYPE_HINGE, "HINGE", ICON_NONE, "Hinge", "Restrict rigid body rotation to one axis"},
@@ -104,14 +106,14 @@ static EnumPropertyItem rigidbody_mesh_source_items[] = {
 
 /* ******************************** */
 
-static void rna_RigidBodyWorld_reset(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *ptr)
+static void rna_RigidBodyWorld_reset(Main *bmain, Scene *scene, PointerRNA *ptr)
 {
 	RigidBodyWorld *rbw = (RigidBodyWorld *)ptr->data;
 	
 	BKE_rigidbody_cache_reset(rbw);
 }
 
-static char *rna_RigidBodyWorld_path(PointerRNA *UNUSED(ptr))
+static char *rna_RigidBodyWorld_path(PointerRNA *ptr)
 {	
 	return BLI_sprintfN("rigidbody_world");
 }
@@ -144,65 +146,172 @@ static void rna_RigidBodyWorld_split_impulse_set(PointerRNA *ptr, int value)
 
 /* ******************************** */
 
-static void rna_RigidBodyOb_reset(Main *UNUSED(bmain), Scene *scene, PointerRNA *UNUSED(ptr))
+
+/* ------------------------------------------ */
+
+void foreach_shard_float(Object* ob, float value, void (*func)(RigidBodyOb* rbo, float value))
+{
+	ModifierData *md;
+	RigidBodyModifierData* rmd;
+	MeshIsland* mi;
+	for (md = ob->modifiers.first; md; md = md->next) {
+		if (md->type == eModifierType_RigidBody) {
+			rmd = (RigidBodyModifierData*)md;
+			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+				if (mi->rigidbody != NULL) {
+					func(mi->rigidbody, value);
+				}
+			}
+		}
+	}
+}
+
+void foreach_shard_mass(Object* ob)
+{
+	ModifierData *md;
+	RigidBodyModifierData* rmd;
+	MeshIsland* mi;
+	for (md = ob->modifiers.first; md; md = md->next) {
+		if (md->type == eModifierType_RigidBody) {
+			rmd = (RigidBodyModifierData*)md;
+			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+				if (mi->rigidbody != NULL) {
+					BKE_rigidbody_calc_shard_mass(ob, mi);
+				}
+			}
+		}
+	}
+}
+
+void foreach_shard_int(Object* ob, int value, void (*func)(RigidBodyOb* rbo, int value))
+{
+	ModifierData *md;
+	RigidBodyModifierData* rmd;
+	MeshIsland* mi;
+	for (md = ob->modifiers.first; md; md = md->next) {
+		if (md->type == eModifierType_RigidBody) {
+			rmd = (RigidBodyModifierData*)md;
+			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+				if (mi->rigidbody != NULL) {
+					func(mi->rigidbody, value);
+				}
+			}
+		}
+	}
+}
+
+void foreach_shard_ints(Object* ob, const int* value, void (*func)(RigidBodyOb* rbo, const int* value))
+{
+	ModifierData *md;
+	RigidBodyModifierData* rmd;
+	MeshIsland* mi;
+	for (md = ob->modifiers.first; md; md = md->next) {
+		if (md->type == eModifierType_RigidBody) {
+			rmd = (RigidBodyModifierData*)md;
+			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+				if (mi->rigidbody != NULL) {
+					func(mi->rigidbody, value);
+				}
+			}
+		}
+	}
+}
+
+void foreach_shard_flag_shape(Object* ob, int val1, short val2, int reset)
+{
+	ModifierData *md;
+	RigidBodyModifierData* rmd;
+	MeshIsland* mi;
+	for (md = ob->modifiers.first; md; md = md->next) {
+		if (md->type == eModifierType_RigidBody) {
+			rmd = (RigidBodyModifierData*)md;
+			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+				if (mi->rigidbody != NULL) {
+					mi->rigidbody->flag = val1;
+					mi->rigidbody->shape = val2;
+					if (reset) {
+						if (mi->rigidbody->physics_shape)
+							mi->rigidbody->flag |= RBO_FLAG_NEEDS_RESHAPE;
+					}
+				}
+			}
+		}
+	}
+}
+
+
+static void rna_RigidBodyOb_reset(Main *bmain, Scene *scene, PointerRNA *ptr)
 {
 	RigidBodyWorld *rbw = scene->rigidbody_world;
-	
+	Object *ob = ptr->id.data;
+	RigidBodyOb* rbo = ptr->data;
+	foreach_shard_flag_shape(ob, rbo->flag, rbo->shape, FALSE);
+
 	BKE_rigidbody_cache_reset(rbw);
 }
 
-static void rna_RigidBodyOb_shape_reset(Main *UNUSED(bmain), Scene *scene, PointerRNA *ptr)
+static void rna_RigidBodyOb_shape_reset(Main *bmain, Scene *scene, PointerRNA *ptr)
 {
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	
+	Object *ob = ptr->id.data;
+
+	foreach_shard_flag_shape(ob, rbo->flag, rbo->shape, TRUE);
 	BKE_rigidbody_cache_reset(rbw);
+
 	if (rbo->physics_shape)
 		rbo->flag |= RBO_FLAG_NEEDS_RESHAPE;
 }
 
-static char *rna_RigidBodyOb_path(PointerRNA *UNUSED(ptr))
+static char *rna_RigidBodyOb_path(PointerRNA *ptr)
 {
 	/* NOTE: this hardcoded path should work as long as only Objects have this */
 	return BLI_sprintfN("rigid_body");
 }
 
-static void rna_RigidBodyOb_type_set(PointerRNA *ptr, int value)
-{
-	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	
+void set_type(RigidBodyOb* rbo, int value) {
 	rbo->type = value;
 	rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 }
 
-static void rna_RigidBodyOb_shape_set(PointerRNA *ptr, int value)
+static void rna_RigidBodyOb_type_set(PointerRNA *ptr, int value)
 {
 	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-
-	rbo->shape = value;
-	rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+	Object* ob = ptr->id.data;
+	set_type(rbo, value);
+	foreach_shard_int(ob, value, set_type);
 }
 
-static void rna_RigidBodyOb_disabled_set(PointerRNA *ptr, int value)
-{
-	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	
-	RB_FLAG_SET(rbo->flag, !value, RBO_FLAG_DISABLED);
+
+
+void set_disabled(RigidBodyOb* rbo, int value) {
+
+	int flag = value;
+	flag = !flag;
+
+	RB_FLAG_SET(rbo->flag, flag, RBO_FLAG_DISABLED);
 
 #ifdef WITH_BULLET
 	/* update kinematic state if necessary - only needed for active bodies */
 	if ((rbo->physics_object) && (rbo->type == RBO_TYPE_ACTIVE)) {
 		RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
-		RB_body_set_kinematic_state(rbo->physics_object, !value);
+		RB_body_set_kinematic_state(rbo->physics_object, flag);
 		rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 	}
 #endif
 }
 
-static void rna_RigidBodyOb_mass_set(PointerRNA *ptr, float value)
+static void rna_RigidBodyOb_disabled_set(PointerRNA *ptr, int value)
 {
 	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	
+	Object *ob = ptr->id.data;
+	set_disabled(rbo, value);
+	foreach_shard_int(ob, value, set_disabled);
+}
+
+
+void set_mass(RigidBodyOb* rbo, float value)
+{
 	rbo->mass = value;
 
 #ifdef WITH_BULLET
@@ -213,10 +322,17 @@ static void rna_RigidBodyOb_mass_set(PointerRNA *ptr, float value)
 #endif
 }
 
-static void rna_RigidBodyOb_friction_set(PointerRNA *ptr, float value)
+static void rna_RigidBodyOb_mass_set(PointerRNA *ptr, float value)
 {
 	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	
+	Object* ob = ptr->id.data;
+	set_mass(rbo, value);
+	//foreach_shard_float(ob, value, set_mass);
+	foreach_shard_mass(ob);
+}
+
+void set_friction(RigidBodyOb* rbo, float value)
+{
 	rbo->friction = value;
 
 #ifdef WITH_BULLET
@@ -226,10 +342,16 @@ static void rna_RigidBodyOb_friction_set(PointerRNA *ptr, float value)
 #endif
 }
 
-static void rna_RigidBodyOb_restitution_set(PointerRNA *ptr, float value)
+static void rna_RigidBodyOb_friction_set(PointerRNA *ptr, float value)
 {
 	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	
+	Object* ob = ptr->id.data;
+	set_friction(rbo, value);
+	foreach_shard_float(ob, value, set_friction);
+}
+
+void set_restitution(RigidBodyOb *rbo, float value)
+{
 	rbo->restitution = value;
 #ifdef WITH_BULLET
 	if (rbo->physics_object) {
@@ -238,10 +360,16 @@ static void rna_RigidBodyOb_restitution_set(PointerRNA *ptr, float value)
 #endif
 }
 
-static void rna_RigidBodyOb_collision_margin_set(PointerRNA *ptr, float value)
+static void rna_RigidBodyOb_restitution_set(PointerRNA *ptr, float value)
 {
 	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	
+	Object* ob = ptr->id.data;
+	set_restitution(rbo, value);
+	foreach_shard_float(ob, value, set_restitution);
+}
+
+void set_collision_margin(RigidBodyOb* rbo, float value)
+{
 	rbo->margin = value;
 
 #ifdef WITH_BULLET
@@ -249,11 +377,18 @@ static void rna_RigidBodyOb_collision_margin_set(PointerRNA *ptr, float value)
 		RB_shape_set_margin(rbo->physics_shape, RBO_GET_MARGIN(rbo));
 	}
 #endif
-}
 
-static void rna_RigidBodyOb_collision_groups_set(PointerRNA *ptr, const int *values)
+}
+static void rna_RigidBodyOb_collision_margin_set(PointerRNA *ptr, float value)
 {
 	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
+	Object *ob = ptr->id.data;
+	set_collision_margin(rbo, value);
+	foreach_shard_float(ob, value, set_collision_margin);
+}
+
+void set_collision_groups(RigidBodyOb* rbo, const int *values)
+{
 	int i;
 
 	for (i = 0; i < 20; i++) {
@@ -265,26 +400,40 @@ static void rna_RigidBodyOb_collision_groups_set(PointerRNA *ptr, const int *val
 	rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 }
 
-static void rna_RigidBodyOb_kinematic_state_set(PointerRNA *ptr, int value)
+static void rna_RigidBodyOb_collision_groups_set(PointerRNA *ptr, const int *values)
 {
 	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	
-	RB_FLAG_SET(rbo->flag, value, RBO_FLAG_KINEMATIC);
+	Object *ob = ptr->id.data;
+
+	set_collision_groups(rbo, values);
+	foreach_shard_ints(ob, values, set_collision_groups);
+}
+
+void set_kinematic(RigidBodyOb *rbo, int value)
+{
+	int flag = value;
+	RB_FLAG_SET(rbo->flag, flag, RBO_FLAG_KINEMATIC);
 
 #ifdef WITH_BULLET
 	/* update kinematic state if necessary */
 	if (rbo->physics_object) {
 		RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
-		RB_body_set_kinematic_state(rbo->physics_object, value);
+		RB_body_set_kinematic_state(rbo->physics_object, flag);
 		rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 	}
 #endif
 }
 
-static void rna_RigidBodyOb_activation_state_set(PointerRNA *ptr, int value)
+static void rna_RigidBodyOb_kinematic_state_set(PointerRNA *ptr, int value)
 {
 	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	
+	Object* ob = ptr->id.data;
+	set_kinematic(rbo, value); //stupid casting but need only 1 function...
+	foreach_shard_int(ob, value, set_kinematic);
+}
+
+void set_activation(RigidBodyOb* rbo, int value)
+{
 	RB_FLAG_SET(rbo->flag, value, RBO_FLAG_USE_DEACTIVATION);
 
 #ifdef WITH_BULLET
@@ -295,10 +444,16 @@ static void rna_RigidBodyOb_activation_state_set(PointerRNA *ptr, int value)
 #endif
 }
 
-static void rna_RigidBodyOb_linear_sleepThresh_set(PointerRNA *ptr, float value)
+static void rna_RigidBodyOb_activation_state_set(PointerRNA *ptr, int value)
 {
 	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	
+	Object *ob = ptr->id.data;
+	set_activation(rbo, value);
+	foreach_shard_int(ob, value, set_activation);
+}
+
+void set_linear_sleepThresh(RigidBodyOb *rbo, float value)
+{
 	rbo->lin_sleep_thresh = value;
 
 #ifdef WITH_BULLET
@@ -309,10 +464,16 @@ static void rna_RigidBodyOb_linear_sleepThresh_set(PointerRNA *ptr, float value)
 #endif
 }
 
-static void rna_RigidBodyOb_angular_sleepThresh_set(PointerRNA *ptr, float value)
+static void rna_RigidBodyOb_linear_sleepThresh_set(PointerRNA *ptr, float value)
 {
 	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	
+	Object *ob = ptr->id.data;
+	set_linear_sleepThresh(rbo, value);
+	foreach_shard_float(ob, value, set_linear_sleepThresh);
+}
+
+void set_angular_sleepThresh(RigidBodyOb *rbo, float value)
+{
 	rbo->ang_sleep_thresh = value;
 
 #ifdef WITH_BULLET
@@ -323,10 +484,16 @@ static void rna_RigidBodyOb_angular_sleepThresh_set(PointerRNA *ptr, float value
 #endif
 }
 
-static void rna_RigidBodyOb_linear_damping_set(PointerRNA *ptr, float value)
+static void rna_RigidBodyOb_angular_sleepThresh_set(PointerRNA *ptr, float value)
 {
 	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	
+	Object *ob = ptr->id.data;
+	set_angular_sleepThresh(rbo, value);
+	foreach_shard_float(ob, value, set_angular_sleepThresh);
+}
+
+void set_linear_damping(RigidBodyOb *rbo, float value)
+{
 	rbo->lin_damping = value;
 
 #ifdef WITH_BULLET
@@ -337,10 +504,16 @@ static void rna_RigidBodyOb_linear_damping_set(PointerRNA *ptr, float value)
 #endif
 }
 
-static void rna_RigidBodyOb_angular_damping_set(PointerRNA *ptr, float value)
+static void rna_RigidBodyOb_linear_damping_set(PointerRNA *ptr, float value)
 {
 	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	
+	Object *ob = ptr->id.data;
+	set_linear_damping(rbo, value);
+	foreach_shard_float(ob, value, set_linear_damping);
+}
+
+void set_angular_damping(RigidBodyOb *rbo, float value)
+{
 	rbo->ang_damping = value;
 
 #ifdef WITH_BULLET
@@ -351,7 +524,15 @@ static void rna_RigidBodyOb_angular_damping_set(PointerRNA *ptr, float value)
 #endif
 }
 
-static char *rna_RigidBodyCon_path(PointerRNA *UNUSED(ptr))
+static void rna_RigidBodyOb_angular_damping_set(PointerRNA *ptr, float value)
+{
+	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
+	Object *ob = ptr->id.data;
+	set_angular_damping(rbo, value);
+	foreach_shard_float(ob, value, set_angular_damping);
+}
+
+static char *rna_RigidBodyCon_path(PointerRNA *ptr)
 {
 	/* NOTE: this hardcoded path should work as long as only Objects have this */
 	return BLI_sprintfN("rigid_body_constraint");
@@ -611,32 +792,6 @@ static void rna_RigidBodyCon_motor_ang_target_velocity_set(PointerRNA *ptr, floa
 #endif
 }
 
-/* Sweep test */
-static void rna_RigidBodyWorld_convex_sweep_test(
-        RigidBodyWorld *rbw, ReportList *reports,
-        Object *object, float ray_start[3], float ray_end[3],
-        float r_location[3], float r_hitpoint[3], float r_normal[3], int *r_hit)
-{
-#ifdef WITH_BULLET
-	RigidBodyOb *rob = object->rigidbody_object;
-
-	if (rbw->physics_world != NULL && rob->physics_object != NULL) {
-		RB_world_convex_sweep_test(rbw->physics_world, rob->physics_object, ray_start, ray_end,
-		                           r_location, r_hitpoint, r_normal, r_hit);
-		if (*r_hit == -2) {
-			BKE_report(reports, RPT_ERROR,
-			           "A non convex collision shape was passed to the function, use only convex collision shapes");
-		}
-	}
-	else {
-		*r_hit = -1;
-		BKE_report(reports, RPT_ERROR, "Rigidbody world was not properly initialized, need to step the simulation first");
-	}
-#else
-	(void)rbw, (void)reports, (void)object, (void)ray_start, (void)ray_end;
-	(void)r_location, (void)r_hitpoint, (void)r_normal, (void)r_hit;
-#endif
-}
 
 #else
 
@@ -644,8 +799,7 @@ static void rna_def_rigidbody_world(BlenderRNA *brna)
 {
 	StructRNA *srna;
 	PropertyRNA *prop;
-	FunctionRNA *func;
-
+	
 	srna = RNA_def_struct(brna, "RigidBodyWorld", NULL);
 	RNA_def_struct_sdna(srna, "RigidBodyWorld");
 	RNA_def_struct_ui_text(srna, "Rigid Body World", "Self-contained rigid body simulation environment and settings");
@@ -683,7 +837,7 @@ static void rna_def_rigidbody_world(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "steps_per_second", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "steps_per_second");
 	RNA_def_property_range(prop, 1, SHRT_MAX);
-	RNA_def_property_ui_range(prop, 60, 1000, 1, -1);
+	RNA_def_property_ui_range(prop, 60, 1000, 1, 0);
 	RNA_def_property_int_default(prop, 60);
 	RNA_def_property_ui_text(prop, "Steps Per Second",
 	                         "Number of simulation steps taken per second (higher values are more accurate "
@@ -691,10 +845,10 @@ static void rna_def_rigidbody_world(BlenderRNA *brna)
 	RNA_def_property_update(prop, NC_SCENE, "rna_RigidBodyWorld_reset");
 	
 	/* constraint solver iterations */
-	prop = RNA_def_property(srna, "solver_iterations", PROP_INT, PROP_NONE);
+	prop = RNA_def_property(srna, "num_solver_iterations", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "num_solver_iterations");
 	RNA_def_property_range(prop, 1, 1000);
-	RNA_def_property_ui_range(prop, 10, 100, 1, -1);
+	RNA_def_property_ui_range(prop, 10, 100, 1, 0);
 	RNA_def_property_int_default(prop, 10);
 	RNA_def_property_int_funcs(prop, NULL, "rna_RigidBodyWorld_num_solver_iterations_set", NULL);
 	RNA_def_property_ui_text(prop, "Solver Iterations",
@@ -722,39 +876,6 @@ static void rna_def_rigidbody_world(BlenderRNA *brna)
 	RNA_def_property_struct_type(prop, "EffectorWeights");
 	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 	RNA_def_property_ui_text(prop, "Effector Weights", "");
-
-	/* Sweep test */
-	func = RNA_def_function(srna, "convex_sweep_test", "rna_RigidBodyWorld_convex_sweep_test");
-	RNA_def_function_ui_description(func, "Sweep test convex rigidbody against the current rigidbody world");
-	RNA_def_function_flag(func, FUNC_USE_REPORTS);
-
-	prop = RNA_def_pointer(func, "object", "Object", "", "Rigidbody object with a convex collision shape");
-	RNA_def_property_flag(prop, PROP_REQUIRED | PROP_NEVER_NULL);
-	RNA_def_property_clear_flag(prop, PROP_THICK_WRAP);
-
-	/* ray start and end */
-	prop = RNA_def_float_vector(func, "start", 3, NULL, -FLT_MAX, FLT_MAX, "", "", -1e4, 1e4);
-	RNA_def_property_flag(prop, PROP_REQUIRED);
-	prop = RNA_def_float_vector(func, "end", 3, NULL, -FLT_MAX, FLT_MAX, "", "", -1e4, 1e4);
-	RNA_def_property_flag(prop, PROP_REQUIRED);
-
-	prop = RNA_def_float_vector(func, "object_location", 3, NULL, -FLT_MAX, FLT_MAX, "Location",
-	                            "The hit location of this sweep test", -1e4, 1e4);
-	RNA_def_property_flag(prop, PROP_THICK_WRAP);
-	RNA_def_function_output(func, prop);
-
-	prop = RNA_def_float_vector(func, "hitpoint", 3, NULL, -FLT_MAX, FLT_MAX, "Hitpoint",
-	                            "The hit location of this sweep test", -1e4, 1e4);
-	RNA_def_property_flag(prop, PROP_THICK_WRAP);
-	RNA_def_function_output(func, prop);
-
-	prop = RNA_def_float_vector(func, "normal", 3, NULL, -FLT_MAX, FLT_MAX, "Normal",
-	                            "The face normal at the sweep test hit location", -1e4, 1e4);
-	RNA_def_property_flag(prop, PROP_THICK_WRAP);
-	RNA_def_function_output(func, prop);
-
-	prop = RNA_def_int(func, "has_hit", 0, 0, 0, "", "If the function has found collision point, value is 1, otherwise 0", 0, 0);
-	RNA_def_function_output(func, prop);
 }
 
 static void rna_def_rigidbody_object(BlenderRNA *brna)
@@ -771,7 +892,7 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	/* Enums */
 	prop = RNA_def_property(srna, "type", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "type");
-	RNA_def_property_enum_items(prop, rigidbody_object_type_items);
+	RNA_def_property_enum_items(prop, rigidbody_ob_type_items);
 	RNA_def_property_enum_funcs(prop, NULL, "rna_RigidBodyOb_type_set", NULL);
 	RNA_def_property_ui_text(prop, "Type", "Role of object in Rigid Body Simulations");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
@@ -793,8 +914,7 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	
 	prop = RNA_def_property(srna, "collision_shape", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "shape");
-	RNA_def_property_enum_items(prop, rigidbody_object_shape_items);
-	RNA_def_property_enum_funcs(prop, NULL, "rna_RigidBodyOb_shape_set", NULL);
+	RNA_def_property_enum_items(prop, rigidbody_ob_shape_items);
 	RNA_def_property_ui_text(prop, "Collision Shape", "Collision Shape of object in Rigid Body Simulations");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
@@ -832,7 +952,7 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	                         "but can cause glitches)");
 	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
 	
-	prop = RNA_def_property(srna, "use_start_deactivated", PROP_BOOLEAN, PROP_NONE);
+	prop = RNA_def_property(srna, "start_deactivated", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_START_DEACTIVATED);
 	RNA_def_property_ui_text(prop, "Start Deactivated", "Deactivate rigid body at the start of the simulation");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
@@ -936,7 +1056,7 @@ static void rna_def_rigidbody_constraint(BlenderRNA *brna)
 	/* Enums */
 	prop = RNA_def_property(srna, "type", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "type");
-	RNA_def_property_enum_items(prop, rigidbody_constraint_type_items);
+	RNA_def_property_enum_items(prop, rigidbody_con_type_items);
 	RNA_def_property_enum_funcs(prop, NULL, "rna_RigidBodyCon_type_set", NULL);
 	RNA_def_property_ui_text(prop, "Type", "Type of Rigid Body Constraint");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
@@ -987,17 +1107,17 @@ static void rna_def_rigidbody_constraint(BlenderRNA *brna)
 	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
 
 	/* Solver Iterations */
-	prop = RNA_def_property(srna, "use_override_solver_iterations", PROP_BOOLEAN, PROP_NONE);
+	prop = RNA_def_property(srna, "override_solver_iterations", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS);
 	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyCon_override_solver_iterations_set");
 	RNA_def_property_ui_text(prop, "Override Solver Iterations",
 	                         "Override the number of solver iterations for this constraint");
 	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
 
-	prop = RNA_def_property(srna, "solver_iterations", PROP_INT, PROP_NONE);
+	prop = RNA_def_property(srna, "num_solver_iterations", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "num_solver_iterations");
 	RNA_def_property_range(prop, 1, 1000);
-	RNA_def_property_ui_range(prop, 1, 100, 1, -1);
+	RNA_def_property_ui_range(prop, 1, 100, 1, 0);
 	RNA_def_property_int_default(prop, 10);
 	RNA_def_property_int_funcs(prop, NULL, "rna_RigidBodyCon_num_solver_iterations_set", NULL);
 	RNA_def_property_ui_text(prop, "Solver Iterations",

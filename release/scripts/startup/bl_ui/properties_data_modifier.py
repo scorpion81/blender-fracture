@@ -32,6 +32,13 @@ class ModifierButtonsPanel():
 class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
     bl_label = "Modifiers"
 
+    def icon(self, bool):
+        if bool:
+            return 'TRIA_DOWN'
+        else:
+            return 'TRIA_RIGHT'
+
+
     def draw(self, context):
         layout = self.layout
 
@@ -271,12 +278,14 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
             split.prop(md, "use_collapse_triangulate")
         elif decimate_type == 'UNSUBDIV':
             layout.prop(md, "iterations")
-        else:  # decimate_type == 'DISSOLVE':
+        elif decimate_type == 'DISSOLVE':
             layout.prop(md, "angle_limit")
             layout.prop(md, "use_dissolve_boundaries")
             layout.label("Delimit:")
             row = layout.row()
             row.prop(md, "delimit")
+        else:  # decimate_type == 'REMDOUBLES':
+            layout.prop(md, "merge_threshold") 
 
         layout.label(text=iface_("Face Count: %d") % md.face_count, translate=False)
 
@@ -328,25 +337,49 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         split.prop(md, "use_edge_sharp", text="Sharp Edges")
 
     def EXPLODE(self, layout, ob, md):
+        layout.prop(md, "mode")
         split = layout.split()
 
-        col = split.column()
-        col.label(text="Vertex group:")
-        col.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
-        sub = col.column()
-        sub.active = bool(md.vertex_group)
-        sub.prop(md, "protect")
-        col.label(text="Particle UV")
-        col.prop_search(md, "particle_uv", ob.data, "uv_textures", text="")
+        if (md.mode == 'CELLS'):
+            col = split.column()
+            col.label("Point Source:")
+            col.prop(md, "point_source")
+            col.prop(md, "extra_group")
+            if 'OWN_PARTICLES' in md.point_source or 'EXTRA_PARTICLES' in md.point_source:
+                 row = col.row(align=True)
+                 row.label("Particle Mask:")
+                 row.prop(md, "show_unborn")
+                 row.prop(md, "show_alive")
+                 row.prop(md, "show_dead")
+            col.prop(md, "noise")
+            col.prop(md, "percentage")
+            col.prop(md, "use_boolean")
+            if (md.use_boolean == True):
+                col.prop(md, "inner_material")
+            col.prop(md, "use_clipping")
+            col.prop(md, "use_animation")
+            row = col.row(align=True)
+            row.prop(md, "cluster_size")
+            row.prop(md, "cluster_percentage")
+            layout.prop(md, "use_autorefresh")
+            layout.operator("object.explode_refresh", text="Refresh")
+        elif (md.mode == 'FACES'):    
+            col = split.column()
+            col.label(text="Vertex group:")
+            col.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
+            sub = col.column()
+            sub.active = bool(md.vertex_group)
+            sub.prop(md, "protect")
+            col.label(text="Particle UV")
+            col.prop_search(md, "particle_uv", ob.data, "uv_textures", text="")
 
-        col = split.column()
-        col.prop(md, "use_edge_cut")
-        col.prop(md, "show_unborn")
-        col.prop(md, "show_alive")
-        col.prop(md, "show_dead")
-        col.prop(md, "use_size")
-
-        layout.operator("object.explode_refresh", text="Refresh")
+            col = split.column()
+            col.prop(md, "use_edge_cut")
+            col.prop(md, "show_unborn")
+            col.prop(md, "show_alive")
+            col.prop(md, "show_dead")
+            col.prop(md, "use_size")
+            layout.operator("object.explode_refresh", text="Refresh")
 
     def FLUID_SIMULATION(self, layout, ob, md):
         layout.label(text="Settings are inside the Physics tab")
@@ -670,6 +703,51 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
     def PARTICLE_SYSTEM(self, layout, ob, md):
         layout.label(text="Settings can be found inside the Particle context")
 
+    def RIGID_BODY(self, layout, ob, md):
+        #standard stuff
+        layout.operator("object.rigidbody_refresh", text="Refresh All Data")
+        layout.operator("object.rigidbody_constraints_refresh", text="Refresh Constraints Only")
+        layout.label("Constraint Building Settings")
+        layout.prop(md, "use_constraints")
+        layout.prop(md, "contact_dist_meaning")
+        if (md.contact_dist_meaning == 'CELLS') or (md.contact_dist_meaning == 'CELL_CENTROIDS'):
+            layout.prop(md, "cell_size")
+            layout.prop(md, "use_cellbased_sim", text="Use Compounds")
+        layout.prop(md, "contact_dist")
+        layout.label("Constraint Breaking Settings")
+        col = layout.column(align=True)
+        row = col.row(align=True)
+        row.prop(md, "breaking_threshold", text="Threshold")
+        row.prop(md, "breaking_percentage", text="Percentage")
+        row = col.row(align=True)
+        row.prop(md, "breaking_angle", text="Angle")
+        row.prop(md, "breaking_distance", text="Distance")
+        row = layout.row(align=True)
+        row.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")
+        
+        #experimental stuff
+        box = layout.box()
+        box.prop(md, "use_experimental", text="Experimental, use with caution !", icon=self.icon(md.use_experimental), emboss = False)
+        if md.use_experimental:
+            box.prop(md, "use_both_directions")
+            box.prop(md, "disable_self_collision")
+            box.prop(md, "constraint_limit", text="Constraint limit, per MeshIsland")
+            box.prop(md, "constraint_group")
+            box.prop(md, "group_contact_dist")
+            box.prop(md, "inner_constraint_type")
+            box.prop(md, "outer_constraint_type")
+            box.prop(md, "outer_constraint_location")
+            box.prop(md, "use_proportional_limit")
+            box.prop(md, "use_proportional_distance")
+            box.prop(md, "group_breaking_threshold")
+            box.prop(md, "mass_dependent_thresholds")
+            box.prop(md, "dist_dependent_thresholds")
+            box.prop(md, "solver_iterations_override")
+            box.prop(md, "use_proportional_solver_iterations")
+            box.prop(md, "auto_merge")
+            box.prop(md, "auto_merge_dist")
+            box.prop(md, "cluster_breaking_threshold")
+
     def SCREW(self, layout, ob, md):
         split = layout.split()
 
@@ -878,6 +956,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         sub = col.column(align=True)
         sub.prop(md, "scale_x", text="Scale X")
         sub.prop(md, "scale_y", text="Scale Y")
+        
 
     def WARP(self, layout, ob, md):
         use_falloff = (md.falloff_type != 'NONE')
