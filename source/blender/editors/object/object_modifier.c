@@ -2239,37 +2239,35 @@ void OBJECT_OT_laplaciandeform_bind(wmOperatorType *ot)
 
 static bool rigidbody_poll(bContext *C)
 {
-	return false;
-	//return edit_modifier_poll_generic(C, &RNA_RigidBodyModifier, 0);
+	//return false;
+	return edit_modifier_poll_generic(C, &RNA_FractureModifier, 0);
 }
 
 static int rigidbody_refresh_exec(bContext *C, wmOperator *op)
 {
-#if 0
 	Object *obact = ED_object_active_context(C);
 	Scene *scene = CTX_data_scene(C);
 	float cfra = BKE_scene_frame_get(scene);
-	RigidBodyModifierData *rmd;
+	FractureModifierData *rmd;
 	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
 		
-		rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, ob, eModifierType_RigidBody);
+		rmd = (FractureModifierData *)edit_modifier_property_get(op, ob, eModifierType_Fracture);
 		if (!rmd || cfra != scene->rigidbody_world->pointcache->startframe)
 			continue;
 		
-		rmd->refresh = TRUE;
+		rmd->refresh = true;
 		DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
 		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
 	}
 	CTX_DATA_END;
 	
-	rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, obact, eModifierType_RigidBody);
+	rmd = (FractureModifierData * )edit_modifier_property_get(op, obact, eModifierType_Fracture);
 	if (!rmd || cfra != scene->rigidbody_world->pointcache->startframe)
 		return OPERATOR_CANCELLED;
 	
-	rmd->refresh = TRUE;
+	rmd->refresh = true;
 	DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
 	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
-#endif
 	return OPERATOR_FINISHED;
 }
 
@@ -2302,35 +2300,33 @@ void OBJECT_OT_rigidbody_refresh(wmOperatorType *ot)
 
 static int rigidbody_refresh_constraints_exec(bContext *C, wmOperator *op)
 {
-#if 0
 	Object *obact = ED_object_active_context(C);
-	RigidBodyModifierData *rmd;
+	FractureModifierData *rmd;
 	Scene *scene = CTX_data_scene(C);
 	float cfra = BKE_scene_frame_get(scene);
 	
 	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
-		rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, ob, eModifierType_RigidBody);
+		rmd = (FractureModifierData *)edit_modifier_property_get(op, ob, eModifierType_Fracture);
 	
 		if (!rmd || cfra != scene->rigidbody_world->pointcache->startframe)
 			continue;
 	
-		rmd->refresh_constraints = TRUE;
+		rmd->refresh_constraints = true;
 	
 		DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
 		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
 	}
 	CTX_DATA_END;
 	
-	rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, obact, eModifierType_RigidBody);
+	rmd = (FractureModifierData *)edit_modifier_property_get(op, obact, eModifierType_Fracture);
 
 	if (!rmd || cfra != scene->rigidbody_world->pointcache->startframe)
 		return OPERATOR_CANCELLED;
 
-	rmd->refresh_constraints = TRUE;
+	rmd->refresh_constraints = true;
 
 	DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
 	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
-#endif
 
 	return OPERATOR_FINISHED;
 }
@@ -2359,11 +2355,10 @@ void OBJECT_OT_rigidbody_constraints_refresh(wmOperatorType *ot)
 	edit_modifier_properties(ot);
 }
 
-void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, RigidBodyModifierData *rmd, Object* par)
+void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, FractureModifierData *rmd, Object* par)
 {
-#if 0
 	ParticleSystemModifierData *pmd = modifiers_findByType(ob, eModifierType_ParticleSystem);
-	ExplodeModifierData *emd = modifiers_findByType(ob, eModifierType_Explode);
+	//ExplodeModifierData *emd = modifiers_findByType(ob, eModifierType_Explode);
 	Base *base_new, *base_old = BKE_scene_base_find(scene, ob);
 	Object *ob_new = NULL;
 	MeshIsland *mi;
@@ -2371,7 +2366,7 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 	int i = 0, result = 0;
 	
 	//if explo modifier present before, refresh and apply it too (triggers refresh of rmd too)
-	if (emd && rmd) {
+	/*if (emd && rmd) {
 		emd->use_cache = FALSE;
 		rmd->refresh = TRUE;
 		result = modifier_apply_obdata(reports, scene, ob, emd);
@@ -2381,12 +2376,12 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 		//BLI_remlink(&ob->modifiers, emd);
 		//BLI_remlink(&ob->modifiers, rmd);
 	}
-	else if (rmd)
+	else*/ if (rmd)
 	{
 		//apply just rigidbody modifier
-		rmd->refresh = TRUE;
+		rmd->refresh = true;
 		result = modifier_apply_obdata(reports, scene, ob, rmd);
-		rmd->refresh = FALSE;
+		rmd->refresh = false;
 		//BLI_remlink(&ob->modifiers, rmd);
 	}
 	
@@ -2403,29 +2398,29 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 		Object** objs = MEM_callocN(sizeof(Object*) * count, "convert_objs");
 		float max_con_mass = 0;
 		float min_con_dist = FLT_MAX;
-		rmd->refresh = FALSE;
+		rmd->refresh = false;
 	
 		for (mi = rmd->meshIslands.first; mi; mi = mi->next)
 		{
 			float cent[3];
-			RigidBodyModifierData *rmd; 
-			ExplodeModifierData *emd2;
+			FractureModifierData *rmd;
+			//ExplodeModifierData *emd2;
 			BMesh *bm;
 			
 			//create separate objects for meshislands
 			base_new = ED_object_add_duplicate(G.main, scene, base_old, USER_DUP_MESH);
 			//ob_new = BKE_object_add(G.main, scene, OB_MESH);
 			ob_new = base_new->object;
-			rmd = modifiers_findByType(ob_new, eModifierType_RigidBody);
-			emd2 = modifiers_findByType(ob_new, eModifierType_Explode);
+			rmd = modifiers_findByType(ob_new, eModifierType_Fracture);
+			//emd2 = modifiers_findByType(ob_new, eModifierType_Explode);
 			
 			//remove duplicated modifiers now
-			if (emd2)
+			/*if (emd2)
 			{
 				emd2->tempOb = NULL;
 				BLI_remlink(&ob_new->modifiers, emd2);
 				modifier_free(emd2);
-			}
+			}*/
 			
 			if (rmd)
 			{
@@ -2437,13 +2432,13 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			
 			//converting to bmesh first retains the textures
 			bm = DM_to_bmesh(mi->physics_mesh, true);
-			if (emd && emd->mode == eFractureMode_Cells)
+			/*if (emd && emd->mode == eFractureMode_Cells)
 			{
-				/*BMO_op_callf(bm,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), 
+				*BMO_op_callf(bm,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 						 "dissolve_limit edges=%ae verts=%av angle_limit=%f use_dissolve_boundaries=%b",
-						 BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);*/
+						 BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);*
 				BM_mesh_decimate_dissolve(bm, 0.087f, false, 0);
-			}
+			}*/
 			
 			BM_mesh_bm_to_me(bm, ob_new->data, false);
 			BM_mesh_free(bm);
@@ -2460,7 +2455,7 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			ob_new->rigidbody_object->mass = mi->rigidbody->mass;
 			
 			//store obj indexes in kdtree and objs in array
-			BLI_kdtree_insert(objtree, i, mi->centroid, NULL);
+			BLI_kdtree_insert(objtree, i, mi->centroid);
 			objs[i] = ob_new;
 			i++;
 			
@@ -2492,8 +2487,8 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 		
 		for (con = rmd->meshConstraints.first; con; con = con->next)
 		{
-			int index1 = BLI_kdtree_find_nearest(objtree, con->mi1->centroid, NULL, NULL);
-			int index2 =  BLI_kdtree_find_nearest(objtree, con->mi2->centroid, NULL, NULL);
+			int index1 = BLI_kdtree_find_nearest(objtree, con->mi1->centroid, NULL);
+			int index2 =  BLI_kdtree_find_nearest(objtree, con->mi2->centroid, NULL);
 			Object* ob1 = objs[index1];
 			Object* ob2 = objs[index2];
 			Object* rbcon = BKE_object_add(G.main, scene, OB_EMPTY);
@@ -2552,12 +2547,12 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 		
 		
 		//remove original modifiers now
-		if (emd)
+		/*if (emd)
 		{
 			emd->tempOb = NULL;
 			BLI_remlink(&ob->modifiers, emd);
 			modifier_free(emd);
-		}
+		}*/
 		
 		if (rmd)
 		{
@@ -2576,17 +2571,16 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 		// free array and kdtree
 		MEM_freeN(objs);
 		BLI_kdtree_free(objtree);
-#endif
+	}
 }
 
 static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 {
-#if 0
 	Object *obact = ED_object_active_context(C);
 	Scene *scene = CTX_data_scene(C);
 	Main* bmain = CTX_data_main(C);
 	float cfra = BKE_scene_frame_get(scene);
-	RigidBodyModifierData *rmd;
+	FractureModifierData *rmd;
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	bool selected = false;
 	bool parent = true; // RNA_boolean_get(op->ptr, "parent");
@@ -2595,7 +2589,7 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
 		
 		Base *base = BKE_scene_base_find(scene, ob);
-		rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, ob, eModifierType_RigidBody);
+		rmd = (FractureModifierData *)edit_modifier_property_get(op, ob, eModifierType_Fracture);
 		selected = true;
 		if (!rmd || cfra != scene->rigidbody_world->pointcache->startframe)
 			continue;
@@ -2623,7 +2617,7 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 	
 	if (!selected)
 	{
-		rmd = (RigidBodyModifierData *)edit_modifier_property_get(op, obact, eModifierType_RigidBody);
+		rmd = (FractureModifierData *)edit_modifier_property_get(op, obact, eModifierType_Fracture);
 		if (rmd && cfra == scene->rigidbody_world->pointcache->startframe) {
 			float loc[3];
 			Base *base = BKE_scene_base_find(scene, obact);
@@ -2676,7 +2670,6 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 	WM_event_add_notifier(C, NC_SCENE | ND_LAYER_CONTENT, scene);
 	
 	//WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, scene);
-#endif
 	return OPERATOR_FINISHED;
 }
 

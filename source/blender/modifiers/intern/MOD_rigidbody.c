@@ -2425,6 +2425,7 @@ static void create_constraints(RigidBodyModifierData *rmd, Object* ob)
 	MEM_freeN(mesh_islands);
 }
 
+/*
 BMFace* findClosestFace(KDTree* tree, BMesh* bm, BMFace* f)
 {
 	int index;
@@ -2590,7 +2591,7 @@ void check_face_draw_by_proximity(RigidBodyModifierData* rmd, BMesh* merge_copy)
 
 	BLI_kdtree_free(tree);
 	tree = NULL;
-}
+}*/
 
 void buildCompounds(RigidBodyModifierData* rmd, Object *ob)
 {

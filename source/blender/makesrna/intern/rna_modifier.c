@@ -47,6 +47,7 @@
 #include "BKE_dynamicpaint.h"
 #include "BKE_multires.h"
 #include "BKE_smoke.h" /* For smokeModifier_free & smokeModifier_createType */
+#include "BKE_rigidbody.h"
 
 #include "RNA_define.h"
 #include "RNA_enum_types.h"
@@ -660,27 +661,27 @@ static void rna_UVWarpModifier_uvlayer_set(PointerRNA *ptr, const char *value)
 	rna_object_uvlayer_name_set(ptr, value, umd->uvlayer_name, sizeof(umd->uvlayer_name));
 }
 
-static void updateConstraints(RigidBodyModifierData *rmd, Object* ob) {
+static void updateConstraints(FractureModifierData *rmd, Object* ob) {
 	RigidBodyShardCon *rbsc;
 	int index1, index2;
 	float max_con_mass = 0, min_con_dist = FLT_MAX;
 	int iterations;
 
 	if (rmd->mass_dependent_thresholds) {
-		max_con_mass = 0;// BKE_rigidbody_calc_max_con_mass(ob);
+		max_con_mass = BKE_rigidbody_calc_max_con_mass(ob);
 	}
 
 	if (rmd->dist_dependent_thresholds) {
-		min_con_dist = 0; //BKE_rigidbody_calc_min_con_dist(ob);
+		min_con_dist = BKE_rigidbody_calc_min_con_dist(ob);
 	}
 
 	for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
-		index1 = BLI_findindex(&rmd->meshIslands, rbsc->mi1);
+		/*index1 = BLI_findindex(&rmd->meshIslands, rbsc->mi1);
 		index2 = BLI_findindex(&rmd->meshIslands, rbsc->mi2);
 		if ((index1 == -1) || (index2 == -1)) {
 			rbsc->breaking_threshold = rmd->group_breaking_threshold;
 		}
-		else
+		else*/
 		{
 			rbsc->breaking_threshold = rmd->breaking_threshold;
 		}
@@ -695,7 +696,7 @@ static void updateConstraints(RigidBodyModifierData *rmd, Object* ob) {
 		}
 
 		if (((rmd->mass_dependent_thresholds) || (rmd->dist_dependent_thresholds)) && (rbsc->breaking_threshold > 0)) {
-			//BKE_rigidbody_calc_threshold(max_con_mass, min_con_dist, rmd, rbsc);
+			BKE_rigidbody_calc_threshold(max_con_mass, min_con_dist, rmd, rbsc);
 		}
 		
 		
@@ -737,7 +738,7 @@ static void updateConstraints(RigidBodyModifierData *rmd, Object* ob) {
 
 static void rna_RigidBodyModifier_threshold_set(PointerRNA *ptr, float value)
 {
-	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	Object* ob = ptr->id.data;
 	rmd->breaking_threshold = value;
 	updateConstraints(rmd, ob);
@@ -745,7 +746,7 @@ static void rna_RigidBodyModifier_threshold_set(PointerRNA *ptr, float value)
 
 static void rna_RigidBodyModifier_contact_dist_set(PointerRNA *ptr, float value)
 {
-	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	Object* ob = ptr->id.data;
 	rmd->contact_dist = value;
 	updateConstraints(rmd, ob);
@@ -753,7 +754,7 @@ static void rna_RigidBodyModifier_contact_dist_set(PointerRNA *ptr, float value)
 
 static void rna_RigidBodyModifier_use_constraints_set(PointerRNA* ptr, int value)
 {
-	RigidBodyModifierData *rmd = (RigidBodyModifierData *)ptr->data;
+	FractureModifierData *rmd = (FractureModifierData *)ptr->data;
 	rmd->use_constraints = value;
 	if (rmd->use_cellbased_sim)
 	{
@@ -783,9 +784,9 @@ static void rna_ExplodeModifier_percentage_set(PointerRNA *ptr, int value)
 //	emd->percentage = value;
 }
 
-static void rna_RigidBodyModifier_group_threshold_set(PointerRNA *ptr, float value)
+/*static void rna_RigidBodyModifier_group_threshold_set(PointerRNA *ptr, float value)
 {
-	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	Object* ob = ptr->id.data;
 	rmd->group_breaking_threshold = value;
 	updateConstraints(rmd, ob);
@@ -793,21 +794,21 @@ static void rna_RigidBodyModifier_group_threshold_set(PointerRNA *ptr, float val
 
 static void rna_RigidBodyModifier_group_contact_dist_set(PointerRNA *ptr, float value)
 {
-	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	Object* ob = ptr->id.data;
 	rmd->group_contact_dist = value;
 	updateConstraints(rmd, ob);
-}
+}*/
 
 static void rna_RigidBodyModifier_mass_dependent_thresholds_set(PointerRNA* ptr, int value)
 {
-	RigidBodyModifierData *rmd = (RigidBodyModifierData *)ptr->data;
+	FractureModifierData *rmd = (FractureModifierData *)ptr->data;
 	Object* ob = ptr->id.data;
 	rmd->mass_dependent_thresholds = value;
 	updateConstraints(rmd, ob);
 }
 
-static void rna_RigidBodyModifier_auto_merge_set(PointerRNA* ptr, int value)
+/*static void rna_RigidBodyModifier_auto_merge_set(PointerRNA* ptr, int value)
 {
 	RigidBodyModifierData *rmd = (RigidBodyModifierData *)ptr->data;
 	rmd->auto_merge = value;
@@ -819,11 +820,11 @@ static void rna_RigidBodyModifier_auto_merge_dist_set(PointerRNA *ptr, float val
 	Object* ob = ptr->id.data;
 	rmd->auto_merge_dist = value;
 	updateConstraints(rmd, ob);
-}
+}*/
 
 static void rna_RigidBodyModifier_constraint_limit_set(PointerRNA *ptr, int value)
 {
-	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	rmd->constraint_limit = value;
 	if (rmd->use_cellbased_sim)
 	{
@@ -833,7 +834,7 @@ static void rna_RigidBodyModifier_constraint_limit_set(PointerRNA *ptr, int valu
 
 static void rna_RigidBodyModifier_dist_dependent_thresholds_set(PointerRNA* ptr, int value)
 {
-	RigidBodyModifierData *rmd = (RigidBodyModifierData *)ptr->data;
+	FractureModifierData *rmd = (FractureModifierData *)ptr->data;
 	Object* ob = ptr->id.data;
 	rmd->dist_dependent_thresholds = value;
 	updateConstraints(rmd, ob);
@@ -841,7 +842,7 @@ static void rna_RigidBodyModifier_dist_dependent_thresholds_set(PointerRNA* ptr,
 
 static void rna_RigidBodyModifier_breaking_percentage_set(PointerRNA *ptr, int value)
 {
-	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	Object* ob = ptr->id.data;
 	rmd->breaking_percentage = value;
 	updateConstraints(rmd, ob);
@@ -849,7 +850,7 @@ static void rna_RigidBodyModifier_breaking_percentage_set(PointerRNA *ptr, int v
 
 static void rna_RigidBodyModifier_breaking_angle_set(PointerRNA *ptr, int value)
 {
-	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	Object* ob = ptr->id.data;
 	rmd->breaking_angle = value;
 	updateConstraints(rmd, ob);
@@ -857,7 +858,7 @@ static void rna_RigidBodyModifier_breaking_angle_set(PointerRNA *ptr, int value)
 
 static void rna_RigidBodyModifier_breaking_distance_set(PointerRNA *ptr, float value)
 {
-	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	Object* ob = ptr->id.data;
 	rmd->breaking_distance = value;
 	updateConstraints(rmd, ob);
@@ -865,7 +866,7 @@ static void rna_RigidBodyModifier_breaking_distance_set(PointerRNA *ptr, float v
 
 static void rna_RigidBodyModifier_cell_size_set(PointerRNA *ptr, float value)
 {
-	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	Object* ob = ptr->id.data;
 	rmd->cell_size = value;
 	if (rmd->use_cellbased_sim)
@@ -876,7 +877,7 @@ static void rna_RigidBodyModifier_cell_size_set(PointerRNA *ptr, float value)
 
 static void rna_RigidBodyModifier_cluster_threshold_set(PointerRNA *ptr, float value)
 {
-	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	Object* ob = ptr->id.data;
 	rmd->cluster_breaking_threshold = value;
 	updateConstraints(rmd, ob);
@@ -884,7 +885,7 @@ static void rna_RigidBodyModifier_cluster_threshold_set(PointerRNA *ptr, float v
 
 static void rna_RigidBodyModifier_solver_iterations_override_set(PointerRNA *ptr, float value)
 {
-	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	Object* ob = ptr->id.data;
 	rmd->solver_iterations_override = value;
 	updateConstraints(rmd, ob);
@@ -892,7 +893,7 @@ static void rna_RigidBodyModifier_solver_iterations_override_set(PointerRNA *ptr
 
 static void rna_RigidBodyModifier_proportional_solver_iterations_override_set(PointerRNA *ptr, int value)
 {
-	RigidBodyModifierData *rmd = (RigidBodyModifierData*)ptr->data;
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	Object* ob = ptr->id.data;
 	rmd->use_proportional_solver_iterations = value;
 	updateConstraints(rmd, ob);
@@ -3883,7 +3884,7 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 
-	static EnumPropertyItem prop_constraint_loc[] = {
+	/*static EnumPropertyItem prop_constraint_loc[] = {
 		{MOD_RIGIDBODY_SELECTED, "SELECTED", 0, "Slave", "Place constraint at selected object"},
 		{MOD_RIGIDBODY_ACTIVE, "ACTIVE", 0, "Master", "Place constraint at active object"},
 		{MOD_RIGIDBODY_CENTER, "CENTER", 0, "Center", "Place Constraint between selected and active object"},
@@ -3894,7 +3895,7 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 		{MOD_RIGIDBODY_SELECTED_TO_ACTIVE, "SELECTED_TO_ACTIVE", 0, "Selected to Active", "Connect selected objects to active object"},
 		{MOD_RIGIDBODY_CHAIN_DISTANCE, "CHAIN_DISTANCE", 0, "Chain Distance", "Build a chain of objects"},
 		{0, NULL, 0, NULL, NULL}
-	};
+	};*/
 
 	static EnumPropertyItem prop_contact_dist[] = {
 		{MOD_RIGIDBODY_CENTROIDS, "CENTROIDS", 0, "Centroids", ""},
@@ -3985,7 +3986,7 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Inner Constraint Pattern", "");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
 
-	prop = RNA_def_property(srna, "outer_constraint_type", PROP_ENUM, PROP_NONE);
+/*	prop = RNA_def_property(srna, "outer_constraint_type", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "outer_constraint_type");
 	RNA_def_property_enum_items(prop, prop_constraint_types);
 	RNA_def_property_ui_text(prop, "Outer Constraint Type", "");
@@ -3995,7 +3996,7 @@ static void rna_def_modifier_rigidbody(BlenderRNA *brna)
 	RNA_def_property_enum_sdna(prop, NULL, "outer_constraint_location");
 	RNA_def_property_enum_items(prop, prop_constraint_loc);
 	RNA_def_property_ui_text(prop, "Outer Constraint Location", "");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
 
 	/*prop = RNA_def_property(srna, "outer_constraint_pattern", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "outer_constraint_pattern");

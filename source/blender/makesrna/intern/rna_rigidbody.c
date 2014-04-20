@@ -152,66 +152,11 @@ static void rna_RigidBodyWorld_split_impulse_set(PointerRNA *ptr, int value)
 void foreach_shard_float(Object* ob, float value, void (*func)(RigidBodyOb* rbo, float value))
 {
 	ModifierData *md;
-	RigidBodyModifierData* rmd;
+	FractureModifierData* rmd;
 	MeshIsland* mi;
-	/*
 	for (md = ob->modifiers.first; md; md = md->next) {
-		if (md->type == eModifierType_RigidBody) {
-			rmd = (RigidBodyModifierData*)md;
-			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
-				if (mi->rigidbody != NULL) {
-					func(mi->rigidbody, value);
-				}
-			}
-		}
-	}*/
-}
-
-void foreach_shard_mass(Object* ob)
-{
-	ModifierData *md;
-	RigidBodyModifierData* rmd;
-	MeshIsland* mi;
-	/*
-	for (md = ob->modifiers.first; md; md = md->next) {
-		if (md->type == eModifierType_RigidBody) {
-			rmd = (RigidBodyModifierData*)md;
-			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
-				if (mi->rigidbody != NULL) {
-					BKE_rigidbody_calc_shard_mass(ob, mi);
-				}
-			}
-		}
-	}*/
-}
-
-void foreach_shard_int(Object* ob, int value, void (*func)(RigidBodyOb* rbo, int value))
-{
-	ModifierData *md;
-	RigidBodyModifierData* rmd;
-	MeshIsland* mi;
-	/*
-	for (md = ob->modifiers.first; md; md = md->next) {
-		if (md->type == eModifierType_RigidBody) {
-			rmd = (RigidBodyModifierData*)md;
-			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
-				if (mi->rigidbody != NULL) {
-					func(mi->rigidbody, value);
-				}
-			}
-		}
-	}*/
-}
-
-void foreach_shard_ints(Object* ob, const int* value, void (*func)(RigidBodyOb* rbo, const int* value))
-{
-	ModifierData *md;
-	RigidBodyModifierData* rmd;
-	MeshIsland* mi;
-/*
-	for (md = ob->modifiers.first; md; md = md->next) {
-		if (md->type == eModifierType_RigidBody) {
-			rmd = (RigidBodyModifierData*)md;
+		if (md->type == eModifierType_Fracture) {
+			rmd = (FractureModifierData*)md;
 			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 				if (mi->rigidbody != NULL) {
 					func(mi->rigidbody, value);
@@ -219,18 +164,70 @@ void foreach_shard_ints(Object* ob, const int* value, void (*func)(RigidBodyOb* 
 			}
 		}
 	}
-*/
+}
+
+void foreach_shard_mass(Object* ob)
+{
+	ModifierData *md;
+	FractureModifierData* rmd;
+	MeshIsland* mi;
+
+	for (md = ob->modifiers.first; md; md = md->next) {
+		if (md->type == eModifierType_Fracture) {
+			rmd = (FractureModifierData*)md;
+			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+				if (mi->rigidbody != NULL) {
+					BKE_rigidbody_calc_shard_mass(ob, mi);
+				}
+			}
+		}
+	}
+}
+
+void foreach_shard_int(Object* ob, int value, void (*func)(RigidBodyOb* rbo, int value))
+{
+	ModifierData *md;
+	FractureModifierData* rmd;
+	MeshIsland* mi;
+	for (md = ob->modifiers.first; md; md = md->next) {
+		if (md->type == eModifierType_Fracture) {
+			rmd = (FractureModifierData*)md;
+			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+				if (mi->rigidbody != NULL) {
+					func(mi->rigidbody, value);
+				}
+			}
+		}
+	}
+}
+
+void foreach_shard_ints(Object* ob, const int* value, void (*func)(RigidBodyOb* rbo, const int* value))
+{
+	ModifierData *md;
+	FractureModifierData* rmd;
+	MeshIsland* mi;
+
+	for (md = ob->modifiers.first; md; md = md->next) {
+		if (md->type == eModifierType_Fracture) {
+			rmd = (FractureModifierData*)md;
+			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+				if (mi->rigidbody != NULL) {
+					func(mi->rigidbody, value);
+				}
+			}
+		}
+	}
 }
 
 void foreach_shard_flag_shape(Object* ob, int val1, short val2, int reset)
 {
 	ModifierData *md;
-	RigidBodyModifierData* rmd;
+	FractureModifierData* rmd;
 	MeshIsland* mi;
-/*
+
 	for (md = ob->modifiers.first; md; md = md->next) {
-		if (md->type == eModifierType_RigidBody) {
-			rmd = (RigidBodyModifierData*)md;
+		if (md->type == eModifierType_Fracture) {
+			rmd = (FractureModifierData*)md;
 			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 				if (mi->rigidbody != NULL) {
 					mi->rigidbody->flag = val1;
@@ -243,7 +240,6 @@ void foreach_shard_flag_shape(Object* ob, int val1, short val2, int reset)
 			}
 		}
 	}
-*/
 }
 
 

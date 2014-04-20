@@ -97,7 +97,7 @@ void BKE_fracture_release_dm(struct FractureModifierData *fmd);
 void BKE_fracture_create_dm(struct FractureModifierData *fmd, bool do_merge);
 struct DerivedMesh *BKE_shard_create_dm(struct Shard *s);
 
-void BKE_shard_assign_material(Shard* s, short mat_nr);
+void BKE_shard_assign_material(struct Shard* s, short mat_nr);
 
 /*** Bullet API erweiterungen für fracturing ***/
 
@@ -110,7 +110,7 @@ void BKE_shard_assign_material(Shard* s, short mat_nr);
 // dann muss der caller über alle shards loopen um die neuen sub-shards zu behandeln
 
 // erzeuge shards aus dem basis mesh und einer liste von points (nicht weiter spezifiziert, können auch particles oder so sein)
-void BKE_fracture_shard_by_points(struct FracMesh *fmesh, ShardID id, struct FracPointCloud *points, int algorithm, Object *obj, struct DerivedMesh *dm);
+void BKE_fracture_shard_by_points(struct FracMesh *fmesh, ShardID id, struct FracPointCloud *points, int algorithm, struct Object *obj, struct DerivedMesh *dm);
 
 // Zerbreche ein einzelnes shard basierend auf collision
 // btManifoldPoint ist eine Bullet class, das sollte wahrscheinlich etwas abstrahiert werden

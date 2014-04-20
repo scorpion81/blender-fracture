@@ -83,10 +83,9 @@
 
 #ifdef WITH_BULLET
 
-
-/*static bool isModifierActive(RigidBodyModifierData* rmd) {
-	return ((rmd != NULL) && (rmd->modifier.mode & eModifierMode_Realtime) && (rmd->refresh == FALSE));// rmd->modifier.mode & eModifierMode_Render));
-}*/
+static bool isModifierActive(FractureModifierData* rmd) {
+	return ((rmd != NULL) && (rmd->modifier.mode & eModifierMode_Realtime) && (rmd->refresh == false));// rmd->modifier.mode & eModifierMode_Render));
+}
 
 void calc_dist_angle(RigidBodyShardCon* con, float* dist, float* angle)
 {
@@ -121,15 +120,14 @@ void BKE_rigidbody_start_dist_angle(RigidBodyShardCon* con)
 
 float BKE_rigidbody_calc_max_con_mass(Object* ob)
 {
-	RigidBodyModifierData *rmd;
+	FractureModifierData *rmd;
 	ModifierData *md;
 	RigidBodyShardCon *con;
 	float max_con_mass = 0, con_mass;
 
-#if 0
 	for (md = ob->modifiers.first; md; md = md->next) {
-		if (md->type == eModifierType_RigidBody) {
-			rmd = (RigidBodyModifierData*)md;
+		if (md->type == eModifierType_Fracture) {
+			rmd = (FractureModifierData*)md;
 			for (con = rmd->meshConstraints.first; con; con = con->next) {
 				if ((con->mi1 != NULL && con->mi1->rigidbody != NULL) &&
 				(con->mi2 != NULL && con->mi2->rigidbody != NULL)) {
@@ -143,22 +141,20 @@ float BKE_rigidbody_calc_max_con_mass(Object* ob)
 			return max_con_mass;
 		}
 	}
-#endif
 
 	return 0;
 }
 
 float BKE_rigidbody_calc_min_con_dist(Object* ob)
 {
-	RigidBodyModifierData *rmd;
+	FractureModifierData *rmd;
 	ModifierData *md;
 	RigidBodyShardCon *con;
 	float min_con_dist = FLT_MAX, con_dist, con_vec[3];
 
-#if 0
 	for (md = ob->modifiers.first; md; md = md->next) {
-		if (md->type == eModifierType_RigidBody) {
-			rmd = (RigidBodyModifierData*)md;
+		if (md->type == eModifierType_Fracture) {
+			rmd = (FractureModifierData*)md;
 			for (con = rmd->meshConstraints.first; con; con = con->next) {
 				if ((con->mi1 != NULL && con->mi1->rigidbody != NULL) &&
 						(con->mi2 != NULL && con->mi2->rigidbody != NULL)) {
@@ -173,13 +169,12 @@ float BKE_rigidbody_calc_min_con_dist(Object* ob)
 			return min_con_dist;
 		}
 	}
-#endif
 
 	return FLT_MAX;
 }
 
 
-void BKE_rigidbody_calc_threshold(float max_con_mass, float min_con_dist,  RigidBodyModifierData *rmd, RigidBodyShardCon *con) {
+void BKE_rigidbody_calc_threshold(float max_con_mass, float min_con_dist, FractureModifierData *rmd, RigidBodyShardCon *con) {
 
 	float max_thresh, thresh, con_mass, con_dist, con_vec[3];
 	if ((max_con_mass == 0) && (rmd->mass_dependent_thresholds))
@@ -197,7 +192,7 @@ void BKE_rigidbody_calc_threshold(float max_con_mass, float min_con_dist,  Rigid
 		return;
 	}
 
-	max_thresh = ((con->mi1->parent_mod == con->mi2->parent_mod) ? con->mi1->parent_mod->breaking_threshold : rmd->group_breaking_threshold);
+	max_thresh = rmd->breaking_threshold; //((con->mi1->parent_mod == con->mi2->parent_mod) ? con->mi1->parent_mod->breaking_threshold :rmd->group_breaking_threshold);
 	if ((con->mi1->rigidbody != NULL) && (con->mi2->rigidbody != NULL)) {
 		con_mass = con->mi1->rigidbody->mass + con->mi2->rigidbody->mass;
 		sub_v3_v3v3(con_vec, con->mi1->centroid, con->mi2->centroid);
@@ -378,9 +373,8 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland* mi)
 }
 
 
-void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], float rot[4], float cfra, bool baked)
+void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], float rot[4], float cfra, bool baked, FractureModifierData* rmd)
 {
-#if 0
 	float startco[3], centr[3], size[3];
 	int i, j;
 	bool invalidData, invalidFrame, invalidBake, invalidBakeFrame;
@@ -438,7 +432,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 		vert = mi->vertices_cached[j];
 		if (vert == NULL) continue;
 		if (vert->co == NULL) break;
-		if (mi->parent_mod->refresh == TRUE) break; 
+		if (rmd->refresh == true) break;
 		//if refresh in progress, dont try to access stuff here
 
 		//reset to original coords // stored at fracture time
@@ -456,7 +450,6 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 		add_v3_v3(vert->co, loc);
 		mul_m4_v3(ob->imat, vert->co);
 	}
-#endif
 }
 
 /* ************************************** */
@@ -688,80 +681,90 @@ static rbCollisionShape *rigidbody_get_shape_convexhull_from_mesh(Mesh* me, floa
 /* create collision shape of mesh - triangulated mesh
  * returns NULL if creation fails.
  */
-static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh_shard(Mesh *me, Object *ob)
+static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh_shard(Mesh* me, Object *ob)
 {
 	rbCollisionShape *shape = NULL;
-	DerivedMesh *dm = CDDM_from_mesh(me);
 
-	MVert *mvert;
-	MFace *mface;
-	int totvert;
-	int totface;
+	if (ob->type == OB_MESH) {
+		DerivedMesh *dm = NULL;
+		MVert *mvert;
+		MFace *mface;
+		int totvert;
+		int totface;
+		int tottris = 0;
+		int triangle_index = 0;
 
-	/* ensure mesh validity, then grab data */
-	DM_ensure_tessface(dm);
+		dm = CDDM_from_mesh(me);
 
-	mvert   = (dm) ? dm->getVertArray(dm) : NULL;
-	totvert = (dm) ? dm->getNumVerts(dm) : 0;
-	mface   = (dm) ? dm->getTessFaceArray(dm) : NULL;
-	totface = (dm) ? dm->getNumTessFaces(dm) : 0;
+		/* ensure mesh validity, then grab data */
+		if (dm == NULL)
+			return NULL;
 
-	/* sanity checking - potential case when no data will be present */
-	if ((totvert == 0) || (totface == 0)) {
-		printf("WARNING: no geometry data converted for Mesh Collision Shape (ob = %s)\n", ob->id.name + 2);
-	}
-	else {
-		rbMeshData *mdata;
-		int i;
+		DM_ensure_tessface(dm);
 
-		/* init mesh data for collision shape */
-		mdata = RB_trimesh_data_new(totface, totvert);
+		mvert   = (dm) ? dm->getVertArray(dm) : NULL;
+		totvert = (dm) ? dm->getNumVerts(dm) : 0;
+		mface   = (dm) ? dm->getTessFaceArray(dm) : NULL;
+		totface = (dm) ? dm->getNumTessFaces(dm) : 0;
 
-		/* loop over all faces, adding them as triangles to the collision shape
-		 * (so for some faces, more than triangle will get added)
-		 */
-#if 0
-		for (i = 0; (i < totface) && (mface) && (mvert); i++, mface++) {
-			/* add first triangle - verts 1,2,3 */
-			{
-				MVert *va = (IN_RANGE(mface->v1, 0, totvert)) ? (mvert + mface->v1) : (mvert);
-				MVert *vb = (IN_RANGE(mface->v2, 0, totvert)) ? (mvert + mface->v2) : (mvert);
-				MVert *vc = (IN_RANGE(mface->v3, 0, totvert)) ? (mvert + mface->v3) : (mvert);
-
-				RB_trimesh_add_triangle(mdata, va->co, vb->co, vc->co);
-			}
-
-			/* add second triangle if needed - verts 1,3,4 */
-			if (mface->v4) {
-				MVert *va = (IN_RANGE(mface->v1, 0, totvert)) ? (mvert + mface->v1) : (mvert);
-				MVert *vb = (IN_RANGE(mface->v3, 0, totvert)) ? (mvert + mface->v3) : (mvert);
-				MVert *vc = (IN_RANGE(mface->v4, 0, totvert)) ? (mvert + mface->v4) : (mvert);
-
-				RB_trimesh_add_triangle(mdata, va->co, vb->co, vc->co);
-			}
-		}
-#endif
-
-		/* construct collision shape
-		 *
-		 * These have been chosen to get better speed/accuracy tradeoffs with regards
-		 * to limitations of each:
-		 *    - BVH-Triangle Mesh: for passive objects only. Despite having greater
-		 *                         speed/accuracy, they cannot be used for moving objects.
-		 *    - GImpact Mesh:      for active objects. These are slower and less stable,
-		 *                         but are more flexible for general usage.
-		 */
-		if (ob->rigidbody_object->type == RBO_TYPE_PASSIVE) {
-			shape = RB_shape_new_trimesh(mdata);
+		/* sanity checking - potential case when no data will be present */
+		if ((totvert == 0) || (totface == 0)) {
+			printf("WARNING: no geometry data converted for Mesh Collision Shape (ob = %s)\n", ob->id.name + 2);
 		}
 		else {
-			shape = RB_shape_new_gimpact_mesh(mdata);
+			rbMeshData *mdata;
+			int i;
+
+			/* count triangles */
+			for (i = 0; i < totface; i++) {
+				(mface[i].v4) ? (tottris += 2) : (tottris += 1);
+			}
+
+			/* init mesh data for collision shape */
+			mdata = RB_trimesh_data_new(tottris, totvert);
+
+			RB_trimesh_add_vertices(mdata, (float *)mvert, totvert, sizeof(MVert));
+
+			/* loop over all faces, adding them as triangles to the collision shape
+			 * (so for some faces, more than triangle will get added)
+			 */
+			for (i = 0; (i < totface) && (mface) && (mvert); i++, mface++) {
+				/* add first triangle - verts 1,2,3 */
+				RB_trimesh_add_triangle_indices(mdata, triangle_index, mface->v1, mface->v2, mface->v3);
+				triangle_index++;
+
+				/* add second triangle if needed - verts 1,3,4 */
+				if (mface->v4) {
+					RB_trimesh_add_triangle_indices(mdata, triangle_index, mface->v1, mface->v3, mface->v4);
+					triangle_index++;
+				}
+			}
+			RB_trimesh_finish(mdata);
+
+			/* construct collision shape
+			 *
+			 * These have been chosen to get better speed/accuracy tradeoffs with regards
+			 * to limitations of each:
+			 *    - BVH-Triangle Mesh: for passive objects only. Despite having greater
+			 *                         speed/accuracy, they cannot be used for moving objects.
+			 *    - GImpact Mesh:      for active objects. These are slower and less stable,
+			 *                         but are more flexible for general usage.
+			 */
+			if (ob->rigidbody_object->type == RBO_TYPE_PASSIVE) {
+				shape = RB_shape_new_trimesh(mdata);
+			}
+			else {
+				shape = RB_shape_new_gimpact_mesh(mdata);
+			}
+		}
+
+		/* cleanup temp data */
+		if (dm && ob->rigidbody_object->mesh_source == RBO_MESH_BASE) {
+			dm->release(dm);
 		}
 	}
-
-	/* cleanup temp data */
-	if (dm) {
-		dm->release(dm);
+	else {
+		printf("ERROR: cannot make Triangular Mesh collision shape for non-Mesh object\n");
 	}
 
 	return shape;
@@ -2219,20 +2222,19 @@ void BKE_rigidbody_remove_object(Scene *scene, Object *ob)
 	RigidBodyCon *rbc;
 	GroupObject *go;
 	ModifierData* md;
-	RigidBodyModifierData* rmd;
+	FractureModifierData* rmd;
 	RigidBodyShardCon* con;
 	MeshIsland* mi;
 	int i;
 	bool modFound = false;
 
 	if (rbw) {
-#if 0
 		for (md = ob->modifiers.first; md; md = md->next) {
 
-			if (md->type == eModifierType_RigidBody)
+			if (md->type == eModifierType_Fracture)
 			{
-				rmd = (RigidBodyModifierData*)md;
-				modFound = TRUE;
+				rmd = (FractureModifierData*)md;
+				modFound = true;
 				for (con = rmd->meshConstraints.first; con; con = con->next) {
 					if (rbw && rbw->physics_world && con->physics_constraint) {
 						RB_dworld_remove_constraint(rbw->physics_world, con->physics_constraint);
@@ -2264,7 +2266,7 @@ void BKE_rigidbody_remove_object(Scene *scene, Object *ob)
 				}
 			}
 		}
-#endif
+
 		if (!modFound) {
 			/* remove from rigidbody world, free object won't do this */
 			if (rbw->physics_world && rbo->physics_object)
@@ -2339,14 +2341,12 @@ static int rigidbody_count_regular_objects(ListBase obs)
 
 	for (gob = obs.first; gob; gob = gob->next) {
 		count++;
-#if 0
 		for (md = gob->ob->modifiers.first; md; md = md->next) {
-			if (md->type == eModifierType_RigidBody) {
+			if (md->type == eModifierType_Fracture) {
 				count--;
 				break;
 			}
 		}
-#endif
 	}
 	return count;
 }
@@ -2356,19 +2356,17 @@ static int rigidbody_count_shards(ListBase obs)
 	int count = 0;
 	struct GroupObject *gob = NULL;
 	struct ModifierData *md = NULL;
-#if 0
-	struct RigidBodyModifierData *rmd = NULL;
+	struct FractureModifierData *rmd = NULL;
 
 	for (gob = obs.first; gob; gob = gob->next) {
 		for (md = gob->ob->modifiers.first; md; md = md->next) {
-			if (md->type == eModifierType_RigidBody) {
-				rmd = (RigidBodyModifierData*)md;
+			if (md->type == eModifierType_Fracture) {
+				rmd = (FractureModifierData*)md;
 				if (isModifierActive(rmd))
 					count += BLI_countlist(&rmd->meshIslands);
 			}
 		}
 	}
-#endif
 	return count;
 }
 
@@ -2380,7 +2378,7 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 {
 	GroupObject *go;
 	ModifierData *md;
-	RigidBodyModifierData *rmd;
+	FractureModifierData *rmd;
 	MeshIsland *mi;
 	int i, j, l, m, n, counter = 0;
 	bool ismapped = false;
@@ -2416,10 +2414,10 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 		rbw->objects[i] = ob;
 
 		for (md = ob->modifiers.first; md; md = md->next) {
-#if 0
-			if (md->type == eModifierType_RigidBody) {
-				rmd = (RigidBodyModifierData*)md;
-				if (isModifierActive(ob, rmd)) {
+
+			if (md->type == eModifierType_Fracture) {
+				rmd = (FractureModifierData*)md;
+				if (isModifierActive(rmd)) {
 					for (mi = rmd->meshIslands.first, j = 0; mi; mi = mi->next) {
 						rbw->cache_index_map[counter] = mi->rigidbody; //map all shards of an object to this object index
 						rbw->cache_offset_map[counter] = i;
@@ -2427,11 +2425,10 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 						counter++;
 						j++;
 					}
-					ismapped = TRUE;
+					ismapped = true;
 					break;
 				}
 			}
-#endif
 		}
 
 		if (!ismapped) {
@@ -2603,23 +2600,22 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 	for (go = rbw->group->gobject.first; go; go = go->next) {
 		Object *ob = go->ob;
 		ModifierData *md = NULL;
-		RigidBodyModifierData *rmd = NULL;
+		FractureModifierData *rmd = NULL;
 
 		if (ob && (ob->type == OB_MESH || ob->type == OB_CURVE || ob->type == OB_SURF || ob->type == OB_FONT)) {
 
-#if 0
 			/* check for fractured objects which want to participate first, then handle other normal objects*/
 			for (md = ob->modifiers.first; md; md = md->next) {
-				if (md->type == eModifierType_RigidBody) {
-					rmd = (RigidBodyModifierData*)md;
+				if (md->type == eModifierType_Fracture) {
+					rmd = (FractureModifierData*)md;
 					//BKE_rigidbody_sync_all_shards(ob);
 					if (rbw->refresh_modifiers)
 					{
 						//trigger refresh of modifier at next execution (if we jumped back to startframea after changing an object)
-						rmd->refresh = TRUE;
+						rmd->refresh = true;
 						BKE_rigidbody_remove_object(scene, ob);
 						//rbw->refresh_modifiers = FALSE;
-						rbw->object_changed = FALSE;
+						rbw->object_changed = false;
 						//rebuildcon = TRUE;
 					}
 					
@@ -2630,7 +2626,6 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 					break;
 				}
 			}
-#endif
 
 			if (0) { // (isModifierActive(rmd)) {
 				float max_con_mass = 0;
@@ -2888,7 +2883,7 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 {
 	GroupObject *go;
 	ModifierData *md;
-	RigidBodyModifierData *rmd;
+	FractureModifierData *rmd;
 	int modFound = false;
 	RigidBodyOb *rbo;
 	MeshIsland *mi;
@@ -2897,10 +2892,9 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 
 		Object *ob = go->ob;
 		//handle fractured rigidbodies, maybe test for psys as well ?
-#if 0
 		for (md = ob->modifiers.first; md; md = md->next) {
-			if (md->type == eModifierType_RigidBody) {
-				rmd = (RigidBodyModifierData*)md;
+			if (md->type == eModifierType_Fracture) {
+				rmd = (FractureModifierData*)md;
 				if (isModifierActive(rmd)) {
 					for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 						rbo = mi->rigidbody;
@@ -2914,12 +2908,11 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 								RB_body_deactivate(rbo->physics_object);
 						}
 					}
-					modFound = TRUE;
+					modFound = true;
 					break;
 				}
 			}
 		}
-#endif
 
 		//handle regular rigidbodies
 		if (ob && !modFound) {
@@ -2953,8 +2946,8 @@ bool BKE_rigidbody_check_sim_running(RigidBodyWorld *rbw, float ctime)
 void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 {
 	RigidBodyOb *rbo = NULL;
-	RigidBodyModifierData *rmd = NULL;
-	ExplodeModifierData *emd = NULL;
+	FractureModifierData *rmd = NULL;
+//	ExplodeModifierData *emd = NULL;
 	MeshIsland *mi;
 	ModifierData * md;
 	float centr[3], size[3];
@@ -2963,22 +2956,21 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 
 	for (md = ob->modifiers.first; md; md = md->next)
 	{
-#if 0
-		if (md->type == eModifierType_Explode)
+		/*if (md->type == eModifierType_Explode)
 		{
 			emd = (ExplodeModifierData*)md;
 			if (emd->mode == eFractureMode_Cells && emd->cells != NULL){
 				exploPresent = true;
 			}
-		}
-		if (md->type == eModifierType_RigidBody)
+		}*/
+		if (md->type == eModifierType_Fracture)
 		{
-			rmd = (RigidBodyModifierData*)md;
-			exploOK = !rmd->explo_shared || (rmd->explo_shared && exploPresent);
+			rmd = (FractureModifierData*)md;
+			exploOK = true; // !rmd->explo_shared || (rmd->explo_shared && exploPresent);
 			
 			if (isModifierActive(rmd) && exploOK) {
 				int count;
-				modFound = TRUE;
+				modFound = true;
 				count = BLI_countlist(&rmd->meshIslands);
 				
 				if ((ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) ||
@@ -2989,7 +2981,7 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 					{
 						RigidBodyShardCon* con;
 						
-						rbw->object_changed = TRUE;
+						rbw->object_changed = true;
 						BKE_rigidbody_cache_reset(rbw);
 						//re-enable all constraints as well
 						for (con = rmd->meshConstraints.first; con; con = con->next) {
@@ -3028,13 +3020,12 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 						add_v3_v3(rbo->pos, centr);
 					}
 					BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn, ctime, 
-											 rbw->pointcache->flag & PTCACHE_BAKED && rmd->use_cellbased_sim);
+											 rbw->pointcache->flag & PTCACHE_BAKED && rmd->use_cellbased_sim, rmd);
 				}
 				
 				break;
 			}
 		}
-#endif
 
 		modFound = false;
 	}
@@ -3083,13 +3074,13 @@ void BKE_rigidbody_aftertrans_update(Object *ob, float loc[3], float rot[3], flo
 {
 	RigidBodyOb *rbo;
 	ModifierData *md;
-	RigidBodyModifierData *rmd;
+	FractureModifierData *rmd;
 	
-	md = NULL; // modifiers_findByType(ob, eModifierType_RigidBody);
+	md = modifiers_findByType(ob, eModifierType_Fracture);
 	if (md != NULL)
 	{
 		MeshIsland* mi;
-		rmd = (RigidBodyModifierData*)md;
+		rmd = (FractureModifierData*)md;
 		copy_m4_m4(rmd->origmat, ob->obmat);
 		for (mi = rmd->meshIslands.first; mi; mi = mi->next)
 		{

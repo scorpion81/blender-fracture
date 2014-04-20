@@ -1352,7 +1352,7 @@ typedef struct MeshIsland {
 	char pad[4];
 } MeshIsland;
 
-typedef struct RigidBodyModifierData {
+/*typedef struct RigidBodyModifierData {
 	ModifierData modifier;
 	struct BMesh *visible_mesh;
 	struct DerivedMesh *visible_mesh_cached;
@@ -1376,7 +1376,7 @@ typedef struct RigidBodyModifierData {
 	float origmat[4][4], breaking_threshold, cluster_breaking_threshold;
 	float contact_dist, group_breaking_threshold, group_contact_dist, auto_merge_dist;
 	//char pad[4];
-} RigidBodyModifierData;
+} RigidBodyModifierData;*/
 
 typedef struct NeighborhoodCell {
 	struct NeighborhoodCell *next, *prev; 
@@ -1386,7 +1386,7 @@ typedef struct NeighborhoodCell {
 } NeighborhoodCell;
 
 
-enum {
+/*enum {
 	MOD_RIGIDBODY_SELECTED_TO_ACTIVE = 0,
 	MOD_RIGIDBODY_CHAIN_DISTANCE = 1,
 };
@@ -1395,7 +1395,7 @@ enum {
 	MOD_RIGIDBODY_SELECTED = 0,
 	MOD_RIGIDBODY_ACTIVE = 1,
 	MOD_RIGIDBODY_CENTER = 2,
-};
+};*/
 
 enum {
 	MOD_RIGIDBODY_CENTROIDS = 0,
@@ -1464,7 +1464,27 @@ typedef struct FractureModifierData {
 	ListBase fracture_levels;
 	int active_index;
 	int cluster_count;
-	//char pad[4];
+
+	//simulation part...
+	struct BMesh *visible_mesh;
+	struct DerivedMesh *visible_mesh_cached;
+	ListBase meshIslands, meshConstraints, cells;
+	int	**sel_indexes, *index_storage, *id_storage;
+	void (*join)(struct RigidBodyModifierData *rmd, struct Object* ob);
+	void (*split)(struct RigidBodyModifierData *rmd, struct Object *ob, struct MeshIsland *mi, float cfra);
+	struct GHash *idmap;
+	float *framemap;
+	int framecount, disable_self_collision;
+	int refresh, use_constraints, mass_dependent_thresholds, sel_counter;
+	int inner_constraint_type, dist_dependent_thresholds, refresh_constraints;
+	int explo_shared, constraint_limit, contact_dist_meaning, use_both_directions;
+	int breaking_angle, breaking_percentage, use_proportional_distance, use_proportional_limit;
+	int use_cellbased_sim, use_experimental;
+	int solver_iterations_override, use_proportional_solver_iterations;
+	float breaking_distance, max_vol, cell_size;
+	float origmat[4][4], breaking_threshold, cluster_breaking_threshold;
+	float contact_dist;
+	char pad[4];
 } FractureModifierData;
 
 typedef struct FractureLevel {
