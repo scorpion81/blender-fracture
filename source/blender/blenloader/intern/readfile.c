@@ -4817,6 +4817,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			}
 			lmd->cache_system = NULL;
 		}
+#if 0
 		else if (md->type == eModifierType_RigidBody) {
 			RigidBodyModifierData *rmd = (RigidBodyModifierData *)md;
 			
@@ -4841,6 +4842,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			rmd->cells.last = NULL;
 			rmd->framemap = newdataadr(fd, rmd->framemap);
 		}
+#endif
 		else if (md->type == eModifierType_Fracture) {
 			int i = 0;
 			FractureModifierData *fmd = (FractureModifierData *)md;

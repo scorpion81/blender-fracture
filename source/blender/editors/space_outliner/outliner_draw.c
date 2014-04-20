@@ -980,8 +980,8 @@ static void tselem_draw_icon(uiBlock *block, int xmax, float x, float y, TreeSto
 						UI_icon_draw(x, y, ICON_MOD_WIREFRAME); break;
 					case eModifierType_LaplacianDeform:
 						UI_icon_draw(x, y, ICON_MOD_MESHDEFORM); break;  /* XXX, needs own icon */
-					case eModifierType_RigidBody:
-						UI_icon_draw(x, y, ICON_MESH_ICOSPHERE); break;
+					case eModifierType_Fracture:
+						UI_icon_draw(x, y, ICON_MOD_EXPLODE); break;
 					/* Default */
 					case eModifierType_None:
 					case eModifierType_ShapeKey:

@@ -2237,13 +2237,15 @@ void OBJECT_OT_laplaciandeform_bind(wmOperatorType *ot)
 
 /****************** rigidbody modifier refresh operator *********************/
 
-static int rigidbody_poll(bContext *C)
+static bool rigidbody_poll(bContext *C)
 {
-	return edit_modifier_poll_generic(C, &RNA_RigidBodyModifier, 0);
+	return false;
+	//return edit_modifier_poll_generic(C, &RNA_RigidBodyModifier, 0);
 }
 
 static int rigidbody_refresh_exec(bContext *C, wmOperator *op)
 {
+#if 0
 	Object *obact = ED_object_active_context(C);
 	Scene *scene = CTX_data_scene(C);
 	float cfra = BKE_scene_frame_get(scene);
@@ -2267,7 +2269,7 @@ static int rigidbody_refresh_exec(bContext *C, wmOperator *op)
 	rmd->refresh = TRUE;
 	DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
 	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
-	
+#endif
 	return OPERATOR_FINISHED;
 }
 
@@ -2300,6 +2302,7 @@ void OBJECT_OT_rigidbody_refresh(wmOperatorType *ot)
 
 static int rigidbody_refresh_constraints_exec(bContext *C, wmOperator *op)
 {
+#if 0
 	Object *obact = ED_object_active_context(C);
 	RigidBodyModifierData *rmd;
 	Scene *scene = CTX_data_scene(C);
@@ -2327,6 +2330,7 @@ static int rigidbody_refresh_constraints_exec(bContext *C, wmOperator *op)
 
 	DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
 	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
+#endif
 
 	return OPERATOR_FINISHED;
 }
@@ -2357,6 +2361,7 @@ void OBJECT_OT_rigidbody_constraints_refresh(wmOperatorType *ot)
 
 void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, RigidBodyModifierData *rmd, Object* par)
 {
+#if 0
 	ParticleSystemModifierData *pmd = modifiers_findByType(ob, eModifierType_ParticleSystem);
 	ExplodeModifierData *emd = modifiers_findByType(ob, eModifierType_Explode);
 	Base *base_new, *base_old = BKE_scene_base_find(scene, ob);
@@ -2571,11 +2576,12 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 		// free array and kdtree
 		MEM_freeN(objs);
 		BLI_kdtree_free(objtree);
-	}
+#endif
 }
 
 static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 {
+#if 0
 	Object *obact = ED_object_active_context(C);
 	Scene *scene = CTX_data_scene(C);
 	Main* bmain = CTX_data_main(C);
@@ -2583,7 +2589,7 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 	RigidBodyModifierData *rmd;
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	bool selected = false;
-	int parent = TRUE; // RNA_boolean_get(op->ptr, "parent");
+	bool parent = true; // RNA_boolean_get(op->ptr, "parent");
 	Object* par = NULL;
 	
 	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
@@ -2670,6 +2676,7 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 	WM_event_add_notifier(C, NC_SCENE | ND_LAYER_CONTENT, scene);
 	
 	//WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, scene);
+#endif
 	return OPERATOR_FINISHED;
 }
 

@@ -154,6 +154,7 @@ void foreach_shard_float(Object* ob, float value, void (*func)(RigidBodyOb* rbo,
 	ModifierData *md;
 	RigidBodyModifierData* rmd;
 	MeshIsland* mi;
+	/*
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_RigidBody) {
 			rmd = (RigidBodyModifierData*)md;
@@ -163,7 +164,7 @@ void foreach_shard_float(Object* ob, float value, void (*func)(RigidBodyOb* rbo,
 				}
 			}
 		}
-	}
+	}*/
 }
 
 void foreach_shard_mass(Object* ob)
@@ -171,6 +172,7 @@ void foreach_shard_mass(Object* ob)
 	ModifierData *md;
 	RigidBodyModifierData* rmd;
 	MeshIsland* mi;
+	/*
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_RigidBody) {
 			rmd = (RigidBodyModifierData*)md;
@@ -180,7 +182,7 @@ void foreach_shard_mass(Object* ob)
 				}
 			}
 		}
-	}
+	}*/
 }
 
 void foreach_shard_int(Object* ob, int value, void (*func)(RigidBodyOb* rbo, int value))
@@ -188,6 +190,7 @@ void foreach_shard_int(Object* ob, int value, void (*func)(RigidBodyOb* rbo, int
 	ModifierData *md;
 	RigidBodyModifierData* rmd;
 	MeshIsland* mi;
+	/*
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_RigidBody) {
 			rmd = (RigidBodyModifierData*)md;
@@ -197,7 +200,7 @@ void foreach_shard_int(Object* ob, int value, void (*func)(RigidBodyOb* rbo, int
 				}
 			}
 		}
-	}
+	}*/
 }
 
 void foreach_shard_ints(Object* ob, const int* value, void (*func)(RigidBodyOb* rbo, const int* value))
@@ -205,6 +208,7 @@ void foreach_shard_ints(Object* ob, const int* value, void (*func)(RigidBodyOb* 
 	ModifierData *md;
 	RigidBodyModifierData* rmd;
 	MeshIsland* mi;
+/*
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_RigidBody) {
 			rmd = (RigidBodyModifierData*)md;
@@ -215,6 +219,7 @@ void foreach_shard_ints(Object* ob, const int* value, void (*func)(RigidBodyOb* 
 			}
 		}
 	}
+*/
 }
 
 void foreach_shard_flag_shape(Object* ob, int val1, short val2, int reset)
@@ -222,6 +227,7 @@ void foreach_shard_flag_shape(Object* ob, int val1, short val2, int reset)
 	ModifierData *md;
 	RigidBodyModifierData* rmd;
 	MeshIsland* mi;
+/*
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_RigidBody) {
 			rmd = (RigidBodyModifierData*)md;
@@ -237,6 +243,7 @@ void foreach_shard_flag_shape(Object* ob, int val1, short val2, int reset)
 			}
 		}
 	}
+*/
 }
 
 
@@ -245,7 +252,7 @@ static void rna_RigidBodyOb_reset(Main *bmain, Scene *scene, PointerRNA *ptr)
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	Object *ob = ptr->id.data;
 	RigidBodyOb* rbo = ptr->data;
-	foreach_shard_flag_shape(ob, rbo->flag, rbo->shape, FALSE);
+	foreach_shard_flag_shape(ob, rbo->flag, rbo->shape, false);
 
 	BKE_rigidbody_cache_reset(rbw);
 }
@@ -256,7 +263,7 @@ static void rna_RigidBodyOb_shape_reset(Main *bmain, Scene *scene, PointerRNA *p
 	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
 	Object *ob = ptr->id.data;
 
-	foreach_shard_flag_shape(ob, rbo->flag, rbo->shape, TRUE);
+	foreach_shard_flag_shape(ob, rbo->flag, rbo->shape, true);
 	BKE_rigidbody_cache_reset(rbw);
 
 	if (rbo->physics_shape)

@@ -1480,6 +1480,7 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 
 			writedata(wd, DATA, sizeof(float)*lmd->total_verts * 3, lmd->vertexco);
 		}
+#if 0
 		else if (md->type == eModifierType_RigidBody) {
 
 			RigidBodyModifierData *rmd = (RigidBodyModifierData*)md;
@@ -1494,7 +1495,8 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 			if (rmd->framecount > 0) {
 				writedata(wd, DATA, sizeof(float) * rmd->framecount, rmd->framemap);
 			}
-		}
+#endif
+//		}
 		else if (md->type==eModifierType_Fracture) {
 			int i = 0;
 			FractureModifierData *fmd = (FractureModifierData*)md;

@@ -1647,7 +1647,7 @@ static int BMO_opcode_from_opname_check(const char *opname)
  * Order is not important so `Hfev` is also valid (all unflagged verts, edges and faces).
  */
 
-bool BMO_op_vinitf(BMesh *bm, BMOperator *op, const int flag, const char *_fmt, va_list vlist)
+bool BMO_op_vinitf(BMesh *bm, BMOperator *op, const int flag, const char *_fmt, va_list* vlist)
 {
 //	BMOpDefine *def;
 	char *opname, *ofmt, *fmt;

@@ -1069,8 +1069,8 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 	if (rbo == NULL)
 		return;
 	
-	if (ob && ob->rigidbody_object) {
-		RigidBodyOb *rbo = ob->rigidbody_object;
+	//if (ob && ob->rigidbody_object) {
+		//RigidBodyOb *rbo = ob->rigidbody_object;
 		
 		if (rbo->type == RBO_TYPE_ACTIVE) {
 			
@@ -1093,7 +1093,7 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 			copy_v3_v3(rbo->pos, keys->co);
 			copy_qt_qt(rbo->orn, keys->rot);
 		}
-	}
+	//}
 }
 static int ptcache_rigidbody_totpoint(void *rb_v, int UNUSED(cfra))
 {

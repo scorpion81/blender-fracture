@@ -83,9 +83,10 @@
 
 #ifdef WITH_BULLET
 
-static bool isModifierActive(RigidBodyModifierData* rmd) {
+
+/*static bool isModifierActive(RigidBodyModifierData* rmd) {
 	return ((rmd != NULL) && (rmd->modifier.mode & eModifierMode_Realtime) && (rmd->refresh == FALSE));// rmd->modifier.mode & eModifierMode_Render));
-}
+}*/
 
 void calc_dist_angle(RigidBodyShardCon* con, float* dist, float* angle)
 {
@@ -125,6 +126,7 @@ float BKE_rigidbody_calc_max_con_mass(Object* ob)
 	RigidBodyShardCon *con;
 	float max_con_mass = 0, con_mass;
 
+#if 0
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_RigidBody) {
 			rmd = (RigidBodyModifierData*)md;
@@ -141,6 +143,7 @@ float BKE_rigidbody_calc_max_con_mass(Object* ob)
 			return max_con_mass;
 		}
 	}
+#endif
 
 	return 0;
 }
@@ -152,6 +155,7 @@ float BKE_rigidbody_calc_min_con_dist(Object* ob)
 	RigidBodyShardCon *con;
 	float min_con_dist = FLT_MAX, con_dist, con_vec[3];
 
+#if 0
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_RigidBody) {
 			rmd = (RigidBodyModifierData*)md;
@@ -169,6 +173,7 @@ float BKE_rigidbody_calc_min_con_dist(Object* ob)
 			return min_con_dist;
 		}
 	}
+#endif
 
 	return FLT_MAX;
 }
@@ -344,7 +349,7 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland* mi)
 	DerivedMesh *dm_ob, *dm_mi;
 	float vol_mi, mass_mi, vol_ob, mass_ob;
 
-	dm_ob = CDDM_from_mesh(ob->data, ob); //ob->derivedFinal;
+	dm_ob = CDDM_from_mesh(ob->data); //ob->derivedFinal;
 	vol_ob = BKE_rigidbody_calc_volume(dm_ob, ob->rigidbody_object);
 	mass_ob = ob->rigidbody_object->mass;
 
@@ -375,6 +380,7 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland* mi)
 
 void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], float rot[4], float cfra, bool baked)
 {
+#if 0
 	float startco[3], centr[3], size[3];
 	int i, j;
 	bool invalidData, invalidFrame, invalidBake, invalidBakeFrame;
@@ -450,6 +456,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 		add_v3_v3(vert->co, loc);
 		mul_m4_v3(ob->imat, vert->co);
 	}
+#endif
 }
 
 /* ************************************** */
@@ -684,7 +691,7 @@ static rbCollisionShape *rigidbody_get_shape_convexhull_from_mesh(Mesh* me, floa
 static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh_shard(Mesh *me, Object *ob)
 {
 	rbCollisionShape *shape = NULL;
-	DerivedMesh *dm = CDDM_from_mesh(me, NULL);
+	DerivedMesh *dm = CDDM_from_mesh(me);
 
 	MVert *mvert;
 	MFace *mface;
@@ -708,11 +715,12 @@ static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh_shard(Mesh *me, O
 		int i;
 
 		/* init mesh data for collision shape */
-		mdata = RB_trimesh_data_new();
+		mdata = RB_trimesh_data_new(totface, totvert);
 
 		/* loop over all faces, adding them as triangles to the collision shape
 		 * (so for some faces, more than triangle will get added)
 		 */
+#if 0
 		for (i = 0; (i < totface) && (mface) && (mvert); i++, mface++) {
 			/* add first triangle - verts 1,2,3 */
 			{
@@ -732,6 +740,7 @@ static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh_shard(Mesh *me, O
 				RB_trimesh_add_triangle(mdata, va->co, vb->co, vc->co);
 			}
 		}
+#endif
 
 		/* construct collision shape
 		 *
@@ -1469,6 +1478,7 @@ static void rigidbody_validate_sim_constraint(RigidBodyWorld *rbw, Object *ob, b
  */
 void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyShardCon *rbc, Object *ob, short rebuild)
 {
+#if 0
 	//RigidBodyShardCon *rbc = (mi) ? mi->rigidbody_constraint : NULL;
 	RigidBodyModifierData* rmd = NULL;
 	ModifierData* md = NULL;
@@ -1738,6 +1748,7 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 	if (rbw && rbw->physics_world && rbc->physics_constraint) {
 		RB_dworld_add_constraint(rbw->physics_world, rbc->physics_constraint, rbc->flag & RBC_FLAG_DISABLE_COLLISIONS);
 	}
+#endif
 }
 
 bool isDisconnected(MeshIsland *mi)
@@ -1762,7 +1773,7 @@ bool isDisconnected(MeshIsland *mi)
 }
 
 //this allows partial object activation, only some shards will be activated, called from bullet(!)
-int filterCallback(void* world, void* island1, void* island2) {
+bool filterCallback(void* world, void* island1, void* island2) {
 	RigidBodyWorld* rbw = (RigidBodyWorld*)world;
 	MeshIsland* mi1, *mi2;
 	int ob_index1, ob_index2;
@@ -1771,7 +1782,7 @@ int filterCallback(void* world, void* island1, void* island2) {
 	mi2 = (MeshIsland*)island2;
 
 	if ((mi1 == NULL) || (mi2 == NULL)) {
-		return TRUE;
+		return true;
 	}
 	
 	//cache offset map is a dull name for that... 
@@ -1790,7 +1801,7 @@ int filterCallback(void* world, void* island1, void* island2) {
 		//disallow collision between destroyed compounds... of same object
 		return (ob_index1 != ob_index2) || (mi1->rigidbody->shape == RB_SHAPE_COMPOUND); //FALSE;
 	}
-	return TRUE;
+	return true;
 
 	/*ob_index1 = rbw->cache_index_map[mi1->linear_index];
 	ob_index2 = rbw->cache_index_map[mi2->linear_index];
@@ -1856,8 +1867,8 @@ RigidBodyWorld *BKE_rigidbody_create_world(Scene *scene)
 
 	rbw->pointcache = BKE_ptcache_add(&(rbw->ptcaches));
 	rbw->pointcache->step = 1;
-	rbw->object_changed = FALSE;
-	rbw->refresh_modifiers = FALSE;
+	rbw->object_changed = false;
+	rbw->refresh_modifiers = false;
 
 	rbw->objects = MEM_mallocN(sizeof(Object*), "objects");
 	rbw->cache_index_map = MEM_mallocN(sizeof(RigidBodyOb*), "cache_index_map");
@@ -2212,9 +2223,10 @@ void BKE_rigidbody_remove_object(Scene *scene, Object *ob)
 	RigidBodyShardCon* con;
 	MeshIsland* mi;
 	int i;
-	int modFound = FALSE;
+	bool modFound = false;
 
 	if (rbw) {
+#if 0
 		for (md = ob->modifiers.first; md; md = md->next) {
 
 			if (md->type == eModifierType_RigidBody)
@@ -2252,6 +2264,7 @@ void BKE_rigidbody_remove_object(Scene *scene, Object *ob)
 				}
 			}
 		}
+#endif
 		if (!modFound) {
 			/* remove from rigidbody world, free object won't do this */
 			if (rbw->physics_world && rbo->physics_object)
@@ -2326,12 +2339,14 @@ static int rigidbody_count_regular_objects(ListBase obs)
 
 	for (gob = obs.first; gob; gob = gob->next) {
 		count++;
+#if 0
 		for (md = gob->ob->modifiers.first; md; md = md->next) {
 			if (md->type == eModifierType_RigidBody) {
 				count--;
 				break;
 			}
 		}
+#endif
 	}
 	return count;
 }
@@ -2341,6 +2356,7 @@ static int rigidbody_count_shards(ListBase obs)
 	int count = 0;
 	struct GroupObject *gob = NULL;
 	struct ModifierData *md = NULL;
+#if 0
 	struct RigidBodyModifierData *rmd = NULL;
 
 	for (gob = obs.first; gob; gob = gob->next) {
@@ -2352,6 +2368,7 @@ static int rigidbody_count_shards(ListBase obs)
 			}
 		}
 	}
+#endif
 	return count;
 }
 
@@ -2366,7 +2383,7 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 	RigidBodyModifierData *rmd;
 	MeshIsland *mi;
 	int i, j, l, m, n, counter = 0;
-	int ismapped = FALSE;
+	bool ismapped = false;
 	
 	if (rbw->objects == NULL)
 	{
@@ -2399,6 +2416,7 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 		rbw->objects[i] = ob;
 
 		for (md = ob->modifiers.first; md; md = md->next) {
+#if 0
 			if (md->type == eModifierType_RigidBody) {
 				rmd = (RigidBodyModifierData*)md;
 				if (isModifierActive(ob, rmd)) {
@@ -2413,6 +2431,7 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 					break;
 				}
 			}
+#endif
 		}
 
 		if (!ismapped) {
@@ -2423,7 +2442,7 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 			counter++;
 		}
 
-		ismapped = FALSE;
+		ismapped = false;
 	}
 }
 
@@ -2588,6 +2607,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 
 		if (ob && (ob->type == OB_MESH || ob->type == OB_CURVE || ob->type == OB_SURF || ob->type == OB_FONT)) {
 
+#if 0
 			/* check for fractured objects which want to participate first, then handle other normal objects*/
 			for (md = ob->modifiers.first; md; md = md->next) {
 				if (md->type == eModifierType_RigidBody) {
@@ -2610,8 +2630,9 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 					break;
 				}
 			}
+#endif
 
-			if (isModifierActive(rmd)) {
+			if (0) { // (isModifierActive(rmd)) {
 				float max_con_mass = 0;
 				float min_con_dist = FLT_MAX;
 			
@@ -2667,7 +2688,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 											
 											if (con->physics_constraint)
 											{
-												RB_constraint_set_enabled(con->physics_constraint, FALSE);
+												RB_constraint_set_enabled(con->physics_constraint, false);
 											}
 										}
 									}
@@ -2741,7 +2762,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 							
 							if (rbsc->physics_constraint)
 							{
-								RB_constraint_set_enabled(rbsc->physics_constraint, FALSE);
+								RB_constraint_set_enabled(rbsc->physics_constraint, false);
 							}
 						}
 						
@@ -2752,7 +2773,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 							
 							if (rbsc->physics_constraint)
 							{
-								RB_constraint_set_enabled(rbsc->physics_constraint, FALSE);
+								RB_constraint_set_enabled(rbsc->physics_constraint, false);
 							}
 						}
 					}
@@ -2794,7 +2815,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 					 *	- assume object to be active? That is the default for newly added settings...
 					 */
 					ob->rigidbody_object = BKE_rigidbody_create_object(scene, ob, RBO_TYPE_ACTIVE);
-					BKE_rigidbody_validate_sim_object(rbw, ob, true);
+					rigidbody_validate_sim_object(rbw, ob, true);
 
 					rbo = ob->rigidbody_object;
 				}
@@ -2803,15 +2824,15 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 					/* refresh object... */
 					if (rebuild) {
 						/* World has been rebuilt so rebuild object */
-						BKE_rigidbody_validate_sim_object(rbw, ob, true);
+						rigidbody_validate_sim_object(rbw, ob, true);
 					}
 					else if (rbo->flag & RBO_FLAG_NEEDS_VALIDATE) {
-						BKE_rigidbody_validate_sim_object(rbw, ob, false);
+						rigidbody_validate_sim_object(rbw, ob, false);
 					}
 					/* refresh shape... */
 					if (rbo->flag & RBO_FLAG_NEEDS_RESHAPE) {
 						/* mesh/shape data changed, so force shape refresh */
-						BKE_rigidbody_validate_sim_shape(ob, true);
+						rigidbody_validate_sim_shape(ob, true);
 						/* now tell RB sim about it */
 						// XXX: we assume that this can only get applied for active/passive shapes that will be included as rigidbodies
 						RB_body_set_collision_shape(rbo->physics_object, rbo->physics_shape);
@@ -2824,7 +2845,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 			}
 		}
 		rigidbody_update_ob_array(rbw);
-		rbw->refresh_modifiers = FALSE;
+		rbw->refresh_modifiers = false;
 	}
 
 	/* update constraints */
@@ -2868,7 +2889,7 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 	GroupObject *go;
 	ModifierData *md;
 	RigidBodyModifierData *rmd;
-	int modFound = FALSE;
+	int modFound = false;
 	RigidBodyOb *rbo;
 	MeshIsland *mi;
 
@@ -2876,6 +2897,7 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 
 		Object *ob = go->ob;
 		//handle fractured rigidbodies, maybe test for psys as well ?
+#if 0
 		for (md = ob->modifiers.first; md; md = md->next) {
 			if (md->type == eModifierType_RigidBody) {
 				rmd = (RigidBodyModifierData*)md;
@@ -2897,6 +2919,7 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 				}
 			}
 		}
+#endif
 
 		//handle regular rigidbodies
 		if (ob && !modFound) {
@@ -2910,7 +2933,7 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 					RB_body_deactivate(rbo->physics_object);
 			}
 		}
-		modFound = FALSE;
+		modFound = false;
 	}
 }
 
@@ -2935,11 +2958,12 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 	MeshIsland *mi;
 	ModifierData * md;
 	float centr[3], size[3];
-	int modFound = FALSE;
+	int modFound = false;
 	bool exploPresent = false, exploOK = false;
 
 	for (md = ob->modifiers.first; md; md = md->next)
 	{
+#if 0
 		if (md->type == eModifierType_Explode)
 		{
 			emd = (ExplodeModifierData*)md;
@@ -3010,8 +3034,9 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 				break;
 			}
 		}
+#endif
 
-		modFound = FALSE;
+		modFound = false;
 	}
 
 	if (!modFound)
@@ -3047,7 +3072,7 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 			/* otherwise set rigid body transform to current obmat */
 		else {
 			if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)
-				rbw->object_changed = TRUE;
+				rbw->object_changed = true;
 			mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
 		}
 	}
@@ -3060,7 +3085,7 @@ void BKE_rigidbody_aftertrans_update(Object *ob, float loc[3], float rot[3], flo
 	ModifierData *md;
 	RigidBodyModifierData *rmd;
 	
-	md = modifiers_findByType(ob, eModifierType_RigidBody);
+	md = NULL; // modifiers_findByType(ob, eModifierType_RigidBody);
 	if (md != NULL)
 	{
 		MeshIsland* mi;
@@ -3090,7 +3115,7 @@ void BKE_rigidbody_aftertrans_update(Object *ob, float loc[3], float rot[3], flo
 			if (rbo->physics_object) {
 				/* allow passive objects to return to original transform */
 				if (rbo->type == RBO_TYPE_PASSIVE)
-					RB_body_set_kinematic_state(rbo->physics_object, TRUE);
+					RB_body_set_kinematic_state(rbo->physics_object, true);
 				RB_body_set_loc_rot(rbo->physics_object, rbo->pos, rbo->orn);
 			}
 		}
@@ -3180,11 +3205,11 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 		rbw->ltime = startframe;
 		if ((rbw->object_changed))
 		{	//flag modifier refresh at their next execution
-			rbw->refresh_modifiers = TRUE;
-			rbw->object_changed = FALSE;
+			rbw->refresh_modifiers = true;
+			rbw->object_changed = false;
 			rigidbody_update_simulation(scene, rbw, true);
 		}
-		rbw->rebuild_comp_con = TRUE;
+		rbw->rebuild_comp_con = true;
 		return;
 	}
 	/* make sure we don't go out of cache frame range */

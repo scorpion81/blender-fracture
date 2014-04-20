@@ -794,7 +794,7 @@ typedef struct SimpleDeformModifierData {
 	char mode;				/* deform function */
 	char axis;				/* lock axis (for taper and strech) */
 	char originOpts;		/* originOptions */
-	char pad[2];
+	char pad[1];
 
 } SimpleDeformModifierData;
 
