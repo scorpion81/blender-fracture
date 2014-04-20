@@ -53,19 +53,25 @@ class FRACTURE_UL_fracture_levels(UIList):
 class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
     bl_label = "Fracture"
 
+    def icon(self, bool):
+        if bool:
+            return 'TRIA_DOWN'
+        else:
+            return 'TRIA_RIGHT'
+
     def draw(self, context):
         layout = self.layout
 
         md = context.fracture
         fl = md.fracture_levels[md.active_index]
-        row = layout.row()
-        row.template_list("UI_UL_list", "fracture_levels", md, "fracture_levels",
-                              md, "active_index", rows=2)
+#        row = layout.row()
+#        row.template_list("UI_UL_list", "fracture_levels", md, "fracture_levels",
+#                              md, "active_index", rows=2)
 
-        col2 = row.column(align=True)
-        col2.operator("fracture.fracture_level_add", icon='ZOOMIN', text="")
-        if len(md.fracture_levels) > 1:
-            col2.operator("fracture.fracture_level_remove", icon='ZOOMOUT', text="")
+#        col2 = row.column(align=True)
+#        col2.operator("fracture.fracture_level_add", icon='ZOOMIN', text="")
+#        if len(md.fracture_levels) > 1:
+#            col2.operator("fracture.fracture_level_remove", icon='ZOOMOUT', text="")
 
         col = layout.column()
         col.prop(fl, "frac_algorithm")
@@ -82,7 +88,7 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         col.separator()
 
         col.label("Simulation Settings")
-        layout.operator("object.rigidbody_refresh", text="Refresh All Data")
+        layout.operator("object.fracture_refresh", text="Refresh All Data")
         layout.operator("object.rigidbody_constraints_refresh", text="Refresh Constraints Only")
         layout.label("Constraint Building Settings")
         layout.prop(md, "use_constraints")

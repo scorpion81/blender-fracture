@@ -4849,7 +4849,28 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			FracMesh* fm = newdataadr(fd, fmd->frac_mesh);
 			if (fm == NULL)
 			{
+				fmd->fracture_levels.first = NULL;
+				fmd->fracture_levels.last = NULL;
 				fmd->dm = NULL;
+				fmd->meshIslands.first = NULL;
+				fmd->meshIslands.last = NULL;
+				fmd->visible_mesh = NULL;
+				fmd->visible_mesh_cached = NULL;
+				zero_m4(fmd->origmat);
+				fmd->meshConstraints.first = NULL;
+				fmd->meshConstraints.last = NULL;
+				fmd->sel_counter = 0;
+				fmd->sel_indexes = NULL;
+				fmd->idmap = NULL;
+				fmd->id_storage = NULL;
+				fmd->index_storage = NULL;
+				fmd->explo_shared = false;
+				fmd->refresh = false;  // do not construct modifier
+				fmd->refresh_constraints = false;
+				fmd->max_vol = 0;
+				fmd->cells.first = NULL;
+				fmd->cells.last = NULL;
+				fmd->framemap = newdataadr(fd, fmd->framemap);
 			}
 			else
 			{

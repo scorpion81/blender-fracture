@@ -2237,21 +2237,22 @@ void OBJECT_OT_laplaciandeform_bind(wmOperatorType *ot)
 
 /****************** rigidbody modifier refresh operator *********************/
 
-static bool rigidbody_poll(bContext *C)
+static bool fracture_poll(bContext *C)
 {
 	//return false;
 	return edit_modifier_poll_generic(C, &RNA_FractureModifier, 0);
 }
 
-static int rigidbody_refresh_exec(bContext *C, wmOperator *op)
+static int fracture_refresh_exec(bContext *C, wmOperator *op)
 {
 	Object *obact = ED_object_active_context(C);
 	Scene *scene = CTX_data_scene(C);
 	float cfra = BKE_scene_frame_get(scene);
 	FractureModifierData *rmd;
-	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
+	/*CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
 		
 		rmd = (FractureModifierData *)edit_modifier_property_get(op, ob, eModifierType_Fracture);
+		//rmd = (FractureModifierData *)modifiers_findByType(ob, eModifierType_Fracture);
 		if (!rmd || cfra != scene->rigidbody_world->pointcache->startframe)
 			continue;
 		
@@ -2259,9 +2260,10 @@ static int rigidbody_refresh_exec(bContext *C, wmOperator *op)
 		DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
 		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
 	}
-	CTX_DATA_END;
+	CTX_DATA_END;*/
 	
-	rmd = (FractureModifierData * )edit_modifier_property_get(op, obact, eModifierType_Fracture);
+	//rmd = (FractureModifierData * )edit_modifier_property_get(op, obact, eModifierType_Fracture);
+	rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
 	if (!rmd || cfra != scene->rigidbody_world->pointcache->startframe)
 		return OPERATOR_CANCELLED;
 	
@@ -2271,25 +2273,25 @@ static int rigidbody_refresh_exec(bContext *C, wmOperator *op)
 	return OPERATOR_FINISHED;
 }
 
-static int rigidbody_refresh_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
+static int fracture_refresh_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
 {
 	
-	if (edit_modifier_invoke_properties(C, op))
-		return rigidbody_refresh_exec(C, op);
+	if (edit_modifier_invoke_properties(C, op) || true)
+		return fracture_refresh_exec(C, op);
 	else
 		return OPERATOR_CANCELLED;
 }
 
 
-void OBJECT_OT_rigidbody_refresh(wmOperatorType *ot)
+void OBJECT_OT_fracture_refresh(wmOperatorType *ot)
 {
-	ot->name = "RigidBody Refresh";
-	ot->description = "Refresh data in the Rigid Body modifier";
-	ot->idname = "OBJECT_OT_rigidbody_refresh";
+	ot->name = "Fracture Refresh";
+	ot->description = "Refresh data in the Fracture modifier";
+	ot->idname = "OBJECT_OT_fracture_refresh";
 
-	ot->poll = rigidbody_poll;
-	ot->invoke = rigidbody_refresh_invoke;
-	ot->exec = rigidbody_refresh_exec;
+	ot->poll = fracture_poll;
+	ot->invoke = fracture_refresh_invoke;
+	ot->exec = fracture_refresh_exec;
 
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
@@ -2306,7 +2308,8 @@ static int rigidbody_refresh_constraints_exec(bContext *C, wmOperator *op)
 	float cfra = BKE_scene_frame_get(scene);
 	
 	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
-		rmd = (FractureModifierData *)edit_modifier_property_get(op, ob, eModifierType_Fracture);
+		//rmd = (FractureModifierData *)edit_modifier_property_get(op, ob, eModifierType_Fracture);
+		rmd = (FractureModifierData *)modifiers_findByType(ob, eModifierType_Fracture);
 	
 		if (!rmd || cfra != scene->rigidbody_world->pointcache->startframe)
 			continue;
@@ -2318,7 +2321,8 @@ static int rigidbody_refresh_constraints_exec(bContext *C, wmOperator *op)
 	}
 	CTX_DATA_END;
 	
-	rmd = (FractureModifierData *)edit_modifier_property_get(op, obact, eModifierType_Fracture);
+	//rmd = (FractureModifierData *)edit_modifier_property_get(op, obact, eModifierType_Fracture);
+	rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
 
 	if (!rmd || cfra != scene->rigidbody_world->pointcache->startframe)
 		return OPERATOR_CANCELLED;
@@ -2333,7 +2337,7 @@ static int rigidbody_refresh_constraints_exec(bContext *C, wmOperator *op)
 
 static int rigidbody_refresh_constraints_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
 {
-	if (edit_modifier_invoke_properties(C, op))
+	if (edit_modifier_invoke_properties(C, op) || true)
 		return rigidbody_refresh_constraints_exec(C, op);
 	else
 		return OPERATOR_CANCELLED;
@@ -2346,7 +2350,7 @@ void OBJECT_OT_rigidbody_constraints_refresh(wmOperatorType *ot)
 	ot->description = "Refresh constraints in the Rigid Body modifier";
 	ot->idname = "OBJECT_OT_rigidbody_constraints_refresh";
 
-	ot->poll = rigidbody_poll;
+	ot->poll = fracture_poll;
 	ot->invoke = rigidbody_refresh_constraints_invoke;
 	ot->exec = rigidbody_refresh_constraints_exec;
 
@@ -2589,7 +2593,8 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
 		
 		Base *base = BKE_scene_base_find(scene, ob);
-		rmd = (FractureModifierData *)edit_modifier_property_get(op, ob, eModifierType_Fracture);
+		//rmd = (FractureModifierData *)edit_modifier_property_get(op, ob, eModifierType_Fracture);
+		rmd = (FractureModifierData *)modifiers_findByType(ob, eModifierType_Fracture);
 		selected = true;
 		if (!rmd || cfra != scene->rigidbody_world->pointcache->startframe)
 			continue;
@@ -2617,7 +2622,8 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 	
 	if (!selected)
 	{
-		rmd = (FractureModifierData *)edit_modifier_property_get(op, obact, eModifierType_Fracture);
+		//rmd = (FractureModifierData *)edit_modifier_property_get(op, obact, eModifierType_Fracture);
+		rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
 		if (rmd && cfra == scene->rigidbody_world->pointcache->startframe) {
 			float loc[3];
 			Base *base = BKE_scene_base_find(scene, obact);
@@ -2676,7 +2682,7 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 static int rigidbody_convert_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
 {
 	
-	if (edit_modifier_invoke_properties(C, op))
+	if (edit_modifier_invoke_properties(C, op) || true)
 		return rigidbody_convert_exec(C, op);
 	else
 		return OPERATOR_CANCELLED;
@@ -2689,7 +2695,7 @@ void OBJECT_OT_rigidbody_convert_to_objects(wmOperatorType *ot)
 	ot->description = "Convert the Rigid Body modifier shards to real objects";
 	ot->idname = "OBJECT_OT_rigidbody_convert_to_objects";
 
-	ot->poll = rigidbody_poll;
+	ot->poll = fracture_poll;
 	ot->invoke = rigidbody_convert_invoke;
 	ot->exec = rigidbody_convert_exec;
 

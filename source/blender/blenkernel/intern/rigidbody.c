@@ -70,6 +70,7 @@
 #include "BKE_main.h"
 #include "BKE_modifier.h"
 #include "BKE_scene.h"
+#include "BKE_depsgraph.h"
 
 #include "RNA_access.h"
 #include "bmesh.h"
@@ -450,6 +451,8 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 		add_v3_v3(vert->co, loc);
 		mul_m4_v3(ob->imat, vert->co);
 	}
+
+	ob->recalc |= OB_RECALC_ALL;
 }
 
 /* ************************************** */
@@ -666,9 +669,27 @@ static DerivedMesh *rigidbody_get_mesh(Object *ob)
 static rbCollisionShape *rigidbody_get_shape_convexhull_from_mesh(Mesh* me, float margin, bool *can_embed)
 {
 	rbCollisionShape *shape = NULL;
+	int totvert = me->totvert;
+	MVert* mvert = me->mvert;
 
-	if (me && me->totvert) {
-		shape = RB_shape_new_convex_hull((float *)me->mvert, sizeof(MVert), me->totvert, margin, can_embed);
+	if (me && totvert) {
+		shape = RB_shape_new_convex_hull((float *)mvert, sizeof(MVert), totvert, margin, can_embed);
+	}
+	else {
+		printf("ERROR: no vertices to define Convex Hull collision shape with\n");
+	}
+
+	return shape;
+}
+
+static rbCollisionShape *rigidbody_get_shape_convexhull_from_dm(DerivedMesh* dm, float margin, bool *can_embed)
+{
+	rbCollisionShape *shape = NULL;
+	int totvert = dm->getNumVerts(dm);
+	MVert* mvert = dm->getVertArray(dm);
+
+	if (dm && totvert) {
+		shape = RB_shape_new_convex_hull((float *)mvert, sizeof(MVert), totvert, margin, can_embed);
 	}
 	else {
 		printf("ERROR: no vertices to define Convex Hull collision shape with\n");
@@ -678,10 +699,11 @@ static rbCollisionShape *rigidbody_get_shape_convexhull_from_mesh(Mesh* me, floa
 }
 
 
+
 /* create collision shape of mesh - triangulated mesh
  * returns NULL if creation fails.
  */
-static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh_shard(Mesh* me, Object *ob)
+static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh_shard(DerivedMesh* dmm, Object *ob)
 {
 	rbCollisionShape *shape = NULL;
 
@@ -694,7 +716,7 @@ static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh_shard(Mesh* me, O
 		int tottris = 0;
 		int triangle_index = 0;
 
-		dm = CDDM_from_mesh(me);
+		dm = CDDM_copy(dmm);
 
 		/* ensure mesh validity, then grab data */
 		if (dm == NULL)
@@ -1080,7 +1102,8 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland* mi, Object* ob, short re
 	
 	if (rbo->shape != RB_SHAPE_COMPOUND)
 	{
-		me = BKE_mesh_add(G.main, "_mesh_"); // TODO need to delete this again
+		float min[3], max[3];
+		//me = BKE_mesh_add(G.main, "_mesh_"); // TODO need to delete this again
 		
 		/* if automatically determining dimensions, use the Object's boundbox
 		 *	- assume that all quadrics are standing upright on local z-axis
@@ -1090,10 +1113,22 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland* mi, Object* ob, short re
 		// XXX: all dimensions are auto-determined now... later can add stored settings for this
 		/* get object dimensions without scaling */
 		//BM_mesh_bm_to_me(mi->physics_mesh, me, FALSE);
-		DM_to_mesh(mi->physics_mesh, me, ob, 0);
+		//DM_to_mesh(mi->physics_mesh, me, ob, 0);
 	
-		BKE_mesh_boundbox_calc(me, loc, size);
-	
+		//BKE_mesh_boundbox_calc(me, loc, size);
+
+
+		INIT_MINMAX(min, max);
+		if (!DM_mesh_minmax(mi->physics_mesh, min, max)) {
+			min[0] = min[1] = min[2] = -1.0f;
+			max[0] = max[1] = max[2] = 1.0f;
+		}
+
+		mid_v3_v3v3(loc, min, max);
+		size[0] = (max[0] - min[0]) / 2.0f;
+		size[1] = (max[1] - min[1]) / 2.0f;
+		size[2] = (max[2] - min[2]) / 2.0f;
+
 		if (ELEM3(rbo->shape, RB_SHAPE_CAPSULE, RB_SHAPE_CYLINDER, RB_SHAPE_CONE)) {
 			/* take radius as largest x/y dimension, and height as z-dimension */
 			radius = MAX2(size[0], size[1]);
@@ -1132,12 +1167,12 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland* mi, Object* ob, short re
 
 			if (!(rbo->flag & RBO_FLAG_USE_MARGIN) && has_volume)
 				hull_margin = 0.04f;
-			new_shape = rigidbody_get_shape_convexhull_from_mesh(me, hull_margin, &can_embed);
+			new_shape = rigidbody_get_shape_convexhull_from_dm(mi->physics_mesh, hull_margin, &can_embed);
 			if (!(rbo->flag & RBO_FLAG_USE_MARGIN))
 				rbo->margin = (can_embed && has_volume) ? 0.04f : 0.0f;  /* RB_TODO ideally we shouldn't directly change the margin here */
 			break;
 		case RB_SHAPE_TRIMESH:
-			new_shape = rigidbody_get_shape_trimesh_from_mesh_shard(me, ob);
+			new_shape = rigidbody_get_shape_trimesh_from_mesh_shard(mi->physics_mesh, ob);
 			break;
 		case RB_SHAPE_COMPOUND:
 			new_shape = rigidbody_get_shape_compound_from_mi(mi, ob);
@@ -1156,11 +1191,11 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland* mi, Object* ob, short re
 	}
 
 	//delete mesh block, bullet shouldnt care about blender blocks
-	if (rbo->shape != RB_SHAPE_COMPOUND)
+/*	if (rbo->shape != RB_SHAPE_COMPOUND)
 	{
 		BKE_libblock_free_us(&(G.main->mesh), me);
 		me = NULL;
-	}
+	}*/
 }
 
 
@@ -1481,9 +1516,9 @@ static void rigidbody_validate_sim_constraint(RigidBodyWorld *rbw, Object *ob, b
  */
 void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyShardCon *rbc, Object *ob, short rebuild)
 {
-#if 0
+
 	//RigidBodyShardCon *rbc = (mi) ? mi->rigidbody_constraint : NULL;
-	RigidBodyModifierData* rmd = NULL;
+	FractureModifierData* rmd = NULL;
 	ModifierData* md = NULL;
 	float loc[3];
 	float rot[4];
@@ -1571,13 +1606,14 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 		//do this for all inner constraints
 		copy_v3_v3(loc, rbc->mi1->rigidbody->pos);
 
+#if 0
 		for (md = ob->modifiers.first; md; md = md->next) {
-			if (md->type == eModifierType_RigidBody) {
+			if (md->type == eModifierType_Fracture) {
 				int index1, index2;
 				rmd = (RigidBodyModifierData*)md;
 
-				index1 = BLI_findindex(&rmd->meshIslands, rbc->mi1);
-				index2 = BLI_findindex(&rmd->meshIslands, rbc->mi2);
+				//index1 = BLI_findindex(&rmd->meshIslands, rbc->mi1);
+				//index2 = BLI_findindex(&rmd->meshIslands, rbc->mi2);
 
 				if ((index1 == -1) || (index2 == -1)) //outer constraint if not both meshislands in same object
 				{
@@ -1625,6 +1661,7 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 				}
 			}
 		}
+#endif
 
 		copy_v4_v4(rot, rbc->mi1->rigidbody->orn);
 
@@ -1751,7 +1788,6 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 	if (rbw && rbw->physics_world && rbc->physics_constraint) {
 		RB_dworld_add_constraint(rbw->physics_world, rbc->physics_constraint, rbc->flag & RBC_FLAG_DISABLE_COLLISIONS);
 	}
-#endif
 }
 
 bool isDisconnected(MeshIsland *mi)
@@ -1929,6 +1965,8 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi
 		//DAG_id_tag_update(&ob->id, OB_RECALC_OB);
 	}
 
+	DAG_id_tag_update(&ob->id, OB_RECALC_OB);
+
 	//since we are always member of an object, dupe its settings,
 	/* create new settings data, and link it up */
 	rbo = BKE_rigidbody_copy_object(ob);
@@ -1945,6 +1983,7 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi
 
 	/* flag cache as outdated */
 	//BKE_rigidbody_cache_reset(rbw);
+
 
 	/* return this object */
 	return rbo;
@@ -2627,7 +2666,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 				}
 			}
 
-			if (0) { // (isModifierActive(rmd)) {
+			if (isModifierActive(rmd)) {
 				float max_con_mass = 0;
 				float min_con_dist = FLT_MAX;
 			
@@ -2966,7 +3005,7 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 		if (md->type == eModifierType_Fracture)
 		{
 			rmd = (FractureModifierData*)md;
-			exploOK = true; // !rmd->explo_shared || (rmd->explo_shared && exploPresent);
+			exploOK = !rmd->explo_shared || (rmd->explo_shared && rmd->frac_mesh && rmd->dm);
 			
 			if (isModifierActive(rmd) && exploOK) {
 				int count;

@@ -150,7 +150,7 @@ void ED_operatortypes_object(void)
 	WM_operatortype_append(OBJECT_OT_meshdeform_bind);
 	WM_operatortype_append(OBJECT_OT_explode_refresh);
 	WM_operatortype_append(OBJECT_OT_ocean_bake);
-	WM_operatortype_append(OBJECT_OT_rigidbody_refresh);
+	WM_operatortype_append(OBJECT_OT_fracture_refresh);
 	WM_operatortype_append(OBJECT_OT_rigidbody_constraints_refresh);
 	WM_operatortype_append(OBJECT_OT_rigidbody_convert_to_objects);
 	

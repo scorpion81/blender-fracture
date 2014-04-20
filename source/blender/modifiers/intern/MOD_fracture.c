@@ -101,7 +101,6 @@ static void initData(ModifierData *md)
 
 		fmd->active_index = 0;
 
-
 		fmd->visible_mesh = NULL;
 		fmd->visible_mesh_cached = NULL;
 		fmd->refresh = true;
@@ -154,19 +153,22 @@ static void freeData(ModifierData *md)
 	RigidBodyShardCon *rbsc;
 	int i;
 	
-	if (rmd->dm) {
-		rmd->dm->needsFree = 1;
-		rmd->dm->release(rmd->dm);
-		rmd->dm = NULL;
-	}
-	
-	BKE_fracmesh_free(rmd->frac_mesh);
-	MEM_freeN(rmd->frac_mesh);
-
-	for (fl = rmd->fracture_levels.first; fl; fl = fl->next)
+	if (!rmd->refresh && !rmd->refresh_constraints)
 	{
-		MEM_freeN(fl->noisemap);
-		MEM_freeN(fl);
+		if (rmd->dm) {
+			rmd->dm->needsFree = 1;
+			rmd->dm->release(rmd->dm);
+			rmd->dm = NULL;
+		}
+
+		BKE_fracmesh_free(rmd->frac_mesh);
+		MEM_freeN(rmd->frac_mesh);
+
+		for (fl = rmd->fracture_levels.first; fl; fl = fl->next)
+		{
+			MEM_freeN(fl->noisemap);
+			MEM_freeN(fl);
+		}
 	}
 
 	//simulation data...
@@ -394,6 +396,12 @@ static void doClusters(FractureModifierData* fmd, int levels, Object *ob)
 			BLI_kdtree_insert(tree, i, s->centroid);
 		}
 
+		if (fmd->cluster_count < 2)
+		{
+			BLI_kdtree_free(tree);
+			return;
+		}
+
 		BLI_kdtree_balance(tree);
 
 		//remove materials...
@@ -543,9 +551,9 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			BKE_fracmesh_free(fmd->frac_mesh);
 			MEM_freeN(fmd->frac_mesh);
 		}
-	}
 
-	fmd->frac_mesh = BKE_create_fracture_container(derivedData);
+		fmd->frac_mesh = BKE_create_fracture_container(derivedData);
+	}
 
 	//if (!fmd->dm)
 	{
@@ -553,13 +561,20 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		{
 			do_fracture(fmd, -1, ob, derivedData, fmd->fracture_levels.first);
 		}
-		fmd->dm = doSimulate(fmd, ob, fmd->dm);
+		if (fmd->dm && fmd->frac_mesh)
+		{
+			final_dm = doSimulate(fmd, ob, fmd->dm);
+		}
+		else
+		{
+			final_dm = doSimulate(fmd, ob, derivedData);
+		}
 	}
 
-	if (fmd->dm)
+/*	if (fmd->dm)
 		final_dm = CDDM_copy(fmd->dm);
 	else
-		final_dm = derivedData;
+		final_dm = derivedData;*/
 
 #if 0
 	for (fl = fmd->fracture_levels.first; fl; fl = fl->next)
@@ -1071,7 +1086,7 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object* obj, D
 
 		BKE_fracture_shard_by_points(fracmd->frac_mesh, id, &points, fl->frac_algorithm, obj, dm);
 		//MEM_freeN(points.points);
-		if (fracmd->frac_mesh->shard_count > 0 && fracmd->cluster_count > 1)
+		if (fracmd->frac_mesh->shard_count > 0)
 			doClusters(fracmd, 1, obj);
 		BKE_fracture_create_dm(fracmd, false);
 	}
@@ -1165,6 +1180,11 @@ void freeMeshIsland(FractureModifierData* rmd, MeshIsland* mi)
 
 	if (mi->vertices_cached)
 	{
+		int i;
+		for (i = 0; i < mi->vertex_count; i++)
+		{
+			//MEM_freeN(mi->vertices_cached[i]);
+		}
 		MEM_freeN(mi->vertices_cached);
 		mi->vertices_cached = NULL;
 	}
@@ -3763,24 +3783,24 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 			//grab neighborhood info (and whole fracture info -> cells) if available, if explo before rmd
 			//emd = findPrecedingExploModifier(ob, rmd);
 //			if (emd != NULL && emd->cells != NULL && ((!emd->use_clipping && !rmd->use_cellbased_sim /* && !emd->use_boolean*/) || rmd->contact_dist_meaning == ////MOD_RIGIDBODY_VERTICES))
-			if (fmd->frac_mesh && fmd->frac_mesh->shard_count > 0)
+			if (fmd->frac_mesh && fmd->frac_mesh->shard_count > 0 && fmd->dm && fmd->dm->numVertData > 0)
 			{
 				Shard *s;
 				MeshIsland* mi; // can be created without shards even, when using fracturemethod = NONE
 				//BMIter iter;
-				int i, j;
+				int i, j, vertstart = 0;
 				//BMVert *v;
 				MVert* v;
 				float dummyloc[3], rot[4], min[3], max[3];
 
 				//good idea to simply reference this ? Hmm, what about removing the explo modifier later, crash ?)
-				//rmd->explo_shared = TRUE;
-				//rmd->visible_mesh = emd->fracMesh; //visible_mesh = fmd->dm
+				fmd->explo_shared = true;
+				fmd->visible_mesh = DM_to_bmesh(fmd->dm, true);
 
 				for (i = 0; i < fmd->frac_mesh->shard_count; i++)
 				{
 					MVert *mv, *verts;
-					int totvert;
+					int totvert, k;
 
 					s = fmd->frac_mesh->shard_map[i];
 					// add 1 MeshIsland
@@ -3791,7 +3811,12 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 					mi->participating_constraint_count = 0;
 
 					//mi->is_at_boundary = vc->is_at_boundary;
-					mi->vertices = s->mvert;
+					mi->vertices = MEM_mallocN(sizeof(BMVert*) * s->totvert, "vert_cache");
+					for (k = 0; k < s->totvert; k++)
+					{
+						mi->vertices[k] = BM_vert_at_index_find(fmd->visible_mesh, vertstart+k);
+					}
+					vertstart += s->totvert;
 					//mi->vertco = get_vertco(s);// ? starting coordinates ???
 					mi->physics_mesh = BKE_shard_create_dm(s);
 					totvert = mi->physics_mesh->numVertData;
@@ -3799,7 +3824,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 					mi->vertco = MEM_mallocN(sizeof(float), "vertco");
 					for (mv = verts, j = 0; j < totvert; mv++, j++)
 					{
-						mi->vertco = MEM_reallocN(mi->vertco, sizeof(float) * 3 * j);
+						mi->vertco = MEM_reallocN(mi->vertco, sizeof(float) * 3 * (j+1));
 						mi->vertco[j*3] = mv->co[0];
 						mi->vertco[j*3+1] = mv->co[1];
 						mi->vertco[j*3+2] = mv->co[2];
@@ -3840,7 +3865,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 			{
 				//split to meshislands now
 				fmd->visible_mesh = DM_to_bmesh(dm, true); //ensures indexes automatically
-				//rmd->explo_shared = FALSE;
+				fmd->explo_shared = false;
 
 				start = PIL_check_seconds_timer();
 				mesh_separate_loose(fmd, ob);
@@ -3900,14 +3925,12 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 			}
 		}
 #endif
+		}
 
 		start = PIL_check_seconds_timer();
-		if ((fmd->visible_mesh != NULL) && ((fmd->use_constraints)))//|| (fmd->auto_merge))) {
-			//if (((fmd->constraint_group != NULL) && (!BKE_group_object_exists(rmd->constraint_group, ob))) ||
-			//		(fmd->constraint_group == NULL)) { // { || (rmd->auto_merge)) {
-			{
-				create_constraints(fmd, ob); //check for actually creating the constraints inside
-			}
+		if ((fmd->visible_mesh != NULL)  && (fmd->use_constraints))
+		{
+			create_constraints(fmd, ob); //check for actually creating the constraints inside
 		}
 
 		printf("Building constraints done, %g\n", PIL_check_seconds_timer() - start);
@@ -3926,10 +3949,10 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 	}
 
 	//emd = findPrecedingExploModifier(ob, rmd);
-	//exploOK = !rmd->explo_shared || (rmd->explo_shared && emd && emd->cells);
-	exploOK = true;//shards and shards there or no shards...
+	exploOK = !fmd->explo_shared || (fmd->explo_shared && fmd->dm && fmd->frac_mesh);
+	//exploOK = true;//shards and shards there or no shards...
 
-	if (!exploOK || fmd->visible_mesh == NULL)
+	if ((!exploOK) || (fmd->visible_mesh == NULL && fmd->visible_mesh_cached == NULL))
 	{
 		MeshIsland* mi;
 		//nullify invalid data
@@ -3953,7 +3976,8 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 		}
 	}
 
-	if ((fmd->visible_mesh != NULL) && exploOK) {
+	if ((fmd->visible_mesh != NULL) && exploOK)
+	{
 		DerivedMesh *dm_final;
 #if 0
 		if (rmd->auto_merge) {
@@ -3984,14 +4008,22 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 
 		return dm_final;
 	}
-	else {
-		if (fmd->visible_mesh == NULL)
+	else if ((fmd->visible_mesh_cached != NULL) && exploOK)
+	{
+		DerivedMesh* dm_final;
+		dm_final = CDDM_copy(fmd->visible_mesh_cached);
+		return dm_final;
+	}
+	else
+	{
+		if (fmd->visible_mesh == NULL && fmd->visible_mesh_cached == NULL)
 		{
 			//oops, something went definitely wrong...
 			/*if (emd)
 			{
 				rmd->refresh = TRUE;
 			}*/
+			fmd->refresh = true;
 			freeData(fmd);
 			fmd->visible_mesh_cached = NULL;
 			fmd->refresh = false;
@@ -3999,6 +4031,8 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 
 		return dm;
 	}
+
+	return dm;
 }
 
 static int dependsOnTime(ModifierData *UNUSED(md))
