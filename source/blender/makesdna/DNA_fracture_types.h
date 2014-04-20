@@ -17,12 +17,14 @@ enum {
 };
 
 typedef struct Shard {
+	struct Shard *next, *prev;
 	struct MVert *mvert;
 	struct MPoly *mpoly;
 	struct MLoop *mloop;
 	int totvert, totpoly, totloop;
 	int pad;
 	
+	int *cluster_colors;
 	float min[3], max[3];
 	float centroid[3];	// centroid of shard, calculated during fracture
 	float start_co[3];	// hmm this was necessary for simulation itself, storing the restposition of the centroid
@@ -30,7 +32,7 @@ typedef struct Shard {
 	int shard_id;	// the identifier
 	int neighbor_count; // counts of neighbor islands
 	int parent_id;	//the shard from which this shard originates, we keep all shards in the shardmap
-	int flag;		//flag for: isValid, ...
+	int flag;		//flag for: isValid, ..
 } Shard;
 
 typedef struct FracMesh {

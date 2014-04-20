@@ -46,6 +46,11 @@
 #include "BKE_paint.h"
 #include "BKE_editmesh.h"
 
+//for shard picking, yuck...
+#include "BKE_modifier.h"
+#include "BKE_DerivedMesh.h"
+#include "BKE_cdderivedmesh.h"
+
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"
 
@@ -1449,6 +1454,7 @@ bool EDBM_select_pick(bContext *C, const int mval[2], bool extend, bool deselect
 	BMVert *eve = NULL;
 	BMEdge *eed = NULL;
 	BMFace *efa = NULL;
+	FractureModifierData* fmd;
 
 	/* setup view context for argument to callbacks */
 	em_setup_viewcontext(C, &vc);
@@ -1549,6 +1555,83 @@ bool EDBM_select_pick(bContext *C, const int mval[2], bool extend, bool deselect
 
 			WM_event_add_notifier(C, NC_MATERIAL | ND_SHADING_LINKS, NULL);
 
+		}
+
+		//extend selection to entire shard HERE.... XXXX TODO
+		fmd = (FractureModifierData *)modifiers_findByType(vc.obedit, eModifierType_Fracture);
+		if (fmd != NULL)
+		{
+			BMWalker walker;
+			BMesh* bm = vc.em->bm;
+			BMEdge* e;
+			BMIter iter;
+
+			//select entire island
+			if (vc.em->selectmode == SCE_SELECT_FACE) {
+				//BMIter iter;
+
+				if (efa == NULL)
+					return OPERATOR_CANCELLED;
+
+#if 0
+				if (limit) {
+					/* grr, shouldn't need to alloc BMO flags here */
+					BM_mesh_elem_toolflags_ensure(bm);
+					/* hflag no-seam --> bmo-tag */
+					BM_ITER_MESH (e, &iter, bm, BM_EDGES_OF_MESH) {
+						BMO_elem_flag_set(bm, e, BMO_ELE_TAG, !BM_elem_flag_test(e, BM_ELEM_SEAM));
+					}
+				}
+#endif
+
+				/* walk */
+				BMW_init(&walker, bm, BMW_ISLAND,
+				         BMW_MASK_NOP, /*limit ? BMO_ELE_TAG :*/ BMW_MASK_NOP, BMW_MASK_NOP,
+				         BMW_FLAG_TEST_HIDDEN,
+				         BMW_NIL_LAY);
+
+				for (efa = BMW_begin(&walker, efa); efa; efa = BMW_step(&walker)) {
+					BM_face_select_set(bm, efa, true);
+				}
+				BMW_end(&walker);
+			}
+			else {
+				if (efa) {
+					eed = BM_FACE_FIRST_LOOP(efa)->e;
+				}
+				else if (!eed) {
+					if (!eve || !eve->e)
+						return OPERATOR_CANCELLED;
+
+					eed = eve->e;
+				}
+
+				BMW_init(&walker, bm, BMW_SHELL,
+				         BMW_MASK_NOP, BMW_MASK_NOP, BMW_MASK_NOP,
+				         BMW_FLAG_TEST_HIDDEN,
+				         BMW_NIL_LAY);
+
+				for (e = BMW_begin(&walker, eed->v1); e; e = BMW_step(&walker)) {
+					BM_edge_select_set(bm, e, true);
+				}
+				BMW_end(&walker);
+
+				EDBM_selectmode_flush(vc.em);
+
+			}
+
+			// do it the hard way
+			BM_ITER_MESH(efa, &iter, vc.em->bm, BM_FACES_OF_MESH)
+			{
+				if (BM_elem_flag_test(efa, BM_ELEM_SELECT))
+				{
+					efa->mat_nr = 1;
+				}
+			}
+
+			//the very hard way...
+			fmd->dm = CDDM_from_bmesh(vc.em->bm, true);
+			WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, vc.obedit);
 		}
 
 		WM_event_add_notifier(C, NC_GEOM | ND_SELECT, vc.obedit);
@@ -2638,7 +2721,22 @@ void em_setup_viewcontext(bContext *C, ViewContext *vc)
 	view3d_set_viewcontext(C, vc);
 	
 	if (vc->obedit) {
-		vc->em = BKE_editmesh_from_object(vc->obedit);
+		FractureModifierData *fmd;
+
+		//vc->em = BKE_editmesh_from_object(vc->obedit);
+		//check for modifier and use derivedmesh HERE....
+		fmd = (FractureModifierData *)modifiers_findByType(vc->obedit, eModifierType_Fracture);
+		if (fmd != NULL && fmd->dm != NULL)
+		{
+			BMEditMesh* em = BKE_editmesh_from_object(vc->obedit);
+			BMesh *bm = DM_to_bmesh(fmd->dm, true);
+			vc->em = BKE_editmesh_create(bm, true);
+			vc->em->selectmode = em->selectmode;
+		}
+		else
+		{
+			vc->em = BKE_editmesh_from_object(vc->obedit);
+		}
 	}
 }
 

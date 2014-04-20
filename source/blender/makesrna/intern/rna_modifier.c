@@ -607,6 +607,12 @@ static int rna_LaplacianDeformModifier_is_bind_get(PointerRNA *ptr)
 	return ((lmd->flag & MOD_LAPLACIANDEFORM_BIND) && (lmd->cache_system != NULL));
 }
 
+static void rna_FractureModifier_fractureLevels_begin(CollectionPropertyIterator *iter, PointerRNA *ptr)
+{
+	FractureModifierData *fmd = (FractureModifierData *)ptr->data;
+	rna_iterator_listbase_begin(iter, &fmd->fracture_levels, NULL);
+}
+
 #else
 
 static PropertyRNA *rna_def_property_subdivision_common(StructRNA *srna, const char type[])
@@ -3655,6 +3661,35 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	StructRNA *srna;
 	PropertyRNA *prop;
 
+	srna = RNA_def_struct(brna, "FractureModifier", "Modifier");
+	RNA_def_struct_ui_text(srna, "Fracture Modifier", "Add a fracture container to this object");
+	RNA_def_struct_sdna(srna, "FractureModifierData");
+	RNA_def_struct_ui_icon(srna, ICON_MOD_EXPLODE);
+
+	prop = RNA_def_property(srna, "fracture_levels", PROP_COLLECTION, PROP_NONE);
+	//RNA_def_property_collection_sdna(prop, "FractureModifierData", "fracture_levels", "totlevel");
+	RNA_def_property_collection_funcs(prop, "rna_FractureModifier_fractureLevels_begin", "rna_iterator_listbase_next",
+	                                  "rna_iterator_listbase_end", "rna_iterator_listbase_get",
+	                                  NULL, NULL, NULL, NULL);
+	RNA_def_property_struct_type(prop, "FractureLevel");
+	RNA_def_property_ui_text(prop, "Fracture Levels", "Hierarchy of Fracture Levels");
+
+	prop = RNA_def_property(srna, "active_index", PROP_INT, PROP_NONE);
+	//RNA_def_property_range(prop, 0, 15); //XXXX TODO useful limit ?
+	//RNA_def_property_ui_text(prop, "Current Fracture Level", "Current Fracture Level");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "cluster_count", PROP_INT, PROP_NONE);
+	RNA_def_property_range(prop, 0, 100000);
+	RNA_def_property_ui_text(prop, "Cluster Count", "Amount of clusters built from existing shards, 0 for none");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+}
+
+static void rna_def_modifier_fracture_level(BlenderRNA *brna)
+{
+	StructRNA *srna;
+	PropertyRNA *prop;
+
 	static EnumPropertyItem prop_fracture_algorithm[] = {
 		{MOD_FRACTURE_NONE, "NONE", 0, "None", "Do not fracture the raw mesh (just simulate existing parts)"},
 		{MOD_FRACTURE_VORONOI, "VORONOI", 0, "Voronoi", "Use plain voronoi as fracture algorithm"},
@@ -3669,15 +3704,21 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 		{MOD_FRACTURE_OWN_VERTS, "OWN_VERTS", 0, "Own Vertices", "Use own vertices as point cloud"},
 		{MOD_FRACTURE_EXTRA_PARTICLES, "EXTRA_PARTICLES", 0, "Extra Particles", "Use particles of group objects as point cloud"},
 		{MOD_FRACTURE_EXTRA_VERTS, "EXTRA_VERTS", 0, "Extra Vertices", "Use vertices of group objects as point cloud"},
-		//{MOD_FRACTURE_GREASEPENCIL, "GREASE_PENCIL", 0, "Grease Pencil", "Use grease pencil points as point cloud"},
+		{MOD_FRACTURE_GREASEPENCIL, "GREASE_PENCIL", 0, "Grease Pencil", "Use grease pencil points as point cloud"},
 		{MOD_FRACTURE_UNIFORM, "UNIFORM", 0, "Uniform", "Use a random uniform pointcloud generated over the bounding box"},
 		{0, NULL, 0, NULL, NULL}
 	};
 
-	srna = RNA_def_struct(brna, "FractureModifier", "Modifier");
-	RNA_def_struct_ui_text(srna, "Fracture Modifier", "Add a fracture container to this object");
-	RNA_def_struct_sdna(srna, "FractureModifierData");
+	srna = RNA_def_struct(brna, "FractureLevel", NULL);
+	RNA_def_struct_ui_text(srna, "Fracture Level", "Define a fracture hierarchy level");
+	RNA_def_struct_sdna(srna, "FractureLevel");
 	RNA_def_struct_ui_icon(srna, ICON_MOD_EXPLODE);
+
+	prop = RNA_def_property(srna, "name", PROP_STRING, PROP_NONE);
+	RNA_def_property_string_sdna(prop, NULL, "name");
+	RNA_def_property_ui_text(prop, "Name", "Fracture Level Name");
+	//RNA_def_property_string_funcs(prop, NULL, NULL, "rna_WireframeModifier_defgrp_name_set");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "frac_algorithm", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_items(prop, prop_fracture_algorithm);
@@ -3840,6 +3881,7 @@ void RNA_def_modifier(BlenderRNA *brna)
 	rna_def_modifier_meshcache(brna);
 	rna_def_modifier_laplaciandeform(brna);
 	rna_def_modifier_wireframe(brna);
+	rna_def_modifier_fracture_level(brna);
 	rna_def_modifier_fracture(brna);
 }
 

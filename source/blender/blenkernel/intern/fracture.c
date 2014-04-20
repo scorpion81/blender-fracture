@@ -40,7 +40,7 @@
 //utility... bbox / centroid calc
 
 /*prototypes*/
-static void parse_stream(FILE *fp, int expected_shards, ShardID shard_id, FracMesh *fm, int algorithm, Object *obj);
+static void parse_stream(FILE *fp, int expected_shards, ShardID shard_id, FracMesh *fm, int algorithm, Object *obj, DerivedMesh *dm);
 static Shard *parse_shard(FILE *fp);
 static void parse_verts(FILE *fp, MVert *mvert, int totvert);
 static void parse_polys(FILE *fp, MPoly *mpoly, int totpoly, int *r_totloop);
@@ -57,11 +57,11 @@ static void add_shard(FracMesh *fm, Shard *s)
 }
 
 /* parse the voro++ raw data */
-static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracMesh *fm, int algorithm, Object* obj)
+static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracMesh *fm, int algorithm, Object* obj, DerivedMesh *dm)
 {
 	/*Parse voronoi raw data*/
 	int i = 0;
-	Shard* s = NULL, *p = BKE_shard_by_id(fm, parent_id);
+	Shard* s = NULL, *p = BKE_shard_by_id(fm, parent_id, dm);
 	float obmat[4][4]; /* use unit matrix for now */
 
 	p->flag = 0;
@@ -106,6 +106,11 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 			s->flag = SHARD_INTACT;
 			add_shard(fm, s);
 		}
+	}
+
+	if (parent_id == -1)
+	{
+		BKE_shard_free(p);
 	}
 }
 
@@ -304,12 +309,14 @@ void BKE_shard_free(Shard *s)
 	MEM_freeN(s->mpoly);
 	if (s->neighbor_ids)
 		MEM_freeN(s->neighbor_ids);
+	if (s->cluster_colors)
+		MEM_freeN(s->cluster_colors);
 	MEM_freeN(s);
 }
 
-void BKE_shard_calc_minmax(Shard *shard)
+float BKE_shard_calc_minmax(Shard *shard)
 {
-	float min[3], max[3];
+	float min[3], max[3], diff[3];
 	int i;
 	
 	INIT_MINMAX(min, max);
@@ -319,6 +326,10 @@ void BKE_shard_calc_minmax(Shard *shard)
 	
 	copy_v3_v3(shard->min, min);
 	copy_v3_v3(shard->max, max);
+
+	sub_v3_v3v3(diff, max, min);
+	return len_v3(diff);
+	//return MAX3(diff[0], diff[1], diff[2]);
 }
 
 /* iterator functions for efficient looping over shards */
@@ -354,10 +365,16 @@ Shard* BKE_shard_by_iterator(ShardIterator *iter) {
 }
 
 /*access shard directly by index / id*/
-Shard *BKE_shard_by_id(FracMesh* mesh, ShardID id) {
+Shard *BKE_shard_by_id(FracMesh* mesh, ShardID id, DerivedMesh* dm) {
 	if ((id < mesh->shard_count) && (id >= 0))
 	{
 		return mesh->shard_map[id];
+	}
+	else if (id == -1)
+	{
+		//create temporary shard
+		return BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
+		                                  dm->numVertData, dm->numPolyData, dm->numLoopData, true);
 	}
 	
 	return NULL;
@@ -371,22 +388,27 @@ Shard *BKE_shard_by_position(FracMesh* mesh, float position[3]) {
 }
 #endif
 
-void BKE_get_shard_geometry(FracMesh* mesh, ShardID id, MVert** vert, int *totvert)
+void BKE_get_shard_geometry(FracMesh* mesh, ShardID id, MVert** vert, int *totvert, DerivedMesh *dm)
 {
 	/* XXX incompatible pointer types, bad! */
-	Shard* shard = BKE_shard_by_id(mesh, id);
+	Shard* shard = BKE_shard_by_id(mesh, id, dm);
 	if (shard != NULL) {
 		*vert = shard->mvert;
 		*totvert = shard->totvert;
 	}
 }
 
-void BKE_get_shard_minmax(FracMesh* mesh, ShardID id, float min_r[3], float max_r[3])
+void BKE_get_shard_minmax(FracMesh* mesh, ShardID id, float min_r[3], float max_r[3], DerivedMesh *dm)
 {
-	Shard* shard = BKE_shard_by_id(mesh, id);
+	Shard* shard = BKE_shard_by_id(mesh, id, dm);
 	if (shard != NULL) {
 		copy_v3_v3(min_r, shard->min);
 		copy_v3_v3(max_r, shard->max);
+	}
+
+	if (id == -1)
+	{
+		BKE_shard_free(shard);
 	}
 }
 
@@ -396,6 +418,9 @@ Shard *BKE_create_fracture_shard(MVert *mvert, MPoly *mpoly, MLoop *mloop, int t
 	shard->totvert = totvert;
 	shard->totpoly = totpoly;
 	shard->totloop = totloop;
+	shard->cluster_colors = NULL;
+	shard->neighbor_ids = NULL;
+	shard->neighbor_count = 0;
 	
 	if (copy) {
 		shard->mvert = MEM_mallocN(sizeof(MVert) * totvert, "shard vertices");
@@ -425,27 +450,27 @@ Shard *BKE_create_fracture_shard(MVert *mvert, MPoly *mpoly, MLoop *mloop, int t
 FracMesh *BKE_create_fracture_container(DerivedMesh* dm)
 {
 	FracMesh* fmesh;
-	Shard *shard;
+	//Shard *shard;
 	
 	fmesh = MEM_mallocN(sizeof(FracMesh), __func__);
 	
 	fmesh->shard_map = MEM_mallocN(sizeof(Shard*), __func__); //allocate in chunks ?, better use proper blender functions for this
-	fmesh->shard_count = 1;
+	fmesh->shard_count = 0;
 	
-	shard = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
+	/*shard = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
 	                                  dm->numVertData, dm->numPolyData, dm->numLoopData, true);
 	shard->shard_id = 0; //the original "shard"
 	fmesh->shard_map[0] = shard;
 	shard->neighbor_ids = NULL;
 	shard->neighbor_count = 0;
-	shard->parent_id = -1; //no backup id means this shard has not been re-fractured
+	shard->parent_id = -1; //no backup id means this shard has not been re-fractured*/
 	
 	return fmesh;
 }
 
 
 
-void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud, int algorithm, Object* obj) {
+void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud, int algorithm, Object* obj, DerivedMesh* dm) {
 	int n_size = 8;
 	
 	Shard *shard;
@@ -465,13 +490,20 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	double time_start;
 #endif
 	
-	shard = BKE_shard_by_id(fmesh, id);
+	shard = BKE_shard_by_id(fmesh, id, dm);
 	if (!shard || shard->flag & SHARD_FRACTURED)
 		return;
+
 	
 	/* calculate bounding box with theta margin */
 	copy_v3_v3(min, shard->min);
 	copy_v3_v3(max, shard->max);
+
+	if (id == -1)
+	{
+		BKE_shard_free(shard);
+	}
+
 	add_v3_fl(min, -theta);
 	add_v3_fl(max, theta);
 	
@@ -529,7 +561,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 #endif
 	
 	stream = fmemopen(bp, size, "r");
-	parse_stream(stream, pointcloud->totpoints, id, fmesh, algorithm, obj);
+	parse_stream(stream, pointcloud->totpoints, id, fmesh, algorithm, obj, dm);
 	fclose (stream);
 	
 #ifdef USE_DEBUG_TIMER
@@ -545,12 +577,13 @@ void BKE_fracmesh_free(FracMesh* fm)
 	for (i = 0; i < fm->shard_count; i++)
 	{
 		Shard* s = fm->shard_map[i];
-		MEM_freeN(s->mvert);
+		BKE_shard_free(s);
+		/*MEM_freeN(s->mvert);
 		MEM_freeN(s->mpoly);
 		MEM_freeN(s->mloop);
 		if (s->neighbor_ids)
-			MEM_freeN(s->neighbor_ids);
-		MEM_freeN(s);
+			MEM_freeN(s->neighbor_ids);*/
+		//MEM_freeN(s);
 	}
 	
 	MEM_freeN(fm->shard_map);
@@ -676,4 +709,14 @@ DerivedMesh *BKE_shard_create_dm(Shard *s)
 	CDDM_calc_normals_mapping(dm);
 
 	return dm;
+}
+
+void BKE_shard_assign_material(Shard* s, short mat_nr)
+{
+	MPoly* mp;
+	int i;
+
+	for (i = 0, mp = s->mpoly; i < s->totpoly; ++i, ++mp) {
+		mp->mat_nr = mat_nr;
+	}
 }

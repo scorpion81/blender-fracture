@@ -35,6 +35,8 @@
 
 #include "BLI_math.h"
 #include "BLI_rand.h"
+#include "BLI_listbase.h"
+#include "BLI_string.h";
 
 #include "DNA_object_types.h"
 #include "DNA_fracture_types.h"
@@ -46,6 +48,7 @@
 #include "BKE_depsgraph.h"
 #include "BKE_DerivedMesh.h"
 #include "BKE_cdderivedmesh.h"
+#include "BLI_string_utf8.h"
 
 #include "ED_screen.h"
 #include "ED_view3d.h"
@@ -57,6 +60,7 @@
 #include "physics_intern.h" // own include
 //#include "bmesh.h"
 
+#if 0
 //#define NAMELEN 64 //namebased, yuck... better dont try longer names.... NOT happy with this, but how to find according group else ? cant store it anywhere
 static int mesh_fracture_exec(bContext *C, wmOperator *UNUSED(op))
 {
@@ -105,7 +109,7 @@ static int mesh_fracture_exec(bContext *C, wmOperator *UNUSED(op))
 		
 		//pick 1st shard, hardcoded by now
 		//execute fracture....
-		BKE_fracture_shard_by_points(fracmd->frac_mesh, 0, &points, fracmd->frac_algorithm, ob);
+//		BKE_fracture_shard_by_points(fracmd->frac_mesh, 0, &points, fracmd->frac_algorithm, ob);
 		
 		MEM_freeN(points.points);
 		
@@ -291,7 +295,6 @@ int ED_fracture_pick_shard(bContext *C, const int mval[2], bool extend, bool des
 		}
 
 
-#if 0
 		f = BM_face_at_index(bm, index);
 		if (f == NULL)
 			return false;
@@ -317,12 +320,92 @@ int ED_fracture_pick_shard(bContext *C, const int mval[2], bool extend, bool des
 
 		//s2 = BKE_create_fracture_shard(dm)
 		//BKE_shard_free(s);
-#endif
 	}
 
 	/* image window redraw */
 	WM_event_add_notifier(C, NC_GEOM | ND_SELECT, ob->data);
 	ED_region_tag_redraw(CTX_wm_region(C)); // XXX - should redraw all 3D views
 	return true;
+}
+#endif
+
+
+static int fracture_level_add_exec(bContext *C, wmOperator *UNUSED(op))
+{
+	Object *ob = CTX_data_active_object(C);
+	FractureModifierData* fracmd;
+	FractureLevel* fl;
+
+	//find modifierdata, getFracmesh
+	fracmd = (FractureModifierData *)modifiers_findByType(ob, eModifierType_Fracture);
+
+	if (fracmd != NULL)
+	{
+		//char* str;
+		fl = MEM_callocN(sizeof(FractureLevel), "fraclevel");
+		//str = BLI_sprintfN("Fracture Level %d", BLI_countlist(&fracmd->fracture_levels) + 1);
+		fl->name = BLI_sprintfN("Fracture Level %d", BLI_countlist(&fracmd->fracture_levels) + 1);
+		//fl->name = BLI_strncpy_utf8(fl->name, str, BLI_strlen_utf8(str));
+		fl->extra_group = NULL;
+		fl->frac_algorithm = MOD_FRACTURE_VORONOI;
+		fl->shard_id = 0;
+		fl->shard_count = 10;
+		fl->percentage = 100;
+		BLI_addtail(&fracmd->fracture_levels, fl);
+		return OPERATOR_FINISHED;
+	}
+
+
+	return OPERATOR_CANCELLED;
+}
+
+void FRACTURE_OT_fracture_level_add(wmOperatorType* ot)
+{
+	/* identifiers */
+	ot->idname = "FRACTURE_OT_fracture_level_add";
+	ot->name = "Add Fracture Level";
+	ot->description = "Add a fracture hierarchy level";
+
+	/* api callbacks */
+	ot->exec = fracture_level_add_exec;
+	ot->poll = ED_operator_object_active_editable_mesh;
+
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+}
+
+static int fracture_level_remove_exec(bContext *C, wmOperator *UNUSED(op))
+{
+	Object *ob = CTX_data_active_object(C);
+	FractureModifierData* fracmd;
+	FractureLevel* fl;
+
+	//find modifierdata, getFracmesh
+	fracmd = (FractureModifierData *)modifiers_findByType(ob, eModifierType_Fracture);
+
+	if (fracmd != NULL && BLI_countlist(&fracmd->fracture_levels) > 1)
+	{
+		FractureLevel *fl = BLI_findlink(&fracmd->fracture_levels, fracmd->active_index);
+		BLI_remlink_safe(&fracmd->fracture_levels, fl);
+		if (fracmd->active_index > 0)
+			fracmd->active_index--;
+		return OPERATOR_FINISHED;
+	}
+
+
+	return OPERATOR_CANCELLED;
+}
+
+void FRACTURE_OT_fracture_level_remove(wmOperatorType* ot)
+{
+	/* identifiers */
+	ot->idname = "FRACTURE_OT_fracture_level_remove";
+	ot->name = "Remove Fracture Level";
+	ot->description = "Remove a fracture hierarchy level";
+
+	/* api callbacks */
+	ot->exec = fracture_level_remove_exec;
+	ot->poll = ED_operator_object_active_editable_mesh;
+
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
 

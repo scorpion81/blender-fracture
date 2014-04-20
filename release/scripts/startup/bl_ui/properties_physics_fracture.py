@@ -18,7 +18,7 @@
 
 # <pep8 compliant>
 import bpy
-from bpy.types import Panel, Menu
+from bpy.types import Panel, Menu, UIList
 from bpy.app.translations import pgettext_iface as iface_
 
 
@@ -40,6 +40,15 @@ class PhysicButtonsPanel():
         rd = context.scene.render
         return (ob and ob.type == 'MESH') and (not rd.use_game_engine) and (context.fracture)
 
+class FRACTURE_UL_fracture_levels(UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        fl = item
+        if self.layout_type in {'DEFAULT', 'COMPACT'}:
+            layout.prop(fl, "name", text="", emboss=False, icon_value=icon)
+        elif self.layout_type in {'GRID'}:
+            layout.alignment = 'CENTER'
+            layout.label(text="", icon_value=icon)
+
 
 class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
     bl_label = "Fracture"
@@ -48,17 +57,28 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         layout = self.layout
 
         md = context.fracture
+        fl = md.fracture_levels[md.active_index]
+        row = layout.row()
+        row.template_list("UI_UL_list", "fracture_levels", md, "fracture_levels",
+                              md, "active_index", rows=2)
+
+        col2 = row.column(align=True)
+        col2.operator("fracture.fracture_level_add", icon='ZOOMIN', text="")
+        if len(md.fracture_levels) > 1:
+            col2.operator("fracture.fracture_level_remove", icon='ZOOMOUT', text="")
+
         col = layout.column()
-        col.prop(md, "frac_algorithm")
-        col.prop(md, "shard_count")
+        col.prop(fl, "frac_algorithm")
+        col.prop(fl, "shard_count")
         #layout.prop(md, "shard_id")
         col.label("Point Source:")
-        col.prop(md, "point_source")
-        col.prop(md, "extra_group")
-        col.prop(md, "noise")
-        col.prop(md, "percentage")
+        col.prop(fl, "point_source")
+        col.prop(fl, "extra_group")
+        col.prop(fl, "noise")
+        col.prop(fl, "percentage")
         #layout.operator("object.fracture", icon="MOD_EXPLODE")
-        col.prop(md, "point_seed")
+        col.prop(fl, "point_seed")
+        col.prop(md, "cluster_count")
 
 if __name__ == "__main__":  # only for live edit.
     bpy.utils.register_module(__name__)

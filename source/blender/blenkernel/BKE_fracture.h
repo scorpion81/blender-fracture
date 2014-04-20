@@ -45,11 +45,11 @@ void BKE_shards_end(struct ShardIterator* iter);
 struct Shard* BKE_shard_by_iterator(struct ShardIterator *iter);
 
 /*direct access*/
-struct Shard* BKE_shard_by_id(struct FracMesh* mesh, ShardID id);
+struct Shard* BKE_shard_by_id(struct FracMesh* mesh, ShardID id, struct DerivedMesh *dm);
 
 /* detailed info to the particular shards */
-void BKE_get_shard_geometry(struct FracMesh* mesh, ShardID id, struct MVert** vert, int *totvert);
-void BKE_get_shard_minmax(struct FracMesh* mesh, ShardID id, float min_r[3], float max_r[3]);
+void BKE_get_shard_geometry(struct FracMesh* mesh, ShardID id, struct MVert** vert, int *totvert, struct DerivedMesh *dm);
+void BKE_get_shard_minmax(struct FracMesh* mesh, ShardID id, float min_r[3], float max_r[3], struct DerivedMesh *dm);
 
 /* container object handling functions */
 //create container -> for each island or for whole mesh create shards in a fracmesh, init fracmodifier (function for opening container makes here a fracmesh, operator will
@@ -86,7 +86,7 @@ void BKE_fracture_steps_end(struct FracMeshIterator* iter);
 //utility functions
 bool BKE_fracture_shard_center_median(struct Shard *shard, float cent[3]);
 bool BKE_fracture_shard_center_centroid(struct Shard *shard, float cent[3]);
-void BKE_shard_calc_minmax(struct Shard *shard);
+float BKE_shard_calc_minmax(struct Shard *shard);
 
 void BKE_fracmesh_free(struct FracMesh* fm);
 void BKE_shard_free(struct Shard* s);
@@ -97,6 +97,7 @@ void BKE_fracture_release_dm(struct FractureModifierData *fmd);
 void BKE_fracture_create_dm(struct FractureModifierData *fmd, bool do_merge);
 struct DerivedMesh *BKE_shard_create_dm(struct Shard *s);
 
+void BKE_shard_assign_material(Shard* s, short mat_nr);
 
 /*** Bullet API erweiterungen für fracturing ***/
 
@@ -109,7 +110,7 @@ struct DerivedMesh *BKE_shard_create_dm(struct Shard *s);
 // dann muss der caller über alle shards loopen um die neuen sub-shards zu behandeln
 
 // erzeuge shards aus dem basis mesh und einer liste von points (nicht weiter spezifiziert, können auch particles oder so sein)
-void BKE_fracture_shard_by_points(struct FracMesh *fmesh, ShardID id, struct FracPointCloud *points, int algorithm, Object *obj);
+void BKE_fracture_shard_by_points(struct FracMesh *fmesh, ShardID id, struct FracPointCloud *points, int algorithm, Object *obj, struct DerivedMesh *dm);
 
 // Zerbreche ein einzelnes shard basierend auf collision
 // btManifoldPoint ist eine Bullet class, das sollte wahrscheinlich etwas abstrahiert werden

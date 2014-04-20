@@ -1384,8 +1384,18 @@ typedef struct FractureModifierData {
 	ModifierData modifier;
 	struct FracMesh *frac_mesh; //store only the current fracmesh here first, later maybe an entire history...
 	struct DerivedMesh *dm;
+	ListBase fracture_levels;
+	int active_index;
+	int cluster_count;
+	//char pad[4];
+} FractureModifierData;
+
+typedef struct FractureLevel {
+
+	struct FractureLevel *next, *prev;
 	struct Group *extra_group;
 	float *noisemap;
+	char *name;
 
 	int frac_algorithm;
 	int shard_count;
@@ -1395,7 +1405,6 @@ typedef struct FractureModifierData {
 	int percentage;
 	float noise;
 	int noise_count;
-	//char pad[4];
-} FractureModifierData;
+} FractureLevel;
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */

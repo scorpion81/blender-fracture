@@ -204,8 +204,10 @@ static void operatortypes_dynamicpaint(void)
 
 static void operatortypes_fracture(void)
 {
-	WM_operatortype_append(OBJECT_OT_fracture);
-	WM_operatortype_append(FRACTURE_OT_fracturemode_toggle);
+	//WM_operatortype_append(OBJECT_OT_fracture);
+	//WM_operatortype_append(FRACTURE_OT_fracturemode_toggle);
+	WM_operatortype_append(FRACTURE_OT_fracture_level_add);
+	WM_operatortype_append(FRACTURE_OT_fracture_level_remove);
 }
 
 //static void keymap_pointcache(wmWindowManager *wm)
