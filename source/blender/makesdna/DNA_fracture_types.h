@@ -21,6 +21,11 @@ typedef struct Shard {
 	struct MVert *mvert;
 	struct MPoly *mpoly;
 	struct MLoop *mloop;
+
+	struct CustomData vertData;
+	struct CustomData polyData;
+	struct CustomData loopData;
+
 	int totvert, totpoly, totloop;
 	int pad;
 	

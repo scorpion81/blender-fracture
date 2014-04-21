@@ -18,6 +18,7 @@
 #include "BKE_fracture_util.h"
 #include "BKE_mesh.h"
 #include "BKE_object.h"
+#include "BKE_customdata.h"
 
 #include "bmesh.h"
 
@@ -164,6 +165,7 @@ static Shard* parse_shard(FILE *fp)
 	fseek(fp, sizeof(char), SEEK_CUR);
 	
 	s = BKE_create_fracture_shard(mvert, mpoly, mloop, totvert, totpoly, totloop, false);
+
 	s->neighbor_ids = neighbors;
 	s->neighbor_count = totpoly;
 	//s->shard_id = shard_id;
@@ -251,6 +253,23 @@ static void parse_neighbors(FILE* fp, int *neighbors, int totpoly)
 		fscanf(fp, "%d ", &n);
 		neighbors[i] = n;
 	}
+}
+
+Shard* BKE_custom_data_to_shard(Shard* s, DerivedMesh* dm)
+{
+	CustomData_copy(&dm->vertData, &s->vertData, CD_MASK_MESH, CD_CALLOC, s->totvert);
+	CustomData_copy_data(&dm->vertData, &s->vertData,
+	                     0, 0, s->totvert);
+
+	CustomData_copy(&dm->loopData, &s->loopData, CD_MASK_MESH, CD_CALLOC, s->totloop);
+	CustomData_copy_data(&dm->loopData, &s->loopData,
+	                     0, 0, s->totloop);
+
+	CustomData_copy(&dm->polyData, &s->polyData, CD_MASK_MESH, CD_CALLOC, s->totpoly);
+	CustomData_copy_data(&dm->polyData, &s->polyData,
+	                     0, 0, s->totpoly);
+
+	return s;
 }
 
 /* modified from BKE_mesh_center_median */
@@ -373,8 +392,10 @@ Shard *BKE_shard_by_id(FracMesh* mesh, ShardID id, DerivedMesh* dm) {
 	else if (id == -1)
 	{
 		//create temporary shard
-		return BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
+		Shard* s = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
 		                                  dm->numVertData, dm->numPolyData, dm->numLoopData, true);
+		s = BKE_custom_data_to_shard(s, dm);
+		return s;
 	}
 	
 	return NULL;
@@ -601,12 +622,12 @@ void BKE_fracture_release_dm(FractureModifierData *fmd)
 	}
 }
 
-static DerivedMesh *create_dm(FracMesh *fracmesh)
+static DerivedMesh *create_dm(FracMesh *fracmesh, bool doCustomData)
 {
 	int shard_count = fracmesh->shard_count;
 	Shard **shard_map = fracmesh->shard_map;
 	Shard *shard;
-	int s;
+	int s, i;
 	
 	int num_verts, num_polys, num_loops;
 	int vertstart, polystart, loopstart;
@@ -614,6 +635,7 @@ static DerivedMesh *create_dm(FracMesh *fracmesh)
 	MVert *mverts;
 	MPoly *mpolys;
 	MLoop *mloops;
+	MEdge *medges, *me;
 	
 	num_verts = num_polys = num_loops = 0;
 	for (s = 0; s < shard_count; ++s) {
@@ -622,7 +644,7 @@ static DerivedMesh *create_dm(FracMesh *fracmesh)
 		if (shard->shard_id == 0 && shard->flag & SHARD_FRACTURED)
 		{
 			//dont display first shard when its fractured (relevant for plain voronoi only)
-			continue;
+			//continue;
 		}
 		
 		num_verts += shard->totvert;
@@ -634,6 +656,13 @@ static DerivedMesh *create_dm(FracMesh *fracmesh)
 	mverts = CDDM_get_verts(result);
 	mloops = CDDM_get_loops(result);
 	mpolys = CDDM_get_polys(result);
+
+	if (doCustomData)
+	{
+		CustomData_copy(&shard_map[0]->vertData, &result->vertData, CD_MASK_MESH, CD_CALLOC, num_verts);
+		CustomData_copy(&shard_map[0]->polyData, &result->polyData, CD_MASK_MESH, CD_CALLOC, num_polys);
+		CustomData_copy(&shard_map[0]->loopData, &result->loopData, CD_MASK_MESH, CD_CALLOC, num_loops);
+	}
 	
 	vertstart = polystart = loopstart = 0;
 	for (s = 0; s < shard_count; ++s) {
@@ -645,21 +674,31 @@ static DerivedMesh *create_dm(FracMesh *fracmesh)
 		if (shard->shard_id == 0 && shard->flag & SHARD_FRACTURED)
 		{
 			//dont display first shard when its fractured (relevant for plain voronoi only)
-			continue;
+			//continue;
+		}
+
+		if (doCustomData)
+		{
+			CustomData_copy_data(&shard->vertData, &result->vertData, 0, vertstart, shard->totvert);
+			CustomData_copy_data(&shard->loopData, &result->loopData, 0, loopstart, shard->totloop);
+			CustomData_copy_data(&shard->polyData, &result->polyData, 0, polystart, shard->totpoly);
 		}
 		
 		memcpy(mverts + vertstart, shard->mvert, shard->totvert * sizeof(MVert));
-		
 		memcpy(mpolys + polystart, shard->mpoly, shard->totpoly * sizeof(MPoly));
+
 		for (i = 0, mp = mpolys + polystart; i < shard->totpoly; ++i, ++mp) {
 			/* adjust loopstart index */
 			mp->loopstart += loopstart;
+			CustomData_set(&result->polyData, i+polystart, CD_MPOLY, mp);
 		}
 		
 		memcpy(mloops + loopstart, shard->mloop, shard->totloop * sizeof(MLoop));
+
 		for (i = 0, ml = mloops + loopstart; i < shard->totloop; ++i, ++ml) {
 			/* adjust vertex index */
 			ml->v += vertstart;
+			CustomData_set(&result->loopData, i+loopstart, CD_MLOOP, ml);
 		}
 		
 		vertstart += shard->totvert;
@@ -668,6 +707,14 @@ static DerivedMesh *create_dm(FracMesh *fracmesh)
 	}
 	
 	CDDM_calc_edges(result);
+
+	//disable edge drawing... why is this enabled ??
+	medges = CDDM_get_edges(result);
+	for (i = 0, me = medges + i; i < result->numEdgeData; i++)
+	{
+		me->flag &~ ME_EDGEDRAW;
+		CustomData_set(&result->edgeData, i, CD_MEDGE, me);
+	}
 	
 	result->dirty |= DM_DIRTY_NORMALS;
 	CDDM_calc_normals_mapping(result);
@@ -676,7 +723,9 @@ static DerivedMesh *create_dm(FracMesh *fracmesh)
 
 void BKE_fracture_create_dm(FractureModifierData *fmd, bool do_merge)
 {
-	DerivedMesh *dm_final;
+	DerivedMesh *dm_final = NULL;
+	FractureLevel* fl = fmd->fracture_levels.first;
+	bool doCustomData = fl->frac_algorithm != MOD_FRACTURE_NONE && fl->frac_algorithm != MOD_FRACTURE_VORONOI;
 	
 	if (fmd->dm) {
 		fmd->dm->needsFree = 1;
@@ -684,12 +733,15 @@ void BKE_fracture_create_dm(FractureModifierData *fmd, bool do_merge)
 		fmd->dm = NULL;
 	}
 	
-	dm_final = create_dm(fmd->frac_mesh);
+	if (fmd->frac_mesh->shard_map)
+	{
+		dm_final = create_dm(fmd->frac_mesh, doCustomData);
+	}
 	
 	fmd->dm = dm_final;
 }
 
-DerivedMesh *BKE_shard_create_dm(Shard *s)
+DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 {
 	DerivedMesh *dm;
 	MVert *mverts;
@@ -703,6 +755,18 @@ DerivedMesh *BKE_shard_create_dm(Shard *s)
 	memcpy(mverts, s->mvert, s->totvert * sizeof(MVert));
 	memcpy(mloops, s->mloop, s->totloop * sizeof(MLoop));
 	memcpy(mpolys, s->mpoly, s->totpoly * sizeof(MPoly));
+
+	if (doCustomData)
+	{
+		CustomData_copy(&s->vertData, &dm->vertData, CD_MASK_MESH, CD_CALLOC, s->totvert);
+		CustomData_copy_data(&s->vertData, &dm->vertData, 0, 0, s->totvert);
+
+		CustomData_copy(&s->loopData, &dm->loopData, CD_MASK_MESH, CD_CALLOC, s->totloop);
+		CustomData_copy_data(&s->loopData, &dm->loopData, 0, 0, s->totloop);
+
+		CustomData_copy(&s->polyData, &dm->polyData, CD_MASK_MESH, CD_CALLOC, s->totpoly);
+		CustomData_copy_data(&s->polyData, &dm->polyData, 0, 0, s->totpoly);
+	}
 	
 	CDDM_calc_edges(dm);
 	dm->dirty |= DM_DIRTY_NORMALS;

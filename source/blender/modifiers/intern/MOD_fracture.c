@@ -268,105 +268,25 @@ static void growCluster(FractureModifierData *fmd, Shard* seed, int sindex, List
 	float size = 0.1f;
 	KDTreeNearest* nearest;
 
-	/*if (BLI_findindex(lbVisit, seed) == -1)
+	count = BLI_kdtree_range_search(tree, seed->centroid, &nearest, size*depth);
+	for (i = 0; i < count; i++)
 	{
-		BLI_addtail(lbVisit, seed);
-	}
-
-	if (seed->cluster_colors[0] == -1)
-	{
-		seed->cluster_colors[0] = sindex;
-		BKE_shard_assign_material(seed, (short)sindex);
-	}
-	else*/
-	{
-		count = BLI_kdtree_range_search(tree, seed->centroid, &nearest, size*depth);
-		for (i = 0; i < count; i++)
+		Shard* neighbor;
+		int index = nearest[i].index;
+		neighbor = fmd->frac_mesh->shard_map[index];
+		if (neighbor->cluster_colors[0] == -1)
 		{
-			Shard* neighbor;
-			int index = nearest[i].index;
-			neighbor = fmd->frac_mesh->shard_map[index];
-			if (neighbor->cluster_colors[0] == -1)
-			{
-				neighbor->cluster_colors[0] = sindex;
-				BKE_shard_assign_material(neighbor, (short)sindex);
-			}
-
-			if (BLI_findindex(lbVisit, seed) == -1)
-			{
-				BLI_addtail(lbVisit, seed);
-			}
+			neighbor->cluster_colors[0] = sindex;
+			//BKE_shard_assign_material(neighbor, (short)sindex);
 		}
-		MEM_freeN(nearest);
 
-		//growCluster(fmd, neighbor, sindex, lbVisit, tree, depth+1);
-
-		/*for (i = 0; i < seed->neighbor_count; i++)
+		if (BLI_findindex(lbVisit, seed) == -1)
 		{
-			Shard* neighbor;
-			int n_id = seed->neighbor_ids[i];
-			if (n_id > -1)
-			{
-				neighbor = fmd->frac_mesh->shard_map[n_id];
-				//if (BLI_findindex(lbVisit, neighbor) == -1)
-				if (neighbor->cluster_colors[0] == -1)
-				{
-					ret += growCluster(fmd, neighbor, sindex, lbVisit);
-					break;
-				}
-			}
-		}*/
+			BLI_addtail(lbVisit, seed);
+		}
 	}
-
-	//return ret;
+	MEM_freeN(nearest);
 }
-
-/*static void growCluster(FractureModifierData *fmd, Shard* seed, int sindex, ListBase* lbVisit)
-{
-	int i = 0 , n_id;
-	Shard *neighbor = NULL;
-
-	if (BLI_findindex(lbVisit, seed) == -1)
-	{
-		if (seed->cluster_colors[0] == -1)
-		{
-			seed->cluster_colors[0] = sindex;
-			BKE_shard_assign_material(seed, (short)sindex);
-		}
-
-		BLI_addtail(lbVisit, seed);
-	}
-	else
-	{
-		do
-		{
-			if (i == seed->neighbor_count)
-			{
-				//try with a neighbor..
-				n_id = seed->neighbor_ids[0];.
-				if (n_id > -1)
-				{
-					neighbor = fmd->frac_mesh->shard_map[n_id];
-					growCluster(fmd, neighbor, sindex, lbVisit);
-				}
-			}
-
-			n_id = seed->neighbor_ids[i];
-			if (n_id > -1)
-			{
-				neighbor = fmd->frac_mesh->shard_map[n_id];
-			}
-			i++;
-		}
-		while ((neighbor == NULL) || (neighbor->cluster_colors[0] != -1));
-
-		//for (i = 0; i < seed->neighbor_count; i++)
-		if (BLI_findindex(lbVisit, neighbor) == -1)
-		{
-			growCluster(fmd, neighbor, sindex, lbVisit);
-		}
-	}
-}*/
 
 static void doClusters(FractureModifierData* fmd, int levels, Object *ob)
 {
@@ -416,6 +336,7 @@ static void doClusters(FractureModifierData* fmd, int levels, Object *ob)
 		seed_count = fmd->cluster_count;// (int)(BLI_frand() * BLI_countlist(&lb));
 		seeds = MEM_mallocN(sizeof(Shard*) * seed_count, "seeds");
 
+#if 0
 		for (k = 0; k < seed_count; k++)
 		{
 			mat = BKE_material_add(G.main, "Cluster");
@@ -424,6 +345,7 @@ static void doClusters(FractureModifierData* fmd, int levels, Object *ob)
 			mat->b = BLI_frand();
 			assign_material(ob, mat, (short)k+1, BKE_MAT_ASSIGN_OBDATA);
 		}
+#endif
 
 		for (k = 0; k < seed_count; k++)
 		{
@@ -431,7 +353,7 @@ static void doClusters(FractureModifierData* fmd, int levels, Object *ob)
 			int which_index = k * (int)(fmd->frac_mesh->shard_count / seed_count);
 			Shard *which = fmd->frac_mesh->shard_map[which_index];
 			which->cluster_colors[j] = color;
-			BKE_shard_assign_material(which, (short)color);
+			//BKE_shard_assign_material(which, (short)color);
 			BLI_addtail(&lbVisit, which);
 			seeds[k] = which;
 		}
@@ -3821,7 +3743,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 					}
 					vertstart += s->totvert;
 					//mi->vertco = get_vertco(s);// ? starting coordinates ???
-					mi->physics_mesh = BKE_shard_create_dm(s);
+					mi->physics_mesh = BKE_shard_create_dm(s, false);
 					totvert = mi->physics_mesh->numVertData;
 					verts = mi->physics_mesh->getVertArray(mi->physics_mesh);
 					mi->vertco = MEM_mallocN(sizeof(float), "vertco");

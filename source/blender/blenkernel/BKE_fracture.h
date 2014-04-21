@@ -70,6 +70,7 @@ struct FracMesh *BKE_create_fracture_container(struct DerivedMesh* dm); //check 
 //Group* BKE_open_fracture_container(FracMesh* fm);
 //void BKE_drop_fracture_container(Object* ob); //delete in modifier->free...
 struct Shard *BKE_create_fracture_shard(struct MVert *mvert, struct MPoly *mpoly, struct MLoop *mloop, int totvert, int totpoly, int totloop, bool copy);
+struct Shard *BKE_custom_data_to_shard(struct Shard* s, struct DerivedMesh* dm);
 
 //hmm maybe a listbase of steps, its dynamically created by user interaction(THIS is in hierarchy!!! prefractured) or a dynafrac step (THIS suits.)
 void BKE_add_fracture_step(struct FracHistory* fh, struct FracMesh* ob);
@@ -95,7 +96,7 @@ void BKE_shard_free(struct Shard* s);
 /* DerivedMesh */
 void BKE_fracture_release_dm(struct FractureModifierData *fmd);
 void BKE_fracture_create_dm(struct FractureModifierData *fmd, bool do_merge);
-struct DerivedMesh *BKE_shard_create_dm(struct Shard *s);
+struct DerivedMesh *BKE_shard_create_dm(struct Shard *s, bool doCustomData);
 
 void BKE_shard_assign_material(struct Shard* s, short mat_nr);
 
