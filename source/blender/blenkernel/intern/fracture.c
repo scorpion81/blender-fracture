@@ -733,7 +733,7 @@ void BKE_fracture_create_dm(FractureModifierData *fmd, bool do_merge)
 		fmd->dm = NULL;
 	}
 	
-	if (fmd->frac_mesh->shard_map)
+	if (fmd->frac_mesh->shard_map && fmd->frac_mesh->shard_count > 0)
 	{
 		dm_final = create_dm(fmd->frac_mesh, doCustomData);
 	}
