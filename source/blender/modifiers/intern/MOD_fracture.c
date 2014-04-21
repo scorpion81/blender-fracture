@@ -166,7 +166,10 @@ static void freeData(ModifierData *md)
 
 		for (fl = rmd->fracture_levels.first; fl; fl = fl->next)
 		{
-			MEM_freeN(fl->noisemap);
+			if (fl->noisemap)
+			{
+				MEM_freeN(fl->noisemap);
+			}
 			MEM_freeN(fl);
 		}
 	}

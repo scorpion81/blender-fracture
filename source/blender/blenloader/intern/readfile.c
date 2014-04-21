@@ -4846,11 +4846,19 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 		else if (md->type == eModifierType_Fracture) {
 			int i = 0;
 			FractureModifierData *fmd = (FractureModifierData *)md;
-			FracMesh* fm = newdataadr(fd, fmd->frac_mesh);
+			FractureLevel *fl;
+			FracMesh* fm;
+
+			fmd->fracture_levels.first = newdataadr(fd, fmd->fracture_levels.first);
+			fm = fmd->frac_mesh = NULL; //newdataadr(fd, fmd->frac_mesh);
+
+			/*for (fl = fmd->fracture_levels.first; fl; fl = fl->next)
+			{
+				fl = newdataadr(fd, fl);
+			}*/
+
 			if (fm == NULL)
 			{
-				fmd->fracture_levels.first = NULL;
-				fmd->fracture_levels.last = NULL;
 				fmd->dm = NULL;
 				fmd->meshIslands.first = NULL;
 				fmd->meshIslands.last = NULL;
