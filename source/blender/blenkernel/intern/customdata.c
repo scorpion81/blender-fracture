@@ -1419,7 +1419,7 @@ void CustomData_free(CustomData *data, int totelem)
 	for (i = 0; i < data->totlayer; ++i)
 		customData_free_layer__internal(&data->layers[i], totelem);
 
-	if (data->layers)
+	if (data->layers && data->totlayer > 0) // FIX for crash in fracture modifier free, YUCK...
 		MEM_freeN(data->layers);
 	
 	CustomData_external_free(data);

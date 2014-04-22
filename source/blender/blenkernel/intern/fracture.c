@@ -717,13 +717,19 @@ static DerivedMesh *create_dm(FracMesh *fracmesh, bool doCustomData)
 
 	if (doCustomData)
 	{
+		MLoop* ml;
+
+		for (i = 0, ml = mloops; i < result->numLoopData; ++i, ++ml) {
+			CustomData_set(&result->loopData, i, CD_MLOOP, ml);
+		}
+
 		//disable edge drawing... why is this enabled ??
-		medges = CDDM_get_edges(result);
+		/*medges = CDDM_get_edges(result);
 		for (i = 0, me = medges + i; i < result->numEdgeData; i++)
 		{
-			me->flag &~ ME_EDGEDRAW;
+			//me->flag &~ ME_EDGEDRAW;
 			CustomData_set(&result->edgeData, i, CD_MEDGE, me);
-		}
+		}*/
 	}
 	
 	result->dirty |= DM_DIRTY_NORMALS;
@@ -766,8 +772,12 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 	memcpy(mloops, s->mloop, s->totloop * sizeof(MLoop));
 	memcpy(mpolys, s->mpoly, s->totpoly * sizeof(MPoly));
 
+	CDDM_calc_edges(dm);
+
 	if (doCustomData)
 	{
+		MLoop *ml;
+		int i;
 		CustomData_copy(&s->vertData, &dm->vertData, CD_MASK_MESH, CD_CALLOC, s->totvert);
 		CustomData_copy_data(&s->vertData, &dm->vertData, 0, 0, s->totvert);
 
@@ -776,9 +786,14 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 
 		CustomData_copy(&s->polyData, &dm->polyData, CD_MASK_MESH, CD_CALLOC, s->totpoly);
 		CustomData_copy_data(&s->polyData, &dm->polyData, 0, 0, s->totpoly);
+
+		//update custom data after calc edges ?
+		for (i = 0, ml = mloops; i < dm->numLoopData; ++i, ++ml) {
+			CustomData_set(&dm->loopData, i, CD_MLOOP, ml);
+		}
 	}
 	
-	CDDM_calc_edges(dm);
+
 	dm->dirty |= DM_DIRTY_NORMALS;
 	CDDM_calc_normals_mapping(dm);
 

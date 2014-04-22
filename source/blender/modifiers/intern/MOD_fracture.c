@@ -237,7 +237,7 @@ static void freeData(ModifierData *md)
 		}
 	}
 
-	if (rmd->visible_mesh_cached)
+	if (rmd->visible_mesh_cached && rmd->visible_mesh)
 	{
 		DM_release(rmd->visible_mesh_cached);
 		MEM_freeN(rmd->visible_mesh_cached);
@@ -2986,7 +2986,7 @@ void connect_constraints(FractureModifierData* rmd,  Object* ob, MeshIsland **me
 						}
 						else
 						{
-							if (!mi->is_at_boundary && !mi2->is_at_boundary)
+							if (!mi->is_at_boundary && !mi2->is_at_boundary && 0)
 							{
 								//use fast path for interior shards
 
@@ -3701,7 +3701,11 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 		//if we changed the fracture parameters (or the derivedmesh ???
 
 		freeData(fmd);
-		fmd->visible_mesh_cached = NULL;
+		if (fmd->visible_mesh != NULL)
+		{
+			fmd->visible_mesh_cached = NULL;
+		}
+
 		fmd->split = destroy_compound;
 		fmd->join = buildCompounds;
 
@@ -3873,6 +3877,12 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 				fmd->visible_mesh = DM_to_bmesh(fmd->visible_mesh_cached, true);
 			}
 			create_constraints(fmd, ob); //check for actually creating the constraints inside
+
+			if (fmd->visible_mesh_cached != NULL)
+			{
+				BM_mesh_free(fmd->visible_mesh);
+				fmd->visible_mesh = NULL;
+			}
 		}
 
 		printf("Building constraints done, %g\n", PIL_check_seconds_timer() - start);

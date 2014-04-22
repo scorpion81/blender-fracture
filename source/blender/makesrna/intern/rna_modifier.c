@@ -730,7 +730,7 @@ static void updateConstraints(FractureModifierData *rmd, Object* ob) {
 		rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
 	}
 	
-	if (rmd->use_cellbased_sim)
+	//if (rmd->use_cellbased_sim)
 	{
 		rmd->refresh_constraints = true;
 	}
