@@ -3753,6 +3753,10 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 					int totvert, k;
 
 					s = fmd->frac_mesh->shard_map[i];
+					if (s->totvert == 0)
+					{
+						continue;
+					}
 					// add 1 MeshIsland
 					mi = MEM_callocN(sizeof(MeshIsland), "meshIsland");
 					BLI_addtail(&fmd->meshIslands, mi);
