@@ -333,10 +333,10 @@ static void doClusters(FractureModifierData* fmd, int levels, Object *ob)
 		//remove materials...
 		for (i = 0; i < ob->totcol; i++)
 		{
-			BKE_material_pop_id(ob, i, true);
+			//BKE_material_pop_id(ob, i, true);
 		}
 
-		seed_count = fmd->cluster_count;// (int)(BLI_frand() * BLI_countlist(&lb));
+		seed_count = (fmd->cluster_count > fmd->frac_mesh->shard_count ? fmd->frac_mesh->shard_count : fmd->cluster_count);// (int)(BLI_frand() * BLI_countlist(&lb));
 		seeds = MEM_mallocN(sizeof(Shard*) * seed_count, "seeds");
 
 #if 0
@@ -1015,7 +1015,9 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object* obj, D
 		BKE_fracture_shard_by_points(fracmd->frac_mesh, id, &points, fl->frac_algorithm, obj, dm);
 		//MEM_freeN(points.points);
 		if (fracmd->frac_mesh->shard_count > 0)
+		{
 			doClusters(fracmd, 1, obj);
+		}
 		BKE_fracture_create_dm(fracmd, false);
 	}
 	MEM_freeN(points.points);
@@ -1106,7 +1108,7 @@ void freeMeshIsland(FractureModifierData* rmd, MeshIsland* mi)
 		}
 	}
 
-	if (mi->vertices_cached)
+	if (mi->vertices_cached && rmd->explo_shared)
 	{
 		int i;
 		for (i = 0; i < mi->vertex_count; i++)
@@ -3695,14 +3697,23 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 	//BMesh* temp = NULL;
 	bool exploOK = false; //doFracture
 	double start;
+	//bool shared = false;
 
 	if (fmd->refresh || fmd->refresh_constraints)
 	{
+		//shared = fmd->explo_shared;
+		//fmd->explo_shared = false;
 		//if we changed the fracture parameters (or the derivedmesh ???
 
 		freeData(fmd);
+		//fmd->explo_shared = shared;
+
 		if (fmd->visible_mesh != NULL)
 		{
+			if (fmd->visible_mesh_cached)
+			{
+				MEM_freeN(fmd->visible_mesh_cached);
+			}
 			fmd->visible_mesh_cached = NULL;
 		}
 
@@ -3888,7 +3899,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 		printf("Building constraints done, %g\n", PIL_check_seconds_timer() - start);
 		printf("Constraints: %d\n", BLI_countlist(&fmd->meshConstraints));
 
-		if (fmd->visible_mesh != NULL && fmd->visible_mesh_cached == NULL )
+		if (fmd->visible_mesh != NULL && !fmd->explo_shared)
 		{
 			start = PIL_check_seconds_timer();
 			//post process ... convert to DerivedMesh only at refresh times, saves permanent conversion during execution
