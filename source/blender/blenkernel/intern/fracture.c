@@ -395,6 +395,7 @@ Shard *BKE_shard_by_id(FracMesh* mesh, ShardID id, DerivedMesh* dm) {
 		Shard* s = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
 		                                  dm->numVertData, dm->numPolyData, dm->numLoopData, true);
 		s = BKE_custom_data_to_shard(s, dm);
+		s->flag = SHARD_INTACT;
 		return s;
 	}
 	
@@ -657,7 +658,7 @@ static DerivedMesh *create_dm(FracMesh *fracmesh, bool doCustomData)
 	mloops = CDDM_get_loops(result);
 	mpolys = CDDM_get_polys(result);
 
-	if (doCustomData)
+	if (doCustomData && shard_count > 0)
 	{
 		CustomData_copy(&shard_map[0]->vertData, &result->vertData, CD_MASK_MESH, CD_CALLOC, num_verts);
 		CustomData_copy(&shard_map[0]->polyData, &result->polyData, CD_MASK_MESH, CD_CALLOC, num_polys);
@@ -690,7 +691,10 @@ static DerivedMesh *create_dm(FracMesh *fracmesh, bool doCustomData)
 		for (i = 0, mp = mpolys + polystart; i < shard->totpoly; ++i, ++mp) {
 			/* adjust loopstart index */
 			mp->loopstart += loopstart;
-			CustomData_set(&result->polyData, i+polystart, CD_MPOLY, mp);
+			if (doCustomData)
+			{
+				CustomData_set(&result->polyData, i+polystart, CD_MPOLY, mp);
+			}
 		}
 		
 		memcpy(mloops + loopstart, shard->mloop, shard->totloop * sizeof(MLoop));
@@ -698,7 +702,10 @@ static DerivedMesh *create_dm(FracMesh *fracmesh, bool doCustomData)
 		for (i = 0, ml = mloops + loopstart; i < shard->totloop; ++i, ++ml) {
 			/* adjust vertex index */
 			ml->v += vertstart;
-			CustomData_set(&result->loopData, i+loopstart, CD_MLOOP, ml);
+			if (doCustomData)
+			{
+				CustomData_set(&result->loopData, i+loopstart, CD_MLOOP, ml);
+			}
 		}
 		
 		vertstart += shard->totvert;
@@ -708,12 +715,15 @@ static DerivedMesh *create_dm(FracMesh *fracmesh, bool doCustomData)
 	
 	CDDM_calc_edges(result);
 
-	//disable edge drawing... why is this enabled ??
-	medges = CDDM_get_edges(result);
-	for (i = 0, me = medges + i; i < result->numEdgeData; i++)
+	if (doCustomData)
 	{
-		me->flag &~ ME_EDGEDRAW;
-		CustomData_set(&result->edgeData, i, CD_MEDGE, me);
+		//disable edge drawing... why is this enabled ??
+		medges = CDDM_get_edges(result);
+		for (i = 0, me = medges + i; i < result->numEdgeData; i++)
+		{
+			me->flag &~ ME_EDGEDRAW;
+			CustomData_set(&result->edgeData, i, CD_MEDGE, me);
+		}
 	}
 	
 	result->dirty |= DM_DIRTY_NORMALS;
@@ -733,7 +743,7 @@ void BKE_fracture_create_dm(FractureModifierData *fmd, bool do_merge)
 		fmd->dm = NULL;
 	}
 	
-	if (fmd->frac_mesh->shard_map && fmd->frac_mesh->shard_count > 0)
+	//if ((fmd->frac_mesh->shard_map != NULL) && (fmd->frac_mesh->shard_count > 0))
 	{
 		dm_final = create_dm(fmd->frac_mesh, doCustomData);
 	}

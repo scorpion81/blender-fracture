@@ -161,8 +161,11 @@ static void freeData(ModifierData *md)
 			rmd->dm = NULL;
 		}
 
-		BKE_fracmesh_free(rmd->frac_mesh);
-		MEM_freeN(rmd->frac_mesh);
+		if (rmd->frac_mesh)
+		{
+			BKE_fracmesh_free(rmd->frac_mesh);
+			MEM_freeN(rmd->frac_mesh);
+		}
 
 		for (fl = rmd->fracture_levels.first; fl; fl = fl->next)
 		{
@@ -3181,7 +3184,14 @@ static int create_combined_neighborhood(FractureModifierData *rmd, MeshIsland **
 		mi->combined_index_map = MEM_mallocN(mi->vertex_count*sizeof(int), "combined_index_map");
 		for (v = 0; v < mi->vertex_count; v++) {
 			float co[3];
-			copy_v3_v3(co, mi->vertices[v]->co);
+			if (mi->vertices)
+			{
+				copy_v3_v3(co, mi->vertices[v]->co);
+			}
+			else
+			{
+				copy_v3_v3(co, mi->vertices_cached[v]->co);
+			}
 			BM_vert_create(*combined_mesh, co, NULL, 0);
 			mi->combined_index_map[v] = vert_counter;
 			vert_counter++;
@@ -3720,11 +3730,11 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 
 				//good idea to simply reference this ? Hmm, what about removing the explo modifier later, crash ?)
 				fmd->explo_shared = true;
-				fmd->visible_mesh = DM_to_bmesh(fmd->dm, true);
+				fmd->visible_mesh_cached = CDDM_copy(fmd->dm); //DM_to_bmesh(fmd->dm, true);
 
 				for (i = 0; i < fmd->frac_mesh->shard_count; i++)
 				{
-					MVert *mv, *verts;
+					MVert *mv, *verts, *mverts;
 					int totvert, k;
 
 					s = fmd->frac_mesh->shard_map[i];
@@ -3736,10 +3746,13 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 					mi->participating_constraint_count = 0;
 
 					//mi->is_at_boundary = vc->is_at_boundary;
-					mi->vertices = MEM_mallocN(sizeof(BMVert*) * s->totvert, "vert_cache");
+					//mi->vertices = MEM_mallocN(sizeof(BMVert*) * s->totvert, "vert_cache");
+					mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * s->totvert, "vert_cache");
+					mverts = CDDM_get_verts(fmd->visible_mesh_cached);
 					for (k = 0; k < s->totvert; k++)
 					{
-						mi->vertices[k] = BM_vert_at_index_find(fmd->visible_mesh, vertstart+k);
+						mi->vertices_cached[k] = mverts + vertstart + k;
+						//mi->vertices[k] = BM_vert_at_index_find(fmd->visible_mesh, vertstart+k);
 					}
 					vertstart += s->totvert;
 					//mi->vertco = get_vertco(s);// ? starting coordinates ???
@@ -3776,7 +3789,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 					//mi->global_face_map = vc->global_face_map;
 
 					mi->rigidbody = NULL;
-					mi->vertices_cached = NULL;
+					//mi->vertices_cached = NULL;
 					if (!fmd->use_cellbased_sim)
 					{
 						mi->destruction_frame = -1;
@@ -3853,15 +3866,19 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 		}
 
 		start = PIL_check_seconds_timer();
-		if ((fmd->visible_mesh != NULL)  && (fmd->use_constraints))
+		if ((fmd->visible_mesh != NULL || fmd->visible_mesh_cached != NULL )  && (fmd->use_constraints))
 		{
+			if (fmd->visible_mesh == NULL)
+			{	//ugh, needed to build constraints...
+				fmd->visible_mesh = DM_to_bmesh(fmd->visible_mesh_cached, true);
+			}
 			create_constraints(fmd, ob); //check for actually creating the constraints inside
 		}
 
 		printf("Building constraints done, %g\n", PIL_check_seconds_timer() - start);
 		printf("Constraints: %d\n", BLI_countlist(&fmd->meshConstraints));
 
-		if (fmd->visible_mesh != NULL)
+		if (fmd->visible_mesh != NULL && fmd->visible_mesh_cached == NULL )
 		{
 			start = PIL_check_seconds_timer();
 			//post process ... convert to DerivedMesh only at refresh times, saves permanent conversion during execution
