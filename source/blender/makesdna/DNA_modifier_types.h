@@ -1334,12 +1334,13 @@ typedef struct MeshIsland {
 	struct BMVert **vertices;
 	struct MVert **vertices_cached;
 	float *vertco;
-	struct DerivedMesh *physics_mesh; //convert to mesh later ??
+	struct DerivedMesh *physics_mesh;
+	struct Shard *temp; //storage for physics mesh, better omit derivedmesh here...
 	struct RigidBodyOb *rigidbody;
-	struct RigidBodyModifierData *parent_mod; //needed to override thresholds/contact distance when using constraint groups
+//	struct RigidBodyModifierData *parent_mod; //needed to override thresholds/contact distance when using constraint groups
 	int *combined_index_map;
 	int *neighbor_ids;
-	int *global_face_map;
+//	int *global_face_map;
 	struct BoundBox *bb;
 	struct RigidBodyShardCon **participating_constraints;
 	int participating_constraint_count;

@@ -4557,6 +4557,45 @@ static void direct_link_pose(FileData *fd, bPose *pose)
 	}
 }
 
+static Shard* read_shard(FileData *fd, void* address )
+{
+	Shard* s = newdataadr(fd, address);
+	s->mvert = newdataadr(fd, s->mvert);
+	s->mpoly = newdataadr(fd, s->mpoly);
+	s->mloop = newdataadr(fd, s->mloop);
+	s->neighbor_ids = newdataadr(fd, s->neighbor_ids);
+	s->cluster_colors = newdataadr(fd, s->cluster_colors);
+	return s;
+}
+
+static MeshIsland* read_meshIsland(FileData* fd, void* address)
+{
+	int i = 0;
+	MeshIsland* mi;
+	Shard* temp;
+
+	//mi = newdataadr(fd, address);
+	mi = (MeshIsland*)address;
+	mi->compound_children = newdataadr(fd, mi->compound_children);
+	mi->compound_parent = newdataadr(fd, mi->compound_parent);
+	mi->vertices = newdataadr(fd, mi->vertices);
+	mi->vertices_cached = newdataadr(fd, mi->vertices_cached);
+	mi->vertco = newdataadr(fd, mi->vertco);
+	mi->temp = read_shard(fd, mi->temp);
+	mi->physics_mesh = BKE_shard_create_dm(mi->temp, false);
+
+	mi->rigidbody = newdataadr(fd, mi->rigidbody);
+	mi->combined_index_map = newdataadr(fd, mi->combined_index_map);
+	mi->neighbor_ids = newdataadr(fd, mi->neighbor_ids );
+	mi->bb = newdataadr(fd, mi->bb);
+	mi->participating_constraints = newdataadr(fd, mi->participating_constraints);
+//	mi->centroid = newdataadr(fd, mi->centroid);
+//	mi->start_co = newdataadr(fd, mi->start_co);
+//	mi->rot = newdataadr(fd, mi->rot);
+
+	return mi;
+}
+
 static void direct_link_modifiers(FileData *fd, ListBase *lb)
 {
 	ModifierData *md;
@@ -4857,6 +4896,17 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 				fl = newdataadr(fd, fl);
 			}*/
 
+			//do we still need that stuff ?
+			fmd->sel_indexes = NULL;
+			fmd->idmap = NULL;
+			fmd->id_storage = NULL;
+			fmd->index_storage = NULL;
+			fmd->cells.first = NULL;
+			fmd->cells.last = NULL;
+			fmd->framemap = NULL;
+			fmd->refresh = false;  // do not construct modifier
+			fmd->refresh_constraints = false;
+
 			if (fm == NULL)
 			{
 				fmd->dm = NULL;
@@ -4882,19 +4932,38 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			}
 			else
 			{
+				MeshIsland *mi;
+				RigidBodyShardCon *con;
+
 				fm->shard_map = newdataadr(fd, fm->shard_map);
 				for (i = 0; i < fm->shard_count; i++)
 				{
-					Shard* s = newdataadr(fd, fm->shard_map[i]);
+					/*Shard* s = newdataadr(fd, fm->shard_map[i]);
 					s->mvert = newdataadr(fd, s->mvert);
 					s->mpoly = newdataadr(fd, s->mpoly);
 					s->mloop = newdataadr(fd, s->mloop);
-					s->neighbor_ids = newdataadr(fd, s->neighbor_ids);
-					fm->shard_map[i] = s;
+					s->neighbor_ids = newdataadr(fd, s->neighbor_ids);*/
+					fm->shard_map[i] = read_shard(fd, fm->shard_map[i]);
 				}
 				fmd->frac_mesh = fm;
 				fmd->dm = NULL;
 				BKE_fracture_create_dm(fmd, false);
+
+				//ugly ugly, need only the shard... the rest is to be generated on demand...
+				fmd->visible_mesh_cached = CDDM_copy(fmd->dm);
+				fmd->visible_mesh = DM_to_bmesh(fmd->visible_mesh_cached, true);
+
+				link_list(fd, &fmd->meshIslands);
+				for (mi = fmd->meshIslands.first; mi; mi = mi->next)
+				{
+					mi = read_meshIsland(fd, mi);
+				}
+
+				link_list(fd, &fmd->meshConstraints);
+				for (con = fmd->meshConstraints.first; con; con = con->next)
+				{
+					con = newdataadr(fd, con);
+				}
 			}
 		}
 	}

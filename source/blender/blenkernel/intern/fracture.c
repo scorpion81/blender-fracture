@@ -607,8 +607,11 @@ void BKE_fracmesh_free(FracMesh* fm)
 			MEM_freeN(s->neighbor_ids);*/
 		//MEM_freeN(s);
 	}
-	
-	MEM_freeN(fm->shard_map);
+
+	if (fm->shard_map && fm->shard_count > 0)
+	{
+		MEM_freeN(fm->shard_map);
+	}
 }
 
 

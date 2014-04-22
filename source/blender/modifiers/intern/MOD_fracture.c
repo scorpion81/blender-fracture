@@ -1345,7 +1345,7 @@ static float mesh_separate_tagged(FractureModifierData* rmd, Object *ob, BMVert*
 	copy_v3_v3(mi->centroid, centroid);
 	mat4_to_loc_quat(dummyloc, rot, ob->obmat);
 	copy_v3_v3(mi->rot, rot);
-	mi->parent_mod = rmd;
+	//mi->parent_mod = rmd;
 	mi->bb = BKE_boundbox_alloc_unit();
 	BKE_boundbox_init_from_minmax(mi->bb, min, max);
 	mi->participating_constraints = NULL;
@@ -2236,7 +2236,7 @@ static void connect_meshislands(FractureModifierData* rmd, Object* ob, MeshIslan
 	bool ok = mi1 && mi1->rigidbody && !(mi1->rigidbody->flag & RBO_FLAG_ACTIVE_COMPOUND);
 	ok = ok && mi2 && mi2->rigidbody && !(mi2->rigidbody->flag & RBO_FLAG_ACTIVE_COMPOUND);
 
-	if (((!rmd->use_both_directions) || (mi1->parent_mod != mi2->parent_mod)) && ok)
+	if (((!rmd->use_both_directions)/* || (mi1->parent_mod != mi2->parent_mod)*/) && ok)
 	{
 		//search local constraint list instead of global one !!! saves lots of time
 		int i;
@@ -2608,7 +2608,7 @@ static void search_centroid_based(FractureModifierData *rmd, Object* ob, MeshIsl
 		{
 			float thresh;
 			int con_type, equal, ok;
-			equal = mi->parent_mod == mi2->parent_mod;
+//			equal = mi->parent_mod == mi2->parent_mod;
 			ok = true; // equal || (!equal && rmd->outer_constraint_type == RBC_TYPE_FIXED);
 			thresh = rmd->breaking_threshold;//equal ? rmd->breaking_threshold : rmd->group_breaking_threshold;
 			con_type = rmd->inner_constraint_type;//= equal ? rmd->inner_constraint_type : rmd->outer_constraint_type;
@@ -2988,6 +2988,7 @@ void connect_constraints(FractureModifierData* rmd,  Object* ob, MeshIsland **me
 						}
 						else
 						{
+#if 0
 							if (!mi->is_at_boundary && !mi2->is_at_boundary && 0)
 							{
 								//use fast path for interior shards
@@ -3006,6 +3007,7 @@ void connect_constraints(FractureModifierData* rmd,  Object* ob, MeshIsland **me
 								rmd->sel_indexes[rmd->sel_counter][1] = glob2;
 								rmd->sel_counter++;
 							}
+#endif
 							BLI_ghashutil_pairfree(id_pair);
 						}
 					}
@@ -3616,7 +3618,7 @@ void buildCompounds(FractureModifierData *rmd, Object *ob)
 		copy_v3_v3(mi_compound->centroid, centroid);
 		mat4_to_loc_quat(dummyloc, rot, ob->obmat);
 		copy_v3_v3(mi_compound->rot, rot);
-		mi_compound->parent_mod = rmd;
+//		mi_compound->parent_mod = rmd;
 		mi_compound->bb = BKE_boundbox_alloc_unit();
 		BKE_boundbox_init_from_minmax(mi_compound->bb, min, max);
 		mi_compound->participating_constraints = NULL;

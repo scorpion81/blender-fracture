@@ -152,6 +152,7 @@
 #include "BKE_bpath.h"
 #include "BKE_curve.h"
 #include "BKE_constraint.h"
+#include "BKE_fracture.h"; // for writing a derivedmesh as shard
 #include "BKE_global.h" // for G
 #include "BKE_idprop.h"
 #include "BKE_library.h" // for  set_listbasepointers
@@ -1356,6 +1357,42 @@ static void write_defgroups(WriteData *wd, ListBase *defbase)
 		writestruct(wd, DATA, "bDeformGroup", 1, defgroup);
 }
 
+static void write_shard(WriteData* wd, Shard* s)
+{
+	writestruct(wd, DATA, "Shard", 1, s);
+	writestruct(wd, DATA, "MVert", s->totvert, s->mvert);
+	writestruct(wd, DATA, "MPoly", s->totpoly, s->mpoly);
+	writestruct(wd, DATA, "MLoop", s->totloop, s->mloop);
+	writedata(wd, DATA, sizeof(int)*s->neighbor_count, s->neighbor_ids);
+	writedata(wd, DATA, sizeof(int), s->cluster_colors);
+}
+
+static void write_meshIsland(WriteData* wd, MeshIsland* mi)
+{
+	int i = 0;
+	DerivedMesh *dm = mi->physics_mesh;
+	mi->temp = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
+	                                        dm->getNumVerts(dm), dm->getNumPolys(dm), dm->getNumLoops(dm), true);
+	writestruct(wd, DATA, "MeshIsland", 1, mi);
+	writedata(wd, DATA, sizeof(MeshIsland*) * mi->compound_count, mi->compound_children);
+//	writestruct(wd, DATA, "MeshIsland", 1, mi->compound_parent);
+	writedata(wd, DATA, sizeof(struct BMVert*) * mi->vertex_count, mi->vertices);
+	writedata(wd, DATA, sizeof(MVert*) * mi->vertex_count, mi->vertices_cached);
+	writedata(wd, DATA, sizeof(float) * 3 * mi->vertex_count, mi->vertco);
+	//write derivedmesh as shard...
+	write_shard(wd, mi->temp);
+	BKE_shard_free(mi->temp);
+
+	writestruct(wd, DATA, "RigidBodyOb", 1, mi->rigidbody);
+	writedata(wd, DATA, sizeof(int) * mi->vertex_count, mi->combined_index_map);
+	writedata(wd, DATA, sizeof(int) * mi->neighbor_count, mi->neighbor_ids);
+	writestruct(wd, DATA, "BoundBox", 1, mi->bb);
+	writedata(wd, DATA, sizeof(RigidBodyShardCon*) * mi->participating_constraint_count, mi->participating_constraints );
+	//writedata(wd, DATA, sizeof(float) * 3, mi->centroid);
+	//writedata(wd, DATA, sizeof(float) * 3, mi->start_co);
+	//writedata(wd, DATA, sizeof(float) * 4, mi->rot);
+}
+
 static void write_modifiers(WriteData *wd, ListBase *modbase)
 {
 	ModifierData *md;
@@ -1510,16 +1547,27 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 
 			if (fm)
 			{
+				MeshIsland *mi;
+				RigidBodyShardCon* con;
+
 				writestruct(wd, DATA, "FracMesh", 1, fm);
 				writedata(wd, DATA, sizeof(Shard*) * fm->shard_count, fm->shard_map);
 				for (i = 0; i < fm->shard_count; i++)
 				{
 					Shard *s = fm->shard_map[i];
-					writestruct(wd, DATA, "Shard", 1, s);
-					writestruct(wd, DATA, "MVert", s->totvert, s->mvert);
-					writestruct(wd, DATA, "MPoly", s->totpoly, s->mpoly);
-					writestruct(wd, DATA, "MLoop", s->totloop, s->mloop);
-					writedata(wd, DATA, sizeof(int)*s->neighbor_count, s->neighbor_ids);
+					write_shard(wd, s);
+				}
+
+				for (mi = fmd->meshIslands.first; mi; mi = mi->next)
+				{
+					write_meshIsland(wd, mi);
+				}
+
+				for (con = fmd->meshConstraints.first; con; con = con->next)
+				{
+					writestruct(wd, DATA, "RigidBodyShardCon", 1, con);
+					//writestruct(wd, DATA, "MeshIsland", 1, con->mi1);
+					//writestruct(wd, DATA, "MeshIsland", 1, con->mi2);
 				}
 			}
 		}
