@@ -256,7 +256,7 @@ bool BMO_op_initf(BMesh *bm, BMOperator *op, const int flag, const char *fmt, ..
 
 /* va_list version, used to implement the above two functions,
  * plus EDBM_op_callf in editmesh_utils.c. */
-bool BMO_op_vinitf(BMesh *bm, BMOperator *op, const int flag, const char *fmt, va_list *vlistptr);
+bool BMO_op_vinitf(BMesh *bm, BMOperator *op, const int flag, const char *fmt, va_list vlist);
 
 /* test whether a named slot exists */
 bool BMO_slot_exists(BMOpSlot slot_args[BMO_OP_MAX_SLOTS], const char *identifier);

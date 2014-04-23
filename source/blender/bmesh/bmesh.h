@@ -260,8 +260,6 @@ extern "C" {
 #include "intern/bmesh_walkers.h"
 
 #include "intern/bmesh_inline.h"
-//need this in explo modifier and cant reach it from there otherwise
-#include "tools/bmesh_decimate.h"
 
 #ifdef __cplusplus
 }
