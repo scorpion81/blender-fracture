@@ -30,7 +30,8 @@
  *  \ingroup blenkernel
  */
 
-#include "stdbool.h"
+//#include "stdbool.h"
+#include "BLI_sys_types.h"
 #include "carve-capi.h"
 
 #include "DNA_meshdata_types.h"
