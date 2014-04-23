@@ -1381,7 +1381,7 @@ static void write_meshIsland(WriteData* wd, MeshIsland* mi)
 	writedata(wd, DATA, sizeof(float) * 3 * mi->vertex_count, mi->vertco);
 	//write derivedmesh as shard...
 	write_shard(wd, mi->temp);
-	BKE_shard_free(mi->temp);
+	BKE_shard_free(mi->temp, false);
 
 	writestruct(wd, DATA, "RigidBodyOb", 1, mi->rigidbody);
 	writedata(wd, DATA, sizeof(int) * mi->vertex_count, mi->combined_index_map);
@@ -1538,7 +1538,7 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 			int i = 0;
 			FractureModifierData *fmd = (FractureModifierData*)md;
 			FractureLevel* fl;
-			FracMesh* fm = fmd->frac_mesh;
+			FracMesh* fm = NULL; //fmd->frac_mesh;
 
 			//for (fl = fmd->fracture_levels.first; fl; fl = fl->next)
 			{

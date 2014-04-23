@@ -111,7 +111,7 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 
 	if (parent_id == -1)
 	{
-		BKE_shard_free(p);
+		BKE_shard_free(p, true);
 	}
 }
 
@@ -321,7 +321,7 @@ bool BKE_fracture_shard_center_centroid(Shard *shard, float cent[3])
 	return (shard->totpoly != 0);
 }
 
-void BKE_shard_free(Shard *s)
+void BKE_shard_free(Shard *s, bool doCustomData)
 {
 	MEM_freeN(s->mvert);
 	MEM_freeN(s->mloop);
@@ -330,6 +330,19 @@ void BKE_shard_free(Shard *s)
 		MEM_freeN(s->neighbor_ids);
 	if (s->cluster_colors)
 		MEM_freeN(s->cluster_colors);
+
+	//not used here... (i think... because it crashes on free ?)
+	/*s->vertData.external = NULL;
+	s->loopData.external = NULL;
+	s->polyData.external = NULL;*/
+
+	if (doCustomData)
+	{
+		CustomData_free(&s->vertData, s->totvert);
+		CustomData_free(&s->loopData, s->totloop);
+		CustomData_free(&s->polyData, s->totpoly);
+	}
+
 	MEM_freeN(s);
 }
 
@@ -430,7 +443,7 @@ void BKE_get_shard_minmax(FracMesh* mesh, ShardID id, float min_r[3], float max_
 
 	if (id == -1)
 	{
-		BKE_shard_free(shard);
+		BKE_shard_free(shard, true);
 	}
 }
 
@@ -523,7 +536,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 
 	if (id == -1)
 	{
-		BKE_shard_free(shard);
+		BKE_shard_free(shard, true);
 	}
 
 	add_v3_fl(min, -theta);
@@ -593,13 +606,13 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	free(bp);
 }
 
-void BKE_fracmesh_free(FracMesh* fm)
+void BKE_fracmesh_free(FracMesh* fm, bool doCustomData)
 {
 	int i = 0;
 	for (i = 0; i < fm->shard_count; i++)
 	{
 		Shard* s = fm->shard_map[i];
-		BKE_shard_free(s);
+		BKE_shard_free(s, doCustomData);
 		/*MEM_freeN(s->mvert);
 		MEM_freeN(s->mpoly);
 		MEM_freeN(s->mloop);
@@ -608,9 +621,10 @@ void BKE_fracmesh_free(FracMesh* fm)
 		//MEM_freeN(s);
 	}
 
-	if (fm->shard_map && fm->shard_count > 0)
+	if (fm->shard_map)
 	{
 		MEM_freeN(fm->shard_map);
+		fm->shard_map = NULL;
 	}
 }
 
@@ -768,6 +782,7 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 	MPoly *mpolys;
 	
 	dm  = CDDM_new(s->totvert, 0, 0, s->totloop, s->totpoly);
+
 	mverts = CDDM_get_verts(dm);
 	mloops = CDDM_get_loops(dm);
 	mpolys = CDDM_get_polys(dm);
@@ -781,6 +796,10 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 	{
 		MLoop *ml;
 		int i;
+
+		//thats all banana here... why cant i just copy the data, without reallocing the layers ?!!! so this is done twice here
+		//and results in a memory leak...
+
 		CustomData_copy(&s->vertData, &dm->vertData, CD_MASK_MESH, CD_CALLOC, s->totvert);
 		CustomData_copy_data(&s->vertData, &dm->vertData, 0, 0, s->totvert);
 
@@ -796,7 +815,6 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 		}
 	}
 	
-
 	dm->dirty |= DM_DIRTY_NORMALS;
 	CDDM_calc_normals_mapping(dm);
 

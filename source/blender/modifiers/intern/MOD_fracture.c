@@ -148,7 +148,7 @@ static void initData(ModifierData *md)
 static void freeData(ModifierData *md)
 {
 	FractureModifierData *rmd = (FractureModifierData*) md;
-	FractureLevel* fl;
+	FractureLevel* fl = rmd->fracture_levels.first;
 	MeshIsland *mi;
 	RigidBodyShardCon *rbsc;
 	int i;
@@ -161,9 +161,17 @@ static void freeData(ModifierData *md)
 			rmd->dm = NULL;
 		}
 
+		if (rmd->visible_mesh_cached)
+		{
+			rmd->visible_mesh_cached->needsFree = 1;
+			rmd->visible_mesh_cached->release(rmd->visible_mesh_cached);
+			rmd->visible_mesh_cached = NULL;
+		}
+
 		if (rmd->frac_mesh)
 		{
-			BKE_fracmesh_free(rmd->frac_mesh);
+			BKE_fracmesh_free(rmd->frac_mesh, fl->frac_algorithm != MOD_FRACTURE_NONE &&
+			                                  fl->frac_algorithm != MOD_FRACTURE_VORONOI);
 			MEM_freeN(rmd->frac_mesh);
 		}
 
@@ -172,9 +180,20 @@ static void freeData(ModifierData *md)
 			if (fl->noisemap && fl->noise_count > 0)
 			{
 				MEM_freeN(fl->noisemap);
+				fl->noisemap = NULL;
+				fl->noise_count = 0;
 			}
 			MEM_freeN(fl);
 		}
+	}
+
+	if (rmd->visible_mesh_cached && (rmd->visible_mesh || (!rmd->refresh && !rmd->refresh_constraints)))
+	{
+		//DM_release(rmd->visible_mesh_cached);
+		rmd->visible_mesh_cached->needsFree = 1;
+		rmd->visible_mesh_cached->release(rmd->visible_mesh_cached);
+		//MEM_freeN(rmd->visible_mesh_cached);
+		rmd->visible_mesh_cached = NULL;
 	}
 
 	//simulation data...
@@ -237,12 +256,14 @@ static void freeData(ModifierData *md)
 		}
 	}
 
-	if (rmd->visible_mesh_cached && rmd->visible_mesh)
+	/*if (rmd->visible_mesh_cached && (rmd->visible_mesh || (!rmd->refresh && !rmd->refresh_constraints)))
 	{
-		DM_release(rmd->visible_mesh_cached);
-		MEM_freeN(rmd->visible_mesh_cached);
+		//DM_release(rmd->visible_mesh_cached);
+		rmd->visible_mesh_cached->needsFree = 1;
+		rmd->visible_mesh_cached->release(rmd->visible_mesh_cached);
+		//MEM_freeN(rmd->visible_mesh_cached);
 		rmd->visible_mesh_cached = NULL;
-	}
+	}*/
 
 	while (rmd->cells.first)
 	{
@@ -455,7 +476,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 	FractureModifierData *fmd = (FractureModifierData*) md;
 	DerivedMesh *final_dm = derivedData;
-	FractureLevel *fl;
+	FractureLevel *fl = fmd->fracture_levels.first;
 
 	//int shard_requested = 0;
 
@@ -476,8 +497,10 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 		if (fmd->frac_mesh != NULL)
 		{
-			BKE_fracmesh_free(fmd->frac_mesh);
+			BKE_fracmesh_free(fmd->frac_mesh, fl->frac_algorithm != MOD_FRACTURE_NONE &&
+											  fl->frac_algorithm != MOD_FRACTURE_VORONOI);
 			MEM_freeN(fmd->frac_mesh);
+			fmd->frac_mesh = NULL;
 		}
 
 		fmd->frac_mesh = BKE_create_fracture_container(derivedData);
@@ -566,7 +589,7 @@ static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
 
 	if (fmd->frac_mesh != NULL)
 	{
-		BKE_fracmesh_free(fmd->frac_mesh);
+		BKE_fracmesh_free(fmd->frac_mesh, false);
 		MEM_freeN(fmd->frac_mesh);
 	}
 
@@ -889,7 +912,7 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 
 	bb = BKE_object_boundbox_get(ob);
 
-	if (fl->noisemap == NULL)
+	if (fl->noisemap == NULL && points.totpoints > 0)
 	{
 		noisemap = MEM_callocN(sizeof(float)*3 *points.totpoints, "noisemap");
 	}
@@ -1087,8 +1110,8 @@ void freeMeshIsland(FractureModifierData* rmd, MeshIsland* mi)
 	int i;
 
 	if (mi->physics_mesh) {
-		DM_release(mi->physics_mesh);
-		MEM_freeN(mi->physics_mesh);
+		mi->physics_mesh->needsFree = 1;
+		mi->physics_mesh->release(mi->physics_mesh);
 		mi->physics_mesh = NULL;
 	}
 	if (mi->rigidbody) {
@@ -1097,7 +1120,7 @@ void freeMeshIsland(FractureModifierData* rmd, MeshIsland* mi)
 		mi->rigidbody = NULL;
 	}
 
-	if (!rmd->explo_shared || mi->compound_count > 0) {
+	if (1) { //(!rmd->explo_shared || mi->compound_count > 0) {
 		if (mi->vertco /*&& rmd->refresh == FALSE*/) {
 			MEM_freeN(mi->vertco);
 			mi->vertco = NULL;
@@ -2761,7 +2784,7 @@ void connect_constraints(FractureModifierData* rmd,  Object* ob, MeshIsland **me
 	int i, j, v; //, sel_counter;
 	KDTreeNearest *n = MEM_mallocN(sizeof(KDTreeNearest)*count, "kdtreenearest");
 	KDTreeNearest *n2 = MEM_mallocN(sizeof(KDTreeNearest)*count, "kdtreenearest2");
-	ExplodeModifierData *emd = NULL;
+	//ExplodeModifierData *emd = NULL;
 
 	KDTree* face_tree;
 	BMFace *fa;
@@ -2938,9 +2961,9 @@ void connect_constraints(FractureModifierData* rmd,  Object* ob, MeshIsland **me
 	//emd = findPrecedingExploModifier(ob, rmd);
 	//if (emd != NULL && emd->cells != NULL && ((!emd->use_clipping && !rmd->use_cellbased_sim  && !emd->use_boolean) ||
 	//	((rmd->contact_dist_meaning == MOD_RIGIDBODY_VERTICES) && (rmd->contact_dist == 0.0f)))) {
-	if (true) //check whether it was FRACTURED!!! TODO...XXXXX
+	if (rmd->contact_dist_meaning == MOD_RIGIDBODY_VERTICES && rmd->explo_shared) //check whether it was FRACTURED!!! TODO...XXXXX
 	{
-		KDTree* cells = NULL;
+		//KDTree* cells = NULL;
 		int i = 0, j;
 		GHash* visited_ids = BLI_ghash_pair_new("visited_ids");
 		for (mi = rmd->meshIslands.first; mi; mi = mi->next)
@@ -2957,7 +2980,6 @@ void connect_constraints(FractureModifierData* rmd,  Object* ob, MeshIsland **me
 				}
 			}
 #endif
-
 
 			for (i = 0; i < mi->neighbor_count; i++)
 			{
@@ -2983,7 +3005,6 @@ void connect_constraints(FractureModifierData* rmd,  Object* ob, MeshIsland **me
 							//RigidBodyShardCon *con;
 							//int con_found = FALSE;
 							BLI_ghash_insert(visited_ids, id_pair, SET_INT_IN_POINTER(i));
-
 							connect_meshislands(rmd, ob, mi, mi2, rmd->inner_constraint_type, rmd->breaking_threshold);
 						}
 						else
@@ -3005,7 +3026,7 @@ void connect_constraints(FractureModifierData* rmd,  Object* ob, MeshIsland **me
 								rmd->sel_indexes[rmd->sel_counter] = MEM_callocN(sizeof(int)*2, "sel_index_pair");
 								rmd->sel_indexes[rmd->sel_counter][0] = glob;
 								rmd->sel_indexes[rmd->sel_counter][1] = glob2;
-								rmd->sel_counter++;
+								rmd->sel_counter++; 
 							}
 #endif
 							BLI_ghashutil_pairfree(id_pair);
@@ -3042,17 +3063,16 @@ void connect_constraints(FractureModifierData* rmd,  Object* ob, MeshIsland **me
 				BM_elem_flag_disable(BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]), BM_ELEM_TAG);
 			}
 		}
+#endif
 
 		BLI_ghash_free(visited_ids, BLI_ghashutil_pairfree, NULL);
 		visited_ids = NULL;
 	}
-	else
-#endif
-
+	else {
 
 		if (rmd->contact_dist_meaning == MOD_RIGIDBODY_CELLS || rmd->contact_dist_meaning == MOD_RIGIDBODY_CELL_CENTROIDS)
 		{
-			cells = make_cell_tree(rmd, ob);
+			//cells = make_cell_tree(rmd, ob);
 		}
 		//without explo modifier, automerge is useless in most cases (have non-adjacent stuff mostly
 
@@ -3068,13 +3088,13 @@ void connect_constraints(FractureModifierData* rmd,  Object* ob, MeshIsland **me
 			}
 			else if (rmd->contact_dist_meaning == MOD_RIGIDBODY_CELLS)
 			{
-				search_cell_based(rmd, ob, meshIslands[j], &cells);
+				//search_cell_based(rmd, ob, meshIslands[j], &cells);
 			}
 			else if (rmd->contact_dist_meaning == MOD_RIGIDBODY_CELL_CENTROIDS)
 			{
-				search_cell_centroid_based(rmd, ob, meshIslands[j], meshIslands, combined_tree, &cells);
+				//search_cell_centroid_based(rmd, ob, meshIslands[j], meshIslands, combined_tree, &cells);
 			}
-			else if (rmd->contact_dist_meaning == MOD_RIGIDBODY_VERTICES)//use vertex distance as FALLBACK
+			else if (rmd->contact_dist_meaning == MOD_RIGIDBODY_VERTICES && !rmd->explo_shared)//use vertex distance as FALLBACK
 			{
 				int shared = 0;
 				BLI_kdtree_find_nearest_n(*combined_tree, meshIslands[0]->centroid, n2, count);
@@ -3153,6 +3173,7 @@ void connect_constraints(FractureModifierData* rmd,  Object* ob, MeshIsland **me
 			}
 		}
 
+#if 0
 		if(rmd->contact_dist_meaning == MOD_RIGIDBODY_CELLS ||  rmd->contact_dist_meaning == MOD_RIGIDBODY_CELL_CENTROIDS)
 		{
 			if (cells != NULL)
@@ -3162,6 +3183,7 @@ void connect_constraints(FractureModifierData* rmd,  Object* ob, MeshIsland **me
 				cells = NULL;
 			}
 		}
+#endif
 	}
 	MEM_freeN(n);
 	MEM_freeN(n2);
@@ -3714,7 +3736,8 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 		{
 			if (fmd->visible_mesh_cached)
 			{
-				MEM_freeN(fmd->visible_mesh_cached);
+				fmd->visible_mesh_cached->needsFree = 1;
+				fmd->visible_mesh_cached->release(fmd->visible_mesh_cached);
 			}
 			fmd->visible_mesh_cached = NULL;
 		}
@@ -3747,6 +3770,14 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 
 				//good idea to simply reference this ? Hmm, what about removing the explo modifier later, crash ?)
 				fmd->explo_shared = true;
+
+				if (fmd->visible_mesh_cached)
+				{
+					fmd->visible_mesh_cached->needsFree = 1;
+					fmd->visible_mesh_cached->release(fmd->visible_mesh_cached);
+					fmd->visible_mesh_cached = NULL;
+				}
+
 				fmd->visible_mesh_cached = CDDM_copy(fmd->dm); //DM_to_bmesh(fmd->dm, true);
 
 				for (i = 0; i < fmd->frac_mesh->shard_count; i++)
@@ -3909,6 +3940,13 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 		{
 			start = PIL_check_seconds_timer();
 			//post process ... convert to DerivedMesh only at refresh times, saves permanent conversion during execution
+			if (fmd->visible_mesh_cached != NULL)
+			{
+				fmd->visible_mesh_cached->needsFree = 1;
+				fmd->visible_mesh_cached->release(fmd->visible_mesh_cached);
+				fmd->visible_mesh_cached = NULL;
+			}
+
 			fmd->visible_mesh_cached = createCache(fmd);
 			printf("Building cached DerivedMesh done, %g\n", PIL_check_seconds_timer() - start);
 		}
@@ -3939,8 +3977,8 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 
 		if (fmd->visible_mesh_cached)
 		{
-			DM_release(fmd->visible_mesh_cached);
-			MEM_freeN(fmd->visible_mesh_cached);
+			fmd->visible_mesh_cached->needsFree = 1;
+			fmd->visible_mesh_cached->release(fmd->visible_mesh_cached);
 			fmd->visible_mesh_cached = NULL;
 		}
 	}
@@ -4060,16 +4098,16 @@ ModifierTypeInfo modifierType_Fracture = {
         /* structSize */        sizeof(FractureModifierData),
         /* type */              eModifierTypeType_Constructive,
         /* flags */             eModifierTypeFlag_AcceptsMesh |
-                                eModifierTypeFlag_Single |
-                                eModifierTypeFlag_SupportsEditmode |
-                                eModifierTypeFlag_SupportsMapping,
+                                eModifierTypeFlag_Single, // |
+                                //eModifierTypeFlag_SupportsEditmode |
+                                //eModifierTypeFlag_SupportsMapping,
         /* copyData */          copyData,
         /* deformVerts */       NULL,
         /* deformMatrices */    NULL,
         /* deformVertsEM */     NULL,
         /* deformMatricesEM */  NULL,
         /* applyModifier */     applyModifier,
-        /* applyModifierEM */   applyModifierEM,
+        /* applyModifierEM */   NULL, //applyModifierEM,
         /* initData */          initData,
         /* requiredDataMask */  NULL,
         /* freeData */          freeData,

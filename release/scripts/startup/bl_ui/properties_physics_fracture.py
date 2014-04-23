@@ -49,7 +49,6 @@ class FRACTURE_UL_fracture_levels(UIList):
             layout.alignment = 'CENTER'
             layout.label(text="", icon_value=icon)
 
-
 class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
     bl_label = "Fracture"
 
@@ -85,10 +84,21 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         #layout.operator("object.fracture", icon="MOD_EXPLODE")
         col.prop(fl, "point_seed")
         col.prop(md, "cluster_count")
-        col.separator()
-
-        col.label("Simulation Settings")
         layout.operator("object.fracture_refresh", text="Refresh All Data")
+
+class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
+    bl_label = "Fracture Simulation"
+
+    def icon(self, bool):
+        if bool:
+            return 'TRIA_DOWN'
+        else:
+            return 'TRIA_RIGHT'
+
+    def draw(self, context):
+        layout = self.layout
+        md = context.fracture
+
         layout.operator("object.rigidbody_constraints_refresh", text="Refresh Constraints Only")
         layout.label("Constraint Building Settings")
         layout.prop(md, "use_constraints")
