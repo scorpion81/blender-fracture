@@ -6,6 +6,7 @@
 #include "BLI_math_vector.h"
 #include "BLI_mempool.h"
 #include "BLI_utildefines.h"
+#include "BLI_path_util.h"
 
 #include "DNA_fracture_types.h"
 #include "DNA_group_types.h"
@@ -517,9 +518,15 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	container *voro_container;
 	particle_order *voro_particle_order;
 	loop_order *voro_loop_order;
-	
+
+#ifdef _WIN32
+	const char *filename = "test.out";
+	char *path, *fullpath;
+#else
 	char *bp;
 	size_t size;
+#endif
+
 	FILE *stream;
 #ifdef USE_DEBUG_TIMER
 	double time_start;
@@ -574,8 +581,18 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	 * %C the centroid of the voronoi cell
 	 * c  centroid section delimiter
 	 */
-	
+
+	/* argh, WIN32 doesnt support open_memstream, too bad, so we fall back to a regular file here....*/
+
+#ifdef _WIN32
+	path = MEM_mallocN(((strlen(BLI_temporary_dir()) + strlen(filename) + 2) * sizeof(char)), "path");
+	path = strcpy(path, BLI_temporary_dir());
+	fullpath = strcat(path, filename);
+	stream = fopen(fullpath, "w+");
+#else
 	stream = open_memstream(&bp, &size);
+#endif
+
 	container_print_custom(voro_loop_order, voro_container, "%i %w %P v %s %a %t %n f %C c", stream);
 #if 0
 	{ /* DEBUG PRINT */
@@ -594,8 +611,13 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 #ifdef USE_DEBUG_TIMER
 	time_start = PIL_check_seconds_timer();
 #endif
-	
+
+#ifdef _WIN32
+	stream = fopen(fullpath, "r");
+#else
 	stream = fmemopen(bp, size, "r");
+#endif
+
 	parse_stream(stream, pointcloud->totpoints, id, fmesh, algorithm, obj, dm);
 	fclose (stream);
 	
@@ -603,7 +625,12 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	printf("Parse stream done, %g\n", PIL_check_seconds_timer() - time_start);
 #endif
 	
+
+#ifdef _WIN32
+	MEM_freeN(path);
+#else
 	free(bp);
+#endif
 }
 
 void BKE_fracmesh_free(FracMesh* fm, bool doCustomData)
