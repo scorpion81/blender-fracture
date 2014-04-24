@@ -519,7 +519,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	particle_order *voro_particle_order;
 	loop_order *voro_loop_order;
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
 	const char *filename = "test.out";
 	char *path, *fullpath;
 #else
@@ -584,7 +584,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 
 	/* argh, WIN32 doesnt support open_memstream, too bad, so we fall back to a regular file here....*/
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
 	path = MEM_mallocN(((strlen(BLI_temporary_dir()) + strlen(filename) + 2) * sizeof(char)), "path");
 	path = strcpy(path, BLI_temporary_dir());
 	fullpath = strcat(path, filename);
@@ -612,7 +612,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	time_start = PIL_check_seconds_timer();
 #endif
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
 	stream = fopen(fullpath, "r");
 #else
 	stream = fmemopen(bp, size, "r");
@@ -626,7 +626,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 #endif
 	
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
 	MEM_freeN(path);
 #else
 	free(bp);
