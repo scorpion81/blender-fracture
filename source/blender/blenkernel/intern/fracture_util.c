@@ -628,23 +628,22 @@ Shard *BKE_fracture_shard_boolean(Object* obj, Shard *parent, Shard* child)
 }
 #endif
 
-Shard *BKE_fracture_shard_boolean(Object* obj, Shard *parent, Shard* child)
+Shard *BKE_fracture_shard_boolean(Object* obj, DerivedMesh *dm_parent, Shard* child)
 {
 	Shard *output_s;
 	DerivedMesh *left_dm, *right_dm, *output_dm;
 
 	left_dm = BKE_shard_create_dm(child, false);
-	right_dm = BKE_shard_create_dm(parent, true);
-
+	right_dm = dm_parent;
 	output_dm = NewBooleanDerivedMesh(right_dm, obj, left_dm, obj, 1);
 
 	left_dm->needsFree = 1;
 	left_dm->release(left_dm);
 	left_dm = NULL;
 
-	right_dm->needsFree = 1;
+	/*right_dm->needsFree = 1;
 	right_dm->release(right_dm);
-	right_dm = NULL;
+	right_dm = NULL;*/
 
 	if (output_dm)
 	{
@@ -679,17 +678,21 @@ Shard *BKE_fracture_shard_boolean(Object* obj, Shard *parent, Shard* child)
 }
 
 
-Shard *BKE_fracture_shard_bisect(Shard* parent, Shard* child, float obmat[4][4], bool use_fill)
+Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4], bool use_fill)
 {
+	#define MYTAG (1 << 6)
 
 	Shard *output_s;
-	DerivedMesh *dm_parent = BKE_shard_create_dm(parent, true);
+	//DerivedMesh *dm_parent = BKE_shard_create_dm(parent, true);
 	DerivedMesh *dm_child = BKE_shard_create_dm(child, false);
 	DerivedMesh *dm_out;
-	BMesh *bm_parent = DM_to_bmesh(dm_parent, true);
+	//BMesh *bm_parent = DM_to_bmesh(dm_parent, true);
+	BMesh* bm_parent = BM_mesh_create(&bm_mesh_allocsize_default);
 	BMesh *bm_child = DM_to_bmesh(dm_child, true);
-	BMIter iter;
+	BMIter iter, viter, fiter, eiter;
 	BMFace *f;
+	BMVert *v, *v_next;
+	BMEdge *e;
 
 	BMOperator bmop;
 	float plane_co[3];
@@ -700,7 +703,30 @@ Shard *BKE_fracture_shard_bisect(Shard* parent, Shard* child, float obmat[4][4],
 	bool clear_inner = false;
 	bool clear_outer = true;
 
+	int vcount = 0, ecount = 0, fcount = 0;
+
 	invert_m4_m4(imat, obmat);
+
+	BM_mesh_elem_toolflags_ensure(bm_parent);  /* needed for 'duplicate' bmo */
+
+	CustomData_copy(&bm_orig->vdata, &bm_parent->vdata, CD_MASK_BMESH | CD_MASK_ORIGINDEX, CD_CALLOC, 0);
+	CustomData_copy(&bm_orig->edata, &bm_parent->edata, CD_MASK_BMESH , CD_CALLOC, 0);
+	CustomData_copy(&bm_orig->ldata, &bm_parent->ldata, CD_MASK_BMESH , CD_CALLOC, 0);
+	CustomData_copy(&bm_orig->pdata, &bm_parent->pdata, CD_MASK_BMESH , CD_CALLOC, 0);
+
+	CustomData_bmesh_init_pool(&bm_parent->vdata, bm_mesh_allocsize_default.totvert, BM_VERT);
+	CustomData_bmesh_init_pool(&bm_parent->edata, bm_mesh_allocsize_default.totedge, BM_EDGE);
+	CustomData_bmesh_init_pool(&bm_parent->ldata, bm_mesh_allocsize_default.totloop, BM_LOOP);
+	CustomData_bmesh_init_pool(&bm_parent->pdata, bm_mesh_allocsize_default.totface, BM_FACE);
+
+	//copy only "selected" geometry
+	BMO_op_callf(bm_orig, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+				 "duplicate geom=%hvef dest=%p", MYTAG, bm_parent);
+
+	//then enable tags...
+	BM_mesh_elem_hflag_enable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, false);
+	//BM_mesh_elem_hflag_disable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, MYTAG, false);
+	//BM_mesh_elem_hflag_enable_all(bm_orig, BM_VERT | BM_EDGE | BM_FACE, MYTAG, false);
 
 	BM_ITER_MESH(f, &iter, bm_child, BM_FACES_OF_MESH)
 	{
@@ -710,14 +736,17 @@ Shard *BKE_fracture_shard_bisect(Shard* parent, Shard* child, float obmat[4][4],
 		mul_m4_v3(imat, plane_co);
 		mul_mat3_m4_v3(imat, plane_no);
 
-		BM_mesh_elem_hflag_enable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT, false);
+		BM_mesh_elem_hflag_enable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, false);
 
 		BMO_op_initf(bm_parent, &bmop, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-		             "bisect_plane geom=%hvef dist=%f plane_co=%v plane_no=%v use_snap_center=%b clear_inner=%b clear_outer=%b",
-		             BM_ELEM_SELECT, thresh, plane_co, plane_no, false, clear_inner, clear_outer);
+		             "bisect_plane geom=%hvef dist=%f plane_co=%v plane_no=%v use_snap_center=%b clear_inner=%b clear_outer=%b do_clear=%b",
+		             BM_ELEM_TAG, thresh, plane_co, plane_no, false, clear_inner, clear_outer, true);
 		BMO_op_exec(bm_parent, &bmop);
 
-		BM_mesh_elem_hflag_disable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT, false);
+		//untag inner geometry of this cell and skip it ?
+		//BMO_slot_buffer_hflag_disable(bm_parent, bmop.slots_out, "geom.out", BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT, false);
+
+		BM_mesh_elem_hflag_disable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, false);
 
 		if (use_fill) {
 			float normal_fill[3];
@@ -766,17 +795,124 @@ Shard *BKE_fracture_shard_bisect(Shard* parent, Shard* child, float obmat[4][4],
 			             &bmop_fill, "geom.out", false, true);
 			BMO_op_exec(bm_parent, &bmop_attr);
 
-			BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "geom.out", BM_FACE, BM_ELEM_SELECT, true);
+			BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "geom.out", BM_FACE, BM_ELEM_TAG, true);
 
 			BMO_op_finish(bm_parent, &bmop_attr);
 			BMO_op_finish(bm_parent, &bmop_fill);
 		}
 
-		BMO_slot_buffer_hflag_enable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, BM_ELEM_SELECT, true);
+		BMO_slot_buffer_hflag_enable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, BM_ELEM_TAG, true);
+		BMO_slot_buffer_hflag_enable(bm_parent, bmop.slots_out, "geom.out", BM_VERT | BM_EDGE | BM_FACE, MYTAG, false);
+		BMO_slot_buffer_hflag_disable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, MYTAG, false);
+		//BMO_slot_buffer_hflag_enable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, BM_ELEM_SELECT, false);
+
+		/*BM_ITER_MESH(v, &viter, bm_parent, BM_VERTS_OF_MESH)
+		{
+			if (BM_elem_flag_test(v, BM_ELEM_SELECT))
+			{
+				int none = ORIGINDEX_NONE;
+				CustomData_bmesh_set(&bm_parent->vdata, v->head.data, CD_ORIGINDEX, &none);
+			}
+		}
+
+		/*BM_ITER_MESH(e, &eiter, bm_parent, BM_EDGES_OF_MESH)
+		{
+			if (BM_elem_flag_test(e, BM_ELEM_SELECT))
+			{
+				int none = ORIGINDEX_NONE;
+				CustomData_bmesh_set(&bm_parent->edata, e->head.data, CD_ORIGINDEX, &none);
+			}
+		}*/
+
+		//BMO_slot_buffer_hflag_disable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, BM_ELEM_SELECT, false);
+		BMO_slot_buffer_hflag_disable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, MYTAG, false);
 
 		BMO_op_finish(bm_parent, &bmop);
-		BM_mesh_select_flush(bm_parent);
+		//BM_mesh_select_flush(bm_parent);
 	}
+
+
+	//select geometry which remains as cell in origmesh
+	BM_ITER_MESH_MUTABLE(v, v_next, &viter, bm_parent, BM_VERTS_OF_MESH)
+	{
+		//just select OLD geometry
+		if (BM_elem_flag_test(v, MYTAG))
+		{
+			int *orig_index = CustomData_bmesh_get(&bm_parent->vdata, v->head.data, CD_ORIGINDEX);
+			if (*orig_index > -1)
+			{
+				BMVert *vert = BM_vert_at_index(bm_orig, *orig_index);
+				if (vert)
+				{
+					if (BM_elem_flag_test(vert, MYTAG))
+					{
+					//CustomData_bmesh_free_block(&bm_orig->vdata, vert->head.data);
+						//BM_vert_kill(bm_orig, vert);
+						BM_elem_flag_disable(vert, MYTAG);
+					//BM_mesh_elem_table_ensure(bm_orig, BM_VERT);
+						vcount++;
+					}
+				}
+			}
+		}
+	}
+
+	/*BM_ITER_MESH(e, &eiter, bm_parent, BM_EDGES_OF_MESH)
+	{
+		//just select OLD geometry
+		if (BM_elem_flag_test(e, MYTAG))
+		{
+			int *orig_index = CustomData_bmesh_get(&bm_parent->edata, e->head.data, CD_ORIGINDEX);
+			if (*orig_index > -1)
+			{
+				BMEdge *edge = BM_edge_at_index(bm_orig, *orig_index);
+				if (edge)
+				{
+					BM_elem_flag_disable(edge, MYTAG);
+					ecount++;
+				}
+			}
+		}
+	}*/
+
+	/*BM_ITER_MESH(f, &fiter, bm_parent, BM_FACES_OF_MESH)
+	{
+		//just select OLD geometry
+		if (BM_elem_flag_test(f, MYTAG))
+		{
+			int *orig_index = CustomData_bmesh_get(&bm_parent->pdata, f->head.data, CD_ORIGINDEX);
+			if (*orig_index > -1)
+			{
+				BMFace *face = BM_face_at_index(bm_orig, *orig_index);
+				//BM_elem_flag_disable(face, MYTAG);
+				fcount++;
+			}
+		}
+	}*/
+
+	printf("Removed verts: %d \n", vcount);
+
+	/*BM_mesh_elem_hflag_enable_test(bm_orig, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT, true, false, BM_ELEM_TAG);
+	BM_mesh_select_flush(bm_orig);
+	BM_mesh_elem_hflag_enable_test(bm_orig, BM_VERT | BM_EDGE | BM_FACE, MYTAG, true, false, BM_ELEM_SELECT);*/
+
+	//retag...
+	//BM_mesh_elem_hflag_enable_test(bm_parent, BM_VERT, BM_ELEM_INTERNAL_TAG, true, false, BM_ELEM_SELECT);
+
+	//copy the rest of the mesh (without this cell) to a new bmesh....
+	//BMO_op_callf(bm_parent, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+	//			 "duplicate geom=%hvef dest=%p", BM_ELEM_SELECT, bm_rest);
+
+	//delete selection from bm_parent
+/*	BM_ITER_MESH_MUTABLE(v, v_next, &viter, bm_parent, BM_VERTS_OF_MESH)
+	{
+		if (BM_elem_flag_test(v, BM_ELEM_INTERNAL_TAG))
+		{
+			BM_vert_kill(bm_parent, v);
+		}
+	}
+
+	BM_mesh_elem_hflag_disable_all(bm_parent, BM_VERT, BM_ELEM_INTERNAL_TAG, false);*/
 
 	dm_out = CDDM_from_bmesh(bm_parent, true);
 	output_s = BKE_create_fracture_shard(dm_out->getVertArray(dm_out),
@@ -800,9 +936,11 @@ Shard *BKE_fracture_shard_bisect(Shard* parent, Shard* child, float obmat[4][4],
 	BM_mesh_free(bm_child);
 	BM_mesh_free(bm_parent);
 
-	dm_parent->needsFree = 1;
+	//*bm_work = bm_rest;
+
+	/*dm_parent->needsFree = 1;
 	dm_parent->release(dm_parent);
-	dm_parent = NULL;
+	dm_parent = NULL;*/
 
 	dm_child->needsFree = 1;
 	dm_child->release(dm_child);

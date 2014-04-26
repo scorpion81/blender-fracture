@@ -38,6 +38,7 @@
 
 #define ELE_NEW 1
 #define ELE_INPUT 2
+#define MYTAG (1 << 6)
 
 void bmo_bisect_plane_exec(BMesh *bm, BMOperator *op)
 {
@@ -45,6 +46,7 @@ void bmo_bisect_plane_exec(BMesh *bm, BMOperator *op)
 	const bool use_snap_center = BMO_slot_bool_get(op->slots_in,  "use_snap_center");
 	const bool clear_outer = BMO_slot_bool_get(op->slots_in,  "clear_outer");
 	const bool clear_inner = BMO_slot_bool_get(op->slots_in,  "clear_inner");
+	const bool do_clear = BMO_slot_bool_get(op->slots_in,  "do_clear");
 
 	float plane_co[3];
 	float plane_no[3];
@@ -65,7 +67,6 @@ void bmo_bisect_plane_exec(BMesh *bm, BMOperator *op)
 	BMO_slot_buffer_hflag_enable(bm, op->slots_in, "geom", BM_EDGE | BM_FACE, BM_ELEM_TAG, false);
 
 	BMO_slot_buffer_flag_enable(bm, op->slots_in, "geom", BM_ALL_NOLOOP, ELE_INPUT);
-
 
 	BM_mesh_bisect_plane(bm, plane, use_snap_center, true,
 	                     ELE_NEW, dist);
@@ -100,7 +101,15 @@ void bmo_bisect_plane_exec(BMesh *bm, BMOperator *op)
 		}
 
 		while ((v = STACK_POP(vert_arr))) {
-			BM_vert_kill(bm, v);
+			if (do_clear)
+			{
+				BM_vert_kill(bm, v);
+			}
+			else
+			{
+				//BM_elem_flag_enable(v, BM_ELEM_SELECT);
+				BM_vert_select_set(bm, v, true);
+			}
 		}
 
 		STACK_FREE(vert_arr);
@@ -109,4 +118,7 @@ void bmo_bisect_plane_exec(BMesh *bm, BMOperator *op)
 
 	BMO_slot_buffer_from_enabled_flag(bm, op, op->slots_out, "geom.out", BM_ALL_NOLOOP, ELE_NEW | ELE_INPUT);
 	BMO_slot_buffer_from_enabled_flag(bm, op, op->slots_out, "geom_cut.out", BM_VERT | BM_EDGE, ELE_NEW);
+
+
+	BMO_slot_buffer_from_enabled_hflag(bm, op, op->slots_out, "geom_old.out", BM_ALL_NOLOOP, MYTAG);
 }

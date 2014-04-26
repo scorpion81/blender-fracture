@@ -103,7 +103,7 @@ static void initData(ModifierData *md)
 
 		fmd->visible_mesh = NULL;
 		fmd->visible_mesh_cached = NULL;
-		fmd->refresh = true;
+		fmd->refresh = false;
 		zero_m4(fmd->origmat);
 		fmd->breaking_threshold = 10.0f;
 		fmd->use_constraints = false;
