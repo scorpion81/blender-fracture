@@ -116,9 +116,7 @@ void bmo_bisect_plane_exec(BMesh *bm, BMOperator *op)
 		MEM_freeN(vert_arr);
 	}
 
+	BMO_slot_buffer_from_enabled_flag(bm, op, op->slots_out, "geom_old.out", BM_VERT, ELE_INPUT);
 	BMO_slot_buffer_from_enabled_flag(bm, op, op->slots_out, "geom.out", BM_ALL_NOLOOP, ELE_NEW | ELE_INPUT);
 	BMO_slot_buffer_from_enabled_flag(bm, op, op->slots_out, "geom_cut.out", BM_VERT | BM_EDGE, ELE_NEW);
-
-
-	BMO_slot_buffer_from_enabled_hflag(bm, op, op->slots_out, "geom_old.out", BM_ALL_NOLOOP, MYTAG);
 }

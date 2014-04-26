@@ -1158,7 +1158,7 @@ static BMOpDefine bmo_bisect_plane_def = {
 	},
 	{{"geom_cut.out", BMO_OP_SLOT_ELEMENT_BUF, {BM_VERT | BM_EDGE}},  /* output new geometry from the cut */
 	 {"geom.out",     BMO_OP_SLOT_ELEMENT_BUF, {BM_VERT | BM_EDGE | BM_FACE}},  /* input and output geometry (result of cut)  */
-	 {"geom_old.out",     BMO_OP_SLOT_ELEMENT_BUF, {BM_VERT | BM_EDGE | BM_FACE}},  /* rest of old geometry */
+	 {"geom_old.out",     BMO_OP_SLOT_ELEMENT_BUF, {BM_VERT}},  /* rest of old geometry */
 	 {{'\0'}}},
 	bmo_bisect_plane_exec,
 	BMO_OPTYPE_FLAG_UNTAN_MULTIRES | BMO_OPTYPE_FLAG_NORMALS_CALC | BMO_OPTYPE_FLAG_SELECT_FLUSH,

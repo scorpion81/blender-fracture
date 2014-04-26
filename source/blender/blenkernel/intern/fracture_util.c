@@ -692,7 +692,6 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 	BMIter iter, viter, fiter, eiter;
 	BMFace *f;
 	BMVert *v, *v_next;
-	BMEdge *e;
 
 	BMOperator bmop;
 	float plane_co[3];
@@ -703,7 +702,7 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 	bool clear_inner = false;
 	bool clear_outer = true;
 
-	int vcount = 0, ecount = 0, fcount = 0;
+	int vcount = 0;
 
 	invert_m4_m4(imat, obmat);
 
@@ -725,7 +724,7 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 
 	//then enable tags...
 	BM_mesh_elem_hflag_enable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, false);
-	//BM_mesh_elem_hflag_disable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, MYTAG, false);
+	BM_mesh_elem_hflag_disable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, MYTAG, false);
 	//BM_mesh_elem_hflag_enable_all(bm_orig, BM_VERT | BM_EDGE | BM_FACE, MYTAG, false);
 
 	BM_ITER_MESH(f, &iter, bm_child, BM_FACES_OF_MESH)
@@ -802,30 +801,13 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 		}
 
 		BMO_slot_buffer_hflag_enable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, BM_ELEM_TAG, true);
-		BMO_slot_buffer_hflag_enable(bm_parent, bmop.slots_out, "geom.out", BM_VERT | BM_EDGE | BM_FACE, MYTAG, false);
-		BMO_slot_buffer_hflag_disable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, MYTAG, false);
+		BMO_slot_buffer_hflag_enable(bm_parent, bmop.slots_out, "geom_old.out", BM_VERT, MYTAG, true);
+		//BMO_slot_buffer_hflag_disable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, MYTAG, false);
+
 		//BMO_slot_buffer_hflag_enable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, BM_ELEM_SELECT, false);
-
-		/*BM_ITER_MESH(v, &viter, bm_parent, BM_VERTS_OF_MESH)
-		{
-			if (BM_elem_flag_test(v, BM_ELEM_SELECT))
-			{
-				int none = ORIGINDEX_NONE;
-				CustomData_bmesh_set(&bm_parent->vdata, v->head.data, CD_ORIGINDEX, &none);
-			}
-		}
-
-		/*BM_ITER_MESH(e, &eiter, bm_parent, BM_EDGES_OF_MESH)
-		{
-			if (BM_elem_flag_test(e, BM_ELEM_SELECT))
-			{
-				int none = ORIGINDEX_NONE;
-				CustomData_bmesh_set(&bm_parent->edata, e->head.data, CD_ORIGINDEX, &none);
-			}
-		}*/
-
 		//BMO_slot_buffer_hflag_disable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, BM_ELEM_SELECT, false);
-		BMO_slot_buffer_hflag_disable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, MYTAG, false);
+
+		//BMO_slot_buffer_hflag_disable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, MYTAG, false);
 
 		BMO_op_finish(bm_parent, &bmop);
 		//BM_mesh_select_flush(bm_parent);
@@ -844,7 +826,7 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 				BMVert *vert = BM_vert_at_index(bm_orig, *orig_index);
 				if (vert)
 				{
-					if (BM_elem_flag_test(vert, MYTAG))
+					//if (BM_elem_flag_test(vert, MYTAG))
 					{
 					//CustomData_bmesh_free_block(&bm_orig->vdata, vert->head.data);
 						//BM_vert_kill(bm_orig, vert);
