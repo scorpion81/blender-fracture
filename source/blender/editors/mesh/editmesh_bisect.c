@@ -268,8 +268,8 @@ static int mesh_bisect_exec(bContext *C, wmOperator *op)
 	mul_mat3_m4_v3(imat, plane_no);
 
 	EDBM_op_init(em, &bmop, op,
-	             "bisect_plane geom=%hvef plane_co=%v plane_no=%v dist=%f clear_inner=%b clear_outer=%b do_clear=%b",
-	             BM_ELEM_SELECT, plane_co, plane_no, thresh, clear_inner, clear_outer, true);
+	             "bisect_plane geom=%hvef plane_co=%v plane_no=%v dist=%f clear_inner=%b clear_outer=%b",
+	             BM_ELEM_SELECT, plane_co, plane_no, thresh, clear_inner, clear_outer);
 	BMO_op_exec(bm, &bmop);
 
 	EDBM_flag_disable_all(em, BM_ELEM_SELECT);

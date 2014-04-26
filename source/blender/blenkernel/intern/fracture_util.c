@@ -707,7 +707,7 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 
 	invert_m4_m4(imat, obmat);
 
-/*	BM_mesh_elem_toolflags_ensure(bm_parent);  /* needed for 'duplicate' bmo *
+/*	BM_mesh_elem_toolflags_ensure(bm_parent);  * needed for 'duplicate' bmo *
 
 	CustomData_copy(&bm_orig->vdata, &bm_parent->vdata, CD_MASK_BMESH | CD_MASK_ORIGINDEX, CD_CALLOC, 0);
 	CustomData_copy(&bm_orig->edata, &bm_parent->edata, CD_MASK_BMESH , CD_CALLOC, 0);
@@ -739,8 +739,8 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 		BM_mesh_elem_hflag_enable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, false);
 
 		BMO_op_initf(bm_parent, &bmop, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-		             "bisect_plane geom=%hvef dist=%f plane_co=%v plane_no=%v use_snap_center=%b clear_inner=%b clear_outer=%b do_clear=%b",
-		             BM_ELEM_TAG, thresh, plane_co, plane_no, false, clear_inner, clear_outer, true);
+		             "bisect_plane geom=%hvef dist=%f plane_co=%v plane_no=%v use_snap_center=%b clear_inner=%b clear_outer=%b",
+		             BM_ELEM_TAG, thresh, plane_co, plane_no, false, clear_inner, clear_outer);
 		BMO_op_exec(bm_parent, &bmop);
 
 		//untag inner geometry of this cell and skip it ?
