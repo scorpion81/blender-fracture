@@ -664,7 +664,7 @@ Shard *BKE_fracture_shard_boolean(Object* obj, DerivedMesh *dm_parent, Shard* ch
 		BKE_fracture_shard_center_centroid(output_s, output_s->centroid);
 
 		/*free the bbox shard*/
-		BKE_shard_free(child, false);
+		//BKE_shard_free(child, false);
 
 		/*free the temp derivedmesh*/
 		output_dm->needsFree = 1;
@@ -915,7 +915,7 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 	BKE_fracture_shard_center_centroid(output_s, output_s->centroid);
 
 	/*free the bbox shard*/
-	BKE_shard_free(child, false);
+	//BKE_shard_free(child, false);
 
 	BM_mesh_free(bm_child);
 	BM_mesh_free(bm_parent);
