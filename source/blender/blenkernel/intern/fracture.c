@@ -151,12 +151,14 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 		tempshards[i] = s;
 	}
 
+	#pragma omp critical
 	#pragma omp parallel for
 	for (i = 0; i < expected_shards; i++)
 	{
 		Shard* t;
 		printf("Processing shard: %d\n", i);
 		t = tempshards[i];
+
 		if (t != NULL)
 		{
 			t->parent_id = parent_id;
@@ -181,7 +183,7 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 			s->parent_id = parent_id;
 			s->flag = SHARD_INTACT;
 
-			#pragma omp critical
+			//#pragma omp critical
 			tempresults[i] = s;
 		}
 	}
