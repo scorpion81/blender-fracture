@@ -7,6 +7,7 @@
 #include "BLI_mempool.h"
 #include "BLI_utildefines.h"
 #include "BLI_path_util.h"
+#include "BLI_rand.h"
 
 #include "DNA_fracture_types.h"
 #include "DNA_group_types.h"
@@ -58,6 +59,85 @@ static void add_shard(FracMesh *fm, Shard *s)
 	fm->shard_count++;
 }
 
+static BMesh* shard_to_bmesh(Shard* s)
+{
+	DerivedMesh* dm_parent;
+	BMesh *bm_parent;
+	BMFace *f;
+	BMIter fiter;
+	int findex;
+
+	dm_parent = BKE_shard_create_dm(s, true);
+	bm_parent = DM_to_bmesh(dm_parent, true);
+
+	//create lookup tables
+	BM_mesh_elem_table_ensure(bm_parent, BM_FACE);
+
+	//create ORIGINDEX layer and fill with indexes
+	CustomData_add_layer(&bm_parent->pdata, CD_ORIGINDEX, CD_CALLOC, NULL, bm_parent->totface);
+	CustomData_bmesh_init_pool(&bm_parent->pdata, bm_parent->totface, BM_FACE);
+
+	BM_ITER_MESH_INDEX(f, &fiter, bm_parent, BM_FACES_OF_MESH, findex)
+	{
+		CustomData_bmesh_set_default(&bm_parent->pdata, &f->head.data);
+		CustomData_bmesh_set(&bm_parent->pdata, f->head.data, CD_ORIGINDEX, &findex);
+	}
+
+	dm_parent->needsFree = 1;
+	dm_parent->release(dm_parent);
+	dm_parent = NULL;
+
+	return bm_parent;
+}
+
+static void shard_boundbox(Shard* s, float r_loc[3], float r_size[3])
+{
+	float min[3], max[3];
+	float mloc[3], msize[3];
+
+	if (!r_loc) r_loc = mloc;
+	if (!r_size) r_size = msize;
+
+	if (!BKE_shard_calc_minmax(s)) {
+		min[0] = min[1] = min[2] = -1.0f;
+		max[0] = max[1] = max[2] = 1.0f;
+	}
+
+	copy_v3_v3(max, s->max);
+	copy_v3_v3(min, s->min);
+
+	mid_v3_v3v3(r_loc, min, max);
+
+	r_size[0] = (max[0] - min[0]) / 2.0f;
+	r_size[1] = (max[1] - min[1]) / 2.0f;
+	r_size[2] = (max[2] - min[2]) / 2.0f;
+}
+
+static int shard_sortsize(const void *s1, const void *s2)
+{
+	const Shard** sh1 = (Shard**)s1;
+	const Shard** sh2 = (Shard**)s2;
+
+	float size1[3], size2[3], loc[3];
+	float val_a,  val_b;
+
+	if ((*sh1 == NULL) || (*sh2 == NULL))
+	{
+		return 1;
+	}
+
+	shard_boundbox(*sh1, loc, size1);
+	shard_boundbox(*sh2, loc, size2);
+
+	val_a = size1[0] * size1[1] * size1[2];
+	val_b = size2[0] * size2[1] * size2[2];
+
+	//sort descending
+	if      (val_a < val_b) return  1;
+	else if (val_a > val_b) return -1;
+	                        return  0;
+}
+
 /* parse the voro++ raw data */
 static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracMesh *fm, int algorithm, Object* obj, DerivedMesh *dm)
 {
@@ -65,6 +145,7 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 	int i = 0;
 	Shard* s = NULL, *p = BKE_shard_by_id(fm, parent_id, dm);
 	float obmat[4][4]; /* use unit matrix for now */
+	float centroid[3];
 	BMesh* bm_parent = NULL;
 	DerivedMesh *dm_parent = NULL;
 	Shard **tempshards = MEM_mallocN(sizeof(Shard*) * expected_shards, "tempshards");
@@ -93,32 +174,11 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 	{
 		dm_parent = BKE_shard_create_dm(p, true);
 	}
-	else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL)
+	else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL || algorithm == MOD_FRACTURE_BISECT_FAST)
 	{
 #define MYTAG (1 << 6)
-		BMFace *f;
-		BMIter fiter;
-		int findex;
-
-		dm_parent = BKE_shard_create_dm(p, true);
-		bm_parent = DM_to_bmesh(dm_parent, true);
-
-		//create lookup tables
-		BM_mesh_elem_table_ensure(bm_parent, BM_FACE);
-
-		//create ORIGINDEX layer and fill with indexes
-		CustomData_add_layer(&bm_parent->pdata, CD_ORIGINDEX, CD_CALLOC, NULL, bm_parent->totface);
-		CustomData_bmesh_init_pool(&bm_parent->pdata, bm_parent->totface, BM_FACE);
-
-		BM_ITER_MESH_INDEX(f, &fiter, bm_parent, BM_FACES_OF_MESH, findex)
-		{
-			CustomData_bmesh_set_default(&bm_parent->pdata, &f->head.data);
-			CustomData_bmesh_set(&bm_parent->pdata, f->head.data, CD_ORIGINDEX, &findex);
-		}
-
-		dm_parent->needsFree = 1;
-		dm_parent->release(dm_parent);
-		dm_parent = NULL;
+		bm_parent = shard_to_bmesh(p);
+		copy_v3_v3(centroid, p->centroid);
 	}
 	for (i = 0; i < expected_shards; i++)
 	{
@@ -132,6 +192,7 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 	for (i = 0; i < expected_shards; i++)
 	{
 		Shard* t;
+		Shard* s2 = NULL;
 		printf("Processing shard: %d\n", i);
 		t = tempshards[i];
 
@@ -145,24 +206,109 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 		{
 			s = BKE_fracture_shard_boolean(obj, dm_parent, t);
 		}
-		else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL)
+		else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL || algorithm == MOD_FRACTURE_BISECT_FAST)
 		{
+			bool split_all = (algorithm != MOD_FRACTURE_BISECT_FAST);
 			printf("Bisecting cell %d...\n", i);
-
 			//#pragma omp critical
-			s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL);
+
+			if (split_all)
+			{
+				float normal[3] = {0, 0, 0};
+				float co[3] = {0, 0, 0};
+				s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, false, true, 0, normal, co);
+			}
+			else
+			{
+				float normal[3] = {0, 0, 0};
+				float co[3];
+				int index = (int)(BLI_frand() * (t->totpoly-1));
+				if (index == 0)
+					index = 1;
+
+				normal[0] = BLI_frand();
+				normal[1] = BLI_frand();
+				normal[2] = BLI_frand();
+
+				if (i % 3 == 1)
+				{
+					//ortho_v3_v3(normal, normal);
+				}
+				else if (i % 3 == 2)
+				{
+					//ortho_v3_v3(normal, normal);
+					//ortho_v3_v3(normal, normal);
+				}
+
+				s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, false, true, index, normal, centroid);
+				s2 = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, true, false, index, normal, centroid);
+			}
 		}
 		else
 		{
 			s = t;
 		}
-		if (s != NULL)
+		if (s != NULL && s2 == NULL)
 		{
 			s->parent_id = parent_id;
 			s->flag = SHARD_INTACT;
 
 			//#pragma omp critical
 			tempresults[i] = s;
+		}
+
+		if (s != NULL && s2 != NULL)
+		{
+			s2->parent_id = parent_id;
+			s2->flag = SHARD_INTACT;
+
+			//#pragma omp critical
+
+
+			if (bm_parent != NULL)
+			{
+				BM_mesh_free(bm_parent);
+				bm_parent = NULL;
+			}
+
+			if (dm_parent != NULL)
+			{
+				dm_parent->needsFree = 1;
+				dm_parent->release(dm_parent);
+				dm_parent = NULL;
+			}
+
+			//pick the biggest one...
+			/*if (shard_sortsize(s, s2) > 0) //(BLI_frand() > 0.5f)
+			{
+				bm_parent = shard_to_bmesh(s);
+				copy_v3_v3(centroid, s->centroid);
+				tempresults[i] = s2;
+			}
+			else
+			{
+				bm_parent = shard_to_bmesh(s2);
+				copy_v3_v3(centroid, s2->centroid);
+				tempresults[i] = s;
+			}*/
+			tempresults[i] = s;
+			tempresults[i+1] = s2;
+
+			qsort(tempresults, i+1, sizeof(Shard*), shard_sortsize);
+
+			if ((i+2) < expected_shards)
+			{
+				bm_parent = shard_to_bmesh(tempresults[0]);
+				copy_v3_v3(centroid, tempresults[0]->centroid);
+
+				BKE_shard_free(tempresults[0], true);
+				tempresults[0] = NULL;
+			}
+			/*else
+			{
+				break;
+			}*/
+			i++;
 		}
 	}
 
@@ -913,7 +1059,7 @@ void BKE_fracture_create_dm(FractureModifierData *fmd, bool do_merge)
 {
 	DerivedMesh *dm_final = NULL;
 	FractureLevel* fl = fmd->fracture_levels.first;
-	bool doCustomData = fl->frac_algorithm != MOD_FRACTURE_NONE && fl->frac_algorithm != MOD_FRACTURE_VORONOI;
+	bool doCustomData = fl->frac_algorithm != MOD_FRACTURE_VORONOI;
 	
 	if (fmd->dm) {
 		fmd->dm->needsFree = 1;

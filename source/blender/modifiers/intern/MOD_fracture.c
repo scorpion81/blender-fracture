@@ -170,8 +170,7 @@ static void freeData(ModifierData *md)
 
 		if (rmd->frac_mesh)
 		{
-			BKE_fracmesh_free(rmd->frac_mesh, fl->frac_algorithm != MOD_FRACTURE_NONE &&
-			                                  fl->frac_algorithm != MOD_FRACTURE_VORONOI);
+			BKE_fracmesh_free(rmd->frac_mesh, fl->frac_algorithm != MOD_FRACTURE_VORONOI);
 			MEM_freeN(rmd->frac_mesh);
 		}
 
@@ -497,8 +496,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 		if (fmd->frac_mesh != NULL)
 		{
-			BKE_fracmesh_free(fmd->frac_mesh, fl->frac_algorithm != MOD_FRACTURE_NONE &&
-											  fl->frac_algorithm != MOD_FRACTURE_VORONOI);
+			BKE_fracmesh_free(fmd->frac_mesh, fl->frac_algorithm != MOD_FRACTURE_VORONOI);
 			MEM_freeN(fmd->frac_mesh);
 			fmd->frac_mesh = NULL;
 		}

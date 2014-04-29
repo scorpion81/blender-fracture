@@ -43,6 +43,7 @@
 #include "BLI_alloca.h"
 #include "BLI_ghash.h"
 #include "BLI_math.h"
+#include "BLI_rand.h"
 #include "BKE_editmesh.h"
 #include "BKE_cdderivedmesh.h"
 #include "BKE_fracture.h"
@@ -101,7 +102,8 @@ Shard *BKE_fracture_shard_boolean(Object* obj, DerivedMesh *dm_parent, Shard* ch
 }
 
 
-Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4], bool use_fill)
+Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4], bool use_fill, bool clear_inner,
+								 bool clear_outer, int cutlimit, float normal[3], float centroid[3])
 {
 	#define MYTAG (1 << 6)
 
@@ -122,10 +124,11 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 	float imat[4][4];
 
 	float thresh = 0.00001f;
-	bool clear_inner = false;
-	bool clear_outer = true;
+	//bool clear_inner = false;
+	//bool clear_outer = true;
+	bool do_break = false;
 
-	int fcount = 0, findex = 0, i = 0;
+	int fcount = 0, findex = 0, i = 0, cut_index = 0;
 
 	invert_m4_m4(imat, obmat);
 
@@ -183,10 +186,26 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 	BM_mesh_elem_hflag_enable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, false);
 	BM_mesh_elem_hflag_enable_all(bm_parent, BM_FACE, MYTAG, false);
 
-	BM_ITER_MESH(f, &iter, bm_child, BM_FACES_OF_MESH)
+	BM_ITER_MESH_INDEX(f, &iter, bm_child, BM_FACES_OF_MESH, cut_index)
 	{
-		copy_v3_v3(plane_co, f->l_first->v->co);
-		copy_v3_v3(plane_no, f->no);
+		if (do_break)
+		{
+			break;
+		}
+
+		if (cutlimit > 0)
+		{
+			//int index = (int)(BLI_frand() * (bm_child->totface-1));
+			f = BM_face_at_index_find(bm_child, cutlimit);
+			copy_v3_v3(plane_co, centroid);
+			copy_v3_v3(plane_no, f->no /*normal*/);
+			do_break = true;
+		}
+		else
+		{
+			copy_v3_v3(plane_co, f->l_first->v->co);
+			copy_v3_v3(plane_no, f->no);
+		}
 
 		mul_m4_v3(imat, plane_co);
 		mul_mat3_m4_v3(imat, plane_no);
@@ -266,36 +285,39 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 	i = 0;
 	//faces = MEM_callocN(sizeof(BMFace*) * bm_parent->totface, "ftokill");
 
-	BM_ITER_MESH(f, &fiter2, bm_parent, BM_FACES_OF_MESH)
+	if (cutlimit == 0)
 	{
-		if (BM_elem_flag_test(f, MYTAG))
+		BM_ITER_MESH(f, &fiter2, bm_parent, BM_FACES_OF_MESH)
 		{
-			int *orig_index = CustomData_bmesh_get(&bm_parent->pdata, f->head.data, CD_ORIGINDEX);
-			if ((orig_index != NULL) && (*orig_index > -1) && (*orig_index < bm_orig->totface))
+			if (BM_elem_flag_test(f, MYTAG))
 			{
-				BMFace *face = BM_face_at_index(bm_orig, *orig_index);
-				if ((face != NULL) && (face->head.index == *orig_index))
+				int *orig_index = CustomData_bmesh_get(&bm_parent->pdata, f->head.data, CD_ORIGINDEX);
+				if ((orig_index != NULL) && (*orig_index > -1) && (*orig_index < bm_orig->totface))
 				{
-					//faces[i] = face;
-					BM_elem_flag_enable(face, MYTAG);
-					fcount++;
+					BMFace *face = BM_face_at_index(bm_orig, *orig_index);
+					if ((face != NULL) && (face->head.index == *orig_index))
+					{
+						//faces[i] = face;
+						BM_elem_flag_enable(face, MYTAG);
+						fcount++;
+					}
+					else
+					{
+						//faces[i] = NULL;
+					}
 				}
 				else
 				{
 					//faces[i] = NULL;
 				}
 			}
-			else
-			{
-				//faces[i] = NULL;
-			}
+
+			i++;
 		}
 
-		i++;
+		BMO_op_callf(bm_orig, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+					 "delete context=%i geom=%hf", DEL_FACES, MYTAG);
 	}
-
-	BMO_op_callf(bm_orig, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-                 "delete context=%i geom=%hf", DEL_FACES, MYTAG);
 
 	/*for (i = 0; i < bm_parent->totface; i++)
 	{

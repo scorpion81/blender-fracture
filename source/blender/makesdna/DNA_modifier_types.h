@@ -1442,7 +1442,7 @@ enum {
 };
 
 enum {
-	MOD_FRACTURE_NONE           = (1 << 0),
+	MOD_FRACTURE_BISECT_FAST    = (1 << 0),
 	MOD_FRACTURE_VORONOI        = (1 << 1),
 	MOD_FRACTURE_BOOLEAN        = (1 << 2),
 	MOD_FRACTURE_BISECT_FILL    = (1 << 3),
