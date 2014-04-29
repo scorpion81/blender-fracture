@@ -96,39 +96,15 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 	else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL)
 	{
 #define MYTAG (1 << 6)
-		//BMVert *v, *e, *f;
-		//BMIter iter, eiter, fiter;
-		//int index, eindex, findex;
+		BMFace *f;
+		BMIter fiter;
+		int findex;
 
 		dm_parent = BKE_shard_create_dm(p, true);
 		bm_parent = DM_to_bmesh(dm_parent, true);
 
-		//mark all geometry...
-		//BM_mesh_elem_hflag_enable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, MYTAG, false);
-		//BM_mesh_elem_hflag_disable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT, false);
-
 		//create lookup tables
-		//BM_mesh_elem_table_ensure(bm_parent, BM_VERT | BM_EDGE | BM_FACE);
-
-		//create ORIGINDEX layer and fill with indexes
-		/*CustomData_add_layer(&bm_parent->vdata, CD_ORIGINDEX, CD_CALLOC, NULL, bm_parent->totvert);
-		CustomData_bmesh_init_pool(&bm_parent->vdata, bm_parent->totvert, BM_VERT);
-
-		BM_ITER_MESH_INDEX(v, &iter, bm_parent, BM_VERTS_OF_MESH, index)
-		{
-			CustomData_bmesh_set_default(&bm_parent->vdata, &v->head.data);
-			CustomData_bmesh_set(&bm_parent->vdata, v->head.data, CD_ORIGINDEX, &index);
-		}*/
-
-		//create ORIGINDEX layer and fill with indexes
-		/*CustomData_add_layer(&bm_parent->edata, CD_ORIGINDEX, CD_CALLOC, NULL, bm_parent->totedge);
-		CustomData_bmesh_init_pool(&bm_parent->edata, bm_parent->totedge, BM_EDGE);
-
-		BM_ITER_MESH_INDEX(e, &eiter, bm_parent, BM_EDGES_OF_MESH, eindex)
-		{
-			CustomData_bmesh_set_default(&bm_parent->edata, &e->head.data);
-			CustomData_bmesh_set(&bm_parent->edata, e->head.data, CD_ORIGINDEX, &eindex);
-		}
+		BM_mesh_elem_table_ensure(bm_parent, BM_FACE);
 
 		//create ORIGINDEX layer and fill with indexes
 		CustomData_add_layer(&bm_parent->pdata, CD_ORIGINDEX, CD_CALLOC, NULL, bm_parent->totface);
@@ -138,7 +114,7 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 		{
 			CustomData_bmesh_set_default(&bm_parent->pdata, &f->head.data);
 			CustomData_bmesh_set(&bm_parent->pdata, f->head.data, CD_ORIGINDEX, &findex);
-		}*/
+		}
 
 		dm_parent->needsFree = 1;
 		dm_parent->release(dm_parent);
@@ -151,8 +127,8 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 		tempshards[i] = s;
 	}
 
-	#pragma omp critical
-	#pragma omp parallel for
+	//#pragma omp critical
+	//#pragma omp parallel for
 	for (i = 0; i < expected_shards; i++)
 	{
 		Shard* t;
@@ -172,6 +148,8 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 		else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL)
 		{
 			printf("Bisecting cell %d...\n", i);
+
+			//#pragma omp critical
 			s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL);
 		}
 		else

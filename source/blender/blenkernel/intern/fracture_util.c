@@ -51,583 +51,6 @@
 #include "bmesh.h"
 #include "../../modifiers/intern/MOD_boolean_util.h"
 
-#if 0
-static void DM_loop_interp_from_poly(DerivedMesh *source_dm, MPoly *source_poly,
-                                     DerivedMesh *target_dm, int target_loop_index)
-{
-	/* TODO(sergey): Arrays we could get once per poly, or once per mesh even. */
-	MVert *source_mvert = source_dm->getVertArray(source_dm);
-	MVert *target_mvert = target_dm->getVertArray(target_dm);
-	MLoop *source_mloop = source_dm->getLoopArray(source_dm);
-	MLoop *target_mloop = target_dm->getLoopArray(target_dm);
-	float (*cos_3d)[3] = BLI_array_alloca(cos_3d, source_poly->totloop);
-	int *source_indices = BLI_array_alloca(source_indices, source_poly->totloop);
-	float *weights = BLI_array_alloca(weights, source_poly->totloop);
-	int i;
-	int target_vert_index = target_mloop[target_loop_index].v;
-
-	for (i = 0; i < source_poly->totloop; ++i) {
-		MLoop *mloop = &source_mloop[source_poly->loopstart + i];
-		source_indices[i] = source_poly->loopstart + i;
-		copy_v3_v3(cos_3d[i], source_mvert[mloop->v].co);
-	}
-
-	interp_weights_poly_v3(weights, cos_3d, source_poly->totloop,
-	                       target_mvert[target_vert_index].co);
-
-	DM_interp_loop_data(source_dm, target_dm, source_indices, weights,
-	                    source_poly->totloop, target_loop_index);
-}
-
-/* **** Importer from shard to Carve ****  */
-typedef struct ImportMeshData {
-	DerivedMesh *dm;
-	float obmat[4][4];
-	MVert *mvert;
-	MEdge *medge;
-	MLoop *mloop;
-	MPoly *mpoly;
-} ImportMeshData;
-
-/* Get number of vertices. */
-static int importer_GetNumVerts(ImportMeshData *import_data)
-{
-	DerivedMesh* dm = import_data->dm;
-	return dm->getNumVerts(dm);
-}
-
-/* Get number of polys. */
-static int importer_GetNumPolys(ImportMeshData *import_data)
-{
-	DerivedMesh* dm = import_data->dm;
-	return dm->getNumPolys(dm);
-}
-
-/* Get 3D coordinate of vertex with given index. */
-static void importer_GetVertCoord(ImportMeshData *import_data, int index, float coord[3])
-{
-	MVert *mvert = import_data->mvert;
-
-	BLI_assert(index >= 0 && index < import_data->dm->getNumVerts(import_data->dm));
-
-	mul_v3_m4v3(coord, import_data->obmat, mvert[index].co);
-}
-
-/* Get index of vertices which are adjucent to edge specified by it's index. */
-static void importer_GetEdgeVerts(ImportMeshData *import_data, int edge_index, int *v1, int *v2)
-{
-	MEdge *medge = &import_data->medge[edge_index];
-
-	BLI_assert(edge_index >= 0 && edge_index < import_data->dm->getNumEdges(import_data->dm));
-
-	*v1 = medge->v1;
-	*v2 = medge->v2;
-}
-
-/* Get number of adjucent vertices to the poly specified by it's index. */
-static int importer_GetPolyNumVerts(ImportMeshData *import_data, int index)
-{
-	MPoly *mpoly = import_data->mpoly;
-	return mpoly[index].totloop;
-}
-
-/* Get list of adjucent vertices to the poly specified by it's index. */
-static void importer_GetPolyVerts(ImportMeshData *import_data, int index, int *verts)
-{
-	MPoly *mpoly = &import_data->mpoly[index];
-	MLoop *mloop = import_data->mloop + mpoly->loopstart;
-	int i;
-	BLI_assert(index >= 0 && index < import_data->dm->getNumPolys(import_data->dm));
-	for (i = 0; i < mpoly->totloop; i++, mloop++) {
-		verts[i] = mloop->v;
-	}
-}
-
-static CarveMeshImporter MeshImporter = {
-	importer_GetNumVerts,
-	importer_GetNumPolys,
-	importer_GetVertexCoord,
-	importer_GetEdgeVerts,
-	importer_GetPolyNumVerts,
-	importer_GetPolyVerts
-};
-
-
-/* **** Exporter from Carve to derivedmesh ****  */
-
-typedef struct ExportMeshData {
-	DerivedMesh *dm;
-	float obimat[4][4];
-	MVert *mvert;
-	MEdge *medge;
-	MLoop *mloop;
-	MPoly *mpoly;
-	int *edge_origindex;
-	int *poly_origindex;
-	int *loop_origindex;
-
-	/* Objects (wtf) and derived meshes of left and right operands.
-	 * Used for custom data merge and interpolation.
-	 */
-	Object *ob_left;
-	Object *ob_right;
-	DerivedMesh *dm_left;
-	DerivedMesh *dm_right;
-
-	/* Hash to map materials from right object to result. */
-	GHash *material_hash;
-
-} ExportMeshData;
-
-static Object *which_object(ExportMeshData *export_data, int which_mesh)
-{
-	Object *object = NULL;
-	switch (which_mesh) {
-		case CARVE_MESH_LEFT:
-			object = export_data->ob_left;
-			break;
-		case CARVE_MESH_RIGHT:
-			object = export_data->ob_right;
-			break;
-	}
-	return object;
-}
-
-static DerivedMesh *which_dm(ExportMeshData *export_data, int which_mesh)
-{
-	DerivedMesh *dm = NULL;
-	switch (which_mesh) {
-		case CARVE_MESH_LEFT:
-			dm = export_data->dm_left;
-			break;
-		case CARVE_MESH_RIGHT:
-			dm = export_data->dm_right;
-			break;
-	}
-	return dm;
-}
-
-static void allocate_custom_layers(CustomData *data, int type, int num_elements, int num_layers)
-{
-	int i;
-	/* TODO(sergey): Names of those layers will be default,
-	 * ideally we need to copy names as well/
-	 */
-	for (i = 0; i < num_layers; i++) {
-		CustomData_add_layer(data, type, CD_CALLOC, NULL, num_elements);
-	}
-}
-
-/* Create new external mesh */
-static void exporter_InitGeomArrays(ExportMeshData *export_data,
-                                    int num_verts, int num_edges,
-                                    int num_loops, int num_polys)
-{
-	DerivedMesh *dm = CDDM_new(num_verts, num_edges, 0,
-	                           num_loops, num_polys);
-	DerivedMesh *dm_left = export_data->dm_left,
-	            *dm_right = export_data->dm_right;
-
-	/* Mask for custom data layers to be merhed from operands. */
-	CustomDataMask merge_mask = CD_MASK_DERIVEDMESH & ~CD_MASK_ORIGINDEX;
-
-	export_data->dm = dm;
-	export_data->mvert = dm->getVertArray(dm);
-	export_data->medge = dm->getEdgeArray(dm);
-	export_data->mloop = dm->getLoopArray(dm);
-	export_data->mpoly = dm->getPolyArray(dm);
-
-	/* Allocate layers for UV layers and vertex colors.
-	 * Without this interpolation of those data will not happen.
-	 */
-	allocate_custom_layers(&dm->loopData, CD_MLOOPCOL, num_loops,
-	                       CustomData_number_of_layers(&dm_left->loopData, CD_MLOOPCOL));
-	allocate_custom_layers(&dm->loopData, CD_MLOOPUV, num_loops,
-	                       CustomData_number_of_layers(&dm_left->loopData, CD_MLOOPUV));
-
-	/* Merge custom data layers from operands.
-	 *
-	 * Will only create custom data layers for all the layers which appears in
-	 * the operand. Data for those layers will not be allocated or initialized.
-	 */
-	CustomData_merge(&dm_left->polyData, &dm->polyData, merge_mask, CD_DEFAULT, num_polys);
-	CustomData_merge(&dm_right->polyData, &dm->polyData, merge_mask, CD_DEFAULT, num_polys);
-
-	export_data->edge_origindex = dm->getEdgeDataArray(dm, CD_ORIGINDEX);
-	export_data->poly_origindex = dm->getPolyDataArray(dm, CD_ORIGINDEX);
-	export_data->loop_origindex = dm->getLoopDataArray(dm, CD_ORIGINDEX);
-}
-
-/* Set coordinate of vertex with given index. */
-static void exporter_SetVert(ExportMeshData *export_data, int vert_index, float coord[3])
-{
-	DerivedMesh *dm = export_data->dm;
-	MVert *mvert = export_data->mvert;
-
-	BLI_assert(vert_index >= 0 && vert_index <= dm->getNumVerts(dm));
-
-	mul_v3_m4v3(mvert[vert_index].co, export_data->obimat, coord);
-
-	CustomData_copy_data(&export_data->dm_left->vertData, &dm->vertData, 0, 0, 1);
-}
-
-/* Set vertices which are adjucent to the edge specified by it's index. */
-static void exporter_SetEdge(ExportMeshData *export_data,
-                             int edge_index, int v1, int v2,
-                             int which_orig_mesh, int orig_edge_index)
-{
-	DerivedMesh *dm = export_data->dm;
-	MEdge *medge = &export_data->medge[edge_index];
-	DerivedMesh *dm_orig;
-
-	BLI_assert(edge_index >= 0 && edge_index < dm->getNumEdges(dm));
-	BLI_assert(v1 >= 0 && v1 < dm->getNumVerts(dm));
-	BLI_assert(v2 >= 0 && v2 < dm->getNumVerts(dm));
-
-	dm_orig = which_dm(export_data, which_orig_mesh);
-	if (dm_orig) {
-		BLI_assert(orig_edge_index >= 0 && orig_edge_index < dm_orig->getNumEdges(dm_orig));
-
-		/* Copy all edge layers, including mpoly. */
-		CustomData_copy_data(&dm_orig->edgeData, &dm->edgeData, orig_edge_index, edge_index, 1);
-	}
-
-	/* Set original index of the edge. */
-	if (export_data->edge_origindex) {
-		if (which_orig_mesh == CARVE_MESH_LEFT) {
-			export_data->edge_origindex[edge_index] = orig_edge_index;
-		}
-		else {
-			export_data->edge_origindex[edge_index] = ORIGINDEX_NONE;
-		}
-	}
-
-	medge->v1 = v1;
-	medge->v2 = v2;
-
-	medge->flag |= ME_EDGEDRAW | ME_EDGERENDER;
-}
-
-static void setMPolyMaterial(ExportMeshData *export_data,
-                             MPoly *mpoly,
-                             int which_orig_mesh)
-{
-	Object *orig_object;
-	GHash *material_hash;
-	Material *orig_mat;
-
-	if (which_orig_mesh == CARVE_MESH_LEFT) {
-		/* No need to change materian index for faces from left operand */
-		return;
-	}
-
-	material_hash = export_data->material_hash;
-	//orig_object = which_object(export_data, which_orig_mesh);
-
-	/* Set material, based on lookup in hash table. */
-	orig_mat = give_current_material(orig_object, mpoly->mat_nr + 1);
-
-	if (orig_mat) {
-		/* For faces from right operand check if there's requested material
-		 * in the left operand. And if it is, use index of that material,
-		 * otherwise fallback to first material (material with index=0).
-		 */
-		if (!BLI_ghash_haskey(material_hash, orig_mat)) {
-			int a, mat_nr;;
-
-			mat_nr = 0;
-			for (a = 0; a < export_data->ob_left->totcol; a++) {
-				if (give_current_material(export_data->ob_left, a + 1) == orig_mat) {
-					mat_nr = a;
-					break;
-				}
-			}
-
-			BLI_ghash_insert(material_hash, orig_mat, SET_INT_IN_POINTER(mat_nr));
-
-			mpoly->mat_nr = mat_nr;
-		}
-		else
-			mpoly->mat_nr = GET_INT_FROM_POINTER(BLI_ghash_lookup(material_hash, orig_mat));
-	}
-	else {
-		mpoly->mat_nr = 0;
-	}
-}
-
-/* Set list of adjucent loops to the poly specified by it's index. */
-static void exporter_SetPoly(ExportMeshData *export_data,
-                             int poly_index, int start_loop, int num_loops,
-                             int which_orig_mesh, int orig_poly_index)
-{
-	DerivedMesh *dm = export_data->dm;
-	MPoly *mpoly = &export_data->mpoly[poly_index];
-	DerivedMesh *dm_orig;
-
-	/* Poly is always to be either from left or right operand. */
-	dm_orig = which_dm(export_data, which_orig_mesh);
-
-	BLI_assert(poly_index >= 0 && poly_index < dm->getNumPolys(dm));
-	BLI_assert(start_loop >= 0 && start_loop <= dm->getNumLoops(dm) - num_loops);
-	BLI_assert(num_loops >= 3);
-	BLI_assert(dm_orig != NULL);
-	BLI_assert(orig_poly_index >= 0 && orig_poly_index < dm_orig->getNumPolys(dm_orig));
-
-	/* Copy all poly layers, including mpoly. */
-	/* TODO(sergey): This we can avoid actually, we'll interpolate later anyway. */
-	CustomData_copy_data(&dm_orig->polyData, &dm->polyData, orig_poly_index, poly_index, 1);
-
-	setMPolyMaterial(export_data, mpoly, which_orig_mesh);
-
-	/* Set original index of the poly. */
-	if (export_data->poly_origindex) {
-		if (which_orig_mesh == CARVE_MESH_LEFT) {
-			export_data->poly_origindex[poly_index] = orig_poly_index;
-		}
-		else {
-			export_data->poly_origindex[poly_index] = ORIGINDEX_NONE;
-		}
-	}
-
-	mpoly->loopstart = start_loop;
-	mpoly->totloop = num_loops;
-}
-
-/* Set list vertex and edge which are adjucent to loop with given index. */
-static void exporter_SetLoop(ExportMeshData *export_data,
-                             int loop_index, int vertex, int edge,
-                             int which_orig_mesh, int orig_loop_index)
-{
-	DerivedMesh *dm = export_data->dm;
-	MLoop *mloop = &export_data->mloop[loop_index];
-	DerivedMesh *dm_orig;
-
-	BLI_assert(loop_index >= 0 && loop_index < dm->getNumLoops(dm));
-	BLI_assert(vertex >= 0 && vertex < dm->getNumVerts(dm));
-	BLI_assert(edge >= 0 && vertex < dm->getNumEdges(dm));
-
-	dm_orig = which_dm(export_data, which_orig_mesh);
-	if (dm_orig) {
-		BLI_assert(orig_loop_index >= 0 && orig_loop_index < dm_orig->getNumLoops(dm_orig));
-
-		/* Copy all loop layers, including mpoly. */
-		CustomData_copy_data(&dm_orig->loopData, &dm->loopData, orig_loop_index, loop_index, 1);
-	}
-
-	/* Set original index of the loop. */
-	if (export_data->loop_origindex) {
-		if (which_orig_mesh == CARVE_MESH_LEFT) {
-			export_data->loop_origindex[loop_index] = orig_loop_index;
-		}
-		else {
-			export_data->loop_origindex[loop_index] = ORIGINDEX_NONE;
-		}
-	}
-
-	mloop->v = vertex;
-	mloop->e = edge;
-}
-
-/* TOOO(sergey): We could move this code to the bottom of SetPoly and
- * reshuffle calls in carve-capi.cc. This would save one API call.
- */
-static void exporter_InterpPoly(ExportMeshData *export_data,
-                                int poly_index, int which_orig_mesh, int orig_poly_index)
-{
-	MPoly *mpoly, *mpoly_orig;
-	DerivedMesh *dm = export_data->dm;
-	DerivedMesh *dm_orig;
-	int i;
-
-	/* Poly is always to be either from left or right operand. */
-	dm_orig = which_dm(export_data, which_orig_mesh);
-
-	BLI_assert(poly_index >= 0 && poly_index < dm->getNumPolys(dm));
-	BLI_assert(orig_poly_index >= 0 && orig_poly_index < dm_orig->getNumPolys(dm_orig));
-
-	mpoly = &export_data->mpoly[poly_index];
-	mpoly_orig = &(dm_orig->getPolyArray(dm_orig) [orig_poly_index]);
-
-	for (i = 0; i < mpoly->totloop; i++) {
-		DM_loop_interp_from_poly(dm_orig, mpoly_orig, dm, i + mpoly->loopstart);
-	}
-}
-
-static CarveMeshExporter MeshExporter = {
-	exporter_InitGeomArrays,
-	exporter_SetVert,
-	exporter_SetEdge,
-	exporter_SetPoly,
-	exporter_SetLoop,
-	exporter_InterpPoly
-};
-
-static int operation_from_optype(int int_op_type)
-{
-	int operation;
-
-	switch (int_op_type) {
-		case 1:
-			operation = CARVE_OP_INTERSECTION;
-			break;
-		case 2:
-			operation = CARVE_OP_UNION;
-			break;
-		case 3:
-			operation = CARVE_OP_A_MINUS_B;
-			break;
-		default:
-			BLI_assert(!"Should not happen");
-			operation = -1;
-			break;
-	}
-
-	return operation;
-}
-
-static void prepare_import_data(Object *obj, DerivedMesh* dm, ImportMeshData *import_data)
-{
-	import_data->dm = dm;
-	copy_m4_m4(import_data->obmat, obj->obmat);
-	import_data->mvert = dm->getVertArray(dm);
-	import_data->mloop = dm->getLoopArray(dm);
-	import_data->mpoly = dm->getPolyArray(dm);
-	import_data->medge = dm->getEdgeArray(dm);
-
-#if 0
-	if (flip)
-	{
-		//swap loops, per poly
-		int i, j;
-		MPoly *p = s->mpoly;
-		import_data->mloop = MEM_mallocN(sizeof(MLoop) * s->totloop, __func__);
-		for (i = 0; i < s->totpoly; i++, p++)
-		{
-			MLoop* l = &s->mloop[p->loopstart + p->totloop - 1];
-			for (j = 0; j < p->totloop; j++, l--)
-			{
-				import_data->mloop[j + p->loopstart].v = l->v;
-				import_data->mloop[j + p->loopstart].e = l->e;
-			}
-		}
-	}
-	else
-
-	{
-		import_data->mloop = dm->mloop;
-	}
-#endif
-}
-
-static struct CarveMeshDescr *carve_mesh_from_dm(Object* obj, DerivedMesh *dm)
-{
-	ImportMeshData import_data;
-	prepare_import_data(obj, dm, &import_data);
-	return carve_addMesh(&import_data, &MeshImporter);
-}
-
-static void prepare_export_data(Object* obj, DerivedMesh *dm_left, DerivedMesh *dm_right,
-                                ExportMeshData *export_data)
-{
-	/* Only initialize inverse object matrix here, all the rest will be
-	 * initialized in initGeomArrays
-	 */
-	invert_m4_m4(export_data->obimat, obj->obmat);
-
-	export_data->ob_left = obj;
-	export_data->ob_right = obj;
-	export_data->dm_left = dm_left;
-	export_data->dm_right = dm_right;
-
-	export_data->material_hash = BLI_ghash_ptr_new("CSG_mat gh");
-}
-
-Shard *BKE_fracture_shard_boolean(Object* obj, Shard *parent, Shard* child)
-{
-	bool result;
-
-	Shard *output_s;
-	DerivedMesh *output_dm, *left_dm, *right_dm;
-	struct CarveMeshDescr *left, *right, *output = NULL;
-	int operation = -1;
-	int int_op_type = 1;
-
-	if (parent == NULL || child == NULL) {
-		return NULL;
-	}
-
-	if ((parent->totpoly == 0) || (child->totpoly == 0)) return NULL;
-
-	left_dm = BKE_shard_create_dm(child);
-	right_dm = BKE_shard_create_dm(parent);
-
-	operation = operation_from_optype(int_op_type);
-	if (operation == -1) {
-		return NULL;
-	}
-
-	left = carve_mesh_from_dm(obj, left_dm);
-	right = carve_mesh_from_dm(obj, right_dm);
-
-	result = carve_performBooleanOperation(left, right, operation, &output);
-
-	carve_deleteMesh(left);
-	carve_deleteMesh(right);
-
-	if (result) {
-		ExportMeshData export_data;
-		prepare_export_data(obj, left_dm, right_dm, &export_data);
-
-		carve_exportMesh(output, &MeshExporter, &export_data);
-		output_dm = export_data.dm;
-		output_dm->dirty |= DM_DIRTY_NORMALS;
-
-		/* Free memory used by export mesh. */
-		BLI_ghash_free(export_data.material_hash, NULL, NULL);
-
-		carve_deleteMesh(output);
-
-		left_dm->needsFree = 1;
-		left_dm->release(left_dm);
-		left_dm = NULL;
-
-		right_dm->needsFree = 1;
-		right_dm->release(right_dm);
-		right_dm = NULL;
-
-		if (output_dm)
-		{
-			output_s = BKE_create_fracture_shard(output_dm->getVertArray(output_dm),
-			                                     output_dm->getPolyArray(output_dm),
-			                                     output_dm->getLoopArray(output_dm),
-			                                     output_dm->getNumVerts(output_dm),
-			                                     output_dm->getNumPolys(output_dm),
-			                                     output_dm->getNumLoops(output_dm),
-			                                     true);
-
-			/*XXX TODO this might be wrong by now ... */
-			output_s->neighbor_count = child->neighbor_count;
-			output_s->neighbor_ids = MEM_mallocN(sizeof(int) * child->neighbor_count, __func__);
-			memcpy(output_s->neighbor_ids, child->neighbor_ids, sizeof(int) * child->neighbor_count);
-			BKE_fracture_shard_center_centroid(output_s, output_s->centroid);
-
-			/*free the bbox shard*/
-			BKE_shard_free(child);
-
-			/*free the temp derivedmesh*/
-			output_dm->needsFree = 1;
-			output_dm->release(output_dm);
-			output_dm = NULL;
-
-			return output_s;
-		}
-
-		return NULL;
-	}
-	return NULL;
-}
-#endif
-
 Shard *BKE_fracture_shard_boolean(Object* obj, DerivedMesh *dm_parent, Shard* child)
 {
 	Shard *output_s;
@@ -690,9 +113,8 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 	//BMesh* bm_parent = BM_mesh_create(&bm_mesh_allocsize_default);
 	BMesh *bm_parent = BM_mesh_copy(bm_orig);
 	BMesh *bm_child = DM_to_bmesh(dm_child, true);
-	BMIter iter, viter, fiter, eiter;
-	BMFace *f;
-	BMVert *v, *v_next;
+	BMIter iter, fiter, fiter2;
+	BMFace *f, **faces;
 
 	BMOperator bmop;
 	float plane_co[3];
@@ -703,30 +125,63 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 	bool clear_inner = false;
 	bool clear_outer = true;
 
-	int vcount = 0;
+	int fcount = 0, findex = 0, i = 0;
 
 	invert_m4_m4(imat, obmat);
 
-/*	BM_mesh_elem_toolflags_ensure(bm_parent);  * needed for 'duplicate' bmo *
+	//copy ORIGINDEX...
+	//CustomData_copy(&bm_orig->pdata, &bm_parent->pdata, CD_MASK_ORIGINDEX, CD_CALLOC, bm_orig->totface);
+	//CustomData_bmesh_init_pool(&bm_parent->pdata, bm_mesh_allocsize_default.totface, BM_FACE);
 
-	CustomData_copy(&bm_orig->vdata, &bm_parent->vdata, CD_MASK_BMESH | CD_MASK_ORIGINDEX, CD_CALLOC, 0);
-	CustomData_copy(&bm_orig->edata, &bm_parent->edata, CD_MASK_BMESH , CD_CALLOC, 0);
-	CustomData_copy(&bm_orig->ldata, &bm_parent->ldata, CD_MASK_BMESH , CD_CALLOC, 0);
-	CustomData_copy(&bm_orig->pdata, &bm_parent->pdata, CD_MASK_BMESH , CD_CALLOC, 0);
+	//CustomData_add_layer(&bm_parent->pdata, CD_ORIGINDEX, CD_CALLOC, NULL, bm_parent->totface);
+	//CustomData_bmesh_init_pool(&bm_parent->pdata, bm_parent->totface, BM_FACE);
 
-	CustomData_bmesh_init_pool(&bm_parent->vdata, bm_mesh_allocsize_default.totvert, BM_VERT);
-	CustomData_bmesh_init_pool(&bm_parent->edata, bm_mesh_allocsize_default.totedge, BM_EDGE);
-	CustomData_bmesh_init_pool(&bm_parent->ldata, bm_mesh_allocsize_default.totloop, BM_LOOP);
-	CustomData_bmesh_init_pool(&bm_parent->pdata, bm_mesh_allocsize_default.totface, BM_FACE);*/
+	/*for (i = 0; i < bm_parent->totface; i++)
+	{
+		BMFace *f1, *f2;
+		int *oindex = NULL;
+		f1 = BM_face_at_index_find(bm_orig, i);
+		f2 = BM_face_at_index(bm_parent, i);
 
-	//copy only "selected" geometry
-	//BMO_op_callf(bm_orig, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-	//			 "duplicate geom=%hvef dest=%p", MYTAG, bm_parent);
+		if ((f1 != NULL) && (f2 != NULL))
+		{
+			CustomData_bmesh_set_default(&bm_parent->pdata, &f2->head.data);
+			oindex = CustomData_bmesh_get(&bm_orig->pdata, f1->head.data, CD_ORIGINDEX);
+
+			if (oindex != NULL)
+			{
+				CustomData_bmesh_set(&bm_parent->pdata, f2->head.data, CD_ORIGINDEX, &i);
+			}
+			else
+			{
+				int *none = MEM_callocN(sizeof(int), "NONE");
+				*none = ORIGINDEX_NONE;
+				CustomData_bmesh_set(&bm_parent->pdata, f2->head.data, CD_ORIGINDEX, none);
+			}
+		}
+		else if (f2 != NULL)
+		{
+			int *none = MEM_callocN(sizeof(int), "NONE");
+			*none = ORIGINDEX_NONE;
+
+			CustomData_bmesh_set_default(&bm_parent->pdata, &f2->head.data);
+			CustomData_bmesh_set(&bm_parent->pdata, f2->head.data, CD_ORIGINDEX, none);
+		}
+	}*/
+
+
+	CustomData_add_layer(&bm_parent->pdata, CD_ORIGINDEX, CD_CALLOC, NULL, bm_parent->totface);
+	CustomData_bmesh_init_pool(&bm_parent->pdata, bm_parent->totface, BM_FACE);
+
+	BM_ITER_MESH_INDEX(f, &fiter, bm_parent, BM_FACES_OF_MESH, findex)
+	{
+		CustomData_bmesh_set_default(&bm_parent->pdata, &f->head.data);
+		CustomData_bmesh_set(&bm_parent->pdata, f->head.data, CD_ORIGINDEX, &findex);
+	}
 
 	//then enable tags...
 	BM_mesh_elem_hflag_enable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, false);
-	BM_mesh_elem_hflag_disable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, MYTAG, false);
-	//BM_mesh_elem_hflag_enable_all(bm_orig, BM_VERT | BM_EDGE | BM_FACE, MYTAG, false);
+	BM_mesh_elem_hflag_enable_all(bm_parent, BM_FACE, MYTAG, false);
 
 	BM_ITER_MESH(f, &iter, bm_child, BM_FACES_OF_MESH)
 	{
@@ -802,101 +257,60 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 		}
 
 		BMO_slot_buffer_hflag_enable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, BM_ELEM_TAG, true);
-		//BMO_slot_buffer_hflag_enable(bm_parent, bmop.slots_out, "geom_old.out", BM_VERT, MYTAG, true);
-		//BMO_slot_buffer_hflag_disable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, MYTAG, false);
-
-		//BMO_slot_buffer_hflag_enable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, BM_ELEM_SELECT, false);
-		//BMO_slot_buffer_hflag_disable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, BM_ELEM_SELECT, false);
-
-		//BMO_slot_buffer_hflag_disable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, MYTAG, false);
+		//BMO_slot_buffer_hflag_enable(bm_parent, bmop.slots_out, "geom.out", BM_FACE, MYTAG, false);
+		BMO_slot_buffer_hflag_disable(bm_parent, bmop.slots_out, "geom_cut.out", BM_FACE, MYTAG, false);
 
 		BMO_op_finish(bm_parent, &bmop);
-		//BM_mesh_select_flush(bm_parent);
 	}
 
+	i = 0;
+	//faces = MEM_callocN(sizeof(BMFace*) * bm_parent->totface, "ftokill");
 
-	//select geometry which remains as cell in origmesh
-/*	BM_ITER_MESH_MUTABLE(v, v_next, &viter, bm_parent, BM_VERTS_OF_MESH)
+	BM_ITER_MESH(f, &fiter2, bm_parent, BM_FACES_OF_MESH)
 	{
-		//just select OLD geometry
-		if (BM_elem_flag_test(v, MYTAG))
-		{
-			int *orig_index = CustomData_bmesh_get(&bm_parent->vdata, v->head.data, CD_ORIGINDEX);
-			if (*orig_index > -1)
-			{
-				BMVert *vert = BM_vert_at_index(bm_orig, *orig_index);
-				if (vert)
-				{
-					//if (BM_elem_flag_test(vert, MYTAG))
-					{
-					//CustomData_bmesh_free_block(&bm_orig->vdata, vert->head.data);
-						//BM_vert_kill(bm_orig, vert);
-						BM_elem_flag_disable(vert, MYTAG);
-					//BM_mesh_elem_table_ensure(bm_orig, BM_VERT);
-						vcount++;
-					}
-				}
-			}
-		}
-	}*/
-
-
-	/*BM_ITER_MESH(e, &eiter, bm_parent, BM_EDGES_OF_MESH)
-	{
-		//just select OLD geometry
-		if (BM_elem_flag_test(e, MYTAG))
-		{
-			int *orig_index = CustomData_bmesh_get(&bm_parent->edata, e->head.data, CD_ORIGINDEX);
-			if (*orig_index > -1)
-			{
-				BMEdge *edge = BM_edge_at_index(bm_orig, *orig_index);
-				if (edge)
-				{
-					BM_elem_flag_disable(edge, MYTAG);
-					ecount++;
-				}
-			}
-		}
-	}*/
-
-	/*BM_ITER_MESH(f, &fiter, bm_parent, BM_FACES_OF_MESH)
-	{
-		//just select OLD geometry
 		if (BM_elem_flag_test(f, MYTAG))
 		{
 			int *orig_index = CustomData_bmesh_get(&bm_parent->pdata, f->head.data, CD_ORIGINDEX);
-			if (*orig_index > -1)
+			if ((orig_index != NULL) && (*orig_index > -1) && (*orig_index < bm_orig->totface))
 			{
 				BMFace *face = BM_face_at_index(bm_orig, *orig_index);
-				//BM_elem_flag_disable(face, MYTAG);
-				fcount++;
+				if ((face != NULL) && (face->head.index == *orig_index))
+				{
+					//faces[i] = face;
+					BM_elem_flag_enable(face, MYTAG);
+					fcount++;
+				}
+				else
+				{
+					//faces[i] = NULL;
+				}
 			}
+			else
+			{
+				//faces[i] = NULL;
+			}
+		}
+
+		i++;
+	}
+
+	BMO_op_callf(bm_orig, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+                 "delete context=%i geom=%hf", DEL_FACES, MYTAG);
+
+	/*for (i = 0; i < bm_parent->totface; i++)
+	{
+		BMFace *face = faces[i];
+		if (face != NULL)
+		{
+			BM_face_kill(bm_orig, face);
+			fcount++;
 		}
 	}*/
 
-	printf("Removed verts: %d \n", vcount);
+	BM_mesh_elem_table_ensure(bm_orig, BM_FACE);
+	//MEM_freeN(faces);
 
-	/*BM_mesh_elem_hflag_enable_test(bm_orig, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT, true, false, BM_ELEM_TAG);
-	BM_mesh_select_flush(bm_orig);
-	BM_mesh_elem_hflag_enable_test(bm_orig, BM_VERT | BM_EDGE | BM_FACE, MYTAG, true, false, BM_ELEM_SELECT);*/
-
-	//retag...
-	//BM_mesh_elem_hflag_enable_test(bm_parent, BM_VERT, BM_ELEM_INTERNAL_TAG, true, false, BM_ELEM_SELECT);
-
-	//copy the rest of the mesh (without this cell) to a new bmesh....
-	//BMO_op_callf(bm_parent, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-	//			 "duplicate geom=%hvef dest=%p", BM_ELEM_SELECT, bm_rest);
-
-	//delete selection from bm_parent
-/*	BM_ITER_MESH_MUTABLE(v, v_next, &viter, bm_parent, BM_VERTS_OF_MESH)
-	{
-		if (BM_elem_flag_test(v, BM_ELEM_INTERNAL_TAG))
-		{
-			BM_vert_kill(bm_parent, v);
-		}
-	}
-
-	BM_mesh_elem_hflag_disable_all(bm_parent, BM_VERT, BM_ELEM_INTERNAL_TAG, false);*/
+	printf("Removed faces: %d \n", fcount);
 
 	dm_out = CDDM_from_bmesh(bm_parent, true);
 	output_s = BKE_create_fracture_shard(dm_out->getVertArray(dm_out),
