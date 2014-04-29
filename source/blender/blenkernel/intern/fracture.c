@@ -8,6 +8,7 @@
 #include "BLI_utildefines.h"
 #include "BLI_path_util.h"
 #include "BLI_rand.h"
+#include "BLI_sort.h"
 
 #include "DNA_fracture_types.h"
 #include "DNA_group_types.h"
@@ -113,7 +114,7 @@ static void shard_boundbox(Shard* s, float r_loc[3], float r_size[3])
 	r_size[2] = (max[2] - min[2]) / 2.0f;
 }
 
-static int shard_sortsize(const void *s1, const void *s2)
+static int shard_sortsize(void* context, const void *s1, const void *s2)
 {
 	const Shard** sh1 = (Shard**)s1;
 	const Shard** sh2 = (Shard**)s2;
@@ -123,7 +124,7 @@ static int shard_sortsize(const void *s1, const void *s2)
 
 	if ((*sh1 == NULL) || (*sh2 == NULL))
 	{
-		return 1;
+		return -1;
 	}
 
 	shard_boundbox(*sh1, loc, size1);
@@ -185,6 +186,7 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 		printf("Parsing shard: %d\n", i);
 		s = parse_shard(fp);
 		tempshards[i] = s;
+		tempresults[i] = NULL;
 	}
 
 	//#pragma omp critical
@@ -259,11 +261,12 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 
 		if (s != NULL && s2 != NULL)
 		{
+			int j = 0;
+
 			s2->parent_id = parent_id;
 			s2->flag = SHARD_INTACT;
 
 			//#pragma omp critical
-
 
 			if (bm_parent != NULL)
 			{
@@ -294,15 +297,19 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 			tempresults[i] = s;
 			tempresults[i+1] = s2;
 
-			qsort(tempresults, i+1, sizeof(Shard*), shard_sortsize);
+			BLI_qsort_r(tempresults, i+1, sizeof(Shard*), i, shard_sortsize);
+
+			while (tempresults[j] == NULL && j < (i+1)) {
+				j++;
+			}
 
 			if ((i+2) < expected_shards)
 			{
-				bm_parent = shard_to_bmesh(tempresults[0]);
-				copy_v3_v3(centroid, tempresults[0]->centroid);
+				bm_parent = shard_to_bmesh(tempresults[j]);
+				copy_v3_v3(centroid, tempresults[j]->centroid);
 
-				BKE_shard_free(tempresults[0], true);
-				tempresults[0] = NULL;
+				BKE_shard_free(tempresults[j], true);
+				tempresults[j] = NULL;
 			}
 			/*else
 			{
