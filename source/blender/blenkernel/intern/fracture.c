@@ -64,25 +64,31 @@ static BMesh* shard_to_bmesh(Shard* s)
 {
 	DerivedMesh* dm_parent;
 	BMesh *bm_parent;
-	BMFace *f;
-	BMIter fiter;
+	//BMFace *f;
+	//BMIter fiter;
 	int findex;
 
 	dm_parent = BKE_shard_create_dm(s, true);
-	bm_parent = DM_to_bmesh(dm_parent, true);
-
-	//create lookup tables
-	BM_mesh_elem_table_ensure(bm_parent, BM_FACE);
+	//CustomData_add_layer(&dm_parent->polyData, CD_ORIGINDEX, CD_CALLOC, NULL, s->totpoly);
 
 	//create ORIGINDEX layer and fill with indexes
-	CustomData_add_layer(&bm_parent->pdata, CD_ORIGINDEX, CD_CALLOC, NULL, bm_parent->totface);
-	CustomData_bmesh_init_pool(&bm_parent->pdata, bm_parent->totface, BM_FACE);
+	//CustomData_add_layer(&bm_parent->pdata, CD_ORIGINDEX, CD_CALLOC, NULL, bm_parent->totface);
+	//CustomData_bmesh_init_pool(&bm_parent->pdata, bm_mesh_allocsize_default.totface, BM_FACE);
 
-	BM_ITER_MESH_INDEX(f, &fiter, bm_parent, BM_FACES_OF_MESH, findex)
+	/*BM_ITER_MESH_INDEX(f, &fiter, bm_parent, BM_FACES_OF_MESH, findex)
 	{
 		CustomData_bmesh_set_default(&bm_parent->pdata, &f->head.data);
 		CustomData_bmesh_set(&bm_parent->pdata, f->head.data, CD_ORIGINDEX, &findex);
-	}
+	}*/
+
+/*	for (findex = 0; findex < dm_parent->getNumPolys(dm_parent); findex++)
+	{
+		CustomData_set(&dm_parent->polyData, findex, CD_ORIGINDEX, &findex);
+	}*/
+
+	bm_parent = DM_to_bmesh(dm_parent, true);
+	//create lookup tables
+	BM_mesh_elem_table_ensure(bm_parent, BM_FACE);
 
 	dm_parent->needsFree = 1;
 	dm_parent->release(dm_parent);
@@ -189,8 +195,8 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 		tempresults[i] = NULL;
 	}
 
-	//#pragma omp critical
-	//#pragma omp parallel for
+	#pragma omp critical
+	#pragma omp parallel for if (algorithm != MOD_FRACTURE_BISECT_FAST)
 	for (i = 0; i < expected_shards; i++)
 	{
 		Shard* t;
@@ -216,34 +222,16 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 
 			if (split_all)
 			{
-				float normal[3] = {0, 0, 0};
 				float co[3] = {0, 0, 0};
-				s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, false, true, 0, normal, co);
+				s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, false, true, 0, co);
 			}
 			else
 			{
-				float normal[3] = {0, 0, 0};
-				float co[3];
 				int index = (int)(BLI_frand() * (t->totpoly-1));
 				if (index == 0)
 					index = 1;
-
-				normal[0] = BLI_frand();
-				normal[1] = BLI_frand();
-				normal[2] = BLI_frand();
-
-				if (i % 3 == 1)
-				{
-					//ortho_v3_v3(normal, normal);
-				}
-				else if (i % 3 == 2)
-				{
-					//ortho_v3_v3(normal, normal);
-					//ortho_v3_v3(normal, normal);
-				}
-
-				s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, false, true, index, normal, centroid);
-				s2 = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, true, false, index, normal, centroid);
+				s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, false, true, index, centroid);
+				s2 = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, true, false, index, centroid);
 			}
 		}
 		else

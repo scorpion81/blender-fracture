@@ -103,7 +103,7 @@ Shard *BKE_fracture_shard_boolean(Object* obj, DerivedMesh *dm_parent, Shard* ch
 
 
 Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4], bool use_fill, bool clear_inner,
-								 bool clear_outer, int cutlimit, float normal[3], float centroid[3])
+								 bool clear_outer, int cutlimit, float centroid[3])
 {
 	#define MYTAG (1 << 6)
 
@@ -132,59 +132,18 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 
 	invert_m4_m4(imat, obmat);
 
-	//copy ORIGINDEX...
-	//CustomData_copy(&bm_orig->pdata, &bm_parent->pdata, CD_MASK_ORIGINDEX, CD_CALLOC, bm_orig->totface);
-	//CustomData_bmesh_init_pool(&bm_parent->pdata, bm_mesh_allocsize_default.totface, BM_FACE);
-
-	//CustomData_add_layer(&bm_parent->pdata, CD_ORIGINDEX, CD_CALLOC, NULL, bm_parent->totface);
-	//CustomData_bmesh_init_pool(&bm_parent->pdata, bm_parent->totface, BM_FACE);
-
-	/*for (i = 0; i < bm_parent->totface; i++)
-	{
-		BMFace *f1, *f2;
-		int *oindex = NULL;
-		f1 = BM_face_at_index_find(bm_orig, i);
-		f2 = BM_face_at_index(bm_parent, i);
-
-		if ((f1 != NULL) && (f2 != NULL))
-		{
-			CustomData_bmesh_set_default(&bm_parent->pdata, &f2->head.data);
-			oindex = CustomData_bmesh_get(&bm_orig->pdata, f1->head.data, CD_ORIGINDEX);
-
-			if (oindex != NULL)
-			{
-				CustomData_bmesh_set(&bm_parent->pdata, f2->head.data, CD_ORIGINDEX, &i);
-			}
-			else
-			{
-				int *none = MEM_callocN(sizeof(int), "NONE");
-				*none = ORIGINDEX_NONE;
-				CustomData_bmesh_set(&bm_parent->pdata, f2->head.data, CD_ORIGINDEX, none);
-			}
-		}
-		else if (f2 != NULL)
-		{
-			int *none = MEM_callocN(sizeof(int), "NONE");
-			*none = ORIGINDEX_NONE;
-
-			CustomData_bmesh_set_default(&bm_parent->pdata, &f2->head.data);
-			CustomData_bmesh_set(&bm_parent->pdata, f2->head.data, CD_ORIGINDEX, none);
-		}
-	}*/
-
-
-	CustomData_add_layer(&bm_parent->pdata, CD_ORIGINDEX, CD_CALLOC, NULL, bm_parent->totface);
+/*	CustomData_add_layer(&bm_parent->pdata, CD_ORIGINDEX, CD_CALLOC, NULL, bm_parent->totface);
 	CustomData_bmesh_init_pool(&bm_parent->pdata, bm_parent->totface, BM_FACE);
 
 	BM_ITER_MESH_INDEX(f, &fiter, bm_parent, BM_FACES_OF_MESH, findex)
 	{
 		CustomData_bmesh_set_default(&bm_parent->pdata, &f->head.data);
 		CustomData_bmesh_set(&bm_parent->pdata, f->head.data, CD_ORIGINDEX, &findex);
-	}
+	}*/
 
 	//then enable tags...
 	BM_mesh_elem_hflag_enable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, false);
-	BM_mesh_elem_hflag_enable_all(bm_parent, BM_FACE, MYTAG, false);
+	//BM_mesh_elem_hflag_enable_all(bm_parent, BM_FACE, MYTAG, false);
 
 	BM_ITER_MESH_INDEX(f, &iter, bm_child, BM_FACES_OF_MESH, cut_index)
 	{
@@ -277,7 +236,7 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 
 		BMO_slot_buffer_hflag_enable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, BM_ELEM_TAG, true);
 		//BMO_slot_buffer_hflag_enable(bm_parent, bmop.slots_out, "geom.out", BM_FACE, MYTAG, false);
-		BMO_slot_buffer_hflag_disable(bm_parent, bmop.slots_out, "geom_cut.out", BM_FACE, MYTAG, false);
+		//BMO_slot_buffer_hflag_disable(bm_parent, bmop.slots_out, "geom_cut.out", BM_FACE, MYTAG, false);
 
 		BMO_op_finish(bm_parent, &bmop);
 	}
@@ -285,6 +244,7 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 	i = 0;
 	//faces = MEM_callocN(sizeof(BMFace*) * bm_parent->totface, "ftokill");
 
+#if 0
 	if (cutlimit == 0)
 	{
 		BM_ITER_MESH(f, &fiter2, bm_parent, BM_FACES_OF_MESH)
@@ -318,21 +278,9 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 		BMO_op_callf(bm_orig, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 					 "delete context=%i geom=%hf", DEL_FACES, MYTAG);
 	}
+#endif
 
-	/*for (i = 0; i < bm_parent->totface; i++)
-	{
-		BMFace *face = faces[i];
-		if (face != NULL)
-		{
-			BM_face_kill(bm_orig, face);
-			fcount++;
-		}
-	}*/
-
-	BM_mesh_elem_table_ensure(bm_orig, BM_FACE);
-	//MEM_freeN(faces);
-
-	printf("Removed faces: %d \n", fcount);
+	//printf("Removed faces: %d \n", fcount);
 
 	dm_out = CDDM_from_bmesh(bm_parent, true);
 	output_s = BKE_create_fracture_shard(dm_out->getVertArray(dm_out),
