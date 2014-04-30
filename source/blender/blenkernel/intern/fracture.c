@@ -195,115 +195,116 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 		tempresults[i] = NULL;
 	}
 
-	#pragma omp critical
-	#pragma omp parallel for if (algorithm != MOD_FRACTURE_BISECT_FAST)
-	for (i = 0; i < expected_shards; i++)
+	if (algorithm != MOD_FRACTURE_BISECT_FAST)
 	{
-		Shard* t;
-		Shard* s2 = NULL;
-		printf("Processing shard: %d\n", i);
-		t = tempshards[i];
+		#pragma omp critical
+		#pragma omp parallel for if (algorithm != MOD_FRACTURE_BISECT_FAST)
+		for (i = 0; i < expected_shards; i++)
+		{
+			Shard* t;
+			printf("Processing shard: %d\n", i);
+			t = tempshards[i];
 
-		if (t != NULL)
-		{
-			t->parent_id = parent_id;
-			t->flag = SHARD_INTACT;
-		}
-		/* XXX TODO, need object for material as well, or atleast a material index... */
-		if (algorithm == MOD_FRACTURE_BOOLEAN)
-		{
-			s = BKE_fracture_shard_boolean(obj, dm_parent, t);
-		}
-		else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL || algorithm == MOD_FRACTURE_BISECT_FAST)
-		{
-			bool split_all = (algorithm != MOD_FRACTURE_BISECT_FAST);
-			printf("Bisecting cell %d...\n", i);
-			//#pragma omp critical
-
-			if (split_all)
+			if (t != NULL)
+			{
+				t->parent_id = parent_id;
+				t->flag = SHARD_INTACT;
+			}
+			/* XXX TODO, need object for material as well, or atleast a material index... */
+			if (algorithm == MOD_FRACTURE_BOOLEAN)
+			{
+				s = BKE_fracture_shard_boolean(obj, dm_parent, t);
+			}
+			else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL)
 			{
 				float co[3] = {0, 0, 0};
+				printf("Bisecting cell %d...\n", i);
 				s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, false, true, 0, co);
 			}
 			else
 			{
-				int index = (int)(BLI_frand() * (t->totpoly-1));
-				if (index == 0)
-					index = 1;
-				s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, false, true, index, centroid);
-				s2 = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, true, false, index, centroid);
+				s = t;
 			}
-		}
-		else
-		{
-			s = t;
-		}
-		if (s != NULL && s2 == NULL)
-		{
-			s->parent_id = parent_id;
-			s->flag = SHARD_INTACT;
-
-			//#pragma omp critical
-			tempresults[i] = s;
-		}
-
-		if (s != NULL && s2 != NULL)
-		{
-			int j = 0;
-
-			s2->parent_id = parent_id;
-			s2->flag = SHARD_INTACT;
-
-			//#pragma omp critical
-
-			if (bm_parent != NULL)
+			if (s != NULL)
 			{
-				BM_mesh_free(bm_parent);
-				bm_parent = NULL;
-			}
+				s->parent_id = parent_id;
+				s->flag = SHARD_INTACT;
 
-			if (dm_parent != NULL)
-			{
-				dm_parent->needsFree = 1;
-				dm_parent->release(dm_parent);
-				dm_parent = NULL;
-			}
-
-			//pick the biggest one...
-			/*if (shard_sortsize(s, s2) > 0) //(BLI_frand() > 0.5f)
-			{
-				bm_parent = shard_to_bmesh(s);
-				copy_v3_v3(centroid, s->centroid);
-				tempresults[i] = s2;
-			}
-			else
-			{
-				bm_parent = shard_to_bmesh(s2);
-				copy_v3_v3(centroid, s2->centroid);
+				//#pragma omp critical
 				tempresults[i] = s;
-			}*/
-			tempresults[i] = s;
-			tempresults[i+1] = s2;
+			}
+		}
+	}
+	else
+	{
+		for (i = 0; i < expected_shards; i++)
+		{
+			Shard* s = NULL;
+			Shard* s2 = NULL;
 
-			BLI_qsort_r(tempresults, i+1, sizeof(Shard*), i, shard_sortsize);
+			Shard* t;
+			int index = 0;
+			printf("Processing shard: %d\n", i);
+			t = tempshards[i];
 
-			while (tempresults[j] == NULL && j < (i+1)) {
-				j++;
+			if (t != NULL)
+			{
+				t->parent_id = parent_id;
+				t->flag = SHARD_INTACT;
 			}
 
-			if ((i+2) < expected_shards)
-			{
-				bm_parent = shard_to_bmesh(tempresults[j]);
-				copy_v3_v3(centroid, tempresults[j]->centroid);
+			index = (int)(BLI_frand() * (t->totpoly-1));
+			if (index == 0)
+				index = 1;
+			printf("Bisecting cell %d...\n", i);
+			printf("Bisecting cell %d...\n", i+1);
 
-				BKE_shard_free(tempresults[j], true);
-				tempresults[j] = NULL;
-			}
-			/*else
+			s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, false, true, index, centroid);
+			s2 = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, true, false, index, centroid);
+
+			if (s != NULL && s2 != NULL)
 			{
-				break;
-			}*/
-			i++;
+				int j = 0;
+
+				s->parent_id = parent_id;
+				s->flag = SHARD_INTACT;
+
+				s2->parent_id = parent_id;
+				s2->flag = SHARD_INTACT;
+
+				//#pragma omp critical
+
+				if (bm_parent != NULL)
+				{
+					BM_mesh_free(bm_parent);
+					bm_parent = NULL;
+				}
+
+				if (dm_parent != NULL)
+				{
+					dm_parent->needsFree = 1;
+					dm_parent->release(dm_parent);
+					dm_parent = NULL;
+				}
+				tempresults[i] = s;
+				tempresults[i+1] = s2;
+
+				BLI_qsort_r(tempresults, i+1, sizeof(Shard*), i, shard_sortsize);
+
+				while (tempresults[j] == NULL && j < (i+1)) {
+					j++;
+				}
+
+				if ((i+2) < expected_shards)
+				{
+					bm_parent = shard_to_bmesh(tempresults[j]);
+					copy_v3_v3(centroid, tempresults[j]->centroid);
+
+					BKE_shard_free(tempresults[j], true);
+					tempresults[j] = NULL;
+				}
+				i++;
+			}
 		}
 	}
 
