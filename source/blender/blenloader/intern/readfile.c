@@ -4909,6 +4909,9 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 
 			if (fm == NULL)
 			{
+				fl = fmd->fracture_levels.first;
+				fl->noisemap = NULL;
+
 				fmd->dm = NULL;
 				fmd->meshIslands.first = NULL;
 				fmd->meshIslands.last = NULL;
