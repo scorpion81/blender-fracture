@@ -882,14 +882,21 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 	//local settings, apply per shard!!! Or globally too first.
 	if (fl->point_source & MOD_FRACTURE_UNIFORM)
 	{
+		int count = fl->shard_count;
 		//this is pointsource "uniform", make seed settable
 		INIT_MINMAX(min, max);
 		BKE_get_shard_minmax(emd->frac_mesh, -1, min, max, fracmesh); //id 0 should be entire mesh
 		//points.totpoints += emd->shard_count;
 
+		if (fl->frac_algorithm == MOD_FRACTURE_BISECT_FAST)
+		{
+			//need double amount of shards, because we create 2 islands at each cut... so this matches the input count
+			count *= 2;
+		}
+
 		//points.points = MEM_reallocN(points.points, sizeof(FracPoint) * points.totpoints);
 		BLI_srandom(fl->point_seed);
-		for (i = 0; i < fl->shard_count; ++i) {
+		for (i = 0; i < count; ++i) {
 			if (BLI_frand() < thresh)
 			{
 				float *co;
