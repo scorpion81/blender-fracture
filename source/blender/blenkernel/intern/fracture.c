@@ -150,7 +150,7 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 	BMesh* bm_parent = NULL;
 	DerivedMesh *dm_parent = NULL;
 	Shard **tempshards = MEM_mallocN(sizeof(Shard*) * expected_shards, "tempshards");
-	Shard **tempresults = MEM_callocN(sizeof(Shard*) * expected_shards, "tempresults");
+	Shard **tempresults = MEM_mallocN(sizeof(Shard*) * expected_shards, "tempresults");
 
 	p->flag = 0;
 	p->flag |= SHARD_FRACTURED;
