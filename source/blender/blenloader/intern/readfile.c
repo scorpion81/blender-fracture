@@ -4557,12 +4557,45 @@ static void direct_link_pose(FileData *fd, bPose *pose)
 	}
 }
 
+static void direct_link_customdata_mtpoly_shard(FileData *fd, CustomData *pdata, int totface)
+{
+	int i;
+
+	for (i=0; i < pdata->totlayer; i++) {
+		CustomDataLayer *layer = &pdata->layers[i];
+
+		if (layer->type == CD_MTEXPOLY) {
+			MTexPoly *tf= layer->data;
+			int j;
+
+			for (j = 0; j < totface; j++, tf++) {
+				//tf->tpage = newlibadr(fd, me->id.lib, tf->tpage);
+				tf->tpage = newdataadr(fd, tf->tpage);
+				if (tf->tpage == NULL)
+				{
+					//lib_link_image(fd, G.main);
+					//direct_link_image(fd, tf->tpage)
+				}
+				if (tf->tpage && tf->tpage->id.us == 0) {
+					tf->tpage->id.us = 1;
+				}
+			}
+		}
+	}
+}
+
 static Shard* read_shard(FileData *fd, void* address )
 {
 	Shard* s = newdataadr(fd, address);
 	s->mvert = newdataadr(fd, s->mvert);
 	s->mpoly = newdataadr(fd, s->mpoly);
 	s->mloop = newdataadr(fd, s->mloop);
+	direct_link_customdata(fd, &s->loopData, s->totloop);
+	direct_link_customdata(fd, &s->polyData, s->totpoly);
+
+	//sigh, need to ensure image refs are correct...
+	direct_link_customdata_mtpoly_shard(fd, &s->polyData, s->totpoly);
+
 	s->neighbor_ids = newdataadr(fd, s->neighbor_ids);
 	s->cluster_colors = newdataadr(fd, s->cluster_colors);
 	return s;
@@ -4583,12 +4616,22 @@ static MeshIsland* read_meshIsland(FileData* fd, void* address)
 	mi->vertco = newdataadr(fd, mi->vertco);
 	mi->temp = read_shard(fd, mi->temp);
 	mi->physics_mesh = BKE_shard_create_dm(mi->temp, false);
+	BKE_shard_free(mi->temp, true);
 
 	mi->rigidbody = newdataadr(fd, mi->rigidbody);
+	mi->rigidbody->physics_object = NULL;
+	mi->rigidbody->physics_shape = NULL;
+	mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+	mi->rigidbody->flag |= RBO_FLAG_NEEDS_RESHAPE;
+
 	mi->combined_index_map = newdataadr(fd, mi->combined_index_map);
 	mi->neighbor_ids = newdataadr(fd, mi->neighbor_ids );
 	mi->bb = newdataadr(fd, mi->bb);
-	mi->participating_constraints = newdataadr(fd, mi->participating_constraints);
+
+	//will be refreshed...
+	mi->participating_constraint_count = 0;
+	mi->participating_constraints = NULL;
+	//mi->participating_constraints = newdataadr(fd, mi->participating_constraints);
 //	mi->centroid = newdataadr(fd, mi->centroid);
 //	mi->start_co = newdataadr(fd, mi->start_co);
 //	mi->rot = newdataadr(fd, mi->rot);
@@ -4885,16 +4928,16 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 		else if (md->type == eModifierType_Fracture) {
 			int i = 0;
 			FractureModifierData *fmd = (FractureModifierData *)md;
-			FractureLevel *fl;
+			FractureLevel *fl = fmd->fracture_levels.first;
 			FracMesh* fm;
 
-			fmd->fracture_levels.first = newdataadr(fd, fmd->fracture_levels.first);
-			fm = fmd->frac_mesh = NULL; //newdataadr(fd, fmd->frac_mesh);
+			fl = newdataadr(fd, fl);
+			fl->noisemap = newdataadr(fd, fl->noisemap);
 
-			/*for (fl = fmd->fracture_levels.first; fl; fl = fl->next)
-			{
-				fl = newdataadr(fd, fl);
-			}*/
+			fmd->fracture_levels.first = fl;
+			((FractureLevel*)fmd->fracture_levels.first)->noisemap = fl->noisemap;
+
+			fm = fmd->frac_mesh = newdataadr(fd, fmd->frac_mesh);
 
 			//do we still need that stuff ?
 			fmd->sel_indexes = NULL;
@@ -4932,11 +4975,14 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 				fmd->cells.first = NULL;
 				fmd->cells.last = NULL;
 				fmd->framemap = newdataadr(fd, fmd->framemap);
+				fmd->refresh_images = false;
 			}
 			else
 			{
 				MeshIsland *mi;
 				RigidBodyShardCon *con;
+				MVert *mverts;
+				int vertstart = 0;
 
 				fm->shard_map = newdataadr(fd, fm->shard_map);
 				for (i = 0; i < fm->shard_count; i++)
@@ -4959,14 +5005,33 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 				link_list(fd, &fmd->meshIslands);
 				for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 				{
+					int k = 0;
 					mi = read_meshIsland(fd, mi);
+
+					//re-init cached verts here...
+					mverts = CDDM_get_verts(fmd->visible_mesh_cached);
+					for (k = 0; k < mi->vertex_count; k++)
+					{
+						mi->vertices_cached[k] = mverts + vertstart + k;
+						//mi->vertices[k] = BM_vert_at_index_find(fmd->visible_mesh, vertstart+k);
+					}
+					vertstart += mi->vertex_count;
 				}
 
-				link_list(fd, &fmd->meshConstraints);
+				/*link_list(fd, &fmd->meshConstraints);
 				for (con = fmd->meshConstraints.first; con; con = con->next)
 				{
-					con = newdataadr(fd, con);
-				}
+					//con = newdataadr(fd, con);
+					//con->mi1 = newdataadr(fd, con->mi1);
+					//con->mi2 = newdataadr(fd, con->mi2);
+					con->physics_constraint = NULL;
+					con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+				}*/
+				fmd->refresh_constraints = true;
+				fmd->meshConstraints.first = NULL;
+				fmd->meshConstraints.last = NULL;
+
+				fmd->refresh_images = true;
 			}
 		}
 	}

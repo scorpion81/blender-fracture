@@ -2311,7 +2311,7 @@ static int rigidbody_refresh_constraints_exec(bContext *C, wmOperator *op)
 		//rmd = (FractureModifierData *)edit_modifier_property_get(op, ob, eModifierType_Fracture);
 		rmd = (FractureModifierData *)modifiers_findByType(ob, eModifierType_Fracture);
 	
-		if (!rmd || cfra != scene->rigidbody_world->pointcache->startframe)
+		if (!rmd || (scene->rigidbody_world) && (cfra != scene->rigidbody_world->pointcache->startframe))
 			continue;
 	
 		rmd->refresh_constraints = true;

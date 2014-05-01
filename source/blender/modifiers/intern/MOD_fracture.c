@@ -3688,10 +3688,20 @@ static DerivedMesh* createCache(FractureModifierData *rmd)
 	BMVert* v;
 	DerivedMesh *dm;
 	MVert *verts;
+	int vertstart = 0;
 
-	dm = CDDM_from_bmesh(rmd->visible_mesh, true);
+	if (rmd->dm)
+	{
+		dm = CDDM_copy(rmd->dm);
+	}
+	else
+	{
+		dm = CDDM_from_bmesh(rmd->visible_mesh, true);
+	}
+
 	DM_ensure_tessface(dm);
 	DM_ensure_normals(dm);
+	DM_update_tessface_data(dm);
 
 	verts = dm->getVertArray(dm);
 	for (mi = rmd->meshIslands.first; mi; mi = mi->next)
@@ -3704,21 +3714,61 @@ static DerivedMesh* createCache(FractureModifierData *rmd)
 		}
 
 		mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * mi->vertex_count, "mi->vertices_cached");
-		for (i = 0; i < mi->vertex_count; i++)
+		if (rmd->dm != NULL || 1)
 		{
-			int index = mi->vertices[i]->head.index;
-			if (index >= 0 && index <= rmd->visible_mesh->totvert)
+			for (i = 0; i < mi->vertex_count; i++)
 			{
-				mi->vertices_cached[i] = verts + index;
+				mi->vertices_cached[i] = verts + vertstart + i;
 			}
-			else
+			vertstart += mi->vertex_count;
+		}
+#if 0
+		else
+		{
+			for (i = 0; i < mi->vertex_count; i++)
 			{
-				mi->vertices_cached[i] = NULL;
+				int index = mi->vertices[i]->head.index;
+				if (index >= 0 && index <= rmd->visible_mesh->totvert)
+				{
+					mi->vertices_cached[i] = verts + index;
+				}
+				else
+				{
+					mi->vertices_cached[i] = NULL;
+				}
 			}
 		}
+#endif
 	}
 
 	return dm;
+}
+
+static void refresh_customdata_image(Mesh* me, CustomData *pdata, int totface)
+{
+	int i;
+
+	for (i=0; i < pdata->totlayer; i++) {
+		CustomDataLayer *layer = &pdata->layers[i];
+
+		if (layer->type == CD_MTEXPOLY) {
+			MTexPoly *tf= layer->data;
+			int j;
+
+			for (j = 0; j < totface; j++, tf++) {
+				//simply use first image here...
+				tf->tpage = me->mtpoly->tpage;
+				tf->mode = me->mtpoly->mode;
+				tf->flag= me->mtpoly->flag;
+				tf->tile = me->mtpoly->tile;
+				tf->transp = me->mtpoly->transp;
+
+				if (tf->tpage && tf->tpage->id.us == 0) {
+					tf->tpage->id.us = 1;
+				}
+			}
+		}
+	}
 }
 
 DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
@@ -3941,7 +3991,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 		printf("Building constraints done, %g\n", PIL_check_seconds_timer() - start);
 		printf("Constraints: %d\n", BLI_countlist(&fmd->meshConstraints));
 
-		if (fmd->visible_mesh != NULL && !fmd->explo_shared)
+		if (fmd->visible_mesh != NULL && (!fmd->explo_shared) || (fmd->visible_mesh_cached == NULL))
 		{
 			start = PIL_check_seconds_timer();
 			//post process ... convert to DerivedMesh only at refresh times, saves permanent conversion during execution
@@ -3952,7 +4002,18 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 				fmd->visible_mesh_cached = NULL;
 			}
 
+			if (fmd->refresh_images && fmd->dm)
+			{
+				//need to ensure images are correct after loading...
+				refresh_customdata_image(ob->data, &fmd->dm->polyData,
+				                         fmd->dm->getNumPolys(fmd->dm));
+				fmd->refresh_images = false;
+				//DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
+				//ob->recalc &= OB_RECALC_ALL;
+			}
+
 			fmd->visible_mesh_cached = createCache(fmd);
+
 			printf("Building cached DerivedMesh done, %g\n", PIL_check_seconds_timer() - start);
 		}
 

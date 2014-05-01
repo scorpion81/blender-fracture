@@ -1481,11 +1481,11 @@ typedef struct FractureModifierData {
 	int explo_shared, constraint_limit, contact_dist_meaning, use_both_directions;
 	int breaking_angle, breaking_percentage, use_proportional_distance, use_proportional_limit;
 	int use_cellbased_sim, use_experimental;
-	int solver_iterations_override, use_proportional_solver_iterations;
+	int solver_iterations_override, use_proportional_solver_iterations, refresh_images;
 	float breaking_distance, max_vol, cell_size;
 	float origmat[4][4], breaking_threshold, cluster_breaking_threshold;
 	float contact_dist;
-	char pad[4];
+	//char pad[4];
 } FractureModifierData;
 
 typedef struct FractureLevel {
