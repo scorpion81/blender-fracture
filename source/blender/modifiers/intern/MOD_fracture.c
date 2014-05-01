@@ -3973,23 +3973,6 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 		}
 
 		start = PIL_check_seconds_timer();
-		if ((fmd->visible_mesh != NULL || fmd->visible_mesh_cached != NULL )  && (fmd->use_constraints))
-		{
-			if (fmd->visible_mesh == NULL)
-			{	//ugh, needed to build constraints...
-				fmd->visible_mesh = DM_to_bmesh(fmd->visible_mesh_cached, true);
-			}
-			create_constraints(fmd, ob); //check for actually creating the constraints inside
-
-			if (fmd->visible_mesh_cached != NULL)
-			{
-				BM_mesh_free(fmd->visible_mesh);
-				fmd->visible_mesh = NULL;
-			}
-		}
-
-		printf("Building constraints done, %g\n", PIL_check_seconds_timer() - start);
-		printf("Constraints: %d\n", BLI_countlist(&fmd->meshConstraints));
 
 		if (fmd->visible_mesh != NULL && (!fmd->explo_shared) || (fmd->visible_mesh_cached == NULL))
 		{
@@ -4016,6 +3999,24 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 
 			printf("Building cached DerivedMesh done, %g\n", PIL_check_seconds_timer() - start);
 		}
+
+		if ((fmd->visible_mesh != NULL || fmd->visible_mesh_cached != NULL )  && (fmd->use_constraints))
+		{
+			if (fmd->visible_mesh == NULL)
+			{	//ugh, needed to build constraints...
+				fmd->visible_mesh = DM_to_bmesh(fmd->visible_mesh_cached, true);
+			}
+			create_constraints(fmd, ob); //check for actually creating the constraints inside
+
+			if (fmd->visible_mesh_cached != NULL)
+			{
+				BM_mesh_free(fmd->visible_mesh);
+				fmd->visible_mesh = NULL;
+			}
+		}
+
+		printf("Building constraints done, %g\n", PIL_check_seconds_timer() - start);
+		printf("Constraints: %d\n", BLI_countlist(&fmd->meshConstraints));
 
 		fmd->refresh = false;
 		fmd->refresh_constraints = false;

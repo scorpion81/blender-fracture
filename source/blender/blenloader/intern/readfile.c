@@ -4611,8 +4611,8 @@ static MeshIsland* read_meshIsland(FileData* fd, void* address)
 	mi = (MeshIsland*)address;
 	mi->compound_children = newdataadr(fd, mi->compound_children);
 	mi->compound_parent = newdataadr(fd, mi->compound_parent);
-	mi->vertices = newdataadr(fd, mi->vertices);
-	mi->vertices_cached = newdataadr(fd, mi->vertices_cached);
+	mi->vertices = NULL; //newdataadr(fd, mi->vertices);
+	mi->vertices_cached = NULL; //newdataadr(fd, mi->vertices_cached);
 	mi->vertco = newdataadr(fd, mi->vertco);
 	mi->temp = read_shard(fd, mi->temp);
 	mi->physics_mesh = BKE_shard_create_dm(mi->temp, false);
@@ -5009,13 +5009,13 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 					mi = read_meshIsland(fd, mi);
 
 					//re-init cached verts here...
-					mverts = CDDM_get_verts(fmd->visible_mesh_cached);
+					/*mverts = CDDM_get_verts(fmd->visible_mesh_cached);
 					for (k = 0; k < mi->vertex_count; k++)
 					{
 						mi->vertices_cached[k] = mverts + vertstart + k;
 						//mi->vertices[k] = BM_vert_at_index_find(fmd->visible_mesh, vertstart+k);
 					}
-					vertstart += mi->vertex_count;
+					vertstart += mi->vertex_count;*/
 				}
 
 				/*link_list(fd, &fmd->meshConstraints);
