@@ -152,7 +152,7 @@
 #include "BKE_bpath.h"
 #include "BKE_curve.h"
 #include "BKE_constraint.h"
-#include "BKE_fracture.h"; // for writing a derivedmesh as shard
+#include "BKE_fracture.h" // for writing a derivedmesh as shard
 #include "BKE_global.h" // for G
 #include "BKE_idprop.h"
 #include "BKE_library.h" // for  set_listbasepointers
