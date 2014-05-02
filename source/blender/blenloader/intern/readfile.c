@@ -4993,7 +4993,10 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 
 				//ugly ugly, need only the shard... the rest is to be generated on demand...
 				fmd->visible_mesh_cached = CDDM_copy(fmd->dm);
-				fmd->visible_mesh = DM_to_bmesh(fmd->visible_mesh_cached, true);
+				if (fmd->visible_mesh == NULL)
+				{
+					fmd->visible_mesh = DM_to_bmesh(fmd->visible_mesh_cached, true);
+				}
 
 				link_list(fd, &fmd->meshIslands);
 				for (mi = fmd->meshIslands.first; mi; mi = mi->next)
