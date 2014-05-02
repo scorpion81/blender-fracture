@@ -3683,7 +3683,7 @@ static DerivedMesh* createCache(FractureModifierData *rmd)
 		}
 
 		mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * mi->vertex_count, "mi->vertices_cached");
-		if (rmd->dm != NULL || 1)
+		if (rmd->dm != NULL)
 		{
 			for (i = 0; i < mi->vertex_count; i++)
 			{
@@ -3691,7 +3691,6 @@ static DerivedMesh* createCache(FractureModifierData *rmd)
 			}
 			vertstart += mi->vertex_count;
 		}
-#if 0
 		else
 		{
 			for (i = 0; i < mi->vertex_count; i++)
@@ -3707,7 +3706,6 @@ static DerivedMesh* createCache(FractureModifierData *rmd)
 				}
 			}
 		}
-#endif
 	}
 
 	return dm;
