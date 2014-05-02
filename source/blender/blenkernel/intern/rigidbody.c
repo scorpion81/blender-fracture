@@ -85,7 +85,7 @@
 #ifdef WITH_BULLET
 
 static bool isModifierActive(FractureModifierData* rmd) {
-	return ((rmd != NULL) && (rmd->modifier.mode & eModifierMode_Realtime) && (rmd->refresh == false));// rmd->modifier.mode & eModifierMode_Render));
+	return ((rmd != NULL) && (rmd->modifier.mode & eModifierMode_Realtime || rmd->modifier.mode & eModifierMode_Render) && (rmd->refresh == false));
 }
 
 void calc_dist_angle(RigidBodyShardCon* con, float* dist, float* angle)

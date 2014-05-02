@@ -4076,7 +4076,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 	return dm;
 }
 
-static int dependsOnTime(ModifierData *UNUSED(md))
+static bool dependsOnTime(ModifierData *UNUSED(md))
 {
 	return true;
 }
@@ -4130,7 +4130,7 @@ ModifierTypeInfo modifierType_Fracture = {
         /* name */              "Fracture",
         /* structName */        "FractureModifierData",
         /* structSize */        sizeof(FractureModifierData),
-        /* type */              eModifierTypeType_Constructive,
+        /* type */              eModifierTypeType_Constructive,//eModifierTypeType_OnlyDeform,
         /* flags */             eModifierTypeFlag_AcceptsMesh |
                                 eModifierTypeFlag_Single, // |
                                 //eModifierTypeFlag_SupportsEditmode |
