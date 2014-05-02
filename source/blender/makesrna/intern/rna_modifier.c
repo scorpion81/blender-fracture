@@ -4207,7 +4207,7 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 
 	static EnumPropertyItem prop_fracture_algorithm[] = {
 		{MOD_FRACTURE_BISECT_FAST, "BISECT_FAST", 0, "Fast Bisect", "Use a faster but more inaccurate bisection algorithm, also creates uglier shards."},
-		{MOD_FRACTURE_VORONOI, "VORONOI", 0, "Voronoi", "Use plain voronoi as fracture algorithm"},
+		//{MOD_FRACTURE_VORONOI, "VORONOI", 0, "Voronoi", "Use plain voronoi as fracture algorithm"},
 		{MOD_FRACTURE_BOOLEAN, "BOOLEAN", 0, "Voronoi + Boolean", "Use voronoi and boolean intersection as fracture algorithm"},
 		{MOD_FRACTURE_BISECT_FILL, "BISECT_FILL", 0, "Voronoi + Bisect + Fill", "Use voronoi and mesh bisect as fracture algorithm, fill cut faces"},
 		{MOD_FRACTURE_BISECT, "BISECT", 0, "Voronoi + Bisect", "Use voronoi and mesh bisect as fracture algorithm, don't fill cut faces"},

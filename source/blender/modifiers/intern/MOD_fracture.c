@@ -83,7 +83,7 @@ static void initData(ModifierData *md)
 
 		fmd->cluster_count = 5;
 		fmd->extra_group = NULL;
-		fmd->frac_algorithm = MOD_FRACTURE_VORONOI;
+		fmd->frac_algorithm = MOD_FRACTURE_BISECT;
 		fmd->shard_id = -1;
 		fmd->shard_count = 10;
 		fmd->percentage = 100;;
