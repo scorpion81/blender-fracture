@@ -1394,7 +1394,7 @@ static void write_meshIsland(WriteData* wd, MeshIsland* mi)
 	mi->temp = NULL;
 
 	writestruct(wd, DATA, "RigidBodyOb", 1, mi->rigidbody);
-	writedata(wd, DATA, sizeof(int) * mi->vertex_count, mi->combined_index_map);
+//	writedata(wd, DATA, sizeof(int) * mi->vertex_count, mi->combined_index_map);
 	writedata(wd, DATA, sizeof(int) * mi->neighbor_count, mi->neighbor_ids);
 	writestruct(wd, DATA, "BoundBox", 1, mi->bb);
 	//writedata(wd, DATA, sizeof(RigidBodyShardCon*) * mi->participating_constraint_count, mi->participating_constraints );

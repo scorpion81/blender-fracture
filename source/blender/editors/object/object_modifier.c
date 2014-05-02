@@ -2307,7 +2307,7 @@ static int rigidbody_refresh_constraints_exec(bContext *C, wmOperator *op)
 	Scene *scene = CTX_data_scene(C);
 	float cfra = BKE_scene_frame_get(scene);
 	
-	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
+/*	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
 		//rmd = (FractureModifierData *)edit_modifier_property_get(op, ob, eModifierType_Fracture);
 		rmd = (FractureModifierData *)modifiers_findByType(ob, eModifierType_Fracture);
 	
@@ -2319,12 +2319,12 @@ static int rigidbody_refresh_constraints_exec(bContext *C, wmOperator *op)
 		DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
 		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
 	}
-	CTX_DATA_END;
+	CTX_DATA_END;*/
 	
 	//rmd = (FractureModifierData *)edit_modifier_property_get(op, obact, eModifierType_Fracture);
 	rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
 
-	if (!rmd || cfra != scene->rigidbody_world->pointcache->startframe)
+	if (!rmd || (scene->rigidbody_world && cfra != scene->rigidbody_world->pointcache->startframe))
 		return OPERATOR_CANCELLED;
 
 	rmd->refresh_constraints = true;

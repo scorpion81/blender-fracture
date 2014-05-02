@@ -4624,7 +4624,7 @@ static MeshIsland* read_meshIsland(FileData* fd, void* address)
 	mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 	mi->rigidbody->flag |= RBO_FLAG_NEEDS_RESHAPE;
 
-	mi->combined_index_map = newdataadr(fd, mi->combined_index_map);
+	//mi->combined_index_map = newdataadr(fd, mi->combined_index_map);
 	mi->neighbor_ids = newdataadr(fd, mi->neighbor_ids );
 	mi->bb = newdataadr(fd, mi->bb);
 
