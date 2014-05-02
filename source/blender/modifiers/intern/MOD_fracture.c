@@ -4078,7 +4078,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 
 static int dependsOnTime(ModifierData *UNUSED(md))
 {
-	return 1;
+	return true;
 }
 
 static bool dependsOnNormals(ModifierData *UNUSED(md))
@@ -4147,7 +4147,7 @@ ModifierTypeInfo modifierType_Fracture = {
         /* freeData */          freeData,
         /* isDisabled */        NULL,
         /* updateDepgraph */    NULL,
-        /* dependsOnTime */     NULL,//dependsOnTime,
+        /* dependsOnTime */     dependsOnTime,
         /* dependsOnNormals */  dependsOnNormals,
         /* foreachObjectLink */ NULL,
         /* foreachIDLink */     NULL,
