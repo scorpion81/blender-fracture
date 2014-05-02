@@ -4928,15 +4928,9 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 		else if (md->type == eModifierType_Fracture) {
 			int i = 0;
 			FractureModifierData *fmd = (FractureModifierData *)md;
-			FractureLevel *fl = fmd->fracture_levels.first;
 			FracMesh* fm;
 
-			fl = newdataadr(fd, fl);
-			fl->noisemap = newdataadr(fd, fl->noisemap);
-
-			fmd->fracture_levels.first = fl;
-			((FractureLevel*)fmd->fracture_levels.first)->noisemap = fl->noisemap;
-
+			fmd->noisemap = newdataadr(fd, fmd->noisemap);
 			fm = fmd->frac_mesh = newdataadr(fd, fmd->frac_mesh);
 
 			//do we still need that stuff ?
@@ -4952,8 +4946,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 
 			if (fm == NULL)
 			{
-				fl = fmd->fracture_levels.first;
-				fl->noisemap = NULL;
+				fmd->noisemap = NULL;
 
 				fmd->dm = NULL;
 				fmd->meshIslands.first = NULL;

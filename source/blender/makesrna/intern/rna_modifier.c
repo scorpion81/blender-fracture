@@ -609,12 +609,6 @@ static int rna_LaplacianDeformModifier_is_bind_get(PointerRNA *ptr)
 	return ((lmd->flag & MOD_LAPLACIANDEFORM_BIND) && (lmd->cache_system != NULL));
 }
 
-static void rna_FractureModifier_fractureLevels_begin(CollectionPropertyIterator *iter, PointerRNA *ptr)
-{
-	FractureModifierData *fmd = (FractureModifierData *)ptr->data;
-	rna_iterator_listbase_begin(iter, &fmd->fracture_levels, NULL);
-}
-
 static float rna_EdgeSplitModifier_split_angle_get(PointerRNA *ptr)
 {
 	EdgeSplitModifierData *md = (EdgeSplitModifierData *)ptr->data;
@@ -4211,23 +4205,29 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 
+	static EnumPropertyItem prop_fracture_algorithm[] = {
+		{MOD_FRACTURE_BISECT_FAST, "BISECT_FAST", 0, "Fast Bisect", "Use a faster but more inaccurate bisection algorithm, also creates uglier shards."},
+		{MOD_FRACTURE_VORONOI, "VORONOI", 0, "Voronoi", "Use plain voronoi as fracture algorithm"},
+		{MOD_FRACTURE_BOOLEAN, "BOOLEAN", 0, "Voronoi + Boolean", "Use voronoi and boolean intersection as fracture algorithm"},
+		{MOD_FRACTURE_BISECT_FILL, "BISECT_FILL", 0, "Voronoi + Bisect + Fill", "Use voronoi and mesh bisect as fracture algorithm, fill cut faces"},
+		{MOD_FRACTURE_BISECT, "BISECT", 0, "Voronoi + Bisect", "Use voronoi and mesh bisect as fracture algorithm, don't fill cut faces"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
+	static EnumPropertyItem prop_point_source_items[] = {
+		{MOD_FRACTURE_OWN_PARTICLES, "OWN_PARTICLES", 0, "Own Particles", "Use own particles as point cloud"},
+		{MOD_FRACTURE_OWN_VERTS, "OWN_VERTS", 0, "Own Vertices", "Use own vertices as point cloud"},
+		{MOD_FRACTURE_EXTRA_PARTICLES, "EXTRA_PARTICLES", 0, "Extra Particles", "Use particles of group objects as point cloud"},
+		{MOD_FRACTURE_EXTRA_VERTS, "EXTRA_VERTS", 0, "Extra Vertices", "Use vertices of group objects as point cloud"},
+		{MOD_FRACTURE_GREASEPENCIL, "GREASE_PENCIL", 0, "Grease Pencil", "Use grease pencil points as point cloud"},
+		{MOD_FRACTURE_UNIFORM, "UNIFORM", 0, "Uniform", "Use a random uniform pointcloud generated over the bounding box"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
 	srna = RNA_def_struct(brna, "FractureModifier", "Modifier");
 	RNA_def_struct_ui_text(srna, "Fracture Modifier", "Add a fracture container to this object");
 	RNA_def_struct_sdna(srna, "FractureModifierData");
 	RNA_def_struct_ui_icon(srna, ICON_MOD_EXPLODE);
-
-	prop = RNA_def_property(srna, "fracture_levels", PROP_COLLECTION, PROP_NONE);
-	//RNA_def_property_collection_sdna(prop, "FractureModifierData", "fracture_levels", "totlevel");
-	RNA_def_property_collection_funcs(prop, "rna_FractureModifier_fractureLevels_begin", "rna_iterator_listbase_next",
-	                                  "rna_iterator_listbase_end", "rna_iterator_listbase_get",
-	                                  NULL, NULL, NULL, NULL);
-	RNA_def_property_struct_type(prop, "FractureLevel");
-	RNA_def_property_ui_text(prop, "Fracture Levels", "Hierarchy of Fracture Levels");
-
-	prop = RNA_def_property(srna, "active_index", PROP_INT, PROP_NONE);
-	//RNA_def_property_range(prop, 0, 15); //XXXX TODO useful limit ?
-	//RNA_def_property_ui_text(prop, "Current Fracture Level", "Current Fracture Level");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "cluster_count", PROP_INT, PROP_NONE);
 	RNA_def_property_range(prop, 0, 100000);
@@ -4242,13 +4242,6 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Inner Breaking threshold", "Threshold to break constraints between shards in the same object");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
-/*	prop = RNA_def_property(srna, "group_breaking_threshold", PROP_FLOAT, PROP_NONE);
-	RNA_def_property_float_sdna(prop, NULL, "group_breaking_threshold");
-	RNA_def_property_range(prop, 0.0f, FLT_MAX);
-	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_group_threshold_set", NULL);
-	RNA_def_property_ui_text(prop, "Outer Breaking threshold", "Threshold to break constraints between shards of different objects");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
-
 	prop = RNA_def_property(srna, "use_constraints", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyModifier_use_constraints_set");
 	RNA_def_property_ui_text(prop, "Use Constraints", "Create constraints between all shards");
@@ -4262,70 +4255,16 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Contact distance", "Distance up to which two vertices are considered to have contact");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
-/*	prop = RNA_def_property(srna, "group_contact_dist", PROP_FLOAT, PROP_NONE);
-	RNA_def_property_float_sdna(prop, NULL, "group_contact_dist");
-	RNA_def_property_range(prop, 0.0f, FLT_MAX);
-	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_group_contact_dist_set", NULL);
-	RNA_def_property_ui_text(prop, "Group Contact distance (Fixed Only)", "Distance up to which two vertices belonging to shards of different object are considered to have contact");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
-
-/*	prop = RNA_def_property(srna, "constraint_group", PROP_POINTER, PROP_NONE);
-	RNA_def_property_ui_text(prop, "Constraint Group", "Group of objects (must have rigidbody modifier on them) between whose shards constraints should be built");
-	RNA_def_property_flag(prop, PROP_EDITABLE);
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
-
 	prop = RNA_def_property(srna, "mass_dependent_thresholds", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyModifier_mass_dependent_thresholds_set");
 	RNA_def_property_ui_text(prop, "Use Mass Dependent Thresholds", "Match the breaking threshold according to the masses of the constrained shards");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
-
-	/*prop = RNA_def_property(srna, "auto_merge", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyModifier_auto_merge_set");
-	RNA_def_property_ui_text(prop, "Use Auto Merge", "Automatically merge together close mesh-islands (visible mesh only)");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
-
-	prop = RNA_def_property(srna, "auto_merge_dist", PROP_FLOAT, PROP_NONE);
-	RNA_def_property_float_sdna(prop, NULL, "auto_merge_dist");
-	RNA_def_property_range(prop, 0.0f, FLT_MAX);
-	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_auto_merge_dist_set", NULL);
-	RNA_def_property_ui_text(prop, "Auto Merge distance", "Maximum distance between verts which should be merged together");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
 
 	prop = RNA_def_property(srna, "inner_constraint_type", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "inner_constraint_type");
 	RNA_def_property_enum_items(prop, prop_constraint_types);
 	RNA_def_property_ui_text(prop, "Inner Constraint Type", "");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
-
-	/*prop = RNA_def_property(srna, "inner_constraint_location", PROP_ENUM, PROP_NONE);
-	RNA_def_property_enum_sdna(prop, NULL, "inner_constraint_type");
-	RNA_def_property_enum_items(prop, prop_constraint_loc);
-	RNA_def_property_ui_text(prop, "Inner Constraint Location", "");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
-
-	prop = RNA_def_property(srna, "inner_constraint_pattern", PROP_ENUM, PROP_NONE);
-	RNA_def_property_enum_sdna(prop, NULL, "inner_constraint_pattern");
-	RNA_def_property_enum_items(prop, prop_constraint_pattern);
-	RNA_def_property_ui_text(prop, "Inner Constraint Pattern", "");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
-
-/*	prop = RNA_def_property(srna, "outer_constraint_type", PROP_ENUM, PROP_NONE);
-	RNA_def_property_enum_sdna(prop, NULL, "outer_constraint_type");
-	RNA_def_property_enum_items(prop, prop_constraint_types);
-	RNA_def_property_ui_text(prop, "Outer Constraint Type", "");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
-
-	prop = RNA_def_property(srna, "outer_constraint_location", PROP_ENUM, PROP_NONE);
-	RNA_def_property_enum_sdna(prop, NULL, "outer_constraint_location");
-	RNA_def_property_enum_items(prop, prop_constraint_loc);
-	RNA_def_property_ui_text(prop, "Outer Constraint Location", "");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
-
-	/*prop = RNA_def_property(srna, "outer_constraint_pattern", PROP_ENUM, PROP_NONE);
-	RNA_def_property_enum_sdna(prop, NULL, "outer_constraint_pattern");
-	RNA_def_property_enum_items(prop, prop_constraint_pattern);
-	RNA_def_property_ui_text(prop, "Outer Constraint Pattern", "");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
 
 	prop = RNA_def_property(srna, "constraint_limit", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "constraint_limit");
@@ -4422,42 +4361,6 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_int_funcs(prop, NULL, "rna_RigidBodyModifier_solver_iterations_override_set", NULL);
 	RNA_def_property_ui_text(prop, "Solver Iterations Override", "Override the world constraint solver iteration value with this value, 0 means no override");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
-}
-
-static void rna_def_modifier_fracture_level(BlenderRNA *brna)
-{
-	StructRNA *srna;
-	PropertyRNA *prop;
-
-	static EnumPropertyItem prop_fracture_algorithm[] = {
-		{MOD_FRACTURE_BISECT_FAST, "BISECT_FAST", 0, "Fast Bisect", "Use a faster but more inaccurate bisection algorithm, also creates uglier shards."},
-		{MOD_FRACTURE_VORONOI, "VORONOI", 0, "Voronoi", "Use plain voronoi as fracture algorithm"},
-		{MOD_FRACTURE_BOOLEAN, "BOOLEAN", 0, "Voronoi + Boolean", "Use voronoi and boolean intersection as fracture algorithm"},
-		{MOD_FRACTURE_BISECT_FILL, "BISECT_FILL", 0, "Voronoi + Bisect + Fill", "Use voronoi and mesh bisect as fracture algorithm, fill cut faces"},
-		{MOD_FRACTURE_BISECT, "BISECT", 0, "Voronoi + Bisect", "Use voronoi and mesh bisect as fracture algorithm, don't fill cut faces"},
-		{0, NULL, 0, NULL, NULL}
-	};
-
-	static EnumPropertyItem prop_point_source_items[] = {
-		{MOD_FRACTURE_OWN_PARTICLES, "OWN_PARTICLES", 0, "Own Particles", "Use own particles as point cloud"},
-		{MOD_FRACTURE_OWN_VERTS, "OWN_VERTS", 0, "Own Vertices", "Use own vertices as point cloud"},
-		{MOD_FRACTURE_EXTRA_PARTICLES, "EXTRA_PARTICLES", 0, "Extra Particles", "Use particles of group objects as point cloud"},
-		{MOD_FRACTURE_EXTRA_VERTS, "EXTRA_VERTS", 0, "Extra Vertices", "Use vertices of group objects as point cloud"},
-		{MOD_FRACTURE_GREASEPENCIL, "GREASE_PENCIL", 0, "Grease Pencil", "Use grease pencil points as point cloud"},
-		{MOD_FRACTURE_UNIFORM, "UNIFORM", 0, "Uniform", "Use a random uniform pointcloud generated over the bounding box"},
-		{0, NULL, 0, NULL, NULL}
-	};
-
-	srna = RNA_def_struct(brna, "FractureLevel", NULL);
-	RNA_def_struct_ui_text(srna, "Fracture Level", "Define a fracture hierarchy level");
-	RNA_def_struct_sdna(srna, "FractureLevel");
-	RNA_def_struct_ui_icon(srna, ICON_MOD_EXPLODE);
-
-	prop = RNA_def_property(srna, "name", PROP_STRING, PROP_NONE);
-	RNA_def_property_string_sdna(prop, NULL, "name");
-	RNA_def_property_ui_text(prop, "Name", "Fracture Level Name");
-	//RNA_def_property_string_funcs(prop, NULL, NULL, "rna_WireframeModifier_defgrp_name_set");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "frac_algorithm", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_items(prop, prop_fracture_algorithm);
@@ -4469,12 +4372,6 @@ static void rna_def_modifier_fracture_level(BlenderRNA *brna)
 	RNA_def_property_int_default(prop, 10);
 	RNA_def_property_ui_text(prop, "Shard Count", "How many sub-shards should be generated from the current shard");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
-
-	/*prop = RNA_def_property(srna, "shard_id", PROP_INT, PROP_NONE);
-	RNA_def_property_range(prop, 0, 100000);
-	RNA_def_property_int_default(prop, 0);
-	RNA_def_property_ui_text(prop, "Shard ID", "Which Shard ID should be fractured now (WIP)");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
 
 	prop = RNA_def_property(srna, "point_source", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_items(prop, prop_point_source_items);
@@ -4489,16 +4386,12 @@ static void rna_def_modifier_fracture_level(BlenderRNA *brna)
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "noise", PROP_FLOAT, PROP_NONE);
-	//RNA_def_property_float_sdna(prop, NULL, "noise");
 	RNA_def_property_range(prop, 0.0f, 1.0f);
-	//RNA_def_property_float_funcs(prop, NULL, "rna_ExplodeModifier_noise_set", NULL);
 	RNA_def_property_ui_text(prop, "Noise", "Noise to apply over pointcloud");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "percentage", PROP_INT, PROP_NONE);
-	//RNA_def_property_int_sdna(prop, NULL, "percentage");
 	RNA_def_property_range(prop, 0, 100);
-	//RNA_def_property_int_funcs(prop, NULL, "rna_ExplodeModifier_percentage_set", NULL);
 	RNA_def_property_ui_text(prop, "Percentage", "Percentage of points to actually use for fracture");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
@@ -4620,8 +4513,6 @@ void RNA_def_modifier(BlenderRNA *brna)
 	rna_def_modifier_meshcache(brna);
 	rna_def_modifier_laplaciandeform(brna);
 	rna_def_modifier_wireframe(brna);
-	rna_def_modifier_fracture_level(brna);
-//	rna_def_modifier_rigidbody(brna);
 	rna_def_modifier_fracture(brna);
 }
 

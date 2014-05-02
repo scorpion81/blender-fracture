@@ -1054,8 +1054,7 @@ static DerivedMesh *create_dm(FracMesh *fracmesh, bool doCustomData)
 void BKE_fracture_create_dm(FractureModifierData *fmd, bool do_merge)
 {
 	DerivedMesh *dm_final = NULL;
-	FractureLevel* fl = fmd->fracture_levels.first;
-	bool doCustomData = fl->frac_algorithm != MOD_FRACTURE_VORONOI;
+	bool doCustomData = fmd->frac_algorithm != MOD_FRACTURE_VORONOI;
 	
 	if (fmd->dm) {
 		fmd->dm->needsFree = 1;

@@ -1546,14 +1546,9 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 		else if (md->type==eModifierType_Fracture) {
 			int i = 0;
 			FractureModifierData *fmd = (FractureModifierData*)md;
-			FractureLevel* fl = fmd->fracture_levels.first;
 			FracMesh* fm = fmd->frac_mesh;
 
-			//for (fl = fmd->fracture_levels.first; fl; fl = fl->next)
-			{
-				writestruct(wd, DATA, "FractureLevel", 1, fl);
-				writedata(wd, DATA, sizeof(float) * 3 * fl->noise_count, fl->noisemap);
-			}
+			writedata(wd, DATA, sizeof(float) * 3 * fmd->noise_count, fmd->noisemap);
 
 			if (fm)
 			{

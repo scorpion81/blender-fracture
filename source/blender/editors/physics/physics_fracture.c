@@ -329,7 +329,7 @@ int ED_fracture_pick_shard(bContext *C, const int mval[2], bool extend, bool des
 }
 #endif
 
-
+#if 0
 static int fracture_level_add_exec(bContext *C, wmOperator *UNUSED(op))
 {
 	Object *ob = CTX_data_active_object(C);
@@ -408,4 +408,5 @@ void FRACTURE_OT_fracture_level_remove(wmOperatorType* ot)
 
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
+#endif
 

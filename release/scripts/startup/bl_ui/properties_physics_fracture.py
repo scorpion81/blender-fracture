@@ -62,27 +62,15 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         layout = self.layout
 
         md = context.fracture
-        fl = md.fracture_levels[md.active_index]
-#        row = layout.row()
-#        row.template_list("UI_UL_list", "fracture_levels", md, "fracture_levels",
-#                              md, "active_index", rows=2)
-
-#        col2 = row.column(align=True)
-#        col2.operator("fracture.fracture_level_add", icon='ZOOMIN', text="")
-#        if len(md.fracture_levels) > 1:
-#            col2.operator("fracture.fracture_level_remove", icon='ZOOMOUT', text="")
-
         col = layout.column()
-        col.prop(fl, "frac_algorithm")
-        col.prop(fl, "shard_count")
-        #layout.prop(md, "shard_id")
+        col.prop(md, "frac_algorithm")
+        col.prop(md, "shard_count")
         col.label("Point Source:")
-        col.prop(fl, "point_source")
-        col.prop(fl, "extra_group")
-        col.prop(fl, "noise")
-        col.prop(fl, "percentage")
-        #layout.operator("object.fracture", icon="MOD_EXPLODE")
-        col.prop(fl, "point_seed")
+        col.prop(md, "point_source")
+        col.prop(md, "extra_group")
+        col.prop(md, "noise")
+        col.prop(md, "percentage")
+        col.prop(md, "point_seed")
         col.prop(md, "cluster_count")
         layout.operator("object.fracture_refresh", text="Refresh All Data")
 
@@ -125,20 +113,13 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             box.prop(md, "use_both_directions")
             box.prop(md, "disable_self_collision")
             box.prop(md, "constraint_limit", text="Constraint limit, per MeshIsland")
-         #   box.prop(md, "constraint_group")
-         #   box.prop(md, "group_contact_dist")
             box.prop(md, "inner_constraint_type")
-         #   box.prop(md, "outer_constraint_type")
-         #   box.prop(md, "outer_constraint_location")
             box.prop(md, "use_proportional_limit")
             box.prop(md, "use_proportional_distance")
-         #   box.prop(md, "group_breaking_threshold")
             box.prop(md, "mass_dependent_thresholds")
             box.prop(md, "dist_dependent_thresholds")
             box.prop(md, "solver_iterations_override")
             box.prop(md, "use_proportional_solver_iterations")
-         #   box.prop(md, "auto_merge")
-         #  box.prop(md, "auto_merge_dist")
             box.prop(md, "cluster_breaking_threshold")
 
 if __name__ == "__main__":  # only for live edit.

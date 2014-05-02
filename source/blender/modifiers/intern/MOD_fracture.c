@@ -68,7 +68,7 @@
 #include "../../rigidbody/RBI_api.h"
 #include "PIL_time.h"
 
-static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, DerivedMesh* dm, FractureLevel *fl);
+static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, DerivedMesh* dm);
 //int vol_check(RigidBodyModifierData *rmd, MeshIsland* mi);
 void destroy_compound(FractureModifierData* rmd, Object *ob, MeshIsland* mi, float cfra);
 void buildCompounds(FractureModifierData *rmd, Object *ob);
@@ -80,26 +80,13 @@ static void initData(ModifierData *md)
 {
 
 		FractureModifierData *fmd = (FractureModifierData*) md;
-		//fmd->totlevel = 1;
-		FractureLevel *fl = MEM_callocN(sizeof(FractureLevel), "fraclevel");
 
 		fmd->cluster_count = 5;
-		//char* str;
-		//int length;
-		fl->name = "Fracture Level 1\0";
-		/*str = "Fracture Level 1";
-		length = BLI_strlen_utf8(str) * 2;
-
-		fl->name = MEM_mallocN(sizeof(char) * length, "str");
-		fl->name = BLI_strncpy_utf8(fl->name, str, length);*/
-		fl->extra_group = NULL;
-		fl->frac_algorithm = MOD_FRACTURE_VORONOI;
-		fl->shard_id = -1;
-		fl->shard_count = 10;
-		fl->percentage = 100;
-		BLI_addtail(&fmd->fracture_levels, fl);
-
-		fmd->active_index = 0;
+		fmd->extra_group = NULL;
+		fmd->frac_algorithm = MOD_FRACTURE_VORONOI;
+		fmd->shard_id = -1;
+		fmd->shard_count = 10;
+		fmd->percentage = 100;;
 
 		fmd->visible_mesh = NULL;
 		fmd->visible_mesh_cached = NULL;
@@ -148,7 +135,6 @@ static void initData(ModifierData *md)
 static void freeData(ModifierData *md)
 {
 	FractureModifierData *rmd = (FractureModifierData*) md;
-	FractureLevel* fl = rmd->fracture_levels.first;
 	MeshIsland *mi;
 	RigidBodyShardCon *rbsc;
 	int i;
@@ -170,19 +156,15 @@ static void freeData(ModifierData *md)
 
 		if (rmd->frac_mesh)
 		{
-			BKE_fracmesh_free(rmd->frac_mesh, fl->frac_algorithm != MOD_FRACTURE_VORONOI);
+			BKE_fracmesh_free(rmd->frac_mesh, rmd->frac_algorithm != MOD_FRACTURE_VORONOI);
 			MEM_freeN(rmd->frac_mesh);
 		}
 
-		for (fl = rmd->fracture_levels.first; fl; fl = fl->next)
+		if (rmd->noisemap && rmd->noise_count > 0)
 		{
-			if (fl->noisemap && fl->noise_count > 0)
-			{
-				MEM_freeN(fl->noisemap);
-				fl->noisemap = NULL;
-				fl->noise_count = 0;
-			}
-			MEM_freeN(fl);
+			MEM_freeN(rmd->noisemap);
+			rmd->noisemap = NULL;
+			rmd->noise_count = 0;
 		}
 	}
 
@@ -475,15 +457,6 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 	FractureModifierData *fmd = (FractureModifierData*) md;
 	DerivedMesh *final_dm = derivedData;
-	FractureLevel *fl = fmd->fracture_levels.first;
-
-	//int shard_requested = 0;
-
-	/*if (fmd->frac_mesh != NULL)
-	{
-		BKE_fracmesh_free(fmd->frac_mesh);
-		MEM_freeN(fmd->frac_mesh);
-	}*/
 
 	if (fmd->refresh)
 	{
@@ -496,7 +469,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 		if (fmd->frac_mesh != NULL)
 		{
-			BKE_fracmesh_free(fmd->frac_mesh, fl->frac_algorithm != MOD_FRACTURE_VORONOI);
+			BKE_fracmesh_free(fmd->frac_mesh, fmd->frac_algorithm != MOD_FRACTURE_VORONOI);
 			MEM_freeN(fmd->frac_mesh);
 			fmd->frac_mesh = NULL;
 		}
@@ -508,7 +481,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	{
 		if (fmd->refresh)
 		{
-			do_fracture(fmd, -1, ob, derivedData, fmd->fracture_levels.first);
+			do_fracture(fmd, -1, ob, derivedData);
 		}
 		if (fmd->dm && fmd->frac_mesh)
 		{
@@ -569,14 +542,6 @@ static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
 {
 	FractureModifierData *fmd = (FractureModifierData*) md;
 	DerivedMesh *final_dm = derivedData;
-	FractureLevel *fl = fmd->fracture_levels.first;
-	//int shard_requested = 0;
-
-	/*if (fmd->frac_mesh != NULL)
-	{
-		BKE_fracmesh_free(fmd->frac_mesh);
-		MEM_freeN(fmd->frac_mesh);
-	}*/
 
 	if (fmd->dm != NULL)
 	{
@@ -594,7 +559,7 @@ static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
 	fmd->frac_mesh = BKE_create_fracture_container(derivedData);
 
 	if (!fmd->dm) {
-		do_fracture(fmd, -1, ob, derivedData, fmd->fracture_levels.first);
+		do_fracture(fmd, -1, ob, derivedData);
 	}
 
 	if (fmd->dm)
@@ -640,7 +605,7 @@ static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
 	return final_dm;
 }
 
-static void points_from_verts(Object** ob, int totobj, FracPointCloud* points, float mat[4][4], float thresh, FractureModifierData *emd, FractureLevel* fl, DerivedMesh* dm, Object* obj)
+static void points_from_verts(Object** ob, int totobj, FracPointCloud* points, float mat[4][4], float thresh, FractureModifierData *emd, DerivedMesh* dm, Object* obj)
 {
 	int v, o, pt = points->totpoints;
 	float co[3];
@@ -677,8 +642,8 @@ static void points_from_verts(Object** ob, int totobj, FracPointCloud* points, f
 					copy_v3_v3(co, vert[v].co);
 
 					if ((o > 0) ||
-					   ((fl->point_source & MOD_FRACTURE_EXTRA_VERTS) &&
-					   (!(fl->point_source & MOD_FRACTURE_OWN_VERTS)) && (o == 0)))
+					   ((emd->point_source & MOD_FRACTURE_EXTRA_VERTS) &&
+					   (!(emd->point_source & MOD_FRACTURE_OWN_VERTS)) && (o == 0)))
 					{
 						mul_m4_v3(ob[o]->obmat, co);
 						mul_m4_v3(imat, co);
@@ -696,7 +661,7 @@ static void points_from_verts(Object** ob, int totobj, FracPointCloud* points, f
 }
 
 static void points_from_particles(Object** ob, int totobj, Scene* scene, FracPointCloud* points, float mat[4][4],
-								 float thresh, FractureModifierData* emd, FractureLevel* fl)
+								 float thresh, FractureModifierData* emd)
 {
 	int o, p, pt = points->totpoints;
 	ParticleSystemModifierData* psmd;
@@ -735,8 +700,8 @@ static void points_from_particles(Object** ob, int totobj, Scene* scene, FracPoi
 						copy_v3_v3(co, birth.co);
 
 						if ((o > 0) ||
-						   ((fl->point_source & MOD_FRACTURE_EXTRA_PARTICLES) &&
-						   (!(fl->point_source & MOD_FRACTURE_OWN_PARTICLES)) && (o == 0)))
+						   ((emd->point_source & MOD_FRACTURE_EXTRA_PARTICLES) &&
+						   (!(emd->point_source & MOD_FRACTURE_OWN_PARTICLES)) && (o == 0)))
 						{
 							//mul_m4_v3(ob[o]->obmat, co);
 							mul_m4_v3(imat, co);
@@ -817,7 +782,7 @@ static int getGroupObjects(Group *gr, Object ***obs, int g_exist)
 	return ctr;
 }
 
-static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, DerivedMesh* fracmesh, FractureLevel* fl)
+static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, DerivedMesh* fracmesh)
 {
 	Scene* scene = emd->modifier.scene;
 	FracPointCloud points;
@@ -825,7 +790,7 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 	//global settings, for first fracture only, or global secondary and so on fracture, apply to entire fracmesh
 	int totgroup = 0, t = 0;
 	Object** go = MEM_mallocN(sizeof(Object*), "groupobjects");
-	float thresh = (float)fl->percentage / 100.0f;
+	float thresh = (float)emd->percentage / 100.0f;
 	BoundBox* bb;
 	float* noisemap = NULL;
 
@@ -835,19 +800,19 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 	points.points = MEM_mallocN(sizeof(FracPoint), "points");
 	points.totpoints = 0;
 
-	if (fl->point_source & (MOD_FRACTURE_EXTRA_PARTICLES | MOD_FRACTURE_EXTRA_VERTS ))
+	if (emd->point_source & (MOD_FRACTURE_EXTRA_PARTICLES | MOD_FRACTURE_EXTRA_VERTS ))
 	{
-		if (((fl->point_source & MOD_FRACTURE_OWN_PARTICLES) && (fl->point_source & MOD_FRACTURE_EXTRA_PARTICLES)) ||
-			((fl->point_source & MOD_FRACTURE_OWN_VERTS) && (fl->point_source & MOD_FRACTURE_EXTRA_VERTS)) ||
-			((fl->point_source & MOD_FRACTURE_GREASEPENCIL) && (fl->point_source & MOD_FRACTURE_EXTRA_PARTICLES)) ||
-		    ((fl->point_source & MOD_FRACTURE_GREASEPENCIL) && (fl->point_source & MOD_FRACTURE_EXTRA_VERTS)))
+		if (((emd->point_source & MOD_FRACTURE_OWN_PARTICLES) && (emd->point_source & MOD_FRACTURE_EXTRA_PARTICLES)) ||
+			((emd->point_source & MOD_FRACTURE_OWN_VERTS) && (emd->point_source & MOD_FRACTURE_EXTRA_VERTS)) ||
+			((emd->point_source & MOD_FRACTURE_GREASEPENCIL) && (emd->point_source & MOD_FRACTURE_EXTRA_PARTICLES)) ||
+		    ((emd->point_source & MOD_FRACTURE_GREASEPENCIL) && (emd->point_source & MOD_FRACTURE_EXTRA_VERTS)))
 		{
 			go = MEM_reallocN(go, sizeof(Object*)*(totgroup+1));
 			go[totgroup] = ob;
 			totgroup++;
 		}
 
-		totgroup = getGroupObjects(fl->extra_group, &go, totgroup);
+		totgroup = getGroupObjects(emd->extra_group, &go, totgroup);
 	}
 	else
 	{
@@ -855,17 +820,17 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 		go[0] = ob;
 	}
 
-	if (fl->point_source & (MOD_FRACTURE_OWN_PARTICLES | MOD_FRACTURE_EXTRA_PARTICLES))
+	if (emd->point_source & (MOD_FRACTURE_OWN_PARTICLES | MOD_FRACTURE_EXTRA_PARTICLES))
 	{
-		points_from_particles(go, totgroup, scene, &points, ob->obmat, thresh, emd, fl);
+		points_from_particles(go, totgroup, scene, &points, ob->obmat, thresh, emd);
 	}
 
-	if (fl->point_source & (MOD_FRACTURE_OWN_VERTS | MOD_FRACTURE_EXTRA_VERTS))
+	if (emd->point_source & (MOD_FRACTURE_OWN_VERTS | MOD_FRACTURE_EXTRA_VERTS))
 	{
-		points_from_verts(go, totgroup, &points, ob->obmat, thresh, emd, fl, fracmesh, ob);
+		points_from_verts(go, totgroup, &points, ob->obmat, thresh, emd, fracmesh, ob);
 	}
 
-	if (fl->point_source & MOD_FRACTURE_GREASEPENCIL)
+	if (emd->point_source & MOD_FRACTURE_GREASEPENCIL)
 	{
 		points_from_greasepencil(go, totgroup, &points, ob->obmat, thresh);
 	}
@@ -880,22 +845,22 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 
 
 	//local settings, apply per shard!!! Or globally too first.
-	if (fl->point_source & MOD_FRACTURE_UNIFORM)
+	if (emd->point_source & MOD_FRACTURE_UNIFORM)
 	{
-		int count = fl->shard_count;
+		int count = emd->shard_count;
 		//this is pointsource "uniform", make seed settable
 		INIT_MINMAX(min, max);
 		BKE_get_shard_minmax(emd->frac_mesh, -1, min, max, fracmesh); //id 0 should be entire mesh
 		//points.totpoints += emd->shard_count;
 
-		if (fl->frac_algorithm == MOD_FRACTURE_BISECT_FAST)
+		if (emd->frac_algorithm == MOD_FRACTURE_BISECT_FAST)
 		{
 			//need double amount of shards, because we create 2 islands at each cut... so this matches the input count
 			count *= 2;
 		}
 
 		//points.points = MEM_reallocN(points.points, sizeof(FracPoint) * points.totpoints);
-		BLI_srandom(fl->point_seed);
+		BLI_srandom(emd->point_seed);
 		for (i = 0; i < count; ++i) {
 			if (BLI_frand() < thresh)
 			{
@@ -917,7 +882,7 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 
 	bb = BKE_object_boundbox_get(ob);
 
-	if (fl->noisemap == NULL && points.totpoints > 0)
+	if (emd->noisemap == NULL && points.totpoints > 0)
 	{
 		noisemap = MEM_callocN(sizeof(float)*3 *points.totpoints, "noisemap");
 	}
@@ -925,13 +890,13 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 	for (t = 0; t < points.totpoints; t++) {
 		float bbox_min[3], bbox_max[3];
 
-		if (fl->noise > 0.0f)
+		if (emd->noise > 0.0f)
 		{
-			if (fl->noisemap != NULL) {
+			if (emd->noisemap != NULL) {
 				float noise[3];
-				noise[0] = fl->noisemap[3*t];
-				noise[1] = fl->noisemap[3*t+1];
-				noise[2] = fl->noisemap[3*t+2];
+				noise[0] = emd->noisemap[3*t];
+				noise[1] = emd->noisemap[3*t+1];
+				noise[2] = emd->noisemap[3*t+2];
 				//add_v3_v3((*points)[t], noise);
 				add_v3_v3(points.points[t].co, noise);
 			}
@@ -946,7 +911,7 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 				mul_v3_m4v3(bbox_max, ob->obmat, bb->vec[6]);
 				sub_v3_v3v3(size, bbox_max, bbox_min);
 
-				scalar = fl->noise * len_v3(size) / 2.0f;
+				scalar = emd->noise * len_v3(size) / 2.0f;
 				rand[0] = 2.0f * (BLI_frand() - 0.5f);
 				rand[1] = 2.0f * (BLI_frand() - 0.5f);
 				rand[2] = 2.0f * (BLI_frand() - 0.5f);
@@ -995,10 +960,10 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 	}
 	}
 
-	if (fl->noisemap == NULL)
+	if (emd->noisemap == NULL)
 	{
-		fl->noisemap = noisemap;
-		fl->noise_count = points.totpoints;
+		emd->noisemap = noisemap;
+		emd->noise_count = points.totpoints;
 	}
 
 	//MEM_freeN(bb);
@@ -1006,12 +971,12 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 	return points;
 }
 
-static void do_fracture(FractureModifierData *fracmd, ShardID id, Object* obj, DerivedMesh *dm, FractureLevel* fl)
+static void do_fracture(FractureModifierData *fracmd, ShardID id, Object* obj, DerivedMesh *dm)
 {
 	/* dummy point cloud, random */
 	FracPointCloud points;
 
-	points = get_points_global(fracmd, obj, dm, fl);
+	points = get_points_global(fracmd, obj, dm);
 
 	//local settings, apply per shard!!! Or globally too first.
 	/*if (fracmd->point_source & MOD_FRACTURE_UNIFORM)
@@ -1040,7 +1005,7 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object* obj, D
 
 	//non-uniform pointcloud ... max cluster min clustersize, cluster count / "variation", min max distance
 
-		BKE_fracture_shard_by_points(fracmd->frac_mesh, id, &points, fl->frac_algorithm, obj, dm);
+		BKE_fracture_shard_by_points(fracmd->frac_mesh, id, &points, fracmd->frac_algorithm, obj, dm);
 		//MEM_freeN(points.points);
 		if (fracmd->frac_mesh->shard_count > 0)
 		{

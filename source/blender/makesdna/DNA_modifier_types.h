@@ -1353,32 +1353,6 @@ typedef struct MeshIsland {
 	char pad[4];
 } MeshIsland;
 
-/*typedef struct RigidBodyModifierData {
-	ModifierData modifier;
-	struct BMesh *visible_mesh;
-	struct DerivedMesh *visible_mesh_cached;
-	struct Group *constraint_group;
-	ListBase meshIslands, meshConstraints, cells;
-	int	**sel_indexes, *index_storage, *id_storage;
-	//int (*vol_check)(struct RigidBodyModifierData *rmd, struct MeshIsland *mi);
-	void (*join)(struct RigidBodyModifierData *rmd, struct Object* ob);
-	void (*split)(struct RigidBodyModifierData *rmd, struct Object *ob, struct MeshIsland *mi, float cfra);
-	struct GHash *idmap;
-	float *framemap;
-	int framecount, disable_self_collision;
-	int refresh, use_constraints, mass_dependent_thresholds, auto_merge, sel_counter;
-	int inner_constraint_type, dist_dependent_thresholds, refresh_constraints;
-	int outer_constraint_type, outer_constraint_location, outer_constraint_pattern;
-	int explo_shared, constraint_limit, contact_dist_meaning, use_both_directions;
-	int breaking_angle, breaking_percentage, use_proportional_distance, use_proportional_limit;
-	int use_cellbased_sim, use_experimental;
-	int solver_iterations_override, use_proportional_solver_iterations;
-	float breaking_distance, max_vol, cell_size;
-	float origmat[4][4], breaking_threshold, cluster_breaking_threshold;
-	float contact_dist, group_breaking_threshold, group_contact_dist, auto_merge_dist;
-	//char pad[4];
-} RigidBodyModifierData;*/
-
 typedef struct NeighborhoodCell {
 	struct NeighborhoodCell *next, *prev; 
 	struct MeshIsland **islands;
@@ -1462,19 +1436,27 @@ typedef struct FractureModifierData {
 	ModifierData modifier;
 	struct FracMesh *frac_mesh; //store only the current fracmesh here first, later maybe an entire history...
 	struct DerivedMesh *dm;
-	ListBase fracture_levels;
-	int active_index;
-	int cluster_count;
-
-	//simulation part...
+	struct Group *extra_group;
+	float *noisemap;
 	struct BMesh *visible_mesh;
 	struct DerivedMesh *visible_mesh_cached;
 	ListBase meshIslands, meshConstraints, cells;
 	int	**sel_indexes, *index_storage, *id_storage;
-	void (*join)(struct RigidBodyModifierData *rmd, struct Object* ob);
-	void (*split)(struct RigidBodyModifierData *rmd, struct Object *ob, struct MeshIsland *mi, float cfra);
+	void (*join)(struct FractureModifierData *rmd, struct Object* ob);
+	void (*split)(struct FractureModifierData *rmd, struct Object *ob, struct MeshIsland *mi, float cfra);
 	struct GHash *idmap;
 	float *framemap;
+
+	int frac_algorithm;
+	int shard_count;
+	int shard_id;
+	int point_source;
+	int point_seed;
+	int percentage;
+	float noise;
+	int noise_count;
+	int cluster_count;
+
 	int framecount, disable_self_collision;
 	int refresh, use_constraints, mass_dependent_thresholds, sel_counter;
 	int inner_constraint_type, dist_dependent_thresholds, refresh_constraints;
@@ -1485,24 +1467,7 @@ typedef struct FractureModifierData {
 	float breaking_distance, max_vol, cell_size;
 	float origmat[4][4], breaking_threshold, cluster_breaking_threshold;
 	float contact_dist;
-	//char pad[4];
+	char pad[4];
 } FractureModifierData;
-
-typedef struct FractureLevel {
-
-	struct FractureLevel *next, *prev;
-	struct Group *extra_group;
-	float *noisemap;
-	char *name;
-
-	int frac_algorithm;
-	int shard_count;
-	int shard_id;
-	int point_source;
-	int point_seed;
-	int percentage;
-	float noise;
-	int noise_count;
-} FractureLevel;
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */
