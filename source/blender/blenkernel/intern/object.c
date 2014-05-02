@@ -3401,7 +3401,7 @@ int BKE_object_is_deform_modified(Scene *scene, Object *ob)
 		ModifierTypeInfo *mti = modifierType_getInfo(md->type);
 
 		//special case for fracture modifier
-		if (mti->type == eModifierTypeType_OnlyDeform/* || md->type == eModifierType_Fracture*/) {
+		if (mti->type == eModifierTypeType_OnlyDeform || md->type == eModifierType_Fracture) {
 			if (!(flag & eModifierMode_Render) && modifier_isEnabled(scene, md, eModifierMode_Render))
 				flag |= eModifierMode_Render;
 
