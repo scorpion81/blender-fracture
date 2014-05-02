@@ -3659,9 +3659,13 @@ static DerivedMesh* createCache(FractureModifierData *rmd)
 	{
 		dm = CDDM_copy(rmd->dm);
 	}
-	else
+	else if (rmd->visible_mesh)
 	{
 		dm = CDDM_from_bmesh(rmd->visible_mesh, true);
+	}
+	else
+	{
+		return NULL;
 	}
 
 	DM_ensure_tessface(dm);
