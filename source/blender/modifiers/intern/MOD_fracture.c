@@ -130,6 +130,7 @@ static void initData(ModifierData *md)
 		fmd->cluster_breaking_threshold = 1000.0f;
 		fmd->use_proportional_solver_iterations = false;
 		fmd->solver_iterations_override = 0;
+		fmd->shards_to_islands = false;
 }
 
 static void freeData(ModifierData *md)
@@ -1073,6 +1074,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->cluster_breaking_threshold = rmd->cluster_breaking_threshold;
 	trmd->use_proportional_solver_iterations = rmd->use_proportional_solver_iterations;
 	trmd->solver_iterations_override = rmd->solver_iterations_override;
+	trmd->shards_to_islands = rmd->shards_to_islands;
 }
 
 void freeMeshIsland(FractureModifierData* rmd, MeshIsland* mi)
@@ -1210,7 +1212,7 @@ int BM_calc_center_centroid(BMesh *bm, float cent[3], int tagged)
 	}
 	else if (bm->totvert == 1)
 	{
-		copy_v3_v3(cent, BM_vert_at_index(bm, 0)->co);
+		copy_v3_v3(cent, BM_vert_at_index_find(bm, 0)->co);
 	}
 
 	return (bm->totface != 0);
@@ -3655,7 +3657,7 @@ static DerivedMesh* createCache(FractureModifierData *rmd)
 	MVert *verts;
 	int vertstart = 0;
 
-	if (rmd->dm)
+	if (rmd->dm && !rmd->shards_to_islands)
 	{
 		dm = CDDM_copy(rmd->dm);
 	}
@@ -3683,7 +3685,7 @@ static DerivedMesh* createCache(FractureModifierData *rmd)
 		}
 
 		mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * mi->vertex_count, "mi->vertices_cached");
-		if (rmd->dm != NULL)
+		if (rmd->dm != NULL && !rmd->shards_to_islands)
 		{
 			for (i = 0; i < mi->vertex_count; i++)
 			{
@@ -3780,7 +3782,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 			//grab neighborhood info (and whole fracture info -> cells) if available, if explo before rmd
 			//emd = findPrecedingExploModifier(ob, rmd);
 //			if (emd != NULL && emd->cells != NULL && ((!emd->use_clipping && !rmd->use_cellbased_sim /* && !emd->use_boolean*/) || rmd->contact_dist_meaning == ////MOD_RIGIDBODY_VERTICES))
-			if (fmd->frac_mesh && fmd->frac_mesh->shard_count > 0 && fmd->dm && fmd->dm->numVertData > 0)
+			if (fmd->frac_mesh && fmd->frac_mesh->shard_count > 0 && fmd->dm && fmd->dm->numVertData > 0 && !fmd->shards_to_islands)
 			{
 				Shard *s;
 				MeshIsland* mi; // can be created without shards even, when using fracturemethod = NONE
@@ -3875,8 +3877,16 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 			}
 			else
 			{
-				//split to meshislands now
-				fmd->visible_mesh = DM_to_bmesh(dm, true); //ensures indexes automatically
+				if (fmd->dm && fmd->shards_to_islands)
+				{
+					fmd->visible_mesh = DM_to_bmesh(fmd->dm, true);
+				}
+				else
+				{
+					//split to meshislands now
+					fmd->visible_mesh = DM_to_bmesh(dm, true); //ensures indexes automatically
+				}
+
 				fmd->explo_shared = false;
 
 				start = PIL_check_seconds_timer();

@@ -72,6 +72,7 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         col.prop(md, "percentage")
         col.prop(md, "point_seed")
         col.prop(md, "cluster_count")
+        col.prop(md, "shards_to_islands")
         layout.operator("object.fracture_refresh", text="Refresh All Data")
 
 class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
