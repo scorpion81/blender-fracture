@@ -1609,7 +1609,7 @@ void mesh_separate_loose_partition(FractureModifierData* rmd, Object* ob, BMesh*
 		/* Move selection into a separate object */
 		//printf("splitting...\n");
 		mesh_separate_tagged(rmd, ob, v_tag, tag_counter, &startco, bm_old /*, &mi_array, &mi_count*/);
-		printf("mesh_separate_tagged: %d %d\n", tot, bm_old->totvert);
+	//	printf("mesh_separate_tagged: %d %d\n", tot, bm_old->totvert);
 
 		if (tot >= bm_old->totvert) {
 			break;
@@ -1764,7 +1764,14 @@ void halve(FractureModifierData* rmd, Object* ob, int minsize, BMesh** bm_work, 
 	separated = false;
 
 	{
-		BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, false);
+		if (rmd->shards_to_islands)
+		{
+			BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, false);
+		}
+		else
+		{
+			BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, false);
+		}
 
 		/*if (rmd->use_cellbased_sim && 0)
 		{
@@ -1782,6 +1789,7 @@ void halve(FractureModifierData* rmd, Object* ob, int minsize, BMesh** bm_work, 
 			}
 		}
 		else*/
+		if (!rmd->shards_to_islands)
 		{
 			half = bm_old->totvert / 2;
 			BM_ITER_MESH(v, &iter, bm_old, BM_VERTS_OF_MESH)
@@ -1793,6 +1801,19 @@ void halve(FractureModifierData* rmd, Object* ob, int minsize, BMesh** bm_work, 
 				i++;
 			}
 		}
+		/*else
+		{
+			//try to DEselect here...
+			half = bm_old->totvertsel / 2;
+			BM_ITER_MESH(v, &iter, bm_old, BM_VERTS_OF_MESH)
+			{
+				if (i >= half) {
+					break;
+				}
+				BM_elem_select_set(bm_old, v, false);
+				i++;
+			}
+		}*/
 
 		bm_mesh_hflag_flush_vert(bm_old, BM_ELEM_SELECT);
 		select_linked(&bm_old);
@@ -1803,26 +1824,36 @@ void halve(FractureModifierData* rmd, Object* ob, int minsize, BMesh** bm_work, 
 		orig_new = MEM_callocN(sizeof(BMVert*) * new_count, "orig_new");
 		orig_mod = MEM_callocN(sizeof(BMVert*) * bm_old->totvert - new_count, "orig_mod");
 		mesh_separate_selected(&bm_old, &bm_new, orig_old, &orig_new, &orig_mod);
-		//BM_mesh_elem_hflag_disable_all(bm_new, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, FALSE);
+
+		if (rmd->shards_to_islands)
+		{
+			//BM_mesh_elem_hflag_disable_all(bm_new, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, false);
+		}
 	}
 
 	printf("Old New: %d %d\n", bm_old->totvert, bm_new->totvert);
 	if ((bm_old->totvert <= minsize && bm_old->totvert > 0) || (bm_new->totvert == 0)) {
-		mesh_separate_loose_partition(rmd, ob, bm_old, orig_mod);
-		separated = true;
+		if (!rmd->shards_to_islands)
+		{
+			mesh_separate_loose_partition(rmd, ob, bm_old, orig_mod);
+			separated = true;
+		}
 	}
 
-	if ((bm_new->totvert <= minsize && bm_new->totvert > 0) || (bm_old->totvert == 0)) {
+	if ((bm_new->totvert <= minsize && bm_new->totvert > 0) || (bm_old->totvert == 0) || rmd->shards_to_islands) {
 		mesh_separate_loose_partition(rmd, ob, bm_new, orig_new);
 		separated = true;
 	}
 
-	if ((bm_old->totvert > minsize && bm_new->totvert > 0) || (bm_new->totvert == 0 && !separated)) {
-		halve(rmd, ob, minsize, &bm_old, &orig_mod, separated);
-	}
+	if (!rmd->shards_to_islands)
+	{
+		if ((bm_old->totvert > minsize && bm_new->totvert > 0) || (bm_new->totvert == 0 && !separated)) {
+			halve(rmd, ob, minsize, &bm_old, &orig_mod, separated);
+		}
 
-	if ((bm_new->totvert > minsize && bm_old->totvert > 0) || (bm_old->totvert == 0 && !separated)) {
-		halve(rmd, ob, minsize, &bm_new, &orig_new, separated);
+		if ((bm_new->totvert > minsize && bm_old->totvert > 0) || (bm_old->totvert == 0 && !separated)) {
+			halve(rmd, ob, minsize, &bm_new, &orig_new, separated);
+		}
 	}
 
 	MEM_freeN(orig_mod);
@@ -2011,6 +2042,7 @@ void mesh_separate_loose(FractureModifierData* rmd, Object* ob)
 	else
 #endif
 	{
+		bool temp = rmd->shards_to_islands;
 		BM_mesh_elem_hflag_disable_all(rmd->visible_mesh, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, false);
 		bm_work = BM_mesh_copy(rmd->visible_mesh);
 
@@ -2021,7 +2053,46 @@ void mesh_separate_loose(FractureModifierData* rmd, Object* ob)
 			orig_start[vert->head.index] = vert;
 		}
 
-		halve(rmd, ob, minsize, &bm_work, &orig_start, false);
+		BM_mesh_elem_index_ensure(bm_work, BM_VERT);
+		BM_mesh_elem_table_ensure(bm_work, BM_VERT);
+
+		rmd->shards_to_islands = false;
+
+		if (rmd->shards_to_islands)
+		{
+			int i = 0;
+			int vertstart = 0;
+			for (i = 0; i < rmd->frac_mesh->shard_count; i++)
+			{
+				int j = 0;
+				Shard *s = rmd->frac_mesh->shard_map[i];
+
+				printf("Halving Shard...%d \n", i);
+				for (j = 0; j < s->totvert; j++)
+				{
+					BMVert* v = BM_vert_at_index(bm_work, j+vertstart);
+					BM_elem_select_set(bm_work, v, true);
+				}
+
+				halve(rmd, ob, minsize, &bm_work, &orig_start, false);
+
+				/*for (j = 0; j < s->totvert; j++)
+				{
+					BMVert* v = BM_vert_at_index(bm_work, j+vertstart);
+					BM_elem_select_set(bm_work, v, false);
+				}
+				BM_mesh_select_flush(bm_work);*/
+				//bm_work->totvertsel = bm_work->totedgesel = bm_work->totfacesel = 0;
+				BM_mesh_elem_hflag_disable_all(bm_work, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT, false);
+				vertstart += s->totvert;
+			}
+		}
+		else
+		{
+			halve(rmd, ob, minsize, &bm_work, &orig_start, false);
+		}
+
+		rmd->shards_to_islands = temp;
 
 	//	BLI_ghash_free(vhash, NULL, NULL);
 		MEM_freeN(orig_start);
