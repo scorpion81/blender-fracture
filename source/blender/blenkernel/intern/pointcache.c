@@ -1087,16 +1087,18 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 			
 			dfra = cfra2 - cfra1;
 		
-			psys_interpolate_particle(-1, keys, (cfra - cfra1) / dfra, keys, 1);
+			//psys_interpolate_particle(-1, keys, (cfra - cfra1) / dfra, keys, 1);
+			interp_v3_v3v3(keys->co, keys[1].co, keys[2].co, (cfra - cfra1) / dfra);
 			interp_qt_qtqt(keys->rot, keys[1].rot, keys[2].rot, (cfra - cfra1) / dfra);
 			
-			if (isnan(keys->co[0]) || isnan(keys->co[1]) || isnan(keys->co[2]))
+			/*if (isnan(keys->co[0]) || isnan(keys->co[1]) || isnan(keys->co[2]))
 			{
 				//use the average value here if we have nan...
 				add_v3_v3v3(keys[3].co, keys[1].co, keys[2].co);
 				mul_v3_fl(keys[3].co, 0.5f);
 				copy_v3_v3(keys->co, keys[3].co);
-			}
+			}*/
+
 			copy_v3_v3(rbo->pos, keys->co);
 			copy_qt_qt(rbo->orn, keys->rot);
 		}
