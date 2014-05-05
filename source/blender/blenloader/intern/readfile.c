@@ -4979,6 +4979,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 				MVert *mverts;
 				int vertstart = 0;
 				Shard *s;
+				int count = 0, count2 = 0;
 
 				fm->shard_map = newdataadr(fd, fm->shard_map);
 				for (i = 0; i < fm->shard_count; i++)
@@ -4995,35 +4996,37 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 				fmd->dm = NULL;
 				fmd->visible_mesh = NULL;
 
-				if (!fmd->shards_to_islands)
-				{
-					BKE_fracture_create_dm(fmd, false); // need real shards here, for now
-
-					//ugly ugly, need only the shard... the rest is to be generated on demand...
-					fmd->visible_mesh_cached = CDDM_copy(fmd->dm);
-					if (fmd->visible_mesh == NULL)
-					{
-						fmd->visible_mesh = DM_to_bmesh(fmd->visible_mesh_cached, true);
-					}
-				}
-
 				link_list(fd, &fmd->islandShards);
 				for (s = fmd->islandShards.first; s; s = s->next)
 				{
 					s = read_shard(fd, s);
 				}
 
-				if (fmd->shards_to_islands)
-				{
-					//ugly ugly, need only the shard... the rest is to be generated on demand...
-					BKE_fracture_create_dm(fmd, false);
-					fmd->visible_mesh_cached = CDDM_copy(fmd->dm);
-					if (fmd->visible_mesh == NULL)
-					{
-						fmd->visible_mesh = DM_to_bmesh(fmd->visible_mesh_cached, true);
-					}
-					//fmd->visible_mesh_cached = CDDM_from_bmesh(fmd->visible_mesh, true);
+				link_list(fd, &fmd->meshIslands);
+				count = BLI_countlist(&fmd->islandShards);
+				count2 = BLI_countlist(&fmd->meshIslands);
 
+				if (fmd->islandShards.first == NULL || count == 0 || count != count2)
+				{
+					//oops, a refresh was missing, so disable this flag here better, otherwise
+					//we attempt to load non existing data
+					fmd->shards_to_islands = false;
+				}
+				else
+				{
+					fmd->shards_to_islands = true;
+				}
+
+				//ugly ugly, need only the shard... the rest is to be generated on demand...
+				BKE_fracture_create_dm(fmd, false);
+				fmd->visible_mesh_cached = CDDM_copy(fmd->dm);
+				if (fmd->visible_mesh == NULL)
+				{
+					fmd->visible_mesh = DM_to_bmesh(fmd->visible_mesh_cached, true);
+				}
+
+				//if (fmd->shards_to_islands)
+				{
 					DM_ensure_tessface(fmd->visible_mesh_cached);
 					DM_ensure_normals(fmd->visible_mesh_cached);
 					DM_update_tessface_data(fmd->visible_mesh_cached);
@@ -5032,13 +5035,12 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 					mverts = CDDM_get_verts(fmd->visible_mesh_cached);
 				}
 
-				link_list(fd, &fmd->meshIslands);
 				for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 				{
 					int k = 0;
 					mi = read_meshIsland(fd, mi);
 
-					if (fmd->shards_to_islands)
+					//if (fmd->shards_to_islands)
 					{
 						mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * mi->vertex_count, "mi->vertices_cached readfile");
 						for (k = 0; k < mi->vertex_count; k++)
