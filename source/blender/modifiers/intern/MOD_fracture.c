@@ -76,6 +76,31 @@ void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi);
 void connect_constraints(FractureModifierData* rmd,  Object* ob, MeshIsland **meshIslands, int count, BMesh **combined_mesh, KDTree **combined_tree);
 DerivedMesh* doSimulate(FractureModifierData *fmd, Object *ob, DerivedMesh *dm);
 
+static void meshisland_init_verts(FractureModifierData* fmd)
+{
+	int i = 0;
+	MeshIsland* mi;
+	int vertstart = 0;
+
+	BM_mesh_elem_index_ensure(fmd->visible_mesh, BM_VERT);
+	BM_mesh_elem_table_ensure(fmd->visible_mesh, BM_VERT);
+
+	for (mi = fmd->meshIslands.first; mi; mi = mi->next)
+	{
+		if (mi->vertices != NULL)
+		{
+			break;
+		}
+
+		mi->vertices = MEM_mallocN(sizeof(BMVert*) * mi->vertex_count, "mi->vertices");
+		for (i = 0; i < mi->vertex_count; i++)
+		{
+			mi->vertices[i] = BM_vert_at_index(fmd->visible_mesh, vertstart+i);
+		}
+		vertstart += mi->vertex_count;
+	}
+}
+
 static void initData(ModifierData *md)
 {
 
@@ -169,7 +194,8 @@ static void freeData(ModifierData *md)
 		}
 	}
 
-	if (rmd->visible_mesh_cached && (rmd->visible_mesh || (!rmd->refresh && !rmd->refresh_constraints)))
+	if (rmd->visible_mesh_cached && !rmd->shards_to_islands &&
+	   (rmd->visible_mesh || (!rmd->refresh && !rmd->refresh_constraints)))
 	{
 		//DM_release(rmd->visible_mesh_cached);
 		rmd->visible_mesh_cached->needsFree = 1;
@@ -181,6 +207,19 @@ static void freeData(ModifierData *md)
 	//simulation data...
 	if (!rmd->refresh_constraints)
 	{
+		if (rmd->shards_to_islands)
+		{
+			while (rmd->islandShards.first) {
+				Shard* s = rmd->islandShards.first;
+				BLI_remlink(&rmd->islandShards, s);
+				BKE_shard_free(s, true);
+				s = NULL;
+			}
+
+			rmd->islandShards.first = NULL;
+			rmd->islandShards.last = NULL;
+		}
+
 		while (rmd->meshIslands.first) {
 			mi = rmd->meshIslands.first;
 			BLI_remlink(&rmd->meshIslands, mi);
@@ -1005,14 +1044,18 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object* obj, D
 	//}
 
 	//non-uniform pointcloud ... max cluster min clustersize, cluster count / "variation", min max distance
-
+		bool temp = fracmd->shards_to_islands;
 		BKE_fracture_shard_by_points(fracmd->frac_mesh, id, &points, fracmd->frac_algorithm, obj, dm);
 		//MEM_freeN(points.points);
 		if (fracmd->frac_mesh->shard_count > 0)
 		{
 			doClusters(fracmd, 1, obj);
 		}
+
+		//Here we REALLY need to fracture so deactivate the shards to islands flag and activate afterwards.
+		fracmd->shards_to_islands = false;
 		BKE_fracture_create_dm(fracmd, false);
+		fracmd->shards_to_islands = temp;
 	}
 	MEM_freeN(points.points);
 
@@ -1131,6 +1174,12 @@ void freeMeshIsland(FractureModifierData* rmd, MeshIsland* mi)
 		MEM_freeN(mi->participating_constraints);
 		mi->participating_constraints = NULL;
 		mi->participating_constraint_count = 0;
+	}
+
+	if (mi->vertex_indices)
+	{
+		MEM_freeN(mi->vertex_indices);
+		mi->vertex_indices = NULL;
 	}
 
 	MEM_freeN(mi);
@@ -1284,7 +1333,9 @@ static float mesh_separate_tagged(FractureModifierData* rmd, Object *ob, BMVert*
 	float centroid[3], dummyloc[3], rot[4], min[3], max[3], vol = 0;
 	BMVert* v;
 	BMIter iter;
-	DerivedMesh *dm = NULL;
+	DerivedMesh *dm = NULL, *dmtemp = NULL;
+	Shard *s;
+	int i = 0;
 
 	//*mi_array = MEM_reallocN(*mi_array, sizeof(MeshIsland*) * (*mi_count+1));
 	bm_new = BM_mesh_create(&bm_mesh_allocsize_default);
@@ -1308,6 +1359,21 @@ static float mesh_separate_tagged(FractureModifierData* rmd, Object *ob, BMVert*
 				 "delete geom=%hvef context=%i", BM_ELEM_TAG, DEL_FACES);*/
 
 	BM_calc_center_centroid(bm_new, centroid, false);
+	BM_mesh_elem_index_ensure(bm_new, BM_VERT | BM_EDGE | BM_FACE);
+
+	if (rmd->shards_to_islands)
+	{
+		//store temporary shards for each island
+		dmtemp = CDDM_from_bmesh(bm_new, true);
+		s = BKE_create_fracture_shard(dmtemp->getVertArray(dmtemp), dmtemp->getPolyArray(dmtemp), dmtemp->getLoopArray(dmtemp),
+								  dmtemp->getNumVerts(dmtemp), dmtemp->getNumPolys(dmtemp), dmtemp->getNumLoops(dmtemp), true);
+		s = BKE_custom_data_to_shard(s, dmtemp);
+		BLI_addtail(&rmd->islandShards, s);
+
+		dmtemp->needsFree = 1;
+		dmtemp->release(dmtemp);
+		dmtemp = NULL;
+	}
 
 	//use unmodified coords for bbox here
 	//BM_mesh_minmax(bm_new, min, max);
@@ -1324,6 +1390,7 @@ static float mesh_separate_tagged(FractureModifierData* rmd, Object *ob, BMVert*
 
 	mi->vertices = v_tag;
 	mi->vertco = *startco;
+//	MEM_freeN(*startco);
 	mi->compound_children = NULL;
 	mi->compound_count = 0;
 	mi->compound_parent = NULL;
@@ -1337,6 +1404,17 @@ static float mesh_separate_tagged(FractureModifierData* rmd, Object *ob, BMVert*
 
 	mi->physics_mesh = dm;
 	mi->vertex_count = v_count;
+
+	mi->vertex_indices = MEM_mallocN(sizeof(int) * mi->vertex_count, "mi->vertex_indices");
+	//mi->vertco = MEM_mallocN(sizeof(float) * 3 * mi->vertex_count, "mi->vertco");
+	for (i = 0; i < mi->vertex_count; i++)
+	{
+		mi->vertex_indices[i] = mi->vertices[i]->head.index;
+		/*mi->vertco[i*3] = mi->vertices[i]->co[0];
+		mi->vertco[i*3+1] = mi->vertices[i]->co[1];
+		mi->vertco[i*3+2] = mi->vertices[i]->co[2];*/
+	}
+
 	copy_v3_v3(mi->centroid, centroid);
 	mat4_to_loc_quat(dummyloc, rot, ob->obmat);
 	copy_v3_v3(mi->rot, rot);
@@ -1764,11 +1842,11 @@ void halve(FractureModifierData* rmd, Object* ob, int minsize, BMesh** bm_work, 
 	separated = false;
 
 	{
-		if (rmd->shards_to_islands)
+		/*if (rmd->shards_to_islands)
 		{
 			BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, false);
 		}
-		else
+		else*/
 		{
 			BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, false);
 		}
@@ -1789,7 +1867,7 @@ void halve(FractureModifierData* rmd, Object* ob, int minsize, BMesh** bm_work, 
 			}
 		}
 		else*/
-		if (!rmd->shards_to_islands)
+		//if (!rmd->shards_to_islands)
 		{
 			half = bm_old->totvert / 2;
 			BM_ITER_MESH(v, &iter, bm_old, BM_VERTS_OF_MESH)
@@ -1825,27 +1903,27 @@ void halve(FractureModifierData* rmd, Object* ob, int minsize, BMesh** bm_work, 
 		orig_mod = MEM_callocN(sizeof(BMVert*) * bm_old->totvert - new_count, "orig_mod");
 		mesh_separate_selected(&bm_old, &bm_new, orig_old, &orig_new, &orig_mod);
 
-		if (rmd->shards_to_islands)
+		/*if (rmd->shards_to_islands)
 		{
 			//BM_mesh_elem_hflag_disable_all(bm_new, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, false);
-		}
+		}*/
 	}
 
 	printf("Old New: %d %d\n", bm_old->totvert, bm_new->totvert);
 	if ((bm_old->totvert <= minsize && bm_old->totvert > 0) || (bm_new->totvert == 0)) {
-		if (!rmd->shards_to_islands)
+		//if (!rmd->shards_to_islands)
 		{
 			mesh_separate_loose_partition(rmd, ob, bm_old, orig_mod);
 			separated = true;
 		}
 	}
 
-	if ((bm_new->totvert <= minsize && bm_new->totvert > 0) || (bm_old->totvert == 0) || rmd->shards_to_islands) {
+	if ((bm_new->totvert <= minsize && bm_new->totvert > 0) || (bm_old->totvert == 0) /*|| rmd->shards_to_islands*/) {
 		mesh_separate_loose_partition(rmd, ob, bm_new, orig_new);
 		separated = true;
 	}
 
-	if (!rmd->shards_to_islands)
+	//if (!rmd->shards_to_islands)
 	{
 		if ((bm_old->totvert > minsize && bm_new->totvert > 0) || (bm_new->totvert == 0 && !separated)) {
 			halve(rmd, ob, minsize, &bm_old, &orig_mod, separated);
@@ -2042,7 +2120,7 @@ void mesh_separate_loose(FractureModifierData* rmd, Object* ob)
 	else
 #endif
 	{
-		bool temp = rmd->shards_to_islands;
+		//bool temp = rmd->shards_to_islands;
 		BM_mesh_elem_hflag_disable_all(rmd->visible_mesh, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, false);
 		bm_work = BM_mesh_copy(rmd->visible_mesh);
 
@@ -2056,9 +2134,8 @@ void mesh_separate_loose(FractureModifierData* rmd, Object* ob)
 		BM_mesh_elem_index_ensure(bm_work, BM_VERT);
 		BM_mesh_elem_table_ensure(bm_work, BM_VERT);
 
-		rmd->shards_to_islands = false;
-
-		if (rmd->shards_to_islands)
+#if 0
+		if (rmd->shards_to_islands && 0)
 		{
 			int i = 0;
 			int vertstart = 0;
@@ -2088,11 +2165,22 @@ void mesh_separate_loose(FractureModifierData* rmd, Object* ob)
 			}
 		}
 		else
+#endif
 		{
+			if (rmd->shards_to_islands)
+			{
+				//transfer shards to islandshards...
+				//int i = 0;
+				//for (i = 0; i < rmd->frac_mesh->shard_count; i++)
+				//{
+				//	Shard* s = fmd->frac_mesh->
+				//}
+			}
+
 			halve(rmd, ob, minsize, &bm_work, &orig_start, false);
 		}
 
-		rmd->shards_to_islands = temp;
+		//rmd->shards_to_islands = temp;
 
 	//	BLI_ghash_free(vhash, NULL, NULL);
 		MEM_freeN(orig_start);
@@ -3768,16 +3856,21 @@ static DerivedMesh* createCache(FractureModifierData *rmd)
 		{
 			for (i = 0; i < mi->vertex_count; i++)
 			{
-				int index = mi->vertices[i]->head.index;
+				//int index = mi->vertices[i]->head.index;
+				int index = mi->vertex_indices[i];
 				if (index >= 0 && index <= rmd->visible_mesh->totvert)
 				{
 					mi->vertices_cached[i] = verts + index;
+					/*mi->vertco[3*i] = mi->vertices_cached[i]->co[0];
+					mi->vertco[3*i+1] = mi->vertices_cached[i]->co[1];
+					mi->vertco[3*i+2] = mi->vertices_cached[i]->co[2];*/
 				}
 				else
 				{
 					mi->vertices_cached[i] = NULL;
 				}
 			}
+			//vertstart += mi->vertex_count;
 		}
 	}
 
@@ -3827,7 +3920,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 		freeData(fmd);
 		//fmd->explo_shared = shared;
 
-		if (fmd->visible_mesh != NULL)
+		if (fmd->visible_mesh != NULL && !fmd->shards_to_islands)
 		{
 			if (fmd->visible_mesh_cached)
 			{
@@ -3944,25 +4037,29 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 						mi->rigidbody->flag &= ~RBO_FLAG_ACTIVE_COMPOUND;
 						BKE_rigidbody_calc_shard_mass(ob, mi);
 					}
+					mi->vertex_indices = NULL;
 				}
 			}
 			else
 			{
-				if (fmd->dm && fmd->shards_to_islands)
+				if (fmd->visible_mesh == NULL)
 				{
-					fmd->visible_mesh = DM_to_bmesh(fmd->dm, true);
-				}
-				else
-				{
-					//split to meshislands now
-					fmd->visible_mesh = DM_to_bmesh(dm, true); //ensures indexes automatically
+					if (fmd->dm && fmd->shards_to_islands)
+					{
+						fmd->visible_mesh = DM_to_bmesh(fmd->dm, true);
+					}
+					else
+					{
+						//split to meshislands now
+						fmd->visible_mesh = DM_to_bmesh(dm, true); //ensures indexes automatically
+					}
+
+					start = PIL_check_seconds_timer();
+					mesh_separate_loose(fmd, ob);
+					printf("Splitting to islands done, %g\n", PIL_check_seconds_timer() - start);
 				}
 
 				fmd->explo_shared = false;
-
-				start = PIL_check_seconds_timer();
-				mesh_separate_loose(fmd, ob);
-				printf("Splitting to islands done, %g\n", PIL_check_seconds_timer() - start);
 			}
 
 			printf("Islands: %d\n", BLI_countlist(&fmd->meshIslands));
@@ -4022,7 +4119,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 
 		start = PIL_check_seconds_timer();
 
-		if (fmd->visible_mesh != NULL && (!fmd->explo_shared) || (fmd->visible_mesh_cached == NULL))
+		if (fmd->visible_mesh != NULL && fmd->refresh && (!fmd->explo_shared) || (fmd->visible_mesh_cached == NULL))
 		{
 			start = PIL_check_seconds_timer();
 			//post process ... convert to DerivedMesh only at refresh times, saves permanent conversion during execution
@@ -4041,6 +4138,11 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 				fmd->refresh_images = false;
 				//DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
 				//ob->recalc &= OB_RECALC_ALL;
+			}
+
+			if ((fmd->visible_mesh != NULL) && (fmd->shards_to_islands))
+			{
+				//meshisland_init_verts(fmd);
 			}
 
 			fmd->visible_mesh_cached = createCache(fmd);

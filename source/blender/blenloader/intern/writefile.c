@@ -1397,6 +1397,7 @@ static void write_meshIsland(WriteData* wd, MeshIsland* mi)
 //	writedata(wd, DATA, sizeof(int) * mi->vertex_count, mi->combined_index_map);
 	writedata(wd, DATA, sizeof(int) * mi->neighbor_count, mi->neighbor_ids);
 	writestruct(wd, DATA, "BoundBox", 1, mi->bb);
+	writedata(wd, DATA, sizeof(int) * mi->vertex_count, mi->vertex_indices);
 	//writedata(wd, DATA, sizeof(RigidBodyShardCon*) * mi->participating_constraint_count, mi->participating_constraints );
 	//writedata(wd, DATA, sizeof(float) * 3, mi->centroid);
 	//writedata(wd, DATA, sizeof(float) * 3, mi->start_co);
@@ -1555,12 +1556,18 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 			{
 				MeshIsland *mi;
 				RigidBodyShardCon* con;
+				Shard *s;
 
 				writestruct(wd, DATA, "FracMesh", 1, fm);
 				writedata(wd, DATA, sizeof(Shard*) * fm->shard_count, fm->shard_map);
 				for (i = 0; i < fm->shard_count; i++)
 				{
 					Shard *s = fm->shard_map[i];
+					write_shard(wd, s);
+				}
+
+				for (s = fmd->islandShards.first; s; s = s->next)
+				{
 					write_shard(wd, s);
 				}
 

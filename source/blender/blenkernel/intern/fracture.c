@@ -9,6 +9,7 @@
 #include "BLI_path_util.h"
 #include "BLI_rand.h"
 #include "BLI_sort.h"
+#include "BLI_listbase.h"
 
 #include "DNA_fracture_types.h"
 #include "DNA_group_types.h"
@@ -933,10 +934,10 @@ void BKE_fracture_release_dm(FractureModifierData *fmd)
 	}
 }
 
-static DerivedMesh *create_dm(FracMesh *fracmesh, bool doCustomData)
+static DerivedMesh *create_dm(FractureModifierData* fmd, bool doCustomData)
 {
-	int shard_count = fracmesh->shard_count;
-	Shard **shard_map = fracmesh->shard_map;
+	int shard_count = fmd->shards_to_islands ? BLI_countlist(&fmd->islandShards) : fmd->frac_mesh->shard_count;
+	Shard **shard_map = fmd->frac_mesh->shard_map;
 	Shard *shard;
 	int s, i;
 	
@@ -949,18 +950,33 @@ static DerivedMesh *create_dm(FracMesh *fracmesh, bool doCustomData)
 	MEdge *medges, *me;
 	
 	num_verts = num_polys = num_loops = 0;
-	for (s = 0; s < shard_count; ++s) {
-		shard = shard_map[s];
 
-		if (shard->shard_id == 0 && shard->flag & SHARD_FRACTURED)
+	if (fmd->shards_to_islands)
+	{
+		//for (shard = fmd->islandShards.first; shard; shard = shard->next)
+		for (s = 0; s < shard_count; ++s)
 		{
-			//dont display first shard when its fractured (relevant for plain voronoi only)
-			//continue;
+			shard = BLI_findlink(&fmd->islandShards, s);
+			num_verts += shard->totvert;
+			num_polys += shard->totpoly;
+			num_loops += shard->totloop;
 		}
-		
-		num_verts += shard->totvert;
-		num_polys += shard->totpoly;
-		num_loops += shard->totloop;
+	}
+	else
+	{
+		for (s = 0; s < shard_count; ++s) {
+			shard = shard_map[s];
+
+			if (shard->shard_id == 0 && shard->flag & SHARD_FRACTURED)
+			{
+				//dont display first shard when its fractured (relevant for plain voronoi only)
+				//continue;
+			}
+
+			num_verts += shard->totvert;
+			num_polys += shard->totpoly;
+			num_loops += shard->totloop;
+		}
 	}
 	
 	result = CDDM_new(num_verts, 0, 0, num_loops, num_polys);
@@ -970,9 +986,19 @@ static DerivedMesh *create_dm(FracMesh *fracmesh, bool doCustomData)
 
 	if (doCustomData && shard_count > 0)
 	{
+		Shard* s;
+		if (fmd->shards_to_islands)
+		{
+			s = BLI_findlink(&fmd->islandShards, 0);
+		}
+		else
+		{
+			s = shard_map[0];
+		}
+
 		//CustomData_copy(&shard_map[0]->vertData, &result->vertData, CD_MASK_MESH, CD_CALLOC, num_verts);
-		CustomData_merge(&shard_map[0]->polyData, &result->polyData, CD_MASK_MTEXPOLY, CD_CALLOC, num_polys);
-		CustomData_merge(&shard_map[0]->loopData, &result->loopData, CD_MASK_MLOOPUV, CD_CALLOC, num_loops);
+		CustomData_merge(&s->polyData, &result->polyData, CD_MASK_MTEXPOLY, CD_CALLOC, num_polys);
+		CustomData_merge(&s->loopData, &result->loopData, CD_MASK_MLOOPUV, CD_CALLOC, num_loops);
 	}
 	
 	vertstart = polystart = loopstart = 0;
@@ -980,7 +1006,16 @@ static DerivedMesh *create_dm(FracMesh *fracmesh, bool doCustomData)
 		MPoly *mp;
 		MLoop *ml;
 		int i;
-		shard = shard_map[s];
+
+		if (fmd->shards_to_islands)
+		{
+			//may be inefficent... but else would need to do another loop
+			shard = BLI_findlink(&fmd->islandShards, s);
+		}
+		else
+		{
+			shard = shard_map[s];
+		}
 
 		if (shard->shard_id == 0 && shard->flag & SHARD_FRACTURED)
 		{
@@ -990,6 +1025,7 @@ static DerivedMesh *create_dm(FracMesh *fracmesh, bool doCustomData)
 		
 		memcpy(mverts + vertstart, shard->mvert, shard->totvert * sizeof(MVert));
 		memcpy(mpolys + polystart, shard->mpoly, shard->totpoly * sizeof(MPoly));
+
 
 		for (i = 0, mp = mpolys + polystart; i < shard->totpoly; ++i, ++mp) {
 			/* adjust loopstart index */
@@ -1064,7 +1100,7 @@ void BKE_fracture_create_dm(FractureModifierData *fmd, bool do_merge)
 	
 	//if ((fmd->frac_mesh->shard_map != NULL) && (fmd->frac_mesh->shard_count > 0))
 	{
-		dm_final = create_dm(fmd->frac_mesh, doCustomData);
+		dm_final = create_dm(fmd, doCustomData);
 	}
 	
 	fmd->dm = dm_final;

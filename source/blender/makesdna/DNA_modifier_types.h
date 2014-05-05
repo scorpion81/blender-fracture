@@ -1341,6 +1341,7 @@ typedef struct MeshIsland {
 	int *combined_index_map;
 	int *neighbor_ids;
 //	int *global_face_map;
+	int *vertex_indices;
 	struct BoundBox *bb;
 	struct RigidBodyShardCon **participating_constraints;
 	int participating_constraint_count;
@@ -1441,6 +1442,7 @@ typedef struct FractureModifierData {
 	struct BMesh *visible_mesh;
 	struct DerivedMesh *visible_mesh_cached;
 	ListBase meshIslands, meshConstraints, cells;
+	ListBase islandShards;
 	int	**sel_indexes, *index_storage, *id_storage;
 	void (*join)(struct FractureModifierData *rmd, struct Object* ob);
 	void (*split)(struct FractureModifierData *rmd, struct Object *ob, struct MeshIsland *mi, float cfra);
