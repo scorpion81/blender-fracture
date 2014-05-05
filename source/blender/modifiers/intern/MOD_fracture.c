@@ -4150,6 +4150,17 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 			printf("Building cached DerivedMesh done, %g\n", PIL_check_seconds_timer() - start);
 		}
 
+		if (fmd->refresh_images && fmd->visible_mesh_cached && fmd->shards_to_islands)
+		{
+			//need to ensure images are correct after loading...
+			refresh_customdata_image(ob->data, &fmd->visible_mesh_cached->polyData,
+			                         fmd->visible_mesh_cached->getNumPolys(fmd->visible_mesh_cached));
+			fmd->refresh_images = false;
+			DM_update_tessface_data(fmd->visible_mesh_cached);
+			//DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
+			//ob->recalc &= OB_RECALC_ALL;
+		}
+
 		if ((fmd->visible_mesh != NULL || fmd->visible_mesh_cached != NULL )  && (fmd->use_constraints))
 		{
 			if (fmd->visible_mesh == NULL)
