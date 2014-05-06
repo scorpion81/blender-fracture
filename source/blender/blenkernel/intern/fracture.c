@@ -28,9 +28,6 @@
 
 #include "RBI_api.h"
 
-/*boolean support */
-//#include "CSG_BooleanOps.h"
-
 /* debug timing */
 #define USE_DEBUG_TIMER
 
@@ -65,28 +62,8 @@ static BMesh* shard_to_bmesh(Shard* s)
 {
 	DerivedMesh* dm_parent;
 	BMesh *bm_parent;
-	//BMFace *f;
-	//BMIter fiter;
-	int findex;
 
 	dm_parent = BKE_shard_create_dm(s, true);
-	//CustomData_add_layer(&dm_parent->polyData, CD_ORIGINDEX, CD_CALLOC, NULL, s->totpoly);
-
-	//create ORIGINDEX layer and fill with indexes
-	//CustomData_add_layer(&bm_parent->pdata, CD_ORIGINDEX, CD_CALLOC, NULL, bm_parent->totface);
-	//CustomData_bmesh_init_pool(&bm_parent->pdata, bm_mesh_allocsize_default.totface, BM_FACE);
-
-	/*BM_ITER_MESH_INDEX(f, &fiter, bm_parent, BM_FACES_OF_MESH, findex)
-	{
-		CustomData_bmesh_set_default(&bm_parent->pdata, &f->head.data);
-		CustomData_bmesh_set(&bm_parent->pdata, f->head.data, CD_ORIGINDEX, &findex);
-	}*/
-
-/*	for (findex = 0; findex < dm_parent->getNumPolys(dm_parent); findex++)
-	{
-		CustomData_set(&dm_parent->polyData, findex, CD_ORIGINDEX, &findex);
-	}*/
-
 	bm_parent = DM_to_bmesh(dm_parent, true);
 	//create lookup tables
 	BM_mesh_elem_table_ensure(bm_parent, BM_FACE);
@@ -162,21 +139,6 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 	p->flag = 0;
 	p->flag |= SHARD_FRACTURED;
 	unit_m4(obmat);
-
-	// FOR NOW, delete OLD shard...
-	/*s = fm->shard_map[0];
-	MEM_freeN(s->mvert);
-	MEM_freeN(s->mloop);
-	MEM_freeN(s->mpoly);
-	if (s->neighbor_ids)
-		MEM_freeN(s->neighbor_ids);
-	MEM_freeN(s);
-
-	fm->shard_map[0] = NULL;
-	fm->shard_count = 0;*/
-
-	//while (feof(fp) != 0) //doesnt work with memory stream...
-	/* TODO, might occur that we have LESS than expected shards, what then...*/
 
 	if (algorithm == MOD_FRACTURE_BOOLEAN)
 	{
@@ -496,9 +458,6 @@ static void parse_neighbors(FILE* fp, int *neighbors, int totpoly)
 
 Shard* BKE_custom_data_to_shard(Shard* s, DerivedMesh* dm)
 {
-	/*CustomData_copy(&dm->vertData, &s->vertData, CD_MASK_MESH, CD_CALLOC, s->totvert);
-	CustomData_copy_data(&dm->vertData, &s->vertData,
-	                     0, 0, s->totvert);*/
 
 	CustomData_copy(&dm->loopData, &s->loopData, CD_MASK_MLOOPUV, CD_CALLOC, s->totloop);
 	CustomData_copy_data(&dm->loopData, &s->loopData,
@@ -588,7 +547,9 @@ void BKE_shard_free(Shard *s, bool doCustomData)
 	{
 //		CustomData_free(&s->vertData, s->totvert);
 //		CustomData_free_layers(&s->loopData, CD_MASK_MLOOPUV, s->totloop);
-	//		CustomData_free_layers(&s->polyData, CD_MASK_MTEXPOLY, s->totpoly);
+//		CustomData_free_layers(&s->polyData, CD_MASK_MTEXPOLY, s->totpoly);
+		CustomData_free(&s->loopData, s->totloop);
+		CustomData_free(&s->polyData, s->totpoly);
 	}
 
 	MEM_freeN(s);
@@ -741,14 +702,6 @@ FracMesh *BKE_create_fracture_container(DerivedMesh* dm)
 	
 	fmesh->shard_map = MEM_mallocN(sizeof(Shard*), __func__); //allocate in chunks ?, better use proper blender functions for this
 	fmesh->shard_count = 0;
-	
-	/*shard = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
-	                                  dm->numVertData, dm->numPolyData, dm->numLoopData, true);
-	shard->shard_id = 0; //the original "shard"
-	fmesh->shard_map[0] = shard;
-	shard->neighbor_ids = NULL;
-	shard->neighbor_count = 0;
-	shard->parent_id = -1; //no backup id means this shard has not been re-fractured*/
 	
 	return fmesh;
 }
@@ -906,12 +859,6 @@ void BKE_fracmesh_free(FracMesh* fm, bool doCustomData)
 		{
 			BKE_shard_free(s, doCustomData);
 		}
-		/*MEM_freeN(s->mvert);
-		MEM_freeN(s->mpoly);
-		MEM_freeN(s->mloop);
-		if (s->neighbor_ids)
-			MEM_freeN(s->neighbor_ids);*/
-		//MEM_freeN(s);
 		fm->shard_count--;
 	}
 
@@ -939,7 +886,7 @@ static DerivedMesh *create_dm(FractureModifierData* fmd, bool doCustomData)
 	int shard_count = fmd->shards_to_islands ? BLI_countlist(&fmd->islandShards) : fmd->frac_mesh->shard_count;
 	Shard **shard_map = fmd->frac_mesh->shard_map;
 	Shard *shard;
-	int s, i;
+	int s;
 	
 	int num_verts, num_polys, num_loops;
 	int vertstart, polystart, loopstart;
@@ -947,7 +894,6 @@ static DerivedMesh *create_dm(FractureModifierData* fmd, bool doCustomData)
 	MVert *mverts;
 	MPoly *mpolys;
 	MLoop *mloops;
-	MEdge *medges, *me;
 	
 	num_verts = num_polys = num_loops = 0;
 
@@ -996,7 +942,6 @@ static DerivedMesh *create_dm(FractureModifierData* fmd, bool doCustomData)
 			s = shard_map[0];
 		}
 
-		//CustomData_copy(&shard_map[0]->vertData, &result->vertData, CD_MASK_MESH, CD_CALLOC, num_verts);
 		CustomData_merge(&s->polyData, &result->polyData, CD_MASK_MTEXPOLY, CD_CALLOC, num_polys);
 		CustomData_merge(&s->loopData, &result->loopData, CD_MASK_MLOOPUV, CD_CALLOC, num_loops);
 	}
@@ -1030,10 +975,6 @@ static DerivedMesh *create_dm(FractureModifierData* fmd, bool doCustomData)
 		for (i = 0, mp = mpolys + polystart; i < shard->totpoly; ++i, ++mp) {
 			/* adjust loopstart index */
 			mp->loopstart += loopstart;
-			if (doCustomData)
-			{
-				//CustomData_set(&result->polyData, i+polystart, CD_MTEXPOLY, m);
-			}
 		}
 		
 		memcpy(mloops + loopstart, shard->mloop, shard->totloop * sizeof(MLoop));
@@ -1041,19 +982,12 @@ static DerivedMesh *create_dm(FractureModifierData* fmd, bool doCustomData)
 		for (i = 0, ml = mloops + loopstart; i < shard->totloop; ++i, ++ml) {
 			/* adjust vertex index */
 			ml->v += vertstart;
-			if (doCustomData)
-			{
-				//CustomData_set(&result->loopData, i+loopstart, CD_MLOOP, ml);
-			}
 		}
 
 		if (doCustomData)
 		{
-			//CustomData_copy_data(&shard->vertData, &result->vertData, 0, vertstart, shard->totvert);
 			CustomData_copy_data(&shard->loopData, &result->loopData, 0, loopstart, shard->totloop);
 			CustomData_copy_data(&shard->polyData, &result->polyData, 0, polystart, shard->totpoly);
-			//CustomData_merge(&shard->loopData, &result->loopData, CD_MLOOPUV, CD_DUPLICATE, shard->totloop);
-			//CustomData_merge(&shard->polyData, &result->polyData, CD_MTEXPOLY, CD_DUPLICATE, shard->totpoly
 		}
 
 		vertstart += shard->totvert;
@@ -1062,25 +996,6 @@ static DerivedMesh *create_dm(FractureModifierData* fmd, bool doCustomData)
 	}
 	
 	CDDM_calc_edges(result);
-
-#if 0
-	if (doCustomData)
-	{
-		MLoop* ml;
-
-		for (i = 0, ml = mloops; i < result->numLoopData; ++i, ++ml) {
-			CustomData_set(&result->loopData, i, CD_MLOOP, ml);
-		}
-
-		//disable edge drawing... why is this enabled ??
-		/*medges = CDDM_get_edges(result);
-		for (i = 0, me = medges + i; i < result->numEdgeData; i++)
-		{
-			//me->flag &~ ME_EDGEDRAW;
-			CustomData_set(&result->edgeData, i, CD_MEDGE, me);
-		}*/
-	}
-#endif
 	
 	result->dirty |= DM_DIRTY_NORMALS;
 	CDDM_calc_normals_mapping(result);
@@ -1098,7 +1013,6 @@ void BKE_fracture_create_dm(FractureModifierData *fmd, bool do_merge)
 		fmd->dm = NULL;
 	}
 	
-	//if ((fmd->frac_mesh->shard_map != NULL) && (fmd->frac_mesh->shard_count > 0))
 	{
 		dm_final = create_dm(fmd, doCustomData);
 	}
@@ -1129,32 +1043,12 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 
 	if (doCustomData)
 	{
-		MLoop *ml;
-		int i;
-
-		//void *layerdata;
-		//thats all banana here... why cant i just copy the data, without reallocing the layers ?!!! so this is done twice here
-		//and results in a memory leak...
-
-		//CustomData_copy(&s->vertData, &dm->vertData, CD_MASK_MESH, CD_CALLOC, s->totvert);
-		//CustomData_copy_data(&s->vertData, &dm->vertData, 0, 0, s->totvert);
-
-		/*layerdata = CustomData_duplicate_referenced_layer(&s->loopData, CD_MASK_MLOOPUV, s->totloop);
-		CustomData_add_layer(&dm->loopData, CD_MASK_MLOOPUV, CD_DUPLICATE, layerdata, s->totloop);
-
-		layerdata = CustomData_duplicate_referenced_layer(&s->polyData, CD_MASK_MTEXPOLY, s->totpoly);
-		CustomData_add_layer(&dm->polyData, CD_MASK_MTEXPOLY, CD_DUPLICATE, layerdata, s->totpoly);*/
 
 		CustomData_copy(&s->loopData, &dm->loopData, CD_MASK_MLOOPUV, CD_CALLOC, s->totloop);
 		CustomData_copy_data(&s->loopData, &dm->loopData, 0, 0, s->totloop);
 
 		CustomData_copy(&s->polyData, &dm->polyData, CD_MASK_MTEXPOLY, CD_CALLOC, s->totpoly);
 		CustomData_copy_data(&s->polyData, &dm->polyData, 0, 0, s->totpoly);
-
-		//update custom data after calc edges ?
-		/*for (i = 0, ml = mloops; i < dm->numLoopData; ++i, ++ml) {
-			CustomData_set(&dm->loopData, i, CD_MLOOP, ml);
-		}*/
 	}
 
 	return dm;

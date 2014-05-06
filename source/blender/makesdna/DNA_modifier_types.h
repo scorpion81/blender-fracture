@@ -1337,10 +1337,8 @@ typedef struct MeshIsland {
 	struct DerivedMesh *physics_mesh;
 	struct Shard *temp; //storage for physics mesh, better omit derivedmesh here...
 	struct RigidBodyOb *rigidbody;
-//	struct RigidBodyModifierData *parent_mod; //needed to override thresholds/contact distance when using constraint groups
 	int *combined_index_map;
 	int *neighbor_ids;
-//	int *global_face_map;
 	int *vertex_indices;
 	struct BoundBox *bb;
 	struct RigidBodyShardCon **participating_constraints;
@@ -1354,30 +1352,10 @@ typedef struct MeshIsland {
 	char pad[4];
 } MeshIsland;
 
-typedef struct NeighborhoodCell {
-	struct NeighborhoodCell *next, *prev; 
-	struct MeshIsland **islands;
-	int island_count;
-	float co[3];
-} NeighborhoodCell;
-
-
-/*enum {
-	MOD_RIGIDBODY_SELECTED_TO_ACTIVE = 0,
-	MOD_RIGIDBODY_CHAIN_DISTANCE = 1,
-};
-
-enum {
-	MOD_RIGIDBODY_SELECTED = 0,
-	MOD_RIGIDBODY_ACTIVE = 1,
-	MOD_RIGIDBODY_CENTER = 2,
-};*/
 
 enum {
 	MOD_RIGIDBODY_CENTROIDS = 0,
 	MOD_RIGIDBODY_VERTICES = 1,
-	MOD_RIGIDBODY_CELLS = 2,
-	MOD_RIGIDBODY_CELL_CENTROIDS = 3,
 };
 
 typedef struct LaplacianDeformModifierData {

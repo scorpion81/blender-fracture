@@ -4594,7 +4594,7 @@ static Shard* read_shard(FileData *fd, void* address )
 	direct_link_customdata(fd, &s->polyData, s->totpoly);
 
 	//sigh, need to ensure image refs are correct...
-	direct_link_customdata_mtpoly_shard(fd, &s->polyData, s->totpoly);
+	//direct_link_customdata_mtpoly_shard(fd, &s->polyData, s->totpoly);
 
 	s->neighbor_ids = newdataadr(fd, s->neighbor_ids);
 	s->cluster_colors = newdataadr(fd, s->cluster_colors);
@@ -4615,13 +4615,14 @@ static MeshIsland* read_meshIsland(FileData* fd, void* address)
 	mi->vertices_cached = NULL; //newdataadr(fd, mi->vertices_cached);
 	mi->vertco = newdataadr(fd, mi->vertco);
 	mi->temp = newdataadr(fd, mi->temp);
-	mi->temp = read_shard(fd, mi->temp);
+	temp = read_shard(fd, mi->temp);
 	mi->physics_mesh = BKE_shard_create_dm(mi->temp, false);
-	BKE_shard_free(mi->temp, true);
+	BKE_shard_free(temp, false);
+	//MEM_freeN(mi->temp);
 
 	mi->rigidbody = newdataadr(fd, mi->rigidbody);
-	mi->rigidbody->physics_object = NULL;
-	mi->rigidbody->physics_shape = NULL;
+	mi->rigidbody->physics_object = newdataadr(fd, mi->rigidbody->physics_object);
+	mi->rigidbody->physics_shape = newdataadr(fd, mi->rigidbody->physics_shape);
 	mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 	mi->rigidbody->flag |= RBO_FLAG_NEEDS_RESHAPE;
 
