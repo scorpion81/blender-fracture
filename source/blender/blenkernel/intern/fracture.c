@@ -23,6 +23,7 @@
 #include "BKE_mesh.h"
 #include "BKE_object.h"
 #include "BKE_customdata.h"
+#include "BKE_global.h"
 
 #include "bmesh.h"
 
@@ -133,8 +134,11 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 	float centroid[3];
 	BMesh* bm_parent = NULL;
 	DerivedMesh *dm_parent = NULL;
-	Shard **tempshards = MEM_mallocN(sizeof(Shard*) * expected_shards, "tempshards");
-	Shard **tempresults = MEM_mallocN(sizeof(Shard*) * expected_shards, "tempresults");
+	Shard **tempshards;
+	Shard **tempresults;
+
+	tempshards = MEM_mallocN(sizeof(Shard*) * expected_shards, "tempshards");
+	tempresults = MEM_mallocN(sizeof(Shard*) * expected_shards, "tempresults");
 
 	p->flag = 0;
 	p->flag |= SHARD_FRACTURED;
@@ -152,19 +156,26 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 	}
 	for (i = 0; i < expected_shards; i++)
 	{
+		if (fm->cancel == 1)
+			break;
+
 		printf("Parsing shard: %d\n", i);
 		s = parse_shard(fp);
 		tempshards[i] = s;
 		tempresults[i] = NULL;
+		fm->shard_count++; //IMPORTANT to reset this... afterwards...
 	}
 
 	if (algorithm != MOD_FRACTURE_BISECT_FAST)
 	{
-		#pragma omp critical
-		#pragma omp parallel for if (algorithm != MOD_FRACTURE_BISECT_FAST)
+		//#pragma omp critical
+		//#pragma omp parallel for if (algorithm != MOD_FRACTURE_BISECT_FAST)
 		for (i = 0; i < expected_shards; i++)
 		{
 			Shard* t;
+			if (fm->cancel == 1)
+				break;
+
 			printf("Processing shard: %d\n", i);
 			t = tempshards[i];
 
@@ -196,6 +207,8 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 				//#pragma omp critical
 				tempresults[i] = s;
 			}
+
+			fm->shard_count++;
 		}
 	}
 	else
@@ -204,9 +217,12 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 		{
 			Shard* s = NULL;
 			Shard* s2 = NULL;
-
 			Shard* t;
 			int index = 0;
+
+			if (fm->cancel == 1)
+				break;
+
 			printf("Processing shard: %d\n", i);
 			t = tempshards[i];
 
@@ -228,6 +244,8 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 			if (s != NULL && s2 != NULL)
 			{
 				int j = 0;
+
+				fm->shard_count++;
 
 				s->parent_id = parent_id;
 				s->flag = SHARD_INTACT;
@@ -288,6 +306,9 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 	{
 		BKE_shard_free(p, true);
 	}
+
+	fm->shard_count = 0; //maybe not matching with expected shards, so reset... did increment this for
+						//progressbar only...
 
 	//if (tempshards && tempresults)
 	{
@@ -702,6 +723,7 @@ FracMesh *BKE_create_fracture_container(DerivedMesh* dm)
 	
 	fmesh->shard_map = MEM_mallocN(sizeof(Shard*), __func__); //allocate in chunks ?, better use proper blender functions for this
 	fmesh->shard_count = 0;
+	fmesh->cancel = 0;
 	
 	return fmesh;
 }
@@ -862,7 +884,7 @@ void BKE_fracmesh_free(FracMesh* fm, bool doCustomData)
 		fm->shard_count--;
 	}
 
-	if ((fm->shard_map != NULL) && (fm->shard_count == 0))
+	if ((fm->shard_map != NULL) /*&& (fm->shard_count == 0)*/)
 	{
 		MEM_freeN(fm->shard_map);
 		fm->shard_map = NULL;

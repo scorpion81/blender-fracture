@@ -1444,11 +1444,11 @@ typedef struct FractureModifierData {
 	int breaking_angle, breaking_percentage, use_proportional_distance, use_proportional_limit;
 	int use_cellbased_sim, use_experimental;
 	int solver_iterations_override, use_proportional_solver_iterations, refresh_images;
-	int shards_to_islands;
+	int shards_to_islands, execute_threaded;
 	float breaking_distance, max_vol, cell_size;
 	float origmat[4][4], breaking_threshold, cluster_breaking_threshold;
 	float contact_dist;
-	//char pad[4];
+	char pad[4];
 } FractureModifierData;
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */

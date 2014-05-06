@@ -43,6 +43,7 @@
 #include "DNA_object_force.h"
 #include "DNA_scene_types.h"
 #include "DNA_rigidbody_types.h"
+#include "DNA_fracture_types.h"
 
 #include "BLI_bitmap.h"
 #include "BLI_math.h"
@@ -2237,6 +2238,82 @@ void OBJECT_OT_laplaciandeform_bind(wmOperatorType *ot)
 
 /****************** rigidbody modifier refresh operator *********************/
 
+typedef struct FractureJob {
+	/* from wmJob */
+	void *owner;
+	short *stop, *do_update;
+	float *progress;
+	int current_frame;
+	struct FractureModifierData *fmd;
+	struct Object* ob;
+	struct Scene* scene;
+} FractureJob;
+
+
+static void fracture_free(void *customdata)
+{
+	FractureJob *fj = customdata;
+	MEM_freeN(fj);
+}
+
+static int fracture_breakjob(void *customdata)
+{
+	FractureJob *fj = (FractureJob *)customdata;
+	//return *(fj->stop);
+	return G.is_break;
+}
+
+static float fracture_update(void *customdata)
+{
+	FractureJob *fj = customdata;
+	float progress;
+	int factor;
+
+	if (fracture_breakjob(fj))
+		fj->fmd->frac_mesh->cancel = 1;
+
+	//*(fj->do_update) = true; //useless here...
+	factor = (fj->fmd->frac_algorithm == MOD_FRACTURE_BISECT_FAST) ? 4 : 2;
+	progress = (float)(fj->fmd->frac_mesh->shard_count) / (float)(fj->fmd->shard_count * factor);
+	return progress;
+}
+
+static void fracture_startjob(void *customdata, short *stop, short *do_update, float *progress)
+{
+	FractureJob *fj = customdata;
+	FractureModifierData *fmd = fj->fmd;
+	Object *ob = fj->ob;
+	Scene* scene = fj->scene;
+
+	fj->stop = stop;
+	fj->do_update = do_update;
+	fj->progress = progress;
+	*(fj->stop) = 0; //false;
+
+	G.is_break = false;   /* XXX shared with render - replace with job 'stop' switch */
+
+	//arm the modifier...
+	fmd->refresh = true;
+	*(fj->do_update) = true;
+	*do_update = true;
+	*stop = 0;
+
+	//...and trigger modifier execution HERE
+	makeDerivedMesh(scene, ob, NULL, scene->customdata_mask | CD_MASK_BAREMESH, 0);
+}
+
+static void fracture_endjob(void *customdata)
+{
+	FractureJob *fj = customdata;
+	FractureModifierData *fmd = fj->fmd;
+
+	if (fmd->frac_mesh)
+	{
+		//fmd->frac_mesh->cancel = 1;
+	}
+	fmd->refresh = false;
+}
+
 static bool fracture_poll(bContext *C)
 {
 	//return false;
@@ -2249,6 +2326,9 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 	Scene *scene = CTX_data_scene(C);
 	float cfra = BKE_scene_frame_get(scene);
 	FractureModifierData *rmd;
+	FractureJob *fj;
+	wmJob* wm_job;
+
 	/*CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
 		
 		rmd = (FractureModifierData *)edit_modifier_property_get(op, ob, eModifierType_Fracture);
@@ -2264,22 +2344,44 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 	
 	//rmd = (FractureModifierData * )edit_modifier_property_get(op, obact, eModifierType_Fracture);
 	rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
-	if (!rmd || (scene->rigidbody_world && cfra != scene->rigidbody_world->pointcache->startframe))
+	if (!rmd || rmd->refresh || (scene->rigidbody_world && cfra != scene->rigidbody_world->pointcache->startframe))
 		return OPERATOR_CANCELLED;
 	
-	rmd->refresh = true;
-	DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
-	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
+	if (!rmd->execute_threaded)
+	{
+		rmd->refresh = true;
+		DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
+		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
+	}
+	else
+	{
+		/* job stuff */
+		scene->r.cfra = cfra;
+
+		/* setup job */
+		wm_job = WM_jobs_get(CTX_wm_manager(C), CTX_wm_window(C), scene, "Fracture",
+							 WM_JOB_PROGRESS, WM_JOB_TYPE_OBJECT_FRACTURE);
+		fj = MEM_callocN(sizeof(FractureJob), "object fracture job");
+		fj->fmd = rmd;
+		fj->ob = obact;
+		fj->scene = scene;
+
+		WM_jobs_customdata_set(wm_job, fj, fracture_free);
+		WM_jobs_timer(wm_job, 0.1, NC_WM | ND_JOB, NC_OBJECT | ND_MODIFIER);
+		WM_jobs_callbacks(wm_job, fracture_startjob, NULL, fracture_update, fracture_endjob);
+
+		WM_jobs_start(CTX_wm_manager(C), wm_job);
+	}
+
 	return OPERATOR_FINISHED;
 }
 
 static int fracture_refresh_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
 {
-	
-	if (edit_modifier_invoke_properties(C, op) || true)
-		return fracture_refresh_exec(C, op);
-	else
+	if (WM_jobs_test(CTX_wm_manager(C), CTX_data_scene(C), WM_JOB_TYPE_OBJECT_FRACTURE))
 		return OPERATOR_CANCELLED;
+
+	return fracture_refresh_exec(C, op);
 }
 
 

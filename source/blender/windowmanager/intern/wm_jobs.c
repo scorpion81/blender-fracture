@@ -97,7 +97,7 @@ struct wmJob {
 	void (*startjob)(void *, short *stop, short *do_update, float *progress);
 	/* update gets called if thread defines so, and max once per timerstep */
 	/* it runs outside thread, blocking blender, no drawing! */
-	void (*update)(void *);
+	float (*update)(void *);
 	/* free entire customdata, doesn't run in thread */
 	void (*free)(void *);
 	/* gets called when job is stopped, not in thread */
@@ -567,13 +567,27 @@ void wm_jobs_timer(const bContext *C, wmWindowManager *wm, wmTimer *wt)
 				/* always call note and update when ready */
 				if (wm_job->do_update || wm_job->ready) {
 					if (wm_job->update)
-						wm_job->update(wm_job->run_customdata);
+					{
+						if (wm_job->job_type == WM_JOB_TYPE_OBJECT_FRACTURE)
+						{
+							//sigh, need to get progress from somewhere...
+							wm_job->progress = wm_job->update(wm_job->run_customdata);
+						}
+						else
+						{
+							wm_job->update(wm_job->run_customdata);
+						}
+					}
 					if (wm_job->note)
 						WM_event_add_notifier(C, wm_job->note, NULL);
 
 					if (wm_job->flag & WM_JOB_PROGRESS)
 						WM_event_add_notifier(C, NC_WM | ND_JOB, NULL);
-					wm_job->do_update = false;
+
+					if (wm_job->job_type != WM_JOB_TYPE_OBJECT_FRACTURE)
+					{	//why on earth is this set to false here ? need the timer update... or not ?
+						wm_job->do_update = false;
+					}
 				}
 				
 				if (wm_job->ready) {
@@ -618,7 +632,10 @@ void wm_jobs_timer(const bContext *C, wmWindowManager *wm, wmTimer *wt)
 				}
 				else if (wm_job->flag & WM_JOB_PROGRESS) {
 					/* accumulate global progress for running jobs */
-					jobs_progress++;
+					//if (wm_job->job_type != WM_JOB_TYPE_OBJECT_FRACTURE)
+					{
+						jobs_progress++;
+					}
 					total_progress += wm_job->progress;
 				}
 			}

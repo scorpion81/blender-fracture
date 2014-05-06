@@ -122,6 +122,7 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             box.prop(md, "solver_iterations_override")
             box.prop(md, "use_proportional_solver_iterations")
             box.prop(md, "cluster_breaking_threshold")
+            box.prop(md, "execute_threaded")
 
 if __name__ == "__main__":  # only for live edit.
     bpy.utils.register_module(__name__)

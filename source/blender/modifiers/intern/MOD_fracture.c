@@ -156,6 +156,7 @@ static void initData(ModifierData *md)
 		fmd->use_proportional_solver_iterations = false;
 		fmd->solver_iterations_override = 0;
 		fmd->shards_to_islands = false;
+		fmd->execute_threaded = false;
 }
 
 static void freeData(ModifierData *md)
@@ -181,7 +182,7 @@ static void freeData(ModifierData *md)
 			rmd->visible_mesh_cached = NULL;
 		}
 
-		if (rmd->frac_mesh)
+		if (rmd->frac_mesh && rmd->frac_mesh->cancel != 1)
 		{
 			BKE_fracmesh_free(rmd->frac_mesh, rmd->frac_algorithm != MOD_FRACTURE_VORONOI);
 			MEM_freeN(rmd->frac_mesh);
@@ -537,14 +538,17 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			fmd->dm = NULL;
 		}
 
-		if (fmd->frac_mesh != NULL)
+		if (fmd->frac_mesh != NULL && fmd->frac_mesh->cancel != 1)
 		{
 			BKE_fracmesh_free(fmd->frac_mesh, fmd->frac_algorithm != MOD_FRACTURE_VORONOI);
 			MEM_freeN(fmd->frac_mesh);
 			fmd->frac_mesh = NULL;
 		}
 
-		fmd->frac_mesh = BKE_create_fracture_container(derivedData);
+		if (fmd->frac_mesh == NULL)
+		{
+			fmd->frac_mesh = BKE_create_fracture_container(derivedData);
+		}
 	}
 
 	//if (!fmd->dm)
@@ -552,6 +556,11 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		if (fmd->refresh)
 		{
 			do_fracture(fmd, -1, ob, derivedData);
+
+			if (!fmd->refresh) //might have been changed from outside, job cancel
+			{
+				return derivedData;
+			}
 		}
 		if (fmd->dm && fmd->frac_mesh)
 		{
@@ -1006,7 +1015,19 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object* obj, D
 
 	//non-uniform pointcloud ... max cluster min clustersize, cluster count / "variation", min max distance
 		bool temp = fracmd->shards_to_islands;
+
 		BKE_fracture_shard_by_points(fracmd->frac_mesh, id, &points, fracmd->frac_algorithm, obj, dm);
+
+		//job has been cancelled, throw away all data
+		if (fracmd->frac_mesh->cancel == 1)
+		{
+			fracmd->frac_mesh->cancel = 0;
+			fracmd->refresh = false;
+			fracmd->refresh_constraints = false;
+			freeData(fracmd);
+			return;
+		}
+
 		//MEM_freeN(points.points);
 		if (fracmd->frac_mesh->shard_count > 0)
 		{
@@ -1297,6 +1318,9 @@ static float mesh_separate_tagged(FractureModifierData* rmd, Object *ob, BMVert*
 	DerivedMesh *dm = NULL, *dmtemp = NULL;
 	Shard *s;
 	int i = 0;
+
+	if (rmd->frac_mesh->cancel == 1)
+		return 0.0f;
 
 	//*mi_array = MEM_reallocN(*mi_array, sizeof(MeshIsland*) * (*mi_count+1));
 	bm_new = BM_mesh_create(&bm_mesh_allocsize_default);
@@ -1799,9 +1823,15 @@ void halve(FractureModifierData* rmd, Object* ob, int minsize, BMesh** bm_work, 
 	BMVert **orig_old = *orig_work, **orig_new, **orig_mod;
 	BMVert *v;
 	BMesh* bm_old = *bm_work;
-	BMesh* bm_new = BM_mesh_create(&bm_mesh_allocsize_default);
+	BMesh* bm_new = NULL;
 	separated = false;
 
+	if (rmd->frac_mesh->cancel == 1)
+	{
+		return;
+	}
+
+	bm_new = BM_mesh_create(&bm_mesh_allocsize_default);
 	{
 		/*if (rmd->shards_to_islands)
 		{

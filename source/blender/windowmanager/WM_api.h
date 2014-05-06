@@ -383,6 +383,7 @@ enum {
 	WM_JOB_TYPE_CLIP_SOLVE_CAMERA,
 	WM_JOB_TYPE_CLIP_PREFETCH,
 	WM_JOB_TYPE_SEQ_BUILD_PROXY,
+	WM_JOB_TYPE_OBJECT_FRACTURE,
 	/* add as needed, screencast, seq proxy build
 	 * if having hard coded values is a problem */
 };
