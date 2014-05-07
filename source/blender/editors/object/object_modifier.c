@@ -2352,7 +2352,7 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 	
 	//rmd = (FractureModifierData * )edit_modifier_property_get(op, obact, eModifierType_Fracture);
 	rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
-	if (!rmd || rmd->refresh || (scene->rigidbody_world && cfra != scene->rigidbody_world->pointcache->startframe))
+	if (!rmd || (rmd && rmd->refresh) || (scene->rigidbody_world && cfra != scene->rigidbody_world->pointcache->startframe))
 		return OPERATOR_CANCELLED;
 	
 	if (!rmd->execute_threaded)
@@ -2434,7 +2434,7 @@ static int rigidbody_refresh_constraints_exec(bContext *C, wmOperator *op)
 	//rmd = (FractureModifierData *)edit_modifier_property_get(op, obact, eModifierType_Fracture);
 	rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
 
-	if (!rmd || (scene->rigidbody_world && cfra != scene->rigidbody_world->pointcache->startframe))
+	if (!rmd || (rmd && rmd->refresh) || (scene->rigidbody_world && cfra != scene->rigidbody_world->pointcache->startframe))
 		return OPERATOR_CANCELLED;
 
 	rmd->refresh_constraints = true;
