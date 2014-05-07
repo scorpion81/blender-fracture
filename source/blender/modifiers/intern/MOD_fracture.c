@@ -166,7 +166,7 @@ static void freeData(ModifierData *md)
 	RigidBodyShardCon *rbsc;
 	int i;
 	
-	if (!rmd->refresh && !rmd->refresh_constraints)
+	if ((!rmd->refresh && !rmd->refresh_constraints) || (rmd->frac_mesh && rmd->frac_mesh->cancel == 1))
 	{
 		//called on deleting modifier, object or quitting blender...
 		if (rmd->dm) {
@@ -1032,11 +1032,12 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object* obj, D
 		//job has been cancelled, throw away all data
 		if (fracmd->frac_mesh->cancel == 1)
 		{
-			fracmd->frac_mesh->cancel = 0;
 			fracmd->frac_mesh->running = 0;
-			fracmd->refresh = false;
-			fracmd->refresh_constraints = false;
+			fracmd->refresh = true;
 			freeData(fracmd);
+			fracmd->refresh = false;
+			//fracmd->frac_mesh->cancel = 0;
+			MEM_freeN(points.points);
 			return;
 		}
 

@@ -880,6 +880,16 @@ static int modifier_remove_exec(bContext *C, wmOperator *op)
 	Object *ob = ED_object_active_context(C);
 	ModifierData *md = edit_modifier_property_get(op, ob, 0);
 	int mode_orig = ob->mode;
+
+	//if we have a running fracture job, dont remove the modifier
+	if (md && md->type == eModifierType_Fracture)
+	{
+		FractureModifierData* fmd = (FractureModifierData*)md;
+		if (fmd->execute_threaded && fmd->frac_mesh && fmd->frac_mesh->running == 1)
+		{
+			return OPERATOR_CANCELLED;
+		}
+	}
 	
 	if (!md || !ED_object_modifier_remove(op->reports, bmain, ob, md))
 		return OPERATOR_CANCELLED;
