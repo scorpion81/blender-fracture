@@ -2700,6 +2700,7 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 	bool parent = true; // RNA_boolean_get(op->ptr, "parent");
 	Object* par = NULL;
 	
+#if 0
 	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
 		
 		Base *base = BKE_scene_base_find(scene, ob);
@@ -2731,10 +2732,17 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 	par = NULL;
 	
 	if (!selected)
+#endif
 	{
 		//rmd = (FractureModifierData *)edit_modifier_property_get(op, obact, eModifierType_Fracture);
 		rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
-		if (rmd && cfra == scene->rigidbody_world->pointcache->startframe) {
+		if (rmd && rmd->refresh)
+		{
+			return OPERATOR_CANCELLED;
+		}
+
+
+		if (rmd && scene->rigidbody_world && cfra == scene->rigidbody_world->pointcache->startframe) {
 			float loc[3];
 			Base *base = BKE_scene_base_find(scene, obact);
 			

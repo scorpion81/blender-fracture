@@ -291,6 +291,17 @@ static char *rna_Modifier_path(PointerRNA *ptr)
 
 static void rna_Modifier_update(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *ptr)
 {
+	ModifierData* md = ptr->data;
+
+	if (md && md->type == eModifierType_Fracture)
+	{
+		FractureModifierData *fmd = (FractureModifierData*)md;
+		if (fmd->refresh)
+		{
+			return;
+		}
+	}
+
 	DAG_id_tag_update(ptr->id.data, OB_RECALC_DATA);
 	WM_main_add_notifier(NC_OBJECT | ND_MODIFIER, ptr->id.data);
 }

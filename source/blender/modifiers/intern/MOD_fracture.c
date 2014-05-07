@@ -1035,6 +1035,7 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object* obj, D
 			fracmd->frac_mesh->running = 0;
 			fracmd->refresh = true;
 			freeData(fracmd);
+			fracmd->frac_mesh = NULL;
 			fracmd->refresh = false;
 			//fracmd->frac_mesh->cancel = 0;
 			MEM_freeN(points.points);
@@ -3248,7 +3249,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 	double start;
 	//bool shared = false;
 
-	if (fmd->refresh || fmd->refresh_constraints)
+	if ((fmd->refresh) || (fmd->refresh_constraints && fmd->frac_mesh && fmd->frac_mesh->running == 0))
 	{
 		//shared = fmd->explo_shared;
 		//fmd->explo_shared = false;
