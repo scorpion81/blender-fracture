@@ -1558,30 +1558,33 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 				RigidBodyShardCon* con;
 				Shard *s;
 
-				writestruct(wd, DATA, "FracMesh", 1, fm);
-				writedata(wd, DATA, sizeof(Shard*) * fm->shard_count, fm->shard_map);
-				for (i = 0; i < fm->shard_count; i++)
+				if (fm->running == 0)
 				{
-					Shard *s = fm->shard_map[i];
-					write_shard(wd, s);
-				}
+					writestruct(wd, DATA, "FracMesh", 1, fm);
+					writedata(wd, DATA, sizeof(Shard*) * fm->shard_count, fm->shard_map);
+					for (i = 0; i < fm->shard_count; i++)
+					{
+						Shard *s = fm->shard_map[i];
+						write_shard(wd, s);
+					}
 
-				for (s = fmd->islandShards.first; s; s = s->next)
-				{
-					write_shard(wd, s);
-				}
+					for (s = fmd->islandShards.first; s; s = s->next)
+					{
+						write_shard(wd, s);
+					}
 
-				for (mi = fmd->meshIslands.first; mi; mi = mi->next)
-				{
-					write_meshIsland(wd, mi);
-				}
+					for (mi = fmd->meshIslands.first; mi; mi = mi->next)
+					{
+						write_meshIsland(wd, mi);
+					}
 
-				/*for (con = fmd->meshConstraints.first; con; con = con->next)
-				{
-					writestruct(wd, DATA, "RigidBodyShardCon", 1, con);
-					//writestruct(wd, DATA, "MeshIsland", 1, con->mi1);
-					//writestruct(wd, DATA, "MeshIsland", 1, con->mi2);
-				}*/
+					/*for (con = fmd->meshConstraints.first; con; con = con->next)
+					{
+						writestruct(wd, DATA, "RigidBodyShardCon", 1, con);
+						//writestruct(wd, DATA, "MeshIsland", 1, con->mi1);
+						//writestruct(wd, DATA, "MeshIsland", 1, con->mi2);
+					}*/
+				}
 			}
 		}
 	}

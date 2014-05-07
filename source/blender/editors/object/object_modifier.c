@@ -2269,6 +2269,9 @@ static float fracture_update(void *customdata)
 	float progress;
 	int factor;
 
+	if (fj->fmd->frac_mesh == NULL)
+		return 0.0f;
+
 	if (fracture_breakjob(fj))
 		fj->fmd->frac_mesh->cancel = 1;
 
@@ -2306,11 +2309,6 @@ static void fracture_endjob(void *customdata)
 {
 	FractureJob *fj = customdata;
 	FractureModifierData *fmd = fj->fmd;
-
-	if (fmd->frac_mesh)
-	{
-		//fmd->frac_mesh->cancel = 1;
-	}
 	fmd->refresh = false;
 }
 

@@ -724,6 +724,7 @@ FracMesh *BKE_create_fracture_container(DerivedMesh* dm)
 	fmesh->shard_map = MEM_mallocN(sizeof(Shard*), __func__); //allocate in chunks ?, better use proper blender functions for this
 	fmesh->shard_count = 0;
 	fmesh->cancel = 0;
+	fmesh->running = 0;
 	
 	return fmesh;
 }

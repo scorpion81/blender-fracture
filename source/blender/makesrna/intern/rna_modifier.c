@@ -4110,6 +4110,12 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_boolean_sdna(prop, NULL, "execute_threaded", false);
 	RNA_def_property_ui_text(prop, "Execute as threaded job (WIP)", "Execute the fracture as threaded job, Warning: WIP, still may crash");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	//expose this to RNA to be able to let py checkbox disappear while job is running, otherwise crash
+	prop = RNA_def_property(srna, "refresh", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "refresh", false);
+	RNA_def_property_ui_text(prop, "Refresh", "Refresh");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 void RNA_def_modifier(BlenderRNA *brna)

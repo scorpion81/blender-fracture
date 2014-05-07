@@ -182,10 +182,11 @@ static void freeData(ModifierData *md)
 			rmd->visible_mesh_cached = NULL;
 		}
 
-		if (rmd->frac_mesh && rmd->frac_mesh->cancel != 1)
+		if (rmd->frac_mesh)
 		{
 			BKE_fracmesh_free(rmd->frac_mesh, rmd->frac_algorithm != MOD_FRACTURE_VORONOI);
 			MEM_freeN(rmd->frac_mesh);
+			rmd->frac_mesh = NULL;
 		}
 
 		if (rmd->noisemap && rmd->noise_count > 0)
@@ -529,6 +530,12 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	FractureModifierData *fmd = (FractureModifierData*) md;
 	DerivedMesh *final_dm = derivedData;
 
+	if (fmd->frac_mesh != NULL && fmd->frac_mesh->running == 1 && fmd->execute_threaded)
+	{
+		//skip modifier execution when job is running
+		return final_dm;
+	}
+
 	if (fmd->refresh)
 	{
 		if (fmd->dm != NULL)
@@ -538,7 +545,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			fmd->dm = NULL;
 		}
 
-		if (fmd->frac_mesh != NULL && fmd->frac_mesh->cancel != 1)
+		if (fmd->frac_mesh != NULL)
 		{
 			BKE_fracmesh_free(fmd->frac_mesh, fmd->frac_algorithm != MOD_FRACTURE_VORONOI);
 			MEM_freeN(fmd->frac_mesh);
@@ -548,6 +555,10 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		if (fmd->frac_mesh == NULL)
 		{
 			fmd->frac_mesh = BKE_create_fracture_container(derivedData);
+			if (fmd->execute_threaded)
+			{
+				fmd->frac_mesh->running = 1;
+			}
 		}
 	}
 
@@ -1022,6 +1033,7 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object* obj, D
 		if (fracmd->frac_mesh->cancel == 1)
 		{
 			fracmd->frac_mesh->cancel = 0;
+			fracmd->frac_mesh->running = 0;
 			fracmd->refresh = false;
 			fracmd->refresh_constraints = false;
 			freeData(fracmd);
@@ -3505,6 +3517,12 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 
 		fmd->refresh = false;
 		fmd->refresh_constraints = false;
+
+		if (fmd->execute_threaded)
+		{
+			//job done
+			fmd->frac_mesh->running = 0;
+		}
 	}
 
 	//emd = findPrecedingExploModifier(ob, rmd);
