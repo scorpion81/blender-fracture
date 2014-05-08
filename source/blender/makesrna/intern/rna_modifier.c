@@ -4104,7 +4104,7 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "percentage", PROP_INT, PROP_NONE);
 	RNA_def_property_range(prop, 0, 100);
-	RNA_def_property_ui_text(prop, "Percentage", "Percentage of points to actually use for fracture");
+	RNA_def_property_ui_text(prop, "Percentage", "Percentage of the sum of points of all selected pointsources to actually use for fracture");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "extra_group", PROP_POINTER, PROP_NONE);

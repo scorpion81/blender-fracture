@@ -62,17 +62,12 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         layout = self.layout
 
         md = context.fracture
-        col = layout.column()
-        col.prop(md, "frac_algorithm")
+        layout.prop(md, "frac_algorithm")
+        col = layout.column(align=True)
         col.prop(md, "shard_count")
-        col.label("Point Source:")
-        col.prop(md, "point_source")
-        col.prop(md, "extra_group")
-        col.prop(md, "noise")
-        col.prop(md, "percentage")
         col.prop(md, "point_seed")
         col.prop(md, "cluster_count")
-        col.prop(md, "shards_to_islands")
+        layout.prop(md, "shards_to_islands")
         layout.operator("object.fracture_refresh", text="Refresh All Data")
 
 class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
@@ -93,17 +88,24 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
         layout.prop(md, "use_constraints")
         layout.prop(md, "constraint_limit", text="Constraint limit, per MeshIsland")
         layout.label("Constraint Breaking Settings")
-        layout.prop(md, "breaking_threshold", text="Threshold")
-        layout.prop(md, "cluster_breaking_threshold")
+        col = layout.column(align=True)
+        col.prop(md, "breaking_threshold", text="Threshold")
+        col.prop(md, "cluster_breaking_threshold")
 
         #experimental stuff
         box = layout.box()
         box.prop(md, "use_experimental", text="Experimental, use with caution !", icon=self.icon(md.use_experimental), emboss = False)
         if md.use_experimental:
+            box.label("Fracture Point Source:")
+            box.prop(md, "point_source")
+            box.prop(md, "extra_group")
+            #box.prop(md, "noise")
+            box.prop(md, "percentage")
             box.label("Constraint Breaking Settings")
-            box.prop(md, "breaking_percentage", text="Percentage")
-            box.prop(md, "breaking_angle", text="Angle")
-            box.prop(md, "breaking_distance", text="Distance")
+            col = box.column(align=True)
+            col.prop(md, "breaking_percentage", text="Percentage")
+            col.prop(md, "breaking_angle", text="Angle")
+            col.prop(md, "breaking_distance", text="Distance")
             box.label("Constraint Building Settings")
             box.prop(md, "contact_dist_meaning")
             box.prop(md, "contact_dist")
