@@ -2888,6 +2888,18 @@ static void create_constraints(FractureModifierData *rmd, Object* ob)
 	MeshIsland** mesh_islands = MEM_mallocN(sizeof(MeshIsland*), "mesh_islands");
 	int count, i = 0;
 
+	if (rmd->visible_mesh)
+	{
+		float min[3], max[3], dim[3];
+		BoundBox *bb = BKE_boundbox_alloc_unit();
+		BM_mesh_minmax(rmd->visible_mesh, min, max, 0);
+		BKE_boundbox_init_from_minmax(bb, min, max);
+		bbox_dim(bb, dim);
+		rmd->contact_dist = MAX3(dim[0], dim[1], dim[2]);
+		MEM_freeN(bb);
+	}
+
+
 	count = create_combined_neighborhood(rmd, &mesh_islands, &combined_mesh, &combined_tree);
 
 	if ((combined_mesh != NULL) && (combined_tree != NULL))

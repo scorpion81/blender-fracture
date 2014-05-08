@@ -754,17 +754,18 @@ static void rna_RigidBodyModifier_contact_dist_set(PointerRNA *ptr, float value)
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	Object* ob = ptr->id.data;
 	rmd->contact_dist = value;
-	updateConstraints(rmd, ob);
+	//updateConstraints(rmd, ob);
 }
 
 static void rna_RigidBodyModifier_use_constraints_set(PointerRNA* ptr, int value)
 {
 	FractureModifierData *rmd = (FractureModifierData *)ptr->data;
 	rmd->use_constraints = value;
-	if (rmd->use_cellbased_sim)
+	/*if (rmd->use_cellbased_sim)
 	{
 		rmd->refresh_constraints = true;
-	}
+	}*/
+	rmd->refresh_constraints = true;
 }
 
 static void rna_RigidBodyModifier_mass_dependent_thresholds_set(PointerRNA* ptr, int value)
@@ -779,10 +780,11 @@ static void rna_RigidBodyModifier_constraint_limit_set(PointerRNA *ptr, int valu
 {
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	rmd->constraint_limit = value;
-	if (rmd->use_cellbased_sim)
+	/*if (rmd->use_cellbased_sim)
 	{
 		rmd->refresh_constraints = true;
-	}
+	}*/
+	rmd->refresh_constraints = true;
 }
 
 static void rna_RigidBodyModifier_dist_dependent_thresholds_set(PointerRNA* ptr, int value)
@@ -3982,7 +3984,7 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_int_sdna(prop, NULL, "constraint_limit");
 	RNA_def_property_range(prop, 0, INT_MAX);
 	RNA_def_property_int_funcs(prop, NULL, "rna_RigidBodyModifier_constraint_limit_set", NULL);
-	RNA_def_property_ui_text(prop, "Constraint Search Limit", "Maximum number of neighbors being searched per mesh island during constraint creation");
+	RNA_def_property_ui_text(prop, "Constraint Search Limit", "Maximum number of neighbors being searched per mesh island during constraint creation, 0 for unlimited");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "dist_dependent_thresholds", PROP_BOOLEAN, PROP_NONE);

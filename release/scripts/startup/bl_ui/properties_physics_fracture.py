@@ -65,10 +65,10 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         layout.prop(md, "frac_algorithm")
         col = layout.column(align=True)
         col.prop(md, "shard_count")
-        col.prop(md, "point_seed")
         col.prop(md, "cluster_count")
+        col.prop(md, "point_seed")
         layout.prop(md, "shards_to_islands")
-        layout.operator("object.fracture_refresh", text="Refresh All Data")
+        layout.operator("object.fracture_refresh", text="Execute Fracture")
 
 class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
     bl_label = "Fracture Simulation"
@@ -83,7 +83,7 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
         layout = self.layout
         md = context.fracture
 
-        layout.operator("object.rigidbody_constraints_refresh", text="Refresh Constraints Only")
+        #layout.operator("object.rigidbody_constraints_refresh", text="Refresh Constraints Only")
         layout.label("Constraint Building Settings")
         layout.prop(md, "use_constraints")
         layout.prop(md, "constraint_limit", text="Constraint limit, per MeshIsland")
@@ -106,9 +106,9 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             col.prop(md, "breaking_percentage", text="Percentage")
             col.prop(md, "breaking_angle", text="Angle")
             col.prop(md, "breaking_distance", text="Distance")
-            box.label("Constraint Building Settings")
-            box.prop(md, "contact_dist_meaning")
-            box.prop(md, "contact_dist")
+           # box.label("Constraint Building Settings")
+           # box.prop(md, "contact_dist_meaning")
+           # box.prop(md, "contact_dist")
             box.prop(md, "solver_iterations_override")
             if not(md.refresh):
                 box.prop(md, "execute_threaded")
