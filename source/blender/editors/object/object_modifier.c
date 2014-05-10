@@ -2390,9 +2390,9 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 		}
 
 		halvingprogress = (int)(verts / 1000) + (fj->fmd->shard_count * factor); //-> 1000 size of each partitioned separate loose
-		totalprogress = (rmd->frac_mesh && rmd->frac_mesh->shard_count > 0 && rmd->dm && rmd->dm->numVertData > 0 && !rmd->shards_to_islands)
-		                ? shardprogress : shardprogress + halvingprogress;
-		               //(rmd->shards_to_islands || rmd->point_source != MOD_FRACTURE_UNIFORM) ? shardprogress + halvingprogress : shardprogress;
+		totalprogress = //(rmd->frac_mesh && rmd->frac_mesh->shard_count > 0 && rmd->dm && rmd->dm->numVertData > 0 && !rmd->shards_to_islands)
+		                //? shardprogress : shardprogress + halvingprogress;
+		               (rmd->shards_to_islands || rmd->point_source != MOD_FRACTURE_UNIFORM) ? shardprogress + halvingprogress : shardprogress;
 		fj->total_progress = totalprogress;
 
 		WM_jobs_customdata_set(wm_job, fj, fracture_free);
