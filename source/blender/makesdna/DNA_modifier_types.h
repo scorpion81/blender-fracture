@@ -1337,10 +1337,9 @@ typedef struct MeshIsland {
 	struct DerivedMesh *physics_mesh;
 	struct Shard *temp; //storage for physics mesh, better omit derivedmesh here...
 	struct RigidBodyOb *rigidbody;
-//	struct RigidBodyModifierData *parent_mod; //needed to override thresholds/contact distance when using constraint groups
 	int *combined_index_map;
 	int *neighbor_ids;
-//	int *global_face_map;
+	int *vertex_indices;
 	struct BoundBox *bb;
 	struct RigidBodyShardCon **participating_constraints;
 	int participating_constraint_count;
@@ -1353,30 +1352,10 @@ typedef struct MeshIsland {
 	char pad[4];
 } MeshIsland;
 
-typedef struct NeighborhoodCell {
-	struct NeighborhoodCell *next, *prev; 
-	struct MeshIsland **islands;
-	int island_count;
-	float co[3];
-} NeighborhoodCell;
-
-
-/*enum {
-	MOD_RIGIDBODY_SELECTED_TO_ACTIVE = 0,
-	MOD_RIGIDBODY_CHAIN_DISTANCE = 1,
-};
-
-enum {
-	MOD_RIGIDBODY_SELECTED = 0,
-	MOD_RIGIDBODY_ACTIVE = 1,
-	MOD_RIGIDBODY_CENTER = 2,
-};*/
 
 enum {
 	MOD_RIGIDBODY_CENTROIDS = 0,
 	MOD_RIGIDBODY_VERTICES = 1,
-	MOD_RIGIDBODY_CELLS = 2,
-	MOD_RIGIDBODY_CELL_CENTROIDS = 3,
 };
 
 typedef struct LaplacianDeformModifierData {
@@ -1441,6 +1420,7 @@ typedef struct FractureModifierData {
 	struct BMesh *visible_mesh;
 	struct DerivedMesh *visible_mesh_cached;
 	ListBase meshIslands, meshConstraints, cells;
+	ListBase islandShards;
 	int	**sel_indexes, *index_storage, *id_storage;
 	void (*join)(struct FractureModifierData *rmd, struct Object* ob);
 	void (*split)(struct FractureModifierData *rmd, struct Object *ob, struct MeshIsland *mi, float cfra);
@@ -1464,6 +1444,7 @@ typedef struct FractureModifierData {
 	int breaking_angle, breaking_percentage, use_proportional_distance, use_proportional_limit;
 	int use_cellbased_sim, use_experimental;
 	int solver_iterations_override, use_proportional_solver_iterations, refresh_images;
+	int shards_to_islands, execute_threaded;
 	float breaking_distance, max_vol, cell_size;
 	float origmat[4][4], breaking_threshold, cluster_breaking_threshold;
 	float contact_dist;

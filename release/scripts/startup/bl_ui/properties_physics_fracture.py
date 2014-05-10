@@ -62,17 +62,13 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         layout = self.layout
 
         md = context.fracture
-        col = layout.column()
-        col.prop(md, "frac_algorithm")
+        layout.prop(md, "frac_algorithm")
+        col = layout.column(align=True)
         col.prop(md, "shard_count")
-        col.label("Point Source:")
-        col.prop(md, "point_source")
-        col.prop(md, "extra_group")
-        col.prop(md, "noise")
-        col.prop(md, "percentage")
-        col.prop(md, "point_seed")
         col.prop(md, "cluster_count")
-        layout.operator("object.fracture_refresh", text="Refresh All Data")
+        col.prop(md, "point_seed")
+        layout.prop(md, "shards_to_islands")
+        layout.operator("object.fracture_refresh", text="Execute Fracture")
 
 class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
     bl_label = "Fracture Simulation"
@@ -87,40 +83,36 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
         layout = self.layout
         md = context.fracture
 
-        layout.operator("object.rigidbody_constraints_refresh", text="Refresh Constraints Only")
+        #layout.operator("object.rigidbody_constraints_refresh", text="Refresh Constraints Only")
         layout.label("Constraint Building Settings")
         layout.prop(md, "use_constraints")
-        layout.prop(md, "contact_dist_meaning")
-        if (md.contact_dist_meaning == 'CELLS') or (md.contact_dist_meaning == 'CELL_CENTROIDS'):
-            layout.prop(md, "cell_size")
-            layout.prop(md, "use_cellbased_sim", text="Use Compounds")
-        layout.prop(md, "contact_dist")
+        layout.prop(md, "constraint_limit", text="Constraint limit, per MeshIsland")
         layout.label("Constraint Breaking Settings")
         col = layout.column(align=True)
-        row = col.row(align=True)
-        row.prop(md, "breaking_threshold", text="Threshold")
-        row.prop(md, "breaking_percentage", text="Percentage")
-        row = col.row(align=True)
-        row.prop(md, "breaking_angle", text="Angle")
-        row.prop(md, "breaking_distance", text="Distance")
-        row = layout.row(align=True)
-        row.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")
+        col.prop(md, "breaking_threshold", text="Threshold")
+        col.prop(md, "cluster_breaking_threshold")
 
         #experimental stuff
         box = layout.box()
         box.prop(md, "use_experimental", text="Experimental, use with caution !", icon=self.icon(md.use_experimental), emboss = False)
         if md.use_experimental:
-            box.prop(md, "use_both_directions")
-            box.prop(md, "disable_self_collision")
-            box.prop(md, "constraint_limit", text="Constraint limit, per MeshIsland")
-            box.prop(md, "inner_constraint_type")
-            box.prop(md, "use_proportional_limit")
-            box.prop(md, "use_proportional_distance")
-            box.prop(md, "mass_dependent_thresholds")
-            box.prop(md, "dist_dependent_thresholds")
+            box.label("Fracture Point Source:")
+            box.prop(md, "point_source")
+            box.prop(md, "extra_group")
+            #box.prop(md, "noise")
+            box.prop(md, "percentage")
+            box.label("Constraint Breaking Settings")
+            col = box.column(align=True)
+            col.prop(md, "breaking_percentage", text="Percentage")
+            col.prop(md, "breaking_angle", text="Angle")
+            col.prop(md, "breaking_distance", text="Distance")
+           # box.label("Constraint Building Settings")
+           # box.prop(md, "contact_dist_meaning")
+           # box.prop(md, "contact_dist")
             box.prop(md, "solver_iterations_override")
-            box.prop(md, "use_proportional_solver_iterations")
-            box.prop(md, "cluster_breaking_threshold")
+            if not(md.refresh):
+                box.prop(md, "execute_threaded")
+            box.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")
 
 if __name__ == "__main__":  # only for live edit.
     bpy.utils.register_module(__name__)

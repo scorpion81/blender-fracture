@@ -241,47 +241,6 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 		BMO_op_finish(bm_parent, &bmop);
 	}
 
-	i = 0;
-	//faces = MEM_callocN(sizeof(BMFace*) * bm_parent->totface, "ftokill");
-
-#if 0
-	if (cutlimit == 0)
-	{
-		BM_ITER_MESH(f, &fiter2, bm_parent, BM_FACES_OF_MESH)
-		{
-			if (BM_elem_flag_test(f, MYTAG))
-			{
-				int *orig_index = CustomData_bmesh_get(&bm_parent->pdata, f->head.data, CD_ORIGINDEX);
-				if ((orig_index != NULL) && (*orig_index > -1) && (*orig_index < bm_orig->totface))
-				{
-					BMFace *face = BM_face_at_index(bm_orig, *orig_index);
-					if ((face != NULL) && (face->head.index == *orig_index))
-					{
-						//faces[i] = face;
-						BM_elem_flag_enable(face, MYTAG);
-						fcount++;
-					}
-					else
-					{
-						//faces[i] = NULL;
-					}
-				}
-				else
-				{
-					//faces[i] = NULL;
-				}
-			}
-
-			i++;
-		}
-
-		BMO_op_callf(bm_orig, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-					 "delete context=%i geom=%hf", DEL_FACES, MYTAG);
-	}
-#endif
-
-	//printf("Removed faces: %d \n", fcount);
-
 	dm_out = CDDM_from_bmesh(bm_parent, true);
 	output_s = BKE_create_fracture_shard(dm_out->getVertArray(dm_out),
 	                                   dm_out->getPolyArray(dm_out),

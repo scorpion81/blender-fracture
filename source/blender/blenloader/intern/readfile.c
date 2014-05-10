@@ -4586,7 +4586,7 @@ static void direct_link_customdata_mtpoly_shard(FileData *fd, CustomData *pdata,
 
 static Shard* read_shard(FileData *fd, void* address )
 {
-	Shard* s = newdataadr(fd, address);
+	Shard* s = address;
 	s->mvert = newdataadr(fd, s->mvert);
 	s->mpoly = newdataadr(fd, s->mpoly);
 	s->mloop = newdataadr(fd, s->mloop);
@@ -4594,7 +4594,7 @@ static Shard* read_shard(FileData *fd, void* address )
 	direct_link_customdata(fd, &s->polyData, s->totpoly);
 
 	//sigh, need to ensure image refs are correct...
-	direct_link_customdata_mtpoly_shard(fd, &s->polyData, s->totpoly);
+	//direct_link_customdata_mtpoly_shard(fd, &s->polyData, s->totpoly);
 
 	s->neighbor_ids = newdataadr(fd, s->neighbor_ids);
 	s->cluster_colors = newdataadr(fd, s->cluster_colors);
@@ -4614,19 +4614,22 @@ static MeshIsland* read_meshIsland(FileData* fd, void* address)
 	mi->vertices = NULL; //newdataadr(fd, mi->vertices);
 	mi->vertices_cached = NULL; //newdataadr(fd, mi->vertices_cached);
 	mi->vertco = newdataadr(fd, mi->vertco);
-	mi->temp = read_shard(fd, mi->temp);
+	mi->temp = newdataadr(fd, mi->temp);
+	temp = read_shard(fd, mi->temp);
 	mi->physics_mesh = BKE_shard_create_dm(mi->temp, false);
-	BKE_shard_free(mi->temp, true);
+	BKE_shard_free(temp, false);
+	//MEM_freeN(mi->temp);
 
 	mi->rigidbody = newdataadr(fd, mi->rigidbody);
-	mi->rigidbody->physics_object = NULL;
-	mi->rigidbody->physics_shape = NULL;
+	mi->rigidbody->physics_object = newdataadr(fd, mi->rigidbody->physics_object);
+	mi->rigidbody->physics_shape = newdataadr(fd, mi->rigidbody->physics_shape);
 	mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 	mi->rigidbody->flag |= RBO_FLAG_NEEDS_RESHAPE;
 
 	//mi->combined_index_map = newdataadr(fd, mi->combined_index_map);
 	mi->neighbor_ids = newdataadr(fd, mi->neighbor_ids );
 	mi->bb = newdataadr(fd, mi->bb);
+	mi->vertex_indices = newdataadr(fd, mi->vertex_indices);
 
 	//will be refreshed...
 	mi->participating_constraint_count = 0;
@@ -4976,6 +4979,8 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 				RigidBodyShardCon *con;
 				MVert *mverts;
 				int vertstart = 0;
+				Shard *s;
+				int count = 0, count2 = 0;
 
 				fm->shard_map = newdataadr(fd, fm->shard_map);
 				for (i = 0; i < fm->shard_count; i++)
@@ -4985,33 +4990,70 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 					s->mpoly = newdataadr(fd, s->mpoly);
 					s->mloop = newdataadr(fd, s->mloop);
 					s->neighbor_ids = newdataadr(fd, s->neighbor_ids);*/
+					fm->shard_map[i] = newdataadr(fd, fm->shard_map[i]);
 					fm->shard_map[i] = read_shard(fd, fm->shard_map[i]);
 				}
 				fmd->frac_mesh = fm;
 				fmd->dm = NULL;
-				BKE_fracture_create_dm(fmd, false);
+				fmd->visible_mesh = NULL;
+
+				link_list(fd, &fmd->islandShards);
+				for (s = fmd->islandShards.first; s; s = s->next)
+				{
+					s = read_shard(fd, s);
+				}
+
+				link_list(fd, &fmd->meshIslands);
+				count = BLI_countlist(&fmd->islandShards);
+				count2 = BLI_countlist(&fmd->meshIslands);
+
+				if (fmd->islandShards.first == NULL || count == 0 || count != count2)
+				{
+					//oops, a refresh was missing, so disable this flag here better, otherwise
+					//we attempt to load non existing data
+					fmd->shards_to_islands = false;
+				}
+				else
+				{
+					fmd->shards_to_islands = true;
+				}
 
 				//ugly ugly, need only the shard... the rest is to be generated on demand...
+				BKE_fracture_create_dm(fmd, false);
 				fmd->visible_mesh_cached = CDDM_copy(fmd->dm);
 				if (fmd->visible_mesh == NULL)
 				{
 					fmd->visible_mesh = DM_to_bmesh(fmd->visible_mesh_cached, true);
 				}
 
-				link_list(fd, &fmd->meshIslands);
+				//if (fmd->shards_to_islands)
+				{
+					DM_ensure_tessface(fmd->visible_mesh_cached);
+					DM_ensure_normals(fmd->visible_mesh_cached);
+					DM_update_tessface_data(fmd->visible_mesh_cached);
+
+					//re-init cached verts here...
+					mverts = CDDM_get_verts(fmd->visible_mesh_cached);
+				}
+
 				for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 				{
 					int k = 0;
 					mi = read_meshIsland(fd, mi);
 
-					//re-init cached verts here...
-					/*mverts = CDDM_get_verts(fmd->visible_mesh_cached);
-					for (k = 0; k < mi->vertex_count; k++)
+					//if (fmd->shards_to_islands)
 					{
-						mi->vertices_cached[k] = mverts + vertstart + k;
-						//mi->vertices[k] = BM_vert_at_index_find(fmd->visible_mesh, vertstart+k);
+						mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * mi->vertex_count, "mi->vertices_cached readfile");
+						for (k = 0; k < mi->vertex_count; k++)
+						{
+							MVert* v = mverts + vertstart + k ;// mi->vertex_indices[k];
+							mi->vertices_cached[k] = v;
+							mi->vertco[k*3] = v->co[0];
+							mi->vertco[k*3+1] = v->co[1];
+							mi->vertco[k*3+2] = v->co[2];
+						}
+						vertstart += mi->vertex_count;
 					}
-					vertstart += mi->vertex_count;*/
 				}
 
 				/*link_list(fd, &fmd->meshConstraints);
@@ -5023,6 +5065,8 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 					con->physics_constraint = NULL;
 					con->flag |= RBC_FLAG_NEEDS_VALIDATE;
 				}*/
+
+
 				fmd->refresh_constraints = true;
 				fmd->meshConstraints.first = NULL;
 				fmd->meshConstraints.last = NULL;

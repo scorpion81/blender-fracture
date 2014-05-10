@@ -85,7 +85,7 @@
 #ifdef WITH_BULLET
 
 static bool isModifierActive(FractureModifierData* rmd) {
-	return ((rmd != NULL) && (rmd->modifier.mode & eModifierMode_Realtime) && (rmd->refresh == false));// rmd->modifier.mode & eModifierMode_Render));
+	return ((rmd != NULL) && (rmd->modifier.mode & eModifierMode_Realtime || rmd->modifier.mode & eModifierMode_Render) && (rmd->refresh == false));
 }
 
 void calc_dist_angle(RigidBodyShardCon* con, float* dist, float* angle)
@@ -437,6 +437,16 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 		//if refresh in progress, dont try to access stuff here
 
 		//reset to original coords // stored at fracture time
+/*		if (rmd->shards_to_islands)
+		{
+			//hrm WHY on earth does this not match anymore after loading / saving with islands ? So correct this here.
+			if ((int)cfra == 2)
+			{
+				mi->vertco[j*3] = vert->co[0];
+				mi->vertco[j*3+1] = vert->co[1];
+				mi->vertco[j*3+2] = vert->co[2];
+			}
+		}*/
 		startco[0] = mi->vertco[j*3];
 		startco[1] = mi->vertco[j*3+1];
 		startco[2] = mi->vertco[j*3+2];
