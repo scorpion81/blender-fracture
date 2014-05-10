@@ -163,7 +163,7 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 		s = parse_shard(fp);
 		tempshards[i] = s;
 		tempresults[i] = NULL;
-		fm->shard_count++; //IMPORTANT to reset this... afterwards...
+		fm->progress_counter++;
 	}
 
 	if (algorithm != MOD_FRACTURE_BISECT_FAST)
@@ -208,7 +208,7 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 				tempresults[i] = s;
 			}
 
-			fm->shard_count++;
+			fm->progress_counter++;
 		}
 	}
 	else
@@ -245,7 +245,7 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 			{
 				int j = 0;
 
-				fm->shard_count++;
+				fm->progress_counter++;
 
 				s->parent_id = parent_id;
 				s->flag = SHARD_INTACT;
@@ -725,6 +725,7 @@ FracMesh *BKE_create_fracture_container(DerivedMesh* dm)
 	fmesh->shard_count = 0;
 	fmesh->cancel = 0;
 	fmesh->running = 0;
+	fmesh->progress_counter = 0;
 	
 	return fmesh;
 }
@@ -1055,6 +1056,11 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 	mverts = CDDM_get_verts(dm);
 	mloops = CDDM_get_loops(dm);
 	mpolys = CDDM_get_polys(dm);
+
+	//CustomData_free_layers(&dm->loopData, CD_ORIGINDEX, s->totloop);
+	//CustomData_free_layers(&dm->loopData, CD_MLOOP, s->totloop);
+	//CustomData_free_layers(&dm->polyData, CD_ORIGINDEX, s->totpoly);
+
 	memcpy(mverts, s->mvert, s->totvert * sizeof(MVert));
 	memcpy(mloops, s->mloop, s->totloop * sizeof(MLoop));
 	memcpy(mpolys, s->mpoly, s->totpoly * sizeof(MPoly));
@@ -1066,10 +1072,11 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 
 	if (doCustomData)
 	{
-
+		//CustomData_free_layers(&dm->loopData, CD_MLOOPUV, s->totloop);
 		CustomData_copy(&s->loopData, &dm->loopData, CD_MASK_MLOOPUV, CD_CALLOC, s->totloop);
 		CustomData_copy_data(&s->loopData, &dm->loopData, 0, 0, s->totloop);
 
+		//CustomData_free_layers(&dm->polyData, CD_MTEXPOLY, s->totpoly);
 		CustomData_copy(&s->polyData, &dm->polyData, CD_MASK_MTEXPOLY, CD_CALLOC, s->totpoly);
 		CustomData_copy_data(&s->polyData, &dm->polyData, 0, 0, s->totpoly);
 	}

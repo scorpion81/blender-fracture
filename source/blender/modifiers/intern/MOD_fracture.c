@@ -1143,10 +1143,10 @@ void freeMeshIsland(FractureModifierData* rmd, MeshIsland* mi)
 		}
 	}
 
-	if (mi->vertices_cached && rmd->explo_shared)
+	if (mi->vertices_cached /*&& rmd->explo_shared*/)
 	{
-		int i;
-		for (i = 0; i < mi->vertex_count; i++)
+		//int i;
+		//for (i = 0; i < mi->vertex_count; i++)
 		{
 			//MEM_freeN(mi->vertices_cached[i]);
 		}
@@ -1580,6 +1580,12 @@ void mesh_separate_loose_partition(FractureModifierData* rmd, Object* ob, BMesh*
 	float vol = 0;
 	//int mi_count = 0;
 	//MeshIsland** mi_array = MEM_callocN(sizeof(MeshIsland*), "mi_array");
+
+
+	if (max_iter > 0)
+	{
+		rmd->frac_mesh->progress_counter++;
+	}
 
 	/* Clear all selected vertices */
 	BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_INTERNAL_TAG | BM_ELEM_TAG, false);
@@ -3329,6 +3335,9 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 					{
 						continue;
 					}
+
+					fmd->frac_mesh->progress_counter++;
+
 					// add 1 MeshIsland
 					mi = MEM_callocN(sizeof(MeshIsland), "meshIsland");
 					BLI_addtail(&fmd->meshIslands, mi);
@@ -3406,8 +3415,9 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 					}
 
 					start = PIL_check_seconds_timer();
+					printf("Steps: %d \n", fmd->frac_mesh->progress_counter);
 					mesh_separate_loose(fmd, ob);
-					printf("Splitting to islands done, %g\n", PIL_check_seconds_timer() - start);
+					printf("Splitting to islands done, %g  Steps: %d \n", PIL_check_seconds_timer() - start, fmd->frac_mesh->progress_counter);
 				}
 
 				fmd->explo_shared = false;

@@ -45,7 +45,8 @@ typedef struct FracMesh {
 	int shard_count;	//how many islands we have
 	short cancel; //whether the process is cancelled (from the job, ugly, but this way we dont need the entire modifier)
 	short running;//whether the process is currently in progress, so the modifier wont be touched from the main thread
-	//char pad[2];
+	int progress_counter;
+	char pad[4];
 } FracMesh;
 
 typedef struct FracHistory {

@@ -2253,7 +2253,7 @@ typedef struct FractureJob {
 	void *owner;
 	short *stop, *do_update;
 	float *progress;
-	int current_frame;
+	int current_frame, total_progress;
 	struct FractureModifierData *fmd;
 	struct Object* ob;
 	struct Scene* scene;
@@ -2286,8 +2286,7 @@ static float fracture_update(void *customdata)
 		fj->fmd->frac_mesh->cancel = 1;
 
 	//*(fj->do_update) = true; //useless here...
-	factor = (fj->fmd->frac_algorithm == MOD_FRACTURE_BISECT_FAST) ? 4 : 2;
-	progress = (float)(fj->fmd->frac_mesh->shard_count) / (float)(fj->fmd->shard_count * factor);
+	progress = (float)(fj->fmd->frac_mesh->progress_counter) / (float)(fj->total_progress);
 	return progress;
 }
 
@@ -2364,6 +2363,7 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 	else
 	{
 		/* job stuff */
+		int factor, verts, shardprogress, halvingprogress, totalprogress;
 		scene->r.cfra = cfra;
 
 		/* setup job */
@@ -2373,6 +2373,27 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 		fj->fmd = rmd;
 		fj->ob = obact;
 		fj->scene = scene;
+
+		//if we have shards, totalprogress = shards + islands
+		//if we dont have shards, then calculate number of processed halving steps
+		//if we split island to shards, add both
+		factor = (fj->fmd->frac_algorithm == MOD_FRACTURE_BISECT_FAST) ? 4 : 2;
+		shardprogress = fj->fmd->shard_count * (factor+1); //+1 for the meshisland creation
+
+		if (obact->derivedFinal)
+		{
+			verts = obact->derivedFinal->getNumVerts(obact->derivedFinal);
+		}
+		else
+		{
+			verts = ((Mesh*)obact->data)->totvert;
+		}
+
+		halvingprogress = (int)(verts / 1000) + (fj->fmd->shard_count * factor); //-> 1000 size of each partitioned separate loose
+		totalprogress = (rmd->frac_mesh && rmd->frac_mesh->shard_count > 0 && rmd->dm && rmd->dm->numVertData > 0 && !rmd->shards_to_islands)
+		                ? shardprogress : shardprogress + halvingprogress;
+		               //(rmd->shards_to_islands || rmd->point_source != MOD_FRACTURE_UNIFORM) ? shardprogress + halvingprogress : shardprogress;
+		fj->total_progress = totalprogress;
 
 		WM_jobs_customdata_set(wm_job, fj, fracture_free);
 		WM_jobs_timer(wm_job, 0.1, NC_WM | ND_JOB, NC_OBJECT | ND_MODIFIER);
