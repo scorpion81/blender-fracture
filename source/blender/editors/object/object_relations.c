@@ -89,6 +89,7 @@
 #include "BKE_speaker.h"
 #include "BKE_texture.h"
 #include "BKE_editmesh.h"
+#include "BKE_rigidbody.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
@@ -1424,6 +1425,7 @@ Base *ED_object_scene_link(Scene *scene, Object *ob)
 static int make_links_scene_exec(bContext *C, wmOperator *op)
 {
 	Scene *scene_to = BLI_findlink(&CTX_data_main(C)->scene, RNA_enum_get(op->ptr, "scene"));
+	Scene *scene_from = CTX_data_scene(C);
 
 	if (scene_to == NULL) {
 		BKE_report(op->reports, RPT_ERROR, "Could not find scene");
@@ -1442,6 +1444,11 @@ static int make_links_scene_exec(bContext *C, wmOperator *op)
 
 	CTX_DATA_BEGIN (C, Base *, base, selected_bases)
 	{
+		/* in case we link rigidbodies, copy the world of them as well */
+		if (scene_from->rigidbody_world != NULL && scene_to->rigidbody_world == NULL)
+		{
+			scene_to->rigidbody_world = BKE_rigidbody_world_copy(scene_from->rigidbody_world);
+		}
 		ED_object_scene_link(scene_to, base->object);
 	}
 	CTX_DATA_END;
