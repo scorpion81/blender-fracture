@@ -2013,11 +2013,14 @@ RigidBodyWorld *BKE_rigidbody_world_copy(RigidBodyWorld *rbw)
 	if (rbwn->constraints)
 		id_us_plus(&rbwn->constraints->id);
 
-	rbwn->pointcache = BKE_ptcache_copy_list(&rbwn->ptcaches, &rbw->ptcaches, false);
+	rbwn->pointcache = BKE_ptcache_copy_list(&rbwn->ptcaches, &rbw->ptcaches, true); //false);
 
-	rbwn->objects = NULL;
+	rbwn->objects = MEM_dupallocN(rbw->objects);//NULL;
 	rbwn->physics_world = NULL;
-	rbwn->numbodies = 0;
+	rbwn->numbodies = rbw->numbodies;//0;
+
+	rbwn->cache_index_map = MEM_dupallocN(rbw->cache_index_map);
+	rbwn->cache_offset_map = MEM_dupallocN(rbw->cache_offset_map);
 
 	return rbwn;
 }
@@ -2435,30 +2438,37 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 	int i, j, l, m, n, counter = 0;
 	bool ismapped = false;
 	
-	if (rbw->objects == NULL)
+	if (rbw->objects != NULL)
 	{
-		rbw->objects = MEM_callocN(sizeof (Object*), "rbw->objects");
+		//rbw->objects = MEM_callocN(sizeof (Object*), "rbw->objects");
+		MEM_freeN(rbw->objects);
+		rbw->objects = NULL;
 	}
 	
-	if (rbw->cache_index_map == NULL)
+	if (rbw->cache_index_map != NULL)
 	{
-		rbw->cache_index_map = MEM_callocN(sizeof(RigidBodyOb*), "cache_index_map");
+		//rbw->cache_index_map = MEM_callocN(sizeof(RigidBodyOb*), "cache_index_map");
+		MEM_freeN(rbw->cache_index_map);
+		rbw->cache_index_map = NULL;
 	}
 	
-	if (rbw->cache_offset_map == NULL)
+	if (rbw->cache_offset_map != NULL)
 	{
-		rbw->cache_offset_map = MEM_callocN(sizeof(int), "cache_offset_map");
+		//rbw->cache_offset_map = MEM_callocN(sizeof(int), "cache_offset_map");
+		MEM_freeN(rbw->cache_offset_map);
+		rbw->cache_offset_map = NULL;
 	}
 
 	l = BLI_countlist(&rbw->group->gobject); // all objects
 	m = rigidbody_count_regular_objects(rbw->group->gobject);
 	n = rigidbody_count_shards(rbw->group->gobject);
 
-	if (rbw->numbodies != (m+n)) {
+	//if (rbw->numbodies != (m+n))
+	{
 		rbw->numbodies = m+n;
-		rbw->objects = MEM_reallocN(rbw->objects, sizeof(Object *) * l);
-		rbw->cache_index_map = MEM_reallocN(rbw->cache_index_map, sizeof(RigidBodyOb*) * rbw->numbodies);
-		rbw->cache_offset_map = MEM_reallocN(rbw->cache_offset_map, sizeof(int) * rbw->numbodies);
+		rbw->objects = MEM_mallocN(sizeof(Object *) * l, "objects");
+		rbw->cache_index_map = MEM_mallocN(sizeof(RigidBodyOb*) * rbw->numbodies, "cache_index_map");
+		rbw->cache_offset_map = MEM_mallocN(sizeof(int) * rbw->numbodies, "cache_offset_map");
 		printf("RigidbodyCount changed: %d\n", rbw->numbodies);
 	}
 	for (go = rbw->group->gobject.first, i = 0; go; go = go->next, i++) {
@@ -2645,8 +2655,10 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 
 	/* update world */
 	if (rebuild)
+	{
 		BKE_rigidbody_validate_sim_world(scene, rbw, true);
-	rigidbody_update_sim_world(scene, rbw);
+		rigidbody_update_sim_world(scene, rbw);
+	}
 
 	/* update objects */
 	for (go = rbw->group->gobject.first; go; go = go->next) {
@@ -2891,7 +2903,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 				rigidbody_update_sim_ob(scene, rbw, ob, rbo, centroid);
 			}
 		}
-		rigidbody_update_ob_array(rbw);
+		//rigidbody_update_ob_array(rbw);
 		rbw->refresh_modifiers = false;
 	}
 
@@ -3005,6 +3017,9 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 	float centr[3], size[3];
 	int modFound = false;
 	bool exploPresent = false, exploOK = false;
+
+	if (rbw == NULL)
+		return;
 
 	for (md = ob->modifiers.first; md; md = md->next)
 	{
