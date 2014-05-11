@@ -501,7 +501,8 @@ void BKE_rigidbody_free_world(RigidBodyWorld *rbw)
 			}
 		}
 		/* free dynamics world */
-		RB_dworld_delete(rbw->physics_world);
+		if (rbw->physics_world != NULL)
+			RB_dworld_delete(rbw->physics_world);
 	}
 	if (rbw->objects)
 		MEM_freeN(rbw->objects);
@@ -2015,12 +2016,12 @@ RigidBodyWorld *BKE_rigidbody_world_copy(RigidBodyWorld *rbw)
 
 	rbwn->pointcache = BKE_ptcache_copy_list(&rbwn->ptcaches, &rbw->ptcaches, true); //false);
 
-	rbwn->objects = MEM_dupallocN(rbw->objects);//NULL;
+	rbwn->objects = /*MEM_dupallocN(rbw->objects);*/ NULL;
 	rbwn->physics_world = NULL;
-	rbwn->numbodies = rbw->numbodies;//0;
+	rbwn->numbodies = /*rbw->numbodies;*/0;
 
-	rbwn->cache_index_map = MEM_dupallocN(rbw->cache_index_map);
-	rbwn->cache_offset_map = MEM_dupallocN(rbw->cache_offset_map);
+	rbwn->cache_index_map = NULL;  //MEM_dupallocN(rbw->cache_index_map);
+	rbwn->cache_offset_map = NULL; //MEM_dupallocN(rbw->cache_offset_map);
 
 	return rbwn;
 }
