@@ -1969,11 +1969,14 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi
 		ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_VALIDATE;
 
 		/* add object to rigid body group */
-		if (!BKE_group_object_exists(rbw->group, ob))
-			BKE_group_object_add(rbw->group, ob, scene, NULL);
+		/*if (!BKE_group_object_exists(rbw->group, ob))
+			BKE_group_object_add(rbw->group, ob, scene, NULL);*/
 
 		//DAG_id_tag_update(&ob->id, OB_RECALC_OB);
 	}
+
+	if (!BKE_group_object_exists(rbw->group, ob))
+		BKE_group_object_add(rbw->group, ob, scene, NULL);
 
 	DAG_id_tag_update(&ob->id, OB_RECALC_OB);
 

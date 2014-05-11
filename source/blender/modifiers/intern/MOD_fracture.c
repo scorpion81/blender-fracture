@@ -1361,7 +1361,7 @@ static float mesh_separate_tagged(FractureModifierData* rmd, Object *ob, BMVert*
 	BM_calc_center_centroid(bm_new, centroid, false);
 	BM_mesh_elem_index_ensure(bm_new, BM_VERT | BM_EDGE | BM_FACE);
 
-	if (rmd->shards_to_islands)
+	if (rmd->shards_to_islands || rmd->frac_mesh->shard_count < 2)
 	{
 		//store temporary shards for each island
 		dmtemp = CDDM_from_bmesh(bm_new, true);
