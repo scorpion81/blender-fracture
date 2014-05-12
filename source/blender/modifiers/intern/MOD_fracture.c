@@ -3268,7 +3268,8 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 	double start;
 	//bool shared = false;
 
-	if ((fmd->refresh) || (fmd->refresh_constraints && fmd->frac_mesh && fmd->frac_mesh->running == 0))
+	if ((fmd->refresh) || (fmd->refresh_constraints && !fmd->execute_threaded) ||
+	        (fmd->refresh_constraints && fmd->execute_threaded && fmd->frac_mesh && fmd->frac_mesh->running == 0))
 	{
 		//shared = fmd->explo_shared;
 		//fmd->explo_shared = false;
