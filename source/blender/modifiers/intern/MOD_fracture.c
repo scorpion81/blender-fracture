@@ -2894,7 +2894,7 @@ static void create_constraints(FractureModifierData *rmd, Object* ob)
 	MeshIsland** mesh_islands = MEM_mallocN(sizeof(MeshIsland*), "mesh_islands");
 	int count, i = 0;
 
-	if (rmd->visible_mesh)
+	if (rmd->visible_mesh && rmd->contact_dist == 0.0f)
 	{
 		float min[3], max[3], dim[3];
 		BoundBox *bb = BKE_boundbox_alloc_unit();

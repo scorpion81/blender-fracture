@@ -755,6 +755,7 @@ static void rna_RigidBodyModifier_contact_dist_set(PointerRNA *ptr, float value)
 	Object* ob = ptr->id.data;
 	rmd->contact_dist = value;
 	//updateConstraints(rmd, ob);
+	rmd->refresh_constraints = true;
 }
 
 static void rna_RigidBodyModifier_use_constraints_set(PointerRNA* ptr, int value)
@@ -3966,7 +3967,7 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_float_default(prop, 1.0f);
 	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_contact_dist_set", NULL);
-	RNA_def_property_ui_text(prop, "Contact distance", "Distance up to which two vertices are considered to have contact");
+	RNA_def_property_ui_text(prop, "Contact distance", "Limit distance up to which two mesh islands are considered to have contact, 0 for entire boundingbox");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "mass_dependent_thresholds", PROP_BOOLEAN, PROP_NONE);

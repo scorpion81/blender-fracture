@@ -86,7 +86,9 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
         #layout.operator("object.rigidbody_constraints_refresh", text="Refresh Constraints Only")
         layout.label("Constraint Building Settings")
         layout.prop(md, "use_constraints")
-        layout.prop(md, "constraint_limit", text="Constraint limit, per MeshIsland")
+        col = layout.column(align=True)
+        col.prop(md, "constraint_limit", text="Constraint limit, per MeshIsland")
+        col.prop(md, "contact_dist")
         layout.label("Constraint Breaking Settings")
         col = layout.column(align=True)
         col.prop(md, "breaking_threshold", text="Threshold")
@@ -110,6 +112,7 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
            # box.prop(md, "contact_dist_meaning")
            # box.prop(md, "contact_dist")
             box.prop(md, "solver_iterations_override")
+            box.prop(md, "mass_dependent_thresholds")
             if not(md.refresh):
                 box.prop(md, "execute_threaded")
             box.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")
