@@ -5067,7 +5067,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 				}*/
 
 
-				//fmd->refresh_constraints = true;
+				fmd->refresh_constraints = true;
 				fmd->meshConstraints.first = NULL;
 				fmd->meshConstraints.last = NULL;
 
