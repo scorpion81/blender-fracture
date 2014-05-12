@@ -5007,19 +5007,25 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 				count = BLI_countlist(&fmd->islandShards);
 				count2 = BLI_countlist(&fmd->meshIslands);
 
-				if ((fmd->islandShards.first == NULL || count == 0 || count != count2) && fm->shard_count > 0)
+				if ((fmd->islandShards.first == NULL || count == 0 /*|| count != count2*/) && fm->shard_count > 0)
 				{
 					//oops, a refresh was missing, so disable this flag here better, otherwise
 					//we attempt to load non existing data
 					fmd->shards_to_islands = false;
 				}
-				else
+				else if (fm->shard_count == 0)
 				{
 					fmd->shards_to_islands = true;
 				}
 
 				//ugly ugly, need only the shard... the rest is to be generated on demand...
 				BKE_fracture_create_dm(fmd, false);
+
+				if (fm->shard_count == 0)
+				{
+					fmd->shards_to_islands = false;
+				}
+
 				fmd->visible_mesh_cached = CDDM_copy(fmd->dm);
 				if (fmd->visible_mesh == NULL)
 				{

@@ -1995,6 +1995,18 @@ void mesh_separate_loose(FractureModifierData* rmd, Object* ob)
 		BM_mesh_elem_index_ensure(bm_work, BM_VERT);
 		BM_mesh_elem_table_ensure(bm_work, BM_VERT);
 
+		//free old islandshards first, if any
+		while (rmd->islandShards.first) {
+			Shard* s = rmd->islandShards.first;
+			BLI_remlink(&rmd->islandShards, s);
+			BKE_shard_free(s, true);
+			s = NULL;
+		}
+
+		rmd->islandShards.first = NULL;
+		rmd->islandShards.last = NULL;
+
+
 		halve(rmd, ob, minsize, &bm_work, &orig_start, false);
 
 
@@ -3278,7 +3290,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 		freeData(fmd);
 		//fmd->explo_shared = shared;
 
-		if (fmd->visible_mesh != NULL && !fmd->shards_to_islands)
+		if (fmd->visible_mesh != NULL && !fmd->shards_to_islands && fmd->frac_mesh->shard_count > 0)
 		{
 			if (fmd->visible_mesh_cached)
 			{

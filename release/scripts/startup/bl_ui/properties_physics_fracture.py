@@ -28,6 +28,12 @@ class FLUID_MT_presets(Menu):
     preset_operator = "script.execute_preset"
     draw = Menu.draw_preset
 
+class FRACTURE_MT_presets(Menu):
+    bl_label = "Fracture Presets"
+    preset_subdir = "fracture"
+    preset_operator = "script.execute_preset"
+    draw = Menu.draw_preset
+
 
 class PhysicButtonsPanel():
     bl_space_type = 'PROPERTIES'
@@ -62,6 +68,13 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         layout = self.layout
 
         md = context.fracture
+
+        layout.label(text="Presets:")
+        sub = layout.row(align=True)
+        sub.menu("FRACTURE_MT_presets", text=bpy.types.FRACTURE_MT_presets.bl_label)
+        sub.operator("fracture.preset_add", text="", icon='ZOOMIN')
+        sub.operator("fracture.preset_add", text="", icon='ZOOMOUT').remove_active = True
+
         layout.prop(md, "frac_algorithm")
         col = layout.column(align=True)
         col.prop(md, "shard_count")

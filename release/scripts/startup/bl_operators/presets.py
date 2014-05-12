@@ -530,6 +530,40 @@ class AddPresetKeyconfig(AddPresetBase, Operator):
         if self.remove_active:
             keyconfigs.remove(keyconfigs.active)
 
+class AddPresetFracture(AddPresetBase, Operator):
+    """Add or remove a Fracture Preset"""
+    bl_idname = "fracture.preset_add"
+    bl_label = "Add Fracture Preset"
+    preset_menu = "FRACTURE_MT_presets"
+
+    preset_defines = [
+        "fracture = bpy.context.fracture"
+    ]
+
+    preset_values = [
+        "fracture.frac_algorithm",
+        "fracture.shard_count",
+        "fracture.cluster_count",
+        "fracture.point_seed",
+        "fracture.shards_to_islands",
+        "fracture.use_constraints",
+        "fracture.constraint_limit",
+        "fracture.contact_dist",
+        "fracture.breaking_threshold",
+        "fracture.cluster_breaking_threshold",
+        "fracture.point_source",
+        "fracture.extra_group",
+        "fracture.percentage",
+        "fracture.breaking_percentage",
+        "fracture.breaking_angle",
+        "fracture.breaking_distance",
+        "fracture.solver_iterations_override",
+        "fracture.mass_dependent_thresholds",
+        "fracture.execute_threaded"
+    ]
+
+    preset_subdir = "fracture"
+
 
 class AddPresetOperator(AddPresetBase, Operator):
     """Add or remove an Operator Preset"""
