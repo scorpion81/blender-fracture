@@ -1885,7 +1885,15 @@ static void mesh_calc_modifiers(Scene *scene, Object *ob, float (*inputVertexCos
 		else {
 			/* A tessellation already exists, it should always have a CD_ORIGINDEX. */
 			BLI_assert(CustomData_has_layer(&finaldm->faceData, CD_ORIGINDEX));
-			DM_update_tessface_data(finaldm);
+			if (modifiers_findByType(ob, eModifierType_Fracture))
+			{	// prevent a nasty crash with autosmooth here, just no crash... but no effect either, hrm...
+				DM_ensure_tessface(finaldm);
+				//DM_update_tessface_data(finaldm);
+			}
+			else
+			{
+				DM_update_tessface_data(finaldm);
+			}
 		}
 	}
 	else {
