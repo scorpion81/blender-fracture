@@ -600,29 +600,58 @@ static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
 	FractureModifierData *fmd = (FractureModifierData*) md;
 	DerivedMesh *final_dm = derivedData;
 
-	if (fmd->dm != NULL)
+	if (fmd->frac_mesh != NULL && fmd->frac_mesh->running == 1 && fmd->execute_threaded)
 	{
-		fmd->dm->needsFree = 1;
-		fmd->dm->release(fmd->dm);
-		fmd->dm = NULL;
+		//skip modifier execution when job is running
+		return final_dm;
 	}
 
-	if (fmd->frac_mesh != NULL)
+	if (fmd->refresh)
 	{
-		BKE_fracmesh_free(fmd->frac_mesh, false);
-		MEM_freeN(fmd->frac_mesh);
+		if (fmd->dm != NULL)
+		{
+			fmd->dm->needsFree = 1;
+			fmd->dm->release(fmd->dm);
+			fmd->dm = NULL;
+		}
+
+		if (fmd->frac_mesh != NULL)
+		{
+			BKE_fracmesh_free(fmd->frac_mesh, fmd->frac_algorithm != MOD_FRACTURE_VORONOI);
+			MEM_freeN(fmd->frac_mesh);
+			fmd->frac_mesh = NULL;
+		}
+
+		if (fmd->frac_mesh == NULL)
+		{
+			fmd->frac_mesh = BKE_create_fracture_container(derivedData);
+			if (fmd->execute_threaded)
+			{
+				fmd->frac_mesh->running = 1;
+			}
+		}
 	}
 
-	fmd->frac_mesh = BKE_create_fracture_container(derivedData);
+	//if (!fmd->dm)
+	{
+		if (fmd->refresh)
+		{
+			do_fracture(fmd, -1, ob, derivedData);
 
-	if (!fmd->dm) {
-		do_fracture(fmd, -1, ob, derivedData);
+			if (!fmd->refresh) //might have been changed from outside, job cancel
+			{
+				return derivedData;
+			}
+		}
+		if (fmd->dm && fmd->frac_mesh)
+		{
+			final_dm = doSimulate(fmd, ob, fmd->dm);
+		}
+		else
+		{
+			final_dm = doSimulate(fmd, ob, derivedData);
+		}
 	}
-
-	if (fmd->dm)
-		final_dm = CDDM_copy(fmd->dm);
-	else
-		final_dm = derivedData;
 
 	return final_dm;
 }
@@ -3685,16 +3714,16 @@ ModifierTypeInfo modifierType_Fracture = {
         /* structSize */        sizeof(FractureModifierData),
         /* type */              eModifierTypeType_Constructive,//eModifierTypeType_OnlyDeform,
         /* flags */             eModifierTypeFlag_AcceptsMesh |
-                                eModifierTypeFlag_Single, // |
-                                //eModifierTypeFlag_SupportsEditmode |
-                                //eModifierTypeFlag_SupportsMapping,
+                                eModifierTypeFlag_Single |
+                                eModifierTypeFlag_SupportsEditmode |
+                                eModifierTypeFlag_SupportsMapping,
         /* copyData */          copyData,
         /* deformVerts */       NULL,
         /* deformMatrices */    NULL,
         /* deformVertsEM */     NULL,
         /* deformMatricesEM */  NULL,
         /* applyModifier */     applyModifier,
-        /* applyModifierEM */   NULL, //applyModifierEM,
+        /* applyModifierEM */   applyModifierEM,
         /* initData */          initData,
         /* requiredDataMask */  NULL,
         /* freeData */          freeData,
