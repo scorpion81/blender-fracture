@@ -1367,6 +1367,7 @@ static void write_shard(WriteData* wd, Shard* s)
 	writestruct(wd, DATA, "MPoly", s->totpoly, s->mpoly);
 	writestruct(wd, DATA, "MLoop", s->totloop, s->mloop);
 
+	write_customdata(wd, NULL, s->totvert, &s->vertData, -1, s->totvert);
 	write_customdata(wd, NULL, s->totloop, &s->loopData, -1, s->totloop);
 	write_customdata(wd, NULL, s->totpoly, &s->polyData, -1, s->totpoly);
 
@@ -1403,6 +1404,8 @@ static void write_meshIsland(WriteData* wd, MeshIsland* mi)
 	//writedata(wd, DATA, sizeof(float) * 3, mi->start_co);
 	//writedata(wd, DATA, sizeof(float) * 4, mi->rot);
 }
+
+//void write_dverts(WriteData *wd, int count, MDeformVert *dvlist);
 
 static void write_modifiers(WriteData *wd, ListBase *modbase)
 {
@@ -1573,17 +1576,16 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 						write_shard(wd, s);
 					}
 
+					/*if (fmd->dm)
+					{
+						MDeformVert *dvert = fmd->dm->getVertDataArray(fmd->dm, CD_MDEFORMVERT);
+						write_dverts(wd, fmd->dm->getNumVerts(fmd->dm), dvert);
+					}*/
+
 					for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 					{
 						write_meshIsland(wd, mi);
 					}
-
-					/*for (con = fmd->meshConstraints.first; con; con = con->next)
-					{
-						writestruct(wd, DATA, "RigidBodyShardCon", 1, con);
-						//writestruct(wd, DATA, "MeshIsland", 1, con->mi1);
-						//writestruct(wd, DATA, "MeshIsland", 1, con->mi2);
-					}*/
 				}
 			}
 		}

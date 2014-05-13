@@ -67,6 +67,7 @@ static void DM_loop_interp_from_poly(DerivedMesh *source_dm,
 {
 	float (*cos_3d)[3] = BLI_array_alloca(cos_3d, source_poly->totloop);
 	int *source_indices = BLI_array_alloca(source_indices, source_poly->totloop);
+	int *source_vert_indices = BLI_array_alloca(source_vert_indices, source_poly->totloop);
 	float *weights = BLI_array_alloca(weights, source_poly->totloop);
 	int i;
 	int target_vert_index = target_mloop[target_loop_index].v;
@@ -76,6 +77,7 @@ static void DM_loop_interp_from_poly(DerivedMesh *source_dm,
 		MLoop *mloop = &source_mloops[source_poly->loopstart + i];
 		source_indices[i] = source_poly->loopstart + i;
 		copy_v3_v3(cos_3d[i], source_mverts[mloop->v].co);
+		source_vert_indices[i] = mloop->v;
 	}
 
 	if (transform) {
@@ -89,6 +91,10 @@ static void DM_loop_interp_from_poly(DerivedMesh *source_dm,
 
 	DM_interp_loop_data(source_dm, target_dm, source_indices, weights,
 	                    source_poly->totloop, target_loop_index);
+
+	//interpolate vertex data as well (try to...)
+	DM_interp_vert_data(source_dm, target_dm, source_vert_indices ,weights,
+	                    source_poly->totloop, target_vert_index);
 }
 
 /* **** Importer from derived mesh to Carve ****  */
@@ -355,6 +361,14 @@ static void exporter_InitGeomArrays(ExportMeshData *export_data,
 	                       CustomData_number_of_layers(&dm_right->loopData, CD_MLOOPCOL));
 	allocate_custom_layers(&dm->loopData, CD_MLOOPUV, num_loops,
 	                       CustomData_number_of_layers(&dm_right->loopData, CD_MLOOPUV));
+
+
+	/* also allocate layers for vertex weights */
+	allocate_custom_layers(&dm->vertData, CD_MDEFORMVERT, num_verts,
+	                       CustomData_number_of_layers(&dm_left->vertData, CD_MDEFORMVERT));
+
+	allocate_custom_layers(&dm->vertData, CD_MDEFORMVERT, num_verts,
+	                       CustomData_number_of_layers(&dm_right->vertData, CD_MDEFORMVERT));
 
 	/* Merge custom data layers from operands.
 	 *

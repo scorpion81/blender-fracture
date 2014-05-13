@@ -1347,9 +1347,10 @@ typedef struct MeshIsland {
 	float centroid[3], start_co[3];
 	float rot[4]; //hrm, need this for constraints probably
 	float destruction_frame;
+	float thresh_weight;
 	int linear_index;  //index in rigidbody world
 	int compound_count, particle_index;
-	char pad[4];
+	//char pad[4];
 } MeshIsland;
 
 
@@ -1426,6 +1427,7 @@ typedef struct FractureModifierData {
 	void (*split)(struct FractureModifierData *rmd, struct Object *ob, struct MeshIsland *mi, float cfra);
 	struct GHash *idmap;
 	float *framemap;
+	char thresh_defgrp_name[64];  /* MAX_VGROUP_NAME */
 
 	int frac_algorithm;
 	int shard_count;

@@ -95,6 +95,7 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
     def draw(self, context):
         layout = self.layout
         md = context.fracture
+        ob = context.object
 
         #layout.operator("object.rigidbody_constraints_refresh", text="Refresh Constraints Only")
         layout.label("Constraint Building Settings")
@@ -126,6 +127,8 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
            # box.prop(md, "contact_dist")
             box.prop(md, "solver_iterations_override")
             box.prop(md, "mass_dependent_thresholds")
+            box.label("Threshold Vertex Group:")
+            box.prop_search(md, "thresh_vertex_group", ob, "vertex_groups", text = "")
             if not(md.refresh):
                 box.prop(md, "execute_threaded")
             box.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")

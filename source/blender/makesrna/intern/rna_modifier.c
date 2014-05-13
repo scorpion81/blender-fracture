@@ -703,7 +703,11 @@ static void updateConstraints(FractureModifierData *rmd, Object* ob) {
 		if (((rmd->mass_dependent_thresholds) || (rmd->dist_dependent_thresholds)) && (rbsc->breaking_threshold > 0)) {
 			BKE_rigidbody_calc_threshold(max_con_mass, min_con_dist, rmd, rbsc);
 		}
-		
+
+		if (rmd->thresh_defgrp_name[0])
+		{
+			rbsc->breaking_threshold *= ((rbsc->mi1->thresh_weight + rbsc->mi2->thresh_weight) * 0.5f);
+		}
 		
 		if (rmd->solver_iterations_override == 0)
 		{
@@ -739,6 +743,14 @@ static void updateConstraints(FractureModifierData *rmd, Object* ob) {
 	{
 		rmd->refresh_constraints = true;
 	}
+}
+
+static void rna_FractureModifier_thresh_defgrp_name_set(PointerRNA *ptr, const char *value)
+{
+	FractureModifierData *tmd = (FractureModifierData *)ptr->data;
+	Object* ob = ptr->id.data;
+	rna_object_vgroup_name_set(ptr, value, tmd->thresh_defgrp_name, sizeof(tmd->thresh_defgrp_name));
+	updateConstraints(tmd, ob);
 }
 
 static void rna_RigidBodyModifier_threshold_set(PointerRNA *ptr, float value)
@@ -4125,11 +4137,18 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Execute as threaded job (WIP)", "Execute the fracture as threaded job, Warning: WIP, still may crash");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
+
 	//expose this to RNA to be able to let py checkbox disappear while job is running, otherwise crash
 	prop = RNA_def_property(srna, "refresh", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "refresh", false);
 	RNA_def_property_ui_text(prop, "Refresh", "Refresh");
 	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "thresh_vertex_group", PROP_STRING, PROP_NONE);
+	RNA_def_property_string_sdna(prop, NULL, "thresh_defgrp_name");
+	RNA_def_property_ui_text(prop, "Threshold Vertex Group", "Vertex group name for defining weighted thresholds on different mesh parts");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_FractureModifier_thresh_defgrp_name_set");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 void RNA_def_modifier(BlenderRNA *brna)

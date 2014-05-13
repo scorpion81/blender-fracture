@@ -50,6 +50,7 @@
 #include "BKE_library.h"
 #include "BKE_main.h"
 #include "BKE_material.h"
+#include "BKE_deform.h"
 
 #include "bmesh.h"
 
@@ -228,7 +229,7 @@ static void freeData(ModifierData *md)
 	}
 
 	if (rmd->visible_mesh_cached && !rmd->shards_to_islands &&
-	   (rmd->visible_mesh || (!rmd->refresh && !rmd->refresh_constraints)))
+	   (/*rmd->visible_mesh ||*/ (!rmd->refresh && !rmd->refresh_constraints)))
 	{
 		//DM_release(rmd->visible_mesh_cached);
 		rmd->visible_mesh_cached->needsFree = 1;
@@ -1417,6 +1418,7 @@ static float mesh_separate_tagged(FractureModifierData* rmd, Object *ob, BMVert*
 	mi = MEM_callocN(sizeof(MeshIsland), "meshIsland");
 	BLI_addtail(&rmd->meshIslands, mi);
 
+	mi->thresh_weight = 0;
 	mi->vertices = v_tag;
 	mi->vertco = *startco;
 //	MEM_freeN(*startco);
@@ -2297,6 +2299,12 @@ static void connect_meshislands(FractureModifierData* rmd, Object* ob, MeshIslan
 				else
 				{
 					rbsc->breaking_threshold = thresh;
+				}
+
+				if (rmd->thresh_defgrp_name[0])
+				{
+					//modify maximum threshold by average weight
+					rbsc->breaking_threshold = thresh * (mi1->thresh_weight + mi2->thresh_weight) * 0.5f;
 				}
 
 				//BKE_rigidbody_start_dist_angle(rbsc);
@@ -3206,13 +3214,15 @@ void buildCompounds(FractureModifierData *rmd, Object *ob)
 }
 #endif
 
-static DerivedMesh* createCache(FractureModifierData *rmd)
+static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob)
 {
 	MeshIsland *mi;
 	BMVert* v;
 	DerivedMesh *dm;
 	MVert *verts;
+	MDeformVert *dvert;
 	int vertstart = 0;
+	const int thresh_defgrp_index = defgroup_name_index(ob, rmd->thresh_defgrp_name);
 
 	if (rmd->dm && !rmd->shards_to_islands)
 	{
@@ -3232,6 +3242,8 @@ static DerivedMesh* createCache(FractureModifierData *rmd)
 	DM_update_tessface_data(dm);
 
 	verts = dm->getVertArray(dm);
+	dvert = dm->getVertDataArray(dm, CD_MDEFORMVERT);
+
 	for (mi = rmd->meshIslands.first; mi; mi = mi->next)
 	{
 		int i = 0;
@@ -3248,6 +3260,13 @@ static DerivedMesh* createCache(FractureModifierData *rmd)
 			{
 				mi->vertices_cached[i] = verts + vertstart + i;
 			}
+
+			//sum up vertexweights and divide by vertcount to get islandweight
+			if (dvert && dvert->dw && rmd->thresh_defgrp_name[0]) {
+				float vweight = defvert_find_weight(dvert + vertstart + i, thresh_defgrp_index);
+				mi->thresh_weight += vweight;
+			}
+
 			vertstart += mi->vertex_count;
 		}
 		else
@@ -3267,8 +3286,18 @@ static DerivedMesh* createCache(FractureModifierData *rmd)
 				{
 					mi->vertices_cached[i] = NULL;
 				}
+
+				if (dvert && dvert->dw && rmd->thresh_defgrp_name[0]) {
+					float vweight = defvert_find_weight(dvert + index, thresh_defgrp_index);
+					mi->thresh_weight += vweight;
+				}
 			}
 			//vertstart += mi->vertex_count;
+		}
+
+		if (mi->vertex_count > 0)
+		{
+			mi->thresh_weight /= mi->vertex_count;
 		}
 	}
 
@@ -3319,7 +3348,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 		freeData(fmd);
 		//fmd->explo_shared = shared;
 
-		if (fmd->visible_mesh != NULL && !fmd->shards_to_islands && fmd->frac_mesh->shard_count > 0)
+		if (fmd->visible_mesh != NULL && !fmd->shards_to_islands && fmd->frac_mesh->shard_count > 0 && fmd->refresh)
 		{
 			if (fmd->visible_mesh_cached)
 			{
@@ -3354,6 +3383,8 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 				//BMVert *v;
 				MVert* v;
 				float dummyloc[3], rot[4], min[3], max[3];
+				MDeformVert *dvert = fmd->dm->getVertDataArray(fmd->dm, CD_MDEFORMVERT);
+				const int thresh_defgrp_index = defgroup_name_index(ob, fmd->thresh_defgrp_name);
 
 				//good idea to simply reference this ? Hmm, what about removing the explo modifier later, crash ?)
 				fmd->explo_shared = true;
@@ -3386,6 +3417,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 
 					mi->participating_constraints = NULL;
 					mi->participating_constraint_count = 0;
+					mi->thresh_weight = 0;
 
 					//mi->is_at_boundary = vc->is_at_boundary;
 					//mi->vertices = MEM_mallocN(sizeof(BMVert*) * s->totvert, "vert_cache");
@@ -3395,6 +3427,11 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 					{
 						mi->vertices_cached[k] = mverts + vertstart + k;
 						//mi->vertices[k] = BM_vert_at_index_find(fmd->visible_mesh, vertstart+k);
+						//sum up vertexweights and divide by vertcount to get islandweight
+						if (dvert && fmd->thresh_defgrp_name[0]) {
+							float vweight = defvert_find_weight(dvert + vertstart + k, thresh_defgrp_index);
+							mi->thresh_weight += vweight;
+						}
 					}
 					vertstart += s->totvert;
 					//mi->vertco = get_vertco(s);// ? starting coordinates ???
@@ -3440,6 +3477,11 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 						BKE_rigidbody_calc_shard_mass(ob, mi);
 					}
 					mi->vertex_indices = NULL;
+
+					if (mi->vertex_count > 0)
+					{
+						mi->thresh_weight /= mi->vertex_count;
+					}
 				}
 			}
 			else
@@ -3522,7 +3564,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 
 		start = PIL_check_seconds_timer();
 
-		if (fmd->visible_mesh != NULL && fmd->refresh && (!fmd->explo_shared) || (fmd->visible_mesh_cached == NULL))
+		if ((fmd->visible_mesh != NULL && fmd->refresh && (!fmd->explo_shared)) || (fmd->visible_mesh_cached == NULL))
 		{
 			start = PIL_check_seconds_timer();
 			//post process ... convert to DerivedMesh only at refresh times, saves permanent conversion during execution
@@ -3548,7 +3590,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 				//meshisland_init_verts(fmd);
 			}
 
-			fmd->visible_mesh_cached = createCache(fmd);
+			fmd->visible_mesh_cached = createCache(fmd, ob);
 
 			printf("Building cached DerivedMesh done, %g\n", PIL_check_seconds_timer() - start);
 		}
@@ -3676,6 +3718,13 @@ static bool dependsOnNormals(ModifierData *UNUSED(md))
 	walk(userData, ob, (ID **)&rmd->constraint_group);
 }*/
 
+static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *UNUSED(md))
+{
+	CustomDataMask dataMask = 0;
+	dataMask |= CD_MASK_MDEFORMVERT;
+	return dataMask;
+}
+
 #if 0
 ModifierTypeInfo modifierType_RigidBody = {
 	/* name */              "RigidBody",
@@ -3725,7 +3774,7 @@ ModifierTypeInfo modifierType_Fracture = {
         /* applyModifier */     applyModifier,
         /* applyModifierEM */   applyModifierEM,
         /* initData */          initData,
-        /* requiredDataMask */  NULL,
+        /* requiredDataMask */  requiredDataMask,
         /* freeData */          freeData,
         /* isDisabled */        NULL,
         /* updateDepgraph */    NULL,

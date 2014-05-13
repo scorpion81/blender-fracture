@@ -479,6 +479,9 @@ static void parse_neighbors(FILE* fp, int *neighbors, int totpoly)
 
 Shard* BKE_custom_data_to_shard(Shard* s, DerivedMesh* dm)
 {
+	CustomData_copy(&dm->vertData, &s->vertData, CD_MASK_MDEFORMVERT, CD_CALLOC, s->totvert);
+	CustomData_copy_data(&dm->vertData, &s->vertData,
+	                     0, 0, s->totvert);
 
 	CustomData_copy(&dm->loopData, &s->loopData, CD_MASK_MLOOPUV, CD_CALLOC, s->totloop);
 	CustomData_copy_data(&dm->loopData, &s->loopData,
@@ -566,7 +569,7 @@ void BKE_shard_free(Shard *s, bool doCustomData)
 
 	if (doCustomData)
 	{
-//		CustomData_free(&s->vertData, s->totvert);
+		CustomData_free(&s->vertData, s->totvert);
 //		CustomData_free_layers(&s->loopData, CD_MASK_MLOOPUV, s->totloop);
 //		CustomData_free_layers(&s->polyData, CD_MASK_MTEXPOLY, s->totpoly);
 		CustomData_free(&s->loopData, s->totloop);
@@ -966,6 +969,7 @@ static DerivedMesh *create_dm(FractureModifierData* fmd, bool doCustomData)
 			s = shard_map[0];
 		}
 
+		CustomData_merge(&s->vertData, &result->vertData, CD_MASK_MDEFORMVERT, CD_CALLOC, num_verts);
 		CustomData_merge(&s->polyData, &result->polyData, CD_MASK_MTEXPOLY, CD_CALLOC, num_polys);
 		CustomData_merge(&s->loopData, &result->loopData, CD_MASK_MLOOPUV, CD_CALLOC, num_loops);
 	}
@@ -1010,6 +1014,7 @@ static DerivedMesh *create_dm(FractureModifierData* fmd, bool doCustomData)
 
 		if (doCustomData)
 		{
+			CustomData_copy_data(&shard->vertData, &result->vertData, 0, vertstart, shard->totvert);
 			CustomData_copy_data(&shard->loopData, &result->loopData, 0, loopstart, shard->totloop);
 			CustomData_copy_data(&shard->polyData, &result->polyData, 0, polystart, shard->totpoly);
 		}
@@ -1072,6 +1077,10 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 
 	if (doCustomData)
 	{
+		CustomData_copy(&s->vertData, &dm->vertData, CD_MASK_MDEFORMVERT, CD_CALLOC, s->totvert);
+		CustomData_copy_data(&s->vertData, &dm->vertData,
+		                     0, 0, s->totvert);
+
 		//CustomData_free_layers(&dm->loopData, CD_MLOOPUV, s->totloop);
 		CustomData_copy(&s->loopData, &dm->loopData, CD_MASK_MLOOPUV, CD_CALLOC, s->totloop);
 		CustomData_copy_data(&s->loopData, &dm->loopData, 0, 0, s->totloop);

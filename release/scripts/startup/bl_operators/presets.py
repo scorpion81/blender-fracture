@@ -559,6 +559,7 @@ class AddPresetFracture(AddPresetBase, Operator):
         "fracture.breaking_distance",
         "fracture.solver_iterations_override",
         "fracture.mass_dependent_thresholds",
+        "fracture.thresh_vertex_group",
         "fracture.execute_threaded"
     ]
 

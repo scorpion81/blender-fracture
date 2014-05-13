@@ -4074,6 +4074,49 @@ static void direct_link_grid_paint_mask(FileData *fd, int count, GridPaintMask *
 	}
 }
 
+static void direct_link_customdata_fracture(FileData *fd, CustomData *data, int count)
+{
+	/*need to load the dverts here for fracture, so handle this in a special function, normally
+	 *the dverts arent loaded here, for what reason ever.... */
+
+	int i = 0;
+
+	data->layers = newdataadr(fd, data->layers);
+
+	/* annoying workaround for bug [#31079] loading legacy files with
+	 * no polygons _but_ have stale customdata */
+	if (UNLIKELY(count == 0 && data->layers == NULL && data->totlayer != 0)) {
+		CustomData_reset(data);
+		return;
+	}
+
+	data->external = newdataadr(fd, data->external);
+
+	while (i < data->totlayer) {
+		CustomDataLayer *layer = &data->layers[i];
+
+		if (layer->flag & CD_FLAG_EXTERNAL)
+			layer->flag &= ~CD_FLAG_IN_MEMORY;
+
+		layer->flag &= ~CD_FLAG_NOFREE;
+
+		if (CustomData_verify_versions(data, i)) {
+			layer->data = newdataadr(fd, layer->data);
+			if (layer->type == CD_MDISPS)
+				direct_link_mdisps(fd, count, layer->data, layer->flag & CD_FLAG_EXTERNAL);
+			else if (layer->type == CD_GRID_PAINT_MASK)
+				direct_link_grid_paint_mask(fd, count, layer->data);
+			else if (layer->type == CD_MDEFORMVERT) {
+				/* layer types that allocate own memory need special handling */
+				direct_link_dverts(fd, count, layer->data);
+			}
+			i++;
+		}
+	}
+
+	CustomData_update_typemap(data);
+}
+
 /*this isn't really a public api function, so prototyped here*/
 static void direct_link_customdata(FileData *fd, CustomData *data, int count)
 {
@@ -4104,6 +4147,7 @@ static void direct_link_customdata(FileData *fd, CustomData *data, int count)
 				direct_link_mdisps(fd, count, layer->data, layer->flag & CD_FLAG_EXTERNAL);
 			else if (layer->type == CD_GRID_PAINT_MASK)
 				direct_link_grid_paint_mask(fd, count, layer->data);
+
 			i++;
 		}
 	}
@@ -4590,8 +4634,10 @@ static Shard* read_shard(FileData *fd, void* address )
 	s->mvert = newdataadr(fd, s->mvert);
 	s->mpoly = newdataadr(fd, s->mpoly);
 	s->mloop = newdataadr(fd, s->mloop);
-	direct_link_customdata(fd, &s->loopData, s->totloop);
-	direct_link_customdata(fd, &s->polyData, s->totpoly);
+
+	direct_link_customdata_fracture(fd, &s->vertData, s->totvert);
+	direct_link_customdata_fracture(fd, &s->loopData, s->totloop);
+	direct_link_customdata_fracture(fd, &s->polyData, s->totpoly);
 
 	//sigh, need to ensure image refs are correct...
 	//direct_link_customdata_mtpoly_shard(fd, &s->polyData, s->totpoly);
@@ -4980,16 +5026,12 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 				MVert *mverts;
 				int vertstart = 0;
 				Shard *s;
-				int count = 0, count2 = 0;
+				int count = 0, count2 = 0; //vertcount = 0;
+				//MDeformVert *dvert;
 
 				fm->shard_map = newdataadr(fd, fm->shard_map);
 				for (i = 0; i < fm->shard_count; i++)
 				{
-					/*Shard* s = newdataadr(fd, fm->shard_map[i]);
-					s->mvert = newdataadr(fd, s->mvert);
-					s->mpoly = newdataadr(fd, s->mpoly);
-					s->mloop = newdataadr(fd, s->mloop);
-					s->neighbor_ids = newdataadr(fd, s->neighbor_ids);*/
 					fm->shard_map[i] = newdataadr(fd, fm->shard_map[i]);
 					fm->shard_map[i] = read_shard(fd, fm->shard_map[i]);
 				}
@@ -5041,6 +5083,10 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 					//re-init cached verts here...
 					mverts = CDDM_get_verts(fmd->visible_mesh_cached);
 				}
+
+				/*vertcount = fmd->visible_mesh_cached->getNumVerts(fmd->visible_mesh_cached);
+				dvert = fmd->visible_mesh_cached->getVertDataArray(fmd->visible_mesh_cached, CD_MDEFORMVERT);
+				direct_link_dverts(fd, vertcount, dvert);*/
 
 				for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 				{
