@@ -847,8 +847,11 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	stream = fmemopen(bp, size, "r");
 #endif
 
-	parse_stream(stream, pointcloud->totpoints, id, fmesh, algorithm, obj, dm);
-	fclose (stream);
+	if (stream != NULL)
+	{
+		parse_stream(stream, pointcloud->totpoints, id, fmesh, algorithm, obj, dm);
+		fclose (stream);
+	}
 
 #ifdef USE_DEBUG_TIMER
 	printf("Fracture done, %g\n", PIL_check_seconds_timer() - time_start);

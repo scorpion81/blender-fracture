@@ -575,7 +575,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				return derivedData;
 			}
 		}
-		if (fmd->dm && fmd->frac_mesh)
+		if (fmd->dm && fmd->frac_mesh && (fmd->dm->getNumPolys(fmd->dm) > 0))
 		{
 			final_dm = doSimulate(fmd, ob, fmd->dm);
 		}
@@ -3214,7 +3214,7 @@ void buildCompounds(FractureModifierData *rmd, Object *ob)
 }
 #endif
 
-static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob)
+static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMesh *origdm)
 {
 	MeshIsland *mi;
 	BMVert* v;
@@ -3224,13 +3224,17 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob)
 	int vertstart = 0;
 	const int thresh_defgrp_index = defgroup_name_index(ob, rmd->thresh_defgrp_name);
 
-	if (rmd->dm && !rmd->shards_to_islands)
+	if (rmd->dm && !rmd->shards_to_islands && (rmd->dm->getNumPolys(rmd->dm) > 0))
 	{
 		dm = CDDM_copy(rmd->dm);
 	}
-	else if (rmd->visible_mesh)
+	else if (rmd->visible_mesh && (rmd->visible_mesh->totface > 0) && BLI_countlist(&rmd->meshIslands) > 1)
 	{
 		dm = CDDM_from_bmesh(rmd->visible_mesh, true);
+	}
+	else if (origdm != NULL)
+	{
+		dm = CDDM_copy(origdm);
 	}
 	else
 	{
@@ -3590,7 +3594,8 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 				//meshisland_init_verts(fmd);
 			}
 
-			fmd->visible_mesh_cached = createCache(fmd, ob);
+			fmd->visible_mesh_cached = createCache(fmd, ob, dm);
+
 
 			printf("Building cached DerivedMesh done, %g\n", PIL_check_seconds_timer() - start);
 		}
