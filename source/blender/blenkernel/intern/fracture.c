@@ -184,6 +184,13 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 				t->parent_id = parent_id;
 				t->flag = SHARD_INTACT;
 			}
+
+			if (t == NULL || t->totvert == 0 || t->totloop == 0 || t->totpoly == 0)
+			{
+				//invalid shard, stop parsing... or ?
+				break;
+			}
+
 			/* XXX TODO, need object for material as well, or atleast a material index... */
 			if (algorithm == MOD_FRACTURE_BOOLEAN)
 			{
@@ -230,6 +237,12 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 			{
 				t->parent_id = parent_id;
 				t->flag = SHARD_INTACT;
+			}
+
+			if (t == NULL || t->totvert == 0 || t->totloop == 0 || t->totpoly == 0)
+			{
+				//invalid shard, stop parsing... or ?
+				break;
 			}
 
 			index = (int)(BLI_frand() * (t->totpoly-1));
