@@ -163,13 +163,13 @@ FCurve *verify_driver_fcurve(ID *id, const char rna_path[], const int array_inde
 /* Main Driver Management API calls:
  *  Add a new driver for the specified property on the given ID block
  */
-short ANIM_add_driver(ReportList *reports, ID *id, const char rna_path[], int array_index, short flag, int type)
+int ANIM_add_driver(ReportList *reports, ID *id, const char rna_path[], int array_index, short flag, int type)
 {	
 	PointerRNA id_ptr, ptr;
 	PropertyRNA *prop;
 	FCurve *fcu;
 	int array_index_max;
-	int done = FALSE;
+	int done_tot = 0;
 	
 	/* validate pointer first - exit if failure */
 	RNA_id_pointer_create(id, &id_ptr);
@@ -249,21 +249,21 @@ short ANIM_add_driver(ReportList *reports, ID *id, const char rna_path[], int ar
 		}
 		
 		/* set the done status */
-		done += (fcu != NULL);
+		done_tot += (fcu != NULL);
 	}
 	
 	/* done */
-	return done;
+	return done_tot;
 }
 
 /* Main Driver Management API calls:
  *  Remove the driver for the specified property on the given ID block (if available)
  */
-short ANIM_remove_driver(ReportList *UNUSED(reports), ID *id, const char rna_path[], int array_index, short UNUSED(flag))
+bool ANIM_remove_driver(ReportList *UNUSED(reports), ID *id, const char rna_path[], int array_index, short UNUSED(flag))
 {
 	AnimData *adt;
 	FCurve *fcu;
-	int success = 0;
+	bool success = false;
 	
 	/* we don't check the validity of the path here yet, but it should be ok... */
 	adt = BKE_animdata_from_id(id);
@@ -282,7 +282,7 @@ short ANIM_remove_driver(ReportList *UNUSED(reports), ID *id, const char rna_pat
 				free_fcurve(fcu);
 				
 				/* done successfully */
-				success |= 1;
+				success = true;
 			}
 		}
 		else {
@@ -295,7 +295,7 @@ short ANIM_remove_driver(ReportList *UNUSED(reports), ID *id, const char rna_pat
 				BLI_remlink(&adt->drivers, fcu);
 				free_fcurve(fcu);
 				
-				success = 1;
+				success = true;
 			}
 		}
 	}
@@ -320,7 +320,7 @@ void free_anim_drivers_copybuf(void)
 }
 
 /* Checks if there is a driver in the copy/paste buffer */
-short ANIM_driver_can_paste(void)
+bool ANIM_driver_can_paste(void)
 {
 	return (channeldriver_copypaste_buf != NULL);
 }
@@ -330,7 +330,7 @@ short ANIM_driver_can_paste(void)
 /* Main Driver Management API calls:
  *  Make a copy of the driver for the specified property on the given ID block
  */
-short ANIM_copy_driver(ReportList *reports, ID *id, const char rna_path[], int array_index, short UNUSED(flag))
+bool ANIM_copy_driver(ReportList *reports, ID *id, const char rna_path[], int array_index, short UNUSED(flag))
 {
 	PointerRNA id_ptr, ptr;
 	PropertyRNA *prop;
@@ -377,7 +377,7 @@ short ANIM_copy_driver(ReportList *reports, ID *id, const char rna_path[], int a
  *  Add a new driver for the specified property on the given ID block or replace an existing one
  *	with the driver + driver-curve data from the buffer 
  */
-short ANIM_paste_driver(ReportList *reports, ID *id, const char rna_path[], int array_index, short UNUSED(flag))
+bool ANIM_paste_driver(ReportList *reports, ID *id, const char rna_path[], int array_index, short UNUSED(flag))
 {	
 	PointerRNA id_ptr, ptr;
 	PropertyRNA *prop;
@@ -501,7 +501,7 @@ static int add_driver_button_exec(bContext *C, wmOperator *op)
 {
 	PointerRNA ptr = {{NULL}};
 	PropertyRNA *prop = NULL;
-	short success = 0;
+	int success = 0;
 	int index;
 	const bool all = RNA_boolean_get(op->ptr, "all");
 	
@@ -544,7 +544,7 @@ void ANIM_OT_driver_button_add(wmOperatorType *ot)
 	//op->poll = ??? // TODO: need to have some animatable property to do this
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
+	ot->flag = OPTYPE_UNDO | OPTYPE_INTERNAL;
 
 	/* properties */
 	RNA_def_boolean(ot->srna, "all", 1, "All", "Create drivers for all elements of the array");
@@ -595,7 +595,7 @@ void ANIM_OT_driver_button_remove(wmOperatorType *ot)
 	//op->poll = ??? // TODO: need to have some driver to be able to do this...
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
+	ot->flag = OPTYPE_UNDO | OPTYPE_INTERNAL;
 
 	/* properties */
 	RNA_def_boolean(ot->srna, "all", 1, "All", "Delete drivers for all elements of the array");
@@ -642,7 +642,7 @@ void ANIM_OT_copy_driver_button(wmOperatorType *ot)
 	//op->poll = ??? // TODO: need to have some driver to be able to do this...
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
+	ot->flag = OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
 /* Paste Driver Button Operator ------------------------ */
@@ -686,7 +686,7 @@ void ANIM_OT_paste_driver_button(wmOperatorType *ot)
 	//op->poll = ??? // TODO: need to have some driver to be able to do this...
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
+	ot->flag = OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
 /* ************************************************** */

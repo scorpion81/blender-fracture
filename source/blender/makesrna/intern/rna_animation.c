@@ -380,7 +380,7 @@ static int rna_KeyingSet_active_ksPath_editable(PointerRNA *ptr)
 	KeyingSet *ks = (KeyingSet *)ptr->data;
 	
 	/* only editable if there are some paths to change to */
-	return (ks->paths.first != NULL);
+	return (BLI_listbase_is_empty(&ks->paths) == false);
 }
 
 static PointerRNA rna_KeyingSet_active_ksPath_get(PointerRNA *ptr)
@@ -460,7 +460,7 @@ static void rna_KeyingSet_paths_remove(KeyingSet *keyingset, ReportList *reports
 	KS_Path *ksp = ksp_ptr->data;
 
 	/* if data is valid, call the API function for this */
-	if ((keyingset && ksp) == FALSE) {
+	if ((keyingset && ksp) == false) {
 		BKE_report(reports, RPT_ERROR, "Keying set path could not be removed");
 		return;
 	}
@@ -595,7 +595,7 @@ static void rna_def_keyingset_info(BlenderRNA *brna)
 	
 	prop = RNA_def_property(srna, "bl_idname", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "idname");
-	RNA_def_property_flag(prop, PROP_REGISTER | PROP_NEVER_CLAMP);
+	RNA_def_property_flag(prop, PROP_REGISTER);
 	RNA_def_property_ui_text(prop, "ID Name", KEYINGSET_IDNAME_DOC);
 	
 	prop = RNA_def_property(srna, "bl_label", PROP_STRING, PROP_NONE);
@@ -792,7 +792,7 @@ static void rna_def_keyingset(BlenderRNA *brna)
 	/* Id/Label */
 	prop = RNA_def_property(srna, "bl_idname", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "idname");
-	RNA_def_property_flag(prop, PROP_REGISTER | PROP_NEVER_CLAMP);
+	RNA_def_property_flag(prop, PROP_REGISTER);
 	RNA_def_property_ui_text(prop, "ID Name", KEYINGSET_IDNAME_DOC);
 /*	RNA_def_property_update(prop, NC_SCENE | ND_KEYINGSET | NA_RENAME, NULL); */ /* NOTE: disabled, as ID name shouldn't be editable */
 	

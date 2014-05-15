@@ -18,7 +18,8 @@
 #include "kernel_montecarlo.h"
 #include "kernel_types.h"
 #include "kernel_globals.h"
-#include "kernel_object.h"
+
+#include "geom/geom_object.h"
 
 #include "closure/bsdf_diffuse.h"
 #include "closure/bssrdf.h"
@@ -112,7 +113,7 @@ static void shaderdata_to_shaderglobals(KernelGlobals *kg, ShaderData *sd,
 	globals->dvdy = sd->dv.dy;
 	globals->dPdu = TO_VEC3(sd->dPdu);
 	globals->dPdv = TO_VEC3(sd->dPdv);
-	globals->surfacearea = (sd->object == ~0) ? 1.0f : object_surface_area(kg, sd->object);
+	globals->surfacearea = (sd->object == OBJECT_NONE) ? 1.0f : object_surface_area(kg, sd->object);
 	globals->time = sd->time;
 
 	/* booleans */
@@ -535,7 +536,7 @@ int OSLShader::find_attribute(KernelGlobals *kg, const ShaderData *sd, uint id, 
 	/* for OSL, a hash map is used to lookup the attribute by name. */
 	int object = sd->object*ATTR_PRIM_TYPES;
 #ifdef __HAIR__
-	if(sd->segment != ~0) object += ATTR_PRIM_CURVE;
+	if(sd->type & PRIMITIVE_ALL_CURVE) object += ATTR_PRIM_CURVE;
 #endif
 
 	OSLGlobals::AttributeMap &attr_map = kg->osl->attribute_map[object];
@@ -546,7 +547,7 @@ int OSLShader::find_attribute(KernelGlobals *kg, const ShaderData *sd, uint id, 
 		const OSLGlobals::Attribute &osl_attr = it->second;
 		*elem = osl_attr.elem;
 
-		if(sd->prim == ~0 && (AttributeElement)osl_attr.elem != ATTR_ELEMENT_MESH)
+		if(sd->prim == PRIM_NONE && (AttributeElement)osl_attr.elem != ATTR_ELEMENT_MESH)
 			return ATTR_STD_NOT_FOUND;
 
 		/* return result */

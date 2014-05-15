@@ -459,7 +459,7 @@ void            nodeInternalRelink(struct bNodeTree *ntree, struct bNode *node);
 
 void            nodeToView(struct bNode *node, float x, float y, float *rx, float *ry);
 void            nodeFromView(struct bNode *node, float x, float y, float *rx, float *ry);
-int             nodeAttachNodeCheck(struct bNode *node, struct bNode *parent);
+bool            nodeAttachNodeCheck(struct bNode *node, struct bNode *parent);
 void            nodeAttachNode(struct bNode *node, struct bNode *parent);
 void            nodeDetachNode(struct bNode *node);
 
@@ -469,7 +469,7 @@ int             nodeFindNode(struct bNodeTree *ntree, struct bNodeSocket *sock, 
 struct bNodeLink *nodeFindLink(struct bNodeTree *ntree, struct bNodeSocket *from, struct bNodeSocket *to);
 int             nodeCountSocketLinks(struct bNodeTree *ntree, struct bNodeSocket *sock);
 
-void			nodeSetSelected(struct bNode *node, int select);
+void            nodeSetSelected(struct bNode *node, bool select);
 void            nodeSetActive(struct bNodeTree *ntree, struct bNode *node);
 struct bNode   *nodeGetActive(struct bNodeTree *ntree);
 struct bNode   *nodeGetActiveID(struct bNodeTree *ntree, short idtype);
@@ -520,7 +520,7 @@ int                    BKE_node_instance_hash_size(bNodeInstanceHash *hash);
 
 void                   BKE_node_instance_hash_clear_tags(bNodeInstanceHash *hash);
 void                   BKE_node_instance_hash_tag(bNodeInstanceHash *hash, void *value);
-int                    BKE_node_instance_hash_tag_key(bNodeInstanceHash *hash, bNodeInstanceKey key);
+bool                   BKE_node_instance_hash_tag_key(bNodeInstanceHash *hash, bNodeInstanceKey key);
 void                   BKE_node_instance_hash_remove_untagged(bNodeInstanceHash *hash, bNodeInstanceValueFP valfreefp);
 
 typedef GHashIterator bNodeInstanceHashIterator;
@@ -542,7 +542,7 @@ BLI_INLINE bool                       BKE_node_instance_hash_iterator_done(bNode
 /* Node Previews */
 
 int             BKE_node_preview_used(struct bNode *node);
-bNodePreview   *BKE_node_preview_verify(struct bNodeInstanceHash *previews, bNodeInstanceKey key, int xsize, int ysize, int create);
+bNodePreview   *BKE_node_preview_verify(struct bNodeInstanceHash *previews, bNodeInstanceKey key, int xsize, int ysize, bool create);
 bNodePreview   *BKE_node_preview_copy(struct bNodePreview *preview);
 void            BKE_node_preview_free(struct bNodePreview *preview);
 void            BKE_node_preview_init_tree(struct bNodeTree *ntree, int xsize, int ysize, int create_previews);
@@ -744,6 +744,7 @@ struct ShadeResult;
 #define SH_NODE_COMBHSV					184
 #define SH_NODE_BSDF_HAIR				185
 #define SH_NODE_LAMP					186
+#define SH_NODE_UVMAP                   187
 
 /* custom defines options for Material node */
 #define SH_NODE_MAT_DIFF   1
@@ -770,7 +771,7 @@ void            ntreeShaderGetTexcoMode(struct bNodeTree *ntree, int osa, short 
 extern void (*node_shader_lamp_loop)(struct ShadeInput *, struct ShadeResult *);
 void            set_node_shader_lamp_loop(void (*lamp_loop_func)(struct ShadeInput *, struct ShadeResult *));
 
-void            ntreeGPUMaterialNodes(struct bNodeTree *ntree, struct GPUMaterial *mat);
+void            ntreeGPUMaterialNodes(struct bNodeTree *ntree, struct GPUMaterial *mat, short compatibility);
 
 
 /* ************** COMPOSITE NODES *************** */
@@ -897,6 +898,7 @@ void            ntreeGPUMaterialNodes(struct bNodeTree *ntree, struct GPUMateria
 
 #define CMP_NODE_MAP_RANGE	319
 #define CMP_NODE_PLANETRACKDEFORM	320
+#define CMP_NODE_CORNERPIN          321
 
 /* channel toggles */
 #define CMP_CHAN_RGB		1
@@ -931,7 +933,7 @@ void            ntreeGPUMaterialNodes(struct bNodeTree *ntree, struct GPUMateria
 
 /* API */
 struct CompBuf;
-void ntreeCompositExecTree(struct bNodeTree *ntree, struct RenderData *rd, int rendering, int do_previews,
+void ntreeCompositExecTree(struct Scene *scene, struct bNodeTree *ntree, struct RenderData *rd, int rendering, int do_previews,
                            const struct ColorManagedViewSettings *view_settings, const struct ColorManagedDisplaySettings *display_settings);
 void ntreeCompositTagRender(struct Scene *sce);
 int ntreeCompositTagAnimated(struct bNodeTree *ntree);
@@ -998,7 +1000,5 @@ int ntreeTexExecTree(struct bNodeTree *ntree, struct TexResult *target,
 
 void init_nodesystem(void);
 void free_nodesystem(void);
-
-void clear_scene_in_nodes(struct Main *bmain, struct Scene *sce);
 
 #endif

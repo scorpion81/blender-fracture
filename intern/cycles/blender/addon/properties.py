@@ -33,7 +33,7 @@ enum_devices = (
     )
 
 if _cycles.with_network:
-  enum_devices += (('NETWORK', "Networked Device", "Use networked device for rendering"),)
+    enum_devices += (('NETWORK', "Networked Device", "Use networked device for rendering"),)
 
 enum_feature_set = (
     ('SUPPORTED', "Supported", "Only use finished and supported features"),
@@ -108,6 +108,11 @@ enum_integrator = (
     ('PATH', "Path Tracing", "Pure path tracing integrator"),
     )
 
+enum_volume_homogeneous_sampling = (
+    ('DISTANCE', "Distance", "Use Distance Sampling"),
+    ('EQUI_ANGULAR', "Equi-angular", "Use Equi-angular Sampling"),
+    )
+
 
 class CyclesRenderSettings(bpy.types.PropertyGroup):
     @classmethod
@@ -139,6 +144,13 @@ class CyclesRenderSettings(bpy.types.PropertyGroup):
                 description="Method to sample lights and materials",
                 items=enum_integrator,
                 default='PATH',
+                )
+
+        cls.volume_homogeneous_sampling = EnumProperty(
+                name="Homogeneous Sampling",
+                description="Sampling method to use for homogeneous volumes",
+                items=enum_volume_homogeneous_sampling,
+                default='DISTANCE',
                 )
 
         cls.use_square_samples = BoolProperty(
@@ -239,6 +251,18 @@ class CyclesRenderSettings(bpy.types.PropertyGroup):
                 description="How to use per render layer sample settings",
                 items=enum_use_layer_samples,
                 default='USE',
+                )
+
+        cls.sample_all_lights_direct = BoolProperty(
+                name="Sample All Direct Lights",
+                description="Sample all lights (for direct samples), rather than randomly picking one",
+                default=True,
+                )
+
+        cls.sample_all_lights_indirect = BoolProperty(
+                name="Sample All Indirect Lights",
+                description="Sample all lights (for indirect samples), rather than randomly picking one",
+                default=True,
                 )
 
         cls.no_caustics = BoolProperty(
@@ -363,9 +387,18 @@ class CyclesRenderSettings(bpy.types.PropertyGroup):
                 default=0,
                 )
 
-        cls.sample_clamp = FloatProperty(
-                name="Clamp",
-                description="If non-zero, the maximum value for a sample, "
+        cls.sample_clamp_direct = FloatProperty(
+                name="Clamp Direct",
+                description="If non-zero, the maximum value for a direct sample, "
+                            "higher values will be scaled down to avoid too "
+                            "much noise and slow convergence at the cost of accuracy",
+                min=0.0, max=1e8,
+                default=0.0,
+                )
+
+        cls.sample_clamp_indirect = FloatProperty(
+                name="Clamp Indirect",
+                description="If non-zero, the maximum value for an indirect sample, "
                             "higher values will be scaled down to avoid too "
                             "much noise and slow convergence at the cost of accuracy",
                 min=0.0, max=1e8,
@@ -707,6 +740,41 @@ class CyclesMeshSettings(bpy.types.PropertyGroup):
         del bpy.types.Mesh.cycles
         del bpy.types.Curve.cycles
         del bpy.types.MetaBall.cycles
+
+
+class CyclesObjectBlurSettings(bpy.types.PropertyGroup):
+
+    @classmethod
+    def register(cls):
+
+        bpy.types.Object.cycles = PointerProperty(
+                name="Cycles Object Settings",
+                description="Cycles object settings",
+                type=cls,
+                )
+
+        cls.use_motion_blur = BoolProperty(
+                name="Use Motion Blur",
+                description="Use motion blur for this object",
+                default=True,
+                )
+
+        cls.use_deform_motion = BoolProperty(
+                name="Use Deformation Motion",
+                description="Use deformation motion blur for this object",
+                default=True,
+                )
+
+        cls.motion_steps = IntProperty(
+                name="Motion Steps",
+                description="Control accuracy of deformation motion blur, more steps gives more memory usage (actual number of steps is 2^(steps - 1))",
+                min=1, soft_max=8,
+                default=1,
+                )
+
+    @classmethod
+    def unregister(cls):
+        del bpy.types.Object.cycles
 
 
 class CyclesCurveRenderSettings(bpy.types.PropertyGroup):

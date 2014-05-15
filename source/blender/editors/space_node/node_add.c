@@ -82,7 +82,7 @@ bNode *node_add_node(const bContext *C, const char *idname, int type, float locx
 	/* generics */
 	node->locx = locx;
 	node->locy = locy + 60.0f;     /* arbitrary... so its visible, (0,0) is top of node */
-	nodeSetSelected(node, TRUE);
+	nodeSetSelected(node, true);
 	
 	node->locx = locx;
 	node->locy = locy + 60.0f;
@@ -232,8 +232,9 @@ static int add_reroute_exec(bContext *C, wmOperator *op)
 		node_deselect_all(snode);
 		
 		/* Find cut links and sort them by sockets */
-		output_links.first = output_links.last = NULL;
-		input_links.first = input_links.last = NULL;
+		BLI_listbase_clear(&output_links);
+		BLI_listbase_clear(&input_links);
+
 		for (link = ntree->links.first; link; link = link->next) {
 			if (nodeLinkIsHidden(link))
 				continue;

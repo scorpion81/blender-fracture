@@ -56,5 +56,8 @@ void ED_rigidbody_constraint_remove(struct Scene *scene, struct Object *ob);
 void ED_operatortypes_physics(void);
 void ED_keymap_physics(struct wmKeyConfig *keyconf);
 
+/*fracture mode picking */
+int ED_fracture_pick_shard(struct bContext *C, const int mval[2], bool extend, bool deselect, bool toggle);
+
 #endif /* __ED_PHYSICS_H__ */
 

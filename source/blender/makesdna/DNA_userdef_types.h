@@ -233,8 +233,10 @@ typedef struct ThemeSpace {
 	char hilite[4];
 	char grid[4]; 
 	
+	char view_overlay[4];
+
 	char wire[4], wire_edit[4], select[4];
-	char lamp[4], speaker[4], empty[4], camera[4], pad[4];
+	char lamp[4], speaker[4], empty[4], camera[4];
 	char active[4], group[4], group_active[4], transform[4];
 	char vertex[4], vertex_select[4], vertex_unreferenced[4];
 	char edge[4], edge_select[4];
@@ -483,8 +485,9 @@ typedef struct UserDef {
 	short glreslimit;
 	short curssize;
 	short color_picker_type;
-	short ipo_new;			/* interpolation mode for newly added F-Curves */
-	short keyhandles_new;	/* handle types for newly added keyframes */
+	char  ipo_new;			/* interpolation mode for newly added F-Curves */
+	char  keyhandles_new;	/* handle types for newly added keyframes */
+	char  pad1[2];
 
 	short scrcastfps;		/* frame rate for screencast to be played back */
 	short scrcastwait;		/* milliseconds between screencast snapshots */
@@ -733,10 +736,11 @@ typedef enum eGP_UserdefSettings {
 
 /* color picker types */
 typedef enum eColorPicker_Types {
-	USER_CP_CIRCLE		= 0,
+	USER_CP_CIRCLE_HSV	= 0,
 	USER_CP_SQUARE_SV	= 1,
 	USER_CP_SQUARE_HS	= 2,
 	USER_CP_SQUARE_HV	= 3,
+	USER_CP_CIRCLE_HSL	= 4,
 } eColorPicker_Types;
 
 /* timecode display styles */
@@ -782,27 +786,26 @@ typedef enum eNdof_Flag {
 	NDOF_SHOULD_ZOOM    = (1 << 4),
 	NDOF_SHOULD_ROTATE  = (1 << 5),
 
-	/* orbit navigation modes
-	 * only two options, so it's sort of a hybrid bool/enum
-	 * if ((U.ndof_flag & NDOF_ORBIT_MODE) == NDOF_OM_OBJECT)... */
+	/* orbit navigation modes */
 
-	// NDOF_ORBIT_MODE     = (1 << 6),
-	// #define NDOF_OM_TARGETCAMERA 0
-	// #define NDOF_OM_OBJECT      NDOF_ORBIT_MODE
+	/* exposed as Orbit|Explore in the UI */
+	NDOF_MODE_ORBIT      = (1 << 6),
 
 	/* actually... users probably don't care about what the mode
 	 * is called, just that it feels right */
 	/* zoom is up/down if this flag is set (otherwise forward/backward) */
-	NDOF_ZOOM_UPDOWN        = (1 << 7),
+	NDOF_PAN_YZ_SWAP_AXIS   = (1 << 7),
 	NDOF_ZOOM_INVERT        = (1 << 8),
-	NDOF_ROTATE_INVERT_AXIS = (1 << 9),
-	NDOF_TILT_INVERT_AXIS   = (1 << 10),
-	NDOF_ROLL_INVERT_AXIS   = (1 << 11),
+	NDOF_ROTX_INVERT_AXIS   = (1 << 9),
+	NDOF_ROTY_INVERT_AXIS   = (1 << 10),
+	NDOF_ROTZ_INVERT_AXIS   = (1 << 11),
 	NDOF_PANX_INVERT_AXIS   = (1 << 12),
 	NDOF_PANY_INVERT_AXIS   = (1 << 13),
 	NDOF_PANZ_INVERT_AXIS   = (1 << 14),
 	NDOF_TURNTABLE          = (1 << 15),
 } eNdof_Flag;
+
+#define NDOF_PIXELS_PER_SECOND 600.0f
 
 /* compute_device_type */
 typedef enum eCompute_Device_Type {

@@ -50,7 +50,7 @@ ccl_device_inline void path_state_init(KernelGlobals *kg, PathState *state, RNG 
 		state->rng_congruential = lcg_init(*rng + sample*0x51633e2d);
 	}
 	else {
-		state->volume_stack[0].shader = SHADER_NO_ID;
+		state->volume_stack[0].shader = SHADER_NONE;
 	}
 #endif
 }
@@ -132,6 +132,9 @@ ccl_device_inline uint path_state_ray_visibility(KernelGlobals *kg, PathState *s
 	/* for visibility, diffuse/glossy are for reflection only */
 	if(flag & PATH_RAY_TRANSMIT)
 		flag &= ~(PATH_RAY_DIFFUSE|PATH_RAY_GLOSSY);
+	/* todo: this is not supported as its own ray visibility yet */
+	if(state->flag & PATH_RAY_VOLUME_SCATTER)
+		flag |= PATH_RAY_DIFFUSE;
 	/* for camera visibility, use render layer flags */
 	if(flag & PATH_RAY_CAMERA)
 		flag |= kernel_data.integrator.layer_flag;

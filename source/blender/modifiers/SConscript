@@ -50,7 +50,8 @@ incs = [
 
 defs = []
 
-if env ['WITH_BF_BOOLEAN']:
+if env['WITH_BF_BOOLEAN']:
+    incs.append('#/extern/carve')
     defs.append('WITH_MOD_BOOLEAN')
 
 if env['WITH_BF_REMESH']:
@@ -62,6 +63,10 @@ if env['WITH_BF_FLUID']:
 
 if env['WITH_BF_OCEANSIM']:
     defs.append('WITH_OCEANSIM')
+
+if env['WITH_BF_VORONOI']:
+    incs += ' #/extern/voro++'
+    defs.append('WITH_MOD_VORONOI')
 
 if env['WITH_BF_GAMEENGINE']:
     incs.append('#/extern/recastnavigation')

@@ -471,7 +471,7 @@ static const char *unit_find_str(const char *str, const char *substr)
 			/* previous char cannot be a letter */
 			if (str_found == str ||
 			    /* weak unicode support!, so "µm" won't match up be replaced by "m"
-			     * since non ascii utf8 values will NEVER return TRUE */
+			     * since non ascii utf8 values will NEVER return true */
 			    isalpha_or_utf8(*BLI_str_prev_char_utf8(str_found)) == 0)
 			{
 				/* next char cannot be alphanum */
@@ -498,7 +498,7 @@ static const char *unit_find_str(const char *str, const char *substr)
  */
 
 /* not too strict, (- = * /) are most common  */
-static int ch_is_op(char op)
+static bool ch_is_op(char op)
 {
 	switch (op) {
 		case '+':

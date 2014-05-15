@@ -332,7 +332,7 @@ void POSE_OT_select_linked(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
 	/* props */
-	RNA_def_boolean(ot->srna, "extend", FALSE, "Extend", "Extend selection instead of deselecting everything first");
+	RNA_def_boolean(ot->srna, "extend", false, "Extend", "Extend selection instead of deselecting everything first");
 }
 
 /* -------------------------------------- */
@@ -464,7 +464,7 @@ static int pose_select_constraint_target_exec(bContext *C, wmOperator *UNUSED(op
 	{
 		if (pchan->bone->flag & BONE_SELECTED) {
 			for (con = pchan->constraints.first; con; con = con->next) {
-				bConstraintTypeInfo *cti = BKE_constraint_get_typeinfo(con);
+				bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
 				ListBase targets = {NULL, NULL};
 				bConstraintTarget *ct;
 				
@@ -846,7 +846,7 @@ void POSE_OT_select_grouped(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
 	/* properties */
-	RNA_def_boolean(ot->srna, "extend", FALSE, "Extend", "Extend selection instead of deselecting everything first");
+	RNA_def_boolean(ot->srna, "extend", false, "Extend", "Extend selection instead of deselecting everything first");
 	ot->prop = RNA_def_enum(ot->srna, "type", prop_select_grouped_types, 0, "Type", "");
 }
 

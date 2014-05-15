@@ -29,6 +29,7 @@
 
 #include "BLI_utildefines.h"
 #include "BLI_ghash.h"
+#include "BLI_listbase.h"
 
 #include "BKE_action.h"
 #include "BKE_object_deform.h"  /* own include */
@@ -75,7 +76,7 @@ bool *BKE_objdef_validmap_get(Object *ob, const int defbase_tot)
 	//int defbase_tot = BLI_countlist(&ob->defbase);
 	VirtualModifierData virtualModifierData;
 
-	if (ob->defbase.first == NULL) {
+	if (BLI_listbase_is_empty(&ob->defbase)) {
 		return NULL;
 	}
 
@@ -143,16 +144,16 @@ bool *BKE_objdef_selected_get(Object *ob, int defbase_tot, int *r_dg_flags_sel_t
 		for (i = 0, defgroup = ob->defbase.first; i < defbase_tot && defgroup; defgroup = defgroup->next, i++) {
 			bPoseChannel *pchan = BKE_pose_channel_find_name(pose, defgroup->name);
 			if (pchan && (pchan->bone->flag & BONE_SELECTED)) {
-				dg_selection[i] = TRUE;
+				dg_selection[i] = true;
 				(*r_dg_flags_sel_tot) += 1;
 			}
 			else {
-				dg_selection[i] = FALSE;
+				dg_selection[i] = false;
 			}
 		}
 	}
 	else {
-		memset(dg_selection, FALSE, sizeof(*dg_selection) * defbase_tot);
+		memset(dg_selection, false, sizeof(*dg_selection) * defbase_tot);
 	}
 
 	return dg_selection;

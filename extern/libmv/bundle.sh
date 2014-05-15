@@ -128,9 +128,12 @@ if(WITH_LIBMV)
 		-DWITH_LIBMV
 		-DWITH_LIBMV_GUARDED_ALLOC
 		-DGOOGLE_GLOG_DLL_DECL=
+		-DLIBMV_NO_FAST_DETECTOR=
 	)
 
 	list(APPEND INC
+		third_party/gflags
+		third_party/glog/src
 		third_party/ceres/include
 		../../intern/guardedalloc
 	)
@@ -194,10 +197,6 @@ ${third_glog_sources}
 
 ${third_glog_headers}
 		)
-
-		list(APPEND INC
-			third_party/glog/src
-		)
 	endif()
 else()
 	list(APPEND SRC
@@ -231,11 +230,12 @@ if env['WITH_BF_LIBMV']:
     defs.append('GOOGLE_GLOG_DLL_DECL=')
     defs.append('WITH_LIBMV')
     defs.append('WITH_LIBMV_GUARDED_ALLOC')
+    defs.append('LIBMV_NO_FAST_DETECTOR')
 
     src = env.Glob("libmv-capi.cc")
 $src
 
-    incs += ' ../Eigen3 third_party/ceres/include ../../intern/guardedalloc'
+    incs += ' ../Eigen3 third_party/gflags third_party/glog/src third_party/ceres/include ../../intern/guardedalloc'
     incs += ' ' + env['BF_PNG_INC']
     incs += ' ' + env['BF_ZLIB_INC']
 

@@ -37,6 +37,8 @@
 #include <iostream>
 #include <stdio.h>
 
+#include "BLI_task.h"
+
 #include "KX_KetsjiEngine.h"
 
 #include "ListValue.h"
@@ -49,6 +51,7 @@
 #include "RAS_Rect.h"
 #include "RAS_IRasterizer.h"
 #include "RAS_ICanvas.h"
+#include "RAS_ILightObject.h"
 #include "MT_Vector3.h"
 #include "MT_Transform.h"
 #include "SCA_IInputDevice.h"
@@ -142,8 +145,7 @@ KX_KetsjiEngine::KX_KetsjiEngine(KX_ISystem* system)
 
 	m_exitcode(KX_EXIT_REQUEST_NO_REQUEST),
 	m_exitstring(""),
-	
-	m_drawingmode(5),
+
 	m_cameraZoom(1.0),
 	
 	m_overrideCam(false),
@@ -184,6 +186,8 @@ KX_KetsjiEngine::KX_KetsjiEngine(KX_ISystem* system)
 #ifdef WITH_PYTHON
 	m_pyprofiledict = PyDict_New();
 #endif
+
+	m_taskscheduler = BLI_task_scheduler_create(TASK_SCHEDULER_AUTO_THREADS);
 }
 
 
@@ -200,6 +204,9 @@ KX_KetsjiEngine::~KX_KetsjiEngine()
 #ifdef WITH_PYTHON
 	Py_CLEAR(m_pyprofiledict);
 #endif
+
+	if (m_taskscheduler)
+		BLI_task_scheduler_free(m_taskscheduler);
 }
 
 
@@ -487,7 +494,7 @@ bool KX_KetsjiEngine::BeginFrame()
 	{
 		ClearFrame();
 
-		m_rasterizer->BeginFrame(m_drawingmode , m_kxsystem->GetTimeInSeconds());
+		m_rasterizer->BeginFrame(m_kxsystem->GetTimeInSeconds());
 
 		return true;
 	}
@@ -837,7 +844,7 @@ void KX_KetsjiEngine::Render()
 	// clear the entire game screen with the border color
 	// only once per frame
 	m_canvas->BeginDraw();
-	if (m_drawingmode == RAS_IRasterizer::KX_TEXTURED) {
+	if (m_rasterizer->GetDrawingMode() == RAS_IRasterizer::KX_TEXTURED) {
 		m_canvas->SetViewPort(0, 0, m_canvas->GetWidth(), m_canvas->GetHeight());
 		if (m_overrideFrameColor)
 		{
@@ -1018,7 +1025,7 @@ void KX_KetsjiEngine::SetBackGround(KX_WorldInfo* wi)
 {
 	if (wi->hasWorld())
 	{
-		if (m_drawingmode == RAS_IRasterizer::KX_TEXTURED)
+		if (m_rasterizer->GetDrawingMode() == RAS_IRasterizer::KX_TEXTURED)
 		{
 			m_rasterizer->SetBackColor(
 				wi->getBackColorRed(),
@@ -1043,7 +1050,7 @@ void KX_KetsjiEngine::SetWorldSettings(KX_WorldInfo* wi)
 			wi->getAmbientColorBlue()
 		);
 
-		if (m_drawingmode >= RAS_IRasterizer::KX_SOLID)
+		if (m_rasterizer->GetDrawingMode() >= RAS_IRasterizer::KX_SOLID)
 		{
 			if (wi->hasMist())
 			{
@@ -1057,13 +1064,6 @@ void KX_KetsjiEngine::SetWorldSettings(KX_WorldInfo* wi)
 			}
 		}
 	}
-}
-
-
-
-void KX_KetsjiEngine::SetDrawType(int drawingmode)
-{
-	m_drawingmode = drawingmode;
 }
 
 
@@ -1163,10 +1163,11 @@ void KX_KetsjiEngine::RenderShadowBuffers(KX_Scene *scene)
 		KX_GameObject *gameobj = (KX_GameObject*)lightlist->GetValue(i);
 
 		KX_LightObject *light = (KX_LightObject*)gameobj;
+		RAS_ILightObject *raslight = light->GetLightData();
 
-		light->Update();
+		raslight->Update();
 
-		if (m_drawingmode == RAS_IRasterizer::KX_TEXTURED && light->HasShadowBuffer()) {
+		if (m_rasterizer->GetDrawingMode() == RAS_IRasterizer::KX_TEXTURED && raslight->HasShadowBuffer()) {
 			/* make temporary camera */
 			RAS_CameraData camdata = RAS_CameraData();
 			KX_Camera *cam = new KX_Camera(scene, scene->m_callbacks, camdata, true, true);
@@ -1179,10 +1180,10 @@ void KX_KetsjiEngine::RenderShadowBuffers(KX_Scene *scene)
 			m_rasterizer->SetDrawingMode(RAS_IRasterizer::KX_SHADOW);
 
 			/* binds framebuffer object, sets up camera .. */
-			light->BindShadowBuffer(m_rasterizer, m_canvas, cam, camtrans);
+			raslight->BindShadowBuffer(m_canvas, cam, camtrans);
 
 			/* update scene */
-			scene->CalculateVisibleMeshes(m_rasterizer, cam, light->GetShadowLayer());
+			scene->CalculateVisibleMeshes(m_rasterizer, cam, raslight->GetShadowLayer());
 
 			/* render */
 			m_rasterizer->ClearDepthBuffer();
@@ -1190,7 +1191,7 @@ void KX_KetsjiEngine::RenderShadowBuffers(KX_Scene *scene)
 			scene->RenderBuckets(camtrans, m_rasterizer);
 
 			/* unbind framebuffer object, restore drawmode, free camera */
-			light->UnbindShadowBuffer(m_rasterizer);
+			raslight->UnbindShadowBuffer();
 			m_rasterizer->SetDrawingMode(drawmode);
 			cam->Release();
 		}
@@ -1702,6 +1703,8 @@ KX_Scene* KX_KetsjiEngine::CreateScene(Scene *scene, bool libloading)
 KX_Scene* KX_KetsjiEngine::CreateScene(const STR_String& scenename)
 {
 	Scene *scene = m_sceneconverter->GetBlenderSceneForName(scenename);
+	if (!scene)
+		return NULL;
 	return CreateScene(scene);
 }
 
@@ -1717,8 +1720,12 @@ void KX_KetsjiEngine::AddScheduledScenes()
 		{
 			STR_String scenename = *scenenameit;
 			KX_Scene* tmpscene = CreateScene(scenename);
-			m_scenes.push_back(tmpscene);
-			PostProcessScene(tmpscene);
+			if (tmpscene) {
+				m_scenes.push_back(tmpscene);
+				PostProcessScene(tmpscene);
+			} else {
+				printf("warning: scene %s could not be found, not added!\n",scenename.ReadPtr());
+			}
 		}
 		m_addingOverlayScenes.clear();
 	}
@@ -1731,9 +1738,12 @@ void KX_KetsjiEngine::AddScheduledScenes()
 		{
 			STR_String scenename = *scenenameit;
 			KX_Scene* tmpscene = CreateScene(scenename);
-			m_scenes.insert(m_scenes.begin(),tmpscene);
-			PostProcessScene(tmpscene);
-
+			if (tmpscene) {
+				m_scenes.insert(m_scenes.begin(),tmpscene);
+				PostProcessScene(tmpscene);
+			} else {
+				printf("warning: scene %s could not be found, not added!\n",scenename.ReadPtr());
+			}
 		}
 		m_addingBackgroundScenes.clear();
 	}

@@ -325,6 +325,8 @@ void BM_mesh_decimate_dissolve(BMesh *bm, const float angle_limit, const bool do
 	BMVert **vinput_arr = BM_iter_as_arrayN(bm, BM_VERTS_OF_MESH, NULL, &vinput_len, NULL, 0);
 	BMEdge **einput_arr = BM_iter_as_arrayN(bm, BM_EDGES_OF_MESH, NULL, &einput_len, NULL, 0);
 
+	if (vinput_arr == NULL || einput_arr == NULL)
+		return;
 
 	BM_mesh_decimate_dissolve_ex(bm, angle_limit, do_dissolve_boundaries,
 	                             delimit,

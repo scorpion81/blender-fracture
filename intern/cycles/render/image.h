@@ -49,8 +49,9 @@ public:
 	ImageManager();
 	~ImageManager();
 
-	int add_image(const string& filename, void *builtin_data, bool animated, bool& is_float, bool& is_linear);
-	void remove_image(const string& filename, void *builtin_data);
+	int add_image(const string& filename, void *builtin_data, bool animated, bool& is_float, bool& is_linear, InterpolationType interpolation);
+	void remove_image(int slot);
+	void remove_image(const string& filename, void *builtin_data, InterpolationType interpolation);
 	bool is_float_image(const string& filename, void *builtin_data, bool& is_linear);
 
 	void device_update(Device *device, DeviceScene *dscene, Progress& progress);
@@ -63,15 +64,9 @@ public:
 
 	bool need_update;
 
-	boost::function<void(const string &filename, void *data, bool &is_float, int &width, int &height, int &channels)> builtin_image_info_cb;
+	boost::function<void(const string &filename, void *data, bool &is_float, int &width, int &height, int &depth, int &channels)> builtin_image_info_cb;
 	boost::function<bool(const string &filename, void *data, unsigned char *pixels)> builtin_image_pixels_cb;
 	boost::function<bool(const string &filename, void *data, float *pixels)> builtin_image_float_pixels_cb;
-private:
-	int tex_num_images;
-	int tex_num_float_images;
-	int tex_image_byte_start;
-	thread_mutex device_mutex;
-	int animation_frame;
 
 	struct Image {
 		string filename;
@@ -79,8 +74,17 @@ private:
 
 		bool need_load;
 		bool animated;
+		InterpolationType interpolation;
+
 		int users;
 	};
+
+private:
+	int tex_num_images;
+	int tex_num_float_images;
+	int tex_image_byte_start;
+	thread_mutex device_mutex;
+	int animation_frame;
 
 	vector<Image*> images;
 	vector<Image*> float_images;

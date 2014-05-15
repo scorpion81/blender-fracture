@@ -344,7 +344,7 @@ static wmKeyMap *wm_keymap_copy(wmKeyMap *keymap)
 
 	keymapn->modal_items = keymap->modal_items;
 	keymapn->poll = keymap->poll;
-	keymapn->items.first = keymapn->items.last = NULL;
+	BLI_listbase_clear(&keymapn->items);
 	keymapn->flag &= ~(KEYMAP_UPDATE | KEYMAP_EXPANDED);
 
 	for (kmdi = keymap->diff_items.first; kmdi; kmdi = kmdi->next) {
@@ -400,10 +400,10 @@ static void keymap_event_set(wmKeyMapItem *kmi, short type, short val, int modif
 		kmi->shift = kmi->ctrl = kmi->alt = kmi->oskey = KM_ANY;
 	}
 	else {
-		kmi->shift = (modifier & KM_SHIFT) ? KM_MOD_FIRST : ((modifier & KM_SHIFT2) ? KM_MOD_SECOND : FALSE);
-		kmi->ctrl =  (modifier & KM_CTRL)  ? KM_MOD_FIRST : ((modifier & KM_CTRL2)  ? KM_MOD_SECOND : FALSE);
-		kmi->alt =   (modifier & KM_ALT)   ? KM_MOD_FIRST : ((modifier & KM_ALT2)   ? KM_MOD_SECOND : FALSE);
-		kmi->oskey = (modifier & KM_OSKEY) ? KM_MOD_FIRST : ((modifier & KM_OSKEY2) ? KM_MOD_SECOND : FALSE);
+		kmi->shift = (modifier & KM_SHIFT) ? KM_MOD_FIRST : ((modifier & KM_SHIFT2) ? KM_MOD_SECOND : false);
+		kmi->ctrl =  (modifier & KM_CTRL)  ? KM_MOD_FIRST : ((modifier & KM_CTRL2)  ? KM_MOD_SECOND : false);
+		kmi->alt =   (modifier & KM_ALT)   ? KM_MOD_FIRST : ((modifier & KM_ALT2)   ? KM_MOD_SECOND : false);
+		kmi->oskey = (modifier & KM_OSKEY) ? KM_MOD_FIRST : ((modifier & KM_OSKEY2) ? KM_MOD_SECOND : false);
 	}
 }
 
@@ -1040,7 +1040,7 @@ static wmKeyMapItem *wm_keymap_item_find(
 	wmKeyMapItem *found = wm_keymap_item_find_props(C, opname, opcontext, properties, is_strict, is_hotkey, keymap_r);
 
 	if (!found && properties) {
-		wmOperatorType *ot = WM_operatortype_find(opname, TRUE);
+		wmOperatorType *ot = WM_operatortype_find(opname, true);
 		if (ot) {
 			/* make a copy of the properties and set any unset props
 			 * to their default values, so the ID property compare function succeeds */
@@ -1167,7 +1167,7 @@ void WM_keyconfig_update_operatortype(void)
 	wm_keymap_update_flag |= WM_KEYMAP_UPDATE_OPERATORTYPE;
 }
 
-static int wm_keymap_test_and_clear_update(wmKeyMap *km)
+static bool wm_keymap_test_and_clear_update(wmKeyMap *km)
 {
 	wmKeyMapItem *kmi;
 	int update;
@@ -1180,7 +1180,7 @@ static int wm_keymap_test_and_clear_update(wmKeyMap *km)
 		kmi->flag &= ~KMI_UPDATE;
 	}
 	
-	return update;
+	return (update != 0);
 }
 
 static wmKeyMap *wm_keymap_preset(wmWindowManager *wm, wmKeyMap *km)

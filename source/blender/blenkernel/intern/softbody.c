@@ -170,6 +170,11 @@ typedef struct  SB_thread_context {
 
 static float SoftHeunTol = 1.0f; /* humm .. this should be calculated from sb parameters and sizes */
 
+// Kai's code
+#define demStatLen 1000
+static unsigned char demName[demStatLen][32];
+int *demVdatIdx[demStatLen];		// stores connection data from each point to each point of the SB as indices
+
 /* local prototypes */
 static void free_softbody_intern(SoftBody *sb);
 /* aye this belongs to arith.c */
@@ -1642,7 +1647,7 @@ static void scan_for_ext_spring_forces(Scene *scene, Object *ob, float timenow)
 	SoftBody *sb = ob->soft;
 	ListBase *do_effector = NULL;
 
-	do_effector = pdInitEffectors(scene, ob, NULL, sb->effector_weights);
+	do_effector = pdInitEffectors(scene, ob, NULL, sb->effector_weights, true);
 	_scan_for_ext_spring_forces(scene, ob, timenow, 0, sb->totspring, do_effector);
 	pdEndEffectors(&do_effector);
 }
@@ -1662,7 +1667,7 @@ static void sb_sfesf_threads_run(Scene *scene, struct Object *ob, float timenow,
 	int i, totthread, left, dec;
 	int lowsprings =100; /* wild guess .. may increase with better thread management 'above' or even be UI option sb->spawn_cf_threads_nopts */
 
-	do_effector= pdInitEffectors(scene, ob, NULL, ob->soft->effector_weights);
+	do_effector= pdInitEffectors(scene, ob, NULL, ob->soft->effector_weights, true);
 
 	/* figure the number of threads while preventing pretty pointless threading overhead */
 	totthread= BKE_scene_num_threads(scene);
@@ -1688,7 +1693,7 @@ static void sb_sfesf_threads_run(Scene *scene, struct Object *ob, float timenow,
 		else
 			sb_threads[i].ifirst  = 0;
 		sb_threads[i].do_effector = do_effector;
-		sb_threads[i].do_deflector = FALSE;// not used here
+		sb_threads[i].do_deflector = false;// not used here
 		sb_threads[i].fieldfactor = 0.0f;// not used here
 		sb_threads[i].windfactor  = 0.0f;// not used here
 		sb_threads[i].nr= i;
@@ -2170,6 +2175,8 @@ static void sb_spring_force(Object *ob, int bpi, BodySpring *bs, float iks, floa
 	}
 }
 
+// Kai's Code
+const int maxConnections = 40;	// Maximum connection index per spring node
 
 /* since this is definitely the most CPU consuming task here .. try to spread it */
 /* core function _softbody_calc_forces_slice_in_a_thread */
@@ -2181,7 +2188,7 @@ static int _softbody_calc_forces_slice_in_a_thread(Scene *scene, Object *ob, flo
 	int number_of_points_here = ilast - ifirst;
 	SoftBody *sb= ob->soft;	/* is supposed to be there */
 	BodyPoint  *bp;
-
+											
 	/* intitialize */
 	if (sb) {
 	/* check conditions for various options */
@@ -2203,7 +2210,6 @@ static int _softbody_calc_forces_slice_in_a_thread(Scene *scene, Object *ob, flo
 	}
 /* debugerin */
 
-
 	bp = &sb->bpoint[ifirst];
 	for (bb=number_of_points_here; bb>0; bb--, bp++) {
 		/* clear forces  accumulator */
@@ -2219,7 +2225,7 @@ static int _softbody_calc_forces_slice_in_a_thread(Scene *scene, Object *ob, flo
 			float distance;
 			float compare;
 			float bstune = sb->ballstiff;
-
+			
 			for (c=sb->totpoint, obp= sb->bpoint; c>=ifirst+bb; c--, obp++) {
 				compare = (obp->colball + bp->colball);
 				sub_v3_v3v3(def, bp->pos, obp->pos);
@@ -2227,7 +2233,7 @@ static int _softbody_calc_forces_slice_in_a_thread(Scene *scene, Object *ob, flo
 				/* mathematically it is completly nuts, but performance is pretty much (3) times faster */
 				if ((ABS(def[0]) > compare) || (ABS(def[1]) > compare) || (ABS(def[2]) > compare)) continue;
 				distance = normalize_v3(def);
-				if (distance < compare ) {
+				if (distance < compare && distance > compare /2){	// skip also overlapping body points by using a minimum distance (demolition)
 					/* exclude body points attached with a spring */
 					attached = 0;
 					for (b=obp->nofsprings;b>0;b--) {
@@ -2468,7 +2474,7 @@ static void softbody_calc_forcesEx(Scene *scene, Object *ob, float forcetime, fl
 	sb_sfesf_threads_run(scene, ob, timenow, sb->totspring, NULL);
 
 	/* after spring scan because it uses Effoctors too */
-	do_effector= pdInitEffectors(scene, ob, NULL, sb->effector_weights);
+	do_effector= pdInitEffectors(scene, ob, NULL, sb->effector_weights, true);
 
 	if (do_deflector) {
 		float defforce[3];
@@ -2543,7 +2549,7 @@ static void softbody_calc_forces(Scene *scene, Object *ob, float forcetime, floa
 
 		if (do_springcollision || do_aero)  scan_for_ext_spring_forces(scene, ob, timenow);
 		/* after spring scan because it uses Effoctors too */
-		do_effector= pdInitEffectors(scene, ob, NULL, ob->soft->effector_weights);
+		do_effector= pdInitEffectors(scene, ob, NULL, ob->soft->effector_weights, true);
 
 		if (do_deflector) {
 			float defforce[3];
@@ -3021,6 +3027,296 @@ static void softbody_apply_forces(Object *ob, float forcetime, int mode, float *
 		}
 	}
 }
+
+// Kai's Code Start
+
+static void softbody_init_demolition(Object *ob)
+{
+	SoftBody *sb= ob->soft;	/* is supposed to be there */
+	
+	if (sb->demolitionlimit > 0) {
+		int i, j, k;
+		float difLength, limit, limitMax;
+		float pos1[3], pos2[3];
+		
+		short demStatOfs;
+					
+		// get demStatOfs for this object to use the correct data
+		demStatOfs = 0;
+		while (demName[demStatOfs][0] != '\0' && demStatOfs < demStatLen) {	
+			if (strncmp(demName[demStatOfs], ob->id.name, sizeof(ob->id.name)) == 0) break;
+			else demStatOfs++;
+		}	
+		//printf("Mem found for \"%s\" in slot #%d.\n", demName[demStatOfs], demStatOfs); 
+		
+		// reset demVdatIdx[demStatOfs] array
+		for(i = 0; i < sb->totpoint; i++)	// go through all spring points (vertices)
+			for(k = 0; k < maxConnections; k++)
+				demVdatIdx[demStatOfs][i*maxConnections+k] = -1;
+		
+		// set an automatic limit depending on the smallest spring length divided by 2
+		limit = sb->bspring[0].len;
+		for(i = 0; i < sb->totspring; i++) {	// go through all springs
+			BodySpring *bs = &sb->bspring[i];
+			if (limit > bs->len) limit = bs->len;
+		}
+		limitMax = limit /2;
+		limit = sb->demolitionlimit;	// get limit user setting
+		if (limit > limitMax) {
+			//limit = limitMax;
+		//	printf("Warning! Demolition limit is set to high. For stability reasons it has been reduced to half of the smallest spring length.\n", limit);
+			printf("Warning! Demolition limit is greater than half of the smallest spring length.\n", limit);
+		}
+		
+		for(i = 0; i < sb->totpoint; i++) {	// go through all spring points (vertices)
+			//if (i%100 == 0) printf("\r%0.2f Percent   ", (float)i*100/sb->totpoint);
+			VECCOPY(pos1, sb->bpoint[i].prevpos);
+			for(j = i+1; j < sb->totpoint; j++) {	// go through all spring points (vertices)
+				VECCOPY(pos2, sb->bpoint[j].prevpos);
+				difLength = len_v3v3(pos1, pos2);
+				
+				if ( difLength < limit ) {	// if stress does not go over the limit then keep points together
+					//printf("Yes: %g %g\n", difLength, limit);
+					// add first index
+					k = 0;
+					while (demVdatIdx[demStatOfs][i*maxConnections+k] != -1 && k < maxConnections-1) k++;
+					demVdatIdx[demStatOfs][i*maxConnections+k] = j;
+					/*// add second index (back link), so basically every index has the complete connection data. it helps accuracy but skipping this improves speed.
+					k = 0;
+					while (demVdatIdx[demStatOfs][j*maxConnections+k] != -1 && k < maxConnections-1) k++;
+					demVdatIdx[demStatOfs][j*maxConnections+k] = i;
+					*/
+				}	
+			}
+		}
+	}
+}
+
+static void softbody_apply_demolition(Object *ob, short qLast)
+{
+	SoftBody *sb= ob->soft;	/* is supposed to be there */
+	
+	if (sb->demolitionlimit > 0) {
+		int i, j, k, m;
+		float difLength, limit;
+		float pos[3], pos1[3], pos2[3];
+		float vec[3];
+		//short doneSub[5+1];
+		short *doneSub = MEM_callocN( (maxConnections)*sizeof(short), "SB_Dem_doneSub");
+		
+		short demStatOfs;
+			
+		// get demStatOfs for this object to use the correct data
+		i = 0;			
+		demStatOfs = -1; // looking if old buffers are there to be used
+		while (demName[i][0] != '\0' && i < demStatLen) {	
+			if (strncmp(demName[i], ob->id.name, sizeof(ob->id.name)) == 0) { demStatOfs = i; break; }
+			i++;
+		}
+		
+		limit = sb->demolitionlimit;
+		
+		for(i = 0; i < sb->totpoint; i++) {	// go through all spring points (vertices)
+			if (demVdatIdx[demStatOfs][i*maxConnections] != -1) {
+				VECCOPY(pos, sb->bpoint[i].pos);
+				VECCOPY(vec, sb->bpoint[i].vec);
+				
+				for (k=0, m=1; k < maxConnections; k++)
+					if (demVdatIdx[demStatOfs][i*maxConnections+k] != -1) {
+						j = demVdatIdx[demStatOfs][i*maxConnections+k];
+			//			printf("%d %d = %d\n", i, k, j);
+						VECCOPY(pos1, sb->bpoint[i].pos);
+						VECCOPY(pos2, sb->bpoint[j].pos);
+						difLength = len_v3v3(pos1, pos2);
+						
+						if ( difLength < limit ) {	// if stress does not go over the limit then keep body points together
+							// calculate average location
+							add_v3_v3(pos, sb->bpoint[j].pos);
+							// calculate average speed vector
+							add_v3_v3(vec, sb->bpoint[j].vec);
+							doneSub[k] = 1;
+							m++;
+						}
+						else {
+							if (qLast == 1) {	// if last substep for this frame, this condition makes SB more brittle
+								// disable goal (optional)
+								sb->bpoint[i].goal = 0.0f;
+								sb->bpoint[j].goal = 0.0f;
+								
+								// mark connection as broken
+								// but without it, it can also be used for alternative self collision since vertices are snapping
+								//demVdatIdx[demStatOfs][i*maxConnections+k] = -1;
+								
+								// alternative mark all connections as broken at once
+								for (k=0; k < maxConnections; k++) {
+									demVdatIdx[demStatOfs][i*maxConnections+k] = -1;
+								}
+								// remove neighbor connections too
+								if (0) {	// should be optional
+									for(j = 0; j < sb->totspring; j++) {	// go through all springs
+										if (sb->bspring[j].v1 == i) {
+											sb->bpoint[sb->bspring[j].v2].goal = 0.0f;
+											for (k=0; k < maxConnections; k++) {
+												demVdatIdx[demStatOfs][sb->bspring[j].v2*maxConnections+k] = -1;
+											}
+										}
+										else if (sb->bspring[j].v2 == i) {
+											sb->bpoint[sb->bspring[j].v1].goal = 0.0f;
+											for (k=0; k < maxConnections; k++) {
+												demVdatIdx[demStatOfs][sb->bspring[j].v1*maxConnections+k] = -1;
+											}
+										}
+									}
+								}
+								// remove all connections from that piece (piece = all directly connected springs)
+								if (1) {	// should be optional
+									int last = i, qFinished = 0;
+									while (!qFinished) {
+										qFinished = 1;
+										for(j = 0; j < sb->totspring; j++) {	// go through all springs
+											if (sb->bspring[j].v1 == last) {
+												if (demVdatIdx[demStatOfs][sb->bspring[j].v2*maxConnections] != -1) {
+													sb->bpoint[sb->bspring[j].v2].goal = 0.0f;
+													for (k=0; k < maxConnections; k++) {
+														demVdatIdx[demStatOfs][sb->bspring[j].v2*maxConnections+k] = -1;
+													}
+													last = sb->bspring[j].v2;
+													qFinished = 0;
+												}
+											}
+											else if (sb->bspring[j].v2 == last) {
+												if (demVdatIdx[demStatOfs][sb->bspring[j].v1*maxConnections] != -1) {
+													sb->bpoint[sb->bspring[j].v1].goal = 0.0f;
+													for (k=0; k < maxConnections; k++) {
+														demVdatIdx[demStatOfs][sb->bspring[j].v1*maxConnections+k] = -1;
+													}
+													last = sb->bspring[j].v1;
+													qFinished = 0;
+												}
+											}
+										}
+									}
+								}
+								break; // only for alternative
+							}
+							doneSub[k] = 0;
+						}
+					}	
+				//printf("end: %d %g\n", m, (float)1/m);
+				// calculate the average vectors of all connections
+				mul_v3_fl(pos, (float)1/m);
+				mul_v3_fl(vec, (float)1/m);
+				// store values for all body points
+				VECCOPY(sb->bpoint[i].pos, pos);
+				VECCOPY(sb->bpoint[i].vec, vec);
+				for (k=0; k < maxConnections; k++)
+					if (demVdatIdx[demStatOfs][i*maxConnections+k] != -1 && doneSub[k] == 1) {
+						j = demVdatIdx[demStatOfs][i*maxConnections+k];
+						VECCOPY(sb->bpoint[j].pos, pos);
+						VECCOPY(sb->bpoint[j].vec, vec);
+					}				
+			}
+		}
+		MEM_freeN(doneSub);
+	}
+
+// Kai's Old Code Start
+/*
+	if (sb->demolitionlimit > 0) {
+		int i, j, k, m, si, vi, qEnd;
+		float edgeLength, limit;
+
+		limit = sb->demolitionlimit;
+		for(i = 0; i < sb->totspring; i++) {
+			BodySpring *bs = &sb->bspring[i];
+			BodySpring *bsBak = &sb->bspring[i];
+			
+		//	if (i < 3 || i >= sb->totspring-3) printf("%d / %d: %g %g %g %g\n", i, sb->totspring, sb->bpoint[bs->v2].prevpos[0], sb->bpoint[bs->v2].prevpos[1], sb->bpoint[bs->v2].prevpos[2], bs->len);
+			if (bs->len > 0) {	// only when spring hasn't already been deleted then do stress test and deletion
+				edgeLength = len_v3v3(sb->bpoint[bs->v1].prevpos, sb->bpoint[bs->v2].prevpos);
+				
+				if (edgeLength *limit < bs->len || edgeLength /limit > bs->len) {
+			//		printf("BROKEN: limit: %0.3g  edgeLength: %0.3g  len: %0.3g\n", limit,  edgeLength, bs->len);
+					si = i;
+
+					// deleting v1 spring connections (spring index in si)
+					for(j = 0; j < sb->bpoint[bs->v1].nofsprings; j++)	// go throug all spring connections for this vertex
+						if (sb->bpoint[bs->v1].springs[j] == si) break;	// when the currently broken spring is found break and keep the index in j for later
+					if (j < sb->bpoint[bs->v1].nofsprings) {	// if spring is found
+						sb->bpoint[bs->v1].nofsprings -= 1;		// decrease spring count for this vertex by 1
+						for(; j < sb->bpoint[bs->v1].nofsprings; j++)	// shift all following springs together to fill the empty gap
+							sb->bpoint[bs->v1].springs[j] = sb->bpoint[bs->v1].springs[j+1];
+						// deleting v2 spring connections (spring index in si)
+						for(j = 0; j < sb->bpoint[bs->v2].nofsprings; j++)	// go throug all spring connections for this vertex
+							if (sb->bpoint[bs->v2].springs[j] == si) break;	// when the currently broken spring is found break and keep the index in j for later
+						if (j < sb->bpoint[bs->v2].nofsprings) {	// if spring is found
+							sb->bpoint[bs->v2].nofsprings -= 1;		// decrease spring count for this vertex by 1
+							for(; j < sb->bpoint[bs->v2].nofsprings; j++)	// shift all following springs together to fill the empty gap
+								sb->bpoint[bs->v2].springs[j] = sb->bpoint[bs->v2].springs[j+1];
+						}
+						bs->len = 0;	// mark spring as deleted by setting its length to zero
+						if (sb->bpoint[bs->v1].nofsprings == 0) sb->bpoint[bs->v1].goal = 1;	// when no springs are left switch to goal to prevent crashes with NaNs
+						if (sb->bpoint[bs->v2].nofsprings == 0) sb->bpoint[bs->v2].goal = 1;	// when no springs are left switch to goal to prevent crashes with NaNs
+					}
+			
+					// weaken more springs near the already broken one for more interesting demolition effect
+					//printf("\r%0.2f Percent   ", (float)i*100/sb->totspring);
+					qEnd = 10;
+					for(k=0; k < sb->totspring && qEnd > 0; k++) if (i != k) {
+						BodySpring *bs = bsBak;
+						BodySpring *bs2 = &sb->bspring[k];
+						
+						vi = -1;
+						if (bs2->v1 == bs->v1 || bs2->v1 == bs->v2) vi = bs2->v2;
+						else if (bs2->v2 == bs->v2 || bs2->v2 == bs->v1) vi = bs2->v1;
+						if (vi != -1) {
+							for(m=0; m < sb->totspring && qEnd > 0; m++) if (k != m) {
+								BodySpring *bs = bs2;
+								BodySpring *bs2 = &sb->bspring[m];
+									
+								vi = -1;
+								if (bs2->v1 == bs->v1 || bs2->v1 == bs->v2) vi = bs2->v2;
+								else if (bs2->v2 == bs->v2 || bs2->v2 == bs->v1) vi = bs2->v1;
+								if (vi != -1) {
+									for(m=0; m < sb->totspring && qEnd > 0; m++) if (k != m) {
+										BodySpring *bs = &sb->bspring[m];
+									
+										if (bs->v1 == vi || bs->v2 == vi) {
+											qEnd -= 1;
+											si = m;
+											// deleting v1 spring connections (spring index in si)
+											for(j = 0; j < sb->bpoint[bs->v1].nofsprings; j++)	// go throug all spring connections for this vertex
+												if (sb->bpoint[bs->v1].springs[j] == si) break;	// when the currently broken spring is found break and keep the index in j for later
+											if (j < sb->bpoint[bs->v1].nofsprings) {	// if spring is found
+												sb->bpoint[bs->v1].nofsprings -= 1;		// decrease spring count for this vertex by 1
+												for(; j < sb->bpoint[bs->v1].nofsprings; j++)	// shift all following springs together to fill the empty gap
+													sb->bpoint[bs->v1].springs[j] = sb->bpoint[bs->v1].springs[j+1];
+												// deleting v2 spring connections (spring index in si)
+												for(j = 0; j < sb->bpoint[bs->v2].nofsprings; j++)	// go throug all spring connections for this vertex
+													if (sb->bpoint[bs->v2].springs[j] == si) break;	// when the currently broken spring is found break and keep the index in j for later
+												if (j < sb->bpoint[bs->v2].nofsprings) {	// if spring is found
+													sb->bpoint[bs->v2].nofsprings -= 1;		// decrease spring count for this vertex by 1
+													for(; j < sb->bpoint[bs->v2].nofsprings; j++)	// shift all following springs together to fill the empty gap
+														sb->bpoint[bs->v2].springs[j] = sb->bpoint[bs->v2].springs[j+1];
+												}
+												bs->len = 0;	// mark spring as deleted by setting its length to zero
+												if (sb->bpoint[bs->v1].nofsprings == 0) sb->bpoint[bs->v1].goal = 1;	// when no springs are left switch to goal to prevent crashes with NaNs
+												if (sb->bpoint[bs->v2].nofsprings == 0) sb->bpoint[bs->v2].goal = 1;	// when no springs are left switch to goal to prevent crashes with NaNs
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+*/
+// Kai's Old Code End
+}
+// Kai's Code End
 
 /* used by heun when it overshoots */
 static void softbody_restore_prev_step(Object *ob)
@@ -3732,7 +4028,7 @@ SoftBody *sbNew(Scene *scene)
 }
 
 /* frees all */
-void sbFree(SoftBody *sb)
+void sbFree(SoftBody *sb, Object *ob)
 {
 	free_softbody_intern(sb);
 	BKE_ptcache_free_list(&sb->ptcaches);
@@ -3740,6 +4036,16 @@ void sbFree(SoftBody *sb)
 	if (sb->effector_weights)
 		MEM_freeN(sb->effector_weights);
 	MEM_freeN(sb);
+	// Kai's code
+	if (sb->demolitionlimit > 0) {	// free demolition
+		short demStatOfs = 0;
+		while (demName[demStatOfs][0] != '\0' && demStatOfs < demStatLen) {	
+			if (strncmp(demName[demStatOfs], ob->id.name, sizeof(ob->id.name)) == 0) break;
+			else demStatOfs++;
+		}
+		printf("Freeing Demolition slot #%d.\n", demStatOfs);	
+		if (demVdatIdx[demStatOfs] != NULL) MEM_freeN(demVdatIdx[demStatOfs]);
+	}
 }
 
 void sbFreeSimulation(SoftBody *sb)
@@ -3962,6 +4268,8 @@ static void softbody_step(Scene *scene, Object *ob, SoftBody *sb, float dtime)
 			softbody_calc_forces(scene, ob, forcetime, timedone/dtime, 0);
 
 			softbody_apply_forces(ob, forcetime, 2, &err, mid_flags);
+			// Kai's Code
+			softbody_apply_demolition(ob, 0);
 			softbody_apply_goalsnap(ob);
 
 			if (err > SoftHeunTol) { /* error needs to be scaled to some quantity */
@@ -4007,6 +4315,8 @@ static void softbody_step(Scene *scene, Object *ob, SoftBody *sb, float dtime)
 		}
 		/* move snapped to final position */
 		interpolate_exciter(ob, 2, 2);
+		// Kai's Code
+		softbody_apply_demolition(ob, 1);
 		softbody_apply_goalsnap(ob);
 
 		//				if (G.debug & G_DEBUG) {
@@ -4077,7 +4387,7 @@ void sbObjectStep(Scene *scene, Object *ob, float cfra, float (*vertexCos)[3], i
 	if (sb->bpoint == NULL ||
 	   ((ob->softflag & OB_SB_EDGES) && !ob->soft->bspring && object_has_edges(ob)))
 	{
-
+			
 		switch (ob->type) {
 			case OB_MESH:
 				mesh_to_softbody(scene, ob);
@@ -4096,6 +4406,28 @@ void sbObjectStep(Scene *scene, Object *ob, float cfra, float (*vertexCos)[3], i
 
 		softbody_update_positions(ob, sb, vertexCos, numVerts);
 		softbody_reset(ob, sb, vertexCos, numVerts);
+		
+		// Kai's code
+		if (sb->demolitionlimit > 0) {	//allocate memory for demolition
+			short demStatOfs;
+			char demNameNew[32];
+			// looking if old buffers are there to be used
+			demStatOfs = 0;
+			while (demName[demStatOfs][0] != '\0' && demStatOfs < demStatLen) {	
+				//printf("List \"%s\" and \"%s\" slot #%d.\n", ob->id.name, demName[demStatOfs], demStatOfs); 
+				if (strncmp(demName[demStatOfs], ob->id.name, sizeof(ob->id.name)) == 0) break;
+				else demStatOfs++;
+			}	
+			strncpy(demName[demStatOfs], ob->id.name, 31);
+			// free demolition if exist
+			if (demVdatIdx[demStatOfs] != NULL) MEM_freeN(demVdatIdx[demStatOfs]);
+			// allocate fresh memory
+			sprintf(demNameNew, "SB_demVdatIdx_%04d", demStatOfs);
+			demVdatIdx[demStatOfs] = MEM_callocN( (sb->totpoint* maxConnections )*sizeof(int), demNameNew);
+			printf("Mem for \"%s\" allocated in slot #%d.\n", demName[demStatOfs], demStatOfs); 
+			
+			softbody_init_demolition(ob);
+		}
 	}
 
 	/* still no points? go away */

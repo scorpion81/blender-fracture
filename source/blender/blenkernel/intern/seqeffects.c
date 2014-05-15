@@ -121,13 +121,13 @@ static ImBuf *prepare_effect_imbufs(const SeqRenderData *context, ImBuf *ibuf1, 
 	}
 	
 	if (ibuf1 && !ibuf1->rect_float && out->rect_float) {
-		BKE_sequencer_imbuf_to_sequencer_space(scene, ibuf1, TRUE);
+		BKE_sequencer_imbuf_to_sequencer_space(scene, ibuf1, true);
 	}
 	if (ibuf2 && !ibuf2->rect_float && out->rect_float) {
-		BKE_sequencer_imbuf_to_sequencer_space(scene, ibuf2, TRUE);
+		BKE_sequencer_imbuf_to_sequencer_space(scene, ibuf2, true);
 	}
 	if (ibuf3 && !ibuf3->rect_float && out->rect_float) {
-		BKE_sequencer_imbuf_to_sequencer_space(scene, ibuf3, TRUE);
+		BKE_sequencer_imbuf_to_sequencer_space(scene, ibuf3, true);
 	}
 	
 	if (ibuf1 && !ibuf1->rect && !out->rect_float) {
@@ -582,7 +582,7 @@ static void do_cross_effect(const SeqRenderData *context, Sequence *UNUSED(seq),
 /* copied code from initrender.c */
 static unsigned short gamtab[65536];
 static unsigned short igamtab1[256];
-static int gamma_tabs_init = FALSE;
+static bool gamma_tabs_init = false;
 
 #define RE_GAMMA_TABLE_SIZE 400
 
@@ -635,33 +635,35 @@ static void makeGammaTables(float gamma)
 static float gammaCorrect(float c)
 {
 	int i;
-	float res = 0.0;
+	float res;
 	
-	i = floor(c * inv_color_step);
+	i = floorf(c * inv_color_step);
 	/* Clip to range [0, 1]: outside, just do the complete calculation.
 	 * We may have some performance problems here. Stretching up the LUT
 	 * may help solve that, by exchanging LUT size for the interpolation.
 	 * Negative colors are explicitly handled.
 	 */
-	if (i < 0) res = -pow(abs(c), valid_gamma);
-	else if (i >= RE_GAMMA_TABLE_SIZE) res = pow(c, valid_gamma);
-	else res = gamma_range_table[i] + ( (c - color_domain_table[i]) * gamfactor_table[i]);
+	if      (UNLIKELY(i < 0))          res = -powf(-c, valid_gamma);
+	else if (i >= RE_GAMMA_TABLE_SIZE) res =  powf(c,  valid_gamma);
+	else                               res =  gamma_range_table[i] +
+	                                          ((c - color_domain_table[i]) * gamfactor_table[i]);
 	
 	return res;
 }
 
 /* ------------------------------------------------------------------------- */
 
-static float invGammaCorrect(float col)
+static float invGammaCorrect(float c)
 {
 	int i;
 	float res = 0.0;
 
-	i = floor(col * inv_color_step);
+	i = floorf(c * inv_color_step);
 	/* Negative colors are explicitly handled */
-	if (i < 0) res = -pow(abs(col), valid_inv_gamma);
-	else if (i >= RE_GAMMA_TABLE_SIZE) res = pow(col, valid_inv_gamma);
-	else res = inv_gamma_range_table[i] +  ( (col - color_domain_table[i]) * inv_gamfactor_table[i]);
+	if      (UNLIKELY(i < 0))          res = -powf(-c, valid_inv_gamma);
+	else if (i >= RE_GAMMA_TABLE_SIZE) res =  powf(c,  valid_inv_gamma);
+	else                               res = inv_gamma_range_table[i] +
+	                                         ((c - color_domain_table[i]) * inv_gamfactor_table[i]);
  
 	return res;
 }
@@ -676,8 +678,10 @@ static void gamtabs(float gamma)
 		val = a;
 		val /= 65535.0f;
 		
-		if (gamma == 2.0f) val = sqrt(val);
-		else if (gamma != 1.0f) val = pow(val, igamma);
+		if (gamma == 2.0f)
+			val = sqrtf(val);
+		else if (gamma != 1.0f)
+			val = powf(val, igamma);
 		
 		gamtab[a] = (65535.99f * val);
 	}
@@ -694,10 +698,10 @@ static void gamtabs(float gamma)
 
 static void build_gammatabs(void)
 {
-	if (gamma_tabs_init == FALSE) {
+	if (gamma_tabs_init == false) {
 		gamtabs(2.0f);
 		makeGammaTables(2.0f);
-		gamma_tabs_init = TRUE;
+		gamma_tabs_init = true;
 	}
 }
 
@@ -1350,8 +1354,8 @@ static float check_zone(WipeZone *wipezone, int x, int y, Sequence *seq, float f
 				b3 = yo - posy * 0.5f;
 				b2 = y;
 
-				hyp = abs(y - posy * 0.5f);
-				hyp2 = abs(y - (yo - posy * 0.5f));
+				hyp = fabsf(y - posy * 0.5f);
+				hyp2 = fabsf(y - (yo - posy * 0.5f));
 			}
 			else {
 				b1 = posy * 0.5f - (-angle) * posx * 0.5f;
@@ -1441,7 +1445,7 @@ static float check_zone(WipeZone *wipezone, int x, int y, Sequence *seq, float f
 
 			temp1 = xo * (1 - facf0 / 2) - xo * facf0 / 2;
 			temp2 = yo * (1 - facf0 / 2) - yo * facf0 / 2;
-			pointdist = sqrt(temp1 * temp1 + temp2 * temp2);
+			pointdist = sqrtf(temp1 * temp1 + temp2 * temp2);
 
 			if (b2 < b1 && b2 < b3) {
 				if (hwidth < pointdist)
@@ -1498,11 +1502,11 @@ static float check_zone(WipeZone *wipezone, int x, int y, Sequence *seq, float f
 			hwidth = width * 0.5f;
 
 			temp1 = (halfx - (halfx) * facf0);
-			pointdist = sqrt(temp1 * temp1 + temp1 * temp1);
+			pointdist = sqrtf(temp1 * temp1 + temp1 * temp1);
 
-			temp2 = sqrt((halfx - x) * (halfx - x) + (halfy - y) * (halfy - y));
-			if (temp2 > pointdist) output = in_band(hwidth, fabs(temp2 - pointdist), 0, 1);
-			else output = in_band(hwidth, fabs(temp2 - pointdist), 1, 1);
+			temp2 = sqrtf((halfx - x) * (halfx - x) + (halfy - y) * (halfy - y));
+			if (temp2 > pointdist) output = in_band(hwidth, fabsf(temp2 - pointdist), 0, 1);
+			else output = in_band(hwidth, fabsf(temp2 - pointdist), 1, 1);
 
 			if (!wipe->forward) output = 1 - output;
 			
@@ -2064,7 +2068,7 @@ static void do_glow_effect_byte(Sequence *seq, int render_size, float facf0, flo
 	inbuf = MEM_mallocN(4 * sizeof(float) * x * y, "glow effect input");
 	outbuf = MEM_mallocN(4 * sizeof(float) * x * y, "glow effect output");
 
-	IMB_buffer_float_from_byte(inbuf, rect1, IB_PROFILE_SRGB, IB_PROFILE_SRGB, FALSE, x, y, x, x);
+	IMB_buffer_float_from_byte(inbuf, rect1, IB_PROFILE_SRGB, IB_PROFILE_SRGB, false, x, y, x, x);
 	IMB_buffer_float_premultiply(inbuf, x, y);
 
 	RVIsolateHighlights_float(inbuf, outbuf, x, y, glow->fMini * 3.0f, glow->fBoost * facf0, glow->fClamp);
@@ -2073,7 +2077,7 @@ static void do_glow_effect_byte(Sequence *seq, int render_size, float facf0, flo
 		RVAddBitmaps_float(inbuf, outbuf, outbuf, x, y);
 
 	IMB_buffer_float_unpremultiply(outbuf, x, y);
-	IMB_buffer_byte_from_float(out, outbuf, 4, 0.0f, IB_PROFILE_SRGB, IB_PROFILE_SRGB, FALSE, x, y, x, x);
+	IMB_buffer_byte_from_float(out, outbuf, 4, 0.0f, IB_PROFILE_SRGB, IB_PROFILE_SRGB, false, x, y, x, x);
 
 	MEM_freeN(inbuf);
 	MEM_freeN(outbuf);
@@ -2428,7 +2432,7 @@ static void store_icu_yrange_speed(Sequence *seq, short UNUSED(adrcode), float *
 	}
 }
 
-void BKE_sequence_effect_speed_rebuild_map(Scene *scene, Sequence *seq, int force)
+void BKE_sequence_effect_speed_rebuild_map(Scene *scene, Sequence *seq, bool force)
 {
 	int cfra;
 	float fallback_fac = 1.0f;
@@ -2439,7 +2443,7 @@ void BKE_sequence_effect_speed_rebuild_map(Scene *scene, Sequence *seq, int forc
 	/* if not already done, load / initialize data */
 	BKE_sequence_get_effect(seq);
 
-	if ((force == FALSE) &&
+	if ((force == false) &&
 	    (seq->len == v->length) &&
 	    (v->frameMap != NULL))
 	{
@@ -2655,8 +2659,8 @@ static struct SeqEffectHandle get_sequence_effect_impl(int seq_type)
 	struct SeqEffectHandle rval;
 	int sequence_type = seq_type;
 
-	rval.multithreaded = FALSE;
-	rval.supports_mask = FALSE;
+	rval.multithreaded = false;
+	rval.supports_mask = false;
 	rval.init = init_noop;
 	rval.num_inputs = num_inputs_default;
 	rval.load = load_noop;
@@ -2671,13 +2675,13 @@ static struct SeqEffectHandle get_sequence_effect_impl(int seq_type)
 
 	switch (sequence_type) {
 		case SEQ_TYPE_CROSS:
-			rval.multithreaded = TRUE;
+			rval.multithreaded = true;
 			rval.execute_slice = do_cross_effect;
 			rval.early_out = early_out_fade;
 			rval.get_default_fac = get_default_fac_fade;
 			break;
 		case SEQ_TYPE_GAMCROSS:
-			rval.multithreaded = TRUE;
+			rval.multithreaded = true;
 			rval.init = init_gammacross;
 			rval.load = load_gammacross;
 			rval.free = free_gammacross;
@@ -2687,31 +2691,31 @@ static struct SeqEffectHandle get_sequence_effect_impl(int seq_type)
 			rval.execute_slice = do_gammacross_effect;
 			break;
 		case SEQ_TYPE_ADD:
-			rval.multithreaded = TRUE;
+			rval.multithreaded = true;
 			rval.execute_slice = do_add_effect;
 			rval.early_out = early_out_mul_input2;
 			break;
 		case SEQ_TYPE_SUB:
-			rval.multithreaded = TRUE;
+			rval.multithreaded = true;
 			rval.execute_slice = do_sub_effect;
 			rval.early_out = early_out_mul_input2;
 			break;
 		case SEQ_TYPE_MUL:
-			rval.multithreaded = TRUE;
+			rval.multithreaded = true;
 			rval.execute_slice = do_mul_effect;
 			rval.early_out = early_out_mul_input2;
 			break;
 		case SEQ_TYPE_ALPHAOVER:
-			rval.multithreaded = TRUE;
+			rval.multithreaded = true;
 			rval.init = init_alpha_over_or_under;
 			rval.execute_slice = do_alphaover_effect;
 			break;
 		case SEQ_TYPE_OVERDROP:
-			rval.multithreaded = TRUE;
+			rval.multithreaded = true;
 			rval.execute_slice = do_overdrop_effect;
 			break;
 		case SEQ_TYPE_ALPHAUNDER:
-			rval.multithreaded = TRUE;
+			rval.multithreaded = true;
 			rval.init = init_alpha_over_or_under;
 			rval.execute_slice = do_alphaunder_effect;
 			break;
@@ -2762,7 +2766,7 @@ static struct SeqEffectHandle get_sequence_effect_impl(int seq_type)
 			rval.execute = do_multicam;
 			break;
 		case SEQ_TYPE_ADJUSTMENT:
-			rval.supports_mask = TRUE;
+			rval.supports_mask = true;
 			rval.num_inputs = num_inputs_adjustment;
 			rval.early_out = early_out_adjustment;
 			rval.execute = do_adjustment;
@@ -2774,7 +2778,7 @@ static struct SeqEffectHandle get_sequence_effect_impl(int seq_type)
 
 struct SeqEffectHandle BKE_sequence_get_effect(Sequence *seq)
 {
-	struct SeqEffectHandle rval = {FALSE, FALSE, NULL};
+	struct SeqEffectHandle rval = {false, false, NULL};
 
 	if (seq->type & SEQ_TYPE_EFFECT) {
 		rval = get_sequence_effect_impl(seq->type);
@@ -2789,7 +2793,7 @@ struct SeqEffectHandle BKE_sequence_get_effect(Sequence *seq)
 
 struct SeqEffectHandle BKE_sequence_get_blend(Sequence *seq)
 {
-	struct SeqEffectHandle rval = {FALSE, FALSE, NULL};
+	struct SeqEffectHandle rval = {false, false, NULL};
 
 	if (seq->blend_mode != 0) {
 		rval = get_sequence_effect_impl(seq->blend_mode);

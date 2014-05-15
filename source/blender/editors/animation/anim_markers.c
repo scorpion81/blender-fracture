@@ -1210,7 +1210,7 @@ static void MARKER_OT_select_border(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
 	/* rna */
-	WM_operator_properties_gesture_border(ot, TRUE);
+	WM_operator_properties_gesture_border(ot, true);
 }
 
 /* *********************** (de)select all ***************** */
@@ -1494,7 +1494,7 @@ void ED_operatortypes_marker(void)
 }
 
 /* called in screen_ops.c:ED_keymap_screen() */
-void ED_marker_keymap(wmKeyConfig *keyconf)
+void ED_keymap_marker(wmKeyConfig *keyconf)
 {
 	wmKeyMap *keymap = WM_keymap_find(keyconf, "Markers", 0, 0);
 	wmKeyMapItem *kmi;
@@ -1504,16 +1504,16 @@ void ED_marker_keymap(wmKeyConfig *keyconf)
 	WM_keymap_verify_item(keymap, "MARKER_OT_duplicate", DKEY, KM_PRESS, KM_SHIFT, 0);
 	WM_keymap_verify_item(keymap, "MARKER_OT_select", SELECTMOUSE, KM_PRESS, 0, 0);
 	kmi = WM_keymap_add_item(keymap, "MARKER_OT_select", SELECTMOUSE, KM_PRESS, KM_SHIFT, 0);
-	RNA_boolean_set(kmi->ptr, "extend", TRUE);
+	RNA_boolean_set(kmi->ptr, "extend", true);
 
 #ifdef DURIAN_CAMERA_SWITCH
 	kmi = WM_keymap_add_item(keymap, "MARKER_OT_select", SELECTMOUSE, KM_PRESS, KM_CTRL, 0);
-	RNA_boolean_set(kmi->ptr, "extend", FALSE);
-	RNA_boolean_set(kmi->ptr, "camera", TRUE);
+	RNA_boolean_set(kmi->ptr, "extend", false);
+	RNA_boolean_set(kmi->ptr, "camera", true);
 
 	kmi = WM_keymap_add_item(keymap, "MARKER_OT_select", SELECTMOUSE, KM_PRESS, KM_SHIFT | KM_CTRL, 0);
-	RNA_boolean_set(kmi->ptr, "extend", TRUE);
-	RNA_boolean_set(kmi->ptr, "camera", TRUE);
+	RNA_boolean_set(kmi->ptr, "extend", true);
+	RNA_boolean_set(kmi->ptr, "camera", true);
 #else
 	(void)kmi;
 #endif

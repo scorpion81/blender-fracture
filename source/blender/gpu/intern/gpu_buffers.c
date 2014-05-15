@@ -71,9 +71,6 @@ typedef enum {
 
 #define MAX_GPU_ATTRIB_DATA 32
 
-/* material number is an 16-bit signed short and the range (assume material number is non-negative) */
-#define MAX_MATERIALS MAXMAT
-
 /* -1 - undefined, 0 - vertex arrays, 1 - VBOs */
 static int useVBOs = -1;
 static GPUBufferState GLStates = 0;
@@ -118,10 +115,10 @@ static GPUBufferPool *gpu_buffer_pool_new(void)
 
 	pool->maxsize = MAX_FREE_GPU_BUFFERS;
 	pool->maxpbvhsize = MAX_FREE_GPU_BUFF_IDS;
-	pool->buffers = MEM_callocN(sizeof(*pool->buffers) * pool->maxsize,
-								"GPUBufferPool.buffers");
-	pool->pbvhbufids = MEM_callocN(sizeof(*pool->pbvhbufids) * pool->maxpbvhsize,
-								"GPUBufferPool.pbvhbuffers");
+	pool->buffers = MEM_mallocN(sizeof(*pool->buffers) * pool->maxsize,
+	                            "GPUBufferPool.buffers");
+	pool->pbvhbufids = MEM_mallocN(sizeof(*pool->pbvhbufids) * pool->maxpbvhsize,
+	                               "GPUBufferPool.pbvhbuffers");
 	return pool;
 }
 
@@ -187,12 +184,16 @@ static void gpu_buffer_pool_free_unused(GPUBufferPool *pool)
 {
 	if (!pool)
 		return;
+
+	BLI_mutex_lock(&buffer_mutex);
 	
 	while (pool->totbuf)
 		gpu_buffer_pool_delete_last(pool);
 
 	glDeleteBuffersARB(pool->totpbvhbufids, pool->pbvhbufids);
 	pool->totpbvhbufids = 0;
+
+	BLI_mutex_unlock(&buffer_mutex);
 }
 
 static GPUBufferPool *gpu_buffer_pool = NULL;
@@ -376,14 +377,22 @@ void GPU_buffer_free(GPUBuffer *buffer)
 	BLI_mutex_unlock(&buffer_mutex);
 }
 
+/* currently unused */
+// #define USE_GPU_POINT_LINK
+
 typedef struct GPUVertPointLink {
+#ifdef USE_GPU_POINT_LINK
 	struct GPUVertPointLink *next;
+#endif
 	/* -1 means uninitialized */
 	int point_index;
 } GPUVertPointLink;
 
+
 /* add a new point to the list of points related to a particular
  * vertex */
+#ifdef USE_GPU_POINT_LINK
+
 static void gpu_drawobject_add_vert_point(GPUDrawObject *gdo, int vert_index, int point_index)
 {
 	GPUVertPointLink *lnk;
@@ -403,6 +412,19 @@ static void gpu_drawobject_add_vert_point(GPUDrawObject *gdo, int vert_index, in
 	lnk->point_index = point_index;
 }
 
+#else
+
+static void gpu_drawobject_add_vert_point(GPUDrawObject *gdo, int vert_index, int point_index)
+{
+	GPUVertPointLink *lnk;
+	lnk = &gdo->vert_points[vert_index];
+	if (lnk->point_index == -1) {
+		lnk->point_index = point_index;
+	}
+}
+
+#endif  /* USE_GPU_POINT_LINK */
+
 /* update the vert_points and triangle_to_mface fields with a new
  * triangle */
 static void gpu_drawobject_add_triangle(GPUDrawObject *gdo,
@@ -418,17 +440,21 @@ static void gpu_drawobject_add_triangle(GPUDrawObject *gdo,
 
 /* for each vertex, build a list of points related to it; these lists
  * are stored in an array sized to the number of vertices */
-static void gpu_drawobject_init_vert_points(GPUDrawObject *gdo, MFace *f, int totface)
+static void gpu_drawobject_init_vert_points(GPUDrawObject *gdo, MFace *f, int totface, int totmat)
 {
 	GPUBufferMaterial *mat;
-	int i, mat_orig_to_new[MAX_MATERIALS];
+	int i, *mat_orig_to_new;
 
+	mat_orig_to_new = MEM_callocN(sizeof(*mat_orig_to_new) * totmat,
+	                                             "GPUDrawObject.mat_orig_to_new");
 	/* allocate the array and space for links */
-	gdo->vert_points = MEM_callocN(sizeof(GPUVertPointLink) * gdo->totvert,
+	gdo->vert_points = MEM_mallocN(sizeof(GPUVertPointLink) * gdo->totvert,
 	                               "GPUDrawObject.vert_points");
+#ifdef USE_GPU_POINT_LINK
 	gdo->vert_points_mem = MEM_callocN(sizeof(GPUVertPointLink) * gdo->tot_triangle_point,
 	                                   "GPUDrawObject.vert_points_mem");
 	gdo->vert_points_usage = 0;
+#endif
 
 	/* build a map from the original material indices to the new
 	 * GPUBufferMaterial indices */
@@ -436,8 +462,12 @@ static void gpu_drawobject_init_vert_points(GPUDrawObject *gdo, MFace *f, int to
 		mat_orig_to_new[gdo->materials[i].mat_nr] = i;
 
 	/* -1 indicates the link is not yet used */
-	for (i = 0; i < gdo->totvert; i++)
+	for (i = 0; i < gdo->totvert; i++) {
+#ifdef USE_GPU_POINT_LINK
+		gdo->vert_points[i].link = NULL;
+#endif
 		gdo->vert_points[i].point_index = -1;
+	}
 
 	for (i = 0; i < totface; i++, f++) {
 		mat = &gdo->materials[mat_orig_to_new[f->mat_nr]];
@@ -462,6 +492,8 @@ static void gpu_drawobject_init_vert_points(GPUDrawObject *gdo, MFace *f, int to
 			gdo->tot_loose_point++;
 		}
 	}
+
+	MEM_freeN(mat_orig_to_new);
 }
 
 /* see GPUDrawObject's structure definition for a description of the
@@ -470,15 +502,19 @@ GPUDrawObject *GPU_drawobject_new(DerivedMesh *dm)
 {
 	GPUDrawObject *gdo;
 	MFace *mface;
-	int points_per_mat[MAX_MATERIALS];
+	int totmat = dm->totmat;
+	int *points_per_mat;
 	int i, curmat, curpoint, totface;
+
+	/* object contains at least one material (default included) so zero means uninitialized dm */
+	BLI_assert(totmat != 0);
 
 	mface = dm->getTessFaceArray(dm);
 	totface = dm->getNumTessFaces(dm);
 
 	/* get the number of points used by each material, treating
 	 * each quad as two triangles */
-	memset(points_per_mat, 0, sizeof(int) * MAX_MATERIALS);
+	points_per_mat = MEM_callocN(sizeof(*points_per_mat) * totmat, "GPU_drawobject_new.mat_orig_to_new");
 	for (i = 0; i < totface; i++)
 		points_per_mat[mface[i].mat_nr] += mface[i].v4 ? 6 : 3;
 
@@ -488,7 +524,7 @@ GPUDrawObject *GPU_drawobject_new(DerivedMesh *dm)
 	gdo->totedge = dm->getNumEdges(dm);
 
 	/* count the number of materials used by this DerivedMesh */
-	for (i = 0; i < MAX_MATERIALS; i++) {
+	for (i = 0; i < totmat; i++) {
 		if (points_per_mat[i] > 0)
 			gdo->totmaterial++;
 	}
@@ -498,7 +534,7 @@ GPUDrawObject *GPU_drawobject_new(DerivedMesh *dm)
 	                             "GPUDrawObject.materials");
 
 	/* initialize the materials array */
-	for (i = 0, curmat = 0, curpoint = 0; i < MAX_MATERIALS; i++) {
+	for (i = 0, curmat = 0, curpoint = 0; i < totmat; i++) {
 		if (points_per_mat[i] > 0) {
 			gdo->materials[curmat].start = curpoint;
 			gdo->materials[curmat].totpoint = 0;
@@ -515,7 +551,8 @@ GPUDrawObject *GPU_drawobject_new(DerivedMesh *dm)
 	gdo->triangle_to_mface = MEM_mallocN(sizeof(int) * (gdo->tot_triangle_point / 3),
 	                                     "GPUDrawObject.triangle_to_mface");
 
-	gpu_drawobject_init_vert_points(gdo, mface, totface);
+	gpu_drawobject_init_vert_points(gdo, mface, totface, totmat);
+	MEM_freeN(points_per_mat);
 
 	return gdo;
 }
@@ -530,7 +567,9 @@ void GPU_drawobject_free(DerivedMesh *dm)
 	MEM_freeN(gdo->materials);
 	MEM_freeN(gdo->triangle_to_mface);
 	MEM_freeN(gdo->vert_points);
+#ifdef USE_GPU_POINT_LINK
 	MEM_freeN(gdo->vert_points_mem);
+#endif
 	GPU_buffer_free(gdo->points);
 	GPU_buffer_free(gdo->normals);
 	GPU_buffer_free(gdo->uv);
@@ -552,7 +591,7 @@ static GPUBuffer *gpu_buffer_setup(DerivedMesh *dm, GPUDrawObject *object,
 	GPUBufferPool *pool;
 	GPUBuffer *buffer;
 	float *varray;
-	int mat_orig_to_new[MAX_MATERIALS];
+	int *mat_orig_to_new;
 	int *cur_index_per_mat;
 	int i;
 	int success;
@@ -572,6 +611,8 @@ static GPUBuffer *gpu_buffer_setup(DerivedMesh *dm, GPUDrawObject *object,
 		return NULL;
 	}
 
+	mat_orig_to_new = MEM_mallocN(sizeof(*mat_orig_to_new) * dm->totmat,
+                                  "GPU_buffer_setup.mat_orig_to_new");
 	cur_index_per_mat = MEM_mallocN(sizeof(int) * object->totmaterial,
 	                                "GPU_buffer_setup.cur_index_per_mat");
 	for (i = 0; i < object->totmaterial; i++) {
@@ -644,6 +685,7 @@ static GPUBuffer *gpu_buffer_setup(DerivedMesh *dm, GPUDrawObject *object,
 	}
 
 	MEM_freeN(cur_index_per_mat);
+	MEM_freeN(mat_orig_to_new);
 
 	BLI_mutex_unlock(&buffer_mutex);
 
@@ -695,6 +737,7 @@ static void GPU_buffer_copy_normal(DerivedMesh *dm, float *varray, int *index, i
 	float f_no[3];
 
 	float *nors = dm->getTessFaceDataArray(dm, CD_NORMAL);
+	short (*tlnors)[4][3] = dm->getTessFaceDataArray(dm, CD_TESSLOOPNORMAL);
 	MVert *mvert = dm->getVertArray(dm);
 	MFace *f = dm->getTessFaceArray(dm);
 
@@ -705,7 +748,20 @@ static void GPU_buffer_copy_normal(DerivedMesh *dm, float *varray, int *index, i
 		start = index[mat_orig_to_new[f->mat_nr]];
 		index[mat_orig_to_new[f->mat_nr]] += f->v4 ? 18 : 9;
 
-		if (smoothnormal) {
+		if (tlnors) {
+			short (*tlnor)[3] = tlnors[i];
+			/* Copy loop normals */
+			normal_short_to_float_v3(&varray[start], tlnor[0]);
+			normal_short_to_float_v3(&varray[start + 3], tlnor[1]);
+			normal_short_to_float_v3(&varray[start + 6], tlnor[2]);
+
+			if (f->v4) {
+				normal_short_to_float_v3(&varray[start + 9], tlnor[2]);
+				normal_short_to_float_v3(&varray[start + 12], tlnor[3]);
+				normal_short_to_float_v3(&varray[start + 15], tlnor[0]);
+			}
+		}
+		else if (smoothnormal) {
 			/* copy vertex normal */
 			normal_short_to_float_v3(&varray[start], mvert[f->v1].no);
 			normal_short_to_float_v3(&varray[start + 3], mvert[f->v2].no);
@@ -821,7 +877,7 @@ static void GPU_buffer_copy_edge(DerivedMesh *dm, float *varray_, int *UNUSED(in
 	MEdge *medge;
 	unsigned int *varray = (unsigned int *)varray_;
 	int i, totedge;
- 
+
 	medge = dm->getEdgeArray(dm);
 	totedge = dm->getNumEdges(dm);
 
@@ -1349,7 +1405,8 @@ struct GPU_PBVH_Buffers {
 	 * smooth-shaded or all faces are flat-shaded */
 	int smooth;
 
-	int show_diffuse_color;
+	bool show_diffuse_color;
+	bool use_matcaps;
 	float diffuse_color[4];
 };
 typedef enum {
@@ -1432,19 +1489,22 @@ static void gpu_color_from_mask_quad_set(const CCGKey *key,
 
 void GPU_update_mesh_pbvh_buffers(GPU_PBVH_Buffers *buffers, MVert *mvert,
                              int *vert_indices, int totvert, const float *vmask,
-                             int (*face_vert_indices)[4], int show_diffuse_color)
+                             int (*face_vert_indices)[4], bool show_diffuse_color)
 {
 	VertexBufferFormat *vert_data;
 	int i, j, k;
 
 	buffers->vmask = vmask;
 	buffers->show_diffuse_color = show_diffuse_color;
+	buffers->use_matcaps = GPU_material_use_matcaps_get();
 
 	if (buffers->vert_buf) {
 		int totelem = (buffers->smooth ? totvert : (buffers->tot_tri * 3));
-		float diffuse_color[4] = {0.8f, 0.8f, 0.8f, 1.0f};
+		float diffuse_color[4] = {0.8f, 0.8f, 0.8f, 0.8f};
 
-		if (buffers->show_diffuse_color) {
+		if (buffers->use_matcaps)
+			diffuse_color[0] = diffuse_color[1] = diffuse_color[2] = 1.0;
+		else if (show_diffuse_color) {
 			MFace *f = buffers->mface + buffers->face_indices[0];
 
 			GPU_material_diffuse_get(f->mat_nr + 1, diffuse_color);
@@ -1578,7 +1638,8 @@ GPU_PBVH_Buffers *GPU_build_pbvh_mesh_buffers(int (*face_vert_indices)[4],
 	buffers->index_type = GL_UNSIGNED_SHORT;
 	buffers->smooth = mface[face_indices[0]].flag & ME_SMOOTH;
 
-	buffers->show_diffuse_color = FALSE;
+	buffers->show_diffuse_color = false;
+	buffers->use_matcaps = false;
 
 	/* Count the number of visible triangles */
 	for (i = 0, tottri = 0; i < totface; ++i) {
@@ -1648,12 +1709,13 @@ GPU_PBVH_Buffers *GPU_build_pbvh_mesh_buffers(int (*face_vert_indices)[4],
 
 void GPU_update_grid_pbvh_buffers(GPU_PBVH_Buffers *buffers, CCGElem **grids,
                              const DMFlagMat *grid_flag_mats, int *grid_indices,
-                             int totgrid, const CCGKey *key, int show_diffuse_color)
+                             int totgrid, const CCGKey *key, bool show_diffuse_color)
 {
 	VertexBufferFormat *vert_data;
 	int i, j, k, x, y;
 
 	buffers->show_diffuse_color = show_diffuse_color;
+	buffers->use_matcaps = GPU_material_use_matcaps_get();
 
 	/* Build VBO */
 	if (buffers->vert_buf) {
@@ -1662,7 +1724,9 @@ void GPU_update_grid_pbvh_buffers(GPU_PBVH_Buffers *buffers, CCGElem **grids,
 		const int has_mask = key->has_mask;
 		float diffuse_color[4] = {0.8f, 0.8f, 0.8f, 1.0f};
 
-		if (buffers->show_diffuse_color) {
+		if (buffers->use_matcaps)
+			diffuse_color[0] = diffuse_color[1] = diffuse_color[2] = 1.0;
+		else if (show_diffuse_color) {
 			const DMFlagMat *flags = &grid_flag_mats[grid_indices[0]];
 
 			GPU_material_diffuse_get(flags->mat_nr + 1, diffuse_color);
@@ -1699,7 +1763,7 @@ void GPU_update_grid_pbvh_buffers(GPU_PBVH_Buffers *buffers, CCGElem **grids,
 				
 				if (!smooth) {
 					/* for flat shading, recalc normals and set the last vertex of
-					 * each quad in the index buffer to have the flat normal as
+					 * each triangle in the index buffer to have the flat normal as
 					 * that is what opengl will use */
 					for (j = 0; j < key->grid_size - 1; j++) {
 						for (k = 0; k < key->grid_size - 1; k++) {
@@ -1717,7 +1781,7 @@ void GPU_update_grid_pbvh_buffers(GPU_PBVH_Buffers *buffers, CCGElem **grids,
 							               CCG_elem_co(key, elems[2]),
 							               CCG_elem_co(key, elems[3]));
 
-							vd = vert_data + (j + 1) * key->grid_size + (k + 1);
+							vd = vert_data + (j + 1) * key->grid_size + k;
 							normal_float_to_short_v3(vd->no, fno);
 
 							if (has_mask) {
@@ -1789,18 +1853,18 @@ static int gpu_count_grid_quads(BLI_bitmap **grid_hidden,
  * unsigned shorts or unsigned ints. */
 #define FILL_QUAD_BUFFER(type_, tot_quad_, buffer_)                     \
 	{                                                                   \
-		type_ *quad_data;                                               \
+		type_ *tri_data;                                               \
 		int offset = 0;                                                 \
 		int i, j, k;                                                    \
 		                                                                \
 		glBufferDataARB(GL_ELEMENT_ARRAY_BUFFER_ARB,                    \
-		                sizeof(type_) * (tot_quad_) * 4, NULL,          \
+						sizeof(type_) * (tot_quad_) * 6, NULL,          \
 		                GL_STATIC_DRAW_ARB);                            \
 		                                                                \
-		/* Fill the quad buffer */                                      \
-		quad_data = glMapBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB,         \
+		/* Fill the buffer */                                      \
+		tri_data = glMapBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB,         \
 		                           GL_WRITE_ONLY_ARB);                  \
-		if (quad_data) {                                                \
+		if (tri_data) {                                                \
 			for (i = 0; i < totgrid; ++i) {                             \
 				BLI_bitmap *gh = NULL;                                  \
 				if (grid_hidden)                                        \
@@ -1814,10 +1878,13 @@ static int gpu_count_grid_quads(BLI_bitmap **grid_hidden,
 						                              gridsize, k, j))  \
 							continue;                                   \
 																		\
-						*(quad_data++) = offset + j * gridsize + k + 1; \
-						*(quad_data++) = offset + j * gridsize + k;     \
-						*(quad_data++) = offset + (j + 1) * gridsize + k; \
-						*(quad_data++) = offset + (j + 1) * gridsize + k + 1; \
+						*(tri_data++) = offset + j * gridsize + k + 1; \
+						*(tri_data++) = offset + j * gridsize + k;     \
+						*(tri_data++) = offset + (j + 1) * gridsize + k; \
+																		\
+						*(tri_data++) = offset + (j + 1) * gridsize + k + 1; \
+						*(tri_data++) = offset + j * gridsize + k + 1; \
+						*(tri_data++) = offset + (j + 1) * gridsize + k; \
 					}                                                   \
 				}                                                       \
 																		\
@@ -1885,7 +1952,7 @@ static GLuint gpu_get_grid_buffer(int gridsize, GLenum *index_type, unsigned *to
 }
 
 GPU_PBVH_Buffers *GPU_build_grid_pbvh_buffers(int *grid_indices, int totgrid,
-                                    BLI_bitmap **grid_hidden, int gridsize)
+                                              BLI_bitmap **grid_hidden, int gridsize)
 {
 	GPU_PBVH_Buffers *buffers;
 	int totquad;
@@ -1895,7 +1962,8 @@ GPU_PBVH_Buffers *GPU_build_grid_pbvh_buffers(int *grid_indices, int totgrid,
 	buffers->grid_hidden = grid_hidden;
 	buffers->totgrid = totgrid;
 
-	buffers->show_diffuse_color = FALSE;
+	buffers->show_diffuse_color = false;
+	buffers->use_matcaps = false;
 
 	/* Count the number of quads */
 	totquad = gpu_count_grid_quads(grid_hidden, grid_indices, totgrid, gridsize);
@@ -1947,13 +2015,11 @@ static void gpu_bmesh_vert_to_buffer_copy(BMVert *v,
                                           int *v_index,
                                           const float fno[3],
                                           const float *fmask,
-                                          const int cd_vert_mask_offset)
+                                          const int cd_vert_mask_offset,
+                                          const float diffuse_color[4])
 {
 	if (!BM_elem_flag_test(v, BM_ELEM_HIDDEN)) {
 		VertexBufferFormat *vd = &vert_data[*v_index];
-
-		/* TODO: should use material color */
-		float diffuse_color[4] = {0.8f, 0.8f, 0.8f, 1.0f};
 
 		/* Set coord, normal, and mask */
 		copy_v3_v3(vd->co, v->co);
@@ -1996,15 +2062,15 @@ static int gpu_bmesh_vert_visible_count(GSet *bm_unique_verts,
 }
 
 /* Return the total number of visible faces */
-static int gpu_bmesh_face_visible_count(GHash *bm_faces)
+static int gpu_bmesh_face_visible_count(GSet *bm_faces)
 {
-	GHashIterator gh_iter;
+	GSetIterator gh_iter;
 	int totface = 0;
 
-	GHASH_ITER (gh_iter, bm_faces) {
-		BMFace *f = BLI_ghashIterator_getKey(&gh_iter);
+	GSET_ITER (gh_iter, bm_faces) {
+		BMFace *f = BLI_gsetIterator_getKey(&gh_iter);
 
-		if (!paint_is_bmesh_face_hidden(f))
+		if (!BM_elem_flag_test(f, BM_ELEM_HIDDEN))
 			totface++;
 	}
 
@@ -2015,16 +2081,21 @@ static int gpu_bmesh_face_visible_count(GHash *bm_faces)
  * shading, an element index buffer. */
 void GPU_update_bmesh_pbvh_buffers(GPU_PBVH_Buffers *buffers,
                               BMesh *bm,
-                              GHash *bm_faces,
+                              GSet *bm_faces,
                               GSet *bm_unique_verts,
-                              GSet *bm_other_verts)
+                              GSet *bm_other_verts,
+                              bool show_diffuse_color)
 {
 	VertexBufferFormat *vert_data;
 	void *tri_data;
 	int tottri, totvert, maxvert = 0;
+	float diffuse_color[4] = {0.8f, 0.8f, 0.8f, 1.0f};
 
 	/* TODO, make mask layer optional for bmesh buffer */
 	const int cd_vert_mask_offset = CustomData_get_offset(&bm->vdata, CD_PAINT_MASK);
+
+	buffers->show_diffuse_color = show_diffuse_color;
+	buffers->use_matcaps = GPU_material_use_matcaps_get();
 
 	if (!buffers->vert_buf || (buffers->smooth && !buffers->index_buf))
 		return;
@@ -2038,6 +2109,24 @@ void GPU_update_bmesh_pbvh_buffers(GPU_PBVH_Buffers *buffers,
 	}
 	else
 		totvert = tottri * 3;
+
+	if (!tottri) {
+		buffers->tot_tri = 0;
+		return;
+	}
+
+	if (buffers->use_matcaps)
+		diffuse_color[0] = diffuse_color[1] = diffuse_color[2] = 1.0;
+	else if (show_diffuse_color) {
+		/* due to dynamic nature of dyntopo, only get first material */
+		GSetIterator gs_iter;
+		BMFace *f;
+		BLI_gsetIterator_init(&gs_iter, bm_faces);
+		f = BLI_gsetIterator_getKey(&gs_iter);
+		GPU_material_diffuse_get(f->mat_nr + 1, diffuse_color);
+	}
+
+	copy_v4_v4(buffers->diffuse_color, diffuse_color);
 
 	/* Initialize vertex buffer */
 	glBindBufferARB(GL_ARRAY_BUFFER_ARB, buffers->vert_buf);
@@ -2060,26 +2149,26 @@ void GPU_update_bmesh_pbvh_buffers(GPU_PBVH_Buffers *buffers,
 			GSET_ITER (gs_iter, bm_unique_verts) {
 				gpu_bmesh_vert_to_buffer_copy(BLI_gsetIterator_getKey(&gs_iter),
 				                              vert_data, &v_index, NULL, NULL,
-				                              cd_vert_mask_offset);
+				                              cd_vert_mask_offset, diffuse_color);
 			}
 
 			GSET_ITER (gs_iter, bm_other_verts) {
 				gpu_bmesh_vert_to_buffer_copy(BLI_gsetIterator_getKey(&gs_iter),
 				                              vert_data, &v_index, NULL, NULL,
-				                              cd_vert_mask_offset);
+				                              cd_vert_mask_offset, diffuse_color);
 			}
 
 			maxvert = v_index;
 		}
 		else {
-			GHashIterator gh_iter;
+			GSetIterator gs_iter;
 
-			GHASH_ITER (gh_iter, bm_faces) {
-				BMFace *f = BLI_ghashIterator_getKey(&gh_iter);
+			GSET_ITER (gs_iter, bm_faces) {
+				BMFace *f = BLI_gsetIterator_getKey(&gs_iter);
 
 				BLI_assert(f->len == 3);
 
-				if (!paint_is_bmesh_face_hidden(f)) {
+				if (!BM_elem_flag_test(f, BM_ELEM_HIDDEN)) {
 					BMVert *v[3];
 					float fmask = 0;
 					int i;
@@ -2096,7 +2185,7 @@ void GPU_update_bmesh_pbvh_buffers(GPU_PBVH_Buffers *buffers,
 					for (i = 0; i < 3; i++) {
 						gpu_bmesh_vert_to_buffer_copy(v[i], vert_data,
 						                              &v_index, f->no, &fmask,
-						                              cd_vert_mask_offset);
+						                              cd_vert_mask_offset, diffuse_color);
 					}
 				}
 			}
@@ -2130,12 +2219,12 @@ void GPU_update_bmesh_pbvh_buffers(GPU_PBVH_Buffers *buffers,
 		/* Fill triangle index buffer */
 		tri_data = glMapBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB, GL_WRITE_ONLY_ARB);
 		if (tri_data) {
-			GHashIterator gh_iter;
+			GSetIterator gs_iter;
 
-			GHASH_ITER (gh_iter, bm_faces) {
-				BMFace *f = BLI_ghashIterator_getKey(&gh_iter);
+			GSET_ITER (gs_iter, bm_faces) {
+				BMFace *f = BLI_gsetIterator_getKey(&gs_iter);
 
-				if (!paint_is_bmesh_face_hidden(f)) {
+				if (!BM_elem_flag_test(f, BM_ELEM_HIDDEN)) {
 					BMLoop *l_iter;
 					BMLoop *l_first;
 
@@ -2181,8 +2270,10 @@ GPU_PBVH_Buffers *GPU_build_bmesh_pbvh_buffers(int smooth_shading)
 	if (smooth_shading)
 		glGenBuffersARB(1, &buffers->index_buf);
 	glGenBuffersARB(1, &buffers->vert_buf);
-	buffers->use_bmesh = TRUE;
+	buffers->use_bmesh = true;
 	buffers->smooth = smooth_shading;
+	buffers->show_diffuse_color = false;
+	buffers->use_matcaps = false;
 
 	return buffers;
 }
@@ -2195,7 +2286,9 @@ static void gpu_draw_buffers_legacy_mesh(GPU_PBVH_Buffers *buffers)
 	const MFace *face = &buffers->mface[buffers->face_indices[0]];
 	float diffuse_color[4] = {0.8f, 0.8f, 0.8f, 1.0f};
 
-	if (buffers->show_diffuse_color)
+	if (buffers->use_matcaps)
+		diffuse_color[0] = diffuse_color[1] = diffuse_color[2] = 1.0;
+	else if (buffers->show_diffuse_color)
 		GPU_material_diffuse_get(face->mat_nr + 1, diffuse_color);
 
 	if (has_mask) {
@@ -2267,7 +2360,9 @@ static void gpu_draw_buffers_legacy_grids(GPU_PBVH_Buffers *buffers)
 	const DMFlagMat *flags = &buffers->grid_flag_mats[buffers->grid_indices[0]];
 	float diffuse_color[4] = {0.8f, 0.8f, 0.8f, 1.0f};
 
-	if (buffers->show_diffuse_color)
+	if (buffers->use_matcaps)
+		diffuse_color[0] = diffuse_color[1] = diffuse_color[2] = 1.0;
+	else if (buffers->show_diffuse_color)
 		GPU_material_diffuse_get(flags->mat_nr + 1, diffuse_color);
 
 	if (has_mask) {
@@ -2386,7 +2481,7 @@ static void gpu_draw_buffers_legacy_grids(GPU_PBVH_Buffers *buffers)
 }
 
 void GPU_draw_pbvh_buffers(GPU_PBVH_Buffers *buffers, DMSetMaterial setMaterial,
-					  int wireframe)
+                           bool wireframe)
 {
 	/* sets material from the first face, to solve properly face would need to
 	 * be sorted in buckets by materials */
@@ -2435,12 +2530,12 @@ void GPU_draw_pbvh_buffers(GPU_PBVH_Buffers *buffers, DMSetMaterial setMaterial,
 				glColorPointer(3, GL_UNSIGNED_BYTE, sizeof(VertexBufferFormat),
 				               offset + offsetof(VertexBufferFormat, color));
 				
-				glDrawElements(GL_QUADS, buffers->tot_quad * 4, buffers->index_type, 0);
+				glDrawElements(GL_TRIANGLES, buffers->tot_quad * 6, buffers->index_type, 0);
 
 				offset += buffers->gridkey.grid_area * sizeof(VertexBufferFormat);
 			}
 		}
-		else {
+		else if (buffers->tot_tri) {
 			int totelem = buffers->tot_tri * 3;
 
 			glVertexPointer(3, GL_FLOAT, sizeof(VertexBufferFormat),
@@ -2478,19 +2573,31 @@ void GPU_draw_pbvh_buffers(GPU_PBVH_Buffers *buffers, DMSetMaterial setMaterial,
 	}
 }
 
-int GPU_pbvh_buffers_diffuse_changed(GPU_PBVH_Buffers *buffers, int show_diffuse_color)
+bool GPU_pbvh_buffers_diffuse_changed(GPU_PBVH_Buffers *buffers, GSet *bm_faces, bool show_diffuse_color)
 {
 	float diffuse_color[4];
+	bool use_matcaps = GPU_material_use_matcaps_get();
 
 	if (buffers->show_diffuse_color != show_diffuse_color)
-		return TRUE;
+		return true;
 
-	if (buffers->show_diffuse_color == FALSE)
-		return FALSE;
+	if (buffers->use_matcaps != use_matcaps)
+		return true;
+
+	if ((buffers->show_diffuse_color == false) || use_matcaps)
+		return false;
 
 	if (buffers->mface) {
 		MFace *f = buffers->mface + buffers->face_indices[0];
 
+		GPU_material_diffuse_get(f->mat_nr + 1, diffuse_color);
+	}
+	else if (buffers->use_bmesh) {
+		/* due to dynamc nature of dyntopo, only get first material */
+		GSetIterator gs_iter;
+		BMFace *f;
+		BLI_gsetIterator_init(&gs_iter, bm_faces);
+		f = BLI_gsetIterator_getKey(&gs_iter);
 		GPU_material_diffuse_get(f->mat_nr + 1, diffuse_color);
 	}
 	else {

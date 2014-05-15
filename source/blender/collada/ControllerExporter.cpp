@@ -42,6 +42,7 @@ extern "C" {
 #include "BKE_mesh.h"
 #include "BKE_global.h"
 #include "BKE_library.h"
+#include "BKE_idprop.h"
 }
 
 #include "ED_armature.h"
@@ -466,6 +467,84 @@ std::string ControllerExporter::add_joints_source(Object *ob_arm, ListBase *defb
 	return source_id;
 }
 
+static float get_property(Bone *bone, const char *key, float def)
+{
+	float result = def;
+	if (bone->prop) {
+		IDProperty *property = IDP_GetPropertyFromGroup(bone->prop, key);
+		if (property) {
+			switch(property->type) {
+				case IDP_INT:
+					result = (float)(IDP_Int(property));
+					break;
+				case IDP_FLOAT:
+					result = (float)(IDP_Float(property));
+					break;
+				case IDP_DOUBLE:
+					result = (float)(IDP_Double(property));
+					break;
+				default:
+					result = def;
+			}
+		}
+	}
+	return result;
+}
+
+/**
+ * This function creates an arbitrary rest pose matrix from
+ * data provided as custom properties. This is a workaround
+ * for support of maya's restpose matrix which can be arbitrary
+ * in opposition to Blender where the Rest pose Matrix is always
+ * the Identity matrix.
+ *
+ * The custom properties are:
+ *
+ * restpose_scale_x
+ * restpose_scale_y
+ * restpose_scale_z
+ *
+ * restpose_rot_x
+ * restpose_rot_y
+ * restpose_rot_z
+ *
+ * restpose_loc_x
+ * restpose_loc_y
+ * restpose_loc_z
+ *
+ * The matrix is only setup if the scale AND the rot properties are defined.
+ * The presence of the loc properties is optional.
+ *
+ * This feature has been implemented to support Second Life "Fitted Mesh"
+ * TODO: Check if an arbitrary rest pose matrix makes sense within Blender.
+ * Eventually leverage the custom property data into an "official" 
+ * Edit_bone Property
+ */
+static void create_restpose_mat(Bone *bone, float mat[4][4])
+{
+	const double PI = 3.1415926535897932384626433832795;
+
+	float loc[3] = {
+		get_property(bone, "restpose_loc_x", 0.0),
+		get_property(bone, "restpose_loc_y", 0.0),
+		get_property(bone, "restpose_loc_z", 0.0)
+	};
+
+	float rot[3] = {
+		PI * get_property(bone, "restpose_rot_x", 0.0) / 180.0,
+		PI * get_property(bone, "restpose_rot_y", 0.0) / 180.0,
+		PI * get_property(bone, "restpose_rot_z", 0.0) / 180.0
+	};
+
+	float scale[3] = {
+		get_property(bone, "restpose_scale_x", 1.0),
+		get_property(bone, "restpose_scale_y", 1.0),
+		get_property(bone, "restpose_scale_z", 1.0)
+	};
+
+	loc_eulO_size_to_mat4(mat, loc, rot, scale, 6);
+}
+
 std::string ControllerExporter::add_inv_bind_mats_source(Object *ob_arm, ListBase *defbase, const std::string& controller_id)
 {
 	std::string source_id = controller_id + BIND_POSES_SOURCE_ID_SUFFIX;
@@ -507,18 +586,26 @@ std::string ControllerExporter::add_inv_bind_mats_source(Object *ob_arm, ListBas
 			float world[4][4];
 			float inv_bind_mat[4][4];
 
-			// OPEN_SIM_COMPATIBILITY
+			
+			// SL/OPEN_SIM COMPATIBILITY
 			if (export_settings->open_sim) {
 				// Only translations, no rotation vs armature
 				float temp[4][4];
 				unit_m4(temp);
 				copy_v3_v3(temp[3], pchan->bone->arm_mat[3]);
 				mul_m4_m4m4(world, ob_arm->obmat, temp);
+
+				// Add Maya restpose matrix (if defined as properties)
+				float restpose_mat[4][4];
+				create_restpose_mat(pchan->bone, restpose_mat);
+				mul_m4_m4m4(world, world, restpose_mat);
+
 			}
 			else {
 				// make world-space matrix, arm_mat is armature-space
 				mul_m4_m4m4(world, ob_arm->obmat, pchan->bone->arm_mat);
 			}
+
 
 			invert_m4_m4(mat, world);
 			converter.mat4_to_dae(inv_bind_mat, mat);

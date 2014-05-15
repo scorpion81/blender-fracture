@@ -579,8 +579,15 @@ static void codegen_call_functions(DynStr *ds, ListBase *nodes, GPUOutput *final
 				else
 					BLI_dynstr_appendf(ds, "cons%d", input->id);
 			}
-			else if (input->source == GPU_SOURCE_ATTRIB)
+			else if (input->source == GPU_SOURCE_ATTRIB) {
 				BLI_dynstr_appendf(ds, "var%d", input->attribid);
+			}
+			else if (input->source == GPU_SOURCE_OPENGL_BUILTIN) {
+				if (input->oglbuiltin == GPU_MATCAP_NORMAL)
+					BLI_dynstr_append(ds, "gl_SecondaryColor");
+				else if (input->oglbuiltin == GPU_COLOR)
+					BLI_dynstr_append(ds, "gl_Color");
+			}
 
 			BLI_dynstr_append(ds, ", ");
 		}
@@ -665,6 +672,18 @@ static char *code_generate_vertex(ListBase *nodes)
 				else
 					BLI_dynstr_appendf(ds, "\tvar%d = att%d;\n", input->attribid, input->attribid);
 			}
+			/* unfortunately special handling is needed here because we abuse gl_Color/gl_SecondaryColor flat shading */
+			else if (input->source == GPU_SOURCE_OPENGL_BUILTIN) {
+				if (input->oglbuiltin == GPU_MATCAP_NORMAL) {
+					/* remap to 0.0 - 1.0 range. This is done because OpenGL 2.0 clamps colors
+					 * between shader stages and we want the full range of the normal */
+					BLI_dynstr_appendf(ds, "\tvec3 matcapcol = vec3(0.5, 0.5, 0.5) * varnormal + vec3(0.5, 0.5, 0.5);\n");
+					BLI_dynstr_appendf(ds, "\tgl_FrontSecondaryColor = vec4(matcapcol, 1.0);\n");
+				}
+				else if (input->oglbuiltin == GPU_COLOR) {
+					BLI_dynstr_appendf(ds, "\tgl_FrontColor = gl_Color;\n");
+				}
+			}
 
 	BLI_dynstr_append(ds, "}\n\n");
 
@@ -731,7 +750,8 @@ static void GPU_nodes_extract_dynamic_inputs(GPUPass *pass, ListBase *nodes)
 			/* attributes don't need to be bound, they already have
 			 * an id that the drawing functions will use */
 			if (input->source == GPU_SOURCE_ATTRIB ||
-			    input->source == GPU_SOURCE_BUILTIN)
+			    input->source == GPU_SOURCE_BUILTIN ||
+			    input->source == GPU_SOURCE_OPENGL_BUILTIN)
 			{
 				continue;
 			}
@@ -896,6 +916,14 @@ static void gpu_node_input_link(GPUNode *node, GPUNodeLink *link, int type)
 		input->type = type;
 		input->source = GPU_SOURCE_BUILTIN;
 		input->builtin = link->builtin;
+
+		MEM_freeN(link);
+	}
+	else if (link->oglbuiltin) {
+		/* builtin uniform */
+		input->type = type;
+		input->source = GPU_SOURCE_OPENGL_BUILTIN;
+		input->oglbuiltin = link->oglbuiltin;
 
 		MEM_freeN(link);
 	}
@@ -1136,14 +1164,14 @@ GPUNodeLink *GPU_dynamic_uniform(float *num, int dynamictype, void *data)
 	return link;
 }
 
-GPUNodeLink *GPU_image(Image *ima, ImageUser *iuser, int isdata)
+GPUNodeLink *GPU_image(Image *ima, ImageUser *iuser, bool is_data)
 {
 	GPUNodeLink *link = GPU_node_link_create(0);
 
-	link->image= LINK_IMAGE_BLENDER;
-	link->ptr1= ima;
-	link->ptr2= iuser;
-	link->image_isdata= isdata;
+	link->image = LINK_IMAGE_BLENDER;
+	link->ptr1 = ima;
+	link->ptr2 = iuser;
+	link->image_isdata = is_data;
 
 	return link;
 }
@@ -1187,6 +1215,15 @@ GPUNodeLink *GPU_builtin(GPUBuiltin builtin)
 	GPUNodeLink *link = GPU_node_link_create(0);
 
 	link->builtin= builtin;
+
+	return link;
+}
+
+GPUNodeLink *GPU_opengl_builtin(GPUOpenGLBuiltin builtin)
+{
+	GPUNodeLink *link = GPU_node_link_create(0);
+
+	link->oglbuiltin = builtin;
 
 	return link;
 }

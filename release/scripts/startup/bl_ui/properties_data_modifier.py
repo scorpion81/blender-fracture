@@ -32,6 +32,13 @@ class ModifierButtonsPanel():
 class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
     bl_label = "Modifiers"
 
+    def icon(self, bool):
+        if bool:
+            return 'TRIA_DOWN'
+        else:
+            return 'TRIA_RIGHT'
+
+
     def draw(self, context):
         layout = self.layout
 
@@ -63,9 +70,9 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         col.prop(md, "use_bone_envelopes", text="Bone Envelopes")
 
         layout.separator()
-        
+
         split = layout.split()
-        
+
         row = split.row(align=True)
         row.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
         sub = row.row(align=True)
@@ -139,7 +146,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         elif md.limit_method == 'VGROUP':
             layout.label(text="Vertex Group:")
             layout.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
- 
+
         layout.label(text="Width Method:")
         layout.row().prop(md, "offset_type", expand=True)
 
@@ -237,10 +244,10 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
             col.prop(md, "use_transform")
 
     def CLOTH(self, layout, ob, md):
-        layout.label(text="Settings can be found inside the Physics context")
+        layout.label(text="Settings are inside the Physics tab")
 
     def COLLISION(self, layout, ob, md):
-        layout.label(text="Settings can be found inside the Physics context")
+        layout.label(text="Settings are inside the Physics tab")
 
     def CURVE(self, layout, ob, md):
         split = layout.split()
@@ -262,21 +269,23 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
 
         if decimate_type == 'COLLAPSE':
             layout.prop(md, "ratio")
-            
+
             split = layout.split()
             row = split.row(align=True)
             row.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
             row.prop(md, "invert_vertex_group", text="", icon='ARROW_LEFTRIGHT')
-            
+
             split.prop(md, "use_collapse_triangulate")
         elif decimate_type == 'UNSUBDIV':
             layout.prop(md, "iterations")
-        else:  # decimate_type == 'DISSOLVE':
+        elif decimate_type == 'DISSOLVE':
             layout.prop(md, "angle_limit")
             layout.prop(md, "use_dissolve_boundaries")
             layout.label("Delimit:")
             row = layout.row()
             row.prop(md, "delimit")
+        else:  # decimate_type == 'REMDOUBLES':
+            layout.prop(md, "merge_threshold") 
 
         layout.label(text=iface_("Face Count: %d") % md.face_count, translate=False)
 
@@ -314,7 +323,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         row.prop(md, "strength")
 
     def DYNAMIC_PAINT(self, layout, ob, md):
-        layout.label(text="Settings can be found inside the Physics context")
+        layout.label(text="Settings are inside the Physics tab")
 
     def EDGE_SPLIT(self, layout, ob, md):
         split = layout.split()
@@ -328,6 +337,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         split.prop(md, "use_edge_sharp", text="Sharp Edges")
 
     def EXPLODE(self, layout, ob, md):
+        layout.prop(md, "mode")
         split = layout.split()
 
         col = split.column()
@@ -345,16 +355,13 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         col.prop(md, "show_alive")
         col.prop(md, "show_dead")
         col.prop(md, "use_size")
-
         layout.operator("object.explode_refresh", text="Refresh")
 
     def FLUID_SIMULATION(self, layout, ob, md):
-        layout.label(text="Settings can be found inside the Physics context")
+        layout.label(text="Settings are inside the Physics tab")
 
     def FRACTURE(self, layout, ob, md):
-        layout.label(text="BLAH")
-        #layout.prop(md, "system")
-        #layout.label(text="0: lorentz 1: gravity")
+        layout.label(text="Settings are inside the Physics tab")
 
     def HOOK(self, layout, ob, md):
         split = layout.split()
@@ -469,10 +476,10 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         col.active = not md.is_bound
         col.label(text="Object:")
         col.prop(md, "object", text="")
-        
+
         col = split.column()
         col.label(text="Vertex Group:")
-        
+
         row = col.row(align=True)
         row.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
         sub = row.row(align=True)
@@ -771,7 +778,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         col.prop(md, "limits", slider=True)
 
     def SMOKE(self, layout, ob, md):
-        layout.label(text="Settings can be found inside the Physics context")
+        layout.label(text="Settings are inside the Physics tab")
 
     def SMOOTH(self, layout, ob, md):
         split = layout.split(percentage=0.25)
@@ -789,7 +796,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         col.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
 
     def SOFT_BODY(self, layout, ob, md):
-        layout.label(text="Settings can be found inside the Physics context")
+        layout.label(text="Settings are inside the Physics tab")
 
     def SOLIDIFY(self, layout, ob, md):
         split = layout.split()
@@ -797,18 +804,18 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         col = split.column()
         col.prop(md, "thickness")
         col.prop(md, "thickness_clamp")
-        
+
         col.separator()
-        
+
         row = col.row(align=True)
         row.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
         sub = row.row(align=True)
         sub.active = bool(md.vertex_group)
         sub.prop(md, "invert_vertex_group", text="", icon='ARROW_LEFTRIGHT')
-        
+
         sub = col.row()
         sub.active = bool(md.vertex_group)
-        sub.prop(md, "thickness_vertex_group", text="Factor") 
+        sub.prop(md, "thickness_vertex_group", text="Factor")
 
         col.label(text="Crease:")
         col.prop(md, "edge_crease_inner", text="Inner")
@@ -823,11 +830,11 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         col.prop(md, "use_even_offset")
         col.prop(md, "use_quality_normals")
         col.prop(md, "use_rim")
-        
+
         col.separator()
-        
+
         col.label(text="Material Index Offset:")
-        
+
         sub = col.column()
         row = sub.split(align=True, percentage=0.4)
         row.prop(md, "material_offset", text="")
@@ -850,7 +857,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         col.prop(md, "show_only_control_edges")
 
     def SURFACE(self, layout, ob, md):
-        layout.label(text="Settings can be found inside the Physics context")
+        layout.label(text="Settings are inside the Physics tab")
 
     def UV_PROJECT(self, layout, ob, md):
         split = layout.split()
@@ -878,6 +885,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         sub = col.column(align=True)
         sub.prop(md, "scale_x", text="Scale X")
         sub.prop(md, "scale_y", text="Scale Y")
+        
 
     def WARP(self, layout, ob, md):
         use_falloff = (md.falloff_type != 'NONE')

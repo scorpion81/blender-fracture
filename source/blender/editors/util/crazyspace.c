@@ -55,11 +55,25 @@ typedef struct {
 	BLI_bitmap *vertex_visit;
 } MappedUserData;
 
-BLI_INLINE void tan_calc_v3(float a[3], const float b[3], const float c[3])
+BLI_INLINE void tan_calc_quat_v3(
+        float r_quat[4],
+        const float co_1[3], const float co_2[3], const float co_3[3])
 {
-	a[0] = b[0] + 0.2f * (b[0] - c[0]);
-	a[1] = b[1] + 0.2f * (b[1] - c[1]);
-	a[2] = b[2] + 0.2f * (b[2] - c[2]);
+	float vec_u[3], vec_v[3];
+	float nor[3];
+
+	sub_v3_v3v3(vec_u, co_1, co_2);
+	sub_v3_v3v3(vec_v, co_1, co_3);
+
+	cross_v3_v3v3(nor, vec_u, vec_v);
+
+	if (normalize_v3(nor) > FLT_EPSILON) {
+		const float zero_vec[3] = {0.0f};
+		tri_to_quat_ex(r_quat, zero_vec, vec_u, vec_v, nor);
+	}
+	else {
+		unit_qt(r_quat);
+	}
 }
 
 static void set_crazy_vertex_quat(
@@ -67,16 +81,10 @@ static void set_crazy_vertex_quat(
         const float co_1[3], const float co_2[3], const float co_3[3],
         const float vd_1[3], const float vd_2[3], const float vd_3[3])
 {
-	float vec_u[3], vec_v[3];
 	float q1[4], q2[4];
 
-	tan_calc_v3(vec_u, co_1, co_2);
-	tan_calc_v3(vec_v, co_1, co_3);
-	tri_to_quat(q1, co_1, vec_u, vec_v);
-
-	tan_calc_v3(vec_u, vd_1, vd_2);
-	tan_calc_v3(vec_v, vd_1, vd_3);
-	tri_to_quat(q2, vd_1, vec_u, vec_v);
+	tan_calc_quat_v3(q1, co_1, co_2, co_3);
+	tan_calc_quat_v3(q2, vd_1, vd_2, vd_3);
 
 	sub_qt_qtqt(r_quat, q2, q1);
 }
@@ -146,7 +154,8 @@ float (*crazyspace_get_mapped_editverts(Scene *scene, Object *obedit))[3]
 	return vertexcos;
 }
 
-void crazyspace_set_quats_editmesh(BMEditMesh *em, float (*origcos)[3], float (*mappedcos)[3], float (*quats)[4])
+void crazyspace_set_quats_editmesh(BMEditMesh *em, float (*origcos)[3], float (*mappedcos)[3], float (*quats)[4],
+                                   const bool use_select)
 {
 	BMFace *f;
 	BMIter iter;
@@ -166,8 +175,12 @@ void crazyspace_set_quats_editmesh(BMEditMesh *em, float (*origcos)[3], float (*
 
 		l_iter = l_first = BM_FACE_FIRST_LOOP(f);
 		do {
-			if (!BM_elem_flag_test(l_iter->v, BM_ELEM_SELECT) || BM_elem_flag_test(l_iter->v, BM_ELEM_HIDDEN))
+			if (BM_elem_flag_test(l_iter->v, BM_ELEM_HIDDEN) ||
+			    BM_elem_flag_test(l_iter->v, BM_ELEM_TAG) ||
+			    (use_select && !BM_elem_flag_test(l_iter->v, BM_ELEM_SELECT)))
+			{
 				continue;
+			}
 
 			if (!BM_elem_flag_test(l_iter->v, BM_ELEM_TAG)) {
 				const float *co_prev, *co_curr, *co_next;  /* orig */

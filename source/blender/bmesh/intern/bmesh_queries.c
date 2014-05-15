@@ -1441,8 +1441,8 @@ BMEdge *BM_edge_find_double(BMEdge *e)
 bool BM_face_exists(BMVert **varr, int len, BMFace **r_existface)
 {
 	BMVert *v_search = varr[0];  /* we can search any of the verts in the array */
-	BMIter viter;
-	BMFace *f;
+	BMIter liter;
+	BMLoop *l_search;
 
 
 #if 0
@@ -1470,8 +1470,8 @@ bool BM_face_exists(BMVert **varr, int len, BMFace **r_existface)
 	int i;
 
 
-	BM_ITER_ELEM (f, &viter, v_search, BM_FACES_OF_VERT) {
-		if (f->len == len) {
+	BM_ITER_ELEM (l_search, &liter, v_search, BM_LOOPS_OF_VERT) {
+		if (l_search->f->len == len) {
 			if (is_init == false) {
 				is_init = true;
 				for (i = 0; i < len; i++) {
@@ -1484,21 +1484,21 @@ bool BM_face_exists(BMVert **varr, int len, BMFace **r_existface)
 
 			{
 				BMLoop *l_iter;
-				BMLoop *l_first;
 
-				l_iter = l_first = BM_FACE_FIRST_LOOP(f);
+				/* skip ourselves */
+				l_iter  = l_search->next;
 
 				do {
 					if (!BM_ELEM_API_FLAG_TEST(l_iter->v, _FLAG_OVERLAP)) {
 						is_found = false;
 						break;
 					}
-				} while ((l_iter = l_iter->next) != l_first);
+				} while ((l_iter = l_iter->next) != l_search);
 			}
 
 			if (is_found) {
 				if (r_existface) {
-					*r_existface = f;
+					*r_existface = l_search->f;
 				}
 				break;
 			}
@@ -1799,6 +1799,60 @@ bool BM_face_exists_overlap_subset(BMVert **varr, const int len)
 	return is_overlap;
 }
 
+bool BM_vert_is_all_edge_flag_test(const BMVert *v, const char hflag, const bool respect_hide)
+{
+	if (v->e) {
+		BMEdge *e_other;
+		BMIter eiter;
+
+		BM_ITER_ELEM (e_other, &eiter, (BMVert *)v, BM_EDGES_OF_VERT) {
+			if (!respect_hide || !BM_elem_flag_test(e_other, BM_ELEM_HIDDEN)) {
+				if (!BM_elem_flag_test(e_other, hflag)) {
+					return false;
+				}
+			}
+		}
+	}
+
+	return true;
+}
+
+bool BM_vert_is_all_face_flag_test(const BMVert *v, const char hflag, const bool respect_hide)
+{
+	if (v->e) {
+		BMEdge *f_other;
+		BMIter fiter;
+
+		BM_ITER_ELEM (f_other, &fiter, (BMVert *)v, BM_FACES_OF_VERT) {
+			if (!respect_hide || !BM_elem_flag_test(f_other, BM_ELEM_HIDDEN)) {
+				if (!BM_elem_flag_test(f_other, hflag)) {
+					return false;
+				}
+			}
+		}
+	}
+
+	return true;
+}
+
+
+bool BM_edge_is_all_face_flag_test(const BMEdge *e, const char hflag, const bool respect_hide)
+{
+	if (e->l) {
+		BMLoop *l_iter, *l_first;
+
+		l_iter = l_first = e->l;
+		do {
+			if (!respect_hide || !BM_elem_flag_test(l_iter->f, BM_ELEM_HIDDEN)) {
+				if (!BM_elem_flag_test(l_iter->f, hflag)) {
+					return false;
+				}
+			}
+		} while ((l_iter = l_iter->radial_next) != l_first);
+	}
+
+	return true;
+}
 
 /* convenience functions for checking flags */
 bool BM_edge_is_any_vert_flag_test(const BMEdge *e, const char hflag)

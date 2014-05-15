@@ -465,6 +465,7 @@ extern StructRNA RNA_RenderLayer;
 extern StructRNA RNA_RenderPass;
 extern StructRNA RNA_RenderResult;
 extern StructRNA RNA_RenderSettings;
+extern StructRNA RNA_RigidBodyModifier;
 extern StructRNA RNA_RigidBodyWorld;
 extern StructRNA RNA_RigidBodyObject;
 extern StructRNA RNA_RigidBodyJointConstraint;
@@ -784,14 +785,17 @@ bool RNA_enum_identifier(EnumPropertyItem *item, const int value, const char **i
 int  RNA_enum_bitflag_identifiers(EnumPropertyItem *item, const int value, const char **identifier);
 bool RNA_enum_name(EnumPropertyItem *item, const int value, const char **r_name);
 bool RNA_enum_description(EnumPropertyItem *item, const int value, const char **description);
+int  RNA_enum_from_value(EnumPropertyItem *item, const int value);
+int  RNA_enum_from_identifier(EnumPropertyItem *item, const char *identifier);
 
-void RNA_property_enum_items(struct bContext *C, PointerRNA *ptr, PropertyRNA *prop, EnumPropertyItem **item,
-                             int *r_totitem, bool *r_free);
-void RNA_property_enum_items_gettexted(struct bContext *C, PointerRNA *ptr, PropertyRNA *prop, EnumPropertyItem **item,
-                                       int *r_totitem, bool *r_free);
+void RNA_property_enum_items(struct bContext *C, PointerRNA *ptr, PropertyRNA *prop,
+                             EnumPropertyItem **item, int *r_totitem, bool *r_free);
+void RNA_property_enum_items_gettexted(struct bContext *C, PointerRNA *ptr, PropertyRNA *prop,
+                                       EnumPropertyItem **r_item, int *r_totitem, bool *r_free);
 bool RNA_property_enum_value(struct bContext *C, PointerRNA *ptr, PropertyRNA *prop, const char *identifier, int *r_value);
 bool RNA_property_enum_identifier(struct bContext *C, PointerRNA *ptr, PropertyRNA *prop, const int value, const char **identifier);
 bool RNA_property_enum_name(struct bContext *C, PointerRNA *ptr, PropertyRNA *prop, const int value, const char **name);
+bool RNA_property_enum_name_gettexted(struct bContext *C, PointerRNA *ptr, PropertyRNA *prop, const int value, const char **name);
 int RNA_property_enum_bitflag_identifiers(struct bContext *C, PointerRNA *ptr, PropertyRNA *prop, const int value, const char **identifier);
 
 StructRNA *RNA_property_pointer_type(PointerRNA *ptr, PropertyRNA *prop);
@@ -912,14 +916,14 @@ bool RNA_path_resolve(PointerRNA *ptr, const char *path,
                      PointerRNA *r_ptr, PropertyRNA **r_prop);
 
 bool RNA_path_resolve_full(PointerRNA *ptr, const char *path,
-                          PointerRNA *r_ptr, PropertyRNA **r_prop, int *index);
-						  
+                           PointerRNA *r_ptr, PropertyRNA **r_prop, int *r_index);
+
 /* path_resolve_property() variants ensure that pointer + property both exist */
 bool RNA_path_resolve_property(PointerRNA *ptr, const char *path,
-                     PointerRNA *r_ptr, PropertyRNA **r_prop);
+                               PointerRNA *r_ptr, PropertyRNA **r_prop);
 
 bool RNA_path_resolve_property_full(PointerRNA *ptr, const char *path,
-                          PointerRNA *r_ptr, PropertyRNA **r_prop, int *index);
+                                    PointerRNA *r_ptr, PropertyRNA **r_prop, int *r_index);
 
 char *RNA_path_from_ID_to_struct(PointerRNA *ptr);
 char *RNA_path_from_ID_to_property(PointerRNA *ptr, PropertyRNA *prop);

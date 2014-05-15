@@ -55,6 +55,7 @@ void    ED_region_do_draw(struct bContext *C, struct ARegion *ar);
 void    ED_region_exit(struct bContext *C, struct ARegion *ar);
 void    ED_region_pixelspace(struct ARegion *ar);
 void    ED_region_set(const struct bContext *C, struct ARegion *ar);
+void    ED_region_update_rect(struct bContext *C, struct ARegion *ar);
 void    ED_region_init(struct bContext *C, struct ARegion *ar);
 void    ED_region_tag_redraw(struct ARegion *ar);
 void    ED_region_tag_redraw_partial(struct ARegion *ar, struct rcti *rct);
@@ -144,6 +145,7 @@ int     ED_operator_node_active(struct bContext *C);
 int     ED_operator_node_editable(struct bContext *C);
 int     ED_operator_graphedit_active(struct bContext *C);
 int     ED_operator_sequencer_active(struct bContext *C);
+int     ED_operator_sequencer_active_editable(struct bContext *C);
 int     ED_operator_image_active(struct bContext *C);
 int     ED_operator_nla_active(struct bContext *C);
 int     ED_operator_logic_active(struct bContext *C);
@@ -175,6 +177,12 @@ int     ED_operator_posemode_context(struct bContext *C);
 int     ED_operator_posemode(struct bContext *C);
 int     ED_operator_mask(struct bContext *C);
 
+
+/* Cache display helpers */
+
+void ED_region_cache_draw_background(const struct ARegion *ar);
+void ED_region_cache_draw_curfra_label(const int framenr, const float x, const float y);
+void ED_region_cache_draw_cached_segments(const struct ARegion *ar, const int num_segments, const int *points, const int sfra, const int efra);
 
 /* default keymaps, bitflags */
 #define ED_KEYMAP_UI        1

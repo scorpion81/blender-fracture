@@ -206,7 +206,7 @@ static int delete_orientation_exec(bContext *C, wmOperator *UNUSED(op))
 
 	BIF_removeTransformOrientationIndex(C, selected_index);
 	
-	WM_event_add_notifier(C, NC_SPACE | ND_SPACE_VIEW3D, CTX_wm_view3d(C));
+	WM_event_add_notifier(C, NC_SPACE | ND_SPACE_VIEW3D, v3d);
 	WM_event_add_notifier(C, NC_SCENE | NA_EDITED, CTX_data_scene(C));
 
 	return OPERATOR_FINISHED;
@@ -253,17 +253,18 @@ static int create_orientation_exec(bContext *C, wmOperator *op)
 	const bool use = RNA_boolean_get(op->ptr, "use");
 	const bool overwrite = RNA_boolean_get(op->ptr, "overwrite");
 	const bool use_view = RNA_boolean_get(op->ptr, "use_view");
+	View3D *v3d = CTX_wm_view3d(C);
 
 	RNA_string_get(op->ptr, "name", name);
 
-	if (use && !CTX_wm_view3d(C)) {
+	if (use && !v3d) {
 		BKE_report(op->reports, RPT_ERROR, "Create Orientation's 'use' parameter only valid in a 3DView context");
 		return OPERATOR_CANCELLED;
 	}
 
 	BIF_createTransformOrientation(C, op->reports, name, use_view, use, overwrite);
 
-	WM_event_add_notifier(C, NC_SPACE | ND_SPACE_VIEW3D, CTX_wm_view3d(C));
+	WM_event_add_notifier(C, NC_SPACE | ND_SPACE_VIEW3D, v3d);
 	WM_event_add_notifier(C, NC_SCENE | NA_EDITED, CTX_data_scene(C));
 	
 	return OPERATOR_FINISHED;
@@ -282,10 +283,10 @@ static void TRANSFORM_OT_create_orientation(struct wmOperatorType *ot)
 	ot->poll   = ED_operator_areaactive;
 
 	RNA_def_string(ot->srna, "name", NULL, MAX_NAME, "Name", "Name of the new custom orientation");
-	RNA_def_boolean(ot->srna, "use_view", FALSE, "Use View",
+	RNA_def_boolean(ot->srna, "use_view", false, "Use View",
 	                "Use the current view instead of the active object to create the new orientation");
-	RNA_def_boolean(ot->srna, "use", FALSE, "Use after creation", "Select orientation after its creation");
-	RNA_def_boolean(ot->srna, "overwrite", FALSE, "Overwrite previous",
+	RNA_def_boolean(ot->srna, "use", false, "Use after creation", "Select orientation after its creation");
+	RNA_def_boolean(ot->srna, "overwrite", false, "Overwrite previous",
 	                "Overwrite previously created orientation with same name");
 }
 
@@ -404,7 +405,7 @@ static int transform_modal(bContext *C, wmOperator *op, const wmEvent *event)
 		if (mode_prev != t->mode) {
 			/* WARNING: this is not normal to switch operator types
 			 * normally it would not be supported but transform happens
-			 * to share callbacks between differernt operators. */
+			 * to share callbacks between different operators. */
 			wmOperatorType *ot_new = NULL;
 			TransformModeItem *item = transform_modes;
 			while (item->idname) {
@@ -990,7 +991,7 @@ void transform_keymap_for_space(wmKeyConfig *keyconf, wmKeyMap *keymap, int spac
 			WM_keymap_add_item(keymap, "TRANSFORM_OT_select_orientation", SPACEKEY, KM_PRESS, KM_ALT, 0);
 
 			kmi = WM_keymap_add_item(keymap, "TRANSFORM_OT_create_orientation", SPACEKEY, KM_PRESS, KM_CTRL | KM_ALT, 0);
-			RNA_boolean_set(kmi->ptr, "use", TRUE);
+			RNA_boolean_set(kmi->ptr, "use", true);
 
 			WM_keymap_add_item(keymap, OP_MIRROR, MKEY, KM_PRESS, KM_CTRL, 0);
 
@@ -1002,10 +1003,10 @@ void transform_keymap_for_space(wmKeyConfig *keyconf, wmKeyMap *keymap, int spac
 
 
 			kmi = WM_keymap_add_item(keymap, OP_TRANSLATION, TKEY, KM_PRESS, KM_SHIFT, 0);
-			RNA_boolean_set(kmi->ptr, "texture_space", TRUE);
+			RNA_boolean_set(kmi->ptr, "texture_space", true);
 
 			kmi = WM_keymap_add_item(keymap, OP_RESIZE, TKEY, KM_PRESS, KM_SHIFT | KM_ALT, 0);
-			RNA_boolean_set(kmi->ptr, "texture_space", TRUE);
+			RNA_boolean_set(kmi->ptr, "texture_space", true);
 
 			WM_keymap_add_item(keymap, OP_SKIN_RESIZE, AKEY, KM_PRESS, KM_CTRL, 0);
 
@@ -1059,11 +1060,11 @@ void transform_keymap_for_space(wmKeyConfig *keyconf, wmKeyMap *keymap, int spac
 			 * in that case the secondary regular operators are called with same keymap.
 			 */
 			kmi = WM_keymap_add_item(keymap, "TRANSFORM_OT_translate", GKEY, KM_PRESS, 0, 0);
-			RNA_boolean_set(kmi->ptr, "release_confirm", TRUE);
+			RNA_boolean_set(kmi->ptr, "release_confirm", true);
 			kmi = WM_keymap_add_item(keymap, "TRANSFORM_OT_translate", EVT_TWEAK_A, KM_ANY, 0, 0);
-			RNA_boolean_set(kmi->ptr, "release_confirm", TRUE);
+			RNA_boolean_set(kmi->ptr, "release_confirm", true);
 			kmi = WM_keymap_add_item(keymap, "TRANSFORM_OT_translate", EVT_TWEAK_S, KM_ANY, 0, 0);
-			RNA_boolean_set(kmi->ptr, "release_confirm", TRUE);
+			RNA_boolean_set(kmi->ptr, "release_confirm", true);
 
 			WM_keymap_add_item(keymap, OP_ROTATION, RKEY, KM_PRESS, 0, 0);
 

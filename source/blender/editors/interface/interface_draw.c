@@ -444,24 +444,11 @@ void ui_draw_but_IMAGE(ARegion *UNUSED(ar), uiBut *but, uiWidgetColors *UNUSED(w
 
 static void draw_scope_end(const rctf *rect, GLint *scissor)
 {
-	float scaler_x1, scaler_x2;
-	
 	/* restore scissortest */
 	glScissor(scissor[0], scissor[1], scissor[2], scissor[3]);
-	
+
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	
-	/* scale widget */
-	scaler_x1 = rect->xmin + BLI_rctf_size_x(rect) / 2 - SCOPE_RESIZE_PAD;
-	scaler_x2 = rect->xmin + BLI_rctf_size_x(rect) / 2 + SCOPE_RESIZE_PAD;
-	
-	glColor4f(0.f, 0.f, 0.f, 0.25f);
-	fdrawline(scaler_x1, rect->ymin - 4, scaler_x2, rect->ymin - 4);
-	fdrawline(scaler_x1, rect->ymin - 7, scaler_x2, rect->ymin - 7);
-	glColor4f(1.f, 1.f, 1.f, 0.25f);
-	fdrawline(scaler_x1, rect->ymin - 5, scaler_x2, rect->ymin - 5);
-	fdrawline(scaler_x1, rect->ymin - 8, scaler_x2, rect->ymin - 8);
-	
+
 	/* outline */
 	glColor4f(0.f, 0.f, 0.f, 0.5f);
 	uiSetRoundBox(UI_CNR_ALL);
@@ -539,7 +526,7 @@ void ui_draw_but_HISTOGRAM(ARegion *ar, uiBut *but, uiWidgetColors *UNUSED(wcol)
 	
 	rect.xmin = (float)recti->xmin + 1;
 	rect.xmax = (float)recti->xmax - 1;
-	rect.ymin = (float)recti->ymin + SCOPE_RESIZE_PAD + 2;
+	rect.ymin = (float)recti->ymin + 1;
 	rect.ymax = (float)recti->ymax - 1;
 	
 	w = BLI_rctf_size_x(&rect);
@@ -588,7 +575,7 @@ void ui_draw_but_HISTOGRAM(ARegion *ar, uiBut *but, uiWidgetColors *UNUSED(wcol)
 			histogram_draw_one(0.0, 0.0, 1.0, 0.75, rect.xmin, rect.ymin, w, h, hist->data_b, res, is_line);
 	}
 	
-	/* outline, scale gripper */
+	/* outline */
 	draw_scope_end(&rect, scissor);
 }
 
@@ -610,7 +597,7 @@ void ui_draw_but_WAVEFORM(ARegion *ar, uiBut *but, uiWidgetColors *UNUSED(wcol),
 	
 	rect.xmin = (float)recti->xmin + 1;
 	rect.xmax = (float)recti->xmax - 1;
-	rect.ymin = (float)recti->ymin + SCOPE_RESIZE_PAD + 2;
+	rect.ymin = (float)recti->ymin + 1;
 	rect.ymax = (float)recti->ymax - 1;
 
 	if (scopes->wavefrm_yfac < 0.5f)
@@ -629,14 +616,13 @@ void ui_draw_but_WAVEFORM(ARegion *ar, uiBut *but, uiWidgetColors *UNUSED(wcol),
 			colorsycc_alpha[c][i] = colorsycc[c][i] * alpha;
 		}
 	}
-			
+
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	
 	glColor4f(0.f, 0.f, 0.f, 0.3f);
 	uiSetRoundBox(UI_CNR_ALL);
 	uiDrawBox(GL_POLYGON, rect.xmin - 1, rect.ymin - 1, rect.xmax + 1, rect.ymax + 1, 3.0f);
-	
 
 	/* need scissor test, waveform can draw outside of boundary */
 	glGetIntegerv(GL_VIEWPORT, scissor);
@@ -694,7 +680,7 @@ void ui_draw_but_WAVEFORM(ARegion *ar, uiBut *but, uiWidgetColors *UNUSED(wcol),
 			glScalef(w, h, 0.f);
 			glVertexPointer(2, GL_FLOAT, 0, scopes->waveform_1);
 			glDrawArrays(GL_POINTS, 0, scopes->waveform_tot);
-					
+
 			glDisableClientState(GL_VERTEX_ARRAY);
 			glPopMatrix();
 
@@ -755,10 +741,9 @@ void ui_draw_but_WAVEFORM(ARegion *ar, uiBut *but, uiWidgetColors *UNUSED(wcol),
 				fdrawline(rect.xmin + w + 2 + c * 2, min, rect.xmin + w + 2 + c * 2, max);
 			}
 		}
-		
 	}
 	
-	/* outline, scale gripper */
+	/* outline */
 	draw_scope_end(&rect, scissor);
 }
 
@@ -840,7 +825,7 @@ void ui_draw_but_VECTORSCOPE(ARegion *ar, uiBut *but, uiWidgetColors *UNUSED(wco
 	
 	rect.xmin = (float)recti->xmin + 1;
 	rect.xmax = (float)recti->xmax - 1;
-	rect.ymin = (float)recti->ymin + SCOPE_RESIZE_PAD + 2;
+	rect.ymin = (float)recti->ymin + 1;
 	rect.ymax = (float)recti->ymax - 1;
 	
 	w = BLI_rctf_size_x(&rect);
@@ -850,7 +835,7 @@ void ui_draw_but_VECTORSCOPE(ARegion *ar, uiBut *but, uiWidgetColors *UNUSED(wco
 	diam = (w < h) ? w : h;
 	
 	alpha = scopes->vecscope_alpha * scopes->vecscope_alpha * scopes->vecscope_alpha;
-			
+
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	
@@ -906,18 +891,173 @@ void ui_draw_but_VECTORSCOPE(ARegion *ar, uiBut *but, uiWidgetColors *UNUSED(wco
 		glPopMatrix();
 	}
 
-	/* outline, scale gripper */
+	/* outline */
 	draw_scope_end(&rect, scissor);
-		
+
 	glDisable(GL_BLEND);
+}
+
+static void ui_draw_colorband_handle_tri_hlight(float x1, float y1, float halfwidth, float height)
+{
+	float v[2];
+
+	glEnable(GL_LINE_SMOOTH);
+
+	glBegin(GL_LINE_STRIP);
+	copy_v2_fl2(v, x1 + halfwidth, y1);
+	glVertex2fv(v);
+	copy_v2_fl2(v, x1, y1 + height);
+	glVertex2fv(v);
+	copy_v2_fl2(v, x1 - halfwidth, y1);
+	glVertex2fv(v);
+	glEnd();
+
+	glDisable(GL_LINE_SMOOTH);
+}
+
+static void ui_draw_colorband_handle_tri(float x1, float y1, float halfwidth, float height, bool fill)
+{
+	float v[2];
+
+	if (fill) {
+		glPolygonMode(GL_FRONT, GL_FILL);
+		glEnable(GL_POLYGON_SMOOTH);
+	}
+	else {
+		glPolygonMode(GL_FRONT, GL_LINE);
+		glEnable(GL_LINE_SMOOTH);
+	}
+
+	glBegin(GL_TRIANGLES);
+	copy_v2_fl2(v, x1 + halfwidth, y1);
+	glVertex2fv(v);
+	copy_v2_fl2(v, x1, y1 + height);
+	glVertex2fv(v);
+	copy_v2_fl2(v, x1 - halfwidth, y1);
+	glVertex2fv(v);
+	glEnd();
+
+	if (fill) {
+		glDisable(GL_POLYGON_SMOOTH);
+	}
+	else {
+		glDisable(GL_LINE_SMOOTH);
+		glPolygonMode(GL_FRONT, GL_FILL);
+	}
+}
+
+static void ui_draw_colorband_handle_box(float x1, float y1, float x2, float y2, bool fill)
+{
+	float v[2];
+
+	if (fill) {
+		glPolygonMode(GL_FRONT, GL_FILL);
+	}
+	else {
+		glPolygonMode(GL_FRONT, GL_LINE);
+	}
+
+	glBegin(GL_QUADS);
+	copy_v2_fl2(v, x1, y1);
+	glVertex2fv(v);
+	copy_v2_fl2(v, x1, y2);
+	glVertex2fv(v);
+	copy_v2_fl2(v, x2, y2);
+	glVertex2fv(v);
+	copy_v2_fl2(v, x2, y1);
+	glVertex2fv(v);
+	glEnd();
+
+	if (!fill) {
+		glPolygonMode(GL_FRONT, GL_FILL);
+	}
+}
+
+static void ui_draw_colorband_handle(
+        const rcti *rect, float x,
+        const float rgb[3], struct ColorManagedDisplay *display,
+        bool active)
+{
+	const float sizey = BLI_rcti_size_y(rect);
+	const float min_width = 3.0f;
+	float half_width, height, y1, y2;
+	float colf[3] = {UNPACK3(rgb)};
+
+	half_width = floorf(sizey / 3.5f);
+	height = half_width * 1.4f;
+
+	y1 = rect->ymin + (sizey * 0.16f);
+	y2 = rect->ymax;
+
+	/* align to pixels */
+	x  = floorf(x  + 0.5f);
+	y1 = floorf(y1 + 0.5f);
+
+	if (active || half_width < min_width) {
+		glBegin(GL_LINES);
+		glColor3ub(0, 0, 0);
+		glVertex2f(x, y1);
+		glVertex2f(x, y2);
+		glEnd();
+		setlinestyle(active ? 2 : 1);
+		glBegin(GL_LINES);
+		glColor3ub(200, 200, 200);
+		glVertex2f(x, y1);
+		glVertex2f(x, y2);
+		glEnd();
+		setlinestyle(0);
+
+		/* hide handles when zoomed out too far */
+		if (half_width < min_width) {
+			return;
+		}
+	}
+
+	/* shift handle down */
+	y1 = y1 - half_width;
+
+	glColor3ub(0, 0, 0);
+	ui_draw_colorband_handle_box(x - half_width, y1 - 1, x + half_width, y1 + height, false);
+
+	/* draw all triangles blended */
+	glEnable(GL_BLEND);
+
+	ui_draw_colorband_handle_tri(x, y1 + height, half_width, half_width, true);
+
+	if (active)
+		glColor3ub(196, 196, 196);
+	else
+		glColor3ub(128, 128, 128);
+	ui_draw_colorband_handle_tri(x, y1 + height, half_width, half_width, true);
+
+	if (active)
+		glColor3ub(255, 255, 255);
+	else
+		glColor3ub(196, 196, 196);
+	ui_draw_colorband_handle_tri_hlight(x, y1 + height - 1, (half_width - 1), (half_width - 1));
+
+	glColor3ub(0, 0, 0);
+	ui_draw_colorband_handle_tri_hlight(x, y1 + height, half_width, half_width);
+
+	glDisable(GL_BLEND);
+
+	glColor3ub(128, 128, 128);
+	ui_draw_colorband_handle_box(x - (half_width - 1), y1, x + (half_width - 1), y1 + height, true);
+
+	if (display) {
+		IMB_colormanagement_scene_linear_to_display_v3(colf, display);
+	}
+
+	glColor3fv(colf);
+	ui_draw_colorband_handle_box(x - (half_width - 2), y1 + 1, x + (half_width - 2), y1 + height - 2, true);
 }
 
 void ui_draw_but_COLORBAND(uiBut *but, uiWidgetColors *UNUSED(wcol), const rcti *rect)
 {
 	ColorBand *coba;
 	CBData *cbd;
-	float x1, y1, sizex, sizey;
-	float v3[2], v1[2], v2[2], v1a[2], v2a[2];
+	float x1, y1, sizex, sizey, sizey_solid;
+	float v1[2], v2[2];
 	int a;
 	float pos, colf[4] = {0, 0, 0, 0}; /* initialize in case the colorband isn't valid */
 	struct ColorManagedDisplay *display = NULL;
@@ -929,37 +1069,32 @@ void ui_draw_but_COLORBAND(uiBut *but, uiWidgetColors *UNUSED(wcol), const rcti 
 		display = ui_block_display_get(but->block);
 
 	x1 = rect->xmin;
-	y1 = rect->ymin;
 	sizex = rect->xmax - x1;
-	sizey = rect->ymax - y1;
+	sizey = BLI_rcti_size_y(rect);
+	sizey_solid = sizey / 4;
+	y1 = rect->ymin;
 
-	/* first background, to show tranparency */
-
+	/* layer: background, to show tranparency */
 	glColor4ub(UI_ALPHA_CHECKER_DARK, UI_ALPHA_CHECKER_DARK, UI_ALPHA_CHECKER_DARK, 255);
-	glRectf(x1, y1, x1 + sizex, y1 + sizey);
+	glRectf(x1, y1, x1 + sizex, rect->ymax);
 	glEnable(GL_POLYGON_STIPPLE);
 	glColor4ub(UI_ALPHA_CHECKER_LIGHT, UI_ALPHA_CHECKER_LIGHT, UI_ALPHA_CHECKER_LIGHT, 255);
 	glPolygonStipple(stipple_checker_8px);
-	glRectf(x1, y1, x1 + sizex, y1 + sizey);
+	glRectf(x1, y1, x1 + sizex, rect->ymax);
 	glDisable(GL_POLYGON_STIPPLE);
 
+	/* layer: color ramp */
 	glShadeModel(GL_FLAT);
 	glEnable(GL_BLEND);
-	
+
 	cbd = coba->data;
-	
-	v1[0] = v2[0] = x1;
-	v1[1] = y1;
-	v2[1] = y1 + sizey;
+
+	v1[1] = y1 + sizey_solid;
+	v2[1] = rect->ymax;
 	
 	glBegin(GL_QUAD_STRIP);
-	
-	glColor4fv(&cbd->r);
-	glVertex2fv(v1);
-	glVertex2fv(v2);
-
-	for (a = 1; a <= sizex; a++) {
-		pos = ((float)a) / (sizex - 1);
+	for (a = 0; a <= sizex; a++) {
+		pos = ((float)a) / sizex;
 		do_colorband(coba, pos, colf);
 		if (display)
 			IMB_colormanagement_scene_linear_to_display_v3(colf, display);
@@ -970,71 +1105,54 @@ void ui_draw_but_COLORBAND(uiBut *but, uiWidgetColors *UNUSED(wcol), const rcti 
 		glVertex2fv(v1);
 		glVertex2fv(v2);
 	}
-	
 	glEnd();
-	glShadeModel(GL_FLAT);
-	glDisable(GL_BLEND);
-	
-	/* outline */
-	glColor4f(0.0, 0.0, 0.0, 1.0);
-	fdrawbox(x1, y1, x1 + sizex, y1 + sizey);
-	
-	/* help lines */
-	v1[0] = v2[0] = v3[0] = x1;
+
+	/* layer: color ramp without alpha for reference when manipulating ramp properties */
 	v1[1] = y1;
-	v1a[1] = y1 + 0.25f * sizey;
-	v2[1] = y1 + 0.5f * sizey;
-	v2a[1] = y1 + 0.75f * sizey;
-	v3[1] = y1 + sizey;
-	
-	
-	cbd = coba->data;
-	glBegin(GL_LINES);
-	for (a = 0; a < coba->tot; a++, cbd++) {
-		v1[0] = v2[0] = v3[0] = v1a[0] = v2a[0] = x1 + cbd->pos * sizex;
-		
-		if (a == coba->cur) {
-			glColor3ub(0, 0, 0);
-			glVertex2fv(v1);
-			glVertex2fv(v3);
-			glEnd();
-			
-			setlinestyle(2);
-			glBegin(GL_LINES);
-			glColor3ub(255, 255, 255);
-			glVertex2fv(v1);
-			glVertex2fv(v3);
-			glEnd();
-			setlinestyle(0);
-			glBegin(GL_LINES);
-			
-#if 0
-			glColor3ub(0, 0, 0);
-			glVertex2fv(v1);
-			glVertex2fv(v1a);
-			glColor3ub(255, 255, 255);
-			glVertex2fv(v1a);
-			glVertex2fv(v2);
-			glColor3ub(0, 0, 0);
-			glVertex2fv(v2);
-			glVertex2fv(v2a);
-			glColor3ub(255, 255, 255);
-			glVertex2fv(v2a);
-			glVertex2fv(v3);
-#endif
-		}
-		else {
-			glColor3ub(0, 0, 0);
-			glVertex2fv(v1);
-			glVertex2fv(v2);
-			
-			glColor3ub(255, 255, 255);
-			glVertex2fv(v2);
-			glVertex2fv(v3);
-		}
+	v2[1] = y1 + sizey_solid;
+
+	glBegin(GL_QUAD_STRIP);
+	for (a = 0; a <= sizex; a++) {
+		pos = ((float)a) / sizex;
+		do_colorband(coba, pos, colf);
+		if (display)
+			IMB_colormanagement_scene_linear_to_display_v3(colf, display);
+
+		v1[0] = v2[0] = x1 + a;
+
+		glColor4f(colf[0], colf[1], colf[2], 1.0f);
+		glVertex2fv(v1);
+		glVertex2fv(v2);
 	}
 	glEnd();
 
+	glDisable(GL_BLEND);
+	glShadeModel(GL_SMOOTH);
+
+	/* layer: box outline */
+	glColor4f(0.0, 0.0, 0.0, 1.0);
+	fdrawbox(x1, y1, x1 + sizex, rect->ymax);
+	
+	/* layer: box outline */
+	glEnable(GL_BLEND);
+	glColor4f(0.0f, 0.0f, 0.0f, 0.5f);
+	fdrawline(x1, y1, x1 + sizex, y1);
+	glColor4f(1.0f, 1.0f, 1.0f, 0.25f);
+	fdrawline(x1, y1 - 1, x1 + sizex, y1 - 1);
+	glDisable(GL_BLEND);
+	
+	/* layer: draw handles */
+	for (a = 0; a < coba->tot; a++, cbd++) {
+		if (a != coba->cur) {
+			pos = x1 + cbd->pos * (sizex - 1) + 1;
+			ui_draw_colorband_handle(rect, pos, &cbd->r, display, false);
+		}
+	}
+
+	/* layer: active handle */
+	cbd = &coba->data[coba->cur];
+	pos = x1 + cbd->pos * (sizex - 1) + 1;
+	ui_draw_colorband_handle(rect, pos, &cbd->r, display, true);
 }
 
 void ui_draw_but_NORMAL(uiBut *but, uiWidgetColors *wcol, const rcti *rect)
@@ -1195,10 +1313,10 @@ void ui_draw_but_CURVE(ARegion *ar, uiBut *but, uiWidgetColors *wcol, const rcti
 	          BLI_rcti_size_y(&scissor_new));
 
 	/* calculate offset and zoom */
-	zoomx = (BLI_rcti_size_x(rect) - 2.0f * but->aspect) / BLI_rctf_size_x(&cumap->curr);
-	zoomy = (BLI_rcti_size_y(rect) - 2.0f * but->aspect) / BLI_rctf_size_y(&cumap->curr);
-	offsx = cumap->curr.xmin - but->aspect / zoomx;
-	offsy = cumap->curr.ymin - but->aspect / zoomy;
+	zoomx = (BLI_rcti_size_x(rect) - 2.0f) / BLI_rctf_size_x(&cumap->curr);
+	zoomy = (BLI_rcti_size_y(rect) - 2.0f) / BLI_rctf_size_y(&cumap->curr);
+	offsx = cumap->curr.xmin - (1.0f / zoomx);
+	offsy = cumap->curr.ymin - (1.0f / zoomy);
 	
 	/* backdrop */
 	if (but->a1 == UI_GRAD_H) {
@@ -1365,13 +1483,14 @@ void ui_draw_but_CURVE(ARegion *ar, uiBut *but, uiWidgetColors *wcol, const rcti
 void ui_draw_but_TRACKPREVIEW(ARegion *ar, uiBut *but, uiWidgetColors *UNUSED(wcol), const rcti *recti)
 {
 	rctf rect;
-	int ok = 0, width, height;
+	bool ok = false;
+	int width, height;
 	GLint scissor[4];
 	MovieClipScopes *scopes = (MovieClipScopes *)but->poin;
 
 	rect.xmin = (float)recti->xmin + 1;
 	rect.xmax = (float)recti->xmax - 1;
-	rect.ymin = (float)recti->ymin + SCOPE_RESIZE_PAD + 2;
+	rect.ymin = (float)recti->ymin + 1;
 	rect.ymax = (float)recti->ymax - 1;
 
 	width  = BLI_rctf_size_x(&rect) + 1;
@@ -1404,9 +1523,9 @@ void ui_draw_but_TRACKPREVIEW(ARegion *ar, uiBut *but, uiWidgetColors *UNUSED(wc
 			IMB_freeImBuf(scopes->track_preview);
 
 		tmpibuf = BKE_tracking_sample_pattern(scopes->frame_width, scopes->frame_height,
-		                                            scopes->track_search, scopes->track,
-		                                            &scopes->undist_marker, true, scopes->use_track_mask,
-		                                            width, height, scopes->track_pos);
+		                                      scopes->track_search, scopes->track,
+		                                      &scopes->undist_marker, true, scopes->use_track_mask,
+		                                      width, height, scopes->track_pos);
 
 		if (tmpibuf) {
 			if (tmpibuf->rect_float)
@@ -1482,7 +1601,7 @@ void ui_draw_but_TRACKPREVIEW(ARegion *ar, uiBut *but, uiWidgetColors *UNUSED(wc
 		uiDrawBox(GL_POLYGON, rect.xmin - 1, rect.ymin, rect.xmax + 1, rect.ymax + 1, 3.0f);
 	}
 
-	/* outline, scale gripper */
+	/* outline */
 	draw_scope_end(&rect, scissor);
 
 	glDisable(GL_BLEND);

@@ -37,6 +37,7 @@ struct bContext;
 struct bglMats;
 struct Brush;
 struct ImagePool;
+struct ColorSpace;
 struct ListBase;
 struct Mesh;
 struct MTex;
@@ -58,8 +59,8 @@ struct DMCoNo;
 enum PaintMode;
 
 /* paint_stroke.c */
-typedef int (*StrokeGetLocation)(struct bContext *C, float location[3], const float mouse[2]);
-typedef int (*StrokeTestStart)(struct bContext *C, struct wmOperator *op, const float mouse[2]);
+typedef bool (*StrokeGetLocation)(struct bContext *C, float location[3], const float mouse[2]);
+typedef bool (*StrokeTestStart)(struct bContext *C, struct wmOperator *op, const float mouse[2]);
 typedef void (*StrokeUpdateStep)(struct bContext *C, struct PaintStroke *stroke, struct PointerRNA *itemptr);
 typedef void (*StrokeRedraw)(const struct bContext *C, struct PaintStroke *stroke, bool final);
 typedef void (*StrokeDone)(const struct bContext *C, struct PaintStroke *stroke);
@@ -181,12 +182,12 @@ void SCULPT_OT_uv_sculpt_stroke(struct wmOperatorType *ot);
 /* Convert the object-space axis-aligned bounding box (expressed as
  * its minimum and maximum corners) into a screen-space rectangle,
  * returns zero if the result is empty */
-int paint_convert_bb_to_rect(struct rcti *rect,
-                             const float bb_min[3],
-                             const float bb_max[3],
-                             const struct ARegion *ar,
-                             struct RegionView3D *rv3d,
-                             struct Object *ob);
+bool paint_convert_bb_to_rect(struct rcti *rect,
+                              const float bb_min[3],
+                              const float bb_max[3],
+                              const struct ARegion *ar,
+                              struct RegionView3D *rv3d,
+                              struct Object *ob);
 
 /* Get four planes in object-space that describe the projection of
  * screen_rect from screen into object-space (essentially converting a
@@ -198,11 +199,8 @@ void paint_calc_redraw_planes(float planes[4][4],
                               const struct rcti *screen_rect);
 
 float paint_calc_object_space_radius(struct ViewContext *vc, const float center[3], float pixel_radius);
-float paint_get_tex_pixel(struct MTex *mtex, float u, float v, struct ImagePool *pool);
-void paint_get_tex_pixel_col(struct MTex *mtex, float u, float v, float rgba[4], struct ImagePool *pool);
-int imapaint_pick_face(struct ViewContext *vc, const int mval[2], unsigned int *index, unsigned int totface);
-void imapaint_pick_uv(struct Scene *scene, struct Object *ob, unsigned int faceindex, const int xy[2], float uv[2]);
-void brush_drawcursor_texpaint_uvsculpt(struct bContext *C, int x, int y, void *customdata);
+float paint_get_tex_pixel(struct MTex *mtex, float u, float v, struct ImagePool *pool, int thread);
+void paint_get_tex_pixel_col(struct MTex *mtex, float u, float v, float rgba[4], struct ImagePool *pool, int thread, bool convert, struct ColorSpace *colorspace);
 
 void paint_sample_color(const struct bContext *C, struct ARegion *ar, int x, int y);
 void BRUSH_OT_curve_preset(struct wmOperatorType *ot);
@@ -256,7 +254,6 @@ typedef enum {
 } PaintMaskFloodMode;
 
 void PAINT_OT_mask_flood_fill(struct wmOperatorType *ot);
-void PAINT_OT_mask_box_fill(struct wmOperatorType *ot);
 void PAINT_OT_mask_lasso_gesture(struct wmOperatorType *ot);
 
 #endif /* __PAINT_INTERN_H__ */

@@ -6,3 +6,7 @@ gcc46.patch
 clang_is_heap_fix.patch
 strict_flags.patch
 interpolator_reorder.patch
+mesh_simplify_dissolve_edges.patch
+memory_leak_fix.patch
+msvc_fix.patch
+face_hole_merge_workaround.patch

@@ -163,11 +163,7 @@ ccl_device_inline float clamp(float a, float mn, float mx)
 
 ccl_device_inline int float_to_int(float f)
 {
-#if defined(__KERNEL_SSE2__) && !defined(_MSC_VER)
-	return _mm_cvtt_ss2si(_mm_load_ss(&f));
-#else
 	return (int)f;
-#endif
 }
 
 ccl_device_inline int floor_to_int(float f)
@@ -469,6 +465,15 @@ ccl_device_inline float dot(const float3 a, const float3 b)
 #endif
 }
 
+ccl_device_inline float dot(const float4 a, const float4 b)
+{
+#if defined(__KERNEL_SSE41__) && defined(__KERNEL_SSE__)
+	return _mm_cvtss_f32(_mm_dp_ps(a, b, 0xFF));
+#else	
+	return (a.x*b.x + a.y*b.y) + (a.z*b.z + a.w*b.w);
+#endif
+}
+
 ccl_device_inline float3 cross(const float3 a, const float3 b)
 {
 	float3 r = make_float3(a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x);
@@ -492,6 +497,11 @@ ccl_device_inline float len_squared(const float3 a)
 }
 
 #ifndef __KERNEL_OPENCL__
+
+ccl_device_inline float len_squared(const float4 a)
+{
+	return dot(a, a);
+}
 
 ccl_device_inline float3 normalize(const float3 a)
 {
@@ -812,11 +822,6 @@ ccl_device_inline float average(const float4& a)
 	return reduce_add(a) * 0.25f;
 }
 
-ccl_device_inline float dot(const float4& a, const float4& b)
-{
-	return reduce_add(a * b);
-}
-
 ccl_device_inline float len(const float4 a)
 {
 	return sqrtf(dot(a, a));
@@ -1113,6 +1118,17 @@ ccl_device_inline void make_orthonormals(const float3 N, float3 *a, float3 *b)
 
 /* Color division */
 
+ccl_device_inline float3 safe_invert_color(float3 a)
+{
+	float x, y, z;
+
+	x = (a.x != 0.0f)? 1.0f/a.x: 0.0f;
+	y = (a.y != 0.0f)? 1.0f/a.y: 0.0f;
+	z = (a.z != 0.0f)? 1.0f/a.z: 0.0f;
+
+	return make_float3(x, y, z);
+}
+
 ccl_device_inline float3 safe_divide_color(float3 a, float3 b)
 {
 	float x, y, z;
@@ -1347,6 +1363,50 @@ ccl_device bool ray_triangle_intersect(
 
 	*isect_t = t;
 	*isect_P = ray_P + ray_D*t;
+
+	return true;
+}
+
+ccl_device bool ray_triangle_intersect_uv(
+	float3 ray_P, float3 ray_D, float ray_t,
+	float3 v0, float3 v1, float3 v2,
+	float *isect_u, float *isect_v, float *isect_t)
+{
+	/* Calculate intersection */
+	float3 e1 = v1 - v0;
+	float3 e2 = v2 - v0;
+	float3 s1 = cross(ray_D, e2);
+
+	const float divisor = dot(s1, e1);
+	if(divisor == 0.0f)
+		return false;
+
+	const float invdivisor = 1.0f/divisor;
+
+	/* compute first barycentric coordinate */
+	const float3 d = ray_P - v0;
+	const float u = dot(d, s1)*invdivisor;
+	if(u < 0.0f)
+		return false;
+
+	/* Compute second barycentric coordinate */
+	const float3 s2 = cross(d, e1);
+	const float v = dot(ray_D, s2)*invdivisor;
+	if(v < 0.0f)
+		return false;
+
+	const float b0 = 1.0f - u - v;
+	if(b0 < 0.0f)
+		return false;
+
+	/* compute t to intersection point */
+	const float t = dot(e2, s2)*invdivisor;
+	if(t < 0.0f || t > ray_t)
+		return false;
+
+	*isect_u = u;
+	*isect_v = v;
+	*isect_t = t;
 
 	return true;
 }

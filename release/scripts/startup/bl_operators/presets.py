@@ -256,13 +256,25 @@ class AddPresetCamera(AddPresetBase, Operator):
         "cam = bpy.context.object.data"
     ]
 
-    preset_values = [
-        "cam.sensor_width",
-        "cam.sensor_height",
-        "cam.sensor_fit"
-    ]
-
     preset_subdir = "camera"
+
+    use_focal_length = BoolProperty(
+            name="Include Focal Length",
+            description="Include focal length into the preset",
+            options={'SKIP_SAVE'},
+            )
+
+    @property
+    def preset_values(self):
+        preset_values = [
+            "cam.sensor_width",
+            "cam.sensor_height",
+            "cam.sensor_fit"
+        ]
+        if self.use_focal_length:
+            preset_values.append("cam.lens")
+            preset_values.append("cam.lens_unit")
+        return preset_values
 
 
 class AddPresetSSS(AddPresetBase, Operator):
@@ -398,17 +410,28 @@ class AddPresetTrackingCamera(AddPresetBase, Operator):
         "camera = bpy.context.edit_movieclip.tracking.camera"
     ]
 
-    preset_values = [
-        "camera.sensor_width",
-        "camera.units",
-        "camera.focal_length",
-        "camera.pixel_aspect",
-        "camera.k1",
-        "camera.k2",
-        "camera.k3"
-    ]
-
     preset_subdir = "tracking_camera"
+
+    use_focal_length = BoolProperty(
+            name="Include Focal Length",
+            description="Include focal length into the preset",
+            options={'SKIP_SAVE'},
+            default=True
+            )
+
+    @property
+    def preset_values(self):
+        preset_values = [
+            "camera.sensor_width",
+            "camera.pixel_aspect",
+            "camera.k1",
+            "camera.k2",
+            "camera.k3"
+        ]
+        if self.use_focal_length:
+            preset_values.append("camera.units")
+            preset_values.append("camera.focal_length")
+        return preset_values
 
 
 class AddPresetTrackingTrackColor(AddPresetBase, Operator):
@@ -453,6 +476,7 @@ class AddPresetTrackingSettings(AddPresetBase, Operator):
         "settings.use_default_red_channel",
         "settings.use_default_green_channel",
         "settings.use_default_blue_channel"
+        "settings.default_weight"
     ]
 
     preset_subdir = "tracking_settings"
@@ -505,6 +529,41 @@ class AddPresetKeyconfig(AddPresetBase, Operator):
         keyconfigs = bpy.context.window_manager.keyconfigs
         if self.remove_active:
             keyconfigs.remove(keyconfigs.active)
+
+class AddPresetFracture(AddPresetBase, Operator):
+    """Add or remove a Fracture Preset"""
+    bl_idname = "fracture.preset_add"
+    bl_label = "Add Fracture Preset"
+    preset_menu = "FRACTURE_MT_presets"
+
+    preset_defines = [
+        "fracture = bpy.context.fracture"
+    ]
+
+    preset_values = [
+        "fracture.frac_algorithm",
+        "fracture.shard_count",
+        "fracture.cluster_count",
+        "fracture.point_seed",
+        "fracture.shards_to_islands",
+        "fracture.use_constraints",
+        "fracture.constraint_limit",
+        "fracture.contact_dist",
+        "fracture.breaking_threshold",
+        "fracture.cluster_breaking_threshold",
+        "fracture.point_source",
+        "fracture.extra_group",
+        "fracture.percentage",
+        "fracture.breaking_percentage",
+        "fracture.breaking_angle",
+        "fracture.breaking_distance",
+        "fracture.solver_iterations_override",
+        "fracture.mass_dependent_thresholds",
+        "fracture.thresh_vertex_group",
+        "fracture.execute_threaded"
+    ]
+
+    preset_subdir = "fracture"
 
 
 class AddPresetOperator(AddPresetBase, Operator):

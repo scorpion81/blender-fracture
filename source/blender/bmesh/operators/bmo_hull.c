@@ -213,15 +213,15 @@ static HullFinalEdges *hull_final_edges(GSet *hull_triangles)
 	
 	final_edges = MEM_callocN(sizeof(HullFinalEdges), "HullFinalEdges");
 	final_edges->edges = BLI_ghash_ptr_new("final edges ghash");
-	final_edges->base_pool = BLI_mempool_create(sizeof(ListBase), 128, 128, 0);
-	final_edges->link_pool = BLI_mempool_create(sizeof(LinkData), 128, 128, 0);
+	final_edges->base_pool = BLI_mempool_create(sizeof(ListBase), 0, 128, BLI_MEMPOOL_NOP);
+	final_edges->link_pool = BLI_mempool_create(sizeof(LinkData), 0, 128, BLI_MEMPOOL_NOP);
 
 	GSET_ITER (iter, hull_triangles) {
+		HullTriangle *t = BLI_gsetIterator_getKey(&iter);
 		LinkData *link;
 		int i;
-		
+
 		for (i = 0; i < 3; i++) {
-			HullTriangle *t = BLI_gsetIterator_getKey(&iter);
 			BMVert *v1 = t->v[i];
 			BMVert *v2 = t->v[(i + 1) % 3];
 			ListBase *adj;
@@ -535,7 +535,7 @@ static void hull_from_bullet(BMesh *bm, BMOperator *op,
 }
 
 /* Check that there are at least three vertices in the input */
-static int hull_num_input_verts_is_ok(BMOperator *op)
+static bool hull_num_input_verts_is_ok(BMOperator *op)
 {
 	BMOIter oiter;
 	BMVert *v;
@@ -574,7 +574,7 @@ void bmo_convex_hull_exec(BMesh *bm, BMOperator *op)
 			BMO_elem_flag_enable(bm, ele, HULL_FLAG_INTERIOR_ELE);
 	}
 
-	hull_pool = BLI_mempool_create(sizeof(HullTriangle), 128, 128, 0);
+	hull_pool = BLI_mempool_create(sizeof(HullTriangle), 0, 128, BLI_MEMPOOL_NOP);
 	hull_triangles = BLI_gset_ptr_new("hull_triangles");
 
 	hull_from_bullet(bm, op, hull_triangles, hull_pool);

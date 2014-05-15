@@ -297,7 +297,7 @@ public:
 	SIMD_FORCE_INLINE btVector3& normalize() 
 	{
 		
-		btAssert(!fuzzyZero());
+		//btAssert(!fuzzyZero());
 
 #if defined(BT_USE_SSE_IN_API) && defined (BT_USE_SSE)		
         // dot product first

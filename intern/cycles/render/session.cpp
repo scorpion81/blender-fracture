@@ -50,7 +50,7 @@ Session::Session(const SessionParams& params_)
 
 	device = Device::create(params.device, stats, params.background);
 
-	if(params.background) {
+	if(params.background && params.output_path.empty()) {
 		buffers = NULL;
 		display = NULL;
 	}
@@ -81,6 +81,7 @@ Session::Session(const SessionParams& params_)
 Session::~Session()
 {
 	if(session_thread) {
+		/* wait for session thread to end */
 		progress.set_cancel("Exiting");
 
 		gpu_need_tonemap = false;
@@ -95,13 +96,19 @@ Session::~Session()
 		wait();
 	}
 
-	if(display && !params.output_path.empty()) {
+	if(!params.output_path.empty()) {
+		/* tonemap and write out image if requested */
+		delete display;
+
+		display = new DisplayBuffer(device, false);
+		display->reset(device, buffers->params);
 		tonemap();
 
 		progress.set_status("Writing Image", params.output_path);
 		display->write(device, params.output_path);
 	}
 
+	/* clean up */
 	foreach(RenderBuffers *buffers, tile_buffers)
 		delete buffers;
 
@@ -151,7 +158,7 @@ void Session::reset_gpu(BufferParams& buffer_params, int samples)
 	pause_cond.notify_all();
 }
 
-bool Session::draw_gpu(BufferParams& buffer_params)
+bool Session::draw_gpu(BufferParams& buffer_params, DeviceDrawParams& draw_params)
 {
 	/* block for buffer access */
 	thread_scoped_lock display_lock(display_mutex);
@@ -170,7 +177,7 @@ bool Session::draw_gpu(BufferParams& buffer_params)
 				gpu_need_tonemap_cond.notify_all();
 			}
 
-			display->draw(device);
+			display->draw(device, draw_params);
 
 			if(display_outdated && (time_dt() - reset_time) > params.text_timeout)
 				return false;
@@ -315,7 +322,7 @@ void Session::reset_cpu(BufferParams& buffer_params, int samples)
 	pause_cond.notify_all();
 }
 
-bool Session::draw_cpu(BufferParams& buffer_params)
+bool Session::draw_cpu(BufferParams& buffer_params, DeviceDrawParams& draw_params)
 {
 	thread_scoped_lock display_lock(display_mutex);
 
@@ -324,7 +331,7 @@ bool Session::draw_cpu(BufferParams& buffer_params)
 		/* then verify the buffers have the expected size, so we don't
 		 * draw previous results in a resized window */
 		if(!buffer_params.modified(display->params)) {
-			display->draw(device);
+			display->draw(device, draw_params);
 
 			if(display_outdated && (time_dt() - reset_time) > params.text_timeout)
 				return false;
@@ -367,7 +374,7 @@ bool Session::acquire_tile(Device *tile_device, RenderTile& rtile)
 
 	/* in case of a permanent buffer, return it, otherwise we will allocate
 	 * a new temporary buffer */
-	if(!params.background) {
+	if(!(params.background && params.output_path.empty())) {
 		tile_manager.state.buffer.get_offset_stride(rtile.offset, rtile.stride);
 
 		rtile.buffer = buffers->buffer.device_pointer;
@@ -624,12 +631,12 @@ void Session::run()
 		progress.set_update();
 }
 
-bool Session::draw(BufferParams& buffer_params)
+bool Session::draw(BufferParams& buffer_params, DeviceDrawParams &draw_params)
 {
 	if(device_use_gl)
-		return draw_gpu(buffer_params);
+		return draw_gpu(buffer_params, draw_params);
 	else
-		return draw_cpu(buffer_params);
+		return draw_cpu(buffer_params, draw_params);
 }
 
 void Session::reset_(BufferParams& buffer_params, int samples)

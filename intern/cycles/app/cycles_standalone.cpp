@@ -29,6 +29,7 @@
 #include "util_progress.h"
 #include "util_string.h"
 #include "util_time.h"
+#include "util_transform.h"
 
 #ifdef WITH_CYCLES_STANDALONE_GUI
 #include "util_view.h"
@@ -45,7 +46,8 @@ struct Options {
 	int width, height;
 	SceneParams scene_params;
 	SessionParams session_params;
-	bool quiet, show_help;
+	bool quiet;
+	bool show_help, interactive, pause;
 } options;
 
 static void session_print(const string& str)
@@ -100,7 +102,7 @@ static void session_init()
 	options.session = new Session(options.session_params);
 	options.session->reset(session_buffer_params(), options.session_params.samples);
 	options.session->scene = options.scene;
-	
+
 	if(options.session_params.background && !options.quiet)
 		options.session->progress.set_update_callback(function_bind(&session_print_status));
 #ifdef WITH_CYCLES_STANDALONE_GUI
@@ -113,15 +115,25 @@ static void session_init()
 	options.scene = NULL;
 }
 
-static void scene_init(int width, int height)
+static void scene_init()
 {
 	options.scene = new Scene(options.scene_params, options.session_params.device);
+
+	/* Read XML */
 	xml_read_file(options.scene, options.filepath.c_str());
-	
-	if (width == 0 || height == 0) {
+
+	/* Camera width/height override? */
+	if (!(options.width == 0 || options.height == 0)) {
+		options.scene->camera->width = options.width;
+		options.scene->camera->height = options.height;
+	}
+	else {
 		options.width = options.scene->camera->width;
 		options.height = options.scene->camera->height;
 	}
+
+	/* Calculate Viewplane */
+	options.scene->camera->compute_auto_viewplane();
 }
 
 static void session_exit()
@@ -147,7 +159,7 @@ static void display_info(Progress& progress)
 	static double latency = 0.0;
 	static double last = 0;
 	double elapsed = time_dt();
-	string str;
+	string str, interactive;
 
 	latency = (elapsed - last);
 	last = elapsed;
@@ -163,20 +175,53 @@ static void display_info(Progress& progress)
 	if(substatus != "")
 		status += ": " + substatus;
 
-	str = string_printf("%s        Time: %.2f        Latency: %.4f        Sample: %d        Average: %.4f",
-						status.c_str(), total_time, latency, sample, sample_time);
+	interactive = options.interactive? "On":"Off";
+
+	str = string_printf("%s        Time: %.2f        Latency: %.4f        Sample: %d        Average: %.4f        Interactive: %s",
+						status.c_str(), total_time, latency, sample, sample_time, interactive.c_str());
 
 	view_display_info(str.c_str());
-	
+
 	if(options.show_help)
 		view_display_help();
 }
 
 static void display()
 {
-	options.session->draw(session_buffer_params());
+	static DeviceDrawParams draw_params = DeviceDrawParams();
+
+	options.session->draw(session_buffer_params(), draw_params);
 
 	display_info(options.session->progress);
+}
+
+static void motion(int x, int y, int button)
+{
+	if(options.interactive) {
+		Transform matrix = options.session->scene->camera->matrix;
+
+		/* Translate */
+		if(button == 0) {
+			float3 translate = make_float3(x * 0.01f, -(y * 0.01f), 0.0f);
+			matrix = matrix * transform_translate(translate);
+		}
+
+		/* Rotate */
+		else if(button == 2) {
+			float4 r1= make_float4(x * 0.1f, 0.0f, 1.0f, 0.0f);
+			matrix = matrix * transform_rotate(r1.x * M_PI/180.0f, make_float3(r1.y, r1.z, r1.w));
+
+			float4 r2 = make_float4(y * 0.1, 1.0f, 0.0f, 0.0f);
+			matrix = matrix * transform_rotate(r2.x * M_PI/180.0f, make_float3(r2.y, r2.z, r2.w));
+		}
+
+		/* Update and Reset */
+		options.session->scene->camera->matrix = matrix;
+		options.session->scene->camera->need_update = true;
+		options.session->scene->camera->need_device_update = true;
+
+		options.session->reset(session_buffer_params(), options.session_params.samples);
+	}
 }
 
 static void resize(int width, int height)
@@ -184,18 +229,64 @@ static void resize(int width, int height)
 	options.width = width;
 	options.height = height;
 
-	if(options.session)
+	if(options.session) {
+		/* Update camera */
+		options.session->scene->camera->width = width;
+		options.session->scene->camera->height = height;
+		options.session->scene->camera->compute_auto_viewplane();
+		options.session->scene->camera->need_update = true;
+		options.session->scene->camera->need_device_update = true;
+
 		options.session->reset(session_buffer_params(), options.session_params.samples);
+	}
 }
 
 static void keyboard(unsigned char key)
 {
-	if(key == 'r')
-		options.session->reset(session_buffer_params(), options.session_params.samples);
-	else if(key == 'h')
+	/* Toggle help */
+	if(key == 'h')
 		options.show_help = !(options.show_help);
+
+	/* Reset */
+	else if(key == 'r')
+		options.session->reset(session_buffer_params(), options.session_params.samples);
+
+	/* Cancel */
 	else if(key == 27) // escape
 		options.session->progress.set_cancel("Canceled");
+
+	/* Pause */
+	else if(key == 'p') {
+		options.pause = !options.pause;
+		options.session->set_pause(options.pause);
+	}
+
+	/* Interactive Mode */
+	else if(key == 'i')
+		options.interactive = !(options.interactive);
+
+	else if(options.interactive && (key == 'w' || key == 'a' || key == 's' || key == 'd')) {
+		Transform matrix = options.session->scene->camera->matrix;
+		float3 translate;
+
+		if(key == 'w')
+			translate = make_float3(0.0f, 0.0f, 0.1f);
+		else if(key == 's')
+			translate = make_float3(0.0f, 0.0f, -0.1f);
+		else if(key == 'a')
+			translate = make_float3(-0.1f, 0.0f, 0.0f);
+		else if(key == 'd')
+			translate = make_float3(0.1f, 0.0f, 0.0f);
+
+		matrix = matrix * transform_translate(translate);
+
+		/* Update and Reset */
+		options.session->scene->camera->matrix = matrix;
+		options.session->scene->camera->need_update = true;
+		options.session->scene->camera->need_device_update = true;
+
+		options.session->reset(session_buffer_params(), options.session_params.samples);
+	}
 }
 #endif
 
@@ -252,7 +343,7 @@ static void options_parse(int argc, const char **argv)
 		"--list-devices", &list, "List information about all available devices",
 		"--help", &help, "Print help message",
 		NULL);
-	
+
 	if(ap.parse(argc, argv) < 0) {
 		fprintf(stderr, "%s\n", ap.geterror().c_str());
 		ap.usage();
@@ -279,7 +370,7 @@ static void options_parse(int argc, const char **argv)
 		options.scene_params.shadingsystem = SceneParams::OSL;
 	else if(ssname == "svm")
 		options.scene_params.shadingsystem = SceneParams::SVM;
-		
+
 #ifdef WITH_CYCLES_STANDALONE_GUI
 	/* Progressive rendering for GUI */
 	if(!options.session_params.background)
@@ -327,8 +418,11 @@ static void options_parse(int argc, const char **argv)
 		exit(EXIT_FAILURE);
 	}
 
+	/* For smoother Viewport */
+	options.session_params.start_resolution = 64;
+
 	/* load scene */
-	scene_init(options.width, options.height);
+	scene_init();
 }
 
 CCL_NAMESPACE_END
@@ -339,7 +433,7 @@ int main(int argc, const char **argv)
 {
 	path_init();
 	options_parse(argc, argv);
-	
+
 #ifdef WITH_CYCLES_STANDALONE_GUI
 	if(options.session_params.background) {
 #endif
@@ -353,7 +447,7 @@ int main(int argc, const char **argv)
 
 		/* init/exit are callback so they run while GL is initialized */
 		view_main_loop(title.c_str(), options.width, options.height,
-			session_init, session_exit, resize, display, keyboard);
+			session_init, session_exit, resize, display, keyboard, motion);
 	}
 #endif
 

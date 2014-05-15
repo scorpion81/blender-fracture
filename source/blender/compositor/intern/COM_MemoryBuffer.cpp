@@ -21,8 +21,11 @@
  */
 
 #include "COM_MemoryBuffer.h"
+
 #include "MEM_guardedalloc.h"
-//#include "BKE_global.h"
+
+using std::min;
+using std::max;
 
 unsigned int MemoryBuffer::determineBufferSize()
 {
@@ -218,8 +221,8 @@ static void ellipse_bounds(float A, float B, float C, float F, float &xmax, floa
 {
 	float denom = 4.0f * A * C - B * B;
 	if (denom > 0.0f && A != 0.0f && C != 0.0f) {
-		xmax = sqrt(F) / (2.0f * A) * (sqrt(F * (4.0f * A - B * B / C)) + B * B * sqrt(F / (C * denom)));
-		ymax = sqrt(F) / (2.0f * C) * (sqrt(F * (4.0f * C - B * B / A)) + B * B * sqrt(F / (A * denom)));
+		xmax = sqrtf(F) / (2.0f * A) * (sqrtf(F * (4.0f * A - B * B / C)) + B * B * sqrtf(F / (C * denom)));
+		ymax = sqrtf(F) / (2.0f * C) * (sqrtf(F * (4.0f * C - B * B / A)) + B * B * sqrtf(F / (A * denom)));
 	}
 	else {
 		xmax = 0.0f;
@@ -272,7 +275,7 @@ void MemoryBuffer::readEWA(float result[4], const float uv[2], const float deriv
 	int U0 = (int)u;
 	int V0 = (int)v;
 	/* pixel offset for interpolation */
-	float ufac = u - floor(u), vfac = v - floor(v);
+	float ufac = u - floorf(u), vfac = v - floorf(v);
 	/* filter size */
 	int u1 = (int)(u - ue);
 	int u2 = (int)(u + ue);
@@ -287,6 +290,20 @@ void MemoryBuffer::readEWA(float result[4], const float uv[2], const float deriv
 	if (u2 - U0 > EWA_MAXIDX) u2 = U0 + EWA_MAXIDX;
 	if (V0 - v1 > EWA_MAXIDX) v1 = V0 - EWA_MAXIDX;
 	if (v2 - V0 > EWA_MAXIDX) v2 = V0 + EWA_MAXIDX;
+
+	/* Early output check for cases the whole region is outside of the buffer. */
+	if ((u2 < m_rect.xmin || u1 >= m_rect.xmax) ||
+	    (v2 < m_rect.ymin || v1 >= m_rect.ymax))
+	{
+		zero_v4(result);
+		return;
+	}
+
+	/* Clamp sampling rectagle to the buffer dimensions. */
+	u1 = max_ii(u1, m_rect.xmin);
+	u2 = min_ii(u2, m_rect.xmax);
+	v1 = max_ii(v1, m_rect.ymin);
+	v2 = min_ii(v2, m_rect.ymax);
 
 	float DDQ = 2.0f * A;
 	float U = u1 - U0;

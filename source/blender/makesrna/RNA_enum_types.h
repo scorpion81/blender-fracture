@@ -72,6 +72,7 @@ extern EnumPropertyItem color_sets_items[];
 
 extern EnumPropertyItem beztriple_keyframe_type_items[];
 extern EnumPropertyItem beztriple_interpolation_mode_items[];
+extern EnumPropertyItem beztriple_interpolation_easing_items[];
 extern EnumPropertyItem keyframe_handle_type_items[];
 
 extern EnumPropertyItem keyblock_type_items[];
@@ -109,9 +110,9 @@ extern EnumPropertyItem object_type_items[];
 
 extern EnumPropertyItem object_type_curve_items[];
 
-extern EnumPropertyItem rigidbody_object_type_items[];
-extern EnumPropertyItem rigidbody_object_shape_items[];
-extern EnumPropertyItem rigidbody_constraint_type_items[];
+extern EnumPropertyItem rigidbody_ob_type_items[];
+extern EnumPropertyItem rigidbody_ob_shape_items[];
+extern EnumPropertyItem rigidbody_con_type_items[];
 
 extern EnumPropertyItem object_axis_items[];
 extern EnumPropertyItem object_axis_unsigned_items[];

@@ -466,7 +466,7 @@ bool usingSnappingNormal(TransInfo *t)
 bool validSnappingNormal(TransInfo *t)
 {
 	if (validSnap(t)) {
-		if (dot_v3v3(t->tsnap.snapNormal, t->tsnap.snapNormal) > 0) {
+		if (!is_zero_v3(t->tsnap.snapNormal)) {
 			return true;
 		}
 	}
@@ -719,7 +719,7 @@ void removeSnapPoint(TransInfo *t)
 		if (t->tsnap.selectedPoint) {
 			BLI_freelinkN(&t->tsnap.points, t->tsnap.selectedPoint);
 
-			if (t->tsnap.points.first == NULL) {
+			if (BLI_listbase_is_empty(&t->tsnap.points)) {
 				t->tsnap.status &= ~MULTI_POINTS;
 			}
 
@@ -908,7 +908,7 @@ static void CalcSnapGeometry(TransInfo *t, float *UNUSED(vec))
 			float max_dist = FLT_MAX;
 			float p[3] = {0.0f, 0.0f, 0.0f};
 			
-			depth_peels.first = depth_peels.last = NULL;
+			BLI_listbase_clear(&depth_peels);
 			
 			peelObjectsTransForm(t, &depth_peels, mval, t->tsnap.modeSelect);
 			
@@ -990,10 +990,10 @@ static void CalcSnapGeometry(TransInfo *t, float *UNUSED(vec))
 		if (found == true) {
 			float tangent[3];
 			
-			sub_v3_v3v3(tangent, loc, t->tsnap.snapPoint);
-			tangent[2] = 0; 
+			sub_v2_v2v2(tangent, loc, t->tsnap.snapPoint);
+			tangent[2] = 0.0f;
 			
-			if (dot_v3v3(tangent, tangent) > 0) {
+			if (!is_zero_v3(tangent)) {
 				copy_v3_v3(t->tsnap.snapTangent, tangent);
 			}
 			
@@ -1572,8 +1572,8 @@ static bool snapDerivedMesh(short snap_mode, ARegion *ar, Object *ob, DerivedMes
 				}
 
 				if (treeData.tree &&
-					BLI_bvhtree_ray_cast(treeData.tree, ray_start_local, ray_normal_local, 0.0f,
-					                     &hit, treeData.raycast_callback, &treeData) != -1)
+				    BLI_bvhtree_ray_cast(treeData.tree, ray_start_local, ray_normal_local, 0.0f,
+				                         &hit, treeData.raycast_callback, &treeData) != -1)
 				{
 					hit.dist += len_diff;
 					hit.dist /= local_scale;
@@ -1624,8 +1624,8 @@ static bool snapDerivedMesh(short snap_mode, ARegion *ar, Object *ob, DerivedMes
 						else {
 							eve = BM_vert_at_index(em->bm, index);
 							
-							if ((BM_elem_flag_test(eve, BM_ELEM_HIDDEN) ||
-								 BM_elem_flag_test(eve, BM_ELEM_SELECT)))
+							if (BM_elem_flag_test(eve, BM_ELEM_HIDDEN) ||
+							    BM_elem_flag_test(eve, BM_ELEM_SELECT))
 							{
 								test = false;
 							}
@@ -1672,9 +1672,9 @@ static bool snapDerivedMesh(short snap_mode, ARegion *ar, Object *ob, DerivedMes
 						else {
 							BMEdge *eed = BM_edge_at_index(em->bm, index);
 
-							if ((BM_elem_flag_test(eed, BM_ELEM_HIDDEN) ||
-								 BM_elem_flag_test(eed->v1, BM_ELEM_SELECT) ||
-								 BM_elem_flag_test(eed->v2, BM_ELEM_SELECT)))
+							if (BM_elem_flag_test(eed, BM_ELEM_HIDDEN) ||
+							    BM_elem_flag_test(eed->v1, BM_ELEM_SELECT) ||
+							    BM_elem_flag_test(eed->v2, BM_ELEM_SELECT))
 							{
 								test = false;
 							}

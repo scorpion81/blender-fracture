@@ -40,13 +40,6 @@
 #  include <xmmintrin.h>
 #endif
 
-/* crash handler */
-#ifdef WIN32
-#  include <process.h> /* getpid */
-#else
-#  include <unistd.h> /* getpid */
-#endif
-
 #ifdef WIN32
 #  include <windows.h>
 #  include "utfconv.h"
@@ -79,6 +72,8 @@
 #include "BLI_callbacks.h"
 #include "BLI_blenlib.h"
 #include "BLI_mempool.h"
+#include "BLI_system.h"
+#include BLI_SYSTEM_PID_H
 
 #include "DNA_ID.h"
 #include "DNA_scene_types.h"
@@ -100,6 +95,7 @@
 #include "BKE_report.h"
 #include "BKE_sound.h"
 #include "BKE_image.h"
+#include "BKE_particle.h"
 
 #include "IMB_imbuf.h"  /* for IMB_init */
 
@@ -111,6 +107,7 @@
 #include "RE_pipeline.h"
 
 #include "ED_datafiles.h"
+#include "ED_util.h"
 
 #include "WM_api.h"
 
@@ -208,7 +205,7 @@ static void blender_esc(int sig)
 {
 	static int count = 0;
 	
-	G.is_break = TRUE;  /* forces render loop to read queue, not sure if its needed */
+	G.is_break = true;  /* forces render loop to read queue, not sure if its needed */
 	
 	if (sig == 2) {
 		if (count) {
@@ -370,7 +367,7 @@ static int print_help(int UNUSED(argc), const char **UNUSED(argv), void *data)
 	printf("  $BLENDER_USER_CONFIG      Directory for user configuration files.\n");
 	printf("  $BLENDER_USER_SCRIPTS     Directory for user scripts.\n");
 	printf("  $BLENDER_SYSTEM_SCRIPTS   Directory for system wide scripts.\n");
-	printf("  Directory for user data files (icons, translations, ..).\n");
+	printf("  $BLENDER_USER_DATAFILES   Directory for user data files (icons, translations, ..).\n");
 	printf("  $BLENDER_SYSTEM_DATAFILES Directory for system wide data files.\n");
 	printf("  $BLENDER_SYSTEM_PYTHON    Directory for system python libraries.\n");
 #ifdef WIN32
@@ -536,7 +533,7 @@ static void blender_crash_handler_backtrace(FILE *fp)
 
 	process = GetCurrentProcess();
 
-	SymInitialize(process, NULL, TRUE);
+	SymInitialize(process, NULL, true);
 
 	nframes = CaptureStackBackTrace(0, SIZE, stack, NULL);
 	symbolinfo = MEM_callocN(sizeof(SYMBOL_INFO) + MAXSYMBOL * sizeof( char ), "crash Symbol table");
@@ -1253,7 +1250,11 @@ static int load_file(int UNUSED(argc), const char **argv, void *data)
 	BLI_path_cwd(filename);
 
 	if (G.background) {
-		int retval = BKE_read_file(C, filename, NULL);
+		int retval;
+
+		BLI_callback_exec(CTX_data_main(C), NULL, BLI_CB_EVT_LOAD_PRE);
+
+		retval = BKE_read_file(C, filename, NULL);
 
 		/* we successfully loaded a blend file, get sure that
 		 * pointcache works */
@@ -1262,11 +1263,11 @@ static int load_file(int UNUSED(argc), const char **argv, void *data)
 			Main *bmain = CTX_data_main(C);
 
 			/* special case, 2.4x files */
-			if (wm == NULL && CTX_data_main(C)->wm.first == NULL) {
+			if (wm == NULL && BLI_listbase_is_empty(&bmain->wm)) {
 				extern void wm_add_default(bContext *C);
 
 				/* wm_add_default() needs the screen to be set. */
-				CTX_wm_screen_set(C, CTX_data_main(C)->screen.first);
+				CTX_wm_screen_set(C, bmain->screen.first);
 				wm_add_default(C);
 			}
 
@@ -1275,7 +1276,9 @@ static int load_file(int UNUSED(argc), const char **argv, void *data)
 			G.relbase_valid = 1;
 			if (CTX_wm_manager(C) == NULL) CTX_wm_manager_set(C, wm);  /* reset wm */
 
-			DAG_on_visible_update(bmain, TRUE);
+			/* WM_file_read would call normally */
+			ED_editors_init(C);
+			DAG_on_visible_update(bmain, true);
 			BKE_scene_update_tagged(bmain->eval_ctx, bmain, CTX_data_scene(C));
 		}
 		else {
@@ -1288,6 +1291,8 @@ static int load_file(int UNUSED(argc), const char **argv, void *data)
 		/* run any texts that were loaded in and flagged as modules */
 		BPY_python_reset(C);
 #endif
+
+		BLI_callback_exec(CTX_data_main(C), NULL, BLI_CB_EVT_LOAD_POST);
 
 		/* happens for the UI on file reading too (huh? (ton))*/
 		// XXX		BKE_reset_undo();
@@ -1378,7 +1383,7 @@ static void setupArguments(bContext *C, bArgs *ba, SYS_SystemHandle *syshandle)
 #undef PY_ENABLE_AUTO
 #undef PY_DISABLE_AUTO
 	
-	BLI_argsAdd(ba, 1, "-b", "--background", "<file>\n\tLoad <file> in background (often used for UI-less rendering)", background_mode, NULL);
+	BLI_argsAdd(ba, 1, "-b", "--background", "\n\tRun in background (often used for UI-less rendering)", background_mode, NULL);
 
 	BLI_argsAdd(ba, 1, "-a", NULL, playback_doc, playback_mode, NULL);
 
@@ -1468,12 +1473,21 @@ char **environ = NULL;
 #  endif
 #endif
 
-
+/**
+ * Blender's main function responsabilities are:
+ * - setup subsystems.
+ * - handle arguments.
+ * - run WM_main() event loop,
+ *   or exit when running in background mode.
+ */
+int main(
+       int argc,
 #ifdef WIN32
-int main(int argc, const char **UNUSED(argv_c)) /* Do not mess with const */
+        const char **UNUSED(argv_c)
 #else
-int main(int argc, const char **argv)
+        const char **argv
 #endif
+         )
 {
 	bContext *C;
 	SYS_SystemHandle syshandle;
@@ -1622,6 +1636,7 @@ int main(int argc, const char **argv)
 
 	RE_engines_init();
 	init_nodesystem();
+	psys_init_rng();
 	/* end second init */
 
 
@@ -1746,7 +1761,7 @@ int main(int argc, const char **argv)
 #ifdef WITH_PYTHON_MODULE
 void main_python_exit(void)
 {
-	WM_exit((bContext *)evil_C);
+	WM_exit_ext((bContext *)evil_C, true);
 	evil_C = NULL;
 }
 #endif

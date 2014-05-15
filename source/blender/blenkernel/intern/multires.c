@@ -439,7 +439,7 @@ int multiresModifier_reshapeFromDeformMod(Scene *scene, MultiresModifierData *mm
 	/* Create DerivedMesh for deformation modifier */
 	dm = get_multires_dm(scene, mmd, ob);
 	numVerts = dm->getNumVerts(dm);
-	deformedVerts = MEM_callocN(sizeof(float) * numVerts * 3, "multiresReshape_deformVerts");
+	deformedVerts = MEM_mallocN(sizeof(float[3]) * numVerts, "multiresReshape_deformVerts");
 
 	dm->getVertCos(dm, deformedVerts);
 	mti->deformVerts(md, ob, dm, deformedVerts, numVerts, 0);
@@ -699,7 +699,7 @@ void multiresModifier_del_levels(MultiresModifierData *mmd, Object *ob, int dire
 	multires_set_tot_level(ob, mmd, lvl);
 }
 
-static DerivedMesh *multires_dm_create_local(Object *ob, DerivedMesh *dm, int lvl, int totlvl, int simple, int alloc_paint_mask)
+static DerivedMesh *multires_dm_create_local(Object *ob, DerivedMesh *dm, int lvl, int totlvl, int simple, bool alloc_paint_mask)
 {
 	MultiresModifierData mmd = {{NULL}};
 	MultiresFlags flags = MULTIRES_USE_LOCAL_MMD;
@@ -1302,7 +1302,7 @@ void multires_set_space(DerivedMesh *dm, Object *ob, int from, int to)
 	}
 
 	totlvl = mmd->totlvl;
-	ccgdm = multires_dm_create_local(ob, dm, totlvl, totlvl, mmd->simple, FALSE);
+	ccgdm = multires_dm_create_local(ob, dm, totlvl, totlvl, mmd->simple, false);
 	
 	subsurf = subsurf_dm_create_local(ob, dm, totlvl,
 	                                  mmd->simple, mmd->flags & eMultiresModifierFlag_ControlEdges, mmd->flags & eMultiresModifierFlag_PlainUv, 0);

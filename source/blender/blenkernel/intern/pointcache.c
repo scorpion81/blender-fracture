@@ -51,6 +51,8 @@
 #include "BLI_threads.h"
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
+#include "BLI_system.h"
+#include BLI_SYSTEM_PID_H
 
 #include "BLF_translation.h"
 
@@ -73,6 +75,7 @@
 #include "BKE_scene.h"
 #include "BKE_smoke.h"
 #include "BKE_softbody.h"
+#include "BKE_rigidbody.h"
 
 #include "BIK_api.h"
 
@@ -100,10 +103,15 @@
 /* untitled blend's need getpid for a unique name */
 #ifndef WIN32
 #  include <dirent.h>
-#  include <unistd.h>
 #else
-#  include <process.h>
 #  include "BLI_winstuff.h"
+#endif
+
+#ifdef WIN32
+    #ifndef NAN
+        static const unsigned long __nan[2] = {0xffffffff, 0x7fffffff};
+        #define NAN (*(const float *) __nan)
+    #endif
 #endif
 
 #define PTCACHE_DATA_FROM(data, type, from)  \
@@ -999,22 +1007,27 @@ static int ptcache_dynamicpaint_read(PTCacheFile *pf, void *dp_v)
 static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUSED(cfra))
 {
 	RigidBodyWorld *rbw = rb_v;
-	Object *ob = NULL;
+	RigidBodyOb *rbo = NULL;
+	rbo = rbw->cache_index_map[index];
 	
-	if (rbw->objects)
-		ob = rbw->objects[index];
-	
-	if (ob && ob->rigidbody_object) {
-		RigidBodyOb *rbo = ob->rigidbody_object;
+	if (rbo == NULL)
+	{
+		float dummyloc[3] = {FLT_MIN, FLT_MIN, FLT_MIN};
+		float dummyrot[4] = {FLT_MIN, FLT_MIN, FLT_MIN, FLT_MIN};
 		
-		if (rbo->type == RBO_TYPE_ACTIVE) {
+		//need to write dummy data obviously... hmm
+		PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, dummyloc);
+		PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, dummyrot);
+		return 1;
+	}
+
+	if (rbo && rbo->type == RBO_TYPE_ACTIVE && rbo->physics_object) {
 #ifdef WITH_BULLET
-			RB_body_get_position(rbo->physics_object, rbo->pos);
-			RB_body_get_orientation(rbo->physics_object, rbo->orn);
+		RB_body_get_position(rbo->physics_object, rbo->pos);
+		RB_body_get_orientation(rbo->physics_object, rbo->orn);
 #endif
-			PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, rbo->pos);
-			PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, rbo->orn);
-		}
+		PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, rbo->pos);
+		PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, rbo->orn);
 	}
 
 	return 1;
@@ -1022,44 +1035,47 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUS
 static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float UNUSED(cfra), float *old_data)
 {
 	RigidBodyWorld *rbw = rb_v;
-	Object *ob = NULL;
+	RigidBodyOb *rbo = NULL;
 	
-	if (rbw->objects)
-		ob = rbw->objects[index];
+	rbo = rbw->cache_index_map[index];
 	
-	if (ob && ob->rigidbody_object) {
-		RigidBodyOb *rbo = ob->rigidbody_object;
-		
-		if (rbo->type == RBO_TYPE_ACTIVE) {
-			
-			if (old_data) {
-				memcpy(rbo->pos, data, 3 * sizeof(float));
-				memcpy(rbo->orn, data + 3, 4 * sizeof(float));
-			}
-			else {
-				PTCACHE_DATA_TO(data, BPHYS_DATA_LOCATION, 0, rbo->pos);
-				PTCACHE_DATA_TO(data, BPHYS_DATA_ROTATION, 0, rbo->orn);
-			}
+	if (rbo == NULL)
+		return;
+
+	if (rbo && rbo->type == RBO_TYPE_ACTIVE) {
+
+		if (old_data) {
+			memcpy(rbo->pos, data, 3 * sizeof(float));
+			memcpy(rbo->orn, data + 3, 4 * sizeof(float));
 		}
+		else {
+			PTCACHE_DATA_TO(data, BPHYS_DATA_LOCATION, 0, rbo->pos);
+			PTCACHE_DATA_TO(data, BPHYS_DATA_ROTATION, 0, rbo->orn);
+		}
+
+		//if (mi) {
+		 //	BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn);
+		//}
 	}
 }
 static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, float cfra, float cfra1, float cfra2, float *old_data)
 {
 	RigidBodyWorld *rbw = rb_v;
-	Object *ob = NULL;
+	RigidBodyOb *rbo = NULL;
 	ParticleKey keys[4];
 	float dfra;
 	
-	if (rbw->objects)
-		ob = rbw->objects[index];
+	rbo = rbw->cache_index_map[index];
+	if (rbo == NULL)
+		return;
 	
-	if (ob && ob->rigidbody_object) {
-		RigidBodyOb *rbo = ob->rigidbody_object;
+	//if (ob && ob->rigidbody_object) {
+		//RigidBodyOb *rbo = ob->rigidbody_object;
 		
 		if (rbo->type == RBO_TYPE_ACTIVE) {
 			
 			copy_v3_v3(keys[1].co, rbo->pos);
-			copy_v3_v3(keys[1].rot, rbo->orn);
+			copy_qt_qt(keys[1].rot, rbo->orn);
 			
 			if (old_data) {
 				memcpy(keys[2].co, data, 3 * sizeof(float));
@@ -1071,13 +1087,22 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 			
 			dfra = cfra2 - cfra1;
 		
-			psys_interpolate_particle(-1, keys, (cfra - cfra1) / dfra, keys, 1);
+			//psys_interpolate_particle(-1, keys, (cfra - cfra1) / dfra, keys, 1);
+			interp_v3_v3v3(keys->co, keys[1].co, keys[2].co, (cfra - cfra1) / dfra);
 			interp_qt_qtqt(keys->rot, keys[1].rot, keys[2].rot, (cfra - cfra1) / dfra);
 			
+			/*if (isnan(keys->co[0]) || isnan(keys->co[1]) || isnan(keys->co[2]))
+			{
+				//use the average value here if we have nan...
+				add_v3_v3v3(keys[3].co, keys[1].co, keys[2].co);
+				mul_v3_fl(keys[3].co, 0.5f);
+				copy_v3_v3(keys->co, keys[3].co);
+			}*/
+
 			copy_v3_v3(rbo->pos, keys->co);
-			copy_v3_v3(rbo->orn, keys->rot);
+			copy_qt_qt(rbo->orn, keys->rot);
 		}
-	}
+	//}
 }
 static int ptcache_rigidbody_totpoint(void *rb_v, int UNUSED(cfra))
 {
@@ -1409,7 +1434,7 @@ void BKE_ptcache_ids_from_object(ListBase *lb, Object *ob, Scene *scene, int dup
 	if (scene && (duplis-- > 0) && (ob->transflag & OB_DUPLI)) {
 		ListBase *lb_dupli_ob;
 		/* don't update the dupli groups, we only want their pid's */
-		if ((lb_dupli_ob = object_duplilist_ex(G.main->eval_ctx, scene, ob, FALSE))) {
+		if ((lb_dupli_ob = object_duplilist_ex(G.main->eval_ctx, scene, ob, false))) {
 			DupliObject *dob;
 			for (dob= lb_dupli_ob->first; dob; dob= dob->next) {
 				if (dob->ob != ob) { /* avoids recursive loops with dupliframes: bug 22988 */
@@ -1493,7 +1518,7 @@ static int ptcache_filename(PTCacheID *pid, char *filename, int cfra, short do_p
 		idname = (pid->ob->id.name + 2);
 		/* convert chars to hex so they are always a valid filename */
 		while ('\0' != *idname) {
-			BLI_snprintf(newname, MAX_PTCACHE_FILE, "%02X", (char)(*idname++));
+			BLI_snprintf(newname, MAX_PTCACHE_FILE, "%02X", (unsigned int)(*idname++));
 			newname+=2;
 			len += 2;
 		}
@@ -3039,18 +3064,15 @@ void BKE_ptcache_free_list(ListBase *ptcaches)
 	}
 }
 
-static PointCache *ptcache_copy(PointCache *cache, int copy_data)
+static PointCache *ptcache_copy(PointCache *cache, bool copy_data)
 {
 	PointCache *ncache;
 
 	ncache= MEM_dupallocN(cache);
 
-	ncache->mem_cache.first = NULL;
-	ncache->mem_cache.last = NULL;
+	BLI_listbase_clear(&ncache->mem_cache);
 
-	if (copy_data == FALSE) {
-		ncache->mem_cache.first = NULL;
-		ncache->mem_cache.last = NULL;
+	if (copy_data == false) {
 		ncache->cached_frames = NULL;
 
 		/* flag is a mix of user settings and simulator/baking state */
@@ -3085,11 +3107,11 @@ static PointCache *ptcache_copy(PointCache *cache, int copy_data)
 }
 
 /* returns first point cache */
-PointCache *BKE_ptcache_copy_list(ListBase *ptcaches_new, ListBase *ptcaches_old, int copy_data)
+PointCache *BKE_ptcache_copy_list(ListBase *ptcaches_new, ListBase *ptcaches_old, bool copy_data)
 {
 	PointCache *cache = ptcaches_old->first;
 
-	ptcaches_new->first = ptcaches_new->last = NULL;
+	BLI_listbase_clear(ptcaches_new);
 
 	for (; cache; cache=cache->next)
 		BLI_addtail(ptcaches_new, ptcache_copy(cache, copy_data));
@@ -3147,7 +3169,8 @@ static void ptcache_dt_to_str(char *str, double dtime)
 
 static void *ptcache_bake_thread(void *ptr)
 {
-	int use_timer = FALSE, sfra, efra;
+	bool use_timer = false;
+	int sfra, efra;
 	double stime, ptime, ctime, fetd;
 	char run[32], cur[32], etd[32];
 
@@ -3168,7 +3191,7 @@ static void *ptcache_bake_thread(void *ptr)
 			fetd = (ctime-ptime)*(efra-*data->cfra_ptr)/data->step;
 
 			if (use_timer || fetd > 60.0) {
-				use_timer = TRUE;
+				use_timer = true;
 
 				ptcache_dt_to_str(cur, ctime-ptime);
 				ptcache_dt_to_str(run, ctime-stime);
@@ -3186,7 +3209,7 @@ static void *ptcache_bake_thread(void *ptr)
 		printf("\nBake %s %s (%i frames simulated).\n", (data->break_operation ? "canceled after" : "finished in"), run, *data->cfra_ptr-sfra);
 	}
 
-	data->thread_ended = TRUE;
+	data->thread_ended = true;
 	return NULL;
 }
 
@@ -3215,7 +3238,7 @@ void BKE_ptcache_bake(PTCacheBaker *baker)
 	thread_data.scene = baker->scene;
 	thread_data.main = baker->main;
 
-	G.is_break = FALSE;
+	G.is_break = false;
 
 	/* set caches to baking mode and figure out start frame */
 	if (pid) {
@@ -3307,8 +3330,8 @@ void BKE_ptcache_bake(PTCacheBaker *baker)
 
 	CFRA = startframe;
 	scene->r.framelen = 1.0;
-	thread_data.break_operation = FALSE;
-	thread_data.thread_ended = FALSE;
+	thread_data.break_operation = false;
+	thread_data.thread_ended = false;
 	old_progress = -1;
 
 	WM_cursor_wait(1);
@@ -3320,7 +3343,7 @@ void BKE_ptcache_bake(PTCacheBaker *baker)
 		BLI_init_threads(&threads, ptcache_bake_thread, 1);
 		BLI_insert_thread(&threads, (void*)&thread_data);
 
-		while (thread_data.thread_ended == FALSE) {
+		while (thread_data.thread_ended == false) {
 
 			if (bake)
 				progress = (int)(100.0f * (float)(CFRA - startframe)/(float)(thread_data.endframe-startframe));
@@ -3338,7 +3361,7 @@ void BKE_ptcache_bake(PTCacheBaker *baker)
 
 			/* NOTE: breaking baking should leave calculated frames in cache, not clear it */
 			if (blender_test_break() && !thread_data.break_operation) {
-				thread_data.break_operation = TRUE;
+				thread_data.break_operation = true;
 				if (baker->progressend)
 					baker->progressend(baker->progresscontext);
 				WM_cursor_wait(1);
@@ -3483,6 +3506,13 @@ void BKE_ptcache_toggle_disk_cache(PTCacheID *pid)
 	BKE_ptcache_id_time(pid, NULL, 0.0f, NULL, NULL, NULL);
 
 	BKE_ptcache_update_info(pid);
+
+	if ((cache->flag & PTCACHE_DISK_CACHE) == 0) {
+		if (cache->index) {
+			BKE_object_delete_ptcache(pid->ob, cache->index);
+			cache->index = -1;
+		}
+	}
 }
 
 void BKE_ptcache_disk_cache_rename(PTCacheID *pid, const char *name_src, const char *name_dst)

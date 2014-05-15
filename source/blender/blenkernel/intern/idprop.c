@@ -334,12 +334,11 @@ IDProperty *IDP_NewString(const char *st, const char *name, int maxlen)
 		prop->len = 1;  /* NULL string, has len of 1 to account for null byte. */
 	}
 	else {
-		int stlen = strlen(st);
+		/* include null terminator '\0' */
+		int stlen = strlen(st) + 1;
 
 		if (maxlen > 0 && maxlen < stlen)
 			stlen = maxlen;
-
-		stlen++; /* null terminator '\0' */
 
 		prop->data.pointer = MEM_mallocN(stlen, "id property string 2");
 		prop->len = prop->totallen = stlen;
@@ -807,7 +806,7 @@ IDProperty *IDP_GetProperties(ID *id, const bool create_if_needed)
 }
 
 /**
- * \param is_strict When FALSE treat missing items as a match */
+ * \param is_strict When false treat missing items as a match */
 bool IDP_EqualsProperties_ex(IDProperty *prop1, IDProperty *prop2, const bool is_strict)
 {
 	if (prop1 == NULL && prop2 == NULL)
@@ -872,7 +871,7 @@ bool IDP_EqualsProperties_ex(IDProperty *prop1, IDProperty *prop2, const bool is
 
 bool IDP_EqualsProperties(IDProperty *prop1, IDProperty *prop2)
 {
-	return IDP_EqualsProperties_ex(prop1, prop2, TRUE);
+	return IDP_EqualsProperties_ex(prop1, prop2, true);
 }
 
 /**

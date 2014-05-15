@@ -76,26 +76,6 @@
 
 /*********************** main area drawing *************************/
 
-void clip_draw_curfra_label(const int framenr, const float x, const float y)
-{
-	uiStyle *style = UI_GetStyle();
-	int fontid = style->widget.uifont_id;
-	char numstr[32];
-	float font_dims[2] = {0.0f, 0.0f};
-
-	/* frame number */
-	BLF_size(fontid, 11.0f, U.dpi);
-	BLI_snprintf(numstr, sizeof(numstr), "%d", framenr);
-
-	BLF_width_and_height(fontid, numstr, sizeof(numstr), &font_dims[0], &font_dims[1]);
-
-	glRecti(x, y, x + font_dims[0] + 6.0f, y + font_dims[1] + 4.0f);
-
-	UI_ThemeColor(TH_TEXT);
-	BLF_position(fontid, x + 2.0f, y + 2.0f, 0.0f);
-	BLF_draw(fontid, numstr, sizeof(numstr));
-}
-
 static void draw_keyframe(int frame, int cfra, int sfra, float framelen, int width)
 {
 	int height = (frame == cfra) ? 22 : 10;
@@ -183,23 +163,11 @@ static void draw_movieclip_cache(SpaceClip *sc, ARegion *ar, MovieClip *clip, Sc
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 	/* cache background */
-	glColor4ub(128, 128, 255, 64);
-	glRecti(0, 0, ar->winx, 8 * UI_DPI_FAC);
+	ED_region_cache_draw_background(ar);
 
 	/* cached segments -- could be usefu lto debug caching strategies */
 	BKE_movieclip_get_cache_segments(clip, &sc->user, &totseg, &points);
-	if (totseg) {
-		glColor4ub(128, 128, 255, 128);
-
-		for (a = 0; a < totseg; a++) {
-			float x1, x2;
-
-			x1 = (points[a * 2] - sfra) / (efra - sfra + 1) * ar->winx;
-			x2 = (points[a * 2 + 1] - sfra + 1) / (efra - sfra + 1) * ar->winx;
-
-			glRecti(x1, 0, x2, 8 * UI_DPI_FAC);
-		}
-	}
+	ED_region_cache_draw_cached_segments(ar, totseg, points, sfra, efra);
 
 	/* track */
 	if (act_track || act_plane_track) {
@@ -271,7 +239,7 @@ static void draw_movieclip_cache(SpaceClip *sc, ARegion *ar, MovieClip *clip, Sc
 	UI_ThemeColor(TH_CFRAME);
 	glRecti(x, 0, x + ceilf(framelen), 8 * UI_DPI_FAC);
 
-	clip_draw_curfra_label(sc->user.framenr, x, 8.0f * UI_DPI_FAC);
+	ED_region_cache_draw_curfra_label(sc->user.framenr, x, 8.0f * UI_DPI_FAC);
 
 	/* solver keyframes */
 	glColor4ub(175, 255, 0, 255);
@@ -940,7 +908,7 @@ static void draw_marker_texts(SpaceClip *sc, MovieTrackingTrack *track, MovieTra
 	if (!TRACK_VIEW_SELECTED(sc, track))
 		return;
 
-	BLF_size(fontid, 11.0f, U.dpi);
+	BLF_size(fontid, 11.0f * U.pixelsize, U.dpi);
 	fontsize = BLF_height_max(fontid);
 
 	if (marker->flag & MARKER_DISABLED) {
@@ -1311,7 +1279,9 @@ static void draw_tracking_tracks(SpaceClip *sc, Scene *scene, ARegion *ar, Movie
 	     plane_track;
 	     plane_track = plane_track->next)
 	{
-		draw_plane_track(sc, scene, plane_track, framenr, plane_track == active_plane_track, width, height);
+		if ((plane_track->flag & PLANE_TRACK_HIDDEN) == 0) {
+			draw_plane_track(sc, scene, plane_track, framenr, plane_track == active_plane_track, width, height);
+		}
 	}
 
 	if (sc->user.render_flag & MCLIP_PROXY_RENDER_UNDISTORT) {
@@ -1527,9 +1497,6 @@ static void draw_distortion(SpaceClip *sc, ARegion *ar, MovieClip *clip,
 	float dx = (float)width / n, dy = (float)height / n * aspy;
 	float offsx = 0.0f, offsy = 0.0f;
 
-	if (sc->mode != SC_MODE_DISTORTION)
-		return;
-
 	if (!tracking->camera.focal)
 		return;
 
@@ -1638,7 +1605,7 @@ static void draw_distortion(SpaceClip *sc, ARegion *ar, MovieClip *clip,
 
 		if (track) {
 			int framenr = ED_space_clip_get_clip_frame_number(sc);
-			MovieTrackingMarker *marker = BKE_tracking_marker_get_exact(track, framenr);
+			MovieTrackingMarker *marker = BKE_tracking_marker_get(track, framenr);
 
 			offsx = marker->pos[0];
 			offsy = marker->pos[1];
@@ -1818,7 +1785,7 @@ void clip_draw_grease_pencil(bContext *C, int onlyv2d)
 	if (onlyv2d) {
 		/* if manual calibration is used then grease pencil data is already
 		 * drawn in draw_distortion */
-		if ((sc->flag & SC_MANUAL_CALIBRATION) == 0 || sc->mode != SC_MODE_DISTORTION) {
+		if ((sc->flag & SC_MANUAL_CALIBRATION) == 0) {
 			glPushMatrix();
 			glMultMatrixf(sc->unistabmat);
 

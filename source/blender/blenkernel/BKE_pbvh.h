@@ -67,10 +67,10 @@ void BKE_pbvh_build_grids(PBVH *bvh, struct CCGElem **grid_elems,
                           struct DMGridAdjacency *gridadj, int totgrid,
                           struct CCGKey *key, void **gridfaces, struct DMFlagMat *flagmats,
                           unsigned int **grid_hidden);
-void BKE_pbvh_build_bmesh(PBVH *bvh, struct BMesh *bm, int smooth_shading,
-                          struct BMLog *log);
+void BKE_pbvh_build_bmesh(PBVH *bvh, struct BMesh *bm, bool smooth_shading, struct BMLog *log);
 
 void BKE_pbvh_free(PBVH *bvh);
+void BKE_pbvh_free_layer_disp(PBVH *bvh);
 
 /* Hierarchical Search in the BVH, two methods:
  * - for each hit calling a callback
@@ -93,9 +93,14 @@ void BKE_pbvh_raycast(PBVH *bvh, BKE_pbvh_HitOccludedCallback cb, void *data,
                       const float ray_start[3], const float ray_normal[3],
                       int original);
 
-int BKE_pbvh_node_raycast(PBVH *bvh, PBVHNode *node, float (*origco)[3], int use_origco,
+bool BKE_pbvh_node_raycast(PBVH *bvh, PBVHNode *node, float (*origco)[3], int use_origco,
                           const float ray_start[3], const float ray_normal[3],
                           float *dist);
+
+bool BKE_pbvh_bmesh_node_raycast_detail(
+        PBVHNode *node,
+        const float ray_start[3], const float ray_normal[3],
+        float *detail, float *dist);
 
 /* for orthographic cameras, project the far away ray segment points to the root node so
  * we can have better precision. */
@@ -106,7 +111,7 @@ void BKE_pbvh_raycast_project_ray_root(PBVH *bvh, bool original, float ray_start
 
 void BKE_pbvh_node_draw(PBVHNode *node, void *data);
 void BKE_pbvh_draw(PBVH *bvh, float (*planes)[4], float (*face_nors)[3],
-                   int (*setMaterial)(int, void *attribs), int wireframe);
+                   int (*setMaterial)(int, void *attribs), bool wireframe);
 
 /* PBVH Access */
 typedef enum {
@@ -134,7 +139,7 @@ typedef enum {
 	PBVH_Subdivide = 1,
 	PBVH_Collapse = 2,
 } PBVHTopologyUpdateMode;
-int BKE_pbvh_bmesh_update_topology(PBVH *bvh, PBVHTopologyUpdateMode mode,
+bool BKE_pbvh_bmesh_update_topology(PBVH *bvh, PBVHTopologyUpdateMode mode,
                                    const float center[3], float radius);
 
 /* Node Access */
@@ -180,6 +185,7 @@ bool BKE_pbvh_node_planes_exclude_AABB(PBVHNode *node, void *data);
 
 struct GSet *BKE_pbvh_bmesh_node_unique_verts(PBVHNode *node);
 struct GSet *BKE_pbvh_bmesh_node_other_verts(PBVHNode *node);
+struct GSet *BKE_pbvh_bmesh_node_faces(PBVHNode *node);
 void BKE_pbvh_bmesh_node_save_orig(PBVHNode *node);
 void BKE_pbvh_bmesh_after_stroke(PBVH *bvh);
 
@@ -255,10 +261,6 @@ typedef struct PBVHVertexIter {
 	float *fno;
 	float *mask;
 } PBVHVertexIter;
-
-#ifdef _MSC_VER
-#pragma warning (disable:4127) // conditional expression is constant
-#endif
 
 void pbvh_vertex_iter_init(PBVH *bvh, PBVHNode *node,
                            PBVHVertexIter *vi, int mode);

@@ -15,11 +15,6 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * The Original Code is Copyright (C) 2001-2002 by NaN Holding BV.
- * All rights reserved.
- *
- * The Original Code is: all of this file.
- *
  * Contributor(s): Brecht Van Lommel
  *                 Campbell Barton
  *                 Sergey Sharybin
@@ -126,7 +121,7 @@ void MEM_lockfree_freeN(void *vmemh)
 #endif
 	}
 	else {
-		if (malloc_debug_memset && len) {
+		if (UNLIKELY(malloc_debug_memset && len)) {
 			memset(memh + 1, 255, len);
 		}
 		free(memh);
@@ -219,7 +214,7 @@ void *MEM_lockfree_callocN(size_t len, const char *str)
 
 	memh = (MemHead *)calloc(1, len + sizeof(MemHead));
 
-	if (memh) {
+	if (LIKELY(memh)) {
 		memh->len = len;
 		atomic_add_u(&totblock, 1);
 		atomic_add_z(&mem_in_use, len);
@@ -242,8 +237,8 @@ void *MEM_lockfree_mallocN(size_t len, const char *str)
 
 	memh = (MemHead *)malloc(len + sizeof(MemHead));
 
-	if (memh) {
-		if (malloc_debug_memset && len) {
+	if (LIKELY(memh)) {
+		if (UNLIKELY(malloc_debug_memset && len)) {
 			memset(memh + 1, 255, len);
 		}
 
@@ -268,7 +263,7 @@ void *MEM_lockfree_mapallocN(size_t len, const char *str)
 	/* on 64 bit, simply use calloc instead, as mmap does not support
 	 * allocating > 4 GB on Windows. the only reason mapalloc exists
 	 * is to get around address space limitations in 32 bit OSes. */
-	if(sizeof(void*) >= 8)
+	if (sizeof(void *) >= 8)
 		return MEM_lockfree_callocN(len, str);
 
 	len = SIZET_ALIGN_4(len);

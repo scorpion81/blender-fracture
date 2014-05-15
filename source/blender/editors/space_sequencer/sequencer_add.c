@@ -57,7 +57,6 @@
 #include "BKE_main.h"
 #include "BKE_sequencer.h"
 #include "BKE_movieclip.h"
-#include "BKE_sequencer.h"
 #include "BKE_mask.h"
 #include "BKE_report.h"
 
@@ -131,7 +130,7 @@ static int sequencer_generic_invoke_xy_guess_channel(bContext *C, int type)
 	Sequence *tgt = NULL;
 	Sequence *seq;
 	Scene *scene = CTX_data_scene(C);
-	Editing *ed = BKE_sequencer_editing_get(scene, TRUE);
+	Editing *ed = BKE_sequencer_editing_get(scene, true);
 	int cfra = (int) CFRA;
 	int proximity = INT_MAX;
 
@@ -241,7 +240,7 @@ static void seq_load_operator_info(SeqLoadInfo *seq_load, wmOperator *op)
 static int sequencer_add_scene_strip_exec(bContext *C, wmOperator *op)
 {
 	Scene *scene = CTX_data_scene(C);
-	Editing *ed = BKE_sequencer_editing_get(scene, TRUE);
+	Editing *ed = BKE_sequencer_editing_get(scene, true);
 	
 	Scene *sce_seq;
 
@@ -285,7 +284,7 @@ static int sequencer_add_scene_strip_exec(bContext *C, wmOperator *op)
 		seq->flag |= SELECT;
 	}
 
-	if (RNA_boolean_get(op->ptr, "overlap") == FALSE) {
+	if (RNA_boolean_get(op->ptr, "overlap") == false) {
 		if (BKE_sequence_test_overlap(ed->seqbasep, seq)) BKE_sequence_base_shuffle(ed->seqbasep, seq, scene);
 	}
 
@@ -297,11 +296,6 @@ static int sequencer_add_scene_strip_exec(bContext *C, wmOperator *op)
 
 static int sequencer_add_scene_strip_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
-	if (!ED_operator_sequencer_active(C)) {
-		BKE_report(op->reports, RPT_ERROR, "Sequencer area not active");
-		return OPERATOR_CANCELLED;
-	}
-
 	if (!RNA_struct_property_is_set(op->ptr, "scene"))
 		return WM_enum_search_invoke(C, op, event);
 
@@ -325,7 +319,7 @@ void SEQUENCER_OT_scene_strip_add(struct wmOperatorType *ot)
 	ot->invoke = sequencer_add_scene_strip_invoke;
 	ot->exec = sequencer_add_scene_strip_exec;
 
-	ot->poll = ED_operator_scene_editable;
+	ot->poll = ED_operator_sequencer_active_editable;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
@@ -340,7 +334,7 @@ void SEQUENCER_OT_scene_strip_add(struct wmOperatorType *ot)
 static int sequencer_add_movieclip_strip_exec(bContext *C, wmOperator *op)
 {
 	Scene *scene = CTX_data_scene(C);
-	Editing *ed = BKE_sequencer_editing_get(scene, TRUE);
+	Editing *ed = BKE_sequencer_editing_get(scene, true);
 	
 	MovieClip *clip;
 
@@ -384,7 +378,7 @@ static int sequencer_add_movieclip_strip_exec(bContext *C, wmOperator *op)
 		seq->flag |= SELECT;
 	}
 
-	if (RNA_boolean_get(op->ptr, "overlap") == FALSE) {
+	if (RNA_boolean_get(op->ptr, "overlap") == false) {
 		if (BKE_sequence_test_overlap(ed->seqbasep, seq)) BKE_sequence_base_shuffle(ed->seqbasep, seq, scene);
 	}
 
@@ -395,11 +389,6 @@ static int sequencer_add_movieclip_strip_exec(bContext *C, wmOperator *op)
 
 static int sequencer_add_movieclip_strip_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
-	if (!ED_operator_sequencer_active(C)) {
-		BKE_report(op->reports, RPT_ERROR, "Sequencer area not active");
-		return OPERATOR_CANCELLED;
-	}
-
 	if (!RNA_struct_property_is_set(op->ptr, "clip"))
 		return WM_enum_search_invoke(C, op, event);
 
@@ -422,7 +411,7 @@ void SEQUENCER_OT_movieclip_strip_add(struct wmOperatorType *ot)
 	ot->invoke = sequencer_add_movieclip_strip_invoke;
 	ot->exec = sequencer_add_movieclip_strip_exec;
 
-	ot->poll = ED_operator_scene_editable;
+	ot->poll = ED_operator_sequencer_active_editable;
 
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
@@ -437,7 +426,7 @@ void SEQUENCER_OT_movieclip_strip_add(struct wmOperatorType *ot)
 static int sequencer_add_mask_strip_exec(bContext *C, wmOperator *op)
 {
 	Scene *scene = CTX_data_scene(C);
-	Editing *ed = BKE_sequencer_editing_get(scene, TRUE);
+	Editing *ed = BKE_sequencer_editing_get(scene, true);
 
 	Mask *mask;
 
@@ -481,7 +470,7 @@ static int sequencer_add_mask_strip_exec(bContext *C, wmOperator *op)
 		seq->flag |= SELECT;
 	}
 
-	if (RNA_boolean_get(op->ptr, "overlap") == FALSE) {
+	if (RNA_boolean_get(op->ptr, "overlap") == false) {
 		if (BKE_sequence_test_overlap(ed->seqbasep, seq)) BKE_sequence_base_shuffle(ed->seqbasep, seq, scene);
 	}
 
@@ -492,11 +481,6 @@ static int sequencer_add_mask_strip_exec(bContext *C, wmOperator *op)
 
 static int sequencer_add_mask_strip_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
-	if (!ED_operator_sequencer_active(C)) {
-		BKE_report(op->reports, RPT_ERROR, "Sequencer area not active");
-		return OPERATOR_CANCELLED;
-	}
-
 	if (!RNA_struct_property_is_set(op->ptr, "mask"))
 		return WM_enum_search_invoke(C, op, event);
 
@@ -520,7 +504,7 @@ void SEQUENCER_OT_mask_strip_add(struct wmOperatorType *ot)
 	ot->invoke = sequencer_add_mask_strip_invoke;
 	ot->exec = sequencer_add_mask_strip_exec;
 
-	ot->poll = ED_operator_scene_editable;
+	ot->poll = ED_operator_sequencer_active_editable;
 
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
@@ -535,11 +519,11 @@ void SEQUENCER_OT_mask_strip_add(struct wmOperatorType *ot)
 static int sequencer_add_generic_strip_exec(bContext *C, wmOperator *op, SeqLoadFunc seq_load_func)
 {
 	Scene *scene = CTX_data_scene(C); /* only for sound */
-	Editing *ed = BKE_sequencer_editing_get(scene, TRUE);
+	Editing *ed = BKE_sequencer_editing_get(scene, true);
 	SeqLoadInfo seq_load;
 	Sequence *seq;
 	int tot_files;
-	const short overlap = RNA_boolean_get(op->ptr, "overlap");
+	const bool overlap = RNA_boolean_get(op->ptr, "overlap");
 
 	seq_load_operator_info(&seq_load, op);
 
@@ -568,7 +552,7 @@ static int sequencer_add_generic_strip_exec(bContext *C, wmOperator *op, SeqLoad
 
 			seq = seq_load_func(C, ed->seqbasep, &seq_load);
 			if (seq) {
-				if (overlap == FALSE) {
+				if (overlap == false) {
 					if (BKE_sequence_test_overlap(ed->seqbasep, seq))
 						BKE_sequence_base_shuffle(ed->seqbasep, seq, scene);
 				}
@@ -580,7 +564,7 @@ static int sequencer_add_generic_strip_exec(bContext *C, wmOperator *op, SeqLoad
 		/* single file */
 		seq = seq_load_func(C, ed->seqbasep, &seq_load);
 		if (seq) {
-			if (overlap == FALSE) {
+			if (overlap == false) {
 				if (BKE_sequence_test_overlap(ed->seqbasep, seq))
 					BKE_sequence_base_shuffle(ed->seqbasep, seq, scene);
 			}
@@ -609,12 +593,6 @@ static int sequencer_add_movie_strip_exec(bContext *C, wmOperator *op)
 
 static int sequencer_add_movie_strip_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
-
-	if (!ED_operator_sequencer_active(C)) {
-		BKE_report(op->reports, RPT_ERROR, "Sequencer area not active");
-		return OPERATOR_CANCELLED;
-	}
-
 	/* This is for drag and drop */
 	if ((RNA_struct_property_is_set(op->ptr, "files") && RNA_collection_length(op->ptr, "files")) ||
 	    RNA_struct_property_is_set(op->ptr, "filepath"))
@@ -644,7 +622,7 @@ void SEQUENCER_OT_movie_strip_add(struct wmOperatorType *ot)
 	ot->invoke = sequencer_add_movie_strip_invoke;
 	ot->exec = sequencer_add_movie_strip_exec;
 
-	ot->poll = ED_operator_scene_editable;
+	ot->poll = ED_operator_sequencer_active_editable;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
@@ -652,7 +630,7 @@ void SEQUENCER_OT_movie_strip_add(struct wmOperatorType *ot)
 	WM_operator_properties_filesel(ot, FOLDERFILE | MOVIEFILE, FILE_SPECIAL, FILE_OPENFILE,
 	                               WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH | WM_FILESEL_FILES, FILE_DEFAULTDISPLAY);
 	sequencer_generic_props__internal(ot, SEQPROP_STARTFRAME);
-	RNA_def_boolean(ot->srna, "sound", TRUE, "Sound", "Load sound with the movie");
+	RNA_def_boolean(ot->srna, "sound", true, "Sound", "Load sound with the movie");
 }
 
 /* add sound operator */
@@ -664,12 +642,6 @@ static int sequencer_add_sound_strip_exec(bContext *C, wmOperator *op)
 
 static int sequencer_add_sound_strip_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
-
-	if (!ED_operator_sequencer_active(C)) {
-		BKE_report(op->reports, RPT_ERROR, "Sequencer area not active");
-		return OPERATOR_CANCELLED;
-	}
-	
 	/* This is for drag and drop */
 	if ((RNA_struct_property_is_set(op->ptr, "files") && RNA_collection_length(op->ptr, "files")) ||
 	    RNA_struct_property_is_set(op->ptr, "filepath"))
@@ -699,7 +671,7 @@ void SEQUENCER_OT_sound_strip_add(struct wmOperatorType *ot)
 	ot->invoke = sequencer_add_sound_strip_invoke;
 	ot->exec = sequencer_add_sound_strip_exec;
 
-	ot->poll = ED_operator_scene_editable;
+	ot->poll = ED_operator_sequencer_active_editable;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
@@ -707,7 +679,7 @@ void SEQUENCER_OT_sound_strip_add(struct wmOperatorType *ot)
 	WM_operator_properties_filesel(ot, FOLDERFILE | SOUNDFILE, FILE_SPECIAL, FILE_OPENFILE,
 	                               WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH | WM_FILESEL_FILES, FILE_DEFAULTDISPLAY);
 	sequencer_generic_props__internal(ot, SEQPROP_STARTFRAME);
-	RNA_def_boolean(ot->srna, "cache", FALSE, "Cache", "Cache the sound in memory");
+	RNA_def_boolean(ot->srna, "cache", false, "Cache", "Cache the sound in memory");
 }
 
 /* add image operator */
@@ -716,7 +688,7 @@ static int sequencer_add_image_strip_exec(bContext *C, wmOperator *op)
 	/* cant use the generic function for this */
 
 	Scene *scene = CTX_data_scene(C); /* only for sound */
-	Editing *ed = BKE_sequencer_editing_get(scene, TRUE);
+	Editing *ed = BKE_sequencer_editing_get(scene, true);
 	SeqLoadInfo seq_load;
 	Sequence *seq;
 
@@ -764,7 +736,7 @@ static int sequencer_add_image_strip_exec(bContext *C, wmOperator *op)
 	/* last active name */
 	BLI_strncpy(ed->act_imagedir, strip->dir, sizeof(ed->act_imagedir));
 
-	if (RNA_boolean_get(op->ptr, "overlap") == FALSE) {
+	if (RNA_boolean_get(op->ptr, "overlap") == false) {
 		if (BKE_sequence_test_overlap(ed->seqbasep, seq))
 			BKE_sequence_base_shuffle(ed->seqbasep, seq, scene);
 	}
@@ -776,13 +748,6 @@ static int sequencer_add_image_strip_exec(bContext *C, wmOperator *op)
 
 static int sequencer_add_image_strip_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
-
-	if (!ED_operator_sequencer_active(C)) {
-		BKE_report(op->reports, RPT_ERROR, "Sequencer area not active");
-		return OPERATOR_CANCELLED;
-	}
-
-
 	/* drag drop has set the names */
 	if (RNA_struct_property_is_set(op->ptr, "files") && RNA_collection_length(op->ptr, "files")) {
 		sequencer_generic_invoke_xy__internal(C, op, SEQPROP_ENDFRAME | SEQPROP_NOPATHS, SEQ_TYPE_IMAGE);
@@ -808,7 +773,7 @@ void SEQUENCER_OT_image_strip_add(struct wmOperatorType *ot)
 	ot->invoke = sequencer_add_image_strip_invoke;
 	ot->exec = sequencer_add_image_strip_exec;
 
-	ot->poll = ED_operator_scene_editable;
+	ot->poll = ED_operator_sequencer_active_editable;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
@@ -823,7 +788,7 @@ void SEQUENCER_OT_image_strip_add(struct wmOperatorType *ot)
 static int sequencer_add_effect_strip_exec(bContext *C, wmOperator *op)
 {
 	Scene *scene = CTX_data_scene(C);
-	Editing *ed = BKE_sequencer_editing_get(scene, TRUE);
+	Editing *ed = BKE_sequencer_editing_get(scene, true);
 
 	Sequence *seq;  /* generic strip vars */
 	Strip *strip;
@@ -902,7 +867,7 @@ static int sequencer_add_effect_strip_exec(bContext *C, wmOperator *op)
 		}
 	}
 
-	if (RNA_boolean_get(op->ptr, "overlap") == FALSE) {
+	if (RNA_boolean_get(op->ptr, "overlap") == false) {
 		if (BKE_sequence_test_overlap(ed->seqbasep, seq)) BKE_sequence_base_shuffle(ed->seqbasep, seq, scene);
 	}
 
@@ -928,14 +893,9 @@ static int sequencer_add_effect_strip_exec(bContext *C, wmOperator *op)
 /* add color */
 static int sequencer_add_effect_strip_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
-	short is_type_set = RNA_struct_property_is_set(op->ptr, "type");
+	bool is_type_set = RNA_struct_property_is_set(op->ptr, "type");
 	int type = -1;
 	int prop_flag = SEQPROP_ENDFRAME;
-
-	if (!ED_operator_sequencer_active(C)) {
-		BKE_report(op->reports, RPT_ERROR, "Sequencer area not active");
-		return OPERATOR_CANCELLED;
-	}
 
 	if (is_type_set) {
 		type = RNA_enum_get(op->ptr, "type");
@@ -965,7 +925,7 @@ void SEQUENCER_OT_effect_strip_add(struct wmOperatorType *ot)
 	ot->invoke = sequencer_add_effect_strip_invoke;
 	ot->exec = sequencer_add_effect_strip_exec;
 
-	ot->poll = ED_operator_scene_editable;
+	ot->poll = ED_operator_sequencer_active_editable;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;

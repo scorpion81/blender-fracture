@@ -1469,6 +1469,11 @@ static int parent_drop_exec(bContext *C, wmOperator *op)
 	RNA_string_get(op->ptr, "child", childname);
 	ob = (Object *)BKE_libblock_find_name(ID_OB, childname);
 
+	if (ob->id.lib) {
+		BKE_report(op->reports, RPT_INFO, "Can't edit library linked object");
+		return OPERATOR_CANCELLED;
+	}
+
 	ED_object_parent_set(op->reports, bmain, scene, ob, par, partype, false, false, NULL);
 
 	DAG_relations_tag_update(bmain);
@@ -1510,6 +1515,10 @@ static int parent_drop_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 			return OPERATOR_CANCELLED;
 		}
 		if (ob == par) {
+			return OPERATOR_CANCELLED;
+		}
+		if (ob->id.lib) {
+			BKE_report(op->reports, RPT_INFO, "Can't edit library linked object");
 			return OPERATOR_CANCELLED;
 		}
 		
@@ -1648,7 +1657,7 @@ static int outliner_parenting_poll(bContext *C)
 		return ELEM4(soops->outlinevis, SO_ALL_SCENES, SO_CUR_SCENE, SO_VISIBLE, SO_GROUPS);
 	}
 
-	return FALSE;
+	return false;
 }
 
 static int parent_clear_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))

@@ -275,19 +275,19 @@ static void text_keymap(struct wmKeyConfig *keyconf)
 	
 	kmi = WM_keymap_add_item(keymap, "WM_OT_context_cycle_int", WHEELUPMOUSE, KM_PRESS, KM_CTRL, 0);
 	RNA_string_set(kmi->ptr, "data_path", "space_data.font_size");
-	RNA_boolean_set(kmi->ptr, "reverse", FALSE);
+	RNA_boolean_set(kmi->ptr, "reverse", false);
 	
 	kmi = WM_keymap_add_item(keymap, "WM_OT_context_cycle_int", WHEELDOWNMOUSE, KM_PRESS, KM_CTRL, 0);
 	RNA_string_set(kmi->ptr, "data_path", "space_data.font_size");
-	RNA_boolean_set(kmi->ptr, "reverse", TRUE);
+	RNA_boolean_set(kmi->ptr, "reverse", true);
 
 	kmi = WM_keymap_add_item(keymap, "WM_OT_context_cycle_int", PADPLUSKEY, KM_PRESS, KM_CTRL, 0);
 	RNA_string_set(kmi->ptr, "data_path", "space_data.font_size");
-	RNA_boolean_set(kmi->ptr, "reverse", FALSE);
+	RNA_boolean_set(kmi->ptr, "reverse", false);
 	
 	kmi = WM_keymap_add_item(keymap, "WM_OT_context_cycle_int", PADMINUS, KM_PRESS, KM_CTRL, 0);
 	RNA_string_set(kmi->ptr, "data_path", "space_data.font_size");
-	RNA_boolean_set(kmi->ptr, "reverse", TRUE);
+	RNA_boolean_set(kmi->ptr, "reverse", true);
 
 	WM_keymap_add_item(keymap, "TEXT_OT_new", NKEY, KM_PRESS, KM_CTRL, 0);
 	WM_keymap_add_item(keymap, "TEXT_OT_open", OKEY, KM_PRESS, KM_ALT, 0);
@@ -309,13 +309,8 @@ static void text_keymap(struct wmKeyConfig *keyconf)
 
 	if (U.uiflag & USER_MMB_PASTE) { // XXX not dynamic
 		kmi = WM_keymap_add_item(keymap, "TEXT_OT_paste", MIDDLEMOUSE, KM_PRESS, 0, 0);
-		RNA_boolean_set(kmi->ptr, "selection", TRUE);
+		RNA_boolean_set(kmi->ptr, "selection", true);
 	}
-
-	kmi = WM_keymap_add_item(keymap, "TEXT_OT_to_3d_object", MKEY, KM_PRESS, KM_ALT, 0);
-	RNA_boolean_set(kmi->ptr, "split_lines", FALSE);
-	kmi = WM_keymap_add_item(keymap, "TEXT_OT_to_3d_object", MKEY, KM_PRESS, KM_CTRL, 0);
-	RNA_boolean_set(kmi->ptr, "split_lines", TRUE);
 
 	WM_keymap_add_item(keymap, "TEXT_OT_select_all", AKEY, KM_PRESS, KM_CTRL, 0);
 	WM_keymap_add_item(keymap, "TEXT_OT_select_line", AKEY, KM_PRESS, KM_SHIFT | KM_CTRL, 0);
@@ -373,7 +368,7 @@ static void text_keymap(struct wmKeyConfig *keyconf)
 	WM_keymap_add_item(keymap, "TEXT_OT_selection_set", EVT_TWEAK_L, KM_ANY, 0, 0);
 	WM_keymap_add_item(keymap, "TEXT_OT_cursor_set", LEFTMOUSE, KM_PRESS, 0, 0);
 	kmi = WM_keymap_add_item(keymap, "TEXT_OT_selection_set", LEFTMOUSE, KM_PRESS, KM_SHIFT, 0);
-	RNA_boolean_set(kmi->ptr, "select", TRUE);
+	RNA_boolean_set(kmi->ptr, "select", true);
 	RNA_int_set(WM_keymap_add_item(keymap, "TEXT_OT_scroll", WHEELUPMOUSE, KM_PRESS, 0, 0)->ptr, "lines", -1);
 	RNA_int_set(WM_keymap_add_item(keymap, "TEXT_OT_scroll", WHEELDOWNMOUSE, KM_PRESS, 0, 0)->ptr, "lines", 1);
 
@@ -449,9 +444,16 @@ static void text_main_area_draw(const bContext *C, ARegion *ar)
 	/* scrollers? */
 }
 
-static void text_cursor(wmWindow *win, ScrArea *UNUSED(sa), ARegion *UNUSED(ar))
+static void text_cursor(wmWindow *win, ScrArea *sa, ARegion *ar)
 {
-	WM_cursor_set(win, BC_TEXTEDITCURSOR);
+	SpaceText *st = sa->spacedata.first;
+	int wmcursor = BC_TEXTEDITCURSOR;
+
+	if (st->text && BLI_rcti_isect_pt(&st->txtbar, win->eventstate->x - ar->winrct.xmin, st->txtbar.ymin)) {
+		wmcursor = CURSOR_STD;
+	}
+
+	WM_cursor_set(win, wmcursor);
 }
 
 
@@ -570,6 +572,7 @@ void ED_spacetype_text(void)
 	art->init = text_main_area_init;
 	art->draw = text_main_area_draw;
 	art->cursor = text_cursor;
+	art->event_cursor = true;
 
 	BLI_addhead(&st->regiontypes, art);
 	

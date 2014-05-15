@@ -115,8 +115,8 @@ void BMW_init(BMWalker *walker, BMesh *bm, int type,
 		BLI_assert(mask_face == 0 || (walker->valid_mask & BM_FACE));
 	}
 	
-	walker->worklist = BLI_mempool_create(walker->structsize, 100, 100, BLI_MEMPOOL_SYSMALLOC);
-	walker->states.first = walker->states.last = NULL;
+	walker->worklist = BLI_mempool_create(walker->structsize, 0, 128, BLI_MEMPOOL_NOP);
+	BLI_listbase_clear(&walker->states);
 }
 
 /**

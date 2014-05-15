@@ -64,18 +64,18 @@ kmi.properties.value = 'TEXT_EDITOR'
 kmi = km.keymap_items.new('wm.context_set_enum', 'F12', 'PRESS', shift=True)
 kmi.properties.data_path = 'area.type'
 kmi.properties.value = 'DOPESHEET_EDITOR'
-kmi = km.keymap_items.new('wm.ndof_sensitivity_change', 'NDOF_BUTTON_PLUS', 'PRESS')
-kmi.properties.decrease = False
-kmi.properties.fast = False
-kmi = km.keymap_items.new('wm.ndof_sensitivity_change', 'NDOF_BUTTON_MINUS', 'PRESS')
-kmi.properties.decrease = True
-kmi.properties.fast = False
-kmi = km.keymap_items.new('wm.ndof_sensitivity_change', 'NDOF_BUTTON_PLUS', 'PRESS', shift=True)
-kmi.properties.decrease = False
-kmi.properties.fast = True
-kmi = km.keymap_items.new('wm.ndof_sensitivity_change', 'NDOF_BUTTON_MINUS', 'PRESS', shift=True)
-kmi.properties.decrease = True
-kmi.properties.fast = True
+kmi = km.keymap_items.new('wm.context_scale_float', 'NDOF_BUTTON_PLUS', 'PRESS')
+kmi.properties.data_path = 'user_preferences.inputs.ndof_sensitivity'
+kmi.properties.value = 1.1
+kmi = km.keymap_items.new('wm.context_scale_float', 'NDOF_BUTTON_MINUS', 'PRESS')
+kmi.properties.data_path = 'user_preferences.inputs.ndof_sensitivity'
+kmi.properties.value = 1.0 / 1.1
+kmi = km.keymap_items.new('wm.context_scale_float', 'NDOF_BUTTON_PLUS', 'PRESS', shift=True)
+kmi.properties.data_path = 'user_preferences.inputs.ndof_sensitivity'
+kmi.properties.value = 1.5
+kmi = km.keymap_items.new('wm.context_scale_float', 'NDOF_BUTTON_MINUS', 'PRESS', shift=True)
+kmi.properties.data_path = 'user_preferences.inputs.ndof_sensitivity'
+kmi.properties.value = 1.0 / 1.5
 kmi = km.keymap_items.new('info.reports_display_update', 'TIMER', 'ANY', any=True)
 
 # Map Screen
@@ -1173,7 +1173,7 @@ kmi = km.keymap_items.new('uv.pin', 'P', 'PRESS')
 kmi.properties.clear = False
 kmi = km.keymap_items.new('uv.pin', 'P', 'PRESS', alt=True)
 kmi.properties.clear = True
-kmi = km.keymap_items.new('uv.unwrap', 'E', 'PRESS')
+kmi = km.keymap_items.new('uv.unwrap', 'U', 'PRESS')
 kmi = km.keymap_items.new('uv.hide', 'H', 'PRESS', ctrl=True)
 kmi.properties.unselected = False
 kmi = km.keymap_items.new('uv.hide', 'H', 'PRESS', alt=True)

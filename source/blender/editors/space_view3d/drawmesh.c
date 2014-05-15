@@ -36,7 +36,6 @@
 #include "BLI_blenlib.h"
 #include "BLI_bitmap.h"
 #include "BLI_math.h"
-#include "BLI_utildefines.h"
 
 #include "DNA_material_types.h"
 #include "DNA_mesh_types.h"
@@ -68,6 +67,8 @@
 #include "GPU_extensions.h"
 #include "GPU_draw.h"
 #include "GPU_material.h"
+
+#include "RE_engine.h"
 
 #include "ED_mesh.h"
 #include "ED_uvedit.h"
@@ -215,11 +216,12 @@ static Material *give_current_material_or_def(Object *ob, int matnr)
 
 static struct TextureDrawState {
 	Object *ob;
+	bool use_game_mat;
 	int is_lit, is_tex;
 	int color_profile;
 	bool use_backface_culling;
 	unsigned char obcol[4];
-} Gtexdraw = {NULL, 0, 0, 0, false, {0, 0, 0, 0}};
+} Gtexdraw = {NULL, false, 0, 0, 0, false, {0, 0, 0, 0}};
 
 static bool set_draw_settings_cached(int clearcache, MTFace *texface, Material *ma, struct TextureDrawState gtexdraw)
 {
@@ -233,7 +235,7 @@ static bool set_draw_settings_cached(int clearcache, MTFace *texface, Material *
 
 	Object *litob = NULL;  /* to get mode to turn off mipmap in painting mode */
 	int backculled = 1;
-	int alphablend = 0;
+	int alphablend = GPU_BLEND_SOLID;
 	int textured = 0;
 	int lit = 0;
 	int has_texface = texface != NULL;
@@ -253,10 +255,13 @@ static bool set_draw_settings_cached(int clearcache, MTFace *texface, Material *
 	/* convert number of lights into boolean */
 	if (gtexdraw.is_lit) lit = 1;
 
+	backculled = gtexdraw.use_backface_culling;
 	if (ma) {
-		alphablend = ma->game.alpha_blend;
 		if (ma->mode & MA_SHLESS) lit = 0;
-		backculled = (ma->game.flag & GEMAT_BACKCULL) || gtexdraw.use_backface_culling;
+		if (gtexdraw.use_game_mat) {
+			backculled = backculled || (ma->game.flag & GEMAT_BACKCULL);
+			alphablend = ma->game.alpha_blend;
+		}
 	}
 
 	if (texface) {
@@ -360,6 +365,7 @@ static void draw_textured_begin(Scene *scene, View3D *v3d, RegionView3D *rv3d, O
 	Gtexdraw.is_tex = is_tex;
 
 	Gtexdraw.color_profile = BKE_scene_check_color_management_enabled(scene);
+	Gtexdraw.use_game_mat = (RE_engines_find(scene->r.engine)->flag & RE_GAME) != 0;
 	Gtexdraw.use_backface_culling = (v3d->flag2 & V3D_BACKFACE_CULLING) != 0;
 
 	memcpy(Gtexdraw.obcol, obcol, sizeof(obcol));
@@ -631,7 +637,7 @@ static void draw_mesh_text(Scene *scene, Object *ob, int glsl)
 	if (ob->mode & OB_MODE_EDIT)
 		return;
 	else if (ob == OBACT)
-		if (paint_facesel_test(ob) || paint_vertsel_test(ob))
+		if (BKE_paint_select_elem_test(ob))
 			return;
 
 	ddm = mesh_get_derived_deform(scene, ob, CD_MASK_BAREMESH);
@@ -1021,34 +1027,69 @@ void draw_mesh_textured(Scene *scene, View3D *v3d, RegionView3D *rv3d,
 }
 
 /* Vertex Paint and Weight Paint */
+static void draw_mesh_paint_light_begin(void)
+{
+	const float spec[4] = {0.47f, 0.47f, 0.47f, 0.47f};
+
+	GPU_enable_material(0, NULL);
+
+	/* but set default spec */
+	glColorMaterial(GL_FRONT_AND_BACK, GL_SPECULAR);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, spec);
+
+	/* diffuse */
+	glColorMaterial(GL_FRONT_AND_BACK, GL_DIFFUSE);
+	glEnable(GL_LIGHTING);
+	glEnable(GL_COLOR_MATERIAL);
+}
+static void draw_mesh_paint_light_end(void)
+{
+	glDisable(GL_COLOR_MATERIAL);
+	glDisable(GL_LIGHTING);
+
+	GPU_disable_material();
+}
+
 void draw_mesh_paint_weight_faces(DerivedMesh *dm, const bool use_light,
                                   void *facemask_cb, void *user_data)
 {
 	if (use_light) {
-		const float spec[4] = {0.47f, 0.47f, 0.47f, 0.47f};
-
-		/* but set default spec */
-		glColorMaterial(GL_FRONT_AND_BACK, GL_SPECULAR);
-		glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, spec);
-
-		/* diffuse */
-		glColorMaterial(GL_FRONT_AND_BACK, GL_DIFFUSE);
-		glEnable(GL_LIGHTING);
-		glEnable(GL_COLOR_MATERIAL);
+		draw_mesh_paint_light_begin();
 	}
 
 	dm->drawMappedFaces(dm, (DMSetDrawOptions)facemask_cb, GPU_enable_material, NULL, user_data,
 	                    DM_DRAW_USE_COLORS | DM_DRAW_ALWAYS_SMOOTH);
 
 	if (use_light) {
-		glDisable(GL_COLOR_MATERIAL);
-		glDisable(GL_LIGHTING);
-
-		GPU_disable_material();
+		draw_mesh_paint_light_end();
 	}
 }
 
-void draw_mesh_paint_weight_edges(RegionView3D *rv3d, DerivedMesh *dm, const bool use_depth,
+void draw_mesh_paint_vcolor_faces(DerivedMesh *dm, const bool use_light,
+                                  void *facemask_cb, void *user_data,
+                                  const Mesh *me)
+{
+	if (use_light) {
+		draw_mesh_paint_light_begin();
+	}
+
+	if (me->mloopcol) {
+		dm->drawMappedFaces(dm, facemask_cb, GPU_enable_material, NULL, user_data,
+		                    DM_DRAW_USE_COLORS | DM_DRAW_ALWAYS_SMOOTH);
+	}
+	else {
+		glColor3f(1.0f, 1.0f, 1.0f);
+		dm->drawMappedFaces(dm, facemask_cb, GPU_enable_material, NULL, user_data,
+		                    DM_DRAW_ALWAYS_SMOOTH);
+	}
+
+	if (use_light) {
+		draw_mesh_paint_light_end();
+	}
+}
+
+void draw_mesh_paint_weight_edges(RegionView3D *rv3d, DerivedMesh *dm,
+                                  const bool use_depth, const bool use_alpha,
                                   void *edgemask_cb, void *user_data)
 {
 	/* weight paint in solid mode, special case. focus on making the weights clear
@@ -1062,7 +1103,10 @@ void draw_mesh_paint_weight_edges(RegionView3D *rv3d, DerivedMesh *dm, const boo
 		glDisable(GL_DEPTH_TEST);
 	}
 
-	glEnable(GL_BLEND);
+	if (use_alpha) {
+		glEnable(GL_BLEND);
+	}
+
 	glColor4ub(255, 255, 255, 96);
 	glEnable(GL_LINE_STIPPLE);
 	glLineStipple(1, 0xAAAA);
@@ -1078,7 +1122,10 @@ void draw_mesh_paint_weight_edges(RegionView3D *rv3d, DerivedMesh *dm, const boo
 	}
 
 	glDisable(GL_LINE_STIPPLE);
-	glDisable(GL_BLEND);
+
+	if (use_alpha) {
+		glDisable(GL_BLEND);
+	}
 }
 
 void draw_mesh_paint(View3D *v3d, RegionView3D *rv3d,
@@ -1093,22 +1140,10 @@ void draw_mesh_paint(View3D *v3d, RegionView3D *rv3d,
 		facemask = wpaint__setSolidDrawOptions_facemask;
 
 	if (ob->mode & OB_MODE_WEIGHT_PAINT) {
-		if (use_light) {
-			GPU_enable_material(0, NULL);
-		}
-
 		draw_mesh_paint_weight_faces(dm, use_light, facemask, me);
 	}
 	else if (ob->mode & OB_MODE_VERTEX_PAINT) {
-		if (me->mloopcol) {
-			dm->drawMappedFaces(dm, facemask, GPU_enable_material, NULL, me,
-			                    DM_DRAW_USE_COLORS | DM_DRAW_ALWAYS_SMOOTH);
-		}
-		else {
-			glColor3f(1.0f, 1.0f, 1.0f);
-			dm->drawMappedFaces(dm, facemask, GPU_enable_material, NULL, me,
-			                    DM_DRAW_ALWAYS_SMOOTH);
-		}
+		draw_mesh_paint_vcolor_faces(dm, use_light, facemask, me, me);
 	}
 
 	/* draw face selection on top */
@@ -1117,7 +1152,17 @@ void draw_mesh_paint(View3D *v3d, RegionView3D *rv3d,
 	}
 	else if ((use_light == false) || (ob->dtx & OB_DRAWWIRE)) {
 		const bool use_depth = (v3d->flag & V3D_ZBUF_SELECT) || !(ob->mode & OB_MODE_WEIGHT_PAINT);
-		draw_mesh_paint_weight_edges(rv3d, dm, use_depth, NULL, NULL);
+		const bool use_alpha = (ob->mode & OB_MODE_VERTEX_PAINT) == 0;
+
+		if (use_alpha == false) {
+			set_inverted_drawing(1);
+		}
+
+		draw_mesh_paint_weight_edges(rv3d, dm, use_depth, use_alpha, NULL, NULL);
+
+		if (use_alpha == false) {
+			set_inverted_drawing(0);
+		}
 	}
 }
 

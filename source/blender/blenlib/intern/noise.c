@@ -30,12 +30,6 @@
  *  \ingroup bli
  */
 
-
-#ifdef _MSC_VER
-#  pragma warning (disable:4244)  /* "conversion from double to float" */
-#  pragma warning (disable:4305)  /* "truncation from const double to float" */
-#endif
-
 #include <math.h>
 
 #include "BLI_noise.h"
@@ -1413,7 +1407,7 @@ float cellNoise(float x, float y, float z)
 }
 
 /* returns a vector/point/color in ca, using point hasharray directly */
-void cellNoiseV(float x, float y, float z, float *ca)
+void cellNoiseV(float x, float y, float z, float ca[3])
 {
 	int xi = (int)(floor(x));
 	int yi = (int)(floor(y));

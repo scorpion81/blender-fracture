@@ -94,10 +94,69 @@ void hsv_to_rgb(float h, float s, float v, float *r, float *g, float *b)
 	}
 }
 
+/* HSL to rgb conversion from https://en.wikipedia.org/wiki/HSL_and_HSV */
+void hsl_to_rgb(float h, float s, float l, float *r, float *g, float *b)
+{
+	float i, f, c;
+	h = (h - floorf(h)) * 6.0f;
+	c = (l > 0.5f) ? (2.0f * (1.0f - l) * s) : (2.0f * l * s);
+	i = floorf(h);
+	f = h - i;
+
+#define x2 (c * f)
+#define x1 (c * (1.0f - f))
+
+	/* faster to compare floats then int conversion */
+	if (i < 1.0f) {
+		*r = c;
+		*g = x2;
+		*b = 0;
+	}
+	else if (i < 2.0f) {
+		*r = x1;
+		*g = c;
+		*b = 0;
+	}
+	else if (i < 3.0f) {
+		*r = 0;
+		*g = c;
+		*b = x2;
+	}
+	else if (i < 4.0f) {
+		*r = 0;
+		*g = x1;
+		*b = c;
+	}
+	else if (i < 5.0f) {
+		*r = x2;
+		*g = 0;
+		*b = c;
+	}
+	else {
+		*r = c;
+		*g = 0;
+		*b = x1;
+	}
+
+#undef x1
+#undef x2
+
+	f = l - 0.5f * c;
+	*r += f;
+	*g += f;
+	*b += f;
+}
+
 /* convenience function for now */
 void hsv_to_rgb_v(const float hsv[3], float r_rgb[3])
 {
 	hsv_to_rgb(hsv[0], hsv[1], hsv[2], &r_rgb[0], &r_rgb[1], &r_rgb[2]);
+}
+
+/* convenience function for now */
+void hsl_to_rgb_v(const float hcl[3], float r_rgb[3])
+{
+	hsl_to_rgb(hcl[0], hcl[1], hcl[2], &r_rgb[0], &r_rgb[1], &r_rgb[2]);
 }
 
 void rgb_to_yuv(float r, float g, float b, float *ly, float *lu, float *lv)
@@ -290,7 +349,7 @@ void rgb_to_hsl(float r, float g, float b, float *lh, float *ls, float *ll)
 {
 	const float cmax = max_fff(r, g, b);
 	const float cmin = min_fff(r, g, b);
-	float h, s, l = (cmax + cmin) / 2.0f;
+	float h, s, l = min_ff(1.0, (cmax + cmin) / 2.0f);
 
 	if (cmax == cmin) {
 		h = s = 0.0f; // achromatic
@@ -314,6 +373,33 @@ void rgb_to_hsl(float r, float g, float b, float *lh, float *ls, float *ll)
 	*ls = s;
 	*ll = l;
 }
+
+void rgb_to_hsl_compat(float r, float g, float b, float *lh, float *ls, float *ll)
+{
+	float orig_s = *ls;
+	float orig_h = *lh;
+
+	rgb_to_hsl(r, g, b, lh, ls, ll);
+
+	if (*ll <= 0.0f) {
+		*lh = orig_h;
+		*ls = orig_s;
+	}
+	else if (*ls <= 0.0f) {
+		*lh = orig_h;
+		*ls = orig_s;
+	}
+
+	if (*lh == 0.0f && orig_h >= 1.0f) {
+		*lh = 1.0f;
+	}
+}
+
+void rgb_to_hsl_compat_v(const float rgb[3], float r_hsl[3])
+{
+	rgb_to_hsl_compat(rgb[0], rgb[1], rgb[2], &r_hsl[0], &r_hsl[1], &r_hsl[2]);
+}
+
 
 /* convenience function for now */
 void rgb_to_hsl_v(const float rgb[3], float r_hsl[3])
@@ -345,6 +431,16 @@ void rgb_to_hsv_compat(float r, float g, float b, float *lh, float *ls, float *l
 void rgb_to_hsv_compat_v(const float rgb[3], float r_hsv[3])
 {
 	rgb_to_hsv_compat(rgb[0], rgb[1], rgb[2], &r_hsv[0], &r_hsv[1], &r_hsv[2]);
+}
+
+/* clamp hsv to usable values */
+void hsv_clamp_v(float hsv[3], float v_max)
+{
+	if (UNLIKELY(hsv[0] < 0.0f || hsv[0] > 1.0f)) {
+		hsv[0] = hsv[0] - floorf(hsv[0]);
+	}
+	CLAMP(hsv[1], 0.0f, 1.0f);
+	CLAMP(hsv[2], 0.0f, v_max);
 }
 
 /*http://brucelindbloom.com/index.html?Eqn_RGB_XYZ_Matrix.html */
@@ -412,29 +508,29 @@ void cpack_to_rgb(unsigned int col, float *r, float *g, float *b)
 	*b = ((float)(((col) >> 16) & 0xFF)) * (1.0f / 255.0f);
 }
 
-void rgb_uchar_to_float(float col_r[3], const unsigned char col_ub[3])
+void rgb_uchar_to_float(float r_col[3], const unsigned char col_ub[3])
 {
-	col_r[0] = ((float)col_ub[0]) * (1.0f / 255.0f);
-	col_r[1] = ((float)col_ub[1]) * (1.0f / 255.0f);
-	col_r[2] = ((float)col_ub[2]) * (1.0f / 255.0f);
+	r_col[0] = ((float)col_ub[0]) * (1.0f / 255.0f);
+	r_col[1] = ((float)col_ub[1]) * (1.0f / 255.0f);
+	r_col[2] = ((float)col_ub[2]) * (1.0f / 255.0f);
 }
 
-void rgba_uchar_to_float(float col_r[4], const unsigned char col_ub[4])
+void rgba_uchar_to_float(float r_col[4], const unsigned char col_ub[4])
 {
-	col_r[0] = ((float)col_ub[0]) * (1.0f / 255.0f);
-	col_r[1] = ((float)col_ub[1]) * (1.0f / 255.0f);
-	col_r[2] = ((float)col_ub[2]) * (1.0f / 255.0f);
-	col_r[3] = ((float)col_ub[3]) * (1.0f / 255.0f);
+	r_col[0] = ((float)col_ub[0]) * (1.0f / 255.0f);
+	r_col[1] = ((float)col_ub[1]) * (1.0f / 255.0f);
+	r_col[2] = ((float)col_ub[2]) * (1.0f / 255.0f);
+	r_col[3] = ((float)col_ub[3]) * (1.0f / 255.0f);
 }
 
-void rgb_float_to_uchar(unsigned char col_r[3], const float col_f[3])
+void rgb_float_to_uchar(unsigned char r_col[3], const float col_f[3])
 {
-	F3TOCHAR3(col_f, col_r);
+	F3TOCHAR3(col_f, r_col);
 }
 
-void rgba_float_to_uchar(unsigned char col_r[4], const float col_f[4])
+void rgba_float_to_uchar(unsigned char r_col[4], const float col_f[4])
 {
-	F4TOCHAR4(col_f, col_r);
+	F4TOCHAR4(col_f, r_col);
 }
 
 /* ********************************* color transforms ********************************* */

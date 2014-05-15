@@ -61,7 +61,7 @@ class USERPREF_HT_header(Header):
             layout.operator("wm.keyconfig_import")
             layout.operator("wm.keyconfig_export")
         elif userpref.active_section == 'ADDONS':
-            layout.operator("wm.addon_install", icon="FILESEL")
+            layout.operator("wm.addon_install", icon='FILESEL')
             layout.operator("wm.addon_refresh", icon='FILE_REFRESH')
             layout.menu("USERPREF_MT_addons_dev_guides")
         elif userpref.active_section == 'THEMES':
@@ -950,33 +950,39 @@ class USERPREF_MT_ndof_settings(Menu):
 
         input_prefs = context.user_preferences.inputs
 
-        layout.separator()
+        is_view3d = context.space_data.type == 'VIEW_3D'
+
         layout.prop(input_prefs, "ndof_sensitivity")
         layout.prop(input_prefs, "ndof_orbit_sensitivity")
 
-        if context.space_data.type == 'VIEW_3D':
+        if is_view3d:
             layout.separator()
             layout.prop(input_prefs, "ndof_show_guide")
 
             layout.separator()
-            layout.label(text="Orbit options")
+            layout.label(text="Orbit style")
+            layout.row().prop(input_prefs, "ndof_view_navigate_method", text="")
             layout.row().prop(input_prefs, "ndof_view_rotate_method", text="")
-            layout.prop(input_prefs, "ndof_roll_invert_axis")
-            layout.prop(input_prefs, "ndof_tilt_invert_axis")
-            layout.prop(input_prefs, "ndof_rotate_invert_axis")
-
             layout.separator()
-            layout.label(text="Pan options")
-            layout.prop(input_prefs, "ndof_panx_invert_axis")
-            layout.prop(input_prefs, "ndof_pany_invert_axis")
-            layout.prop(input_prefs, "ndof_panz_invert_axis")
+            layout.label(text="Orbit options")
+            layout.prop(input_prefs, "ndof_rotx_invert_axis")
+            layout.prop(input_prefs, "ndof_roty_invert_axis")
+            layout.prop(input_prefs, "ndof_rotz_invert_axis")
 
-            layout.label(text="Zoom options")
-            layout.prop(input_prefs, "ndof_zoom_invert")
-            layout.prop(input_prefs, "ndof_zoom_updown")
+        # view2d use pan/zoom
+        layout.separator()
+        layout.label(text="Pan options")
+        layout.prop(input_prefs, "ndof_panx_invert_axis")
+        layout.prop(input_prefs, "ndof_pany_invert_axis")
+        layout.prop(input_prefs, "ndof_panz_invert_axis")
+        layout.prop(input_prefs, "ndof_pan_yz_swap_axis")
 
+        layout.label(text="Zoom options")
+        layout.prop(input_prefs, "ndof_zoom_invert")
+
+        if is_view3d:
             layout.separator()
-            layout.label(text="Fly options")
+            layout.label(text="Fly/Walk options")
             layout.prop(input_prefs, "ndof_fly_helicopter", icon='NDOF_FLY')
             layout.prop(input_prefs, "ndof_lock_horizon", icon='NDOF_DOM')
 
@@ -1093,6 +1099,7 @@ class USERPREF_PT_input(Panel):
         sub.label(text="NDOF Device:")
         sub.prop(inputs, "ndof_sensitivity", text="NDOF Sensitivity")
         sub.prop(inputs, "ndof_orbit_sensitivity", text="NDOF Orbit Sensitivity")
+        sub.row().prop(inputs, "ndof_view_navigate_method", expand=True)
         sub.row().prop(inputs, "ndof_view_rotate_method", expand=True)
 
         row.separator()

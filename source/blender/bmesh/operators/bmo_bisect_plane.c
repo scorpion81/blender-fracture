@@ -38,6 +38,7 @@
 
 #define ELE_NEW 1
 #define ELE_INPUT 2
+#define MYTAG (1 << 6)
 
 void bmo_bisect_plane_exec(BMesh *bm, BMOperator *op)
 {
@@ -65,7 +66,6 @@ void bmo_bisect_plane_exec(BMesh *bm, BMOperator *op)
 	BMO_slot_buffer_hflag_enable(bm, op->slots_in, "geom", BM_EDGE | BM_FACE, BM_ELEM_TAG, false);
 
 	BMO_slot_buffer_flag_enable(bm, op->slots_in, "geom", BM_ALL_NOLOOP, ELE_INPUT);
-
 
 	BM_mesh_bisect_plane(bm, plane, use_snap_center, true,
 	                     ELE_NEW, dist);
@@ -100,7 +100,8 @@ void bmo_bisect_plane_exec(BMesh *bm, BMOperator *op)
 		}
 
 		while ((v = STACK_POP(vert_arr))) {
-			BM_vert_kill(bm, v);
+
+				BM_vert_kill(bm, v);
 		}
 
 		STACK_FREE(vert_arr);
@@ -108,5 +109,5 @@ void bmo_bisect_plane_exec(BMesh *bm, BMOperator *op)
 	}
 
 	BMO_slot_buffer_from_enabled_flag(bm, op, op->slots_out, "geom.out", BM_ALL_NOLOOP, ELE_NEW | ELE_INPUT);
-	BMO_slot_buffer_from_enabled_flag(bm, op, op->slots_out, "geom_cut.out", BM_VERT | BM_EDGE, ELE_NEW);
+	BMO_slot_buffer_from_enabled_flag(bm, op, op->slots_out, "geom_cut.out", BM_VERT | BM_EDGE | BM_FACE, ELE_NEW);
 }

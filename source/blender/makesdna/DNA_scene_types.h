@@ -60,6 +60,7 @@ struct Editing;
 struct SceneStats;
 struct bGPdata;
 struct MovieClip;
+struct ColorSpace;
 
 /* ************************************************************* */
 /* Scene Data */
@@ -187,7 +188,7 @@ typedef struct SceneRenderLayer {
 	int pass_xor;
 
 	int samples;
-	int pad;
+	float pass_alpha_threshold;
 	
 	struct FreestyleConfig freestyleConfig;
 } SceneRenderLayer;
@@ -848,14 +849,16 @@ typedef struct Sculpt {
 	int radial_symm[3];
 
 	/* Maximum edge length for dynamic topology sculpting (in pixels) */
-	int detail_size;
+	float detail_size;
 
 	/* Direction used for SCULPT_OT_symmetrize operator */
 	int symmetrize_direction;
 
 	/* gravity factor for sculpting */
 	float gravity_factor;
-	int pad;
+
+	/* scale for constant detail size */
+	float constant_detail;
 
 	struct Object *gravity_object;
 	void *pad2;
@@ -930,7 +933,9 @@ typedef struct UnifiedPaintSettings {
 
 	float brush_rotation;
 
-	// all this below is used to communicate with the cursor drawing routine
+	/*********************************************************************************
+	 *  all data below are used to communicate with cursor drawing and tex sampling  *
+	 *********************************************************************************/
 	int draw_anchored;
 	int   anchored_size;
 	float anchored_initial_mouse[2];
@@ -939,7 +944,7 @@ typedef struct UnifiedPaintSettings {
 	int stroke_active;
 
 	/* drawing pressure */
-	float pressure_value;
+	float size_pressure_value;
 
 	/* position of mouse, used to sample the texture */
 	float tex_mouse[2];
@@ -947,9 +952,14 @@ typedef struct UnifiedPaintSettings {
 	/* position of mouse, used to sample the mask texture */
 	float mask_tex_mouse[2];
 
+	/* ColorSpace cache to avoid locking up during sampling */
+	int do_linear_conversion;
+	struct ColorSpace *colorspace;
+
 	/* radius of brush, premultiplied with pressure.
 	 * In case of anchored brushes contains that radius */
 	float pixel_radius;
+	int pad2;
 } UnifiedPaintSettings;
 
 typedef enum {
@@ -1163,8 +1173,13 @@ typedef struct Scene {
 	
 	short flag;								/* various settings */
 	
-	short use_nodes;
-	
+	char use_nodes;
+
+	/* Openmp Global Settings */
+	char  omp_threads_mode;
+	short omp_threads;
+	char pad[6];
+
 	struct bNodeTree *nodetree;
 	
 	struct Editing *ed;								/* sequence editor data is allocated here */
@@ -1223,7 +1238,6 @@ typedef struct Scene {
 	/* RigidBody simulation world+settings */
 	struct RigidBodyWorld *rigidbody_world;
 } Scene;
-
 
 /* **************** RENDERDATA ********************* */
 
@@ -1293,7 +1307,7 @@ typedef struct Scene {
 /* raytrace structure */
 #define R_RAYSTRUCTURE_AUTO				0
 #define R_RAYSTRUCTURE_OCTREE			1
-#define R_RAYSTRUCTURE_BLIBVH			2
+#define R_RAYSTRUCTURE_BLIBVH			2	/* removed */
 #define R_RAYSTRUCTURE_VBVH				3
 #define R_RAYSTRUCTURE_SIMD_SVBVH		4	/* needs SIMD */
 #define R_RAYSTRUCTURE_SIMD_QBVH		5	/* needs SIMD */
@@ -1626,7 +1640,10 @@ typedef enum SculptFlags {
 	/* If set, dynamic-topology brushes will subdivide short edges */
 	SCULPT_DYNTOPO_SUBDIVIDE = (1 << 12),
 	/* If set, dynamic-topology brushes will collapse short edges */
-	SCULPT_DYNTOPO_COLLAPSE = (1 << 11)
+	SCULPT_DYNTOPO_COLLAPSE = (1 << 11),
+
+	/* If set, dynamic-topology detail size will be constant in object space */
+	SCULPT_DYNTOPO_DETAIL_CONSTANT = (1 << 13)
 } SculptFlags;
 
 #if (DNA_DEPRECATED_GCC_POISON == 1)
@@ -1763,6 +1780,10 @@ typedef enum SculptFlags {
 /* UnitSettings->flag */
 #define	USER_UNIT_OPT_SPLIT		1
 #define USER_UNIT_ROT_RADIANS	2
+
+/* OpenMP settings */
+#define SCE_OMP_AUTO 0
+#define SCE_OMP_FIXED 1
 
 #ifdef __cplusplus
 }

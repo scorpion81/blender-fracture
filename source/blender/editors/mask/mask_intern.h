@@ -40,6 +40,17 @@ struct wmOperatorType;
 /* internal exports only */
 
 /* mask_add.c */
+bool ED_mask_find_nearest_diff_point(const struct bContext *C,
+                                     struct Mask *mask,
+                                     const float normal_co[2],
+                                     int threshold, bool feather,
+                                     struct MaskLayer **masklay_r,
+                                     struct MaskSpline **spline_r,
+                                     struct MaskSplinePoint **point_r,
+                                     float *u_r, float tangent[2],
+                                     const bool use_deform,
+                                     const bool use_project);
+
 void MASK_OT_add_vertex(struct wmOperatorType *ot);
 void MASK_OT_add_feather_vertex(struct wmOperatorType *ot);
 void MASK_OT_primitive_circle_add(struct wmOperatorType *ot);
@@ -55,6 +66,7 @@ void MASK_OT_layer_remove(struct wmOperatorType *ot);
 void MASK_OT_cyclic_toggle(struct wmOperatorType *ot);
 
 void MASK_OT_slide_point(struct wmOperatorType *ot);
+void MASK_OT_slide_spline_curvature(struct wmOperatorType *ot);
 
 void MASK_OT_delete(struct wmOperatorType *ot);
 
@@ -73,7 +85,7 @@ bool ED_mask_feather_find_nearest(
 
 struct MaskSplinePoint *ED_mask_point_find_nearest(
         const struct bContext *C, struct Mask *mask, const float normal_co[2], const float threshold,
-        struct MaskLayer **masklay_r, struct MaskSpline **spline_r, bool *is_handle_r,
+        struct MaskLayer **masklay_r, struct MaskSpline **spline_r, eMaskWhichHandle *which_handle_r,
         float *score);
 
 void MASK_OT_layer_move(struct wmOperatorType *ot);
@@ -102,8 +114,8 @@ bool ED_mask_spline_select_check(struct MaskSpline *spline);
 bool ED_mask_layer_select_check(struct MaskLayer *masklay);
 bool ED_mask_select_check(struct Mask *mask);
 
-void ED_mask_spline_select_set(struct MaskSpline *spline, const short do_select);
-void ED_mask_layer_select_set(struct MaskLayer *masklay, const short do_select);
+void ED_mask_spline_select_set(struct MaskSpline *spline, const bool do_select);
+void ED_mask_layer_select_set(struct MaskLayer *masklay, const bool do_select);
 void ED_mask_select_toggle_all(struct Mask *mask, int action);
 void ED_mask_select_flush_all(struct Mask *mask);
 

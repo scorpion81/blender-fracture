@@ -46,7 +46,10 @@ CCL_NAMESPACE_BEGIN
 
 #define TEX_NUM_FLOAT_IMAGES	5
 
-#define SHADER_NO_ID			-1
+#define SHADER_NONE				(~0)
+#define OBJECT_NONE				(~0)
+#define PRIM_NONE				(~0)
+#define LAMP_NONE				(~0)
 
 #define VOLUME_STACK_SIZE		16
 
@@ -66,8 +69,12 @@ CCL_NAMESPACE_BEGIN
 #ifdef __KERNEL_CUDA__
 #define __KERNEL_SHADING__
 #define __KERNEL_ADV_SHADING__
-#define __BRANCHED_PATH__
+/* Disabled for now, compile errors */
+//#define __BRANCHED_PATH__
+
+/* Experimental on GPU */
 //#define __VOLUME__
+//#define __SUBSURFACE__
 #endif
 
 #ifdef __KERNEL_OPENCL__
@@ -85,26 +92,24 @@ CCL_NAMESPACE_BEGIN
 #endif
 
 #ifdef __KERNEL_OPENCL_AMD__
-#define __SVM__
-#define __EMISSION__
-#define __IMAGE_TEXTURES__
-#define __PROCEDURAL_TEXTURES__
-#define __EXTRA_NODES__
-#define __HOLDOUT__
-#define __NORMAL_MAP__
-//#define __BACKGROUND_MIS__
-//#define __LAMP_MIS__
-//#define __AO__
-//#define __ANISOTROPIC__
+#define __CL_USE_NATIVE__
+#define __KERNEL_SHADING__
+//__KERNEL_ADV_SHADING__
+#define __MULTI_CLOSURE__
+#define __TRANSPARENT_SHADOWS__
+#define __PASSES__
+#define __BACKGROUND_MIS__
+#define __LAMP_MIS__
+#define __AO__
+#define __ANISOTROPIC__
 //#define __CAMERA_MOTION__
 //#define __OBJECT_MOTION__
 //#define __HAIR__
-//#define __MULTI_CLOSURE__
-//#define __TRANSPARENT_SHADOWS__
-//#define __PASSES__
+//end __KERNEL_ADV_SHADING__
 #endif
 
 #ifdef __KERNEL_OPENCL_INTEL_CPU__
+#define __CL_USE_NATIVE__
 #define __KERNEL_SHADING__
 #define __KERNEL_ADV_SHADING__
 #endif
@@ -220,7 +225,6 @@ enum PathRayFlag {
 	PATH_RAY_GLOSSY = 16,
 	PATH_RAY_SINGULAR = 32,
 	PATH_RAY_TRANSPARENT = 64,
-	PATH_RAY_VOLUME_SCATTER = 128,
 
 	PATH_RAY_SHADOW_OPAQUE = 128,
 	PATH_RAY_SHADOW_TRANSPARENT = 256,
@@ -228,15 +232,17 @@ enum PathRayFlag {
 
 	PATH_RAY_CURVE = 512, /* visibility flag to define curve segments*/
 
+	/* note that these can use maximum 12 bits, the other are for layers */
 	PATH_RAY_ALL_VISIBILITY = (1|2|4|8|16|32|64|128|256|512),
 
 	PATH_RAY_MIS_SKIP = 1024,
 	PATH_RAY_DIFFUSE_ANCESTOR = 2048,
 	PATH_RAY_GLOSSY_ANCESTOR = 4096,
 	PATH_RAY_BSSRDF_ANCESTOR = 8192,
+	PATH_RAY_SINGLE_PASS_DONE = 16384,
+	PATH_RAY_VOLUME_SCATTER = 32768,
 
-	/* this gives collisions with localview bits
-	 * see: blender_util.h, grr - Campbell */
+	/* we need layer member flags to be the 20 upper bits */
 	PATH_RAY_LAYER_SHIFT = (32-20)
 };
 
@@ -417,8 +423,26 @@ typedef struct Intersection {
 	float t, u, v;
 	int prim;
 	int object;
-	int segment;
+	int type;
 } Intersection;
+
+/* Primitives */
+
+typedef enum PrimitiveType {
+	PRIMITIVE_NONE = 0,
+	PRIMITIVE_TRIANGLE = 1,
+	PRIMITIVE_MOTION_TRIANGLE = 2,
+	PRIMITIVE_CURVE = 4,
+	PRIMITIVE_MOTION_CURVE = 8,
+
+	PRIMITIVE_ALL_TRIANGLE = (PRIMITIVE_TRIANGLE|PRIMITIVE_MOTION_TRIANGLE),
+	PRIMITIVE_ALL_CURVE = (PRIMITIVE_CURVE|PRIMITIVE_MOTION_CURVE),
+	PRIMITIVE_ALL_MOTION = (PRIMITIVE_MOTION_TRIANGLE|PRIMITIVE_MOTION_CURVE),
+	PRIMITIVE_ALL = (PRIMITIVE_ALL_TRIANGLE|PRIMITIVE_ALL_CURVE)
+} PrimitiveType;
+
+#define PRIMITIVE_PACK_SEGMENT(type, segment) ((segment << 16) | type)
+#define PRIMITIVE_UNPACK_SEGMENT(type) (type >> 16)
 
 /* Attributes */
 
@@ -431,9 +455,12 @@ typedef enum AttributeElement {
 	ATTR_ELEMENT_MESH,
 	ATTR_ELEMENT_FACE,
 	ATTR_ELEMENT_VERTEX,
+	ATTR_ELEMENT_VERTEX_MOTION,
 	ATTR_ELEMENT_CORNER,
 	ATTR_ELEMENT_CURVE,
-	ATTR_ELEMENT_CURVE_KEY
+	ATTR_ELEMENT_CURVE_KEY,
+	ATTR_ELEMENT_CURVE_KEY_MOTION,
+	ATTR_ELEMENT_VOXEL
 } AttributeElement;
 
 typedef enum AttributeStandard {
@@ -447,12 +474,17 @@ typedef enum AttributeStandard {
 	ATTR_STD_GENERATED_TRANSFORM,
 	ATTR_STD_POSITION_UNDEFORMED,
 	ATTR_STD_POSITION_UNDISPLACED,
-	ATTR_STD_MOTION_PRE,
-	ATTR_STD_MOTION_POST,
+	ATTR_STD_MOTION_VERTEX_POSITION,
+	ATTR_STD_MOTION_VERTEX_NORMAL,
 	ATTR_STD_PARTICLE,
 	ATTR_STD_CURVE_INTERCEPT,
 	ATTR_STD_PTEX_FACE_ID,
 	ATTR_STD_PTEX_UV,
+	ATTR_STD_VOLUME_DENSITY,
+	ATTR_STD_VOLUME_COLOR,
+	ATTR_STD_VOLUME_FLAME,
+	ATTR_STD_VOLUME_HEAT,
+	ATTR_STD_VOLUME_VELOCITY,
 	ATTR_STD_NUM,
 
 	ATTR_STD_NOT_FOUND = ~0
@@ -519,23 +551,24 @@ enum ShaderDataFlag {
 	SD_ABSORPTION = 128,	/* have volume absorption closure? */
 	SD_SCATTER = 256,		/* have volume phase closure? */
 	SD_AO = 512,			/* have ao closure? */
+	SD_TRANSPARENT = 1024,	/* have transparent closure? */
 
 	SD_CLOSURE_FLAGS = (SD_EMISSION|SD_BSDF|SD_BSDF_HAS_EVAL|SD_BSDF_GLOSSY|SD_BSSRDF|SD_HOLDOUT|SD_ABSORPTION|SD_SCATTER|SD_AO),
 
 	/* shader flags */
-	SD_USE_MIS = 1024,					/* direct light sample */
-	SD_HAS_TRANSPARENT_SHADOW = 2048,	/* has transparent shadow */
-	SD_HAS_VOLUME = 4096,				/* has volume shader */
-	SD_HAS_ONLY_VOLUME = 8192,			/* has only volume shader, no surface */
-	SD_HETEROGENEOUS_VOLUME = 16384,	/* has heterogeneous volume */
-	SD_HAS_BSSRDF_BUMP = 32768,			/* bssrdf normal uses bump */
+	SD_USE_MIS = 2048,					/* direct light sample */
+	SD_HAS_TRANSPARENT_SHADOW = 4096,	/* has transparent shadow */
+	SD_HAS_VOLUME = 8192,				/* has volume shader */
+	SD_HAS_ONLY_VOLUME = 16384,			/* has only volume shader, no surface */
+	SD_HETEROGENEOUS_VOLUME = 32768,	/* has heterogeneous volume */
+	SD_HAS_BSSRDF_BUMP = 65536,			/* bssrdf normal uses bump */
 
 	SD_SHADER_FLAGS = (SD_USE_MIS|SD_HAS_TRANSPARENT_SHADOW|SD_HAS_VOLUME|SD_HAS_ONLY_VOLUME|SD_HETEROGENEOUS_VOLUME|SD_HAS_BSSRDF_BUMP),
 
 	/* object flags */
-	SD_HOLDOUT_MASK = 65536,			/* holdout for camera rays */
-	SD_OBJECT_MOTION = 131072,			/* has object motion blur */
-	SD_TRANSFORM_APPLIED = 262144, 		/* vertices have transform applied */
+	SD_HOLDOUT_MASK = 131072,			/* holdout for camera rays */
+	SD_OBJECT_MOTION = 262144,			/* has object motion blur */
+	SD_TRANSFORM_APPLIED = 524288, 		/* vertices have transform applied */
 
 	SD_OBJECT_FLAGS = (SD_HOLDOUT_MASK|SD_OBJECT_MOTION|SD_TRANSFORM_APPLIED)
 };
@@ -559,13 +592,9 @@ typedef struct ShaderData {
 	/* primitive id if there is one, ~0 otherwise */
 	int prim;
 
-#ifdef __HAIR__
-	/* for curves, segment number in curve, ~0 for triangles */
-	int segment;
-	/* variables for minimum hair width using transparency bsdf */
-	/*float curve_transparency; */
-	/*float curve_radius; */
-#endif
+	/* combined type and curve segment for hair */
+	int type;
+
 	/* parametric coordinates
 	 * - barycentric weights for triangles */
 	float u, v;
@@ -758,7 +787,7 @@ typedef struct KernelFilm {
 	int pass_emission;
 	int pass_background;
 	int pass_ao;
-	int pass_pad1;
+	float pass_alpha_threshold;
 
 	int pass_shadow;
 	float pass_shadow_scale;
@@ -820,25 +849,29 @@ typedef struct KernelIntegrator {
 	int layer_flag;
 
 	/* clamp */
-	float sample_clamp;
+	float sample_clamp_direct;
+	float sample_clamp_indirect;
 
 	/* branched path */
 	int branched;
-	int aa_samples;
 	int diffuse_samples;
 	int glossy_samples;
 	int transmission_samples;
 	int ao_samples;
 	int mesh_light_samples;
 	int subsurface_samples;
-	
+	int sample_all_lights_direct;
+	int sample_all_lights_indirect;
+
 	/* mis */
 	int use_lamp_mis;
 
 	/* sampler */
 	int sampling_pattern;
+	int aa_samples;
 
 	/* volume render */
+	int volume_homogeneous_sampling;
 	int use_volumes;
 	int volume_max_steps;
 	float volume_step_size;

@@ -114,7 +114,7 @@ static int sculpt_undo_restore_coords(bContext *C, DerivedMesh *dm, SculptUndoNo
 			if (kb) {
 				ob->shapenr = BLI_findindex(&key->block, kb) + 1;
 
-				sculpt_update_mesh_elements(scene, sd, ob, 0, FALSE);
+				sculpt_update_mesh_elements(scene, sd, ob, 0, false);
 				WM_event_add_notifier(C, NC_OBJECT | ND_DATA, ob);
 			}
 			else {
@@ -273,14 +273,14 @@ static void sculpt_undo_bmesh_restore_generic(bContext *C,
 {
 	if (unode->applied) {
 		BM_log_undo(ss->bm, ss->bm_log);
-		unode->applied = FALSE;
+		unode->applied = false;
 	}
 	else {
 		BM_log_redo(ss->bm, ss->bm_log);
-		unode->applied = TRUE;
+		unode->applied = true;
 	}
 
-	if (unode->type == SCULPT_UNDO_MASK) {
+	if (ELEM(unode->type, SCULPT_UNDO_MASK, SCULPT_UNDO_MASK)) {
 		int i, totnode;
 		PBVHNode **nodes;
 
@@ -296,10 +296,12 @@ static void sculpt_undo_bmesh_restore_generic(bContext *C,
 		for (i = 0; i < totnode; i++) {
 			BKE_pbvh_node_mark_redraw(nodes[i]);
 		}
+
+		if (nodes)
+			MEM_freeN(nodes);
 	}
 	else {
-		/* A bit lame, but for now just recreate the PBVH. The alternative
-		 * is to store changes to the PBVH in the undo stack. */
+		sculpt_dyntopo_node_layers_reset(ss->bm);
 		sculpt_pbvh_clear(ob);
 	}
 }
@@ -316,6 +318,8 @@ static void sculpt_undo_bmesh_enable(Object *ob,
 	/* Create empty BMesh and enable logging */
 	ss->bm = BM_mesh_create(&bm_mesh_allocsize_default);
 	BM_data_layer_add(ss->bm, &ss->bm->vdata, CD_PAINT_MASK);
+	BM_data_layer_add(ss->bm, &ss->bm->vdata, CD_DYNTOPO_NODE);
+	BM_data_layer_add(ss->bm, &ss->bm->pdata, CD_DYNTOPO_NODE);
 	me->flag |= ME_SCULPT_DYNAMIC_TOPOLOGY;
 
 	/* Restore the BMLog using saved entries */
@@ -330,7 +334,7 @@ static void sculpt_undo_bmesh_restore_begin(bContext *C,
 {
 	if (unode->applied) {
 		sculpt_dynamic_topology_disable(C, unode);
-		unode->applied = FALSE;
+		unode->applied = false;
 	}
 	else {
 		sculpt_undo_bmesh_enable(ob, unode);
@@ -338,7 +342,7 @@ static void sculpt_undo_bmesh_restore_begin(bContext *C,
 		/* Restore the mesh from the first log entry */
 		BM_log_redo(ss->bm, ss->bm_log);
 
-		unode->applied = TRUE;
+		unode->applied = true;
 	}
 }
 
@@ -353,19 +357,19 @@ static void sculpt_undo_bmesh_restore_end(bContext *C,
 		/* Restore the mesh from the last log entry */
 		BM_log_undo(ss->bm, ss->bm_log);
 
-		unode->applied = FALSE;
+		unode->applied = false;
 	}
 	else {
 		/* Disable dynamic topology sculpting */
 		sculpt_dynamic_topology_disable(C, NULL);
-		unode->applied = TRUE;
+		unode->applied = true;
 	}
 }
 
 /* Handle all dynamic-topology updates
  *
- * Returns TRUE if this was a dynamic-topology undo step, otherwise
- * returns FALSE to indicate the non-dyntopo code should run. */
+ * Returns true if this was a dynamic-topology undo step, otherwise
+ * returns false to indicate the non-dyntopo code should run. */
 static int sculpt_undo_bmesh_restore(bContext *C,
                                      SculptUndoNode *unode,
                                      Object *ob,
@@ -374,21 +378,21 @@ static int sculpt_undo_bmesh_restore(bContext *C,
 	switch (unode->type) {
 		case SCULPT_UNDO_DYNTOPO_BEGIN:
 			sculpt_undo_bmesh_restore_begin(C, unode, ob, ss);
-			return TRUE;
+			return true;
 
 		case SCULPT_UNDO_DYNTOPO_END:
 			sculpt_undo_bmesh_restore_end(C, unode, ob, ss);
-			return TRUE;
+			return true;
 
 		default:
 			if (ss->bm_log) {
 				sculpt_undo_bmesh_restore_generic(C, unode, ob, ss);
-				return TRUE;
+				return true;
 			}
 			break;
 	}
 
-	return FALSE;
+	return false;
 }
 
 static void sculpt_undo_restore(bContext *C, ListBase *lb)
@@ -399,15 +403,15 @@ static void sculpt_undo_restore(bContext *C, ListBase *lb)
 	DerivedMesh *dm;
 	SculptSession *ss = ob->sculpt;
 	SculptUndoNode *unode;
-	int update = FALSE, rebuild = FALSE;
-	int need_mask = FALSE;
+	bool update = false, rebuild = false;
+	bool need_mask = false;
 
 	for (unode = lb->first; unode; unode = unode->next) {
 		if (strcmp(unode->idname, ob->id.name) == 0) {
 			if (unode->type == SCULPT_UNDO_MASK) {
 				/* is possible that we can't do the mask undo (below)
 				 * because of the vertex count */
-				need_mask = TRUE;
+				need_mask = true;
 				break;
 			}
 		}
@@ -442,15 +446,15 @@ static void sculpt_undo_restore(bContext *C, ListBase *lb)
 		switch (unode->type) {
 			case SCULPT_UNDO_COORDS:
 				if (sculpt_undo_restore_coords(C, dm, unode))
-					update = TRUE;
+					update = true;
 				break;
 			case SCULPT_UNDO_HIDDEN:
 				if (sculpt_undo_restore_hidden(C, dm, unode))
-					rebuild = TRUE;
+					rebuild = true;
 				break;
 			case SCULPT_UNDO_MASK:
 				if (sculpt_undo_restore_mask(C, dm, unode))
-					update = TRUE;
+					update = true;
 				break;
 
 			case SCULPT_UNDO_DYNTOPO_BEGIN:
@@ -487,8 +491,12 @@ static void sculpt_undo_restore(bContext *C, ListBase *lb)
 			tag_update |= 1;
 		}
 
-		if (tag_update)
+		if (tag_update) {
 			DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
+		}
+		else {
+			sculpt_update_object_bounding_box(ob);
+		}
 
 		/* for non-PBVH drawing, need to recreate VBOs */
 		GPU_drawobject_free(ob->derivedFinal);
@@ -705,11 +713,11 @@ static SculptUndoNode *sculpt_undo_bmesh_push(Object *ob,
 	PBVHVertexIter vd;
 
 	if (!lb->first) {
-		unode = MEM_callocN(sizeof(*unode), AT);
+		unode = MEM_callocN(sizeof(*unode), __func__);
 
 		BLI_strncpy(unode->idname, ob->id.name, sizeof(unode->idname));
 		unode->type = type;
-		unode->applied = TRUE;
+		unode->applied = true;
 
 		if (type == SCULPT_UNDO_DYNTOPO_END) {
 			unode->bm_entry = BM_log_entry_add(ss->bm_log);
@@ -749,15 +757,30 @@ static SculptUndoNode *sculpt_undo_bmesh_push(Object *ob,
 	if (node) {
 		switch (type) {
 			case SCULPT_UNDO_COORDS:
-			case SCULPT_UNDO_HIDDEN:
 			case SCULPT_UNDO_MASK:
 				/* Before any vertex values get modified, ensure their
 				 * original positions are logged */
 				BKE_pbvh_vertex_iter_begin(ss->pbvh, node, vd, PBVH_ITER_ALL) {
-					BM_log_vert_before_modified(ss->bm, ss->bm_log, vd.bm_vert);
+					BM_log_vert_before_modified(ss->bm_log, vd.bm_vert, vd.cd_vert_mask_offset);
 				}
 				BKE_pbvh_vertex_iter_end;
 				break;
+
+			case SCULPT_UNDO_HIDDEN:
+			{
+				GSetIterator gs_iter;
+				GSet *faces = BKE_pbvh_bmesh_node_faces(node);
+				BKE_pbvh_vertex_iter_begin(ss->pbvh, node, vd, PBVH_ITER_ALL) {
+					BM_log_vert_before_modified(ss->bm_log, vd.bm_vert, vd.cd_vert_mask_offset);
+				}
+				BKE_pbvh_vertex_iter_end;
+
+				GSET_ITER (gs_iter, faces) {
+					BMFace *f = BLI_gsetIterator_getKey(&gs_iter);
+					BM_log_face_modified(ss->bm_log, f);
+				}
+				break;
+			}
 
 			case SCULPT_UNDO_DYNTOPO_BEGIN:
 			case SCULPT_UNDO_DYNTOPO_END:

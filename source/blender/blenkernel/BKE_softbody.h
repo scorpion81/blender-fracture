@@ -53,7 +53,7 @@ typedef struct BodyPoint {
 extern struct SoftBody  *sbNew(struct Scene *scene);
 
 /* frees internal data and softbody itself */
-extern void             sbFree(struct SoftBody *sb);
+extern void				sbFree(struct SoftBody *sb, struct Object *ob);
 
 /* frees simulation data to reset simulation */
 extern void             sbFreeSimulation(struct SoftBody *sb);

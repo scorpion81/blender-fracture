@@ -26,11 +26,15 @@
  */
 
 #include "BLI_utildefines.h"
+#include "BLI_math.h"
 
 #include "DNA_freestyle_types.h"
 #include "DNA_linestyle_types.h"
 #include "DNA_scene_types.h"
+#include "DNA_screen_types.h"
+#include "DNA_space_types.h"
 #include "DNA_userdef_types.h"
+#include "DNA_mesh_types.h"
 
 #include "BKE_main.h"
 
@@ -43,16 +47,40 @@ void BLO_update_defaults_startup_blend(Main *main)
 	Scene *scene;
 	SceneRenderLayer *srl;
 	FreestyleLineStyle *linestyle;
+	Mesh *me;
 
 	for (scene = main->scene.first; scene; scene = scene->id.next) {
 		scene->r.im_format.planes = R_IMF_PLANES_RGBA;
 		scene->r.im_format.compress = 15;
 
-		for (srl = scene->r.layers.first; srl; srl = srl->next)
+		for (srl = scene->r.layers.first; srl; srl = srl->next) {
 			srl->freestyleConfig.sphere_radius = 0.1f;
+			srl->pass_alpha_threshold = 0.5f;
+		}
 	}
 
 	for (linestyle = main->linestyle.first; linestyle; linestyle = linestyle->id.next)
 		linestyle->flag = LS_SAME_OBJECT;
+
+	{
+		bScreen *screen;
+
+		for (screen = main->screen.first; screen; screen = screen->id.next) {
+			ScrArea *area;
+			for (area = screen->areabase.first; area; area = area->next) {
+				SpaceLink *space_link;
+				for (space_link = area->spacedata.first; space_link; space_link = space_link->next) {
+					if (space_link->spacetype == SPACE_CLIP) {
+						SpaceClip *space_clip = (SpaceClip *) space_link;
+						space_clip->flag &= ~SC_MANUAL_CALIBRATION;
+					}
+				}
+			}
+		}
+	}
+
+	for (me = main->mesh.first; me; me = me->id.next) {
+		me->smoothresh = DEG2RADF(180.0f);
+	}
 }
 

@@ -81,13 +81,12 @@
 
 #include "zlib.h"
 
-#ifndef WIN32
-#  include <unistd.h>
-#else
+#ifdef WIN32
 #  include "winsock2.h"
 #  include <io.h>
-#  include <process.h> // for getpid
 #  include "BLI_winstuff.h"
+#else
+#  include <unistd.h>  /* FreeBSD, for write() and close(). */
 #endif
 
 #include "BLI_utildefines.h"
@@ -146,7 +145,6 @@
 #include "BLI_blenlib.h"
 #include "BLI_linklist.h"
 #include "BLI_math.h"
-#include "BLI_utildefines.h"
 #include "BLI_mempool.h"
 
 #include "BKE_action.h"
@@ -154,6 +152,7 @@
 #include "BKE_bpath.h"
 #include "BKE_curve.h"
 #include "BKE_constraint.h"
+#include "BKE_fracture.h" // for writing a derivedmesh as shard
 #include "BKE_global.h" // for G
 #include "BKE_idprop.h"
 #include "BKE_library.h" // for  set_listbasepointers
@@ -446,7 +445,7 @@ static void IDP_WriteIDPArray(IDProperty *prop, void *wd)
 static void IDP_WriteString(IDProperty *prop, void *wd)
 {
 	/*REMEMBER to set totalen to len in the linking code!!*/
-	writedata(wd, DATA, prop->len+1, prop->data.pointer);
+	writedata(wd, DATA, prop->len, prop->data.pointer);
 }
 
 static void IDP_WriteGroup(IDProperty *prop, void *wd)
@@ -1268,7 +1267,7 @@ static void write_constraints(WriteData *wd, ListBase *conlist)
 	bConstraint *con;
 
 	for (con=conlist->first; con; con=con->next) {
-		bConstraintTypeInfo *cti= BKE_constraint_get_typeinfo(con);
+		bConstraintTypeInfo *cti= BKE_constraint_typeinfo_get(con);
 		
 		/* Write the specific data */
 		if (cti && con->data) {
@@ -1358,6 +1357,56 @@ static void write_defgroups(WriteData *wd, ListBase *defbase)
 		writestruct(wd, DATA, "bDeformGroup", 1, defgroup);
 }
 
+//need a prototype of that here...
+static void write_customdata(WriteData *wd, ID *id, int count, CustomData *data, int partial_type, int partial_count);
+
+static void write_shard(WriteData* wd, Shard* s)
+{
+	writestruct(wd, DATA, "Shard", 1, s);
+	writestruct(wd, DATA, "MVert", s->totvert, s->mvert);
+	writestruct(wd, DATA, "MPoly", s->totpoly, s->mpoly);
+	writestruct(wd, DATA, "MLoop", s->totloop, s->mloop);
+
+	write_customdata(wd, NULL, s->totvert, &s->vertData, -1, s->totvert);
+	write_customdata(wd, NULL, s->totloop, &s->loopData, -1, s->totloop);
+	write_customdata(wd, NULL, s->totpoly, &s->polyData, -1, s->totpoly);
+
+	writedata(wd, DATA, sizeof(int)*s->neighbor_count, s->neighbor_ids);
+	writedata(wd, DATA, sizeof(int), s->cluster_colors);
+}
+
+static void write_meshIsland(WriteData* wd, MeshIsland* mi)
+{
+	int i = 0;
+	DerivedMesh *dm = mi->physics_mesh;
+	mi->temp = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
+	                                        dm->getNumVerts(dm), dm->getNumPolys(dm), dm->getNumLoops(dm), true);
+	mi->temp = BKE_custom_data_to_shard(mi->temp, dm);
+
+	writestruct(wd, DATA, "MeshIsland", 1, mi);
+	writedata(wd, DATA, sizeof(MeshIsland*) * mi->compound_count, mi->compound_children);
+//	writestruct(wd, DATA, "MeshIsland", 1, mi->compound_parent);
+	writedata(wd, DATA, sizeof(struct BMVert*) * mi->vertex_count, mi->vertices);
+	writedata(wd, DATA, sizeof(MVert*) * mi->vertex_count, mi->vertices_cached);
+	writedata(wd, DATA, sizeof(float) * 3 * mi->vertex_count, mi->vertco);
+	//write derivedmesh as shard...
+	write_shard(wd, mi->temp);
+	BKE_shard_free(mi->temp, true);
+	mi->temp = NULL;
+
+	writestruct(wd, DATA, "RigidBodyOb", 1, mi->rigidbody);
+//	writedata(wd, DATA, sizeof(int) * mi->vertex_count, mi->combined_index_map);
+	writedata(wd, DATA, sizeof(int) * mi->neighbor_count, mi->neighbor_ids);
+	writestruct(wd, DATA, "BoundBox", 1, mi->bb);
+	writedata(wd, DATA, sizeof(int) * mi->vertex_count, mi->vertex_indices);
+	//writedata(wd, DATA, sizeof(RigidBodyShardCon*) * mi->participating_constraint_count, mi->participating_constraints );
+	//writedata(wd, DATA, sizeof(float) * 3, mi->centroid);
+	//writedata(wd, DATA, sizeof(float) * 3, mi->start_co);
+	//writedata(wd, DATA, sizeof(float) * 4, mi->rot);
+}
+
+//void write_dverts(WriteData *wd, int count, MDeformVert *dvlist);
+
 static void write_modifiers(WriteData *wd, ListBase *modbase)
 {
 	ModifierData *md;
@@ -1365,10 +1414,11 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 	if (modbase == NULL) return;
 	for (md=modbase->first; md; md= md->next) {
 		ModifierTypeInfo *mti = modifierType_getInfo(md->type);
+		//printf("Saving %s\n", mti->structName);
 		if (mti == NULL) return;
-		
+
 		writestruct(wd, DATA, mti->structName, 1, md);
-			
+
 		if (md->type==eModifierType_Hook) {
 			HookModifierData *hmd = (HookModifierData*) md;
 			
@@ -1475,27 +1525,67 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 			if (wmd->cmap_curve)
 				write_curvemapping(wd, wmd->cmap_curve);
 		}
+
 		else if (md->type==eModifierType_LaplacianDeform) {
 			LaplacianDeformModifierData *lmd = (LaplacianDeformModifierData*) md;
 
 			writedata(wd, DATA, sizeof(float)*lmd->total_verts * 3, lmd->vertexco);
 		}
+#if 0
+		else if (md->type == eModifierType_RigidBody) {
+
+			RigidBodyModifierData *rmd = (RigidBodyModifierData*)md;
+			RigidBodyShardCon *con;
+			
+			//WORKAROUND for Automerge, so that after filling cache and pulling timeline to frame 0 all faces are visible
+			for (con = rmd->meshConstraints.first; con; con = con->next) {
+				con->physics_constraint = NULL;
+				con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+			}
+			
+			if (rmd->framecount > 0) {
+				writedata(wd, DATA, sizeof(float) * rmd->framecount, rmd->framemap);
+			}
+#endif
+//		}
 		else if (md->type==eModifierType_Fracture) {
 			int i = 0;
 			FractureModifierData *fmd = (FractureModifierData*)md;
 			FracMesh* fm = fmd->frac_mesh;
+
+			writedata(wd, DATA, sizeof(float) * 3 * fmd->noise_count, fmd->noisemap);
+
 			if (fm)
 			{
-				writestruct(wd, DATA, "FracMesh", 1, fm);
-				writedata(wd, DATA, sizeof(Shard*) * fm->shard_count, fm->shard_map);
-				for (i = 0; i < fm->shard_count; i++)
+				MeshIsland *mi;
+				RigidBodyShardCon* con;
+				Shard *s;
+
+				if (fm->running == 0)
 				{
-					Shard *s = fm->shard_map[i];
-					writestruct(wd, DATA, "Shard", 1, s);
-					writestruct(wd, DATA, "MVert", s->totvert, s->mvert);
-					writestruct(wd, DATA, "MPoly", s->totpoly, s->mpoly);
-					writestruct(wd, DATA, "MLoop", s->totloop, s->mloop);
-					writedata(wd, DATA, sizeof(int)*s->neighbor_count, s->neighbor_ids);
+					writestruct(wd, DATA, "FracMesh", 1, fm);
+					writedata(wd, DATA, sizeof(Shard*) * fm->shard_count, fm->shard_map);
+					for (i = 0; i < fm->shard_count; i++)
+					{
+						Shard *s = fm->shard_map[i];
+						write_shard(wd, s);
+					}
+
+					for (s = fmd->islandShards.first; s; s = s->next)
+					{
+						write_shard(wd, s);
+					}
+
+					/*if (fmd->dm)
+					{
+						MDeformVert *dvert = fmd->dm->getVertDataArray(fmd->dm, CD_MDEFORMVERT);
+						write_dverts(wd, fmd->dm->getNumVerts(fmd->dm), dvert);
+					}*/
+
+					for (mi = fmd->meshIslands.first; mi; mi = mi->next)
+					{
+						write_meshIsland(wd, mi);
+					}
 				}
 			}
 		}
@@ -1562,6 +1652,7 @@ static void write_objects(WriteData *wd, ListBase *idbase)
 			write_particlesystems(wd, &ob->particlesystem);
 			write_modifiers(wd, &ob->modifiers);
 
+			writelist(wd, DATA, "LinkData", &ob->pc_ids);
 			writelist(wd, DATA, "LodLevel", &ob->lodlevels);
 		}
 		ob= ob->id.next;
@@ -2249,7 +2340,7 @@ static void write_scenes(WriteData *wd, ListBase *scebase)
 			
 			SEQ_BEGIN (ed, seq)
 			{
-				if (seq->strip) seq->strip->done = FALSE;
+				if (seq->strip) seq->strip->done = false;
 				writestruct(wd, DATA, "Sequence", 1, seq);
 			}
 			SEQ_END
@@ -2295,7 +2386,7 @@ static void write_scenes(WriteData *wd, ListBase *scebase)
 					else if (seq->type==SEQ_TYPE_MOVIE || seq->type==SEQ_TYPE_SOUND_RAM || seq->type == SEQ_TYPE_SOUND_HD)
 						writestruct(wd, DATA, "StripElem", 1, strip->stripdata);
 					
-					strip->done = TRUE;
+					strip->done = true;
 				}
 
 				write_sequence_modifiers(wd, &seq->modifiers);
@@ -2510,6 +2601,7 @@ static void write_screens(WriteData *wd, ListBase *scrbase)
 			SpaceLink *sl;
 			Panel *pa;
 			uiList *ui_list;
+			uiPreview *ui_preview;
 			PanelCategoryStack *pc_act;
 			ARegion *ar;
 			
@@ -2526,6 +2618,9 @@ static void write_screens(WriteData *wd, ListBase *scrbase)
 
 				for (ui_list = ar->ui_lists.first; ui_list; ui_list = ui_list->next)
 					write_uilist(wd, ui_list);
+
+				for (ui_preview = ar->ui_previews.first; ui_preview; ui_preview = ui_preview->next)
+					writestruct(wd, DATA, "uiPreview", 1, ui_preview);
 			}
 			
 			sl= sa->spacedata.first;
@@ -2645,7 +2740,8 @@ static void write_libraries(WriteData *wd, Main *main)
 {
 	ListBase *lbarray[MAX_LIBARRAY];
 	ID *id;
-	int a, tot, foundone;
+	int a, tot;
+	bool found_one;
 
 	for (; main; main= main->next) {
 
@@ -2653,24 +2749,24 @@ static void write_libraries(WriteData *wd, Main *main)
 
 		/* test: is lib being used */
 		if (main->curlib && main->curlib->packedfile)
-			foundone = TRUE;
+			found_one = true;
 		else {
-			foundone = FALSE;
+			found_one = false;
 			while (tot--) {
 				for (id= lbarray[tot]->first; id; id= id->next) {
 					if (id->us>0 && (id->flag & LIB_EXTERN)) {
-						foundone = TRUE;
+						found_one = true;
 						break;
 					}
 				}
-				if (foundone) break;
+				if (found_one) break;
 			}
 		}
 		
 		/* to be able to restore quit.blend and temp saves, the packed blend has to be in undo buffers... */
 		/* XXX needs rethink, just like save UI in undo files now - would be nice to append things only for the]
 		 * quit.blend and temp saves */
-		if (foundone) {
+		if (found_one) {
 			writestruct(wd, ID_LI, "Library", 1, main->curlib);
 
 			if (main->curlib->packedfile) {
@@ -3318,7 +3414,7 @@ static void write_global(WriteData *wd, int fileflags, Main *mainvar)
 #ifdef WITH_BUILDINFO
 	{
 		extern unsigned long build_commit_timestamp;
-		extern char build_hash[];
+		extern char build_change[], build_hash[];
 		/* TODO(sergey): Add branch name to file as well? */
 		fg.build_commit_timestamp = build_commit_timestamp;
 		BLI_strncpy(fg.build_hash, build_hash, sizeof(fg.build_hash));

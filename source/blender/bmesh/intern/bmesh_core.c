@@ -60,13 +60,37 @@
 BMVert *BM_vert_create(BMesh *bm, const float co[3],
                        const BMVert *v_example, const eBMCreateFlag create_flag)
 {
-	BMVert *v = BLI_mempool_calloc(bm->vpool);
+	BMVert *v = BLI_mempool_alloc(bm->vpool);
+
+
+	/* --- assign all members --- */
+	v->head.data = NULL;
 
 #ifdef USE_DEBUG_INDEX_MEMCHECK
 	DEBUG_MEMCHECK_INDEX_INVALIDATE(v)
 #else
 	BM_elem_index_set(v, -1); /* set_ok_invalid */
 #endif
+
+	v->head.htype = BM_VERT;
+	v->head.hflag = 0;
+	v->head.api_flag = 0;
+
+	/* allocate flags */
+	v->oflags = bm->vtoolflagpool ? BLI_mempool_calloc(bm->vtoolflagpool) : NULL;
+
+	/* 'v->no' is handled by BM_elem_attrs_copy */
+	if (co) {
+		copy_v3_v3(v->co, co);
+	}
+	else {
+		zero_v3(v->co);
+	}
+	zero_v3(v->no);
+
+	v->e = NULL;
+	/* --- done --- */
+
 
 	/* disallow this flag for verts - its meaningless */
 	BLI_assert((create_flag & BM_CREATE_NO_DOUBLE) == 0);
@@ -76,18 +100,6 @@ BMVert *BM_vert_create(BMesh *bm, const float co[3],
 	bm->elem_table_dirty |= BM_VERT;
 
 	bm->totvert++;
-
-	v->head.htype = BM_VERT;
-
-	/* 'v->no' is handled by BM_elem_attrs_copy */
-	if (co) {
-		copy_v3_v3(v->co, co);
-	}
-
-	/* allocate flags */
-	if (bm->vtoolflagpool) {
-		v->oflags = BLI_mempool_calloc(bm->vtoolflagpool);
-	}
 
 	if (!(create_flag & BM_CREATE_SKIP_CD)) {
 		if (v_example) {
@@ -125,7 +137,11 @@ BMEdge *BM_edge_create(BMesh *bm, BMVert *v1, BMVert *v2,
 	if ((create_flag & BM_CREATE_NO_DOUBLE) && (e = BM_edge_exists(v1, v2)))
 		return e;
 	
-	e = BLI_mempool_calloc(bm->epool);
+	e = BLI_mempool_alloc(bm->epool);
+
+
+	/* --- assign all members --- */
+	e->head.data = NULL;
 
 #ifdef USE_DEBUG_INDEX_MEMCHECK
 	DEBUG_MEMCHECK_INDEX_INVALIDATE(e)
@@ -133,27 +149,30 @@ BMEdge *BM_edge_create(BMesh *bm, BMVert *v1, BMVert *v2,
 	BM_elem_index_set(e, -1); /* set_ok_invalid */
 #endif
 
+	e->head.htype = BM_EDGE;
+	e->head.hflag = BM_ELEM_SMOOTH | BM_ELEM_DRAW;
+	e->head.api_flag = 0;
+
+	/* allocate flags */
+	e->oflags = bm->etoolflagpool ? BLI_mempool_calloc(bm->etoolflagpool) : NULL;
+
+	e->v1 = v1;
+	e->v2 = v2;
+	e->l = NULL;
+
+	memset(&e->v1_disk_link, 0, sizeof(BMDiskLink) * 2);
+	/* --- done --- */
+
+
+	bmesh_disk_edge_append(e, e->v1);
+	bmesh_disk_edge_append(e, e->v2);
+
 	/* may add to middle of the pool */
 	bm->elem_index_dirty |= BM_EDGE;
 	bm->elem_table_dirty |= BM_EDGE;
 
 	bm->totedge++;
 
-	e->head.htype = BM_EDGE;
-	
-	/* allocate flags */
-	if (bm->etoolflagpool) {
-		e->oflags = BLI_mempool_calloc(bm->etoolflagpool);
-	}
-
-	e->v1 = v1;
-	e->v2 = v2;
-	
-	BM_elem_flag_enable(e, BM_ELEM_SMOOTH | BM_ELEM_DRAW);
-	
-	bmesh_disk_edge_append(e, e->v1);
-	bmesh_disk_edge_append(e, e->v2);
-	
 	if (!(create_flag & BM_CREATE_SKIP_CD)) {
 		if (e_example) {
 			BM_elem_attrs_copy(bm, bm, e_example, e);
@@ -163,7 +182,6 @@ BMEdge *BM_edge_create(BMesh *bm, BMVert *v1, BMVert *v2,
 		}
 	}
 
-	
 	BM_CHECK_ELEMENT(e);
 
 	return e;
@@ -174,14 +192,27 @@ static BMLoop *bm_loop_create(BMesh *bm, BMVert *v, BMEdge *e, BMFace *f,
 {
 	BMLoop *l = NULL;
 
-	l = BLI_mempool_calloc(bm->lpool);
-	l->next = l->prev = NULL;
+	l = BLI_mempool_alloc(bm->lpool);
+
+	/* --- assign all members --- */
+	l->head.data = NULL;
+	BM_elem_index_set(l, 0); /* set_loop */
+	l->head.hflag = 0;
+	l->head.htype = BM_LOOP;
+	l->head.api_flag = 0;
+
 	l->v = v;
 	l->e = e;
 	l->f = f;
-	l->radial_next = l->radial_prev = NULL;
-	l->head.data = NULL;
-	l->head.htype = BM_LOOP;
+
+	l->radial_next = NULL;
+	l->radial_prev = NULL;
+	l->next = NULL;
+	l->prev = NULL;
+	/* --- done --- */
+
+	/* may add to middle of the pool */
+	bm->elem_index_dirty |= BM_LOOP;
 
 	bm->totloop++;
 
@@ -284,35 +315,47 @@ BMFace *BM_face_copy(BMesh *bm_dst, BMesh *bm_src, BMFace *f,
 /**
  * only create the face, since this calloc's the length is initialized to 0,
  * leave adding loops to the caller.
+ *
+ * \note, caller needs to handle customdata.
  */
-BLI_INLINE BMFace *bm_face_create__internal(BMesh *bm, const eBMCreateFlag create_flag)
+BLI_INLINE BMFace *bm_face_create__internal(BMesh *bm)
 {
 	BMFace *f;
 
-	f = BLI_mempool_calloc(bm->fpool);
+	f = BLI_mempool_alloc(bm->fpool);
 
+
+	/* --- assign all members --- */
+	f->head.data = NULL;
 #ifdef USE_DEBUG_INDEX_MEMCHECK
 	DEBUG_MEMCHECK_INDEX_INVALIDATE(f)
 #else
 	BM_elem_index_set(f, -1); /* set_ok_invalid */
 #endif
 
+	f->head.htype = BM_FACE;
+	f->head.hflag = 0;
+	f->head.api_flag = 0;
+
+	/* allocate flags */
+	f->oflags = bm->ftoolflagpool ? BLI_mempool_calloc(bm->ftoolflagpool) : NULL;
+
+#ifdef USE_BMESH_HOLES
+	BLI_listbase_clear(&f->loops);
+#else
+	f->l_first = NULL;
+#endif
+	f->len = 0;
+	zero_v3(f->no);
+	f->mat_nr = 0;
+	/* --- done --- */
+
+
 	/* may add to middle of the pool */
 	bm->elem_index_dirty |= BM_FACE;
 	bm->elem_table_dirty |= BM_FACE;
 
 	bm->totface++;
-
-	f->head.htype = BM_FACE;
-
-	/* allocate flags */
-	if (bm->ftoolflagpool) {
-		f->oflags = BLI_mempool_calloc(bm->ftoolflagpool);
-	}
-
-	if (!(create_flag & BM_CREATE_SKIP_CD)) {
-		CustomData_bmesh_set_default(&bm->pdata, &f->head.data);
-	}
 
 #ifdef USE_BMESH_HOLES
 	f->totbounds = 0;
@@ -353,7 +396,7 @@ BMFace *BM_face_create(BMesh *bm, BMVert **verts, BMEdge **edges, const int len,
 		}
 	}
 
-	f = bm_face_create__internal(bm, create_flag);
+	f = bm_face_create__internal(bm);
 
 	startl = lastl = bm_face_boundary_add(bm, f, verts[0], edges[0], create_flag);
 	
@@ -634,6 +677,7 @@ static void bm_kill_only_face(BMesh *bm, BMFace *f)
 static void bm_kill_only_loop(BMesh *bm, BMLoop *l)
 {
 	bm->totloop--;
+	bm->elem_index_dirty |= BM_LOOP;
 	if (l->head.data)
 		CustomData_bmesh_free_block(&bm->ldata, &l->head.data);
 
@@ -759,13 +803,13 @@ void BM_edge_kill(BMesh *bm, BMEdge *e)
 void BM_vert_kill(BMesh *bm, BMVert *v)
 {
 	if (v->e) {
-		BMEdge *e, *nexte;
+		BMEdge *e, *e_next;
 		
 		e = v->e;
 		while (v->e) {
-			nexte = bmesh_disk_edge_next(e, v);
+			e_next = bmesh_disk_edge_next(e, v);
 			BM_edge_kill(bm, e);
-			e = nexte;
+			e = e_next;
 		}
 	}
 
@@ -982,12 +1026,8 @@ static bool disk_is_flagged(BMVert *v, int flag)
 		do {
 			if (!BM_ELEM_API_FLAG_TEST(l->f, flag))
 				return false;
-
-			l = l->radial_next;
-		} while (l != e->l);
-
-		e = bmesh_disk_edge_next(e, v);
-	} while (e != v->e);
+		} while ((l = l->radial_next) != e->l);
+	} while ((e = bmesh_disk_edge_next(e, v)) != v->e);
 
 	return true;
 }
@@ -1201,14 +1241,14 @@ error:
 	return NULL;
 }
 
-static BMFace *bm_face_create__sfme(BMesh *bm, BMFace *UNUSED(example))
+static BMFace *bm_face_create__sfme(BMesh *bm, BMFace *f_example)
 {
 	BMFace *f;
 #ifdef USE_BMESH_HOLES
 	BMLoopList *lst;
 #endif
 
-	f = bm_face_create__internal(bm, 0);
+	f = bm_face_create__internal(bm);
 
 #ifdef USE_BMESH_HOLES
 	lst = BLI_mempool_calloc(bm->looplistpool);
@@ -1218,6 +1258,8 @@ static BMFace *bm_face_create__sfme(BMesh *bm, BMFace *UNUSED(example))
 #ifdef USE_BMESH_HOLES
 	f->totbounds = 1;
 #endif
+
+	BM_elem_attrs_copy(bm, bm, f_example, f);
 
 	return f;
 }
@@ -1609,7 +1651,10 @@ BMEdge *bmesh_jekv(BMesh *bm, BMEdge *e_kill, BMVert *v_kill, const bool check_e
 	BMVert *v_old, *tv;
 	BMLoop *l_kill;
 	int len, radlen = 0, i;
-	bool edok, halt = false;
+	bool halt = false;
+#ifndef NDEBUG
+	bool edok;
+#endif
 
 	if (BM_vert_in_edge(e_kill, v_kill) == 0) {
 		return NULL;
@@ -1692,12 +1737,12 @@ BMEdge *bmesh_jekv(BMesh *bm, BMEdge *e_kill, BMVert *v_kill, const bool check_e
 						BLI_mempool_free(bm->lpool, loops[i]);
 					}
 				}
-
+#ifndef NDEBUG
 				/* Validate radial cycle of e_old */
 				edok = bmesh_radial_validate(radlen, e_old->l);
 				BMESH_ASSERT(edok != false);
+#endif
 			}
-
 			/* deallocate edge */
 			bm_kill_only_edge(bm, e_kill);
 

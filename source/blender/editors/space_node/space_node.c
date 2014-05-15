@@ -42,6 +42,7 @@
 
 #include "BKE_context.h"
 #include "BKE_library.h"
+#include "BKE_scene.h"
 #include "BKE_screen.h"
 #include "BKE_node.h"
 
@@ -49,7 +50,6 @@
 #include "ED_node.h"
 #include "ED_render.h"
 #include "ED_screen.h"
-#include "ED_node.h"
 #include "WM_api.h"
 #include "WM_types.h"
 
@@ -70,7 +70,7 @@ void ED_node_tree_start(SpaceNode *snode, bNodeTree *ntree, ID *id, ID *from)
 		path_next = path->next;
 		MEM_freeN(path);
 	}
-	snode->treepath.first = snode->treepath.last = NULL;
+	BLI_listbase_clear(&snode->treepath);
 	
 	if (ntree) {
 		path = MEM_callocN(sizeof(bNodeTreePath), "node tree path");
@@ -384,11 +384,12 @@ static void node_init(struct wmWindowManager *UNUSED(wm), ScrArea *UNUSED(sa))
 
 }
 
-static void node_area_listener(bScreen *UNUSED(sc), ScrArea *sa, wmNotifier *wmn)
+static void node_area_listener(bScreen *sc, ScrArea *sa, wmNotifier *wmn)
 {
 	/* note, ED_area_tag_refresh will re-execute compositor */
 	SpaceNode *snode = sa->spacedata.first;
-	short shader_type = snode->shaderfrom;
+	/* shaderfrom is only used for new shading nodes, otherwise all shaders are from objects */
+	short shader_type = BKE_scene_use_new_shading_nodes(sc->scene) ? snode->shaderfrom : SNODE_SHADER_OBJECT;
 
 	/* preview renders */
 	switch (wmn->category) {
@@ -558,7 +559,7 @@ static SpaceLink *node_duplicate(SpaceLink *sl)
 	BLI_duplicatelist(&snoden->treepath, &snode->treepath);
 
 	/* clear or remove stuff from old */
-	snoden->linkdrag.first = snoden->linkdrag.last = NULL;
+	BLI_listbase_clear(&snoden->linkdrag);
 
 	/* Note: no need to set node tree user counts,
 	 * the editor only keeps at least 1 (id_us_ensure_real),
@@ -827,7 +828,7 @@ void ED_spacetype_node(void)
 	art->draw = node_main_area_draw;
 	art->listener = node_region_listener;
 	art->cursor = node_cursor;
-	art->event_cursor = TRUE;
+	art->event_cursor = true;
 	art->keymapflag = ED_KEYMAP_UI | ED_KEYMAP_VIEW2D | ED_KEYMAP_FRAMES | ED_KEYMAP_GPENCIL;
 
 	BLI_addhead(&st->regiontypes, art);

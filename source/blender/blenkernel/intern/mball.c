@@ -252,7 +252,7 @@ void BKE_mball_make_local(MetaBall *mb)
 {
 	Main *bmain = G.main;
 	Object *ob;
-	int is_local = FALSE, is_lib = FALSE;
+	bool is_local = false, is_lib = false;
 
 	/* - only lib users: do nothing
 	 * - only local users: set flag
@@ -269,12 +269,12 @@ void BKE_mball_make_local(MetaBall *mb)
 
 	for (ob = G.main->object.first; ob && ELEM(0, is_lib, is_local); ob = ob->id.next) {
 		if (ob->data == mb) {
-			if (ob->id.lib) is_lib = TRUE;
-			else is_local = TRUE;
+			if (ob->id.lib) is_lib = true;
+			else is_local = true;
 		}
 	}
 	
-	if (is_local && is_lib == FALSE) {
+	if (is_local && is_lib == false) {
 		id_clear_lib_data(bmain, &mb->id);
 		extern_local_mball(mb);
 	}
@@ -356,7 +356,8 @@ void BKE_mball_texspace_calc(Object *ob)
 	DispList *dl;
 	BoundBox *bb;
 	float *data, min[3], max[3] /*, loc[3], size[3] */;
-	int tot, do_it = FALSE;
+	int tot;
+	bool do_it = false;
 
 	if (ob->bb == NULL) ob->bb = MEM_callocN(sizeof(BoundBox), "mb boundbox");
 	bb = ob->bb;
@@ -369,7 +370,7 @@ void BKE_mball_texspace_calc(Object *ob)
 	dl = ob->curve_cache->disp.first;
 	while (dl) {
 		tot = dl->nr;
-		if (tot) do_it = TRUE;
+		if (tot) do_it = true;
 		data = dl->verts;
 		while (tot--) {
 			/* Also weird... but longer. From utildefines. */
@@ -751,7 +752,8 @@ static octal_node *find_metaball_octal_node(octal_node *node, float x, float y, 
 		}
 	}
 	
-	return node;
+	/* all cases accounted for */
+	BLI_assert(0);
 }
 
 static float metaball(PROCESS *process, float x, float y, float z)
@@ -1110,11 +1112,11 @@ static int otherface(int edge, int face)
 
 static void makecubetable(void)
 {
-	static int is_done = FALSE;
+	static bool is_done = false;
 	int i, e, c, done[12], pos[8];
 
 	if (is_done) return;
-	is_done = TRUE;
+	is_done = true;
 
 	for (i = 0; i < 256; i++) {
 		for (e = 0; e < 12; e++) done[e] = 0;
@@ -1901,8 +1903,7 @@ static void subdivide_metaball_octal_node(octal_node *node, float size_x, float 
 		for (i = 0; i < 8; i++)
 			node->nodes[a]->nodes[i] = NULL;
 		node->nodes[a]->parent = node;
-		node->nodes[a]->elems.first = NULL;
-		node->nodes[a]->elems.last = NULL;
+		BLI_listbase_clear(&node->nodes[a]->elems);
 		node->nodes[a]->count = 0;
 		node->nodes[a]->neg = 0;
 		node->nodes[a]->pos = 0;
@@ -2171,8 +2172,7 @@ static void init_metaball_octal_tree(PROCESS *process, int depth)
 	process->metaball_tree->neg = node->neg = 0;
 	process->metaball_tree->pos = node->pos = 0;
 	
-	node->elems.first = NULL;
-	node->elems.last = NULL;
+	BLI_listbase_clear(&node->elems);
 	node->count = 0;
 
 	for (a = 0; a < 8; a++)
@@ -2420,7 +2420,7 @@ bool BKE_mball_minmax(MetaBall *mb, float min[3], float max[3])
 		minmax_v3v3_v3(min, max, &ml->x);
 	}
 
-	return (mb->elems.first != NULL);
+	return (BLI_listbase_is_empty(&mb->elems) == false);
 }
 
 bool BKE_mball_center_median(MetaBall *mb, float r_cent[3])

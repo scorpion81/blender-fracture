@@ -50,26 +50,42 @@
 /* min/max */
 #if defined(__GNUC__) || defined(__clang__)
 
-#define MIN2(x, y)  ({  \
-	typeof(x) x_ = (x); \
-	typeof(y) y_ = (y); \
-	((x_) < (y_) ? (x_) : (y_)); })
+#define MIN2(a, b) __extension__ ({  \
+	typeof(a) a_ = (a); typeof(b) b_ = (b); \
+	((a_) < (b_) ? (a_) : (b_)); })
 
-#define MAX2(x, y)  ({  \
-	typeof(x) x_ = (x); \
-	typeof(y) y_ = (y); \
-	((x_) > (y_) ? (x_) : (y_)); })
+#define MAX2(a, b) __extension__ ({  \
+	typeof(a) a_ = (a); typeof(b) b_ = (b); \
+	((a_) > (b_) ? (a_) : (b_)); })
+
+#define MIN3(a, b, c) __extension__ ({  \
+	typeof(a) a_ = (a); typeof(b) b_ = (b); typeof(c) c_ = (c); \
+	((a_ < b_) ? ((a_ < c_) ? a_ : c_) : ((b_ < c_) ? b_ : c_)); })
+
+#define MAX3(a, b, c) __extension__ ({  \
+	typeof(a) a_ = (a); typeof(b) b_ = (b);  typeof(c) c_ = (c); \
+	((a_ > b_) ? ((a_ > c_) ? a_ : c_) : ((b_ > c_) ? b_ : c_)); })
+
+#define MIN4(a, b, c, d) __extension__ ({  \
+	typeof(a) a_ = (a); typeof(b) b_ = (b); typeof(c) c_ = (c); typeof(d) d_ = (d); \
+	((a_ < b_) ? ((a_ < c_) ? ((a_ < d_) ? a_ : d_) : ((c_ < d_) ? c_ : d_)) : \
+	             ((b_ < c_) ? ((b_ < d_) ? b_ : d_) : ((c_ < d_) ? c_ : d_))); })
+
+#define MAX4(a, b, c, d) __extension__ ({  \
+	typeof(a) a_ = (a); typeof(b) b_ = (b); typeof(c) c_ = (c); typeof(d) d_ = (d); \
+	((a_ > b_) ? ((a_ > c_) ? ((a_ > d_) ? a_ : d_) : ((c_ > d_) ? c_ : d_)) : \
+	             ((b_ > c_) ? ((b_ > d_) ? b_ : d_) : ((c_ > d_) ? c_ : d_))); })
 
 #else
-#define MIN2(x, y)          ((x) < (y) ? (x) : (y))
-#define MAX2(x, y)          ((x) > (y) ? (x) : (y))
+#define MIN2(a, b)  ((a) < (b) ? (a) : (b))
+#define MAX2(a, b)  ((a) > (b) ? (a) : (b))
+
+#define MIN3(a, b, c)       (MIN2(MIN2((a), (b)), (c)))
+#define MIN4(a, b, c, d)    (MIN2(MIN2((a), (b)), MIN2((c), (d))))
+
+#define MAX3(a, b, c)       (MAX2(MAX2((a), (b)), (c)))
+#define MAX4(a, b, c, d)    (MAX2(MAX2((a), (b)), MAX2((c), (d))))
 #endif
-
-#define MIN3(x, y, z)       (MIN2(MIN2((x), (y)), (z)))
-#define MIN4(x, y, z, a)    (MIN2(MIN2((x), (y)), MIN2((z), (a))))
-
-#define MAX3(x, y, z)       (MAX2(MAX2((x), (y)), (z)))
-#define MAX4(x, y, z, a)    (MAX2(MAX2((x), (y)), MAX2((z), (a))))
 
 /* min/max that return a value of our choice */
 #define MAX3_PAIR(cmp_a, cmp_b, cmp_c, ret_a, ret_b, ret_c) \
@@ -195,8 +211,10 @@
 } (void)0
 
 
-#define FTOCHAR(val) (char)(((val) <= 0.0f) ? 0 : (((val) > (1.0f - 0.5f / 255.0f)) ? 255 : ((255.0f * (val)) + 0.5f)))
-#define FTOUSHORT(val) ((val >= 1.0f - 0.5f / 65535) ? 65535 : (val <= 0.0f) ? 0 : (unsigned short)(val * 65535.0f + 0.5f))
+#define FTOCHAR(val) ((CHECK_TYPE_INLINE(val, float)), \
+		(char)(((val) <= 0.0f) ? 0 : (((val) > (1.0f - 0.5f / 255.0f)) ? 255 : ((255.0f * (val)) + 0.5f))))
+#define FTOUSHORT(val) ((CHECK_TYPE_INLINE(val, float)), \
+		((val >= 1.0f - 0.5f / 65535) ? 65535 : (val <= 0.0f) ? 0 : (unsigned short)(val * 65535.0f + 0.5f)))
 #define USHORTTOUCHAR(val) ((unsigned char)(((val) >= 65535 - 128) ? 255 : ((val) + 128) >> 8))
 #define F3TOCHAR3(v2, v1) {                                                   \
 		(v1)[0] = FTOCHAR((v2[0]));                                           \
@@ -244,9 +262,9 @@
 		*(v1 + 2) = *(v2 + 2) + *(v3 + 2) * (fac);                            \
 } (void)0
 #define VECMADD(v1, v2, v3, v4) {                                             \
-		*(v1) =   *(v2)   + *(v3) * (*(v4));                                     \
-		*(v1 + 1) = *(v2 + 1) + *(v3 + 1) * (*(v4 + 1));                         \
-		*(v1 + 2) = *(v2 + 2) + *(v3 + 2) * (*(v4 + 2));                         \
+		*(v1) =   *(v2)   + *(v3) * (*(v4));                                  \
+		*(v1 + 1) = *(v2 + 1) + *(v3 + 1) * (*(v4 + 1));                      \
+		*(v1 + 2) = *(v2 + 2) + *(v3 + 2) * (*(v4 + 2));                      \
 } (void)0
 #define VECSUBFAC(v1, v2, v3, fac) {                                          \
 		*(v1) =   *(v2)   - *(v3) * (fac);                                    \
@@ -256,26 +274,18 @@
 
 /* some misc stuff.... */
 
-/* avoid multiple access & type conversions for supported compilers */
+/* avoid multiple access for supported compilers */
 #if defined(__GNUC__) || defined(__clang__)
 
 #define ABS(a)  ({ \
 	typeof(a) a_ = (a); \
 	((a_) < 0 ? (-(a_)) : (a_)); })
 
-#define CLAMPIS(a, b, c)  ({ \
-	typeof(a) a_ = (a), b_ = (b), c_ = (c); \
-	((a_) < (b_) ? (b_) : (a_) > (c_) ? (c_) : (a_)); })
-
-#define CLAMP(a, b, c)  {            \
-	typeof(a) b_ = (b), c_ = (c);   \
-	if      ((a) < (b_)) (a) = (b_); \
-	else if ((a) > (c_)) (a) = (c_); \
-} (void)0
-
 #else
 
 #define ABS(a)  ((a) < 0 ? (-(a)) : (a))
+
+#endif
 
 #define CLAMPIS(a, b, c)  ((a) < (b) ? (b) : (a) > (c) ? (c) : (a))
 
@@ -284,8 +294,13 @@
 	else if ((a) > (c)) (a) = (c);  \
 } (void)0
 
-#endif
+#define CLAMP_MAX(a, c)  {          \
+	if ((a) > (c)) (a) = (c);       \
+} (void)0
 
+#define CLAMP_MIN(a, b)  {          \
+	if      ((a) < (b)) (a) = (b);  \
+} (void)0
 
 #define IS_EQ(a, b)  ( \
 	CHECK_TYPE_INLINE(a, double), CHECK_TYPE_INLINE(b, double), \
@@ -445,7 +460,7 @@
 #if (!defined(__cplusplus)) && \
     (!defined(__COVERITY__)) && \
     (defined(__GNUC__) && ((__GNUC__ * 100 + __GNUC_MINOR__) >= 406))  /* gcc4.6+ only */
-#  define BLI_STATIC_ASSERT(a, msg) _Static_assert(a, msg);
+#  define BLI_STATIC_ASSERT(a, msg) __extension__ _Static_assert(a, msg);
 #else
    /* TODO msvc, clang */
 #  define BLI_STATIC_ASSERT(a, msg)

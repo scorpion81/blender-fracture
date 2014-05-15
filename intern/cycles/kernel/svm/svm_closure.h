@@ -225,7 +225,7 @@ ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *
 				sc->N = N;
 				sc->data0 = param1;
 
-				float eta = fmaxf(param2, 1.0f + 1e-5f);
+				float eta = fmaxf(param2, 1e-5f);
 				sc->data1 = (sd->flag & SD_BACKFACING)? 1.0f/eta: eta;
 
 				/* setup bsdf */
@@ -247,7 +247,7 @@ ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *
 				break;
 #endif
 			/* index of refraction */
-			float eta = fmaxf(param2, 1.0f + 1e-5f);
+			float eta = fmaxf(param2, 1e-5f);
 			eta = (sd->flag & SD_BACKFACING)? 1.0f/eta: eta;
 
 			/* fresnel */
@@ -364,7 +364,7 @@ ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *
 		case CLOSURE_BSDF_HAIR_REFLECTION_ID:
 		case CLOSURE_BSDF_HAIR_TRANSMISSION_ID: {
 			
-			if(sd->flag & SD_BACKFACING && sd->segment != ~0) {
+			if(sd->flag & SD_BACKFACING && sd->type & PRIMITIVE_ALL_CURVE) {
 				ShaderClosure *sc = svm_node_closure_get_bsdf(sd, mix_weight);
 				if(sc) {
 					sc->weight = make_float3(1.0f,1.0f,1.0f);
@@ -381,7 +381,7 @@ ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *
 					sc->data0 = param1;
 					sc->data1 = param2;
 					sc->offset = -stack_load_float(stack, data_node.z);
-					if(sd->segment == ~0) {
+					if(sd->type & PRIMITIVE_ALL_CURVE) {
 						sc->T = normalize(sd->dPdv);
 						sc->offset = 0.0f;
 					}
@@ -498,7 +498,7 @@ ccl_device void svm_node_closure_volume(KernelGlobals *kg, ShaderData *sd, float
 
 	float param1 = (stack_valid(param1_offset))? stack_load_float(stack, param1_offset): __uint_as_float(node.z);
 	float param2 = (stack_valid(param2_offset))? stack_load_float(stack, param2_offset): __uint_as_float(node.w);
-	float density = param1;
+	float density = fmaxf(param1, 0.0f);
 
 	switch(type) {
 		case CLOSURE_VOLUME_ABSORPTION_ID: {
@@ -637,7 +637,7 @@ ccl_device void svm_node_emission_set_weight_total(KernelGlobals *kg, ShaderData
 {
 	float3 weight = make_float3(__uint_as_float(r), __uint_as_float(g), __uint_as_float(b));
 
-	if(sd->object != ~0)
+	if(sd->object != OBJECT_NONE)
 		weight /= object_surface_area(kg, sd->object);
 
 	svm_node_closure_store_weight(sd, weight);
@@ -659,7 +659,7 @@ ccl_device void svm_node_emission_weight(KernelGlobals *kg, ShaderData *sd, floa
 	float strength = stack_load_float(stack, strength_offset);
 	float3 weight = stack_load_float3(stack, color_offset)*strength;
 
-	if(total_power && sd->object != ~0)
+	if(total_power && sd->object != OBJECT_NONE)
 		weight /= object_surface_area(kg, sd->object);
 
 	svm_node_closure_store_weight(sd, weight);

@@ -265,7 +265,11 @@ void ED_view3d_smooth_view(bContext *C, View3D *v3d, ARegion *ar, Object *oldcam
 
 			/* ensure it shows correct */
 			if (sms.to_camera) {
-				rv3d->persp = RV3D_PERSP;
+				/* use ortho if we move from an ortho view to an ortho camera */
+				rv3d->persp = (((rv3d->is_persp == false) &&
+				                (camera->type == OB_CAMERA) &&
+				                (((Camera *)camera->data)->type == CAM_ORTHO)) ?
+				                RV3D_ORTHO : RV3D_PERSP);
 			}
 
 			rv3d->rflag |= RV3D_NAVIGATING;
@@ -404,15 +408,16 @@ void VIEW3D_OT_smoothview(wmOperatorType *ot)
 
 static int view3d_camera_to_view_exec(bContext *C, wmOperator *UNUSED(op))
 {
-	View3D *v3d = CTX_wm_view3d(C);
-	RegionView3D *rv3d = CTX_wm_region_view3d(C);
+	View3D *v3d;
+	ARegion *ar;
+	RegionView3D *rv3d;
+
 	ObjectTfmProtectedChannels obtfm;
 
-	copy_qt_qt(rv3d->lviewquat, rv3d->viewquat);
-	rv3d->lview = rv3d->view;
-	if (rv3d->persp != RV3D_CAMOB) {
-		rv3d->lpersp = rv3d->persp;
-	}
+	ED_view3d_context_user_region(C, &v3d, &ar);
+	rv3d = ar->regiondata;
+
+	ED_view3d_lastview_store(rv3d);
 
 	BKE_object_tfm_protected_backup(v3d->camera, &obtfm);
 
@@ -431,11 +436,17 @@ static int view3d_camera_to_view_exec(bContext *C, wmOperator *UNUSED(op))
 
 static int view3d_camera_to_view_poll(bContext *C)
 {
-	View3D *v3d = CTX_wm_view3d(C);
-	if (v3d && v3d->camera && v3d->camera->id.lib == NULL) {
-		RegionView3D *rv3d = CTX_wm_region_view3d(C);
-		if (rv3d && !rv3d->viewlock) {
-			return 1;
+	View3D *v3d;
+	ARegion *ar;
+
+	if (ED_view3d_context_user_region(C, &v3d, &ar)) {
+		RegionView3D *rv3d = ar->regiondata;
+		if (v3d && v3d->camera && v3d->camera->id.lib == NULL) {
+			if (rv3d && (rv3d->viewlock & RV3D_LOCKED) == 0) {
+				if (rv3d->persp != RV3D_CAMOB) {
+					return 1;
+				}
+			}
 		}
 	}
 
@@ -627,24 +638,15 @@ void ED_view3d_clipping_calc(BoundBox *bb, float planes[4][4], bglMats *mats, co
 	}
 }
 
-
-bool ED_view3d_boundbox_clip(RegionView3D *rv3d, float obmat[4][4], const BoundBox *bb)
+static bool view3d_boundbox_clip_m4(const BoundBox *bb, float persmatob[4][4])
 {
-	/* return 1: draw */
-
-	float mat[4][4];
-	float vec[4], min, max;
 	int a, flag = -1, fl;
 
-	if (bb == NULL) return true;
-	if (bb->flag & BOUNDBOX_DISABLED) return true;
-
-	mul_m4_m4m4(mat, rv3d->persmat, obmat);
-
 	for (a = 0; a < 8; a++) {
+		float vec[4], min, max;
 		copy_v3_v3(vec, bb->vec[a]);
 		vec[3] = 1.0;
-		mul_m4_v4(mat, vec);
+		mul_m4_v4(persmatob, vec);
 		max = vec[3];
 		min = -vec[3];
 
@@ -661,6 +663,28 @@ bool ED_view3d_boundbox_clip(RegionView3D *rv3d, float obmat[4][4], const BoundB
 	}
 
 	return false;
+}
+
+bool ED_view3d_boundbox_clip_ex(RegionView3D *rv3d, const BoundBox *bb, float obmat[4][4])
+{
+	/* return 1: draw */
+
+	float persmatob[4][4];
+
+	if (bb == NULL) return true;
+	if (bb->flag & BOUNDBOX_DISABLED) return true;
+
+	mul_m4_m4m4(persmatob, rv3d->persmat, obmat);
+
+	return view3d_boundbox_clip_m4(bb, persmatob);
+}
+
+bool ED_view3d_boundbox_clip(RegionView3D *rv3d, const BoundBox *bb)
+{
+	if (bb == NULL) return true;
+	if (bb->flag & BOUNDBOX_DISABLED) return true;
+
+	return view3d_boundbox_clip_m4(bb, rv3d->persmatob);
 }
 
 float ED_view3d_depth_read_cached(ViewContext *vc, int x, int y)
@@ -724,7 +748,7 @@ bool ED_view3d_viewplane_get(View3D *v3d, RegionView3D *rv3d, int winx, int winy
 /**
  * Use instead of: ``bglPolygonOffset(rv3d->dist, ...)`` see bug [#37727]
  */
-void ED_view3d_polygon_offset(const RegionView3D *rv3d, float dist)
+void ED_view3d_polygon_offset(const RegionView3D *rv3d, const float dist)
 {
 	float viewdist = rv3d->dist;
 
@@ -803,37 +827,56 @@ static void obmat_to_viewmat(RegionView3D *rv3d, Object *ob)
 	mat3_to_quat(rv3d->viewquat, tmat);
 }
 
-bool ED_view3d_lock(RegionView3D *rv3d)
+static float view3d_quat_axis[6][4] = {
+	{M_SQRT1_2, -M_SQRT1_2, 0.0f, 0.0f},    /* RV3D_VIEW_FRONT */
+	{0.0f, 0.0f, -M_SQRT1_2, -M_SQRT1_2},   /* RV3D_VIEW_BACK */
+	{0.5f, -0.5f, 0.5f, 0.5f},              /* RV3D_VIEW_LEFT */
+	{0.5f, -0.5f, -0.5f, -0.5f},            /* RV3D_VIEW_RIGHT */
+	{1.0f, 0.0f, 0.0f, 0.0f},               /* RV3D_VIEW_TOP */
+	{0.0f, -1.0f, 0.0f, 0.0f},              /* RV3D_VIEW_BOTTOM */
+};
+
+
+bool ED_view3d_quat_from_axis_view(const char view, float quat[4])
 {
-	switch (rv3d->view) {
-		case RV3D_VIEW_BOTTOM:
-			copy_v4_fl4(rv3d->viewquat, 0.0, -1.0, 0.0, 0.0);
-			break;
+	if (RV3D_VIEW_IS_AXIS(view)) {
+		copy_qt_qt(quat, view3d_quat_axis[view - RV3D_VIEW_FRONT]);
+		return true;
+	}
+	else {
+		return false;
+	}
+}
 
-		case RV3D_VIEW_BACK:
-			copy_v4_fl4(rv3d->viewquat, 0.0, 0.0, -M_SQRT1_2, -M_SQRT1_2);
-			break;
+char ED_view3d_quat_to_axis_view(const float quat[4], const float epsilon)
+{
+	/* quat values are all unit length */
 
-		case RV3D_VIEW_LEFT:
-			copy_v4_fl4(rv3d->viewquat, 0.5, -0.5, 0.5, 0.5);
-			break;
+	char view;
 
-		case RV3D_VIEW_TOP:
-			copy_v4_fl4(rv3d->viewquat, 1.0, 0.0, 0.0, 0.0);
-			break;
-
-		case RV3D_VIEW_FRONT:
-			copy_v4_fl4(rv3d->viewquat, M_SQRT1_2, -M_SQRT1_2, 0.0, 0.0);
-			break;
-
-		case RV3D_VIEW_RIGHT:
-			copy_v4_fl4(rv3d->viewquat, 0.5, -0.5, -0.5, -0.5);
-			break;
-		default:
-			return false;
+	for (view = RV3D_VIEW_FRONT; view <= RV3D_VIEW_BOTTOM; view++) {
+		if (angle_qtqt(quat, view3d_quat_axis[view - RV3D_VIEW_FRONT]) < epsilon) {
+			return view;
+		}
 	}
 
-	return true;
+	return RV3D_VIEW_USER;
+}
+
+char ED_view3d_lock_view_from_index(int index)
+{
+	switch (index) {
+		case 0:  return RV3D_VIEW_FRONT;
+		case 1:  return RV3D_VIEW_TOP;
+		case 2:  return RV3D_VIEW_RIGHT;
+		default: return RV3D_VIEW_USER;
+	}
+
+}
+
+bool ED_view3d_lock(RegionView3D *rv3d)
+{
+	return ED_view3d_quat_from_axis_view(rv3d->view, rv3d->viewquat);
 }
 
 /* don't set windows active in here, is used by renderwin too */
@@ -854,7 +897,7 @@ void setviewmatrixview3d(Scene *scene, View3D *v3d, RegionView3D *rv3d)
 
 
 		/* should be moved to better initialize later on XXX */
-		if (rv3d->viewlock)
+		if (rv3d->viewlock & RV3D_LOCKED)
 			ED_view3d_lock(rv3d);
 		
 		quat_to_mat4(rv3d->viewmat, rv3d->viewquat);
@@ -938,7 +981,7 @@ short view3d_opengl_select(ViewContext *vc, unsigned int *buffer, unsigned int b
 	mul_m4_m4m4(vc->rv3d->persmat, vc->rv3d->winmat, vc->rv3d->viewmat);
 	
 	if (v3d->drawtype > OB_WIRE) {
-		v3d->zbuf = TRUE;
+		v3d->zbuf = true;
 		glEnable(GL_DEPTH_TEST);
 	}
 	
@@ -963,7 +1006,7 @@ short view3d_opengl_select(ViewContext *vc, unsigned int *buffer, unsigned int b
 	else {
 		Base *base;
 		
-		v3d->xray = TRUE;  /* otherwise it postpones drawing */
+		v3d->xray = true;  /* otherwise it postpones drawing */
 		for (base = scene->base.first; base; base = base->next) {
 			if (base->lay & v3d->lay) {
 				
@@ -1348,7 +1391,7 @@ static void SaveState(bContext *C, wmWindow *win)
 	
 	queue_back = win->queue;
 	
-	win->queue.first = win->queue.last = NULL;
+	BLI_listbase_clear(&win->queue);
 	
 	//XXX waitcursor(1);
 }
