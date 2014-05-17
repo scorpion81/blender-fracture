@@ -48,7 +48,6 @@
 #include "BKE_lattice.h"
 #include "BKE_mesh.h"
 #include "BKE_modifier.h"
-#include "BKE_object.h"
 #include "BKE_particle.h"
 #include "BKE_scene.h"
 
@@ -801,7 +800,7 @@ static DerivedMesh *explodeMesh(ExplodeModifierData *emd,
 	float rot[4];
 	float cfra;
 	/* float timestep; */
-	int *facepa = emd->facepa;
+	const int *facepa = emd->facepa;
 	int totdup = 0, totvert = 0, totface = 0, totpart = 0, delface = 0;
 	int i, v, u;
 	unsigned int ed_v1, ed_v2, mindex = 0;

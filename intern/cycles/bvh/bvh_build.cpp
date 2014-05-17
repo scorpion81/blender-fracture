@@ -298,18 +298,41 @@ void BVHBuild::thread_build_node(InnerNode *inner, int child, BVHObjectBinning *
 	}
 }
 
+bool BVHBuild::range_within_max_leaf_size(const BVHRange& range)
+{
+	size_t size = range.size();
+	size_t max_leaf_size = max(params.max_triangle_leaf_size, params.max_curve_leaf_size);
+
+	if(size > max_leaf_size)
+		return false;
+	
+	size_t num_triangles = 0;
+	size_t num_curves = 0;
+
+	for(int i = 0; i < size; i++) {
+		BVHReference& ref = references[range.start() + i];
+
+		if(ref.prim_type() & PRIMITIVE_ALL_CURVE)
+			num_curves++;
+		else if(ref.prim_type() & PRIMITIVE_ALL_TRIANGLE)
+			num_triangles++;
+	}
+
+	return (num_triangles < params.max_triangle_leaf_size) && (num_curves < params.max_curve_leaf_size);
+}
+
 /* multithreaded binning builder */
 BVHNode* BVHBuild::build_node(const BVHObjectBinning& range, int level)
 {
 	size_t size = range.size();
-	float leafSAH = params.sah_triangle_cost * range.leafSAH;
-	float splitSAH = params.sah_node_cost * range.bounds().half_area() + params.sah_triangle_cost * range.splitSAH;
+	float leafSAH = params.sah_primitive_cost * range.leafSAH;
+	float splitSAH = params.sah_node_cost * range.bounds().half_area() + params.sah_primitive_cost * range.splitSAH;
 
 	/* have at least one inner node on top level, for performance and correct
 	 * visibility tests, since object instances do not check visibility flag */
 	if(!(range.size() > 0 && params.top_level && level == 0)) {
 		/* make leaf node when threshold reached or SAH tells us */
-		if(params.small_enough_for_leaf(size, level) || (size <= params.max_leaf_size && leafSAH < splitSAH))
+		if(params.small_enough_for_leaf(size, level) || (range_within_max_leaf_size(range) && leafSAH < splitSAH))
 			return create_leaf_node(range);
 	}
 
@@ -511,7 +534,7 @@ void BVHBuild::rotate(BVHNode *node, int max_depth)
 	/* find best rotation. we pick a target child of a first child, and swap
 	 * this with an other child. we perform the best such swap. */
 	float best_cost = FLT_MAX;
-	int best_child = -1, bets_target = -1, best_other = -1;
+	int best_child = -1, best_target = -1, best_other = -1;
 
 	for(size_t c = 0; c < 2; c++) {
 		/* ignore leaf nodes as we cannot descent into */
@@ -535,11 +558,11 @@ void BVHBuild::rotate(BVHNode *node, int max_depth)
 
 			if(cost0 < cost1) {
 				best_cost = cost0;
-				bets_target = 0;
+				best_target = 0;
 			}
 			else {
 				best_cost = cost0;
-				bets_target = 1;
+				best_target = 1;
 			}
 		}
 	}
@@ -548,10 +571,13 @@ void BVHBuild::rotate(BVHNode *node, int max_depth)
 	if(best_cost >= 0)
 		return;
 
+	assert(best_child == 0 || best_child == 1);
+	assert(best_target != -1);
+
 	/* perform the best found tree rotation */
 	InnerNode *child = (InnerNode*)parent->children[best_child];
 
-	swap(parent->children[best_other], child->children[bets_target]);
+	swap(parent->children[best_other], child->children[best_target]);
 	child->m_bounds = merge(child->children[0]->m_bounds, child->children[1]->m_bounds);
 }
 

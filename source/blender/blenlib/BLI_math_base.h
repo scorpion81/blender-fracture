@@ -241,8 +241,6 @@ MINLINE int mod_i(int i, int n);
 MINLINE unsigned int highest_order_bit_i(unsigned int n);
 MINLINE unsigned short highest_order_bit_s(unsigned short n);
 
-MINLINE float shell_angle_to_dist(const float angle);
-
 #if defined(_MSC_VER) && (_MSC_VER < 1800)
 extern double copysign(double x, double y);
 extern double round(double x);
@@ -257,7 +255,7 @@ double double_round(double x, int ndigits);
 /* asserts, some math functions expect normalized inputs
  * check the vector is unit length, or zero length (which can't be helped in some cases).
  */
-#ifdef DEBUG
+#ifndef NDEBUG
 /* note: 0.0001 is too small becaues normals may be converted from short's: see [#34322] */
 #  define BLI_ASSERT_UNIT_EPSILON 0.0002f
 #  define BLI_ASSERT_UNIT_V3(v)  {                                            \
@@ -279,11 +277,16 @@ double double_round(double x, int ndigits);
 } (void)0
 
 #  define BLI_ASSERT_ZERO_M3(m)  {                                            \
-	BLI_assert(dot_vn_vn((const float *)m, (const float *)m, 9) != 0.0);     \
+	BLI_assert(dot_vn_vn((const float *)m, (const float *)m, 9) != 0.0);      \
 } (void)0
 
 #  define BLI_ASSERT_ZERO_M4(m)  {                                            \
 	BLI_assert(dot_vn_vn((const float *)m, (const float *)m, 16) != 0.0);     \
+} (void)0
+#  define BLI_ASSERT_UNIT_M3(m)  {                                            \
+	BLI_ASSERT_UNIT_V3((m)[0]);                                               \
+	BLI_ASSERT_UNIT_V3((m)[1]);                                               \
+	BLI_ASSERT_UNIT_V3((m)[2]);                                               \
 } (void)0
 #else
 #  define BLI_ASSERT_UNIT_V2(v) (void)(v)
@@ -291,6 +294,7 @@ double double_round(double x, int ndigits);
 #  define BLI_ASSERT_UNIT_QUAT(v) (void)(v)
 #  define BLI_ASSERT_ZERO_M3(m) (void)(m)
 #  define BLI_ASSERT_ZERO_M4(m) (void)(m)
+#  define BLI_ASSERT_UNIT_M3(m) (void)(m)
 #endif
 
 #endif /* __BLI_MATH_BASE_H__ */

@@ -29,7 +29,6 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_math_vector.h"
-#include "BLI_listbase.h"
 #include "BLI_array.h"
 #include "BLI_alloca.h"
 #include "BLI_smallhash.h"
@@ -133,7 +132,10 @@ BMEdge *BM_edge_create(BMesh *bm, BMVert *v1, BMVert *v2,
                        const BMEdge *e_example, const eBMCreateFlag create_flag)
 {
 	BMEdge *e;
-	
+
+	BLI_assert(v1 != v2);
+	BLI_assert(v1->head.htype == BM_VERT && v2->head.htype == BM_VERT);
+
 	if ((create_flag & BM_CREATE_NO_DOUBLE) && (e = BM_edge_exists(v1, v2)))
 		return e;
 	

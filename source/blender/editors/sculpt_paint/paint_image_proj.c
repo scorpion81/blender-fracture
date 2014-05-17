@@ -60,35 +60,23 @@
 
 #include "BKE_camera.h"
 #include "BKE_context.h"
-#include "BKE_depsgraph.h"
 #include "BKE_DerivedMesh.h"
 #include "BKE_idprop.h"
 #include "BKE_brush.h"
 #include "BKE_image.h"
 #include "BKE_library.h"
 #include "BKE_main.h"
-#include "BKE_mesh.h"
 #include "BKE_mesh_mapping.h"
-#include "BKE_node.h"
-#include "BKE_object.h"
 #include "BKE_paint.h"
 #include "BKE_report.h"
 #include "BKE_scene.h"
-#include "BKE_colortools.h"
-
-#include "BKE_editmesh.h"
-
-#include "BIF_gl.h"
-#include "BIF_glutil.h"
 
 #include "UI_view2d.h"
 
-#include "ED_image.h"
 #include "ED_screen.h"
 #include "ED_sculpt.h"
 #include "ED_uvedit.h"
 #include "ED_view3d.h"
-#include "ED_mesh.h"
 
 #include "GPU_extensions.h"
 
@@ -375,27 +363,6 @@ static int project_bucket_offset_safe(const ProjPaintState *ps, const float proj
 	}
 }
 
-/* still use 2D X,Y space but this works for verts transformed by a perspective matrix, using their 4th component as a weight */
-static void barycentric_weights_v2_persp(const float v1[4], const float v2[4], const float v3[4], const float co[2], float w[3])
-{
-	float wtot_inv, wtot;
-
-	w[0] = area_tri_signed_v2(v2, v3, co) / v1[3];
-	w[1] = area_tri_signed_v2(v3, v1, co) / v2[3];
-	w[2] = area_tri_signed_v2(v1, v2, co) / v3[3];
-	wtot = w[0] + w[1] + w[2];
-
-	if (wtot != 0.0f) {
-		wtot_inv = 1.0f / wtot;
-
-		w[0] = w[0] * wtot_inv;
-		w[1] = w[1] * wtot_inv;
-		w[2] = w[2] * wtot_inv;
-	}
-	else /* dummy values for zero area face */
-		w[0] = w[1] = w[2] = 1.0f / 3.0f;
-}
-
 static float VecZDepthOrtho(const float pt[2],
                             const float v1[3], const float v2[3], const float v3[3],
                             float w[3])
@@ -444,7 +411,7 @@ static int project_paint_PickFace(const ProjPaintState *ps, const float pt[2], f
 {
 	LinkNode *node;
 	float w_tmp[3];
-	float *v1, *v2, *v3, *v4;
+	const float *v1, *v2, *v3, *v4;
 	int bucket_index;
 	int face_index;
 	int best_side = -1;
@@ -581,7 +548,7 @@ static bool project_paint_PickColor(const ProjPaintState *ps, const float pt[2],
 
 		if (rgba) {
 			if (ibuf->rect_float) {
-				float *rgba_tmp_fp = ibuf->rect_float + (xi + yi * ibuf->x * 4);
+				const float *rgba_tmp_fp = ibuf->rect_float + (xi + yi * ibuf->x * 4);
 				premul_float_to_straight_uchar(rgba, rgba_tmp_fp);
 			}
 			else {
@@ -983,19 +950,16 @@ static void uv_image_outset(float (*orig_uv)[2], float (*outset_uv)[2], const fl
 		normalize_v2(dir3);
 	}
 
-	/* TODO - angle_normalized_v2v2(...) * (M_PI/180.0f)
-	 * This is incorrect. Its already given radians but without it wont work.
-	 * need to look into a fix - campbell */
 	if (is_quad) {
-		a1 = shell_angle_to_dist(angle_normalized_v2v2(dir4, dir1) * ((float)M_PI / 180.0f));
-		a2 = shell_angle_to_dist(angle_normalized_v2v2(dir1, dir2) * ((float)M_PI / 180.0f));
-		a3 = shell_angle_to_dist(angle_normalized_v2v2(dir2, dir3) * ((float)M_PI / 180.0f));
-		a4 = shell_angle_to_dist(angle_normalized_v2v2(dir3, dir4) * ((float)M_PI / 180.0f));
+		a1 = shell_v2v2_mid_normalized_to_dist(dir4, dir1);
+		a2 = shell_v2v2_mid_normalized_to_dist(dir1, dir2);
+		a3 = shell_v2v2_mid_normalized_to_dist(dir2, dir3);
+		a4 = shell_v2v2_mid_normalized_to_dist(dir3, dir4);
 	}
 	else {
-		a1 = shell_angle_to_dist(angle_normalized_v2v2(dir3, dir1) * ((float)M_PI / 180.0f));
-		a2 = shell_angle_to_dist(angle_normalized_v2v2(dir1, dir2) * ((float)M_PI / 180.0f));
-		a3 = shell_angle_to_dist(angle_normalized_v2v2(dir2, dir3) * ((float)M_PI / 180.0f));
+		a1 = shell_v2v2_mid_normalized_to_dist(dir3, dir1);
+		a2 = shell_v2v2_mid_normalized_to_dist(dir1, dir2);
+		a3 = shell_v2v2_mid_normalized_to_dist(dir2, dir3);
 	}
 
 	if (is_quad) {
@@ -1077,9 +1041,9 @@ static void project_face_seams_init(const ProjPaintState *ps, const int face_ind
  *
  * This is used for finding a pixels location in screenspace for painting */
 static void screen_px_from_ortho(
-        float uv[2],
-        float v1co[3], float v2co[3], float v3co[3],  /* Screenspace coords */
-        float uv1co[2], float uv2co[2], float uv3co[2],
+        const float uv[2],
+        const float v1co[3], const float v2co[3], const float v3co[3],  /* Screenspace coords */
+        const float uv1co[2], const float uv2co[2], const float uv3co[2],
         float pixelScreenCo[4],
         float w[3])
 {
@@ -1087,47 +1051,12 @@ static void screen_px_from_ortho(
 	interp_v3_v3v3v3(pixelScreenCo, v1co, v2co, v3co, w);
 }
 
-/* same as screen_px_from_ortho except we need to take into account
- * the perspective W coord for each vert */
+/* same as screen_px_from_ortho except we
+ * do perspective correction on the pixel coordinate */
 static void screen_px_from_persp(
-        float uv[2],
-        float v1co[4], float v2co[4], float v3co[4],  /* screenspace coords */
-        float uv1co[2], float uv2co[2], float uv3co[2],
-        float pixelScreenCo[4],
-        float w[3])
-{
-
-	float wtot_inv, wtot;
-	barycentric_weights_v2(uv1co, uv2co, uv3co, uv, w);
-
-	/* re-weight from the 4th coord of each screen vert */
-	w[0] *= v1co[3];
-	w[1] *= v2co[3];
-	w[2] *= v3co[3];
-
-	wtot = w[0] + w[1] + w[2];
-
-	if (wtot > 0.0f) {
-		wtot_inv = 1.0f / wtot;
-		w[0] *= wtot_inv;
-		w[1] *= wtot_inv;
-		w[2] *= wtot_inv;
-	}
-	else {
-		w[0] = w[1] = w[2] = 1.0f / 3.0f;  /* dummy values for zero area face */
-	}
-	/* done re-weighting */
-
-	interp_v3_v3v3v3(pixelScreenCo, v1co, v2co, v3co, w);
-}
-
-
-/* same as screen_px_from_persp except we return ortho weights back to the caller.
- * These weights will be used to determine correct interpolation of uvs in cloned uv layer */
-static void screen_px_from_persp_ortho_weights(
-        float uv[2],
-        float v1co[4], float v2co[4], float v3co[4],  /* screenspace coords */
-        float uv1co[2], float uv2co[2], float uv3co[2],
+        const float uv[2],
+        const float v1co[4], const float v2co[4], const float v3co[4],  /* screenspace coords */
+        const float uv1co[2], const float uv2co[2], const float uv3co[2],
         float pixelScreenCo[4],
         float w[3])
 {
@@ -1162,7 +1091,7 @@ static void screen_px_from_persp_ortho_weights(
 static void project_face_pixel(const MTFace *tf_other, ImBuf *ibuf_other, const float w[3],
                                int side, unsigned char rgba_ub[4], float rgba_f[4])
 {
-	float *uvCo1, *uvCo2, *uvCo3;
+	const float *uvCo1, *uvCo2, *uvCo3;
 	float uv_other[2], x, y;
 
 	uvCo1 =  (float *)tf_other->uv[0];
@@ -1242,7 +1171,7 @@ static float project_paint_uvpixel_mask(
 		MFace *mf = &ps->dm_mface[face_index];
 		float no[3], angle;
 		if (mf->flag & ME_SMOOTH) {
-			short *no1, *no2, *no3;
+			const short *no1, *no2, *no3;
 			no1 = ps->dm_mvert[mf->v1].no;
 			if (side == 1) {
 				no2 = ps->dm_mvert[mf->v3].no;
@@ -1286,7 +1215,7 @@ static float project_paint_uvpixel_mask(
 		else {
 			/* Annoying but for the perspective view we need to get the pixels location in 3D space :/ */
 			float viewDirPersp[3];
-			float *co1, *co2, *co3;
+			const float *co1, *co2, *co3;
 			co1 = ps->dm_mvert[mf->v1].co;
 			if (side == 1) {
 				co2 = ps->dm_mvert[mf->v3].co;
@@ -1735,8 +1664,8 @@ static bool project_bucket_isect_circle(const float cent[2], const float radius_
 
 static void rect_to_uvspace_ortho(
         rctf *bucket_bounds,
-        float *v1coSS, float *v2coSS, float *v3coSS,
-        float *uv1co, float *uv2co, float *uv3co,
+        const float *v1coSS, const float *v2coSS, const float *v3coSS,
+        const float *uv1co, const float *uv2co, const float *uv3co,
         float bucket_bounds_uv[4][2],
         const int flip)
 {
@@ -1768,8 +1697,8 @@ static void rect_to_uvspace_ortho(
 /* same as above but use barycentric_weights_v2_persp */
 static void rect_to_uvspace_persp(
         rctf *bucket_bounds,
-        float *v1coSS, float *v2coSS, float *v3coSS,
-        float *uv1co, float *uv2co, float *uv3co,
+        const float *v1coSS, const float *v2coSS, const float *v3coSS,
+        const float *uv1co, const float *uv2co, const float *uv3co,
         float bucket_bounds_uv[4][2],
         const int flip
         )
@@ -1845,7 +1774,7 @@ static void project_bucket_clip_face(
         const bool is_ortho,
         rctf *bucket_bounds,
         float *v1coSS, float *v2coSS, float *v3coSS,
-        float *uv1co, float *uv2co, float *uv3co,
+        const float *uv1co, const float *uv2co, const float *uv3co,
         float bucket_bounds_uv[8][2],
         int *tot)
 {
@@ -2207,7 +2136,6 @@ static void project_paint_face_init(const ProjPaintState *ps, const int thread_i
 	float uv_clip[8][2];
 	int uv_clip_tot;
 	const bool is_ortho = ps->is_ortho;
-	const bool is_clone_other = ((ps->brush->imagepaint_tool == PAINT_TOOL_CLONE) && ps->dm_mtface_clone);
 	const bool do_backfacecull = ps->do_backfacecull;
 	const bool do_clip = ps->rv3d ? ps->rv3d->rflag & RV3D_CLIPPING : 0;
 
@@ -2315,7 +2243,6 @@ static void project_paint_face_init(const ProjPaintState *ps, const int thread_i
 						has_x_isect = has_isect = 1;
 
 						if (is_ortho) screen_px_from_ortho(uv, v1coSS, v2coSS, v3coSS, uv1co, uv2co, uv3co, pixelScreenCo, w);
-						else if (is_clone_other) screen_px_from_persp_ortho_weights(uv, v1coSS, v2coSS, v3coSS, uv1co, uv2co, uv3co, pixelScreenCo, w);
 						else screen_px_from_persp(uv, v1coSS, v2coSS, v3coSS, uv1co, uv2co, uv3co, pixelScreenCo, w);
 
 						/* a pity we need to get the worldspace pixel location here */
@@ -2676,7 +2603,7 @@ static bool project_bucket_face_isect(ProjPaintState *ps, int bucket_x, int buck
 	/* TODO - replace this with a tricker method that uses sideofline for all screenCoords's edges against the closest bucket corner */
 	rctf bucket_bounds;
 	float p1[2], p2[2], p3[2], p4[2];
-	float *v, *v1, *v2, *v3, *v4 = NULL;
+	const float *v, *v1, *v2, *v3, *v4 = NULL;
 	int fidx;
 
 	project_bucket_bounds(ps, bucket_x, bucket_y, &bucket_bounds);
@@ -2964,7 +2891,7 @@ static void project_paint_begin(ProjPaintState *ps)
 				IDProperty *idgroup = IDP_GetProperties(&ps->reproject_image->id, 0);
 				IDProperty *view_data = IDP_GetPropertyFromGroup(idgroup, PROJ_VIEW_DATA_ID);
 
-				float *array = (float *)IDP_Array(view_data);
+				const float *array = (float *)IDP_Array(view_data);
 
 				/* use image array, written when creating image */
 				memcpy(winmat, array, sizeof(winmat)); array += sizeof(winmat) / sizeof(float);
@@ -3190,7 +3117,7 @@ static void project_paint_begin(ProjPaintState *ps)
 		}
 
 		if (is_face_sel && (tpage = project_paint_face_image(ps, ps->dm_mtface, face_index))) {
-			float *v1coSS, *v2coSS, *v3coSS, *v4coSS = NULL;
+			const float *v1coSS, *v2coSS, *v3coSS, *v4coSS = NULL;
 
 			v1coSS = ps->screenCoords[mf->v1];
 			v2coSS = ps->screenCoords[mf->v2];
@@ -4410,7 +4337,7 @@ static int texture_paint_camera_project_exec(bContext *C, wmOperator *op)
 	scene->toolsettings->imapaint.flag |= IMAGEPAINT_DRAWING;
 
 	ED_undo_paint_push_begin(UNDO_PAINT_IMAGE, op->type->name,
-	                      ED_image_undo_restore, ED_image_undo_free);
+	                         ED_image_undo_restore, ED_image_undo_free);
 
 	/* allocate and initialize spatial data structures */
 	project_paint_begin(&ps);
@@ -4463,6 +4390,7 @@ void PAINT_OT_project_image(wmOperatorType *ot)
 
 	prop = RNA_def_enum(ot->srna, "image", DummyRNA_NULL_items, 0, "Image", "");
 	RNA_def_enum_funcs(prop, RNA_image_itemf);
+	RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
 	ot->prop = prop;
 }
 
@@ -4486,7 +4414,7 @@ static int texture_paint_image_from_view_exec(bContext *C, wmOperator *op)
 	if (w > maxsize) w = maxsize;
 	if (h > maxsize) h = maxsize;
 
-	ibuf = ED_view3d_draw_offscreen_imbuf(CTX_data_scene(C), CTX_wm_view3d(C), CTX_wm_region(C), w, h, IB_rect, false, R_ALPHAPREMUL, err_out);
+	ibuf = ED_view3d_draw_offscreen_imbuf(scene, CTX_wm_view3d(C), CTX_wm_region(C), w, h, IB_rect, false, R_ALPHAPREMUL, err_out);
 	if (!ibuf) {
 		/* Mostly happens when OpenGL offscreen buffer was failed to create, */
 		/* but could be other reasons. Should be handled in the future. nazgul */

@@ -301,6 +301,18 @@ static void make_duplis_group(const DupliContext *ctx)
 		if (go->ob != ob) {
 			float mat[4][4];
 
+			/* Special case for instancing dupli-groups, see: T40051
+			 * this object may be instanced via dupli-verts/faces, in this case we don't want to render
+			 * (blender convention), but _do_ show in the viewport.
+			 *
+			 * Regular objects work fine but not if we're instancing dupli-groups,
+			 * because the rules for rendering aren't applied to objects they instance.
+			 * We could recursively pass down the 'hide' flag instead, but that seems unnecessary.
+			 */
+			if (for_render && go->ob->parent && go->ob->parent->transflag & (OB_DUPLIVERTS | OB_DUPLIFACES)) {
+				continue;
+			}
+
 			/* group dupli offset, should apply after everything else */
 			mul_m4_m4m4(mat, group_mat, go->ob->obmat);
 
@@ -684,7 +696,7 @@ static void get_dupliface_transform(MPoly *mpoly, MLoop *mloop, MVert *mvert,
 	BKE_mesh_calc_poly_center(mpoly, mloop, mvert, loc);
 	/* rotation */
 	{
-		float *v1, *v2, *v3;
+		const float *v1, *v2, *v3;
 		BKE_mesh_calc_poly_normal(mpoly, mloop, mvert, f_no);
 		v1 = mvert[mloop[0].v].co;
 		v2 = mvert[mloop[1].v].co;
@@ -1244,4 +1256,43 @@ int count_duplilist(Object *ob)
 		}
 	}
 	return 1;
+}
+
+DupliApplyData *duplilist_apply_matrix(ListBase *duplilist)
+{
+	DupliApplyData *apply_data = NULL;
+	int num_objects = BLI_countlist(duplilist);
+	if (num_objects > 0) {
+		DupliObject *dob;
+		int i;
+		apply_data = MEM_mallocN(sizeof(DupliApplyData), "DupliObject apply data");
+		apply_data->num_objects = num_objects;
+		apply_data->extra = MEM_mallocN(sizeof(DupliExtraData) * (size_t) num_objects,
+		                                "DupliObject apply extra data");
+
+		for (dob = duplilist->first, i = 0; dob; dob = dob->next, ++i) {
+			copy_m4_m4(apply_data->extra[i].obmat, dob->ob->obmat);
+			copy_m4_m4(dob->ob->obmat, dob->mat);
+		}
+	}
+	return apply_data;
+}
+
+void duplilist_restore_matrix(ListBase *duplilist, DupliApplyData *apply_data)
+{
+	DupliObject *dob;
+	int i;
+	/* Restore object matrices.
+	 * NOTE: this has to happen in reverse order, since nested
+	 * dupli objects can repeatedly override the obmat.
+	 */
+	for (dob = duplilist->last, i = apply_data->num_objects - 1; dob; dob = dob->prev, --i) {
+		copy_m4_m4(dob->ob->obmat, apply_data->extra[i].obmat);
+	}
+}
+
+void duplilist_free_apply_data(DupliApplyData *apply_data)
+{
+	MEM_freeN(apply_data->extra);
+	MEM_freeN(apply_data);
 }

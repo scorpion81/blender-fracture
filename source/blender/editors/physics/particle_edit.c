@@ -48,7 +48,6 @@
 #include "BLI_lasso.h"
 #include "BLI_listbase.h"
 #include "BLI_string.h"
-#include "BLI_dynstr.h"
 #include "BLI_kdtree.h"
 #include "BLI_rand.h"
 #include "BLI_utildefines.h"
@@ -62,7 +61,6 @@
 #include "BKE_modifier.h"
 #include "BKE_particle.h"
 #include "BKE_report.h"
-#include "BKE_scene.h"
 
 #include "BKE_pointcache.h"
 
@@ -3356,8 +3354,8 @@ static int brush_add(PEData *data, short number)
 	short size2= size*size;
 	DerivedMesh *dm=0;
 	RNG *rng;
-	int *index_mf_to_mpoly;
-	int *index_mp_to_orig;
+	const int *index_mf_to_mpoly;
+	const int *index_mp_to_orig;
 	bool release_dm = false;
 
 	invert_m4_m4(imat, ob->obmat);

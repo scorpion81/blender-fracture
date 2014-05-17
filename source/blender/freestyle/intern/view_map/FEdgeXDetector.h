@@ -39,6 +39,8 @@
 #include "../winged_edge/Curvature.h"
 #include "../winged_edge/WXEdge.h"
 
+#include "BLI_math.h"
+
 #ifdef WITH_CXX_GUARDEDALLOC
 #include "MEM_guardedalloc.h"
 #endif
@@ -48,7 +50,7 @@ namespace Freestyle {
 using namespace Geometry;
 
 /*! This class takes as input a WXEdge structure and fills it */
-class LIB_VIEW_MAP_EXPORT FEdgeXDetector
+class FEdgeXDetector
 {
 public:
 	FEdgeXDetector()

@@ -39,56 +39,39 @@
 #include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
 #include "BLI_rand.h"
-#include "BLI_task.h"
 #include "BLI_memarena.h"
-#include "BLI_linklist.h"
 #ifdef WITH_FREESTYLE
 #  include "BLI_edgehash.h"
 #endif
 
 #include "BLF_translation.h"
 
-#include "DNA_armature_types.h"
-#include "DNA_camera_types.h"
 #include "DNA_material_types.h"
 #include "DNA_curve_types.h"
-#include "DNA_effect_types.h"
 #include "DNA_group_types.h"
 #include "DNA_lamp_types.h"
 #include "DNA_image_types.h"
-#include "DNA_lattice_types.h"
 #include "DNA_mesh_types.h"
 #include "DNA_meshdata_types.h"
-#include "DNA_meta_types.h"
 #include "DNA_modifier_types.h"
 #include "DNA_node_types.h"
 #include "DNA_object_types.h"
-#include "DNA_object_force.h"
 #include "DNA_object_fluidsim.h"
 #include "DNA_particle_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_texture_types.h"
-#include "DNA_view3d_types.h"
 
 #include "BKE_anim.h"
-#include "BKE_armature.h"
-#include "BKE_action.h"
 #include "BKE_curve.h"
 #include "BKE_customdata.h"
 #include "BKE_colortools.h"
-#include "BKE_constraint.h"
 #include "BKE_displist.h"
-#include "BKE_deform.h"
 #include "BKE_depsgraph.h"
 #include "BKE_DerivedMesh.h"
-#include "BKE_effect.h"
 #include "BKE_global.h"
-#include "BKE_group.h"
 #include "BKE_key.h"
-#include "BKE_ipo.h"
 #include "BKE_image.h"
 #include "BKE_lattice.h"
-#include "BKE_library.h"
 #include "BKE_material.h"
 #include "BKE_main.h"
 #include "BKE_mball.h"
@@ -98,10 +81,7 @@
 #include "BKE_object.h"
 #include "BKE_particle.h"
 #include "BKE_scene.h"
-#include "BKE_subsurf.h"
-#include "BKE_texture.h"
 
-#include "BKE_world.h"
 
 #include "PIL_time.h"
 #include "IMB_imbuf_types.h"
@@ -416,7 +396,7 @@ static void calc_vertexnormals(Render *UNUSED(re), ObjectRen *obr, bool do_verte
 		VlakRen *vlr= RE_findOrAddVlak(obr, a);
 		if (do_vertex_normal && vlr->flag & ME_SMOOTH) {
 			float *n4= (vlr->v4)? vlr->v4->n: NULL;
-			float *c4= (vlr->v4)? vlr->v4->co: NULL;
+			const float *c4= (vlr->v4)? vlr->v4->co: NULL;
 
 			accumulate_vertex_normals(vlr->v1->n, vlr->v2->n, vlr->v3->n, n4,
 				vlr->n, vlr->v1->co, vlr->v2->co, vlr->v3->co, c4);
@@ -500,31 +480,28 @@ static int as_addvert(ASvert *asv, VertRen *v1, VlakRen *vlr)
 {
 	ASface *asf;
 	int a = -1;
-	
-	if (v1 == NULL) return a;
-	
-	if (asv->faces.first==NULL) {
-		asf= MEM_callocN(sizeof(ASface), "asface");
-		BLI_addtail(&asv->faces, asf);
-	}
-	
-	asf= asv->faces.last;
-	for (a=0; a<4; a++) {
-		if (asf->vlr[a]==NULL) {
-			asf->vlr[a]= vlr;
-			asv->totface++;
-			break;
+
+	if (v1 == NULL)
+		return a;
+
+	asf = asv->faces.last;
+	if (asf) {
+		for (a = 0; a < 4 && asf->vlr[a]; a++) {
 		}
 	}
-	
-	/* new face struct */
-	if (a==4) {
-		a = 0;
-		asf= MEM_callocN(sizeof(ASface), "asface");
-		BLI_addtail(&asv->faces, asf);
-		asf->vlr[a]= vlr;
-		asv->totface++;
+	else {
+		a = 4;
 	}
+
+	/* new face struct */
+	if (a == 4) {
+		a = 0;
+		asf = MEM_callocN(sizeof(ASface), "asface");
+		BLI_addtail(&asv->faces, asf);
+	}
+
+	asf->vlr[a] = vlr;
+	asv->totface++;
 
 	return a;
 }
@@ -628,14 +605,14 @@ static void autosmooth(Render *UNUSED(re), ObjectRen *obr, float mat[4][4], shor
 	}
 
 	/* free */
-	for (a=0; a<totvert; a++) {
+	for (a = 0; a < totvert; a++) {
 		BLI_freelistN(&asverts[a].faces);
 	}
 	MEM_freeN(asverts);
 
 	/* rotate vertices and calculate normal of faces */
-	for (a=0; a<obr->totvert; a++) {
-		ver= RE_findOrAddVert(obr, a);
+	for (a = 0; a < obr->totvert; a++) {
+		ver = RE_findOrAddVert(obr, a);
 		mul_m4_v3(mat, ver->co);
 		if (lnors) {
 			mul_mat3_m4_v3(mat, ver->n);
@@ -643,9 +620,9 @@ static void autosmooth(Render *UNUSED(re), ObjectRen *obr, float mat[4][4], shor
 			normalize_v3(ver->n);
 		}
 	}
-	for (a=0; a<obr->totvlak; a++) {
-		vlr= RE_findOrAddVlak(obr, a);
-		
+	for (a = 0; a < obr->totvlak; a++) {
+		vlr = RE_findOrAddVlak(obr, a);
+
 		/* skip wire faces */
 		if (vlr->v2 != vlr->v3) {
 			if (vlr->v4)
@@ -1328,7 +1305,7 @@ static int render_new_particle_system(Render *re, ObjectRen *obr, ParticleSystem
 	int totchild=0, step_nbr;
 	int seed, path_nbr=0, orco1=0, num;
 	int totface;
-	char **uv_name = NULL;
+	const char **uv_name = NULL;
 
 	const int *index_mf_to_mpoly = NULL;
 	const int *index_mp_to_orig = NULL;
@@ -1346,7 +1323,7 @@ static int render_new_particle_system(Render *re, ObjectRen *obr, ParticleSystem
 	if (part->ren_as==PART_DRAW_OB || part->ren_as==PART_DRAW_GR || part->ren_as==PART_DRAW_NOT)
 		return 1;
 
-	if ((re->r.scemode & R_VIEWPORT_PREVIEW) && psys->edit)
+	if ((re->r.scemode & R_VIEWPORT_PREVIEW) && (ob->mode & OB_MODE_PARTICLE_EDIT))
 		return 0;
 
 /* 2. start initializing things */
@@ -2048,7 +2025,7 @@ static void displace_render_vert(Render *re, ObjectRen *obr, ShadeInput *shi, Ve
 		/* not (yet?) */
 	}
 	if (texco & TEXCO_STRESS) {
-		float *s= RE_vertren_get_stress(obr, vr, 0);
+		const float *s= RE_vertren_get_stress(obr, vr, 0);
 
 		if (s) {
 			shi->stress= *s;
@@ -2658,7 +2635,7 @@ static void init_render_curve(Render *re, ObjectRen *obr, int timeoffset)
 	Material **matar;
 	float *data, *fp, *orco=NULL;
 	float n[3], mat[4][4], nmat[4][4];
-	int nr, startvert, a, b;
+	int nr, startvert, a, b, negative_scale;
 	bool need_orco = false;
 	int totmat;
 
@@ -2672,6 +2649,7 @@ static void init_render_curve(Render *re, ObjectRen *obr, int timeoffset)
 	
 	mul_m4_m4m4(mat, re->viewmat, ob->obmat);
 	invert_m4_m4(ob->imat, mat);
+	negative_scale = is_negative_m4(mat);
 
 	/* local object -> world space transform for normals */
 	copy_m4_m4(nmat, mat);
@@ -2717,7 +2695,7 @@ static void init_render_curve(Render *re, ObjectRen *obr, int timeoffset)
 				/* pass */
 			}
 			else if (dl->type==DL_INDEX3) {
-				int *index;
+				const int *index;
 
 				startvert= obr->totvert;
 				data= dl->verts;
@@ -2741,7 +2719,7 @@ static void init_render_curve(Render *re, ObjectRen *obr, int timeoffset)
 					zero_v3(n);
 					index= dl->index;
 					for (a=0; a<dl->parts; a++, index+=3) {
-						int v1 = index[0], v2 = index[1], v3 = index[2];
+						int v1 = index[0], v2 = index[2], v3 = index[1];
 						float *co1 = &dl->verts[v1 * 3],
 						      *co2 = &dl->verts[v2 * 3],
 						      *co3 = &dl->verts[v3 * 3];
@@ -2754,7 +2732,10 @@ static void init_render_curve(Render *re, ObjectRen *obr, int timeoffset)
 
 						/* to prevent float accuracy issues, we calculate normal in local object space (not world) */
 						if (area_tri_v3(co3, co2, co1)>FLT_EPSILON) {
-							normal_tri_v3(tmp, co3, co2, co1);
+							if (negative_scale)
+								normal_tri_v3(tmp, co1, co2, co3);
+							else
+								normal_tri_v3(tmp, co3, co2, co1);
 							add_v3_v3(n, tmp);
 						}
 
@@ -3088,7 +3069,7 @@ static EdgeHash *make_freestyle_edge_mark_hash(Mesh *me, DerivedMesh *dm)
 	FreestyleEdge *fed;
 	MEdge *medge;
 	int totedge, a;
-	int *index;
+	const int *index;
 
 	medge = dm->getEdgeArray(dm);
 	totedge = dm->getNumEdges(dm);
@@ -3191,10 +3172,6 @@ static void init_render_mesh(Render *re, ObjectRen *obr, int timeoffset)
 		}
 		need_nmap_tangent= 1;
 	}
-	
-	/* origindex currently only used when baking to vertex colors */
-	if (re->flag & R_BAKING && re->r.bake_flag & R_BAKE_VCOL)
-		need_origindex= 1;
 
 	/* check autosmooth and displacement, we then have to skip only-verts optimize
 	 * Note: not sure what we want to give higher priority, currently do_displace
@@ -3204,7 +3181,10 @@ static void init_render_mesh(Render *re, ObjectRen *obr, int timeoffset)
 	do_autosmooth = ((me->flag & ME_AUTOSMOOTH) != 0) && !do_displace;
 	if (do_autosmooth || do_displace)
 		timeoffset = 0;
-	
+
+	/* origindex currently used when using autosmooth, or baking to vertex colors. */
+	need_origindex = (do_autosmooth || ((re->flag & R_BAKING) && (re->r.bake_flag & R_BAKE_VCOL)));
+
 	mask= CD_MASK_BAREMESH|CD_MASK_MTFACE|CD_MASK_MCOL;
 	if (!timeoffset)
 		if (need_orco)
@@ -3935,12 +3915,28 @@ static GroupObject *add_render_lamp(Render *re, Object *ob)
 	return go;
 }
 
-static bool is_object_hidden(Render *re, Object *ob)
+static bool is_object_restricted(Render *re, Object *ob)
 {
 	if (re->r.scemode & R_VIEWPORT_PREVIEW)
-		return (ob->restrictflag & OB_RESTRICT_VIEW) != 0 || ELEM(ob->dt, OB_BOUNDBOX, OB_WIRE);
+		return (ob->restrictflag & OB_RESTRICT_VIEW) != 0;
 	else
 		return (ob->restrictflag & OB_RESTRICT_RENDER) != 0;
+}
+
+static bool is_object_hidden(Render *re, Object *ob)
+{
+	if (is_object_restricted(re, ob))
+		return true;
+	
+	if (re->r.scemode & R_VIEWPORT_PREVIEW) {
+		/* Mesh deform cages and so on mess up the preview. To avoid the problem,
+		 * viewport doesn't show mesh object if its draw type is bounding box or wireframe.
+		 */
+		return ELEM(ob->dt, OB_BOUNDBOX, OB_WIRE);
+	}
+	else {
+		return false;
+	}
 }
 
 /* layflag: allows material group to ignore layerflag */
@@ -4808,6 +4804,9 @@ void RE_Database_Free(Render *re)
 
 static int allow_render_object(Render *re, Object *ob, int nolamps, int onlyselected, Object *actob)
 {
+	if (is_object_hidden(re, ob))
+		return 0;
+	
 	/* override not showing object when duplis are used with particles */
 	if (ob->transflag & OB_DUPLIPARTS) {
 		/* pass */  /* let particle system(s) handle showing vs. not showing */
@@ -4939,13 +4938,6 @@ static void add_group_render_dupli_obs(Render *re, Group *group, int nolamps, in
 	}
 }
 
-/* additional data for dupli objects outside
- * of the main dupli list
- */
-typedef struct DupliObjectExtra {
-	float omat[4][4];
-} DupliObjectExtra;
-
 static void database_init_objects(Render *re, unsigned int renderlay, int nolamps, int onlyselected, Object *actob, int timeoffset)
 {
 	Base *base;
@@ -4988,7 +4980,7 @@ static void database_init_objects(Render *re, unsigned int renderlay, int nolamp
 		lay= (timeoffset)? renderlay & vectorlay: renderlay;
 
 		/* if the object has been restricted from rendering in the outliner, ignore it */
-		if (is_object_hidden(re, ob)) continue;
+		if (is_object_restricted(re, ob)) continue;
 
 		/* OB_DONE means the object itself got duplicated, so was already converted */
 		if (ob->flag & OB_DONE) {
@@ -5005,27 +4997,21 @@ static void database_init_objects(Render *re, unsigned int renderlay, int nolamp
 			if ((ob->transflag & OB_DUPLI) && (ob->type!=OB_MBALL)) {
 				DupliObject *dob;
 				ListBase *duplilist;
-				DupliObjectExtra *duplilist_extra = NULL;
-				int totdob, i;
+				DupliApplyData *duplilist_apply_data = NULL;
+				int i;
 
 				/* create list of duplis generated by this object, particle
 				 * system need to have render settings set for dupli particles */
 				dupli_render_particle_set(re, ob, timeoffset, 0, 1);
 				duplilist = object_duplilist(re->eval_ctx, re->scene, ob);
-				totdob = BLI_countlist(duplilist);
-				if (totdob > 0)
-					duplilist_extra = MEM_mallocN(sizeof(DupliObjectExtra) * totdob, "DupliObject extra data");
+				duplilist_apply_data = duplilist_apply_matrix(duplilist);
 				dupli_render_particle_set(re, ob, timeoffset, 0, 0);
 
-				/* set dupli obmats */
 				for (dob= duplilist->first, i = 0; dob; dob= dob->next, ++i) {
-					copy_m4_m4(duplilist_extra[i].omat, dob->ob->obmat);
-					copy_m4_m4(dob->ob->obmat, dob->mat);
-				}
-
-				for (dob= duplilist->first, i = 0; dob; dob= dob->next, ++i) {
-					DupliObjectExtra *dob_extra = &duplilist_extra[i];
+					DupliExtraData *dob_extra = &duplilist_apply_data->extra[i];
 					Object *obd= dob->ob;
+
+					copy_m4_m4(obd->obmat, dob->mat);
 
 					/* group duplis need to set ob matrices correct, for deform. so no_draw is part handled */
 					if (!(obd->transflag & OB_RENDER_DUPLI) && dob->no_draw)
@@ -5039,8 +5025,6 @@ static void database_init_objects(Render *re, unsigned int renderlay, int nolamp
 
 					if (!allow_render_object(re, obd, nolamps, onlyselected, actob))
 						continue;
-
-					copy_m4_m4(obd->obmat, dob->mat);
 
 					if (allow_render_dupli_instance(re, dob, obd)) {
 						ParticleSystem *psys;
@@ -5059,7 +5043,7 @@ static void database_init_objects(Render *re, unsigned int renderlay, int nolamp
 							obi= RE_addRenderInstance(re, NULL, obd, ob, dob->persistent_id[0], 0, mat, ob->lay); 
 
 							/* fill in instance variables for texturing */
-							set_dupli_tex_mat(re, obi, dob, dob_extra->omat);
+							set_dupli_tex_mat(re, obi, dob, dob_extra->obmat);
 							if (dob->type != OB_DUPLIGROUP) {
 								copy_v3_v3(obi->dupliorco, dob->orco);
 								obi->dupliuv[0]= dob->uv[0];
@@ -5085,7 +5069,7 @@ static void database_init_objects(Render *re, unsigned int renderlay, int nolamp
 									mul_m4_m4m4(mat, re->viewmat, dob->mat);
 								obi= RE_addRenderInstance(re, NULL, obd, ob, dob->persistent_id[0], psysindex++, mat, obd->lay);
 
-								set_dupli_tex_mat(re, obi, dob, dob_extra->omat);
+								set_dupli_tex_mat(re, obi, dob, dob_extra->obmat);
 								if (dob->type != OB_DUPLIGROUP) {
 									copy_v3_v3(obi->dupliorco, dob->orco);
 									obi->dupliuv[0]= dob->uv[0];
@@ -5101,7 +5085,7 @@ static void database_init_objects(Render *re, unsigned int renderlay, int nolamp
 
 						if (obi==NULL)
 							/* can't instance, just create the object */
-							init_render_object(re, obd, ob, dob, dob_extra->omat, timeoffset);
+							init_render_object(re, obd, ob, dob, dob_extra->obmat, timeoffset);
 						
 						if (dob->type != OB_DUPLIGROUP) {
 							obd->flag |= OB_DONE;
@@ -5109,22 +5093,16 @@ static void database_init_objects(Render *re, unsigned int renderlay, int nolamp
 						}
 					}
 					else
-						init_render_object(re, obd, ob, dob, dob_extra->omat, timeoffset);
+						init_render_object(re, obd, ob, dob, dob_extra->obmat, timeoffset);
 					
 					if (re->test_break(re->tbh)) break;
 				}
-				
-				/* restore obmats
-				 * NOTE: this has to happen in reverse order, since nested
-				 * dupli objects can repeatedly override the obmat
-				 */
-				for (dob= duplilist->last, i = totdob - 1; dob; dob= dob->prev, --i) {
-					copy_m4_m4(dob->ob->obmat, duplilist_extra[i].omat);
+
+				if (duplilist_apply_data) {
+					duplilist_restore_matrix(duplilist, duplilist_apply_data);
+					duplilist_free_apply_data(duplilist_apply_data);
 				}
-				
 				free_object_duplilist(duplilist);
-				if (duplilist_extra)
-					MEM_freeN(duplilist_extra);
 
 				if (allow_render_object(re, ob, nolamps, onlyselected, actob))
 					init_render_object(re, ob, NULL, NULL, NULL, timeoffset);

@@ -40,11 +40,8 @@
 #include "BLI_string_utf8.h"
 
 #include "BIF_gl.h"
-#include "BIF_glutil.h"
 
 #include "BKE_text.h"
-
-#include "ED_datafiles.h"
 
 #include "textview.h"
 
@@ -64,7 +61,7 @@ typedef struct ConsoleDrawContext {
 	int *xy; // [2]
 	int *sel; // [2]
 	int *pos_pick; // bottom of view == 0, top of file == combine chars, end of line is lower then start. 
-	int *mval; // [2]
+	const int *mval; // [2]
 	int draw;
 } ConsoleDrawContext;
 

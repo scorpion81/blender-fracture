@@ -39,7 +39,6 @@
 #include "BLI_math.h"
 #include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
-#include "BLI_ghash.h"
 #include "BLI_mempool.h"
 
 #include "BLF_translation.h"
@@ -755,10 +754,21 @@ static void outliner_draw_rnabuts(uiBlock *block, Scene *scene, ARegion *ar, Spa
 			if (tselem->type == TSE_RNA_PROPERTY) {
 				ptr = &te->rnaptr;
 				prop = te->directdata;
-				
-				if (!(RNA_property_type(prop) == PROP_POINTER && (TSELEM_OPEN(tselem, soops)))) {
-					uiDefAutoButR(block, ptr, prop, -1, "", ICON_NONE, sizex, te->ys, OL_RNA_COL_SIZEX,
-					              UI_UNIT_Y - 1);
+
+				if (!TSELEM_OPEN(tselem, soops)) {
+					if (RNA_property_type(prop) == PROP_POINTER) {
+						uiBut *but = uiDefAutoButR(block, ptr, prop, -1, "", ICON_NONE, sizex, te->ys,
+						                           OL_RNA_COL_SIZEX, UI_UNIT_Y - 1);
+						uiButSetFlag(but, UI_BUT_DISABLED);
+					}
+					else if (RNA_property_type(prop) == PROP_ENUM) {
+						uiDefAutoButR(block, ptr, prop, -1, NULL, ICON_NONE, sizex, te->ys, OL_RNA_COL_SIZEX,
+						              UI_UNIT_Y - 1);
+					}
+					else {
+						uiDefAutoButR(block, ptr, prop, -1, "", ICON_NONE, sizex, te->ys, OL_RNA_COL_SIZEX,
+						              UI_UNIT_Y - 1);
+					}
 				}
 			}
 			else if (tselem->type == TSE_RNA_ARRAY_ELEM) {

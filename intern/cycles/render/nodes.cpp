@@ -189,6 +189,7 @@ ImageTextureNode::ImageTextureNode()
 	slot = -1;
 	is_float = -1;
 	is_linear = false;
+	use_alpha = true;
 	filename = "";
 	builtin_data = NULL;
 	color_space = ustring("Color");
@@ -242,7 +243,7 @@ void ImageTextureNode::compile(SVMCompiler& compiler)
 	image_manager = compiler.image_manager;
 	if(is_float == -1) {
 		bool is_float_bool;
-		slot = image_manager->add_image(filename, builtin_data, animated, is_float_bool, is_linear, interpolation);
+		slot = image_manager->add_image(filename, builtin_data, animated, is_float_bool, is_linear, interpolation, use_alpha);
 		is_float = (int)is_float_bool;
 	}
 
@@ -317,7 +318,7 @@ void ImageTextureNode::compile(OSLCompiler& compiler)
 	compiler.parameter("is_float", is_float);
 	compiler.parameter("use_alpha", !alpha_out->links.empty());
 
-	switch (interpolation){
+	switch (interpolation) {
 		case INTERPOLATION_CLOSEST:
 			compiler.parameter("interpolation", "closest");
 			break;
@@ -357,6 +358,7 @@ EnvironmentTextureNode::EnvironmentTextureNode()
 	slot = -1;
 	is_float = -1;
 	is_linear = false;
+	use_alpha = true;
 	filename = "";
 	builtin_data = NULL;
 	color_space = ustring("Color");
@@ -406,7 +408,7 @@ void EnvironmentTextureNode::compile(SVMCompiler& compiler)
 	image_manager = compiler.image_manager;
 	if(slot == -1) {
 		bool is_float_bool;
-		slot = image_manager->add_image(filename, builtin_data, animated, is_float_bool, is_linear, INTERPOLATION_LINEAR);
+		slot = image_manager->add_image(filename, builtin_data, animated, is_float_bool, is_linear, INTERPOLATION_LINEAR, use_alpha);
 		is_float = (int)is_float_bool;
 	}
 
@@ -582,13 +584,13 @@ static void sky_texture_precompute_new(SunSky *sunsky, float3 dir, float turbidi
 
 	/* Copy values from sky_state to SunSky */
 	for (int i = 0; i < 9; ++i) {
-		sunsky->config_x[i] = sky_state->configs[0][i];
-		sunsky->config_y[i] = sky_state->configs[1][i];
-		sunsky->config_z[i] = sky_state->configs[2][i];
+		sunsky->config_x[i] = (float)sky_state->configs[0][i];
+		sunsky->config_y[i] = (float)sky_state->configs[1][i];
+		sunsky->config_z[i] = (float)sky_state->configs[2][i];
 	}
-	sunsky->radiance_x = sky_state->radiances[0];
-	sunsky->radiance_y = sky_state->radiances[1];
-	sunsky->radiance_z = sky_state->radiances[2];
+	sunsky->radiance_x = (float)sky_state->radiances[0];
+	sunsky->radiance_y = (float)sky_state->radiances[1];
+	sunsky->radiance_z = (float)sky_state->radiances[2];
 
 	/* Free sky_state */
 	arhosekskymodelstate_free(sky_state);
@@ -629,6 +631,8 @@ void SkyTextureNode::compile(SVMCompiler& compiler)
 		sky_texture_precompute_old(&sunsky, sun_direction, turbidity);
 	else if(type_enum[type] == NODE_SKY_NEW)
 		sky_texture_precompute_new(&sunsky, sun_direction, turbidity, ground_albedo);
+	else
+		assert(false);
 
 	if(vector_in->link)
 		compiler.stack_assign(vector_in);
@@ -666,6 +670,8 @@ void SkyTextureNode::compile(OSLCompiler& compiler)
 		sky_texture_precompute_old(&sunsky, sun_direction, turbidity);
 	else if(type_enum[type] == NODE_SKY_NEW)
 		sky_texture_precompute_new(&sunsky, sun_direction, turbidity, ground_albedo);
+	else
+		assert(false);
 		
 	compiler.parameter("sky_model", type);
 	compiler.parameter("theta", sunsky.theta);
@@ -2360,6 +2366,15 @@ void UVMapNode::compile(SVMCompiler& compiler)
 	NodeType attr_node = NODE_ATTR;
 	int attr;
 
+	if(bump == SHADER_BUMP_DX) {
+		texco_node = NODE_TEX_COORD_BUMP_DX;
+		attr_node = NODE_ATTR_BUMP_DX;
+	}
+	else if(bump == SHADER_BUMP_DY) {
+		texco_node = NODE_TEX_COORD_BUMP_DY;
+		attr_node = NODE_ATTR_BUMP_DY;
+	}
+
 	if(!out->links.empty()) {
 		if(from_dupli) {
 			compiler.stack_assign(out);
@@ -2379,6 +2394,13 @@ void UVMapNode::compile(SVMCompiler& compiler)
 
 void UVMapNode::compile(OSLCompiler& compiler)
 {
+	if(bump == SHADER_BUMP_DX)
+		compiler.parameter("bump_offset", "dx");
+	else if(bump == SHADER_BUMP_DY)
+		compiler.parameter("bump_offset", "dy");
+	else
+		compiler.parameter("bump_offset", "center");
+
 	compiler.parameter("from_dupli", from_dupli);
 	compiler.parameter("name", attribute.c_str());
 	compiler.add(this, "node_uv_map");
@@ -2399,6 +2421,7 @@ LightPathNode::LightPathNode()
 	add_output("Is Volume Scatter Ray", SHADER_SOCKET_FLOAT);
 	add_output("Ray Length", SHADER_SOCKET_FLOAT);
 	add_output("Ray Depth", SHADER_SOCKET_FLOAT);
+	add_output("Transparent Depth", SHADER_SOCKET_FLOAT);
 }
 
 void LightPathNode::compile(SVMCompiler& compiler)
@@ -2466,6 +2489,11 @@ void LightPathNode::compile(SVMCompiler& compiler)
 		compiler.add_node(NODE_LIGHT_PATH, NODE_LP_ray_depth, out->stack_offset);
 	}
 
+	out = output("Transparent Depth");
+	if(!out->links.empty()) {
+		compiler.stack_assign(out);
+		compiler.add_node(NODE_LIGHT_PATH, NODE_LP_ray_transparent, out->stack_offset);
+	}
 }
 
 void LightPathNode::compile(OSLCompiler& compiler)
@@ -3516,6 +3544,7 @@ static ShaderEnum math_type_init()
 	enm.insert("Less Than", NODE_MATH_LESS_THAN);
 	enm.insert("Greater Than", NODE_MATH_GREATER_THAN);
 	enm.insert("Modulo", NODE_MATH_MODULO);
+    enm.insert("Absolute", NODE_MATH_ABSOLUTE);
 
 	return enm;
 }

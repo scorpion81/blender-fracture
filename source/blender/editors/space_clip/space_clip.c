@@ -43,7 +43,6 @@
 #include "BLI_utildefines.h"
 #include "BLI_math.h"
 
-#include "BKE_main.h"
 #include "BKE_context.h"
 #include "BKE_screen.h"
 #include "BKE_movieclip.h"
@@ -1184,7 +1183,7 @@ static void clip_main_area_draw(const bContext *C, ARegion *ar)
 	clip_draw_main(C, sc, ar);
 
 	/* TODO(sergey): would be nice to find a way to de-duplicate all this space conversions */
-	UI_view2d_to_region_float(&ar->v2d, 0.0f, 0.0f, &x, &y);
+	UI_view2d_view_to_region_fl(&ar->v2d, 0.0f, 0.0f, &x, &y);
 	ED_space_clip_get_size(sc, &width, &height);
 	ED_space_clip_get_zoom(sc, ar, &zoomx, &zoomy);
 	ED_space_clip_get_aspect(sc, &aspx, &aspy);
@@ -1317,7 +1316,7 @@ static void dopesheet_area_draw(const bContext *C, ARegion *ar)
 
 	/* time grid */
 	unit = (sc->flag & SC_SHOW_SECONDS) ? V2D_UNIT_SECONDS : V2D_UNIT_FRAMES;
-	grid = UI_view2d_grid_calc(CTX_data_scene(C), v2d, unit, V2D_GRID_CLAMP,
+	grid = UI_view2d_grid_calc(scene, v2d, unit, V2D_GRID_CLAMP,
 	                           V2D_ARG_DUMMY, V2D_ARG_DUMMY, ar->winx, ar->winy);
 	UI_view2d_grid_draw(v2d, grid, V2D_GRIDLINES_ALL);
 	UI_view2d_grid_free(grid);

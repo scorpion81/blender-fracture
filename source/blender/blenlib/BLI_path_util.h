@@ -165,6 +165,14 @@ bool BLI_path_cwd(char *path) ATTR_NONNULL();
 void BLI_path_rel(char *file, const char *relfile) ATTR_NONNULL();
 
 bool BLI_path_is_rel(const char *path) ATTR_NONNULL() ATTR_WARN_UNUSED_RESULT;
+bool BLI_path_is_unc(const char *path);
+
+#if defined(WIN32)
+void BLI_cleanup_unc_16(wchar_t *path_16);
+void BLI_cleanup_unc(char *path_16, int maxlen);
+#endif
+
+bool BLI_path_suffix(char *string, size_t maxlen, const char *suffix, const char *sep) ATTR_NONNULL();
 
 /* path string comparisons: case-insensitive for Windows, case-sensitive otherwise */
 #if defined(WIN32)

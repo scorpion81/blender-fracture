@@ -33,8 +33,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "MEM_guardedalloc.h"
-
 #include "DNA_anim_types.h"
 #include "DNA_group_types.h"
 #include "DNA_material_types.h"
@@ -47,7 +45,6 @@
 #include "BLI_math.h"
 #include "BLI_listbase.h"
 #include "BLI_rand.h"
-#include "BLI_string.h"
 #include "BLI_utildefines.h"
 
 #include "BLF_translation.h"
@@ -486,7 +483,7 @@ static int object_select_linked_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 
 	if (changed) {
-		WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, CTX_data_scene(C));
+		WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, scene);
 		return OPERATOR_FINISHED;
 	}
 	
@@ -862,7 +859,7 @@ static int object_select_grouped_exec(bContext *C, wmOperator *op)
 	else if (nr == 14) changed |= select_similar_pass_index(C, ob);
 
 	if (changed) {
-		WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, CTX_data_scene(C));
+		WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, scene);
 		return OPERATOR_FINISHED;
 	}
 	
@@ -1099,7 +1096,7 @@ static int object_select_mirror_exec(bContext *C, wmOperator *op)
 	CTX_DATA_END;
 	
 	/* undo? */
-	WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, CTX_data_scene(C));
+	WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, scene);
 	
 	return OPERATOR_FINISHED;
 }

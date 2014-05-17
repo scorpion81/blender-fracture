@@ -47,12 +47,11 @@
 #include "BLI_threads.h"
 
 #include "DNA_meshdata_types.h"
-#include "DNA_material_types.h"
 
 #include "BKE_ccg.h"
 #include "BKE_DerivedMesh.h"
 #include "BKE_paint.h"
-#include "BKE_subsurf.h"
+#include "BKE_pbvh.h"
 
 #include "DNA_userdef_types.h"
 
@@ -594,7 +593,7 @@ static GPUBuffer *gpu_buffer_setup(DerivedMesh *dm, GPUDrawObject *object,
 	int *mat_orig_to_new;
 	int *cur_index_per_mat;
 	int i;
-	int success;
+	bool success;
 	GLboolean uploaded;
 
 	pool = gpu_get_global_buffer_pool();
@@ -736,7 +735,7 @@ static void GPU_buffer_copy_normal(DerivedMesh *dm, float *varray, int *index, i
 	int start;
 	float f_no[3];
 
-	float *nors = dm->getTessFaceDataArray(dm, CD_NORMAL);
+	const float *nors = dm->getTessFaceDataArray(dm, CD_NORMAL);
 	short (*tlnors)[4][3] = dm->getTessFaceDataArray(dm, CD_TESSLOOPNORMAL);
 	MVert *mvert = dm->getVertArray(dm);
 	MFace *f = dm->getTessFaceArray(dm);
@@ -1283,13 +1282,13 @@ void GPU_color_switch(int mode)
 
 /* return 1 if drawing should be done using old immediate-mode
  * code, 0 otherwise */
-int GPU_buffer_legacy(DerivedMesh *dm)
+bool GPU_buffer_legacy(DerivedMesh *dm)
 {
 	int test = (U.gameflags & USER_DISABLE_VBO);
 	if (test)
 		return 1;
 
-	if (dm->drawObject == 0)
+	if (dm->drawObject == NULL)
 		dm->drawObject = GPU_drawobject_new(dm);
 	return dm->drawObject->legacy;
 }
@@ -1384,7 +1383,7 @@ struct GPU_PBVH_Buffers {
 	/* mesh pointers in case buffer allocation fails */
 	MFace *mface;
 	MVert *mvert;
-	int *face_indices;
+	const int *face_indices;
 	int totface;
 	const float *vmask;
 
@@ -1393,7 +1392,7 @@ struct GPU_PBVH_Buffers {
 	CCGElem **grids;
 	const DMFlagMat *grid_flag_mats;
 	BLI_bitmap * const *grid_hidden;
-	int *grid_indices;
+	const int *grid_indices;
 	int totgrid;
 	int has_hidden;
 
@@ -1481,7 +1480,7 @@ static void gpu_color_from_mask_quad_copy(const CCGKey *key,
 static void gpu_color_from_mask_quad_set(const CCGKey *key,
                                          CCGElem *a, CCGElem *b,
                                          CCGElem *c, CCGElem *d,
-                                         float diffuse_color[4])
+                                         const float diffuse_color[4])
 {
 	float color = gpu_color_from_mask_quad(key, a, b, c, d);
 	glColor3f(diffuse_color[0] * color, diffuse_color[1] * color, diffuse_color[2] * color);
@@ -1625,7 +1624,7 @@ void GPU_update_mesh_pbvh_buffers(GPU_PBVH_Buffers *buffers, MVert *mvert,
 	buffers->mvert = mvert;
 }
 
-GPU_PBVH_Buffers *GPU_build_pbvh_mesh_buffers(int (*face_vert_indices)[4],
+GPU_PBVH_Buffers *GPU_build_mesh_pbvh_buffers(int (*face_vert_indices)[4],
                                     MFace *mface, MVert *mvert,
                                     int *face_indices,
                                     int totface)
@@ -1646,6 +1645,16 @@ GPU_PBVH_Buffers *GPU_build_pbvh_mesh_buffers(int (*face_vert_indices)[4],
 		const MFace *f = &mface[face_indices[i]];
 		if (!paint_is_face_hidden(f, mvert))
 			tottri += f->v4 ? 2 : 1;
+	}
+
+	if (tottri == 0) {
+		buffers->tot_tri = 0;
+
+		buffers->mface = mface;
+		buffers->face_indices = face_indices;
+		buffers->totface = 0;
+
+		return buffers;
 	}
 
 	/* An element index buffer is used for smooth shading, but flat
@@ -1819,36 +1828,6 @@ void GPU_update_grid_pbvh_buffers(GPU_PBVH_Buffers *buffers, CCGElem **grids,
 	//printf("node updated %p\n", buffers);
 }
 
-/* Returns the number of visible quads in the nodes' grids. */
-static int gpu_count_grid_quads(BLI_bitmap **grid_hidden,
-                                int *grid_indices, int totgrid,
-                                int gridsize)
-{
-	int gridarea = (gridsize - 1) * (gridsize - 1);
-	int i, x, y, totquad;
-
-	/* grid hidden layer is present, so have to check each grid for
-	 * visibility */
-
-	for (i = 0, totquad = 0; i < totgrid; i++) {
-		const BLI_bitmap *gh = grid_hidden[grid_indices[i]];
-
-		if (gh) {
-			/* grid hidden are present, have to check each element */
-			for (y = 0; y < gridsize - 1; y++) {
-				for (x = 0; x < gridsize - 1; x++) {
-					if (!paint_is_grid_face_hidden(gh, gridsize, x, y))
-						totquad++;
-				}
-			}
-		}
-		else
-			totquad += gridarea;
-	}
-
-	return totquad;
-}
-
 /* Build the element array buffer of grid indices using either
  * unsigned shorts or unsigned ints. */
 #define FILL_QUAD_BUFFER(type_, tot_quad_, buffer_)                     \
@@ -1908,7 +1887,7 @@ static GLuint gpu_get_grid_buffer(int gridsize, GLenum *index_type, unsigned *to
 
 	/* used in the FILL_QUAD_BUFFER macro */
 	BLI_bitmap * const *grid_hidden = NULL;
-	int *grid_indices = NULL;
+	const int *grid_indices = NULL;
 	int totgrid = 1;
 
 	/* VBO is disabled; delete the previous buffer (if it exists) and
@@ -1952,7 +1931,7 @@ static GLuint gpu_get_grid_buffer(int gridsize, GLenum *index_type, unsigned *to
 }
 
 GPU_PBVH_Buffers *GPU_build_grid_pbvh_buffers(int *grid_indices, int totgrid,
-                                              BLI_bitmap **grid_hidden, int gridsize)
+											  BLI_bitmap **grid_hidden, int gridsize)
 {
 	GPU_PBVH_Buffers *buffers;
 	int totquad;
@@ -1966,7 +1945,11 @@ GPU_PBVH_Buffers *GPU_build_grid_pbvh_buffers(int *grid_indices, int totgrid,
 	buffers->use_matcaps = false;
 
 	/* Count the number of quads */
-	totquad = gpu_count_grid_quads(grid_hidden, grid_indices, totgrid, gridsize);
+	totquad = BKE_pbvh_count_grid_quads(grid_hidden, grid_indices, totgrid, gridsize);
+
+	/* totally hidden node, return here to avoid BufferData with zero below. */
+	if (totquad == 0)
+		return buffers;
 
 	if (totquad == fully_visible_totquad) {
 		buffers->index_buf = gpu_get_grid_buffer(gridsize, &buffers->index_type, &buffers->tot_quad);
@@ -2520,7 +2503,7 @@ void GPU_draw_pbvh_buffers(GPU_PBVH_Buffers *buffers, DMSetMaterial setMaterial,
 			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
 		if (buffers->tot_quad) {
-			char *offset = 0;
+			const char *offset = 0;
 			int i, last = buffers->has_hidden ? 1 : buffers->totgrid;
 			for (i = 0; i < last; i++) {
 				glVertexPointer(3, GL_FLOAT, sizeof(VertexBufferFormat),
@@ -2658,4 +2641,66 @@ void GPU_free_pbvh_buffers(GPU_PBVH_Buffers *buffers)
 
 		MEM_freeN(buffers);
 	}
+}
+
+
+/* debug function, draws the pbvh BB */
+void GPU_draw_pbvh_BB(float min[3], float max[3], bool leaf)
+{
+	float quads[4][4][3] = {
+	    {
+	        {min[0], min[1], min[2]},
+	        {max[0], min[1], min[2]},
+	        {max[0], min[1], max[2]},
+	        {min[0], min[1], max[2]}
+	    },
+
+	    {
+	        {min[0], min[1], min[2]},
+	        {min[0], max[1], min[2]},
+	        {min[0], max[1], max[2]},
+	        {min[0], min[1], max[2]}
+	    },
+
+	    {
+	        {max[0], max[1], min[2]},
+	        {max[0], min[1], min[2]},
+	        {max[0], min[1], max[2]},
+	        {max[0], max[1], max[2]}
+	    },
+
+	    {
+	        {max[0], max[1], min[2]},
+	        {min[0], max[1], min[2]},
+	        {min[0], max[1], max[2]},
+	        {max[0], max[1], max[2]}
+	    },
+	};
+
+	if (leaf)
+		glColor4f(0.0, 1.0, 0.0, 0.5);
+	else
+		glColor4f(1.0, 0.0, 0.0, 0.5);
+
+	glVertexPointer(3, GL_FLOAT, 0, &quads[0][0][0]);
+	glDrawArrays(GL_QUADS, 0, 16);
+}
+
+void GPU_init_draw_pbvh_BB(void)
+{
+	glPushAttrib(GL_ENABLE_BIT);
+	glDisable(GL_CULL_FACE);
+	glEnableClientState(GL_VERTEX_ARRAY);
+	glDisableClientState(GL_COLOR_ARRAY);
+	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+	glDisable(GL_LIGHTING);
+	glDisable(GL_COLOR_MATERIAL);
+	glEnable(GL_BLEND);
+	glBindBufferARB(GL_ARRAY_BUFFER_ARB, 0);
+}
+
+void GPU_end_draw_pbvh_BB(void)
+{
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+	glPopAttrib();
 }

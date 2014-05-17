@@ -42,11 +42,8 @@
 #include <stdio.h>
 #include <string.h> /* memset */
 
-#include "BLI_linklist.h"
-#include "BLI_rand.h"
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
-#include "BLI_edgehash.h"
 #include "BLI_kdtree.h"
 #include "BLI_kdopbvh.h"
 #include "BLI_threads.h"
@@ -57,9 +54,7 @@
 #include "DNA_armature_types.h"
 #include "DNA_constraint_types.h"
 #include "DNA_customdata_types.h"
-#include "DNA_group_types.h"
 #include "DNA_lamp_types.h"
-#include "DNA_mesh_types.h"
 #include "DNA_meshdata_types.h"
 #include "DNA_modifier_types.h"
 #include "DNA_object_types.h"
@@ -1557,8 +1552,7 @@ static void sample_derivedmesh(
 
 static void emit_from_derivedmesh(Object *flow_ob, SmokeDomainSettings *sds, SmokeFlowSettings *sfs, EmissionMap *em, float dt)
 {
-	if (!sfs->dm) return;
-	{
+	if (sfs->dm) {
 		DerivedMesh *dm;
 		int defgrp_index = sfs->vgroup_density - 1;
 		MDeformVert *dvert = NULL;
@@ -1689,17 +1683,16 @@ static void emit_from_derivedmesh(Object *flow_ob, SmokeDomainSettings *sds, Smo
 		free_bvhtree_from_mesh(&treeData);
 		/* restore original mverts */
 		CustomData_set_layer(&dm->vertData, CD_MVERT, mvert_orig);
-		if (mvert)
+
+		if (mvert) {
 			MEM_freeN(mvert);
-
-		if (vert_vel) MEM_freeN(vert_vel);
-
-		if (dm)
-		{
-			dm->needsFree = 1;
-			dm->release(dm);
-			dm = NULL;
 		}
+		if (vert_vel) {
+			MEM_freeN(vert_vel);
+		}
+
+		dm->needsFree = 1;
+		dm->release(dm);
 	}
 }
 

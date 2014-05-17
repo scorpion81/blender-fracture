@@ -18,38 +18,19 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef __BLENDERTEXTUREMANAGER_H__
-#define __BLENDERTEXTUREMANAGER_H__
-
-/** \file blender/freestyle/intern/blender_interface/BlenderTextureManager.h
+/** \file blender/freestyle/intern/stroke/StrokeShader.cpp
  *  \ingroup freestyle
  */
 
-# include "../stroke/StrokeRenderer.h"
-# include "../stroke/StrokeRep.h"
-# include "../system/FreestyleConfig.h"
+#include "StrokeShader.h"
+
+#include "../python/Director.h"
 
 namespace Freestyle {
 
-/*! Class to load textures */
-class LIB_RENDERING_EXPORT BlenderTextureManager : public TextureManager
+int StrokeShader::shade(Stroke& ioStroke) const
 {
-public:
-	BlenderTextureManager();
-	virtual ~BlenderTextureManager();
-
-protected:
-	virtual unsigned int loadBrush(string fileName, Stroke::MediumType=Stroke::OPAQUE_MEDIUM);
-
-protected:
-	virtual void loadStandardBrushes();
-
-#ifdef WITH_CXX_GUARDEDALLOC
-	MEM_CXX_CLASS_ALLOC_FUNCS("Freestyle:BlenderTextureManager")
-#endif
-
-};
+	return Director_BPy_StrokeShader_shade( const_cast<StrokeShader *>(this), ioStroke);
+}
 
 } /* namespace Freestyle */
-
-#endif // __BLENDERTEXTUREMANAGER_H__

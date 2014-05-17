@@ -59,7 +59,6 @@
 #include "BKE_lattice.h"
 #include "BKE_library.h"
 #include "BKE_main.h"
-#include "BKE_mesh.h"
 #include "BKE_modifier.h"
 
 #include "BKE_deform.h"
@@ -368,7 +367,7 @@ LatticeDeformData *init_latt_deform(Object *oblatt, Object *ob)
 	Lattice *lt = oblatt->data;
 	BPoint *bp;
 	DispList *dl = oblatt->curve_cache ? BKE_displist_find(&oblatt->curve_cache->disp, DL_VERTS) : NULL;
-	float *co = dl ? dl->verts : NULL;
+	const float *co = dl ? dl->verts : NULL;
 	float *fp, imat[4][4];
 	float fu, fv, fw;
 	int u, v, w;

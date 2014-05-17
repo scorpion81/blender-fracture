@@ -27,24 +27,14 @@
  *  \ingroup edinterface
  */
 
-
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
-
-#ifndef WIN32
-#  include <unistd.h>
-#else
-#  include <io.h>
-#  include <direct.h>
-#  include "BLI_winstuff.h"
-#endif
 
 #include "MEM_guardedalloc.h"
 
 #include "GPU_extensions.h"
 
-#include "BLI_math.h"
 #include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
 #include "BLI_fileops_types.h"
@@ -479,13 +469,13 @@ static void init_brush_icons(void)
 
 #define INIT_BRUSH_ICON(icon_id, name)                                          \
 	{                                                                           \
-		unsigned char *rect = (unsigned char *)datatoc_ ##name## _png;			\
-		int size = datatoc_ ##name## _png_size;									\
-		DrawInfo *di;															\
+		unsigned char *rect = (unsigned char *)datatoc_ ##name## _png;          \
+		int size = datatoc_ ##name## _png_size;                                 \
+		DrawInfo *di;                                                           \
 		\
-		di = def_internal_icon(NULL, icon_id, 0, 0, w, ICON_TYPE_BUFFER);		\
-		di->data.buffer.image->datatoc_rect = rect;								\
-		di->data.buffer.image->datatoc_size = size;								\
+		di = def_internal_icon(NULL, icon_id, 0, 0, w, ICON_TYPE_BUFFER);       \
+		di->data.buffer.image->datatoc_rect = rect;                             \
+		di->data.buffer.image->datatoc_size = size;                             \
 	}
 	/* end INIT_BRUSH_ICON */
 
@@ -614,13 +604,13 @@ static void init_internal_icons(void)
 #endif
 	if (b16buf == NULL)
 		b16buf = IMB_ibImageFromMemory((unsigned char *)datatoc_blender_icons16_png,
-		                             datatoc_blender_icons16_png_size, IB_rect, NULL, "<blender icons>");
+		                               datatoc_blender_icons16_png_size, IB_rect, NULL, "<blender icons>");
 	if (b16buf)
 		IMB_premultiply_alpha(b16buf);
 
 	if (b32buf == NULL)
 		b32buf = IMB_ibImageFromMemory((unsigned char *)datatoc_blender_icons32_png,
-		                             datatoc_blender_icons32_png_size, IB_rect, NULL, "<blender icons>");
+		                               datatoc_blender_icons32_png_size, IB_rect, NULL, "<blender icons>");
 	if (b32buf)
 		IMB_premultiply_alpha(b32buf);
 	
@@ -719,7 +709,7 @@ static void init_iconfile_list(struct ListBase *list)
 
 	for (i = 0; i < totfile; i++) {
 		if ((dir[i].type & S_IFREG)) {
-			char *filename = dir[i].relname;
+			const char *filename = dir[i].relname;
 			
 			if (BLI_testextensie(filename, ".png")) {
 				/* loading all icons on file start is overkill & slows startup
@@ -1137,7 +1127,7 @@ static void icon_draw_size(float x, float y, int icon_id, float aspect, float al
 #endif
 		if (!iimg->rect) return;  /* something has gone wrong! */
 
-		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		icon_draw_rect(x, y, w, h, aspect, iimg->w, iimg->h, iimg->rect, alpha, rgb, is_preview);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	}

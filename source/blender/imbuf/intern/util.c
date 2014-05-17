@@ -34,9 +34,6 @@
 
 #ifdef _WIN32
 #  include <io.h>
-#  define open _open
-#  define read _read
-#  define close _close
 #endif
 
 #include <stdlib.h>
@@ -183,7 +180,7 @@ const char *imb_ext_audio[] = {
 	NULL
 };
 
-bool IMB_ispic(const char *name)
+int IMB_ispic_type(const char *name)
 {
 	/* increased from 32 to 64 because of the bitmaps header size */
 #define HEADER_SIZE 64
@@ -200,7 +197,7 @@ bool IMB_ispic(const char *name)
 	if (((st.st_mode) & S_IFMT) != S_IFREG)
 		return false;
 
-	if ((fp = BLI_open(name, O_BINARY | O_RDONLY, 0)) < 0)
+	if ((fp = BLI_open(name, O_BINARY | O_RDONLY, 0)) == -1)
 		return false;
 
 	memset(buf, 0, sizeof(buf));
@@ -228,11 +225,15 @@ bool IMB_ispic(const char *name)
 		}
 	}
 
-	return false;
+	return 0;
 
 #undef HEADER_SIZE
 }
 
+bool IMB_ispic(const char *name)
+{
+	return (IMB_ispic_type(name) != 0);
+}
 
 static int isavi(const char *name)
 {

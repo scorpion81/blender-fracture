@@ -150,7 +150,7 @@ static void view3d_draw_clipping(RegionView3D *rv3d)
 	BoundBox *bb = rv3d->clipbb;
 
 	if (bb) {
-		static unsigned int clipping_index[6][4] = {
+		const unsigned int clipping_index[6][4] = {
 			{0, 1, 2, 3},
 			{0, 4, 5, 1},
 			{4, 7, 6, 5},
@@ -836,7 +836,7 @@ static void draw_selected_name(Scene *scene, Object *ob, rcti *rect)
 	const char *msg_sep = " : ";
 
 	char info[300];
-	char *markern;
+	const char *markern;
 	char *s = info;
 	short offset = 1.5f * UI_UNIT_X + rect->xmin;
 
@@ -1802,7 +1802,7 @@ static void view3d_draw_bgpic(Scene *scene, ARegion *ar, View3D *v3d,
 			glColor4f(1.0f, 1.0f, 1.0f, 1.0f - bgpic->blend);
 
 			/* could not use glaDrawPixelsAuto because it could fallback to
-			 * glaDrawPixelsSafe in some cases, which will end up in misssing
+			 * glaDrawPixelsSafe in some cases, which will end up in missing
 			 * alpha transparency for the background image (sergey)
 			 */
 			glaDrawPixelsTex(x1, y1, ibuf->x, ibuf->y, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR, ibuf->rect);
@@ -1966,7 +1966,6 @@ static void draw_dupli_objects_color(Scene *scene, ARegion *ar, View3D *v3d, Bas
 	RegionView3D *rv3d = ar->regiondata;
 	ListBase *lb;
 	LodLevel *savedlod;
-	float savedobmat[4][4];
 	DupliObject *dob_prev = NULL, *dob, *dob_next = NULL;
 	Base tbase = {NULL};
 	BoundBox bb, *bb_tmp; /* use a copy because draw_object, calls clear_mesh_caches */
@@ -1974,12 +1973,15 @@ static void draw_dupli_objects_color(Scene *scene, ARegion *ar, View3D *v3d, Bas
 	short transflag, use_displist = -1;  /* -1 is initialize */
 	char dt;
 	short dtx;
-	
+	DupliApplyData *apply_data;
+
 	if (base->object->restrictflag & OB_RESTRICT_VIEW) return;
 	
 	tbase.flag = OB_FROMDUPLI | base->flag;
 	lb = object_duplilist(G.main->eval_ctx, scene, base->object);
 	// BLI_sortlist(lb, dupli_ob_sort); /* might be nice to have if we have a dupli list with mixed objects. */
+
+	apply_data = duplilist_apply_matrix(lb);
 
 	dob = dupli_step(lb->first);
 	if (dob) dob_next = dupli_step(dob->next);
@@ -1989,8 +1991,6 @@ static void draw_dupli_objects_color(Scene *scene, ARegion *ar, View3D *v3d, Bas
 
 		/* Make sure lod is updated from dupli's position */
 
-		copy_m4_m4(savedobmat, dob->ob->obmat);
-		copy_m4_m4(dob->ob->obmat, dob->mat);
 		savedlod = dob->ob->currentlod;
 
 #ifdef WITH_GAMEENGINE
@@ -2076,6 +2076,7 @@ static void draw_dupli_objects_color(Scene *scene, ARegion *ar, View3D *v3d, Bas
 			}
 		}
 		else {
+			copy_m4_m4(dob->ob->obmat, dob->mat);
 			draw_object(scene, ar, v3d, &tbase, DRAW_CONSTCOLOR);
 		}
 
@@ -2083,11 +2084,13 @@ static void draw_dupli_objects_color(Scene *scene, ARegion *ar, View3D *v3d, Bas
 		tbase.object->dtx = dtx;
 		tbase.object->transflag = transflag;
 		tbase.object->currentlod = savedlod;
-		copy_m4_m4(tbase.object->obmat, savedobmat);
 	}
-	
-	/* Transp afterdraw disabled, afterdraw only stores base pointers, and duplis can be same obj */
-	
+
+	if (apply_data) {
+		duplilist_restore_matrix(lb, apply_data);
+		duplilist_free_apply_data(apply_data);
+	}
+
 	free_object_duplilist(lb);
 	
 	if (use_displist)
@@ -2223,8 +2226,8 @@ void draw_depth_gpencil(Scene *scene, ARegion *ar, View3D *v3d)
 	short zbuf = v3d->zbuf;
 	RegionView3D *rv3d = ar->regiondata;
 
-	setwinmatrixview3d(ar, v3d, NULL);
-	setviewmatrixview3d(scene, v3d, rv3d);  /* note: calls BKE_object_where_is_calc for camera... */
+	view3d_winmatrix_set(ar, v3d, NULL);
+	view3d_viewmatrix_set(scene, v3d, rv3d);  /* note: calls BKE_object_where_is_calc for camera... */
 
 	mul_m4_m4m4(rv3d->persmat, rv3d->winmat, rv3d->viewmat);
 	invert_m4_m4(rv3d->persinv, rv3d->persmat);
@@ -2260,8 +2263,8 @@ void draw_depth(Scene *scene, ARegion *ar, View3D *v3d, int (*func)(void *), boo
 	U.glalphaclip = alphaoverride ? 0.5f : glalphaclip; /* not that nice but means we wont zoom into billboards */
 	U.obcenter_dia = 0;
 	
-	setwinmatrixview3d(ar, v3d, NULL);
-	setviewmatrixview3d(scene, v3d, rv3d);  /* note: calls BKE_object_where_is_calc for camera... */
+	view3d_winmatrix_set(ar, v3d, NULL);
+	view3d_viewmatrix_set(scene, v3d, rv3d);  /* note: calls BKE_object_where_is_calc for camera... */
 	
 	mul_m4_m4m4(rv3d->persmat, rv3d->winmat, rv3d->viewmat);
 	invert_m4_m4(rv3d->persinv, rv3d->persmat);
@@ -2381,11 +2384,12 @@ typedef struct View3DShadow {
 } View3DShadow;
 
 static void gpu_render_lamp_update(Scene *scene, View3D *v3d, Object *ob, Object *par,
-                                   float obmat[4][4], ListBase *shadows)
+                                   float obmat[4][4], ListBase *shadows, SceneRenderLayer *srl)
 {
 	GPULamp *lamp;
 	Lamp *la = (Lamp *)ob->data;
 	View3DShadow *shadow;
+	unsigned int layers;
 	
 	lamp = GPU_lamp_from_blender(scene, ob, par);
 	
@@ -2393,7 +2397,11 @@ static void gpu_render_lamp_update(Scene *scene, View3D *v3d, Object *ob, Object
 		GPU_lamp_update(lamp, ob->lay, (ob->restrictflag & OB_RESTRICT_RENDER), obmat);
 		GPU_lamp_update_colors(lamp, la->r, la->g, la->b, la->energy);
 		
-		if ((ob->lay & v3d->lay) && GPU_lamp_has_shadow_buffer(lamp)) {
+		layers = ob->lay & v3d->lay;
+		if (srl)
+			layers &= srl->lay;
+
+		if (layers && GPU_lamp_override_visible(lamp, srl, NULL) && GPU_lamp_has_shadow_buffer(lamp)) {
 			shadow = MEM_callocN(sizeof(View3DShadow), "View3DShadow");
 			shadow->lamp = lamp;
 			BLI_addtail(shadows, shadow);
@@ -2408,6 +2416,7 @@ static void gpu_update_lamps_shadows(Scene *scene, View3D *v3d)
 	Scene *sce_iter;
 	Base *base;
 	Object *ob;
+	SceneRenderLayer *srl = BLI_findlink(&scene->r.layers, scene->r.actlay);
 	
 	BLI_listbase_clear(&shadows);
 	
@@ -2416,7 +2425,7 @@ static void gpu_update_lamps_shadows(Scene *scene, View3D *v3d)
 		ob = base->object;
 		
 		if (ob->type == OB_LAMP)
-			gpu_render_lamp_update(scene, v3d, ob, NULL, ob->obmat, &shadows);
+			gpu_render_lamp_update(scene, v3d, ob, NULL, ob->obmat, &shadows, srl);
 		
 		if (ob->transflag & OB_DUPLI) {
 			DupliObject *dob;
@@ -2424,7 +2433,7 @@ static void gpu_update_lamps_shadows(Scene *scene, View3D *v3d)
 			
 			for (dob = lb->first; dob; dob = dob->next)
 				if (dob->ob->type == OB_LAMP)
-					gpu_render_lamp_update(scene, v3d, dob->ob, ob, dob->mat, &shadows);
+					gpu_render_lamp_update(scene, v3d, dob->ob, ob, dob->mat, &shadows, srl);
 			
 			free_object_duplilist(lb);
 		}
@@ -2519,13 +2528,13 @@ void ED_view3d_update_viewmat(Scene *scene, View3D *v3d, ARegion *ar, float view
 	if (winmat)
 		copy_m4_m4(rv3d->winmat, winmat);
 	else
-		setwinmatrixview3d(ar, v3d, NULL);
+		view3d_winmatrix_set(ar, v3d, NULL);
 
 	/* setup view matrix */
 	if (viewmat)
 		copy_m4_m4(rv3d->viewmat, viewmat);
 	else
-		setviewmatrixview3d(scene, v3d, rv3d);  /* note: calls BKE_object_where_is_calc for camera... */
+		view3d_viewmatrix_set(scene, v3d, rv3d);  /* note: calls BKE_object_where_is_calc for camera... */
 
 	/* update utilitity matrices */
 	mul_m4_m4m4(rv3d->persmat, rv3d->winmat, rv3d->viewmat);
@@ -2656,7 +2665,7 @@ static void view3d_draw_objects(
 
 		/* then draw not selected and the duplis, but skip editmode object */
 		for (base = scene->base.first; base; base = base->next) {
-			lay_used |= base->lay & ((1 << 20) - 1);
+			lay_used |= base->lay;
 
 			if (v3d->lay & base->lay) {
 
@@ -2671,7 +2680,8 @@ static void view3d_draw_objects(
 			}
 		}
 
-		v3d->lay_used = lay_used;
+		/* mask out localview */
+		v3d->lay_used = lay_used & ((1 << 20) - 1);
 
 		/* draw selected and editmode */
 		for (base = scene->base.first; base; base = base->next) {

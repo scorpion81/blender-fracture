@@ -37,7 +37,6 @@
 #include "MEM_guardedalloc.h"
 
 #include "DNA_object_types.h"
-#include "DNA_mesh_types.h"
 #include "DNA_meshdata_types.h"
 #include "DNA_scene_types.h"
 
@@ -52,7 +51,6 @@
 #include "BKE_context.h"
 #include "BKE_customdata.h"
 #include "BKE_depsgraph.h"
-#include "BKE_mesh.h"
 #include "BKE_mesh_mapping.h"
 #include "BKE_editmesh.h"
 
@@ -634,7 +632,7 @@ static void state_delete(StitchState *state)
 static void stitch_uv_edge_generate_linked_edges(GHash *edge_hash, StitchState *state)
 {
 	UvEdge *edges = state->edges;
-	int *map = state->map;
+	const int *map = state->map;
 	UvElementMap *element_map = state->element_map;
 	UvElement *first_element = element_map->buf;
 	int i;

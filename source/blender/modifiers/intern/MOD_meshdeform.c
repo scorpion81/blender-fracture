@@ -32,7 +32,6 @@
  *  \ingroup modifiers
  */
 
-#include "DNA_mesh_types.h"
 #include "DNA_meshdata_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
@@ -44,7 +43,6 @@
 
 #include "BKE_cdderivedmesh.h"
 #include "BKE_global.h"
-#include "BKE_mesh.h"
 #include "BKE_modifier.h"
 #include "BKE_deform.h"
 #include "BKE_editmesh.h"
@@ -191,7 +189,7 @@ static void meshdeformModifier_do(
 	DerivedMesh *tmpdm, *cagedm;
 	MDeformVert *dvert = NULL;
 	MDefInfluence *influences;
-	int *offsets;
+	const int *offsets;
 	float imat[4][4], cagemat[4][4], iobmat[4][4], icagemat[3][3], cmat[4][4];
 	float weight, totweight, fac, co[3], (*dco)[3], (*bindcagecos)[3];
 	int a, b, totvert, totcagevert, defgrp_index;

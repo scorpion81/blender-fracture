@@ -39,14 +39,12 @@
 #include "DNA_material_types.h"
 
 #include "BLI_math.h"
-#include "BLI_blenlib.h"
 #include "BLI_memarena.h"
 #include "BLI_threads.h"
 #include "BLI_utildefines.h"
 
 #include "BLF_translation.h"
 
-#include "BKE_global.h"
 #include "BKE_scene.h"
 
 
@@ -1176,7 +1174,7 @@ static void sample_occ_surface(ShadeInput *shi)
 {
 	StrandRen *strand = shi->strand;
 	StrandSurface *mesh = strand->buffer->surface;
-	int *face, *index = RE_strandren_get_face(shi->obr, strand, 0);
+	const int *face, *index = RE_strandren_get_face(shi->obr, strand, 0);
 	float w[4], *co1, *co2, *co3, *co4;
 
 	if (mesh && mesh->face && mesh->co && mesh->ao && index) {

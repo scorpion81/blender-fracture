@@ -43,6 +43,14 @@
 #include "MEM_guardedalloc.h"
 #endif
 
+extern "C" {
+#include "DNA_material_types.h"
+}
+
+#ifndef MAX_MTEX
+#define MAX_MTEX	18
+#endif
+
 namespace Freestyle {
 
 //
@@ -53,7 +61,7 @@ namespace Freestyle {
 /*! Class to define an attribute associated to a Stroke Vertex.
  *  This attribute stores the color, alpha and thickness values for a Stroke Vertex.
  */
-class LIB_STROKE_EXPORT StrokeAttribute
+class StrokeAttribute
 {
 public:
 	/*! default constructor */
@@ -314,7 +322,7 @@ private:
 ////////////////////////////////////////////////////////
 
 /*! Class to define a stroke vertex. */
-class LIB_STROKE_EXPORT StrokeVertex : public CurvePoint
+class StrokeVertex : public CurvePoint
 {
 public: // Implementation of Interface0D
 	/*! Returns the string "StrokeVertex" */
@@ -489,7 +497,7 @@ class StrokeVertexIterator;
  *  This set of vertices defines the stroke's backbone geometry.
  *  Each of these stroke vertices defines the stroke's shape and appearance at this vertex position.
  */
-class LIB_STROKE_EXPORT Stroke : public Interface1D
+class Stroke : public Interface1D
 {
 public: // Implementation of Interface1D
 	/*! Returns the string "Stroke" */
@@ -528,9 +536,11 @@ private:
 	float _Length; // The stroke length
 	viewedge_container _ViewEdges;
 	float _sampling;
+	float _textureStep;
 	// StrokeRenderer *_renderer; // mark implementation OpenGL renderer
 	MediumType _mediumType;
 	unsigned int _textureId;
+	MTex *_mtex[MAX_MTEX];
 	bool _tips;
 	Vec2r _extremityOrientations[2]; // the orientations of the first and last extermity
 	StrokeRep *_rep;
@@ -635,6 +645,20 @@ public:
 	/*! Returns the id of the texture used to simulate th marks system for this Stroke */
 	inline unsigned int getTextureId() {return _textureId;}
 
+	/*! Returns the spacing of texture coordinates along the stroke lenght */
+	inline float getTextureStep() {return _textureStep;}
+
+	/*! Returns the texture used at given index to simulate the marks system for this Stroke */
+	inline MTex *getMTex(int idx) {
+		return _mtex[idx];
+	}
+
+	/*! Returns true if this Stroke has textures assigned, false otherwise. */
+	inline bool hasTex() const
+	{
+		return _mtex[0] != NULL;
+	}
+
 	/*! Returns true if this Stroke uses a texture with tips, false otherwise. */
 	inline bool hasTips() const
 	{
@@ -723,6 +747,24 @@ public:
 	inline void setTextureId(unsigned int id)
 	{
 		_textureId = id;
+	}
+
+	/*! sets the spacing of texture coordinates along the stroke lenght. */
+	inline void setTextureStep(float step)
+	{
+		_textureStep = step;
+	}
+
+	/*! assigns a blender texture to the first available slot. */
+	inline int setMTex(MTex *mtex)
+	{
+		for (int a = 0; a < MAX_MTEX; a++) {
+			if (!_mtex[a]) {
+				_mtex[a] = mtex;
+				return 0;
+			}
+		}
+		return -1; /* no free slots */
 	}
 
 	/*! sets the flag telling whether this stroke is using a texture with tips or not. */

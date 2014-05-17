@@ -77,14 +77,12 @@
 #include "BLI_utildefines.h"
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
-#include "BLI_edgehash.h"
 
 #include "BKE_armature.h"
 #include "BKE_colortools.h"
 #include "BKE_constraint.h"
 #include "BKE_deform.h"
 #include "BKE_fcurve.h"
-#include "BKE_global.h" // for G
 #include "BKE_image.h"
 #include "BKE_lattice.h"
 #include "BKE_main.h" // for Main
@@ -3572,8 +3570,6 @@ void blo_do_versions_pre250(FileData *fd, Library *lib, Main *main)
 		Object *ob;
 		World *wrld;
 		for (ob = main->object.first; ob; ob = ob->id.next) {
-			/* pad3 is used for m_contactProcessingThreshold */
-			ob->m_contactProcessingThreshold = 1.0f;
 			if (ob->parent) {
 				/* check if top parent has compound shape set and if yes, set this object
 				 * to compound shaper as well (was the behavior before, now it's optional) */

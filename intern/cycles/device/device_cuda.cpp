@@ -139,7 +139,7 @@ public:
 			/*cuda_abort();*/ \
 			cuda_error_documentation(); \
 		} \
-	}
+	} (void)0
 
 	bool cuda_error_(CUresult result, const string& stmt)
 	{
@@ -166,7 +166,7 @@ public:
 
 	void cuda_push_context()
 	{
-		cuda_assert(cuCtxSetCurrent(cuContext))
+		cuda_assert(cuCtxSetCurrent(cuContext));
 	}
 
 	void cuda_pop_context()
@@ -174,7 +174,7 @@ public:
 		cuda_assert(cuCtxSetCurrent(NULL));
 	}
 
-    CUDADevice(DeviceInfo& info, Stats &stats, bool background_)
+	CUDADevice(DeviceInfo& info, Stats &stats, bool background_)
 	: Device(info, stats, background_)
 	{
 		first_error = true;
@@ -212,8 +212,8 @@ public:
 		if(cuda_error_(result, "cuCtxCreate"))
 			return;
 
-		cuda_assert(cuStreamCreate(&cuStream, 0))
-		cuda_assert(cuEventCreate(&tileDone, 0x1))
+		cuda_assert(cuStreamCreate(&cuStream, 0));
+		cuda_assert(cuEventCreate(&tileDone, 0x1));
 
 		int major, minor;
 		cuDeviceComputeCapability(&major, &minor, cuDevId);
@@ -222,7 +222,7 @@ public:
 		/* In order to use full 6GB of memory on Titan cards, use arrays instead
 		 * of textures. On earlier cards this seems slower, but on Titan it is
 		 * actually slightly faster in tests. */
-		use_texture_storage = (cuDevArchitecture < 350);
+		use_texture_storage = (cuDevArchitecture < 300);
 
 		cuda_pop_context();
 	}
@@ -231,9 +231,9 @@ public:
 	{
 		task_pool.stop();
 
-		cuda_assert(cuEventDestroy(tileDone))
-		cuda_assert(cuStreamDestroy(cuStream))
-		cuda_assert(cuCtxDestroy(cuContext))
+		cuda_assert(cuEventDestroy(tileDone));
+		cuda_assert(cuStreamDestroy(cuStream));
+		cuda_assert(cuCtxDestroy(cuContext));
 	}
 
 	bool support_device(bool experimental, bool branched)
@@ -247,13 +247,6 @@ public:
 			return false;
 		}
 		
-		/* Currently no Branched Path on sm_30 */
-		if(branched) {
-			cuda_error_message(string_printf("CUDA device: Branched Path is currently disabled, due to compile errors."));
-			return false;
-		}
-		
-
 		return true;
 	}
 
@@ -304,28 +297,16 @@ public:
 			return "";
 		}
 		if(cuda_version < 50) {
-			printf("Unsupported CUDA version %d.%d detected, you need CUDA 5.0.\n", cuda_version/10, cuda_version%10);
+			printf("Unsupported CUDA version %d.%d detected, you need CUDA 6.0.\n", cuda_version/10, cuda_version%10);
 			return "";
 		}
-
-		else if(cuda_version > 50)
-			printf("CUDA version %d.%d detected, build may succeed but only CUDA 5.0 is officially supported.\n", cuda_version/10, cuda_version%10);
+		else if(cuda_version != 60)
+			printf("CUDA version %d.%d detected, build may succeed but only CUDA 6.0 is officially supported.\n", cuda_version/10, cuda_version%10);
 
 		/* compile */
 		string kernel = path_join(kernel_path, "kernel.cu");
 		string include = kernel_path;
 		const int machine = system_cpu_bits();
-		string arch_flags;
-
-		/* CUDA 5.x build flags for different archs */
-		if(major == 2) {
-			/* sm_2x */
-			arch_flags = "--maxrregcount=40 --use_fast_math";
-		}
-		else if(major == 3) {
-			/* sm_3x */
-			arch_flags = "--maxrregcount=32 --use_fast_math";
-		}
 
 		double starttime = time_dt();
 		printf("Compiling CUDA kernel ...\n");
@@ -333,8 +314,8 @@ public:
 		path_create_directories(cubin);
 
 		string command = string_printf("\"%s\" -arch=sm_%d%d -m%d --cubin \"%s\" "
-			"-o \"%s\" --ptxas-options=\"-v\" %s -I\"%s\" -DNVCC -D__KERNEL_CUDA_VERSION__=%d",
-			nvcc.c_str(), major, minor, machine, kernel.c_str(), cubin.c_str(), arch_flags.c_str(), include.c_str(), cuda_version);
+			"-o \"%s\" --ptxas-options=\"-v\" -I\"%s\" -DNVCC -D__KERNEL_CUDA_VERSION__=%d",
+			nvcc.c_str(), major, minor, machine, kernel.c_str(), cubin.c_str(), include.c_str(), cuda_version);
 
 		printf("%s\n", command.c_str());
 
@@ -394,7 +375,7 @@ public:
 		cuda_push_context();
 		CUdeviceptr device_pointer;
 		size_t size = mem.memory_size();
-		cuda_assert(cuMemAlloc(&device_pointer, size))
+		cuda_assert(cuMemAlloc(&device_pointer, size));
 		mem.device_pointer = (device_ptr)device_pointer;
 		stats.mem_alloc(size);
 		cuda_pop_context();
@@ -404,7 +385,7 @@ public:
 	{
 		cuda_push_context();
 		if(mem.device_pointer)
-			cuda_assert(cuMemcpyHtoD(cuda_device_ptr(mem.device_pointer), (void*)mem.data_pointer, mem.memory_size()))
+			cuda_assert(cuMemcpyHtoD(cuda_device_ptr(mem.device_pointer), (void*)mem.data_pointer, mem.memory_size()));
 		cuda_pop_context();
 	}
 
@@ -416,7 +397,7 @@ public:
 		cuda_push_context();
 		if(mem.device_pointer) {
 			cuda_assert(cuMemcpyDtoH((uchar*)mem.data_pointer + offset,
-				(CUdeviceptr)((uchar*)mem.device_pointer + offset), size))
+			                         (CUdeviceptr)((uchar*)mem.device_pointer + offset), size));
 		}
 		else {
 			memset((char*)mem.data_pointer + offset, 0, size);
@@ -430,7 +411,7 @@ public:
 
 		cuda_push_context();
 		if(mem.device_pointer)
-			cuda_assert(cuMemsetD8(cuda_device_ptr(mem.device_pointer), 0, mem.memory_size()))
+			cuda_assert(cuMemsetD8(cuda_device_ptr(mem.device_pointer), 0, mem.memory_size()));
 		cuda_pop_context();
 	}
 
@@ -438,7 +419,7 @@ public:
 	{
 		if(mem.device_pointer) {
 			cuda_push_context();
-			cuda_assert(cuMemFree(cuda_device_ptr(mem.device_pointer)))
+			cuda_assert(cuMemFree(cuda_device_ptr(mem.device_pointer)));
 			cuda_pop_context();
 
 			mem.device_pointer = 0;
@@ -453,9 +434,9 @@ public:
 		size_t bytes;
 
 		cuda_push_context();
-		cuda_assert(cuModuleGetGlobal(&mem, &bytes, cuModule, name))
+		cuda_assert(cuModuleGetGlobal(&mem, &bytes, cuModule, name));
 		//assert(bytes == size);
-		cuda_assert(cuMemcpyHtoD(mem, host, size))
+		cuda_assert(cuMemcpyHtoD(mem, host, size));
 		cuda_pop_context();
 	}
 
@@ -482,7 +463,7 @@ public:
 			CUtexref texref = NULL;
 
 			cuda_push_context();
-			cuda_assert(cuModuleGetTexRef(&texref, cuModule, name))
+			cuda_assert(cuModuleGetTexRef(&texref, cuModule, name));
 
 			if(!texref) {
 				cuda_pop_context();
@@ -498,7 +479,7 @@ public:
 				desc.Format = format;
 				desc.NumChannels = mem.data_elements;
 
-				cuda_assert(cuArrayCreate(&handle, &desc))
+				cuda_assert(cuArrayCreate(&handle, &desc));
 
 				if(!handle) {
 					cuda_pop_context();
@@ -516,23 +497,23 @@ public:
 					param.WidthInBytes = param.srcPitch;
 					param.Height = mem.data_height;
 
-					cuda_assert(cuMemcpy2D(&param))
+					cuda_assert(cuMemcpy2D(&param));
 				}
 				else
-					cuda_assert(cuMemcpyHtoA(handle, 0, (void*)mem.data_pointer, size))
+					cuda_assert(cuMemcpyHtoA(handle, 0, (void*)mem.data_pointer, size));
 
-				cuda_assert(cuTexRefSetArray(texref, handle, CU_TRSA_OVERRIDE_FORMAT))
+				cuda_assert(cuTexRefSetArray(texref, handle, CU_TRSA_OVERRIDE_FORMAT));
 
 				if(interpolation == INTERPOLATION_CLOSEST) {
-					cuda_assert(cuTexRefSetFilterMode(texref, CU_TR_FILTER_MODE_POINT))
+					cuda_assert(cuTexRefSetFilterMode(texref, CU_TR_FILTER_MODE_POINT));
 				}
-				else if (interpolation == INTERPOLATION_LINEAR){
-					cuda_assert(cuTexRefSetFilterMode(texref, CU_TR_FILTER_MODE_LINEAR))
+				else if (interpolation == INTERPOLATION_LINEAR) {
+					cuda_assert(cuTexRefSetFilterMode(texref, CU_TR_FILTER_MODE_LINEAR));
 				}
 				else {/* CUBIC and SMART are unsupported for CUDA */
-					cuda_assert(cuTexRefSetFilterMode(texref, CU_TR_FILTER_MODE_LINEAR))
+					cuda_assert(cuTexRefSetFilterMode(texref, CU_TR_FILTER_MODE_LINEAR));
 				}
-				cuda_assert(cuTexRefSetFlags(texref, CU_TRSF_NORMALIZED_COORDINATES))
+				cuda_assert(cuTexRefSetFlags(texref, CU_TRSF_NORMALIZED_COORDINATES));
 
 				mem.device_pointer = (device_ptr)handle;
 
@@ -546,20 +527,20 @@ public:
 
 				cuda_push_context();
 
-				cuda_assert(cuTexRefSetAddress(NULL, texref, cuda_device_ptr(mem.device_pointer), size))
-				cuda_assert(cuTexRefSetFilterMode(texref, CU_TR_FILTER_MODE_POINT))
-				cuda_assert(cuTexRefSetFlags(texref, CU_TRSF_READ_AS_INTEGER))
+				cuda_assert(cuTexRefSetAddress(NULL, texref, cuda_device_ptr(mem.device_pointer), size));
+				cuda_assert(cuTexRefSetFilterMode(texref, CU_TR_FILTER_MODE_POINT));
+				cuda_assert(cuTexRefSetFlags(texref, CU_TRSF_READ_AS_INTEGER));
 			}
 
 			if(periodic) {
-				cuda_assert(cuTexRefSetAddressMode(texref, 0, CU_TR_ADDRESS_MODE_WRAP))
-				cuda_assert(cuTexRefSetAddressMode(texref, 1, CU_TR_ADDRESS_MODE_WRAP))
+				cuda_assert(cuTexRefSetAddressMode(texref, 0, CU_TR_ADDRESS_MODE_WRAP));
+				cuda_assert(cuTexRefSetAddressMode(texref, 1, CU_TR_ADDRESS_MODE_WRAP));
 			}
 			else {
-				cuda_assert(cuTexRefSetAddressMode(texref, 0, CU_TR_ADDRESS_MODE_CLAMP))
-				cuda_assert(cuTexRefSetAddressMode(texref, 1, CU_TR_ADDRESS_MODE_CLAMP))
+				cuda_assert(cuTexRefSetAddressMode(texref, 0, CU_TR_ADDRESS_MODE_CLAMP));
+				cuda_assert(cuTexRefSetAddressMode(texref, 1, CU_TR_ADDRESS_MODE_CLAMP));
 			}
-			cuda_assert(cuTexRefSetFormat(texref, format, mem.data_elements))
+			cuda_assert(cuTexRefSetFormat(texref, format, mem.data_elements));
 
 			cuda_pop_context();
 		}
@@ -572,17 +553,17 @@ public:
 			CUdeviceptr cumem;
 			size_t cubytes;
 
-			cuda_assert(cuModuleGetGlobal(&cumem, &cubytes, cuModule, name))
+			cuda_assert(cuModuleGetGlobal(&cumem, &cubytes, cuModule, name));
 
 			if(cubytes == 8) {
 				/* 64 bit device pointer */
 				uint64_t ptr = mem.device_pointer;
-				cuda_assert(cuMemcpyHtoD(cumem, (void*)&ptr, cubytes))
+				cuda_assert(cuMemcpyHtoD(cumem, (void*)&ptr, cubytes));
 			}
 			else {
 				/* 32 bit device pointer */
 				uint32_t ptr = (uint32_t)mem.device_pointer;
-				cuda_assert(cuMemcpyHtoD(cumem, (void*)&ptr, cubytes))
+				cuda_assert(cuMemcpyHtoD(cumem, (void*)&ptr, cubytes));
 			}
 
 			cuda_pop_context();
@@ -623,10 +604,12 @@ public:
 		CUdeviceptr d_rng_state = cuda_device_ptr(rtile.rng_state);
 
 		/* get kernel function */
-		if(branched && support_device(true, branched))
-			cuda_assert(cuModuleGetFunction(&cuPathTrace, cuModule, "kernel_cuda_branched_path_trace"))
-		else
-			cuda_assert(cuModuleGetFunction(&cuPathTrace, cuModule, "kernel_cuda_path_trace"))
+		if(branched && support_device(true, branched)) {
+			cuda_assert(cuModuleGetFunction(&cuPathTrace, cuModule, "kernel_cuda_branched_path_trace"));
+		}
+		else {
+			cuda_assert(cuModuleGetFunction(&cuPathTrace, cuModule, "kernel_cuda_path_trace"));
+		}
 
 		if(have_error())
 			return;
@@ -634,46 +617,63 @@ public:
 		/* pass in parameters */
 		int offset = 0;
 		
-		cuda_assert(cuParamSetv(cuPathTrace, offset, &d_buffer, sizeof(d_buffer)))
+		cuda_assert(cuParamSetv(cuPathTrace, offset, &d_buffer, sizeof(d_buffer)));
 		offset += sizeof(d_buffer);
 
-		cuda_assert(cuParamSetv(cuPathTrace, offset, &d_rng_state, sizeof(d_rng_state)))
+		cuda_assert(cuParamSetv(cuPathTrace, offset, &d_rng_state, sizeof(d_rng_state)));
 		offset += sizeof(d_rng_state);
 
 		offset = align_up(offset, __alignof(sample));
 
-		cuda_assert(cuParamSeti(cuPathTrace, offset, sample))
+		cuda_assert(cuParamSeti(cuPathTrace, offset, sample));
 		offset += sizeof(sample);
 
-		cuda_assert(cuParamSeti(cuPathTrace, offset, rtile.x))
+		cuda_assert(cuParamSeti(cuPathTrace, offset, rtile.x));
 		offset += sizeof(rtile.x);
 
-		cuda_assert(cuParamSeti(cuPathTrace, offset, rtile.y))
+		cuda_assert(cuParamSeti(cuPathTrace, offset, rtile.y));
 		offset += sizeof(rtile.y);
 
-		cuda_assert(cuParamSeti(cuPathTrace, offset, rtile.w))
+		cuda_assert(cuParamSeti(cuPathTrace, offset, rtile.w));
 		offset += sizeof(rtile.w);
 
-		cuda_assert(cuParamSeti(cuPathTrace, offset, rtile.h))
+		cuda_assert(cuParamSeti(cuPathTrace, offset, rtile.h));
 		offset += sizeof(rtile.h);
 
-		cuda_assert(cuParamSeti(cuPathTrace, offset, rtile.offset))
+		cuda_assert(cuParamSeti(cuPathTrace, offset, rtile.offset));
 		offset += sizeof(rtile.offset);
 
-		cuda_assert(cuParamSeti(cuPathTrace, offset, rtile.stride))
+		cuda_assert(cuParamSeti(cuPathTrace, offset, rtile.stride));
 		offset += sizeof(rtile.stride);
 
-		cuda_assert(cuParamSetSize(cuPathTrace, offset))
+		cuda_assert(cuParamSetSize(cuPathTrace, offset));
 
-		/* launch kernel: todo find optimal size, cache config for fermi */
-		int xthreads = 16;
-		int ythreads = 16;
+		/* launch kernel */
+		int threads_per_block;
+		cuda_assert(cuFuncGetAttribute(&threads_per_block, CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK, cuPathTrace));
+
+		/*int num_registers;
+		cuda_assert(cuFuncGetAttribute(&num_registers, CU_FUNC_ATTRIBUTE_NUM_REGS, cuPathTrace));
+
+		printf("threads_per_block %d\n", threads_per_block);
+		printf("num_registers %d\n", num_registers);*/
+
+		int xthreads = (int)sqrt((float)threads_per_block);
+		int ythreads = (int)sqrt((float)threads_per_block);
 		int xblocks = (rtile.w + xthreads - 1)/xthreads;
 		int yblocks = (rtile.h + ythreads - 1)/ythreads;
 
-		cuda_assert(cuFuncSetCacheConfig(cuPathTrace, CU_FUNC_CACHE_PREFER_L1))
-		cuda_assert(cuFuncSetBlockShape(cuPathTrace, xthreads, ythreads, 1))
-		cuda_assert(cuLaunchGridAsync(cuPathTrace, xblocks, yblocks, cuStream))
+		cuda_assert(cuFuncSetCacheConfig(cuPathTrace, CU_FUNC_CACHE_PREFER_L1));
+		cuda_assert(cuFuncSetBlockShape(cuPathTrace, xthreads, ythreads, 1));
+
+		if(info.display_device) {
+			/* don't use async for device used for display, locks up UI too much */
+			cuda_assert(cuLaunchGrid(cuPathTrace, xblocks, yblocks));
+			cuda_assert(cuCtxSynchronize());
+		}
+		else {
+			cuda_assert(cuLaunchGridAsync(cuPathTrace, xblocks, yblocks, cuStream));
+		}
 
 		cuda_pop_context();
 	}
@@ -690,55 +690,60 @@ public:
 		CUdeviceptr d_buffer = cuda_device_ptr(buffer);
 
 		/* get kernel function */
-		if(rgba_half)
-			cuda_assert(cuModuleGetFunction(&cuFilmConvert, cuModule, "kernel_cuda_convert_to_half_float"))
-		else
-			cuda_assert(cuModuleGetFunction(&cuFilmConvert, cuModule, "kernel_cuda_convert_to_byte"))
+		if(rgba_half) {
+			cuda_assert(cuModuleGetFunction(&cuFilmConvert, cuModule, "kernel_cuda_convert_to_half_float"));
+		}
+		else {
+			cuda_assert(cuModuleGetFunction(&cuFilmConvert, cuModule, "kernel_cuda_convert_to_byte"));
+		}
 
 		/* pass in parameters */
 		int offset = 0;
 
-		cuda_assert(cuParamSetv(cuFilmConvert, offset, &d_rgba, sizeof(d_rgba)))
+		cuda_assert(cuParamSetv(cuFilmConvert, offset, &d_rgba, sizeof(d_rgba)));
 		offset += sizeof(d_rgba);
 		
-		cuda_assert(cuParamSetv(cuFilmConvert, offset, &d_buffer, sizeof(d_buffer)))
+		cuda_assert(cuParamSetv(cuFilmConvert, offset, &d_buffer, sizeof(d_buffer)));
 		offset += sizeof(d_buffer);
 
 		float sample_scale = 1.0f/(task.sample + 1);
 		offset = align_up(offset, __alignof(sample_scale));
 
-		cuda_assert(cuParamSetf(cuFilmConvert, offset, sample_scale))
+		cuda_assert(cuParamSetf(cuFilmConvert, offset, sample_scale));
 		offset += sizeof(sample_scale);
 
-		cuda_assert(cuParamSeti(cuFilmConvert, offset, task.x))
+		cuda_assert(cuParamSeti(cuFilmConvert, offset, task.x));
 		offset += sizeof(task.x);
 
-		cuda_assert(cuParamSeti(cuFilmConvert, offset, task.y))
+		cuda_assert(cuParamSeti(cuFilmConvert, offset, task.y));
 		offset += sizeof(task.y);
 
-		cuda_assert(cuParamSeti(cuFilmConvert, offset, task.w))
+		cuda_assert(cuParamSeti(cuFilmConvert, offset, task.w));
 		offset += sizeof(task.w);
 
-		cuda_assert(cuParamSeti(cuFilmConvert, offset, task.h))
+		cuda_assert(cuParamSeti(cuFilmConvert, offset, task.h));
 		offset += sizeof(task.h);
 
-		cuda_assert(cuParamSeti(cuFilmConvert, offset, task.offset))
+		cuda_assert(cuParamSeti(cuFilmConvert, offset, task.offset));
 		offset += sizeof(task.offset);
 
-		cuda_assert(cuParamSeti(cuFilmConvert, offset, task.stride))
+		cuda_assert(cuParamSeti(cuFilmConvert, offset, task.stride));
 		offset += sizeof(task.stride);
 
-		cuda_assert(cuParamSetSize(cuFilmConvert, offset))
+		cuda_assert(cuParamSetSize(cuFilmConvert, offset));
 
-		/* launch kernel: todo find optimal size, cache config for fermi */
-		int xthreads = 16;
-		int ythreads = 16;
+		/* launch kernel */
+		int threads_per_block;
+		cuda_assert(cuFuncGetAttribute(&threads_per_block, CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK, cuFilmConvert));
+
+		int xthreads = (int)sqrt((float)threads_per_block);
+		int ythreads = (int)sqrt((float)threads_per_block);
 		int xblocks = (task.w + xthreads - 1)/xthreads;
 		int yblocks = (task.h + ythreads - 1)/ythreads;
 
-		cuda_assert(cuFuncSetCacheConfig(cuFilmConvert, CU_FUNC_CACHE_PREFER_L1))
-		cuda_assert(cuFuncSetBlockShape(cuFilmConvert, xthreads, ythreads, 1))
-		cuda_assert(cuLaunchGrid(cuFilmConvert, xblocks, yblocks))
+		cuda_assert(cuFuncSetCacheConfig(cuFilmConvert, CU_FUNC_CACHE_PREFER_L1));
+		cuda_assert(cuFuncSetBlockShape(cuFilmConvert, xthreads, ythreads, 1));
+		cuda_assert(cuLaunchGrid(cuFilmConvert, xblocks, yblocks));
 
 		unmap_pixels((rgba_byte)? rgba_byte: rgba_half);
 
@@ -752,40 +757,55 @@ public:
 
 		cuda_push_context();
 
-		CUfunction cuDisplace;
+		CUfunction cuShader;
 		CUdeviceptr d_input = cuda_device_ptr(task.shader_input);
 		CUdeviceptr d_output = cuda_device_ptr(task.shader_output);
 
 		/* get kernel function */
-		cuda_assert(cuModuleGetFunction(&cuDisplace, cuModule, "kernel_cuda_shader"))
-		
-		/* pass in parameters */
-		int offset = 0;
-		
-		cuda_assert(cuParamSetv(cuDisplace, offset, &d_input, sizeof(d_input)))
-		offset += sizeof(d_input);
+		cuda_assert(cuModuleGetFunction(&cuShader, cuModule, "kernel_cuda_shader"));
 
-		cuda_assert(cuParamSetv(cuDisplace, offset, &d_output, sizeof(d_output)))
-		offset += sizeof(d_output);
+		/* do tasks in smaller chunks, so we can cancel it */
+		const int shader_chunk_size = 65536;
+		const int start = task.shader_x;
+		const int end = task.shader_x + task.shader_w;
 
-		int shader_eval_type = task.shader_eval_type;
-		offset = align_up(offset, __alignof(shader_eval_type));
+		for(int shader_x = start; shader_x < end; shader_x += shader_chunk_size) {
+			if(task.get_cancel())
+				break;
 
-		cuda_assert(cuParamSeti(cuDisplace, offset, task.shader_eval_type))
-		offset += sizeof(task.shader_eval_type);
+			/* pass in parameters */
+			int offset = 0;
 
-		cuda_assert(cuParamSeti(cuDisplace, offset, task.shader_x))
-		offset += sizeof(task.shader_x);
+			cuda_assert(cuParamSetv(cuShader, offset, &d_input, sizeof(d_input)));
+			offset += sizeof(d_input);
 
-		cuda_assert(cuParamSetSize(cuDisplace, offset))
+			cuda_assert(cuParamSetv(cuShader, offset, &d_output, sizeof(d_output)));
+			offset += sizeof(d_output);
 
-		/* launch kernel: todo find optimal size, cache config for fermi */
-		int xthreads = 16;
-		int xblocks = (task.shader_w + xthreads - 1)/xthreads;
+			int shader_eval_type = task.shader_eval_type;
+			offset = align_up(offset, __alignof(shader_eval_type));
 
-		cuda_assert(cuFuncSetCacheConfig(cuDisplace, CU_FUNC_CACHE_PREFER_L1))
-		cuda_assert(cuFuncSetBlockShape(cuDisplace, xthreads, 1, 1))
-		cuda_assert(cuLaunchGrid(cuDisplace, xblocks, 1))
+			cuda_assert(cuParamSeti(cuShader, offset, task.shader_eval_type));
+			offset += sizeof(task.shader_eval_type);
+
+			cuda_assert(cuParamSeti(cuShader, offset, shader_x));
+			offset += sizeof(shader_x);
+
+			cuda_assert(cuParamSetSize(cuShader, offset));
+
+			/* launch kernel */
+			int threads_per_block;
+			cuda_assert(cuFuncGetAttribute(&threads_per_block, CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK, cuShader));
+
+			int shader_w = min(shader_chunk_size, end - shader_x);
+			int xblocks = (shader_w + threads_per_block - 1)/threads_per_block;
+
+			cuda_assert(cuFuncSetCacheConfig(cuShader, CU_FUNC_CACHE_PREFER_L1));
+			cuda_assert(cuFuncSetBlockShape(cuShader, threads_per_block, 1, 1));
+			cuda_assert(cuLaunchGrid(cuShader, xblocks, 1));
+
+			cuda_assert(cuCtxSynchronize());
+		}
 
 		cuda_pop_context();
 	}
@@ -797,8 +817,8 @@ public:
 			CUdeviceptr buffer;
 			
 			size_t bytes;
-			cuda_assert(cuGraphicsMapResources(1, &pmem.cuPBOresource, 0))
-			cuda_assert(cuGraphicsResourceGetMappedPointer(&buffer, &bytes, pmem.cuPBOresource))
+			cuda_assert(cuGraphicsMapResources(1, &pmem.cuPBOresource, 0));
+			cuda_assert(cuGraphicsResourceGetMappedPointer(&buffer, &bytes, pmem.cuPBOresource));
 			
 			return buffer;
 		}
@@ -811,7 +831,7 @@ public:
 		if(!background) {
 			PixelMem pmem = pixel_mem_map[mem];
 
-			cuda_assert(cuGraphicsUnmapResources(1, &pmem.cuPBOresource, 0))
+			cuda_assert(cuGraphicsUnmapResources(1, &pmem.cuPBOresource, 0));
 		}
 	}
 
@@ -900,7 +920,7 @@ public:
 
 				cuda_push_context();
 
-				cuda_assert(cuGraphicsUnregisterResource(pmem.cuPBOresource))
+				cuda_assert(cuGraphicsUnregisterResource(pmem.cuPBOresource));
 				glDeleteBuffers(1, &pmem.cuPBO);
 				glDeleteTextures(1, &pmem.cuTexId);
 
@@ -999,7 +1019,6 @@ public:
 			
 			bool branched = task->integrator_branched;
 			
-
 			/* keep rendering tiles until done */
 			while(task->acquire_tile(this, tile)) {
 				int start_sample = tile.start_sample;
@@ -1020,10 +1039,10 @@ public:
 					tile.sample = sample + 1;
 					task->update_progress(tile);
 
-					if(sample == sync_sample){
+					if(!info.display_device && sample == sync_sample) {
 						cuda_push_context();
-						cuda_assert(cuEventRecord(tileDone, cuStream ))
-						cuda_assert(cuEventSynchronize(tileDone))
+						cuda_assert(cuEventRecord(tileDone, cuStream));
+						cuda_assert(cuEventSynchronize(tileDone));
 
 						/* Do some time keeping to find out if we need to sync less */
 						boost::posix_time::ptime current_time(boost::posix_time::microsec_clock::local_time());
@@ -1033,7 +1052,7 @@ public:
 						float scaling_factor = (float)target_update_frequency / (float)msec;
 
 						/* sync at earliest next sample and probably later */
-						sync_sample = (sample + 1) + sync_sample * ceil(scaling_factor);
+						sync_sample = (sample + 1) + sync_sample * (int)ceil(scaling_factor);
 
 						sync_sample = min(end_sample - 1, sync_sample); // make sure we sync the last sample always
 
@@ -1049,7 +1068,7 @@ public:
 			shader(*task);
 
 			cuda_push_context();
-			cuda_assert(cuCtxSynchronize())
+			cuda_assert(cuCtxSynchronize());
 			cuda_pop_context();
 		}
 	}
@@ -1070,7 +1089,7 @@ public:
 			film_convert(task, task.buffer, task.rgba_byte, task.rgba_half);
 
 			cuda_push_context();
-			cuda_assert(cuCtxSynchronize())
+			cuda_assert(cuCtxSynchronize());
 			cuda_pop_context();
 		}
 		else {
@@ -1131,6 +1150,7 @@ void device_cuda_info(vector<DeviceInfo>& devices)
 		int major, minor;
 		cuDeviceComputeCapability(&major, &minor, num);
 		info.advanced_shading = (major >= 2);
+		info.extended_images = (major >= 3);
 		info.pack_images = false;
 
 		/* if device has a kernel timeout, assume it is used for display */

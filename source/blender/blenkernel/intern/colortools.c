@@ -47,7 +47,6 @@
 #include "BKE_colortools.h"
 #include "BKE_curve.h"
 #include "BKE_fcurve.h"
-#include "BKE_paint.h"
 
 
 #include "IMB_colormanagement.h"
@@ -961,7 +960,7 @@ void BKE_histogram_update_sample_line(Histogram *hist, ImBuf *ibuf, const ColorM
                                       const ColorManagedDisplaySettings *display_settings)
 {
 	int i, x, y;
-	float *fp;
+	const float *fp;
 	float rgb[3];
 	unsigned char *cp;
 
@@ -1024,7 +1023,7 @@ void scopes_update(Scopes *scopes, ImBuf *ibuf, const ColorManagedViewSettings *
 	int x, y, c;
 	unsigned int nl, na, nr, ng, nb;
 	double divl, diva, divr, divg, divb;
-	float *rf = NULL;
+	const float *rf = NULL;
 	unsigned char *rc = NULL;
 	unsigned int *bin_lum, *bin_r, *bin_g, *bin_b, *bin_a;
 	int savedlines, saveline;

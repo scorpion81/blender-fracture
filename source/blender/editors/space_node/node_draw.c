@@ -32,11 +32,11 @@
 #include "DNA_lamp_types.h"
 #include "DNA_node_types.h"
 #include "DNA_material_types.h"
-#include "DNA_object_types.h"
 #include "DNA_screen_types.h"
 #include "DNA_space_types.h"
 #include "DNA_texture_types.h"
 #include "DNA_world_types.h"
+#include "DNA_linestyle_types.h"
 
 #include "BLI_math.h"
 #include "BLI_blenlib.h"
@@ -58,7 +58,6 @@
 
 #include "ED_node.h"
 #include "ED_gpencil.h"
-#include "ED_screen.h"
 #include "ED_space_api.h"
 
 #include "UI_resources.h"
@@ -108,6 +107,8 @@ static bNodeTree *node_tree_from_ID(ID *id)
 				return ((Scene *)id)->nodetree;
 			case ID_TE:
 				return ((Tex *)id)->nodetree;
+			case ID_LS:
+				return ((FreestyleLineStyle *)id)->nodetree;
 		}
 	}
 	
@@ -587,14 +588,14 @@ static void node_draw_mute_line(View2D *v2d, SpaceNode *snode, bNode *node)
 static void node_circle_draw(float x, float y, float size, const float col[4], int highlight)
 {
 	/* 16 values of sin function */
-	static float si[16] = {
+	static const float si[16] = {
 		0.00000000f, 0.39435585f, 0.72479278f, 0.93775213f,
 		0.99871650f, 0.89780453f, 0.65137248f, 0.29936312f,
 		-0.10116832f, -0.48530196f, -0.79077573f, -0.96807711f,
 		-0.98846832f, -0.84864425f, -0.57126821f, -0.20129852f
 	};
 	/* 16 values of cos function */
-	static float co[16] = {
+	static const float co[16] = {
 		1.00000000f, 0.91895781f, 0.68896691f, 0.34730525f,
 		-0.05064916f, -0.44039415f, -0.75875812f, -0.95413925f,
 		-0.99486932f, -0.87434661f, -0.61210598f, -0.25065253f,
@@ -1204,7 +1205,7 @@ static void snode_setup_v2d(SpaceNode *snode, ARegion *ar, const float center[2]
 	View2D *v2d = &ar->v2d;
 	
 	/* shift view to node tree center */
-	UI_view2d_setcenter(v2d, center[0], center[1]);
+	UI_view2d_center_set(v2d, center[0], center[1]);
 	UI_view2d_view_ortho(v2d);
 	
 	/* aspect+font, set each time */
@@ -1289,7 +1290,7 @@ void drawnodespace(const bContext *C, ARegion *ar)
 		path = snode->treepath.last;
 		
 		/* current View2D center, will be set temporarily for parent node trees */
-		UI_view2d_getcenter(v2d, &center[0], &center[1]);
+		UI_view2d_center_get(v2d, &center[0], &center[1]);
 		
 		/* store new view center in path and current edittree */
 		copy_v2_v2(path->view_center, center);

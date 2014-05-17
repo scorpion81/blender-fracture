@@ -415,7 +415,7 @@ static int ringsel_init(bContext *C, wmOperator *op, bool do_cut)
 	lcd->num.unit_type[1] = B_UNIT_NONE;
 
 	/* XXX, temp, workaround for [#	] */
-	EDBM_mesh_ensure_valid_dm_hack(CTX_data_scene(C), lcd->em);
+	EDBM_mesh_ensure_valid_dm_hack(scene, lcd->em);
 
 	em_setup_viewcontext(C, &lcd->vc);
 
@@ -493,7 +493,7 @@ static int loopcut_init(bContext *C, wmOperator *op, const wmEvent *event)
 	{
 		Scene *scene = CTX_data_scene(C);
 		ToolSettings *settings = scene->toolsettings;
-		int mesh_select_mode[3] = {
+		const int mesh_select_mode[3] = {
 		    (settings->selectmode & SCE_SELECT_VERTEX) != 0,
 		    (settings->selectmode & SCE_SELECT_EDGE)   != 0,
 		    (settings->selectmode & SCE_SELECT_FACE)   != 0,

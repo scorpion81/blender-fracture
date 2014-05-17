@@ -182,10 +182,9 @@ CCL_NAMESPACE_BEGIN
 
 /* Main Interpreter Loop */
 
-ccl_device_noinline void svm_eval_nodes(KernelGlobals *kg, ShaderData *sd, ShaderType type, float randb, int path_flag)
+ccl_device_noinline void svm_eval_nodes(KernelGlobals *kg, ShaderData *sd, ShaderType type, int path_flag)
 {
 	float stack[SVM_STACK_SIZE];
-	float closure_weight = 1.0f;
 	int offset = sd->shader & SHADER_MASK;
 
 	while(1) {
@@ -200,7 +199,7 @@ ccl_device_noinline void svm_eval_nodes(KernelGlobals *kg, ShaderData *sd, Shade
 				break;
 			}
 			case NODE_CLOSURE_BSDF:
-				svm_node_closure_bsdf(kg, sd, stack, node, randb, path_flag, &offset);
+				svm_node_closure_bsdf(kg, sd, stack, node, path_flag, &offset);
 				break;
 			case NODE_CLOSURE_EMISSION:
 				svm_node_closure_emission(sd, stack, node);
@@ -227,13 +226,15 @@ ccl_device_noinline void svm_eval_nodes(KernelGlobals *kg, ShaderData *sd, Shade
 				svm_node_emission_weight(kg, sd, stack, node);
 				break;
 			case NODE_MIX_CLOSURE:
-				svm_node_mix_closure(sd, stack, node, &offset, &randb);
+				svm_node_mix_closure(sd, stack, node);
 				break;
-			case NODE_ADD_CLOSURE:
-				svm_node_add_closure(sd, stack, node.y, node.z, &offset, &randb, &closure_weight);
+			case NODE_JUMP_IF_ZERO:
+				if(stack_load_float(stack, node.z) == 0.0f)
+					offset += node.y;
 				break;
-			case NODE_JUMP:
-				offset = node.y;
+			case NODE_JUMP_IF_ONE:
+				if(stack_load_float(stack, node.z) == 1.0f)
+					offset += node.y;
 				break;
 #ifdef __IMAGE_TEXTURES__
 			case NODE_TEX_IMAGE:
@@ -437,9 +438,6 @@ ccl_device_noinline void svm_eval_nodes(KernelGlobals *kg, ShaderData *sd, Shade
 #endif			
 			case NODE_END:
 			default:
-#ifndef __MULTI_CLOSURE__
-				sd->closure.weight *= closure_weight;
-#endif
 				return;
 		}
 	}

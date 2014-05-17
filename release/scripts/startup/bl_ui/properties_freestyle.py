@@ -61,7 +61,7 @@ class RENDER_PT_freestyle(RenderFreestyleButtonsPanel, Panel):
 
         row = layout.row()
         row.label(text="Line style settings are in the Render Layers tab")
-        row.operator("wm.properties_context_change", text="", icon='BUTS').context = 'RENDER_LAYER'
+        row.operator("wm.properties_context_change", text="", icon='RENDERLAYERS').context = 'RENDER_LAYER'
 
 
 # Render layer properties
@@ -534,20 +534,18 @@ class RENDERLAYER_PT_freestyle_linestyle(RenderLayerFreestyleEditorButtonsPanel,
         row.prop(linestyle, "panel", expand=True)
         if linestyle.panel == 'STROKES':
             ## Chaining
-            layout.label(text="Chaining:")
+            layout.prop(linestyle, "use_chaining", text="Chaining:")
             split = layout.split(align=True)
+            split.active = linestyle.use_chaining
             # First column
-            col = split.column()
-            col.prop(linestyle, "use_chaining", text="Enable Chaining")
-            sub = col.row()
-            sub.active = linestyle.use_chaining
-            sub.prop(linestyle, "use_same_object")
-            # Second column
             col = split.column()
             col.active = linestyle.use_chaining
             col.prop(linestyle, "chaining", text="")
             if linestyle.chaining == 'SKETCHY':
                 col.prop(linestyle, "rounds")
+            # Second column
+            col = split.column()
+            col.prop(linestyle, "use_same_object")
 
             ## Splitting
             layout.label(text="Splitting:")
@@ -603,23 +601,33 @@ class RENDERLAYER_PT_freestyle_linestyle(RenderLayerFreestyleEditorButtonsPanel,
             sub.active = linestyle.use_length_max
             sub.prop(linestyle, "length_max")
 
+            ## Sorting
+            layout.prop(linestyle, "use_sorting", text="Sorting:")
+            col = layout.column()
+            col.active = linestyle.use_sorting
+            row = col.row(align=True)
+            row.prop(linestyle, "sort_key", text="")
+            sub = row.row()
+            sub.active = linestyle.sort_key in {'DISTANCE_FROM_CAMERA'}
+            sub.prop(linestyle, "integration_type", text="")
+            row = col.row(align=True)
+            row.prop(linestyle, "sort_order", expand=True)
+
             ## Caps
             layout.label(text="Caps:")
             row = layout.row(align=True)
             row.prop(linestyle, "caps", expand=True)
 
             ## Dashed lines
-            layout.label(text="Dashed Line:")
+            layout.prop(linestyle, "use_dashed_line", text="Dashed Line:")
             row = layout.row(align=True)
-            row.prop(linestyle, "use_dashed_line", text="")
-            sub = row.row(align=True)
-            sub.active = linestyle.use_dashed_line
-            sub.prop(linestyle, "dash1", text="D1")
-            sub.prop(linestyle, "gap1", text="G1")
-            sub.prop(linestyle, "dash2", text="D2")
-            sub.prop(linestyle, "gap2", text="G2")
-            sub.prop(linestyle, "dash3", text="D3")
-            sub.prop(linestyle, "gap3", text="G3")
+            row.active = linestyle.use_dashed_line
+            row.prop(linestyle, "dash1", text="D1")
+            row.prop(linestyle, "gap1", text="G1")
+            row.prop(linestyle, "dash2", text="D2")
+            row.prop(linestyle, "gap2", text="G2")
+            row.prop(linestyle, "dash3", text="D3")
+            row.prop(linestyle, "gap3", text="G3")
 
         elif linestyle.panel == 'COLOR':
             col = layout.column()
@@ -646,9 +654,11 @@ class RENDERLAYER_PT_freestyle_linestyle(RenderLayerFreestyleEditorButtonsPanel,
             row = col.row()
             row.label(text="Base Thickness:")
             row.prop(linestyle, "thickness")
-            row = col.row()
+            subcol = col.column()
+            subcol.active = linestyle.chaining == 'PLAIN' and linestyle.use_same_object
+            row = subcol.row()
             row.prop(linestyle, "thickness_position", expand=True)
-            row = col.row()
+            row = subcol.row()
             row.prop(linestyle, "thickness_ratio")
             row.active = (linestyle.thickness_position == 'RELATIVE')
             col = layout.column()
@@ -663,6 +673,19 @@ class RENDERLAYER_PT_freestyle_linestyle(RenderLayerFreestyleEditorButtonsPanel,
             col.operator_menu_enum("scene.freestyle_geometry_modifier_add", "type", text="Add Modifier")
             for modifier in linestyle.geometry_modifiers:
                 self.draw_geometry_modifier(context, modifier)
+
+        elif linestyle.panel == 'TEXTURE':
+            layout.separator()
+
+            row = layout.row()
+            row.prop(linestyle, "use_texture")
+            row.prop(linestyle, "texture_spacing", text="Spacing Along Stroke")
+
+            row = layout.row()
+            op = row.operator("wm.properties_context_change",
+                         text="Go to Linestyle Textures Properties",
+                         icon='TEXTURE')
+            op.context = 'TEXTURE'
 
         elif linestyle.panel == 'MISC':
             pass

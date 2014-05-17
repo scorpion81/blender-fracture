@@ -1,4 +1,3 @@
-
 # Standalone or with Blender
 if(NOT WITH_BLENDER AND WITH_CYCLES_STANDALONE)
 	set(CYCLES_INSTALL_PATH "")
@@ -126,6 +125,14 @@ include_directories(
 	${OPENEXR_INCLUDE_DIR}
 	${OPENEXR_INCLUDE_DIRS}
 )
+
+
+# Warnings
+if(CMAKE_COMPILER_IS_GNUCXX)
+	ADD_CHECK_CXX_COMPILER_FLAG(CMAKE_CXX_FLAGS _has_cxxflag_float_conversion "-Werror=float-conversion")
+	unset(_has_cxxflag_float_conversion)
+endif()
+
 
 # Subdirectories
 

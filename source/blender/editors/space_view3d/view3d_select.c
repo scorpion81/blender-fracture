@@ -66,7 +66,6 @@
 #include "BKE_depsgraph.h"
 #include "BKE_mball.h"
 #include "BKE_mesh.h"
-#include "BKE_movieclip.h"
 #include "BKE_object.h"
 #include "BKE_paint.h"
 #include "BKE_editmesh.h"
@@ -1067,7 +1066,7 @@ void VIEW3D_OT_select_menu(wmOperatorType *ot)
 	/* keyingset to use (dynamic enum) */
 	prop = RNA_def_enum(ot->srna, "name", DummyRNA_NULL_items, 0, "Object Name", "");
 	RNA_def_enum_funcs(prop, object_select_menu_enum_itemf);
-	RNA_def_property_flag(prop, PROP_HIDDEN);
+	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_ENUM_NO_TRANSLATE);
 	ot->prop = prop;
 
 	RNA_def_boolean(ot->srna, "toggle", 0, "Toggle", "Toggle selection instead of deselecting everything first");
@@ -1142,7 +1141,7 @@ static Base *object_mouse_select_menu(bContext *C, ViewContext *vc, unsigned int
 		for (node = linklist, i = 0; node; node = node->next, i++) {
 			Base *base = node->link;
 			Object *ob = base->object;
-			char *name = ob->id.name + 2;
+			const char *name = ob->id.name + 2;
 
 			BLI_strncpy(object_mouse_select_menu_data[i].idname, name, MAX_ID_NAME - 2);
 			object_mouse_select_menu_data[i].icon = uiIconFromID(&ob->id);

@@ -45,7 +45,6 @@
 #include "DNA_curve_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_meta_types.h"
-#include "DNA_mesh_types.h"
 #include "DNA_mask_types.h"
 #include "DNA_node_types.h"
 #include "DNA_userdef_types.h"
@@ -54,8 +53,6 @@
 #include "BKE_customdata.h"
 #include "BKE_global.h"
 #include "BKE_main.h"
-#include "BKE_mesh.h"
-#include "BKE_node.h"
 #include "BKE_object.h"
 #include "BKE_report.h"
 #include "BKE_scene.h"
@@ -738,7 +735,7 @@ static int actionzone_modal(bContext *C, wmOperator *op, const wmEvent *event)
 			/* gesture is large enough? */
 			if (is_gesture) {
 				/* second area, for join when (sa1 != sa2) */
-				sad->sa2 = screen_areahascursor(CTX_wm_screen(C), event->x, event->y);
+				sad->sa2 = screen_areahascursor(sc, event->x, event->y);
 				/* apply sends event */
 				actionzone_apply(C, op, sad->az->type);
 				actionzone_exit(op);
@@ -1999,7 +1996,7 @@ static int frame_offset_exec(bContext *C, wmOperator *op)
 	
 	sound_seek_scene(bmain, scene);
 
-	WM_event_add_notifier(C, NC_SCENE | ND_FRAME, CTX_data_scene(C));
+	WM_event_add_notifier(C, NC_SCENE | ND_FRAME, scene);
 	
 	return OPERATOR_FINISHED;
 }
@@ -2094,6 +2091,12 @@ static int keyframe_jump_exec(bContext *C, wmOperator *op)
 
 	/* init binarytree-list for getting keyframes */
 	BLI_dlrbTree_init(&keys);
+	
+	/* seed up dummy dopesheet context with flags to perform necessary filtering */
+	if ((scene->flag & SCE_KEYS_NO_SELONLY) == 0) {
+		/* only selected channels are included */
+		ads.filterflag |= ADS_FILTER_ONLYSEL;
+	}
 	
 	/* populate tree with keyframe nodes */
 	scene_to_keylist(&ads, scene, &keys, NULL);
@@ -2869,9 +2872,11 @@ static int region_quadview_exec(bContext *C, wmOperator *op)
 	ARegion *ar = CTX_wm_region(C);
 	
 	/* some rules... */
-	if (ar->regiontype != RGN_TYPE_WINDOW)
+	if (ar->regiontype != RGN_TYPE_WINDOW) {
 		BKE_report(op->reports, RPT_ERROR, "Only window region can be 4-splitted");
+	}
 	else if (ar->alignment == RGN_ALIGN_QSPLIT) {
+		/* Exit quad-view */
 		ScrArea *sa = CTX_wm_area(C);
 		ARegion *arn;
 		
@@ -2879,10 +2884,33 @@ static int region_quadview_exec(bContext *C, wmOperator *op)
 		ar->alignment = 0;
 		
 		if (sa->spacetype == SPACE_VIEW3D) {
+			ARegion *ar_iter;
 			RegionView3D *rv3d = ar->regiondata;
-			rv3d->viewlock_quad = rv3d->viewlock | RV3D_VIEWLOCK_INIT;
+
+			/* if this is a locked view, use settings from 'User' view */
+			if (rv3d->viewlock) {
+				View3D *v3d_user;
+				ARegion *ar_user;
+
+				if (ED_view3d_context_user_region(C, &v3d_user, &ar_user)) {
+					if (ar != ar_user) {
+						SWAP(void *, ar->regiondata, ar_user->regiondata);
+						rv3d = ar->regiondata;
+					}
+				}
+			}
+
+			rv3d->viewlock_quad = RV3D_VIEWLOCK_INIT;
 			rv3d->viewlock = 0;
 			rv3d->rflag &= ~RV3D_CLIPPING;
+
+			/* accumulate locks, incase they're mixed */
+			for (ar_iter = sa->regionbase.first; ar_iter; ar_iter = ar_iter->next) {
+				if (ar_iter->regiontype == RGN_TYPE_WINDOW) {
+					RegionView3D *rv3d_iter = ar_iter->regiondata;
+					rv3d->viewlock_quad |= rv3d_iter->viewlock;
+				}
+			}
 		}
 		
 		for (ar = sa->regionbase.first; ar; ar = arn) {
@@ -2897,9 +2925,11 @@ static int region_quadview_exec(bContext *C, wmOperator *op)
 		ED_area_tag_redraw(sa);
 		WM_event_add_notifier(C, NC_SCREEN | NA_EDITED, NULL);
 	}
-	else if (ar->next)
+	else if (ar->next) {
 		BKE_report(op->reports, RPT_ERROR, "Only last region can be 4-splitted");
+	}
 	else {
+		/* Enter quad-view */
 		ScrArea *sa = CTX_wm_area(C);
 		ARegion *newar;
 		int count;
@@ -2929,9 +2959,13 @@ static int region_quadview_exec(bContext *C, wmOperator *op)
 			region_quadview_init_rv3d(sa, ar,              viewlock, ED_view3d_lock_view_from_index(index_qsplit++), RV3D_ORTHO);
 			region_quadview_init_rv3d(sa, (ar = ar->next), viewlock, ED_view3d_lock_view_from_index(index_qsplit++), RV3D_ORTHO);
 			region_quadview_init_rv3d(sa, (ar = ar->next), viewlock, ED_view3d_lock_view_from_index(index_qsplit++), RV3D_ORTHO);
+			/* forcing camera is distracting */
+#if 0
 			if (v3d->camera) region_quadview_init_rv3d(sa, (ar = ar->next), 0, RV3D_VIEW_CAMERA, RV3D_CAMOB);
 			else             region_quadview_init_rv3d(sa, (ar = ar->next), 0, RV3D_VIEW_USER,   RV3D_PERSP);
-
+#else
+			(void)v3d;
+#endif
 		}
 		ED_area_tag_redraw(sa);
 		WM_event_add_notifier(C, NC_SCREEN | NA_EDITED, NULL);
@@ -3056,7 +3090,7 @@ static int header_toggle_menus_exec(bContext *C, wmOperator *UNUSED(op))
 
 	sa->flag = sa->flag ^ HEADER_NO_PULLDOWN;
 
-	ED_area_tag_redraw(CTX_wm_area(C));
+	ED_area_tag_redraw(sa);
 	WM_event_add_notifier(C, NC_SCREEN | NA_EDITED, NULL);	
 
 	return OPERATOR_FINISHED;

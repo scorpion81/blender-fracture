@@ -37,7 +37,6 @@
 #include "DNA_userdef_types.h"
 
 #include "BLI_math.h"
-#include "BLI_listbase.h"
 #include "BLI_rect.h"
 #include "BLI_string.h"
 #include "BLI_string_utf8.h"
@@ -851,7 +850,9 @@ static void widget_draw_icon(const uiBut *but, BIFIconID icon, float alpha, cons
 	float aspect, height;
 	
 	if (but->flag & UI_ICON_PREVIEW) {
+		glEnable(GL_BLEND);
 		widget_draw_preview(icon, alpha, rect);
+		glDisable(GL_BLEND);
 		return;
 	}
 	
@@ -919,18 +920,18 @@ static void widget_draw_icon(const uiBut *but, BIFIconID icon, float alpha, cons
 	glDisable(GL_BLEND);
 }
 
-static void ui_text_clip_give_prev_off(uiBut *but)
+static void ui_text_clip_give_prev_off(uiBut *but, const char *str)
 {
-	char *prev_utf8 = BLI_str_find_prev_char_utf8(but->drawstr, but->drawstr + but->ofs);
-	int bytes = but->drawstr + but->ofs - prev_utf8;
+	const char *prev_utf8 = BLI_str_find_prev_char_utf8(str, str + but->ofs);
+	int bytes = str + but->ofs - prev_utf8;
 
 	but->ofs -= bytes;
 }
 
-static void ui_text_clip_give_next_off(uiBut *but)
+static void ui_text_clip_give_next_off(uiBut *but, const char *str)
 {
-	char *next_utf8 = BLI_str_find_next_char_utf8(but->drawstr + but->ofs, NULL);
-	int bytes = next_utf8 - (but->drawstr + but->ofs);
+	const char *next_utf8 = BLI_str_find_next_char_utf8(str + but->ofs, NULL);
+	int bytes = next_utf8 - (str + but->ofs);
 
 	but->ofs += bytes;
 }
@@ -1090,36 +1091,39 @@ static void ui_text_clip_cursor(uiFontStyle *fstyle, uiBut *but, const rcti *rec
 	if (but->ofs > but->pos)
 		but->ofs = but->pos;
 
-	if (BLF_width(fstyle->uifont_id, but->drawstr, sizeof(but->drawstr)) <= okwidth)
+	if (BLF_width(fstyle->uifont_id, but->editstr, INT_MAX) <= okwidth)
 		but->ofs = 0;
 
-	but->strwidth = BLF_width(fstyle->uifont_id, but->drawstr + but->ofs, sizeof(but->drawstr) - but->ofs);
+	but->strwidth = BLF_width(fstyle->uifont_id, but->editstr + but->ofs, INT_MAX);
 
-	while (but->strwidth > okwidth) {
-		float width;
+	if (but->strwidth > okwidth) {
+		int len = strlen(but->editstr);
 
-		/* string position of cursor */
-		width = BLF_width(fstyle->uifont_id, but->drawstr + but->ofs, but->pos - but->ofs);
+		while (but->strwidth > okwidth) {
+			float width;
 
-		/* if cursor is at 20 pixels of right side button we clip left */
-		if (width > okwidth - 20) {
-			ui_text_clip_give_next_off(but);
+			/* string position of cursor */
+			width = BLF_width(fstyle->uifont_id, but->editstr + but->ofs, (but->pos - but->ofs));
+
+			/* if cursor is at 20 pixels of right side button we clip left */
+			if (width > okwidth - 20) {
+				ui_text_clip_give_next_off(but, but->editstr);
+			}
+			else {
+				int bytes;
+				/* shift string to the left */
+				if (width < 20 && but->ofs > 0)
+					ui_text_clip_give_prev_off(but, but->editstr);
+				bytes = BLI_str_utf8_size(BLI_str_find_prev_char_utf8(but->editstr, but->editstr + len));
+				if (bytes == -1)
+					bytes = 1;
+				len -= bytes;
+			}
+
+			but->strwidth = BLF_width(fstyle->uifont_id, but->editstr + but->ofs, len - but->ofs);
+
+			if (but->strwidth < 10) break;
 		}
-		else {
-			int len, bytes;
-			/* shift string to the left */
-			if (width < 20 && but->ofs > 0)
-				ui_text_clip_give_prev_off(but);
-			len = strlen(but->drawstr);
-			bytes = BLI_str_utf8_size(BLI_str_find_prev_char_utf8(but->drawstr, but->drawstr + len));
-			if (bytes < 0)
-				bytes = 1;
-			but->drawstr[len - bytes] = 0;
-		}
-
-		but->strwidth = BLF_width(fstyle->uifont_id, but->drawstr + but->ofs, sizeof(but->drawstr) - but->ofs);
-
-		if (but->strwidth < 10) break;
 	}
 
 	if (fstyle->kerning == 1) {
@@ -1138,7 +1142,7 @@ static void ui_text_clip_right_label(uiFontStyle *fstyle, uiBut *but, const rcti
 	const int okwidth = max_ii(BLI_rcti_size_x(rect) - border, 0);
 	char *cpoin = NULL;
 	int drawstr_len = strlen(but->drawstr);
-	char *cpend = but->drawstr + drawstr_len;
+	const char *cpend = but->drawstr + drawstr_len;
 	
 	/* need to set this first */
 	uiStyleFontSet(fstyle);
@@ -1164,7 +1168,7 @@ static void ui_text_clip_right_label(uiFontStyle *fstyle, uiBut *but, const rcti
 		
 		/* chop off the leading text, starting from the right */
 		while (but->strwidth > okwidth && cp2 > but->drawstr) {
-			char *prev_utf8 = BLI_str_find_prev_char_utf8(but->drawstr, cp2);
+			const char *prev_utf8 = BLI_str_find_prev_char_utf8(but->drawstr, cp2);
 			int bytes = cp2 - prev_utf8;
 
 			/* shift the text after and including cp2 back by 1 char, +1 to include null terminator */
@@ -1181,7 +1185,7 @@ static void ui_text_clip_right_label(uiFontStyle *fstyle, uiBut *but, const rcti
 	
 		/* after the leading text is gone, chop off the : and following space, with ofs */
 		while ((but->strwidth > okwidth) && (but->ofs < 2)) {
-			ui_text_clip_give_next_off(but);
+			ui_text_clip_give_next_off(but, but->drawstr);
 			but->strwidth = BLF_width(fstyle->uifont_id, but->drawstr + but->ofs, sizeof(but->drawstr) - but->ofs);
 			if (but->strwidth < 10) break;
 		}
@@ -1230,6 +1234,14 @@ static void widget_draw_text(uiFontStyle *fstyle, uiWidgetColors *wcol, uiBut *b
 		if (but_edit) {
 			drawstr = but_edit->editstr;
 			fstyle->align = UI_STYLE_TEXT_LEFT;
+		}
+	}
+	else {
+		if (but->editstr) {
+			/* max length isn't used in this case,
+			 * we rely on string being NULL terminated. */
+			drawstr_left_len = INT_MAX;
+			drawstr = but->editstr;
 		}
 	}
 
@@ -1282,9 +1294,11 @@ static void widget_draw_text(uiFontStyle *fstyle, uiWidgetColors *wcol, uiBut *b
 #endif
 
 	/* cut string in 2 parts - only for menu entries */
-	if ((but->block->flag & UI_BLOCK_LOOP)) {
-		if (ELEM3(but->type, NUM, TEX, NUMSLI) == 0) {
-			drawstr_right = strchr(drawstr, UI_SEP_CHAR);
+	if ((but->block->flag & UI_BLOCK_LOOP) &&
+	    (but->editstr == NULL))
+	{
+		if (but->flag & UI_BUT_HAS_SEP_CHAR) {
+			drawstr_right = strrchr(drawstr, UI_SEP_CHAR);
 			if (drawstr_right) {
 				drawstr_left_len = (drawstr_right - drawstr);
 				drawstr_right++;
@@ -1325,7 +1339,7 @@ static void widget_draw_text(uiFontStyle *fstyle, uiWidgetColors *wcol, uiBut *b
 
 		if (but->menu_key != '\0') {
 			char fixedbuf[128];
-			char *str;
+			const char *str;
 
 			BLI_strncpy(fixedbuf, drawstr + but->ofs, min_ii(sizeof(fixedbuf), drawstr_left_len));
 
@@ -2308,7 +2322,7 @@ void ui_hsvcube_pos_from_vals(uiBut *but, const rcti *rect, float *hsv, float *x
 		case UI_GRAD_V_ALT:
 			x = 0.5f;
 			/* exception only for value strip - use the range set in but->min/max */
-			y = (hsv[2] - but->softmin ) / (but->softmax - but->softmin);
+			y = (hsv[2] - but->softmin) / (but->softmax - but->softmin);
 			break;
 	}
 	
@@ -2322,7 +2336,7 @@ static void ui_draw_but_HSVCUBE(uiBut *but, const rcti *rect)
 {
 	float rgb[3];
 	float x = 0.0f, y = 0.0f;
-	float *hsv = ui_block_hsv_get(but->block);
+	const float *hsv = ui_block_hsv_get(but->block);
 	float hsv_n[3];
 	bool use_display_colorspace = ui_color_picker_use_display_colorspace(but);
 	
@@ -2462,7 +2476,7 @@ static void widget_numbut_embossn(uiBut *UNUSED(but), uiWidgetColors *wcol, rcti
 	widget_numbut_draw(wcol, rect, state, roundboxalign, true);
 }
 
-int ui_link_bezier_points(const rcti *rect, float coord_array[][2], int resol)
+bool ui_link_bezier_points(const rcti *rect, float coord_array[][2], int resol)
 {
 	float dist, vec[4][2];
 
@@ -2479,9 +2493,9 @@ int ui_link_bezier_points(const rcti *rect, float coord_array[][2], int resol)
 	vec[2][0] = vec[3][0] - dist;
 	vec[2][1] = vec[3][1];
 	
-	BKE_curve_forward_diff_bezier(vec[0][0], vec[1][0], vec[2][0], vec[3][0], coord_array[0], resol, sizeof(float) * 2);
-	BKE_curve_forward_diff_bezier(vec[0][1], vec[1][1], vec[2][1], vec[3][1], coord_array[0] + 1, resol, sizeof(float) * 2);
-	
+	BKE_curve_forward_diff_bezier(vec[0][0], vec[1][0], vec[2][0], vec[3][0], &coord_array[0][0], resol, sizeof(float[2]));
+	BKE_curve_forward_diff_bezier(vec[0][1], vec[1][1], vec[2][1], vec[3][1], &coord_array[0][1], resol, sizeof(float[2]));
+
 	return 1;
 }
 
@@ -2489,7 +2503,7 @@ int ui_link_bezier_points(const rcti *rect, float coord_array[][2], int resol)
 void ui_draw_link_bezier(const rcti *rect)
 {
 	float coord_array[LINK_RESOL + 1][2];
-	
+
 	if (ui_link_bezier_points(rect, coord_array, LINK_RESOL)) {
 		/* we can reuse the dist variable here to increment the GL curve eval amount*/
 		// const float dist = 1.0f / (float)LINK_RESOL; // UNUSED
@@ -3753,6 +3767,7 @@ void ui_draw_preview_item(uiFontStyle *fstyle, rcti *rect, const char *name, int
 	wt->state(wt, state);
 	wt->draw(&wt->wcol, rect, 0, 0);
 	
+	glEnable(GL_BLEND);
 	widget_draw_preview(iconid, 1.0f, rect);
 	
 	BLF_width_and_height(fstyle->uifont_id, name, BLF_DRAW_STR_DUMMY_MAX, &font_dims[0], &font_dims[1]);
@@ -3775,7 +3790,6 @@ void ui_draw_preview_item(uiFontStyle *fstyle, rcti *rect, const char *name, int
 		bg_rect.xmax = rect->xmax - PREVIEW_PAD;
 
 	glColor4ubv((unsigned char *)wt->wcol_theme->inner_sel);
-	glEnable(GL_BLEND);
 	glRecti(bg_rect.xmin, bg_rect.ymin, bg_rect.xmax, bg_rect.ymax);
 	glDisable(GL_BLEND);
 

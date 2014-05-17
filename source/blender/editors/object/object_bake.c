@@ -49,7 +49,6 @@
 #include "BLI_math_geom.h"
 
 #include "BKE_blender.h"
-#include "BKE_ccg.h"
 #include "BKE_screen.h"
 #include "BKE_context.h"
 #include "BKE_global.h"
@@ -60,7 +59,6 @@
 #include "BKE_cdderivedmesh.h"
 #include "BKE_modifier.h"
 #include "BKE_DerivedMesh.h"
-#include "BKE_subsurf.h"
 #include "BKE_depsgraph.h"
 #include "BKE_mesh.h"
 #include "BKE_scene.h"
@@ -81,6 +79,7 @@
 #include "WM_types.h"
 
 #include "ED_object.h"
+#include "ED_screen.h"
 
 #include "object_intern.h"
 
@@ -895,4 +894,5 @@ void OBJECT_OT_bake_image(wmOperatorType *ot)
 	ot->exec = bake_image_exec;
 	ot->invoke = objects_bake_render_invoke;
 	ot->modal = objects_bake_render_modal;
+	ot->poll = ED_operator_object_active;
 }

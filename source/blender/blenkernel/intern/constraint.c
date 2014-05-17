@@ -46,18 +46,15 @@
 #include "BLF_translation.h"
 
 #include "DNA_armature_types.h"
-#include "DNA_camera_types.h"
 #include "DNA_constraint_types.h"
 #include "DNA_modifier_types.h"
 #include "DNA_object_types.h"
 #include "DNA_action_types.h"
 #include "DNA_curve_types.h"
-#include "DNA_mesh_types.h"
 #include "DNA_meshdata_types.h"
 
 #include "DNA_lattice_types.h"
 #include "DNA_scene_types.h"
-#include "DNA_text_types.h"
 #include "DNA_tracking_types.h"
 #include "DNA_movieclip_types.h"
 
@@ -65,7 +62,6 @@
 #include "BKE_action.h"
 #include "BKE_anim.h" /* for the curve calculation part */
 #include "BKE_armature.h"
-#include "BKE_blender.h"
 #include "BKE_bvhutils.h"
 #include "BKE_camera.h"
 #include "BKE_constraint.h"
@@ -75,11 +71,9 @@
 #include "BKE_DerivedMesh.h"    /* for geometry targets */
 #include "BKE_cdderivedmesh.h" /* for geometry targets */
 #include "BKE_object.h"
-#include "BKE_ipo.h"
 #include "BKE_global.h"
 #include "BKE_library.h"
 #include "BKE_idprop.h"
-#include "BKE_mesh.h"
 #include "BKE_shrinkwrap.h"
 #include "BKE_editmesh.h"
 #include "BKE_tracking.h"
@@ -460,7 +454,7 @@ static void contarget_get_lattice_mat(Object *ob, const char *substring, float m
 	Lattice *lt = (Lattice *)ob->data;
 	
 	DispList *dl = ob->curve_cache ? BKE_displist_find(&ob->curve_cache->disp, DL_VERTS) : NULL;
-	float *co = dl ? dl->verts : NULL;
+	const float *co = dl ? dl->verts : NULL;
 	BPoint *bp = lt->def;
 	
 	MDeformVert *dv = lt->dvert;
@@ -3206,6 +3200,7 @@ static void transform_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *t
 	
 	/* only evaluate if there is a target */
 	if (VALID_CONS_TARGET(ct)) {
+		float *from_min, *from_max, *to_min, *to_max;
 		float loc[3], eul[3], size[3];
 		float dvec[3], sval[3];
 		int i;
@@ -3223,13 +3218,19 @@ static void transform_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *t
 					 */
 					negate_v3(dvec);
 				}
+				from_min = data->from_min_scale;
+				from_max = data->from_max_scale;
 				break;
 			case TRANS_ROTATION:
 				mat4_to_eulO(dvec, cob->rotOrder, ct->matrix);
+				from_min = data->from_min_rot;
+				from_max = data->from_max_rot;
 				break;
 			case TRANS_LOCATION:
 			default:
 				copy_v3_v3(dvec, ct->matrix[3]);
+				from_min = data->from_min;
+				from_max = data->from_max;
 				break;
 		}
 		
@@ -3241,8 +3242,8 @@ static void transform_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *t
 		/* determine where in range current transforms lie */
 		if (data->expo) {
 			for (i = 0; i < 3; i++) {
-				if (data->from_max[i] - data->from_min[i])
-					sval[i] = (dvec[i] - data->from_min[i]) / (data->from_max[i] - data->from_min[i]);
+				if (from_max[i] - from_min[i])
+					sval[i] = (dvec[i] - from_min[i]) / (from_max[i] - from_min[i]);
 				else
 					sval[i] = 0.0f;
 			}
@@ -3250,9 +3251,9 @@ static void transform_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *t
 		else {
 			/* clamp transforms out of range */
 			for (i = 0; i < 3; i++) {
-				CLAMP(dvec[i], data->from_min[i], data->from_max[i]);
-				if (data->from_max[i] - data->from_min[i])
-					sval[i] = (dvec[i] - data->from_min[i]) / (data->from_max[i] - data->from_min[i]);
+				CLAMP(dvec[i], from_min[i], from_max[i]);
+				if (from_max[i] - from_min[i])
+					sval[i] = (dvec[i] - from_min[i]) / (from_max[i] - from_min[i]);
 				else
 					sval[i] = 0.0f;
 			}
@@ -3262,22 +3263,28 @@ static void transform_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *t
 		/* apply transforms */
 		switch (data->to) {
 			case TRANS_SCALE:
+				to_min = data->to_min_scale;
+				to_max = data->to_max_scale;
 				for (i = 0; i < 3; i++) {
 					/* multiply with original scale (so that it can still be scaled) */
-					size[i] *= data->to_min[i] + (sval[(int)data->map[i]] * (data->to_max[i] - data->to_min[i]));
+					size[i] *= to_min[i] + (sval[(int)data->map[i]] * (to_max[i] - to_min[i]));
 				}
 				break;
 			case TRANS_ROTATION:
+				to_min = data->to_min_rot;
+				to_max = data->to_max_rot;
 				for (i = 0; i < 3; i++) {
 					/* add to original rotation (so that it can still be rotated) */
-					eul[i] += data->to_min[i] + (sval[(int)data->map[i]] * (data->to_max[i] - data->to_min[i]));
+					eul[i] += to_min[i] + (sval[(int)data->map[i]] * (to_max[i] - to_min[i]));
 				}
 				break;
 			case TRANS_LOCATION:
 			default:
+				to_min = data->to_min;
+				to_max = data->to_max;
 				for (i = 0; i < 3; i++) {
 					/* add to original location (so that it can still be moved) */
-					loc[i] += (data->to_min[i] + (sval[(int)data->map[i]] * (data->to_max[i] - data->to_min[i])));
+					loc[i] += (to_min[i] + (sval[(int)data->map[i]] * (to_max[i] - to_min[i])));
 				}
 				break;
 		}

@@ -213,10 +213,10 @@ static void draw_single_handle(const MaskLayer *mask_layer, const MaskSplinePoin
 		if (point == mask_layer->act_point)
 			glColor3f(1.0f, 1.0f, 1.0f);
 		else
-			glColor3f(1.0f, 1.0f, 0.0f);
+			UI_ThemeColor(TH_HANDLE_VERTEX_SELECT);
 	}
 	else {
-		glColor3f(0.5f, 0.5f, 0.0f);
+		UI_ThemeColor(TH_HANDLE_VERTEX);
 	}
 
 	draw_circle(handle_pos[0], handle_pos[1], handle_size, xscale, yscale);
@@ -280,10 +280,10 @@ static void draw_spline_points(const bContext *C, MaskLayer *masklay, MaskSpline
 				if (point == masklay->act_point)
 					glColor3f(1.0f, 1.0f, 1.0f);
 				else
-					glColor3f(1.0f, 1.0f, 0.0f);
+					UI_ThemeColor(TH_HANDLE_VERTEX_SELECT);
 			}
 			else {
-				glColor3f(0.5f, 0.5f, 0.0f);
+				UI_ThemeColor(TH_HANDLE_VERTEX);
 			}
 
 			glBegin(GL_POINTS);
@@ -346,10 +346,10 @@ static void draw_spline_points(const bContext *C, MaskLayer *masklay, MaskSpline
 			if (point == masklay->act_point)
 				glColor3f(1.0f, 1.0f, 1.0f);
 			else
-				glColor3f(1.0f, 1.0f, 0.0f);
+				UI_ThemeColor(TH_HANDLE_VERTEX_SELECT);
 		}
 		else
-			glColor3f(0.5f, 0.5f, 0.0f);
+			UI_ThemeColor(TH_HANDLE_VERTEX);
 
 		glBegin(GL_POINTS);
 		glVertex2fv(vert);
@@ -531,7 +531,7 @@ static void draw_spline_curve(const bContext *C, MaskLayer *masklay, MaskSpline 
 
 	if (!is_fill) {
 
-		float *fp         = &diff_points[0][0];
+		const float *fp   = &diff_points[0][0];
 		float *fp_feather = &feather_points[0][0];
 		float tvec[2];
 		int i;
@@ -622,7 +622,7 @@ void ED_mask_draw(const bContext *C,
 
 	ED_mask_get_size(sa, &width, &height);
 	ED_mask_get_aspect(sa, ar, &aspx, &aspy);
-	UI_view2d_getscale(&ar->v2d, &xscale, &yscale);
+	UI_view2d_scale_get(&ar->v2d, &xscale, &yscale);
 
 	draw_masklays(C, mask, draw_flag, draw_type, width, height, xscale * aspx, yscale * aspy);
 }
@@ -643,15 +643,21 @@ static void mask_rasterize_func(TaskPool *pool, void *taskdata, int UNUSED(threa
 	ThreadedMaskRasterizeState *state = (ThreadedMaskRasterizeState *) BLI_task_pool_userdata(pool);
 	ThreadedMaskRasterizeData *data = (ThreadedMaskRasterizeData *) taskdata;
 	int scanline;
+	const float x_inv = 1.0f / (float)state->width;
+	const float y_inv = 1.0f / (float)state->height;
+	const float x_px_ofs = x_inv * 0.5f;
+	const float y_px_ofs = y_inv * 0.5f;
 
 	for (scanline = 0; scanline < data->num_scanlines; scanline++) {
+		float xy[2];
 		int x, y = data->start_scanline + scanline;
+
+		xy[1] = ((float)y * y_inv) + y_px_ofs;
+
 		for (x = 0; x < state->width; x++) {
 			int index = y * state->width + x;
-			float xy[2];
 
-			xy[0] = (float) x / state->width;
-			xy[1] = (float) y / state->height;
+			xy[0] = ((float)x * x_inv) + x_px_ofs;
 
 			state->buffer[index] = BKE_maskrasterize_handle_sample(state->handle, xy);
 		}
@@ -732,11 +738,11 @@ void ED_mask_draw_region(Mask *mask, ARegion *ar,
 	float xofs, yofs;
 
 	/* find window pixel coordinates of origin */
-	UI_view2d_to_region_no_clip(&ar->v2d, 0.0f, 0.0f, &x, &y);
+	UI_view2d_view_to_region(&ar->v2d, 0.0f, 0.0f, &x, &y);
 
 
 	/* w = BLI_rctf_size_x(&v2d->tot); */
-	/* h = BLI_rctf_size_y(&v2d->tot);/*/
+	/* h = BLI_rctf_size_y(&v2d->tot); */
 
 
 	zoomx = (float)(BLI_rcti_size_x(&ar->winrct) + 1) / BLI_rctf_size_x(&ar->v2d.cur);

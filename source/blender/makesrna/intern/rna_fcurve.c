@@ -61,7 +61,7 @@ EnumPropertyItem fmodifier_type_items[] = {
 	{FMODIFIER_TYPE_NOISE, "NOISE", 0, "Noise",
 	                       "Add pseudo-random noise on top of F-Curves"},
 	/*{FMODIFIER_TYPE_FILTER, "FILTER", 0, "Filter", ""},*/ /* FIXME: not implemented yet! */
-	/*{FMODIFIER_TYPE_PYTHON, "PYTHON", 0, "Python", ""},	 *//* FIXME: not implemented yet! */
+	{FMODIFIER_TYPE_PYTHON, "PYTHON", 0, "Python", ""},
 	{FMODIFIER_TYPE_LIMITS, "LIMITS", 0, "Limits",
 	                        "Restrict maximum and minimum values of F-Curve"},
 	{FMODIFIER_TYPE_STEPPED, "STEPPED", 0, "Stepped Interpolation",
@@ -78,9 +78,14 @@ EnumPropertyItem beztriple_keyframe_type_items[] = {
 };
 
 EnumPropertyItem beztriple_interpolation_easing_items[] =  {
-	{BEZT_IPO_EASE_IN, "EASE_IN", 0, "Ease In", "Only on the end closest to the next keyframe"},
-	{BEZT_IPO_EASE_OUT, "EASE_OUT", 0, "Ease Out", "Only on the end closest to the first keyframe"},
-	{BEZT_IPO_EASE_IN_OUT, "EASE_IN_OUT", 0, "Ease In and Out", "Segment between both keyframes"},
+	/* XXX: auto-easing is currently using a placeholder icon... */
+	{BEZT_IPO_EASE_AUTO, "AUTO", ICON_IPO_EASE_IN_OUT, "Automatic Easing",
+	                     "Easing type is chosen automatically based on what the type of interpolation used "
+	                     "(e.g. 'Ease In' for transitional types, and 'Ease Out' for dynamic effects)"},
+						 
+	{BEZT_IPO_EASE_IN, "EASE_IN", ICON_IPO_EASE_IN, "Ease In", "Only on the end closest to the next keyframe"},
+	{BEZT_IPO_EASE_OUT, "EASE_OUT", ICON_IPO_EASE_OUT, "Ease Out", "Only on the end closest to the first keyframe"},
+	{BEZT_IPO_EASE_IN_OUT, "EASE_IN_OUT", ICON_IPO_EASE_IN_OUT, "Ease In and Out", "Segment between both keyframes"},
 	{0, NULL, 0, NULL, NULL}
 };
 
@@ -139,7 +144,11 @@ static void rna_ChannelDriver_update_data(Main *bmain, Scene *scene, PointerRNA 
 static void rna_ChannelDriver_update_expr(Main *bmain, Scene *scene, PointerRNA *ptr)
 {
 	ChannelDriver *driver = ptr->data;
+	
+	/* tag driver as needing to be recompiled */
 	driver->flag |= DRIVER_FLAG_RECOMPILE;
+	
+	/* update_data() clears invalid flag and schedules for updates */
 	rna_ChannelDriver_update_data(bmain, scene, ptr);
 }
 
@@ -448,7 +457,7 @@ static void rna_FCurve_range(FCurve *fcu, float range[2])
 static void rna_FCurve_update_data_ex(FCurve *fcu)
 {
 	sort_time_fcurve(fcu);
-	testhandles_fcurve(fcu, true);
+	calchandles_fcurve(fcu);
 }
 
 /* RNA update callback for F-Curves after curve shape changes */
@@ -733,7 +742,7 @@ static void rna_FModifierStepped_end_frame_range(PointerRNA *ptr, float *min, fl
 
 static BezTriple *rna_FKeyframe_points_insert(FCurve *fcu, float frame, float value, int flag)
 {
-	int index = insert_vert_fcurve(fcu, frame, value, flag);
+	int index = insert_vert_fcurve(fcu, frame, value, flag | INSERTKEY_NO_USERPREF);
 	return ((fcu->bezt) && (index >= 0)) ? (fcu->bezt + index) : NULL;
 }
 
@@ -741,15 +750,8 @@ static void rna_FKeyframe_points_add(FCurve *fcu, int tot)
 {
 	if (tot > 0) {
 		BezTriple *bezt;
-		if (fcu->totvert) {
-			BezTriple *nbezt = MEM_callocN(sizeof(BezTriple) * (fcu->totvert + tot), "rna_FKeyframe_points_add");
-			memcpy(nbezt, fcu->bezt, sizeof(BezTriple) * fcu->totvert);
-			MEM_freeN(fcu->bezt);
-			fcu->bezt = nbezt;
-		}
-		else {
-			fcu->bezt = MEM_callocN(sizeof(BezTriple) * tot, "rna_FKeyframe_points_add");
-		}
+
+		fcu->bezt = MEM_recallocN(fcu->bezt, sizeof(BezTriple) * (fcu->totvert + tot));
 		
 		bezt = fcu->bezt + fcu->totvert;
 		fcu->totvert += tot;

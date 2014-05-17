@@ -61,11 +61,8 @@
 
 #include "DNA_material_types.h"
 
-#include "BKE_colortools.h"
 #include "BKE_global.h"
 #include "BKE_main.h"
-#include "BKE_material.h"
-#include "BKE_node.h"
 #include "BKE_scene.h"
 
 
@@ -934,7 +931,7 @@ static void sss_create_tree_mat(Render *re, Material *mat)
 	if (!re->test_break(re->tbh)) {
 		SSSData *sss= MEM_callocN(sizeof(*sss), "SSSData");
 		float ior= mat->sss_ior, cfac= mat->sss_colfac;
-		float *radius= mat->sss_radius;
+		const float *radius = mat->sss_radius;
 		float fw= mat->sss_front, bw= mat->sss_back;
 		float error = mat->sss_error;
 

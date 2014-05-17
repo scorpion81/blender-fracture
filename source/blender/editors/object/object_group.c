@@ -238,6 +238,7 @@ void GROUP_OT_objects_add_active(wmOperatorType *ot)
 	/* properties */
 	prop = RNA_def_enum(ot->srna, "group", DummyRNA_NULL_items, 0, "Group", "The group to add other selected objects to");
 	RNA_def_enum_funcs(prop, group_object_active_itemf);
+	RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
 	ot->prop = prop;
 }
 
@@ -301,6 +302,7 @@ void GROUP_OT_objects_remove_active(wmOperatorType *ot)
 	/* properties */
 	prop = RNA_def_enum(ot->srna, "group", DummyRNA_NULL_items, 0, "Group", "The group to remove other selected objects from");
 	RNA_def_enum_funcs(prop, group_object_active_itemf);
+	RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
 	ot->prop = prop;
 }
 
@@ -393,6 +395,7 @@ void GROUP_OT_objects_remove(wmOperatorType *ot)
 	/* properties */
 	prop = RNA_def_enum(ot->srna, "group", DummyRNA_NULL_items, 0, "Group", "The group to remove this object from");
 	RNA_def_enum_funcs(prop, group_object_active_itemf);
+	RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
 	ot->prop = prop;
 }
 
@@ -476,7 +479,7 @@ static int group_link_exec(bContext *C, wmOperator *op)
 	Main *bmain = CTX_data_main(C);
 	Scene *scene = CTX_data_scene(C);
 	Object *ob = ED_object_context(C);
-	Group *group = BLI_findlink(&CTX_data_main(C)->group, RNA_enum_get(op->ptr, "group"));
+	Group *group = BLI_findlink(&bmain->group, RNA_enum_get(op->ptr, "group"));
 
 	if (ELEM(NULL, ob, group))
 		return OPERATOR_CANCELLED;
@@ -527,6 +530,7 @@ void OBJECT_OT_group_link(wmOperatorType *ot)
 	/* properties */
 	prop = RNA_def_enum(ot->srna, "group", DummyRNA_NULL_items, 0, "Group", "");
 	RNA_def_enum_funcs(prop, RNA_group_local_itemf);
+	RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
 	ot->prop = prop;
 }
 

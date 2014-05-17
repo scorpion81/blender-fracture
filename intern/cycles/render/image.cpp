@@ -59,11 +59,16 @@ void ImageManager::set_osl_texture_system(void *texture_system)
 	osl_texture_system = texture_system;
 }
 
-void ImageManager::set_extended_image_limits(void)
+void ImageManager::set_extended_image_limits(const DeviceInfo& info)
 {
-	tex_num_images = TEX_EXTENDED_NUM_IMAGES;
-	tex_num_float_images = TEX_EXTENDED_NUM_FLOAT_IMAGES;
-	tex_image_byte_start = TEX_EXTENDED_IMAGE_BYTE_START;
+	if(info.type == DEVICE_CPU) {
+		tex_num_images = TEX_EXTENDED_NUM_IMAGES_CPU;
+		tex_num_float_images = TEX_EXTENDED_NUM_FLOAT_IMAGES;
+		tex_image_byte_start = TEX_EXTENDED_IMAGE_BYTE_START;
+	}
+	else if((info.type == DEVICE_CUDA || info.type == DEVICE_MULTI) && info.extended_images) {
+		tex_num_images = TEX_EXTENDED_NUM_IMAGES_GPU;
+	}
 }
 
 bool ImageManager::set_animation_frame_update(int frame)
@@ -152,7 +157,7 @@ static bool image_equals(ImageManager::Image *image, const string& filename, voi
 	       image->interpolation == interpolation;
 }
 
-int ImageManager::add_image(const string& filename, void *builtin_data, bool animated, bool& is_float, bool& is_linear, InterpolationType interpolation)
+int ImageManager::add_image(const string& filename, void *builtin_data, bool animated, bool& is_float, bool& is_linear, InterpolationType interpolation, bool use_alpha)
 {
 	Image *img;
 	size_t slot;
@@ -194,6 +199,7 @@ int ImageManager::add_image(const string& filename, void *builtin_data, bool ani
 		img->animated = animated;
 		img->interpolation = interpolation;
 		img->users = 1;
+		img->use_alpha = use_alpha;
 
 		float_images[slot] = img;
 	}
@@ -230,6 +236,7 @@ int ImageManager::add_image(const string& filename, void *builtin_data, bool ani
 		img->animated = animated;
 		img->interpolation = interpolation;
 		img->users = 1;
+		img->use_alpha = use_alpha;
 
 		images[slot] = img;
 
@@ -307,9 +314,13 @@ bool ImageManager::file_load_image(Image *img, device_vector<uchar4>& tex_img)
 		if(!in)
 			return false;
 
-		ImageSpec spec;
+		ImageSpec spec = ImageSpec();
+		ImageSpec config = ImageSpec();
 
-		if(!in->open(img->filename, spec)) {
+		if(img->use_alpha == false)
+			config.attribute("oiio:UnassociatedAlpha", 1);
+
+		if(!in->open(img->filename, spec, config)) {
 			delete in;
 			return false;
 		}
@@ -387,6 +398,12 @@ bool ImageManager::file_load_image(Image *img, device_vector<uchar4>& tex_img)
 		}
 	}
 
+	if(img->use_alpha == false) {
+		for(int i = width*height*depth-1; i >= 0; i--) {
+			pixels[i*4+3] = 255;
+		}
+	}
+
 	return true;
 }
 
@@ -405,9 +422,13 @@ bool ImageManager::file_load_float_image(Image *img, device_vector<float4>& tex_
 		if(!in)
 			return false;
 
-		ImageSpec spec;
+		ImageSpec spec = ImageSpec();
+		ImageSpec config = ImageSpec();
 
-		if(!in->open(img->filename, spec)) {
+		if(img->use_alpha == false)
+			config.attribute("oiio:UnassociatedAlpha",1);
+
+		if(!in->open(img->filename, spec, config)) {
 			delete in;
 			return false;
 		}
@@ -481,6 +502,12 @@ bool ImageManager::file_load_float_image(Image *img, device_vector<float4>& tex_
 			pixels[i*4+2] = pixels[i];
 			pixels[i*4+1] = pixels[i];
 			pixels[i*4+0] = pixels[i];
+		}
+	}
+
+	if(img->use_alpha == false) {
+		for(int i = width*height*depth-1; i >= 0; i--) {
+			pixels[i*4+3] = 1.0f;
 		}
 	}
 

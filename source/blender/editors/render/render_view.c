@@ -29,21 +29,14 @@
 #include <string.h>
 #include <stddef.h>
 
-#include "MEM_guardedalloc.h"
-
-#include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
 
 #include "DNA_scene_types.h"
 #include "DNA_userdef_types.h"
 
-#include "BKE_blender.h"
 #include "BKE_context.h"
 #include "BKE_image.h"
 #include "BKE_global.h"
-#include "BKE_main.h"
-#include "BKE_node.h"
-#include "BKE_report.h"
 #include "BKE_screen.h"
 
 #include "WM_api.h"
@@ -167,11 +160,12 @@ ScrArea *render_view_open(bContext *C, int mx, int my)
 		sa = CTX_wm_area(C);
 	}
 	else if (scene->r.displaymode == R_OUTPUT_SCREEN) {
-		if (CTX_wm_area(C) && CTX_wm_area(C)->spacetype == SPACE_IMAGE)
-			area_was_image = 1;
+		sa = CTX_wm_area(C);
+		if (sa && sa->spacetype == SPACE_IMAGE)
+			area_was_image = true;
 
 		/* this function returns with changed context */
-		sa = ED_screen_full_newspace(C, CTX_wm_area(C), SPACE_IMAGE);
+		sa = ED_screen_full_newspace(C, sa, SPACE_IMAGE);
 	}
 
 	if (!sa) {
@@ -239,8 +233,8 @@ static int render_view_cancel_exec(bContext *C, wmOperator *UNUSED(op))
 	SpaceImage *sima = sa->spacedata.first;
 
 	/* test if we have a temp screen in front */
-	if (CTX_wm_window(C)->screen->temp) {
-		wm_window_lower(CTX_wm_window(C));
+	if (win->screen->temp) {
+		wm_window_lower(win);
 		return OPERATOR_FINISHED;
 	}
 	/* determine if render already shows */

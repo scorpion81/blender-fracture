@@ -34,7 +34,6 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_math.h"
-#include "BLI_blenlib.h"
 #include "BLI_threads.h"
 #include "BLI_utildefines.h"
 
@@ -54,6 +53,8 @@
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"
 #include "IMB_colormanagement.h"
+
+#include "RE_bake.h"
 
 /* local include */
 #include "rayintersection.h"
@@ -373,7 +374,7 @@ static void bake_displacement(void *handle, ShadeInput *UNUSED(shi), float dist,
 			bs->vcol->b = col[2];
 		}
 		else {
-			char *imcol = (char *)(bs->rect + bs->rectx * y + x);
+			const char *imcol = (char *)(bs->rect + bs->rectx * y + x);
 			copy_v4_v4_char((char *)imcol, (char *)col);
 		}
 	}
@@ -936,8 +937,8 @@ void RE_bake_ibuf_filter(ImBuf *ibuf, char *mask, const int filter)
 void RE_bake_ibuf_normalize_displacement(ImBuf *ibuf, float *displacement, char *mask, float displacement_min, float displacement_max)
 {
 	int i;
-	float *current_displacement = displacement;
-	char *current_mask = mask;
+	const float *current_displacement = displacement;
+	const char *current_mask = mask;
 	float max_distance;
 
 	max_distance = max_ff(fabsf(displacement_min), fabsf(displacement_max));

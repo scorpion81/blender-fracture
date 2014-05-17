@@ -84,6 +84,7 @@ void tri_to_quat_ex(float quat[4], const float v1[3], const float v2[3], const f
 float tri_to_quat(float q[4], const float a[3], const float b[3], const float c[3]);
 void  vec_to_quat(float q[4], const float vec[3], short axis, const short upflag);
 /* note: v1 and v2 must be normalized */
+void rotation_between_vecs_to_mat3(float m[3][3], const float v1[3], const float v2[3]);
 void rotation_between_vecs_to_quat(float q[4], const float v1[3], const float v2[3]);
 void rotation_between_quats_to_quat(float q[4], const float q1[4], const float q2[4]);
 
@@ -106,6 +107,8 @@ void print_qt(const char *str, const float q[4]);
 void axis_angle_normalized_to_quat(float r[4], const float axis[3], const float angle);
 void axis_angle_to_quat(float r[4], const float axis[3], const float angle);
 void axis_angle_to_mat3(float R[3][3], const float axis[3], const float angle);
+void axis_angle_normalized_to_mat3_ex(float mat[3][3], const float axis[3],
+                                      const float angle_sin, const float angle_cos);
 void axis_angle_normalized_to_mat3(float R[3][3], const float axis[3], const float angle);
 void axis_angle_to_mat4(float R[4][4], const float axis[3], const float angle);
 

@@ -31,7 +31,6 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "DNA_mesh_types.h"
 #include "DNA_curve_types.h"
 #include "DNA_lamp_types.h"
 #include "DNA_material_types.h"
@@ -43,7 +42,6 @@
 #include "DNA_world_types.h"
 
 #include "BLI_blenlib.h"
-#include "BLI_math.h"
 #include "BLI_utildefines.h"
 
 #include "BLF_translation.h"
@@ -55,13 +53,11 @@
 #include "BKE_font.h"
 #include "BKE_freestyle.h"
 #include "BKE_global.h"
-#include "BKE_icons.h"
 #include "BKE_image.h"
 #include "BKE_library.h"
 #include "BKE_linestyle.h"
 #include "BKE_main.h"
 #include "BKE_material.h"
-#include "BKE_node.h"
 #include "BKE_report.h"
 #include "BKE_scene.h"
 #include "BKE_texture.h"
@@ -716,7 +712,7 @@ static int freestyle_lineset_add_exec(bContext *C, wmOperator *UNUSED(op))
 	Scene *scene = CTX_data_scene(C);
 	SceneRenderLayer *srl = BLI_findlink(&scene->r.layers, scene->r.actlay);
 
-	BKE_freestyle_lineset_add(&srl->freestyleConfig);
+	BKE_freestyle_lineset_add(&srl->freestyleConfig, NULL);
 
 	WM_event_add_notifier(C, NC_SCENE | ND_RENDER_OPTIONS, scene);
 
@@ -920,7 +916,7 @@ static int freestyle_color_modifier_add_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 
-	if (BKE_add_linestyle_color_modifier(lineset->linestyle, type) == NULL) {
+	if (BKE_add_linestyle_color_modifier(lineset->linestyle, NULL, type) == NULL) {
 		BKE_report(op->reports, RPT_ERROR, "Unknown line color modifier type");
 		return OPERATOR_CANCELLED;
 	}
@@ -959,7 +955,7 @@ static int freestyle_alpha_modifier_add_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 
-	if (BKE_add_linestyle_alpha_modifier(lineset->linestyle, type) == NULL) {
+	if (BKE_add_linestyle_alpha_modifier(lineset->linestyle, NULL, type) == NULL) {
 		BKE_report(op->reports, RPT_ERROR, "Unknown alpha transparency modifier type");
 		return OPERATOR_CANCELLED;
 	}
@@ -998,7 +994,7 @@ static int freestyle_thickness_modifier_add_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 
-	if (BKE_add_linestyle_thickness_modifier(lineset->linestyle, type) == NULL) {
+	if (BKE_add_linestyle_thickness_modifier(lineset->linestyle, NULL, type) == NULL) {
 		BKE_report(op->reports, RPT_ERROR, "Unknown line thickness modifier type");
 		return OPERATOR_CANCELLED;
 	}
@@ -1037,7 +1033,7 @@ static int freestyle_geometry_modifier_add_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 
-	if (BKE_add_linestyle_geometry_modifier(lineset->linestyle, type) == NULL) {
+	if (BKE_add_linestyle_geometry_modifier(lineset->linestyle, NULL, type) == NULL) {
 		BKE_report(op->reports, RPT_ERROR, "Unknown stroke geometry modifier type");
 		return OPERATOR_CANCELLED;
 	}
@@ -1579,6 +1575,9 @@ static void copy_mtex_copybuf(ID *id)
 		case ID_PA:
 			mtex = &(((ParticleSettings *)id)->mtex[(int)((ParticleSettings *)id)->texact]);
 			break;
+		case ID_LS:
+			mtex = &(((FreestyleLineStyle *)id)->mtex[(int)((FreestyleLineStyle *)id)->texact]);
+			break;
 	}
 	
 	if (mtex && *mtex) {
@@ -1611,6 +1610,9 @@ static void paste_mtex_copybuf(ID *id)
 			break;
 		case ID_PA:
 			mtex = &(((ParticleSettings *)id)->mtex[(int)((ParticleSettings *)id)->texact]);
+			break;
+		case ID_LS:
+			mtex = &(((FreestyleLineStyle *)id)->mtex[(int)((FreestyleLineStyle *)id)->texact]);
 			break;
 		default:
 			BLI_assert("invalid id type");
@@ -1678,7 +1680,8 @@ static int paste_mtex_exec(bContext *C, wmOperator *UNUSED(op))
 		Lamp *la = CTX_data_pointer_get_type(C, "lamp", &RNA_Lamp).data;
 		World *wo = CTX_data_pointer_get_type(C, "world", &RNA_World).data;
 		ParticleSystem *psys = CTX_data_pointer_get_type(C, "particle_system", &RNA_ParticleSystem).data;
-		
+		FreestyleLineStyle *linestyle = CTX_data_pointer_get_type(C, "line_style", &RNA_FreestyleLineStyle).data;
+
 		if (ma)
 			id = &ma->id;
 		else if (la)
@@ -1687,6 +1690,8 @@ static int paste_mtex_exec(bContext *C, wmOperator *UNUSED(op))
 			id = &wo->id;
 		else if (psys)
 			id = &psys->part->id;
+		else if (linestyle)
+			id = &linestyle->id;
 		
 		if (id == NULL)
 			return OPERATOR_CANCELLED;

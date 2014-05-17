@@ -240,7 +240,7 @@ ccl_device_inline float object_random_number(KernelGlobals *kg, int object)
 
 /* Particle ID from which this object was generated */
 
-ccl_device_inline uint object_particle_id(KernelGlobals *kg, int object)
+ccl_device_inline int object_particle_id(KernelGlobals *kg, int object)
 {
 	if(object == OBJECT_NONE)
 		return 0.0f;
@@ -364,10 +364,10 @@ ccl_device float3 particle_angular_velocity(KernelGlobals *kg, int particle)
 ccl_device_inline float3 bvh_clamp_direction(float3 dir)
 {
 	/* clamp absolute values by exp2f(-80.0f) to avoid division by zero when calculating inverse direction */
-	float ooeps = 8.271806E-25;
+	float ooeps = 8.271806E-25f;
 	return make_float3((fabsf(dir.x) > ooeps)? dir.x: copysignf(ooeps, dir.x),
-					   (fabsf(dir.y) > ooeps)? dir.y: copysignf(ooeps, dir.y),
-					   (fabsf(dir.z) > ooeps)? dir.z: copysignf(ooeps, dir.z));
+	                   (fabsf(dir.y) > ooeps)? dir.y: copysignf(ooeps, dir.y),
+	                   (fabsf(dir.z) > ooeps)? dir.z: copysignf(ooeps, dir.z));
 }
 
 ccl_device_inline float3 bvh_inverse_direction(float3 dir)
@@ -377,7 +377,7 @@ ccl_device_inline float3 bvh_inverse_direction(float3 dir)
 
 /* Transform ray into object space to enter static object in BVH */
 
-ccl_device_inline void bvh_instance_push(KernelGlobals *kg, int object, const Ray *ray, float3 *P, float3 *dir, float3 *idir, float *t, const float tmax)
+ccl_device_inline void bvh_instance_push(KernelGlobals *kg, int object, const Ray *ray, float3 *P, float3 *dir, float3 *idir, float *t)
 {
 	Transform tfm = object_fetch_transform(kg, object, OBJECT_INVERSE_TRANSFORM);
 
@@ -393,7 +393,7 @@ ccl_device_inline void bvh_instance_push(KernelGlobals *kg, int object, const Ra
 
 /* Transorm ray to exit static object in BVH */
 
-ccl_device_inline void bvh_instance_pop(KernelGlobals *kg, int object, const Ray *ray, float3 *P, float3 *dir, float3 *idir, float *t, const float tmax)
+ccl_device_inline void bvh_instance_pop(KernelGlobals *kg, int object, const Ray *ray, float3 *P, float3 *dir, float3 *idir, float *t)
 {
 	if(*t != FLT_MAX) {
 		Transform tfm = object_fetch_transform(kg, object, OBJECT_TRANSFORM);
@@ -405,10 +405,23 @@ ccl_device_inline void bvh_instance_pop(KernelGlobals *kg, int object, const Ray
 	*idir = bvh_inverse_direction(*dir);
 }
 
+/* Same as above, but returns scale factor to apply to multiple intersection distances */
+
+ccl_device_inline void bvh_instance_pop_factor(KernelGlobals *kg, int object, const Ray *ray, float3 *P, float3 *dir, float3 *idir, float *t_fac)
+{
+	Transform tfm = object_fetch_transform(kg, object, OBJECT_TRANSFORM);
+	*t_fac = len(transform_direction(&tfm, 1.0f/(*idir)));
+
+	*P = ray->P;
+	*dir = bvh_clamp_direction(ray->D);
+	*idir = bvh_inverse_direction(*dir);
+}
+
+
 #ifdef __OBJECT_MOTION__
 /* Transform ray into object space to enter motion blurred object in BVH */
 
-ccl_device_inline void bvh_instance_motion_push(KernelGlobals *kg, int object, const Ray *ray, float3 *P, float3 *dir, float3 *idir, float *t, Transform *tfm, const float tmax)
+ccl_device_inline void bvh_instance_motion_push(KernelGlobals *kg, int object, const Ray *ray, float3 *P, float3 *dir, float3 *idir, float *t, Transform *tfm)
 {
 	Transform itfm;
 	*tfm = object_fetch_transform_motion_test(kg, object, ray->time, &itfm);
@@ -425,7 +438,7 @@ ccl_device_inline void bvh_instance_motion_push(KernelGlobals *kg, int object, c
 
 /* Transorm ray to exit motion blurred object in BVH */
 
-ccl_device_inline void bvh_instance_motion_pop(KernelGlobals *kg, int object, const Ray *ray, float3 *P, float3 *dir, float3 *idir, float *t, Transform *tfm, const float tmax)
+ccl_device_inline void bvh_instance_motion_pop(KernelGlobals *kg, int object, const Ray *ray, float3 *P, float3 *dir, float3 *idir, float *t, Transform *tfm)
 {
 	if(*t != FLT_MAX)
 		*t *= len(transform_direction(tfm, 1.0f/(*idir)));
@@ -434,6 +447,18 @@ ccl_device_inline void bvh_instance_motion_pop(KernelGlobals *kg, int object, co
 	*dir = bvh_clamp_direction(ray->D);
 	*idir = bvh_inverse_direction(*dir);
 }
+
+/* Same as above, but returns scale factor to apply to multiple intersection distances */
+
+ccl_device_inline void bvh_instance_motion_pop_factor(KernelGlobals *kg, int object, const Ray *ray, float3 *P, float3 *dir, float3 *idir, float *t_fac, Transform *tfm)
+{
+	*t_fac = len(transform_direction(tfm, 1.0f/(*idir)));
+
+	*P = ray->P;
+	*dir = bvh_clamp_direction(ray->D);
+	*idir = bvh_inverse_direction(*dir);
+}
+
 #endif
 
 CCL_NAMESPACE_END

@@ -69,7 +69,6 @@
 #include "BLI_utildefines.h"
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
-#include "BLI_edgehash.h"
 
 #include "BKE_anim.h"
 #include "BKE_armature.h"
@@ -1267,7 +1266,7 @@ void blo_do_versions_250(FileData *fd, Library *lib, Main *main)
 		Lattice *lt;
 		Curve *cu;
 		Key *key;
-		float *data;
+		const float *data;
 		int a, tot;
 
 		/* shape keys are no longer applied to the mesh itself, but rather

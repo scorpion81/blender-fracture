@@ -40,16 +40,13 @@
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_brush_types.h"
-#include "DNA_mesh_types.h"
 #include "DNA_meshdata_types.h"
 
 #include "BKE_brush.h"
 #include "BKE_paint.h"
 #include "BKE_colortools.h"
 #include "BKE_context.h"
-#include "BKE_main.h"
 #include "BKE_depsgraph.h"
-#include "BKE_mesh.h"
 #include "BKE_mesh_mapping.h"
 #include "BKE_customdata.h"
 #include "BKE_editmesh.h"
@@ -672,7 +669,7 @@ static UvSculptData *uv_sculpt_stroke_init(bContext *C, wmOperator *op, const wm
 				MEM_freeN(uniqueUv);
 			}
 			if (edgeHash) {
-				MEM_freeN(edgeHash);
+				BLI_ghash_free(edgeHash, NULL, NULL);
 			}
 			uv_sculpt_stroke_exit(C, op);
 			return NULL;

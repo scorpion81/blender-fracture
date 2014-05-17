@@ -40,11 +40,6 @@
 
 #include <time.h>
 
-#ifdef _WIN32
-#  define open _open
-#  define close _close
-#endif
-
 #include "MEM_guardedalloc.h"
 
 #include "IMB_colormanagement.h"
@@ -635,7 +630,7 @@ Image *BKE_image_load(Main *bmain, const char *filepath)
 
 	/* exists? */
 	file = BLI_open(str, O_BINARY | O_RDONLY, 0);
-	if (file < 0)
+	if (file == -1)
 		return NULL;
 	close(file);
 
@@ -1580,7 +1575,7 @@ static void stampdata(Scene *scene, Object *camera, StampData *stamp_data, int d
 	}
 
 	if (scene->r.stamp & R_STAMP_MARKER) {
-		char *name = BKE_scene_find_last_marker_name(scene, CFRA);
+		const char *name = BKE_scene_find_last_marker_name(scene, CFRA);
 
 		if (name) BLI_strncpy(text, name, sizeof(text));
 		else BLI_strncpy(text, "<none>", sizeof(text));
@@ -1902,7 +1897,7 @@ bool BKE_imbuf_alpha_test(ImBuf *ibuf)
 {
 	int tot;
 	if (ibuf->rect_float) {
-		float *buf = ibuf->rect_float;
+		const float *buf = ibuf->rect_float;
 		for (tot = ibuf->x * ibuf->y; tot--; buf += 4) {
 			if (buf[3] < 1.0f) {
 				return true;

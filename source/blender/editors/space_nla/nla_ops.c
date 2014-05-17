@@ -36,7 +36,6 @@
 
 
 #include "BLI_blenlib.h"
-#include "BLI_math.h"
 
 #include "BKE_context.h"
 #include "BKE_screen.h"
@@ -118,6 +117,8 @@ void nla_operatortypes(void)
 	/* channels */
 	WM_operatortype_append(NLA_OT_channels_click);
 	
+	WM_operatortype_append(NLA_OT_action_pushdown);
+	
 	WM_operatortype_append(NLA_OT_tracks_add);
 	WM_operatortype_append(NLA_OT_tracks_delete);
 	
@@ -132,6 +133,8 @@ void nla_operatortypes(void)
 	/* view */
 	WM_operatortype_append(NLA_OT_view_all);
 	WM_operatortype_append(NLA_OT_view_selected);
+	
+	WM_operatortype_append(NLA_OT_previewrange_set);
 	
 	/* edit */
 	WM_operatortype_append(NLA_OT_tweakmode_enter);
@@ -155,6 +158,8 @@ void nla_operatortypes(void)
 	WM_operatortype_append(NLA_OT_move_down);
 	
 	WM_operatortype_append(NLA_OT_action_sync_length);
+	
+	WM_operatortype_append(NLA_OT_make_single_user);
 	
 	WM_operatortype_append(NLA_OT_apply_scale);
 	WM_operatortype_append(NLA_OT_clear_scale);
@@ -236,7 +241,8 @@ static void nla_keymap_main(wmKeyConfig *keyconf, wmKeyMap *keymap)
 	
 	/* view ---------------------------------------------------- */
 	/* auto-set range */
-	//WM_keymap_add_item(keymap, "NLA_OT_previewrange_set", PKEY, KM_PRESS, KM_CTRL|KM_ALT, 0);
+	WM_keymap_add_item(keymap, "NLA_OT_previewrange_set", PKEY, KM_PRESS, KM_CTRL | KM_ALT, 0);
+	
 	WM_keymap_add_item(keymap, "NLA_OT_view_all", HOMEKEY, KM_PRESS, 0, 0);
 	WM_keymap_add_item(keymap, "NLA_OT_view_all", NDOF_BUTTON_FIT, KM_PRESS, 0, 0);
 	WM_keymap_add_item(keymap, "NLA_OT_view_selected", PADPERIOD, KM_PRESS, 0, 0);
@@ -253,7 +259,14 @@ static void nla_keymap_main(wmKeyConfig *keyconf, wmKeyMap *keymap)
 	WM_keymap_add_item(keymap, "NLA_OT_meta_remove", GKEY, KM_PRESS, KM_ALT, 0);
 		
 	/* duplicate */
-	WM_keymap_add_item(keymap, "NLA_OT_duplicate", DKEY, KM_PRESS, KM_SHIFT, 0);
+	kmi = WM_keymap_add_item(keymap, "NLA_OT_duplicate", DKEY, KM_PRESS, KM_SHIFT, 0);
+	RNA_boolean_set(kmi->ptr, "linked", false);
+	
+	kmi = WM_keymap_add_item(keymap, "NLA_OT_duplicate", DKEY, KM_PRESS, KM_ALT, 0);
+	RNA_boolean_set(kmi->ptr, "linked", true);
+	
+	/* single user */
+	WM_keymap_add_item(keymap, "NLA_OT_make_single_user", UKEY, KM_PRESS, 0, 0);
 		
 	/* delete */
 	WM_keymap_add_item(keymap, "NLA_OT_delete", XKEY, KM_PRESS, 0, 0);

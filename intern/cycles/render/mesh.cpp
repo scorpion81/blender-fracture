@@ -346,7 +346,7 @@ void Mesh::add_vertex_normals()
 	Attribute *attr_mP = attributes.find(ATTR_STD_MOTION_VERTEX_POSITION);
 	Attribute *attr_mN = attributes.find(ATTR_STD_MOTION_VERTEX_NORMAL);
 
-	if(has_motion_blur() && !attr_mN) {
+	if(has_motion_blur() && attr_mP && !attr_mN) {
 		/* create attribute */
 		attr_mN = attributes.add(ATTR_STD_MOTION_VERTEX_NORMAL);
 
@@ -554,7 +554,7 @@ bool Mesh::has_motion_blur() const
 {
 	return (use_motion_blur &&
 	        (attributes.find(ATTR_STD_MOTION_VERTEX_POSITION) ||
-			 curve_attributes.find(ATTR_STD_MOTION_VERTEX_POSITION)));
+	         curve_attributes.find(ATTR_STD_MOTION_VERTEX_POSITION)));
 }
 
 /* Mesh Manager */

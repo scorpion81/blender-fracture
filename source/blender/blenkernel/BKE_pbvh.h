@@ -67,7 +67,7 @@ void BKE_pbvh_build_grids(PBVH *bvh, struct CCGElem **grid_elems,
                           struct DMGridAdjacency *gridadj, int totgrid,
                           struct CCGKey *key, void **gridfaces, struct DMFlagMat *flagmats,
                           unsigned int **grid_hidden);
-void BKE_pbvh_build_bmesh(PBVH *bvh, struct BMesh *bm, bool smooth_shading, struct BMLog *log);
+void BKE_pbvh_build_bmesh(PBVH *bvh, struct BMesh *bm, bool smooth_shading, struct BMLog *log, const int cd_vert_node_offset, const int cd_face_node_offset);
 
 void BKE_pbvh_free(PBVH *bvh);
 void BKE_pbvh_free_layer_disp(PBVH *bvh);
@@ -111,7 +111,7 @@ void BKE_pbvh_raycast_project_ray_root(PBVH *bvh, bool original, float ray_start
 
 void BKE_pbvh_node_draw(PBVHNode *node, void *data);
 void BKE_pbvh_draw(PBVH *bvh, float (*planes)[4], float (*face_nors)[3],
-                   int (*setMaterial)(int, void *attribs), bool wireframe);
+                   int (*setMaterial)(int matnr, void *attribs), bool wireframe);
 
 /* PBVH Access */
 typedef enum {
@@ -127,6 +127,10 @@ void BKE_pbvh_bounding_box(const PBVH *bvh, float min[3], float max[3]);
 
 /* multires hidden data, only valid for type == PBVH_GRIDS */
 unsigned int **BKE_pbvh_grid_hidden(const PBVH *bvh);
+
+int BKE_pbvh_count_grid_quads(BLI_bitmap **grid_hidden,
+                              int *grid_indices, int totgrid,
+                              int gridsize);
 
 /* multires level, only valid for type == PBVH_GRIDS */
 void BKE_pbvh_get_grid_key(const PBVH *pbvh, struct CCGKey *key);
@@ -193,7 +197,7 @@ void BKE_pbvh_bmesh_after_stroke(PBVH *bvh);
 
 void BKE_pbvh_update(PBVH *bvh, int flags, float (*face_nors)[3]);
 void BKE_pbvh_redraw_BB(PBVH *bvh, float bb_min[3], float bb_max[3]);
-void BKE_pbvh_get_grid_updates(PBVH *bvh, int clear, void ***gridfaces, int *totface);
+void BKE_pbvh_get_grid_updates(PBVH *bvh, int clear, void ***r_gridfaces, int *r_totface);
 void BKE_pbvh_grids_update(PBVH *bvh, struct CCGElem **grid_elems,
                            struct DMGridAdjacency *gridadj, void **gridfaces,
                            struct DMFlagMat *flagmats, unsigned int **grid_hidden);

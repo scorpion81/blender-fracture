@@ -46,7 +46,6 @@
 
 #include "ED_screen.h"
 #include "ED_clip.h"  /* frame remapping functions */
-#include "ED_mask.h"  /* own include */
 
 #include "mask_intern.h"  /* own include */
 
@@ -112,7 +111,7 @@ static int mask_parent_set_exec(bContext *C, wmOperator *UNUSED(op))
 
 	int framenr, parent_type;
 	float parmask_pos[2], orig_corners[4][2];
-	char *sub_parent_name;
+	const char *sub_parent_name;
 
 	if (ELEM(NULL, sc, clip)) {
 		return OPERATOR_CANCELLED;
@@ -195,7 +194,7 @@ void MASK_OT_parent_set(wmOperatorType *ot)
 	//ot->invoke = mask_parent_set_invoke;
 	ot->exec = mask_parent_set_exec;
 
-	ot->poll = ED_maskedit_mask_poll;
+	ot->poll = ED_space_clip_maskedit_mask_poll;
 
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;

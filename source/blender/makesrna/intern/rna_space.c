@@ -112,8 +112,13 @@ static EnumPropertyItem transform_orientation_items[] = {
 #ifndef RNA_RUNTIME
 static EnumPropertyItem autosnap_items[] = {
 	{SACTSNAP_OFF, "NONE", 0, "No Auto-Snap", ""},
-	{SACTSNAP_STEP, "STEP", 0, "Time Step", "Snap to 1.0 frame/second intervals"},
-	{SACTSNAP_FRAME, "FRAME", 0, "Nearest Frame", "Snap to actual frames/seconds (nla-action time)"},
+	/* {-1, "", 0, "", ""}, */
+	{SACTSNAP_STEP, "STEP", 0, "Frame Step", "Snap to 1.0 frame intervals"},
+	{SACTSNAP_TSTEP, "TIME_STEP", 0, "Second Step", "Snap to 1.0 second intervals"},
+	/* {-1, "", 0, "", ""}, */
+	{SACTSNAP_FRAME, "FRAME", 0, "Nearest Frame", "Snap to actual frames (nla-action time)"},
+	{SACTSNAP_SECOND, "SECOND", 0, "Nearest Second", "Snap to actual seconds (nla-action time)"},
+	/* {-1, "", 0, "", ""}, */
 	{SACTSNAP_MARKER, "MARKER", 0, "Nearest Marker", "Snap to nearest marker"},
 	{0, NULL, 0, NULL, NULL}
 };
@@ -161,6 +166,7 @@ static EnumPropertyItem buttons_texture_context_items[] = {
 	{SB_TEXC_WORLD, "WORLD", ICON_WORLD, "", "Show world textures"},
 	{SB_TEXC_LAMP, "LAMP", ICON_LAMP, "", "Show lamp textures"},
 	{SB_TEXC_PARTICLES, "PARTICLES", ICON_PARTICLES, "", "Show particles textures"},
+	{SB_TEXC_LINESTYLE, "LINESTYLE", ICON_LINE_DATA, "", "Show linestyle textures"},
 	{SB_TEXC_OTHER, "OTHER", ICON_TEXTURE, "", "Show other data textures"},
 	{0, NULL, 0, NULL, NULL}
 };
@@ -282,6 +288,55 @@ static void rna_area_region_from_regiondata(PointerRNA *ptr, ScrArea **r_sa, ARe
 	void *regiondata = ptr->data;
 
 	area_region_from_regiondata(sc, regiondata, r_sa, r_ar);
+}
+
+static int rna_Space_view2d_sync_get(PointerRNA *ptr)
+{
+	ScrArea *sa;
+	ARegion *ar;
+
+	sa = rna_area_from_space(ptr); /* can be NULL */
+	ar = BKE_area_find_region_type(sa, RGN_TYPE_WINDOW);
+	if (ar) {
+		View2D *v2d = &ar->v2d;
+		return (v2d->flag & V2D_VIEWSYNC_SCREEN_TIME) != 0;
+	}
+
+	return false;
+}
+
+static void rna_Space_view2d_sync_set(PointerRNA *ptr, int value)
+{
+	ScrArea *sa;
+	ARegion *ar;
+
+	sa = rna_area_from_space(ptr); /* can be NULL */
+	ar = BKE_area_find_region_type(sa, RGN_TYPE_WINDOW);
+	if (ar) {
+		View2D *v2d = &ar->v2d;
+		if (value) {
+			v2d->flag |= V2D_VIEWSYNC_SCREEN_TIME;
+		}
+		else {
+			v2d->flag &= ~V2D_VIEWSYNC_SCREEN_TIME;
+		}
+	}
+}
+
+static void rna_Space_view2d_sync_update(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *ptr)
+{
+	ScrArea *sa;
+	ARegion *ar;
+
+	sa = rna_area_from_space(ptr); /* can be NULL */
+	ar = BKE_area_find_region_type(sa, RGN_TYPE_WINDOW);
+
+	if (ar) {
+		bScreen *sc = (bScreen *)ptr->id.data;
+		View2D *v2d = &ar->v2d;
+
+		UI_view2d_sync(sc, sa, v2d, V2D_LOCK_SET);
+	}
 }
 
 static PointerRNA rna_CurrentOrientation_get(PointerRNA *ptr)
@@ -929,6 +984,10 @@ static EnumPropertyItem *rna_SpaceProperties_texture_context_itemf(bContext *C, 
 		RNA_enum_items_add_value(&item, &totitem, buttons_texture_context_items, SB_TEXC_PARTICLES);
 	}
 
+	if (ED_texture_context_check_linestyle(C)) {
+		RNA_enum_items_add_value(&item, &totitem, buttons_texture_context_items, SB_TEXC_LINESTYLE);
+	}
+
 	if (ED_texture_context_check_others(C)) {
 		RNA_enum_items_add_value(&item, &totitem, buttons_texture_context_items, SB_TEXC_OTHER);
 	}
@@ -1315,6 +1374,12 @@ static void rna_def_space(BlenderRNA *brna)
 	RNA_def_property_enum_items(prop, space_type_items);
 	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 	RNA_def_property_ui_text(prop, "Type", "Space data type");
+
+	/* access to V2D_VIEWSYNC_SCREEN_TIME */
+	prop = RNA_def_property(srna, "show_locked_time", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_funcs(prop, "rna_Space_view2d_sync_get", "rna_Space_view2d_sync_set");
+	RNA_def_property_ui_text(prop, "Lock Time to Other Windows", "");
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_TIME, "rna_Space_view2d_sync_update");
 }
 
 /* for all spaces that use a mask */
@@ -2936,12 +3001,6 @@ static void rna_def_space_time(BlenderRNA *brna)
 	RNA_def_struct_ui_text(srna, "Space Timeline Editor", "Timeline editor space data");
 	
 	/* view settings */
-	prop = RNA_def_property(srna, "show_only_selected", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "flag", TIME_ONLYACTSEL);
-	RNA_def_property_ui_text(prop, "Only Selected Channels",
-	                         "Show keyframes for active Object and/or its selected bones only");
-	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_TIME, NULL);
-	
 	prop = RNA_def_property(srna, "show_frame_indicator", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", TIME_CFRA_NUM);
 	RNA_def_property_ui_text(prop, "Show Frame Number Indicator",
@@ -3339,6 +3398,7 @@ static void rna_def_space_node(BlenderRNA *brna)
 		{SNODE_TEX_OBJECT, "OBJECT", ICON_OBJECT_DATA, "Object", "Edit texture nodes from Object"},
 		{SNODE_TEX_WORLD, "WORLD", ICON_WORLD_DATA, "World", "Edit texture nodes from World"},
 		{SNODE_TEX_BRUSH, "BRUSH", ICON_BRUSH_DATA, "Brush", "Edit texture nodes from Brush"},
+		{SNODE_TEX_LINESTYLE, "LINESTYLE", ICON_LINE_DATA, "Line Style", "Edit texture nodes from Line Style"},
 		{0, NULL, 0, NULL, NULL}
 	};
 

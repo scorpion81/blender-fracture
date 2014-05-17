@@ -262,7 +262,6 @@ class CLIP_PT_tools_marker(CLIP_PT_tracking_panel, Panel):
 
         sc = context.space_data
         clip = sc.clip
-        settings = clip.tracking.settings
 
         col = layout.column(align=True)
         row = col.row(align=True)
@@ -641,7 +640,6 @@ class CLIP_PT_plane_track(CLIP_PT_tracking_panel, Panel):
     def draw(self, context):
         layout = self.layout
 
-        sc = context.space_data
         clip = context.space_data.clip
         active_track = clip.tracking.plane_tracks.active
 
@@ -769,11 +767,19 @@ class CLIP_PT_tracking_lens(Panel):
             sub.prop(clip.tracking.camera, "focal_length_pixels")
         sub.prop(clip.tracking.camera, "units", text="")
 
-        col = layout.column(align=True)
+        col = layout.column()
         col.label(text="Lens Distortion:")
-        col.prop(clip.tracking.camera, "k1")
-        col.prop(clip.tracking.camera, "k2")
-        col.prop(clip.tracking.camera, "k3")
+        camera = clip.tracking.camera
+        col.prop(camera, "distortion_model", text="")
+        if camera.distortion_model == 'POLYNOMIAL':
+            col = layout.column(align=True)
+            col.prop(camera, "k1")
+            col.prop(camera, "k2")
+            col.prop(camera, "k3")
+        elif camera.distortion_model == 'DIVISION':
+            col = layout.column(align=True)
+            col.prop(camera, "division_k1")
+            col.prop(camera, "division_k2")
 
 
 class CLIP_PT_display(CLIP_PT_clip_view_panel, Panel):
@@ -1078,7 +1084,6 @@ class CLIP_PT_footage_info(CLIP_PT_clip_view_panel, Panel):
         layout = self.layout
 
         sc = context.space_data
-        clip = sc.clip
 
         col = layout.column()
         col.template_movieclip_information(sc, "clip", sc.clip_user)
@@ -1142,6 +1147,7 @@ class CLIP_MT_view(Menu):
                 layout.operator_context = 'INVOKE_DEFAULT'
 
             layout.prop(sc, "show_seconds")
+            layout.prop(sc, "show_locked_time")
             layout.separator()
 
         layout.separator()

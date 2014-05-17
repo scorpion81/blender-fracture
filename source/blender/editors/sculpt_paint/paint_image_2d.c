@@ -39,11 +39,9 @@
 #include "DNA_object_types.h"
 
 #include "BLI_math.h"
-#include "BLI_rect.h"
 
 #include "BKE_context.h"
 #include "BKE_brush.h"
-#include "BKE_main.h"
 #include "BKE_image.h"
 #include "BKE_paint.h"
 #include "BKE_report.h"
@@ -126,8 +124,8 @@ typedef struct ImagePaintState {
 	Image *image;
 	ImBuf *canvas;
 	ImBuf *clonecanvas;
-	char *warnpackedfile;
-	char *warnmultifile;
+	const char *warnpackedfile;
+	const char *warnmultifile;
 
 	bool do_masking;
 
@@ -282,7 +280,7 @@ static ImBuf *brush_painter_imbuf_new(BrushPainter *painter, int size)
 				BKE_brush_sample_tex_3D(scene, brush, texco, rgba, thread, pool);
 				/* TODO(sergey): Support texture paint color space. */
 				if (!use_float) {
-					IMB_colormanagement_display_to_scene_linear_v3(rgba, display);
+					IMB_colormanagement_scene_linear_to_display_v3(rgba, display);
 				}
 				mul_v3_v3(rgba, brush_rgb);
 			}
@@ -377,7 +375,7 @@ static void brush_painter_imbuf_update(BrushPainter *painter, ImBuf *oldtexibuf,
 					BKE_brush_sample_tex_3D(scene, brush, texco, rgba, thread, pool);
 					/* TODO(sergey): Support texture paint color space. */
 					if (!use_float) {
-						IMB_colormanagement_display_to_scene_linear_v3(rgba, display);
+						IMB_colormanagement_scene_linear_to_display_v3(rgba, display);
 					}
 					mul_v3_v3(rgba, brush_rgb);
 				}
@@ -399,7 +397,7 @@ static void brush_painter_imbuf_update(BrushPainter *painter, ImBuf *oldtexibuf,
 
 				/* read from old texture buffer */
 				if (use_texture_old) {
-					float *otf = oldtexibuf->rect_float + ((y - origy + yt) * oldtexibuf->x + (x - origx + xt)) * 4;
+					const float *otf = oldtexibuf->rect_float + ((y - origy + yt) * oldtexibuf->x + (x - origx + xt)) * 4;
 					copy_v4_v4(rgba, otf);
 				}
 
@@ -493,8 +491,8 @@ static void brush_painter_imbuf_partial_update(BrushPainter *painter, const floa
 		w = h = 0;
 	}
 	
-	x1 = destx;
-	y1 = desty;
+	x1 = min_ii(destx, ibuf->x);
+	y1 = min_ii(desty, ibuf->y);
 	x2 = min_ii(destx + w, ibuf->x);
 	y2 = min_ii(desty + h, ibuf->y);
 
@@ -529,8 +527,8 @@ static void brush_painter_2d_tex_mapping(ImagePaintState *s, int size, const flo
 
 	if (mapmode == MTEX_MAP_MODE_STENCIL) {
 		/* map from view coordinates of brush to region coordinates */
-		UI_view2d_to_region_no_clip(s->v2d, ipos[0] * invw, ipos[1] * invh, &xmin, &ymin);
-		UI_view2d_to_region_no_clip(s->v2d, (ipos[0] + size) * invw, (ipos[1] + size) * invh, &xmax, &ymax);
+		UI_view2d_view_to_region(s->v2d, ipos[0] * invw, ipos[1] * invh, &xmin, &ymin);
+		UI_view2d_view_to_region(s->v2d, (ipos[0] + size) * invw, (ipos[1] + size) * invh, &xmax, &ymax);
 
 		/* output mapping from brush ibuf x/y to region coordinates */
 		mapping->xmin = xmin;
@@ -671,7 +669,7 @@ static void paint_2d_ibuf_rgb_get(ImBuf *ibuf, int x, int y, const bool is_torus
 	}
 
 	if (ibuf->rect_float) {
-		float *rrgbf = ibuf->rect_float + (ibuf->x * y + x) * 4;
+		const float *rrgbf = ibuf->rect_float + (ibuf->x * y + x) * 4;
 		copy_v4_v4(r_rgb, rrgbf);
 	}
 	else {
@@ -867,7 +865,7 @@ static int paint_2d_op(void *state, ImBuf *ibufb, unsigned short *maskb, const f
 	ImagePaintRegion region[4];
 	short torus = s->brush->flag & BRUSH_TORUS;
 	short blend = s->blend;
-	float *offset = s->brush->clone.offset;
+	const float *offset = s->brush->clone.offset;
 	float liftpos[2];
 	float brush_alpha = BKE_brush_alpha_get(s->scene, s->brush);
 	unsigned short mask_max = (unsigned short)(brush_alpha * 65535.0f);

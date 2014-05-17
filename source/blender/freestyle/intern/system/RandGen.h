@@ -30,8 +30,6 @@
 
 // TODO Check whether we could replace this with BLI rand stuff...
 
-#include "FreestyleConfig.h"
-
 #include "../system/Precision.h"
 
 #ifdef WITH_CXX_GUARDEDALLOC
@@ -40,7 +38,7 @@
 
 namespace Freestyle {
 
-class LIB_SYSTEM_EXPORT RandGen
+class RandGen
 {
 public:
 	static real drand48();

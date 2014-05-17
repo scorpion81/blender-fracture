@@ -79,7 +79,7 @@ void strand_eval_point(StrandSegment *sseg, StrandPoint *spoint)
 {
 	Material *ma;
 	StrandBuffer *strandbuf;
-	float *simplify;
+	const float *simplify;
 	float p[4][3], data[4], cross[3], w, dx, dy, t;
 	int type;
 
@@ -862,7 +862,7 @@ int zbuffer_strands_abuf(Render *re, RenderPart *pa, APixstrand *apixbuf, ListBa
 		/* test if we should skip it */
 		ma = obr->strandbuf->ma;
 
-		if (shadow && !(ma->mode & MA_SHADBUF))
+		if (shadow && (!(ma->mode2 & MA_CASTSHADOW) || !(ma->mode & MA_SHADBUF)))
 			continue;
 		else if (!shadow && (ma->mode & MA_ONLYCAST))
 			continue;

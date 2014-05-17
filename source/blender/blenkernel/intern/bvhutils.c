@@ -111,7 +111,7 @@ float nearest_point_in_tri_surface_squared(
 	B0 = dot_v3v3(diff, e0);
 	B1 = dot_v3v3(diff, e1);
 	C = dot_v3v3(diff, diff);
-	Det = fabs(A00 * A11 - A01 * A01);
+	Det = fabsf(A00 * A11 - A01 * A01);
 	S = A01 * B1 - A11 * B0;
 	T = A01 * B0 - A00 * B1;
 
@@ -371,7 +371,7 @@ static void mesh_faces_nearest_point(void *userdata, int index, const float co[3
 	MVert *vert = data->vert;
 	MFace *face = data->face + index;
 
-	float *t0, *t1, *t2, *t3;
+	const float *t0, *t1, *t2, *t3;
 	t0 = vert[face->v1].co;
 	t1 = vert[face->v2].co;
 	t2 = vert[face->v3].co;
@@ -406,7 +406,7 @@ static void editmesh_faces_nearest_point(void *userdata, int index, const float 
 	BMEditMesh *em = data->em_evil;
 	const BMLoop **ltri = (const BMLoop **)em->looptris[index];
 
-	float *t0, *t1, *t2;
+	const float *t0, *t1, *t2;
 	t0 = ltri[0]->v->co;
 	t1 = ltri[1]->v->co;
 	t2 = ltri[2]->v->co;
@@ -433,7 +433,7 @@ static void mesh_faces_spherecast(void *userdata, int index, const BVHTreeRay *r
 	MVert *vert = data->vert;
 	MFace *face = data->face + index;
 
-	float *t0, *t1, *t2, *t3;
+	const float *t0, *t1, *t2, *t3;
 	t0 = vert[face->v1].co;
 	t1 = vert[face->v2].co;
 	t2 = vert[face->v3].co;
@@ -471,7 +471,7 @@ static void editmesh_faces_spherecast(void *userdata, int index, const BVHTreeRa
 	BMEditMesh *em = data->em_evil;
 	const BMLoop **ltri = (const BMLoop **)em->looptris[index];
 
-	float *t0, *t1, *t2;
+	const float *t0, *t1, *t2;
 	t0 = ltri[0]->v->co;
 	t1 = ltri[1]->v->co;
 	t2 = ltri[2]->v->co;
@@ -503,7 +503,7 @@ static void mesh_edges_nearest_point(void *userdata, int index, const float co[3
 	MEdge *edge = data->edge + index;
 	float nearest_tmp[3], dist_sq;
 
-	float *t0, *t1;
+	const float *t0, *t1;
 	t0 = vert[edge->v1].co;
 	t1 = vert[edge->v2].co;
 
@@ -517,55 +517,6 @@ static void mesh_edges_nearest_point(void *userdata, int index, const float co[3
 		sub_v3_v3v3(nearest->no, t0, t1);
 		normalize_v3(nearest->no);
 	}
-}
-
-static MVert *get_dm_vert_data_array(DerivedMesh *dm, bool *allocated)
-{
-	CustomData *vert_data = dm->getVertDataLayout(dm);
-	MVert *mvert = CustomData_get_layer(vert_data, CD_MVERT);
-	*allocated = false;
-
-	if (mvert == NULL) {
-		mvert = MEM_mallocN(sizeof(MVert) * dm->getNumVerts(dm), "bvh vert data array");
-		dm->copyVertArray(dm, mvert);
-		*allocated = true;
-	}
-
-	return mvert;
-}
-
-static MEdge *get_dm_edge_data_array(DerivedMesh *dm, bool *allocated)
-{
-	CustomData *edge_data = dm->getEdgeDataLayout(dm);
-	MEdge *medge = CustomData_get_layer(edge_data, CD_MEDGE);
-	*allocated = false;
-
-	if (medge == NULL) {
-		medge = MEM_mallocN(sizeof(MEdge) * dm->getNumEdges(dm), "bvh medge data array");
-		dm->copyEdgeArray(dm, medge);
-		*allocated = true;
-	}
-
-	return medge;
-}
-
-static MFace *get_dm_tessface_data_array(DerivedMesh *dm, bool *allocated)
-{
-	CustomData *tessface_data = dm->getTessFaceDataLayout(dm);
-	MFace *mface = CustomData_get_layer(tessface_data, CD_MFACE);
-	*allocated = false;
-
-	if (mface == NULL) {
-		int numTessFaces = dm->getNumTessFaces(dm);
-
-		if (numTessFaces > 0) {
-			mface = MEM_mallocN(sizeof(MFace) * numTessFaces, "bvh mface data array");
-			dm->copyTessFaceArray(dm, mface);
-			*allocated = true;
-		}
-	}
-
-	return mface;
 }
 
 /*
@@ -582,7 +533,7 @@ BVHTree *bvhtree_from_mesh_verts(BVHTreeFromMesh *data, DerivedMesh *dm, float e
 	tree = bvhcache_find(&dm->bvhCache, BVHTREE_FROM_VERTICES);
 	BLI_rw_mutex_unlock(&cache_rwlock);
 
-	vert = get_dm_vert_data_array(dm, &vert_allocated);
+	vert = DM_get_vert_array(dm, &vert_allocated);
 
 	/* Not in cache */
 	if (tree == NULL) {
@@ -629,7 +580,7 @@ BVHTree *bvhtree_from_mesh_verts(BVHTreeFromMesh *data, DerivedMesh *dm, float e
 
 		data->vert = vert;
 		data->vert_allocated = vert_allocated;
-		data->face = get_dm_tessface_data_array(dm, &data->face_allocated);
+		data->face = DM_get_tessface_array(dm, &data->face_allocated);
 
 		data->sphere_radius = epsilon;
 	}
@@ -657,8 +608,8 @@ BVHTree *bvhtree_from_mesh_faces(BVHTreeFromMesh *data, DerivedMesh *dm, float e
 	BLI_rw_mutex_unlock(&cache_rwlock);
 
 	if (em == NULL) {
-		vert = get_dm_vert_data_array(dm, &vert_allocated);
-		face = get_dm_tessface_data_array(dm, &face_allocated);
+		vert = DM_get_vert_array(dm, &vert_allocated);
+		face = DM_get_tessface_array(dm, &face_allocated);
 	}
 
 	/* Not in cache */
@@ -827,8 +778,8 @@ BVHTree *bvhtree_from_mesh_edges(BVHTreeFromMesh *data, DerivedMesh *dm, float e
 	tree = bvhcache_find(&dm->bvhCache, BVHTREE_FROM_EDGES);
 	BLI_rw_mutex_unlock(&cache_rwlock);
 
-	vert = get_dm_vert_data_array(dm, &vert_allocated);
-	edge = get_dm_edge_data_array(dm, &edge_allocated);
+	vert = DM_get_vert_array(dm, &vert_allocated);
+	edge = DM_get_edge_array(dm, &edge_allocated);
 
 	/* Not in cache */
 	if (tree == NULL) {

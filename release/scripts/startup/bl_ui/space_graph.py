@@ -105,6 +105,7 @@ class GRAPH_MT_view(Menu):
         layout.prop(st, "use_only_selected_keyframe_handles")
 
         layout.prop(st, "show_seconds")
+        layout.prop(st, "show_locked_time")
 
         layout.separator()
         layout.operator("anim.previewrange_set")
@@ -213,8 +214,8 @@ class GRAPH_MT_key(Menu):
         layout.operator_menu_enum("graph.mirror", "type", text="Mirror")
 
         layout.separator()
-        layout.operator("graph.keyframe_insert")
-        layout.operator("graph.fmodifier_add")
+        layout.operator_menu_enum("graph.keyframe_insert", "type")
+        layout.operator_menu_enum("graph.fmodifier_add", "type")
         layout.operator("graph.sound_bake")
 
         layout.separator()

@@ -28,15 +28,13 @@
  *  \date 12/12/2002
  */
 
-#include "FreestyleConfig.h"
-
 #ifdef WITH_CXX_GUARDEDALLOC
 #include "MEM_guardedalloc.h"
 #endif
 
 namespace Freestyle {
 
-class LIB_SYSTEM_EXPORT TimeStamp
+class TimeStamp
 {
 public:
 	static inline TimeStamp *instance()

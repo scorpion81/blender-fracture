@@ -35,23 +35,24 @@
 #define DNA_DEPRECATED_ALLOW
 
 #include "DNA_constraint_types.h"
-#include "DNA_curve_types.h"
 #include "DNA_sdna_types.h"
 #include "DNA_space_types.h"
 #include "DNA_screen_types.h"
 #include "DNA_object_types.h"
 #include "DNA_mesh_types.h"
 #include "DNA_modifier_types.h"
-#include "DNA_sdna_types.h"
+#include "DNA_linestyle_types.h"
 
 #include "DNA_genfile.h"
 
+#include "BLI_blenlib.h"
 #include "BLI_math.h"
 
 #include "BKE_main.h"
 #include "BKE_node.h"
 
 #include "BLI_math.h"
+#include "BLI_string.h"
 
 #include "BLO_readfile.h"
 
@@ -80,6 +81,34 @@ static void do_version_constraints_radians_degrees_270_1(ListBase *lb)
 	}
 }
 
+static void do_version_constraints_radians_degrees_270_5(ListBase *lb)
+{
+	bConstraint *con;
+
+	for (con = lb->first; con; con = con->next) {
+		if (con->type == CONSTRAINT_TYPE_TRANSFORM) {
+			bTransformConstraint *data = (bTransformConstraint *)con->data;
+
+			if (data->from == TRANS_ROTATION) {
+				copy_v3_v3(data->from_min_rot, data->from_min);
+				copy_v3_v3(data->from_max_rot, data->from_max);
+			}
+			else if (data->from == TRANS_SCALE) {
+				copy_v3_v3(data->from_min_scale, data->from_min);
+				copy_v3_v3(data->from_max_scale, data->from_max);
+			}
+
+			if (data->to == TRANS_ROTATION) {
+				copy_v3_v3(data->to_min_rot, data->to_min);
+				copy_v3_v3(data->to_max_rot, data->to_max);
+			}
+			else if (data->to == TRANS_SCALE) {
+				copy_v3_v3(data->to_min_scale, data->to_min);
+				copy_v3_v3(data->to_max_scale, data->to_max);
+			}
+		}
+	}
+}
 
 void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 {
@@ -169,6 +198,94 @@ void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 		/* Mesh smoothresh deg->rad. */
 		for (me = main->mesh.first; me; me = me->id.next) {
 			me->smoothresh = DEG2RADF(me->smoothresh);
+		}
+	}
+
+	if (!MAIN_VERSION_ATLEAST(main, 270, 3)) {
+		FreestyleLineStyle *linestyle;
+
+		for (linestyle = main->linestyle.first; linestyle; linestyle = linestyle->id.next) {
+			linestyle->flag |= LS_NO_SORTING;
+			linestyle->sort_key = LS_SORT_KEY_DISTANCE_FROM_CAMERA;
+			linestyle->integration_type = LS_INTEGRATION_MEAN;
+		}
+	}
+
+	if (!MAIN_VERSION_ATLEAST(main, 270, 4)) {
+		/* ui_previews were not handled correctly when copying areas, leading to corrupted files (see T39847).
+		 * This will always reset situation to a valid state.
+		 */
+		bScreen *sc;
+
+		for (sc = main->screen.first; sc; sc = sc->id.next) {
+			ScrArea *sa;
+			for (sa = sc->areabase.first; sa; sa = sa->next) {
+				SpaceLink *sl;
+
+				for (sl = sa->spacedata.first; sl; sl = sl->next) {
+					ARegion *ar;
+					ListBase *lb = (sl == sa->spacedata.first) ? &sa->regionbase : &sl->regionbase;
+
+					for (ar = lb->first; ar; ar = ar->next) {
+						BLI_listbase_clear(&ar->ui_previews);
+					}
+				}
+			}
+		}
+	}
+
+	if (!MAIN_VERSION_ATLEAST(main, 270, 5)) {
+		Object *ob;
+
+		/* Update Transform constraint (again :|). */
+		for (ob = main->object.first; ob; ob = ob->id.next) {
+			do_version_constraints_radians_degrees_270_5(&ob->constraints);
+
+			if (ob->pose) {
+				/* Bones constraints! */
+				bPoseChannel *pchan;
+				for (pchan = ob->pose->chanbase.first; pchan; pchan = pchan->next) {
+					do_version_constraints_radians_degrees_270_5(&pchan->constraints);
+				}
+			}
+		}
+	}
+
+	if (!DNA_struct_elem_find(fd->filesdna, "Material", "int", "mode2")) {
+		Material *ma;
+
+		for (ma = main->mat.first; ma; ma = ma->id.next)
+			ma->mode2 = MA_CASTSHADOW;
+	}
+
+	if (!DNA_struct_elem_find(fd->filesdna, "RenderData", "BakeData", "bake")) {
+		Scene *sce;
+
+		for (sce = main->scene.first; sce; sce = sce->id.next) {
+			sce->r.bake.flag = R_BAKE_CLEAR;
+			sce->r.bake.width = 512;
+			sce->r.bake.height = 512;
+			sce->r.bake.margin = 16;
+			sce->r.bake.normal_space = R_BAKE_SPACE_TANGENT;
+			sce->r.bake.normal_swizzle[0] = R_BAKE_POSX;
+			sce->r.bake.normal_swizzle[1] = R_BAKE_POSY;
+			sce->r.bake.normal_swizzle[2] = R_BAKE_POSZ;
+			BLI_strncpy(sce->r.bake.filepath, U.renderdir, sizeof(sce->r.bake.filepath));
+
+			sce->r.bake.im_format.planes = R_IMF_PLANES_RGBA;
+			sce->r.bake.im_format.imtype = R_IMF_IMTYPE_PNG;
+			sce->r.bake.im_format.depth = R_IMF_CHAN_DEPTH_8;
+			sce->r.bake.im_format.quality = 90;
+			sce->r.bake.im_format.compress = 15;
+		}
+	}
+
+	if (!DNA_struct_elem_find(fd->filesdna, "FreestyleLineStyle", "MTex", "mtex")) {
+		FreestyleLineStyle *linestyle;
+
+		for (linestyle = main->linestyle.first; linestyle; linestyle = linestyle->id.next) {
+			linestyle->flag |= LS_TEXTURE;
+			linestyle->texstep = 1.0;
 		}
 	}
 }

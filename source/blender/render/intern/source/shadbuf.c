@@ -660,7 +660,7 @@ static void shadowbuf_autoclip(Render *re, LampRen *lar)
 			if (vlr->mat!= ma) {
 				ma= vlr->mat;
 				ok= 1;
-				if ((ma->mode & MA_SHADBUF)==0) ok= 0;
+				if ((ma->mode2 & MA_CASTSHADOW)==0 || (ma->mode & MA_SHADBUF)==0) ok= 0;
 			}
 			
 			if (ok && (obi->lay & lay)) {
@@ -925,7 +925,7 @@ void freeshadowbuf(LampRen *lar)
 			}
 			else {
 				intptr_t *ztile= shsample->zbuf;
-				char *ctile= shsample->cbuf;
+				const char *ctile= shsample->cbuf;
 				
 				v= (shb->size*shb->size)/256;
 				for (b=0; b<v; b++, ztile++, ctile++)
@@ -949,7 +949,7 @@ static int firstreadshadbuf(ShadBuf *shb, ShadSampleBuf *shsample, int **rz, int
 {
 	/* return a 1 if fully compressed shadbuf-tile && z==const */
 	int ofs;
-	char *ct;
+	const char *ct;
 
 	if (shsample->deepbuf)
 		return 0;
@@ -1614,7 +1614,7 @@ static void isb_bsp_split(ISBBranch *root, MemArena *mem)
 static int isb_bsp_insert(ISBBranch *root, MemArena *memarena, ISBSample *sample)
 {
 	ISBBranch *bspn= root;
-	float *zco= sample->zco;
+	const float *zco= sample->zco;
 	int i= 0;
 	
 	/* debug counter, also used to check if something was filled in ever */
@@ -2013,7 +2013,7 @@ static void isb_bsp_fillfaces(Render *re, LampRen *lar, ISBBranch *root)
 			if (vlr->mat!= ma) {
 				ma= vlr->mat;
 				ok= 1;
-				if ((ma->mode & MA_SHADBUF)==0) ok= 0;
+				if ((ma->mode2 & MA_CASTSHADOW)==0 || (ma->mode & MA_SHADBUF)==0) ok= 0;
 				if (ma->material_type == MA_TYPE_WIRE) ok= 0;
 				zspanstrand.shad_alpha= zspan.shad_alpha= ma->shad_alpha;
 			}
@@ -2120,7 +2120,7 @@ static int viewpixel_to_lampbuf(ShadBuf *shb, ObjectInstanceRen *obi, VlakRen *v
 	
 	/* clip We can test for -1.0/1.0 because of the properties of the
 	 * coordinate transformations. */
-	fac= fabs(hoco[3]);
+	fac = fabsf(hoco[3]);
 	if (hoco[0]<-fac || hoco[0]>fac)
 		return 0;
 	if (hoco[1]<-fac || hoco[1]>fac)
@@ -2574,7 +2574,7 @@ float ISB_getshadow(ShadeInput *shi, ShadBuf *shb)
 			
 					if (y >= 0 && y < isbdata->recty) {
 						if (isbdata->shadfacs) {
-							short *sp= isbdata->shadfacs + y*isbdata->rectx + x;
+							const short *sp= isbdata->shadfacs + y*isbdata->rectx + x;
 							return *sp>=4096?0.0f:1.0f - ((float)*sp)/4096.0f;
 						}
 						else {

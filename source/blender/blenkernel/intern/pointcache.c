@@ -37,7 +37,6 @@
 #include "MEM_guardedalloc.h"
 
 #include "DNA_ID.h"
-#include "DNA_cloth_types.h"
 #include "DNA_dynamicpaint_types.h"
 #include "DNA_modifier_types.h"
 #include "DNA_object_types.h"
@@ -63,10 +62,8 @@
 #include "BKE_anim.h"
 #include "BKE_blender.h"
 #include "BKE_cloth.h"
-#include "BKE_depsgraph.h"
 #include "BKE_dynamicpaint.h"
 #include "BKE_global.h"
-#include "BKE_library.h"
 #include "BKE_main.h"
 #include "BKE_modifier.h"
 #include "BKE_object.h"
@@ -3025,7 +3022,7 @@ PointCache *BKE_ptcache_add(ListBase *ptcaches)
 	cache= MEM_callocN(sizeof(PointCache), "PointCache");
 	cache->startframe= 1;
 	cache->endframe= 250;
-	cache->step= 10;
+	cache->step = 1;
 	cache->index = -1;
 
 	BLI_addtail(ptcaches, cache);

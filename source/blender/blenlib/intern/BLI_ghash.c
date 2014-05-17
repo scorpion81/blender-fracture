@@ -384,6 +384,16 @@ void *BLI_ghash_lookup(GHash *gh, const void *key)
 }
 
 /**
+ * A version of #BLI_ghash_lookup which accepts a fallback argument.
+ */
+void *BLI_ghash_lookup_default(GHash *gh, const void *key, void *val_default)
+{
+	Entry *e = ghash_lookup_entry(gh, key);
+	IS_GHASH_ASSERT(gh);
+	return e ? e->val : val_default;
+}
+
+/**
  * Lookup a pointer to the value of \a key in \a gh.
  *
  * \param key  The key to lookup.
@@ -559,11 +569,31 @@ void BLI_ghashIterator_init(GHashIterator *ghi, GHash *gh)
 	ghi->gh = gh;
 	ghi->curEntry = NULL;
 	ghi->curBucket = UINT_MAX;  /* wraps to zero */
-	while (!ghi->curEntry) {
-		ghi->curBucket++;
-		if (ghi->curBucket == ghi->gh->nbuckets)
-			break;
-		ghi->curEntry = ghi->gh->buckets[ghi->curBucket];
+	if (gh->nentries) {
+		while (!ghi->curEntry) {
+			ghi->curBucket++;
+			if (UNLIKELY(ghi->curBucket == ghi->gh->nbuckets))
+				break;
+			ghi->curEntry = ghi->gh->buckets[ghi->curBucket];
+		}
+	}
+}
+
+/**
+ * Steps the iterator to the next index.
+ *
+ * \param ghi The iterator.
+ */
+void BLI_ghashIterator_step(GHashIterator *ghi)
+{
+	if (ghi->curEntry) {
+		ghi->curEntry = ghi->curEntry->next;
+		while (!ghi->curEntry) {
+			ghi->curBucket++;
+			if (ghi->curBucket == ghi->gh->nbuckets)
+				break;
+			ghi->curEntry = ghi->gh->buckets[ghi->curBucket];
+		}
 	}
 }
 
@@ -627,24 +657,6 @@ bool BLI_ghashIterator_done(GHashIterator *ghi)
 	return ghi->curEntry == NULL;
 }
 #endif
-
-/**
- * Steps the iterator to the next index.
- *
- * \param ghi The iterator.
- */
-void BLI_ghashIterator_step(GHashIterator *ghi)
-{
-	if (ghi->curEntry) {
-		ghi->curEntry = ghi->curEntry->next;
-		while (!ghi->curEntry) {
-			ghi->curBucket++;
-			if (ghi->curBucket == ghi->gh->nbuckets)
-				break;
-			ghi->curEntry = ghi->gh->buckets[ghi->curBucket];
-		}
-	}
-}
 
 /** \} */
 
@@ -730,7 +742,7 @@ int BLI_ghashutil_intcmp(const void *a, const void *b)
  * This function implements the widely used "djb" hash apparently posted
  * by Daniel Bernstein to comp.lang.c some time ago.  The 32 bit
  * unsigned hash value starts at 5381 and for each byte 'c' in the
- * string, is updated: <literal>hash = hash * 33 + c</literal>.  This
+ * string, is updated: ``hash = hash * 33 + c``.  This
  * function uses the signed value of each byte.
  *
  * note: this is the same hash method that glib 2.34.0 uses.

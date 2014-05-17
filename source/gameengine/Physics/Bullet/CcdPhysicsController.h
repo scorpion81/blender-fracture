@@ -287,8 +287,8 @@ struct CcdConstructionInfo
 		m_fh_spring(0.f),
 		m_fh_damping(0.f),
 		m_fh_distance(1.f),
-		m_fh_normal(false),
-		m_contactProcessingThreshold(1e10f)
+		m_fh_normal(false)
+		// m_contactProcessingThreshold(1e10f)
 	{
 
 	}
@@ -390,8 +390,7 @@ struct CcdConstructionInfo
 	///however, rigid body stacking is more stable when positive contacts are still passed into the constraint solver
 	///this might sometimes lead to collisions with 'internal edges' such as a sliding character controller
 	///so disable/set m_contactProcessingThreshold to zero for sliding characters etc.
-	float		m_contactProcessingThreshold;///< Process contacts with positive distance in range [0..INF]
-
+	// float		m_contactProcessingThreshold;///< Process contacts with positive distance in range [0..INF]
 };
 
 class btRigidBody;
@@ -703,6 +702,8 @@ protected:
 		{
 			return GetConstructionInfo().m_shapeInfo->m_shapeType == PHY_SHAPE_COMPOUND;
 		}
+
+		virtual bool ReinstancePhysicsShape(KX_GameObject *from_gameobj, RAS_MeshObject* from_meshobj);
 
 #ifdef WITH_CXX_GUARDEDALLOC
 	MEM_CXX_CLASS_ALLOC_FUNCS("GE:CcdPhysicsController")

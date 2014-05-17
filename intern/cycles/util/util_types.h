@@ -159,8 +159,8 @@ struct int2 {
 	__forceinline int& operator[](int i) { return *(&x + i); }
 };
 
-#ifdef __KERNEL_SSE__
 struct ccl_try_align(16) int3 {
+#ifdef __KERNEL_SSE__
 	union {
 		__m128i m128;
 		struct { int x, y, z, w; };
@@ -171,7 +171,6 @@ struct ccl_try_align(16) int3 {
 	__forceinline operator const __m128i&(void) const { return m128; }
 	__forceinline operator __m128i&(void) { return m128; }
 #else
-struct ccl_try_align(16) int3 {
 	int x, y, z, w;
 #endif
 
@@ -179,8 +178,8 @@ struct ccl_try_align(16) int3 {
 	__forceinline int& operator[](int i) { return *(&x + i); }
 };
 
-#ifdef __KERNEL_SSE__
 struct ccl_try_align(16) int4 {
+#ifdef __KERNEL_SSE__
 	union {
 		__m128i m128;
 		struct { int x, y, z, w; };
@@ -191,7 +190,6 @@ struct ccl_try_align(16) int4 {
 	__forceinline operator const __m128i&(void) const { return m128; }
 	__forceinline operator __m128i&(void) { return m128; }
 #else
-struct ccl_try_align(16) int4 {
 	int x, y, z, w;
 #endif
 
@@ -227,8 +225,8 @@ struct float2 {
 	__forceinline float& operator[](int i) { return *(&x + i); }
 };
 
-#ifdef __KERNEL_SSE__
 struct ccl_try_align(16) float3 {
+#ifdef __KERNEL_SSE__
 	union {
 		__m128 m128;
 		struct { float x, y, z, w; };
@@ -239,7 +237,6 @@ struct ccl_try_align(16) float3 {
 	__forceinline operator const __m128&(void) const { return m128; }
 	__forceinline operator __m128&(void) { return m128; }
 #else
-struct ccl_try_align(16) float3 {
 	float x, y, z, w;
 #endif
 
@@ -247,8 +244,8 @@ struct ccl_try_align(16) float3 {
 	__forceinline float& operator[](int i) { return *(&x + i); }
 };
 
-#ifdef __KERNEL_SSE__
 struct ccl_try_align(16) float4 {
+#ifdef __KERNEL_SSE__
 	union {
 		__m128 m128;
 		struct { float x, y, z, w; };
@@ -259,7 +256,6 @@ struct ccl_try_align(16) float4 {
 	__forceinline operator const __m128&(void) const { return m128; }
 	__forceinline operator __m128&(void) { return m128; }
 #else
-struct ccl_try_align(16) float4 {
 	float x, y, z, w;
 #endif
 
@@ -459,6 +455,43 @@ enum InterpolationType {
 	INTERPOLATION_CUBIC = 2,
 	INTERPOLATION_SMART = 3,
 };
+
+
+/* macros */
+
+/* hints for branch prediction, only use in code that runs a _lot_ */
+#if defined(__GNUC__) && defined(__KERNEL_CPU__)
+#  define LIKELY(x)       __builtin_expect(!!(x), 1)
+#  define UNLIKELY(x)     __builtin_expect(!!(x), 0)
+#else
+#  define LIKELY(x)       (x)
+#  define UNLIKELY(x)     (x)
+#endif
+
+/* Causes warning:
+ * incompatible types when assigning to type 'Foo' from type 'Bar'
+ * ... the compiler optimizes away the temp var */
+#ifdef __GNUC__
+#define CHECK_TYPE(var, type)  {  \
+	__typeof(var) *__tmp;         \
+	__tmp = (type *)NULL;         \
+	(void)__tmp;                  \
+} (void)0
+
+#define CHECK_TYPE_PAIR(var_a, var_b)  {  \
+	__typeof(var_a) *__tmp;               \
+	__tmp = (__typeof(var_b) *)NULL;      \
+	(void)__tmp;                          \
+} (void)0
+#else
+#  define CHECK_TYPE(var, type)
+#  define CHECK_TYPE_PAIR(var_a, var_b)
+#endif
+
+/* can be used in simple macros */
+#define CHECK_TYPE_INLINE(val, type) \
+	((void)(((type)0) != (val)))
+
 
 CCL_NAMESPACE_END
 

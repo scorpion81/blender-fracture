@@ -25,6 +25,8 @@
  *  \date 01/07/2003
  */
 
+#include "../python/Director.h"
+
 #include "ChainingIterators.h"
 
 #include "../system/TimeStamp.h"
@@ -60,6 +62,16 @@ bool AdjacencyIterator::isValid(ViewEdge *edge)
 			return false;
 	}
 	return true;
+}
+
+int ChainingIterator::init()
+{
+	return Director_BPy_ChainingIterator_init(this);
+}
+
+int ChainingIterator::traverse(const AdjacencyIterator &it)
+{
+	return Director_BPy_ChainingIterator_traverse(this, const_cast<AdjacencyIterator &>(it));
 }
 
 int ChainingIterator::increment()
@@ -152,7 +164,7 @@ int ChainSilhouetteIterator::traverse(const AdjacencyIterator& ait)
 			Nature::RIDGE
 		};
 		int numNatures = sizeof(natures) / sizeof(Nature::EdgeNature);
-		for (unsigned int i = 0; i < numNatures; ++i) {
+		for (int i = 0; i < numNatures; ++i) {
 			if (getCurrentEdge()->getNature() & natures[i]) {
 				int n = 0;
 				while (!it.isEnd()) {

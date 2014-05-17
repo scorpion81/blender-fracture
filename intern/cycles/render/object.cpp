@@ -79,7 +79,7 @@ void Object::compute_bounds(bool motion_blur)
 		bounds = mbounds.transformed(&tfm);
 }
 
-void Object::apply_transform()
+void Object::apply_transform(bool apply_to_motion)
 {
 	if(!mesh || tfm == transform_identity())
 		return;
@@ -94,25 +94,28 @@ void Object::apply_transform()
 		/* apply to mesh vertices */
 		for(size_t i = 0; i < mesh->verts.size(); i++)
 			mesh->verts[i] = transform_point(&tfm, mesh->verts[i]);
+		
+		if(apply_to_motion) {
+			Attribute *attr = mesh->attributes.find(ATTR_STD_MOTION_VERTEX_POSITION);
 
-		Attribute *attr = mesh->attributes.find(ATTR_STD_MOTION_VERTEX_POSITION);
-		if (attr) {
-			size_t steps_size = mesh->verts.size() * (mesh->motion_steps - 1);
-			float3 *vert_steps = attr->data_float3();
+			if (attr) {
+				size_t steps_size = mesh->verts.size() * (mesh->motion_steps - 1);
+				float3 *vert_steps = attr->data_float3();
 
-			for (size_t i = 0; i < steps_size; i++)
-				vert_steps[i] = transform_point(&tfm, vert_steps[i]);
-		}
+				for (size_t i = 0; i < steps_size; i++)
+					vert_steps[i] = transform_point(&tfm, vert_steps[i]);
+			}
 
-		Attribute *attr_N = mesh->attributes.find(ATTR_STD_MOTION_VERTEX_NORMAL);
+			Attribute *attr_N = mesh->attributes.find(ATTR_STD_MOTION_VERTEX_NORMAL);
 
-		if(attr_N) {
-			Transform ntfm = mesh->transform_normal;
-			size_t steps_size = mesh->verts.size() * (mesh->motion_steps - 1);
-			float3 *normal_steps = attr_N->data_float3();
+			if(attr_N) {
+				Transform ntfm = mesh->transform_normal;
+				size_t steps_size = mesh->verts.size() * (mesh->motion_steps - 1);
+				float3 *normal_steps = attr_N->data_float3();
 
-			for (size_t i = 0; i < steps_size; i++)
-				normal_steps[i] = normalize(transform_direction(&ntfm, normal_steps[i]));
+				for (size_t i = 0; i < steps_size; i++)
+					normal_steps[i] = normalize(transform_direction(&ntfm, normal_steps[i]));
+			}
 		}
 	}
 
@@ -134,20 +137,22 @@ void Object::apply_transform()
 			mesh->curve_keys[i].w = radius;
 		}
 
-		Attribute *curve_attr = mesh->curve_attributes.find(ATTR_STD_MOTION_VERTEX_POSITION);
+		if(apply_to_motion) {
+			Attribute *curve_attr = mesh->curve_attributes.find(ATTR_STD_MOTION_VERTEX_POSITION);
 
-		if (curve_attr) {
-			/* apply transform to motion curve keys */
-			size_t steps_size = mesh->curve_keys.size() * (mesh->motion_steps - 1);
-			float4 *key_steps = curve_attr->data_float4();
+			if (curve_attr) {
+				/* apply transform to motion curve keys */
+				size_t steps_size = mesh->curve_keys.size() * (mesh->motion_steps - 1);
+				float4 *key_steps = curve_attr->data_float4();
 
-			for (size_t i = 0; i < steps_size; i++) {
-				float3 co = transform_point(&tfm, float4_to_float3(key_steps[i]));
-				float radius = key_steps[i].w * scalar;
+				for (size_t i = 0; i < steps_size; i++) {
+					float3 co = transform_point(&tfm, float4_to_float3(key_steps[i]));
+					float radius = key_steps[i].w * scalar;
 
-				/* scale for curve radius is only correct for uniform scale */
-				key_steps[i] = float3_to_float4(co);
-				key_steps[i].w = radius;
+					/* scale for curve radius is only correct for uniform scale */
+					key_steps[i] = float3_to_float4(co);
+					key_steps[i].w = radius;
+				}
 			}
 		}
 	}
@@ -189,10 +194,11 @@ vector<float> Object::motion_times()
 {
 	/* compute times at which we sample motion for this object */
 	vector<float> times;
-	int motion_steps = mesh->motion_steps;
 
-	if(!mesh || motion_steps == 1)
+	if(!mesh || mesh->motion_steps == 1)
 		return times;
+
+	int motion_steps = mesh->motion_steps;
 
 	for(int step = 0; step < motion_steps; step++) {
 		if(step != motion_steps / 2) {
@@ -288,8 +294,11 @@ void ObjectManager::device_update_transforms(Device *device, DeviceScene *dscene
 		/* pack in texture */
 		int offset = i*OBJECT_SIZE;
 
+		/* OBJECT_TRANSFORM */
 		memcpy(&objects[offset], &tfm, sizeof(float4)*3);
+		/* OBJECT_INVERSE_TRANSFORM */
 		memcpy(&objects[offset+4], &itfm, sizeof(float4)*3);
+		/* OBJECT_PROPERTIES */
 		objects[offset+8] = make_float4(surface_area, pass_id, random_number, __int_as_float(particle_index));
 
 		if(need_motion == Scene::MOTION_PASS) {
@@ -320,6 +329,9 @@ void ObjectManager::device_update_transforms(Device *device, DeviceScene *dscene
 			}
 		}
 #endif
+
+		if(mesh->use_motion_blur)
+			have_motion = true;
 
 		/* dupli object coords and motion info */
 		int totalsteps = mesh->motion_steps;
@@ -407,6 +419,7 @@ void ObjectManager::apply_static_transforms(DeviceScene *dscene, Scene *scene, u
 #ifdef __OBJECT_MOTION__
 	Scene::MotionType need_motion = scene->need_motion();
 	bool motion_blur = need_motion == Scene::MOTION_BLUR;
+	bool apply_to_motion = need_motion != Scene::MOTION_PASS;
 #else
 	bool motion_blur = false;
 #endif
@@ -429,7 +442,7 @@ void ObjectManager::apply_static_transforms(DeviceScene *dscene, Scene *scene, u
 		if(mesh_users[object->mesh] == 1) {
 			if(!(motion_blur && object->use_motion)) {
 				if(!object->mesh->transform_applied) {
-					object->apply_transform();
+					object->apply_transform(apply_to_motion);
 					object->mesh->transform_applied = true;
 
 					if(progress.get_cancel()) return;

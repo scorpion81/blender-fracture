@@ -49,10 +49,8 @@
 #include "BKE_scene.h"
 #include "BKE_screen.h"
 
-#include "ED_render.h"
 #include "ED_space_api.h"
 #include "ED_screen.h"
-#include "ED_object.h"
 
 #include "GPU_extensions.h"
 #include "GPU_material.h"
@@ -706,7 +704,6 @@ static void *view3d_main_area_duplicate(void *poin)
 		new->gpuoffscreen = NULL;
 		new->ri = NULL;
 		new->render_engine = NULL;
-		new->gpd = NULL;
 		new->sms = NULL;
 		new->smooth_timer = NULL;
 		

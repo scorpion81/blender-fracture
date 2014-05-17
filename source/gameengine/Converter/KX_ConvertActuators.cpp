@@ -1106,7 +1106,7 @@ void BL_ConvertActuators(const char* maggiename,
 			; /* generate some error */
 		}
 		
-		if (baseact)
+		if (baseact && !(bact->flag & ACT_DEACTIVATE))
 		{
 			baseact->SetExecutePriority(executePriority++);
 			uniquename += "#ACT#";
@@ -1122,6 +1122,8 @@ void BL_ConvertActuators(const char* maggiename,
 			// done with baseact, release it
 			baseact->Release();
 		}
+		else if (baseact)
+			baseact->Release();
 		
 		bact = bact->next;
 	}

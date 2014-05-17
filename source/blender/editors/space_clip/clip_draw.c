@@ -32,8 +32,6 @@
 #include "DNA_gpencil_types.h"
 #include "DNA_movieclip_types.h"
 #include "DNA_scene_types.h"
-#include "DNA_object_types.h"  /* SELECT */
-#include "DNA_mask_types.h"
 
 #include "MEM_guardedalloc.h"
 
@@ -44,14 +42,12 @@
 #include "BLI_utildefines.h"
 #include "BLI_math.h"
 #include "BLI_string.h"
-#include "BLI_rect.h"
 #include "BLI_math_base.h"
 
 #include "BKE_context.h"
 #include "BKE_image.h"
 #include "BKE_movieclip.h"
 #include "BKE_tracking.h"
-#include "BKE_mask.h"
 
 #include "ED_screen.h"
 #include "ED_clip.h"
@@ -61,7 +57,6 @@
 #include "BIF_gl.h"
 #include "BIF_glutil.h"
 
-#include "WM_api.h"
 #include "WM_types.h"
 
 #include "UI_interface.h"
@@ -279,7 +274,7 @@ static void draw_movieclip_muted(ARegion *ar, int width, int height, float zoomx
 	int x, y;
 
 	/* find window pixel coordinates of origin */
-	UI_view2d_to_region_no_clip(&ar->v2d, 0.0f, 0.0f, &x, &y);
+	UI_view2d_view_to_region(&ar->v2d, 0.0f, 0.0f, &x, &y);
 
 	glColor3f(0.0f, 0.0f, 0.0f);
 	glRectf(x, y, x + zoomx * width, y + zoomy * height);
@@ -293,7 +288,7 @@ static void draw_movieclip_buffer(const bContext *C, SpaceClip *sc, ARegion *ar,
 	int x, y;
 
 	/* find window pixel coordinates of origin */
-	UI_view2d_to_region_no_clip(&ar->v2d, 0.0f, 0.0f, &x, &y);
+	UI_view2d_view_to_region(&ar->v2d, 0.0f, 0.0f, &x, &y);
 
 	/* checkerboard for case alpha */
 	if (ibuf->planes == 32) {
@@ -328,7 +323,7 @@ static void draw_stabilization_border(SpaceClip *sc, ARegion *ar, int width, int
 	MovieClip *clip = ED_space_clip_get_clip(sc);
 
 	/* find window pixel coordinates of origin */
-	UI_view2d_to_region_no_clip(&ar->v2d, 0.0f, 0.0f, &x, &y);
+	UI_view2d_view_to_region(&ar->v2d, 0.0f, 0.0f, &x, &y);
 
 	/* draw boundary border for frame if stabilization is enabled */
 	if (sc->flag & SC_SHOW_STABLE && clip->tracking.stabilization.flag & TRACKING_2D_STABILIZATION) {
@@ -468,7 +463,7 @@ static void draw_track_path(SpaceClip *sc, MovieClip *UNUSED(clip), MovieTrackin
 }
 
 static void draw_marker_outline(SpaceClip *sc, MovieTrackingTrack *track, MovieTrackingMarker *marker,
-                                float marker_pos[2], int width, int height)
+                                const float marker_pos[2], int width, int height)
 {
 	int tiny = sc->flag & SC_SHOW_TINY_MARKER;
 	bool show_search = false;
@@ -571,7 +566,7 @@ static void track_colors(MovieTrackingTrack *track, int act, float col[3], float
 }
 
 static void draw_marker_areas(SpaceClip *sc, MovieTrackingTrack *track, MovieTrackingMarker *marker,
-                              float marker_pos[2], int width, int height, int act, int sel)
+                              const float marker_pos[2], int width, int height, int act, int sel)
 {
 	int tiny = sc->flag & SC_SHOW_TINY_MARKER;
 	bool show_search = false;
@@ -785,7 +780,7 @@ static void draw_marker_slide_triangle(float x, float y, float dx, float dy, int
 }
 
 static void draw_marker_slide_zones(SpaceClip *sc, MovieTrackingTrack *track, MovieTrackingMarker *marker,
-                                    float marker_pos[2], int outline, int sel, int act, int width, int height)
+                                    const float marker_pos[2], int outline, int sel, int act, int width, int height)
 {
 	float dx, dy, patdx, patdy, searchdx, searchdy;
 	int tiny = sc->flag & SC_SHOW_TINY_MARKER;
@@ -898,7 +893,7 @@ static void draw_marker_slide_zones(SpaceClip *sc, MovieTrackingTrack *track, Mo
 }
 
 static void draw_marker_texts(SpaceClip *sc, MovieTrackingTrack *track, MovieTrackingMarker *marker,
-                              float marker_pos[2], int act, int width, int height, float zoomx, float zoomy)
+                              const float marker_pos[2], int act, int width, int height, float zoomx, float zoomy)
 {
 	char str[128] = {0}, state[64] = {0};
 	float dx = 0.0f, dy = 0.0f, fontsize, pos[3];
@@ -1256,12 +1251,12 @@ static void draw_tracking_tracks(SpaceClip *sc, Scene *scene, ARegion *ar, Movie
 
 	/* ** find window pixel coordinates of origin ** */
 
-	/* UI_view2d_to_region_no_clip return integer values, this could
+	/* UI_view2d_view_to_region_no_clip return integer values, this could
 	 * lead to 1px flickering when view is locked to selection during playbeck.
 	 * to avoid this flickering, calculate base point in the same way as it happens
-	 * in UI_view2d_to_region_no_clip, but do it in floats here */
+	 * in UI_view2d_view_to_region_no_clip, but do it in floats here */
 
-	UI_view2d_to_region_float(&ar->v2d, 0.0f, 0.0f, &x, &y);
+	UI_view2d_view_to_region_fl(&ar->v2d, 0.0f, 0.0f, &x, &y);
 
 	glPushMatrix();
 	glTranslatef(x, y, 0);
@@ -1503,7 +1498,7 @@ static void draw_distortion(SpaceClip *sc, ARegion *ar, MovieClip *clip,
 	if ((sc->flag & SC_SHOW_GRID) == 0 && (sc->flag & SC_MANUAL_CALIBRATION) == 0)
 		return;
 
-	UI_view2d_to_region_float(&ar->v2d, 0.0f, 0.0f, &x, &y);
+	UI_view2d_view_to_region_fl(&ar->v2d, 0.0f, 0.0f, &x, &y);
 
 	glPushMatrix();
 	glTranslatef(x, y, 0);

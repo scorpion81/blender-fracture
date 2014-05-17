@@ -52,8 +52,7 @@ public:
 
 class SVMCompiler {
 public:
-	SVMCompiler(ShaderManager *shader_manager, ImageManager *image_manager,
-		bool use_multi_closure_);
+	SVMCompiler(ShaderManager *shader_manager, ImageManager *image_manager);
 	void compile(Shader *shader, vector<int4>& svm_nodes, int index);
 
 	void stack_assign(ShaderOutput *output);
@@ -123,10 +122,13 @@ protected:
 	bool node_skip_input(ShaderNode *node, ShaderInput *input);
 
 	/* single closure */
-	void find_dependencies(set<ShaderNode*>& dependencies, const set<ShaderNode*>& done, ShaderInput *input);
+	void find_dependencies(set<ShaderNode*>& dependencies,
+		const set<ShaderNode*>& done, ShaderInput *input);
 	void generate_node(ShaderNode *node, set<ShaderNode*>& done);
+	void generate_closure_node(ShaderNode *node, set<ShaderNode*>& done);
+	void generated_shared_closure_nodes(ShaderNode *node, set<ShaderNode*>& done,
+		set<ShaderNode*>& closure_done, const set<ShaderNode*>& shared);
 	void generate_svm_nodes(const set<ShaderNode*>& nodes, set<ShaderNode*>& done);
-	void generate_closure(ShaderNode *node, set<ShaderNode*>& done);
 
 	/* multi closure */
 	void generate_multi_closure(ShaderNode *node, set<ShaderNode*>& done, set<ShaderNode*>& closure_done);
@@ -141,7 +143,6 @@ protected:
 	Stack active_stack;
 	int max_stack_use;
 	uint mix_weight_offset;
-	bool use_multi_closure;
 	bool compile_failed;
 };
 

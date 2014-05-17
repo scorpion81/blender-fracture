@@ -43,10 +43,8 @@
 #include "BLF_translation.h"
 
 #include "BKE_DerivedMesh.h"
-#include "BKE_global.h"
 #include "BKE_lattice.h"
 #include "BKE_main.h"
-#include "BKE_object.h"
 #include "BKE_particle.h"
 #include "BKE_scene.h"
 #include "BKE_texture.h"
@@ -350,7 +348,7 @@ void free_pointdensities(Render *re)
 typedef struct PointDensityRangeData {
 	float *density;
 	float squared_radius;
-	float *point_data;
+	const float *point_data;
 	float *vec;
 	float softness;
 	short falloff_type;

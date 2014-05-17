@@ -44,7 +44,6 @@
 #include "BKE_image.h"
 #include "BKE_main.h"
 #include "BKE_node.h"
-#include "BKE_scene.h"
 #include "BKE_tracking.h"
 
 #include "BLF_api.h"
@@ -52,8 +51,6 @@
 
 #include "BIF_gl.h"
 #include "BIF_glutil.h"
-
-#include "MEM_guardedalloc.h"
 
 #include "RNA_access.h"
 #include "RNA_define.h"
@@ -338,7 +335,7 @@ static void node_draw_frame_prepare(const bContext *UNUSED(C), bNodeTree *ntree,
 {
 	const float margin = 1.5f * U.widget_unit;
 	NodeFrame *data = (NodeFrame *)node->storage;
-	int bbinit;
+	bool bbinit;
 	bNode *tnode;
 	rctf rect, noderect;
 	float xmax, ymax;

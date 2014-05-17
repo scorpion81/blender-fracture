@@ -35,7 +35,6 @@
 #include <stdlib.h>
 #include <stddef.h>
 
-#include "DNA_group_types.h"
 #include "DNA_image_types.h"
 #include "DNA_node_types.h"
 #include "DNA_object_types.h"
@@ -80,7 +79,6 @@
 #include "RE_pipeline.h"
 
 #ifdef WITH_FREESTYLE
-#  include "BKE_library.h"
 #  include "FRS_freestyle.h"
 #endif
 
@@ -144,6 +142,7 @@ static int thread_break(void *UNUSED(arg))
 /* default callbacks, set in each new render */
 static void result_nothing(void *UNUSED(arg), RenderResult *UNUSED(rr)) {}
 static void result_rcti_nothing(void *UNUSED(arg), RenderResult *UNUSED(rr), volatile struct rcti *UNUSED(rect)) {}
+static void current_scene_nothing(void *UNUSED(arg), Scene *UNUSED(scene)) {}
 static void stats_nothing(void *UNUSED(arg), RenderStats *UNUSED(rs)) {}
 static void float_nothing(void *UNUSED(arg), float UNUSED(val)) {}
 static int default_break(void *UNUSED(arg)) { return G.is_break == true; }
@@ -236,6 +235,17 @@ static int render_scene_needs_vector(Render *re)
 				return 1;
 
 	return 0;
+}
+
+static bool render_scene_has_layers_to_render(Scene *scene)
+{
+	SceneRenderLayer *srl;
+	for (srl = scene->r.layers.first; srl; srl = srl->next) {
+		if (!(srl->layflag & SCE_LAY_DISABLE)) {
+			return true;
+		}
+	}
+	return false;
 }
 
 /* *************************************************** */
@@ -395,6 +405,7 @@ void RE_InitRenderCB(Render *re)
 	re->display_init = result_nothing;
 	re->display_clear = result_nothing;
 	re->display_update = result_rcti_nothing;
+	re->current_scene_update = current_scene_nothing;
 	re->progress = float_nothing;
 	re->test_break = default_break;
 	if (G.background)
@@ -665,6 +676,10 @@ static void render_update_anim_renderdata(Render *re, RenderData *rd)
 	/* freestyle */
 	re->r.line_thickness_mode = rd->line_thickness_mode;
 	re->r.unit_line_thickness = rd->unit_line_thickness;
+
+	/* render layers */
+	BLI_freelistN(&re->r.layers);
+	BLI_duplicatelist(&re->r.layers, &rd->layers);
 }
 
 void RE_SetWindow(Render *re, rctf *viewplane, float clipsta, float clipend)
@@ -734,6 +749,11 @@ void RE_display_update_cb(Render *re, void *handle, void (*f)(void *handle, Rend
 {
 	re->display_update = f;
 	re->duh = handle;
+}
+void RE_current_scene_update_cb(Render *re, void *handle, void (*f)(void *handle, Scene *scene))
+{
+	re->current_scene_update = f;
+	re->suh = handle;
 }
 void RE_stats_draw_cb(Render *re, void *handle, void (*f)(void *handle, RenderStats *rs))
 {
@@ -1186,6 +1206,8 @@ static void do_render_3d(Render *re)
 {
 	int cfra_backup;
 
+	re->current_scene_update(re->suh, re->scene);
+
 	/* try external */
 	if (RE_engine_render(re, 0))
 		return;
@@ -1591,6 +1613,8 @@ static void render_scene(Render *re, Scene *sce, int cfra)
 	resc->tbh = re->tbh;
 	resc->stats_draw = re->stats_draw;
 	resc->sdh = re->sdh;
+	resc->current_scene_update = re->current_scene_update;
+	resc->suh = re->suh;
 	
 	do_render_fields_blur_3d(resc);
 }
@@ -1762,11 +1786,14 @@ static void tag_scenes_for_render(Render *re)
 
 				if (node->id != (ID *)re->scene) {
 					if ((node->id->flag & LIB_DOIT) == 0) {
-						node->flag |= NODE_TEST;
-						node->id->flag |= LIB_DOIT;
+						Scene *scene = (Scene *) node->id;
+						if (render_scene_has_layers_to_render(scene)) {
+							node->flag |= NODE_TEST;
+							node->id->flag |= LIB_DOIT;
 #ifdef DEPSGRAPH_WORKAROUND_HACK
-						tag_dependend_objects_for_render((Scene *) node->id, renderlay);
+							tag_dependend_objects_for_render(scene, renderlay);
 #endif
+						}
 					}
 				}
 			}
@@ -2291,6 +2318,8 @@ static void do_render_seq(Render *re)
 /* main loop: doing sequence + fields + blur + 3d render + compositing */
 static void do_render_all_options(Render *re)
 {
+	re->current_scene_update(re->suh, re->scene);
+
 	BKE_scene_camera_switch_update(re->scene);
 
 	re->i.starttime = PIL_check_seconds_timer();
@@ -2431,7 +2460,6 @@ static int check_composite_output(Scene *scene)
 
 bool RE_is_rendering_allowed(Scene *scene, Object *camera_override, ReportList *reports)
 {
-	SceneRenderLayer *srl;
 	int scemode = check_mode_full_sample(&scene->r);
 	
 	if (scene->r.mode & R_BORDER) {
@@ -2506,10 +2534,7 @@ bool RE_is_rendering_allowed(Scene *scene, Object *camera_override, ReportList *
 	}
 	
 	/* layer flag tests */
-	for (srl = scene->r.layers.first; srl; srl = srl->next)
-		if (!(srl->layflag & SCE_LAY_DISABLE))
-			break;
-	if (srl == NULL) {
+	if (!render_scene_has_layers_to_render(scene)) {
 		BKE_report(reports, RPT_ERROR, "All render layers are disabled");
 		return 0;
 	}

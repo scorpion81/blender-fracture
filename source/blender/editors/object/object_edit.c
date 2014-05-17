@@ -45,7 +45,6 @@
 #include "DNA_armature_types.h"
 #include "DNA_curve_types.h"
 #include "DNA_group_types.h"
-#include "DNA_lattice_types.h"
 #include "DNA_material_types.h"
 #include "DNA_meta_types.h"
 #include "DNA_property_types.h"
@@ -64,7 +63,6 @@
 #include "BKE_curve.h"
 #include "BKE_effect.h"
 #include "BKE_depsgraph.h"
-#include "BKE_font.h"
 #include "BKE_image.h"
 #include "BKE_library.h"
 #include "BKE_main.h"
@@ -72,7 +70,6 @@
 #include "BKE_mball.h"
 #include "BKE_mesh.h"
 #include "BKE_object.h"
-#include "BKE_paint.h"
 #include "BKE_pointcache.h"
 #include "BKE_property.h"
 #include "BKE_sca.h"
@@ -209,7 +206,7 @@ static int object_hide_view_set_exec(bContext *C, wmOperator *op)
 		DAG_id_type_tag(bmain, ID_OB);
 		DAG_relations_tag_update(bmain);
 		
-		WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, CTX_data_scene(C));
+		WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, scene);
 		
 	}
 
@@ -1130,8 +1127,7 @@ static int forcefield_toggle_exec(bContext *C, wmOperator *UNUSED(op))
 
 	if (ob->pd == NULL)
 		ob->pd = object_add_collision_fields(PFIELD_FORCE);
-
-	if (ob->pd->forcefield == 0)
+	else if (ob->pd->forcefield == 0)
 		ob->pd->forcefield = PFIELD_FORCE;
 	else
 		ob->pd->forcefield = 0;
@@ -1873,7 +1869,7 @@ void OBJECT_OT_game_property_copy(wmOperatorType *ot)
 
 	RNA_def_enum(ot->srna, "operation", game_properties_copy_operations, 3, "Operation", "");
 	prop = RNA_def_enum(ot->srna, "property", DummyRNA_NULL_items, 0, "Property", "Properties to copy");
-	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE | PROP_ENUM_NO_TRANSLATE);
 	RNA_def_enum_funcs(prop, gameprops_itemf);
 	ot->prop = prop;
 }

@@ -80,9 +80,9 @@ typedef struct TransSnap {
 	short	modePoint;
 	short	modeSelect;
 	bool	align;
-	char	project;
-	char	snap_self;
-	short	peel;
+	bool	project;
+	bool	snap_self;
+	bool	peel;
 	short  	status;
 	float	snapPoint[3]; /* snapping from this point */
 	float	snapTarget[3]; /* to this point */
@@ -96,7 +96,8 @@ typedef struct TransSnap {
 	void  (*applySnap)(struct TransInfo *, float *);
 	void  (*calcSnap)(struct TransInfo *, float *);
 	void  (*targetSnap)(struct TransInfo *);
-	float  (*distance)(struct TransInfo *, float p1[3], float p2[3]); // Get the transform distance between two points (used by Closest snap)
+	/* Get the transform distance between two points (used by Closest snap) */
+	float  (*distance)(struct TransInfo *, const float p1[3], const float p2[3]);
 } TransSnap;
 
 typedef struct TransCon {
@@ -276,7 +277,7 @@ typedef struct MouseInput {
 	void	(*post)(struct TransInfo *t, float values[3]);
 
 	int     imval[2];       	/* initial mouse position                */
-	char	precision;
+	bool	precision;
 	int     precision_mval[2];	/* mouse position when precision key was pressed */
 	float	center[2];
 	float	factor;
@@ -349,7 +350,7 @@ typedef struct TransInfo {
 	float		axis[3];
 	float		axis_orig[3];	/* TransCon can change 'axis', store the original value here */
 
-	short		remove_on_cancel; /* remove elements if operator is canceled */
+	bool		remove_on_cancel; /* remove elements if operator is canceled */
 
 	void		*view;
 	struct bContext *context; /* Only valid (non null) during an operator called function. */
@@ -460,7 +461,6 @@ typedef struct TransInfo {
 
 /* transdata->flag */
 #define TD_SELECTED			1
-#define TD_ACTIVE			(1 << 1)
 #define	TD_NOACTION			(1 << 2)
 #define	TD_USEQUAT			(1 << 3)
 #define TD_NOTCONNECTED		(1 << 4)
@@ -485,7 +485,7 @@ typedef struct TransInfo {
 #define POINT_INIT		4
 #define MULTI_POINTS	8
 
-int initTransform(struct bContext *C, struct TransInfo *t, struct wmOperator *op, const struct wmEvent *event, int mode);
+bool initTransform(struct bContext *C, struct TransInfo *t, struct wmOperator *op, const struct wmEvent *event, int mode);
 void saveTransform(struct bContext *C, struct TransInfo *t, struct wmOperator *op);
 int  transformEvent(TransInfo *t, const struct wmEvent *event);
 void transformApply(struct bContext *C, TransInfo *t);
@@ -522,7 +522,7 @@ void flushTransTracking(TransInfo *t);
 void flushTransMasking(TransInfo *t);
 
 /*********************** exported from transform_manipulator.c ********** */
-int gimbal_axis(struct Object *ob, float gmat[3][3]); /* return 0 when no gimbal for selection */
+bool gimbal_axis(struct Object *ob, float gmat[3][3]); /* return 0 when no gimbal for selection */
 int calc_manipulator_stats(const struct bContext *C);
 
 /*********************** TransData Creation and General Handling *********** */
@@ -635,13 +635,18 @@ void applyTransObjects(TransInfo *t);
 void restoreTransObjects(TransInfo *t);
 void recalcData(TransInfo *t);
 
-void calculateCenter(TransInfo *t);
 void calculateCenter2D(TransInfo *t);
-void calculateCenterBound(TransInfo *t);
-void calculateCenterMedian(TransInfo *t);
-void calculateCenterCursor(TransInfo *t);
 
-void calculateCenterCursor2D(TransInfo *t);
+void calculateCenter(TransInfo *t);
+
+/* API functions for getting center points */
+void calculateCenterBound(TransInfo *t, float r_center[3]);
+void calculateCenterMedian(TransInfo *t, float r_center[3]);
+void calculateCenterCursor(TransInfo *t, float r_center[3]);
+void calculateCenterCursor2D(TransInfo *t, float r_center[2]);
+void calculateCenterCursorGraph2D(TransInfo *t, float r_center[2]);
+bool calculateCenterActive(TransInfo *t, bool select_only, float r_center[3]);
+
 void calculatePropRatio(TransInfo *t);
 
 void getViewVector(TransInfo *t, float coord[3], float vec[3]);

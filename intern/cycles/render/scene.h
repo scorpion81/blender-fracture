@@ -51,6 +51,8 @@ class CurveSystemManager;
 class Shader;
 class ShaderManager;
 class Progress;
+class BakeManager;
+class BakeData;
 
 /* Scene Device Data */
 
@@ -103,8 +105,8 @@ public:
 	/* integrator */
 	device_vector<uint> sobol_directions;
 
-	/* images */
-	device_vector<uchar4> tex_image[TEX_EXTENDED_NUM_IMAGES];
+	/* cpu images */
+	device_vector<uchar4> tex_image[TEX_EXTENDED_NUM_IMAGES_CPU];
 	device_vector<float4> tex_float_image[TEX_EXTENDED_NUM_FLOAT_IMAGES];
 
 	/* opencl images */
@@ -174,6 +176,7 @@ public:
 	ObjectManager *object_manager;
 	ParticleSystemManager *particle_system_manager;
 	CurveSystemManager *curve_system_manager;
+	BakeManager *bake_manager;
 
 	/* default shaders */
 	int default_surface;

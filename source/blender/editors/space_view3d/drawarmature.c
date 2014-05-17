@@ -271,7 +271,7 @@ static bool set_pchan_glColor(short colCode, int boneflag, short constflag)
 			}
 			else {
 				if (bcolor) {
-					char *cp = bcolor->solid;
+					const char *cp = bcolor->solid;
 					glColor4ub(cp[0], cp[1], cp[2], 204);
 				}
 				else
@@ -1467,7 +1467,7 @@ static void bgl_sphere_project(float ax, float az)
 
 static void draw_dof_ellipse(float ax, float az)
 {
-	static float staticSine[16] = {
+	const float staticSine[16] = {
 		0.0f, 0.104528463268f, 0.207911690818f, 0.309016994375f,
 		0.406736643076f, 0.5f, 0.587785252292f, 0.669130606359f,
 		0.743144825477f, 0.809016994375f, 0.866025403784f,
@@ -2065,7 +2065,7 @@ static void draw_pose_bones(Scene *scene, View3D *v3d, ARegion *ar, Base *base,
 						/*  Draw names of bone  */
 						if (arm->flag & ARM_DRAWNAMES) {
 							mid_v3_v3v3(vec, pchan->pose_head, pchan->pose_tail);
-							view3d_cached_text_draw_add(vec, pchan->name, 10, 0, col);
+							view3d_cached_text_draw_add(vec, pchan->name, strlen(pchan->name), 10, 0, col);
 						}
 						
 						/*	Draw additional axes on the bone tail  */
@@ -2270,7 +2270,7 @@ static void draw_ebones(View3D *v3d, ARegion *ar, Object *ob, const short dt)
 						if (arm->flag & ARM_DRAWNAMES) {
 							mid_v3_v3v3(vec, eBone->head, eBone->tail);
 							glRasterPos3fv(vec);
-							view3d_cached_text_draw_add(vec, eBone->name, 10, 0, col);
+							view3d_cached_text_draw_add(vec, eBone->name, strlen(eBone->name), 10, 0, col);
 						}
 						/*	Draw additional axes */
 						if (arm->flag & ARM_DRAWAXES) {

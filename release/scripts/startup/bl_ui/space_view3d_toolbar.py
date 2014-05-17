@@ -385,10 +385,20 @@ class VIEW3D_PT_tools_shading(View3DPanel, Panel):
         layout = self.layout
 
         col = layout.column(align=True)
-        col.label(text="Shading:")
+        col.label(text="Faces:")
         row = col.row(align=True)
         row.operator("mesh.faces_shade_smooth", text="Smooth")
         row.operator("mesh.faces_shade_flat", text="Flat")
+        col.label(text="Edges:")
+        row = col.row(align=True)
+        row.operator("mesh.mark_sharp", text="Smooth").clear = True
+        row.operator("mesh.mark_sharp", text="Sharp")
+        col.label(text="Vertices:")
+        row = col.row(align=True)
+        op = row.operator("mesh.mark_sharp", text="Smooth")
+        op.use_verts = True
+        op.clear = True
+        row.operator("mesh.mark_sharp", text="Sharp").use_verts = True
 
         col = layout.column(align=True)
         col.label(text="Normals:")
@@ -603,18 +613,27 @@ class VIEW3D_PT_tools_textedit(View3DPanel, Panel):
 # ********** default tools for editmode_armature ****************
 
 
-class VIEW3D_PT_tools_armatureedit(View3DPanel, Panel):
+class VIEW3D_PT_tools_armatureedit_transform(View3DPanel, Panel):
+    bl_category = "Tools"
     bl_context = "armature_edit"
-    bl_label = "Armature Tools"
+    bl_label = "Transform"
 
     def draw(self, context):
         layout = self.layout
 
         col = layout.column(align=True)
-        col.label(text="Transform:")
         col.operator("transform.translate")
         col.operator("transform.rotate")
         col.operator("transform.resize", text="Scale")
+
+
+class VIEW3D_PT_tools_armatureedit(View3DPanel, Panel):
+    bl_category = "Tools"
+    bl_context = "armature_edit"
+    bl_label = "Armature Tools"
+
+    def draw(self, context):
+        layout = self.layout
 
         col = layout.column(align=True)
         col.label(text="Bones:")
@@ -635,6 +654,7 @@ class VIEW3D_PT_tools_armatureedit(View3DPanel, Panel):
 
 
 class VIEW3D_PT_tools_armatureedit_options(View3DPanel, Panel):
+    bl_category = "Options"
     bl_context = "armature_edit"
     bl_label = "Armature Options"
 
@@ -642,6 +662,7 @@ class VIEW3D_PT_tools_armatureedit_options(View3DPanel, Panel):
         arm = context.active_object.data
 
         self.layout.prop(arm, "use_mirror_x")
+
 
 # ********** default tools for editmode_mball ****************
 
@@ -1079,7 +1100,6 @@ class VIEW3D_PT_tools_brush_texture(Panel, View3DPaintPanel):
 
         settings = self.paint_settings(context)
         brush = settings.brush
-        tex_slot = brush.texture_slot
 
         col = layout.column()
 
@@ -1103,7 +1123,6 @@ class VIEW3D_PT_tools_mask_texture(View3DPanel, Panel):
         layout = self.layout
 
         brush = context.tool_settings.image_paint.brush
-        tex_slot_alpha = brush.mask_texture_slot
 
         col = layout.column()
 
@@ -1294,14 +1313,6 @@ class VIEW3D_PT_sculpt_options(Panel, View3DPaintPanel):
         col.label(text="Gravity:")
         col.prop(sculpt, "gravity", slider=True, text="Factor")
         col.prop(sculpt, "gravity_object")
-        col.separator()
-
-        col = layout.column(align=True)
-        col.label(text="Threads:")
-        col.row(align=True).prop(scene, "omp_threads_mode", expand=True)
-        sub = col.column(align=True)
-        sub.enabled = (scene.omp_threads_mode != 'AUTO')
-        sub.prop(scene, "omp_threads")
         col.separator()
 
         layout.prop(sculpt, "use_threaded", text="Threaded Sculpt")

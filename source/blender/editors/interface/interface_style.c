@@ -38,7 +38,6 @@
 #include "DNA_screen_types.h"
 #include "DNA_userdef_types.h"
 
-#include "BLI_math.h"
 #include "BLI_listbase.h"
 #include "BLI_rect.h"
 #include "BLI_string.h"
@@ -56,6 +55,9 @@
 
 #include "interface_intern.h"
 
+#ifdef WIN32
+#  include "BLI_math_base.h" /* M_PI */
+#endif
 
 /* style + theme + layout-engine = UI */
 
@@ -430,7 +432,7 @@ void uiStyleInit(void)
 	if (blf_mono_font_render == -1)
 		blf_mono_font_render = BLF_load_mem_unique("monospace", monofont_ttf, monofont_size);
 
-	BLF_size(blf_mono_font_render, 12 * U.pixelsize, 72 );
+	BLF_size(blf_mono_font_render, 12 * U.pixelsize, 72);
 }
 
 void uiStyleFontSet(uiFontStyle *fs)

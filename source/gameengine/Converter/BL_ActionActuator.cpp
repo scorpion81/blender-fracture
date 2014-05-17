@@ -35,6 +35,7 @@
 #include "BL_ArmatureObject.h"
 #include "BL_SkinDeformer.h"
 #include "BL_Action.h"
+#include "BL_ActionManager.h"
 #include "KX_GameObject.h"
 #include "STR_HashedString.h"
 #include "MEM_guardedalloc.h"
@@ -259,7 +260,8 @@ bool BL_ActionActuator::Update(double curtime, bool frame)
 
 		if (m_playtype == ACT_ACTION_PINGPONG)
 			m_flag ^= ACT_FLAG_REVERSE;
-		return false;
+		else
+			return false;
 	}
 	
 	// If a different action is playing, we've been overruled and are no longer active
@@ -535,7 +537,7 @@ PyAttributeDef BL_ActionActuator::Attributes[] = {
 	KX_PYATTRIBUTE_RW_FUNCTION("action", BL_ActionActuator, pyattr_get_action, pyattr_set_action),
 	KX_PYATTRIBUTE_RO_FUNCTION("channelNames", BL_ActionActuator, pyattr_get_channel_names),
 	KX_PYATTRIBUTE_SHORT_RW("priority", 0, 100, false, BL_ActionActuator, m_priority),
-	KX_PYATTRIBUTE_SHORT_RW("layer", 0, 7, true, BL_ActionActuator, m_layer),
+	KX_PYATTRIBUTE_SHORT_RW("layer", 0, MAX_ACTION_LAYERS-1, true, BL_ActionActuator, m_layer),
 	KX_PYATTRIBUTE_FLOAT_RW("layerWeight", 0, 1.0, BL_ActionActuator, m_layer_weight),
 	KX_PYATTRIBUTE_RW_FUNCTION("frame", BL_ActionActuator, pyattr_get_frame, pyattr_set_frame),
 	KX_PYATTRIBUTE_STRING_RW("propName", 0, MAX_PROP_NAME, false, BL_ActionActuator, m_propname),

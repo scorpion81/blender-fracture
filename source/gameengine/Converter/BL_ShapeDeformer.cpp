@@ -129,7 +129,7 @@ bool BL_ShapeDeformer::LoadShapeDrivers(KX_GameObject* parent)
 	}
 
 	// Fix drivers since BL_ArmatureObject makes copies
-	if (parent->GetGameObjectType() == SCA_IObject::OBJ_ARMATURE) {
+	if (parent->GetGameObjectType() == SCA_IObject::OBJ_ARMATURE && GetKey()->adt) {
 		BL_ArmatureObject *arma = (BL_ArmatureObject*)parent;
 		FCurve *fcu;
 
@@ -222,6 +222,9 @@ bool BL_ShapeDeformer::Update(void)
 		if (m_recalcNormal)
 			RecalcNormals();
 #endif
+
+		// We also need to handle transverts now (used to be in BL_SkinDeformer::Apply())
+		UpdateTransverts();
 		bSkinUpdate = true;
 	}
 

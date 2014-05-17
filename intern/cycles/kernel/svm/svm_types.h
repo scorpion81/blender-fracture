@@ -36,7 +36,8 @@ typedef enum NodeType {
 	NODE_CLOSURE_SET_WEIGHT,
 	NODE_CLOSURE_WEIGHT,
 	NODE_MIX_CLOSURE,
-	NODE_JUMP,
+	NODE_JUMP_IF_ZERO,
+	NODE_JUMP_IF_ONE,
 	NODE_TEX_IMAGE,
 	NODE_TEX_IMAGE_BOX,
 	NODE_TEX_SKY,
@@ -71,7 +72,6 @@ typedef enum NodeType {
 	NODE_TEX_COORD,
 	NODE_TEX_COORD_BUMP_DX,
 	NODE_TEX_COORD_BUMP_DY,
-	NODE_ADD_CLOSURE,
 	NODE_EMISSION_SET_WEIGHT_TOTAL,
 	NODE_ATTR_BUMP_DX,
 	NODE_ATTR_BUMP_DY,
@@ -159,7 +159,8 @@ typedef enum NodeLightPath {
 	NODE_LP_volume_scatter,
 	NODE_LP_backfacing,
 	NODE_LP_ray_length,
-	NODE_LP_ray_depth
+	NODE_LP_ray_depth,
+	NODE_LP_ray_transparent
 } NodeLightPath;
 
 typedef enum NodeLightFalloff {
@@ -220,6 +221,7 @@ typedef enum NodeMath {
 	NODE_MATH_LESS_THAN,
 	NODE_MATH_GREATER_THAN,
 	NODE_MATH_MODULO,
+    NODE_MATH_ABSOLUTE,
 	NODE_MATH_CLAMP /* used for the clamp UI option */
 } NodeMath;
 

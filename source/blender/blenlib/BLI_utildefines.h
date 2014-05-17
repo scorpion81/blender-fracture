@@ -34,6 +34,7 @@
 
 /* avoid many includes for now */
 #include "BLI_sys_types.h"
+#include "BLI_compiler_compat.h"
 
 #ifndef NDEBUG /* for BLI_assert */
 #include <stdio.h>
@@ -386,15 +387,8 @@
 #define STRCASEEQLEN(a, b, n) (strncasecmp(a, b, n) == 0)
 
 #define STRPREFIX(a, b) (strncmp((a), (b), strlen(b)) == 0)
-
-
 /* useful for debugging */
 #define AT __FILE__ ":" STRINGIFY(__LINE__)
-
-/* so we can use __func__ everywhere */
-#if defined(_MSC_VER)
-#  define __func__ __FUNCTION__
-#endif
 
 
 /* UNUSED macro, for function argument */
@@ -466,7 +460,7 @@
 #  define BLI_STATIC_ASSERT(a, msg)
 #endif
 
-/* hints for branch pradiction, only use in code that runs a _lot_ where */
+/* hints for branch prediction, only use in code that runs a _lot_ where */
 #ifdef __GNUC__
 #  define LIKELY(x)       __builtin_expect(!!(x), 1)
 #  define UNLIKELY(x)     __builtin_expect(!!(x), 0)

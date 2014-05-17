@@ -58,7 +58,6 @@
 #include "BKE_global.h"
 #include "BKE_report.h"
 #include "BKE_main.h"
-#include "BKE_library.h"
 #include "BKE_movieclip.h"
 #include "BKE_sound.h"
 #include "BKE_tracking.h"
@@ -780,7 +779,7 @@ static int view_all_exec(bContext *C, wmOperator *op)
 
 	sc->xof = sc->yof = 0.0f;
 
-	ED_region_tag_redraw(CTX_wm_region(C));
+	ED_region_tag_redraw(ar);
 
 	return OPERATOR_FINISHED;
 }
@@ -814,7 +813,7 @@ static int view_selected_exec(bContext *C, wmOperator *UNUSED(op))
 	sc->ylockof = 0.0f;
 
 	ED_clip_view_selection(C, ar, 1);
-	ED_region_tag_redraw(CTX_wm_region(C));
+	ED_region_tag_redraw(ar);
 
 	return OPERATOR_FINISHED;
 }
@@ -852,7 +851,7 @@ static void change_frame_apply(bContext *C, wmOperator *op)
 	SUBFRA = 0.0f;
 
 	/* do updates */
-	sound_seek_scene(CTX_data_main(C), CTX_data_scene(C));
+	sound_seek_scene(CTX_data_main(C), scene);
 	WM_event_add_notifier(C, NC_SCENE | ND_FRAME, scene);
 }
 
@@ -1018,8 +1017,11 @@ static void do_movie_proxy(void *pjv, int *UNUSED(build_sizes), int UNUSED(build
 
 	if (build_undistort_count) {
 		int threads = BLI_system_thread_count();
+		int width, height;
 
-		distortion = BKE_tracking_distortion_new();
+		BKE_movieclip_get_size(clip, NULL, &width, &height);
+
+		distortion = BKE_tracking_distortion_new(&clip->tracking, width, height);
 		BKE_tracking_distortion_set_threads(distortion, threads);
 	}
 
@@ -1053,7 +1055,7 @@ typedef struct ProxyQueue {
 	int efra;
 	SpinLock spin;
 
-	short *stop;
+	const short *stop;
 	short *do_update;
 	float *progress;
 } ProxyQueue;
@@ -1185,8 +1187,11 @@ static void do_sequence_proxy(void *pjv, int *build_sizes, int build_count,
 		handle->build_undistort_count = build_undistort_count;
 		handle->build_undistort_sizes = build_undistort_sizes;
 
-		if (build_undistort_count)
-			handle->distortion = BKE_tracking_distortion_new();
+		if (build_undistort_count) {
+			int width, height;
+			BKE_movieclip_get_size(clip, NULL, &width, &height);
+			handle->distortion = BKE_tracking_distortion_new(&clip->tracking, width, height);
+		}
 
 		if (tot_thread > 1)
 			BLI_insert_thread(&threads, handle);
@@ -1280,7 +1285,7 @@ static int clip_rebuild_proxy_exec(bContext *C, wmOperator *UNUSED(op))
 	G.is_break = false;
 	WM_jobs_start(CTX_wm_manager(C), wm_job);
 
-	ED_area_tag_redraw(CTX_wm_area(C));
+	ED_area_tag_redraw(sa);
 
 	return OPERATOR_FINISHED;
 }

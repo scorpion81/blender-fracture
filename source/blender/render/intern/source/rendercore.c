@@ -45,23 +45,12 @@
 #include "BLI_threads.h"
 #include "BLI_utildefines.h"
 
-
-
 #include "DNA_image_types.h"
 #include "DNA_lamp_types.h"
 #include "DNA_material_types.h"
-#include "DNA_mesh_types.h"
-#include "DNA_meshdata_types.h"
 #include "DNA_group_types.h"
 
-#include "BKE_customdata.h"
-#include "BKE_depsgraph.h"
-#include "BKE_global.h"
-#include "BKE_image.h"
 #include "BKE_main.h"
-#include "BKE_node.h"
-#include "BKE_texture.h"
-#include "BKE_scene.h"
 
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"
@@ -348,7 +337,7 @@ static void lamphalo_tile(RenderPart *pa, RenderLayer *rl)
 	float *pass;
 	float fac, col[4];
 	intptr_t *rd= pa->rectdaps;
-	int *rz= pa->rectz;
+	const int *rz= pa->rectz;
 	int x, y, sample, totsample, fullsample, od;
 	
 	totsample= get_sample_layers(pa, rl, rlpp);
@@ -763,7 +752,7 @@ static void atm_tile(RenderPart *pa, RenderLayer *rl)
 			int sample;
 			
 			for (sample=0; sample<totsample; sample++) {
-				float *zrect= RE_RenderLayerGetPass(rlpp[sample], SCE_PASS_Z) + od;
+				const float *zrect= RE_RenderLayerGetPass(rlpp[sample], SCE_PASS_Z) + od;
 				float *rgbrect = rlpp[sample]->rectf + 4*od;
 				float rgb[3] = {0};
 				bool done = false;
@@ -1157,10 +1146,10 @@ static void make_pixelstructs(RenderPart *pa, ZSpan *zspan, int sample, void *da
 	ZbufSolidData *sdata = (ZbufSolidData *)data;
 	ListBase *lb= sdata->psmlist;
 	intptr_t *rd= pa->rectdaps;
-	int *ro= zspan->recto;
-	int *rp= zspan->rectp;
-	int *rz= zspan->rectz;
-	int *rm= zspan->rectmask;
+	const int *ro= zspan->recto;
+	const int *rp= zspan->rectp;
+	const int *rz= zspan->rectz;
+	const int *rm= zspan->rectmask;
 	int x, y;
 	int mask= 1<<sample;
 
@@ -1363,8 +1352,8 @@ void zbufshade_tile(RenderPart *pa)
 			rr->renlay= rl;
 			
 			if (rl->layflag & SCE_LAY_SOLID) {
-				float *fcol= rl->rectf;
-				int *ro= pa->recto, *rp= pa->rectp, *rz= pa->rectz;
+				const float *fcol= rl->rectf;
+				const int *ro= pa->recto, *rp= pa->rectp, *rz= pa->rectz;
 				int x, y, offs=0, seed;
 				
 				/* we set per pixel a fixed seed, for random AO and shadow samples */
@@ -1910,9 +1899,9 @@ static void renderflare(RenderResult *rr, float *rectf, HaloRen *har)
 	
 	for (b=1; b<har->flarec; b++) {
 		
-		fla.r= fabs(rc[0]);
-		fla.g= fabs(rc[1]);
-		fla.b= fabs(rc[2]);
+		fla.r = fabsf(rc[0]);
+		fla.g = fabsf(rc[1]);
+		fla.b = fabsf(rc[2]);
 		fla.alfa= ma->flareboost*fabsf(alfa*visifac*rc[3]);
 		fla.hard= 20.0f + fabsf(70.0f*rc[7]);
 		fla.tex= 0;

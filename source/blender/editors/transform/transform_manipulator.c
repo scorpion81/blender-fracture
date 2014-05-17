@@ -35,18 +35,9 @@
 #include <math.h>
 #include <float.h>
 
-#ifndef WIN32
-#include <unistd.h>
-#else
-#include <io.h>
-#endif
-
-#include "MEM_guardedalloc.h"
-
 #include "DNA_armature_types.h"
 #include "DNA_curve_types.h"
 #include "DNA_lattice_types.h"
-#include "DNA_mesh_types.h"
 #include "DNA_meta_types.h"
 #include "DNA_screen_types.h"
 #include "DNA_scene_types.h"
@@ -61,7 +52,6 @@
 #include "BKE_context.h"
 #include "BKE_curve.h"
 #include "BKE_global.h"
-#include "BKE_mesh.h"
 #include "BKE_particle.h"
 #include "BKE_pointcache.h"
 #include "BKE_editmesh.h"
@@ -74,7 +64,6 @@
 
 #include "ED_armature.h"
 #include "ED_curve.h"
-#include "ED_mesh.h"
 #include "ED_particle.h"
 #include "ED_view3d.h"
 
@@ -202,7 +191,7 @@ static int test_rotmode_euler(short rotmode)
 	return (ELEM(rotmode, ROT_MODE_AXISANGLE, ROT_MODE_QUAT)) ? 0 : 1;
 }
 
-int gimbal_axis(Object *ob, float gmat[3][3])
+bool gimbal_axis(Object *ob, float gmat[3][3])
 {
 	if (ob) {
 		if (ob->mode & OB_MODE_POSE) {
@@ -461,16 +450,19 @@ int calc_manipulator_stats(const bContext *C)
 		}
 		else if (obedit->type == OB_MBALL) {
 			MetaBall *mb = (MetaBall *)obedit->data;
-			MetaElem *ml /* , *ml_sel = NULL */ /* UNUSED */;
+			MetaElem *ml;
 
-			ml = mb->editelems->first;
-			while (ml) {
-				if (ml->flag & SELECT) {
-					calc_tw_center(scene, &ml->x);
-					/* ml_sel = ml; */ /* UNUSED */
-					totsel++;
+			if ((v3d->around == V3D_ACTIVE) && (ml = mb->lastelem)) {
+				calc_tw_center(scene, &ml->x);
+				totsel++;
+			}
+			else {
+				for (ml = mb->editelems->first; ml; ml = ml->next) {
+					if (ml->flag & SELECT) {
+						calc_tw_center(scene, &ml->x);
+						totsel++;
+					}
 				}
-				ml = ml->next;
 			}
 		}
 		else if (obedit->type == OB_LATTICE) {
@@ -1189,7 +1181,7 @@ static void draw_manipulator_rotate(
 
 static void drawsolidcube(float size)
 {
-	static float cube[8][3] = {
+	const float cube[8][3] = {
 		{-1.0, -1.0, -1.0},
 		{-1.0, -1.0,  1.0},
 		{-1.0,  1.0,  1.0},
@@ -1507,7 +1499,9 @@ static void draw_manipulator_rotate_cyl(
 
 	/* Screen aligned view rot circle */
 	if (drawflags & MAN_ROT_V) {
-		float unitmat[4][4] = MAT4_UNITY;
+		float unitmat[4][4];
+
+		unit_m4(unitmat);
 
 		if (is_picksel) glLoadName(MAN_ROT_V);
 		UI_ThemeColor(TH_TRANSFORM);
@@ -1701,7 +1695,8 @@ static int manipulator_selectbuf(ScrArea *sa, ARegion *ar, const int mval[2], fl
 	short hits;
 	const bool is_picksel = true;
 
-	extern void setwinmatrixview3d(ARegion *, View3D *, rctf *); // XXX check a bit later on this... (ton)
+	/* XXX check a bit later on this... (ton) */
+	extern void view3d_winmatrix_set(ARegion *ar, View3D *v3d, rctf *rect);
 
 	/* when looking through a selected camera, the manipulator can be at the
 	 * exact same position as the view, skip so we don't break selection */
@@ -1713,12 +1708,12 @@ static int manipulator_selectbuf(ScrArea *sa, ARegion *ar, const int mval[2], fl
 	rect.ymin = mval[1] - hotspot;
 	rect.ymax = mval[1] + hotspot;
 
-	setwinmatrixview3d(ar, v3d, &rect);
+	view3d_winmatrix_set(ar, v3d, &rect);
 	mul_m4_m4m4(rv3d->persmat, rv3d->winmat, rv3d->viewmat);
 
 	glSelectBuffer(64, buffer);
 	glRenderMode(GL_SELECT);
-	glInitNames();  /* these two calls whatfor? It doesnt work otherwise */
+	glInitNames();  /* these two calls whatfor? It doesn't work otherwise */
 	glPushName(-2);
 
 	/* do the drawing */
@@ -1734,7 +1729,7 @@ static int manipulator_selectbuf(ScrArea *sa, ARegion *ar, const int mval[2], fl
 	glPopName();
 	hits = glRenderMode(GL_RENDER);
 
-	setwinmatrixview3d(ar, v3d, NULL);
+	view3d_winmatrix_set(ar, v3d, NULL);
 	mul_m4_m4m4(rv3d->persmat, rv3d->winmat, rv3d->viewmat);
 
 	if (hits == 1) return buffer[3];

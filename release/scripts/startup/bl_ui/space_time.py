@@ -122,15 +122,17 @@ class TIME_MT_view(Menu):
     def draw(self, context):
         layout = self.layout
 
+        scene = context.scene
         st = context.space_data
 
         layout.prop(st, "show_seconds")
+        layout.prop(st, "show_locked_time")
         layout.operator("time.view_all")
 
         layout.separator()
 
         layout.prop(st, "show_frame_indicator")
-        layout.prop(st, "show_only_selected")
+        layout.prop(scene, "show_keys_from_selected_only")
 
         layout.separator()
 

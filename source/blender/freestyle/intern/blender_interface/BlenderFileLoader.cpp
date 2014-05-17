@@ -521,6 +521,11 @@ void BlenderFileLoader::insertShapeNode(ObjectInstanceRen *obi, int id)
 		}
 		else {
 			RE_vlakren_get_normal(_re, obi, vlr, facenormal);
+#ifndef NDEBUG
+			float tnor[3];
+			normal_tri_v3(tnor, v3, v2, v1);  /* normals are inverted in rendering */
+			BLI_assert(dot_v3v3(tnor, facenormal) > 0.0f);
+#endif
 			copy_v3_v3(n1, facenormal);
 			copy_v3_v3(n2, facenormal);
 			copy_v3_v3(n3, facenormal);
@@ -761,7 +766,7 @@ void BlenderFileLoader::insertShapeNode(ObjectInstanceRen *obi, int id)
 		}
 		if (G.debug & G_DEBUG_FREESTYLE) {
 			printf("Warning: Object %s contains %lu degenerated triangle%s (strokes may be incorrect)\n",
-			       name, detriList.size(), (detriList.size() > 1) ? "s" : "");
+			       name, (long unsigned int)detriList.size(), (detriList.size() > 1) ? "s" : "");
 		}
 	}
 

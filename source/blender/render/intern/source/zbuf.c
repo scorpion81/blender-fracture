@@ -49,7 +49,6 @@
 #include "MEM_guardedalloc.h"
 
 #include "DNA_lamp_types.h"
-#include "DNA_mesh_types.h"
 #include "DNA_node_types.h"
 #include "DNA_meshdata_types.h"
 #include "DNA_material_types.h"
@@ -313,7 +312,7 @@ static void zbuffillAc4(ZSpan *zspan, int obi, int zvlnr,
 	double zxd, zyd, zy0, zverg;
 	float x0, y0, z0;
 	float x1, y1, z1, x2, y2, z2, xx1;
-	float *span1, *span2;
+	const float *span1, *span2;
 	int *rz, *rm, x, y;
 	int sn1, sn2, rectx, *rectzofs, *rectmaskofs, my0, my2, mask;
 	
@@ -436,7 +435,7 @@ static void zbuffillAc4(ZSpan *zspan, int obi, int zvlnr,
 static void zbuflineAc(ZSpan *zspan, int obi, int zvlnr, const float vec1[3], const float vec2[3])
 {
 	APixstr *ap, *apn;
-	int *rectz, *rectmask;
+	const int *rectz, *rectmask;
 	int start, end, x, y, oldx, oldy, ofs;
 	int dz, vergz, mask, maxtest=0;
 	float dx, dy;
@@ -1053,10 +1052,10 @@ static void zbuffillGLinv4(ZSpan *zspan, int obi, int zvlnr,
 	double zxd, zyd, zy0, zverg;
 	float x0, y0, z0;
 	float x1, y1, z1, x2, y2, z2, xx1;
-	float *span1, *span2;
+	const float *span1, *span2;
 	int *rectoofs, *ro;
 	int *rectpofs, *rp;
-	int *rectmaskofs, *rm;
+	const int *rectmaskofs, *rm;
 	int *rz, x, y;
 	int sn1, sn2, rectx, *rectzofs, my0, my2;
 
@@ -1176,10 +1175,10 @@ static void zbuffillGL4(ZSpan *zspan, int obi, int zvlnr,
 	double zxd, zyd, zy0, zverg;
 	float x0, y0, z0;
 	float x1, y1, z1, x2, y2, z2, xx1;
-	float *span1, *span2;
+	const float *span1, *span2;
 	int *rectoofs, *ro;
 	int *rectpofs, *rp;
-	int *rectmaskofs, *rm;
+	const int *rectmaskofs, *rm;
 	int *rz, x, y;
 	int sn1, sn2, rectx, *rectzofs, my0, my2;
 
@@ -1307,7 +1306,7 @@ static void zbuffillGL_onlyZ(ZSpan *zspan, int UNUSED(obi), int UNUSED(zvlnr),
 	double zxd, zyd, zy0, zverg;
 	float x0, y0, z0;
 	float x1, y1, z1, x2, y2, z2, xx1;
-	float *span1, *span2;
+	const float *span1, *span2;
 	int *rz, *rz1, x, y;
 	int sn1, sn2, rectx, *rectzofs, *rectzofs1= NULL, my0, my2;
 	
@@ -1415,7 +1414,7 @@ void zspan_scanconvert_strand(ZSpan *zspan, void *handle, float *v1, float *v2, 
 {
 	float x0, y0, x1, y1, x2, y2, z0, z1, z2, z;
 	float u, v, uxd, uyd, vxd, vyd, uy0, vy0, zxd, zyd, zy0, xx1;
-	float *span1, *span2;
+	const float *span1, *span2;
 	int x, y, sn1, sn2, rectx= zspan->rectx, my0, my2;
 	
 	/* init */
@@ -1515,7 +1514,7 @@ void zspan_scanconvert(ZSpan *zspan, void *handle, float *v1, float *v2, float *
 {
 	float x0, y0, x1, y1, x2, y2, z0, z1, z2;
 	float u, v, uxd, uyd, vxd, vyd, uy0, vy0, xx1;
-	float *span1, *span2;
+	const float *span1, *span2;
 	int x, y, sn1, sn2, rectx= zspan->rectx, my0, my2;
 	
 	/* init */
@@ -1831,7 +1830,9 @@ void zbuf_render_project(float winmat[4][4], const float co[3], float ho[4])
 void zbuf_make_winmat(Render *re, float winmat[4][4])
 {
 	if (re->r.mode & R_PANORAMA) {
-		float panomat[4][4]= MAT4_UNITY;
+		float panomat[4][4];
+
+		unit_m4(panomat);
 
 		panomat[0][0]= re->panoco;
 		panomat[0][2]= re->panosi;
@@ -2367,7 +2368,7 @@ void zbuffer_shadow(Render *re, float winmat[4][4], LampRen *lar, int *rectz, in
 			if (vlr->mat!= ma) {
 				ma= vlr->mat;
 				ok= 1;
-				if ((ma->mode & MA_SHADBUF)==0) ok= 0;
+				if ((ma->mode2 & MA_CASTSHADOW)==0 || (ma->mode & MA_SHADBUF)==0) ok= 0;
 			}
 
 			if (ok && (obi->lay & lay) && !(vlr->flag & R_HIDDEN)) {
@@ -2420,7 +2421,7 @@ void zbuffer_shadow(Render *re, float winmat[4][4], LampRen *lar, int *rectz, in
 					if (sseg.buffer->ma!= ma) {
 						ma= sseg.buffer->ma;
 						ok= 1;
-						if ((ma->mode & MA_SHADBUF)==0) ok= 0;
+						if ((ma->mode2 & MA_CASTSHADOW)==0 || (ma->mode & MA_SHADBUF)==0) ok= 0;
 					}
 
 					if (ok && (sseg.buffer->lay & lay)) {
@@ -2658,7 +2659,7 @@ void zbuffer_sss(RenderPart *pa, unsigned int lay, void *handle, void (*func)(vo
 /* ******************** VECBLUR ACCUM BUF ************************* */
 
 typedef struct DrawBufPixel {
-	float *colpoin;
+	const float *colpoin;
 	float alpha;
 } DrawBufPixel;
 
@@ -2669,7 +2670,7 @@ static void zbuf_fill_in_rgba(ZSpan *zspan, DrawBufPixel *col, float *v1, float 
 	double zxd, zyd, zy0, zverg;
 	float x0, y0, z0;
 	float x1, y1, z1, x2, y2, z2, xx1;
-	float *span1, *span2;
+	const float *span1, *span2;
 	float *rectzofs, *rz;
 	int x, y;
 	int sn1, sn2, rectx, my0, my2;
@@ -3348,7 +3349,7 @@ static int zbuffer_abuf(Render *re, RenderPart *pa, APixstr *APixbuf, ListBase *
 			if (vlr->mat!=ma) {
 				ma= vlr->mat;
 				if (shadow)
-					dofill= (ma->mode & MA_SHADBUF);
+					dofill= (ma->mode2 & MA_CASTSHADOW) && (ma->mode & MA_SHADBUF);
 				else
 					dofill= (((ma->mode & MA_TRANSP) && (ma->mode & MA_ZTRANSP)) && !(ma->mode & MA_ONLYCAST));
 			}
@@ -3615,7 +3616,7 @@ static void merge_transp_passes(RenderLayer *rl, ShadeResult *shr)
 					for (samp= 1; samp<R.osa; samp++, shr_t++) {
 						
 						if (shr_t->combined[3] > 0.0f) {
-							float *speed= shr_t->winspeed;
+							const float *speed= shr_t->winspeed;
 							
 							if ( (ABS(speed[0]) + ABS(speed[1]))< (ABS(fp[0]) + ABS(fp[1])) ) {
 								fp[0]= speed[0];
@@ -3631,7 +3632,7 @@ static void merge_transp_passes(RenderLayer *rl, ShadeResult *shr)
 				break;
 		}
 		if (col) {
-			float *fp= col+delta;
+			const float *fp= col+delta;
 			int samp;
 			
 			for (samp= 1; samp<R.osa; samp++, fp+=delta) {

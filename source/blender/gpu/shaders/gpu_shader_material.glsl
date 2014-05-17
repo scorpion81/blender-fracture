@@ -299,6 +299,11 @@ void math_modulo(float val1, float val2, out float outval)
 		outval = mod(val1, val2);
 }
 
+void math_abs(float val1, out float outval)
+{
+    outval = abs(val1);
+}
+
 void squeeze(float val, float width, float center, out float outval)
 {
 	outval = 1.0/(1.0 + pow(2.71828183, -((val-center)*width)));
@@ -944,12 +949,9 @@ void mtex_rgb_dark(vec3 outcol, vec3 texcol, float fact, float facg, out vec3 in
 	fact *= facg;
 	facm = 1.0-fact;
 
-	col= texcol.r + ((1.0 -texcol.r)*facm);
-	if(col < outcol.r) incol.r = col; else incol.r = outcol.r;
-	col= texcol.g + ((1.0 -texcol.g)*facm);
-	if(col < outcol.g) incol.g = col; else incol.g = outcol.g;
-	col= texcol.b + ((1.0 -texcol.b)*facm);
-	if(col < outcol.b) incol.b = col; else incol.b = outcol.b;
+	incol.r = min(outcol.r, texcol.r) * fact + outcol.r * facm;
+	incol.g = min(outcol.g, texcol.g) * fact + outcol.g * facm;
+	incol.b = min(outcol.b, texcol.b) * fact + outcol.b * facm;
 }
 
 void mtex_rgb_light(vec3 outcol, vec3 texcol, float fact, float facg, out vec3 incol)
@@ -1078,8 +1080,7 @@ void mtex_value_dark(float outcol, float texcol, float fact, float facg, out flo
 	float facm;
 	mtex_value_vars(fact, facg, facm);
 
-	float col = fact*texcol;
-	if(col < outcol) incol = col; else incol = outcol;
+	incol = facm*outcol + fact*min(outcol, texcol);
 }
 
 void mtex_value_light(float outcol, float texcol, float fact, float facg, out float incol)
@@ -2362,7 +2363,8 @@ void node_light_path(
 	out float is_reflection_ray,
 	out float is_transmission_ray,
 	out float ray_length,
-	out float ray_depth)
+	out float ray_depth,
+	out float transparent_depth)
 {
 	is_camera_ray = 1.0;
 	is_shadow_ray = 0.0;
@@ -2373,6 +2375,7 @@ void node_light_path(
 	is_transmission_ray = 0.0;
 	ray_length = 1.0;
 	ray_depth = 1.0;
+	transparent_depth = 1.0;
 }
 
 void node_light_falloff(float strength, float tsmooth, out float quadratic, out float linear, out float constant)

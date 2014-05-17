@@ -47,6 +47,8 @@
 #include "BKE_text.h"  /* txt_to_buf */
 #include "BKE_main.h"
 
+#include "py_capi_utils.h"
+
 #include "bpy_internal_import.h"  /* own include */
 
 static Main *bpy_import_main = NULL;
@@ -133,6 +135,7 @@ void bpy_text_filename_get(char *fn, size_t fn_len, Text *text)
 bool bpy_text_compile(Text *text)
 {
 	char fn_dummy[FILE_MAX];
+	PyObject *fn_dummy_py;
 	char *buf;
 
 	bpy_text_filename_get(fn_dummy, sizeof(fn_dummy), text);
@@ -140,9 +143,13 @@ bool bpy_text_compile(Text *text)
 	/* if previously compiled, free the object */
 	free_compiled_text(text);
 
+	fn_dummy_py = PyC_UnicodeFromByte(fn_dummy);
+
 	buf = txt_to_buf(text);
-	text->compiled = Py_CompileString(buf, fn_dummy, Py_file_input);
+	text->compiled = Py_CompileStringObject(buf, fn_dummy_py, Py_file_input, NULL, -1);
 	MEM_freeN(buf);
+
+	Py_DECREF(fn_dummy_py);
 
 	if (PyErr_Occurred()) {
 		PyErr_Print();
@@ -226,7 +233,7 @@ PyObject *bpy_text_reimport(PyObject *module, int *found)
 {
 	Text *text;
 	const char *name;
-	char *filepath;
+	const char *filepath;
 //XXX	Main *maggie = bpy_import_main ? bpy_import_main:G.main;
 	Main *maggie = bpy_import_main;
 	
@@ -265,7 +272,7 @@ PyObject *bpy_text_reimport(PyObject *module, int *found)
 static PyObject *blender_import(PyObject *UNUSED(self), PyObject *args, PyObject *kw)
 {
 	PyObject *exception, *err, *tb;
-	char *name;
+	const char *name;
 	int found = 0;
 	PyObject *globals = NULL, *locals = NULL, *fromlist = NULL;
 	int level = 0; /* relative imports */

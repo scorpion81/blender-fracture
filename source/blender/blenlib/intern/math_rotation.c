@@ -400,6 +400,46 @@ float normalize_qt_qt(float r[4], const float q[4])
 	return normalize_qt(r);
 }
 
+/**
+ * Calculate a rotation matrix from 2 normalized vectors.
+ */
+void rotation_between_vecs_to_mat3(float m[3][3], const float v1[3], const float v2[3])
+{
+	float axis[3];
+	/* avoid calculating the angle */
+	float angle_sin;
+	float angle_cos;
+
+	BLI_ASSERT_UNIT_V3(v1);
+	BLI_ASSERT_UNIT_V3(v2);
+
+	cross_v3_v3v3(axis, v1, v2);
+
+	angle_sin = normalize_v3(axis);
+	angle_cos = dot_v3v3(v1, v2);
+
+	if (angle_sin > FLT_EPSILON) {
+axis_calc:
+		BLI_ASSERT_UNIT_V3(axis);
+		axis_angle_normalized_to_mat3_ex(m, axis, angle_sin, angle_cos);
+		BLI_ASSERT_UNIT_M3(m);
+	}
+	else {
+		if (angle_cos > 0.0f) {
+			/* Same vectors, zero rotation... */
+			unit_m3(m);
+		}
+		else {
+			/* Colinear but opposed vectors, 180 rotation... */
+			ortho_v3_v3(axis, v1);
+			normalize_v3(axis);
+			angle_sin =  0.0f;  /* sin(M_PI) */
+			angle_cos = -1.0f;  /* cos(M_PI) */
+			goto axis_calc;
+		}
+	}
+}
+
 /* note: expects vectors to be normalized */
 void rotation_between_vecs_to_quat(float q[4], const float v1[3], const float v2[3])
 {
@@ -480,6 +520,7 @@ float angle_qtqt(const float q1[4], const float q2[4])
 
 void vec_to_quat(float q[4], const float vec[3], short axis, const short upflag)
 {
+	const float eps = 0.0001f;
 	float nor[3], tvec[3];
 	float angle, si, co, len;
 
@@ -513,7 +554,7 @@ void vec_to_quat(float q[4], const float vec[3], short axis, const short upflag)
 		nor[1] = -tvec[2];
 		nor[2] =  tvec[1];
 
-		if (fabsf(tvec[1]) + fabsf(tvec[2]) < 0.0001f)
+		if (fabsf(tvec[1]) + fabsf(tvec[2]) < eps)
 			nor[1] = 1.0f;
 
 		co = tvec[0];
@@ -523,7 +564,7 @@ void vec_to_quat(float q[4], const float vec[3], short axis, const short upflag)
 		nor[1] =  0.0;
 		nor[2] = -tvec[0];
 
-		if (fabsf(tvec[0]) + fabsf(tvec[2]) < 0.0001f)
+		if (fabsf(tvec[0]) + fabsf(tvec[2]) < eps)
 			nor[2] = 1.0f;
 
 		co = tvec[1];
@@ -533,7 +574,7 @@ void vec_to_quat(float q[4], const float vec[3], short axis, const short upflag)
 		nor[1] =  tvec[0];
 		nor[2] =  0.0;
 
-		if (fabsf(tvec[0]) + fabsf(tvec[1]) < 0.0001f)
+		if (fabsf(tvec[0]) + fabsf(tvec[1]) < eps)
 			nor[0] = 1.0f;
 
 		co = tvec[2];
@@ -542,12 +583,7 @@ void vec_to_quat(float q[4], const float vec[3], short axis, const short upflag)
 
 	normalize_v3(nor);
 
-	angle = 0.5f * saacos(co);
-	si   = sinf(angle);
-	q[0] = cosf(angle);
-	q[1] = nor[0] * si;
-	q[2] = nor[1] * si;
-	q[3] = nor[2] * si;
+	axis_angle_normalized_to_quat(q, nor, saacos(co));
 
 	if (axis != upflag) {
 		float mat[3][3];
@@ -830,31 +866,51 @@ void eulO_to_axis_angle(float axis[3], float *angle, const float eul[3], const s
 	quat_to_axis_angle(axis, angle, q);
 }
 
-/* axis angle to 3x3 matrix - note: requires that axis is normalized */
-void axis_angle_normalized_to_mat3(float mat[3][3], const float nor[3], const float angle)
+/**
+ * axis angle to 3x3 matrix
+ *
+ * This takes the angle with sin/cos applied so we can avoid calculating it in some cases.
+ *
+ * \param axis rotation axis (must be normalized).
+ * \param angle_sin sin(angle)
+ * \param angle_cos cos(angle)
+ */
+void axis_angle_normalized_to_mat3_ex(float mat[3][3], const float axis[3],
+                                      const float angle_sin, const float angle_cos)
 {
-	float nsi[3], co, si, ico;
+	float nsi[3], ico;
+	float n_00, n_01, n_11, n_02, n_12, n_22;
 
-	BLI_ASSERT_UNIT_V3(nor);
+	BLI_ASSERT_UNIT_V3(axis);
 
 	/* now convert this to a 3x3 matrix */
-	co = cosf(angle);
-	si = sinf(angle);
 
-	ico = (1.0f - co);
-	nsi[0] = nor[0] * si;
-	nsi[1] = nor[1] * si;
-	nsi[2] = nor[2] * si;
+	ico = (1.0f - angle_cos);
+	nsi[0] = axis[0] * angle_sin;
+	nsi[1] = axis[1] * angle_sin;
+	nsi[2] = axis[2] * angle_sin;
 
-	mat[0][0] = ((nor[0] * nor[0]) * ico) + co;
-	mat[0][1] = ((nor[0] * nor[1]) * ico) + nsi[2];
-	mat[0][2] = ((nor[0] * nor[2]) * ico) - nsi[1];
-	mat[1][0] = ((nor[0] * nor[1]) * ico) - nsi[2];
-	mat[1][1] = ((nor[1] * nor[1]) * ico) + co;
-	mat[1][2] = ((nor[1] * nor[2]) * ico) + nsi[0];
-	mat[2][0] = ((nor[0] * nor[2]) * ico) + nsi[1];
-	mat[2][1] = ((nor[1] * nor[2]) * ico) - nsi[0];
-	mat[2][2] = ((nor[2] * nor[2]) * ico) + co;
+	n_00 = (axis[0] * axis[0]) * ico;
+	n_01 = (axis[0] * axis[1]) * ico;
+	n_11 = (axis[1] * axis[1]) * ico;
+	n_02 = (axis[0] * axis[2]) * ico;
+	n_12 = (axis[1] * axis[2]) * ico;
+	n_22 = (axis[2] * axis[2]) * ico;
+
+	mat[0][0] = n_00 + angle_cos;
+	mat[0][1] = n_01 + nsi[2];
+	mat[0][2] = n_02 - nsi[1];
+	mat[1][0] = n_01 - nsi[2];
+	mat[1][1] = n_11 + angle_cos;
+	mat[1][2] = n_12 + nsi[0];
+	mat[2][0] = n_02 + nsi[1];
+	mat[2][1] = n_12 - nsi[0];
+	mat[2][2] = n_22 + angle_cos;
+}
+
+void axis_angle_normalized_to_mat3(float mat[3][3], const float axis[3], const float angle)
+{
+	axis_angle_normalized_to_mat3_ex(mat, axis, sinf(angle), cosf(angle));
 }
 
 
@@ -1380,11 +1436,15 @@ void eulO_to_mat4(float M[4][4], const float e[3], const short order)
 void mat3_to_eulO(float eul[3], const short order, float M[3][3])
 {
 	float eul1[3], eul2[3];
+	float d1, d2;
 
 	mat3_to_eulo2(M, eul1, eul2, order);
 
+	d1 = fabsf(eul1[0]) + fabsf(eul1[1]) + fabsf(eul1[2]);
+	d2 = fabsf(eul2[0]) + fabsf(eul2[1]) + fabsf(eul2[2]);
+
 	/* return best, which is just the one with lowest values it in */
-	if (fabsf(eul1[0]) + fabsf(eul1[1]) + fabsf(eul1[2]) > fabsf(eul2[0]) + fabsf(eul2[1]) + fabsf(eul2[2])) {
+	if (d1 > d2) {
 		copy_v3_v3(eul, eul2);
 	}
 	else {
@@ -1418,10 +1478,12 @@ void mat3_to_compatible_eulO(float eul[3], float oldrot[3], const short order, f
 	d2 = fabsf(eul2[0] - oldrot[0]) + fabsf(eul2[1] - oldrot[1]) + fabsf(eul2[2] - oldrot[2]);
 
 	/* return best, which is just the one with lowest difference */
-	if (d1 > d2)
+	if (d1 > d2) {
 		copy_v3_v3(eul, eul2);
-	else
+	}
+	else {
 		copy_v3_v3(eul, eul1);
+	}
 }
 
 void mat4_to_compatible_eulO(float eul[3], float oldrot[3], const short order, float M[4][4])
@@ -1442,7 +1504,8 @@ void rotate_eulO(float beul[3], const short order, char axis, float ang)
 
 	assert(axis >= 'X' && axis <= 'Z');
 
-	eul[0] = eul[1] = eul[2] = 0.0f;
+	zero_v3(eul);
+
 	if (axis == 'X')
 		eul[0] = ang;
 	else if (axis == 'Y')
@@ -1478,9 +1541,7 @@ void eulO_to_gimbal_axis(float gmat[3][3], const float eul[3], const short order
 
 
 	/* Last axis is global */
-	gmat[R->axis[2]][0] = 0;
-	gmat[R->axis[2]][1] = 0;
-	gmat[R->axis[2]][2] = 0;
+	zero_v3(gmat[R->axis[2]]);
 	gmat[R->axis[2]][R->axis[2]] = 1;
 }
 
@@ -1600,7 +1661,7 @@ void dquat_to_mat4(float mat[4][4], const DualQuat *dq)
 
 void add_weighted_dq_dq(DualQuat *dqsum, const DualQuat *dq, float weight)
 {
-	int flipped = 0;
+	bool flipped = false;
 
 	/* make sure we interpolate quats in the right direction */
 	if (dot_qtqt(dq->quat, dqsum->quat) < 0) {

@@ -37,30 +37,14 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_utildefines.h"
-#include "BLI_path_util.h"
-#include "BLI_string.h"
-#include "BLI_listbase.h"
 #include "BLI_math.h"
 
 #include "DNA_mask_types.h"
 #include "DNA_node_types.h"
 #include "DNA_scene_types.h"
-#include "DNA_object_types.h"
-#include "DNA_screen_types.h"
-#include "DNA_space_types.h"
-#include "DNA_movieclip_types.h"
-#include "DNA_tracking_types.h"
-#include "DNA_sequence_types.h"
 
 #include "BKE_curve.h"
-#include "BKE_global.h"
-#include "BKE_library.h"
-#include "BKE_main.h"
 #include "BKE_mask.h"
-#include "BKE_node.h"
-#include "BKE_sequencer.h"
-#include "BKE_tracking.h"
-#include "BKE_movieclip.h"
 
 
 unsigned int BKE_mask_spline_resolution(MaskSpline *spline, int width, int height)
@@ -258,15 +242,15 @@ static void feather_bucket_check_intersect(
 {
 	int i;
 
-	float *v1 = (float *) feather_points[cur_a];
-	float *v2 = (float *) feather_points[cur_b];
+	const float *v1 = (float *) feather_points[cur_a];
+	const float *v2 = (float *) feather_points[cur_b];
 
 	for (i = 0; i < bucket->tot_segment; i++) {
 		int check_a = bucket->segments[i][0];
 		int check_b = bucket->segments[i][1];
 
-		float *v3 = (float *) feather_points[check_a];
-		float *v4 = (float *) feather_points[check_b];
+		const float *v3 = (float *) feather_points[check_a];
+		const float *v4 = (float *) feather_points[check_b];
 
 		if (check_a >= cur_a - 1 || cur_b == check_a)
 			continue;

@@ -37,12 +37,9 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "DNA_mesh_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 
-#include "BLI_blenlib.h"
-#include "BLI_dynstr.h"
 #include "BLI_utildefines.h"
 
 #include "BLF_translation.h"
@@ -107,6 +104,9 @@ void ED_undo_push(bContext *C, const char *str)
 		if (U.undosteps == 0) return;
 
 		PE_undo_push(CTX_data_scene(C), str);
+	}
+	else if (obact && obact->mode & OB_MODE_SCULPT) {
+		/* do nothing for now */
 	}
 	else {
 		BKE_write_undo(C, str);
@@ -492,7 +492,7 @@ static EnumPropertyItem *rna_undo_itemf(bContext *C, int undosys, int *totitem)
 			name = undo_editmode_get_name(C, i, &active);
 		}
 		else if (undosys == UNDOSYSTEM_IMAPAINT) {
-			name = ED_undo_paint_get_name(UNDO_PAINT_IMAGE, i, &active);
+			name = ED_undo_paint_get_name(C, UNDO_PAINT_IMAGE, i, &active);
 		}
 		else {
 			name = BKE_undo_get_name(i, &active);

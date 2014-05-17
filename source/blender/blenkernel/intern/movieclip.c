@@ -41,11 +41,6 @@
 
 #include <time.h>
 
-#ifdef _WIN32
-#  define open _open
-#  define close _close
-#endif
-
 #include "MEM_guardedalloc.h"
 
 #include "DNA_constraint_types.h"
@@ -65,7 +60,6 @@
 #include "BLI_threads.h"
 
 #include "BKE_animsys.h"
-#include "BKE_constraint.h"
 #include "BKE_colortools.h"
 #include "BKE_library.h"
 #include "BKE_global.h"
@@ -74,7 +68,6 @@
 #include "BKE_node.h"
 #include "BKE_image.h"  /* openanim */
 #include "BKE_tracking.h"
-#include "BKE_sequencer.h"
 
 #include "IMB_colormanagement.h"
 #include "IMB_imbuf_types.h"
@@ -335,7 +328,9 @@ typedef struct MovieClipCache {
 
 		/* cache for undistorted shot */
 		float principal[2];
-		float k1, k2, k3;
+		float polynomial_k1, polynomial_k2, polynomial_k3;
+		float division_k1, division_k2;
+		short distortion_model;
 		bool undistortion_used;
 
 		int proxy;
@@ -624,7 +619,7 @@ MovieClip *BKE_movieclip_file_add(Main *bmain, const char *name)
 
 	/* exists? */
 	file = BLI_open(str, O_BINARY | O_RDONLY, 0);
-	if (file < 0)
+	if (file == -1)
 		return NULL;
 	close(file);
 
@@ -732,11 +727,21 @@ static bool check_undistortion_cache_flags(MovieClip *clip)
 	MovieTrackingCamera *camera = &clip->tracking.camera;
 
 	/* check for distortion model changes */
-	if (!equals_v2v2(camera->principal, cache->postprocessed.principal))
+	if (!equals_v2v2(camera->principal, cache->postprocessed.principal)) {
 		return false;
+	}
 
-	if (!equals_v3v3(&camera->k1, &cache->postprocessed.k1))
+	if (camera->distortion_model != cache->postprocessed.distortion_model) {
 		return false;
+	}
+
+	if (!equals_v3v3(&camera->k1, &cache->postprocessed.polynomial_k1)) {
+		return false;
+	}
+
+	if (!equals_v2v2(&camera->division_k1, &cache->postprocessed.division_k1)) {
+		return false;
+	}
 
 	return true;
 }
@@ -823,8 +828,10 @@ static void put_postprocessed_frame_to_cache(MovieClip *clip, MovieClipUser *use
 	}
 
 	if (need_undistortion_postprocess(user)) {
+		cache->postprocessed.distortion_model = camera->distortion_model;
 		copy_v2_v2(cache->postprocessed.principal, camera->principal);
-		copy_v3_v3(&cache->postprocessed.k1, &camera->k1);
+		copy_v3_v3(&cache->postprocessed.polynomial_k1, &camera->k1);
+		copy_v2_v2(&cache->postprocessed.division_k1, &camera->division_k1);
 		cache->postprocessed.undistortion_used = true;
 	}
 	else {

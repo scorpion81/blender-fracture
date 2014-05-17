@@ -72,6 +72,12 @@ if env['OURPLATFORM'] in ('win32-vc', 'win64-vc'):
 else:
     cxxflags.append('-ffast-math'.split())
 
+# Warnings
+# XXX Not supported by gcc < 4.9, since we do not have any 'supported flags' test as in cmake,
+#     simpler to comment for now.
+#if env['C_COMPILER_ID'] == 'gcc':
+#    cxxflags.append(['-Werror=float-conversion'])
+
 if env['OURPLATFORM'] in ('win32-vc', 'win32-mingw', 'linuxcross', 'win64-vc', 'win64-mingw'):
     incs.append(env['BF_PTHREADS_INC'])
 
@@ -89,7 +95,7 @@ elif env['OURPLATFORM'] == 'win64-vc':
     kernel_flags['sse2'] = '-D_CRT_SECURE_NO_WARNINGS /fp:fast /Ox /GS-'
     kernel_flags['sse3'] = kernel_flags['sse2']
 
-    if env['MSVC_VERSION'] in ('11.0', '12.0'):
+    if env['MSVC_VERSION'] >= '12.0':
         kernel_flags['sse41'] = kernel_flags['sse3']
         kernel_flags['avx'] = kernel_flags['sse41'] + ' /arch:AVX'
 else:

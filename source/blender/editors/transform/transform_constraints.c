@@ -34,12 +34,6 @@
 #include <string.h>
 #include <math.h>
 
-#ifndef WIN32
-#  include <unistd.h>
-#else
-#  include <io.h>
-#endif
-
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_screen_types.h"
@@ -625,8 +619,9 @@ void setUserConstraint(TransInfo *t, short orientation, int mode, const char fte
 	switch (orientation) {
 		case V3D_MANIP_GLOBAL:
 		{
-			float mtx[3][3] = MAT3_UNITY;
+			float mtx[3][3];
 			BLI_snprintf(text, sizeof(text), ftext, IFACE_("global"));
+			unit_m3(mtx);
 			setConstraint(t, mtx, mode, text);
 			break;
 		}

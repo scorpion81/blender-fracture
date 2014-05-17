@@ -40,7 +40,6 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
-#include "BLI_dynstr.h"
 #include "BLI_utildefines.h"
 
 #include "BLF_translation.h"
@@ -59,7 +58,6 @@
 #include "BKE_armature.h"
 #include "BKE_depsgraph.h"
 #include "BKE_fcurve.h"
-#include "BKE_main.h"
 #include "BKE_idcode.h"
 #include "BKE_nla.h"
 #include "BKE_global.h"
@@ -72,6 +70,7 @@
 #include "ED_keyframing.h"
 #include "ED_keyframes_edit.h"
 #include "ED_screen.h"
+#include "ED_object.h"
 
 #include "UI_interface.h"
 #include "UI_resources.h"
@@ -395,11 +394,18 @@ int insert_vert_fcurve(FCurve *fcu, float x, float y, short flag)
 	beztr.vec[2][0] = x + 1.0f;
 	beztr.vec[2][1] = y;
 	beztr.f1 = beztr.f2 = beztr.f3 = SELECT;
-	beztr.h1 = beztr.h2 = U.keyhandles_new; /* use default handle type here */
-	//BEZKEYTYPE(&beztr)= scene->keytype; /* default keyframe type */
 
-	/* use default interpolation mode, with exceptions for int/discrete values */
-	beztr.ipo = U.ipo_new;
+	if (flag & INSERTKEY_NO_USERPREF) {
+		beztr.h1 = beztr.h2 = HD_AUTO_ANIM;
+		beztr.ipo = BEZT_IPO_BEZ;
+	}
+	else {
+		beztr.h1 = beztr.h2 = U.keyhandles_new; /* use default handle type here */
+		//BEZKEYTYPE(&beztr)= scene->keytype; /* default keyframe type */
+
+		/* use default interpolation mode, with exceptions for int/discrete values */
+		beztr.ipo = U.ipo_new;
+	}
 
 	if (fcu->flag & FCURVE_DISCRETE_VALUES)
 		beztr.ipo = BEZT_IPO_CONST;
@@ -1265,6 +1271,8 @@ static int modify_key_op_poll(bContext *C)
 static int insert_key_exec(bContext *C, wmOperator *op)
 {
 	Scene *scene = CTX_data_scene(C);
+	Object *obedit = CTX_data_edit_object(C);
+	bool ob_edit_mode = false;
 	KeyingSet *ks = NULL;
 	int type = RNA_enum_get(op->ptr, "type");
 	float cfra = (float)CFRA; // XXX for now, don't bother about all the yucky offset crap
@@ -1287,12 +1295,25 @@ static int insert_key_exec(bContext *C, wmOperator *op)
 		BKE_report(op->reports, RPT_ERROR, "No active keying set");
 		return OPERATOR_CANCELLED;
 	}
+
+	/* exit the edit mode to make sure that those object data properties that have been
+	 * updated since the last switching to the edit mode will be keyframed correctly
+	 */
+	if (obedit && ANIM_keyingset_find_id(ks, (ID *)obedit->data)) {
+		ED_object_toggle_modes(C, OB_MODE_EDIT);
+		ob_edit_mode = true;
+	}
 	
 	/* try to insert keyframes for the channels specified by KeyingSet */
 	success = ANIM_apply_keyingset(C, NULL, NULL, ks, MODIFYKEY_MODE_INSERT, cfra);
 	if (G.debug & G_DEBUG)
 		BKE_reportf(op->reports, RPT_INFO, "Keying set '%s' - successfully added %d keyframes", ks->name, success);
 	
+	/* restore the edit mode if necessary */
+	if (ob_edit_mode) {
+		ED_object_toggle_modes(C, OB_MODE_EDIT);
+	}
+
 	/* report failure or do updates? */
 	if (success == MODIFYKEY_INVALID_CONTEXT) {
 		BKE_report(op->reports, RPT_ERROR, "No suitable context info for active keying set");
@@ -1304,7 +1325,7 @@ static int insert_key_exec(bContext *C, wmOperator *op)
 			BKE_reportf(op->reports, RPT_INFO, "Successfully added %d keyframes for keying set '%s'", success, ks->name);
 		
 		/* send notifiers that keyframes have been changed */
-		WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_EDITED, NULL);
+		WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_ADDED, NULL);
 	}
 	else
 		BKE_report(op->reports, RPT_WARNING, "Keying set failed to insert any keyframes");
@@ -1456,7 +1477,7 @@ static int delete_key_exec(bContext *C, wmOperator *op)
 			BKE_reportf(op->reports, RPT_INFO, "Successfully removed %d keyframes for keying set '%s'", success, ks->name);
 		
 		/* send notifiers that keyframes have been changed */
-		WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_EDITED, NULL);
+		WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_REMOVED, NULL);
 	}
 	else
 		BKE_report(op->reports, RPT_WARNING, "Keying set failed to remove any keyframes");
@@ -1709,7 +1730,7 @@ static int insert_key_button_exec(bContext *C, wmOperator *op)
 		uiContextAnimUpdate(C);
 		
 		/* send notifiers that keyframes have been changed */
-		WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_EDITED, NULL);
+		WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_ADDED, NULL);
 	}
 	
 	return (success) ? OPERATOR_FINISHED : OPERATOR_CANCELLED;
@@ -1780,7 +1801,7 @@ static int delete_key_button_exec(bContext *C, wmOperator *op)
 		uiContextAnimUpdate(C);
 		
 		/* send notifiers that keyframes have been changed */
-		WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_EDITED, NULL);
+		WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_REMOVED, NULL);
 	}
 	
 	return (success) ? OPERATOR_FINISHED : OPERATOR_CANCELLED;
@@ -1850,7 +1871,7 @@ static int clear_key_button_exec(bContext *C, wmOperator *op)
 		uiContextAnimUpdate(C);
 		
 		/* send notifiers that keyframes have been changed */
-		WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_EDITED, NULL);
+		WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_REMOVED, NULL);
 	}
 
 	return (success) ? OPERATOR_FINISHED : OPERATOR_CANCELLED;

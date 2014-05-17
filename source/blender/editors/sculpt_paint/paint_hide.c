@@ -35,7 +35,6 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_bitmap.h"
-#include "BLI_listbase.h"
 #include "BLI_math_vector.h"
 #include "BLI_utildefines.h"
 
@@ -98,7 +97,7 @@ static void partialvis_update_mesh(Object *ob,
 {
 	Mesh *me = ob->data;
 	MVert *mvert;
-	float *paint_mask;
+	const float *paint_mask;
 	int *vert_indices;
 	int totvert, i;
 	bool any_changed = false, any_visible = false;

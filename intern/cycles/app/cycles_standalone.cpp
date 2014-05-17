@@ -177,8 +177,14 @@ static void display_info(Progress& progress)
 
 	interactive = options.interactive? "On":"Off";
 
-	str = string_printf("%s        Time: %.2f        Latency: %.4f        Sample: %d        Average: %.4f        Interactive: %s",
-						status.c_str(), total_time, latency, sample, sample_time, interactive.c_str());
+	str = string_printf(
+	        "%s"
+	        "        Time: %.2f"
+	        "        Latency: %.4f"
+	        "        Sample: %d"
+	        "        Average: %.4f"
+	        "        Interactive: %s",
+	        status.c_str(), total_time, latency, sample, sample_time, interactive.c_str());
 
 	view_display_info(str.c_str());
 
@@ -208,11 +214,11 @@ static void motion(int x, int y, int button)
 
 		/* Rotate */
 		else if(button == 2) {
-			float4 r1= make_float4(x * 0.1f, 0.0f, 1.0f, 0.0f);
-			matrix = matrix * transform_rotate(r1.x * M_PI/180.0f, make_float3(r1.y, r1.z, r1.w));
+			float4 r1 = make_float4((float)x * 0.1f, 0.0f, 1.0f, 0.0f);
+			matrix = matrix * transform_rotate(DEG2RADF(r1.x), make_float3(r1.y, r1.z, r1.w));
 
-			float4 r2 = make_float4(y * 0.1, 1.0f, 0.0f, 0.0f);
-			matrix = matrix * transform_rotate(r2.x * M_PI/180.0f, make_float3(r2.y, r2.z, r2.w));
+			float4 r2 = make_float4(y * 0.1f, 1.0f, 0.0f, 0.0f);
+			matrix = matrix * transform_rotate(DEG2RADF(r2.x), make_float3(r2.y, r2.z, r2.w));
 		}
 
 		/* Update and Reset */
@@ -371,14 +377,12 @@ static void options_parse(int argc, const char **argv)
 	else if(ssname == "svm")
 		options.scene_params.shadingsystem = SceneParams::SVM;
 
-#ifdef WITH_CYCLES_STANDALONE_GUI
-	/* Progressive rendering for GUI */
-	if(!options.session_params.background)
-		options.session_params.progressive = true;
-#else
-	/* When building without GUI, set background */
+#ifndef WITH_CYCLES_STANDALONE_GUI
 	options.session_params.background = true;
 #endif
+
+	/* Use progressive rendering */
+	options.session_params.progressive = true;
 
 	/* find matching device */
 	DeviceType device_type = Device::type_from_string(devicename.c_str());

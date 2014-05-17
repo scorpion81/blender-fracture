@@ -950,7 +950,7 @@ void ui_theme_init_default(void)
 	rgba_char_args_set(btheme->tact.keytype_jitter,             148, 229, 117, 255);
 	rgba_char_args_set(btheme->tact.keytype_jitter_select,       97, 192,  66, 255);
 	
-	rgba_char_args_set(btheme->tact.keyborder,	             0,   0,   0, 255);
+	rgba_char_args_set(btheme->tact.keyborder,               0,   0,   0, 255);
 	rgba_char_args_set(btheme->tact.keyborder_select,        0,   0,   0, 255);
 	
 	/* space nla */
@@ -969,7 +969,7 @@ void ui_theme_init_default(void)
 	rgba_char_args_set(btheme->tnla.nla_sound,          43, 61, 61, 255);
 	rgba_char_args_set(btheme->tnla.nla_sound_sel,      31, 122, 122, 255);
 	
-	rgba_char_args_set(btheme->tnla.keyborder,	             0,   0,   0, 255);
+	rgba_char_args_set(btheme->tnla.keyborder,               0,   0,   0, 255);
 	rgba_char_args_set(btheme->tnla.keyborder_select,        0,   0,   0, 255);
 	
 	/* space file */
@@ -1091,7 +1091,7 @@ void ui_theme_init_default(void)
 	
 	/* space node, re-uses syntax and console color storage */
 	btheme->tnode = btheme->tv3d;
-	rgba_char_args_set(btheme->tnode.edge_select, 255, 255, 255, 255);	/* wire selected */
+	rgba_char_args_set(btheme->tnode.edge_select, 255, 255, 255, 255);  /* wire selected */
 	rgba_char_args_set(btheme->tnode.syntaxl, 155, 155, 155, 160);  /* TH_NODE, backdrop */
 	rgba_char_args_set(btheme->tnode.syntaxn, 100, 100, 100, 255);  /* in */
 	rgba_char_args_set(btheme->tnode.nodeclass_output, 100, 100, 100, 255);  /* output */
@@ -1735,7 +1735,7 @@ void init_userdef_do_versions(void)
 		
 		/* adjust themes */
 		for (btheme = U.themes.first; btheme; btheme = btheme->next) {
-			char *col;
+			const char *col;
 			
 			/* IPO Editor: Handles/Vertices */
 			col = btheme->tipo.vertex;
@@ -2381,12 +2381,12 @@ void init_userdef_do_versions(void)
 			rgba_char_args_set(btheme->tact.keytype_jitter_select,       97, 192,  66, 255);
 			
 			/* key border */
-			rgba_char_args_set(btheme->tact.keyborder,	             0,   0,   0, 255);
+			rgba_char_args_set(btheme->tact.keyborder,               0,   0,   0, 255);
 			rgba_char_args_set(btheme->tact.keyborder_select,        0,   0,   0, 255);
 			
 			/* NLA ............................ */
 			/* key border */
-			rgba_char_args_set(btheme->tnla.keyborder,	             0,   0,   0, 255);
+			rgba_char_args_set(btheme->tnla.keyborder,               0,   0,   0, 255);
 			rgba_char_args_set(btheme->tnla.keyborder_select,        0,   0,   0, 255);
 			
 			/* Graph Editor ................... */
@@ -2445,7 +2445,6 @@ void init_userdef_factory(void)
 {
 	/* defaults from T37518 */
 
-	U.uiflag |= USER_AUTOPERSP;
 	U.uiflag |= USER_ZBUF_CURSOR;
 	U.uiflag |= USER_QUIT_PROMPT;
 	U.uiflag |= USER_CONTINUOUS_MOUSE;

@@ -64,7 +64,6 @@
 #include "BKE_effect.h"
 #include "BKE_fcurve.h"
 #include "BKE_global.h"
-#include "BKE_group.h"
 #include "BKE_image.h"
 #include "BKE_key.h"
 #include "BKE_library.h"
@@ -2590,13 +2589,7 @@ void DAG_ids_check_recalc(Main *bmain, Scene *scene, bool time)
 
 		/* we tag based on first ID type character to avoid 
 		 * looping over all ID's in case there are no tags */
-		if (id &&
-#ifdef WITH_FREESTYLE
-		    /* XXX very weak... added check for '27' to ignore freestyle added objects */
-		    id->name[2] > 27 &&
-#endif
-		    bmain->id_tag_update[id->name[0]])
-		{
+		if (id && bmain->id_tag_update[id->name[0]]) {
 			updated = true;
 			break;
 		}

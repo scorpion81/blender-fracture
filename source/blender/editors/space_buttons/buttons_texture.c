@@ -51,6 +51,8 @@
 #include "DNA_screen_types.h"
 #include "DNA_space_types.h"
 #include "DNA_world_types.h"
+#include "DNA_linestyle_types.h"
+
 
 #include "BKE_context.h"
 #include "BKE_material.h"
@@ -59,6 +61,7 @@
 #include "BKE_paint.h"
 #include "BKE_particle.h"
 #include "BKE_scene.h"
+#include "BKE_freestyle.h"
 
 #include "RNA_access.h"
 
@@ -97,6 +100,32 @@ bool ED_texture_context_check_particles(const bContext *C)
 {
 	Object *ob = CTX_data_active_object(C);
 	return (ob && ob->particlesystem.first);
+}
+
+bool ED_texture_context_check_linestyle(const bContext *C)
+{
+#ifdef WITH_FREESTYLE
+	Scene *scene = CTX_data_scene(C);
+	SceneRenderLayer *actsrl;
+	FreestyleConfig *config;
+	FreestyleLineSet *lineset;
+	FreestyleLineStyle *linestyle;
+
+	if (scene && (scene->r.mode & R_EDGE_FRS)) {
+		actsrl = BLI_findlink(&scene->r.layers, scene->r.actlay);
+		config = &actsrl->freestyleConfig;
+		if (config->mode == FREESTYLE_CONTROL_EDITOR_MODE) {
+			lineset = BKE_freestyle_lineset_get_active(config);
+			if (lineset) {
+				linestyle = lineset->linestyle;
+				return linestyle && (linestyle->flag & LS_TEXTURE);
+			}
+		}
+	}
+#else
+	(void)C;
+#endif
+	return false;
 }
 
 static void texture_context_check_modifier_foreach(void *userData, Object *UNUSED(ob), ModifierData *UNUSED(md),
@@ -148,6 +177,7 @@ static void set_texture_context(const bContext *C, SpaceButs *sbuts)
 		bool valid_material = ED_texture_context_check_material(C);
 		bool valid_lamp = ED_texture_context_check_lamp(C);
 		bool valid_particles = ED_texture_context_check_particles(C);
+		bool valid_linestyle = ED_texture_context_check_linestyle(C);
 		bool valid_others = ED_texture_context_check_others(C);
 
 		/* this is similar to direct user action, no need to keep "better" ctxt in _prev */
@@ -163,6 +193,9 @@ static void set_texture_context(const bContext *C, SpaceButs *sbuts)
 		else if ((sbuts->mainb == BCONTEXT_PARTICLE) && valid_particles) {
 			sbuts->texture_context = sbuts->texture_context_prev = SB_TEXC_PARTICLES;
 		}
+		else if ((sbuts->mainb == BCONTEXT_RENDER_LAYER) && valid_linestyle) {
+			sbuts->texture_context = sbuts->texture_context_prev = SB_TEXC_LINESTYLE;
+		}
 		else if ((ELEM(sbuts->mainb, BCONTEXT_MODIFIER, BCONTEXT_PHYSICS)) && valid_others) {
 			sbuts->texture_context = sbuts->texture_context_prev = SB_TEXC_OTHER;
 		}
@@ -172,6 +205,7 @@ static void set_texture_context(const bContext *C, SpaceButs *sbuts)
 		          ((sbuts->texture_context_prev == SB_TEXC_MATERIAL) && valid_material) ||
 		          ((sbuts->texture_context_prev == SB_TEXC_LAMP) && valid_lamp) ||
 		          ((sbuts->texture_context_prev == SB_TEXC_PARTICLES) && valid_particles) ||
+		          ((sbuts->texture_context_prev == SB_TEXC_LINESTYLE) && valid_linestyle) ||
 		          ((sbuts->texture_context_prev == SB_TEXC_OTHER) && valid_others)))
 		{
 			sbuts->texture_context = sbuts->texture_context_prev;
@@ -181,6 +215,7 @@ static void set_texture_context(const bContext *C, SpaceButs *sbuts)
 		         ((sbuts->texture_context == SB_TEXC_MATERIAL) && !valid_material) ||
 		         ((sbuts->texture_context == SB_TEXC_LAMP) && !valid_lamp) ||
 		         ((sbuts->texture_context == SB_TEXC_PARTICLES) && !valid_particles) ||
+		         ((sbuts->texture_context == SB_TEXC_LINESTYLE) && !valid_linestyle) ||
 		         ((sbuts->texture_context == SB_TEXC_OTHER) && !valid_others))
 		{
 			/* this is default fallback, do keep "better" ctxt in _prev */
@@ -193,6 +228,9 @@ static void set_texture_context(const bContext *C, SpaceButs *sbuts)
 			}
 			else if (valid_particles) {
 				sbuts->texture_context = SB_TEXC_PARTICLES;
+			}
+			else if (valid_linestyle) {
+				sbuts->texture_context = SB_TEXC_LINESTYLE;
 			}
 			else if (valid_world) {
 				sbuts->texture_context = SB_TEXC_WORLD;
@@ -284,6 +322,7 @@ static void buttons_texture_users_from_context(ListBase *users, const bContext *
 	Material *ma = NULL;
 	Lamp *la = NULL;
 	World *wrld = NULL;
+	FreestyleLineStyle *linestyle = NULL;
 	Brush *brush = NULL;
 	ID *pinid = sbuts->pinid;
 	bool limited_mode = (sbuts->flag & SB_TEX_USER_LIMITED) != 0;
@@ -302,6 +341,8 @@ static void buttons_texture_users_from_context(ListBase *users, const bContext *
 			ma = (Material *)pinid;
 		else if (GS(pinid->name) == ID_BR)
 			brush = (Brush *)pinid;
+		else if (GS(pinid->name) == ID_LS)
+			linestyle = (FreestyleLineStyle *)pinid;
 	}
 
 	if (!scene)
@@ -311,6 +352,7 @@ static void buttons_texture_users_from_context(ListBase *users, const bContext *
 		ob = (scene->basact) ? scene->basact->object : NULL;
 		wrld = scene->world;
 		brush = BKE_paint_brush(BKE_paint_get_active_from_context(C));
+		linestyle = CTX_data_linestyle_from_scene(scene);
 	}
 
 	if (ob && ob->type == OB_LAMP && !la)
@@ -327,6 +369,8 @@ static void buttons_texture_users_from_context(ListBase *users, const bContext *
 		buttons_texture_users_find_nodetree(users, &la->id, la->nodetree, "Lamp");
 	if (wrld && !limited_mode)
 		buttons_texture_users_find_nodetree(users, &wrld->id, wrld->nodetree, "World");
+	if (linestyle && !limited_mode)
+		buttons_texture_users_find_nodetree(users, &linestyle->id, linestyle->nodetree, "LineStyle");
 
 	if (ob) {
 		ParticleSystem *psys = psys_get_current(ob);

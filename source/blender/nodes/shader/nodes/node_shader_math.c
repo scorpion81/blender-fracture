@@ -216,6 +216,11 @@ static void node_shader_exec_math(void *UNUSED(data), int UNUSED(thread), bNode 
 				r = fmod(a, b);
 			break;
 		}
+		case 18: /* Absolute */
+		{
+			r = fabs(a);
+			break;
+		}
 	}
 	
 	out[0]->vec[0] = r;
@@ -226,7 +231,7 @@ static int gpu_shader_math(GPUMaterial *mat, bNode *node, bNodeExecData *UNUSED(
 	static const char *names[] = {"math_add", "math_subtract", "math_multiply",
 		                          "math_divide", "math_sine", "math_cosine", "math_tangent", "math_asin",
 		                          "math_acos", "math_atan", "math_pow", "math_log", "math_min", "math_max",
-		                          "math_round", "math_less_than", "math_greater_than", "math_modulo"};
+                                  "math_round", "math_less_than", "math_greater_than", "math_modulo", "math_absolute"};
 
 	switch (node->custom1) {
 		case 0:
@@ -279,7 +284,7 @@ void register_node_type_sh_math(void)
 	node_type_compatibility(&ntype, NODE_OLD_SHADING | NODE_NEW_SHADING);
 	node_type_socket_templates(&ntype, sh_node_math_in, sh_node_math_out);
 	node_type_label(&ntype, node_math_label);
-	node_type_storage(&ntype, "node_math", NULL, NULL);
+	node_type_storage(&ntype, "", NULL, NULL);
 	node_type_exec(&ntype, NULL, NULL, node_shader_exec_math);
 	node_type_gpu(&ntype, gpu_shader_math);
 

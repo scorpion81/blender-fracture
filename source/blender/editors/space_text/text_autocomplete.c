@@ -232,7 +232,7 @@ static GHash *text_autocomplete_build(Text *text)
 static void get_suggest_prefix(Text *text, int offset)
 {
 	int i, len;
-	char *line;
+	const char *line;
 
 	if (!text) return;
 	if (!texttool_text_is_active(text)) return;
@@ -494,7 +494,7 @@ static int text_autocomplete_modal(bContext *C, wmOperator *op, const wmEvent *e
 	}
 
 	if (draw) {
-		ED_area_tag_redraw(CTX_wm_area(C));
+		ED_area_tag_redraw(sa);
 	}
 
 //	if (swallow) {

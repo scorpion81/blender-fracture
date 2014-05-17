@@ -53,10 +53,8 @@
 #include "BKE_global.h"
 #include "BKE_main.h"
 #include "BKE_sound.h"
-#include "BKE_context.h"
 #include "BKE_library.h"
 #include "BKE_packedFile.h"
-#include "BKE_animsys.h"
 #include "BKE_sequencer.h"
 #include "BKE_scene.h"
 
@@ -70,7 +68,7 @@ bSound *sound_new_file(struct Main *bmain, const char *filename)
 	bSound *sound = NULL;
 
 	char str[FILE_MAX];
-	char *path;
+	const char *path;
 
 	size_t len;
 

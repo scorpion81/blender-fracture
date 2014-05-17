@@ -30,7 +30,6 @@
 //#define NDOF_WALK_DRAW_TOOMUCH  /* is this needed for ndof? - commented so redraw doesnt thrash - campbell */
 #include "DNA_scene_types.h"
 #include "DNA_object_types.h"
-#include "DNA_camera_types.h"
 
 #include "MEM_guardedalloc.h"
 
@@ -543,7 +542,7 @@ static bool initWalkInfo(bContext *C, WalkInfo *walk, wmOperator *op)
 
 	copy_v2_v2_int(walk->prev_mval, walk->center_mval);
 
-	WM_cursor_warp(CTX_wm_window(C),
+	WM_cursor_warp(win,
 	               walk->ar->winrct.xmin + walk->center_mval[0],
 	               walk->ar->winrct.ymin + walk->center_mval[1]);
 

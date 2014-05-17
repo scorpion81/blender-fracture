@@ -40,33 +40,16 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_blenlib.h"
-#include "BLI_math.h"
 #include "BLI_dlrbTree.h"
 #include "BLI_utildefines.h"
 
 #include "DNA_anim_types.h"
-#include "DNA_armature_types.h"
-#include "DNA_camera_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
-#include "DNA_key_types.h"
-#include "DNA_lamp_types.h"
-#include "DNA_lattice_types.h"
-#include "DNA_mesh_types.h"
-#include "DNA_material_types.h"
-#include "DNA_meta_types.h"
-#include "DNA_node_types.h"
-#include "DNA_particle_types.h"
-#include "DNA_speaker_types.h"
-#include "DNA_world_types.h"
 #include "DNA_gpencil_types.h"
 #include "DNA_mask_types.h"
 
 #include "BKE_fcurve.h"
-#include "BKE_key.h"
-#include "BKE_material.h"
-#include "BKE_global.h"     // XXX remove me!
-
 
 #include "BIF_gl.h"
 
@@ -85,7 +68,7 @@
 short compare_ak_cfraPtr(void *node, void *data)
 {
 	ActKeyColumn *ak = (ActKeyColumn *)node;
-	float *cframe = data;
+	const float *cframe = data;
 	float val = *cframe;
 	
 	if (IS_EQT(val, ak->cfra, BEZT_BINARYSEARCH_THRESH))
@@ -270,7 +253,7 @@ static void add_masklay_to_keycolumns_list(DLRBT_Tree *keys, MaskLayerShape *mas
 short compare_ab_cfraPtr(void *node, void *data)
 {
 	ActKeyBlock *ab = (ActKeyBlock *)node;
-	float *cframe = data;
+	const float *cframe = data;
 	float val = *cframe;
 	
 	if (val < ab->start)
@@ -580,7 +563,7 @@ static void draw_keylist(View2D *v2d, DLRBT_Tree *keys, DLRBT_Tree *blocks, floa
 	glEnable(GL_BLEND);
 	
 	/* get View2D scaling factor */
-	UI_view2d_getscale(v2d, &xscale, NULL);
+	UI_view2d_scale_get(v2d, &xscale, NULL);
 	
 	/* locked channels are less strongly shown, as feedback for locked channels in DopeSheet */
 	/* TODO: allow this opacity factor to be themed? */

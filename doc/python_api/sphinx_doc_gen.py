@@ -62,7 +62,7 @@ Sphinx: PDF generation
 
 try:
     import bpy  # blender module
-except:
+except ImportError:
     print("\nERROR: this script must run from inside Blender")
     print(SCRIPT_HELP_MSG)
     import sys
@@ -982,6 +982,7 @@ context_type_map = {
     "image_paint_object": ("Object", False),
     "lamp": ("Lamp", False),
     "lattice": ("Lattice", False),
+    "line_style": ("FreestyleLineStyle", False),
     "material": ("Material", False),
     "material_slot": ("MaterialSlot", False),
     "mesh": ("Mesh", False),

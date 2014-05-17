@@ -823,27 +823,24 @@ static int edbm_mark_sharp_exec(bContext *C, wmOperator *op)
 	BMEdge *eed;
 	BMIter iter;
 	const bool clear = RNA_boolean_get(op->ptr, "clear");
+	const bool use_verts = RNA_boolean_get(op->ptr, "use_verts");
 
 	/* auto-enable sharp edge drawing */
 	if (clear == 0) {
 		me->drawflag |= ME_DRAWSHARP;
 	}
 
-	if (!clear) {
-		BM_ITER_MESH (eed, &iter, bm, BM_EDGES_OF_MESH) {
-			if (!BM_elem_flag_test(eed, BM_ELEM_SELECT) || BM_elem_flag_test(eed, BM_ELEM_HIDDEN))
+	BM_ITER_MESH (eed, &iter, bm, BM_EDGES_OF_MESH) {
+		if (use_verts) {
+			if (!(BM_elem_flag_test(eed->v1, BM_ELEM_SELECT) || BM_elem_flag_test(eed->v2, BM_ELEM_SELECT))) {
 				continue;
-			
-			BM_elem_flag_disable(eed, BM_ELEM_SMOOTH);
+			}
 		}
-	}
-	else {
-		BM_ITER_MESH (eed, &iter, bm, BM_EDGES_OF_MESH) {
-			if (!BM_elem_flag_test(eed, BM_ELEM_SELECT) || BM_elem_flag_test(eed, BM_ELEM_HIDDEN))
-				continue;
-			
-			BM_elem_flag_enable(eed, BM_ELEM_SMOOTH);
+		else if (!BM_elem_flag_test(eed, BM_ELEM_SELECT)) {
+			continue;
 		}
+
+		BM_elem_flag_set(eed, BM_ELEM_SMOOTH, clear);
 	}
 
 	EDBM_update_generic(em, true, false);
@@ -867,10 +864,12 @@ void MESH_OT_mark_sharp(wmOperatorType *ot)
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
-	prop = RNA_def_boolean(ot->srna, "clear", 0, "Clear", "");
+	prop = RNA_def_boolean(ot->srna, "clear", false, "Clear", "");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
+	prop = RNA_def_boolean(ot->srna, "use_verts", false, "Vertices",
+	                       "Consider vertices instead of edges to select which edges to (un)tag as sharp");
 	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 }
-
 
 static int edbm_vert_connect_exec(bContext *C, wmOperator *op)
 {
@@ -2072,7 +2071,7 @@ static int edbm_blend_from_shape_exec(bContext *C, wmOperator *op)
 		if (use_add) {
 			/* in add mode, we add relative shape key offset */
 			if (kb) {
-				float *rco = CustomData_bmesh_get_n(&em->bm->vdata, eve->head.data, CD_SHAPEKEY, kb->relative);
+				const float *rco = CustomData_bmesh_get_n(&em->bm->vdata, eve->head.data, CD_SHAPEKEY, kb->relative);
 				sub_v3_v3v3(co, co, rco);
 			}
 			
@@ -2158,6 +2157,7 @@ void MESH_OT_blend_from_shape(wmOperatorType *ot)
 	/* properties */
 	prop = RNA_def_enum(ot->srna, "shape", DummyRNA_NULL_items, 0, "Shape", "Shape key to use for blending");
 	RNA_def_enum_funcs(prop, shape_itemf);
+	RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
 	RNA_def_float(ot->srna, "blend", 1.0f, -FLT_MAX, FLT_MAX, "Blend", "Blending factor", -2.0f, 2.0f);
 	RNA_def_boolean(ot->srna, "add", 1, "Add", "Add rather than blend between shapes");
 }
@@ -2653,7 +2653,7 @@ static void mesh_separate_material_assign_mat_nr(Object *ob, const short mat_nr)
 	ID *obdata = ob->data;
 
 	Material ***matarar;
-	short *totcolp;
+	const short *totcolp;
 
 	totcolp = give_totcolp_id(obdata);
 	matarar = give_matarar_id(obdata);
@@ -4264,7 +4264,7 @@ static void sort_bmelem_flag(Scene *scene, Object *ob,
 		pb = pblock[j];
 		sb = sblock[j];
 		if (pb && sb && !map[j]) {
-			char *p_blk;
+			const char *p_blk;
 			BMElemSort *s_blk;
 			int tot = totelem[j];
 			int aff = affected[j];

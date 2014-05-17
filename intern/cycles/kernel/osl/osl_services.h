@@ -110,12 +110,13 @@ public:
 	                      ustring dataname, TypeDesc datatype, void *data);
 
 	static bool get_background_attribute(KernelGlobals *kg, ShaderData *sd, ustring name,
-			TypeDesc type, bool derivatives, void *val);
+	                                     TypeDesc type, bool derivatives, void *val);
 	static bool get_object_standard_attribute(KernelGlobals *kg, ShaderData *sd, ustring name,
-			TypeDesc type, bool derivatives, void *val);
+	                                          TypeDesc type, bool derivatives, void *val);
 
 	static ustring u_distance;
 	static ustring u_index;
+	static ustring u_world;
 	static ustring u_camera;
 	static ustring u_screen;
 	static ustring u_raster;
@@ -144,6 +145,7 @@ public:
 	static ustring u_curve_tangent_normal;
 	static ustring u_path_ray_length;
 	static ustring u_path_ray_depth;
+	static ustring u_path_transparent_depth;
 	static ustring u_trace;
 	static ustring u_hit;
 	static ustring u_hitdist;

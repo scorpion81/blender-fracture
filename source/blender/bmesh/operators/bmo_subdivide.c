@@ -140,12 +140,18 @@ static BMEdge *connect_smallest_face(BMesh *bm, BMVert *v_a, BMVert *v_b, BMFace
 
 	/* this isn't the best thing in the world.  it doesn't handle cases where there's
 	 * multiple faces yet.  that might require a convexity test to figure out which
-	 * face is "best" and who knows what for non-manifold conditions. */
-	f = BM_vert_pair_share_face(v_a, v_b, &l_a, &l_b);
+	 * face is "best" and who knows what for non-manifold conditions.
+	 *
+	 * note: we allow adjacent here, since theres no chance this happens.
+	 */
+	f = BM_vert_pair_share_face_by_len(v_a, v_b, &l_a, &l_b, true);
+
 
 	if (f) {
 		BMFace *f_new;
 		BMLoop *l_new;
+
+		BLI_assert(!BM_loop_is_adjacent(l_a, l_b));
 
 		f_new = BM_face_split(bm, f, l_a, l_b, &l_new, NULL, false);
 		
@@ -1002,7 +1008,7 @@ void bmo_subdivide_edges_exec(BMesh *bm, BMOperator *op)
 
 	/* copy original-geometry displacements to current coordinates */
 	BM_ITER_MESH (v, &viter, bm, BM_VERTS_OF_MESH) {
-		float *co = BM_ELEM_CD_GET_VOID_P(v, params.shape_info.cd_vert_shape_offset_tmp);
+		const float *co = BM_ELEM_CD_GET_VOID_P(v, params.shape_info.cd_vert_shape_offset_tmp);
 		copy_v3_v3(v->co, co);
 	}
 
@@ -1107,7 +1113,7 @@ void bmo_subdivide_edges_exec(BMesh *bm, BMOperator *op)
 			 * - concave corner of an ngon.
 			 * - 2 edges being used in 2+ ngons.
 			 */
-//			BM_face_legal_splits(face, loops_split, BLI_array_count(loops_split));
+//			BM_face_splits_check_legal(face, loops_split, BLI_array_count(loops_split));
 
 			for (j = 0; j < BLI_array_count(loops_split); j++) {
 				if (loops_split[j][0]) {
@@ -1147,7 +1153,7 @@ void bmo_subdivide_edges_exec(BMesh *bm, BMOperator *op)
 
 	/* copy original-geometry displacements to current coordinates */
 	BM_ITER_MESH (v, &viter, bm, BM_VERTS_OF_MESH) {
-		float *co = BM_ELEM_CD_GET_VOID_P(v, params.shape_info.cd_vert_shape_offset_tmp);
+		const float *co = BM_ELEM_CD_GET_VOID_P(v, params.shape_info.cd_vert_shape_offset_tmp);
 		copy_v3_v3(v->co, co);
 	}
 

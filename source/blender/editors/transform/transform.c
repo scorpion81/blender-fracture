@@ -35,19 +35,11 @@
 #include <math.h>
 #include <float.h>
 
-#ifndef WIN32
-#  include <unistd.h>
-#else
-#  include <io.h>
-#endif
-
 #include "MEM_guardedalloc.h"
 
 #include "DNA_anim_types.h"
 #include "DNA_armature_types.h"
 #include "DNA_constraint_types.h"
-#include "DNA_mesh_types.h"
-#include "DNA_meshdata_types.h"
 #include "DNA_mask_types.h"
 #include "DNA_movieclip_types.h"
 #include "DNA_scene_types.h"  /* PET modes */
@@ -58,15 +50,12 @@
 #include "BLI_listbase.h"
 #include "BLI_string.h"
 #include "BLI_ghash.h"
-#include "BLI_linklist.h"
 
 #include "BKE_nla.h"
 #include "BKE_editmesh_bvh.h"
 #include "BKE_context.h"
 #include "BKE_constraint.h"
-#include "BKE_global.h"
 #include "BKE_particle.h"
-#include "BKE_pointcache.h"
 #include "BKE_unit.h"
 #include "BKE_mask.h"
 
@@ -81,7 +70,6 @@
 #include "ED_view3d.h"
 #include "ED_mesh.h"
 #include "ED_clip.h"
-#include "ED_mask.h"
 #include "ED_node.h"
 
 #include "WM_types.h"
@@ -374,7 +362,7 @@ void projectIntViewEx(TransInfo *t, const float vec[3], int adr[2], const eV3DPr
 			v[0] = vec[0] / aspx;
 			v[1] = vec[1] / aspy;
 
-			UI_view2d_to_region_no_clip(t->view, v[0], v[1], adr, adr + 1);
+			UI_view2d_view_to_region(t->view, v[0], v[1], &adr[0], &adr[1]);
 		}
 	}
 	else if (t->spacetype == SPACE_ACTION) {
@@ -385,12 +373,12 @@ void projectIntViewEx(TransInfo *t, const float vec[3], int adr[2], const eV3DPr
 		if (sact->flag & SACTION_DRAWTIME) {
 			//vec[0] = vec[0]/((t->scene->r.frs_sec / t->scene->r.frs_sec_base));
 			/* same as below */
-			UI_view2d_to_region_no_clip((View2D *)t->view, vec[0], vec[1], out, out + 1);
+			UI_view2d_view_to_region((View2D *)t->view, vec[0], vec[1], &out[0], &out[1]);
 		}
 		else
 #endif
 		{
-			UI_view2d_to_region_no_clip((View2D *)t->view, vec[0], vec[1], out, out + 1);
+			UI_view2d_view_to_region((View2D *)t->view, vec[0], vec[1], &out[0], &out[1]);
 		}
 
 		adr[0] = out[0];
@@ -399,14 +387,14 @@ void projectIntViewEx(TransInfo *t, const float vec[3], int adr[2], const eV3DPr
 	else if (ELEM(t->spacetype, SPACE_IPO, SPACE_NLA)) {
 		int out[2] = {0, 0};
 
-		UI_view2d_to_region_no_clip((View2D *)t->view, vec[0], vec[1], out, out + 1);
+		UI_view2d_view_to_region((View2D *)t->view, vec[0], vec[1], &out[0], &out[1]);
 		adr[0] = out[0];
 		adr[1] = out[1];
 	}
 	else if (t->spacetype == SPACE_SEQ) { /* XXX not tested yet, but should work */
 		int out[2] = {0, 0};
 
-		UI_view2d_to_region_no_clip((View2D *)t->view, vec[0], vec[1], out, out + 1);
+		UI_view2d_view_to_region((View2D *)t->view, vec[0], vec[1], &out[0], &out[1]);
 		adr[0] = out[0];
 		adr[1] = out[1];
 	}
@@ -452,14 +440,14 @@ void projectIntViewEx(TransInfo *t, const float vec[3], int adr[2], const eV3DPr
 			v[0] /= aspx;
 			v[1] /= aspy;
 
-			UI_view2d_to_region_no_clip(t->view, v[0], v[1], adr, adr + 1);
+			UI_view2d_view_to_region(t->view, v[0], v[1], &adr[0], &adr[1]);
 		}
 		else {
 			BLI_assert(0);
 		}
 	}
 	else if (t->spacetype == SPACE_NODE) {
-		UI_view2d_to_region_no_clip((View2D *)t->view, vec[0], vec[1], adr, adr + 1);
+		UI_view2d_view_to_region((View2D *)t->view, vec[0], vec[1], &adr[0], &adr[1]);
 	}
 }
 void projectIntView(TransInfo *t, const float vec[3], int adr[2])
@@ -945,7 +933,6 @@ static void transform_event_xyz_constraint(TransInfo *t, short key_type, char cm
 
 int transformEvent(TransInfo *t, const wmEvent *event)
 {
-	float mati[3][3] = MAT3_UNITY;
 	char cmode = constraintModeToChar(t);
 	bool handled = false;
 
@@ -1007,7 +994,11 @@ int transformEvent(TransInfo *t, const wmEvent *event)
 				}
 				else {
 					if (t->obedit && t->obedit->type == OB_MESH) {
-						if ((t->mode == TFM_TRANSLATION) && (t->spacetype == SPACE_VIEW3D)) {
+						if ((t->mode == TFM_TRANSLATION) &&
+						    (t->spacetype == SPACE_VIEW3D) &&
+						    /* prevents accidental select-tweak, gkey. see: T40102 */
+						    (ISMOUSE(t->launch_event) == 0))
+						{
 							resetTransModal(t);
 							resetTransRestrictions(t);
 							restoreTransObjects(t);
@@ -1067,6 +1058,12 @@ int transformEvent(TransInfo *t, const wmEvent *event)
 			case TFM_MODAL_RESIZE:
 				/* only switch when... */
 				if (ELEM5(t->mode, TFM_ROTATION, TFM_TRANSLATION, TFM_TRACKBALL, TFM_EDGE_SLIDE, TFM_VERT_SLIDE)) {
+
+					/* Scale isn't normally very useful after extrude along normals, see T39756 */
+					if ((t->con.mode & CON_APPLY) && (t->con.orientation == V3D_MANIP_NORMAL)) {
+						stopConstraint(t);
+					}
+
 					resetTransModal(t);
 					resetTransRestrictions(t);
 					restoreTransObjects(t);
@@ -1300,7 +1297,9 @@ int transformEvent(TransInfo *t, const wmEvent *event)
 							}
 							else {
 								/* bit hackish... but it prevents mmb select to print the orientation from menu */
+								float mati[3][3];
 								strcpy(t->spacename, "global");
+								unit_m3(mati);
 								initSelectConstraint(t, mati);
 							}
 							postSelectConstraint(t);
@@ -1516,7 +1515,7 @@ int transformEvent(TransInfo *t, const wmEvent *event)
 	}
 }
 
-int calculateTransformCenter(bContext *C, int centerMode, float cent3d[3], float cent2d[2])
+bool calculateTransformCenter(bContext *C, int centerMode, float cent3d[3], float cent2d[2])
 {
 	TransInfo *t = MEM_callocN(sizeof(TransInfo), "TransInfo data");
 	bool success;
@@ -1556,7 +1555,7 @@ int calculateTransformCenter(bContext *C, int centerMode, float cent3d[3], float
 	}
 
 
-	/* aftertrans does insert ipos and action channels, and clears base flags, doesnt read transdata */
+	/* aftertrans does insert keyframes, and clears base flags; doesn't read transdata */
 	special_aftertrans_update(C, t);
 
 	postTrans(C, t);
@@ -1878,7 +1877,7 @@ void saveTransform(bContext *C, TransInfo *t, wmOperator *op)
 	}
 
 	if ((prop = RNA_struct_find_property(op->ptr, "value"))) {
-		float *values = (t->flag & T_AUTOVALUES) ? t->auto_values : t->values;
+		const float *values = (t->flag & T_AUTOVALUES) ? t->auto_values : t->values;
 		if (RNA_property_array_check(prop)) {
 			RNA_property_float_set_array(op->ptr, prop, values);
 		}
@@ -1994,7 +1993,7 @@ void saveTransform(bContext *C, TransInfo *t, wmOperator *op)
 }
 
 /* note: caller needs to free 't' on a 0 return */
-int initTransform(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *event, int mode)
+bool initTransform(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *event, int mode)
 {
 	int options = 0;
 	PropertyRNA *prop;
@@ -2330,7 +2329,7 @@ int transformEnd(bContext *C, TransInfo *t)
 			exit_code = OPERATOR_FINISHED;
 		}
 
-		/* aftertrans does insert keyframes, and clears base flags, doesnt read transdata */
+		/* aftertrans does insert keyframes, and clears base flags; doesn't read transdata */
 		special_aftertrans_update(C, t);
 
 		/* free data */
@@ -2775,7 +2774,7 @@ static void initBend(TransInfo *t)
 	t->flag |= T_NO_CONSTRAINT;
 
 	//copy_v3_v3(t->center, ED_view3d_cursor3d_get(t->scene, t->view));
-	calculateCenterCursor(t);
+	calculateCenterCursor(t, t->center);
 
 	t->val = 0.0f;
 
@@ -4196,7 +4195,7 @@ static void applyTranslationValue(TransInfo *t, float vec[3])
 		/* handle snapping rotation before doing the translation */
 		if (usingSnappingNormal(t)) {
 			if (validSnappingNormal(t)) {
-				float *original_normal;
+				const float *original_normal;
 				float axis[3];
 				float quat[4];
 				float mat[3][3];
@@ -6243,8 +6242,8 @@ static void calcVertSlideCustomPoints(struct TransInfo *t)
 {
 	VertSlideData *sld = t->customData;
 	TransDataVertSlideVert *sv = &sld->sv[sld->curr_sv_index];
-	float *co_orig = sv->co_orig_2d;
-	float *co_curr = sv->co_link_orig_2d[sv->co_link_curr];
+	const float *co_orig = sv->co_orig_2d;
+	const float *co_curr = sv->co_link_orig_2d[sv->co_link_curr];
 	const int mval_start[2] = {co_orig[0], co_orig[1]};
 	const int mval_end[2]   = {co_curr[0], co_curr[1]};
 
@@ -7195,55 +7194,15 @@ static short getAnimEdit_SnapMode(TransInfo *t)
 	return autosnap;
 }
 
-/* This function is used for testing if an Animation Editor is displaying
- * its data in frames or seconds (and the data needing to be edited as such).
- * Returns 1 if in seconds, 0 if in frames
- */
-static short getAnimEdit_DrawTime(TransInfo *t)
-{
-	short drawtime;
-
-	if (t->spacetype == SPACE_ACTION) {
-		SpaceAction *saction = (SpaceAction *)t->sa->spacedata.first;
-		
-		drawtime = (saction->flag & SACTION_DRAWTIME) ? 1 : 0;
-	}
-	else if (t->spacetype == SPACE_NLA) {
-		SpaceNla *snla = (SpaceNla *)t->sa->spacedata.first;
-		
-		drawtime = (snla->flag & SNLA_DRAWTIME) ? 1 : 0;
-	}
-	else if (t->spacetype == SPACE_IPO) {
-		SpaceIpo *sipo = (SpaceIpo *)t->sa->spacedata.first;
-		
-		drawtime = (sipo->flag & SIPO_DRAWTIME) ? 1 : 0;
-	}
-	else {
-		drawtime = 0;
-	}
-
-	return drawtime;
-}
-
-
 /* This function is used by Animation Editor specific transform functions to do
  * the Snap Keyframe to Nearest Frame/Marker
  */
 static void doAnimEdit_SnapFrame(TransInfo *t, TransData *td, TransData2D *td2d, AnimData *adt, short autosnap)
 {
-	/* snap key to nearest frame? */
-	if (autosnap == SACTSNAP_FRAME) {
-
-#if 0   /* 'do_time' disabled for now */
-
+	/* snap key to nearest frame or second? */
+	if (ELEM(autosnap, SACTSNAP_FRAME, SACTSNAP_SECOND)) {
 		const Scene *scene = t->scene;
-#if 0   /* NOTE: this works, but may be confusing behavior given the option's label, hence disabled */
-		const short do_time = getAnimEdit_DrawTime(t);
-#else
-		const short do_time = 0;
-#endif
 		const double secf = FPS;
-#endif
 		double val;
 		
 		/* convert frame to nla-action time (if needed) */
@@ -7252,16 +7211,12 @@ static void doAnimEdit_SnapFrame(TransInfo *t, TransData *td, TransData2D *td2d,
 		else
 			val = *(td->val);
 		
-#if 0   /* 'do_time' disabled for now */
-
 		/* do the snapping to nearest frame/second */
-		if (do_time) {
-			val = (float)(floor((val / secf) + 0.5f) * secf);
+		if (autosnap == SACTSNAP_FRAME) {
+			val = floorf(val + 0.5);
 		}
-		else
-#endif
-		{
-			val = floor(val + 0.5);
+		else if (autosnap == SACTSNAP_SECOND) {
+			val = (float)(floor((val / secf) + 0.5) * secf);
 		}
 		
 		/* convert frame out of nla-action time */
@@ -7349,20 +7304,21 @@ static void headerTimeTranslate(TransInfo *t, char str[MAX_INFO_LEN])
 	else {
 		const Scene *scene = t->scene;
 		const short autosnap = getAnimEdit_SnapMode(t);
-		const short do_time = getAnimEdit_DrawTime(t);
 		const double secf = FPS;
 		float val = t->values[0];
 		
 		/* apply snapping + frame->seconds conversions */
 		if (autosnap == SACTSNAP_STEP) {
-			if (do_time)
-				val = floorf((double)val / secf + 0.5);
-			else
-				val = floorf(val + 0.5f);
+			/* frame step */
+			val = floorf(val + 0.5f);
+		}
+		else if (autosnap == SACTSNAP_TSTEP) {
+			/* second step */
+			val = floorf((double)val / secf + 0.5);
 		}
 		else {
-			if (do_time)
-				val = (float)((double)val / secf);
+			/* nearest frame/second/marker */
+			val = (float)((double)val / secf);
 		}
 		
 		if (autosnap == SACTSNAP_FRAME)
@@ -7380,11 +7336,9 @@ static void applyTimeTranslateValue(TransInfo *t, float UNUSED(sval))
 	TransData2D *td2d = t->data2d;
 	Scene *scene = t->scene;
 	int i;
-
-	const short do_time = getAnimEdit_DrawTime(t);
-	const double secf = FPS;
-
+	
 	const short autosnap = getAnimEdit_SnapMode(t);
+	const double secf = FPS;
 
 	float deltax, val /* , valprev */;
 
@@ -7399,14 +7353,14 @@ static void applyTimeTranslateValue(TransInfo *t, float UNUSED(sval))
 		/* valprev = *td->val; */ /* UNUSED */
 
 		/* check if any need to apply nla-mapping */
-		if (adt && t->spacetype != SPACE_SEQ) {
+		if (adt && (t->spacetype != SPACE_SEQ)) {
 			deltax = t->values[0];
 
-			if (autosnap == SACTSNAP_STEP) {
-				if (do_time)
-					deltax = (float)(floor(((double)deltax / secf) + 0.5) * secf);
-				else
-					deltax = (float)(floor(deltax + 0.5f));
+			if (autosnap == SACTSNAP_TSTEP) {
+				deltax = (float)(floor(((double)deltax / secf) + 0.5) * secf);
+			}
+			else if (autosnap == SACTSNAP_STEP) {
+				deltax = (float)(floor(deltax + 0.5f));
 			}
 
 			val = BKE_nla_tweakedit_remap(adt, td->ival, NLATIME_CONVERT_MAP);
@@ -7416,11 +7370,11 @@ static void applyTimeTranslateValue(TransInfo *t, float UNUSED(sval))
 		else {
 			deltax = val = t->values[0];
 
-			if (autosnap == SACTSNAP_STEP) {
-				if (do_time)
-					val = (float)(floor(((double)deltax / secf) + 0.5) * secf);
-				else
-					val = (float)(floor(val + 0.5f));
+			if (autosnap == SACTSNAP_TSTEP) {
+				val = (float)(floor(((double)deltax / secf) + 0.5) * secf);
+			}
+			else if (autosnap == SACTSNAP_STEP) {
+				val = (float)(floor(val + 0.5f));
 			}
 
 			*(td->val) = td->ival + val;
@@ -7668,7 +7622,6 @@ static void applyTimeScaleValue(TransInfo *t)
 	int i;
 
 	const short autosnap = getAnimEdit_SnapMode(t);
-	const short do_time = getAnimEdit_DrawTime(t);
 	const double secf = FPS;
 
 
@@ -7681,11 +7634,11 @@ static void applyTimeScaleValue(TransInfo *t)
 		float startx = CFRA;
 		float fac = t->values[0];
 
-		if (autosnap == SACTSNAP_STEP) {
-			if (do_time)
-				fac = (float)(floor((double)fac / secf + 0.5) * secf);
-			else
-				fac = (float)(floor(fac + 0.5f));
+		if (autosnap == SACTSNAP_TSTEP) {
+			fac = (float)(floor((double)fac / secf + 0.5) * secf);
+		}
+		else if (autosnap == SACTSNAP_STEP) {
+			fac = (float)(floor(fac + 0.5f));
 		}
 
 		/* check if any need to apply nla-mapping */
@@ -7722,12 +7675,13 @@ static void applyTimeScale(TransInfo *t, const int UNUSED(mval[2]))
 /* TODO, move to: transform_queries.c */
 bool checkUseLocalCenter_GraphEdit(TransInfo *t)
 {
-	return ((t->around == V3D_LOCAL) && !ELEM3(t->mode, TFM_TRANSLATION, TFM_TIME_TRANSLATE, TFM_TIME_SLIDE));
+	return ((t->around == V3D_LOCAL) &&
+	        !ELEM4(t->mode, TFM_TRANSLATION, TFM_TIME_TRANSLATE, TFM_TIME_SLIDE, TFM_TIME_DUPLICATE));
 }
 
 bool checkUseAxisMatrix(TransInfo *t)
 {
-	/* currenly only checks for editmode */
+	/* currently only checks for editmode */
 	if (t->flag & T_EDIT) {
 		if ((t->around == V3D_LOCAL) && (ELEM4(t->obedit->type, OB_MESH, OB_CURVE, OB_MBALL, OB_ARMATURE))) {
 			/* not all editmode supports axis-matrix */

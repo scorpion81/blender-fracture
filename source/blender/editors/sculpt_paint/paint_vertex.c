@@ -33,7 +33,6 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
-#include "BLI_memarena.h"
 
 #include "IMB_imbuf.h"
 #include "IMB_imbuf_types.h"
@@ -58,7 +57,6 @@
 #include "BKE_mesh.h"
 #include "BKE_mesh_mapping.h"
 #include "BKE_modifier.h"
-#include "BKE_object.h"
 #include "BKE_object_deform.h"
 #include "BKE_paint.h"
 #include "BKE_report.h"
@@ -217,7 +215,7 @@ static void do_shared_vertex_tesscol(Mesh *me, bool *mfacetag)
 	int a;
 	short *scolmain, *scol;
 	char *mcol;
-	bool *mftag;
+	const bool *mftag;
 	
 	if (me->mcol == NULL || me->totvert == 0 || me->totface == 0) return;
 	
@@ -1185,8 +1183,10 @@ static EnumPropertyItem *weight_paint_sample_enum_itemf(bContext *C, PointerRNA 
 				bool found = false;
 				unsigned int index;
 
-				int mval[2] = {win->eventstate->x - vc.ar->winrct.xmin,
-				               win->eventstate->y - vc.ar->winrct.ymin};
+				const int mval[2] = {
+				    win->eventstate->x - vc.ar->winrct.xmin,
+				    win->eventstate->y - vc.ar->winrct.ymin,
+				};
 
 				view3d_operator_needs_opengl(C);
 				ED_view3d_init_mats_rv3d(vc.obact, vc.rv3d);
@@ -1273,6 +1273,7 @@ void PAINT_OT_weight_sample_group(wmOperatorType *ot)
 	/* keyingset to use (dynamic enum) */
 	prop = RNA_def_enum(ot->srna, "group", DummyRNA_DEFAULT_items, 0, "Keying Set", "The Keying Set to use");
 	RNA_def_enum_funcs(prop, weight_paint_sample_enum_itemf);
+	RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
 	ot->prop = prop;
 }
 

@@ -42,7 +42,6 @@
 #include "DNA_windowmanager_types.h"
 
 #include "BLI_blenlib.h"
-#include "BLI_math.h"
 #include "BLI_dlrbTree.h"
 #include "BLI_utildefines.h"
 
@@ -76,7 +75,7 @@
 /* get colors for drawing Action-Line 
  * NOTE: color returned includes fine-tuned alpha!
  */
-static void nla_action_get_color(AnimData *adt, bAction *act, float color[4])
+void nla_action_get_color(AnimData *adt, bAction *act, float color[4])
 {
 	if (adt && (adt->flag & ADT_NLA_EDIT_ON)) {
 		/* greenish color (same as tweaking strip) */
@@ -132,7 +131,7 @@ static void nla_action_draw_keyframes(AnimData *adt, bAction *act, View2D *v2d, 
 	
 	
 	/* get View2D scaling factor */
-	UI_view2d_getscale(v2d, &xscale, NULL);
+	UI_view2d_scale_get(v2d, &xscale, NULL);
 	
 	/* for now, color is hardcoded to be black */
 	glColor3f(0.0f, 0.0f, 0.0f);
@@ -428,16 +427,17 @@ static void nla_draw_strip_text(AnimData *adt, NlaTrack *nlt, NlaStrip *strip, i
 {
 	short notSolo = ((adt && (adt->flag & ADT_NLA_SOLO_TRACK)) && (nlt->flag & NLATRACK_SOLO) == 0);
 	char str[256];
+	size_t str_len;
 	char col[4];
 	float xofs;
 	rctf rect;
 	
 	/* just print the name and the range */
 	if (strip->flag & NLASTRIP_FLAG_TEMP_META) {
-		BLI_snprintf(str, sizeof(str), "%d) Temp-Meta", index);
+		str_len = BLI_snprintf(str, sizeof(str), "%d) Temp-Meta", index);
 	}
 	else {
-		BLI_strncpy(str, strip->name, sizeof(str));
+		str_len = BLI_strncpy_rlen(str, strip->name, sizeof(str));
 	}
 	
 	/* set text color - if colors (see above) are light, draw black text, otherwise draw white */
@@ -470,7 +470,7 @@ static void nla_draw_strip_text(AnimData *adt, NlaTrack *nlt, NlaStrip *strip, i
 	rect.ymax = ymaxc;
 	
 	/* add this string to the cache of texts to draw */
-	UI_view2d_text_cache_rectf(v2d, &rect, str, col);
+	UI_view2d_text_cache_add_rectf(v2d, &rect, str, str_len, col);
 }
 
 /* add frame extents to cache of text-strings to draw in pixelspace
@@ -480,7 +480,8 @@ static void nla_draw_strip_frames_text(NlaTrack *UNUSED(nlt), NlaStrip *strip, V
 {
 	const float ytol = 1.0f; /* small offset to vertical positioning of text, for legibility */
 	const char col[4] = {220, 220, 220, 255}; /* light gray */
-	char numstr[32] = "";
+	char numstr[32];
+	size_t numstr_len;
 	
 	
 	/* Always draw times above the strip, whereas sequencer drew below + above.
@@ -490,12 +491,12 @@ static void nla_draw_strip_frames_text(NlaTrack *UNUSED(nlt), NlaStrip *strip, V
 	 *	  while also preserving some accuracy, since we do use floats
 	 */
 	/* start frame */
-	BLI_snprintf(numstr, sizeof(numstr), "%.1f", strip->start);
-	UI_view2d_text_cache_add(v2d, strip->start - 1.0f, ymaxc + ytol, numstr, col);
+	numstr_len = BLI_snprintf(numstr, sizeof(numstr), "%.1f", strip->start);
+	UI_view2d_text_cache_add(v2d, strip->start - 1.0f, ymaxc + ytol, numstr, numstr_len, col);
 	
 	/* end frame */
-	BLI_snprintf(numstr, sizeof(numstr), "%.1f", strip->end);
-	UI_view2d_text_cache_add(v2d, strip->end, ymaxc + ytol, numstr, col);
+	numstr_len = BLI_snprintf(numstr, sizeof(numstr), "%.1f", strip->end);
+	UI_view2d_text_cache_add(v2d, strip->end, ymaxc + ytol, numstr, numstr_len, col);
 }
 
 /* ---------------------- */
@@ -618,200 +619,6 @@ void draw_nla_main_data(bAnimContext *ac, SpaceNla *snla, ARegion *ar)
 /* *********************************************** */
 /* Channel List */
 
-/* old code for drawing NLA channels using GL only */
-// TODO: depreceate this code...
-static void draw_nla_channel_list_gl(bAnimContext *ac, ListBase *anim_data, View2D *v2d, float y)
-{
-	SpaceNla *snla = (SpaceNla *)ac->sl;
-	bAnimListElem *ale;
-	float x = 0.0f;
-	
-	/* loop through channels, and set up drawing depending on their type  */
-	for (ale = anim_data->first; ale; ale = ale->next) {
-		const float yminc = (float)(y - NLACHANNEL_HEIGHT_HALF(snla));
-		const float ymaxc = (float)(y + NLACHANNEL_HEIGHT_HALF(snla));
-		const float ydatac = (float)(y - 0.35f * U.widget_unit);
-		
-		/* check if visible */
-		if (IN_RANGE(yminc, v2d->cur.ymin, v2d->cur.ymax) ||
-		    IN_RANGE(ymaxc, v2d->cur.ymin, v2d->cur.ymax) )
-		{
-			AnimData *adt = ale->adt;
-			
-			short indent = 0, offset = 0, sel = 0, group = 0;
-			int special = -1;
-			char name[128];
-			bool do_draw = false;
-			
-			/* determine what needs to be drawn */
-			switch (ale->type) {
-				case ANIMTYPE_NLAACTION: /* NLA Action-Line */
-				{
-					bAction *act = (bAction *)ale->data;
-					
-					group = 5;
-					
-					special = ICON_ACTION;
-					
-					BLI_strncpy(name, act ? act->id.name + 2 : "<No Action>", sizeof(name));
-
-					/* draw manually still */
-					do_draw = true;
-					break;
-				}
-				default: /* handled by standard channel-drawing API */
-					/* (draw backdrops only...) */
-					ANIM_channel_draw(ac, ale, yminc, ymaxc);
-					break;
-			}
-			
-			/* if special types, draw manually for now... */
-			if (do_draw) {
-				if (ale->id) {
-					/* special exception for textures */
-					if (GS(ale->id->name) == ID_TE) {
-						offset = 0.7f * U.widget_unit;
-						indent = 1;
-					}
-					/* special exception for nodetrees */
-					else if (GS(ale->id->name) == ID_NT) {
-						bNodeTree *ntree = (bNodeTree *)ale->id;
-						
-						switch (ntree->type) {
-							case NTREE_SHADER:
-							{
-								/* same as for textures */
-								offset = 0.7f * U.widget_unit;
-								indent = 1;
-								break;
-							}
-							case NTREE_TEXTURE:
-							{
-								/* even more */
-								offset = U.widget_unit;
-								indent = 1;
-								break;
-							}
-							default:
-								/* normal will do */
-								offset = 0.7f * U.widget_unit;
-								break;
-						}
-					}
-					else {
-						offset = 0.7f * U.widget_unit;
-					}
-				}
-				else {
-					offset = 0;
-				}
-				
-				/* now, start drawing based on this information */
-				glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-				glEnable(GL_BLEND);
-				
-				/* draw backing strip behind channel name */
-				if (group == 5) {
-					float color[4];
-					
-					/* Action Line
-					 *   The alpha values action_get_color returns are only useful for drawing 
-					 *   strips backgrounds but here we're doing channel list backgrounds instead
-					 *   so we ignore that and use our own when needed
-					 */
-					nla_action_get_color(adt, (bAction *)ale->data, color);
-					
-					if (adt && (adt->flag & ADT_NLA_EDIT_ON)) {
-						/* Yes, the color vector has 4 components, BUT we only want to be using 3 of them! */
-						glColor3fv(color);
-					}
-					else {
-						float alpha = (adt && (adt->flag & ADT_NLA_SOLO_TRACK)) ? 0.3f : 1.0f;
-						glColor4f(color[0], color[1], color[2], alpha);
-					}
-					
-					offset += 0.35f * U.widget_unit * indent;
-					
-					/* only on top two corners, to show that this channel sits on top of the preceding ones */
-					uiSetRoundBox(UI_CNR_TOP_LEFT | UI_CNR_TOP_RIGHT);
-					
-					/* draw slightly shifted up vertically to look like it has more separation from other channels,
-					 * but we then need to slightly shorten it so that it doesn't look like it overlaps
-					 */
-					uiDrawBox(GL_POLYGON, x + offset,  yminc + NLACHANNEL_SKIP, (float)v2d->cur.xmax, ymaxc + NLACHANNEL_SKIP - 1, 8);
-					
-					/* clear group value, otherwise we cause errors... */
-					group = 0;
-				}
-				
-				
-				/* draw special icon indicating certain data-types */
-				if (special > -1) {
-					/* for normal channels */
-					UI_icon_draw(x + offset, ydatac, special);
-					offset += 0.85f * U.widget_unit;
-				}
-				glDisable(GL_BLEND);
-				
-				/* draw name */
-				if (sel)
-					UI_ThemeColor(TH_TEXT_HI);
-				else
-					UI_ThemeColor(TH_TEXT);
-				offset += 3;
-				UI_DrawString(x + offset, y - 4, name);
-				
-				/* reset offset - for RHS of panel */
-				offset = 0;
-				
-				/* set blending again, as text drawing may clear it */
-				glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-				glEnable(GL_BLEND);
-				
-				
-				/* draw NLA-action line 'status-icons' - only when there's an action */
-				if ((ale->type == ANIMTYPE_NLAACTION) && (ale->data)) {
-					offset += 0.8f * U.widget_unit;
-					
-					/* now draw some indicator icons  */
-					if ((adt) && (adt->flag & ADT_NLA_EDIT_ON)) {
-						/* toggle for tweaking with mapping/no-mapping (i.e. 'in place editing' toggle) */
-						// for now, use pin icon to symbolise this
-						if (adt->flag & ADT_NLA_EDIT_NOMAP)
-							UI_icon_draw((float)(v2d->cur.xmax - offset), ydatac, ICON_PINNED);
-						else
-							UI_icon_draw((float)(v2d->cur.xmax - offset), ydatac, ICON_UNPINNED);
-						
-						fdrawline((float)(v2d->cur.xmax - offset), yminc,
-						          (float)(v2d->cur.xmax - offset), ymaxc);
-						offset += 0.8f * U.widget_unit;
-						
-						/* 'tweaking action' indicator - not a button */
-						UI_icon_draw((float)(v2d->cur.xmax - offset), ydatac, ICON_EDIT);
-					}
-					else {
-						/* XXX firstly draw a little rect to help identify that it's different from the toggles */
-						glBegin(GL_LINE_LOOP);
-						glVertex2f((float)v2d->cur.xmax - offset - 1, y - 0.35f * U.widget_unit);
-						glVertex2f((float)v2d->cur.xmax - offset - 1, y + 0.45f * U.widget_unit);
-						glVertex2f((float)v2d->cur.xmax - 1, y + 0.45f * U.widget_unit);
-						glVertex2f((float)v2d->cur.xmax - 1, y - 0.35f * U.widget_unit);
-						glEnd();
-						
-						/* 'push down' icon for normal active-actions */
-						UI_icon_draw((float)v2d->cur.xmax - offset, ydatac, ICON_FREEZE);
-					}
-				}
-				
-				glDisable(GL_BLEND);
-			}
-		}
-		
-		/* adjust y-position for next one */
-		y -= NLACHANNEL_STEP(snla);
-	}
-}
-
 void draw_nla_channel_list(bContext *C, bAnimContext *ac, ARegion *ar)
 {
 	ListBase anim_data = {NULL, NULL};
@@ -843,10 +650,24 @@ void draw_nla_channel_list(bContext *C, bAnimContext *ac, ARegion *ar)
 	UI_view2d_sync(NULL, ac->sa, v2d, V2D_LOCK_COPY);
 	
 	/* draw channels */
-	{   /* first pass: backdrops + oldstyle drawing */
+	{   /* first pass: just the standard GL-drawing for backdrop + text */
 		y = (float)(-NLACHANNEL_HEIGHT(snla));
 		
-		draw_nla_channel_list_gl(ac, &anim_data, v2d, y);
+		for (ale = anim_data.first; ale; ale = ale->next) {
+			float yminc = (float)(y -  NLACHANNEL_HEIGHT_HALF(snla));
+			float ymaxc = (float)(y +  NLACHANNEL_HEIGHT_HALF(snla));
+			
+			/* check if visible */
+			if (IN_RANGE(yminc, v2d->cur.ymin, v2d->cur.ymax) ||
+			    IN_RANGE(ymaxc, v2d->cur.ymin, v2d->cur.ymax) )
+			{
+				/* draw all channels using standard channel-drawing API */
+				ANIM_channel_draw(ac, ale, yminc, ymaxc);
+			}
+			
+			/* adjust y-position for next one */
+			y -= NLACHANNEL_STEP(snla);
+		}
 	}
 	{   /* second pass: UI widgets */
 		uiBlock *block = uiBeginBlock(C, ar, __func__, UI_EMBOSS);
@@ -882,7 +703,7 @@ void draw_nla_channel_list(bContext *C, bAnimContext *ac, ARegion *ar)
 		glDisable(GL_BLEND);
 	}
 	
-	/* free tempolary channels */
+	/* free temporary channels */
 	BLI_freelistN(&anim_data);
 }
 

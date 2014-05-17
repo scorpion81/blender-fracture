@@ -38,8 +38,6 @@ set(SRC
 	intern/blender_interface/BlenderStrokeRenderer.cpp
 	intern/blender_interface/BlenderStrokeRenderer.h
 	intern/blender_interface/BlenderStyleModule.h
-	intern/blender_interface/BlenderTextureManager.cpp
-	intern/blender_interface/BlenderTextureManager.h
 	intern/blender_interface/FRS_freestyle.cpp
 	intern/geometry/BBox.h
 	intern/geometry/Bezier.cpp
@@ -185,6 +183,8 @@ set(SRC
 	intern/python/StrokeShader/BPy_BackboneStretcherShader.h
 	intern/python/StrokeShader/BPy_BezierCurveShader.cpp
 	intern/python/StrokeShader/BPy_BezierCurveShader.h
+	intern/python/StrokeShader/BPy_BlenderTextureShader.cpp
+	intern/python/StrokeShader/BPy_BlenderTextureShader.h
 	intern/python/StrokeShader/BPy_CalligraphicShader.cpp
 	intern/python/StrokeShader/BPy_CalligraphicShader.h
 	intern/python/StrokeShader/BPy_ColorNoiseShader.cpp
@@ -213,6 +213,8 @@ set(SRC
 	intern/python/StrokeShader/BPy_SpatialNoiseShader.h
 	intern/python/StrokeShader/BPy_StrokeTextureShader.cpp
 	intern/python/StrokeShader/BPy_StrokeTextureShader.h
+	intern/python/StrokeShader/BPy_StrokeTextureStepShader.cpp
+	intern/python/StrokeShader/BPy_StrokeTextureStepShader.h
 	intern/python/StrokeShader/BPy_TextureAssignerShader.cpp
 	intern/python/StrokeShader/BPy_TextureAssignerShader.h
 	intern/python/StrokeShader/BPy_ThicknessNoiseShader.cpp
@@ -445,7 +447,9 @@ set(SRC
 	intern/stroke/Operators.h
 	intern/stroke/PSStrokeRenderer.cpp
 	intern/stroke/PSStrokeRenderer.h
+	intern/stroke/Predicates0D.cpp
 	intern/stroke/Predicates0D.h
+	intern/stroke/Predicates1D.cpp
 	intern/stroke/Predicates1D.h
 	intern/stroke/QInformationMap.h
 	intern/stroke/Stroke.cpp
@@ -460,6 +464,7 @@ set(SRC
 	intern/stroke/StrokeRenderer.h
 	intern/stroke/StrokeRep.cpp
 	intern/stroke/StrokeRep.h
+	intern/stroke/StrokeShader.cpp
 	intern/stroke/StrokeShader.h
 	intern/stroke/StrokeTesselator.cpp
 	intern/stroke/StrokeTesselator.h
@@ -509,7 +514,9 @@ set(SRC
 	intern/view_map/GridDensityProvider.h
 	intern/view_map/HeuristicGridDensityProviderFactory.cpp
 	intern/view_map/HeuristicGridDensityProviderFactory.h
+	intern/view_map/Interface0D.cpp
 	intern/view_map/Interface0D.h
+	intern/view_map/Interface1D.cpp
 	intern/view_map/Interface1D.h
 	intern/view_map/OccluderSource.cpp
 	intern/view_map/OccluderSource.h

@@ -52,7 +52,6 @@
 #include "BKE_editmesh.h"
 #include "BKE_editmesh_bvh.h"
 
-#include "DNA_mesh_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_object_types.h"
 
@@ -180,6 +179,7 @@ static void emDM_calcLoopNormals(DerivedMesh *dm, const float split_angle)
 
 	/* calculate loop normals from poly and vertex normals */
 	emDM_ensureVertNormals(bmdm);
+	emDM_ensurePolyNormals(bmdm);
 	dm->dirty &= ~DM_DIRTY_NORMALS;
 
 	vertexCos = bmdm->vertexCos;
@@ -298,8 +298,8 @@ static void emDM_drawMappedEdges(DerivedMesh *dm,
 	}
 }
 static void emDM_drawEdges(DerivedMesh *dm,
-                           int UNUSED(drawLooseEdges),
-                           int UNUSED(drawAllEdges))
+                           bool UNUSED(drawLooseEdges),
+                           bool UNUSED(drawAllEdges))
 {
 	emDM_drawMappedEdges(dm, NULL, NULL);
 }
@@ -375,6 +375,39 @@ static void emDM_drawUVEdges(DerivedMesh *dm)
 		} while ((l_iter = l_iter->next) != l_first);
 	}
 	glEnd();
+}
+
+static void emDM_foreachMappedLoop(
+        DerivedMesh *dm,
+        void (*func)(void *userData, int vertex_index, int face_index, const float co[3], const float no[3]),
+        void *userData,
+        DMForeachFlag flag)
+{
+	/* We can't use dm->getLoopDataLayout(dm) here, we want to always access dm->loopData, EditDerivedBMesh would
+	 * return loop data from bmesh itself. */
+	const float (*lnors)[3] = (flag & DM_FOREACH_USE_NORMAL) ? DM_get_loop_data_layer(dm, CD_NORMAL) : NULL;
+
+	EditDerivedBMesh *bmdm = (EditDerivedBMesh *)dm;
+	BMesh *bm = bmdm->em->bm;
+	BMFace *efa;
+	BMIter iter;
+
+	const float (*vertexCos)[3] = bmdm->vertexCos;
+	int f_idx;
+
+	BM_mesh_elem_index_ensure(bm, BM_VERT);
+
+	BM_ITER_MESH_INDEX (efa, &iter, bm, BM_FACES_OF_MESH, f_idx) {
+		BMLoop *l_iter, *l_first;
+
+		l_iter = l_first = BM_FACE_FIRST_LOOP(efa);
+		do {
+			const BMVert *eve = l_iter->v;
+			const int v_idx = BM_elem_index_get(eve);
+			const float *no = lnors ? *lnors++ : NULL;
+			func(userData, v_idx, f_idx, vertexCos ? vertexCos[v_idx] : eve->co, no);
+		} while ((l_iter = l_iter->next) != l_first);
+	}
 }
 
 static void emDM_foreachMappedFaceCenter(
@@ -1058,13 +1091,13 @@ static void emDM_drawMappedFacesGLSL(DerivedMesh *dm,
 }
 
 static void emDM_drawFacesGLSL(DerivedMesh *dm,
-                               int (*setMaterial)(int, void *attribs))
+                               int (*setMaterial)(int matnr, void *attribs))
 {
 	dm->drawMappedFacesGLSL(dm, setMaterial, NULL, NULL);
 }
 
 static void emDM_drawMappedFacesMat(DerivedMesh *dm,
-                                    void (*setMaterial)(void *userData, int, void *attribs),
+                                    void (*setMaterial)(void *userData, int matnr, void *attribs),
                                     bool (*setFace)(void *userData, int index), void *userData)
 {
 	EditDerivedBMesh *bmdm = (EditDerivedBMesh *)dm;
@@ -1222,7 +1255,7 @@ static int emDM_getNumPolys(DerivedMesh *dm)
 
 static void bmvert_to_mvert(BMesh *bm, BMVert *ev, MVert *r_vert)
 {
-	float *f;
+	const float *f;
 
 	copy_v3_v3(r_vert->co, ev->co);
 
@@ -1332,7 +1365,7 @@ static void emDM_getEdge(DerivedMesh *dm, int index, MEdge *r_edge)
 	EditDerivedBMesh *bmdm = (EditDerivedBMesh *)dm;
 	BMesh *bm = bmdm->em->bm;
 	BMEdge *e;
-	float *f;
+	const float *f;
 
 	if (UNLIKELY(index < 0 || index >= bm->totedge)) {
 		BLI_assert(!"error in emDM_getEdge");
@@ -1523,7 +1556,7 @@ static void *emDM_getTessFaceDataArray(DerivedMesh *dm, int type)
 	if (type == CD_MTFACE || type == CD_MCOL) {
 		const int type_from = (type == CD_MTFACE) ? CD_MTEXPOLY : CD_MLOOPCOL;
 		int index;
-		char *data, *bmdata;
+		const char *data, *bmdata;
 		index = CustomData_get_layer_index(&bm->pdata, type_from);
 
 		if (index != -1) {
@@ -1727,6 +1760,7 @@ DerivedMesh *getEditDerivedBMesh(BMEditMesh *em,
 	bmdm->dm.recalcTessellation = emDM_recalcTessellation;
 
 	bmdm->dm.foreachMappedVert = emDM_foreachMappedVert;
+	bmdm->dm.foreachMappedLoop = emDM_foreachMappedLoop;
 	bmdm->dm.foreachMappedEdge = emDM_foreachMappedEdge;
 	bmdm->dm.foreachMappedFaceCenter = emDM_foreachMappedFaceCenter;
 

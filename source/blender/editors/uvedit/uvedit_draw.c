@@ -33,8 +33,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "MEM_guardedalloc.h"
-
 #include "DNA_mesh_types.h"
 #include "DNA_meshdata_types.h"
 #include "DNA_object_types.h"
@@ -46,7 +44,6 @@
 #include "BLI_utildefines.h"
 
 #include "BKE_DerivedMesh.h"
-#include "BKE_mesh.h"
 #include "BKE_editmesh.h"
 
 #include "BLI_buffer.h"
@@ -54,7 +51,6 @@
 #include "BIF_gl.h"
 #include "BIF_glutil.h"
 
-#include "ED_util.h"
 #include "ED_image.h"
 #include "ED_mesh.h"
 #include "ED_uvedit.h"
@@ -73,7 +69,7 @@ void draw_image_cursor(ARegion *ar, const float cursor[2])
 {
 	float zoom[2], x_fac, y_fac;
 
-	UI_view2d_getscale_inverse(&ar->v2d, &zoom[0], &zoom[1]);
+	UI_view2d_scale_get_inverse(&ar->v2d, &zoom[0], &zoom[1]);
 
 	mul_v2_fl(zoom, 256.0f * UI_DPI_FAC);
 	x_fac = zoom[0];
@@ -489,6 +485,7 @@ static void draw_uvs(SpaceImage *sima, Scene *scene, Object *obedit)
 	/* 1. draw shadow mesh */
 	
 	if (sima->flag & SI_DRAWSHADOW) {
+		DM_update_materials(em->derivedFinal, obedit);
 		/* first try existing derivedmesh */
 		if (!draw_uvs_dm_shadow(em->derivedFinal)) {
 			/* create one if it does not exist */

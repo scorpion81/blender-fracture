@@ -39,7 +39,7 @@ extern "C" {
 
 namespace Freestyle {
 
-class LIB_STROKE_EXPORT BlenderStrokeRenderer : public StrokeRenderer
+class BlenderStrokeRenderer : public StrokeRenderer
 {
 public:
 	BlenderStrokeRenderer(Render *re, int render_count);
@@ -57,13 +57,15 @@ protected:
 	Main *freestyle_bmain;
 	Scene *old_scene;
 	Scene *freestyle_scene;
-	Material *material;
 	float _width, _height;
 	float _z, _z_delta;
 	unsigned int _mesh_id;
 
 	float get_stroke_vertex_z(void) const;
 	unsigned int get_stroke_mesh_id(void) const;
+	bool test_triangle_visibility(StrokeVertexRep *svRep[3]) const;
+	void test_strip_visibility(Strip::vertex_container& strip_vertices,
+		int *visible_faces, int *visible_segments) const;
 
 #ifdef WITH_CXX_GUARDEDALLOC
 	MEM_CXX_CLASS_ALLOC_FUNCS("Freestyle:BlenderStrokeRenderer")

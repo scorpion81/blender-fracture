@@ -40,7 +40,6 @@
 #include "DNA_meshdata_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_object_types.h"
-#include "DNA_material_types.h"
 #include "DNA_vfont_types.h"
 
 #include "BLI_blenlib.h"
@@ -54,9 +53,7 @@
 #include "BKE_displist.h"
 #include "BKE_cdderivedmesh.h"
 #include "BKE_object.h"
-#include "BKE_main.h"
 #include "BKE_mball.h"
-#include "BKE_material.h"
 #include "BKE_curve.h"
 #include "BKE_key.h"
 #include "BKE_anim.h"
@@ -891,7 +888,7 @@ static float (*displist_get_allverts(ListBase *dispbase, int *totvert))[3]
 static void displist_apply_allverts(ListBase *dispbase, float (*allverts)[3])
 {
 	DispList *dl;
-	float *fp;
+	const float *fp;
 
 	fp = (float *)allverts;
 	for (dl = dispbase->first; dl; dl = dl->next) {
@@ -1380,13 +1377,17 @@ static void calc_bevfac_spline_mapping(BevList *bl, float bevfac, float spline_l
 	}
 }
 
-static void calc_bevfac_mapping(Curve *cu, BevList *bl, int *r_start, float *r_firstblend, int *r_steps, float *r_lastblend)
+static void calc_bevfac_mapping(Curve *cu, BevList *bl, short splinetype, const bool use_render_resolution,
+                                int *r_start, float *r_firstblend, int *r_steps, float *r_lastblend)
 {
+	const int resolu = (use_render_resolution && (cu->resolu_ren != 0)) ? cu->resolu_ren : cu->resolu;
+	const int segcount = (splinetype == CU_POLY) ? bl->nr : (bl->nr / resolu);
+
 	BevPoint *bevp, *bevl;
 	float l, startf, endf, tmpf = 0.0, sum = 0.0, total_length = 0.0f;
 	float *bevp_array = NULL;
 	float *segments = NULL;
-	int end = 0, i, j, segcount = (int)(bl->nr / cu->resolu);
+	int end = 0, i, j;
 
 	if ((cu->bevfac1_mapping != CU_BEVFAC_MAP_RESOLU) ||
 	    (cu->bevfac2_mapping != CU_BEVFAC_MAP_RESOLU))
@@ -1401,7 +1402,8 @@ static void calc_bevfac_mapping(Curve *cu, BevList *bl, int *r_start, float *r_f
 			bevp_array[i - 1] = len_v3v3(bevp->vec, bevl->vec);
 			total_length += bevp_array[i - 1];
 			tmpf += bevp_array[i - 1];
-			if ((i % cu->resolu) == 0 || (bl->nr - 1) == i) {
+			if ((i % resolu) == 0 || (bl->nr - 1) == i) {
+				BLI_assert(j < segcount);
 				segments[j++] = tmpf;
 				tmpf = 0.0f;
 			}
@@ -1425,7 +1427,7 @@ static void calc_bevfac_mapping(Curve *cu, BevList *bl, int *r_start, float *r_f
 			for (i = 0; i < segcount; i++) {
 				l = segments[i] / total_length;
 				if (sum + l > cu->bevfac1) {
-					startf = i * cu->resolu + (cu->bevfac1 - sum) / l * cu->resolu;
+					startf = i * resolu + (cu->bevfac1 - sum) / l * resolu;
 					*r_start = (int) startf;
 					*r_firstblend = 1.0f - (startf - *r_start);
 					break;
@@ -1462,7 +1464,7 @@ static void calc_bevfac_mapping(Curve *cu, BevList *bl, int *r_start, float *r_f
 			for (i = 0; i < segcount; i++) {
 				l = segments[i] / total_length;
 				if (sum + l > cu->bevfac2) {
-					endf = i * cu->resolu + (cu->bevfac2 - sum) / l * cu->resolu;
+					endf = i * resolu + (cu->bevfac2 - sum) / l * resolu;
 					end = (int)endf;
 					*r_lastblend = (endf - end);
 					*r_steps = end - *r_start + 2;
@@ -1600,7 +1602,8 @@ static void do_makeDispListCurveTypes(Scene *scene, Object *ob, ListBase *dispba
 						float firstblend = 0.0f, lastblend = 0.0f;
 						int i, start, steps;
 
-						calc_bevfac_mapping(cu, bl, &start, &firstblend, &steps, &lastblend);
+						calc_bevfac_mapping(cu, bl, nu->type, use_render_resolution,
+						                    &start, &firstblend, &steps, &lastblend);
 
 						for (dlb = dlbev.first; dlb; dlb = dlb->next) {
 
@@ -1794,7 +1797,7 @@ float *BKE_displist_make_orco(Scene *scene, Object *ob, DerivedMesh *dm_final,
 void BKE_displist_minmax(ListBase *dispbase, float min[3], float max[3])
 {
 	DispList *dl;
-	float *vert;
+	const float *vert;
 	int a, tot = 0;
 	int doit = 0;
 

@@ -197,7 +197,7 @@ void BL_ConvertControllers(
 			}
 		}
 
-		if (gamecontroller)
+		if (gamecontroller && !(bcontr->flag & CONT_DEACTIVATE))
 		{
 			LinkControllerToActuators(gamecontroller,bcontr,logicmgr,converter);
 			gamecontroller->SetExecutePriority(executePriority++);
@@ -240,6 +240,8 @@ void BL_ConvertControllers(
 			//done with gamecontroller
 			gamecontroller->Release();
 		}
+		else if (gamecontroller)
+			gamecontroller->Release();
 		
 		bcontr = bcontr->next;
 	}

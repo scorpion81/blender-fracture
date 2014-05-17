@@ -1156,25 +1156,30 @@ static void calc_ortho_extent(KnifeTool_OpData *kcd)
  * s in screen projection of p. */
 static bool point_is_visible(KnifeTool_OpData *kcd, const float p[3], const float s[2], bglMats *mats)
 {
-	float p1[3], no[3], view[3];
 	BMFace *f_hit;
 
 	/* If not cutting through, make sure no face is in front of p */
 	if (!kcd->cut_through) {
+		float dist;
+		float view[3], p_ofs[3];
+
 		/* TODO: I think there's a simpler way to get the required raycast ray */
 		ED_view3d_unproject(mats, view, s[0], s[1], 0.0f);
+
 		mul_m4_v3(kcd->ob->imat, view);
 
-		/* make p1 a little towards view, so ray doesn't hit p's face. */
-		copy_v3_v3(p1, p);
-		sub_v3_v3(view, p1);
-		normalize_v3(view);
-		copy_v3_v3(no, view);
-		mul_v3_fl(no, 3.0f * KNIFE_FLT_EPSBIG);
-		add_v3_v3(p1, no);
+		/* make p_ofs a little towards view, so ray doesn't hit p's face. */
+		sub_v3_v3(view, p);
+		dist = normalize_v3(view);
+		madd_v3_v3v3fl(p_ofs, p, view, KNIFE_FLT_EPSBIG * 3.0f);
+
+		/* avoid projecting behind the viewpoint */
+		if (kcd->is_ortho) {
+			dist = FLT_MAX;
+		}
 
 		/* see if there's a face hit between p1 and the view */
-		f_hit = BKE_bmbvh_ray_cast(kcd->bmbvh, p1, no, KNIFE_FLT_EPS, NULL, NULL, NULL);
+		f_hit = BKE_bmbvh_ray_cast(kcd->bmbvh, p_ofs, view, KNIFE_FLT_EPS, &dist, NULL, NULL);
 		if (f_hit)
 			return false;
 	}
@@ -1395,6 +1400,12 @@ static void knife_find_line_hits(KnifeTool_OpData *kcd)
 				isect_kind = isect_line_line_v3(kfe->v1->cageco, kfe->v2->cageco, r1, r2, p, p2);
 				if (isect_kind >= 1 && point_is_visible(kcd, p, sint, &mats)) {
 					memset(&hit, 0, sizeof(hit));
+					if (kcd->snap_midpoints) {
+						/* choose intermediate point snap too */
+						mid_v3_v3v3(p, kfe->v1->cageco, kfe->v2->cageco);
+						mid_v2_v2v2(sint, se1, se2);
+						lambda = 0.5f;
+					}
 					hit.kfe = kfe;
 					copy_v3_v3(hit.hit, p);
 					copy_v3_v3(hit.cagehit, p);
@@ -2218,7 +2229,7 @@ static bool knife_verts_edge_in_face(KnifeVert *v1, KnifeVert *v2, BMFace *f)
 		return true;
 	if (l1 && l2) {
 		/* Can have case where v1 and v2 are on shared chain between two faces.
-		 * BM_face_legal_splits does visibility and self-intersection tests,
+		 * BM_face_splits_check_legal does visibility and self-intersection tests,
 		 * but it is expensive and maybe a bit buggy, so use a simple
 		 * "is the midpoint in the face" test */
 		mid_v3_v3v3(mid, v1->co, v2->co);
@@ -2928,7 +2939,7 @@ static void edvm_mesh_knife_face_point(BMFace *f, float r_cent[3])
 	unsigned int  (*index)[3] = BLI_array_alloca(index, tottri);
 	int j;
 
-	float const *best_co[3] = {NULL};
+	const float *best_co[3] = {NULL};
 	float best_area  = -1.0f;
 	bool ok = false;
 

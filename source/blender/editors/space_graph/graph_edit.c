@@ -46,7 +46,6 @@
 #include "BLI_utildefines.h"
 
 #include "DNA_anim_types.h"
-#include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 
 #include "RNA_access.h"
@@ -221,11 +220,11 @@ static int graphkeys_viewall(bContext *C, const bool do_sel_only, const bool inc
 {
 	bAnimContext ac;
 	rctf cur_new;
-
+	
 	/* get editor data */
 	if (ANIM_animdata_get_context(C, &ac) == 0)
 		return OPERATOR_CANCELLED;
-
+	
 	/* set the horizontal range, with an extra offset so that the extreme keys will be in view */
 	get_graph_keyframe_extents(&ac,
 	                           &cur_new.xmin, &cur_new.xmax,
@@ -233,9 +232,9 @@ static int graphkeys_viewall(bContext *C, const bool do_sel_only, const bool inc
 	                           do_sel_only, include_handles);
 
 	BLI_rctf_scale(&cur_new, 1.1f);
-
+	
 	UI_view2d_smooth_view(C, ac.ar, &cur_new, smooth_viewtx);
-
+	
 	return OPERATOR_FINISHED;
 }
 
@@ -269,7 +268,7 @@ void GRAPH_OT_view_all(wmOperatorType *ot)
 	/* api callbacks */
 	ot->exec = graphkeys_viewall_exec;
 	ot->poll = ED_operator_graphedit_active; /* XXX: unchecked poll to get fsamples working too, but makes modifier damage trickier... */
-
+	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
@@ -334,7 +333,7 @@ static void create_ghost_curves(bAnimContext *ac, int start, int end)
 		int cfra;
 		SpaceIpo *sipo = (SpaceIpo *) ac->sl;
 		short mapping_flag = ANIM_get_normalization_flags(ac);
-
+		
 		/* disable driver so that it don't muck up the sampling process */
 		fcu->driver = NULL;
 		
@@ -532,7 +531,7 @@ static int graphkeys_insertkey_exec(bContext *C, wmOperator *op)
 	ANIM_editkeyframes_refresh(&ac);
 	
 	/* set notifier that keyframes have changed */
-	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_EDITED, NULL);
+	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_ADDED, NULL);
 	
 	return OPERATOR_FINISHED;
 }
@@ -839,7 +838,7 @@ static int graphkeys_duplicate_exec(bContext *C, wmOperator *UNUSED(op))
 	ANIM_editkeyframes_refresh(&ac);
 	
 	/* set notifier that keyframes have changed */
-	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_EDITED, NULL);
+	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_ADDED, NULL);
 	
 	return OPERATOR_FINISHED;
 }
@@ -924,7 +923,7 @@ static int graphkeys_delete_exec(bContext *C, wmOperator *UNUSED(op))
 	ANIM_editkeyframes_refresh(&ac);
 	
 	/* set notifier that keyframes have changed */
-	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_EDITED, NULL);
+	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_REMOVED, NULL);
 	
 	return OPERATOR_FINISHED;
 }
@@ -1661,7 +1660,7 @@ typedef struct tEulerFilter {
 	
 	ID *id;                         /* ID-block which owns the channels */
 	FCurve *(fcurves[3]);           /* 3 Pointers to F-Curves */
-	char *rna_path;                 /* Pointer to one of the RNA Path's used by one of the F-Curves */
+	const char *rna_path;           /* Pointer to one of the RNA Path's used by one of the F-Curves */
 } tEulerFilter;
  
 static int graphkeys_euler_filter_exec(bContext *C, wmOperator *op)
@@ -1968,11 +1967,16 @@ static void snap_graph_keys(bAnimContext *ac, short mode)
 	/* snap keyframes */
 	for (ale = anim_data.first; ale; ale = ale->next) {
 		AnimData *adt = ANIM_nla_mapping_get(ac, ale);
-		short mapping_flag = ANIM_get_normalization_flags(ac);
-		float unit_scale = ANIM_unit_mapping_get_factor(ac->scene, ale->id, ale->key_data, mapping_flag);
-
-		ked.f1 = cursor_value / unit_scale;
-
+		
+		/* normalise cursor value (for normalised F-Curves display) */
+		if (mode == GRAPHKEYS_SNAP_VALUE) {
+			short mapping_flag = ANIM_get_normalization_flags(ac);
+			float unit_scale = ANIM_unit_mapping_get_factor(ac->scene, ale->id, ale->key_data, mapping_flag);
+			
+			ked.f1 = cursor_value / unit_scale;
+		}
+		
+		/* perform snapping */
 		if (adt) {
 			ANIM_nla_mapping_apply_fcurve(adt, ale->key_data, 0, 1); 
 			ANIM_fcurve_keyframes_loop(&ked, ale->key_data, NULL, edit_cb, calchandles_fcurve);
@@ -2090,12 +2094,16 @@ static void mirror_graph_keys(bAnimContext *ac, short mode)
 	/* mirror keyframes */
 	for (ale = anim_data.first; ale; ale = ale->next) {
 		AnimData *adt = ANIM_nla_mapping_get(ac, ale);
-		short mapping_flag = ANIM_get_normalization_flags(ac);
-		float unit_scale = ANIM_unit_mapping_get_factor(ac->scene, ale->id, ale->key_data, mapping_flag | ANIM_UNITCONV_ONLYKEYS);
-
+		
 		/* apply unit corrections */
-		ked.f1 = cursor_value * unit_scale;
-
+		if (mode == GRAPHKEYS_MIRROR_VALUE) {
+			short mapping_flag = ANIM_get_normalization_flags(ac);
+			float unit_scale = ANIM_unit_mapping_get_factor(ac->scene, ale->id, ale->key_data, mapping_flag | ANIM_UNITCONV_ONLYKEYS);
+			
+			ked.f1 = cursor_value * unit_scale;
+		}
+		
+		/* perform actual mirroring */
 		if (adt) {
 			ANIM_nla_mapping_apply_fcurve(adt, ale->key_data, 0, 1); 
 			ANIM_fcurve_keyframes_loop(&ked, ale->key_data, NULL, edit_cb, calchandles_fcurve);
@@ -2209,39 +2217,33 @@ void GRAPH_OT_smooth(wmOperatorType *ot)
 
 /* ******************** Add F-Modifier Operator *********************** */
 
-/* present a special customised popup menu for this, with some filtering */
-static int graph_fmodifier_add_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
+static EnumPropertyItem *graph_fmodifier_itemf(bContext *C, PointerRNA *UNUSED(ptr), PropertyRNA *UNUSED(prop), bool *r_free)
 {
-	wmOperatorType *ot = WM_operatortype_find("GRAPH_OT_fmodifier_add", 1);
-	uiPopupMenu *pup;
-	uiLayout *layout;
-	int i;
-	
-	pup = uiPupMenuBegin(C, IFACE_("Add F-Curve Modifier"), ICON_NONE);
-	layout = uiPupMenuLayout(pup);
-	
+	EnumPropertyItem *item = NULL;
+	int totitem = 0;
+	int i = 0;
+
+	if (C == NULL) {
+		return fmodifier_type_items;
+	}
+
 	/* start from 1 to skip the 'Invalid' modifier type */
 	for (i = 1; i < FMODIFIER_NUM_TYPES; i++) {
 		FModifierTypeInfo *fmi = get_fmodifier_typeinfo(i);
-		PointerRNA props_ptr;
-		
+		int index;
+
 		/* check if modifier is valid for this context */
 		if (fmi == NULL)
 			continue;
-		
-		/* create operator menu item with relevant properties filled in */
-		props_ptr = uiItemFullO_ptr(layout, ot, IFACE_(fmi->name), ICON_NONE,
-		                            NULL, WM_OP_EXEC_REGION_WIN, UI_ITEM_O_RETURN_PROPS);
-		/* the only thing that gets set from the menu is the type of F-Modifier to add */
-		RNA_enum_set(&props_ptr, "type", i);
-		/* the following properties are just repeats of existing ones... */
-		RNA_boolean_set(&props_ptr, "only_active", RNA_boolean_get(op->ptr, "only_active"));
+
+		index = RNA_enum_from_value(fmodifier_type_items, fmi->type);
+		RNA_enum_item_add(&item, &totitem, &fmodifier_type_items[index]);
 	}
-	uiItemS(layout);
-	
-	uiPupMenuEnd(C, pup);
-	
-	return OPERATOR_CANCELLED;
+
+	RNA_enum_item_end(&item, &totitem);
+	*r_free = true;
+
+	return item;
 }
 
 static int graph_fmodifier_add_exec(bContext *C, wmOperator *op)
@@ -2296,13 +2298,15 @@ static int graph_fmodifier_add_exec(bContext *C, wmOperator *op)
  
 void GRAPH_OT_fmodifier_add(wmOperatorType *ot)
 {
+	PropertyRNA *prop;
+
 	/* identifiers */
 	ot->name = "Add F-Curve Modifier";
 	ot->idname = "GRAPH_OT_fmodifier_add";
 	ot->description = "Add F-Modifiers to the selected F-Curves";
 	
 	/* api callbacks */
-	ot->invoke = graph_fmodifier_add_invoke;
+	ot->invoke = WM_menu_invoke;
 	ot->exec = graph_fmodifier_add_exec;
 	ot->poll = graphop_selected_fcurve_poll; 
 	
@@ -2310,7 +2314,10 @@ void GRAPH_OT_fmodifier_add(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
 	/* id-props */
-	ot->prop = RNA_def_enum(ot->srna, "type", fmodifier_type_items, 0, "Type", "");
+	prop = RNA_def_enum(ot->srna, "type", fmodifier_type_items, 0, "Type", "");
+	RNA_def_enum_funcs(prop, graph_fmodifier_itemf);
+	ot->prop = prop;
+
 	RNA_def_boolean(ot->srna, "only_active", 1, "Only Active", "Only add F-Modifier to active F-Curve");
 }
 
@@ -2394,7 +2401,7 @@ static int graph_fmodifier_paste_exec(bContext *C, wmOperator *op)
 		/* TODO: do we want to replace existing modifiers? add user pref for that! */
 		ok += ANIM_fmodifiers_paste_from_buf(&fcu->modifiers, 0);
 	}
-
+	
 	/* clean up */
 	BLI_freelistN(&anim_data);
 	

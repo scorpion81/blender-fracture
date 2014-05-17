@@ -59,14 +59,6 @@
 #include "BKE_report.h"
 #include "BKE_sound.h"
 
-#ifdef _WIN32
-#define open _open
-#define close _close
-#define read _read
-#define write _write
-#endif
-
-
 int seekPackedFile(PackedFile *pf, int offset, int whence)
 {
 	int oldseek = -1, seek = 0;
@@ -202,7 +194,7 @@ PackedFile *newPackedFile(ReportList *reports, const char *filename, const char 
 	 * and create a PackedFile structure */
 
 	file = BLI_open(name, O_BINARY | O_RDONLY, 0);
-	if (file < 0) {
+	if (file == -1) {
 		BKE_reportf(reports, RPT_ERROR, "Unable to pack file, source path '%s' not found", name);
 	}
 	else {
@@ -331,7 +323,7 @@ int writePackedFile(ReportList *reports, const char *filename, PackedFile *pf, i
 	BLI_make_existing_file(name);
 	
 	file = BLI_open(name, O_BINARY + O_WRONLY + O_CREAT + O_TRUNC, 0666);
-	if (file < 0) {
+	if (file == -1) {
 		BKE_reportf(reports, RPT_ERROR, "Error creating file '%s'", name);
 		ret_value = RET_ERROR;
 	}
@@ -394,7 +386,7 @@ int checkPackedFile(const char *filename, PackedFile *pf)
 		/* we'll have to compare the two... */
 
 		file = BLI_open(name, O_BINARY | O_RDONLY, 0);
-		if (file < 0) {
+		if (file == -1) {
 			ret_val = PF_NOFILE;
 		}
 		else {
@@ -627,21 +619,27 @@ void unpackAll(Main *bmain, ReportList *reports, int how)
 /* ID should be not NULL, return 1 if there's a packed file */
 bool BKE_pack_check(ID *id)
 {
-	if (GS(id->name) == ID_IM) {
-		Image *ima = (Image *)id;
-		return ima->packedfile != NULL;
-	}
-	if (GS(id->name) == ID_VF) {
-		VFont *vf = (VFont *)id;
-		return vf->packedfile != NULL;
-	}
-	if (GS(id->name) == ID_SO) {
-		bSound *snd = (bSound *)id;
-		return snd->packedfile != NULL;
-	}
-	if (GS(id->name) == ID_LI) {
-		Library *li = (Library *)id;
-		return li->packedfile != NULL;
+	switch (GS(id->name)) {
+		case ID_IM:
+		{
+			Image *ima = (Image *)id;
+			return ima->packedfile != NULL;
+		}
+		case ID_VF:
+		{
+			VFont *vf = (VFont *)id;
+			return vf->packedfile != NULL;
+		}
+		case ID_SO:
+		{
+			bSound *snd = (bSound *)id;
+			return snd->packedfile != NULL;
+		}
+		case ID_LI:
+		{
+			Library *li = (Library *)id;
+			return li->packedfile != NULL;
+		}
 	}
 	return false;
 }
@@ -649,23 +647,36 @@ bool BKE_pack_check(ID *id)
 /* ID should be not NULL */
 void BKE_unpack_id(Main *bmain, ID *id, ReportList *reports, int how)
 {
-	if (GS(id->name) == ID_IM) {
-		Image *ima = (Image *)id;
-		if (ima->packedfile)
-			unpackImage(reports, ima, how);
-	}
-	if (GS(id->name) == ID_VF) {
-		VFont *vf = (VFont *)id;
-		if (vf->packedfile)
-			unpackVFont(reports, vf, how);
-	}
-	if (GS(id->name) == ID_SO) {
-		bSound *snd = (bSound *)id;
-		if (snd->packedfile)
-			unpackSound(bmain, reports, snd, how);
-	}
-	if (GS(id->name) == ID_LI) {
-		Library *li = (Library *)id;
-		BKE_reportf(reports, RPT_ERROR, "Cannot unpack individual Library file, '%s'", li->name);
+	switch (GS(id->name)) {
+		case ID_IM:
+		{
+			Image *ima = (Image *)id;
+			if (ima->packedfile) {
+				unpackImage(reports, ima, how);
+			}
+			break;
+		}
+		case ID_VF:
+		{
+			VFont *vf = (VFont *)id;
+			if (vf->packedfile) {
+				unpackVFont(reports, vf, how);
+			}
+			break;
+		}
+		case ID_SO:
+		{
+			bSound *snd = (bSound *)id;
+			if (snd->packedfile) {
+				unpackSound(bmain, reports, snd, how);
+			}
+			break;
+		}
+		case ID_LI:
+		{
+			Library *li = (Library *)id;
+			BKE_reportf(reports, RPT_ERROR, "Cannot unpack individual Library file, '%s'", li->name);
+			break;
+		}
 	}
 }

@@ -31,8 +31,6 @@
 
 #include <stdlib.h>
 
-#include "MEM_guardedalloc.h"
-
 #include "DNA_armature_types.h"
 #include "DNA_group_types.h"
 #include "DNA_lamp_types.h"
@@ -47,7 +45,6 @@
 
 #include "BKE_context.h"
 #include "BKE_depsgraph.h"
-#include "BKE_main.h"
 #include "BKE_object.h"
 #include "BKE_scene.h"
 #include "BKE_sequencer.h"
@@ -985,7 +982,7 @@ int outliner_item_do_activate(bContext *C, int x, int y, bool extend, bool recur
 	TreeElement *te;
 	float fmval[2];
 
-	UI_view2d_region_to_view(&ar->v2d, x, y, fmval, fmval + 1);
+	UI_view2d_region_to_view(&ar->v2d, x, y, &fmval[0], &fmval[1]);
 
 	if (!ELEM(soops->outlinevis, SO_DATABLOCKS, SO_USERDEF) &&
 	    !(soops->flag & SO_HIDE_RESTRICTCOLS) &&
@@ -1079,14 +1076,11 @@ static int outliner_border_select_exec(bContext *C, wmOperator *op)
 	SpaceOops *soops = CTX_wm_space_outliner(C);
 	ARegion *ar = CTX_wm_region(C);
 	TreeElement *te;
-	rcti rect;
 	rctf rectf;
 	int gesture_mode = RNA_int_get(op->ptr, "gesture_mode");
 
-	WM_operator_properties_border_to_rcti(op, &rect);
-
-	UI_view2d_region_to_view(&ar->v2d, rect.xmin, rect.ymin, &rectf.xmin, &rectf.ymin);
-	UI_view2d_region_to_view(&ar->v2d, rect.xmax, rect.ymax, &rectf.xmax, &rectf.ymax);
+	WM_operator_properties_border_to_rctf(op, &rectf);
+	UI_view2d_region_to_view_rctf(&ar->v2d, &rectf, &rectf);
 
 	for (te = soops->tree.first; te; te = te->next) {
 		outliner_item_border_select(scene, soops, &rectf, te, gesture_mode);

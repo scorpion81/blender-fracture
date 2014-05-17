@@ -91,7 +91,6 @@
 
 #include "ED_screen.h"
 #include "ED_util.h"
-#include "ED_object.h"
 #include "ED_view3d.h"
 
 #include "RNA_access.h"
@@ -340,7 +339,7 @@ static int wm_macro_modal(bContext *C, wmOperator *op, const wmEvent *event)
 						}
 					}
 
-					WM_cursor_grab_enable(CTX_wm_window(C), wrap, false, bounds);
+					WM_cursor_grab_enable(win, wrap, false, bounds);
 				}
 			}
 		}
@@ -497,7 +496,7 @@ bool WM_operatortype_remove(const char *idname)
 /* SOME_OT_op -> some.op */
 void WM_operator_py_idname(char *to, const char *from)
 {
-	char *sep = strstr(from, "_OT_");
+	const char *sep = strstr(from, "_OT_");
 	if (sep) {
 		int ofs = (sep - from);
 		
@@ -519,7 +518,7 @@ void WM_operator_py_idname(char *to, const char *from)
 void WM_operator_bl_idname(char *to, const char *from)
 {
 	if (from) {
-		char *sep = strchr(from, '.');
+		const char *sep = strchr(from, '.');
 
 		if (sep) {
 			int ofs = (sep - from);
@@ -1294,6 +1293,13 @@ void WM_operator_properties_border_to_rcti(struct wmOperator *op, rcti *rect)
 	rect->ymax = RNA_int_get(op->ptr, "ymax");
 }
 
+void WM_operator_properties_border_to_rctf(struct wmOperator *op, rctf *rect)
+{
+	rcti rect_i;
+	WM_operator_properties_border_to_rcti(op, &rect_i);
+	BLI_rctf_rcti_copy(rect, &rect_i);
+}
+
 void WM_operator_properties_gesture_border(wmOperatorType *ot, bool extend)
 {
 	RNA_def_int(ot->srna, "gesture_mode", 0, INT_MIN, INT_MAX, "Gesture Mode", "", INT_MIN, INT_MAX);
@@ -1582,6 +1588,14 @@ static int wm_operator_props_popup_ex(bContext *C, wmOperator *op,
 		return OPERATOR_CANCELLED;
 	}
 
+	if (do_redo) {
+		if ((op->type->flag & OPTYPE_UNDO) == 0) {
+			BKE_reportf(op->reports, RPT_ERROR,
+			            "Operator '%s' does not have undo enabled, incorrect invoke function", op->type->idname);
+			return OPERATOR_CANCELLED;
+		}
+	}
+
 	/* if we don't have global undo, we can't do undo push for automatic redo,
 	 * so we require manual OK clicking in this popup */
 	if (!do_redo || !(U.uiflag & USER_GLOBALUNDO))
@@ -1756,11 +1770,10 @@ static uiBlock *wm_block_create_splash(bContext *C, ARegion *ar, void *UNUSED(ar
 	uiBut *but;
 	uiLayout *layout, *split, *col;
 	uiStyle *style = UI_GetStyle();
-	struct RecentFile *recent;
+	const struct RecentFile *recent;
 	int i;
 	MenuType *mt = WM_menutype_find("USERPREF_MT_splash", true);
 	char url[96];
-	char file[FILE_MAX];
 
 #ifndef WITH_HEADLESS
 	extern char datatoc_splash_png[];
@@ -1900,11 +1913,10 @@ static uiBlock *wm_block_create_splash(bContext *C, ARegion *ar, void *UNUSED(ar
 
 	uiItemL(col, IFACE_("Recent"), ICON_NONE);
 	for (recent = G.recent_files.first, i = 0; (i < 5) && (recent); recent = recent->next, i++) {
-		BLI_split_file_part(recent->filepath, file, sizeof(file));
-		if (BLO_has_bfile_extension(file))
-			uiItemStringO(col, BLI_path_basename(recent->filepath), ICON_FILE_BLEND, "WM_OT_open_mainfile", "filepath", recent->filepath);
-		else
-			uiItemStringO(col, BLI_path_basename(recent->filepath), ICON_FILE_BACKUP, "WM_OT_open_mainfile", "filepath", recent->filepath);
+		const char *filename = BLI_path_basename(recent->filepath);
+		uiItemStringO(col, filename,
+		              BLO_has_bfile_extension(filename) ? ICON_FILE_BLEND : ICON_FILE_BACKUP,
+		              "WM_OT_open_mainfile", "filepath", recent->filepath);
 	}
 
 	uiItemS(col);
@@ -2416,6 +2428,7 @@ static int wm_link_append_exec(bContext *C, wmOperator *op)
 	Scene *scene = CTX_data_scene(C);
 	Main *mainl = NULL;
 	BlendHandle *bh;
+	Library *lib;
 	PropertyRNA *prop;
 	char name[FILE_MAX], dir[FILE_MAX], libname[FILE_MAX], group[BLO_GROUP_MAX];
 	int idcode, totfiles = 0;
@@ -2490,6 +2503,9 @@ static int wm_link_append_exec(bContext *C, wmOperator *op)
 
 	/* here appending/linking starts */
 	mainl = BLO_library_append_begin(bmain, &bh, libname);
+	lib = mainl->curlib;
+	BLI_assert(lib);
+
 	if (totfiles == 0) {
 		BLO_library_append_named_part_ex(C, mainl, &bh, name, idcode, flag);
 	}
@@ -2509,9 +2525,8 @@ static int wm_link_append_exec(bContext *C, wmOperator *op)
 
 	/* append, rather than linking */
 	if ((flag & FILE_LINK) == 0) {
-		Library *lib = BLI_findstring(&bmain->library, libname, offsetof(Library, filepath));
-		if (lib) BKE_library_make_local(bmain, lib, true);
-		else BLI_assert(!"cant find name of just added library!");
+		BLI_assert(BLI_findindex(&bmain->library, lib) != -1);
+		BKE_library_make_local(bmain, lib, true);
 	}
 
 	/* important we unset, otherwise these object wont
@@ -2553,7 +2568,7 @@ static void WM_OT_link_append(wmOperatorType *ot)
 	/* better not save _any_ settings for this operator */
 	/* properties */
 	prop = RNA_def_boolean(ot->srna, "link", 1, "Link", "Link the objects or datablocks rather than appending");
-	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE | PROP_HIDDEN);
 	prop = RNA_def_boolean(ot->srna, "autoselect", 1, "Select", "Select the linked objects");
 	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 	prop = RNA_def_boolean(ot->srna, "active_layer", 1, "Active Layer", "Put the linked objects on the active layer");
@@ -3326,7 +3341,7 @@ static void gesture_lasso_apply(bContext *C, wmOperator *op)
 	PointerRNA itemptr;
 	float loc[2];
 	int i;
-	short *lasso = gesture->customdata;
+	const short *lasso = gesture->customdata;
 	
 	/* operator storage as path. */
 

@@ -41,7 +41,6 @@
 #include "WM_types.h"
 
 #include "ED_screen.h"
-#include "ED_types.h"
 
 #include "RNA_access.h"
 #include "RNA_define.h"
@@ -235,15 +234,6 @@ static int borderselect_exec(bContext *C, wmOperator *op)
 	//int mval[2];
 
 	WM_operator_properties_border_to_rcti(op, &rect);
-
-#if 0
-	mval[0] = rect.xmin;
-	mval[1] = rect.ymin;
-	UI_view2d_region_to_view(v2d, mval[0], mval[1], &rectf.xmin, &rectf.ymin);
-	mval[0] = rect.xmax;
-	mval[1] = rect.ymax;
-	UI_view2d_region_to_view(v2d, mval[0], mval[1], &rectf.xmax, &rectf.ymax);
-#endif
 
 	if (!extend) {
 		for (report = reports->list.first; report; report = report->next) {

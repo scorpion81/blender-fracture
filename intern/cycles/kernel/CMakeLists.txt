@@ -146,11 +146,11 @@ if(WITH_CYCLES_CUDA_BINARIES)
 	set(CUDA_VERSION "${CUDA_VERSION_MAJOR}${CUDA_VERSION_MINOR}")
 
 	# warn for other versions
-	if(CUDA_VERSION MATCHES "50")
+	if(CUDA_VERSION MATCHES "60")
 	else()
 		message(WARNING
 			"CUDA version ${CUDA_VERSION_MAJOR}.${CUDA_VERSION_MINOR} detected, "
-			"build may succeed but only CUDA 5.0 is officially supported")
+			"build may succeed but only CUDA 6.0 is officially supported")
 	endif()
 
 	# build for each arch
@@ -161,19 +161,11 @@ if(WITH_CYCLES_CUDA_BINARIES)
 		set(cuda_cubin kernel_${arch}.cubin)
 
 		set(cuda_version_flags "-D__KERNEL_CUDA_VERSION__=${CUDA_VERSION}")
-
-		# CUDA 5.x build flags for different archs
-		if(${arch} MATCHES "sm_2[0-9]")
-			# sm_2x
-			set(cuda_arch_flags "--maxrregcount=40")
-		elseif(${arch} MATCHES "sm_3[0-9]")
-			# sm_3x
-			set(cuda_arch_flags "--maxrregcount=32")
-		endif()
-
 		set(cuda_math_flags "--use_fast_math")
-		
-		if(CUDA_VERSION LESS 50 AND ${arch} MATCHES "sm_35")
+
+		if(CUDA_VERSION LESS 60 AND ${arch} MATCHES "sm_50")
+			message(WARNING "Can't build kernel for CUDA sm_50 architecture, skipping")
+		elseif(CUDA_VERSION LESS 50 AND ${arch} MATCHES "sm_35")
 			message(WARNING "Can't build kernel for CUDA sm_35 architecture, skipping")
 		else()
 			add_custom_command(

@@ -44,9 +44,7 @@
 #include "DNA_material_types.h"
 #include "DNA_meta_types.h"
 #include "DNA_particle_types.h"
-#include "DNA_rigidbody_types.h"
 #include "DNA_scene_types.h"
-#include "DNA_speaker_types.h"
 #include "DNA_world_types.h"
 #include "DNA_object_types.h"
 #include "DNA_vfont_types.h"
@@ -425,6 +423,7 @@ void OBJECT_OT_proxy_make(wmOperatorType *ot)
 	/* properties */
 	prop = RNA_def_enum(ot->srna, "object", DummyRNA_DEFAULT_items, 0, "Proxy Object", "Name of lib-linked/grouped object to make a proxy for"); /* XXX, relies on hard coded ID at the moment */
 	RNA_def_enum_funcs(prop, proxy_group_object_itemf);
+	RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
 	ot->prop = prop;
 }
 
@@ -820,7 +819,7 @@ static int parent_set_exec(bContext *C, wmOperator *op)
 	int tree_tot;
 	struct KDTree *tree = NULL;
 	int vert_par[3] = {0, 0, 0};
-	int *vert_par_p = is_vert_par ? vert_par : NULL;
+	const int *vert_par_p = is_vert_par ? vert_par : NULL;
 
 
 	if (is_vert_par) {
@@ -1669,6 +1668,7 @@ void OBJECT_OT_make_links_scene(wmOperatorType *ot)
 	/* properties */
 	prop = RNA_def_enum(ot->srna, "scene", DummyRNA_NULL_items, 0, "Scene", "");
 	RNA_def_enum_funcs(prop, RNA_scene_local_itemf);
+	RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
 	ot->prop = prop;
 }
 
@@ -1726,6 +1726,17 @@ static void single_object_users(Main *bmain, Scene *scene, View3D *v3d, int flag
 				/* base gets copy of object */
 				obn = BKE_object_copy(ob);
 				base->object = obn;
+
+				if (copy_groups) {
+					if (ob->flag & OB_FROMGROUP) {
+						obn->flag |= OB_FROMGROUP;
+					}
+				}
+				else {
+					/* copy already clears */
+				}
+				base->flag = obn->flag;
+
 				ob->id.us--;
 			}
 		}
@@ -2113,7 +2124,7 @@ static void tag_localizable_objects(bContext *C, int mode)
 		/* If data is also gonna to become local, mark data we're interested in
 		 * as gonna-to-be-local.
 		 */
-		if (mode == MAKE_LOCAL_SELECT_OBDATA) {
+		if (mode == MAKE_LOCAL_SELECT_OBDATA && object->data) {
 			ID *data_id = (ID *) object->data;
 			data_id->flag |= LIB_DOIT;
 		}
@@ -2282,24 +2293,32 @@ static int make_single_user_exec(bContext *C, wmOperator *op)
 	View3D *v3d = CTX_wm_view3d(C); /* ok if this is NULL */
 	int flag = RNA_enum_get(op->ptr, "type"); /* 0==ALL, SELECTED==selected objecs */
 	bool copy_groups = false;
+	bool update_deps = false;
 
 	BKE_main_id_clear_newpoins(bmain);
 
-	if (RNA_boolean_get(op->ptr, "object"))
+	if (RNA_boolean_get(op->ptr, "object")) {
 		single_object_users(bmain, scene, v3d, flag, copy_groups);
 
-	if (RNA_boolean_get(op->ptr, "obdata"))
-		single_obdata_users(bmain, scene, flag);
+		/* needed since object relationships may have changed */
+		update_deps = true;
+	}
 
-	if (RNA_boolean_get(op->ptr, "material"))
+	if (RNA_boolean_get(op->ptr, "obdata")) {
+		single_obdata_users(bmain, scene, flag);
+	}
+
+	if (RNA_boolean_get(op->ptr, "material")) {
 		single_mat_users(scene, flag, RNA_boolean_get(op->ptr, "texture"));
+	}
 
 #if 0 /* can't do this separate from materials */
 	if (RNA_boolean_get(op->ptr, "texture"))
 		single_mat_users(scene, flag, true);
 #endif
-	if (RNA_boolean_get(op->ptr, "animation"))
+	if (RNA_boolean_get(op->ptr, "animation")) {
 		single_object_action_users(scene, flag);
+	}
 
 	/* TODO(sergey): This should not be needed, however some tool still could rely
 	 *               on the fact, that id->newid is kept NULL by default.
@@ -2309,6 +2328,11 @@ static int make_single_user_exec(bContext *C, wmOperator *op)
 	BKE_main_id_clear_newpoins(bmain);
 
 	WM_event_add_notifier(C, NC_WINDOW, NULL);
+
+	if (update_deps) {
+		DAG_relations_tag_update(bmain);
+	}
+
 	return OPERATOR_FINISHED;
 }
 

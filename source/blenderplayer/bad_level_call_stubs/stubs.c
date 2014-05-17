@@ -226,6 +226,9 @@ void RE_zbuf_accumulate_vecblur(struct NodeBlurData *nbd, int xsize, int ysize, 
 /* imagetexture.c stub */
 void ibuf_sample(struct ImBuf *ibuf, float fx, float fy, float dx, float dy, float *result) RET_NONE
 
+/* Freestyle */
+bool ED_texture_context_check_linestyle(const struct bContext *C) RET_ZERO
+
 /* texture.c */
 int multitex_ext(struct Tex *tex, float texvec[3], float dxt[3], float dyt[3], int osatex, struct TexResult *texres, struct ImagePool *pool, bool scene_color_manage) RET_ZERO
 int multitex_ext_safe(struct Tex *tex, float texvec[3], struct TexResult *texres, struct ImagePool *pool, bool scene_color_manage) RET_ZERO
@@ -300,6 +303,7 @@ void WM_event_remove_timer(struct wmWindowManager *wm, struct wmWindow *win, str
 void ED_armature_edit_bone_remove(struct bArmature *arm, struct EditBone *exBone) RET_NONE
 void object_test_constraints(struct Object *owner) RET_NONE
 void ED_armature_ebone_to_mat4(struct EditBone *ebone, float mat[4][4]) RET_NONE
+void ED_armature_ebone_from_mat4(EditBone *ebone, float mat[4][4]) RET_NONE
 void ED_object_parent(struct Object *ob, struct Object *par, int type, const char *substr) RET_NONE
 void ED_object_constraint_set_active(struct Object *ob, struct bConstraint *con) RET_NONE
 void ED_node_composit_default(const struct bContext *C, struct Scene *scene) RET_NONE
@@ -308,8 +312,9 @@ void *ED_region_draw_cb_customdata(void *handle) RET_ZERO /* XXX This one looks 
 void ED_region_draw_cb_exit(struct ARegionType *art, void *handle) RET_NONE
 void ED_area_headerprint(struct ScrArea *sa, const char *str) RET_NONE
 void UI_view2d_region_to_view(struct View2D *v2d, float x, float y, float *viewx, float *viewy) RET_NONE
-void UI_view2d_view_to_region(struct View2D *v2d, float x, float y, int *regionx, int *regiony) RET_NONE
-void UI_view2d_to_region_no_clip(struct View2D *v2d, float x, float y, int *regionx, int *region_y) RET_NONE
+bool UI_view2d_view_to_region_clip(struct View2D *v2d, float x, float y, int *regionx, int *regiony) RET_ZERO
+void UI_view2d_view_to_region(struct View2D *v2d, float x, float y, int *regionx, int *region_y) RET_NONE
+void UI_view2d_sync(struct bScreen *screen, struct ScrArea *sa, struct View2D *v2dcur, int flag) RET_NONE
 
 struct EditBone *ED_armature_bone_get_mirrored(const struct ListBase *edbo, EditBone *ebo) RET_NULL
 struct EditBone *ED_armature_edit_bone_add(struct bArmature *arm, const char *name) RET_NULL

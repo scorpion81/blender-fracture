@@ -60,8 +60,6 @@
 #include "BKE_customdata.h"
 #include "BKE_deform.h"
 #include "BKE_depsgraph.h"
-#include "BKE_global.h"
-#include "BKE_mesh.h"
 #include "BKE_mesh_mapping.h"
 #include "BKE_editmesh.h"
 #include "BKE_report.h"
@@ -864,6 +862,7 @@ static void vgroup_operator_subset_select_props(wmOperatorType *ot, bool use_act
 	else {
 		RNA_def_enum_funcs(prop, rna_vertex_group_select_itemf);
 	}
+	RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
 	ot->prop = prop;
 }
 
@@ -4229,6 +4228,7 @@ void OBJECT_OT_vertex_group_set_active(wmOperatorType *ot)
 	/* properties */
 	prop = RNA_def_enum(ot->srna, "group", DummyRNA_NULL_items, 0, "Group", "Vertex group to set as active");
 	RNA_def_enum_funcs(prop, vgroup_itemf);
+	RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
 	ot->prop = prop;
 }
 

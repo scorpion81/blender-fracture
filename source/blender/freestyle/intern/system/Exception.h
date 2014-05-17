@@ -28,15 +28,13 @@
  *  \date 10/01/2003
  */
 
-#include "FreestyleConfig.h"
-
 #ifdef WITH_CXX_GUARDEDALLOC
 #include "MEM_guardedalloc.h"
 #endif
 
 namespace Freestyle {
 
-class LIB_SYSTEM_EXPORT Exception
+class Exception
 {
 public:
 	typedef enum {

@@ -32,26 +32,16 @@
 #include <string.h>
 #include <float.h>
 
-#ifndef _WIN32
-#include <unistd.h>
-#else
-#include <io.h>
-#endif
-
-
 #include "BLI_blenlib.h"
-#include "BLI_math.h"
 #include "BLI_utildefines.h"
 
 #include "DNA_anim_types.h"
-#include "DNA_object_types.h"
 #include "DNA_screen_types.h"
 #include "DNA_space_types.h"
 #include "DNA_windowmanager_types.h"
 #include "DNA_userdef_types.h"
 
 #include "BKE_context.h"
-#include "BKE_curve.h"
 #include "BKE_fcurve.h"
 
 
@@ -215,7 +205,7 @@ static void draw_fcurve_vertices_handles(FCurve *fcu, SpaceIpo *sipo, View2D *v2
 	
 	/* get view settings */
 	hsize = UI_GetThemeValuef(TH_HANDLE_VERTEX_SIZE) * U.pixelsize;
-	UI_view2d_getscale(v2d, &xscale, &yscale);
+	UI_view2d_scale_get(v2d, &xscale, &yscale);
 
 	/* Compensate OGL scale sued for unit mapping, so circle will be circle, not ellipse */
 	yscale *= units_scale;
@@ -345,7 +335,7 @@ static void draw_fcurve_handles(SpaceIpo *sipo, FCurve *fcu)
 	for (sel = 0; sel < 2; sel++) {
 		BezTriple *bezt = fcu->bezt, *prevbezt = NULL;
 		int basecol = (sel) ? TH_HANDLE_SEL_FREE : TH_HANDLE_FREE;
-		float *fp;
+		const float *fp;
 		unsigned char col[4];
 		
 		for (b = 0; b < fcu->totvert; b++, prevbezt = bezt, bezt++) {
@@ -456,7 +446,7 @@ static void draw_fcurve_samples(SpaceIpo *sipo, ARegion *ar, FCurve *fcu)
 	
 	/* get view settings */
 	hsize = UI_GetThemeValuef(TH_VERTEX_SIZE);
-	UI_view2d_getscale(&ar->v2d, &xscale, &yscale);
+	UI_view2d_scale_get(&ar->v2d, &xscale, &yscale);
 	
 	/* set vertex color */
 	if (fcu->flag & (FCURVE_ACTIVE | FCURVE_SELECTED)) UI_ThemeColor(TH_TEXT_HI);

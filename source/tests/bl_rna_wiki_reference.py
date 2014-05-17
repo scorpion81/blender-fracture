@@ -118,7 +118,7 @@ def test_urls():
         print("  %s ... " % url_full, end="")
         sys.stdout.flush()
         try:
-            urllib.request.urlopen(url_full)
+            urlopen(url_full)
             print(color_green + "OK" + color_normal)
         except urllib.error.HTTPError:
             print(color_red + "FAIL!" + color_normal)

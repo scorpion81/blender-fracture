@@ -51,7 +51,6 @@
 #include "BLI_utildefines.h"
 #include "BLI_math.h"
 
-#include "BKE_blender.h"
 #include "BKE_context.h"
 #include "BKE_idprop.h"
 #include "BKE_global.h"
@@ -64,7 +63,6 @@
 
 #include "ED_fileselect.h"
 #include "ED_info.h"
-#include "ED_render.h"
 #include "ED_screen.h"
 #include "ED_view3d.h"
 #include "ED_util.h"
@@ -761,7 +759,7 @@ static int wm_operator_exec_notest(bContext *C, wmOperator *op)
 /**
  * for running operators with frozen context (modal handlers, menus)
  *
- * \param store, Store settings for re-use.
+ * \param store Store settings for re-use.
  *
  * warning: do not use this within an operator to call its self! [#29537] */
 int WM_operator_call_ex(bContext *C, wmOperator *op,
@@ -1723,10 +1721,6 @@ static int wm_handler_fileselect_do(bContext *C, ListBase *handlers, wmEventHand
 				if (handler->op->type->flag & OPTYPE_UNDO && CTX_wm_manager(C) == wm)
 					wm->op_undo_depth--;
 
-				if (retval & OPERATOR_FINISHED)
-					if (G.debug & G_DEBUG_WM)
-						wm_operator_print(C, handler->op);
-
 				/* XXX check this carefully, CTX_wm_manager(C) == wm is a bit hackish */
 				if (CTX_wm_manager(C) == wm && wm->op_undo_depth == 0)
 					if (handler->op->type->flag & OPTYPE_UNDO)
@@ -1755,6 +1749,9 @@ static int wm_handler_fileselect_do(bContext *C, ListBase *handlers, wmEventHand
 					CTX_wm_area_set(C, area_prev);
 					CTX_wm_region_set(C, ar_prev);
 				}
+
+				/* for WM_operator_pystring only, custom report handling is done above */
+				wm_operator_reports(C, handler->op, retval, true);
 
 				if (retval & OPERATOR_FINISHED) {
 					WM_operator_last_properties_store(handler->op);

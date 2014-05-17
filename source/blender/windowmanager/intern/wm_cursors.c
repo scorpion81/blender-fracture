@@ -277,7 +277,7 @@ int wm_cursor_arrow_move(wmWindow *win, wmEvent *event)
 void WM_cursor_time(wmWindow *win, int nr)
 {
 	/* 10 8x8 digits */
-	static char number_bitmaps[10][8] = {
+	const char number_bitmaps[10][8] = {
 		{0,  56,  68,  68,  68,  68,  68,  56},
 		{0,  24,  16,  16,  16,  16,  16,  56},
 		{0,  60,  66,  32,  16,   8,   4, 126},
@@ -300,7 +300,7 @@ void WM_cursor_time(wmWindow *win, int nr)
 	
 	/* print number bottom right justified */
 	for (idx = 3; nr && idx >= 0; idx--) {
-		char *digit = number_bitmaps[nr % 10];
+		const char *digit = number_bitmaps[nr % 10];
 		int x = idx % 2;
 		int y = idx / 2;
 

@@ -50,7 +50,6 @@
 #include "BKE_context.h"
 #include "BKE_depsgraph.h"
 #include "BKE_main.h"
-#include "BKE_mesh.h"
 #include "BKE_modifier.h"
 #include "BKE_object.h"
 #include "BKE_report.h"
@@ -65,7 +64,6 @@
 #include "ED_curve.h"
 #include "ED_mesh.h"
 #include "ED_screen.h"
-#include "ED_object.h"
 
 #include "WM_types.h"
 #include "WM_api.h"
@@ -694,6 +692,7 @@ void OBJECT_OT_hook_remove(wmOperatorType *ot)
 	/* properties */
 	prop = RNA_def_enum(ot->srna, "modifier", DummyRNA_NULL_items, 0, "Modifier", "Modifier number to remove");
 	RNA_def_enum_funcs(prop, hook_mod_itemf);
+	RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
 	ot->prop = prop;
 }
 
@@ -737,6 +736,7 @@ void OBJECT_OT_hook_reset(wmOperatorType *ot)
 	/* properties */
 	prop = RNA_def_enum(ot->srna, "modifier", DummyRNA_NULL_items, 0, "Modifier", "Modifier number to assign to");
 	RNA_def_enum_funcs(prop, hook_mod_itemf);
+	RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
 }
 
 static int object_hook_recenter_exec(bContext *C, wmOperator *op)
@@ -786,6 +786,7 @@ void OBJECT_OT_hook_recenter(wmOperatorType *ot)
 	/* properties */
 	prop = RNA_def_enum(ot->srna, "modifier", DummyRNA_NULL_items, 0, "Modifier", "Modifier number to assign to");
 	RNA_def_enum_funcs(prop, hook_mod_itemf);
+	RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
 }
 
 static int object_hook_assign_exec(bContext *C, wmOperator *op)
@@ -845,6 +846,7 @@ void OBJECT_OT_hook_assign(wmOperatorType *ot)
 	/* properties */
 	prop = RNA_def_enum(ot->srna, "modifier", DummyRNA_NULL_items, 0, "Modifier", "Modifier number to assign to");
 	RNA_def_enum_funcs(prop, hook_mod_itemf);
+	RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
 }
 
 static int object_hook_select_exec(bContext *C, wmOperator *op)
@@ -887,5 +889,6 @@ void OBJECT_OT_hook_select(wmOperatorType *ot)
 	/* properties */
 	prop = RNA_def_enum(ot->srna, "modifier", DummyRNA_NULL_items, 0, "Modifier", "Modifier number to remove");
 	RNA_def_enum_funcs(prop, hook_mod_itemf);
+	RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
 }
 
