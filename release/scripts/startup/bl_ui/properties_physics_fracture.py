@@ -129,6 +129,11 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             box.prop(md, "mass_dependent_thresholds")
             box.label("Threshold Vertex Group:")
             box.prop_search(md, "thresh_vertex_group", ob, "vertex_groups", text = "")
+            box.label("Passive Vertex Group:")
+            box.prop_search(md, "ground_vertex_group", ob, "vertex_groups", text = "")
+            row = box.row(align=True)
+            row.operator("fracture.toggle_ground", text = "Toggle Ground")
+            row.operator("fracture.toggle_connect_ground", text = "Toggle Connect Ground")
             if not(md.refresh):
                 box.prop(md, "execute_threaded")
             box.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")

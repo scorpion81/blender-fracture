@@ -27,6 +27,7 @@ _modules = [
     "anim",
     "clip",
     "console",
+    "fracture",
     "image",
     "mask",
     "mesh",

@@ -36,7 +36,7 @@
 #include "BLI_math.h"
 #include "BLI_rand.h"
 #include "BLI_listbase.h"
-#include "BLI_string.h";
+#include "BLI_string.h"
 
 #include "DNA_object_types.h"
 #include "DNA_fracture_types.h"

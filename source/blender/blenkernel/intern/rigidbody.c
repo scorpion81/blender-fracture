@@ -1963,10 +1963,10 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi
 
 	/* make rigidbody object settings */
 	if (ob->rigidbody_object == NULL) {
-		ob->rigidbody_object = BKE_rigidbody_create_object(scene, ob, RBO_TYPE_ACTIVE);
+		ob->rigidbody_object = BKE_rigidbody_create_object(scene, ob, mi->ground_weight > 0.5f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE);
 	}
 	else {
-		//ob->rigidbody_object->type = RBO_TYPE_ACTIVE;
+		ob->rigidbody_object->type = mi->ground_weight > 0.5f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
 		ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_VALIDATE;
 
 		/* add object to rigid body group */
@@ -1984,6 +1984,7 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi
 	//since we are always member of an object, dupe its settings,
 	/* create new settings data, and link it up */
 	rbo = BKE_rigidbody_copy_object(ob);
+	rbo->type = mi->ground_weight > 0.5f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
 
 	/* set initial transform */
 	mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);

@@ -3223,6 +3223,7 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 	MDeformVert *dvert;
 	int vertstart = 0;
 	const int thresh_defgrp_index = defgroup_name_index(ob, rmd->thresh_defgrp_name);
+	const int ground_defgrp_index = defgroup_name_index(ob, rmd->ground_defgrp_name);
 
 	if (rmd->dm && !rmd->shards_to_islands && (rmd->dm->getNumPolys(rmd->dm) > 0))
 	{
@@ -3271,6 +3272,11 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 				mi->thresh_weight += vweight;
 			}
 
+			if (dvert && dvert->dw && rmd->ground_defgrp_name[0]) {
+				float gweight = defvert_find_weight(dvert + vertstart + i, ground_defgrp_index);
+				mi->ground_weight += gweight;
+			}
+
 			vertstart += mi->vertex_count;
 		}
 		else
@@ -3295,6 +3301,11 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 					float vweight = defvert_find_weight(dvert + index, thresh_defgrp_index);
 					mi->thresh_weight += vweight;
 				}
+
+				if (dvert && dvert->dw && rmd->ground_defgrp_name[0]) {
+					float gweight = defvert_find_weight(dvert + index, ground_defgrp_index);
+					mi->ground_weight += gweight;
+				}
 			}
 			//vertstart += mi->vertex_count;
 		}
@@ -3302,6 +3313,7 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 		if (mi->vertex_count > 0)
 		{
 			mi->thresh_weight /= mi->vertex_count;
+			mi->ground_weight /= mi->vertex_count;
 		}
 	}
 
@@ -3389,6 +3401,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 				float dummyloc[3], rot[4], min[3], max[3];
 				MDeformVert *dvert = fmd->dm->getVertDataArray(fmd->dm, CD_MDEFORMVERT);
 				const int thresh_defgrp_index = defgroup_name_index(ob, fmd->thresh_defgrp_name);
+				const int ground_defgrp_index = defgroup_name_index(ob, fmd->ground_defgrp_name);
 
 				//good idea to simply reference this ? Hmm, what about removing the explo modifier later, crash ?)
 				fmd->explo_shared = true;
@@ -3436,6 +3449,11 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 							float vweight = defvert_find_weight(dvert + vertstart + k, thresh_defgrp_index);
 							mi->thresh_weight += vweight;
 						}
+
+						if (dvert && fmd->ground_defgrp_name[0]) {
+							float gweight = defvert_find_weight(dvert + vertstart + k, ground_defgrp_index);
+							mi->ground_weight += gweight;
+						}
 					}
 					vertstart += s->totvert;
 					//mi->vertco = get_vertco(s);// ? starting coordinates ???
@@ -3471,6 +3489,12 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 					mi->neighbor_count = s->neighbor_count;
 					//mi->global_face_map = vc->global_face_map;
 
+					if (mi->vertex_count > 0)
+					{
+						mi->thresh_weight /= mi->vertex_count;
+						mi->ground_weight /= mi->vertex_count;
+					}
+
 					mi->rigidbody = NULL;
 					//mi->vertices_cached = NULL;
 					if (!fmd->use_cellbased_sim)
@@ -3482,10 +3506,6 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 					}
 					mi->vertex_indices = NULL;
 
-					if (mi->vertex_count > 0)
-					{
-						mi->thresh_weight /= mi->vertex_count;
-					}
 				}
 			}
 			else

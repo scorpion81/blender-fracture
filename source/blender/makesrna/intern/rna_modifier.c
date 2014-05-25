@@ -753,6 +753,15 @@ static void rna_FractureModifier_thresh_defgrp_name_set(PointerRNA *ptr, const c
 	updateConstraints(tmd, ob);
 }
 
+static void rna_FractureModifier_ground_defgrp_name_set(PointerRNA *ptr, const char *value)
+{
+	FractureModifierData *tmd = (FractureModifierData *)ptr->data;
+	Object* ob = ptr->id.data;
+	rna_object_vgroup_name_set(ptr, value, tmd->ground_defgrp_name, sizeof(tmd->ground_defgrp_name));
+
+	//autorefresh this ? no... might take a while, let user decide
+}
+
 static void rna_RigidBodyModifier_threshold_set(PointerRNA *ptr, float value)
 {
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
@@ -4148,6 +4157,12 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_string_sdna(prop, NULL, "thresh_defgrp_name");
 	RNA_def_property_ui_text(prop, "Threshold Vertex Group", "Vertex group name for defining weighted thresholds on different mesh parts");
 	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_FractureModifier_thresh_defgrp_name_set");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "ground_vertex_group", PROP_STRING, PROP_NONE);
+	RNA_def_property_string_sdna(prop, NULL, "ground_defgrp_name");
+	RNA_def_property_ui_text(prop, "Passive Vertex Group", "Vertex group name for defining passive mesh parts (will remain static during rigidbody simulation");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_FractureModifier_ground_defgrp_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
