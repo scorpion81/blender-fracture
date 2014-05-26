@@ -141,6 +141,8 @@ EnumPropertyItem modifier_triangulate_ngon_method_items[] = {
 #include "BKE_modifier.h"
 #include "BKE_object.h"
 #include "BKE_particle.h"
+#include "BKE_deform.h"
+#include "BKE_DerivedMesh.h"
 
 static void rna_UVProject_projectors_begin(CollectionPropertyIterator *iter, PointerRNA *ptr)
 {
@@ -666,6 +668,76 @@ static void rna_UVWarpModifier_uvlayer_set(PointerRNA *ptr, const char *value)
 	rna_object_uvlayer_name_set(ptr, value, umd->uvlayer_name, sizeof(umd->uvlayer_name));
 }
 
+static void updateShards(FractureModifierData *fmd, Object *ob)
+{
+	MeshIsland *mi;
+	int vertstart = 0;
+	const int thresh_defgrp_index = defgroup_name_index(ob, fmd->thresh_defgrp_name);
+	const int ground_defgrp_index = defgroup_name_index(ob, fmd->ground_defgrp_name);
+	DerivedMesh *dm = ob->derivedFinal;
+	MDeformVert *dvert;
+
+	if (dm == NULL)
+		return;
+
+	dvert = dm->getVertDataArray(dm, CD_MDEFORMVERT);
+
+	for (mi = fmd->meshIslands.first; mi; mi = mi->next)
+	{
+		int i = 0;
+
+		mi->ground_weight = 0.0f;
+
+		if (fmd->dm != NULL && !fmd->shards_to_islands)
+		{
+			for (i = 0; i < mi->vertex_count; i++)
+			{
+				//sum up vertexweights and divide by vertcount to get islandweight
+				if (dvert && dvert->dw && fmd->thresh_defgrp_name[0]) {
+					float vweight = defvert_find_weight(dvert + vertstart + i, thresh_defgrp_index);
+					mi->thresh_weight += vweight;
+				}
+
+				if (dvert && dvert->dw && fmd->ground_defgrp_name[0]) {
+					float gweight = defvert_find_weight(dvert + vertstart + i, ground_defgrp_index);
+					mi->ground_weight += gweight;
+				}
+			}
+
+			vertstart += mi->vertex_count;
+		}
+		else
+		{
+			for (i = 0; i < mi->vertex_count; i++)
+			{
+				int index = mi->vertex_indices[i];
+
+				if (dvert && dvert->dw && fmd->thresh_defgrp_name[0]) {
+					float vweight = defvert_find_weight(dvert + index, thresh_defgrp_index);
+					mi->thresh_weight += vweight;
+				}
+
+				if (dvert && dvert->dw && fmd->ground_defgrp_name[0]) {
+					float gweight = defvert_find_weight(dvert + index, ground_defgrp_index);
+					mi->ground_weight += gweight;
+				}
+			}
+		}
+
+		if (mi->vertex_count > 0)
+		{
+			mi->thresh_weight /= mi->vertex_count;
+			mi->ground_weight /= mi->vertex_count;
+		}
+
+		if (mi->rigidbody)
+		{
+			mi->rigidbody->type = mi->ground_weight > 0.5f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
+			mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+		}
+	}
+}
+
 static void updateConstraints(FractureModifierData *rmd, Object* ob) {
 	RigidBodyShardCon *rbsc;
 	int index1, index2;
@@ -750,6 +822,7 @@ static void rna_FractureModifier_thresh_defgrp_name_set(PointerRNA *ptr, const c
 	FractureModifierData *tmd = (FractureModifierData *)ptr->data;
 	Object* ob = ptr->id.data;
 	rna_object_vgroup_name_set(ptr, value, tmd->thresh_defgrp_name, sizeof(tmd->thresh_defgrp_name));
+	//updateShards(tmd, ob); //deactivate for now, since we need a real re-fracture to re-apply interpolation
 	updateConstraints(tmd, ob);
 }
 
@@ -758,8 +831,7 @@ static void rna_FractureModifier_ground_defgrp_name_set(PointerRNA *ptr, const c
 	FractureModifierData *tmd = (FractureModifierData *)ptr->data;
 	Object* ob = ptr->id.data;
 	rna_object_vgroup_name_set(ptr, value, tmd->ground_defgrp_name, sizeof(tmd->ground_defgrp_name));
-
-	//autorefresh this ? no... might take a while, let user decide
+	//updateShards(tmd, ob); //deactivate for now, since we need a real re-fracture to re-apply interpolation
 }
 
 static void rna_RigidBodyModifier_threshold_set(PointerRNA *ptr, float value)

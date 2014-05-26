@@ -3790,7 +3790,8 @@ ModifierTypeInfo modifierType_Fracture = {
         /* flags */             eModifierTypeFlag_AcceptsMesh |
                                 eModifierTypeFlag_Single |
                                 eModifierTypeFlag_SupportsEditmode |
-                                eModifierTypeFlag_SupportsMapping,
+                                eModifierTypeFlag_SupportsMapping |
+                                eModifierTypeFlag_UsesPreview,
         /* copyData */          copyData,
         /* deformVerts */       NULL,
         /* deformMatrices */    NULL,
