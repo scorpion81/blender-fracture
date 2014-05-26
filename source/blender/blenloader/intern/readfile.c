@@ -4652,6 +4652,7 @@ static MeshIsland* read_meshIsland(FileData* fd, void* address)
 	mi->physics_mesh = BKE_shard_create_dm(mi->temp, false);
 	BKE_shard_free(temp, false);
 	//MEM_freeN(mi->temp);
+	mi->vertno = NULL;
 
 	mi->rigidbody = newdataadr(fd, mi->rigidbody);
 	mi->rigidbody->physics_object = newdataadr(fd, mi->rigidbody->physics_object);
@@ -4979,6 +4980,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			fmd->framemap = NULL;
 			fmd->refresh = false;  // do not construct modifier
 			fmd->refresh_constraints = false;
+			fmd->nor_tree = NULL;
 
 			if (fm == NULL)
 			{
@@ -5083,6 +5085,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 					//if (fmd->shards_to_islands)
 					{
 						mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * mi->vertex_count, "mi->vertices_cached readfile");
+						mi->vertno = NULL;
 						for (k = 0; k < mi->vertex_count; k++)
 						{
 							MVert* v = mverts + vertstart + k ;// mi->vertex_indices[k];

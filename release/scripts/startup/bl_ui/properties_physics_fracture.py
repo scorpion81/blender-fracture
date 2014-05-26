@@ -134,6 +134,7 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             row = box.row(align=True)
             row.operator("fracture.toggle_ground", text = "Toggle Ground")
             row.operator("fracture.toggle_connect_ground", text = "Toggle Connect Ground")
+            box.prop(md, "fix_normals");
             if not(md.refresh):
                 box.prop(md, "execute_threaded")
             box.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")

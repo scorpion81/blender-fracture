@@ -1334,6 +1334,7 @@ typedef struct MeshIsland {
 	struct BMVert **vertices;
 	struct MVert **vertices_cached;
 	float *vertco;
+	short *vertno;
 	struct DerivedMesh *physics_mesh;
 	struct Shard *temp; //storage for physics mesh, better omit derivedmesh here...
 	struct RigidBodyOb *rigidbody;
@@ -1429,6 +1430,7 @@ typedef struct FractureModifierData {
 	float *framemap;
 	char thresh_defgrp_name[64];  /* MAX_VGROUP_NAME */
 	char ground_defgrp_name[64];  /* MAX_VGROUP_NAME */
+	struct KDTree *nor_tree; //store original vertices here (coords), to find them later and reuse their normals
 
 	int frac_algorithm;
 	int shard_count;
@@ -1447,11 +1449,11 @@ typedef struct FractureModifierData {
 	int breaking_angle, breaking_percentage, use_proportional_distance, use_proportional_limit;
 	int use_cellbased_sim, use_experimental;
 	int solver_iterations_override, use_proportional_solver_iterations, refresh_images;
-	int shards_to_islands, execute_threaded;
+	int shards_to_islands, execute_threaded, fix_normals;
 	float breaking_distance, max_vol, cell_size;
 	float origmat[4][4], breaking_threshold, cluster_breaking_threshold;
 	float contact_dist;
-	char pad[4];
+	//char pad[4];
 } FractureModifierData;
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */

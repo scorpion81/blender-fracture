@@ -41,6 +41,7 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
+#include "BLI_kdtree.h"
 
 #ifdef WITH_BULLET
 #  include "RBI_api.h"
@@ -373,12 +374,72 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland* mi)
 	MEM_freeN(dm_ob);
 }
 
+static void initNormals(struct MeshIsland* mi, Object* ob, FractureModifierData* fmd)
+{
+	//hrm have to init Normals HERE, because we cant do this in readfile.c in case the file is loaded (have no access to the Object there)
+	if (mi->vertno == NULL && mi->vertices_cached != NULL)
+	{
+		KDTreeNearest n;
+		int index = 0, i = 0;
+		MVert mvrt;
+
+		DerivedMesh* dm = ob->derivedFinal;
+		if (dm == NULL)
+		{
+			dm = CDDM_from_mesh(ob->data);
+		}
+
+		if (fmd->nor_tree == NULL)
+		{
+			//HRRRRRMMMM need to build the kdtree here as well if we start the sim after loading and not refreshing, again, no access to object....
+			int i = 0, totvert;
+			KDTree *tree;
+			MVert *mv, *mvert;
+
+			tree = BLI_kdtree_new(totvert);
+			mvert = dm->getVertArray(dm);
+
+			for (i = 0, mv = mvert; i < totvert; i++, mv++)
+			{
+				BLI_kdtree_insert(tree, i, mv->co);
+			}
+
+			BLI_kdtree_balance(tree);
+			fmd->nor_tree = tree;
+		}
+
+		mi->vertno = MEM_callocN(sizeof(short) * 3 * mi->vertex_count, "mi->vertno");
+		for (i = 0; i < mi->vertex_count; i++)
+		{
+			MVert* v = mi->vertices_cached[i];
+			index = BLI_kdtree_find_nearest(fmd->nor_tree, v->co, &n);
+			dm->getVert(dm, index, &mvrt);
+			mi->vertno[i*3] = mvrt.no[0];
+			mi->vertno[i*3+1] = mvrt.no[1];
+			mi->vertno[i*3+2] = mvrt.no[2];
+		}
+
+		if (ob->derivedFinal == NULL)
+		{
+			dm->needsFree = 1;
+			dm->release(dm);
+			dm = NULL;
+		}
+	}
+}
 
 void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], float rot[4], float cfra, bool baked, FractureModifierData* rmd)
 {
 	float startco[3], centr[3], size[3];
+	short startno[3];
 	int i, j;
 	bool invalidData, invalidFrame, invalidBake, invalidBakeFrame;
+
+	//hrm have to init Normals HERE, because we cant do this in readfile.c in case the file is loaded (have no access to the Object there)
+	if (mi->vertno == NULL && rmd->fix_normals)
+	{
+		initNormals(mi, ob, rmd);
+	}
 	
 	if ((mi->destruction_frame >= 0) && (cfra > mi->destruction_frame))
 	{
@@ -424,6 +485,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 		// BMVert *vert = BM_vert_at_index(bm, ind);
 		//struct BMVert* vert = mi->vertices[j];
 		struct MVert* vert;
+		float fno[3];
 		
 		if (!mi->vertices_cached)
 		{
@@ -451,6 +513,17 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 		startco[1] = mi->vertco[j*3+1];
 		startco[2] = mi->vertco[j*3+2];
 
+		if (rmd->fix_normals)
+		{
+			startno[0] = mi->vertno[j*3];
+			startno[1] = mi->vertno[j*3+1];
+			startno[2] = mi->vertno[j*3+2];
+
+			normal_short_to_float_v3(fno, startno);
+			mul_qt_v3(rot, fno);
+			normal_float_to_short_v3(vert->no, fno);
+		}
+
 		copy_v3_v3(vert->co, startco);
 		mul_v3_v3(vert->co, size);
 		mul_qt_v3(rot, vert->co);
@@ -460,6 +533,8 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 		sub_v3_v3(vert->co, centr);
 		add_v3_v3(vert->co, loc);
 		mul_m4_v3(ob->imat, vert->co);
+
+		//copy_v3_v3_short(vert->no, startno);
 	}
 
 	ob->recalc |= OB_RECALC_ALL;
