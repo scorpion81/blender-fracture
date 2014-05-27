@@ -4241,6 +4241,11 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_boolean_sdna(prop, NULL, "fix_normals", false);
 	RNA_def_property_ui_text(prop, "Fix normals (WIP)", "Fix normals of fractured smooth objects, to let cracks nearly disappear");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "inner_material", PROP_POINTER, PROP_NONE);
+	RNA_def_property_ui_text(prop, "Inner Material", "");
+	RNA_def_property_flag(prop, PROP_EDITABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 void RNA_def_modifier(BlenderRNA *brna)

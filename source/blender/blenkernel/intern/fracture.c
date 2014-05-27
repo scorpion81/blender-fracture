@@ -43,7 +43,7 @@
 //utility... bbox / centroid calc
 
 /*prototypes*/
-static void parse_stream(FILE *fp, int expected_shards, ShardID shard_id, FracMesh *fm, int algorithm, Object *obj, DerivedMesh *dm);
+static void parse_stream(FILE *fp, int expected_shards, ShardID shard_id, FracMesh *fm, int algorithm, Object *obj, DerivedMesh *dm, short inner_material_index);
 static Shard *parse_shard(FILE *fp);
 static void parse_verts(FILE *fp, MVert *mvert, int totvert);
 static void parse_polys(FILE *fp, MPoly *mpoly, int totpoly, int *r_totloop);
@@ -125,7 +125,7 @@ static int shard_sortsize(void* context, const void *s1, const void *s2)
 }
 
 /* parse the voro++ raw data */
-static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracMesh *fm, int algorithm, Object* obj, DerivedMesh *dm)
+static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracMesh *fm, int algorithm, Object* obj, DerivedMesh *dm, short inner_material_index)
 {
 	/*Parse voronoi raw data*/
 	int i = 0;
@@ -194,13 +194,13 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 			/* XXX TODO, need object for material as well, or atleast a material index... */
 			if (algorithm == MOD_FRACTURE_BOOLEAN)
 			{
-				s = BKE_fracture_shard_boolean(obj, dm_parent, t);
+				s = BKE_fracture_shard_boolean(obj, dm_parent, t, inner_material_index);
 			}
 			else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL)
 			{
 				float co[3] = {0, 0, 0};
 				printf("Bisecting cell %d...\n", i);
-				s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, false, true, 0, co);
+				s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, false, true, 0, co, inner_material_index);
 			}
 			else
 			{
@@ -251,8 +251,8 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 			printf("Bisecting cell %d...\n", i);
 			printf("Bisecting cell %d...\n", i+1);
 
-			s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, false, true, index, centroid);
-			s2 = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, true, false, index, centroid);
+			s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, false, true, index, centroid, 0);
+			s2 = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, true, false, index, centroid, 0);
 
 			if (s != NULL && s2 != NULL)
 			{
@@ -748,7 +748,7 @@ FracMesh *BKE_create_fracture_container(DerivedMesh* dm)
 
 
 
-void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud, int algorithm, Object* obj, DerivedMesh* dm) {
+void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud, int algorithm, Object* obj, DerivedMesh* dm, short inner_material_index) {
 	int n_size = 8;
 	
 	Shard *shard;
@@ -862,7 +862,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 
 	if (stream != NULL)
 	{
-		parse_stream(stream, pointcloud->totpoints, id, fmesh, algorithm, obj, dm);
+		parse_stream(stream, pointcloud->totpoints, id, fmesh, algorithm, obj, dm, inner_material_index);
 		fclose (stream);
 	}
 

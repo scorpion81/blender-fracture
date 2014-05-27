@@ -921,8 +921,24 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object* obj, D
 	if (points.totpoints > 0)
 	{
 		bool temp = fracmd->shards_to_islands;
+		short mat_index = 0;
 
-		BKE_fracture_shard_by_points(fracmd->frac_mesh, id, &points, fracmd->frac_algorithm, obj, dm);
+		if (fracmd->inner_material)
+		{
+			//assign inner material as secondary mat to ob if not there already
+			mat_index = find_material_index(obj, fracmd->inner_material);
+			if (mat_index == 0)
+			{
+				object_add_material_slot(obj);
+				assign_material(obj, fracmd->inner_material, obj->totcol, BKE_MAT_ASSIGN_OBDATA);
+			}
+
+			//get index again
+			mat_index = find_material_index(obj, fracmd->inner_material);
+		}
+
+		mat_index = mat_index > 0 ? mat_index - 1 : mat_index;
+		BKE_fracture_shard_by_points(fracmd->frac_mesh, id, &points, fracmd->frac_algorithm, obj, dm, mat_index);
 
 		//job has been cancelled, throw away all data
 		if (fracmd->frac_mesh->cancel == 1)
@@ -1420,11 +1436,11 @@ void mesh_separate_loose_partition(FractureModifierData* rmd, Object* ob, BMesh*
 		/* Select the seed explicitly, in case it has no edges */
 		if (!BM_elem_flag_test(v_seed, BM_ELEM_TAG) && !BM_elem_flag_test(v_seed, BM_ELEM_INTERNAL_TAG)) {
 
-			float no[3];
+			short no[3];
 
 			v_tag = MEM_callocN(sizeof(BMVert*), "v_tag");
 			startco = MEM_callocN(sizeof(float), "mesh_separate_loose->startco");
-			startno = MEM_callocN(sizeof(float), "mesh_separate_loose->startno");
+			startno = MEM_callocN(sizeof(short), "mesh_separate_loose->startno");
 
 			//BLI_ghash_insert(hash, v_seed, v_seed);
 			BM_elem_flag_enable(v_seed, BM_ELEM_TAG);
@@ -1460,7 +1476,7 @@ void mesh_separate_loose_partition(FractureModifierData* rmd, Object* ob, BMesh*
 		e = BMW_begin(&walker, v_seed);
 		for (; e; e = BMW_step(&walker)) {
 			if (!BM_elem_flag_test(e->v1, BM_ELEM_TAG) && !BM_elem_flag_test(e->v1, BM_ELEM_INTERNAL_TAG)) {
-				float no[3];
+				short no[3];
 
 				BM_elem_flag_enable(e->v1, BM_ELEM_TAG);
 				BM_elem_flag_enable(e->v1, BM_ELEM_INTERNAL_TAG);
@@ -1473,10 +1489,10 @@ void mesh_separate_loose_partition(FractureModifierData* rmd, Object* ob, BMesh*
 				startco[3 * tag_counter+2] = e->v1->co[2];
 
 
-				startno = MEM_reallocN(startno, (tag_counter+1) * 3 * sizeof(float));
+				startno = MEM_reallocN(startno, (tag_counter+1) * 3 * sizeof(short));
 
 				//copy_v3_v3(no, v_seed->no);
-				find_normal(dm, rmd->nor_tree, v_seed->co, no);
+				find_normal(dm, rmd->nor_tree, e->v1->co, no);
 				startno[3 * tag_counter] = no[0];
 				startno[3 * tag_counter+1] = no[1];
 				startno[3 * tag_counter+2] = no[2];
@@ -1485,7 +1501,7 @@ void mesh_separate_loose_partition(FractureModifierData* rmd, Object* ob, BMesh*
 				tag_counter++;
 			}
 			if (!BM_elem_flag_test(e->v2, BM_ELEM_TAG) && !BM_elem_flag_test(e->v2, BM_ELEM_INTERNAL_TAG)) {
-				float no[3];
+				short no[3];
 
 				BM_elem_flag_enable(e->v2, BM_ELEM_TAG);
 				BM_elem_flag_enable(e->v2, BM_ELEM_INTERNAL_TAG);
@@ -1498,9 +1514,9 @@ void mesh_separate_loose_partition(FractureModifierData* rmd, Object* ob, BMesh*
 				startco[3 * tag_counter+1] = e->v2->co[1];
 				startco[3 * tag_counter+2] = e->v2->co[2];
 
-				startno = MEM_reallocN(startno, (tag_counter+1) * 3 * sizeof(float));
+				startno = MEM_reallocN(startno, (tag_counter+1) * 3 * sizeof(short));
 				//copy_v3_v3(no, v_seed->no);
-				find_normal(dm, rmd->nor_tree, v_seed->co, no);
+				find_normal(dm, rmd->nor_tree, e->v2->co, no);
 				startno[3 * tag_counter] = no[0];
 				startno[3 * tag_counter+1] = no[1];
 				startno[3 * tag_counter+2] = no[2];
@@ -3170,13 +3186,14 @@ static bool dependsOnNormals(ModifierData *UNUSED(md))
 	return true;
 }
 
-/*static void foreachIDLink(ModifierData *md, Object *ob,
+static void foreachIDLink(ModifierData *md, Object *ob,
 						  IDWalkFunc walk, void *userData)
 {
-	RigidBodyModifierData *rmd = (RigidBodyModifierData *) md;
+	FractureModifierData *fmd = (FractureModifierData *) md;
 
-	walk(userData, ob, (ID **)&rmd->constraint_group);
-}*/
+	walk(userData, ob, (ID **)&fmd->inner_material);
+	walk(userData, ob, (ID **)&fmd->extra_group);
+}
 
 static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *UNUSED(md))
 {
@@ -3211,5 +3228,5 @@ ModifierTypeInfo modifierType_Fracture = {
         /* dependsOnTime */     dependsOnTime,
         /* dependsOnNormals */  dependsOnNormals,
         /* foreachObjectLink */ NULL,
-        /* foreachIDLink */     NULL,
+        /* foreachIDLink */     foreachIDLink,
 };

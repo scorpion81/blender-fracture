@@ -52,12 +52,26 @@
 #include "bmesh.h"
 #include "../../modifiers/intern/MOD_boolean_util.h"
 
-Shard *BKE_fracture_shard_boolean(Object* obj, DerivedMesh *dm_parent, Shard* child)
+Shard *BKE_fracture_shard_boolean(Object* obj, DerivedMesh *dm_parent, Shard* child, short inner_material_index)
 {
 	Shard *output_s;
 	DerivedMesh *left_dm, *right_dm, *output_dm;
+	MPoly *mpoly, *mp;
+	int totpoly, i = 0;
 
 	left_dm = BKE_shard_create_dm(child, false);
+
+	if (inner_material_index > 0)
+	{
+		//set inner material on child shard
+		mpoly = left_dm->getPolyArray(left_dm);
+		totpoly = left_dm->getNumPolys(left_dm);
+		for (i = 0, mp = mpoly; i < totpoly; i++, mp++)
+		{
+			mp->mat_nr = inner_material_index;
+		}
+	}
+
 	right_dm = dm_parent;
 	output_dm = NewBooleanDerivedMesh(right_dm, obj, left_dm, obj, 1);
 
@@ -103,7 +117,7 @@ Shard *BKE_fracture_shard_boolean(Object* obj, DerivedMesh *dm_parent, Shard* ch
 
 
 Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4], bool use_fill, bool clear_inner,
-								 bool clear_outer, int cutlimit, float centroid[3])
+								 bool clear_outer, int cutlimit, float centroid[3], short inner_mat_index)
 {
 	#define MYTAG (1 << 6)
 
@@ -128,7 +142,7 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 	//bool clear_outer = true;
 	bool do_break = false;
 
-	int fcount = 0, findex = 0, i = 0, cut_index = 0;
+	int cut_index = 0;
 
 	invert_m4_m4(imat, obmat);
 
@@ -203,40 +217,52 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 			            &bmop, "geom_cut.out", 0, false);
 			BMO_op_exec(bm_parent, &bmop_fill);*/
 
-			BMO_op_initf(
-			        bm_parent, &bmop_fill,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-			        "triangle_fill edges=%S normal=%v use_dissolve=%b",
-			        &bmop, "geom_cut.out", normal_fill, true);
-			BMO_op_exec(bm_parent, &bmop_fill);
+			if (inner_mat_index == 0)	//dont use inner material...
+			{
+				BMO_op_initf(
+						bm_parent, &bmop_fill,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+						"triangle_fill edges=%S normal=%v use_dissolve=%b",
+						&bmop, "geom_cut.out", normal_fill, true);
+				BMO_op_exec(bm_parent, &bmop_fill);
 
-			/*BMO_op_initf(
-			        bm_parent, &bmop_fill,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-			       "edgenet_fill edges=%S mat_nr=%i use_smooth=%b sides=%i",
-			        &bmop, "geom_cut.out", 0, false, 1);
-			BMO_op_exec(bm_parent, &bmop_fill);*/
+				BMO_op_initf(bm_parent, &bmop_attr, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+							 "face_attribute_fill faces=%S use_normals=%b use_data=%b",
+							 &bmop_fill, "geom.out", false, true);
+				BMO_op_exec(bm_parent, &bmop_attr);
 
-			/* Copy Attributes */
-			/*BMO_op_initf(bm_parent, &bmop_attr, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-			             "face_attribute_fill faces=%S use_normals=%b use_data=%b",
-			             &bmop_fill, "faces.out", false, true);
-			BMO_op_exec(bm_parent, &bmop_attr);
+				BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "geom.out", BM_FACE, BM_ELEM_TAG, true);
+			}
+			else
+			{
+				//use edgenet fill with inner material
+				BMO_op_initf(
+				        bm_parent, &bmop_fill,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+				       "edgenet_fill edges=%S mat_nr=%i use_smooth=%b sides=%i",
+				        &bmop, "geom_cut.out", inner_mat_index, false, 1);
+				BMO_op_exec(bm_parent, &bmop_fill);
 
-			BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "faces.out", BM_FACE, BM_ELEM_SELECT, true);*/
+				/* Copy Attributes */
+				BMO_op_initf(bm_parent, &bmop_attr, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+				         "face_attribute_fill faces=%S use_normals=%b use_data=%b",
+				         &bmop_fill, "faces.out", true, false);
+				BMO_op_exec(bm_parent, &bmop_attr);
 
+				BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "faces.out", BM_FACE, BM_ELEM_TAG, true);
+			}
+
+#if 0
 			BMO_op_initf(bm_parent, &bmop_attr, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 			             "face_attribute_fill faces=%S use_normals=%b use_data=%b",
 			             &bmop_fill, "geom.out", false, true);
 			BMO_op_exec(bm_parent, &bmop_attr);
 
 			BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "geom.out", BM_FACE, BM_ELEM_TAG, true);
-
+#endif
 			BMO_op_finish(bm_parent, &bmop_attr);
 			BMO_op_finish(bm_parent, &bmop_fill);
 		}
 
 		BMO_slot_buffer_hflag_enable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, BM_ELEM_TAG, true);
-		//BMO_slot_buffer_hflag_enable(bm_parent, bmop.slots_out, "geom.out", BM_FACE, MYTAG, false);
-		//BMO_slot_buffer_hflag_disable(bm_parent, bmop.slots_out, "geom_cut.out", BM_FACE, MYTAG, false);
 
 		BMO_op_finish(bm_parent, &bmop);
 	}
