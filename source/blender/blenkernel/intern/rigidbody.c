@@ -396,8 +396,9 @@ static void initNormals(struct MeshIsland* mi, Object* ob, FractureModifierData*
 			KDTree *tree;
 			MVert *mv, *mvert;
 
-			tree = BLI_kdtree_new(totvert);
 			mvert = dm->getVertArray(dm);
+			totvert = dm->getNumVerts(dm);
+			tree = BLI_kdtree_new(totvert);
 
 			for (i = 0, mv = mvert; i < totvert; i++, mv++)
 			{
