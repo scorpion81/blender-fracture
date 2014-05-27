@@ -2725,7 +2725,7 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 	BMVert* v;
 	DerivedMesh *dm;
 	MVert *verts;
-	MDeformVert *dvert;
+	MDeformVert *dvert = NULL;
 	int vertstart = 0;
 	const int thresh_defgrp_index = defgroup_name_index(ob, rmd->thresh_defgrp_name);
 	const int ground_defgrp_index = defgroup_name_index(ob, rmd->ground_defgrp_name);
@@ -2737,7 +2737,10 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 	else if (rmd->visible_mesh && (rmd->visible_mesh->totface > 0) && BLI_countlist(&rmd->meshIslands) > 1)
 	{
 		dm = CDDM_from_bmesh(rmd->visible_mesh, true);
+		//bmesh has no mdeformverts in customdata as it seems, odd...
+		//dvert = origdm->getVertDataArray(origdm, CD_MDEFORMVERT);
 	}
+
 	else if (origdm != NULL)
 	{
 		dm = CDDM_copy(origdm);
@@ -2752,7 +2755,10 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 	DM_update_tessface_data(dm);
 
 	verts = dm->getVertArray(dm);
-	dvert = dm->getVertDataArray(dm, CD_MDEFORMVERT);
+
+	if (dvert == NULL)
+		dvert = dm->getVertDataArray(dm, CD_MDEFORMVERT);
+
 
 	for (mi = rmd->meshIslands.first; mi; mi = mi->next)
 	{
@@ -2772,12 +2778,12 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 			}
 
 			//sum up vertexweights and divide by vertcount to get islandweight
-			if (dvert && dvert->dw && rmd->thresh_defgrp_name[0]) {
+			if (dvert && (dvert+vertstart+i)->dw && rmd->thresh_defgrp_name[0]) {
 				float vweight = defvert_find_weight(dvert + vertstart + i, thresh_defgrp_index);
 				mi->thresh_weight += vweight;
 			}
 
-			if (dvert && dvert->dw && rmd->ground_defgrp_name[0]) {
+			if (dvert && (dvert+vertstart+i)->dw && rmd->ground_defgrp_name[0]) {
 				float gweight = defvert_find_weight(dvert + vertstart + i, ground_defgrp_index);
 				mi->ground_weight += gweight;
 			}
@@ -2800,12 +2806,12 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 					mi->vertices_cached[i] = NULL;
 				}
 
-				if (dvert && dvert->dw && rmd->thresh_defgrp_name[0]) {
+				if (dvert && (dvert+index)->dw && rmd->thresh_defgrp_name[0]) {
 					float vweight = defvert_find_weight(dvert + index, thresh_defgrp_index);
 					mi->thresh_weight += vweight;
 				}
 
-				if (dvert && dvert->dw && rmd->ground_defgrp_name[0]) {
+				if (dvert && (dvert+index)->dw && rmd->ground_defgrp_name[0]) {
 					float gweight = defvert_find_weight(dvert + index, ground_defgrp_index);
 					mi->ground_weight += gweight;
 				}
@@ -2825,6 +2831,11 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 		{
 			mi->thresh_weight /= mi->vertex_count;
 			mi->ground_weight /= mi->vertex_count;
+		}
+
+		if (mi->rigidbody != NULL)
+		{
+			mi->rigidbody->type = mi->ground_weight > 0.5f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
 		}
 	}
 
