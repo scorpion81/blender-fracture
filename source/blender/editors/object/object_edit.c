@@ -993,7 +993,7 @@ static void copy_attr(Main *bmain, Scene *scene, View3D *v3d, short event)
 				}
 				else if (event == 23) {
 					base->object->softflag = ob->softflag;
-					if (base->object->soft) sbFree(base->object->soft);
+					if (base->object->soft) sbFree(base->object->soft, base->object);
 					
 					base->object->soft = copy_softbody(ob->soft, false);
 
@@ -1503,7 +1503,7 @@ static EnumPropertyItem *object_mode_set_itemsf(bContext *C, PointerRNA *UNUSED(
 			    (input->value == OB_MODE_POSE && (ob->type == OB_ARMATURE)) ||
 			    (input->value == OB_MODE_PARTICLE_EDIT && use_mode_particle_edit) ||
 			    (input->value == OB_MODE_FRACTURE && use_mode_fracture_edit) ||
-			    (ELEM4(input->value, OB_MODE_SCULPT, OB_MODE_VERTEX_PAINT,
+			    (ELEM(input->value, OB_MODE_SCULPT, OB_MODE_VERTEX_PAINT,
 			           OB_MODE_WEIGHT_PAINT, OB_MODE_TEXTURE_PAINT) && (ob->type == OB_MESH)) ||
 			    (input->value == OB_MODE_OBJECT))
 			{

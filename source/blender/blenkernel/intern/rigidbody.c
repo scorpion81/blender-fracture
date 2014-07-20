@@ -282,7 +282,7 @@ float BKE_rigidbody_calc_volume(DerivedMesh *dm, RigidBodyOb *rbo)
 	//BKE_object_dimensions_get(ob, size);
 	DM_mesh_boundbox(dm, loc, size); //maybe *2 ??
 
-	if (ELEM3(rbo->shape, RB_SHAPE_CAPSULE, RB_SHAPE_CYLINDER, RB_SHAPE_CONE)) {
+	if (ELEM(rbo->shape, RB_SHAPE_CAPSULE, RB_SHAPE_CYLINDER, RB_SHAPE_CONE)) {
 		/* take radius as largest x/y dimension, and height as z-dimension */
 		radius = MAX2(size[0], size[1]) * 0.5f;
 		height = size[2];
@@ -1216,7 +1216,7 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland* mi, Object* ob, short re
 		size[1] = (max[1] - min[1]) / 2.0f;
 		size[2] = (max[2] - min[2]) / 2.0f;
 
-		if (ELEM3(rbo->shape, RB_SHAPE_CAPSULE, RB_SHAPE_CYLINDER, RB_SHAPE_CONE)) {
+		if (ELEM(rbo->shape, RB_SHAPE_CAPSULE, RB_SHAPE_CYLINDER, RB_SHAPE_CONE)) {
 			/* take radius as largest x/y dimension, and height as z-dimension */
 			radius = MAX2(size[0], size[1]);
 			height = size[2];
@@ -1625,7 +1625,7 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 		return;
 	}
 
-	if (ELEM4(NULL, rbc->mi1, rbc->mi1->rigidbody, rbc->mi2, rbc->mi2->rigidbody)) {
+	if (ELEM(NULL, rbc->mi1, rbc->mi1->rigidbody, rbc->mi2, rbc->mi2->rigidbody)) {
 		if (rbc->physics_constraint) {
 			RB_dworld_remove_constraint(rbw->physics_world, rbc->physics_constraint);
 			RB_constraint_delete(rbc->physics_constraint);
@@ -2985,7 +2985,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 			}
 
 			/* update simulation object... */
-			rigidbody_update_sim_ob(scene, rbw, ob, rbo);
+			//rigidbody_update_sim_ob(scene, rbw, ob, rbo);
 		}
 		//rigidbody_update_ob_array(rbw);
 		rbw->refresh_modifiers = false;

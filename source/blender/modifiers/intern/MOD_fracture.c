@@ -134,6 +134,12 @@ static void freeData(ModifierData *md)
 	
 	if ((!rmd->refresh && !rmd->refresh_constraints) || (rmd->frac_mesh && rmd->frac_mesh->cancel == 1))
 	{
+		if (rmd->nor_tree != NULL)
+		{
+			BLI_kdtree_free(rmd->nor_tree);
+			rmd->nor_tree = NULL;
+		}
+
 		//called on deleting modifier, object or quitting blender...
 		if (rmd->dm) {
 			rmd->dm->needsFree = 1;
@@ -1468,7 +1474,7 @@ void mesh_separate_loose_partition(FractureModifierData* rmd, Object* ob, BMesh*
 
 		/* Walk from the single vertex, selecting everything connected
 		 * to it */
-		BMW_init(&walker, bm_old, BMW_SHELL,
+		BMW_init(&walker, bm_old, BMW_VERT_SHELL,
 					BMW_MASK_NOP, BMW_MASK_NOP, BMW_MASK_NOP,
 					BMW_FLAG_NOP,
 					BMW_NIL_LAY);
@@ -1560,7 +1566,7 @@ static void select_linked(BMesh** bm_in)
 		}
 	}
 
-	BMW_init(&walker, bm_work , BMW_SHELL,
+	BMW_init(&walker, bm_work , BMW_VERT_SHELL,
 			 BMW_MASK_NOP, BMW_MASK_NOP, BMW_MASK_NOP,
 			 BMW_FLAG_TEST_HIDDEN,
 			 BMW_NIL_LAY);

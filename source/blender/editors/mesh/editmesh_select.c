@@ -1603,7 +1603,7 @@ bool EDBM_select_pick(bContext *C, const int mval[2], bool extend, bool deselect
 					eed = eve->e;
 				}
 
-				BMW_init(&walker, bm, BMW_SHELL,
+				BMW_init(&walker, bm, BMW_VERT_SHELL,
 				         BMW_MASK_NOP, BMW_MASK_NOP, BMW_MASK_NOP,
 				         BMW_FLAG_TEST_HIDDEN,
 				         BMW_NIL_LAY);

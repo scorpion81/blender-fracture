@@ -99,7 +99,8 @@ static void shard_boundbox(Shard* s, float r_loc[3], float r_size[3])
 	r_size[2] = (max[2] - min[2]) / 2.0f;
 }
 
-static int shard_sortsize(void* context, const void *s1, const void *s2)
+//wtf... argument order changed ?
+static int shard_sortsize(const void *s1, const void *s2, void* context)
 {
 	const Shard** sh1 = (Shard**)s1;
 	const Shard** sh2 = (Shard**)s2;
@@ -254,7 +255,7 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 			s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, false, true, index, centroid, 0);
 			s2 = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, true, false, index, centroid, 0);
 
-			if (s != NULL && s2 != NULL)
+			if (s != NULL && s2 != NULL && tempresults != NULL)
 			{
 				int j = 0;
 
@@ -283,7 +284,7 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 				tempresults[i] = s;
 				tempresults[i+1] = s2;
 
-				BLI_qsort_r(tempresults, i+1, sizeof(Shard*), i, shard_sortsize);
+				BLI_qsort_r(tempresults, i+1, sizeof(Shard*), shard_sortsize, i);
 
 				while (tempresults[j] == NULL && j < (i+1)) {
 					j++;
@@ -575,11 +576,6 @@ void BKE_shard_free(Shard *s, bool doCustomData)
 	if (s->cluster_colors)
 		MEM_freeN(s->cluster_colors);
 
-	//not used here... (i think... because it crashes on free ?)
-	/*s->vertData.external = NULL;
-	s->loopData.external = NULL;
-	s->polyData.external = NULL;*/
-
 	if (doCustomData)
 	{
 		CustomData_free(&s->vertData, s->totvert);
@@ -588,6 +584,13 @@ void BKE_shard_free(Shard *s, bool doCustomData)
 		CustomData_free(&s->loopData, s->totloop);
 		CustomData_free(&s->polyData, s->totpoly);
 	}
+	/*else
+	{
+		s->vertData.external = NULL;
+		s->loopData.external = NULL;
+		s->polyData.external = NULL;
+
+	}*/
 
 	MEM_freeN(s);
 }
@@ -846,8 +849,8 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 #endif
 	fclose (stream);
 	
-	free(voro_particle_order);
 	free(voro_loop_order);
+	free(voro_particle_order);
 	free(voro_container);
 	
 #ifdef USE_DEBUG_TIMER
