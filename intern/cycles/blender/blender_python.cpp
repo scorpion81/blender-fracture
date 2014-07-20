@@ -35,6 +35,13 @@
 
 CCL_NAMESPACE_BEGIN
 
+static void *pylong_as_voidptr_typesafe(PyObject *object)
+{
+	if(object == Py_None)
+		return NULL;
+	return PyLong_AsVoidPtr(object);
+}
+
 void python_thread_state_save(void **python_thread_state)
 {
 	*python_thread_state = (void*)PyEval_SaveThread();
@@ -84,15 +91,15 @@ static PyObject *create_func(PyObject *self, PyObject *args)
 	BL::Scene scene(sceneptr);
 
 	PointerRNA regionptr;
-	RNA_id_pointer_create((ID*)PyLong_AsVoidPtr(pyregion), &regionptr);
+	RNA_id_pointer_create((ID*)pylong_as_voidptr_typesafe(pyregion), &regionptr);
 	BL::Region region(regionptr);
 
 	PointerRNA v3dptr;
-	RNA_id_pointer_create((ID*)PyLong_AsVoidPtr(pyv3d), &v3dptr);
+	RNA_id_pointer_create((ID*)pylong_as_voidptr_typesafe(pyv3d), &v3dptr);
 	BL::SpaceView3D v3d(v3dptr);
 
 	PointerRNA rv3dptr;
-	RNA_id_pointer_create((ID*)PyLong_AsVoidPtr(pyrv3d), &rv3dptr);
+	RNA_id_pointer_create((ID*)pylong_as_voidptr_typesafe(pyrv3d), &rv3dptr);
 	BL::RegionView3D rv3d(rv3dptr);
 
 	/* create session */
@@ -158,8 +165,6 @@ static PyObject *bake_func(PyObject *self, PyObject *args)
 	if(!PyArg_ParseTuple(args, "OOsOiiO", &pysession, &pyobject, &pass_type, &pypixel_array,  &num_pixels, &depth, &pyresult))
 		return NULL;
 
-	Py_BEGIN_ALLOW_THREADS
-
 	BlenderSession *session = (BlenderSession*)PyLong_AsVoidPtr(pysession);
 
 	PointerRNA objectptr;
@@ -172,9 +177,11 @@ static PyObject *bake_func(PyObject *self, PyObject *args)
 	RNA_id_pointer_create((ID*)PyLong_AsVoidPtr(pypixel_array), &bakepixelptr);
 	BL::BakePixel b_bake_pixel(bakepixelptr);
 
+	python_thread_state_save(&session->python_thread_state);
+
 	session->bake(b_object, pass_type, b_bake_pixel, num_pixels, depth, (float *)b_result);
 
-	Py_END_ALLOW_THREADS
+	python_thread_state_restore(&session->python_thread_state);
 
 	Py_RETURN_NONE;
 }

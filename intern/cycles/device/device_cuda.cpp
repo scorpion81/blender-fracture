@@ -41,14 +41,11 @@ public:
 	CUdevice cuDevice;
 	CUcontext cuContext;
 	CUmodule cuModule;
-	CUstream cuStream;
-	CUevent tileDone;
 	map<device_ptr, bool> tex_interp_map;
 	int cuDevId;
 	int cuDevArchitecture;
 	bool first_error;
 	bool use_texture_storage;
-	unsigned int target_update_frequency;
 
 	struct PixelMem {
 		GLuint cuPBO;
@@ -78,7 +75,6 @@ public:
 
 			case CUDA_ERROR_INVALID_IMAGE: return "Invalid kernel image";
 			case CUDA_ERROR_INVALID_CONTEXT: return "Invalid context";
-			case CUDA_ERROR_CONTEXT_ALREADY_CURRENT: return "Context already current";
 			case CUDA_ERROR_MAP_FAILED: return "Map failed";
 			case CUDA_ERROR_UNMAP_FAILED: return "Unmap failed";
 			case CUDA_ERROR_ARRAY_IS_MAPPED: return "Array is mapped";
@@ -90,11 +86,15 @@ public:
 			case CUDA_ERROR_NOT_MAPPED_AS_POINTER: return "Mapped resource not available for access as a pointer";
 			case CUDA_ERROR_ECC_UNCORRECTABLE: return "Uncorrectable ECC error detected";
 			case CUDA_ERROR_UNSUPPORTED_LIMIT: return "CUlimit not supported by device";
+			case CUDA_ERROR_CONTEXT_ALREADY_IN_USE: return "Context already in use";
+			case CUDA_ERROR_PEER_ACCESS_UNSUPPORTED: return "Peer access unsupported";
+			case CUDA_ERROR_INVALID_PTX: return "Invalid PTX code";
 
 			case CUDA_ERROR_INVALID_SOURCE: return "Invalid source";
 			case CUDA_ERROR_FILE_NOT_FOUND: return "File not found";
 			case CUDA_ERROR_SHARED_OBJECT_SYMBOL_NOT_FOUND: return "Link to a shared object failed to resolve";
 			case CUDA_ERROR_SHARED_OBJECT_INIT_FAILED: return "Shared object initialization failed";
+			case CUDA_ERROR_OPERATING_SYSTEM: return "OS call failed";
 
 			case CUDA_ERROR_INVALID_HANDLE: return "Invalid handle";
 
@@ -102,10 +102,19 @@ public:
 
 			case CUDA_ERROR_NOT_READY: return "CUDA not ready";
 
-			case CUDA_ERROR_LAUNCH_FAILED: return "Launch failed";
+			case CUDA_ERROR_ILLEGAL_ADDRESS: return "Illegal address";
 			case CUDA_ERROR_LAUNCH_OUT_OF_RESOURCES: return "Launch exceeded resources";
-			case CUDA_ERROR_LAUNCH_TIMEOUT: return "Launch exceeded timeout";
+			case CUDA_ERROR_LAUNCH_TIMEOUT: return "Launch exceeded time out";
 			case CUDA_ERROR_LAUNCH_INCOMPATIBLE_TEXTURING: return "Launch with incompatible texturing";
+			case CUDA_ERROR_HARDWARE_STACK_ERROR: return "Stack error";
+			case CUDA_ERROR_ILLEGAL_INSTRUCTION: return "Illegal instruction";
+			case CUDA_ERROR_MISALIGNED_ADDRESS: return "Misaligned address";
+			case CUDA_ERROR_INVALID_ADDRESS_SPACE: return "Invalid address space";
+			case CUDA_ERROR_INVALID_PC: return "Invalid program counter";
+			case CUDA_ERROR_LAUNCH_FAILED: return "Launch failed";
+
+			case CUDA_ERROR_NOT_PERMITTED: return "Operation not permitted";
+			case CUDA_ERROR_NOT_SUPPORTED: return "Operation not supported";
 
 			case CUDA_ERROR_UNKNOWN: return "Unknown error";
 
@@ -180,8 +189,6 @@ public:
 		first_error = true;
 		background = background_;
 		use_texture_storage = true;
-		/* we try an update / sync every 1000 ms */
-		target_update_frequency = 1000;
 
 		cuDevId = info.num;
 		cuDevice = 0;
@@ -212,9 +219,6 @@ public:
 		if(cuda_error_(result, "cuCtxCreate"))
 			return;
 
-		cuda_assert(cuStreamCreate(&cuStream, 0));
-		cuda_assert(cuEventCreate(&tileDone, 0x1));
-
 		int major, minor;
 		cuDeviceComputeCapability(&major, &minor, cuDevId);
 		cuDevArchitecture = major*100 + minor*10;
@@ -231,12 +235,10 @@ public:
 	{
 		task_pool.stop();
 
-		cuda_assert(cuEventDestroy(tileDone));
-		cuda_assert(cuStreamDestroy(cuStream));
 		cuda_assert(cuCtxDestroy(cuContext));
 	}
 
-	bool support_device(bool experimental, bool branched)
+	bool support_device(bool experimental)
 	{
 		int major, minor;
 		cuDeviceComputeCapability(&major, &minor, cuDevId);
@@ -342,7 +344,7 @@ public:
 			return false;
 		
 		/* check if GPU is supported */
-		if(!support_device(experimental, false))
+		if(!support_device(experimental))
 			return false;
 
 		/* get kernel */
@@ -604,7 +606,7 @@ public:
 		CUdeviceptr d_rng_state = cuda_device_ptr(rtile.rng_state);
 
 		/* get kernel function */
-		if(branched && support_device(true, branched)) {
+		if(branched) {
 			cuda_assert(cuModuleGetFunction(&cuPathTrace, cuModule, "kernel_cuda_branched_path_trace"));
 		}
 		else {
@@ -665,15 +667,9 @@ public:
 
 		cuda_assert(cuFuncSetCacheConfig(cuPathTrace, CU_FUNC_CACHE_PREFER_L1));
 		cuda_assert(cuFuncSetBlockShape(cuPathTrace, xthreads, ythreads, 1));
+		cuda_assert(cuLaunchGrid(cuPathTrace, xblocks, yblocks));
 
-		if(info.display_device) {
-			/* don't use async for device used for display, locks up UI too much */
-			cuda_assert(cuLaunchGrid(cuPathTrace, xblocks, yblocks));
-			cuda_assert(cuCtxSynchronize());
-		}
-		else {
-			cuda_assert(cuLaunchGridAsync(cuPathTrace, xblocks, yblocks, cuStream));
-		}
+		cuda_assert(cuCtxSynchronize());
 
 		cuda_pop_context();
 	}
@@ -762,7 +758,12 @@ public:
 		CUdeviceptr d_output = cuda_device_ptr(task.shader_output);
 
 		/* get kernel function */
-		cuda_assert(cuModuleGetFunction(&cuShader, cuModule, "kernel_cuda_shader"));
+		if(task.shader_eval_type >= SHADER_EVAL_BAKE) {
+			cuda_assert(cuModuleGetFunction(&cuShader, cuModule, "kernel_cuda_bake"));
+		}
+		else {
+			cuda_assert(cuModuleGetFunction(&cuShader, cuModule, "kernel_cuda_shader"));
+		}
 
 		/* do tasks in smaller chunks, so we can cancel it */
 		const int shader_chunk_size = 65536;
@@ -773,38 +774,47 @@ public:
 			if(task.get_cancel())
 				break;
 
-			/* pass in parameters */
-			int offset = 0;
-
-			cuda_assert(cuParamSetv(cuShader, offset, &d_input, sizeof(d_input)));
-			offset += sizeof(d_input);
-
-			cuda_assert(cuParamSetv(cuShader, offset, &d_output, sizeof(d_output)));
-			offset += sizeof(d_output);
-
-			int shader_eval_type = task.shader_eval_type;
-			offset = align_up(offset, __alignof(shader_eval_type));
-
-			cuda_assert(cuParamSeti(cuShader, offset, task.shader_eval_type));
-			offset += sizeof(task.shader_eval_type);
-
-			cuda_assert(cuParamSeti(cuShader, offset, shader_x));
-			offset += sizeof(shader_x);
-
-			cuda_assert(cuParamSetSize(cuShader, offset));
-
-			/* launch kernel */
-			int threads_per_block;
-			cuda_assert(cuFuncGetAttribute(&threads_per_block, CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK, cuShader));
-
 			int shader_w = min(shader_chunk_size, end - shader_x);
-			int xblocks = (shader_w + threads_per_block - 1)/threads_per_block;
 
-			cuda_assert(cuFuncSetCacheConfig(cuShader, CU_FUNC_CACHE_PREFER_L1));
-			cuda_assert(cuFuncSetBlockShape(cuShader, threads_per_block, 1, 1));
-			cuda_assert(cuLaunchGrid(cuShader, xblocks, 1));
+			for(int sample = 0; sample < task.num_samples; sample++) {
+				/* pass in parameters */
+				int offset = 0;
 
-			cuda_assert(cuCtxSynchronize());
+				cuda_assert(cuParamSetv(cuShader, offset, &d_input, sizeof(d_input)));
+				offset += sizeof(d_input);
+
+				cuda_assert(cuParamSetv(cuShader, offset, &d_output, sizeof(d_output)));
+				offset += sizeof(d_output);
+
+				int shader_eval_type = task.shader_eval_type;
+				offset = align_up(offset, __alignof(shader_eval_type));
+
+				cuda_assert(cuParamSeti(cuShader, offset, task.shader_eval_type));
+				offset += sizeof(task.shader_eval_type);
+
+				cuda_assert(cuParamSeti(cuShader, offset, shader_x));
+				offset += sizeof(shader_x);
+
+				cuda_assert(cuParamSeti(cuShader, offset, shader_w));
+				offset += sizeof(shader_w);
+
+				cuda_assert(cuParamSeti(cuShader, offset, sample));
+				offset += sizeof(sample);
+
+				cuda_assert(cuParamSetSize(cuShader, offset));
+
+				/* launch kernel */
+				int threads_per_block;
+				cuda_assert(cuFuncGetAttribute(&threads_per_block, CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK, cuShader));
+
+				int xblocks = (shader_w + threads_per_block - 1)/threads_per_block;
+
+				cuda_assert(cuFuncSetCacheConfig(cuShader, CU_FUNC_CACHE_PREFER_L1));
+				cuda_assert(cuFuncSetBlockShape(cuShader, threads_per_block, 1, 1));
+				cuda_assert(cuLaunchGrid(cuShader, xblocks, 1));
+
+				cuda_assert(cuCtxSynchronize());
+			}
 		}
 
 		cuda_pop_context();
@@ -1024,10 +1034,6 @@ public:
 				int start_sample = tile.start_sample;
 				int end_sample = tile.start_sample + tile.num_samples;
 
-				boost::posix_time::ptime start_time(boost::posix_time::microsec_clock::local_time());
-				boost::posix_time::ptime last_time = start_time;
-				int sync_sample = 10;
-
 				for(int sample = start_sample; sample < end_sample; sample++) {
 					if (task->get_cancel()) {
 						if(task->need_finish_queue == false)
@@ -1037,28 +1043,8 @@ public:
 					path_trace(tile, sample, branched);
 
 					tile.sample = sample + 1;
+
 					task->update_progress(tile);
-
-					if(!info.display_device && sample == sync_sample) {
-						cuda_push_context();
-						cuda_assert(cuEventRecord(tileDone, cuStream));
-						cuda_assert(cuEventSynchronize(tileDone));
-
-						/* Do some time keeping to find out if we need to sync less */
-						boost::posix_time::ptime current_time(boost::posix_time::microsec_clock::local_time());
-						boost::posix_time::time_duration sample_duration = current_time - last_time;
-
-						long msec = sample_duration.total_milliseconds();
-						float scaling_factor = (float)target_update_frequency / (float)msec;
-
-						/* sync at earliest next sample and probably later */
-						sync_sample = (sample + 1) + sync_sample * (int)ceil(scaling_factor);
-
-						sync_sample = min(end_sample - 1, sync_sample); // make sure we sync the last sample always
-
-						last_time = current_time;
-						cuda_pop_context();
-					}
 				}
 
 				task->release_tile(tile);

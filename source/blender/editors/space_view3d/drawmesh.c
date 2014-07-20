@@ -113,8 +113,8 @@ static BLI_bitmap *get_tface_mesh_marked_edge_info(Mesh *me)
 
 			ml = me->mloop + mp->loopstart;
 			for (j = 0; j < mp->totloop; j++, ml++) {
-				BLI_BITMAP_SET(bitmap_edge_flags, edge_vis_index(ml->e));
-				if (select_set) BLI_BITMAP_SET(bitmap_edge_flags, edge_sel_index(ml->e));
+				BLI_BITMAP_ENABLE(bitmap_edge_flags, edge_vis_index(ml->e));
+				if (select_set) BLI_BITMAP_ENABLE(bitmap_edge_flags, edge_sel_index(ml->e));
 			}
 		}
 	}
@@ -129,12 +129,12 @@ static DMDrawOption draw_mesh_face_select__setHiddenOpts(void *userData, int ind
 	Mesh *me = data->me;
 
 	if (me->drawflag & ME_DRAWEDGES) {
-		if ((me->drawflag & ME_HIDDENEDGES) || (BLI_BITMAP_GET(data->edge_flags, edge_vis_index(index))))
+		if ((me->drawflag & ME_HIDDENEDGES) || (BLI_BITMAP_TEST(data->edge_flags, edge_vis_index(index))))
 			return DM_DRAW_OPTION_NORMAL;
 		else
 			return DM_DRAW_OPTION_SKIP;
 	}
-	else if (BLI_BITMAP_GET(data->edge_flags, edge_sel_index(index)))
+	else if (BLI_BITMAP_TEST(data->edge_flags, edge_sel_index(index)))
 		return DM_DRAW_OPTION_NORMAL;
 	else
 		return DM_DRAW_OPTION_SKIP;
@@ -143,7 +143,7 @@ static DMDrawOption draw_mesh_face_select__setHiddenOpts(void *userData, int ind
 static DMDrawOption draw_mesh_face_select__setSelectOpts(void *userData, int index)
 {
 	drawMeshFaceSelect_userData *data = userData;
-	return (BLI_BITMAP_GET(data->edge_flags, edge_sel_index(index))) ? DM_DRAW_OPTION_NORMAL : DM_DRAW_OPTION_SKIP;
+	return (BLI_BITMAP_TEST(data->edge_flags, edge_sel_index(index))) ? DM_DRAW_OPTION_NORMAL : DM_DRAW_OPTION_SKIP;
 }
 
 /* draws unselected */
@@ -236,6 +236,12 @@ static bool set_draw_settings_cached(int clearcache, MTFace *texface, Material *
 	int lit = 0;
 	int has_texface = texface != NULL;
 	bool need_set_tpage = false;
+
+	if (ma != NULL) {
+		if (ma->mode & MA_TRANSP) {
+			alphablend = GPU_BLEND_ALPHA;
+		}
+	}
 
 	if (clearcache) {
 		c_textured = c_lit = c_backculled = -1;
@@ -947,7 +953,10 @@ void draw_mesh_textured(Scene *scene, View3D *v3d, RegionView3D *rv3d,
                         Object *ob, DerivedMesh *dm, const int draw_flags)
 {
 	/* if not cycles, or preview-modifiers, or drawing matcaps */
-	if ((!BKE_scene_use_new_shading_nodes(scene)) || (draw_flags & DRAW_MODIFIERS_PREVIEW) || (v3d->flag2 & V3D_SHOW_SOLID_MATCAP)) {
+	if ((draw_flags & DRAW_MODIFIERS_PREVIEW) ||
+	    (v3d->flag2 & V3D_SHOW_SOLID_MATCAP) ||
+	    (BKE_scene_use_new_shading_nodes(scene) == false))
+	{
 		draw_mesh_textured_old(scene, v3d, rv3d, ob, dm, draw_flags);
 		return;
 	}

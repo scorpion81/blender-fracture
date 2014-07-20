@@ -82,7 +82,7 @@ static bool stabilization_median_point_get(MovieTracking *tracking, int framenr,
  * NOTE: frame number should be in clip space, not scene space
  */
 static void stabilization_calculate_data(MovieTracking *tracking, int framenr, int width, int height,
-                                         float firstmedian[2], float median[2],
+                                         const float firstmedian[2], const float median[2],
                                          float translation[2], float *scale, float *angle)
 {
 	MovieTrackingStabilization *stab = &tracking->stabilization;
@@ -155,7 +155,7 @@ static float stabilization_calculate_autoscale_factor(MovieTracking *tracking, i
 		}
 
 		/* For every frame we calculate scale factor needed to eliminate black
-		 * aread and choose largest scale factor as final one.
+		 * area and choose largest scale factor as final one.
 		 */
 		for (cfra = sfra; cfra <= efra; cfra++) {
 			float median[2];

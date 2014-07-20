@@ -218,7 +218,7 @@ bool EDBM_backbuf_border_init(ViewContext *vc, short xmin, short ymin, short xma
 	a = (xmax - xmin + 1) * (ymax - ymin + 1);
 	while (a--) {
 		if (*dr > 0 && *dr <= bm_vertoffs) {
-			BLI_BITMAP_SET(selbuf, *dr);
+			BLI_BITMAP_ENABLE(selbuf, *dr);
 		}
 		dr++;
 	}
@@ -235,7 +235,7 @@ bool EDBM_backbuf_check(unsigned int index)
 		return true;
 
 	if (index > 0 && index <= bm_vertoffs)
-		return BLI_BITMAP_GET_BOOL(selbuf, index);
+		return BLI_BITMAP_TEST_BOOL(selbuf, index);
 
 	return false;
 }
@@ -302,7 +302,7 @@ bool EDBM_backbuf_border_mask_init(ViewContext *vc, const int mcords[][2], short
 	a = (xmax - xmin + 1) * (ymax - ymin + 1);
 	while (a--) {
 		if (*dr > 0 && *dr <= bm_vertoffs && *dr_mask == true) {
-			BLI_BITMAP_SET(selbuf, *dr);
+			BLI_BITMAP_ENABLE(selbuf, *dr);
 		}
 		dr++; dr_mask++;
 	}
@@ -345,7 +345,7 @@ bool EDBM_backbuf_circle_init(ViewContext *vc, short xs, short ys, short rads)
 		for (xc = -rads; xc <= rads; xc++, dr++) {
 			if (xc * xc + yc * yc < radsq) {
 				if (*dr > 0 && *dr <= bm_vertoffs) {
-					BLI_BITMAP_SET(selbuf, *dr);
+					BLI_BITMAP_ENABLE(selbuf, *dr);
 				}
 			}
 		}
@@ -2122,7 +2122,7 @@ static int edbm_select_linked_exec(bContext *C, wmOperator *op)
 			BM_elem_flag_set(v, BM_ELEM_TAG, BM_elem_flag_test(v, BM_ELEM_SELECT));
 		}
 
-		BMW_init(&walker, em->bm, BMW_SHELL,
+		BMW_init(&walker, em->bm, BMW_VERT_SHELL,
 		         BMW_MASK_NOP, BMW_MASK_NOP, BMW_MASK_NOP,
 		         BMW_FLAG_TEST_HIDDEN,
 		         BMW_NIL_LAY);
@@ -2240,7 +2240,7 @@ static int edbm_select_linked_pick_invoke(bContext *C, wmOperator *op, const wmE
 			eed = eve->e;
 		}
 
-		BMW_init(&walker, bm, BMW_SHELL,
+		BMW_init(&walker, bm, BMW_VERT_SHELL,
 		         BMW_MASK_NOP, BMW_MASK_NOP, BMW_MASK_NOP,
 		         BMW_FLAG_TEST_HIDDEN,
 		         BMW_NIL_LAY);
@@ -2516,6 +2516,27 @@ void MESH_OT_select_less(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
 
+/**
+ * Check if we're connected to another selected efge.
+ */
+static bool bm_edge_is_select_isolated(BMEdge *e)
+{
+	BMIter viter;
+	BMVert *v;
+
+	BM_ITER_ELEM (v, &viter, e, BM_VERTS_OF_EDGE) {
+		BMIter eiter;
+		BMEdge *e_other;
+
+		BM_ITER_ELEM (e_other, &eiter, v, BM_EDGES_OF_VERT) {
+			if ((e_other != e) && BM_elem_flag_test(e_other, BM_ELEM_SELECT)) {
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
 /* Walk all reachable elements of the same type as h_act in breadth-first
  * order, starting from h_act. Deselects elements if the depth when they
  * are reached is not a multiple of "nth". */
@@ -2543,8 +2564,10 @@ static void walker_deselect_nth(BMEditMesh *em, int nth, int offset, BMHeader *h
 			mask_vert = BMO_ELE_TAG;
 			break;
 		case BM_EDGE:
+			/* When an edge has no connected-selected edges,
+			 * use face-stepping (supports edge-rings) */
 			itertype = BM_EDGES_OF_MESH;
-			walktype = BMW_SHELL;
+			walktype = bm_edge_is_select_isolated((BMEdge *)h_act) ? BMW_FACE_SHELL : BMW_VERT_SHELL;
 			flushtype = SCE_SELECT_EDGE;
 			mask_edge = BMO_ELE_TAG;
 			break;
@@ -2683,6 +2706,8 @@ static int edbm_select_nth_exec(bContext *C, wmOperator *op)
 
 	/* so input of offset zero ends up being (nth - 1) */
 	offset = mod_i(offset, nth);
+	/* depth starts at 1, this keeps active item selected */
+	offset -= 1;
 
 	if (edbm_deselect_nth(em, nth, offset) == false) {
 		BKE_report(op->reports, RPT_ERROR, "Mesh has no active vert/edge/face");
@@ -2880,6 +2905,13 @@ static int edbm_select_non_manifold_exec(bContext *C, wmOperator *op)
 	BMEdge *e;
 	BMIter iter;
 
+	const bool use_wire = RNA_boolean_get(op->ptr, "use_wire");
+	const bool use_boundary = RNA_boolean_get(op->ptr, "use_boundary");
+	const bool use_multi_face = RNA_boolean_get(op->ptr, "use_multi_face");
+	const bool use_non_contiguous = RNA_boolean_get(op->ptr, "use_non_contiguous");
+	const bool use_verts = RNA_boolean_get(op->ptr, "use_verts");
+
+
 	if (!RNA_boolean_get(op->ptr, "extend"))
 		EDBM_flag_disable_all(em, BM_ELEM_SELECT);
 
@@ -2892,15 +2924,30 @@ static int edbm_select_non_manifold_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 	
-	BM_ITER_MESH (v, &iter, em->bm, BM_VERTS_OF_MESH) {
-		if (!BM_elem_flag_test(v, BM_ELEM_HIDDEN) && !BM_vert_is_manifold(v)) {
-			BM_vert_select_set(em->bm, v, true);
+	if (use_verts) {
+		BM_ITER_MESH (v, &iter, em->bm, BM_VERTS_OF_MESH) {
+			if (!BM_elem_flag_test(v, BM_ELEM_HIDDEN)) {
+				if (!BM_vert_is_manifold(v)) {
+					BM_vert_select_set(em->bm, v, true);
+				}
+			}
 		}
 	}
 	
-	BM_ITER_MESH (e, &iter, em->bm, BM_EDGES_OF_MESH) {
-		if (!BM_elem_flag_test(e, BM_ELEM_HIDDEN) && !BM_edge_is_manifold(e)) {
-			BM_edge_select_set(em->bm, e, true);
+	if (use_wire || use_boundary || use_multi_face || use_non_contiguous) {
+		BM_ITER_MESH (e, &iter, em->bm, BM_EDGES_OF_MESH) {
+			if (!BM_elem_flag_test(e, BM_ELEM_HIDDEN)) {
+				if ((use_wire && BM_edge_is_wire(e)) ||
+				    (use_boundary && BM_edge_is_boundary(e)) ||
+				    (use_non_contiguous && (BM_edge_is_manifold(e) && !BM_edge_is_contiguous(e))) ||
+				    (use_multi_face && (BM_edge_face_count(e) > 2)))
+				{
+					/* check we never select perfect edge (in test above) */
+					BLI_assert(!(BM_edge_is_manifold(e) && BM_edge_is_contiguous(e)));
+
+					BM_edge_select_set(em->bm, e, true);
+				}
+			}
 		}
 	}
 
@@ -2927,6 +2974,18 @@ void MESH_OT_select_non_manifold(wmOperatorType *ot)
 
 	/* props */
 	RNA_def_boolean(ot->srna, "extend", true, "Extend", "Extend the selection");
+	/* edges */
+	RNA_def_boolean(ot->srna, "use_wire", true, "Wire",
+	                "Wire edges");
+	RNA_def_boolean(ot->srna, "use_boundary", true, "Boundaries",
+	                "Boundary edges");
+	RNA_def_boolean(ot->srna, "use_multi_face", true,
+	                "Multiple Faces", "Edges shared by 3+ faces");
+	RNA_def_boolean(ot->srna, "use_non_contiguous", true, "Non Contiguous",
+	                "Edges between faces pointing in alternate directions");
+	/* verts */
+	RNA_def_boolean(ot->srna, "use_verts", true, "Vertices",
+	                "Vertices connecting multiple face regions");
 }
 
 static int edbm_select_random_exec(bContext *C, wmOperator *op)
@@ -3262,7 +3321,7 @@ void MESH_OT_region_to_loop(wmOperatorType *ot)
 }
 
 static int loop_find_region(BMLoop *l, int flag,
-                            SmallHash *fhash, BMFace ***region_out)
+                            GSet *visit_face_set, BMFace ***region_out)
 {
 	BMFace **region = NULL;
 	BMFace **stack = NULL;
@@ -3271,7 +3330,7 @@ static int loop_find_region(BMLoop *l, int flag,
 	BMFace *f;
 	
 	BLI_array_append(stack, l->f);
-	BLI_smallhash_insert(fhash, (uintptr_t)l->f, NULL);
+	BLI_gset_insert(visit_face_set, l->f);
 	
 	while (BLI_array_count(stack) > 0) {
 		BMIter liter1, liter2;
@@ -3285,11 +3344,15 @@ static int loop_find_region(BMLoop *l, int flag,
 				continue;
 			
 			BM_ITER_ELEM (l2, &liter2, l1->e, BM_LOOPS_OF_EDGE) {
-				if (BLI_smallhash_haskey(fhash, (uintptr_t)l2->f))
+				/* avoids finding same region twice
+				 * (otherwise) the logic works fine without */
+				if (BM_elem_flag_test(l2->f, BM_ELEM_TAG)) {
 					continue;
-				
-				BLI_array_append(stack, l2->f);
-				BLI_smallhash_insert(fhash, (uintptr_t)l2->f, NULL);
+				}
+
+				if (BLI_gset_add(visit_face_set, l2->f)) {
+					BLI_array_append(stack, l2->f);
+				}
 			}
 		}
 	}
@@ -3314,21 +3377,22 @@ static int verg_radial(const void *va, const void *vb)
 	return  0;
 }
 
+/**
+ * This function leaves faces tagged which are apart of the new region.
+ *
+ * \note faces already tagged are ignored, to avoid finding the same regions twice:
+ * important when we have regions with equal face counts, see: T40309
+ */
 static int loop_find_regions(BMEditMesh *em, const bool selbigger)
 {
-	SmallHash visithash;
+	GSet *visit_face_set;
 	BMIter iter;
 	const int edges_len = em->bm->totedgesel;
 	BMEdge *e, **edges;
-	BMFace *f;
 	int count = 0, i;
 	
-	BLI_smallhash_init_ex(&visithash, edges_len);
+	visit_face_set = BLI_gset_ptr_new_ex(__func__, edges_len);
 	edges = MEM_mallocN(sizeof(*edges) * edges_len, __func__);
-	
-	BM_ITER_MESH (f, &iter, em->bm, BM_FACES_OF_MESH) {
-		BM_elem_flag_disable(f, BM_ELEM_TAG);
-	}
 
 	i = 0;
 	BM_ITER_MESH (e, &iter, em->bm, BM_EDGES_OF_MESH) {
@@ -3356,10 +3420,10 @@ static int loop_find_regions(BMEditMesh *em, const bool selbigger)
 			continue;
 		
 		BM_ITER_ELEM (l, &liter, e, BM_LOOPS_OF_EDGE) {
-			if (BLI_smallhash_haskey(&visithash, (uintptr_t)l->f))
+			if (BLI_gset_haskey(visit_face_set, l->f))
 				continue;
-						
-			c = loop_find_region(l, BM_ELEM_SELECT, &visithash, &region_out);
+
+			c = loop_find_region(l, BM_ELEM_SELECT, visit_face_set, &region_out);
 
 			if (!region || (selbigger ? c >= tot : c < tot)) {
 				/* this region is the best seen so far */
@@ -3394,7 +3458,7 @@ static int loop_find_regions(BMEditMesh *em, const bool selbigger)
 	}
 	
 	MEM_freeN(edges);
-	BLI_smallhash_release(&visithash);
+	BLI_gset_free(visit_face_set, NULL);
 	
 	return count;
 }
@@ -3408,13 +3472,14 @@ static int edbm_loop_to_region_exec(bContext *C, wmOperator *op)
 	const bool select_bigger = RNA_boolean_get(op->ptr, "select_bigger");
 	int a, b;
 
+
 	/* find the set of regions with smallest number of total faces */
+	BM_mesh_elem_hflag_disable_all(em->bm, BM_FACE, BM_ELEM_TAG, false);
 	a = loop_find_regions(em, select_bigger);
 	b = loop_find_regions(em, !select_bigger);
-	
-	if ((a <= b) ^ select_bigger) {
-		loop_find_regions(em, select_bigger);
-	}
+
+	BM_mesh_elem_hflag_disable_all(em->bm, BM_FACE, BM_ELEM_TAG, false);
+	loop_find_regions(em, ((a <= b) != select_bigger) ? select_bigger : !select_bigger);
 	
 	EDBM_flag_disable_all(em, BM_ELEM_SELECT);
 	

@@ -31,7 +31,7 @@ BF_PYTHON_LIB = 'python${BF_PYTHON_VERSION[0]}${BF_PYTHON_VERSION[2]}'
 BF_PYTHON_DLL = '${BF_PYTHON_LIB}'
 BF_PYTHON_LIBPATH = '${BF_PYTHON}/lib'
 
-WITH_BF_PYTHON_INSTALL_NUMPY = False
+WITH_BF_PYTHON_INSTALL_NUMPY = True
 
 WITH_BF_OPENAL = True
 BF_OPENAL = LIBDIR + '/openal'
@@ -255,8 +255,8 @@ BF_BSC=False
 
 if VC_VERSION == '12.0':
     BF_CYCLES_CUDA_ENV="C:\Program Files\Microsoft SDKs\Windows\v7.1\Bin\SetEnv.cmd"
-    BF_BUILDDIR = '..\\build\\win32-vc12'
-    BF_INSTALLDIR='..\\install\\win32-vc12'
-else:
     BF_BUILDDIR = '..\\build\\win32-vc'
     BF_INSTALLDIR='..\\install\\win32-vc'
+else:
+    BF_BUILDDIR = '..\\build\\win32-vc9'
+    BF_INSTALLDIR='..\\install\\win32-vc9'

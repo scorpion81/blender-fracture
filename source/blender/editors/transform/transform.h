@@ -61,6 +61,7 @@ struct wmEvent;
 struct wmTimer;
 struct ARegion;
 struct ReportList;
+struct EditBone;
 
 /* transinfo->redraw */
 typedef enum {
@@ -250,6 +251,17 @@ typedef struct VertSlideData {
 
 	int curr_sv_index;
 } VertSlideData;
+
+typedef struct BoneInitData {
+	struct EditBone *bone;
+	float tail[3];
+	float rad_tail;
+	float roll;
+	float head[3];
+	float dist;
+	float xwidth;
+	float zwidth;
+} BoneInitData;
 
 typedef struct TransData {
 	float  dist;         /* Distance needed to affect element (for Proportionnal Editing)                  */
@@ -520,6 +532,7 @@ void flushTransNodes(TransInfo *t);
 void flushTransSeq(TransInfo *t);
 void flushTransTracking(TransInfo *t);
 void flushTransMasking(TransInfo *t);
+void restoreBones(TransInfo *t);
 
 /*********************** exported from transform_manipulator.c ********** */
 bool gimbal_axis(struct Object *ob, float gmat[3][3]); /* return 0 when no gimbal for selection */
@@ -600,6 +613,7 @@ typedef enum {
 	INPUT_VECTOR,
 	INPUT_SPRING,
 	INPUT_SPRING_FLIP,
+	INPUT_SPRING_DELTA,
 	INPUT_ANGLE,
 	INPUT_ANGLE_SPRING,
 	INPUT_TRACKBALL,
@@ -608,7 +622,7 @@ typedef enum {
 	INPUT_VERTICAL_RATIO,
 	INPUT_VERTICAL_ABSOLUTE,
 	INPUT_CUSTOM_RATIO,
-	INPUT_CUSTOM_RATIO_FLIP
+	INPUT_CUSTOM_RATIO_FLIP,
 } MouseInputMode;
 
 void initMouseInput(TransInfo *t, MouseInput *mi, const float center[2], const int mval[2]);
@@ -679,7 +693,6 @@ void freeVertSlideVerts(TransInfo *t);
 
 
 /* TODO. transform_queries.c */
-bool checkUseLocalCenter_GraphEdit(TransInfo *t);
 bool checkUseAxisMatrix(TransInfo *t);
 
 #endif

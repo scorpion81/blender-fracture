@@ -36,19 +36,6 @@ extern "C" {
 
 /********************************* Init **************************************/
 
-#define MAT4_UNITY  {      \
-	{ 1.0, 0.0, 0.0, 0.0}, \
-	{ 0.0, 1.0, 0.0, 0.0}, \
-	{ 0.0, 0.0, 1.0, 0.0}, \
-	{ 0.0, 0.0, 0.0, 1.0}  \
-}
-
-#define MAT3_UNITY  { \
-	{ 1.0, 0.0, 0.0}, \
-	{ 0.0, 1.0, 0.0}, \
-	{ 0.0, 0.0, 1.0}  \
-}
-
 void zero_m3(float R[3][3]);
 void zero_m4(float R[4][4]);
 
@@ -111,6 +98,9 @@ void mul_m3_fl(float R[3][3], float f);
 void mul_m4_fl(float R[4][4], float f);
 void mul_mat3_m4_fl(float R[4][4], float f);
 
+void negate_m3(float R[4][4]);
+void negate_m4(float R[4][4]);
+
 bool invert_m3_ex(float m[3][3], const float epsilon);
 bool invert_m3_m3_ex(float m1[3][3], float m2[3][3], const float epsilon);
 
@@ -145,6 +135,7 @@ bool is_orthonormal_m3(float mat[3][3]);
 bool is_orthonormal_m4(float mat[4][4]);
 
 bool is_uniform_scaled_m3(float mat[3][3]);
+bool is_uniform_scaled_m4(float m[4][4]);
 
 void adjoint_m2_m2(float R[2][2], float A[2][2]);
 void adjoint_m3_m3(float R[3][3], float A[3][3]);

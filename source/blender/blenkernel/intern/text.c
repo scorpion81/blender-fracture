@@ -667,7 +667,7 @@ void BKE_text_write(Text *text, const char *str) /* called directly from rna */
 
 int BKE_text_file_modified_check(Text *text)
 {
-	struct stat st;
+	BLI_stat_t st;
 	int result;
 	char file[FILE_MAX];
 
@@ -696,7 +696,7 @@ int BKE_text_file_modified_check(Text *text)
 
 void BKE_text_file_modified_ignore(Text *text)
 {
-	struct stat st;
+	BLI_stat_t st;
 	int result;
 	char file[FILE_MAX];
 
@@ -2697,7 +2697,7 @@ void txt_indent(Text *text)
 	/* hardcoded: TXT_TABSIZE = 4 spaces: */
 	int spaceslen = TXT_TABSIZE;
 
-	if (ELEM3(NULL, text, text->curl, text->sell)) {
+	if (ELEM(NULL, text, text->curl, text->sell)) {
 		return;
 	}
 
@@ -2764,7 +2764,7 @@ void txt_unindent(Text *text)
 	/* hardcoded: TXT_TABSIZE = 4 spaces: */
 	int spaceslen = TXT_TABSIZE;
 
-	if (ELEM3(NULL, text, text->curl, text->sell)) {
+	if (ELEM(NULL, text, text->curl, text->sell)) {
 		return;
 	}
 

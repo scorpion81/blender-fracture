@@ -54,13 +54,13 @@ static const char *bmo_error_messages[] = {
 	N_("Could not connect vertices"),
 	N_("Could not traverse mesh"),
 	N_("Could not dissolve faces"),
-	N_("Could not dissolve vertices"),
 	N_("Tessellation error"),
 	N_("Cannot deal with non-manifold geometry"),
 	N_("Invalid selection"),
 	N_("Internal mesh error"),
 };
 
+BLI_STATIC_ASSERT(ARRAY_SIZE(bmo_error_messages) + 1 == BMERR_TOTAL, "message mismatch");
 
 /* operator slot type information - size of one element of the type given. */
 const int BMO_OPSLOT_TYPEINFO[BMO_OP_SLOT_TOTAL_TYPES] = {
@@ -591,7 +591,7 @@ void BMO_mesh_flag_disable_all(BMesh *bm, BMOperator *UNUSED(op), const char hty
 	BMElemF *ele;
 	int i;
 
-#pragma omp parallel for schedule(dynamic) if (bm->totvert + bm->totedge + bm->totface >= BM_OMP_LIMIT)
+#pragma omp parallel for schedule(static) if (bm->totvert + bm->totedge + bm->totface >= BM_OMP_LIMIT)
 	for (i = 0; i < 3; i++) {
 		if (htype & flag_types[i]) {
 			BMIter iter;

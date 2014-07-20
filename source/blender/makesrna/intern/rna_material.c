@@ -307,7 +307,7 @@ static EnumPropertyItem *rna_Material_texture_coordinates_itemf(bContext *UNUSED
 	if (ma->material_type == MA_TYPE_VOLUME) {
 		
 	}
-	else if (ELEM3(ma->material_type, MA_TYPE_SURFACE, MA_TYPE_HALO, MA_TYPE_WIRE)) {
+	else if (ELEM(ma->material_type, MA_TYPE_SURFACE, MA_TYPE_HALO, MA_TYPE_WIRE)) {
 		RNA_enum_items_add_value(&item, &totitem, prop_texture_coordinates_items, TEXCO_UV);
 		RNA_enum_items_add_value(&item, &totitem, prop_texture_coordinates_items, TEXCO_STRAND);
 		RNA_enum_items_add_value(&item, &totitem, prop_texture_coordinates_items, TEXCO_WINDOW);
@@ -375,6 +375,7 @@ void rna_mtex_texture_slots_clear(ID *self_id, struct bContext *C, ReportList *r
 		id_us_min((ID *)mtex_ar[index]->tex);
 		MEM_freeN(mtex_ar[index]);
 		mtex_ar[index] = NULL;
+		DAG_id_tag_update(self_id, 0);
 	}
 
 	/* for redraw only */
@@ -930,6 +931,20 @@ static void rna_def_material_colors(StructRNA *srna)
 	RNA_def_property_float_sdna(prop, NULL, "rampfac_spec");
 	RNA_def_property_range(prop, 0.0f, 1.0f);
 	RNA_def_property_ui_text(prop, "Specular Ramp Factor", "Blending factor (also uses alpha in Colorband)");
+	RNA_def_property_update(prop, 0, "rna_Material_update");
+
+	/* Freestyle line color */
+	prop = RNA_def_property(srna, "line_color", PROP_FLOAT, PROP_COLOR);
+	RNA_def_property_float_sdna(prop, NULL, "line_col");
+	RNA_def_property_array(prop, 4);
+	RNA_def_property_ui_text(prop, "Line Color", "Line color used for Freestyle line rendering");
+	RNA_def_property_update(prop, 0, "rna_Material_update");
+
+	prop = RNA_def_property(srna, "line_priority", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "line_priority");
+	RNA_def_property_range(prop, 0, 32767);
+	RNA_def_property_ui_text(prop, "Line Priority",
+	                         "The line color of a higher priority is used at material boundaries");
 	RNA_def_property_update(prop, 0, "rna_Material_update");
 }
 
@@ -1517,7 +1532,7 @@ static void rna_def_material_sss(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "use", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "sss_flag", MA_DIFF_SSS);
-	RNA_def_property_ui_text(prop, "Enabled", "Enable diffuse subsurface scatting effects in a material");
+	RNA_def_property_ui_text(prop, "Enabled", "Enable diffuse subsurface scattering effects in a material");
 	RNA_def_property_update(prop, 0, "rna_Material_update");
 }
 
@@ -2042,7 +2057,7 @@ void RNA_def_material(BlenderRNA *brna)
 	rna_def_animdata_common(srna);
 	rna_def_mtex_common(brna, srna, "rna_Material_mtex_begin", "rna_Material_active_texture_get",
 	                    "rna_Material_active_texture_set", "rna_Material_active_texture_editable",
-						"MaterialTextureSlot", "MaterialTextureSlots", "rna_Material_update", "rna_Material_update");
+	                    "MaterialTextureSlot", "MaterialTextureSlots", "rna_Material_update", "rna_Material_update");
 
 	/* only material has this one */
 	prop = RNA_def_property(srna, "use_textures", PROP_BOOLEAN, PROP_NONE);
@@ -2103,8 +2118,8 @@ static void rna_def_texture_slots(BlenderRNA *brna, PropertyRNA *cprop, const ch
 }
 
 void rna_def_mtex_common(BlenderRNA *brna, StructRNA *srna, const char *begin,
-						 const char *activeget, const char *activeset, const char *activeeditable,
-						 const char *structname, const char *structname_slots, const char *update, const char *update_index)
+                         const char *activeget, const char *activeset, const char *activeeditable,
+                         const char *structname, const char *structname_slots, const char *update, const char *update_index)
 {
 	PropertyRNA *prop;
 

@@ -115,12 +115,15 @@ ListBase *ED_animcontext_get_markers(const bAnimContext *ac)
 
 /* --------------------------------- */
 
-/* Apply some transformation to markers after the fact 
- * < markers: list of markers to affect - this may or may not be the scene markers list, so don't assume anything
- * < scene: current scene (for getting current frame)
- * < mode: (TfmMode) transform mode that this transform is for
- * < value: from the transform code, this is t->vec[0] (which is delta transform for grab/extend, and scale factor for scale)
- * < side: (B/L/R) for 'extend' functionality, which side of current frame to use
+/**
+ * Apply some transformation to markers after the fact
+ *
+ * \param markers List of markers to affect - this may or may not be the scene markers list, so don't assume anything
+ * \param scene Current scene (for getting current frame)
+ * \param mode (TfmMode) transform mode that this transform is for
+ * \param value From the transform code, this is ``t->vec[0]``
+ * (which is delta transform for grab/extend, and scale factor for scale)
+ * \param side (B/L/R) for 'extend' functionality, which side of current frame to use
  */
 int ED_markers_post_apply_transform(ListBase *markers, Scene *scene, int mode, float value, char side)
 {
@@ -201,7 +204,7 @@ void ED_markers_get_minmax(ListBase *markers, short sel, float *first, float *la
 	
 	/* sanity check */
 	//printf("markers = %p -  %p, %p\n", markers, markers->first, markers->last);
-	if (ELEM3(NULL, markers, markers->first, markers->last)) {
+	if (ELEM(NULL, markers, markers->first, markers->last)) {
 		*first = 0.0f;
 		*last = 0.0f;
 		return;
@@ -472,13 +475,14 @@ static int ed_markers_poll_markers_exist(bContext *C)
  
 /* ------------------------ */ 
 
-/* Second-tier invoke() callback that performs context validation before running the  
+/**
+ * Second-tier invoke() callback that performs context validation before running the
  * "custom"/third-tier invoke() callback supplied as the last arg (which would normally
  * be the operator's invoke() callback elsewhere)
  *
- * < invoke_func: (fn(bContext *, wmOperator *, wmEvent *)=int) "standard" invoke function
- *			that operator would otherwise have used. If NULL, the operator's standard
- *			exec() callback will be called instead in the appropriate places.
+ * \param invoke_func "standard" invoke function that operator would otherwise have used.
+ * If NULL, the operator's standard exec()
+ * callback will be called instead in the appropriate places.
  */
 static int ed_markers_opwrap_invoke_custom(bContext *C, wmOperator *op, const wmEvent *event,
                                            int (*invoke_func)(bContext *, wmOperator *, const wmEvent *))
@@ -842,7 +846,7 @@ static int ed_marker_move_modal(bContext *C, wmOperator *op, const wmEvent *even
 			applyNumInput(&mm->num, &value);
 
 			if (hasNumInput(&mm->num)) {
-				outputNumInput(&mm->num, str_tx);
+				outputNumInput(&mm->num, str_tx, scene->unit.scale_length);
 			}
 			else {
 				BLI_snprintf(str_tx, sizeof(str_tx), "%d", (int)value);

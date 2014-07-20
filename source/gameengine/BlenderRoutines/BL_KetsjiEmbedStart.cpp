@@ -91,6 +91,11 @@ extern "C" {
 
 	#include "../../blender/windowmanager/WM_types.h"
 	#include "../../blender/windowmanager/wm_window.h"
+
+/* avoid more includes (not used by BGE) */
+typedef void * wmUIHandlerFunc;
+typedef void * wmUIHandlerRemoveFunc;
+
 	#include "../../blender/windowmanager/wm_event_system.h"
 }
 
@@ -181,6 +186,8 @@ static int BL_KetsjiNextFrame(KX_KetsjiEngine *ketsjiengine, bContext *C, wmWind
 	return exitrequested;
 }
 
+
+#ifdef WITH_PYTHON
 static struct BL_KetsjiNextFrameState {
 	class KX_KetsjiEngine* ketsjiengine;
 	struct bContext *C;
@@ -205,6 +212,8 @@ static int BL_KetsjiPyNextFrame(void *state0)
 		state->mousedevice, 
 		state->draw_letterbox);
 }
+#endif
+
 
 extern "C" void StartKetsjiShell(struct bContext *C, struct ARegion *ar, rcti *cam_frame, int always_use_expand_framing)
 {

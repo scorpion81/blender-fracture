@@ -58,6 +58,8 @@
 #  include "BLI_winstuff.h"
 #endif
 
+#define MAX_DEFINE_LENGTH 72
+
 /* Extensions support */
 
 /* extensions used:
@@ -94,6 +96,9 @@ static struct GPUGlobal {
 	GPUOSType os;
 	GPUDriverType driver;
 	GPUShaders shaders;
+	GPUTexture *invalid_tex_1D; /* texture used in place of invalid textures (not loaded correctly, missing) */
+	GPUTexture *invalid_tex_2D;
+	GPUTexture *invalid_tex_3D;
 } GG = {1, 0};
 
 /* GPU Types */
@@ -223,6 +228,8 @@ void GPU_extensions_init(void)
 	GG.os = GPU_OS_UNIX;
 #endif
 
+
+	GPU_invalid_tex_init();
 	GPU_simple_shaders_init();
 }
 
@@ -231,6 +238,7 @@ void GPU_extensions_exit(void)
 	gpu_extensions_init = 0;
 	GPU_codegen_exit();
 	GPU_simple_shaders_exit();
+	GPU_invalid_tex_free();
 }
 
 int GPU_glsl_support(void)
@@ -572,11 +580,6 @@ GPUTexture *GPU_texture_from_blender(Image *ima, ImageUser *iuser, bool is_data,
 		return ima->gputexture;
 	}
 
-	if (!bindcode) {
-		glBindTexture(GL_TEXTURE_2D, lastbindcode);
-		return NULL;
-	}
-
 	tex = MEM_callocN(sizeof(GPUTexture), "GPUTexture");
 	tex->bindcode = bindcode;
 	tex->number = -1;
@@ -587,7 +590,7 @@ GPUTexture *GPU_texture_from_blender(Image *ima, ImageUser *iuser, bool is_data,
 	ima->gputexture= tex;
 
 	if (!glIsTexture(tex->bindcode)) {
-		GPU_print_error("Blender Texture");
+		GPU_print_error("Blender Texture Not Loaded");
 	}
 	else {
 		glBindTexture(GL_TEXTURE_2D, tex->bindcode);
@@ -625,12 +628,6 @@ GPUTexture *GPU_texture_from_preview(PreviewImage *prv, int mipmap)
 		return tex;
 	}
 
-	/* error binding anything */
-	if (!bindcode) {
-		glBindTexture(GL_TEXTURE_2D, lastbindcode);
-		return NULL;
-	}
-	
 	tex = MEM_callocN(sizeof(GPUTexture), "GPUTexture");
 	tex->bindcode = bindcode;
 	tex->number = -1;
@@ -640,7 +637,7 @@ GPUTexture *GPU_texture_from_preview(PreviewImage *prv, int mipmap)
 	prv->gputexture[0]= tex;
 	
 	if (!glIsTexture(tex->bindcode)) {
-		GPU_print_error("Blender Texture");
+		GPU_print_error("Blender Texture Not Loaded");
 	}
 	else {
 		glBindTexture(GL_TEXTURE_2D, tex->bindcode);
@@ -706,6 +703,37 @@ GPUTexture *GPU_texture_create_vsm_shadow_map(int size, char err_out[256])
 	return tex;
 }
 
+void GPU_invalid_tex_init(void)
+{
+	float color[4] = {1.0f, 0.0f, 1.0f, 1.0};
+	GG.invalid_tex_1D = GPU_texture_create_1D(1, color, NULL);
+	GG.invalid_tex_2D = GPU_texture_create_2D(1, 1, color, NULL);
+	GG.invalid_tex_3D = GPU_texture_create_3D(1, 1, 1, 4, color);
+}
+
+void GPU_invalid_tex_bind(int mode)
+{
+	switch (mode) {
+		case GL_TEXTURE_1D:
+			glBindTexture(GL_TEXTURE_1D, GG.invalid_tex_1D->bindcode);
+			break;
+		case GL_TEXTURE_2D:
+			glBindTexture(GL_TEXTURE_2D, GG.invalid_tex_2D->bindcode);
+			break;
+		case GL_TEXTURE_3D:
+			glBindTexture(GL_TEXTURE_3D, GG.invalid_tex_3D->bindcode);
+			break;
+	}
+}
+
+void GPU_invalid_tex_free(void)
+{
+	GPU_texture_free(GG.invalid_tex_1D);
+	GPU_texture_free(GG.invalid_tex_2D);
+	GPU_texture_free(GG.invalid_tex_3D);
+}
+
+
 void GPU_texture_bind(GPUTexture *tex, int number)
 {
 	GLenum arbnumber;
@@ -722,7 +750,11 @@ void GPU_texture_bind(GPUTexture *tex, int number)
 
 	arbnumber = (GLenum)((GLuint)GL_TEXTURE0_ARB + number);
 	if (number != 0) glActiveTextureARB(arbnumber);
-	glBindTexture(tex->target, tex->bindcode);
+	if (tex->bindcode != 0) {
+		glBindTexture(tex->target, tex->bindcode);
+	}
+	else
+		GPU_invalid_tex_bind(tex->target);
 	glEnable(tex->target);
 	if (number != 0) glActiveTextureARB(GL_TEXTURE0_ARB);
 
@@ -1157,29 +1189,44 @@ static void shader_print_errors(const char *task, char *log, const char *code)
 	fprintf(stderr, "%s\n", log);
 }
 
-static const char *gpu_shader_standard_extensions(void)
+static const char *gpu_shader_version(void)
 {
-	/* need this extensions for high quality bump mapping */
-	if (GPU_bicubic_bump_support()) {
-		return "#version 130\n"
-		       "#extension GL_ARB_texture_query_lod: enable\n"
-		       "#define BUMP_BICUBIC\n";
+	/* turn on glsl 1.30 for bicubic bump mapping and ATI clipping support */
+	if (GLEW_VERSION_3_0 &&
+	    (GPU_bicubic_bump_support() || GPU_type_matches(GPU_DEVICE_ATI, GPU_OS_ANY, GPU_DRIVER_ANY)))
+	{
+		return "#version 130\n";
 	}
 
 	return "";
 }
 
-static const char *gpu_shader_standard_defines(void)
+
+static const char *gpu_shader_standard_extensions(void)
+{
+	/* need this extensions for high quality bump mapping */
+	if (GPU_bicubic_bump_support())
+		return "#extension GL_ARB_texture_query_lod: enable\n";
+
+	return "";
+}
+
+static void gpu_shader_standard_defines(char defines[MAX_DEFINE_LENGTH])
 {
 	/* some useful defines to detect GPU type */
-	if (GPU_type_matches(GPU_DEVICE_ATI, GPU_OS_ANY, GPU_DRIVER_ANY))
-		return "#define GPU_ATI\n";
+	if (GPU_type_matches(GPU_DEVICE_ATI, GPU_OS_ANY, GPU_DRIVER_ANY)) {
+		strcat(defines, "#define GPU_ATI\n");
+		if (GLEW_VERSION_3_0)
+			strcat(defines, "#define CLIP_WORKAROUND");
+	}
 	else if (GPU_type_matches(GPU_DEVICE_NVIDIA, GPU_OS_ANY, GPU_DRIVER_ANY))
-		return "#define GPU_NVIDIA\n";
+		strcat(defines, "#define GPU_NVIDIA\n");
 	else if (GPU_type_matches(GPU_DEVICE_INTEL, GPU_OS_ANY, GPU_DRIVER_ANY))
-		return "#define GPU_INTEL\n";
-	
-	return "";
+		strcat(defines, "#define GPU_INTEL\n");
+
+	if (GPU_bicubic_bump_support())
+		strcat(defines, "#define BUMP_BICUBIC\n");
+	return;
 }
 
 GPUShader *GPU_shader_create(const char *vertexcode, const char *fragcode, const char *libcode, const char *defines)
@@ -1188,6 +1235,7 @@ GPUShader *GPU_shader_create(const char *vertexcode, const char *fragcode, const
 	GLcharARB log[5000];
 	GLsizei length = 0;
 	GPUShader *shader;
+	char standard_defines[MAX_DEFINE_LENGTH] = "";
 
 	if (!GLEW_ARB_vertex_shader || !GLEW_ARB_fragment_shader)
 		return NULL;
@@ -1209,12 +1257,16 @@ GPUShader *GPU_shader_create(const char *vertexcode, const char *fragcode, const
 		return NULL;
 	}
 
+	gpu_shader_standard_defines(standard_defines);
+
 	if (vertexcode) {
-		const char *source[4];
+		const char *source[5];
+		/* custom limit, may be too small, beware */
 		int num_source = 0;
 
+		source[num_source++] = gpu_shader_version();
 		source[num_source++] = gpu_shader_standard_extensions();
-		source[num_source++] = gpu_shader_standard_defines();
+		source[num_source++] = standard_defines;
 
 		if (defines) source[num_source++] = defines;
 		if (vertexcode) source[num_source++] = vertexcode;
@@ -1235,11 +1287,12 @@ GPUShader *GPU_shader_create(const char *vertexcode, const char *fragcode, const
 	}
 
 	if (fragcode) {
-		const char *source[5];
+		const char *source[6];
 		int num_source = 0;
 
+		source[num_source++] = gpu_shader_version();
 		source[num_source++] = gpu_shader_standard_extensions();
-		source[num_source++] = gpu_shader_standard_defines();
+		source[num_source++] = standard_defines;
 
 		if (defines) source[num_source++] = defines;
 		if (libcode) source[num_source++] = libcode;
@@ -1397,7 +1450,10 @@ void GPU_shader_uniform_texture(GPUShader *UNUSED(shader), int location, GPUText
 	arbnumber = (GLenum)((GLuint)GL_TEXTURE0_ARB + tex->number);
 
 	if (tex->number != 0) glActiveTextureARB(arbnumber);
-	glBindTexture(tex->target, tex->bindcode);
+	if (tex->bindcode != 0)
+		glBindTexture(tex->target, tex->bindcode);
+	else
+		GPU_invalid_tex_bind(tex->target);
 	glUniform1iARB(location, tex->number);
 	glEnable(tex->target);
 	if (tex->number != 0) glActiveTextureARB(GL_TEXTURE0_ARB);

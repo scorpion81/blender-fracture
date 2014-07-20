@@ -519,7 +519,6 @@ void mul_transposed_mat3_m4_v3(float mat[4][4], float vec[3])
 	vec[2] = x * mat[2][0] + y * mat[2][1] + mat[2][2] * vec[2];
 }
 
-
 void mul_m3_fl(float m[3][3], float f)
 {
 	int i, j;
@@ -545,6 +544,24 @@ void mul_mat3_m4_fl(float m[4][4], float f)
 	for (i = 0; i < 3; i++)
 		for (j = 0; j < 3; j++)
 			m[i][j] *= f;
+}
+
+void negate_m3(float m[4][4])
+{
+	int i, j;
+
+	for (i = 0; i < 3; i++)
+		for (j = 0; j < 3; j++)
+			m[i][j] *= -1.0f;
+}
+
+void negate_m4(float m[4][4])
+{
+	int i, j;
+
+	for (i = 0; i < 4; i++)
+		for (j = 0; j < 4; j++)
+			m[i][j] *= -1.0f;
 }
 
 void mul_m3_v3_double(float mat[3][3], double vec[3])
@@ -1059,10 +1076,17 @@ bool is_uniform_scaled_m3(float m[3][3])
 	    fabsf(l5 - l1) <= eps &&
 	    fabsf(l6 - l1) <= eps)
 	{
-		return 1;
+		return true;
 	}
 
-	return 0;
+	return false;
+}
+
+bool is_uniform_scaled_m4(float m[4][4])
+{
+	float t[3][3];
+	copy_m3_m4(t, m);
+	return is_uniform_scaled_m3(t);
 }
 
 void normalize_m3(float mat[3][3])

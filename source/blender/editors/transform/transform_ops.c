@@ -391,6 +391,15 @@ static int transform_modal(bContext *C, wmOperator *op, const wmEvent *event)
 	exit_code = transformEvent(t, event);
 	t->context = NULL;
 
+	/* XXX, workaround: active needs to be calculated before transforming,
+	 * since we're not reading from 'td->center' in this case. see: T40241 */
+	if (t->tsnap.target == SCE_SNAP_TARGET_ACTIVE) {
+		/* In camera view, tsnap callback is not set (see initSnappingMode() in transfrom_snap.c, and T40348). */
+		if (t->tsnap.targetSnap && ((t->tsnap.status & TARGET_INIT) == 0)) {
+			t->tsnap.targetSnap(t);
+		}
+	}
+
 	transformApply(C, t);
 
 	exit_code |= transformEnd(C, t);

@@ -27,6 +27,7 @@
  */
 
 #include "BLI_utildefines.h"
+#include "BLI_stackdefines.h"
 #include "BLI_alloca.h"
 #include "BLI_linklist_stack.h"
 
@@ -51,8 +52,8 @@ static int bm_face_connect_verts(BMesh *bm, BMFace *f, const bool check_degenera
 	BMLoop *l_last;
 	unsigned int i;
 
-	STACK_INIT(loops_split);
-	STACK_INIT(verts_pair);
+	STACK_INIT(loops_split, f->len);
+	STACK_INIT(verts_pair, f->len);
 
 	l_last = NULL;
 	BM_ITER_ELEM (l, &liter, f, BM_LOOPS_OF_FACE) {
@@ -86,7 +87,7 @@ static int bm_face_connect_verts(BMesh *bm, BMFace *f, const bool check_degenera
 	}
 
 	if (check_degenerate) {
-		BM_face_splits_check_legal(f, loops_split, STACK_SIZE(loops_split));
+		BM_face_splits_check_legal(bm, f, loops_split, STACK_SIZE(loops_split));
 	}
 	else {
 		BM_face_splits_check_optimal(f, loops_split, STACK_SIZE(loops_split));

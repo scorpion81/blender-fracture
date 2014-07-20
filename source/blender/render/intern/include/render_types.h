@@ -192,7 +192,7 @@ struct Render
 	RenderData r;
 	World wrld;
 	struct Object *camera_override;
-	unsigned int lay;
+	unsigned int lay, layer_override;
 	
 	ListBase parts;
 	
@@ -240,7 +240,7 @@ struct Render
 	ListBase volumes;
 
 #ifdef WITH_FREESTYLE
-	struct Main freestyle_bmain;
+	struct Main *freestyle_bmain;
 	ListBase freestyle_renders;
 #endif
 

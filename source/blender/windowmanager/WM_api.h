@@ -118,7 +118,7 @@ void		WM_cursor_modal_set(struct wmWindow *win, int curs);
 void		WM_cursor_modal_restore(struct wmWindow *win);
 void		WM_cursor_wait		(bool val);
 void		WM_cursor_grab_enable(struct wmWindow *win, bool wrap, bool hide, int bounds[4]);
-void		WM_cursor_grab_disable(struct wmWindow *win, int mouse_ungrab_xy[2]);
+void		WM_cursor_grab_disable(struct wmWindow *win, const int mouse_ungrab_xy[2]);
 void		WM_cursor_time		(struct wmWindow *win, int nr);
 
 void		*WM_paint_cursor_activate(struct wmWindowManager *wm,
@@ -145,19 +145,22 @@ struct wmEventHandler *WM_event_add_keymap_handler_priority(ListBase *handlers, 
 
 void		WM_event_remove_keymap_handler(ListBase *handlers, wmKeyMap *keymap);
 
+typedef int (*wmUIHandlerFunc)(struct bContext *C, const struct wmEvent *event, void *userdata);
+typedef void (*wmUIHandlerRemoveFunc)(struct bContext *C, void *userdata);
+
 struct wmEventHandler *WM_event_add_ui_handler(
         const struct bContext *C, ListBase *handlers,
-        int (*func)(struct bContext *C, const struct wmEvent *event, void *userdata),
-        void (*remove)(struct bContext *C, void *userdata), void *userdata);
-
-void		WM_event_remove_ui_handler(ListBase *handlers,
-                                       int (*func)(struct bContext *C, const struct wmEvent *event, void *userdata),
-                                       void (*remove)(struct bContext *C, void *userdata),
-                                       void *userdata, const bool postpone);
-void		WM_event_remove_area_handler(struct ListBase *handlers, void *area);
-void		WM_event_free_ui_handler_all(struct bContext *C, ListBase *handlers,
-                                         int (*func)(struct bContext *C, const struct wmEvent *event, void *userdata),
-                                         void (*remove)(struct bContext *C, void *userdata));
+        wmUIHandlerFunc ui_handle, wmUIHandlerRemoveFunc ui_remove,
+        void *userdata);
+void WM_event_remove_ui_handler(
+        ListBase *handlers,
+        wmUIHandlerFunc ui_handle, wmUIHandlerRemoveFunc ui_remove,
+        void *userdata, const bool postpone);
+void WM_event_remove_area_handler(
+        struct ListBase *handlers, void *area);
+void WM_event_free_ui_handler_all(
+        struct bContext *C, ListBase *handlers,
+        wmUIHandlerFunc ui_handle, wmUIHandlerRemoveFunc ui_remove);
 
 struct wmEventHandler *WM_event_add_modal_handler(struct bContext *C, struct wmOperator *op);
 void		WM_event_remove_handlers(struct bContext *C, ListBase *handlers);
@@ -238,7 +241,8 @@ int			WM_operator_call		(struct bContext *C, struct wmOperator *op);
 int			WM_operator_call_notest(struct bContext *C, struct wmOperator *op);
 int			WM_operator_repeat		(struct bContext *C, struct wmOperator *op);
 bool        WM_operator_repeat_check(const struct bContext *C, struct wmOperator *op);
-int			WM_operator_name_call	(struct bContext *C, const char *opstring, short context, struct PointerRNA *properties);
+int         WM_operator_name_call_ptr(struct bContext *C, struct wmOperatorType *ot, short context, struct PointerRNA *properties);
+int			WM_operator_name_call(struct bContext *C, const char *opstring, short context, struct PointerRNA *properties);
 int			WM_operator_call_py(struct bContext *C, struct wmOperatorType *ot, short context, struct PointerRNA *properties, struct ReportList *reports, const bool is_undo);
 
 void		WM_operator_properties_alloc(struct PointerRNA **ptr, struct IDProperty **properties, const char *opstring); /* used for keymap and macro items */
@@ -445,6 +449,9 @@ void        WM_event_ndof_rotate_get(const struct wmNDOFMotionData *ndof, float 
 
 float       WM_event_ndof_to_axis_angle(const struct wmNDOFMotionData *ndof, float axis[3]);
 void        WM_event_ndof_to_quat(const struct wmNDOFMotionData *ndof, float q[4]);
+
+float       WM_event_tablet_data(const struct wmEvent *event, int *pen_flip, float tilt[2]);
+bool        WM_event_is_tablet(const struct wmEvent *event);
 
 #ifdef __cplusplus
 }

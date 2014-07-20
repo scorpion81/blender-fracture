@@ -270,13 +270,13 @@ bool GPU_lamp_override_visible(GPULamp *lamp, SceneRenderLayer *srl, Material *m
 		return true;
 }
 
-void GPU_material_bind(GPUMaterial *material, int oblay, int viewlay, double time, int mipmap, float viewmat[4][4], float viewinv[4][4])
+void GPU_material_bind(GPUMaterial *material, int oblay, int viewlay, double time, int mipmap, float viewmat[4][4], float viewinv[4][4], bool scenelock)
 {
 	if (material->pass) {
 		LinkData *nlink;
 		GPULamp *lamp;
 		GPUShader *shader = GPU_pass_shader(material->pass);
-		SceneRenderLayer *srl = BLI_findlink(&material->scene->r.layers, material->scene->r.actlay);
+		SceneRenderLayer *srl = scenelock ? BLI_findlink(&material->scene->r.layers, material->scene->r.actlay) : NULL;
 
 		if (srl)
 			viewlay &= srl->lay;
@@ -415,6 +415,11 @@ bool GPU_material_do_color_management(GPUMaterial *mat)
 		return false;
 
 	return !((mat->scene->gm.flag & GAME_GLSL_NO_COLOR_MANAGEMENT));
+}
+
+bool GPU_material_use_new_shading_nodes(GPUMaterial *mat)
+{
+	return BKE_scene_use_new_shading_nodes(mat->scene);
 }
 
 static GPUNodeLink *lamp_get_visibility(GPUMaterial *mat, GPULamp *lamp, GPUNodeLink **lv, GPUNodeLink **dist)
@@ -765,20 +770,18 @@ static void shade_one_light(GPUShadeInput *shi, GPUShadeResult *shr, GPULamp *la
 			}
 			
 			if (lamp->mode & LA_ONLYSHADOW) {
-				GPUNodeLink *rgb;
+				GPUNodeLink *shadrgb;
 				GPU_link(mat, "shade_only_shadow", i, shadfac,
-					GPU_dynamic_uniform(&lamp->dynenergy, GPU_DYNAMIC_LAMP_DYNENERGY, lamp->ob), &shadfac);
-
-				GPU_link(mat, "shade_mul", shi->rgb, GPU_uniform(lamp->shadow_color), &rgb);
-				GPU_link(mat, "mtex_rgb_invert", rgb, &rgb);
+					GPU_dynamic_uniform(&lamp->dynenergy, GPU_DYNAMIC_LAMP_DYNENERGY, lamp->ob),
+					GPU_uniform(lamp->shadow_color), &shadrgb);
 				
 				if (!(lamp->mode & LA_NO_DIFF)) {
-					GPU_link(mat, "shade_only_shadow_diffuse", shadfac, rgb,
+					GPU_link(mat, "shade_only_shadow_diffuse", shadrgb, shi->rgb,
 						shr->diff, &shr->diff);
 				}
 
 				if (!(lamp->mode & LA_NO_SPEC))
-					GPU_link(mat, "shade_only_shadow_specular", shadfac, shi->specrgb,
+					GPU_link(mat, "shade_only_shadow_specular", shadrgb, shi->specrgb,
 						shr->spec, &shr->spec);
 				
 				add_user_list(&mat->lamps, lamp);
@@ -890,6 +893,10 @@ static void material_lights(GPUShadeInput *shi, GPUShadeResult *shr)
 			free_object_duplilist(lb);
 		}
 	}
+
+	/* prevent only shadow lamps from producing negative colors.*/
+	GPU_link(shi->gpumat, "shade_clamp_positive", shr->spec, &shr->spec);
+	GPU_link(shi->gpumat, "shade_clamp_positive", shr->diff, &shr->diff);
 }
 
 static void texture_rgb_blend(GPUMaterial *mat, GPUNodeLink *tex, GPUNodeLink *out, GPUNodeLink *fact, GPUNodeLink *facg, int blendtype, GPUNodeLink **in)
@@ -1665,6 +1672,23 @@ void GPU_materials_free(void)
 
 /* Lamps and shadow buffers */
 
+static void gpu_lamp_calc_winmat(GPULamp *lamp)
+{
+	float temp, angle, pixsize, wsize;
+
+	if (lamp->type == LA_SUN) {
+		wsize = lamp->la->shadow_frustum_size;
+		orthographic_m4(lamp->winmat, -wsize, wsize, -wsize, wsize, lamp->d, lamp->clipend);
+	}
+	else {
+		angle= saacos(lamp->spotsi);
+		temp= 0.5f*lamp->size*cosf(angle)/sinf(angle);
+		pixsize= (lamp->d)/temp;
+		wsize= pixsize*0.5f*lamp->size;
+		perspective_m4(lamp->winmat, -wsize, wsize, -wsize, wsize, lamp->d, lamp->clipend);
+	}
+}
+
 void GPU_lamp_update(GPULamp *lamp, int lay, int hide, float obmat[4][4])
 {
 	float mat[4][4];
@@ -1702,12 +1726,12 @@ void GPU_lamp_update_spot(GPULamp *lamp, float spotsize, float spotblend)
 {
 	lamp->spotsi = cosf(spotsize * 0.5f);
 	lamp->spotbl = (1.0f - lamp->spotsi) * spotblend;
+
+	gpu_lamp_calc_winmat(lamp);
 }
 
 static void gpu_lamp_from_blender(Scene *scene, Object *ob, Object *par, Lamp *la, GPULamp *lamp)
 {
-	float temp, angle, pixsize, wsize;
-
 	lamp->scene = scene;
 	lamp->ob = ob;
 	lamp->par = par;
@@ -1750,17 +1774,7 @@ static void gpu_lamp_from_blender(Scene *scene, Object *ob, Object *par, Lamp *l
 	lamp->bias *= 0.25f;
 
 	/* makeshadowbuf */
-	if (lamp->type == LA_SUN) {
-		wsize = la->shadow_frustum_size;
-		orthographic_m4(lamp->winmat, -wsize, wsize, -wsize, wsize, lamp->d, lamp->clipend);
-	}
-	else {
-		angle= saacos(lamp->spotsi);
-		temp= 0.5f*lamp->size*cosf(angle)/sinf(angle);
-		pixsize= (lamp->d)/temp;
-		wsize= pixsize*0.5f*lamp->size;
-		perspective_m4(lamp->winmat, -wsize, wsize, -wsize, wsize, lamp->d, lamp->clipend);
-	}
+	gpu_lamp_calc_winmat(lamp);
 }
 
 static void gpu_lamp_shadow_free(GPULamp *lamp)

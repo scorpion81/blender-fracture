@@ -223,7 +223,7 @@ static short ob_keyframes_loop(KeyframeEditData *ked, bDopeSheet *ads, Object *o
 		}
 	}
 	
-	BLI_freelistN(&anim_data);
+	ANIM_animdata_freelist(&anim_data);
 	
 	/* return return code - defaults to zero if nothing happened */
 	return ret;
@@ -265,7 +265,7 @@ static short scene_keyframes_loop(KeyframeEditData *ked, bDopeSheet *ads, Scene 
 		}
 	}
 	
-	BLI_freelistN(&anim_data);
+	ANIM_animdata_freelist(&anim_data);
 	
 	/* return return code - defaults to zero if nothing happened */
 	return ret;
@@ -301,7 +301,7 @@ static short summary_keyframes_loop(KeyframeEditData *ked, bAnimContext *ac, Key
 			break;
 	}
 	
-	BLI_freelistN(&anim_data);
+	ANIM_animdata_freelist(&anim_data);
 	
 	return ret_code;
 }
@@ -397,7 +397,7 @@ void ANIM_editkeyframes_refresh(bAnimContext *ac)
 	}
 	
 	/* free temp data */
-	BLI_freelistN(&anim_data);
+	ANIM_animdata_freelist(&anim_data);
 }
 
 /* ************************************************************************** */
@@ -670,8 +670,8 @@ static short snap_bezier_horizontal(KeyframeEditData *UNUSED(ked), BezTriple *be
 	if (bezt->f2 & SELECT) {
 		bezt->vec[0][1] = bezt->vec[2][1] = bezt->vec[1][1];
 		
-		if (ELEM3(bezt->h1, HD_AUTO, HD_AUTO_ANIM, HD_VECT)) bezt->h1 = HD_ALIGN;
-		if (ELEM3(bezt->h2, HD_AUTO, HD_AUTO_ANIM, HD_VECT)) bezt->h2 = HD_ALIGN;
+		if (ELEM(bezt->h1, HD_AUTO, HD_AUTO_ANIM, HD_VECT)) bezt->h1 = HD_ALIGN;
+		if (ELEM(bezt->h2, HD_AUTO, HD_AUTO_ANIM, HD_VECT)) bezt->h2 = HD_ALIGN;
 	}
 	return 0;
 }
@@ -810,9 +810,9 @@ KeyframeEditFunc ANIM_editkeyframes_mirror(short type)
  */
 #define ENSURE_HANDLES_MATCH(bezt)                                            \
 	if (bezt->h1 != bezt->h2) {                                               \
-		if (ELEM3(bezt->h1, HD_ALIGN, HD_AUTO, HD_AUTO_ANIM))                 \
+		if (ELEM(bezt->h1, HD_ALIGN, HD_AUTO, HD_AUTO_ANIM))                  \
 			bezt->h1 = HD_FREE;                                               \
-		if (ELEM3(bezt->h2, HD_ALIGN, HD_AUTO, HD_AUTO_ANIM))                 \
+		if (ELEM(bezt->h2, HD_ALIGN, HD_AUTO, HD_AUTO_ANIM))                  \
 			bezt->h2 = HD_FREE;                                               \
 	} (void)0
 

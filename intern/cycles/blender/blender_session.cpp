@@ -492,38 +492,24 @@ static void populate_bake_data(BakeData *data, BL::BakePixel pixel_array, const 
 	}
 }
 
-static bool is_light_pass(ShaderEvalType type)
-{
-	switch (type) {
-		case SHADER_EVAL_AO:
-		case SHADER_EVAL_COMBINED:
-		case SHADER_EVAL_SHADOW:
-		case SHADER_EVAL_DIFFUSE_DIRECT:
-		case SHADER_EVAL_GLOSSY_DIRECT:
-		case SHADER_EVAL_TRANSMISSION_DIRECT:
-		case SHADER_EVAL_SUBSURFACE_DIRECT:
-		case SHADER_EVAL_DIFFUSE_INDIRECT:
-		case SHADER_EVAL_GLOSSY_INDIRECT:
-		case SHADER_EVAL_TRANSMISSION_INDIRECT:
-		case SHADER_EVAL_SUBSURFACE_INDIRECT:
-			return true;
-		default:
-			return false;
-	}
-}
-
 void BlenderSession::bake(BL::Object b_object, const string& pass_type, BL::BakePixel pixel_array, int num_pixels, int depth, float result[])
 {
 	ShaderEvalType shader_type = get_shader_type(pass_type);
 	size_t object_index = OBJECT_NONE;
 	int tri_offset = 0;
 
+	/* ensure kernels are loaded before we do any scene updates */
+	session->load_kernels();
+
+	if(session->progress.get_cancel())
+		return;
+
 	if(shader_type == SHADER_EVAL_UV) {
 		/* force UV to be available */
 		Pass::add(PASS_UV, scene->film->passes);
 	}
 
-	if(is_light_pass(shader_type)) {
+	if(BakeManager::is_light_pass(shader_type)) {
 		/* force use_light_pass to be true */
 		Pass::add(PASS_LIGHT, scene->film->passes);
 	}

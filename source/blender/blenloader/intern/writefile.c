@@ -769,7 +769,7 @@ static void write_nodetree(WriteData *wd, bNodeTree *ntree)
 					writedata(wd, DATA, strlen(nss->bytecode)+1, nss->bytecode);
 				writestruct(wd, DATA, node->typeinfo->storagename, 1, node->storage);
 			}
-			else if (ntree->type==NTREE_COMPOSIT && ELEM4(node->type, CMP_NODE_TIME, CMP_NODE_CURVE_VEC, CMP_NODE_CURVE_RGB, CMP_NODE_HUECORRECT))
+			else if (ntree->type==NTREE_COMPOSIT && ELEM(node->type, CMP_NODE_TIME, CMP_NODE_CURVE_VEC, CMP_NODE_CURVE_RGB, CMP_NODE_HUECORRECT))
 				write_curvemapping(wd, node->storage);
 			else if (ntree->type==NTREE_TEXTURE && (node->type==TEX_NODE_CURVE_RGB || node->type==TEX_NODE_CURVE_TIME) )
 				write_curvemapping(wd, node->storage);
@@ -1238,6 +1238,9 @@ static void write_actuators(WriteData *wd, ListBase *lb)
 			break;
 		case ACT_STEERING:
 			writestruct(wd, DATA, "bSteeringActuator", 1, act->data);
+			break;
+		case ACT_MOUSE:
+			writestruct(wd, DATA, "bMouseActuator", 1, act->data);
 			break;
 		default:
 			; /* error: don't know how to write this file */
@@ -2364,6 +2367,9 @@ static void write_scenes(WriteData *wd, ListBase *scebase)
 							break;
 						case SEQ_TYPE_TRANSFORM:
 							writestruct(wd, DATA, "TransformVars", 1, seq->effectdata);
+							break;
+						case SEQ_TYPE_GAUSSIAN_BLUR:
+							writestruct(wd, DATA, "GaussianBlurVars", 1, seq->effectdata);
 							break;
 						}
 					}

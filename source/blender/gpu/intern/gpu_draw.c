@@ -76,6 +76,8 @@
 #include "GPU_extensions.h"
 #include "GPU_material.h"
 
+#include "PIL_time.h"
+
 #include "smoke_API.h"
 
 extern Material defmaterial; /* from material.c */
@@ -1311,6 +1313,45 @@ void GPU_free_images_anim(void)
 				GPU_free_image(ima);
 }
 
+
+void GPU_free_images_old(void)
+{
+	Image *ima;
+	static int lasttime = 0;
+	int ctime = (int)PIL_check_seconds_timer();
+
+	/*
+	 * Run garbage collector once for every collecting period of time
+	 * if textimeout is 0, that's the option to NOT run the collector
+	 */
+	if (U.textimeout == 0 || ctime % U.texcollectrate || ctime == lasttime)
+		return;
+
+	/* of course not! */
+	if (G.is_rendering)
+		return;
+
+	lasttime = ctime;
+
+	ima = G.main->image.first;
+	while (ima) {
+		if ((ima->flag & IMA_NOCOLLECT) == 0 && ctime - ima->lastused > U.textimeout) {
+			/* If it's in GL memory, deallocate and set time tag to current time
+			 * This gives textures a "second chance" to be used before dying. */
+			if (ima->bindcode || ima->repbind) {
+				GPU_free_image(ima);
+				ima->lastused = ctime;
+			}
+			/* Otherwise, just kill the buffers */
+			else {
+				BKE_image_free_buffers(ima);
+			}
+		}
+		ima = ima->id.next;
+	}
+}
+
+
 /* OpenGL Materials */
 
 #define FIXEDMAT	8
@@ -1334,6 +1375,7 @@ static struct GPUMaterialState {
 	Object *gob;
 	Scene *gscene;
 	int glay;
+	bool gscenelock;
 	float (*gviewmat)[4];
 	float (*gviewinv)[4];
 
@@ -1422,6 +1464,7 @@ void GPU_begin_object_materials(View3D *v3d, RegionView3D *rv3d, Scene *scene, O
 	GMS.gscene = scene;
 	GMS.totmat = use_matcap ? 1 : ob->totcol + 1;  /* materials start from 1, default material is 0 */
 	GMS.glay= (v3d->localvd)? v3d->localvd->lay: v3d->lay; /* keep lamps visible in local view */
+	GMS.gscenelock = (v3d->scenelock != 0);
 	GMS.gviewmat= rv3d->viewmat;
 	GMS.gviewinv= rv3d->viewinv;
 
@@ -1505,7 +1548,7 @@ void GPU_begin_object_materials(View3D *v3d, RegionView3D *rv3d, Scene *scene, O
 			/* setting 'do_alpha_after = true' indicates this object needs to be
 			 * drawn in a second alpha pass for improved blending */
 			if (do_alpha_after && !GMS.is_alpha_pass)
-				if (ELEM3(alphablend, GPU_BLEND_ALPHA, GPU_BLEND_ADD, GPU_BLEND_ALPHA_SORT))
+				if (ELEM(alphablend, GPU_BLEND_ALPHA, GPU_BLEND_ADD, GPU_BLEND_ALPHA_SORT))
 					*do_alpha_after = true;
 
 			GMS.alphablend[a]= alphablend;
@@ -1582,7 +1625,7 @@ int GPU_enable_material(int nr, void *attribs)
 
 			gpumat = GPU_material_from_blender(GMS.gscene, mat);
 			GPU_material_vertex_attributes(gpumat, gattribs);
-			GPU_material_bind(gpumat, GMS.gob->lay, GMS.glay, 1.0, !(GMS.gob->mode & OB_MODE_TEXTURE_PAINT), GMS.gviewmat, GMS.gviewinv);
+			GPU_material_bind(gpumat, GMS.gob->lay, GMS.glay, 1.0, !(GMS.gob->mode & OB_MODE_TEXTURE_PAINT), GMS.gviewmat, GMS.gviewinv, GMS.gscenelock);
 
 			auto_bump_scale = GMS.gob->derivedFinal != NULL ? GMS.gob->derivedFinal->auto_bump_scale : 1.0f;
 			GPU_material_bind_uniforms(gpumat, GMS.gob->obmat, GMS.gob->col, auto_bump_scale);

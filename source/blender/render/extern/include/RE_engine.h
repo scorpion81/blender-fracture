@@ -104,6 +104,7 @@ typedef struct RenderEngine {
 
 	int flag;
 	struct Object *camera_override;
+	unsigned int layer_override;
 
 	int tile_x;
 	int tile_y;
@@ -146,6 +147,8 @@ void RE_engine_report(RenderEngine *engine, int type, const char *msg);
 int RE_engine_render(struct Render *re, int do_all);
 
 bool RE_engine_is_external(struct Render *re);
+
+void RE_engine_frame_set(struct RenderEngine *engine, int frame, float subframe);
 
 /* Engine Types */
 

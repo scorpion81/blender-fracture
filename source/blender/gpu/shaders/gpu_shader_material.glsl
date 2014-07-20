@@ -752,6 +752,18 @@ void combine_rgb(float r, float g, float b, out vec4 col)
 	col = vec4(r, g, b, 1.0);
 }
 
+void separate_xyz(vec3 vec, out float x, out float y, out float z)
+{
+	x = vec.r;
+	y = vec.g;
+	z = vec.b;
+}
+
+void combine_xyz(float x, float y, float z, out vec3 vec)
+{
+	vec = vec3(x, y, z);
+}
+
 void separate_hsv(vec4 col, out float h, out float s, out float v)
 {
 	vec4 hsv;
@@ -1921,19 +1933,24 @@ void ramp_rgbtobw(vec3 color, out float outval)
 	outval = color.r*0.3 + color.g*0.58 + color.b*0.12;
 }
 
-void shade_only_shadow(float i, float shadfac, float energy, out float outshadfac)
+void shade_only_shadow(float i, float shadfac, float energy, vec3 shadcol, out vec3 outshadrgb)
 {
-	outshadfac = i*energy*(1.0 - shadfac);
+	outshadrgb = i*energy*(1.0 - shadfac)*(vec3(1.0)-shadcol);
 }
 
-void shade_only_shadow_diffuse(float shadfac, vec3 rgb, vec4 diff, out vec4 outdiff)
+void shade_only_shadow_diffuse(vec3 shadrgb, vec3 rgb, vec4 diff, out vec4 outdiff)
 {
-	outdiff = diff - vec4(rgb*shadfac, 0.0);
+	outdiff = diff - vec4(rgb*shadrgb, 0.0);
 }
 
-void shade_only_shadow_specular(float shadfac, vec3 specrgb, vec4 spec, out vec4 outspec)
+void shade_only_shadow_specular(vec3 shadrgb, vec3 specrgb, vec4 spec, out vec4 outspec)
 {
-	outspec = spec - vec4(specrgb*shadfac, 0.0);
+	outspec = spec - vec4(specrgb*shadrgb, 0.0);
+}
+
+void shade_clamp_positive(vec4 col, out vec4 outcol)
+{
+	outcol = max(col, vec4(0.0));
 }
 
 void test_shadowbuf(vec3 rco, sampler2DShadow shadowmap, mat4 shadowpersmat, float shadowbias, float inp, out float result)
@@ -2164,7 +2181,7 @@ void node_subsurface_scattering(vec4 color, float scale, vec3 radius, float shar
 	node_bsdf_diffuse(color, 0.0, N, result);
 }
 
-void node_bsdf_hair(vec4 color, float roughnessu, float roughnessv, out vec4 result)
+void node_bsdf_hair(vec4 color, float offset, float roughnessu, float roughnessv, out vec4 result)
 {
 	result = color;
 }
@@ -2192,8 +2209,11 @@ void node_add_shader(vec4 shader1, vec4 shader2, out vec4 shader)
 
 void node_fresnel(float ior, vec3 N, vec3 I, out float result)
 {
+	/* handle perspective/orthographic */
+	vec3 I_view = (gl_ProjectionMatrix[3][3] == 0.0)? normalize(I): vec3(0.0, 0.0, -1.0);
+
 	float eta = max(ior, 0.00001);
-	result = fresnel_dielectric(normalize(I), N, (gl_FrontFacing)? eta: 1.0/eta);
+	result = fresnel_dielectric(I_view, N, (gl_FrontFacing)? eta: 1.0/eta);
 }
 
 /* layer_weight */
@@ -2237,16 +2257,25 @@ void node_attribute(vec3 attr_uv, out vec4 outcol, out vec3 outvec, out float ou
 	outf = (attr_uv.x + attr_uv.y + attr_uv.z)/3.0;
 }
 
+void node_uvmap(vec3 attr_uv, out vec3 outvec)
+{
+	outvec = attr_uv;
+}
+
 void node_geometry(vec3 I, vec3 N, mat4 toworld,
 	out vec3 position, out vec3 normal, out vec3 tangent,
 	out vec3 true_normal, out vec3 incoming, out vec3 parametric,
 	out float backfacing)
 {
 	position = (toworld*vec4(I, 1.0)).xyz;
-	normal = N;
+	normal = (toworld*vec4(N, 0.0)).xyz;
 	tangent = vec3(0.0);
-	true_normal = N;
-	incoming = I;
+	true_normal = normal;
+
+	/* handle perspective/orthographic */
+	vec3 I_view = (gl_ProjectionMatrix[3][3] == 0.0)? normalize(I): vec3(0.0, 0.0, -1.0);
+	incoming = -(toworld*vec4(I_view, 0.0)).xyz;
+
 	parametric = vec3(0.0);
 	backfacing = (gl_FrontFacing)? 0.0: 1.0;
 }

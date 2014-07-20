@@ -357,15 +357,15 @@ int modifiers_getCageIndex(struct Scene *scene, Object *ob, int *r_lastPossibleC
 		if (!(mti->flags & eModifierTypeFlag_SupportsEditmode)) continue;
 		if (md->mode & eModifierMode_DisableTemporary) continue;
 
+		if (!(md->mode & eModifierMode_Realtime)) continue;
+		if (!(md->mode & eModifierMode_Editmode)) continue;
+
 		if (!modifier_supportsMapping(md))
 			break;
 
 		if (r_lastPossibleCageIndex) {
 			*r_lastPossibleCageIndex = i;
 		}
-
-		if (!(md->mode & eModifierMode_Realtime)) continue;
-		if (!(md->mode & eModifierMode_Editmode)) continue;
 
 		if (md->mode & eModifierMode_OnCage)
 			cageIndex = i;
@@ -709,7 +709,7 @@ const char *modifier_path_relbase(Object *ob)
 	else {
 		/* last resort, better then using "" which resolves to the current
 		 * working directory */
-		return BLI_temporary_dir();
+		return BLI_temp_dir_session();
 	}
 }
 
@@ -719,7 +719,7 @@ void modifier_path_init(char *path, int path_maxlen, const char *name)
 	/* elubie: changed this to default to the same dir as the render output
 	 * to prevent saving to C:\ on Windows */
 	BLI_join_dirfile(path, path_maxlen,
-	                 G.relbase_valid ? "//" : BLI_temporary_dir(),
+	                 G.relbase_valid ? "//" : BLI_temp_dir_session(),
 	                 name);
 }
 

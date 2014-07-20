@@ -289,7 +289,6 @@ Object *BlenderSync::sync_object(BL::Object b_parent, int persistent_id[OBJECT_P
 	uint visibility = object_ray_visibility(b_ob) & PATH_RAY_ALL_VISIBILITY;
 	if(b_parent.ptr.data != b_ob.ptr.data) {
 		visibility &= object_ray_visibility(b_parent);
-		object->random_id ^= hash_int(hash_string(b_parent.name().c_str()));
 	}
 
 	/* make holdout objects on excluded layer invisible for non-camera rays */
@@ -457,10 +456,10 @@ void BlenderSync::sync_objects(BL::SpaceView3D b_v3d, float motion_time)
 	BL::Scene::object_bases_iterator b_base;
 	BL::Scene b_sce = b_scene;
 	/* modifier result type (not exposed as enum in C++ API)
-	 * 1 : eModifierMode_Realtime
-	 * 2 : eModifierMode_Render
-	 */
-	int dupli_settings = preview ? 1 : 2;
+     * 1 : DAG_EVAL_PREVIEW
+     * 2 : DAG_EVAL_RENDER
+     */
+    int dupli_settings = preview ? 1 : 2;
 
 	bool cancel = false;
 
@@ -576,7 +575,7 @@ void BlenderSync::sync_motion(BL::SpaceView3D b_v3d, BL::Object b_override, void
 
 		/* change frame */
 		python_thread_state_restore(python_thread_state);
-		b_scene.frame_set(frame, subframe);
+		b_engine.frame_set(frame, subframe);
 		python_thread_state_save(python_thread_state);
 
 		/* sync camera, only supports two times at the moment */
@@ -591,7 +590,7 @@ void BlenderSync::sync_motion(BL::SpaceView3D b_v3d, BL::Object b_override, void
 	 * function assumes it is being executed from python and will
 	 * try to save the thread state */
 	python_thread_state_restore(python_thread_state);
-	b_scene.frame_set(frame_center, 0.0f);
+	b_engine.frame_set(frame_center, 0.0f);
 	python_thread_state_save(python_thread_state);
 
 	/* tag camera for motion update */

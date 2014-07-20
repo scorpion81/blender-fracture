@@ -135,26 +135,24 @@ static void paint_draw_smooth_stroke(bContext *C, int x, int y, void *customdata
 	}
 }
 
-/* if this is a tablet event, return tablet pressure and set *pen_flip
- * to 1 if the eraser tool is being used, 0 otherwise */
-static float event_tablet_data(const wmEvent *event, int *pen_flip)
+static bool paint_tool_require_location(Brush *brush, PaintMode mode)
 {
-	int erasor = 0;
-	float pressure = 1;
-
-	if (event->tablet_data) {
-		wmTabletData *wmtab = event->tablet_data;
-
-		erasor = (wmtab->Active == EVT_TABLET_ERASER);
-		pressure = (wmtab->Active != EVT_TABLET_NONE) ? wmtab->Pressure : 1;
+	switch (mode) {
+		case PAINT_SCULPT:
+			if (ELEM(brush->sculpt_tool, SCULPT_TOOL_GRAB, SCULPT_TOOL_ROTATE,
+			                             SCULPT_TOOL_SNAKE_HOOK, SCULPT_TOOL_THUMB))
+			{
+				return false;
+			}
+			else {
+				return true;
+			}
+		default:
+			break;
 	}
 
-	if (pen_flip)
-		(*pen_flip) = erasor;
-
-	return pressure;
+	return true;
 }
-
 
 /* Initialize the stroke cache variants from operator properties */
 static void paint_brush_update(bContext *C, Brush *brush, PaintMode mode,
@@ -257,6 +255,9 @@ static void paint_brush_update(bContext *C, Brush *brush, PaintMode mode,
 				if (stroke->get_location(C, out, halfway)) {
 					hit = true;
 				}
+				else if (!paint_tool_require_location(brush, mode)) {
+					hit = true;
+				}
 			}
 			else {
 				hit = true;
@@ -336,8 +337,15 @@ static void paint_brush_stroke_add_step(bContext *C, wmOperator *op, const float
 	}
 
 	/* TODO: can remove the if statement once all modes have this */
-	if (stroke->get_location)
-		stroke->get_location(C, location, mouse_out);
+	if (stroke->get_location) {
+		if (!stroke->get_location(C, location, mouse_out)) {
+			if (paint_tool_require_location(brush, mode)) {
+				if (ar && (paint->flags & PAINT_SHOW_BRUSH))
+					WM_paint_cursor_tag_redraw(window, ar);
+				return;
+			}
+		}
+	}
 	else
 		zero_v3(location);
 
@@ -558,7 +566,7 @@ bool paint_space_stroke_enabled(Brush *br, PaintMode mode)
 
 static bool sculpt_is_grab_tool(Brush *br)
 {
-	return ELEM4(br->sculpt_tool,
+	return ELEM(br->sculpt_tool,
 	             SCULPT_TOOL_GRAB,
 	             SCULPT_TOOL_THUMB,
 	             SCULPT_TOOL_ROTATE,
@@ -605,7 +613,7 @@ bool paint_supports_smooth_stroke(Brush *br, PaintMode mode)
 bool paint_supports_texture(PaintMode mode)
 {
 	/* ommit: PAINT_WEIGHT, PAINT_SCULPT_UV, PAINT_INVALID */
-	return ELEM4(mode, PAINT_SCULPT, PAINT_VERTEX, PAINT_TEXTURE_PROJECTIVE, PAINT_TEXTURE_2D);
+	return ELEM(mode, PAINT_SCULPT, PAINT_VERTEX, PAINT_TEXTURE_PROJECTIVE, PAINT_TEXTURE_2D);
 }
 
 /* return true if the brush size can change during paint (normally used for pressure) */
@@ -707,7 +715,7 @@ int paint_stroke_modal(bContext *C, wmOperator *op, const wmEvent *event)
 	float pressure;
 
 	/* see if tablet affects event */
-	pressure = event_tablet_data(event, &stroke->pen_flip);
+	pressure = WM_event_tablet_data(event, &stroke->pen_flip, NULL);
 
 	paint_stroke_add_sample(p, stroke, event->mval[0], event->mval[1], pressure);
 	paint_stroke_sample_average(stroke, &sample_average);
@@ -794,7 +802,7 @@ int paint_stroke_modal(bContext *C, wmOperator *op, const wmEvent *event)
 	if (event->type != INBETWEEN_MOUSEMOVE)
 		if (redraw && stroke->redraw)
 			stroke->redraw(C, stroke, false);
-	
+
 	return OPERATOR_RUNNING_MODAL;
 }
 

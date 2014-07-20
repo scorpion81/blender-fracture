@@ -604,6 +604,9 @@ typedef struct RenderData {
 
 	/* Cycles baking */
 	struct BakeData bake;
+
+	int preview_start_resolution;
+	int pad;
 } RenderData;
 
 /* *************************************************************** */
@@ -1377,6 +1380,7 @@ typedef struct Scene {
 /* #define R_RECURS_PROTECTION	0x20000 */
 #define R_TEXNODE_PREVIEW	0x40000
 #define R_VIEWPORT_PREVIEW	0x80000
+#define R_EXR_CACHE_FILE	0x100000
 
 /* r->stamp */
 #define R_STAMP_TIME 	0x0001
@@ -1442,8 +1446,9 @@ enum {
 #define R_BAKE_LORES_MESH	32
 #define R_BAKE_VCOL			64
 #define R_BAKE_USERSCALE	128
-#define R_BAKE_SPLIT_MAT	256
-#define R_BAKE_AUTO_NAME	512
+#define R_BAKE_CAGE			256
+#define R_BAKE_SPLIT_MAT	512
+#define R_BAKE_AUTO_NAME	1024
 
 /* bake_normal_space */
 #define R_BAKE_SPACE_CAMERA	 0
@@ -1615,8 +1620,8 @@ typedef enum eVGroupSelect {
 #define SCE_FRAME_DROP			(1<<3)
 
 
-	/* return flag BKE_scene_base_iter_next function */
-#define F_ERROR			-1
+	/* return flag BKE_scene_base_iter_next functions */
+/* #define F_ERROR			-1 */  /* UNUSED */
 #define F_START			0
 #define F_SCENE			1
 #define F_DUPLI			3

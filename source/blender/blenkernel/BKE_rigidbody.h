@@ -81,6 +81,9 @@ void BKE_rigidbody_validate_sim_shard(struct RigidBodyWorld *rbw, struct MeshIsl
 void BKE_rigidbody_validate_sim_shard_shape(struct MeshIsland *mi, struct Object *ob, short rebuild);
 void BKE_rigidbody_update_cell(struct MeshIsland *mi, struct Object* ob, float loc[3], float rot[4], float cfra, bool baked, struct FractureModifierData* rmd);
 
+void BKE_rigidbody_calc_volume(struct Object *ob, float *r_vol);
+void BKE_rigidbody_calc_center_of_mass(struct Object *ob, float r_com[3]);
+
 /* -------------- */
 /* Utilities */
 

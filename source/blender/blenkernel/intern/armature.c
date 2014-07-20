@@ -1482,16 +1482,13 @@ void mat3_to_vec_roll(float mat[3][3], float r_vec[3], float *r_roll)
  * M* = 1 / (x^2 + z^2) * │                         │
  *                        └ -2 * x * z,   x^2 - z^2 ┘
  */
-void vec_roll_to_mat3(const float vec[3], const float roll, float mat[3][3])
+void vec_roll_to_mat3_normalized(const float nor[3], const float roll, float mat[3][3])
 {
 #define THETA_THRESHOLD_NEGY 1.0e-9f
 #define THETA_THRESHOLD_NEGY_CLOSE 1.0e-5f
 
-	float nor[3];
 	float theta;
 	float rMatrix[3][3], bMatrix[3][3];
-
-	normalize_v3_v3(nor, vec);
 
 	theta = 1.0f + nor[1];
 
@@ -1543,6 +1540,13 @@ void vec_roll_to_mat3(const float vec[3], const float roll, float mat[3][3])
 #undef THETA_THRESHOLD_NEGY_CLOSE
 }
 
+void vec_roll_to_mat3(const float vec[3], const float roll, float mat[3][3])
+{
+	float nor[3];
+
+	normalize_v3_v3(nor, vec);
+	vec_roll_to_mat3_normalized(nor, roll, mat);
+}
 
 /* recursive part, calculates restposition of entire tree of children */
 /* used by exiting editmode too */
@@ -1877,7 +1881,7 @@ static void splineik_init_tree_from_pchan(Scene *scene, Object *UNUSED(ob), bPos
 		 */
 
 		/* only happens on reload file, but violates depsgraph still... fix! */
-		if (ELEM3(NULL,  ikData->tar->curve_cache, ikData->tar->curve_cache->path, ikData->tar->curve_cache->path->data)) {
+		if (ELEM(NULL,  ikData->tar->curve_cache, ikData->tar->curve_cache->path, ikData->tar->curve_cache->path->data)) {
 			BKE_displist_make_curveTypes(scene, ikData->tar, 0);
 			
 			/* path building may fail in EditMode after removing verts [#33268]*/

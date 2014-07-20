@@ -763,8 +763,10 @@ EnumPropertyItem keyframe_paste_merge_items[] = {
 	{0, NULL, 0, NULL, NULL}};
 
 
-/* This function pastes data from the keyframes copy/paste buffer 
- * > return status code is whether the method FAILED to do anything
+/**
+ * This function pastes data from the keyframes copy/paste buffer
+ *
+ * \return Status code is whether the method FAILED to do anything
  */
 short paste_animedit_keys(bAnimContext *ac, ListBase *anim_data,
                           const eKeyPasteOffset offset_mode, const eKeyMergeMode merge_mode)
@@ -857,6 +859,8 @@ short paste_animedit_keys(bAnimContext *ac, ListBase *anim_data,
 					totmatch++;
 					paste_animedit_keys_fcurve(fcu, aci, offset, merge_mode);
 				}
+
+				ale->update |= ANIM_UPDATE_DEFAULT;
 			}
 			
 			/* don't continue if some fcurves were pasted */
@@ -865,6 +869,8 @@ short paste_animedit_keys(bAnimContext *ac, ListBase *anim_data,
 		}
 	}
 	
+	ANIM_animdata_update(ac, anim_data);
+
 	return 0;
 }
 

@@ -91,21 +91,28 @@ from freestyle.utils import integrate
 
 from mathutils import Vector
 
-## Functions for 0D elements (vertices)
-#######################################
+
+# -- Functions for 0D elements (vertices) -- #
 
 
 class CurveMaterialF0D(UnaryFunction0DMaterial):
     """
     A replacement of the built-in MaterialF0D for stroke creation.
-    MaterialF0D does not work with Curves and Strokes.
+    MaterialF0D does not work with Curves and Strokes.  Line color
+    priority is used to pick one of the two materials at material
+    boundaries.
     """
     def __call__(self, inter):
         cp = inter.object
         assert(isinstance(cp, CurvePoint))
         fe = cp.first_svertex.get_fedge(cp.second_svertex)
-        assert(fe is not None)
-        return fe.material if fe.is_smooth else fe.material_left
+        assert(fe is not None), "CurveMaterialF0D: fe is None"
+        if fe.is_smooth:
+            return fe.material
+        elif fe.material_right.priority > fe.material_left.priority:
+            return fe.material_right
+        else:
+            return fe.material_left
 
 
 class pyInverseCurvature2DAngleF0D(UnaryFunction0DDouble):
@@ -140,11 +147,7 @@ class pyDensityAnisotropyF0D(UnaryFunction0DDouble):
         c_3 = self.d3Density(inter)
         cMax = max(max(c_0,c_1), max(c_2,c_3))
         cMin = min(min(c_0,c_1), min(c_2,c_3))
-        if c_iso == 0:
-            v = 0
-        else:
-            v = (cMax-cMin)/c_iso
-        return v
+        return 0 if (c_iso == 0) else (cMax-cMin) / c_iso
 
 
 class pyViewMapGradientVectorF0D(UnaryFunction0DVec2f):
@@ -161,9 +164,9 @@ class pyViewMapGradientVectorF0D(UnaryFunction0DVec2f):
     def __call__(self, iter):
         p = iter.object.point_2d
         gx = CF.read_complete_view_map_pixel(self._l, int(p.x+self._step), int(p.y)) - \
-            CF.read_complete_view_map_pixel(self._l, int(p.x), int(p.y))
+             CF.read_complete_view_map_pixel(self._l, int(p.x), int(p.y))
         gy = CF.read_complete_view_map_pixel(self._l, int(p.x), int(p.y+self._step)) - \
-            CF.read_complete_view_map_pixel(self._l, int(p.x), int(p.y))
+             CF.read_complete_view_map_pixel(self._l, int(p.x), int(p.y))
         return Vector((gx, gy))
 
 
@@ -171,19 +174,18 @@ class pyViewMapGradientNormF0D(UnaryFunction0DDouble):
     def __init__(self, l):
         UnaryFunction0DDouble.__init__(self)
         self._l = l
-        self._step = pow(2,self._l)
+        self._step = pow(2, self._l)
 
     def __call__(self, iter):
         p = iter.object.point_2d
-        gx = CF.read_complete_view_map_pixel(self._l, int(p.x+self._step), int(p.y)) - \
-            CF.read_complete_view_map_pixel(self._l, int(p.x), int(p.y))
-        gy = CF.read_complete_view_map_pixel(self._l, int(p.x), int(p.y+self._step)) - \
-            CF.read_complete_view_map_pixel(self._l, int(p.x), int(p.y))
-        grad = Vector((gx, gy))
-        return grad.length
+        gx = CF.read_complete_view_map_pixel(self._l, int(p.x + self._step), int(p.y)) - \
+             CF.read_complete_view_map_pixel(self._l, int(p.x), int(p.y))
+        gy = CF.read_complete_view_map_pixel(self._l, int(p.x), int(p.y + self._step)) - \
+             CF.read_complete_view_map_pixel(self._l, int(p.x), int(p.y))
+        return Vector((gx, gy)).length
 
-## Functions for 1D elements (curves)
-#####################################
+
+# -- Functions for 1D elements (curves) -- #
 
 
 class pyGetInverseProjectedZF1D(UnaryFunction1DDouble):

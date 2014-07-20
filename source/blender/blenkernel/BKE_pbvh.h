@@ -166,6 +166,7 @@ typedef enum {
 void BKE_pbvh_node_mark_update(PBVHNode *node);
 void BKE_pbvh_node_mark_rebuild_draw(PBVHNode *node);
 void BKE_pbvh_node_mark_redraw(PBVHNode *node);
+void BKE_pbvh_node_mark_normals_update(PBVHNode *node);
 void BKE_pbvh_node_mark_topology_update(PBVHNode *node);
 void BKE_pbvh_node_fully_hidden_set(PBVHNode *node, int fully_hidden);
 
@@ -293,7 +294,7 @@ void pbvh_vertex_iter_init(PBVH *bvh, PBVHNode *node,
 					vi.mask = vi.key->has_mask ? CCG_elem_mask(vi.key, vi.grid) : NULL; \
 					vi.grid = CCG_elem_next(vi.key, vi.grid); \
 					if (vi.gh) { \
-						if (BLI_BITMAP_GET(vi.gh, vi.gy * vi.gridsize + vi.gx)) \
+						if (BLI_BITMAP_TEST(vi.gh, vi.gy * vi.gridsize + vi.gx)) \
 							continue; \
 					} \
 				} \

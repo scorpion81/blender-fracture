@@ -61,6 +61,7 @@
 #include "BKE_depsgraph.h"
 #include "BKE_global.h"
 #include "BKE_image.h"
+#include "BKE_library.h"
 #include "BKE_main.h"
 #include "BKE_modifier.h"
 #include "BKE_node.h"
@@ -386,7 +387,7 @@ Render *RE_NewRender(const char *name)
 		BLI_strncpy(re->name, name, RE_MAXNAME);
 		BLI_rw_mutex_init(&re->resultmutex);
 		re->eval_ctx = MEM_callocN(sizeof(EvaluationContext), "re->eval_ctx");
-		re->eval_ctx->for_render = true;
+		re->eval_ctx->mode = DAG_EVAL_RENDER;
 	}
 	
 	RE_InitRenderCB(re);
@@ -511,32 +512,9 @@ static int check_mode_full_sample(RenderData *rd)
 	return scemode;
 }
 
-/* what doesn't change during entire render sequence */
-/* disprect is optional, if NULL it assumes full window render */
-void RE_InitState(Render *re, Render *source, RenderData *rd, SceneRenderLayer *srl, int winx, int winy, rcti *disprect)
+static void re_init_resolution(Render *re, Render *source,
+                               int winx, int winy, rcti *disprect)
 {
-	bool had_freestyle = (re->r.mode & R_EDGE_FRS) != 0;
-
-	re->ok = true;   /* maybe flag */
-	
-	re->i.starttime = PIL_check_seconds_timer();
-
-	/* copy render data and render layers for thread safety */
-	BLI_freelistN(&re->r.layers);
-	re->r = *rd;
-	BLI_duplicatelist(&re->r.layers, &rd->layers);
-
-	if (source) {
-		/* reuse border flags from source renderer */
-		re->r.mode &= ~(R_BORDER | R_CROP);
-		re->r.mode |= source->r.mode & (R_BORDER | R_CROP);
-
-		/* dimensions shall be shared between all renderers */
-		re->r.xsch = source->r.xsch;
-		re->r.ysch = source->r.ysch;
-		re->r.size = source->r.size;
-	}
-
 	re->winx = winx;
 	re->winy = winy;
 	if (source && (source->r.mode & R_BORDER)) {
@@ -570,7 +548,41 @@ void RE_InitState(Render *re, Render *source, RenderData *rd, SceneRenderLayer *
 		re->rectx = winx;
 		re->recty = winy;
 	}
+
+	/* we clip faces with a minimum of 2 pixel boundary outside of image border. see zbuf.c */
+	re->clipcrop = 1.0f + 2.0f / (float)(re->winx > re->winy ? re->winy : re->winx);
+}
+
+/* what doesn't change during entire render sequence */
+/* disprect is optional, if NULL it assumes full window render */
+void RE_InitState(Render *re, Render *source, RenderData *rd,
+                  SceneRenderLayer *srl,
+                  int winx, int winy, rcti *disprect)
+{
+	bool had_freestyle = (re->r.mode & R_EDGE_FRS) != 0;
+
+	re->ok = true;   /* maybe flag */
 	
+	re->i.starttime = PIL_check_seconds_timer();
+
+	/* copy render data and render layers for thread safety */
+	BLI_freelistN(&re->r.layers);
+	re->r = *rd;
+	BLI_duplicatelist(&re->r.layers, &rd->layers);
+
+	if (source) {
+		/* reuse border flags from source renderer */
+		re->r.mode &= ~(R_BORDER | R_CROP);
+		re->r.mode |= source->r.mode & (R_BORDER | R_CROP);
+
+		/* dimensions shall be shared between all renderers */
+		re->r.xsch = source->r.xsch;
+		re->r.ysch = source->r.ysch;
+		re->r.size = source->r.size;
+	}
+
+	re_init_resolution(re, source, winx, winy, disprect);
+
 	if (re->rectx < 1 || re->recty < 1 || (BKE_imtype_is_movie(rd->im_format.imtype) &&
 	                                       (re->rectx < 16 || re->recty < 16) ))
 	{
@@ -649,22 +661,84 @@ void RE_InitState(Render *re, Render *source, RenderData *rd, SceneRenderLayer *
 		re->result->recty = re->recty;
 	}
 	
+	if (re->r.scemode & R_VIEWPORT_PREVIEW)
+		re->eval_ctx->mode = DAG_EVAL_PREVIEW;
+	else
+		re->eval_ctx->mode = DAG_EVAL_RENDER;
+	
 	/* ensure renderdatabase can use part settings correct */
 	RE_parts_clamp(re);
 
 	BLI_rw_mutex_unlock(&re->resultmutex);
-	
-	/* we clip faces with a minimum of 2 pixel boundary outside of image border. see zbuf.c */
-	re->clipcrop = 1.0f + 2.0f / (float)(re->winx > re->winy ? re->winy : re->winx);
 	
 	re->mblur_offs = re->field_offs = 0.f;
 	
 	RE_init_threadcount(re);
 }
 
+static void render_result_rescale(Render *re)
+{
+	RenderResult *result = re->result;
+	int x, y;
+	float scale_x, scale_y;
+	float *src_rectf;
+
+	src_rectf = result->rectf;
+	if (src_rectf == NULL) {
+		RenderLayer *rl = render_get_active_layer(re, re->result);
+		if (rl != NULL) {
+			src_rectf = rl->rectf;
+		}
+	}
+
+	if (src_rectf != NULL) {
+		float *dst_rectf = NULL;
+		re->result = render_result_new(re,
+		                               &re->disprect,
+		                               0,
+		                               RR_USE_MEM,
+		                               RR_ALL_LAYERS);
+
+		dst_rectf = re->result->rectf;
+		if (dst_rectf == NULL) {
+			RenderLayer *rl;
+			rl = render_get_active_layer(re, re->result);
+			if (rl != NULL) {
+				dst_rectf = rl->rectf;
+			}
+		}
+
+		scale_x = (float) result->rectx / re->result->rectx;
+		scale_y = (float) result->recty / re->result->recty;
+		for (x = 0; x < re->result->rectx; ++x) {
+			for (y = 0; y < re->result->recty; ++y) {
+				int src_x = x * scale_x,
+				    src_y = y * scale_y;
+				int dst_index = y * re->result->rectx + x,
+				    src_index = src_y * result->rectx + src_x;
+				copy_v4_v4(dst_rectf + dst_index * 4,
+				           src_rectf + src_index * 4);
+			}
+		}
+	}
+
+	render_result_free(result);
+}
+
+void RE_ChangeResolution(Render *re, int winx, int winy, rcti *disprect)
+{
+	re_init_resolution(re, NULL, winx, winy, disprect);
+
+	if (re->result) {
+		BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
+		render_result_rescale(re);
+		BLI_rw_mutex_unlock(&re->resultmutex);
+	}
+}
+
 /* update some variables that can be animated, and otherwise wouldn't be due to
  * RenderData getting copied once at the start of animation render */
-static void render_update_anim_renderdata(Render *re, RenderData *rd)
+void render_update_anim_renderdata(Render *re, RenderData *rd)
 {
 	/* filter */
 	re->r.gauss = rd->gauss;
@@ -1163,7 +1237,13 @@ static void threaded_tile_processor(Render *re)
 		render_result_exr_file_end(re);
 		BLI_rw_mutex_unlock(&re->resultmutex);
 	}
-	
+
+	if (re->r.scemode & R_EXR_CACHE_FILE) {
+		BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
+		render_result_exr_file_cache_write(re);
+		BLI_rw_mutex_unlock(&re->resultmutex);
+	}
+
 	/* unset threadsafety */
 	g_break = 0;
 	
@@ -1596,7 +1676,10 @@ static void render_scene(Render *re, Scene *sce, int cfra)
 	
 	/* initial setup */
 	RE_InitState(resc, re, &sce->r, NULL, winx, winy, &re->disprect);
-	
+
+	/* We still want to use 'rendercache' setting from org (main) scene... */
+	resc->r.scemode = (resc->r.scemode & ~R_EXR_CACHE_FILE) | (re->r.scemode & R_EXR_CACHE_FILE);
+
 	/* still unsure entity this... */
 	resc->main = re->main;
 	resc->scene = sce;
@@ -1747,11 +1830,13 @@ static void tag_scenes_for_render(Render *re)
 	}
 	
 #ifdef WITH_FREESTYLE
-	for (sce = re->freestyle_bmain.scene.first; sce; sce = sce->id.next) {
-		sce->id.flag &= ~LIB_DOIT;
+	if (re->freestyle_bmain) {
+		for (sce = re->freestyle_bmain->scene.first; sce; sce = sce->id.next) {
+			sce->id.flag &= ~LIB_DOIT;
 #ifdef DEPSGRAPH_WORKAROUND_HACK
-		tag_dependend_objects_for_render(sce, renderlay);
+			tag_dependend_objects_for_render(sce, renderlay);
 #endif
+		}
 	}
 #endif
 
@@ -1806,7 +1891,8 @@ static void ntree_render_scenes(Render *re)
 {
 	bNode *node;
 	int cfra = re->scene->r.cfra;
-	int restore_scene = 0;
+	Scene *restore_scene = re->scene;
+	bool scene_changed = false;
 	
 	if (re->scene->nodetree == NULL) return;
 	
@@ -1820,18 +1906,18 @@ static void ntree_render_scenes(Render *re)
 				if (node->flag & NODE_TEST) {
 					Scene *scene = (Scene *)node->id;
 
+					scene_changed |= scene != restore_scene;
 					render_scene(re, scene, cfra);
-					restore_scene = (scene != re->scene);
 					node->flag &= ~NODE_TEST;
 					
-					nodeUpdate(re->scene->nodetree, node);
+					nodeUpdate(restore_scene->nodetree, node);
 				}
 			}
 		}
 	}
 
 	/* restore scene if we rendered another last */
-	if (restore_scene)
+	if (scene_changed)
 		BKE_scene_set_background(re->main, re->scene);
 }
 
@@ -1852,6 +1938,8 @@ static void add_freestyle(Render *re, int render)
 
 	actsrl = BLI_findlink(&re->r.layers, re->r.actlay);
 
+	re->freestyle_bmain = BKE_main_new();
+
 	/* We use the same window manager for freestyle bmain as
 	 * real bmain uses. This is needed because freestyle's
 	 * bmain could be used to tag scenes for update, which
@@ -1859,7 +1947,7 @@ static void add_freestyle(Render *re, int render)
 	 * and that function requires proper window manager
 	 * to present (sergey)
 	 */
-	re->freestyle_bmain.wm = re->main->wm;
+	re->freestyle_bmain->wm = re->main->wm;
 
 	FRS_init_stroke_rendering(re);
 
@@ -1900,7 +1988,7 @@ static void composite_freestyle_renders(Render *re, int sample)
 
 			/* may be NULL in case of empty render layer */
 			if (freestyle_render) {
-				render_result_exr_file_read(freestyle_render, sample);
+				render_result_exr_file_read_sample(freestyle_render, sample);
 				FRS_composite_result(re, srl, freestyle_render);
 				RE_FreeRenderResult(freestyle_render->result);
 				freestyle_render->result = NULL;
@@ -1924,10 +2012,20 @@ static void free_all_freestyle_renders(void)
 			if (freestyle_render) {
 				freestyle_scene = freestyle_render->scene;
 				RE_FreeRender(freestyle_render);
-				BKE_scene_unlink(&re1->freestyle_bmain, freestyle_scene, NULL);
+				BKE_scene_unlink(re1->freestyle_bmain, freestyle_scene, NULL);
 			}
 		}
 		BLI_freelistN(&re1->freestyle_renders);
+
+		if (re1->freestyle_bmain) {
+			/* detach the window manager from freestyle bmain (see comments
+			 * in add_freestyle() for more detail)
+			 */
+			re1->freestyle_bmain->wm.first = re1->freestyle_bmain->wm.last = NULL;
+
+			BKE_main_free(re1->freestyle_bmain);
+			re1->freestyle_bmain = NULL;
+		}
 	}
 }
 #endif
@@ -1974,7 +2072,7 @@ static void do_merge_fullsample(Render *re, bNodeTree *ntree)
 				if (re1 && (re1->r.scemode & R_FULL_SAMPLE)) {
 					if (sample) {
 						BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
-						render_result_exr_file_read(re1, sample);
+						render_result_exr_file_read_sample(re1, sample);
 #ifdef WITH_FREESTYLE
 						if (re1->r.mode & R_EDGE_FRS)
 							composite_freestyle_renders(re1, sample);
@@ -2078,8 +2176,10 @@ void RE_MergeFullSample(Render *re, Main *bmain, Scene *sce, bNodeTree *ntree)
 		scene->id.flag |= LIB_DOIT;
 	
 #ifdef WITH_FREESTYLE
-	for (scene = re->freestyle_bmain.scene.first; scene; scene = scene->id.next)
-		scene->id.flag &= ~LIB_DOIT;
+	if (re->freestyle_bmain) {
+		for (scene = re->freestyle_bmain->scene.first; scene; scene = scene->id.next)
+			scene->id.flag &= ~LIB_DOIT;
+	}
 #endif
 
 	for (node = ntree->nodes.first; node; node = node->next) {
@@ -2575,7 +2675,8 @@ static void update_physics_cache(Render *re, Scene *scene, int UNUSED(anim_init)
 	BKE_ptcache_bake(&baker);
 }
 /* evaluating scene options for general Blender render */
-static int render_initialize_from_main(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *srl, Object *camera_override, unsigned int lay_override, int anim, int anim_init)
+static int render_initialize_from_main(Render *re, RenderData *rd, Main *bmain, Scene *scene, SceneRenderLayer *srl,
+                                       Object *camera_override, unsigned int lay_override, int anim, int anim_init)
 {
 	int winx, winy;
 	rcti disprect;
@@ -2584,16 +2685,16 @@ static int render_initialize_from_main(Render *re, Main *bmain, Scene *scene, Sc
 	 * r.border is the clipping rect */
 	
 	/* calculate actual render result and display size */
-	winx = (scene->r.size * scene->r.xsch) / 100;
-	winy = (scene->r.size * scene->r.ysch) / 100;
+	winx = (rd->size * rd->xsch) / 100;
+	winy = (rd->size * rd->ysch) / 100;
 	
 	/* we always render smaller part, inserting it in larger image is compositor bizz, it uses disprect for it */
 	if (scene->r.mode & R_BORDER) {
-		disprect.xmin = scene->r.border.xmin * winx;
-		disprect.xmax = scene->r.border.xmax * winx;
+		disprect.xmin = rd->border.xmin * winx;
+		disprect.xmax = rd->border.xmax * winx;
 		
-		disprect.ymin = scene->r.border.ymin * winy;
-		disprect.ymax = scene->r.border.ymax * winy;
+		disprect.ymin = rd->border.ymin * winy;
+		disprect.ymax = rd->border.ymax * winy;
 	}
 	else {
 		disprect.xmin = disprect.ymin = 0;
@@ -2606,6 +2707,7 @@ static int render_initialize_from_main(Render *re, Main *bmain, Scene *scene, Sc
 	re->scene_color_manage = BKE_scene_check_color_management_enabled(scene);
 	re->camera_override = camera_override;
 	re->lay = lay_override ? lay_override : scene->lay;
+	re->layer_override = lay_override;
 	re->i.localview = (re->lay & 0xFF000000) != 0;
 	
 	/* not too nice, but it survives anim-border render */
@@ -2663,7 +2765,7 @@ void RE_BlenderFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *sr
 	
 	scene->r.cfra = frame;
 	
-	if (render_initialize_from_main(re, bmain, scene, srl, camera_override, lay_override, 0, 0)) {
+	if (render_initialize_from_main(re, &scene->r, bmain, scene, srl, camera_override, lay_override, 0, 0)) {
 		MEM_reset_peak_memory();
 
 		BLI_callback_exec(re->main, (ID *)scene, BLI_CB_EVT_RENDER_PRE);
@@ -2698,7 +2800,7 @@ void RE_BlenderFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *sr
 void RE_RenderFreestyleStrokes(Render *re, Main *bmain, Scene *scene, int render)
 {
 	re->result_ok= 0;
-	if (render_initialize_from_main(re, bmain, scene, NULL, NULL, scene->lay, 0, 0)) {
+	if (render_initialize_from_main(re, &scene->r, bmain, scene, NULL, NULL, scene->lay, 0, 0)) {
 		if (render)
 			do_render_fields_blur_3d(re);
 	}
@@ -2817,12 +2919,13 @@ static int do_write_image_or_movie(Render *re, Main *bmain, Scene *scene, bMovie
 void RE_BlenderAnim(Render *re, Main *bmain, Scene *scene, Object *camera_override,
                     unsigned int lay_override, int sfra, int efra, int tfra)
 {
+	RenderData rd = scene->r;
 	bMovieHandle *mh = BKE_movie_handle_get(scene->r.im_format.imtype);
 	int cfrao = scene->r.cfra;
 	int nfra, totrendered = 0, totskipped = 0;
 	
 	/* do not fully call for each frame, it initializes & pops output window */
-	if (!render_initialize_from_main(re, bmain, scene, NULL, camera_override, lay_override, 0, 1))
+	if (!render_initialize_from_main(re, &rd, bmain, scene, NULL, camera_override, lay_override, 0, 1))
 		return;
 	
 	/* ugly global still... is to prevent renderwin events and signal subsurfs etc to make full resol */
@@ -2884,7 +2987,7 @@ void RE_BlenderAnim(Render *re, Main *bmain, Scene *scene, Object *camera_overri
 			char name[FILE_MAX];
 			
 			/* only border now, todo: camera lens. (ton) */
-			render_initialize_from_main(re, bmain, scene, NULL, camera_override, lay_override, 1, 0);
+			render_initialize_from_main(re, &rd, bmain, scene, NULL, camera_override, lay_override, 1, 0);
 
 			if (nfra != scene->r.cfra) {
 				/*
@@ -3039,7 +3142,7 @@ bool RE_ReadRenderResult(Scene *scene, Scene *scenode)
 	re->scene_color_manage = BKE_scene_check_color_management_enabled(scene);
 	
 	BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
-	success = render_result_exr_file_read(re, 0);
+	success = render_result_exr_file_cache_read(re);
 	BLI_rw_mutex_unlock(&re->resultmutex);
 
 	return success;

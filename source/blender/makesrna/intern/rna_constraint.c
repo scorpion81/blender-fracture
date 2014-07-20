@@ -351,7 +351,7 @@ static void rna_ActionConstraint_minmax_range(PointerRNA *ptr, float *min, float
 	bActionConstraint *acon = (bActionConstraint *)con->data;
 
 	/* 0, 1, 2 = magic numbers for rotX, rotY, rotZ */
-	if (ELEM3(acon->type, 0, 1, 2)) {
+	if (ELEM(acon->type, 0, 1, 2)) {
 		*min = -180.0f;
 		*max = 180.0f;
 	}
@@ -662,6 +662,7 @@ static void rna_def_constraint_kinematic(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "pole_angle", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "poleangle");
 	RNA_def_property_range(prop, -M_PI, M_PI);
+	RNA_def_property_ui_range(prop, -M_PI, M_PI, 10, 4);
 	RNA_def_property_ui_text(prop, "Pole Angle", "Pole rotation offset");
 	RNA_def_property_update(prop, NC_OBJECT | ND_CONSTRAINT, "rna_Constraint_update");
 

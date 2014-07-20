@@ -386,7 +386,7 @@ static void rna_userdef_pathcompare_remove(ReportList *reports, PointerRNA *path
 
 static void rna_userdef_temp_update(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *UNUSED(ptr))
 {
-	BLI_init_temporary_dir(U.tempdir);
+	BLI_temp_dir_init(U.tempdir);
 }
 
 static void rna_userdef_text_update(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *UNUSED(ptr))
@@ -3707,7 +3707,12 @@ static void rna_def_userdef_system(BlenderRNA *brna)
 	RNA_def_property_range(prop, 48, 144);
 	RNA_def_property_ui_text(prop, "DPI", "Font size and resolution for display");
 	RNA_def_property_update(prop, 0, "rna_userdef_dpi_update");
-	
+
+	prop = RNA_def_property(srna, "font_path_ui", PROP_STRING, PROP_FILEPATH);
+	RNA_def_property_string_sdna(prop, NULL, "font_path_ui");
+	RNA_def_property_ui_text(prop, "Interface Font", "Path to interface font");
+	RNA_def_property_update(prop, NC_WINDOW, "rna_userdef_language_update");
+
 	prop = RNA_def_property(srna, "scrollback", PROP_INT, PROP_UNSIGNED);
 	RNA_def_property_int_sdna(prop, NULL, "scrollback");
 	RNA_def_property_range(prop, 32, 32768);
@@ -4266,6 +4271,10 @@ static void rna_def_userdef_filepaths(BlenderRNA *brna)
 	RNA_def_property_string_sdna(prop, NULL, "tempdir");
 	RNA_def_property_ui_text(prop, "Temporary Directory", "The directory for storing temporary save files");
 	RNA_def_property_update(prop, 0, "rna_userdef_temp_update");
+
+	prop = RNA_def_property(srna, "render_cache_directory", PROP_STRING, PROP_DIRPATH);
+	RNA_def_property_string_sdna(prop, NULL, "render_cachedir");
+	RNA_def_property_ui_text(prop, "Render Cache Path", "Where to cache raw render results");
 
 	prop = RNA_def_property(srna, "image_editor", PROP_STRING, PROP_FILEPATH);
 	RNA_def_property_string_sdna(prop, NULL, "image_editor");

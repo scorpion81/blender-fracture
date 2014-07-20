@@ -233,8 +233,7 @@ ccl_device_inline float3 motion_triangle_refine_subsurface(KernelGlobals *kg, Sh
 ccl_device_noinline void motion_triangle_shader_setup(KernelGlobals *kg, ShaderData *sd, const Intersection *isect, const Ray *ray, bool subsurface)
 {
 	/* get shader */
-	float4 Ns = kernel_tex_fetch(__tri_normal, sd->prim);
-	sd->shader = __float_as_int(Ns.w);
+	sd->shader =  __float_as_int(kernel_tex_fetch(__tri_shader, sd->prim));
 
 	/* get motion info */
 	int numsteps, numverts;
@@ -327,14 +326,21 @@ ccl_device_inline bool motion_triangle_intersect(KernelGlobals *kg, Intersection
 	float t, u, v;
 
 	if(ray_triangle_intersect_uv(P, dir, isect->t, verts[2], verts[0], verts[1], &u, &v, &t)) {
-		isect->prim = triAddr;
-		isect->object = object;
-		isect->type = PRIMITIVE_MOTION_TRIANGLE;
-		isect->u = u;
-		isect->v = v;
-		isect->t = t;
+#ifdef __VISIBILITY_FLAG__
+		/* visibility flag test. we do it here under the assumption
+		 * that most triangles are culled by node flags */
+		if(kernel_tex_fetch(__prim_visibility, triAddr) & visibility)
+#endif
+		{
+			isect->prim = triAddr;
+			isect->object = object;
+			isect->type = PRIMITIVE_MOTION_TRIANGLE;
+			isect->u = u;
+			isect->v = v;
+			isect->t = t;
 		
-		return true;
+			return true;
+		}
 	}
 
 	return false;

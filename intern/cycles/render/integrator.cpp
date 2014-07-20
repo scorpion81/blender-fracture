@@ -95,9 +95,12 @@ void Integrator::device_update(Device *device, DeviceScene *dscene, Scene *scene
 	kintegrator->transparent_max_bounce = transparent_max_bounce + 1;
 	kintegrator->transparent_min_bounce = transparent_min_bounce + 1;
 
-	kintegrator->transparent_shadows = transparent_shadows;
+	/* At this point kintegrator->transparent_shadows is set automatically
+	 * based on whether shaders use transparent shadows (see shader.cpp).
+	 * If user doesn't want transparent shadows, force them off. */
+	if(!transparent_shadows)
+		kintegrator->transparent_shadows = false;
 
-	kintegrator->volume_homogeneous_sampling = volume_homogeneous_sampling;
 	kintegrator->volume_max_steps = volume_max_steps;
 	kintegrator->volume_step_size = volume_step_size;
 
@@ -121,8 +124,15 @@ void Integrator::device_update(Device *device, DeviceScene *dscene, Scene *scene
 	kintegrator->mesh_light_samples = mesh_light_samples;
 	kintegrator->subsurface_samples = subsurface_samples;
 	kintegrator->volume_samples = volume_samples;
-	kintegrator->sample_all_lights_direct = sample_all_lights_direct;
-	kintegrator->sample_all_lights_indirect = sample_all_lights_indirect;
+
+	if(method == BRANCHED_PATH) {
+		kintegrator->sample_all_lights_direct = sample_all_lights_direct;
+		kintegrator->sample_all_lights_indirect = sample_all_lights_indirect;
+	}
+	else {
+		kintegrator->sample_all_lights_direct = false;
+		kintegrator->sample_all_lights_indirect = false;
+	}
 
 	kintegrator->sampling_pattern = sampling_pattern;
 	kintegrator->aa_samples = aa_samples;

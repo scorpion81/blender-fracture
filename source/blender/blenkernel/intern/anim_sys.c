@@ -244,7 +244,7 @@ void BKE_free_animdata(ID *id)
 	}
 }
 
-/* Freeing -------------------------------------------- */
+/* Copying -------------------------------------------- */
 
 /* Make a copy of the given AnimData - to be used when copying datablocks */
 AnimData *BKE_copy_animdata(AnimData *adt, const bool do_action)
@@ -381,10 +381,12 @@ void BKE_relink_animdata(AnimData *adt)
 
 /* Sub-ID Regrouping ------------------------------------------- */
 
-/* helper heuristic for determining if a path is compatible with the basepath 
- * < path: (str) full RNA-path from some data (usually an F-Curve) to compare
- * < basepath: (str) shorter path fragment to look for
- * > returns (bool) whether there is a match
+/**
+ * Helper heuristic for determining if a path is compatible with the basepath
+ *
+ * \param path Full RNA-path from some data (usually an F-Curve) to compare
+ * \param basepath Shorter path fragment to look for
+ * \return Whether there is a match
  */
 static bool animpath_matches_basepath(const char path[], const char basepath[])
 {
@@ -403,7 +405,7 @@ void action_move_fcurves_by_basepath(bAction *srcAct, bAction *dstAct, const cha
 	FCurve *fcu, *fcn = NULL;
 	
 	/* sanity checks */
-	if (ELEM3(NULL, srcAct, dstAct, basepath)) {
+	if (ELEM(NULL, srcAct, dstAct, basepath)) {
 		if (G.debug & G_DEBUG) {
 			printf("ERROR: action_partition_fcurves_by_basepath(%p, %p, %p) has insufficient info to work with\n",
 			       (void *)srcAct, (void *)dstAct, (void *)basepath);
@@ -984,8 +986,8 @@ void BKE_all_animdata_fix_paths_rename(ID *ref_id, const char *prefix, const cha
 		AnimData *adt = BKE_animdata_from_id(id); \
 		NtId_Type *ntp = (NtId_Type *)id; \
 		if (ntp->nodetree) { \
-			AnimData *adt2 = BKE_animdata_from_id((ID *)ntp); \
-			BKE_animdata_fix_paths_rename((ID *)ntp, adt2, ref_id, prefix, oldName, newName, 0, 0, 1); \
+			AnimData *adt2 = BKE_animdata_from_id((ID *)ntp->nodetree); \
+			BKE_animdata_fix_paths_rename((ID *)ntp->nodetree, adt2, ref_id, prefix, oldName, newName, 0, 0, 1); \
 		} \
 		BKE_animdata_fix_paths_rename(id, adt, ref_id, prefix, oldName, newName, 0, 0, 1); \
 	} (void)0
@@ -1060,7 +1062,7 @@ KS_Path *BKE_keyingset_find_path(KeyingSet *ks, ID *id, const char group_name[],
 	KS_Path *ksp;
 	
 	/* sanity checks */
-	if (ELEM3(NULL, ks, rna_path, id))
+	if (ELEM(NULL, ks, rna_path, id))
 		return NULL;
 	
 	/* loop over paths in the current KeyingSet, finding the first one where all settings match 
@@ -1166,7 +1168,7 @@ KS_Path *BKE_keyingset_add_path(KeyingSet *ks, ID *id, const char group_name[], 
 	
 	/* just copy path info */
 	/* TODO: should array index be checked too? */
-	ksp->rna_path = BLI_strdupn(rna_path, strlen(rna_path));
+	ksp->rna_path = BLI_strdup(rna_path);
 	ksp->array_index = array_index;
 	
 	/* store flags */
@@ -2232,9 +2234,12 @@ void nladata_flush_channels(ListBase *channels)
 
 /* ---------------------- */
 
-/* NLA Evaluation function - values are calculated and stored in temporary "NlaEvalChannels" 
- * ! This is exported so that keyframing code can use this for make use of it for anim layers support
- * > echannels: (list<NlaEvalChannels>) evaluation channels with calculated values
+/**
+ * NLA Evaluation function - values are calculated and stored in temporary "NlaEvalChannels"
+ *
+ * \note This is exported so that keyframing code can use this for make use of it for anim layers support
+ *
+ * \param[out] echannels Evaluation channels with calculated values
  */
 static void animsys_evaluate_nla(ListBase *echannels, PointerRNA *ptr, AnimData *adt, float ctime)
 {

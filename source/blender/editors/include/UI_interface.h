@@ -380,8 +380,10 @@ void uiPupBlockClose(struct bContext *C, uiBlock *block);
  * */
 
 uiBlock *uiBeginBlock(const struct bContext *C, struct ARegion *region, const char *name, short dt);
+void uiEndBlock_ex(const struct bContext *C, uiBlock *block, const int xy[2]);
 void uiEndBlock(const struct bContext *C, uiBlock *block);
 void uiDrawBlock(const struct bContext *C, struct uiBlock *block);
+void uiBlockUpdateFromOld(const struct bContext *C, struct uiBlock *block);
 
 uiBlock *uiGetBlock(const char *name, struct ARegion *ar);
 
@@ -842,7 +844,8 @@ void uiTemplateIconView(uiLayout *layout, struct PointerRNA *ptr, const char *pr
 void uiTemplateHistogram(uiLayout *layout, struct PointerRNA *ptr, const char *propname);
 void uiTemplateWaveform(uiLayout *layout, struct PointerRNA *ptr, const char *propname);
 void uiTemplateVectorscope(uiLayout *layout, struct PointerRNA *ptr, const char *propname);
-void uiTemplateCurveMapping(uiLayout *layout, struct PointerRNA *ptr, const char *propname, int type, int levels, int brush);
+void uiTemplateCurveMapping(uiLayout *layout, struct PointerRNA *ptr, const char *propname, int type,
+                            int levels, int brush, int neg_slope);
 void uiTemplateColorPicker(uiLayout *layout, struct PointerRNA *ptr, const char *propname, int value_slider, int lock, int lock_luminosity, int cubic);
 void uiTemplateLayers(uiLayout *layout, struct PointerRNA *ptr, const char *propname,
                       PointerRNA *used_ptr, const char *used_propname, int active_layer);

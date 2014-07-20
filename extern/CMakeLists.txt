@@ -83,3 +83,7 @@ endif()
 if(WITH_VORO)
 	add_subdirectory(voro++)
 endif()
+
+if(WITH_GTESTS)
+	add_subdirectory(gtest)
+endif()

@@ -615,7 +615,8 @@ void DM_to_mesh(DerivedMesh *dm, Mesh *me, Object *ob, CustomDataMask mask)
 		MEM_freeN(me->mselect);
 	}
 
-	*me = tmp;
+	/* skip the listbase */
+	MEMCPY_STRUCT_OFS(me, &tmp, id.prev);
 }
 
 void DM_to_meshkey(DerivedMesh *dm, Mesh *me, KeyBlock *kb)
@@ -1107,7 +1108,7 @@ static void weightpaint_color(unsigned char r_col[4], DMWeightColorInfo *dm_wcin
 
 static void calc_weightpaint_vert_color(
         unsigned char r_col[4],
-        MDeformVert *dv, 
+        const MDeformVert *dv,
         DMWeightColorInfo *dm_wcinfo,
         const int defbase_tot, const int defbase_act,
         const bool *defbase_sel, const int defbase_sel_tot,
@@ -1122,7 +1123,7 @@ static void calc_weightpaint_vert_color(
 		bool was_a_nonzero = false;
 		unsigned int i;
 
-		MDeformWeight *dw = dv->dw;
+		const MDeformWeight *dw = dv->dw;
 		for (i = dv->totweight; i != 0; i--, dw++) {
 			/* in multipaint, get the average if auto normalize is inactive
 			 * get the sum if it is active */
@@ -1213,14 +1214,15 @@ static void calc_weightpaint_vert_array(Object *ob, DerivedMesh *dm, int const d
 		}
 	}
 	else {
-		int col_i;
+		unsigned char col[4];
 		if (draw_flag & (CALC_WP_GROUP_USER_ACTIVE | CALC_WP_GROUP_USER_ALL)) {
-			col_i = 0;
+			copy_v3_v3_char((char *)col, dm_wcinfo->alert_color);
+			col[3] = 255;
 		}
 		else {
-			weightpaint_color((unsigned char *)&col_i, dm_wcinfo, 0.0f);
+			weightpaint_color(col, dm_wcinfo, 0.0f);
 		}
-		fill_vn_i((int *)r_wtcol_v, numVerts, col_i);
+		fill_vn_i((int *)r_wtcol_v, numVerts, *((int *)col));
 	}
 }
 

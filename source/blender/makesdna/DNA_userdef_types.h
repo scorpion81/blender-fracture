@@ -422,6 +422,8 @@ typedef struct UserDef {
 	char tempdir[768];	/* FILE_MAXDIR length */
 	char fontdir[768];
 	char renderdir[1024]; /* FILE_MAX length */
+	/* EXR cache path */
+	char render_cachedir[768];  /* 768 = FILE_MAXDIR */
 	char textudir[768];
 	char pythondir[768];
 	char sounddir[768];
@@ -520,6 +522,8 @@ typedef struct UserDef {
 	char navigation_mode, pad;
 
 	char author[80];	/* author name for file formats supporting it */
+
+	char font_path_ui[1024];
 
 	int compute_device_type;
 	int compute_device_id;

@@ -48,6 +48,7 @@
 
 #include "BKE_colortools.h"
 #include "BKE_context.h"
+#include "BKE_depsgraph.h"
 #include "BKE_icons.h"
 #include "BKE_image.h"
 #include "BKE_global.h"
@@ -72,6 +73,7 @@
 #include "RNA_enum_types.h"
 
 #include "ED_image.h"
+#include "ED_paint.h"
 #include "ED_render.h"
 #include "ED_screen.h"
 #include "ED_space_api.h"
@@ -88,7 +90,6 @@
 #include "PIL_time.h"
 
 #include "image_intern.h"
-#include "ED_sculpt.h"
 
 /******************** view navigation utilities *********************/
 
@@ -942,10 +943,10 @@ static void image_open_cancel(bContext *UNUSED(C), wmOperator *op)
 }
 
 /**
- * @brief Get a list of frames from the list of image files matching the first file name sequence pattern
- * @param ptr [in] the RNA pointer containing the "directory" entry and "files" collection
- * @param frames [out] the list of frame numbers found in the files matching the first one by name
- * @param path [out] the full path of the first file in the list of image files
+ * \brief Get a list of frames from the list of image files matching the first file name sequence pattern
+ * \param ptr [in] the RNA pointer containing the "directory" entry and "files" collection
+ * \param frames [out] the list of frame numbers found in the files matching the first one by name
+ * \param path [out] the full path of the first file in the list of image files
  */
 static void image_sequence_get_frames(PointerRNA *ptr, ListBase *frames, char *path, const size_t maxlen)
 {
@@ -1000,10 +1001,10 @@ static int image_cmp_frame(void *a, void *b)
 }
 
 /**
- * @brief Return the start (offset) and the length of the sequence of continuous frames in the list of frames
- * @param frames [in] the list of frame numbers, as a side-effect the list is sorted
- * @param ofs [out] offest, the first frame number in the sequence
- * @return the number of continuos frames in the sequence
+ * \brief Return the start (offset) and the length of the sequence of continuous frames in the list of frames
+ * \param frames [in] the list of frame numbers, as a side-effect the list is sorted
+ * \param ofs [out] offest, the first frame number in the sequence
+ * \return the number of contiguous frames in the sequence
  */
 static int image_sequence_get_len(ListBase *frames, int *ofs)
 {
@@ -1040,16 +1041,17 @@ static int image_open_exec(bContext *C, wmOperator *op)
 
 	const bool is_relative_path = RNA_boolean_get(op->ptr, "relative_path");
 
-	if (RNA_struct_property_is_set(op->ptr, "files") && RNA_struct_property_is_set(op->ptr, "directory")) {	
+	RNA_string_get(op->ptr, "filepath", path);
+
+	if (!IMB_isanim(path) && RNA_struct_property_is_set(op->ptr, "files") &&
+	    RNA_struct_property_is_set(op->ptr, "directory"))
+	{
 		ListBase frames;
 
 		BLI_listbase_clear(&frames);
 		image_sequence_get_frames(op->ptr, &frames, path, sizeof(path));
 		frame_seq_len = image_sequence_get_len(&frames, &frame_ofs);
 		BLI_freelistN(&frames);
-	}
-	else {
-		RNA_string_get(op->ptr, "filepath", path);
 	}
 
 	errno = 0;
@@ -1381,7 +1383,7 @@ static int save_image_options_init(SaveImageOptions *simopts, SpaceImage *sima, 
 		/* sanitize all settings */
 
 		/* unlikely but just in case */
-		if (ELEM3(simopts->im_format.planes, R_IMF_PLANES_BW, R_IMF_PLANES_RGB, R_IMF_PLANES_RGBA) == 0) {
+		if (ELEM(simopts->im_format.planes, R_IMF_PLANES_BW, R_IMF_PLANES_RGB, R_IMF_PLANES_RGBA) == 0) {
 			simopts->im_format.planes = R_IMF_PLANES_RGBA;
 		}
 
@@ -1865,6 +1867,7 @@ static int image_reload_exec(bContext *C, wmOperator *UNUSED(op))
 	
 	// XXX other users?
 	BKE_image_signal(ima, (sima) ? &sima->iuser : NULL, IMA_SIGNAL_RELOAD);
+	DAG_id_tag_update(&ima->id, 0);
 
 	WM_event_add_notifier(C, NC_IMAGE | NA_EDITED, ima);
 	
@@ -2995,4 +2998,36 @@ void IMAGE_OT_change_frame(wmOperatorType *ot)
 
 	/* rna */
 	RNA_def_int(ot->srna, "frame", 0, MINAFRAME, MAXFRAME, "Frame", "", MINAFRAME, MAXFRAME);
+}
+
+/* Reload cached render results... */
+/* goes over all scenes, reads render layers */
+static int image_read_renderlayers_exec(bContext *C, wmOperator *UNUSED(op))
+{
+	Scene *scene = CTX_data_scene(C);
+	SpaceImage *sima = CTX_wm_space_image(C);
+	Image *ima;
+
+	ima = BKE_image_verify_viewer(IMA_TYPE_R_RESULT, "Render Result");
+	if (sima->image == NULL) {
+		ED_space_image_set(sima, scene, NULL, ima);
+	}
+
+	RE_ReadRenderResult(scene, scene);
+
+	WM_event_add_notifier(C, NC_IMAGE | NA_EDITED, ima);
+	return OPERATOR_FINISHED;
+}
+
+void IMAGE_OT_read_renderlayers(wmOperatorType *ot)
+{
+	ot->name = "Read Render Layers";
+	ot->idname = "IMAGE_OT_read_renderlayers";
+	ot->description = "Read all the current scene's render layers from cache, as needed";
+
+	ot->poll = space_image_main_area_poll;
+	ot->exec = image_read_renderlayers_exec;
+
+	/* flags */
+	ot->flag = 0;
 }

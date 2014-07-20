@@ -22,7 +22,7 @@
 #include "kernel_globals.h"
 #include "kernel_film.h"
 #include "kernel_path.h"
-#include "kernel_displace.h"
+#include "kernel_bake.h"
 
 /* device data taken from CUDA occupancy calculator */
 
@@ -61,12 +61,12 @@
 
 /* tunable parameters */
 #define CUDA_THREADS_BLOCK_WIDTH 16
-#define CUDA_KERNEL_MAX_REGISTERS 63
+#define CUDA_KERNEL_MAX_REGISTERS 40
 #define CUDA_KERNEL_BRANCHED_MAX_REGISTERS 63
 
 /* unknown architecture */
 #else
-#error "Unknown or unuspported CUDA architecture, can't determine launch bounds"
+#error "Unknown or unsupported CUDA architecture, can't determine launch bounds"
 #endif
 
 /* compute number of threads per block and minimum blocks per multiprocessor
@@ -146,11 +146,22 @@ kernel_cuda_convert_to_half_float(uchar4 *rgba, float *buffer, float sample_scal
 
 extern "C" __global__ void
 CUDA_LAUNCH_BOUNDS(CUDA_THREADS_BLOCK_WIDTH, CUDA_KERNEL_MAX_REGISTERS)
-kernel_cuda_shader(uint4 *input, float4 *output, int type, int sx)
+kernel_cuda_shader(uint4 *input, float4 *output, int type, int sx, int sw, int sample)
 {
 	int x = sx + blockDim.x*blockIdx.x + threadIdx.x;
 
-	kernel_shader_evaluate(NULL, input, output, (ShaderEvalType)type, x);
+	if(x < sx + sw)
+		kernel_shader_evaluate(NULL, input, output, (ShaderEvalType)type, x, sample);
+}
+
+extern "C" __global__ void
+CUDA_LAUNCH_BOUNDS(CUDA_THREADS_BLOCK_WIDTH, CUDA_KERNEL_MAX_REGISTERS)
+kernel_cuda_bake(uint4 *input, float4 *output, int type, int sx, int sw, int sample)
+{
+	int x = sx + blockDim.x*blockIdx.x + threadIdx.x;
+
+	if(x < sx + sw)
+		kernel_bake_evaluate(NULL, input, output, (ShaderEvalType)type, x, sample);
 }
 
 #endif
