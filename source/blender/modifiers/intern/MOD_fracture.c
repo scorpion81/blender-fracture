@@ -2975,7 +2975,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 					}
 					vertstart += s->totvert;
 					//mi->vertco = get_vertco(s);// ? starting coordinates ???
-					mi->physics_mesh = BKE_shard_create_dm(s, false);
+					mi->physics_mesh = BKE_shard_create_dm(s, true);
 					totvert = mi->physics_mesh->numVertData;
 					verts = mi->physics_mesh->getVertArray(mi->physics_mesh);
 					mi->vertco = MEM_mallocN(sizeof(float) * 3 * totvert, "vertco");

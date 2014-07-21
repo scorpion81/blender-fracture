@@ -2493,31 +2493,18 @@ void OBJECT_OT_rigidbody_constraints_refresh(wmOperatorType *ot)
 void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, FractureModifierData *rmd, Object* par)
 {
 	ParticleSystemModifierData *pmd = modifiers_findByType(ob, eModifierType_ParticleSystem);
-	//ExplodeModifierData *emd = modifiers_findByType(ob, eModifierType_Explode);
 	Base *base_new, *base_old = BKE_scene_base_find(scene, ob);
 	Object *ob_new = NULL;
 	MeshIsland *mi;
 	RigidBodyShardCon* con;
 	int i = 0, result = 0;
 	
-	//if explo modifier present before, refresh and apply it too (triggers refresh of rmd too)
-	/*if (emd && rmd) {
-		emd->use_cache = FALSE;
-		rmd->refresh = TRUE;
-		result = modifier_apply_obdata(reports, scene, ob, emd);
-		emd->use_cache = MOD_VORONOI_USECACHE;
-		result = modifier_apply_obdata(reports, scene, ob, rmd);
-		rmd->refresh = FALSE;
-		//BLI_remlink(&ob->modifiers, emd);
-		//BLI_remlink(&ob->modifiers, rmd);
-	}
-	else*/ if (rmd)
+	if (rmd)
 	{
 		//apply just rigidbody modifier
 		rmd->refresh = true;
 		result = modifier_apply_obdata(reports, scene, ob, rmd);
 		rmd->refresh = false;
-		//BLI_remlink(&ob->modifiers, rmd);
 	}
 	
 	if (pmd)
@@ -2539,24 +2526,15 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 		{
 			float cent[3];
 			FractureModifierData *rmd;
-			//ExplodeModifierData *emd2;
-			BMesh *bm;
+			MVert* v;
+			int j = 0;
+			Mesh* me;
+			//BMesh *bm;
 			
 			//create separate objects for meshislands
 			base_new = ED_object_add_duplicate(G.main, scene, base_old, USER_DUP_MESH);
-			//ob_new = BKE_object_add(G.main, scene, OB_MESH);
 			ob_new = base_new->object;
 			rmd = modifiers_findByType(ob_new, eModifierType_Fracture);
-			//emd2 = modifiers_findByType(ob_new, eModifierType_Explode);
-			
-			//remove duplicated modifiers now
-			/*if (emd2)
-			{
-				emd2->tempOb = NULL;
-				BLI_remlink(&ob_new->modifiers, emd2);
-				modifier_free(emd2);
-			}*/
-			
 			if (rmd)
 			{
 				BLI_remlink(&ob_new->modifiers, rmd);
@@ -2566,20 +2544,19 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			assign_matarar(ob_new, give_matarar(ob), *give_totcolp(ob));
 			
 			//converting to bmesh first retains the textures
-			bm = DM_to_bmesh(mi->physics_mesh, true);
-			/*if (emd && emd->mode == eFractureMode_Cells)
+			//bm = DM_to_bmesh(mi->physics_mesh, true);
+			
+			//BM_mesh_bm_to_me(bm, ob_new->data, false);
+			//BM_mesh_free(bm);
+
+			DM_to_mesh(mi->physics_mesh, ob_new->data, ob_new, CD_MASK_MESH);
+			me = (Mesh*)ob_new->data;
+			me->edit_btmesh = NULL;
+
+			for (j = 0, v = me->mvert; j < me->totvert; j++, v++)
 			{
-				*BMO_op_callf(bm,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-						 "dissolve_limit edges=%ae verts=%av angle_limit=%f use_dissolve_boundaries=%b",
-						 BM_EDGES_OF_MESH, BM_VERTS_OF_MESH, 0.087f, false);*
-				BM_mesh_decimate_dissolve(bm, 0.087f, false, 0);
-			}*/
-			
-			BM_mesh_bm_to_me(bm, ob_new->data, false);
-			BM_mesh_free(bm);
-			//DM_to_mesh(mi->physics_mesh, ob_new->data, ob_new, 0);
-			
-			((Mesh *)ob_new->data)->edit_btmesh = NULL;
+				sub_v3_v3(v->co, mi->centroid);
+			}
 			
 			//set origin to centroid
 			copy_v3_v3(cent, mi->centroid);
@@ -2662,7 +2639,7 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			//add_v3_v3v3(rbcon->loc, ob1->loc, ob2->loc); //set in center
 			//mul_v3_fl(rbcon->loc, 0.5f);
 			copy_v3_v3(rbcon->loc, ob1->loc); //use same settings as in modifier
-			add_v3_v3(rbcon->loc, par->loc); // correct parenting calculation
+			//add_v3_v3(rbcon->loc, par->loc); // correct parenting calculation
 			ED_rigidbody_constraint_add(scene, rbcon, con->type, reports);
 			
 			rbcon->rigidbody_constraint->ob1 = ob1;
@@ -2679,15 +2656,6 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			
 			BKE_rigidbody_remove_shard_con(scene, con);
 		}
-		
-		
-		//remove original modifiers now
-		/*if (emd)
-		{
-			emd->tempOb = NULL;
-			BLI_remlink(&ob->modifiers, emd);
-			modifier_free(emd);
-		}*/
 		
 		if (rmd)
 		{
@@ -2767,7 +2735,7 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 			float loc[3];
 			Base *base = BKE_scene_base_find(scene, obact);
 			
-			if (parent) {
+			if (0)/*parent*/ {
 				/*char namebuf[MAX_ID_NAME];
 				const char* name =  "X_";
 				strncpy(namebuf, name, strlen(name));
