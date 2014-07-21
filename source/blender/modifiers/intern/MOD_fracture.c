@@ -73,7 +73,7 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, D
 void buildCompounds(FractureModifierData *rmd, Object *ob);
 void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi);
 void connect_constraints(FractureModifierData* rmd,  Object* ob, MeshIsland **meshIslands, int count, BMesh **combined_mesh, KDTree **combined_tree);
-DerivedMesh* doSimulate(FractureModifierData *fmd, Object *ob, DerivedMesh *dm);
+DerivedMesh* doSimulate(FractureModifierData *fmd, Object *ob, DerivedMesh *dm, DerivedMesh *orig_dm);
 
 static void initData(ModifierData *md)
 {
@@ -495,11 +495,11 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		}
 		if (fmd->dm && fmd->frac_mesh && (fmd->dm->getNumPolys(fmd->dm) > 0))
 		{
-			final_dm = doSimulate(fmd, ob, fmd->dm);
+			final_dm = doSimulate(fmd, ob, fmd->dm, derivedData);
 		}
 		else
 		{
-			final_dm = doSimulate(fmd, ob, derivedData);
+			final_dm = doSimulate(fmd, ob, derivedData, derivedData);
 		}
 	}
 
@@ -561,11 +561,11 @@ static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
 		}
 		if (fmd->dm && fmd->frac_mesh)
 		{
-			final_dm = doSimulate(fmd, ob, fmd->dm);
+			final_dm = doSimulate(fmd, ob, fmd->dm, derivedData);
 		}
 		else
 		{
-			final_dm = doSimulate(fmd, ob, derivedData);
+			final_dm = doSimulate(fmd, ob, derivedData, derivedData);
 		}
 	}
 
@@ -1740,13 +1740,13 @@ typedef struct VertParticle
 
 #endif
 
-void mesh_separate_loose(FractureModifierData* rmd, Object* ob)
+void mesh_separate_loose(FractureModifierData* rmd, Object* ob, DerivedMesh* dm)
 {
 	int minsize = 1000;
 	BMesh* bm_work;
 	BMVert* vert, **orig_start;
 	BMIter iter;
-	DerivedMesh* dm = get_orig_dm(ob);
+	//DerivedMesh* dm = get_orig_dm(ob);
 	{
 		//bool temp = rmd->shards_to_islands;
 		BM_mesh_elem_hflag_disable_all(rmd->visible_mesh, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, false);
@@ -1783,12 +1783,12 @@ void mesh_separate_loose(FractureModifierData* rmd, Object* ob)
 		bm_work = NULL;
 	}
 
-	if (!ob->derivedFinal)
+	/*if (!ob->derivedFinal)
 	{
 		dm->needsFree = 1;
 		dm->release(dm);
 		dm = NULL;
-	}
+	}*/
 }
 
 void destroy_compound(FractureModifierData* rmd, Object* ob, MeshIsland *mi, float cfra)
@@ -2875,7 +2875,7 @@ static void refresh_customdata_image(Mesh* me, CustomData *pdata, int totface)
 	}
 }
 
-DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
+DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, DerivedMesh* orig_dm)
 {
 	bool exploOK = false; //doFracture
 	double start;
@@ -2914,11 +2914,9 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 			{
 				Shard *s;
 				MeshIsland* mi; // can be created without shards even, when using fracturemethod = NONE
-				//BMIter iter;
+
 				int i, j, vertstart = 0;
-				//BMVert *v;
-				//MVert* v;
-				DerivedMesh* derived = get_orig_dm(ob);
+				//DerivedMesh* derived = get_orig_dm(ob);
 				float dummyloc[3], rot[4], min[3], max[3];
 				MDeformVert *dvert = fmd->dm->getVertDataArray(fmd->dm, CD_MDEFORMVERT);
 				const int thresh_defgrp_index = defgroup_name_index(ob, fmd->thresh_defgrp_name);
@@ -2993,7 +2991,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 
 						//either take orignormals or take ones from fractured mesh...
 						//copy_v3_v3(no, mv->no);
-						find_normal(derived, fmd->nor_tree, mv->co, &no);
+						find_normal(orig_dm, fmd->nor_tree, mv->co, &no);
 
 						mi->vertno[j*3] = no[0];
 						mi->vertno[j*3+1] = no[1];
@@ -3041,12 +3039,12 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 
 				}
 
-				if (!ob->derivedFinal)
+				/*if (!ob->derivedFinal)
 				{
 					derived->needsFree = 1;
 					derived->release(derived);
 					derived = NULL;
-				}
+				}*/
 			}
 			else
 			{
@@ -3064,7 +3062,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm)
 
 					start = PIL_check_seconds_timer();
 					printf("Steps: %d \n", fmd->frac_mesh->progress_counter);
-					mesh_separate_loose(fmd, ob);
+					mesh_separate_loose(fmd, ob, orig_dm);
 					printf("Splitting to islands done, %g  Steps: %d \n", PIL_check_seconds_timer() - start, fmd->frac_mesh->progress_counter);
 				}
 
