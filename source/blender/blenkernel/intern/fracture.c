@@ -830,7 +830,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	/* argh, WIN32 doesnt support open_memstream, too bad, so we fall back to a regular file here....*/
 
 #if defined(_WIN32) || defined(__APPLE__)
-	path = MEM_mallocN(((strlen(BLI_temporary_dir()) + strlen(filename) + 2) * sizeof(char)), "path");
+	path = MEM_mallocN(((strlen(BLI_temp_dir_base()) + strlen(filename) + 2) * sizeof(char)), "path");
 	path = strcpy(path, BLI_temporary_dir());
 	fullpath = strcat(path, filename);
 	stream = fopen(fullpath, "w+");
