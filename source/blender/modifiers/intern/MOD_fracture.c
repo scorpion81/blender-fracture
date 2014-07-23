@@ -74,6 +74,7 @@ void buildCompounds(FractureModifierData *rmd, Object *ob);
 void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi);
 void connect_constraints(FractureModifierData* rmd,  Object* ob, MeshIsland **meshIslands, int count, BMesh **combined_mesh, KDTree **combined_tree);
 DerivedMesh* doSimulate(FractureModifierData *fmd, Object *ob, DerivedMesh *dm, DerivedMesh *orig_dm);
+void refresh_customdata_image(Mesh* me, CustomData *pdata, int totface);
 
 static void initData(ModifierData *md)
 {
@@ -2848,7 +2849,7 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 	return dm;
 }
 
-static void refresh_customdata_image(Mesh* me, CustomData *pdata, int totface)
+void refresh_customdata_image(Mesh* me, CustomData *pdata, int totface)
 {
 	int i;
 
@@ -3099,7 +3100,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 			printf("Building cached DerivedMesh done, %g\n", PIL_check_seconds_timer() - start);
 		}
 
-		if (fmd->refresh_images && fmd->visible_mesh_cached && fmd->shards_to_islands)
+		if (fmd->refresh_images && fmd->visible_mesh_cached /*&& fmd->shards_to_islands*/)
 		{
 			//need to ensure images are correct after loading...
 			refresh_customdata_image(ob->data, &fmd->visible_mesh_cached->polyData,
