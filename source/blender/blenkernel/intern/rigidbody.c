@@ -3358,7 +3358,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	cache = rbw->pointcache;
 
 	if (ctime <= startframe) {
-		if (rbw->ltime > startframe)
+		if (rbw->ltime > ctime)
 		{	//reenable constraints only with invalid cache...
 			rbw->rebuild_comp_con = true;
 		}
