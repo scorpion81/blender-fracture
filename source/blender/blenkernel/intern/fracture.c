@@ -358,7 +358,7 @@ static Shard* parse_shard(FILE *fp)
 	MPoly *mpoly = NULL;
 	MLoop *mloop = NULL;
 	int *neighbors = NULL;
-	int totpoly, totloop, totvert;
+	int totpoly = 0, totloop = 0, totvert = 0;
 	float centr[3];
 	int shard_id;
 
