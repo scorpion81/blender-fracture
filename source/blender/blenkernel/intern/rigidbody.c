@@ -2949,10 +2949,11 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 					}
 				}
 
-				if (!rebuild)
+				/*if (!rebuild)
 				{
-					rbw->rebuild_comp_con = false;
-				}
+					//rbw->rebuild_comp_con = false;
+					//rmd->refresh_constraints = false;
+				}*/
 			}
 			else
 			{
@@ -3401,6 +3402,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 
 		/* update and validate simulation */
 		rigidbody_update_simulation(scene, rbw, false);
+		rbw->rebuild_comp_con = false; // stop re-enabling the constraints, do this only once (for all objects)
 
 		/* calculate how much time elapsed since last step in seconds */
 		timestep = 1.0f / (float)FPS * (ctime - rbw->ltime) * rbw->time_scale;
