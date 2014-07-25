@@ -1660,6 +1660,7 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 	}
 	
 	
+#if 0
 	if (rb1 && rb2 && use_deact) // rbc->physics_constraint && RB_constraint_is_enabled(rbc->physics_constraint))
 	{
 		//printf("STATE %d %d\n", RB_body_get_activation_state(rb1), RB_body_get_activation_state(rb2));
@@ -1671,6 +1672,7 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 			RB_body_deactivate(rb2);
 		}
 	}
+#endif
 
 	if (rbc->physics_constraint) {
 		if (rebuild == false)
@@ -2926,10 +2928,15 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 
 					else if (rbsc->flag & RBC_FLAG_NEEDS_VALIDATE) {
 						BKE_rigidbody_validate_sim_shard_constraint(rbw, rbsc, ob, false);
+						//rbsc->flag |= RBC_FLAG_ENABLED;
+						if (rbsc->physics_constraint && rbw && rbw->rebuild_comp_con)
+						{
+							RB_constraint_set_enabled(rbsc->physics_constraint, true);
+						}
 					}
 
 					rbsc->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
-					
+
 					if (rmd->use_cellbased_sim) //bullet crash, todo...
 					{
 						for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
@@ -2940,6 +2947,11 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 							}
 						}
 					}
+				}
+
+				if (!rebuild)
+				{
+					rbw->rebuild_comp_con = false;
 				}
 			}
 			else
@@ -3345,6 +3357,11 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	cache = rbw->pointcache;
 
 	if (ctime <= startframe) {
+		if (rbw->ltime > startframe)
+		{	//reenable constraints only with invalid cache...
+			rbw->rebuild_comp_con = true;
+		}
+
 		rbw->ltime = startframe;
 		if ((rbw->object_changed))
 		{	//flag modifier refresh at their next execution
@@ -3352,7 +3369,6 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 			rbw->object_changed = false;
 			rigidbody_update_simulation(scene, rbw, true);
 		}
-		rbw->rebuild_comp_con = true;
 		return;
 	}
 	/* make sure we don't go out of cache frame range */
@@ -3371,6 +3387,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	if (BKE_ptcache_read(&pid, ctime)) {
 		BKE_ptcache_validate(cache, (int)ctime);
 		rbw->ltime = ctime;
+		rbw->rebuild_comp_con = false;
 		return;
 	}
 

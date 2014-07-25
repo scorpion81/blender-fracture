@@ -267,7 +267,7 @@ static void freeData(ModifierData *md)
 		}
 	}
 
-	if (rmd->refresh_constraints || !rmd->refresh)
+	if ((!rmd->refresh && !rmd->refresh_constraints) || (rmd->frac_mesh && rmd->frac_mesh->cancel == 1) || rmd->refresh_constraints)
 	{
 		for (mi = rmd->meshIslands.first; mi; mi = mi->next)
 		{
@@ -278,17 +278,17 @@ static void freeData(ModifierData *md)
 				mi->participating_constraint_count = 0;
 			}
 		}
-	}
 
-	while (rmd->meshConstraints.first) {
-		rbsc = rmd->meshConstraints.first;
-		BLI_remlink(&rmd->meshConstraints, rbsc);
-		MEM_freeN(rbsc);
-		rbsc = NULL;
-	}
+		while (rmd->meshConstraints.first) {
+			rbsc = rmd->meshConstraints.first;
+			BLI_remlink(&rmd->meshConstraints, rbsc);
+			MEM_freeN(rbsc);
+			rbsc = NULL;
+		}
 
-	rmd->meshConstraints.first = NULL;
-	rmd->meshConstraints.last = NULL;
+		rmd->meshConstraints.first = NULL;
+		rmd->meshConstraints.last = NULL;
+	}
 }
 
 static void growCluster(FractureModifierData *fmd, Shard* seed, int sindex, ListBase* lbVisit, KDTree* tree, int depth)
@@ -3109,11 +3109,28 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 			DM_update_tessface_data(fmd->visible_mesh_cached);
 		}
 
+		fmd->refresh = false;
+		//fmd->refresh_constraints = false;
+
+		if (fmd->execute_threaded)
+		{
+			//job done
+			fmd->frac_mesh->running = 0;
+		}
+	}
+
+	if (fmd->refresh_constraints)
+	{
+		start = PIL_check_seconds_timer();
+
 		if ((fmd->visible_mesh != NULL || fmd->visible_mesh_cached != NULL )  && (fmd->use_constraints))
 		{
 			if (fmd->visible_mesh == NULL)
 			{	//ugh, needed to build constraints...
-				fmd->visible_mesh = DM_to_bmesh(fmd->visible_mesh_cached, true);
+				fmd->visible_mesh = DM_to_bmesh(fmd->dm, true);
+				BM_mesh_elem_index_ensure(fmd->visible_mesh, BM_VERT | BM_EDGE | BM_FACE);
+				BM_mesh_elem_table_ensure(fmd->visible_mesh, BM_VERT | BM_EDGE | BM_FACE);
+				BM_mesh_elem_toolflags_ensure(fmd->visible_mesh);
 			}
 			create_constraints(fmd, ob); //check for actually creating the constraints inside
 
@@ -3124,17 +3141,10 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 			}
 		}
 
-		printf("Building constraints done, %g\n", PIL_check_seconds_timer() - start);
-		printf("Constraints: %d\n", BLI_countlist(&fmd->meshConstraints));
-
-		fmd->refresh = false;
 		fmd->refresh_constraints = false;
 
-		if (fmd->execute_threaded)
-		{
-			//job done
-			fmd->frac_mesh->running = 0;
-		}
+		printf("Building constraints done, %g\n", PIL_check_seconds_timer() - start);
+		printf("Constraints: %d\n", BLI_countlist(&fmd->meshConstraints));
 	}
 
 	exploOK = !fmd->explo_shared || (fmd->explo_shared && fmd->dm && fmd->frac_mesh);

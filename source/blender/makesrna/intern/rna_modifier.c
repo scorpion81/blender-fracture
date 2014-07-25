@@ -823,7 +823,8 @@ static void rna_FractureModifier_thresh_defgrp_name_set(PointerRNA *ptr, const c
 	Object* ob = ptr->id.data;
 	rna_object_vgroup_name_set(ptr, value, tmd->thresh_defgrp_name, sizeof(tmd->thresh_defgrp_name));
 	//updateShards(tmd, ob); //deactivate for now, since we need a real re-fracture to re-apply interpolation
-	updateConstraints(tmd, ob);
+	//updateConstraints(tmd, ob);
+	tmd->refresh_constraints = true;
 }
 
 static void rna_FractureModifier_ground_defgrp_name_set(PointerRNA *ptr, const char *value)
@@ -839,7 +840,8 @@ static void rna_RigidBodyModifier_threshold_set(PointerRNA *ptr, float value)
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	Object* ob = ptr->id.data;
 	rmd->breaking_threshold = value;
-	updateConstraints(rmd, ob);
+	//updateConstraints(rmd, ob);
+	rmd->refresh_constraints = true;
 }
 
 static void rna_RigidBodyModifier_contact_dist_set(PointerRNA *ptr, float value)
@@ -867,7 +869,8 @@ static void rna_RigidBodyModifier_mass_dependent_thresholds_set(PointerRNA* ptr,
 	FractureModifierData *rmd = (FractureModifierData *)ptr->data;
 	Object* ob = ptr->id.data;
 	rmd->mass_dependent_thresholds = value;
-	updateConstraints(rmd, ob);
+	//updateConstraints(rmd, ob);
+	rmd->refresh_constraints = true;
 }
 
 static void rna_RigidBodyModifier_constraint_limit_set(PointerRNA *ptr, int value)
@@ -886,7 +889,8 @@ static void rna_RigidBodyModifier_dist_dependent_thresholds_set(PointerRNA* ptr,
 	FractureModifierData *rmd = (FractureModifierData *)ptr->data;
 	Object* ob = ptr->id.data;
 	rmd->dist_dependent_thresholds = value;
-	updateConstraints(rmd, ob);
+	//updateConstraints(rmd, ob);
+	rmd->refresh_constraints = true;
 }
 
 static void rna_RigidBodyModifier_breaking_percentage_set(PointerRNA *ptr, int value)
@@ -894,7 +898,8 @@ static void rna_RigidBodyModifier_breaking_percentage_set(PointerRNA *ptr, int v
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	Object* ob = ptr->id.data;
 	rmd->breaking_percentage = value;
-	updateConstraints(rmd, ob);
+	//updateConstraints(rmd, ob);
+	rmd->refresh_constraints = true;
 }
 
 static void rna_RigidBodyModifier_breaking_angle_set(PointerRNA *ptr, int value)
@@ -902,7 +907,8 @@ static void rna_RigidBodyModifier_breaking_angle_set(PointerRNA *ptr, int value)
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	Object* ob = ptr->id.data;
 	rmd->breaking_angle = value;
-	updateConstraints(rmd, ob);
+	//updateConstraints(rmd, ob);
+	rmd->refresh_constraints = true;
 }
 
 static void rna_RigidBodyModifier_breaking_distance_set(PointerRNA *ptr, float value)
@@ -910,7 +916,8 @@ static void rna_RigidBodyModifier_breaking_distance_set(PointerRNA *ptr, float v
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	Object* ob = ptr->id.data;
 	rmd->breaking_distance = value;
-	updateConstraints(rmd, ob);
+	//updateConstraints(rmd, ob);
+	rmd->refresh_constraints = true;
 }
 
 static void rna_RigidBodyModifier_cluster_threshold_set(PointerRNA *ptr, float value)
@@ -918,7 +925,8 @@ static void rna_RigidBodyModifier_cluster_threshold_set(PointerRNA *ptr, float v
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	Object* ob = ptr->id.data;
 	rmd->cluster_breaking_threshold = value;
-	updateConstraints(rmd, ob);
+	//updateConstraints(rmd, ob);
+	rmd->refresh_constraints = true;
 }
 
 static void rna_RigidBodyModifier_solver_iterations_override_set(PointerRNA *ptr, float value)
@@ -926,7 +934,8 @@ static void rna_RigidBodyModifier_solver_iterations_override_set(PointerRNA *ptr
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	Object* ob = ptr->id.data;
 	rmd->solver_iterations_override = value;
-	updateConstraints(rmd, ob);
+	//updateConstraints(rmd, ob);
+	rmd->refresh_constraints = true;
 }
 
 static void rna_RigidBodyModifier_proportional_solver_iterations_override_set(PointerRNA *ptr, int value)
@@ -934,7 +943,8 @@ static void rna_RigidBodyModifier_proportional_solver_iterations_override_set(Po
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	Object* ob = ptr->id.data;
 	rmd->use_proportional_solver_iterations = value;
-	updateConstraints(rmd, ob);
+	//updateConstraints(rmd, ob);
+	rmd->refresh_constraints = true;
 }
 
 #else
