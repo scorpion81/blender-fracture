@@ -578,9 +578,10 @@ void BKE_shard_free(Shard *s, bool doCustomData)
 
 	if (doCustomData)
 	{
+		CustomData_free_layers(&s->vertData, CD_MDEFORMVERT, s->totvert);
 		CustomData_free(&s->vertData, s->totvert);
-//		CustomData_free_layers(&s->loopData, CD_MASK_MLOOPUV, s->totloop);
-//		CustomData_free_layers(&s->polyData, CD_MASK_MTEXPOLY, s->totpoly);
+		CustomData_free_layers(&s->loopData, CD_MLOOPUV, s->totloop);
+		CustomData_free_layers(&s->polyData, CD_MTEXPOLY, s->totpoly);
 		CustomData_free(&s->loopData, s->totloop);
 		CustomData_free(&s->polyData, s->totpoly);
 	}

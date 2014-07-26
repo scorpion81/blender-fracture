@@ -133,6 +133,8 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             box.prop_search(md, "thresh_vertex_group", ob, "vertex_groups", text = "")
             box.label("Passive Vertex Group:")
             box.prop_search(md, "ground_vertex_group", ob, "vertex_groups", text = "")
+            box.label("Inner Vertex Group:")
+            box.prop_search(md, "inner_vertex_group", ob, "vertex_groups", text = "")
             row = box.row(align=True)
             row.operator("fracture.toggle_ground", text = "Toggle Ground")
             row.operator("fracture.toggle_connect_ground", text = "Toggle Connect Ground")

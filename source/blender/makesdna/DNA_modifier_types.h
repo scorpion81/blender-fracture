@@ -1433,6 +1433,7 @@ typedef struct FractureModifierData {
 	float *framemap;
 	char thresh_defgrp_name[64];  /* MAX_VGROUP_NAME */
 	char ground_defgrp_name[64];  /* MAX_VGROUP_NAME */
+	char inner_defgrp_name[64];  /* MAX_VGROUP_NAME */
 	struct KDTree *nor_tree; //store original vertices here (coords), to find them later and reuse their normals
 	struct Material *inner_material;
 

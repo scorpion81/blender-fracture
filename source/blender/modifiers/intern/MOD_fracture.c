@@ -2736,6 +2736,7 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 	int vertstart = 0;
 	const int thresh_defgrp_index = defgroup_name_index(ob, rmd->thresh_defgrp_name);
 	const int ground_defgrp_index = defgroup_name_index(ob, rmd->ground_defgrp_name);
+	const int inner_defgrp_index = defgroup_name_index(ob, rmd->inner_defgrp_name);
 
 	if (rmd->dm && !rmd->shards_to_islands && (rmd->dm->getNumPolys(rmd->dm) > 0))
 	{
@@ -2767,6 +2768,19 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 		dvert = dm->getVertDataArray(dm, CD_MDEFORMVERT);
 
 
+	if (rmd->inner_defgrp_name[0] && dm && dvert)
+	{
+		int vcount = dm->getNumVerts(dm);
+		int vindex = 0;
+
+		for (vindex = 0; vindex < vcount; vindex++)
+		{	//clear inner vgroup if any
+			MDeformWeight* dw  = defvert_find_index(dvert+vindex, inner_defgrp_index);
+			defvert_remove_group(dvert+vindex, dw);
+		}
+	}
+
+
 	for (mi = rmd->meshIslands.first; mi; mi = mi->next)
 	{
 		int i = 0;
@@ -2782,18 +2796,40 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 			for (i = 0; i < mi->vertex_count; i++)
 			{
 				mi->vertices_cached[i] = verts + vertstart + i;
+
+				//sum up vertexweights and divide by vertcount to get islandweight
+				if (dvert && (dvert+vertstart+i)->dw && rmd->thresh_defgrp_name[0]) {
+					float vweight = defvert_find_weight(dvert + vertstart + i, thresh_defgrp_index);
+					mi->thresh_weight += vweight;
+				}
+
+				if (dvert && (dvert+vertstart+i)->dw && rmd->ground_defgrp_name[0]) {
+					float gweight = defvert_find_weight(dvert + vertstart + i, ground_defgrp_index);
+					mi->ground_weight += gweight;
+				}
 			}
 
-			//sum up vertexweights and divide by vertcount to get islandweight
-			if (dvert && (dvert+vertstart+i)->dw && rmd->thresh_defgrp_name[0]) {
-				float vweight = defvert_find_weight(dvert + vertstart + i, thresh_defgrp_index);
-				mi->thresh_weight += vweight;
-			}
-
-			if (dvert && (dvert+vertstart+i)->dw && rmd->ground_defgrp_name[0]) {
-				float gweight = defvert_find_weight(dvert + vertstart + i, ground_defgrp_index);
-				mi->ground_weight += gweight;
-			}
+			//do here for now only, since in halving case we have no neighborhood info
+			/*if (dvert && rmd->inner_defgrp_name[0]) {
+				int index = 0;
+				MPoly* mp = rmd->dm->getPolyArray(rmd->dm);
+				MLoop* ml = rmd->dm->getLoopArray(rmd->dm);
+				for (index = 0; index < mi->neighbor_count; index++)
+				{
+					int n = mi->neighbor_ids[index];
+					if (n >= 0)
+					{
+						int j = 0;
+						for (j = 0; j < (mp+n)->totloop; j++)
+						{
+							MLoop* l;
+							int l_index = (mp+n)->loopstart + j;
+							l = ml+l_index;
+							defvert_add_index_notest(dvert+l->v, inner_defgrp_index, 1.0f);
+						}
+					}
+				}
+			}*/
 
 			vertstart += mi->vertex_count;
 		}
@@ -2843,6 +2879,41 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 		if (mi->rigidbody != NULL)
 		{
 			mi->rigidbody->type = mi->ground_weight > 0.5f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
+		}
+
+		//use fallback over inner material
+		if (rmd->inner_defgrp_name[0] && rmd->inner_material) {
+			int ind = 0;
+			short mat_index = find_material_index(ob, rmd->inner_material);
+			MPoly* mp = dm->getPolyArray(dm);
+			MLoop* ml = dm->getLoopArray(dm);
+			int count = dm->getNumPolys(dm);
+			int totvert = dm->getNumVerts(dm);
+
+			if (dvert != NULL)
+			{
+				CustomData_free_layers(&dm->vertData, CD_MDEFORMVERT, totvert);
+				dvert = NULL;
+			}
+
+			dvert = CustomData_add_layer(&dm->vertData, CD_MDEFORMVERT, CD_CALLOC,
+			                      NULL, totvert);
+
+
+			for (ind = 0; ind < count; ind++)
+			{
+				if ((mp+ind)->mat_nr == mat_index-1)
+				{
+					int j = 0;
+					for (j = 0; j < (mp+ind)->totloop; j++)
+					{
+						MLoop* l;
+						int l_index = (mp+ind)->loopstart + j;
+						l = ml+l_index;
+						defvert_add_index_notest(dvert+l->v, inner_defgrp_index, 1.0f);
+					}
+				}
+			}
 		}
 	}
 
@@ -2916,12 +2987,16 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 				Shard *s;
 				MeshIsland* mi; // can be created without shards even, when using fracturemethod = NONE
 
-				int i, j, vertstart = 0;
+				int i, j, vertstart = 0, polystart = 0;
 				//DerivedMesh* derived = get_orig_dm(ob);
 				float dummyloc[3], rot[4], min[3], max[3];
 				MDeformVert *dvert = fmd->dm->getVertDataArray(fmd->dm, CD_MDEFORMVERT);
+				MDeformVert *ivert;
+				MPoly* mp;
+				MLoop* ml;
 				const int thresh_defgrp_index = defgroup_name_index(ob, fmd->thresh_defgrp_name);
 				const int ground_defgrp_index = defgroup_name_index(ob, fmd->ground_defgrp_name);
+				const int inner_defgrp_index = defgroup_name_index(ob, fmd->inner_defgrp_name);
 
 
 				//good idea to simply reference this ? Hmm, what about removing the explo modifier later, crash ?)
@@ -2935,6 +3010,12 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 				}
 
 				fmd->visible_mesh_cached = CDDM_copy(fmd->dm); //DM_to_bmesh(fmd->dm, true);
+
+				//to write to a vgroup (inner vgroup) use the copied cached mesh
+				mp = fmd->visible_mesh_cached->getPolyArray(fmd->visible_mesh_cached);
+				ml = fmd->visible_mesh_cached->getLoopArray(fmd->visible_mesh_cached);
+				ivert = fmd->visible_mesh_cached->getVertDataArray(fmd->visible_mesh_cached, CD_MDEFORMVERT);
+
 
 				for (i = 0; i < fmd->frac_mesh->shard_count; i++)
 				{
@@ -3037,6 +3118,36 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 						BKE_rigidbody_calc_shard_mass(ob, mi);
 					}
 					mi->vertex_indices = NULL;
+
+					if (fmd->inner_defgrp_name[0]) {
+						int index = 0;
+						int totvert = fmd->visible_mesh_cached->getNumVerts(fmd->visible_mesh_cached);
+						if (ivert != NULL)
+						{
+							CustomData_free_layers(&fmd->visible_mesh_cached->vertData, CD_MDEFORMVERT, totvert);
+							ivert = NULL;
+						}
+
+						ivert = CustomData_add_layer(&fmd->visible_mesh_cached->vertData, CD_MDEFORMVERT, CD_CALLOC,
+						                      NULL, totvert);
+
+						for (index = 0; index < mi->neighbor_count; index++)
+						{
+							int n = mi->neighbor_ids[index];
+							if (n >= 0)
+							{
+								int j = 0;
+								for (j = 0; j < (mp+n+polystart)->totloop; j++)
+								{
+									MLoop* l;
+									int l_index = (mp+n+polystart)->loopstart + j;
+									l = ml+l_index;
+									defvert_add_index_notest(ivert+l->v, inner_defgrp_index, 1.0f);
+								}
+							}
+						}
+					}
+					polystart += s->totpoly;
 
 				}
 
