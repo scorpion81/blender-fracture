@@ -2929,10 +2929,11 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 					else if (rbsc->flag & RBC_FLAG_NEEDS_VALIDATE) {
 						BKE_rigidbody_validate_sim_shard_constraint(rbw, rbsc, ob, false);
 						//rbsc->flag |= RBC_FLAG_ENABLED;
-						if (rbsc->physics_constraint && rbw && rbw->rebuild_comp_con)
-						{
-							RB_constraint_set_enabled(rbsc->physics_constraint, true);
-						}
+					}
+
+					if (rbsc->physics_constraint && rbw && rbw->rebuild_comp_con)
+					{
+						RB_constraint_set_enabled(rbsc->physics_constraint, true);
 					}
 
 					rbsc->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
@@ -3228,6 +3229,7 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 		else {
 			if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)
 				rbw->object_changed = true;
+
 			mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
 		}
 	}
@@ -3358,7 +3360,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	cache = rbw->pointcache;
 
 	if (ctime <= startframe) {
-		if (rbw->ltime > ctime)
+		//if (rbw->ltime >= ctime)
 		{	//reenable constraints only with invalid cache...
 			rbw->rebuild_comp_con = true;
 		}
@@ -3388,7 +3390,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	if (BKE_ptcache_read(&pid, ctime)) {
 		BKE_ptcache_validate(cache, (int)ctime);
 		rbw->ltime = ctime;
-		rbw->rebuild_comp_con = false;
+		//rbw->rebuild_comp_con = false;
 		return;
 	}
 
@@ -3398,11 +3400,17 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 		if (rbw->ltime == startframe && (cache->flag & PTCACHE_OUTDATED || cache->last_exact == 0)) {
 			BKE_ptcache_write(&pid, startframe);
 			//rbw->object_changed = TRUE; //flag refresh of modifiers ONCE if cache is empty
+			//rbw->rebuild_comp_con = false;
+		}
+
+		if (rbw->ltime > startframe)
+		{
+			rbw->rebuild_comp_con = false;
 		}
 
 		/* update and validate simulation */
 		rigidbody_update_simulation(scene, rbw, false);
-		rbw->rebuild_comp_con = false; // stop re-enabling the constraints, do this only once (for all objects)
+		//rbw->rebuild_comp_con = false; // stop re-enabling the constraints, do this only once (for all objects)
 
 		/* calculate how much time elapsed since last step in seconds */
 		timestep = 1.0f / (float)FPS * (ctime - rbw->ltime) * rbw->time_scale;
