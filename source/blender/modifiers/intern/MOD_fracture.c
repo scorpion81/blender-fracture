@@ -3238,7 +3238,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 		{
 			if (fmd->visible_mesh == NULL)
 			{	//ugh, needed to build constraints...
-				fmd->visible_mesh = DM_to_bmesh(fmd->dm, true);
+				fmd->visible_mesh = DM_to_bmesh(fmd->visible_mesh_cached, true);
 				BM_mesh_elem_index_ensure(fmd->visible_mesh, BM_VERT | BM_EDGE | BM_FACE);
 				BM_mesh_elem_table_ensure(fmd->visible_mesh, BM_VERT | BM_EDGE | BM_FACE);
 				BM_mesh_elem_toolflags_ensure(fmd->visible_mesh);
