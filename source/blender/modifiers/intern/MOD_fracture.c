@@ -124,6 +124,7 @@ static void initData(ModifierData *md)
 		fmd->execute_threaded = false;
 		fmd->nor_tree = NULL;
 		fmd->fix_normals = false;
+		fmd->auto_execute = false;
 }
 
 static void freeData(ModifierData *md)
@@ -449,6 +450,11 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	FractureModifierData *fmd = (FractureModifierData*) md;
 	DerivedMesh *final_dm = derivedData;
 
+	if (fmd->auto_execute)
+	{
+		fmd->refresh = true;
+	}
+
 	if (fmd->frac_mesh != NULL && fmd->frac_mesh->running == 1 && fmd->execute_threaded)
 	{
 		//skip modifier execution when job is running
@@ -514,6 +520,11 @@ static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
 {
 	FractureModifierData *fmd = (FractureModifierData*) md;
 	DerivedMesh *final_dm = derivedData;
+
+	if (fmd->auto_execute)
+	{
+		fmd->refresh = true;
+	}
 
 	if (fmd->frac_mesh != NULL && fmd->frac_mesh->running == 1 && fmd->execute_threaded)
 	{
@@ -1029,6 +1040,7 @@ void freeMeshIsland(FractureModifierData* rmd, MeshIsland* mi)
 		mi->physics_mesh = NULL;
 	}
 	if (mi->rigidbody) {
+		BKE_rigidbody_remove_shard(rmd->modifier.scene, mi);
 		MEM_freeN(mi->rigidbody);
 		mi->rigidbody = NULL;
 	}

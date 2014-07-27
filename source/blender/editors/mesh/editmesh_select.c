@@ -1554,6 +1554,7 @@ bool EDBM_select_pick(bContext *C, const int mval[2], bool extend, bool deselect
 
 		}
 
+#if 0
 		//extend selection to entire shard HERE.... XXXX TODO
 		fmd = (FractureModifierData *)modifiers_findByType(vc.obedit, eModifierType_Fracture);
 		if (fmd != NULL)
@@ -1630,6 +1631,7 @@ bool EDBM_select_pick(bContext *C, const int mval[2], bool extend, bool deselect
 			fmd->dm = CDDM_from_bmesh(vc.em->bm, true);
 			WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, vc.obedit);
 		}
+#endif
 
 		WM_event_add_notifier(C, NC_GEOM | ND_SELECT, vc.obedit);
 		return true;
@@ -2747,6 +2749,7 @@ void em_setup_viewcontext(bContext *C, ViewContext *vc)
 
 		//vc->em = BKE_editmesh_from_object(vc->obedit);
 		//check for modifier and use derivedmesh HERE....
+#if 0
 		fmd = (FractureModifierData *)modifiers_findByType(vc->obedit, eModifierType_Fracture);
 		if (fmd != NULL && fmd->dm != NULL)
 		{
@@ -2756,6 +2759,7 @@ void em_setup_viewcontext(bContext *C, ViewContext *vc)
 			vc->em->selectmode = em->selectmode;
 		}
 		else
+#endif
 		{
 			vc->em = BKE_editmesh_from_object(vc->obedit);
 		}

@@ -82,7 +82,9 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         col.prop(md, "point_seed")
         if md.frac_algorithm == 'BOOLEAN' or md.frac_algorithm == 'BISECT_FILL':
             layout.prop(md, "inner_material")
-        layout.prop(md, "shards_to_islands")
+        row = layout.row()
+        row.prop(md, "shards_to_islands")
+        row.prop(md, "auto_execute")
         layout.operator("object.fracture_refresh", text="Execute Fracture")
 
 class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
