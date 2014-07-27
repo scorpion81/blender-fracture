@@ -77,7 +77,7 @@ class PHYSICS_PT_add(PhysicButtonsPanel, Panel):
             physics_add(self, col, context.dynamic_paint, "Dynamic Paint", 'DYNAMIC_PAINT', 'MOD_DYNAMICPAINT', True)
             physics_add(self, col, context.fracture, "Fracture", 'FRACTURE', 'MOD_EXPLODE', True)
 
-        if obj.type == 'CURVE' or obj.type == 'SURF' or obj.type == 'FONT':
+        if obj.type == 'CURVE' or obj.type == 'SURFACE' or obj.type == 'FONT':
             physics_add(self, col, context.fracture, "Fracture", 'FRACTURE', 'MOD_EXPLODE', True)
 
         col = split.column()
@@ -94,7 +94,7 @@ class PHYSICS_PT_add(PhysicButtonsPanel, Panel):
                                 "rigidbody.object_remove",
                                 'MESH_ICOSPHERE')  # XXX: need dedicated icon
 
-        if obj.type == 'CURVE' or obj.type == 'SURF' or obj.type == 'FONT': #works with fracture modifier
+        if obj.type == 'CURVE' or obj.type == 'SURFACE' or obj.type == 'FONT': #works with fracture modifier
             physics_add_special(self, col, obj.rigid_body, "Rigid Body",
                                 "rigidbody.object_add",
                                 "rigidbody.object_remove",
