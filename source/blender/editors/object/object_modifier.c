@@ -2492,13 +2492,14 @@ void OBJECT_OT_rigidbody_constraints_refresh(wmOperatorType *ot)
 
 void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, FractureModifierData *rmd, Object* par)
 {
-	ParticleSystemModifierData *pmd = modifiers_findByType(ob, eModifierType_ParticleSystem);
+	//ParticleSystemModifierData *pmd = modifiers_findByType(ob, eModifierType_ParticleSystem);
 	Base *base_new, *base_old = BKE_scene_base_find(scene, ob);
 	Object *ob_new = NULL;
 	MeshIsland *mi;
 	RigidBodyShardCon* con;
 	int i = 0, result = 0;
 	
+#if 0
 	if (rmd)
 	{
 		//apply just rigidbody modifier
@@ -2506,14 +2507,16 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 		result = modifier_apply_obdata(reports, scene, ob, rmd);
 		rmd->refresh = false;
 	}
-	
+
 	if (pmd)
 	{
 		BLI_remlink(&ob->modifiers, pmd);
 		modifier_free(pmd);
 	}
 
-	if (result)
+#endif
+
+	//if (result)
 	{
 		int count = BLI_countlist(&rmd->meshIslands);
 		KDTree* objtree = BLI_kdtree_new(count);
@@ -2526,19 +2529,55 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 		{
 			float cent[3];
 			FractureModifierData *rmd;
+			ParticleSystemModifierData *pmd;
 			MVert* v;
 			int j = 0;
 			Mesh* me;
 			//BMesh *bm;
 			
 			//create separate objects for meshislands
-			base_new = ED_object_add_duplicate(G.main, scene, base_old, USER_DUP_MESH);
-			ob_new = base_new->object;
+			if (ob->type == OB_MESH)
+			{
+				base_new = ED_object_add_duplicate(G.main, scene, base_old, USER_DUP_MESH);
+				ob_new = base_new->object;
+			}
+			else
+			{
+				RigidBodyWorld *rbw = NULL;
+
+				ob_new = BKE_object_add(G.main, scene, OB_MESH);
+
+				rbw = scene->rigidbody_world;
+
+				if (rbw)
+				{
+					/* make rigidbody object settings */
+					if (ob_new->rigidbody_object == NULL) {
+						ob_new->rigidbody_object = BKE_rigidbody_create_object(scene, ob_new, RBO_TYPE_ACTIVE);
+					}
+					ob_new->rigidbody_object->type = RBO_TYPE_ACTIVE;
+					ob_new->rigidbody_object->flag |= RBO_FLAG_NEEDS_VALIDATE;
+
+					/* add object to rigid body group */
+					BKE_group_object_add(rbw->group, ob_new, scene, NULL);
+
+					DAG_id_tag_update(&ob_new->id, OB_RECALC_OB);
+				}
+			}
+
 			rmd = modifiers_findByType(ob_new, eModifierType_Fracture);
 			if (rmd)
 			{
 				BLI_remlink(&ob_new->modifiers, rmd);
 				modifier_free(rmd);
+			}
+
+			pmd = modifiers_findByType(ob, eModifierType_ParticleSystem);
+			if (pmd)
+			{
+				//throw away possibly copied particlesystems, eating memory otherwise
+				BLI_remlink(&ob_new->modifiers, pmd);
+				modifier_free(pmd);
 			}
 			
 			assign_matarar(ob_new, give_matarar(ob), *give_totcolp(ob));
@@ -2549,9 +2588,16 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			//BM_mesh_bm_to_me(bm, ob_new->data, false);
 			//BM_mesh_free(bm);
 
-			DM_to_mesh(mi->physics_mesh, ob_new->data, ob_new, CD_MASK_MESH);
 			me = (Mesh*)ob_new->data;
 			me->edit_btmesh = NULL;
+
+			CustomData_reset(&me->vdata);
+			CustomData_reset(&me->edata);
+			CustomData_reset(&me->ldata);
+			CustomData_reset(&me->fdata);
+			CustomData_reset(&me->pdata);
+
+			DM_to_mesh(mi->physics_mesh, me, ob_new, CD_MASK_MESH);
 
 			for (j = 0, v = me->mvert; j < me->totvert; j++, v++)
 			{
@@ -2656,21 +2702,21 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			
 			BKE_rigidbody_remove_shard_con(scene, con);
 		}
-		
-		if (rmd)
+
+#if 0
+		if (rmd && ob->type != OB_MESH)
 		{
 			BLI_remlink(&ob->modifiers, rmd);
 			modifier_free(rmd);
+
+			//remove from rigidbody sim and hide
+			//ED_rigidbody_object_remove(scene, ob);
+			//ob->restrictflag
+			|= OB_RESTRICT_RENDER;
+			//ob->restrictflag |= OB_RESTRICT_VIEW;
 		}
-		
-		//remove object as well ? -> crashes...
-		//BKE_libblock_free_us(&(G.main->object), ob);
-		
-		//remove from rigidbody sim and hide
-		ED_rigidbody_object_remove(scene, ob);
-		ob->restrictflag |= OB_RESTRICT_RENDER;
-		ob->restrictflag |= OB_RESTRICT_VIEW;
-		
+#endif
+
 		// free array and kdtree
 		MEM_freeN(objs);
 		BLI_kdtree_free(objtree);
@@ -2747,8 +2793,9 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 			}
 			
 			convert_modifier_to_objects(op->reports, scene, obact, rmd, par);
-			
-			ED_base_object_free_and_unlink(bmain, scene, base);
+
+			//lets keep the original object with the modifier, DONT apply... wont work with CURVE/SURF/FONT
+		//	ED_base_object_free_and_unlink(bmain, scene, base);
 			//DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
 			//WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
 		}
