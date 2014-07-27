@@ -68,10 +68,11 @@
 
 #include "../../rigidbody/RBI_api.h"
 #include "PIL_time.h"
+#include "../../bmesh/tools/bmesh_decimate.h"
 
 static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, DerivedMesh* dm);
 void buildCompounds(FractureModifierData *rmd, Object *ob);
-void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi);
+void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody);
 void connect_constraints(FractureModifierData* rmd,  Object* ob, MeshIsland **meshIslands, int count, BMesh **combined_mesh, KDTree **combined_tree);
 DerivedMesh* doSimulate(FractureModifierData *fmd, Object *ob, DerivedMesh *dm, DerivedMesh *orig_dm);
 void refresh_customdata_image(Mesh* me, CustomData *pdata, int totface);
@@ -179,7 +180,7 @@ static void freeData(ModifierData *md)
 		while (rmd->meshIslands.first) {
 			mi = rmd->meshIslands.first;
 			BLI_remlink(&rmd->meshIslands, mi);
-			freeMeshIsland(rmd, mi);
+			freeMeshIsland(rmd, mi, false);
 			mi = NULL;
 		}
 
@@ -227,7 +228,7 @@ static void freeData(ModifierData *md)
 		while (rmd->meshIslands.first) {
 			mi = rmd->meshIslands.first;
 			BLI_remlink(&rmd->meshIslands, mi);
-			freeMeshIsland(rmd, mi);
+			freeMeshIsland(rmd, mi, true);
 			mi = NULL;
 		}
 
@@ -436,6 +437,29 @@ static DerivedMesh* get_orig_dm(Object* ob)
 	}
 }
 
+static DerivedMesh* get_clean_dm(Object* ob, DerivedMesh* dm)
+{
+	//may have messed up meshes from conversion...
+	if (ob->type == OB_FONT || ob->type == OB_CURVE || ob->type == OB_SURF)
+	{
+		DerivedMesh* result = NULL;
+
+		//convert to BMesh, remove doubles, limited dissolve and convert back
+		BMesh* bm = DM_to_bmesh(dm, true);
+
+		BMO_op_callf(bm,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+					 "remove_doubles verts=%av dist=%f", BM_VERTS_OF_MESH, 0.0001, false);
+
+		BM_mesh_decimate_dissolve(bm, 0.087f, false, 0);
+		result = CDDM_from_bmesh(bm, true);
+		BM_mesh_free(bm);
+
+		return result;
+	}
+
+	return dm;
+}
+
 
 static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
                                   DerivedMesh *derivedData,
@@ -449,6 +473,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 	FractureModifierData *fmd = (FractureModifierData*) md;
 	DerivedMesh *final_dm = derivedData;
+	DerivedMesh *clean_dm = get_clean_dm(ob, derivedData);
 
 	if (fmd->auto_execute)
 	{
@@ -479,7 +504,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 		if (fmd->frac_mesh == NULL)
 		{
-			fmd->frac_mesh = BKE_create_fracture_container(derivedData);
+			fmd->frac_mesh = BKE_create_fracture_container(clean_dm);
 			if (fmd->execute_threaded)
 			{
 				fmd->frac_mesh->running = 1;
@@ -491,9 +516,9 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		if (fmd->refresh)
 		{
 			//build normaltree from origdm
-			fmd->nor_tree = build_nor_tree(derivedData);
+			fmd->nor_tree = build_nor_tree(clean_dm);
 
-			do_fracture(fmd, -1, ob, derivedData);
+			do_fracture(fmd, -1, ob, clean_dm);
 
 			if (!fmd->refresh) //might have been changed from outside, job cancel
 			{
@@ -502,13 +527,20 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		}
 		if (fmd->dm && fmd->frac_mesh && (fmd->dm->getNumPolys(fmd->dm) > 0))
 		{
-			final_dm = doSimulate(fmd, ob, fmd->dm, derivedData);
+			final_dm = doSimulate(fmd, ob, fmd->dm, clean_dm);
 		}
 		else
 		{
-			final_dm = doSimulate(fmd, ob, derivedData, derivedData);
+			final_dm = doSimulate(fmd, ob, clean_dm, clean_dm);
 		}
 	}
+
+/*	if (clean_dm != derivedData && clean_dm != NULL)
+	{
+		clean_dm->needsFree = 1;
+		clean_dm->release(clean_dm);
+		clean_dm = NULL;
+	}*/
 
 	return final_dm;
 }
@@ -520,6 +552,7 @@ static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
 {
 	FractureModifierData *fmd = (FractureModifierData*) md;
 	DerivedMesh *final_dm = derivedData;
+	DerivedMesh *clean_dm = get_clean_dm(ob, derivedData);
 
 	if (fmd->auto_execute)
 	{
@@ -550,7 +583,7 @@ static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
 
 		if (fmd->frac_mesh == NULL)
 		{
-			fmd->frac_mesh = BKE_create_fracture_container(derivedData);
+			fmd->frac_mesh = BKE_create_fracture_container(clean_dm);
 			if (fmd->execute_threaded)
 			{
 				fmd->frac_mesh->running = 1;
@@ -562,9 +595,9 @@ static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
 		if (fmd->refresh)
 		{
 			//build normaltree from origdm
-			fmd->nor_tree = build_nor_tree(derivedData);
+			fmd->nor_tree = build_nor_tree(clean_dm);
 
-			do_fracture(fmd, -1, ob, derivedData);
+			do_fracture(fmd, -1, ob, clean_dm);
 
 			if (!fmd->refresh) //might have been changed from outside, job cancel
 			{
@@ -573,13 +606,20 @@ static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
 		}
 		if (fmd->dm && fmd->frac_mesh)
 		{
-			final_dm = doSimulate(fmd, ob, fmd->dm, derivedData);
+			final_dm = doSimulate(fmd, ob, fmd->dm, clean_dm);
 		}
 		else
 		{
-			final_dm = doSimulate(fmd, ob, derivedData, derivedData);
+			final_dm = doSimulate(fmd, ob, clean_dm, clean_dm);
 		}
 	}
+
+	/*if (clean_dm != derivedData && clean_dm != NULL)
+	{
+		clean_dm->needsFree = 1;
+		clean_dm->release(derivedData);
+		clean_dm = NULL;
+	}*/
 
 	return final_dm;
 }
@@ -1030,7 +1070,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->shards_to_islands = rmd->shards_to_islands;
 }
 
-void freeMeshIsland(FractureModifierData* rmd, MeshIsland* mi)
+void freeMeshIsland(FractureModifierData* rmd, MeshIsland* mi, bool remove_rigidbody)
 {
 	int i;
 
@@ -1040,7 +1080,8 @@ void freeMeshIsland(FractureModifierData* rmd, MeshIsland* mi)
 		mi->physics_mesh = NULL;
 	}
 	if (mi->rigidbody) {
-		BKE_rigidbody_remove_shard(rmd->modifier.scene, mi);
+		if (remove_rigidbody)
+			BKE_rigidbody_remove_shard(rmd->modifier.scene, mi);
 		MEM_freeN(mi->rigidbody);
 		mi->rigidbody = NULL;
 	}
@@ -1185,7 +1226,7 @@ static int BM_mesh_minmax(BMesh *bm, float r_min[3], float r_max[3], int tagged)
 	return (bm->totvert != 0);
 }
 
-static float mesh_separate_tagged(FractureModifierData* rmd, Object *ob, BMVert** v_tag, int v_count, float** startco, BMesh* bm_work, short** startno)
+static float mesh_separate_tagged(FractureModifierData* rmd, Object *ob, BMVert** v_tag, int v_count, float** startco, BMesh* bm_work, short** startno, DerivedMesh* orig_dm)
 {
 	BMesh *bm_new;
 	BMesh *bm_old = bm_work;
@@ -1288,7 +1329,7 @@ static float mesh_separate_tagged(FractureModifierData* rmd, Object *ob, BMVert*
 	if (!rmd->use_cellbased_sim || rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED)
 	{
 		mi->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi);
-		BKE_rigidbody_calc_shard_mass(ob, mi);
+		BKE_rigidbody_calc_shard_mass(ob, mi, orig_dm);
 		if (rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED)
 			mi->rigidbody->flag |= RBO_FLAG_ACTIVE_COMPOUND;
 	}
@@ -1551,7 +1592,7 @@ void mesh_separate_loose_partition(FractureModifierData* rmd, Object* ob, BMesh*
 		bm_mesh_hflag_flush_vert(bm_old, BM_ELEM_TAG);
 
 		/* Move selection into a separate object */
-		mesh_separate_tagged(rmd, ob, v_tag, tag_counter, &startco, bm_old, &startno);
+		mesh_separate_tagged(rmd, ob, v_tag, tag_counter, &startco, bm_old, &startno, dm);
 		if (tot >= bm_old->totvert) {
 			break;
 		}
@@ -1818,7 +1859,7 @@ void destroy_compound(FractureModifierData* rmd, Object* ob, MeshIsland *mi, flo
 		if (mi2->rigidbody == NULL)
 		{
 			mi2->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi2);
-			BKE_rigidbody_calc_shard_mass(ob, mi2);
+			BKE_rigidbody_calc_shard_mass(ob, mi2, NULL);
 			mi2->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 			mi2->rigidbody->flag |= RBO_FLAG_ACTIVE_COMPOUND;
 		}
@@ -3127,7 +3168,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 						mi->destruction_frame = -1;
 						mi->rigidbody = BKE_rigidbody_create_shard(fmd->modifier.scene, ob, mi);
 						mi->rigidbody->flag &= ~RBO_FLAG_ACTIVE_COMPOUND;
-						BKE_rigidbody_calc_shard_mass(ob, mi);
+						BKE_rigidbody_calc_shard_mass(ob, mi, orig_dm);
 					}
 					mi->vertex_indices = NULL;
 
@@ -3358,6 +3399,7 @@ ModifierTypeInfo modifierType_Fracture = {
         /* structSize */        sizeof(FractureModifierData),
         /* type */              eModifierTypeType_Constructive,//eModifierTypeType_OnlyDeform,
         /* flags */             eModifierTypeFlag_AcceptsMesh |
+                                eModifierTypeFlag_AcceptsCVs |
                                 eModifierTypeFlag_Single |
                                 eModifierTypeFlag_SupportsEditmode |
                                 eModifierTypeFlag_SupportsMapping |

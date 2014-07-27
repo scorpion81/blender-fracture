@@ -341,12 +341,12 @@ float BKE_rigidbody_calc_volume(DerivedMesh *dm, RigidBodyOb *rbo)
 	return volume;
 }
 
-void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland* mi)
+void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland* mi, DerivedMesh* orig_dm)
 {
-	DerivedMesh *dm_ob, *dm_mi;
+	DerivedMesh *dm_ob = orig_dm, *dm_mi;
 	float vol_mi, mass_mi, vol_ob, mass_ob;
 
-	dm_ob = CDDM_from_mesh(ob->data); //ob->derivedFinal;
+	//dm_ob = CDDM_from_mesh(ob->data); //ob->derivedFinal;
 	vol_ob = BKE_rigidbody_calc_volume(dm_ob, ob->rigidbody_object);
 	mass_ob = ob->rigidbody_object->mass;
 
@@ -370,8 +370,8 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland* mi)
 		RB_body_set_mass(mi->rigidbody->physics_object, RBO_GET_MASS(mi->rigidbody));
 	}
 	
-	DM_release(dm_ob);
-	MEM_freeN(dm_ob);
+	//DM_release(dm_ob);
+	//MEM_freeN(dm_ob);
 }
 
 static void initNormals(struct MeshIsland* mi, Object* ob, FractureModifierData* fmd)

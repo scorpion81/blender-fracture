@@ -44,7 +44,7 @@ class PhysicButtonsPanel():
     def poll(cls, context):
         ob = context.object
         rd = context.scene.render
-        return (ob and ob.type == 'MESH') and (not rd.use_game_engine) and (context.fracture)
+        return (ob and (ob.type == 'MESH' or ob.type == 'CURVE' or ob.type == 'SURF' or ob.type == 'FONT')) and (not rd.use_game_engine) and (context.fracture)
 
 class FRACTURE_UL_fracture_levels(UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):

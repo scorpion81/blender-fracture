@@ -177,7 +177,7 @@ void foreach_shard_mass(Object* ob)
 			rmd = (FractureModifierData*)md;
 			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 				if (mi->rigidbody != NULL) {
-					BKE_rigidbody_calc_shard_mass(ob, mi);
+					BKE_rigidbody_calc_shard_mass(ob, mi, NULL);
 				}
 			}
 		}
