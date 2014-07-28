@@ -225,6 +225,27 @@ static void freeData(ModifierData *md)
 			rmd->islandShards.last = NULL;
 		}
 
+		//when freeing meshislands, we MUST get rid of constraints before too !!!!
+		for (mi = rmd->meshIslands.first; mi; mi = mi->next)
+		{
+			if (mi->participating_constraints != NULL)
+			{
+				MEM_freeN(mi->participating_constraints);
+				mi->participating_constraints = NULL;
+				mi->participating_constraint_count = 0;
+			}
+		}
+
+		while (rmd->meshConstraints.first) {
+			rbsc = rmd->meshConstraints.first;
+			BLI_remlink(&rmd->meshConstraints, rbsc);
+			MEM_freeN(rbsc);
+			rbsc = NULL;
+		}
+
+		rmd->meshConstraints.first = NULL;
+		rmd->meshConstraints.last = NULL;
+
 		while (rmd->meshIslands.first) {
 			mi = rmd->meshIslands.first;
 			BLI_remlink(&rmd->meshIslands, mi);
