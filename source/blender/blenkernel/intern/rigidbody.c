@@ -347,7 +347,24 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland* mi, DerivedMesh* orig
 	float vol_mi, mass_mi, vol_ob, mass_ob;
 
 	//dm_ob = CDDM_from_mesh(ob->data); //ob->derivedFinal;
-	vol_ob = BKE_rigidbody_calc_volume(dm_ob, ob->rigidbody_object);
+	if (dm_ob == NULL)
+	{
+		//fallback method
+		if (ob->type == OB_MESH)
+		{
+			//if we have a mesh, determine its volume
+			dm_ob = CDDM_from_mesh(ob->data);
+			vol_ob = BKE_rigidbody_calc_volume(dm_ob, ob->rigidbody_object);
+		}
+		else
+		{
+			float dim[3];
+			//else get object boundbox as last resort
+			BKE_object_dimensions_get(ob, dim);
+			vol_ob = dim[0] * dim[1] * dim[2];
+		}
+	}
+
 	mass_ob = ob->rigidbody_object->mass;
 
 	if (vol_ob > 0)
