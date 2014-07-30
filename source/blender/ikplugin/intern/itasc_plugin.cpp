@@ -258,14 +258,14 @@ static int initialize_chain(Object *ob, bPoseChannel *pchan_tip, bConstraint *co
 		if (segcount == rootbone) {
 			// reached this end of the chain but if the chain is overlapping with a
 			// previous one, we must go back up to the root of the other chain
-			if ((curchan->flag & POSE_CHAIN) && curchan->iktree.first == NULL) {
+			if ((curchan->flag & POSE_CHAIN) && BLI_listbase_is_empty(&curchan->iktree)) {
 				rootbone++;
 				continue;
 			}
 			break;
 		}
 
-		if (curchan->iktree.first != NULL)
+		if (BLI_listbase_is_empty(&curchan->iktree) == false)
 			// Oh oh, there is already a chain starting from this channel and our chain is longer...
 			// Should handle this by moving the previous chain up to the beginning of our chain
 			// For now we just stop here
@@ -273,7 +273,7 @@ static int initialize_chain(Object *ob, bPoseChannel *pchan_tip, bConstraint *co
 	}
 	if (!segcount) return 0;
 	// we reached a limit and still not the end of a previous chain, quit
-	if ((pchan_root->flag & POSE_CHAIN) && pchan_root->iktree.first == NULL) return 0;
+	if ((pchan_root->flag & POSE_CHAIN) && BLI_listbase_is_empty(&pchan_root->iktree)) return 0;
 
 	// now that we know how many segment we have, set the flag
 	for (rootbone = segcount, segcount = 0, curchan = pchan_tip; segcount < rootbone; segcount++, curchan = curchan->parent) {
@@ -551,7 +551,7 @@ static bool target_callback(const iTaSC::Timestamp& timestamp, const iTaSC::Fram
 	bConstraint *constraint = (bConstraint *)target->blenderConstraint;
 	float tarmat[4][4];
 
-	BKE_get_constraint_target_matrix(target->blscene, constraint, 0, CONSTRAINT_OBTYPE_OBJECT, target->owner, tarmat, 1.0);
+	BKE_constraint_target_matrix_get(target->blscene, constraint, 0, CONSTRAINT_OBTYPE_OBJECT, target->owner, tarmat, 1.0);
 
 	// rootmat contains the target pose in world coordinate
 	// if enforce is != 1.0, blend the target position with the end effector position
@@ -620,7 +620,7 @@ static bool base_callback(const iTaSC::Timestamp& timestamp, const iTaSC::Frame&
 		IK_Channel &rootchan = ikscene->channels[0];
 
 		// get polar target matrix in world space
-		BKE_get_constraint_target_matrix(ikscene->blscene, ikscene->polarConstraint, 1, CONSTRAINT_OBTYPE_OBJECT, ikscene->blArmature, mat, 1.0);
+		BKE_constraint_target_matrix_get(ikscene->blscene, ikscene->polarConstraint, 1, CONSTRAINT_OBTYPE_OBJECT, ikscene->blArmature, mat, 1.0);
 		// convert to armature space
 		mul_m4_m4m4(polemat, imat, mat);
 		// get the target in world space (was computed before as target object are defined before base object)

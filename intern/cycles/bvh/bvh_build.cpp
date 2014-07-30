@@ -49,10 +49,10 @@ public:
 /* Constructor / Destructor */
 
 BVHBuild::BVHBuild(const vector<Object*>& objects_,
-	vector<int>& prim_segment_, vector<int>& prim_index_, vector<int>& prim_object_,
+	vector<int>& prim_type_, vector<int>& prim_index_, vector<int>& prim_object_,
 	const BVHParams& params_, Progress& progress_)
 : objects(objects_),
-  prim_segment(prim_segment_),
+  prim_type(prim_type_),
   prim_index(prim_index_),
   prim_object(prim_object_),
   params(params_),
@@ -70,45 +70,66 @@ BVHBuild::~BVHBuild()
 
 void BVHBuild::add_reference_mesh(BoundBox& root, BoundBox& center, Mesh *mesh, int i)
 {
+	Attribute *attr_mP = NULL;
+	
+	if(mesh->has_motion_blur())
+		attr_mP = mesh->attributes.find(ATTR_STD_MOTION_VERTEX_POSITION);
+
 	for(uint j = 0; j < mesh->triangles.size(); j++) {
 		Mesh::Triangle t = mesh->triangles[j];
 		BoundBox bounds = BoundBox::empty;
+		PrimitiveType type = PRIMITIVE_TRIANGLE;
 
-		for(int k = 0; k < 3; k++) {
-			float3 co = mesh->verts[t.v[k]];
-			bounds.grow(co);
+		t.bounds_grow(&mesh->verts[0], bounds);
+
+		/* motion triangles */
+		if(attr_mP) {
+			size_t mesh_size = mesh->verts.size();
+			size_t steps = mesh->motion_steps - 1;
+			float3 *vert_steps = attr_mP->data_float3();
+
+			for(size_t i = 0; i < steps; i++)
+				t.bounds_grow(vert_steps + i*mesh_size, bounds);
+
+			type = PRIMITIVE_MOTION_TRIANGLE;
 		}
 
 		if(bounds.valid()) {
-			references.push_back(BVHReference(bounds, j, i, ~0));
+			references.push_back(BVHReference(bounds, j, i, type));
 			root.grow(bounds);
 			center.grow(bounds.center2());
 		}
 	}
 
+	Attribute *curve_attr_mP = NULL;
+
+	if(mesh->has_motion_blur())
+		curve_attr_mP = mesh->curve_attributes.find(ATTR_STD_MOTION_VERTEX_POSITION);
+
 	for(uint j = 0; j < mesh->curves.size(); j++) {
 		Mesh::Curve curve = mesh->curves[j];
+		PrimitiveType type = PRIMITIVE_CURVE;
 
 		for(int k = 0; k < curve.num_keys - 1; k++) {
 			BoundBox bounds = BoundBox::empty;
+			curve.bounds_grow(k, &mesh->curve_keys[0], bounds);
 
-			float3 co[4];
-			co[0] = mesh->curve_keys[max(curve.first_key + k - 1,curve.first_key)].co;
-			co[1] = mesh->curve_keys[curve.first_key + k].co;
-			co[2] = mesh->curve_keys[curve.first_key + k + 1].co;
-			co[3] = mesh->curve_keys[min(curve.first_key + k + 2, curve.first_key + curve.num_keys - 1)].co;
+			/* motion curve */
+			if(curve_attr_mP) {
+				size_t mesh_size = mesh->curve_keys.size();
+				size_t steps = mesh->motion_steps - 1;
+				float4 *key_steps = curve_attr_mP->data_float4();
 
-			float3 lower;
-			float3 upper;
-			curvebounds(&lower.x, &upper.x, co, 0);
-			curvebounds(&lower.y, &upper.y, co, 1);
-			curvebounds(&lower.z, &upper.z, co, 2);
-			float mr = max(mesh->curve_keys[curve.first_key + k].radius, mesh->curve_keys[curve.first_key + k + 1].radius);
-			bounds.grow(lower, mr);
-			bounds.grow(upper, mr);
+				for (size_t i = 0; i < steps; i++)
+					curve.bounds_grow(k, key_steps + i*mesh_size, bounds);
+
+				type = PRIMITIVE_MOTION_CURVE;
+			}
 
 			if(bounds.valid()) {
-				references.push_back(BVHReference(bounds, j, i, k));
+				int packed_type = PRIMITIVE_PACK_SEGMENT(type, k);
+				
+				references.push_back(BVHReference(bounds, j, i, packed_type));
 				root.grow(bounds);
 				center.grow(bounds.center2());
 			}
@@ -118,7 +139,7 @@ void BVHBuild::add_reference_mesh(BoundBox& root, BoundBox& center, Mesh *mesh, 
 
 void BVHBuild::add_reference_object(BoundBox& root, BoundBox& center, Object *ob, int i)
 {
-	references.push_back(BVHReference(ob->bounds, -1, i, false));
+	references.push_back(BVHReference(ob->bounds, -1, i, 0));
 	root.grow(ob->bounds);
 	center.grow(ob->bounds.center2());
 }
@@ -207,7 +228,7 @@ BVHNode* BVHBuild::run()
 	progress_total = references.size();
 	progress_original_total = progress_total;
 
-	prim_segment.resize(references.size());
+	prim_type.resize(references.size());
 	prim_index.resize(references.size());
 	prim_object.resize(references.size());
 
@@ -373,12 +394,12 @@ BVHNode *BVHBuild::create_object_leaf_nodes(const BVHReference *ref, int start, 
 		if(start == prim_index.size()) {
 			assert(params.use_spatial_split);
 
-			prim_segment.push_back(ref->prim_segment());
+			prim_type.push_back(ref->prim_type());
 			prim_index.push_back(ref->prim_index());
 			prim_object.push_back(ref->prim_object());
 		}
 		else {
-			prim_segment[start] = ref->prim_segment();
+			prim_type[start] = ref->prim_type();
 			prim_index[start] = ref->prim_index();
 			prim_object[start] = ref->prim_object();
 		}
@@ -401,7 +422,7 @@ BVHNode *BVHBuild::create_object_leaf_nodes(const BVHReference *ref, int start, 
 
 BVHNode* BVHBuild::create_leaf_node(const BVHRange& range)
 {
-	vector<int>& p_segment = prim_segment;
+	vector<int>& p_type = prim_type;
 	vector<int>& p_index = prim_index;
 	vector<int>& p_object = prim_object;
 	BoundBox bounds = BoundBox::empty;
@@ -415,12 +436,12 @@ BVHNode* BVHBuild::create_leaf_node(const BVHRange& range)
 			if(range.start() + num == prim_index.size()) {
 				assert(params.use_spatial_split);
 
-				p_segment.push_back(ref.prim_segment());
+				p_type.push_back(ref.prim_type());
 				p_index.push_back(ref.prim_index());
 				p_object.push_back(ref.prim_object());
 			}
 			else {
-				p_segment[range.start() + num] = ref.prim_segment();
+				p_type[range.start() + num] = ref.prim_type();
 				p_index[range.start() + num] = ref.prim_index();
 				p_object[range.start() + num] = ref.prim_object();
 			}

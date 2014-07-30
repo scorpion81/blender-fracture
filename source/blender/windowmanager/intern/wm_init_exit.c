@@ -161,6 +161,9 @@ void WM_init(bContext *C, int argc, const char **argv)
 	BLF_init(11, U.dpi); /* Please update source/gamengine/GamePlayer/GPG_ghost.cpp if you change this */
 	BLF_lang_init();
 
+	/* Enforce loading the UI for the initial homefile */
+	G.fileflags &= ~G_FILE_NO_UI;
+
 	/* get the default database, plus a wm */
 	wm_homefile_read(C, NULL, G.factory_startup, NULL);
 	
@@ -522,20 +525,21 @@ void WM_exit_ext(bContext *C, const bool do_python)
 		MEM_printmemlist();
 	}
 	wm_autosave_delete();
-	
-	printf("\nBlender quit\n");
-	
-#ifdef WIN32   
-	/* ask user to press a key when in debug mode */
-	if (G.debug & G_DEBUG) {
-		printf("Press any key to exit . . .\n\n");
-		wait_for_console_key();
-	}
-#endif 
 }
 
 void WM_exit(bContext *C)
 {
 	WM_exit_ext(C, 1);
-	exit(G.is_break == TRUE);
+
+	printf("\nBlender quit\n");
+
+#ifdef WIN32
+	/* ask user to press a key when in debug mode */
+	if (G.debug & G_DEBUG) {
+		printf("Press any key to exit . . .\n\n");
+		wait_for_console_key();
+	}
+#endif
+
+	exit(G.is_break == true);
 }

@@ -187,6 +187,11 @@ typedef enum PropertyFlag {
 	PROP_REGISTER                = (1 << 4),
 	PROP_REGISTER_OPTIONAL       = PROP_REGISTER | (1 << 5),
 
+	/* numbers */
+
+	/* each value is related proportionally (object scale, image size) */
+	PROP_PROPORTIONAL            = (1 << 26),
+
 	/* pointers */
 	PROP_ID_REFCOUNT             = (1 << 6),
 
@@ -218,12 +223,6 @@ typedef enum PropertyFlag {
 	 * most common case is functions that return arrays where the array */
 	PROP_THICK_WRAP              = (1 << 23),
 
-	/* Reject values outside limits, use for python api only so far
-	 * this is for use when silently clamping string length will give
-	 * bad behavior later. Could also enforce this for INT's and other types.
-	 * note: currently no support for function arguments or non utf8 paths (filepaths) */
-	PROP_NEVER_CLAMP             = (1 << 26),
-
 	/* internal flags */
 	PROP_BUILTIN                 = (1 << 7),
 	PROP_EXPORT                  = (1 << 8),
@@ -237,12 +236,40 @@ typedef enum PropertyFlag {
 	PROP_ENUM_NO_TRANSLATE       = (1 << 29), /* for enums not to be translated (e.g. renderlayers' names in nodes) */
 } PropertyFlag;
 
+struct CollectionPropertyIterator;
+struct Link;
+typedef int (*IteratorSkipFunc)(struct CollectionPropertyIterator *iter, void *data);
+
+typedef struct ListBaseIterator {
+	struct Link *link;
+	int flag;
+	IteratorSkipFunc skip;
+} ListBaseIterator;
+
+typedef struct ArrayIterator {
+	char *ptr;
+	char *endptr;  /* past the last valid pointer, only for comparisons, ignores skipped values */
+	void *free_ptr; /* will be freed if set */
+	int itemsize;
+
+	/* array length with no skip functions applied, take care not to compare against index from animsys
+	 * or python indices */
+	int length;
+
+	/* optional skip function, when set the array as viewed by rna can contain only a subset of the members.
+	 * this changes indices so quick array index lookups are not possible when skip function is used. */
+	IteratorSkipFunc skip;
+} ArrayIterator;
+
 typedef struct CollectionPropertyIterator {
 	/* internal */
 	PointerRNA parent;
 	PointerRNA builtin_parent;
 	struct PropertyRNA *prop;
-	void *internal;
+	union {
+		ArrayIterator array;
+		ListBaseIterator listbase;
+	} internal;
 	int idprop;
 	int level;
 

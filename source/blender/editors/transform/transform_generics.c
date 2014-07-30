@@ -306,7 +306,7 @@ static void animrecord_check_state(Scene *scene, ID *id, wmTimer *animtimer)
 	}
 }
 
-static int fcu_test_selected(FCurve *fcu)
+static bool fcu_test_selected(FCurve *fcu)
 {
 	BezTriple *bezt = fcu->bezt;
 	unsigned int i;
@@ -689,8 +689,8 @@ static void recalcData_spaceclip(TransInfo *t)
 	}
 }
 
-/* helper for recalcData() - for 3d-view transforms */
-static void recalcData_view3d(TransInfo *t)
+/* helper for recalcData() - for object transforms, typically in the 3D view */
+static void recalcData_objects(TransInfo *t)
 {
 	Base *base = t->scene->basact;
 	
@@ -812,17 +812,12 @@ static void recalcData_view3d(TransInfo *t)
 						}
 						else {
 							copy_v3_v3(up_axis, td->axismtx[2]);
-							
-							if (t->mode != TFM_ROTATION) {
-								sub_v3_v3v3(vec, ebo->tail, ebo->head);
-								normalize_v3(vec);
-								rotation_between_vecs_to_quat(qrot, td->axismtx[1], vec);
-								mul_qt_v3(qrot, up_axis);
-							}
-							else {
-								mul_m3_v3(t->mat, up_axis);
-							}
-							
+
+							sub_v3_v3v3(vec, ebo->tail, ebo->head);
+							normalize_v3(vec);
+							rotation_between_vecs_to_quat(qrot, td->axismtx[1], vec);
+							mul_qt_v3(qrot, up_axis);
+
 							/* roll has a tendency to flip in certain orientations - [#34283], [#33974] */
 							roll = ED_rollBoneToVector(ebo, up_axis, false);
 							ebo->roll = angle_compat_rad(roll, td->ival);
@@ -939,29 +934,36 @@ static void recalcData_sequencer(TransInfo *t)
 /* called for updating while transform acts, once per redraw */
 void recalcData(TransInfo *t)
 {
-	if (t->spacetype == SPACE_NODE) {
-		flushTransNodes(t);
+	/* if tests must match createTransData for correct updates */
+	if (t->options & CTX_TEXTURE) {
+		recalcData_objects(t);
 	}
-	else if (t->spacetype == SPACE_SEQ) {
-		recalcData_sequencer(t);
-	}
-	else if (t->spacetype == SPACE_ACTION) {
-		recalcData_actedit(t);
-	}
-	else if (t->spacetype == SPACE_IPO) {
-		recalcData_graphedit(t);
-	}
-	else if (t->spacetype == SPACE_NLA) {
-		recalcData_nla(t);
+	else if (t->options & CTX_EDGE) {
+		recalcData_objects(t);
 	}
 	else if (t->spacetype == SPACE_IMAGE) {
 		recalcData_image(t);
 	}
-	else if (t->spacetype == SPACE_VIEW3D) {
-		recalcData_view3d(t);
+	else if (t->spacetype == SPACE_ACTION) {
+		recalcData_actedit(t);
+	}
+	else if (t->spacetype == SPACE_NLA) {
+		recalcData_nla(t);
+	}
+	else if (t->spacetype == SPACE_SEQ) {
+		recalcData_sequencer(t);
+	}
+	else if (t->spacetype == SPACE_IPO) {
+		recalcData_graphedit(t);
+	}
+	else if (t->spacetype == SPACE_NODE) {
+		flushTransNodes(t);
 	}
 	else if (t->spacetype == SPACE_CLIP) {
 		recalcData_spaceclip(t);
+	}
+	else {
+		recalcData_objects(t);
 	}
 }
 
@@ -1713,11 +1715,8 @@ void calculateCenter(TransInfo *t)
 	/* for panning from cameraview */
 	if (t->flag & T_OBJECT) {
 		if (t->spacetype == SPACE_VIEW3D && t->ar && t->ar->regiontype == RGN_TYPE_WINDOW) {
-			View3D *v3d = t->view;
-			Scene *scene = t->scene;
-			RegionView3D *rv3d = t->ar->regiondata;
 			
-			if (v3d->camera == OBACT && rv3d->persp == RV3D_CAMOB) {
+			if (t->flag & T_CAMERA) {
 				float axis[3];
 				/* persinv is nasty, use viewinv instead, always right */
 				copy_v3_v3(axis, t->viewinv[2]);
@@ -1819,7 +1818,7 @@ void calculatePropRatio(TransInfo *t)
 						td->factor = 3.0f * dist * dist - 2.0f * dist * dist * dist;
 						break;
 					case PROP_ROOT:
-						td->factor = (float)sqrt(dist);
+						td->factor = sqrtf(dist);
 						break;
 					case PROP_LIN:
 						td->factor = dist;
@@ -1828,7 +1827,7 @@ void calculatePropRatio(TransInfo *t)
 						td->factor = 1.0f;
 						break;
 					case PROP_SPHERE:
-						td->factor = (float)sqrt(2 * dist - dist * dist);
+						td->factor = sqrtf(2 * dist - dist * dist);
 						break;
 					case PROP_RANDOM:
 						td->factor = BLI_frand() * dist;

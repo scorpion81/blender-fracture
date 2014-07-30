@@ -45,6 +45,7 @@
 #include "BKE_brush.h"
 #include "BKE_context.h"
 #include "BKE_image.h"
+#include "BKE_node.h"
 #include "BKE_paint.h"
 #include "BKE_colortools.h"
 
@@ -53,12 +54,18 @@
 #include "BIF_gl.h"
 #include "BIF_glutil.h"
 
+#include "IMB_imbuf_types.h"
+
 #include "ED_view3d.h"
 
 #include "paint_intern.h"
 /* still needed for sculpt_stroke_get_location, should be
  * removed eventually (TODO) */
 #include "sculpt_intern.h"
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 /* TODOs:
  *
@@ -154,6 +161,8 @@ static int load_tex(Brush *br, ViewContext *vc, float zoom, bool col, bool prima
 
 	if (refresh) {
 		struct ImagePool *pool = NULL;
+		bool convert_to_linear = false;
+		struct ColorSpace *colorspace;
 		/* stencil is rotated later */
 		const float rotation = (mtex->brush_map_mode != MTEX_MAP_MODE_STENCIL) ?
 		                       -mtex->rot : 0;
@@ -197,11 +206,32 @@ static int load_tex(Brush *br, ViewContext *vc, float zoom, bool col, bool prima
 
 		pool = BKE_image_pool_new();
 
+		if (mtex->tex && mtex->tex->nodetree)
+			ntreeTexBeginExecTree(mtex->tex->nodetree);  /* has internal flag to detect it only does it once */
+
 #pragma omp parallel for schedule(static)
 		for (j = 0; j < size; j++) {
 			int i;
 			float y;
 			float len;
+			int thread_num;
+
+#ifdef _OPENMP
+			thread_num = omp_get_thread_num();
+#else
+			thread_num = 0;
+#endif
+
+			if (mtex->tex->type == TEX_IMAGE && mtex->tex->ima) {
+				ImBuf *tex_ibuf = BKE_image_pool_acquire_ibuf(mtex->tex->ima, &mtex->tex->iuser, pool);
+				/* For consistency, sampling always returns color in linear space */
+				if (tex_ibuf && tex_ibuf->rect_float == NULL) {
+					convert_to_linear = true;
+					colorspace = tex_ibuf->rect_colorspace;
+				}
+				BKE_image_pool_release_ibuf(mtex->tex->ima, tex_ibuf, pool);
+			}
+
 
 			for (i = 0; i < size; i++) {
 
@@ -238,16 +268,10 @@ static int load_tex(Brush *br, ViewContext *vc, float zoom, bool col, bool prima
 						y = len * sinf(angle);
 					}
 
-					x *= mtex->size[0];
-					y *= mtex->size[1];
-
-					x += mtex->ofs[0];
-					y += mtex->ofs[1];
-
 					if (col) {
 						float rgba[4];
 
-						paint_get_tex_pixel_col(mtex, x, y, rgba, pool);
+						paint_get_tex_pixel_col(mtex, x, y, rgba, pool, thread_num, convert_to_linear, colorspace);
 
 						buffer[index * 4]     = rgba[0] * 255;
 						buffer[index * 4 + 1] = rgba[1] * 255;
@@ -255,7 +279,7 @@ static int load_tex(Brush *br, ViewContext *vc, float zoom, bool col, bool prima
 						buffer[index * 4 + 3] = rgba[3] * 255;
 					}
 					else {
-						float avg = paint_get_tex_pixel(mtex, x, y, pool);
+						float avg = paint_get_tex_pixel(mtex, x, y, pool, thread_num);
 
 						avg += br->texture_sample_bias;
 
@@ -277,6 +301,9 @@ static int load_tex(Brush *br, ViewContext *vc, float zoom, bool col, bool prima
 				}
 			}
 		}
+
+		if (mtex->tex && mtex->tex->nodetree)
+			ntreeTexEndExecTree(mtex->tex->nodetree->execdata);
 
 		if (pool)
 			BKE_image_pool_free(pool);
@@ -571,7 +598,7 @@ static void paint_draw_tex_overlay(UnifiedPaintSettings *ups, Brush *brush,
 			/* scale based on tablet pressure */
 			if (primary && ups->stroke_active && BKE_brush_use_size_pressure(vc->scene, brush)) {
 				glTranslatef(0.5f, 0.5f, 0);
-				glScalef(1.0f / ups->pressure_value, 1.0f / ups->pressure_value, 1);
+				glScalef(1.0f / ups->size_pressure_value, 1.0f / ups->size_pressure_value, 1);
 				glTranslatef(-0.5f, -0.5f, 0);
 			}
 
@@ -699,7 +726,7 @@ static void paint_draw_cursor_overlay(UnifiedPaintSettings *ups, Brush *brush,
 			glPushMatrix();
 			glLoadIdentity();
 			glTranslatef(center[0], center[1], 0);
-			glScalef(ups->pressure_value, ups->pressure_value, 1);
+			glScalef(ups->size_pressure_value, ups->size_pressure_value, 1);
 			glTranslatef(-center[0], -center[1], 0);
 		}
 
@@ -789,7 +816,7 @@ static void paint_cursor_on_hit(UnifiedPaintSettings *ups, Brush *brush, ViewCon
 
 		/* scale 3D brush radius by pressure */
 		if (ups->stroke_active && BKE_brush_use_size_pressure(vc->scene, brush))
-			unprojected_radius *= ups->pressure_value;
+			unprojected_radius *= ups->size_pressure_value;
 
 		/* set cached value in either Brush or UnifiedPaintSettings */
 		BKE_brush_unprojected_radius_set(vc->scene, brush, unprojected_radius);
@@ -884,7 +911,7 @@ static void paint_draw_cursor(bContext *C, int x, int y, void *UNUSED(unused))
 	/* draw an inner brush */
 	if (ups->stroke_active && BKE_brush_use_size_pressure(scene, brush)) {
 		/* inner at full alpha */
-		glutil_draw_lined_arc(0.0, M_PI * 2.0, final_radius * ups->pressure_value, 40);
+		glutil_draw_lined_arc(0.0, M_PI * 2.0, final_radius * ups->size_pressure_value, 40);
 		/* outer at half alpha */
 		glColor4f(outline_col[0], outline_col[1], outline_col[2], outline_alpha * 0.5f);
 	}

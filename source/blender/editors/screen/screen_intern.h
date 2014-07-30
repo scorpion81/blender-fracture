@@ -38,8 +38,9 @@ struct Scene;
 #define AZONESPOT       (0.6f * U.widget_unit)
 
 /* area.c */
-void        area_copy_data(ScrArea *sa1, ScrArea *sa2, int swap_space);
-void		region_toggle_hidden(bContext *C, ARegion *ar, int do_fade);
+void        ED_area_data_copy(ScrArea *sa_dst, ScrArea *sa_src, const bool do_free);
+void        ED_area_data_swap(ScrArea *sa1, ScrArea *sa2);
+void		region_toggle_hidden(bContext *C, ARegion *ar, const bool do_fade);
 
 /* screen_edit.c */
 ScrEdge    *screen_findedge(bScreen *sc, ScrVert *v1, ScrVert *v2);

@@ -19,7 +19,7 @@ CCL_NAMESPACE_BEGIN
 /* Direction Emission */
 
 ccl_device_noinline float3 direct_emissive_eval(KernelGlobals *kg, float rando,
-	LightSample *ls, float u, float v, float3 I, differential3 dI, float t, float time, int bounce)
+	LightSample *ls, float3 I, differential3 dI, float t, float time, int bounce)
 {
 	/* setup shading at emitter */
 	ShaderData sd;
@@ -36,21 +36,14 @@ ccl_device_noinline float3 direct_emissive_eval(KernelGlobals *kg, float rando,
 #endif
 		ray.dP = differential3_zero();
 		ray.dD = dI;
-#ifdef __CAMERA_MOTION__
-		ray.time = time;
-#endif
+
 		shader_setup_from_background(kg, &sd, &ray, bounce+1);
 		eval = shader_eval_background(kg, &sd, 0, SHADER_CONTEXT_EMISSION);
 	}
 	else
 #endif
 	{
-#ifdef __HAIR__
-		if(ls->type == LIGHT_STRAND)
-			shader_setup_from_sample(kg, &sd, ls->P, ls->Ng, I, ls->shader, ls->object, ls->prim, u, v, t, time, bounce+1, ls->prim);
-		else
-#endif
-			shader_setup_from_sample(kg, &sd, ls->P, ls->Ng, I, ls->shader, ls->object, ls->prim, u, v, t, time, bounce+1, ~0);
+		shader_setup_from_sample(kg, &sd, ls->P, ls->Ng, I, ls->shader, ls->object, ls->prim, ls->u, ls->v, t, time, bounce+1);
 
 		ls->Ng = sd.Ng;
 
@@ -77,7 +70,7 @@ ccl_device_noinline bool direct_emission(KernelGlobals *kg, ShaderData *sd, int 
 	LightSample ls;
 
 #ifdef __BRANCHED_PATH__
-	if(lindex != -1) {
+	if(lindex != LAMP_NONE) {
 		/* sample position on a specified light */
 		light_select(kg, lindex, randu, randv, sd->P, &ls);
 	}
@@ -95,7 +88,7 @@ ccl_device_noinline bool direct_emission(KernelGlobals *kg, ShaderData *sd, int 
 	differential3 dD = differential3_zero();
 
 	/* evaluate closure */
-	float3 light_eval = direct_emissive_eval(kg, rando, &ls, randu, randv, -ls.D, dD, ls.t, sd->time, bounce);
+	float3 light_eval = direct_emissive_eval(kg, rando, &ls, -ls.D, dD, ls.t, sd->time, bounce);
 
 	if(is_zero(light_eval))
 		return false;
@@ -104,7 +97,7 @@ ccl_device_noinline bool direct_emission(KernelGlobals *kg, ShaderData *sd, int 
 	float bsdf_pdf;
 
 #ifdef __VOLUME__
-	if(sd->prim != ~0)
+	if(sd->prim != PRIM_NONE)
 		shader_bsdf_eval(kg, sd, ls.D, eval, &bsdf_pdf);
 	else
 		shader_volume_phase_eval(kg, sd, ls.D, eval, &bsdf_pdf);
@@ -160,7 +153,7 @@ ccl_device_noinline bool direct_emission(KernelGlobals *kg, ShaderData *sd, int 
 	}
 
 	/* return if it's a lamp for shadow pass */
-	*is_lamp = (ls.prim == ~0 && ls.type != LIGHT_BACKGROUND);
+	*is_lamp = (ls.prim == PRIM_NONE && ls.type != LIGHT_BACKGROUND);
 
 	return true;
 }
@@ -173,7 +166,7 @@ ccl_device_noinline float3 indirect_primitive_emission(KernelGlobals *kg, Shader
 	float3 L = shader_emissive_eval(kg, sd);
 
 #ifdef __HAIR__
-	if(!(path_flag & PATH_RAY_MIS_SKIP) && (sd->flag & SD_USE_MIS) && (sd->segment == ~0)) {
+	if(!(path_flag & PATH_RAY_MIS_SKIP) && (sd->flag & SD_USE_MIS) && (sd->type & PRIMITIVE_ALL_TRIANGLE)) {
 #else
 	if(!(path_flag & PATH_RAY_MIS_SKIP) && (sd->flag & SD_USE_MIS)) {
 #endif
@@ -195,7 +188,7 @@ ccl_device_noinline bool indirect_lamp_emission(KernelGlobals *kg, Ray *ray, int
 	LightSample ls;
 	int lamp = lamp_light_eval_sample(kg, randt);
 
-	if(lamp == ~0)
+	if(lamp == LAMP_NONE)
 		return false;
 
 	if(!lamp_light_eval(kg, lamp, ray->P, ray->D, ray->t, &ls))
@@ -211,10 +204,7 @@ ccl_device_noinline bool indirect_lamp_emission(KernelGlobals *kg, Ray *ray, int
 	}
 #endif
 
-	/* todo: missing texture coordinates */
-	float u = 0.0f;
-	float v = 0.0f;
-	float3 L = direct_emissive_eval(kg, 0.0f, &ls, u, v, -ray->D, ray->dD, ls.t, ray->time, bounce);
+	float3 L = direct_emissive_eval(kg, 0.0f, &ls, -ray->D, ray->dD, ls.t, ray->time, bounce);
 
 	if(!(path_flag & PATH_RAY_MIS_SKIP)) {
 		/* multiple importance sampling, get regular light pdf,

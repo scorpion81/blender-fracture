@@ -55,8 +55,8 @@ set(SRC
 	intern/buffer.c
 	intern/callbacks.c
 	intern/convexhull2d.c
-	intern/cpu.c
 	intern/dynlib.c
+	intern/easing.c
 	intern/edgehash.c
 	intern/endian_switch.c
 	intern/fileops.c
@@ -87,6 +87,7 @@ set(SRC
 	intern/rand.c
 	intern/rct.c
 	intern/scanfill.c
+	intern/scanfill_utils.c
 	intern/smallhash.c
 	intern/sort.c
 	intern/sort_utils.c
@@ -95,6 +96,7 @@ set(SRC
 	intern/string.c
 	intern/string_cursor_utf8.c
 	intern/string_utf8.c
+	intern/system.c
 	intern/task.c
 	intern/threads.c
 	intern/time.c
@@ -115,10 +117,10 @@ set(SRC
 	BLI_callbacks.h
 	BLI_compiler_attrs.h
 	BLI_convexhull2d.h
-	BLI_cpu.h
 	BLI_dlrbTree.h
 	BLI_dynlib.h
 	BLI_dynstr.h
+	BLI_easing.h
 	BLI_edgehash.h
 	BLI_endian_switch.h
 	BLI_endian_switch_inline.h
@@ -165,6 +167,7 @@ set(SRC
 	BLI_string_cursor_utf8.h
 	BLI_string_utf8.h
 	BLI_sys_types.h
+	BLI_system.h
 	BLI_task.h
 	BLI_threads.h
 	BLI_timecode.h

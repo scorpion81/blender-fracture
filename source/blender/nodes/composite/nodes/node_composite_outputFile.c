@@ -129,7 +129,7 @@ bNodeSocket *ntreeCompositOutputFileAddSocket(bNodeTree *ntree, bNode *node, con
 	else
 		BKE_imformat_defaults(&sockdata->format);
 	/* use node data format by default */
-	sockdata->use_node_format = TRUE;
+	sockdata->use_node_format = true;
 	
 	nimf->active_input = BLI_findindex(&node->inputs, sock);
 	
@@ -178,8 +178,6 @@ static void init_output_file(const bContext *C, PointerRNA *ptr)
 	NodeImageMultiFile *nimf = MEM_callocN(sizeof(NodeImageMultiFile), "node image multi file");
 	ImageFormatData *format = NULL;
 	node->storage = nimf;
-	
-	node->id = &scene->id;
 	
 	if (scene) {
 		RenderData *rd = &scene->r;

@@ -23,7 +23,7 @@ import bpy
 from bpy.types import Operator
 
 DEG_TO_RAD = 0.017453292519943295 # pi/180.0
-SMALL_NUM = 0.000001  # see bug [#31598] why we dont have smaller values
+SMALL_NUM = 0.00000001  # see bug [#31598] why we dont have smaller values
 
 global USER_FILL_HOLES
 global USER_FILL_HOLES_QUALITY
@@ -232,17 +232,28 @@ def islandIntersectUvIsland(source, target, SourceOffset):
     return 0 # NO INTERSECTION
 
 
+def rotate_uvs(uv_points, angle):
+
+    if angle != 0.0:
+        mat = Matrix.Rotation(angle, 2)
+        for uv in uv_points:
+            uv[:] = mat * uv
+
+
 def optiRotateUvIsland(faces):
     uv_points = [uv for f in faces  for uv in f.uv]
     angle = geometry.box_fit_2d(uv_points)
 
     if angle != 0.0:
-        mat = Matrix.Rotation(angle, 2)
-        i = 0 # count the serialized uv/vectors
-        for f in faces:
-            for j, k in enumerate(range(i, len(f.v) + i)):
-                f.uv[j][:] = mat * uv_points[k]
-            i += len(f.v)
+        rotate_uvs(uv_points, angle)
+
+    # orient them vertically (could be an option)
+    minx, miny, maxx, maxy = boundsIsland(faces)
+    w, h = maxx - minx, maxy - miny
+    if h < w:
+        from math import pi
+        angle = pi / 2.0
+        rotate_uvs(uv_points, angle)
 
 
 # Takes an island list and tries to find concave, hollow areas to pack smaller islands into.
@@ -594,10 +605,10 @@ def packIslands(islandList):
             # recalc width and height
             w, h = maxx-minx, maxy-miny
 
-        if w < 0.00001 or h < 0.00001:
-            del islandList[islandIdx]
-            islandIdx -=1
-            continue
+        if w < SMALL_NUM:
+            w = SMALL_NUM
+        if h < SMALL_NUM:
+            h = SMALL_NUM
 
         """Save the offset to be applied later,
         we could apply to the UVs now and allign them to the bottom left hand area

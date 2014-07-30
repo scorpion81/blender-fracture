@@ -506,6 +506,9 @@ bool ED_vgroup_array_copy(Object *ob, Object *ob_from)
 	int defbase_tot = BLI_countlist(&ob->defbase);
 	bool new_vgroup = false;
 
+	if (ob == ob_from)
+		return true;
+
 	ED_vgroup_parray_alloc(ob_from->data, &dvert_array_from, &dvert_tot_from, false);
 	ED_vgroup_parray_alloc(ob->data, &dvert_array, &dvert_tot, false);
 
@@ -514,7 +517,8 @@ bool ED_vgroup_array_copy(Object *ob, Object *ob_from)
 		new_vgroup = true;
 	}
 
-	if (ob == ob_from || dvert_tot == 0 || (dvert_tot != dvert_tot_from) || dvert_array_from == NULL || dvert_array == NULL) {
+	if (dvert_tot == 0 || (dvert_tot != dvert_tot_from) || dvert_array_from == NULL || dvert_array == NULL) {
+
 		if (dvert_array) MEM_freeN(dvert_array);
 		if (dvert_array_from) MEM_freeN(dvert_array_from);
 
@@ -522,7 +526,9 @@ bool ED_vgroup_array_copy(Object *ob, Object *ob_from)
 			/* free the newly added vgroup since it wasn't compatible */
 			vgroup_delete_all(ob);
 		}
-		return false;
+
+		/* if true: both are 0 and nothing needs changing, consider this a success */
+		return (dvert_tot == dvert_tot_from);
 	}
 
 	/* do the copy */
@@ -2167,12 +2173,12 @@ static void vgroup_invert_subset(Object *ob,
 		if (use_mirror && use_vert_sel) {
 			ED_vgroup_parray_mirror_sync(ob, dvert_array, dvert_tot,
 			                             vgroup_validmap, vgroup_tot);
+		}
 
-			if (auto_remove) {
-				ED_vgroup_parray_remove_zero(dvert_array, dvert_tot,
-				                             vgroup_validmap, vgroup_tot,
-				                             0.0f, false);
-			}
+		if (auto_remove) {
+			ED_vgroup_parray_remove_zero(dvert_array, dvert_tot,
+			                             vgroup_validmap, vgroup_tot,
+			                             0.0f, false);
 		}
 
 		MEM_freeN(dvert_array);
@@ -2814,7 +2820,7 @@ static void vgroup_delete_object_mode(Object *ob, bDeformGroup *dg)
 		ob->actdef = 1;
 
 	/* remove all dverts */
-	if (ob->defbase.first == NULL) {
+	if (BLI_listbase_is_empty(&ob->defbase)) {
 		if (ob->type == OB_MESH) {
 			Mesh *me = ob->data;
 			CustomData_free_layer_active(&me->vdata, CD_MDEFORMVERT, me->totvert);
@@ -2963,7 +2969,7 @@ static void vgroup_delete_edit_mode(Object *ob, bDeformGroup *dg)
 		ob->actdef = 1;
 
 	/* remove all dverts */
-	if (ob->defbase.first == NULL) {
+	if (BLI_listbase_is_empty(&ob->defbase)) {
 		if (ob->type == OB_MESH) {
 			Mesh *me = ob->data;
 			CustomData_free_layer_active(&me->vdata, CD_MDEFORMVERT, me->totvert);
@@ -3812,7 +3818,8 @@ void OBJECT_OT_vertex_group_clean(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	vgroup_operator_subset_select_props(ot, true);
-	RNA_def_float(ot->srna, "limit", 0.0f, 0.0f, 1.0, "Limit", "Remove weights under this limit", 0.0f, 0.99f);
+	RNA_def_float(ot->srna, "limit", 0.0f, 0.0f, 1.0, "Limit",
+	              "Remove vertices which weight is below or equal to this limit", 0.0f, 0.99f);
 	RNA_def_boolean(ot->srna, "keep_single", false, "Keep Single",
 	                "Keep verts assigned to at least one group when cleaning");
 }
@@ -4057,7 +4064,7 @@ static int vertex_group_transfer_weight_exec(bContext *C, wmOperator *op)
 	{
 		if (ob_act != ob_src) {
 
-			if (ob_src->defbase.first == NULL) {
+			if (BLI_listbase_is_empty(&ob_src->defbase)) {
 				BKE_reportf(op->reports, RPT_WARNING,
 				            "Skipping object '%s' it has no vertex groups", ob_src->id.name + 2);
 				continue;
@@ -4133,7 +4140,7 @@ static int vertex_group_transfer_weight_exec(bContext *C, wmOperator *op)
 		return OPERATOR_FINISHED;
 	}
 	else {
-		if (op->reports->list.first == NULL) {
+		if (BLI_listbase_is_empty(&op->reports->list)) {
 			BKE_report(op->reports, RPT_WARNING, "Failed, no other selected objects with vertex groups found");
 		}
 

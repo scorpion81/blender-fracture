@@ -170,6 +170,9 @@ void OBJECT_OT_multires_external_pack(struct wmOperatorType *ot);
 void OBJECT_OT_meshdeform_bind(struct wmOperatorType *ot);
 void OBJECT_OT_explode_refresh(struct wmOperatorType *ot);
 void OBJECT_OT_ocean_bake(struct wmOperatorType *ot);
+void OBJECT_OT_fracture_refresh(struct wmOperatorType *ot);
+void OBJECT_OT_rigidbody_constraints_refresh(struct wmOperatorType *ot);
+void OBJECT_OT_rigidbody_convert_to_objects(struct wmOperatorType *ot);
 void OBJECT_OT_skin_root_mark(struct wmOperatorType *ot);
 void OBJECT_OT_skin_loose_mark_clear(struct wmOperatorType *ot);
 void OBJECT_OT_skin_radii_equalize(struct wmOperatorType *ot);
@@ -258,6 +261,9 @@ void OBJECT_OT_bake_image(wmOperatorType *ot);
 /* object_lod.c */
 void OBJECT_OT_lod_add(struct wmOperatorType *ot);
 void OBJECT_OT_lod_remove(struct wmOperatorType *ot);
+
+/* object_random.c */
+void OBJECT_OT_vertex_random(struct wmOperatorType *ot);
 
 #endif /* __OBJECT_INTERN_H__ */
 

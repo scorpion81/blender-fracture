@@ -61,6 +61,7 @@ void graph_draw_ghost_curves(struct bAnimContext *ac, struct SpaceIpo *sipo, str
 
 void GRAPH_OT_select_all_toggle(struct wmOperatorType *ot);
 void GRAPH_OT_select_border(struct wmOperatorType *ot);
+void GRAPH_OT_select_lasso(struct wmOperatorType *ot);
 void GRAPH_OT_select_column(struct wmOperatorType *ot);
 void GRAPH_OT_select_linked(struct wmOperatorType *ot);
 void GRAPH_OT_select_more(struct wmOperatorType *ot);
@@ -87,7 +88,7 @@ enum eGraphKeys_ColumnSelect_Mode {
 /* graph_edit.c */
 
 void get_graph_keyframe_extents(struct bAnimContext *ac, float *xmin, float *xmax, float *ymin, float *ymax, 
-                                const short do_selected, const short include_handles);
+                                const bool do_selected, const bool include_handles);
 
 void GRAPH_OT_previewrange_set(struct wmOperatorType *ot);
 void GRAPH_OT_view_all(struct wmOperatorType *ot);
@@ -111,6 +112,7 @@ void GRAPH_OT_euler_filter(struct wmOperatorType *ot);
 void GRAPH_OT_handle_type(struct wmOperatorType *ot);
 void GRAPH_OT_interpolation_type(struct wmOperatorType *ot);
 void GRAPH_OT_extrapolation_type(struct wmOperatorType *ot);
+void GRAPH_OT_easing_type(struct wmOperatorType *ot);
 
 void GRAPH_OT_frame_jump(struct wmOperatorType *ot);
 void GRAPH_OT_snap(struct wmOperatorType *ot);

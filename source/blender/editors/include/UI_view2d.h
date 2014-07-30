@@ -205,6 +205,8 @@ void UI_view2d_getscale_inverse(struct View2D *v2d, float *x, float *y);
 void UI_view2d_getcenter(struct View2D *v2d, float *x, float *y);
 void UI_view2d_setcenter(struct View2D *v2d, float x, float y);
 
+void UI_view2d_offset(struct View2D *v2d, float xfac, float yfac);
+
 short UI_view2d_mouse_in_scrollers(const struct bContext *C, struct View2D *v2d, int x, int y);
 
 /* cached text drawing in v2d, to allow pixel-aligned draw as post process */
@@ -213,8 +215,8 @@ void UI_view2d_text_cache_rectf(struct View2D *v2d, const struct rctf *rect, con
 void UI_view2d_text_cache_draw(struct ARegion *ar);
 
 /* operators */
-void UI_view2d_operatortypes(void);
-void UI_view2d_keymap(struct wmKeyConfig *keyconf);
+void ED_operatortypes_view2d(void);
+void ED_keymap_view2d(struct wmKeyConfig *keyconf);
 
 void UI_view2d_smooth_view(struct bContext *C, struct ARegion *ar,
                            const struct rctf *cur, const int smooth_viewtx);

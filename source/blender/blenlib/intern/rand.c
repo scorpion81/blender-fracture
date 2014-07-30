@@ -32,6 +32,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include "MEM_guardedalloc.h"
 
@@ -39,29 +40,24 @@
 
 #include "BLI_threads.h"
 #include "BLI_rand.h"
+#include "BLI_math.h"
 
-#ifdef _MSC_VER
-typedef unsigned __int64 r_uint64;
-
-#define MULTIPLIER  0x5DEECE66Di64
-#define MASK        0x0000FFFFFFFFFFFFi64
-#else
-typedef unsigned long long r_uint64;
+#include "BLI_sys_types.h"
+#include "BLI_strict_flags.h"
 
 #define MULTIPLIER  0x5DEECE66Dll
 #define MASK        0x0000FFFFFFFFFFFFll
-#endif
 
 #define ADDEND      0xB
-
 #define LOWSEED     0x330E
 
 extern unsigned char hash[];    // noise.c
 
-/***/
-
+/**
+ * Random Number Generator.
+ */
 struct RNG {
-	r_uint64 X;
+	uint64_t X;
 };
 
 RNG *BLI_rng_new(unsigned int seed)
@@ -89,15 +85,15 @@ void BLI_rng_free(RNG *rng)
 
 void BLI_rng_seed(RNG *rng, unsigned int seed)
 {
-	rng->X = (((r_uint64) seed) << 16) | LOWSEED;
+	rng->X = (((uint64_t) seed) << 16) | LOWSEED;
 }
 
 void BLI_rng_srandom(RNG *rng, unsigned int seed)
 {
 	BLI_rng_seed(rng, seed + hash[seed & 255]);
-	seed = BLI_rng_get_int(rng);
+	seed = BLI_rng_get_uint(rng);
 	BLI_rng_seed(rng, seed + hash[seed & 255]);
-	seed = BLI_rng_get_int(rng);
+	seed = BLI_rng_get_uint(rng);
 	BLI_rng_seed(rng, seed + hash[seed & 255]);
 }
 
@@ -105,6 +101,12 @@ int BLI_rng_get_int(RNG *rng)
 {
 	rng->X = (MULTIPLIER * rng->X + ADDEND) & MASK;
 	return (int) (rng->X >> 17);
+}
+
+unsigned int BLI_rng_get_uint(RNG *rng)
+{
+	rng->X = (MULTIPLIER * rng->X + ADDEND) & MASK;
+	return (unsigned int) (rng->X >> 17);
 }
 
 double BLI_rng_get_double(RNG *rng)
@@ -117,27 +119,41 @@ float BLI_rng_get_float(RNG *rng)
 	return (float) BLI_rng_get_int(rng) / 0x80000000;
 }
 
-void BLI_rng_shuffle_array(RNG *rng, void *data, int elemSize, int numElems)
+void BLI_rng_get_float_unit_v3(RNG *rng, float v[3])
 {
-	int i = numElems;
+	float r;
+	v[2] = (2.0f * BLI_rng_get_float(rng)) - 1.0f;
+	if ((r = 1.0f - (v[2] * v[2])) > 0.0f) {
+		float a = (float)(M_PI * 2.0) * BLI_rng_get_float(rng);
+		r = sqrtf(r);
+		v[0] = r * cosf(a);
+		v[1] = r * sinf(a);
+	}
+	else {
+		v[2] = 1.0f;
+	}
+}
+
+void BLI_rng_shuffle_array(RNG *rng, void *data, unsigned int elem_size_i, unsigned int elem_tot)
+{
+	const size_t elem_size = (unsigned int)elem_size_i;
+	unsigned int i = elem_tot;
 	void *temp;
 
-	if (numElems <= 0) {
+	if (elem_tot <= 1) {
 		return;
 	}
 
-	temp = malloc(elemSize);
+	temp = malloc(elem_size);
 
-	/* XXX Shouldn't it rather be "while (i--) {" ?
-	 *     Else we have no guaranty first (0) element has a chance to be shuffled... --mont29 */
-	while (--i) {
-		int j = BLI_rng_get_int(rng) % numElems;
+	while (i--) {
+		unsigned int j = BLI_rng_get_uint(rng) % elem_tot;
 		if (i != j) {
-			void *iElem = (unsigned char *)data + i * elemSize;
-			void *jElem = (unsigned char *)data + j * elemSize;
-			memcpy(temp, iElem, elemSize);
-			memcpy(iElem, jElem, elemSize);
-			memcpy(jElem, temp, elemSize);
+			void *iElem = (unsigned char *)data + i * elem_size_i;
+			void *jElem = (unsigned char *)data + j * elem_size_i;
+			memcpy(temp, iElem, elem_size);
+			memcpy(iElem, jElem, elem_size);
+			memcpy(jElem, temp, elem_size);
 		}
 	}
 
@@ -173,6 +189,11 @@ float BLI_frand(void)
 	return BLI_rng_get_float(&theBLI_rng);
 }
 
+void BLI_frand_unit_v3(float v[3])
+{
+	BLI_rng_get_float_unit_v3(&theBLI_rng, v);
+}
+
 float BLI_hash_frand(unsigned int seed)
 {
 	RNG rng;
@@ -181,12 +202,12 @@ float BLI_hash_frand(unsigned int seed)
 	return BLI_rng_get_float(&rng);
 }
 
-void BLI_array_randomize(void *data, int elemSize, int numElems, unsigned int seed)
+void BLI_array_randomize(void *data, unsigned int elem_size, unsigned int elem_tot, unsigned int seed)
 {
 	RNG rng;
 
 	BLI_rng_seed(&rng, seed);
-	BLI_rng_shuffle_array(&rng, data, elemSize, numElems);
+	BLI_rng_shuffle_array(&rng, data, elem_size, elem_tot);
 }
 
 /* ********* for threaded random ************** */
@@ -199,9 +220,9 @@ void BLI_thread_srandom(int thread, unsigned int seed)
 		thread = 0;
 	
 	BLI_rng_seed(&rng_tab[thread], seed + hash[seed & 255]);
-	seed = BLI_rng_get_int(&rng_tab[thread]);
+	seed = BLI_rng_get_uint(&rng_tab[thread]);
 	BLI_rng_seed(&rng_tab[thread], seed + hash[seed & 255]);
-	seed = BLI_rng_get_int(&rng_tab[thread]);
+	seed = BLI_rng_get_uint(&rng_tab[thread]);
 	BLI_rng_seed(&rng_tab[thread], seed + hash[seed & 255]);
 }
 

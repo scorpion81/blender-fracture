@@ -156,18 +156,7 @@ mark_as_advanced(WITH_HEADLESS)
 option(WITH_AUDASPACE    "Build with blenders audio library (only disable if you know what you're doing!)" ON)
 mark_as_advanced(WITH_AUDASPACE)
 
-option(WITH_BOOL_COMPAT "Continue defining \"TRUE\" and \"FALSE\" until these can be replaced with \"true\" and \"false\" from stdbool.h" ON)
-mark_as_advanced(WITH_BOOL_COMPAT)
-
-# (unix defaults to OpenMP On)
-if((UNIX AND NOT APPLE) OR (MINGW))
-	set(PLATFORM_DEFAULT ON)
-else()
-	set(PLATFORM_DEFAULT OFF)
-endif()
-option(WITH_OPENMP        "Enable OpenMP (has to be supported by the compiler)" ${PLATFORM_DEFAULT})
-unset(PLATFORM_DEFAULT)
-
+option(WITH_OPENMP        "Enable OpenMP (has to be supported by the compiler)" ON)
 
 if(UNIX AND NOT APPLE)
 	option(WITH_X11_XINPUT "Enable X11 Xinput (tablet support and unicode input)"	ON)
@@ -199,6 +188,7 @@ option(WITH_MOD_REMESH          "Enable Remesh Modifier" ON)
 # option(WITH_MOD_CLOTH_ELTOPO    "Enable Experimental cloth solver" OFF)  # this is now only available in a branch
 # mark_as_advanced(WITH_MOD_CLOTH_ELTOPO)
 option(WITH_MOD_OCEANSIM        "Enable Ocean Modifier" OFF)
+option(WITH_MOD_VORONOI        	"Enable Voronoi Cells in Explode Modifier" ON)
 
 # Image format support
 option(WITH_OPENIMAGEIO         "Enable OpenImageIO Support (http://www.openimageio.org)" OFF)
@@ -265,6 +255,10 @@ option(WITH_PYTHON_INSTALL       "Copy system python into the blender install fo
 option(WITH_PYTHON_INSTALL_NUMPY "Copy system numpy into the blender install folder"  ON)
 set(PYTHON_NUMPY_PATH            "" CACHE PATH "Python to python site-packages or dist-packages containing 'numpy' module")
 mark_as_advanced(PYTHON_NUMPY_PATH)
+
+if(UNIX AND NOT APPLE)
+	option(WITH_PYTHON_INSTALL_REQUESTS "Copy system requests into the blender install folder" ON)
+endif()
 
 # Cycles
 option(WITH_CYCLES					"Enable cycles Render Engine" ON)
@@ -506,16 +500,16 @@ TEST_STDBOOL_SUPPORT()
 if(HAVE_STDBOOL_H)
 	add_definitions(-DHAVE_STDBOOL_H)
 endif()
-if(WITH_BOOL_COMPAT)
-	add_definitions(-DWITH_BOOL_COMPAT)
-endif()
 
 #-----------------------------------------------------------------------------
 # Check for valid directories
 # ... a partial checkout may cause this.
+#
+# note: we need to check for a known subdir in both cases.
+#       since uninitialized git submodules will give blank dirs
 
 if(WITH_INTERNATIONAL)
-	if(NOT EXISTS "${CMAKE_SOURCE_DIR}/release/datafiles/locale")
+	if(NOT EXISTS "${CMAKE_SOURCE_DIR}/release/datafiles/locale/languages")
 		message(WARNING "Translation path '${CMAKE_SOURCE_DIR}/release/datafiles/locale' is missing, "
 						"This is a 'git submodule', which are known not to work with bridges to other version "
 						"control systems, disabling 'WITH_INTERNATIONAL'.")
@@ -524,7 +518,7 @@ if(WITH_INTERNATIONAL)
 endif()
 
 if(WITH_PYTHON)
-	if(NOT EXISTS "${CMAKE_SOURCE_DIR}/release/scripts/addons")
+	if(NOT EXISTS "${CMAKE_SOURCE_DIR}/release/scripts/addons/modules")
 		message(WARNING "Addons path '${CMAKE_SOURCE_DIR}/release/scripts/addons' is missing, "
 						"This is a 'git submodule', which are known not to work with bridges to other version "
 						"control systems: * CONTINUING WITHOUT ADDONS *")
@@ -971,35 +965,67 @@ elseif(WIN32)
 			set(PLATFORM_LINKLIBS ${PLATFORM_LINKLIBS} dxguid)
 		endif()
 
-		add_definitions(/D_CRT_NONSTDC_NO_DEPRECATE /D_CRT_SECURE_NO_DEPRECATE /D_SCL_SECURE_NO_DEPRECATE /D_CONSOLE /D_LIB)
+		add_definitions(
+			-D_CRT_NONSTDC_NO_DEPRECATE
+			-D_CRT_SECURE_NO_DEPRECATE
+			-D_SCL_SECURE_NO_DEPRECATE
+			-D_CONSOLE
+			-D_LIB
+		)
 
 		# MSVC11 needs _ALLOW_KEYWORD_MACROS to build
-		if(MSVC11 OR MSVC12)
-			add_definitions(/D_ALLOW_KEYWORD_MACROS)
+		if(NOT MSVC_VERSION VERSION_LESS 1700)
+			add_definitions(-D_ALLOW_KEYWORD_MACROS)
+		endif()
+
+		if(CMAKE_CL_64)
+			# We want to support Vista level ABI for x64
+			if(NOT MSVC_VERSION VERSION_LESS 1700)
+				add_definitions(-D_WIN32_WINNT=0x600)
+			endif()
 		endif()
 
 		set(CMAKE_CXX_FLAGS "/nologo /J /Gd /EHsc /MP" CACHE STRING "MSVC MT C++ flags " FORCE)
 		set(CMAKE_C_FLAGS   "/nologo /J /Gd /MP"       CACHE STRING "MSVC MT C++ flags " FORCE)
 
 		if(CMAKE_CL_64)
-			set(CMAKE_CXX_FLAGS_DEBUG "/Od /Gm /RTC1 /MTd /Zi /MP" CACHE STRING "MSVC MT flags " FORCE)
+			set(CMAKE_CXX_FLAGS_DEBUG "/Od /RTC1 /MTd /Zi /MP" CACHE STRING "MSVC MT flags " FORCE)
 		else()
-			set(CMAKE_CXX_FLAGS_DEBUG "/Od /Gm /RTC1 /MTd /ZI /MP" CACHE STRING "MSVC MT flags " FORCE)
+			set(CMAKE_CXX_FLAGS_DEBUG "/Od /RTC1 /MTd /ZI /MP" CACHE STRING "MSVC MT flags " FORCE)
 		endif()
 		set(CMAKE_CXX_FLAGS_RELEASE "/O2 /Ob2 /MT /MP" CACHE STRING "MSVC MT flags " FORCE)
 		set(CMAKE_CXX_FLAGS_MINSIZEREL "/O1 /Ob1 /MT /MP" CACHE STRING "MSVC MT flags " FORCE)
 		set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "/O2 /Ob1 /MT /Zi /MP" CACHE STRING "MSVC MT flags " FORCE)
 		if(CMAKE_CL_64)
-			set(CMAKE_C_FLAGS_DEBUG "/Od /Gm /RTC1 /MTd /Zi /MP" CACHE STRING "MSVC MT flags " FORCE)
+			set(CMAKE_C_FLAGS_DEBUG "/Od /RTC1 /MTd /Zi /MP" CACHE STRING "MSVC MT flags " FORCE)
 		else()
-			set(CMAKE_C_FLAGS_DEBUG "/Od /Gm /RTC1 /MTd /ZI /MP" CACHE STRING "MSVC MT flags " FORCE)
+			set(CMAKE_C_FLAGS_DEBUG "/Od /RTC1 /MTd /ZI /MP" CACHE STRING "MSVC MT flags " FORCE)
 		endif()
 		set(CMAKE_C_FLAGS_RELEASE "/O2 /Ob2 /MT /MP" CACHE STRING "MSVC MT flags " FORCE)
 		set(CMAKE_C_FLAGS_MINSIZEREL "/O1 /Ob1 /MT /MP" CACHE STRING "MSVC MT flags " FORCE)
 		set(CMAKE_C_FLAGS_RELWITHDEBINFO "/O2 /Ob1 /MT /Zi /MP" CACHE STRING "MSVC MT flags " FORCE)
 
 		# most msvc warnings are C & C++
-		set(_WARNINGS "/W3 /wd4018 /wd4244 /wd4305 /wd4800 /wd4181 /wd4065 /wd4267 /we4013 /wd4200")
+		set(_WARNINGS
+			# warning level:
+			"/W3"
+			"/w34062"  # switch statement contains 'default' but no 'case' labels
+			# disable:
+			"/wd4018"  # signed/unsigned mismatch
+			"/wd4065"  # switch statement contains 'default' but no 'case' labels
+			"/wd4127"  # conditional expression is constant
+			"/wd4181"  # qualifier applied to reference type; ignored
+			"/wd4200"  # zero-sized array in struct/union
+			"/wd4244"  # conversion from 'type1' to 'type2', possible loss of data
+			"/wd4267"  # conversion from 'size_t' to 'type', possible loss of data
+			"/wd4305"  # truncation from 'type1' to 'type2'
+			"/wd4800"  # forcing value to bool 'true' or 'false'
+			# errors:
+			"/we4013"  # 'function' undefined; assuming extern returning int
+			"/we4431"  # missing type specifier - int assumed
+		)
+
+		string(REPLACE ";" " " _WARNINGS "${_WARNINGS}")
 		set(C_WARNINGS "${_WARNINGS}")
 		set(CXX_WARNINGS "${_WARNINGS}")
 		unset(_WARNINGS)
@@ -1124,8 +1150,8 @@ elseif(WIN32)
 					set(FFMPEG_LIBRARY_VERSION 54)
 					set(FFMPEG_LIBRARY_VERSION_AVU 52)
 				else()
-					set(FFMPEG_LIBRARY_VERSION 53)
-					set(FFMPEG_LIBRARY_VERSION_AVU 51)
+					set(FFMPEG_LIBRARY_VERSION 55)
+					set(FFMPEG_LIBRARY_VERSION_AVU 52)
 				endif()
 				set(FFMPEG_LIBRARIES
 					${LIBDIR}/ffmpeg/lib/avcodec-${FFMPEG_LIBRARY_VERSION}.lib
@@ -1172,7 +1198,7 @@ elseif(WIN32)
 				${LIBDIR}/jack/include/jack
 				${LIBDIR}/jack/include
 			)
-			set(JACK_LIBRARIES ${LIBDIR}/jack/lib/libjack.lib)
+			set(JACK_LIBRARIES optimized ${LIBDIR}/jack/lib/libjack.lib debug ${LIBDIR}/jack/lib/libjack_d.lib)
 		endif()
 
 		if(WITH_PYTHON)
@@ -1252,7 +1278,27 @@ elseif(WIN32)
 
 		if(WITH_LLVM)
 			set(LLVM_DIRECTORY ${LIBDIR}/llvm CACHE PATH	"Path to the LLVM installation")
-			file(GLOB LLVM_LIBRARY ${LLVM_DIRECTORY}/lib/*.lib)
+			file(GLOB LLVM_LIBRARY_OPTIMIZED ${LLVM_DIRECTORY}/lib/*.lib)
+
+			if(EXISTS ${LLVM_DIRECTORY}/debug/lib)
+				foreach(LLVM_OPTIMIZED_LIB ${LLVM_LIBRARY_OPTIMIZED})
+					get_filename_component(LIBNAME ${LLVM_OPTIMIZED_LIB} ABSOLUTE)
+					list(APPEND LLVM_LIBS optimized ${LIBNAME})
+				endforeach(LLVM_OPTIMIZED_LIB)
+			
+				file(GLOB LLVM_LIBRARY_DEBUG ${LLVM_DIRECTORY}/debug/lib/*.lib)
+
+				foreach(LLVM_DEBUG_LIB ${LLVM_LIBRARY_DEBUG})
+					get_filename_component(LIBNAME ${LLVM_DEBUG_LIB} ABSOLUTE)
+					list(APPEND LLVM_LIBS debug ${LIBNAME})
+				endforeach(LLVM_DEBUG_LIB)
+
+				set(LLVM_LIBRARY ${LLVM_LIBS})
+			else()
+				message(WARNING "LLVM debug libs not present on this system. Using release libs for debug builds.")
+				set(LLVM_LIBRARY ${LLVM_LIBRARY_OPTIMIZED})
+			endif()
+			
 		endif()
 	
 		if(WITH_OPENCOLORIO)
@@ -1310,8 +1356,6 @@ elseif(WIN32)
 			set(PLATFORM_LINKLIBS "${PLATFORM_LINKLIBS} -lpthread")
 			
 			add_definitions(-DFREE_WINDOWS64 -DMS_WIN64)
-			# Turn off OpenMP since it causes crashes on render for subsurfed/multiresolution meshes
-			set(WITH_OPENMP OFF)
 		endif()
 
 		add_definitions(-D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE)
@@ -1378,7 +1422,7 @@ elseif(WIN32)
 			if(WITH_MINGW64)
 				set(FFMPEG_LIBRARIES avcodec.dll avformat.dll avdevice.dll avutil.dll swscale.dll swresample.dll)
 			else()
-				set(FFMPEG_LIBRARIES avcodec-53 avformat-53 avdevice-53 avutil-51 swscale-2)
+				set(FFMPEG_LIBRARIES avcodec-55 avformat-55 avdevice-55 avutil-52 swscale-2)
 			endif()
 			set(FFMPEG_LIBPATH ${FFMPEG}/lib)
 		endif()
@@ -1541,7 +1585,10 @@ elseif(WIN32)
 		find_library(OSL_LIB_EXEC NAMES oslexec PATHS ${CYCLES_OSL}/lib)
 		find_library(OSL_LIB_COMP NAMES oslcomp PATHS ${CYCLES_OSL}/lib)
 		find_library(OSL_LIB_QUERY NAMES oslquery PATHS ${CYCLES_OSL}/lib)
-		list(APPEND OSL_LIBRARIES ${OSL_LIB_COMP} ${OSL_LIB_EXEC} ${OSL_LIB_QUERY})
+		find_library(OSL_LIB_EXEC_DEBUG NAMES oslexec_d PATHS ${CYCLES_OSL}/lib)
+		find_library(OSL_LIB_COMP_DEBUG NAMES oslcomp_d PATHS ${CYCLES_OSL}/lib)
+		find_library(OSL_LIB_QUERY_DEBUG NAMES oslquery_d PATHS ${CYCLES_OSL}/lib)
+		list(APPEND OSL_LIBRARIES optimized ${OSL_LIB_COMP} optimized ${OSL_LIB_EXEC} optimized ${OSL_LIB_QUERY} debug ${OSL_LIB_EXEC_DEBUG} debug ${OSL_LIB_COMP_DEBUG} debug ${OSL_LIB_QUERY_DEBUG})
 		find_path(OSL_INCLUDES OSL/oslclosure.h PATHS ${CYCLES_OSL}/include)
 		find_program(OSL_COMPILER NAMES oslc PATHS ${CYCLES_OSL}/bin)
 	
@@ -1597,8 +1644,8 @@ elseif(APPLE)
 	endif()
 
 	if(WITH_PYTHON)
-		# we use precompiled libraries for py 3.3 and up by default
-		set(PYTHON_VERSION 3.3)
+		# we use precompiled libraries for py 3.4 and up by default
+		set(PYTHON_VERSION 3.4)
 		if(NOT WITH_PYTHON_MODULE AND NOT WITH_PYTHON_FRAMEWORK)
 			# normally cached but not since we include them with blender
 			set(PYTHON_INCLUDE_DIR "${LIBDIR}/python/include/python${PYTHON_VERSION}m")
@@ -1758,13 +1805,16 @@ elseif(APPLE)
 		set(BOOST_LIBRARIES boost_date_time-mt boost_filesystem-mt boost_regex-mt boost_system-mt boost_thread-mt boost_wave-mt)
 		if(WITH_INTERNATIONAL)
 			list(APPEND BOOST_LIBRARIES boost_locale-mt)
-			set(PLATFORM_LINKFLAGS "${PLATFORM_LINKFLAGS} -liconv") # boost_locale needs it !
 		endif()
 		if(WITH_CYCLES_NETWORK)
 			list(APPEND BOOST_LIBRARIES boost_serialization-mt)
 		endif()
 		set(BOOST_LIBPATH ${BOOST}/lib)
 		set(BOOST_DEFINITIONS)
+	endif()
+	
+	if(WITH_INTERNATIONAL OR WITH_CODEC_FFMPEG)
+		set(PLATFORM_LINKFLAGS "${PLATFORM_LINKFLAGS} -liconv") # boost_locale and ffmpeg needs it !
 	endif()
 
 	if(WITH_OPENIMAGEIO)
@@ -1835,6 +1885,18 @@ elseif(APPLE)
 		else()
 			message(STATUS "OSL not found")
 		endif()
+	endif()
+	
+	if(WITH_OPENMP AND CMAKE_C_COMPILER_ID MATCHES "Clang" AND NOT ${CMAKE_C_COMPILER_VERSION} VERSION_LESS '3.4')
+		set(OPENMP_FOUND ON)
+		set(OpenMP_C_FLAGS "-fopenmp" CACHE STRING "C compiler flags for OpenMP parallization" FORCE)
+		set(OpenMP_CXX_FLAGS "-fopenmp" CACHE STRING "C++ compiler flags for OpenMP parallization" FORCE)
+		include_directories(${LIBDIR}/openmp/include)
+		LINK_DIRECTORIES(${LIBDIR}/openmp/lib)
+		execute_process(COMMAND cp ${LIBDIR}/openmp/lib/libiomp5.dylib ${CMAKE_BINARY_DIR}/bin/libiomp5.dylib) # for intermediate binaries, lib id is @loader_path
+	else()
+		set(OpenMP_C_FLAGS "" CACHE STRING "C compiler flags for OpenMP parallization" FORCE) # unset
+		set(OpenMP_CXX_FLAGS "" CACHE STRING "C++ compiler flags for OpenMP parallization" FORCE) # unset
 	endif()
 
 	set(EXETYPE MACOSX_BUNDLE)
@@ -2163,7 +2225,9 @@ if(WITH_PYTHON)
 							"Python.h for python version \"${PYTHON_VERSION}\"")
 	endif()
 
-	if(WITH_PYTHON_INSTALL AND WITH_PYTHON_INSTALL_NUMPY)
+	if(WIN32)
+		# pass, we have this in an archive to extract
+	elseif(WITH_PYTHON_INSTALL AND WITH_PYTHON_INSTALL_NUMPY)
 		# set but invalid
 		# -- disabled until we make numpy bundled with blender - campbell
 		if((NOT ${PYTHON_NUMPY_PATH} STREQUAL "") AND (NOT ${PYTHON_NUMPY_PATH} MATCHES NOTFOUND))
@@ -2205,6 +2269,20 @@ if(WITH_PYTHON)
 
 			unset(_PY_VER_SPLIT)
 			unset(_PY_VER_MAJOR)
+		endif()
+	endif()
+
+	if(WIN32 OR APPLE)
+		# pass, we have this in lib/python/site-packages
+	elseif(WITH_PYTHON_INSTALL_REQUESTS)
+		if(NOT EXISTS ${PYTHON_LIBPATH}/python${PYTHON_VERSION}/site-packages/requests)
+			# gets annoying otherwise...
+			if(FIRST_RUN)
+				message(WARNING "'requests' path could not be found in:\n"
+				                "'${PYTHON_LIBPATH}/python${PYTHON_VERSION}/site-packages/requests'\n"
+				                "WITH_PYTHON_INSTALL_REQUESTS option will be ignored when installing python")
+			endif()
+			set(WITH_PYTHON_INSTALL_REQUESTS OFF)
 		endif()
 	endif()
 endif()
@@ -2379,6 +2457,7 @@ if(FIRST_RUN)
 	info_cfg_option(WITH_MOD_REMESH)
 	info_cfg_option(WITH_MOD_FLUID)
 	info_cfg_option(WITH_MOD_OCEANSIM)
+    info_cfg_option(WITH_MOD_VORONOI)
 
 	info_cfg_text("Other:")
 	info_cfg_option(WITH_OPENNL)

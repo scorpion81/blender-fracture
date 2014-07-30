@@ -49,6 +49,7 @@
 //#include "SCA_RandomEventManager.h"
 //#include "KX_RayEventManager.h"
 #include "SCA_2DFilterActuator.h"
+#include "SCA_PythonController.h"
 #include "KX_TouchEventManager.h"
 #include "SCA_KeyboardManager.h"
 #include "SCA_MouseManager.h"
@@ -101,6 +102,8 @@
 #include "KX_Light.h"
 
 #include <stdio.h>
+
+#include "BLI_task.h"
 
 static void *KX_SceneReplicationFunc(SG_IObject* node,void* gameobj,void* scene)
 {
@@ -837,7 +840,7 @@ void KX_Scene::DupliGroupRecurse(CValue* obj, int level)
 		if ((*git)->GetGameObjectType()==SCA_IObject::OBJ_LIGHT)
 		{
 			KX_LightObject* lightobj = static_cast<KX_LightObject*>(*git);
-			lightobj->GetLightData()->m_layer = groupobj->GetLayer();
+			lightobj->SetLayer(groupobj->GetLayer());
 		}
 	}
 
@@ -947,7 +950,7 @@ SCA_IObject* KX_Scene::AddReplicaObject(class CValue* originalobject,
 		if ((*git)->GetGameObjectType()==SCA_IObject::OBJ_LIGHT)
 		{
 			KX_LightObject* lightobj = static_cast<KX_LightObject*>(*git);
-			lightobj->GetLightData()->m_layer = parentobj->GetLayer();
+			lightobj->SetLayer(parentobj->GetLayer());
 		}
 	}
 
@@ -1196,7 +1199,7 @@ void KX_Scene::ReplaceMesh(class CValue* obj,void* meshobj, bool use_gfx, bool u
 						static_cast<BL_ArmatureObject*>( parentobj )
 					);
 					releaseParent= false;
-					modifierDeformer->LoadShapeDrivers(blendobj->parent);
+					modifierDeformer->LoadShapeDrivers(parentobj);
 				}
 				else
 				{
@@ -1224,7 +1227,7 @@ void KX_Scene::ReplaceMesh(class CValue* obj,void* meshobj, bool use_gfx, bool u
 						static_cast<BL_ArmatureObject*>( parentobj )
 					);
 					releaseParent= false;
-					shapeDeformer->LoadShapeDrivers(blendobj->parent);
+					shapeDeformer->LoadShapeDrivers(parentobj);
 				}
 				else
 				{
@@ -1596,52 +1599,75 @@ void KX_Scene::AddAnimatedObject(CValue* gameobj)
 	m_animatedlist->Add(gameobj);
 }
 
-void KX_Scene::UpdateAnimations(double curtime)
+static void update_anim_thread_func(TaskPool *pool, void *taskdata, int UNUSED(threadid))
 {
-	KX_GameObject *gameobj;
+	KX_GameObject *gameobj, *child;
+	CListValue *children;
 	bool needs_update;
+	double curtime = *(double*)BLI_task_pool_userdata(pool);
 
-	for (int i=0; i<m_animatedlist->GetCount(); ++i) {
-		gameobj = (KX_GameObject*)m_animatedlist->GetValue(i);
+	gameobj = (KX_GameObject*)taskdata;
 
-		// Non-armature updates are fast enough, so just update them
-		needs_update = gameobj->GetGameObjectType() != SCA_IObject::OBJ_ARMATURE;
+	// Non-armature updates are fast enough, so just update them
+	needs_update = gameobj->GetGameObjectType() != SCA_IObject::OBJ_ARMATURE;
 
-		if (!needs_update) {
-			// If we got here, we're looking to update an armature, so check its children meshes
-			// to see if we need to bother with a more expensive pose update
-			CListValue *children = gameobj->GetChildren();
-			KX_GameObject *child;
+	if (!needs_update) {
+		// If we got here, we're looking to update an armature, so check its children meshes
+		// to see if we need to bother with a more expensive pose update
+		children = gameobj->GetChildren();
 
-			bool has_mesh = false, has_non_mesh = false;
+		bool has_mesh = false, has_non_mesh = false;
 
-			// Check for meshes that haven't been culled
-			for (int j=0; j<children->GetCount(); ++j) {
-				child = (KX_GameObject*)children->GetValue(j);
+		// Check for meshes that haven't been culled
+		for (int j=0; j<children->GetCount(); ++j) {
+			child = (KX_GameObject*)children->GetValue(j);
 
-				if (!child->GetCulled()) {
-					needs_update = true;
-					break;
-				}
-
-				if (child->GetMeshCount() == 0)
-					has_non_mesh = true;
-				else
-					has_mesh = true;
+			if (!child->GetCulled()) {
+				needs_update = true;
+				break;
 			}
 
-			// If we didn't find a non-culled mesh, check to see
-			// if we even have any meshes, and update if this
-			// armature has only non-mesh children.
-			if (!needs_update && !has_mesh && has_non_mesh)
-				needs_update = true;
-
-			children->Release();
+			if (child->GetMeshCount() == 0)
+				has_non_mesh = true;
+			else
+				has_mesh = true;
 		}
 
-		if (needs_update)
-			gameobj->UpdateActionManager(curtime);
+		// If we didn't find a non-culled mesh, check to see
+		// if we even have any meshes, and update if this
+		// armature has only non-mesh children.
+		if (!needs_update && !has_mesh && has_non_mesh)
+			needs_update = true;
+
+		children->Release();
 	}
+
+	if (needs_update) {
+		gameobj->UpdateActionManager(curtime);
+		children = gameobj->GetChildren();
+
+		for (int j=0; j<children->GetCount(); ++j) {
+			child = (KX_GameObject*)children->GetValue(j);
+
+			if (child->GetDeformer()) {
+				child->GetDeformer()->Update();
+			}
+		}
+
+		children->Release();
+	}
+}
+
+void KX_Scene::UpdateAnimations(double curtime)
+{
+	TaskPool *pool = BLI_task_pool_create(KX_GetActiveEngine()->GetTaskScheduler(), &curtime);
+
+	for (int i=0; i<m_animatedlist->GetCount(); ++i) {
+		BLI_task_pool_push(pool, update_anim_thread_func, m_animatedlist->GetValue(i), false, TASK_PRIORITY_LOW);
+	}
+
+	BLI_task_pool_work_and_wait(pool);
+	BLI_task_pool_free(pool);
 }
 
 void KX_Scene::LogicUpdateFrame(double curtime, bool frame)
@@ -1875,11 +1901,23 @@ static void MergeScene_LogicBrick(SCA_ILogicBrick* brick, KX_Scene *to)
 	if (filter_actuator) {
 		filter_actuator->SetScene(to);
 	}
+
+#ifdef WITH_PYTHON
+	// Python must be called from the main thread unless we want to deal
+	// with GIL issues. So, this is delayed until here in case of async
+	// libload (originally in KX_ConvertControllers)
+	SCA_PythonController *pyctrl = dynamic_cast<SCA_PythonController*>(brick);
+	if (pyctrl) {
+		pyctrl->SetNamespace(KX_GetActiveEngine()->GetPyNamespace());
+
+		if (pyctrl->m_mode==SCA_PythonController::SCA_PYEXEC_SCRIPT)
+			pyctrl->Compile();
+	}
+#endif
 }
 
 #ifdef WITH_BULLET
 #include "CcdGraphicController.h" // XXX  ctrl->SetPhysicsEnvironment(to->GetPhysicsEnvironment());
-#include "CcdPhysicsEnvironment.h" // XXX  ctrl->SetPhysicsEnvironment(to->GetPhysicsEnvironment());
 #endif
 
 static void MergeScene_GameObject(KX_GameObject* gameobj, KX_Scene *to, KX_Scene *from)

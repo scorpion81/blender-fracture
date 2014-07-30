@@ -33,8 +33,8 @@ private:
 protected:
 
 	BlurBaseOperation(DataType data_type);
-	float *make_gausstab(int rad);
-	float *make_dist_fac_inverse(int rad, int falloff);
+	float *make_gausstab(float rad, int size);
+	float *make_dist_fac_inverse(float rad, int size, int falloff);
 
 	void updateSize();
 
@@ -43,10 +43,9 @@ protected:
 	 */
 	SocketReader *m_inputProgram;
 	SocketReader *m_inputSize;
-	NodeBlurData *m_data;
+	NodeBlurData m_data;
 
 	float m_size;
-	bool m_deleteData;
 	bool m_sizeavailable;
 
 public:
@@ -60,9 +59,7 @@ public:
 	 */
 	void deinitExecution();
 	
-	void setData(NodeBlurData *data) { this->m_data = data; }
-
-	void deleteDataWhenFinished() { this->m_deleteData = true; }
+	void setData(const NodeBlurData *data);
 
 	void setSize(float size) { this->m_size = size; this->m_sizeavailable = true; }
 };

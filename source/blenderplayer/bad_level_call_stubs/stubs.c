@@ -236,9 +236,6 @@ void RE_free_sample_material(struct Material *mat) RET_NONE
 void RE_sample_material_color(struct Material *mat, float color[3], float *alpha, const float volume_co[3], const float surface_co[3],
                               int face_index, short hit_quad, struct DerivedMesh *orcoDm, struct Object *ob) RET_NONE
 
-/* skin modifier*/
-void modifier_skin_customdata_ensure(struct Object *ob) RET_NONE
-
 /* nodes */
 struct Render *RE_GetRender(const char *name) RET_NULL
 float RE_lamp_get_data(struct ShadeInput *shi, struct Object *lamp_obj, float col[4], float lv[3], float *dist, float shadow[4]) RET_ZERO
@@ -246,7 +243,7 @@ float RE_lamp_get_data(struct ShadeInput *shi, struct Object *lamp_obj, float co
 /* blenkernel */
 void RE_FreeRenderResult(struct RenderResult *res) RET_NONE
 void RE_FreeAllRenderResults(void) RET_NONE
-struct RenderResult *RE_MultilayerConvert(void *exrhandle, const char *colorspace, int predivide, int rectx, int recty) RET_NULL
+struct RenderResult *RE_MultilayerConvert(void *exrhandle, const char *colorspace, bool predivide, int rectx, int recty) RET_NULL
 struct Scene *RE_GetScene(struct Render *re) RET_NULL
 void RE_Database_Free(struct Render *re) RET_NONE
 void RE_FreeRender(struct Render *re) RET_NONE
@@ -258,8 +255,8 @@ const unsigned char stipple_quarttone[128];
 double elbeemEstimateMemreq(int res, float sx, float sy, float sz, int refine, char *retstr) RET_ZERO
 struct Render *RE_NewRender(const char *name) RET_NULL
 void RE_SwapResult(struct Render *re, struct RenderResult **rr) RET_NONE
-void RE_BlenderFrame(struct Render *re, struct Main *bmain, struct Scene *scene, struct SceneRenderLayer *srl, struct Object *camera_override, unsigned int lay_override, int frame, const short write_still) RET_NONE
-int RE_WriteEnvmapResult(struct ReportList *reports, struct Scene *scene, struct EnvMap *env, const char *relpath, const char imtype, float layout[12]) RET_ZERO
+void RE_BlenderFrame(struct Render *re, struct Main *bmain, struct Scene *scene, struct SceneRenderLayer *srl, struct Object *camera_override, unsigned int lay_override, int frame, const bool write_still) RET_NONE
+bool RE_WriteEnvmapResult(struct ReportList *reports, struct Scene *scene, struct EnvMap *env, const char *relpath, const char imtype, float layout[12]) RET_ZERO
 
 /* rna */
 float *ED_view3d_cursor3d_get(struct Scene *scene, struct View3D *v3d) RET_NULL
@@ -317,7 +314,7 @@ void UI_view2d_to_region_no_clip(struct View2D *v2d, float x, float y, int *regi
 struct EditBone *ED_armature_bone_get_mirrored(const struct ListBase *edbo, EditBone *ebo) RET_NULL
 struct EditBone *ED_armature_edit_bone_add(struct bArmature *arm, const char *name) RET_NULL
 struct ListBase *get_active_constraints (struct Object *ob) RET_NULL
-struct ListBase *get_constraint_lb(struct Object *ob, struct bConstraint *con, struct bPoseChannel **pchan_r) RET_NULL
+struct ListBase *get_constraint_lb(struct Object *ob, struct bConstraint *con, struct bPoseChannel **r_pchan) RET_NULL
 
 bool ED_space_image_show_uvedit(struct SpaceImage *sima, struct Object *obedit) RET_ZERO
 bool ED_space_image_show_render(struct SpaceImage *sima) RET_ZERO
@@ -372,8 +369,8 @@ struct ListBase builtin_keyingsets;
 void ANIM_keyingset_info_register(struct KeyingSetInfo *ksi) RET_NONE
 void ANIM_keyingset_info_unregister(struct Main *bmain, KeyingSetInfo *ksi) RET_NONE
 short ANIM_validate_keyingset(struct bContext *C, struct ListBase *dsources, struct KeyingSet *ks) RET_ZERO
-short ANIM_add_driver(struct ReportList *reports, struct ID *id, const char rna_path[], int array_index, short flag, int type) RET_ZERO
-short ANIM_remove_driver(struct ReportList *reports, struct ID *id, const char rna_path[], int array_index, short flag) RET_ZERO
+int ANIM_add_driver(struct ReportList *reports, struct ID *id, const char rna_path[], int array_index, short flag, int type) RET_ZERO
+bool ANIM_remove_driver(struct ReportList *reports, struct ID *id, const char rna_path[], int array_index, short flag) RET_ZERO
 void ED_space_image_release_buffer(struct SpaceImage *sima, struct ImBuf *ibuf, void *lock) RET_NONE
 struct ImBuf *ED_space_image_acquire_buffer(struct SpaceImage *sima, void **lock_r) RET_NULL
 void ED_space_image_get_zoom(struct SpaceImage *sima, struct ARegion *ar, float *zoomx, float *zoomy) RET_NONE
@@ -457,10 +454,10 @@ float ED_vgroup_vert_weight(struct Object *ob, struct bDeformGroup *dg, int vert
 void ED_vgroup_delete(struct Object *ob, struct bDeformGroup *defgroup) RET_NONE
 void ED_vgroup_clear(struct Object *ob) RET_NONE
 bool ED_vgroup_object_is_edit_mode(struct Object *ob) RET_ZERO
-int mesh_mirrtopo_table(struct Object *ob, char mode) RET_ZERO
-intptr_t mesh_octree_table(struct Object *ob, struct BMEditMesh *em, const float co[3], char mode) RET_ZERO
+int ED_mesh_mirror_topo_table(struct Object *ob, char mode) RET_ZERO
+int ED_mesh_mirror_spatial_table(struct Object *ob, struct BMEditMesh *em, const float co[3], char mode) RET_ZERO
 
-float ED_rollBoneToVector(EditBone *bone, const float new_up_axis[3], const short axis_only) RET_ZERO
+float ED_rollBoneToVector(EditBone *bone, const float new_up_axis[3], const bool axis_only) RET_ZERO
 void ED_space_image_get_size(struct SpaceImage *sima, int *width, int *height) RET_NONE
 bool ED_space_image_check_show_maskedit(struct Scene *scene, struct SpaceImage *sima) RET_ZERO
 
@@ -524,7 +521,8 @@ void uiTemplateHeader(struct uiLayout *layout, struct bContext *C) RET_NONE
 void uiTemplateID(uiLayout *layout, struct bContext *C, struct PointerRNA *ptr, const char *propname, const char *newop, const char *openop, const char *unlinkop) RET_NONE
 struct uiLayout *uiTemplateModifier(uiLayout *layout, struct bContext *C, struct PointerRNA *ptr) RET_NULL
 struct uiLayout *uiTemplateConstraint(struct uiLayout *layout, struct PointerRNA *ptr) RET_NULL
-void uiTemplatePreview(struct uiLayout *layout, struct ID *id, int show_buttons, struct ID *parent, struct MTex *slot) RET_NONE
+void uiTemplatePreview(struct uiLayout *layout, struct bContext *C, struct ID *id, int show_buttons, struct ID *parent,
+                       struct MTex *slot, const char *preview_id) RET_NONE
 void uiTemplateIDPreview(uiLayout *layout, struct bContext *C, struct PointerRNA *ptr, const char *propname, const char *newop, const char *openop, const char *unlinkop, int rows, int cols) RET_NONE
 void uiTemplateCurveMapping(uiLayout *layout, struct PointerRNA *ptr, const char *propname, int type, int levels, int brush) RET_NONE
 void uiTemplateColorRamp(uiLayout *layout, struct PointerRNA *ptr, const char *propname, int expand) RET_NONE
@@ -675,7 +673,7 @@ struct CCLDeviceInfo;
 struct CCLDeviceInfo *CCL_compute_device_list(int opencl) RET_NULL
 
 /* compositor */
-void COM_execute(RenderData *rd, bNodeTree *editingtree, int rendering,
+void COM_execute(RenderData *rd, Scene *scene, bNodeTree *editingtree, int rendering,
                  const ColorManagedViewSettings *viewSettings, const ColorManagedDisplaySettings *displaySettings) RET_NONE
 
 #endif // WITH_GAMEENGINE

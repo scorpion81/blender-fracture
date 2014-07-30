@@ -78,7 +78,7 @@ static int sort_nodes_locx(void *a, void *b)
 		return 0;
 }
 
-static int socket_is_available(bNodeTree *UNUSED(ntree), bNodeSocket *sock, const bool allow_used)
+static bool socket_is_available(bNodeTree *UNUSED(ntree), bNodeSocket *sock, const bool allow_used)
 {
 	if (nodeSocketIsHidden(sock))
 		return 0;
@@ -206,7 +206,7 @@ static void snode_autoconnect(SpaceNode *snode, const bool allow_multiple, const
 	for (nli = nodelist->first; nli; nli = nli->next) {
 		bNode *node_fr, *node_to;
 		bNodeSocket *sock_fr, *sock_to;
-		int has_selected_inputs = 0;
+		bool has_selected_inputs = false;
 
 		if (nli->next == NULL) break;
 
@@ -274,7 +274,7 @@ static int node_link_viewer(const bContext *C, bNode *tonode)
 	bNodeSocket *sock;
 
 	/* context check */
-	if (tonode == NULL || tonode->outputs.first == NULL)
+	if (tonode == NULL || BLI_listbase_is_empty(&tonode->outputs))
 		return OPERATOR_CANCELLED;
 	if (ELEM(tonode->type, CMP_NODE_VIEWER, CMP_NODE_SPLITVIEWER))
 		return OPERATOR_CANCELLED;
@@ -691,7 +691,7 @@ void NODE_OT_link(wmOperatorType *ot)
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_BLOCKING;
 
-	RNA_def_boolean(ot->srna, "detach", FALSE, "Detach", "Detach and redirect existing links");
+	RNA_def_boolean(ot->srna, "detach", false, "Detach", "Detach and redirect existing links");
 }
 
 /* ********************** Make Link operator ***************** */
@@ -770,7 +770,7 @@ static int cut_links_exec(bContext *C, wmOperator *op)
 	RNA_END;
 
 	if (i > 1) {
-		int found = FALSE;
+		bool found = false;
 		bNodeLink *link, *next;
 		
 		ED_preview_kill_jobs(C);
@@ -782,9 +782,9 @@ static int cut_links_exec(bContext *C, wmOperator *op)
 
 			if (cut_links_intersect(link, mcoords, i)) {
 
-				if (found == FALSE) {
+				if (found == false) {
 					ED_preview_kill_jobs(C);
-					found = TRUE;
+					found = true;
 				}
 
 				snode_update(snode, link->tonode);
@@ -1057,7 +1057,7 @@ static int node_attach_invoke(bContext *C, wmOperator *UNUSED(op), const wmEvent
 			if (node->flag & NODE_SELECT) {
 				if (node->parent == NULL) {
 					/* disallow moving a parent into its child */
-					if (nodeAttachNodeCheck(frame, node) == FALSE) {
+					if (nodeAttachNodeCheck(frame, node) == false) {
 						/* attach all unparented nodes */
 						nodeAttachNode(node, frame);
 					}
@@ -1072,7 +1072,7 @@ static int node_attach_invoke(bContext *C, wmOperator *UNUSED(op), const wmEvent
 
 					if (parent) {
 						/* disallow moving a parent into its child */
-						if (nodeAttachNodeCheck(frame, node) == FALSE) {
+						if (nodeAttachNodeCheck(frame, node) == false) {
 							nodeDetachNode(node);
 							nodeAttachNode(node, frame);
 						}
@@ -1209,7 +1209,7 @@ static bool ed_node_link_conditions(ScrArea *sa, bool test, SpaceNode **r_snode,
 		return false;
 
 	/* correct node */
-	if (select->inputs.first == NULL || select->outputs.first == NULL)
+	if (BLI_listbase_is_empty(&select->inputs) || BLI_listbase_is_empty(&select->outputs))
 		return false;
 
 	/* test node for links */

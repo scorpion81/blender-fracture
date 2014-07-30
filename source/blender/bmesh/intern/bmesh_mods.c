@@ -178,8 +178,7 @@ bool BM_disk_dissolve(BMesh *bm, BMVert *v)
 			e = v->e;
 			do {
 				f = NULL;
-				len = bmesh_radial_length(e->l);
-				if (len == 2 && (e != baseedge) && (e != keepedge)) {
+				if (BM_edge_is_manifold(e) && (e != baseedge) && (e != keepedge)) {
 					f = BM_faces_join_pair(bm, e->l->f, e->l->radial_next->f, e, true);
 					/* return if couldn't join faces in manifold
 					 * conditions */
@@ -193,8 +192,7 @@ bool BM_disk_dissolve(BMesh *bm, BMVert *v)
 					done = false;
 					break;
 				}
-				e = bmesh_disk_edge_next(e, v);
-			} while (e != v->e);
+			} while ((e = bmesh_disk_edge_next(e, v)) != v->e);
 		}
 
 		/* collapse the vertex */
@@ -205,14 +203,16 @@ bool BM_disk_dissolve(BMesh *bm, BMVert *v)
 			return false;
 		}
 		
-		/* get remaining two faces */
-		f = e->l->f;
-		f2 = e->l->radial_next->f;
+		if (e->l) {
+			/* get remaining two faces */
+			f = e->l->f;
+			f2 = e->l->radial_next->f;
 
-		if (f != f2) {
-			/* join two remaining faces */
-			if (!BM_faces_join_pair(bm, f, f2, e, true)) {
-				return false;
+			if (f != f2) {
+				/* join two remaining faces */
+				if (!BM_faces_join_pair(bm, f, f2, e, true)) {
+					return false;
+				}
 			}
 		}
 	}
@@ -281,11 +281,12 @@ BMFace *BM_face_split(BMesh *bm, BMFace *f,
 	BLI_assert(!BM_loop_is_adjacent(l_a, l_b));
 
 	/* could be an assert */
-	if (UNLIKELY(BM_loop_is_adjacent(l_a, l_b))) {
-		return NULL;
-	}
-
-	if (f != l_a->f || f != l_b->f) {
+	if (UNLIKELY(BM_loop_is_adjacent(l_a, l_b)) ||
+	    UNLIKELY((f != l_a->f || f != l_b->f)))
+	{
+		if (r_l) {
+			*r_l = NULL;
+		}
 		return NULL;
 	}
 
@@ -301,8 +302,6 @@ BMFace *BM_face_split(BMesh *bm, BMFace *f,
 #endif
 	
 	if (f_new) {
-		BM_elem_attrs_copy(bm, bm, f, f_new);
-
 		/* handle multires update */
 		if (has_mdisp) {
 			BMLoop *l_iter;
@@ -368,11 +367,12 @@ BMFace *BM_face_split_n(BMesh *bm, BMFace *f,
 	BLI_assert(!((n == 0) && BM_loop_is_adjacent(l_a, l_b)));
 
 	/* could be an assert */
-	if (UNLIKELY((n == 0) && BM_loop_is_adjacent(l_a, l_b))) {
-		return NULL;
-	}
-
-	if (l_a->f != l_b->f) {
+	if (UNLIKELY((n == 0) && BM_loop_is_adjacent(l_a, l_b)) ||
+	    UNLIKELY(l_a->f != l_b->f))
+	{
+		if (r_l) {
+			*r_l = NULL;
+		}
 		return NULL;
 	}
 
@@ -390,9 +390,6 @@ BMFace *BM_face_split_n(BMesh *bm, BMFace *f,
 	 * The radial_next is for f and goes from v_b to v_a  */
 
 	if (f_new) {
-		BM_elem_attrs_copy(bm, bm, f, f_new);
-		copy_v3_v3(f_new->no, f->no);
-
 		e = (*r_l)->e;
 		for (i = 0; i < n; i++) {
 			v_new = bmesh_semv(bm, v_b, e, &e_new);
@@ -495,12 +492,13 @@ BMEdge *BM_vert_collapse_faces(BMesh *bm, BMEdge *e_kill, BMVert *v_kill, float 
 		if (BLI_array_count(faces) >= 2) {
 			BMFace *f2 = BM_faces_join(bm, faces, BLI_array_count(faces), true);
 			if (f2) {
-				BMLoop *l_new = NULL;
 				BMLoop *l_a, *l_b;
 
 				if ((l_a = BM_face_vert_share_loop(f2, tv)) &&
 				    (l_b = BM_face_vert_share_loop(f2, tv2)))
 				{
+					BMLoop *l_new;
+
 					if (BM_face_split(bm, f2, l_a, l_b, &l_new, NULL, false)) {
 						e_new = l_new->e;
 					}

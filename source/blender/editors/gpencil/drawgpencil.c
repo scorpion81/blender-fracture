@@ -741,7 +741,7 @@ void draw_gpencil_2dimage(const bContext *C)
 /* draw grease-pencil sketches to specified 2d-view assuming that matrices are already set correctly 
  * Note: this gets called twice - first time with onlyv2d=1 to draw 'canvas' strokes,
  * second time with onlyv2d=0 for screen-aligned strokes */
-void draw_gpencil_view2d(const bContext *C, short onlyv2d)
+void draw_gpencil_view2d(const bContext *C, bool onlyv2d)
 {
 	ScrArea *sa = CTX_wm_area(C);
 	ARegion *ar = CTX_wm_region(C);
@@ -782,7 +782,7 @@ void draw_gpencil_view3d(Scene *scene, View3D *v3d, ARegion *ar, bool only3d)
 	 * deal with the camera border, otherwise map the coords to the camera border. */
 	if ((rv3d->persp == RV3D_CAMOB) && !(G.f & G_RENDER_OGL)) {
 		rctf rectf;
-		ED_view3d_calc_camera_border(scene, ar, v3d, rv3d, &rectf, TRUE); /* no shift */
+		ED_view3d_calc_camera_border(scene, ar, v3d, rv3d, &rectf, true); /* no shift */
 
 		offsx = iroundf(rectf.xmin);
 		offsy = iroundf(rectf.ymin);

@@ -2034,7 +2034,7 @@ static bAnimChannelType ACF_DSNTREE =
 /* TODO: just get this from RNA? */
 static int acf_dslinestyle_icon(bAnimListElem *UNUSED(ale))
 {
-	return ICON_BRUSH_DATA; /* FIXME */
+	return ICON_LINE_DATA;
 }
 
 /* get the appropriate flag(s) for the setting when it is valid  */
@@ -3049,7 +3049,6 @@ short ANIM_channel_setting_get(bAnimContext *ac, bAnimListElem *ale, int setting
 						return ((*val) & flag) == 0;
 					else
 						return ((*val) & flag) != 0;
-					break;
 				}
 				case sizeof(short): /* short pointer for setting */
 				{
@@ -3059,7 +3058,6 @@ short ANIM_channel_setting_get(bAnimContext *ac, bAnimListElem *ale, int setting
 						return ((*val) & flag) == 0;
 					else
 						return ((*val) & flag) != 0;
-					break;
 				}
 				case sizeof(char):  /* char pointer for setting */
 				{
@@ -3069,7 +3067,6 @@ short ANIM_channel_setting_get(bAnimContext *ac, bAnimListElem *ale, int setting
 						return ((*val) & flag) == 0;
 					else
 						return ((*val) & flag) != 0;
-					break;
 				}
 			}
 		}
@@ -3411,7 +3408,8 @@ static void achannel_setting_slider_cb(bContext *C, void *id_poin, void *fcu_poi
 	Scene *scene = CTX_data_scene(C);
 	PointerRNA id_ptr, ptr;
 	PropertyRNA *prop;
-	short flag = 0, done = FALSE;
+	short flag = 0;
+	bool done = false;
 	float cfra;
 	
 	/* get current frame */
@@ -3449,7 +3447,8 @@ static void achannel_setting_slider_shapekey_cb(bContext *C, void *key_poin, voi
 	Scene *scene = CTX_data_scene(C);
 	PointerRNA id_ptr, ptr;
 	PropertyRNA *prop;
-	short flag = 0, done = FALSE;
+	short flag = 0;
+	bool done = false;
 	float cfra;
 	
 	/* get current frame */

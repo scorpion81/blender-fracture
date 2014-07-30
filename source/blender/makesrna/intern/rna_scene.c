@@ -43,6 +43,7 @@
 #include "BKE_freestyle.h"
 #include "BKE_editmesh.h"
 #include "BKE_paint.h"
+#include "BKE_scene.h"
 
 #include "RNA_define.h"
 #include "RNA_enum_types.h"
@@ -347,16 +348,16 @@ static int rna_Scene_object_bases_lookup_string(PointerRNA *ptr, const char *key
 	for (base = scene->base.first; base; base = base->next) {
 		if (strncmp(base->object->id.name + 2, key, sizeof(base->object->id.name) - 2) == 0) {
 			*r_ptr = rna_pointer_inherit_refine(ptr, &RNA_ObjectBase, base);
-			return TRUE;
+			return true;
 		}
 	}
 
-	return FALSE;
+	return false;
 }
 
 static PointerRNA rna_Scene_objects_get(CollectionPropertyIterator *iter)
 {
-	ListBaseIterator *internal = iter->internal;
+	ListBaseIterator *internal = &iter->internal.listbase;
 
 	/* we are actually iterating a Base list, so override get */
 	return rna_pointer_inherit_refine(&iter->parent, &RNA_Object, ((Base *)internal->link)->object);
@@ -663,7 +664,7 @@ static void rna_Scene_all_keyingsets_begin(CollectionPropertyIterator *iter, Poi
 
 static void rna_Scene_all_keyingsets_next(CollectionPropertyIterator *iter)
 {
-	ListBaseIterator *internal = iter->internal;
+	ListBaseIterator *internal = &iter->internal.listbase;
 	KeyingSet *ks = (KeyingSet *)internal->link;
 	
 	/* if we've run out of links in Scene list, jump over to the builtins list unless we're there already */
@@ -678,6 +679,12 @@ static void rna_Scene_all_keyingsets_next(CollectionPropertyIterator *iter)
 static char *rna_RenderSettings_path(PointerRNA *UNUSED(ptr))
 {
 	return BLI_sprintfN("render");
+}
+
+static int rna_omp_threads_get(PointerRNA *ptr)
+{
+	Scene *scene = (Scene *)ptr->data;
+	return BKE_scene_num_omp_threads(scene);
 }
 
 static int rna_RenderSettings_threads_get(PointerRNA *ptr)
@@ -729,7 +736,7 @@ static void rna_ImageFormatSettings_file_format_set(PointerRNA *ptr, int value)
 	ID *id = ptr->id.data;
 	const char is_render = (id && GS(id->name) == ID_SCE);
 	/* see note below on why this is */
-	const char chan_flag = BKE_imtype_valid_channels(imf->imtype) | (is_render ? IMA_CHAN_FLAG_BW : 0);
+	const char chan_flag = BKE_imtype_valid_channels(imf->imtype, true) | (is_render ? IMA_CHAN_FLAG_BW : 0);
 
 	imf->imtype = value;
 
@@ -800,7 +807,7 @@ static EnumPropertyItem *rna_ImageFormatSettings_color_mode_itemf(bContext *UNUS
 	 * where 'BW' will force grayscale even if the output format writes
 	 * as RGBA, this is age old blender convention and not sure how useful
 	 * it really is but keep it for now - campbell */
-	char chan_flag = BKE_imtype_valid_channels(imf->imtype) | (is_render ? IMA_CHAN_FLAG_BW : 0);
+	char chan_flag = BKE_imtype_valid_channels(imf->imtype, true) | (is_render ? IMA_CHAN_FLAG_BW : 0);
 
 #ifdef WITH_FFMPEG
 	/* a WAY more crappy case than B&W flag: depending on codec, file format MIGHT support
@@ -1056,6 +1063,7 @@ static SceneRenderLayer *rna_RenderLayer_new(ID *id, RenderData *UNUSED(rd), con
 	Scene *scene = (Scene *)id;
 	SceneRenderLayer *srl = BKE_scene_add_render_layer(scene, name);
 
+	DAG_id_tag_update(&scene->id, 0);
 	WM_main_add_notifier(NC_SCENE | ND_RENDER_OPTIONS, NULL);
 
 	return srl;
@@ -1075,6 +1083,7 @@ static void rna_RenderLayer_remove(ID *id, RenderData *UNUSED(rd), Main *bmain, 
 
 	RNA_POINTER_INVALIDATE(srl_ptr);
 
+	DAG_id_tag_update(&scene->id, 0);
 	WM_main_add_notifier(NC_SCENE | ND_RENDER_OPTIONS, NULL);
 }
 
@@ -1399,7 +1408,7 @@ static TimeMarker *rna_TimeLine_add(Scene *scene, const char name[], int frame)
 static void rna_TimeLine_remove(Scene *scene, ReportList *reports, PointerRNA *marker_ptr)
 {
 	TimeMarker *marker = marker_ptr->data;
-	if (BLI_remlink_safe(&scene->markers, marker) == FALSE) {
+	if (BLI_remlink_safe(&scene->markers, marker) == false) {
 		BKE_reportf(reports, RPT_ERROR, "Timeline marker '%s' not found in scene '%s'",
 		            marker->name, scene->id.name + 2);
 		return;
@@ -2271,6 +2280,12 @@ void rna_def_render_layer_common(StructRNA *srna, int scene)
 		RNA_def_property_ui_text(prop, "Samples", "Override number of render samples for this render layer, "
 		                                          "0 will use the scene setting");
 		RNA_def_property_update(prop, NC_SCENE | ND_RENDER_OPTIONS, NULL);
+
+		prop = RNA_def_property(srna, "pass_alpha_threshold", PROP_FLOAT, PROP_FACTOR);
+		RNA_def_property_ui_text(prop, "Alpha Threshold",
+		                         "Z, Index, normal, UV and vector passes are only affected by surfaces with "
+		                         "alpha transparency equal to or higher than this threshold");
+		RNA_def_property_update(prop, NC_SCENE | ND_RENDER_OPTIONS, NULL);
 	}
 
 	/* layer options */
@@ -2338,10 +2353,8 @@ void rna_def_render_layer_common(StructRNA *srna, int scene)
 	prop = RNA_def_property(srna, "use_freestyle", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "layflag", SCE_LAY_FRS);
 	RNA_def_property_ui_text(prop, "Freestyle", "Render stylized strokes in this Layer");
-	if (scene)
-		RNA_def_property_update(prop, NC_SCENE | ND_RENDER_OPTIONS, NULL);
-	else
-		RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+	if (scene) RNA_def_property_update(prop, NC_SCENE | ND_RENDER_OPTIONS, NULL);
+	else RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 
 	/* passes */
 	prop = RNA_def_property(srna, "use_pass_combined", PROP_BOOLEAN, PROP_NONE);
@@ -4087,7 +4100,6 @@ static void rna_def_scene_render_data(BlenderRNA *brna)
 	static EnumPropertyItem raytrace_structure_items[] = {
 		{R_RAYSTRUCTURE_AUTO, "AUTO", 0, "Auto", "Automatically select acceleration structure"},
 		{R_RAYSTRUCTURE_OCTREE, "OCTREE", 0, "Octree", "Use old Octree structure"},
-		{R_RAYSTRUCTURE_BLIBVH, "BLIBVH", 0, "BLI BVH", "Use BLI K-Dop BVH.c"},
 		{R_RAYSTRUCTURE_VBVH, "VBVH", 0, "vBVH", "Use vBVH"},
 		{R_RAYSTRUCTURE_SIMD_SVBVH, "SIMD_SVBVH", 0, "SIMD SVBVH", "Use SIMD SVBVH"},
 		{R_RAYSTRUCTURE_SIMD_QBVH, "SIMD_QBVH", 0, "SIMD QBVH", "Use SIMD QBVH"},
@@ -4146,6 +4158,7 @@ static void rna_def_scene_render_data(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "resolution_x", PROP_INT, PROP_PIXEL);
 	RNA_def_property_int_sdna(prop, NULL, "xsch");
+	RNA_def_property_flag(prop, PROP_PROPORTIONAL);
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_range(prop, 4, 65536);
 	RNA_def_property_ui_text(prop, "Resolution X", "Number of horizontal pixels in the rendered image");
@@ -4153,6 +4166,7 @@ static void rna_def_scene_render_data(BlenderRNA *brna)
 	
 	prop = RNA_def_property(srna, "resolution_y", PROP_INT, PROP_PIXEL);
 	RNA_def_property_int_sdna(prop, NULL, "ysch");
+	RNA_def_property_flag(prop, PROP_PROPORTIONAL);
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_range(prop, 4, 65536);
 	RNA_def_property_ui_text(prop, "Resolution Y", "Number of vertical pixels in the rendered image");
@@ -4182,6 +4196,7 @@ static void rna_def_scene_render_data(BlenderRNA *brna)
 	
 	prop = RNA_def_property(srna, "pixel_aspect_x", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "xasp");
+	RNA_def_property_flag(prop, PROP_PROPORTIONAL);
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_range(prop, 1.0f, 200.0f);
 	RNA_def_property_ui_text(prop, "Pixel Aspect X",
@@ -4190,6 +4205,7 @@ static void rna_def_scene_render_data(BlenderRNA *brna)
 	
 	prop = RNA_def_property(srna, "pixel_aspect_y", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "yasp");
+	RNA_def_property_flag(prop, PROP_PROPORTIONAL);
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_range(prop, 1.0f, 200.0f);
 	RNA_def_property_ui_text(prop, "Pixel Aspect Y",
@@ -5078,6 +5094,12 @@ void RNA_def_scene(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 
+	static EnumPropertyItem omp_threads_mode_items[] = {
+		{SCE_OMP_AUTO, "AUTO", 0, "Auto-detect", "Automatically determine the number of threads"},
+		{SCE_OMP_FIXED, "FIXED", 0, "Fixed", "Manually determine the number of threads"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
 	/* Struct definition */
 	srna = RNA_def_struct(brna, "Scene", "ID");
 	RNA_def_struct_ui_text(srna, "Scene",
@@ -5439,6 +5461,16 @@ void RNA_def_scene(BlenderRNA *brna)
 	RNA_def_property_pointer_sdna(prop, NULL, "sequencer_colorspace_settings");
 	RNA_def_property_struct_type(prop, "ColorManagedSequencerColorspaceSettings");
 	RNA_def_property_ui_text(prop, "Sequencer Color Space Settings", "Settings of color space sequencer is working in");
+
+	prop = RNA_def_property(srna, "omp_threads", PROP_INT, PROP_NONE);
+	RNA_def_property_range(prop, 1, BLENDER_MAX_THREADS);
+	RNA_def_property_int_funcs(prop, "rna_omp_threads_get", NULL, NULL);
+	RNA_def_property_ui_text(prop, "OpenMP Threads",
+	                         "Number of CPU threads to use for openmp");
+
+	prop = RNA_def_property(srna, "omp_threads_mode", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_items(prop, omp_threads_mode_items);
+	RNA_def_property_ui_text(prop, "OpenMP Mode", "Determine the amount of openmp threads used");
 
 	/* Nestled Data  */
 	/* *** Non-Animated *** */

@@ -63,15 +63,24 @@ static EnumPropertyItem property_flag_items[] = {
 	{PROP_SKIP_SAVE, "SKIP_SAVE", 0, "Skip Save", ""},
 	{PROP_ANIMATABLE, "ANIMATABLE", 0, "Animatable", ""},
 	{PROP_LIB_EXCEPTION, "LIBRARY_EDITABLE", 0, "Library Editable", ""},
+	{PROP_PROPORTIONAL, "PROPORTIONAL", 0, "Adjust values proportionally to eachother", ""},
 	{0, NULL, 0, NULL, NULL}};
+
+#define BPY_PROPDEF_OPTIONS_DOC \
+"   :arg options: Enumerator in ['HIDDEN', 'SKIP_SAVE', 'ANIMATABLE', 'LIBRARY_EDITABLE', 'PROPORTIONAL'].\n" \
+"   :type options: set\n" \
 
 static EnumPropertyItem property_flag_enum_items[] = {
 	{PROP_HIDDEN, "HIDDEN", 0, "Hidden", ""},
 	{PROP_SKIP_SAVE, "SKIP_SAVE", 0, "Skip Save", ""},
 	{PROP_ANIMATABLE, "ANIMATABLE", 0, "Animatable", ""},
-	{PROP_ENUM_FLAG, "ENUM_FLAG", 0, "Enum Flag", ""},
 	{PROP_LIB_EXCEPTION, "LIBRARY_EDITABLE", 0, "Library Editable", ""},
+	{PROP_ENUM_FLAG, "ENUM_FLAG", 0, "Enum Flag", ""},
 	{0, NULL, 0, NULL, NULL}};
+
+#define BPY_PROPDEF_OPTIONS_ENUM_DOC \
+"   :type default: string or set\n" \
+"   :arg options: Enumerator in ['HIDDEN', 'SKIP_SAVE', 'ANIMATABLE', 'ENUM_FLAG', 'LIBRARY_EDITABLE'].\n" \
 
 /* subtypes */
 /* XXX Keep in sync with rna_rna.c's property_subtype_items ???
@@ -87,6 +96,10 @@ static EnumPropertyItem property_subtype_string_items[] = {
 	{PROP_NONE, "NONE", 0, "None", ""},
 	{0, NULL, 0, NULL, NULL}};
 
+#define BPY_PROPDEF_SUBTYPE_STRING_DOC \
+"   :arg subtype: Enumerator in ['FILE_PATH', 'DIR_PATH', 'FILE_NAME', 'BYTE_STRING', 'PASSWORD', 'NONE'].\n" \
+"   :type subtype: string\n" \
+
 static EnumPropertyItem property_subtype_number_items[] = {
 	{PROP_PIXEL, "PIXEL", 0, "Pixel", ""},
 	{PROP_UNSIGNED, "UNSIGNED", 0, "Unsigned", ""},
@@ -98,6 +111,10 @@ static EnumPropertyItem property_subtype_number_items[] = {
 
 	{PROP_NONE, "NONE", 0, "None", ""},
 	{0, NULL, 0, NULL, NULL}};
+
+#define BPY_PROPDEF_SUBTYPE_NUMBER_DOC \
+"   :arg subtype: Enumerator in ['PIXEL', 'UNSIGNED', 'PERCENTAGE', 'FACTOR', 'ANGLE', 'TIME', 'DISTANCE', 'NONE'].\n" \
+"   :type subtype: string\n" \
 
 static EnumPropertyItem property_subtype_array_items[] = {
 	{PROP_COLOR, "COLOR", 0, "Color", ""},
@@ -115,6 +132,12 @@ static EnumPropertyItem property_subtype_array_items[] = {
 
 	{PROP_NONE, "NONE", 0, "None", ""},
 	{0, NULL, 0, NULL, NULL}};
+
+#define BPY_PROPDEF_SUBTYPE_ARRAY_DOC \
+"   :arg subtype: Enumerator in ['COLOR', 'TRANSLATION', 'DIRECTION', " \
+                                "'VELOCITY', 'ACCELERATION', 'MATRIX', 'EULER', 'QUATERNION', 'AXISANGLE', " \
+                                "'XYZ', 'COLOR_GAMMA', 'LAYER', 'NONE'].\n" \
+"   :type subtype: string\n"
 
 /* PyObject's */
 static PyObject *pymeth_BoolProperty = NULL;
@@ -1839,10 +1862,8 @@ PyDoc_STRVAR(BPy_BoolProperty_doc,
 "\n"
 BPY_PROPDEF_NAME_DOC
 BPY_PROPDEF_DESC_DOC
-"   :arg options: Enumerator in ['HIDDEN', 'SKIP_SAVE', 'ANIMATABLE', 'LIBRARY_EDITABLE'].\n"
-"   :type options: set\n"
-"   :arg subtype: Enumerator in ['UNSIGNED', 'PERCENTAGE', 'FACTOR', 'ANGLE', 'TIME', 'DISTANCE', 'NONE'].\n"
-"   :type subtype: string\n"
+BPY_PROPDEF_OPTIONS_DOC
+BPY_PROPDEF_SUBTYPE_NUMBER_DOC
 BPY_PROPDEF_UPDATE_DOC
 );
 static PyObject *BPy_BoolProperty(PyObject *self, PyObject *args, PyObject *kw)
@@ -1923,12 +1944,8 @@ BPY_PROPDEF_NAME_DOC
 BPY_PROPDEF_DESC_DOC
 "   :arg default: sequence of booleans the length of *size*.\n"
 "   :type default: sequence\n"
-"   :arg options: Enumerator in ['HIDDEN', 'SKIP_SAVE', 'ANIMATABLE', 'LIBRARY_EDITABLE'].\n"
-"   :type options: set\n"
-"   :arg subtype: Enumerator in ['COLOR', 'TRANSLATION', 'DIRECTION', "
-                               "'VELOCITY', 'ACCELERATION', 'MATRIX', 'EULER', 'QUATERNION', 'AXISANGLE', "
-                               "'XYZ', 'COLOR_GAMMA', 'LAYER', 'NONE'].\n"
-"   :type subtype: string\n"
+BPY_PROPDEF_OPTIONS_DOC
+BPY_PROPDEF_SUBTYPE_ARRAY_DOC
 "   :arg size: Vector dimensions in [1, and " STRINGIFY(PYRNA_STACK_ARRAY) "].\n"
 "   :type size: int\n"
 BPY_PROPDEF_UPDATE_DOC
@@ -2025,10 +2042,8 @@ PyDoc_STRVAR(BPy_IntProperty_doc,
 "\n"
 BPY_PROPDEF_NAME_DOC
 BPY_PROPDEF_DESC_DOC
-"   :arg options: Enumerator in ['HIDDEN', 'SKIP_SAVE', 'ANIMATABLE', 'LIBRARY_EDITABLE'].\n"
-"   :type options: set\n"
-"   :arg subtype: Enumerator in ['UNSIGNED', 'PERCENTAGE', 'FACTOR', 'ANGLE', 'TIME', 'DISTANCE', 'NONE'].\n"
-"   :type subtype: string\n"
+BPY_PROPDEF_OPTIONS_DOC
+BPY_PROPDEF_SUBTYPE_NUMBER_DOC
 BPY_PROPDEF_UPDATE_DOC
 );
 static PyObject *BPy_IntProperty(PyObject *self, PyObject *args, PyObject *kw)
@@ -2114,12 +2129,8 @@ BPY_PROPDEF_NAME_DOC
 BPY_PROPDEF_DESC_DOC
 "   :arg default: sequence of ints the length of *size*.\n"
 "   :type default: sequence\n"
-"   :arg options: Enumerator in ['HIDDEN', 'SKIP_SAVE', 'ANIMATABLE', 'LIBRARY_EDITABLE'].\n"
-"   :type options: set\n"
-"   :arg subtype: Enumerator in ['COLOR', 'TRANSLATION', 'DIRECTION', "
-                                "'VELOCITY', 'ACCELERATION', 'MATRIX', 'EULER', 'QUATERNION', 'AXISANGLE', "
-                                "'XYZ', 'COLOR_GAMMA', 'LAYER', 'NONE'].\n"
-"   :type subtype: string\n"
+BPY_PROPDEF_OPTIONS_DOC
+BPY_PROPDEF_SUBTYPE_ARRAY_DOC
 "   :arg size: Vector dimensions in [1, and " STRINGIFY(PYRNA_STACK_ARRAY) "].\n"
 "   :type size: int\n"
 BPY_PROPDEF_UPDATE_DOC
@@ -2223,10 +2234,8 @@ PyDoc_STRVAR(BPy_FloatProperty_doc,
 "\n"
 BPY_PROPDEF_NAME_DOC
 BPY_PROPDEF_DESC_DOC
-"   :arg options: Enumerator in ['HIDDEN', 'SKIP_SAVE', 'ANIMATABLE', 'LIBRARY_EDITABLE'].\n"
-"   :type options: set\n"
-"   :arg subtype: Enumerator in ['UNSIGNED', 'PERCENTAGE', 'FACTOR', 'ANGLE', 'TIME', 'DISTANCE', 'NONE'].\n"
-"   :type subtype: string\n"
+BPY_PROPDEF_OPTIONS_DOC
+BPY_PROPDEF_SUBTYPE_NUMBER_DOC
 BPY_PROPDEF_UNIT_DOC
 BPY_PROPDEF_UPDATE_DOC
 "   :arg precision: Number of digits of precision to display.\n"
@@ -2327,12 +2336,8 @@ BPY_PROPDEF_NAME_DOC
 BPY_PROPDEF_DESC_DOC
 "   :arg default: sequence of floats the length of *size*.\n"
 "   :type default: sequence\n"
-"   :arg options: Enumerator in ['HIDDEN', 'SKIP_SAVE', 'ANIMATABLE', 'LIBRARY_EDITABLE'].\n"
-"   :type options: set\n"
-"   :arg subtype: Enumerator in ['COLOR', 'TRANSLATION', 'DIRECTION', "
-                               "'VELOCITY', 'ACCELERATION', 'MATRIX', 'EULER', 'QUATERNION', 'AXISANGLE', 'XYZ', "
-                               "'COLOR_GAMMA', 'LAYER', 'NONE'].\n"
-"   :type subtype: string\n"
+BPY_PROPDEF_OPTIONS_DOC
+BPY_PROPDEF_SUBTYPE_ARRAY_DOC
 BPY_PROPDEF_UNIT_DOC
 "   :arg size: Vector dimensions in [1, and " STRINGIFY(PYRNA_STACK_ARRAY) "].\n"
 "   :type size: int\n"
@@ -2442,10 +2447,10 @@ PyDoc_STRVAR(BPy_StringProperty_doc,
 "\n"
 BPY_PROPDEF_NAME_DOC
 BPY_PROPDEF_DESC_DOC
-"   :arg options: Enumerator in ['HIDDEN', 'SKIP_SAVE', 'ANIMATABLE', 'LIBRARY_EDITABLE'].\n"
-"   :type options: set\n"
-"   :arg subtype: Enumerator in ['FILE_PATH', 'DIR_PATH', 'FILE_NAME', 'PASSWORD', 'NONE'].\n"
-"   :type subtype: string\n"
+"   :arg default: initializer string.\n"
+"   :type default: string\n"
+BPY_PROPDEF_OPTIONS_DOC
+BPY_PROPDEF_SUBTYPE_STRING_DOC
 BPY_PROPDEF_UPDATE_DOC
 );
 static PyObject *BPy_StringProperty(PyObject *self, PyObject *args, PyObject *kw)
@@ -2525,8 +2530,7 @@ BPY_PROPDEF_NAME_DOC
 BPY_PROPDEF_DESC_DOC
 "   :arg default: The default value for this enum, a string from the identifiers used in *items*.\n"
 "      If the *ENUM_FLAG* option is used this must be a set of such string identifiers instead.\n"
-"   :type default: string or set\n"
-"   :arg options: Enumerator in ['HIDDEN', 'SKIP_SAVE', 'ANIMATABLE', 'ENUM_FLAG', 'LIBRARY_EDITABLE'].\n"
+BPY_PROPDEF_OPTIONS_ENUM_DOC
 "   :type options: set\n"
 "   :arg items: sequence of enum items formatted:\n"
 "      [(identifier, name, description, icon, number), ...] where the identifier is used\n"
@@ -2538,8 +2542,8 @@ BPY_PROPDEF_DESC_DOC
 "      For dynamic values a callback can be passed which returns a list in\n"
 "      the same format as the static list.\n"
 "      This function must take 2 arguments (self, context)\n"
-"      WARNING: Do not use generators here (they will work the first time, but will lead to empty values\n"
-"      in some unload/reload scenarii)!\n"
+"      WARNING: There is a known bug with using a callback,\n"
+"      Python must keep a reference to the strings returned or Blender will crash.\n"
 "   :type items: sequence of string tuples or a function\n"
 BPY_PROPDEF_UPDATE_DOC
 );
@@ -2692,8 +2696,7 @@ PyDoc_STRVAR(BPy_PointerProperty_doc,
 "   :type type: class\n"
 BPY_PROPDEF_NAME_DOC
 BPY_PROPDEF_DESC_DOC
-"   :arg options: Enumerator in ['HIDDEN', 'SKIP_SAVE', 'ANIMATABLE', 'LIBRARY_EDITABLE'].\n"
-"   :type options: set\n"
+BPY_PROPDEF_OPTIONS_DOC
 BPY_PROPDEF_UPDATE_DOC
 );
 static PyObject *BPy_PointerProperty(PyObject *self, PyObject *args, PyObject *kw)
@@ -2758,8 +2761,7 @@ PyDoc_STRVAR(BPy_CollectionProperty_doc,
 "   :type type: class\n"
 BPY_PROPDEF_NAME_DOC
 BPY_PROPDEF_DESC_DOC
-"   :arg options: Enumerator in ['HIDDEN', 'SKIP_SAVE', 'ANIMATABLE', 'LIBRARY_EDITABLE'].\n"
-"   :type options: set\n"
+BPY_PROPDEF_OPTIONS_DOC
 );
 static PyObject *BPy_CollectionProperty(PyObject *self, PyObject *args, PyObject *kw)
 {

@@ -113,7 +113,7 @@ static int vgroup_add_unique_bone_cb(Object *ob, Bone *bone, void *UNUSED(ptr))
 {
 	/* This group creates a vertex group to ob that has the
 	 * same name as bone (provided the bone is skinnable). 
-	 * If such a vertex group aleady exist the routine exits.
+	 * If such a vertex group already exist the routine exits.
 	 */
 	if (!(bone->flag & BONE_NO_DEFORM)) {
 		if (!defgroup_find_name(ob, bone->name)) {
@@ -235,7 +235,7 @@ static void envelope_bone_weighting(Object *ob, Mesh *mesh, float (*verts)[3], i
 	}
 }
 
-static void add_verts_to_dgroups(ReportList *reports, Scene *scene, Object *ob, Object *par, int heat, int mirror)
+static void add_verts_to_dgroups(ReportList *reports, Scene *scene, Object *ob, Object *par, int heat, bool mirror)
 {
 	/* This functions implements the automatic computation of vertex group
 	 * weights, either through envelopes or using a heat equilibrium.
@@ -272,7 +272,7 @@ static void add_verts_to_dgroups(ReportList *reports, Scene *scene, Object *ob, 
 	if (numbones == 0)
 		return;
 	
-	if (ED_vgroup_data_create(ob->data) == FALSE)
+	if (ED_vgroup_data_create(ob->data) == false)
 		return;
 
 	/* create an array of pointer to bones that are skinnable
@@ -403,7 +403,7 @@ static void add_verts_to_dgroups(ReportList *reports, Scene *scene, Object *ob, 
 	}
 
 	/* only generated in some cases but can call anyway */
-	mesh_octree_table(ob, NULL, NULL, 'e');
+	ED_mesh_mirror_spatial_table(ob, NULL, NULL, 'e');
 
 	/* free the memory allocated */
 	MEM_freeN(bonelist);
@@ -415,7 +415,7 @@ static void add_verts_to_dgroups(ReportList *reports, Scene *scene, Object *ob, 
 	MEM_freeN(verts);
 }
 
-void create_vgroups_from_armature(ReportList *reports, Scene *scene, Object *ob, Object *par, int mode, int mirror)
+void create_vgroups_from_armature(ReportList *reports, Scene *scene, Object *ob, Object *par, int mode, bool mirror)
 {
 	/* Lets try to create some vertex groups 
 	 * based on the bones of the parent armature.

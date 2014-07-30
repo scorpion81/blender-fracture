@@ -28,6 +28,8 @@ set(INC
 	../../windowmanager
 	../../../../intern/elbeem/extern
 	../../../../intern/guardedalloc
+	../../bmesh #for fracture
+	../../modifiers/intern #for boolean in fracture, hrm.
 )
 
 set(INC_SYS
@@ -63,6 +65,13 @@ if(WITH_BULLET)
 		../../../../intern/rigidbody
 	)
 	add_definitions(-DWITH_BULLET)
+endif()
+
+if(WITH_MOD_VORONOI)
+	add_definitions(-DWITH_MOD_VORONOI)
+	list(APPEND INC
+		../../../extern/voro++
+	)
 endif()
 
 blender_add_lib(bf_editor_physics "${SRC}" "${INC}" "${INC_SYS}")

@@ -82,7 +82,7 @@ void RegisterBlendExtension(void)
 	LONG lresult;
 	HKEY hkey = 0;
 	HKEY root = 0;
-	BOOL usr_mode = FALSE;
+	BOOL usr_mode = false;
 	DWORD dwd = 0;
 	char buffer[256];
 
@@ -103,7 +103,7 @@ void RegisterBlendExtension(void)
 	lresult = RegOpenKeyEx(HKEY_LOCAL_MACHINE, "Software\\Classes", 0, KEY_ALL_ACCESS, &root);
 	if (lresult != ERROR_SUCCESS) {
 		/* try HKCU on failure */
-		usr_mode = TRUE;
+		usr_mode = true;
 		lresult = RegOpenKeyEx(HKEY_CURRENT_USER, "Software\\Classes", 0, KEY_ALL_ACCESS, &root);
 		if (lresult != ERROR_SUCCESS)
 			RegisterBlendExtension_Fail(0);
@@ -153,9 +153,11 @@ void RegisterBlendExtension(void)
 	GetSystemDirectory(SysDir, FILE_MAXDIR);
 #ifdef WIN64
 	ThumbHandlerDLL = "BlendThumb64.dll";
+#elif defined(__MINGW32__)
+	ThumbHandlerDLL = "BlendThumb.dll";
 #else
 	IsWow64Process(GetCurrentProcess(), &IsWOW64);
-	if (IsWOW64 == TRUE)
+	if (IsWOW64 == true)
 		ThumbHandlerDLL = "BlendThumb64.dll";
 	else
 		ThumbHandlerDLL = "BlendThumb.dll";
@@ -225,6 +227,8 @@ void get_default_root(char *root)
 	}
 }
 
+/* UNUSED */
+#if 0
 int check_file_chars(char *filename)
 {
 	char *p = filename;
@@ -245,6 +249,7 @@ int check_file_chars(char *filename)
 	}
 	return 1;
 }
+#endif
 
 #else
 

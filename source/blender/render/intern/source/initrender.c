@@ -92,10 +92,10 @@ static void init_render_jit(Render *re)
 	
 	if (lastjit != re->r.osa || last_mblur_jit != re->r.mblur_samples) {
 		memset(jit, 0, sizeof(jit));
-		BLI_jitter_init(jit[0], re->r.osa);
+		BLI_jitter_init(jit, re->r.osa);
 		
 		memset(mblur_jit, 0, sizeof(mblur_jit));
-		BLI_jitter_init(mblur_jit[0], re->r.mblur_samples);
+		BLI_jitter_init(mblur_jit, re->r.mblur_samples);
 	}
 	
 	lastjit = re->r.osa;
@@ -545,7 +545,7 @@ void RE_parts_clamp(Render *re)
 	re->party = max_ii(1, min_ii(re->r.tiley, re->recty));
 }
 
-void RE_parts_init(Render *re, int do_crop)
+void RE_parts_init(Render *re, bool do_crop)
 {
 	int nr, xd, yd, partx, party, xparts, yparts;
 	int xminb, xmaxb, yminb, ymaxb;

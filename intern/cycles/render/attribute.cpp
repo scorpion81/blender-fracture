@@ -14,6 +14,7 @@
  * limitations under the License
  */
 
+#include "image.h"
 #include "mesh.h"
 #include "attribute.h"
 
@@ -24,6 +25,17 @@
 CCL_NAMESPACE_BEGIN
 
 /* Attribute */
+
+Attribute::~Attribute()
+{
+	/* for voxel data, we need to remove the image from the image manager */
+	if(element == ATTR_ELEMENT_VOXEL) {
+		VoxelAttribute *voxel_data = data_voxel();
+
+		if(voxel_data)
+			voxel_data->manager->remove_image(voxel_data->slot);
+	}
+}
 
 void Attribute::set(ustring name_, TypeDesc type_, AttributeElement element_)
 {
@@ -38,9 +50,14 @@ void Attribute::set(ustring name_, TypeDesc type_, AttributeElement element_)
 		type == TypeDesc::TypeNormal || type == TypeDesc::TypeMatrix);
 }
 
-void Attribute::reserve(int numverts, int numtris, int numcurves, int numkeys)
+void Attribute::reserve(int numverts, int numtris, int numsteps, int numcurves, int numkeys, bool resize)
 {
-	buffer.resize(buffer_size(numverts, numtris, numcurves, numkeys), 0);
+	if (resize) {
+		buffer.resize(buffer_size(numverts, numtris, numsteps, numcurves, numkeys), 0);
+	}
+	else {
+		buffer.reserve(buffer_size(numverts, numtris, numsteps, numcurves, numkeys));
+	}
 }
 
 void Attribute::add(const float& f)
@@ -70,9 +87,28 @@ void Attribute::add(const Transform& f)
 		buffer.push_back(data[i]);
 }
 
+void Attribute::add(const VoxelAttribute& f)
+{
+	char *data = (char*)&f;
+	size_t size = sizeof(f);
+
+	for(size_t i = 0; i < size; i++)
+		buffer.push_back(data[i]);
+}
+
+void Attribute::add(const char *data)
+{
+	size_t size = data_sizeof();
+
+	for(size_t i = 0; i < size; i++)
+		buffer.push_back(data[i]);
+}
+
 size_t Attribute::data_sizeof() const
 {
-	if(type == TypeDesc::TypeFloat)
+	if(element == ATTR_ELEMENT_VOXEL)
+		return sizeof(VoxelAttribute);
+	else if(type == TypeDesc::TypeFloat)
 		return sizeof(float);
 	else if(type == TypeDesc::TypeMatrix)
 		return sizeof(Transform);
@@ -80,17 +116,21 @@ size_t Attribute::data_sizeof() const
 		return sizeof(float3);
 }
 
-size_t Attribute::element_size(int numverts, int numtris, int numcurves, int numkeys) const
+size_t Attribute::element_size(int numverts, int numtris, int numsteps, int numcurves, int numkeys) const
 {
 	size_t size;
 	
 	switch(element) {
 		case ATTR_ELEMENT_OBJECT:
 		case ATTR_ELEMENT_MESH:
+		case ATTR_ELEMENT_VOXEL:
 			size = 1;
 			break;
 		case ATTR_ELEMENT_VERTEX:
 			size = numverts;
+			break;
+		case ATTR_ELEMENT_VERTEX_MOTION:
+			size = numverts * (numsteps - 1);
 			break;
 		case ATTR_ELEMENT_FACE:
 			size = numtris;
@@ -104,6 +144,9 @@ size_t Attribute::element_size(int numverts, int numtris, int numcurves, int num
 		case ATTR_ELEMENT_CURVE_KEY:
 			size = numkeys;
 			break;
+		case ATTR_ELEMENT_CURVE_KEY_MOTION:
+			size = numkeys * (numsteps - 1);
+			break;
 		default:
 			size = 0;
 			break;
@@ -112,9 +155,9 @@ size_t Attribute::element_size(int numverts, int numtris, int numcurves, int num
 	return size;
 }
 
-size_t Attribute::buffer_size(int numverts, int numtris, int numcurves, int numkeys) const
+size_t Attribute::buffer_size(int numverts, int numtris, int numsteps, int numcurves, int numkeys) const
 {
-	return element_size(numverts, numtris, numcurves, numkeys)*data_sizeof();
+	return element_size(numverts, numtris, numsteps, numcurves, numkeys)*data_sizeof();
 }
 
 bool Attribute::same_storage(TypeDesc a, TypeDesc b)
@@ -136,38 +179,63 @@ bool Attribute::same_storage(TypeDesc a, TypeDesc b)
 
 const char *Attribute::standard_name(AttributeStandard std)
 {
-	if(std == ATTR_STD_VERTEX_NORMAL)
-		return "N";
-	else if(std == ATTR_STD_FACE_NORMAL)
-		return "Ng";
-	else if(std == ATTR_STD_UV)
-		return "uv";
-	else if(std == ATTR_STD_GENERATED)
-		return "generated";
-	else if(std == ATTR_STD_UV_TANGENT)
-		return "tangent";
-	else if(std == ATTR_STD_UV_TANGENT_SIGN)
-		return "tangent_sign";
-	else if(std == ATTR_STD_POSITION_UNDEFORMED)
-		return "undeformed";
-	else if(std == ATTR_STD_POSITION_UNDISPLACED)
-		return "undisplaced";
-	else if(std == ATTR_STD_MOTION_PRE)
-		return "motion_pre";
-	else if(std == ATTR_STD_MOTION_POST)
-		return "motion_post";
-	else if(std == ATTR_STD_PARTICLE)
-		return "particle";
-	else if(std == ATTR_STD_CURVE_INTERCEPT)
-		return "curve_intercept";
-	else if(std == ATTR_STD_PTEX_FACE_ID)
-		return "ptex_face_id";
-	else if(std == ATTR_STD_PTEX_UV)
-		return "ptex_uv";
-	else if(std == ATTR_STD_GENERATED_TRANSFORM)
-		return "generated_transform";
+	switch(std) {
+		case ATTR_STD_VERTEX_NORMAL:
+			return "N";
+		case ATTR_STD_FACE_NORMAL:
+			return "Ng";
+		case ATTR_STD_UV:
+			return "uv";
+		case ATTR_STD_GENERATED:
+			return "generated";
+		case ATTR_STD_GENERATED_TRANSFORM:
+			return "generated_transform";
+		case ATTR_STD_UV_TANGENT:
+			return "tangent";
+		case ATTR_STD_UV_TANGENT_SIGN:
+			return "tangent_sign";
+		case ATTR_STD_POSITION_UNDEFORMED:
+			return "undeformed";
+		case ATTR_STD_POSITION_UNDISPLACED:
+			return "undisplaced";
+		case ATTR_STD_MOTION_VERTEX_POSITION:
+			return "motion_P";
+		case ATTR_STD_MOTION_VERTEX_NORMAL:
+			return "motion_N";
+		case ATTR_STD_PARTICLE:
+			return "particle";
+		case ATTR_STD_CURVE_INTERCEPT:
+			return "curve_intercept";
+		case ATTR_STD_PTEX_FACE_ID:
+			return "ptex_face_id";
+		case ATTR_STD_PTEX_UV:
+			return "ptex_uv";
+		case ATTR_STD_VOLUME_DENSITY:
+			return "density";
+		case ATTR_STD_VOLUME_COLOR:
+			return "color";
+		case ATTR_STD_VOLUME_FLAME:
+			return "flame";
+		case ATTR_STD_VOLUME_HEAT:
+			return "heat";
+		case ATTR_STD_VOLUME_VELOCITY:
+			return "velocity";
+		case ATTR_STD_NOT_FOUND:
+		case ATTR_STD_NONE:
+		case ATTR_STD_NUM:
+			return "";
+	}
 	
 	return "";
+}
+
+AttributeStandard Attribute::name_standard(const char *name)
+{
+	for(int std = ATTR_STD_NONE; std < ATTR_STD_NUM; std++)
+		if(strcmp(name, Attribute::standard_name((AttributeStandard)std)) == 0)
+			return (AttributeStandard)std;
+
+	return ATTR_STD_NONE;
 }
 
 /* Attribute Set */
@@ -182,7 +250,7 @@ AttributeSet::~AttributeSet()
 {
 }
 
-Attribute *AttributeSet::add(ustring name, TypeDesc type, AttributeElement element)
+Attribute *AttributeSet::add(ustring name, TypeDesc type, AttributeElement element, bool resize)
 {
 	Attribute *attr = find(name);
 
@@ -202,9 +270,9 @@ Attribute *AttributeSet::add(ustring name, TypeDesc type, AttributeElement eleme
 	
 	/* this is weak .. */
 	if(triangle_mesh)
-		attr->reserve(triangle_mesh->verts.size(), triangle_mesh->triangles.size(), 0, 0);
+		attr->reserve(triangle_mesh->verts.size(), triangle_mesh->triangles.size(), triangle_mesh->motion_steps, 0, 0, resize);
 	if(curve_mesh)
-		attr->reserve(0, 0, curve_mesh->curves.size(), curve_mesh->curve_keys.size());
+		attr->reserve(0, 0, curve_mesh->motion_steps, curve_mesh->curves.size(), curve_mesh->curve_keys.size(), resize);
 	
 	return attr;
 }
@@ -261,9 +329,13 @@ Attribute *AttributeSet::add(AttributeStandard std, ustring name)
 			case ATTR_STD_GENERATED:
 			case ATTR_STD_POSITION_UNDEFORMED:
 			case ATTR_STD_POSITION_UNDISPLACED:
-			case ATTR_STD_MOTION_PRE:
-			case ATTR_STD_MOTION_POST:
 				attr = add(name, TypeDesc::TypePoint, ATTR_ELEMENT_VERTEX);
+				break;
+			case ATTR_STD_MOTION_VERTEX_POSITION:
+				attr = add(name, TypeDesc::TypePoint, ATTR_ELEMENT_VERTEX_MOTION);
+				break;
+			case ATTR_STD_MOTION_VERTEX_NORMAL:
+				attr = add(name, TypeDesc::TypeNormal, ATTR_ELEMENT_VERTEX_MOTION);
 				break;
 			case ATTR_STD_PTEX_FACE_ID:
 				attr = add(name, TypeDesc::TypeFloat, ATTR_ELEMENT_FACE);
@@ -273,6 +345,17 @@ Attribute *AttributeSet::add(AttributeStandard std, ustring name)
 				break;
 			case ATTR_STD_GENERATED_TRANSFORM:
 				attr = add(name, TypeDesc::TypeMatrix, ATTR_ELEMENT_MESH);
+				break;
+			case ATTR_STD_VOLUME_DENSITY:
+			case ATTR_STD_VOLUME_FLAME:
+			case ATTR_STD_VOLUME_HEAT:
+				attr = add(name, TypeDesc::TypeFloat, ATTR_ELEMENT_VOXEL);
+				break;
+			case ATTR_STD_VOLUME_COLOR:
+				attr = add(name, TypeDesc::TypeColor, ATTR_ELEMENT_VOXEL);
+				break;
+			case ATTR_STD_VOLUME_VELOCITY:
+				attr = add(name, TypeDesc::TypeVector, ATTR_ELEMENT_VOXEL);
 				break;
 			default:
 				assert(0);
@@ -285,9 +368,8 @@ Attribute *AttributeSet::add(AttributeStandard std, ustring name)
 			case ATTR_STD_GENERATED:
 				attr = add(name, TypeDesc::TypePoint, ATTR_ELEMENT_CURVE);
 				break;
-			case ATTR_STD_MOTION_PRE:
-			case ATTR_STD_MOTION_POST:
-				attr = add(name, TypeDesc::TypePoint, ATTR_ELEMENT_CURVE_KEY);
+			case ATTR_STD_MOTION_VERTEX_POSITION:
+				attr = add(name, TypeDesc::TypePoint, ATTR_ELEMENT_CURVE_KEY_MOTION);
 				break;
 			case ATTR_STD_CURVE_INTERCEPT:
 				attr = add(name, TypeDesc::TypeFloat, ATTR_ELEMENT_CURVE_KEY);
@@ -343,9 +425,9 @@ void AttributeSet::reserve()
 {
 	foreach(Attribute& attr, attributes) {
 		if(triangle_mesh)
-			attr.reserve(triangle_mesh->verts.size(), triangle_mesh->triangles.size(), 0, 0);
+			attr.reserve(triangle_mesh->verts.size(), triangle_mesh->triangles.size(), triangle_mesh->motion_steps, 0, 0, true);
 		if(curve_mesh)
-			attr.reserve(0, 0, curve_mesh->curves.size(), curve_mesh->curve_keys.size());
+			attr.reserve(0, 0, 0, curve_mesh->curves.size(), curve_mesh->curve_keys.size(), true);
 	}
 }
 

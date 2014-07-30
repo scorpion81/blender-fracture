@@ -594,7 +594,7 @@ void BKE_pbvh_free(PBVH *bvh)
 			BKE_pbvh_node_layer_disp_free(node);
 
 			if (node->bm_faces)
-				BLI_ghash_free(node->bm_faces, NULL, NULL);
+				BLI_gset_free(node->bm_faces, NULL);
 			if (node->bm_unique_verts)
 				BLI_gset_free(node->bm_unique_verts, NULL);
 			if (node->bm_other_verts)
@@ -618,12 +618,14 @@ void BKE_pbvh_free(PBVH *bvh)
 	if (bvh->prim_indices)
 		MEM_freeN(bvh->prim_indices);
 
-	if (bvh->bm_vert_to_node)
-		BLI_ghash_free(bvh->bm_vert_to_node, NULL, NULL);
-	if (bvh->bm_face_to_node)
-		BLI_ghash_free(bvh->bm_face_to_node, NULL, NULL);
-
 	MEM_freeN(bvh);
+}
+
+void BKE_pbvh_free_layer_disp(PBVH *bvh)
+{
+	int i;
+	for (i = 0; i < bvh->totnode; ++i)
+		BKE_pbvh_node_layer_disp_free(&bvh->nodes[i]);
 }
 
 static void pbvh_iter_begin(PBVHIter *iter, PBVH *bvh, BKE_pbvh_SearchCallback scb, void *search_data)
@@ -1078,7 +1080,8 @@ static void pbvh_update_draw_buffers(PBVH *bvh, PBVHNode **nodes, int totnode)
 					                         bvh->bm,
 					                         node->bm_faces,
 					                         node->bm_unique_verts,
-					                         node->bm_other_verts);
+					                         node->bm_other_verts,
+					                         bvh->show_diffuse_color);
 					break;
 			}
 
@@ -1446,14 +1449,16 @@ static bool pbvh_faces_node_raycast(PBVH *bvh, const PBVHNode *node,
 	return hit;
 }
 
-static int pbvh_grids_node_raycast(PBVH *bvh, PBVHNode *node,
-                                   float (*origco)[3],
-                                   const float ray_start[3],
-                                   const float ray_normal[3], float *dist)
+static bool pbvh_grids_node_raycast(
+        PBVH *bvh, PBVHNode *node,
+        float (*origco)[3],
+        const float ray_start[3], const float ray_normal[3],
+        float *dist)
 {
 	int totgrid = node->totprim;
 	int gridsize = bvh->gridkey.grid_size;
-	int i, x, y, hit = 0;
+	int i, x, y;
+	bool hit = false;
 
 	for (i = 0; i < totgrid; ++i) {
 		CCGElem *grid = bvh->grids[node->prim_indices[i]];
@@ -1498,9 +1503,10 @@ static int pbvh_grids_node_raycast(PBVH *bvh, PBVHNode *node,
 	return hit;
 }
 
-int BKE_pbvh_node_raycast(PBVH *bvh, PBVHNode *node, float (*origco)[3], int use_origco,
-                          const float ray_start[3], const float ray_normal[3],
-                          float *dist)
+bool BKE_pbvh_node_raycast(
+        PBVH *bvh, PBVHNode *node, float (*origco)[3], int use_origco,
+        const float ray_start[3], const float ray_normal[3],
+        float *dist)
 {
 	bool hit = false;
 
@@ -1571,7 +1577,7 @@ void BKE_pbvh_raycast_project_ray_root (PBVH *bvh, bool original, float ray_star
 
 typedef struct {
 	DMSetMaterial setMaterial;
-	int wireframe;
+	bool wireframe;
 } PBVHNodeDrawData;
 
 void BKE_pbvh_node_draw(PBVHNode *node, void *data_v)
@@ -1663,12 +1669,12 @@ static void pbvh_node_check_diffuse_changed(PBVH *bvh, PBVHNode *node)
 	if (!node->draw_buffers)
 		return;
 
-	if (GPU_pbvh_buffers_diffuse_changed(node->draw_buffers, bvh->show_diffuse_color))
+	if (GPU_pbvh_buffers_diffuse_changed(node->draw_buffers, node->bm_faces, bvh->show_diffuse_color))
 		node->flag |= PBVH_UpdateDrawBuffers;
 }
 
 void BKE_pbvh_draw(PBVH *bvh, float (*planes)[4], float (*face_nors)[3],
-                   DMSetMaterial setMaterial, int wireframe)
+                   DMSetMaterial setMaterial, bool wireframe)
 {
 	PBVHNodeDrawData draw_data = {setMaterial, wireframe};
 	PBVHNode **nodes;
@@ -1914,5 +1920,20 @@ void pbvh_vertex_iter_init(PBVH *bvh, PBVHNode *node,
 
 void pbvh_show_diffuse_color_set(PBVH *bvh, bool show_diffuse_color)
 {
-	bvh->show_diffuse_color = show_diffuse_color;
+	bool has_mask = false;
+
+	switch (bvh->type) {
+		case PBVH_GRIDS:
+			has_mask = (bvh->gridkey.has_mask != 0);
+			break;
+		case PBVH_FACES:
+			has_mask = (bvh->vdata && CustomData_get_layer(bvh->vdata,
+			                                CD_PAINT_MASK));
+			break;
+		case PBVH_BMESH:
+			has_mask = (bvh->bm && (CustomData_get_offset(&bvh->bm->vdata, CD_PAINT_MASK) != -1));
+			break;
+	}
+
+	bvh->show_diffuse_color = !has_mask || show_diffuse_color;
 }

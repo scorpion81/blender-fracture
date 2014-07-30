@@ -27,8 +27,8 @@ if VC_VERSION == '11.0':
     BF_FFMPEG_LIB = 'avformat-54.lib avcodec-54.lib avdevice-54.lib avutil-52.lib avfilter-3.lib swscale-2.lib swresample-0.lib'
     BF_FFMPEG_DLL = '${BF_FFMPEG_LIBPATH}/avformat-54.dll ${BF_FFMPEG_LIBPATH}/avcodec-54.dll ${BF_FFMPEG_LIBPATH}/avdevice-54.dll ${BF_FFMPEG_LIBPATH}/avutil-52.dll ${BF_FFMPEG_LIBPATH}/avfilter-3.dll ${BF_FFMPEG_LIBPATH}/swscale-2.dll ${BF_FFMPEG_LIBPATH}/swresample-0.dll'
 else:
-    BF_FFMPEG_LIB = 'avformat-53.lib avcodec-53.lib avdevice-53.lib avutil-51.lib swscale-2.lib'
-    BF_FFMPEG_DLL = '${BF_FFMPEG_LIBPATH}/avformat-53.dll ${BF_FFMPEG_LIBPATH}/avcodec-53.dll ${BF_FFMPEG_LIBPATH}/avdevice-53.dll ${BF_FFMPEG_LIBPATH}/avutil-51.dll ${BF_FFMPEG_LIBPATH}/swscale-2.dll'
+    BF_FFMPEG_LIB = 'avformat-55.lib avcodec-55.lib avdevice-55.lib avutil-52.lib swscale-2.lib'
+    BF_FFMPEG_DLL = '${BF_FFMPEG_LIBPATH}/avformat-55.dll ${BF_FFMPEG_LIBPATH}/avcodec-55.dll ${BF_FFMPEG_LIBPATH}/avdevice-55.dll ${BF_FFMPEG_LIBPATH}/avutil-52.dll ${BF_FFMPEG_LIBPATH}/swscale-2.dll'
     
 
 BF_PYTHON = LIBDIR + '/python'
@@ -245,7 +245,12 @@ CC = 'cl.exe'
 CXX = 'cl.exe'
 
 CFLAGS = []
-CCFLAGS = ['/nologo', '/J', '/W1', '/Gd', '/we4013', '/wd4018', '/wd4244', '/wd4305', '/wd4800', '/wd4065', '/wd4267']
+CCFLAGS = ['/nologo', '/J', '/W3', '/Gd', '/w34062', '/wd4018', '/wd4065', '/wd4127', '/wd4181', '/wd4200', '/wd4244', '/wd4267', '/wd4305', '/wd4800', '/we4013', '/we4431']
+
+# We want to support Vista level ABI for x64
+if VC_VERSION == '12.0':
+    CCFLAGS.append('/D_WIN32_WINNT=0x600')
+
 CXXFLAGS = ['/EHsc']
 BGE_CXXFLAGS = ['/O2', '/Ob2', '/EHsc', '/GR', '/fp:fast']
 

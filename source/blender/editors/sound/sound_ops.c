@@ -187,8 +187,8 @@ static void SOUND_OT_open(wmOperatorType *ot)
 	/* properties */
 	WM_operator_properties_filesel(ot, FOLDERFILE | SOUNDFILE | MOVIEFILE, FILE_SPECIAL, FILE_OPENFILE,
 	                               WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY);
-	RNA_def_boolean(ot->srna, "cache", FALSE, "Cache", "Cache the sound in memory");
-	RNA_def_boolean(ot->srna, "mono", FALSE, "Mono", "Mixdown the sound to mono");
+	RNA_def_boolean(ot->srna, "cache", false, "Cache", "Cache the sound in memory");
+	RNA_def_boolean(ot->srna, "mono", false, "Mono", "Mixdown the sound to mono");
 }
 
 static void SOUND_OT_open_mono(wmOperatorType *ot)
@@ -209,8 +209,8 @@ static void SOUND_OT_open_mono(wmOperatorType *ot)
 	/* properties */
 	WM_operator_properties_filesel(ot, FOLDERFILE | SOUNDFILE | MOVIEFILE, FILE_SPECIAL, FILE_OPENFILE,
 	                               WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY);
-	RNA_def_boolean(ot->srna, "cache", FALSE, "Cache", "Cache the sound in memory");
-	RNA_def_boolean(ot->srna, "mono", TRUE, "Mono", "Mixdown the sound to mono");
+	RNA_def_boolean(ot->srna, "cache", false, "Cache", "Cache the sound in memory");
+	RNA_def_boolean(ot->srna, "mono", true, "Mono", "Mixdown the sound to mono");
 }
 
 /* ******************************************************* */
@@ -430,10 +430,10 @@ static bool sound_mixdown_check(bContext *UNUSED(C), wmOperator *op)
 			return check;
 
 		RNA_property_string_set(op->ptr, prop, filepath);
-		return TRUE;
+		return true;
 	}
 
-	return FALSE;
+	return false;
 }
 
 #endif // WITH_AUDASPACE
@@ -473,12 +473,6 @@ static void sound_mixdown_draw(bContext *C, wmOperator *op)
 	static EnumPropertyItem mp3_format_items[] = {
 		{AUD_FORMAT_S16, "S16", 0, "S16", "16 bit signed"},
 		{AUD_FORMAT_S32, "S32", 0, "S32", "32 bit signed"},
-		{0, NULL, 0, NULL, NULL}
-	};
-
-	static EnumPropertyItem ac3_format_items[] = {
-		{AUD_FORMAT_S16, "S16", 0, "S16", "16 bit signed"},
-		{AUD_FORMAT_FLOAT32, "F32", 0, "F32", "32 bit floating point"},
 		{0, NULL, 0, NULL, NULL}
 	};
 
@@ -527,10 +521,9 @@ static void sound_mixdown_draw(bContext *C, wmOperator *op)
 
 	switch (container) {
 		case AUD_CONTAINER_AC3:
-			RNA_def_property_clear_flag(prop_format, PROP_HIDDEN);
-			RNA_def_property_enum_items(prop_format, ac3_format_items);
 			RNA_def_property_enum_items(prop_codec, all_codec_items);
 			RNA_enum_set(op->ptr, "codec", AUD_CODEC_AC3);
+			RNA_enum_set(op->ptr, "format", AUD_FORMAT_FLOAT32);
 			break;
 		case AUD_CONTAINER_FLAC:
 			RNA_def_property_flag(prop_bitrate, PROP_HIDDEN);
@@ -552,8 +545,7 @@ static void sound_mixdown_draw(bContext *C, wmOperator *op)
 					RNA_enum_set(op->ptr, "format", AUD_FORMAT_S16);
 					break;
 				case AUD_CODEC_AC3:
-					RNA_def_property_enum_items(prop_format, ac3_format_items);
-					RNA_def_property_clear_flag(prop_format, PROP_HIDDEN);
+					RNA_enum_set(op->ptr, "format", AUD_FORMAT_FLOAT32);
 					break;
 				case AUD_CODEC_FLAC:
 					RNA_def_property_flag(prop_bitrate, PROP_HIDDEN);

@@ -110,7 +110,7 @@ static int nlaedit_enable_tweakmode_exec(bContext *C, wmOperator *op)
 	ListBase anim_data = {NULL, NULL};
 	bAnimListElem *ale;
 	int filter;
-	int ok = 0;
+	bool ok = false;
 	
 	/* get editor data */
 	if (ANIM_animdata_get_context(C, &ac) == 0)
@@ -121,7 +121,7 @@ static int nlaedit_enable_tweakmode_exec(bContext *C, wmOperator *op)
 	ANIM_animdata_filter(&ac, &anim_data, filter, ac.data, ac.datatype);
 	
 	/* if no blocks, popup error? */
-	if (anim_data.first == NULL) {
+	if (BLI_listbase_is_empty(&anim_data)) {
 		BKE_report(op->reports, RPT_ERROR, "No AnimData blocks to enter tweak mode for");
 		return OPERATOR_CANCELLED;
 	}
@@ -131,7 +131,7 @@ static int nlaedit_enable_tweakmode_exec(bContext *C, wmOperator *op)
 		AnimData *adt = ale->data;
 		
 		/* try entering tweakmode if valid */
-		ok += BKE_nla_tweakmode_enter(adt);
+		ok |= BKE_nla_tweakmode_enter(adt);
 	}
 	
 	/* free temp data */
@@ -185,7 +185,7 @@ bool nlaedit_disable_tweakmode(bAnimContext *ac)
 	ANIM_animdata_filter(ac, &anim_data, filter, ac->data, ac->datatype);
 	
 	/* if no blocks, popup error? */
-	if (anim_data.first == NULL) {
+	if (BLI_listbase_is_empty(&anim_data)) {
 		BKE_report(ac->reports, RPT_ERROR, "No AnimData blocks in tweak mode to exit from");
 		return false;
 	}
@@ -342,13 +342,13 @@ static int nlaedit_viewall(bContext *C, const short onlySel)
 static int nlaedit_viewall_exec(bContext *C, wmOperator *UNUSED(op))
 {	
 	/* whole range */
-	return nlaedit_viewall(C, FALSE);
+	return nlaedit_viewall(C, false);
 }
 
 static int nlaedit_viewsel_exec(bContext *C, wmOperator *UNUSED(op))
 {
 	/* only selected */
-	return nlaedit_viewall(C, TRUE);
+	return nlaedit_viewall(C, true);
 }
  
 void NLA_OT_view_all(wmOperatorType *ot)
@@ -527,7 +527,7 @@ static int nlaedit_add_transition_exec(bContext *C, wmOperator *op)
 	bAnimListElem *ale;
 	int filter;
 	
-	int done = FALSE;
+	bool done = false;
 	
 	/* get editor data */
 	if (ANIM_animdata_get_context(C, &ac) == 0)
@@ -595,7 +595,7 @@ static int nlaedit_add_transition_exec(bContext *C, wmOperator *op)
 			BKE_nlastrip_validate_name(adt, strip);
 			
 			/* make note of this */
-			done++;
+			done = true;
 		}
 	}
 	
@@ -846,7 +846,7 @@ static int nlaedit_duplicate_exec(bContext *C, wmOperator *UNUSED(op))
 	bAnimListElem *ale;
 	int filter;
 	
-	short done = FALSE;
+	bool done = false;
 	
 	/* get editor data */
 	if (ANIM_animdata_get_context(C, &ac) == 0)
@@ -889,7 +889,7 @@ static int nlaedit_duplicate_exec(bContext *C, wmOperator *UNUSED(op))
 				/* auto-name newly created strip */
 				BKE_nlastrip_validate_name(adt, nstrip);
 				
-				done++;
+				done = true;
 			}
 		}
 	}
@@ -1304,7 +1304,7 @@ static int nlaedit_swap_exec(bContext *C, wmOperator *op)
 		/* special case: if there is only 1 island (i.e. temp meta BUT NOT unselected/normal/normal-meta strips) left after this, 
 		 * and this island has two strips inside it, then we should be able to just swap these still...
 		 */
-		if ((nlt->strips.first == nlt->strips.last) && (nlt->strips.first != NULL)) {
+		if (BLI_listbase_is_empty(&nlt->strips) == false) {
 			NlaStrip *mstrip = (NlaStrip *)nlt->strips.first;
 			
 			if ((mstrip->flag & NLASTRIP_FLAG_TEMP_META) && (BLI_countlist(&mstrip->strips) == 2)) {
@@ -2087,7 +2087,8 @@ static int nla_fmodifier_copy_exec(bContext *C, wmOperator *op)
 	bAnimContext ac;
 	ListBase anim_data = {NULL, NULL};
 	bAnimListElem *ale;
-	int filter, ok = 0;
+	int filter;
+	bool ok = false;
 	
 	/* get editor data */
 	if (ANIM_animdata_get_context(C, &ac) == 0)
@@ -2111,7 +2112,7 @@ static int nla_fmodifier_copy_exec(bContext *C, wmOperator *op)
 				continue;
 				
 			// TODO: when 'active' vs 'all' boolean is added, change last param!
-			ok += ANIM_fmodifiers_copy_to_buf(&strip->modifiers, 0);
+			ok |= ANIM_fmodifiers_copy_to_buf(&strip->modifiers, 0);
 		}
 	}
 	

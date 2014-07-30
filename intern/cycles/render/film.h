@@ -50,6 +50,7 @@ class Film {
 public:
 	float exposure;
 	vector<Pass> passes;
+	float pass_alpha_threshold;
 
 	FilterType filter_type;
 	float filter_width;
@@ -60,6 +61,7 @@ public:
 	float mist_falloff;
 
 	bool use_light_visibility;
+	bool use_sample_clamp;
 
 	bool need_update;
 

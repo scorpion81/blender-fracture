@@ -73,7 +73,7 @@ typedef struct rbConstraint rbConstraint;
 
 /* Create a new dynamics world instance */
 // TODO: add args to set the type of constraint solvers, etc.
-rbDynamicsWorld *RB_dworld_new(const float gravity[3]);
+extern rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, int (*callback)(void* world, void* island1, void* island2));
 
 /* Delete the given dynamics world, and free any extra data it may require */
 void RB_dworld_delete(rbDynamicsWorld *world);
@@ -105,7 +105,7 @@ void RB_dworld_export(rbDynamicsWorld *world, const char *filename);
 /* Setup ---------------------------- */
 
 /* Add RigidBody to dynamics world */
-void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *body, int col_groups);
+extern void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *body, int col_groups, void* meshIsland);
 
 /* Remove RigidBody from dynamics world */
 void RB_dworld_remove_body(rbDynamicsWorld *world, rbRigidBody *body);
@@ -225,6 +225,12 @@ rbCollisionShape *RB_shape_new_cylinder(float radius, float height);
 
 rbCollisionShape *RB_shape_new_convex_hull(float *verts, int stride, int count, float margin, bool *can_embed);
 
+/* Setup (Compound Shape------------*/
+
+extern rbCollisionShape *RB_shape_new_compound();
+extern void RB_shape_add_compound_child(rbCollisionShape** compound, rbCollisionShape* child, float loc[3], float rot[4]);
+extern void RB_shape_compound_set_scaling(rbCollisionShape* compound, float scaling[3]);
+
 /* Setup (Triangle Mesh) ---------- */
 
 /* 1 */
@@ -279,7 +285,8 @@ void RB_constraint_delete(rbConstraint *con);
 /* Settings --------------------------- */
 
 /* Enable or disable constraint */
-void RB_constraint_set_enabled(rbConstraint *con, int enabled);
+extern void RB_constraint_set_enabled(rbConstraint *con, int enabled);
+extern int RB_constraint_is_enabled(rbConstraint *con);
 
 /* Limits */
 #define RB_LIMIT_LIN_X 0

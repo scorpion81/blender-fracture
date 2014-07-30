@@ -57,7 +57,6 @@ typedef unsigned long uint_ptr;
 #include "SG_Controller.h"
 #include "PHY_IGraphicController.h"
 #include "SG_Node.h"
-#include "SG_Controller.h"
 #include "KX_ClientObjectInfo.h"
 #include "RAS_BucketManager.h"
 #include "KX_RayCast.h"
@@ -760,7 +759,7 @@ void KX_GameObject::UpdateLod(MT_Vector3 &cam_pos)
 	Object *bob = this->GetBlenderObject();
 	LodLevel *lod = (LodLevel*) bob->lodlevels.first;
 	for (; lod; lod = lod->next, level++) {
-		if (!lod->source) level--;
+		if (!lod->source || lod->source->type != OB_MESH) level--;
 		if (!lod->next || lod->next->distance * lod->next->distance > distance2) break;
 	}
 
@@ -3033,7 +3032,8 @@ PyObject *KX_GameObject::PyApplyImpulse(PyObject *args)
 
 PyObject *KX_GameObject::PySuspendDynamics()
 {
-	GetPhysicsController()->SuspendDynamics();
+	if (GetPhysicsController())
+		GetPhysicsController()->SuspendDynamics();
 	Py_RETURN_NONE;
 }
 
@@ -3041,7 +3041,8 @@ PyObject *KX_GameObject::PySuspendDynamics()
 
 PyObject *KX_GameObject::PyRestoreDynamics()
 {
-	GetPhysicsController()->RestoreDynamics();
+	if (GetPhysicsController())
+		GetPhysicsController()->RestoreDynamics();
 	Py_RETURN_NONE;
 }
 

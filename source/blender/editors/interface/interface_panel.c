@@ -61,6 +61,7 @@
 
 #include "ED_screen.h"
 
+#include "UI_view2d.h"
 #include "UI_interface.h"
 #include "UI_interface_icons.h"
 #include "UI_resources.h"
@@ -169,20 +170,26 @@ static int panels_re_align(ScrArea *sa, ARegion *ar, Panel **r_pa)
 
 /****************************** panels ******************************/
 
-static void panels_collapse_all(ScrArea *sa, ARegion *ar, Panel *from_pa)
+static void panels_collapse_all(ScrArea *sa, ARegion *ar, const Panel *from_pa)
 {
+	const bool has_category_tabs = UI_panel_category_is_visible(ar);
+	const char *category = has_category_tabs ? UI_panel_category_active_get(ar, false) : NULL;
+	const int flag = ((panel_aligned(sa, ar) == BUT_HORIZONTAL) ? PNL_CLOSEDX : PNL_CLOSEDY);
+	const PanelType *from_pt = from_pa->type;
 	Panel *pa;
-	PanelType *pt, *from_pt;
-	int flag = ((panel_aligned(sa, ar) == BUT_HORIZONTAL) ? PNL_CLOSEDX : PNL_CLOSEDY);
 
 	for (pa = ar->panels.first; pa; pa = pa->next) {
-		pt = pa->type;
-		from_pt = from_pa->type;
+		PanelType *pt = pa->type;
 
 		/* close panels with headers in the same context */
-		if (pt && from_pt && !(pt->flag & PNL_NO_HEADER))
-			if (!pt->context[0] || strcmp(pt->context, from_pt->context) == 0)
-				pa->flag = flag;
+		if (pt && from_pt && !(pt->flag & PNL_NO_HEADER)) {
+			if (!pt->context[0] || !from_pt->context[0] || STREQ(pt->context, from_pt->context)) {
+				if ((pa->flag & PNL_PIN) || !category || !pt->category[0] || STREQ(pt->category, category)) {
+					pa->flag &= ~PNL_CLOSED;
+					pa->flag |= flag;
+				}
+			}
+		}
 	}
 }
 
@@ -885,7 +892,7 @@ static void ui_do_animate(const bContext *C, Panel *panel)
 	float fac;
 
 	fac = (PIL_check_seconds_timer() - data->starttime) / ANIMATION_TIME;
-	fac = min_ff(sqrt(fac), 1.0f);
+	fac = min_ff(sqrtf(fac), 1.0f);
 
 	/* for max 1 second, interpolate positions */
 	if (uiAlignPanelStep(sa, ar, fac, false)) {
@@ -1308,9 +1315,6 @@ static void ui_panel_category_draw_tab(int mode, float minx, float miny, float m
 		mul_v2_fl(vec[a], rad);
 	}
 
-	(void)use_shadow;
-	(void)use_highlight;
-
 	glBegin(mode);
 
 	/* start with corner right-top */
@@ -1401,6 +1405,7 @@ void UI_panel_category_draw_all(ARegion *ar, const char *category_id_active)
 	const int tab_v_pad = iroundf((4 + (2 * px * dpi_fac)) * zoom);  /* padding between tabs */
 	const float tab_curve_radius = ((px * 3) * dpi_fac) * zoom;
 	const int roundboxtype = UI_CNR_TOP_LEFT | UI_CNR_BOTTOM_LEFT;
+	bool is_alpha;
 	bool do_scaletabs = false;
 #ifdef USE_FLAT_INACTIVE
 	bool is_active_prev = false;
@@ -1415,34 +1420,36 @@ void UI_panel_category_draw_all(ARegion *ar, const char *category_id_active)
 
 	/* Primary theme colors */
 	unsigned char theme_col_back[4];
-	unsigned char theme_col_text[4];
-	unsigned char theme_col_text_hi[4];
+	unsigned char theme_col_text[3];
+	unsigned char theme_col_text_hi[3];
 
 	/* Tab colors */
 	unsigned char theme_col_tab_bg[4];
-	unsigned char theme_col_tab_active[4];
-	unsigned char theme_col_tab_inactive[4];
+	unsigned char theme_col_tab_active[3];
+	unsigned char theme_col_tab_inactive[3];
 
 	/* Secondary theme colors */
-	unsigned char theme_col_tab_outline[4];
-	unsigned char theme_col_tab_divider[4];  /* line that divides tabs from the main area */
-	unsigned char theme_col_tab_highlight[4];
-	unsigned char theme_col_tab_highlight_inactive[4];
+	unsigned char theme_col_tab_outline[3];
+	unsigned char theme_col_tab_divider[3];  /* line that divides tabs from the main area */
+	unsigned char theme_col_tab_highlight[3];
+	unsigned char theme_col_tab_highlight_inactive[3];
 
 
 
 	UI_GetThemeColor4ubv(TH_BACK, theme_col_back);
-	UI_GetThemeColor4ubv(TH_TEXT, theme_col_text);
-	UI_GetThemeColor4ubv(TH_TEXT_HI, theme_col_text_hi);
+	UI_GetThemeColor3ubv(TH_TEXT, theme_col_text);
+	UI_GetThemeColor3ubv(TH_TEXT_HI, theme_col_text_hi);
 
 	UI_GetThemeColor4ubv(TH_TAB_BACK, theme_col_tab_bg);
-	UI_GetThemeColor4ubv(TH_TAB_ACTIVE, theme_col_tab_active);
-	UI_GetThemeColor4ubv(TH_TAB_INACTIVE, theme_col_tab_inactive);
-	UI_GetThemeColor4ubv(TH_TAB_OUTLINE, theme_col_tab_outline);
+	UI_GetThemeColor3ubv(TH_TAB_ACTIVE, theme_col_tab_active);
+	UI_GetThemeColor3ubv(TH_TAB_INACTIVE, theme_col_tab_inactive);
+	UI_GetThemeColor3ubv(TH_TAB_OUTLINE, theme_col_tab_outline);
 
-	blend_color_interpolate_byte(theme_col_tab_divider, theme_col_back, theme_col_tab_outline, 0.3f);
-	blend_color_interpolate_byte(theme_col_tab_highlight, theme_col_back, theme_col_text_hi, 0.2f);
-	blend_color_interpolate_byte(theme_col_tab_highlight_inactive, theme_col_tab_inactive, theme_col_text_hi, 0.12f);
+	interp_v3_v3v3_uchar(theme_col_tab_divider, theme_col_back, theme_col_tab_outline, 0.3f);
+	interp_v3_v3v3_uchar(theme_col_tab_highlight, theme_col_back, theme_col_text_hi, 0.2f);
+	interp_v3_v3v3_uchar(theme_col_tab_highlight_inactive, theme_col_tab_inactive, theme_col_text_hi, 0.12f);
+
+	is_alpha = (ar->overlap && (theme_col_back[3] != 255));
 
 	if (fstyle->kerning == 1) {
 		BLF_enable(fstyle->uifont_id, BLF_KERNING_DEFAULT);
@@ -1494,8 +1501,19 @@ void UI_panel_category_draw_all(ARegion *ar, const char *category_id_active)
 	glEnable(GL_LINE_SMOOTH);
 
 	/* draw the background */
-	glColor3ubv(theme_col_tab_bg);
+	if (is_alpha) {
+		glEnable(GL_BLEND);
+		glColor4ubv(theme_col_tab_bg);
+	}
+	else {
+		glColor3ubv(theme_col_tab_bg);
+	}
+
 	glRecti(v2d->mask.xmin, v2d->mask.ymin, v2d->mask.xmin + category_tabs_width, v2d->mask.ymax);
+
+	if (is_alpha) {
+		glDisable(GL_BLEND);
+	}
 
 	for (pc_dyn = ar->panels_category.first; pc_dyn; pc_dyn = pc_dyn->next) {
 		const rcti *rct = &pc_dyn->rect;
@@ -1624,6 +1642,31 @@ int ui_handler_panel_region(bContext *C, const wmEvent *event, ARegion *ar)
 				if (pc_dyn) {
 					UI_panel_category_active_set(ar, pc_dyn->idname);
 					ED_region_tag_redraw(ar);
+
+					/* reset scroll to the top [#38348] */
+					UI_view2d_offset(&ar->v2d, -1.0f, 1.0f);
+
+					retval = WM_UI_HANDLER_BREAK;
+				}
+			}
+			else if (ELEM(event->type, WHEELUPMOUSE, WHEELDOWNMOUSE)) {
+				/* mouse wheel cycle tabs */
+
+				/* first check if the mouse is in the tab region */
+				if (event->ctrl || (event->mval[0] < ((PanelCategoryDyn *)ar->panels_category.first)->rect.xmax)) {
+					const char *category = UI_panel_category_active_get(ar, false);
+					if (LIKELY(category)) {
+						PanelCategoryDyn *pc_dyn = UI_panel_category_find(ar, category);
+						if (LIKELY(pc_dyn)) {
+							pc_dyn = (event->type == WHEELDOWNMOUSE) ? pc_dyn->next : pc_dyn->prev;
+							if (pc_dyn) {
+								/* intentionally don't reset scroll in this case,
+								 * this allows for quick browsing between tabs */
+								UI_panel_category_active_set(ar, pc_dyn->idname);
+								ED_region_tag_redraw(ar);
+							}
+						}
+					}
 					retval = WM_UI_HANDLER_BREAK;
 				}
 			}

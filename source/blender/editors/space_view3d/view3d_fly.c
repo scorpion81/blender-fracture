@@ -39,6 +39,8 @@
 #include "BKE_context.h"
 #include "BKE_report.h"
 
+#include "BLF_translation.h"
+
 #include "BIF_gl.h"
 
 #include "WM_api.h"
@@ -48,6 +50,8 @@
 #include "ED_space_api.h"
 
 #include "PIL_time.h" /* smoothview */
+
+#include "UI_resources.h"
 
 #include "view3d_intern.h"  /* own include */
 
@@ -150,6 +154,10 @@ void fly_modal_keymap(wmKeyConfig *keyconf)
 	WM_modalkeymap_add_item(keymap, SKEY, KM_PRESS, 0, 0, FLY_MODAL_DIR_BACKWARD);
 	WM_modalkeymap_add_item(keymap, AKEY, KM_PRESS, 0, 0, FLY_MODAL_DIR_LEFT);
 	WM_modalkeymap_add_item(keymap, DKEY, KM_PRESS, 0, 0, FLY_MODAL_DIR_RIGHT);
+	WM_modalkeymap_add_item(keymap, EKEY, KM_PRESS, 0, 0, FLY_MODAL_DIR_UP);
+	WM_modalkeymap_add_item(keymap, QKEY, KM_PRESS, 0, 0, FLY_MODAL_DIR_DOWN);
+
+	/* for legacy reasons, leave R/F working */
 	WM_modalkeymap_add_item(keymap, RKEY, KM_PRESS, 0, 0, FLY_MODAL_DIR_UP);
 	WM_modalkeymap_add_item(keymap, FKEY, KM_PRESS, 0, 0, FLY_MODAL_DIR_DOWN);
 
@@ -161,6 +169,10 @@ void fly_modal_keymap(wmKeyConfig *keyconf)
 	WM_modalkeymap_add_item(keymap, XKEY, KM_PRESS, 0, 0, FLY_MODAL_AXIS_LOCK_X);
 	WM_modalkeymap_add_item(keymap, ZKEY, KM_PRESS, 0, 0, FLY_MODAL_AXIS_LOCK_Z);
 
+	WM_modalkeymap_add_item(keymap, LEFTALTKEY, KM_PRESS, KM_ANY, 0, FLY_MODAL_PRECISION_ENABLE);
+	WM_modalkeymap_add_item(keymap, LEFTALTKEY, KM_RELEASE, KM_ANY, 0, FLY_MODAL_PRECISION_DISABLE);
+
+	/* for legacy reasons, leave shift working */
 	WM_modalkeymap_add_item(keymap, LEFTSHIFTKEY, KM_PRESS, KM_ANY, 0, FLY_MODAL_PRECISION_ENABLE);
 	WM_modalkeymap_add_item(keymap, LEFTSHIFTKEY, KM_RELEASE, KM_ANY, 0, FLY_MODAL_PRECISION_DISABLE);
 
@@ -238,8 +250,8 @@ static void drawFlyPixel(const struct bContext *UNUSED(C), ARegion *UNUSED(ar), 
 	y1 = yoff + 0.45f * fly->height;
 	x2 = xoff + 0.55f * fly->width;
 	y2 = yoff + 0.55f * fly->height;
-	cpack(0);
 
+	UI_ThemeColor(TH_VIEW_OVERLAY);
 	glBegin(GL_LINES);
 	/* bottom left */
 	glVertex2f(x1, y1);
@@ -269,6 +281,28 @@ static void drawFlyPixel(const struct bContext *UNUSED(C), ARegion *UNUSED(ar), 
 	glVertex2f(x2, y1);
 	glVertex2f(x2 - 5, y1);
 	glEnd();
+}
+
+static void fly_update_header(bContext *C, FlyInfo *fly)
+{
+#define HEADER_LENGTH 256
+	char header[HEADER_LENGTH];
+
+	BLI_snprintf(header, HEADER_LENGTH, IFACE_("LMB/Return: confirm, "
+	                                           "RMB/Esc: cancel, "
+	                                           "MMB: pan, "
+	                                           "WASDQE: direction, "
+	                                           "Alt: slow, "
+	                                           "Ctrl: free look, "
+	                                           "X: Upright x axis (%s), "
+	                                           "Z: Upright z axis (%s), "
+                                               "(+/- | Wheel): speed"),
+
+	    WM_bool_as_string(fly->xlock != FLY_AXISLOCK_STATE_OFF),
+		WM_bool_as_string(fly->zlock != FLY_AXISLOCK_STATE_OFF));
+
+	ED_area_headerprint(CTX_wm_area(C), header);
+#undef HEADER_LENGTH
 }
 
 /* FlyInfo->state */
@@ -376,6 +410,7 @@ static bool initFlyInfo(bContext *C, FlyInfo *fly, wmOperator *op, const wmEvent
 	/* center the mouse, probably the UI mafia are against this but without its quite annoying */
 	WM_cursor_warp(win, fly->ar->winrct.xmin + fly->center_mval[0], fly->ar->winrct.ymin + fly->center_mval[1]);
 
+	fly_update_header(C, fly);
 	return 1;
 }
 
@@ -414,7 +449,7 @@ static int flyEnd(bContext *C, FlyInfo *fly)
 	return OPERATOR_CANCELLED;
 }
 
-static void flyEvent(FlyInfo *fly, const wmEvent *event)
+static void flyEvent(bContext *C, FlyInfo *fly, const wmEvent *event)
 {
 	if (event->type == TIMER && event->customdata == fly->timer) {
 		fly->redraw = 1;
@@ -427,7 +462,7 @@ static void flyEvent(FlyInfo *fly, const wmEvent *event)
 		// puts("ndof motion detected in fly mode!");
 		// static const char *tag_name = "3D mouse position";
 
-		wmNDOFMotionData *incoming_ndof = (wmNDOFMotionData *)event->customdata;
+		const wmNDOFMotionData *incoming_ndof = event->customdata;
 		switch (incoming_ndof->progress) {
 			case P_STARTING:
 				/* start keeping track of 3D mouse position */
@@ -622,6 +657,7 @@ static void flyEvent(FlyInfo *fly, const wmEvent *event)
 					fly->xlock = FLY_AXISLOCK_STATE_ACTIVE;
 					fly->xlock_momentum = 0.0;
 				}
+				fly_update_header(C, fly);
 				break;
 			case FLY_MODAL_AXIS_LOCK_Z:
 				if (fly->zlock != FLY_AXISLOCK_STATE_OFF)
@@ -630,6 +666,7 @@ static void flyEvent(FlyInfo *fly, const wmEvent *event)
 					fly->zlock = FLY_AXISLOCK_STATE_ACTIVE;
 					fly->zlock_momentum = 0.0;
 				}
+				fly_update_header(C, fly);
 				break;
 
 			case FLY_MODAL_PRECISION_ENABLE:
@@ -909,133 +946,23 @@ static int flyApply(bContext *C, FlyInfo *fly)
 	return OPERATOR_FINISHED;
 }
 
-static int flyApply_ndof(bContext *C, FlyInfo *fly)
+static void flyApply_ndof(bContext *C, FlyInfo *fly)
 {
-	/* shorthand for oft-used variables */
-	wmNDOFMotionData *ndof = fly->ndof;
-	const float dt = ndof->dt;
-	RegionView3D *rv3d = fly->rv3d;
-	const int flag = U.ndof_flag;
+	Object *lock_ob = ED_view3d_cameracontrol_object_get(fly->v3d_camera_control);
+	bool has_translate, has_rotate;
 
-#if 0
-	bool do_rotate = (flag & NDOF_SHOULD_ROTATE) && (fly->pan_view == false);
-	bool do_translate = (flag & (NDOF_SHOULD_PAN | NDOF_SHOULD_ZOOM)) != 0;
-#endif
+	view3d_ndof_fly(fly->ndof,
+	                fly->v3d, fly->rv3d,
+	                fly->use_precision, lock_ob ? lock_ob->protectflag : 0,
+	                &has_translate, &has_rotate);
 
-	bool do_rotate = (fly->pan_view == false);
-	bool do_translate = true;
-
-	float view_inv[4];
-	invert_qt_qt(view_inv, rv3d->viewquat);
-
-	rv3d->rot_angle = 0.0f; /* disable onscreen rotation doo-dad */
-
-	if (do_translate) {
-		const float forward_sensitivity  = 1.0f;
-		const float vertical_sensitivity = 0.4f;
-		const float lateral_sensitivity  = 0.6f;
-
-		float speed = 10.0f; /* blender units per second */
-		/* ^^ this is ok for default cube scene, but should scale with.. something */
-
-		float trans[3] = {lateral_sensitivity  * ndof->tvec[0],
-		                  vertical_sensitivity * ndof->tvec[1],
-		                  forward_sensitivity  * ndof->tvec[2]};
-
-		if (fly->use_precision)
-			speed *= 0.2f;
-
-		mul_v3_fl(trans, speed * dt);
-
-		/* transform motion from view to world coordinates */
-		mul_qt_v3(view_inv, trans);
-
-		if (flag & NDOF_FLY_HELICOPTER) {
-			/* replace world z component with device y (yes it makes sense) */
-			trans[2] = speed * dt * vertical_sensitivity * ndof->tvec[1];
-		}
-
-		if (rv3d->persp == RV3D_CAMOB) {
-			/* respect camera position locks */
-			Object *lock_ob = ED_view3d_cameracontrol_object_get(fly->v3d_camera_control);
-			if (lock_ob->protectflag & OB_LOCK_LOCX) trans[0] = 0.0f;
-			if (lock_ob->protectflag & OB_LOCK_LOCY) trans[1] = 0.0f;
-			if (lock_ob->protectflag & OB_LOCK_LOCZ) trans[2] = 0.0f;
-		}
-
-		if (!is_zero_v3(trans)) {
-			/* move center of view opposite of hand motion (this is camera mode, not object mode) */
-			sub_v3_v3(rv3d->ofs, trans);
-			do_translate = true;
-		}
-		else {
-			do_translate = false;
-		}
-	}
-
-	if (do_rotate) {
-		const float turn_sensitivity = 1.0f;
-
-		float rotation[4];
-		float axis[3];
-		float angle = turn_sensitivity * ndof_to_axis_angle(ndof, axis);
-
-		if (fabsf(angle) > 0.0001f) {
-			do_rotate = true;
-
-			if (fly->use_precision)
-				angle *= 0.2f;
-
-			/* transform rotation axis from view to world coordinates */
-			mul_qt_v3(view_inv, axis);
-
-			/* apply rotation to view */
-			axis_angle_to_quat(rotation, axis, angle);
-			mul_qt_qtqt(rv3d->viewquat, rv3d->viewquat, rotation);
-
-			if (flag & NDOF_LOCK_HORIZON) {
-				/* force an upright viewpoint
-				 * TODO: make this less... sudden */
-				float view_horizon[3] = {1.0f, 0.0f, 0.0f}; /* view +x */
-				float view_direction[3] = {0.0f, 0.0f, -1.0f}; /* view -z (into screen) */
-
-				/* find new inverse since viewquat has changed */
-				invert_qt_qt(view_inv, rv3d->viewquat);
-				/* could apply reverse rotation to existing view_inv to save a few cycles */
-
-				/* transform view vectors to world coordinates */
-				mul_qt_v3(view_inv, view_horizon);
-				mul_qt_v3(view_inv, view_direction);
-
-				/* find difference between view & world horizons
-				 * true horizon lives in world xy plane, so look only at difference in z */
-				angle = -asinf(view_horizon[2]);
-
-#ifdef NDOF_FLY_DEBUG
-				printf("lock horizon: adjusting %.1f degrees\n\n", RAD2DEG(angle));
-#endif
-
-				/* rotate view so view horizon = world horizon */
-				axis_angle_to_quat(rotation, view_direction, angle);
-				mul_qt_qtqt(rv3d->viewquat, rv3d->viewquat, rotation);
-			}
-
-			rv3d->view = RV3D_VIEW_USER;
-		}
-		else {
-			do_rotate = false;
-		}
-	}
-
-	if (do_translate || do_rotate) {
+	if (has_translate || has_rotate) {
 		fly->redraw = true;
 
-		if (rv3d->persp == RV3D_CAMOB) {
-			flyMoveCamera(C, fly, do_rotate, do_translate);
+		if (fly->rv3d->persp == RV3D_CAMOB) {
+			flyMoveCamera(C, fly, has_rotate, has_translate);
 		}
 	}
-
-	return OPERATOR_FINISHED;
 }
 
 static int fly_invoke(bContext *C, wmOperator *op, const wmEvent *event)
@@ -1043,7 +970,7 @@ static int fly_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 	RegionView3D *rv3d = CTX_wm_region_view3d(C);
 	FlyInfo *fly;
 
-	if (rv3d->viewlock)
+	if (rv3d->viewlock & RV3D_LOCKED)
 		return OPERATOR_CANCELLED;
 
 	fly = MEM_callocN(sizeof(FlyInfo), "FlyOperation");
@@ -1055,7 +982,7 @@ static int fly_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 		return OPERATOR_CANCELLED;
 	}
 
-	flyEvent(fly, event);
+	flyEvent(C, fly, event);
 
 	WM_event_add_modal_handler(C, op);
 
@@ -1081,7 +1008,7 @@ static int fly_modal(bContext *C, wmOperator *op, const wmEvent *event)
 
 	fly->redraw = 0;
 
-	flyEvent(fly, event);
+	flyEvent(C, fly, event);
 
 	if (fly->ndof) { /* 3D mouse overrules [2D mouse + timer] */
 		if (event->type == NDOF_MOTION) {
@@ -1107,6 +1034,9 @@ static int fly_modal(bContext *C, wmOperator *op, const wmEvent *event)
 		// puts("redraw!"); // too frequent, commented with NDOF_FLY_DRAW_TOOMUCH for now
 		ED_region_tag_redraw(CTX_wm_region(C));
 	}
+
+	if (ELEM(exit_code, OPERATOR_FINISHED, OPERATOR_CANCELLED))
+		ED_area_headerprint(CTX_wm_area(C), NULL);
 
 	return exit_code;
 }

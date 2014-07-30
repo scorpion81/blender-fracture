@@ -51,6 +51,7 @@
 #include "DNA_scene_types.h"
 #include "DNA_screen_types.h"
 #include "DNA_sequence_types.h"
+#include "DNA_space_types.h"
 
 #include "BLI_math.h"
 #include "BLI_blenlib.h"
@@ -541,6 +542,8 @@ Scene *BKE_scene_add(Main *bmain, const char *name)
 
 	sce->toolsettings->proportional_size = 1.0f;
 
+	sce->toolsettings->imapaint.paint.flags |= PAINT_SHOW_BRUSH;
+
 	sce->physics_settings.gravity[0] = 0.0f;
 	sce->physics_settings.gravity[1] = 0.0f;
 	sce->physics_settings.gravity[2] = -9.81f;
@@ -635,6 +638,9 @@ Scene *BKE_scene_add(Main *bmain, const char *name)
 
 	sce->gm.exitkey = 218; // Blender key code for ESC
 
+	sce->omp_threads_mode = SCE_OMP_AUTO;
+	sce->omp_threads = 1;
+
 	sound_create_scene(sce);
 
 	/* color management */
@@ -717,23 +723,63 @@ Scene *BKE_scene_set_name(Main *bmain, const char *name)
 	return NULL;
 }
 
+static void scene_unlink_space_node(SpaceNode *snode, Scene *sce)
+{
+	if (snode->id == &sce->id) {
+		/* nasty DNA logic for SpaceNode:
+		 * ideally should be handled by editor code, but would be bad level call
+		 */
+		bNodeTreePath *path, *path_next;
+		for (path = snode->treepath.first; path; path = path_next) {
+			path_next = path->next;
+			MEM_freeN(path);
+		}
+		BLI_listbase_clear(&snode->treepath);
+		
+		snode->id = NULL;
+		snode->from = NULL;
+		snode->nodetree = NULL;
+		snode->edittree = NULL;
+	}
+}
+
 void BKE_scene_unlink(Main *bmain, Scene *sce, Scene *newsce)
 {
 	Scene *sce1;
-	bScreen *sc;
+	bScreen *screen;
 
 	/* check all sets */
 	for (sce1 = bmain->scene.first; sce1; sce1 = sce1->id.next)
 		if (sce1->set == sce)
 			sce1->set = NULL;
 	
-	/* check render layer nodes in other scenes */
-	clear_scene_in_nodes(bmain, sce);
+	for (sce1 = bmain->scene.first; sce1; sce1 = sce1->id.next) {
+		bNode *node;
+		
+		if (sce1 == sce || !sce1->nodetree)
+			continue;
+		
+		for (node = sce1->nodetree->nodes.first; node; node = node->next) {
+			if (node->id == &sce->id)
+				node->id = NULL;
+		}
+	}
 	
-	/* al screens */
-	for (sc = bmain->screen.first; sc; sc = sc->id.next)
-		if (sc->scene == sce)
-			sc->scene = newsce;
+	/* all screens */
+	for (screen = bmain->screen.first; screen; screen = screen->id.next) {
+		ScrArea *area;
+		
+		if (screen->scene == sce)
+			screen->scene = newsce;
+		
+		for (area = screen->areabase.first; area; area = area->next) {
+			SpaceLink *space_link;
+			for (space_link = area->spacedata.first; space_link; space_link = space_link->next) {
+				if (space_link->spacetype == SPACE_NODE)
+					scene_unlink_space_node((SpaceNode *)space_link, sce);
+			}
+		}
+	}
 
 	BKE_libblock_free(bmain, sce);
 }
@@ -1227,7 +1273,7 @@ static void scene_update_all_bases(EvaluationContext *eval_ctx, Scene *scene, Sc
 	for (base = scene->base.first; base; base = base->next) {
 		Object *object = base->object;
 
-		BKE_object_handle_update_ex(eval_ctx, scene_parent, object, scene->rigidbody_world);
+		BKE_object_handle_update_ex(eval_ctx, scene_parent, object, scene->rigidbody_world, true);
 
 		if (object->dup_group && (object->transflag & OB_DUPLIGROUP))
 			BKE_group_handle_recalc_and_update(eval_ctx, scene_parent, object, object->dup_group);
@@ -1261,9 +1307,11 @@ static void scene_update_object_func(TaskPool *pool, void *taskdata, int threadi
 		double start_time = 0.0;
 		bool add_to_stats = false;
 
-		PRINT("Thread %d: update object %s\n", threadid, object->id.name);
-
 		if (G.debug & G_DEBUG_DEPSGRAPH) {
+			if (object->recalc & OB_RECALC_ALL) {
+				printf("Thread %d: update object %s\n", threadid, object->id.name);
+			}
+
 			start_time = PIL_check_seconds_timer();
 
 			if (object->recalc & OB_RECALC_ALL) {
@@ -1276,7 +1324,7 @@ static void scene_update_object_func(TaskPool *pool, void *taskdata, int threadi
 		 * separately from main thread because of we've got no idea about
 		 * dependencies inside the group.
 		 */
-		BKE_object_handle_update_ex(eval_ctx, scene_parent, object, scene->rigidbody_world);
+		BKE_object_handle_update_ex(eval_ctx, scene_parent, object, scene->rigidbody_world, false);
 
 		/* Calculate statistics. */
 		if (add_to_stats) {
@@ -1292,7 +1340,7 @@ static void scene_update_object_func(TaskPool *pool, void *taskdata, int threadi
 	}
 	else {
 		PRINT("Threda %d: update node %s\n", threadid,
-		      DAG_get_node_name(node));
+		      DAG_get_node_name(scene, node));
 	}
 
 	/* Update will decrease child's valency and schedule child with zero valency. */
@@ -1401,34 +1449,6 @@ static void scene_update_objects(EvaluationContext *eval_ctx, Main *bmain, Scene
 	 * BKE_object_handle_update() then we do nothing here.
 	 */
 	if (!scene_need_update_objects(bmain)) {
-		/* For debug builds we check whether early return didn't give
-		 * us any regressions in terms of missing updates.
-		 *
-		 * TODO(sergey): Remove once we're sure the check above is correct.
-		 */
-#ifndef NDEBUG
-		Base *base;
-
-		for (base = scene->base.first; base; base = base->next) {
-			Object *object = base->object;
-
-			BLI_assert((object->recalc & OB_RECALC_ALL) == 0);
-
-			if (object->proxy) {
-				BLI_assert((object->proxy->recalc & OB_RECALC_ALL) == 0);
-			}
-
-			if (object->dup_group && (object->transflag & OB_DUPLIGROUP)) {
-				GroupObject *go;
-				for (go = object->dup_group->gobject.first; go; go = go->next) {
-					if (go->ob) {
-						BLI_assert((go->ob->recalc & OB_RECALC_ALL) == 0);
-					}
-				}
-			}
-		}
-#endif
-
 		return;
 	}
 
@@ -1496,9 +1516,6 @@ static void scene_update_tagged_recursive(EvaluationContext *eval_ctx, Main *bma
 	/* scene drivers... */
 	scene_update_drivers(bmain, scene);
 
-	/* update sound system animation */
-	sound_update_scene(scene);
-
 	/* update masking curves */
 	BKE_mask_update_scene(bmain, scene);
 	
@@ -1532,6 +1549,8 @@ void BKE_scene_update_tagged(EvaluationContext *eval_ctx, Main *bmain, Scene *sc
 	 * in the future this should handle updates for all datablocks, not
 	 * only objects and scenes. - brecht */
 	scene_update_tagged_recursive(eval_ctx, bmain, scene, scene);
+	/* update sound system animation (TODO, move to depsgraph) */
+	sound_update_scene(bmain, scene);
 
 	/* extra call here to recalc scene animation (for sequencer) */
 	{
@@ -1563,7 +1582,7 @@ void BKE_scene_update_tagged(EvaluationContext *eval_ctx, Main *bmain, Scene *sc
 	
 	/* notify editors and python about recalc */
 	BLI_callback_exec(bmain, &scene->id, BLI_CB_EVT_SCENE_UPDATE_POST);
-	DAG_ids_check_recalc(bmain, scene, FALSE);
+	DAG_ids_check_recalc(bmain, scene, false);
 
 	/* clear recalc flags */
 	DAG_ids_clear_recalc(bmain);
@@ -1571,6 +1590,11 @@ void BKE_scene_update_tagged(EvaluationContext *eval_ctx, Main *bmain, Scene *sc
 
 /* applies changes right away, does all sets too */
 void BKE_scene_update_for_newframe(EvaluationContext *eval_ctx, Main *bmain, Scene *sce, unsigned int lay)
+{
+	BKE_scene_update_for_newframe_ex(eval_ctx, bmain, sce, lay, false);
+}
+
+void BKE_scene_update_for_newframe_ex(EvaluationContext *eval_ctx, Main *bmain, Scene *sce, unsigned int lay, bool do_invisible_flush)
 {
 	float ctime = BKE_scene_frame_get(sce);
 	Scene *sce_iter;
@@ -1607,7 +1631,7 @@ void BKE_scene_update_for_newframe(EvaluationContext *eval_ctx, Main *bmain, Sce
 
 	/* Following 2 functions are recursive
 	 * so don't call within 'scene_update_tagged_recursive' */
-	DAG_scene_update_flags(bmain, sce, lay, TRUE);   // only stuff that moves or needs display still
+	DAG_scene_update_flags(bmain, sce, lay, true, do_invisible_flush);   // only stuff that moves or needs display still
 
 	BKE_mask_evaluate_all_masks(bmain, ctime, true);
 
@@ -1632,6 +1656,8 @@ void BKE_scene_update_for_newframe(EvaluationContext *eval_ctx, Main *bmain, Sce
 
 	/* BKE_object_handle_update() on all objects, groups and sets */
 	scene_update_tagged_recursive(eval_ctx, bmain, sce, sce);
+	/* update sound system animation (TODO, move to depsgraph) */
+	sound_update_scene(bmain, sce);
 
 	scene_depsgraph_hack(eval_ctx, sce, sce);
 
@@ -1639,7 +1665,7 @@ void BKE_scene_update_for_newframe(EvaluationContext *eval_ctx, Main *bmain, Sce
 	BLI_callback_exec(bmain, &sce->id, BLI_CB_EVT_SCENE_UPDATE_POST);
 	BLI_callback_exec(bmain, &sce->id, BLI_CB_EVT_FRAME_CHANGE_POST);
 
-	DAG_ids_check_recalc(bmain, sce, TRUE);
+	DAG_ids_check_recalc(bmain, sce, true);
 
 	/* clear recalc flags */
 	DAG_ids_clear_recalc(bmain);
@@ -1666,6 +1692,7 @@ SceneRenderLayer *BKE_scene_add_render_layer(Scene *sce, const char *name)
 	srl->lay = (1 << 20) - 1;
 	srl->layflag = 0x7FFF;   /* solid ztra halo edge strand */
 	srl->passflag = SCE_PASS_COMBINED | SCE_PASS_Z;
+	srl->pass_alpha_threshold = 0.5f;
 	BKE_freestyle_config_init(&srl->freestyleConfig);
 
 	return srl;
@@ -1844,3 +1871,10 @@ int BKE_scene_num_threads(const Scene *scene)
 	return BKE_render_num_threads(&scene->r);
 }
 
+int BKE_scene_num_omp_threads(const struct Scene *scene)
+{
+	if (scene->omp_threads_mode == SCE_OMP_AUTO)
+		return BLI_omp_thread_count();
+	else
+		return scene->omp_threads;
+}

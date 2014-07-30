@@ -54,8 +54,6 @@
 #include "ED_screen.h"
 #include "ED_clip.h"
 
-#include "UI_interface.h"
-
 #include "RNA_access.h"
 #include "RNA_define.h"
 
@@ -258,7 +256,7 @@ void clip_delete_track(bContext *C, MovieClip *clip, MovieTrackingTrack *track)
 	WM_event_add_notifier(C, NC_MOVIECLIP | NA_EDITED, clip);
 
 	if (update_stab) {
-		tracking->stabilization.ok = FALSE;
+		tracking->stabilization.ok = false;
 		WM_event_add_notifier(C, NC_MOVIECLIP | ND_DISPLAY, clip);
 	}
 
@@ -321,7 +319,7 @@ void clip_draw_cfra(SpaceClip *sc, ARegion *ar, Scene *scene)
 	UI_view2d_getscale(v2d, &xscale, &yscale);
 	glScalef(1.0f / xscale, 1.0f, 1.0f);
 
-	clip_draw_curfra_label(sc->user.framenr, (float)sc->user.framenr * xscale, 18);
+	ED_region_cache_draw_curfra_label(sc->user.framenr, (float)sc->user.framenr * xscale, 18);
 
 	/* restore view transform */
 	glScalef(xscale, 1.0, 1.0);

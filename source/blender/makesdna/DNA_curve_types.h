@@ -108,10 +108,19 @@ typedef struct BevPoint {
 typedef struct BezTriple {
 	float vec[3][3];
 	float alfa, weight, radius;	/* alfa: tilt in 3D View, weight: used for softbody goal weight, radius: for bevel tapering */
-	short ipo;					/* ipo: interpolation mode for segment from this BezTriple to the next */
+	
+	char ipo;					/* ipo: interpolation mode for segment from this BezTriple to the next */
+	
 	char h1, h2; 				/* h1, h2: the handle type of the two handles */
 	char f1, f2, f3;			/* f1, f2, f3: used for selection status */
+	
 	char hide;					/* hide: used to indicate whether BezTriple is hidden (3D), type of keyframe (eBezTriple_KeyframeTypes) */
+	
+	char easing;				/* easing: easing type for interpolation mode (eBezTriple_Easing) */
+	float back;					/* BEZT_IPO_BACK */
+	float amplitude, period;	/* BEZT_IPO_ELASTIC */
+
+	char  pad[4];
 } BezTriple;
 
 /* note; alfa location in struct is abused by Key system */
@@ -248,8 +257,10 @@ typedef struct Curve {
 
 	float ctime;			/* current evaltime - for use by Objects parented to curves */
 	float bevfac1, bevfac2;
+	char bevfac1_mapping, bevfac2_mapping;
 
-	char pad2[4];
+	char pad2[2];
+
 } Curve;
 
 /* **************** CURVE ********************* */
@@ -270,7 +281,7 @@ typedef struct Curve {
 #define CU_UV_ORCO		32
 #define CU_DEFORM_BOUNDS_OFF 64 
 #define CU_STRETCH		128
-#define CU_OFFS_PATHDIST	256
+/* #define CU_OFFS_PATHDIST	256 */ /* DEPRECATED */
 #define CU_FAST			512 /* Font: no filling inside editmode */
 /* #define CU_RETOPO               1024 */ /* DEPRECATED */
 #define CU_DS_EXPAND	2048
@@ -285,6 +296,13 @@ typedef struct Curve {
 // #define CU_TWIST_X_UP			2
 #define CU_TWIST_MINIMUM		3
 #define CU_TWIST_TANGENT		4
+
+/* bevel factor mapping */
+enum {
+	CU_BEVFAC_MAP_RESOLU = 0,
+	CU_BEVFAC_MAP_SEGMENT = 1,
+	CU_BEVFAC_MAP_SPLINE = 2
+};
 
 /* spacemode */
 #define CU_LEFT			0
@@ -336,15 +354,36 @@ typedef enum eBezTriple_Handle {
 	HD_AUTO = 1,
 	HD_VECT = 2,
 	HD_ALIGN = 3,
-	HD_AUTO_ANIM = 4 	/* auto-clamped handles for animation */
+	HD_AUTO_ANIM = 4,         /* auto-clamped handles for animation */
+	HD_ALIGN_DOUBLESIDE = 5,  /* align handles, displayed both of them. used for masks */
 } eBezTriple_Handle;
 
 /* interpolation modes (used only for BezTriple->ipo) */
 typedef enum eBezTriple_Interpolation {
+	/* traditional interpolation */
 	BEZT_IPO_CONST = 0,	/* constant interpolation */
 	BEZT_IPO_LIN = 1,	/* linear interpolation */
-	BEZT_IPO_BEZ = 2	/* bezier interpolation */
+	BEZT_IPO_BEZ = 2,	/* bezier interpolation */
+	
+	/* easing equations */
+	BEZT_IPO_BACK = 3,
+	BEZT_IPO_BOUNCE = 4,
+	BEZT_IPO_CIRC = 5,
+	BEZT_IPO_CUBIC = 6,
+	BEZT_IPO_ELASTIC = 7,
+	BEZT_IPO_EXPO = 8,
+	BEZT_IPO_QUAD = 9,
+	BEZT_IPO_QUART = 10,
+	BEZT_IPO_QUINT = 11,
+	BEZT_IPO_SINE = 12
 } eBezTriple_Interpolation;
+
+/* easing modes (used only for Keyframes - BezTriple->easing) */
+typedef enum eBezTriple_Easing {
+	BEZT_IPO_EASE_IN = 0,
+	BEZT_IPO_EASE_OUT = 1,
+	BEZT_IPO_EASE_IN_OUT = 2
+} eBezTriple_Easing;
 
 /* types of keyframe (used only for BezTriple->hide when BezTriple is used in F-Curves) */
 typedef enum eBezTriple_KeyframeType {

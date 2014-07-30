@@ -165,6 +165,7 @@ void BIF_makeListTemplates(const bContext *C)
 	}
 }
 
+#if 0  /* UNUSED */
 const char *BIF_listTemplates(const bContext *UNUSED(C))
 {
 	GHashIterator ghi;
@@ -194,6 +195,7 @@ const char *BIF_listTemplates(const bContext *UNUSED(C))
 
 	return TEMPLATES_MENU;
 }
+#endif
 
 int   BIF_currentTemplate(const bContext *C)
 {
@@ -930,7 +932,6 @@ static void sk_projectDrawPoint(bContext *C, float vec[3], SK_Stroke *stk, SK_Dr
 
 	zfac = ED_view3d_calc_zfac(ar->regiondata, fp, NULL);
 
-	/* method taken from editview.c - mouse_cursor() */
 	if (ED_view3d_project_short_global(ar, fp, cval, V3D_PROJ_TEST_NOP) == V3D_PROJ_RET_OK) {
 		VECSUB2D(mval_f, cval, dd->mval);
 		ED_view3d_win_to_delta(ar, mval_f, dvec, zfac);
@@ -979,7 +980,7 @@ static int sk_getStrokeSnapPoint(bContext *C, SK_Point *pt, SK_Sketch *sketch, S
 		float mvalf[2];
 
 		BLI_freelistN(&sketch->depth_peels);
-		sketch->depth_peels.first = sketch->depth_peels.last = NULL;
+		BLI_listbase_clear(&sketch->depth_peels);
 
 		mvalf[0] = dd->mval[0];
 		mvalf[1] = dd->mval[1];
@@ -1915,8 +1916,8 @@ void sk_applyConvertGesture(bContext *C, SK_Gesture *UNUSED(gest), SK_Sketch *sk
 
 static void sk_initGesture(bContext *C, SK_Gesture *gest, SK_Sketch *sketch)
 {
-	gest->intersections.first = gest->intersections.last = NULL;
-	gest->self_intersections.first = gest->self_intersections.last = NULL;
+	BLI_listbase_clear(&gest->intersections);
+	BLI_listbase_clear(&gest->self_intersections);
 
 	gest->segments = sk_createStroke();
 	gest->stk = sketch->gesture;
@@ -2093,8 +2094,7 @@ static void sk_drawSketch(Scene *scene, View3D *UNUSED(v3d), SK_Sketch *sketch, 
 	}
 
 #if 0
-	if (sketch->depth_peels.first != NULL)
-	{
+	if (BLI_listbase_is_empty(&sketch->depth_peels) == false) {
 		float colors[8][3] = {
 			{1, 0, 0},
 			{0, 1, 0},
@@ -2387,7 +2387,7 @@ static int sketch_draw_stroke(bContext *C, wmOperator *op, const wmEvent *event)
 	SK_DrawData *dd;
 	SK_Sketch *sketch = contextSketch(C, 1);
 
-	op->customdata = dd = MEM_callocN(sizeof("SK_DrawData"), "SketchDrawData");
+	op->customdata = dd = MEM_callocN(sizeof(SK_DrawData), "SketchDrawData");
 	sk_initDrawData(dd, event->mval);
 
 	sk_start_draw_stroke(sketch);
@@ -2413,7 +2413,7 @@ static int sketch_draw_gesture(bContext *C, wmOperator *op, const wmEvent *event
 	SK_Sketch *sketch = contextSketch(C, 1); /* create just to be sure */
 	sk_cancelStroke(sketch);
 
-	op->customdata = dd = MEM_callocN(sizeof("SK_DrawData"), "SketchDrawData");
+	op->customdata = dd = MEM_callocN(sizeof(SK_DrawData), "SketchDrawData");
 	sk_initDrawData(dd, event->mval);
 
 	sk_start_draw_gesture(sketch);

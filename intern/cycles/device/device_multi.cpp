@@ -168,7 +168,7 @@ public:
 			sub.device->const_copy_to(name, host, size);
 	}
 
-	void tex_alloc(const char *name, device_memory& mem, bool interpolation, bool periodic)
+	void tex_alloc(const char *name, device_memory& mem, InterpolationType interpolation, bool periodic)
 	{
 		foreach(SubDevice& sub, devices) {
 			mem.device_pointer = 0;
@@ -233,7 +233,8 @@ public:
 		mem.device_pointer = tmp;
 	}
 
-	void draw_pixels(device_memory& rgba, int y, int w, int h, int dy, int width, int height, bool transparent)
+	void draw_pixels(device_memory& rgba, int y, int w, int h, int dy, int width, int height, bool transparent,
+		const DeviceDrawParams &draw_params)
 	{
 		device_ptr tmp = rgba.device_pointer;
 		int i = 0, sub_h = h/devices.size();
@@ -247,7 +248,7 @@ public:
 			/* adjust math for w/width */
 
 			rgba.device_pointer = sub.ptr_map[tmp];
-			sub.device->draw_pixels(rgba, sy, w, sh, sdy, width, sheight, transparent);
+			sub.device->draw_pixels(rgba, sy, w, sh, sdy, width, sheight, transparent, draw_params);
 			i++;
 		}
 

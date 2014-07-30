@@ -77,7 +77,7 @@
 
 #define KNIFE_FLT_EPS          0.00001f
 #define KNIFE_FLT_EPS_SQUARED  (KNIFE_FLT_EPS * KNIFE_FLT_EPS)
-#define KNIFE_FLT_EPSBIG       0.001f
+#define KNIFE_FLT_EPSBIG       0.0005f
 
 typedef struct KnifeColors {
 	unsigned char line[3];
@@ -262,7 +262,7 @@ static ListBase *knife_empty_list(KnifeTool_OpData *kcd)
 	ListBase *lst;
 
 	lst = BLI_memarena_alloc(kcd->arena, sizeof(ListBase));
-	lst->first = lst->last = NULL;
+	BLI_listbase_clear(lst);
 	return lst;
 }
 
@@ -653,7 +653,7 @@ static void knife_add_single_cut(KnifeTool_OpData *kcd, KnifeLineHit *lh1, Knife
 	}
 
 	/* Check if edge actually lies within face (might not, if this face is concave) */
-	if (lh1->v && lh2->v) {
+	if ((lh1->v && !lh1->kfe) && (lh2->v && !lh2->kfe)) {
 		if (!knife_verts_edge_in_face(lh1->v, lh2->v, f)) {
 			return;
 		}
@@ -1147,7 +1147,7 @@ static void calc_ortho_extent(KnifeTool_OpData *kcd)
 
 	BM_ITER_MESH (v, &iter, bm, BM_VERTS_OF_MESH) {
 		for (i = 0; i < 3; i++)
-			max_xyz = max_ff(max_xyz, fabs(v->co[i]));
+			max_xyz = max_ff(max_xyz, fabsf(v->co[i]));
 	}
 	kcd->ortho_extent = max_xyz;
 }
@@ -1389,8 +1389,8 @@ static void knife_find_line_hits(KnifeTool_OpData *kcd)
 			if (!(d1 <= vert_tol || d2 <= vert_tol || fabsf(d1 - d2) <= vert_tol)) {
 				lambda = d1 / d2;
 				/* Can't just interpolate between ends of kfe because
-				* that doesn't work with perspective transformation.
-				* Need to find 3d intersection of ray through sint */
+				 * that doesn't work with perspective transformation.
+				 * Need to find 3d intersection of ray through sint */
 				knife_input_ray_segment(kcd, sint, 1.0f, r1, r2);
 				isect_kind = isect_line_line_v3(kfe->v1->cageco, kfe->v2->cageco, r1, r2, p, p2);
 				if (isect_kind >= 1 && point_is_visible(kcd, p, sint, &mats)) {
@@ -1797,6 +1797,10 @@ static int knife_update_active(KnifeTool_OpData *kcd)
 {
 	knife_pos_data_clear(&kcd->curr);
 	copy_v2_v2(kcd->curr.mval, kcd->mval);
+
+	/* view matrix may have changed, reproject */
+	knife_project_v2(kcd, kcd->prev.co, kcd->prev.mval);
+
 	if (kcd->angle_snapping != ANGLE_FREE && kcd->mode == MODE_DRAGGING)
 		knife_snap_angle(kcd);
 
@@ -2614,9 +2618,9 @@ static void knifetool_init(bContext *C, KnifeTool_OpData *kcd,
 
 	ED_region_tag_redraw(kcd->ar);
 
-	kcd->refs = BLI_mempool_create(sizeof(Ref), 1, 2048, 0);
-	kcd->kverts = BLI_mempool_create(sizeof(KnifeVert), 1, 512, BLI_MEMPOOL_ALLOW_ITER);
-	kcd->kedges = BLI_mempool_create(sizeof(KnifeEdge), 1, 512, BLI_MEMPOOL_ALLOW_ITER);
+	kcd->refs = BLI_mempool_create(sizeof(Ref), 0, 2048, 0);
+	kcd->kverts = BLI_mempool_create(sizeof(KnifeVert), 0, 512, BLI_MEMPOOL_ALLOW_ITER);
+	kcd->kedges = BLI_mempool_create(sizeof(KnifeEdge), 0, 512, BLI_MEMPOOL_ALLOW_ITER);
 
 	kcd->origedgemap = BLI_ghash_ptr_new("knife origedgemap");
 	kcd->origvertmap = BLI_ghash_ptr_new("knife origvertmap");
@@ -2857,7 +2861,6 @@ static int knifetool_modal(bContext *C, wmOperator *op, const wmEvent *event)
 
 				ED_region_tag_redraw(kcd->ar);
 				return OPERATOR_PASS_THROUGH;
-				break;
 		}
 	}
 	else { /* non-modal-mapped events */

@@ -47,6 +47,7 @@
 #include "BKE_paint.h"
 #include "BKE_brush.h"
 #include "BKE_colortools.h"
+#include "BKE_image.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
@@ -56,6 +57,8 @@
 
 #include "ED_screen.h"
 #include "ED_view3d.h"
+
+#include "IMB_imbuf_types.h"
 
 #include "paint_intern.h"
 
@@ -89,7 +92,7 @@ typedef struct PaintStroke {
 	/* Set whether any stroke step has yet occurred
 	 * e.g. in sculpt mode, stroke doesn't start until cursor
 	 * passes over the mesh */
-	int stroke_started;
+	bool stroke_started;
 	/* event that started stroke, for modal() return */
 	int event_type;
 	/* check if stroke variables have been initialized */
@@ -98,7 +101,7 @@ typedef struct PaintStroke {
 	bool brush_init;
 	float initial_mouse[2];
 	/* cached_pressure stores initial pressure for size pressure influence mainly */
-	float cached_pressure;
+	float cached_size_pressure;
 	/* last pressure will store last pressure value for use in interpolation for space strokes */
 	float last_pressure;
 
@@ -166,22 +169,42 @@ static void paint_brush_update(bContext *C, Brush *brush, PaintMode mode,
 	 *      brush coord/pressure/etc.
 	 *      It's more an events design issue, which doesn't split coordinate/pressure/angle
 	 *      changing events. We should avoid this after events system re-design */
-	if (paint_supports_dynamic_size(brush, mode) || !stroke->brush_init) {
+	if (!stroke->brush_init) {
 		copy_v2_v2(stroke->initial_mouse, mouse);
+		copy_v2_v2(ups->last_rake, mouse);
 		copy_v2_v2(ups->tex_mouse, mouse);
 		copy_v2_v2(ups->mask_tex_mouse, mouse);
-		stroke->cached_pressure = pressure;
+		stroke->cached_size_pressure = pressure;
+
+		/* check here if color sampling the main brush should do color conversion. This is done here
+		 * to avoid locking up to get the image buffer during sampling */
+		if (brush->mtex.tex && brush->mtex.tex->type == TEX_IMAGE && brush->mtex.tex->ima) {
+			ImBuf *tex_ibuf = BKE_image_pool_acquire_ibuf(brush->mtex.tex->ima, &brush->mtex.tex->iuser, NULL);
+			if (tex_ibuf && tex_ibuf->rect_float == NULL) {
+				ups->do_linear_conversion = true;
+				ups->colorspace = tex_ibuf->rect_colorspace;
+			}
+			BKE_image_pool_release_ibuf(brush->mtex.tex->ima, tex_ibuf, NULL);
+		}
+
+		stroke->brush_init = true;
+	}
+
+	if (paint_supports_dynamic_size(brush, mode)) {
+		copy_v2_v2(ups->tex_mouse, mouse);
+		copy_v2_v2(ups->mask_tex_mouse, mouse);
+		stroke->cached_size_pressure = pressure;
 	}
 
 	/* Truly temporary data that isn't stored in properties */
 
 	ups->stroke_active = true;
-	ups->pressure_value = stroke->cached_pressure;
+	ups->size_pressure_value = stroke->cached_size_pressure;
 
 	ups->pixel_radius = BKE_brush_size_get(scene, brush);
 
 	if (BKE_brush_use_size_pressure(scene, brush) && paint_supports_dynamic_size(brush, mode)) {
-		ups->pixel_radius *= stroke->cached_pressure;
+		ups->pixel_radius *= stroke->cached_size_pressure;
 	}
 
 	if (paint_supports_dynamic_tex_coords(brush, mode)) {
@@ -251,13 +274,8 @@ static void paint_brush_update(bContext *C, Brush *brush, PaintMode mode,
 		ups->draw_anchored = true;
 	}
 	else if (brush->flag & BRUSH_RAKE) {
-		if (!stroke->brush_init)
-			copy_v2_v2(ups->last_rake, mouse);
-		else
-			paint_calculate_rake_rotation(ups, mouse);
+		paint_calculate_rake_rotation(ups, mouse);
 	}
-
-	stroke->brush_init = TRUE;
 }
 
 

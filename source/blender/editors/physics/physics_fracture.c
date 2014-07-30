@@ -35,6 +35,8 @@
 
 #include "BLI_math.h"
 #include "BLI_rand.h"
+#include "BLI_listbase.h"
+#include "BLI_string.h";
 
 #include "DNA_object_types.h"
 #include "DNA_fracture_types.h"
@@ -46,9 +48,11 @@
 #include "BKE_depsgraph.h"
 #include "BKE_DerivedMesh.h"
 #include "BKE_cdderivedmesh.h"
+#include "BLI_string_utf8.h"
 
 #include "ED_screen.h"
 #include "ED_view3d.h"
+#include "ED_physics.h"
 
 #include "WM_types.h"
 #include "WM_api.h"
@@ -56,6 +60,7 @@
 #include "physics_intern.h" // own include
 //#include "bmesh.h"
 
+#if 0
 //#define NAMELEN 64 //namebased, yuck... better dont try longer names.... NOT happy with this, but how to find according group else ? cant store it anywhere
 static int mesh_fracture_exec(bContext *C, wmOperator *UNUSED(op))
 {
@@ -104,7 +109,7 @@ static int mesh_fracture_exec(bContext *C, wmOperator *UNUSED(op))
 		
 		//pick 1st shard, hardcoded by now
 		//execute fracture....
-		BKE_fracture_shard_by_points(fracmd->frac_mesh, 0, &points, fracmd->frac_algorithm, ob);
+//		BKE_fracture_shard_by_points(fracmd->frac_mesh, 0, &points, fracmd->frac_algorithm, ob);
 		
 		MEM_freeN(points.points);
 		
@@ -202,20 +207,21 @@ void FRACTURE_OT_fracturemode_toggle(wmOperatorType* ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
 
-#if 0
+
 /**
  * Face selection in fracture mode,
  * to be extended to the entire shard via select linked
  *
  * \return boolean true == Found
  */
-bool fracture_mesh_pick_face(bContext *C, DerivedMesh *dm, const int mval[2], unsigned int *index, int size)
+bool fracture_mesh_pick_face(bContext *C, Shard* s, const int mval[2], unsigned int *index, int size)
 {
 	ViewContext vc;
 
-	if (!dm || dm->getNumPolys(dm) == 0)
+	if (!s || s->totpoly == 0)
 		return false;
 
+	view3d_operator_needs_opengl(C);
 	view3d_set_viewcontext(C, &vc);
 
 	if (size) {
@@ -223,14 +229,14 @@ bool fracture_mesh_pick_face(bContext *C, DerivedMesh *dm, const int mval[2], un
 		 * on an edge in the backbuf, we can still select a face */
 
 		float dummy_dist;
-		*index = view3d_sample_backbuf_rect(&vc, mval, size, 1, dm->getNumPolys(dm) + 1, &dummy_dist, 0, NULL, NULL);
+		*index = view3d_sample_backbuf_rect(&vc, mval, size, 1, s->totpoly + 1, &dummy_dist, 0, NULL, NULL);
 	}
 	else {
 		/* sample only on the exact position */
 		*index = view3d_sample_backbuf(&vc, mval[0], mval[1]);
 	}
 
-	if ((*index) == 0 || (*index) > (unsigned int)dm->getNumPolys(dm))
+	if ((*index) == 0 || (*index) > (unsigned int)s->totpoly)
 		return false;
 
 	(*index)--;
@@ -238,7 +244,7 @@ bool fracture_mesh_pick_face(bContext *C, DerivedMesh *dm, const int mval[2], un
 	return true;
 }
 
-int fracture_pick_shard(bContext *C, const int mval[2], bool extend, bool deselect, bool toggle)
+int ED_fracture_pick_shard(bContext *C, const int mval[2], bool extend, bool deselect, bool toggle)
 {
 	unsigned int index;
 	Base* bas;
@@ -267,17 +273,27 @@ int fracture_pick_shard(bContext *C, const int mval[2], bool extend, bool desele
 
 	for (i = 0; i < fm->shard_count; i++)
 	{
-		Shard *s = fm->shard_map[i], *s2;
-		DerivedMesh *dm = BKE_shard_create_dm(s);
-		BMesh* bm = DM_to_bmesh(dm, true);
-		BMFace *f;
+		Shard *s = fm->shard_map[i];
+		//DerivedMesh *dm = BKE_shard_create_dm(s);
+		MPoly *mp = s->mpoly;
+		int j = 0;
+		//BMesh* bm = DM_to_bmesh(dm, true);
+		//BMFace *f;
 
 		/* Get the face under the cursor */
-		if (!fracture_mesh_pick_face(C, dm, mval, &index, ED_MESH_PICK_DEFAULT_FACE_SIZE))
+		/*ED_MESH_PICK_DEFAULT_FACE_SIZE = 3*/
+		if (!fracture_mesh_pick_face(C, s, mval, &index, 3))
 			return false;
 
-		if (index >= dm->getNumPolys(dm))
+		if (index >= s->totpoly)
 			return false;
+
+		/* if index is valid, assign new mat to this shard as visual aid */
+		for (j = 0; j < s->totpoly; j++, mp++)
+		{
+			mp->mat_nr = 1;
+		}
+
 
 		f = BM_face_at_index(bm, index);
 		if (f == NULL)
@@ -310,6 +326,87 @@ int fracture_pick_shard(bContext *C, const int mval[2], bool extend, bool desele
 	WM_event_add_notifier(C, NC_GEOM | ND_SELECT, ob->data);
 	ED_region_tag_redraw(CTX_wm_region(C)); // XXX - should redraw all 3D views
 	return true;
+}
+#endif
+
+#if 0
+static int fracture_level_add_exec(bContext *C, wmOperator *UNUSED(op))
+{
+	Object *ob = CTX_data_active_object(C);
+	FractureModifierData* fracmd;
+	FractureLevel* fl;
+
+	//find modifierdata, getFracmesh
+	fracmd = (FractureModifierData *)modifiers_findByType(ob, eModifierType_Fracture);
+
+	if (fracmd != NULL)
+	{
+		//char* str;
+		fl = MEM_callocN(sizeof(FractureLevel), "fraclevel");
+		//str = BLI_sprintfN("Fracture Level %d", BLI_countlist(&fracmd->fracture_levels) + 1);
+		fl->name = BLI_sprintfN("Fracture Level %d", BLI_countlist(&fracmd->fracture_levels) + 1);
+		//fl->name = BLI_strncpy_utf8(fl->name, str, BLI_strlen_utf8(str));
+		fl->extra_group = NULL;
+		fl->frac_algorithm = MOD_FRACTURE_VORONOI;
+		fl->shard_id = 0;
+		fl->shard_count = 10;
+		fl->percentage = 100;
+		BLI_addtail(&fracmd->fracture_levels, fl);
+		return OPERATOR_FINISHED;
+	}
+
+
+	return OPERATOR_CANCELLED;
+}
+
+void FRACTURE_OT_fracture_level_add(wmOperatorType* ot)
+{
+	/* identifiers */
+	ot->idname = "FRACTURE_OT_fracture_level_add";
+	ot->name = "Add Fracture Level";
+	ot->description = "Add a fracture hierarchy level";
+
+	/* api callbacks */
+	ot->exec = fracture_level_add_exec;
+	ot->poll = ED_operator_object_active_editable_mesh;
+
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+}
+
+static int fracture_level_remove_exec(bContext *C, wmOperator *UNUSED(op))
+{
+	Object *ob = CTX_data_active_object(C);
+	FractureModifierData* fracmd;
+	FractureLevel* fl;
+
+	//find modifierdata, getFracmesh
+	fracmd = (FractureModifierData *)modifiers_findByType(ob, eModifierType_Fracture);
+
+	if (fracmd != NULL && BLI_countlist(&fracmd->fracture_levels) > 1)
+	{
+		FractureLevel *fl = BLI_findlink(&fracmd->fracture_levels, fracmd->active_index);
+		BLI_remlink_safe(&fracmd->fracture_levels, fl);
+		if (fracmd->active_index > 0)
+			fracmd->active_index--;
+		return OPERATOR_FINISHED;
+	}
+
+
+	return OPERATOR_CANCELLED;
+}
+
+void FRACTURE_OT_fracture_level_remove(wmOperatorType* ot)
+{
+	/* identifiers */
+	ot->idname = "FRACTURE_OT_fracture_level_remove";
+	ot->name = "Remove Fracture Level";
+	ot->description = "Remove a fracture hierarchy level";
+
+	/* api callbacks */
+	ot->exec = fracture_level_remove_exec;
+	ot->poll = ED_operator_object_active_editable_mesh;
+
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
 #endif
 

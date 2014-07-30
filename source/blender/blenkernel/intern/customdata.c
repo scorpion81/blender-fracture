@@ -49,7 +49,6 @@
 #include "BLI_path_util.h"
 #include "BLI_math.h"
 #include "BLI_mempool.h"
-#include "BLI_utildefines.h"
 #include "BLI_alloca.h"
 
 #include "BLF_translation.h"
@@ -1038,6 +1037,17 @@ static void layerDefault_mvert_skin(void *data, int count)
 	}
 }
 
+static void layerDefault_dyntopo_node(void *data, int count)
+{
+	int *indices = data;
+	int i;
+
+	for (i = 0; i < count; i++) {
+		indices[i] = DYNTOPO_NODE_NONE;
+	}
+}
+
+
 static void layerInterp_mvert_skin(void **sources, const float *weights,
                                    const float *UNUSED(sub_weights),
                                    int count, void *dest)
@@ -1102,7 +1112,7 @@ static const LayerTypeInfo LAYERTYPEINFO[CD_NUMTYPES] = {
 	/* note, when we expose the UV Map / TexFace split to the user, change this back to face Texture */
 	{sizeof(MTexPoly), "MTexPoly", 1, N_("UVMap") /* "Face Texture" */, NULL, NULL, NULL, NULL, NULL},
 	/* 16: CD_MLOOPUV */
-	{sizeof(MLoopUV), "MLoopUV", 1, N_("UV coord"), NULL, NULL, layerInterp_mloopuv, NULL, NULL,
+	{sizeof(MLoopUV), "MLoopUV", 1, N_("UVMap"), NULL, NULL, layerInterp_mloopuv, NULL, NULL,
 	 layerEqual_mloopuv, layerMultiply_mloopuv, layerInitMinMax_mloopuv, 
 	 layerAdd_mloopuv, layerDoMinMax_mloopuv, layerCopyValue_mloopuv},
 	/* 17: CD_MLOOPCOL */
@@ -1171,6 +1181,10 @@ static const LayerTypeInfo LAYERTYPEINFO[CD_NUMTYPES] = {
 	{sizeof(FreestyleFace), "FreestyleFace", 1, NULL, NULL, NULL, NULL, NULL, NULL},
 	/* 39: CD_MLOOPTANGENT */
 	{sizeof(float[4]), "", 0, NULL, NULL, NULL, NULL, NULL, NULL},
+	/* 40: CD_TESSLOOPNORMAL */
+	{sizeof(short[4][3]), "", 0, NULL, NULL, NULL, NULL, NULL, NULL},
+    /* 41: CD_DYNTOPO_NODE */
+	{sizeof(int), "", 0, NULL, NULL, NULL, NULL, NULL, layerDefault_dyntopo_node},
 };
 
 /* note, numbers are from trunk and need updating for bmesh */
@@ -1186,7 +1200,8 @@ static const char *LAYERTYPENAMES[CD_NUMTYPES] = {
 	/* 25-29 */ "CDMPoly", "CDMLoop", "CDShapeKeyIndex", "CDShapeKey", "CDBevelWeight",
 	/* 30-34 */ "CDSubSurfCrease", "CDOrigSpaceLoop", "CDPreviewLoopCol", "CDBMElemPyPtr", "CDPaintMask",
 	/* 35-36 */ "CDGridPaintMask", "CDMVertSkin",
-	/* 37-38 */ "CDFreestyleEdge", "CDFreestyleFace", "CDMLoopTangent",
+	/* 37-40 */ "CDFreestyleEdge", "CDFreestyleFace", "CDMLoopTangent", "CDTessLoopNormal",
+    /* 41 */ "CDDyntopoNode"
 };
 
 
@@ -1218,9 +1233,9 @@ const CustomDataMask CD_MASK_BMESH =
     CD_MASK_PROP_STR | CD_MASK_SHAPEKEY | CD_MASK_SHAPE_KEYINDEX | CD_MASK_MDISPS |
     CD_MASK_CREASE | CD_MASK_BWEIGHT | CD_MASK_RECAST | CD_MASK_PAINT_MASK |
     CD_MASK_GRID_PAINT_MASK | CD_MASK_MVERT_SKIN | CD_MASK_FREESTYLE_EDGE | CD_MASK_FREESTYLE_FACE;
-const CustomDataMask CD_MASK_FACECORNERS =
+const CustomDataMask CD_MASK_FACECORNERS =  /* XXX Not used anywhere! */
     CD_MASK_MTFACE | CD_MASK_MCOL | CD_MASK_MTEXPOLY | CD_MASK_MLOOPUV |
-    CD_MASK_MLOOPCOL;
+    CD_MASK_MLOOPCOL | CD_MASK_NORMAL | CD_MASK_MLOOPTANGENT;
 const CustomDataMask CD_MASK_EVERYTHING =
     CD_MASK_MVERT | CD_MASK_MSTICKY /* DEPRECATED */ | CD_MASK_MDEFORMVERT | CD_MASK_MEDGE | CD_MASK_MFACE |
     CD_MASK_MTFACE | CD_MASK_MCOL | CD_MASK_ORIGINDEX | CD_MASK_NORMAL /* | CD_MASK_POLYINDEX */ | CD_MASK_PROP_FLT |
@@ -1230,7 +1245,9 @@ const CustomDataMask CD_MASK_EVERYTHING =
     CD_MASK_MPOLY | CD_MASK_MLOOP | CD_MASK_SHAPE_KEYINDEX | CD_MASK_SHAPEKEY | CD_MASK_BWEIGHT | CD_MASK_CREASE |
     CD_MASK_ORIGSPACE_MLOOP | CD_MASK_PREVIEW_MLOOPCOL | CD_MASK_BM_ELEM_PYPTR |
     /* BMESH ONLY END */
-    CD_MASK_PAINT_MASK | CD_MASK_GRID_PAINT_MASK | CD_MASK_MVERT_SKIN | CD_MASK_FREESTYLE_EDGE | CD_MASK_FREESTYLE_FACE;
+    CD_MASK_PAINT_MASK | CD_MASK_GRID_PAINT_MASK | CD_MASK_MVERT_SKIN |
+    CD_MASK_FREESTYLE_EDGE | CD_MASK_FREESTYLE_FACE |
+    CD_MASK_MLOOPTANGENT | CD_MASK_TESSLOOPNORMAL;
 
 static const LayerTypeInfo *layerType_getInfo(int type)
 {
@@ -1282,7 +1299,7 @@ void CustomData_update_typemap(CustomData *data)
 
 /* currently only used in BLI_assert */
 #ifndef NDEBUG
-static int customdata_typemap_is_valid(const CustomData *data)
+static bool customdata_typemap_is_valid(const CustomData *data)
 {
 	CustomData data_copy = *data;
 	CustomData_update_typemap(&data_copy);
@@ -1649,6 +1666,8 @@ static CustomDataLayer *customData_add_layer__internal(CustomData *data, int typ
 	           (alloctype == CD_ASSIGN) ||
 	           (alloctype == CD_DUPLICATE) ||
 	           (alloctype == CD_REFERENCE));
+
+	BLI_assert(size >= 0);
 
 	if (!typeInfo->defaultname && CustomData_has_layer(data, type))
 		return &data->layers[CustomData_get_layer_index(data, type)];
@@ -2282,6 +2301,9 @@ void CustomData_to_bmeshpoly(CustomData *fdata, CustomData *pdata, CustomData *l
 		else if (fdata->layers[i].type == CD_MDISPS) {
 			CustomData_add_layer_named(ldata, CD_MDISPS, CD_CALLOC, NULL, totloop, fdata->layers[i].name);
 		}
+		else if (fdata->layers[i].type == CD_TESSLOOPNORMAL) {
+			CustomData_add_layer_named(ldata, CD_NORMAL, CD_CALLOC, NULL, totloop, fdata->layers[i].name);
+		}
 	}
 }
 
@@ -2302,6 +2324,9 @@ void CustomData_from_bmeshpoly(CustomData *fdata, CustomData *pdata, CustomData 
 		}
 		else if (ldata->layers[i].type == CD_ORIGSPACE_MLOOP) {
 			CustomData_add_layer_named(fdata, CD_ORIGSPACE, CD_CALLOC, NULL, total, ldata->layers[i].name);
+		}
+		else if (ldata->layers[i].type == CD_NORMAL) {
+			CustomData_add_layer_named(fdata, CD_TESSLOOPNORMAL, CD_CALLOC, NULL, total, ldata->layers[i].name);
 		}
 	}
 
@@ -2407,7 +2432,7 @@ void CustomData_bmesh_init_pool(CustomData *data, int totelem, const char htype)
 
 	/* If there are no layers, no pool is needed just yet */
 	if (data->totlayer) {
-		data->pool = BLI_mempool_create(data->totsize, totelem, chunksize, BLI_MEMPOOL_SYSMALLOC);
+		data->pool = BLI_mempool_create(data->totsize, totelem, chunksize, BLI_MEMPOOL_NOP);
 	}
 }
 
