@@ -36,6 +36,14 @@ set(SRC
 	boost_locale_wrapper.h
 )
 
+if(WITH_HEADLESS)
+	add_definitions(-DWITH_HEADLESS)
+endif()
+
+if(WITH_GHOST_SDL)
+	add_definitions(-DWITH_GHOST_SDL)
+endif()
+
 if(WITH_INTERNATIONAL)
 	list(APPEND INC_SYS
 		${BOOST_INCLUDE_DIR}
@@ -51,5 +59,10 @@ blender_add_lib(bf_intern_locale "${SRC}" "${INC}" "${INC_SYS}")
 set(MSFFMT_SRC
 	msgfmt.cc
 )
-
 add_executable(msgfmt ${MSFFMT_SRC})
+
+if(CMAKE_C_COMPILER_ID MATCHES "Clang" AND (NOT (CMAKE_C_COMPILER_VERSION VERSION_LESS 3.4)))
+	# needed for clang 3.4+
+	target_link_libraries(msgfmt ${PLATFORM_LINKLIBS})
+endif()
+

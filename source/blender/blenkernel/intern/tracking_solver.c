@@ -344,7 +344,7 @@ bool BKE_tracking_reconstruction_check(MovieTracking *tracking, MovieTrackingObj
 		/* automatic keyframe selection does not require any pre-process checks */
 		if (reconstruct_count_tracks_on_both_keyframes(tracking, object) < 8) {
 			BLI_strncpy(error_msg,
-			            N_("At least 8 common tracks on both of keyframes are needed for reconstruction"),
+			            N_("At least 8 common tracks on both keyframes are needed for reconstruction"),
 			            error_size);
 
 			return false;
@@ -456,7 +456,7 @@ static void reconstruct_update_solve_cb(void *customdata, double progress, const
 
 	if (progressdata->progress) {
 		*progressdata->progress = progress;
-		*progressdata->do_update = TRUE;
+		*progressdata->do_update = true;
 	}
 
 	BLI_snprintf(progressdata->stats_message, progressdata->message_size, "Solving camera | %s", message);

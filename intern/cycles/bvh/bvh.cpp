@@ -77,13 +77,25 @@ bool BVH::cache_read(CacheData& key)
 	key.add(&params, sizeof(params));
 
 	foreach(Object *ob, objects) {
-		key.add(ob->mesh->verts);
-		key.add(ob->mesh->triangles);
-		key.add(ob->mesh->curve_keys);
-		key.add(ob->mesh->curves);
+		Mesh *mesh = ob->mesh;
+
+		key.add(mesh->verts);
+		key.add(mesh->triangles);
+		key.add(mesh->curve_keys);
+		key.add(mesh->curves);
 		key.add(&ob->bounds, sizeof(ob->bounds));
 		key.add(&ob->visibility, sizeof(ob->visibility));
-		key.add(&ob->mesh->transform_applied, sizeof(bool));
+		key.add(&mesh->transform_applied, sizeof(bool));
+
+		if(mesh->use_motion_blur) {
+			Attribute *attr = mesh->attributes.find(ATTR_STD_MOTION_VERTEX_POSITION);
+			if(attr)
+				key.add(attr->buffer);
+
+			attr = mesh->curve_attributes.find(ATTR_STD_MOTION_VERTEX_POSITION);
+			if(attr)
+				key.add(attr->buffer);
+		}
 	}
 
 	CacheData value;
@@ -97,7 +109,7 @@ bool BVH::cache_read(CacheData& key)
 		value.read(pack.nodes);
 		value.read(pack.object_node);
 		value.read(pack.tri_woop);
-		value.read(pack.prim_segment);
+		value.read(pack.prim_type);
 		value.read(pack.prim_visibility);
 		value.read(pack.prim_index);
 		value.read(pack.prim_object);
@@ -119,7 +131,7 @@ void BVH::cache_write(CacheData& key)
 	value.add(pack.nodes);
 	value.add(pack.object_node);
 	value.add(pack.tri_woop);
-	value.add(pack.prim_segment);
+	value.add(pack.prim_type);
 	value.add(pack.prim_visibility);
 	value.add(pack.prim_index);
 	value.add(pack.prim_object);
@@ -165,11 +177,11 @@ void BVH::build(Progress& progress)
 	}
 
 	/* build nodes */
-	vector<int> prim_segment;
+	vector<int> prim_type;
 	vector<int> prim_index;
 	vector<int> prim_object;
 
-	BVHBuild bvh_build(objects, prim_segment, prim_index, prim_object, params, progress);
+	BVHBuild bvh_build(objects, prim_type, prim_index, prim_object, params, progress);
 	BVHNode *root = bvh_build.run();
 
 	if(progress.get_cancel()) {
@@ -178,7 +190,7 @@ void BVH::build(Progress& progress)
 	}
 
 	/* todo: get rid of this copy */
-	pack.prim_segment = prim_segment;
+	pack.prim_type = prim_type;
 	pack.prim_index = prim_index;
 	pack.prim_object = prim_object;
 
@@ -238,9 +250,12 @@ void BVH::refit(Progress& progress)
 
 void BVH::pack_triangle(int idx, float4 woop[3])
 {
-	/* create Woop triangle */
 	int tob = pack.prim_object[idx];
 	const Mesh *mesh = objects[tob]->mesh;
+
+	if(mesh->has_motion_blur())
+		return;
+
 	int tidx = pack.prim_index[idx];
 	const int *vidx = mesh->triangles[tidx].v;
 	const float3* vpos = &mesh->verts[0];
@@ -280,11 +295,11 @@ void BVH::pack_curve_segment(int idx, float4 woop[3])
 	int tob = pack.prim_object[idx];
 	const Mesh *mesh = objects[tob]->mesh;
 	int tidx = pack.prim_index[idx];
-	int segment = pack.prim_segment[idx];
+	int segment = PRIMITIVE_UNPACK_SEGMENT(pack.prim_type[idx]);
 	int k0 = mesh->curves[tidx].first_key + segment;
 	int k1 = mesh->curves[tidx].first_key + segment + 1;
-	float3 v0 = mesh->curve_keys[k0].co;
-	float3 v1 = mesh->curve_keys[k1].co;
+	float3 v0 = float4_to_float3(mesh->curve_keys[k0]);
+	float3 v1 = float4_to_float3(mesh->curve_keys[k1]);
 
 	float3 d0 = v1 - v0;
 	float l =  len(d0);
@@ -324,7 +339,7 @@ void BVH::pack_primitives()
 		if(pack.prim_index[i] != -1) {
 			float4 woop[3];
 
-			if(pack.prim_segment[i] != ~0)
+			if(pack.prim_type[i] & PRIMITIVE_ALL_CURVE)
 				pack_curve_segment(i, woop);
 			else
 				pack_triangle(i, woop);
@@ -335,7 +350,7 @@ void BVH::pack_primitives()
 			Object *ob = objects[tob];
 			pack.prim_visibility[i] = ob->visibility;
 
-			if(pack.prim_segment[i] != ~0)
+			if(pack.prim_type[i] & PRIMITIVE_ALL_CURVE)
 				pack.prim_visibility[i] |= PATH_RAY_CURVE;
 		}
 		else {
@@ -359,7 +374,7 @@ void BVH::pack_instances(size_t nodes_size)
 	 * meshes with transform applied and already in the top level BVH */
 	for(size_t i = 0; i < pack.prim_index.size(); i++)
 		if(pack.prim_index[i] != -1) {
-			if(pack.prim_segment[i] != ~0)
+			if(pack.prim_type[i] & PRIMITIVE_ALL_CURVE)
 				pack.prim_index[i] += objects[pack.prim_object[i]]->mesh->curve_offset;
 			else
 				pack.prim_index[i] += objects[pack.prim_object[i]]->mesh->tri_offset;
@@ -401,7 +416,7 @@ void BVH::pack_instances(size_t nodes_size)
 	mesh_map.clear();
 
 	pack.prim_index.resize(prim_index_size);
-	pack.prim_segment.resize(prim_index_size);
+	pack.prim_type.resize(prim_index_size);
 	pack.prim_object.resize(prim_index_size);
 	pack.prim_visibility.resize(prim_index_size);
 	pack.tri_woop.resize(tri_woop_size);
@@ -409,7 +424,7 @@ void BVH::pack_instances(size_t nodes_size)
 	pack.object_node.resize(objects.size());
 
 	int *pack_prim_index = (pack.prim_index.size())? &pack.prim_index[0]: NULL;
-	int *pack_prim_segment = (pack.prim_segment.size())? &pack.prim_segment[0]: NULL;
+	int *pack_prim_type = (pack.prim_type.size())? &pack.prim_type[0]: NULL;
 	int *pack_prim_object = (pack.prim_object.size())? &pack.prim_object[0]: NULL;
 	uint *pack_prim_visibility = (pack.prim_visibility.size())? &pack.prim_visibility[0]: NULL;
 	float4 *pack_tri_woop = (pack.tri_woop.size())? &pack.tri_woop[0]: NULL;
@@ -454,16 +469,16 @@ void BVH::pack_instances(size_t nodes_size)
 		if(bvh->pack.prim_index.size()) {
 			size_t bvh_prim_index_size = bvh->pack.prim_index.size();
 			int *bvh_prim_index = &bvh->pack.prim_index[0];
-			int *bvh_prim_segment = &bvh->pack.prim_segment[0];
+			int *bvh_prim_type = &bvh->pack.prim_type[0];
 			uint *bvh_prim_visibility = &bvh->pack.prim_visibility[0];
 
 			for(size_t i = 0; i < bvh_prim_index_size; i++) {
-				if(bvh->pack.prim_segment[i] != ~0)
+				if(bvh->pack.prim_type[i] & PRIMITIVE_ALL_CURVE)
 					pack_prim_index[pack_prim_index_offset] = bvh_prim_index[i] + mesh_curve_offset;
 				else
 					pack_prim_index[pack_prim_index_offset] = bvh_prim_index[i] + mesh_tri_offset;
 
-				pack_prim_segment[pack_prim_index_offset] = bvh_prim_segment[i];
+				pack_prim_type[pack_prim_index_offset] = bvh_prim_type[i];
 				pack_prim_visibility[pack_prim_index_offset] = bvh_prim_visibility[i];
 				pack_prim_object[pack_prim_index_offset] = 0;  // unused for instances
 				pack_prim_index_offset++;
@@ -629,37 +644,51 @@ void RegularBVH::refit_node(int idx, bool leaf, BoundBox& bbox, uint& visibility
 				/* primitives */
 				const Mesh *mesh = ob->mesh;
 
-				if(pack.prim_segment[prim] != ~0) {
+				if(pack.prim_type[prim] & PRIMITIVE_ALL_CURVE) {
 					/* curves */
 					int str_offset = (params.top_level)? mesh->curve_offset: 0;
-					int k0 = mesh->curves[pidx - str_offset].first_key + pack.prim_segment[prim]; // XXX!
-					int k1 = k0 + 1;
+					const Mesh::Curve& curve = mesh->curves[pidx - str_offset];
+					int k = PRIMITIVE_UNPACK_SEGMENT(pack.prim_type[prim]);
 
-					float3 p[4];
-					p[0] = mesh->curve_keys[max(k0 - 1,mesh->curves[pidx - str_offset].first_key)].co;
-					p[1] = mesh->curve_keys[k0].co;
-					p[2] = mesh->curve_keys[k1].co;
-					p[3] = mesh->curve_keys[min(k1 + 1,mesh->curves[pidx - str_offset].first_key + mesh->curves[pidx - str_offset].num_keys - 1)].co;
-					float3 lower;
-					float3 upper;
-					curvebounds(&lower.x, &upper.x, p, 0);
-					curvebounds(&lower.y, &upper.y, p, 1);
-					curvebounds(&lower.z, &upper.z, p, 2);
-					float mr = max(mesh->curve_keys[k0].radius,mesh->curve_keys[k1].radius);
-					bbox.grow(lower, mr);
-					bbox.grow(upper, mr);
+					curve.bounds_grow(k, &mesh->curve_keys[0], bbox);
 
 					visibility |= PATH_RAY_CURVE;
+
+					/* motion curves */
+					if(mesh->use_motion_blur) {
+						Attribute *attr = mesh->curve_attributes.find(ATTR_STD_MOTION_VERTEX_POSITION);
+
+						if(attr) {
+							size_t mesh_size = mesh->curve_keys.size();
+							size_t steps = mesh->motion_steps - 1;
+							float4 *key_steps = attr->data_float4();
+
+							for (size_t i = 0; i < steps; i++)
+								curve.bounds_grow(k, key_steps + i*mesh_size, bbox);
+						}
+					}
 				}
 				else {
 					/* triangles */
 					int tri_offset = (params.top_level)? mesh->tri_offset: 0;
-					const int *vidx = mesh->triangles[pidx - tri_offset].v;
+					const Mesh::Triangle& triangle = mesh->triangles[pidx - tri_offset];
 					const float3 *vpos = &mesh->verts[0];
 
-					bbox.grow(vpos[vidx[0]]);
-					bbox.grow(vpos[vidx[1]]);
-					bbox.grow(vpos[vidx[2]]);
+					triangle.bounds_grow(vpos, bbox);
+
+					/* motion triangles */
+					if(mesh->use_motion_blur) {
+						Attribute *attr = mesh->attributes.find(ATTR_STD_MOTION_VERTEX_POSITION);
+
+						if(attr) {
+							size_t mesh_size = mesh->verts.size();
+							size_t steps = mesh->motion_steps - 1;
+							float3 *vert_steps = attr->data_float3();
+
+							for (size_t i = 0; i < steps; i++)
+								triangle.bounds_grow(vert_steps + i*mesh_size, bbox);
+						}
+					}
 				}
 			}
 

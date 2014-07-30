@@ -412,7 +412,7 @@ ScrArea *area_split(bScreen *sc, ScrArea *sa, char dir, float fac, int merge)
 			sa->v4 = sv2;
 		}
 
-		area_copy_data(newa, sa, 0);
+		ED_area_data_copy(newa, sa, true);
 		
 	}
 	else {
@@ -444,7 +444,7 @@ ScrArea *area_split(bScreen *sc, ScrArea *sa, char dir, float fac, int merge)
 			sa->v2 = sv2;
 		}
 
-		area_copy_data(newa, sa, 0);
+		ED_area_data_copy(newa, sa, true);
 	}
 	
 	/* remove double vertices en edges */
@@ -468,7 +468,7 @@ bScreen *ED_screen_add(wmWindow *win, Scene *scene, const char *name)
 	
 	sc = BKE_libblock_alloc(G.main, ID_SCR, name);
 	sc->scene = scene;
-	sc->do_refresh = TRUE;
+	sc->do_refresh = true;
 	sc->redraws_flag = TIME_ALL_3D_WIN | TIME_ALL_ANIM_WIN;
 	sc->winid = win->winid;
 
@@ -500,7 +500,7 @@ static void screen_copy(bScreen *to, bScreen *from)
 	BLI_duplicatelist(&to->vertbase, &from->vertbase);
 	BLI_duplicatelist(&to->edgebase, &from->edgebase);
 	BLI_duplicatelist(&to->areabase, &from->areabase);
-	to->regionbase.first = to->regionbase.last = NULL;
+	BLI_listbase_clear(&to->regionbase);
 	
 	s2 = to->vertbase.first;
 	for (s1 = from->vertbase.first; s1; s1 = s1->next, s2 = s2->next) {
@@ -520,12 +520,12 @@ static void screen_copy(bScreen *to, bScreen *from)
 		sa->v3 = sa->v3->newv;
 		sa->v4 = sa->v4->newv;
 
-		sa->spacedata.first = sa->spacedata.last = NULL;
-		sa->regionbase.first = sa->regionbase.last = NULL;
-		sa->actionzones.first = sa->actionzones.last = NULL;
-		sa->handlers.first = sa->handlers.last = NULL;
+		BLI_listbase_clear(&sa->spacedata);
+		BLI_listbase_clear(&sa->regionbase);
+		BLI_listbase_clear(&sa->actionzones);
+		BLI_listbase_clear(&sa->handlers);
 		
-		area_copy_data(sa, saf, 0);
+		ED_area_data_copy(sa, saf, true);
 	}
 	
 	/* put at zero (needed?) */
@@ -1099,18 +1099,18 @@ void ED_screen_do_listen(bContext *C, wmNotifier *note)
 	switch (note->category) {
 		case NC_WM:
 			if (note->data == ND_FILEREAD)
-				win->screen->do_draw = TRUE;
+				win->screen->do_draw = true;
 			break;
 		case NC_WINDOW:
-			win->screen->do_draw = TRUE;
+			win->screen->do_draw = true;
 			break;
 		case NC_SCREEN:
 			if (note->action == NA_EDITED)
-				win->screen->do_draw = win->screen->do_refresh = TRUE;
+				win->screen->do_draw = win->screen->do_refresh = true;
 			break;
 		case NC_SCENE:
 			if (note->data == ND_MODE)
-				region_cursor_set(win, note->swinid, TRUE);
+				region_cursor_set(win, note->swinid, true);
 			break;
 	}
 }
@@ -1185,7 +1185,7 @@ void ED_screen_draw(wmWindow *win)
 		glDisable(GL_BLEND);
 	}
 	
-	win->screen->do_draw = FALSE;
+	win->screen->do_draw = false;
 }
 
 /* helper call for below, dpi changes headers */
@@ -1240,7 +1240,7 @@ void ED_screen_refresh(wmWindowManager *wm, wmWindow *win)
 	if (G.debug & G_DEBUG_EVENTS) {
 		printf("%s: set screen\n", __func__);
 	}
-	win->screen->do_refresh = FALSE;
+	win->screen->do_refresh = false;
 
 	win->screen->context = ed_screen_context;
 }
@@ -1415,11 +1415,11 @@ void ED_screen_set_subwinactive(bContext *C, wmEvent *event)
 		if (oldswin != scr->subwinactive) {
 
 			for (sa = scr->areabase.first; sa; sa = sa->next) {
-				int do_draw = FALSE;
+				bool do_draw = false;
 				
 				for (ar = sa->regionbase.first; ar; ar = ar->next)
 					if (ar->swinid == oldswin || ar->swinid == scr->subwinactive)
-						do_draw = TRUE;
+						do_draw = true;
 				
 				if (do_draw) {
 					for (ar = sa->regionbase.first; ar; ar = ar->next)
@@ -1436,7 +1436,7 @@ void ED_screen_set_subwinactive(bContext *C, wmEvent *event)
 		else {
 			/* notifier invokes freeing the buttons... causing a bit too much redraws */
 			if (oldswin != scr->subwinactive) {
-				region_cursor_set(win, scr->subwinactive, TRUE);
+				region_cursor_set(win, scr->subwinactive, true);
 
 				/* this used to be a notifier, but needs to be done immediate
 				 * because it can undo setting the right button as active due
@@ -1444,7 +1444,7 @@ void ED_screen_set_subwinactive(bContext *C, wmEvent *event)
 				uiFreeActiveButtons(C, win->screen);
 			}
 			else
-				region_cursor_set(win, scr->subwinactive, FALSE);
+				region_cursor_set(win, scr->subwinactive, false);
 		}
 	}
 }
@@ -1514,12 +1514,24 @@ void ED_screen_set(bContext *C, bScreen *sc)
 
 		/* we put timer to sleep, so screen_exit has to think there's no timer */
 		oldscreen->animtimer = NULL;
-		if (wt)
+		if (wt) {
 			WM_event_timer_sleep(wm, win, wt, true);
-		
+		}
+
 		ED_screen_exit(C, win, oldscreen);
-		oldscreen->animtimer = wt;
-		
+
+		/* Same scene, "transfer" playback to new screen. */
+		if (wt) {
+			if (oldscene == sc->scene) {
+				sc->animtimer = wt;
+			}
+			/* Else, stop playback. */
+			else {
+				oldscreen->animtimer = wt;
+				ED_screen_animation_play(C, 0, 0);
+			}
+		}
+
 		win->screen = sc;
 		CTX_wm_window_set(C, win);  // stores C->wm.screen... hrmf
 		
@@ -1551,7 +1563,7 @@ void ED_screen_set(bContext *C, bScreen *sc)
 		 * have different layers visible in 3D viewpots. This is possible
 		 * because of view3d.lock_camera_and_layers option.
 		 */
-		DAG_on_visible_update(bmain, FALSE);
+		DAG_on_visible_update(bmain, false);
 	}
 }
 
@@ -1685,7 +1697,7 @@ void ED_screen_set_scene(bContext *C, bScreen *screen, Scene *scene)
 	
 	CTX_data_scene_set(C, scene);
 	BKE_scene_set_background(bmain, scene);
-	DAG_on_visible_update(bmain, FALSE);
+	DAG_on_visible_update(bmain, false);
 	
 	ED_render_engine_changed(bmain);
 	ED_update_for_newframe(bmain, scene, 1);
@@ -1828,7 +1840,7 @@ ScrArea *ED_screen_full_toggle(bContext *C, wmWindow *win, ScrArea *sa)
 			return NULL;
 		}
 
-		area_copy_data(old, sa, 1); /*  1 = swap spacelist */
+		ED_area_data_swap(old, sa);
 		if (sa->flag & AREA_TEMP_INFO) sa->flag &= ~AREA_TEMP_INFO;
 		old->full = NULL;
 
@@ -1875,7 +1887,7 @@ ScrArea *ED_screen_full_toggle(bContext *C, wmWindow *win, ScrArea *sa)
 
 		/* copy area */
 		newa = newa->prev;
-		area_copy_data(newa, sa, 1);  /* 1 = swap spacelist */
+		ED_area_data_swap(newa, sa);
 		sa->flag |= AREA_TEMP_INFO;
 
 		sa->full = oldscreen;

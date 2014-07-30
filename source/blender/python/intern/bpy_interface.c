@@ -361,8 +361,10 @@ void BPY_python_start(int argc, const char **argv)
 void BPY_python_end(void)
 {
 	// fprintf(stderr, "Ending Python!\n");
+	PyGILState_STATE gilstate;
 
-	PyGILState_Ensure(); /* finalizing, no need to grab the state */
+	/* finalizing, no need to grab the state, except when we are a module */
+	gilstate = PyGILState_Ensure();
 	
 	/* free other python data. */
 	pyrna_free_types();
@@ -373,10 +375,14 @@ void BPY_python_end(void)
 
 #ifndef WITH_PYTHON_MODULE
 	BPY_atexit_unregister(); /* without this we get recursive calls to WM_exit */
-#endif
 
 	Py_Finalize();
-	
+
+	(void)gilstate;
+#else
+	PyGILState_Release(gilstate);
+#endif
+
 #ifdef TIME_PY_RUN
 	/* measure time since py started */
 	bpy_timer = PIL_check_seconds_timer() - bpy_timer;
@@ -490,15 +496,11 @@ static int python_script_exec(bContext *C, const char *fn, struct Text *text,
 			 * incompatible'.
 			 * So now we load the script file data to a buffer */
 			{
-				char *pystring;
+				const char *pystring = "with open(__file__, 'r') as f: exec(f.read())";
 
 				fclose(fp);
 
-				pystring = MEM_mallocN(strlen(fn) + 37, "pystring");
-				pystring[0] = '\0';
-				sprintf(pystring, "f=open(r'%s');exec(f.read());f.close()", fn);
 				py_result = PyRun_String(pystring, Py_file_input, py_dict, py_dict);
-				MEM_freeN(pystring);
 			}
 #else
 			py_result = PyRun_File(fp, fn, Py_file_input, py_dict, py_dict);

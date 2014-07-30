@@ -142,7 +142,7 @@ typedef struct RegionView3D {
 	short lpersp, lview; /* lpersp can never be set to 'RV3D_CAMOB' */
 
 	float gridview;
-	float twangle[3];
+	float tw_idot[3];  /* manipulator runtime: (1 - dot) product with view vector (used to check view alignment) */
 
 
 	/* active rotation from NDOF or elsewhere */
@@ -218,7 +218,7 @@ typedef struct View3D {
 
 	void *properties_storage;		/* Nkey panel stores stuff here (runtime only!) */
 	struct Material *defmaterial;	/* used by matcap now */
-	
+
 	/* XXX deprecated? */
 	struct bGPdata *gpd  DNA_DEPRECATED;		/* Grease-Pencil Data (annotation layers) */
 
@@ -247,6 +247,7 @@ typedef struct View3D {
 #define RV3D_CLIPPING				4
 #define RV3D_NAVIGATING				8
 #define RV3D_GPULIGHT_UPDATE		16
+#define RV3D_IS_GAME_ENGINE			32  /* runtime flag, used to check if LoD's should be used */
 
 /* RegionView3d->viewlock */
 #define RV3D_LOCKED			(1 << 0)

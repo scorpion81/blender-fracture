@@ -229,7 +229,7 @@ ccl_device void camera_sample(KernelGlobals *kg, int x, int y, float filter_u, f
 	if(kernel_data.cam.shuttertime == -1.0f)
 		ray->time = TIME_INVALID;
 	else
-		ray->time = 0.5f + 0.5f*(time - 0.5f)*kernel_data.cam.shuttertime;
+		ray->time = time;
 #endif
 
 	/* sample */
@@ -266,7 +266,7 @@ ccl_device_inline float3 camera_world_to_ndc(KernelGlobals *kg, ShaderData *sd, 
 {
 	if(kernel_data.cam.type != CAMERA_PANORAMA) {
 		/* perspective / ortho */
-		if(sd->object == ~0 && kernel_data.cam.type == CAMERA_PERSPECTIVE)
+		if(sd->object == PRIM_NONE && kernel_data.cam.type == CAMERA_PERSPECTIVE)
 			P += camera_position(kg);
 
 		Transform tfm = kernel_data.cam.worldtondc;
@@ -276,7 +276,7 @@ ccl_device_inline float3 camera_world_to_ndc(KernelGlobals *kg, ShaderData *sd, 
 		/* panorama */
 		Transform tfm = kernel_data.cam.worldtocamera;
 
-		if(sd->object != ~0)
+		if(sd->object != OBJECT_NONE)
 			P = normalize(transform_point(&tfm, P));
 		else
 			P = normalize(transform_direction(&tfm, P));

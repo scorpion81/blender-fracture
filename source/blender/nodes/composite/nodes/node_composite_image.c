@@ -269,7 +269,7 @@ static void cmp_node_image_verify_outputs(bNodeTree *ntree, bNode *node)
 	
 	/* store current nodes in oldsocklist, then clear socket list */
 	oldsocklist = node->outputs;
-	node->outputs.first = node->outputs.last = NULL;
+	BLI_listbase_clear(&node->outputs);
 	
 	/* XXX make callback */
 	cmp_node_image_create_outputs(ntree, node);
@@ -397,7 +397,7 @@ void node_cmp_rlayers_force_hidden_passes(bNode *node)
 	
 	set_output_visible(node, passflag, RRES_OUT_IMAGE,                  SCE_PASS_COMBINED);
 	set_output_visible(node, passflag, RRES_OUT_ALPHA,                  SCE_PASS_COMBINED);
-	                                                                    
+
 	set_output_visible(node, passflag, RRES_OUT_Z,                      SCE_PASS_Z);
 	set_output_visible(node, passflag, RRES_OUT_NORMAL,                 SCE_PASS_NORMAL);
 	set_output_visible(node, passflag, RRES_OUT_VEC,                    SCE_PASS_VECTOR);

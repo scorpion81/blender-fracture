@@ -111,13 +111,13 @@ void mul_m3_fl(float R[3][3], float f);
 void mul_m4_fl(float R[4][4], float f);
 void mul_mat3_m4_fl(float R[4][4], float f);
 
-int invert_m3_ex(float m[3][3], const float epsilon);
-int invert_m3_m3_ex(float m1[3][3], float m2[3][3], const float epsilon);
+bool invert_m3_ex(float m[3][3], const float epsilon);
+bool invert_m3_m3_ex(float m1[3][3], float m2[3][3], const float epsilon);
 
-int invert_m3(float R[3][3]);
-int invert_m3_m3(float R[3][3], float A[3][3]);
-int invert_m4(float R[4][4]);
-int invert_m4_m4(float R[4][4], float A[4][4]);
+bool invert_m3(float R[3][3]);
+bool invert_m3_m3(float R[3][3], float A[3][3]);
+bool invert_m4(float R[4][4]);
+bool invert_m4_m4(float R[4][4], float A[4][4]);
 
 /* double ariphmetics */
 void mul_m4_v4d(float M[4][4], double r[4]);
@@ -166,6 +166,8 @@ void pseudoinverse_m3_m3(float Ainv[3][3], float A[3][3], float epsilon);
 
 bool has_zero_axis_m4(float matrix[4][4]);
 
+void invert_m4_m4_safe(float Ainv[4][4], float A[4][4]);
+
 /****************************** Transformations ******************************/
 
 void scale_m3_fl(float R[3][3], float scale);
@@ -212,6 +214,9 @@ bool is_zero_m4(float mat[4][4]);
 
 void print_m3(const char *str, float M[3][3]);
 void print_m4(const char *str, float M[3][4]);
+
+#define print_m3_id(M) print_m3(STRINGIFY(M), M)
+#define print_m4_id(M) print_m4(STRINGIFY(M), M)
 
 #ifdef __cplusplus
 }

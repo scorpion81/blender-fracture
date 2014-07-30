@@ -37,6 +37,7 @@
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
+#include "BLI_lasso.h"
 
 #include "DNA_anim_types.h"
 #include "DNA_object_types.h"
@@ -163,9 +164,9 @@ static int graphkeys_deselectall_exec(bContext *C, wmOperator *op)
 	
 	/* 'standard' behavior - check if selected, then apply relevant selection */
 	if (RNA_boolean_get(op->ptr, "invert"))
-		deselect_graph_keys(&ac, 0, SELECT_INVERT, TRUE);
+		deselect_graph_keys(&ac, 0, SELECT_INVERT, true);
 	else
-		deselect_graph_keys(&ac, 1, SELECT_ADD, TRUE);
+		deselect_graph_keys(&ac, 1, SELECT_ADD, true);
 	
 	/* restore active F-Curve... */
 	if (ale_active) {
@@ -217,7 +218,9 @@ void GRAPH_OT_select_all_toggle(wmOperatorType *ot)
  * this, and allow handles to be considered independently too.
  * Also, for convenience, handles should get same status as keyframe (if it was within bounds).
  */
-static void borderselect_graphkeys(bAnimContext *ac, rcti rect, short mode, short selectmode, short incl_handles)
+static void borderselect_graphkeys(
+        bAnimContext *ac, const rctf *rectf_view, short mode, short selectmode, bool incl_handles,
+        struct KeyframeEdit_LassoData *data_lasso)
 {
 	ListBase anim_data = {NULL, NULL};
 	bAnimListElem *ale;
@@ -230,8 +233,8 @@ static void borderselect_graphkeys(bAnimContext *ac, rcti rect, short mode, shor
 	rctf rectf, scaled_rectf;
 	
 	/* convert mouse coordinates to frame ranges and channel coordinates corrected for view pan/zoom */
-	UI_view2d_region_to_view(v2d, rect.xmin, rect.ymin, &rectf.xmin, &rectf.ymin);
-	UI_view2d_region_to_view(v2d, rect.xmax, rect.ymax, &rectf.xmax, &rectf.ymax);
+	UI_view2d_region_to_view(v2d, rectf_view->xmin, rectf_view->ymin, &rectf.xmin, &rectf.ymin);
+	UI_view2d_region_to_view(v2d, rectf_view->xmax, rectf_view->ymax, &rectf.xmax, &rectf.ymax);
 	
 	/* filter data */
 	filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_CURVE_VISIBLE | ANIMFILTER_NODUPLIS);
@@ -243,7 +246,13 @@ static void borderselect_graphkeys(bAnimContext *ac, rcti rect, short mode, shor
 	
 	/* init editing data */
 	memset(&ked, 0, sizeof(KeyframeEditData));
-	ked.data = &scaled_rectf;
+	if (data_lasso) {
+		data_lasso->rectf_scaled = &scaled_rectf;
+		ked.data = data_lasso;
+	}
+	else {
+		ked.data = &scaled_rectf;
+	}
 	
 	/* treat handles separately? */
 	if (incl_handles) {
@@ -313,9 +322,10 @@ static int graphkeys_borderselect_exec(bContext *C, wmOperator *op)
 {
 	bAnimContext ac;
 	rcti rect;
+	rctf rect_fl;
 	short mode = 0, selectmode = 0;
-	short incl_handles;
-	int extend;
+	bool incl_handles;
+	bool extend;
 	
 	/* get editor data */
 	if (ANIM_animdata_get_context(C, &ac) == 0)
@@ -324,7 +334,7 @@ static int graphkeys_borderselect_exec(bContext *C, wmOperator *op)
 	/* clear all selection if not extending selection */
 	extend = RNA_boolean_get(op->ptr, "extend");
 	if (!extend)
-		deselect_graph_keys(&ac, 1, SELECT_SUBTRACT, TRUE);
+		deselect_graph_keys(&ac, 1, SELECT_SUBTRACT, true);
 
 	/* get select mode 
 	 *	- 'gesture_mode' from the operator specifies how to select
@@ -354,9 +364,11 @@ static int graphkeys_borderselect_exec(bContext *C, wmOperator *op)
 	}
 	else 
 		mode = BEZT_OK_REGION;
-	
+
+	BLI_rctf_rcti_copy(&rect_fl, &rect);
+
 	/* apply borderselect action */
-	borderselect_graphkeys(&ac, rect, mode, selectmode, incl_handles);
+	borderselect_graphkeys(&ac, &rect_fl, mode, selectmode, incl_handles, NULL);
 	
 	/* send notifier that keyframe selection has changed */
 	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_SELECTED, NULL);
@@ -383,10 +395,96 @@ void GRAPH_OT_select_border(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER /*|OPTYPE_UNDO*/;
 	
 	/* rna */
-	WM_operator_properties_gesture_border(ot, TRUE);
+	WM_operator_properties_gesture_border(ot, true);
 	
 	ot->prop = RNA_def_boolean(ot->srna, "axis_range", 0, "Axis Range", "");
 	RNA_def_boolean(ot->srna, "include_handles", 0, "Include Handles", "Are handles tested individually against the selection criteria");
+}
+
+static int graphkeys_lassoselect_exec(bContext *C, wmOperator *op)
+{
+	bAnimContext ac;
+	rcti rect;
+	rctf rect_fl;
+	short selectmode;
+	bool incl_handles;
+	bool extend;
+
+	struct KeyframeEdit_LassoData data_lasso;
+
+	/* get editor data */
+	if (ANIM_animdata_get_context(C, &ac) == 0)
+		return OPERATOR_CANCELLED;
+
+	data_lasso.rectf_view = &rect_fl;
+	data_lasso.mcords = WM_gesture_lasso_path_to_array(C, op, &data_lasso.mcords_tot);
+	if (data_lasso.mcords == NULL)
+		return OPERATOR_CANCELLED;
+
+	/* clear all selection if not extending selection */
+	extend = RNA_boolean_get(op->ptr, "extend");
+	if (!extend)
+		deselect_graph_keys(&ac, 1, SELECT_SUBTRACT, true);
+
+	if (!RNA_boolean_get(op->ptr, "deselect"))
+		selectmode = SELECT_ADD;
+	else
+		selectmode = SELECT_SUBTRACT;
+
+	if (ac.spacetype == SPACE_IPO) {
+		SpaceIpo *sipo = (SpaceIpo *)ac.sl;
+		if (selectmode == SELECT_ADD) {
+			incl_handles = ((sipo->flag & SIPO_SELVHANDLESONLY) ||
+			                (sipo->flag & SIPO_NOHANDLES)) == 0;
+		}
+		else {
+			incl_handles = (sipo->flag & SIPO_NOHANDLES) == 0;
+		}
+	}
+	else {
+		incl_handles = false;
+	}
+
+
+	/* get settings from operator */
+	BLI_lasso_boundbox(&rect, data_lasso.mcords, data_lasso.mcords_tot);
+
+	BLI_rctf_rcti_copy(&rect_fl, &rect);
+
+	/* apply borderselect action */
+	borderselect_graphkeys(&ac, &rect_fl, BEZT_OK_REGION_LASSO, selectmode, incl_handles, &data_lasso);
+
+	MEM_freeN((void *)data_lasso.mcords);
+
+
+	/* send notifier that keyframe selection has changed */
+	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_SELECTED, NULL);
+
+	return OPERATOR_FINISHED;
+}
+
+
+void GRAPH_OT_select_lasso(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Lasso Select";
+	ot->description = "Select keyframe points using lasso selection";
+	ot->idname = "GRAPH_OT_select_lasso";
+
+	/* api callbacks */
+	ot->invoke = WM_gesture_lasso_invoke;
+	ot->modal = WM_gesture_lasso_modal;
+	ot->exec = graphkeys_lassoselect_exec;
+	ot->poll = graphop_visible_keyframes_poll;
+	ot->cancel = WM_gesture_lasso_cancel;
+
+	/* flags */
+	ot->flag = OPTYPE_UNDO;
+
+	/* properties */
+	RNA_def_collection_runtime(ot->srna, "path", &RNA_OperatorMousePath, "Path", "");
+	RNA_def_boolean(ot->srna, "deselect", false, "Deselect", "Deselect rather than select items");
+	RNA_def_boolean(ot->srna, "extend", true, "Extend", "Extend selection instead of deselecting everything first");
 }
 
 /* ******************** Column Select Operator **************************** */
@@ -769,7 +867,7 @@ static void graphkeys_select_leftright(bAnimContext *ac, short leftright, short 
 		/* - deselect all other keyframes, so that just the newly selected remain
 		 * - channels aren't deselected, since we don't re-select any as a consequence
 		 */
-		deselect_graph_keys(ac, 0, SELECT_SUBTRACT, FALSE);
+		deselect_graph_keys(ac, 0, SELECT_SUBTRACT, false);
 	}
 	
 	/* set callbacks and editing data */
@@ -1062,11 +1160,11 @@ static tNearestVertInfo *get_best_nearest_fcurve_vert(ListBase *matches)
 	short found = 0;
 	
 	/* abort if list is empty */
-	if (matches->first == NULL) 
+	if (BLI_listbase_is_empty(matches))
 		return NULL;
 		
 	/* if list only has 1 item, remove it from the list and return */
-	if (matches->first == matches->last) {
+	if (BLI_listbase_is_single(matches)) {
 		/* need to remove from the list, otherwise it gets freed and then we can't return it */
 		return BLI_pophead(matches);
 	}
@@ -1136,7 +1234,7 @@ static void mouse_graph_keys(bAnimContext *ac, const int mval[2], short select_m
 		select_mode = SELECT_ADD;
 		
 		/* deselect all other keyframes (+ F-Curves too) */
-		deselect_graph_keys(ac, 0, SELECT_SUBTRACT, TRUE);
+		deselect_graph_keys(ac, 0, SELECT_SUBTRACT, true);
 		
 		/* deselect other channels too, but only only do this if 
 		 * selection of channel when the visibility of keyframes 
@@ -1273,7 +1371,7 @@ static void graphkeys_mselect_column(bAnimContext *ac, const int mval[2], short 
 		/* - deselect all other keyframes, so that just the newly selected remain
 		 * - channels aren't deselected, since we don't re-select any as a consequence
 		 */
-		deselect_graph_keys(ac, 0, SELECT_SUBTRACT, FALSE);
+		deselect_graph_keys(ac, 0, SELECT_SUBTRACT, false);
 	}
 	
 	/* initialize keyframe editing data */

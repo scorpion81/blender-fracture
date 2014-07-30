@@ -390,9 +390,13 @@ void bmo_inset_region_exec(BMesh *bm, BMOperator *op)
 	const bool use_even_offset     = BMO_slot_bool_get(op->slots_in, "use_even_offset");
 	const bool use_even_boundry    = use_even_offset; /* could make own option */
 	const bool use_relative_offset = BMO_slot_bool_get(op->slots_in, "use_relative_offset");
+	const bool use_edge_rail       = BMO_slot_bool_get(op->slots_in, "use_edge_rail");
 	const bool use_interpolate     = BMO_slot_bool_get(op->slots_in, "use_interpolate");
 	const float thickness          = BMO_slot_float_get(op->slots_in, "thickness");
 	const float depth              = BMO_slot_float_get(op->slots_in, "depth");
+
+	/* store vert coords in normals, needed for 'use_edge_rail' */
+#define USE_VERTNORMAL_HACK
 
 	int edge_info_len = 0;
 
@@ -452,6 +456,11 @@ void bmo_inset_region_exec(BMesh *bm, BMOperator *op)
 
 			BM_elem_index_set(e, -1); /* set_dirty! */
 		}
+
+#ifdef USE_VERTNORMAL_HACK
+			copy_v3_v3(e->v1->no, e->v1->co);
+			copy_v3_v3(e->v2->no, e->v2->co);
+#endif
 	}
 	bm->elem_index_dirty |= BM_EDGE;
 
@@ -563,6 +572,9 @@ void bmo_inset_region_exec(BMesh *bm, BMOperator *op)
 
 				/* in some cases the edge doesn't split off */
 				if (r_vout_len == 1) {
+#ifdef USE_VERTNORMAL_HACK
+					copy_v3_v3(vout[0]->no, vout[0]->co);
+#endif
 					MEM_freeN(vout);
 					continue;
 				}
@@ -573,6 +585,10 @@ void bmo_inset_region_exec(BMesh *bm, BMOperator *op)
 					/* need to check if this vertex is from a */
 					int vert_edge_tag_tot = 0;
 					int vecpair[2];
+
+#ifdef USE_VERTNORMAL_HACK
+					copy_v3_v3(v_split->no, v_split->co);
+#endif
 
 					/* find adjacent */
 					BM_ITER_ELEM (e, &iter, v_split, BM_EDGES_OF_VERT) {
@@ -616,7 +632,10 @@ void bmo_inset_region_exec(BMesh *bm, BMOperator *op)
 							 * cross product between both face normals */
 							add_v3_v3v3(tvec, e_info_a->no, e_info_b->no);
 
-							if (f_a != f_b) {
+							if (use_edge_rail == false) {
+								/* pass */
+							}
+							else if (f_a != f_b) {
 								/* these lookups are very quick */
 								BMLoop *l_other_a = BM_loop_other_vert_loop(e_info_a->l, v_split);
 								BMLoop *l_other_b = BM_loop_other_vert_loop(e_info_b->l, v_split);
@@ -624,9 +643,22 @@ void bmo_inset_region_exec(BMesh *bm, BMOperator *op)
 								if (l_other_a->v == l_other_b->v) {
 									/* both edges faces are adjacent, but we don't need to know the shared edge
 									 * having both verts is enough. */
-									sub_v3_v3v3(tvec, l_other_a->v->co, v_split->co);
+									const float *co_other;
+
+									/* note that we can't use 'l_other_a->v' directly since it
+									 * may be inset and give a feedback loop. */
+#ifdef USE_VERTNORMAL_HACK
+									co_other = l_other_a->v->no;
+#else
+									co_other = l_other_a->v->co;
+#endif
+
+									sub_v3_v3v3(tvec, co_other, v_split->co);
 									is_mid = false;
 								}
+
+								/* distable gives odd results at times, see [#39288] */
+#if 0
 								else if (compare_v3v3(f_a->no, f_b->no, 0.001f) == false) {
 									/* epsilon increased to fix [#32329] */
 
@@ -641,6 +673,7 @@ void bmo_inset_region_exec(BMesh *bm, BMOperator *op)
 									copy_v3_v3(tvec, tno);
 									is_mid = false;
 								}
+#endif
 							}
 							normalize_v3(tvec);
 

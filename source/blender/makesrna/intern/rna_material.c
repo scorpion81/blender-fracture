@@ -744,7 +744,7 @@ static void rna_def_material_mtex(BlenderRNA *brna)
 	RNA_def_property_ui_range(prop, 0, 1, 10, 3);
 	RNA_def_property_ui_text(prop, "Scattering Factor", "Amount texture affects scattering");
 	RNA_def_property_update(prop, 0, "rna_Material_update");
-								  
+
 	prop = RNA_def_property(srna, "reflection_factor", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "reflfac");
 	RNA_def_property_ui_range(prop, 0, 1, 10, 3);
@@ -1750,7 +1750,7 @@ void RNA_def_material(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "use_transparency", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "mode", MA_TRANSP);
 	RNA_def_property_ui_text(prop, "Transparency", "Render material as transparent");
-	RNA_def_property_update(prop, 0, "rna_Material_update");
+	RNA_def_property_update(prop, 0, "rna_Material_draw_update");
 
 	prop = RNA_def_property(srna, "transparency_method", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_bitflag_sdna(prop, NULL, "mode");

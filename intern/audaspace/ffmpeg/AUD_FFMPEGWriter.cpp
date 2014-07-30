@@ -169,14 +169,29 @@ AUD_FFMPEGWriter::AUD_FFMPEGWriter(std::string filename, AUD_DeviceSpecs specs, 
 			if(!codec)
 				AUD_THROW(AUD_ERROR_FFMPEG, codec_error);
 
+			if(codec->sample_fmts) {
+				// Check if the prefered sample format for this codec is supported.
+				const enum AVSampleFormat *p = codec->sample_fmts;
+				for(; *p != -1; p++) {
+					if(*p == m_stream->codec->sample_fmt)
+						break;
+				}
+				if(*p == -1) {
+					// Sample format incompatible with codec. Defaulting to a format known to work.
+					m_stream->codec->sample_fmt = codec->sample_fmts[0];
+				}
+			}
+
 			if(avcodec_open2(m_codecCtx, codec, NULL))
 				AUD_THROW(AUD_ERROR_FFMPEG, codec_error);
 
 			m_output_buffer.resize(FF_MIN_BUFFER_SIZE);
 			int samplesize = AUD_MAX(AUD_SAMPLE_SIZE(m_specs), AUD_DEVICE_SAMPLE_SIZE(m_specs));
 
-			if(m_codecCtx->frame_size <= 1)
-				m_input_size = 0;
+			if(m_codecCtx->frame_size <= 1) {
+				m_input_size = FF_MIN_BUFFER_SIZE * 8 / m_codecCtx->bits_per_coded_sample / m_codecCtx->channels;
+				m_input_buffer.resize(m_input_size * samplesize);
+			}
 			else
 			{
 				m_input_buffer.resize(m_codecCtx->frame_size * samplesize);
@@ -187,14 +202,21 @@ AUD_FFMPEGWriter::AUD_FFMPEGWriter(std::string filename, AUD_DeviceSpecs specs, 
 			m_frame = av_frame_alloc();
 			if (!m_frame)
 				AUD_THROW(AUD_ERROR_FFMPEG, codec_error);
+			avcodec_get_frame_defaults(m_frame);
 			m_frame->linesize[0]    = m_input_size * samplesize;
 			m_frame->format         = m_codecCtx->sample_fmt;
+			m_frame->nb_samples     = m_input_size;
 #  ifdef FFMPEG_HAVE_AVFRAME_SAMPLE_RATE
 			m_frame->sample_rate    = m_codecCtx->sample_rate;
 #  endif
 #  ifdef FFMPEG_HAVE_FRAME_CHANNEL_LAYOUT
 			m_frame->channel_layout = m_codecCtx->channel_layout;
 #  endif
+			m_sample_size = av_get_bytes_per_sample(m_codecCtx->sample_fmt);
+			m_frame_pts = 0;
+			m_deinterleave = av_sample_fmt_is_planar(m_codecCtx->sample_fmt);
+			if(m_deinterleave)
+				m_deinterleave_buffer.resize(m_input_size * m_codecCtx->channels * m_sample_size);
 #endif
 
 			try
@@ -272,13 +294,31 @@ void AUD_FFMPEGWriter::encode(sample_t* data)
 
 #ifdef FFMPEG_HAVE_ENCODE_AUDIO2
 	int got_output, ret;
+	m_frame->pts = m_frame_pts / av_q2d(m_codecCtx->time_base);
+	m_frame_pts++;
+#ifdef FFMPEG_HAVE_FRAME_CHANNEL_LAYOUT
+	m_frame->channel_layout = m_codecCtx->channel_layout;
+#endif
 
-	m_frame->data[0] = reinterpret_cast<uint8_t*>(data);
+	if(m_deinterleave) {
+		for(int channel = 0; channel < m_codecCtx->channels; channel++) {
+			for(int i = 0; i < m_frame->nb_samples; i++) {
+				memcpy(reinterpret_cast<uint8_t*>(m_deinterleave_buffer.getBuffer()) + (i + channel * m_frame->nb_samples) * m_sample_size,
+					   reinterpret_cast<uint8_t*>(data) + (m_codecCtx->channels * i + channel) * m_sample_size, m_sample_size);
+			}
+		}
+
+		data = m_deinterleave_buffer.getBuffer();
+	}
+
+	avcodec_fill_audio_frame(m_frame, m_codecCtx->channels, m_codecCtx->sample_fmt, reinterpret_cast<uint8_t*>(data),
+	                         m_frame->nb_samples * av_get_bytes_per_sample(m_codecCtx->sample_fmt) * m_codecCtx->channels, 1);
+
 	ret = avcodec_encode_audio2(m_codecCtx, &packet, m_frame, &got_output);
-	if (ret < 0)
+	if(ret < 0)
 		AUD_THROW(AUD_ERROR_FFMPEG, codec_error);
 
-	if (!got_output)
+	if(!got_output)
 		return;
 #else
 	sample_t* outbuf = m_output_buffer.getBuffer();
@@ -290,10 +330,23 @@ void AUD_FFMPEGWriter::encode(sample_t* data)
 	packet.data = reinterpret_cast<uint8_t*>(outbuf);
 #endif
 
+	if(packet.pts != AV_NOPTS_VALUE)
+		packet.pts = av_rescale_q(packet.pts, m_codecCtx->time_base, m_stream->time_base);
+	if(packet.dts != AV_NOPTS_VALUE)
+		packet.dts = av_rescale_q(packet.dts, m_codecCtx->time_base, m_stream->time_base);
+	if(packet.duration > 0)
+		packet.duration = av_rescale_q(packet.duration, m_codecCtx->time_base, m_stream->time_base);
+
 	packet.stream_index = m_stream->index;
 
-	if(av_interleaved_write_frame(m_formatCtx, &packet))
+	packet.flags |= AV_PKT_FLAG_KEY;
+
+	if(av_interleaved_write_frame(m_formatCtx, &packet)) {
+		av_free_packet(&packet);
 		AUD_THROW(AUD_ERROR_FFMPEG, write_error);
+	}
+
+	av_free_packet(&packet);
 }
 
 void AUD_FFMPEGWriter::write(unsigned int length, sample_t* buffer)

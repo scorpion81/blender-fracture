@@ -337,6 +337,43 @@ static void mesh_ensure_tessellation_customdata(Mesh *me)
 	}
 }
 
+void BKE_mesh_ensure_skin_customdata(Mesh *me)
+{
+	BMesh *bm = me->edit_btmesh ? me->edit_btmesh->bm : NULL;
+	MVertSkin *vs;
+
+	if (bm) {
+		if (!CustomData_has_layer(&bm->vdata, CD_MVERT_SKIN)) {
+			BMVert *v;
+			BMIter iter;
+
+			BM_data_layer_add(bm, &bm->vdata, CD_MVERT_SKIN);
+
+			/* Mark an arbitrary vertex as root */
+			BM_ITER_MESH (v, &iter, bm, BM_VERTS_OF_MESH) {
+				vs = CustomData_bmesh_get(&bm->vdata, v->head.data,
+				                          CD_MVERT_SKIN);
+				vs->flag |= MVERT_SKIN_ROOT;
+				break;
+			}
+		}
+	}
+	else {
+		if (!CustomData_has_layer(&me->vdata, CD_MVERT_SKIN)) {
+			vs = CustomData_add_layer(&me->vdata,
+			                          CD_MVERT_SKIN,
+			                          CD_DEFAULT,
+			                          NULL,
+			                          me->totvert);
+
+			/* Mark an arbitrary vertex as root */
+			if (vs) {
+				vs->flag |= MVERT_SKIN_ROOT;
+			}
+		}
+	}
+}
+
 /* this ensures grouped customdata (e.g. mtexpoly and mloopuv and mtface, or
  * mloopcol and mcol) have the same relative active/render/clone/mask indices.
  *
@@ -449,7 +486,11 @@ Mesh *BKE_mesh_add(Main *bmain, const char *name)
 	me->size[0] = me->size[1] = me->size[2] = 1.0;
 	me->smoothresh = 30;
 	me->texflag = ME_AUTOSPACE;
+
+	/* disable because its slow on many GPU's, see [#37518] */
+#if 0
 	me->flag = ME_TWOSIDED;
+#endif
 	me->drawflag = ME_DRAWEDGES | ME_DRAWFACES | ME_DRAWCREASES;
 
 	CustomData_reset(&me->vdata);
@@ -485,7 +526,7 @@ Mesh *BKE_mesh_copy_ex(Main *bmain, Mesh *me)
 		CustomData_copy(&me->fdata, &men->fdata, CD_MASK_MESH, CD_DUPLICATE, men->totface);
 	}
 	else {
-		mesh_tessface_clear_intern(men, FALSE);
+		mesh_tessface_clear_intern(men, false);
 	}
 
 	BKE_mesh_update_customdata_pointers(men, do_tessface);
@@ -582,7 +623,7 @@ void BKE_mesh_make_local(Mesh *me)
 {
 	Main *bmain = G.main;
 	Object *ob;
-	int is_local = FALSE, is_lib = FALSE;
+	bool is_local = false, is_lib = false;
 
 	/* - only lib users: do nothing
 	 * - only local users: set flag
@@ -598,12 +639,12 @@ void BKE_mesh_make_local(Mesh *me)
 
 	for (ob = bmain->object.first; ob && ELEM(0, is_lib, is_local); ob = ob->id.next) {
 		if (me == ob->data) {
-			if (ob->id.lib) is_lib = TRUE;
-			else is_local = TRUE;
+			if (ob->id.lib) is_lib = true;
+			else is_local = true;
 		}
 	}
 
-	if (is_local && is_lib == FALSE) {
+	if (is_local && is_lib == false) {
 		id_clear_lib_data(bmain, &me->id);
 		expand_local_mesh(me);
 	}
@@ -1085,7 +1126,7 @@ static void make_edges_mdata_extend(MEdge **r_alledge, int *r_totedge,
 
 		/* --- */
 		for (ehi = BLI_edgehashIterator_new(eh);
-		     BLI_edgehashIterator_isDone(ehi) == FALSE;
+		     BLI_edgehashIterator_isDone(ehi) == false;
 		     BLI_edgehashIterator_step(ehi), ++medge, e_index++)
 		{
 			BLI_edgehashIterator_getKey(ehi, &medge->v1, &medge->v2);
@@ -1555,19 +1596,19 @@ void BKE_mesh_to_curve_nurblist(DerivedMesh *dm, ListBase *nurblist, const int e
 			/* each iteration find a polyline and add this as a nurbs poly spline */
 
 			ListBase polyline = {NULL, NULL}; /* store a list of VertLink's */
-			int closed = FALSE;
+			bool closed = false;
 			int totpoly = 0;
 			MEdge *med_current = ((EdgeLink *)edges.last)->edge;
 			unsigned int startVert = med_current->v1;
 			unsigned int endVert = med_current->v2;
-			int ok = TRUE;
+			bool ok = true;
 
 			appendPolyLineVert(&polyline, startVert);   totpoly++;
 			appendPolyLineVert(&polyline, endVert);     totpoly++;
 			BLI_freelinkN(&edges, edges.last);          totedges--;
 
 			while (ok) { /* while connected edges are found... */
-				ok = FALSE;
+				ok = false;
 				i = totedges;
 				while (i) {
 					EdgeLink *edl;
@@ -1580,25 +1621,25 @@ void BKE_mesh_to_curve_nurblist(DerivedMesh *dm, ListBase *nurblist, const int e
 						endVert = med->v2;
 						appendPolyLineVert(&polyline, med->v2); totpoly++;
 						BLI_freelinkN(&edges, edl);             totedges--;
-						ok = TRUE;
+						ok = true;
 					}
 					else if (med->v2 == endVert) {
 						endVert = med->v1;
 						appendPolyLineVert(&polyline, endVert); totpoly++;
 						BLI_freelinkN(&edges, edl);             totedges--;
-						ok = TRUE;
+						ok = true;
 					}
 					else if (med->v1 == startVert) {
 						startVert = med->v2;
 						prependPolyLineVert(&polyline, startVert);  totpoly++;
 						BLI_freelinkN(&edges, edl);                 totedges--;
-						ok = TRUE;
+						ok = true;
 					}
 					else if (med->v2 == startVert) {
 						startVert = med->v1;
 						prependPolyLineVert(&polyline, startVert);  totpoly++;
 						BLI_freelinkN(&edges, edl);                 totedges--;
-						ok = TRUE;
+						ok = true;
 					}
 				}
 			}
@@ -1607,7 +1648,7 @@ void BKE_mesh_to_curve_nurblist(DerivedMesh *dm, ListBase *nurblist, const int e
 			if (startVert == endVert) {
 				BLI_freelinkN(&polyline, polyline.last);
 				totpoly--;
-				closed = TRUE;
+				closed = true;
 			}
 
 			/* --- nurbs --- */
@@ -1746,7 +1787,7 @@ void BKE_mesh_smooth_flag_set(Object *meshOb, int enableSmooth)
 
 /**
  * Return a newly MEM_malloc'd array of all the mesh vertex locations
- * \note \a numVerts_r may be NULL
+ * \note \a r_numVerts may be NULL
  */
 float (*BKE_mesh_vertexCos_get(Mesh *me, int *r_numVerts))[3]
 {
@@ -1777,11 +1818,11 @@ int poly_find_loop_from_vert(const MPoly *poly, const MLoop *loopstart,
 }
 
 /**
- * Fill \a adj_r with the loop indices in \a poly adjacent to the
+ * Fill \a r_adj with the loop indices in \a poly adjacent to the
  * vertex. Returns the index of the loop matching vertex, or -1 if the
  * vertex is not in \a poly
  */
-int poly_get_adj_loops_from_vert(unsigned adj_r[3], const MPoly *poly,
+int poly_get_adj_loops_from_vert(unsigned r_adj[3], const MPoly *poly,
                                  const MLoop *mloop, unsigned vert)
 {
 	int corner = poly_find_loop_from_vert(poly,
@@ -1792,9 +1833,9 @@ int poly_get_adj_loops_from_vert(unsigned adj_r[3], const MPoly *poly,
 		const MLoop *ml = &mloop[poly->loopstart + corner];
 
 		/* vertex was found */
-		adj_r[0] = ME_POLY_LOOP_PREV(mloop, poly, corner)->v;
-		adj_r[1] = ml->v;
-		adj_r[2] = ME_POLY_LOOP_NEXT(mloop, poly, corner)->v;
+		r_adj[0] = ME_POLY_LOOP_PREV(mloop, poly, corner)->v;
+		r_adj[1] = ml->v;
+		r_adj[2] = ME_POLY_LOOP_NEXT(mloop, poly, corner)->v;
 	}
 
 	return corner;
@@ -1879,7 +1920,7 @@ void BKE_mesh_tessface_ensure(Mesh *mesh)
 
 void BKE_mesh_tessface_clear(Mesh *mesh)
 {
-	mesh_tessface_clear_intern(mesh, TRUE);
+	mesh_tessface_clear_intern(mesh, true);
 }
 
 void BKE_mesh_do_versions_cd_flag_init(Mesh *mesh)

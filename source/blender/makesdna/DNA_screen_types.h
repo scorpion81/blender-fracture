@@ -154,6 +154,12 @@ typedef struct uiListDyn {
 	int items_len;                /* Number of items in collection. */
 	int items_shown;              /* Number of items actually visible after filtering. */
 
+	/* Those are temp data used during drag-resize with GRIP button (they are in pixels, the meaningful data is the
+	 * difference between resize_prev and resize)...
+	 */
+	int resize;
+	int resize_prev;
+
 	/* Filtering data. */
 	int *items_filter_flags;      /* items_len length. */
 	int *items_filter_neworder;   /* org_idx -> new_idx, items_len length. */
@@ -185,6 +191,14 @@ typedef struct uiList {           /* some list UI data need to be saved in file 
 	/* Dynamic data (runtime). */
 	uiListDyn *dyn_data;
 } uiList;
+
+typedef struct uiPreview {           /* some preview UI data need to be saved in file */
+	struct uiPreview *next, *prev;
+
+	char preview_id[64];             /* defined as UI_MAX_NAME_STR */
+	short height;
+	short pad1[3];
+} uiPreview;
 
 typedef struct ScrArea {
 	struct ScrArea *next, *prev;
@@ -241,6 +255,7 @@ typedef struct ARegion {
 	ListBase panels;			/* Panel */
 	ListBase panels_category_active;	/* Stack of panel categories */
 	ListBase ui_lists;			/* uiList */
+	ListBase ui_previews;		/* uiPreview */
 	ListBase handlers;			/* wmEventHandler */
 	ListBase panels_category;	/* Panel categories runtime */
 	
@@ -310,8 +325,10 @@ enum {
 /* uiList flag */
 enum {
 	UILST_SCROLL_TO_ACTIVE_ITEM   = 1 << 0,          /* Scroll list to make active item visible. */
-	UILST_RESIZING                = 1 << 1,          /* We are currently resizing, deactivate autosize! */
 };
+
+/* Value (in number of items) we have to go below minimum shown items to enable auto size. */
+#define UI_LIST_AUTO_SIZE_THRESHOLD 1
 
 /* uiList filter flags (dyn_data) */
 enum {

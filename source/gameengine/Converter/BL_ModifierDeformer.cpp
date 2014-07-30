@@ -189,14 +189,23 @@ bool BL_ModifierDeformer::Update(void)
 			/* update the graphic controller */
 			PHY_IGraphicController *ctrl = m_gameobj->GetGraphicController();
 			if (ctrl) {
-				float min_r[3], max_r[3];
-				INIT_MINMAX(min_r, max_r);
-				m_dm->getMinMax(m_dm, min_r, max_r);
-				ctrl->SetLocalAabb(min_r, max_r);
+				float min[3], max[3];
+				INIT_MINMAX(min, max);
+				m_dm->getMinMax(m_dm, min, max);
+				ctrl->SetLocalAabb(min, max);
 			}
 		}
 		m_lastModifierUpdate=m_gameobj->GetLastFrame();
 		bShapeUpdate = true;
+
+		int nmat = m_pMeshObject->NumMaterials();
+		for (int imat=0; imat<nmat; imat++) {
+			RAS_MeshMaterial *mmat = m_pMeshObject->GetMeshMaterial(imat);
+			RAS_MeshSlot **slot = mmat->m_slots[(void*)m_gameobj];
+			if (!slot || !*slot)
+				continue;
+			(*slot)->m_pDerivedMesh = m_dm;
+		}
 	}
 	return bShapeUpdate;
 }
@@ -206,14 +215,5 @@ bool BL_ModifierDeformer::Apply(RAS_IPolyMaterial *mat)
 	if (!Update())
 		return false;
 
-	// drawing is based on derived mesh, must set it in the mesh slots
-	int nmat = m_pMeshObject->NumMaterials();
-	for (int imat=0; imat<nmat; imat++) {
-		RAS_MeshMaterial *mmat = m_pMeshObject->GetMeshMaterial(imat);
-		RAS_MeshSlot **slot = mmat->m_slots[(void*)m_gameobj];
-		if (!slot || !*slot)
-			continue;
-		(*slot)->m_pDerivedMesh = m_dm;
-	}
 	return true;
 }

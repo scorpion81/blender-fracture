@@ -599,7 +599,7 @@ static MovieTrackingObject *rna_trackingObject_new(MovieTracking *tracking, cons
 static void rna_trackingObject_remove(MovieTracking *tracking, ReportList *reports, PointerRNA *object_ptr)
 {
 	MovieTrackingObject *object = object_ptr->data;
-	if (BKE_tracking_object_delete(tracking, object) == FALSE) {
+	if (BKE_tracking_object_delete(tracking, object) == false) {
 		BKE_reportf(reports, RPT_ERROR, "MovieTracking '%s' cannot be removed", object->name);
 		return;
 	}
@@ -688,6 +688,45 @@ static void rna_trackingPlaneMarkers_delete_frame(MovieTrackingPlaneTrack *plane
 	BKE_tracking_plane_marker_delete(plane_track, framenr);
 
 	WM_main_add_notifier(NC_MOVIECLIP | NA_EDITED, NULL);
+}
+
+static MovieTrackingObject *find_object_for_reconstruction(MovieTracking *tracking,
+                                                           MovieTrackingReconstruction *reconstruction)
+{
+	MovieTrackingObject *object;
+
+	for (object = tracking->objects.first; object; object = object->next) {
+		if (object->flag & TRACKING_OBJECT_CAMERA) {
+			if (&tracking->reconstruction == reconstruction) {
+				return object;
+			}
+		}
+		else if (&object->reconstruction == reconstruction) {
+			return object;
+		}
+	}
+
+	return NULL;
+}
+
+static MovieReconstructedCamera *rna_trackingCameras_find_frame(ID *id, MovieTrackingReconstruction *reconstruction, int framenr)
+{
+	MovieClip *clip = (MovieClip *) id;
+	MovieTracking *tracking = &clip->tracking;
+	MovieTrackingObject *object = find_object_for_reconstruction(tracking, reconstruction);
+	return BKE_tracking_camera_get_reconstructed(tracking, object, framenr);
+}
+
+static void rna_trackingCameras_matrix_from_frame(ID *id, MovieTrackingReconstruction *reconstruction, int framenr, float matrix[16])
+{
+	float mat[4][4];
+
+	MovieClip *clip = (MovieClip *) id;
+	MovieTracking *tracking = &clip->tracking;
+	MovieTrackingObject *object = find_object_for_reconstruction(tracking, reconstruction);
+	BKE_tracking_camera_get_reconstructed_interpolate(tracking, object, framenr, mat);
+
+	memcpy(matrix, mat, sizeof(float) * 16);
 }
 
 #else
@@ -819,7 +858,14 @@ static void rna_def_trackingSettings(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "show_default_expanded", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", TRACKING_SETTINGS_SHOW_DEFAULT_EXPANDED);
-	RNA_def_property_ui_text(prop, "Show Expanded", "Show the expanded in the user interface");
+	RNA_def_property_ui_text(prop, "Show Expanded", "Show default options expanded in the user interface");
+	RNA_def_property_ui_icon(prop, ICON_TRIA_RIGHT, 1);
+
+	/* ** extra tracker settings ** */
+	prop = RNA_def_property(srna, "show_extra_expanded", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", TRACKING_SETTINGS_SHOW_EXTRA_EXPANDED);
+	RNA_def_property_ui_text(prop, "Show Expanded", "Show extra options expanded in the user interface");
 	RNA_def_property_ui_icon(prop, ICON_TRIA_RIGHT, 1);
 
 	/* solver settings */
@@ -922,6 +968,10 @@ static void rna_def_trackingSettings(BlenderRNA *brna)
 	RNA_def_property_boolean_negative_sdna(prop, NULL, "default_flag", TRACK_DISABLE_BLUE);
 	RNA_def_property_ui_text(prop, "Use Blue Channel", "Use blue channel from footage for tracking");
 	RNA_def_property_update(prop, NC_MOVIECLIP | ND_DISPLAY, NULL);
+
+	prop = RNA_def_property(srna, "default_weight", PROP_FLOAT, PROP_FACTOR);
+	RNA_def_property_range(prop, 0.0f, 1.0f);
+	RNA_def_property_ui_text(prop, "Weight", "Influence of newly created track on a final solution");
 
 	/* ** object tracking ** */
 
@@ -1118,7 +1168,7 @@ static void rna_def_trackingMarkers(BlenderRNA *brna, PropertyRNA *cprop)
 	parm = RNA_def_int(func, "frame", 1, MINFRAME, MAXFRAME, "Frame",
 	                   "Frame number to find marker for", MINFRAME, MAXFRAME);
 	RNA_def_property_flag(parm, PROP_REQUIRED);
-	RNA_def_boolean(func, "exact", TRUE, "Exact",
+	RNA_def_boolean(func, "exact", true, "Exact",
 	                "Get marker at exact frame number rather than get estimated marker");
 	parm = RNA_def_pointer(func, "marker", "MovieTrackingMarker", "", "Marker for specified frame");
 	RNA_def_function_return(func, parm);
@@ -1416,7 +1466,7 @@ static void rna_def_trackingPlaneMarkers(BlenderRNA *brna, PropertyRNA *cprop)
 	parm = RNA_def_int(func, "frame", 1, MINFRAME, MAXFRAME, "Frame",
 	                   "Frame number to find marker for", MINFRAME, MAXFRAME);
 	RNA_def_property_flag(parm, PROP_REQUIRED);
-	RNA_def_boolean(func, "exact", TRUE, "Exact",
+	RNA_def_boolean(func, "exact", true, "Exact",
 	                "Get plane marker at exact frame number rather than get estimated marker");
 	parm = RNA_def_pointer(func, "plane_marker", "MovieTrackingPlaneMarker", "", "Plane marker for specified frame");
 	RNA_def_function_return(func, parm);
@@ -1618,6 +1668,33 @@ static void rna_def_reconstructedCamera(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Average Error", "Average error of reconstruction");
 }
 
+static void rna_def_trackingReconstructedCameras(BlenderRNA *brna)
+{
+	StructRNA *srna;
+	FunctionRNA *func;
+	PropertyRNA *parm;
+
+	srna = RNA_def_struct(brna, "MovieTrackingReconstructedCameras", NULL);
+	RNA_def_struct_sdna(srna, "MovieTrackingReconstruction");
+	RNA_def_struct_ui_text(srna, "Reconstructed Cameras", "Collection of solved cameras");
+
+	func = RNA_def_function(srna, "find_frame", "rna_trackingCameras_find_frame");
+	RNA_def_function_flag(func, FUNC_USE_SELF_ID);
+	RNA_def_function_ui_description(func, "Find a reconstructed camera for a give frame number");
+	RNA_def_int(func, "frame", 1, MINFRAME, MAXFRAME, "Frame", "Frame number to find camera for", MINFRAME, MAXFRAME);
+	parm = RNA_def_pointer(func, "camera", "MovieReconstructedCamera", "", "Camera for a given frame");
+	RNA_def_function_return(func, parm);
+
+	func = RNA_def_function(srna, "matrix_from_frame", "rna_trackingCameras_matrix_from_frame");
+	RNA_def_function_flag(func, FUNC_USE_SELF_ID);
+	RNA_def_function_ui_description(func, "Return interpolated camera matrix for a given frame");
+	RNA_def_int(func, "frame", 1, MINFRAME, MAXFRAME, "Frame", "Frame number to find camera for", MINFRAME, MAXFRAME);
+	parm = RNA_def_float_matrix(func, "matrix", 4, 4, NULL, FLT_MIN, FLT_MAX, "Matrix",
+	                            "Interpolated camera matrix for a given frame", FLT_MIN, FLT_MAX);
+	RNA_def_property_flag(parm, PROP_THICK_WRAP);  /* needed for string return value */
+	RNA_def_function_output(func, parm);
+}
+
 static void rna_def_trackingReconstruction(BlenderRNA *brna)
 {
 	StructRNA *srna;
@@ -1646,6 +1723,8 @@ static void rna_def_trackingReconstruction(BlenderRNA *brna)
 	RNA_def_property_struct_type(prop, "MovieReconstructedCamera");
 	RNA_def_property_collection_sdna(prop, NULL, "cameras", "camnr");
 	RNA_def_property_ui_text(prop, "Cameras", "Collection of solved cameras");
+	RNA_def_property_srna(prop, "MovieTrackingReconstructedCameras");
+
 }
 
 static void rna_def_trackingTracks(BlenderRNA *brna)
@@ -1904,6 +1983,7 @@ static void rna_def_tracking(BlenderRNA *brna)
 	rna_def_trackingObjectTracks(brna);
 	rna_def_trackingObjectPlaneTracks(brna);
 	rna_def_trackingStabilization(brna);
+	rna_def_trackingReconstructedCameras(brna);
 	rna_def_trackingReconstruction(brna);
 	rna_def_trackingObject(brna);
 	rna_def_trackingDopesheet(brna);

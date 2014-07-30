@@ -393,10 +393,10 @@ void gpu_material_add_node(GPUMaterial *material, GPUNode *node)
 
 /* Code generation */
 
-int GPU_material_do_color_management(GPUMaterial *mat)
+bool GPU_material_do_color_management(GPUMaterial *mat)
 {
 	if (!BKE_scene_check_color_management_enabled(mat->scene))
-		return FALSE;
+		return false;
 
 	return !((mat->scene->gm.flag & GAME_GLSL_NO_COLOR_MANAGEMENT));
 }
@@ -653,7 +653,7 @@ static void shade_light_textures(GPUMaterial *mat, GPULamp *lamp, GPUNodeLink **
 
 			GPU_link(mat, "shade_light_texture",
 				GPU_builtin(GPU_VIEW_POSITION),
-				GPU_image(mtex->tex->ima, &mtex->tex->iuser, FALSE),
+				GPU_image(mtex->tex->ima, &mtex->tex->iuser, false),
 				GPU_dynamic_uniform((float*)lamp->dynpersmat, GPU_DYNAMIC_LAMP_DYNPERSMAT, lamp->ob),
 				&tex_rgb);
 			texture_rgb_blend(mat, tex_rgb, *rgb, GPU_uniform(&one), GPU_uniform(&mtex->colfac), mtex->blendtype, rgb); 
@@ -976,7 +976,8 @@ static void do_material_tex(GPUShadeInput *shi)
 	/*char *lastuvname = NULL;*/ /*UNUSED*/
 	float one = 1.0f, norfac, ofs[3];
 	int tex_nr, rgbnor, talpha;
-	int init_done = FALSE, iBumpSpacePrev = 0; /* Not necessary, quiting gcc warning. */
+	bool init_done = false;
+	int iBumpSpacePrev = 0; /* Not necessary, quiting gcc warning. */
 	GPUNodeLink *vNorg, *vNacc, *fPrevMagnitude;
 	int iFirstTimeNMap=1;
 	int found_deriv_map = 0;
@@ -1046,7 +1047,7 @@ static void do_material_tex(GPUShadeInput *shi)
 			talpha = 0;
 
 			if (tex && tex->type == TEX_IMAGE && tex->ima) {
-				GPU_link(mat, "mtex_image", texco, GPU_image(tex->ima, &tex->iuser, FALSE), &tin, &trgb);
+				GPU_link(mat, "mtex_image", texco, GPU_image(tex->ima, &tex->iuser, false), &tin, &trgb);
 				rgbnor= TEX_RGB;
 
 				talpha = ((tex->imaflag & TEX_USEALPHA) && tex->ima && (tex->ima->flag & IMA_IGNORE_ALPHA) == 0);
@@ -1121,7 +1122,7 @@ static void do_material_tex(GPUShadeInput *shi)
 
 					if (tex->imaflag & TEX_NORMALMAP) {
 						/* normalmap image */
-						GPU_link(mat, "mtex_normal", texco, GPU_image(tex->ima, &tex->iuser, TRUE), &tnor);
+						GPU_link(mat, "mtex_normal", texco, GPU_image(tex->ima, &tex->iuser, true), &tnor);
 						
 						if (mtex->norfac < 0.0f)
 							GPU_link(mat, "mtex_negate_texnormal", tnor, &tnor);
@@ -1219,7 +1220,7 @@ static void do_material_tex(GPUShadeInput *shi)
 							// copy shi->vn to vNorg and vNacc, set magnitude to 1
 							GPU_link(mat, "mtex_bump_normals_init", shi->vn, &vNorg, &vNacc, &fPrevMagnitude);
 							iBumpSpacePrev = 0;
-							init_done = TRUE;
+							init_done = true;
 						}
 						
 						// find current bump space
@@ -1261,26 +1262,26 @@ static void do_material_tex(GPUShadeInput *shi)
 						
 						if (found_deriv_map) {
 							GPU_link(mat, "mtex_bump_deriv",
-							         texco, GPU_image(tex->ima, &tex->iuser, TRUE), GPU_uniform(&ima_x), GPU_uniform(&ima_y), tnorfac,
+							         texco, GPU_image(tex->ima, &tex->iuser, true), GPU_uniform(&ima_x), GPU_uniform(&ima_y), tnorfac,
 							         &dBs, &dBt );
 						}
 						else if ( mtex->texflag & MTEX_3TAP_BUMP)
 							GPU_link(mat, "mtex_bump_tap3",
-							         texco, GPU_image(tex->ima, &tex->iuser, TRUE), tnorfac,
+							         texco, GPU_image(tex->ima, &tex->iuser, true), tnorfac,
 							         &dBs, &dBt );
 						else if ( mtex->texflag & MTEX_5TAP_BUMP)
 							GPU_link(mat, "mtex_bump_tap5",
-							         texco, GPU_image(tex->ima, &tex->iuser, TRUE), tnorfac,
+							         texco, GPU_image(tex->ima, &tex->iuser, true), tnorfac,
 							         &dBs, &dBt );
 						else if ( mtex->texflag & MTEX_BICUBIC_BUMP ) {
 							if (GPU_bicubic_bump_support()) {
 								GPU_link(mat, "mtex_bump_bicubic",
-								         texco, GPU_image(tex->ima, &tex->iuser, TRUE), tnorfac,
+								         texco, GPU_image(tex->ima, &tex->iuser, true), tnorfac,
 								         &dBs, &dBt);
 							}
 							else {
 								GPU_link(mat, "mtex_bump_tap5",
-								         texco, GPU_image(tex->ima, &tex->iuser, TRUE), tnorfac,
+								         texco, GPU_image(tex->ima, &tex->iuser, true), tnorfac,
 								         &dBs, &dBt);
 							}
 						}
@@ -1290,7 +1291,7 @@ static void do_material_tex(GPUShadeInput *shi)
 							float imag_tspace_dimension_y = aspect*imag_tspace_dimension_x;
 							GPU_link(mat, "mtex_bump_apply_texspace",
 							         fDet, dBs, dBt, vR1, vR2,
-							         GPU_image(tex->ima, &tex->iuser, TRUE), texco,
+							         GPU_image(tex->ima, &tex->iuser, true), texco,
 							         GPU_uniform(&imag_tspace_dimension_x), GPU_uniform(&imag_tspace_dimension_y), vNacc,
 							         &vNacc, &shi->vn );
 						}
@@ -1530,7 +1531,11 @@ static GPUNodeLink *gpu_material_preview_matcap(GPUMaterial *mat, Material *ma)
 {
 	GPUNodeLink *outlink;
 	
-	GPU_link(mat, "material_preview_matcap", GPU_uniform(&ma->r), GPU_image_preview(ma->preview), GPU_builtin(GPU_VIEW_NORMAL), &outlink);
+	/* some explanations here:
+	 * matcap normal holds the normal remapped to the 0.0 - 1.0 range. To take advantage of flat shading, we abuse
+	 * the built in secondary color of opengl. Color is just the regular color, which should include mask value too.
+	 * This also needs flat shading so we use the primary opengl color built-in */
+	GPU_link(mat, "material_preview_matcap", GPU_uniform(&ma->r), GPU_image_preview(ma->preview), GPU_opengl_builtin(GPU_MATCAP_NORMAL), GPU_opengl_builtin(GPU_COLOR), &outlink);
 	
 	return outlink;
 }
@@ -1592,7 +1597,10 @@ GPUMaterial *GPU_material_from_blender(Scene *scene, Material *ma)
 
 	if (!(scene->gm.flag & GAME_GLSL_NO_NODES) && ma->nodetree && ma->use_nodes) {
 		/* create nodes */
-		ntreeGPUMaterialNodes(ma->nodetree, mat);
+		if (BKE_scene_use_new_shading_nodes(scene))
+			ntreeGPUMaterialNodes(ma->nodetree, mat, NODE_NEW_SHADING);
+		else
+			ntreeGPUMaterialNodes(ma->nodetree, mat, NODE_OLD_SHADING);
 	}
 	else {
 		if (BKE_scene_use_new_shading_nodes(scene)) {

@@ -200,6 +200,18 @@ static size_t IMB_get_size_in_memory(ImBuf *ibuf)
 	int a;
 	size_t size = 0, channel_size = 0;
 
+	/* Persistent images should have no affect on how "normal"
+	 * images are cached.
+	 *
+	 * This is a bit arbitrary, but would make it so only movies
+	 * and sequences are memory limited, keeping textures in the
+	 * memory in order to avoid constant file reload on viewport
+	 * update.
+	 */
+	if (ibuf->userflags & IB_PERSISTENT) {
+		return 0;
+	}
+
 	size += sizeof(ImBuf);
 
 	if (ibuf->rect)
@@ -294,9 +306,9 @@ MovieCache *IMB_moviecache_create(const char *name, int keysize, GHashHashFP has
 
 	BLI_strncpy(cache->name, name, sizeof(cache->name));
 
-	cache->keys_pool = BLI_mempool_create(sizeof(MovieCacheKey), 64, 64, 0);
-	cache->items_pool = BLI_mempool_create(sizeof(MovieCacheItem), 64, 64, 0);
-	cache->userkeys_pool = BLI_mempool_create(keysize, 64, 64, 0);
+	cache->keys_pool = BLI_mempool_create(sizeof(MovieCacheKey), 0, 64, BLI_MEMPOOL_NOP);
+	cache->items_pool = BLI_mempool_create(sizeof(MovieCacheItem), 0, 64, BLI_MEMPOOL_NOP);
+	cache->userkeys_pool = BLI_mempool_create(keysize, 0, 64, BLI_MEMPOOL_NOP);
 	cache->hash = BLI_ghash_new(moviecache_hashhash, moviecache_hashcmp, "MovieClip ImBuf cache hash");
 
 	cache->keysize = keysize;
@@ -323,7 +335,7 @@ void IMB_moviecache_set_priority_callback(struct MovieCache *cache, MovieCacheGe
 	cache->prioritydeleterfp = prioritydeleterfp;
 }
 
-static void do_moviecache_put(MovieCache *cache, void *userkey, ImBuf *ibuf, int need_lock)
+static void do_moviecache_put(MovieCache *cache, void *userkey, ImBuf *ibuf, bool need_lock)
 {
 	MovieCacheKey *key;
 	MovieCacheItem *item;
@@ -381,7 +393,7 @@ static void do_moviecache_put(MovieCache *cache, void *userkey, ImBuf *ibuf, int
 
 void IMB_moviecache_put(MovieCache *cache, void *userkey, ImBuf *ibuf)
 {
-	do_moviecache_put(cache, userkey, ibuf, TRUE);
+	do_moviecache_put(cache, userkey, ibuf, true);
 }
 
 bool IMB_moviecache_put_if_possible(MovieCache *cache, void *userkey, ImBuf *ibuf)
@@ -396,8 +408,8 @@ bool IMB_moviecache_put_if_possible(MovieCache *cache, void *userkey, ImBuf *ibu
 	mem_in_use = MEM_CacheLimiter_get_memory_in_use(limitor);
 
 	if (mem_in_use + elem_size <= mem_limit) {
-		do_moviecache_put(cache, userkey, ibuf, FALSE);
-		result = TRUE;
+		do_moviecache_put(cache, userkey, ibuf, false);
+		result = true;
 	}
 
 	BLI_mutex_unlock(&limitor_lock);

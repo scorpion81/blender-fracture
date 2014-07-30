@@ -42,9 +42,9 @@ static bNodeSocketTemplate sh_node_texture_in[] = {
 	{	-1, 0, ""	}
 };
 static bNodeSocketTemplate sh_node_texture_out[] = {
-	{	SOCK_FLOAT, 0, N_("Value")},
-	{	SOCK_RGBA, 0, N_("Color")},
-	{	SOCK_VECTOR, 0, N_("Normal")},
+	{	SOCK_FLOAT, 0, N_("Value"), 0, 0, 0, 0, 0, 0, PROP_NONE, SOCK_NO_INTERNAL_LINK},
+	{	SOCK_RGBA, 0, N_("Color"), 0, 0, 0, 0, 0, 0, PROP_NONE, SOCK_NO_INTERNAL_LINK},
+	{	SOCK_VECTOR, 0, N_("Normal"), 0, 0, 0, 0, 0, 0, PROP_NONE, SOCK_NO_INTERNAL_LINK},
 	{	-1, 0, ""	}
 };
 
@@ -125,7 +125,7 @@ static int gpu_shader_texture(GPUMaterial *mat, bNode *node, bNodeExecData *UNUS
 	Tex *tex = (Tex *)node->id;
 
 	if (tex && tex->type == TEX_IMAGE && tex->ima) {
-		GPUNodeLink *texlink = GPU_image(tex->ima, &tex->iuser, FALSE);
+		GPUNodeLink *texlink = GPU_image(tex->ima, &tex->iuser, false);
 		int ret = GPU_stack_link(mat, "texture_image", in, out, texlink);
 
 		if (ret) {

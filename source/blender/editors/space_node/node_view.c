@@ -44,8 +44,6 @@
 #include "ED_space_api.h"
 #include "ED_image.h"
 
-#include "UI_view2d.h"
-
 #include "RNA_access.h"
 #include "RNA_define.h"
 
@@ -90,7 +88,7 @@ int space_node_view_flag(bContext *C, SpaceNode *snode, ARegion *ar,
 				tot++;
 
 				if (node->type == NODE_FRAME) {
-					has_frame = TRUE;
+					has_frame = true;
 				}
 			}
 		}
@@ -104,7 +102,7 @@ int space_node_view_flag(bContext *C, SpaceNode *snode, ARegion *ar,
 		/* for single non-frame nodes, don't zoom in, just pan view,
 		 * but do allow zooming out, this allows for big nodes to be zoomed out */
 		if ((tot == 1) &&
-		    (has_frame == FALSE) &&
+		    (has_frame == false) &&
 		    ((oldwidth * oldheight) > (width * height)))
 		{
 			/* center, don't zoom */
@@ -413,33 +411,36 @@ static void sample_draw(const bContext *C, ARegion *ar, void *arg_info)
 	ImageSampleInfo *info = arg_info;
 
 	if (info->draw) {
-		ED_image_draw_info(scene, ar, info->color_manage, FALSE, info->channels,
+		ED_image_draw_info(scene, ar, info->color_manage, false, info->channels,
 		                   info->x, info->y, info->col, info->colf, info->linearcol,
 		                   info->zp, info->zfp);
 	}
 }
 
-/* returns color in SRGB */
-/* matching ED_space_image_color_sample() */
-int ED_space_node_color_sample(SpaceNode *snode, ARegion *ar, int mval[2], float r_col[3])
+/* Returns color in the display space, matching ED_space_image_color_sample().
+ * And here we've got recursion in the comments tips...
+ */
+bool ED_space_node_color_sample(Scene *scene, SpaceNode *snode, ARegion *ar, int mval[2], float r_col[3])
 {
+	const char *display_device = scene->display_settings.display_device;
+	struct ColorManagedDisplay *display = IMB_colormanagement_display_get_named(display_device);
 	void *lock;
 	Image *ima;
 	ImBuf *ibuf;
 	float fx, fy, bufx, bufy;
-	int ret = FALSE;
+	bool ret = false;
 
 	if (STREQ(snode->tree_idname, ntreeType_Composite->idname) || (snode->flag & SNODE_BACKDRAW) == 0) {
 		/* use viewer image for color sampling only if we're in compositor tree
 		 * with backdrop enabled
 		 */
-		return FALSE;
+		return false;
 	}
 
 	ima = BKE_image_verify_viewer(IMA_TYPE_COMPOSITE, "Viewer Node");
 	ibuf = BKE_image_acquire_ibuf(ima, NULL, &lock);
 	if (!ibuf) {
-		return FALSE;
+		return false;
 	}
 
 	/* map the mouse coords to the backdrop image space */
@@ -459,14 +460,19 @@ int ED_space_node_color_sample(SpaceNode *snode, ARegion *ar, int mval[2], float
 		if (ibuf->rect_float) {
 			fp = (ibuf->rect_float + (ibuf->channels) * (y * ibuf->x + x));
 			/* IB_PROFILE_NONE is default but infact its linear */
-			linearrgb_to_srgb_v3_v3(r_col, fp);
-			ret = TRUE;
+			copy_v3_v3(r_col, fp);
+			ret = true;
 		}
 		else if (ibuf->rect) {
 			cp = (unsigned char *)(ibuf->rect + y * ibuf->x + x);
 			rgb_uchar_to_float(r_col, cp);
-			ret = TRUE;
+			IMB_colormanagement_colorspace_to_scene_linear_v3(r_col, ibuf->rect_colorspace);
+			ret = true;
 		}
+	}
+
+	if (ret) {
+		IMB_colormanagement_scene_linear_to_display_v3(r_col, display);
 	}
 
 	BKE_image_release_ibuf(ima, ibuf, lock);
@@ -533,7 +539,7 @@ static void sample_apply(bContext *C, wmOperator *op, const wmEvent *event)
 			copy_v4_v4(info->linearcol, info->colf);
 			IMB_colormanagement_colorspace_to_scene_linear_v4(info->linearcol, false, ibuf->rect_colorspace);
 
-			info->color_manage = TRUE;
+			info->color_manage = true;
 		}
 		if (ibuf->rect_float) {
 			fp = (ibuf->rect_float + (ibuf->channels) * (y * ibuf->x + x));
@@ -543,7 +549,7 @@ static void sample_apply(bContext *C, wmOperator *op, const wmEvent *event)
 			info->colf[2] = fp[2];
 			info->colf[3] = fp[3];
 
-			info->color_manage = TRUE;
+			info->color_manage = true;
 		}
 		
 		if (ibuf->zbuf) {

@@ -46,6 +46,8 @@ struct EffectorWeights;
  *
  * Represents a "simulation scene" existing within the parent scene.
  */
+typedef struct RigidBodyOb RigidBodyOb;
+
 typedef struct RigidBodyWorld {
 	/* Sim World Settings ------------------------------------------------------------- */
 	struct EffectorWeights *effector_weights; /* effectors info */
@@ -71,6 +73,12 @@ typedef struct RigidBodyWorld {
 	
 	/* References to Physics Sim objects. Exist at runtime only ---------------------- */
 	void *physics_world;		/* Physics sim world (i.e. btDiscreteDynamicsWorld) */
+	RigidBodyOb **cache_index_map;		/* Maps the linear RigidbodyOb index to the nested Object(Modifier) Index, at runtime*/
+	int *cache_offset_map;		/* Maps the linear RigidbodyOb index to the nested Object(Modifier) cell offset, at runtime, so it does not need to be calced in cache*/
+	int refresh_modifiers;		/* If we have rigidbody modifiers, time to refresh them if flag is set*/
+	int object_changed;			/* Flag changes to objects (especially those with modifiers)*/
+	int rebuild_comp_con;
+	char pad2[4];
 } RigidBodyWorld;
 
 /* Flags for RigidBodyWorld */
@@ -125,6 +133,15 @@ typedef struct RigidBodyOb {
 	float pad1;
 } RigidBodyOb;
 
+/*Activation State*/
+typedef enum eRigidBodyOb_ActivationState
+{
+	RBO_STATE_ACTIVE_TAG = 1,
+	RBO_STATE_ISLAND_SLEEPING = 2,
+	RBO_STATE_WANTS_DEACTIVATION = 3,
+	RBO_STATE_DISABLE_DEACTIVATION = 4,
+	RBO_STATE_DISABLE_SIMULATION = 5,
+} eRigidBodyOb_ActivationState;
 
 /* Participation types for RigidBodyOb */
 typedef enum eRigidBodyOb_Type {
@@ -151,7 +168,11 @@ typedef enum eRigidBodyOb_Flag {
 	/* collision margin is not embedded (only used by convex hull shapes for now) */
 	RBO_FLAG_USE_MARGIN			= (1 << 6),
 	/* collision shape deforms during simulation (only for passive triangle mesh shapes) */
-	RBO_FLAG_USE_DEFORM			= (1 << 7)
+	RBO_FLAG_USE_DEFORM			= (1 << 7),
+	/* active compound parents before destruction */
+	RBO_FLAG_ACTIVE_COMPOUND	= (1 << 8),
+	/* baked state of compound*/
+	RBO_FLAG_BAKED_COMPOUND		= (1 << 9)
 } eRigidBodyOb_Flag;
 
 /* RigidBody Collision Shape */
@@ -173,7 +194,7 @@ typedef enum eRigidBody_Shape {
 	RB_SHAPE_TRIMESH,
 	
 		/* concave mesh approximated using primitives */
-	//RB_SHAPE_COMPOUND,
+	RB_SHAPE_COMPOUND,
 } eRigidBody_Shape;
 
 typedef enum eRigidBody_MeshSource {
@@ -240,6 +261,63 @@ typedef struct RigidBodyCon {
 	/* References to Physics Sim object. Exist at runtime only */
 	void *physics_constraint;	/* Physics object representation (i.e. btTypedConstraint) */
 } RigidBodyCon;
+
+/* RigidBodyConstraint (rbc)
+ *
+ * Represents an constraint connecting two shard rigid bodies.
+ */
+typedef struct RigidBodyShardCon {
+
+	struct RigidBodyShardCon *next, *prev;
+	struct MeshIsland *mi1;			/* First meshisland influenced by the constraint */
+	struct MeshIsland *mi2;			/* Second meshisland influenced by the constraint */
+
+	/* General Settings for this RigidBodyCon */
+	short type;					/* (eRigidBodyCon_Type) role of RigidBody in sim  */
+	short num_solver_iterations;/* number of constraint solver iterations made per simulation step */
+
+	int flag;					/* (eRigidBodyCon_Flag) */
+
+	float breaking_threshold;	/* breaking impulse threshold */
+	float start_angle;			//needed for breaking by angle and dist
+	float start_dist;
+	float pad;
+
+	/* limits */
+	/* translation limits */
+	float limit_lin_x_lower;
+	float limit_lin_x_upper;
+	float limit_lin_y_lower;
+	float limit_lin_y_upper;
+	float limit_lin_z_lower;
+	float limit_lin_z_upper;
+	/* rotation limits */
+	float limit_ang_x_lower;
+	float limit_ang_x_upper;
+	float limit_ang_y_lower;
+	float limit_ang_y_upper;
+	float limit_ang_z_lower;
+	float limit_ang_z_upper;
+
+	/* spring settings */
+	/* resistance to deformation */
+	float spring_stiffness_x;
+	float spring_stiffness_y;
+	float spring_stiffness_z;
+	/* amount of velocity lost over time */
+	float spring_damping_x;
+	float spring_damping_y;
+	float spring_damping_z;
+
+	/* motor settings */
+	float motor_lin_target_velocity;	/* linear velocity the motor tries to hold */
+	float motor_ang_target_velocity;	/* angular velocity the motor tries to hold */
+	float motor_lin_max_impulse;		/* maximum force used to reach linear target velocity */
+	float motor_ang_max_impulse;		/* maximum force used to reach angular target velocity */
+
+	/* References to Physics Sim object. Exist at runtime only */
+	void *physics_constraint;	/* Physics object representation (i.e. btTypedConstraint) */
+} RigidBodyShardCon;
 
 
 /* Participation types for RigidBodyOb */

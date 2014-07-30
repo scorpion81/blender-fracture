@@ -42,6 +42,7 @@
 #include "KX_WorldInfo.h"
 #include <vector>
 
+struct TaskScheduler;
 class KX_TimeCategoryLogger;
 
 #define LEFT_EYE  1
@@ -127,12 +128,7 @@ private:
 
 	int					m_exitcode;
 	STR_String			m_exitstring;
-		/**
-		 * Some drawing parameters, the drawing mode
-		 * (wire/flat/texture), and the camera zoom
-		 * factor.
-		 */
-	int				m_drawingmode;
+
 	float			m_cameraZoom;
 	
 	bool			m_overrideCam;
@@ -200,6 +196,9 @@ private:
 	/** Settings that doesn't go away with Game Actuator */
 	GlobalSettings m_globalsettings;
 
+	/** Task scheduler for multi-threading */
+	TaskScheduler* m_taskscheduler;
+
 	void					RenderFrame(KX_Scene* scene, KX_Camera* cam);
 	void					PostRenderScene(KX_Scene* scene);
 	void					RenderDebugProperties();
@@ -229,6 +228,8 @@ public:
 	RAS_ICanvas*		    GetCanvas() { return m_canvas; }
 	SCA_IInputDevice*		GetKeyboardDevice() { return m_keyboarddevice; }
 	SCA_IInputDevice*		GetMouseDevice() { return m_mousedevice; }
+
+	TaskScheduler*			GetTaskScheduler() { return m_taskscheduler; }
 
 	/// Dome functions
 	void			InitDome(short res, short mode, short angle, float resbuf, short tilt, struct Text* text); 
@@ -260,9 +261,6 @@ public:
 	void			ResumeScene(const STR_String& scenename);
 
 	void			GetSceneViewport(KX_Scene* scene, KX_Camera* cam, RAS_Rect& area, RAS_Rect& viewport);
-
-	void SetDrawType(int drawingtype);
-	int  GetDrawType() { return m_drawingmode; }
 
 	void SetCameraZoom(float camzoom);
 	

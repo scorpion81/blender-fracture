@@ -181,7 +181,8 @@ static void spothalo(struct LampRen *lar, ShadeInput *shi, float *intens)
 	double a, b, c, disc, nray[3], npos[3];
 	double t0, t1 = 0.0f, t2= 0.0f, t3;
 	float p1[3], p2[3], ladist, maxz = 0.0f, maxy = 0.0f, haint;
-	int cuts, do_clip = TRUE, use_yco = FALSE;
+	int cuts;
+	bool do_clip = true, use_yco = false;
 
 	*intens= 0.0f;
 	haint= lar->haint;
@@ -217,7 +218,7 @@ static void spothalo(struct LampRen *lar, ShadeInput *shi, float *intens)
 
 	/* rotate maxz */
 	if (shi->co[2]==0.0f) {
-		do_clip = FALSE;  /* for when halo at sky */
+		do_clip = false;  /* for when halo at sky */
 	}
 	else {
 		p1[0]= shi->co[0]-lar->co[0];
@@ -229,7 +230,7 @@ static void spothalo(struct LampRen *lar, ShadeInput *shi, float *intens)
 		maxy= lar->imat[0][1]*p1[0]+lar->imat[1][1]*p1[1]+lar->imat[2][1]*p1[2];
 
 		if (fabs(nray[2]) < FLT_EPSILON) {
-			use_yco = TRUE;
+			use_yco = true;
 		}
 	}
 	
@@ -285,7 +286,7 @@ static void spothalo(struct LampRen *lar, ShadeInput *shi, float *intens)
 		if (ok1==0 && ok2==0) return;
 		
 		/* intersction point with -ladist, the bottom of the cone */
-		if (use_yco == FALSE) {
+		if (use_yco == false) {
 			t3= ((double)(-ladist)-npos[2])/nray[2];
 				
 			/* de we have to replace one of the intersection points? */
@@ -319,7 +320,7 @@ static void spothalo(struct LampRen *lar, ShadeInput *shi, float *intens)
 		
 		/* calculate t0: is the maximum visible z (when halo is intersected by face) */ 
 		if (do_clip) {
-			if (use_yco == FALSE) t0 = ((double)maxz - npos[2]) / nray[2];
+			if (use_yco == false) t0 = ((double)maxz - npos[2]) / nray[2];
 			else                  t0 = ((double)maxy - npos[1]) / nray[1];
 
 			if (t0 < t1) return;
@@ -937,6 +938,8 @@ void shade_color(ShadeInput *shi, ShadeResult *shr)
 		shr->diff[2] *= obcol[2];
 		if (shi->mode & MA_TRANSP) shr->alpha *= obcol[3];
 	}
+
+	copy_v3_v3(shr->diffshad, shr->diff);
 }
 
 /* ramp for at end of shade */
@@ -1874,9 +1877,11 @@ void shade_lamp_loop(ShadeInput *shi, ShadeResult *shr)
 		}
 		
 		if (shi->combinedflag & SCE_PASS_SHADOW)
-			copy_v3_v3(shr->combined, shr->shad); 	/* note, no ';' ! */
+			copy_v3_v3(shr->diffshad, shr->shad); 	/* note, no ';' ! */
 		else
-			copy_v3_v3(shr->combined, shr->diff);
+			copy_v3_v3(shr->diffshad, shr->diff);
+
+		copy_v3_v3(shr->combined, shr->diffshad);
 			
 		/* calculate shadow pass, we use a multiplication mask */
 		/* if diff = 0,0,0 it doesn't matter what the shadow pass is, so leave it as is */

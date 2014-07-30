@@ -110,10 +110,21 @@ static void sclip_zoom_set(const bContext *C, float zoom, float location[2])
 	}
 
 	if ((U.uiflag & USER_ZOOM_TO_MOUSEPOS) && location) {
+		float dx, dy;
+
 		ED_space_clip_get_size(sc, &width, &height);
 
-		sc->xof += ((location[0] - 0.5f) * width - sc->xof) * (sc->zoom - oldzoom) / sc->zoom;
-		sc->yof += ((location[1] - 0.5f) * height - sc->yof) * (sc->zoom - oldzoom) / sc->zoom;
+		dx = ((location[0] - 0.5f) * width - sc->xof) * (sc->zoom - oldzoom) / sc->zoom;
+		dy = ((location[1] - 0.5f) * height - sc->yof) * (sc->zoom - oldzoom) / sc->zoom;
+
+		if (sc->flag & SC_LOCK_SELECTION) {
+			sc->xlockof += dx;
+			sc->ylockof += dy;
+		}
+		else {
+			sc->xof += dx;
+			sc->yof += dy;
+		}
 	}
 }
 
@@ -609,7 +620,7 @@ static int view_zoom_in_exec(bContext *C, wmOperator *op)
 
 	RNA_float_get_array(op->ptr, "location", location);
 
-	sclip_zoom_set_factor(C, 1.25f, location);
+	sclip_zoom_set_factor(C, powf(2.0f, 1.0f / 3.0f), location);
 
 	ED_region_tag_redraw(CTX_wm_region(C));
 
@@ -652,7 +663,7 @@ static int view_zoom_out_exec(bContext *C, wmOperator *op)
 
 	RNA_float_get_array(op->ptr, "location", location);
 
-	sclip_zoom_set_factor(C, 0.8f, location);
+	sclip_zoom_set_factor(C, powf(0.5f, 1.0f / 3.0f), location);
 
 	ED_region_tag_redraw(CTX_wm_region(C));
 
@@ -1002,7 +1013,7 @@ static void do_movie_proxy(void *pjv, int *UNUSED(build_sizes), int UNUSED(build
 	}
 	else {
 		sfra = 1;
-		efra = IMB_anim_get_duration(clip->anim, IMB_TC_NONE);
+		efra = clip->len;
 	}
 
 	if (build_undistort_count) {
@@ -1019,7 +1030,7 @@ static void do_movie_proxy(void *pjv, int *UNUSED(build_sizes), int UNUSED(build
 		if (*stop || G.is_break)
 			break;
 
-		*do_update = TRUE;
+		*do_update = true;
 		*progress = ((float) cfra - sfra) / (efra - sfra);
 	}
 
@@ -1118,7 +1129,8 @@ static void *do_proxy_thread(void *data_v)
 	while ((mem = proxy_thread_next_frame(data->queue, data->clip, &size, &cfra))) {
 		ImBuf *ibuf;
 
-		ibuf = IMB_ibImageFromMemory(mem, size, IB_rect | IB_multilayer | IB_alphamode_detect, NULL, "proxy frame");
+		ibuf = IMB_ibImageFromMemory(mem, size, IB_rect | IB_multilayer | IB_alphamode_detect,
+		                             data->clip->colorspace_settings.name, "proxy frame");
 
 		BKE_movieclip_build_proxy_frame_for_ibuf(data->clip, ibuf, NULL, cfra,
 		                                         data->build_sizes, data->build_count, false);
@@ -1265,7 +1277,7 @@ static int clip_rebuild_proxy_exec(bContext *C, wmOperator *UNUSED(op))
 	WM_jobs_timer(wm_job, 0.2, NC_MOVIECLIP | ND_DISPLAY, 0);
 	WM_jobs_callbacks(wm_job, proxy_startjob, NULL, NULL, proxy_endjob);
 
-	G.is_break = FALSE;
+	G.is_break = false;
 	WM_jobs_start(CTX_wm_manager(C), wm_job);
 
 	ED_area_tag_redraw(CTX_wm_area(C));
@@ -1333,32 +1345,19 @@ static int clip_view_ndof_invoke(bContext *C, wmOperator *UNUSED(op), const wmEv
 	else {
 		SpaceClip *sc = CTX_wm_space_clip(C);
 		ARegion *ar = CTX_wm_region(C);
+		float pan_vec[3];
 
-		wmNDOFMotionData *ndof = (wmNDOFMotionData *) event->customdata;
+		const wmNDOFMotionData *ndof = event->customdata;
+		const float speed = NDOF_PIXELS_PER_SECOND;
 
-		float dt = ndof->dt;
+		WM_event_ndof_pan_get(ndof, pan_vec, true);
 
-		/* tune these until it feels right */
-		const float zoom_sensitivity = 0.5f;  /* 50% per second (I think) */
-		const float pan_sensitivity = 300.0f; /* screen pixels per second */
+		mul_v2_fl(pan_vec, (speed * ndof->dt) / sc->zoom);
+		pan_vec[2] *= -ndof->dt;
 
-		float pan_x = pan_sensitivity * dt * ndof->tvec[0] / sc->zoom;
-		float pan_y = pan_sensitivity * dt * ndof->tvec[1] / sc->zoom;
-
-		/* "mouse zoom" factor = 1 + (dx + dy) / 300
-		 * what about "ndof zoom" factor? should behave like this:
-		 * at rest -> factor = 1
-		 * move forward -> factor > 1
-		 * move backward -> factor < 1
-		 */
-		float zoom_factor = 1.0f + zoom_sensitivity * dt * - ndof->tvec[2];
-
-		if (U.ndof_flag & NDOF_ZOOM_INVERT)
-			zoom_factor = -zoom_factor;
-
-		sclip_zoom_set_factor(C, zoom_factor, NULL);
-		sc->xof += pan_x;
-		sc->yof += pan_y;
+		sclip_zoom_set_factor(C, 1.0f + pan_vec[2], NULL);
+		sc->xof += pan_vec[0];
+		sc->yof += pan_vec[1];
 
 		ED_region_tag_redraw(ar);
 
@@ -1375,6 +1374,7 @@ void CLIP_OT_view_ndof(wmOperatorType *ot)
 
 	/* api callbacks */
 	ot->invoke = clip_view_ndof_invoke;
+	ot->poll = ED_space_clip_view_clip_poll;
 }
 
 /********************** Prefetch operator *********************/
@@ -1389,7 +1389,6 @@ static int clip_prefetch_modal(bContext *C, wmOperator *UNUSED(op), const wmEven
 	switch (event->type) {
 		case ESCKEY:
 			return OPERATOR_RUNNING_MODAL;
-			break;
 	}
 
 	return OPERATOR_PASS_THROUGH;
@@ -1524,5 +1523,5 @@ void ED_operatormacros_clip(void)
 	                                  OPTYPE_UNDO | OPTYPE_REGISTER);
 	WM_operatortype_macro_define(ot, "CLIP_OT_add_marker");
 	otmacro = WM_operatortype_macro_define(ot, "TRANSFORM_OT_translate");
-	RNA_boolean_set(otmacro->ptr, "release_confirm", TRUE);
+	RNA_boolean_set(otmacro->ptr, "release_confirm", true);
 }

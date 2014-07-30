@@ -103,8 +103,9 @@ void BKE_paint_brush_set(struct Paint *paint, struct Brush *br);
 /* testing face select mode
  * Texture paint could be removed since selected faces are not used
  * however hiding faces is useful */
-bool paint_facesel_test(struct Object *ob);
-bool paint_vertsel_test(struct Object *ob);
+bool BKE_paint_select_face_test(struct Object *ob);
+bool BKE_paint_select_vert_test(struct Object *ob);
+bool BKE_paint_select_elem_test(struct Object *ob);
 
 /* partial visibility */
 bool paint_is_face_hidden(const struct MFace *f, const struct MVert *mvert);
@@ -125,7 +126,7 @@ typedef struct SculptSession {
 	struct MPoly *mpoly;
 	struct MLoop *mloop;
 	int totvert, totpoly;
-	float *face_normals;
+	float (*face_normals)[3];
 	struct KeyBlock *kb;
 	float *vmask;
 	
@@ -134,7 +135,7 @@ typedef struct SculptSession {
 
 	/* BMesh for dynamic topology sculpting */
 	struct BMesh *bm;
-	int bm_smooth_shading;
+	bool bm_smooth_shading;
 	/* Undo/redo log for dynamic topology sculpting */
 	struct BMLog *bm_log;
 
@@ -143,13 +144,13 @@ typedef struct SculptSession {
 	bool show_diffuse_color;
 
 	/* Paiting on deformed mesh */
-	int modifiers_active; /* object is deformed with some modifiers */
+	bool modifiers_active; /* object is deformed with some modifiers */
 	float (*orig_cos)[3]; /* coords of undeformed mesh */
 	float (*deform_cos)[3]; /* coords of deformed mesh but without stroke displacement */
 	float (*deform_imats)[3][3]; /* crazyspace deformation matrices */
 
 	/* Partial redraw */
-	int partial_redraw;
+	bool partial_redraw;
 	
 	/* Used to cache the render of the active texture */
 	unsigned int texcache_side, *texcache, texcache_actual;
@@ -162,7 +163,7 @@ typedef struct SculptSession {
 	struct StrokeCache *cache;
 
 	/* last paint/sculpt stroke location */
-	int last_stroke_valid;
+	bool last_stroke_valid;
 	float last_stroke[3];
 
 	float average_stroke_accum[3];
@@ -171,6 +172,6 @@ typedef struct SculptSession {
 
 void free_sculptsession(struct Object *ob);
 void free_sculptsession_deformMats(struct SculptSession *ss);
-void sculptsession_bm_to_me(struct Object *ob, int reorder);
+void sculptsession_bm_to_me(struct Object *ob, bool reorder);
 void sculptsession_bm_to_me_for_render(struct Object *object);
 #endif

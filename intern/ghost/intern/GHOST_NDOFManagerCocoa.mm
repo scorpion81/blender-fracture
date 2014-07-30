@@ -79,8 +79,8 @@ static void NDOF_DeviceEvent(io_connect_t connection, natural_t messageType, voi
 				case kConnexionCmdHandleAxis:
 				{
 					// convert to blender view coordinates
-					short t[3] = {s->axis[0], -(s->axis[2]), s->axis[1]};
-					short r[3] = {-(s->axis[3]), s->axis[5], -(s->axis[4])};
+					const short t[3] = {s->axis[0], -(s->axis[2]), s->axis[1]};
+					const short r[3] = {-(s->axis[3]), s->axis[5], -(s->axis[4])};
 
 					ndof_manager->updateTranslation(t, now);
 					ndof_manager->updateRotation(r, now);
@@ -162,7 +162,7 @@ GHOST_NDOFManagerCocoa::~GHOST_NDOFManagerCocoa()
 	if (GHOST_NDOFManager3Dconnexion_available())
 	{
 		GHOST_NDOFManager3Dconnexion_UnregisterConnexionClient(m_clientID);
-        GHOST_NDOFManager3Dconnexion_UnregisterConnexionClient(m_clientID);
+		GHOST_NDOFManager3Dconnexion_UnregisterConnexionClient(m_clientID);
 
 		GHOST_NDOFManager3Dconnexion_CleanupConnexionHandlers();
 		ghost_system = NULL;

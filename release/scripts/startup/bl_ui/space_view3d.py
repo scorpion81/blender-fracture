@@ -197,6 +197,7 @@ class VIEW3D_MT_transform_base(Menu):
         layout.operator("transform.bend", text="Bend")
         layout.operator("transform.push_pull", text="Push/Pull")
         layout.operator("object.vertex_warp", text="Warp")
+        layout.operator("object.vertex_random", text="Randomize")
 
 
 # Generic transform menu - geometry types
@@ -880,20 +881,13 @@ class INFO_MT_mesh_add(Menu):
     bl_label = "Mesh"
 
     def draw(self, context):
+        from .space_view3d_toolbar import VIEW3D_PT_tools_add_object
+
         layout = self.layout
 
         layout.operator_context = 'INVOKE_REGION_WIN'
-        layout.operator("mesh.primitive_plane_add", icon='MESH_PLANE', text="Plane")
-        layout.operator("mesh.primitive_cube_add", icon='MESH_CUBE', text="Cube")
-        layout.operator("mesh.primitive_circle_add", icon='MESH_CIRCLE', text="Circle")
-        layout.operator("mesh.primitive_uv_sphere_add", icon='MESH_UVSPHERE', text="UV Sphere")
-        layout.operator("mesh.primitive_ico_sphere_add", icon='MESH_ICOSPHERE', text="Icosphere")
-        layout.operator("mesh.primitive_cylinder_add", icon='MESH_CYLINDER', text="Cylinder")
-        layout.operator("mesh.primitive_cone_add", icon='MESH_CONE', text="Cone")
-        layout.separator()
-        layout.operator("mesh.primitive_grid_add", icon='MESH_GRID', text="Grid")
-        layout.operator("mesh.primitive_monkey_add", icon='MESH_MONKEY', text="Monkey")
-        layout.operator("mesh.primitive_torus_add", icon='MESH_TORUS', text="Torus")
+
+        VIEW3D_PT_tools_add_object.draw_add_mesh(layout)
 
 
 class INFO_MT_curve_add(Menu):
@@ -901,14 +895,12 @@ class INFO_MT_curve_add(Menu):
     bl_label = "Curve"
 
     def draw(self, context):
+        from .space_view3d_toolbar import VIEW3D_PT_tools_add_object
         layout = self.layout
 
         layout.operator_context = 'INVOKE_REGION_WIN'
-        layout.operator("curve.primitive_bezier_curve_add", icon='CURVE_BEZCURVE', text="Bezier")
-        layout.operator("curve.primitive_bezier_circle_add", icon='CURVE_BEZCIRCLE', text="Circle")
-        layout.operator("curve.primitive_nurbs_curve_add", icon='CURVE_NCURVE', text="Nurbs Curve")
-        layout.operator("curve.primitive_nurbs_circle_add", icon='CURVE_NCIRCLE', text="Nurbs Circle")
-        layout.operator("curve.primitive_nurbs_path_add", icon='CURVE_PATH', text="Path")
+
+        VIEW3D_PT_tools_add_object.draw_add_curve(layout)
 
 
 class INFO_MT_surface_add(Menu):
@@ -916,15 +908,12 @@ class INFO_MT_surface_add(Menu):
     bl_label = "Surface"
 
     def draw(self, context):
+        from .space_view3d_toolbar import VIEW3D_PT_tools_add_object
         layout = self.layout
 
         layout.operator_context = 'INVOKE_REGION_WIN'
-        layout.operator("surface.primitive_nurbs_surface_curve_add", icon='SURFACE_NCURVE', text="NURBS Curve")
-        layout.operator("surface.primitive_nurbs_surface_circle_add", icon='SURFACE_NCIRCLE', text="NURBS Circle")
-        layout.operator("surface.primitive_nurbs_surface_surface_add", icon='SURFACE_NSURFACE', text="NURBS Surface")
-        layout.operator("surface.primitive_nurbs_surface_cylinder_add", icon='SURFACE_NCYLINDER', text="NURBS Cylinder")
-        layout.operator("surface.primitive_nurbs_surface_sphere_add", icon='SURFACE_NSPHERE', text="NURBS Sphere")
-        layout.operator("surface.primitive_nurbs_surface_torus_add", icon='SURFACE_NTORUS', text="NURBS Torus")
+
+        VIEW3D_PT_tools_add_object.draw_add_surface(layout)
 
 
 class INFO_MT_metaball_add(Menu):
@@ -1365,18 +1354,23 @@ class VIEW3D_MT_make_single_user(Menu):
 
         props = layout.operator("object.make_single_user", text="Object")
         props.object = True
+        props.obdata = props.material = props.texture = props.animation = False
 
         props = layout.operator("object.make_single_user", text="Object & Data")
         props.object = props.obdata = True
+        props.material = props.texture = props.animation = False
 
         props = layout.operator("object.make_single_user", text="Object & Data & Materials+Tex")
         props.object = props.obdata = props.material = props.texture = True
+        props.animation = False
 
         props = layout.operator("object.make_single_user", text="Materials+Tex")
         props.material = props.texture = True
+        props.object = props.obdata = props.animation = False
 
         props = layout.operator("object.make_single_user", text="Object Animation")
         props.animation = True
+        props.object = props.obdata = props.material = props.texture = False
 
 
 class VIEW3D_MT_make_links(Menu):
@@ -2175,6 +2169,7 @@ class VIEW3D_MT_edit_mesh_vertices(Menu):
         layout.separator()
 
         layout.operator("mesh.bevel").vertex_only = True
+        layout.operator("mesh.convex_hull")
         layout.operator("mesh.vertices_smooth")
         layout.operator("mesh.remove_doubles")
 
@@ -2318,8 +2313,10 @@ class VIEW3D_MT_edit_mesh_clean(Menu):
 
         layout.separator()
 
-        layout.operator("mesh.fill_holes")
+        layout.operator("mesh.dissolve_degenerate")
+        layout.operator("mesh.dissolve_limited")
         layout.operator("mesh.vert_connect_nonplanar")
+        layout.operator("mesh.fill_holes")
 
 
 class VIEW3D_MT_edit_mesh_delete(Menu):
@@ -2690,8 +2687,7 @@ class VIEW3D_PT_view3d_properties(Panel):
         view = context.space_data
 
         col = layout.column()
-        col.active = bool(view.region_3d.view_perspective != 'CAMERA' or
-                          view.region_quadview)
+        col.active = bool(view.region_3d.view_perspective != 'CAMERA' or view.region_quadviews)
         col.prop(view, "lens")
         col.label(text="Lock to Object:")
         col.prop(view, "lock_object", text="")
@@ -2764,6 +2760,15 @@ class VIEW3D_PT_view3d_name(Panel):
                 row.label(text="", icon='BONE_DATA')
                 row.prop(bone, "name", text="")
 
+        elif ob.type == 'MESH':
+            me = ob.data
+            row = layout.row()
+            row.prop(me, "use_auto_smooth")
+            row = row.row()
+            if not me.use_auto_smooth:
+                row.active = False
+            row.prop(me, "auto_smooth_angle", text="")
+
 
 class VIEW3D_PT_view3d_display(Panel):
     bl_space_type = 'VIEW_3D'
@@ -2814,11 +2819,10 @@ class VIEW3D_PT_view3d_display(Panel):
 
         layout.separator()
 
-        region = view.region_quadview
-
         layout.operator("screen.region_quadview", text="Toggle Quad View")
 
-        if region:
+        if view.region_quadviews:
+            region = view.region_quadviews[2]
             col = layout.column()
             col.prop(region, "lock_rotation")
             row = col.row()
@@ -2890,11 +2894,12 @@ class VIEW3D_PT_view3d_motion_tracking(Panel):
 
         col = layout.column()
         col.active = view.show_reconstruction
-        col.prop(view, "show_bundle_names")
-        col.prop(view, "show_camera_path")
-        col.label(text="Tracks:")
-        col.prop(view, "tracks_draw_type", text="")
-        col.prop(view, "tracks_draw_size", text="Size")
+        col.prop(view, "show_camera_path", text="Camera Path")
+        col.prop(view, "show_bundle_names", text="3D Marker Names")
+        col.label(text="Track Type and Size:")
+        row = col.row(align=True)
+        row.prop(view, "tracks_draw_type", text="")
+        row.prop(view, "tracks_draw_size", text="")
 
 
 class VIEW3D_PT_view3d_meshdisplay(Panel):
@@ -2940,14 +2945,14 @@ class VIEW3D_PT_view3d_meshdisplay(Panel):
 
         col.separator()
         col.label(text="Normals:")
-        row = col.row()
+        row = col.row(align=True)
+
+        row.prop(mesh, "show_normal_vertex", text="", icon='VERTEXSEL')
+        row.prop(mesh, "show_normal_loop", text="", icon='VERTEXSEL')
+        row.prop(mesh, "show_normal_face", text="", icon='FACESEL')
 
         sub = row.row(align=True)
-        sub.prop(mesh, "show_normal_vertex", text="", icon='VERTEXSEL')
-        sub.prop(mesh, "show_normal_face", text="", icon='FACESEL')
-
-        sub = row.row(align=True)
-        sub.active = mesh.show_normal_vertex or mesh.show_normal_face
+        sub.active = mesh.show_normal_vertex or mesh.show_normal_face or mesh.show_normal_loop
         sub.prop(context.scene.tool_settings, "normal_size", text="Size")
 
         col.separator()
@@ -3142,7 +3147,7 @@ class VIEW3D_PT_transform_orientations(Panel):
         if orientation:
             row = layout.row(align=True)
             row.prop(orientation, "name", text="")
-            row.operator("transform.delete_orientation", text="", icon="X")
+            row.operator("transform.delete_orientation", text="", icon='X')
 
 
 class VIEW3D_PT_etch_a_ton(Panel):

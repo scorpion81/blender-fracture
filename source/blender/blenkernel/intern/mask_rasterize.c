@@ -82,9 +82,10 @@
 #include "BLI_rect.h"
 #include "BLI_listbase.h"
 #include "BLI_linklist.h"
-#include "BLI_strict_flags.h"
 
 #include "BKE_mask.h"
+
+#include "BLI_strict_flags.h"
 
 /* this is rather and annoying hack, use define to isolate it.
  * problem is caused by scanfill removing edges on us. */
@@ -294,7 +295,7 @@ static void maskrasterize_spline_differentiate_point_outset(float (*diff_feather
 		/* normalize_v2(d_prev); */ /* precalc */
 		normalize_v2(d_next);
 
-		if ((do_test == FALSE) ||
+		if ((do_test == false) ||
 		    (len_squared_v2v2(diff_feather_points[k], diff_points[k]) < ofs_squared))
 		{
 
@@ -317,7 +318,7 @@ static void maskrasterize_spline_differentiate_point_outset(float (*diff_feather
 
 /* this function is not exact, sometimes it returns false positives,
  * the main point of it is to clear out _almost_ all bucket/face non-intersections,
- * returning TRUE in corner cases is ok but missing an intersection is NOT.
+ * returning true in corner cases is ok but missing an intersection is NOT.
  *
  * method used
  * - check if the center of the buckets bounding box is intersecting the face
@@ -347,18 +348,18 @@ static bool layer_bucket_isect_test(
 		const float *v3 = cos[face[2]];
 
 		if (isect_point_tri_v2(cent, v1, v2, v3)) {
-			return TRUE;
+			return true;
 		}
 		else {
 			if ((dist_squared_to_line_segment_v2(cent, v1, v2) < bucket_max_rad_squared) ||
 			    (dist_squared_to_line_segment_v2(cent, v2, v3) < bucket_max_rad_squared) ||
 			    (dist_squared_to_line_segment_v2(cent, v3, v1) < bucket_max_rad_squared))
 			{
-				return TRUE;
+				return true;
 			}
 			else {
 				// printf("skip tri\n");
-				return FALSE;
+				return false;
 			}
 		}
 
@@ -370,10 +371,10 @@ static bool layer_bucket_isect_test(
 		const float *v4 = cos[face[3]];
 
 		if (isect_point_tri_v2(cent, v1, v2, v3)) {
-			return TRUE;
+			return true;
 		}
 		else if (isect_point_tri_v2(cent, v1, v3, v4)) {
-			return TRUE;
+			return true;
 		}
 		else {
 			if ((dist_squared_to_line_segment_v2(cent, v1, v2) < bucket_max_rad_squared) ||
@@ -381,11 +382,11 @@ static bool layer_bucket_isect_test(
 			    (dist_squared_to_line_segment_v2(cent, v3, v4) < bucket_max_rad_squared) ||
 			    (dist_squared_to_line_segment_v2(cent, v4, v1) < bucket_max_rad_squared))
 			{
-				return TRUE;
+				return true;
 			}
 			else {
 				// printf("skip quad\n");
-				return FALSE;
+				return false;
 			}
 		}
 	}
@@ -632,7 +633,7 @@ void BKE_maskrasterize_handle_init(MaskRasterHandle *mr_handle, struct Mask *mas
 
 			if (do_feather) {
 				diff_feather_points = BKE_mask_spline_feather_differentiated_points_with_resolution(
-				                          spline, &tot_diff_feather_points, resol, FALSE);
+				                          spline, &tot_diff_feather_points, resol, false);
 				BLI_assert(diff_feather_points);
 			}
 			else {
@@ -646,6 +647,8 @@ void BKE_maskrasterize_handle_init(MaskRasterHandle *mr_handle, struct Mask *mas
 
 				float co[3];
 				co[2] = 0.0f;
+
+				sf_ctx.poly_nr++;
 
 				if (do_aspect_correct) {
 					if (width != height) {
@@ -678,20 +681,20 @@ void BKE_maskrasterize_handle_init(MaskRasterHandle *mr_handle, struct Mask *mas
 				}
 
 				/* fake aa, using small feather */
-				if (do_mask_aa == TRUE) {
-					if (do_feather == FALSE) {
+				if (do_mask_aa == true) {
+					if (do_feather == false) {
 						tot_diff_feather_points = tot_diff_point;
 						diff_feather_points = MEM_mallocN(sizeof(*diff_feather_points) *
 						                                  (size_t)tot_diff_feather_points,
 						                                  __func__);
 						/* add single pixel feather */
 						maskrasterize_spline_differentiate_point_outset(diff_feather_points, diff_points,
-						                                               tot_diff_point, pixel_size, FALSE);
+						                                               tot_diff_point, pixel_size, false);
 					}
 					else {
 						/* ensure single pixel feather, on any zero feather areas */
 						maskrasterize_spline_differentiate_point_outset(diff_feather_points, diff_points,
-						                                               tot_diff_point, pixel_size, TRUE);
+						                                               tot_diff_point, pixel_size, true);
 					}
 				}
 
@@ -914,6 +917,11 @@ void BKE_maskrasterize_handle_init(MaskRasterHandle *mr_handle, struct Mask *mas
 			unsigned int sf_tri_tot;
 			rctf bounds;
 			unsigned int face_index;
+			int scanfill_flag = 0;
+
+			bool is_isect = false;
+			ListBase isect_remvertbase = {NULL, NULL};
+			ListBase isect_remedgebase = {NULL, NULL};
 
 			/* now we have all the splines */
 			face_coords = MEM_mallocN((sizeof(float) * 3) * sf_vert_tot, "maskrast_face_coords");
@@ -938,8 +946,49 @@ void BKE_maskrasterize_handle_init(MaskRasterHandle *mr_handle, struct Mask *mas
 				cos += 3;
 			}
 
+
+			/* --- inefficient self-intersect case --- */
+			/* if self intersections are found, its too trickty to attempt to map vertices
+			 * so just realloc and add entirely new vertices - the result of the self-intersect check
+			 */
+			if ((masklay->flag & MASK_LAYERFLAG_FILL_OVERLAP) &&
+			    (is_isect = BLI_scanfill_calc_self_isect(&sf_ctx,
+			                                             &isect_remvertbase,
+			                                             &isect_remedgebase)))
+			{
+				unsigned int sf_vert_tot_isect = (unsigned int)BLI_countlist(&sf_ctx.fillvertbase);
+				unsigned int i = sf_vert_tot;
+
+				face_coords = MEM_reallocN(face_coords, sizeof(float[3]) * (sf_vert_tot + sf_vert_tot_isect));
+
+				cos = (float *)&face_coords[sf_vert_tot][0];
+
+				for (sf_vert = sf_ctx.fillvertbase.first; sf_vert; sf_vert = sf_vert->next) {
+					copy_v3_v3(cos, sf_vert->co);
+					sf_vert->tmp.u = i++;
+					cos += 3;
+				}
+
+				sf_vert_tot += sf_vert_tot_isect;
+
+				/* we need to calc polys after self intersect */
+				scanfill_flag |= BLI_SCANFILL_CALC_POLYS;
+			}
+			/* --- end inefficient code --- */
+
+
 			/* main scan-fill */
-			sf_tri_tot = (unsigned int)BLI_scanfill_calc_ex(&sf_ctx, BLI_SCANFILL_CALC_HOLES, zvec);
+			if ((masklay->flag & MASK_LAYERFLAG_FILL_DISCRETE) == 0)
+				scanfill_flag |= BLI_SCANFILL_CALC_HOLES;
+
+			sf_tri_tot = (unsigned int)BLI_scanfill_calc_ex(&sf_ctx, scanfill_flag, zvec);
+
+			if (is_isect) {
+				/* add removed data back, we only need edges for feather,
+				 * but add verts back so they get freed along with others */
+				BLI_movelisttolist(&sf_ctx.fillvertbase, &isect_remvertbase);
+				BLI_movelisttolist(&sf_ctx.filledgebase, &isect_remedgebase);
+			}
 
 			face_array = MEM_mallocN(sizeof(*face_array) * ((size_t)sf_tri_tot + (size_t)tot_feather_quads), "maskrast_face_index");
 			face_index = 0;
@@ -1387,6 +1436,10 @@ void BKE_maskrasterize_buffer(MaskRasterHandle *mr_handle,
 {
 #ifdef _MSC_VER
 	int y;  /* msvc requires signed for some reason */
+
+	/* ignore sign mismatch */
+#  pragma warning(push)
+#  pragma warning(disable:4018)
 #else
 	unsigned int y;
 #endif
@@ -1403,4 +1456,9 @@ void BKE_maskrasterize_buffer(MaskRasterHandle *mr_handle,
 			buffer[i] = BKE_maskrasterize_handle_sample(mr_handle, xy);
 		}
 	}
+
+#ifdef _MSC_VER
+#  pragma warning(pop)
+#endif
+
 }

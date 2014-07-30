@@ -618,19 +618,19 @@ static eOLDrawState tree_element_active_ebone(
 		if (set == OL_SETSEL_NORMAL) {
 			if (!(ebone->flag & BONE_HIDDEN_A)) {
 				ED_armature_deselect_all(scene->obedit, 0); // deselect
-				tree_element_active_ebone__sel(C, scene, arm, ebone, TRUE);
+				tree_element_active_ebone__sel(C, scene, arm, ebone, true);
 				status = OL_DRAWSEL_NORMAL;
 			}
 		}
 		else if (set == OL_SETSEL_EXTEND) {
 			if (!(ebone->flag & BONE_HIDDEN_A)) {
 				if (!(ebone->flag & BONE_SELECTED)) {
-					tree_element_active_ebone__sel(C, scene, arm, ebone, TRUE);
+					tree_element_active_ebone__sel(C, scene, arm, ebone, true);
 					status = OL_DRAWSEL_NORMAL;
 				}
 				else {
 					/* entirely selected, so de-select */
-					tree_element_active_ebone__sel(C, scene, arm, ebone, FALSE);
+					tree_element_active_ebone__sel(C, scene, arm, ebone, false);
 					status = OL_DRAWSEL_NONE;
 				}
 			}
@@ -724,7 +724,7 @@ static eOLDrawState tree_element_active_sequence(
         bContext *C, Scene *scene, TreeElement *te, TreeStoreElem *UNUSED(tselem), const eOLSetState set)
 {
 	Sequence *seq = (Sequence *) te->directdata;
-	Editing *ed = BKE_sequencer_editing_get(scene, FALSE);
+	Editing *ed = BKE_sequencer_editing_get(scene, false);
 
 	if (set != OL_SETSEL_NONE) {
 		/* only check on setting */
@@ -757,7 +757,7 @@ static eOLDrawState tree_element_active_sequence_dup(
         Scene *scene, TreeElement *te, TreeStoreElem *UNUSED(tselem), const eOLSetState set)
 {
 	Sequence *seq, *p;
-	Editing *ed = BKE_sequencer_editing_get(scene, FALSE);
+	Editing *ed = BKE_sequencer_editing_get(scene, false);
 
 	seq = (Sequence *)te->directdata;
 	if (set == OL_SETSEL_NONE) {
@@ -801,14 +801,17 @@ static eOLDrawState tree_element_active_keymap_item(
 /* ---------------------------------------------- */
 
 /* generic call for ID data check or make/check active in UI */
-eOLDrawState tree_element_active(
-        bContext *C, Scene *scene, SpaceOops *soops,
-        TreeElement *te, const eOLSetState set)
+eOLDrawState tree_element_active(bContext *C, Scene *scene, SpaceOops *soops, TreeElement *te,
+                                 const eOLSetState set, const bool handle_all_types)
 {
-
 	switch (te->idcode) {
-		/* Note: no ID_OB: objects are handled specially to allow multiple
+		/* Note: ID_OB only if handle_all_type is true, else objects are handled specially to allow multiple
 		 * selection. See do_outliner_item_activate. */
+		case ID_OB:
+			if (handle_all_types) {
+				return tree_element_set_active_object(C, scene, soops, te, set, false);
+			}
+			break;
 		case ID_MA:
 			return tree_element_active_material(C, scene, soops, te, set);
 		case ID_WO:
@@ -952,7 +955,7 @@ static bool do_outliner_item_activate(bContext *C, Scene *scene, ARegion *ar, Sp
 					WM_operator_name_call(C, "OBJECT_OT_editmode_toggle", WM_OP_INVOKE_REGION_WIN, NULL);
 				}
 				else {  // rest of types
-					tree_element_active(C, scene, soops, te, OL_SETSEL_NORMAL);
+					tree_element_active(C, scene, soops, te, OL_SETSEL_NORMAL, false);
 				}
 
 			}
@@ -1114,7 +1117,7 @@ void OUTLINER_OT_select_border(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	/* rna */
-	WM_operator_properties_gesture_border(ot, FALSE);
+	WM_operator_properties_gesture_border(ot, false);
 }
 
 /* ****************************************************** */

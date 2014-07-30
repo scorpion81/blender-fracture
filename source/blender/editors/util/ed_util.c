@@ -137,8 +137,8 @@ void ED_editors_exit(bContext *C)
 	}
 
 	/* global in meshtools... */
-	mesh_octree_table(NULL, NULL, NULL, 'e');
-	mesh_mirrtopo_table(NULL, 'e');
+	ED_mesh_mirror_spatial_table(NULL, NULL, NULL, 'e');
+	ED_mesh_mirror_topo_table(NULL, 'e');
 }
 
 /* flush any temp data from object editing to DNA before writing files,
@@ -163,7 +163,7 @@ void ED_editors_flush_edits(const bContext *C, bool for_render)
 		else {
 			/* Set reorder=false so that saving the file doesn't reorder
 			 * the BMesh's elements */
-			sculptsession_bm_to_me(obact, FALSE);
+			sculptsession_bm_to_me(obact, false);
 		}
 	}
 }
@@ -290,7 +290,7 @@ void ED_region_draw_mouse_line_cb(const bContext *C, ARegion *ar, void *arg_info
 	const int mval_dst[2] = {win->eventstate->x - ar->winrct.xmin,
 	                         win->eventstate->y - ar->winrct.ymin};
 
-	UI_ThemeColor(TH_WIRE);
+	UI_ThemeColor(TH_VIEW_OVERLAY);
 	setlinestyle(3);
 	glBegin(GL_LINE_STRIP);
 	glVertex2iv(mval_dst);

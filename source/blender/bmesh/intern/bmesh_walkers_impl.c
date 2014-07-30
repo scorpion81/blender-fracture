@@ -42,6 +42,9 @@
 	BMW_state_remove(walker); \
 } (void)0
 
+/** \name Mask Flag Checks
+ * \{ */
+
 static bool bmw_mask_check_vert(BMWalker *walker, BMVert *v)
 {
 	if ((walker->flag & BMW_FLAG_TEST_HIDDEN) && BM_elem_flag_test(v, BM_ELEM_HIDDEN)) {
@@ -81,8 +84,11 @@ static bool bmw_mask_check_face(BMWalker *walker, BMFace *f)
 	}
 }
 
-/**
- * Shell Walker:
+/** \} */
+
+
+/** \name Shell Walker
+ * \{
  *
  * Starts at a vertex on the mesh and walks over the 'shell' it belongs
  * to via visiting connected edges.
@@ -205,15 +211,17 @@ static void *bmw_ShellWalker_step(BMWalker *walker)
 				newState->curedge = curedge;
 			}
 		}
-		curedge = bmesh_disk_edge_next(curedge, shellWalk.base);
-	} while (curedge != shellWalk.curedge);
+	} while ((curedge = bmesh_disk_edge_next(curedge, shellWalk.base)) != shellWalk.curedge);
 	
 	return shellWalk.curedge;
 }
 #endif
 
-/**
- * Connected Vertex Walker:
+/** \} */
+
+
+/** \name Connected Vertex Walker
+ * \{
  *
  * Similar to shell walker, but visits vertices instead of edges.
  */
@@ -270,8 +278,11 @@ static void *bmw_ConnectedVertexWalker_step(BMWalker *walker)
 	return v;
 }
 
-/**
- * Island Boundary Walker:
+/** \} */
+
+
+/** \name Island Boundary Walker
+ * \{
  *
  * Starts at a edge on the mesh and walks over the boundary of an island it belongs to.
  *
@@ -367,8 +378,8 @@ static void *bmw_IslandboundWalker_step(BMWalker *walker)
 }
 
 
-/**
- * Island Walker:
+/** \name Island Walker
+ * \{
  *
  * Starts at a tool flagged-face and walks over the face region
  *
@@ -438,9 +449,11 @@ static void *bmw_IslandWalker_step(BMWalker *walker)
 	return owalk.cur;
 }
 
+/** \} */
 
-/**
- * Edge Loop Walker:
+
+/** \name Edge Loop Walker
+ * \{
  *
  * Starts at a tool-flagged edge and walks over the edge loop
  */
@@ -645,7 +658,7 @@ static void *bmw_LoopWalker_step(BMWalker *walker)
 		    (owalk.is_single == false && vert_edge_tot > 2) ||
 
 		    /* initial edge was a boundary, so is this edge and vertex is only apart of this face
-		    * this lets us walk over the the boundary of an ngon which is handy */
+		     * this lets us walk over the the boundary of an ngon which is handy */
 		    (owalk.is_single == true && vert_edge_tot == 2 && BM_edge_is_boundary(e)))
 		{
 			/* find next boundary edge in the fan */
@@ -689,8 +702,11 @@ static void *bmw_LoopWalker_step(BMWalker *walker)
 	return owalk.cur;
 }
 
-/**
- * Face Loop Walker:
+/** \} */
+
+
+/** \name Face Loop Walker
+ * \{
  *
  * Starts at a tool-flagged face and walks over the face loop
  * Conditions for starting and stepping the face loop have been
@@ -830,10 +846,13 @@ static void *bmw_FaceLoopWalker_step(BMWalker *walker)
 	return f;
 }
 
+/** \} */
+
+
 // #define BMW_EDGERING_NGON
 
-/**
- * Edge Ring Walker:
+/** \name Edge Ring Walker
+ * \{
  *
  * Starts at a tool-flagged edge and walks over the edge ring
  * Conditions for starting and stepping the edge ring have been
@@ -970,6 +989,83 @@ static void *bmw_EdgeringWalker_step(BMWalker *walker)
 #undef EDGE_CHECK
 }
 
+/** \} */
+
+
+/** \name Boundary Edge Walker
+ * \{ */
+
+static void bmw_EdgeboundaryWalker_begin(BMWalker *walker, void *data)
+{
+	BMwEdgeboundaryWalker *lwalk;
+	BMEdge *e = data;
+
+	BLI_assert(BM_edge_is_boundary(e));
+
+	if (BLI_gset_haskey(walker->visit_set, e))
+		return;
+
+	lwalk = BMW_state_add(walker);
+	lwalk->e = e;
+	BLI_gset_insert(walker->visit_set, e);
+}
+
+static void *bmw_EdgeboundaryWalker_yield(BMWalker *walker)
+{
+	BMwEdgeboundaryWalker *lwalk = BMW_current_state(walker);
+
+	if (!lwalk) {
+		return NULL;
+	}
+
+	return lwalk->e;
+}
+
+static void *bmw_EdgeboundaryWalker_step(BMWalker *walker)
+{
+	BMwEdgeboundaryWalker *lwalk, owalk;
+	BMEdge *e, *e_other;
+	BMVert *v;
+	BMIter eiter;
+	BMIter viter;
+
+	BMW_state_remove_r(walker, &owalk);
+	lwalk = &owalk;
+
+	e = lwalk->e;
+
+	if (!bmw_mask_check_edge(walker, e)) {
+		return e;
+	}
+
+	BM_ITER_ELEM (v, &viter, e, BM_VERTS_OF_EDGE) {
+		BM_ITER_ELEM (e_other, &eiter, v, BM_EDGES_OF_VERT) {
+			if (e != e_other && BM_edge_is_boundary(e_other)) {
+				if (BLI_gset_haskey(walker->visit_set, e_other)) {
+					continue;
+				}
+
+				if (!bmw_mask_check_edge(walker, e_other)) {
+					continue;
+				}
+
+				lwalk = BMW_state_add(walker);
+				BLI_gset_insert(walker->visit_set, e_other);
+
+				lwalk->e = e_other;
+			}
+		}
+	}
+
+	return e;
+}
+
+/** \} */
+
+
+/** \name UV Edge Walker
+ * \{ */
+
 static void bmw_UVEdgeWalker_begin(BMWalker *walker, void *data)
 {
 	BMwUVEdgeWalker *lwalk;
@@ -1053,6 +1149,9 @@ static void *bmw_UVEdgeWalker_step(BMWalker *walker)
 	return l;
 }
 
+/** \} */
+
+
 static BMWalker bmw_ShellWalker_Type = {
 	bmw_ShellWalker_begin,
 	bmw_ShellWalker_step,
@@ -1104,7 +1203,16 @@ static BMWalker bmw_EdgeringWalker_Type = {
 	bmw_EdgeringWalker_yield,
 	sizeof(BMwEdgeringWalker),
 	BMW_DEPTH_FIRST,
-	0, /* valid restrict masks */ /* could add flags here but so far none are used */
+	BM_EDGE, /* valid restrict masks */
+};
+
+static BMWalker bmw_EdgeboundaryWalker_Type = {
+	bmw_EdgeboundaryWalker_begin,
+	bmw_EdgeboundaryWalker_step,
+	bmw_EdgeboundaryWalker_yield,
+	sizeof(BMwEdgeboundaryWalker),
+	BMW_DEPTH_FIRST,
+	0,
 };
 
 static BMWalker bmw_UVEdgeWalker_Type = {
@@ -1130,6 +1238,7 @@ BMWalker *bm_walker_types[] = {
 	&bmw_LoopWalker_Type,               /* BMW_LOOP */
 	&bmw_FaceLoopWalker_Type,           /* BMW_FACELOOP */
 	&bmw_EdgeringWalker_Type,           /* BMW_EDGERING */
+	&bmw_EdgeboundaryWalker_Type,       /* BMW_EDGEBOUNDARY */
 	&bmw_UVEdgeWalker_Type,             /* BMW_LOOPDATA_ISLAND */
 	&bmw_IslandboundWalker_Type,        /* BMW_ISLANDBOUND */
 	&bmw_IslandWalker_Type,             /* BMW_ISLAND */

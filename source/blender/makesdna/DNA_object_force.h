@@ -335,7 +335,7 @@ typedef struct SoftBody {
 	struct SBScratch *scratch;	/* scratch pad/cache on live time not saved in file */
 	float shearstiff;
 	float inpush;
-
+	
 	struct PointCache *pointcache;
 	struct ListBase ptcaches;
 
@@ -346,6 +346,9 @@ typedef struct SoftBody {
 	float lscale[3][3];
 
 	int last_frame;
+
+	float demolitionlimit, pad2;
+	
 } SoftBody;
 
 

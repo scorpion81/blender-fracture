@@ -171,11 +171,11 @@ ARegion *BKE_area_region_copy(SpaceType *st, ARegion *ar)
 	Panel *pa, *newpa, *patab;
 	
 	newar->prev = newar->next = NULL;
-	newar->handlers.first = newar->handlers.last = NULL;
-	newar->uiblocks.first = newar->uiblocks.last = NULL;
-	newar->panels_category.first = newar->panels_category.last = NULL;
-	newar->panels_category_active.first = newar->panels_category_active.last = NULL;
-	newar->ui_lists.first = newar->ui_lists.last = NULL;
+	BLI_listbase_clear(&newar->handlers);
+	BLI_listbase_clear(&newar->uiblocks);
+	BLI_listbase_clear(&newar->panels_category);
+	BLI_listbase_clear(&newar->panels_category_active);
+	BLI_listbase_clear(&newar->ui_lists);
 	newar->swinid = 0;
 	
 	/* use optional regiondata callback */
@@ -191,7 +191,7 @@ ARegion *BKE_area_region_copy(SpaceType *st, ARegion *ar)
 	if (ar->v2d.tab_offset)
 		newar->v2d.tab_offset = MEM_dupallocN(ar->v2d.tab_offset);
 	
-	newar->panels.first = newar->panels.last = NULL;
+	BLI_listbase_clear(&newar->panels);
 	BLI_duplicatelist(&newar->panels, &ar->panels);
 	
 	/* copy panel pointers */
@@ -218,7 +218,7 @@ static void region_copylist(SpaceType *st, ListBase *lb1, ListBase *lb2)
 	ARegion *ar;
 	
 	/* to be sure */
-	lb1->first = lb1->last = NULL;
+	BLI_listbase_clear(lb1);
 	
 	for (ar = lb2->first; ar; ar = ar->next) {
 		ARegion *arnew = BKE_area_region_copy(st, ar);
@@ -232,7 +232,7 @@ void BKE_spacedata_copylist(ListBase *lb1, ListBase *lb2)
 {
 	SpaceLink *sl;
 	
-	lb1->first = lb1->last = NULL;    /* to be sure */
+	BLI_listbase_clear(lb1);  /* to be sure */
 	
 	for (sl = lb2->first; sl; sl = sl->next) {
 		SpaceType *st = BKE_spacetype_from_id(sl->spacetype);
@@ -261,7 +261,7 @@ void BKE_spacedata_draw_locks(int set)
 			if (set) 
 				art->do_lock = art->lock;
 			else 
-				art->do_lock = FALSE;
+				art->do_lock = false;
 		}
 	}
 }
@@ -308,6 +308,7 @@ void BKE_area_region_free(SpaceType *st, ARegion *ar)
 		}
 	}
 	BLI_freelistN(&ar->ui_lists);
+	BLI_freelistN(&ar->ui_previews);
 	BLI_freelistN(&ar->panels_category);
 	BLI_freelistN(&ar->panels_category_active);
 }

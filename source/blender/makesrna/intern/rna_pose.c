@@ -481,14 +481,14 @@ static void rna_pose_pgroup_name_set(PointerRNA *ptr, const char *value, char *r
 static PointerRNA rna_PoseChannel_active_constraint_get(PointerRNA *ptr)
 {
 	bPoseChannel *pchan = (bPoseChannel *)ptr->data;
-	bConstraint *con = BKE_constraints_get_active(&pchan->constraints);
+	bConstraint *con = BKE_constraints_active_get(&pchan->constraints);
 	return rna_pointer_inherit_refine(ptr, &RNA_Constraint, con);
 }
 
 static void rna_PoseChannel_active_constraint_set(PointerRNA *ptr, PointerRNA value)
 {
 	bPoseChannel *pchan = (bPoseChannel *)ptr->data;
-	BKE_constraints_set_active(&pchan->constraints, (bConstraint *)value.data);
+	BKE_constraints_active_set(&pchan->constraints, (bConstraint *)value.data);
 }
 
 static bConstraint *rna_PoseChannel_constraints_new(bPoseChannel *pchan, int type)
@@ -496,7 +496,7 @@ static bConstraint *rna_PoseChannel_constraints_new(bPoseChannel *pchan, int typ
 	/*WM_main_add_notifier(NC_OBJECT|ND_CONSTRAINT|NA_ADDED, object); */
 	/* TODO, pass object also */
 	/* TODO, new pose bones don't have updated draw flags */
-	return BKE_add_pose_constraint(NULL, pchan, NULL, type);
+	return BKE_constraint_add_for_pose(NULL, pchan, NULL, type);
 }
 
 static void rna_PoseChannel_constraints_remove(ID *id, bPoseChannel *pchan, ReportList *reports, PointerRNA *con_ptr)
@@ -510,12 +510,12 @@ static void rna_PoseChannel_constraints_remove(ID *id, bPoseChannel *pchan, Repo
 		return;
 	}
 
-	BKE_remove_constraint(&pchan->constraints, con);
+	BKE_constraint_remove(&pchan->constraints, con);
 	RNA_POINTER_INVALIDATE(con_ptr);
 
 	ED_object_constraint_update(ob);
 
-	BKE_constraints_set_active(&pchan->constraints, NULL);  /* XXX, is this really needed? - Campbell */
+	BKE_constraints_active_set(&pchan->constraints, NULL);  /* XXX, is this really needed? - Campbell */
 
 	WM_main_add_notifier(NC_OBJECT | ND_CONSTRAINT | NA_REMOVED, id);
 
@@ -605,10 +605,10 @@ static int rna_PoseBones_lookup_string(PointerRNA *ptr, const char *key, Pointer
 	bPoseChannel *pchan = BKE_pose_channel_find_name(pose, key);
 	if (pchan) {
 		RNA_pointer_create(ptr->id.data, &RNA_PoseBone, pchan, r_ptr);
-		return TRUE;
+		return true;
 	}
 	else {
-		return FALSE;
+		return false;
 	}
 }
 
@@ -621,7 +621,7 @@ static void rna_PoseChannel_matrix_basis_get(PointerRNA *ptr, float *values)
 static void rna_PoseChannel_matrix_basis_set(PointerRNA *ptr, const float *values)
 {
 	bPoseChannel *pchan = (bPoseChannel *)ptr->data;
-	BKE_pchan_apply_mat4(pchan, (float (*)[4])values, FALSE); /* no compat for predictable result */
+	BKE_pchan_apply_mat4(pchan, (float (*)[4])values, false); /* no compat for predictable result */
 }
 
 static void rna_PoseChannel_matrix_set(PointerRNA *ptr, const float *values)
@@ -632,7 +632,7 @@ static void rna_PoseChannel_matrix_set(PointerRNA *ptr, const float *values)
 
 	BKE_armature_mat_pose_to_bone_ex(ob, pchan, (float (*)[4])values, tmat);
 
-	BKE_pchan_apply_mat4(pchan, tmat, FALSE); /* no compat for predictable result */
+	BKE_pchan_apply_mat4(pchan, tmat, false); /* no compat for predictable result */
 }
 
 #else
@@ -797,6 +797,7 @@ static void rna_def_pose_channel(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "scale", PROP_FLOAT, PROP_XYZ);
 	RNA_def_property_float_sdna(prop, NULL, "size");
+	RNA_def_property_flag(prop, PROP_PROPORTIONAL);
 	RNA_def_property_editable_array_func(prop, "rna_PoseChannel_scale_editable");
 	RNA_def_property_float_array_default(prop, default_scale);
 	RNA_def_property_ui_text(prop, "Scale", "");

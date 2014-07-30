@@ -43,6 +43,8 @@ struct Nurb;
 struct Object;
 struct Scene;
 struct Path;
+struct TextBox;
+struct rctf;
 
 typedef struct CurveCache {
 	ListBase disp;
@@ -95,7 +97,7 @@ void         BKE_curve_nurb_vert_active_set(struct Curve *cu, struct Nurb *nu,  
 bool         BKE_curve_nurb_vert_active_get(struct Curve *cu, struct Nurb **r_nu, void **r_vert);
 void         BKE_curve_nurb_vert_active_validate(struct Curve *cu);
 
-float (*BKE_curve_nurbs_vertexCos_get(struct ListBase *lb, int *numVerts_r))[3];
+float (*BKE_curve_nurbs_vertexCos_get(struct ListBase *lb, int *r_numVerts))[3];
 void BK_curve_nurbs_vertexCos_apply(struct ListBase *lb, float (*vertexCos)[3]);
 
 float (*BKE_curve_nurbs_keyVertexCos_get(struct ListBase *lb, float *key))[3];
@@ -109,20 +111,23 @@ float *BKE_curve_make_orco(struct Scene *scene, struct Object *ob, int *r_numVer
 float *BKE_curve_surf_make_orco(struct Object *ob);
 
 void BKE_curve_bevelList_make(struct Object *ob, struct ListBase *nurbs, bool for_render);
-void BKE_curve_bevel_make(struct Scene *scene, struct Object *ob,  struct ListBase *disp, int forRender, int renderResolution);
+void BKE_curve_bevel_make(struct Scene *scene, struct Object *ob,  struct ListBase *disp,
+                          const bool for_render, const bool use_render_resolution);
 
 void BKE_curve_forward_diff_bezier(float q0, float q1, float q2, float q3, float *p, int it, int stride);
 
+void BKE_curve_rect_from_textbox(const struct Curve *cu, const struct TextBox *tb, struct rctf *r_rect);
+
 /* ** Nurbs ** */
 
-int BKE_nurbList_index_get_co(struct ListBase *editnurb, const int index, float r_co[3]);
+bool BKE_nurbList_index_get_co(struct ListBase *editnurb, const int index, float r_co[3]);
 
 int BKE_nurbList_verts_count(struct ListBase *nurb);
 int BKE_nurbList_verts_count_without_handles(struct ListBase *nurb);
 
 void BKE_nurbList_free(struct ListBase *lb);
 void BKE_nurbList_duplicate(struct ListBase *lb1,  struct ListBase *lb2);
-void BKE_nurbList_handles_set(struct ListBase *editnurb, short code);
+void BKE_nurbList_handles_set(struct ListBase *editnurb, const char code);
 void BKE_nurbList_handles_recalculate(struct ListBase *editnurb, const bool calc_length, const char flag);
 
 void BKE_nurbList_handles_autocalc(ListBase *editnurb, int flag);
@@ -144,6 +149,7 @@ void BKE_nurb_knot_calc_v(struct Nurb *nu);
 /* nurb checks if they can be drawn, also clamp order func */
 bool BKE_nurb_check_valid_u(struct Nurb *nu);
 bool BKE_nurb_check_valid_v(struct Nurb *nu);
+bool BKE_nurb_check_valid_uv(struct Nurb *nu);
 
 bool BKE_nurb_order_clamp_u(struct Nurb *nu);
 bool BKE_nurb_order_clamp_v(struct Nurb *nu);
@@ -162,7 +168,8 @@ struct BPoint    *BKE_nurb_bpoint_get_prev(struct Nurb *nu, struct BPoint *bp);
 void BKE_nurb_bezt_calc_normal(struct Nurb *nu, struct BezTriple *bezt, float r_normal[3]);
 void BKE_nurb_bezt_calc_plane(struct Nurb *nu, struct BezTriple *bezt, float r_plane[3]);
 
-void BKE_nurb_handle_calc(struct BezTriple *bezt, struct BezTriple *prev,  struct BezTriple *next, int mode);
+void BKE_nurb_handle_calc(struct BezTriple *bezt, struct BezTriple *prev,  struct BezTriple *next,
+                          const bool is_fcurve);
 void BKE_nurb_handle_calc_simple(struct Nurb *nu, struct BezTriple *bezt);
 
 void BKE_nurb_handles_calc(struct Nurb *nu);

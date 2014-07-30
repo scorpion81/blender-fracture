@@ -52,9 +52,10 @@ ccl_device void shader_setup_from_ray(KernelGlobals *kg, ShaderData *sd,
 	const Intersection *isect, const Ray *ray, int bounce)
 {
 #ifdef __INSTANCING__
-	sd->object = (isect->object == ~0)? kernel_tex_fetch(__prim_object, isect->prim): isect->object;
+	sd->object = (isect->object == PRIM_NONE)? kernel_tex_fetch(__prim_object, isect->prim): isect->object;
 #endif
 
+	sd->type = isect->type;
 	sd->flag = kernel_tex_fetch(__object_flag, sd->object);
 
 	/* matrices and time */
@@ -67,36 +68,29 @@ ccl_device void shader_setup_from_ray(KernelGlobals *kg, ShaderData *sd,
 	sd->ray_length = isect->t;
 	sd->ray_depth = bounce;
 
+#ifdef __UV__
+	sd->u = isect->u;
+	sd->v = isect->v;
+#endif
+
 #ifdef __HAIR__
-	if(kernel_tex_fetch(__prim_segment, isect->prim) != ~0) {
-		/* Strand Shader setting*/
+	if(sd->type & PRIMITIVE_ALL_CURVE) {
+		/* curve */
 		float4 curvedata = kernel_tex_fetch(__curves, sd->prim);
 
 		sd->shader = __float_as_int(curvedata.z);
-		sd->segment = isect->segment;
 		sd->P = bvh_curve_refine(kg, sd, isect, ray);
 	}
-	else {
+	else
 #endif
-		/* fetch triangle data */
+	if(sd->type & PRIMITIVE_TRIANGLE) {
+		/* static triangle */
 		float4 Ns = kernel_tex_fetch(__tri_normal, sd->prim);
 		float3 Ng = make_float3(Ns.x, Ns.y, Ns.z);
 		sd->shader = __float_as_int(Ns.w);
 
-#ifdef __HAIR__
-		sd->segment = ~0;
-		/*elements for minimum hair width using transparency bsdf*/
-		/*sd->curve_transparency = 0.0f;*/
-		/*sd->curve_radius = 0.0f;*/
-#endif
-
-#ifdef __UV__
-		sd->u = isect->u;
-		sd->v = isect->v;
-#endif
-
 		/* vectors */
-		sd->P = bvh_triangle_refine(kg, sd, isect, ray);
+		sd->P = triangle_refine(kg, sd, isect, ray);
 		sd->Ng = Ng;
 		sd->N = Ng;
 		
@@ -106,19 +100,20 @@ ccl_device void shader_setup_from_ray(KernelGlobals *kg, ShaderData *sd,
 
 #ifdef __DPDU__
 		/* dPdu/dPdv */
-		triangle_dPdudv(kg, &sd->dPdu, &sd->dPdv, sd->prim);
+		triangle_dPdudv(kg, sd->prim, &sd->dPdu, &sd->dPdv);
 #endif
-
-#ifdef __HAIR__
 	}
-#endif
+	else {
+		/* motion triangle */
+		motion_triangle_shader_setup(kg, sd, isect, ray, false);
+	}
 
 	sd->I = -ray->D;
 
 	sd->flag |= kernel_tex_fetch(__shader_flag, (sd->shader & SHADER_MASK)*2);
 
 #ifdef __INSTANCING__
-	if(isect->object != ~0) {
+	if(isect->object != OBJECT_NONE) {
 		/* instance transform */
 		object_normal_transform(kg, sd, &sd->N);
 		object_normal_transform(kg, sd, &sd->Ng);
@@ -161,39 +156,41 @@ ccl_device_inline void shader_setup_from_subsurface(KernelGlobals *kg, ShaderDat
 	/* object, matrices, time, ray_length stay the same */
 	sd->flag = kernel_tex_fetch(__object_flag, sd->object);
 	sd->prim = kernel_tex_fetch(__prim_index, isect->prim);
-
-	/* fetch triangle data */
-	float4 Ns = kernel_tex_fetch(__tri_normal, sd->prim);
-	float3 Ng = make_float3(Ns.x, Ns.y, Ns.z);
-	sd->shader = __float_as_int(Ns.w);
-
-#ifdef __HAIR__
-	sd->segment = ~0;
-#endif
+	sd->type = isect->type;
 
 #ifdef __UV__
 	sd->u = isect->u;
 	sd->v = isect->v;
 #endif
 
-	/* vectors */
-	sd->P = bvh_triangle_refine_subsurface(kg, sd, isect, ray);
-	sd->Ng = Ng;
-	sd->N = Ng;
-	
-	/* smooth normal */
-	if(sd->shader & SHADER_SMOOTH_NORMAL)
-		sd->N = triangle_smooth_normal(kg, sd->prim, sd->u, sd->v);
+	/* fetch triangle data */
+	if(sd->type == PRIMITIVE_TRIANGLE) {
+		float4 Ns = kernel_tex_fetch(__tri_normal, sd->prim);
+		float3 Ng = make_float3(Ns.x, Ns.y, Ns.z);
+		sd->shader = __float_as_int(Ns.w);
+
+		/* static triangle */
+		sd->P = triangle_refine_subsurface(kg, sd, isect, ray);
+		sd->Ng = Ng;
+		sd->N = Ng;
+
+		if(sd->shader & SHADER_SMOOTH_NORMAL)
+			sd->N = triangle_smooth_normal(kg, sd->prim, sd->u, sd->v);
 
 #ifdef __DPDU__
-	/* dPdu/dPdv */
-	triangle_dPdudv(kg, &sd->dPdu, &sd->dPdv, sd->prim);
+		/* dPdu/dPdv */
+		triangle_dPdudv(kg, sd->prim, &sd->dPdu, &sd->dPdv);
 #endif
+	}
+	else {
+		/* motion triangle */
+		motion_triangle_shader_setup(kg, sd, isect, ray, true);
+	}
 
 	sd->flag |= kernel_tex_fetch(__shader_flag, (sd->shader & SHADER_MASK)*2);
 
 #ifdef __INSTANCING__
-	if(isect->object != ~0) {
+	if(isect->object != OBJECT_NONE) {
 		/* instance transform */
 		object_normal_transform(kg, sd, &sd->N);
 		object_normal_transform(kg, sd, &sd->Ng);
@@ -231,7 +228,7 @@ ccl_device_inline void shader_setup_from_subsurface(KernelGlobals *kg, ShaderDat
 
 ccl_device void shader_setup_from_sample(KernelGlobals *kg, ShaderData *sd,
 	const float3 P, const float3 Ng, const float3 I,
-	int shader, int object, int prim, float u, float v, float t, float time, int bounce, int segment)
+	int shader, int object, int prim, float u, float v, float t, float time, int bounce)
 {
 	/* vectors */
 	sd->P = P;
@@ -239,9 +236,7 @@ ccl_device void shader_setup_from_sample(KernelGlobals *kg, ShaderData *sd,
 	sd->Ng = Ng;
 	sd->I = I;
 	sd->shader = shader;
-#ifdef __HAIR__
-	sd->segment = segment;
-#endif
+	sd->type = (prim == PRIM_NONE)? PRIMITIVE_NONE: PRIMITIVE_TRIANGLE;
 
 	/* primitive */
 #ifdef __INSTANCING__
@@ -260,7 +255,7 @@ ccl_device void shader_setup_from_sample(KernelGlobals *kg, ShaderData *sd,
 #ifdef __INSTANCING__
 	bool instanced = false;
 
-	if(sd->prim != ~0) {
+	if(sd->prim != PRIM_NONE) {
 		if(sd->object >= 0)
 			instanced = true;
 		else
@@ -271,7 +266,7 @@ ccl_device void shader_setup_from_sample(KernelGlobals *kg, ShaderData *sd,
 #endif
 
 	sd->flag = kernel_tex_fetch(__shader_flag, (sd->shader & SHADER_MASK)*2);
-	if(sd->object != -1) {
+	if(sd->object != OBJECT_NONE) {
 		sd->flag |= kernel_tex_fetch(__object_flag, sd->object);
 
 #ifdef __OBJECT_MOTION__
@@ -283,36 +278,20 @@ ccl_device void shader_setup_from_sample(KernelGlobals *kg, ShaderData *sd,
 	}
 #endif
 
-	/* smooth normal */
-#ifdef __HAIR__
-	if(sd->shader & SHADER_SMOOTH_NORMAL && sd->segment == ~0) {
-		sd->N = triangle_smooth_normal(kg, sd->prim, sd->u, sd->v);
-#else
-	if(sd->shader & SHADER_SMOOTH_NORMAL) {
-		sd->N = triangle_smooth_normal(kg, sd->prim, sd->u, sd->v);
-#endif
+	if(sd->type & PRIMITIVE_TRIANGLE) {
+		/* smooth normal */
+		if(sd->shader & SHADER_SMOOTH_NORMAL) {
+			sd->N = triangle_smooth_normal(kg, sd->prim, sd->u, sd->v);
 
 #ifdef __INSTANCING__
-		if(instanced)
-			object_normal_transform(kg, sd, &sd->N);
+			if(instanced)
+				object_normal_transform(kg, sd, &sd->N);
 #endif
-	}
+		}
 
+		/* dPdu/dPdv */
 #ifdef __DPDU__
-	/* dPdu/dPdv */
-#ifdef __HAIR__
-	if(sd->prim == ~0 || sd->segment != ~0) {
-		sd->dPdu = make_float3(0.0f, 0.0f, 0.0f);
-		sd->dPdv = make_float3(0.0f, 0.0f, 0.0f);
-	}
-#else
-	if(sd->prim == ~0) {
-		sd->dPdu = make_float3(0.0f, 0.0f, 0.0f);
-		sd->dPdv = make_float3(0.0f, 0.0f, 0.0f);
-	}
-#endif
-	else {
-		triangle_dPdudv(kg, &sd->dPdu, &sd->dPdv, sd->prim);
+		triangle_dPdudv(kg, sd->prim, &sd->dPdu, &sd->dPdv);
 
 #ifdef __INSTANCING__
 		if(instanced) {
@@ -320,11 +299,17 @@ ccl_device void shader_setup_from_sample(KernelGlobals *kg, ShaderData *sd,
 			object_dir_transform(kg, sd, &sd->dPdv);
 		}
 #endif
-	}
 #endif
+	}
+	else {
+#ifdef __DPDU__
+		sd->dPdu = make_float3(0.0f, 0.0f, 0.0f);
+		sd->dPdv = make_float3(0.0f, 0.0f, 0.0f);
+#endif
+	}
 
 	/* backfacing test */
-	if(sd->prim != ~0) {
+	if(sd->prim != PRIM_NONE) {
 		bool backfacing = (dot(sd->Ng, sd->I) < 0.0f);
 
 		if(backfacing) {
@@ -355,15 +340,14 @@ ccl_device void shader_setup_from_displace(KernelGlobals *kg, ShaderData *sd,
 	float3 P, Ng, I = make_float3(0.0f, 0.0f, 0.0f);
 	int shader;
 
-	P = triangle_point_MT(kg, prim, u, v);
-	Ng = triangle_normal_MT(kg, prim, &shader);
+	triangle_point_normal(kg, prim, u, v, &P, &Ng, &shader);
 
 	/* force smooth shading for displacement */
 	shader |= SHADER_SMOOTH_NORMAL;
 
 	/* watch out: no instance transform currently */
 
-	shader_setup_from_sample(kg, sd, P, Ng, I, shader, object, prim, u, v, 0.0f, TIME_INVALID, 0, ~0);
+	shader_setup_from_sample(kg, sd, P, Ng, I, shader, object, prim, u, v, 0.0f, TIME_INVALID, 0);
 }
 
 /* ShaderData setup from ray into background */
@@ -384,9 +368,9 @@ ccl_device_inline void shader_setup_from_background(KernelGlobals *kg, ShaderDat
 	sd->ray_depth = bounce;
 
 #ifdef __INSTANCING__
-	sd->object = ~0;
+	sd->object = PRIM_NONE;
 #endif
-	sd->prim = ~0;
+	sd->prim = PRIM_NONE;
 #ifdef __UV__
 	sd->u = 0.0f;
 	sd->v = 0.0f;
@@ -418,7 +402,7 @@ ccl_device_inline void shader_setup_from_volume(KernelGlobals *kg, ShaderData *s
 	sd->N = -ray->D;  
 	sd->Ng = -ray->D;
 	sd->I = -ray->D;
-	sd->shader = SHADER_NO_ID;
+	sd->shader = SHADER_NONE;
 	sd->flag = 0;
 #ifdef __OBJECT_MOTION__
 	sd->time = ray->time;
@@ -427,12 +411,10 @@ ccl_device_inline void shader_setup_from_volume(KernelGlobals *kg, ShaderData *s
 	sd->ray_depth = bounce;
 
 #ifdef __INSTANCING__
-	sd->object = ~0; /* todo: fill this for texture coordinates */
+	sd->object = PRIM_NONE; /* todo: fill this for texture coordinates */
 #endif
-	sd->prim = ~0;
-#ifdef __HAIR__
-	sd->segment = ~0;
-#endif
+	sd->prim = PRIM_NONE;
+	sd->type = PRIMITIVE_NONE;
 
 #ifdef __UV__
 	sd->u = 0.0f;
@@ -471,23 +453,32 @@ ccl_device void shader_merge_closures(ShaderData *sd)
 			ShaderClosure *scj = &sd->closure[j];
 
 #ifdef __OSL__
-			if(!sci->prim && !scj->prim && sci->type == scj->type && sci->data0 == scj->data0 && sci->data1 == scj->data1) {
-#else
-			if(sci->type == scj->type && sci->data0 == scj->data0 && sci->data1 == scj->data1) {
+			if(sci->prim || scj->prim)
+				continue;
 #endif
-				sci->weight += scj->weight;
-				sci->sample_weight += scj->sample_weight;
 
-				int size = sd->num_closure - (j+1);
-				if(size > 0) {
-					for(int k = 0; k < size; k++) {
-						scj[k] = scj[k+1];
-					}
-				}
+			if(!(sci->type == scj->type && sci->data0 == scj->data0 && sci->data1 == scj->data1))
+				continue;
 
-				sd->num_closure--;
-				j--;
+			if(CLOSURE_IS_BSDF_OR_BSSRDF(sci->type)) {
+				if(sci->N != scj->N)
+					continue;
+				else if(CLOSURE_IS_BSDF_ANISOTROPIC(sci->type) && sci->T != scj->T)
+					continue;
 			}
+
+			sci->weight += scj->weight;
+			sci->sample_weight += scj->sample_weight;
+
+			int size = sd->num_closure - (j+1);
+			if(size > 0) {
+				for(int k = 0; k < size; k++) {
+					scj[k] = scj[k+1];
+				}
+			}
+
+			sd->num_closure--;
+			j--;
 		}
 	}
 }
@@ -1074,7 +1065,7 @@ ccl_device void shader_eval_volume(KernelGlobals *kg, ShaderData *sd,
 #endif
 	sd->flag = 0;
 
-	for(int i = 0; stack[i].shader != SHADER_NO_ID; i++) {
+	for(int i = 0; stack[i].shader != SHADER_NONE; i++) {
 		/* setup shaderdata from stack. it's mostly setup already in
 		 * shader_setup_from_volume, this switching should be quick */
 		sd->object = stack[i].object;
@@ -1083,7 +1074,7 @@ ccl_device void shader_eval_volume(KernelGlobals *kg, ShaderData *sd,
 		sd->flag &= ~(SD_SHADER_FLAGS|SD_OBJECT_FLAGS);
 		sd->flag |= kernel_tex_fetch(__shader_flag, (sd->shader & SHADER_MASK)*2);
 
-		if(sd->object != ~0) {
+		if(sd->object != OBJECT_NONE) {
 			sd->flag |= kernel_tex_fetch(__object_flag, sd->object);
 
 #ifdef __OBJECT_MOTION__
@@ -1147,7 +1138,7 @@ ccl_device bool shader_transparent_shadow(KernelGlobals *kg, Intersection *isect
 	int shader = 0;
 
 #ifdef __HAIR__
-	if(kernel_tex_fetch(__prim_segment, isect->prim) == ~0) {
+	if(kernel_tex_fetch(__prim_type, isect->prim) & PRIMITIVE_ALL_TRIANGLE) {
 #endif
 		float4 Ns = kernel_tex_fetch(__tri_normal, prim);
 		shader = __float_as_int(Ns.w);

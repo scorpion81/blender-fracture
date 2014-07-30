@@ -38,7 +38,11 @@ CCL_NAMESPACE_BEGIN
 bool BlenderSync::BKE_object_is_modified(BL::Object b_ob)
 {
 	/* test if we can instance or if the object is modified */
-	if(ccl::BKE_object_is_modified(b_ob, b_scene, preview)) {
+	if(b_ob.type() == BL::Object::type_META) {
+		/* multi-user and dupli metaballs are fused, can't instance */
+		return true;
+	}
+	else if(ccl::BKE_object_is_modified(b_ob, b_scene, preview)) {
 		/* modifiers */
 		return true;
 	}
@@ -213,9 +217,11 @@ void BlenderSync::sync_background_light()
 
 /* Object */
 
-Object *BlenderSync::sync_object(BL::Object b_parent, int persistent_id[OBJECT_PERSISTENT_ID_SIZE], BL::DupliObject b_dupli_ob, Transform& tfm, uint layer_flag, int motion, bool hide_tris)
+Object *BlenderSync::sync_object(BL::Object b_parent, int persistent_id[OBJECT_PERSISTENT_ID_SIZE], BL::DupliObject b_dupli_ob,
+                                 Transform& tfm, uint layer_flag, float motion_time, bool hide_tris)
 {
 	BL::Object b_ob = (b_dupli_ob ? b_dupli_ob.object() : b_parent);
+	bool motion = motion_time != 0.0f;
 	
 	/* light is handled separately */
 	if(object_is_light(b_ob)) {
@@ -238,19 +244,22 @@ Object *BlenderSync::sync_object(BL::Object b_parent, int persistent_id[OBJECT_P
 	if(motion) {
 		object = object_map.find(key);
 
-		if(object) {
+		if(object && (scene->need_motion() == Scene::MOTION_PASS || object_use_motion(b_ob))) {
+			/* object transformation */
 			if(tfm != object->tfm) {
-				if(motion == -1)
+				if(motion_time == -1.0f) {
 					object->motion.pre = tfm;
-				else
+					object->use_motion = true;
+				}
+				else if(motion_time == 1.0f) {
 					object->motion.post = tfm;
-
-				object->use_motion = true;
+					object->use_motion = true;
+				}
 			}
 
-			/* mesh deformation blur not supported yet */
-			if(!scene->integrator->motion_blur)
-				sync_mesh_motion(b_ob, object->mesh, motion);
+			/* mesh deformation */
+			if(object->mesh)
+				sync_mesh_motion(b_ob, object, motion_time);
 		}
 
 		return object;
@@ -309,6 +318,24 @@ Object *BlenderSync::sync_object(BL::Object b_parent, int persistent_id[OBJECT_P
 		object->motion.pre = tfm;
 		object->motion.post = tfm;
 		object->use_motion = false;
+
+		/* motion blur */
+		if(scene->need_motion() == Scene::MOTION_BLUR && object->mesh) {
+			Mesh *mesh = object->mesh;
+
+			mesh->use_motion_blur = false;
+
+			if(object_use_motion(b_ob)) {
+				if(object_use_deform_motion(b_ob)) {
+					mesh->motion_steps = object_motion_steps(b_ob);
+					mesh->use_motion_blur = true;
+				}
+
+				vector<float> times = object->motion_times();
+				foreach(float time, times)
+					motion_times.insert(time);
+			}
+		}
 
 		/* random number */
 		object->random_id = hash_string(object->name.c_str());
@@ -408,10 +435,11 @@ static bool object_render_hide_duplis(BL::Object b_ob)
 
 /* Object Loop */
 
-void BlenderSync::sync_objects(BL::SpaceView3D b_v3d, int motion)
+void BlenderSync::sync_objects(BL::SpaceView3D b_v3d, float motion_time)
 {
 	/* layer data */
 	uint scene_layer = render_layer.scene_layer;
+	bool motion = motion_time != 0.0f;
 	
 	if(!motion) {
 		/* prepare for sync */
@@ -420,6 +448,7 @@ void BlenderSync::sync_objects(BL::SpaceView3D b_v3d, int motion)
 		object_map.pre_sync();
 		mesh_synced.clear();
 		particle_system_map.pre_sync();
+		motion_times.clear();
 	}
 	else {
 		mesh_motion_synced.clear();
@@ -428,9 +457,11 @@ void BlenderSync::sync_objects(BL::SpaceView3D b_v3d, int motion)
 	/* object loop */
 	BL::Scene::objects_iterator b_ob;
 	BL::Scene b_sce = b_scene;
-
-	/* global particle index counter */
-	int particle_id = 1;
+	/* modifier result type (not exposed as enum in C++ API)
+	 * 1 : eModifierMode_Realtime
+	 * 2 : eModifierMode_Render
+	 */
+	int dupli_settings = preview ? 1 : 2;
 
 	bool cancel = false;
 
@@ -445,7 +476,7 @@ void BlenderSync::sync_objects(BL::SpaceView3D b_v3d, int motion)
 
 				if(b_ob->is_duplicator() && !object_render_hide_duplis(*b_ob)) {
 					/* dupli objects */
-					b_ob->dupli_list_create(b_scene, 2);
+					b_ob->dupli_list_create(b_scene, dupli_settings);
 
 					BL::Object::dupli_list_iterator b_dup;
 
@@ -462,17 +493,12 @@ void BlenderSync::sync_objects(BL::SpaceView3D b_v3d, int motion)
 							BL::Array<int, OBJECT_PERSISTENT_ID_SIZE> persistent_id = b_dup->persistent_id();
 
 							/* sync object and mesh or light data */
-							Object *object = sync_object(*b_ob, persistent_id.data, *b_dup, tfm, ob_layer, motion, hide_tris);
+							Object *object = sync_object(*b_ob, persistent_id.data, *b_dup, tfm, ob_layer, motion_time, hide_tris);
 
 							/* sync possible particle data, note particle_id
 							 * starts counting at 1, first is dummy particle */
-							if(!motion && object && sync_dupli_particle(*b_ob, *b_dup, object)) {
-								if(particle_id != object->particle_id) {
-									object->particle_id = particle_id;
-									scene->object_manager->tag_update(scene);
-								}
-
-								particle_id++;
+							if(!motion && object) {
+								sync_dupli_particle(*b_ob, *b_dup, object);
 							}
 
 						}
@@ -487,7 +513,7 @@ void BlenderSync::sync_objects(BL::SpaceView3D b_v3d, int motion)
 				if(!object_render_hide(*b_ob, true, true, hide_tris)) {
 					/* object itself */
 					Transform tfm = get_transform(b_ob->matrix_world());
-					sync_object(*b_ob, NULL, PointerRNA_NULL, tfm, ob_layer, motion, hide_tris);
+					sync_object(*b_ob, NULL, PointerRNA_NULL, tfm, ob_layer, motion_time, hide_tris);
 				}
 			}
 
@@ -516,7 +542,7 @@ void BlenderSync::sync_objects(BL::SpaceView3D b_v3d, int motion)
 		mesh_motion_synced.clear();
 }
 
-void BlenderSync::sync_motion(BL::SpaceView3D b_v3d, BL::Object b_override)
+void BlenderSync::sync_motion(BL::SpaceView3D b_v3d, BL::Object b_override, void **python_thread_state)
 {
 	if(scene->need_motion() == Scene::MOTION_NONE)
 		return;
@@ -527,22 +553,47 @@ void BlenderSync::sync_motion(BL::SpaceView3D b_v3d, BL::Object b_override)
 		b_cam = b_override;
 
 	Camera prevcam = *(scene->camera);
-	
-	/* go back and forth one frame */
-	int frame = b_scene.frame_current();
 
-	for(int motion = -1; motion <= 1; motion += 2) {
-		b_scene.frame_set(frame + motion, 0.0f);
+	int frame_center = b_scene.frame_current();
 
-		/* camera object */
-		if(b_cam)
-			sync_camera_motion(b_cam, motion);
+	/* always sample these times for camera motion */
+	motion_times.insert(-1.0f);
+	motion_times.insert(1.0f);
 
-		/* mesh objects */
-		sync_objects(b_v3d, motion);
+	/* note iteration over motion_times set happens in sorted order */
+	foreach(float relative_time, motion_times) {
+		/* fixed shutter time to get previous and next frame for motion pass */
+		float shuttertime;
+
+		if(scene->need_motion() == Scene::MOTION_PASS)
+			shuttertime = 2.0f;
+		else
+			shuttertime = scene->camera->shuttertime;
+
+		/* compute frame and subframe time */
+		float time = frame_center + relative_time * shuttertime * 0.5f;
+		int frame = (int)floorf(time);
+		float subframe = time - frame;
+
+		/* change frame */
+		python_thread_state_restore(python_thread_state);
+		b_scene.frame_set(frame, subframe);
+		python_thread_state_save(python_thread_state);
+
+		/* sync camera, only supports two times at the moment */
+		if(relative_time == -1.0f || relative_time == 1.0f)
+			sync_camera_motion(b_cam, relative_time);
+
+		/* sync object */
+		sync_objects(b_v3d, relative_time);
 	}
 
-	b_scene.frame_set(frame, 0.0f);
+	/* we need to set the python thread state again because this
+	 * function assumes it is being executed from python and will
+	 * try to save the thread state */
+	python_thread_state_restore(python_thread_state);
+	b_scene.frame_set(frame_center, 0.0f);
+	python_thread_state_save(python_thread_state);
 
 	/* tag camera for motion update */
 	if(scene->camera->motion_modified(prevcam))

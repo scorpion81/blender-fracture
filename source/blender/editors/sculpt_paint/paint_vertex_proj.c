@@ -34,6 +34,7 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_math.h"
+#include "BLI_listbase.h"
 
 #include "DNA_mesh_types.h"
 #include "DNA_object_types.h"
@@ -152,6 +153,10 @@ static void vpaint_proj_dm_map_cosnos_update__map_cb(void *userData, int index, 
 
 			vp_handle->dists_sq[index] = dist_sq;
 		}
+		else if (vp_handle->dists_sq[index] != FLT_MAX) {
+			/* already initialized & couldn't project this 'co' */
+			return;
+		}
 	}
 	/* continue with regular functionality */
 
@@ -175,7 +180,7 @@ static void vpaint_proj_dm_map_cosnos_update(struct VertProjHandle *vp_handle,
 	DerivedMesh *dm;
 
 	/* quick sanity check - we shouldn't have to run this if there are no modifiers */
-	BLI_assert(ob->modifiers.first != NULL);
+	BLI_assert(BLI_listbase_is_empty(&ob->modifiers) == false);
 
 	dm = mesh_get_derived_final(scene, ob, CD_MASK_BAREMESH | CD_MASK_ORIGINDEX);
 

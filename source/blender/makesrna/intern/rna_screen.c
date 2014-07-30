@@ -60,6 +60,10 @@ EnumPropertyItem region_type_items[] = {
 
 #include "UI_view2d.h"
 
+#ifdef WITH_PYTHON
+#  include "BPY_extern.h"
+#endif
+
 static void rna_Screen_scene_set(PointerRNA *ptr, PointerRNA value)
 {
 	bScreen *sc = (bScreen *)ptr->data;
@@ -76,7 +80,16 @@ static void rna_Screen_scene_update(bContext *C, PointerRNA *ptr)
 
 	/* exception: must use context so notifier gets to the right window  */
 	if (sc->newscene) {
+#ifdef WITH_PYTHON
+		BPy_BEGIN_ALLOW_THREADS;
+#endif
+
 		ED_screen_set_scene(C, sc, sc->newscene);
+
+#ifdef WITH_PYTHON
+		BPy_END_ALLOW_THREADS;
+#endif
+
 		WM_event_add_notifier(C, NC_SCENE | ND_SCENEBROWSE, sc->newscene);
 
 		if (G.debug & G_DEBUG)
@@ -144,7 +157,7 @@ static void rna_Area_type_update(bContext *C, PointerRNA *ptr)
 
 			/* It is possible that new layers becomes visible. */
 			if (sa->spacetype == SPACE_VIEW3D) {
-				DAG_on_visible_update(CTX_data_main(C), FALSE);
+				DAG_on_visible_update(CTX_data_main(C), false);
 			}
 
 			CTX_wm_window_set(C, prevwin);

@@ -47,6 +47,7 @@
 #include "BLI_blenlib.h"
 
 
+#include "BLI_kdtree.h"
 #include "BKE_context.h"
 #include "BKE_depsgraph.h"
 #include "BKE_deform.h"
@@ -595,7 +596,7 @@ int join_mesh_shapes_exec(bContext *C, wmOperator *op)
 	DerivedMesh *dm = NULL;
 	Key *key = me->key;
 	KeyBlock *kb;
-	int ok = 0, nonequal_verts = 0;
+	bool ok = false, nonequal_verts = false;
 	
 	CTX_DATA_BEGIN (C, Base *, base, selected_editable_bases)
 	{
@@ -605,7 +606,7 @@ int join_mesh_shapes_exec(bContext *C, wmOperator *op)
 			selme = (Mesh *)base->object->data;
 			
 			if (selme->totvert == me->totvert)
-				ok++;
+				ok = true;
 			else
 				nonequal_verts = 1;
 		}
@@ -657,255 +658,111 @@ int join_mesh_shapes_exec(bContext *C, wmOperator *op)
 	return OPERATOR_FINISHED;
 }
 
-/* ********************* MESH VERTEX OCTREE LOOKUP ************* */
+/* -------------------------------------------------------------------- */
+/* Mesh Mirror (Spatial) */
 
-/* important note; this is unfinished, needs better API for editmode, and custom threshold */
+/** \name Mesh Spatial Mirror API
+ * \{ */
 
-#define MOC_RES         8
-#define MOC_NODE_RES    8
-#define MOC_THRESH      0.00002f
+#define KD_THRESH      0.00002f
 
-typedef struct MocNode {
-	struct MocNode *next;
-	intptr_t index[MOC_NODE_RES];
-} MocNode;
-
-static int mesh_octree_get_base_offs(const float co[3], const float offs[3], const float div[3])
-{
-	int vx, vy, vz;
-	
-	vx = floor((co[0] - offs[0]) / div[0]);
-	vy = floor((co[1] - offs[1]) / div[1]);
-	vz = floor((co[2] - offs[2]) / div[2]);
-
-	CLAMP(vx, 0, MOC_RES - 1);
-	CLAMP(vy, 0, MOC_RES - 1);
-	CLAMP(vz, 0, MOC_RES - 1);
-
-	return (vx * MOC_RES * MOC_RES) + vy * MOC_RES + vz;
-}
-
-static void mesh_octree_add_node(MocNode **bt, intptr_t index)
-{
-	if (*bt == NULL) {
-		*bt = MEM_callocN(sizeof(MocNode), "MocNode");
-		(*bt)->index[0] = index;
-	}
-	else {
-		int a;
-		for (a = 0; a < MOC_NODE_RES; a++) {
-			if ((*bt)->index[a] == index)
-				return;
-			else if ((*bt)->index[a] == 0) {
-				(*bt)->index[a] = index;
-				return;
-			}
-		}
-		mesh_octree_add_node(&(*bt)->next, index);
-	}
-}
-
-static void mesh_octree_free_node(MocNode **bt)
-{
-	if ( (*bt)->next) {
-		mesh_octree_free_node(&(*bt)->next);
-	}
-	MEM_freeN(*bt);
-}
-
-
-/* temporal define, just to make nicer code below */
-#define MOC_INDEX(vx, vy, vz)  (((vx) * MOC_RES * MOC_RES) + (vy) * MOC_RES + (vz))
-
-static void mesh_octree_add_nodes(MocNode **basetable, const float co[3], const float offs[3],
-                                  const float div[3], intptr_t index)
-{
-	float fx, fy, fz;
-	int vx, vy, vz;
-	
-	if ((finite(co[0]) == false) ||
-	    (finite(co[1]) == false) ||
-	    (finite(co[2]) == false))
-	{
-		return;
-	}
-	
-	fx = (co[0] - offs[0]) / div[0];
-	fy = (co[1] - offs[1]) / div[1];
-	fz = (co[2] - offs[2]) / div[2];
-	CLAMP(fx, 0.0f, MOC_RES - MOC_THRESH);
-	CLAMP(fy, 0.0f, MOC_RES - MOC_THRESH);
-	CLAMP(fz, 0.0f, MOC_RES - MOC_THRESH);
-
-	vx = (int)floorf(fx);
-	vy = (int)floorf(fy);
-	vz = (int)floorf(fz);
-
-	mesh_octree_add_node(basetable + MOC_INDEX(vx, vy, vz), index);
-
-	if (vx > 0)
-		if (fx - ((float)vx) - MOC_THRESH < 0.0f)
-			mesh_octree_add_node(basetable + MOC_INDEX(vx - 1, vy, vz), index);
-	if (vx < MOC_RES - 2)
-		if (fx - ((float)vx) + MOC_THRESH > 1.0f)
-			mesh_octree_add_node(basetable + MOC_INDEX(vx + 1, vy, vz), index);
-
-	if (vy > 0)
-		if (fy - ((float)vy) - MOC_THRESH < 0.0f)
-			mesh_octree_add_node(basetable + MOC_INDEX(vx, vy - 1, vz), index);
-	if (vy < MOC_RES - 2)
-		if (fy - ((float)vy) + MOC_THRESH > 1.0f)
-			mesh_octree_add_node(basetable + MOC_INDEX(vx, vy + 1, vz), index);
-
-	if (vz > 0)
-		if (fz - ((float)vz) - MOC_THRESH < 0.0f)
-			mesh_octree_add_node(basetable + MOC_INDEX(vx, vy, vz - 1), index);
-	if (vz < MOC_RES - 2)
-		if (fz - ((float)vz) + MOC_THRESH > 1.0f)
-			mesh_octree_add_node(basetable + MOC_INDEX(vx, vy, vz + 1), index);
-
-}
-
-static intptr_t mesh_octree_find_index(MocNode **bt, MVert *mvert, const float co[3])
-{
-	float *vec;
-	int a;
-	
-	if (*bt == NULL)
-		return -1;
-	
-	for (a = 0; a < MOC_NODE_RES; a++) {
-		if ((*bt)->index[a]) {
-			/* does mesh verts and editmode, code looks potential dangerous, octree should really be filled OK! */
-			if (mvert) {
-				vec = (mvert + (*bt)->index[a] - 1)->co;
-				if (compare_v3v3(vec, co, MOC_THRESH))
-					return (*bt)->index[a] - 1;
-			}
-			else {
-				BMVert *eve = (BMVert *)((*bt)->index[a]);
-				if (compare_v3v3(eve->co, co, MOC_THRESH))
-					return (*bt)->index[a];
-			}
-		}
-		else {
-			return -1;
-		}
-	}
-	if ( (*bt)->next)
-		return mesh_octree_find_index(&(*bt)->next, mvert, co);
-	
-	return -1;
-}
-
-static struct {
-	MocNode **table;
-	float offs[3], div[3];
-} MeshOctree = {NULL, {0, 0, 0}, {0, 0, 0}};
+static struct { void *tree; } MirrKdStore = {NULL};
 
 /* mode is 's' start, or 'e' end, or 'u' use */
 /* if end, ob can be NULL */
-intptr_t mesh_octree_table(Object *ob, BMEditMesh *em, const float co[3], char mode)
+int ED_mesh_mirror_spatial_table(Object *ob, BMEditMesh *em, const float co[3], char mode)
 {
-	MocNode **bt;
-	
 	if (mode == 'u') {        /* use table */
-		if (MeshOctree.table == NULL)
-			mesh_octree_table(ob, em, NULL, 's');
+		if (MirrKdStore.tree == NULL)
+			ED_mesh_mirror_spatial_table(ob, em, NULL, 's');
 
-		if (MeshOctree.table) {
-			Mesh *me = ob->data;
-			bt = MeshOctree.table + mesh_octree_get_base_offs(co, MeshOctree.offs, MeshOctree.div);
-			if (em)
-				return mesh_octree_find_index(bt, NULL, co);
-			else
-				return mesh_octree_find_index(bt, me->mvert, co);
+		if (MirrKdStore.tree) {
+			KDTreeNearest nearest;
+
+			int i;
+
+			i = BLI_kdtree_find_nearest(MirrKdStore.tree, co, &nearest);
+
+			if (i != -1) {
+				if (nearest.dist < KD_THRESH) {
+					return i;
+				}
+			}
 		}
 		return -1;
 	}
 	else if (mode == 's') {   /* start table */
 		Mesh *me = ob->data;
-		float min[3], max[3];
+		int totvert;
 
-		/* we compute own bounding box and don't reuse ob->bb because
-		 * we are using the undeformed coordinates*/
-		INIT_MINMAX(min, max);
+		if (MirrKdStore.tree) /* happens when entering this call without ending it */
+			ED_mesh_mirror_spatial_table(ob, em, co, 'e');
 
 		if (em && me->edit_btmesh == em) {
-			BMIter iter;
+			totvert = em->bm->totvert;
+		}
+		else {
+			totvert = me->totvert;
+		}
+
+		MirrKdStore.tree = BLI_kdtree_new(totvert);
+
+		if (em && me->edit_btmesh == em) {
+
 			BMVert *eve;
-			
-			BM_ITER_MESH (eve, &iter, em->bm, BM_VERTS_OF_MESH) {
-				minmax_v3v3_v3(min, max, eve->co);
+			BMIter iter;
+			int i;
+
+			/* this needs to be valid for index lookups later (callers need) */
+			BM_mesh_elem_table_ensure(em->bm, BM_VERT);
+
+			BM_ITER_MESH_INDEX (eve, &iter, em->bm, BM_VERTS_OF_MESH, i) {
+				BLI_kdtree_insert(MirrKdStore.tree, i, eve->co);
 			}
 		}
 		else {
 			MVert *mvert;
-			int a;
+			int i;
 			
-			for (a = 0, mvert = me->mvert; a < me->totvert; a++, mvert++)
-				minmax_v3v3_v3(min, max, mvert->co);
-		}
-		
-		/* for quick unit coordinate calculus */
-		copy_v3_v3(MeshOctree.offs, min);
-		/* we offset it 1 threshold unit extra */
-		add_v3_fl(MeshOctree.offs, -MOC_THRESH);
-		
-		sub_v3_v3v3(MeshOctree.div, max, min);
-		/* and divide with 2 threshold unit more extra (try 8x8 unit grid on paint) */
-		add_v3_fl(MeshOctree.div, 2.0f * MOC_THRESH);
-
-		mul_v3_fl(MeshOctree.div, 1.0f / MOC_RES);
-		if (MeshOctree.div[0] == 0.0f) MeshOctree.div[0] = 1.0f;
-		if (MeshOctree.div[1] == 0.0f) MeshOctree.div[1] = 1.0f;
-		if (MeshOctree.div[2] == 0.0f) MeshOctree.div[2] = 1.0f;
-			
-		if (MeshOctree.table) /* happens when entering this call without ending it */
-			mesh_octree_table(ob, em, co, 'e');
-		
-		MeshOctree.table = MEM_callocN(MOC_RES * MOC_RES * MOC_RES * sizeof(void *), "sym table");
-		
-		if (em && me->edit_btmesh == em) {
-			BMVert *eve;
-			BMIter iter;
-
-			BM_ITER_MESH (eve, &iter, em->bm, BM_VERTS_OF_MESH) {
-				mesh_octree_add_nodes(MeshOctree.table, eve->co, MeshOctree.offs, MeshOctree.div, (intptr_t)(eve));
+			for (i = 0, mvert = me->mvert; i < me->totvert; i++, mvert++) {
+				BLI_kdtree_insert(MirrKdStore.tree, i, mvert->co);
 			}
 		}
-		else {
-			MVert *mvert;
-			int a;
-			
-			for (a = 0, mvert = me->mvert; a < me->totvert; a++, mvert++)
-				mesh_octree_add_nodes(MeshOctree.table, mvert->co, MeshOctree.offs, MeshOctree.div, a + 1);
-		}
+
+		BLI_kdtree_balance(MirrKdStore.tree);
 	}
 	else if (mode == 'e') { /* end table */
-		if (MeshOctree.table) {
-			int a;
-			
-			for (a = 0, bt = MeshOctree.table; a < MOC_RES * MOC_RES * MOC_RES; a++, bt++) {
-				if (*bt) mesh_octree_free_node(bt);
-			}
-			MEM_freeN(MeshOctree.table);
-			MeshOctree.table = NULL;
+		if (MirrKdStore.tree) {
+			BLI_kdtree_free(MirrKdStore.tree);
+			MirrKdStore.tree = NULL;
 		}
 	}
+	else {
+		BLI_assert(0);
+	}
+
 	return 0;
 }
+
+/** \} */
+
+
+/* -------------------------------------------------------------------- */
+/* Mesh Mirror (Topology) */
+
+/** \name Mesh Topology Mirror API
+ * \{ */
 
 static MirrTopoStore_t mesh_topo_store = {NULL, -1. - 1, -1};
 
 /* mode is 's' start, or 'e' end, or 'u' use */
 /* if end, ob can be NULL */
 /* note, is supposed return -1 on error, which callers are currently checking for, but is not used so far */
-int mesh_mirrtopo_table(Object *ob, char mode)
+int ED_mesh_mirror_topo_table(Object *ob, char mode)
 {
 	if (mode == 'u') {        /* use table */
 		if (ED_mesh_mirrtopo_recalc_check(ob->data, ob->mode, &mesh_topo_store)) {
-			mesh_mirrtopo_table(ob, 's');
+			ED_mesh_mirror_topo_table(ob, 's');
 		}
 	}
 	else if (mode == 's') { /* start table */
@@ -914,8 +771,15 @@ int mesh_mirrtopo_table(Object *ob, char mode)
 	else if (mode == 'e') { /* end table */
 		ED_mesh_mirrtopo_free(&mesh_topo_store);
 	}
+	else {
+		BLI_assert(0);
+	}
+
 	return 0;
 }
+
+/** \} */
+
 
 static int mesh_get_x_mirror_vert_spatial(Object *ob, int index)
 {
@@ -928,12 +792,12 @@ static int mesh_get_x_mirror_vert_spatial(Object *ob, int index)
 	vec[1] = mvert->co[1];
 	vec[2] = mvert->co[2];
 	
-	return mesh_octree_table(ob, NULL, vec, 'u');
+	return ED_mesh_mirror_spatial_table(ob, NULL, vec, 'u');
 }
 
 static int mesh_get_x_mirror_vert_topo(Object *ob, int index)
 {
-	if (mesh_mirrtopo_table(ob, 'u') == -1)
+	if (ED_mesh_mirror_topo_table(ob, 'u') == -1)
 		return -1;
 
 	return mesh_topo_store.index_lookup[index];
@@ -952,7 +816,7 @@ int mesh_get_x_mirror_vert(Object *ob, int index, const bool use_topology)
 static BMVert *editbmesh_get_x_mirror_vert_spatial(Object *ob, BMEditMesh *em, const float co[3])
 {
 	float vec[3];
-	intptr_t poinval;
+	int i;
 	
 	/* ignore nan verts */
 	if ((finite(co[0]) == false) ||
@@ -966,16 +830,17 @@ static BMVert *editbmesh_get_x_mirror_vert_spatial(Object *ob, BMEditMesh *em, c
 	vec[1] = co[1];
 	vec[2] = co[2];
 	
-	poinval = mesh_octree_table(ob, em, vec, 'u');
-	if (poinval != -1)
-		return (BMVert *)(poinval);
+	i = ED_mesh_mirror_spatial_table(ob, em, vec, 'u');
+	if (i != -1) {
+		return BM_vert_at_index(em->bm, i);
+	}
 	return NULL;
 }
 
 static BMVert *editbmesh_get_x_mirror_vert_topo(Object *ob, struct BMEditMesh *em, BMVert *eve, int index)
 {
 	intptr_t poinval;
-	if (mesh_mirrtopo_table(ob, 'u') == -1)
+	if (ED_mesh_mirror_topo_table(ob, 'u') == -1)
 		return NULL;
 
 	if (index == -1) {
@@ -1153,12 +1018,12 @@ int *mesh_get_x_mirror_faces(Object *ob, BMEditMesh *em)
 	mirrorverts = MEM_callocN(sizeof(int) * me->totvert, "MirrorVerts");
 	mirrorfaces = MEM_callocN(sizeof(int) * 2 * me->totface, "MirrorFaces");
 
-	mesh_octree_table(ob, em, NULL, 's');
+	ED_mesh_mirror_spatial_table(ob, em, NULL, 's');
 
 	for (a = 0, mv = mvert; a < me->totvert; a++, mv++)
 		mirrorverts[a] = mesh_get_x_mirror_vert(ob, a, use_topology);
 
-	mesh_octree_table(ob, em, NULL, 'e');
+	ED_mesh_mirror_spatial_table(ob, em, NULL, 'e');
 
 	fhash = BLI_ghash_new_ex(mirror_facehash, mirror_facecmp, "mirror_facehash gh", me->totface);
 	for (a = 0, mf = mface; a < me->totface; a++, mf++)

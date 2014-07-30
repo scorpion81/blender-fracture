@@ -243,13 +243,13 @@ static void animchan_sync_fcurve(bAnimContext *ac, bAnimListElem *ale, FCurve **
 		
 		/* only affect if F-Curve involves sequence_editor.sequences */
 		if ((fcu->rna_path) && strstr(fcu->rna_path, "sequences_all")) {
-			Editing *ed = BKE_sequencer_editing_get(scene, FALSE);
+			Editing *ed = BKE_sequencer_editing_get(scene, false);
 			Sequence *seq;
 			char *seq_name;
 			
 			/* get strip name, and check if this strip is selected */
 			seq_name = BLI_str_quoted_substrN(fcu->rna_path, "sequences_all[");
-			seq = BKE_sequence_get_by_name(ed->seqbasep, seq_name, FALSE);
+			seq = BKE_sequence_get_by_name(ed->seqbasep, seq_name, false);
 			if (seq_name) MEM_freeN(seq_name);
 			
 			/* update selection status */

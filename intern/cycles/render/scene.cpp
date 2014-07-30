@@ -136,7 +136,9 @@ void Scene::device_update(Device *device_, Progress& progress)
 	 * - Image manager uploads images used by shaders.
 	 * - Camera may be used for adapative subdivison.
 	 * - Displacement shader must have all shader data available.
-	 * - Light manager needs final mesh data to compute emission CDF.
+	 * - Light manager needs lookup tables and final mesh data to compute emission CDF.
+	 * - Film needs light manager to run for use_light_visibility
+	 * - Lookup tables are done a second time to handle film tables
 	 */
 	
 	image_manager->set_pack_images(device->info.pack_images);
@@ -168,6 +170,11 @@ void Scene::device_update(Device *device_, Progress& progress)
 
 	progress.set_status("Updating Hair Systems");
 	curve_system_manager->device_update(device, &dscene, this, progress);
+
+	if(progress.get_cancel()) return;
+
+	progress.set_status("Updating Lookup Tables");
+	lookup_tables->device_update(device, &dscene);
 
 	if(progress.get_cancel()) return;
 
@@ -219,8 +226,10 @@ bool Scene::need_global_attribute(AttributeStandard std)
 {
 	if(std == ATTR_STD_UV)
 		return Pass::contains(film->passes, PASS_UV);
-	if(std == ATTR_STD_MOTION_PRE || std == ATTR_STD_MOTION_POST)
-		return need_motion() == MOTION_PASS;
+	if(std == ATTR_STD_MOTION_VERTEX_POSITION)
+		return need_motion() != MOTION_NONE;
+	if(std == ATTR_STD_MOTION_VERTEX_NORMAL)
+		return need_motion() == MOTION_BLUR;
 	
 	return false;
 }

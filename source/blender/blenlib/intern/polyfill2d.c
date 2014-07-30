@@ -368,11 +368,11 @@ static unsigned int pf_index_next(const PolyFill *pf, unsigned index)
 }
 
 /**
-* Triangulates the given (convex or concave) simple polygon to a list of triangle vertices.
-* \param vertices pairs describing vertices of the polygon, in either clockwise or counterclockwise order.
-* \return triples of triangle indices in clockwise order.
-*         Note the returned array is reused for later calls to the same method.
-*/
+ * Triangulates the given (convex or concave) simple polygon to a list of triangle vertices.
+ * \param vertices pairs describing vertices of the polygon, in either clockwise or counterclockwise order.
+ * \return triples of triangle indices in clockwise order.
+ *         Note the returned array is reused for later calls to the same method.
+ */
 void BLI_polyfill_calc_ex(
         const float (*coords)[2],
         const unsigned int coords_tot,
@@ -400,7 +400,7 @@ void BLI_polyfill_calc_ex(
 	pf.tris_tot = 0;
 
 	if ((coords_tot < 3) ||
-	    cross_poly_v2((int)coords_tot, (float(*)[2])coords) > 0.0f)
+	    cross_poly_v2(coords, coords_tot) > 0.0f)
 	{
 		for (i = 0; i < coords_tot; i++) {
 			indices[i] = i;

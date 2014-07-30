@@ -34,6 +34,19 @@
 #  pragma warning (disable:4786)
 #endif
 
+/* Since threaded object update we've disabled in-place
+ * curve evaluation (in cases when applying curve modifier
+ * with target curve non-evaluated yet).
+ *
+ * This requires game engine to take care of DAG and object
+ * evaluation (currently it's designed to export only objects
+ * it able to render).
+ *
+ * This workaround will make sure that curve_cache for curves
+ * is up-to-date.
+ */
+#define THREADED_DAG_WORKAROUND
+
 #include <math.h>
 #include <vector>
 #include <algorithm>
@@ -55,6 +68,8 @@
 #include "KX_GameObject.h"
 #include "RAS_FramingManager.h"
 #include "RAS_MeshObject.h"
+#include "RAS_IRasterizer.h"
+#include "RAS_ILightObject.h"
 
 #include "KX_ConvertActuators.h"
 #include "KX_ConvertControllers.h"
@@ -143,6 +158,7 @@ extern "C" {
 #include "BKE_material.h" /* give_current_material */
 #include "BKE_image.h"
 #include "IMB_imbuf_types.h"
+#include "BKE_displist.h"
 
 extern Material defmaterial;	/* material.c */
 }
@@ -597,6 +613,10 @@ static bool ConvertMaterial(
 
 		// cast shadows?
 		material->ras_mode |= ( mat->mode & MA_SHADBUF )?CAST_SHADOW:0;
+
+		// only shadows?
+		material->ras_mode |= ( mat->mode & MA_ONLYCAST )?ONLY_SHADOW:0;
+
 		MTex *mttmp = 0;
 		int valid_index = 0;
 		
@@ -924,11 +944,12 @@ static RAS_MaterialBucket *material_from_mesh(Material *ma, MFace *mface, MTFace
 	// this way only one KX_BlenderMaterial object has to exist per bucket
 	bool bucketCreated; 
 	RAS_MaterialBucket* bucket = scene->FindBucket(polymat, bucketCreated);
-	if (bucketCreated) {
-		// this is needed to free up memory afterwards
-		converter->RegisterPolyMaterial(polymat);
-		converter->RegisterBlenderMaterial(bl_mat);
-	}
+
+	// this is needed to free up memory afterwards.
+	// the converter will also prevent duplicates from being registered,
+	// so just register everything.
+	converter->RegisterPolyMaterial(polymat);
+	converter->RegisterBlenderMaterial(bl_mat);
 
 	return bucket;
 }
@@ -1748,22 +1769,22 @@ static void BL_CreatePhysicsObjectNew(KX_GameObject* gameobj,
 
 static KX_LightObject *gamelight_from_blamp(Object *ob, Lamp *la, unsigned int layerflag, KX_Scene *kxscene, RAS_IRasterizer *rasterizer, KX_BlenderSceneConverter *converter)
 {
-	RAS_LightObject lightobj;
+	RAS_ILightObject *lightobj = rasterizer->CreateLight();
 	KX_LightObject *gamelight;
 	
-	lightobj.m_att1 = la->att1;
-	lightobj.m_att2 = (la->mode & LA_QUAD) ? la->att2 : 0.0f;
-	lightobj.m_red = la->r;
-	lightobj.m_green = la->g;
-	lightobj.m_blue = la->b;
-	lightobj.m_distance = la->dist;
-	lightobj.m_energy = la->energy;
-	lightobj.m_layer = layerflag;
-	lightobj.m_spotblend = la->spotblend;
-	lightobj.m_spotsize = la->spotsize;
+	lightobj->m_att1 = la->att1;
+	lightobj->m_att2 = (la->mode & LA_QUAD) ? la->att2 : 0.0f;
+	lightobj->m_color[0] = la->r;
+	lightobj->m_color[1] = la->g;
+	lightobj->m_color[2] = la->b;
+	lightobj->m_distance = la->dist;
+	lightobj->m_energy = la->energy;
+	lightobj->m_layer = layerflag;
+	lightobj->m_spotblend = la->spotblend;
+	lightobj->m_spotsize = la->spotsize;
 	
-	lightobj.m_nodiffuse = (la->mode & LA_NO_DIFF) != 0;
-	lightobj.m_nospecular = (la->mode & LA_NO_SPEC) != 0;
+	lightobj->m_nodiffuse = (la->mode & LA_NO_DIFF) != 0;
+	lightobj->m_nospecular = (la->mode & LA_NO_SPEC) != 0;
 	
 	bool glslmat = converter->GetGLSLMaterials();
 
@@ -1771,18 +1792,18 @@ static KX_LightObject *gamelight_from_blamp(Object *ob, Lamp *la, unsigned int l
 	if (glslmat==0) {
 		if (la->mode & LA_NEG)
 		{
-			lightobj.m_red = -lightobj.m_red;
-			lightobj.m_green = -lightobj.m_green;
-			lightobj.m_blue = -lightobj.m_blue;
+			lightobj->m_color[0] = -lightobj->m_color[0];
+			lightobj->m_color[1] = -lightobj->m_color[1];
+			lightobj->m_color[2] = -lightobj->m_color[2];
 		}
 	}
 		
 	if (la->type==LA_SUN) {
-		lightobj.m_type = RAS_LightObject::LIGHT_SUN;
+		lightobj->m_type = RAS_ILightObject::LIGHT_SUN;
 	} else if (la->type==LA_SPOT) {
-		lightobj.m_type = RAS_LightObject::LIGHT_SPOT;
+		lightobj->m_type = RAS_ILightObject::LIGHT_SPOT;
 	} else {
-		lightobj.m_type = RAS_LightObject::LIGHT_NORMAL;
+		lightobj->m_type = RAS_ILightObject::LIGHT_NORMAL;
 	}
 
 	gamelight = new KX_LightObject(kxscene, KX_Scene::m_callbacks, rasterizer,
@@ -1916,15 +1937,11 @@ static KX_GameObject *gameobject_from_blenderobject(
 			BL_ModifierDeformer *dcont = new BL_ModifierDeformer((BL_DeformableGameObject *)gameobj,
 																kxscene->GetBlenderScene(), ob,	meshobj);
 			((BL_DeformableGameObject*)gameobj)->SetDeformer(dcont);
-			if (bHasShapeKey && bHasArmature)
-				dcont->LoadShapeDrivers(ob->parent);
 		} else if (bHasShapeKey) {
 			// not that we can have shape keys without dvert! 
 			BL_ShapeDeformer *dcont = new BL_ShapeDeformer((BL_DeformableGameObject*)gameobj, 
 															ob, meshobj);
 			((BL_DeformableGameObject*)gameobj)->SetDeformer(dcont);
-			if (bHasArmature)
-				dcont->LoadShapeDrivers(ob->parent);
 		} else if (bHasArmature) {
 			BL_SkinDeformer *dcont = new BL_SkinDeformer((BL_DeformableGameObject*)gameobj,
 															ob, meshobj);
@@ -1984,6 +2001,15 @@ static KX_GameObject *gameobject_from_blenderobject(
 			kxscene->AddFont(static_cast<KX_FontObject*>(gameobj));
 		break;
 	}
+
+#ifdef THREADED_DAG_WORKAROUND
+	case OB_CURVE:
+	{
+		if (ob->curve_cache == NULL) {
+			BKE_displist_make_curveTypes(blenderscene, ob, false);
+		}
+	}
+#endif
 
 	}
 	if (gameobj) 
@@ -2098,7 +2124,7 @@ static void bl_ConvertBlenderObject_Single(
 
 	MT_Matrix3x3 rotation;
 	float rotmat[3][3];
-	BKE_object_rot_to_mat3(blenderobject, rotmat, FALSE);
+	BKE_object_rot_to_mat3(blenderobject, rotmat, false);
 	rotation.setValue3x3((float*)rotmat);
 
 	MT_Vector3 scale(blenderobject->size);
@@ -2112,7 +2138,7 @@ static void bl_ConvertBlenderObject_Single(
 		                             );
 
 		float rotmatPrev[3][3];
-		BKE_object_rot_to_mat3(blenderobject, rotmatPrev, FALSE);
+		BKE_object_rot_to_mat3(blenderobject, rotmatPrev, false);
 
 		float eulxyz[3], eulxyzPrev[3];
 		mat3_to_eul(eulxyz, rotmat);
@@ -2610,12 +2636,25 @@ void BL_ConvertBlenderObjects(struct Main* maggie,
 			gameobj->GetDeformer()->UpdateBuckets();
 	}
 
-	// Set up armature constraints
+	// Set up armature constraints and shapekey drivers
 	for (i=0;i<sumolist->GetCount();++i)
 	{
 		KX_GameObject* gameobj = (KX_GameObject*) sumolist->GetValue(i);
 		if (gameobj->GetGameObjectType() == SCA_IObject::OBJ_ARMATURE)
-			((BL_ArmatureObject*)gameobj)->LoadConstraints(converter);
+		{
+			BL_ArmatureObject *armobj = (BL_ArmatureObject*)gameobj;
+			armobj->LoadConstraints(converter);
+
+			CListValue *children = armobj->GetChildren();
+			for (int j=0; j<children->GetCount();++j)
+			{
+				BL_ShapeDeformer *deform = dynamic_cast<BL_ShapeDeformer*>(((KX_GameObject*)children->GetValue(j))->GetDeformer());
+				if (deform)
+					deform->LoadShapeDrivers(armobj);
+			}
+
+			children->Release();
+		}
 	}
 
 	bool processCompoundChildren = false;
@@ -2835,7 +2874,7 @@ void BL_ConvertBlenderObjects(struct Main* maggie,
 		struct Object* blenderobj = gameobj->GetBlenderObject();
 		int layerMask = (groupobj.find(blenderobj) == groupobj.end()) ? activeLayerBitInfo : 0;
 		bool isInActiveLayer = (blenderobj->lay & layerMask)!=0;
-		BL_ConvertControllers(blenderobj,gameobj,logicmgr, layerMask,isInActiveLayer,converter);
+		BL_ConvertControllers(blenderobj,gameobj,logicmgr, layerMask,isInActiveLayer,converter, libloading);
 	}
 	for ( i=0;i<logicbrick_conversionlist->GetCount();i++)
 	{

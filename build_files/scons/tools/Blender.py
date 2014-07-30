@@ -15,8 +15,8 @@ to kill any code duplication
 """
 
 import os
-import os.path
 import string
+import ctypes as ct
 import glob
 import time
 import sys
@@ -51,10 +51,8 @@ program_list = [] # A list holding Nodes to final binaries, used to create insta
 arguments = None
 targets = None
 resources = []
-bitness = 0
-
-#some internals
-blenderdeps = [] # don't manipulate this one outside this module!
+allowed_bitnesses = {4 : 32, 8 : 64} # only expecting 32-bit or 64-bit
+bitness = allowed_bitnesses[ct.sizeof(ct.c_void_p)]
 
 ##### LIB STUFF ##########
 
@@ -265,7 +263,7 @@ def setup_syslibs(lenv):
     if lenv['WITH_BF_OPENAL']:
         if not lenv['WITH_BF_STATICOPENAL']:
             syslibs += Split(lenv['BF_OPENAL_LIB'])
-    if lenv['WITH_BF_OPENMP'] and lenv['CC'] != 'icc' and not lenv['WITH_BF_STATICOPENMP']:
+    if lenv['WITH_BF_OPENMP'] and lenv['CC'] != 'icc' and lenv['C_COMPILER_ID'] != 'clang' and not lenv['WITH_BF_STATICOPENMP']:
         if lenv['CC'] == 'cl.exe':
             syslibs += ['vcomp']
         else:
@@ -428,9 +426,23 @@ def buildinfo(lenv, build_type):
             build_hash = build_hash.strip()
             build_branch = os.popen('git rev-parse --abbrev-ref HEAD').read().strip()
 
+            if build_branch == 'HEAD':
+                master_check = os.popen('git branch --list master --contains ' + build_hash).read().strip()
+                if master_check == 'master':
+                    build_branch = 'master'
+                else:
+                    head_hash = os.popen('git rev-parse HEAD').read().strip()
+                    tag_hashes = os.popen('git show-ref --tags -d').read()
+                    if tag_hashes.find(head_hash) != -1:
+                        build_branch = 'master'
+
             if build_hash == '':
                 build_hash = os.popen('git rev-parse --short HEAD').read().strip()
                 no_upstream = True
+            else:
+                older_commits = os.popen('git log --oneline HEAD..@{u}').read().strip()
+                if older_commits:
+                    build_hash = os.popen('git rev-parse --short HEAD').read().strip()
 
             # ## Check for local modifications
             has_local_changes = False
@@ -442,7 +454,7 @@ def buildinfo(lenv, build_type):
             if changed_files:
                 has_local_changes = True
             elif no_upstream == False:
-                unpushed_log = os.popen('git log @{u}..').read().strip()
+                unpushed_log = os.popen('git log --oneline @{u}..').read().strip()
                 has_local_changes = unpushed_log != ''
 
             if has_local_changes:
@@ -588,17 +600,13 @@ def my_winpybundle_print(target, source, env):
 
 def WinPyBundle(target=None, source=None, env=None):
     import re
-    py_tar= env.subst( env['LCGDIR'] )
-    if py_tar[0]=='#':
-        py_tar= py_tar[1:]
+    py_tar = env.subst(env['LCGDIR']).lstrip("#")
     if env['BF_DEBUG']:
         py_tar+= '/release/python' + env['BF_PYTHON_VERSION'].replace('.','') + '_d.tar.gz'
     else:
         py_tar+= '/release/python' + env['BF_PYTHON_VERSION'].replace('.','') + '.tar.gz'
 
-    py_target = env.subst( env['BF_INSTALLDIR'] )
-    if py_target[0]=='#':
-        py_target=py_target[1:]
+    py_target = env.subst(env['BF_INSTALLDIR']).lstrip("#")
     py_target = os.path.join(py_target, VERSION, 'python', 'lib')
     def printexception(func,path,ex):
         if os.path.exists(path): #do not report if path does not exist. eg on a fresh build.
@@ -618,6 +626,33 @@ def WinPyBundle(target=None, source=None, env=None):
 
     print "Unpacking '" + py_tar + "' to '" + py_target + "'"
     untar_pybundle(py_tar,py_target,exclude_re)
+
+    # -------------
+    # Extract Numpy
+    py_tar = env.subst(env['LCGDIR']).lstrip("#")
+    py_tar += '/release/python' + env['BF_PYTHON_VERSION'].replace('.','') + '_numpy_1.8.tar.gz'
+
+    py_target = env.subst(env['BF_INSTALLDIR']).lstrip("#")
+    py_target = os.path.join(py_target, VERSION, 'python', 'lib', 'site-packages')
+    # rmtree handled above
+    # files are cleaned up in their archive
+    exclude_re = []
+    print("Unpacking '" + py_tar + "' to '" + py_target + "'")
+    untar_pybundle(py_tar, py_target, exclude_re)
+
+    # --------------------
+    # Copy 'site-packages'
+    py_dir = env.subst(env['LCGDIR']).lstrip("#")
+    py_dir += '/release/site-packages'
+    # grr, we have to do one by one because the dir exists
+    for f in os.listdir(py_dir):
+        fn_src = os.path.join(py_dir, f)
+        fn_dst = os.path.join(py_target, f)
+
+        shutil.rmtree(fn_dst, False, printexception)
+        shutil.copytree(fn_src, fn_dst)
+
+
 
 def  my_appit_print(target, source, env):
     a = '%s' % (target[0])
@@ -669,12 +704,12 @@ def AppIt(target=None, source=None, env=None):
         commands.getoutput(cmd)
         cmd = 'cp -R %s/release/datafiles/fonts %s/%s.app/Contents/MacOS/%s/datafiles/'%(bldroot,installdir,binary,VERSION)
         commands.getoutput(cmd)
-        cmd = 'cp -R %s/release/datafiles/locale/languages %s/%s.app/Contents/MacOS/%s/datafiles/locale/'%(bldroot, installdir, binary, VERSION)
-        commands.getoutput(cmd)
         mo_dir = os.path.join(builddir[:-4], "locale")
         for f in os.listdir(mo_dir):
             cmd = 'ditto %s/%s %s/%s.app/Contents/MacOS/%s/datafiles/locale/%s/LC_MESSAGES/blender.mo'%(mo_dir, f, installdir, binary, VERSION, f[:-3])
             commands.getoutput(cmd)
+        cmd = 'cp %s/release/datafiles/locale/languages %s/%s.app/Contents/MacOS/%s/datafiles/locale/'%(bldroot, installdir, binary, VERSION)
+        commands.getoutput(cmd)
 
         if env['WITH_BF_OCIO']:
             cmd = 'cp -R %s/release/datafiles/colormanagement %s/%s.app/Contents/MacOS/%s/datafiles/'%(bldroot,installdir,binary,VERSION)
@@ -703,7 +738,7 @@ def AppIt(target=None, source=None, env=None):
             commands.getoutput(cmd)
             cmd = 'cp -R %s/kernel/*.h %s/kernel/*.cl %s/kernel/*.cu %s/kernel/' % (croot, croot, croot, cinstalldir)
             commands.getoutput(cmd)
-            cmd = 'cp -R %s/kernel/svm %s/kernel/closure %s/util/util_color.h %s/util/util_half.h %s/util/util_math.h %s/util/util_transform.h %s/util/util_types.h %s/kernel/' % (croot, croot, croot, croot, croot, croot, croot, cinstalldir)
+            cmd = 'cp -R %s/kernel/svm %s/kernel/closure %s/kernel/geom %s/util/util_color.h %s/util/util_half.h %s/util/util_math.h %s/util/util_transform.h %s/util/util_types.h %s/kernel/' % (croot, croot, croot, croot, croot, croot, croot, croot, cinstalldir)
             commands.getoutput(cmd)
             cmd = 'cp -R %s/../intern/cycles/kernel/*.cubin %s/lib/' % (builddir, cinstalldir)
             commands.getoutput(cmd)
@@ -721,6 +756,8 @@ def AppIt(target=None, source=None, env=None):
         commands.getoutput(cmd)
         cmd = 'unzip -q %s/release/%s -d %s/%s.app/Contents/MacOS/%s/python/'%(libdir,python_zip,installdir,binary,VERSION)
         commands.getoutput(cmd)
+        cmd = 'cp -R %s/release/site-packages/ %s/%s.app/Contents/MacOS/%s/python/lib/python%s/site-packages/'%(libdir,installdir,binary,VERSION,env['BF_PYTHON_VERSION'])
+        commands.getoutput(cmd)
 
     cmd = 'chmod +x  %s/%s.app/Contents/MacOS/%s'%(installdir,binary, binary)
     commands.getoutput(cmd)
@@ -730,23 +767,33 @@ def AppIt(target=None, source=None, env=None):
     commands.getoutput(cmd)
     cmd = 'find %s/%s.app -name __MACOSX -exec rm -rf {} \;'%(installdir, binary)
     commands.getoutput(cmd)
-    if env['C_COMPILER_ID'] == 'gcc' and env['CCVERSION'] >= '4.6.1': # for correct errorhandling with gcc >= 4.6.1 we need the gcc.dylib and gomp.dylib to link, thus distribute in app-bundle
-        print "Bundling libgcc and libgomp"
-        instname = env['BF_CXX']
-        cmd = 'ditto --arch %s %s/lib/libgcc_s.1.dylib %s/%s.app/Contents/MacOS/lib/'%(osxarch, instname, installdir, binary) # copy libgcc
-        commands.getoutput(cmd)
-        cmd = 'install_name_tool -id @executable_path/lib/libgcc_s.1.dylib %s/%s.app/Contents/MacOS/lib/libgcc_s.1.dylib'%(installdir, binary) # change id of libgcc
-        commands.getoutput(cmd)
-        cmd = 'ditto --arch %s %s/lib/libgomp.1.dylib %s/%s.app/Contents/MacOS/lib/'%(osxarch, instname, installdir, binary) # copy libgomp
-        commands.getoutput(cmd)
-        cmd = 'install_name_tool -id @executable_path/lib/libgomp.1.dylib %s/%s.app/Contents/MacOS/lib/libgomp.1.dylib'%(installdir, binary) # change id of libgomp
-        commands.getoutput(cmd)
-        cmd = 'install_name_tool -change %s/lib/libgcc_s.1.dylib  @executable_path/lib/libgcc_s.1.dylib %s/%s.app/Contents/MacOS/lib/libgomp.1.dylib'%(instname, installdir, binary) # change ref to libgcc
-        commands.getoutput(cmd)
-        cmd = 'install_name_tool -change %s/lib/libgcc_s.1.dylib  @executable_path/lib/libgcc_s.1.dylib %s/%s.app/Contents/MacOS/%s'%(instname, installdir, binary, binary) # change ref to libgcc ( blender )
-        commands.getoutput(cmd)
-        cmd = 'install_name_tool -change %s/lib/libgomp.1.dylib  @executable_path/lib/libgomp.1.dylib %s/%s.app/Contents/MacOS/%s'%(instname, installdir, binary, binary) # change ref to libgomp ( blender )
-        commands.getoutput(cmd)
+    if env['WITH_BF_OPENMP']:
+        if env['C_COMPILER_ID'] == 'gcc' and env['CCVERSION'] >= '4.6.1': # for correct errorhandling with gcc >= 4.6.1 we need the gcc.dylib and gomp.dylib to link, thus distribute in app-bundle
+            print "Bundling libgcc and libgomp"
+            instname = env['BF_CXX']
+            cmd = 'ditto --arch %s %s/lib/libgcc_s.1.dylib %s/%s.app/Contents/MacOS/lib/'%(osxarch, instname, installdir, binary) # copy libgcc
+            commands.getoutput(cmd)
+            cmd = 'install_name_tool -id @executable_path/lib/libgcc_s.1.dylib %s/%s.app/Contents/MacOS/lib/libgcc_s.1.dylib'%(installdir, binary) # change id of libgcc
+            commands.getoutput(cmd)
+            cmd = 'ditto --arch %s %s/lib/libgomp.1.dylib %s/%s.app/Contents/MacOS/lib/'%(osxarch, instname, installdir, binary) # copy libgomp
+            commands.getoutput(cmd)
+            cmd = 'install_name_tool -id @executable_path/lib/libgomp.1.dylib %s/%s.app/Contents/MacOS/lib/libgomp.1.dylib'%(installdir, binary) # change id of libgomp
+            commands.getoutput(cmd)
+            cmd = 'install_name_tool -change %s/lib/libgcc_s.1.dylib  @executable_path/lib/libgcc_s.1.dylib %s/%s.app/Contents/MacOS/lib/libgomp.1.dylib'%(instname, installdir, binary) # change ref to libgcc
+            commands.getoutput(cmd)
+            cmd = 'install_name_tool -change %s/lib/libgcc_s.1.dylib  @executable_path/lib/libgcc_s.1.dylib %s/%s.app/Contents/MacOS/%s'%(instname, installdir, binary, binary) # change ref to libgcc ( blender )
+            commands.getoutput(cmd)
+            cmd = 'install_name_tool -change %s/lib/libgomp.1.dylib  @executable_path/lib/libgomp.1.dylib %s/%s.app/Contents/MacOS/%s'%(instname, installdir, binary, binary) # change ref to libgomp ( blender )
+            commands.getoutput(cmd)
+        if env['C_COMPILER_ID'] == 'clang' and env['CCVERSION'] >= '3.4':
+            print "Bundling libiomp5"
+            instname = env['LCGDIR'][1:] # made libiomp5 part of blender libs
+            cmd = 'ditto --arch %s %s/openmp/lib/libiomp5.dylib %s/%s.app/Contents/MacOS/lib/'%(osxarch, instname, installdir, binary) # copy libiomp5
+            commands.getoutput(cmd)
+            cmd = 'install_name_tool -id @loader_path/lib/libiomp5.dylib %s/%s.app/Contents/MacOS/lib/libiomp5.dylib'%(installdir, binary) # change id of libiomp5
+            commands.getoutput(cmd)
+            cmd = 'install_name_tool -change @loader_path/libiomp5.dylib  @loader_path/lib/libiomp5.dylib %s/%s.app/Contents/MacOS/%s'%(installdir, binary, binary) # change ref to libiomp5 ( blender )
+            commands.getoutput(cmd)
 
 # extract copy system python, be sure to update other build systems
 # when making changes to the files that are copied.
@@ -826,6 +873,17 @@ def UnixPyBundle(target=None, source=None, env=None):
             run("find '%s' -type d -name '*.a' -prune -exec rm -rf {} ';'" % numpy_target)
         else:
             print 'Failed to find numpy at %s, skipping copying' % numpy_src
+        del numpy_src, numpy_target
+
+    if env['WITH_BF_PYTHON_INSTALL_REQUESTS']:
+        requests_src = py_src + "/site-packages/requests"
+        requests_target = py_target + "/site-packages/requests"
+        if os.path.exists(requests_src):
+            run("cp -R '%s' '%s'" % (requests_src, os.path.dirname(requests_target)))
+            run("find '%s' -type d -name '*.pem -prune -exec rm -rf {} ';'" % requests_target)
+        else:
+            print('Failed to find requests at %s, skipping copying' % requests_src)
+        del requests_src, requests_target
 
     run("find '%s' -type d -name 'test' -prune -exec rm -rf {} ';'" % py_target)
     run("find '%s' -type d -name '__pycache__' -exec rm -rf {} ';'" % py_target)

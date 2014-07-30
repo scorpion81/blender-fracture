@@ -357,6 +357,14 @@ static void rna_def_sculpt(BlenderRNA  *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 
+	static EnumPropertyItem detail_type_items[] = {
+		{0, "RELATIVE", 0,
+		 "Relative Detail", "Mesh detail is relative to the brush size and detail size"},
+		{SCULPT_DYNTOPO_DETAIL_CONSTANT, "CONSTANT", 0,
+		 "Constant Detail", "Mesh detail is constant in object space according to detail size"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
 	StructRNA *srna;
 	PropertyRNA *prop;
 
@@ -406,9 +414,16 @@ static void rna_def_sculpt(BlenderRNA  *brna)
 	                         "Show diffuse color of object and overlay sculpt mask on top of it");
 	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_Sculpt_ShowDiffuseColor_update");
 
-	prop = RNA_def_property(srna, "detail_size", PROP_INT, PROP_PIXEL);
-	RNA_def_property_ui_range(prop, 2, 100, 0, -1);
+	prop = RNA_def_property(srna, "detail_size", PROP_FLOAT, PROP_PIXEL);
+	RNA_def_property_ui_range(prop, 0.5, 40.0, 10, 2);
 	RNA_def_property_ui_text(prop, "Detail Size", "Maximum edge length for dynamic topology sculpting (in pixels)");
+	RNA_def_property_update(prop, NC_SCENE | ND_TOOLSETTINGS, NULL);
+
+	prop = RNA_def_property(srna, "constant_detail", PROP_FLOAT, PROP_PERCENTAGE);
+	RNA_def_property_range(prop, 0.001, 10000.0);
+	RNA_def_property_ui_range(prop, 0.1, 100.0, 10, 2);
+	RNA_def_property_ui_text(prop, "Detail Size", "Maximum edge length for dynamic topology sculpting (as percentage of blender unit)");
+	RNA_def_property_update(prop, NC_SCENE | ND_TOOLSETTINGS, NULL);
 
 	prop = RNA_def_property(srna, "use_smooth_shading", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flags", SCULPT_DYNTOPO_SMOOTH_SHADING);
@@ -426,6 +441,13 @@ static void rna_def_sculpt(BlenderRNA  *brna)
 	RNA_def_property_enum_items(prop, detail_refine_items);
 	RNA_def_property_ui_text(prop, "Detail Refine Method",
 	                         "In dynamic-topology mode, how to add or remove mesh detail");
+	RNA_def_property_update(prop, NC_SCENE | ND_TOOLSETTINGS, NULL);
+
+	prop = RNA_def_property(srna, "detail_type_method", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_bitflag_sdna(prop, NULL, "flags");
+	RNA_def_property_enum_items(prop, detail_type_items);
+	RNA_def_property_ui_text(prop, "Detail Type Method",
+	                         "In dynamic-topology mode, how mesh detail size is calculated");
 	RNA_def_property_update(prop, NC_SCENE | ND_TOOLSETTINGS, NULL);
 
 	prop = RNA_def_property(srna, "gravity", PROP_FLOAT, PROP_NONE);

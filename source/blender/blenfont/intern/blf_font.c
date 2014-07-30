@@ -55,7 +55,6 @@
 #include "BLI_threads.h"
 #include "BLI_alloca.h"
 #include "BLI_linklist.h"  /* linknode */
-#include "BLI_strict_flags.h"
 
 #include "BIF_gl.h"
 #include "BLF_api.h"
@@ -64,6 +63,8 @@
 
 #include "blf_internal_types.h"
 #include "blf_internal.h"
+
+#include "BLI_strict_flags.h"
 
 /* freetype2 handle ONLY for this file!. */
 static FT_Library ft_lib;
@@ -149,10 +150,10 @@ static void blf_font_ensure_ascii_table(FontBLF *font)
 
 
 #define BLF_KERNING_VARS(_font, _has_kerning, _kern_mode)                        \
-	const short _has_kerning = FT_HAS_KERNING((_font)->face);                    \
+	const bool _has_kerning = FT_HAS_KERNING((_font)->face);                     \
 	const FT_UInt _kern_mode = (_has_kerning == 0) ? 0 :                         \
 	                         (((_font)->flags & BLF_KERNING_DEFAULT) ?           \
-	                          ft_kerning_default : FT_KERNING_UNFITTED)          \
+	                          ft_kerning_default : (FT_UInt)FT_KERNING_UNFITTED) \
 
 
 #define BLF_KERNING_STEP(_font, _kern_mode, _g_prev, _g, _delta, _pen_x)         \
@@ -701,8 +702,7 @@ static void blf_font_fill(FontBLF *font)
 	font->flags = 0;
 	font->dpi = 0;
 	font->size = 0;
-	font->cache.first = NULL;
-	font->cache.last = NULL;
+	BLI_listbase_clear(&font->cache);
 	font->glyph_cache = NULL;
 	font->blur = 0;
 	font->max_tex_size = -1;

@@ -12,10 +12,6 @@ set(INC_SYS
 
 set(SRC
 	kernel.cpp
-	kernel_sse2.cpp
-	kernel_sse3.cpp
-	kernel_sse41.cpp
-	kernel_avx.cpp
 	kernel.cl
 	kernel.cu
 )
@@ -23,14 +19,10 @@ set(SRC
 set(SRC_HEADERS
 	kernel.h
 	kernel_accumulate.h
-	kernel_bvh.h
-	kernel_bvh_subsurface.h
-	kernel_bvh_traversal.h
 	kernel_camera.h
 	kernel_compat_cpu.h
 	kernel_compat_cuda.h
 	kernel_compat_opencl.h
-	kernel_curve.h
 	kernel_differential.h
 	kernel_displace.h
 	kernel_emission.h
@@ -40,18 +32,15 @@ set(SRC_HEADERS
 	kernel_light.h
 	kernel_math.h
 	kernel_montecarlo.h
-	kernel_object.h
 	kernel_passes.h
 	kernel_path.h
 	kernel_path_state.h
-	kernel_primitive.h
 	kernel_projection.h
 	kernel_random.h
 	kernel_shader.h
 	kernel_shadow.h
 	kernel_subsurface.h
 	kernel_textures.h
-	kernel_triangle.h
 	kernel_types.h
 	kernel_volume.h
 )
@@ -118,6 +107,21 @@ set(SRC_SVM_HEADERS
 	svm/svm_wave.h
 )
 
+set(SRC_GEOM_HEADERS
+	geom/geom.h
+	geom/geom_attribute.h
+	geom/geom_bvh.h
+	geom/geom_bvh_subsurface.h
+	geom/geom_bvh_traversal.h
+	geom/geom_curve.h
+	geom/geom_motion_curve.h
+	geom/geom_motion_triangle.h
+	geom/geom_object.h
+	geom/geom_primitive.h
+	geom/geom_triangle.h
+	geom/geom_volume.h
+)
+
 set(SRC_UTIL_HEADERS
 	../util/util_color.h
 	../util/util_half.h
@@ -144,11 +148,13 @@ if(WITH_CYCLES_CUDA_BINARIES)
 	# warn for other versions
 	if(CUDA_VERSION MATCHES "50")
 	else()
-		message(WARNING "CUDA version ${CUDA_VERSION_MAJOR}.${CUDA_VERSION_MINOR} detected, build may succeed but only CUDA 5.0 is officially supported")
+		message(WARNING
+			"CUDA version ${CUDA_VERSION_MAJOR}.${CUDA_VERSION_MINOR} detected, "
+			"build may succeed but only CUDA 5.0 is officially supported")
 	endif()
 
 	# build for each arch
-	set(cuda_sources kernel.cu ${SRC_HEADERS} ${SRC_SVM_HEADERS} ${SRC_CLOSURE_HEADERS} ${SRC_UTIL_HEADERS})
+	set(cuda_sources kernel.cu ${SRC_HEADERS} ${SRC_SVM_HEADERS} ${SRC_GEOM_HEADERS} ${SRC_CLOSURE_HEADERS} ${SRC_UTIL_HEADERS})
 	set(cuda_cubins)
 
 	foreach(arch ${CYCLES_CUDA_BINARIES_ARCH})
@@ -159,7 +165,7 @@ if(WITH_CYCLES_CUDA_BINARIES)
 		# CUDA 5.x build flags for different archs
 		if(${arch} MATCHES "sm_2[0-9]")
 			# sm_2x
-			set(cuda_arch_flags "--maxrregcount=32")
+			set(cuda_arch_flags "--maxrregcount=40")
 		elseif(${arch} MATCHES "sm_3[0-9]")
 			# sm_3x
 			set(cuda_arch_flags "--maxrregcount=32")
@@ -172,7 +178,21 @@ if(WITH_CYCLES_CUDA_BINARIES)
 		else()
 			add_custom_command(
 				OUTPUT ${cuda_cubin}
-				COMMAND ${CUDA_NVCC_EXECUTABLE} -arch=${arch} -m${CUDA_BITS} --cubin ${CMAKE_CURRENT_SOURCE_DIR}/kernel.cu -o ${CMAKE_CURRENT_BINARY_DIR}/${cuda_cubin} --ptxas-options="-v" ${cuda_arch_flags} ${cuda_version_flags} ${cuda_math_flags} -I${CMAKE_CURRENT_SOURCE_DIR}/../util -I${CMAKE_CURRENT_SOURCE_DIR}/svm -DCCL_NAMESPACE_BEGIN= -DCCL_NAMESPACE_END= -DNVCC
+				COMMAND ${CUDA_NVCC_EXECUTABLE}
+				        -arch=${arch}
+				        -m${CUDA_BITS}
+				        --cubin ${CMAKE_CURRENT_SOURCE_DIR}/kernel.cu
+				        -o ${CMAKE_CURRENT_BINARY_DIR}/${cuda_cubin}
+				        --ptxas-options="-v"
+				        ${cuda_arch_flags}
+				        ${cuda_version_flags}
+				        ${cuda_math_flags}
+				        -I${CMAKE_CURRENT_SOURCE_DIR}/../util
+				        -I${CMAKE_CURRENT_SOURCE_DIR}/svm
+				        -DCCL_NAMESPACE_BEGIN=
+				        -DCCL_NAMESPACE_END=
+				        -DNVCC
+
 				DEPENDS ${cuda_sources})
 
 			delayed_install("${CMAKE_CURRENT_BINARY_DIR}" "${cuda_cubin}" ${CYCLES_INSTALL_PATH}/lib)
@@ -195,12 +215,22 @@ endif()
 include_directories(${INC})
 include_directories(SYSTEM ${INC_SYS})
 
-set_source_files_properties(kernel_sse2.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_SSE2_KERNEL_FLAGS}")
-set_source_files_properties(kernel_sse3.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_SSE3_KERNEL_FLAGS}")
-set_source_files_properties(kernel_sse41.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_SSE41_KERNEL_FLAGS}")
-set_source_files_properties(kernel_avx.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_AVX_KERNEL_FLAGS}")
+if(CXX_HAS_SSE)
+	list(APPEND SRC
+		kernel_sse2.cpp
+		kernel_sse3.cpp
+		kernel_sse41.cpp
+		kernel_avx.cpp
+	)
 
-add_library(cycles_kernel ${SRC} ${SRC_HEADERS} ${SRC_CLOSURE_HEADERS} ${SRC_SVM_HEADERS})
+	set_source_files_properties(kernel_sse2.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_SSE2_KERNEL_FLAGS}")
+	set_source_files_properties(kernel_sse3.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_SSE3_KERNEL_FLAGS}")
+	set_source_files_properties(kernel_sse41.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_SSE41_KERNEL_FLAGS}")
+	set_source_files_properties(kernel_avx.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_AVX_KERNEL_FLAGS}")
+endif()
+
+
+add_library(cycles_kernel ${SRC} ${SRC_HEADERS} ${SRC_CLOSURE_HEADERS} ${SRC_SVM_HEADERS} ${SRC_GEOM_HEADERS})
 
 if(WITH_CYCLES_CUDA)
 	add_dependencies(cycles_kernel cycles_kernel_cuda)
@@ -221,5 +251,6 @@ delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernel.cu" ${CYCLES_INSTALL_PATH}/k
 delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "${SRC_HEADERS}" ${CYCLES_INSTALL_PATH}/kernel)
 delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "${SRC_CLOSURE_HEADERS}" ${CYCLES_INSTALL_PATH}/kernel/closure)
 delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "${SRC_SVM_HEADERS}" ${CYCLES_INSTALL_PATH}/kernel/svm)
+delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "${SRC_GEOM_HEADERS}" ${CYCLES_INSTALL_PATH}/kernel/geom)
 delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "${SRC_UTIL_HEADERS}" ${CYCLES_INSTALL_PATH}/kernel)
 

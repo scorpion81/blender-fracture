@@ -38,7 +38,6 @@
 #include "BLI_utildefines.h"
 #include "BLI_math.h"
 #include "BLI_edgehash.h"
-#include "BLI_utildefines.h"
 #include "BLI_linklist.h"
 
 #include "BKE_cdderivedmesh.h"
@@ -99,6 +98,8 @@ void cloth_init(ClothModifierData *clmd )
 	clmd->sim_parms->preroll = 0;
 	clmd->sim_parms->maxspringlen = 10;
 	clmd->sim_parms->vgroup_mass = 0;
+	clmd->sim_parms->vgroup_shrink = 0;
+	clmd->sim_parms->shrink_min = 0.0f; /* min amount the fabric will shrink by 0.0 = no shrinking, 1.0 = shrink to nothing*/
 	clmd->sim_parms->avg_spring_len = 0.0;
 	clmd->sim_parms->presets = 2; /* cotton as start setting */
 	clmd->sim_parms->timescale = 1.0f; /* speed factor, describes how fast cloth moves */
@@ -375,7 +376,7 @@ static int do_step_cloth(Object *ob, ClothModifierData *clmd, DerivedMesh *resul
 		mul_m4_v3(ob->obmat, verts->xconst);
 	}
 
-	effectors = pdInitEffectors(clmd->scene, ob, NULL, clmd->sim_parms->effector_weights);
+	effectors = pdInitEffectors(clmd->scene, ob, NULL, clmd->sim_parms->effector_weights, true);
 
 	/* Support for dynamic vertex groups, changing from frame to frame */
 	cloth_apply_vgroup ( clmd, result );
@@ -620,8 +621,8 @@ void cloth_free_modifier(ClothModifierData *clmd )
 		if ( cloth->mfaces )
 			MEM_freeN ( cloth->mfaces );
 		
-		if (cloth->edgehash)
-			BLI_edgehash_free ( cloth->edgehash, NULL );
+		if (cloth->edgeset)
+			BLI_edgeset_free(cloth->edgeset);
 		
 		
 		/*
@@ -689,8 +690,8 @@ void cloth_free_modifier_extern(ClothModifierData *clmd )
 		if ( cloth->mfaces )
 			MEM_freeN ( cloth->mfaces );
 
-		if (cloth->edgehash)
-			BLI_edgehash_free ( cloth->edgehash, NULL );
+		if (cloth->edgeset)
+			BLI_edgeset_free(cloth->edgeset);
 
 
 		/*
@@ -737,6 +738,7 @@ int cloth_uses_vgroup(ClothModifierData *clmd)
 		((clmd->sim_parms->vgroup_mass>0) || 
 		(clmd->sim_parms->vgroup_struct>0)||
 		(clmd->sim_parms->vgroup_bend>0)  ||
+		(clmd->sim_parms->vgroup_shrink>0) ||
 		(clmd->coll_parms->vgroup_selfcol>0)));
 }
 
@@ -809,12 +811,25 @@ static void cloth_apply_vgroup ( ClothModifierData *clmd, DerivedMesh *dm )
 								verts->flags |= CLOTH_VERT_FLAG_NOSELFCOLL;
 							}
 						}
+
+					if (clmd->sim_parms->vgroup_shrink > 0 )
+					{
+						if ( dvert->dw[j].def_nr == (clmd->sim_parms->vgroup_shrink-1))
+						{
+							verts->shrink_factor = clmd->sim_parms->shrink_min*(1.0f-dvert->dw[j].weight)+clmd->sim_parms->shrink_max*dvert->dw [j].weight; // linear interpolation between min and max shrink factor based on weight
+						}
+					}
+					else {
+						verts->shrink_factor = clmd->sim_parms->shrink_min;
+					}
+
 					}
 				}
 			}
 		}
 	}
 }
+
 
 static int cloth_from_object(Object *ob, ClothModifierData *clmd, DerivedMesh *dm, float UNUSED(framenr), int first)
 {
@@ -839,7 +854,7 @@ static int cloth_from_object(Object *ob, ClothModifierData *clmd, DerivedMesh *d
 		clmd->clothObject->old_solver_type = 255;
 		// clmd->clothObject->old_collision_type = 255;
 		cloth = clmd->clothObject;
-		clmd->clothObject->edgehash = NULL;
+		clmd->clothObject->edgeset = NULL;
 	}
 	else if (!clmd->clothObject) {
 		modifier_setError(&(clmd->modifier), "Out of memory on allocating clmd->clothObject");
@@ -1047,9 +1062,9 @@ static void cloth_free_errorsprings(Cloth *cloth,  LinkNode **edgelist)
 
 	cloth_free_edgelist(edgelist, cloth->numverts);
 	
-	if (cloth->edgehash) {
-		BLI_edgehash_free(cloth->edgehash, NULL);
-		cloth->edgehash = NULL;
+	if (cloth->edgeset) {
+		BLI_edgeset_free(cloth->edgeset);
+		cloth->edgeset = NULL;
 	}
 }
 
@@ -1103,24 +1118,25 @@ static int cloth_build_springs ( ClothModifierData *clmd, DerivedMesh *dm )
 	unsigned int numverts = (unsigned int)dm->getNumVerts (dm);
 	unsigned int numedges = (unsigned int)dm->getNumEdges (dm);
 	unsigned int numfaces = (unsigned int)dm->getNumTessFaces (dm);
+	float shrink_factor;
 	MEdge *medge = dm->getEdgeArray (dm);
 	MFace *mface = dm->getTessFaceArray (dm);
 	int index2 = 0; // our second vertex index
 	LinkNode **edgelist = NULL;
-	EdgeHash *edgehash = NULL;
+	EdgeSet *edgeset = NULL;
 	LinkNode *search = NULL, *search2 = NULL;
 	
 	// error handling
 	if ( numedges==0 )
 		return 0;
 
-	/* NOTE: handling ownership of springs and edgehash is quite sloppy
+	/* NOTE: handling ownership of springs and edgeset is quite sloppy
 	 * currently they are never initialized but assert just to be sure */
 	BLI_assert(cloth->springs == NULL);
-	BLI_assert(cloth->edgehash == NULL);
+	BLI_assert(cloth->edgeset == NULL);
 
 	cloth->springs = NULL;
-	cloth->edgehash = NULL;
+	cloth->edgeset = NULL;
 
 	edgelist = MEM_callocN ( sizeof (LinkNode *) * numverts, "cloth_edgelist_alloc" );
 	
@@ -1133,15 +1149,27 @@ static int cloth_build_springs ( ClothModifierData *clmd, DerivedMesh *dm )
 
 		if ( spring ) {
 			spring_verts_ordered_set(spring, medge[i].v1, medge[i].v2);
-			spring->restlen = len_v3v3(cloth->verts[spring->kl].xrest, cloth->verts[spring->ij].xrest);
+			if (clmd->sim_parms->flags & CLOTH_SIMSETTINGS_FLAG_SEW && medge[i].flag & ME_LOOSEEDGE) {
+				// handle sewing (loose edges will be pulled together)
+				spring->restlen = 0.0f;
+				spring->stiffness = 1.0f;
+				spring->type = CLOTH_SPRING_TYPE_SEWING;
+			}
+			else {
+				if (clmd->sim_parms->vgroup_shrink > 0)
+					shrink_factor = 1.0f - ((cloth->verts[spring->ij].shrink_factor + cloth->verts[spring->kl].shrink_factor) / 2.0f);
+				else
+					shrink_factor = 1.0f - clmd->sim_parms->shrink_min;
+				spring->restlen = len_v3v3(cloth->verts[spring->kl].xrest, cloth->verts[spring->ij].xrest) * shrink_factor;
+				spring->stiffness = (cloth->verts[spring->kl].struct_stiff + cloth->verts[spring->ij].struct_stiff) / 2.0f;
+				spring->type = CLOTH_SPRING_TYPE_STRUCTURAL;
+			}
 			clmd->sim_parms->avg_spring_len += spring->restlen;
 			cloth->verts[spring->ij].avg_spring_len += spring->restlen;
 			cloth->verts[spring->kl].avg_spring_len += spring->restlen;
 			cloth->verts[spring->ij].spring_count++;
 			cloth->verts[spring->kl].spring_count++;
-			spring->type = CLOTH_SPRING_TYPE_STRUCTURAL;
 			spring->flags = 0;
-			spring->stiffness = (cloth->verts[spring->kl].struct_stiff + cloth->verts[spring->ij].struct_stiff) / 2.0f;
 			struct_springs++;
 			
 			BLI_linklist_prepend ( &cloth->springs, spring );
@@ -1173,7 +1201,11 @@ static int cloth_build_springs ( ClothModifierData *clmd, DerivedMesh *dm )
 		}
 
 		spring_verts_ordered_set(spring, mface[i].v1, mface[i].v3);
-		spring->restlen = len_v3v3(cloth->verts[spring->kl].xrest, cloth->verts[spring->ij].xrest);
+		if (clmd->sim_parms->vgroup_shrink > 0)
+			shrink_factor = 1.0f - ((cloth->verts[spring->ij].shrink_factor + cloth->verts[spring->kl].shrink_factor) / 2.0f);
+		else
+			shrink_factor = 1.0f - clmd->sim_parms->shrink_min;
+		spring->restlen = len_v3v3(cloth->verts[spring->kl].xrest, cloth->verts[spring->ij].xrest) * shrink_factor;
 		spring->type = CLOTH_SPRING_TYPE_SHEAR;
 		spring->stiffness = (cloth->verts[spring->kl].shear_stiff + cloth->verts[spring->ij].shear_stiff) / 2.0f;
 
@@ -1193,7 +1225,11 @@ static int cloth_build_springs ( ClothModifierData *clmd, DerivedMesh *dm )
 		}
 
 		spring_verts_ordered_set(spring, mface[i].v2, mface[i].v4);
-		spring->restlen = len_v3v3(cloth->verts[spring->kl].xrest, cloth->verts[spring->ij].xrest);
+		if (clmd->sim_parms->vgroup_shrink > 0)
+			shrink_factor = 1.0f - ((cloth->verts[spring->ij].shrink_factor + cloth->verts[spring->kl].shrink_factor) / 2.0f);
+		else
+			shrink_factor = 1.0f - clmd->sim_parms->shrink_min;
+		spring->restlen = len_v3v3(cloth->verts[spring->kl].xrest, cloth->verts[spring->ij].xrest) * shrink_factor;
 		spring->type = CLOTH_SPRING_TYPE_SHEAR;
 		spring->stiffness = (cloth->verts[spring->kl].shear_stiff + cloth->verts[spring->ij].shear_stiff) / 2.0f;
 
@@ -1204,8 +1240,8 @@ static int cloth_build_springs ( ClothModifierData *clmd, DerivedMesh *dm )
 		BLI_linklist_prepend ( &cloth->springs, spring );
 	}
 
-	edgehash = BLI_edgehash_new_ex(__func__, numedges);
-	cloth->edgehash = edgehash;
+	edgeset = BLI_edgeset_new_ex(__func__, numedges);
+	cloth->edgeset = edgeset;
 
 	if (numfaces) {
 		// bending springs
@@ -1223,7 +1259,7 @@ static int cloth_build_springs ( ClothModifierData *clmd, DerivedMesh *dm )
 				// check for existing spring
 				// check also if startpoint is equal to endpoint
 				if ((index2 != tspring2->ij) &&
-				    !BLI_edgehash_haskey(edgehash, tspring2->ij, index2))
+				    !BLI_edgeset_haskey(edgeset, tspring2->ij, index2))
 				{
 					spring = (ClothSpring *)MEM_callocN ( sizeof ( ClothSpring ), "cloth spring" );
 
@@ -1236,7 +1272,7 @@ static int cloth_build_springs ( ClothModifierData *clmd, DerivedMesh *dm )
 					spring->restlen = len_v3v3(cloth->verts[spring->kl].xrest, cloth->verts[spring->ij].xrest);
 					spring->type = CLOTH_SPRING_TYPE_BENDING;
 					spring->stiffness = (cloth->verts[spring->kl].bend_stiff + cloth->verts[spring->ij].bend_stiff) / 2.0f;
-					BLI_edgehash_insert(edgehash, spring->ij, spring->kl, NULL);
+					BLI_edgeset_insert(edgeset, spring->ij, spring->kl);
 					bend_springs++;
 
 					BLI_linklist_prepend ( &cloth->springs, spring );
@@ -1285,16 +1321,16 @@ static int cloth_build_springs ( ClothModifierData *clmd, DerivedMesh *dm )
 	
 	/* note: the edges may already exist so run reinsert */
 
-	/* insert other near springs in edgehash AFTER bending springs are calculated (for selfcolls) */
+	/* insert other near springs in edgeset AFTER bending springs are calculated (for selfcolls) */
 	for (i = 0; i < numedges; i++) { /* struct springs */
-		BLI_edgehash_reinsert(edgehash, medge[i].v1, medge[i].v2, NULL);
+		BLI_edgeset_reinsert(edgeset, medge[i].v1, medge[i].v2);
 	}
 
 	for (i = 0; i < numfaces; i++) { /* edge springs */
 		if (mface[i].v4) {
-			BLI_edgehash_reinsert(edgehash, mface[i].v1, mface[i].v3, NULL);
+			BLI_edgeset_reinsert(edgeset, mface[i].v1, mface[i].v3);
 			
-			BLI_edgehash_reinsert(edgehash, mface[i].v2, mface[i].v4, NULL);
+			BLI_edgeset_reinsert(edgeset, mface[i].v2, mface[i].v4);
 		}
 	}
 	

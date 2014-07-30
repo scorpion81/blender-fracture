@@ -55,7 +55,7 @@ void BKE_object_workob_clear(struct Object *workob);
 void BKE_object_workob_calc_parent(struct Scene *scene, struct Object *ob, struct Object *workob);
 
 void BKE_object_transform_copy(struct Object *ob_tar, const struct Object *ob_src);
-struct SoftBody *copy_softbody(struct SoftBody *sb, int copy_caches);
+struct SoftBody *copy_softbody(struct SoftBody *sb, bool copy_caches);
 struct BulletSoftBody *copy_bulletsoftbody(struct BulletSoftBody *sb);
 void BKE_object_copy_particlesystems(struct Object *obn, struct Object *ob);
 void BKE_object_copy_softbody(struct Object *obn, struct Object *ob);
@@ -92,12 +92,12 @@ void *BKE_object_obdata_add_from_type(struct Main *bmain, int type);
 void BKE_object_lod_add(struct Object *ob);
 void BKE_object_lod_sort(struct Object *ob);
 bool BKE_object_lod_remove(struct Object *ob, int level);
-bool BKE_object_lod_update(struct Object *ob, float camera_position[3]);
+void BKE_object_lod_update(struct Object *ob, const float camera_position[3]);
 bool BKE_object_lod_is_usable(struct Object *ob, struct Scene *scene);
 struct Object *BKE_object_lod_meshob_get(struct Object *ob, struct Scene *scene);
 struct Object *BKE_object_lod_matob_get(struct Object *ob, struct Scene *scene);
 
-struct Object *BKE_object_copy_ex(struct Main *bmain, struct Object *ob, int copy_caches);
+struct Object *BKE_object_copy_ex(struct Main *bmain, struct Object *ob, bool copy_caches);
 struct Object *BKE_object_copy(struct Object *ob);
 void BKE_object_make_local(struct Object *ob);
 bool BKE_object_is_libdata(struct Object *ob);
@@ -129,7 +129,7 @@ bool BKE_boundbox_ray_hit_check(struct BoundBox *bb, const float ray_start[3], c
 
 struct BoundBox *BKE_object_boundbox_get(struct Object *ob);
 void BKE_object_dimensions_get(struct Object *ob, float vec[3]);
-void BKE_object_dimensions_set(struct Object *ob, const float *value);
+void BKE_object_dimensions_set(struct Object *ob, const float value[3]);
 void BKE_object_empty_draw_type_set(struct Object *ob, const int value);
 void BKE_object_boundbox_flag(struct Object *ob, int flag, int set);
 void BKE_object_minmax(struct Object *ob, float r_min[3], float r_max[3], const bool use_hidden);
@@ -167,13 +167,14 @@ void BKE_object_tfm_protected_restore(struct Object *ob,
 void BKE_object_handle_update(struct EvaluationContext *eval_ctx, struct Scene *scene, struct Object *ob);
 void BKE_object_handle_update_ex(struct EvaluationContext *eval_ctx,
                                  struct Scene *scene, struct Object *ob,
-                                 struct RigidBodyWorld *rbw);
+                                 struct RigidBodyWorld *rbw,
+                                 const bool do_proxy_update);
 void BKE_object_sculpt_modifiers_changed(struct Object *ob);
 
 int BKE_object_obdata_texspace_get(struct Object *ob, short **r_texflag, float **r_loc, float **r_size, float **r_rot);
 
 int BKE_object_insert_ptcache(struct Object *ob);
-// void object_delete_ptcache(struct Object *ob, int index);
+void BKE_object_delete_ptcache(struct Object *ob, int index);
 struct KeyBlock *BKE_object_insert_shape_key(struct Scene *scene, struct Object *ob, const char *name, const bool from_mix);
 
 bool BKE_object_is_child_recursive(struct Object *ob_parent, struct Object *ob_child);

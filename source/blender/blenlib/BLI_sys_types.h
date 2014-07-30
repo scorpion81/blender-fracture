@@ -147,17 +147,6 @@ typedef unsigned __int64 uint64_t;
 #  endif // _WIN64 ]
 #endif // SIZE_MAX ]
 
-// WCHAR_MIN and WCHAR_MAX are also defined in <wchar.h>
-#ifndef WCHAR_MIN // [
-#  define WCHAR_MIN  0
-#endif  // WCHAR_MIN ]
-#ifndef WCHAR_MAX // [
-#  define WCHAR_MAX  _UI16_MAX
-#endif  // WCHAR_MAX ]
-
-#define WINT_MIN  0
-#define WINT_MAX  _UI16_MAX
-
 #endif // __STDC_LIMIT_MACROS ]
 
 #ifndef _INTPTR_T_DEFINED
@@ -208,9 +197,8 @@ typedef uint64_t u_int64_t;
 
 #endif /* ifdef platform for types */
 
+#include <stddef.h>  /* size_t define */
 
-/* note: use of (int, TRUE / FALSE) is deprecated,
- * use (bool, true / false) instead */
 #ifdef HAVE_STDBOOL_H
 # include <stdbool.h>
 #elif !defined(__bool_true_false_are_defined) && !defined(__BOOL_DEFINED)
@@ -229,21 +217,6 @@ typedef bool _BLI_Bool;
 # define true 1
 # define __bool_true_false_are_defined 1
 #endif
-
-/* remove this when we're ready to remove TRUE/FALSE completely */
-#ifdef WITH_BOOL_COMPAT
-/* interim until all occurrences of these can be updated to stdbool */
-/* XXX Why not use the true/false velues here? */
-# ifndef FALSE
-#   define FALSE 0
-# endif
-
-# ifndef TRUE
-#   define TRUE 1
-# endif
-#endif
-
-
 
 #ifdef __cplusplus 
 }

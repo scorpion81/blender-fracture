@@ -127,7 +127,7 @@ void OBJECT_OT_material_slot_add(wmOperatorType *ot)
 	ot->poll = ED_operator_object_active_editable;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
 static int material_slot_remove_exec(bContext *C, wmOperator *op)
@@ -164,7 +164,7 @@ void OBJECT_OT_material_slot_remove(wmOperatorType *ot)
 	ot->poll = ED_operator_object_active_editable;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
 static int material_slot_assign_exec(bContext *C, wmOperator *UNUSED(op))
@@ -226,10 +226,10 @@ void OBJECT_OT_material_slot_assign(wmOperatorType *ot)
 	ot->poll = ED_operator_object_active_editable;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
-static int material_slot_de_select(bContext *C, int select)
+static int material_slot_de_select(bContext *C, bool select)
 {
 	Object *ob = ED_object_context(C);
 
@@ -295,7 +295,7 @@ static int material_slot_de_select(bContext *C, int select)
 
 static int material_slot_select_exec(bContext *C, wmOperator *UNUSED(op))
 {
-	return material_slot_de_select(C, 1);
+	return material_slot_de_select(C, true);
 }
 
 void OBJECT_OT_material_slot_select(wmOperatorType *ot)
@@ -309,12 +309,12 @@ void OBJECT_OT_material_slot_select(wmOperatorType *ot)
 	ot->exec = material_slot_select_exec;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
 static int material_slot_deselect_exec(bContext *C, wmOperator *UNUSED(op))
 {
-	return material_slot_de_select(C, 0);
+	return material_slot_de_select(C, false);
 }
 
 void OBJECT_OT_material_slot_deselect(wmOperatorType *ot)
@@ -328,7 +328,7 @@ void OBJECT_OT_material_slot_deselect(wmOperatorType *ot)
 	ot->exec = material_slot_deselect_exec;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
 
@@ -370,7 +370,7 @@ void OBJECT_OT_material_slot_copy(wmOperatorType *ot)
 	ot->exec = material_slot_copy_exec;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
 /********************** new material operator *********************/
@@ -392,7 +392,7 @@ static int new_material_exec(bContext *C, wmOperator *UNUSED(op))
 
 		if (BKE_scene_use_new_shading_nodes(scene)) {
 			ED_node_shader_default(C, &ma->id);
-			ma->use_nodes = TRUE;
+			ma->use_nodes = true;
 		}
 	}
 
@@ -425,7 +425,7 @@ void MATERIAL_OT_new(wmOperatorType *ot)
 	ot->exec = new_material_exec;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
 /********************** new texture operator *********************/
@@ -474,7 +474,7 @@ void TEXTURE_OT_new(wmOperatorType *ot)
 	ot->exec = new_texture_exec;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
 /********************** new world operator *********************/
@@ -496,7 +496,7 @@ static int new_world_exec(bContext *C, wmOperator *UNUSED(op))
 
 		if (BKE_scene_use_new_shading_nodes(scene)) {
 			ED_node_shader_default(C, &wo->id);
-			wo->use_nodes = TRUE;
+			wo->use_nodes = true;
 		}
 	}
 
@@ -529,7 +529,7 @@ void WORLD_OT_new(wmOperatorType *ot)
 	ot->exec = new_world_exec;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
 /********************** render layer operators *********************/
@@ -541,6 +541,7 @@ static int render_layer_add_exec(bContext *C, wmOperator *UNUSED(op))
 	BKE_scene_add_render_layer(scene, NULL);
 	scene->r.actlay = BLI_countlist(&scene->r.layers) - 1;
 
+	DAG_id_tag_update(&scene->id, 0);
 	WM_event_add_notifier(C, NC_SCENE | ND_RENDER_OPTIONS, scene);
 	
 	return OPERATOR_FINISHED;
@@ -557,7 +558,7 @@ void SCENE_OT_render_layer_add(wmOperatorType *ot)
 	ot->exec = render_layer_add_exec;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
 static int render_layer_remove_exec(bContext *C, wmOperator *UNUSED(op))
@@ -568,6 +569,7 @@ static int render_layer_remove_exec(bContext *C, wmOperator *UNUSED(op))
 	if (!BKE_scene_remove_render_layer(CTX_data_main(C), scene, rl))
 		return OPERATOR_CANCELLED;
 
+	DAG_id_tag_update(&scene->id, 0);
 	WM_event_add_notifier(C, NC_SCENE | ND_RENDER_OPTIONS, scene);
 	
 	return OPERATOR_FINISHED;
@@ -584,7 +586,7 @@ void SCENE_OT_render_layer_remove(wmOperatorType *ot)
 	ot->exec = render_layer_remove_exec;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
 #ifdef WITH_FREESTYLE
@@ -634,7 +636,7 @@ void SCENE_OT_freestyle_module_add(wmOperatorType *ot)
 	ot->exec = freestyle_module_add_exec;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
 static int freestyle_module_remove_exec(bContext *C, wmOperator *UNUSED(op))
@@ -663,7 +665,7 @@ void SCENE_OT_freestyle_module_remove(wmOperatorType *ot)
 	ot->exec = freestyle_module_remove_exec;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
 static int freestyle_module_move_exec(bContext *C, wmOperator *op)
@@ -703,7 +705,7 @@ void SCENE_OT_freestyle_module_move(wmOperatorType *ot)
 	ot->exec = freestyle_module_move_exec;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
 	/* props */
 	RNA_def_enum(ot->srna, "direction", direction_items, 0, "Direction", "Direction to move, UP or DOWN");
@@ -732,7 +734,7 @@ void SCENE_OT_freestyle_lineset_add(wmOperatorType *ot)
 	ot->exec = freestyle_lineset_add_exec;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
 static int freestyle_active_lineset_poll(bContext *C)
@@ -741,7 +743,7 @@ static int freestyle_active_lineset_poll(bContext *C)
 	SceneRenderLayer *srl = BLI_findlink(&scene->r.layers, scene->r.actlay);
 
 	if (!srl) {
-		return FALSE;
+		return false;
 	}
 
 	return BKE_freestyle_lineset_get_active(&srl->freestyleConfig) != NULL;
@@ -771,7 +773,7 @@ void SCENE_OT_freestyle_lineset_copy(wmOperatorType *ot)
 	ot->poll = freestyle_active_lineset_poll;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
 static int freestyle_lineset_paste_exec(bContext *C, wmOperator *UNUSED(op))
@@ -798,7 +800,7 @@ void SCENE_OT_freestyle_lineset_paste(wmOperatorType *ot)
 	ot->poll = freestyle_active_lineset_poll;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
 static int freestyle_lineset_remove_exec(bContext *C, wmOperator *UNUSED(op))
@@ -825,7 +827,7 @@ void SCENE_OT_freestyle_lineset_remove(wmOperatorType *ot)
 	ot->poll = freestyle_active_lineset_poll;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
 static int freestyle_lineset_move_exec(bContext *C, wmOperator *op)
@@ -863,7 +865,7 @@ void SCENE_OT_freestyle_lineset_move(wmOperatorType *ot)
 	ot->poll = freestyle_active_lineset_poll;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
 	/* props */
 	RNA_def_enum(ot->srna, "direction", direction_items, 0, "Direction", "Direction to move, UP or DOWN");
@@ -904,7 +906,7 @@ void SCENE_OT_freestyle_linestyle_new(wmOperatorType *ot)
 	ot->poll = freestyle_active_lineset_poll;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
 static int freestyle_color_modifier_add_exec(bContext *C, wmOperator *op)
@@ -940,7 +942,7 @@ void SCENE_OT_freestyle_color_modifier_add(wmOperatorType *ot)
 	ot->poll = freestyle_active_lineset_poll;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
 	/* properties */
 	ot->prop = RNA_def_enum(ot->srna, "type", linestyle_color_modifier_type_items, 0, "Type", "");
@@ -979,7 +981,7 @@ void SCENE_OT_freestyle_alpha_modifier_add(wmOperatorType *ot)
 	ot->poll = freestyle_active_lineset_poll;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
 	/* properties */
 	ot->prop = RNA_def_enum(ot->srna, "type", linestyle_alpha_modifier_type_items, 0, "Type", "");
@@ -1018,7 +1020,7 @@ void SCENE_OT_freestyle_thickness_modifier_add(wmOperatorType *ot)
 	ot->poll = freestyle_active_lineset_poll;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
 	/* properties */
 	ot->prop = RNA_def_enum(ot->srna, "type", linestyle_thickness_modifier_type_items, 0, "Type", "");
@@ -1057,7 +1059,7 @@ void SCENE_OT_freestyle_geometry_modifier_add(wmOperatorType *ot)
 	ot->poll = freestyle_active_lineset_poll;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
 	/* properties */
 	ot->prop = RNA_def_enum(ot->srna, "type", linestyle_geometry_modifier_type_items, 0, "Type", "");
@@ -1122,7 +1124,7 @@ void SCENE_OT_freestyle_modifier_remove(wmOperatorType *ot)
 	ot->poll = freestyle_active_lineset_poll;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
 static int freestyle_modifier_copy_exec(bContext *C, wmOperator *op)
@@ -1171,7 +1173,7 @@ void SCENE_OT_freestyle_modifier_copy(wmOperatorType *ot)
 	ot->poll = freestyle_active_lineset_poll;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
 static int freestyle_modifier_move_exec(bContext *C, wmOperator *op)
@@ -1227,7 +1229,7 @@ void SCENE_OT_freestyle_modifier_move(wmOperatorType *ot)
 	ot->poll = freestyle_active_lineset_poll;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
 	/* props */
 	RNA_def_enum(ot->srna, "direction", direction_items, 0, "Direction", "Direction to move, UP or DOWN");
@@ -1316,7 +1318,7 @@ void TEXTURE_OT_slot_move(wmOperatorType *ot)
 	ot->exec = texture_slot_move_exec;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
 	RNA_def_enum(ot->srna, "type", slot_move, 0, "Type", "");
 }
@@ -1409,7 +1411,7 @@ void TEXTURE_OT_envmap_save(wmOperatorType *ot)
 	ot->poll = envmap_save_poll;
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER; /* no undo since this doesnt modify the env-map */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_INTERNAL; /* no undo since this doesnt modify the env-map */
 	
 	/* properties */
 	prop = RNA_def_float_array(ot->srna, "layout", 12, default_envmap_layout, 0.0f, 0.0f,
@@ -1460,7 +1462,7 @@ void TEXTURE_OT_envmap_clear(wmOperatorType *ot)
 	ot->poll = envmap_clear_poll;
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
 static int envmap_clear_all_exec(bContext *C, wmOperator *UNUSED(op))
@@ -1518,7 +1520,7 @@ void MATERIAL_OT_copy(wmOperatorType *ot)
 	ot->exec = copy_material_exec;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER; /* no undo needed since no changes are made to the material */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_INTERNAL; /* no undo needed since no changes are made to the material */
 }
 
 static int paste_material_exec(bContext *C, wmOperator *UNUSED(op))
@@ -1546,7 +1548,7 @@ void MATERIAL_OT_paste(wmOperatorType *ot)
 	ot->exec = paste_material_exec;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
 
@@ -1664,7 +1666,7 @@ void TEXTURE_OT_slot_copy(wmOperatorType *ot)
 	ot->poll = copy_mtex_poll;
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER; /* no undo needed since no changes are made to the mtex */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_INTERNAL; /* no undo needed since no changes are made to the mtex */
 }
 
 static int paste_mtex_exec(bContext *C, wmOperator *UNUSED(op))
@@ -1708,6 +1710,6 @@ void TEXTURE_OT_slot_paste(wmOperatorType *ot)
 	ot->exec = paste_mtex_exec;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 

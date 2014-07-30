@@ -297,12 +297,12 @@ DynamicPaintSurface *get_activeSurface(DynamicPaintCanvasSettings *canvas)
 void dynamicPaint_resetPreview(DynamicPaintCanvasSettings *canvas)
 {
 	DynamicPaintSurface *surface = canvas->surfaces.first;
-	int done = FALSE;
+	bool done = false;
 
 	for (; surface; surface = surface->next) {
 		if (!done && dynamicPaint_surfaceHasColorPreview(surface)) {
 			surface->flags |= MOD_DPAINT_PREVIEW;
-			done = TRUE;
+			done = true;
 		}
 		else
 			surface->flags &= ~MOD_DPAINT_PREVIEW;
@@ -536,7 +536,7 @@ static int subframe_updateObject(Scene *scene, Object *ob, int flags, int parent
 
 		/* also update constraint targets */
 		for (con = ob->constraints.first; con; con = con->next) {
-			bConstraintTypeInfo *cti = BKE_constraint_get_typeinfo(con);
+			bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
 			ListBase targets = {NULL, NULL};
 
 			if (cti && cti->get_constraint_targets) {
@@ -1101,7 +1101,7 @@ DynamicPaintSurface *dynamicPaint_createNewSurface(DynamicPaintCanvasSettings *c
 /*
  * Initialize modifier data
  */
-int dynamicPaint_createType(struct DynamicPaintModifierData *pmd, int type, struct Scene *scene)
+bool dynamicPaint_createType(struct DynamicPaintModifierData *pmd, int type, struct Scene *scene)
 {
 	if (pmd) {
 		if (type == MOD_DYNAMICPAINT_TYPE_CANVAS) {
@@ -1628,7 +1628,7 @@ void dynamicPaint_clearSurface(Scene *scene, DynamicPaintSurface *surface)
 }
 
 /* completely (re)initializes surface (only for point cache types)*/
-int dynamicPaint_resetSurface(Scene *scene, DynamicPaintSurface *surface)
+bool dynamicPaint_resetSurface(Scene *scene, DynamicPaintSurface *surface)
 {
 	int numOfPoints = dynamicPaint_surfaceNumOfPoints(surface);
 	/* free existing data */
@@ -1655,7 +1655,7 @@ int dynamicPaint_resetSurface(Scene *scene, DynamicPaintSurface *surface)
 }
 
 /* make sure allocated surface size matches current requirements */
-static int dynamicPaint_checkSurfaceData(Scene *scene, DynamicPaintSurface *surface)
+static bool dynamicPaint_checkSurfaceData(Scene *scene, DynamicPaintSurface *surface)
 {
 	if (!surface->data || ((dynamicPaint_surfaceNumOfPoints(surface) != surface->data->total_points))) {
 		return dynamicPaint_resetSurface(scene, surface);
@@ -3716,7 +3716,7 @@ static int dynamicPaint_paintParticles(DynamicPaintSurface *surface,
 		/* make sure particle is close enough to canvas */
 		if (!boundIntersectPoint(&grid->grid_bounds, pa->state.co, range)) continue;
 
-		BLI_kdtree_insert(tree, p, pa->state.co, NULL);
+		BLI_kdtree_insert(tree, p, pa->state.co);
 
 		/* calc particle system bounds */
 		boundInsert(&part_bb, pa->state.co);
@@ -3773,7 +3773,7 @@ static int dynamicPaint_paintParticles(DynamicPaintSurface *surface,
 					float smooth_range, part_solidradius;
 
 					/* Find nearest particle and get distance to it	*/
-					BLI_kdtree_find_nearest(tree, bData->realCoord[bData->s_pos[index]].v, NULL, &nearest);
+					BLI_kdtree_find_nearest(tree, bData->realCoord[bData->s_pos[index]].v, &nearest);
 					/* if outside maximum range, no other particle can influence either */
 					if (nearest.dist > range) continue;
 
@@ -3813,7 +3813,7 @@ static int dynamicPaint_paintParticles(DynamicPaintSurface *surface,
 					/* Make gcc happy! */
 					dist = max_range;
 
-					particles = BLI_kdtree_range_search(tree, bData->realCoord[bData->s_pos[index]].v, NULL,
+					particles = BLI_kdtree_range_search(tree, bData->realCoord[bData->s_pos[index]].v,
 					                                    &nearest, max_range);
 
 					/* Find particle that produces highest influence */
@@ -4133,7 +4133,7 @@ static void surface_determineForceTargetPoints(PaintSurfaceData *sData, int inde
 		closest_d[0] = 1.0f - closest_d[1];
 
 		/* and multiply depending on how deeply force intersects surface */
-		temp = fabs(force_intersect);
+		temp = fabsf(force_intersect);
 		CLAMP(temp, 0.0f, 1.0f);
 		mul_v2_fl(closest_d, acosf(temp) / (float)M_PI_2);
 	}
@@ -4225,7 +4225,7 @@ static int dynamicPaint_prepareEffectStep(DynamicPaintSurface *surface, Scene *s
 	/* Init force data if required */
 	if (surface->effect & MOD_DPAINT_EFFECT_DO_DRIP) {
 		float vel[3] = {0};
-		ListBase *effectors = pdInitEffectors(scene, ob, NULL, surface->effector_weights);
+		ListBase *effectors = pdInitEffectors(scene, ob, NULL, surface->effector_weights, true);
 
 		/* allocate memory for force data (dir vector + strength) */
 		*force = MEM_mallocN(sData->total_points * 4 * sizeof(float), "PaintEffectForces");

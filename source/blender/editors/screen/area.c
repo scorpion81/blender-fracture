@@ -151,7 +151,7 @@ void ED_area_do_refresh(bContext *C, ScrArea *sa)
 	if (sa->type && sa->type->refresh) {
 		sa->type->refresh(C, sa);
 	}
-	sa->do_refresh = FALSE;
+	sa->do_refresh = false;
 }
 
 /**
@@ -408,7 +408,7 @@ void ED_region_do_draw(bContext *C, ARegion *ar)
 	/* see BKE_spacedata_draw_locks() */
 	if (at->do_lock)
 		return;
-	
+
 	/* if no partial draw rect set, full rect */
 	if (ar->drawrct.xmin == ar->drawrct.xmax) {
 		ar->drawrct = ar->winrct;
@@ -526,7 +526,7 @@ void ED_area_tag_redraw_regiontype(ScrArea *sa, int regiontype)
 void ED_area_tag_refresh(ScrArea *sa)
 {
 	if (sa)
-		sa->do_refresh = TRUE;
+		sa->do_refresh = true;
 }
 
 /* *************************************************************** */
@@ -559,7 +559,7 @@ void ED_area_headerprint(ScrArea *sa, const char *str)
 /* ************************************************************ */
 
 
-static void area_azone_initialize(bScreen *screen, ScrArea *sa)
+static void area_azone_initialize(wmWindow *win, bScreen *screen, ScrArea *sa)
 {
 	AZone *az;
 	
@@ -570,15 +570,23 @@ static void area_azone_initialize(bScreen *screen, ScrArea *sa)
 		return;
 	}
 
-	/* set area action zones */
-	az = (AZone *)MEM_callocN(sizeof(AZone), "actionzone");
-	BLI_addtail(&(sa->actionzones), az);
-	az->type = AZONE_AREA;
-	az->x1 = sa->totrct.xmin;
-	az->y1 = sa->totrct.ymin;
-	az->x2 = sa->totrct.xmin + (AZONESPOT - 1);
-	az->y2 = sa->totrct.ymin + (AZONESPOT - 1);
-	BLI_rcti_init(&az->rect, az->x1, az->x2, az->y1, az->y2);
+	/* can't click on bottom corners on OS X, already used for resizing */
+#ifdef __APPLE__
+	if (!(sa->totrct.xmin == 0 && sa->totrct.ymin == 0) || WM_window_is_fullscreen(win))
+#else
+	(void)win;
+#endif
+	{
+		/* set area action zones */
+		az = (AZone *)MEM_callocN(sizeof(AZone), "actionzone");
+		BLI_addtail(&(sa->actionzones), az);
+		az->type = AZONE_AREA;
+		az->x1 = sa->totrct.xmin;
+		az->y1 = sa->totrct.ymin;
+		az->x2 = sa->totrct.xmin + (AZONESPOT - 1);
+		az->y2 = sa->totrct.ymin + (AZONESPOT - 1);
+		BLI_rcti_init(&az->rect, az->x1, az->x2, az->y1, az->y2);
+	}
 	
 	az = (AZone *)MEM_callocN(sizeof(AZone), "actionzone");
 	BLI_addtail(&(sa->actionzones), az);
@@ -913,7 +921,7 @@ static void region_overlap_fix(ScrArea *sa, ARegion *ar)
 }
 
 /* overlapping regions only in the following restricted cases */
-static int region_is_overlap(wmWindow *win, ScrArea *sa, ARegion *ar)
+static bool region_is_overlap(wmWindow *win, ScrArea *sa, ARegion *ar)
 {
 	if (U.uiflag2 & USER_REGION_OVERLAP) {
 		if (WM_is_draw_triple(win)) {
@@ -1274,7 +1282,7 @@ void ED_area_initialize(wmWindowManager *wm, wmWindow *win, ScrArea *sa)
 	area_calc_totrct(sa, WM_window_pixels_x(win), WM_window_pixels_y(win));
 	
 	/* clear all azones, add the area triange widgets */
-	area_azone_initialize(win->screen, sa);
+	area_azone_initialize(win, win->screen, sa);
 
 	/* region rect sizes */
 	rect = sa->totrct;
@@ -1304,6 +1312,27 @@ void ED_area_initialize(wmWindowManager *wm, wmWindow *win, ScrArea *sa)
 	}
 }
 
+static void region_update_rect(ARegion *ar)
+{
+	ar->winx = BLI_rcti_size_x(&ar->winrct) + 1;
+	ar->winy = BLI_rcti_size_y(&ar->winrct) + 1;
+
+	/* v2d mask is used to subtract scrollbars from a 2d view. Needs initialize here. */
+	BLI_rcti_init(&ar->v2d.mask, 0, ar->winx - 1, 0, ar->winy -1);
+}
+
+/**
+ * Call to move a popup window (keep OpenGL context free!)
+ */
+void ED_region_update_rect(bContext *C, ARegion *ar)
+{
+	wmWindow *win = CTX_wm_window(C);
+
+	wm_subwindow_rect_set(win, ar->swinid, &ar->winrct);
+
+	region_update_rect(ar);
+}
+
 /* externally called for floating regions like menus */
 void ED_region_init(bContext *C, ARegion *ar)
 {
@@ -1312,11 +1341,7 @@ void ED_region_init(bContext *C, ARegion *ar)
 	/* refresh can be called before window opened */
 	region_subwindow(CTX_wm_window(C), ar);
 	
-	ar->winx = BLI_rcti_size_x(&ar->winrct) + 1;
-	ar->winy = BLI_rcti_size_y(&ar->winrct) + 1;
-	
-	/* v2d mask is used to subtract scrollbars from a 2d view. Needs initialize here. */
-	BLI_rcti_init(&ar->v2d.mask, 0, ar->winx - 1, 0, ar->winy -1);
+	region_update_rect(ar);
 
 	/* UI convention */
 	wmOrtho2(-0.01f, ar->winx - 0.01f, -0.01f, ar->winy - 0.01f);
@@ -1324,7 +1349,7 @@ void ED_region_init(bContext *C, ARegion *ar)
 }
 
 /* for quick toggle, can skip fades */
-void region_toggle_hidden(bContext *C, ARegion *ar, int do_fade)
+void region_toggle_hidden(bContext *C, ARegion *ar, const bool do_fade)
 {
 	ScrArea *sa = CTX_wm_area(C);
 	
@@ -1349,53 +1374,52 @@ void ED_region_toggle_hidden(bContext *C, ARegion *ar)
 	region_toggle_hidden(C, ar, 1);
 }
 
-/* sa2 to sa1, we swap spaces for fullscreen to keep all allocated data */
-/* area vertices were set */
-void area_copy_data(ScrArea *sa1, ScrArea *sa2, int swap_space)
+/**
+ * we swap spaces for fullscreen to keep all allocated data area vertices were set
+ */
+void ED_area_data_copy(ScrArea *sa_dst, ScrArea *sa_src, const bool do_free)
 {
 	SpaceType *st;
 	ARegion *ar;
-	int spacetype = sa1->spacetype;
+	const char spacetype = sa_dst->spacetype;
 	
-	sa1->headertype = sa2->headertype;
-	sa1->spacetype = sa2->spacetype;
-	sa1->type = sa2->type;
-	sa1->butspacetype = sa2->butspacetype;
-	
-	if (swap_space == 1) {
-		SWAP(ListBase, sa1->spacedata, sa2->spacedata);
-		/* exception: ensure preview is reset */
-//		if (sa1->spacetype == SPACE_VIEW3D)
-// XXX			BIF_view3d_previewrender_free(sa1->spacedata.first);
+	sa_dst->headertype = sa_src->headertype;
+	sa_dst->spacetype = sa_src->spacetype;
+	sa_dst->type = sa_src->type;
+	sa_dst->butspacetype = sa_src->butspacetype;
+
+	/* area */
+	if (do_free) {
+		BKE_spacedata_freelist(&sa_dst->spacedata);
 	}
-	else if (swap_space == 2) {
-		BKE_spacedata_copylist(&sa1->spacedata, &sa2->spacedata);
-	}
-	else {
-		BKE_spacedata_freelist(&sa1->spacedata);
-		BKE_spacedata_copylist(&sa1->spacedata, &sa2->spacedata);
-	}
-	
+	BKE_spacedata_copylist(&sa_dst->spacedata, &sa_src->spacedata);
+
 	/* Note; SPACE_EMPTY is possible on new screens */
-	
+
 	/* regions */
-	if (swap_space == 1) {
-		SWAP(ListBase, sa1->regionbase, sa2->regionbase);
+	if (do_free) {
+		st = BKE_spacetype_from_id(spacetype);
+		for (ar = sa_dst->regionbase.first; ar; ar = ar->next)
+			BKE_area_region_free(st, ar);
+		BLI_freelistN(&sa_dst->regionbase);
 	}
-	else {
-		if (swap_space < 2) {
-			st = BKE_spacetype_from_id(spacetype);
-			for (ar = sa1->regionbase.first; ar; ar = ar->next)
-				BKE_area_region_free(st, ar);
-			BLI_freelistN(&sa1->regionbase);
-		}
-		
-		st = BKE_spacetype_from_id(sa2->spacetype);
-		for (ar = sa2->regionbase.first; ar; ar = ar->next) {
-			ARegion *newar = BKE_area_region_copy(st, ar);
-			BLI_addtail(&sa1->regionbase, newar);
-		}
+	st = BKE_spacetype_from_id(sa_src->spacetype);
+	for (ar = sa_src->regionbase.first; ar; ar = ar->next) {
+		ARegion *newar = BKE_area_region_copy(st, ar);
+		BLI_addtail(&sa_dst->regionbase, newar);
 	}
+}
+
+void ED_area_data_swap(ScrArea *sa_dst, ScrArea *sa_src)
+{
+	sa_dst->headertype = sa_src->headertype;
+	sa_dst->spacetype = sa_src->spacetype;
+	sa_dst->type = sa_src->type;
+	sa_dst->butspacetype = sa_src->butspacetype;
+
+
+	SWAP(ListBase, sa_dst->spacedata, sa_src->spacedata);
+	SWAP(ListBase, sa_dst->regionbase, sa_src->regionbase);
 }
 
 /* *********** Space switching code *********** */
@@ -1407,9 +1431,9 @@ void ED_area_swapspace(bContext *C, ScrArea *sa1, ScrArea *sa2)
 	ED_area_exit(C, sa1);
 	ED_area_exit(C, sa2);
 
-	area_copy_data(tmp, sa1, 2);
-	area_copy_data(sa1, sa2, 0);
-	area_copy_data(sa2, tmp, 0);
+	ED_area_data_copy(tmp, sa1, false);
+	ED_area_data_copy(sa1, sa2, true);
+	ED_area_data_copy(sa2, tmp, true);
 	ED_area_initialize(CTX_wm_manager(C), CTX_wm_window(C), sa1);
 	ED_area_initialize(CTX_wm_manager(C), CTX_wm_window(C), sa2);
 
@@ -1447,7 +1471,7 @@ void ED_area_newspace(bContext *C, ScrArea *sa, int type)
 				break;
 		
 		/* old spacedata... happened during work on 2.50, remove */
-		if (sl && sl->regionbase.first == NULL) {
+		if (sl && BLI_listbase_is_empty(&sl->regionbase)) {
 			st->free(sl);
 			BLI_freelinkN(&sa->spacedata, sl);
 			if (slold == sl) {
@@ -1460,7 +1484,7 @@ void ED_area_newspace(bContext *C, ScrArea *sa, int type)
 			/* swap regions */
 			slold->regionbase = sa->regionbase;
 			sa->regionbase = sl->regionbase;
-			sl->regionbase.first = sl->regionbase.last = NULL;
+			BLI_listbase_clear(&sl->regionbase);
 			
 			/* put in front of list */
 			BLI_remlink(&sa->spacedata, sl);
@@ -1476,7 +1500,7 @@ void ED_area_newspace(bContext *C, ScrArea *sa, int type)
 				if (slold)
 					slold->regionbase = sa->regionbase;
 				sa->regionbase = sl->regionbase;
-				sl->regionbase.first = sl->regionbase.last = NULL;
+				BLI_listbase_clear(&sl->regionbase);
 			}
 		}
 		
@@ -1527,7 +1551,7 @@ int ED_area_header_switchbutton(const bContext *C, uiBlock *block, int yco)
 
 	RNA_pointer_create(&(scr->id), &RNA_Area, sa, &areaptr);
 
-	uiDefButR(block, MENU, 0, NULL, xco, yco, 1.5 * U.widget_unit, U.widget_unit,
+	uiDefButR(block, MENU, 0, "", xco, yco, 1.5 * U.widget_unit, U.widget_unit,
 	          &areaptr, "type", 0, 0.0f, 0.0f, 0.0f, 0.0f, "");
 
 	return xco + 1.7 * U.widget_unit;
@@ -1980,5 +2004,51 @@ void ED_region_visible_rect(ARegion *ar, rcti *rect)
 		}
 	}
 	BLI_rcti_translate(rect, -ar->winrct.xmin, -ar->winrct.ymin);
+}
+
+/* Cache display helpers */
+
+void ED_region_cache_draw_background(const ARegion *ar)
+{
+	glColor4ub(128, 128, 255, 64);
+	glRecti(0, 0, ar->winx, 8 * UI_DPI_FAC);
+}
+
+void ED_region_cache_draw_curfra_label(const int framenr, const float x, const float y)
+{
+	uiStyle *style = UI_GetStyle();
+	int fontid = style->widget.uifont_id;
+	char numstr[32];
+	float font_dims[2] = {0.0f, 0.0f};
+
+	/* frame number */
+	BLF_size(fontid, 11.0f * U.pixelsize, U.dpi);
+	BLI_snprintf(numstr, sizeof(numstr), "%d", framenr);
+
+	BLF_width_and_height(fontid, numstr, sizeof(numstr), &font_dims[0], &font_dims[1]);
+
+	glRecti(x, y, x + font_dims[0] + 6.0f, y + font_dims[1] + 4.0f);
+
+	UI_ThemeColor(TH_TEXT);
+	BLF_position(fontid, x + 2.0f, y + 2.0f, 0.0f);
+	BLF_draw(fontid, numstr, sizeof(numstr));
+}
+
+void ED_region_cache_draw_cached_segments(const ARegion *ar, const int num_segments, const int *points, const int sfra, const int efra)
+{
+	if (num_segments) {
+		int a;
+
+		glColor4ub(128, 128, 255, 128);
+
+		for (a = 0; a < num_segments; a++) {
+			float x1, x2;
+
+			x1 = (float)(points[a * 2] - sfra) / (efra - sfra + 1) * ar->winx;
+			x2 = (float)(points[a * 2 + 1] - sfra + 1) / (efra - sfra + 1) * ar->winx;
+
+			glRecti(x1, 0, x2, 8 * UI_DPI_FAC);
+		}
+	}
 }
 
