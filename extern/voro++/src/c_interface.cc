@@ -47,3 +47,21 @@ void container_print_custom(loop_order* l_order, container* con, const char* for
 	
 	c->print_custom(*lo, format, fp);
 }
+
+void container_free(container* con)
+{
+	voro::container* c = (voro::container*)con;
+	delete c;
+}
+
+void loop_order_free(loop_order* l_order)
+{
+	voro::c_loop_order* lo = (voro::c_loop_order*)l_order;
+	delete lo;
+}
+
+void particle_order_free(particle_order* p_order)
+{
+	voro::particle_order* po = (voro::particle_order*)p_order;
+	delete po;
+}

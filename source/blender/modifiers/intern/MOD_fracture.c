@@ -3001,7 +3001,7 @@ void refresh_customdata_image(Mesh* me, CustomData *pdata, int totface)
 	for (i=0; i < pdata->totlayer; i++) {
 		CustomDataLayer *layer = &pdata->layers[i];
 
-		if (layer->type == CD_MTEXPOLY) {
+		if (layer->type == CD_MTEXPOLY && me->mtpoly) {
 			MTexPoly *tf= layer->data;
 			int j;
 

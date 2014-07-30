@@ -493,7 +493,15 @@ static void parse_neighbors(FILE* fp, int *neighbors, int totpoly)
 
 Shard* BKE_custom_data_to_shard(Shard* s, DerivedMesh* dm)
 {
-	CustomData_copy(&dm->vertData, &s->vertData, CD_MASK_MDEFORMVERT, CD_CALLOC, s->totvert);
+	CustomData_reset(&s->vertData);
+	CustomData_reset(&s->loopData);
+	CustomData_reset(&s->polyData);
+
+	CustomData_add_layer(&s->vertData, CD_MDEFORMVERT, CD_DUPLICATE, CustomData_get_layer(&dm->vertData, CD_MDEFORMVERT), s->totvert);
+	CustomData_add_layer(&s->loopData, CD_MLOOPUV, CD_DUPLICATE, CustomData_get_layer(&dm->loopData, CD_MLOOPUV), s->totloop);
+	CustomData_add_layer(&s->polyData, CD_MTEXPOLY, CD_DUPLICATE, CustomData_get_layer(&dm->polyData, CD_MTEXPOLY), s->totpoly);
+
+	/*CustomData_copy(&dm->vertData, &s->vertData, CD_MASK_MDEFORMVERT, CD_CALLOC, s->totvert);
 	CustomData_copy_data(&dm->vertData, &s->vertData,
 	                     0, 0, s->totvert);
 
@@ -503,7 +511,7 @@ Shard* BKE_custom_data_to_shard(Shard* s, DerivedMesh* dm)
 
 	CustomData_copy(&dm->polyData, &s->polyData, CD_MASK_MTEXPOLY, CD_CALLOC, s->totpoly);
 	CustomData_copy_data(&dm->polyData, &s->polyData,
-	                     0, 0, s->totpoly);
+	                     0, 0, s->totpoly);*/
 
 	return s;
 }
@@ -850,9 +858,12 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 #endif
 	fclose (stream);
 	
-	free(voro_loop_order);
+	loop_order_free(voro_loop_order);
+	particle_order_free(voro_particle_order);
+	container_free(voro_container);
+	/*free(voro_loop_order);
 	free(voro_particle_order);
-	free(voro_container);
+	free(voro_container);*/
 	
 #ifdef USE_DEBUG_TIMER
 	time_start = PIL_check_seconds_timer();
@@ -1097,17 +1108,18 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 
 	if (doCustomData)
 	{
-		CustomData_copy(&s->vertData, &dm->vertData, CD_MASK_MDEFORMVERT, CD_CALLOC, s->totvert);
-		CustomData_copy_data(&s->vertData, &dm->vertData,
-		                     0, 0, s->totvert);
+		//CustomData_copy(&s->vertData, &dm->vertData, CD_MASK_MDEFORMVERT, CD_CALLOC, s->totvert);
+		//CustomData_copy_data(&s->vertData, &dm->vertData, 0, 0, s->totvert);
 
-		//CustomData_free_layers(&dm->loopData, CD_MLOOPUV, s->totloop);
-		CustomData_copy(&s->loopData, &dm->loopData, CD_MASK_MLOOPUV, CD_CALLOC, s->totloop);
-		CustomData_copy_data(&s->loopData, &dm->loopData, 0, 0, s->totloop);
+		CustomData_add_layer(&dm->vertData, CD_MDEFORMVERT, CD_DUPLICATE, CustomData_get_layer(&s->vertData, CD_MDEFORMVERT), s->totvert);
+		CustomData_add_layer(&dm->loopData, CD_MLOOPUV, CD_DUPLICATE, CustomData_get_layer(&s->loopData, CD_MLOOPUV), s->totloop);
+		CustomData_add_layer(&dm->polyData, CD_MTEXPOLY, CD_DUPLICATE, CustomData_get_layer(&s->polyData, CD_MTEXPOLY), s->totpoly);
 
-		//CustomData_free_layers(&dm->polyData, CD_MTEXPOLY, s->totpoly);
-		CustomData_copy(&s->polyData, &dm->polyData, CD_MASK_MTEXPOLY, CD_CALLOC, s->totpoly);
-		CustomData_copy_data(&s->polyData, &dm->polyData, 0, 0, s->totpoly);
+		//CustomData_copy(&s->loopData, &dm->loopData, CD_MASK_MLOOPUV, CD_CALLOC, s->totloop);
+		//CustomData_copy_data(&s->loopData, &dm->loopData, 0, 0, s->totloop);
+
+		//CustomData_copy(&s->polyData, &dm->polyData, CD_MASK_MTEXPOLY, CD_CALLOC, s->totpoly);
+		//CustomData_copy_data(&s->polyData, &dm->polyData, 0, 0, s->totpoly);
 	}
 
 	return dm;

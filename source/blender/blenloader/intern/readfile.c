@@ -4652,9 +4652,9 @@ static MeshIsland* read_meshIsland(FileData* fd, void* address)
 	mi->vertco = newdataadr(fd, mi->vertco);
 	mi->temp = newdataadr(fd, mi->temp);
 	temp = read_shard(fd, mi->temp);
-	mi->physics_mesh = BKE_shard_create_dm(mi->temp, false);
-	BKE_shard_free(temp, false);
-	//MEM_freeN(mi->temp);
+	mi->physics_mesh = BKE_shard_create_dm(mi->temp, true);
+	BKE_shard_free(temp, true);
+	mi->temp = NULL;
 	mi->vertno = NULL;
 
 	mi->rigidbody = newdataadr(fd, mi->rigidbody);

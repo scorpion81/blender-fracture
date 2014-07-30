@@ -2591,18 +2591,19 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			me = (Mesh*)ob_new->data;
 			me->edit_btmesh = NULL;
 
+/*
 			CustomData_reset(&me->vdata);
 			CustomData_reset(&me->edata);
 			CustomData_reset(&me->ldata);
 			CustomData_reset(&me->fdata);
-			CustomData_reset(&me->pdata);
+			CustomData_reset(&me->pdata); */
 
 			DM_to_mesh(mi->physics_mesh, me, ob_new, CD_MASK_MESH);
 
-			for (j = 0, v = me->mvert; j < me->totvert; j++, v++)
+/*			for (j = 0, v = me->mvert; j < me->totvert; j++, v++)
 			{
 				sub_v3_v3(v->co, mi->centroid);
-			}
+			}*/
 			
 			//set origin to centroid
 			copy_v3_v3(cent, mi->centroid);
@@ -2618,11 +2619,11 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 			i++;
 			
 			//parent to an empty, optionally, convenient for usage with blender destructability editor
-			if (par)
+/*			if (par)
 			{
 				sub_v3_v3(ob_new->loc, par->loc);
 				ED_object_parent_set(reports, G.main, scene, ob_new, par, PAR_OBJECT, false, false, NULL);
-			}
+			}*/
 			
 			//ED_base_object_select(base_new, BA_SELECT);
 			BKE_rigidbody_remove_shard(scene, mi);
