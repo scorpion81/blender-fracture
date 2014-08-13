@@ -3090,6 +3090,13 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 				ml = fmd->visible_mesh_cached->getLoopArray(fmd->visible_mesh_cached);
 				ivert = fmd->visible_mesh_cached->getVertDataArray(fmd->visible_mesh_cached, CD_MDEFORMVERT);
 
+				if (ivert == NULL)
+				{	//add, if not there
+					int totvert = fmd->visible_mesh_cached->getNumVerts(fmd->visible_mesh_cached);
+					ivert = CustomData_add_layer(&fmd->visible_mesh_cached->vertData, CD_MDEFORMVERT, CD_CALLOC,
+				                      NULL, totvert);
+				}
+
 
 				for (i = 0; i < fmd->frac_mesh->shard_count; i++)
 				{
@@ -3195,15 +3202,6 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 
 					if (fmd->inner_defgrp_name[0]) {
 						int index = 0;
-						int totvert = fmd->visible_mesh_cached->getNumVerts(fmd->visible_mesh_cached);
-						if (ivert != NULL)
-						{
-							CustomData_free_layers(&fmd->visible_mesh_cached->vertData, CD_MDEFORMVERT, totvert);
-							ivert = NULL;
-						}
-
-						ivert = CustomData_add_layer(&fmd->visible_mesh_cached->vertData, CD_MDEFORMVERT, CD_CALLOC,
-						                      NULL, totvert);
 
 						for (index = 0; index < mi->neighbor_count; index++)
 						{
@@ -3225,12 +3223,6 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 
 				}
 
-				/*if (!ob->derivedFinal)
-				{
-					derived->needsFree = 1;
-					derived->release(derived);
-					derived = NULL;
-				}*/
 			}
 			else
 			{
