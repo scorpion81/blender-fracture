@@ -119,6 +119,7 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             box.label("Fracture Point Source:")
             box.prop(md, "point_source")
             box.prop(md, "extra_group")
+            box.prop(md, "dm_group")
             #box.prop(md, "noise")
             box.prop(md, "percentage")
             box.label("Constraint Breaking Settings")

@@ -4289,6 +4289,11 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_boolean_sdna(prop, NULL, "auto_execute", false);
 	RNA_def_property_ui_text(prop, "Auto Execute", "Automatic execution of fracturing, CAUTION: this can be slow and buggy");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "dm_group", PROP_POINTER, PROP_NONE);
+	RNA_def_property_ui_text(prop, "Sub Object Group", "");
+	RNA_def_property_flag(prop, PROP_EDITABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 void RNA_def_modifier(BlenderRNA *brna)

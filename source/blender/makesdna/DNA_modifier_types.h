@@ -1421,6 +1421,7 @@ typedef struct FractureModifierData {
 	struct FracMesh *frac_mesh; //store only the current fracmesh here first, later maybe an entire history...
 	struct DerivedMesh *dm;
 	struct Group *extra_group;
+	struct Group *dm_group;
 	float *noisemap;
 	struct BMesh *visible_mesh;
 	struct DerivedMesh *visible_mesh_cached;

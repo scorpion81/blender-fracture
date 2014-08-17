@@ -70,6 +70,7 @@
 #include "PIL_time.h"
 #include "../../bmesh/tools/bmesh_decimate.h"
 
+static int getGroupObjects(Group *gr, Object ***obs, int g_exist);
 static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, DerivedMesh* dm);
 void buildCompounds(FractureModifierData *rmd, Object *ob);
 void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody);
@@ -481,6 +482,110 @@ static DerivedMesh* get_clean_dm(Object* ob, DerivedMesh* dm)
 	return dm;
 }
 
+static DerivedMesh* get_group_dm(FractureModifierData* fmd, DerivedMesh*dm)
+{
+	//combine derived meshes from group objects into 1, trigger submodifiers if ob->derivedFinal is empty
+	int totgroup = 0, i = 0;
+	int num_verts = 0, num_polys = 0, num_loops = 0;
+	int vertstart = 0, polystart = 0, loopstart = 0;
+	DerivedMesh *result;
+	MVert *mverts;
+	MPoly *mpolys;
+	MLoop *mloops;
+
+	Object** go = MEM_mallocN(sizeof(Object*), "groupdmobjects");
+	totgroup = getGroupObjects(fmd->dm_group, &go, totgroup);
+
+	if (totgroup > 0 && (fmd->refresh == true || fmd->auto_execute == true))
+	{
+		DerivedMesh* dm_ob = NULL;
+		for (i = 0; i < totgroup; i++)
+		{
+			int v = 0;
+			MVert* mv = NULL;
+			Object* o = go[i];
+			dm_ob = o->derivedFinal;
+			if (dm_ob == NULL) continue;
+
+			for (v = 0, mv = dm_ob->getVertArray(dm_ob) ; v < dm_ob->getNumVerts(dm_ob); v++, mv++)
+			{
+				mul_m4_v3(o->obmat, mv->co);
+			}
+
+			num_verts += dm_ob->getNumVerts(dm_ob);
+			num_polys += dm_ob->getNumPolys(dm_ob);
+			num_loops += dm_ob->getNumLoops(dm_ob);
+		}
+
+		if (num_verts == 0)
+		{
+			return dm;
+		}
+
+		result = CDDM_new(num_verts, 0, 0, num_loops, num_polys);
+		mverts = CDDM_get_verts(result);
+		mloops = CDDM_get_loops(result);
+		mpolys = CDDM_get_polys(result);
+
+		//doesnt work for some reason....
+		/*CustomData_add_layer(&result->vertData, CD_MDEFORMVERT, CD_CALLOC, NULL, num_verts);
+		CustomData_add_layer(&result->loopData, CD_MLOOPUV, CD_CALLOC, NULL, num_loops);
+		CustomData_add_layer(&result->polyData, CD_MTEXPOLY, CD_CALLOC, NULL, num_polys);*/
+
+		vertstart = polystart = loopstart = 0;
+		for (i = 0; i < totgroup; i++)
+		{
+			MPoly *mp;
+			MLoop *ml;
+			int j;
+
+			Object* o = go[i];
+			dm_ob = o->derivedFinal; //not very reliable... hmm
+
+			if (dm_ob == NULL)
+			{	//avoid crash atleast...
+				return dm;
+			}
+
+			memcpy(mverts + vertstart, dm_ob->getVertArray(dm_ob), dm_ob->getNumVerts(dm_ob) * sizeof(MVert));
+			memcpy(mpolys + polystart, dm_ob->getPolyArray(dm_ob), dm_ob->getNumPolys(dm_ob) * sizeof(MPoly));
+
+
+			for (j = 0, mp = mpolys + polystart; j < dm_ob->getNumPolys(dm_ob); ++j, ++mp) {
+				/* adjust loopstart index */
+				mp->loopstart += loopstart;
+			}
+
+			memcpy(mloops + loopstart, dm_ob->getLoopArray(dm_ob), dm_ob->getNumLoops(dm_ob) * sizeof(MLoop));
+
+			for (j = 0, ml = mloops + loopstart; j < dm_ob->getNumLoops(dm_ob); ++j, ++ml) {
+				/* adjust vertex index */
+				ml->v += vertstart;
+			}
+
+			//doesnt work for some reason...
+			/*CustomData_copy_data(&dm_ob->vertData, &result->vertData, 0, vertstart, dm_ob->getNumVerts(dm_ob));
+			CustomData_copy_data(&dm_ob->loopData, &result->loopData, 0, loopstart, dm_ob->getNumLoops(dm_ob));
+			CustomData_copy_data(&dm_ob->polyData, &result->polyData, 0, polystart, dm_ob->getNumPolys(dm_ob));*/
+
+
+			vertstart += dm_ob->getNumVerts(dm_ob);
+			polystart += dm_ob->getNumPolys(dm_ob);
+			loopstart += dm_ob->getNumLoops(dm_ob);
+		}
+
+		CDDM_calc_edges(result);
+
+		result->dirty |= DM_DIRTY_NORMALS;
+		CDDM_calc_normals_mapping(result);
+		MEM_freeN(go);
+		return result;
+	}
+
+	MEM_freeN(go);
+	return dm;
+}
+
 
 static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
                                   DerivedMesh *derivedData,
@@ -494,7 +599,9 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 	FractureModifierData *fmd = (FractureModifierData*) md;
 	DerivedMesh *final_dm = derivedData;
-	DerivedMesh *clean_dm = get_clean_dm(ob, derivedData);
+
+	DerivedMesh *group_dm = get_group_dm(fmd, derivedData);
+	DerivedMesh *clean_dm = get_clean_dm(ob, group_dm);
 
 	if (fmd->auto_execute)
 	{
@@ -546,7 +653,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				return derivedData;
 			}
 		}
-		if (fmd->dm && fmd->frac_mesh && (fmd->dm->getNumPolys(fmd->dm) > 0))
+		if (fmd->dm && fmd->frac_mesh && (fmd->dm->getNumPolys(fmd->dm) > 0) && (fmd->dm_group == NULL))
 		{
 			final_dm = doSimulate(fmd, ob, fmd->dm, clean_dm);
 		}
@@ -573,7 +680,9 @@ static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
 {
 	FractureModifierData *fmd = (FractureModifierData*) md;
 	DerivedMesh *final_dm = derivedData;
-	DerivedMesh *clean_dm = get_clean_dm(ob, derivedData);
+
+	DerivedMesh *group_dm = get_group_dm(fmd, derivedData);
+	DerivedMesh *clean_dm = get_clean_dm(ob, group_dm);
 
 	if (fmd->auto_execute)
 	{
@@ -625,7 +734,7 @@ static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
 				return derivedData;
 			}
 		}
-		if (fmd->dm && fmd->frac_mesh)
+		if (fmd->dm && fmd->frac_mesh && (fmd->dm->getNumPolys(fmd->dm) > 0) && (fmd->dm_group == NULL))
 		{
 			final_dm = doSimulate(fmd, ob, fmd->dm, clean_dm);
 		}
@@ -3056,7 +3165,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 			//grab neighborhood info (and whole fracture info -> cells) if available, if explo before rmd
 			//emd = findPrecedingExploModifier(ob, rmd);
 //			if (emd != NULL && emd->cells != NULL && ((!emd->use_clipping && !rmd->use_cellbased_sim /* && !emd->use_boolean*/) || rmd->contact_dist_meaning == ////MOD_RIGIDBODY_VERTICES))
-			if (fmd->frac_mesh && fmd->frac_mesh->shard_count > 0 && fmd->dm && fmd->dm->numVertData > 0 && !fmd->shards_to_islands)
+			if (fmd->frac_mesh && fmd->frac_mesh->shard_count > 0 && fmd->dm && fmd->dm->numVertData > 0 && !fmd->shards_to_islands && !fmd->dm_group)
 			{
 				Shard *s;
 				MeshIsland* mi; // can be created without shards even, when using fracturemethod = NONE
@@ -3396,6 +3505,7 @@ static void foreachIDLink(ModifierData *md, Object *ob,
 
 	walk(userData, ob, (ID **)&fmd->inner_material);
 	walk(userData, ob, (ID **)&fmd->extra_group);
+	walk(userData, ob, (ID **)&fmd->dm_group);
 }
 
 static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *UNUSED(md))
