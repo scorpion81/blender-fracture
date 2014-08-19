@@ -3396,7 +3396,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 		}
 
 		fmd->refresh = false;
-		//fmd->refresh_constraints = false;
+		fmd->refresh_constraints = true;
 
 		if (fmd->execute_threaded)
 		{

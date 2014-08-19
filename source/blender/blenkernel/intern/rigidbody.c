@@ -885,8 +885,10 @@ static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh_shard(DerivedMesh
 		}
 
 		/* cleanup temp data */
-		if (dm && ob->rigidbody_object->mesh_source == RBO_MESH_BASE) {
+		if (dm /*&& ob->rigidbody_object->mesh_source == RBO_MESH_BASE*/) {
+			dm->needsFree = 1;
 			dm->release(dm);
+			dm = NULL;
 		}
 	}
 	else {
