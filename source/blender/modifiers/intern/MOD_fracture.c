@@ -603,6 +603,12 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	DerivedMesh *group_dm = get_group_dm(fmd, derivedData);
 	DerivedMesh *clean_dm = get_clean_dm(ob, group_dm);
 
+	//disable that automatically if sim is started, but must be re-enabled automatically
+	if (BKE_rigidbody_check_sim_running(md->scene->rigidbody_world, BKE_scene_frame_get(md->scene)))
+	{
+		fmd->auto_execute = false;
+	}
+
 	if (fmd->auto_execute)
 	{
 		fmd->refresh = true;
@@ -683,6 +689,11 @@ static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
 
 	DerivedMesh *group_dm = get_group_dm(fmd, derivedData);
 	DerivedMesh *clean_dm = get_clean_dm(ob, group_dm);
+
+	if (BKE_rigidbody_check_sim_running(md->scene->rigidbody_world, BKE_scene_frame_get(md->scene)))
+	{
+		fmd->auto_execute = false;
+	}
 
 	if (fmd->auto_execute)
 	{

@@ -1452,7 +1452,8 @@ typedef struct FractureModifierData {
 	int refresh, use_constraints, mass_dependent_thresholds, sel_counter;
 	int inner_constraint_type, dist_dependent_thresholds, refresh_constraints;
 	int explo_shared, constraint_limit, contact_dist_meaning, use_both_directions;
-	int breaking_angle, breaking_percentage, use_proportional_distance, use_proportional_limit;
+	float breaking_angle;
+	int breaking_percentage, use_proportional_distance, use_proportional_limit;
 	int use_cellbased_sim, use_experimental;
 	int solver_iterations_override, use_proportional_solver_iterations, refresh_images;
 	int shards_to_islands, execute_threaded, fix_normals, auto_execute;
