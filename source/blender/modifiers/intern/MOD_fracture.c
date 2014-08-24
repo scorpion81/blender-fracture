@@ -70,6 +70,7 @@
 #include "PIL_time.h"
 #include "../../bmesh/tools/bmesh_decimate.h"
 
+static void mat2vgroup(FractureModifierData *rmd, DerivedMesh *dm, MDeformVert *dvert, Object *ob);
 static int getGroupObjects(Group *gr, Object ***obs, int g_exist);
 static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, DerivedMesh* dm);
 void buildCompounds(FractureModifierData *rmd, Object *ob);
@@ -2920,6 +2921,59 @@ void buildCompounds(FractureModifierData *rmd, Object *ob)
 }
 #endif
 
+static void mat2vgroup(FractureModifierData* rmd, DerivedMesh* dm, MDeformVert* dvert, Object* ob)
+{
+	//use fallback over inner material
+	if (rmd->inner_defgrp_name[0] && rmd->inner_material) {
+		int ind = 0;
+		short mat_index = find_material_index(ob, rmd->inner_material);
+		MPoly* mp = dm->getPolyArray(dm);
+		MLoop* ml = dm->getLoopArray(dm);
+		int count = dm->getNumPolys(dm);
+		int totvert = dm->getNumVerts(dm);
+		const int inner_defgrp_index = defgroup_name_index(ob, rmd->inner_defgrp_name);
+
+		if (dvert != NULL)
+		{
+			CustomData_free_layers(&dm->vertData, CD_MDEFORMVERT, totvert);
+			dvert = NULL;
+		}
+
+		dvert = CustomData_add_layer(&dm->vertData, CD_MDEFORMVERT, CD_CALLOC,
+							  NULL, totvert);
+
+#if 0
+		if (rmd->inner_defgrp_name[0] && dm && dvert)
+		{
+			int vcount = dm->getNumVerts(dm);
+			int vindex = 0;
+
+			for (vindex = 0; vindex < vcount; vindex++)
+			{	//clear inner vgroup if any
+				MDeformWeight* dw  = defvert_find_index(dvert+vindex, inner_defgrp_index);
+				defvert_remove_group(dvert+vindex, dw);
+			}
+		}
+#endif
+
+
+		for (ind = 0; ind < count; ind++)
+		{
+			if ((mp+ind)->mat_nr == mat_index-1)
+			{
+				int j = 0;
+				for (j = 0; j < (mp+ind)->totloop; j++)
+				{
+					MLoop* l;
+					int l_index = (mp+ind)->loopstart + j;
+					l = ml+l_index;
+					defvert_add_index_notest(dvert+l->v, inner_defgrp_index, 1.0f);
+				}
+			}
+		}
+	}
+}
+
 static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMesh *origdm)
 {
 	MeshIsland *mi;
@@ -2930,7 +2984,7 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 	int vertstart = 0;
 	const int thresh_defgrp_index = defgroup_name_index(ob, rmd->thresh_defgrp_name);
 	const int ground_defgrp_index = defgroup_name_index(ob, rmd->ground_defgrp_name);
-	const int inner_defgrp_index = defgroup_name_index(ob, rmd->inner_defgrp_name);
+	//const int inner_defgrp_index = defgroup_name_index(ob, rmd->inner_defgrp_name);
 
 	if (rmd->dm && !rmd->shards_to_islands && (rmd->dm->getNumPolys(rmd->dm) > 0))
 	{
@@ -2962,6 +3016,7 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 		dvert = dm->getVertDataArray(dm, CD_MDEFORMVERT);
 
 
+#if 0
 	if (rmd->inner_defgrp_name[0] && dm && dvert)
 	{
 		int vcount = dm->getNumVerts(dm);
@@ -2973,6 +3028,7 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 			defvert_remove_group(dvert+vindex, dw);
 		}
 	}
+#endif
 
 
 	for (mi = rmd->meshIslands.first; mi; mi = mi->next)
@@ -3002,7 +3058,7 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 					mi->ground_weight += gweight;
 				}
 			}
-
+#if 0
 			//do here for now only, since in halving case we have no neighborhood info
 			/*if (dvert && rmd->inner_defgrp_name[0]) {
 				int index = 0;
@@ -3024,6 +3080,7 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 					}
 				}
 			}*/
+#endif
 
 			vertstart += mi->vertex_count;
 		}
@@ -3076,39 +3133,7 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 		}
 
 		//use fallback over inner material
-		if (rmd->inner_defgrp_name[0] && rmd->inner_material) {
-			int ind = 0;
-			short mat_index = find_material_index(ob, rmd->inner_material);
-			MPoly* mp = dm->getPolyArray(dm);
-			MLoop* ml = dm->getLoopArray(dm);
-			int count = dm->getNumPolys(dm);
-			int totvert = dm->getNumVerts(dm);
-
-			if (dvert != NULL)
-			{
-				CustomData_free_layers(&dm->vertData, CD_MDEFORMVERT, totvert);
-				dvert = NULL;
-			}
-
-			dvert = CustomData_add_layer(&dm->vertData, CD_MDEFORMVERT, CD_CALLOC,
-			                      NULL, totvert);
-
-
-			for (ind = 0; ind < count; ind++)
-			{
-				if ((mp+ind)->mat_nr == mat_index-1)
-				{
-					int j = 0;
-					for (j = 0; j < (mp+ind)->totloop; j++)
-					{
-						MLoop* l;
-						int l_index = (mp+ind)->loopstart + j;
-						l = ml+l_index;
-						defvert_add_index_notest(dvert+l->v, inner_defgrp_index, 1.0f);
-					}
-				}
-			}
-		}
+		mat2vgroup(rmd, dm, dvert, ob);
 	}
 
 	return dm;
@@ -3190,7 +3215,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 				MLoop* ml;
 				const int thresh_defgrp_index = defgroup_name_index(ob, fmd->thresh_defgrp_name);
 				const int ground_defgrp_index = defgroup_name_index(ob, fmd->ground_defgrp_name);
-				const int inner_defgrp_index = defgroup_name_index(ob, fmd->inner_defgrp_name);
+				//const int inner_defgrp_index = defgroup_name_index(ob, fmd->inner_defgrp_name);
 
 
 				//good idea to simply reference this ? Hmm, what about removing the explo modifier later, crash ?)
@@ -3319,7 +3344,8 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 						BKE_rigidbody_calc_shard_mass(ob, mi, orig_dm);
 					}
 					mi->vertex_indices = NULL;
-
+#if 0
+					//DOESNT WORK PROPERLY... using fallback via inner material instead
 					if (fmd->inner_defgrp_name[0]) {
 						int index = 0;
 
@@ -3339,10 +3365,13 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 							}
 						}
 					}
+#endif
+
 					polystart += s->totpoly;
 
 				}
 
+				mat2vgroup(fmd, fmd->visible_mesh_cached, ivert, ob);
 			}
 			else
 			{
