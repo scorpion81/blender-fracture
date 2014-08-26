@@ -3609,6 +3609,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 		if (fmd->face_pairs != NULL)
 		{
 			BLI_ghash_free(fmd->face_pairs, NULL, NULL);
+			fmd->face_pairs = NULL;
 		}
 
 		fmd->face_pairs = BLI_ghash_int_new("face_pairs");

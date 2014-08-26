@@ -4984,6 +4984,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			fmd->refresh = false;  // do not construct modifier
 			fmd->refresh_constraints = false;
 			fmd->nor_tree = NULL;
+			fmd->face_pairs = NULL;
 
 			if (fm == NULL)
 			{
