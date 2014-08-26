@@ -957,6 +957,15 @@ static void rna_RigidBodyModifier_proportional_solver_iterations_override_set(Po
 	rmd->refresh_constraints = true;
 }
 
+static void rna_RigidBodyModifier_autohide_dist_set(PointerRNA *ptr, float value)
+{
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
+	Object* ob = ptr->id.data;
+	rmd->autohide_dist = value;
+	//updateConstraints(rmd, ob);
+	rmd->refresh_constraints = true;
+}
+
 #else
 
 static PropertyRNA *rna_def_property_subdivision_common(StructRNA *srna, const char type[])
@@ -4293,6 +4302,12 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "dm_group", PROP_POINTER, PROP_NONE);
 	RNA_def_property_ui_text(prop, "Sub Object Group", "");
 	RNA_def_property_flag(prop, PROP_EDITABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "autohide_dist", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "autohide_dist");
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_autohide_dist_set", NULL);
+	RNA_def_property_ui_text(prop, "Autohide Distance", "Distance between faces below which both faces should be hidden");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 

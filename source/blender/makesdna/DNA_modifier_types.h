@@ -1437,6 +1437,7 @@ typedef struct FractureModifierData {
 	char inner_defgrp_name[64];  /* MAX_VGROUP_NAME */
 	struct KDTree *nor_tree; //store original vertices here (coords), to find them later and reuse their normals
 	struct Material *inner_material;
+	struct GHash *face_pairs;
 
 	int frac_algorithm;
 	int shard_count;
@@ -1459,8 +1460,8 @@ typedef struct FractureModifierData {
 	int shards_to_islands, execute_threaded, fix_normals, auto_execute;
 	float breaking_distance, max_vol, cell_size;
 	float origmat[4][4], breaking_threshold, cluster_breaking_threshold;
-	float contact_dist;
-	char pad[4];
+	float contact_dist, autohide_dist;
+	//char pad[4];
 } FractureModifierData;
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */

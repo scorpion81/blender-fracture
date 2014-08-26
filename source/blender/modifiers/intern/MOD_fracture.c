@@ -128,6 +128,8 @@ static void initData(ModifierData *md)
 		fmd->nor_tree = NULL;
 		fmd->fix_normals = false;
 		fmd->auto_execute = false;
+		fmd->face_pairs = NULL;
+		fmd->autohide_dist = 0.0f;
 }
 
 static void freeData(ModifierData *md)
@@ -143,6 +145,12 @@ static void freeData(ModifierData *md)
 		{
 			BLI_kdtree_free(rmd->nor_tree);
 			rmd->nor_tree = NULL;
+		}
+
+		if (rmd->face_pairs != NULL)
+		{
+			BLI_ghash_free(rmd->face_pairs, NULL, NULL);
+			rmd->face_pairs = NULL;
 		}
 
 		//called on deleting modifier, object or quitting blender...
@@ -652,6 +660,13 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		{
 			//build normaltree from origdm
 			fmd->nor_tree = build_nor_tree(clean_dm);
+			if (fmd->face_pairs != NULL)
+			{
+				BLI_ghash_free(fmd->face_pairs, NULL, NULL);
+				fmd->face_pairs = NULL;
+			}
+
+			fmd->face_pairs = BLI_ghash_int_new("face_pairs");
 
 			do_fracture(fmd, -1, ob, clean_dm);
 
@@ -738,6 +753,13 @@ static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
 		{
 			//build normaltree from origdm
 			fmd->nor_tree = build_nor_tree(clean_dm);
+			if (fmd->face_pairs != NULL)
+			{
+				BLI_ghash_free(fmd->face_pairs, NULL, NULL);
+				fmd->face_pairs = NULL;
+			}
+
+			fmd->face_pairs = BLI_ghash_int_new("face_pairs");
 
 			do_fracture(fmd, -1, ob, clean_dm);
 
@@ -3166,6 +3188,149 @@ void refresh_customdata_image(Mesh* me, CustomData *pdata, int totface)
 	}
 }
 
+//inline face center calc here
+void DM_face_calc_center_mean(DerivedMesh* dm, MPoly* mp, float r_cent[3])
+{
+	MLoop *ml = NULL;
+	MLoop *mloop = dm->getLoopArray(dm);
+	MVert* mvert = dm->getVertArray(dm);
+	int i = 0;
+
+	zero_v3(r_cent);
+
+	for (i = mp->loopstart; i < mp->loopstart + mp->totloop; i++)
+	{
+		MVert* mv = NULL;
+		ml = mloop + i;
+		mv = mvert + ml->v;
+
+		add_v3_v3(r_cent, mv->co);
+
+	}
+
+	mul_v3_fl(r_cent, 1.0f / (float) mp->totloop);
+}
+
+void make_face_pairs(FractureModifierData *fmd, DerivedMesh* dm)
+{
+	//make kdtree of all faces of dm, then find closest face for each face
+	MPoly* mp = NULL;
+	MPoly* mpoly = dm->getPolyArray(dm);
+	int totpoly = dm->getNumPolys(dm);
+	KDTree* tree = BLI_kdtree_new(totpoly);
+	int i = 0;
+
+	for (i = 0, mp = mpoly ; i < totpoly; mp++, i++)
+	{
+		float co[3];
+		DM_face_calc_center_mean(dm, mp, co);
+		BLI_kdtree_insert(tree, i, co);
+	}
+
+	BLI_kdtree_balance(tree);
+
+	//now find pairs of close faces
+
+	for (i = 0, mp = mpoly ; i < totpoly; mp++, i++)
+	{
+		int index = -1, j = 0, r = 0;
+		//MPoly *other = NULL;
+		KDTreeNearest *n;
+		float co[3];
+
+		DM_face_calc_center_mean(dm, mp, co);
+		r = BLI_kdtree_range_search(tree, co, &n, fmd->autohide_dist*4);
+		//BLI_kdtree_find_nearest_n(tree, co, &n, 10);
+		//2nd nearest means not ourselves...
+		if (r == 0)
+			continue;
+
+		index = n[0].index;
+		while ((j < r) && i == index)
+		{
+			index = n[j].index;
+			j++;
+		}
+
+		//other = mpoly + index;
+		if (!BLI_ghash_haskey(fmd->face_pairs, SET_INT_IN_POINTER(index)))
+		{
+			BLI_ghash_insert(fmd->face_pairs, SET_INT_IN_POINTER(i),SET_INT_IN_POINTER(index));
+		}
+	}
+
+	BLI_kdtree_free(tree);
+
+}
+
+DerivedMesh* do_autoHide(FractureModifierData* fmd, DerivedMesh* dm)
+{
+	float f_centr[3], f_centr_other[3];
+
+	//MPoly *mp = NULL;
+	//MPoly *mpoly = dm->getPolyArray(dm);
+
+	int totpoly = dm->getNumPolys(dm);
+	int i = 0, other = 0;
+	BMesh* bm = DM_to_bmesh(dm, true);
+	DerivedMesh* result;
+	BMFace **faces = MEM_mallocN(sizeof(BMFace*), "faces");
+	int del_faces = 0;
+
+
+	BM_mesh_elem_index_ensure(bm, BM_FACE);
+	BM_mesh_elem_table_ensure(bm, BM_FACE);
+	BM_mesh_elem_toolflags_ensure(bm);
+
+	for (i = 0 ; i < totpoly; i++)
+	{
+		BMFace *f1, *f2;
+		//find other face...
+		//MPoly *other = BLI_ghash_lookup(fmd->face_pairs, SET_INT_IN_POINTER(i));
+		other = GET_INT_FROM_POINTER(BLI_ghash_lookup(fmd->face_pairs, SET_INT_IN_POINTER(i)));
+
+		if (other == i)
+		{
+			continue;
+		}
+
+		f1 = BM_face_at_index_find(bm, i);
+		f2 = BM_face_at_index_find(bm, other);
+
+		if ((f1 == NULL) || (f2 == NULL))
+		{
+			continue;
+		}
+
+		BM_face_calc_center_mean(f1, f_centr);
+		BM_face_calc_center_mean(f2, f_centr_other);
+
+
+		if (len_squared_v3v3(f_centr, f_centr_other) < fmd->autohide_dist && f1 != f2)
+		{
+			faces = MEM_reallocN(faces, sizeof(BMFace*) * (del_faces+2));
+			faces[del_faces] = f1;
+			faces[del_faces+1] = f2;
+			del_faces += 2;
+		}
+	}
+
+	for (i = 0; i < del_faces; i++)
+	{
+		BMFace* f = faces[i];
+		if (f->l_first->e != NULL) //a lame check....
+		{
+			BM_face_kill(bm, f);
+		}
+	}
+
+	result = CDDM_from_bmesh(bm, true);
+	BM_mesh_free(bm);
+	MEM_freeN(faces);
+
+	return result;
+}
+
 DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, DerivedMesh* orig_dm)
 {
 	bool exploOK = false; //doFracture
@@ -3438,6 +3603,17 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 		fmd->refresh = false;
 		fmd->refresh_constraints = true;
 
+
+
+		//HERE make a kdtree of the fractured derivedmesh, store pairs of faces (MPoly) here (will be most likely the inner faces)
+		if (fmd->face_pairs != NULL)
+		{
+			BLI_ghash_free(fmd->face_pairs, NULL, NULL);
+		}
+
+		fmd->face_pairs = BLI_ghash_int_new("face_pairs");
+		make_face_pairs(fmd, fmd->visible_mesh_cached);
+
 		if (fmd->execute_threaded)
 		{
 			//job done
@@ -3502,13 +3678,30 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 	if ((fmd->visible_mesh != NULL) && exploOK)
 	{
 		DerivedMesh *dm_final;
-		dm_final = CDDM_copy(fmd->visible_mesh_cached);
+		//HERE Hide facepairs closer than dist X
+
+		if (fmd->autohide_dist > 0)
+		{
+			dm_final = do_autoHide(fmd, fmd->visible_mesh_cached);
+		}
+		else
+		{
+			dm_final = CDDM_copy(fmd->visible_mesh_cached);
+		}
 		return dm_final;
 	}
 	else if ((fmd->visible_mesh_cached != NULL) && exploOK)
 	{
-		DerivedMesh* dm_final;
-		dm_final = CDDM_copy(fmd->visible_mesh_cached);
+		DerivedMesh *dm_final;
+
+		if (fmd->autohide_dist > 0)
+		{
+			dm_final = do_autoHide(fmd, fmd->visible_mesh_cached);
+		}
+		else
+		{
+			dm_final = CDDM_copy(fmd->visible_mesh_cached);
+		}
 		return dm_final;
 	}
 	else
