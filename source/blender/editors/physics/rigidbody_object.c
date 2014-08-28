@@ -53,6 +53,8 @@
 #include "BKE_object.h"
 #include "BKE_report.h"
 #include "BKE_rigidbody.h"
+#include "BKE_DerivedMesh.h"
+#include "BKE_cdderivedmesh.h"
 
 #include "RNA_access.h"
 #include "RNA_define.h"
@@ -510,6 +512,7 @@ static int rigidbody_objects_calc_mass_exec(bContext *C, wmOperator *op)
 	{
 		if (ob->rigidbody_object) {
 			PointerRNA ptr;
+			DerivedMesh* dm_ob;
 
 			float volume; /* m^3 */
 			float mass;   /* kg */
@@ -517,7 +520,21 @@ static int rigidbody_objects_calc_mass_exec(bContext *C, wmOperator *op)
 			/* mass is calculated from the approximate volume of the object,
 			 * and the density of the material we're simulating
 			 */
-			BKE_rigidbody_calc_volume(ob, &volume);
+
+			if (ob->type == OB_MESH)
+			{
+				//if we have a mesh, determine its volume
+				dm_ob = CDDM_from_mesh(ob->data);
+				volume = BKE_rigidbody_calc_volume(dm_ob, ob->rigidbody_object);
+			}
+			else
+			{
+				float dim[3];
+				//else get object boundbox as last resort
+				BKE_object_dimensions_get(ob, dim);
+				volume = dim[0] * dim[1] * dim[2];
+			}
+
 			mass = volume * density;
 
 			/* use RNA-system to change the property and perform all necessary changes */

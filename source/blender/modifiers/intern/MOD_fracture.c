@@ -130,6 +130,7 @@ static void initData(ModifierData *md)
 		fmd->auto_execute = false;
 		fmd->face_pairs = NULL;
 		fmd->autohide_dist = 0.0f;
+		fmd->use_ortho = false;
 }
 
 static void freeData(ModifierData *md)
@@ -892,7 +893,7 @@ static void points_from_particles(Object** ob, int totobj, Scene* scene, FracPoi
 	points->totpoints = pt;
 }
 
-static void points_from_greasepencil(Object** ob, int totobj, FracPointCloud* points, float mat[4][4], float thresh)
+static void points_from_greasepencil(Object** ob, int totobj, FracPointCloud* points, float mat[4][4], float thresh, FractureModifierData* fmd)
 {
 	bGPDlayer* gpl;
 	bGPDframe* gpf;
@@ -922,6 +923,27 @@ static void points_from_greasepencil(Object** ob, int totobj, FracPointCloud* po
 								point[2] = gps->points[p].z;
 
 								mul_m4_v3(imat, point);
+#if 0
+								if (pt > 1 && fmd->use_ortho)
+								{
+									//last point and this point is the stroke, calc midpoint and orthogonal vector
+									float v[3], ov[3], mid[3], p1[3], p2[3];
+									sub_v3_v3v3(v, point, points->points[pt-1].co);
+									ortho_v3_v3(ov, v);
+									mid_v3_v3v3(mid, point, points->points[pt-1].co);
+
+									//"rotate" points by 90 degrees, creating a pair of orthogonal points
+									add_v3_v3v3(p1, mid, ov);
+									sub_v3_v3v3(p2, mid, ov);
+
+									mul_v3_fl(p1, 0.5f);
+									mul_v3_fl(p2, 0.5f);
+
+									copy_v3_v3(point, p1);
+									copy_v3_v3(points->points[pt-1].co, p2);
+
+								}
+#endif
 								copy_v3_v3(points->points[pt].co, point);
 								pt++;
 							}
@@ -1001,7 +1023,7 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 
 	if (emd->point_source & MOD_FRACTURE_GREASEPENCIL)
 	{
-		points_from_greasepencil(go, totgroup, &points, ob->obmat, thresh);
+		points_from_greasepencil(go, totgroup, &points, ob->obmat, thresh, emd);
 	}
 
 	//greasecut, imagebased... backend is via projected curvemeshes
