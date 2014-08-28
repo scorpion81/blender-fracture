@@ -3784,10 +3784,13 @@ static void updateDepgraph(ModifierData *md, DagForest *forest,
 		GroupObject* go;
 		for (go = fmd->extra_group->gobject.first; go; go = go->next)
 		{
-			DagNode *curNode = dag_get_node(forest, go->ob);
+			if (go->ob)
+			{
+				DagNode *curNode = dag_get_node(forest, go->ob);
 
-			dag_add_relation(forest, curNode, obNode,
+				dag_add_relation(forest, curNode, obNode,
 			                 DAG_RL_DATA_DATA | DAG_RL_OB_DATA, "Fracture Modifier");
+			}
 		}
 
 		/*for (go = fmd->dm_group->gobject.first; go; go = go->next)
@@ -3812,7 +3815,10 @@ static void foreachObjectLink(
 		GroupObject* go;
 		for (go = fmd->extra_group->gobject.first; go; go = go->next)
 		{
-			walk(userData, ob, &go->ob);
+			if (go->ob)
+			{
+				walk(userData, ob, &go->ob);
+			}
 		}
 	}
 }
