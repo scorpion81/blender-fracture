@@ -69,6 +69,7 @@
 #include "../../rigidbody/RBI_api.h"
 #include "PIL_time.h"
 #include "../../bmesh/tools/bmesh_decimate.h"
+#include "depsgraph_private.h"
 
 static void mat2vgroup(FractureModifierData *rmd, DerivedMesh *dm, MDeformVert *dvert, Object *ob);
 static int getGroupObjects(Group *gr, Object ***obs, int g_exist);
@@ -3771,6 +3772,51 @@ static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *UNUSED(
 	return dataMask;
 }
 
+static void updateDepgraph(ModifierData *md, DagForest *forest,
+                           struct Scene *UNUSED(scene),
+                           Object *UNUSED(ob),
+                           DagNode *obNode)
+{
+	FractureModifierData *fmd = (FractureModifierData *) md;
+
+	if (fmd->extra_group)
+	{
+		GroupObject* go;
+		for (go = fmd->extra_group->gobject.first; go; go = go->next)
+		{
+			DagNode *curNode = dag_get_node(forest, go->ob);
+
+			dag_add_relation(forest, curNode, obNode,
+			                 DAG_RL_DATA_DATA | DAG_RL_OB_DATA, "Fracture Modifier");
+		}
+
+		/*for (go = fmd->dm_group->gobject.first; go; go = go->next)
+		{
+			DagNode *curNode = dag_get_node(forest, go->ob);
+
+			dag_add_relation(forest, curNode, obNode,
+			                 DAG_RL_DATA_DATA | DAG_RL_OB_DATA, "Fracture Modifier");
+		}*/
+	}
+}
+
+static void foreachObjectLink(
+        ModifierData *md, Object *ob,
+        void (*walk)(void *userData, Object *ob, Object **obpoin),
+        void *userData)
+{
+	FractureModifierData *fmd = (FractureModifierData *) md;
+
+	if (fmd->extra_group)
+	{
+		GroupObject* go;
+		for (go = fmd->extra_group->gobject.first; go; go = go->next)
+		{
+			walk(userData, ob, &go->ob);
+		}
+	}
+}
+
 
 ModifierTypeInfo modifierType_Fracture = {
         /* name */              "Fracture",
@@ -3794,9 +3840,9 @@ ModifierTypeInfo modifierType_Fracture = {
         /* requiredDataMask */  requiredDataMask,
         /* freeData */          freeData,
         /* isDisabled */        NULL,
-        /* updateDepgraph */    NULL,
+        /* updateDepgraph */    updateDepgraph,
         /* dependsOnTime */     dependsOnTime,
         /* dependsOnNormals */  dependsOnNormals,
-        /* foreachObjectLink */ NULL,
+        /* foreachObjectLink */ foreachObjectLink,
         /* foreachIDLink */     foreachIDLink,
 };
