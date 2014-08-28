@@ -3280,10 +3280,14 @@ void make_face_pairs(FractureModifierData *fmd, DerivedMesh* dm)
 		{
 			BLI_ghash_insert(fmd->face_pairs, SET_INT_IN_POINTER(i),SET_INT_IN_POINTER(index));
 		}
+
+		if (n != NULL)
+		{
+			MEM_freeN(n);
+		}
 	}
 
 	BLI_kdtree_free(tree);
-
 }
 
 DerivedMesh* do_autoHide(FractureModifierData* fmd, DerivedMesh* dm)
