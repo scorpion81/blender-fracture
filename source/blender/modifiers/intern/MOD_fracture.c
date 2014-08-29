@@ -877,9 +877,9 @@ static void points_from_particles(Object** ob, int totobj, Scene* scene, FracPoi
 						points->points = MEM_reallocN(points->points, (pt+1) * sizeof(FracPoint));
 						copy_v3_v3(co, birth.co);
 
-						if ((o > 0) ||
+						/*if ((o > 0) ||
 						   ((emd->point_source & MOD_FRACTURE_EXTRA_PARTICLES) &&
-						   (!(emd->point_source & MOD_FRACTURE_OWN_PARTICLES)) && (o == 0)))
+						   (!(emd->point_source & MOD_FRACTURE_OWN_PARTICLES)) && (o == 0)))*/
 						{
 							mul_m4_v3(imat, co);
 						}
