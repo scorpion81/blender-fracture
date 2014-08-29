@@ -5054,7 +5054,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 				}
 
 				//ugly ugly, need only the shard... the rest is to be generated on demand...
-				BKE_fracture_create_dm(fmd, false);
+				BKE_fracture_create_dm(fmd, true);
 
 				if (fm->shard_count == 0)
 				{

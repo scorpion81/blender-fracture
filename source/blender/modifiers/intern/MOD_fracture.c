@@ -1204,7 +1204,7 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object* obj, D
 
 		//Here we REALLY need to fracture so deactivate the shards to islands flag and activate afterwards.
 		fracmd->shards_to_islands = false;
-		BKE_fracture_create_dm(fracmd, false);
+		BKE_fracture_create_dm(fracmd, true);
 		fracmd->shards_to_islands = temp;
 	}
 	MEM_freeN(points.points);

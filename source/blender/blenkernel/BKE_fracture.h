@@ -95,7 +95,7 @@ void BKE_shard_free(struct Shard* s, bool doCustomData);
 
 /* DerivedMesh */
 void BKE_fracture_release_dm(struct FractureModifierData *fmd);
-void BKE_fracture_create_dm(struct FractureModifierData *fmd, bool do_merge);
+void BKE_fracture_create_dm(struct FractureModifierData *fmd, bool doCustomData);
 struct DerivedMesh *BKE_shard_create_dm(struct Shard *s, bool doCustomData);
 
 void BKE_shard_assign_material(struct Shard* s, short mat_nr);

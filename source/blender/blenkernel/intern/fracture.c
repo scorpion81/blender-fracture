@@ -1055,6 +1055,7 @@ static DerivedMesh *create_dm(FractureModifierData* fmd, bool doCustomData)
 		loopstart += shard->totloop;
 	}
 	
+	CustomData_reset(&result->edgeData);
 	CDDM_calc_edges(result);
 	
 	result->dirty |= DM_DIRTY_NORMALS;
@@ -1062,10 +1063,10 @@ static DerivedMesh *create_dm(FractureModifierData* fmd, bool doCustomData)
 	return result;
 }
 
-void BKE_fracture_create_dm(FractureModifierData *fmd, bool do_merge)
+void BKE_fracture_create_dm(FractureModifierData *fmd, bool doCustomData)
 {
 	DerivedMesh *dm_final = NULL;
-	bool doCustomData = true; //fmd->frac_algorithm != MOD_FRACTURE_VORONOI;
+	//bool doCustomData = true; //fmd->frac_algorithm != MOD_FRACTURE_VORONOI;
 	
 	if (fmd->dm) {
 		fmd->dm->needsFree = 1;
