@@ -149,7 +149,7 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 	{
 		dm_parent = BKE_shard_create_dm(p, true);
 	}
-	else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL || algorithm == MOD_FRACTURE_BISECT_FAST)
+	else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL || algorithm == MOD_FRACTURE_BISECT_FAST || algorithm == MOD_FRACTURE_BISECT_FAST_FILL)
 	{
 #define MYTAG (1 << 6)
 		bm_parent = shard_to_bmesh(p);
@@ -167,7 +167,7 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 		fm->progress_counter++;
 	}
 
-	if (algorithm != MOD_FRACTURE_BISECT_FAST)
+	if (algorithm != MOD_FRACTURE_BISECT_FAST && algorithm != MOD_FRACTURE_BISECT_FAST_FILL)
 	{
 		//#pragma omp critical
 		//#pragma omp parallel for if (algorithm != MOD_FRACTURE_BISECT_FAST)
@@ -252,8 +252,8 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 			printf("Bisecting cell %d...\n", i);
 			printf("Bisecting cell %d...\n", i+1);
 
-			s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, false, true, index, centroid, 0);
-			s2 = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, true, false, index, centroid, 0);
+			s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FAST_FILL, false, true, index, centroid, inner_material_index);
+			s2 = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FAST_FILL, true, false, index, centroid, inner_material_index);
 
 			if (s != NULL && s2 != NULL && tempresults != NULL)
 			{
@@ -336,7 +336,7 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 					add_shard(fm, s);
 				}
 
-				if (algorithm != MOD_FRACTURE_VORONOI)
+				//if (algorithm != MOD_FRACTURE_VORONOI)
 				{
 					Shard* t = tempshards[i];
 					if (t != NULL)
@@ -1065,7 +1065,7 @@ static DerivedMesh *create_dm(FractureModifierData* fmd, bool doCustomData)
 void BKE_fracture_create_dm(FractureModifierData *fmd, bool do_merge)
 {
 	DerivedMesh *dm_final = NULL;
-	bool doCustomData = fmd->frac_algorithm != MOD_FRACTURE_VORONOI;
+	bool doCustomData = true; //fmd->frac_algorithm != MOD_FRACTURE_VORONOI;
 	
 	if (fmd->dm) {
 		fmd->dm->needsFree = 1;

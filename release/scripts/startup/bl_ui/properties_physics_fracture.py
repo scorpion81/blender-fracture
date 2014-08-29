@@ -80,7 +80,7 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         col.prop(md, "shard_count")
         col.prop(md, "cluster_count")
         col.prop(md, "point_seed")
-        if md.frac_algorithm == 'BOOLEAN' or md.frac_algorithm == 'BISECT_FILL':
+        if md.frac_algorithm == 'BOOLEAN' or md.frac_algorithm == 'BISECT_FILL' or md.frac_algorithm == 'BISECT_FAST_FILL':
             layout.prop(md, "inner_material")
         row = layout.row()
         row.prop(md, "shards_to_islands")

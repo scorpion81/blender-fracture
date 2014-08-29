@@ -4056,7 +4056,7 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 
 	static EnumPropertyItem prop_fracture_algorithm[] = {
 		{MOD_FRACTURE_BISECT_FAST, "BISECT_FAST", 0, "Fast Bisect", "Use a faster but more inaccurate bisection algorithm, also creates uglier shards."},
-		//{MOD_FRACTURE_VORONOI, "VORONOI", 0, "Voronoi", "Use plain voronoi as fracture algorithm"},
+		{MOD_FRACTURE_BISECT_FAST_FILL, "BISECT_FAST_FILL", 0, "Fast Bisect + Fill ", "Use the faster but different bisection algorithm and fill cut faces"},
 		{MOD_FRACTURE_BOOLEAN, "BOOLEAN", 0, "Voronoi + Boolean", "Use voronoi and boolean intersection as fracture algorithm"},
 		{MOD_FRACTURE_BISECT_FILL, "BISECT_FILL", 0, "Voronoi + Bisect + Fill", "Use voronoi and mesh bisect as fracture algorithm, fill cut faces"},
 		{MOD_FRACTURE_BISECT, "BISECT", 0, "Voronoi + Bisect", "Use voronoi and mesh bisect as fracture algorithm, don't fill cut faces"},
@@ -4217,7 +4217,7 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "shard_count", PROP_INT, PROP_NONE);
-	RNA_def_property_range(prop, 1, 10000);
+	RNA_def_property_range(prop, 1, 100000);
 	RNA_def_property_int_default(prop, 10);
 	RNA_def_property_ui_text(prop, "Shard Count", "How many sub-shards should be generated from the current shard");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");

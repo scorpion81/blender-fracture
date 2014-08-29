@@ -1400,11 +1400,11 @@ enum {
 };
 
 enum {
-	MOD_FRACTURE_BISECT_FAST    = (1 << 0),
-	MOD_FRACTURE_VORONOI        = (1 << 1),
-	MOD_FRACTURE_BOOLEAN        = (1 << 2),
-	MOD_FRACTURE_BISECT_FILL    = (1 << 3),
-	MOD_FRACTURE_BISECT         = (1 << 4),
+	MOD_FRACTURE_BISECT_FAST      = (1 << 0),
+	MOD_FRACTURE_BISECT_FAST_FILL = (1 << 1),
+	MOD_FRACTURE_BOOLEAN          = (1 << 2),
+	MOD_FRACTURE_BISECT_FILL      = (1 << 3),
+	MOD_FRACTURE_BISECT           = (1 << 4),
 };
 
 enum {
