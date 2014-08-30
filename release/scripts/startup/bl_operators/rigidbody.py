@@ -112,6 +112,13 @@ class BakeToKeyframes(Operator):
         obj = context.object
         return (obj and obj.rigid_body)
 
+    def has_fracture_modifier(self, ob):
+        for m in ob.modifiers:
+            if m.type == 'FRACTURE':
+               self.report({'WARNING'}, "Object '%s' has a fracture modifier, use 'Convert to Objects' before 'Bake to Keyframes'" % ob.name)
+               return True
+        return False
+
     def execute(self, context):
         bake = []
         objects = []
@@ -123,7 +130,7 @@ class BakeToKeyframes(Operator):
         constraints = []
         # filter objects selection
         for obj in context.selected_objects:
-            if (not obj.rigid_body or obj.rigid_body.type != 'ACTIVE'):
+            if (not obj.rigid_body or obj.rigid_body.type != 'ACTIVE' or self.has_fracture_modifier(obj)):
                 obj.select = False
             if (obj.rigid_body_constraint):
                constraints.append(obj)
