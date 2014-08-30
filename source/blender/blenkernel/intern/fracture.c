@@ -63,11 +63,18 @@ static BMesh* shard_to_bmesh(Shard* s)
 {
 	DerivedMesh* dm_parent;
 	BMesh *bm_parent;
+	BMIter iter;
+	BMFace* f;
 
 	dm_parent = BKE_shard_create_dm(s, true);
 	bm_parent = DM_to_bmesh(dm_parent, true);
 	//create lookup tables
 	BM_mesh_elem_table_ensure(bm_parent, BM_FACE);
+
+	BM_ITER_MESH(f, &iter, bm_parent, BM_FACES_OF_MESH)
+	{
+		BM_elem_flag_disable(f, BM_ELEM_SELECT);
+	}
 
 	dm_parent->needsFree = 1;
 	dm_parent->release(dm_parent);
@@ -147,7 +154,15 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 
 	if (algorithm == MOD_FRACTURE_BOOLEAN)
 	{
+		MPoly* mpoly, *mp;
+		int totpoly, i;
 		dm_parent = BKE_shard_create_dm(p, true);
+		mpoly = dm_parent->getPolyArray(dm_parent);
+		totpoly = dm_parent->getNumPolys(dm_parent);
+		for (i = 0, mp = mpoly; i < totpoly; i++, mp++)
+		{
+			mp->flag &= ~ME_FACE_SEL;
+		}
 	}
 	else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL || algorithm == MOD_FRACTURE_BISECT_FAST || algorithm == MOD_FRACTURE_BISECT_FAST_FILL)
 	{
@@ -1057,6 +1072,27 @@ static DerivedMesh *create_dm(FractureModifierData* fmd, bool doCustomData)
 	
 	CustomData_reset(&result->edgeData);
 	CDDM_calc_edges(result);
+
+	{
+		MEdge* medge = result->getEdgeArray(result), *me = NULL;
+		MPoly* mpoly = result->getPolyArray(result), *mp = NULL;
+		MLoop* mloop = result->getLoopArray(result);
+		int totpoly = result->getNumPolys(result);
+		int i = 0;
+		for (i = 0, mp = mpoly; i < totpoly; i++, mp++)
+		{
+			if (mp->flag & ME_FACE_SEL)
+			{
+				int j = 0;
+				for (j = 0; j < mp->totloop; j++)
+				{
+					MLoop ml;
+					ml = mloop[mp->loopstart + j];
+					me = medge[ml.e].flag |= ME_SHARP;
+				}
+			}
+		}
+	}
 	
 	result->dirty |= DM_DIRTY_NORMALS;
 	CDDM_calc_normals_mapping(result);

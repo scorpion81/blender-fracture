@@ -57,19 +57,31 @@ Shard *BKE_fracture_shard_boolean(Object* obj, DerivedMesh *dm_parent, Shard* ch
 	Shard *output_s;
 	DerivedMesh *left_dm, *right_dm, *output_dm;
 	MPoly *mpoly, *mp;
-	int totpoly, i = 0;
+//	MVert *mvert, *mv;
+	int totpoly, totvert, i = 0;
 
 	left_dm = BKE_shard_create_dm(child, false);
 
-	if (inner_material_index > 0)
+#if 0
+	//put all verts in inner vgroup ? (via index)
+	mvert = left_dm->getVertArray(left_dm);
+	totvert = left_dm->getNumVerts(left_dm);
+	for (i = 0, mv = mvert; i < totvert; i++, mv++)
 	{
-		//set inner material on child shard
-		mpoly = left_dm->getPolyArray(left_dm);
-		totpoly = left_dm->getNumPolys(left_dm);
-		for (i = 0, mp = mpoly; i < totpoly; i++, mp++)
+		mv->flag |= ME_VERT_TMP_TAG;
+	}
+#endif
+
+	//set inner material on child shard
+	mpoly = left_dm->getPolyArray(left_dm);
+	totpoly = left_dm->getNumPolys(left_dm);
+	for (i = 0, mp = mpoly; i < totpoly; i++, mp++)
+	{
+		if (inner_material_index > 0)
 		{
 			mp->mat_nr = inner_material_index;
 		}
+		mp->flag |= ME_FACE_SEL;
 	}
 
 	right_dm = dm_parent;
@@ -199,30 +211,38 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 			float normal_fill[3];
 			BMOperator bmop_fill;
 			BMOperator bmop_attr;
+//			BMOperator bmop_del;
 
 			normalize_v3_v3(normal_fill, plane_no);
-			{//if (clear_outer == true && clear_inner == false) {
+			if (clear_outer == true && clear_inner == false) {
 				negate_v3(normal_fill);
 			}
 
 			/* Fill */
-			/*BMO_op_initf(
-			        bm_parent, &bmop_fill,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-			        "triangle_fill edges=%S use_beauty=%b",
-			        &bmop, "geom_cut.out", true);
-			BMO_op_exec(bm_parent, &bmop_fill);*/
-
-			/*BMO_op_initf(bm_parent, &bmop_fill, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+#if 0
+			BMO_op_initf(bm_parent, &bmop_fill, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 			            "contextual_create geom=%S mat_nr=%i use_smooth=%b",
 			            &bmop, "geom_cut.out", 0, false);
-			BMO_op_exec(bm_parent, &bmop_fill);*/
+			BMO_op_exec(bm_parent, &bmop_fill);
+
+			BMO_op_initf(bm_parent, &bmop_attr, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+						 "face_attribute_fill faces=%S use_normals=%b use_data=%b",
+						 &bmop_fill, "faces.out", false, true);
+			BMO_op_exec(bm_parent, &bmop_attr);
+
+			BMO_op_initf(bm_parent, &bmop_del, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+			             "delete geom=%S context=%i", &bmop_fill, "edges.out", DEL_EDGESFACES);
+			BMO_op_exec(bm_parent, &bmop_del);
+
+			BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "faces.out", BM_FACE, BM_ELEM_TAG, true);
+#endif
 
 			if (inner_mat_index == 0)	//dont use inner material...
 			{
 				BMO_op_initf(
 						bm_parent, &bmop_fill,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-						"triangle_fill edges=%S normal=%v use_dissolve=%b",
-						&bmop, "geom_cut.out", normal_fill, true);
+						"triangle_fill edges=%S normal=%v use_dissolve=%b use_beauty=%b",
+						&bmop, "geom_cut.out", normal_fill, true, true);
 				BMO_op_exec(bm_parent, &bmop_fill);
 
 				BMO_op_initf(bm_parent, &bmop_attr, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
@@ -230,7 +250,7 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 							 &bmop_fill, "geom.out", false, true);
 				BMO_op_exec(bm_parent, &bmop_attr);
 
-				BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "geom.out", BM_FACE, BM_ELEM_TAG, true);
+				BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "geom.out", BM_FACE, BM_ELEM_TAG | BM_ELEM_SELECT, true);
 			}
 			else
 			{
@@ -238,7 +258,7 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 				BMO_op_initf(
 				        bm_parent, &bmop_fill,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 				       "edgenet_fill edges=%S mat_nr=%i use_smooth=%b sides=%i",
-				        &bmop, "geom_cut.out", inner_mat_index, false, 1);
+				        &bmop, "geom_cut.out", inner_mat_index, false, 2);
 				BMO_op_exec(bm_parent, &bmop_fill);
 
 				/* Copy Attributes */
@@ -247,22 +267,19 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 				         &bmop_fill, "faces.out", true, false);
 				BMO_op_exec(bm_parent, &bmop_attr);
 
-				BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "faces.out", BM_FACE, BM_ELEM_TAG, true);
+				BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "faces.out", BM_FACE, BM_ELEM_TAG | BM_ELEM_SELECT, true);
 			}
 
-#if 0
-			BMO_op_initf(bm_parent, &bmop_attr, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-			             "face_attribute_fill faces=%S use_normals=%b use_data=%b",
-			             &bmop_fill, "geom.out", false, true);
-			BMO_op_exec(bm_parent, &bmop_attr);
-
-			BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "geom.out", BM_FACE, BM_ELEM_TAG, true);
-#endif
+			//BMO_op_finish(bm_parent, &bmop_del);
 			BMO_op_finish(bm_parent, &bmop_attr);
 			BMO_op_finish(bm_parent, &bmop_fill);
 		}
 
-		BMO_slot_buffer_hflag_enable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, BM_ELEM_TAG, true);
+		BMO_slot_buffer_hflag_enable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, BM_ELEM_TAG , true);
+
+		//mark sharp
+		//BMO_slot_buffer_hflag_disable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, BM_ELEM_SMOOTH , true);
+		//verts into inner vgroup HERE....
 
 		BMO_op_finish(bm_parent, &bmop);
 	}
