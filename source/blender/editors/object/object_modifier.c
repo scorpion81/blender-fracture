@@ -2528,12 +2528,9 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 		for (mi = rmd->meshIslands.first; mi; mi = mi->next)
 		{
 			float cent[3];
-			FractureModifierData *rmd;
-			ParticleSystemModifierData *pmd;
-			MVert* v;
-			int j = 0;
 			Mesh* me;
-			//BMesh *bm;
+			ModifierData *md;
+			bool foundFracture = false;
 			
 			//create separate objects for meshislands
 			if (ob->type == OB_MESH)
@@ -2565,45 +2562,33 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 				}
 			}
 
-			rmd = modifiers_findByType(ob_new, eModifierType_Fracture);
-			if (rmd)
+			//throw away all modifiers before fracture, result is stored inside it
+			while (ob_new->modifiers.first != NULL)
 			{
-				BLI_remlink(&ob_new->modifiers, rmd);
-				modifier_free(rmd);
-			}
-
-			pmd = modifiers_findByType(ob, eModifierType_ParticleSystem);
-			if (pmd)
-			{
-				//throw away possibly copied particlesystems, eating memory otherwise
-				BLI_remlink(&ob_new->modifiers, pmd);
-				modifier_free(pmd);
+				md = ob_new->modifiers.first;
+				if (md->type == eModifierType_Fracture)
+				{
+					//remove fracture itself too
+					foundFracture = true;
+					BLI_remlink(&ob_new->modifiers, md);
+					modifier_free(md);
+					md = NULL;
+				}
+				else if (!foundFracture)
+				{
+					BLI_remlink(&ob_new->modifiers, md);
+					modifier_free(md);
+					md = NULL;
+				}
+				//else keep following modifiers, or apply them ?
 			}
 			
 			assign_matarar(ob_new, give_matarar(ob), *give_totcolp(ob));
-			
-			//converting to bmesh first retains the textures
-			//bm = DM_to_bmesh(mi->physics_mesh, true);
-			
-			//BM_mesh_bm_to_me(bm, ob_new->data, false);
-			//BM_mesh_free(bm);
 
 			me = (Mesh*)ob_new->data;
 			me->edit_btmesh = NULL;
 
-/*
-			CustomData_reset(&me->vdata);
-			CustomData_reset(&me->edata);
-			CustomData_reset(&me->ldata);
-			CustomData_reset(&me->fdata);
-			CustomData_reset(&me->pdata); */
-
 			DM_to_mesh(mi->physics_mesh, me, ob_new, CD_MASK_MESH);
-
-/*			for (j = 0, v = me->mvert; j < me->totvert; j++, v++)
-			{
-				sub_v3_v3(v->co, mi->centroid);
-			}*/
 			
 			//set origin to centroid
 			copy_v3_v3(cent, mi->centroid);

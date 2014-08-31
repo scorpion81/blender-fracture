@@ -1395,6 +1395,8 @@ static void write_meshIsland(WriteData* wd, MeshIsland* mi)
 	BKE_shard_free(mi->temp, true);
 	mi->temp = NULL;
 
+	writedata(wd, DATA, sizeof(float) * 3 * mi->vertex_count, mi->vertno);
+
 	writestruct(wd, DATA, "RigidBodyOb", 1, mi->rigidbody);
 //	writedata(wd, DATA, sizeof(int) * mi->vertex_count, mi->combined_index_map);
 	writedata(wd, DATA, sizeof(int) * mi->neighbor_count, mi->neighbor_ids);

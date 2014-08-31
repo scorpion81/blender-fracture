@@ -448,14 +448,20 @@ static KDTree* build_nor_tree(DerivedMesh *dm)
 
 static void find_normal(DerivedMesh* dm, KDTree* tree, float co[3], short no[3])
 {
+	//KDTreeNearest *n = MEM_mallocN(sizeof(KDTreeNearest) * 2, "nearest");
 	KDTreeNearest n;
 	int index = 0;
 	MVert mvert;
+	float fno[3];
 
+	normal_short_to_float_v3(fno, no);
+	//index = BLI_kdtree_find_nearest_n__normal(tree, co, fno, n, 2);
 	index = BLI_kdtree_find_nearest(tree, co, &n);
+
 	dm->getVert(dm, index, &mvert);
 
 	copy_v3_v3_short(no, mvert.no);
+	//MEM_freeN(n);
 }
 
 static DerivedMesh* get_orig_dm(Object* ob)
@@ -1495,6 +1501,24 @@ static float mesh_separate_tagged(FractureModifierData* rmd, Object *ob, BMVert*
 		mi->vertex_indices[i] = mi->vertices[i]->head.index;
 	}
 
+	//copy fixed normals to physicsmesh too, for convert to objects
+	if (rmd->fix_normals)
+	{
+		MVert* verts, *mv;
+		int j = 0, totvert = 0;
+		totvert = mi->vertex_count;
+		verts = mi->physics_mesh->getVertArray(mi->physics_mesh);
+		for (mv = verts, j = 0; j < totvert; mv++, j++)
+		{
+			short no[3];
+			no[0] = mi->vertno[j*3];
+			no[1] = mi->vertno[j*3+1];
+			no[2] = mi->vertno[j*3+2];
+
+			copy_v3_v3_short(mv->no, no);
+		}
+	}
+
 	copy_v3_v3(mi->centroid, centroid);
 	mat4_to_loc_quat(dummyloc, rot, ob->obmat);
 	copy_v3_v3(mi->rot, rot);
@@ -1702,7 +1726,7 @@ void mesh_separate_loose_partition(FractureModifierData* rmd, Object* ob, BMesh*
 
 			startno = MEM_reallocN(startno, (tag_counter+1) * 3 * sizeof(short));
 
-			//copy_v3_v3(no, v_seed->no);
+			copy_v3_v3(no, v_seed->no);
 			find_normal(dm, rmd->nor_tree, v_seed->co, no);
 			startno[3 * tag_counter] = no[0];
 			startno[3 * tag_counter+1] = no[1];
@@ -1738,7 +1762,7 @@ void mesh_separate_loose_partition(FractureModifierData* rmd, Object* ob, BMesh*
 
 				startno = MEM_reallocN(startno, (tag_counter+1) * 3 * sizeof(short));
 
-				//copy_v3_v3(no, v_seed->no);
+				copy_v3_v3(no, v_seed->no);
 				find_normal(dm, rmd->nor_tree, e->v1->co, no);
 				startno[3 * tag_counter] = no[0];
 				startno[3 * tag_counter+1] = no[1];
@@ -1762,7 +1786,7 @@ void mesh_separate_loose_partition(FractureModifierData* rmd, Object* ob, BMesh*
 				startco[3 * tag_counter+2] = e->v2->co[2];
 
 				startno = MEM_reallocN(startno, (tag_counter+1) * 3 * sizeof(short));
-				//copy_v3_v3(no, v_seed->no);
+				copy_v3_v3(no, v_seed->no);
 				find_normal(dm, rmd->nor_tree, e->v2->co, no);
 				startno[3 * tag_counter] = no[0];
 				startno[3 * tag_counter+1] = no[1];
@@ -3102,6 +3126,15 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 					float gweight = defvert_find_weight(dvert + vertstart + i, ground_defgrp_index);
 					mi->ground_weight += gweight;
 				}
+
+				if (mi->vertno != NULL && rmd->fix_normals)
+				{
+					float no[3];
+					no[0] = mi->vertno[i*3];
+					no[1] = mi->vertno[i*3+1];
+					no[2] = mi->vertno[i*3+2];
+					copy_v3_v3_short(mi->vertices_cached[i]->no, no);
+				}
 			}
 #if 0
 			//do here for now only, since in halving case we have no neighborhood info
@@ -3154,6 +3187,7 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 					float gweight = defvert_find_weight(dvert + index, ground_defgrp_index);
 					mi->ground_weight += gweight;
 				}
+
 
 				if (mi->vertno != NULL && rmd->fix_normals)
 				{
@@ -3358,6 +3392,8 @@ DerivedMesh* do_autoHide(FractureModifierData* fmd, DerivedMesh* dm)
 	return result;
 }
 
+
+
 DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, DerivedMesh* orig_dm)
 {
 	bool exploOK = false; //doFracture
@@ -3490,7 +3526,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 						mi->vertco[j*3+2] = mv->co[2];
 
 						//either take orignormals or take ones from fractured mesh...
-						//copy_v3_v3(no, mv->no);
+						copy_v3_v3_short(no, mv->no);
 						find_normal(orig_dm, fmd->nor_tree, mv->co, &no);
 
 						mi->vertno[j*3] = no[0];
@@ -3500,11 +3536,14 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 						if (fmd->fix_normals)
 						{
 							copy_v3_v3_short(mi->vertices_cached[j]->no, no);
+							copy_v3_v3_short(mv->no, no);
 						}
 
 						//then eliminate centroid in vertex coords ?
 						sub_v3_v3(mv->co, s->centroid);
 					}
+
+					//copy fixed normals to physics mesh too (needed for convert to objects)
 
 					BKE_shard_calc_minmax(s);
 					mi->vertex_count = s->totvert;
