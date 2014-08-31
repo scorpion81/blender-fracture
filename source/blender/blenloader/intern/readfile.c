@@ -4625,9 +4625,20 @@ static Shard* read_shard(FileData *fd, void* address )
 	s->mpoly = newdataadr(fd, s->mpoly);
 	s->mloop = newdataadr(fd, s->mloop);
 
-	direct_link_customdata_fracture(fd, &s->vertData, s->totvert);
-	direct_link_customdata_fracture(fd, &s->loopData, s->totloop);
-	direct_link_customdata_fracture(fd, &s->polyData, s->totpoly);
+	if (s->totvert > 1)
+	{
+		direct_link_customdata_fracture(fd, &s->vertData, s->totvert);
+	}
+
+	if (s->totloop > 0)
+	{
+		direct_link_customdata_fracture(fd, &s->loopData, s->totloop);
+	}
+
+	if (s->totpoly > 0)
+	{
+		direct_link_customdata_fracture(fd, &s->polyData, s->totpoly);
+	}
 
 	//sigh, need to ensure image refs are correct...
 	//direct_link_customdata_mtpoly_shard(fd, &s->polyData, s->totpoly);

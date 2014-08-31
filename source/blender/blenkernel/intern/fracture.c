@@ -601,20 +601,21 @@ void BKE_shard_free(Shard *s, bool doCustomData)
 
 	if (doCustomData)
 	{
-		//CustomData_free_layers(&s->vertData, CD_MDEFORMVERT, s->totvert);
-		CustomData_free(&s->vertData, s->totvert);
-		//CustomData_free_layers(&s->loopData, CD_MLOOPUV, s->totloop);
-		//CustomData_free_layers(&s->polyData, CD_MTEXPOLY, s->totpoly);
-		CustomData_free(&s->loopData, s->totloop);
-		CustomData_free(&s->polyData, s->totpoly);
-	}
-	/*else
-	{
-		s->vertData.external = NULL;
-		s->loopData.external = NULL;
-		s->polyData.external = NULL;
+		if (s->totvert > 1)
+		{
+			CustomData_free(&s->vertData, s->totvert);
+		}
 
-	}*/
+		if (s->totloop > 0)
+		{
+			CustomData_free(&s->loopData, s->totloop);
+		}
+
+		if (s->totpoly > 0)
+		{
+			CustomData_free(&s->polyData, s->totpoly);
+		}
+	}
 
 	MEM_freeN(s);
 }
@@ -1060,9 +1061,20 @@ static DerivedMesh *create_dm(FractureModifierData* fmd, bool doCustomData)
 
 		if (doCustomData)
 		{
-			CustomData_copy_data(&shard->vertData, &result->vertData, 0, vertstart, shard->totvert);
-			CustomData_copy_data(&shard->loopData, &result->loopData, 0, loopstart, shard->totloop);
-			CustomData_copy_data(&shard->polyData, &result->polyData, 0, polystart, shard->totpoly);
+			if (shard->totvert > 1)
+			{
+				CustomData_copy_data(&shard->vertData, &result->vertData, 0, vertstart, shard->totvert);
+			}
+
+			if (shard->totloop > 0)
+			{
+				CustomData_copy_data(&shard->loopData, &result->loopData, 0, loopstart, shard->totloop);
+			}
+
+			if (shard->totpoly > 0)
+			{
+				CustomData_copy_data(&shard->polyData, &result->polyData, 0, polystart, shard->totpoly);
+			}
 		}
 
 		vertstart += shard->totvert;
@@ -1145,18 +1157,18 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 
 	if (doCustomData)
 	{
-		//CustomData_copy(&s->vertData, &dm->vertData, CD_MASK_MDEFORMVERT, CD_CALLOC, s->totvert);
-		//CustomData_copy_data(&s->vertData, &dm->vertData, 0, 0, s->totvert);
-
-		CustomData_add_layer(&dm->vertData, CD_MDEFORMVERT, CD_DUPLICATE, CustomData_get_layer(&s->vertData, CD_MDEFORMVERT), s->totvert);
-		CustomData_add_layer(&dm->loopData, CD_MLOOPUV, CD_DUPLICATE, CustomData_get_layer(&s->loopData, CD_MLOOPUV), s->totloop);
-		CustomData_add_layer(&dm->polyData, CD_MTEXPOLY, CD_DUPLICATE, CustomData_get_layer(&s->polyData, CD_MTEXPOLY), s->totpoly);
-
-		//CustomData_copy(&s->loopData, &dm->loopData, CD_MASK_MLOOPUV, CD_CALLOC, s->totloop);
-		//CustomData_copy_data(&s->loopData, &dm->loopData, 0, 0, s->totloop);
-
-		//CustomData_copy(&s->polyData, &dm->polyData, CD_MASK_MTEXPOLY, CD_CALLOC, s->totpoly);
-		//CustomData_copy_data(&s->polyData, &dm->polyData, 0, 0, s->totpoly);
+		if (s->totvert > 1)
+		{
+			CustomData_add_layer(&dm->vertData, CD_MDEFORMVERT, CD_DUPLICATE, CustomData_get_layer(&s->vertData, CD_MDEFORMVERT), s->totvert);
+		}
+		if (s->totloop > 0)
+		{
+			CustomData_add_layer(&dm->loopData, CD_MLOOPUV, CD_DUPLICATE, CustomData_get_layer(&s->loopData, CD_MLOOPUV), s->totloop);
+		}
+		if (s->totpoly > 0)
+		{
+			CustomData_add_layer(&dm->polyData, CD_MTEXPOLY, CD_DUPLICATE, CustomData_get_layer(&s->polyData, CD_MTEXPOLY), s->totpoly);
+		}
 	}
 
 	return dm;
