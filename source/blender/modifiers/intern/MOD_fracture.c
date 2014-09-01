@@ -828,11 +828,16 @@ static void points_from_verts(Object** ob, int totobj, FracPointCloud* points, f
 
 					copy_v3_v3(co, vert[v].co);
 
-					if ((o > 0) ||
+					/*if ((o > 0) ||
 					   ((emd->point_source & MOD_FRACTURE_EXTRA_VERTS) &&
-					   (!(emd->point_source & MOD_FRACTURE_OWN_VERTS)) && (o == 0)))
+					   (!(emd->point_source & MOD_FRACTURE_OWN_VERTS)) && (o == 0)))*/
 					{
-						mul_m4_v3(ob[o]->obmat, co);
+						//mul_m4_v3(ob[o]->obmat, co);
+						if (emd->point_source & MOD_FRACTURE_EXTRA_VERTS)
+						{
+							mul_m4_v3(ob[o]->obmat, co);
+						}
+
 						mul_m4_v3(imat, co);
 					}
 
