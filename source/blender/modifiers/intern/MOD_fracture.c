@@ -1482,7 +1482,7 @@ static float mesh_separate_tagged(FractureModifierData* rmd, Object *ob, BMVert*
 	mi = MEM_callocN(sizeof(MeshIsland), "meshIsland");
 	BLI_addtail(&rmd->meshIslands, mi);
 
-	mi->thresh_weight = 0;
+	mi->thresh_weight = 1;
 	mi->vertices = v_tag;
 	mi->vertco = *startco;
 	mi->vertno = *startno;
@@ -3104,7 +3104,6 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 	}
 #endif
 
-
 	for (mi = rmd->meshIslands.first; mi; mi = mi->next)
 	{
 		int i = 0;
@@ -3112,6 +3111,11 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 		{
 			MEM_freeN(mi->vertices_cached);
 			mi->vertices_cached = NULL;
+		}
+
+		if (rmd->thresh_defgrp_name[0])
+		{
+			mi->thresh_weight = 0;
 		}
 
 		mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * mi->vertex_count, "mi->vertices_cached");
@@ -3495,7 +3499,15 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 
 					mi->participating_constraints = NULL;
 					mi->participating_constraint_count = 0;
-					mi->thresh_weight = 0;
+
+					if (fmd->thresh_defgrp_name[0])
+					{
+						mi->thresh_weight = 0;
+					}
+					else
+					{
+						mi->thresh_weight = 1;
+					}
 
 					mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * s->totvert, "vert_cache");
 					mverts = CDDM_get_verts(fmd->visible_mesh_cached);

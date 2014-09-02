@@ -2770,12 +2770,13 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 
 		if (ob && (ob->type == OB_MESH || ob->type == OB_CURVE || ob->type == OB_SURF || ob->type == OB_FONT)) {
 
+#if 0
 			/* check for fractured objects which want to participate first, then handle other normal objects*/
 			for (md = ob->modifiers.first; md; md = md->next) {
 				if (md->type == eModifierType_Fracture) {
 					rmd = (FractureModifierData*)md;
 					//BKE_rigidbody_sync_all_shards(ob);
-					if (rbw->refresh_modifiers)
+					if (rbw->refresh_modifiers && 0)
 					{
 						//trigger refresh of modifier at next execution (if we jumped back to startframea after changing an object)
 						rmd->refresh = true;
@@ -2792,6 +2793,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 					break;
 				}
 			}
+#endif
 
 			if (isModifierActive(rmd)) {
 				float max_con_mass = 0;
@@ -2815,8 +2817,10 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 						/* perform simulation data updates as tagged */
 						/* refresh object... */
 						int do_rebuild = rebuild;
+						float weight = mi->thresh_weight;
+						int breaking_percentage = rmd->breaking_percentage_weighted ? (int)(((float)rmd->breaking_percentage) * weight) : rmd->breaking_distance;
 						
-						if (rmd->breaking_percentage > 0)
+						if (rmd->breaking_percentage > 0 || weight > 0)
 						{
 							int broken_cons = 0, cons = 0, i = 0;
 							RigidBodyShardCon* con;
@@ -2837,7 +2841,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 							
 							if (cons > 0)
 							{
-								if ((float)broken_cons / (float)cons * 100 >= rmd->breaking_percentage) {
+								if ((float)broken_cons / (float)cons * 100 >= breaking_percentage) {
 									//break all cons if over percentage
 									for (i = 0; i < cons; i++)
 									{
@@ -2876,7 +2880,11 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 
 				for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
 
+					float weight = (rbsc->mi1->thresh_weight + rbsc->mi2->thresh_weight) * 0.5f;
+					float breaking_angle = rmd->breaking_angle_weighted ? rmd->breaking_angle * weight : rmd->breaking_angle;
+					float breaking_distance = rmd->breaking_distance_weighted ? rmd->breaking_distance * weight : rmd->breaking_distance;
 					int iterations;
+
 					if (rmd->solver_iterations_override == 0)
 					{
 						iterations = rbw->num_solver_iterations;
@@ -2907,7 +2915,8 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 						BKE_rigidbody_calc_threshold(max_con_mass, min_con_dist, rmd, rbsc);
 					}
 					
-					if (((rmd->breaking_angle > 0) || (rmd->breaking_distance > 0)) && !rebuild)
+					if (((rmd->breaking_angle) > 0) || (rmd->breaking_angle_weighted && weight > 0) ||
+					   (((rmd->breaking_distance > 0) || (rmd->breaking_distance_weighted && weight > 0)) && !rebuild))
 					{
 						float dist, angle, distdiff, anglediff;
 						calc_dist_angle(rbsc, &dist, &angle);
@@ -2915,8 +2924,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 						anglediff = fabs(angle - rbsc->start_angle);
 						distdiff = fabs(dist - rbsc->start_dist);
 						
-						
-						if ((rmd->breaking_angle > 0) && (anglediff > rmd->breaking_angle))
+						if ((rmd->breaking_angle > 0 || (rmd->breaking_angle_weighted && weight > 0)) && (anglediff > breaking_angle))
 						{
 							rbsc->flag &= ~RBC_FLAG_ENABLED;
 							rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
@@ -2927,7 +2935,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 							}
 						}
 						
-						if ((rmd->breaking_distance > 0) && (distdiff > rmd->breaking_distance))
+						if ((rmd->breaking_distance > 0 || (rmd->breaking_distance_weighted && weight > 0)) && (distdiff > breaking_distance))
 						{
 							rbsc->flag &= ~RBC_FLAG_ENABLED;
 							rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;

@@ -1461,7 +1461,8 @@ typedef struct FractureModifierData {
 	float breaking_distance, max_vol, cell_size;
 	float origmat[4][4], breaking_threshold, cluster_breaking_threshold;
 	float contact_dist, autohide_dist;
-	char pad[4];
+	int breaking_distance_weighted, breaking_angle_weighted, breaking_percentage_weighted;
+	//char pad[4];
 } FractureModifierData;
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */

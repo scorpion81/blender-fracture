@@ -4314,6 +4314,21 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_boolean_sdna(prop, NULL, "use_ortho", false);
 	RNA_def_property_ui_text(prop, "Exact Line", "Modify point cloud to get determined cracking lines");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "breaking_percentage_weighted", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "breaking_percentage_weighted", false);
+	RNA_def_property_ui_text(prop, "Weighted Percentage", "Modify breaking percentage by threshold weights");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "breaking_angle_weighted", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "breaking_angle_weighted", false);
+	RNA_def_property_ui_text(prop, "Weighted Angle", "Modify breaking angle by threshold weights");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "breaking_distance_weighted", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "breaking_distance_weighted", false);
+	RNA_def_property_ui_text(prop, "Weighted Distance", "Modify breaking distance by threshold weights");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 void RNA_def_modifier(BlenderRNA *brna)
