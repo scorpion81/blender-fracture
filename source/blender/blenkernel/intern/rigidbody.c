@@ -326,7 +326,7 @@ float BKE_rigidbody_calc_volume(DerivedMesh *dm, RigidBodyOb *rbo)
 void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland* mi, DerivedMesh* orig_dm)
 {
 	DerivedMesh *dm_ob = orig_dm, *dm_mi;
-	float vol_mi, mass_mi, vol_ob, mass_ob;
+	float vol_mi = 0, mass_mi = 0, vol_ob = 0, mass_ob = 0;
 
 	//dm_ob = CDDM_from_mesh(ob->data); //ob->derivedFinal;
 	if (dm_ob == NULL)
@@ -2673,7 +2673,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 
 				for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
 
-					float weight = (rbsc->mi1->thresh_weight + rbsc->mi2->thresh_weight) * 0.5f;
+					float weight = MIN2(rbsc->mi1->thresh_weight, rbsc->mi2->thresh_weight);
 					float breaking_angle = rmd->breaking_angle_weighted ? rmd->breaking_angle * weight : rmd->breaking_angle;
 					float breaking_distance = rmd->breaking_distance_weighted ? rmd->breaking_distance * weight : rmd->breaking_distance;
 					int iterations;

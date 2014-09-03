@@ -1805,7 +1805,7 @@ static void connect_meshislands(FractureModifierData* rmd, Object* ob, MeshIslan
 			if (rmd->thresh_defgrp_name[0])
 			{
 				//modify maximum threshold by average weight
-				rbsc->breaking_threshold = thresh * (mi1->thresh_weight + mi2->thresh_weight) * 0.5f;
+				rbsc->breaking_threshold = thresh * MIN2(mi1->thresh_weight, mi2->thresh_weight);
 			}
 
 			//BKE_rigidbody_start_dist_angle(rbsc);
