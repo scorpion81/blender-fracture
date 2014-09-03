@@ -2616,7 +2616,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 						/* refresh object... */
 						int do_rebuild = rebuild;
 						float weight = mi->thresh_weight;
-						int breaking_percentage = rmd->breaking_percentage_weighted ? (int)(((float)rmd->breaking_percentage) * weight) : rmd->breaking_distance;
+						int breaking_percentage = rmd->breaking_percentage_weighted ? (int)(((float)rmd->breaking_percentage) * weight) : rmd->breaking_percentage;
 						
 						if (rmd->breaking_percentage > 0 || weight > 0)
 						{
