@@ -296,7 +296,7 @@ static bool object_modifier_remove(Main *bmain, Object *ob, ModifierData *md,
 	}
 	else if (md->type == eModifierType_Softbody) {
 		if (ob->soft) {
-			sbFree(ob->soft, ob);
+			sbFree(ob->soft);
 			ob->soft = NULL;
 			ob->softflag = 0;
 		}
@@ -2619,14 +2619,9 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 		//go through constraints and find objects by position
 		//constrain them with regular constraints
 		
-		if (rmd->mass_dependent_thresholds || rmd->use_proportional_solver_iterations)
+		if (rmd->use_mass_dependent_thresholds)
 		{
 			max_con_mass = BKE_rigidbody_calc_max_con_mass(ob);
-		}
-
-		if (rmd->dist_dependent_thresholds)
-		{
-			min_con_dist = BKE_rigidbody_calc_min_con_dist(ob);
 		}
 		
 		for (con = rmd->meshConstraints.first; con; con = con->next)
@@ -2647,23 +2642,13 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 				iterations = rmd->solver_iterations_override;
 			}
 			
-			if (rmd->use_proportional_solver_iterations)
-			{
-				float con_mass = 0;
-				if (con->mi1 && con->mi1->rigidbody && con->mi2 && con->mi2->rigidbody) {
-					con_mass = con->mi1->rigidbody->mass + con->mi2->rigidbody->mass;
-				}
-				
-				iterations = (int)((con_mass / max_con_mass) * (float)iterations);
-			}
-			
 			if (iterations > 0)
 			{
 				con->flag |= RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS;
 				con->num_solver_iterations = iterations;
 			}
 			
-			if ((rmd->mass_dependent_thresholds) || (rmd->dist_dependent_thresholds))
+			if ((rmd->use_mass_dependent_thresholds))
 			{
 				BKE_rigidbody_calc_threshold(max_con_mass, min_con_dist, rmd, con);
 			}

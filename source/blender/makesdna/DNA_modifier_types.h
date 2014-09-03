@@ -1332,8 +1332,6 @@ enum {
 
 typedef struct MeshIsland {
 	struct MeshIsland *next, *prev;
-	struct MeshIsland **compound_children;
-	struct MeshIsland *compound_parent;
 	struct BMVert **vertices;
 	struct MVert **vertices_cached;
 	float *vertco;
@@ -1341,20 +1339,18 @@ typedef struct MeshIsland {
 	struct DerivedMesh *physics_mesh;
 	struct Shard *temp; //storage for physics mesh, better omit derivedmesh here...
 	struct RigidBodyOb *rigidbody;
-	int *combined_index_map;
 	int *neighbor_ids;
 	int *vertex_indices;
 	struct BoundBox *bb;
 	struct RigidBodyShardCon **participating_constraints;
 	int participating_constraint_count;
-	int vertex_count, id, neighbor_count, is_at_boundary;
+	int vertex_count, id, neighbor_count;
 	float centroid[3], start_co[3];
 	float rot[4]; //hrm, need this for constraints probably
-	float destruction_frame;
 	float thresh_weight, ground_weight;
 	int linear_index;  //index in rigidbody world
-	int compound_count, particle_index;
-	char pad[4];
+	int particle_index;
+	//char pad[4];
 } MeshIsland;
 
 
@@ -1422,16 +1418,10 @@ typedef struct FractureModifierData {
 	struct DerivedMesh *dm;
 	struct Group *extra_group;
 	struct Group *dm_group;
-	float *noisemap;
 	struct BMesh *visible_mesh;
 	struct DerivedMesh *visible_mesh_cached;
-	ListBase meshIslands, meshConstraints, cells;
+	ListBase meshIslands, meshConstraints;
 	ListBase islandShards;
-	int	**sel_indexes, *index_storage, *id_storage;
-	void (*join)(struct FractureModifierData *rmd, struct Object* ob);
-	void (*split)(struct FractureModifierData *rmd, struct Object *ob, struct MeshIsland *mi, float cfra);
-	struct GHash *idmap;
-	float *framemap;
 	char thresh_defgrp_name[64];  /* MAX_VGROUP_NAME */
 	char ground_defgrp_name[64];  /* MAX_VGROUP_NAME */
 	char inner_defgrp_name[64];  /* MAX_VGROUP_NAME */
@@ -1439,30 +1429,51 @@ typedef struct FractureModifierData {
 	struct Material *inner_material;
 	struct GHash *face_pairs;
 
+	//values
 	int frac_algorithm;
 	int shard_count;
 	int shard_id;
 	int point_source;
 	int point_seed;
 	int percentage;
-	float noise;
-	int noise_count;
 	int cluster_count;
 
-	int framecount, disable_self_collision;
-	int refresh, use_constraints, mass_dependent_thresholds, sel_counter;
-	int inner_constraint_type, dist_dependent_thresholds, refresh_constraints;
-	int explo_shared, constraint_limit, contact_dist_meaning, use_both_directions;
+	int constraint_limit;
+	int solver_iterations_override;
+	int breaking_percentage;
+
 	float breaking_angle;
-	int breaking_percentage, use_proportional_distance, use_proportional_limit;
-	int use_cellbased_sim, use_experimental;
-	int solver_iterations_override, use_proportional_solver_iterations, refresh_images;
-	int shards_to_islands, execute_threaded, fix_normals, auto_execute, use_ortho;
-	float breaking_distance, max_vol, cell_size;
-	float origmat[4][4], breaking_threshold, cluster_breaking_threshold;
+	float breaking_distance;
+	float origmat[4][4];
+	float breaking_threshold;
+	float cluster_breaking_threshold;
 	float contact_dist, autohide_dist;
-	int breaking_distance_weighted, breaking_angle_weighted, breaking_percentage_weighted;
-	//char pad[4];
+
+	//flags
+	int refresh;
+	int refresh_constraints;
+
+	int use_constraints;
+	int use_mass_dependent_thresholds;
+
+	int shards_to_islands;
+	int execute_threaded;
+	int fix_normals;
+	int auto_execute;
+
+	int breaking_distance_weighted;
+	int breaking_angle_weighted;
+	int breaking_percentage_weighted;
+
+	//internal flags
+	int use_experimental;
+	int explo_shared;
+	int refresh_images;
+
+	//internal values
+	float max_vol;
+
+	char pad[4];
 } FractureModifierData;
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */

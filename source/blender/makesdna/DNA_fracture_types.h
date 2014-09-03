@@ -49,15 +49,6 @@ typedef struct FracMesh {
 	char pad[4];
 } FracMesh;
 
-typedef struct FracHistory {
-	FracMesh **frac_states; // "indexed" by frames ? handle this in iterator...?
-	int *frame_map; // only step in iterator when past or before according frame... important for replaying from cache
-					// need a framemap; to trigger step changes by frame since we dont have neither user interaction nor feedback from the sim
-					// this must be part of the history and could be in pointcache as well
-	int state_count;
-	char pad[4];
-} FracHistory;
-
 #ifdef __cplusplus
 }
 #endif

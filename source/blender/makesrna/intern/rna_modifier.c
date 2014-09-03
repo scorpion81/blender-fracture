@@ -83,7 +83,6 @@ EnumPropertyItem modifier_type_items[] = {
 	{eModifierType_Subsurf, "SUBSURF", ICON_MOD_SUBSURF, "Subdivision Surface", ""},
 	{eModifierType_Triangulate, "TRIANGULATE", ICON_MOD_TRIANGULATE, "Triangulate", ""},
 	{eModifierType_Wireframe, "WIREFRAME", ICON_MOD_WIREFRAME, "Wireframe", "Generate a wireframe on the edges of a mesh"},
-	{eModifierType_Fracture, "FRACTURE", ICON_MOD_EXPLODE, "Fracture", ""},
 	{0, "", 0, N_("Deform"), ""},
 	{eModifierType_Armature, "ARMATURE", ICON_MOD_ARMATURE, "Armature", ""},
 	{eModifierType_Cast, "CAST", ICON_MOD_CAST, "Cast", ""},
@@ -105,6 +104,7 @@ EnumPropertyItem modifier_type_items[] = {
 	{eModifierType_DynamicPaint, "DYNAMIC_PAINT", ICON_MOD_DYNAMICPAINT, "Dynamic Paint", ""},
 	{eModifierType_Explode, "EXPLODE", ICON_MOD_EXPLODE, "Explode", ""},
 	{eModifierType_Fluidsim, "FLUID_SIMULATION", ICON_MOD_FLUIDSIM, "Fluid Simulation", ""},
+	{eModifierType_Fracture, "FRACTURE", ICON_MOD_EXPLODE, "Fracture", ""},
 	{eModifierType_Ocean, "OCEAN", ICON_MOD_OCEAN, "Ocean", ""},
 	{eModifierType_ParticleInstance, "PARTICLE_INSTANCE", ICON_MOD_PARTICLES, "Particle Instance", ""},
 	{eModifierType_ParticleSystem, "PARTICLE_SYSTEM", ICON_MOD_PARTICLES, "Particle System", ""},
@@ -744,12 +744,8 @@ static void updateConstraints(FractureModifierData *rmd, Object* ob) {
 	float max_con_mass = 0, min_con_dist = FLT_MAX;
 	int iterations;
 
-	if (rmd->mass_dependent_thresholds) {
+	if (rmd->use_mass_dependent_thresholds) {
 		max_con_mass = BKE_rigidbody_calc_max_con_mass(ob);
-	}
-
-	if (rmd->dist_dependent_thresholds) {
-		min_con_dist = BKE_rigidbody_calc_min_con_dist(ob);
 	}
 
 	for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
@@ -772,7 +768,7 @@ static void updateConstraints(FractureModifierData *rmd, Object* ob) {
 			rbsc->flag |= RBC_FLAG_USE_BREAKING;
 		}
 
-		if (((rmd->mass_dependent_thresholds) || (rmd->dist_dependent_thresholds)) && (rbsc->breaking_threshold > 0)) {
+		if (((rmd->use_mass_dependent_thresholds)) && (rbsc->breaking_threshold > 0)) {
 			BKE_rigidbody_calc_threshold(max_con_mass, min_con_dist, rmd, rbsc);
 		}
 
@@ -788,16 +784,6 @@ static void updateConstraints(FractureModifierData *rmd, Object* ob) {
 		else
 		{
 			iterations = rmd->solver_iterations_override;
-		}
-		
-		if (rmd->use_proportional_solver_iterations)
-		{
-			float con_mass = 0;
-			if (rbsc->mi1 && rbsc->mi1->rigidbody && rbsc->mi2 && rbsc->mi2->rigidbody) {
-				con_mass = rbsc->mi1->rigidbody->mass + rbsc->mi2->rigidbody->mass;
-			}
-			
-			iterations = (int)((con_mass / max_con_mass) * (float)iterations);
 		}
 		
 		if (iterations > 0)
@@ -878,7 +864,7 @@ static void rna_RigidBodyModifier_mass_dependent_thresholds_set(PointerRNA* ptr,
 {
 	FractureModifierData *rmd = (FractureModifierData *)ptr->data;
 	Object* ob = ptr->id.data;
-	rmd->mass_dependent_thresholds = value;
+	rmd->use_mass_dependent_thresholds = value;
 	//updateConstraints(rmd, ob);
 	rmd->refresh_constraints = true;
 }
@@ -891,15 +877,6 @@ static void rna_RigidBodyModifier_constraint_limit_set(PointerRNA *ptr, int valu
 	{
 		rmd->refresh_constraints = true;
 	}*/
-	rmd->refresh_constraints = true;
-}
-
-static void rna_RigidBodyModifier_dist_dependent_thresholds_set(PointerRNA* ptr, int value)
-{
-	FractureModifierData *rmd = (FractureModifierData *)ptr->data;
-	Object* ob = ptr->id.data;
-	rmd->dist_dependent_thresholds = value;
-	//updateConstraints(rmd, ob);
 	rmd->refresh_constraints = true;
 }
 
@@ -944,15 +921,6 @@ static void rna_RigidBodyModifier_solver_iterations_override_set(PointerRNA *ptr
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	Object* ob = ptr->id.data;
 	rmd->solver_iterations_override = value;
-	//updateConstraints(rmd, ob);
-	rmd->refresh_constraints = true;
-}
-
-static void rna_RigidBodyModifier_proportional_solver_iterations_override_set(PointerRNA *ptr, int value)
-{
-	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
-	Object* ob = ptr->id.data;
-	rmd->use_proportional_solver_iterations = value;
 	//updateConstraints(rmd, ob);
 	rmd->refresh_constraints = true;
 }
@@ -4031,29 +3999,6 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	StructRNA *srna;
 	PropertyRNA *prop;
 
-	static EnumPropertyItem prop_constraint_types[] = {
-		{RBC_TYPE_POINT, "POINT", 0, "Point", "Let bodies rotate around a specified point"},
-		{RBC_TYPE_HINGE, "HINGE", 0, "Hinge", "Let bodies rotate around a specified axis"},
-		//{RBC_TYPE_HINGE2, "HINGE2", 0, "Hinge2","Simulates wheel suspension"},
-		{RBC_TYPE_SLIDER, "SLIDER", 0, "Slider", "Restricts movent to a specified axis"},
-		//{RBC_TYPE_CONE_TWIST,"CONE", 0, "Cone", "Let objects rotate within a specified cone"},
-		{RBC_TYPE_6DOF, "6DOF", 0, "6DOF", "Allows user to specify constraint axes"},
-		{RBC_TYPE_6DOF_SPRING,"6DOF_SPRING", 0, "6DOF Spring", "like 6DOF but has springs"},
-		//{RBC_TYPE_UNIVERSAL,"UNIVERSAL", 0, "Universal", "simulates a universal joint"},
-		{RBC_TYPE_FIXED, "FIXED", 0, "Fixed", "Glues two bodies together"},
-		{RBC_TYPE_PISTON, "PISTON", 0, "Piston", "Similar to slider but also allows rotation around slider axis"},
-		//{RBC_TYPE_SPRING, "SPRING", 0, "Spring", "Simplified spring constraint with only one axis thats automatically placed between the connected bodies"},
-		{RBC_TYPE_MOTOR, "MOTOR", 0, "Motor", "Drives bodies by applying linear and angular forces"},
-		{0, NULL, 0, NULL, NULL}
-	};
-
-	static EnumPropertyItem prop_contact_dist[] = {
-		{MOD_RIGIDBODY_CENTROIDS, "CENTROIDS", 0, "Centroids", ""},
-		{MOD_RIGIDBODY_VERTICES, "VERTICES", 0, "Vertices", ""},
-		//{MOD_RIGIDBODY_CELL_CENTROIDS, "CELL_CENTROIDS", 0, "Cells + Centroids", "" },
-		{0, NULL, 0, NULL, NULL}
-	};
-
 	static EnumPropertyItem prop_fracture_algorithm[] = {
 		{MOD_FRACTURE_BISECT_FAST, "BISECT_FAST", 0, "Fast Bisect", "Use a faster but more inaccurate bisection algorithm, also creates uglier shards."},
 		{MOD_FRACTURE_BISECT_FAST_FILL, "BISECT_FAST_FILL", 0, "Fast Bisect + Fill ", "Use the faster but different bisection algorithm and fill cut faces"},
@@ -4104,15 +4049,9 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Contact distance", "Limit distance up to which two mesh islands are considered to have contact, 0 for entire boundingbox");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
-	prop = RNA_def_property(srna, "mass_dependent_thresholds", PROP_BOOLEAN, PROP_NONE);
+	prop = RNA_def_property(srna, "use_mass_dependent_thresholds", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyModifier_mass_dependent_thresholds_set");
 	RNA_def_property_ui_text(prop, "Use Mass Dependent Thresholds", "Match the breaking threshold according to the masses of the constrained shards");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
-
-	prop = RNA_def_property(srna, "inner_constraint_type", PROP_ENUM, PROP_NONE);
-	RNA_def_property_enum_sdna(prop, NULL, "inner_constraint_type");
-	RNA_def_property_enum_items(prop, prop_constraint_types);
-	RNA_def_property_ui_text(prop, "Inner Constraint Type", "");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "constraint_limit", PROP_INT, PROP_NONE);
@@ -4120,22 +4059,6 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_range(prop, 0, INT_MAX);
 	RNA_def_property_int_funcs(prop, NULL, "rna_RigidBodyModifier_constraint_limit_set", NULL);
 	RNA_def_property_ui_text(prop, "Constraint Search Limit", "Maximum number of neighbors being searched per mesh island during constraint creation, 0 for unlimited");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
-
-	prop = RNA_def_property(srna, "dist_dependent_thresholds", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyModifier_dist_dependent_thresholds_set");
-	RNA_def_property_ui_text(prop, "Use Distance Dependent Thresholds", "Match the breaking threshold according to the distance of the constrained shards");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
-
-	prop = RNA_def_property(srna, "contact_dist_meaning", PROP_ENUM, PROP_NONE);
-	RNA_def_property_enum_sdna(prop, NULL, "contact_dist_meaning");
-	RNA_def_property_enum_items(prop, prop_contact_dist);
-	RNA_def_property_ui_text(prop, "Contact Distance Target", "Distance shall be between centroids or vertices");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
-
-	prop = RNA_def_property(srna, "use_both_directions", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "use_both_directions", false);
-	RNA_def_property_ui_text(prop, "Use Both Directions", "Build constraints in both directions between rigidbodies");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "breaking_percentage", PROP_INT, PROP_NONE);
@@ -4159,49 +4082,15 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Breaking Distance", "Distance above which constraint should break");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
-	prop = RNA_def_property(srna, "use_proportional_limit", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "use_proportional_limit", false);
-	RNA_def_property_ui_text(prop, "Use Proportional Limit", "Reduce constraint limit with smaller shards");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
-
-	prop = RNA_def_property(srna, "use_proportional_distance", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "use_proportional_distance", false);
-	RNA_def_property_ui_text(prop, "Use Proportional Distance", "Reduce contact distance with smaller shards (centroid only)");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
-
-/*	prop = RNA_def_property(srna, "use_cellbased_sim", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "use_cellbased_sim", false);
-	RNA_def_property_ui_text(prop, "Use Cell Based Simulation", "Simulate MeshIsland Compounds in the size of the cells");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
-
-/*	prop = RNA_def_property(srna, "cell_size", PROP_FLOAT, PROP_NONE);
-	RNA_def_property_float_sdna(prop, NULL, "cell_size");
-	RNA_def_property_range(prop, 0.1f, FLT_MAX);
-	RNA_def_property_float_default(prop, 1.0f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_cell_size_set", NULL);
-	RNA_def_property_ui_text(prop, "Cell Size", "Size of a cell in the constraint searching grid");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
-
 	prop = RNA_def_property(srna, "use_experimental", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "use_experimental", false);
 	RNA_def_property_ui_text(prop, "Use Experimental", "Experimental features, work in progress. Use at own risk!");
-	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
-
-	prop = RNA_def_property(srna, "disable_self_collision", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "disable_self_collision", true);
-	RNA_def_property_ui_text(prop, "Disable Self Collision", "Let constrained objects collide or not");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "cluster_breaking_threshold", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "cluster_breaking_threshold");
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_cluster_threshold_set", NULL);
 	RNA_def_property_ui_text(prop, "Cluster Breaking threshold", "Threshold to break constraints INSIDE a cluster of shards");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
-
-	prop = RNA_def_property(srna, "use_proportional_solver_iterations", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "use_proportional_solver_iterations", false);
-	RNA_def_property_ui_text(prop, "Use Proportional Solver Iterations", "Adjust solver iterations proportional to shard volume / mass");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "solver_iterations_override", PROP_INT, PROP_NONE);
@@ -4234,11 +4123,6 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Seed", "Seed for uniform pointcloud");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
-	prop = RNA_def_property(srna, "noise", PROP_FLOAT, PROP_NONE);
-	RNA_def_property_range(prop, 0.0f, 1.0f);
-	RNA_def_property_ui_text(prop, "Noise", "Noise to apply over pointcloud");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
-
 	prop = RNA_def_property(srna, "percentage", PROP_INT, PROP_NONE);
 	RNA_def_property_range(prop, 0, 100);
 	RNA_def_property_ui_text(prop, "Percentage", "Percentage of the sum of points of all selected pointsources to actually use for fracture");
@@ -4264,7 +4148,6 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "refresh", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "refresh", false);
 	RNA_def_property_ui_text(prop, "Refresh", "Refresh");
-	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "thresh_vertex_group", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "thresh_defgrp_name");
@@ -4308,11 +4191,6 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_float_sdna(prop, NULL, "autohide_dist");
 	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_autohide_dist_set", NULL);
 	RNA_def_property_ui_text(prop, "Autohide Distance", "Distance between faces below which both faces should be hidden");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
-
-	prop = RNA_def_property(srna, "use_ortho", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "use_ortho", false);
-	RNA_def_property_ui_text(prop, "Exact Line", "Modify point cloud to get determined cracking lines");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "breaking_percentage_weighted", PROP_BOOLEAN, PROP_NONE);

@@ -133,16 +133,6 @@ typedef struct RigidBodyOb {
 	float pad1;
 } RigidBodyOb;
 
-/*Activation State*/
-typedef enum eRigidBodyOb_ActivationState
-{
-	RBO_STATE_ACTIVE_TAG = 1,
-	RBO_STATE_ISLAND_SLEEPING = 2,
-	RBO_STATE_WANTS_DEACTIVATION = 3,
-	RBO_STATE_DISABLE_DEACTIVATION = 4,
-	RBO_STATE_DISABLE_SIMULATION = 5,
-} eRigidBodyOb_ActivationState;
-
 /* Participation types for RigidBodyOb */
 typedef enum eRigidBodyOb_Type {
 	/* active geometry participant in simulation. is directly controlled by sim */
@@ -168,11 +158,7 @@ typedef enum eRigidBodyOb_Flag {
 	/* collision margin is not embedded (only used by convex hull shapes for now) */
 	RBO_FLAG_USE_MARGIN			= (1 << 6),
 	/* collision shape deforms during simulation (only for passive triangle mesh shapes) */
-	RBO_FLAG_USE_DEFORM			= (1 << 7),
-	/* active compound parents before destruction */
-	RBO_FLAG_ACTIVE_COMPOUND	= (1 << 8),
-	/* baked state of compound*/
-	RBO_FLAG_BAKED_COMPOUND		= (1 << 9)
+	RBO_FLAG_USE_DEFORM			= (1 << 7)
 } eRigidBodyOb_Flag;
 
 /* RigidBody Collision Shape */

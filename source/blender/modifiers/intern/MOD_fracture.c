@@ -15,6 +15,8 @@
 * along with this program; if not, write to the Free Software  Foundation,
 * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 *
+* Contributor(s): Martin Felke
+*
 * ***** END GPL LICENSE BLOCK *****
 *
 */
@@ -74,9 +76,7 @@
 static void mat2vgroup(FractureModifierData *rmd, DerivedMesh *dm, MDeformVert *dvert, Object *ob);
 static int getGroupObjects(Group *gr, Object ***obs, int g_exist);
 static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, DerivedMesh* dm);
-void buildCompounds(FractureModifierData *rmd, Object *ob);
 void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody);
-void connect_constraints(FractureModifierData* rmd,  Object* ob, MeshIsland **meshIslands, int count, BMesh **combined_mesh, KDTree **combined_tree);
 DerivedMesh* doSimulate(FractureModifierData *fmd, Object *ob, DerivedMesh *dm, DerivedMesh *orig_dm);
 void refresh_customdata_image(Mesh* me, CustomData *pdata, int totface);
 
@@ -100,29 +100,16 @@ static void initData(ModifierData *md)
 		fmd->breaking_threshold = 10.0f;
 		fmd->use_constraints = false;
 		fmd->contact_dist = 1.0f;
-		fmd->mass_dependent_thresholds = false;
-		fmd->inner_constraint_type = RBC_TYPE_FIXED;
-		fmd->idmap = NULL;
+		fmd->use_mass_dependent_thresholds = false;
 		fmd->explo_shared = false;
 		fmd->constraint_limit = 0;
-		fmd->dist_dependent_thresholds = false;
-		fmd->contact_dist_meaning = MOD_RIGIDBODY_CENTROIDS;
 		fmd->breaking_distance = 0;
 		fmd->breaking_angle = 0;
 		fmd->breaking_percentage = 0; //disable by default
-		fmd->use_both_directions = false;
-		fmd->use_proportional_distance = false;
-		fmd->use_proportional_limit = false;
 		fmd->max_vol = 0;
-		fmd->cell_size = 1.0f;
 		fmd->refresh_constraints = false;
 
-		fmd->use_cellbased_sim = false;
-		fmd->framecount = 0;
-		fmd->framemap = NULL;
-		fmd->disable_self_collision = true;
 		fmd->cluster_breaking_threshold = 1000.0f;
-		fmd->use_proportional_solver_iterations = false;
 		fmd->solver_iterations_override = 0;
 		fmd->shards_to_islands = false;
 		fmd->execute_threaded = false;
@@ -131,7 +118,6 @@ static void initData(ModifierData *md)
 		fmd->auto_execute = false;
 		fmd->face_pairs = NULL;
 		fmd->autohide_dist = 0.0f;
-		fmd->use_ortho = false;
 }
 
 static void freeData(ModifierData *md)
@@ -171,16 +157,9 @@ static void freeData(ModifierData *md)
 
 		if (rmd->frac_mesh)
 		{
-			BKE_fracmesh_free(rmd->frac_mesh, true /*rmd->frac_algorithm != MOD_FRACTURE_VORONOI*/);
+			BKE_fracmesh_free(rmd->frac_mesh, true);
 			MEM_freeN(rmd->frac_mesh);
 			rmd->frac_mesh = NULL;
-		}
-
-		if (rmd->noisemap && rmd->noise_count > 0)
-		{
-			MEM_freeN(rmd->noisemap);
-			rmd->noisemap = NULL;
-			rmd->noise_count = 0;
 		}
 
 		if (rmd->visible_mesh != NULL)
@@ -273,31 +252,6 @@ static void freeData(ModifierData *md)
 			{
 				BM_mesh_free(rmd->visible_mesh);
 				rmd->visible_mesh = NULL;
-			}
-		}
-
-		if (rmd->sel_indexes != NULL && rmd->refresh == false) {
-			for (i = 0; i < rmd->sel_counter; i++) {
-				MEM_freeN(rmd->sel_indexes[i]);
-				rmd->sel_indexes[i] = NULL;
-			}
-			MEM_freeN(rmd->sel_indexes);
-			rmd->sel_indexes = NULL;
-			rmd->sel_counter = 0;
-		}
-
-		if (rmd->idmap != NULL) {
-			BLI_ghash_free(rmd->idmap, NULL, NULL);
-			rmd->idmap = NULL;
-		}
-
-		if (!rmd->refresh)
-		{
-			if (rmd->framemap)
-			{
-				MEM_freeN(rmd->framemap);
-				rmd->framemap = NULL;
-				rmd->framecount = 0;
 			}
 		}
 	}
@@ -448,32 +402,15 @@ static KDTree* build_nor_tree(DerivedMesh *dm)
 
 static void find_normal(DerivedMesh* dm, KDTree* tree, float co[3], short no[3])
 {
-	//KDTreeNearest *n = MEM_mallocN(sizeof(KDTreeNearest) * 2, "nearest");
 	KDTreeNearest n;
 	int index = 0;
 	MVert mvert;
-	float fno[3];
 
-	normal_short_to_float_v3(fno, no);
-	//index = BLI_kdtree_find_nearest_n__normal(tree, co, fno, n, 2);
 	index = BLI_kdtree_find_nearest(tree, co, &n);
 
 	dm->getVert(dm, index, &mvert);
 
 	copy_v3_v3_short(no, mvert.no);
-	//MEM_freeN(n);
-}
-
-static DerivedMesh* get_orig_dm(Object* ob)
-{
-	if (ob->derivedFinal)
-	{
-		return ob->derivedFinal;
-	}
-	else
-	{
-		return CDDM_from_mesh(ob->data);
-	}
 }
 
 static DerivedMesh* get_clean_dm(Object* ob, DerivedMesh* dm)
@@ -693,13 +630,6 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		}
 	}
 
-/*	if (clean_dm != derivedData && clean_dm != NULL)
-	{
-		clean_dm->needsFree = 1;
-		clean_dm->release(clean_dm);
-		clean_dm = NULL;
-	}*/
-
 	return final_dm;
 }
 
@@ -786,13 +716,6 @@ static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
 		}
 	}
 
-	/*if (clean_dm != derivedData && clean_dm != NULL)
-	{
-		clean_dm->needsFree = 1;
-		clean_dm->release(derivedData);
-		clean_dm = NULL;
-	}*/
-
 	return final_dm;
 }
 
@@ -828,18 +751,13 @@ static void points_from_verts(Object** ob, int totobj, FracPointCloud* points, f
 
 					copy_v3_v3(co, vert[v].co);
 
-					/*if ((o > 0) ||
-					   ((emd->point_source & MOD_FRACTURE_EXTRA_VERTS) &&
-					   (!(emd->point_source & MOD_FRACTURE_OWN_VERTS)) && (o == 0)))*/
-					{
-						//mul_m4_v3(ob[o]->obmat, co);
-						if (emd->point_source & MOD_FRACTURE_EXTRA_VERTS)
-						{
-							mul_m4_v3(ob[o]->obmat, co);
-						}
 
-						mul_m4_v3(imat, co);
+					if (emd->point_source & MOD_FRACTURE_EXTRA_VERTS)
+					{
+						mul_m4_v3(ob[o]->obmat, co);
 					}
+
+					mul_m4_v3(imat, co);
 
 					copy_v3_v3(points->points[pt].co, co);
 					pt++;
@@ -888,12 +806,9 @@ static void points_from_particles(Object** ob, int totobj, Scene* scene, FracPoi
 						points->points = MEM_reallocN(points->points, (pt+1) * sizeof(FracPoint));
 						copy_v3_v3(co, birth.co);
 
-						/*if ((o > 0) ||
-						   ((emd->point_source & MOD_FRACTURE_EXTRA_PARTICLES) &&
-						   (!(emd->point_source & MOD_FRACTURE_OWN_PARTICLES)) && (o == 0)))*/
-						{
-							mul_m4_v3(imat, co);
-						}
+
+						mul_m4_v3(imat, co);
+
 						copy_v3_v3(points->points[pt].co, co);
 						pt++;
 					}
@@ -935,27 +850,7 @@ static void points_from_greasepencil(Object** ob, int totobj, FracPointCloud* po
 								point[2] = gps->points[p].z;
 
 								mul_m4_v3(imat, point);
-#if 0
-								if (pt > 1 && fmd->use_ortho)
-								{
-									//last point and this point is the stroke, calc midpoint and orthogonal vector
-									float v[3], ov[3], mid[3], p1[3], p2[3];
-									sub_v3_v3v3(v, point, points->points[pt-1].co);
-									ortho_v3_v3(ov, v);
-									mid_v3_v3v3(mid, point, points->points[pt-1].co);
 
-									//"rotate" points by 90 degrees, creating a pair of orthogonal points
-									add_v3_v3v3(p1, mid, ov);
-									sub_v3_v3v3(p2, mid, ov);
-
-									mul_v3_fl(p1, 0.5f);
-									mul_v3_fl(p2, 0.5f);
-
-									copy_v3_v3(point, p1);
-									copy_v3_v3(points->points[pt-1].co, p2);
-
-								}
-#endif
 								copy_v3_v3(points->points[pt].co, point);
 								pt++;
 							}
@@ -1038,14 +933,6 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 		points_from_greasepencil(go, totgroup, &points, ob->obmat, thresh, emd);
 	}
 
-	//greasecut, imagebased... backend is via projected curvemeshes
-
-	//random "chips" (cut out via boolean, no voronoi)
-
-	//secondary, tertiary fracture.... levels... (or 3 or 4 enough ?) each has same options, different parameters
-
-	//cracks... in glass its ok to have visible faces, but solids ? very small debris must fall off, or just bevel the shards near the impact ?
-
 
 	//local settings, apply per shard!!! Or globally too first.
 	if (emd->point_source & MOD_FRACTURE_UNIFORM)
@@ -1054,7 +941,6 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 		//this is pointsource "uniform", make seed settable
 		INIT_MINMAX(min, max);
 		BKE_get_shard_minmax(emd->frac_mesh, -1, min, max, fracmesh); //id 0 should be entire mesh
-		//points.totpoints += emd->shard_count;
 
 		if (emd->frac_algorithm == MOD_FRACTURE_BISECT_FAST)
 		{
@@ -1077,91 +963,6 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 			}
 		}
 	}
-
-#if 0
-	// do this afterwards...
-	//scaling point cloud for splinters (see cell fracture....)
-	//apply noise
-
-	bb = BKE_object_boundbox_get(ob);
-
-	if (emd->noisemap == NULL && points.totpoints > 0)
-	{
-		noisemap = MEM_callocN(sizeof(float)*3 *points.totpoints, "noisemap");
-	}
-
-	for (t = 0; t < points.totpoints; t++) {
-		float bbox_min[3], bbox_max[3];
-
-		if (emd->noise > 0.0f)
-		{
-			if (emd->noisemap != NULL) {
-				float noise[3];
-				noise[0] = emd->noisemap[3*t];
-				noise[1] = emd->noisemap[3*t+1];
-				noise[2] = emd->noisemap[3*t+2];
-				//add_v3_v3((*points)[t], noise);
-				add_v3_v3(points.points[t].co, noise);
-			}
-			else
-			{
-				float scalar, size[3], rand[3] = {0, 0, 0}, temp_x[3], temp_y[3], temp_z[3], rand_x[3], rand_y[3], rand_z[3];
-				noisemap[3*t] = 0.0f;
-				noisemap[3*t+1] = 0.0f;
-				noisemap[3*t+2] = 0.0f;
-
-				mul_v3_m4v3(bbox_min, ob->obmat, bb->vec[0]);
-				mul_v3_m4v3(bbox_max, ob->obmat, bb->vec[6]);
-				sub_v3_v3v3(size, bbox_max, bbox_min);
-
-				scalar = emd->noise * len_v3(size) / 2.0f;
-				rand[0] = 2.0f * (BLI_frand() - 0.5f);
-				rand[1] = 2.0f * (BLI_frand() - 0.5f);
-				rand[2] = 2.0f * (BLI_frand() - 0.5f);
-
-				rand[0] *= (scalar * BLI_frand());
-				rand[1] *= (scalar * BLI_frand());
-				rand[2] *= (scalar * BLI_frand());
-
-				//test each component separately
-				zero_v3(rand_x);
-				rand_x[0] = rand[0];
-
-				zero_v3(rand_y);
-				rand_y[1] = rand[1];
-
-				zero_v3(rand_z);
-				rand_z[2] = rand[2];
-
-				add_v3_v3v3(temp_x, points.points[t].co, rand_x);
-				add_v3_v3v3(temp_y, points.points[t].co, rand_y);
-				add_v3_v3v3(temp_z, points.points[t].co, rand_z);
-
-			//stay inside bounds !!
-			if ((temp_x[0] >= bb->vec[0][0]) && (temp_x[0] <= bb->vec[6][0])) {
-				add_v3_v3(points.points[t].co, rand_x);
-				noisemap[3*t] = rand_x[1];
-			}
-
-			if ((temp_y[1] >= bb->vec[0][1]) && (temp_y[1] <= bb->vec[6][1])) {
-				add_v3_v3(points.points[t].co, rand_y);
-				noisemap[3*t+1] = rand_y[1];
-			}
-
-			if ((temp_z[2] >= bb->vec[0][2]) && (temp_z[2] <= bb->vec[6][2])) {
-				add_v3_v3(points.points[t].co, rand_z);
-				noisemap[3*t+2] = rand_z[2];
-			}
-		}
-	}
-	}
-
-	if (emd->noisemap == NULL)
-	{
-		emd->noisemap = noisemap;
-		emd->noise_count = points.totpoints;
-	}
-#endif
 
 	MEM_freeN(go);
 	return points;
@@ -1232,14 +1033,11 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->breaking_threshold = rmd->breaking_threshold;
 	trmd->use_constraints = rmd->use_constraints;
 	trmd->contact_dist = rmd->contact_dist;
-	trmd->mass_dependent_thresholds = rmd->mass_dependent_thresholds;
-	trmd->sel_indexes = MEM_dupallocN(rmd->sel_indexes);
-	trmd->sel_counter = rmd->sel_counter;
+	trmd->use_mass_dependent_thresholds = rmd->use_mass_dependent_thresholds;
 	trmd->explo_shared = rmd->explo_shared;
 
 	trmd->visible_mesh = NULL;
 	trmd->visible_mesh_cached = NULL;
-	trmd->idmap = NULL;
 	trmd->meshIslands.first = NULL;
 	trmd->meshIslands.last = NULL;
 	trmd->meshConstraints.first = NULL;
@@ -1250,20 +1048,10 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->breaking_angle = rmd->breaking_angle;
 	trmd->breaking_distance= rmd->breaking_distance;
 	trmd->breaking_percentage = rmd->breaking_percentage;
-	trmd->cell_size = rmd->cell_size;
-	trmd->contact_dist_meaning = rmd->contact_dist_meaning;
-	trmd->use_cellbased_sim = rmd->use_cellbased_sim;
 	trmd->use_experimental = rmd->use_experimental;
-	trmd->use_both_directions = rmd->use_both_directions;
-	trmd->dist_dependent_thresholds = rmd->dist_dependent_thresholds;
 	trmd->refresh_constraints = false;
-	trmd->inner_constraint_type = rmd->inner_constraint_type;
 
-	trmd->framecount = 0;
-	trmd->framemap = NULL;
-	trmd->disable_self_collision = rmd->disable_self_collision;
 	trmd->cluster_breaking_threshold = rmd->cluster_breaking_threshold;
-	trmd->use_proportional_solver_iterations = rmd->use_proportional_solver_iterations;
 	trmd->solver_iterations_override = rmd->solver_iterations_override;
 	trmd->shards_to_islands = rmd->shards_to_islands;
 }
@@ -1307,13 +1095,6 @@ void freeMeshIsland(FractureModifierData* rmd, MeshIsland* mi, bool remove_rigid
 		mi->vertices_cached = NULL;
 	}
 
-	if (mi->compound_count > 0)
-	{
-		MEM_freeN(mi->compound_children);
-		mi->compound_count = 0;
-		mi->compound_parent = NULL;
-	}
-
 	if (mi->bb != NULL) {
 		MEM_freeN(mi->bb);
 		mi->bb = NULL;
@@ -1352,6 +1133,7 @@ static int dm_minmax(DerivedMesh* dm, float min[3], float max[3])
 	return (verts != 0);
 }
 
+//unsure about mi->bb, its for volume fraction calculation....
 float bbox_vol(BoundBox* bb)
 {
 	float x[3], y[3], z[3];
@@ -1486,9 +1268,6 @@ static float mesh_separate_tagged(FractureModifierData* rmd, Object *ob, BMVert*
 	mi->vertices = v_tag;
 	mi->vertco = *startco;
 	mi->vertno = *startno;
-	mi->compound_children = NULL;
-	mi->compound_count = 0;
-	mi->compound_parent = NULL;
 	zero_v3(mi->start_co);
 
 	BM_mesh_normals_update(bm_new);
@@ -1531,7 +1310,6 @@ static float mesh_separate_tagged(FractureModifierData* rmd, Object *ob, BMVert*
 	BKE_boundbox_init_from_minmax(mi->bb, min, max);
 	mi->participating_constraints = NULL;
 	mi->participating_constraint_count = 0;
-	mi->destruction_frame = -1;
 
 	vol = bbox_vol(mi->bb);
 	if (vol > rmd->max_vol)
@@ -1542,12 +1320,10 @@ static float mesh_separate_tagged(FractureModifierData* rmd, Object *ob, BMVert*
 	mi->rigidbody = NULL;
 	mi->vertices_cached = NULL;
 
-	if (!rmd->use_cellbased_sim || rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED)
+	if (rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED)
 	{
 		mi->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi);
 		BKE_rigidbody_calc_shard_mass(ob, mi, orig_dm);
-		if (rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED)
-			mi->rigidbody->flag |= RBO_FLAG_ACTIVE_COMPOUND;
 	}
 
 	/* deselect loose data - this used to get deleted,
@@ -1593,76 +1369,6 @@ static void bm_mesh_hflag_flush_vert(BMesh *bm, const char hflag)
 
 		BM_elem_flag_set(f, hflag, ok);
 	}
-}
-
-unsigned int vertHash(BMVert* v) {
-	//return (int)(v->co[0] * 100) ^ (int)(v->co[1] * 1000) ^ (int)(v->co[2] * 10000);
-	return v->head.index;
-}
-
-void BM_mesh_join(BMesh** dest, BMesh* src)
-{
-	BMIter iter;
-	BMVert* v, **verts;
-	BMEdge *e, **edges;
-	BMFace *f;
-	int vcount = 0, ecount = 0;
-
-	verts = MEM_mallocN(sizeof(BMVert*), "verts");
-	edges = MEM_mallocN(sizeof(BMEdge*), "edges");
-
-	CustomData_bmesh_merge(&src->vdata, &(*dest)->vdata, CD_MASK_BMESH, CD_CALLOC, *dest, BM_VERT);
-	CustomData_bmesh_merge(&src->edata, &(*dest)->edata, CD_MASK_BMESH, CD_CALLOC, *dest, BM_EDGE);
-	CustomData_bmesh_merge(&src->ldata, &(*dest)->ldata, CD_MASK_BMESH, CD_CALLOC, *dest, BM_LOOP);
-	CustomData_bmesh_merge(&src->pdata, &(*dest)->pdata, CD_MASK_BMESH, CD_CALLOC, *dest, BM_FACE);
-
-	BM_ITER_MESH(v, &iter, src, BM_VERTS_OF_MESH)
-	{
-		BMVert *vert = BM_vert_create(*dest, v->co, NULL, 0);
-		verts = MEM_reallocN(verts, sizeof(BMVert*) *(vcount+1));
-		verts[vcount] = vert;
-		vcount++;
-	}
-
-	BM_ITER_MESH(e, &iter, src, BM_EDGES_OF_MESH)
-	{
-		BMEdge* edge;
-		BMVert* v1 = verts[e->v1->head.index];
-		BMVert* v2 = verts[e->v2->head.index];
-		edge = BM_edge_create(*dest, v1, v2, NULL, 0);
-		edges = MEM_reallocN(edges, sizeof(BMEdge*) * (ecount+1));
-		edges[ecount] = edge;
-		ecount++;
-	}
-
-	BM_ITER_MESH(f, &iter, src, BM_FACES_OF_MESH)
-	{
-		BMIter iter2;
-		BMLoop* l;
-		BMVert **ve = MEM_mallocN(sizeof(BMVert*), "face_verts");
-		BMEdge **ed = MEM_mallocN(sizeof(BMEdge*), "face_edges");
-		int lcount = 0;
-
-		BM_ITER_ELEM(l, &iter2, f, BM_LOOPS_OF_FACE)
-		{
-			BMVert* v = verts[l->v->head.index];
-			BMEdge* e = edges[l->e->head.index];
-
-			ed = MEM_reallocN(ed, sizeof(BMEdge*) * (lcount+1));
-			ed[lcount] = e;
-
-			ve = MEM_reallocN(ve, sizeof(BMVert*) * (lcount+1));
-			ve[lcount] = v;
-			//lcount++;
-		}
-
-		BM_face_create(*dest, ve, ed, lcount, NULL, 0);
-		MEM_freeN(ve);
-		MEM_freeN(ed);
-	}
-
-	MEM_freeN(verts);
-	MEM_freeN(edges);
 }
 
 void mesh_separate_loose_partition(FractureModifierData* rmd, Object* ob, BMesh* bm_work, BMVert** orig_work, DerivedMesh *dm)
@@ -1818,6 +1524,7 @@ void mesh_separate_loose_partition(FractureModifierData* rmd, Object* ob, BMesh*
 
 }
 
+/* inlined select_linked functionality here, because not easy to reach without modifications */
 static void select_linked(BMesh** bm_in)
 {
 	BMIter iter;
@@ -1912,18 +1619,6 @@ void mesh_separate_selected(BMesh** bm_work, BMesh** bm_out, BMVert** orig_work,
 	BM_mesh_normals_update(bm_new);
 }
 
-float calc_bb_vol(BMesh* bm)
-{
-	float vol, min[3], max[3];
-	BoundBox* bb;
-	BM_mesh_minmax(bm, min, max, true);
-	bb = BKE_boundbox_alloc_unit();
-	BKE_boundbox_init_from_minmax(bb, min, max);
-	vol = bbox_vol(bb);
-	MEM_freeN(bb);
-	return vol;
-}
-
 void halve(FractureModifierData* rmd, Object* ob, int minsize, BMesh** bm_work, BMVert*** orig_work, bool separated, DerivedMesh *dm)
 {
 
@@ -2000,16 +1695,6 @@ void halve(FractureModifierData* rmd, Object* ob, int minsize, BMesh** bm_work, 
 	bm_new = NULL;
 }
 
-#if 0
-typedef struct VertParticle
-{
-	BMVert** verts;
-	int vertcount;
-	float *vertco;
-} VertParticle;
-
-#endif
-
 void mesh_separate_loose(FractureModifierData* rmd, Object* ob, DerivedMesh* dm)
 {
 	int minsize = 1000;
@@ -2052,176 +1737,16 @@ void mesh_separate_loose(FractureModifierData* rmd, Object* ob, DerivedMesh* dm)
 		BM_mesh_free(bm_work);
 		bm_work = NULL;
 	}
-
-	/*if (!ob->derivedFinal)
-	{
-		dm->needsFree = 1;
-		dm->release(dm);
-		dm = NULL;
-	}*/
-}
-
-void destroy_compound(FractureModifierData* rmd, Object* ob, MeshIsland *mi, float cfra)
-{
-	//add all children and remove ourself
-	int i = 0;
-	float centr[3], size[3];
-	invert_m4_m4(ob->imat, ob->obmat);
-	mat4_to_size(size, ob->obmat);
-
-	for (i = 0; i < mi->compound_count; i++)
-	{
-		MeshIsland* mi2 = mi->compound_children[i];
-		if (mi2->rigidbody == NULL)
-		{
-			mi2->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi2);
-			BKE_rigidbody_calc_shard_mass(ob, mi2, NULL);
-			mi2->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
-			mi2->rigidbody->flag |= RBO_FLAG_ACTIVE_COMPOUND;
-		}
-		mi2->rigidbody->flag |= RBO_FLAG_BAKED_COMPOUND;
-
-		if (mi->rigidbody != NULL)
-		{
-			copy_v3_v3(mi2->rigidbody->pos, mi->rigidbody->pos);
-			copy_qt_qt(mi2->rigidbody->orn, mi->rigidbody->orn);
-			copy_v3_v3(centr, mi2->centroid);
-			mul_v3_v3(centr, size);
-			mul_qt_v3(mi2->rigidbody->orn, centr);
-			add_v3_v3(mi2->rigidbody->pos, centr);
-		}
-	}
-
-
-	if (mi->compound_count > 0)
-	{
-		bool baked = rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED;
-		if (!baked) {
-			mi->rigidbody->flag &= ~RBO_FLAG_ACTIVE_COMPOUND;
-			mi->rigidbody->flag &= ~RBO_FLAG_BAKED_COMPOUND;
-		}
-
-		if (mi->destruction_frame < 0)
-		{
-			mi->destruction_frame = cfra;
-			//dont update framemap in baked mode
-			if (rmd->framemap != NULL && !baked)
-			{
-				int index = BLI_findindex(&rmd->meshIslands, mi);
-				if (index < rmd->framecount)
-				{
-					rmd->framemap[index] = cfra;
-				}
-			}
-		}
-	}
-}
-
-void select_inner_faces(FractureModifierData* rmd, KDTree* tree, MeshIsland* mi) {
-
-	BMFace *face;
-	BMIter iter;
-
-	//if (vert == NULL) //can happen with constraint groups, investigate why (TODO) but prevent crash for now
-	//	return;
-
-	BM_ITER_MESH(face, &iter, mi->physics_mesh, BM_FACES_OF_MESH) {
-		int n, i = 0;
-		float co[3];
-		BMFace* f;
-
-		BM_face_calc_center_bounds(face, co);
-		n = BLI_kdtree_find_nearest(tree, co, NULL);
-
-			f = BM_face_at_index(rmd->visible_mesh, n);
-			if (f->head.index != face->head.index) {
-				float res[3], zero[3];
-				zero_v3(zero);
-				add_v3_v3v3(res, face->no, f->no);
-				//printf("Res (%f %f %f) %d %d %f\n", res[0], res[1], res[2], face->head.index, f->head.index, face_near[i].dist);
-				if (compare_v3v3(res, zero, 0.01f))
-				{
-					BM_elem_flag_enable(f, BM_ELEM_SELECT);
-					BM_elem_flag_enable(face, BM_ELEM_SELECT);
-
-					if ((!(BM_elem_flag_test(f, BM_ELEM_TAG)) && (!BM_elem_flag_test(face, BM_ELEM_TAG))) || 1) {
-						rmd->sel_indexes = MEM_reallocN(rmd->sel_indexes, sizeof(int*) * (rmd->sel_counter+1));
-						rmd->sel_indexes[rmd->sel_counter] = MEM_callocN(sizeof(int)*2, "sel_index_pair");
-						rmd->sel_indexes[rmd->sel_counter][0] = f->head.index;
-						rmd->sel_indexes[rmd->sel_counter][1] = face->head.index;
-						rmd->sel_counter++;
-					}
-
-					BM_elem_flag_enable(f, BM_ELEM_TAG);
-				}
-			}
-			else
-			{
-				BM_elem_flag_enable(f, BM_ELEM_TAG);
-			}
-	}
-}
-
-void select_inner_faces_of_vert(FractureModifierData* rmd, KDTree* tree, BMVert* vert) {
-
-	BMFace *face;
-	BMIter iter;
-
-	if (vert == NULL) //can happen with constraint groups, investigate why (TODO) but prevent crash for now
-		return;
-
-	BM_ITER_ELEM(face, &iter, vert, BM_FACES_OF_VERT) {
-		int n, i = 0;
-		float co[3];
-		BMFace* f;
-		KDTreeNearest *face_near = MEM_mallocN(sizeof(KDTreeNearest) * 2, "kdtreenearest_face");
-		BM_face_calc_center_bounds(face, co);
-		n = BLI_kdtree_find_nearest_n(tree, co, face_near, 2);
-
-		for (i = 0; i < n; i++) {
-			f = BM_face_at_index(rmd->visible_mesh, face_near[i].index);
-			if (BM_elem_flag_test(face, BM_ELEM_TAG) && BM_elem_flag_test(f, BM_ELEM_TAG))
-				break;
-
-			if (f->head.index != face->head.index) {
-				float res[3], zero[3];
-				zero_v3(zero);
-				add_v3_v3v3(res, face->no, f->no);
-				if (compare_v3v3(res, zero, 0.000001f))
-				{
-					BM_elem_flag_enable(f, BM_ELEM_SELECT);
-					BM_elem_flag_enable(face, BM_ELEM_SELECT);
-
-					if ((!(BM_elem_flag_test(f, BM_ELEM_TAG)) && (!BM_elem_flag_test(face, BM_ELEM_TAG))) || 1) {
-						rmd->sel_indexes = MEM_reallocN(rmd->sel_indexes, sizeof(int*) * (rmd->sel_counter+1));
-						rmd->sel_indexes[rmd->sel_counter] = MEM_callocN(sizeof(int)*2, "sel_index_pair");
-						rmd->sel_indexes[rmd->sel_counter][0] = f->head.index;
-						rmd->sel_indexes[rmd->sel_counter][1] = face->head.index;
-						rmd->sel_counter++;
-					}
-
-					BM_elem_flag_enable(f, BM_ELEM_TAG);
-				}
-			}
-			else
-			{
-				BM_elem_flag_enable(f, BM_ELEM_TAG);
-			}
-
-		}
-		MEM_freeN(face_near);
-		face_near = NULL;
-	}
 }
 
 static void connect_meshislands(FractureModifierData* rmd, Object* ob, MeshIsland* mi1, MeshIsland* mi2, int con_type, float thresh)
 {
 	int con_found = false;
 	RigidBodyShardCon *con, *rbsc;
-	bool ok = mi1 && mi1->rigidbody && !(mi1->rigidbody->flag & RBO_FLAG_ACTIVE_COMPOUND);
-	ok = ok && mi2 && mi2->rigidbody && !(mi2->rigidbody->flag & RBO_FLAG_ACTIVE_COMPOUND);
+	bool ok = mi1 && mi1->rigidbody;
+	ok = ok && mi2 && mi2->rigidbody;
 
-	if (((!rmd->use_both_directions)) && ok)
+	if (ok)
 	{
 		//search local constraint list instead of global one !!! saves lots of time
 		int i;
@@ -2259,10 +1784,7 @@ static void connect_meshislands(FractureModifierData* rmd, Object* ob, MeshIslan
 				rbsc->flag &= ~RBC_FLAG_USE_BREAKING;
 			}
 
-			if (rmd->disable_self_collision)
-			{
-				rbsc->flag |= RBC_FLAG_DISABLE_COLLISIONS;
-			}
+			rbsc->flag |= RBC_FLAG_DISABLE_COLLISIONS;
 
 			if ((mi1->particle_index != -1) && (mi2->particle_index != -1) && (mi1->particle_index == mi2->particle_index))
 			{
@@ -2311,189 +1833,16 @@ static void connect_meshislands(FractureModifierData* rmd, Object* ob, MeshIslan
 	}
 }
 
-static int check_meshislands_adjacency(FractureModifierData* rmd, MeshIsland* mi, MeshIsland* mi2, BMesh **combined_mesh, KDTree* face_tree, Object* ob)
-{
-	BMOperator op;
-	BMOpSlot *slot;
-	int same = true;
-	int shared = 0, island_vert_key_index = 0, island_vert_map_index = 0;
-	int* island_verts_key = MEM_mallocN(sizeof(int), "island_verts_key");
-	int* island_verts_map = MEM_mallocN(sizeof(int), "island_verts_map");
-	int v;
-
-	//check whether we are in the same object or not
-	float thresh, dist;
-	int con_type;
-
-	thresh = rmd->breaking_threshold;
-	con_type = rmd->inner_constraint_type;
-	dist = rmd->contact_dist;
-
-	//select "our" vertices
-	for (v = 0; v < mi2->vertex_count; v++) {
-		BM_elem_flag_enable(BM_vert_at_index(*combined_mesh, mi2->combined_index_map[v]), BM_ELEM_TAG);
-	}
-
-	//do we share atleast 3 verts in selection
-
-	BMO_op_initf(*combined_mesh, &op, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "find_doubles verts=%hv dist=%f", BM_ELEM_TAG, dist);
-	BMO_op_exec(*combined_mesh, &op);
-	slot = BMO_slot_get(op.slots_out, "targetmap.out");
-
-	if (slot->data.ghash && BLI_ghash_size(slot->data.ghash) > 2) {
-		GHashIterator it;
-		int ind1 = 0, ind2 = 0;
-		GHASH_ITER(it, slot->data.ghash) {
-			BMVert *vert_key, *vert_map;
-			//BMOElemMapping * mapping = BLI_ghashIterator_getValue(&it);
-			vert_key = BLI_ghashIterator_getKey(&it);
-			//vert_map = mapping[1].element;
-			vert_map = BMO_slot_map_elem_get(slot, vert_key);
-
-			if (vert_key == vert_map)
-			{
-				printf("EQUAL! D'OH\n");
-			}
-
-			for (v = 0; v < mi->vertex_count; v++) {
-				if ((vert_key == BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]))) {
-					island_verts_key = MEM_reallocN(island_verts_key, sizeof(int) * (island_vert_key_index+1));
-					island_verts_key[island_vert_key_index] = mi->combined_index_map[v];
-					island_vert_key_index++;
-					ind1++;
-					break;
-				}
-
-				if ((vert_map == BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]))) {
-					island_verts_map = MEM_reallocN(island_verts_map, sizeof(int) * (island_vert_map_index+1));
-					island_verts_map[island_vert_map_index] = mi->combined_index_map[v];
-					island_vert_map_index++;
-					break;
-				}
-			}
-
-			for (v = 0; v < mi2->vertex_count; v++) {
-				if ((vert_key == BM_vert_at_index(*combined_mesh, mi2->combined_index_map[v]))) {
-					island_verts_key = MEM_reallocN(island_verts_key, sizeof(int) * (island_vert_key_index+1));
-					island_verts_key[island_vert_key_index] = mi2->combined_index_map[v];
-					island_vert_key_index++;
-					ind2++;
-					break;
-				}
-
-				if ((vert_map == BM_vert_at_index(*combined_mesh, mi2->combined_index_map[v]))) {
-					island_verts_map = MEM_reallocN(island_verts_map, sizeof(int) * (island_vert_map_index+1));
-					island_verts_map[island_vert_map_index] = mi2->combined_index_map[v];
-					island_vert_map_index++;
-					break;
-				}
-			}
-		}
-	}
-
-	MEM_freeN(island_verts_map);
-	MEM_freeN(island_verts_key);
-	island_verts_map = NULL;
-	island_verts_key = NULL;
-	island_vert_key_index = 0;
-	island_vert_map_index = 0;
-
-	if (slot->data.ghash) {
-		shared = BLI_ghash_size(slot->data.ghash);
-	}
-	else
-	{
-		shared = 0;
-	}
-
-	BMO_op_finish(*combined_mesh, &op);
-	slot = NULL;
-
-	//deselect vertices
-	for (v = 0; v < mi2->vertex_count; v++) {
-		BM_elem_flag_disable(BM_vert_at_index(*combined_mesh, mi2->combined_index_map[v]), BM_ELEM_TAG);
-	}
-
-	if (shared > 0) {
-		// shared vertices (atleast one face ?), so connect...
-		// if all verts either in same object or not !
-		if (same)
-			connect_meshislands(rmd, ob, mi, mi2, con_type, thresh);
-	}
-
-	return shared;
-}
-
-static int bbox_intersect(FractureModifierData *rmd, MeshIsland *mi, MeshIsland *mi2)
-{
-	float cent_vec[3], test_x1[3], test_y1[3], test_z1[3], test_x2[3], test_y2[3], test_z2[3];
-	float dist = rmd->contact_dist;
-
-	if ((mi->bb == NULL) || (mi2->bb == NULL)) {
-		//compat with older files, where bb test missed
-		return true;
-	}
-
-	sub_v3_v3v3(cent_vec, mi->centroid, mi2->centroid);
-	sub_v3_v3v3(test_x1, mi->bb->vec[4], mi->bb->vec[0]);
-	sub_v3_v3v3(test_x2, mi2->bb->vec[4], mi2->bb->vec[0]);
-	mul_v3_fl(test_x1, 0.5f);
-	mul_v3_fl(test_x2, 0.5f);
-
-	sub_v3_v3v3(test_y1, mi->bb->vec[3], mi->bb->vec[0]);
-	sub_v3_v3v3(test_y2, mi2->bb->vec[3], mi2->bb->vec[0]);
-	mul_v3_fl(test_y1, 0.5f);
-	mul_v3_fl(test_y2, 0.5f);
-
-	sub_v3_v3v3(test_z1, mi->bb->vec[1], mi->bb->vec[0]);
-	sub_v3_v3v3(test_z2, mi2->bb->vec[1], mi2->bb->vec[0]);
-	mul_v3_fl(test_z1, 0.5f);
-	mul_v3_fl(test_z2, 0.5f);
-
-	if (fabs(test_x1[0] + test_x2[0]) + dist >= fabs(cent_vec[0])) {
-		//printf("X ok\n");
-		if (fabs(test_y1[1] + test_y2[1]) + dist >= fabs(cent_vec[1])) {
-			//printf("Y ok\n");
-			if (fabs(test_z1[2] + test_z2[2]) + dist >= fabs(cent_vec[2])) {
-				//printf("Z ok\n");
-				return true;
-			}
-		}
-	}
-	return false;
-}
-
-static void search_centroid_based(FractureModifierData *rmd, Object* ob, MeshIsland* mi, MeshIsland** meshIslands, KDTree**combined_tree, float centr[3])
+static void search_centroid_based(FractureModifierData *rmd, Object* ob, MeshIsland* mi, MeshIsland** meshIslands, KDTree**combined_tree)
 {
 	int r = 0, limit = 0, i = 0;
 	KDTreeNearest* n3 = NULL;
-	float dist, obj_centr[3], ratio = 1;
+	float dist, obj_centr[3];
 
 	limit = rmd->constraint_limit;
 	dist = rmd->contact_dist;
 
-	if ((rmd->use_proportional_distance || rmd->use_proportional_limit))
-	{
-		if (rmd->max_vol > 0)
-		{
-			ratio = bbox_vol(mi->bb) / rmd->max_vol;
-		}
-
-		if (rmd->use_proportional_limit && (limit > 0))
-		{
-			limit = (int)(ratio * limit)+1;
-		}
-
-		if (rmd->use_proportional_distance)
-		{
-			dist = ratio * dist;
-		}
-	}
-
-//XXXX else was here, hmm CAUTION...
-	{
-		mul_v3_m4v3(obj_centr, rmd->origmat, mi->centroid );
-	}
+	mul_v3_m4v3(obj_centr, rmd->origmat, mi->centroid );
 
 	r = BLI_kdtree_range_search(*combined_tree, obj_centr, &n3, dist);
 
@@ -2503,18 +1852,14 @@ static void search_centroid_based(FractureModifierData *rmd, Object* ob, MeshIsl
 		MeshIsland *mi2 = meshIslands[(n3+i)->index];
 		if ((mi != mi2) && (mi2 != NULL))
 		{
-			float thresh;
-			int con_type, equal, ok;
-			ok = true; // equal || (!equal && rmd->outer_constraint_type == RBC_TYPE_FIXED);
-			thresh = rmd->breaking_threshold;//equal ? rmd->breaking_threshold : rmd->group_breaking_threshold;
-			con_type = rmd->inner_constraint_type;//= equal ? rmd->inner_constraint_type : rmd->outer_constraint_type;
+			float thresh = rmd->breaking_threshold;
+			int con_type = RBC_TYPE_FIXED;
 
-			if (((i >= limit) && (limit > 0)) || !ok)
+			if ((i >= limit) && (limit > 0))
 			{
 				break;
 			}
 
-			//#pragma omp critical
 			connect_meshislands(rmd, ob, mi, mi2, con_type, thresh);
 		}
 	}
@@ -2526,181 +1871,17 @@ static void search_centroid_based(FractureModifierData *rmd, Object* ob, MeshIsl
 	}
 }
 
-void connect_constraints(FractureModifierData* rmd,  Object* ob, MeshIsland **meshIslands, int count, BMesh **combined_mesh, KDTree **combined_tree)
+static int prepareConstraintSearch(FractureModifierData *rmd, MeshIsland ***mesh_islands, KDTree **combined_tree)
 {
-
-	MeshIsland *mi, *first, *last;
-	int i, j, v; //, sel_counter;
-	KDTreeNearest *n = MEM_mallocN(sizeof(KDTreeNearest)*count, "kdtreenearest");
-	KDTreeNearest *n2 = MEM_mallocN(sizeof(KDTreeNearest)*count, "kdtreenearest2");
-	//ExplodeModifierData *emd = NULL;
-
-	KDTree* face_tree;
-	BMFace *fa;
-	BMIter bmi;
-
-	face_tree = BLI_kdtree_new(rmd->visible_mesh->totface);
-	BM_ITER_MESH(fa, &bmi, rmd->visible_mesh, BM_FACES_OF_MESH)
-	{
-		float co[3];
-		BM_face_calc_center_bounds(fa, co);
-		BLI_kdtree_insert(face_tree, fa->head.index, co);
-	}
-
-	BLI_kdtree_balance(face_tree);
-
-	//Do we have a explo modifier, if yes, use its neighborhood info before calculating (inner) neighborhoods here
-
-	//emd = findPrecedingExploModifier(ob, rmd);
-	//if (emd != NULL && emd->cells != NULL && ((!emd->use_clipping && !rmd->use_cellbased_sim  && !emd->use_boolean) ||
-	//	((rmd->contact_dist_meaning == MOD_RIGIDBODY_VERTICES) && (rmd->contact_dist == 0.0f)))) {
-	if (rmd->contact_dist_meaning == MOD_RIGIDBODY_VERTICES && rmd->explo_shared) //check whether it was FRACTURED!!! TODO...XXXXX
-	{
-		//KDTree* cells = NULL;
-		int i = 0, j;
-		GHash* visited_ids = BLI_ghash_pair_new("visited_ids");
-		for (mi = rmd->meshIslands.first; mi; mi = mi->next)
-		{
-			MeshIsland* mi2;
-			int shared = 0;
-
-			for (i = 0; i < mi->neighbor_count; i++)
-			{
-				int id = mi->neighbor_ids[i];
-				int index;
-				if (id >= 0) {
-					index = GET_INT_FROM_POINTER(BLI_ghash_lookup(rmd->idmap, SET_INT_IN_POINTER(id)));
-					mi2 = BLI_findlink(&rmd->meshIslands, index);
-					if ((mi != mi2) && (mi2 != NULL)) {
-						GHashPair* id_pair = BLI_ghashutil_pairalloc(id, mi->id);
-
-						if (!BLI_ghash_haskey(visited_ids, id_pair)) {
-							//shared = check_meshislands_adjacency(rmd, mi, mi2, combined_mesh, face_tree, ob);
-							//RigidBodyShardCon *con;
-							//int con_found = FALSE;
-							BLI_ghash_insert(visited_ids, id_pair, SET_INT_IN_POINTER(i));
-							connect_meshislands(rmd, ob, mi, mi2, rmd->inner_constraint_type, rmd->breaking_threshold);
-						}
-						else
-						{
-							BLI_ghashutil_pairfree(id_pair);
-						}
-					}
-				}
-			}
-		}
-
-		BLI_ghash_free(visited_ids, BLI_ghashutil_pairfree, NULL);
-		visited_ids = NULL;
-	}
-	else {
-
-		//if (rmd->contact_dist_meaning == MOD_RIGIDBODY_CELLS || rmd->contact_dist_meaning == MOD_RIGIDBODY_CELL_CENTROIDS)
-		{
-			//cells = make_cell_tree(rmd, ob);
-		}
-		//without explo modifier, automerge is useless in most cases (have non-adjacent stuff mostly
-
-		//BLI_kdtree_find_n_nearest(*combined_tree, count, meshIslands[0]->centroid, NULL, n2);
-		//KDTreeNearest* n3;
-		//MeshIsland* mi2;
-		//#pragma omp parallel for private(n3) schedule(static)
-		for (j = 0; j < count; j++) {
-
-			if (rmd->contact_dist_meaning == MOD_RIGIDBODY_CENTROIDS)
-			{
-				search_centroid_based(rmd, ob, meshIslands[j], meshIslands, combined_tree, NULL);
-			}
-//			else if (rmd->contact_dist_meaning == MOD_RIGIDBODY_CELLS)
-//			{
-				//search_cell_based(rmd, ob, meshIslands[j], &cells);
-//			}
-//			else if (rmd->contact_dist_meaning == MOD_RIGIDBODY_CELL_CENTROIDS)
-//			{
-				//search_cell_centroid_based(rmd, ob, meshIslands[j], meshIslands, combined_tree, &cells);
-//			}
-			else if (rmd->contact_dist_meaning == MOD_RIGIDBODY_VERTICES && !rmd->explo_shared)//use vertex distance as FALLBACK
-			{
-				int shared = 0;
-				BLI_kdtree_find_nearest_n(*combined_tree, meshIslands[0]->centroid, n2, count);
-				mi = meshIslands[(n2+j)->index];
-
-				for (v = 0; v < mi->vertex_count; v++) {
-					BM_elem_flag_enable(BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]), BM_ELEM_TAG);
-				}
-
-				BLI_kdtree_find_nearest_n(*combined_tree, mi->centroid, n, count);
-				for (i = 0; i < count; i++) {
-					MeshIsland *mi2 = meshIslands[(n+i)->index];
-					//printf("Nearest: %d %d %f %f %f\n",m, (n+i)->index, (n+i)->co[0], (n+i)->co[2], (n+i)->co[2]);
-					if ((mi != mi2) && (mi2 != NULL)) {
-						//pre test with bounding boxes
-						//vec between centroids -> v, if v[0] > bb1[4] - bb1[0] / 2 + bb2[4] - bb[0] / 2 in x range ?
-						// analogous y and z, if one overlaps, bboxes touch, make expensive test then
-						int bbox_int = bbox_intersect(rmd, mi, mi2);
-						//printf("Overlap %d %d %d\n", bbox_int, (n2+j)->index, (n+i)->index);
-						if ((bbox_int == false)) // && (mi->parent_mod == mi2->parent_mod))
-							continue;
-
-						shared = check_meshislands_adjacency(rmd, mi, mi2, combined_mesh, face_tree, ob);
-//						if ((shared == 0) && (rmd->inner_constraint_type == RBC_TYPE_FIXED) && (rmd->outer_constraint_type == RBC_TYPE_FIXED))
-//							break; //load faster when both constraint types are FIXED, otherwise its too slow or incorrect
-
-						/*if ((j == (count-1)) && (i == (count-2))) {
-							last = mi2;
-						}*/
-
-						if ((rmd->constraint_limit > 0) && (i >= rmd->constraint_limit))
-						{
-							break;
-						}
-					}
-				}
-				//if (shared == 0) break; // should be too far away already, farther than dist
-
-				for (v = 0; v < mi->vertex_count; v++) {
-					BM_elem_flag_disable(BM_vert_at_index(*combined_mesh, mi->combined_index_map[v]), BM_ELEM_TAG);
-				}
-			}
-		}
-	}
-	MEM_freeN(n);
-	MEM_freeN(n2);
-	BLI_kdtree_free(face_tree);
-	face_tree = NULL;
-}
-
-static int create_combined_neighborhood(FractureModifierData *rmd, MeshIsland ***mesh_islands, BMesh **combined_mesh, KDTree **combined_tree)
-{
-	ModifierData* md;
-	FractureModifierData* rmd2;
-	GroupObject* go;
 	MeshIsland* mi;
-	int v, i = 0, islands = 0, vert_counter = 0;
+	int i = 0, islands = 0;
 
 	//create a combined mesh over all part bmeshes, and a combined kdtree to find "outer" constraints as well
 	//handle single object here
-	*combined_mesh = BM_mesh_create(&bm_mesh_allocsize_default);
-	BM_mesh_elem_toolflags_ensure(*combined_mesh);
 
 	islands = BLI_countlist(&rmd->meshIslands);
 	*mesh_islands = MEM_reallocN(*mesh_islands, islands*sizeof(MeshIsland*));
 	for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
-		mi->combined_index_map = MEM_mallocN(mi->vertex_count*sizeof(int), "combined_index_map");
-		for (v = 0; v < mi->vertex_count; v++) {
-			float co[3];
-			if (mi->vertices)
-			{
-				copy_v3_v3(co, mi->vertices[v]->co);
-			}
-			else
-			{
-				copy_v3_v3(co, mi->vertices_cached[v]->co);
-			}
-			BM_vert_create(*combined_mesh, co, NULL, 0);
-			mi->combined_index_map[v] = vert_counter;
-			vert_counter++;
-		}
 		(*mesh_islands)[i] = mi;
 		i++;
 	}
@@ -2719,13 +1900,13 @@ static int create_combined_neighborhood(FractureModifierData *rmd, MeshIsland **
 
 static void create_constraints(FractureModifierData *rmd, Object* ob)
 {
-	KDTree* combined_tree = NULL;
-	BMesh* combined_mesh = NULL;
+	KDTree* centroid_tree = NULL;
 	MeshIsland** mesh_islands = MEM_mallocN(sizeof(MeshIsland*), "mesh_islands");
 	int count, i = 0;
 
 	if (rmd->visible_mesh && rmd->contact_dist == 0.0f)
 	{
+		//extend contact dist to bbox max dimension here, in case we enter 0
 		float min[3], max[3], dim[3];
 		BoundBox *bb = BKE_boundbox_alloc_unit();
 		BM_mesh_minmax(rmd->visible_mesh, min, max, 0);
@@ -2735,265 +1916,20 @@ static void create_constraints(FractureModifierData *rmd, Object* ob)
 		MEM_freeN(bb);
 	}
 
-
-	count = create_combined_neighborhood(rmd, &mesh_islands, &combined_mesh, &combined_tree);
-
-	if ((combined_mesh != NULL) && (combined_tree != NULL))
-		connect_constraints(rmd, ob, mesh_islands, count, &combined_mesh, &combined_tree);
-
-	if (combined_tree != NULL) {
-		BLI_kdtree_free(combined_tree);
-		combined_tree = NULL;
-	}
-
-	if (combined_mesh != NULL) {
-		BM_mesh_free(combined_mesh);
-		combined_mesh = NULL;
-	}
+	count = prepareConstraintSearch(rmd, &mesh_islands, &centroid_tree);
 
 	for (i = 0; i < count; i++) {
-		MEM_freeN(mesh_islands[i]->combined_index_map);
+
+		search_centroid_based(rmd, ob, mesh_islands[i], mesh_islands, centroid_tree);
+	}
+
+	if (centroid_tree != NULL) {
+		BLI_kdtree_free(centroid_tree);
+		centroid_tree = NULL;
 	}
 
 	MEM_freeN(mesh_islands);
 }
-
-BMFace* findClosestFace(KDTree* tree, BMesh* bm, BMFace* f)
-{
-	int index;
-	float co[3];
-	BMFace *f1, *f2;
-	KDTreeNearest *n = MEM_mallocN(sizeof(KDTreeNearest)*2, "nearest");
-
-	BM_face_calc_center_bounds(f, co);
-	BLI_kdtree_find_nearest_n(tree, co, n, 2);
-
-	index = n[0].index;
-	f1 = BM_face_at_index(bm, index);
-
-	index = n[1].index;
-	f2 = BM_face_at_index(bm, index);
-
-	MEM_freeN(n);
-
-	if (f == f1){
-		return f2;
-	}
-	return f1;
-}
-
-#if 0
-void buildCompounds(FractureModifierData *rmd, Object *ob)
-{
-	//join new meshislands into 1 new, remove other ones
-	float centroid[3], dummyloc[3], rot[4], min[3], max[3], size[3];
-	int count = BLI_countlist(&rmd->meshIslands);
-	int index = 0, i = 0, j = 0, rbcount = 0;
-	KDTree *centroidtree = BLI_kdtree_new(count);
-	NeighborhoodCell* cell;
-	KDTreeNearest* n = NULL;
-	MeshIsland *mi;
-	RigidBodyWorld *rbw = rmd->modifier.scene->rigidbody_world;
-
-	//create cell array... / tree (ugh, how inefficient..)
-	KDTree* celltree = make_cell_tree(rmd, ob);
-	BLI_kdtree_free(celltree); //silly but only temporary...
-
-
-	if (rbw && !(rbw->pointcache->flag & PTCACHE_BAKED))
-	{
-		for (mi = rmd->meshIslands.first; mi; mi = mi->next)
-		{
-			if (mi->compound_count > 0)	//clean up old compounds first
-			{
-				for (i = 0; i < mi->compound_count; i++)
-				{
-					MeshIsland* mi2 = mi->compound_children[i];
-					if (mi2->rigidbody != NULL)
-					{
-						BKE_rigidbody_remove_shard(rmd->modifier.scene, mi2);
-						MEM_freeN(mi2->rigidbody);
-						mi2->rigidbody = NULL;
-					}
-					mi2->destruction_frame = -1;
-					mi2->compound_parent = NULL;
-				}
-				BKE_rigidbody_remove_shard(rmd->modifier.scene, mi);
-				BLI_remlink(&rmd->meshIslands, mi);
-				freeMeshIsland(rmd, mi);
-			}
-		}
-	}
-
-	for (mi = rmd->meshIslands.first; mi; mi = mi->next)
-	{
-		//do this in object space maybe... ? TODO
-		float obj_centr[3];
-		//mul_v3_m4v3(obj_centr, ob->obmat, mi->centroid);
-		copy_v3_v3(obj_centr, mi->centroid);
-		BLI_kdtree_insert(centroidtree, index, obj_centr);
-		index++;
-	}
-
-	BLI_kdtree_balance(centroidtree);
-
-	invert_m4_m4(ob->imat, ob->obmat);
-	mat4_to_size(size, ob->imat);
-	for (cell = rmd->cells.first; cell; cell = cell->next)
-	{
-		BMesh *bm_compound;
-		BMVert* v;
-		BMIter iter;
-		MeshIsland *mi_compound;
-		float co[3];
-		int r;
-
-		mul_v3_m4v3(co, ob->imat, cell->co);
-		r = BLI_kdtree_range_search(centroidtree, co, &n, rmd->cell_size);
-		if (r == 0)
-			continue;
-
-		bm_compound = BM_mesh_create(&bm_mesh_allocsize_default);
-		mi_compound = MEM_callocN(sizeof(MeshIsland), "mi_compound");
-		mi_compound->vertices = MEM_callocN(sizeof(BMVert*), "compoundverts");
-		mi_compound->vertco = MEM_callocN(sizeof(float), "compoundvertco");
-		mi_compound->vertex_count = 0;
-		mi_compound->compound_children = MEM_callocN(sizeof(MeshIsland*), "compoundchilds");
-		mi_compound->compound_count = 0;
-		mi_compound->compound_parent = NULL;
-		mi_compound->participating_constraint_count = 0;
-		mi_compound->destruction_frame = -1;
-		mi_compound->vertices_cached = NULL;
-
-		printf("Joining %d islands to compound\n", r);
-		for (i = 0; i < r; i++)
-		{
-			MeshIsland *mi = BLI_findlink(&rmd->meshIslands, n[i].index);
-			BMesh *bm;
-			if (mi->compound_parent != NULL || mi->compound_count > 0)
-			{	//dont compound shards with a parent or with children (no recursion)
-				continue;
-			}
-
-			bm = DM_to_bmesh(mi->physics_mesh, true);
-
-			BM_ITER_MESH (v, &iter, bm, BM_VERTS_OF_MESH) {
-				add_v3_v3(v->co, mi->centroid);
-			}
-
-			mi_compound->vertices = MEM_reallocN(mi_compound->vertices, sizeof(BMVert*) * (mi_compound->vertex_count + mi->vertex_count));
-			mi_compound->vertco = MEM_reallocN(mi_compound->vertco, sizeof(float)*3 *(mi_compound->vertex_count + mi->vertex_count));
-			//copy verts and vertco
-			for (j = 0; j < mi->vertex_count; j++)
-			{
-				mi_compound->vertices[mi_compound->vertex_count+j] = mi->vertices[j];
-				mi_compound->vertco[(mi_compound->vertex_count + j)*3] = mi->vertco[j*3];
-				mi_compound->vertco[(mi_compound->vertex_count + j)*3+1] = mi->vertco[j*3+1];
-				mi_compound->vertco[(mi_compound->vertex_count + j)*3+2] = mi->vertco[j*3+2];
-			}
-			mi_compound->vertex_count += mi->vertex_count;
-
-			BM_mesh_join(&bm_compound, bm); // write this...
-
-			//BLI_remlink(&rmd->meshIslands, mi);
-			/*to_remove = MEM_reallocN(to_remove, sizeof(MeshIsland*) * (to_remove_count+1));
-			to_remove[to_remove_count] = mi;
-			to_remove_count++;*/
-
-			mi_compound->compound_children = MEM_reallocN(mi_compound->compound_children, sizeof(MeshIsland*) * (mi_compound->compound_count+1));
-			mi_compound->compound_children[mi_compound->compound_count] = mi; //memorize them and re add them simply later
-			mi->compound_parent = mi_compound;
-			mi_compound->compound_count++;
-
-			BM_mesh_free(bm);
-			count++;
-		}
-
-		if (n != NULL)
-		{
-			MEM_freeN(n);
-			n = NULL;
-		}
-
-		if (bm_compound->totvert == 0)
-		{
-			MEM_freeN(mi_compound->vertices);
-			MEM_freeN(mi_compound->vertco);
-			MEM_freeN(mi_compound->compound_children);
-			MEM_freeN(mi_compound);
-			BM_mesh_free(bm_compound);
-			continue;
-		}
-
-		//join derived mesh, hmm, maybe via bmesh
-		BM_mesh_minmax(bm_compound, min, max, false);
-		if (ob->rigidbody_object->shape == RB_SHAPE_COMPOUND || rmd->use_constraints)
-		{
-			//compounds need center of mass
-			BM_calc_center_centroid(bm_compound, centroid, false);
-		}
-		else
-		{	//other shapes like convexhull look better this way...
-			mid_v3_v3v3(centroid, min, max);
-		}
-
-		//mul_v3_v3(centroid, size);
-
-		for (i = 0; i < mi_compound->compound_count; i++)
-		{
-			//set proper relative starting centroid
-			//sub_v3_v3v3(mi_compound->compound_children[i]->start_co, mi_compound->compound_children[i]->centroid, centroid);
-			copy_v3_v3(mi_compound->compound_children[i]->start_co, mi_compound->compound_children[i]->centroid);
-		}
-
-		//invert_m4_m4(ob->imat, ob->obmat);
-		BM_ITER_MESH (v, &iter, bm_compound, BM_VERTS_OF_MESH) {
-			//then eliminate centroid in vertex coords ?
-			sub_v3_v3(v->co, centroid);
-		}
-
-		mi_compound->physics_mesh = CDDM_from_bmesh(bm_compound, true);
-		BM_mesh_free(bm_compound);
-		copy_v3_v3(mi_compound->centroid, centroid);
-		mat4_to_loc_quat(dummyloc, rot, ob->obmat);
-		copy_v3_v3(mi_compound->rot, rot);
-//		mi_compound->parent_mod = rmd;
-		mi_compound->bb = BKE_boundbox_alloc_unit();
-		BKE_boundbox_init_from_minmax(mi_compound->bb, min, max);
-		mi_compound->participating_constraints = NULL;
-		mi_compound->participating_constraint_count = 0;
-
-		mi_compound->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi_compound);
-		BKE_rigidbody_calc_shard_mass(ob, mi_compound);
-		mi_compound->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
-		mi_compound->rigidbody->flag &= ~RBO_FLAG_ACTIVE_COMPOUND;
-		mi_compound->rigidbody->flag |= RBO_FLAG_BAKED_COMPOUND;
-		//BKE_rigidbody_validate_sim_shard(rmd->modifier.scene->rigidbody_world, mi_compound, ob, true);
-		//mi_compound->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
-
-		BLI_addtail(&rmd->meshIslands, mi_compound);
-
-		if (rmd->framemap != NULL && (rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED))
-		{
-			if (rmd->framecount >= rbcount)
-			{
-				int index = BLI_findindex(&rmd->meshIslands, mi_compound);
-				mi_compound->destruction_frame = rmd->framemap[index];
-			}
-		}
-	}
-
-	//clean up compound children
-	/*for (i = 0; i < to_remove_count; i++)
-	{
-		BLI_remlink(&rmd->meshIslands, to_remove[i]);
-	}*/
-
-	//if (to_remove != NULL)
-	//	MEM_freeN(to_remove);
-	BLI_kdtree_free(centroidtree);
-}
-#endif
 
 static void mat2vgroup(FractureModifierData* rmd, DerivedMesh* dm, MDeformVert* dvert, Object* ob)
 {
@@ -3425,27 +2361,18 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 			fmd->visible_mesh_cached = NULL;
 		}
 
-//		if (fmd->contact_dist_meaning != MOD_RIGIDBODY_CELL_CENTROIDS)
-		{
-			fmd->use_cellbased_sim = false;
-		}
-
 		if (fmd->refresh)
 		{
-			fmd->idmap = BLI_ghash_int_new("fmd->idmap");
 			copy_m4_m4(fmd->origmat, ob->obmat);
 
-			//grab neighborhood info (and whole fracture info -> cells) if available, if explo before rmd
-			//emd = findPrecedingExploModifier(ob, rmd);
-//			if (emd != NULL && emd->cells != NULL && ((!emd->use_clipping && !rmd->use_cellbased_sim /* && !emd->use_boolean*/) || rmd->contact_dist_meaning == ////MOD_RIGIDBODY_VERTICES))
 			if (fmd->frac_mesh && fmd->frac_mesh->shard_count > 0 && fmd->dm && fmd->dm->numVertData > 0 && !fmd->shards_to_islands && !fmd->dm_group)
 			{
 				Shard *s;
 				MeshIsland* mi; // can be created without shards even, when using fracturemethod = NONE
 
 				int i, j, vertstart = 0, polystart = 0;
-				//DerivedMesh* derived = get_orig_dm(ob);
-				float dummyloc[3], rot[4], min[3], max[3];
+
+				float dummyloc[3], rot[4];
 				MDeformVert *dvert = fmd->dm->getVertDataArray(fmd->dm, CD_MDEFORMVERT);
 				MDeformVert *ivert;
 				MPoly* mp;
@@ -3573,7 +2500,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 
 					mi->id = s->shard_id;
 					mi->particle_index = s->cluster_colors[0];
-					BLI_ghash_insert(fmd->idmap, SET_INT_IN_POINTER(mi->id), SET_INT_IN_POINTER(i));
+				//	BLI_ghash_insert(fmd->idmap, SET_INT_IN_POINTER(mi->id), SET_INT_IN_POINTER(i));
 					mi->neighbor_ids = s->neighbor_ids;
 					mi->neighbor_count = s->neighbor_count;
 
@@ -3583,14 +2510,8 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 						mi->ground_weight /= mi->vertex_count;
 					}
 
-					mi->rigidbody = NULL;
-					if (!fmd->use_cellbased_sim)
-					{
-						mi->destruction_frame = -1;
-						mi->rigidbody = BKE_rigidbody_create_shard(fmd->modifier.scene, ob, mi);
-						mi->rigidbody->flag &= ~RBO_FLAG_ACTIVE_COMPOUND;
-						BKE_rigidbody_calc_shard_mass(ob, mi, orig_dm);
-					}
+					mi->rigidbody = BKE_rigidbody_create_shard(fmd->modifier.scene, ob, mi);
+					BKE_rigidbody_calc_shard_mass(ob, mi, orig_dm);
 					mi->vertex_indices = NULL;
 #if 0
 					//DOESNT WORK PROPERLY... using fallback via inner material instead
@@ -3852,14 +2773,6 @@ static void updateDepgraph(ModifierData *md, DagForest *forest,
 			                 DAG_RL_DATA_DATA | DAG_RL_OB_DATA, "Fracture Modifier");
 			}
 		}
-
-		/*for (go = fmd->dm_group->gobject.first; go; go = go->next)
-		{
-			DagNode *curNode = dag_get_node(forest, go->ob);
-
-			dag_add_relation(forest, curNode, obNode,
-			                 DAG_RL_DATA_DATA | DAG_RL_OB_DATA, "Fracture Modifier");
-		}*/
 	}
 }
 

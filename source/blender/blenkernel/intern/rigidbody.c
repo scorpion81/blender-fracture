@@ -179,12 +179,7 @@ float BKE_rigidbody_calc_min_con_dist(Object* ob)
 void BKE_rigidbody_calc_threshold(float max_con_mass, float min_con_dist, FractureModifierData *rmd, RigidBodyShardCon *con) {
 
 	float max_thresh, thresh, con_mass, con_dist, con_vec[3];
-	if ((max_con_mass == 0) && (rmd->mass_dependent_thresholds))
-	{
-		return;
-	}
-
-	if ((min_con_dist == FLT_MAX) && (rmd->dist_dependent_thresholds))
+	if ((max_con_mass == 0) && (rmd->use_mass_dependent_thresholds))
 	{
 		return;
 	}
@@ -197,23 +192,10 @@ void BKE_rigidbody_calc_threshold(float max_con_mass, float min_con_dist, Fractu
 	max_thresh = rmd->breaking_threshold; //((con->mi1->parent_mod == con->mi2->parent_mod) ? con->mi1->parent_mod->breaking_threshold :rmd->group_breaking_threshold);
 	if ((con->mi1->rigidbody != NULL) && (con->mi2->rigidbody != NULL)) {
 		con_mass = con->mi1->rigidbody->mass + con->mi2->rigidbody->mass;
-		sub_v3_v3v3(con_vec, con->mi1->centroid, con->mi2->centroid);
-		con_dist = len_v3(con_vec);
 
-		if (rmd->mass_dependent_thresholds && rmd->dist_dependent_thresholds)
-		{
-			//multiply both factors if desired
-			float thresh1 = 0;
-			thresh1 = (con_mass / max_con_mass) * max_thresh;
-			thresh = (min_con_dist / con_dist) * thresh1;
-		}
-		else if (rmd->mass_dependent_thresholds)
+		if (rmd->use_mass_dependent_thresholds)
 		{
 			thresh = (con_mass / max_con_mass) * max_thresh;
-		}
-		else if (rmd->dist_dependent_thresholds)
-		{
-			thresh = (min_con_dist / con_dist) * max_thresh;
 		}
 
 		con->breaking_threshold = thresh;
@@ -459,49 +441,17 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 		initNormals(mi, ob, rmd);
 	}
 	
-	if ((mi->destruction_frame >= 0) && (cfra > mi->destruction_frame))
-	{
-		if (mi->rigidbody)
-			mi->rigidbody->flag &= ~RBO_FLAG_BAKED_COMPOUND;
-	}
-	
 	invalidData = (loc[0] == FLT_MIN) || (rot[0] == FLT_MIN);
-	invalidFrame = (mi->destruction_frame >= 0) && (cfra > mi->destruction_frame) && !baked;
-	invalidBake = !(mi->rigidbody->flag & RBO_FLAG_BAKED_COMPOUND) && baked;
-	invalidBakeFrame = ((mi->destruction_frame >= 0) && (cfra > mi->destruction_frame)) || (mi->destruction_frame < 0);
 	
-	if (invalidData || invalidFrame || (invalidBake && invalidBakeFrame))
+	if (invalidData)
 	{
-		//printf("Frames %f %f\n", mi->destruction_frame, cfra);
-		//skip dummy cache entries
-		//printf("SKIPPED: %d %e %f %d\n", mi->linear_index, loc[0], mi->destruction_frame, mi->rigidbody->flag);
 		return;
 	}
-	//printf("DRAWN: %d %e %f %d\n", mi->linear_index, loc[0], mi->destruction_frame, mi->rigidbody->flag);
 
 	invert_m4_m4(ob->imat, ob->obmat);
 	mat4_to_size(size, ob->obmat);
 	
-	//update compound children centroids if any
-	/*for (i = 0; i < mi->compound_count; i++)
-	{
-		//hrm, maybe need compound startco as well
-		float co[3];
-		copy_v3_v3(co, mi->compound_children[i]->start_co);
-		mul_v3_v3(co, size);
-		mul_qt_v3(rot, co);
-		copy_v3_v3(centr, mi->centroid);
-		mul_v3_v3(centr, size);
-		mul_qt_v3(rot, centr);
-		sub_v3_v3(co, centr);
-		add_v3_v3(co, loc);
-		//mul_m4_v3(ob->imat, co);
-		copy_v3_v3(mi->compound_children[i]->centroid, co);
-	}*/
-	
 	for (j = 0; j < mi->vertex_count; j++) {
-		// BMVert *vert = BM_vert_at_index(bm, ind);
-		//struct BMVert* vert = mi->vertices[j];
 		struct MVert* vert;
 		float fno[3];
 		
@@ -514,19 +464,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 		if (vert == NULL) continue;
 		if (vert->co == NULL) break;
 		if (rmd->refresh == true) break;
-		//if refresh in progress, dont try to access stuff here
 
-		//reset to original coords // stored at fracture time
-/*		if (rmd->shards_to_islands)
-		{
-			//hrm WHY on earth does this not match anymore after loading / saving with islands ? So correct this here.
-			if ((int)cfra == 2)
-			{
-				mi->vertco[j*3] = vert->co[0];
-				mi->vertco[j*3+1] = vert->co[1];
-				mi->vertco[j*3+2] = vert->co[2];
-			}
-		}*/
 		startco[0] = mi->vertco[j*3];
 		startco[1] = mi->vertco[j*3+1];
 		startco[2] = mi->vertco[j*3+2];
@@ -552,7 +490,6 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 		add_v3_v3(vert->co, loc);
 		mul_m4_v3(ob->imat, vert->co);
 
-		//copy_v3_v3_short(vert->no, startno);
 	}
 
 	ob->recalc |= OB_RECALC_ALL;
@@ -990,90 +927,6 @@ static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh(Object *ob)
 	return shape;
 }
 
-static rbCollisionShape *rigidbody_get_shape_compound_from_mi(MeshIsland* mi, Object* ob)
-{
-	int i = 0;
-	rbCollisionShape *child;
-	rbCollisionShape *compound;
-	RigidBodyOb *rbo = mi->rigidbody;
-	float size[3];
-	
-	invert_m4_m4(ob->imat, ob->obmat);
-	mat4_to_size(size, ob->imat);
-	//copy_v3_v3(size, ob->size);
-	
-	if (mi->compound_count > 0)
-	{
-		compound = RB_shape_new_compound();
-	}
-	else
-	{
-		//fall back to convex hull if no children available
-		bool has_volume, can_embed;
-		float hull_margin, loc[3] = {0,0,0}, size[3] = {1,1,1};
-		Mesh* me = BKE_mesh_add(G.main, "_mesh_");
-		
-		DM_to_mesh(mi->physics_mesh, me, ob, 0);
-		BKE_mesh_boundbox_calc(me, loc, size);
-		has_volume = (MIN3(size[0], size[1], size[2]) > 0.0f);
-		
-		if (!(rbo->flag & RBO_FLAG_USE_MARGIN) && has_volume) 
-			hull_margin = 0.04f;
-		
-		compound = rigidbody_get_shape_convexhull_from_mesh(me, hull_margin, &can_embed);
-			
-		if (!(rbo->flag & RBO_FLAG_USE_MARGIN))
-			rbo->margin = (can_embed && has_volume) ? 0.04f : 0.0f;  /* RB_TODO ideally we shouldn't directly change the margin here */
-		
-		BKE_libblock_free_us(&(G.main->mesh), me);
-		me = NULL;
-		return compound;
-	}
-	
-	for (i = 0; i < mi->compound_count; i++)
-	{
-		MeshIsland *mi2 = mi->compound_children[i];
-		Mesh* me = BKE_mesh_add(G.main, "_mesh_"); 
-		bool has_volume, can_embed;
-		float hull_margin, loc[3] = {0,0,0}, bbsize[3] = {1,1,1}, rot[4], centr[3];
-		
-		DM_to_mesh(mi2->physics_mesh, me, ob, 0);
-		
-		BKE_mesh_boundbox_calc(me, loc, bbsize);
-		has_volume = (MIN3(bbsize[0], bbsize[1], bbsize[2]) > 0.0f);
-		
-		//mat4_to_loc_quat(loc, rot, ob->obmat);
-		
-		zero_v3(loc); //size only
-		unit_qt(rot); //needs to be zeroized, hmm
-		
-		if (!(rbo->flag & RBO_FLAG_USE_MARGIN) && has_volume) 
-			hull_margin = 0.04f;
-		
-		child = rigidbody_get_shape_convexhull_from_mesh(me, hull_margin, &can_embed);
-			
-		if (!(rbo->flag & RBO_FLAG_USE_MARGIN))
-			rbo->margin = (can_embed && has_volume) ? 0.04f : 0.0f;  /* RB_TODO ideally we shouldn't directly change the margin here */
-			
-		copy_v3_v3(centr, mi2->centroid);
-		//mul_v3_v3(centr, size);
-		mul_qt_v3(rot, centr);
-		add_v3_v3(loc, centr);
-			
-		RB_shape_add_compound_child(&compound, child, loc, rot);
-
-		BKE_libblock_free_us(&(G.main->mesh), me);
-		me = NULL;
-	}
-	
-	if (mi->compound_count > 0)
-	{
-		RB_shape_compound_set_scaling(compound, size);
-	}
-	
-	return compound;
-}
-
 /* Create new physics sim collision shape for object and store it,
  * or remove the existing one first and replace...
  */
@@ -1279,9 +1132,6 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland* mi, Object* ob, short re
 			break;
 		case RB_SHAPE_TRIMESH:
 			new_shape = rigidbody_get_shape_trimesh_from_mesh_shard(mi->physics_mesh, ob);
-			break;
-		case RB_SHAPE_COMPOUND:
-			new_shape = rigidbody_get_shape_compound_from_mi(mi, ob);
 			break;
 	}
 	/* assign new collision shape if creation was successful */
@@ -1917,50 +1767,6 @@ bool isDisconnected(MeshIsland *mi)
 	}
 	
 	return (cons == broken_cons) && (cons > 0);
-}
-
-//this allows partial object activation, only some shards will be activated, called from bullet(!)
-bool filterCallback(void* world, void* island1, void* island2) {
-	RigidBodyWorld* rbw = (RigidBodyWorld*)world;
-	MeshIsland* mi1, *mi2;
-	int ob_index1, ob_index2;
-
-	mi1 = (MeshIsland*)island1;
-	mi2 = (MeshIsland*)island2;
-
-	if ((mi1 == NULL) || (mi2 == NULL)) {
-		return true;
-	}
-	
-	//cache offset map is a dull name for that... 
-	ob_index1 = rbw->cache_offset_map[mi1->linear_index];
-	ob_index2 = rbw->cache_offset_map[mi2->linear_index];
-	
-	if ((mi1->compound_count > 0 && mi1->participating_constraint_count > 0) && 
-		(mi2->compound_count > 0 && mi2->participating_constraint_count > 0))
-	{
-		//disallow collision between intact compounds of same object
-		return (ob_index1 != ob_index2) || (mi1->rigidbody->shape == RB_SHAPE_COMPOUND);  //FALSE;
-	}
-	
-	if ((mi1->destruction_frame > -1) || (mi2->destruction_frame > -1))
-	{
-		//disallow collision between destroyed compounds... of same object
-		return (ob_index1 != ob_index2) || (mi1->rigidbody->shape == RB_SHAPE_COMPOUND); //FALSE;
-	}
-	return true;
-
-	/*ob_index1 = rbw->cache_index_map[mi1->linear_index];
-	ob_index2 = rbw->cache_index_map[mi2->linear_index];
-
-	if ((mi1->rigidbody->flag & RBO_FLAG_START_DEACTIVATED) ||
-		(mi2->rigidbody->flag & RBO_FLAG_START_DEACTIVATED)) {
-		return ob_index1 != ob_index2; //only allow collision between different objects
-	}
-	else
-	{
-		return TRUE;
-	}*/
 }
 
 /* --------------------- */
@@ -2868,14 +2674,9 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 					rigidbody_update_sim_ob(scene, rbw, ob, mi->rigidbody, mi->centroid);
 				}
 
-				if (rmd->mass_dependent_thresholds || rmd->use_proportional_solver_iterations)
+				if (rmd->use_mass_dependent_thresholds)
 				{
 					max_con_mass = BKE_rigidbody_calc_max_con_mass(ob);
-				}
-
-				if (rmd->dist_dependent_thresholds)
-				{
-					min_con_dist = BKE_rigidbody_calc_min_con_dist(ob);
 				}
 
 				for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
@@ -2894,23 +2695,13 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 						iterations = rmd->solver_iterations_override;
 					}
 					
-					if (rmd->use_proportional_solver_iterations)
-					{
-						float con_mass = 0;
-						if (rbsc->mi1 && rbsc->mi1->rigidbody && rbsc->mi2 && rbsc->mi2->rigidbody) {
-							con_mass = rbsc->mi1->rigidbody->mass + rbsc->mi2->rigidbody->mass;
-						}
-						
-						iterations = (int)((con_mass / max_con_mass) * (float)iterations);
-					}
-					
 					if (iterations > 0)
 					{
 						rbsc->flag |= RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS;
 						rbsc->num_solver_iterations = iterations;
 					}
 					
-					if ((rmd->mass_dependent_thresholds) || (rmd->dist_dependent_thresholds))
+					if ((rmd->use_mass_dependent_thresholds))
 					{
 						BKE_rigidbody_calc_threshold(max_con_mass, min_con_dist, rmd, rbsc);
 					}
@@ -2964,24 +2755,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 					}
 
 					rbsc->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
-
-					if (rmd->use_cellbased_sim) //bullet crash, todo...
-					{
-						for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
-							if (isDisconnected(mi))
-							{
-								float cfra = BKE_scene_frame_get(scene);
-								rmd->split(rmd, ob, mi, cfra);
-							}
-						}
-					}
 				}
-
-				/*if (!rebuild)
-				{
-					//rbw->rebuild_comp_con = false;
-					//rmd->refresh_constraints = false;
-				}*/
 			}
 			else
 			{
@@ -3212,7 +2986,7 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 						add_v3_v3(rbo->pos, centr);
 					}
 					BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn, ctime, 
-											 rbw->pointcache->flag & PTCACHE_BAKED && rmd->use_cellbased_sim, rmd);
+											 rbw->pointcache->flag & PTCACHE_BAKED, rmd);
 				}
 				
 				break;

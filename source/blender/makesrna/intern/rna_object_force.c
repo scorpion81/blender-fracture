@@ -1669,12 +1669,6 @@ static void rna_def_softbody(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "SL", "Alter spring length to shrink/blow up (unit %) 0 to disable");
 	RNA_def_property_update(prop, 0, "rna_softbody_update");
 	
-	prop= RNA_def_property(srna, "demolitionlimit", PROP_FLOAT, PROP_NONE);
-	RNA_def_property_float_sdna(prop, NULL, "demolitionlimit");
-	RNA_def_property_range(prop, 0.0f, 0.999f);
-	RNA_def_property_ui_text(prop, "Breaking", "Maximum deformation limit until breach, 0 to disable");
-	RNA_def_property_update(prop, 0, "rna_softbody_update");
-	
 	prop = RNA_def_property(srna, "aero", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "aeroedge");
 	RNA_def_property_range(prop, 0.0f, 30000.0f);

@@ -4654,12 +4654,9 @@ static MeshIsland* read_meshIsland(FileData* fd, void* address)
 	MeshIsland* mi;
 	Shard* temp;
 
-	//mi = newdataadr(fd, address);
 	mi = (MeshIsland*)address;
-	mi->compound_children = newdataadr(fd, mi->compound_children);
-	mi->compound_parent = newdataadr(fd, mi->compound_parent);
-	mi->vertices = NULL; //newdataadr(fd, mi->vertices);
-	mi->vertices_cached = NULL; //newdataadr(fd, mi->vertices_cached);
+	mi->vertices = NULL;
+	mi->vertices_cached = NULL;
 	mi->vertco = newdataadr(fd, mi->vertco);
 	mi->temp = newdataadr(fd, mi->temp);
 	temp = read_shard(fd, mi->temp);
@@ -4674,7 +4671,6 @@ static MeshIsland* read_meshIsland(FileData* fd, void* address)
 	mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 	mi->rigidbody->flag |= RBO_FLAG_NEEDS_RESHAPE;
 
-	//mi->combined_index_map = newdataadr(fd, mi->combined_index_map);
 	mi->neighbor_ids = newdataadr(fd, mi->neighbor_ids );
 	mi->bb = newdataadr(fd, mi->bb);
 	mi->vertex_indices = newdataadr(fd, mi->vertex_indices);
@@ -4682,10 +4678,6 @@ static MeshIsland* read_meshIsland(FileData* fd, void* address)
 	//will be refreshed...
 	mi->participating_constraint_count = 0;
 	mi->participating_constraints = NULL;
-	//mi->participating_constraints = newdataadr(fd, mi->participating_constraints);
-//	mi->centroid = newdataadr(fd, mi->centroid);
-//	mi->start_co = newdataadr(fd, mi->start_co);
-//	mi->rot = newdataadr(fd, mi->rot);
 
 	return mi;
 }
@@ -4950,48 +4942,13 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			}
 			lmd->cache_system = NULL;
 		}
-#if 0
-		else if (md->type == eModifierType_RigidBody) {
-			RigidBodyModifierData *rmd = (RigidBodyModifierData *)md;
-			
-			//fallback, regenerate data
-			rmd->meshIslands.first = NULL;
-			rmd->meshIslands.last = NULL;
-			rmd->visible_mesh = NULL;
-			rmd->visible_mesh_cached = NULL;
-			zero_m4(rmd->origmat);
-			rmd->meshConstraints.first = NULL;
-			rmd->meshConstraints.last = NULL;
-			rmd->sel_counter = 0;
-			rmd->sel_indexes = NULL;
-			rmd->idmap = NULL;
-			rmd->id_storage = NULL;
-			rmd->index_storage = NULL;
-			rmd->explo_shared = FALSE;
-			rmd->refresh = FALSE;  // do not construct modifier
-			rmd->refresh_constraints = FALSE;
-			rmd->max_vol = 0;
-			rmd->cells.first = NULL;
-			rmd->cells.last = NULL;
-			rmd->framemap = newdataadr(fd, rmd->framemap);
-		}
-#endif
 		else if (md->type == eModifierType_Fracture) {
 			int i = 0;
 			FractureModifierData *fmd = (FractureModifierData *)md;
 			FracMesh* fm;
 
-			fmd->noisemap = newdataadr(fd, fmd->noisemap);
 			fm = fmd->frac_mesh = newdataadr(fd, fmd->frac_mesh);
 
-			//do we still need that stuff ?
-			fmd->sel_indexes = NULL;
-			fmd->idmap = NULL;
-			fmd->id_storage = NULL;
-			fmd->index_storage = NULL;
-			fmd->cells.first = NULL;
-			fmd->cells.last = NULL;
-			fmd->framemap = NULL;
 			fmd->refresh = false;  // do not construct modifier
 			fmd->refresh_constraints = false;
 			fmd->nor_tree = NULL;
@@ -4999,7 +4956,6 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 
 			if (fm == NULL)
 			{
-				fmd->noisemap = NULL;
 
 				fmd->dm = NULL;
 				fmd->meshIslands.first = NULL;
@@ -5009,24 +4965,15 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 				zero_m4(fmd->origmat);
 				fmd->meshConstraints.first = NULL;
 				fmd->meshConstraints.last = NULL;
-				fmd->sel_counter = 0;
-				fmd->sel_indexes = NULL;
-				fmd->idmap = NULL;
-				fmd->id_storage = NULL;
-				fmd->index_storage = NULL;
 				fmd->explo_shared = false;
 				fmd->refresh = false;  // do not construct modifier
 				fmd->refresh_constraints = false;
 				fmd->max_vol = 0;
-				fmd->cells.first = NULL;
-				fmd->cells.last = NULL;
-				fmd->framemap = newdataadr(fd, fmd->framemap);
 				fmd->refresh_images = false;
 			}
 			else
 			{
 				MeshIsland *mi;
-				RigidBodyShardCon *con;
 				MVert *mverts;
 				int vertstart = 0;
 				Shard *s;

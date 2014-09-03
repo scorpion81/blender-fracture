@@ -32,7 +32,6 @@
 
 //#include "stdbool.h"
 #include "BLI_sys_types.h"
-#include "carve-capi.h"
 
 #include "DNA_meshdata_types.h"
 #include "DNA_material_types.h"
@@ -91,10 +90,6 @@ Shard *BKE_fracture_shard_boolean(Object* obj, DerivedMesh *dm_parent, Shard* ch
 	left_dm->release(left_dm);
 	left_dm = NULL;
 
-	/*right_dm->needsFree = 1;
-	right_dm->release(right_dm);
-	right_dm = NULL;*/
-
 	if (output_dm)
 	{
 		output_s = BKE_create_fracture_shard(output_dm->getVertArray(output_dm),
@@ -113,8 +108,6 @@ Shard *BKE_fracture_shard_boolean(Object* obj, DerivedMesh *dm_parent, Shard* ch
 		memcpy(output_s->neighbor_ids, child->neighbor_ids, sizeof(int) * child->neighbor_count);
 		BKE_fracture_shard_center_centroid(output_s, output_s->centroid);
 
-		/*free the bbox shard*/
-		//BKE_shard_free(child, false);
 
 		/*free the temp derivedmesh*/
 		output_dm->needsFree = 1;
@@ -157,15 +150,6 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 	int cut_index = 0;
 
 	invert_m4_m4(imat, obmat);
-
-/*	CustomData_add_layer(&bm_parent->pdata, CD_ORIGINDEX, CD_CALLOC, NULL, bm_parent->totface);
-	CustomData_bmesh_init_pool(&bm_parent->pdata, bm_parent->totface, BM_FACE);
-
-	BM_ITER_MESH_INDEX(f, &fiter, bm_parent, BM_FACES_OF_MESH, findex)
-	{
-		CustomData_bmesh_set_default(&bm_parent->pdata, &f->head.data);
-		CustomData_bmesh_set(&bm_parent->pdata, f->head.data, CD_ORIGINDEX, &findex);
-	}*/
 
 	//then enable tags...
 	BM_mesh_elem_hflag_enable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, false);
@@ -300,17 +284,8 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 	memcpy(output_s->neighbor_ids, child->neighbor_ids, sizeof(int) * child->neighbor_count);
 	BKE_fracture_shard_center_centroid(output_s, output_s->centroid);
 
-	/*free the bbox shard*/
-	//BKE_shard_free(child, false);
-
 	BM_mesh_free(bm_child);
 	BM_mesh_free(bm_parent);
-
-	//*bm_work = bm_rest;
-
-	/*dm_parent->needsFree = 1;
-	dm_parent->release(dm_parent);
-	dm_parent = NULL;*/
 
 	dm_child->needsFree = 1;
 	dm_child->release(dm_child);

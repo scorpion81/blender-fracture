@@ -1047,10 +1047,6 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float UNU
 			PTCACHE_DATA_TO(data, BPHYS_DATA_LOCATION, 0, rbo->pos);
 			PTCACHE_DATA_TO(data, BPHYS_DATA_ROTATION, 0, rbo->orn);
 		}
-
-		//if (mi) {
-		 //	BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn);
-		//}
 	}
 }
 static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, float cfra, float cfra1, float cfra2, float *old_data)
@@ -1063,41 +1059,29 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 	rbo = rbw->cache_index_map[index];
 	if (rbo == NULL)
 		return;
-	
-	//if (ob && ob->rigidbody_object) {
-		//RigidBodyOb *rbo = ob->rigidbody_object;
 		
-		if (rbo->type == RBO_TYPE_ACTIVE) {
-			
-			copy_v3_v3(keys[1].co, rbo->pos);
-			copy_qt_qt(keys[1].rot, rbo->orn);
-			
-			if (old_data) {
-				memcpy(keys[2].co, data, 3 * sizeof(float));
-				memcpy(keys[2].rot, data + 3, 4 * sizeof(float));
-			}
-			else {
-				BKE_ptcache_make_particle_key(keys+2, 0, data, cfra2);
-			}
-			
-			dfra = cfra2 - cfra1;
-		
-			//psys_interpolate_particle(-1, keys, (cfra - cfra1) / dfra, keys, 1);
-			interp_v3_v3v3(keys->co, keys[1].co, keys[2].co, (cfra - cfra1) / dfra);
-			interp_qt_qtqt(keys->rot, keys[1].rot, keys[2].rot, (cfra - cfra1) / dfra);
-			
-			/*if (isnan(keys->co[0]) || isnan(keys->co[1]) || isnan(keys->co[2]))
-			{
-				//use the average value here if we have nan...
-				add_v3_v3v3(keys[3].co, keys[1].co, keys[2].co);
-				mul_v3_fl(keys[3].co, 0.5f);
-				copy_v3_v3(keys->co, keys[3].co);
-			}*/
+	if (rbo->type == RBO_TYPE_ACTIVE) {
 
-			copy_v3_v3(rbo->pos, keys->co);
-			copy_qt_qt(rbo->orn, keys->rot);
+		copy_v3_v3(keys[1].co, rbo->pos);
+		copy_qt_qt(keys[1].rot, rbo->orn);
+
+		if (old_data) {
+			memcpy(keys[2].co, data, 3 * sizeof(float));
+			memcpy(keys[2].rot, data + 3, 4 * sizeof(float));
 		}
-	//}
+		else {
+			BKE_ptcache_make_particle_key(keys+2, 0, data, cfra2);
+		}
+
+		dfra = cfra2 - cfra1;
+
+		//psys_interpolate_particle(-1, keys, (cfra - cfra1) / dfra, keys, 1);
+		interp_v3_v3v3(keys->co, keys[1].co, keys[2].co, (cfra - cfra1) / dfra);
+		interp_qt_qtqt(keys->rot, keys[1].rot, keys[2].rot, (cfra - cfra1) / dfra);
+
+		copy_v3_v3(rbo->pos, keys->co);
+		copy_qt_qt(rbo->orn, keys->rot);
+	}
 }
 static int ptcache_rigidbody_totpoint(void *rb_v, int UNUSED(cfra))
 {

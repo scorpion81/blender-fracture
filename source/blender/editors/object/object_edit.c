@@ -993,7 +993,7 @@ static void copy_attr(Main *bmain, Scene *scene, View3D *v3d, short event)
 				}
 				else if (event == 23) {
 					base->object->softflag = ob->softflag;
-					if (base->object->soft) sbFree(base->object->soft, base->object);
+					if (base->object->soft) sbFree(base->object->soft);
 					
 					base->object->soft = copy_softbody(ob->soft, false);
 

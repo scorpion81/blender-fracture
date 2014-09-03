@@ -346,8 +346,6 @@ typedef struct SoftBody {
 	float lscale[3][3];
 
 	int last_frame;
-
-	float demolitionlimit, pad2;
 	
 } SoftBody;
 

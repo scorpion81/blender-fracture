@@ -125,10 +125,4 @@ void RIGIDBODY_OT_world_add(struct wmOperatorType *ot);
 void RIGIDBODY_OT_world_remove(struct wmOperatorType *ot);
 void RIGIDBODY_OT_world_export(struct wmOperatorType *ot);
 
-/*physics_fracture.c*/
-//void OBJECT_OT_fracture(struct wmOperatorType *ot);
-//void FRACTURE_OT_fracturemode_toggle(struct wmOperatorType *ot);
-//void FRACTURE_OT_fracture_level_add(struct wmOperatorType *ot);
-//void FRACTURE_OT_fracture_level_remove(struct wmOperatorType *ot);
-
 #endif /* __PHYSICS_INTERN_H__ */

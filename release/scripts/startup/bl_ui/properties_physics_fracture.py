@@ -120,7 +120,7 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             box.prop(md, "point_source")
             box.prop(md, "extra_group")
             box.prop(md, "dm_group")
-            #box.prop(md, "noise")
+
             box.prop(md, "percentage")
             box.label("Constraint Breaking Settings")
             col = box.column(align=True)
@@ -136,11 +136,8 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             row.prop(md, "breaking_distance", text="Distance")
             row.prop(md, "breaking_distance_weighted")
 
-           # box.label("Constraint Building Settings")
-           # box.prop(md, "contact_dist_meaning")
-           # box.prop(md, "contact_dist")
             box.prop(md, "solver_iterations_override")
-            box.prop(md, "mass_dependent_thresholds")
+            box.prop(md, "use_mass_dependent_thresholds")
             box.label("Threshold Vertex Group:")
             box.prop_search(md, "thresh_vertex_group", ob, "vertex_groups", text = "")
             box.label("Passive Vertex Group:")
@@ -148,10 +145,7 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             box.label("Inner Vertex Group:")
             box.prop_search(md, "inner_vertex_group", ob, "vertex_groups", text = "")
             box.prop(md, "autohide_dist")
-           # box.prop(md, "use_ortho")
-            row = box.row(align=True)
-            row.operator("fracture.toggle_ground", text = "Toggle Ground")
-            row.operator("fracture.toggle_connect_ground", text = "Toggle Connect Ground")
+
             box.prop(md, "fix_normals");
             if not(md.refresh):
                 box.prop(md, "execute_threaded")

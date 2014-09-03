@@ -337,7 +337,6 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         split.prop(md, "use_edge_sharp", text="Sharp Edges")
 
     def EXPLODE(self, layout, ob, md):
-        layout.prop(md, "mode")
         split = layout.split()
 
         col = split.column()

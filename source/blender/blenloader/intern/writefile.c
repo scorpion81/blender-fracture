@@ -1394,8 +1394,6 @@ static void write_meshIsland(WriteData* wd, MeshIsland* mi)
 	mi->temp = BKE_custom_data_to_shard(mi->temp, dm);
 
 	writestruct(wd, DATA, "MeshIsland", 1, mi);
-	writedata(wd, DATA, sizeof(MeshIsland*) * mi->compound_count, mi->compound_children);
-//	writestruct(wd, DATA, "MeshIsland", 1, mi->compound_parent);
 	writedata(wd, DATA, sizeof(struct BMVert*) * mi->vertex_count, mi->vertices);
 	writedata(wd, DATA, sizeof(MVert*) * mi->vertex_count, mi->vertices_cached);
 	writedata(wd, DATA, sizeof(float) * 3 * mi->vertex_count, mi->vertco);
@@ -1407,14 +1405,9 @@ static void write_meshIsland(WriteData* wd, MeshIsland* mi)
 	writedata(wd, DATA, sizeof(float) * 3 * mi->vertex_count, mi->vertno);
 
 	writestruct(wd, DATA, "RigidBodyOb", 1, mi->rigidbody);
-//	writedata(wd, DATA, sizeof(int) * mi->vertex_count, mi->combined_index_map);
 	writedata(wd, DATA, sizeof(int) * mi->neighbor_count, mi->neighbor_ids);
 	writestruct(wd, DATA, "BoundBox", 1, mi->bb);
 	writedata(wd, DATA, sizeof(int) * mi->vertex_count, mi->vertex_indices);
-	//writedata(wd, DATA, sizeof(RigidBodyShardCon*) * mi->participating_constraint_count, mi->participating_constraints );
-	//writedata(wd, DATA, sizeof(float) * 3, mi->centroid);
-	//writedata(wd, DATA, sizeof(float) * 3, mi->start_co);
-	//writedata(wd, DATA, sizeof(float) * 4, mi->rot);
 }
 
 //void write_dverts(WriteData *wd, int count, MDeformVert *dvlist);
@@ -1543,34 +1536,15 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 
 			writedata(wd, DATA, sizeof(float)*lmd->total_verts * 3, lmd->vertexco);
 		}
-#if 0
-		else if (md->type == eModifierType_RigidBody) {
 
-			RigidBodyModifierData *rmd = (RigidBodyModifierData*)md;
-			RigidBodyShardCon *con;
-			
-			//WORKAROUND for Automerge, so that after filling cache and pulling timeline to frame 0 all faces are visible
-			for (con = rmd->meshConstraints.first; con; con = con->next) {
-				con->physics_constraint = NULL;
-				con->flag |= RBC_FLAG_NEEDS_VALIDATE;
-			}
-			
-			if (rmd->framecount > 0) {
-				writedata(wd, DATA, sizeof(float) * rmd->framecount, rmd->framemap);
-			}
-#endif
-//		}
 		else if (md->type==eModifierType_Fracture) {
 			int i = 0;
 			FractureModifierData *fmd = (FractureModifierData*)md;
 			FracMesh* fm = fmd->frac_mesh;
 
-			writedata(wd, DATA, sizeof(float) * 3 * fmd->noise_count, fmd->noisemap);
-
 			if (fm)
 			{
 				MeshIsland *mi;
-				RigidBodyShardCon* con;
 				Shard *s;
 
 				if (fm->running == 0)
