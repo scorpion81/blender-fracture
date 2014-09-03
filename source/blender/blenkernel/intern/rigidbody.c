@@ -432,8 +432,8 @@ void BKE_rigidbody_update_cell(struct MeshIsland* mi, Object* ob, float loc[3], 
 {
 	float startco[3], centr[3], size[3];
 	short startno[3];
-	int i, j;
-	bool invalidData, invalidFrame, invalidBake, invalidBakeFrame;
+	int j;
+	bool invalidData;
 
 	//hrm have to init Normals HERE, because we cant do this in readfile.c in case the file is loaded (have no access to the Object there)
 	if (mi->vertno == NULL && rmd->fix_normals)
@@ -2576,12 +2576,12 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 
 		if (ob && (ob->type == OB_MESH || ob->type == OB_CURVE || ob->type == OB_SURF || ob->type == OB_FONT)) {
 
-#if 0
 			/* check for fractured objects which want to participate first, then handle other normal objects*/
 			for (md = ob->modifiers.first; md; md = md->next) {
 				if (md->type == eModifierType_Fracture) {
 					rmd = (FractureModifierData*)md;
 					//BKE_rigidbody_sync_all_shards(ob);
+#if 0
 					if (rbw->refresh_modifiers && 0)
 					{
 						//trigger refresh of modifier at next execution (if we jumped back to startframea after changing an object)
@@ -2591,6 +2591,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 						rbw->object_changed = false;
 						//rebuildcon = TRUE;
 					}
+#endif
 					
 					/*if (rbw->rebuild_comp_con) {
 						rmd->refresh_constraints = TRUE;
@@ -2599,7 +2600,6 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 					break;
 				}
 			}
-#endif
 
 			if (isModifierActive(rmd)) {
 				float max_con_mass = 0;
@@ -2610,14 +2610,6 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 					if (mi->rigidbody == NULL) {
 						continue;
-						/*if (mi->compound_count == 0)
-						{
-							//treat compound parents separately - do not reassign deleted rigidbodies
-							mi->rigidbody = BKE_rigidbody_create_shard(scene, ob, mi);
-							BKE_rigidbody_calc_shard_mass(ob, mi);
-							BKE_rigidbody_validate_sim_shard(rbw, mi, ob, true);
-							mi->rigidbody->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
-						}*/
 					}
 					else {  //as usual, but for each shard now, and no constraints
 						/* perform simulation data updates as tagged */
