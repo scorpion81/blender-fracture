@@ -118,6 +118,10 @@ static void initData(ModifierData *md)
 		fmd->auto_execute = false;
 		fmd->face_pairs = NULL;
 		fmd->autohide_dist = 0.0f;
+
+		fmd->breaking_percentage_weighted = false;
+		fmd->breaking_angle_weighted = false;
+		fmd->breaking_distance_weighted = false;
 }
 
 static void freeData(ModifierData *md)
@@ -1805,11 +1809,7 @@ static void connect_meshislands(FractureModifierData* rmd, Object* ob, MeshIslan
 			if (rmd->thresh_defgrp_name[0])
 			{
 				//modify maximum threshold by average weight
-				rbsc->breaking_threshold = thresh * (mi1->thresh_weight + mi2->thresh_weight) * 0.5f;
-				if (rbsc->breaking_threshold == 0)
-				{
-					printf("Threshold: %f\n", rbsc->breaking_threshold);
-				}
+				rbsc->breaking_threshold = thresh * MIN2(mi1->thresh_weight, mi2->thresh_weight);
 			}
 
 			//BKE_rigidbody_start_dist_angle(rbsc);

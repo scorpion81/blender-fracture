@@ -2616,9 +2616,9 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 						/* refresh object... */
 						int do_rebuild = rebuild;
 						float weight = mi->thresh_weight;
-						int breaking_percentage = rmd->breaking_percentage_weighted ? (int)(((float)rmd->breaking_percentage) * weight) : rmd->breaking_percentage;
+						int breaking_percentage = rmd->breaking_percentage_weighted ? (rmd->breaking_percentage * weight) : rmd->breaking_percentage;
 						
-						if (rmd->breaking_percentage > 0 || weight > 0)
+						if (rmd->breaking_percentage > 0 || (rmd->breaking_percentage_weighted && weight > 0))
 						{
 							int broken_cons = 0, cons = 0, i = 0;
 							RigidBodyShardCon* con;
@@ -2673,7 +2673,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 
 				for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
 
-					float weight = (rbsc->mi1->thresh_weight + rbsc->mi2->thresh_weight) * 0.5f;
+					float weight = MIN2(rbsc->mi1->thresh_weight, rbsc->mi2->thresh_weight);
 					float breaking_angle = rmd->breaking_angle_weighted ? rmd->breaking_angle * weight : rmd->breaking_angle;
 					float breaking_distance = rmd->breaking_distance_weighted ? rmd->breaking_distance * weight : rmd->breaking_distance;
 					int iterations;
