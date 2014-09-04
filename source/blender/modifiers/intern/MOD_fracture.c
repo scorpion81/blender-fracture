@@ -1320,7 +1320,7 @@ static float mesh_separate_tagged(FractureModifierData* rmd, Object *ob, BMVert*
 	mi->rigidbody = NULL;
 	mi->vertices_cached = NULL;
 
-	if (rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED)
+	//if (rmd->modifier.scene->rigidbody_world->pointcache->flag & PTCACHE_BAKED)
 	{
 		mi->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi);
 		BKE_rigidbody_calc_shard_mass(ob, mi, orig_dm);
@@ -1437,7 +1437,7 @@ void mesh_separate_loose_partition(FractureModifierData* rmd, Object* ob, BMesh*
 
 			startno = MEM_reallocN(startno, (tag_counter+1) * 3 * sizeof(short));
 
-			copy_v3_v3(no, v_seed->no);
+			//copy_v3_v3(no, v_seed->no);
 			find_normal(dm, rmd->nor_tree, v_seed->co, no);
 			startno[3 * tag_counter] = no[0];
 			startno[3 * tag_counter+1] = no[1];
@@ -1473,7 +1473,7 @@ void mesh_separate_loose_partition(FractureModifierData* rmd, Object* ob, BMesh*
 
 				startno = MEM_reallocN(startno, (tag_counter+1) * 3 * sizeof(short));
 
-				copy_v3_v3(no, v_seed->no);
+				//copy_v3_v3(no, v_seed->no);
 				find_normal(dm, rmd->nor_tree, e->v1->co, no);
 				startno[3 * tag_counter] = no[0];
 				startno[3 * tag_counter+1] = no[1];
@@ -1497,7 +1497,7 @@ void mesh_separate_loose_partition(FractureModifierData* rmd, Object* ob, BMesh*
 				startco[3 * tag_counter+2] = e->v2->co[2];
 
 				startno = MEM_reallocN(startno, (tag_counter+1) * 3 * sizeof(short));
-				copy_v3_v3(no, v_seed->no);
+				//copy_v3_v3(no, v_seed->no);
 				find_normal(dm, rmd->nor_tree, e->v2->co, no);
 				startno[3 * tag_counter] = no[0];
 				startno[3 * tag_counter+1] = no[1];
@@ -1805,7 +1805,11 @@ static void connect_meshislands(FractureModifierData* rmd, Object* ob, MeshIslan
 			if (rmd->thresh_defgrp_name[0])
 			{
 				//modify maximum threshold by average weight
-				rbsc->breaking_threshold = thresh * MIN2(mi1->thresh_weight, mi2->thresh_weight);
+				rbsc->breaking_threshold = thresh * (mi1->thresh_weight + mi2->thresh_weight) * 0.5f;
+				if (rbsc->breaking_threshold == 0)
+				{
+					printf("Threshold: %f\n", rbsc->breaking_threshold);
+				}
 			}
 
 			//BKE_rigidbody_start_dist_angle(rbsc);
@@ -2472,7 +2476,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 						mi->vertco[j*3+2] = mv->co[2];
 
 						//either take orignormals or take ones from fractured mesh...
-						copy_v3_v3_short(no, mv->no);
+						//copy_v3_v3_short(no, mv->no);
 						find_normal(orig_dm, fmd->nor_tree, mv->co, &no);
 
 						mi->vertno[j*3] = no[0];

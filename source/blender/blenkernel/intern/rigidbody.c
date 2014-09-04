@@ -2673,7 +2673,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 
 				for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
 
-					float weight = MIN2(rbsc->mi1->thresh_weight, rbsc->mi2->thresh_weight);
+					float weight = (rbsc->mi1->thresh_weight + rbsc->mi2->thresh_weight) * 0.5f;
 					float breaking_angle = rmd->breaking_angle_weighted ? rmd->breaking_angle * weight : rmd->breaking_angle;
 					float breaking_distance = rmd->breaking_distance_weighted ? rmd->breaking_distance * weight : rmd->breaking_distance;
 					int iterations;
