@@ -20,7 +20,7 @@
  *
  * The Original Code is: all of this file.
  *
- * Contributor(s): none yet.
+ * Contributor(s): Martin Felke
  *
  * ***** END GPL LICENSE BLOCK *****
  * CSG operations.
@@ -43,6 +43,8 @@
 #include "BLI_ghash.h"
 #include "BLI_math.h"
 #include "BLI_rand.h"
+#include "BLI_boxpack2d.h"
+#include "BLI_convexhull2d.h"
 #include "BKE_editmesh.h"
 #include "BKE_cdderivedmesh.h"
 #include "BKE_fracture.h"
@@ -51,15 +53,151 @@
 #include "bmesh.h"
 #include "../../modifiers/intern/MOD_boolean_util.h"
 
+
+//UV Helpers
+void uv_bbox(float uv[][2], int num_uv, float minv[2], float maxv[2])
+{
+	int v;
+	INIT_MINMAX2(minv, maxv);
+
+	for (v = 0; v < num_uv; v++) {
+		minmax_v2v2_v2(minv, maxv, uv[v]);
+	}
+}
+
+void uv_translate(float uv[][2], int num_uv, float trans[2])
+{
+	int v;
+	for (v = 0; v < num_uv; v++) {
+		uv[v][0] += trans[0];
+		uv[v][1] += trans[1];
+	}
+}
+
+void uv_scale(float uv[][2], int num_uv, float scale)
+{
+	int v;
+	for (v = 0; v < num_uv; v++) {
+		uv[v][0] *= scale;
+		uv[v][1] *= scale;
+	}
+}
+
+void uv_transform(float uv[][2], int num_uv, float mat[2][2])
+{
+	int v;
+	for (v = 0; v < num_uv; v++) {
+		mul_m2v2(mat, uv[v]);
+	}
+}
+
+void unwrap_shard_dm(DerivedMesh* dm)
+{
+	MPoly *mpoly, *mp;
+	MLoop *mloop;
+	MVert *mvert;
+	int totpoly, i = 0;
+	MLoopUV* mluv = MEM_mallocN(sizeof(MLoopUV) * dm->numLoopData, "mluv");
+	BoxPack* boxpack = MEM_mallocN(sizeof(BoxPack) * dm->numPolyData, "boxpack");
+	float scale, tot_width, tot_height;
+
+	//set inner material on child shard
+	mvert = dm->getVertArray(dm);
+	mpoly = dm->getPolyArray(dm);
+	mloop = dm->getLoopArray(dm);
+	totpoly = dm->getNumPolys(dm);
+	for (i = 0, mp = mpoly; i < totpoly; i++, mp++)
+	{
+		MLoop *ml;
+		int j = 0;
+		float verts[mp->totloop][3];
+		float nor[3];
+		float mat[3][3];
+		float uv[mp->totloop][2];
+		BoxPack* box;
+		float uvbbox[2][2];
+		float angle;
+
+		//uv unwrap cells, so inner faces get a uv map
+		for (j = 0; j < mp->totloop; j++)
+		{
+			ml = mloop + mp->loopstart + j;
+			copy_v3_v3(verts[j], (mvert + ml->v)->co);
+		}
+
+		normal_poly_v3(nor, verts, mp->totloop);
+		normalize_v3(nor);
+		axis_dominant_v3_to_m3(mat, nor);
+
+		for (j = 0; j < mp->totloop; j++)
+		{
+			mul_v2_m3v3(uv[j], mat, verts[j]);
+			copy_v3_v3(mluv[j + mp->loopstart].uv, uv[j]);
+		}
+
+		//rotate uvs for better packing
+		angle = BLI_convexhull_aabb_fit_points_2d((const float (*)[2])uv, mp->totloop);
+
+		if (angle != 0.0f) {
+			float mat[2][2];
+			angle_to_mat2(mat, angle);
+			uv_transform(uv, mp->totloop, mat);
+		}
+
+		//prepare box packing... one poly is a box
+		box = boxpack + i;
+		uv_bbox(uv, mp->totloop, uvbbox[0], uvbbox[1]);
+
+		uvbbox[0][0] = -uvbbox[0][0];
+		uvbbox[0][1] = -uvbbox[0][1];
+
+		uv_translate(uv, mp->totloop, uvbbox[0]);
+
+		box->w = uvbbox[1][0] + uvbbox[0][0];
+		box->h = uvbbox[1][1] + uvbbox[0][1];
+		box->index = i;
+
+	}
+
+	//do box packing and match uvs according to it
+	BLI_box_pack_2d(boxpack, totpoly, &tot_width, &tot_height);
+
+	if (tot_height > tot_width)
+		scale = 1.0f / tot_height;
+	else
+		scale = 1.0f / tot_width;
+
+	for (i = 0, mp = mpoly; i < totpoly; i++, mp++) {
+		float trans[2];
+		BoxPack* box;
+		int j;
+
+		box = boxpack + i;
+		trans[0] = box->x;
+		trans[1] = box->y;
+
+		for (j = 0; j < mp->totloop; j++)
+		{
+			uv_translate(mluv[j+mp->loopstart].uv, 1, trans);
+			uv_scale(mluv[j+mp->loopstart].uv, 1, scale);
+		}
+	}
+
+	MEM_freeN(boxpack);
+
+	CustomData_add_layer_named(&dm->loopData, CD_MLOOPUV, CD_ASSIGN, mluv, dm->numLoopData, "InnerUV");
+}
+
 Shard *BKE_fracture_shard_boolean(Object* obj, DerivedMesh *dm_parent, Shard* child, short inner_material_index)
 {
 	Shard *output_s;
 	DerivedMesh *left_dm, *right_dm, *output_dm;
 	MPoly *mpoly, *mp;
-//	MVert *mvert, *mv;
-	int totpoly, totvert, i = 0;
+	int totpoly, i = 0;
 
 	left_dm = BKE_shard_create_dm(child, false);
+
+	unwrap_shard_dm(left_dm);
 
 #if 0
 	//put all verts in inner vgroup ? (via index)
@@ -133,9 +271,9 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 	//BMesh *bm_parent = DM_to_bmesh(dm_parent, true);
 	//BMesh* bm_parent = BM_mesh_create(&bm_mesh_allocsize_default);
 	BMesh *bm_parent = BM_mesh_copy(bm_orig);
-	BMesh *bm_child = DM_to_bmesh(dm_child, true);
-	BMIter iter, fiter, fiter2;
-	BMFace *f, **faces;
+	BMesh *bm_child;
+	BMIter iter;
+	BMFace *f;
 
 	BMOperator bmop;
 	float plane_co[3];
@@ -148,6 +286,9 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 	bool do_break = false;
 
 	int cut_index = 0;
+
+	unwrap_shard_dm(dm_child);
+	bm_child = DM_to_bmesh(dm_child, true);
 
 	invert_m4_m4(imat, obmat);
 
