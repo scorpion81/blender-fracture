@@ -52,6 +52,7 @@
 #include "BKE_material.h"
 #include "bmesh.h"
 #include "../../modifiers/intern/MOD_boolean_util.h"
+//#include "../../editors/include/ED_mesh.h"
 
 
 //UV Helpers
@@ -97,7 +98,7 @@ void unwrap_shard_dm(DerivedMesh* dm)
 	MLoop *mloop;
 	MVert *mvert;
 	int totpoly, i = 0;
-	MLoopUV* mluv = MEM_mallocN(sizeof(MLoopUV) * dm->numLoopData, "mluv");
+	MLoopUV* mluv = MEM_callocN(sizeof(MLoopUV) * dm->numLoopData, "mluv");
 	BoxPack* boxpack = MEM_mallocN(sizeof(BoxPack) * dm->numPolyData, "boxpack");
 	float scale, tot_width, tot_height;
 
@@ -132,7 +133,6 @@ void unwrap_shard_dm(DerivedMesh* dm)
 		for (j = 0; j < mp->totloop; j++)
 		{
 			mul_v2_m3v3(uv[j], mat, verts[j]);
-			copy_v3_v3(mluv[j + mp->loopstart].uv, uv[j]);
 		}
 
 		//rotate uvs for better packing
@@ -157,6 +157,12 @@ void unwrap_shard_dm(DerivedMesh* dm)
 		box->h = uvbbox[1][1] + uvbbox[0][1];
 		box->index = i;
 
+		//copy coords back..
+		for (j = 0; j < mp->totloop; j++)
+		{
+			copy_v3_v3(mluv[j + mp->loopstart].uv, uv[j]);
+			mluv[j + mp->loopstart].flag = 0;
+		}
 	}
 
 	//do box packing and match uvs according to it
@@ -186,6 +192,7 @@ void unwrap_shard_dm(DerivedMesh* dm)
 	MEM_freeN(boxpack);
 
 	CustomData_add_layer_named(&dm->loopData, CD_MLOOPUV, CD_ASSIGN, mluv, dm->numLoopData, "InnerUV");
+	CustomData_add_layer_named(&dm->polyData, CD_MTEXPOLY, CD_CALLOC, NULL, totpoly, "InnerUV");
 }
 
 Shard *BKE_fracture_shard_boolean(Object* obj, DerivedMesh *dm_parent, Shard* child, short inner_material_index)
@@ -194,8 +201,20 @@ Shard *BKE_fracture_shard_boolean(Object* obj, DerivedMesh *dm_parent, Shard* ch
 	DerivedMesh *left_dm, *right_dm, *output_dm;
 	MPoly *mpoly, *mp;
 	int totpoly, i = 0;
+	//Mesh* me;
 
 	left_dm = BKE_shard_create_dm(child, false);
+
+	//create new inner uv map, works with Mesh only...
+	/*
+	if (obj->type == OB_MESH)
+	{
+		me = (Mesh*)obj->data;
+		if (CustomData_get_active_layer(&me->pdata, CD_MTEXPOLY) != 1)
+		{
+			ED_mesh_uv_texture_add(obj->data, "InnerUV", true);
+		}
+	}*/
 
 	unwrap_shard_dm(left_dm);
 
