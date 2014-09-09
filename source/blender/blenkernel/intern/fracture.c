@@ -1086,9 +1086,10 @@ static DerivedMesh *create_dm(FractureModifierData* fmd, bool doCustomData)
 	CDDM_calc_edges(result);
 
 	{
-		MEdge* medge = result->getEdgeArray(result), *me = NULL;
+		MEdge* medge = result->getEdgeArray(result);
 		MPoly* mpoly = result->getPolyArray(result), *mp = NULL;
 		MLoop* mloop = result->getLoopArray(result);
+		MVert* mvert = result->getVertArray(result);
 		int totpoly = result->getNumPolys(result);
 		int i = 0;
 		for (i = 0, mp = mpoly; i < totpoly; i++, mp++)
@@ -1100,7 +1101,8 @@ static DerivedMesh *create_dm(FractureModifierData* fmd, bool doCustomData)
 				{
 					MLoop ml;
 					ml = mloop[mp->loopstart + j];
-					me = medge[ml.e].flag |= ME_SHARP;
+					medge[ml.e].flag |= ME_SHARP;
+					mvert[ml.v].flag |= ME_VERT_TMP_TAG;
 				}
 			}
 		}

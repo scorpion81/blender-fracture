@@ -73,7 +73,7 @@
 #include "../../bmesh/tools/bmesh_decimate.h"
 #include "depsgraph_private.h"
 
-static void mat2vgroup(FractureModifierData *rmd, DerivedMesh *dm, MDeformVert *dvert, Object *ob);
+static void fill_vgroup(FractureModifierData *rmd, DerivedMesh *dm, MDeformVert *dvert, Object *ob);
 static int getGroupObjects(Group *gr, Object ***obs, int g_exist);
 static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, DerivedMesh* dm);
 void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody);
@@ -1934,14 +1934,15 @@ static void create_constraints(FractureModifierData *rmd, Object* ob)
 	MEM_freeN(mesh_islands);
 }
 
-static void mat2vgroup(FractureModifierData* rmd, DerivedMesh* dm, MDeformVert* dvert, Object* ob)
+static void fill_vgroup(FractureModifierData* rmd, DerivedMesh* dm, MDeformVert* dvert, Object* ob)
 {
-	//use fallback over inner material
-	if (rmd->inner_defgrp_name[0] && rmd->inner_material) {
+	//use fallback over inner material (no more, now directly via tagged verts)
+	if (rmd->inner_defgrp_name[0] /*&& rmd->inner_material*/) {
 		int ind = 0;
-		short mat_index = find_material_index(ob, rmd->inner_material);
+		//short mat_index = find_material_index(ob, rmd->inner_material);
 		MPoly* mp = dm->getPolyArray(dm);
 		MLoop* ml = dm->getLoopArray(dm);
+		MVert* mv = dm->getVertArray(dm);
 		int count = dm->getNumPolys(dm);
 		int totvert = dm->getNumVerts(dm);
 		const int inner_defgrp_index = defgroup_name_index(ob, rmd->inner_defgrp_name);
@@ -1955,32 +1956,23 @@ static void mat2vgroup(FractureModifierData* rmd, DerivedMesh* dm, MDeformVert* 
 		dvert = CustomData_add_layer(&dm->vertData, CD_MDEFORMVERT, CD_CALLOC,
 							  NULL, totvert);
 
-#if 0
-		if (rmd->inner_defgrp_name[0] && dm && dvert)
-		{
-			int vcount = dm->getNumVerts(dm);
-			int vindex = 0;
-
-			for (vindex = 0; vindex < vcount; vindex++)
-			{	//clear inner vgroup if any
-				MDeformWeight* dw  = defvert_find_index(dvert+vindex, inner_defgrp_index);
-				defvert_remove_group(dvert+vindex, dw);
-			}
-		}
-#endif
-
-
 		for (ind = 0; ind < count; ind++)
 		{
-			if ((mp+ind)->mat_nr == mat_index-1)
+			//if ((mp+ind)->mat_nr == mat_index-1)
 			{
 				int j = 0;
 				for (j = 0; j < (mp+ind)->totloop; j++)
 				{
 					MLoop* l;
+					MVert* v;
 					int l_index = (mp+ind)->loopstart + j;
 					l = ml+l_index;
-					defvert_add_index_notest(dvert+l->v, inner_defgrp_index, 1.0f);
+					v = mv+l->v;
+					if (v->flag & ME_VERT_TMP_TAG)
+					{
+						defvert_add_index_notest(dvert+l->v, inner_defgrp_index, 1.0f);
+						v->flag &= ~ME_VERT_TMP_TAG;
+					}
 				}
 			}
 		}
@@ -2160,7 +2152,7 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 		}
 
 		//use fallback over inner material
-		mat2vgroup(rmd, dm, dvert, ob);
+		fill_vgroup(rmd, dm, dvert, ob);
 	}
 
 	return dm;
@@ -2546,7 +2538,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 
 				}
 
-				mat2vgroup(fmd, fmd->visible_mesh_cached, ivert, ob);
+				fill_vgroup(fmd, fmd->visible_mesh_cached, ivert, ob);
 			}
 			else
 			{
