@@ -176,6 +176,8 @@ ccl_device void kernel_volume_shadow_heterogeneous(KernelGlobals *kg, PathState 
 	/* compute extinction at the start */
 	float t = 0.0f;
 
+	float3 sum = make_float3(0.0f, 0.0f, 0.0f);
+
 	for(int i = 0; i < max_steps; i++) {
 		/* advance to new position */
 		float new_t = min(ray->t, (i+1) * step);
@@ -190,20 +192,26 @@ ccl_device void kernel_volume_shadow_heterogeneous(KernelGlobals *kg, PathState 
 
 		/* compute attenuation over segment */
 		if(volume_shader_extinction_sample(kg, sd, state, new_P, &sigma_t)) {
-			/* todo: we could avoid computing expf() for each step by summing,
-			 * because exp(a)*exp(b) = exp(a+b), but we still want a quick
-			 * tp_eps check too */
-			tp *= volume_color_transmittance(sigma_t, new_t - t);
+			/* Compute expf() only for every Nth step, to save some calculations
+			 * because exp(a)*exp(b) = exp(a+b), also do a quick tp_eps check then. */
 
-			/* stop if nearly all light blocked */
-			if(tp.x < tp_eps && tp.y < tp_eps && tp.z < tp_eps)
-				break;
+			sum += (-sigma_t * (new_t - t));
+			if((i & 0x07) == 0) { /* ToDo: Other interval? */
+				tp = *throughput * make_float3(expf(sum.x), expf(sum.y), expf(sum.z));
+
+				/* stop if nearly all light is blocked */
+				if(tp.x < tp_eps && tp.y < tp_eps && tp.z < tp_eps)
+					break;
+			}
 		}
 
 		/* stop if at the end of the volume */
 		t = new_t;
-		if(t == ray->t)
+		if(t == ray->t) {
+			/* Update throughput in case we haven't done it above */
+			tp = *throughput * make_float3(expf(sum.x), expf(sum.y), expf(sum.z));
 			break;
+		}
 	}
 
 	*throughput = tp;
@@ -326,6 +334,7 @@ ccl_device VolumeIntegrateResult kernel_volume_integrate_homogeneous(KernelGloba
 	float t = ray->t;
 	float3 new_tp;
 
+#ifdef __VOLUME_SCATTER__
 	/* randomly scatter, and if we do t is shortened */
 	if(closure_flag & SD_SCATTER) {
 		/* extinction coefficient */
@@ -379,7 +388,9 @@ ccl_device VolumeIntegrateResult kernel_volume_integrate_homogeneous(KernelGloba
 			new_tp = *throughput * transmittance / pdf;
 		}
 	}
-	else if(closure_flag & SD_ABSORPTION) {
+	else 
+#endif
+	if(closure_flag & SD_ABSORPTION) {
 		/* absorption only, no sampling needed */
 		float3 transmittance = volume_color_transmittance(coeff.sigma_a, t);
 		new_tp = *throughput * transmittance;
@@ -456,6 +467,7 @@ ccl_device VolumeIntegrateResult kernel_volume_integrate_heterogeneous_distance(
 			bool scatter = false;
 
 			/* distance sampling */
+#ifdef __VOLUME_SCATTER__
 			if((closure_flag & SD_SCATTER) || (has_scatter && (closure_flag & SD_ABSORPTION))) {
 				has_scatter = true;
 
@@ -491,7 +503,9 @@ ccl_device VolumeIntegrateResult kernel_volume_integrate_heterogeneous_distance(
 					xi = 1.0f - (1.0f - xi)/sample_transmittance;
 				}
 			}
-			else if(closure_flag & SD_ABSORPTION) {
+			else 
+#endif
+			if(closure_flag & SD_ABSORPTION) {
 				/* absorption only, no sampling needed */
 				float3 sigma_a = coeff.sigma_a;
 
@@ -546,13 +560,12 @@ ccl_device VolumeIntegrateResult kernel_volume_integrate_heterogeneous_distance(
  * between the endpoints. distance sampling is used to decide if we will
  * scatter or not. */
 ccl_device_noinline VolumeIntegrateResult kernel_volume_integrate(KernelGlobals *kg,
-	PathState *state, ShaderData *sd, Ray *ray, PathRadiance *L, float3 *throughput, RNG *rng)
+	PathState *state, ShaderData *sd, Ray *ray, PathRadiance *L, float3 *throughput, RNG *rng, bool heterogeneous)
 {
 	/* workaround to fix correlation bug in T38710, can find better solution
 	 * in random number generator later, for now this is done here to not impact
 	 * performance of rendering without volumes */
 	RNG tmp_rng = cmj_hash(*rng, state->rng_offset);
-	bool heterogeneous = volume_stack_is_heterogeneous(kg, state->volume_stack);
 
 	shader_setup_from_volume(kg, sd, ray, state->bounce, state->transparent_bounce);
 
@@ -724,16 +737,15 @@ ccl_device void kernel_volume_decoupled_free(KernelGlobals *kg, VolumeSegment *s
  * scattering, they always scatter if there is any non-zero scattering
  * coefficient.
  *
- * these also do not do emission or modify throughput. */
+ * these also do not do emission or modify throughput. 
+ * 
+ * function is expected to return VOLUME_PATH_SCATTERED when probalistic_scatter is false */
 ccl_device VolumeIntegrateResult kernel_volume_decoupled_scatter(
 	KernelGlobals *kg, PathState *state, Ray *ray, ShaderData *sd,
 	float3 *throughput, float rphase, float rscatter,
 	const VolumeSegment *segment, const float3 *light_P, bool probalistic_scatter)
 {
-	int closure_flag = segment->closure_flag;
-
-	if(!(closure_flag & SD_SCATTER))
-		return VOLUME_PATH_MISSED;
+	kernel_assert(segment->closure_flag & SD_SCATTER);
 
 	/* pick random color channel, we use the Veach one-sample
 	 * model with balance heuristic for the channels */
@@ -845,15 +857,33 @@ ccl_device VolumeIntegrateResult kernel_volume_decoupled_scatter(
 		float3 step_pdf_distance = make_float3(1.0f, 1.0f, 1.0f);
 
 		if(segment->numsteps > 1) {
-			/* todo: optimize using binary search */
 			float3 prev_cdf_distance = make_float3(0.0f, 0.0f, 0.0f);
 
-			for(int i = 0; i < segment->numsteps-1; i++, step++) {
-				if(sample_t < step->t)
-					break;
+			int numsteps = segment->numsteps;
+			int high = numsteps - 1;
+			int low = 0;
+			int mid;
 
-				prev_t = step->t;
-				prev_cdf_distance = step->cdf_distance;
+			while(low < high) {
+				mid = (low + high) >> 1;
+
+				if(sample_t < step[mid].t)
+					high = mid;
+				else if(sample_t >= step[mid + 1].t)
+					low = mid + 1;
+				else {
+					/* found our interval in step[mid] .. step[mid+1] */
+					prev_t = step[mid].t;
+					prev_cdf_distance = step[mid].cdf_distance;
+					step += mid+1;
+					break;
+				}
+			}
+
+			if(low >= numsteps - 1) {
+				prev_t = step[numsteps - 1].t;
+				prev_cdf_distance = step[numsteps-1].cdf_distance;
+				step += numsteps - 1;
 			}
 
 			/* pdf for picking step with distance sampling */

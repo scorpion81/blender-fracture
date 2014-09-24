@@ -1,5 +1,5 @@
 /*
- * Copyright 2011, Blender Foundation.
+ * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -15,23 +15,21 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * Contributor: 
- *		Jeroen Bakker 
- *		Monique Dewanchand
+ * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef OCL_OPENCL_H
-#define OCL_OPENCL_H
+#ifndef __BMESH_INTERSECT_H__
+#define __BMESH_INTERSECT_H__
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+/** \file blender/bmesh/tools/bmesh_intersect.h
+ *  \ingroup bmesh
+ */
 
-#include "intern/clew.h"
-int OCL_init(void);
+bool BM_mesh_intersect(
+        BMesh *bm,
+        struct BMLoop *(*looptris)[3], const int looptris_tot,
+        int (*test_fn)(BMFace *f, void *user_data), void *user_data,
+        const bool use_self, const bool use_separate,
+        const float eps);
 
-#ifdef __cplusplus
-}
-#endif
-
-#endif
+#endif /* __BMESH_INTERSECT_H__ */

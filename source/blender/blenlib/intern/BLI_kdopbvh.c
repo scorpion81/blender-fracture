@@ -43,14 +43,30 @@
 #include <omp.h>
 #endif
 
+/* used for iterative_raycast */
+// #define USE_SKIP_LINKS
+
 #define MAX_TREETYPE 32
+
+/* Setting zero so we can catch bugs in OpenMP/KDOPBVH.
+ * TODO(sergey): Deduplicate the limits with PBVH from BKE.
+ */
+#ifdef _OPENMP
+#  ifdef DEBUG
+#    define KDOPBVH_OMP_LIMIT 0
+#  else
+#    define KDOPBVH_OMP_LIMIT 1024
+#  endif
+#endif
 
 typedef unsigned char axis_t;
 
 typedef struct BVHNode {
 	struct BVHNode **children;
 	struct BVHNode *parent; /* some user defined traversed need that */
+#ifdef USE_SKIP_LINKS
 	struct BVHNode *skip[2];
+#endif
 	float *bv;      /* Bounding volume of all nodes, max 13 axis */
 	int index;      /* face, edge, vertex index */
 	char totnode;   /* how many nodes are used, used for speedup */
@@ -374,7 +390,7 @@ static int partition_nth_element(BVHNode **a, int _begin, int _end, int n, int a
 	return n;
 }
 
-/* --- */
+#ifdef USE_SKIP_LINKS
 static void build_skip_links(BVHTree *tree, BVHNode *node, BVHNode *left, BVHNode *right)
 {
 	int i;
@@ -391,6 +407,7 @@ static void build_skip_links(BVHTree *tree, BVHNode *node, BVHNode *left, BVHNod
 		left = node->children[i];
 	}
 }
+#endif
 
 /*
  * BVHTree bounding volumes functions
@@ -669,7 +686,7 @@ static int implicit_leafs_index(BVHBuildHelper *data, int depth, int child_index
 /* This functions returns the number of branches needed to have the requested number of leafs. */
 static int implicit_needed_branches(int tree_type, int leafs)
 {
-	return max_ii(1, (leafs + tree_type - 3) / (tree_type - 1) );
+	return max_ii(1, (leafs + tree_type - 3) / (tree_type - 1));
 }
 
 /**
@@ -749,7 +766,8 @@ static void non_recursive_bvh_div_nodes(BVHTree *tree, BVHNode *branches_array, 
 		int j;
 
 		/* Loop all branches on this level */
-#pragma omp parallel for private(j) schedule(static)
+
+#pragma omp parallel for private(j) schedule(static) if (num_leafs > KDOPBVH_OMP_LIMIT)
 		for (j = i; j < end_j; j++) {
 			int k;
 			const int parent_level_index = j - i;
@@ -930,7 +948,10 @@ void BLI_bvhtree_balance(BVHTree *tree)
 	for (i = 0; i < tree->totbranch; i++)
 		tree->nodes[tree->totleaf + i] = branches_array + i;
 
+#ifdef USE_SKIP_LINKS
 	build_skip_links(tree, tree->nodes[tree->totleaf], NULL, NULL);
+#endif
+
 	/* bvhtree_info(tree); */
 }
 
@@ -958,7 +979,7 @@ void BLI_bvhtree_insert(BVHTree *tree, int index, const float co[3], int numpoin
 
 
 /* call before BLI_bvhtree_update_tree() */
-int BLI_bvhtree_update_node(BVHTree *tree, int index, const float co[3], const float co_moving[3], int numpoints)
+bool BLI_bvhtree_update_node(BVHTree *tree, int index, const float co[3], const float co_moving[3], int numpoints)
 {
 	BVHNode *node = NULL;
 	axis_t axis_iter;
@@ -1102,7 +1123,7 @@ BVHTreeOverlap *BLI_bvhtree_overlap(BVHTree *tree1, BVHTree *tree2, unsigned int
 		data[j]->stop_axis  = min_axis(tree1->stop_axis,  tree2->stop_axis);
 	}
 
-#pragma omp parallel for private(j) schedule(static)
+#pragma omp parallel for private(j) schedule(static)  if (tree1->totleaf > KDOPBVH_OMP_LIMIT)
 	for (j = 0; j < MIN2(tree1->tree_type, tree1->nodes[tree1->totleaf]->totnode); j++) {
 		traverse(data[j], tree1->nodes[tree1->totleaf]->children[j], tree2->nodes[tree2->totleaf]);
 	}

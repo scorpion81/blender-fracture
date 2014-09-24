@@ -462,6 +462,13 @@ void RNA_api_ui_layout(StructRNA *srna)
 	RNA_def_float(func, "percentage", 0.0f, 0.0f, 1.0f, "Percentage", "Percentage of width to split at", 0.0f, 1.0f);
 	RNA_def_boolean(func, "align", false, "", "Align buttons to each other");
 
+	/* radial/pie layout */
+	func = RNA_def_function(srna, "menu_pie", "uiLayoutRadial");
+	parm = RNA_def_pointer(func, "layout", "UILayout", "", "Sub-layout to put items in");
+	RNA_def_function_return(func, parm);
+	RNA_def_function_ui_description(func, "Sublayout. Items placed in this sublayout are placed "
+	                                "in a radial fashion around the menu center)");
+
 	/* Icon of a rna pointer */
 	func = RNA_def_function(srna, "icon", "rna_ui_get_rnaptr_icon");
 	parm = RNA_def_int(func, "icon_value", ICON_NONE, 0, INT_MAX, "", "Icon identifier", 0, INT_MAX);
@@ -739,6 +746,11 @@ void RNA_api_ui_layout(StructRNA *srna)
 	RNA_def_boolean(func, "lock", false, "", "Lock the color wheel display to value 1.0 regardless of actual color");
 	RNA_def_boolean(func, "lock_luminosity", false, "", "Keep the color at its original vector length");
 	RNA_def_boolean(func, "cubic", false, "", "Cubic saturation for picking values close to white");
+
+	func = RNA_def_function(srna, "template_palette", "uiTemplatePalette");
+	RNA_def_function_ui_description(func, "Item. A palette used to pick colors");
+	api_ui_item_rna_common(func);
+	RNA_def_boolean(func, "color", 0, "", "Display the colors as colors or values");
 
 	func = RNA_def_function(srna, "template_image_layers", "uiTemplateImageLayers");
 	RNA_def_function_flag(func, FUNC_USE_CONTEXT);

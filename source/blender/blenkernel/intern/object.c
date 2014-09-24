@@ -42,6 +42,7 @@
 #include "DNA_constraint_types.h"
 #include "DNA_group_types.h"
 #include "DNA_key_types.h"
+#include "DNA_lamp_types.h"
 #include "DNA_lattice_types.h"
 #include "DNA_material_types.h"
 #include "DNA_meta_types.h"
@@ -180,7 +181,7 @@ void BKE_object_free_curve_cache(Object *ob)
 {
 	if (ob->curve_cache) {
 		BKE_displist_free(&ob->curve_cache->disp);
-		BLI_freelistN(&ob->curve_cache->bev);
+		BKE_curve_bevelList_free(&ob->curve_cache->bev);
 		if (ob->curve_cache->path) {
 			free_path(ob->curve_cache->path);
 		}
@@ -322,7 +323,7 @@ void BKE_object_free_derived_caches(Object *ob)
 	
 	if (ob->curve_cache) {
 		BKE_displist_free(&ob->curve_cache->disp);
-		BLI_freelistN(&ob->curve_cache->bev);
+		BKE_curve_bevelList_free(&ob->curve_cache->bev);
 		if (ob->curve_cache->path) {
 			free_path(ob->curve_cache->path);
 			ob->curve_cache->path = NULL;
@@ -408,7 +409,7 @@ void BKE_object_free_ex(Object *ob, bool do_id_user)
 
 	/* Free runtime curves data. */
 	if (ob->curve_cache) {
-		BLI_freelistN(&ob->curve_cache->bev);
+		BKE_curve_bevelList_free(&ob->curve_cache->bev);
 		if (ob->curve_cache->path)
 			free_path(ob->curve_cache->path);
 		MEM_freeN(ob->curve_cache);
@@ -873,9 +874,9 @@ bool BKE_object_is_in_wpaint_select_vert(Object *ob)
 {
 	if (ob->type == OB_MESH) {
 		Mesh *me = ob->data;
-		return ( (ob->mode & OB_MODE_WEIGHT_PAINT) &&
-		         (me->edit_btmesh == NULL) &&
-		         (ME_EDIT_PAINT_SEL_MODE(me) == SCE_SELECT_VERTEX) );
+		return ((ob->mode & OB_MODE_WEIGHT_PAINT) &&
+		        (me->edit_btmesh == NULL) &&
+		        (ME_EDIT_PAINT_SEL_MODE(me) == SCE_SELECT_VERTEX));
 	}
 
 	return false;
@@ -1066,10 +1067,10 @@ void BKE_object_lod_add(Object *ob)
 	BLI_addtail(&ob->lodlevels, lod);
 }
 
-static int lod_cmp(void *a, void *b)
+static int lod_cmp(const void *a, const void *b)
 {
-	LodLevel *loda = (LodLevel *)a;
-	LodLevel *lodb = (LodLevel *)b;
+	const LodLevel *loda = a;
+	const LodLevel *lodb = b;
 
 	if (loda->distance < lodb->distance) return -1;
 	return loda->distance > lodb->distance;
@@ -1526,6 +1527,18 @@ Object *BKE_object_copy(Object *ob)
 	return BKE_object_copy_ex(G.main, ob, false);
 }
 
+static void extern_local_object__modifiersForeachIDLink(
+        void *UNUSED(userData), Object *UNUSED(ob),
+        ID **idpoin)
+{
+	if (*idpoin) {
+		/* intentionally omit ID_OB */
+		if (ELEM(GS((*idpoin)->name), ID_IM, ID_TE)) {
+			id_lib_extern(*idpoin);
+		}
+	}
+}
+
 static void extern_local_object(Object *ob)
 {
 	ParticleSystem *psys;
@@ -1539,6 +1552,8 @@ static void extern_local_object(Object *ob)
 
 	for (psys = ob->particlesystem.first; psys; psys = psys->next)
 		id_lib_extern((ID *)psys->part);
+
+	modifiers_foreachIDLink(ob, extern_local_object__modifiersForeachIDLink, NULL);
 }
 
 void BKE_object_make_local(Object *ob)
@@ -1778,6 +1793,55 @@ void BKE_object_make_proxy(Object *ob, Object *target, Object *gob)
 	ob->dt = target->dt;
 }
 
+/**
+ * Use with newly created objects to set their size
+ * (used to apply scene-scale).
+ */
+void BKE_object_obdata_size_init(struct Object *ob, const float size)
+{
+	/* apply radius as a scale to types that support it */
+	switch (ob->type) {
+		case OB_EMPTY:
+		{
+			ob->empty_drawsize *= size;
+			break;
+		}
+		case OB_FONT:
+		{
+			Curve *cu = ob->data;
+			cu->fsize *= size;
+			break;
+		}
+		case OB_CAMERA:
+		{
+			Camera *cam = ob->data;
+			cam->drawsize *= size;
+			break;
+		}
+		case OB_LAMP:
+		{
+			Lamp *lamp = ob->data;
+			lamp->dist *= size;
+			lamp->area_size  *= size;
+			lamp->area_sizey *= size;
+			lamp->area_sizez *= size;
+			break;
+		}
+		/* Only lattice (not mesh, curve, mball...),
+		 * because its got data when newly added */
+		case OB_LATTICE:
+		{
+			struct Lattice *lt = ob->data;
+			float mat[4][4];
+
+			unit_m4(mat);
+			scale_m4_fl(mat, size);
+
+			BKE_lattice_transform(lt, (float (*)[4])mat, false);
+			break;
+		}
+	}
+}
 
 /* *************** CALC ****************** */
 
@@ -1994,17 +2058,20 @@ static void ob_parcurve(Scene *scene, Object *ob, Object *par, float mat[4][4])
 		 * we divide the curvetime calculated in the previous step by the length of the path, to get a time
 		 * factor, which then gets clamped to lie within 0.0 - 1.0 range
 		 */
-		if (IS_EQF(cu->pathlen, 0.0f) == 0)
+		if (cu->pathlen) {
 			ctime = cu->ctime / cu->pathlen;
-		else
+		}
+		else {
 			ctime = cu->ctime;
+		}
 
 		CLAMP(ctime, 0.0f, 1.0f);
 	}
 	else {
 		ctime = BKE_scene_frame_get(scene);
-		if (IS_EQF(cu->pathlen, 0.0f) == 0)
+		if (cu->pathlen) {
 			ctime /= cu->pathlen;
+		}
 		
 		CLAMP(ctime, 0.0f, 1.0f);
 	}
@@ -2289,7 +2356,7 @@ static bool where_is_object_parslow(Object *ob, float obmat[4][4], float slowmat
 	int a;
 
 	/* include framerate */
-	fac1 = (1.0f / (1.0f + fabsf(ob->sf)) );
+	fac1 = (1.0f / (1.0f + fabsf(ob->sf)));
 	if (fac1 >= 1.0f) return 0;
 	fac2 = 1.0f - fac1;
 
@@ -2466,6 +2533,20 @@ void BKE_boundbox_init_from_minmax(BoundBox *bb, const float min[3], const float
 	bb->vec[1][2] = bb->vec[2][2] = bb->vec[5][2] = bb->vec[6][2] = max[2];
 }
 
+void BKE_boundbox_calc_center_aabb(const BoundBox *bb, float r_cent[3])
+{
+	r_cent[0] = 0.5f * (bb->vec[0][0] + bb->vec[4][0]);
+	r_cent[1] = 0.5f * (bb->vec[0][1] + bb->vec[2][1]);
+	r_cent[2] = 0.5f * (bb->vec[0][2] + bb->vec[1][2]);
+}
+
+void BKE_boundbox_calc_size_aabb(const BoundBox *bb, float r_size[3])
+{
+	r_size[0] = 0.5f * fabsf(bb->vec[0][0] - bb->vec[4][0]);
+	r_size[1] = 0.5f * fabsf(bb->vec[0][1] - bb->vec[2][1]);
+	r_size[2] = 0.5f * fabsf(bb->vec[0][2] - bb->vec[1][2]);
+}
+
 BoundBox *BKE_object_boundbox_get(Object *ob)
 {
 	BoundBox *bb = NULL;
@@ -2483,7 +2564,7 @@ BoundBox *BKE_object_boundbox_get(Object *ob)
 }
 
 /* used to temporally disable/enable boundbox */
-void BKE_object_boundbox_flag(Object *ob, int flag, int set)
+void BKE_object_boundbox_flag(Object *ob, int flag, const bool set)
 {
 	BoundBox *bb = BKE_object_boundbox_get(ob);
 	if (bb) {
@@ -3126,8 +3207,10 @@ int BKE_object_obdata_texspace_get(Object *ob, short **r_texflag, float **r_loc,
  * Test a bounding box for ray intersection
  * assumes the ray is already local to the boundbox space
  */
-bool BKE_boundbox_ray_hit_check(struct BoundBox *bb, const float ray_start[3], const float ray_normal[3],
-                                float *r_lambda)
+bool BKE_boundbox_ray_hit_check(
+        const struct BoundBox *bb,
+        const float ray_start[3], const float ray_normal[3],
+        float *r_lambda)
 {
 	const int triangle_indexes[12][3] = {
 	    {0, 1, 2}, {0, 2, 3},
@@ -3159,9 +3242,9 @@ bool BKE_boundbox_ray_hit_check(struct BoundBox *bb, const float ray_start[3], c
 	return result;
 }
 
-static int pc_cmp(void *a, void *b)
+static int pc_cmp(const void *a, const void *b)
 {
-	LinkData *ad = a, *bd = b;
+	const LinkData *ad = a, *bd = b;
 	if (GET_INT_FROM_POINTER(ad->data) > GET_INT_FROM_POINTER(bd->data))
 		return 1;
 	else return 0;

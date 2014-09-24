@@ -192,7 +192,8 @@ help:
 	@echo ""
 	@echo "Utilities (not associated with building blender)"
 	@echo "  * icons    - updates PNG icons from SVG files."
-	@echo "  * tbz      - create a compressed svn export 'blender_archive.tar.bz2'"
+	@echo "  * tgz      - create a compressed archive of the source code."
+	@echo "  * update   - updates git and all submodules"
 	@echo ""
 	@echo "Documentation Targets (not associated with building blender)"
 	@echo "  * doc_py   - generate sphinx python api docs"
@@ -237,26 +238,42 @@ test_deprecated:
 
 test_style_c:
 	# run our own checks on C/C++ style
-	PYTHONIOENCODING=utf_8 python3 "$(BLENDER_DIR)/source/tools/check_source/check_style_c.py" "$(BLENDER_DIR)/source/blender" "$(BLENDER_DIR)/source/creator" --no-length-check
+	PYTHONIOENCODING=utf_8 python3 \
+	    "$(BLENDER_DIR)/source/tools/check_source/check_style_c.py" \
+	    "$(BLENDER_DIR)/source/blender" \
+	    "$(BLENDER_DIR)/source/creator" \
+	    --no-length-check
 
 test_style_c_qtc:
 	# run our own checks on C/C++ style
 	USE_QTC_TASK=1 \
-	PYTHONIOENCODING=utf_8 python3 "$(BLENDER_DIR)/source/tools/check_source/check_style_c.py" "$(BLENDER_DIR)/source/blender" "$(BLENDER_DIR)/source/creator" --no-length-check > \
-	test_style.tasks
+	PYTHONIOENCODING=utf_8 python3 \
+	    "$(BLENDER_DIR)/source/tools/check_source/check_style_c.py" \
+	    "$(BLENDER_DIR)/source/blender" \
+	    "$(BLENDER_DIR)/source/creator" \
+	    --no-length-check \
+	    > \
+	    "$(BLENDER_DIR)/test_style.tasks"
 	@echo "written: test_style.tasks"
 
 
 test_style_osl:
 	# run our own checks on C/C++ style
-	PYTHONIOENCODING=utf_8 python3 "$(BLENDER_DIR)/source/tools/check_source/check_style_c.py" "$(BLENDER_DIR)/intern/cycles/kernel/shaders" "$(BLENDER_DIR)/release/scripts/templates_osl"
+	PYTHONIOENCODING=utf_8 python3 \
+	    "$(BLENDER_DIR)/source/tools/check_source/check_style_c.py" \
+	    "$(BLENDER_DIR)/intern/cycles/kernel/shaders" \
+	    "$(BLENDER_DIR)/release/scripts/templates_osl"
 
 
 test_style_osl_qtc:
 	# run our own checks on C/C++ style
 	USE_QTC_TASK=1 \
-	PYTHONIOENCODING=utf_8 python3 "$(BLENDER_DIR)/source/tools/check_source/check_style_c.py" "$(BLENDER_DIR)/intern/cycles/kernel/shaders" "$(BLENDER_DIR)/release/scripts/templates_osl" > \
-	test_style.tasks
+	PYTHONIOENCODING=utf_8 python3 \
+	    "$(BLENDER_DIR)/source/tools/check_source/check_style_c.py" \
+	    "$(BLENDER_DIR)/intern/cycles/kernel/shaders" \
+	    "$(BLENDER_DIR)/release/scripts/templates_osl" \
+	    > \
+	    "$(BLENDER_DIR)/test_style.tasks"
 	@echo "written: test_style.tasks"
 
 # -----------------------------------------------------------------------------
@@ -281,7 +298,7 @@ check_cppcheck:
 	$(CMAKE_CONFIG)
 	cd "$(BUILD_DIR)" ; \
 	python3 "$(BLENDER_DIR)/build_files/cmake/cmake_static_check_cppcheck.py" 2> \
-	"$(BLENDER_DIR)/check_cppcheck.txt"
+	    "$(BLENDER_DIR)/check_cppcheck.txt"
 	@echo "written: check_cppcheck.txt"
 
 check_clang_array:
@@ -306,36 +323,57 @@ check_smatch:
 
 check_spelling_py:
 	cd "$(BUILD_DIR)" ; \
-	PYTHONIOENCODING=utf_8 python3 "$(BLENDER_DIR)/source/tools/check_source/check_spelling.py" "$(BLENDER_DIR)/release/scripts"
+	PYTHONIOENCODING=utf_8 python3 \
+	    "$(BLENDER_DIR)/source/tools/check_source/check_spelling.py" \
+	    "$(BLENDER_DIR)/release/scripts"
 
 check_spelling_c:
 	cd "$(BUILD_DIR)" ; \
-	PYTHONIOENCODING=utf_8 python3 "$(BLENDER_DIR)/source/tools/check_source/check_spelling.py" "$(BLENDER_DIR)/source"
+	PYTHONIOENCODING=utf_8 python3 \
+	    "$(BLENDER_DIR)/source/tools/check_source/check_spelling.py" \
+	    "$(BLENDER_DIR)/source" \
+	    "$(BLENDER_DIR)/intern/cycles" \
+	    "$(BLENDER_DIR)/intern/guardedalloc" \
+	    "$(BLENDER_DIR)/intern/ghost" \
 
 check_spelling_c_qtc:
 	cd "$(BUILD_DIR)" ; USE_QTC_TASK=1 \
-	PYTHONIOENCODING=utf_8 python3 "$(BLENDER_DIR)/source/tools/check_source/check_spelling.py" "$(BLENDER_DIR)/source" > \
-	"$(BLENDER_DIR)/check_spelling_c.tasks"
+	PYTHONIOENCODING=utf_8 python3 \
+	    "$(BLENDER_DIR)/source/tools/check_source/check_spelling.py" \
+	    "$(BLENDER_DIR)/source" \
+	    "$(BLENDER_DIR)/intern/cycles" \
+	    "$(BLENDER_DIR)/intern/guardedalloc" \
+	    "$(BLENDER_DIR)/intern/ghost" \
+	    > \
+	    "$(BLENDER_DIR)/check_spelling_c.tasks"
 
 check_spelling_osl:
-	cd "$(BUILD_DIR)" ; PYTHONIOENCODING=utf_8 python3 "$(BLENDER_DIR)/source/tools/check_source/check_spelling.py" "$(BLENDER_DIR)/intern/cycles/kernel/shaders"
+	cd "$(BUILD_DIR)" ;\
+	PYTHONIOENCODING=utf_8 python3 \
+	    "$(BLENDER_DIR)/source/tools/check_source/check_spelling.py" \
+	    "$(BLENDER_DIR)/intern/cycles/kernel/shaders"
 
 check_descriptions:
-	"$(BUILD_DIR)/bin/blender" --background -noaudio --factory-startup --python "$(BLENDER_DIR)/source/tools/check_source/check_descriptions.py"
+	"$(BUILD_DIR)/bin/blender" --background -noaudio --factory-startup --python \
+	    "$(BLENDER_DIR)/source/tools/check_source/check_descriptions.py"
 
 # -----------------------------------------------------------------------------
 # Utilities
 #
 
-tbz:
-	svn export . blender_archive
-	tar cjf blender_archive.tar.bz2 blender_archive/
-	rm -rf blender_archive/
-	@echo "blender_archive.tar.bz2 written"
+tgz:
+	./build_files/utils/build_tgz.sh
 
 icons:
 	"$(BLENDER_DIR)/release/datafiles/blender_icons_update.py"
 	"$(BLENDER_DIR)/release/datafiles/prvicons_update.py"
+
+update:
+	if [ -d "../lib" ]; then \
+		svn update ../lib/* ; \
+	fi
+	git pull --rebase
+	git submodule foreach git pull --rebase origin master
 
 
 # -----------------------------------------------------------------------------

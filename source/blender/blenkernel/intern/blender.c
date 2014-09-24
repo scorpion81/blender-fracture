@@ -170,7 +170,7 @@ static void clear_global(void)
 static bool clean_paths_visit_cb(void *UNUSED(userdata), char *path_dst, const char *path_src)
 {
 	strcpy(path_dst, path_src);
-	BLI_clean(path_dst);
+	BLI_path_native_slash(path_dst);
 	return !STREQ(path_dst, path_src);
 }
 
@@ -182,7 +182,7 @@ static void clean_paths(Main *main)
 	BKE_bpath_traverse_main(main, clean_paths_visit_cb, BKE_BPATH_TRAVERSE_SKIP_MULTIFILE, NULL);
 
 	for (scene = main->scene.first; scene; scene = scene->id.next) {
-		BLI_clean(scene->r.pic);
+		BLI_path_native_slash(scene->r.pic);
 	}
 }
 
@@ -479,7 +479,9 @@ int BKE_read_file(bContext *C, const char *filepath, ReportList *reports)
 	return (bfd ? retval : BKE_READ_FILE_FAIL);
 }
 
-int BKE_read_file_from_memory(bContext *C, const void *filebuf, int filelength, ReportList *reports, int update_defaults)
+bool BKE_read_file_from_memory(
+        bContext *C, const void *filebuf, int filelength,
+        ReportList *reports, bool update_defaults)
 {
 	BlendFileData *bfd;
 
@@ -496,7 +498,9 @@ int BKE_read_file_from_memory(bContext *C, const void *filebuf, int filelength, 
 }
 
 /* memfile is the undo buffer */
-int BKE_read_file_from_memfile(bContext *C, MemFile *memfile, ReportList *reports)
+bool BKE_read_file_from_memfile(
+        bContext *C, MemFile *memfile,
+        ReportList *reports)
 {
 	BlendFileData *bfd;
 

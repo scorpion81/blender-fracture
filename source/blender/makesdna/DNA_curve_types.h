@@ -72,7 +72,7 @@ typedef struct Path {
 #
 #
 typedef struct BevPoint {
-	float vec[3], alfa, radius, weight;
+	float vec[3], alfa, radius, weight, offset;
 	float sina, cosa;				/* 2D Only */
 	float dir[3], tan[3], quat[4];	/* 3D Only */
 	short split_tag, dupe_tag;
@@ -86,6 +86,8 @@ typedef struct BevList {
 	int nr, dupe_nr;
 	int poly, hole;
 	int charidx;
+	int *segbevcount;
+	float *seglen;
 
 	/* over-alloc */
 	BevPoint bevpoints[0];
@@ -291,7 +293,7 @@ typedef struct Curve {
 #define CU_PATH_RADIUS	4096 /* make use of the path radius if this is enabled (default for new curves) */
 #define CU_DEFORM_FILL	8192 /* fill 2d curve after deformation */
 #define CU_FILL_CAPS	16384 /* fill bevel caps */
-#define CU_MAP_TAPER	32768 /* map taper object to bevelled area */
+#define CU_MAP_TAPER	32768 /* map taper object to beveled area */
 
 /* twist mode */
 #define CU_TWIST_Z_UP			0

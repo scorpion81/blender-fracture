@@ -2225,7 +2225,7 @@ static ImBuf *seq_render_effect_execute_threaded(struct SeqEffectHandle *sh, con
 	init_data.out = out;
 
 	IMB_processor_apply_threaded(out->y, sizeof(RenderEffectThread), &init_data,
-                                 render_effect_execute_init_handle, render_effect_execute_do_thread);
+	                             render_effect_execute_init_handle, render_effect_execute_do_thread);
 
 	return out;
 }
@@ -3513,16 +3513,28 @@ bool BKE_sequence_single_check(Sequence *seq)
 }
 
 /* check if the selected seq's reference unselected seq's */
-bool BKE_sequence_base_isolated_sel_check(ListBase *seqbase)
+bool BKE_sequence_base_isolated_sel_check(ListBase *seqbase, bool one_only)
 {
 	Sequence *seq;
-	/* is there more than 1 select */
+	/* is there a valid selection select */
 	bool ok = false;
+	/* is there one selected already? */
+	bool first = false;
 
 	for (seq = seqbase->first; seq; seq = seq->next) {
 		if (seq->flag & SELECT) {
-			ok = true;
-			break;
+			if (one_only) {
+				ok = true;
+				break;
+			}
+			else {
+				if (first) {
+					ok = true;
+					break;
+				} 
+				else
+					first = true;
+			}
 		}
 	}
 

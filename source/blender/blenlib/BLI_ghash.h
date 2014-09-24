@@ -139,6 +139,9 @@ unsigned int    BLI_ghashutil_uinthash(unsigned int key);
 unsigned int    BLI_ghashutil_uinthash_v4(const unsigned int key[4]);
 #define         BLI_ghashutil_inthash_v4_p \
    ((GSetHashFP)BLI_ghashutil_uinthash_v4)
+int BLI_ghashutil_uinthash_v4_cmp(const void *a, const void *b);
+#define         BLI_ghashutil_inthash_v4_cmp \
+                BLI_ghashutil_uinthash_v4_cmp
 unsigned int    BLI_ghashutil_inthash_p(const void *ptr);
 int             BLI_ghashutil_intcmp(const void *a, const void *b);
 
@@ -189,6 +192,8 @@ GSet  *BLI_gset_new_ex(GSetHashFP hashfp, GSetCmpFP cmpfp, const char *info,
                        const unsigned int nentries_reserve) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
 GSet  *BLI_gset_new(GSetHashFP hashfp, GSetCmpFP cmpfp, const char *info) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
 int    BLI_gset_size(GSet *gs) ATTR_WARN_UNUSED_RESULT;
+void   BLI_gset_flag_set(GSet *gs, unsigned int flag);
+void   BLI_gset_flag_clear(GSet *gs, unsigned int flag);
 void   BLI_gset_free(GSet *gs, GSetKeyFreeFP keyfreefp);
 void   BLI_gset_insert(GSet *gh, void *key);
 bool   BLI_gset_add(GSet *gs, void *key);

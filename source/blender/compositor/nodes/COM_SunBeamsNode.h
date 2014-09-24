@@ -1,5 +1,5 @@
 /*
- * Copyright 2011, Blender Foundation.
+ * Copyright 2014, Blender Foundation.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -15,23 +15,23 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * Contributor: 
- *		Jeroen Bakker 
- *		Monique Dewanchand
+ * Contributor:
+ *		Lukas Toenne
  */
 
-#include "OCL_opencl.h"
+#ifndef _COM_SunBeamsNode_h_
+#define _COM_SunBeamsNode_h_
 
-int OCL_init(void)
-{
-#ifdef _WIN32
-	const char *path = "OpenCL.dll";
-#elif defined(__APPLE__)
-	const char *path = "/Library/Frameworks/OpenCL.framework/OpenCL";
-#else
-	const char *path = "libOpenCL.so";
+#include "COM_Node.h"
+
+/**
+ * @brief SunBeamsNode
+ * @ingroup Node
+ */
+class SunBeamsNode : public Node {
+public:
+	SunBeamsNode(bNode *editorNode);
+	void convertToOperations(NodeConverter &converter, const CompositorContext &context) const;
+};
+
 #endif
-
-	return (clewInit(path) == CLEW_SUCCESS);
-}
-

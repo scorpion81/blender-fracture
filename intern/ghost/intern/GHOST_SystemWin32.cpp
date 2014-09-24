@@ -46,6 +46,8 @@
 
 #include <shlobj.h>
 #include <tlhelp32.h>
+#include <Psapi.h>
+#include <windowsx.h>
 
 #include "utfconv.h"
 
@@ -113,6 +115,17 @@
 #ifndef VK_MEDIA_PLAY_PAUSE
 #define VK_MEDIA_PLAY_PAUSE 0xB3
 #endif // VK_MEDIA_PLAY_PAUSE
+
+/* Workaround for some laptop touchpads, some of which seems to
+ * have driver issues which makes it so window function receives
+ * the message, but PeekMessage doesn't pick those messages for
+ * some reason.
+ *
+ * We send a dummy WM_USER message to force PeekMessage to receive
+ * something, making it so blender's window manager sees the new
+ * messages coming in.
+ */
+#define BROKEN_PEEK_TOUCHPAD
 
 static void initRawInput()
 {
@@ -201,23 +214,27 @@ GHOST_TUns8 GHOST_SystemWin32::getNumDisplays() const
 }
 
 
-void GHOST_SystemWin32::getMainDisplayDimensions(GHOST_TUns32& width, GHOST_TUns32& height) const
+void GHOST_SystemWin32::getMainDisplayDimensions(GHOST_TUns32 &width, GHOST_TUns32 &height) const
 {
 	width = ::GetSystemMetrics(SM_CXSCREEN);
 	height = ::GetSystemMetrics(SM_CYSCREEN);
 }
 
-void GHOST_SystemWin32::getAllDisplayDimensions(GHOST_TUns32& width, GHOST_TUns32& height) const
+void GHOST_SystemWin32::getAllDisplayDimensions(GHOST_TUns32 &width, GHOST_TUns32 &height) const
 {
 	width = ::GetSystemMetrics(SM_CXVIRTUALSCREEN);
 	height = ::GetSystemMetrics(SM_CYVIRTUALSCREEN);
 }
 
 GHOST_IWindow *GHOST_SystemWin32::createWindow(
-		const STR_String& title,
-		GHOST_TInt32 left, GHOST_TInt32 top, GHOST_TUns32 width, GHOST_TUns32 height,
-		GHOST_TWindowState state, GHOST_TDrawingContextType type,
-		bool stereoVisual, const bool exclusive, const GHOST_TUns16 numOfAASamples, const GHOST_TEmbedderWindowID parentWindow)
+        const STR_String &title,
+        GHOST_TInt32 left, GHOST_TInt32 top,
+        GHOST_TUns32 width, GHOST_TUns32 height,
+        GHOST_TWindowState state, GHOST_TDrawingContextType type,
+        bool stereoVisual,
+        const bool exclusive,
+        const GHOST_TUns16 numOfAASamples,
+        const GHOST_TEmbedderWindowID parentWindow)
 {
 	GHOST_Window *window = 0;
 	window = new GHOST_WindowWin32(this, title, left, top, width, height, state, type, stereoVisual, numOfAASamples, parentWindow);
@@ -300,7 +317,7 @@ bool GHOST_SystemWin32::processEvents(bool waitForEvent)
 }
 
 
-GHOST_TSuccess GHOST_SystemWin32::getCursorPosition(GHOST_TInt32& x, GHOST_TInt32& y) const
+GHOST_TSuccess GHOST_SystemWin32::getCursorPosition(GHOST_TInt32 &x, GHOST_TInt32 &y) const
 {
 	POINT point;
 	if (::GetCursorPos(&point)) {
@@ -314,13 +331,13 @@ GHOST_TSuccess GHOST_SystemWin32::getCursorPosition(GHOST_TInt32& x, GHOST_TInt3
 
 GHOST_TSuccess GHOST_SystemWin32::setCursorPosition(GHOST_TInt32 x, GHOST_TInt32 y)
 {
-	if (!GetActiveWindow())
+	if (!::GetActiveWindow())
 		return GHOST_kFailure;
 	return ::SetCursorPos(x, y) == TRUE ? GHOST_kSuccess : GHOST_kFailure;
 }
 
 
-GHOST_TSuccess GHOST_SystemWin32::getModifierKeys(GHOST_ModifierKeys& keys) const
+GHOST_TSuccess GHOST_SystemWin32::getModifierKeys(GHOST_ModifierKeys &keys) const
 {
 	bool down = HIBYTE(::GetKeyState(VK_LSHIFT)) != 0;
 	keys.set(GHOST_kModifierKeyLeftShift, down);
@@ -347,7 +364,7 @@ GHOST_TSuccess GHOST_SystemWin32::getModifierKeys(GHOST_ModifierKeys& keys) cons
 }
 
 
-GHOST_TSuccess GHOST_SystemWin32::getButtons(GHOST_Buttons& buttons) const
+GHOST_TSuccess GHOST_SystemWin32::getButtons(GHOST_Buttons &buttons) const
 {
 	/* Check for swapped buttons (left-handed mouse buttons)
 	 * GetAsyncKeyState() will give back the state of the physical mouse buttons.
@@ -423,7 +440,7 @@ GHOST_TSuccess GHOST_SystemWin32::exit()
 	return GHOST_System::exit();
 }
 
-GHOST_TKey GHOST_SystemWin32::hardKey(GHOST_IWindow *window, RAWINPUT const& raw, int *keyDown, char *vk)
+GHOST_TKey GHOST_SystemWin32::hardKey(GHOST_IWindow *window, RAWINPUT const &raw, int *keyDown, char *vk)
 {
 	GHOST_SystemWin32 *system = (GHOST_SystemWin32 *)getSystem();
 	GHOST_TKey key = GHOST_kKeyUnknown;
@@ -438,8 +455,7 @@ GHOST_TKey GHOST_SystemWin32::hardKey(GHOST_IWindow *window, RAWINPUT const& raw
 	key = this->convertKey(window, raw.data.keyboard.VKey, raw.data.keyboard.MakeCode, (raw.data.keyboard.Flags & (RI_KEY_E1 | RI_KEY_E0)));
 	
 	// extra handling of modifier keys: don't send repeats out from GHOST
-	if (key >= GHOST_kKeyLeftShift && key <= GHOST_kKeyRightAlt)
-	{
+	if (key >= GHOST_kKeyLeftShift && key <= GHOST_kKeyRightAlt) {
 		bool changed = false;
 		GHOST_TModifierKeyMask modifier;
 		switch (key) {
@@ -447,43 +463,43 @@ GHOST_TKey GHOST_SystemWin32::hardKey(GHOST_IWindow *window, RAWINPUT const& raw
 			{
 				changed = (modifiers.get(GHOST_kModifierKeyLeftShift) != (bool)*keyDown);
 				modifier = GHOST_kModifierKeyLeftShift;
+				break;
 			}
-			break;
 			case GHOST_kKeyRightShift:
 			{
 				changed = (modifiers.get(GHOST_kModifierKeyRightShift) != (bool)*keyDown);
 				modifier = GHOST_kModifierKeyRightShift;
+				break;
 			}
-			break;
 			case GHOST_kKeyLeftControl:
 			{
 				changed = (modifiers.get(GHOST_kModifierKeyLeftControl) != (bool)*keyDown);
 				modifier = GHOST_kModifierKeyLeftControl;
+				break;
 			}
-			break;
 			case GHOST_kKeyRightControl:
 			{
 				changed = (modifiers.get(GHOST_kModifierKeyRightControl) != (bool)*keyDown);
 				modifier = GHOST_kModifierKeyRightControl;
+				break;
 			}
-			break;
 			case GHOST_kKeyLeftAlt:
 			{
 				changed = (modifiers.get(GHOST_kModifierKeyLeftAlt) != (bool)*keyDown);
 				modifier = GHOST_kModifierKeyLeftAlt;
+				break;
 			}
-			break;
 			case GHOST_kKeyRightAlt:
 			{
 				changed = (modifiers.get(GHOST_kModifierKeyRightAlt) != (bool)*keyDown);
 				modifier = GHOST_kModifierKeyRightAlt;
+				break;
 			}
-			break;
-			default: break;
+			default:
+				break;
 		}
 		
-		if (changed)
-		{
+		if (changed) {
 			modifiers.set(modifier, (bool)*keyDown);
 			system->storeModifierKeys(modifiers);
 		}
@@ -635,7 +651,10 @@ GHOST_TKey GHOST_SystemWin32::convertKey(GHOST_IWindow *window, short vKey, shor
 	return key;
 }
 
-GHOST_EventButton *GHOST_SystemWin32::processButtonEvent(GHOST_TEventType type, GHOST_IWindow *window, GHOST_TButtonMask mask)
+GHOST_EventButton *GHOST_SystemWin32::processButtonEvent(
+        GHOST_TEventType type,
+        GHOST_IWindow *window,
+        GHOST_TButtonMask mask)
 {
 	return new GHOST_EventButton(getSystem()->getMilliSeconds(), type, window, mask);
 }
@@ -712,7 +731,7 @@ GHOST_EventWheel *GHOST_SystemWin32::processWheelEvent(GHOST_IWindow *window, WP
 }
 
 
-GHOST_EventKey *GHOST_SystemWin32::processKeyEvent(GHOST_IWindow *window, RAWINPUT const& raw)
+GHOST_EventKey *GHOST_SystemWin32::processKeyEvent(GHOST_IWindow *window, RAWINPUT const &raw)
 {
 	int keyDown = 0;
 	char vk;
@@ -730,7 +749,7 @@ GHOST_EventKey *GHOST_SystemWin32::processKeyEvent(GHOST_IWindow *window, RAWINP
 		GetKeyboardState((PBYTE)state);
 
 		// don't call ToUnicodeEx on dead keys as it clears the buffer and so won't allow diacritical composition.
-		if (MapVirtualKeyW(vk,2) != 0) {
+		if (MapVirtualKeyW(vk, 2) != 0) {
 			// todo: ToUnicodeEx can respond with up to 4 utf16 chars (only 2 here). Could be up to 24 utf8 bytes.
 			if ((r = ToUnicodeEx(vk, raw.data.keyboard.MakeCode, state, utf16, 2, 0, system->m_keylayout))) {
 				if ((r > 0 && r < 3)) {
@@ -770,17 +789,18 @@ GHOST_Event *GHOST_SystemWin32::processWindowEvent(GHOST_TEventType type, GHOST_
 
 	if (type == GHOST_kEventWindowActivate) {
 		system->getWindowManager()->setActiveWindow(window);
-		((GHOST_WindowWin32*)window)->bringTabletContextToFront();
+		((GHOST_WindowWin32 *)window)->bringTabletContextToFront();
 	}
 
 	return new GHOST_Event(system->getMilliSeconds(), type, window);
 }
 
-GHOST_TSuccess GHOST_SystemWin32::pushDragDropEvent(GHOST_TEventType eventType, 
-		GHOST_TDragnDropTypes draggedObjectType,
-		GHOST_IWindow *window,
-		int mouseX, int mouseY,
-		void *data)
+GHOST_TSuccess GHOST_SystemWin32::pushDragDropEvent(
+        GHOST_TEventType eventType,
+        GHOST_TDragnDropTypes draggedObjectType,
+        GHOST_IWindow *window,
+        int mouseX, int mouseY,
+        void *data)
 {
 	GHOST_SystemWin32 *system = ((GHOST_SystemWin32 *)getSystem());
 	return system->pushEvent(new GHOST_EventDragnDrop(system->getMilliSeconds(),
@@ -797,7 +817,7 @@ void GHOST_SystemWin32::processMinMaxInfo(MINMAXINFO *minmax)
 }
 
 #ifdef WITH_INPUT_NDOF
-bool GHOST_SystemWin32::processNDOF(RAWINPUT const& raw)
+bool GHOST_SystemWin32::processNDOF(RAWINPUT const &raw)
 {
 	bool eventSent = false;
 	GHOST_TUns64 now = getMilliSeconds();
@@ -843,8 +863,7 @@ bool GHOST_SystemWin32::processNDOF(RAWINPUT const& raw)
 #endif
 
 	BYTE packetType = data[0];
-	switch (packetType)
-	{
+	switch (packetType) {
 		case 1: // translation
 		{
 			const short *axis = (short *)(data + 1);
@@ -852,8 +871,8 @@ bool GHOST_SystemWin32::processNDOF(RAWINPUT const& raw)
 			const short t[3] = {axis[0], -axis[2], axis[1]};
 			m_ndofManager->updateTranslation(t, now);
 
-			if (raw.data.hid.dwSizeHid == 13)
-			{ // this report also includes rotation
+			if (raw.data.hid.dwSizeHid == 13) {
+				// this report also includes rotation
 				const short r[3] = {-axis[3], axis[5], -axis[4]};
 				m_ndofManager->updateRotation(r, now);
 
@@ -915,8 +934,7 @@ LRESULT WINAPI GHOST_SystemWin32::s_wndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 
 					GetRawInputData((HRAWINPUT)lParam, RID_INPUT, raw_ptr, &rawSize, sizeof(RAWINPUTHEADER));
 
-					switch (raw.header.dwType)
-					{
+					switch (raw.header.dwType) {
 						case RIM_TYPEKEYBOARD:
 							event = processKeyEvent(window, raw);
 							if (!event) {
@@ -976,8 +994,7 @@ LRESULT WINAPI GHOST_SystemWin32::s_wndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 					 * maximize, minimize  or close the window are triggered. Also it is sent when ALT 
 					 * button is press for menu. To prevent this we must return preventing DefWindowProc.
 					 */
-					if (wParam == SC_KEYMENU) 
-					{
+					if (wParam == SC_KEYMENU) {
 						eventHandled = true;
 					}
 					break;
@@ -1040,6 +1057,7 @@ LRESULT WINAPI GHOST_SystemWin32::s_wndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 					event = processCursorEvent(GHOST_kEventCursorMove, window);
 					break;
 				case WM_MOUSEWHEEL:
+				{
 					/* The WM_MOUSEWHEEL message is sent to the focus window 
 					 * when the mouse wheel is rotated. The DefWindowProc 
 					 * function propagates the message to the window's parent.
@@ -1047,8 +1065,28 @@ LRESULT WINAPI GHOST_SystemWin32::s_wndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 					 * since DefWindowProc propagates it up the parent chain 
 					 * until it finds a window that processes it.
 					 */
-					event = processWheelEvent(window, wParam, lParam);
+
+					/* Get the winow under the mouse and send event to it's queue. */
+					POINT mouse_pos = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+					HWND mouse_hwnd = WindowFromPoint(mouse_pos);
+					GHOST_WindowWin32 *mouse_window = (GHOST_WindowWin32 *)::GetWindowLongPtr(mouse_hwnd, GWLP_USERDATA);
+					if (mouse_window != NULL) {
+						event = processWheelEvent(mouse_window, wParam, lParam);
+					}
+					else {
+						/* If it happened so window under the mouse is not found (which i'm not
+						 * really sure might happen), then we add event to the focused window
+						 * in order to avoid some possible negative side effects.
+						 *                                                    - sergey -
+						 */
+						event = processWheelEvent(window, wParam, lParam);
+					}
+
+#ifdef BROKEN_PEEK_TOUCHPAD
+					PostMessage(hwnd, WM_USER, 0, 0);
+#endif
 					break;
+				}
 				case WM_SETCURSOR:
 					/* The WM_SETCURSOR message is sent to a window if the mouse causes the cursor
 					 * to move within a window and mouse input is not captured.
@@ -1105,7 +1143,7 @@ LRESULT WINAPI GHOST_SystemWin32::s_wndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 					event = processWindowEvent(LOWORD(wParam) ? GHOST_kEventWindowActivate : GHOST_kEventWindowDeactivate, window);
 					/* WARNING: Let DefWindowProc handle WM_ACTIVATE, otherwise WM_MOUSEWHEEL
 					 * will not be dispatched to OUR active window if we minimize one of OUR windows. */
-					if (LOWORD(wParam)==WA_INACTIVE)
+					if (LOWORD(wParam) == WA_INACTIVE)
 						window->lostMouseCapture();
 
 					lResult = ::DefWindowProc(hwnd, msg, wParam, lParam);
@@ -1228,8 +1266,8 @@ LRESULT WINAPI GHOST_SystemWin32::s_wndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 				case WM_KILLFOCUS:
 					/* The WM_KILLFOCUS message is sent to a window immediately before it loses the keyboard focus. 
 					 * We want to prevent this if a window is still active and it loses focus to nowhere*/
-					if (!wParam && hwnd == GetActiveWindow())
-						SetFocus(hwnd);
+					if (!wParam && hwnd == ::GetActiveWindow())
+						::SetFocus(hwnd);
 				case WM_SHOWWINDOW:
 				/* The WM_SHOWWINDOW message is sent to a window when the window is about to be hidden or shown. */
 				case WM_WINDOWPOSCHANGING:
@@ -1379,16 +1417,63 @@ void GHOST_SystemWin32::putClipboard(GHOST_TInt8 *buffer, bool selection) const
 	}
 }
 
+static DWORD GetParentProcessID(void)
+{
+	HANDLE snapshot;
+	PROCESSENTRY32 pe32 = {0};
+	DWORD ppid = 0, pid = GetCurrentProcessId();
+	snapshot = CreateToolhelp32Snapshot( TH32CS_SNAPPROCESS, 0 );
+	if (snapshot == INVALID_HANDLE_VALUE) {
+		return -1;
+	}
+	pe32.dwSize = sizeof( pe32 );
+	if (!Process32First(snapshot, &pe32)) {
+		CloseHandle(snapshot);
+		return -1;
+	}
+	do {
+		if (pe32.th32ProcessID == pid) {
+			ppid = pe32.th32ParentProcessID;
+			break;
+		}
+	} while (Process32Next(snapshot, &pe32));
+	CloseHandle(snapshot);
+	return ppid;
+}
+
+static bool getProcessName(int pid, char *buffer, int max_len)
+{
+	bool result = false;
+	HANDLE handle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
+	                            FALSE, pid);
+	if (handle) {
+		GetModuleFileNameEx(handle, 0, buffer, max_len);
+		result = true;
+	}
+	CloseHandle(handle);
+	return result;
+}
+
 static bool isStartedFromCommandPrompt()
 {
 	HWND hwnd = GetConsoleWindow();
 	
 	if (hwnd) {
 		DWORD pid = (DWORD)-1;
+		DWORD ppid = GetParentProcessID();
+		char parent_name[MAX_PATH];
+		bool start_from_launcher = false;
 
 		GetWindowThreadProcessId(hwnd, &pid);
+		if (getProcessName(ppid, parent_name, sizeof(parent_name))) {
+			char *filename = strrchr(parent_name, '\\');
+			if (filename != NULL) {
+				start_from_launcher = strstr(filename, "blender.exe") != NULL;
+			}
+		}
 
-		if (pid == GetCurrentProcessId())
+		/* When we're starting from a wrapper we need to compare with parent process ID. */
+		if (pid == (start_from_launcher ? ppid : GetCurrentProcessId()))
 			return true;
 	}
 
@@ -1419,8 +1504,7 @@ int GHOST_SystemWin32::toggleConsole(int action)
 			ShowWindow(GetConsoleWindow(), m_consoleStatus ? SW_HIDE : SW_SHOW);
 			m_consoleStatus = !m_consoleStatus;
 			break;
-
-	};
+	}
 
 
 	return m_consoleStatus;

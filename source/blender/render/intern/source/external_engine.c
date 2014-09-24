@@ -425,7 +425,7 @@ bool RE_bake_has_engine(Render *re)
 
 bool RE_bake_engine(
         Render *re, Object *object, const BakePixel pixel_array[],
-        const int num_pixels, const int depth,
+        const size_t num_pixels, const int depth,
         const ScenePassType pass_type, float result[])
 {
 	RenderEngineType *type = RE_engines_find(re->r.engine);
@@ -454,8 +454,8 @@ bool RE_bake_engine(
 	engine->resolution_y = re->winy;
 
 	RE_parts_init(re, false);
-	engine->tile_x = re->partx;
-	engine->tile_y = re->party;
+	engine->tile_x = re->r.tilex;
+	engine->tile_y = re->r.tiley;
 
 	/* update is only called so we create the engine.session */
 	if (type->update)
@@ -575,7 +575,7 @@ int RE_engine_render(Render *re, int do_all)
 			lay &= non_excluded_lay;
 		}
 
-		BKE_scene_update_for_newframe(re->eval_ctx, re->main, re->scene, lay);
+		BKE_scene_update_for_newframe_ex(re->eval_ctx, re->main, re->scene, lay, true);
 		render_update_anim_renderdata(re, &re->scene->r);
 	}
 
@@ -676,6 +676,11 @@ int RE_engine_render(Render *re, int do_all)
 	if (BKE_reports_contain(re->reports, RPT_ERROR))
 		G.is_break = true;
 	
+#ifdef WITH_FREESTYLE
+	if (re->r.mode & R_EDGE_FRS)
+		RE_RenderFreestyleExternal(re);
+#endif
+
 	return 1;
 }
 

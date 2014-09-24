@@ -249,9 +249,9 @@ class SubdivisionSet(Operator):
                 if mod.type == 'MULTIRES':
                     if not relative:
                         if level > mod.total_levels:
-                           sub = level - mod.total_levels
-                           for i in range (0, sub):
-                               bpy.ops.object.multires_subdivide(modifier="Multires")
+                            sub = level - mod.total_levels
+                            for i in range (0, sub):
+                                bpy.ops.object.multires_subdivide(modifier="Multires")
 
                         if obj.mode == 'SCULPT':
                             if mod.sculpt_levels != level:
@@ -775,22 +775,15 @@ class DupliOffsetFromCursor(Operator):
     bl_label = "Set Offset From Cursor"
     bl_options = {'REGISTER', 'UNDO'}
 
-    group = IntProperty(
-            name="Group",
-            description="Group index to set offset for",
-            default=0,
-            )
-
     @classmethod
     def poll(cls, context):
         return (context.active_object is not None)
 
     def execute(self, context):
         scene = context.scene
-        ob = context.active_object
-        group = self.group
+        group = context.group
 
-        ob.users_group[group].dupli_offset = scene.cursor_location
+        group.dupli_offset = scene.cursor_location
 
         return {'FINISHED'}
 

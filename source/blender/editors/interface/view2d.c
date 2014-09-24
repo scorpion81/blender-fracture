@@ -384,7 +384,7 @@ static void ui_view2d_curRect_validate_resize(View2D *v2d, int resize, int mask_
 	 *	- cur must not fall outside of tot
 	 *	- axis locks (zoom and offset) must be maintained
 	 *	- zoom must not be excessive (check either sizes or zoom values)
-	 *	- aspect ratio should be respected (NOTE: this is quite closely realted to zoom too)
+	 *	- aspect ratio should be respected (NOTE: this is quite closely related to zoom too)
 	 */
 	
 	/* Step 1: if keepzoom, adjust the sizes of the rects only
@@ -2355,12 +2355,8 @@ void UI_view2d_text_cache_draw(ARegion *ar)
 
 	/* investigate using BLF_ascender() */
 	const float default_height = g_v2d_strings ? BLF_height_default("28", 3) : 0.0f;
-	
-	// glMatrixMode(GL_PROJECTION);
-	// glPushMatrix();
-	// glMatrixMode(GL_MODELVIEW);
-	// glPushMatrix();
-	ED_region_pixelspace(ar);
+
+	wmOrtho2_region_ui(ar);
 
 	for (v2s = g_v2d_strings; v2s; v2s = v2s->next) {
 		int xofs = 0, yofs;

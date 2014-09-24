@@ -2120,6 +2120,11 @@ static void rna_def_unified_paint_settings(BlenderRNA  *brna)
 	RNA_def_property_ui_text(prop, "Use Unified Weight",
 	                         "Instead of per-brush weight, the weight is shared across brushes");
 
+	prop = RNA_def_property(srna, "use_unified_color", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", UNIFIED_PAINT_COLOR);
+	RNA_def_property_ui_text(prop, "Use Unified Color",
+	                         "Instead of per-brush color, the color is shared across brushes");
+
 	/* unified paint settings that override the equivalent settings
 	 * from the active brush */
 	prop = RNA_def_property(srna, "size", PROP_INT, PROP_PIXEL);
@@ -2150,6 +2155,18 @@ static void rna_def_unified_paint_settings(BlenderRNA  *brna)
 	RNA_def_property_range(prop, 0.0f, 1.0f);
 	RNA_def_property_ui_range(prop, 0.0f, 1.0f, 0.001, 3);
 	RNA_def_property_ui_text(prop, "Weight", "Weight to assign in vertex groups");
+	RNA_def_property_update(prop, 0, "rna_UnifiedPaintSettings_update");
+
+	prop = RNA_def_property(srna, "color", PROP_FLOAT, PROP_COLOR_GAMMA);
+	RNA_def_property_range(prop, 0.0, 1.0);
+	RNA_def_property_float_sdna(prop, NULL, "rgb");
+	RNA_def_property_ui_text(prop, "Color", "");
+	RNA_def_property_update(prop, 0, "rna_UnifiedPaintSettings_update");
+
+	prop = RNA_def_property(srna, "secondary_color", PROP_FLOAT, PROP_COLOR_GAMMA);
+	RNA_def_property_range(prop, 0.0, 1.0);
+	RNA_def_property_float_sdna(prop, NULL, "secondary_rgb");
+	RNA_def_property_ui_text(prop, "Secondary Color", "");
 	RNA_def_property_update(prop, 0, "rna_UnifiedPaintSettings_update");
 
 	prop = RNA_def_property(srna, "use_pressure_size", PROP_BOOLEAN, PROP_NONE);
@@ -3245,7 +3262,7 @@ static void rna_def_bake_data(BlenderRNA *brna)
 	RNA_def_property_update(prop, NC_SCENE | ND_RENDER_OPTIONS, NULL);
 
 	prop = RNA_def_property(srna, "cage_extrusion", PROP_FLOAT, PROP_NONE);
-	RNA_def_property_range(prop, 0.0, MAXFLOAT);
+	RNA_def_property_range(prop, 0.0, FLT_MAX);
 	RNA_def_property_ui_range(prop, 0.0, 1.0, 1, 3);
 	RNA_def_property_ui_text(prop, "Cage Extrusion",
 	                         "Distance to use for the inward ray cast when using selected to active");
@@ -5621,7 +5638,7 @@ void RNA_def_scene(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "gravity", PROP_FLOAT, PROP_ACCELERATION);
 	RNA_def_property_float_sdna(prop, NULL, "physics_settings.gravity");
 	RNA_def_property_array(prop, 3);
-	RNA_def_property_range(prop, -200.0f, 200.0f);
+	RNA_def_property_ui_range(prop, -200.0f, 200.0f, 1, 2);
 	RNA_def_property_ui_text(prop, "Gravity", "Constant acceleration in a given direction");
 	RNA_def_property_update(prop, 0, "rna_Physics_update");
 

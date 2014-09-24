@@ -399,7 +399,7 @@ void *BLI_ghash_lookup_default(GHash *gh, const void *key, void *val_default)
  * \param key  The key to lookup.
  * \returns the pointer to value for \a key or NULL.
  *
- * \note This has 2 main benifits over #BLI_ghash_lookup.
+ * \note This has 2 main benefits over #BLI_ghash_lookup.
  * - A NULL return always means that \a key isn't in \a gh.
  * - The value can be modified in-place without further function calls (faster).
  */
@@ -570,12 +570,12 @@ void BLI_ghashIterator_init(GHashIterator *ghi, GHash *gh)
 	ghi->curEntry = NULL;
 	ghi->curBucket = UINT_MAX;  /* wraps to zero */
 	if (gh->nentries) {
-		while (!ghi->curEntry) {
+		do {
 			ghi->curBucket++;
 			if (UNLIKELY(ghi->curBucket == ghi->gh->nbuckets))
 				break;
 			ghi->curEntry = ghi->gh->buckets[ghi->curBucket];
-		}
+		} while (!ghi->curEntry);
 	}
 }
 
@@ -702,6 +702,11 @@ unsigned int BLI_ghashutil_uinthash_v4(const unsigned int key[4])
 	hash *= 37;
 	hash += key[3];
 	return hash;
+}
+
+int BLI_ghashutil_uinthash_v4_cmp(const void *a, const void *b)
+{
+	return memcmp(a, b, sizeof(unsigned int[4]));
 }
 
 unsigned int BLI_ghashutil_uinthash(unsigned int key)
@@ -967,6 +972,17 @@ void BLI_gset_free(GSet *gs, GSetKeyFreeFP keyfreefp)
 {
 	BLI_ghash_free((GHash *)gs, keyfreefp, NULL);
 }
+
+void BLI_gset_flag_set(GSet *gs, unsigned int flag)
+{
+	((GHash *)gs)->flag |= flag;
+}
+
+void BLI_gset_flag_clear(GSet *gs, unsigned int flag)
+{
+	((GHash *)gs)->flag &= ~flag;
+}
+
 /** \} */
 
 
@@ -1005,6 +1021,8 @@ GSet *BLI_gset_pair_new(const char *info)
 /**
  * Measure how well the hash function performs
  * (1.0 is approx as good as random distribution).
+ *
+ * Smaller is better!
  */
 double BLI_ghash_calc_quality(GHash *gh)
 {

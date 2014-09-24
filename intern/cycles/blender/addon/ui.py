@@ -154,7 +154,7 @@ class CyclesRender_PT_sampling(CyclesButtonsPanel, Panel):
             sub.prop(cscene, "subsurface_samples", text="Subsurface")
             sub.prop(cscene, "volume_samples", text="Volume")
 
-        if cscene.feature_set == 'EXPERIMENTAL' and use_cpu(context):
+        if use_cpu(context) or cscene.feature_set == 'EXPERIMENTAL':
             layout.row().prop(cscene, "sampling_pattern", text="Pattern")
 
         for rl in scene.render.layers:
@@ -210,7 +210,8 @@ class CyclesRender_PT_light_paths(CyclesButtonsPanel, Panel):
 
         col.separator()
 
-        col.prop(cscene, "no_caustics")
+        col.prop(cscene, "caustics_reflective")
+        col.prop(cscene, "caustics_refractive")
         col.prop(cscene, "blur_glossy")
 
         col = split.column()
@@ -468,6 +469,7 @@ class CyclesCamera_PT_dof(CyclesButtonsPanel, Panel):
         sub = col.column(align=True)
         sub.prop(ccam, "aperture_blades", text="Blades")
         sub.prop(ccam, "aperture_rotation", text="Rotation")
+        sub.prop(ccam, "aperture_ratio", text="Ratio")
 
 
 class Cycles_PT_context_material(CyclesButtonsPanel, Panel):
@@ -565,7 +567,7 @@ class CyclesObject_PT_motion_blur(CyclesButtonsPanel, Panel):
         layout = self.layout
 
         rd = context.scene.render
-        scene = context.scene
+        # scene = context.scene
 
         layout.active = rd.use_motion_blur
 
@@ -578,7 +580,7 @@ class CyclesObject_PT_motion_blur(CyclesButtonsPanel, Panel):
         layout = self.layout
 
         rd = context.scene.render
-        scene = context.scene
+        # scene = context.scene
 
         ob = context.object
         cob = ob.cycles
@@ -617,6 +619,7 @@ class CyclesObject_PT_ray_visibility(CyclesButtonsPanel, Panel):
         flow.prop(visibility, "diffuse")
         flow.prop(visibility, "glossy")
         flow.prop(visibility, "transmission")
+        flow.prop(visibility, "scatter")
 
         if ob.type != 'LAMP':
             flow.prop(visibility, "shadow")
@@ -629,7 +632,8 @@ class CYCLES_OT_use_shading_nodes(Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.material or context.world or context.lamp
+        return (getattr(context, "material", False) or getattr(context, "world", False) or
+                getattr(context, "lamp", False))
 
     def execute(self, context):
         if context.material:
@@ -895,6 +899,7 @@ class CyclesWorld_PT_ray_visibility(CyclesButtonsPanel, Panel):
         flow.prop(visibility, "diffuse")
         flow.prop(visibility, "glossy")
         flow.prop(visibility, "transmission")
+        flow.prop(visibility, "scatter")
 
 
 class CyclesWorld_PT_settings(CyclesButtonsPanel, Panel):
@@ -928,7 +933,9 @@ class CyclesWorld_PT_settings(CyclesButtonsPanel, Panel):
 
         col = split.column()
         col.label(text="Volume:")
-        col.prop(cworld, "volume_sampling", text="")
+        sub = col.column()
+        sub.active = use_cpu(context)
+        sub.prop(cworld, "volume_sampling", text="")
         col.prop(cworld, "homogeneous_volume", text="Homogeneous")
 
 
@@ -975,7 +982,7 @@ class CyclesMaterial_PT_volume(CyclesButtonsPanel, Panel):
         layout = self.layout
 
         mat = context.material
-        cmat = mat.cycles
+        # cmat = mat.cycles
 
         panel_node_draw(layout, mat, 'OUTPUT_MATERIAL', 'Volume')
 
@@ -1030,7 +1037,9 @@ class CyclesMaterial_PT_settings(CyclesButtonsPanel, Panel):
 
         col = split.column()
         col.label(text="Volume:")
-        col.prop(cmat, "volume_sampling", text="")
+        sub = col.column()
+        sub.active = use_cpu(context)
+        sub.prop(cmat, "volume_sampling", text="")
         col.prop(cmat, "homogeneous_volume", text="Homogeneous")
 
 
@@ -1200,7 +1209,6 @@ class CyclesRender_PT_CurveRendering(CyclesButtonsPanel, Panel):
 
     @classmethod
     def poll(cls, context):
-        scene = context.scene
         psys = context.particle_system
         return CyclesButtonsPanel.poll(context) and psys and psys.settings.type == 'HAIR'
 
@@ -1244,13 +1252,13 @@ class CyclesRender_PT_bake(CyclesButtonsPanel, Panel):
         scene = context.scene
         cscene = scene.cycles
         cbk = scene.render.bake
-    
+
         layout.operator("object.bake", icon='RENDER_STILL').type = cscene.bake_type
-        
+
         col = layout.column()
         col.prop(cscene, "bake_type")
         col.separator()
-        
+
         split = layout.split()
 
         col = split.column()
@@ -1275,7 +1283,7 @@ class CyclesRender_PT_bake(CyclesButtonsPanel, Panel):
             box.prop(cbk, "normal_space", text="Space")
 
             row = box.row(align=True)
-            row.label(text = "Swizzle:")
+            row.label(text="Swizzle:")
             row.prop(cbk, "normal_r", text="")
             row.prop(cbk, "normal_g", text="")
             row.prop(cbk, "normal_b", text="")
@@ -1349,6 +1357,9 @@ def draw_device(self, context):
 
         if engine.with_osl() and use_cpu(context):
             layout.prop(cscene, "shading_system")
+            
+        if device_type == 'CUDA' and cscene.feature_set == 'EXPERIMENTAL':
+            layout.label(text="Using experimental GPU kernel", icon='ERROR')
 
 
 def draw_pause(self, context):

@@ -274,7 +274,7 @@ elseif(APPLE)
 	if(WITH_PYTHON_MODULE)
 		set(TARGETDIR_VER ${TARGETDIR}/${BLENDER_VERSION})
 	else()
-		set(TARGETDIR_VER ${TARGETDIR}/blender.app/Contents/MacOS/${BLENDER_VERSION})
+		set(TARGETDIR_VER ${TARGETDIR}/blender.app/Contents/Resources/${BLENDER_VERSION})
 	endif()
 
 endif()
@@ -391,18 +391,25 @@ endif()
 
 if(UNIX AND NOT APPLE)
 
-	install(
-		CODE
-		"
-		execute_process(COMMAND
-		                ${CMAKE_SOURCE_DIR}/doc/manpage/blender.1.py
-		                ${TARGETDIR}/blender
-		                ${TARGETDIR}/blender.1)
-		"
-	)
+	if(NOT WITH_PYTHON_MODULE)
+		install(
+			CODE
+			"
+			execute_process(COMMAND
+							${CMAKE_SOURCE_DIR}/doc/manpage/blender.1.py
+							${TARGETDIR}/blender
+							${TARGETDIR}/blender.1)
+			"
+		)
+	endif()
 
 	# there are a few differences between portable and system install
 	if(WITH_INSTALL_PORTABLE)
+		install(
+			FILES ${TARGETDIR}/blender.1
+			DESTINATION ${TARGETDIR}
+		)
+
 		install(
 			FILES
 				${CMAKE_SOURCE_DIR}/release/freedesktop/blender.desktop
@@ -433,6 +440,11 @@ if(UNIX AND NOT APPLE)
 			install(
 				PROGRAMS ${TARGETDIR}/blender
 				DESTINATION ${CMAKE_INSTALL_PREFIX}/bin
+			)
+			# manpage only with 'blender' binary
+			install(
+				FILES ${TARGETDIR}/blender.1
+				DESTINATION ${CMAKE_INSTALL_PREFIX}/share/man/man1
 			)
 		endif()
 
@@ -467,10 +479,6 @@ if(UNIX AND NOT APPLE)
 		install(
 			PROGRAMS ${CMAKE_SOURCE_DIR}/release/bin/blender-thumbnailer.py
 			DESTINATION ${CMAKE_INSTALL_PREFIX}/bin
-		)
-		install(
-			FILES ${TARGETDIR}/blender.1
-			DESTINATION ${CMAKE_INSTALL_PREFIX}/share/man/man1
 		)
 		install(
 			FILES ${BLENDER_TEXT_FILES}
@@ -511,16 +519,22 @@ if(UNIX AND NOT APPLE)
 				PATTERN "idlelib" EXCLUDE                   # ./idlelib
 				PATTERN "test" EXCLUDE                      # ./test
 				PATTERN "turtledemo" EXCLUDE                # ./turtledemo
-				PATTERN "turtle.py" EXCLUDE					# ./turtle.py
+				PATTERN "turtle.py" EXCLUDE                 # ./turtle.py
 			)
 
 			# # doesnt work, todo
 			# install(CODE "execute_process(COMMAND find ${TARGETDIR}/${BLENDER_VERSION}/python/lib/ -name '*.so' -exec strip -s {} '\;')")
-			
+
 			if(WITH_PYTHON_INSTALL_NUMPY)
+				# Install to the same directory as the source, so debian-like
+				# distros are happy with their policy.
+				set(_suffix "site-packages")
+				if(${PYTHON_NUMPY_PATH} MATCHES "dist-packages")
+					set(_suffix "dist-packages")
+				endif()
 				install(
 					DIRECTORY ${PYTHON_NUMPY_PATH}/numpy
-					DESTINATION ${TARGETDIR_VER}/python/${_target_LIB}/python${PYTHON_VERSION}/site-packages
+					DESTINATION ${TARGETDIR_VER}/python/${_target_LIB}/python${PYTHON_VERSION}/${_suffix}
 					PATTERN ".svn" EXCLUDE
 					PATTERN "__pycache__" EXCLUDE           # * any cache *
 					PATTERN "*.pyc" EXCLUDE                 # * any cache *
@@ -534,19 +548,47 @@ if(UNIX AND NOT APPLE)
 					PATTERN "*.h" EXCLUDE                   # some includes are not in include dirs
 					PATTERN "*.a" EXCLUDE                   # ./core/lib/libnpymath.a - for linking, we dont need.
 				)
+				unset(_suffix)
 			endif()
 
 			# Copy requests, we need to generalize site-packages
 			if(WITH_PYTHON_INSTALL_REQUESTS)
+				set(_suffix "site-packages")
+				if(${PYTHON_REQUESTS_PATH} MATCHES "dist-packages")
+					set(_suffix "dist-packages")
+				endif()
 				install(
-					DIRECTORY ${PYTHON_LIBPATH}/python${PYTHON_VERSION}/site-packages/requests
-					DESTINATION ${TARGETDIR_VER}/python/${_target_LIB}/python${PYTHON_VERSION}/site-packages
+					DIRECTORY ${PYTHON_REQUESTS_PATH}/requests
+					DESTINATION ${TARGETDIR_VER}/python/${_target_LIB}/python${PYTHON_VERSION}/${_suffix}
 					PATTERN ".svn" EXCLUDE
 					PATTERN "__pycache__" EXCLUDE           # * any cache *
 					PATTERN "*.pyc" EXCLUDE                 # * any cache *
 					PATTERN "*.pyo" EXCLUDE                 # * any cache *
 					PATTERN "cacert.pem" EXCLUDE            # for now we don't deal with security
 				)
+				# On some platforms requests does have extra dependencies.
+				set(_requests_deps "chardet" "urllib3")
+				foreach(_requests_dep ${_requests_deps})
+					if(EXISTS ${PYTHON_REQUESTS_PATH}/${_requests_dep})
+						install(
+							DIRECTORY ${PYTHON_REQUESTS_PATH}/${_requests_dep}
+							DESTINATION ${TARGETDIR_VER}/python/${_target_LIB}/python${PYTHON_VERSION}/${_suffix}
+							PATTERN ".svn" EXCLUDE
+							PATTERN "__pycache__" EXCLUDE           # * any cache *
+							PATTERN "*.pyc" EXCLUDE                 # * any cache *
+							PATTERN "*.pyo" EXCLUDE                 # * any cache *
+						)
+					endif()
+				endforeach()
+				if(EXISTS ${PYTHON_REQUESTS_PATH}/six.py)
+					install(
+						FILES ${PYTHON_REQUESTS_PATH}/six.py
+						DESTINATION ${TARGETDIR_VER}/python/${_target_LIB}/python${PYTHON_VERSION}/${_suffix}
+					)
+					endif()
+				unset(_requests_dep)
+				unset(_requests_deps)
+				unset(_suffix)
 			endif()
 			unset(_target_LIB)
 			
@@ -563,13 +605,13 @@ elseif(WIN32)
 		string(REPLACE "." "" _PYTHON_VERSION_NO_DOTS ${PYTHON_VERSION})
 
 		install(
-			FILES ${LIBDIR}/python/lib/python${_PYTHON_VERSION_NO_DOTS}.dll
+			FILES ${LIBDIR}/python/lib/python${_PYTHON_VERSION_NO_DOTS}.dll ${LIBDIR}/python/lib/sqlite3.dll
 			DESTINATION ${TARGETDIR}
 			CONFIGURATIONS Release;RelWithDebInfo;MinSizeRel
 		)
 
 		install(
-			FILES ${LIBDIR}/python/lib/python${_PYTHON_VERSION_NO_DOTS}_d.dll
+			FILES ${LIBDIR}/python/lib/python${_PYTHON_VERSION_NO_DOTS}_d.dll ${LIBDIR}/python/lib/sqlite3_d.dll
 			DESTINATION ${TARGETDIR}
 			CONFIGURATIONS Debug
 		)
@@ -703,12 +745,10 @@ elseif(WIN32)
 	endif()
 
 	if(WITH_SDL)
-		if(NOT CMAKE_CL_64)
-			install(
-				FILES ${LIBDIR}/sdl/lib/SDL.dll
-				DESTINATION ${TARGETDIR}
-			)
-		endif()
+		install(
+			FILES ${LIBDIR}/sdl/lib/SDL.dll
+			DESTINATION ${TARGETDIR}
+		)
 	endif()
 
 	if(NOT CMAKE_CL_64)
@@ -790,6 +830,13 @@ elseif(APPLE)
 	if(WITH_OPENMP AND CMAKE_C_COMPILER_ID MATCHES "Clang" AND NOT ${CMAKE_C_COMPILER_VERSION} VERSION_LESS '3.4')
 		install(
 			FILES ${LIBDIR}/openmp/lib/libiomp5.dylib
+			DESTINATION ${TARGETDIR}/blender.app/Contents/MacOS
+		)
+	endif()
+
+	if(WITH_LLVM AND NOT LLVM_STATIC)
+		install(
+			FILES ${LIBDIR}/llvm/lib/libLLVM-3.4.dylib
 			DESTINATION ${TARGETDIR}/blender.app/Contents/MacOS
 		)
 	endif()
@@ -893,3 +940,18 @@ setup_blender_sorted_libs()
 target_link_libraries(blender ${BLENDER_SORTED_LIBS})
 
 setup_liblinks(blender)
+
+# -----------------------------------------------------------------------------
+# Setup launcher
+
+if(WIN32 AND NOT WITH_PYTHON_MODULE)
+	set(LAUNCHER_SRC
+		creator_launch_win.c
+		../icons/winblender.rc
+	)
+	add_executable(blender-launcher ${LAUNCHER_SRC})
+	target_link_libraries(blender-launcher bf_intern_utfconv ${PLATFORM_LINKLIBS})
+
+	set_target_properties(blender PROPERTIES OUTPUT_NAME blender-app)
+	set_target_properties(blender-launcher PROPERTIES OUTPUT_NAME blender)
+endif()

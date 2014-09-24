@@ -411,6 +411,12 @@ macro(setup_liblinks
 	endif()
 
 	target_link_libraries(${target} ${PLATFORM_LINKLIBS} ${CMAKE_DL_LIBS})
+
+	# We put CLEW and CUEW here because OPENSUBDIV_LIBRARIES dpeends on them..
+	if(WITH_CYCLES OR WITH_COMPOSITOR OR WITH_OPENSUBDIV)
+		target_link_libraries(${target} "extern_clew")
+		target_link_libraries(${target} "extern_cuew")
+	endif()
 endmacro()
 
 macro(SETUP_BLENDER_SORTED_LIBS)
@@ -493,6 +499,7 @@ macro(SETUP_BLENDER_SORTED_LIBS)
 		bf_bmesh
 		bf_blenkernel
 		bf_nodes
+		bf_rna
 		bf_gpu
 		bf_blenloader
 		bf_imbuf
@@ -532,7 +539,6 @@ macro(SETUP_BLENDER_SORTED_LIBS)
 		extern_openjpeg
 		extern_redcode
 		ge_videotex
-		bf_rna
 		bf_dna
 		bf_blenfont
 		bf_intern_audaspace
@@ -1327,4 +1333,55 @@ macro(msgfmt_simple
 	unset(_file_from)
 	unset(_file_to)
 	unset(_file_to_path)
+endmacro()
+
+macro(find_python_package
+      package)
+
+	string(TOUPPER ${package} _upper_package)
+
+	# set but invalid
+	if((NOT ${PYTHON_${_upper_package}_PATH} STREQUAL "") AND
+	   (NOT ${PYTHON_${_upper_package}_PATH} MATCHES NOTFOUND))
+#		if(NOT EXISTS "${PYTHON_${_upper_package}_PATH}/${package}")
+#			message(WARNING "PYTHON_${_upper_package}_PATH is invalid, ${package} not found in '${PYTHON_${_upper_package}_PATH}' "
+#			                "WITH_PYTHON_INSTALL_${_upper_package} option will be ignored when installing python")
+#			set(WITH_PYTHON_INSTALL${_upper_package} OFF)
+#		endif()
+	# not set, so initialize
+	else()
+		string(REPLACE "." ";" _PY_VER_SPLIT "${PYTHON_VERSION}")
+		list(GET _PY_VER_SPLIT 0 _PY_VER_MAJOR)
+
+		# re-cache
+		unset(PYTHON_${_upper_package}_PATH CACHE)
+		find_path(PYTHON_${_upper_package}_PATH
+		  NAMES
+		    ${package}
+		  HINTS
+		    "${PYTHON_LIBPATH}/python${PYTHON_VERSION}/"
+		    "${PYTHON_LIBPATH}/python${_PY_VER_MAJOR}/"
+		  PATH_SUFFIXES
+		    site-packages
+		    dist-packages
+		   NO_DEFAULT_PATH
+		)
+
+		 if(NOT EXISTS "${PYTHON_${_upper_package}_PATH}")
+			message(WARNING "'${package}' path could not be found in:\n"
+			                "'${PYTHON_LIBPATH}/python${PYTHON_VERSION}/site-packages/${package}', "
+			                "'${PYTHON_LIBPATH}/python${_PY_VER_MAJOR}/site-packages/${package}', "
+			                "'${PYTHON_LIBPATH}/python${PYTHON_VERSION}/dist-packages/${package}', "
+			                "'${PYTHON_LIBPATH}/python${_PY_VER_MAJOR}/dist-packages/${package}', "
+			                "WITH_PYTHON_INSTALL_${_upper_package} option will be ignored when installing python")
+			set(WITH_PYTHON_INSTALL_${_upper_package} OFF)
+		else()
+			message(STATUS "${package} found at '${PYTHON_${_upper_package}_PATH}'")
+		endif()
+
+		unset(_PY_VER_SPLIT)
+		unset(_PY_VER_MAJOR)
+	  endif()
+
+	  unset(_upper_package)
 endmacro()

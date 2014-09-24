@@ -151,7 +151,7 @@ typedef void (*wmUIHandlerRemoveFunc)(struct bContext *C, void *userdata);
 struct wmEventHandler *WM_event_add_ui_handler(
         const struct bContext *C, ListBase *handlers,
         wmUIHandlerFunc ui_handle, wmUIHandlerRemoveFunc ui_remove,
-        void *userdata);
+        void *userdata,  const bool accept_dbl_click);
 void WM_event_remove_ui_handler(
         ListBase *handlers,
         wmUIHandlerFunc ui_handle, wmUIHandlerRemoveFunc ui_remove,
@@ -344,8 +344,10 @@ void		WM_event_print(const struct wmEvent *event);
 void		WM_operator_region_active_win_set(struct bContext *C);
 
 			/* drag and drop */
-struct wmDrag		*WM_event_start_drag(struct bContext *C, int icon, int type, void *poin, double value);
+struct wmDrag		*WM_event_start_drag(struct bContext *C, int icon, int type, void *poin, double value, unsigned int flags);
 void				WM_event_drag_image(struct wmDrag *, struct ImBuf *, float scale, int sx, int sy);
+void                WM_drag_free(struct wmDrag *drag);
+void                WM_drag_free_list(struct ListBase *lb);
 
 struct wmDropBox	*WM_dropbox_add(ListBase *lb, const char *idname, int (*poll)(struct bContext *, struct wmDrag *, const struct wmEvent *event),
                                     void (*copy)(struct wmDrag *, struct wmDropBox *));
@@ -359,6 +361,10 @@ void		wmSubWindowScissorSet	(struct wmWindow *win, int swinid, const struct rcti
 void		wmFrustum			(float x1, float x2, float y1, float y2, float n, float f);
 void		wmOrtho				(float x1, float x2, float y1, float y2, float n, float f);
 void		wmOrtho2			(float x1, float x2, float y1, float y2);
+			/* use for conventions (avoid hard-coded offsets all over) */
+void		wmOrtho2_region_pixelspace(const struct ARegion *ar);
+void		wmOrtho2_region_ui(const struct ARegion *ar);
+void		wmOrtho2_pixelspace(const float x, const float y);
 
 			/* utilities */
 void		WM_framebuffer_index_set(int index);

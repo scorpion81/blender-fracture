@@ -291,7 +291,7 @@ static void sculpt_undo_bmesh_restore_generic(bContext *C,
 
 		BKE_pbvh_search_gather(ss->pbvh, NULL, NULL, &nodes, &totnode);
 
-#pragma omp parallel for schedule(guided) if (sd->flags & SCULPT_USE_OPENMP)
+#pragma omp parallel for schedule(guided) if ((sd->flags & SCULPT_USE_OPENMP) && totnode > SCULPT_OMP_LIMIT)
 		for (i = 0; i < totnode; i++) {
 			BKE_pbvh_node_mark_redraw(nodes[i]);
 		}
@@ -543,7 +543,7 @@ static void sculpt_undo_free(ListBase *lb)
 	}
 }
 
-bool sculpt_undo_cleanup(bContext *C, ListBase *lb)
+static bool sculpt_undo_cleanup(bContext *C, ListBase *lb)
 {
 	Object *ob = CTX_data_active_object(C);
 	SculptUndoNode *unode;
@@ -551,10 +551,8 @@ bool sculpt_undo_cleanup(bContext *C, ListBase *lb)
 	unode = lb->first;
 
 	if (unode && strcmp(unode->idname, ob->id.name) != 0) {
-		for (unode = lb->first; unode; unode = unode->next) {
-			if (unode->bm_entry)
-				BM_log_cleanup_entry(unode->bm_entry);
-		}
+		if (unode->bm_entry)
+			BM_log_cleanup_entry(unode->bm_entry);
 
 		return true;
 	}
@@ -881,7 +879,7 @@ SculptUndoNode *sculpt_undo_push_node(Object *ob, PBVHNode *node,
 void sculpt_undo_push_begin(const char *name)
 {
 	ED_undo_paint_push_begin(UNDO_PAINT_MESH, name,
-	                         sculpt_undo_restore, sculpt_undo_free);
+	                         sculpt_undo_restore, sculpt_undo_free, sculpt_undo_cleanup);
 }
 
 void sculpt_undo_push_end(void)

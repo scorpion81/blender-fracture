@@ -1287,6 +1287,12 @@ static void backdrawview3d(Scene *scene, ARegion *ar, View3D *v3d)
 	{
 		/* do nothing */
 	}
+	/* texture paint mode sampling */
+	else if (base && (base->object->mode & OB_MODE_TEXTURE_PAINT) &&
+	         (v3d->drawtype > OB_WIRE))
+	{
+		/* do nothing */
+	}
 	else if ((base && (base->object->mode & OB_MODE_PARTICLE_EDIT)) &&
 	         v3d->drawtype > OB_WIRE && (v3d->flag & V3D_ZBUF_SELECT))
 	{
@@ -1975,8 +1981,10 @@ static void draw_dupli_objects_color(
 	GLuint displist = 0;
 	unsigned char color_rgb[3];
 	const short dflag_dupli = dflag | DRAW_CONSTCOLOR;
-	short transflag, use_displist = -1;  /* -1 is initialize */
+	short transflag;
+	bool use_displist = false;  /* -1 is initialize */
 	char dt;
+	bool testbb = false;
 	short dtx;
 	DupliApplyData *apply_data;
 
@@ -2031,71 +2039,77 @@ static void draw_dupli_objects_color(
 			tbase.object->transflag |= OB_NEG_SCALE;
 		else
 			tbase.object->transflag &= ~OB_NEG_SCALE;
-
+		
 		/* should move outside the loop but possible color is set in draw_object still */
 		if ((dflag & DRAW_CONSTCOLOR) == 0) {
 			glColor3ubv(color_rgb);
 		}
-
+		
 		/* generate displist, test for new object */
 		if (dob_prev && dob_prev->ob != dob->ob) {
 			if (use_displist == true)
 				glDeleteLists(displist, 1);
-
-			use_displist = -1;
+			
+			use_displist = false;
+		}
+		
+		if ((bb_tmp = BKE_object_boundbox_get(dob->ob))) {
+			bb = *bb_tmp; /* must make a copy  */
+			testbb = true;
 		}
 
-		/* generate displist */
-		if (use_displist == -1) {
-
-			/* note, since this was added, its checked (dob->type == OB_DUPLIGROUP)
-			 * however this is very slow, it was probably needed for the NLA
-			 * offset feature (used in group-duplicate.blend but no longer works in 2.5)
-			 * so for now it should be ok to - campbell */
-
-			if ( /* if this is the last no need  to make a displist */
-			    (dob_next == NULL || dob_next->ob != dob->ob) ||
-			    /* lamp drawing messes with matrices, could be handled smarter... but this works */
-			    (dob->ob->type == OB_LAMP) ||
-			    (dob->type == OB_DUPLIGROUP && dob->animated) ||
-			    !(bb_tmp = BKE_object_boundbox_get(dob->ob)) ||
-			    draw_glsl_material(scene, dob->ob, v3d, dt) ||
-			    check_object_draw_texture(scene, v3d, dt) ||
-			    (base->object == OBACT && v3d->flag2 & V3D_SOLID_MATCAP))
-			{
-				// printf("draw_dupli_objects_color: skipping displist for %s\n", dob->ob->id.name + 2);
-				use_displist = false;
+		if (!testbb || ED_view3d_boundbox_clip_ex(rv3d, &bb, dob->mat)) {
+			/* generate displist */
+			if (use_displist == false) {
+				
+				/* note, since this was added, its checked (dob->type == OB_DUPLIGROUP)
+				 * however this is very slow, it was probably needed for the NLA
+				 * offset feature (used in group-duplicate.blend but no longer works in 2.5)
+				 * so for now it should be ok to - campbell */
+				
+				if ( /* if this is the last no need  to make a displist */
+					 (dob_next == NULL || dob_next->ob != dob->ob) ||
+					 /* lamp drawing messes with matrices, could be handled smarter... but this works */
+					 (dob->ob->type == OB_LAMP) ||
+					 (dob->type == OB_DUPLIGROUP && dob->animated) ||
+					 !bb_tmp ||
+					 draw_glsl_material(scene, dob->ob, v3d, dt) ||
+					 check_object_draw_texture(scene, v3d, dt) ||
+					 (base->object == OBACT && v3d->flag2 & V3D_SOLID_MATCAP))
+				{
+					// printf("draw_dupli_objects_color: skipping displist for %s\n", dob->ob->id.name + 2);
+					use_displist = false;
+				}
+				else {
+					// printf("draw_dupli_objects_color: using displist for %s\n", dob->ob->id.name + 2);
+					
+					/* disable boundbox check for list creation */
+					BKE_object_boundbox_flag(dob->ob, BOUNDBOX_DISABLED, 1);
+					/* need this for next part of code */
+					unit_m4(dob->ob->obmat);    /* obmat gets restored */
+					
+					displist = glGenLists(1);
+					glNewList(displist, GL_COMPILE);
+					draw_object(scene, ar, v3d, &tbase, dflag_dupli);
+					glEndList();
+					
+					use_displist = true;
+					BKE_object_boundbox_flag(dob->ob, BOUNDBOX_DISABLED, 0);
+				}		
 			}
-			else {
-				// printf("draw_dupli_objects_color: using displist for %s\n", dob->ob->id.name + 2);
-				bb = *bb_tmp; /* must make a copy  */
-
-				/* disable boundbox check for list creation */
-				BKE_object_boundbox_flag(dob->ob, BOUNDBOX_DISABLED, 1);
-				/* need this for next part of code */
-				unit_m4(dob->ob->obmat);    /* obmat gets restored */
-
-				displist = glGenLists(1);
-				glNewList(displist, GL_COMPILE);
-				draw_object(scene, ar, v3d, &tbase, dflag_dupli);
-				glEndList();
-
-				use_displist = true;
-				BKE_object_boundbox_flag(dob->ob, BOUNDBOX_DISABLED, 0);
-			}
-		}
-		if (use_displist) {
-			if (ED_view3d_boundbox_clip_ex(rv3d, &bb, dob->mat)) {
+			
+			if (use_displist) {
+				glPushMatrix();
 				glMultMatrixf(dob->mat);
 				glCallList(displist);
-				glLoadMatrixf(rv3d->viewmat);
+				glPopMatrix();
+			}	
+			else {
+				copy_m4_m4(dob->ob->obmat, dob->mat);
+				draw_object(scene, ar, v3d, &tbase, dflag_dupli);
 			}
 		}
-		else {
-			copy_m4_m4(dob->ob->obmat, dob->mat);
-			draw_object(scene, ar, v3d, &tbase, dflag_dupli);
-		}
-
+		
 		tbase.object->dt = dt;
 		tbase.object->dtx = dtx;
 		tbase.object->transflag = transflag;
@@ -2509,7 +2523,8 @@ CustomDataMask ED_view3d_datamask(Scene *scene, View3D *v3d)
 				mask |= CD_MASK_ORCO;
 		}
 		else {
-			if (scene->gm.matmode == GAME_MAT_GLSL)
+			if ((scene->gm.matmode == GAME_MAT_GLSL && v3d->drawtype == OB_TEXTURE) || 
+				(v3d->drawtype == OB_MATERIAL))
 				mask |= CD_MASK_ORCO;
 		}
 	}

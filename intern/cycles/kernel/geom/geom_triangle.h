@@ -18,7 +18,7 @@
 /* Triangle Primitive
  *
  * Basic triangle with 3 vertices is used to represent mesh surfaces. For BVH
- * ray intersection we use a precomputed triangle storage to accelarate
+ * ray intersection we use a precomputed triangle storage to accelerate
  * intersection at the cost of more memory usage */
 
 CCL_NAMESPACE_BEGIN
@@ -117,21 +117,24 @@ ccl_device_inline float3 triangle_refine_subsurface(KernelGlobals *kg, ShaderDat
 }
 
 /* normal on triangle  */
-ccl_device_inline float3 triangle_normal(KernelGlobals *kg, int prim)
+ccl_device_inline float3 triangle_normal(KernelGlobals *kg, ShaderData *sd)
 {
 	/* load triangle vertices */
-	float3 tri_vindex = float4_to_float3(kernel_tex_fetch(__tri_vindex, prim));
+	float3 tri_vindex = float4_to_float3(kernel_tex_fetch(__tri_vindex, sd->prim));
 
 	float3 v0 = float4_to_float3(kernel_tex_fetch(__tri_verts, __float_as_int(tri_vindex.x)));
 	float3 v1 = float4_to_float3(kernel_tex_fetch(__tri_verts, __float_as_int(tri_vindex.y)));
 	float3 v2 = float4_to_float3(kernel_tex_fetch(__tri_verts, __float_as_int(tri_vindex.z)));
 	
 	/* return normal */
-	return normalize(cross(v1 - v0, v2 - v0));
+	if(sd->flag & SD_NEGATIVE_SCALE_APPLIED)
+		return normalize(cross(v2 - v0, v1 - v0));
+	else
+		return normalize(cross(v1 - v0, v2 - v0));
 }
 
 /* point and normal on triangle  */
-ccl_device_inline void triangle_point_normal(KernelGlobals *kg, int prim, float u, float v, float3 *P, float3 *Ng, int *shader)
+ccl_device_inline void triangle_point_normal(KernelGlobals *kg, int object, int prim, float u, float v, float3 *P, float3 *Ng, int *shader)
 {
 	/* load triangle vertices */
 	float3 tri_vindex = float4_to_float3(kernel_tex_fetch(__tri_vindex, prim));
@@ -144,11 +147,17 @@ ccl_device_inline void triangle_point_normal(KernelGlobals *kg, int prim, float 
 	float t = 1.0f - u - v;
 	*P = (u*v0 + v*v1 + t*v2);
 
+	/* get object flags, instance-aware */
+	int object_flag = kernel_tex_fetch(__object_flag, object >= 0 ? object : ~object);
+
 	/* compute normal */
-	*Ng = normalize(cross(v1 - v0, v2 - v0));
+	if(object_flag & SD_NEGATIVE_SCALE_APPLIED)
+		*Ng = normalize(cross(v2 - v0, v1 - v0));
+	else
+		*Ng = normalize(cross(v1 - v0, v2 - v0));
 
 	/* shader`*/
-	*shader = __float_as_int(kernel_tex_fetch(__tri_shader, prim));
+	*shader = kernel_tex_fetch(__tri_shader, prim);
 }
 
 /* Triangle vertex locations */

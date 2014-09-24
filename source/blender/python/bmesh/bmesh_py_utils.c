@@ -595,7 +595,9 @@ static PyObject *bpy_bm_utils_face_split_edgenet(PyObject *UNUSED(self), PyObjec
 
 	if (ok) {
 		PyObject *ret = BPy_BMFace_Array_As_Tuple(bm, face_arr, face_arr_len);
-		MEM_freeN(face_arr);
+		if (face_arr) {
+			MEM_freeN(face_arr);
+		}
 		return ret;
 	}
 	else {
@@ -677,7 +679,7 @@ static PyObject *bpy_bm_utils_face_vert_separate(PyObject *UNUSED(self), PyObjec
 
 	BMesh *bm;
 	BMLoop *l;
-	BMVert *v_new;
+	BMVert *v_old, *v_new;
 
 	if (!PyArg_ParseTuple(args, "O!O!:face_vert_separate",
 	                      &BPy_BMFace_Type, &py_face,
@@ -699,9 +701,10 @@ static PyObject *bpy_bm_utils_face_vert_separate(PyObject *UNUSED(self), PyObjec
 		return NULL;
 	}
 
+	v_old = l->v;
 	v_new = BM_face_loop_separate(bm, l);
 
-	if (v_new != l->v) {
+	if (v_new != v_old) {
 		return BPy_BMVert_CreatePyObject(bm, v_new);
 	}
 	else {
@@ -749,7 +752,8 @@ PyDoc_STRVAR(bpy_bm_utils_loop_separate_doc,
 static PyObject *bpy_bm_utils_loop_separate(PyObject *UNUSED(self), BPy_BMLoop *value)
 {
 	BMesh *bm;
-	BMVert *v_new;
+	BMLoop *l;
+	BMVert *v_old, *v_new;
 
 	if (!BPy_BMLoop_Check(value)) {
 		PyErr_Format(PyExc_TypeError,
@@ -761,10 +765,12 @@ static PyObject *bpy_bm_utils_loop_separate(PyObject *UNUSED(self), BPy_BMLoop *
 	BPY_BM_CHECK_OBJ(value);
 
 	bm = value->bm;
+	l = value->l;
 
-	v_new = BM_face_loop_separate(bm, value->l);
+	v_old = l->v;
+	v_new = BM_face_loop_separate(bm, l);
 
-	if (v_new != value->l->v) {
+	if (v_new != v_old) {
 		return BPy_BMVert_CreatePyObject(bm, v_new);
 	}
 	else {

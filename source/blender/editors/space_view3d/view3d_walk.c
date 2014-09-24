@@ -538,7 +538,7 @@ static bool initWalkInfo(bContext *C, WalkInfo *walk, wmOperator *op)
 	walk->rv3d->rflag |= RV3D_NAVIGATING;
 
 
-	walk->v3d_camera_control = ED_view3d_cameracontrol_aquire(
+	walk->v3d_camera_control = ED_view3d_cameracontrol_acquire(
 	        walk->scene, walk->v3d, walk->rv3d,
 	        (U.uiflag & USER_CAM_LOCK_NO_PARENT) == 0);
 
@@ -961,7 +961,7 @@ static int walkApply(bContext *C, WalkInfo *walk)
 
 					/* clamp the angle limits */
 					/* it ranges from 90.0f to -90.0f */
-					angle = -asin(rv3d->viewmat[2][2]);
+					angle = -asinf(rv3d->viewmat[2][2]);
 
 					if (angle > WALK_TOP_LIMIT && y > 0.0f)
 						y = 0.0f;

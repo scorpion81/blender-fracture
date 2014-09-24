@@ -88,6 +88,7 @@ void BlenderSession::create_session()
 {
 	SceneParams scene_params = BlenderSync::get_scene_params(b_scene, background);
 	SessionParams session_params = BlenderSync::get_session_params(b_engine, b_userpref, b_scene, background);
+	bool session_pause = BlenderSync::get_session_pause(b_scene, background);
 
 	/* reset status/progress */
 	last_status = "";
@@ -107,15 +108,17 @@ void BlenderSession::create_session()
 	session->scene = scene;
 	session->progress.set_update_callback(function_bind(&BlenderSession::tag_redraw, this));
 	session->progress.set_cancel_callback(function_bind(&BlenderSession::test_cancel, this));
-	session->set_pause(BlenderSync::get_session_pause(b_scene, background));
+	session->set_pause(session_pause);
 
 	/* create sync */
 	sync = new BlenderSync(b_engine, b_data, b_scene, scene, !background, session->progress, session_params.device.type == DEVICE_CPU);
 
 	if(b_v3d) {
-		/* full data sync */
-		sync->sync_data(b_v3d, b_engine.camera_override(), &python_thread_state);
-		sync->sync_view(b_v3d, b_rv3d, width, height);
+		if(session_pause == false) {
+			/* full data sync */
+			sync->sync_view(b_v3d, b_rv3d, width, height);
+			sync->sync_data(b_v3d, b_engine.camera_override(), &python_thread_state);
+		}
 	}
 	else {
 		/* for final render we will do full data sync per render layer, only
@@ -492,7 +495,7 @@ static void populate_bake_data(BakeData *data, BL::BakePixel pixel_array, const 
 	}
 }
 
-void BlenderSession::bake(BL::Object b_object, const string& pass_type, BL::BakePixel pixel_array, int num_pixels, int depth, float result[])
+void BlenderSession::bake(BL::Object b_object, const string& pass_type, BL::BakePixel pixel_array, const size_t num_pixels, const int depth, float result[])
 {
 	ShaderEvalType shader_type = get_shader_type(pass_type);
 	size_t object_index = OBJECT_NONE;
@@ -526,6 +529,7 @@ void BlenderSession::bake(BL::Object b_object, const string& pass_type, BL::Bake
 	SessionParams session_params = BlenderSync::get_session_params(b_engine, b_userpref, b_scene, background);
 	BufferParams buffer_params = BlenderSync::get_buffer_params(b_render, b_scene, b_v3d, b_rv3d, scene->camera, width, height);
 
+	scene->bake_manager->set_shader_limit((size_t)b_engine.tile_x(), (size_t)b_engine.tile_y());
 	scene->bake_manager->set_baking(true);
 
 	/* set number of samples */
@@ -553,6 +557,8 @@ void BlenderSession::bake(BL::Object b_object, const string& pass_type, BL::Bake
 	session->tile_manager.set_samples(session_params.samples);
 	session->reset(buffer_params, session_params.samples);
 	session->update_scene();
+
+	session->progress.set_update_callback(function_bind(&BlenderSession::update_bake_progress, this));
 
 	scene->bake_manager->bake(scene->device, &scene->dscene, scene, session->progress, shader_type, bake_data, result);
 
@@ -625,6 +631,7 @@ void BlenderSession::synchronize()
 	/* on session/scene parameter changes, we recreate session entirely */
 	SceneParams scene_params = BlenderSync::get_scene_params(b_scene, background);
 	SessionParams session_params = BlenderSync::get_session_params(b_engine, b_userpref, b_scene, background);
+	bool session_pause = BlenderSync::get_session_pause(b_scene, background);
 
 	if(session->params.modified(session_params) ||
 	   scene->params.modified(scene_params))
@@ -637,11 +644,17 @@ void BlenderSession::synchronize()
 
 	/* increase samples, but never decrease */
 	session->set_samples(session_params.samples);
-	session->set_pause(BlenderSync::get_session_pause(b_scene, background));
+	session->set_pause(session_pause);
 
 	/* copy recalc flags, outside of mutex so we can decide to do the real
 	 * synchronization at a later time to not block on running updates */
 	sync->sync_recalc();
+
+	/* don't do synchronization if on pause */
+	if(session_pause) {
+		tag_update();
+		return;
+	}
 
 	/* try to acquire mutex. if we don't want to or can't, come back later */
 	if(!session->ready_to_reset() || !session->scene->mutex.try_lock()) {
@@ -718,10 +731,12 @@ bool BlenderSession::draw(int w, int h)
 		if(reset) {
 			SessionParams session_params = BlenderSync::get_session_params(b_engine, b_userpref, b_scene, background);
 			BufferParams buffer_params = BlenderSync::get_buffer_params(b_render, b_scene, b_v3d, b_rv3d, scene->camera, width, height);
+			bool session_pause = BlenderSync::get_session_pause(b_scene, background);
 
-			session->reset(buffer_params, session_params.samples);
-
-			start_resize_time = 0.0;
+			if(session_pause == false) {
+				session->reset(buffer_params, session_params.samples);
+				start_resize_time = 0.0;
+			}
 		}
 	}
 	else {
@@ -763,6 +778,26 @@ void BlenderSession::get_progress(float& progress, double& total_time)
 		progress = ((float)sample / (float)(tile_total * samples_per_tile));
 	else
 		progress = 0.0;
+}
+
+void BlenderSession::update_bake_progress()
+{
+	float progress;
+	int sample, samples_per_task, parts_total;
+
+	sample = session->progress.get_sample();
+	samples_per_task = scene->bake_manager->num_samples;
+	parts_total = scene->bake_manager->num_parts;
+
+	if(samples_per_task)
+		progress = ((float)sample / (float)(parts_total * samples_per_task));
+	else
+		progress = 0.0;
+
+	if(progress != last_progress) {
+		b_engine.update_progress(progress);
+		last_progress = progress;
+	}
 }
 
 void BlenderSession::update_status_progress()

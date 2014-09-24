@@ -248,6 +248,8 @@ static void text_update_edited(bContext *C, Object *obedit, int mode)
 	Curve *cu = obedit->data;
 	EditFont *ef = cu->editfont;
 
+	BLI_assert(ef->len >= 0);
+
 	/* run update first since it can move the cursor */
 	if (mode == FO_EDIT) {
 		/* re-tesselllate */
@@ -975,9 +977,12 @@ static int move_cursor(bContext *C, int type, const bool select)
 	EditFont *ef = cu->editfont;
 	int cursmove = -1;
 
+	if ((select) && (ef->selstart == 0)) {
+		ef->selstart = ef->selend = ef->pos + 1;
+	}
+
 	switch (type) {
 		case LINE_BEGIN:
-			if ((select) && (ef->selstart == 0)) ef->selstart = ef->selend = ef->pos + 1;
 			while (ef->pos > 0) {
 				if (ef->textbuf[ef->pos - 1] == '\n') break;
 				if (ef->textbufinfo[ef->pos - 1].flag & CU_CHINFO_WRAP) break;
@@ -987,7 +992,6 @@ static int move_cursor(bContext *C, int type, const bool select)
 			break;
 			
 		case LINE_END:
-			if ((select) && (ef->selstart == 0)) ef->selstart = ef->selend = ef->pos + 1;
 			while (ef->pos < ef->len) {
 				if (ef->textbuf[ef->pos] == 0) break;
 				if (ef->textbuf[ef->pos] == '\n') break;
@@ -1000,7 +1004,6 @@ static int move_cursor(bContext *C, int type, const bool select)
 		case PREV_WORD:
 		{
 			int pos = ef->pos;
-			if ((select) && (ef->selstart == 0)) ef->selstart = ef->selend = ef->pos + 1;
 			BLI_str_cursor_step_wchar(ef->textbuf, ef->len, &pos, STRCUR_DIR_PREV, STRCUR_JUMP_DELIM, true);
 			ef->pos = pos;
 			cursmove = FO_CURS;
@@ -1010,7 +1013,6 @@ static int move_cursor(bContext *C, int type, const bool select)
 		case NEXT_WORD:
 		{
 			int pos = ef->pos;
-			if ((select) && (ef->selstart == 0)) ef->selstart = ef->selend = ef->pos + 1;
 			BLI_str_cursor_step_wchar(ef->textbuf, ef->len, &pos, STRCUR_DIR_NEXT, STRCUR_JUMP_DELIM, true);
 			ef->pos = pos;
 			cursmove = FO_CURS;
@@ -1018,35 +1020,29 @@ static int move_cursor(bContext *C, int type, const bool select)
 		}
 
 		case PREV_CHAR:
-			if ((select) && (ef->selstart == 0)) ef->selstart = ef->selend = ef->pos + 1;
 			ef->pos--;
 			cursmove = FO_CURS;
 			break;
 
 		case NEXT_CHAR:
-			if ((select) && (ef->selstart == 0)) ef->selstart = ef->selend = ef->pos + 1;
 			ef->pos++;
 			cursmove = FO_CURS;
 
 			break;
 
 		case PREV_LINE:
-			if ((select) && (ef->selstart == 0)) ef->selstart = ef->selend = ef->pos + 1;
 			cursmove = FO_CURSUP;
 			break;
 			
 		case NEXT_LINE:
-			if ((select) && (ef->selstart == 0)) ef->selstart = ef->selend = ef->pos + 1;
 			cursmove = FO_CURSDOWN;
 			break;
 
 		case PREV_PAGE:
-			if ((select) && (ef->selstart == 0)) ef->selstart = ef->selend = ef->pos + 1;
 			cursmove = FO_PAGEUP;
 			break;
 
 		case NEXT_PAGE:
-			if ((select) && (ef->selstart == 0)) ef->selstart = ef->selend = ef->pos + 1;
 			cursmove = FO_PAGEDOWN;
 			break;
 	}
@@ -1583,6 +1579,7 @@ void make_editText(Object *obedit)
 	len_wchar = BLI_strncpy_wchar_from_utf8(ef->textbuf, cu->str, MAXTEXT + 4);
 	BLI_assert(len_wchar == cu->len_wchar);
 	ef->len = len_wchar;
+	BLI_assert(ef->len >= 0);
 
 	memcpy(ef->textbufinfo, cu->strinfo, ef->len * sizeof(CharInfo));
 
@@ -1594,6 +1591,9 @@ void make_editText(Object *obedit)
 	ef->pos = cu->pos;
 	ef->selstart = cu->selstart;
 	ef->selend = cu->selend;
+
+	/* text may have been modified by Python */
+	BKE_vfont_select_clamp(obedit);
 }
 
 void load_editText(Object *obedit)

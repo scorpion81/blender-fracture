@@ -86,6 +86,7 @@
 
 #include "GPU_draw.h"
 #include "GPU_extensions.h"
+#include "GPU_select.h"
 
 #include "ED_mesh.h"
 #include "ED_particle.h"
@@ -109,7 +110,7 @@
  *
  * Ideally we don't want to evaluate objects from drawing,
  * but it'll require some major sequencer re-design. So
- * for now just fallback to legacy behaior with calling
+ * for now just fallback to legacy behavior with calling
  * display ist creating from draw().
  */
 #define SEQUENCER_DAG_WORKAROUND
@@ -301,7 +302,8 @@ bool draw_glsl_material(Scene *scene, Object *ob, View3D *v3d, const char dt)
 	if (BKE_scene_use_new_shading_nodes(scene))
 		return false;
 	
-	return (scene->gm.matmode == GAME_MAT_GLSL) && (dt > OB_SOLID);
+	return ((scene->gm.matmode == GAME_MAT_GLSL && v3d->drawtype == OB_TEXTURE) || 
+			(v3d->drawtype == OB_MATERIAL)) && (dt > OB_SOLID);
 }
 
 static bool check_alpha_pass(Base *base)
@@ -879,7 +881,8 @@ void view3d_cached_text_draw_end(View3D *v3d, ARegion *ar, bool depth_write, flo
 		glPushMatrix();
 		glMatrixMode(GL_MODELVIEW);
 		glPushMatrix();
-		ED_region_pixelspace(ar);
+		wmOrtho2_region_ui(ar);
+		glLoadIdentity();
 		
 		if (depth_write) {
 			if (v3d->zbuf) glDisable(GL_DEPTH_TEST);
@@ -1586,7 +1589,7 @@ static void draw_viewport_object_reconstruction(Scene *scene, Base *base, View3D
 			continue;
 
 		if (dflag & DRAW_PICKING)
-			glLoadName(base->selcol + (tracknr << 16));
+			GPU_select_load_id(base->selcol + (tracknr << 16));
 
 		glPushMatrix();
 		glTranslatef(track->bundle_pos[0], track->bundle_pos[1], track->bundle_pos[2]);
@@ -1737,7 +1740,7 @@ static void draw_viewport_reconstruction(Scene *scene, Base *base, View3D *v3d, 
 	}
 
 	if (dflag & DRAW_PICKING)
-		glLoadName(base->selcol);
+		GPU_select_load_id(base->selcol);
 }
 
 /* flag similar to draw_object() */
@@ -3610,7 +3613,7 @@ static void draw_em_fancy(Scene *scene, ARegion *ar, View3D *v3d,
 			draw_dm_vert_normals(em, scene, ob, cageDM);
 		}
 		if (me->drawflag & ME_DRAW_LNORMALS) {
-			UI_ThemeColor(TH_VNORMAL);
+			UI_ThemeColor(TH_LNORMAL);
 			draw_dm_loop_normals(em, scene, ob, cageDM);
 		}
 
@@ -5880,7 +5883,7 @@ static void editnurb_draw_active_nurbs(Nurb *nu)
 	glLineWidth(1);
 }
 
-static void draw_editnurb(Object *ob, Nurb *nurb, int sel)
+static void draw_editnurb_splines(Object *ob, Nurb *nurb, const bool sel)
 {
 	Nurb *nu;
 	BPoint *bp, *bp1;
@@ -5996,8 +5999,9 @@ static void draw_editnurb(Object *ob, Nurb *nurb, int sel)
 	}
 }
 
-static void drawnurb(Scene *scene, View3D *v3d, RegionView3D *rv3d, Base *base, Nurb *nurb,
-                     const char dt, const short dflag, const unsigned char ob_wire_col[4])
+static void draw_editnurb(
+        Scene *scene, View3D *v3d, RegionView3D *rv3d, Base *base, Nurb *nurb,
+        const char dt, const short dflag, const unsigned char ob_wire_col[4])
 {
 	ToolSettings *ts = scene->toolsettings;
 	Object *ob = base->object;
@@ -6015,6 +6019,11 @@ static void drawnurb(Scene *scene, View3D *v3d, RegionView3D *rv3d, Base *base, 
 
 	drawDispList(scene, v3d, rv3d, base, dt, dflag, ob_wire_col);
 
+	/* for shadows only show solid faces */
+	if (v3d->flag2 & V3D_RENDER_SHADOW) {
+		return;
+	}
+
 	if (v3d->zbuf) glDepthFunc(GL_ALWAYS);
 	
 	/* first non-selected and active handles */
@@ -6027,8 +6036,8 @@ static void drawnurb(Scene *scene, View3D *v3d, RegionView3D *rv3d, Base *base, 
 		}
 		index++;
 	}
-	draw_editnurb(ob, nurb, 0);
-	draw_editnurb(ob, nurb, 1);
+	draw_editnurb_splines(ob, nurb, false);
+	draw_editnurb_splines(ob, nurb, true);
 	/* selected handles */
 	for (nu = nurb; nu; nu = nu->next) {
 		if (nu->type == CU_BEZIER && (cu->drawflag & CU_HIDE_HANDLES) == 0)
@@ -6038,11 +6047,11 @@ static void drawnurb(Scene *scene, View3D *v3d, RegionView3D *rv3d, Base *base, 
 	
 	if (v3d->zbuf) glDepthFunc(GL_LEQUAL);
 
+	glColor3ubv(wire_col);
+
 	/* direction vectors for 3d curve paths
 	 * when at its lowest, don't render normals */
 	if ((cu->flag & CU_3D) && (ts->normalsize > 0.0015f) && (cu->drawflag & CU_HIDE_NORMALS) == 0) {
-
-		UI_ThemeColor(TH_WIRE_EDIT);
 		for (bl = ob->curve_cache->bev.first, nu = nurb; nu && bl; bl = bl->next, nu = nu->next) {
 			BevPoint *bevp = bl->bevpoints;
 			int nr = bl->nr;
@@ -6479,7 +6488,7 @@ static bool drawmball(Scene *scene, View3D *v3d, RegionView3D *rv3d, Base *base,
 			
 			if (G.f & G_PICKSEL) {
 				ml->selcol1 = code;
-				glLoadName(code++);
+				GPU_select_load_id(code++);
 			}
 		}
 		drawcircball(GL_LINE_LOOP, &(ml->x), ml->rad, imat);
@@ -6493,7 +6502,7 @@ static bool drawmball(Scene *scene, View3D *v3d, RegionView3D *rv3d, Base *base,
 			
 			if (G.f & G_PICKSEL) {
 				ml->selcol2 = code;
-				glLoadName(code++);
+				GPU_select_load_id(code++);
 			}
 			drawcircball(GL_LINE_LOOP, &(ml->x), ml->rad * atanf(ml->s) / (float)M_PI_2, imat);
 		}
@@ -6699,28 +6708,6 @@ static void draw_box(float vec[8][3])
 	glEnd();
 }
 
-/* uses boundbox, function used by Ketsji */
-#if 0
-static void get_local_bounds(Object *ob, float center[3], float size[3])
-{
-	BoundBox *bb = BKE_object_boundbox_get(ob);
-	
-	if (bb == NULL) {
-		zero_v3(center);
-		copy_v3_v3(size, ob->size);
-	}
-	else {
-		size[0] = 0.5 * fabsf(bb->vec[0][0] - bb->vec[4][0]);
-		size[1] = 0.5 * fabsf(bb->vec[0][1] - bb->vec[2][1]);
-		size[2] = 0.5 * fabsf(bb->vec[0][2] - bb->vec[1][2]);
-
-		center[0] = (bb->vec[0][0] + bb->vec[4][0]) / 2.0;
-		center[1] = (bb->vec[0][1] + bb->vec[2][1]) / 2.0;
-		center[2] = (bb->vec[0][2] + bb->vec[1][2]) / 2.0;
-	}
-}
-#endif
-
 static void draw_bb_quadric(BoundBox *bb, char type, bool around_origin)
 {
 	float size[3], cent[3];
@@ -6728,17 +6715,13 @@ static void draw_bb_quadric(BoundBox *bb, char type, bool around_origin)
 	
 	gluQuadricDrawStyle(qobj, GLU_SILHOUETTE);
 	
-	size[0] = 0.5f * fabsf(bb->vec[0][0] - bb->vec[4][0]);
-	size[1] = 0.5f * fabsf(bb->vec[0][1] - bb->vec[2][1]);
-	size[2] = 0.5f * fabsf(bb->vec[0][2] - bb->vec[1][2]);
+	BKE_boundbox_calc_size_aabb(bb, size);
 
 	if (around_origin) {
 		zero_v3(cent);
 	}
 	else {
-		cent[0] = 0.5f * (bb->vec[0][0] + bb->vec[4][0]);
-		cent[1] = 0.5f * (bb->vec[0][1] + bb->vec[2][1]);
-		cent[2] = 0.5f * (bb->vec[0][2] + bb->vec[1][2]);
+		BKE_boundbox_calc_center_aabb(bb, cent);
 	}
 	
 	glPushMatrix();
@@ -6807,9 +6790,7 @@ static void draw_bounding_volume(Object *ob, char type)
 		if (type == OB_BOUND_BOX) {
 			float vec[8][3], size[3];
 			
-			size[0] = 0.5f * fabsf(bb->vec[0][0] - bb->vec[4][0]);
-			size[1] = 0.5f * fabsf(bb->vec[0][1] - bb->vec[2][1]);
-			size[2] = 0.5f * fabsf(bb->vec[0][2] - bb->vec[1][2]);
+			BKE_boundbox_calc_size_aabb(bb, size);
 			
 			vec[0][0] = vec[1][0] = vec[2][0] = vec[3][0] = -size[0];
 			vec[4][0] = vec[5][0] = vec[6][0] = vec[7][0] = +size[0];
@@ -7124,9 +7105,7 @@ static void draw_rigidbody_shape(Object *ob)
 
 	switch (ob->rigidbody_object->shape) {
 		case RB_SHAPE_BOX:
-			size[0] = 0.5f * fabsf(bb->vec[0][0] - bb->vec[4][0]);
-			size[1] = 0.5f * fabsf(bb->vec[0][1] - bb->vec[2][1]);
-			size[2] = 0.5f * fabsf(bb->vec[0][2] - bb->vec[1][2]);
+			BKE_boundbox_calc_size_aabb(bb, size);
 			
 			vec[0][0] = vec[1][0] = vec[2][0] = vec[3][0] = -size[0];
 			vec[4][0] = vec[5][0] = vec[6][0] = vec[7][0] = +size[0];
@@ -7182,7 +7161,7 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 			if (ob->restrictflag & OB_RESTRICT_RENDER)
 				return;
 			
-			if (!has_particles && (ob->transflag & OB_DUPLI))
+			if (!has_particles && (ob->transflag & (OB_DUPLI & ~OB_DUPLIFRAMES)))
 				return;
 		}
 	}
@@ -7354,7 +7333,7 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 
 				if (cu->editnurb) {
 					ListBase *nurbs = BKE_curve_editNurbs_get(cu);
-					drawnurb(scene, v3d, rv3d, base, nurbs->first, dt, dflag, ob_wire_col);
+					draw_editnurb(scene, v3d, rv3d, base, nurbs->first, dt, dflag, ob_wire_col);
 				}
 				else if (dt == OB_BOUNDBOX) {
 					if ((render_override && (v3d->drawtype >= OB_WIRE)) == 0) {

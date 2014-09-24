@@ -87,6 +87,8 @@ EnumPropertyItem linestyle_geometry_modifier_type_items[] = {
 #include "BKE_texture.h"
 #include "BKE_depsgraph.h"
 
+#include "ED_node.h"
+
 #include "RNA_access.h"
 
 static StructRNA *rna_LineStyle_color_modifier_refine(struct PointerRNA *ptr)
@@ -281,6 +283,16 @@ static void rna_LineStyle_update(Main *UNUSED(bmain), Scene *UNUSED(scene), Poin
 
 	DAG_id_tag_update(&linestyle->id, 0);
 	WM_main_add_notifier(NC_LINESTYLE, linestyle);
+}
+
+static void rna_LineStyle_use_nodes_update(bContext *C, PointerRNA *ptr)
+{
+	FreestyleLineStyle *linestyle = (FreestyleLineStyle *)ptr->data;
+
+	if (linestyle->use_nodes && linestyle->nodetree == NULL)
+		BKE_linestyle_default_shader(C, linestyle);
+
+	rna_LineStyle_update(CTX_data_main(C), CTX_data_scene(C), ptr);
 }
 
 static LineStyleModifier *rna_LineStyle_color_modifier_add(FreestyleLineStyle *linestyle, ReportList *reports,
@@ -500,7 +512,7 @@ static void rna_def_linestyle_mtex(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "use_tips", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "texflag", MTEX_TIPS);
-	RNA_def_property_ui_text(prop, "Use tips", "Lower half of the texture is for tips of the stroke");
+	RNA_def_property_ui_text(prop, "Use Tips", "Lower half of the texture is for tips of the stroke");
 	RNA_def_property_update(prop, 0, "rna_LineStyle_update");
 
 	prop = RNA_def_property(srna, "texture_coords", PROP_ENUM, PROP_NONE);
@@ -571,6 +583,7 @@ static void rna_def_modifier_type_common(StructRNA *srna, EnumPropertyItem *modi
 	prop = RNA_def_property(srna, "use", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "modifier.flags", LS_MODIFIER_ENABLED);
 	RNA_def_property_ui_text(prop, "Use", "Enable or disable this modifier during stroke rendering");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
 
 	prop = RNA_def_property(srna, "expanded", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "modifier.flags", LS_MODIFIER_EXPANDED);
@@ -1337,7 +1350,6 @@ static void rna_def_linestyle(BlenderRNA *brna)
 	RNA_def_property_enum_bitflag_sdna(prop, NULL, "panel");
 	RNA_def_property_enum_items(prop, panel_items);
 	RNA_def_property_ui_text(prop, "Panel", "Select the property panel to be shown");
-	RNA_def_property_update(prop, NC_LINESTYLE, NULL);
 
 	prop = RNA_def_property(srna, "color", PROP_FLOAT, PROP_COLOR);
 	RNA_def_property_float_sdna(prop, NULL, "r");
@@ -1606,14 +1618,14 @@ static void rna_def_linestyle(BlenderRNA *brna)
 	/* nodes */
 	prop = RNA_def_property(srna, "node_tree", PROP_POINTER, PROP_NONE);
 	RNA_def_property_pointer_sdna(prop, NULL, "nodetree");
-	RNA_def_property_ui_text(prop, "Node Tree", "Node tree for node based textures");
+	RNA_def_property_ui_text(prop, "Node Tree", "Node tree for node-based shaders");
 
 	prop = RNA_def_property(srna, "use_nodes", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "use_nodes", 1);
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_flag(prop, PROP_CONTEXT_UPDATE);
-	RNA_def_property_ui_text(prop, "Use Nodes", "Use texture nodes for the line style");
-	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+	RNA_def_property_ui_text(prop, "Use Nodes", "Use shader nodes for the line style");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_use_nodes_update");
 }
 
 void RNA_def_linestyle(BlenderRNA *brna)

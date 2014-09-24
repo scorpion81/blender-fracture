@@ -1212,7 +1212,7 @@ void BKE_mask_point_parent_matrix_get(MaskSplinePoint *point, float ctime, float
 						}
 
 						invert_m3_m3(mask_to_clip_matrix, mask_from_clip_matrix);
-						mul_serie_m3(parent_matrix, mask_to_clip_matrix, H, mask_from_clip_matrix, NULL, NULL, NULL, NULL, NULL);
+						mul_m3_series(parent_matrix, mask_from_clip_matrix, H, mask_to_clip_matrix);
 					}
 				}
 			}
@@ -1821,10 +1821,10 @@ void BKE_mask_layer_shape_unlink(MaskLayer *masklay, MaskLayerShape *masklay_sha
 	BKE_mask_layer_shape_free(masklay_shape);
 }
 
-static int mask_layer_shape_sort_cb(void *masklay_shape_a_ptr, void *masklay_shape_b_ptr)
+static int mask_layer_shape_sort_cb(const void *masklay_shape_a_ptr, const void *masklay_shape_b_ptr)
 {
-	MaskLayerShape *masklay_shape_a = (MaskLayerShape *)masklay_shape_a_ptr;
-	MaskLayerShape *masklay_shape_b = (MaskLayerShape *)masklay_shape_b_ptr;
+	const MaskLayerShape *masklay_shape_a = masklay_shape_a_ptr;
+	const MaskLayerShape *masklay_shape_b = masklay_shape_b_ptr;
 
 	if      (masklay_shape_a->frame < masklay_shape_b->frame)  return -1;
 	else if (masklay_shape_a->frame > masklay_shape_b->frame)  return  1;

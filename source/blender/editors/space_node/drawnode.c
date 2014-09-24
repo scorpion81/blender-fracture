@@ -885,6 +885,11 @@ static void node_shader_buts_uvmap(uiLayout *layout, bContext *C, PointerRNA *pt
 	}
 }
 
+static void node_shader_buts_uvalongstroke(uiLayout *layout, bContext *UNUSED(C), PointerRNA *ptr)
+{
+	uiItemR(layout, ptr, "use_tips", 0, NULL, 0);
+}
+
 static void node_shader_buts_normal_map(uiLayout *layout, bContext *C, PointerRNA *ptr)
 {
 	uiItemR(layout, ptr, "space", 0, "", 0);
@@ -937,29 +942,22 @@ static void node_shader_buts_anisotropic(uiLayout *layout, bContext *UNUSED(C), 
 
 static void node_shader_buts_subsurface(uiLayout *layout, bContext *C, PointerRNA *ptr)
 {
-	/* SSS does not work on GPU yet */
+	/* SSS only enabled in Experimental Kernel */
 	PointerRNA scene = CTX_data_pointer_get(C, "scene");
 	if (scene.data) {
 		PointerRNA cscene = RNA_pointer_get(&scene, "cycles");
-		if (cscene.data && (RNA_enum_get(&cscene, "device") == 1 && U.compute_device_type != 0))
-			uiItemL(layout, IFACE_("SSS not supported on GPU"), ICON_ERROR);
+		if (cscene.data &&
+		    ((U.compute_device_type != USER_COMPUTE_DEVICE_NONE) &&
+		     (RNA_enum_get(&cscene, "device") == 1) &&
+		     (RNA_enum_get(&cscene, "feature_set") == 0)))
+		{
+			uiItemL(layout, IFACE_("Only enabled in experimental GPU kernel"), ICON_ERROR);
+		}
 	}
 
 	uiItemR(layout, ptr, "falloff", 0, "", ICON_NONE);
 }
 
-
-static void node_shader_buts_volume(uiLayout *layout, bContext *C, PointerRNA *UNUSED(ptr))
-{
-	/* Volume does not work on GPU yet */
-	PointerRNA scene = CTX_data_pointer_get(C, "scene");
-	if (scene.data) {
-		PointerRNA cscene = RNA_pointer_get(&scene, "cycles");
-
-		if (cscene.data && (RNA_enum_get(&cscene, "device") == 1 && U.compute_device_type != 0))
-			uiItemL(layout, IFACE_("Volumes not supported on GPU"), ICON_ERROR);
-	}
-}
 
 static void node_shader_buts_toon(uiLayout *layout, bContext *UNUSED(C), PointerRNA *ptr)
 {
@@ -998,6 +996,16 @@ static void node_shader_buts_script_ex(uiLayout *layout, bContext *C, PointerRNA
 	if (RNA_enum_get(ptr, "mode") == NODE_SCRIPT_EXTERNAL)
 		uiItemR(layout, ptr, "use_auto_update", 0, NULL, ICON_NONE);
 #endif
+}
+
+static void node_buts_output_linestyle(uiLayout *layout, bContext *UNUSED(C), PointerRNA *ptr)
+{
+	uiLayout *row, *col;
+
+	col = uiLayoutColumn(layout, false);
+	row = uiLayoutRow(col, true);
+	uiItemR(row, ptr, "blend_type", 0, "", ICON_NONE);
+	uiItemR(col, ptr, "use_clamp", 0, NULL, ICON_NONE);
 }
 
 /* only once called */
@@ -1107,12 +1115,6 @@ static void node_shader_set_butfunc(bNodeType *ntype)
 		case SH_NODE_SUBSURFACE_SCATTERING:
 			ntype->draw_buttons = node_shader_buts_subsurface;
 			break;
-		case SH_NODE_VOLUME_SCATTER:
-			ntype->draw_buttons = node_shader_buts_volume;
-			break;
-		case SH_NODE_VOLUME_ABSORPTION:
-			ntype->draw_buttons = node_shader_buts_volume;
-			break;
 		case SH_NODE_BSDF_TOON:
 			ntype->draw_buttons = node_shader_buts_toon;
 			break;
@@ -1125,6 +1127,12 @@ static void node_shader_set_butfunc(bNodeType *ntype)
 			break;
 		case SH_NODE_UVMAP:
 			ntype->draw_buttons = node_shader_buts_uvmap;
+			break;
+		case SH_NODE_UVALONGSTROKE:
+			ntype->draw_buttons = node_shader_buts_uvalongstroke;
+			break;
+		case SH_NODE_OUTPUT_LINESTYLE:
+			ntype->draw_buttons = node_buts_output_linestyle;
 			break;
 	}
 }
@@ -2307,6 +2315,12 @@ static void node_composit_buts_cornerpin(uiLayout *UNUSED(layout), bContext *UNU
 {
 }
 
+static void node_composit_buts_sunbeams(uiLayout *layout, bContext *UNUSED(C), PointerRNA *ptr)
+{
+	uiItemR(layout, ptr, "source", UI_ITEM_R_EXPAND, "", ICON_NONE);
+	uiItemR(layout, ptr, "ray_length", UI_ITEM_R_SLIDER, NULL, ICON_NONE);
+}
+
 /* only once called */
 static void node_composit_set_butfunc(bNodeType *ntype)
 {
@@ -2530,6 +2544,9 @@ static void node_composit_set_butfunc(bNodeType *ntype)
 			break;
 		case CMP_NODE_CORNERPIN:
 			ntype->draw_buttons = node_composit_buts_cornerpin;
+			break;
+		case CMP_NODE_SUNBEAMS:
+			ntype->draw_buttons = node_composit_buts_sunbeams;
 			break;
 	}
 }
@@ -3039,7 +3056,8 @@ void draw_nodespace_back_pix(const bContext *C, ARegion *ar, SpaceNode *snode, b
 		
 		glaDefine2DArea(&ar->winrct);
 		/* ortho at pixel level curarea */
-		wmOrtho2(-GLA_PIXEL_OFS, ar->winx - GLA_PIXEL_OFS, -GLA_PIXEL_OFS, ar->winy - GLA_PIXEL_OFS);
+		/* almost #wmOrtho2_region_pixelspace, but no +1 px */
+		wmOrtho2_pixelspace(ar->winx, ar->winy);
 		
 		x = (ar->winx - snode->zoom * ibuf->x) / 2 + snode->xof;
 		y = (ar->winy - snode->zoom * ibuf->y) / 2 + snode->yof;

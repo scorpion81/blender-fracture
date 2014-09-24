@@ -43,6 +43,8 @@
 #include "BLI_utildefines.h"
 #include "BLI_ghash.h"
 
+#include "PIL_time.h"
+
 #include "BKE_context.h"
 #include "BKE_screen.h"
 #include "BKE_report.h"
@@ -219,6 +221,8 @@ static void ui_tooltip_region_draw_cb(const bContext *UNUSED(C), ARegion *ar)
 	multisample_enabled = glIsEnabled(GL_MULTISAMPLE_ARB);
 	if (multisample_enabled)
 		glDisable(GL_MULTISAMPLE_ARB);
+
+	wmOrtho2_region_ui(ar);
 
 	/* draw background */
 	ui_draw_tooltip_background(UI_GetStyle(), NULL, &bbox);
@@ -811,8 +815,10 @@ static void ui_searchbox_select(bContext *C, ARegion *ar, uiBut *but, int step)
 			data->active = 0;
 			ui_searchbox_update(C, ar, but, false);
 		}
-		else if (data->active < -1)
-			data->active = -1;
+		else {
+			/* only let users step into an 'unset' state for unlink buttons */
+			data->active = (but->type == SEARCH_MENU_UNLINK) ? -1 : 0;
+		}
 	}
 	
 	ED_region_tag_redraw(ar);
@@ -879,6 +885,12 @@ bool ui_searchbox_apply(uiBut *but, ARegion *ar)
 		BLI_strncpy(but->editstr, name, name_sep ? (name_sep - name) : data->items.maxstrlen);
 		
 		but->func_arg2 = data->items.pointers[data->active];
+
+		return true;
+	}
+	else if (but->type == SEARCH_MENU_UNLINK) {
+		/* It is valid for _UNLINK flavor to have no active element (it's a valid way to unlink). */
+		but->editstr[0] = '\0';
 
 		return true;
 	}
@@ -1018,7 +1030,7 @@ static void ui_searchbox_region_draw_cb(const bContext *UNUSED(C), ARegion *ar)
 	uiSearchboxData *data = ar->regiondata;
 	
 	/* pixel space */
-	wmOrtho2(-0.01f, ar->winx - 0.01f, -0.01f, ar->winy - 0.01f);
+	wmOrtho2_region_ui(ar);
 
 	if (data->noback == false)
 		ui_draw_search_back(NULL, NULL, &data->bbox);  /* style not used yet */
@@ -1163,8 +1175,9 @@ ARegion *ui_searchbox_create(bContext *C, ARegion *butregion, uiBut *but)
 		/* widget rect, in region coords */
 		data->bbox.xmin = width;
 		data->bbox.xmax = BLI_rcti_size_x(&ar->winrct) - width;
-		data->bbox.ymin = width;
-		data->bbox.ymax = BLI_rcti_size_y(&ar->winrct) - width;
+		/* Do not use shadow width for height, gives insane margin with big shadows, and issue T41548 with small ones */
+		data->bbox.ymin = 8 * UI_DPI_FAC;
+		data->bbox.ymax = BLI_rcti_size_y(&ar->winrct) - 8 * UI_DPI_FAC;
 		
 		/* check if button is lower half */
 		if (but->rect.ymax < BLI_rctf_cent_y(&but->block->rect)) {
@@ -1704,18 +1717,69 @@ uiBlock *ui_popup_block_refresh(
 		BLI_addhead(&block->saferct, saferct);
 	}
 
-	/* clip block with window boundary */
-	ui_popup_block_clip(window, block);
-	
-	/* the block and buttons were positioned in window space as in 2.4x, now
-	 * these menu blocks are regions so we bring it back to region space.
-	 * additionally we add some padding for the menu shadow or rounded menus */
-	ar->winrct.xmin = block->rect.xmin - width;
-	ar->winrct.xmax = block->rect.xmax + width;
-	ar->winrct.ymin = block->rect.ymin - width;
-	ar->winrct.ymax = block->rect.ymax + MENU_TOP;
-	
-	ui_block_translate(block, -ar->winrct.xmin, -ar->winrct.ymin);
+	if (block->flag & UI_BLOCK_RADIAL) {
+		uiBut *but;
+		int win_width = UI_SCREEN_MARGIN;
+		int winx, winy;
+
+		int x_offset = 0, y_offset = 0;
+
+		winx = WM_window_pixels_x(window);
+		winy = WM_window_pixels_y(window);
+
+		copy_v2_v2(block->pie_data.pie_center_init, block->pie_data.pie_center_spawned);
+
+		/* only try translation if area is large enough */
+		if (BLI_rctf_size_x(&block->rect) < winx - (2.0f * win_width)) {
+			if (block->rect.xmin < win_width )   x_offset += win_width - block->rect.xmin;
+			if (block->rect.xmax > winx - win_width) x_offset += winx - win_width - block->rect.xmax;
+		}
+
+		if (BLI_rctf_size_y(&block->rect) < winy - (2.0f * win_width)) {
+			if (block->rect.ymin < win_width )   y_offset += win_width - block->rect.ymin;
+			if (block->rect.ymax > winy - win_width) y_offset += winy - win_width - block->rect.ymax;
+		}
+		/* if we are offsetting set up initial data for timeout functionality */
+
+		if ((x_offset != 0) || (y_offset != 0)) {
+			block->pie_data.pie_center_spawned[0] += x_offset;
+			block->pie_data.pie_center_spawned[1] += y_offset;
+
+			ui_block_translate(block, x_offset, y_offset);
+
+			if (U.pie_initial_timeout > 0)
+				block->pie_data.flags |= UI_PIE_INITIAL_DIRECTION;
+		}
+
+		ar->winrct.xmin = 0;
+		ar->winrct.xmax = winx;
+		ar->winrct.ymin = 0;
+		ar->winrct.ymax = winy;
+
+		ui_block_calculate_pie_segment(block, block->pie_data.pie_center_init);
+
+		/* lastly set the buttons at the center of the pie menu, ready for animation */
+		if (U.pie_animation_timeout > 0) {
+			for (but = block->buttons.first; but; but = but->next) {
+				if (but->pie_dir != UI_RADIAL_NONE) {
+					BLI_rctf_recenter(&but->rect, UNPACK2(block->pie_data.pie_center_spawned));
+				}
+			}
+		}
+	}
+	else {
+		/* clip block with window boundary */
+		ui_popup_block_clip(window, block);
+		/* the block and buttons were positioned in window space as in 2.4x, now
+		 * these menu blocks are regions so we bring it back to region space.
+		 * additionally we add some padding for the menu shadow or rounded menus */
+		ar->winrct.xmin = block->rect.xmin - width;
+		ar->winrct.xmax = block->rect.xmax + width;
+		ar->winrct.ymin = block->rect.ymin - width;
+		ar->winrct.ymax = block->rect.ymax + MENU_TOP;
+
+		ui_block_translate(block, -ar->winrct.xmin, -ar->winrct.ymin);
+	}
 
 	if (block_old) {
 		block->oldblock = block_old;
@@ -1872,7 +1936,7 @@ static void ui_update_block_buts_rgb(uiBlock *block, const float rgb[3], bool is
 			if (rgb_gamma[2] > 1.0f) rgb_gamma[2] = modf(rgb_gamma[2], &intpart);
 
 			rgb_float_to_uchar(rgb_gamma_uchar, rgb_gamma);
-			BLI_snprintf(col, sizeof(col), "%02X%02X%02X", UNPACK3OP((unsigned int), rgb_gamma_uchar));
+			BLI_snprintf(col, sizeof(col), "%02X%02X%02X", UNPACK3_EX((unsigned int), rgb_gamma_uchar, ));
 			
 			strcpy(bt->poin, col);
 		}
@@ -2160,7 +2224,7 @@ static void uiBlockPicker(uiBlock *block, float rgba[4], PointerRNA *ptr, Proper
 	}
 
 	rgb_float_to_uchar(rgb_gamma_uchar, rgb_gamma);
-	BLI_snprintf(hexcol, sizeof(hexcol), "%02X%02X%02X", UNPACK3OP((unsigned int), rgb_gamma_uchar));
+	BLI_snprintf(hexcol, sizeof(hexcol), "%02X%02X%02X", UNPACK3_EX((unsigned int), rgb_gamma_uchar, ));
 
 	yco = -3.0f * UI_UNIT_Y;
 	bt = uiDefBut(block, TEX, 0, IFACE_("Hex: "), 0, yco, butwidth, UI_UNIT_Y, hexcol, 0, 8, 0, 0, TIP_("Hex triplet for color (#RRGGBB)"));
@@ -2353,6 +2417,12 @@ struct uiPopupMenu {
 	void *menu_arg;
 };
 
+struct uiPieMenu {
+	uiBlock *block_radial; /* radial block of the pie menu (more could be added later) */
+	uiLayout *layout;
+	int mx, my;
+};
+
 static uiBlock *ui_block_func_POPUP(bContext *C, uiPopupBlockHandle *handle, void *arg_pup)
 {
 	uiBlock *block;
@@ -2408,6 +2478,7 @@ static uiBlock *ui_block_func_POPUP(bContext *C, uiPopupBlockHandle *handle, voi
 	uiBlockSetFlag(block, UI_BLOCK_MOVEMOUSE_QUIT);
 	
 	if (pup->popup) {
+		uiBut *but_activate = NULL;
 		uiBlockSetFlag(block, UI_BLOCK_LOOP | UI_BLOCK_REDRAW | UI_BLOCK_NUMSELECT);
 		uiBlockSetDirection(block, direction);
 
@@ -2421,6 +2492,10 @@ static uiBlock *ui_block_func_POPUP(bContext *C, uiPopupBlockHandle *handle, voi
 			 * block to be under the mouse */
 			offset[0] = -(bt->rect.xmin + 0.8f * BLI_rctf_size_x(&bt->rect));
 			offset[1] = -(bt->rect.ymin + 0.5f * UI_UNIT_Y);
+
+			if (ui_but_is_editable(bt)) {
+				but_activate = bt;
+			}
 		}
 		else {
 			/* position mouse at 0.8*width of the button and below the tile
@@ -2430,6 +2505,20 @@ static uiBlock *ui_block_func_POPUP(bContext *C, uiPopupBlockHandle *handle, voi
 				offset[0] = min_ii(offset[0], -(bt->rect.xmin + 0.8f * BLI_rctf_size_x(&bt->rect)));
 
 			offset[1] = 2.1 * UI_UNIT_Y;
+
+			for (bt = block->buttons.first; bt; bt = bt->next) {
+				if (ui_but_is_editable(bt)) {
+					but_activate = bt;
+					break;
+				}
+			}
+		}
+
+		/* in rare cases this is needed since moving the popup
+		 * to be within the window bounds may move it away from the mouse,
+		 * This ensures we set an item to be active. */
+		if (but_activate) {
+			ui_button_activate_over(C, handle->region, but_activate);
 		}
 
 		block->minbounds = minwidth;
@@ -2507,7 +2596,7 @@ uiPopupBlockHandle *ui_popup_menu_create(bContext *C, ARegion *butregion, uiBut 
 	if (!but) {
 		handle->popup = true;
 
-		UI_add_popup_handlers(C, &window->modalhandlers, handle);
+		UI_add_popup_handlers(C, &window->modalhandlers, handle, false);
 		WM_event_add_mousemove(C);
 	}
 	
@@ -2569,7 +2658,7 @@ void uiPupMenuEnd(bContext *C, uiPopupMenu *pup)
 	menu = ui_popup_block_create(C, NULL, NULL, NULL, ui_block_func_POPUP, pup);
 	menu->popup = true;
 	
-	UI_add_popup_handlers(C, &window->modalhandlers, menu);
+	UI_add_popup_handlers(C, &window->modalhandlers, menu, false);
 	WM_event_add_mousemove(C);
 	
 	MEM_freeN(pup);
@@ -2579,6 +2668,178 @@ uiLayout *uiPupMenuLayout(uiPopupMenu *pup)
 {
 	return pup->layout;
 }
+
+/*************************** Pie Menus ***************************************/
+
+static uiBlock *ui_block_func_PIE(bContext *UNUSED(C), uiPopupBlockHandle *handle, void *arg_pie)
+{
+	uiBlock *block;
+	uiPieMenu *pie = arg_pie;
+	int minwidth, width, height;
+
+	minwidth = 50;
+	block = pie->block_radial;
+
+	/* in some cases we create the block before the region,
+	 * so we set it delayed here if necessary */
+	if (BLI_findindex(&handle->region->uiblocks, block) == -1)
+		uiBlockSetRegion(block, handle->region);
+
+	uiBlockLayoutResolve(block, &width, &height);
+
+	uiBlockSetFlag(block, UI_BLOCK_LOOP | UI_BLOCK_REDRAW | UI_BLOCK_NUMSELECT);
+
+	block->minbounds = minwidth;
+	block->bounds = 1;
+	block->mx = 0;
+	block->my = 0;
+	block->bounds_type = UI_BLOCK_BOUNDS_PIE_CENTER;
+
+	block->pie_data.pie_center_spawned[0] = pie->mx;
+	block->pie_data.pie_center_spawned[1] = pie->my;
+
+	return pie->block_radial;
+}
+
+static float uiPieTitleWidth(const char *name, int icon)
+{
+	return (UI_GetStringWidth(name) +
+	         (UI_UNIT_X * (1.50f + (icon ? 0.25f : 0.0f))));
+}
+
+uiPieMenu *uiPieMenuBegin(struct bContext *C, const char *title, int icon, const wmEvent *event)
+{
+	uiStyle *style = UI_GetStyleDraw();
+	uiPieMenu *pie = MEM_callocN(sizeof(uiPopupMenu), "pie menu");
+
+	pie->block_radial = uiBeginBlock(C, NULL, __func__, UI_EMBOSS);
+	/* may be useful later to allow spawning pies
+	 * from old positions */
+	/* pie->block_radial->flag |= UI_BLOCK_POPUP_MEMORY; */
+	pie->block_radial->puphash = ui_popup_menu_hash(title);
+	pie->block_radial->flag |= UI_BLOCK_RADIAL;
+	pie->block_radial->pie_data.event = event->type;
+
+	pie->layout = uiBlockLayout(pie->block_radial, UI_LAYOUT_VERTICAL, UI_LAYOUT_PIEMENU, 0, 0, 200, 0, 0, style);
+	pie->mx = event->x;
+	pie->my = event->y;
+
+	/* create title button */
+	if (title[0]) {
+		uiBut *but;
+		char titlestr[256];
+		int w;
+		if (icon) {
+			BLI_snprintf(titlestr, sizeof(titlestr), " %s", title);
+			w = uiPieTitleWidth(titlestr, icon);
+			but = uiDefIconTextBut(pie->block_radial, LABEL, 0, icon, titlestr, 0, 0, w, UI_UNIT_Y, NULL, 0.0, 0.0, 0, 0, "");
+		}
+		else {
+			w = uiPieTitleWidth(title, 0);
+			but = uiDefBut(pie->block_radial, LABEL, 0, title, 0, 0, w, UI_UNIT_Y, NULL, 0.0, 0.0, 0, 0, "");
+		}
+		/* do not align left */
+		but->drawflag &= ~UI_BUT_TEXT_LEFT;
+	}
+
+	return pie;
+}
+
+void uiPieMenuEnd(bContext *C, uiPieMenu *pie)
+{
+	wmWindow *window = CTX_wm_window(C);
+	uiPopupBlockHandle *menu;
+
+	menu = ui_popup_block_create(C, NULL, NULL, NULL, ui_block_func_PIE, pie);
+	menu->popup = true;
+	menu->towardstime = PIL_check_seconds_timer();
+
+	UI_add_popup_handlers(C, &window->modalhandlers, menu, true);
+	WM_event_add_mousemove(C);
+
+	MEM_freeN(pie);
+}
+
+uiLayout *uiPieMenuLayout(uiPieMenu *pie)
+{
+	return pie->layout;
+}
+
+void uiPieMenuInvoke(struct bContext *C, const char *idname, const wmEvent *event)
+{
+	uiPieMenu *pie;
+	uiLayout *layout;
+	Menu menu;
+	MenuType *mt = WM_menutype_find(idname, true);
+
+	if (mt == NULL) {
+		printf("%s: named menu \"%s\" not found\n", __func__, idname);
+		return;
+	}
+
+	if (mt->poll && mt->poll(C, mt) == 0)
+		return;
+
+	pie = uiPieMenuBegin(C, IFACE_(mt->label), ICON_NONE, event);
+	layout = uiPieMenuLayout(pie);
+
+	menu.layout = layout;
+	menu.type = mt;
+
+	if (G.debug & G_DEBUG_WM) {
+		printf("%s: opening menu \"%s\"\n", __func__, idname);
+	}
+
+	mt->draw(C, &menu);
+
+	uiPieMenuEnd(C, pie);
+}
+
+void uiPieOperatorEnumInvoke(struct bContext *C, const char *title, const char *opname,
+                             const char *propname, const wmEvent *event)
+{
+	uiPieMenu *pie;
+	uiLayout *layout;
+
+	pie = uiPieMenuBegin(C, IFACE_(title), ICON_NONE, event);
+	layout = uiPieMenuLayout(pie);
+
+	layout = uiLayoutRadial(layout);
+	uiItemsEnumO(layout, opname, propname);
+
+	uiPieMenuEnd(C, pie);
+}
+
+void uiPieEnumInvoke(struct bContext *C, const char *title, const char *path,
+                     const wmEvent *event)
+{
+	PointerRNA ctx_ptr;
+	PointerRNA r_ptr;
+	PropertyRNA *r_prop;
+	uiPieMenu *pie;
+	uiLayout *layout;
+
+	RNA_pointer_create(NULL, &RNA_Context, C, &ctx_ptr);
+
+	if (!RNA_path_resolve(&ctx_ptr, path, &r_ptr, &r_prop)) {
+		return;
+	}
+
+	/* invalid property, only accept enums */
+	if (RNA_property_type(r_prop) != PROP_ENUM) {
+		BLI_assert(0);
+		return;
+	}
+
+	pie = uiPieMenuBegin(C, IFACE_(title), ICON_NONE, event);
+	layout = uiPieMenuLayout(pie);
+
+	layout = uiLayoutRadial(layout);
+	uiItemFullR(layout, &r_ptr, r_prop, RNA_NO_INDEX, 0, UI_ITEM_R_EXPAND, NULL, 0);
+
+	uiPieMenuEnd(C, pie);
+}
+
 
 /*************************** Standard Popup Menus ****************************/
 
@@ -2676,7 +2937,7 @@ void uiPupBlockO(bContext *C, uiBlockCreateFunc func, void *arg, const char *opn
 	handle->optype = (opname) ? WM_operatortype_find(opname, 0) : NULL;
 	handle->opcontext = opcontext;
 	
-	UI_add_popup_handlers(C, &window->modalhandlers, handle);
+	UI_add_popup_handlers(C, &window->modalhandlers, handle, false);
 	WM_event_add_mousemove(C);
 }
 
@@ -2699,7 +2960,7 @@ void uiPupBlockEx(bContext *C, uiBlockCreateFunc func, uiBlockHandleFunc popup_f
 	handle->cancel_func = cancel_func;
 	// handle->opcontext = opcontext;
 	
-	UI_add_popup_handlers(C, &window->modalhandlers, handle);
+	UI_add_popup_handlers(C, &window->modalhandlers, handle, false);
 	WM_event_add_mousemove(C);
 }
 

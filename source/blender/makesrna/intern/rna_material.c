@@ -82,6 +82,8 @@ EnumPropertyItem ramp_blend_items[] = {
 
 #include "DNA_node_types.h"
 #include "DNA_object_types.h"
+#include "DNA_screen_types.h"
+#include "DNA_space_types.h"
 
 #include "BKE_context.h"
 #include "BKE_depsgraph.h"
@@ -92,6 +94,8 @@ EnumPropertyItem ramp_blend_items[] = {
 #include "BKE_paint.h"
 
 #include "ED_node.h"
+#include "ED_image.h"
+#include "BKE_scene.h"
 
 static void rna_Material_update(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *ptr)
 {
@@ -163,6 +167,54 @@ static void rna_Material_mtex_begin(CollectionPropertyIterator *iter, PointerRNA
 {
 	Material *ma = (Material *)ptr->data;
 	rna_iterator_array_begin(iter, (void *)ma->mtex, sizeof(MTex *), MAX_MTEX, 0, NULL);
+}
+
+static void rna_Material_texpaint_begin(CollectionPropertyIterator *iter, PointerRNA *ptr)
+{
+	Material *ma = (Material *)ptr->data;
+	rna_iterator_array_begin(iter, (void *)ma->texpaintslot, sizeof(TexPaintSlot), ma->tot_slots, 0, NULL);
+}
+
+
+static void rna_Material_active_paint_texture_index_update(Main *bmain, Scene *scene, PointerRNA *ptr)
+{
+	bScreen *sc;
+	Material *ma = ptr->id.data;
+
+	if (ma->use_nodes && ma->nodetree && BKE_scene_use_new_shading_nodes(scene)) {
+		struct bNode *node;
+		int index = 0;
+		for (node = ma->nodetree->nodes.first; node; node = node->next) {
+			if (node->typeinfo->nclass == NODE_CLASS_TEXTURE && node->typeinfo->type == SH_NODE_TEX_IMAGE && node->id) {
+				if (index++ == ma->paint_active_slot) {
+					break;
+				}
+			}
+		}
+		if (node)
+			nodeSetActive(ma->nodetree, node);
+	}
+
+	if (ma->texpaintslot) {
+		Image *image = ma->texpaintslot[ma->paint_active_slot].ima;
+		for (sc = bmain->screen.first; sc; sc = sc->id.next) {
+			ScrArea *sa;
+			for (sa = sc->areabase.first; sa; sa = sa->next) {
+				SpaceLink *sl;
+				for (sl = sa->spacedata.first; sl; sl = sl->next) {
+					if (sl->spacetype == SPACE_IMAGE) {
+						SpaceImage *sima = (SpaceImage *)sl;
+						
+						if (!sima->pin)
+							ED_space_image_set(sima, scene, scene->obedit, image);
+					}
+				}
+			}
+		}
+	}
+
+	DAG_id_tag_update(&ma->id, 0);
+	WM_main_add_notifier(NC_MATERIAL | ND_SHADING, ma);
 }
 
 static PointerRNA rna_Material_active_texture_get(PointerRNA *ptr)
@@ -290,7 +342,7 @@ static void rna_Material_use_nodes_update(bContext *C, PointerRNA *ptr)
 	if (ma->use_nodes && ma->nodetree == NULL)
 		ED_node_shader_default(C, &ma->id);
 	
-	rna_Material_update(CTX_data_main(C), CTX_data_scene(C), ptr);
+	rna_Material_draw_update(CTX_data_main(C), CTX_data_scene(C), ptr);
 }
 
 static EnumPropertyItem *rna_Material_texture_coordinates_itemf(bContext *UNUSED(C), PointerRNA *ptr,
@@ -2059,6 +2111,8 @@ void RNA_def_material(BlenderRNA *brna)
 	                    "rna_Material_active_texture_set", "rna_Material_active_texture_editable",
 	                    "MaterialTextureSlot", "MaterialTextureSlots", "rna_Material_update", "rna_Material_update");
 
+	rna_def_texpaint_slots(brna, srna);
+
 	/* only material has this one */
 	prop = RNA_def_property(srna, "use_textures", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_negative_sdna(prop, NULL, "septex", 1);
@@ -2145,6 +2199,58 @@ void rna_def_mtex_common(BlenderRNA *brna, StructRNA *srna, const char *begin,
 	RNA_def_property_range(prop, 0, MAX_MTEX - 1);
 	RNA_def_property_ui_text(prop, "Active Texture Index", "Index of active texture slot");
 	RNA_def_property_update(prop, NC_MATERIAL | ND_SHADING_LINKS, update_index);
+}
+
+static void rna_def_tex_slot(BlenderRNA *brna)
+{
+	StructRNA *srna;
+	PropertyRNA *prop;
+
+	srna = RNA_def_struct(brna, "TexPaintSlot", NULL);
+	RNA_def_struct_ui_text(srna, "Texture Paint Slot",
+	                       "Slot that contains information about texture painting");
+
+	prop = RNA_def_property(srna, "uv_layer", PROP_STRING, PROP_NONE);
+	RNA_def_property_string_maxlength(prop, 64); /* else it uses the pointer size! */
+	RNA_def_property_string_sdna(prop, NULL, "uvname");
+	RNA_def_property_ui_text(prop, "UV Map", "Name of UV map");
+	RNA_def_property_update(prop, NC_GEOM | ND_DATA, "rna_Material_update");
+	
+	prop = RNA_def_property(srna, "index", PROP_INT, PROP_NONE);
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+	RNA_def_property_ui_text(prop, "Index", "Index of MTex slot in the material");
+}
+
+
+void rna_def_texpaint_slots(BlenderRNA *brna, StructRNA *srna)
+{
+	PropertyRNA *prop;
+
+	rna_def_tex_slot(brna);
+
+	/* mtex */
+	prop = RNA_def_property(srna, "texture_paint_images", PROP_COLLECTION, PROP_NONE);
+	RNA_def_property_collection_sdna(prop, NULL, "texpaintslot", NULL);
+	RNA_def_property_collection_funcs(prop, "rna_Material_texpaint_begin", "rna_iterator_array_next", "rna_iterator_array_end",
+	                                  "rna_iterator_array_dereference_get", NULL, NULL, NULL, NULL);
+	RNA_def_property_struct_type(prop, "Image");
+	RNA_def_property_ui_text(prop, "Texture Slot Images", "Texture images used for texture painting");
+
+	prop = RNA_def_property(srna, "texture_paint_slots", PROP_COLLECTION, PROP_NONE);
+	RNA_def_property_collection_funcs(prop, "rna_Material_texpaint_begin", "rna_iterator_array_next", "rna_iterator_array_end",
+	                                  "rna_iterator_array_get", NULL, NULL, NULL, NULL);
+	RNA_def_property_struct_type(prop, "TexPaintSlot");
+	RNA_def_property_ui_text(prop, "Texture Slots", "Texture slots defining the mapping and influence of textures");
+
+	prop = RNA_def_property(srna, "paint_active_slot", PROP_INT, PROP_UNSIGNED);
+	RNA_def_property_range(prop, 0, SHRT_MAX);
+	RNA_def_property_ui_text(prop, "Active Paint Texture Index", "Index of active texture paint slot");
+	RNA_def_property_update(prop, NC_MATERIAL | ND_SHADING_LINKS, "rna_Material_active_paint_texture_index_update");
+
+	prop = RNA_def_property(srna, "paint_clone_slot", PROP_INT, PROP_UNSIGNED);
+	RNA_def_property_range(prop, 0, SHRT_MAX);
+	RNA_def_property_ui_text(prop, "Clone Paint Texture Index", "Index of clone texture paint slot");
+	RNA_def_property_update(prop, NC_MATERIAL | ND_SHADING_LINKS, NULL);
 }
 
 #endif

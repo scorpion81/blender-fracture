@@ -39,6 +39,7 @@
 #include "DNA_anim_types.h"
 #include "DNA_group_types.h"
 #include "DNA_linestyle_types.h"
+#include "DNA_mesh_types.h"
 #include "DNA_node_types.h"
 #include "DNA_object_types.h"
 #include "DNA_rigidbody_types.h"
@@ -46,6 +47,8 @@
 #include "DNA_screen_types.h"
 #include "DNA_sequence_types.h"
 #include "DNA_space_types.h"
+#include "DNA_view3d_types.h"
+#include "DNA_windowmanager_types.h"
 
 #include "BLI_math.h"
 #include "BLI_blenlib.h"
@@ -62,6 +65,7 @@
 #include "BKE_action.h"
 #include "BKE_colortools.h"
 #include "BKE_depsgraph.h"
+#include "BKE_editmesh.h"
 #include "BKE_fcurve.h"
 #include "BKE_freestyle.h"
 #include "BKE_global.h"
@@ -78,6 +82,7 @@
 #include "BKE_scene.h"
 #include "BKE_sequencer.h"
 #include "BKE_sound.h"
+#include "BKE_unit.h"
 #include "BKE_world.h"
 
 #include "RE_engine.h"
@@ -85,6 +90,8 @@
 #include "PIL_time.h"
 
 #include "IMB_colormanagement.h"
+
+#include "bmesh.h"
 
 //XXX #include "BIF_previewrender.h"
 //XXX #include "BIF_editseq.h"
@@ -253,6 +260,7 @@ Scene *BKE_scene_copy(Scene *sce, int type)
 
 		BKE_paint_copy(&ts->imapaint.paint, &ts->imapaint.paint);
 		ts->imapaint.paintcursor = NULL;
+		id_us_plus((ID *)ts->imapaint.stencil);
 		ts->particle.paintcursor = NULL;
 	}
 	
@@ -510,6 +518,8 @@ Scene *BKE_scene_add(Main *bmain, const char *name)
 	sce->r.border.ymin = 0.0f;
 	sce->r.border.xmax = 1.0f;
 	sce->r.border.ymax = 1.0f;
+
+	sce->r.preview_start_resolution = 64;
 	
 	sce->toolsettings = MEM_callocN(sizeof(struct ToolSettings), "Tool Settings Struct");
 	sce->toolsettings->doublimit = 0.001;
@@ -553,6 +563,8 @@ Scene *BKE_scene_add(Main *bmain, const char *name)
 	sce->toolsettings->proportional_size = 1.0f;
 
 	sce->toolsettings->imapaint.paint.flags |= PAINT_SHOW_BRUSH;
+	sce->toolsettings->imapaint.normal_angle = 80;
+	sce->toolsettings->imapaint.seam_bleed = 2;
 
 	sce->physics_settings.gravity[0] = 0.0f;
 	sce->physics_settings.gravity[1] = 0.0f;
@@ -719,14 +731,14 @@ void BKE_scene_set_background(Main *bmain, Scene *scene)
 /* called from creator.c */
 Scene *BKE_scene_set_name(Main *bmain, const char *name)
 {
-	Scene *sce = (Scene *)BKE_libblock_find_name(ID_SCE, name);
+	Scene *sce = (Scene *)BKE_libblock_find_name_ex(bmain, ID_SCE, name);
 	if (sce) {
 		BKE_scene_set_background(bmain, sce);
-		printf("Scene switch: '%s' in file: '%s'\n", name, G.main->name);
+		printf("Scene switch: '%s' in file: '%s'\n", name, bmain->name);
 		return sce;
 	}
 
-	printf("Can't find scene: '%s' in file: '%s'\n", name, G.main->name);
+	printf("Can't find scene: '%s' in file: '%s'\n", name, bmain->name);
 	return NULL;
 }
 
@@ -1129,11 +1141,6 @@ void BKE_scene_frame_set(struct Scene *scene, double cfra)
 	double intpart;
 	scene->r.subframe = modf(cfra, &intpart);
 	scene->r.cfra = (int)intpart;
-
-	if (cfra < 0.0) {
-		scene->r.cfra -= 1;
-		scene->r.subframe = 1.0f + scene->r.subframe;
-	}
 }
 
 /* drivers support/hacks 
@@ -1552,6 +1559,53 @@ static void scene_update_tagged_recursive(EvaluationContext *eval_ctx, Main *bma
 	
 }
 
+static bool check_rendered_viewport_visible(Main *bmain)
+{
+	wmWindowManager *wm = bmain->wm.first;
+	wmWindow *window;
+	for (window = wm->windows.first; window != NULL; window = window->next) {
+		bScreen *screen = window->screen;
+		ScrArea *area;
+		for (area = screen->areabase.first; area != NULL; area = area->next) {
+			View3D *v3d = area->spacedata.first;
+			if (area->spacetype != SPACE_VIEW3D) {
+				continue;
+			}
+			if (v3d->drawtype == OB_RENDER) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+static void prepare_mesh_for_viewport_render(Main *bmain, Scene *scene)
+{
+	/* This is needed to prepare mesh to be used by the render
+	 * engine from the viewport rendering. We do loading here
+	 * so all the objects which shares the same mesh datablock
+	 * are nicely tagged for update and updated.
+	 *
+	 * This makes it so viewport render engine doesn't need to
+	 * call loading of the edit data for the mesh objects.
+	 */
+
+	Object *obedit = scene->obedit;
+	if (obedit) {
+		Mesh *mesh = obedit->data;
+		/* TODO(sergey): Check object recalc flags as well? */
+		if ((obedit->type == OB_MESH) &&
+		    (mesh->id.flag & (LIB_ID_RECALC | LIB_ID_RECALC_DATA)))
+		{
+			if (check_rendered_viewport_visible(bmain)) {
+				BMesh *bm = mesh->edit_btmesh->bm;
+				BM_mesh_bm_to_me(bm, mesh, false);
+				DAG_id_tag_update(&mesh->id, 0);
+			}
+		}
+	}
+}
+
 void BKE_scene_update_tagged(EvaluationContext *eval_ctx, Main *bmain, Scene *scene)
 {
 	Scene *sce_iter;
@@ -1562,6 +1616,9 @@ void BKE_scene_update_tagged(EvaluationContext *eval_ctx, Main *bmain, Scene *sc
 	/* (re-)build dependency graph if needed */
 	for (sce_iter = scene; sce_iter; sce_iter = sce_iter->set)
 		DAG_scene_relations_update(bmain, sce_iter);
+
+	/* flush editing data if needed */
+	prepare_mesh_for_viewport_render(bmain, scene);
 
 	/* flush recalc flags to dependencies */
 	DAG_ids_flush_tagged(bmain);
@@ -1843,6 +1900,12 @@ bool BKE_scene_use_new_shading_nodes(Scene *scene)
 	return (type && type->flag & RE_USE_SHADING_NODES);
 }
 
+bool BKE_scene_uses_blender_internal(struct Scene *scene)
+{
+	return strcmp("BLENDER_RENDER", scene->r.engine) == 0;
+}
+
+
 void BKE_scene_base_flag_to_objects(struct Scene *scene)
 {
 	Base *base = scene->base.first;
@@ -1913,4 +1976,30 @@ int BKE_render_num_threads(const RenderData *rd)
 int BKE_scene_num_threads(const Scene *scene)
 {
 	return BKE_render_num_threads(&scene->r);
+}
+
+/* Apply the needed correction factor to value, based on unit_type (only length-related are affected currently)
+ * and unit->scale_length.
+ */
+double BKE_scene_unit_scale(const UnitSettings *unit, const int unit_type, double value)
+{
+	if (unit->system == USER_UNIT_NONE) {
+		/* Never apply scale_length when not using a unit setting! */
+		return value;
+	}
+
+	switch (unit_type) {
+		case B_UNIT_LENGTH:
+			return value * (double)unit->scale_length;
+		case B_UNIT_CAMERA:
+			return value * (double)unit->scale_length;
+		case B_UNIT_AREA:
+			return value * pow(unit->scale_length, 2);
+		case B_UNIT_VOLUME:
+			return value * pow(unit->scale_length, 3);
+		case B_UNIT_MASS:
+			return value * pow(unit->scale_length, 3);
+		default:
+			return value;
+	}
 }

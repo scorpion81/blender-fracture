@@ -316,9 +316,9 @@ static void rna_Particle_uv_on_emitter(ParticleData *particle, ReportList *repor
 static void rna_ParticleSystem_co_hair(ParticleSystem *particlesystem, Object *object,
                                        int particle_no, int step, float n_co[3])
 {
-	ParticleSettings *part = 0;
-	ParticleData *pars = 0;
-	ParticleCacheKey *cache = 0;
+	ParticleSettings *part = NULL;
+	ParticleData *pars = NULL;
+	ParticleCacheKey *cache = NULL;
 	int totchild = 0;
 	int path_nbr = 0;
 	int totpart;
@@ -437,7 +437,7 @@ static int rna_ParticleSystem_tessfaceidx_on_emitter(ParticleSystem *particlesys
                                                      ParticleSystemModifierData *modifier, ParticleData *particle,
                                                      int particle_no, float (**r_fuv)[4])
 {
-	ParticleSettings *part = 0;
+	ParticleSettings *part = NULL;
 	int totpart;
 	int totchild = 0;
 	int totface;
@@ -2061,7 +2061,7 @@ static void rna_def_particle_settings(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "use_dynamic_rotation", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", PART_ROT_DYN);
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
-	RNA_def_property_ui_text(prop, "Dynamic", "Particle rotations are effected by collisions and effectors");
+	RNA_def_property_ui_text(prop, "Dynamic", "Particle rotations are affected by collisions and effectors");
 	RNA_def_property_update(prop, 0, "rna_Particle_reset");
 
 	prop = RNA_def_property(srna, "use_multiply_size_mass", PROP_BOOLEAN, PROP_NONE);
@@ -2113,7 +2113,7 @@ static void rna_def_particle_settings(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "use_self_effect", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", PART_SELF_EFFECT);
-	RNA_def_property_ui_text(prop, "Self Effect", "Particle effectors effect themselves");
+	RNA_def_property_ui_text(prop, "Self Effect", "Particle effectors affect themselves");
 	RNA_def_property_update(prop, 0, "rna_Particle_reset");
 
 
@@ -2439,7 +2439,7 @@ static void rna_def_particle_settings(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "simplify_refsize", PROP_INT, PROP_PIXEL);
 	RNA_def_property_int_sdna(prop, NULL, "simplify_refsize");
-	RNA_def_property_range(prop, 1, 32768);
+	RNA_def_property_range(prop, 1, SHRT_MAX);
 	RNA_def_property_ui_text(prop, "Reference Size", "Reference size in pixels, after which simplification begins");
 
 	prop = RNA_def_property(srna, "simplify_rate", PROP_FLOAT, PROP_NONE);

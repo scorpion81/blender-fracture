@@ -41,8 +41,8 @@ extern "C" {
 /* these lines are grep'd, watch out for our not-so-awesome regex
  * and keep comment above the defines.
  * Use STRINGIFY() rather than defining with quotes */
-#define BLENDER_VERSION         271
-#define BLENDER_SUBVERSION      2
+#define BLENDER_VERSION         272
+#define BLENDER_SUBVERSION      0
 /* 262 was the last editmesh release but it has compatibility code for bmesh data */
 #define BLENDER_MINVERSION      270
 #define BLENDER_MINSUBVERSION   5
@@ -51,7 +51,7 @@ extern "C" {
 /* can be left blank, otherwise a,b,c... etc with no quotes */
 #define BLENDER_VERSION_CHAR   
 /* alpha/beta/rc/release, docs use this */
-#define BLENDER_VERSION_CYCLE   alpha
+#define BLENDER_VERSION_CYCLE   rc
 
 extern char versionstr[]; /* from blender.c */
 
@@ -69,10 +69,12 @@ int BKE_read_file(struct bContext *C, const char *filepath, struct ReportList *r
 #define BKE_READ_FILE_OK                1 /* OK */
 #define BKE_READ_FILE_OK_USERPREFS      2 /* OK, and with new user settings */
 
-int BKE_read_file_from_memory(struct bContext *C, const void *filebuf,
-	int filelength, struct ReportList *reports, int update_defaults);
-int BKE_read_file_from_memfile(struct bContext *C, struct MemFile *memfile,
-	struct ReportList *reports);
+bool BKE_read_file_from_memory(
+        struct bContext *C, const void *filebuf,
+        int filelength, struct ReportList *reports, bool update_defaults);
+bool BKE_read_file_from_memfile(
+        struct bContext *C, struct MemFile *memfile,
+        struct ReportList *reports);
 
 int BKE_read_file_userdef(const char *filepath, struct ReportList *reports);
 int BKE_write_file_userdef(const char *filepath, struct ReportList *reports);

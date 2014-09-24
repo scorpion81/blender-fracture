@@ -451,7 +451,13 @@ int ColorNoiseShader::shade(Stroke& stroke) const
 
 int BlenderTextureShader::shade(Stroke& stroke) const
 {
-	return stroke.setMTex(_mtex);
+	if (_mtex)
+		return stroke.setMTex(_mtex);
+	if (_nodeTree) {
+		stroke.setNodeTree(_nodeTree);
+		return 0;
+	}
+	return -1;
 }
 
 int StrokeTextureStepShader::shade(Stroke& stroke) const
@@ -802,9 +808,10 @@ int BezierCurveShader::shade(Stroke& stroke) const
 	     ++it)
 	{
 		(it)->setAttribute(*a);
-		if ((index <= index1) || (index > index2))
+		if ((index <= index1) || (index > index2)) {
 			++a;
-			++index;
+		}
+		++index;
 	}
 	return 0;
 }

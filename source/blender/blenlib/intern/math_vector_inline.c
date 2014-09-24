@@ -466,7 +466,7 @@ MINLINE float mul_project_m4_v3_zfac(float mat[4][4], const float co[3])
 }
 
 /**
- * Has the effect of mul_m3_v3(), on a single axis.
+ * Has the effect of #mul_m3_v3(), on a single axis.
  */
 MINLINE float dot_m3_v3_row_x(float M[3][3], const float a[3])
 {
@@ -482,7 +482,8 @@ MINLINE float dot_m3_v3_row_z(float M[3][3], const float a[3])
 }
 
 /**
- * Almost like mul_m4_v3(), misses adding translation.
+ * Has the effect of #mul_mat3_m4_v3(), on a single axis.
+ * (no adding translation)
  */
 MINLINE float dot_m4_v3_row_x(float M[4][4], const float a[3])
 {
@@ -850,17 +851,17 @@ MINLINE void normal_float_to_short_v3(short out[3], const float in[3])
 
 MINLINE bool is_zero_v2(const float v[2])
 {
-	return (v[0] == 0 && v[1] == 0);
+	return (v[0] == 0.0f && v[1] == 0.0f);
 }
 
 MINLINE bool is_zero_v3(const float v[3])
 {
-	return (v[0] == 0 && v[1] == 0 && v[2] == 0);
+	return (v[0] == 0.0f && v[1] == 0.0f && v[2] == 0.0f);
 }
 
 MINLINE bool is_zero_v4(const float v[4])
 {
-	return (v[0] == 0 && v[1] == 0 && v[2] == 0 && v[3] == 0);
+	return (v[0] == 0.0f && v[1] == 0.0f && v[2] == 0.0f && v[3] == 0.0f);
 }
 
 MINLINE bool is_finite_v2(const float v[2])
@@ -880,7 +881,7 @@ MINLINE bool is_finite_v4(const float v[4])
 
 MINLINE bool is_one_v3(const float v[3])
 {
-	return (v[0] == 1 && v[1] == 1 && v[2] == 1);
+	return (v[0] == 1.0f && v[1] == 1.0f && v[2] == 1.0f);
 }
 
 

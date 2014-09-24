@@ -35,7 +35,7 @@
 
 void interp_v2_v2v2(float target[2], const float a[2], const float b[2], const float t)
 {
-	float s = 1.0f - t;
+	const float s = 1.0f - t;
 
 	target[0] = s * a[0] + t * b[0];
 	target[1] = s * a[1] + t * b[1];
@@ -51,7 +51,7 @@ void interp_v2_v2v2v2(float p[2], const float v1[2], const float v2[2], const fl
 
 void interp_v3_v3v3(float target[3], const float a[3], const float b[3], const float t)
 {
-	float s = 1.0f - t;
+	const float s = 1.0f - t;
 
 	target[0] = s * a[0] + t * b[0];
 	target[1] = s * a[1] + t * b[1];
@@ -60,7 +60,7 @@ void interp_v3_v3v3(float target[3], const float a[3], const float b[3], const f
 
 void interp_v4_v4v4(float target[4], const float a[4], const float b[4], const float t)
 {
-	float s = 1.0f - t;
+	const float s = 1.0f - t;
 
 	target[0] = s * a[0] + t * b[0];
 	target[1] = s * a[1] + t * b[1];
@@ -119,8 +119,7 @@ bool interp_v2_v2v2_slerp(float target[2], const float a[2], const float b[2], c
 }
 
 /**
- * Same as #interp_v3_v3v3_slerp buy uses fallback values
- * for opposite vectors.
+ * Same as #interp_v3_v3v3_slerp but uses fallback values for opposite vectors.
  */
 void interp_v3_v3v3_slerp_safe(float target[3], const float a[3], const float b[3], const float t)
 {
@@ -208,7 +207,7 @@ void interp_v3_v3v3v3_uv(float p[3], const float v1[3], const float v2[3], const
 
 void interp_v3_v3v3_uchar(char unsigned target[3], const unsigned char a[3], const unsigned char b[3], const float t)
 {
-	float s = 1.0f - t;
+	const float s = 1.0f - t;
 
 	target[0] = (char)floorf(s * a[0] + t * b[0]);
 	target[1] = (char)floorf(s * a[1] + t * b[1]);
@@ -221,7 +220,7 @@ void interp_v3_v3v3_char(char target[3], const char a[3], const char b[3], const
 
 void interp_v4_v4v4_uchar(char unsigned target[4], const unsigned char a[4], const unsigned char b[4], const float t)
 {
-	float s = 1.0f - t;
+	const float s = 1.0f - t;
 
 	target[0] = (char)floorf(s * a[0] + t * b[0]);
 	target[1] = (char)floorf(s * a[1] + t * b[1]);
@@ -550,8 +549,7 @@ void angle_poly_v3(float *angles, const float *verts[3], int len)
 /* Project v1 on v2 */
 void project_v2_v2v2(float c[2], const float v1[2], const float v2[2])
 {
-	float mul;
-	mul = dot_v2v2(v1, v2) / dot_v2v2(v2, v2);
+	const float mul = dot_v2v2(v1, v2) / dot_v2v2(v2, v2);
 
 	c[0] = mul * v2[0];
 	c[1] = mul * v2[1];
@@ -560,8 +558,7 @@ void project_v2_v2v2(float c[2], const float v1[2], const float v2[2])
 /* Project v1 on v2 */
 void project_v3_v3v3(float c[3], const float v1[3], const float v2[3])
 {
-	float mul;
-	mul = dot_v3v3(v1, v2) / dot_v3v3(v2, v2);
+	const float mul = dot_v3v3(v1, v2) / dot_v3v3(v2, v2);
 
 	c[0] = mul * v2[0];
 	c[1] = mul * v2[1];
@@ -717,17 +714,17 @@ void rotate_v3_v3v3fl(float r[3], const float p[3], const float axis[3], const f
 
 void print_v2(const char *str, const float v[2])
 {
-	printf("%s: %.3f %.3f\n", str, v[0], v[1]);
+	printf("%s: %.8f %.8f\n", str, v[0], v[1]);
 }
 
 void print_v3(const char *str, const float v[3])
 {
-	printf("%s: %.3f %.3f %.3f\n", str, v[0], v[1], v[2]);
+	printf("%s: %.8f %.8f %.8f\n", str, v[0], v[1], v[2]);
 }
 
 void print_v4(const char *str, const float v[4])
 {
-	printf("%s: %.3f %.3f %.3f %.3f\n", str, v[0], v[1], v[2], v[3]);
+	printf("%s: %.8f %.8f %.8f %.8f\n", str, v[0], v[1], v[2], v[3]);
 }
 
 void print_vn(const char *str, const float v[], const int n)
@@ -735,7 +732,7 @@ void print_vn(const char *str, const float v[], const int n)
 	int i = 0;
 	printf("%s[%d]:", str, n);
 	while (i < n) {
-		printf(" %.3f", v[i++]);
+		printf(" %.8f", v[i++]);
 	}
 	printf("\n");
 }
@@ -837,7 +834,7 @@ double len_squared_vn(const float *array, const int size)
 
 float normalize_vn_vn(float *array_tar, const float *array_src, const int size)
 {
-	double d = len_squared_vn(array_src, size);
+	const double d = len_squared_vn(array_src, size);
 	float d_sqrt;
 	if (d > 1.0e-35) {
 		d_sqrt = (float)sqrt(d);

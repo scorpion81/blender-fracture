@@ -61,12 +61,12 @@
 EnumPropertyItem object_mode_items[] = {
 	{OB_MODE_OBJECT, "OBJECT", ICON_OBJECT_DATAMODE, "Object Mode", ""},
 	{OB_MODE_EDIT, "EDIT", ICON_EDITMODE_HLT, "Edit Mode", ""},
+	{OB_MODE_POSE, "POSE", ICON_POSE_HLT, "Pose Mode", ""},
 	{OB_MODE_SCULPT, "SCULPT", ICON_SCULPTMODE_HLT, "Sculpt Mode", ""},
 	{OB_MODE_VERTEX_PAINT, "VERTEX_PAINT", ICON_VPAINT_HLT, "Vertex Paint", ""},
 	{OB_MODE_WEIGHT_PAINT, "WEIGHT_PAINT", ICON_WPAINT_HLT, "Weight Paint", ""},
 	{OB_MODE_TEXTURE_PAINT, "TEXTURE_PAINT", ICON_TPAINT_HLT, "Texture Paint", ""},
 	{OB_MODE_PARTICLE_EDIT, "PARTICLE_EDIT", ICON_PARTICLEMODE, "Particle Edit", ""},
-	{OB_MODE_POSE, "POSE", ICON_POSE_HLT, "Pose Mode", ""},
 	{0, NULL, 0, NULL, NULL}
 };
 
@@ -370,8 +370,14 @@ static void rna_Object_data_set(PointerRNA *ptr, PointerRNA value)
 	Object *ob = (Object *)ptr->data;
 	ID *id = value.data;
 
-	if (id == NULL || ob->mode & OB_MODE_EDIT)
+	if (ob->mode & OB_MODE_EDIT) {
 		return;
+	}
+
+	/* assigning NULL only for empties */
+	if ((id == NULL) && (ob->type != OB_EMPTY)) {
+		return;
+	}
 
 	if (ob->type == OB_EMPTY) {
 		if (ob->data) {
@@ -379,7 +385,7 @@ static void rna_Object_data_set(PointerRNA *ptr, PointerRNA value)
 			ob->data = NULL;
 		}
 
-		if (id && GS(id->name) == ID_IM) {
+		if (!id || GS(id->name) == ID_IM) {
 			id_us_plus(id);
 			ob->data = id;
 		}
@@ -391,11 +397,10 @@ static void rna_Object_data_set(PointerRNA *ptr, PointerRNA value)
 		if (ob->data) {
 			id_us_min((ID *)ob->data);
 		}
-		if (id) {
-			/* no need to type-check here ID. this is done in the _typef() function */
-			BLI_assert(OB_DATA_SUPPORT_ID(GS(id->name)));
-			id_us_plus(id);
-		}
+
+		/* no need to type-check here ID. this is done in the _typef() function */
+		BLI_assert(OB_DATA_SUPPORT_ID(GS(id->name)));
+		id_us_plus(id);
 
 		ob->data = id;
 		test_object_materials(G.main, id);

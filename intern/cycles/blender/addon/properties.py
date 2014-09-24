@@ -259,11 +259,18 @@ class CyclesRenderSettings(bpy.types.PropertyGroup):
                 default=True,
                 )
 
-        cls.no_caustics = BoolProperty(
-                name="No Caustics",
-                description="Leave out caustics, resulting in a darker image with less noise",
-                default=False,
+        cls.caustics_reflective = BoolProperty(
+                name="Reflective Caustics",
+                description="Use reflective caustics, resulting in a brighter image (more noise but added realism)",
+                default=True,
                 )
+
+        cls.caustics_refractive = BoolProperty(
+                name="Refractive Caustics",
+                description="Use refractive caustics, resulting in a brighter image (more noise but added realism)",
+                default=True,
+                )
+
         cls.blur_glossy = FloatProperty(
                 name="Filter Glossy",
                 description="Adaptively blur glossy shaders after blurry bounces, "
@@ -544,6 +551,13 @@ class CyclesCameraSettings(bpy.types.PropertyGroup):
                 subtype='ANGLE',
                 default=0,
                 )
+        cls.aperture_ratio = FloatProperty(
+                name="Aperture Ratio",
+                description="Distortion to simulate anamorphic lens bokeh",
+                min=0.01, soft_min=1.0, soft_max=2.0,
+                default=1.0,
+                precision=4,
+                )
         cls.panorama_type = EnumProperty(
                 name="Panorama Type",
                 description="Distortion to use for the calculation",
@@ -722,6 +736,11 @@ class CyclesVisibilitySettings(bpy.types.PropertyGroup):
         cls.shadow = BoolProperty(
                 name="Shadow",
                 description="Object visibility for shadow rays",
+                default=True,
+                )
+        cls.scatter = BoolProperty(
+                name="Volume Scatter",
+                description="Object visibility for volume scatter rays",
                 default=True,
                 )
 

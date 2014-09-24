@@ -809,6 +809,8 @@ typedef enum eSpaceImage_Flag {
 	SI_DRAW_OTHER         = (1 << 23),
 
 	SI_COLOR_CORRECTION   = (1 << 24),
+
+	SI_NO_DRAW_TEXPAINT   = (1 << 25)
 } eSpaceImage_Flag;
 
 /* Text Editor ============================================ */
@@ -989,6 +991,7 @@ typedef enum eSpaceNode_TexFrom {
 typedef enum eSpaceNode_ShaderFrom {
 	SNODE_SHADER_OBJECT = 0,
 	SNODE_SHADER_WORLD = 1,
+	SNODE_SHADER_LINESTYLE = 2,
 } eSpaceNode_ShaderFrom;
 
 /* Game Logic Editor ===================================== */

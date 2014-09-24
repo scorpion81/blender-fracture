@@ -33,6 +33,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "DNA_material_types.h"
 #include "DNA_mesh_types.h"
 #include "DNA_meshdata_types.h"
 #include "DNA_object_types.h"
@@ -48,6 +49,8 @@
 
 #include "BKE_DerivedMesh.h"
 #include "BKE_editmesh.h"
+#include "BKE_material.h"
+
 #include "BKE_scene.h"
 
 #include "BIF_gl.h"
@@ -420,8 +423,8 @@ static void draw_uvs_other_mesh_new_shading(Object *ob, const Image *curimage)
 		Image *image;
 		
 		/* if no materials, assume a default material with no image */
-		if(ob->totcol)
-			ED_object_get_active_image(ob, a + 1, &image, NULL, NULL);
+		if (ob->totcol)
+			ED_object_get_active_image(ob, a + 1, &image, NULL, NULL, NULL);
 		else
 			image = NULL;
 
@@ -479,13 +482,39 @@ static void draw_uvs_texpaint(SpaceImage *sima, Scene *scene, Object *ob)
 {
 	const bool new_shading_nodes = BKE_scene_use_new_shading_nodes(scene);
 	Image *curimage = ED_space_image(sima);
+	Mesh *me = ob->data;
+	Material *ma;
 
 	if (sima->flag & SI_DRAW_OTHER) {
 		draw_uvs_other(scene, ob, curimage, new_shading_nodes);
 	}
 
 	UI_ThemeColor(TH_UV_SHADOW);
-	draw_uvs_other_mesh(ob, curimage, new_shading_nodes);
+
+	ma = give_current_material(ob, ob->actcol);
+
+	if (me->mtpoly) {
+		MPoly *mpoly = me->mpoly;
+		MLoopUV *mloopuv, *mloopuv_base;
+		int a, b;
+		if (!(ma && ma->texpaintslot && ma->texpaintslot[ma->paint_active_slot].uvname &&
+		      (mloopuv = CustomData_get_layer_named(&me->ldata, CD_MLOOPUV, ma->texpaintslot[ma->paint_active_slot].uvname))))
+		{
+			mloopuv = me->mloopuv;
+		}
+
+		mloopuv_base = mloopuv;
+
+		for (a = me->totpoly; a > 0; a--, mpoly++) {
+			glBegin(GL_LINE_LOOP);
+
+			mloopuv = mloopuv_base + mpoly->loopstart;
+			for (b = 0; b < mpoly->totloop; b++, mloopuv++) {
+				glVertex2fv(mloopuv->uv);
+			}
+			glEnd();
+		}
+	}
 }
 
 #ifdef USE_EDBM_LOOPTRIS
@@ -548,7 +577,7 @@ static void draw_uvs(SpaceImage *sima, Scene *scene, Object *obedit)
 
 		if (new_shading_nodes) {
 			if (efa_act) {
-				ED_object_get_active_image(obedit, efa_act->mat_nr + 1, &curimage, NULL, NULL);
+				ED_object_get_active_image(obedit, efa_act->mat_nr + 1, &curimage, NULL, NULL, NULL);
 			}
 			else {
 				curimage = ima;
@@ -922,7 +951,7 @@ void draw_uvedit_main(SpaceImage *sima, ARegion *ar, Scene *scene, Object *obedi
 	ToolSettings *toolsettings = scene->toolsettings;
 	int show_uvedit, show_uvshadow, show_texpaint_uvshadow;
 
-	show_texpaint_uvshadow = (obact && obact->type == OB_MESH && obact->mode == OB_MODE_TEXTURE_PAINT);
+	show_texpaint_uvshadow = ED_space_image_show_texpaint(sima, obact);
 	show_uvedit = ED_space_image_show_uvedit(sima, obedit);
 	show_uvshadow = ED_space_image_show_uvshadow(sima, obedit);
 

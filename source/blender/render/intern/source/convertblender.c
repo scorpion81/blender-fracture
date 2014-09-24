@@ -762,7 +762,7 @@ static void static_particle_strand(Render *re, ObjectRen *obr, Material *ma, Par
 	w= vec[2]*re->winmat[2][3] + re->winmat[3][3];
 	dx= re->winx*cross[0]*re->winmat[0][0];
 	dy= re->winy*cross[1]*re->winmat[1][1];
-	w= sqrt(dx*dx + dy*dy)/w;
+	w = sqrtf(dx * dx + dy * dy) / w;
 	
 	if (w!=0.0f) {
 		float fac;
@@ -927,7 +927,7 @@ static void static_particle_strand(Render *re, ObjectRen *obr, Material *ma, Par
 			w= vec[2]*re->winmat[2][3] + re->winmat[3][3];
 			dx= re->winx*dvec[0]*re->winmat[0][0]/w;
 			dy= re->winy*dvec[1]*re->winmat[1][1]/w;
-			w= sqrt(dx*dx + dy*dy);
+			w = sqrtf(dx * dx + dy * dy);
 			if (dot_v3v3(anor, nor)<sd->adapt_angle && w>sd->adapt_pix) {
 				vlr= RE_findOrAddVlak(obr, obr->totvlak++);
 				vlr->flag= flag;
@@ -2930,8 +2930,7 @@ static struct edgesort *make_mesh_edge_lookup(DerivedMesh *dm, int *totedgesort)
 
 	/* make sorted table with edges and face indices in it */
 	for (a= totface, mf= mface; a>0; a--, mf++) {
-		if (mf->v4) totedge+=4;
-		else if (mf->v3) totedge+=3;
+		totedge += mf->v4 ? 4 : 3;
 	}
 
 	if (totedge==0)
@@ -2946,8 +2945,9 @@ static struct edgesort *make_mesh_edge_lookup(DerivedMesh *dm, int *totedgesort)
 			to_edgesort(ed++, 2, 3, mf->v3, mf->v4, a);
 			to_edgesort(ed++, 3, 0, mf->v4, mf->v1, a);
 		}
-		else if (mf->v3)
+		else {
 			to_edgesort(ed++, 2, 3, mf->v3, mf->v1, a);
+		}
 	}
 
 	qsort(edsort, totedge, sizeof(struct edgesort), vergedgesort);
@@ -3650,6 +3650,7 @@ static GroupObject *add_render_lamp(Render *re, Object *ob)
 	mul_m4_m4m4(mat, re->viewmat, ob->obmat);
 	invert_m4_m4(ob->imat, mat);
 
+	copy_m4_m4(lar->lampmat, ob->obmat);
 	copy_m3_m4(lar->mat, mat);
 	copy_m3_m4(lar->imat, ob->imat);
 
@@ -3795,8 +3796,8 @@ static GroupObject *add_render_lamp(Render *re, Object *ob)
 		normalize_v3(lar->imat[1]);
 		normalize_v3(lar->imat[2]);
 
-		xn= saacos(lar->spotsi);
-		xn= sin(xn)/cos(xn);
+		xn = saacos(lar->spotsi);
+		xn = sinf(xn) / cosf(xn);
 		lar->spottexfac= 1.0f/(xn);
 
 		if (lar->mode & LA_ONLYSHADOW) {
@@ -3819,7 +3820,7 @@ static GroupObject *add_render_lamp(Render *re, Object *ob)
 			/* z factor, for a normalized volume */
 			angle= saacos(lar->spotsi);
 			xn= lar->spotsi;
-			yn= sin(angle);
+			yn = sinf(angle);
 			lar->sh_zfac= yn/xn;
 			/* pre-scale */
 			lar->sh_invcampos[2]*= lar->sh_zfac;
@@ -4546,8 +4547,7 @@ static void set_dupli_tex_mat(Render *re, ObjectInstanceRen *obi, DupliObject *d
 
 		obi->duplitexmat= BLI_memarena_alloc(re->memArena, sizeof(float)*4*4);
 		invert_m4_m4(imat, dob->mat);
-		mul_serie_m4(obi->duplitexmat, re->viewmat, omat, imat, re->viewinv,
-		             NULL, NULL, NULL, NULL);
+		mul_m4_series(obi->duplitexmat, re->viewmat, omat, imat, re->viewinv);
 	}
 
 	copy_v3_v3(obi->dupliorco, dob->orco);
@@ -5438,7 +5438,7 @@ static float *calculate_strandsurface_speedvectors(Render *re, ObjectInstanceRen
 {
 	if (mesh->co && mesh->prevco && mesh->nextco) {
 		float winsq= (float)re->winx*(float)re->winy; /* int's can wrap on large images */
-		float winroot= sqrt(winsq);
+		float winroot= sqrtf(winsq);
 		float (*winspeed)[4];
 		float ho[4], prevho[4], nextho[4], winmat[4][4], vec[2];
 		int a;
@@ -5477,7 +5477,7 @@ static void calculate_speedvectors(Render *re, ObjectInstanceRen *obi, float *ve
 	StrandSurface *mesh= NULL;
 	float *speed, (*winspeed)[4]=NULL, ho[4], winmat[4][4];
 	float *co1, *co2, *co3, *co4, w[4];
-	float winsq= (float)re->winx*(float)re->winy, winroot= sqrt(winsq);  /* int's can wrap on large images */
+	float winsq = (float)re->winx * (float)re->winy, winroot = sqrtf(winsq);  /* int's can wrap on large images */
 	int a, *face, *index;
 
 	if (obi->flag & R_TRANSFORMED)
@@ -5544,7 +5544,7 @@ static int load_fluidsimspeedvectors(Render *re, ObjectInstanceRen *obi, float *
 	VertRen *ver= NULL;
 	float *speed, div, zco[2], avgvel[4] = {0.0, 0.0, 0.0, 0.0};
 	float zmulx= re->winx/2, zmuly= re->winy/2, len;
-	float winsq= (float)re->winx*(float)re->winy, winroot= sqrt(winsq); /* int's can wrap on large images */
+	float winsq = (float)re->winx * (float)re->winy, winroot= sqrtf(winsq); /* int's can wrap on large images */
 	int a, j;
 	float hoco[4], ho[4], fsvec[4], camco[4];
 	float mat[4][4], winmat[4][4];

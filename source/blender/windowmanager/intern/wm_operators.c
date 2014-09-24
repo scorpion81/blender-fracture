@@ -56,6 +56,7 @@
 #include "PIL_time.h"
 
 #include "BLI_blenlib.h"
+#include "BLI_dial.h"
 #include "BLI_dynstr.h" /*for WM_operator_pystring */
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
@@ -501,7 +502,7 @@ void WM_operator_py_idname(char *to, const char *from)
 		int ofs = (sep - from);
 		
 		/* note, we use ascii tolower instead of system tolower, because the
-		 * latter depends on the locale, and can lead to idname mistmatch */
+		 * latter depends on the locale, and can lead to idname mismatch */
 		memcpy(to, from, sizeof(char) * ofs);
 		BLI_ascii_strtolower(to, ofs);
 
@@ -1312,9 +1313,14 @@ void WM_operator_properties_gesture_border(wmOperatorType *ot, bool extend)
 
 void WM_operator_properties_mouse_select(wmOperatorType *ot)
 {
-	RNA_def_boolean(ot->srna, "extend", 0, "Extend", "Extend selection instead of deselecting everything first");
-	RNA_def_boolean(ot->srna, "deselect", 0, "Deselect", "Remove from selection");
-	RNA_def_boolean(ot->srna, "toggle", 0, "Toggle Selection", "Toggle the selection");
+	PropertyRNA *prop;
+	
+	prop = RNA_def_boolean(ot->srna, "extend", 0, "Extend", "Extend selection instead of deselecting everything first");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
+	prop = RNA_def_boolean(ot->srna, "deselect", 0, "Deselect", "Remove from selection");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
+	prop = RNA_def_boolean(ot->srna, "toggle", 0, "Toggle Selection", "Toggle the selection");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 }
 
 void WM_operator_properties_gesture_straightline(wmOperatorType *ot, int cursor)
@@ -2049,6 +2055,41 @@ static void WM_OT_call_menu(wmOperatorType *ot)
 	RNA_def_string(ot->srna, "name", NULL, BKE_ST_MAXNAME, "Name", "Name of the menu");
 }
 
+static int wm_call_pie_menu_invoke(bContext *C, wmOperator *op, const wmEvent *event)
+{
+	char idname[BKE_ST_MAXNAME];
+	RNA_string_get(op->ptr, "name", idname);
+
+	uiPieMenuInvoke(C, idname, event);
+
+	return OPERATOR_CANCELLED;
+}
+
+static int wm_call_pie_menu_exec(bContext *C, wmOperator *op)
+{
+	char idname[BKE_ST_MAXNAME];
+	RNA_string_get(op->ptr, "name", idname);
+
+	uiPieMenuInvoke(C, idname, CTX_wm_window(C)->eventstate);
+
+	return OPERATOR_CANCELLED;
+}
+
+static void WM_OT_call_menu_pie(wmOperatorType *ot)
+{
+	ot->name = "Call Pie Menu";
+	ot->idname = "WM_OT_call_menu_pie";
+	ot->description = "Call (draw) a pre-defined pie menu";
+
+	ot->invoke = wm_call_pie_menu_invoke;
+	ot->exec = wm_call_pie_menu_exec;
+	ot->poll = WM_operator_winactive;
+
+	ot->flag = OPTYPE_INTERNAL;
+
+	RNA_def_string(ot->srna, "name", NULL, BKE_ST_MAXNAME, "Name", "Name of the pie menu");
+}
+
 /* ************ window / screen operator definitions ************** */
 
 /* this poll functions is needed in place of WM_operator_winactive
@@ -2336,8 +2377,8 @@ static void WM_OT_open_mainfile(wmOperatorType *ot)
 	WM_operator_properties_filesel(ot, FOLDERFILE | BLENDERFILE, FILE_BLENDER, FILE_OPENFILE,
 	                               WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY);
 
-	RNA_def_boolean(ot->srna, "load_ui", 1, "Load UI", "Load user interface setup in the .blend file");
-	RNA_def_boolean(ot->srna, "use_scripts", 1, "Trusted Source",
+	RNA_def_boolean(ot->srna, "load_ui", true, "Load UI", "Load user interface setup in the .blend file");
+	RNA_def_boolean(ot->srna, "use_scripts", true, "Trusted Source",
 	                "Allow .blend file to execute scripts automatically, default available from system preferences");
 }
 
@@ -2348,7 +2389,14 @@ static int wm_revert_mainfile_exec(bContext *C, wmOperator *op)
 {
 	bool success;
 
-	success = wm_file_read_opwrap(C, G.main->name, op->reports, true);
+	wm_open_init_use_scripts(op, false);
+
+	if (RNA_boolean_get(op->ptr, "use_scripts"))
+		G.f |= G_SCRIPT_AUTOEXEC;
+	else
+		G.f &= ~G_SCRIPT_AUTOEXEC;
+
+	success = wm_file_read_opwrap(C, G.main->name, op->reports, !(G.f & G_SCRIPT_AUTOEXEC));
 
 	if (success) {
 		return OPERATOR_FINISHED;
@@ -2369,6 +2417,9 @@ static void WM_OT_revert_mainfile(wmOperatorType *ot)
 	ot->idname = "WM_OT_revert_mainfile";
 	ot->description = "Reload the saved file";
 	ot->invoke = WM_operator_confirm;
+
+	RNA_def_boolean(ot->srna, "use_scripts", true, "Trusted Source",
+	                "Allow .blend file to execute scripts automatically, default available from system preferences");
 
 	ot->exec = wm_revert_mainfile_exec;
 	ot->poll = wm_revert_mainfile_poll;
@@ -2419,7 +2470,7 @@ static short wm_link_append_flag(wmOperator *op)
 
 	if (RNA_boolean_get(op->ptr, "autoselect")) flag |= FILE_AUTOSELECT;
 	if (RNA_boolean_get(op->ptr, "active_layer")) flag |= FILE_ACTIVELAY;
-	if (RNA_boolean_get(op->ptr, "relative_path")) flag |= FILE_RELPATH;
+	if (RNA_struct_find_property(op->ptr, "relative_path") && RNA_boolean_get(op->ptr, "relative_path")) flag |= FILE_RELPATH;
 	if (RNA_boolean_get(op->ptr, "link")) flag |= FILE_LINK;
 	if (RNA_boolean_get(op->ptr, "instance_groups")) flag |= FILE_GROUP_INSTANCE;
 
@@ -2550,13 +2601,31 @@ static int wm_link_append_exec(bContext *C, wmOperator *op)
 	return OPERATOR_FINISHED;
 }
 
-static void WM_OT_link_append(wmOperatorType *ot)
+static void wm_link_append_properties_common(wmOperatorType *ot, bool is_link)
 {
 	PropertyRNA *prop;
 
-	ot->name = "Link/Append from Library";
-	ot->idname = "WM_OT_link_append";
-	ot->description = "Link or Append from a Library .blend file";
+	/* better not save _any_ settings for this operator */
+	/* properties */
+	prop = RNA_def_boolean(ot->srna, "link", is_link,
+	                       "Link", "Link the objects or datablocks rather than appending");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE | PROP_HIDDEN);
+	prop = RNA_def_boolean(ot->srna, "autoselect", true,
+	                       "Select", "Select new objects");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
+	prop = RNA_def_boolean(ot->srna, "active_layer", true,
+	                       "Active Layer", "Put new objects on the active layer");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
+	prop = RNA_def_boolean(ot->srna, "instance_groups", is_link,
+	                       "Instance Groups", "Create Dupli-Group instances for each group");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
+}
+
+static void WM_OT_link(wmOperatorType *ot)
+{
+	ot->name = "Link from Library";
+	ot->idname = "WM_OT_link";
+	ot->description = "Link from a Library .blend file";
 	
 	ot->invoke = wm_link_append_invoke;
 	ot->exec = wm_link_append_exec;
@@ -2569,16 +2638,27 @@ static void WM_OT_link_append(wmOperatorType *ot)
 	        WM_FILESEL_FILEPATH | WM_FILESEL_DIRECTORY | WM_FILESEL_FILENAME | WM_FILESEL_RELPATH | WM_FILESEL_FILES,
 	        FILE_DEFAULTDISPLAY);
 	
-	/* better not save _any_ settings for this operator */
-	/* properties */
-	prop = RNA_def_boolean(ot->srna, "link", 1, "Link", "Link the objects or datablocks rather than appending");
-	RNA_def_property_flag(prop, PROP_SKIP_SAVE | PROP_HIDDEN);
-	prop = RNA_def_boolean(ot->srna, "autoselect", 1, "Select", "Select the linked objects");
-	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
-	prop = RNA_def_boolean(ot->srna, "active_layer", 1, "Active Layer", "Put the linked objects on the active layer");
-	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
-	prop = RNA_def_boolean(ot->srna, "instance_groups", 1, "Instance Groups", "Create instances for each group as a DupliGroup");
-	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
+	wm_link_append_properties_common(ot, true);
+}
+
+static void WM_OT_append(wmOperatorType *ot)
+{
+	ot->name = "Append from Library";
+	ot->idname = "WM_OT_append";
+	ot->description = "Append from a Library .blend file";
+
+	ot->invoke = wm_link_append_invoke;
+	ot->exec = wm_link_append_exec;
+	ot->poll = wm_link_append_poll;
+
+	ot->flag |= OPTYPE_UNDO;
+
+	WM_operator_properties_filesel(
+		ot, FOLDERFILE | BLENDERFILE, FILE_LOADLIB, FILE_OPENFILE,
+		WM_FILESEL_FILEPATH | WM_FILESEL_DIRECTORY | WM_FILESEL_FILENAME | WM_FILESEL_FILES,
+		FILE_DEFAULTDISPLAY);
+
+	wm_link_append_properties_common(ot, false);
 }
 
 /* *************** recover last session **************** */
@@ -3642,6 +3722,9 @@ typedef struct {
 	StructRNA *image_id_srna;
 	float initial_value, current_value, min_value, max_value;
 	int initial_mouse[2];
+	int slow_mouse[2];
+	bool slow_mode;
+	Dial *dial;
 	unsigned int gltex;
 	ListBase orig_paintcursors;
 	bool use_secondary_tex;
@@ -3666,8 +3749,8 @@ static void radial_control_set_initial_mouse(RadialControl *rc, const wmEvent *e
 			d[0] = (1 - rc->initial_value) * WM_RADIAL_CONTROL_DISPLAY_WIDTH + WM_RADIAL_CONTROL_DISPLAY_MIN_SIZE;
 			break;
 		case PROP_ANGLE:
-			d[0] = WM_RADIAL_CONTROL_DISPLAY_SIZE * cos(rc->initial_value);
-			d[1] = WM_RADIAL_CONTROL_DISPLAY_SIZE * sin(rc->initial_value);
+			d[0] = WM_RADIAL_CONTROL_DISPLAY_SIZE * cosf(rc->initial_value);
+			d[1] = WM_RADIAL_CONTROL_DISPLAY_SIZE * sinf(rc->initial_value);
 			break;
 		default:
 			return;
@@ -4075,6 +4158,11 @@ static void radial_control_cancel(bContext *C, wmOperator *op)
 	RadialControl *rc = op->customdata;
 	wmWindowManager *wm = CTX_wm_manager(C);
 
+	if (rc->dial) {
+		MEM_freeN(rc->dial);
+		rc->dial = NULL;
+	}
+	
 	WM_paint_cursor_end(wm, rc->cursor);
 
 	/* restore original paint cursors */
@@ -4094,24 +4182,61 @@ static int radial_control_modal(bContext *C, wmOperator *op, const wmEvent *even
 {
 	RadialControl *rc = op->customdata;
 	float new_value, dist, zoom[2];
-	float delta[2], snap, ret = OPERATOR_RUNNING_MODAL;
-
+	float delta[2], ret = OPERATOR_RUNNING_MODAL;
+	bool snap;
+	float angle_precision = 0.0f;
 	/* TODO: fix hardcoded events */
 
-	snap = event->ctrl;
+	snap = event->ctrl != 0;
 
 	switch (event->type) {
 		case MOUSEMOVE:
-			delta[0] = rc->initial_mouse[0] - event->x;
-			delta[1] = rc->initial_mouse[1] - event->y;
-
-			if (rc->zoom_prop) {
-				RNA_property_float_get_array(&rc->zoom_ptr, rc->zoom_prop, zoom);
-				delta[0] /= zoom[0];
-				delta[1] /= zoom[1];
+			if (rc->slow_mode) {
+				if (rc->subtype == PROP_ANGLE) {
+					float position[2] = {event->x, event->y};
+					
+					/* calculate the initial angle here first */
+					delta[0] = rc->initial_mouse[0] - rc->slow_mouse[0];
+					delta[1] = rc->initial_mouse[1] - rc->slow_mouse[1];
+					
+					/* precision angle gets calculated from dial and gets added later */
+					angle_precision = -0.1f * BLI_dial_angle(rc->dial, position);
+				}
+				else {
+					delta[0] = rc->initial_mouse[0] - rc->slow_mouse[0];
+					delta[1] = rc->initial_mouse[1] - rc->slow_mouse[1];
+					
+					if (rc->zoom_prop) {
+						RNA_property_float_get_array(&rc->zoom_ptr, rc->zoom_prop, zoom);
+						delta[0] /= zoom[0];
+						delta[1] /= zoom[1];
+					}
+					
+					dist = len_v2(delta);
+					
+					delta[0] = event->x - rc->slow_mouse[0];
+					delta[1] = event->y - rc->slow_mouse[1];
+					
+					if (rc->zoom_prop) {
+						delta[0] /= zoom[0];
+						delta[1] /= zoom[1];
+					}
+					
+					dist = dist + 0.1f * (delta[0] + delta[1]);
+				}
 			}
+			else {
+				delta[0] = rc->initial_mouse[0] - event->x;
+				delta[1] = rc->initial_mouse[1] - event->y;
 
-			dist = len_v2(delta);
+				if (rc->zoom_prop) {
+					RNA_property_float_get_array(&rc->zoom_ptr, rc->zoom_prop, zoom);
+					delta[0] /= zoom[0];
+					delta[1] /= zoom[1];
+				}
+	
+				dist = len_v2(delta);				
+			}
 
 			/* calculate new value and apply snapping  */
 			switch (rc->subtype) {
@@ -4126,7 +4251,10 @@ static int radial_control_modal(bContext *C, wmOperator *op, const wmEvent *even
 					if (snap) new_value = ((int)ceil(new_value * 10.f) * 10.0f) / 100.f;
 					break;
 				case PROP_ANGLE:
-					new_value = atan2(delta[1], delta[0]) + M_PI;
+					new_value = atan2f(delta[1], delta[0]) + M_PI + angle_precision;
+					new_value = fmod(new_value, 2.0f * (float)M_PI);
+					if (new_value < 0.0f)
+						new_value += 2.0f * (float)M_PI;
 					if (snap) new_value = DEG2RADF(((int)RAD2DEGF(new_value) + 5) / 10 * 10);
 					break;
 				default:
@@ -4153,6 +4281,29 @@ static int radial_control_modal(bContext *C, wmOperator *op, const wmEvent *even
 			RNA_property_update(C, &rc->ptr, rc->prop);
 			ret = OPERATOR_FINISHED;
 			break;
+			
+		case LEFTSHIFTKEY:
+		case RIGHTSHIFTKEY:
+			if (event->val == KM_PRESS) {
+				rc->slow_mouse[0] = event->x;
+				rc->slow_mouse[1] = event->y;
+				rc->slow_mode = true;
+				if (rc->subtype == PROP_ANGLE) {
+					float initial_position[2] = {UNPACK2(rc->initial_mouse)};
+					float current_position[2] = {UNPACK2(rc->slow_mouse)};
+					rc->dial = BLI_dial_initialize(initial_position, 0.0f);
+					/* immediately set the position to get a an initial direction */
+					BLI_dial_angle(rc->dial, current_position);
+				}
+			}
+			if (event->val == KM_RELEASE) {
+				rc->slow_mode = false;
+				if (rc->dial) {
+					MEM_freeN(rc->dial);
+					rc->dial = NULL;
+				}
+			}
+			break;
 	}
 
 	ED_region_tag_redraw(CTX_wm_region(C));
@@ -4165,8 +4316,6 @@ static int radial_control_modal(bContext *C, wmOperator *op, const wmEvent *even
 
 static void WM_OT_radial_control(wmOperatorType *ot)
 {
-	PropertyRNA *prop;
-
 	ot->name = "Radial Control";
 	ot->idname = "WM_OT_radial_control";
 	ot->description = "Set some size property (like e.g. brush size) with mouse wheel";
@@ -4178,32 +4327,23 @@ static void WM_OT_radial_control(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_BLOCKING;
 
 	/* all paths relative to the context */
-	prop = RNA_def_string(ot->srna, "data_path_primary", NULL, 0, "Primary Data Path", "Primary path of property to be set by the radial control");
-	RNA_def_property_flag(prop, PROP_HIDDEN);
+	RNA_def_string(ot->srna, "data_path_primary", NULL, 0, "Primary Data Path", "Primary path of property to be set by the radial control");
 
-	prop = RNA_def_string(ot->srna, "data_path_secondary", NULL, 0, "Secondary Data Path", "Secondary path of property to be set by the radial control");
-	RNA_def_property_flag(prop, PROP_HIDDEN);
+	RNA_def_string(ot->srna, "data_path_secondary", NULL, 0, "Secondary Data Path", "Secondary path of property to be set by the radial control");
 
-	prop = RNA_def_string(ot->srna, "use_secondary", NULL, 0, "Use Secondary", "Path of property to select between the primary and secondary data paths");
-	RNA_def_property_flag(prop, PROP_HIDDEN);
+	RNA_def_string(ot->srna, "use_secondary", NULL, 0, "Use Secondary", "Path of property to select between the primary and secondary data paths");
 
-	prop = RNA_def_string(ot->srna, "rotation_path", NULL, 0, "Rotation Path", "Path of property used to rotate the texture display");
-	RNA_def_property_flag(prop, PROP_HIDDEN);
+	RNA_def_string(ot->srna, "rotation_path", NULL, 0, "Rotation Path", "Path of property used to rotate the texture display");
 
-	prop = RNA_def_string(ot->srna, "color_path", NULL, 0, "Color Path", "Path of property used to set the color of the control");
-	RNA_def_property_flag(prop, PROP_HIDDEN);
+	RNA_def_string(ot->srna, "color_path", NULL, 0, "Color Path", "Path of property used to set the color of the control");
 
-	prop = RNA_def_string(ot->srna, "fill_color_path", NULL, 0, "Fill Color Path", "Path of property used to set the fill color of the control");
-	RNA_def_property_flag(prop, PROP_HIDDEN);
+	RNA_def_string(ot->srna, "fill_color_path", NULL, 0, "Fill Color Path", "Path of property used to set the fill color of the control");
 
-	prop = RNA_def_string(ot->srna, "zoom_path", NULL, 0, "Zoom Path", "Path of property used to set the zoom level for the control");
-	RNA_def_property_flag(prop, PROP_HIDDEN);
+	RNA_def_string(ot->srna, "zoom_path", NULL, 0, "Zoom Path", "Path of property used to set the zoom level for the control");
 
-	prop = RNA_def_string(ot->srna, "image_id", NULL, 0, "Image ID", "Path of ID that is used to generate an image for the control");
-	RNA_def_property_flag(prop, PROP_HIDDEN);
+	RNA_def_string(ot->srna, "image_id", NULL, 0, "Image ID", "Path of ID that is used to generate an image for the control");
 
-	prop = RNA_def_boolean(ot->srna, "secondary_tex", 0, "Secondary Texture", "Tweak brush secondary/mask texture");
-	RNA_def_property_flag(prop, PROP_HIDDEN);
+	RNA_def_boolean(ot->srna, "secondary_tex", 0, "Secondary Texture", "Tweak brush secondary/mask texture");
 }
 
 /* ************************** timer for testing ***************** */
@@ -4214,6 +4354,7 @@ static void redraw_timer_window_swap(bContext *C)
 {
 	wmWindow *win = CTX_wm_window(C);
 	ScrArea *sa;
+	CTX_wm_menu_set(C, NULL);
 
 	for (sa = CTX_wm_screen(C)->areabase.first; sa; sa = sa->next)
 		ED_area_tag_redraw(sa);
@@ -4252,7 +4393,8 @@ static int redraw_timer_exec(bContext *C, wmOperator *op)
 		}
 		else if (type == 1) {
 			wmWindow *win = CTX_wm_window(C);
-			
+			CTX_wm_menu_set(C, NULL);
+		
 			ED_region_tag_redraw(ar);
 			wm_draw_update(C);
 			
@@ -4265,6 +4407,8 @@ static int redraw_timer_exec(bContext *C, wmOperator *op)
 			ScrArea *sa_back = CTX_wm_area(C);
 			ARegion *ar_back = CTX_wm_region(C);
 
+			CTX_wm_menu_set(C, NULL);
+			
 			for (sa = CTX_wm_screen(C)->areabase.first; sa; sa = sa->next) {
 				ARegion *ar_iter;
 				CTX_wm_area_set(C, sa);
@@ -4425,7 +4569,8 @@ void wm_operatortype_init(void)
 	WM_operatortype_append(WM_OT_quit_blender);
 	WM_operatortype_append(WM_OT_open_mainfile);
 	WM_operatortype_append(WM_OT_revert_mainfile);
-	WM_operatortype_append(WM_OT_link_append);
+	WM_operatortype_append(WM_OT_link);
+	WM_operatortype_append(WM_OT_append);
 	WM_operatortype_append(WM_OT_recover_last_session);
 	WM_operatortype_append(WM_OT_recover_auto_save);
 	WM_operatortype_append(WM_OT_save_as_mainfile);
@@ -4438,6 +4583,7 @@ void wm_operatortype_init(void)
 	WM_operatortype_append(WM_OT_splash);
 	WM_operatortype_append(WM_OT_search_menu);
 	WM_operatortype_append(WM_OT_call_menu);
+	WM_operatortype_append(WM_OT_call_menu_pie);
 	WM_operatortype_append(WM_OT_radial_control);
 #if defined(WIN32)
 	WM_operatortype_append(WM_OT_console_toggle);
@@ -4651,10 +4797,8 @@ void wm_window_keymap(wmKeyConfig *keyconf)
 	WM_keymap_add_menu(keymap, "INFO_MT_file_open_recent", OKEY, KM_PRESS, KM_SHIFT | KM_CTRL, 0);
 	WM_keymap_add_item(keymap, "WM_OT_open_mainfile", OKEY, KM_PRESS, KM_CTRL, 0);
 	WM_keymap_add_item(keymap, "WM_OT_open_mainfile", F1KEY, KM_PRESS, 0, 0);
-	WM_keymap_add_item(keymap, "WM_OT_link_append", OKEY, KM_PRESS, KM_CTRL | KM_ALT, 0);
-	kmi = WM_keymap_add_item(keymap, "WM_OT_link_append", F1KEY, KM_PRESS, KM_SHIFT, 0);
-	RNA_boolean_set(kmi->ptr, "link", false);
-	RNA_boolean_set(kmi->ptr, "instance_groups", false);
+	WM_keymap_add_item(keymap, "WM_OT_link", OKEY, KM_PRESS, KM_CTRL | KM_ALT, 0);
+	WM_keymap_add_item(keymap, "WM_OT_append", F1KEY, KM_PRESS, KM_SHIFT, 0);
 
 	WM_keymap_add_item(keymap, "WM_OT_save_mainfile", SKEY, KM_PRESS, KM_CTRL, 0);
 	WM_keymap_add_item(keymap, "WM_OT_save_mainfile", WKEY, KM_PRESS, KM_CTRL, 0);

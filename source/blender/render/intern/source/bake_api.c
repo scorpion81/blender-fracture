@@ -120,7 +120,7 @@ static void store_bake_pixel(void *handle, int x, int y, float u, float v)
 	BakePixel *pixel;
 
 	const int width = bd->bk_image->width;
-	const int offset = bd->bk_image->offset;
+	const size_t offset = bd->bk_image->offset;
 	const int i = offset + y * width + x;
 
 	pixel = &bd->pixel_array[i];
@@ -134,9 +134,9 @@ static void store_bake_pixel(void *handle, int x, int y, float u, float v)
 	pixel->dv_dy = bd->dv_dy;
 }
 
-void RE_bake_mask_fill(const BakePixel pixel_array[], const int num_pixels, char *mask)
+void RE_bake_mask_fill(const BakePixel pixel_array[], const size_t num_pixels, char *mask)
 {
-	int i;
+	size_t i;
 	if (!mask)
 		return;
 
@@ -356,7 +356,7 @@ static void mesh_calc_tri_tessface(
 	MFace *mface;
 	MVert *mvert;
 	TSpace *tspace;
-	float *precomputed_normals;
+	float *precomputed_normals = NULL;
 	bool calculate_normal;
 
 	mface = CustomData_get_layer(&me->fdata, CD_MFACE);
@@ -379,7 +379,7 @@ static void mesh_calc_tri_tessface(
 	p_id = -1;
 	for (i = 0; i < me->totface; i++) {
 		MFace *mf = &mface[i];
-		TSpace *ts = &tspace[i * 4];
+		TSpace *ts = tangent ? &tspace[i * 4] : NULL;
 
 		p_id++;
 
@@ -438,10 +438,10 @@ static void mesh_calc_tri_tessface(
 
 bool RE_bake_pixels_populate_from_objects(
         struct Mesh *me_low, BakePixel pixel_array_from[],
-        BakeHighPolyData highpoly[], const int tot_highpoly, const int num_pixels, const bool is_custom_cage,
+        BakeHighPolyData highpoly[], const int tot_highpoly, const size_t num_pixels, const bool is_custom_cage,
         const float cage_extrusion, float mat_low[4][4], float mat_cage[4][4], struct Mesh *me_cage)
 {
-	int i;
+	size_t i;
 	int primitive_id;
 	float u, v;
 	float imat_low [4][4];
@@ -461,7 +461,7 @@ bool RE_bake_pixels_populate_from_objects(
 	tris_high = MEM_callocN(sizeof(TriTessFace *) * tot_highpoly, "MVerts Highpoly Mesh Array");
 
 	/* assume all highpoly tessfaces are triangles */
-	dm_highpoly = MEM_callocN(sizeof(DerivedMesh *) * tot_highpoly, "Highpoly Derived Meshes");
+	dm_highpoly = MEM_mallocN(sizeof(DerivedMesh *) * tot_highpoly, "Highpoly Derived Meshes");
 	treeData = MEM_callocN(sizeof(BVHTreeFromMesh) * tot_highpoly, "Highpoly BVH Trees");
 
 	if (!is_cage) {
@@ -594,11 +594,11 @@ static void bake_differentials(BakeDataZSpan *bd, const float *uv1, const float 
 
 void RE_bake_pixels_populate(
         Mesh *me, BakePixel pixel_array[],
-        const int num_pixels, const BakeImages *bake_images, const char *uv_layer)
+        const size_t num_pixels, const BakeImages *bake_images, const char *uv_layer)
 {
 	BakeDataZSpan bd;
-	int i, a;
-	int p_id;
+	size_t i;
+	int a, p_id;
 
 	MTFace *mtface;
 	MFace *mface;
@@ -725,11 +725,11 @@ static void normal_compress(float out[3], const float in[3], const BakeNormalSwi
  * This function converts an object space normal map to a tangent space normal map for a given low poly mesh
  */
 void RE_bake_normal_world_to_tangent(
-        const BakePixel pixel_array[], const int num_pixels, const int depth,
+        const BakePixel pixel_array[], const size_t num_pixels, const int depth,
         float result[], Mesh *me, const BakeNormalSwizzle normal_swizzle[3],
         float mat[4][4])
 {
-	int i;
+	size_t i;
 
 	TriTessFace *triangles;
 
@@ -756,7 +756,7 @@ void RE_bake_normal_world_to_tangent(
 		float tsm[3][3]; /* tangent space matrix */
 		float itsm[3][3];
 
-		int offset;
+		size_t offset;
 		float nor[3]; /* texture normal */
 
 		bool is_smooth;
@@ -834,16 +834,16 @@ void RE_bake_normal_world_to_tangent(
 }
 
 void RE_bake_normal_world_to_object(
-        const BakePixel pixel_array[], const int num_pixels, const int depth,
+        const BakePixel pixel_array[], const size_t num_pixels, const int depth,
         float result[], struct Object *ob, const BakeNormalSwizzle normal_swizzle[3])
 {
-	int i;
+	size_t i;
 	float iobmat[4][4];
 
 	invert_m4_m4(iobmat, ob->obmat);
 
 	for (i = 0; i < num_pixels; i++) {
-		int offset;
+		size_t offset;
 		float nor[3];
 
 		if (pixel_array[i].primitive_id == -1)
@@ -862,13 +862,13 @@ void RE_bake_normal_world_to_object(
 }
 
 void RE_bake_normal_world_to_world(
-        const BakePixel pixel_array[], const int num_pixels, const int depth,
+        const BakePixel pixel_array[], const size_t num_pixels, const int depth,
         float result[], const BakeNormalSwizzle normal_swizzle[3])
 {
-	int i;
+	size_t i;
 
 	for (i = 0; i < num_pixels; i++) {
-		int offset;
+		size_t offset;
 		float nor[3];
 
 		if (pixel_array[i].primitive_id == -1)
@@ -908,12 +908,12 @@ void RE_bake_ibuf_clear(Image *image, const bool is_tangent)
 /**
  * not the real UV, but the internal per-face UV instead
  * I'm using it to test if everything is correct */
-static bool bake_uv(const BakePixel pixel_array[], const int num_pixels, const int depth, float result[])
+static bool bake_uv(const BakePixel pixel_array[], const size_t num_pixels, const int depth, float result[])
 {
-	int i;
+	size_t i;
 
 	for (i=0; i < num_pixels; i++) {
-		int offset = i * depth;
+		size_t offset = i * depth;
 		copy_v2_v2(&result[offset], pixel_array[i].uv);
 	}
 
@@ -922,7 +922,7 @@ static bool bake_uv(const BakePixel pixel_array[], const int num_pixels, const i
 
 bool RE_bake_internal(
         Render *UNUSED(re), Object *UNUSED(object), const BakePixel pixel_array[],
-        const int num_pixels, const int depth, const ScenePassType pass_type, float result[])
+        const size_t num_pixels, const int depth, const ScenePassType pass_type, float result[])
 {
 	switch (pass_type) {
 		case SCE_PASS_UV:

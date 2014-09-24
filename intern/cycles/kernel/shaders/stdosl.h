@@ -507,12 +507,8 @@ closure color hair_transmission(normal N, float roughnessu, float roughnessv, ve
 closure color henyey_greenstein(float g) BUILTIN;
 closure color absorption() BUILTIN;
 
-// Backwards compatibility
-closure color bssrdf_cubic(normal N, vector radius) BUILTIN;
-closure color bssrdf_gaussian(normal N, vector radius) BUILTIN;
-closure color specular_toon(normal N, float size, float smooth) BUILTIN;
-
 // Renderer state
+int backfacing () BUILTIN;
 int raytype (string typename) BUILTIN;
 // the individual 'isFOOray' functions are deprecated
 int iscameraray () { return raytype("camera"); }

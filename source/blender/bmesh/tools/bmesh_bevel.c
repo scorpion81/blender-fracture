@@ -1631,7 +1631,7 @@ static void build_boundary(BevelParams *bp, BevVert *bv, bool construct)
  * corresponding ones that changed on the other end.
  * The graph is dynamic in the sense that having an offset that
  * doesn't meet the user spec can be added as the search proceeds.
- * We want this search to be deterministic (not dependendent
+ * We want this search to be deterministic (not dependent
  * on order of processing through hash table), so as to avoid
  * flicker to to different decisions made if search is different
  * while dragging the offset number in the UI.  So look for the
@@ -1869,7 +1869,7 @@ static float sabin_gamma(int n)
 		k2 = k * k;
 		k4 = k2 * k2;
 		k6 = k4 * k2;
-		y = pow(1.73205080756888 * sqrt(64.0 * k6 - 144.0 * k4 + 135.0 * k2 - 27.0) + 9.0 * k,
+		y = pow(M_SQRT3 * sqrt(64.0 * k6 - 144.0 * k4 + 135.0 * k2 - 27.0) + 9.0 * k,
 		        1.0 / 3.0);
 		x = 0.480749856769136 * y - (0.231120424783545 * (12.0 * k2 - 9.0)) / y;
 		ans = (k * x + 2.0 * k2 - 1.0) / (x * x * (k * x + 1.0));
@@ -2262,7 +2262,7 @@ static VMesh *make_cube_corner_adj_vmesh(BevelParams *bp)
 		bndv = bndv->next;
 	}
 	/* center vertex */
-	w = 0.57735027f;  /* 1/sqrt(3) */
+	w = (float)(1.0 / M_SQRT3);
 	co[0] = w;
 	co[1] = w;
 	co[2] = w;
@@ -3387,7 +3387,7 @@ static void bevel_build_edge_polygons(BMesh *bm, BevelParams *bp, BMEdge *bme)
 	VMesh *vm1, *vm2;
 	EdgeHalf *e1, *e2;
 	BMEdge *bme1, *bme2;
-	BMFace *f1, *f2, *f, *newf;
+	BMFace *f1, *f2, *f;
 	int k, nseg, i1, i2, odd, mid;
 	int mat_nr = bp->mat_nr;
 
@@ -3428,7 +3428,7 @@ static void bevel_build_edge_polygons(BMesh *bm, BevelParams *bp, BMEdge *bme)
 	vm2 = bv2->vmesh;
 
 	if (nseg == 1) {
-		newf = bev_create_quad_straddle(bm, bmv1, bmv2, bmv3, bmv4, f1, f2, mat_nr, e1->is_seam);
+		bev_create_quad_straddle(bm, bmv1, bmv2, bmv3, bmv4, f1, f2, mat_nr, e1->is_seam);
 	}
 	else {
 		bmv1i = bmv1;

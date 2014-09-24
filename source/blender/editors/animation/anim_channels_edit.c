@@ -901,10 +901,10 @@ static void rearrange_animchannels_filter_visible(ListBase *anim_data_visible, b
 {
 	ListBase anim_data = {NULL, NULL};
 	bAnimListElem *ale, *ale_next;
-    int filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_LIST_VISIBLE | ANIMFILTER_LIST_CHANNELS);
+	int filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_LIST_VISIBLE | ANIMFILTER_LIST_CHANNELS);
 	
 	/* get all visible channels */
-    ANIM_animdata_filter(ac, &anim_data, filter, ac->data, ac->datatype);
+	ANIM_animdata_filter(ac, &anim_data, filter, ac->data, ac->datatype);
 	
 	/* now, only keep the ones that are of the types we are interested in */
 	for (ale = anim_data.first; ale; ale = ale_next) {
@@ -2802,7 +2802,7 @@ static int mouse_anim_channels(bContext *C, bAnimContext *ac, int channel_index,
 				
 				/* deselect all other channels */
 				ANIM_deselect_anim_channels(ac, ac->data, ac->datatype, false, ACHANNEL_SETFLAG_CLEAR);
-				if (pchan) ED_pose_deselectall(ob, 0);
+				if (pchan) ED_pose_de_selectall(ob, SEL_DESELECT, false);
 				
 				/* only select channels in group and group itself */
 				for (fcu = agrp->channels.first; fcu && fcu->grp == agrp; fcu = fcu->next)
@@ -2812,7 +2812,7 @@ static int mouse_anim_channels(bContext *C, bAnimContext *ac, int channel_index,
 			else {
 				/* select group by itself */
 				ANIM_deselect_anim_channels(ac, ac->data, ac->datatype, false, ACHANNEL_SETFLAG_CLEAR);
-				if (pchan) ED_pose_deselectall(ob, 0);
+				if (pchan) ED_pose_de_selectall(ob, SEL_DESELECT, false);
 				
 				agrp->flag |= AGRP_SELECTED;
 			}

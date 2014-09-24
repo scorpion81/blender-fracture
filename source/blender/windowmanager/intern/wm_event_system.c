@@ -111,10 +111,13 @@ void wm_event_free(wmEvent *event)
 	if (event->customdata) {
 		if (event->customdatafree) {
 			/* note: pointer to listbase struct elsewhere */
-			if (event->custom == EVT_DATA_LISTBASE)
-				BLI_freelistN(event->customdata);
-			else
+			if (event->custom == EVT_DATA_DRAGDROP) {
+				ListBase *lb = event->customdata;
+				WM_drag_free_list(lb);
+			}
+			else {
 				MEM_freeN(event->customdata);
+			}
 		}
 	}
 
@@ -398,8 +401,12 @@ static int wm_handler_ui_call(bContext *C, wmEventHandler *handler, wmEvent *eve
 	
 	/* UI code doesn't handle return values - it just always returns break. 
 	 * to make the DBL_CLICK conversion work, we just don't send this to UI, except mouse clicks */
-	if (event->type != LEFTMOUSE && event->val == KM_DBL_CLICK)
+	if (((handler->flag & WM_HANDLER_ACCEPT_DBL_CLICK) == 0) &&
+	    (event->type != LEFTMOUSE) &&
+	    (event->val == KM_DBL_CLICK))
+	{
 		return WM_HANDLER_CONTINUE;
+	}
 	
 	/* UI is quite aggressive with swallowing events, like scrollwheel */
 	/* I realize this is not extremely nice code... when UI gets keymaps it can be maybe smarter */
@@ -1550,7 +1557,7 @@ static int wm_handler_operator_call(bContext *C, ListBase *handlers, wmEventHand
 		wmOperatorType *ot = op->type;
 
 		if (!wm_operator_check_locked_interface(C, ot)) {
-			/* Interface is locked and pperator is not allowed to run,
+			/* Interface is locked and operator is not allowed to run,
 			 * nothing to do in this case.
 			 */
 		}
@@ -1934,17 +1941,17 @@ static int wm_handlers_do_intern(bContext *C, wmEvent *event, ListBase *handlers
 					wmDropBox *drop = handler->dropboxes->first;
 					for (; drop; drop = drop->next) {
 						/* other drop custom types allowed */
-						if (event->custom == EVT_DATA_LISTBASE) {
+						if (event->custom == EVT_DATA_DRAGDROP) {
 							ListBase *lb = (ListBase *)event->customdata;
 							wmDrag *drag;
 							
 							for (drag = lb->first; drag; drag = drag->next) {
 								if (drop->poll(C, drag, event)) {
-									
 									drop->copy(drag, drop);
 									
 									/* free the drags before calling operator */
-									BLI_freelistN(event->customdata);
+									WM_drag_free_list(lb);
+
 									event->customdata = NULL;
 									event->custom = 0;
 									
@@ -2146,10 +2153,12 @@ static void wm_event_drag_test(wmWindowManager *wm, wmWindow *win, wmEvent *even
 		return;
 	}
 	
-	if (event->type == MOUSEMOVE || ISKEYMODIFIER(event->type))
+	if (event->type == MOUSEMOVE || ISKEYMODIFIER(event->type)) {
 		win->screen->do_draw_drag = true;
+	}
 	else if (event->type == ESCKEY) {
-		BLI_freelistN(&wm->drags);
+		WM_drag_free_list(&wm->drags);
+
 		win->screen->do_draw_drag = true;
 	}
 	else if (event->type == LEFTMOUSE && event->val == KM_RELEASE) {
@@ -2161,7 +2170,7 @@ static void wm_event_drag_test(wmWindowManager *wm, wmWindow *win, wmEvent *even
 				MEM_freeN(event->customdata);
 		}
 		
-		event->custom = EVT_DATA_LISTBASE;
+		event->custom = EVT_DATA_DRAGDROP;
 		event->customdata = &wm->drags;
 		event->customdatafree = 1;
 		
@@ -2558,7 +2567,7 @@ void WM_event_remove_keymap_handler(ListBase *handlers, wmKeyMap *keymap)
 wmEventHandler *WM_event_add_ui_handler(
         const bContext *C, ListBase *handlers,
         wmUIHandlerFunc ui_handle, wmUIHandlerRemoveFunc ui_remove,
-        void *userdata)
+        void *userdata, const bool accept_dbl_click)
 {
 	wmEventHandler *handler = MEM_callocN(sizeof(wmEventHandler), "event ui handler");
 	handler->ui_handle = ui_handle;
@@ -2575,6 +2584,9 @@ wmEventHandler *WM_event_add_ui_handler(
 		handler->ui_menu    = NULL;
 	}
 
+	if (accept_dbl_click) {
+		handler->flag |= WM_HANDLER_ACCEPT_DBL_CLICK;
+	}
 	
 	BLI_addhead(handlers, handler);
 	

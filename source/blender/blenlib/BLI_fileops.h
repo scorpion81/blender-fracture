@@ -62,7 +62,7 @@ int    BLI_create_symlink(const char *path, const char *to);
 
 /* keep in sync with the definition of struct direntry in BLI_fileops_types.h */
 #ifdef WIN32
-#  if (defined(_MSC_VER) && (_MSC_VER >= 1500)) || defined(__MINGW64__)
+#  if defined(_MSC_VER) || defined(__MINGW64__)
 typedef struct _stat64 BLI_stat_t;
 #  elif defined(__MINGW32__)
 typedef struct _stati64 BLI_stat_t;
@@ -101,7 +101,9 @@ int    BLI_access(const char *filename, int mode);
 bool   BLI_file_is_writable(const char *file);
 bool   BLI_file_touch(const char *file);
 
+#if 0  /* UNUSED */
 int    BLI_file_gzip(const char *from, const char *to);
+#endif
 char  *BLI_file_ungzip_to_mem(const char *from_file, int *r_size);
 
 size_t BLI_file_descriptor_size(int file);

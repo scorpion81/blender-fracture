@@ -71,8 +71,8 @@ void id_clear_lib_data(struct Main *bmain, struct ID *id);
 
 struct ListBase *which_libbase(struct Main *mainlib, short type);
 
-#define MAX_LIBARRAY    41
-int set_listbasepointers(struct Main *main, struct ListBase **lb);
+#define MAX_LIBARRAY    35
+int set_listbasepointers(struct Main *main, struct ListBase *lb[MAX_LIBARRAY]);
 
 void BKE_libblock_free(struct Main *bmain, void *idv);
 void BKE_libblock_free_ex(struct Main *bmain, void *idv, bool do_id_user);
@@ -104,6 +104,7 @@ void test_idbutton(char *name);
 
 void BKE_library_make_local(struct Main *bmain, struct Library *lib, bool untagged_only);
 
+struct ID *BKE_libblock_find_name_ex(struct Main *bmain, const short type, const char *name) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
 struct ID *BKE_libblock_find_name(const short type, const char *name) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
 
 void set_free_windowmanager_cb(void (*func)(struct bContext *, struct wmWindowManager *) );

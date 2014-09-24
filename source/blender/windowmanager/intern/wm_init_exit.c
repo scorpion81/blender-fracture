@@ -187,6 +187,8 @@ void WM_init(bContext *C, int argc, const char **argv)
 	(void)argv; /* unused */
 #endif
 
+	ED_spacemacros_init();
+
 	if (!G.background && !wm_start_with_console)
 		GHOST_toggleConsole(3);
 
@@ -236,6 +238,7 @@ void WM_init(bContext *C, int argc, const char **argv)
 		 *
 		 * unlikely any handlers are set but its possible,
 		 * note that recovering the last session does its own callbacks. */
+		BLI_callback_exec(CTX_data_main(C), NULL, BLI_CB_EVT_VERSION_UPDATE);
 		BLI_callback_exec(CTX_data_main(C), NULL, BLI_CB_EVT_LOAD_POST);
 	}
 }

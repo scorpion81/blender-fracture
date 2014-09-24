@@ -1919,9 +1919,12 @@ static int sequencer_separate_images_exec(bContext *C, wmOperator *op)
 				strip_new = seq_new->strip;
 				strip_new->us = 1;
 
-				/* new stripdata */
-				se_new = strip_new->stripdata;
+				/* new stripdata (only one element now!) */
+				/* Note this assume all elements (images) have the same dimension, since we only copy the name here. */
+				se_new = MEM_reallocN(strip_new->stripdata, sizeof(*se_new));
 				BLI_strncpy(se_new->name, se->name, sizeof(se_new->name));
+				strip_new->stripdata = se_new;
+
 				BKE_sequence_calc(scene, seq_new);
 
 				if (step > 1) {
@@ -2056,8 +2059,8 @@ static int sequencer_meta_make_exec(bContext *C, wmOperator *op)
 	Sequence *seq, *seqm, *next, *last_seq = BKE_sequencer_active_get(scene);
 	int channel_max = 1;
 
-	if (BKE_sequence_base_isolated_sel_check(ed->seqbasep) == false) {
-		BKE_report(op->reports, RPT_ERROR, "Please select all related strips");
+	if (BKE_sequence_base_isolated_sel_check(ed->seqbasep, false) == false) {
+		BKE_report(op->reports, RPT_ERROR, "Please select more than one or all related strips");
 		return OPERATOR_CANCELLED;
 	}
 
@@ -2764,7 +2767,7 @@ static int sequencer_copy_exec(bContext *C, wmOperator *op)
 
 	BKE_sequencer_free_clipboard();
 
-	if (BKE_sequence_base_isolated_sel_check(ed->seqbasep) == false) {
+	if (BKE_sequence_base_isolated_sel_check(ed->seqbasep, true) == false) {
 		BKE_report(op->reports, RPT_ERROR, "Please select all related strips");
 		return OPERATOR_CANCELLED;
 	}

@@ -463,14 +463,14 @@ void BLI_edgehashIterator_init(EdgeHashIterator *ehi, EdgeHash *eh)
 	ehi->curEntry = NULL;
 	ehi->curBucket = UINT_MAX;  /* wraps to zero */
 	if (eh->nentries) {
-		while (!ehi->curEntry) {
+		do {
 			ehi->curBucket++;
 			if (UNLIKELY(ehi->curBucket == ehi->eh->nbuckets)) {
 				break;
 			}
 
 			ehi->curEntry = ehi->eh->buckets[ehi->curBucket];
-		}
+		} while (!ehi->curEntry);
 	}
 }
 
@@ -620,6 +620,16 @@ bool BLI_edgeset_haskey(EdgeSet *es, unsigned int v0, unsigned int v1)
 void BLI_edgeset_free(EdgeSet *es)
 {
 	BLI_edgehash_free((EdgeHash *)es, NULL);
+}
+
+void BLI_edgeset_flag_set(EdgeSet *es, unsigned int flag)
+{
+	((EdgeHash *)es)->flag |= flag;
+}
+
+void BLI_edgeset_flag_clear(EdgeSet *es, unsigned int flag)
+{
+	((EdgeHash *)es)->flag &= ~flag;
 }
 
 /** \} */

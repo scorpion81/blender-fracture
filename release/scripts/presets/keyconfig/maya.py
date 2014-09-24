@@ -15,8 +15,8 @@ kmi = km.keymap_items.new('wm.call_menu', 'O', 'PRESS', shift=True, ctrl=True)
 kmi.properties.name = 'INFO_MT_file_open_recent'
 kmi = km.keymap_items.new('wm.open_mainfile', 'O', 'PRESS', ctrl=True)
 kmi = km.keymap_items.new('wm.open_mainfile', 'F1', 'PRESS')
-kmi = km.keymap_items.new('wm.link_append', 'O', 'PRESS', ctrl=True, alt=True)
-kmi = km.keymap_items.new('wm.link_append', 'F1', 'PRESS', shift=True)
+kmi = km.keymap_items.new('wm.link', 'O', 'PRESS', ctrl=True, alt=True)
+kmi = km.keymap_items.new('wm.append', 'F1', 'PRESS', shift=True)
 kmi.properties.link = False
 kmi.properties.instance_groups = False
 kmi = km.keymap_items.new('wm.save_mainfile', 'S', 'PRESS', ctrl=True)
@@ -1487,7 +1487,7 @@ kmi = km.keymap_items.new('node.delete_reconnect', 'X', 'PRESS', ctrl=True)
 kmi = km.keymap_items.new('node.select_all', 'A', 'PRESS', ctrl=True)
 kmi = km.keymap_items.new('node.select_linked_to', 'L', 'PRESS', shift=True)
 kmi = km.keymap_items.new('node.select_linked_from', 'L', 'PRESS')
-kmi = km.keymap_items.new('node.select_same_type', 'G', 'PRESS', shift=True)
+kmi = km.keymap_items.new('node.select_grouped', 'G', 'PRESS', shift=True)
 kmi = km.keymap_items.new('node.select_same_type_step', 'RIGHT_BRACKET', 'PRESS', shift=True)
 kmi.properties.prev = True
 kmi = km.keymap_items.new('node.select_same_type_step', 'LEFT_BRACKET', 'PRESS', shift=True)
@@ -1746,32 +1746,32 @@ kmi.properties.camera = 10
 kmi = km.keymap_items.new('sequencer.select', 'SELECTMOUSE', 'CLICK')
 kmi.properties.extend = False
 kmi.properties.linked_handle = False
-kmi.properties.left_right = False
+kmi.properties.left_right = 'NONE'
 kmi.properties.linked_time = False
 kmi = km.keymap_items.new('sequencer.select', 'SELECTMOUSE', 'CLICK', shift=True)
 kmi.properties.extend = True
 kmi.properties.linked_handle = False
-kmi.properties.left_right = False
+kmi.properties.left_right = 'NONE'
 kmi.properties.linked_time = False
 kmi = km.keymap_items.new('sequencer.select', 'SELECTMOUSE', 'PRESS', alt=True)
 kmi.properties.extend = False
 kmi.properties.linked_handle = True
-kmi.properties.left_right = False
+kmi.properties.left_right = 'NONE'
 kmi.properties.linked_time = False
 kmi = km.keymap_items.new('sequencer.select', 'SELECTMOUSE', 'CLICK', shift=True, alt=True)
 kmi.properties.extend = True
 kmi.properties.linked_handle = True
-kmi.properties.left_right = False
+kmi.properties.left_right = 'NONE'
 kmi.properties.linked_time = False
 kmi = km.keymap_items.new('sequencer.select', 'SELECTMOUSE', 'PRESS', ctrl=True)
 kmi.properties.extend = False
 kmi.properties.linked_handle = False
-kmi.properties.left_right = True
+kmi.properties.left_right = 'MOUSE'
 kmi.properties.linked_time = True
 kmi = km.keymap_items.new('sequencer.select', 'SELECTMOUSE', 'PRESS', shift=True, ctrl=True)
 kmi.properties.extend = True
 kmi.properties.linked_handle = False
-kmi.properties.left_right = False
+kmi.properties.left_right = 'NONE'
 kmi.properties.linked_time = True
 kmi = km.keymap_items.new('sequencer.select_more', 'PERIOD', 'PRESS', shift=True)
 kmi = km.keymap_items.new('sequencer.select_less', 'COMMA', 'PRESS', shift=True)

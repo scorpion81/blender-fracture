@@ -73,8 +73,8 @@ public:
 	void mem_alloc(device_memory& mem, MemoryType type)
 	{
 		mem.device_pointer = mem.data_pointer;
-
-		stats.mem_alloc(mem.memory_size());
+		mem.device_size = mem.memory_size();
+		stats.mem_alloc(mem.device_size);
 	}
 
 	void mem_copy_to(device_memory& mem)
@@ -94,9 +94,11 @@ public:
 
 	void mem_free(device_memory& mem)
 	{
-		mem.device_pointer = 0;
-
-		stats.mem_free(mem.memory_size());
+		if(mem.device_pointer) {
+			mem.device_pointer = 0;
+			stats.mem_free(mem.device_size);
+			mem.device_size = 0;
+		}
 	}
 
 	void const_copy_to(const char *name, void *host, size_t size)
@@ -108,15 +110,17 @@ public:
 	{
 		kernel_tex_copy(&kernel_globals, name, mem.data_pointer, mem.data_width, mem.data_height, mem.data_depth, interpolation);
 		mem.device_pointer = mem.data_pointer;
-
-		stats.mem_alloc(mem.memory_size());
+		mem.device_size = mem.memory_size();
+		stats.mem_alloc(mem.device_size);
 	}
 
 	void tex_free(device_memory& mem)
 	{
-		mem.device_pointer = 0;
-
-		stats.mem_free(mem.memory_size());
+		if(mem.device_pointer) {
+			mem.device_pointer = 0;
+			stats.mem_free(mem.device_size);
+			mem.device_size = 0;
+		}
 	}
 
 	void *osl_memory()
@@ -185,7 +189,7 @@ public:
 
 					tile.sample = sample + 1;
 
-					task.update_progress(tile);
+					task.update_progress(&tile);
 				}
 			}
 			else
@@ -207,7 +211,7 @@ public:
 
 					tile.sample = sample + 1;
 
-					task.update_progress(tile);
+					task.update_progress(&tile);
 				}
 			}
 			else
@@ -229,7 +233,7 @@ public:
 
 					tile.sample = sample + 1;
 
-					task.update_progress(tile);
+					task.update_progress(&tile);
 				}
 			}
 			else
@@ -251,7 +255,7 @@ public:
 
 					tile.sample = sample + 1;
 
-					task.update_progress(tile);
+					task.update_progress(&tile);
 				}
 			}
 			else
@@ -273,7 +277,7 @@ public:
 
 					tile.sample = sample + 1;
 
-					task.update_progress(tile);
+					task.update_progress(&tile);
 				}
 			}
 			else
@@ -294,7 +298,7 @@ public:
 
 					tile.sample = sample + 1;
 
-					task.update_progress(tile);
+					task.update_progress(&tile);
 				}
 			}
 
@@ -433,77 +437,103 @@ public:
 
 #ifdef WITH_CYCLES_OPTIMIZED_KERNEL_AVX2
 		if(system_cpu_support_avx2()) {
-			for(int x = task.shader_x; x < task.shader_x + task.shader_w; x++) {
-				for(int sample = 0; sample < task.num_samples; sample++)
-					kernel_cpu_avx2_shader(&kg, (uint4*)task.shader_input, (float4*)task.shader_output, task.shader_eval_type, x, sample);
+			for(int sample = 0; sample < task.num_samples; sample++) {
+				for(int x = task.shader_x; x < task.shader_x + task.shader_w; x++)
+					kernel_cpu_avx2_shader(&kg, (uint4*)task.shader_input, (float4*)task.shader_output,
+					    task.shader_eval_type, x, task.offset, sample);
 
 				if(task.get_cancel() || task_pool.canceled())
 					break;
+
+				task.update_progress(NULL);
 			}
 		}
 		else
 #endif
 #ifdef WITH_CYCLES_OPTIMIZED_KERNEL_AVX
 		if(system_cpu_support_avx()) {
-			for(int x = task.shader_x; x < task.shader_x + task.shader_w; x++) {
-				for(int sample = 0; sample < task.num_samples; sample++)
-					kernel_cpu_avx_shader(&kg, (uint4*)task.shader_input, (float4*)task.shader_output, task.shader_eval_type, x, sample);
+			for(int sample = 0; sample < task.num_samples; sample++) {
+				for(int x = task.shader_x; x < task.shader_x + task.shader_w; x++)
+					kernel_cpu_avx_shader(&kg, (uint4*)task.shader_input, (float4*)task.shader_output,
+					    task.shader_eval_type, x, task.offset, sample);
 
 				if(task.get_cancel() || task_pool.canceled())
 					break;
+
+				task.update_progress(NULL);
 			}
 		}
 		else
 #endif
 #ifdef WITH_CYCLES_OPTIMIZED_KERNEL_SSE41			
 		if(system_cpu_support_sse41()) {
-			for(int x = task.shader_x; x < task.shader_x + task.shader_w; x++) {
-				for(int sample = 0; sample < task.num_samples; sample++)
-					kernel_cpu_sse41_shader(&kg, (uint4*)task.shader_input, (float4*)task.shader_output, task.shader_eval_type, x, sample);
+			for(int sample = 0; sample < task.num_samples; sample++) {
+				for(int x = task.shader_x; x < task.shader_x + task.shader_w; x++)
+					kernel_cpu_sse41_shader(&kg, (uint4*)task.shader_input, (float4*)task.shader_output,
+					    task.shader_eval_type, x, task.offset, sample);
 
 				if(task.get_cancel() || task_pool.canceled())
 					break;
+
+				task.update_progress(NULL);
 			}
 		}
 		else
 #endif
 #ifdef WITH_CYCLES_OPTIMIZED_KERNEL_SSE3
 		if(system_cpu_support_sse3()) {
-			for(int x = task.shader_x; x < task.shader_x + task.shader_w; x++) {
-				for(int sample = 0; sample < task.num_samples; sample++)
-					kernel_cpu_sse3_shader(&kg, (uint4*)task.shader_input, (float4*)task.shader_output, task.shader_eval_type, x, sample);
+			for(int sample = 0; sample < task.num_samples; sample++) {
+				for(int x = task.shader_x; x < task.shader_x + task.shader_w; x++)
+					kernel_cpu_sse3_shader(&kg, (uint4*)task.shader_input, (float4*)task.shader_output,
+					    task.shader_eval_type, x, task.offset, sample);
 
 				if(task.get_cancel() || task_pool.canceled())
 					break;
+
+				task.update_progress(NULL);
 			}
 		}
 		else
 #endif
 #ifdef WITH_CYCLES_OPTIMIZED_KERNEL_SSE2
 		if(system_cpu_support_sse2()) {
-			for(int x = task.shader_x; x < task.shader_x + task.shader_w; x++) {
-				for(int sample = 0; sample < task.num_samples; sample++)
-					kernel_cpu_sse2_shader(&kg, (uint4*)task.shader_input, (float4*)task.shader_output, task.shader_eval_type, x, sample);
+			for(int sample = 0; sample < task.num_samples; sample++) {
+				for(int x = task.shader_x; x < task.shader_x + task.shader_w; x++)
+					kernel_cpu_sse2_shader(&kg, (uint4*)task.shader_input, (float4*)task.shader_output,
+					    task.shader_eval_type, x, task.offset, sample);
 
 				if(task.get_cancel() || task_pool.canceled())
 					break;
+
+				task.update_progress(NULL);
 			}
 		}
 		else
 #endif
 		{
-			for(int x = task.shader_x; x < task.shader_x + task.shader_w; x++) {
-				for(int sample = 0; sample < task.num_samples; sample++)
-					kernel_cpu_shader(&kg, (uint4*)task.shader_input, (float4*)task.shader_output, task.shader_eval_type, x, sample);
+			for(int sample = 0; sample < task.num_samples; sample++) {
+				for(int x = task.shader_x; x < task.shader_x + task.shader_w; x++)
+					kernel_cpu_shader(&kg, (uint4*)task.shader_input, (float4*)task.shader_output,
+					    task.shader_eval_type, x, task.offset, sample);
 
 				if(task.get_cancel() || task_pool.canceled())
 					break;
+
+				task.update_progress(NULL);
 			}
 		}
 
 #ifdef WITH_OSL
 		OSLShader::thread_free(&kg);
 #endif
+	}
+
+	int get_split_task_count(DeviceTask& task)
+	{
+		if (task.type == DeviceTask::SHADER)
+			return task.get_subtask_count(TaskScheduler::num_threads(), 256);
+		else
+			return task.get_subtask_count(TaskScheduler::num_threads());
 	}
 
 	void task_add(DeviceTask& task)

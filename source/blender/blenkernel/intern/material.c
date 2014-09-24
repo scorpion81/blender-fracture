@@ -63,6 +63,7 @@
 #include "BKE_main.h"
 #include "BKE_material.h"
 #include "BKE_mesh.h"
+#include "BKE_scene.h"
 #include "BKE_node.h"
 #include "BKE_curve.h"
 
@@ -110,6 +111,9 @@ void BKE_material_free_ex(Material *ma, bool do_id_user)
 		ntreeFreeTree_ex(ma->nodetree, do_id_user);
 		MEM_freeN(ma->nodetree);
 	}
+
+	if (ma->texpaintslot)
+		MEM_freeN(ma->texpaintslot);
 
 	if (ma->gpumaterial.first)
 		GPU_material_free(ma);
@@ -269,7 +273,8 @@ Material *localize_material(Material *ma)
 	
 	if (ma->ramp_col) man->ramp_col = MEM_dupallocN(ma->ramp_col);
 	if (ma->ramp_spec) man->ramp_spec = MEM_dupallocN(ma->ramp_spec);
-	
+
+	man->texpaintslot = NULL;
 	man->preview = NULL;
 	
 	if (ma->nodetree)
@@ -1301,6 +1306,124 @@ bool object_remove_material_slot(Object *ob)
 	return true;
 }
 
+static bool get_mtex_slot_valid_texpaint(struct MTex *mtex)
+{
+	return (mtex && (mtex->texco == TEXCO_UV) &&
+	        mtex->tex && (mtex->tex->type == TEX_IMAGE) &&
+	        mtex->tex->ima);
+}
+
+void BKE_texpaint_slot_refresh_cache(Scene *scene, Material *ma)
+{
+	MTex **mtex;
+	short count = 0;
+	short index = 0, i;
+
+	bool use_nodes = BKE_scene_use_new_shading_nodes(scene);
+	bool is_bi = BKE_scene_uses_blender_internal(scene);
+	
+	if (!ma)
+		return;
+
+	if (ma->texpaintslot) {
+		MEM_freeN(ma->texpaintslot);
+		ma->tot_slots = 0;
+		ma->texpaintslot = NULL;
+	}
+
+	if (scene->toolsettings->imapaint.mode == IMAGEPAINT_MODE_IMAGE) {
+		ma->paint_active_slot = 0;
+		ma->paint_clone_slot = 0;
+		return;
+	}
+	
+	if (use_nodes || ma->use_nodes) {
+		bNode *node, *active_node;
+
+		if (!(ma->nodetree)) {
+			ma->paint_active_slot = 0;
+			ma->paint_clone_slot = 0;
+			return;
+		}
+
+		for (node = ma->nodetree->nodes.first; node; node = node->next) {
+			if (node->typeinfo->nclass == NODE_CLASS_TEXTURE && node->typeinfo->type == SH_NODE_TEX_IMAGE && node->id)
+				count++;
+		}
+
+		if (count == 0) {
+			ma->paint_active_slot = 0;
+			ma->paint_clone_slot = 0;
+			return;
+		}
+		ma->texpaintslot = MEM_callocN(sizeof(*ma->texpaintslot) * count, "texpaint_slots");
+
+		active_node = nodeGetActiveTexture(ma->nodetree);
+
+		for (node = ma->nodetree->nodes.first; node; node = node->next) {
+			if (node->typeinfo->nclass == NODE_CLASS_TEXTURE && node->typeinfo->type == SH_NODE_TEX_IMAGE && node->id) {
+				if (active_node == node)
+					ma->paint_active_slot = index;
+				ma->texpaintslot[index++].ima = (Image *)node->id;
+			}
+		}
+	}
+	else if (is_bi) {
+		for (mtex = ma->mtex, i = 0; i < MAX_MTEX; i++, mtex++) {
+			if (get_mtex_slot_valid_texpaint(*mtex)) {
+				count++;
+			}
+		}
+
+		if (count == 0) {
+			ma->paint_active_slot = 0;
+			ma->paint_clone_slot = 0;
+			return;
+		}
+
+		ma->texpaintslot = MEM_callocN(sizeof(*ma->texpaintslot) * count, "texpaint_slots");
+
+		for (mtex = ma->mtex, i = 0; i < MAX_MTEX; i++, mtex++) {
+			if (get_mtex_slot_valid_texpaint(*mtex)) {
+				ma->texpaintslot[index].ima = (*mtex)->tex->ima;
+				ma->texpaintslot[index].uvname = (*mtex)->uvname;
+				ma->texpaintslot[index].index = i;
+				
+				index++;
+			}
+		}
+	}
+	else {
+		ma->paint_active_slot = 0;
+		ma->paint_clone_slot = 0;
+		return;
+	}	
+
+
+	ma->tot_slots = count;
+	
+	
+	if (ma->paint_active_slot >= count) {
+		ma->paint_active_slot = count - 1;
+	}
+
+	if (ma->paint_clone_slot >= count) {
+		ma->paint_clone_slot = count - 1;
+	}
+
+	return;
+}
+
+void BKE_texpaint_slots_refresh_object(Scene *scene, struct Object *ob)
+{
+	int i;
+
+	for (i = 1; i < ob->totcol + 1; i++) {
+		Material *ma = give_current_material(ob, i);
+		BKE_texpaint_slot_refresh_cache(scene, ma);
+	}
+}
+
 
 /* r_col = current value, col = new value, (fac == 0) is no change */
 void ramp_blend(int type, float r_col[3], const float fac, const float col[3])
@@ -1573,7 +1696,7 @@ void copy_matcopybuf(Material *ma)
 			matcopybuf.mtex[a] = MEM_dupallocN(mtex);
 		}
 	}
-	matcopybuf.nodetree = ntreeCopyTree_ex(ma->nodetree, false);
+	matcopybuf.nodetree = ntreeCopyTree_ex(ma->nodetree, G.main, false);
 	matcopybuf.preview = NULL;
 	BLI_listbase_clear(&matcopybuf.gpumaterial);
 	matcopied = 1;
@@ -1626,7 +1749,7 @@ void paste_matcopybuf(Material *ma)
 		}
 	}
 
-	ma->nodetree = ntreeCopyTree_ex(matcopybuf.nodetree, false);
+	ma->nodetree = ntreeCopyTree_ex(matcopybuf.nodetree, G.main, false);
 }
 
 
