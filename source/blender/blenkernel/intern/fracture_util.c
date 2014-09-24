@@ -23,11 +23,11 @@
  * Contributor(s): Martin Felke
  *
  * ***** END GPL LICENSE BLOCK *****
- * CSG operations.
  */
 
 /** \file blender/blenkernel/intern/fracture_util.c
  *  \ingroup blenkernel
+ *  \brief CSG operations
  */
 
 //#include "stdbool.h"
