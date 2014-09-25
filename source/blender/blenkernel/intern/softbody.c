@@ -169,11 +169,6 @@ typedef struct  SB_thread_context {
 
 static float SoftHeunTol = 1.0f; /* humm .. this should be calculated from sb parameters and sizes */
 
-// Kai's code
-#define demStatLen 1000
-static unsigned char demName[demStatLen][32];
-int *demVdatIdx[demStatLen];		// stores connection data from each point to each point of the SB as indices
-
 /* local prototypes */
 static void free_softbody_intern(SoftBody *sb);
 /* aye this belongs to arith.c */
@@ -2174,9 +2169,6 @@ static void sb_spring_force(Object *ob, int bpi, BodySpring *bs, float iks, floa
 	}
 }
 
-// Kai's Code
-const int maxConnections = 40;	// Maximum connection index per spring node
-
 /* since this is definitely the most CPU consuming task here .. try to spread it */
 /* core function _softbody_calc_forces_slice_in_a_thread */
 /* result is int to be able to flag user break */
@@ -2232,7 +2224,7 @@ static int _softbody_calc_forces_slice_in_a_thread(Scene *scene, Object *ob, flo
 				/* mathematically it is completly nuts, but performance is pretty much (3) times faster */
 				if ((ABS(def[0]) > compare) || (ABS(def[1]) > compare) || (ABS(def[2]) > compare)) continue;
 				distance = normalize_v3(def);
-				if (distance < compare && distance > compare /2){	// skip also overlapping body points by using a minimum distance (demolition)
+				if (distance < compare){	// skip also overlapping body points by using a minimum distance (demolition)
 					/* exclude body points attached with a spring */
 					attached = 0;
 					for (b=obp->nofsprings;b>0;b--) {
