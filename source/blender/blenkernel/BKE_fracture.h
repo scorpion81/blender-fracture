@@ -63,8 +63,8 @@ typedef struct FracPoint {
 } FracPoint;
 
 typedef struct FracPointCloud {
-	struct FracPoint *points;	// just a bunch of positions in space
-	int totpoints; // number of positions
+	struct FracPoint *points;	/* just a bunch of positions in space*/
+	int totpoints; /* number of positions */
 } FracPointCloud;
 
 /* iterator functions for efficient looping over shards */
@@ -74,7 +74,7 @@ bool BKE_shards_valid(struct ShardIterator* iter);
 void BKE_shards_end(struct ShardIterator* iter); 
 struct Shard* BKE_shard_by_iterator(struct ShardIterator *iter);
 
-/*direct access*/
+/* direct access */
 struct Shard* BKE_shard_by_id(struct FracMesh* mesh, ShardID id, struct DerivedMesh *dm);
 
 /* detailed info to the particular shards */
@@ -93,7 +93,7 @@ struct FracMeshIterator* BKE_fracture_steps_prev(struct FracMeshIterator *iter);
 bool BKE_fracture_steps_valid(struct FracMeshIterator* iter);
 void BKE_fracture_steps_end(struct FracMeshIterator* iter); 
 
-//utility functions
+/* utility functions */
 bool BKE_fracture_shard_center_median(struct Shard *shard, float cent[3]);
 bool BKE_fracture_shard_center_centroid(struct Shard *shard, float cent[3]);
 float BKE_shard_calc_minmax(struct Shard *shard);
@@ -109,9 +109,9 @@ struct DerivedMesh *BKE_shard_create_dm(struct Shard *s, bool doCustomData);
 
 void BKE_shard_assign_material(struct Shard* s, short mat_nr);
 
-// erzeuge shards aus dem basis mesh und einer liste von points (nicht weiter spezifiziert, können auch particles oder so sein)
+/* create shards from base mesh and a liste of points */
 void BKE_fracture_shard_by_points(struct FracMesh *fmesh, ShardID id, struct FracPointCloud *points, int algorithm, struct Object *obj, struct DerivedMesh *dm,
                                   short inner_material_index);
 
 
-#endif // BKE_FRACTURE_H
+#endif /* BKE_FRACTURE_H */

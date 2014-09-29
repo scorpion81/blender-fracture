@@ -45,11 +45,6 @@
 #include "BKE_paint.h"
 #include "BKE_editmesh.h"
 
-//for shard picking, yuck...
-#include "BKE_modifier.h"
-#include "BKE_DerivedMesh.h"
-#include "BKE_cdderivedmesh.h"
-
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"
 

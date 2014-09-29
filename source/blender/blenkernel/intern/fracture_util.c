@@ -30,32 +30,31 @@
  *  \brief CSG operations
  */
 
-//#include "stdbool.h"
-#include "BLI_sys_types.h"
-
-#include "DNA_meshdata_types.h"
-#include "DNA_material_types.h"
-#include "DNA_fracture_types.h"
-
-#include "MEM_guardedalloc.h"
-
-#include "BLI_alloca.h"
-#include "BLI_ghash.h"
-#include "BLI_math.h"
-#include "BLI_rand.h"
-#include "BLI_boxpack2d.h"
-#include "BLI_convexhull2d.h"
-#include "BKE_editmesh.h"
 #include "BKE_cdderivedmesh.h"
+#include "BKE_editmesh.h"
 #include "BKE_fracture.h"
 #include "BKE_fracture_util.h"
 #include "BKE_material.h"
+
+#include "BLI_alloca.h"
+#include "BLI_boxpack2d.h"
+#include "BLI_convexhull2d.h"
+#include "BLI_ghash.h"
+#include "BLI_math.h"
+#include "BLI_rand.h"
+#include "BLI_sys_types.h"
+
+#include "DNA_fracture_types.h"
+#include "DNA_meshdata_types.h"
+#include "DNA_material_types.h"
+
+#include "MEM_guardedalloc.h"
+
 #include "bmesh.h"
 #include "../../modifiers/intern/MOD_boolean_util.h"
-//#include "../../editors/include/ED_mesh.h"
 
 
-//UV Helpers
+/* UV Helpers */
 void uv_bbox(float uv[][2], int num_uv, float minv[2], float maxv[2])
 {
 	int v;
@@ -102,13 +101,12 @@ void unwrap_shard_dm(DerivedMesh* dm)
 	BoxPack* boxpack = MEM_mallocN(sizeof(BoxPack) * dm->numPolyData, "boxpack");
 	float scale, tot_width, tot_height;
 
-	//set inner material on child shard
+	/* set inner material on child shard */
 	mvert = dm->getVertArray(dm);
 	mpoly = dm->getPolyArray(dm);
 	mloop = dm->getLoopArray(dm);
 	totpoly = dm->getNumPolys(dm);
-	for (i = 0, mp = mpoly; i < totpoly; i++, mp++)
-	{
+	for (i = 0, mp = mpoly; i < totpoly; i++, mp++) {
 		MLoop *ml;
 		int j = 0;
 		float verts[mp->totloop][3];
@@ -119,9 +117,8 @@ void unwrap_shard_dm(DerivedMesh* dm)
 		float uvbbox[2][2];
 		float angle;
 
-		//uv unwrap cells, so inner faces get a uv map
-		for (j = 0; j < mp->totloop; j++)
-		{
+		/* uv unwrap cells, so inner faces get a uv map */
+		for (j = 0; j < mp->totloop; j++) {
 			ml = mloop + mp->loopstart + j;
 			copy_v3_v3(verts[j], (mvert + ml->v)->co);
 		}
@@ -130,12 +127,11 @@ void unwrap_shard_dm(DerivedMesh* dm)
 		normalize_v3(nor);
 		axis_dominant_v3_to_m3(mat, nor);
 
-		for (j = 0; j < mp->totloop; j++)
-		{
+		for (j = 0; j < mp->totloop; j++) {
 			mul_v2_m3v3(uv[j], mat, verts[j]);
 		}
 
-		//rotate uvs for better packing
+		/* rotate uvs for better packing */
 		angle = BLI_convexhull_aabb_fit_points_2d((const float (*)[2])uv, mp->totloop);
 
 		if (angle != 0.0f) {
@@ -144,7 +140,7 @@ void unwrap_shard_dm(DerivedMesh* dm)
 			uv_transform(uv, mp->totloop, mat);
 		}
 
-		//prepare box packing... one poly is a box
+		/* prepare box packing... one poly is a box */
 		box = boxpack + i;
 		uv_bbox(uv, mp->totloop, uvbbox[0], uvbbox[1]);
 
@@ -157,15 +153,14 @@ void unwrap_shard_dm(DerivedMesh* dm)
 		box->h = uvbbox[1][1] + uvbbox[0][1];
 		box->index = i;
 
-		//copy coords back..
-		for (j = 0; j < mp->totloop; j++)
-		{
+		/* copy coords back */
+		for (j = 0; j < mp->totloop; j++) {
 			copy_v3_v3(mluv[j + mp->loopstart].uv, uv[j]);
 			mluv[j + mp->loopstart].flag = 0;
 		}
 	}
 
-	//do box packing and match uvs according to it
+	/* do box packing and match uvs according to it */
 	BLI_box_pack_2d(boxpack, totpoly, &tot_width, &tot_height);
 
 	if (tot_height > tot_width)
@@ -201,40 +196,15 @@ Shard *BKE_fracture_shard_boolean(Object* obj, DerivedMesh *dm_parent, Shard* ch
 	DerivedMesh *left_dm, *right_dm, *output_dm;
 	MPoly *mpoly, *mp;
 	int totpoly, i = 0;
-	//Mesh* me;
 
 	left_dm = BKE_shard_create_dm(child, false);
-
-	//create new inner uv map, works with Mesh only...
-	/*
-	if (obj->type == OB_MESH)
-	{
-		me = (Mesh*)obj->data;
-		if (CustomData_get_active_layer(&me->pdata, CD_MTEXPOLY) != 1)
-		{
-			ED_mesh_uv_texture_add(obj->data, "InnerUV", true);
-		}
-	}*/
-
 	unwrap_shard_dm(left_dm);
 
-#if 0
-	//put all verts in inner vgroup ? (via index)
-	mvert = left_dm->getVertArray(left_dm);
-	totvert = left_dm->getNumVerts(left_dm);
-	for (i = 0, mv = mvert; i < totvert; i++, mv++)
-	{
-		mv->flag |= ME_VERT_TMP_TAG;
-	}
-#endif
-
-	//set inner material on child shard
+	/* set inner material on child shard */
 	mpoly = left_dm->getPolyArray(left_dm);
 	totpoly = left_dm->getNumPolys(left_dm);
-	for (i = 0, mp = mpoly; i < totpoly; i++, mp++)
-	{
-		if (inner_material_index > 0)
-		{
+	for (i = 0, mp = mpoly; i < totpoly; i++, mp++) {
+		if (inner_material_index > 0) {
 			mp->mat_nr = inner_material_index;
 		}
 		mp->flag |= ME_FACE_SEL;
@@ -259,14 +229,14 @@ Shard *BKE_fracture_shard_boolean(Object* obj, DerivedMesh *dm_parent, Shard* ch
 
 		output_s = BKE_custom_data_to_shard(output_s, output_dm);
 
-		/*XXX TODO this might be wrong by now ... */
+		/* XXX TODO this might be wrong by now ... */
 		output_s->neighbor_count = child->neighbor_count;
 		output_s->neighbor_ids = MEM_mallocN(sizeof(int) * child->neighbor_count, __func__);
 		memcpy(output_s->neighbor_ids, child->neighbor_ids, sizeof(int) * child->neighbor_count);
 		BKE_fracture_shard_center_centroid(output_s, output_s->centroid);
 
 
-		/*free the temp derivedmesh*/
+		/* free the temp derivedmesh */
 		output_dm->needsFree = 1;
 		output_dm->release(output_dm);
 		output_dm = NULL;
@@ -284,11 +254,8 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 	#define MYTAG (1 << 6)
 
 	Shard *output_s;
-	//DerivedMesh *dm_parent = BKE_shard_create_dm(parent, true);
 	DerivedMesh *dm_child = BKE_shard_create_dm(child, false);
 	DerivedMesh *dm_out;
-	//BMesh *bm_parent = DM_to_bmesh(dm_parent, true);
-	//BMesh* bm_parent = BM_mesh_create(&bm_mesh_allocsize_default);
 	BMesh *bm_parent = BM_mesh_copy(bm_orig);
 	BMesh *bm_child;
 	BMIter iter;
@@ -300,8 +267,6 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 	float imat[4][4];
 
 	float thresh = 0.00001f;
-	//bool clear_inner = false;
-	//bool clear_outer = true;
 	bool do_break = false;
 
 	int cut_index = 0;
@@ -311,27 +276,21 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 
 	invert_m4_m4(imat, obmat);
 
-	//then enable tags...
 	BM_mesh_elem_hflag_enable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, false);
-	//BM_mesh_elem_hflag_enable_all(bm_parent, BM_FACE, MYTAG, false);
 
 	BM_ITER_MESH_INDEX(f, &iter, bm_child, BM_FACES_OF_MESH, cut_index)
 	{
-		if (do_break)
-		{
+		if (do_break) {
 			break;
 		}
 
-		if (cutlimit > 0)
-		{
-			//int index = (int)(BLI_frand() * (bm_child->totface-1));
+		if (cutlimit > 0) {
 			f = BM_face_at_index_find(bm_child, cutlimit);
 			copy_v3_v3(plane_co, centroid);
 			copy_v3_v3(plane_no, f->no /*normal*/);
 			do_break = true;
 		}
-		else
-		{
+		else {
 			copy_v3_v3(plane_co, f->l_first->v->co);
 			copy_v3_v3(plane_no, f->no);
 		}
@@ -346,23 +305,19 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 		             BM_ELEM_TAG, thresh, plane_co, plane_no, false, clear_inner, clear_outer);
 		BMO_op_exec(bm_parent, &bmop);
 
-		//untag inner geometry of this cell and skip it ?
-		//BMO_slot_buffer_hflag_disable(bm_parent, bmop.slots_out, "geom.out", BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT, false);
-
 		BM_mesh_elem_hflag_disable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, false);
 
 		if (use_fill) {
 			float normal_fill[3];
 			BMOperator bmop_fill;
 			BMOperator bmop_attr;
-//			BMOperator bmop_del;
 
 			normalize_v3_v3(normal_fill, plane_no);
 			if (clear_outer == true && clear_inner == false) {
 				negate_v3(normal_fill);
 			}
 
-			/* Fill */
+			/* Fill, XXX attempted different fill algorithms here, needs further thoughts because none really suited */
 #if 0
 			BMO_op_initf(bm_parent, &bmop_fill, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 			            "contextual_create geom=%S mat_nr=%i use_smooth=%b",
@@ -381,8 +336,7 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 			BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "faces.out", BM_FACE, BM_ELEM_TAG, true);
 #endif
 
-			if (inner_mat_index == 0)	//dont use inner material...
-			{
+			if (inner_mat_index == 0) {	/* dont use inner material here*/
 				BMO_op_initf(
 						bm_parent, &bmop_fill,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 						"triangle_fill edges=%S normal=%v use_dissolve=%b use_beauty=%b",
@@ -390,15 +344,14 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 				BMO_op_exec(bm_parent, &bmop_fill);
 
 				BMO_op_initf(bm_parent, &bmop_attr, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-							 "face_attribute_fill faces=%S use_normals=%b use_data=%b",
-							 &bmop_fill, "geom.out", false, true);
+				             "face_attribute_fill faces=%S use_normals=%b use_data=%b",
+				             &bmop_fill, "geom.out", false, true);
 				BMO_op_exec(bm_parent, &bmop_attr);
 
 				BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "geom.out", BM_FACE, BM_ELEM_TAG | BM_ELEM_SELECT, true);
 			}
-			else
-			{
-				//use edgenet fill with inner material
+			else {
+				/* use edgenet fill with inner material */
 				BMO_op_initf(
 				        bm_parent, &bmop_fill,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 				       "edgenet_fill edges=%S mat_nr=%i use_smooth=%b sides=%i",
@@ -414,16 +367,11 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 				BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "faces.out", BM_FACE, BM_ELEM_TAG | BM_ELEM_SELECT, true);
 			}
 
-			//BMO_op_finish(bm_parent, &bmop_del);
 			BMO_op_finish(bm_parent, &bmop_attr);
 			BMO_op_finish(bm_parent, &bmop_fill);
 		}
 
 		BMO_slot_buffer_hflag_enable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, BM_ELEM_TAG , true);
-
-		//mark sharp
-		//BMO_slot_buffer_hflag_disable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, BM_ELEM_SMOOTH , true);
-		//verts into inner vgroup HERE....
 
 		BMO_op_finish(bm_parent, &bmop);
 	}

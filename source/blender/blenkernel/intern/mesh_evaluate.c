@@ -922,7 +922,7 @@ float BKE_mesh_calc_poly_area(MPoly *mpoly, MLoop *loopstart,
 }
 
 /* note, results won't be correct if polygon is non-planar */
-float BKE_mesh_calc_poly_planar_area_centroid(MPoly *mpoly, MLoop *loopstart, MVert *mvarray, float cent[3])
+static float mesh_calc_poly_planar_area_centroid(MPoly *mpoly, MLoop *loopstart, MVert *mvarray, float cent[3])
 {
 	int i;
 	float tri_area;
@@ -1076,7 +1076,7 @@ bool BKE_mesh_center_centroid(Mesh *me, float cent[3])
 
 	/* calculate a weighted average of polygon centroids */
 	for (mpoly = me->mpoly; i--; mpoly++) {
-		poly_area = BKE_mesh_calc_poly_planar_area_centroid(mpoly, me->mloop + mpoly->loopstart, me->mvert, poly_cent);
+		poly_area = mesh_calc_poly_planar_area_centroid(mpoly, me->mloop + mpoly->loopstart, me->mvert, poly_cent);
 
 		madd_v3_v3fl(cent, poly_cent, poly_area);
 		total_area += poly_area;

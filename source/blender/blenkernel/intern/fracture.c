@@ -34,27 +34,27 @@
 
 #include "MEM_guardedalloc.h"
 
+#include "BKE_cdderivedmesh.h"
+#include "BKE_customdata.h"
+#include "BKE_DerivedMesh.h"
+#include "BKE_fracture.h"
+#include "BKE_fracture_util.h"
+#include "BKE_global.h"
+#include "BKE_mesh.h"
+#include "BKE_object.h"
+
+#include "BLI_listbase.h"
 #include "BLI_math_vector.h"
 #include "BLI_mempool.h"
-#include "BLI_utildefines.h"
 #include "BLI_path_util.h"
 #include "BLI_rand.h"
 #include "BLI_sort.h"
-#include "BLI_listbase.h"
+#include "BLI_utildefines.h"
 
 #include "DNA_fracture_types.h"
 #include "DNA_group_types.h"
 #include "DNA_meshdata_types.h"
 #include "DNA_modifier_types.h"
-
-#include "BKE_DerivedMesh.h"
-#include "BKE_cdderivedmesh.h"
-#include "BKE_fracture.h"
-#include "BKE_fracture_util.h"
-#include "BKE_mesh.h"
-#include "BKE_object.h"
-#include "BKE_customdata.h"
-#include "BKE_global.h"
 
 #include "bmesh.h"
 
@@ -71,9 +71,7 @@
 #include "../../../../extern/voro++/src/c_interface.hh"
 #endif
 
-//utility... bbox / centroid calc
-
-/*prototypes*/
+/* prototypes */
 static void parse_stream(FILE *fp, int expected_shards, ShardID shard_id, FracMesh *fm, int algorithm, Object *obj, DerivedMesh *dm, short inner_material_index);
 static Shard *parse_shard(FILE *fp);
 static void parse_verts(FILE *fp, MVert *mvert, int totvert);
@@ -99,7 +97,6 @@ static BMesh* shard_to_bmesh(Shard* s)
 
 	dm_parent = BKE_shard_create_dm(s, true);
 	bm_parent = DM_to_bmesh(dm_parent, true);
-	//create lookup tables
 	BM_mesh_elem_table_ensure(bm_parent, BM_FACE);
 
 	BM_ITER_MESH(f, &iter, bm_parent, BM_FACES_OF_MESH)
@@ -137,7 +134,7 @@ static void shard_boundbox(Shard* s, float r_loc[3], float r_size[3])
 	r_size[2] = (max[2] - min[2]) / 2.0f;
 }
 
-//wtf... argument order changed ?
+
 static int shard_sortsize(const void *s1, const void *s2, void* context)
 {
 	const Shard** sh1 = (Shard**)s1;
@@ -146,8 +143,7 @@ static int shard_sortsize(const void *s1, const void *s2, void* context)
 	float size1[3], size2[3], loc[3];
 	float val_a,  val_b;
 
-	if ((*sh1 == NULL) || (*sh2 == NULL))
-	{
+	if ((*sh1 == NULL) || (*sh2 == NULL)) {
 		return -1;
 	}
 
@@ -157,7 +153,7 @@ static int shard_sortsize(const void *s1, const void *s2, void* context)
 	val_a = size1[0] * size1[1] * size1[2];
 	val_b = size2[0] * size2[1] * size2[2];
 
-	//sort descending
+	/* sort descending */
 	if      (val_a < val_b) return  1;
 	else if (val_a > val_b) return -1;
 	                        return  0;
@@ -183,28 +179,28 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 	p->flag |= SHARD_FRACTURED;
 	unit_m4(obmat);
 
-	if (algorithm == MOD_FRACTURE_BOOLEAN)
-	{
+	if (algorithm == MOD_FRACTURE_BOOLEAN) {
 		MPoly* mpoly, *mp;
 		int totpoly, i;
 		dm_parent = BKE_shard_create_dm(p, true);
 		mpoly = dm_parent->getPolyArray(dm_parent);
 		totpoly = dm_parent->getNumPolys(dm_parent);
-		for (i = 0, mp = mpoly; i < totpoly; i++, mp++)
-		{
+		for (i = 0, mp = mpoly; i < totpoly; i++, mp++) {
 			mp->flag &= ~ME_FACE_SEL;
 		}
 	}
-	else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL || algorithm == MOD_FRACTURE_BISECT_FAST || algorithm == MOD_FRACTURE_BISECT_FAST_FILL)
+	else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL ||
+	         algorithm == MOD_FRACTURE_BISECT_FAST || algorithm == MOD_FRACTURE_BISECT_FAST_FILL)
 	{
 #define MYTAG (1 << 6)
 		bm_parent = shard_to_bmesh(p);
 		copy_v3_v3(centroid, p->centroid);
 	}
-	for (i = 0; i < expected_shards; i++)
-	{
-		if (fm->cancel == 1)
+
+	for (i = 0; i < expected_shards; i++) {
+		if (fm->cancel == 1) {
 			break;
+		}
 
 		printf("Parsing shard: %d\n", i);
 		s = parse_shard(fp);
@@ -213,12 +209,8 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 		fm->progress_counter++;
 	}
 
-	if (algorithm != MOD_FRACTURE_BISECT_FAST && algorithm != MOD_FRACTURE_BISECT_FAST_FILL)
-	{
-		//#pragma omp critical
-		//#pragma omp parallel for if (algorithm != MOD_FRACTURE_BISECT_FAST)
-		for (i = 0; i < expected_shards; i++)
-		{
+	if (algorithm != MOD_FRACTURE_BISECT_FAST && algorithm != MOD_FRACTURE_BISECT_FAST_FILL) {
+		for (i = 0; i < expected_shards; i++) {
 			Shard* t;
 			if (fm->cancel == 1)
 				break;
@@ -226,83 +218,76 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 			printf("Processing shard: %d\n", i);
 			t = tempshards[i];
 
-			if (t != NULL)
-			{
+			if (t != NULL) {
 				t->parent_id = parent_id;
 				t->flag = SHARD_INTACT;
 			}
 
-			if (t == NULL || t->totvert == 0 || t->totloop == 0 || t->totpoly == 0)
-			{
-				//invalid shard, stop parsing... or ?
+			if (t == NULL || t->totvert == 0 || t->totloop == 0 || t->totpoly == 0) {
+				/* invalid shard, stop parsing */
 				break;
 			}
 
 			/* XXX TODO, need object for material as well, or atleast a material index... */
-			if (algorithm == MOD_FRACTURE_BOOLEAN)
-			{
+			if (algorithm == MOD_FRACTURE_BOOLEAN) {
 				s = BKE_fracture_shard_boolean(obj, dm_parent, t, inner_material_index);
 			}
-			else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL)
-			{
+			else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL) {
 				float co[3] = {0, 0, 0};
 				printf("Bisecting cell %d...\n", i);
 				s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, false, true, 0, co, inner_material_index);
 			}
-			else
-			{
+			else {
+				/* do not fracture case */
 				s = t;
 			}
-			if (s != NULL)
-			{
+
+			if (s != NULL) {
 				s->parent_id = parent_id;
 				s->flag = SHARD_INTACT;
 
-				//#pragma omp critical
 				tempresults[i] = s;
 			}
 
 			fm->progress_counter++;
 		}
 	}
-	else
-	{
-		for (i = 0; i < expected_shards; i++)
-		{
+	else {
+		for (i = 0; i < expected_shards; i++) {
 			Shard* s = NULL;
 			Shard* s2 = NULL;
 			Shard* t;
 			int index = 0;
 
-			if (fm->cancel == 1)
+			if (fm->cancel == 1) {
 				break;
+			}
 
 			printf("Processing shard: %d\n", i);
 			t = tempshards[i];
 
-			if (t != NULL)
-			{
+			if (t != NULL) {
 				t->parent_id = parent_id;
 				t->flag = SHARD_INTACT;
 			}
 
-			if (t == NULL || t->totvert == 0 || t->totloop == 0 || t->totpoly == 0)
-			{
-				//invalid shard, stop parsing... or ?
+			if (t == NULL || t->totvert == 0 || t->totloop == 0 || t->totpoly == 0) {
+				/* invalid shard, stop parsing*/
 				break;
 			}
 
 			index = (int)(BLI_frand() * (t->totpoly-1));
-			if (index == 0)
+			if (index == 0) {
 				index = 1;
+			}
+
 			printf("Bisecting cell %d...\n", i);
 			printf("Bisecting cell %d...\n", i+1);
 
 			s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FAST_FILL, false, true, index, centroid, inner_material_index);
 			s2 = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FAST_FILL, true, false, index, centroid, inner_material_index);
 
-			if (s != NULL && s2 != NULL && tempresults != NULL)
-			{
+			if (s != NULL && s2 != NULL && tempresults != NULL) {
 				int j = 0;
 
 				fm->progress_counter++;
@@ -313,16 +298,12 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 				s2->parent_id = parent_id;
 				s2->flag = SHARD_INTACT;
 
-				//#pragma omp critical
-
-				if (bm_parent != NULL)
-				{
+				if (bm_parent != NULL) {
 					BM_mesh_free(bm_parent);
 					bm_parent = NULL;
 				}
 
-				if (dm_parent != NULL)
-				{
+				if (dm_parent != NULL) {
 					dm_parent->needsFree = 1;
 					dm_parent->release(dm_parent);
 					dm_parent = NULL;
@@ -333,11 +314,12 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 				BLI_qsort_r(tempresults, i+1, sizeof(Shard*), shard_sortsize, i);
 
 				while (tempresults[j] == NULL && j < (i+1)) {
+					/* ignore invalid shards */
 					j++;
 				}
 
-				if ((i+2) < expected_shards)
-				{
+				/* continue splitting if not all expected shards exist yet */
+				if ((i+2) < expected_shards) {
 					bm_parent = shard_to_bmesh(tempresults[j]);
 					copy_v3_v3(centroid, tempresults[j]->centroid);
 
@@ -349,14 +331,12 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 		}
 	}
 
-	if (bm_parent != NULL)
-	{
+	if (bm_parent != NULL) {
 		BM_mesh_free(bm_parent);
 		bm_parent = NULL;
 	}
 
-	if (dm_parent != NULL)
-	{
+	if (dm_parent != NULL) {
 		dm_parent->needsFree = 1;
 		dm_parent->release(dm_parent);
 		dm_parent = NULL;
@@ -367,26 +347,21 @@ static void parse_stream(FILE *fp, int expected_shards, ShardID parent_id, FracM
 		BKE_shard_free(p, true);
 	}
 
-	fm->shard_count = 0; //maybe not matching with expected shards, so reset... did increment this for
-						//progressbar only...
+	fm->shard_count = 0; /* may be not matching with expected shards, so reset... did increment this for
+						  *progressbar only */
 
-	//if (tempshards && tempresults)
+	/*blocks are here because of deleted unnecessary if conditions, kept for convenience with declaring local variables */
 	{
-		//if (algorithm == MOD_FRACTURE_VORONOI)
 		{
-			for (i = 0; i < expected_shards; i++)
-			{
+			for (i = 0; i < expected_shards; i++) {
 				Shard* s = tempresults[i];
-				if (s != NULL)
-				{
+				if (s != NULL) {
 					add_shard(fm, s);
 				}
 
-				//if (algorithm != MOD_FRACTURE_VORONOI)
 				{
 					Shard* t = tempshards[i];
-					if (t != NULL)
-					{
+					if (t != NULL) {
 						BKE_shard_free(t, false);
 					}
 				}
@@ -450,7 +425,6 @@ static Shard* parse_shard(FILE *fp)
 
 	s->neighbor_ids = neighbors;
 	s->neighbor_count = totpoly;
-	//s->shard_id = shard_id;
 	copy_v3_v3(s->centroid, centr);
 	
 	/* if not at end of file yet, skip newlines */
@@ -547,6 +521,8 @@ Shard* BKE_custom_data_to_shard(Shard* s, DerivedMesh* dm)
 	CustomData_add_layer(&s->loopData, CD_MLOOPUV, CD_DUPLICATE, CustomData_get_layer(&dm->loopData, CD_MLOOPUV), s->totloop);
 	CustomData_add_layer(&s->polyData, CD_MTEXPOLY, CD_DUPLICATE, CustomData_get_layer(&dm->polyData, CD_MTEXPOLY), s->totpoly);
 
+	/*XXX TODO how do i use customdata PROPERLY ? */
+
 	/*CustomData_copy(&dm->vertData, &s->vertData, CD_MASK_MDEFORMVERT, CD_CALLOC, s->totvert);
 	CustomData_copy_data(&dm->vertData, &s->vertData,
 	                     0, 0, s->totvert);
@@ -613,37 +589,32 @@ bool BKE_fracture_shard_center_centroid(Shard *shard, float cent[3])
 
 void BKE_shard_free(Shard *s, bool doCustomData)
 {
-	if ((s->totvert > 0) && s->mvert)
-	{
+	if ((s->totvert > 0) && s->mvert) {
 		MEM_freeN(s->mvert);
 	}
-	if ((s->totloop > 0) && s->mloop)
-	{
+	if ((s->totloop > 0) && s->mloop) {
 		MEM_freeN(s->mloop);
 	}
-	if ((s->totpoly > 0) && s->mpoly)
-	{
+	if ((s->totpoly > 0) && s->mpoly) {
 		MEM_freeN(s->mpoly);
 	}
-	if (s->neighbor_ids && (s->neighbor_count > 0))
+	if (s->neighbor_ids && (s->neighbor_count > 0)) {
 		MEM_freeN(s->neighbor_ids);
-	if (s->cluster_colors)
+	}
+	if (s->cluster_colors) {
 		MEM_freeN(s->cluster_colors);
+	}
 
-	if (doCustomData)
-	{
-		if (s->totvert > 1)
-		{
+	if (doCustomData) {
+		if (s->totvert > 1) {
 			CustomData_free(&s->vertData, s->totvert);
 		}
 
-		if (s->totloop > 0)
-		{
+		if (s->totloop > 0) {
 			CustomData_free(&s->loopData, s->totloop);
 		}
 
-		if (s->totpoly > 0)
-		{
+		if (s->totpoly > 0) {
 			CustomData_free(&s->polyData, s->totpoly);
 		}
 	}
@@ -666,7 +637,6 @@ float BKE_shard_calc_minmax(Shard *shard)
 
 	sub_v3_v3v3(diff, max, min);
 	return len_v3(diff);
-	//return MAX3(diff[0], diff[1], diff[2]);
 }
 
 /* iterator functions for efficient looping over shards */
@@ -703,13 +673,12 @@ Shard* BKE_shard_by_iterator(ShardIterator *iter) {
 
 /*access shard directly by index / id*/
 Shard *BKE_shard_by_id(FracMesh* mesh, ShardID id, DerivedMesh* dm) {
-	if ((id < mesh->shard_count) && (id >= 0))
-	{
+	if ((id < mesh->shard_count) && (id >= 0)) {
 		return mesh->shard_map[id];
 	}
 	else if (id == -1)
 	{
-		//create temporary shard
+		/* create temporary shard covering the entire mesh */
 		Shard* s = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
 		                                  dm->numVertData, dm->numPolyData, dm->numLoopData, true);
 		s = BKE_custom_data_to_shard(s, dm);
@@ -720,14 +689,6 @@ Shard *BKE_shard_by_id(FracMesh* mesh, ShardID id, DerivedMesh* dm) {
 	
 	return NULL;
 }
-
-#if 0
-Shard *BKE_shard_by_position(FracMesh* mesh, float position[3]) {
-	//find centroid via kdtree, should be fast
-	return NULL;
-	
-}
-#endif
 
 void BKE_get_shard_geometry(FracMesh* mesh, ShardID id, MVert** vert, int *totvert, DerivedMesh *dm)
 {
@@ -781,22 +742,18 @@ Shard *BKE_create_fracture_shard(MVert *mvert, MPoly *mpoly, MLoop *mloop, int t
 	shard->flag |= SHARD_INTACT;
 	BKE_shard_calc_minmax(shard);
 
-	//omit for now, makes problems...
 	BKE_fracture_shard_center_centroid(shard, shard->centroid);
-	
-	//neighborhood info ? optional from fracture process...
-	//id is created when inserted into fracmesh, externally then...
+
 	return shard;
 }
 
 FracMesh *BKE_create_fracture_container(DerivedMesh* dm)
 {
 	FracMesh* fmesh;
-	//Shard *shard;
 	
 	fmesh = MEM_mallocN(sizeof(FracMesh), __func__);
 	
-	fmesh->shard_map = MEM_mallocN(sizeof(Shard*), __func__); //allocate in chunks ?, better use proper blender functions for this
+	fmesh->shard_map = MEM_mallocN(sizeof(Shard*), __func__); /* allocate in chunks ?, better use proper blender functions for this*/
 	fmesh->shard_count = 0;
 	fmesh->cancel = 0;
 	fmesh->running = 0;
@@ -813,7 +770,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	Shard *shard;
 	
 	float min[3], max[3];
-	float theta = 0.1f; /* TODO */
+	float theta = 0.1f; /* TODO, container enlargement, because boundbox exact container and boolean might create artifacts */
 	int p;
 	
 	container *voro_container;
@@ -842,8 +799,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	copy_v3_v3(min, shard->min);
 	copy_v3_v3(max, shard->max);
 
-	if (shard->shard_id == -2)
-	{
+	if (shard->shard_id == -2) {
 		BKE_shard_free(shard, true);
 	}
 
@@ -908,6 +864,8 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	loop_order_free(voro_loop_order);
 	particle_order_free(voro_particle_order);
 	container_free(voro_container);
+
+	/* XXX is allocated in voro++ / c-interface and crashes when freed here */
 	/*free(voro_loop_order);
 	free(voro_particle_order);
 	free(voro_container);*/
@@ -922,8 +880,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	stream = fmemopen(bp, size, "r");
 #endif
 
-	if (stream != NULL)
-	{
+	if (stream != NULL) {
 		parse_stream(stream, pointcloud->totpoints, id, fmesh, algorithm, obj, dm, inner_material_index);
 		fclose (stream);
 	}
@@ -944,31 +901,26 @@ void BKE_fracmesh_free(FracMesh* fm, bool doCustomData)
 {
 	int i = 0, count;
 
-	if (fm == NULL)
-	{
+	if (fm == NULL) {
 		return;
 	}
 
-	if (fm->shard_map == NULL)
-	{
+	if (fm->shard_map == NULL) {
 		fm->shard_count = 0;
 		return;
 	}
 
 	count = fm->shard_count;
 
-	for (i = 0; i < count; i++)
-	{
+	for (i = 0; i < count; i++) {
 		Shard* s = fm->shard_map[i];
-		if (s != NULL)
-		{
+		if (s != NULL) {
 			BKE_shard_free(s, doCustomData);
 		}
 		fm->shard_count--;
 	}
 
-	if ((fm->shard_map != NULL) /*&& (fm->shard_count == 0)*/)
-	{
+	if ((fm->shard_map != NULL)) {
 		MEM_freeN(fm->shard_map);
 		fm->shard_map = NULL;
 	}
@@ -1002,11 +954,8 @@ static DerivedMesh *create_dm(FractureModifierData* fmd, bool doCustomData)
 	
 	num_verts = num_polys = num_loops = 0;
 
-	if (fmd->shards_to_islands)
-	{
-		//for (shard = fmd->islandShards.first; shard; shard = shard->next)
-		for (s = 0; s < shard_count; ++s)
-		{
+	if (fmd->shards_to_islands) {
+		for (s = 0; s < shard_count; ++s) {
 			shard = BLI_findlink(&fmd->islandShards, s);
 			num_verts += shard->totvert;
 			num_polys += shard->totpoly;
@@ -1017,12 +966,6 @@ static DerivedMesh *create_dm(FractureModifierData* fmd, bool doCustomData)
 	{
 		for (s = 0; s < shard_count; ++s) {
 			shard = shard_map[s];
-
-			if (shard->shard_id == 0 && shard->flag & SHARD_FRACTURED)
-			{
-				//dont display first shard when its fractured (relevant for plain voronoi only)
-				//continue;
-			}
 
 			num_verts += shard->totvert;
 			num_polys += shard->totpoly;
@@ -1035,15 +978,12 @@ static DerivedMesh *create_dm(FractureModifierData* fmd, bool doCustomData)
 	mloops = CDDM_get_loops(result);
 	mpolys = CDDM_get_polys(result);
 
-	if (doCustomData && shard_count > 0)
-	{
+	if (doCustomData && shard_count > 0) {
 		Shard* s;
-		if (fmd->shards_to_islands)
-		{
+		if (fmd->shards_to_islands) {
 			s = BLI_findlink(&fmd->islandShards, 0);
 		}
-		else
-		{
+		else {
 			s = shard_map[0];
 		}
 
@@ -1058,20 +998,12 @@ static DerivedMesh *create_dm(FractureModifierData* fmd, bool doCustomData)
 		MLoop *ml;
 		int i;
 
-		if (fmd->shards_to_islands)
-		{
-			//may be inefficent... but else would need to do another loop
+		if (fmd->shards_to_islands) {
+			/* may be inefficent... but else would need to do another loop */
 			shard = BLI_findlink(&fmd->islandShards, s);
 		}
-		else
-		{
+		else {
 			shard = shard_map[s];
-		}
-
-		if (shard->shard_id == 0 && shard->flag & SHARD_FRACTURED)
-		{
-			//dont display first shard when its fractured (relevant for plain voronoi only)
-			//continue;
 		}
 		
 		memcpy(mverts + vertstart, shard->mvert, shard->totvert * sizeof(MVert));
@@ -1090,20 +1022,16 @@ static DerivedMesh *create_dm(FractureModifierData* fmd, bool doCustomData)
 			ml->v += vertstart;
 		}
 
-		if (doCustomData)
-		{
-			if (shard->totvert > 1)
-			{
+		if (doCustomData) {
+			if (shard->totvert > 1) {
 				CustomData_copy_data(&shard->vertData, &result->vertData, 0, vertstart, shard->totvert);
 			}
 
-			if (shard->totloop > 0)
-			{
+			if (shard->totloop > 0) {
 				CustomData_copy_data(&shard->loopData, &result->loopData, 0, loopstart, shard->totloop);
 			}
 
-			if (shard->totpoly > 0)
-			{
+			if (shard->totpoly > 0) {
 				CustomData_copy_data(&shard->polyData, &result->polyData, 0, polystart, shard->totpoly);
 			}
 		}
@@ -1147,7 +1075,6 @@ static DerivedMesh *create_dm(FractureModifierData* fmd, bool doCustomData)
 void BKE_fracture_create_dm(FractureModifierData *fmd, bool doCustomData)
 {
 	DerivedMesh *dm_final = NULL;
-	//bool doCustomData = true; //fmd->frac_algorithm != MOD_FRACTURE_VORONOI;
 	
 	if (fmd->dm) {
 		fmd->dm->needsFree = 1;
@@ -1155,10 +1082,7 @@ void BKE_fracture_create_dm(FractureModifierData *fmd, bool doCustomData)
 		fmd->dm = NULL;
 	}
 	
-	{
-		dm_final = create_dm(fmd, doCustomData);
-	}
-	
+	dm_final = create_dm(fmd, doCustomData);
 	fmd->dm = dm_final;
 }
 
@@ -1175,10 +1099,6 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 	mloops = CDDM_get_loops(dm);
 	mpolys = CDDM_get_polys(dm);
 
-	//CustomData_free_layers(&dm->loopData, CD_ORIGINDEX, s->totloop);
-	//CustomData_free_layers(&dm->loopData, CD_MLOOP, s->totloop);
-	//CustomData_free_layers(&dm->polyData, CD_ORIGINDEX, s->totpoly);
-
 	memcpy(mverts, s->mvert, s->totvert * sizeof(MVert));
 	memcpy(mloops, s->mloop, s->totloop * sizeof(MLoop));
 	memcpy(mpolys, s->mpoly, s->totpoly * sizeof(MPoly));
@@ -1188,18 +1108,14 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 	dm->dirty |= DM_DIRTY_NORMALS;
 	CDDM_calc_normals_mapping(dm);
 
-	if (doCustomData)
-	{
-		if (s->totvert > 1)
-		{
+	if (doCustomData) {
+		if (s->totvert > 1) {
 			CustomData_add_layer(&dm->vertData, CD_MDEFORMVERT, CD_DUPLICATE, CustomData_get_layer(&s->vertData, CD_MDEFORMVERT), s->totvert);
 		}
-		if (s->totloop > 0)
-		{
+		if (s->totloop > 0) {
 			CustomData_add_layer(&dm->loopData, CD_MLOOPUV, CD_DUPLICATE, CustomData_get_layer(&s->loopData, CD_MLOOPUV), s->totloop);
 		}
-		if (s->totpoly > 0)
-		{
+		if (s->totpoly > 0) {
 			CustomData_add_layer(&dm->polyData, CD_MTEXPOLY, CD_DUPLICATE, CustomData_get_layer(&s->polyData, CD_MTEXPOLY), s->totpoly);
 		}
 	}

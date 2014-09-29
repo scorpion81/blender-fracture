@@ -90,7 +90,7 @@ static void DM_loop_interp_from_poly(DerivedMesh *source_dm,
 	DM_interp_loop_data(source_dm, target_dm, source_indices, weights,
 	                    source_poly->totloop, target_loop_index);
 
-	//interpolate vertex data as well (try to...)
+	/* interpolate vertex data as well, for painted weights interpolation on fracture modifier */
 	DM_interp_vert_data(source_dm, target_dm, source_vert_indices ,weights,
 	                    source_poly->totloop, target_vert_index);
 }
@@ -412,7 +412,8 @@ static void exporter_InitGeomArrays(ExportMeshData *export_data,
 	                       CustomData_number_of_layers(&dm_right->loopData, CD_MLOOPUV));
 
 
-	/* also allocate layers for vertex weights */
+	/* also allocate layers for vertex weights,
+	 * for painted weights interpolation on fracture modifier */
 	allocate_custom_layers(&dm->vertData, CD_MDEFORMVERT, num_verts,
 	                       CustomData_number_of_layers(&dm_left->vertData, CD_MDEFORMVERT));
 

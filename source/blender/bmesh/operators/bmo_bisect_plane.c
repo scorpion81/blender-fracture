@@ -39,6 +39,7 @@
 
 #define ELE_NEW 1
 #define ELE_INPUT 2
+/* XXX used with fracture modifier, check whether still necessary */
 #define MYTAG (1 << 6)
 
 void bmo_bisect_plane_exec(BMesh *bm, BMOperator *op)
@@ -101,13 +102,13 @@ void bmo_bisect_plane_exec(BMesh *bm, BMOperator *op)
 		}
 
 		while ((v = STACK_POP(vert_arr))) {
-
-				BM_vert_kill(bm, v);
+			BM_vert_kill(bm, v);
 		}
 
 		MEM_freeN(vert_arr);
 	}
 
 	BMO_slot_buffer_from_enabled_flag(bm, op, op->slots_out, "geom.out", BM_ALL_NOLOOP, ELE_NEW | ELE_INPUT);
+	/* XXX added BM_FACE here for usage with fracture modifier, might be removed again if working without...*/
 	BMO_slot_buffer_from_enabled_flag(bm, op, op->slots_out, "geom_cut.out", BM_VERT | BM_EDGE | BM_FACE, ELE_NEW);
 }
