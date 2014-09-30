@@ -1471,7 +1471,7 @@ static void write_defgroups(WriteData *wd, ListBase *defbase)
 		writestruct(wd, DATA, "bDeformGroup", 1, defgroup);
 }
 
-//need a prototype of that here...
+/* need a prototype of that here...*/
 static void write_customdata(WriteData *wd, ID *id, int count, CustomData *data, int partial_type, int partial_count);
 
 static void write_shard(WriteData* wd, Shard* s)
@@ -1481,16 +1481,13 @@ static void write_shard(WriteData* wd, Shard* s)
 	writestruct(wd, DATA, "MPoly", s->totpoly, s->mpoly);
 	writestruct(wd, DATA, "MLoop", s->totloop, s->mloop);
 
-	if (s->totvert > 1)
-	{
+	if (s->totvert > 1) {
 		write_customdata(wd, NULL, s->totvert, &s->vertData, -1, s->totvert);
 	}
-	if (s->totloop > 0)
-	{
+	if (s->totloop > 0) {
 		write_customdata(wd, NULL, s->totloop, &s->loopData, -1, s->totloop);
 	}
-	if (s->totpoly > 0)
-	{
+	if (s->totpoly > 0) {
 		write_customdata(wd, NULL, s->totpoly, &s->polyData, -1, s->totpoly);
 	}
 
@@ -1522,8 +1519,6 @@ static void write_meshIsland(WriteData* wd, MeshIsland* mi)
 	writestruct(wd, DATA, "BoundBox", 1, mi->bb);
 	writedata(wd, DATA, sizeof(int) * mi->vertex_count, mi->vertex_indices);
 }
-
-//void write_dverts(WriteData *wd, int count, MDeformVert *dvlist);
 
 static void write_modifiers(WriteData *wd, ListBase *modbase)
 {
@@ -1664,25 +1659,16 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 				{
 					writestruct(wd, DATA, "FracMesh", 1, fm);
 					writedata(wd, DATA, sizeof(Shard*) * fm->shard_count, fm->shard_map);
-					for (i = 0; i < fm->shard_count; i++)
-					{
+					for (i = 0; i < fm->shard_count; i++) {
 						Shard *s = fm->shard_map[i];
 						write_shard(wd, s);
 					}
 
-					for (s = fmd->islandShards.first; s; s = s->next)
-					{
+					for (s = fmd->islandShards.first; s; s = s->next) {
 						write_shard(wd, s);
 					}
 
-					/*if (fmd->dm)
-					{
-						MDeformVert *dvert = fmd->dm->getVertDataArray(fmd->dm, CD_MDEFORMVERT);
-						write_dverts(wd, fmd->dm->getNumVerts(fmd->dm), dvert);
-					}*/
-
-					for (mi = fmd->meshIslands.first; mi; mi = mi->next)
-					{
+					for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 						write_meshIsland(wd, mi);
 					}
 				}
@@ -3556,7 +3542,7 @@ static void write_global(WriteData *wd, int fileflags, Main *mainvar)
 #ifdef WITH_BUILDINFO
 	{
 		extern unsigned long build_commit_timestamp;
-		extern char build_change[], build_hash[];
+		extern char build_hash[];
 		/* TODO(sergey): Add branch name to file as well? */
 		fg.build_commit_timestamp = build_commit_timestamp;
 		BLI_strncpy(fg.build_hash, build_hash, sizeof(fg.build_hash));

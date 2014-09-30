@@ -4102,6 +4102,7 @@ static void direct_link_grid_paint_mask(FileData *fd, int count, GridPaintMask *
 	}
 }
 
+/* used with fracture modifier */
 static void direct_link_customdata_fracture(FileData *fd, CustomData *data, int count)
 {
 	/*need to load the dverts here for fracture, so handle this in a special function, normally
@@ -4632,7 +4633,8 @@ static void direct_link_pose(FileData *fd, bPose *pose)
 	}
 }
 
-static void direct_link_customdata_mtpoly_shard(FileData *fd, CustomData *pdata, int totface)
+/* used with fracture modifier*/
+void direct_link_customdata_mtpoly_shard(FileData *fd, CustomData *pdata, int totface)
 {
 	int i;
 
@@ -4644,13 +4646,7 @@ static void direct_link_customdata_mtpoly_shard(FileData *fd, CustomData *pdata,
 			int j;
 
 			for (j = 0; j < totface; j++, tf++) {
-				//tf->tpage = newlibadr(fd, me->id.lib, tf->tpage);
 				tf->tpage = newdataadr(fd, tf->tpage);
-				if (tf->tpage == NULL)
-				{
-					//lib_link_image(fd, G.main);
-					//direct_link_image(fd, tf->tpage)
-				}
 				if (tf->tpage && tf->tpage->id.us == 0) {
 					tf->tpage->id.us = 1;
 				}
@@ -4666,23 +4662,17 @@ static Shard* read_shard(FileData *fd, void* address )
 	s->mpoly = newdataadr(fd, s->mpoly);
 	s->mloop = newdataadr(fd, s->mloop);
 
-	if (s->totvert > 1)
-	{
+	if (s->totvert > 1) {
 		direct_link_customdata_fracture(fd, &s->vertData, s->totvert);
 	}
 
-	if (s->totloop > 0)
-	{
+	if (s->totloop > 0) {
 		direct_link_customdata_fracture(fd, &s->loopData, s->totloop);
 	}
 
-	if (s->totpoly > 0)
-	{
+	if (s->totpoly > 0) {
 		direct_link_customdata_fracture(fd, &s->polyData, s->totpoly);
 	}
-
-	//sigh, need to ensure image refs are correct...
-	//direct_link_customdata_mtpoly_shard(fd, &s->polyData, s->totpoly);
 
 	s->neighbor_ids = newdataadr(fd, s->neighbor_ids);
 	s->cluster_colors = newdataadr(fd, s->cluster_colors);
@@ -4691,7 +4681,6 @@ static Shard* read_shard(FileData *fd, void* address )
 
 static MeshIsland* read_meshIsland(FileData* fd, void* address)
 {
-	int i = 0;
 	MeshIsland* mi;
 	Shard* temp;
 
@@ -4716,7 +4705,7 @@ static MeshIsland* read_meshIsland(FileData* fd, void* address)
 	mi->bb = newdataadr(fd, mi->bb);
 	mi->vertex_indices = newdataadr(fd, mi->vertex_indices);
 
-	//will be refreshed...
+	/* will be refreshed on the fly */
 	mi->participating_constraint_count = 0;
 	mi->participating_constraints = NULL;
 
@@ -4990,13 +4979,12 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 
 			fm = fmd->frac_mesh = newdataadr(fd, fmd->frac_mesh);
 
-			fmd->refresh = false;  // do not construct modifier
+			fmd->refresh = false;  /* do not execute modifier here yet*/
 			fmd->refresh_constraints = false;
 			fmd->nor_tree = NULL;
 			fmd->face_pairs = NULL;
 
-			if (fm == NULL)
-			{
+			if (fm == NULL) {
 
 				fmd->dm = NULL;
 				fmd->meshIslands.first = NULL;
@@ -5007,23 +4995,20 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 				fmd->meshConstraints.first = NULL;
 				fmd->meshConstraints.last = NULL;
 				fmd->explo_shared = false;
-				fmd->refresh = false;  // do not construct modifier
+				fmd->refresh = false;  /* do not execute modifier */
 				fmd->refresh_constraints = false;
 				fmd->max_vol = 0;
 				fmd->refresh_images = false;
 			}
-			else
-			{
+			else {
 				MeshIsland *mi;
 				MVert *mverts;
 				int vertstart = 0;
 				Shard *s;
-				int count = 0, count2 = 0; //vertcount = 0;
-				//MDeformVert *dvert;
+				int count = 0, count2 = 0;
 
 				fm->shard_map = newdataadr(fd, fm->shard_map);
-				for (i = 0; i < fm->shard_count; i++)
-				{
+				for (i = 0; i < fm->shard_count; i++) {
 					fm->shard_map[i] = newdataadr(fd, fm->shard_map[i]);
 					fm->shard_map[i] = read_shard(fd, fm->shard_map[i]);
 				}
@@ -5032,8 +5017,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 				fmd->visible_mesh = NULL;
 
 				link_list(fd, &fmd->islandShards);
-				for (s = fmd->islandShards.first; s; s = s->next)
-				{
+				for (s = fmd->islandShards.first; s; s = s->next) {
 					s = read_shard(fd, s);
 				}
 
@@ -5041,85 +5025,56 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 				count = BLI_countlist(&fmd->islandShards);
 				count2 = BLI_countlist(&fmd->meshIslands);
 
-				if ((fmd->islandShards.first == NULL || count == 0 /*|| count != count2*/) && fm->shard_count > 0)
-				{
-					//oops, a refresh was missing, so disable this flag here better, otherwise
-					//we attempt to load non existing data
+				if ((fmd->islandShards.first == NULL || count == 0) && fm->shard_count > 0) {
+					/* oops, a refresh was missing, so disable this flag here better, otherwise
+					 * we attempt to load non existing data */
 					fmd->shards_to_islands = false;
 				}
-				else if (fm->shard_count == 0)
-				{
+				else if (fm->shard_count == 0) {
 					fmd->shards_to_islands = true;
 				}
 
-				//ugly ugly, need only the shard... the rest is to be generated on demand...
+				/* ugly ugly, need only the shard... the rest is to be generated on demand... */
 				BKE_fracture_create_dm(fmd, true);
 
-				if (fm->shard_count == 0)
-				{
+				if (fm->shard_count == 0) {
 					fmd->shards_to_islands = false;
 				}
 
 				fmd->visible_mesh_cached = CDDM_copy(fmd->dm);
-				if (fmd->visible_mesh == NULL)
-				{
+				if (fmd->visible_mesh == NULL) {
 					fmd->visible_mesh = DM_to_bmesh(fmd->visible_mesh_cached, true);
 				}
 
-				//if (fmd->shards_to_islands)
-				{
-					DM_ensure_tessface(fmd->visible_mesh_cached);
-					DM_ensure_normals(fmd->visible_mesh_cached);
-					DM_update_tessface_data(fmd->visible_mesh_cached);
+				DM_ensure_tessface(fmd->visible_mesh_cached);
+				DM_ensure_normals(fmd->visible_mesh_cached);
+				DM_update_tessface_data(fmd->visible_mesh_cached);
 
-					//re-init cached verts here...
-					mverts = CDDM_get_verts(fmd->visible_mesh_cached);
-				}
+				/* re-init cached verts here... */
+				mverts = CDDM_get_verts(fmd->visible_mesh_cached);
 
-				/*vertcount = fmd->visible_mesh_cached->getNumVerts(fmd->visible_mesh_cached);
-				dvert = fmd->visible_mesh_cached->getVertDataArray(fmd->visible_mesh_cached, CD_MDEFORMVERT);
-				direct_link_dverts(fd, vertcount, dvert);*/
-
-				for (mi = fmd->meshIslands.first; mi; mi = mi->next)
-				{
+				for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 					int k = 0;
 					mi = read_meshIsland(fd, mi);
+					mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * mi->vertex_count, "mi->vertices_cached readfile");
 
-					//if (fmd->shards_to_islands)
-					{
-						mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * mi->vertex_count, "mi->vertices_cached readfile");
-						//mi->vertno = NULL;
-						for (k = 0; k < mi->vertex_count; k++)
-						{
-							MVert* v = mverts + vertstart + k ;// mi->vertex_indices[k];
-							mi->vertices_cached[k] = v;
-							mi->vertco[k*3] = v->co[0];
-							mi->vertco[k*3+1] = v->co[1];
-							mi->vertco[k*3+2] = v->co[2];
+					for (k = 0; k < mi->vertex_count; k++) {
+						MVert* v = mverts + vertstart + k ;
+						mi->vertices_cached[k] = v;
+						mi->vertco[k*3] = v->co[0];
+						mi->vertco[k*3+1] = v->co[1];
+						mi->vertco[k*3+2] = v->co[2];
 
-							if (mi->vertno != NULL && fmd->fix_normals)
-							{
-								float no[3];
-								no[0] = mi->vertno[k*3];
-								no[1] = mi->vertno[k*3+1];
-								no[2] = mi->vertno[k*3+2];
-								copy_v3_v3_short(mi->vertices_cached[k]->no, no);
-							}
+						if (mi->vertno != NULL && fmd->fix_normals) {
+							float no[3];
+							no[0] = mi->vertno[k*3];
+							no[1] = mi->vertno[k*3+1];
+							no[2] = mi->vertno[k*3+2];
+							copy_v3_v3_short(mi->vertices_cached[k]->no, no);
 						}
-						vertstart += mi->vertex_count;
 					}
+					vertstart += mi->vertex_count;
 				}
-
-				/*link_list(fd, &fmd->meshConstraints);
-				for (con = fmd->meshConstraints.first; con; con = con->next)
-				{
-					//con = newdataadr(fd, con);
-					//con->mi1 = newdataadr(fd, con->mi1);
-					//con->mi2 = newdataadr(fd, con->mi2);
-					con->physics_constraint = NULL;
-					con->flag |= RBC_FLAG_NEEDS_VALIDATE;
-				}*/
-
 
 				fmd->refresh_constraints = true;
 				fmd->meshConstraints.first = NULL;
@@ -7943,7 +7898,7 @@ static BHead *read_userdef(BlendFileData *bfd, FileData *fd, BHead *bhead)
 	for (addon = user->addons.first; addon; addon = addon->next) {
 		addon->prop = newdataadr(fd, addon->prop);
 		IDP_DirectLinkGroup_OrFree(&addon->prop, (fd->flags & FD_FLAGS_SWITCH_ENDIAN), fd);
-		}
+	}
 
 	// XXX
 	user->uifonts.first = user->uifonts.last= NULL;

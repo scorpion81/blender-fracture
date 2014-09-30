@@ -741,7 +741,7 @@ static void updateShards(FractureModifierData *fmd, Object *ob)
 static void updateConstraints(FractureModifierData *rmd, Object* ob) {
 	RigidBodyShardCon *rbsc;
 	int index1, index2;
-	float max_con_mass = 0, min_con_dist = FLT_MAX;
+	float max_con_mass = 0;
 	int iterations;
 
 	if (rmd->use_mass_dependent_thresholds) {
@@ -769,7 +769,7 @@ static void updateConstraints(FractureModifierData *rmd, Object* ob) {
 		}
 
 		if (((rmd->use_mass_dependent_thresholds)) && (rbsc->breaking_threshold > 0)) {
-			BKE_rigidbody_calc_threshold(max_con_mass, min_con_dist, rmd, rbsc);
+			BKE_rigidbody_calc_threshold(max_con_mass, rmd, rbsc);
 		}
 
 		if (rmd->thresh_defgrp_name[0])

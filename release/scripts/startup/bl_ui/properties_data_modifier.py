@@ -279,14 +279,12 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
             split.prop(md, "use_collapse_triangulate")
         elif decimate_type == 'UNSUBDIV':
             layout.prop(md, "iterations")
-        elif decimate_type == 'DISSOLVE':
+        else: # decimate_type == 'DISSOLVE':
             layout.prop(md, "angle_limit")
             layout.prop(md, "use_dissolve_boundaries")
             layout.label("Delimit:")
             row = layout.row()
             row.prop(md, "delimit")
-        else:  # decimate_type == 'REMDOUBLES':
-            layout.prop(md, "merge_threshold") 
 
         layout.label(text=iface_("Face Count: %d") % md.face_count, translate=False)
 
@@ -354,6 +352,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         col.prop(md, "show_alive")
         col.prop(md, "show_dead")
         col.prop(md, "use_size")
+
         layout.operator("object.explode_refresh", text="Refresh")
 
     def FLUID_SIMULATION(self, layout, ob, md):
@@ -887,7 +886,6 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         sub = col.column(align=True)
         sub.prop(md, "scale_x", text="Scale X")
         sub.prop(md, "scale_y", text="Scale Y")
-        
 
     def WARP(self, layout, ob, md):
         use_falloff = (md.falloff_type != 'NONE')

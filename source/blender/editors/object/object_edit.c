@@ -1503,13 +1503,11 @@ static EnumPropertyItem *object_mode_set_itemsf(bContext *C, PointerRNA *UNUSED(
 		const bool use_mode_particle_edit = (BLI_listbase_is_empty(&ob->particlesystem) == false) ||
 		                                    (ob->soft != NULL) ||
 		                                    (modifiers_findByType(ob, eModifierType_Cloth) != NULL);
-		const bool use_mode_fracture_edit = (modifiers_findByType(ob, eModifierType_Fracture) != NULL);
 
 		while (input->identifier) {
 			if ((input->value == OB_MODE_EDIT && OB_TYPE_SUPPORT_EDITMODE(ob->type)) ||
 			    (input->value == OB_MODE_POSE && (ob->type == OB_ARMATURE)) ||
 			    (input->value == OB_MODE_PARTICLE_EDIT && use_mode_particle_edit) ||
-			    (input->value == OB_MODE_FRACTURE && use_mode_fracture_edit) ||
 			    (ELEM(input->value, OB_MODE_SCULPT, OB_MODE_VERTEX_PAINT,
 			           OB_MODE_WEIGHT_PAINT, OB_MODE_TEXTURE_PAINT) && (ob->type == OB_MESH)) ||
 			    (input->value == OB_MODE_OBJECT))

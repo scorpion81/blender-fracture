@@ -1443,9 +1443,8 @@ static int make_links_scene_exec(bContext *C, wmOperator *op)
 
 	CTX_DATA_BEGIN (C, Base *, base, selected_bases)
 	{
-		/* in case we link rigidbodies, copy the world of them as well */
-		if (scene_from->rigidbody_world != NULL && scene_to->rigidbody_world == NULL)
-		{
+		/* in case we link rigidbodies, copy the world of them as well (or we experience a crash if we try to access it */
+		if (scene_from->rigidbody_world != NULL && scene_to->rigidbody_world == NULL) {
 			scene_to->rigidbody_world = BKE_rigidbody_world_copy(scene_from->rigidbody_world);
 		}
 		ED_object_scene_link(scene_to, base->object);

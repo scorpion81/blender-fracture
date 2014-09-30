@@ -5907,8 +5907,7 @@ void special_aftertrans_update(bContext *C, TransInfo *t)
 				if (BKE_rigidbody_check_sim_running(t->scene->rigidbody_world, ctime))
 					BKE_rigidbody_aftertrans_update(ob, td->ext->oloc, td->ext->orot, td->ext->oquat, td->ext->orotAxis, td->ext->orotAngle);
 				
-				if (md != NULL)
-				{
+				if (md != NULL) {
 					//reset original matrix of modifier
 					fmd = (FractureModifierData*)md;
 					copy_m4_m4(fmd->origmat, td->ext->obmat);

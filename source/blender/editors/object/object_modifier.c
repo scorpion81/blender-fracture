@@ -1946,10 +1946,10 @@ static int explode_refresh_exec(bContext *C, wmOperator *op)
 	if (!emd)
 		return OPERATOR_CANCELLED;
 
-			emd->flag |= eExplodeFlag_CalcFaces;
+	emd->flag |= eExplodeFlag_CalcFaces;
 
-		DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
-		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
+	DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
+	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
 	
 	return OPERATOR_FINISHED;
 }
@@ -2268,16 +2268,15 @@ static void fracture_free(void *customdata)
 
 static int fracture_breakjob(void *customdata)
 {
-	FractureJob *fj = (FractureJob *)customdata;
-	//return *(fj->stop);
-	return G.is_break;
+	/* FractureJob *fj = (FractureJob *)customdata;
+	 * return *(fj->stop); */
+	return G.is_break; /* a workaround solution */
 }
 
 static float fracture_update(void *customdata)
 {
 	FractureJob *fj = customdata;
 	float progress;
-	int factor;
 
 	if (fj->fmd->frac_mesh == NULL)
 		return 0.0f;
@@ -2285,7 +2284,7 @@ static float fracture_update(void *customdata)
 	if (fracture_breakjob(fj))
 		fj->fmd->frac_mesh->cancel = 1;
 
-	//*(fj->do_update) = true; //useless here...
+	/* *(fj->do_update) = true;  useless here...*/
 	progress = (float)(fj->fmd->frac_mesh->progress_counter) / (float)(fj->total_progress);
 	return progress;
 }
@@ -2300,17 +2299,17 @@ static void fracture_startjob(void *customdata, short *stop, short *do_update, f
 	fj->stop = stop;
 	fj->do_update = do_update;
 	fj->progress = progress;
-	*(fj->stop) = 0; //false;
+	*(fj->stop) = 0; /*false*/
 
 	G.is_break = false;   /* XXX shared with render - replace with job 'stop' switch */
 
-	//arm the modifier...
+	/* arm the modifier... */
 	fmd->refresh = true;
 	*(fj->do_update) = true;
 	*do_update = true;
 	*stop = 0;
 
-	//...and trigger modifier execution HERE
+	/*...and trigger modifier execution HERE*/
 	makeDerivedMesh(scene, ob, NULL, scene->customdata_mask | CD_MASK_BAREMESH, 0);
 }
 
@@ -2323,7 +2322,6 @@ static void fracture_endjob(void *customdata)
 
 static bool fracture_poll(bContext *C)
 {
-	//return false;
 	return edit_modifier_poll_generic(C, &RNA_FractureModifier, 0);
 }
 
@@ -2336,32 +2334,16 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 	FractureJob *fj;
 	wmJob* wm_job;
 
-	/*CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
-		
-		rmd = (FractureModifierData *)edit_modifier_property_get(op, ob, eModifierType_Fracture);
-		//rmd = (FractureModifierData *)modifiers_findByType(ob, eModifierType_Fracture);
-		if (!rmd || cfra != scene->rigidbody_world->pointcache->startframe)
-			continue;
-		
-		rmd->refresh = true;
-		DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
-		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
-	}
-	CTX_DATA_END;*/
-	
-	//rmd = (FractureModifierData * )edit_modifier_property_get(op, obact, eModifierType_Fracture);
 	rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
 	if (!rmd || (rmd && rmd->refresh) || (scene->rigidbody_world && cfra != scene->rigidbody_world->pointcache->startframe))
 		return OPERATOR_CANCELLED;
 	
-	if (!rmd->execute_threaded)
-	{
+	if (!rmd->execute_threaded) {
 		rmd->refresh = true;
 		DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
 		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
 	}
-	else
-	{
+	else {
 		/* job stuff */
 		int factor, verts, shardprogress, halvingprogress, totalprogress;
 		scene->r.cfra = cfra;
@@ -2374,25 +2356,21 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 		fj->ob = obact;
 		fj->scene = scene;
 
-		//if we have shards, totalprogress = shards + islands
-		//if we dont have shards, then calculate number of processed halving steps
-		//if we split island to shards, add both
+		/* if we have shards, totalprogress = shards + islands
+		 * if we dont have shards, then calculate number of processed halving steps
+		 * if we split island to shards, add both */
 		factor = (fj->fmd->frac_algorithm == MOD_FRACTURE_BISECT_FAST) ? 4 : 2;
-		shardprogress = fj->fmd->shard_count * (factor+1); //+1 for the meshisland creation
+		shardprogress = fj->fmd->shard_count * (factor+1); /* +1 for the meshisland creation */
 
-		if (obact->derivedFinal)
-		{
+		if (obact->derivedFinal) {
 			verts = obact->derivedFinal->getNumVerts(obact->derivedFinal);
 		}
-		else
-		{
+		else {
 			verts = ((Mesh*)obact->data)->totvert;
 		}
 
-		halvingprogress = (int)(verts / 1000) + (fj->fmd->shard_count * factor); //-> 1000 size of each partitioned separate loose
-		totalprogress = //(rmd->frac_mesh && rmd->frac_mesh->shard_count > 0 && rmd->dm && rmd->dm->numVertData > 0 && !rmd->shards_to_islands)
-		                //? shardprogress : shardprogress + halvingprogress;
-		               (rmd->shards_to_islands || rmd->point_source != MOD_FRACTURE_UNIFORM) ? shardprogress + halvingprogress : shardprogress;
+		halvingprogress = (int)(verts / 1000) + (fj->fmd->shard_count * factor); /*-> 1000 size of each partitioned separate loose*/
+		totalprogress = (rmd->shards_to_islands || rmd->point_source != MOD_FRACTURE_UNIFORM) ? shardprogress + halvingprogress : shardprogress;
 		fj->total_progress = totalprogress;
 
 		WM_jobs_customdata_set(wm_job, fj, fracture_free);
@@ -2438,21 +2416,6 @@ static int rigidbody_refresh_constraints_exec(bContext *C, wmOperator *op)
 	Scene *scene = CTX_data_scene(C);
 	float cfra = BKE_scene_frame_get(scene);
 	
-/*	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
-		//rmd = (FractureModifierData *)edit_modifier_property_get(op, ob, eModifierType_Fracture);
-		rmd = (FractureModifierData *)modifiers_findByType(ob, eModifierType_Fracture);
-	
-		if (!rmd || (scene->rigidbody_world) && (cfra != scene->rigidbody_world->pointcache->startframe))
-			continue;
-	
-		rmd->refresh_constraints = true;
-	
-		DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
-		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
-	}
-	CTX_DATA_END;*/
-	
-	//rmd = (FractureModifierData *)edit_modifier_property_get(op, obact, eModifierType_Fracture);
 	rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
 
 	if (!rmd || (rmd && rmd->refresh) || (scene->rigidbody_world && cfra != scene->rigidbody_world->pointcache->startframe))
@@ -2490,208 +2453,147 @@ void OBJECT_OT_rigidbody_constraints_refresh(wmOperatorType *ot)
 	edit_modifier_properties(ot);
 }
 
-void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, FractureModifierData *rmd, Object* par)
+void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, FractureModifierData *rmd)
 {
-	//ParticleSystemModifierData *pmd = modifiers_findByType(ob, eModifierType_ParticleSystem);
 	Base *base_new, *base_old = BKE_scene_base_find(scene, ob);
 	Object *ob_new = NULL;
 	MeshIsland *mi;
 	RigidBodyShardCon* con;
-	int i = 0, result = 0;
-	
-#if 0
-	if (rmd)
-	{
-		//apply just rigidbody modifier
-		rmd->refresh = true;
-		result = modifier_apply_obdata(reports, scene, ob, rmd);
-		rmd->refresh = false;
+	int i = 0;
+
+	int count = BLI_countlist(&rmd->meshIslands);
+	KDTree* objtree = BLI_kdtree_new(count);
+	Object** objs = MEM_callocN(sizeof(Object*) * count, "convert_objs");
+	float max_con_mass = 0;
+	float min_con_dist = FLT_MAX;
+	rmd->refresh = false;
+
+	for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+		float cent[3];
+		Mesh* me;
+		ModifierData *md;
+		bool foundFracture = false;
+
+		/* create separate objects for meshislands */
+		if (ob->type == OB_MESH) {
+			base_new = ED_object_add_duplicate(G.main, scene, base_old, USER_DUP_MESH);
+			ob_new = base_new->object;
+		}
+		else {
+			RigidBodyWorld *rbw = NULL;
+
+			ob_new = BKE_object_add(G.main, scene, OB_MESH);
+
+			rbw = scene->rigidbody_world;
+
+			if (rbw) {
+				/* make rigidbody object settings */
+				if (ob_new->rigidbody_object == NULL) {
+					ob_new->rigidbody_object = BKE_rigidbody_create_object(scene, ob_new, RBO_TYPE_ACTIVE);
+				}
+				ob_new->rigidbody_object->type = RBO_TYPE_ACTIVE;
+				ob_new->rigidbody_object->flag |= RBO_FLAG_NEEDS_VALIDATE;
+
+				/* add object to rigid body group */
+				BKE_group_object_add(rbw->group, ob_new, scene, NULL);
+
+				DAG_id_tag_update(&ob_new->id, OB_RECALC_OB);
+			}
+		}
+
+		/* throw away all modifiers before fracture, result is stored inside it */
+		while (ob_new->modifiers.first != NULL) {
+			md = ob_new->modifiers.first;
+			if (md->type == eModifierType_Fracture) {
+				/*remove fracture itself too*/
+				foundFracture = true;
+				BLI_remlink(&ob_new->modifiers, md);
+				modifier_free(md);
+				md = NULL;
+			}
+			else if (!foundFracture) {
+				BLI_remlink(&ob_new->modifiers, md);
+				modifier_free(md);
+				md = NULL;
+			}
+			/* XXX else keep following modifiers, or apply them ? */
+		}
+
+		assign_matarar(ob_new, give_matarar(ob), *give_totcolp(ob));
+
+		me = (Mesh*)ob_new->data;
+		me->edit_btmesh = NULL;
+
+		DM_to_mesh(mi->physics_mesh, me, ob_new, CD_MASK_MESH);
+
+		/*set origin to centroid*/
+		copy_v3_v3(cent, mi->centroid);
+		mul_m4_v3(ob_new->obmat, cent);
+		copy_v3_v3(ob_new->loc, cent);
+
+		/*set mass*/
+		ob_new->rigidbody_object->mass = mi->rigidbody->mass;
+
+		/*store obj indexes in kdtree and objs in array*/
+		BLI_kdtree_insert(objtree, i, mi->centroid);
+		objs[i] = ob_new;
+		i++;
+
+		BKE_rigidbody_remove_shard(scene, mi);
 	}
 
-	if (pmd)
-	{
-		BLI_remlink(&ob->modifiers, pmd);
-		modifier_free(pmd);
+	BLI_kdtree_balance(objtree);
+
+	/* go through constraints and find objects by position
+	 * constrain them with regular constraints */
+
+	if (rmd->use_mass_dependent_thresholds) {
+		max_con_mass = BKE_rigidbody_calc_max_con_mass(ob);
 	}
 
-#endif
+	for (con = rmd->meshConstraints.first; con; con = con->next) {
+		int index1 = BLI_kdtree_find_nearest(objtree, con->mi1->centroid, NULL);
+		int index2 =  BLI_kdtree_find_nearest(objtree, con->mi2->centroid, NULL);
+		Object* ob1 = objs[index1];
+		Object* ob2 = objs[index2];
+		Object* rbcon = BKE_object_add(G.main, scene, OB_EMPTY);
+		int iterations;
 
-	//if (result)
-	{
-		int count = BLI_countlist(&rmd->meshIslands);
-		KDTree* objtree = BLI_kdtree_new(count);
-		Object** objs = MEM_callocN(sizeof(Object*) * count, "convert_objs");
-		float max_con_mass = 0;
-		float min_con_dist = FLT_MAX;
-		rmd->refresh = false;
-	
-		for (mi = rmd->meshIslands.first; mi; mi = mi->next)
-		{
-			float cent[3];
-			Mesh* me;
-			ModifierData *md;
-			bool foundFracture = false;
-			
-			//create separate objects for meshislands
-			if (ob->type == OB_MESH)
-			{
-				base_new = ED_object_add_duplicate(G.main, scene, base_old, USER_DUP_MESH);
-				ob_new = base_new->object;
-			}
-			else
-			{
-				RigidBodyWorld *rbw = NULL;
-
-				ob_new = BKE_object_add(G.main, scene, OB_MESH);
-
-				rbw = scene->rigidbody_world;
-
-				if (rbw)
-				{
-					/* make rigidbody object settings */
-					if (ob_new->rigidbody_object == NULL) {
-						ob_new->rigidbody_object = BKE_rigidbody_create_object(scene, ob_new, RBO_TYPE_ACTIVE);
-					}
-					ob_new->rigidbody_object->type = RBO_TYPE_ACTIVE;
-					ob_new->rigidbody_object->flag |= RBO_FLAG_NEEDS_VALIDATE;
-
-					/* add object to rigid body group */
-					BKE_group_object_add(rbw->group, ob_new, scene, NULL);
-
-					DAG_id_tag_update(&ob_new->id, OB_RECALC_OB);
-				}
-			}
-
-			//throw away all modifiers before fracture, result is stored inside it
-			while (ob_new->modifiers.first != NULL)
-			{
-				md = ob_new->modifiers.first;
-				if (md->type == eModifierType_Fracture)
-				{
-					//remove fracture itself too
-					foundFracture = true;
-					BLI_remlink(&ob_new->modifiers, md);
-					modifier_free(md);
-					md = NULL;
-				}
-				else if (!foundFracture)
-				{
-					BLI_remlink(&ob_new->modifiers, md);
-					modifier_free(md);
-					md = NULL;
-				}
-				//else keep following modifiers, or apply them ?
-			}
-			
-			assign_matarar(ob_new, give_matarar(ob), *give_totcolp(ob));
-
-			me = (Mesh*)ob_new->data;
-			me->edit_btmesh = NULL;
-
-			DM_to_mesh(mi->physics_mesh, me, ob_new, CD_MASK_MESH);
-			
-			//set origin to centroid
-			copy_v3_v3(cent, mi->centroid);
-			mul_m4_v3(ob_new->obmat, cent);
-			copy_v3_v3(ob_new->loc, cent);
-			
-			//set mass
-			ob_new->rigidbody_object->mass = mi->rigidbody->mass;
-			
-			//store obj indexes in kdtree and objs in array
-			BLI_kdtree_insert(objtree, i, mi->centroid);
-			objs[i] = ob_new;
-			i++;
-			
-			//parent to an empty, optionally, convenient for usage with blender destructability editor
-/*			if (par)
-			{
-				sub_v3_v3(ob_new->loc, par->loc);
-				ED_object_parent_set(reports, G.main, scene, ob_new, par, PAR_OBJECT, false, false, NULL);
-			}*/
-			
-			//ED_base_object_select(base_new, BA_SELECT);
-			BKE_rigidbody_remove_shard(scene, mi);
+		if (rmd->solver_iterations_override == 0) {
+			iterations = rmd->modifier.scene->rigidbody_world->num_solver_iterations;
 		}
-	
-		BLI_kdtree_balance(objtree);
-		
-		//go through constraints and find objects by position
-		//constrain them with regular constraints
-		
-		if (rmd->use_mass_dependent_thresholds)
-		{
-			max_con_mass = BKE_rigidbody_calc_max_con_mass(ob);
-		}
-		
-		for (con = rmd->meshConstraints.first; con; con = con->next)
-		{
-			int index1 = BLI_kdtree_find_nearest(objtree, con->mi1->centroid, NULL);
-			int index2 =  BLI_kdtree_find_nearest(objtree, con->mi2->centroid, NULL);
-			Object* ob1 = objs[index1];
-			Object* ob2 = objs[index2];
-			Object* rbcon = BKE_object_add(G.main, scene, OB_EMPTY);
-			int iterations;
-			
-			if (rmd->solver_iterations_override == 0)
-			{
-				iterations = rmd->modifier.scene->rigidbody_world->num_solver_iterations;
-			}
-			else
-			{
-				iterations = rmd->solver_iterations_override;
-			}
-			
-			if (iterations > 0)
-			{
-				con->flag |= RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS;
-				con->num_solver_iterations = iterations;
-			}
-			
-			if ((rmd->use_mass_dependent_thresholds))
-			{
-				BKE_rigidbody_calc_threshold(max_con_mass, min_con_dist, rmd, con);
-			}
-			
-			//add_v3_v3v3(rbcon->loc, ob1->loc, ob2->loc); //set in center
-			//mul_v3_fl(rbcon->loc, 0.5f);
-			copy_v3_v3(rbcon->loc, ob1->loc); //use same settings as in modifier
-			//add_v3_v3(rbcon->loc, par->loc); // correct parenting calculation
-			ED_rigidbody_constraint_add(scene, rbcon, con->type, reports);
-			
-			rbcon->rigidbody_constraint->ob1 = ob1;
-			rbcon->rigidbody_constraint->ob2 = ob2;
-			//rbcon->rigidbody_constraint->num_solver_iterations = con->num_solver_iterations;
-			rbcon->rigidbody_constraint->breaking_threshold = con->breaking_threshold;
-			rbcon->rigidbody_constraint->flag |= RBC_FLAG_USE_BREAKING;
-			
-			if (con->flag & RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS)
-			{
-				rbcon->rigidbody_constraint->flag |= RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS;
-				rbcon->rigidbody_constraint->num_solver_iterations = iterations;
-			}
-			
-			BKE_rigidbody_remove_shard_con(scene, con);
+		else {
+			iterations = rmd->solver_iterations_override;
 		}
 
-#if 0
-		if (rmd && ob->type != OB_MESH)
-		{
-			BLI_remlink(&ob->modifiers, rmd);
-			modifier_free(rmd);
-
-			//remove from rigidbody sim and hide
-			//ED_rigidbody_object_remove(scene, ob);
-			//ob->restrictflag
-			|= OB_RESTRICT_RENDER;
-			//ob->restrictflag |= OB_RESTRICT_VIEW;
+		if (iterations > 0) {
+			con->flag |= RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS;
+			con->num_solver_iterations = iterations;
 		}
-#endif
 
-		// free array and kdtree
-		MEM_freeN(objs);
-		BLI_kdtree_free(objtree);
+		if ((rmd->use_mass_dependent_thresholds)) {
+			BKE_rigidbody_calc_threshold(max_con_mass, rmd, con);
+		}
+
+		copy_v3_v3(rbcon->loc, ob1->loc); /*use same settings as in modifier*/
+		ED_rigidbody_constraint_add(scene, rbcon, con->type, reports);
+
+		rbcon->rigidbody_constraint->ob1 = ob1;
+		rbcon->rigidbody_constraint->ob2 = ob2;
+		rbcon->rigidbody_constraint->breaking_threshold = con->breaking_threshold;
+		rbcon->rigidbody_constraint->flag |= RBC_FLAG_USE_BREAKING;
+
+		if (con->flag & RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS) {
+			rbcon->rigidbody_constraint->flag |= RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS;
+			rbcon->rigidbody_constraint->num_solver_iterations = iterations;
+		}
+
+		BKE_rigidbody_remove_shard_con(scene, con);
 	}
+
+	/* free array and kdtree*/
+	MEM_freeN(objs);
+	BLI_kdtree_free(objtree);
 }
 
 static int rigidbody_convert_exec(bContext *C, wmOperator *op)
@@ -2702,78 +2604,19 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 	float cfra = BKE_scene_frame_get(scene);
 	FractureModifierData *rmd;
 	RigidBodyWorld *rbw = scene->rigidbody_world;
-	bool selected = false;
-	bool parent = true; // RNA_boolean_get(op->ptr, "parent");
 	Object* par = NULL;
 	
-#if 0
-	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
-		
-		Base *base = BKE_scene_base_find(scene, ob);
-		//rmd = (FractureModifierData *)edit_modifier_property_get(op, ob, eModifierType_Fracture);
-		rmd = (FractureModifierData *)modifiers_findByType(ob, eModifierType_Fracture);
-		selected = true;
-		if (!rmd || cfra != scene->rigidbody_world->pointcache->startframe)
-			continue;
-		
-		if (parent) {
-			/*char namebuf[MAX_ID_NAME];
-			const char* name =  "X_\0";
-			strncpy(namebuf, name, strlen(name));
-			strncat(namebuf, ob->id.name, strlen(ob->id.name));*/
-			par = BKE_object_add(G.main, scene, OB_EMPTY);
-			//rename_id(&(par->id), namebuf);
-			
-			copy_v3_v3(par->loc, ob->loc);
-		}
-		
-		convert_modifier_to_objects(op->reports, scene, ob, rmd, par);
-
-		ED_base_object_free_and_unlink(bmain, scene, base);
-		//DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
-		//WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
+	rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
+	if (rmd && rmd->refresh) {
+		return OPERATOR_CANCELLED;
 	}
-	CTX_DATA_END;
-	
-	par = NULL;
-	
-	if (!selected)
-#endif
-	{
-		//rmd = (FractureModifierData *)edit_modifier_property_get(op, obact, eModifierType_Fracture);
-		rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
-		if (rmd && rmd->refresh)
-		{
-			return OPERATOR_CANCELLED;
-		}
 
-
-		if (rmd && scene->rigidbody_world && cfra == scene->rigidbody_world->pointcache->startframe) {
-			float loc[3];
-			Base *base = BKE_scene_base_find(scene, obact);
-			
-			if (0)/*parent*/ {
-				/*char namebuf[MAX_ID_NAME];
-				const char* name =  "X_";
-				strncpy(namebuf, name, strlen(name));
-				strncat(namebuf, obact->id.name, strlen(obact->id.name));*/
-				par = BKE_object_add(G.main, scene, OB_EMPTY);
-				//rename_id(&(par->id), namebuf);
-				
-				copy_v3_v3(par->loc, obact->loc);
-			}
-			
-			convert_modifier_to_objects(op->reports, scene, obact, rmd, par);
-
-			//lets keep the original object with the modifier, DONT apply... wont work with CURVE/SURF/FONT
-		//	ED_base_object_free_and_unlink(bmain, scene, base);
-			//DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
-			//WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
-		}
+	if (rmd && scene->rigidbody_world && cfra == scene->rigidbody_world->pointcache->startframe) {
+		convert_modifier_to_objects(op->reports, scene, obact, rmd);
 	}
-	
+
 	if (rbw) {
-		//flatten the cache and throw away all traces of the modifiers (try to...)
+		/* flatten the cache and throw away all traces of the modifiers */
 		short steps_per_second = rbw->steps_per_second;
 		short num_solver_iterations = rbw->num_solver_iterations;
 		int flag = rbw->flag;
@@ -2800,7 +2643,6 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 	WM_event_add_notifier(C, NC_SCENE | ND_OB_ACTIVE, scene);
 	WM_event_add_notifier(C, NC_SCENE | ND_LAYER_CONTENT, scene);
 	
-	//WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, scene);
 	return OPERATOR_FINISHED;
 }
 
@@ -2827,7 +2669,5 @@ void OBJECT_OT_rigidbody_convert_to_objects(wmOperatorType *ot)
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 	edit_modifier_properties(ot);
-	
-	//RNA_def_boolean(ot->srna, "parent", FALSE, "Parent to Empty", "Parent to empty, to be used in conjunction with Destructability Editor/ Loose Parts Option");
 }
 

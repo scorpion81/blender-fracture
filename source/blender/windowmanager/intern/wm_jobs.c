@@ -561,15 +561,12 @@ void wm_jobs_timer(const bContext *C, wmWindowManager *wm, wmTimer *wt)
 				
 				/* always call note and update when ready */
 				if (wm_job->do_update || wm_job->ready) {
-					if (wm_job->update)
-					{
-						if (wm_job->job_type == WM_JOB_TYPE_OBJECT_FRACTURE)
-						{
-							//sigh, need to get progress from somewhere...
+					if (wm_job->update) {
+						if (wm_job->job_type == WM_JOB_TYPE_OBJECT_FRACTURE) {
+							/* sigh, need to get progress from somewhere... */
 							wm_job->progress = wm_job->update(wm_job->run_customdata);
 						}
-						else
-						{
+						else {
 							wm_job->update(wm_job->run_customdata);
 						}
 					}
@@ -579,8 +576,8 @@ void wm_jobs_timer(const bContext *C, wmWindowManager *wm, wmTimer *wt)
 					if (wm_job->flag & WM_JOB_PROGRESS)
 						WM_event_add_notifier(C, NC_WM | ND_JOB, NULL);
 
-					if (wm_job->job_type != WM_JOB_TYPE_OBJECT_FRACTURE)
-					{	//why on earth is this set to false here ? need the timer update... or not ?
+					if (wm_job->job_type != WM_JOB_TYPE_OBJECT_FRACTURE) {
+						/* why on earth is this set to false here ? need the timer update... or not ?*/
 						wm_job->do_update = false;
 					}
 				}
@@ -627,10 +624,7 @@ void wm_jobs_timer(const bContext *C, wmWindowManager *wm, wmTimer *wt)
 				}
 				else if (wm_job->flag & WM_JOB_PROGRESS) {
 					/* accumulate global progress for running jobs */
-					//if (wm_job->job_type != WM_JOB_TYPE_OBJECT_FRACTURE)
-					{
-						jobs_progress++;
-					}
+					jobs_progress++;
 					total_progress += wm_job->progress;
 				}
 			}

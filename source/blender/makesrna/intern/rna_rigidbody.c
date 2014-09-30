@@ -45,13 +45,13 @@
 #include "bmesh.h"
 
 /* roles of objects in RigidBody Sims */
-EnumPropertyItem rigidbody_ob_type_items[] = {
+EnumPropertyItem rigidbody_object_type_items[] = {
 	{RBO_TYPE_ACTIVE, "ACTIVE", 0, "Active", "Object is directly controlled by simulation results"},
 	{RBO_TYPE_PASSIVE, "PASSIVE", 0, "Passive", "Object is directly controlled by animation system"},
 	{0, NULL, 0, NULL, NULL}};
 
 /* collision shapes of objects in rigid body sim */
-EnumPropertyItem rigidbody_ob_shape_items[] = {
+EnumPropertyItem rigidbody_object_shape_items[] = {
 	{RB_SHAPE_BOX, "BOX", ICON_MESH_CUBE, "Box", "Box-like shapes (i.e. cubes), including planes (i.e. ground planes)"},
 	{RB_SHAPE_SPHERE, "SPHERE", ICON_MESH_UVSPHERE, "Sphere", ""},
 	{RB_SHAPE_CAPSULE, "CAPSULE", ICON_OUTLINER_OB_META, "Capsule", ""},
@@ -62,11 +62,10 @@ EnumPropertyItem rigidbody_ob_shape_items[] = {
 	                   "fewer vertices)"},
 	{RB_SHAPE_TRIMESH, "MESH", ICON_MESH_MONKEY, "Mesh",
 	                   "Mesh consisting of triangles only, allowing for more detailed interactions than convex hulls"},
-	//{RB_SHAPE_COMPOUND, "COMPOUND", ICON_MOD_BUILD, "Compound", "A mesh constructed by adding together simpler child meshes"},
 	{0, NULL, 0, NULL, NULL}};
 
 /* collision shapes of constraints in rigid body sim */
-EnumPropertyItem rigidbody_con_type_items[] = {
+EnumPropertyItem rigidbody_constraint_type_items[] = {
 	{RBC_TYPE_FIXED, "FIXED", ICON_NONE, "Fixed", "Glue rigid bodies together"},
 	{RBC_TYPE_POINT, "POINT", ICON_NONE, "Point", "Constrain rigid bodies to move around common pivot point"},
 	{RBC_TYPE_HINGE, "HINGE", ICON_NONE, "Hinge", "Restrict rigid body rotation to one axis"},
@@ -848,7 +847,7 @@ static void rna_def_rigidbody_world(BlenderRNA *brna)
 	RNA_def_property_update(prop, NC_SCENE, "rna_RigidBodyWorld_reset");
 	
 	/* constraint solver iterations */
-	prop = RNA_def_property(srna, "num_solver_iterations", PROP_INT, PROP_NONE);
+	prop = RNA_def_property(srna, "solver_iterations", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "num_solver_iterations");
 	RNA_def_property_range(prop, 1, 1000);
 	RNA_def_property_ui_range(prop, 10, 100, 1, 0);
@@ -895,7 +894,7 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	/* Enums */
 	prop = RNA_def_property(srna, "type", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "type");
-	RNA_def_property_enum_items(prop, rigidbody_ob_type_items);
+	RNA_def_property_enum_items(prop, rigidbody_object_type_items);
 	RNA_def_property_enum_funcs(prop, NULL, "rna_RigidBodyOb_type_set", NULL);
 	RNA_def_property_ui_text(prop, "Type", "Role of object in Rigid Body Simulations");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
@@ -917,7 +916,7 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	
 	prop = RNA_def_property(srna, "collision_shape", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "shape");
-	RNA_def_property_enum_items(prop, rigidbody_ob_shape_items);
+	RNA_def_property_enum_items(prop, rigidbody_object_shape_items);
 	RNA_def_property_ui_text(prop, "Collision Shape", "Collision Shape of object in Rigid Body Simulations");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
@@ -955,7 +954,7 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	                         "but can cause glitches)");
 	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
 	
-	prop = RNA_def_property(srna, "start_deactivated", PROP_BOOLEAN, PROP_NONE);
+	prop = RNA_def_property(srna, "use_start_deactivated", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_START_DEACTIVATED);
 	RNA_def_property_ui_text(prop, "Start Deactivated", "Deactivate rigid body at the start of the simulation");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
@@ -1059,7 +1058,7 @@ static void rna_def_rigidbody_constraint(BlenderRNA *brna)
 	/* Enums */
 	prop = RNA_def_property(srna, "type", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "type");
-	RNA_def_property_enum_items(prop, rigidbody_con_type_items);
+	RNA_def_property_enum_items(prop, rigidbody_constraint_type_items);
 	RNA_def_property_enum_funcs(prop, NULL, "rna_RigidBodyCon_type_set", NULL);
 	RNA_def_property_ui_text(prop, "Type", "Type of Rigid Body Constraint");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
@@ -1110,14 +1109,14 @@ static void rna_def_rigidbody_constraint(BlenderRNA *brna)
 	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
 
 	/* Solver Iterations */
-	prop = RNA_def_property(srna, "override_solver_iterations", PROP_BOOLEAN, PROP_NONE);
+	prop = RNA_def_property(srna, "use_override_solver_iterations", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS);
 	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyCon_override_solver_iterations_set");
 	RNA_def_property_ui_text(prop, "Override Solver Iterations",
 	                         "Override the number of solver iterations for this constraint");
 	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
 
-	prop = RNA_def_property(srna, "num_solver_iterations", PROP_INT, PROP_NONE);
+	prop = RNA_def_property(srna, "solver_iterations", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "num_solver_iterations");
 	RNA_def_property_range(prop, 1, 1000);
 	RNA_def_property_ui_range(prop, 1, 100, 1, 0);

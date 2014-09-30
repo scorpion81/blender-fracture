@@ -1694,7 +1694,7 @@ static void rna_def_softbody(BlenderRNA *brna)
 	
 	prop = RNA_def_property(srna, "bend", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "secondspring");
-	RNA_def_property_range(prop, 0.0f, 1000.0f);
+	RNA_def_property_range(prop, 0.0f, 10.0f);
 	RNA_def_property_ui_text(prop, "Bending", "Bending Stiffness");
 	RNA_def_property_update(prop, 0, "rna_softbody_update");
 	

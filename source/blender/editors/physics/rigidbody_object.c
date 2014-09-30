@@ -20,7 +20,7 @@
  *
  * The Original Code is: all of this file.
  *
- * Contributor(s): Joshua Leung, Sergej Reich
+ * Contributor(s): Joshua Leung, Sergej Reich, Martin Felke
  *
  * ***** END GPL LICENSE BLOCK *****
  */
@@ -186,7 +186,7 @@ void RIGIDBODY_OT_object_add(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	/* properties */
-	ot->prop = RNA_def_enum(ot->srna, "type", rigidbody_ob_type_items, RBO_TYPE_ACTIVE, "Rigid Body Type", "");
+	ot->prop = RNA_def_enum(ot->srna, "type", rigidbody_object_type_items, RBO_TYPE_ACTIVE, "Rigid Body Type", "");
 }
 
 /* ************ Remove Rigid Body ************** */
@@ -277,7 +277,7 @@ void RIGIDBODY_OT_objects_add(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	/* properties */
-	ot->prop = RNA_def_enum(ot->srna, "type", rigidbody_ob_type_items, RBO_TYPE_ACTIVE, "Rigid Body Type", "");
+	ot->prop = RNA_def_enum(ot->srna, "type", rigidbody_object_type_items, RBO_TYPE_ACTIVE, "Rigid Body Type", "");
 }
 
 /* ************ Remove Rigid Bodies ************** */
@@ -380,7 +380,7 @@ void RIGIDBODY_OT_shape_change(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	/* properties */
-	ot->prop = RNA_def_enum(ot->srna, "type", rigidbody_ob_shape_items, RB_SHAPE_TRIMESH, "Rigid Body Shape", "");
+	ot->prop = RNA_def_enum(ot->srna, "type", rigidbody_object_shape_items, RB_SHAPE_TRIMESH, "Rigid Body Shape", "");
 }
 
 /* ************ Calculate Mass ************** */
@@ -521,16 +521,14 @@ static int rigidbody_objects_calc_mass_exec(bContext *C, wmOperator *op)
 			 * and the density of the material we're simulating
 			 */
 
-			if (ob->type == OB_MESH)
-			{
-				//if we have a mesh, determine its volume
+			if (ob->type == OB_MESH) {
+				/* if we have a mesh, determine its volume */
 				dm_ob = CDDM_from_mesh(ob->data);
 				volume = BKE_rigidbody_calc_volume(dm_ob, ob->rigidbody_object);
 			}
-			else
-			{
+			else {
 				float dim[3];
-				//else get object boundbox as last resort
+				/* else get object boundbox as last resort */
 				BKE_object_dimensions_get(ob, dim);
 				volume = dim[0] * dim[1] * dim[2];
 			}

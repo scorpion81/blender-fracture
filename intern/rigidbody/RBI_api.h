@@ -20,7 +20,7 @@
  *
  * The Original Code is: all of this file.
  *
- * Contributor(s): Joshua Leung, Sergej Reich
+ * Contributor(s): Joshua Leung, Sergej Reich, Martin Felke
  *
  * ***** END GPL LICENSE BLOCK *****
  */
@@ -73,7 +73,7 @@ typedef struct rbConstraint rbConstraint;
 
 /* Create a new dynamics world instance */
 // TODO: add args to set the type of constraint solvers, etc.
-extern rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, int (*callback)(void* world, void* island1, void* island2));
+extern rbDynamicsWorld *RB_dworld_new(const float gravity[3]);
 
 /* Delete the given dynamics world, and free any extra data it may require */
 void RB_dworld_delete(rbDynamicsWorld *world);
@@ -105,7 +105,7 @@ void RB_dworld_export(rbDynamicsWorld *world, const char *filename);
 /* Setup ---------------------------- */
 
 /* Add RigidBody to dynamics world */
-extern void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *body, int col_groups, void* meshIsland);
+extern void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *body, int col_groups);
 
 /* Remove RigidBody from dynamics world */
 void RB_dworld_remove_body(rbDynamicsWorld *world, rbRigidBody *body);
@@ -224,12 +224,6 @@ rbCollisionShape *RB_shape_new_cylinder(float radius, float height);
 /* Setup (Convex Hull) ------------ */
 
 rbCollisionShape *RB_shape_new_convex_hull(float *verts, int stride, int count, float margin, bool *can_embed);
-
-/* Setup (Compound Shape------------*/
-
-extern rbCollisionShape *RB_shape_new_compound();
-extern void RB_shape_add_compound_child(rbCollisionShape** compound, rbCollisionShape* child, float loc[3], float rot[4]);
-extern void RB_shape_compound_set_scaling(rbCollisionShape* compound, float scaling[3]);
 
 /* Setup (Triangle Mesh) ---------- */
 

@@ -1005,8 +1005,7 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUS
 	RigidBodyOb *rbo = NULL;
 	rbo = rbw->cache_index_map[index];
 	
-	if (rbo == NULL)
-	{
+	if (rbo == NULL) {
 		float dummyloc[3] = {FLT_MIN, FLT_MIN, FLT_MIN};
 		float dummyrot[4] = {FLT_MIN, FLT_MIN, FLT_MIN, FLT_MIN};
 		
@@ -1034,11 +1033,11 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float UNU
 	
 	rbo = rbw->cache_index_map[index];
 	
-	if (rbo == NULL)
+	if (rbo == NULL) {
 		return;
+	}
 
 	if (rbo && rbo->type == RBO_TYPE_ACTIVE) {
-
 		if (old_data) {
 			memcpy(rbo->pos, data, 3 * sizeof(float));
 			memcpy(rbo->orn, data + 3, 4 * sizeof(float));
@@ -1057,9 +1056,10 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 	float dfra;
 	
 	rbo = rbw->cache_index_map[index];
-	if (rbo == NULL)
+	if (rbo == NULL) {
 		return;
-		
+	}
+
 	if (rbo->type == RBO_TYPE_ACTIVE) {
 
 		copy_v3_v3(keys[1].co, rbo->pos);
@@ -1075,7 +1075,8 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 
 		dfra = cfra2 - cfra1;
 
-		//psys_interpolate_particle(-1, keys, (cfra - cfra1) / dfra, keys, 1);
+		/*psys_interpolate_particle(-1, keys, (cfra - cfra1) / dfra, keys, 1) */
+		/* XXX temporary deform motion blur fix */
 		interp_v3_v3v3(keys->co, keys[1].co, keys[2].co, (cfra - cfra1) / dfra);
 		interp_qt_qtqt(keys->rot, keys[1].rot, keys[2].rot, (cfra - cfra1) / dfra);
 
