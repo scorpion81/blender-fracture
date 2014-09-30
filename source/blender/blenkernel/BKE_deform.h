@@ -28,6 +28,8 @@
 #ifndef __BKE_DEFORM_H__
 #define __BKE_DEFORM_H__
 
+#include "DNA_object_types.h"
+
 /** \file BKE_deform.h
  *  \ingroup bke
  *  \since June 2001

@@ -30,6 +30,7 @@
  */
 
 #include "BLI_compiler_attrs.h"
+#include "BLI_utildefines.h"
 
 struct EdgeHash;
 typedef struct EdgeHash EdgeHash;
