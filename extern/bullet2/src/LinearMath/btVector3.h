@@ -296,8 +296,7 @@ public:
    * x^2 + y^2 + z^2 = 1 */
 	SIMD_FORCE_INLINE btVector3& normalize() 
 	{
-		// XXX TODO caused frequent crashes with fracture modifier, but probably should be enabled despite of that :S
-		//btAssert(!fuzzyZero());
+		btAssert(!fuzzyZero());
 
 #if defined(BT_USE_SSE_IN_API) && defined (BT_USE_SSE)		
         // dot product first
