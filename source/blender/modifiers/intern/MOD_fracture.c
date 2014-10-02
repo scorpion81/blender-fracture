@@ -91,7 +91,7 @@ static void initData(ModifierData *md)
 
 		fmd->cluster_count = 0;
 		fmd->extra_group = NULL;
-		fmd->frac_algorithm = MOD_FRACTURE_BISECT;
+		fmd->frac_algorithm = MOD_FRACTURE_BOOLEAN;
 		fmd->point_source = MOD_FRACTURE_UNIFORM;
 		fmd->shard_id = -1;
 		fmd->shard_count = 10;
