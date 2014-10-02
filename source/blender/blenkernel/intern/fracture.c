@@ -589,16 +589,16 @@ bool BKE_fracture_shard_center_centroid(Shard *shard, float cent[3])
 
 void BKE_shard_free(Shard *s, bool doCustomData)
 {
-	if ((s->totvert > 0) && s->mvert) {
+	if (s->mvert) {
 		MEM_freeN(s->mvert);
 	}
-	if ((s->totloop > 0) && s->mloop) {
+	if (s->mloop) {
 		MEM_freeN(s->mloop);
 	}
-	if ((s->totpoly > 0) && s->mpoly) {
+	if (s->mpoly) {
 		MEM_freeN(s->mpoly);
 	}
-	if (s->neighbor_ids && (s->neighbor_count > 0)) {
+	if (s->neighbor_ids) {
 		MEM_freeN(s->neighbor_ids);
 	}
 	if (s->cluster_colors) {
@@ -606,17 +606,9 @@ void BKE_shard_free(Shard *s, bool doCustomData)
 	}
 
 	if (doCustomData) {
-		if (s->totvert > 1) {
-			CustomData_free(&s->vertData, s->totvert);
-		}
-
-		if (s->totloop > 0) {
-			CustomData_free(&s->loopData, s->totloop);
-		}
-
-		if (s->totpoly > 0) {
-			CustomData_free(&s->polyData, s->totpoly);
-		}
+		CustomData_free(&s->vertData, s->totvert);
+		CustomData_free(&s->loopData, s->totloop);
+		CustomData_free(&s->polyData, s->totpoly);
 	}
 
 	MEM_freeN(s);
@@ -1041,7 +1033,7 @@ static DerivedMesh *create_dm(FractureModifierData* fmd, bool doCustomData)
 		loopstart += shard->totloop;
 	}
 	
-	CustomData_reset(&result->edgeData);
+	CustomData_free(&result->edgeData, 0);
 	CDDM_calc_edges(result);
 
 	{

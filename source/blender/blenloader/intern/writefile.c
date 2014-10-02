@@ -1481,15 +1481,9 @@ static void write_shard(WriteData* wd, Shard* s)
 	writestruct(wd, DATA, "MPoly", s->totpoly, s->mpoly);
 	writestruct(wd, DATA, "MLoop", s->totloop, s->mloop);
 
-	if (s->totvert > 1) {
-		write_customdata(wd, NULL, s->totvert, &s->vertData, -1, s->totvert);
-	}
-	if (s->totloop > 0) {
-		write_customdata(wd, NULL, s->totloop, &s->loopData, -1, s->totloop);
-	}
-	if (s->totpoly > 0) {
-		write_customdata(wd, NULL, s->totpoly, &s->polyData, -1, s->totpoly);
-	}
+	write_customdata(wd, NULL, s->totvert, &s->vertData, -1, s->totvert);
+	write_customdata(wd, NULL, s->totloop, &s->loopData, -1, s->totloop);
+	write_customdata(wd, NULL, s->totpoly, &s->polyData, -1, s->totpoly);
 
 	writedata(wd, DATA, sizeof(int)*s->neighbor_count, s->neighbor_ids);
 	writedata(wd, DATA, sizeof(int), s->cluster_colors);
@@ -1497,7 +1491,6 @@ static void write_shard(WriteData* wd, Shard* s)
 
 static void write_meshIsland(WriteData* wd, MeshIsland* mi)
 {
-	int i = 0;
 	DerivedMesh *dm = mi->physics_mesh;
 	mi->temp = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
 	                                        dm->getNumVerts(dm), dm->getNumPolys(dm), dm->getNumLoops(dm), true);
@@ -1507,7 +1500,7 @@ static void write_meshIsland(WriteData* wd, MeshIsland* mi)
 	writedata(wd, DATA, sizeof(struct BMVert*) * mi->vertex_count, mi->vertices);
 	writedata(wd, DATA, sizeof(MVert*) * mi->vertex_count, mi->vertices_cached);
 	writedata(wd, DATA, sizeof(float) * 3 * mi->vertex_count, mi->vertco);
-	//write derivedmesh as shard...
+	/* write derivedmesh as shard... */
 	write_shard(wd, mi->temp);
 	BKE_shard_free(mi->temp, true);
 	mi->temp = NULL;

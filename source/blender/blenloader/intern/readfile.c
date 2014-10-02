@@ -4634,6 +4634,7 @@ static void direct_link_pose(FileData *fd, bPose *pose)
 }
 
 /* used with fracture modifier*/
+void direct_link_customdata_mtpoly_shard(FileData *fd, CustomData *pdata, int totface);
 void direct_link_customdata_mtpoly_shard(FileData *fd, CustomData *pdata, int totface)
 {
 	int i;
@@ -4662,17 +4663,9 @@ static Shard* read_shard(FileData *fd, void* address )
 	s->mpoly = newdataadr(fd, s->mpoly);
 	s->mloop = newdataadr(fd, s->mloop);
 
-	if (s->totvert > 1) {
-		direct_link_customdata_fracture(fd, &s->vertData, s->totvert);
-	}
-
-	if (s->totloop > 0) {
-		direct_link_customdata_fracture(fd, &s->loopData, s->totloop);
-	}
-
-	if (s->totpoly > 0) {
-		direct_link_customdata_fracture(fd, &s->polyData, s->totpoly);
-	}
+	direct_link_customdata_fracture(fd, &s->vertData, s->totvert);
+	direct_link_customdata_fracture(fd, &s->loopData, s->totloop);
+	direct_link_customdata_fracture(fd, &s->polyData, s->totpoly);
 
 	s->neighbor_ids = newdataadr(fd, s->neighbor_ids);
 	s->cluster_colors = newdataadr(fd, s->cluster_colors);
@@ -5005,7 +4998,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 				MVert *mverts;
 				int vertstart = 0;
 				Shard *s;
-				int count = 0, count2 = 0;
+				int count = 0;
 
 				fm->shard_map = newdataadr(fd, fm->shard_map);
 				for (i = 0; i < fm->shard_count; i++) {
@@ -5023,7 +5016,6 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 
 				link_list(fd, &fmd->meshIslands);
 				count = BLI_countlist(&fmd->islandShards);
-				count2 = BLI_countlist(&fmd->meshIslands);
 
 				if ((fmd->islandShards.first == NULL || count == 0) && fm->shard_count > 0) {
 					/* oops, a refresh was missing, so disable this flag here better, otherwise
@@ -5067,10 +5059,12 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 
 						if (mi->vertno != NULL && fmd->fix_normals) {
 							float no[3];
+							short sno[3];
 							no[0] = mi->vertno[k*3];
 							no[1] = mi->vertno[k*3+1];
 							no[2] = mi->vertno[k*3+2];
-							copy_v3_v3_short(mi->vertices_cached[k]->no, no);
+							normal_float_to_short_v3(sno, no);
+							copy_v3_v3_short(mi->vertices_cached[k]->no, sno);
 						}
 					}
 					vertstart += mi->vertex_count;
