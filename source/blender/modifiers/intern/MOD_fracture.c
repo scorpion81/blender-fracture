@@ -984,6 +984,34 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->cluster_breaking_threshold = rmd->cluster_breaking_threshold;
 	trmd->solver_iterations_override = rmd->solver_iterations_override;
 	trmd->shards_to_islands = rmd->shards_to_islands;
+
+	trmd->shard_count = rmd->shard_count;
+	trmd->frac_algorithm = rmd->frac_algorithm;
+
+	trmd->auto_execute = rmd->auto_execute;
+	trmd->autohide_dist = rmd->autohide_dist;
+
+	trmd->solver_iterations_override = rmd->solver_iterations_override;
+
+	trmd->breaking_angle_weighted = rmd->breaking_angle_weighted;
+	trmd->breaking_distance_weighted = rmd->breaking_distance_weighted;
+	trmd->breaking_percentage_weighted = rmd->breaking_percentage_weighted;
+
+	trmd->execute_threaded = rmd->execute_threaded;
+	trmd->point_seed = rmd->point_seed;
+	trmd->point_source = rmd->point_source;
+
+	/* vgroups  XXX TODO non ascii strings ?*/
+	strncpy(trmd->thresh_defgrp_name, rmd->thresh_defgrp_name, strlen(rmd->thresh_defgrp_name));
+	strncpy(trmd->ground_defgrp_name, rmd->ground_defgrp_name, strlen(rmd->ground_defgrp_name));
+	strncpy(trmd->inner_defgrp_name, rmd->inner_defgrp_name, strlen(rmd->inner_defgrp_name));
+
+	/*id refs ?*/
+	trmd->inner_material = rmd->inner_material;
+	trmd->extra_group = rmd->extra_group;
+
+	/* sub object group  XXX Do we keep this ?*/
+	/* trmd->dm_group = rmd->dm_group;*/
 }
 
 void freeMeshIsland(FractureModifierData* rmd, MeshIsland* mi, bool remove_rigidbody)
