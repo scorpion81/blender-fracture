@@ -1585,6 +1585,7 @@ static void view3d_draw_bgpic(Scene *scene, ARegion *ar, View3D *v3d,
 	int fg_flag = do_foreground ? V3D_BGPIC_FOREGROUND : 0;
 
 	for (bgpic = v3d->bgpicbase.first; bgpic; bgpic = bgpic->next) {
+		bgpic->iuser.scene = scene;  /* Needed for render results. */
 
 		if ((bgpic->flag & V3D_BGPIC_FOREGROUND) != fg_flag)
 			continue;
@@ -1598,9 +1599,10 @@ static void view3d_draw_bgpic(Scene *scene, ARegion *ar, View3D *v3d,
 			float x1, y1, x2, y2;
 
 			ImBuf *ibuf = NULL, *freeibuf, *releaseibuf;
+			void *lock;
 
-			Image *ima;
-			MovieClip *clip;
+			Image *ima = NULL;
+			MovieClip *clip = NULL;
 
 			/* disable individual images */
 			if ((bgpic->flag & V3D_BGPIC_DISABLED))
@@ -1617,16 +1619,14 @@ static void view3d_draw_bgpic(Scene *scene, ARegion *ar, View3D *v3d,
 					ibuf = NULL; /* frame is out of range, dont show */
 				}
 				else {
-					ibuf = BKE_image_acquire_ibuf(ima, &bgpic->iuser, NULL);
+					ibuf = BKE_image_acquire_ibuf(ima, &bgpic->iuser, &lock);
 					releaseibuf = ibuf;
 				}
 
 				image_aspect[0] = ima->aspx;
-				image_aspect[1] = ima->aspx;
+				image_aspect[1] = ima->aspy;
 			}
 			else if (bgpic->source == V3D_BGPIC_MOVIE) {
-				clip = NULL;
-
 				/* TODO: skip drawing when out of frame range (as image sequences do above) */
 
 				if (bgpic->flag & V3D_BGPIC_CAMERACLIP) {
@@ -1664,7 +1664,7 @@ static void view3d_draw_bgpic(Scene *scene, ARegion *ar, View3D *v3d,
 				if (freeibuf)
 					IMB_freeImBuf(freeibuf);
 				if (releaseibuf)
-					BKE_image_release_ibuf(ima, releaseibuf, NULL);
+					BKE_image_release_ibuf(ima, releaseibuf, lock);
 
 				continue;
 			}
@@ -1763,7 +1763,7 @@ static void view3d_draw_bgpic(Scene *scene, ARegion *ar, View3D *v3d,
 				if (freeibuf)
 					IMB_freeImBuf(freeibuf);
 				if (releaseibuf)
-					BKE_image_release_ibuf(ima, releaseibuf, NULL);
+					BKE_image_release_ibuf(ima, releaseibuf, lock);
 
 				continue;
 			}
@@ -1830,7 +1830,7 @@ static void view3d_draw_bgpic(Scene *scene, ARegion *ar, View3D *v3d,
 			if (freeibuf)
 				IMB_freeImBuf(freeibuf);
 			if (releaseibuf)
-				BKE_image_release_ibuf(ima, releaseibuf, NULL);
+				BKE_image_release_ibuf(ima, releaseibuf, lock);
 		}
 	}
 }
@@ -2068,14 +2068,14 @@ static void draw_dupli_objects_color(
 				 * so for now it should be ok to - campbell */
 				
 				if ( /* if this is the last no need  to make a displist */
-					 (dob_next == NULL || dob_next->ob != dob->ob) ||
-					 /* lamp drawing messes with matrices, could be handled smarter... but this works */
-					 (dob->ob->type == OB_LAMP) ||
-					 (dob->type == OB_DUPLIGROUP && dob->animated) ||
-					 !bb_tmp ||
-					 draw_glsl_material(scene, dob->ob, v3d, dt) ||
-					 check_object_draw_texture(scene, v3d, dt) ||
-					 (base->object == OBACT && v3d->flag2 & V3D_SOLID_MATCAP))
+				     (dob_next == NULL || dob_next->ob != dob->ob) ||
+				     /* lamp drawing messes with matrices, could be handled smarter... but this works */
+				     (dob->ob->type == OB_LAMP) ||
+				     (dob->type == OB_DUPLIGROUP && dob->animated) ||
+				     !bb_tmp ||
+				     draw_glsl_material(scene, dob->ob, v3d, dt) ||
+				     check_object_draw_texture(scene, v3d, dt) ||
+				     (v3d->flag2 & V3D_SOLID_MATCAP) != 0)
 				{
 					// printf("draw_dupli_objects_color: skipping displist for %s\n", dob->ob->id.name + 2);
 					use_displist = false;
@@ -2481,7 +2481,7 @@ static void gpu_update_lamps_shadows(Scene *scene, View3D *v3d)
 		
 		v3d->drawtype = OB_SOLID;
 		v3d->lay &= GPU_lamp_shadow_layer(shadow->lamp);
-		v3d->flag2 &= ~V3D_SOLID_TEX | V3D_SHOW_SOLID_MATCAP;
+		v3d->flag2 &= ~(V3D_SOLID_TEX | V3D_SHOW_SOLID_MATCAP);
 		v3d->flag2 |= V3D_RENDER_OVERRIDE | V3D_RENDER_SHADOW;
 		
 		GPU_lamp_shadow_buffer_bind(shadow->lamp, viewmat, &winsize, winmat);
@@ -2524,8 +2524,10 @@ CustomDataMask ED_view3d_datamask(Scene *scene, View3D *v3d)
 		}
 		else {
 			if ((scene->gm.matmode == GAME_MAT_GLSL && v3d->drawtype == OB_TEXTURE) || 
-				(v3d->drawtype == OB_MATERIAL))
+			    (v3d->drawtype == OB_MATERIAL))
+			{
 				mask |= CD_MASK_ORCO;
+			}
 		}
 	}
 

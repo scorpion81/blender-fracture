@@ -33,14 +33,17 @@
 
 #ifndef __KERNEL_GPU__
 
-#define ccl_device static inline
+#  ifdef NDEBUG
+#    define ccl_device static inline
+#  else
+#    define ccl_device static
+#  endif
 #define ccl_device_noinline static
 #define ccl_global
 #define ccl_constant
 #define __KERNEL_WITH_SSE_ALIGN__
 
 #if defined(_WIN32) && !defined(FREE_WINDOWS)
-
 #define ccl_device_inline static __forceinline
 #define ccl_align(...) __declspec(align(__VA_ARGS__))
 #ifdef __KERNEL_64_BIT__
@@ -50,7 +53,11 @@
 #define ccl_try_align(...) /* not support for function arguments (error C2719) */
 #endif
 #define ccl_may_alias
-#define ccl_always_inline __forceinline
+#  ifdef NDEBUG
+#    define ccl_always_inline __forceinline
+#  else
+#    define ccl_always_inline
+#  endif
 #define ccl_maybe_unused
 
 #else

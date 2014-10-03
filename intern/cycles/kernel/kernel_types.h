@@ -615,8 +615,12 @@ enum ShaderDataFlag {
 	SD_OBJECT_MOTION = 1048576,			/* has object motion blur */
 	SD_TRANSFORM_APPLIED = 2097152,		/* vertices have transform applied */
 	SD_NEGATIVE_SCALE_APPLIED = 4194304,	/* vertices have negative scale applied */
+	SD_OBJECT_HAS_VOLUME = 8388608,		/* object has a volume shader */
+	SD_OBJECT_INTERSECTS_VOLUME = 16777216, /* object intersects AABB of an object with volume shader */
 
-	SD_OBJECT_FLAGS = (SD_HOLDOUT_MASK|SD_OBJECT_MOTION|SD_TRANSFORM_APPLIED)
+	SD_OBJECT_FLAGS = (SD_HOLDOUT_MASK|SD_OBJECT_MOTION|SD_TRANSFORM_APPLIED|
+	                   SD_NEGATIVE_SCALE_APPLIED|SD_OBJECT_HAS_VOLUME|
+	                   SD_OBJECT_INTERSECTS_VOLUME)
 };
 
 struct KernelGlobals;
@@ -784,7 +788,7 @@ typedef struct KernelCamera {
 	/* anamorphic lens bokeh */
 	float inv_aperture_ratio;
 
-	int pad1;
+	int is_inside_volume;
 	int pad2;
 
 	/* more matrices */

@@ -67,6 +67,9 @@ if env['WITH_BF_OCEANSIM']:
 if env['WITH_BF_VORONOI']:
     incs += ' #/extern/voro++'
     defs.append('WITH_MOD_VORONOI')
+    
+if env['WITH_BF_BULLET']:
+    defs.append('WITH_BULLET')
 
 if env['WITH_BF_GAMEENGINE']:
     incs.append('#/extern/recastnavigation')
