@@ -4656,9 +4656,9 @@ void direct_link_customdata_mtpoly_shard(FileData *fd, CustomData *pdata, int to
 	}
 }
 
-static Shard* read_shard(FileData *fd, void* address )
+static void read_shard(FileData *fd, Shard **address )
 {
-	Shard* s = address;
+	Shard* s = *address;
 	s->mvert = newdataadr(fd, s->mvert);
 	s->mpoly = newdataadr(fd, s->mpoly);
 	s->mloop = newdataadr(fd, s->mloop);
@@ -4669,22 +4669,20 @@ static Shard* read_shard(FileData *fd, void* address )
 
 	s->neighbor_ids = newdataadr(fd, s->neighbor_ids);
 	s->cluster_colors = newdataadr(fd, s->cluster_colors);
-	return s;
 }
 
-static MeshIsland* read_meshIsland(FileData* fd, void* address)
+static void read_meshIsland(FileData *fd, MeshIsland **address)
 {
 	MeshIsland* mi;
-	Shard* temp;
 
-	mi = (MeshIsland*)address;
+	mi = *address;
 	mi->vertices = NULL;
 	mi->vertices_cached = NULL;
 	mi->vertco = newdataadr(fd, mi->vertco);
 	mi->temp = newdataadr(fd, mi->temp);
-	temp = read_shard(fd, mi->temp);
+	read_shard(fd, &(mi->temp));
 	mi->physics_mesh = BKE_shard_create_dm(mi->temp, true);
-	BKE_shard_free(temp, true);
+	BKE_shard_free(mi->temp, true);
 	mi->temp = NULL;
 	mi->vertno = newdataadr(fd, mi->vertno);
 
@@ -4701,8 +4699,6 @@ static MeshIsland* read_meshIsland(FileData* fd, void* address)
 	/* will be refreshed on the fly */
 	mi->participating_constraint_count = 0;
 	mi->participating_constraints = NULL;
-
-	return mi;
 }
 
 static void direct_link_modifiers(FileData *fd, ListBase *lb)
@@ -5003,15 +4999,16 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 				fm->shard_map = newdataadr(fd, fm->shard_map);
 				for (i = 0; i < fm->shard_count; i++) {
 					fm->shard_map[i] = newdataadr(fd, fm->shard_map[i]);
-					fm->shard_map[i] = read_shard(fd, fm->shard_map[i]);
+					read_shard(fd, &(fm->shard_map[i]));
 				}
+
 				fmd->frac_mesh = fm;
 				fmd->dm = NULL;
 				fmd->visible_mesh = NULL;
 
 				link_list(fd, &fmd->islandShards);
 				for (s = fmd->islandShards.first; s; s = s->next) {
-					s = read_shard(fd, s);
+					read_shard(fd, &s);
 				}
 
 				link_list(fd, &fmd->meshIslands);
@@ -5047,7 +5044,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 
 				for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 					int k = 0;
-					mi = read_meshIsland(fd, mi);
+					read_meshIsland(fd, &mi);
 					mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * mi->vertex_count, "mi->vertices_cached readfile");
 
 					for (k = 0; k < mi->vertex_count; k++) {

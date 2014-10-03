@@ -133,7 +133,6 @@ static void freeData(ModifierData *md)
 	FractureModifierData *rmd = (FractureModifierData*) md;
 	MeshIsland *mi;
 	RigidBodyShardCon *rbsc;
-	int i;
 	
 	if ((!rmd->refresh && !rmd->refresh_constraints) || (rmd->frac_mesh && rmd->frac_mesh->cancel == 1)) {
 		if (rmd->nor_tree != NULL) {
@@ -201,7 +200,7 @@ static void freeData(ModifierData *md)
 		rmd->visible_mesh_cached = NULL;
 	}
 
-	/* simulation data */
+	/* refreshing all simulation data, no refracture */
 	if (!rmd->refresh_constraints) {
 		if (rmd->shards_to_islands)
 		{
@@ -254,6 +253,7 @@ static void freeData(ModifierData *md)
 		}
 	}
 
+	/* refresh constraints case */
 	if ((!rmd->refresh && !rmd->refresh_constraints) || (rmd->frac_mesh && rmd->frac_mesh->cancel == 1) ||
 	    rmd->refresh_constraints)
 	{
@@ -1016,7 +1016,6 @@ static void copyData(ModifierData *md, ModifierData *target)
 
 void freeMeshIsland(FractureModifierData* rmd, MeshIsland* mi, bool remove_rigidbody)
 {
-	int i;
 
 	if (mi->physics_mesh) {
 		mi->physics_mesh->needsFree = 1;
@@ -1880,7 +1879,6 @@ static void fill_vgroup(FractureModifierData* rmd, DerivedMesh* dm, MDeformVert*
 static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMesh *origdm)
 {
 	MeshIsland *mi;
-	BMVert* v;
 	DerivedMesh *dm;
 	MVert *verts;
 	MDeformVert *dvert = NULL;
@@ -1911,6 +1909,8 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 	if (dvert == NULL)
 		dvert = dm->getVertDataArray(dm, CD_MDEFORMVERT);
 
+	/* we reach this code when we fracture without "split shards to islands", but NOT when we load such a file...
+	 * readfile.c has separate code for dealing with this XXX WHY ? there were problems with the mesh...*/
 	for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 		int i = 0;
 		if (mi->vertices_cached) {
@@ -1940,10 +1940,12 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 
 				if (mi->vertno != NULL && rmd->fix_normals) {
 					float no[3];
+					short sno[3];
 					no[0] = mi->vertno[i*3];
 					no[1] = mi->vertno[i*3+1];
 					no[2] = mi->vertno[i*3+2];
-					copy_v3_v3_short(mi->vertices_cached[i]->no, no);
+					normal_float_to_short_v3(sno, no);
+					copy_v3_v3_short(mi->vertices_cached[i]->no, sno);
 				}
 			}
 
@@ -1972,10 +1974,12 @@ static DerivedMesh* createCache(FractureModifierData *rmd, Object* ob, DerivedMe
 
 
 				if (mi->vertno != NULL && rmd->fix_normals) {
+					short sno[3];
 					no[0] = mi->vertno[i*3];
 					no[1] = mi->vertno[i*3+1];
 					no[2] = mi->vertno[i*3+2];
-					copy_v3_v3_short(mi->vertices_cached[i]->no, no);
+					normal_float_to_short_v3(sno, no);
+					copy_v3_v3_short(mi->vertices_cached[i]->no, sno);
 				}
 			}
 		}
@@ -2158,7 +2162,7 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 	bool exploOK = false; /* doFracture */
 	double start;
 
-	if ((fmd->refresh) || (fmd->refresh_constraints && !fmd->execute_threaded) ||
+	if ((fmd->refresh) || (fmd->refresh_constraints && !fmd->execute_threaded ) ||
 	        (fmd->refresh_constraints && fmd->execute_threaded && fmd->frac_mesh && fmd->frac_mesh->running == 0))
 	{
 		/* if we changed the fracture parameters */
@@ -2166,6 +2170,8 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 		freeData(fmd);
 
 		/* 2 cases, we can have a visible mesh or a cached visible mesh, the latter primarily when loading blend from file or using halving */
+
+		/* free cached mesh in case of "normal refracture here if we have a visible mesh, does that mean REfracture ?*/
 		if (fmd->visible_mesh != NULL && !fmd->shards_to_islands && fmd->frac_mesh->shard_count > 0 && fmd->refresh) {
 			if (fmd->visible_mesh_cached) {
 				fmd->visible_mesh_cached->needsFree = 1;
@@ -2178,11 +2184,14 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 		{
 			copy_m4_m4(fmd->origmat, ob->obmat);
 
+			/* refracture, convert the fracture shards to new meshislands here *
+			 * shards = fracture datastructure
+			 * meshisland = simulation datastructure */
 			if (fmd->frac_mesh && fmd->frac_mesh->shard_count > 0 && fmd->dm && fmd->dm->numVertData > 0 &&
 			   !fmd->shards_to_islands && !fmd->dm_group)
 			{
 				Shard *s;
-				MeshIsland* mi; /* can be created without shards even, when using fracturemethod = NONE */
+				MeshIsland* mi; /* can be created without shards even, when using fracturemethod = NONE (re-using islands)*/
 
 				int i, j, vertstart = 0, polystart = 0;
 
@@ -2194,9 +2203,10 @@ DerivedMesh* doSimulate(FractureModifierData *fmd, Object* ob, DerivedMesh* dm, 
 				const int thresh_defgrp_index = defgroup_name_index(ob, fmd->thresh_defgrp_name);
 				const int ground_defgrp_index = defgroup_name_index(ob, fmd->ground_defgrp_name);
 
-				/*XXX should rename this... this marks the fracture case, do distinguish from halving case */
+				/*XXX should rename this... this marks the fracture case, to distinguish from halving case */
 				fmd->explo_shared = true;
 
+				/* exchange cached mesh after fracture, XXX looks like double code */
 				if (fmd->visible_mesh_cached) {
 					fmd->visible_mesh_cached->needsFree = 1;
 					fmd->visible_mesh_cached->release(fmd->visible_mesh_cached);

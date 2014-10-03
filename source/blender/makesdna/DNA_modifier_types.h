@@ -1338,7 +1338,7 @@ typedef struct MeshIsland {
 	float *vertco;
 	short *vertno;
 	struct DerivedMesh *physics_mesh;
-	struct Shard *temp; //storage for physics mesh, better omit derivedmesh here...
+	struct Shard *temp; /* storage for physics mesh, better omit derivedmesh here...*/
 	struct RigidBodyOb *rigidbody;
 	int *neighbor_ids;
 	int *vertex_indices;
@@ -1347,9 +1347,9 @@ typedef struct MeshIsland {
 	int participating_constraint_count;
 	int vertex_count, id, neighbor_count;
 	float centroid[3], start_co[3];
-	float rot[4]; //hrm, need this for constraints probably
+	float rot[4]; /*hrm, need this for constraints probably */
 	float thresh_weight, ground_weight;
-	int linear_index;  //index in rigidbody world
+	int linear_index;  /* index in rigidbody world */
 	int particle_index;
 	//char pad[4];
 } MeshIsland;
@@ -1415,7 +1415,7 @@ enum {
 
 typedef struct FractureModifierData {
 	ModifierData modifier;
-	struct FracMesh *frac_mesh; //store only the current fracmesh here first, later maybe an entire history...
+	struct FracMesh *frac_mesh; /* store only the current fracmesh here first, later maybe an entire history...*/
 	struct DerivedMesh *dm;
 	struct Group *extra_group;
 	struct Group *dm_group;
@@ -1426,11 +1426,11 @@ typedef struct FractureModifierData {
 	char thresh_defgrp_name[64];  /* MAX_VGROUP_NAME */
 	char ground_defgrp_name[64];  /* MAX_VGROUP_NAME */
 	char inner_defgrp_name[64];  /* MAX_VGROUP_NAME */
-	struct KDTree *nor_tree; //store original vertices here (coords), to find them later and reuse their normals
+	struct KDTree *nor_tree; /* store original vertices here (coords), to find them later and reuse their normals */
 	struct Material *inner_material;
 	struct GHash *face_pairs;
 
-	//values
+	/* values */
 	int frac_algorithm;
 	int shard_count;
 	int shard_id;
@@ -1450,7 +1450,7 @@ typedef struct FractureModifierData {
 	float cluster_breaking_threshold;
 	float contact_dist, autohide_dist;
 
-	//flags
+	/* flags */
 	int refresh;
 	int refresh_constraints;
 
@@ -1466,12 +1466,12 @@ typedef struct FractureModifierData {
 	int breaking_angle_weighted;
 	int breaking_percentage_weighted;
 
-	//internal flags
+	/* internal flags */
 	int use_experimental;
 	int explo_shared;
 	int refresh_images;
 
-	//internal values
+	/* internal values */
 	float max_vol;
 
 	char pad[4];

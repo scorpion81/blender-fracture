@@ -1501,6 +1501,8 @@ static void write_meshIsland(WriteData* wd, MeshIsland* mi)
 	writedata(wd, DATA, sizeof(MVert*) * mi->vertex_count, mi->vertices_cached);
 	writedata(wd, DATA, sizeof(float) * 3 * mi->vertex_count, mi->vertco);
 	/* write derivedmesh as shard... */
+	mi->temp->next = NULL;
+	mi->temp->prev = NULL;
 	write_shard(wd, mi->temp);
 	BKE_shard_free(mi->temp, true);
 	mi->temp = NULL;
@@ -1654,6 +1656,9 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 					writedata(wd, DATA, sizeof(Shard*) * fm->shard_count, fm->shard_map);
 					for (i = 0; i < fm->shard_count; i++) {
 						Shard *s = fm->shard_map[i];
+						/* next, prev not necessary in this case, because we use an array here */
+						s->next = NULL;
+						s->prev = NULL;
 						write_shard(wd, s);
 					}
 
