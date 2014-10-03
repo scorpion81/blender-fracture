@@ -981,6 +981,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->use_experimental = rmd->use_experimental;
 	trmd->refresh_constraints = false;
 
+	trmd->cluster_count = rmd->cluster_count;
 	trmd->cluster_breaking_threshold = rmd->cluster_breaking_threshold;
 	trmd->solver_iterations_override = rmd->solver_iterations_override;
 	trmd->shards_to_islands = rmd->shards_to_islands;
