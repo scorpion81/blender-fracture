@@ -46,13 +46,10 @@ typedef struct cell {
 container* container_new(double ax_,double bx_,double ay_,double by_,double az_,double bz_,
                          int nx_,int ny_,int nz_,int xperiodic_,int yperiodic_,int zperiodic_,int init_mem);
 particle_order* particle_order_new(void);
-loop_order* loop_order_new(container* con, particle_order* po);
 
 void container_put(container* con, particle_order* po, int n, double x, double y, double z);
-void container_print_custom(loop_order* lo, container* con, const char* format, FILE* fp);
 
 void container_free(container* con);
-void loop_order_free(loop_order* lo);
 void particle_order_free(particle_order* po);
 
 // cell array for direct access

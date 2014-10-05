@@ -16,14 +16,6 @@ particle_order* particle_order_new(void)
 	return (particle_order*)(new voro::particle_order());
 }
 
-loop_order* loop_order_new(container* con, particle_order* p_order)
-{
-	voro::container* c = (voro::container*)con;
-	voro::particle_order* po = (voro::particle_order*)p_order;
-	
-	return (loop_order*)(new voro::c_loop_order(*c, *po));
-}
-
 void container_put(container* con, particle_order* p_order, int n,double x,double y,double z)
 {
 	voro::container* c = (voro::container*)con;
@@ -38,18 +30,6 @@ void container_put(container* con, particle_order* p_order, int n,double x,doubl
 		c->put(n, x, y, z);
 	}
 	
-}
-
-// redesign... need a struct with function pointers which are callable from C, call C++ functions themselves and return their returnvalues to C
-// first we need to iterate over a container, lets maybe return a vector of cells here
-// this will be converted to an array of equivalent cell structs
-
-void container_print_custom(loop_order* l_order, container* con, const char* format, FILE* fp)
-{
-	voro::container* c = (voro::container*)con;
-	voro::c_loop_order* lo = (voro::c_loop_order*)l_order;
-	
-	c->print_custom(*lo, format, fp);
 }
 
 void container_compute_cells(container* con, cell* cells)
@@ -71,10 +51,10 @@ void container_compute_cells(container* con, cell* cells)
 				double *pp, centroid[3];
 				pp = vl.p[vl.ijk]+vl.ps*vl.q;
 
-				//cell particle index
+				// cell particle index
 				c.index = cn->id[vl.ijk][vl.q];
 
-				//verts
+				// verts
 				vc.vertices(*pp, pp[1], pp[2], verts);
 				c.totvert = vc.p;
 				c.verts = new float[c.totvert][3];
@@ -84,7 +64,7 @@ void container_compute_cells(container* con, cell* cells)
 					c.verts[v][2] = (float)verts[v * 3 + 2];
 				}
 
-				//faces
+				// faces
 				c.totpoly = vc.number_of_faces();
 				vc.face_orders(face_orders);
 				c.poly_totvert = new int[c.totpoly];
@@ -105,7 +85,7 @@ void container_compute_cells(container* con, cell* cells)
 					skip += (num_verts+1);
 				}
 
-				//neighbors
+				// neighbors
 				vc.neighbors(neighbors);
 				c.neighbors = new int[c.totpoly];
 				for (n = 0; n < c.totpoly; n++)
@@ -113,18 +93,27 @@ void container_compute_cells(container* con, cell* cells)
 					c.neighbors[n] = neighbors[n];
 				}
 
-				//centroid
+				// centroid
 				vc.centroid(centroid[0], centroid[1], centroid[2]);
 				c.centroid[0] = (float)centroid[0] + (float)*pp;
 				c.centroid[1] = (float)centroid[1] + (float)pp[1];
 				c.centroid[2] = (float)centroid[2] + (float)pp[2];
 
-				//valid cell, store
+				// valid cell, store
 				cells[i] = c;
 
 			}
-			else {//invalid cell, set NULL XXX TODO (Somehow !!!)
-				cells[i] = c;
+			else { // invalid cell, set NULL XXX TODO (Somehow !!!)
+				c.centroid[0] = 0.0f;
+				c.centroid[1] = 0.0f;
+				c.centroid[2] = 0.0f;
+				c.index = 0;
+				c.neighbors = NULL;
+				c.totpoly = 0;
+				c.totvert = 0;
+				c.poly_totvert = NULL;
+				c.poly_indices = NULL;
+				c.verts = NULL;
 			}
 			i++;
 		}
@@ -136,12 +125,6 @@ void container_free(container* con)
 {
 	voro::container* c = (voro::container*)con;
 	delete c;
-}
-
-void loop_order_free(loop_order* l_order)
-{
-	voro::c_loop_order* lo = (voro::c_loop_order*)l_order;
-	delete lo;
 }
 
 void particle_order_free(particle_order* p_order)
