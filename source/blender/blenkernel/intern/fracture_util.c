@@ -53,6 +53,12 @@
 #include "bmesh.h"
 #include "../../modifiers/intern/MOD_boolean_util.h"
 
+/*prototypes*/
+void uv_bbox(float uv[][2], int num_uv, float minv[2], float maxv[2]);
+void uv_translate(float uv[][2], int num_uv, float trans[2]);
+void uv_scale(float uv[][2], int num_uv, float scale);
+void uv_transform(float uv[][2], int num_uv, float mat[2][2]);
+void unwrap_shard_dm(DerivedMesh *dm);
 
 /* UV Helpers */
 void uv_bbox(float uv[][2], int num_uv, float minv[2], float maxv[2])
@@ -109,10 +115,10 @@ void unwrap_shard_dm(DerivedMesh* dm)
 	for (i = 0, mp = mpoly; i < totpoly; i++, mp++) {
 		MLoop *ml;
 		int j = 0;
-		float verts[mp->totloop][3];
+		float (*verts)[3] = MEM_mallocN(sizeof(float[3]) * mp->totloop, "unwrap_shard_dm verts");
 		float nor[3];
 		float mat[3][3];
-		float uv[mp->totloop][2];
+		float (*uv)[2] = MEM_mallocN(sizeof(float[2]) * mp->totloop, "unwrap_shard_dm_uv");
 		BoxPack* box;
 		float uvbbox[2][2];
 		float angle;
@@ -123,7 +129,7 @@ void unwrap_shard_dm(DerivedMesh* dm)
 			copy_v3_v3(verts[j], (mvert + ml->v)->co);
 		}
 
-		normal_poly_v3(nor, verts, mp->totloop);
+		normal_poly_v3(nor, (const float (*)[3])verts, mp->totloop);
 		normalize_v3(nor);
 		axis_dominant_v3_to_m3(mat, nor);
 
@@ -137,17 +143,17 @@ void unwrap_shard_dm(DerivedMesh* dm)
 		if (angle != 0.0f) {
 			float mat[2][2];
 			angle_to_mat2(mat, angle);
-			uv_transform(uv, mp->totloop, mat);
+			uv_transform((float (*)[2])uv, mp->totloop, mat);
 		}
 
 		/* prepare box packing... one poly is a box */
 		box = boxpack + i;
-		uv_bbox(uv, mp->totloop, uvbbox[0], uvbbox[1]);
+		uv_bbox((float (*)[2])uv, mp->totloop, uvbbox[0], uvbbox[1]);
 
 		uvbbox[0][0] = -uvbbox[0][0];
 		uvbbox[0][1] = -uvbbox[0][1];
 
-		uv_translate(uv, mp->totloop, uvbbox[0]);
+		uv_translate((float (*)[2])uv, mp->totloop, uvbbox[0]);
 
 		box->w = uvbbox[1][0] + uvbbox[0][0];
 		box->h = uvbbox[1][1] + uvbbox[0][1];
@@ -155,9 +161,12 @@ void unwrap_shard_dm(DerivedMesh* dm)
 
 		/* copy coords back */
 		for (j = 0; j < mp->totloop; j++) {
-			copy_v3_v3(mluv[j + mp->loopstart].uv, uv[j]);
+			copy_v2_v2(mluv[j + mp->loopstart].uv, uv[j]);
 			mluv[j + mp->loopstart].flag = 0;
 		}
+
+		MEM_freeN(uv);
+		MEM_freeN(verts);
 	}
 
 	/* do box packing and match uvs according to it */
@@ -179,8 +188,8 @@ void unwrap_shard_dm(DerivedMesh* dm)
 
 		for (j = 0; j < mp->totloop; j++)
 		{
-			uv_translate(mluv[j+mp->loopstart].uv, 1, trans);
-			uv_scale(mluv[j+mp->loopstart].uv, 1, scale);
+			uv_translate((float (*)[2])mluv[j+mp->loopstart].uv, 1, trans);
+			uv_scale((float (*)[2])mluv[j+mp->loopstart].uv, 1, scale);
 		}
 	}
 
