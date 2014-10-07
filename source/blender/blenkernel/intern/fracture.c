@@ -402,11 +402,6 @@ FracMesh *BKE_create_fracture_container(DerivedMesh* dm)
 }
 
 
-
-
-
-#if 1
-
 /* parse the voro++ cell data */
 static void parse_cells(cell* cells, int expected_shards, ShardID parent_id, FracMesh *fm, int algorithm, Object* obj, DerivedMesh *dm, short inner_material_index)
 {
@@ -631,20 +626,14 @@ static Shard* parse_cell(cell c)
 	float centr[3];
 	int shard_id;
 
-	//fscanf(fp, "%d ", &shard_id);
 	shard_id = c.index;
 
-	//fscanf(fp, "%d ", &totvert);
 	totvert = c.totvert;
 	if (totvert > 0) {
 		mvert = MEM_callocN(sizeof(MVert) * totvert, __func__);
 		parse_cell_verts(c, mvert, totvert);
 	}
 
-	/* skip "v "*/
-	//fseek(fp, 2*sizeof(char), SEEK_CUR);
-
-	//fscanf(fp, "%d ", &totpoly);
 	totpoly = c.totpoly;
 	if (totpoly > 0) {
 		mpoly = MEM_callocN(sizeof(MPoly) * totpoly, __func__);
@@ -663,34 +652,13 @@ static Shard* parse_cell(cell c)
 		parse_cell_neighbors(c, neighbors, totpoly);
 	}
 
-	/* skip "f "*/
-	//fseek(fp, 2*sizeof(char), SEEK_CUR);
-
-	/* parse centroid */
-	//fscanf(fp, "%f %f %f ", &centr[0], &centr[1], &centr[2]);
 	copy_v3_v3(centr, c.centroid);
-
-	/* skip "c"*/
-	//fseek(fp, sizeof(char), SEEK_CUR);
 
 	s = BKE_create_fracture_shard(mvert, mpoly, mloop, totvert, totpoly, totloop, false);
 
 	s->neighbor_ids = neighbors;
 	s->neighbor_count = totpoly;
 	copy_v3_v3(s->centroid, centr);
-
-#if 0
-	/* if not at end of file yet, skip newlines */
-	if (feof(fp) == 0) {
-#ifdef _WIN32
-		//skip \r\n
-		fseek(fp, 2*sizeof(char), SEEK_CUR);
-#else
-		//skip \n
-		fseek(fp, sizeof(char), SEEK_CUR);
-#endif
-	}
-#endif
 
 	return s;
 }
@@ -756,9 +724,6 @@ static void parse_cell_neighbors(cell c, int *neighbors, int totpoly)
 	}
 }
 
-#endif
-
-
 void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud, int algorithm, Object* obj, DerivedMesh* dm, short inner_material_index) {
 	int n_size = 8;
 	
@@ -770,18 +735,8 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	
 	container *voro_container;
 	particle_order *voro_particle_order;
-	loop_order *voro_loop_order;
 	cell *voro_cells;
 
-#if defined(_WIN32) || defined(__APPLE__)
-	const char *filename = "test.out";
-	char *path, *fullpath;
-#else
-	char *bp;
-	size_t size;
-#endif
-
-	FILE *stream;
 #ifdef USE_DEBUG_TIMER
 	double time_start;
 #endif
@@ -812,7 +767,6 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 		container_put(voro_container, voro_particle_order, p, co[0], co[1], co[2]);
 	}
 	
-	//voro_loop_order = loop_order_new(voro_container, voro_particle_order);
 
 
 #ifdef USE_DEBUG_TIMER
@@ -829,8 +783,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	parse_cells(voro_cells, pointcloud->totpoints, id, fmesh, algorithm, obj, dm, inner_material_index);
 
 	/*Free structs in C++ area of memory */
-	cells_free(voro_cells);
-	//loop_order_free(voro_loop_order);
+	cells_free(voro_cells, pointcloud->totpoints);
 	particle_order_free(voro_particle_order);
 	container_free(voro_container);
 

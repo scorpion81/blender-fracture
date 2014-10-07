@@ -752,7 +752,11 @@ static void points_from_particles(Object** ob, int totobj, Scene* scene, FracPoi
 
 					if ((BLI_frand() < thresh) && particle_mask) {
 						float co[3];
-						psys_get_birth_coordinates(&sim, pa, &birth, 0, 0);
+						//psys_get_birth_coordinates(&sim, pa, &birth, 0, 0);
+
+						/* birth coordinates are not sufficient in case we did pre-simulate the particles, so they are not
+						 * aligned with the emitter any more */
+						psys_get_particle_state(&sim, p, &birth, 1);
 						points->points = MEM_reallocN(points->points, (pt+1) * sizeof(FracPoint));
 						copy_v3_v3(co, birth.co);
 

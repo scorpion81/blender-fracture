@@ -114,6 +114,7 @@ void container_compute_cells(container* con, cell* cells)
 				c.poly_totvert = NULL;
 				c.poly_indices = NULL;
 				c.verts = NULL;
+				cells[i] = c;
 			}
 			i++;
 		}
@@ -135,12 +136,46 @@ void particle_order_free(particle_order* p_order)
 
 cell* cells_new(int totcells)
 {
-	return new cell[totcells];
+	int i = 0;
+	cell c;
+	cell *cl;
+
+	//need to initalize properly in case we dont compute....
+	c.centroid[0] = 0.0f;
+	c.centroid[1] = 0.0f;
+	c.centroid[2] = 0.0f;
+	c.index = 0;
+	c.neighbors = NULL;
+	c.totpoly = 0;
+	c.totvert = 0;
+	c.poly_totvert = NULL;
+	c.poly_indices = NULL;
+	c.verts = NULL;
+
+	cl = new cell[totcells];
+	for (i = 0; i < totcells; i++)
+	{
+		cl[i] = c;
+	}
+
+	return cl;
 }
 
-void cells_free(cell *cells)
+void cells_free(cell *cells, int totcells)
 {
-	if (cells) delete [] cells;
+	// XXX TODO free properly !
+	if (cells) {
+		int i = 0;
+		for (i = 0; i < totcells; i++) {
+			cell c = cells[i];
+			if (c.verts) delete [] c.verts;
+			if (c.neighbors) delete [] c.neighbors;
+			if (c.poly_indices) delete [] c.poly_indices;
+			if (c.poly_totvert) delete [] c.poly_totvert;
+		}
+		delete [] cells;
+	}
+
 }
 
 

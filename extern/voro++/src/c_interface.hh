@@ -54,7 +54,7 @@ void particle_order_free(particle_order* po);
 
 // cell array for direct access
 cell* cells_new(int totcell);
-void cells_free(cell* cells);
+void cells_free(cell* cells, int totcells);
 void container_compute_cells(container* con, cell* cells);
 
 #ifdef __cplusplus
