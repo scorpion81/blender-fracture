@@ -1937,7 +1937,9 @@ void BKE_rigidbody_remove_shard(Scene* scene, MeshIsland *mi)
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	int i = 0;
 	
-	if (mi->rigidbody != NULL) {
+	/* rbw can be NULL directly after linking / appending objects without their original scenes
+	 * if an attempt to refracture is done then, this would crash here with null pointer access */
+	if (mi->rigidbody != NULL && rbw != NULL) {
 		
 		RigidBodyShardCon *con;
 		for (i = 0; i < mi->participating_constraint_count; i++) {
@@ -1959,7 +1961,10 @@ void BKE_rigidbody_remove_shard(Scene* scene, MeshIsland *mi)
 		}
 		
 		/* this SHOULD be the correct global index */
-		if (rbw->cache_index_map != NULL)
+		/* need to check whether we didnt create the rigidbody world manually already, prior to fracture, in this
+		 * case cache_index_map might be not initialized ! checking numbodies here, they should be 0 in a fresh
+		 * rigidbody world */
+		if (rbw->cache_index_map != NULL && rbw->numbodies > 0)
 			rbw->cache_index_map[mi->linear_index] = NULL;
 	}
 }
