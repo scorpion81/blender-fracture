@@ -165,12 +165,22 @@ void cells_free(cell *cells, int totcells)
 {
 	// XXX TODO free properly !
 	if (cells) {
-		int i = 0;
+		int i = 0, j = 0;
 		for (i = 0; i < totcells; i++) {
 			cell c = cells[i];
-			if (c.verts) delete [] c.verts;
+			if (c.verts)
+			{
+				delete [] c.verts;
+			}
 			if (c.neighbors) delete [] c.neighbors;
-			if (c.poly_indices) delete [] c.poly_indices;
+			if (c.poly_indices)
+			{
+				for (j = 0; j < c.totpoly; j++)
+				{
+					delete [] c.poly_indices[j];
+				}
+				delete [] c.poly_indices;
+			}
 			if (c.poly_totvert) delete [] c.poly_totvert;
 		}
 		delete [] cells;

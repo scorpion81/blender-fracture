@@ -337,6 +337,13 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland* mi, DerivedMesh* orig
 	if ((mi->rigidbody->physics_object) && (mi->rigidbody->type == RBO_TYPE_ACTIVE)) {
 		RB_body_set_mass(mi->rigidbody->physics_object, RBO_GET_MASS(mi->rigidbody));
 	}
+
+	if (orig_dm == NULL && dm_ob != NULL)
+	{
+		/* free temp dm, if it hasnt been passed in */
+		dm_ob->needsFree = 1;
+		dm_ob->release(dm_ob);
+	}
 }
 
 static void initNormals(struct MeshIsland* mi, Object* ob, FractureModifierData* fmd)
