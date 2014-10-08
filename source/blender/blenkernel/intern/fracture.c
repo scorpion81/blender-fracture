@@ -136,8 +136,8 @@ static void shard_boundbox(Shard* s, float r_loc[3], float r_size[3])
 
 static int shard_sortsize(const void *s1, const void *s2, void* context)
 {
-	const Shard** sh1 = (Shard**)s1;
-	const Shard** sh2 = (Shard**)s2;
+	Shard** sh1 = (Shard**)s1;
+	Shard** sh2 = (Shard**)s2;
 
 	float size1[3], size2[3], loc[3];
 	float val_a,  val_b;
@@ -278,37 +278,6 @@ float BKE_shard_calc_minmax(Shard *shard)
 	return len_v3(diff);
 }
 
-/* iterator functions for efficient looping over shards */
-ShardIterator* BKE_shards_begin(FracMesh *mesh) {
-	ShardIterator *iter = MEM_mallocN(sizeof(ShardIterator), __func__);
-	iter->frac_mesh = mesh;
-	iter->current = 0;
-	
-	return iter;
-}
-
-ShardIterator* BKE_shards_next(ShardIterator *iter) {
-	iter->current++;
-	return iter;
-}
-
-bool BKE_shards_valid(ShardIterator* iter) {
-	return iter->current < iter->frac_mesh->shard_count;
-}
-
-void BKE_shards_end(ShardIterator* iter) {
-	MEM_freeN(iter);
-	iter = NULL;
-}
-
-/* access shard during loop */
-Shard* BKE_shard_by_iterator(ShardIterator *iter) {
-	if (BKE_shards_valid(iter)) {
-		return iter->frac_mesh->shard_map[iter->current];
-	}
-	
-	return NULL;
-}
 
 /*access shard directly by index / id*/
 Shard *BKE_shard_by_id(FracMesh* mesh, ShardID id, DerivedMesh* dm) {
@@ -327,16 +296,6 @@ Shard *BKE_shard_by_id(FracMesh* mesh, ShardID id, DerivedMesh* dm) {
 	}
 	
 	return NULL;
-}
-
-void BKE_get_shard_geometry(FracMesh* mesh, ShardID id, MVert** vert, int *totvert, DerivedMesh *dm)
-{
-	/* XXX incompatible pointer types, bad! */
-	Shard* shard = BKE_shard_by_id(mesh, id, dm);
-	if (shard != NULL) {
-		*vert = shard->mvert;
-		*totvert = shard->totvert;
-	}
 }
 
 void BKE_get_shard_minmax(FracMesh* mesh, ShardID id, float min_r[3], float max_r[3], DerivedMesh *dm)
@@ -386,7 +345,7 @@ Shard *BKE_create_fracture_shard(MVert *mvert, MPoly *mpoly, MLoop *mloop, int t
 	return shard;
 }
 
-FracMesh *BKE_create_fracture_container(DerivedMesh* dm)
+FracMesh *BKE_create_fracture_container(void)
 {
 	FracMesh* fmesh;
 	
@@ -1017,14 +976,4 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 	}
 
 	return dm;
-}
-
-void BKE_shard_assign_material(Shard* s, short mat_nr)
-{
-	MPoly* mp;
-	int i;
-
-	for (i = 0, mp = s->mpoly; i < s->totpoly; ++i, ++mp) {
-		mp->mat_nr = mat_nr;
-	}
 }

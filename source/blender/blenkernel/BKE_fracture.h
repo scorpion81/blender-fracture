@@ -48,16 +48,6 @@ struct MLoop;
 
 typedef int ShardID;
 
-typedef struct ShardIterator {
-	struct FracMesh* frac_mesh;
-	int		current;
-} ShardIterator;
-
-typedef struct FracMeshIterator {
-	struct FracHistory* frac_history;
-	int		current_step;
-} FracMeshIterator;
-
 typedef struct FracPoint {
 	float co[3];
 } FracPoint;
@@ -67,31 +57,16 @@ typedef struct FracPointCloud {
 	int totpoints; /* number of positions */
 } FracPointCloud;
 
-/* iterator functions for efficient looping over shards */
-struct ShardIterator* BKE_shards_begin(struct FracMesh *fmesh);
-struct ShardIterator* BKE_shards_next(struct ShardIterator *iter);
-bool BKE_shards_valid(struct ShardIterator* iter);
-void BKE_shards_end(struct ShardIterator* iter); 
-struct Shard* BKE_shard_by_iterator(struct ShardIterator *iter);
-
 /* direct access */
 struct Shard* BKE_shard_by_id(struct FracMesh* mesh, ShardID id, struct DerivedMesh *dm);
 
 /* detailed info to the particular shards */
-void BKE_get_shard_geometry(struct FracMesh* mesh, ShardID id, struct MVert** vert, int *totvert, struct DerivedMesh *dm);
 void BKE_get_shard_minmax(struct FracMesh* mesh, ShardID id, float min_r[3], float max_r[3], struct DerivedMesh *dm);
 
 /* container object handling functions */
-struct FracMesh *BKE_create_fracture_container(struct DerivedMesh* dm);
+struct FracMesh *BKE_create_fracture_container(void);
 struct Shard *BKE_create_fracture_shard(struct MVert *mvert, struct MPoly *mpoly, struct MLoop *mloop, int totvert, int totpoly, int totloop, bool copy);
 struct Shard *BKE_custom_data_to_shard(struct Shard* s, struct DerivedMesh* dm);
-
-/* iterator functions for efficient / abstract iterating over fracture history */
-struct FracMeshIterator* BKE_fracture_steps_begin(struct Object *ob);
-struct FracMeshIterator* BKE_fracture_steps_next(struct FracMeshIterator *iter);
-struct FracMeshIterator* BKE_fracture_steps_prev(struct FracMeshIterator *iter);
-bool BKE_fracture_steps_valid(struct FracMeshIterator* iter);
-void BKE_fracture_steps_end(struct FracMeshIterator* iter); 
 
 /* utility functions */
 bool BKE_fracture_shard_center_median(struct Shard *shard, float cent[3]);
@@ -103,11 +78,8 @@ void BKE_shard_free(struct Shard* s, bool doCustomData);
 
 
 /* DerivedMesh */
-void BKE_fracture_release_dm(struct FractureModifierData *fmd);
 void BKE_fracture_create_dm(struct FractureModifierData *fmd, bool doCustomData);
 struct DerivedMesh *BKE_shard_create_dm(struct Shard *s, bool doCustomData);
-
-void BKE_shard_assign_material(struct Shard* s, short mat_nr);
 
 /* create shards from base mesh and a liste of points */
 void BKE_fracture_shard_by_points(struct FracMesh *fmesh, ShardID id, struct FracPointCloud *points, int algorithm, struct Object *obj, struct DerivedMesh *dm,
