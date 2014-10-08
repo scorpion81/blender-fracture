@@ -555,6 +555,7 @@ class AddPresetFracture(AddPresetBase, Operator):
         "fracture.point_source",
         "fracture.extra_group",
         "fracture.dm_group",
+        "fracture.use_particle_birth_coordinates",
         "fracture.percentage",
         "fracture.breaking_percentage",
         "fracture.breaking_percentage_weighted",

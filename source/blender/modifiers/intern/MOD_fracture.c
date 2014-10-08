@@ -126,6 +126,10 @@ static void initData(ModifierData *md)
 		fmd->breaking_percentage_weighted = false;
 		fmd->breaking_angle_weighted = false;
 		fmd->breaking_distance_weighted = false;
+
+		/* XXX needed because of messy particle cache, shows incorrect positions when start/end on frame 1
+		 * default use case is with this flag being enabled, disable at own risk */
+		fmd->use_particle_birth_coordinates = true;
 }
 
 static void freeData(ModifierData *md)
@@ -723,7 +727,7 @@ static void points_from_verts(Object** ob, int totobj, FracPointCloud* points, f
 }
 
 static void points_from_particles(Object** ob, int totobj, Scene* scene, FracPointCloud* points, float mat[4][4],
-								 float thresh)
+								 float thresh, FractureModifierData *fmd)
 {
 	int o, p, pt = points->totpoints;
 	ParticleSystemModifierData* psmd;
@@ -752,11 +756,19 @@ static void points_from_particles(Object** ob, int totobj, Scene* scene, FracPoi
 
 					if ((BLI_frand() < thresh) && particle_mask) {
 						float co[3];
-						//psys_get_birth_coordinates(&sim, pa, &birth, 0, 0);
 
 						/* birth coordinates are not sufficient in case we did pre-simulate the particles, so they are not
-						 * aligned with the emitter any more */
-						psys_get_particle_state(&sim, p, &birth, 1);
+						 * aligned with the emitter any more BUT as the particle cache is messy and shows initially wrong
+						 * positions "sabotaging" fracture, default use case is using birth coordinates, let user decide... */
+						if (fmd->use_particle_birth_coordinates)
+						{
+							psys_get_birth_coordinates(&sim, pa, &birth, 0, 0);
+						}
+						else
+						{
+							psys_get_particle_state(&sim, p, &birth, 1);
+						}
+
 						points->points = MEM_reallocN(points->points, (pt+1) * sizeof(FracPoint));
 						copy_v3_v3(co, birth.co);
 
@@ -862,7 +874,7 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 	}
 
 	if (emd->point_source & (MOD_FRACTURE_OWN_PARTICLES | MOD_FRACTURE_EXTRA_PARTICLES)) {
-		points_from_particles(go, totgroup, scene, &points, ob->obmat, thresh);
+		points_from_particles(go, totgroup, scene, &points, ob->obmat, thresh, emd);
 	}
 
 	if (emd->point_source & (MOD_FRACTURE_OWN_VERTS | MOD_FRACTURE_EXTRA_VERTS)) {
@@ -1017,6 +1029,8 @@ static void copyData(ModifierData *md, ModifierData *target)
 
 	/* sub object group  XXX Do we keep this ?*/
 	/* trmd->dm_group = rmd->dm_group;*/
+
+	trmd->use_particle_birth_coordinates = rmd->use_particle_birth_coordinates;
 }
 
 void freeMeshIsland(FractureModifierData* rmd, MeshIsland* mi, bool remove_rigidbody)

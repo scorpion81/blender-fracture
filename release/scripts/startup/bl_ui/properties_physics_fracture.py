@@ -120,6 +120,7 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             box.prop(md, "point_source")
             box.prop(md, "extra_group")
             box.prop(md, "dm_group")
+            box.prop(md, "use_particle_birth_coordinates")
 
             box.prop(md, "percentage")
             box.label("Constraint Breaking Settings")

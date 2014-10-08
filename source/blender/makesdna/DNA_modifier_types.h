@@ -1456,6 +1456,7 @@ typedef struct FractureModifierData {
 
 	int use_constraints;
 	int use_mass_dependent_thresholds;
+	int use_particle_birth_coordinates;
 
 	int shards_to_islands;
 	int execute_threaded;
@@ -1474,7 +1475,7 @@ typedef struct FractureModifierData {
 	/* internal values */
 	float max_vol;
 
-	char pad[4];
+	//char pad[4];
 } FractureModifierData;
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */

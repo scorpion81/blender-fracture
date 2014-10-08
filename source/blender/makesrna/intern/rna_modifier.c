@@ -4212,6 +4212,11 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_boolean_sdna(prop, NULL, "breaking_distance_weighted", false);
 	RNA_def_property_ui_text(prop, "Weighted Distance", "Modify breaking distance by threshold weights");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "use_particle_birth_coordinates", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "use_particle_birth_coordinates", false);
+	RNA_def_property_ui_text(prop, "Use Initial Particle Coordinates", "Use initial or simulated state particle coordinates");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 void RNA_def_modifier(BlenderRNA *brna)
