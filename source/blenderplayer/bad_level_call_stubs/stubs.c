@@ -142,6 +142,7 @@ struct wmWindowManager;
 #include "../../intern/dualcon/dualcon.h"
 #include "../../intern/elbeem/extern/elbeem.h"
 #include "../blender/blenkernel/BKE_modifier.h"
+#include "../blender/blenkernel/BKE_paint.h"
 #include "../blender/collada/collada.h"
 #include "../blender/compositor/COM_compositor.h"
 #include "../blender/editors/include/ED_armature.h"
@@ -220,6 +221,8 @@ void *g_system;
 float *RE_RenderLayerGetPass(struct RenderLayer *rl, int passtype) RET_NULL
 float RE_filter_value(int type, float x) RET_ZERO
 struct RenderLayer *RE_GetRenderLayer(struct RenderResult *rr, const char *name) RET_NULL
+void RE_init_texture_rng() RET_NONE
+void RE_exit_texture_rng() RET_NONE
 
 /* zbuf.c stub */
 void antialias_tagbuf(int xsize, int ysize, char *rectmove) RET_NONE
@@ -247,6 +250,9 @@ struct Render *RE_GetRender(const char *name) RET_NULL
 float RE_lamp_get_data(struct ShadeInput *shi, struct Object *lamp_obj, float col[4], float lv[3], float *dist, float shadow[4]) RET_ZERO
 
 /* blenkernel */
+bool BKE_paint_proj_mesh_data_check(struct Scene *scene, struct Object *ob, bool *uvs, bool *mat, bool *tex, bool *stencil) RET_ZERO
+
+/* render */
 void RE_FreeRenderResult(struct RenderResult *res) RET_NONE
 void RE_FreeAllRenderResults(void) RET_NONE
 struct RenderResult *RE_MultilayerConvert(void *exrhandle, const char *colorspace, bool predivide, int rectx, int recty) RET_NULL

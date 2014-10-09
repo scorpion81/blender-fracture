@@ -45,6 +45,10 @@
 #include "kernel_path_surface.h"
 #include "kernel_path_volume.h"
 
+#ifdef __KERNEL_DEBUG__
+#include "kernel_debug.h"
+#endif
+
 CCL_NAMESPACE_BEGIN
 
 ccl_device void kernel_path_indirect(KernelGlobals *kg, RNG *rng, Ray ray,
@@ -369,10 +373,8 @@ ccl_device void kernel_path_subsurface_update_volume_stack(KernelGlobals *kg,
 
 	Ray volume_ray = *ray;
 	Intersection isect;
-	const float3 Pend = volume_ray.P + volume_ray.D*volume_ray.t;
 
-	while(scene_intersect(kg, &volume_ray, PATH_RAY_ALL_VISIBILITY,
-	                      &isect, NULL, 0.0f, 0.0f))
+	while(scene_intersect_volume(kg, &volume_ray, &isect))
 	{
 		ShaderData sd;
 		shader_setup_from_ray(kg, &sd, &isect, &volume_ray, 0, 0);
@@ -380,15 +382,7 @@ ccl_device void kernel_path_subsurface_update_volume_stack(KernelGlobals *kg,
 
 		/* Move ray forward. */
 		volume_ray.P = ray_offset(sd.P, -sd.Ng);
-		volume_ray.D = normalize_len(Pend - volume_ray.P,
-		                             &volume_ray.t);
-
-		/* TODO(sergey): Find a faster way detecting that ray_offset moved
-		 * us pass through the end point.
-		 */
-		if(dot(ray->D, volume_ray.D) < 0.0f) {
-			break;
-		}
+		volume_ray.t -= sd.ray_length;
 	}
 }
 #endif
@@ -473,6 +467,11 @@ ccl_device float4 kernel_path_integrate(KernelGlobals *kg, RNG *rng, int sample,
 	PathState state;
 	path_state_init(kg, &state, rng, sample, &ray);
 
+#ifdef __KERNEL_DEBUG__
+	DebugData debug_data;
+	debug_data_init(&debug_data);
+#endif
+
 	/* path iteration */
 	for(;;) {
 		/* intersect scene */
@@ -497,6 +496,12 @@ ccl_device float4 kernel_path_integrate(KernelGlobals *kg, RNG *rng, int sample,
 		bool hit = scene_intersect(kg, &ray, visibility, &isect, &lcg_state, difl, extmax);
 #else
 		bool hit = scene_intersect(kg, &ray, visibility, &isect, NULL, 0.0f, 0.0f);
+#endif
+
+#ifdef __KERNEL_DEBUG__
+		if(state.flag & PATH_RAY_CAMERA) {
+			debug_data.num_bvh_traversal_steps += isect.num_traversal_steps;
+		}
 #endif
 
 #ifdef __LAMP_MIS__
@@ -719,6 +724,10 @@ ccl_device float4 kernel_path_integrate(KernelGlobals *kg, RNG *rng, int sample,
 
 	kernel_write_light_passes(kg, buffer, &L, sample);
 
+#ifdef __KERNEL_DEBUG__
+	kernel_write_debug_passes(kg, buffer, &state, &debug_data, sample);
+#endif
+
 	return make_float4(L_sum.x, L_sum.y, L_sum.z, 1.0f - L_transparent);
 }
 
@@ -864,6 +873,11 @@ ccl_device float4 kernel_branched_path_integrate(KernelGlobals *kg, RNG *rng, in
 	PathState state;
 	path_state_init(kg, &state, rng, sample, &ray);
 
+#ifdef __KERNEL_DEBUG__
+	DebugData debug_data;
+	debug_data_init(&debug_data);
+#endif
+
 	for(;;) {
 		/* intersect scene */
 		Intersection isect;
@@ -887,6 +901,12 @@ ccl_device float4 kernel_branched_path_integrate(KernelGlobals *kg, RNG *rng, in
 		bool hit = scene_intersect(kg, &ray, visibility, &isect, &lcg_state, difl, extmax);
 #else
 		bool hit = scene_intersect(kg, &ray, visibility, &isect, NULL, 0.0f, 0.0f);
+#endif
+
+#ifdef __KERNEL_DEBUG__
+		if(state.flag & PATH_RAY_CAMERA) {
+			debug_data.num_bvh_traversal_steps += isect.num_traversal_steps;
+		}
 #endif
 
 #ifdef __VOLUME__
@@ -1143,6 +1163,10 @@ ccl_device float4 kernel_branched_path_integrate(KernelGlobals *kg, RNG *rng, in
 	float3 L_sum = path_radiance_clamp_and_sum(kg, &L);
 
 	kernel_write_light_passes(kg, buffer, &L, sample);
+
+#ifdef __KERNEL_DEBUG__
+	kernel_write_debug_passes(kg, buffer, &state, &debug_data, sample);
+#endif
 
 	return make_float4(L_sum.x, L_sum.y, L_sum.z, 1.0f - L_transparent);
 }

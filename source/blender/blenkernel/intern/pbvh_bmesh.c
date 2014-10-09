@@ -274,15 +274,20 @@ static bool pbvh_bmesh_node_limit_ensure(PBVH *bvh, int node_index)
 
 /**********************************************************************/
 
-static PBVHNode *pbvh_bmesh_node_lookup(PBVH *bvh, void *key, const int cd_node_offset)
+static int pbvh_bmesh_node_lookup_index(PBVH *bvh, void *key, const int cd_node_offset)
 {
 	int node_index = BM_ELEM_CD_GET_INT((BMElem *)key, cd_node_offset);
 
 	BLI_assert(node_index != DYNTOPO_NODE_NONE);
-
 	BLI_assert(node_index < bvh->totnode);
+	(void)bvh;
 
-	return &bvh->nodes[node_index];
+	return node_index;
+}
+
+static PBVHNode *pbvh_bmesh_node_lookup(PBVH *bvh, void *key, const int cd_node_offset)
+{
+	return &bvh->nodes[pbvh_bmesh_node_lookup_index(bvh, key, cd_node_offset)];
 }
 
 static BMVert *pbvh_bmesh_vert_create(PBVH *bvh, int node_index,
@@ -406,14 +411,25 @@ static void pbvh_bmesh_vert_remove(PBVH *bvh, BMVert *v, const int cd_vert_node_
 	BMIter bm_iter;
 	BMFace *f;
 
+	/* never match for first time */
+	int f_node_index_prev = DYNTOPO_NODE_NONE;
+
 	v_node = pbvh_bmesh_node_lookup(bvh, v, cd_vert_node_offset);
 	BLI_gset_remove(v_node->bm_unique_verts, v, NULL);
 	BM_ELEM_CD_SET_INT(v, cd_vert_node_offset, DYNTOPO_NODE_NONE);
 
 	/* Have to check each neighboring face's node */
 	BM_ITER_ELEM (f, &bm_iter, v, BM_FACES_OF_VERT) {
-		PBVHNode *f_node = pbvh_bmesh_node_lookup(bvh, f, cd_face_node_offset);
+		const int f_node_index = pbvh_bmesh_node_lookup_index(bvh, f, cd_face_node_offset);
+		PBVHNode *f_node;
 
+		/* faces often share the same node,
+		 * quick check to avoid redundant #BLI_gset_remove calls */
+		if (f_node_index_prev == f_node_index)
+			continue;
+		f_node_index_prev = f_node_index;
+
+		f_node = &bvh->nodes[f_node_index];
 		f_node->flag |= PBVH_UpdateDrawBuffers | PBVH_UpdateBB;
 
 		/* Remove current ownership */
@@ -823,15 +839,16 @@ static bool pbvh_bmesh_subdivide_long_edges(EdgeQueueContext *eq_ctx, PBVH *bvh,
 	return any_subdivided;
 }
 
-static void pbvh_bmesh_collapse_edge(PBVH *bvh, BMEdge *e,
-                                     BMVert *v1, BMVert *v2,
-                                     GSet *deleted_verts,
-                                     BLI_Buffer *edge_loops,
-                                     BLI_Buffer *deleted_faces,
-                                     EdgeQueueContext *eq_ctx)
+static void pbvh_bmesh_collapse_edge(
+        PBVH *bvh, BMEdge *e,
+        BMVert *v1, BMVert *v2,
+        GSet *deleted_verts,
+        BLI_Buffer *deleted_faces,
+        EdgeQueueContext *eq_ctx)
 {
 	BMIter bm_iter;
 	BMFace *f;
+	BMLoop *l_adj;
 	BMVert *v_del, *v_conn;
 	int i;
 	float mask_v1 = BM_ELEM_CD_GET_FLOAT(v1, eq_ctx->cd_vert_mask_offset);
@@ -846,15 +863,11 @@ static void pbvh_bmesh_collapse_edge(PBVH *bvh, BMEdge *e,
 		v_conn = v1;
 	}
 
-	/* Get all faces adjacent to the edge */
-	pbvh_bmesh_edge_loops(edge_loops, e);
-
 	/* Remove the merge vertex from the PBVH */
 	pbvh_bmesh_vert_remove(bvh, v_del, eq_ctx->cd_vert_node_offset, eq_ctx->cd_face_node_offset);
 
 	/* Remove all faces adjacent to the edge */
-	for (i = 0; i < edge_loops->count; i++) {
-		BMLoop *l_adj = BLI_buffer_at(edge_loops, BMLoop *, i);
+	while ((l_adj = e->l)) {
 		BMFace *f_adj = l_adj->f;
 
 		pbvh_bmesh_face_remove(bvh, f_adj, eq_ctx->cd_vert_node_offset, eq_ctx->cd_face_node_offset);
@@ -973,10 +986,10 @@ static void pbvh_bmesh_collapse_edge(PBVH *bvh, BMEdge *e,
 	BM_vert_kill(bvh->bm, v_del);
 }
 
-static bool pbvh_bmesh_collapse_short_edges(EdgeQueueContext *eq_ctx,
-                                            PBVH *bvh,
-                                            BLI_Buffer *edge_loops,
-                                            BLI_Buffer *deleted_faces)
+static bool pbvh_bmesh_collapse_short_edges(
+        EdgeQueueContext *eq_ctx,
+        PBVH *bvh,
+        BLI_Buffer *deleted_faces)
 {
 	float min_len_squared = bvh->bm_min_edge_len * bvh->bm_min_edge_len;
 	GSet *deleted_verts;
@@ -1020,7 +1033,7 @@ static bool pbvh_bmesh_collapse_short_edges(EdgeQueueContext *eq_ctx,
 		any_collapsed = true;
 
 		pbvh_bmesh_collapse_edge(bvh, e, v1, v2,
-		                         deleted_verts, edge_loops,
+		                         deleted_verts,
 		                         deleted_faces, eq_ctx);
 	}
 
@@ -1230,7 +1243,7 @@ bool BKE_pbvh_bmesh_update_topology(PBVH *bvh, PBVHTopologyUpdateMode mode,
 
 		short_edge_queue_create(&eq_ctx, bvh, center, radius);
 		modified |= !BLI_heap_is_empty(q.heap);
-		pbvh_bmesh_collapse_short_edges(&eq_ctx, bvh, &edge_loops,
+		pbvh_bmesh_collapse_short_edges(&eq_ctx, bvh,
 		                                &deleted_faces);
 		BLI_heap_free(q.heap, NULL);
 		BLI_mempool_destroy(queue_pool);

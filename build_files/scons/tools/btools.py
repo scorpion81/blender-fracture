@@ -136,6 +136,8 @@ def validate_arguments(args, bc):
             'WITH_BF_QUICKTIME', 'BF_QUICKTIME', 'BF_QUICKTIME_INC', 'BF_QUICKTIME_LIB', 'BF_QUICKTIME_LIBPATH',
             'WITH_BF_FFTW3', 'BF_FFTW3', 'BF_FFTW3_INC', 'BF_FFTW3_LIB', 'BF_FFTW3_LIBPATH', 'WITH_BF_STATICFFTW3', 'BF_FFTW3_LIB_STATIC',
             'WITH_BF_STATICOPENGL', 'BF_OPENGL', 'BF_OPENGL_INC', 'BF_OPENGL_LIB', 'BF_OPENGL_LIBPATH', 'BF_OPENGL_LIB_STATIC',
+            'WITH_BF_EGL', 'WITH_BF_GLEW_ES', 'BF_GLEW_INC', 'WITH_BF_GL_PROFILE_CORE', 'WITH_BF_GL_PROFILE_COMPAT', 'WITH_BF_GL_PROFILE_ES20',
+
             'WITH_BF_COLLADA', 'BF_COLLADA', 'BF_COLLADA_INC', 'BF_COLLADA_LIB', 'BF_OPENCOLLADA', 'BF_OPENCOLLADA_INC', 'BF_OPENCOLLADA_LIB', 'BF_OPENCOLLADA_LIBPATH', 'BF_PCRE', 'BF_PCRE_LIB', 'BF_PCRE_LIBPATH', 'BF_EXPAT', 'BF_EXPAT_LIB', 'BF_EXPAT_LIBPATH',
             'WITH_BF_STATICOPENCOLLADA', 'BF_OPENCOLLADA_LIB_STATIC',
             'WITH_BF_PLAYER',
@@ -186,6 +188,7 @@ def validate_arguments(args, bc):
     opts_list_split = [
             'BF_PYTHON_LINKFLAGS',
             'BF_OPENGL_LINKFLAGS',
+            'BF_GL_DEFINITIONS',
             'CFLAGS', 'CCFLAGS', 'CXXFLAGS', 'CPPFLAGS',
             'REL_CFLAGS', 'REL_CCFLAGS', 'REL_CXXFLAGS',
             'BGE_CXXFLAGS',
@@ -193,7 +196,8 @@ def validate_arguments(args, bc):
             'BF_DEBUG_CFLAGS', 'BF_DEBUG_CCFLAGS', 'BF_DEBUG_CXXFLAGS',
             'C_WARN', 'CC_WARN', 'CXX_WARN',
             'LLIBS', 'PLATFORM_LINKFLAGS', 'MACOSX_ARCHITECTURE', 'MACOSX_SDK', 'XCODE_CUR_VER', 'C_COMPILER_ID',
-            'BF_CYCLES_CUDA_BINARIES_ARCH', 'BF_PROGRAM_LINKFLAGS', 'MACOSX_DEPLOYMENT_TARGET'
+            'BF_CYCLES_CUDA_BINARIES_ARCH', 'BF_PROGRAM_LINKFLAGS', 'MACOSX_DEPLOYMENT_TARGET',
+            'WITH_BF_CYCLES_DEBUG'
     ]
 
 
@@ -463,6 +467,18 @@ def read_opts(env, cfg, args):
         ('BF_OPENGL_LIB_STATIC', 'OpenGL static libraries', ''),
         ('BF_OPENGL_LINKFLAGS', 'OpenGL link flags', ''),
 
+        (BoolVariable('WITH_BF_GLEW_MX', '', True)),
+        (BoolVariable('WITH_BF_GLEW_ES', '', False)),
+        (BoolVariable('WITH_BF_GL_EGL', '', False)),
+        (BoolVariable('WITH_BF_GL_PROFILE_COMPAT', '', True)),
+        (BoolVariable('WITH_BF_GL_PROFILE_CORE', '', False)),
+        (BoolVariable('WITH_BF_GL_PROFILE_ES20', '', False)),
+        (BoolVariable('WITH_BF_GL_ANGLE', '', False)),
+        ('BF_GL_DEFINITIONS', '', []),
+        ('BF_GLEW_INC', '', ''),
+    ) # end of opts.AddVariables()
+
+    localopts.AddVariables(
         (BoolVariable('WITH_BF_COLLADA', 'Build COLLADA import/export module if true', False)),
         (BoolVariable('WITH_BF_STATICOPENCOLLADA', 'Staticly link to OpenCollada', False)),
         ('BF_COLLADA', 'COLLADA base path', ''),
@@ -588,6 +604,7 @@ def read_opts(env, cfg, args):
         ('BF_CYCLES_CUDA_NVCC', 'CUDA nvcc compiler path', ''),
         ('BF_CYCLES_CUDA_ENV', 'preset environement nvcc will execute in', ''),
         ('BF_CYCLES_CUDA_BINARIES_ARCH', 'CUDA architectures to compile binaries for', []),
+        (BoolVariable('WITH_BF_CYCLES_DEBUG', 'Build Cycles engine with extra debugging capabilities', False)),
 
         (BoolVariable('WITH_BF_OIIO', 'Build with OpenImageIO', False)),
         (BoolVariable('WITH_BF_STATICOIIO', 'Statically link to OpenImageIO', False)),

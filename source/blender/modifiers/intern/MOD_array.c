@@ -609,10 +609,13 @@ static DerivedMesh *arrayModifier_doArray(
 					int target = full_doubles_map[prev_chunk_index];
 					if (target != -1) {
 						target += chunk_nverts; /* translate mapping */
-						if (!with_follow) {
-							/* The rule here is to not follow mapping to chunk N-2, which could be too far
-							 * so if target vertex was itself mapped, then this vertex is not mapped */
-							if (full_doubles_map[target] != -1) {
+						if (full_doubles_map[target] != -1) {
+							if (with_follow) {
+								target = full_doubles_map[target];
+							}
+							else {
+								/* The rule here is to not follow mapping to chunk N-2, which could be too far
+								 * so if target vertex was itself mapped, then this vertex is not mapped */
 								target = -1;
 							}
 						}
@@ -704,13 +707,6 @@ static DerivedMesh *arrayModifier_doArray(
 	}
 	/* done capping */
 
-	/* In case org dm has dirty normals, or we made some merging, mark normals as dirty in new dm!
-	 * TODO: we may need to set other dirty flags as well?
-	 */
-	if (use_recalc_normals) {
-		result->dirty |= DM_DIRTY_NORMALS;
-	}
-
 	/* Handle merging */
 	tot_doubles = 0;
 	if (use_merge) {
@@ -729,6 +725,14 @@ static DerivedMesh *arrayModifier_doArray(
 		}
 		MEM_freeN(full_doubles_map);
 	}
+
+	/* In case org dm has dirty normals, or we made some merging, mark normals as dirty in new dm!
+	 * TODO: we may need to set other dirty flags as well?
+	 */
+	if (use_recalc_normals) {
+		result->dirty |= DM_DIRTY_NORMALS;
+	}
+
 	return result;
 }
 
