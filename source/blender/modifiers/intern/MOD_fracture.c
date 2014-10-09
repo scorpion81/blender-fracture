@@ -602,6 +602,19 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		}
 	}
 
+	/* free newly created derivedmeshes only, but keep derivedData and final_dm*/
+	if ((clean_dm != group_dm) && (clean_dm != derivedData) && (clean_dm != final_dm))
+	{
+		clean_dm->needsFree = 1;
+		clean_dm->release(clean_dm);
+	}
+
+	if ((group_dm != derivedData) && (group_dm != final_dm))
+	{
+		group_dm->needsFree = 1;
+		group_dm->release(group_dm);
+	}
+
 	return final_dm;
 }
 
@@ -675,6 +688,19 @@ static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
 		else {
 			final_dm = doSimulate(fmd, ob, clean_dm, clean_dm);
 		}
+	}
+
+	/* free newly created derivedmeshes only, but keep derivedData and final_dm*/
+	if ((clean_dm != group_dm) && (clean_dm != derivedData) && (clean_dm != final_dm))
+	{
+		clean_dm->needsFree = 1;
+		clean_dm->release(clean_dm);
+	}
+
+	if ((group_dm != derivedData) && (group_dm != final_dm))
+	{
+		group_dm->needsFree = 1;
+		group_dm->release(group_dm);
 	}
 
 	return final_dm;
