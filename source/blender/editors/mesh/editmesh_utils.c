@@ -129,10 +129,10 @@ void EDBM_mesh_clear(BMEditMesh *em)
 {
 	/* clear bmesh */
 	BM_mesh_clear(em->bm);
-
+	
 	/* free derived meshes */
 	BKE_editmesh_free_derivedmesh(em);
-
+	
 	/* free tessellation data */
 	em->tottri = 0;
 	if (em->looptris) {
@@ -155,7 +155,7 @@ void EDBM_stats_update(BMEditMesh *em)
 	tots[0] = &em->bm->totvertsel;
 	tots[1] = &em->bm->totedgesel;
 	tots[2] = &em->bm->totfacesel;
-
+	
 	em->bm->totvertsel = em->bm->totedgesel = em->bm->totfacesel = 0;
 
 	for (i = 0; i < 3; i++) {
@@ -187,7 +187,7 @@ bool EDBM_op_init(BMEditMesh *em, BMOperator *bmop, wmOperator *op, const char *
 		va_end(list);
 		return false;
 	}
-
+	
 	if (!em->emcopy)
 		em->emcopy = BKE_editmesh_copy(em);
 	em->emcopyusers++;
@@ -202,7 +202,7 @@ bool EDBM_op_init(BMEditMesh *em, BMOperator *bmop, wmOperator *op, const char *
 bool EDBM_op_finish(BMEditMesh *em, BMOperator *bmop, wmOperator *op, const bool do_report)
 {
 	const char *errmsg;
-
+	
 	BMO_op_finish(em->bm, bmop);
 
 	if (BMO_error_get(em->bm, &errmsg, NULL)) {
@@ -508,9 +508,9 @@ static void *editbtMesh_to_undoMesh(void *emv, void *obdata)
 {
 	BMEditMesh *em = emv;
 	Mesh *obme = obdata;
-
+	
 	UndoMesh *um = MEM_callocN(sizeof(UndoMesh), "undo Mesh");
-
+	
 	/* make sure shape keys work */
 	um->me.key = obme->key ? BKE_key_copy_nolib(obme->key) : NULL;
 
@@ -543,7 +543,7 @@ static void undoMesh_to_editbtMesh(void *umv, void *em_v, void *UNUSED(obdata))
 
 	em_tmp = BKE_editmesh_create(bm, true);
 	*em = *em_tmp;
-
+	
 	em->selectmode = um->selectmode;
 	bm->selectmode = um->selectmode;
 	em->ob = ob;
@@ -595,7 +595,7 @@ UvVertMap *BM_uv_vert_map_create(BMesh *bm, bool use_select, const float limit[2
 	const int cd_loop_uv_offset = CustomData_get_offset(&bm->ldata, CD_MLOOPUV);
 
 	BM_mesh_elem_index_ensure(bm, BM_VERT | BM_FACE);
-
+	
 	totverts = bm->totvert;
 	totuv = 0;
 
@@ -621,7 +621,7 @@ UvVertMap *BM_uv_vert_map_create(BMesh *bm, bool use_select, const float limit[2
 		BKE_mesh_uv_vert_map_free(vmap);
 		return NULL;
 	}
-
+	
 	a = 0;
 	BM_ITER_MESH (efa, &iter, bm, BM_FACES_OF_MESH) {
 		if ((use_select == false) || BM_elem_flag_test(efa, BM_ELEM_SELECT)) {
@@ -630,10 +630,10 @@ UvVertMap *BM_uv_vert_map_create(BMesh *bm, bool use_select, const float limit[2
 				buf->tfindex = i;
 				buf->f = a;
 				buf->separate = 0;
-
+				
 				buf->next = vmap->vert[BM_elem_index_get(l->v)];
 				vmap->vert[BM_elem_index_get(l->v)] = buf;
-
+				
 				buf++;
 				i++;
 			}
@@ -641,7 +641,7 @@ UvVertMap *BM_uv_vert_map_create(BMesh *bm, bool use_select, const float limit[2
 
 		a++;
 	}
-
+	
 	/* sort individual uvs for each vert */
 	a = 0;
 	BM_ITER_MESH (ev, &iter, bm, BM_VERTS_OF_MESH) {
@@ -657,11 +657,11 @@ UvVertMap *BM_uv_vert_map_create(BMesh *bm, bool use_select, const float limit[2
 
 			efa = BM_face_at_index(bm, v->f);
 			/* tf = CustomData_bmesh_get(&bm->pdata, efa->head.data, CD_MTEXPOLY); */ /* UNUSED */
-
+			
 			l = BM_iter_at_index(bm, BM_LOOPS_OF_FACE, efa, v->tfindex);
 			luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
 			uv = luv->uv;
-
+			
 			lastv = NULL;
 			iterv = vlist;
 
@@ -669,11 +669,11 @@ UvVertMap *BM_uv_vert_map_create(BMesh *bm, bool use_select, const float limit[2
 				next = iterv->next;
 				efa = BM_face_at_index(bm, iterv->f);
 				/* tf = CustomData_bmesh_get(&bm->pdata, efa->head.data, CD_MTEXPOLY); */ /* UNUSED */
-
+				
 				l = BM_iter_at_index(bm, BM_LOOPS_OF_FACE, efa, iterv->tfindex);
 				luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
 				uv2 = luv->uv;
-
+				
 				sub_v2_v2v2(uvdiff, uv2, uv);
 
 				if (fabsf(uvdiff[0]) < limit[0] && fabsf(uvdiff[1]) < limit[1]) {
@@ -966,10 +966,10 @@ UvElement *BM_uv_element_get(UvElementMap *map, BMFace *efa, BMLoop *l)
 MTexPoly *EDBM_mtexpoly_active_get(BMEditMesh *em, BMFace **r_act_efa, const bool sloppy, const bool selected)
 {
 	BMFace *efa = NULL;
-
+	
 	if (!EDBM_mtexpoly_check(em))
 		return NULL;
-
+	
 	efa = BM_mesh_active_face_get(em->bm, sloppy, selected);
 
 	if (efa) {

@@ -32,13 +32,6 @@ class ModifierButtonsPanel():
 class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
     bl_label = "Modifiers"
 
-    def icon(self, bool):
-        if bool:
-            return 'TRIA_DOWN'
-        else:
-            return 'TRIA_RIGHT'
-
-
     def draw(self, context):
         layout = self.layout
 
@@ -279,7 +272,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
             split.prop(md, "use_collapse_triangulate")
         elif decimate_type == 'UNSUBDIV':
             layout.prop(md, "iterations")
-        else: # decimate_type == 'DISSOLVE':
+        else:  # decimate_type == 'DISSOLVE':
             layout.prop(md, "angle_limit")
             layout.prop(md, "use_dissolve_boundaries")
             layout.label("Delimit:")

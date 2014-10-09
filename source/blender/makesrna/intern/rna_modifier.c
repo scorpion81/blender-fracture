@@ -949,6 +949,7 @@ static PropertyRNA *rna_def_property_subdivision_common(StructRNA *srna, const c
 	RNA_def_property_enum_items(prop, prop_subdivision_type_items);
 	RNA_def_property_ui_text(prop, "Subdivision Type", "Select type of subdivision algorithm");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
 	return prop;
 }
 
@@ -1329,7 +1330,6 @@ static void rna_def_modifier_decimate(BlenderRNA *brna)
 		{MOD_DECIM_MODE_COLLAPSE, "COLLAPSE", 0, "Collapse", "Use edge collapsing"},
 		{MOD_DECIM_MODE_UNSUBDIV, "UNSUBDIV", 0, "Un-Subdivide", "Use un-subdivide face reduction"},
 		{MOD_DECIM_MODE_DISSOLVE, "DISSOLVE", 0, "Planar", "Dissolve geometry to form planar polygons"},
-//		{MOD_DECIM_MODE_REMDOUBLES, "REMDOUBLES", 0, "Doubles", "Remove duplicate vertices"},
 		{0, NULL, 0, NULL, NULL}
 	};
 
@@ -1371,14 +1371,6 @@ static void rna_def_modifier_decimate(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Angle Limit", "Only dissolve angles below this (planar only)");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
-	/* (mode == MOD_DECIM_MODE_REMDOUBLES) */
-/*	prop = RNA_def_property(srna, "merge_threshold", PROP_FLOAT, PROP_DISTANCE);
-	RNA_def_property_float_sdna(prop, NULL, "merge_dist");
-	RNA_def_property_range(prop, 0, FLT_MAX);
-	RNA_def_property_ui_range(prop, 0, 1, 1, 4);
-	RNA_def_property_ui_text(prop, "Merge Distance", "Limit below which to merge vertices");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");*/
-
 	/* (mode == MOD_DECIM_MODE_COLLAPSE) */
 	prop = RNA_def_property(srna, "vertex_group", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "defgrp_name");
@@ -1410,6 +1402,8 @@ static void rna_def_modifier_decimate(BlenderRNA *brna)
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	/* end dissolve-only option */
+
+
 
 	/* all modes use this */
 	prop = RNA_def_property(srna, "face_count", PROP_INT, PROP_NONE);
@@ -2325,7 +2319,7 @@ static void rna_def_modifier_explode(BlenderRNA *brna)
 {
 	StructRNA *srna;
 	PropertyRNA *prop;
-	
+
 	srna = RNA_def_struct(brna, "ExplodeModifier", "Modifier");
 	RNA_def_struct_ui_text(srna, "Explode Modifier", "Explosion effect modifier based on a particle system");
 	RNA_def_struct_sdna(srna, "ExplodeModifierData");
@@ -3912,6 +3906,7 @@ static void rna_def_modifier_laplaciandeform(BlenderRNA *brna)
 	RNA_def_property_boolean_funcs(prop, "rna_LaplacianDeformModifier_is_bind_get", NULL);
 	RNA_def_property_ui_text(prop, "Bound", "Whether geometry has been bound to anchors");
 	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 

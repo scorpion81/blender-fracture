@@ -1359,21 +1359,15 @@ static void scene_sort_groups(Main *bmain, Scene *sce)
 	
 	for (group = bmain->group.first; group; group = group->id.next) {
 		for (go = group->gobject.first; go; go = go->next) {
-			if (go->ob != NULL) {
-				/* additional fracture modifier related sanity NULL check, caused crashes else */
-				if ((go->ob->id.flag & LIB_DOIT) == 0)
-					break;
-			}
+			if ((go->ob->id.flag & LIB_DOIT) == 0)
+				break;
 		}
 		/* this group is entirely in this scene */
 		if (go == NULL) {
 			ListBase listb = {NULL, NULL};
 			
 			for (go = group->gobject.first; go; go = go->next)
-				if (go->ob != NULL) {
-					/* additional fracture modifier related sanity NULL check, caused crashes else */
-					go->ob->id.newid = (ID *)go;
-				}
+				go->ob->id.newid = (ID *)go;
 			
 			/* in order of sorted bases we reinsert group objects */
 			for (base = sce->base.first; base; base = base->next) {

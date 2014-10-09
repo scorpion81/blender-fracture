@@ -73,7 +73,7 @@ typedef struct rbConstraint rbConstraint;
 
 /* Create a new dynamics world instance */
 // TODO: add args to set the type of constraint solvers, etc.
-extern rbDynamicsWorld *RB_dworld_new(const float gravity[3]);
+rbDynamicsWorld *RB_dworld_new(const float gravity[3]);
 
 /* Delete the given dynamics world, and free any extra data it may require */
 void RB_dworld_delete(rbDynamicsWorld *world);
@@ -105,7 +105,7 @@ void RB_dworld_export(rbDynamicsWorld *world, const char *filename);
 /* Setup ---------------------------- */
 
 /* Add RigidBody to dynamics world */
-extern void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *body, int col_groups);
+void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *body, int col_groups);
 
 /* Remove RigidBody from dynamics world */
 void RB_dworld_remove_body(rbDynamicsWorld *world, rbRigidBody *body);
@@ -279,8 +279,8 @@ void RB_constraint_delete(rbConstraint *con);
 /* Settings --------------------------- */
 
 /* Enable or disable constraint */
-extern void RB_constraint_set_enabled(rbConstraint *con, int enabled);
-extern int RB_constraint_is_enabled(rbConstraint *con);
+void RB_constraint_set_enabled(rbConstraint *con, int enabled);
+int RB_constraint_is_enabled(rbConstraint *con);
 
 /* Limits */
 #define RB_LIMIT_LIN_X 0

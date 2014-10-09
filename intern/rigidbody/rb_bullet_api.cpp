@@ -117,7 +117,7 @@ struct rbFilterCallback : public btOverlapFilterCallback
 		collides = (proxy0->m_collisionFilterGroup & proxy1->m_collisionFilterMask) != 0;
 		collides = collides && (proxy1->m_collisionFilterGroup & proxy0->m_collisionFilterMask);
 		collides = collides && (rb0->col_groups & rb1->col_groups);
-
+		
 		return collides;
 	}
 };
@@ -254,7 +254,7 @@ void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *object, int col_gro
 {
 	btRigidBody *body = object->body;
 	object->col_groups = col_groups;
-
+	
 	world->dynamicsWorld->addRigidBody(body);
 }
 

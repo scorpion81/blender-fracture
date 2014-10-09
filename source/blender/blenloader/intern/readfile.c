@@ -4176,7 +4176,6 @@ static void direct_link_customdata(FileData *fd, CustomData *data, int count)
 				direct_link_mdisps(fd, count, layer->data, layer->flag & CD_FLAG_EXTERNAL);
 			else if (layer->type == CD_GRID_PAINT_MASK)
 				direct_link_grid_paint_mask(fd, count, layer->data);
-
 			i++;
 		}
 	}
@@ -7627,7 +7626,7 @@ static BHead *read_libblock(FileData *fd, Main *main, BHead *bhead, int flag, ID
 			direct_link_paint_curve(fd, (PaintCurve *)id);
 			break;
 	}
-
+	
 	oldnewmap_free_unused(fd->datamap);
 	oldnewmap_clear(fd->datamap);
 	

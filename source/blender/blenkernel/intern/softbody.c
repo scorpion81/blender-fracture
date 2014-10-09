@@ -2169,6 +2169,7 @@ static void sb_spring_force(Object *ob, int bpi, BodySpring *bs, float iks, floa
 	}
 }
 
+
 /* since this is definitely the most CPU consuming task here .. try to spread it */
 /* core function _softbody_calc_forces_slice_in_a_thread */
 /* result is int to be able to flag user break */
@@ -2179,7 +2180,7 @@ static int _softbody_calc_forces_slice_in_a_thread(Scene *scene, Object *ob, flo
 	int number_of_points_here = ilast - ifirst;
 	SoftBody *sb= ob->soft;	/* is supposed to be there */
 	BodyPoint  *bp;
-											
+
 	/* intitialize */
 	if (sb) {
 	/* check conditions for various options */
@@ -2201,6 +2202,7 @@ static int _softbody_calc_forces_slice_in_a_thread(Scene *scene, Object *ob, flo
 	}
 /* debugerin */
 
+
 	bp = &sb->bpoint[ifirst];
 	for (bb=number_of_points_here; bb>0; bb--, bp++) {
 		/* clear forces  accumulator */
@@ -2216,7 +2218,7 @@ static int _softbody_calc_forces_slice_in_a_thread(Scene *scene, Object *ob, flo
 			float distance;
 			float compare;
 			float bstune = sb->ballstiff;
-			
+
 			for (c=sb->totpoint, obp= sb->bpoint; c>=ifirst+bb; c--, obp++) {
 				compare = (obp->colball + bp->colball);
 				sub_v3_v3v3(def, bp->pos, obp->pos);
@@ -2224,7 +2226,7 @@ static int _softbody_calc_forces_slice_in_a_thread(Scene *scene, Object *ob, flo
 				/* mathematically it is completly nuts, but performance is pretty much (3) times faster */
 				if ((ABS(def[0]) > compare) || (ABS(def[1]) > compare) || (ABS(def[2]) > compare)) continue;
 				distance = normalize_v3(def);
-				if (distance < compare){	// skip also overlapping body points by using a minimum distance (demolition)
+				if (distance < compare ) {
 					/* exclude body points attached with a spring */
 					attached = 0;
 					for (b=obp->nofsprings;b>0;b--) {
@@ -4074,7 +4076,7 @@ void sbObjectStep(Scene *scene, Object *ob, float cfra, float (*vertexCos)[3], i
 	if (sb->bpoint == NULL ||
 	   ((ob->softflag & OB_SB_EDGES) && !ob->soft->bspring && object_has_edges(ob)))
 	{
-			
+
 		switch (ob->type) {
 			case OB_MESH:
 				mesh_to_softbody(scene, ob);

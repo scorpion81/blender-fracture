@@ -47,7 +47,6 @@
 #  include "RBI_api.h"
 #endif
 
-#include "DNA_anim_types.h"
 #include "DNA_group_types.h"
 #include "DNA_mesh_types.h"
 #include "DNA_meshdata_types.h"
@@ -56,7 +55,6 @@
 #include "DNA_rigidbody_types.h"
 #include "DNA_scene_types.h"
 
-#include "BKE_animsys.h"
 #include "BKE_cdderivedmesh.h"
 #include "BKE_effect.h"
 #include "BKE_global.h"
@@ -66,15 +64,10 @@
 #include "BKE_object.h"
 #include "BKE_pointcache.h"
 #include "BKE_rigidbody.h"
-#include "BKE_utildefines.h"
-#include "BKE_library.h"
-#include "BKE_main.h"
 #include "BKE_modifier.h"
-#include "BKE_scene.h"
 #include "BKE_depsgraph.h"
 
 #include "RNA_access.h"
-#include "bmesh.h"
 
 #ifdef WITH_BULLET
 
@@ -678,7 +671,7 @@ static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh_shard(DerivedMesh
 {
 	rbCollisionShape *shape = NULL;
 
-	if (ob->type == OB_MESH) {
+	if (dmm) {
 		DerivedMesh *dm = NULL;
 		MVert *mvert;
 		MFace *mface;
@@ -754,7 +747,7 @@ static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh_shard(DerivedMesh
 		/* cleanup temp data */
 		if (dm /*&& ob->rigidbody_object->mesh_source == RBO_MESH_BASE*/) {
 			dm->needsFree = 1;
-			dm->release(dm);
+		dm->release(dm);
 			dm = NULL;
 		}
 	}
@@ -930,7 +923,7 @@ static void rigidbody_validate_sim_shape(Object *ob, bool rebuild)
 		case RB_SHAPE_CONVEXH:
 			/* try to emged collision margin */
 			has_volume = (MIN3(size[0], size[1], size[2]) > 0.0f);
-	
+
 			if (!(rbo->flag & RBO_FLAG_USE_MARGIN) && has_volume)
 				hull_margin = 0.04f;
 			if (ob->type == OB_MESH && ob->data) {
@@ -961,6 +954,7 @@ static void rigidbody_validate_sim_shape(Object *ob, bool rebuild)
 	}
 }
 
+/* --------------------- */
 
 /* Create new physics sim collision shape for object and store it,
  * or remove the existing one first and replace...
@@ -990,6 +984,7 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 	 *	- assume that all quadrics are standing upright on local z-axis
 	 *	- assume even distribution of mass around the Object's pivot
 	 *	  (i.e. Object pivot is centralized in boundbox)
+	 *	- boundbox gives full width
 	 */
 	// XXX: all dimensions are auto-determined now... later can add stored settings for this
 	/* get object dimensions without scaling */
@@ -1032,6 +1027,7 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 		case RB_SHAPE_CYLINDER:
 			new_shape = RB_shape_new_cylinder(radius, height);
 			break;
+
 		case RB_SHAPE_CONE:
 			new_shape = RB_shape_new_cone(radius, height * 2.0f);
 			break;
@@ -1063,6 +1059,11 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 	}
 }
 
+#if 0 // XXX: not defined yet
+		case RB_SHAPE_COMPOUND:
+			volume = 0.0f;
+			break;
+#endif
 
 /* --------------------- */
 
@@ -1133,10 +1134,17 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 
 
 
+#if 0 // XXX: not defined yet
+		case RB_SHAPE_COMPOUND:
+			volume = 0.0f;
+			break;
+#endif
 
 /* --------------------- */
 
+/**
 /* Create physics sim representation of object given RigidBody settings
+ *
  * < rebuild: even if an instance already exists, replace it
  */
 static void rigidbody_validate_sim_object(RigidBodyWorld *rbw, Object *ob, bool rebuild)
@@ -1199,7 +1207,9 @@ static void rigidbody_validate_sim_object(RigidBodyWorld *rbw, Object *ob, bool 
 
 /* --------------------- */
 
-/* Create physics sim representation of constraint given rigid body constraint settings
+/**
+ * Create physics sim representation of constraint given rigid body constraint settings
+ *
  * < rebuild: even if an instance already exists, replace it
  */
 static void rigidbody_validate_sim_constraint(RigidBodyWorld *rbw, Object *ob, bool rebuild)
@@ -2916,68 +2926,29 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 #  pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 
-void BKE_rigidbody_free_world(RigidBodyWorld *rbw) {
-}
-void BKE_rigidbody_free_object(Object *ob) {
-}
-void BKE_rigidbody_free_constraint(Object *ob) {
-}
-struct RigidBodyOb *BKE_rigidbody_copy_object(Object *ob) {
-	return NULL;
-}
-struct RigidBodyCon *BKE_rigidbody_copy_constraint(Object *ob) {
-	return NULL;
-}
-void BKE_rigidbody_relink_constraint(RigidBodyCon *rbc) {
-}
-void BKE_rigidbody_validate_sim_world(Scene *scene, RigidBodyWorld *rbw, bool rebuild) {
-}
-void BKE_rigidbody_validate_sim_object(RigidBodyWorld *rbw, Object *ob, short rebuild) {
-}
-void BKE_rigidbody_validate_sim_constraint(RigidBodyWorld *rbw, Object *ob, short rebuild) {
-}
-void BKE_rigidbody_validate_sim_world(Scene *scene, RigidBodyWorld *rbw, short rebuild) {
-}
-void BKE_rigidbody_calc_volume(Object *ob, float *r_vol) {
-	if (r_vol) *r_vol = 0.0f;
-}
-void BKE_rigidbody_calc_center_of_mass(Object *ob, float r_com[3]) {
-	zero_v3(r_com);
-}
-struct RigidBodyWorld *BKE_rigidbody_create_world(Scene *scene) {
-	return NULL;
-}
-struct RigidBodyWorld *BKE_rigidbody_world_copy(RigidBodyWorld *rbw) {
-	return NULL;
-}
-void BKE_rigidbody_world_groups_relink(struct RigidBodyWorld *rbw) {
-}
-struct RigidBodyOb *BKE_rigidbody_create_object(Scene *scene, Object *ob, short type) {
-	return NULL;
-}
-struct RigidBodyCon *BKE_rigidbody_create_constraint(Scene *scene, Object *ob, short type) {
-	return NULL;
-}
-struct RigidBodyWorld *BKE_rigidbody_get_world(Scene *scene) {
-	return NULL;
-}
-void BKE_rigidbody_remove_object(Scene *scene, Object *ob) {
-}
-void BKE_rigidbody_remove_constraint(Scene *scene, Object *ob) {
-}
-void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime) {
-}
-void BKE_rigidbody_aftertrans_update(Object *ob, float loc[3], float rot[3], float quat[4], float rotAxis[3], float rotAngle) {
-}
-bool BKE_rigidbody_check_sim_running(RigidBodyWorld *rbw, float ctime) {
-	return false;
-}
-void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw) {
-}
-void BKE_rigidbody_rebuild_world(Scene *scene, float ctime) {
-}
-void BKE_rigidbody_do_simulation(Scene *scene, float ctime) {
-}
+void BKE_rigidbody_free_world(RigidBodyWorld *rbw) {}
+void BKE_rigidbody_free_object(Object *ob) {}
+void BKE_rigidbody_free_constraint(Object *ob) {}
+struct RigidBodyOb *BKE_rigidbody_copy_object(Object *ob) { return NULL; }
+struct RigidBodyCon *BKE_rigidbody_copy_constraint(Object *ob) { return NULL; }
+void BKE_rigidbody_relink_constraint(RigidBodyCon *rbc) {}
+void BKE_rigidbody_validate_sim_world(Scene *scene, RigidBodyWorld *rbw, bool rebuild) {}
+void BKE_rigidbody_calc_volume(Object *ob, float *r_vol) { if (r_vol) *r_vol = 0.0f; }
+void BKE_rigidbody_calc_center_of_mass(Object *ob, float r_com[3]) { zero_v3(r_com); }
+struct RigidBodyWorld *BKE_rigidbody_create_world(Scene *scene) { return NULL; }
+struct RigidBodyWorld *BKE_rigidbody_world_copy(RigidBodyWorld *rbw) { return NULL; }
+void BKE_rigidbody_world_groups_relink(struct RigidBodyWorld *rbw) {}
+struct RigidBodyOb *BKE_rigidbody_create_object(Scene *scene, Object *ob, short type) { return NULL; }
+struct RigidBodyCon *BKE_rigidbody_create_constraint(Scene *scene, Object *ob, short type) { return NULL; }
+struct RigidBodyWorld *BKE_rigidbody_get_world(Scene *scene) { return NULL; }
+void BKE_rigidbody_remove_object(Scene *scene, Object *ob) {}
+void BKE_rigidbody_remove_constraint(Scene *scene, Object *ob) {}
+void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime) {}
+void BKE_rigidbody_aftertrans_update(Object *ob, float loc[3], float rot[3], float quat[4], float rotAxis[3], float rotAngle) {}
+bool BKE_rigidbody_check_sim_running(RigidBodyWorld *rbw, float ctime) { return false; }
+void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw) {}
+void BKE_rigidbody_rebuild_world(Scene *scene, float ctime) {}
+void BKE_rigidbody_do_simulation(Scene *scene, float ctime) {}
 
 #ifdef __GNUC__
 #  pragma GCC diagnostic pop
