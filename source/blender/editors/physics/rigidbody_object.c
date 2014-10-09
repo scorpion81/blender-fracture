@@ -528,7 +528,9 @@ static int rigidbody_objects_calc_mass_exec(bContext *C, wmOperator *op)
 			}
 			else {
 				float dim[3];
-				/* else get object boundbox as last resort */
+				/* else get object boundbox as last resort,
+				 * because fracture modifier can operate on non-mesh objects too
+				 * and there we need a fallback volume of the "whole" object as well*/
 				BKE_object_dimensions_get(ob, dim);
 				volume = dim[0] * dim[1] * dim[2];
 			}
