@@ -75,13 +75,13 @@ void BKE_rigidbody_validate_sim_world(struct Scene *scene, struct RigidBodyWorld
 void BKE_rigidbody_validate_sim_object(struct RigidBodyWorld *rbw, struct Object *ob, short rebuild);
 void BKE_rigidbody_validate_sim_shape(struct Object *ob, short rebuild);
 void BKE_rigidbody_validate_sim_constraint(struct RigidBodyWorld *rbw, struct Object *ob, short rebuild);
-void BKE_rigidbody_validate_sim_shard_constraint(struct RigidBodyWorld *rbw, struct RigidBodyShardCon *rbsc, struct Object* ob, short rebuild);
+void BKE_rigidbody_validate_sim_shard_constraint(struct RigidBodyWorld *rbw, struct RigidBodyShardCon *rbsc, short rebuild);
 
 void BKE_rigidbody_validate_sim_shard(struct RigidBodyWorld *rbw, struct MeshIsland *mi, struct Object *ob, short rebuild);
 void BKE_rigidbody_validate_sim_shard_shape(struct MeshIsland *mi, struct Object *ob, short rebuild);
 
 /* move the islands of the visible mesh according to shard rigidbody movement */
-void BKE_rigidbody_update_cell(struct MeshIsland *mi, struct Object* ob, float loc[3], float rot[4], float cfra, bool baked, struct FractureModifierData* rmd);
+void BKE_rigidbody_update_cell(struct MeshIsland *mi, struct Object* ob, float loc[3], float rot[4], struct FractureModifierData* rmd);
 
 void BKE_rigidbody_calc_center_of_mass(struct Object *ob, float r_com[3]);
 

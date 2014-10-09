@@ -79,10 +79,10 @@
 #ifdef WITH_BULLET
 
 static bool isModifierActive(FractureModifierData *rmd) {
-	return ((rmd != NULL) && (rmd->modifier.mode & eModifierMode_Realtime || rmd->modifier.mode & eModifierMode_Render) && (rmd->refresh == false));
+	return ((rmd != NULL) && (rmd->modifier.mode & (eModifierMode_Realtime | eModifierMode_Render)) && (rmd->refresh == false));
 }
 
-void calc_dist_angle(RigidBodyShardCon *con, float *dist, float *angle)
+static void calc_dist_angle(RigidBodyShardCon *con, float *dist, float *angle)
 {
 	float q1[4], q2[4], qdiff[4], axis[3];
 	if ((con->mi1->rigidbody == NULL) || (con->mi2->rigidbody == NULL)) {
@@ -169,7 +169,7 @@ float BKE_rigidbody_calc_min_con_dist(Object *ob)
 
 void BKE_rigidbody_calc_threshold(float max_con_mass, FractureModifierData *rmd, RigidBodyShardCon *con) {
 
-	float max_thresh, thresh, con_mass;
+	float max_thresh, thresh = 0.0f, con_mass;
 	if ((max_con_mass == 0) && (rmd->use_mass_dependent_thresholds)) {
 		return;
 	}
@@ -395,7 +395,7 @@ static void initNormals(struct MeshIsland *mi, Object *ob, FractureModifierData 
 	}
 }
 
-void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], float rot[4], float cfra, bool baked, FractureModifierData *rmd)
+void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], float rot[4], FractureModifierData *rmd)
 {
 	float startco[3], centr[3], size[3];
 	short startno[3];
@@ -1076,7 +1076,6 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 	RigidBodyOb *rbo = (mi) ? mi->rigidbody : NULL;
 	float loc[3];
 	float rot[4];
-	float centr[3], size[3];
 
 	/* sanity checks:
 	 *	- object doesn't have RigidBody info already: then why is it here?
@@ -1375,11 +1374,8 @@ static void rigidbody_validate_sim_constraint(RigidBodyWorld *rbw, Object *ob, b
 /* Create physics sim representation of constraint given rigid body constraint settings
  * < rebuild: even if an instance already exists, replace it
  */
-void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyShardCon *rbc, Object *ob, short rebuild)
+void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyShardCon *rbc, short rebuild)
 {
-	//RigidBodyShardCon *rbc = (mi) ? mi->rigidbody_constraint : NULL;
-	FractureModifierData *rmd = NULL;
-	ModifierData *md = NULL;
 	float loc[3];
 	float rot[4];
 	float lin_lower;
@@ -1555,24 +1551,6 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 	if (rbw && rbw->physics_world && rbc->physics_constraint) {
 		RB_dworld_add_constraint(rbw->physics_world, rbc->physics_constraint, rbc->flag & RBC_FLAG_DISABLE_COLLISIONS);
 	}
-}
-
-bool isDisconnected(MeshIsland *mi)
-{
-	int cons = 0, broken_cons = 0, i;
-	RigidBodyShardCon *con;
-	cons = mi->participating_constraint_count;
-	/* calc ratio of broken cons here, per Meshisland and flag the rest to be broken too */
-	for (i = 0; i < cons; i++) {
-		con = mi->participating_constraints[i];
-		if (con && con->physics_constraint) {
-			if (!RB_constraint_is_enabled(con->physics_constraint)) {
-				broken_cons++;
-			}
-		}
-	}
-	
-	return (cons == broken_cons) && (cons > 0);
 }
 
 /* --------------------- */
@@ -2091,41 +2069,40 @@ void BKE_rigidbody_remove_constraint(Scene *scene, Object *ob)
 	BKE_rigidbody_cache_reset(rbw);
 }
 
-static int rigidbody_count_regular_objects(ListBase obs)
+static int rigidbody_group_count_items(const ListBase *group, int *r_num_objects, int *r_num_shards)
 {
-	int count = 0;
-	struct GroupObject *gob = NULL;
-	struct ModifierData *md = NULL;
+	int num_gobjects = 0;
+	ModifierData *md;
+	FractureModifierData *rmd;
+	GroupObject *gob;
 
-	for (gob = obs.first; gob; gob = gob->next) {
-		count++;
-		for (md = gob->ob->modifiers.first; md; md = md->next) {
-			if (md->type == eModifierType_Fracture) {
-				count--;
-				break;
-			}
-		}
+	if (r_num_objects == NULL || r_num_shards == NULL)
+	{
+		return num_gobjects;
 	}
-	return count;
-}
 
-static int rigidbody_count_shards(ListBase obs)
-{
-	int count = 0;
-	struct GroupObject *gob = NULL;
-	struct ModifierData *md = NULL;
-	struct FractureModifierData *rmd = NULL;
+	*r_num_objects = 0;
+	*r_num_shards = 0;
 
-	for (gob = obs.first; gob; gob = gob->next) {
+	for (gob = group->first; gob; gob = gob->next) {
+		bool found_modifiers = false;
 		for (md = gob->ob->modifiers.first; md; md = md->next) {
 			if (md->type == eModifierType_Fracture) {
 				rmd = (FractureModifierData *)md;
 				if (isModifierActive(rmd))
-					count += BLI_countlist(&rmd->meshIslands);
+				{
+					found_modifiers = true;
+					*r_num_shards += BLI_countlist(&rmd->meshIslands);
+				}
 			}
 		}
+		if (found_modifiers == false) {
+			*r_num_objects++;
+		}
+		num_gobjects++;
 	}
-	return count;
+
+	return num_gobjects;
 }
 
 /* ************************************** */
@@ -2138,7 +2115,7 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 	ModifierData *md;
 	FractureModifierData *rmd;
 	MeshIsland *mi;
-	int i, j, l, m, n, counter = 0;
+	int i, j, l = 0, m = 0, n = 0, counter = 0;
 	bool ismapped = false;
 	
 	if (rbw->objects != NULL) {
@@ -2156,9 +2133,7 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 		rbw->cache_offset_map = NULL;
 	}
 
-	l = BLI_countlist(&rbw->group->gobject); /* all objects */
-	m = rigidbody_count_regular_objects(rbw->group->gobject);
-	n = rigidbody_count_shards(rbw->group->gobject);
+	l = rigidbody_group_count_items(&rbw->group->gobject, &m, &n);
 
 	rbw->numbodies = m + n;
 	rbw->objects = MEM_mallocN(sizeof(Object *) * l, "objects");
@@ -2367,7 +2342,6 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 
 			if (isModifierActive(rmd)) {
 				float max_con_mass = 0;
-				float min_con_dist = FLT_MAX;
 			
 				int count = BLI_countlist(&rmd->meshIslands);
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
@@ -2481,12 +2455,12 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 
 					if (rebuild) {
 						/* World has been rebuilt so rebuild constraint */
-						BKE_rigidbody_validate_sim_shard_constraint(rbw, rbsc, ob, true);
+						BKE_rigidbody_validate_sim_shard_constraint(rbw, rbsc, true);
 						BKE_rigidbody_start_dist_angle(rbsc);
 					}
 
 					else if (rbsc->flag & RBC_FLAG_NEEDS_VALIDATE) {
-						BKE_rigidbody_validate_sim_shard_constraint(rbw, rbsc, ob, false);
+						BKE_rigidbody_validate_sim_shard_constraint(rbw, rbsc, false);
 					}
 
 					if (rbsc->physics_constraint && rbw && rbw->rebuild_comp_con) {
@@ -2652,9 +2626,7 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 			exploOK = !rmd->explo_shared || (rmd->explo_shared && rmd->frac_mesh && rmd->dm);
 			
 			if (isModifierActive(rmd) && exploOK) {
-				int count;
 				modFound = true;
-				count = BLI_countlist(&rmd->meshIslands);
 				
 				if ((ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) ||
 				    ((ob->rigidbody_object) && (ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC)))
@@ -2701,8 +2673,7 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 						mul_qt_v3(rbo->orn, centr);
 						add_v3_v3(rbo->pos, centr);
 					}
-					BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn, ctime, 
-					                          rbw->pointcache->flag & PTCACHE_BAKED, rmd);
+					BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn, rmd);
 				}
 				
 				break;
@@ -2841,13 +2812,15 @@ void BKE_rigidbody_rebuild_world(Scene *scene, float ctime)
 	PointCache *cache;
 	PTCacheID pid;
 	int startframe, endframe;
+	int shards = 0, objects = 0, num = 0;
 
 	BKE_ptcache_id_from_rigidbody(&pid, NULL, rbw);
 	BKE_ptcache_id_time(&pid, scene, ctime, &startframe, &endframe, NULL);
 	cache = rbw->pointcache;
 
 	/* flag cache as outdated if we don't have a world or number of objects in the simulation has changed */
-	if (rbw->physics_world == NULL || rbw->numbodies != (rigidbody_count_regular_objects(rbw->group->gobject) + rigidbody_count_shards(rbw->group->gobject))) {
+	num = rigidbody_group_count_items(&rbw->group->gobject, &shards, &objects);
+	if (rbw->physics_world == NULL || rbw->numbodies != num) {
 		cache->flag |= PTCACHE_OUTDATED;
 	}
 
