@@ -53,28 +53,28 @@ typedef struct FracPoint {
 } FracPoint;
 
 typedef struct FracPointCloud {
-	struct FracPoint *points;	/* just a bunch of positions in space*/
+	struct FracPoint *points;   /* just a bunch of positions in space*/
 	int totpoints; /* number of positions */
 } FracPointCloud;
 
 /* direct access */
-struct Shard* BKE_shard_by_id(struct FracMesh* mesh, ShardID id, struct DerivedMesh *dm);
+struct Shard *BKE_shard_by_id(struct FracMesh *mesh, ShardID id, struct DerivedMesh *dm);
 
 /* detailed info to the particular shards */
-void BKE_get_shard_minmax(struct FracMesh* mesh, ShardID id, float min_r[3], float max_r[3], struct DerivedMesh *dm);
+void BKE_get_shard_minmax(struct FracMesh *mesh, ShardID id, float min_r[3], float max_r[3], struct DerivedMesh *dm);
 
 /* container object handling functions */
 struct FracMesh *BKE_create_fracture_container(void);
 struct Shard *BKE_create_fracture_shard(struct MVert *mvert, struct MPoly *mpoly, struct MLoop *mloop, int totvert, int totpoly, int totloop, bool copy);
-struct Shard *BKE_custom_data_to_shard(struct Shard* s, struct DerivedMesh* dm);
+struct Shard *BKE_custom_data_to_shard(struct Shard *s, struct DerivedMesh *dm);
 
 /* utility functions */
 bool BKE_fracture_shard_center_median(struct Shard *shard, float cent[3]);
 bool BKE_fracture_shard_center_centroid(struct Shard *shard, float cent[3]);
 float BKE_shard_calc_minmax(struct Shard *shard);
 
-void BKE_fracmesh_free(struct FracMesh* fm, bool doCustomData);
-void BKE_shard_free(struct Shard* s, bool doCustomData);
+void BKE_fracmesh_free(struct FracMesh *fm, bool doCustomData);
+void BKE_shard_free(struct Shard *s, bool doCustomData);
 
 
 /* DerivedMesh */

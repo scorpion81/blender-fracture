@@ -148,7 +148,7 @@ static void rna_RigidBodyWorld_split_impulse_set(PointerRNA *ptr, int value)
 
 /* ------------------------------------------ */
 
-void foreach_shard_float(Object* ob, float value, void (*func)(RigidBodyOb* rbo, float value))
+void foreach_shard_float(Object* ob, float value, void (*func)(RigidBodyOb *rbo, float value))
 {
 	ModifierData *md;
 	FractureModifierData* rmd;
@@ -165,7 +165,7 @@ void foreach_shard_float(Object* ob, float value, void (*func)(RigidBodyOb* rbo,
 	}
 }
 
-void foreach_shard_mass(Object* ob)
+void foreach_shard_mass(Object *ob)
 {
 	ModifierData *md;
 	FractureModifierData* rmd;
@@ -183,7 +183,7 @@ void foreach_shard_mass(Object* ob)
 	}
 }
 
-void foreach_shard_int(Object* ob, int value, void (*func)(RigidBodyOb* rbo, int value))
+void foreach_shard_int(Object *ob, int value, void (*func)(RigidBodyOb *rbo, int value))
 {
 	ModifierData *md;
 	FractureModifierData* rmd;
@@ -200,11 +200,11 @@ void foreach_shard_int(Object* ob, int value, void (*func)(RigidBodyOb* rbo, int
 	}
 }
 
-void foreach_shard_ints(Object* ob, const int* value, void (*func)(RigidBodyOb* rbo, const int* value))
+void foreach_shard_ints(Object *ob, const int *value, void (*func)(RigidBodyOb *rbo, const int *value))
 {
 	ModifierData *md;
 	FractureModifierData* rmd;
-	MeshIsland* mi;
+	MeshIsland *mi;
 
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_Fracture) {
@@ -218,19 +218,19 @@ void foreach_shard_ints(Object* ob, const int* value, void (*func)(RigidBodyOb* 
 	}
 }
 
-void foreach_shard_flag_shape(Object* ob, int val1, short val2, int reset)
+void foreach_shard_flag_shape(Object *ob, int flag, short shape, bool reset)
 {
 	ModifierData *md;
-	FractureModifierData* rmd;
-	MeshIsland* mi;
+	FractureModifierData *rmd;
+	MeshIsland *mi;
 
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_Fracture) {
 			rmd = (FractureModifierData*)md;
 			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 				if (mi->rigidbody != NULL) {
-					mi->rigidbody->flag = val1;
-					mi->rigidbody->shape = val2;
+					mi->rigidbody->flag = flag;
+					mi->rigidbody->shape = shape;
 					if (reset) {
 						if (mi->rigidbody->physics_shape)
 							mi->rigidbody->flag |= RBO_FLAG_NEEDS_RESHAPE;

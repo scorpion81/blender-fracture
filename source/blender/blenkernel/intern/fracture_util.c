@@ -97,14 +97,14 @@ void uv_transform(float uv[][2], int num_uv, float mat[2][2])
 	}
 }
 
-void unwrap_shard_dm(DerivedMesh* dm)
+void unwrap_shard_dm(DerivedMesh *dm)
 {
 	MPoly *mpoly, *mp;
 	MLoop *mloop;
 	MVert *mvert;
 	int totpoly, i = 0;
-	MLoopUV* mluv = MEM_callocN(sizeof(MLoopUV) * dm->numLoopData, "mluv");
-	BoxPack* boxpack = MEM_mallocN(sizeof(BoxPack) * dm->numPolyData, "boxpack");
+	MLoopUV *mluv = MEM_callocN(sizeof(MLoopUV) * dm->numLoopData, "mluv");
+	BoxPack *boxpack = MEM_mallocN(sizeof(BoxPack) * dm->numPolyData, "boxpack");
 	float scale, tot_width, tot_height;
 
 	/* set inner material on child shard */
@@ -119,7 +119,7 @@ void unwrap_shard_dm(DerivedMesh* dm)
 		float nor[3];
 		float mat[3][3];
 		float (*uv)[2] = MEM_mallocN(sizeof(float[2]) * mp->totloop, "unwrap_shard_dm_uv");
-		BoxPack* box;
+		BoxPack *box;
 		float uvbbox[2][2];
 		float angle;
 
@@ -179,7 +179,7 @@ void unwrap_shard_dm(DerivedMesh* dm)
 
 	for (i = 0, mp = mpoly; i < totpoly; i++, mp++) {
 		float trans[2];
-		BoxPack* box;
+		BoxPack *box;
 		int j;
 
 		box = boxpack + i;
@@ -188,8 +188,8 @@ void unwrap_shard_dm(DerivedMesh* dm)
 
 		for (j = 0; j < mp->totloop; j++)
 		{
-			uv_translate((float (*)[2])mluv[j+mp->loopstart].uv, 1, trans);
-			uv_scale((float (*)[2])mluv[j+mp->loopstart].uv, 1, scale);
+			uv_translate((float (*)[2])mluv[j + mp->loopstart].uv, 1, trans);
+			uv_scale((float (*)[2])mluv[j + mp->loopstart].uv, 1, scale);
 		}
 	}
 
@@ -199,7 +199,7 @@ void unwrap_shard_dm(DerivedMesh* dm)
 	CustomData_add_layer_named(&dm->polyData, CD_MTEXPOLY, CD_CALLOC, NULL, totpoly, "InnerUV");
 }
 
-Shard *BKE_fracture_shard_boolean(Object* obj, DerivedMesh *dm_parent, Shard* child, short inner_material_index)
+Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *child, short inner_material_index)
 {
 	Shard *output_s;
 	DerivedMesh *left_dm, *right_dm, *output_dm;
@@ -257,8 +257,8 @@ Shard *BKE_fracture_shard_boolean(Object* obj, DerivedMesh *dm_parent, Shard* ch
 }
 
 
-Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4], bool use_fill, bool clear_inner,
-								 bool clear_outer, int cutlimit, float centroid[3], short inner_mat_index)
+Shard *BKE_fracture_shard_bisect(BMesh *bm_orig, Shard *child, float obmat[4][4], bool use_fill, bool clear_inner,
+                                 bool clear_outer, int cutlimit, float centroid[3], short inner_mat_index)
 {
 	#define MYTAG (1 << 6)
 
@@ -287,7 +287,7 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 
 	BM_mesh_elem_hflag_enable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, false);
 
-	BM_ITER_MESH_INDEX(f, &iter, bm_child, BM_FACES_OF_MESH, cut_index)
+	BM_ITER_MESH_INDEX (f, &iter, bm_child, BM_FACES_OF_MESH, cut_index)
 	{
 		if (do_break) {
 			break;
@@ -329,13 +329,13 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 			/* Fill, XXX attempted different fill algorithms here, needs further thoughts because none really suited */
 #if 0
 			BMO_op_initf(bm_parent, &bmop_fill, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-			            "contextual_create geom=%S mat_nr=%i use_smooth=%b",
-			            &bmop, "geom_cut.out", 0, false);
+			             "contextual_create geom=%S mat_nr=%i use_smooth=%b",
+			             &bmop, "geom_cut.out", 0, false);
 			BMO_op_exec(bm_parent, &bmop_fill);
 
 			BMO_op_initf(bm_parent, &bmop_attr, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-						 "face_attribute_fill faces=%S use_normals=%b use_data=%b",
-						 &bmop_fill, "faces.out", false, true);
+			             "face_attribute_fill faces=%S use_normals=%b use_data=%b",
+			             &bmop_fill, "faces.out", false, true);
 			BMO_op_exec(bm_parent, &bmop_attr);
 
 			BMO_op_initf(bm_parent, &bmop_del, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
@@ -345,11 +345,11 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 			BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "faces.out", BM_FACE, BM_ELEM_TAG, true);
 #endif
 
-			if (inner_mat_index == 0) {	/* dont use inner material here*/
+			if (inner_mat_index == 0) { /* dont use inner material here*/
 				BMO_op_initf(
-						bm_parent, &bmop_fill,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-						"triangle_fill edges=%S normal=%v use_dissolve=%b use_beauty=%b",
-						&bmop, "geom_cut.out", normal_fill, true, true);
+				    bm_parent, &bmop_fill, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+				    "triangle_fill edges=%S normal=%v use_dissolve=%b use_beauty=%b",
+				    &bmop, "geom_cut.out", normal_fill, true, true);
 				BMO_op_exec(bm_parent, &bmop_fill);
 
 				BMO_op_initf(bm_parent, &bmop_attr, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
@@ -362,15 +362,15 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 			else {
 				/* use edgenet fill with inner material */
 				BMO_op_initf(
-				        bm_parent, &bmop_fill,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-				       "edgenet_fill edges=%S mat_nr=%i use_smooth=%b sides=%i",
-				        &bmop, "geom_cut.out", inner_mat_index, false, 2);
+				    bm_parent, &bmop_fill, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+				    "edgenet_fill edges=%S mat_nr=%i use_smooth=%b sides=%i",
+				    &bmop, "geom_cut.out", inner_mat_index, false, 2);
 				BMO_op_exec(bm_parent, &bmop_fill);
 
 				/* Copy Attributes */
 				BMO_op_initf(bm_parent, &bmop_attr, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-				         "face_attribute_fill faces=%S use_normals=%b use_data=%b",
-				         &bmop_fill, "faces.out", true, false);
+				             "face_attribute_fill faces=%S use_normals=%b use_data=%b",
+				             &bmop_fill, "faces.out", true, false);
 				BMO_op_exec(bm_parent, &bmop_attr);
 
 				BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "faces.out", BM_FACE, BM_ELEM_TAG | BM_ELEM_SELECT, true);
@@ -380,18 +380,18 @@ Shard *BKE_fracture_shard_bisect(BMesh* bm_orig, Shard* child, float obmat[4][4]
 			BMO_op_finish(bm_parent, &bmop_fill);
 		}
 
-		BMO_slot_buffer_hflag_enable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, BM_ELEM_TAG , true);
+		BMO_slot_buffer_hflag_enable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, BM_ELEM_TAG, true);
 
 		BMO_op_finish(bm_parent, &bmop);
 	}
 
 	dm_out = CDDM_from_bmesh(bm_parent, true);
 	output_s = BKE_create_fracture_shard(dm_out->getVertArray(dm_out),
-	                                   dm_out->getPolyArray(dm_out),
-	                                   dm_out->getLoopArray(dm_out),
-	                                   dm_out->getNumVerts(dm_out),
-	                                   dm_out->getNumPolys(dm_out),
-	                                   dm_out->getNumLoops(dm_out), true);
+	                                     dm_out->getPolyArray(dm_out),
+	                                     dm_out->getLoopArray(dm_out),
+	                                     dm_out->getNumVerts(dm_out),
+	                                     dm_out->getNumPolys(dm_out),
+	                                     dm_out->getNumLoops(dm_out), true);
 
 	output_s = BKE_custom_data_to_shard(output_s, dm_out);
 
