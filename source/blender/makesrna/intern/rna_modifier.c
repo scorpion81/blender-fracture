@@ -4073,9 +4073,9 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Breaking Percentage", "Percentage of broken constraints per island which leads to breaking of all others");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
-	prop = RNA_def_property(srna, "breaking_angle", PROP_FLOAT, PROP_NONE);
+	prop = RNA_def_property(srna, "breaking_angle", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "breaking_angle");
-	RNA_def_property_range(prop, 0, 360);
+	RNA_def_property_range(prop, 0, DEG2RADF(360.0));
 	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_breaking_angle_set", NULL);
 	RNA_def_property_ui_text(prop, "Breaking Angle", "Angle in degrees above which constraint should break");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");

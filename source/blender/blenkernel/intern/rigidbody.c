@@ -98,8 +98,6 @@ static void calc_dist_angle(RigidBodyShardCon *con, float *dist, float *angle)
 	invert_qt(q1);
 	mul_qt_qtqt(qdiff, q1, q2);
 	quat_to_axis_angle(axis, angle, qdiff);
-	
-	*angle = RAD2DEGF(*angle);
 }
 
 void BKE_rigidbody_start_dist_angle(RigidBodyShardCon *con)
@@ -2097,7 +2095,7 @@ static int rigidbody_group_count_items(const ListBase *group, int *r_num_objects
 			}
 		}
 		if (found_modifiers == false) {
-			*r_num_objects++;
+			(*r_num_objects)++;
 		}
 		num_gobjects++;
 	}
