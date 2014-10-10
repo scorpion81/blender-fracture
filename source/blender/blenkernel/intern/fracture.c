@@ -81,8 +81,7 @@ static void parse_cell_neighbors(cell c, int *neighbors, int totpoly);
 
 static void add_shard(FracMesh *fm, Shard *s)
 {
-	fm->shard_map = MEM_reallocN(fm->shard_map, sizeof(Shard *) * (fm->shard_count + 1));
-	fm->shard_map[fm->shard_count] = s;
+	BLI_addtail(&fm->shard_map, s);
 	s->shard_id = fm->shard_count;
 	fm->shard_count++;
 }
@@ -134,7 +133,7 @@ static void shard_boundbox(Shard *s, float r_loc[3], float r_size[3])
 }
 
 
-static int shard_sortsize(const void *s1, const void *s2, void *context)
+static int shard_sortsize(const void *s1, const void *s2, void* UNUSED(context))
 {
 	Shard **sh1 = (Shard **)s1;
 	Shard **sh2 = (Shard **)s2;
@@ -282,7 +281,8 @@ float BKE_shard_calc_minmax(Shard *shard)
 /*access shard directly by index / id*/
 Shard *BKE_shard_by_id(FracMesh *mesh, ShardID id, DerivedMesh *dm) {
 	if ((id < mesh->shard_count) && (id >= 0)) {
-		return mesh->shard_map[id];
+		//return mesh->shard_map[id];
+		return (Shard *)BLI_findlink(&mesh->shard_map, id);
 	}
 	else if (id == -1)
 	{
@@ -351,7 +351,7 @@ FracMesh *BKE_create_fracture_container(void)
 	
 	fmesh = MEM_mallocN(sizeof(FracMesh), __func__);
 	
-	fmesh->shard_map = MEM_mallocN(sizeof(Shard *), __func__); /* allocate in chunks ?, better use proper blender functions for this*/
+//	fmesh->shard_map = MEM_mallocN(sizeof(Shard *), __func__); /* allocate in chunks ?, better use proper blender functions for this*/
 	fmesh->shard_count = 0;
 	fmesh->cancel = 0;
 	fmesh->running = 0;
@@ -513,7 +513,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 				tempresults[i] = s;
 				tempresults[i + 1] = s2;
 
-				BLI_qsort_r(tempresults, i + 1, sizeof(Shard *), shard_sortsize, i);
+				BLI_qsort_r(tempresults, i + 1, sizeof(Shard *), shard_sortsize, &i);
 
 				while (tempresults[j] == NULL && j < (i + 1)) {
 					/* ignore invalid shards */
@@ -583,9 +583,9 @@ static Shard *parse_cell(cell c)
 	int *neighbors = NULL;
 	int totpoly = 0, totloop = 0, totvert = 0;
 	float centr[3];
-	int shard_id;
+//	int shard_id;
 
-	shard_id = c.index;
+//	shard_id = c.index;
 
 	totvert = c.totvert;
 	if (totvert > 0) {
@@ -754,51 +754,24 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 
 void BKE_fracmesh_free(FracMesh *fm, bool doCustomData)
 {
-	int i = 0, count;
-
 	if (fm == NULL) {
 		return;
 	}
 
-	if (fm->shard_map == NULL) {
-		fm->shard_count = 0;
-		return;
-	}
-
-	count = fm->shard_count;
-
-	for (i = 0; i < count; i++) {
-		Shard *s = fm->shard_map[i];
-		if (s != NULL) {
-			BKE_shard_free(s, doCustomData);
-		}
-		fm->shard_count--;
-	}
-
-	if ((fm->shard_map != NULL)) {
-		MEM_freeN(fm->shard_map);
-		fm->shard_map = NULL;
+	while (fm->shard_map.first) {
+		Shard* s = (Shard*)fm->shard_map.first;
+		BLI_remlink_safe(&fm->shard_map, s);
+		BKE_shard_free(s, doCustomData);
 	}
 }
 
 
 /* DerivedMesh */
-
-void BKE_fracture_release_dm(FractureModifierData *fmd)
-{
-	if (fmd->dm) {
-		fmd->dm->needsFree = 1;
-		fmd->dm->release(fmd->dm);
-		fmd->dm = NULL;
-	}
-}
-
 static DerivedMesh *create_dm(FractureModifierData *fmd, bool doCustomData)
 {
 	int shard_count = fmd->shards_to_islands ? BLI_countlist(&fmd->islandShards) : fmd->frac_mesh->shard_count;
-	Shard **shard_map = fmd->frac_mesh->shard_map;
-	Shard *shard;
-	int s;
+	ListBase *shardlist;
+	Shard *shard, *s;
 	
 	int num_verts, num_polys, num_loops;
 	int vertstart, polystart, loopstart;
@@ -810,20 +783,17 @@ static DerivedMesh *create_dm(FractureModifierData *fmd, bool doCustomData)
 	num_verts = num_polys = num_loops = 0;
 
 	if (fmd->shards_to_islands) {
-		for (s = 0; s < shard_count; ++s) {
-			shard = BLI_findlink(&fmd->islandShards, s);
-			num_verts += shard->totvert;
-			num_polys += shard->totpoly;
-			num_loops += shard->totloop;
+		for (s = fmd->islandShards.first; s; s = s->next) {
+			num_verts += s->totvert;
+			num_polys += s->totpoly;
+			num_loops += s->totloop;
 		}
 	}
 	else {
-		for (s = 0; s < shard_count; ++s) {
-			shard = shard_map[s];
-
-			num_verts += shard->totvert;
-			num_polys += shard->totpoly;
-			num_loops += shard->totloop;
+		for (s = fmd->frac_mesh->shard_map.first; s; s = s->next) {
+			num_verts += s->totvert;
+			num_polys += s->totpoly;
+			num_loops += s->totloop;
 		}
 	}
 	
@@ -838,27 +808,28 @@ static DerivedMesh *create_dm(FractureModifierData *fmd, bool doCustomData)
 			s = BLI_findlink(&fmd->islandShards, 0);
 		}
 		else {
-			s = shard_map[0];
+			s = BLI_findlink(&fmd->frac_mesh->shard_map, 0);
 		}
 
 		CustomData_merge(&s->vertData, &result->vertData, CD_MASK_MDEFORMVERT, CD_CALLOC, num_verts);
 		CustomData_merge(&s->polyData, &result->polyData, CD_MASK_MTEXPOLY, CD_CALLOC, num_polys);
 		CustomData_merge(&s->loopData, &result->loopData, CD_MASK_MLOOPUV, CD_CALLOC, num_loops);
 	}
-	
+
 	vertstart = polystart = loopstart = 0;
-	for (s = 0; s < shard_count; ++s) {
+	if (fmd->shards_to_islands) {
+		shardlist = &fmd->islandShards;
+	}
+	else
+	{
+		shardlist = &fmd->frac_mesh->shard_map;
+	}
+
+	for (shard = shardlist->first; shard; shard = shard->next)
+	{
 		MPoly *mp;
 		MLoop *ml;
 		int i;
-
-		if (fmd->shards_to_islands) {
-			/* may be inefficent... but else would need to do another loop */
-			shard = BLI_findlink(&fmd->islandShards, s);
-		}
-		else {
-			shard = shard_map[s];
-		}
 		
 		memcpy(mverts + vertstart, shard->mvert, shard->totvert * sizeof(MVert));
 		memcpy(mpolys + polystart, shard->mpoly, shard->totpoly * sizeof(MPoly));

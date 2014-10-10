@@ -1639,7 +1639,6 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 		}
 
 		else if (md->type==eModifierType_Fracture) {
-			int i = 0;
 			FractureModifierData *fmd = (FractureModifierData*)md;
 			FracMesh* fm = fmd->frac_mesh;
 
@@ -1651,12 +1650,8 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 				if (fm->running == 0)
 				{
 					writestruct(wd, DATA, "FracMesh", 1, fm);
-					writedata(wd, DATA, sizeof(Shard*) * fm->shard_count, fm->shard_map);
-					for (i = 0; i < fm->shard_count; i++) {
-						Shard *s = fm->shard_map[i];
-						/* next, prev not necessary in this case, because we use an array here */
-						s->next = NULL;
-						s->prev = NULL;
+
+					for (s = fm->shard_map.first; s; s = s->next) {
 						write_shard(wd, s);
 					}
 

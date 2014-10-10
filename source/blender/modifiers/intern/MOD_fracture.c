@@ -291,7 +291,7 @@ static void growCluster(FractureModifierData *fmd, Shard *seed, int sindex, List
 	for (i = 0; i < count; i++) {
 		Shard *neighbor;
 		int index = nearest[i].index;
-		neighbor = fmd->frac_mesh->shard_map[index];
+		neighbor = (Shard *)BLI_findlink(&fmd->frac_mesh->shard_map, index);
 		if (neighbor->cluster_colors[0] == -1) {
 			neighbor->cluster_colors[0] = sindex;
 		}
@@ -315,11 +315,10 @@ static void doClusters(FractureModifierData *fmd, int levels)
 	lbVisit.last = NULL;
 
 	for (j = 0; j < levels; j++) {
-		Shard **seeds;
+		Shard **seeds, *s;
 		int seed_count;
 		/*prepare shard as list*/
-		for (i = 0; i < fmd->frac_mesh->shard_count; i++) {
-			Shard *s = fmd->frac_mesh->shard_map[i];
+		for (s = fmd->frac_mesh->shard_map.first; s; s = s->next) {
 			s->cluster_colors = MEM_mallocN(sizeof(int) * levels, "cluster_colors");
 			for (k = 0; k < levels; k++)
 			{
@@ -342,7 +341,7 @@ static void doClusters(FractureModifierData *fmd, int levels)
 		for (k = 0; k < seed_count; k++) {
 			int color = k;
 			int which_index = k * (int)(fmd->frac_mesh->shard_count / seed_count);
-			Shard *which = fmd->frac_mesh->shard_map[which_index];
+			Shard *which = (Shard *)BLI_findlink(&fmd->frac_mesh->shard_map, which_index);
 			which->cluster_colors[j] = color;
 			BLI_addtail(&lbVisit, which);
 			seeds[k] = which;
@@ -1344,8 +1343,7 @@ static void bm_mesh_hflag_flush_vert(BMesh *bm, const char hflag)
 	}
 }
 
-void mesh_separate_loose_partition(FractureModifierData *rmd, Object *ob, BMesh *bm_work, BMVert **orig_work, DerivedMesh *dm);
-void mesh_separate_loose_partition(FractureModifierData *rmd, Object *ob, BMesh *bm_work, BMVert **orig_work, DerivedMesh *dm)
+static void mesh_separate_loose_partition(FractureModifierData *rmd, Object *ob, BMesh *bm_work, BMVert **orig_work, DerivedMesh *dm)
 {
 	int i, tag_counter = 0;
 	BMEdge *e;
@@ -1527,8 +1525,7 @@ static void select_linked(BMesh **bm_in)
 	BM_mesh_select_flush(bm_work);
 }
 
-void mesh_separate_selected(BMesh **bm_work, BMesh **bm_out, BMVert **orig_work, BMVert ***orig_out1, BMVert ***orig_out2);
-void mesh_separate_selected(BMesh **bm_work, BMesh **bm_out, BMVert **orig_work, BMVert ***orig_out1, BMVert ***orig_out2)
+static void mesh_separate_selected(BMesh **bm_work, BMesh **bm_out, BMVert **orig_work, BMVert ***orig_out1, BMVert ***orig_out2)
 {
 	BMesh *bm_old = *bm_work;
 	BMesh *bm_new = *bm_out;
@@ -1584,9 +1581,7 @@ void mesh_separate_selected(BMesh **bm_work, BMesh **bm_out, BMVert **orig_work,
 	BM_mesh_normals_update(bm_new);
 }
 
-void halve(FractureModifierData *rmd, Object *ob, int minsize, BMesh **bm_work, BMVert ***orig_work, bool separated, DerivedMesh *dm);
-
-void halve(FractureModifierData *rmd, Object *ob, int minsize, BMesh **bm_work, BMVert ***orig_work, bool separated, DerivedMesh *dm)
+static void halve(FractureModifierData *rmd, Object *ob, int minsize, BMesh **bm_work, BMVert ***orig_work, bool separated, DerivedMesh *dm)
 {
 
 	int half;
@@ -1658,8 +1653,7 @@ void halve(FractureModifierData *rmd, Object *ob, int minsize, BMesh **bm_work, 
 	bm_new = NULL;
 }
 
-void mesh_separate_loose(FractureModifierData *rmd, Object *ob, DerivedMesh *dm);
-void mesh_separate_loose(FractureModifierData *rmd, Object *ob, DerivedMesh *dm)
+static void mesh_separate_loose(FractureModifierData *rmd, Object *ob, DerivedMesh *dm)
 {
 	int minsize = 1000;
 	BMesh *bm_work;
@@ -2060,8 +2054,7 @@ void refresh_customdata_image(Mesh *me, CustomData *pdata, int totface)
 }
 
 /* inline face center calc here */
-void DM_face_calc_center_mean(DerivedMesh *dm, MPoly *mp, float r_cent[3]);
-void DM_face_calc_center_mean(DerivedMesh *dm, MPoly *mp, float r_cent[3])
+static void DM_face_calc_center_mean(DerivedMesh *dm, MPoly *mp, float r_cent[3])
 {
 	MLoop *ml = NULL;
 	MLoop *mloop = dm->getLoopArray(dm);
@@ -2082,8 +2075,7 @@ void DM_face_calc_center_mean(DerivedMesh *dm, MPoly *mp, float r_cent[3])
 	mul_v3_fl(r_cent, 1.0f / (float) mp->totloop);
 }
 
-void make_face_pairs(FractureModifierData *fmd, DerivedMesh *dm);
-void make_face_pairs(FractureModifierData *fmd, DerivedMesh *dm)
+static void make_face_pairs(FractureModifierData *fmd, DerivedMesh *dm)
 {
 	/* make kdtree of all faces of dm, then find closest face for each face*/
 	MPoly *mp = NULL;
@@ -2132,8 +2124,7 @@ void make_face_pairs(FractureModifierData *fmd, DerivedMesh *dm)
 	BLI_kdtree_free(tree);
 }
 
-DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm);
-DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm)
+static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm)
 {
 	float f_centr[3], f_centr_other[3];
 
@@ -2189,7 +2180,6 @@ DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm)
 
 	return result;
 }
-
 
 
 DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMesh *dm, DerivedMesh *orig_dm)
@@ -2257,12 +2247,10 @@ DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMesh *dm, 
 					                             NULL, totvert);
 				}
 
-
-				for (i = 0; i < fmd->frac_mesh->shard_count; i++) {
+				for (s = fmd->frac_mesh->shard_map.first; s; s = s->next) {
 					MVert *mv, *verts, *mverts;
 					int totvert, k;
 
-					s = fmd->frac_mesh->shard_map[i];
 					if (s->totvert == 0) {
 						continue;
 					}

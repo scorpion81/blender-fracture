@@ -4995,13 +4995,11 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 				Shard *s;
 				int count = 0;
 
-				fm->shard_map = newdataadr(fd, fm->shard_map);
-				for (i = 0; i < fm->shard_count; i++) {
-					fm->shard_map[i] = newdataadr(fd, fm->shard_map[i]);
-					read_shard(fd, &(fm->shard_map[i]));
+				link_list(fd, &fm->shard_map);
+				for (s = fm->shard_map.first; s; s = s->next) {
+					read_shard(fd, &s);
 				}
 
-				fmd->frac_mesh = fm;
 				fmd->dm = NULL;
 				fmd->visible_mesh = NULL;
 
