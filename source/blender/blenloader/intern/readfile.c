@@ -4994,8 +4994,8 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 				Shard *s;
 				int count = 0;
 
-				link_list(fd, &fm->shard_map);
-				for (s = fm->shard_map.first; s; s = s->next) {
+				link_list(fd, &fmd->frac_mesh->shard_map);
+				for (s = fmd->frac_mesh->shard_map.first; s; s = s->next) {
 					read_shard(fd, &s);
 				}
 

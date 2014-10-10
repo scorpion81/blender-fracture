@@ -805,10 +805,10 @@ static DerivedMesh *create_dm(FractureModifierData *fmd, bool doCustomData)
 	if (doCustomData && shard_count > 0) {
 		Shard *s;
 		if (fmd->shards_to_islands) {
-			s = BLI_findlink(&fmd->islandShards, 0);
+			s = (Shard *)fmd->islandShards.first;
 		}
 		else {
-			s = BLI_findlink(&fmd->frac_mesh->shard_map, 0);
+			s = (Shard *)fmd->frac_mesh->shard_map.first;
 		}
 
 		CustomData_merge(&s->vertData, &result->vertData, CD_MASK_MDEFORMVERT, CD_CALLOC, num_verts);
