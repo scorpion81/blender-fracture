@@ -2824,15 +2824,15 @@ void BKE_rigidbody_rebuild_world(Scene *scene, float ctime)
 	PointCache *cache;
 	PTCacheID pid;
 	int startframe, endframe;
-	int shards = 0, objects = 0, num = 0;
+	int shards = 0, objects = 0;
 
 	BKE_ptcache_id_from_rigidbody(&pid, NULL, rbw);
 	BKE_ptcache_id_time(&pid, scene, ctime, &startframe, &endframe, NULL);
 	cache = rbw->pointcache;
 
 	/* flag cache as outdated if we don't have a world or number of objects in the simulation has changed */
-	num = rigidbody_group_count_items(&rbw->group->gobject, &shards, &objects);
-	if (rbw->physics_world == NULL || rbw->numbodies != num) {
+	rigidbody_group_count_items(&rbw->group->gobject, &shards, &objects);
+	if (rbw->physics_world == NULL || rbw->numbodies != (shards + objects)) {
 		cache->flag |= PTCACHE_OUTDATED;
 	}
 
