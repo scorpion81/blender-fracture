@@ -309,6 +309,10 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland *mi, DerivedMesh *orig
 			vol_ob = dim[0] * dim[1] * dim[2];
 		}
 	}
+	else
+	{
+		vol_ob = BKE_rigidbody_calc_volume(dm_ob, ob->rigidbody_object);
+	}
 
 	mass_ob = ob->rigidbody_object->mass;
 
@@ -1143,7 +1147,7 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 /* --------------------- */
 
 /**
-/* Create physics sim representation of object given RigidBody settings
+ * Create physics sim representation of object given RigidBody settings
  *
  * < rebuild: even if an instance already exists, replace it
  */
