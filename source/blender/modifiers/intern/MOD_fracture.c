@@ -2218,7 +2218,7 @@ DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMesh *dm, 
 				Shard *s;
 				MeshIsland *mi; /* can be created without shards even, when using fracturemethod = NONE (re-using islands)*/
 
-				int i, j, vertstart = 0, polystart = 0;
+				int j, vertstart = 0, polystart = 0;
 
 				float dummyloc[3], rot[4];
 				MDeformVert *dvert = fmd->dm->getVertDataArray(fmd->dm, CD_MDEFORMVERT);
