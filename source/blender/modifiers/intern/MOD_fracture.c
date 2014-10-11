@@ -206,8 +206,7 @@ static void freeData(ModifierData *md)
 
 	/* refreshing all simulation data, no refracture */
 	if (!rmd->refresh_constraints) {
-		if (rmd->shards_to_islands)
-		{
+		if (rmd->shards_to_islands) {
 			while (rmd->islandShards.first) {
 				Shard *s = rmd->islandShards.first;
 				BLI_remlink(&rmd->islandShards, s);
@@ -579,6 +578,11 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	{
 		if (fmd->refresh) {
 			/* build normaltree from origdm */
+			if (fmd->nor_tree != NULL) {
+				BLI_kdtree_free(fmd->nor_tree);
+				fmd->nor_tree = NULL;
+			}
+
 			fmd->nor_tree = build_nor_tree(clean_dm);
 			if (fmd->face_pairs != NULL) {
 				BLI_ghash_free(fmd->face_pairs, NULL, NULL);
@@ -666,6 +670,11 @@ static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
 	{
 		if (fmd->refresh) {
 			/* build normaltree from origdm */
+			if (fmd->nor_tree != NULL) {
+				BLI_kdtree_free(fmd->nor_tree);
+				fmd->nor_tree = NULL;
+			}
+
 			fmd->nor_tree = build_nor_tree(clean_dm);
 			if (fmd->face_pairs != NULL) {
 				BLI_ghash_free(fmd->face_pairs, NULL, NULL);
