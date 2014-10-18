@@ -280,96 +280,57 @@ static void freeData(ModifierData *md)
 	}
 }
 
-static void growCluster(FractureModifierData *fmd, Shard *seed, int sindex, ListBase *lbVisit, KDTree *tree, int depth)
-{
-	int i = 0, count = 0;
-	float size = 0.1f;
-	KDTreeNearest *nearest;
-
-	count = BLI_kdtree_range_search(tree, seed->centroid, &nearest, size * depth);
-	for (i = 0; i < count; i++) {
-		Shard *neighbor;
-		int index = nearest[i].index;
-		neighbor = (Shard *)BLI_findlink(&fmd->frac_mesh->shard_map, index);
-		if (neighbor->cluster_colors[0] == -1) {
-			neighbor->cluster_colors[0] = sindex;
-		}
-
-		if (BLI_findindex(lbVisit, seed) == -1) {
-			BLI_addtail(lbVisit, seed);
-		}
-	}
-	MEM_freeN(nearest);
-}
-
-static void doClusters(FractureModifierData *fmd, int levels)
+static void doClusters(FractureModifierData *fmd)
 {
 	/*grow clusters from all shards */
-	ListBase lbVisit;
-	int i = 0, j = 0, k = 0, sindex = 0, counter = 0, depth = 1;
-	KDTree *tree = BLI_kdtree_new(fmd->frac_mesh->shard_count);
+	int k = 0;
+	KDTree *tree;
+	Shard *s, **seeds;
+	int seed_count;
 
+	/*for now, keep 1 hierarchy level only, should be sufficient */
+	int levels = 1;
 
-	lbVisit.first = NULL;
-	lbVisit.last = NULL;
-
-	for (j = 0; j < levels; j++) {
-		Shard **seeds, *s;
-		int seed_count;
-		/*prepare shard as list*/
-		for (s = fmd->frac_mesh->shard_map.first; s; s = s->next) {
+	/*initialize cluster "colors" -> membership of shards to clusters, initally all shards are "free" */
+	for (s = fmd->frac_mesh->shard_map.first; s; s = s->next ) {
+		if (s->cluster_colors == NULL) {
 			s->cluster_colors = MEM_mallocN(sizeof(int) * levels, "cluster_colors");
-			for (k = 0; k < levels; k++)
-			{
-				s->cluster_colors[k] = -1;
-			}
-
-			BLI_kdtree_insert(tree, i, s->centroid);
+			s->cluster_colors[0] = -1;
 		}
-
-		if (fmd->cluster_count < 2) {
-			BLI_kdtree_free(tree);
-			return;
-		}
-
-		BLI_kdtree_balance(tree);
-
-		seed_count = (fmd->cluster_count > fmd->frac_mesh->shard_count ? fmd->frac_mesh->shard_count : fmd->cluster_count);
-		seeds = MEM_mallocN(sizeof(Shard *) * seed_count, "seeds");
-
-		for (k = 0; k < seed_count; k++) {
-			int color = k;
-			int which_index = k * (int)(fmd->frac_mesh->shard_count / seed_count);
-			Shard *which = (Shard *)BLI_findlink(&fmd->frac_mesh->shard_map, which_index);
-			which->cluster_colors[j] = color;
-			BLI_addtail(&lbVisit, which);
-			seeds[k] = which;
-		}
-
-		while (BLI_countlist(&lbVisit) < fmd->frac_mesh->shard_count) {
-			Shard *seed;
-
-			if (sindex == seed_count)
-			{
-				sindex = 0;
-				depth++;
-			}
-
-			seed = seeds[sindex];
-			growCluster(fmd, seed, sindex, &lbVisit, tree, depth);
-			sindex++;
-
-			if (counter == 10000) {
-				/*XXX emergency stop... otherwise loop might run eternally */
-				break;
-			}
-
-			counter++;
-		}
-
-		BLI_kdtree_free(tree);
-		MEM_freeN(seeds);
 	}
+
+	/* zero clusters or one mean no clusters, all shards keep free */
+	if (fmd->cluster_count < 2) {
+		return;
+	}
+
+	seed_count = (fmd->cluster_count > fmd->frac_mesh->shard_count ? fmd->frac_mesh->shard_count : fmd->cluster_count);
+	seeds = MEM_mallocN(sizeof(Shard *) * seed_count, "seeds");
+	tree = BLI_kdtree_new(seed_count);
+
+	/* pick n seed locations, randomly scattered over the object */
+	for (k = 0; k < seed_count; k++) {
+		int color = k;
+		int which_index = k * (int)(fmd->frac_mesh->shard_count / seed_count);
+		Shard *which = (Shard *)BLI_findlink(&fmd->frac_mesh->shard_map, which_index);
+		which->cluster_colors[0] = color;
+		BLI_kdtree_insert(tree, k, which->centroid);
+		seeds[k] = which;
+	}
+
+	BLI_kdtree_balance(tree);
+
+	/* assign each shard to its closest center */
+	for (s = fmd->frac_mesh->shard_map.first; s; s = s->next ) {
+		KDTreeNearest n;
+		int index;
+
+		index = BLI_kdtree_find_nearest(tree, s->centroid, &n);
+		s->cluster_colors[0] = seeds[index]->cluster_colors[0];
+	}
+
+	BLI_kdtree_free(tree);
+	MEM_freeN(seeds);
 }
 
 static KDTree *build_nor_tree(DerivedMesh *dm)
@@ -989,7 +950,7 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, D
 
 		if (fracmd->frac_mesh->shard_count > 0)
 		{
-			doClusters(fracmd, 1);
+			doClusters(fracmd);
 		}
 
 		/* here we REALLY need to fracture so deactivate the shards to islands flag and activate afterwards */
