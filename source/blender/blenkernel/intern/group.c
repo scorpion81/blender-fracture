@@ -204,7 +204,9 @@ static int group_object_unlink_internal(Group *group, Object *ob)
 	go = group->gobject.first;
 	while (go) {
 		gon = go->next;
-		if (go->ob == ob) {
+		/* case go->ob == NULL occurs in Fracture Modifier helper object group, should be checked for here or will crash
+		 * in following depgraph update */
+		if (go->ob == ob || go->ob == NULL) {
 			BLI_remlink(&group->gobject, go);
 			free_group_object(go);
 			removed = 1;
