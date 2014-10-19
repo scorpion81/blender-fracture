@@ -260,7 +260,6 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 Shard *BKE_fracture_shard_bisect(BMesh *bm_orig, Shard *child, float obmat[4][4], bool use_fill, bool clear_inner,
                                  bool clear_outer, int cutlimit, float centroid[3], short inner_mat_index)
 {
-	#define MYTAG (1 << 6)
 
 	Shard *output_s;
 	DerivedMesh *dm_child = BKE_shard_create_dm(child, false);

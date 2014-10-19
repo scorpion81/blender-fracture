@@ -242,7 +242,7 @@ void foreach_shard_flag_shape(Object *ob, int flag, short shape, bool reset)
 }
 
 
-static void rna_RigidBodyOb_reset(Main *bmain, Scene *scene, PointerRNA *ptr)
+static void rna_RigidBodyOb_reset(Main *UNUSED(bmain), Scene *scene, PointerRNA *ptr)
 {
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	Object *ob = ptr->id.data;
@@ -252,7 +252,7 @@ static void rna_RigidBodyOb_reset(Main *bmain, Scene *scene, PointerRNA *ptr)
 	BKE_rigidbody_cache_reset(rbw);
 }
 
-static void rna_RigidBodyOb_shape_reset(Main *bmain, Scene *scene, PointerRNA *ptr)
+static void rna_RigidBodyOb_shape_reset(Main *UNUSED(bmain), Scene *scene, PointerRNA *ptr)
 {
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
@@ -532,7 +532,7 @@ static void rna_RigidBodyOb_angular_damping_set(PointerRNA *ptr, float value)
 	foreach_shard_float(ob, value, set_angular_damping);
 }
 
-static char *rna_RigidBodyCon_path(PointerRNA *ptr)
+static char *rna_RigidBodyCon_path(PointerRNA *UNUSED(ptr))
 {
 	/* NOTE: this hardcoded path should work as long as only Objects have this */
 	return BLI_sprintfN("rigid_body_constraint");

@@ -394,7 +394,6 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 	else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL ||
 	         algorithm == MOD_FRACTURE_BISECT_FAST || algorithm == MOD_FRACTURE_BISECT_FAST_FILL)
 	{
-#define MYTAG (1 << 6)
 		bm_parent = shard_to_bmesh(p);
 		copy_v3_v3(centroid, p->centroid);
 	}

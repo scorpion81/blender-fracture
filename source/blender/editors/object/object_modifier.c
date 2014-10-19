@@ -2266,27 +2266,30 @@ static void fracture_free(void *customdata)
 	MEM_freeN(fj);
 }
 
-static int fracture_breakjob(void *customdata)
+static int fracture_breakjob(void *UNUSED(customdata))
 {
 	/* FractureJob *fj = (FractureJob *)customdata;
 	 * return *(fj->stop); */
 	return G.is_break; /* a workaround solution */
 }
 
-static float fracture_update(void *customdata)
+static void fracture_update(void *customdata)
 {
 	FractureJob *fj = customdata;
 	float progress;
 
 	if (fj->fmd->frac_mesh == NULL)
-		return 0.0f;
+		(*fj->progress) = 0.0f;
 
-	if (fracture_breakjob(fj))
+	if (fracture_breakjob(fj) && fj->fmd->frac_mesh)
 		fj->fmd->frac_mesh->cancel = 1;
 
-	/* *(fj->do_update) = true;  useless here...*/
-	progress = (float)(fj->fmd->frac_mesh->progress_counter) / (float)(fj->total_progress);
-	return progress;
+	/*(fj->do_update) = true;  useless here... because in wm_jobs.c its set to false again, preventing update*/
+	if (fj->fmd->frac_mesh)
+	{
+		progress = (float)(fj->fmd->frac_mesh->progress_counter) / (float)(fj->total_progress);
+		(*fj->progress) = progress;
+	}
 }
 
 static void fracture_startjob(void *customdata, short *stop, short *do_update, float *progress)
@@ -2320,12 +2323,12 @@ static void fracture_endjob(void *customdata)
 	fmd->refresh = false;
 }
 
-static bool fracture_poll(bContext *C)
+static int fracture_poll(bContext *C)
 {
 	return edit_modifier_poll_generic(C, &RNA_FractureModifier, 0);
 }
 
-static int fracture_refresh_exec(bContext *C, wmOperator *op)
+static int fracture_refresh_exec(bContext *C, wmOperator *UNUSED(op))
 {
 	Object *obact = ED_object_active_context(C);
 	Scene *scene = CTX_data_scene(C);
@@ -2383,7 +2386,7 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 	return OPERATOR_FINISHED;
 }
 
-static int fracture_refresh_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
+static int fracture_refresh_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
 	if (WM_jobs_test(CTX_wm_manager(C), CTX_data_scene(C), WM_JOB_TYPE_OBJECT_FRACTURE))
 		return OPERATOR_CANCELLED;
@@ -2409,7 +2412,7 @@ void OBJECT_OT_fracture_refresh(wmOperatorType *ot)
 
 /****************** rigidbody constraint refresh operator *********************/
 
-static int rigidbody_refresh_constraints_exec(bContext *C, wmOperator *op)
+static int rigidbody_refresh_constraints_exec(bContext *C, wmOperator *UNUSED(op))
 {
 	Object *obact = ED_object_active_context(C);
 	FractureModifierData *rmd;
@@ -2429,7 +2432,7 @@ static int rigidbody_refresh_constraints_exec(bContext *C, wmOperator *op)
 	return OPERATOR_FINISHED;
 }
 
-static int rigidbody_refresh_constraints_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
+static int rigidbody_refresh_constraints_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
 	if (edit_modifier_invoke_properties(C, op) || true)
 		return rigidbody_refresh_constraints_exec(C, op);
@@ -2453,7 +2456,7 @@ void OBJECT_OT_rigidbody_constraints_refresh(wmOperatorType *ot)
 	edit_modifier_properties(ot);
 }
 
-void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, FractureModifierData *rmd)
+static void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, FractureModifierData *rmd)
 {
 	Base *base_new, *base_old = BKE_scene_base_find(scene, ob);
 	Object *ob_new = NULL;
@@ -2465,7 +2468,6 @@ void convert_modifier_to_objects(ReportList *reports, Scene* scene, Object* ob, 
 	KDTree* objtree = BLI_kdtree_new(count);
 	Object** objs = MEM_callocN(sizeof(Object*) * count, "convert_objs");
 	float max_con_mass = 0;
-	float min_con_dist = FLT_MAX;
 	rmd->refresh = false;
 
 	for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
@@ -2604,7 +2606,6 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 	float cfra = BKE_scene_frame_get(scene);
 	FractureModifierData *rmd;
 	RigidBodyWorld *rbw = scene->rigidbody_world;
-	Object* par = NULL;
 	
 	rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
 	if (rmd && rmd->refresh) {
@@ -2646,14 +2647,14 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 	return OPERATOR_FINISHED;
 }
 
-static int rigidbody_convert_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
+/*static int rigidbody_convert_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
 {
 	
 	if (edit_modifier_invoke_properties(C, op) || true)
 		return rigidbody_convert_exec(C, op);
 	else
 		return OPERATOR_CANCELLED;
-}
+}*/
 
 
 void OBJECT_OT_rigidbody_convert_to_objects(wmOperatorType *ot)
@@ -2663,7 +2664,7 @@ void OBJECT_OT_rigidbody_convert_to_objects(wmOperatorType *ot)
 	ot->idname = "OBJECT_OT_rigidbody_convert_to_objects";
 
 	ot->poll = fracture_poll;
-	ot->invoke = rigidbody_convert_invoke;
+	//ot->invoke = rigidbody_convert_invoke;
 	ot->exec = rigidbody_convert_exec;
 
 	/* flags */

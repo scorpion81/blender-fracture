@@ -92,7 +92,7 @@ struct wmJob {
 	void (*startjob)(void *, short *stop, short *do_update, float *progress);
 	/* update gets called if thread defines so, and max once per timerstep */
 	/* it runs outside thread, blocking blender, no drawing! */
-	float (*update)(void *);
+	void (*update)(void *);
 	/* free entire customdata, doesn't run in thread */
 	void (*free)(void *);
 	/* gets called when job is stopped, not in thread */
@@ -562,13 +562,7 @@ void wm_jobs_timer(const bContext *C, wmWindowManager *wm, wmTimer *wt)
 				/* always call note and update when ready */
 				if (wm_job->do_update || wm_job->ready) {
 					if (wm_job->update) {
-						if (wm_job->job_type == WM_JOB_TYPE_OBJECT_FRACTURE) {
-							/* sigh, need to get progress from somewhere... */
-							wm_job->progress = wm_job->update(wm_job->run_customdata);
-						}
-						else {
-							wm_job->update(wm_job->run_customdata);
-						}
+						wm_job->update(wm_job->run_customdata);
 					}
 					if (wm_job->note)
 						WM_event_add_notifier(C, wm_job->note, NULL);

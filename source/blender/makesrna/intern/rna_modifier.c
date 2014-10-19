@@ -622,230 +622,38 @@ static int rna_LaplacianDeformModifier_is_bind_get(PointerRNA *ptr)
 	return ((lmd->flag & MOD_LAPLACIANDEFORM_BIND) && (lmd->cache_system != NULL));
 }
 
-static float rna_EdgeSplitModifier_split_angle_get(PointerRNA *ptr)
-{
-	EdgeSplitModifierData *md = (EdgeSplitModifierData *)ptr->data;
-	return DEG2RADF(md->split_angle);
-}
-
-static void rna_EdgeSplitModifier_split_angle_set(PointerRNA *ptr, float value)
-{
-	EdgeSplitModifierData *md = (EdgeSplitModifierData *)ptr->data;
-	value = RAD2DEGF(value);
-	CLAMP(value, 0.0f, 180.0f);
-	md->split_angle = (int)value;
-}
-
-static float rna_BevelModifier_angle_limit_get(PointerRNA *ptr)
-{
-	BevelModifierData *md = (BevelModifierData *)ptr->data;
-	return DEG2RADF(md->bevel_angle);
-}
-
-static void rna_BevelModifier_angle_limit_set(PointerRNA *ptr, float value)
-{
-	BevelModifierData *md = (BevelModifierData *)ptr->data;
-	value = RAD2DEGF(value);
-	CLAMP(value, 0.0f, 180.0f);
-	md->bevel_angle = (int)value;
-}
-
-/*static void rna_BevelModifier_defgrp_name_set(PointerRNA *ptr, const char *value)
-{
-	BevelModifierData *md = (BevelModifierData *)ptr->data;
-	rna_object_vgroup_name_set(ptr, value, md->defgrp_name, sizeof(md->defgrp_name));
-}*/
-
-static void rna_UVWarpModifier_vgroup_set(PointerRNA *ptr, const char *value)
-{
-	UVWarpModifierData *umd = (UVWarpModifierData *)ptr->data;
-	rna_object_vgroup_name_set(ptr, value, umd->vgroup_name, sizeof(umd->vgroup_name));
-}
-
-static void rna_UVWarpModifier_uvlayer_set(PointerRNA *ptr, const char *value)
-{
-	UVWarpModifierData *umd = (UVWarpModifierData *)ptr->data;
-	rna_object_uvlayer_name_set(ptr, value, umd->uvlayer_name, sizeof(umd->uvlayer_name));
-}
-
-static void updateShards(FractureModifierData *fmd, Object *ob)
-{
-	MeshIsland *mi;
-	int vertstart = 0;
-	const int thresh_defgrp_index = defgroup_name_index(ob, fmd->thresh_defgrp_name);
-	const int ground_defgrp_index = defgroup_name_index(ob, fmd->ground_defgrp_name);
-	DerivedMesh *dm = ob->derivedFinal;
-	MDeformVert *dvert;
-
-	if (dm == NULL)
-		return;
-
-	dvert = dm->getVertDataArray(dm, CD_MDEFORMVERT);
-
-	for (mi = fmd->meshIslands.first; mi; mi = mi->next)
-	{
-		int i = 0;
-
-		mi->ground_weight = 0.0f;
-
-		if (fmd->dm != NULL && !fmd->shards_to_islands)
-		{
-			for (i = 0; i < mi->vertex_count; i++)
-			{
-				//sum up vertexweights and divide by vertcount to get islandweight
-				if (dvert && dvert->dw && fmd->thresh_defgrp_name[0]) {
-					float vweight = defvert_find_weight(dvert + vertstart + i, thresh_defgrp_index);
-					mi->thresh_weight += vweight;
-				}
-
-				if (dvert && dvert->dw && fmd->ground_defgrp_name[0]) {
-					float gweight = defvert_find_weight(dvert + vertstart + i, ground_defgrp_index);
-					mi->ground_weight += gweight;
-				}
-			}
-
-			vertstart += mi->vertex_count;
-		}
-		else
-		{
-			for (i = 0; i < mi->vertex_count; i++)
-			{
-				int index = mi->vertex_indices[i];
-
-				if (dvert && dvert->dw && fmd->thresh_defgrp_name[0]) {
-					float vweight = defvert_find_weight(dvert + index, thresh_defgrp_index);
-					mi->thresh_weight += vweight;
-				}
-
-				if (dvert && dvert->dw && fmd->ground_defgrp_name[0]) {
-					float gweight = defvert_find_weight(dvert + index, ground_defgrp_index);
-					mi->ground_weight += gweight;
-				}
-			}
-		}
-
-		if (mi->vertex_count > 0)
-		{
-			mi->thresh_weight /= mi->vertex_count;
-			mi->ground_weight /= mi->vertex_count;
-		}
-
-		if (mi->rigidbody)
-		{
-			mi->rigidbody->type = mi->ground_weight > 0.5f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
-			mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
-		}
-	}
-}
-
-static void updateConstraints(FractureModifierData *rmd, Object* ob) {
-	RigidBodyShardCon *rbsc;
-	int index1, index2;
-	float max_con_mass = 0;
-	int iterations;
-
-	if (rmd->use_mass_dependent_thresholds) {
-		max_con_mass = BKE_rigidbody_calc_max_con_mass(ob);
-	}
-
-	for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
-		/*index1 = BLI_findindex(&rmd->meshIslands, rbsc->mi1);
-		index2 = BLI_findindex(&rmd->meshIslands, rbsc->mi2);
-		if ((index1 == -1) || (index2 == -1)) {
-			rbsc->breaking_threshold = rmd->group_breaking_threshold;
-		}
-		else*/
-		{
-			rbsc->breaking_threshold = rmd->breaking_threshold;
-		}
-		
-		if (rbsc->breaking_threshold == 0)
-		{
-			rbsc->flag &= ~RBC_FLAG_USE_BREAKING;
-		}
-		else
-		{
-			rbsc->flag |= RBC_FLAG_USE_BREAKING;
-		}
-
-		if (((rmd->use_mass_dependent_thresholds)) && (rbsc->breaking_threshold > 0)) {
-			BKE_rigidbody_calc_threshold(max_con_mass, rmd, rbsc);
-		}
-
-		if (rmd->thresh_defgrp_name[0])
-		{
-			rbsc->breaking_threshold *= ((rbsc->mi1->thresh_weight + rbsc->mi2->thresh_weight) * 0.5f);
-		}
-		
-		if (rmd->solver_iterations_override == 0)
-		{
-			iterations = rmd->modifier.scene->rigidbody_world->num_solver_iterations;
-		}
-		else
-		{
-			iterations = rmd->solver_iterations_override;
-		}
-		
-		if (iterations > 0)
-		{
-			rbsc->flag |= RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS;
-			rbsc->num_solver_iterations = iterations;
-		}
-
-		//reenable all
-		rbsc->flag |= RBC_FLAG_ENABLED;
-		rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
-	}
-	
-	//if (rmd->use_cellbased_sim)
-	{
-		rmd->refresh_constraints = true;
-	}
-}
-
 static void rna_FractureModifier_thresh_defgrp_name_set(PointerRNA *ptr, const char *value)
 {
 	FractureModifierData *tmd = (FractureModifierData *)ptr->data;
-	Object* ob = ptr->id.data;
 	rna_object_vgroup_name_set(ptr, value, tmd->thresh_defgrp_name, sizeof(tmd->thresh_defgrp_name));
-	//updateShards(tmd, ob); //deactivate for now, since we need a real re-fracture to re-apply interpolation
-	//updateConstraints(tmd, ob);
 	tmd->refresh_constraints = true;
 }
 
 static void rna_FractureModifier_ground_defgrp_name_set(PointerRNA *ptr, const char *value)
 {
 	FractureModifierData *tmd = (FractureModifierData *)ptr->data;
-	Object* ob = ptr->id.data;
 	rna_object_vgroup_name_set(ptr, value, tmd->ground_defgrp_name, sizeof(tmd->ground_defgrp_name));
-	//updateShards(tmd, ob); //deactivate for now, since we need a real re-fracture to re-apply interpolation
 	tmd->refresh_constraints = true;
 }
 
 static void rna_FractureModifier_inner_defgrp_name_set(PointerRNA *ptr, const char *value)
 {
 	FractureModifierData *tmd = (FractureModifierData *)ptr->data;
-	Object* ob = ptr->id.data;
 	rna_object_vgroup_name_set(ptr, value, tmd->inner_defgrp_name, sizeof(tmd->inner_defgrp_name));
-	//updateShards(tmd, ob); //deactivate for now, since we need a real re-fracture to re-apply interpolation
 	tmd->refresh_constraints = true;
 }
 
 static void rna_RigidBodyModifier_threshold_set(PointerRNA *ptr, float value)
 {
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
-	Object* ob = ptr->id.data;
 	rmd->breaking_threshold = value;
-	//updateConstraints(rmd, ob);
 	rmd->refresh_constraints = true;
 }
 
 static void rna_RigidBodyModifier_contact_dist_set(PointerRNA *ptr, float value)
 {
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
-	Object* ob = ptr->id.data;
 	rmd->contact_dist = value;
-	//updateConstraints(rmd, ob);
 	rmd->refresh_constraints = true;
 }
 
@@ -853,19 +661,13 @@ static void rna_RigidBodyModifier_use_constraints_set(PointerRNA* ptr, int value
 {
 	FractureModifierData *rmd = (FractureModifierData *)ptr->data;
 	rmd->use_constraints = value;
-	/*if (rmd->use_cellbased_sim)
-	{
-		rmd->refresh_constraints = true;
-	}*/
 	rmd->refresh_constraints = true;
 }
 
 static void rna_RigidBodyModifier_mass_dependent_thresholds_set(PointerRNA* ptr, int value)
 {
 	FractureModifierData *rmd = (FractureModifierData *)ptr->data;
-	Object* ob = ptr->id.data;
 	rmd->use_mass_dependent_thresholds = value;
-	//updateConstraints(rmd, ob);
 	rmd->refresh_constraints = true;
 }
 
@@ -873,64 +675,48 @@ static void rna_RigidBodyModifier_constraint_limit_set(PointerRNA *ptr, int valu
 {
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	rmd->constraint_limit = value;
-	/*if (rmd->use_cellbased_sim)
-	{
-		rmd->refresh_constraints = true;
-	}*/
 	rmd->refresh_constraints = true;
 }
 
 static void rna_RigidBodyModifier_breaking_percentage_set(PointerRNA *ptr, int value)
 {
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
-	Object* ob = ptr->id.data;
 	rmd->breaking_percentage = value;
-	//updateConstraints(rmd, ob);
 	rmd->refresh_constraints = true;
 }
 
 static void rna_RigidBodyModifier_breaking_angle_set(PointerRNA *ptr, float value)
 {
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
-	Object* ob = ptr->id.data;
 	rmd->breaking_angle = value;
-	//updateConstraints(rmd, ob);
 	rmd->refresh_constraints = true;
 }
 
 static void rna_RigidBodyModifier_breaking_distance_set(PointerRNA *ptr, float value)
 {
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
-	Object* ob = ptr->id.data;
 	rmd->breaking_distance = value;
-	//updateConstraints(rmd, ob);
 	rmd->refresh_constraints = true;
 }
 
 static void rna_RigidBodyModifier_cluster_threshold_set(PointerRNA *ptr, float value)
 {
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
-	Object* ob = ptr->id.data;
 	rmd->cluster_breaking_threshold = value;
-	//updateConstraints(rmd, ob);
 	rmd->refresh_constraints = true;
 }
 
 static void rna_RigidBodyModifier_solver_iterations_override_set(PointerRNA *ptr, float value)
 {
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
-	Object* ob = ptr->id.data;
 	rmd->solver_iterations_override = value;
-	//updateConstraints(rmd, ob);
 	rmd->refresh_constraints = true;
 }
 
 static void rna_RigidBodyModifier_autohide_dist_set(PointerRNA *ptr, float value)
 {
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
-	Object* ob = ptr->id.data;
 	rmd->autohide_dist = value;
-	//updateConstraints(rmd, ob);
 	rmd->refresh_constraints = true;
 }
 
