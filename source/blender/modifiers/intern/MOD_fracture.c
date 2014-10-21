@@ -78,12 +78,6 @@
 #include "../../bmesh/tools/bmesh_decimate.h" /* decimate_dissolve function */
 #include "depsgraph_private.h" /* for depgraph updates */
 
-static void fill_vgroup(FractureModifierData *rmd, DerivedMesh *dm, MDeformVert *dvert, Object *ob);
-static int getGroupObjects(Group *gr, Object ***obs, int g_exist);
-static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, DerivedMesh *dm);
-void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody);
-DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMesh *dm, DerivedMesh *orig_dm);
-void refresh_customdata_image(Mesh *me, CustomData *pdata, int totface);
 
 static void initData(ModifierData *md)
 {
@@ -132,7 +126,64 @@ static void initData(ModifierData *md)
 	fmd->use_particle_birth_coordinates = true;
 }
 
-static void freeData(ModifierData *md)
+static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
+{
+
+	if (mi->physics_mesh) {
+		mi->physics_mesh->needsFree = 1;
+		mi->physics_mesh->release(mi->physics_mesh);
+		mi->physics_mesh = NULL;
+	}
+	if (mi->rigidbody) {
+		if (remove_rigidbody)
+			BKE_rigidbody_remove_shard(rmd->modifier.scene, mi);
+		MEM_freeN(mi->rigidbody);
+		mi->rigidbody = NULL;
+	}
+
+	{
+		if (mi->vertco) {
+			MEM_freeN(mi->vertco);
+			mi->vertco = NULL;
+		}
+
+		if (mi->vertno) {
+			MEM_freeN(mi->vertno);
+			mi->vertno = NULL;
+		}
+
+		if (mi->vertices) {
+			MEM_freeN(mi->vertices);
+			mi->vertices = NULL; /*borrowed only !!!*/
+		}
+	}
+
+	if (mi->vertices_cached) {
+		MEM_freeN(mi->vertices_cached);
+		mi->vertices_cached = NULL;
+	}
+
+	if (mi->bb != NULL) {
+		MEM_freeN(mi->bb);
+		mi->bb = NULL;
+	}
+
+	if (mi->participating_constraints != NULL) {
+		MEM_freeN(mi->participating_constraints);
+		mi->participating_constraints = NULL;
+		mi->participating_constraint_count = 0;
+	}
+
+	if (mi->vertex_indices) {
+		MEM_freeN(mi->vertex_indices);
+		mi->vertex_indices = NULL;
+	}
+
+	MEM_freeN(mi);
+	mi = NULL;
+}
+
+static void freeData_internal(ModifierData *md)
 {
 	FractureModifierData *rmd = (FractureModifierData *) md;
 	MeshIsland *mi;
@@ -280,6 +331,33 @@ static void freeData(ModifierData *md)
 	}
 }
 
+static void freeData(ModifierData *md)
+{
+	FractureModifierData *rmd = (FractureModifierData *) md;
+	MeshIsland *mi;
+
+	freeData_internal(md);
+
+	/*force deletion of meshshards here, it slips through improper state detection*/
+	/*here we know the modifier is about to be deleted completely*/
+	if (rmd->frac_mesh) {
+		BKE_fracmesh_free(rmd->frac_mesh, true);
+		MEM_freeN(rmd->frac_mesh);
+		rmd->frac_mesh = NULL;
+	}
+
+	while (rmd->meshIslands.first) {
+		mi = rmd->meshIslands.first;
+		BLI_remlink(&rmd->meshIslands, mi);
+		freeMeshIsland(rmd, mi, false);
+		mi = NULL;
+	}
+
+	rmd->meshIslands.first = NULL;
+	rmd->meshIslands.last = NULL;
+
+}
+
 static void doClusters(FractureModifierData *fmd)
 {
 	/*grow clusters from all shards */
@@ -383,6 +461,23 @@ static DerivedMesh *get_clean_dm(Object *ob, DerivedMesh *dm)
 	return dm;
 }
 
+static int getGroupObjects(Group *gr, Object ***obs, int g_exist)
+{
+	int ctr = g_exist;
+	GroupObject *go;
+	if (gr == NULL) return ctr;
+
+	for (go = gr->gobject.first; go; go = go->next) {
+
+		*obs = MEM_reallocN(*obs, sizeof(Object *) * (ctr + 1));
+		(*obs)[ctr] = go->ob;
+		ctr++;
+	}
+
+	return ctr;
+}
+
+
 static DerivedMesh *get_group_dm(FractureModifierData *fmd, DerivedMesh *dm)
 {
 	/* combine derived meshes from group objects into 1, trigger submodifiers if ob->derivedFinal is empty */
@@ -485,194 +580,6 @@ static DerivedMesh *get_group_dm(FractureModifierData *fmd, DerivedMesh *dm)
 
 	MEM_freeN(go);
 	return dm;
-}
-
-
-static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
-                                  DerivedMesh *derivedData,
-                                  ModifierApplyFlag UNUSED(flag))
-{
-
-	FractureModifierData *fmd = (FractureModifierData *) md;
-	DerivedMesh *final_dm = derivedData;
-
-	DerivedMesh *group_dm = get_group_dm(fmd, derivedData);
-	DerivedMesh *clean_dm = get_clean_dm(ob, group_dm);
-
-	/* disable that automatically if sim is started, but must be re-enabled manually */
-	if (BKE_rigidbody_check_sim_running(md->scene->rigidbody_world, BKE_scene_frame_get(md->scene))) {
-		fmd->auto_execute = false;
-	}
-
-	if (fmd->auto_execute) {
-		fmd->refresh = true;
-	}
-
-	if (fmd->frac_mesh != NULL && fmd->frac_mesh->running == 1 && fmd->execute_threaded) {
-		/* skip modifier execution when fracture job is running */
-		return final_dm;
-	}
-
-	if (fmd->refresh)
-	{
-		if (fmd->dm != NULL) {
-			fmd->dm->needsFree = 1;
-			fmd->dm->release(fmd->dm);
-			fmd->dm = NULL;
-		}
-
-		if (fmd->frac_mesh != NULL) {
-			BKE_fracmesh_free(fmd->frac_mesh, true);
-			MEM_freeN(fmd->frac_mesh);
-			fmd->frac_mesh = NULL;
-		}
-
-		if (fmd->frac_mesh == NULL) {
-			fmd->frac_mesh = BKE_create_fracture_container();
-			if (fmd->execute_threaded)
-			{
-				fmd->frac_mesh->running = 1;
-			}
-		}
-	}
-
-	{
-		if (fmd->refresh) {
-			/* build normaltree from origdm */
-			if (fmd->nor_tree != NULL) {
-				BLI_kdtree_free(fmd->nor_tree);
-				fmd->nor_tree = NULL;
-			}
-
-			fmd->nor_tree = build_nor_tree(clean_dm);
-			if (fmd->face_pairs != NULL) {
-				BLI_ghash_free(fmd->face_pairs, NULL, NULL);
-				fmd->face_pairs = NULL;
-			}
-
-			fmd->face_pairs = BLI_ghash_int_new("face_pairs");
-
-			do_fracture(fmd, -1, ob, clean_dm);
-
-			if (!fmd->refresh) { /* might have been changed from outside, job cancel*/
-				return derivedData;
-			}
-		}
-		if (fmd->dm && fmd->frac_mesh && (fmd->dm->getNumPolys(fmd->dm) > 0) && (fmd->dm_group == NULL)) {
-			final_dm = doSimulate(fmd, ob, fmd->dm, clean_dm);
-		}
-		else {
-			final_dm = doSimulate(fmd, ob, clean_dm, clean_dm);
-		}
-	}
-
-	/* free newly created derivedmeshes only, but keep derivedData and final_dm*/
-	if ((clean_dm != group_dm) && (clean_dm != derivedData) && (clean_dm != final_dm))
-	{
-		clean_dm->needsFree = 1;
-		clean_dm->release(clean_dm);
-	}
-
-	if ((group_dm != derivedData) && (group_dm != final_dm))
-	{
-		group_dm->needsFree = 1;
-		group_dm->release(group_dm);
-	}
-
-	return final_dm;
-}
-
-static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
-                                    struct BMEditMesh *UNUSED(editData),
-                                    DerivedMesh *derivedData,
-                                    ModifierApplyFlag UNUSED(flag))
-{
-	FractureModifierData *fmd = (FractureModifierData *) md;
-	DerivedMesh *final_dm = derivedData;
-
-	DerivedMesh *group_dm = get_group_dm(fmd, derivedData);
-	DerivedMesh *clean_dm = get_clean_dm(ob, group_dm);
-
-	if (BKE_rigidbody_check_sim_running(md->scene->rigidbody_world, BKE_scene_frame_get(md->scene))) {
-		fmd->auto_execute = false;
-	}
-
-	if (fmd->auto_execute) {
-		fmd->refresh = true;
-	}
-
-	if (fmd->frac_mesh != NULL && fmd->frac_mesh->running == 1 && fmd->execute_threaded)
-	{
-		/* skip modifier execution when fracture job is running */
-		return final_dm;
-	}
-
-	if (fmd->refresh) {
-		if (fmd->dm != NULL) {
-			fmd->dm->needsFree = 1;
-			fmd->dm->release(fmd->dm);
-			fmd->dm = NULL;
-		}
-
-		if (fmd->frac_mesh != NULL) {
-			BKE_fracmesh_free(fmd->frac_mesh, true /*fmd->frac_algorithm != MOD_FRACTURE_VORONOI*/);
-			MEM_freeN(fmd->frac_mesh);
-			fmd->frac_mesh = NULL;
-		}
-
-		if (fmd->frac_mesh == NULL) {
-			fmd->frac_mesh = BKE_create_fracture_container();
-			if (fmd->execute_threaded) {
-				fmd->frac_mesh->running = 1;
-			}
-		}
-	}
-
-	{
-		if (fmd->refresh) {
-			/* build normaltree from origdm */
-			if (fmd->nor_tree != NULL) {
-				BLI_kdtree_free(fmd->nor_tree);
-				fmd->nor_tree = NULL;
-			}
-
-			fmd->nor_tree = build_nor_tree(clean_dm);
-			if (fmd->face_pairs != NULL) {
-				BLI_ghash_free(fmd->face_pairs, NULL, NULL);
-				fmd->face_pairs = NULL;
-			}
-
-			fmd->face_pairs = BLI_ghash_int_new("face_pairs");
-
-			do_fracture(fmd, -1, ob, clean_dm);
-
-			if (!fmd->refresh) { /*might have been changed from outside, job cancel*/
-				return derivedData;
-			}
-		}
-
-		if (fmd->dm && fmd->frac_mesh && (fmd->dm->getNumPolys(fmd->dm) > 0) && (fmd->dm_group == NULL)) {
-			final_dm = doSimulate(fmd, ob, fmd->dm, clean_dm);
-		}
-		else {
-			final_dm = doSimulate(fmd, ob, clean_dm, clean_dm);
-		}
-	}
-
-	/* free newly created derivedmeshes only, but keep derivedData and final_dm*/
-	if ((clean_dm != group_dm) && (clean_dm != derivedData) && (clean_dm != final_dm))
-	{
-		clean_dm->needsFree = 1;
-		clean_dm->release(clean_dm);
-	}
-
-	if ((group_dm != derivedData) && (group_dm != final_dm))
-	{
-		group_dm->needsFree = 1;
-		group_dm->release(group_dm);
-	}
-
-	return final_dm;
 }
 
 static void points_from_verts(Object **ob, int totobj, FracPointCloud *points, float mat[4][4], float thresh, FractureModifierData *emd, DerivedMesh *dm, Object *obj)
@@ -818,22 +725,6 @@ static void points_from_greasepencil(Object **ob, int totobj, FracPointCloud *po
 	points->totpoints = pt;
 }
 
-static int getGroupObjects(Group *gr, Object ***obs, int g_exist)
-{
-	int ctr = g_exist;
-	GroupObject *go;
-	if (gr == NULL) return ctr;
-
-	for (go = gr->gobject.first; go; go = go->next) {
-
-		*obs = MEM_reallocN(*obs, sizeof(Object *) * (ctr + 1));
-		(*obs)[ctr] = go->ob;
-		ctr++;
-	}
-
-	return ctr;
-}
-
 static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, DerivedMesh *fracmesh)
 {
 	Scene *scene = emd->modifier.scene;
@@ -941,7 +832,7 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, D
 		{
 			fracmd->frac_mesh->running = 0;
 			fracmd->refresh = true;
-			freeData((ModifierData *)fracmd);
+			freeData_internal((ModifierData *)fracmd);
 			fracmd->frac_mesh = NULL;
 			fracmd->refresh = false;
 			MEM_freeN(points.points);
@@ -1027,66 +918,8 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->use_particle_birth_coordinates = rmd->use_particle_birth_coordinates;
 }
 
-void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
-{
-
-	if (mi->physics_mesh) {
-		mi->physics_mesh->needsFree = 1;
-		mi->physics_mesh->release(mi->physics_mesh);
-		mi->physics_mesh = NULL;
-	}
-	if (mi->rigidbody) {
-		if (remove_rigidbody)
-			BKE_rigidbody_remove_shard(rmd->modifier.scene, mi);
-		MEM_freeN(mi->rigidbody);
-		mi->rigidbody = NULL;
-	}
-
-	{
-		if (mi->vertco) {
-			MEM_freeN(mi->vertco);
-			mi->vertco = NULL;
-		}
-
-		if (mi->vertno) {
-			MEM_freeN(mi->vertno);
-			mi->vertno = NULL;
-		}
-
-		if (mi->vertices) {
-			MEM_freeN(mi->vertices);
-			mi->vertices = NULL; /*borrowed only !!!*/
-		}
-	}
-
-	if (mi->vertices_cached) {
-		MEM_freeN(mi->vertices_cached);
-		mi->vertices_cached = NULL;
-	}
-
-	if (mi->bb != NULL) {
-		MEM_freeN(mi->bb);
-		mi->bb = NULL;
-	}
-
-	if (mi->participating_constraints != NULL) {
-		MEM_freeN(mi->participating_constraints);
-		mi->participating_constraints = NULL;
-		mi->participating_constraint_count = 0;
-	}
-
-	if (mi->vertex_indices) {
-		MEM_freeN(mi->vertex_indices);
-		mi->vertex_indices = NULL;
-	}
-
-	MEM_freeN(mi);
-	mi = NULL;
-}
-
 /* mi->bb, its for volume fraction calculation.... */
-float bbox_vol(BoundBox *bb);
-float bbox_vol(BoundBox *bb)
+static float bbox_vol(BoundBox *bb)
 {
 	float x[3], y[3], z[3];
 
@@ -1096,8 +929,8 @@ float bbox_vol(BoundBox *bb)
 
 	return len_v3(x) * len_v3(y) * len_v3(z);
 }
-void bbox_dim(BoundBox *bb, float dim[]);
-void bbox_dim(BoundBox *bb, float dim[3])
+
+static void bbox_dim(BoundBox *bb, float dim[3])
 {
 	float x[3], y[3], z[3];
 
@@ -1110,8 +943,7 @@ void bbox_dim(BoundBox *bb, float dim[3])
 	dim[2] = len_v3(z);
 }
 
-int BM_calc_center_centroid(BMesh *bm, float cent[3], int tagged);
-int BM_calc_center_centroid(BMesh *bm, float cent[3], int tagged)
+static int BM_calc_center_centroid(BMesh *bm, float cent[3], int tagged)
 {
 	BMFace *f;
 	BMIter iter;
@@ -1998,7 +1830,7 @@ static DerivedMesh *createCache(FractureModifierData *rmd, Object *ob, DerivedMe
 	return dm;
 }
 
-void refresh_customdata_image(Mesh *me, CustomData *pdata, int totface)
+static void refresh_customdata_image(Mesh *me, CustomData *pdata, int totface)
 {
 	int i;
 
@@ -2154,7 +1986,7 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm)
 }
 
 
-DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMesh *dm, DerivedMesh *orig_dm)
+static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMesh *dm, DerivedMesh *orig_dm)
 {
 	bool exploOK = false; /* doFracture */
 	double start;
@@ -2164,7 +1996,7 @@ DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMesh *dm, 
 	{
 		/* if we changed the fracture parameters */
 
-		freeData((ModifierData *)fmd);
+		freeData_internal((ModifierData *)fmd);
 
 		/* 2 cases, we can have a visible mesh or a cached visible mesh, the latter primarily when loading blend from file or using halving */
 
@@ -2459,7 +2291,7 @@ DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMesh *dm, 
 		if (fmd->visible_mesh == NULL && fmd->visible_mesh_cached == NULL) {
 			/* oops, something went definitely wrong... */
 			fmd->refresh = true;
-			freeData((ModifierData *)fmd);
+			freeData_internal((ModifierData *)fmd);
 			fmd->visible_mesh_cached = NULL;
 			fmd->refresh = false;
 		}
@@ -2532,6 +2364,193 @@ static void foreachObjectLink(
 			}
 		}
 	}
+}
+
+static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
+                                    struct BMEditMesh *UNUSED(editData),
+                                    DerivedMesh *derivedData,
+                                    ModifierApplyFlag UNUSED(flag))
+{
+	FractureModifierData *fmd = (FractureModifierData *) md;
+	DerivedMesh *final_dm = derivedData;
+
+	DerivedMesh *group_dm = get_group_dm(fmd, derivedData);
+	DerivedMesh *clean_dm = get_clean_dm(ob, group_dm);
+
+	if (BKE_rigidbody_check_sim_running(md->scene->rigidbody_world, BKE_scene_frame_get(md->scene))) {
+		fmd->auto_execute = false;
+	}
+
+	if (fmd->auto_execute) {
+		fmd->refresh = true;
+	}
+
+	if (fmd->frac_mesh != NULL && fmd->frac_mesh->running == 1 && fmd->execute_threaded)
+	{
+		/* skip modifier execution when fracture job is running */
+		return final_dm;
+	}
+
+	if (fmd->refresh) {
+		if (fmd->dm != NULL) {
+			fmd->dm->needsFree = 1;
+			fmd->dm->release(fmd->dm);
+			fmd->dm = NULL;
+		}
+
+		if (fmd->frac_mesh != NULL) {
+			BKE_fracmesh_free(fmd->frac_mesh, true /*fmd->frac_algorithm != MOD_FRACTURE_VORONOI*/);
+			MEM_freeN(fmd->frac_mesh);
+			fmd->frac_mesh = NULL;
+		}
+
+		if (fmd->frac_mesh == NULL) {
+			fmd->frac_mesh = BKE_create_fracture_container();
+			if (fmd->execute_threaded) {
+				fmd->frac_mesh->running = 1;
+			}
+		}
+	}
+
+	{
+		if (fmd->refresh) {
+			/* build normaltree from origdm */
+			if (fmd->nor_tree != NULL) {
+				BLI_kdtree_free(fmd->nor_tree);
+				fmd->nor_tree = NULL;
+			}
+
+			fmd->nor_tree = build_nor_tree(clean_dm);
+			if (fmd->face_pairs != NULL) {
+				BLI_ghash_free(fmd->face_pairs, NULL, NULL);
+				fmd->face_pairs = NULL;
+			}
+
+			fmd->face_pairs = BLI_ghash_int_new("face_pairs");
+
+			do_fracture(fmd, -1, ob, clean_dm);
+
+			if (!fmd->refresh) { /*might have been changed from outside, job cancel*/
+				return derivedData;
+			}
+		}
+
+		if (fmd->dm && fmd->frac_mesh && (fmd->dm->getNumPolys(fmd->dm) > 0) && (fmd->dm_group == NULL)) {
+			final_dm = doSimulate(fmd, ob, fmd->dm, clean_dm);
+		}
+		else {
+			final_dm = doSimulate(fmd, ob, clean_dm, clean_dm);
+		}
+	}
+
+	/* free newly created derivedmeshes only, but keep derivedData and final_dm*/
+	if ((clean_dm != group_dm) && (clean_dm != derivedData) && (clean_dm != final_dm))
+	{
+		clean_dm->needsFree = 1;
+		clean_dm->release(clean_dm);
+	}
+
+	if ((group_dm != derivedData) && (group_dm != final_dm))
+	{
+		group_dm->needsFree = 1;
+		group_dm->release(group_dm);
+	}
+
+	return final_dm;
+}
+
+static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
+                                  DerivedMesh *derivedData,
+                                  ModifierApplyFlag UNUSED(flag))
+{
+
+	FractureModifierData *fmd = (FractureModifierData *) md;
+	DerivedMesh *final_dm = derivedData;
+
+	DerivedMesh *group_dm = get_group_dm(fmd, derivedData);
+	DerivedMesh *clean_dm = get_clean_dm(ob, group_dm);
+
+	/* disable that automatically if sim is started, but must be re-enabled manually */
+	if (BKE_rigidbody_check_sim_running(md->scene->rigidbody_world, BKE_scene_frame_get(md->scene))) {
+		fmd->auto_execute = false;
+	}
+
+	if (fmd->auto_execute) {
+		fmd->refresh = true;
+	}
+
+	if (fmd->frac_mesh != NULL && fmd->frac_mesh->running == 1 && fmd->execute_threaded) {
+		/* skip modifier execution when fracture job is running */
+		return final_dm;
+	}
+
+	if (fmd->refresh)
+	{
+		if (fmd->dm != NULL) {
+			fmd->dm->needsFree = 1;
+			fmd->dm->release(fmd->dm);
+			fmd->dm = NULL;
+		}
+
+		if (fmd->frac_mesh != NULL) {
+			BKE_fracmesh_free(fmd->frac_mesh, true);
+			MEM_freeN(fmd->frac_mesh);
+			fmd->frac_mesh = NULL;
+		}
+
+		if (fmd->frac_mesh == NULL) {
+			fmd->frac_mesh = BKE_create_fracture_container();
+			if (fmd->execute_threaded)
+			{
+				fmd->frac_mesh->running = 1;
+			}
+		}
+	}
+
+	{
+		if (fmd->refresh) {
+			/* build normaltree from origdm */
+			if (fmd->nor_tree != NULL) {
+				BLI_kdtree_free(fmd->nor_tree);
+				fmd->nor_tree = NULL;
+			}
+
+			fmd->nor_tree = build_nor_tree(clean_dm);
+			if (fmd->face_pairs != NULL) {
+				BLI_ghash_free(fmd->face_pairs, NULL, NULL);
+				fmd->face_pairs = NULL;
+			}
+
+			fmd->face_pairs = BLI_ghash_int_new("face_pairs");
+
+			do_fracture(fmd, -1, ob, clean_dm);
+
+			if (!fmd->refresh) { /* might have been changed from outside, job cancel*/
+				return derivedData;
+			}
+		}
+		if (fmd->dm && fmd->frac_mesh && (fmd->dm->getNumPolys(fmd->dm) > 0) && (fmd->dm_group == NULL)) {
+			final_dm = doSimulate(fmd, ob, fmd->dm, clean_dm);
+		}
+		else {
+			final_dm = doSimulate(fmd, ob, clean_dm, clean_dm);
+		}
+	}
+
+	/* free newly created derivedmeshes only, but keep derivedData and final_dm*/
+	if ((clean_dm != group_dm) && (clean_dm != derivedData) && (clean_dm != final_dm))
+	{
+		clean_dm->needsFree = 1;
+		clean_dm->release(clean_dm);
+	}
+
+	if ((group_dm != derivedData) && (group_dm != final_dm))
+	{
+		group_dm->needsFree = 1;
+		group_dm->release(group_dm);
+	}
+
+	return final_dm;
 }
 
 

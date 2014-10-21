@@ -1497,8 +1497,6 @@ static void write_meshIsland(WriteData* wd, MeshIsland* mi)
 	mi->temp = BKE_custom_data_to_shard(mi->temp, dm);
 
 	writestruct(wd, DATA, "MeshIsland", 1, mi);
-	writedata(wd, DATA, sizeof(struct BMVert*) * mi->vertex_count, mi->vertices);
-	writedata(wd, DATA, sizeof(MVert*) * mi->vertex_count, mi->vertices_cached);
 	writedata(wd, DATA, sizeof(float) * 3 * mi->vertex_count, mi->vertco);
 	/* write derivedmesh as shard... */
 	mi->temp->next = NULL;
