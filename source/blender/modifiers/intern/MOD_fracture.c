@@ -291,7 +291,7 @@ static void freeData_internal(ModifierData *md)
 		while (rmd->meshIslands.first) {
 			mi = rmd->meshIslands.first;
 			BLI_remlink(&rmd->meshIslands, mi);
-			freeMeshIsland(rmd, mi, true);
+			freeMeshIsland(rmd, mi, false);
 			mi = NULL;
 		}
 

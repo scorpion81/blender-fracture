@@ -1961,7 +1961,7 @@ void BKE_rigidbody_remove_shard(Scene *scene, MeshIsland *mi)
 		/* need to check whether we didnt create the rigidbody world manually already, prior to fracture, in this
 		 * case cache_index_map might be not initialized ! checking numbodies here, they should be 0 in a fresh
 		 * rigidbody world */
-		if (rbw->cache_index_map != NULL && rbw->numbodies > 0)
+		if ((rbw->cache_index_map != NULL) && (rbw->numbodies > 0))
 			rbw->cache_index_map[mi->linear_index] = NULL;
 	}
 }

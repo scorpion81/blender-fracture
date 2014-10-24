@@ -2338,8 +2338,10 @@ static int fracture_refresh_exec(bContext *C, wmOperator *UNUSED(op))
 	wmJob* wm_job;
 
 	rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
-	if (!rmd || (rmd && rmd->refresh) || (scene->rigidbody_world && cfra != scene->rigidbody_world->pointcache->startframe))
+	if (!rmd || (rmd && rmd->refresh) || (scene->rigidbody_world && cfra != scene->rigidbody_world->pointcache->startframe)) {
+		rmd->refresh = false;
 		return OPERATOR_CANCELLED;
+	}
 	
 	if (!rmd->execute_threaded) {
 		rmd->refresh = true;
