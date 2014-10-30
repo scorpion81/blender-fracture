@@ -87,8 +87,9 @@ static void add_shard(FracMesh *fm, Shard *s, float mat[4][4])
 	for (i = 0, mv = s->mvert; i < s->totvert; i++, mv++ )
 	{
 		mul_m4_v3(mat, mv->co);
-		//mul_m4_v3(obj->obmat, mv->co);
 	}
+
+	mul_m4_v3(mat, s->centroid);
 
 	BLI_addtail(&fm->shard_map, s);
 	s->shard_id = fm->shard_count;

@@ -842,6 +842,11 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, D
 			invert_m4_m4(imat, mat);
 			invert_m4_m4(obj->imat, obj->obmat);
 
+			for (i = 0; i < points.totpoints; i++)
+			{
+				mul_m4_v3(imat, points.points[i].co);
+			}
+
 			for (i = 0, mv = mvert; i < dm->getNumVerts(dm); i++, mv++)
 			{
 				//mul_m4_v3(obj->imat, mv->co);
