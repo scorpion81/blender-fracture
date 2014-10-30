@@ -1412,6 +1412,12 @@ enum {
 	MOD_FRACTURE_UNIFORM         = (1 << 5),
 };
 
+enum {
+	MOD_FRACTURE_SPLINTER_X      = (1 << 0),
+	MOD_FRACTURE_SPLINTER_Y      = (1 << 1),
+	MOD_FRACTURE_SPLINTER_Z      = (1 << 2),
+};
+
 typedef struct FractureModifierData {
 	ModifierData modifier;
 	struct FracMesh *frac_mesh; /* store only the current fracmesh here first, later maybe an entire history...*/
@@ -1441,6 +1447,7 @@ typedef struct FractureModifierData {
 	int constraint_limit;
 	int solver_iterations_override;
 	int breaking_percentage;
+	int splinter_axis;
 
 	float breaking_angle;
 	float breaking_distance;
@@ -1448,6 +1455,7 @@ typedef struct FractureModifierData {
 	float breaking_threshold;
 	float cluster_breaking_threshold;
 	float contact_dist, autohide_dist;
+	float splinter_length;
 
 	/* flags */
 	int refresh;

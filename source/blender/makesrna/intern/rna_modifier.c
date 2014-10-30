@@ -3804,6 +3804,13 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 
+	static EnumPropertyItem prop_splinter_axises[] = {
+		{MOD_FRACTURE_SPLINTER_X, "SPLINTER_X", 0, "Splinter X", "Splinters in X Direction"},
+		{MOD_FRACTURE_SPLINTER_Y, "SPLINTER_Y", 0, "Splinter Y", "Splinters in Y Direction"},
+		{MOD_FRACTURE_SPLINTER_Z, "SPLINTER_Z", 0, "Splinter Z", "Splinters in Z Direction"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
 	srna = RNA_def_struct(brna, "FractureModifier", "Modifier");
 	RNA_def_struct_ui_text(srna, "Fracture Modifier", "Add a fracture container to this object");
 	RNA_def_struct_sdna(srna, "FractureModifierData");
@@ -3997,6 +4004,18 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "use_particle_birth_coordinates", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "use_particle_birth_coordinates", false);
 	RNA_def_property_ui_text(prop, "Use Initial Particle Coordinates", "Use initial or simulated state particle coordinates");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "splinter_axis", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_items(prop, prop_splinter_axises);
+	RNA_def_property_flag(prop, PROP_ENUM_FLAG);
+	RNA_def_property_enum_default(prop, MOD_FRACTURE_SPLINTER_Z);
+	RNA_def_property_ui_text(prop, "Splinter Axis", "Global direction of splinters");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "splinter_length", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_range(prop, 1.0f, 1000.0f);
+	RNA_def_property_ui_text(prop, "Splinter length", "Length of splinters");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 

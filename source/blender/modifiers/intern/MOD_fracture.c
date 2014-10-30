@@ -124,6 +124,7 @@ static void initData(ModifierData *md)
 	/* XXX needed because of messy particle cache, shows incorrect positions when start/end on frame 1
 	 * default use case is with this flag being enabled, disable at own risk */
 	fmd->use_particle_birth_coordinates = true;
+	fmd->splinter_length = 1.0f;
 }
 
 static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
@@ -811,6 +812,44 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, D
 	if (points.totpoints > 0) {
 		bool temp = fracmd->shards_to_islands;
 		short mat_index = 0;
+		float mat[4][4], imat[4][4];
+		float mat2[4][4];
+
+		unit_m4(mat);
+		unit_m4(mat2);
+
+		/*splinters... just global axises and a length, for rotation rotate the object */
+		if (fracmd->splinter_axis & MOD_FRACTURE_SPLINTER_X)
+		{
+			mat[0][0] *= fracmd->splinter_length;
+		}
+		if (fracmd->splinter_axis & MOD_FRACTURE_SPLINTER_Y)
+		{
+			mat[1][1] *= fracmd->splinter_length;
+		}
+		if (fracmd->splinter_axis & MOD_FRACTURE_SPLINTER_Z)
+		{
+			mat[2][2] *= fracmd->splinter_length;
+		}
+
+
+		if ((fracmd->splinter_axis & MOD_FRACTURE_SPLINTER_X) ||
+			(fracmd->splinter_axis & MOD_FRACTURE_SPLINTER_Y) ||
+			(fracmd->splinter_axis & MOD_FRACTURE_SPLINTER_Z))
+		{
+			int i = 0;
+			MVert* mvert = dm->getVertArray(dm), *mv;
+			invert_m4_m4(imat, mat);
+			invert_m4_m4(obj->imat, obj->obmat);
+
+			for (i = 0, mv = mvert; i < dm->getNumVerts(dm); i++, mv++)
+			{
+				//mul_m4_v3(obj->imat, mv->co);
+				mul_m4_v3(imat, mv->co);
+			}
+
+			copy_m4_m4(mat2, mat);
+		}
 
 		if (fracmd->inner_material) {
 			/* assign inner material as secondary mat to ob if not there already */
@@ -825,7 +864,7 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, D
 		}
 
 		mat_index = mat_index > 0 ? mat_index - 1 : mat_index;
-		BKE_fracture_shard_by_points(fracmd->frac_mesh, id, &points, fracmd->frac_algorithm, obj, dm, mat_index);
+		BKE_fracture_shard_by_points(fracmd->frac_mesh, id, &points, fracmd->frac_algorithm, obj, dm, mat_index, mat2);
 
 		/* job has been cancelled, throw away all data */
 		if (fracmd->frac_mesh->cancel == 1)
@@ -848,6 +887,20 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, D
 		fracmd->shards_to_islands = false;
 		BKE_fracture_create_dm(fracmd, true);
 		fracmd->shards_to_islands = temp;
+
+		if ((fracmd->splinter_axis & MOD_FRACTURE_SPLINTER_X) ||
+			(fracmd->splinter_axis & MOD_FRACTURE_SPLINTER_Y) ||
+			(fracmd->splinter_axis & MOD_FRACTURE_SPLINTER_Z))
+		{
+
+			int i = 0;
+			MVert* mvert = dm->getVertArray(dm), *mv;
+			for (i = 0, mv = mvert; i < dm->getNumVerts(dm); i++, mv++)
+			{
+				mul_m4_v3(mat, mv->co);
+				//mul_m4_v3(obj->obmat, mv->co);
+			}
+		}
 	}
 	MEM_freeN(points.points);
 }

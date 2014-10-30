@@ -82,8 +82,8 @@ void BKE_fracture_create_dm(struct FractureModifierData *fmd, bool doCustomData)
 struct DerivedMesh *BKE_shard_create_dm(struct Shard *s, bool doCustomData);
 
 /* create shards from base mesh and a liste of points */
-void BKE_fracture_shard_by_points(struct FracMesh *fmesh, ShardID id, struct FracPointCloud *points, int algorithm, struct Object *obj, struct DerivedMesh *dm,
-                                  short inner_material_index);
+void BKE_fracture_shard_by_points(struct FracMesh *fmesh, ShardID id, struct FracPointCloud *points, int algorithm,
+                                  struct Object *obj, struct DerivedMesh *dm,short inner_material_index, float mat[4][4]);
 
 
 #endif /* BKE_FRACTURE_H */

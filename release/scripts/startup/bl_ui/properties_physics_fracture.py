@@ -122,6 +122,10 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             box.prop(md, "dm_group")
             box.prop(md, "use_particle_birth_coordinates")
 
+            row = box.row(align=True)
+            row.prop(md, "splinter_axis")
+            box.prop(md, "splinter_length")
+
             box.prop(md, "percentage")
             box.label("Constraint Breaking Settings")
             col = box.column(align=True)
