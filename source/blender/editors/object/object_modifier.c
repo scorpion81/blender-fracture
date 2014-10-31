@@ -402,7 +402,7 @@ int ED_object_modifier_move_down(ReportList *reports, Object *ob, ModifierData *
 		if (mti->flags & eModifierTypeFlag_RequiresOriginalData) {
 			ModifierTypeInfo *nmti = modifierType_getInfo(md->next->type);
 
-			if (nmti->type != eModifierTypeType_OnlyDeform) {
+			if ((nmti->type != eModifierTypeType_OnlyDeform) && (md->next->type != eModifierType_Fracture)) {
 				BKE_report(reports, RPT_WARNING, "Cannot move beyond a non-deforming modifier");
 				return 0;
 			}
