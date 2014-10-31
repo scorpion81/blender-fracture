@@ -517,10 +517,9 @@ static DerivedMesh *get_group_dm(FractureModifierData *fmd, DerivedMesh *dm)
 		mloops = CDDM_get_loops(result);
 		mpolys = CDDM_get_polys(result);
 
-		/* XXX doesnt work, see below (customData copy).... but is needed for textures and weightpaints */
-		/*CustomData_add_layer(&result->vertData, CD_MDEFORMVERT, CD_CALLOC, NULL, num_verts);
+		CustomData_add_layer(&result->vertData, CD_MDEFORMVERT, CD_CALLOC, NULL, num_verts);
 		CustomData_add_layer(&result->loopData, CD_MLOOPUV, CD_CALLOC, NULL, num_loops);
-		CustomData_add_layer(&result->polyData, CD_MTEXPOLY, CD_CALLOC, NULL, num_polys);*/
+		CustomData_add_layer(&result->polyData, CD_MTEXPOLY, CD_CALLOC, NULL, num_polys);
 
 		vertstart = polystart = loopstart = 0;
 		for (i = 0; i < totgroup; i++)
@@ -541,9 +540,10 @@ static DerivedMesh *get_group_dm(FractureModifierData *fmd, DerivedMesh *dm)
 			memcpy(mverts + vertstart, dm_ob->getVertArray(dm_ob), dm_ob->getNumVerts(dm_ob) * sizeof(MVert));
 			memcpy(mpolys + polystart, dm_ob->getPolyArray(dm_ob), dm_ob->getNumPolys(dm_ob) * sizeof(MPoly));
 
-
 			for (j = 0, mp = mpolys + polystart; j < dm_ob->getNumPolys(dm_ob); ++j, ++mp) {
 				/* adjust loopstart index */
+				MTexPoly *mtp = CustomData_get(&dm_ob->polyData, j, CD_MTEXPOLY);
+				CustomData_set(&result->polyData, polystart + j, CD_MTEXPOLY, mtp);
 				mp->loopstart += loopstart;
 			}
 
@@ -551,19 +551,16 @@ static DerivedMesh *get_group_dm(FractureModifierData *fmd, DerivedMesh *dm)
 
 			for (j = 0, ml = mloops + loopstart; j < dm_ob->getNumLoops(dm_ob); ++j, ++ml) {
 				/* adjust vertex index */
+				MLoopUV *mluv = CustomData_get(&dm_ob->loopData, j, CD_MLOOPUV);
+				CustomData_set(&result->loopData, loopstart + j, CD_MLOOPUV, mluv);
 				ml->v += vertstart;
 			}
 
-			/* XXX doesnt work for moving verts to appropriate object locations... WHY ?
-			 * .... but is needed for textures and weightpaints */
-			/*CustomData_copy_data(&dm_ob->vertData, &result->vertData, 0, vertstart, dm_ob->getNumVerts(dm_ob));
-			CustomData_copy_data(&dm_ob->loopData, &result->loopData, 0, loopstart, dm_ob->getNumLoops(dm_ob));
-			CustomData_copy_data(&dm_ob->polyData, &result->polyData, 0, polystart, dm_ob->getNumPolys(dm_ob));*/
-
 			for (v = 0, mv = mverts + vertstart; v < dm_ob->getNumVerts(dm_ob); v++, mv++)
 			{
+				MDeformVert *mdv = CustomData_get(&dm_ob->vertData, v, CD_MDEFORMVERT);
+				CustomData_set(&result->vertData, vertstart + v, CD_MDEFORMVERT, mdv);
 				mul_m4_v3(o->obmat, mv->co);
-				//CustomData_set(&result->vertData, vertstart + v, CD_MVERT, mv);
 			}
 
 			vertstart += dm_ob->getNumVerts(dm_ob);
@@ -2075,7 +2072,7 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 			 * shards = fracture datastructure
 			 * meshisland = simulation datastructure */
 			if (fmd->frac_mesh && fmd->frac_mesh->shard_count > 0 && fmd->dm && fmd->dm->numVertData > 0 &&
-			    !fmd->shards_to_islands && !fmd->dm_group)
+			    !fmd->shards_to_islands /*&& !fmd->dm_group*/)
 			{
 				Shard *s;
 				MeshIsland *mi; /* can be created without shards even, when using fracturemethod = NONE (re-using islands)*/
@@ -2493,7 +2490,7 @@ static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
 			}
 		}
 
-		if (fmd->dm && fmd->frac_mesh && (fmd->dm->getNumPolys(fmd->dm) > 0) && (fmd->dm_group == NULL)) {
+		if (fmd->dm && fmd->frac_mesh && (fmd->dm->getNumPolys(fmd->dm) > 0)) {
 			final_dm = doSimulate(fmd, ob, fmd->dm, clean_dm);
 		}
 		else {
@@ -2587,7 +2584,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				return derivedData;
 			}
 		}
-		if (fmd->dm && fmd->frac_mesh && (fmd->dm->getNumPolys(fmd->dm) > 0) && (fmd->dm_group == NULL)) {
+		if (fmd->dm && fmd->frac_mesh && (fmd->dm->getNumPolys(fmd->dm) > 0)) {
 			final_dm = doSimulate(fmd, ob, fmd->dm, clean_dm);
 		}
 		else {
