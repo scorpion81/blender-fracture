@@ -2720,8 +2720,11 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 		float origmat[4][4];
 		float origloc[3];
 
-		if (G.is_break)
+		if (fmd->frac_mesh->cancel == 1)
+		{
+			fmd->frac_mesh->cancel = 0;
 			return true;
+		}
 
 		ob_new = BKE_object_add(G.main, scene, OB_MESH);
 		ob_new->parent = parent;
@@ -2822,7 +2825,12 @@ static void convert_free(void *customdata)
 static void convert_update(void *customdata)
 {
 	FractureJob *fj = customdata;
+	FractureModifierData *fmd = fj->fmd;
 	float progress;
+
+	if ((G.is_break) && (fmd->frac_mesh))
+		fmd->frac_mesh->cancel = 1;
+
 	progress = (float)(BLI_countlist(&fj->gr->gobject)) / (float)(fj->total_progress);
 	(*fj->progress) = progress;
 }
@@ -2846,6 +2854,9 @@ static void convert_startjob(void *customdata, short *stop, short *do_update, fl
 	*(fj->do_update) = true;
 	*do_update = true;
 	*stop = 0;
+
+	if (fmd->frac_mesh)
+		fmd->frac_mesh->cancel = 0;
 
 	convert_modifier_to_keyframes(fmd, gr, ob, scene, start, end);
 }
