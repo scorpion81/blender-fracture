@@ -4695,6 +4695,9 @@ static void read_meshIsland(FileData *fd, MeshIsland **address)
 	mi->bb = newdataadr(fd, mi->bb);
 	mi->vertex_indices = newdataadr(fd, mi->vertex_indices);
 
+	mi->locs = newdataadr(fd, mi->locs);
+	mi->rots = newdataadr(fd, mi->rots);
+
 	/* will be refreshed on the fly */
 	mi->participating_constraint_count = 0;
 	mi->participating_constraints = NULL;

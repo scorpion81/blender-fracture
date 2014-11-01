@@ -1343,6 +1343,11 @@ typedef struct MeshIsland {
 	int *vertex_indices;
 	struct BoundBox *bb;
 	struct RigidBodyShardCon **participating_constraints;
+	float *locs;
+	float *rots;
+
+	int start_frame;
+	int frame_count;
 	int participating_constraint_count;
 	int vertex_count, id, neighbor_count;
 	float centroid[3], start_co[3];

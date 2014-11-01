@@ -66,6 +66,7 @@
 #include "BKE_rigidbody.h"
 #include "BKE_modifier.h"
 #include "BKE_depsgraph.h"
+#include "BKE_scene.h"
 
 #include "RNA_access.h"
 
@@ -390,11 +391,11 @@ static void initNormals(struct MeshIsland *mi, Object *ob, FractureModifierData 
 	}
 }
 
-void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], float rot[4], FractureModifierData *rmd)
+void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], float rot[4], FractureModifierData *rmd, int frame)
 {
 	float startco[3], centr[3], size[3];
 	short startno[3];
-	int j;
+	int j, i, n;
 	bool invalidData;
 
 	/* hrm have to init Normals HERE, because we cant do this in readfile.c in case the file is loaded (have no access to the Object there)*/
@@ -410,6 +411,26 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 
 	invert_m4_m4(ob->imat, ob->obmat);
 	mat4_to_size(size, ob->obmat);
+
+	n = frame - mi->start_frame + 1;
+
+	if (mi->frame_count >= 0 && mi->frame_count < n)
+	{
+		mi->locs = MEM_reallocN(mi->locs, sizeof(float) * 3 * (mi->frame_count+1));
+		mi->rots = MEM_reallocN(mi->rots, sizeof(float) * 4 * (mi->frame_count+1));
+
+		i = mi->frame_count;
+		mi->locs[i*3] = loc[0];
+		mi->locs[i*3+1] = loc[1];
+		mi->locs[i*3+2] = loc[2];
+
+		mi->rots[i*4] = rot[0];
+		mi->rots[i*4+1] = rot[1];
+		mi->rots[i*4+2] = rot[2];
+		mi->rots[i*4+3] = rot[3];
+
+		mi->frame_count = n;
+	}
 	
 	for (j = 0; j < mi->vertex_count; j++) {
 		struct MVert *vert;
@@ -2663,6 +2684,8 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 				}
 
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+					int frame;
+
 					rbo = mi->rigidbody;
 					if (!rbo) {
 						continue;
@@ -2685,7 +2708,9 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 						mul_qt_v3(rbo->orn, centr);
 						add_v3_v3(rbo->pos, centr);
 					}
-					BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn, rmd);
+
+					//frame = (int)BKE_scene_frame_get(md->scene);
+					BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn, rmd, (int)ctime);
 				}
 				
 				break;

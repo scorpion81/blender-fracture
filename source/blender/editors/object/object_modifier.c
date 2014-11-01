@@ -44,6 +44,7 @@
 #include "DNA_scene_types.h"
 #include "DNA_rigidbody_types.h"
 #include "DNA_fracture_types.h"
+#include "DNA_group_types.h"
 
 #include "BLI_bitmap.h"
 #include "BLI_math.h"
@@ -2673,4 +2674,145 @@ void OBJECT_OT_rigidbody_convert_to_objects(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 	edit_modifier_properties(ot);
 }
+
+static void convert_modifier_to_keyframes(bContext* C, wmOperator *op, FractureModifierData* fmd)
+{
+	Scene *scene = CTX_data_scene(C);
+	Object *ob = ED_object_active_context(C);
+	Main *bmain = CTX_data_main(C);
+	Group *gr = BKE_group_add(bmain, "Converted");
+
+	MeshIsland *mi = NULL;
+	for (mi = fmd->meshIslands.first; mi; mi = mi->next)
+	{
+		int i = 0;
+		Object* ob_new;
+		Mesh* me;
+		Base *bas;
+		float cent[3];
+		float origmat[4][4];
+		float origloc[3];
+
+		int start = 1;
+		int end = 250;
+
+		ob_new = BKE_object_add(G.main, scene, OB_MESH);
+		assign_matarar(ob_new, give_matarar(ob), *give_totcolp(ob));
+
+		bas = BKE_scene_base_find(scene, ob_new);
+		BKE_group_object_add(gr, ob_new, scene, bas);
+
+		ED_base_object_activate(C, bas);
+
+		me = (Mesh*)ob_new->data;
+		me->edit_btmesh = NULL;
+
+		DM_to_mesh(mi->physics_mesh, me, ob_new, CD_MASK_MESH);
+
+		/*set origin to centroid*/
+		copy_v3_v3(cent, mi->centroid);
+		mul_m4_v3(ob_new->obmat, cent);
+		copy_v3_v3(ob_new->loc, cent);
+
+		start = RNA_int_get(op->ptr, "start_frame");
+		end = RNA_int_get(op->ptr, "end_frame");
+
+		if (start < mi->start_frame) {
+			start = mi->start_frame;
+		}
+
+		if (end > mi->start_frame + mi->frame_count) {
+			end = mi->start_frame + mi->frame_count;
+		}
+
+		copy_m4_m4(origmat, ob_new->obmat);
+		copy_v3_v3(origloc, ob_new->loc);
+		for (i = start+1; i < end-1; i++)
+		{
+			/*move object (loc, rot)*/
+
+			float loc[3], rot[4];
+			float mat[4][4];
+			float size[3] = {1.0f, 1.0f, 1.0f};
+
+			loc[0] = mi->locs[i*3];
+			loc[1] = mi->locs[i*3+1];
+			loc[2] = mi->locs[i*3+2];
+
+			rot[0] = mi->rots[i*4];
+			rot[1] = mi->rots[i*4+1];
+			rot[2] = mi->rots[i*4+2];
+			rot[3] = mi->rots[i*4+3];
+
+			loc_quat_size_to_mat4(mat, loc, rot, size);
+
+			BKE_scene_frame_set(scene, (double)i);
+
+			copy_m4_m4(ob_new->obmat, mat);
+
+			//copy_v3_v3(cent, mi->centroid);
+			//mul_m4_v3(ob_new->obmat, cent);
+			copy_v3_v3(ob_new->loc, loc);
+			copy_qt_qt(ob_new->quat, rot);
+			quat_to_eul(ob_new->rot, rot);
+
+			/*Location, builtin = -1*/
+			/*Rotation, builtin = -2*/
+			RNA_enum_set(op->ptr, "type", -1);
+			WM_operator_name_call(C, "ANIM_OT_keyframe_insert_menu", WM_OP_EXEC_DEFAULT, op->ptr);
+
+			RNA_enum_set(op->ptr, "type", -2);
+			WM_operator_name_call(C, "ANIM_OT_keyframe_insert_menu", WM_OP_EXEC_DEFAULT, op->ptr);
+		}
+
+		/*back to start*/
+		//copy_m4_m4(ob_new->obmat, origmat);
+		//copy_v3_v3(ob_new->loc, origloc);
+	}
+}
+
+static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
+{
+	Object *obact = ED_object_active_context(C);
+	FractureModifierData *rmd;
+
+	rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
+	if (rmd && rmd->refresh) {
+		return OPERATOR_CANCELLED;
+	}
+
+	if (rmd) {
+		convert_modifier_to_keyframes(C, op, rmd);
+		return OPERATOR_FINISHED;
+	}
+
+	return OPERATOR_CANCELLED;
+}
+
+void OBJECT_OT_rigidbody_convert_to_keyframes(wmOperatorType *ot)
+{
+	PropertyRNA *prop;
+
+	ot->name = "Convert To Keyframed Objects";
+	ot->description = "Convert the Rigid Body modifier shards to keyframed real objects";
+	ot->idname = "OBJECT_OT_rigidbody_convert_to_keyframes";
+
+	ot->poll = fracture_poll;
+	//ot->invoke = rigidbody_convert_invoke;
+	ot->exec = rigidbody_convert_keyframes_exec;
+
+	RNA_def_int(ot->srna, "start_frame", 1,  0, 100000, "Start Frame", "", 0, 100000);
+	RNA_def_int(ot->srna, "end_frame", 250, 0, 100000, "End Frame", "", 0, 100000);
+
+	//inlined from insert_keyframe op
+	prop = RNA_def_enum(ot->srna, "type", DummyRNA_DEFAULT_items, 0, "Keying Set", "The Keying Set to use");
+	//RNA_def_enum_funcs(prop, ANIM_keying_sets_enum_itemf);
+	RNA_def_property_flag(prop, PROP_HIDDEN);
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
+	edit_modifier_properties(ot);
+}
+
+
 

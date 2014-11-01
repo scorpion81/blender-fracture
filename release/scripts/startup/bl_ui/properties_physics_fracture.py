@@ -155,6 +155,7 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             if not(md.refresh):
                 box.prop(md, "execute_threaded")
             box.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")
+            box.operator("object.rigidbody_convert_to_keyframes", text = "Convert To Keyframed Objects")
 
 if __name__ == "__main__":  # only for live edit.
     bpy.utils.register_module(__name__)

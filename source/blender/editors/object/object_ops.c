@@ -151,6 +151,7 @@ void ED_operatortypes_object(void)
 	WM_operatortype_append(OBJECT_OT_fracture_refresh);
 	WM_operatortype_append(OBJECT_OT_rigidbody_constraints_refresh);
 	WM_operatortype_append(OBJECT_OT_rigidbody_convert_to_objects);
+	WM_operatortype_append(OBJECT_OT_rigidbody_convert_to_keyframes);
 	
 	WM_operatortype_append(OBJECT_OT_constraint_add);
 	WM_operatortype_append(OBJECT_OT_constraint_add_with_targets);

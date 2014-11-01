@@ -1511,6 +1511,9 @@ static void write_meshIsland(WriteData* wd, MeshIsland* mi)
 	writedata(wd, DATA, sizeof(int) * mi->neighbor_count, mi->neighbor_ids);
 	writestruct(wd, DATA, "BoundBox", 1, mi->bb);
 	writedata(wd, DATA, sizeof(int) * mi->vertex_count, mi->vertex_indices);
+
+	writedata(wd, DATA, sizeof(float) * 3 * mi->frame_count, mi->locs);
+	writedata(wd, DATA, sizeof(float) * 4 * mi->frame_count, mi->rots);
 }
 
 static void write_modifiers(WriteData *wd, ListBase *modbase)

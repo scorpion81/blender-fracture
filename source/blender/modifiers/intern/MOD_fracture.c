@@ -180,6 +180,20 @@ static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remov
 		mi->vertex_indices = NULL;
 	}
 
+	if (mi->rots)
+	{
+		MEM_freeN(mi->rots);
+		mi->rots = NULL;
+	}
+
+	if (mi->locs)
+	{
+		MEM_freeN(mi->locs);
+		mi->locs = NULL;
+	}
+
+	mi->frame_count = 0;
+
 	MEM_freeN(mi);
 	mi = NULL;
 }
@@ -1097,6 +1111,10 @@ static float mesh_separate_tagged(FractureModifierData *rmd, Object *ob, BMVert 
 	}
 
 	mi = MEM_callocN(sizeof(MeshIsland), "meshIsland");
+	mi->locs = MEM_mallocN(sizeof(float)*3, "mi->locs");
+	mi->rots = MEM_mallocN(sizeof(float)*4, "mi->rots");
+	mi->frame_count = 0;
+
 	BLI_addtail(&rmd->meshIslands, mi);
 
 	mi->thresh_weight = 0;
@@ -1153,6 +1171,8 @@ static float mesh_separate_tagged(FractureModifierData *rmd, Object *ob, BMVert 
 
 	mi->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi);
 	BKE_rigidbody_calc_shard_mass(ob, mi, orig_dm);
+
+	mi->start_frame = rmd->modifier.scene->rigidbody_world->pointcache->startframe;
 
 
 	/* deselect loose data - this used to get deleted,
@@ -2117,6 +2137,11 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 					fmd->frac_mesh->progress_counter++;
 
 					mi = MEM_callocN(sizeof(MeshIsland), "meshIsland");
+
+					mi->locs = MEM_mallocN(sizeof(float)*3, "mi->locs");
+					mi->rots = MEM_mallocN(sizeof(float)*4, "mi->rots");
+					mi->frame_count = 0;
+
 					BLI_addtail(&fmd->meshIslands, mi);
 
 					mi->participating_constraints = NULL;
@@ -2191,6 +2216,7 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 					mi->rigidbody = BKE_rigidbody_create_shard(fmd->modifier.scene, ob, mi);
 					BKE_rigidbody_calc_shard_mass(ob, mi, orig_dm);
 					mi->vertex_indices = NULL;
+					mi->start_frame = fmd->modifier.scene->rigidbody_world->pointcache->startframe;
 
 					polystart += s->totpoly;
 
