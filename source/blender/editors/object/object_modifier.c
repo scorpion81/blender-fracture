@@ -75,6 +75,8 @@
 #include "BKE_ocean.h"
 #include "BKE_paint.h"
 #include "BKE_particle.h"
+#include "BKE_pointcache.h"
+#include "BKE_report.h"
 #include "BKE_softbody.h"
 #include "BKE_editmesh.h"
 #include "BKE_scene.h"
@@ -92,6 +94,7 @@
 #include "ED_screen.h"
 #include "ED_mesh.h"
 #include "ED_physics.h"
+#include "ED_keyframing.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
@@ -2255,9 +2258,11 @@ typedef struct FractureJob {
 	short *stop, *do_update;
 	float *progress;
 	int current_frame, total_progress;
+	int start, end;
 	struct FractureModifierData *fmd;
-	struct Object* ob;
-	struct Scene* scene;
+	struct Object *ob;
+	struct Scene *scene;
+	struct Group *gr;
 } FractureJob;
 
 
@@ -2675,14 +2680,36 @@ void OBJECT_OT_rigidbody_convert_to_objects(wmOperatorType *ot)
 	edit_modifier_properties(ot);
 }
 
-static void convert_modifier_to_keyframes(bContext* C, wmOperator *op, FractureModifierData* fmd)
+static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, Object* ob, Scene* scene, int start, int end)
 {
-	Scene *scene = CTX_data_scene(C);
-	Object *ob = ED_object_active_context(C);
-	Main *bmain = CTX_data_main(C);
-	Group *gr = BKE_group_add(bmain, "Converted");
-
+	bool is_baked = false;
+	PointCache* cache = NULL;
+	PTCacheID pid;
 	MeshIsland *mi = NULL;
+	int j = 0;
+	Object *parent = NULL;
+	int count = BLI_countlist(&fmd->meshIslands);
+
+	if (scene->rigidbody_world && scene->rigidbody_world)
+	{
+		cache = scene->rigidbody_world->pointcache;
+	}
+
+	if (cache && cache->flag & PTCACHE_BAKED)
+	{
+		start = cache->startframe;
+		end = cache->last_exact;
+		BKE_ptcache_id_from_rigidbody(&pid, NULL, scene->rigidbody_world);
+		is_baked = true;
+	}
+
+	if (cache && (cache->flag & PTCACHE_OUTDATED) && !(cache->flag & PTCACHE_BAKED))
+	{
+		return false;
+	}
+
+	parent = BKE_object_add(G.main, scene, OB_EMPTY);
+
 	for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 	{
 		int i = 0;
@@ -2693,16 +2720,19 @@ static void convert_modifier_to_keyframes(bContext* C, wmOperator *op, FractureM
 		float origmat[4][4];
 		float origloc[3];
 
-		int start = 1;
-		int end = 250;
+		if (G.is_break)
+			return true;
 
 		ob_new = BKE_object_add(G.main, scene, OB_MESH);
+		ob_new->parent = parent;
+
 		assign_matarar(ob_new, give_matarar(ob), *give_totcolp(ob));
 
 		bas = BKE_scene_base_find(scene, ob_new);
 		BKE_group_object_add(gr, ob_new, scene, bas);
 
-		ED_base_object_activate(C, bas);
+		scene->basact = bas;
+		ED_base_object_select(bas, BA_SELECT);
 
 		me = (Mesh*)ob_new->data;
 		me->edit_btmesh = NULL;
@@ -2713,9 +2743,6 @@ static void convert_modifier_to_keyframes(bContext* C, wmOperator *op, FractureM
 		copy_v3_v3(cent, mi->centroid);
 		mul_m4_v3(ob_new->obmat, cent);
 		copy_v3_v3(ob_new->loc, cent);
-
-		start = RNA_int_get(op->ptr, "start_frame");
-		end = RNA_int_get(op->ptr, "end_frame");
 
 		if (start < mi->start_frame) {
 			start = mi->start_frame;
@@ -2735,14 +2762,28 @@ static void convert_modifier_to_keyframes(bContext* C, wmOperator *op, FractureM
 			float mat[4][4];
 			float size[3] = {1.0f, 1.0f, 1.0f};
 
-			loc[0] = mi->locs[i*3];
-			loc[1] = mi->locs[i*3+1];
-			loc[2] = mi->locs[i*3+2];
+			//is there a bake, if yes... use that
+			if (is_baked)
+			{
+				BKE_ptcache_id_time(&pid, scene, (float)i, NULL, NULL, NULL);
+				if (BKE_ptcache_read(&pid, (float)i))
+				{
+					BKE_ptcache_validate(cache, i);
+					copy_v3_v3(loc, mi->rigidbody->pos);
+					copy_qt_qt(rot, mi->rigidbody->orn);
+				}
+			}
+			else
+			{
+				loc[0] = mi->locs[i*3];
+				loc[1] = mi->locs[i*3+1];
+				loc[2] = mi->locs[i*3+2];
 
-			rot[0] = mi->rots[i*4];
-			rot[1] = mi->rots[i*4+1];
-			rot[2] = mi->rots[i*4+2];
-			rot[3] = mi->rots[i*4+3];
+				rot[0] = mi->rots[i*4];
+				rot[1] = mi->rots[i*4+1];
+				rot[2] = mi->rots[i*4+2];
+				rot[3] = mi->rots[i*4+3];
+			}
 
 			loc_quat_size_to_mat4(mat, loc, rot, size);
 
@@ -2750,31 +2791,74 @@ static void convert_modifier_to_keyframes(bContext* C, wmOperator *op, FractureM
 
 			copy_m4_m4(ob_new->obmat, mat);
 
-			//copy_v3_v3(cent, mi->centroid);
-			//mul_m4_v3(ob_new->obmat, cent);
 			copy_v3_v3(ob_new->loc, loc);
 			copy_qt_qt(ob_new->quat, rot);
 			quat_to_eul(ob_new->rot, rot);
 
-			/*Location, builtin = -1*/
-			/*Rotation, builtin = -2*/
-			RNA_enum_set(op->ptr, "type", -1);
-			WM_operator_name_call(C, "ANIM_OT_keyframe_insert_menu", WM_OP_EXEC_DEFAULT, op->ptr);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 0, i, 32);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 1, i, 32);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 2, i, 32);
 
-			RNA_enum_set(op->ptr, "type", -2);
-			WM_operator_name_call(C, "ANIM_OT_keyframe_insert_menu", WM_OP_EXEC_DEFAULT, op->ptr);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 0, i, 32);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 1, i, 32);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 2, i, 32);
 		}
 
-		/*back to start*/
-		//copy_m4_m4(ob_new->obmat, origmat);
-		//copy_v3_v3(ob_new->loc, origloc);
+		j++;
+		printf("Converted %d from %d objects....\n", j, count);
 	}
+
+	BKE_scene_frame_set(scene, (double)start);
+
+	return true;
+}
+
+static void convert_free(void *customdata)
+{
+	FractureJob *fj = customdata;
+	MEM_freeN(fj);
+}
+
+static void convert_update(void *customdata)
+{
+	FractureJob *fj = customdata;
+	float progress;
+	progress = (float)(BLI_countlist(&fj->gr->gobject)) / (float)(fj->total_progress);
+	(*fj->progress) = progress;
+}
+
+static void convert_startjob(void *customdata, short *stop, short *do_update, float *progress)
+{
+	FractureJob *fj = customdata;
+	FractureModifierData *fmd = fj->fmd;
+	Group* gr = fj->gr;
+	Object* ob = fj->ob;
+	Scene *scene = fj->scene;
+	int start = fj->start;
+	int end = fj->end;
+
+	fj->stop = stop;
+	fj->do_update = do_update;
+	fj->progress = progress;
+	*(fj->stop) = 0; /*false*/
+
+	G.is_break = false;   /* XXX shared with render - replace with job 'stop' switch */
+	*(fj->do_update) = true;
+	*do_update = true;
+	*stop = 0;
+
+	convert_modifier_to_keyframes(fmd, gr, ob, scene, start, end);
 }
 
 static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 {
 	Object *obact = ED_object_active_context(C);
+	Scene *scene = CTX_data_scene(C);
+	float cfra = BKE_scene_frame_get(scene);
+	Group *gr;
 	FractureModifierData *rmd;
+	FractureJob *fj;
+	wmJob* wm_job;
 
 	rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
 	if (rmd && rmd->refresh) {
@@ -2782,8 +2866,66 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 	}
 
 	if (rmd) {
-		convert_modifier_to_keyframes(C, op, rmd);
-		return OPERATOR_FINISHED;
+		int count = BLI_countlist(&rmd->meshIslands);
+		int start = RNA_int_get(op->ptr, "start_frame");
+		int end = RNA_int_get(op->ptr, "end_frame");
+
+		if (count == 0)
+		{
+			BKE_report(op->reports, RPT_WARNING, "No meshislands found, please execute fracture and simulate first");
+			return OPERATOR_CANCELLED;
+		}
+
+		gr = BKE_group_add(G.main, "Converted");
+
+		if (rmd->execute_threaded)
+		{
+			PointerRNA *ptr;
+			/* what a dirty hack.... disable poll function */
+			wmOperatorType *ot = WM_operatortype_find("ANIM_OT_keyframe_insert_menu", 0);
+			ot->poll = NULL;
+
+			ptr = MEM_dupallocN(op->ptr);
+			ptr->type = op->ptr->type;
+			ptr->id = op->ptr->id;
+			ptr->id.data = op->ptr->id.data;
+			ptr->data = op->ptr->data;
+
+			/* job stuff */
+			scene->r.cfra = cfra;
+
+			/* setup job */
+			wm_job = WM_jobs_get(CTX_wm_manager(C), CTX_wm_window(C), scene, "Convert to Keyframed Objects",
+								 WM_JOB_PROGRESS, WM_JOB_TYPE_OBJECT_FRACTURE);
+			fj = MEM_callocN(sizeof(FractureJob), "convert to Keyframes job");
+			fj->fmd = rmd;
+			fj->total_progress = count;
+			fj->gr = gr;
+			fj->ob = obact;
+			fj->scene = scene;
+			fj->start = start;
+			fj->end = end;
+
+			WM_jobs_customdata_set(wm_job, fj, convert_free);
+			WM_jobs_timer(wm_job, 0.1, NC_WM | ND_JOB, NC_OBJECT | ND_MODIFIER);
+			WM_jobs_callbacks(wm_job, convert_startjob, NULL, convert_update, NULL);
+
+			WM_jobs_start(CTX_wm_manager(C), wm_job);
+
+			return OPERATOR_FINISHED;
+		}
+		else
+		{
+			if (convert_modifier_to_keyframes(rmd, gr, obact, scene, start, end))
+			{
+				return OPERATOR_FINISHED;
+			}
+			else
+			{
+				BKE_report(op->reports, RPT_WARNING, "No valid cache data found, please run or bake simulation first");
+				return OPERATOR_CANCELLED;
+			}
+		}
 	}
 
 	return OPERATOR_CANCELLED;

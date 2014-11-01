@@ -1107,6 +1107,10 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 	if (rbo == NULL)
 		return;
 
+	/* at validation, reset frame count as well */
+	mi->start_frame = rbw->pointcache->startframe;
+	mi->frame_count = 0;
+
 	/* make sure collision shape exists */
 	/* FIXME we shouldn't always have to rebuild collision shapes when rebuilding objects, but it's needed for constraints to update correctly */
 	if (rbo->physics_shape == NULL || rebuild)
