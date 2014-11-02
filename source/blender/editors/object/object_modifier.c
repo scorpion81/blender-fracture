@@ -2688,7 +2688,11 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 	MeshIsland *mi = NULL;
 	int j = 0;
 	Object *parent = NULL;
+	Base *bas = NULL;
 	int count = BLI_countlist(&fmd->meshIslands);
+	const char *name = BLI_strdupcat(ob->id.name, "_p_key");
+	float diff[3] = {0.0f, 0.0f, 0.0f};
+	float obloc[3];
 
 	if (scene->rigidbody_world && scene->rigidbody_world)
 	{
@@ -2698,36 +2702,42 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 	if (cache && cache->flag & PTCACHE_BAKED)
 	{
 		start = cache->startframe;
-		end = cache->last_exact;
+		end = cache->simframe;
 		BKE_ptcache_id_from_rigidbody(&pid, NULL, scene->rigidbody_world);
 		is_baked = true;
 	}
 
-	if (cache && (cache->flag & PTCACHE_OUTDATED) && !(cache->flag & PTCACHE_BAKED))
+	if (cache && (cache->flag & PTCACHE_OUTDATED) /* && !(cache->flag & PTCACHE_BAKED)*/)
 	{
 		return false;
 	}
 
-	parent = BKE_object_add(G.main, scene, OB_EMPTY);
+	parent = BKE_object_add_named(G.main, scene, OB_EMPTY, name);
+	BKE_mesh_center_centroid(ob->data, obloc);
+	copy_v3_v3(parent->loc, ob->loc);
+	sub_v3_v3v3(diff, obloc, parent->loc);
+	MEM_freeN((void*)name);
 
 	for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 	{
 		int i = 0;
 		Object* ob_new;
 		Mesh* me;
-		Base *bas;
 		float cent[3];
-		float origmat[4][4];
-		float origloc[3];
+
+		const char *name = BLI_strdupcat(ob->id.name, "_key");
 
 		if (fmd->frac_mesh->cancel == 1)
 		{
 			fmd->frac_mesh->cancel = 0;
+			fmd->frac_mesh->running = 0;
 			return true;
 		}
 
-		ob_new = BKE_object_add(G.main, scene, OB_MESH);
-		ob_new->parent = parent;
+		ob_new = BKE_object_add_named(G.main, scene, OB_MESH, name);
+		MEM_freeN((void*)name);
+
+		ED_object_parent_set(NULL, G.main, scene, ob_new, parent, PAR_OBJECT, false, false, NULL);
 
 		assign_matarar(ob_new, give_matarar(ob), *give_totcolp(ob));
 
@@ -2735,17 +2745,22 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 		BKE_group_object_add(gr, ob_new, scene, bas);
 
 		scene->basact = bas;
-		ED_base_object_select(bas, BA_SELECT);
+		//ED_base_object_select(bas, BA_SELECT);
 
 		me = (Mesh*)ob_new->data;
 		me->edit_btmesh = NULL;
 
 		DM_to_mesh(mi->physics_mesh, me, ob_new, CD_MASK_MESH);
 
+		ED_rigidbody_object_add(scene, ob_new, RBO_TYPE_ACTIVE, NULL);
+		ob_new->rigidbody_object->flag |= RBO_FLAG_KINEMATIC;
+
 		/*set origin to centroid*/
 		copy_v3_v3(cent, mi->centroid);
 		mul_m4_v3(ob_new->obmat, cent);
 		copy_v3_v3(ob_new->loc, cent);
+
+
 
 		if (start < mi->start_frame) {
 			start = mi->start_frame;
@@ -2755,13 +2770,11 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 			end = mi->start_frame + mi->frame_count;
 		}
 
-		copy_m4_m4(origmat, ob_new->obmat);
-		copy_v3_v3(origloc, ob_new->loc);
 		for (i = start+1; i < end-1; i++)
 		{
 			/*move object (loc, rot)*/
 
-			float loc[3], rot[4];
+			float loc[3] = {0.0f, 0.0f, 0.0f}, rot[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 			float mat[4][4];
 			float size[3] = {1.0f, 1.0f, 1.0f};
 
@@ -2787,6 +2800,9 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 				rot[2] = mi->rots[i*4+2];
 				rot[3] = mi->rots[i*4+3];
 			}
+
+			sub_v3_v3(loc, obloc);
+			add_v3_v3(loc, diff);
 
 			loc_quat_size_to_mat4(mat, loc, rot, size);
 
@@ -2855,8 +2871,10 @@ static void convert_startjob(void *customdata, short *stop, short *do_update, fl
 	*do_update = true;
 	*stop = 0;
 
-	if (fmd->frac_mesh)
+	if (fmd->frac_mesh) {
 		fmd->frac_mesh->cancel = 0;
+		fmd->frac_mesh->running = 1;
+	}
 
 	convert_modifier_to_keyframes(fmd, gr, ob, scene, start, end);
 }
@@ -2929,6 +2947,9 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 		{
 			if (convert_modifier_to_keyframes(rmd, gr, obact, scene, start, end))
 			{
+				DAG_relations_tag_update(G.main);
+				WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
+				WM_event_add_notifier(C, NC_OBJECT | ND_PARENT, NULL);
 				return OPERATOR_FINISHED;
 			}
 			else
@@ -2944,23 +2965,16 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 
 void OBJECT_OT_rigidbody_convert_to_keyframes(wmOperatorType *ot)
 {
-	PropertyRNA *prop;
 
 	ot->name = "Convert To Keyframed Objects";
 	ot->description = "Convert the Rigid Body modifier shards to keyframed real objects";
 	ot->idname = "OBJECT_OT_rigidbody_convert_to_keyframes";
 
 	ot->poll = fracture_poll;
-	//ot->invoke = rigidbody_convert_invoke;
 	ot->exec = rigidbody_convert_keyframes_exec;
 
 	RNA_def_int(ot->srna, "start_frame", 1,  0, 100000, "Start Frame", "", 0, 100000);
 	RNA_def_int(ot->srna, "end_frame", 250, 0, 100000, "End Frame", "", 0, 100000);
-
-	//inlined from insert_keyframe op
-	prop = RNA_def_enum(ot->srna, "type", DummyRNA_DEFAULT_items, 0, "Keying Set", "The Keying Set to use");
-	//RNA_def_enum_funcs(prop, ANIM_keying_sets_enum_itemf);
-	RNA_def_property_flag(prop, PROP_HIDDEN);
 
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;

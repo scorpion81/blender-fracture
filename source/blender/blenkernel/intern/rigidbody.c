@@ -2688,7 +2688,6 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 				}
 
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
-					int frame;
 
 					rbo = mi->rigidbody;
 					if (!rbo) {
