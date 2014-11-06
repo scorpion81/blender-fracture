@@ -1600,6 +1600,26 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 	rbc->flag &= ~RBC_FLAG_USE_KINEMATIC_DEACTIVATION;
 }
 
+static bool colgroup_check(int group1, int group2)
+{
+	int i = 0;
+	for (i = 0; i < 20; i++)
+	{
+		int v1, v2;
+		v1 = (group1 & (1 << i));
+		v2 = (group2 & (1 << i));
+
+		//printf("%d, %d, %d\n", i, v1, v2);
+
+		if ((v1 > 0) && (v1 == v2))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
 //this allows partial object activation, only some shards will be activated, called from bullet(!)
 static int filterCallback(void* world, void* island1, void* island2) {
 	MeshIsland* mi1, *mi2;
@@ -1624,13 +1644,14 @@ static int filterCallback(void* world, void* island1, void* island2) {
 	ob_index1 = rbw->cache_offset_map[mi1->linear_index];
 	ob_index2 = rbw->cache_offset_map[mi2->linear_index];
 
-	if (ob_index1 != ob_index2 && (mi1->rigidbody->col_groups == mi2->rigidbody->col_groups) &&
+	ob1 = rbw->objects[ob_index1];
+	ob2 = rbw->objects[ob_index2];
+
+	if (ob_index1 != ob_index2 && colgroup_check(ob1->rigidbody_object->col_groups, ob2->rigidbody_object->col_groups) &&
 	   ((mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) ||
 	   (mi2->rigidbody->flag & RBO_FLAG_KINEMATIC)))
 	{
 		MeshIsland *mi;
-		ob1 = rbw->objects[ob_index1];
-		ob2 = rbw->objects[ob_index2];
 
 		if (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
@@ -1648,7 +1669,7 @@ static int filterCallback(void* world, void* island1, void* island2) {
 				for (mi = fmd1->meshIslands.first; mi; mi = mi->next)
 				{
 					RigidBodyOb* rbo = mi->rigidbody;
-					if (mi->rigidbody->flag & RBO_FLAG_KINEMATIC)
+					if ((mi->rigidbody->flag & RBO_FLAG_KINEMATIC) && ((mi1 == mi)))
 					{
 						rbo->flag &= ~RBO_FLAG_KINEMATIC;
 						rbo->flag |= RBO_FLAG_KINEMATIC_REBUILD;
@@ -1693,7 +1714,7 @@ static int filterCallback(void* world, void* island1, void* island2) {
 				{
 					RigidBodyOb* rbo = mi->rigidbody;
 
-					if (mi->rigidbody->flag & RBO_FLAG_KINEMATIC)
+					if ((mi->rigidbody->flag & RBO_FLAG_KINEMATIC) && ((mi2 == mi)))
 					{
 						rbo->flag &= ~RBO_FLAG_KINEMATIC;
 						rbo->flag |= RBO_FLAG_KINEMATIC_REBUILD;
@@ -1722,7 +1743,7 @@ static int filterCallback(void* world, void* island1, void* island2) {
 		}
 	}
 
-	return mi1->rigidbody->col_groups == mi2->rigidbody->col_groups;
+	return colgroup_check(ob1->rigidbody_object->col_groups, ob2->rigidbody_object->col_groups);
 }
 
 #if 0
