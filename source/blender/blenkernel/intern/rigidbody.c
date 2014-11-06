@@ -1455,10 +1455,13 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 	if (rbc->physics_constraint) {
 		if (rebuild == false)
 		{
-			RB_dworld_remove_constraint(rbw->physics_world, rbc->physics_constraint);
+			if (!(rbc->flag & RBC_FLAG_USE_KINEMATIC_DEACTIVATION))
+			{
+				RB_dworld_remove_constraint(rbw->physics_world, rbc->physics_constraint);
+			}
 		}
 	}
-	if (rbc->physics_constraint == NULL || rebuild) {
+	if (rbc->physics_constraint == NULL || rebuild || rbc->flag & RBC_FLAG_USE_KINEMATIC_DEACTIVATION) {
 
 		/* remove constraint if it already exists before creating a new one */
 		if (rbc->physics_constraint) {
@@ -1590,9 +1593,11 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 			RB_constraint_set_solver_iterations(rbc->physics_constraint, -1);
 	}
 
-	if (rbw && rbw->physics_world && rbc->physics_constraint) {
+	if ((rbw && rbw->physics_world && rbc->physics_constraint)) {
 		RB_dworld_add_constraint(rbw->physics_world, rbc->physics_constraint, rbc->flag & RBC_FLAG_DISABLE_COLLISIONS);
 	}
+
+	rbc->flag &= ~RBC_FLAG_USE_KINEMATIC_DEACTIVATION;
 }
 
 //this allows partial object activation, only some shards will be activated, called from bullet(!)
@@ -1643,9 +1648,10 @@ static int filterCallback(void* world, void* island1, void* island2) {
 			for (con = fmd1->meshConstraints.first; con; con = con->next)
 			{
 				RB_dworld_remove_constraint(rbw->physics_world, con->physics_constraint);
-				RB_constraint_delete(con->physics_constraint);
-				con->physics_constraint = NULL;
+				/*RB_constraint_delete(con->physics_constraint);
+				con->physics_constraint = NULL;*/
 				con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+				con->flag |= RBC_FLAG_USE_KINEMATIC_DEACTIVATION;
 			}
 		}
 
@@ -1670,9 +1676,10 @@ static int filterCallback(void* world, void* island1, void* island2) {
 			for (con = fmd2->meshConstraints.first; con; con = con->next)
 			{
 				RB_dworld_remove_constraint(rbw->physics_world, con->physics_constraint);
-				RB_constraint_delete(con->physics_constraint);
-				con->physics_constraint = NULL;
+				/*RB_constraint_delete(con->physics_constraint);
+				con->physics_constraint = NULL;*/
 				con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+				con->flag |= RBC_FLAG_USE_KINEMATIC_DEACTIVATION;
 			}
 		}
 	}
@@ -3020,21 +3027,13 @@ static void restoreKinematic(RigidBodyWorld *rbw)
 			if (fmd)
 			{
 				MeshIsland* mi;
+				RigidBodyShardCon* con;
 				for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 				{
-					RigidBodyShardCon* con;
-					int i = 0;
-
 					if (mi->rigidbody)
 					{
 						mi->rigidbody->flag |= RBO_FLAG_KINEMATIC;
 						mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
-					}
-
-					for (i = 0; i < mi->participating_constraint_count; i++)
-					{
-						con = mi->participating_constraints[i];
-						con->flag |= RBC_FLAG_NEEDS_VALIDATE;
 					}
 				}
 			}
@@ -3099,7 +3098,6 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	if (ctime <= startframe) {
 		/* rebuild constraints */
 		rbw->rebuild_comp_con = true;
-		restoreKinematic(rbw);
 
 		rbw->ltime = startframe;
 		if ((rbw->object_changed))
@@ -3127,6 +3125,10 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 		BKE_ptcache_validate(cache, (int)ctime);
 		rbw->ltime = ctime;
 		return;
+	}
+	else if (rbw->ltime == startframe)
+	{
+		restoreKinematic(rbw);
 	}
 
 	/* advance simulation, we can only step one frame forward */

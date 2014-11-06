@@ -364,7 +364,9 @@ typedef enum eRigidBodyCon_Flag {
 	RBC_FLAG_USE_SPRING_Z				= (1 << 13),
 	/* motors */
 	RBC_FLAG_USE_MOTOR_LIN				= (1 << 14),
-	RBC_FLAG_USE_MOTOR_ANG				= (1 << 15)
+	RBC_FLAG_USE_MOTOR_ANG				= (1 << 15),
+	/* prevent multiple removal and crash with kinematic deactivation */
+	RBC_FLAG_USE_KINEMATIC_DEACTIVATION = (1 << 16),
 } eRigidBodyCon_Flag;
 
 /* ******************************** */

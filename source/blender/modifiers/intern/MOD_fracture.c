@@ -100,7 +100,7 @@ static void initData(ModifierData *md)
 	fmd->contact_dist = 1.0f;
 	fmd->use_mass_dependent_thresholds = false;
 	fmd->explo_shared = false;
-	fmd->constraint_limit = 0;
+	fmd->constraint_limit = 50;
 	fmd->breaking_distance = 0;
 	fmd->breaking_angle = 0;
 	fmd->breaking_percentage = 0;     /* disable by default*/
