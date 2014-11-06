@@ -172,6 +172,7 @@ void* rbContactCallback::bworld = NULL;
 
 bool rbContactCallback::handle_contacts(btManifoldPoint& point, btCollisionObject* body0, btCollisionObject* body1)
 {
+	bool ret = false;
 	if (rbContactCallback::callback)
 	{
 		rbContactPoint *cp = new rbContactPoint;
@@ -193,6 +194,7 @@ bool rbContactCallback::handle_contacts(btManifoldPoint& point, btCollisionObjec
 
 		delete cp;
 	}
+	return ret;
 }
 
 /* ********************************** */

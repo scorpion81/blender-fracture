@@ -1454,7 +1454,9 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 
 	if (rbc->physics_constraint) {
 		if (rebuild == false)
+		{
 			RB_dworld_remove_constraint(rbw->physics_world, rbc->physics_constraint);
+		}
 	}
 	if (rbc->physics_constraint == NULL || rebuild) {
 
@@ -1625,6 +1627,7 @@ static int filterCallback(void* world, void* island1, void* island2) {
 		ob1 = rbw->objects[ob_index1];
 		if (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
+			RigidBodyShardCon *con;
 			fmd1 = (FractureModifierData*)modifiers_findByType(ob1, eModifierType_Fracture);
 			for (mi = fmd1->meshIslands.first; mi; mi = mi->next)
 			{
@@ -1636,11 +1639,20 @@ static int filterCallback(void* world, void* island1, void* island2) {
 					rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 				}
 			}
+
+			for (con = fmd1->meshConstraints.first; con; con = con->next)
+			{
+				RB_dworld_remove_constraint(rbw->physics_world, con->physics_constraint);
+				RB_constraint_delete(con->physics_constraint);
+				con->physics_constraint = NULL;
+				con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+			}
 		}
 
 		ob2 = rbw->objects[ob_index2];
 		if (ob2->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
+			RigidBodyShardCon *con;
 			fmd2 = (FractureModifierData*)modifiers_findByType(ob2, eModifierType_Fracture);
 
 			for (mi = fmd2->meshIslands.first; mi; mi = mi->next)
@@ -1654,12 +1666,21 @@ static int filterCallback(void* world, void* island1, void* island2) {
 					rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 				}
 			}
+
+			for (con = fmd2->meshConstraints.first; con; con = con->next)
+			{
+				RB_dworld_remove_constraint(rbw->physics_world, con->physics_constraint);
+				RB_constraint_delete(con->physics_constraint);
+				con->physics_constraint = NULL;
+				con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+			}
 		}
 	}
 
 	return mi1->rigidbody->col_groups == mi2->rigidbody->col_groups;
 }
 
+#if 0
 static void contactCallback(rbContactPoint* cp, void* world)
 {
 	MeshIsland* mi1, *mi2;
@@ -1739,6 +1760,7 @@ static void contactCallback(rbContactPoint* cp, void* world)
 		}
 	}
 }
+#endif
 
 /* --------------------- */
 
@@ -2640,7 +2662,8 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 						}
 					}
 
-					if (rebuild) {
+					if (rebuild || rbsc->mi1->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD ||
+					    rbsc->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD) {
 						/* World has been rebuilt so rebuild constraint */
 						BKE_rigidbody_validate_sim_shard_constraint(rbw, rbsc, true);
 						BKE_rigidbody_start_dist_angle(rbsc);
@@ -2985,12 +3008,9 @@ void BKE_rigidbody_aftertrans_update(Object *ob, float loc[3], float rot[3], flo
 	// RB_TODO update rigid body physics object's loc/rot for dynamic objects here as well (needs to be done outside bullet's update loop)
 }
 
-void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw)
+static void restoreKinematic(RigidBodyWorld *rbw)
 {
 	GroupObject *go;
-
-	if (rbw)
-		rbw->pointcache->flag |= PTCACHE_OUTDATED;
 
 	/*restore kinematic state of shards if object is kinematic*/
 	for (go = rbw->group->gobject.first; go; go = go->next)	{
@@ -3002,10 +3022,19 @@ void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw)
 				MeshIsland* mi;
 				for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 				{
+					RigidBodyShardCon* con;
+					int i = 0;
+
 					if (mi->rigidbody)
 					{
 						mi->rigidbody->flag |= RBO_FLAG_KINEMATIC;
 						mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+					}
+
+					for (i = 0; i < mi->participating_constraint_count; i++)
+					{
+						con = mi->participating_constraints[i];
+						con->flag |= RBC_FLAG_NEEDS_VALIDATE;
 					}
 				}
 			}
@@ -3013,6 +3042,13 @@ void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw)
 	}
 }
 
+void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw)
+{
+	if (rbw)
+		rbw->pointcache->flag |= PTCACHE_OUTDATED;
+
+	restoreKinematic(rbw);
+}
 
 /* ------------------ */
 
@@ -3063,6 +3099,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	if (ctime <= startframe) {
 		/* rebuild constraints */
 		rbw->rebuild_comp_con = true;
+		restoreKinematic(rbw);
 
 		rbw->ltime = startframe;
 		if ((rbw->object_changed))
