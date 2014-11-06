@@ -1461,7 +1461,7 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 			}
 		}
 	}
-	if (rbc->physics_constraint == NULL || rebuild || rbc->flag & RBC_FLAG_USE_KINEMATIC_DEACTIVATION) {
+	if (rbc->physics_constraint == NULL || rebuild || (rbc->flag & RBC_FLAG_USE_KINEMATIC_DEACTIVATION)) {
 
 		/* remove constraint if it already exists before creating a new one */
 		if (rbc->physics_constraint) {
@@ -1630,56 +1630,94 @@ static int filterCallback(void* world, void* island1, void* island2) {
 	{
 		MeshIsland *mi;
 		ob1 = rbw->objects[ob_index1];
+		ob2 = rbw->objects[ob_index2];
+
 		if (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
+			bool valid = true, valid2 = true;
 			RigidBodyShardCon *con;
 			fmd1 = (FractureModifierData*)modifiers_findByType(ob1, eModifierType_Fracture);
-			for (mi = fmd1->meshIslands.first; mi; mi = mi->next)
+			valid = valid && (fmd1 != NULL);
+			valid = valid && (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
+			valid = valid && (ob2->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
+
+			valid2 = valid2 && (fmd1->use_constraints == false);
+
+			if (valid || valid2)
 			{
-				RigidBodyOb* rbo = mi->rigidbody;
-				if (mi->rigidbody->flag & RBO_FLAG_KINEMATIC)
+				for (mi = fmd1->meshIslands.first; mi; mi = mi->next)
+				{
+					RigidBodyOb* rbo = mi->rigidbody;
+					if (mi->rigidbody->flag & RBO_FLAG_KINEMATIC)
+					{
+						rbo->flag &= ~RBO_FLAG_KINEMATIC;
+						rbo->flag |= RBO_FLAG_KINEMATIC_REBUILD;
+						rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+					}
+				}
+
+				for (con = fmd1->meshConstraints.first; con; con = con->next)
+				{
+					RB_dworld_remove_constraint(rbw->physics_world, con->physics_constraint);
+					con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+					con->flag |= RBC_FLAG_USE_KINEMATIC_DEACTIVATION;
+				}
+			}
+			else if (!fmd1)
+			{
+				RigidBodyOb* rbo = ob1->rigidbody_object;
+
+				if (rbo)
 				{
 					rbo->flag &= ~RBO_FLAG_KINEMATIC;
 					rbo->flag |= RBO_FLAG_KINEMATIC_REBUILD;
 					rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 				}
-			}
-
-			for (con = fmd1->meshConstraints.first; con; con = con->next)
-			{
-				RB_dworld_remove_constraint(rbw->physics_world, con->physics_constraint);
-				/*RB_constraint_delete(con->physics_constraint);
-				con->physics_constraint = NULL;*/
-				con->flag |= RBC_FLAG_NEEDS_VALIDATE;
-				con->flag |= RBC_FLAG_USE_KINEMATIC_DEACTIVATION;
 			}
 		}
 
-		ob2 = rbw->objects[ob_index2];
 		if (ob2->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
+			bool valid = true, valid2 = true;
 			RigidBodyShardCon *con;
 			fmd2 = (FractureModifierData*)modifiers_findByType(ob2, eModifierType_Fracture);
+			valid = valid && (fmd2 != NULL);
+			valid = valid && (ob2->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
+			valid = valid && (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
 
-			for (mi = fmd2->meshIslands.first; mi; mi = mi->next)
+			valid2 = valid2 && (fmd2->use_constraints == false);
+
+			if (valid || valid2)
 			{
-				RigidBodyOb* rbo = mi->rigidbody;
+				for (mi = fmd2->meshIslands.first; mi; mi = mi->next)
+				{
+					RigidBodyOb* rbo = mi->rigidbody;
 
-				if (mi->rigidbody->flag & RBO_FLAG_KINEMATIC)
+					if (mi->rigidbody->flag & RBO_FLAG_KINEMATIC)
+					{
+						rbo->flag &= ~RBO_FLAG_KINEMATIC;
+						rbo->flag |= RBO_FLAG_KINEMATIC_REBUILD;
+						rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+					}
+				}
+
+				for (con = fmd2->meshConstraints.first; con; con = con->next)
+				{
+					RB_dworld_remove_constraint(rbw->physics_world, con->physics_constraint);
+					con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+					con->flag |= RBC_FLAG_USE_KINEMATIC_DEACTIVATION;
+				}
+			}
+			else if (!fmd2)
+			{
+				RigidBodyOb* rbo = ob2->rigidbody_object;
+
+				if (rbo)
 				{
 					rbo->flag &= ~RBO_FLAG_KINEMATIC;
 					rbo->flag |= RBO_FLAG_KINEMATIC_REBUILD;
 					rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 				}
-			}
-
-			for (con = fmd2->meshConstraints.first; con; con = con->next)
-			{
-				RB_dworld_remove_constraint(rbw->physics_world, con->physics_constraint);
-				/*RB_constraint_delete(con->physics_constraint);
-				con->physics_constraint = NULL;*/
-				con->flag |= RBC_FLAG_NEEDS_VALIDATE;
-				con->flag |= RBC_FLAG_USE_KINEMATIC_DEACTIVATION;
 			}
 		}
 	}
@@ -3027,7 +3065,6 @@ static void restoreKinematic(RigidBodyWorld *rbw)
 			if (fmd)
 			{
 				MeshIsland* mi;
-				RigidBodyShardCon* con;
 				for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 				{
 					if (mi->rigidbody)
