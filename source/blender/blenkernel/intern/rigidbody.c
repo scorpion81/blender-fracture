@@ -1617,48 +1617,127 @@ static int filterCallback(void* world, void* island1, void* island2) {
 	ob_index1 = rbw->cache_offset_map[mi1->linear_index];
 	ob_index2 = rbw->cache_offset_map[mi2->linear_index];
 
-	if (ob_index1 != ob_index2 &&
+	if (ob_index1 != ob_index2 && (mi1->rigidbody->col_groups == mi2->rigidbody->col_groups) &&
 	   ((mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) ||
 	   (mi2->rigidbody->flag & RBO_FLAG_KINEMATIC)))
 	{
-		float linvel[3], angvel[3];
 		MeshIsland *mi;
 		ob1 = rbw->objects[ob_index1];
-		fmd1 = (FractureModifierData*)modifiers_findByType(ob1, eModifierType_Fracture);
-		RB_body_get_linear_velocity(mi1->rigidbody->physics_object, linvel);
-		RB_body_get_angular_velocity(mi1->rigidbody->physics_object, angvel);
-		for (mi = fmd1->meshIslands.first; mi; mi = mi->next)
+		if (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
-			RigidBodyOb* rbo = mi->rigidbody;
-			if (mi->rigidbody->flag & RBO_FLAG_KINEMATIC)
+			fmd1 = (FractureModifierData*)modifiers_findByType(ob1, eModifierType_Fracture);
+			for (mi = fmd1->meshIslands.first; mi; mi = mi->next)
 			{
-				rbo->flag &= ~RBO_FLAG_KINEMATIC;
-				rbo->flag |= RBO_FLAG_KINEMATIC_REBUILD;
-				RB_body_set_linear_velocity(rbo->physics_object, linvel);
-				RB_body_set_angular_velocity(rbo->physics_object, angvel);
+				RigidBodyOb* rbo = mi->rigidbody;
+				if (mi->rigidbody->flag & RBO_FLAG_KINEMATIC)
+				{
+					rbo->flag &= ~RBO_FLAG_KINEMATIC;
+					rbo->flag |= RBO_FLAG_KINEMATIC_REBUILD;
+					rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+				}
 			}
 		}
 
 		ob2 = rbw->objects[ob_index2];
-		fmd2 = (FractureModifierData*)modifiers_findByType(ob2, eModifierType_Fracture);
-		RB_body_get_linear_velocity(mi2->rigidbody->physics_object, linvel);
-		RB_body_get_angular_velocity(mi2->rigidbody->physics_object, angvel);
-
-		for (mi = fmd2->meshIslands.first; mi; mi = mi->next)
+		if (ob2->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
-			RigidBodyOb* rbo = mi->rigidbody;
+			fmd2 = (FractureModifierData*)modifiers_findByType(ob2, eModifierType_Fracture);
 
-			if (mi->rigidbody->flag & RBO_FLAG_KINEMATIC)
+			for (mi = fmd2->meshIslands.first; mi; mi = mi->next)
 			{
-				rbo->flag &= ~RBO_FLAG_KINEMATIC;
-				rbo->flag |= RBO_FLAG_KINEMATIC_REBUILD;
-				RB_body_set_linear_velocity(rbo->physics_object, linvel);
-				RB_body_set_angular_velocity(rbo->physics_object, angvel);
+				RigidBodyOb* rbo = mi->rigidbody;
+
+				if (mi->rigidbody->flag & RBO_FLAG_KINEMATIC)
+				{
+					rbo->flag &= ~RBO_FLAG_KINEMATIC;
+					rbo->flag |= RBO_FLAG_KINEMATIC_REBUILD;
+					rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+				}
 			}
 		}
 	}
 
-	return 1;
+	return mi1->rigidbody->col_groups == mi2->rigidbody->col_groups;
+}
+
+static void contactCallback(rbContactPoint* cp, void* world)
+{
+	MeshIsland* mi1, *mi2;
+	RigidBodyWorld *rbw = (RigidBodyWorld*)world;
+	Object* ob1, *ob2;
+	int ob_index1, ob_index2;
+	FractureModifierData *fmd1, *fmd2;
+	float force = cp->contact_force;
+
+	mi1 = (MeshIsland*)cp->contact_bodyA;
+	mi2 = (MeshIsland*)cp->contact_bodyB;
+
+	if (rbw == NULL)
+	{
+		return;
+	}
+
+	if ((mi1 == NULL) || (mi2 == NULL)) {
+		return;
+	}
+
+	//cache offset map is a dull name for that...
+	ob_index1 = rbw->cache_offset_map[mi1->linear_index];
+	ob_index2 = rbw->cache_offset_map[mi2->linear_index];
+
+	if (ob_index1 != ob_index2) // &&
+	   //((mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) ||
+	   //(mi2->rigidbody->flag & RBO_FLAG_KINEMATIC)))
+	{
+		float linvel[3], angvel[3];
+		MeshIsland *mi;
+		ob1 = rbw->objects[ob_index1];
+		if (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
+		{
+			fmd1 = (FractureModifierData*)modifiers_findByType(ob1, eModifierType_Fracture);
+			RB_body_get_linear_velocity(mi1->rigidbody->physics_object, linvel);
+			RB_body_get_angular_velocity(mi1->rigidbody->physics_object, angvel);
+
+			mul_v3_fl(linvel, force);
+			mul_v3_fl(angvel, force);
+
+			for (mi = fmd1->meshIslands.first; mi; mi = mi->next)
+			{
+				RigidBodyOb* rbo = mi->rigidbody;
+				//if (mi->rigidbody->flag & RBO_FLAG_KINEMATIC)
+				{
+					//rbo->flag &= ~RBO_FLAG_KINEMATIC;
+					//rbo->flag |= RBO_FLAG_KINEMATIC_REBUILD;
+					RB_body_set_linear_velocity(rbo->physics_object, linvel);
+					RB_body_set_angular_velocity(rbo->physics_object, angvel);
+				}
+			}
+		}
+
+		ob2 = rbw->objects[ob_index2];
+		if (ob2->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
+		{
+			fmd2 = (FractureModifierData*)modifiers_findByType(ob2, eModifierType_Fracture);
+			RB_body_get_linear_velocity(mi2->rigidbody->physics_object, linvel);
+			RB_body_get_angular_velocity(mi2->rigidbody->physics_object, angvel);
+
+			mul_v3_fl(linvel, force);
+			mul_v3_fl(angvel, force);
+
+			for (mi = fmd2->meshIslands.first; mi; mi = mi->next)
+			{
+				RigidBodyOb* rbo = mi->rigidbody;
+
+				//if (mi->rigidbody->flag & RBO_FLAG_KINEMATIC)
+				{
+					//rbo->flag &= ~RBO_FLAG_KINEMATIC;
+					//rbo->flag |= RBO_FLAG_KINEMATIC_REBUILD;
+					RB_body_set_linear_velocity(rbo->physics_object, linvel);
+					RB_body_set_angular_velocity(rbo->physics_object, angvel);
+				}
+			}
+		}
+	}
 }
 
 /* --------------------- */
@@ -1675,7 +1754,7 @@ void BKE_rigidbody_validate_sim_world(Scene *scene, RigidBodyWorld *rbw, bool re
 	if (rebuild || rbw->physics_world == NULL) {
 		if (rbw->physics_world)
 			RB_dworld_delete(rbw->physics_world);
-		rbw->physics_world = RB_dworld_new(scene->physics_settings.gravity, rbw, filterCallback);
+		rbw->physics_world = RB_dworld_new(scene->physics_settings.gravity, rbw, filterCallback, NULL);
 	}
 
 	RB_dworld_set_solver_iterations(rbw->physics_world, rbw->num_solver_iterations);
@@ -2397,7 +2476,7 @@ static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int r
 	if (mi == NULL || mi->rigidbody == NULL) {
 		return;
 	}
-	
+
 	if (rebuild || (mi->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD)) {
 		/* World has been rebuilt so rebuild object */
 		BKE_rigidbody_validate_sim_shard(rbw, mi, ob, true);

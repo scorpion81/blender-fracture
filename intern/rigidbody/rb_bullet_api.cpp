@@ -81,6 +81,7 @@ struct rbDynamicsWorld {
 	btConstraintSolver *constraintSolver;
 	btOverlapFilterCallback *filterCallback;
 	void *blenderWorld;
+	struct rbContactCallback *contactCallback;
 };
 struct rbRigidBody {
 	btRigidBody *body;
@@ -149,13 +150,59 @@ static inline void copy_quat_btquat(float quat[4], const btQuaternion &btquat)
 	quat[3] = btquat.getZ();
 }
 
+/*Contact Handling*/
+typedef void (*cont_callback)(rbContactPoint *cp, void* bworld);
+
+struct rbContactCallback
+{
+	static cont_callback callback;
+	static void* bworld;
+	rbContactCallback(cont_callback cp, void* bworld);
+	static bool handle_contacts(btManifoldPoint& point, btCollisionObject* body0, btCollisionObject* body1);
+};
+
+rbContactCallback::rbContactCallback(cont_callback callback, void *bworld){
+	rbContactCallback::callback = callback;
+	rbContactCallback::bworld = bworld;
+	gContactProcessedCallback = (ContactProcessedCallback)&rbContactCallback::handle_contacts;
+}
+
+cont_callback rbContactCallback::callback = 0;
+void* rbContactCallback::bworld = NULL;
+
+bool rbContactCallback::handle_contacts(btManifoldPoint& point, btCollisionObject* body0, btCollisionObject* body1)
+{
+	if (rbContactCallback::callback)
+	{
+		rbContactPoint *cp = new rbContactPoint;
+		btRigidBody* bodyA = (btRigidBody*)(body0);
+		btRigidBody* bodyB = (btRigidBody*)(body1);
+		rbRigidBody* rbA = (rbRigidBody*)(bodyA->getUserPointer());
+		rbRigidBody* rbB = (rbRigidBody*)(bodyB->getUserPointer());
+		if (rbA)
+			cp->contact_bodyA = rbA->meshIsland;
+
+		if (rbB)
+			cp->contact_bodyB = rbB->meshIsland;
+
+		cp->contact_force = point.getAppliedImpulse();
+		copy_v3_btvec3(cp->contact_pos_world_onA, point.getPositionWorldOnA());
+		copy_v3_btvec3(cp->contact_pos_world_onB, point.getPositionWorldOnB());
+
+		rbContactCallback::callback(cp, rbContactCallback::bworld);
+
+		delete cp;
+	}
+}
+
 /* ********************************** */
 /* Dynamics World Methods */
 
 /* Setup ---------------------------- */
 
 //yuck, but need a handle for the world somewhere for collision callback...
-rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, int (*callback)(void *, void *, void *))
+rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, int (*callback)(void *, void *, void *),
+							   void (*contactCallback)(rbContactPoint * cp, void *bworld))
 {
 	rbDynamicsWorld *world = new rbDynamicsWorld;
 	
@@ -181,6 +228,12 @@ rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, int (
 	world->blenderWorld = blenderWorld;
 
 	RB_dworld_set_gravity(world, gravity);
+
+	/*contact callback */
+	if (contactCallback)
+	{
+		world->contactCallback = new rbContactCallback(contactCallback, world->blenderWorld);
+	}
 	
 	return world;
 }

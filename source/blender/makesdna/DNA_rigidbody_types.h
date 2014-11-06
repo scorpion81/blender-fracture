@@ -161,7 +161,9 @@ typedef enum eRigidBodyOb_Flag {
 	/* collision shape deforms during simulation (only for passive triangle mesh shapes) */
 	RBO_FLAG_USE_DEFORM			= (1 << 7),
 	/* rebuild object after collision, (change kinematic state) */
-	RBO_FLAG_KINEMATIC_REBUILD	= (1 << 8)
+	RBO_FLAG_KINEMATIC_REBUILD	= (1 << 8),
+	/* enable / disable kinematic state change after collision */
+	RBO_FLAG_USE_KINEMATIC_DEACTIVATION = (1 << 9),
 } eRigidBodyOb_Flag;
 
 /* RigidBody Collision Shape */

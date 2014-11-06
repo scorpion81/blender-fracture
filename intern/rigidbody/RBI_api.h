@@ -66,6 +66,17 @@ typedef struct rbMeshData rbMeshData;
 /* Constraint */
 typedef struct rbConstraint rbConstraint;
 
+/* Collision feedback (manifolds and contact points */
+typedef struct rbContactPoint {
+	float contact_force;
+	void *contact_bodyA;
+	void *contact_bodyB;
+	float contact_pos_world_onA[3];
+	float contact_pos_world_onB[3];
+} rbContactPoint;
+
+typedef struct rbContactCallback rbContactCallback;
+
 /* ********************************** */
 /* Dynamics World Methods */
 
@@ -73,7 +84,8 @@ typedef struct rbConstraint rbConstraint;
 
 /* Create a new dynamics world instance */
 // TODO: add args to set the type of constraint solvers, etc.
-rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, int (*callback)(void *, void *, void *));
+rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, int (*callback)(void *, void *, void *),
+							     void (*contactCallback)(rbContactPoint *, void *));
 
 /* Delete the given dynamics world, and free any extra data it may require */
 void RB_dworld_delete(rbDynamicsWorld *world);
