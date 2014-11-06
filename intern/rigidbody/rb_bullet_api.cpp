@@ -80,10 +80,13 @@ struct rbDynamicsWorld {
 	btBroadphaseInterface *pairCache;
 	btConstraintSolver *constraintSolver;
 	btOverlapFilterCallback *filterCallback;
+	void *blenderWorld;
 };
 struct rbRigidBody {
 	btRigidBody *body;
 	int col_groups;
+	void *meshIsland;
+	rbDynamicsWorld *world;
 };
 
 struct rbVert {
@@ -108,6 +111,12 @@ struct rbCollisionShape {
 
 struct rbFilterCallback : public btOverlapFilterCallback
 {
+	int (*callback)(void* world, void* island1, void* island2);
+
+	rbFilterCallback(int (*callback)(void* world, void* island1, void* island2)) {
+		this->callback = callback;
+	}
+
 	virtual bool needBroadphaseCollision(btBroadphaseProxy *proxy0, btBroadphaseProxy *proxy1) const
 	{
 		rbRigidBody *rb0 = (rbRigidBody *)((btRigidBody *)proxy0->m_clientObject)->getUserPointer();
@@ -117,6 +126,10 @@ struct rbFilterCallback : public btOverlapFilterCallback
 		collides = (proxy0->m_collisionFilterGroup & proxy1->m_collisionFilterMask) != 0;
 		collides = collides && (proxy1->m_collisionFilterGroup & proxy0->m_collisionFilterMask);
 		collides = collides && (rb0->col_groups & rb1->col_groups);
+		if (this->callback != NULL) {
+			int result = this->callback(rb0->world->blenderWorld, rb0->meshIsland, rb1->meshIsland);
+			collides = collides && (bool)result;
+		}
 		
 		return collides;
 	}
@@ -141,7 +154,8 @@ static inline void copy_quat_btquat(float quat[4], const btQuaternion &btquat)
 
 /* Setup ---------------------------- */
 
-rbDynamicsWorld *RB_dworld_new(const float gravity[3])
+//yuck, but need a handle for the world somewhere for collision callback...
+rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, int (*callback)(void *, void *, void *))
 {
 	rbDynamicsWorld *world = new rbDynamicsWorld;
 	
@@ -153,7 +167,7 @@ rbDynamicsWorld *RB_dworld_new(const float gravity[3])
 	
 	world->pairCache = new btDbvtBroadphase();
 	
-	world->filterCallback = new rbFilterCallback();
+	world->filterCallback = new rbFilterCallback(callback);
 	world->pairCache->getOverlappingPairCache()->setOverlapFilterCallback(world->filterCallback);
 
 	/* constraint solving */
@@ -164,6 +178,7 @@ rbDynamicsWorld *RB_dworld_new(const float gravity[3])
 	                                                   world->pairCache,
 	                                                   world->constraintSolver,
 	                                                   world->collisionConfiguration);
+	world->blenderWorld = blenderWorld;
 
 	RB_dworld_set_gravity(world, gravity);
 	
@@ -250,10 +265,12 @@ void RB_dworld_export(rbDynamicsWorld *world, const char *filename)
 
 /* Setup ---------------------------- */
 
-void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *object, int col_groups)
+void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *object, int col_groups, void* meshIsland)
 {
 	btRigidBody *body = object->body;
 	object->col_groups = col_groups;
+	object->meshIsland = meshIsland;
+	object->world = world;
 	
 	world->dynamicsWorld->addRigidBody(body);
 }

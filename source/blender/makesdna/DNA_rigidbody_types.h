@@ -159,7 +159,9 @@ typedef enum eRigidBodyOb_Flag {
 	/* collision margin is not embedded (only used by convex hull shapes for now) */
 	RBO_FLAG_USE_MARGIN			= (1 << 6),
 	/* collision shape deforms during simulation (only for passive triangle mesh shapes) */
-	RBO_FLAG_USE_DEFORM			= (1 << 7)
+	RBO_FLAG_USE_DEFORM			= (1 << 7),
+	/* rebuild object after collision, (change kinematic state) */
+	RBO_FLAG_KINEMATIC_REBUILD	= (1 << 8)
 } eRigidBodyOb_Flag;
 
 /* RigidBody Collision Shape */

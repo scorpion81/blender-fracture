@@ -72,6 +72,8 @@
 
 #ifdef WITH_BULLET
 
+static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int rebuild);
+
 static bool isModifierActive(FractureModifierData *rmd) {
 	return ((rmd != NULL) && (rmd->modifier.mode & (eModifierMode_Realtime | eModifierMode_Render)) && (rmd->refresh == false));
 }
@@ -1117,7 +1119,7 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 		BKE_rigidbody_validate_sim_shard_shape(mi, ob, true);
 	
 	if (rbo->physics_object) {
-		if (rebuild == false)
+		if (rebuild == false || mi->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD)
 			RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
 	}
 	if (!rbo->physics_object || rebuild) {
@@ -1156,9 +1158,10 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 	}
 
 	if (rbw && rbw->physics_world && rbo->physics_object)
-		RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups);
+		RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups, mi);
 
 	rbo->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
+	rbo->flag &= ~RBO_FLAG_KINEMATIC_REBUILD;
 }
 
 
@@ -1231,7 +1234,7 @@ static void rigidbody_validate_sim_object(RigidBodyWorld *rbw, Object *ob, bool 
 	}
 
 	if (rbw && rbw->physics_world)
-		RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups);
+		RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups, NULL);
 }
 
 /* --------------------- */
@@ -1590,6 +1593,74 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 	}
 }
 
+//this allows partial object activation, only some shards will be activated, called from bullet(!)
+static int filterCallback(void* world, void* island1, void* island2) {
+	MeshIsland* mi1, *mi2;
+	RigidBodyWorld *rbw = (RigidBodyWorld*)world;
+	Object* ob1, *ob2;
+	int ob_index1, ob_index2;
+	FractureModifierData *fmd1, *fmd2;
+
+	mi1 = (MeshIsland*)island1;
+	mi2 = (MeshIsland*)island2;
+
+	if (rbw == NULL)
+	{
+		return 1;
+	}
+
+	if ((mi1 == NULL) || (mi2 == NULL)) {
+		return 1;
+	}
+
+	//cache offset map is a dull name for that...
+	ob_index1 = rbw->cache_offset_map[mi1->linear_index];
+	ob_index2 = rbw->cache_offset_map[mi2->linear_index];
+
+	if (ob_index1 != ob_index2 &&
+	   ((mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) ||
+	   (mi2->rigidbody->flag & RBO_FLAG_KINEMATIC)))
+	{
+		float linvel[3], angvel[3];
+		MeshIsland *mi;
+		ob1 = rbw->objects[ob_index1];
+		fmd1 = (FractureModifierData*)modifiers_findByType(ob1, eModifierType_Fracture);
+		RB_body_get_linear_velocity(mi1->rigidbody->physics_object, linvel);
+		RB_body_get_angular_velocity(mi1->rigidbody->physics_object, angvel);
+		for (mi = fmd1->meshIslands.first; mi; mi = mi->next)
+		{
+			RigidBodyOb* rbo = mi->rigidbody;
+			if (mi->rigidbody->flag & RBO_FLAG_KINEMATIC)
+			{
+				rbo->flag &= ~RBO_FLAG_KINEMATIC;
+				rbo->flag |= RBO_FLAG_KINEMATIC_REBUILD;
+				RB_body_set_linear_velocity(rbo->physics_object, linvel);
+				RB_body_set_angular_velocity(rbo->physics_object, angvel);
+			}
+		}
+
+		ob2 = rbw->objects[ob_index2];
+		fmd2 = (FractureModifierData*)modifiers_findByType(ob2, eModifierType_Fracture);
+		RB_body_get_linear_velocity(mi2->rigidbody->physics_object, linvel);
+		RB_body_get_angular_velocity(mi2->rigidbody->physics_object, angvel);
+
+		for (mi = fmd2->meshIslands.first; mi; mi = mi->next)
+		{
+			RigidBodyOb* rbo = mi->rigidbody;
+
+			if (mi->rigidbody->flag & RBO_FLAG_KINEMATIC)
+			{
+				rbo->flag &= ~RBO_FLAG_KINEMATIC;
+				rbo->flag |= RBO_FLAG_KINEMATIC_REBUILD;
+				RB_body_set_linear_velocity(rbo->physics_object, linvel);
+				RB_body_set_angular_velocity(rbo->physics_object, angvel);
+			}
+		}
+	}
+
+	return 1;
+}
+
 /* --------------------- */
 
 /* Create physics sim world given RigidBody world settings */
@@ -1604,7 +1675,7 @@ void BKE_rigidbody_validate_sim_world(Scene *scene, RigidBodyWorld *rbw, bool re
 	if (rebuild || rbw->physics_world == NULL) {
 		if (rbw->physics_world)
 			RB_dworld_delete(rbw->physics_world);
-		rbw->physics_world = RB_dworld_new(scene->physics_settings.gravity);
+		rbw->physics_world = RB_dworld_new(scene->physics_settings.gravity, rbw, filterCallback);
 	}
 
 	RB_dworld_set_solver_iterations(rbw->physics_world, rbw->num_solver_iterations);
@@ -2327,7 +2398,7 @@ static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int r
 		return;
 	}
 	
-	if (rebuild) { // && (mi->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE)) {
+	if (rebuild || (mi->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD)) {
 		/* World has been rebuilt so rebuild object */
 		BKE_rigidbody_validate_sim_shard(rbw, mi, ob, true);
 	}
@@ -2837,8 +2908,30 @@ void BKE_rigidbody_aftertrans_update(Object *ob, float loc[3], float rot[3], flo
 
 void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw)
 {
+	GroupObject *go;
+
 	if (rbw)
 		rbw->pointcache->flag |= PTCACHE_OUTDATED;
+
+	/*restore kinematic state of shards if object is kinematic*/
+	for (go = rbw->group->gobject.first; go; go = go->next)	{
+		if ((go->ob) && (go->ob->rigidbody_object) && (go->ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC))
+		{
+			FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(go->ob, eModifierType_Fracture);
+			if (fmd)
+			{
+				MeshIsland* mi;
+				for (mi = fmd->meshIslands.first; mi; mi = mi->next)
+				{
+					if (mi->rigidbody)
+					{
+						mi->rigidbody->flag |= RBO_FLAG_KINEMATIC;
+						mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+					}
+				}
+			}
+		}
+	}
 }
 
 
