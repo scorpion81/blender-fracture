@@ -492,6 +492,12 @@ static int check_mode_full_sample(RenderData *rd)
 {
 	int scemode = rd->scemode;
 
+	if (!STREQ(rd->engine, RE_engine_id_BLENDER_RENDER) &&
+	    !STREQ(rd->engine, RE_engine_id_BLENDER_GAME))
+	{
+		scemode &= ~R_FULL_SAMPLE;
+	}
+
 	if ((rd->mode & R_OSA) == 0)
 		scemode &= ~R_FULL_SAMPLE;
 
@@ -3098,7 +3104,8 @@ void RE_BlenderAnim(Render *re, Main *bmain, Scene *scene, Object *camera_overri
 			if (G.is_break == true) {
 				/* remove touched file */
 				if (BKE_imtype_is_movie(scene->r.im_format.imtype) == 0) {
-					if (scene->r.mode & R_TOUCH && BLI_exists(name) && BLI_file_size(name) == 0) {
+					if ((scene->r.mode & R_TOUCH) && (BLI_file_size(name) == 0)) {
+						/* BLI_exists(name) is implicit */
 						BLI_delete(name, false, false);
 					}
 				}

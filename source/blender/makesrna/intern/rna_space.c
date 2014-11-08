@@ -1117,12 +1117,12 @@ static void rna_SpaceDopeSheetEditor_action_update(Main *UNUSED(bmain), Scene *s
 		
 		if (saction->mode == SACTCONT_ACTION) {
 			/* TODO: context selector could help decide this with more control? */
-			adt = BKE_id_add_animdata(&obact->id); /* this only adds if non-existant */
+			adt = BKE_id_add_animdata(&obact->id); /* this only adds if non-existent */
 		}
 		else if (saction->mode == SACTCONT_SHAPEKEY) {
 			Key *key = BKE_key_from_object(obact);
 			if (key)
-				adt = BKE_id_add_animdata(&key->id);  /* this only adds if non-existant */
+				adt = BKE_id_add_animdata(&key->id);  /* this only adds if non-existent */
 		}
 		
 		/* set action */
@@ -1944,6 +1944,7 @@ static void rna_def_space_view3d(BlenderRNA *brna)
 	RNA_def_property_float_sdna(prop, NULL, "grid");
 	RNA_def_property_ui_text(prop, "Grid Scale", "Distance between 3D View grid lines");
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
+	RNA_def_property_ui_range(prop, 0.001f, 1000.0f, 0.1f, 3);
 	RNA_def_property_float_default(prop, 1.0f);
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, NULL);
 

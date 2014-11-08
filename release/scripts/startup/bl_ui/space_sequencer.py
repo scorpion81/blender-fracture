@@ -198,7 +198,8 @@ class SEQUENCER_MT_view(Menu):
             layout.separator()
 
         layout.operator("screen.area_dupli")
-        layout.operator("screen.screen_full_area")
+        layout.operator("screen.screen_full_area", text="Toggle Maximize Area")
+        layout.operator("screen.screen_full_area").use_hide_panels = True
 
 
 class SEQUENCER_MT_select(Menu):
@@ -337,6 +338,7 @@ class SEQUENCER_MT_strip(Menu):
 
         layout.operator("sequencer.cut", text="Cut (hard) at frame").type = 'HARD'
         layout.operator("sequencer.cut", text="Cut (soft) at frame").type = 'SOFT'
+        layout.operator("sequencer.slip", text="Slip Strip Contents")
         layout.operator("sequencer.images_separate")
         layout.operator("sequencer.offset_clear")
         layout.operator("sequencer.deinterlace_selected_movies")

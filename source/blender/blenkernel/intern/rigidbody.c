@@ -922,7 +922,7 @@ static void rigidbody_validate_sim_shape(Object *ob, bool rebuild)
 		height = size[2];
 	}
 	else if (rbo->shape == RB_SHAPE_SPHERE) {
-		/* take radius to the the largest dimension to try and encompass everything */
+		/* take radius to the largest dimension to try and encompass everything */
 		radius = MAX3(size[0], size[1], size[2]);
 	}
 
@@ -1033,8 +1033,9 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 		height = size[2];
 	}
 	else if (rbo->shape == RB_SHAPE_SPHERE) {
-		/* take radius to the the largest dimension to try and encompass everything */
-		radius = MAX3(size[0], size[1], size[2]);
+
+		/* take radius to the largest dimension to try and encompass everything */
+		radius = max_fff(size[0], size[1], size[2]) * 0.5f;
 	}
 	
 	/* create new shape */

@@ -171,6 +171,28 @@ static void wm_window_match_init(bContext *C, ListBase *wmlist)
 #endif
 }
 
+static void wm_window_substitute_old(wmWindowManager *wm, wmWindow *oldwin, wmWindow *win)
+{
+	win->ghostwin = oldwin->ghostwin;
+	win->active = oldwin->active;
+	if (win->active)
+		wm->winactive = win;
+
+	if (!G.background) /* file loading in background mode still calls this */
+		GHOST_SetWindowUserData(win->ghostwin, win);    /* pointer back */
+
+	oldwin->ghostwin = NULL;
+
+	win->eventstate = oldwin->eventstate;
+	oldwin->eventstate = NULL;
+
+	/* ensure proper screen rescaling */
+	win->sizex = oldwin->sizex;
+	win->sizey = oldwin->sizey;
+	win->posx = oldwin->posx;
+	win->posy = oldwin->posy;
+}
+
 /* match old WM with new, 4 cases:
  * 1- no current wm, no read wm: make new default
  * 2- no current wm, but read wm: that's OK, do nothing
@@ -224,6 +246,8 @@ static void wm_window_match_do(bContext *C, ListBase *oldwmlist)
 			ED_screens_initialize(G.main->wm.first);
 		}
 		else {
+			bool has_match = false;
+
 			/* what if old was 3, and loaded 1? */
 			/* this code could move to setup_appdata */
 			oldwm = oldwmlist->first;
@@ -243,33 +267,27 @@ static void wm_window_match_do(bContext *C, ListBase *oldwmlist)
 			/* ensure making new keymaps and set space types */
 			wm->initialized = 0;
 			wm->winactive = NULL;
-			
+
 			/* only first wm in list has ghostwins */
 			for (win = wm->windows.first; win; win = win->next) {
 				for (oldwin = oldwm->windows.first; oldwin; oldwin = oldwin->next) {
-					
+
 					if (oldwin->winid == win->winid) {
-						win->ghostwin = oldwin->ghostwin;
-						win->active = oldwin->active;
-						if (win->active)
-							wm->winactive = win;
+						has_match = true;
 
-						if (!G.background) /* file loading in background mode still calls this */
-							GHOST_SetWindowUserData(win->ghostwin, win);    /* pointer back */
-
-						oldwin->ghostwin = NULL;
-						
-						win->eventstate = oldwin->eventstate;
-						oldwin->eventstate = NULL;
-						
-						/* ensure proper screen rescaling */
-						win->sizex = oldwin->sizex;
-						win->sizey = oldwin->sizey;
-						win->posx = oldwin->posx;
-						win->posy = oldwin->posy;
+						wm_window_substitute_old(wm, oldwin, win);
 					}
 				}
 			}
+
+			/* make sure at least one window is kept open so we don't lose the context, check T42303 */
+			if (!has_match) {
+				oldwin = oldwm->windows.first;
+				win = wm->windows.first;
+
+				wm_window_substitute_old(wm, oldwin, win);
+			}
+
 			wm_close_and_free_all(C, oldwmlist);
 		}
 	}
@@ -457,6 +475,8 @@ bool WM_file_read(bContext *C, const char *filepath, ReportList *reports)
 		/* run any texts that were loaded in and flagged as modules */
 		BPY_python_reset(C);
 #endif
+
+		WM_operatortype_last_properties_clear_all();
 
 		/* important to do before NULL'ing the context */
 		BLI_callback_exec(CTX_data_main(C), NULL, BLI_CB_EVT_VERSION_UPDATE);
@@ -649,6 +669,8 @@ int wm_homefile_read(bContext *C, ReportList *reports, bool from_memory, const c
 		BPY_python_reset(C);
 	}
 #endif
+
+	WM_operatortype_last_properties_clear_all();
 
 	/* important to do before NULL'ing the context */
 	BLI_callback_exec(CTX_data_main(C), NULL, BLI_CB_EVT_VERSION_UPDATE);
@@ -1046,12 +1068,20 @@ int wm_userpref_write_exec(bContext *C, wmOperator *op)
 
 void wm_autosave_location(char *filepath)
 {
-	char pidstr[32];
+	const int pid = abs(getpid());
+	char path[1024];
 #ifdef WIN32
 	const char *savedir;
 #endif
 
-	BLI_snprintf(pidstr, sizeof(pidstr), "%d.blend", abs(getpid()));
+	if (G.main && G.relbase_valid) {
+		const char *basename = BLI_path_basename(G.main->name);
+		int len = strlen(basename) - 6;
+		BLI_snprintf(path, sizeof(path), "%.*s-%d.blend", len, basename, pid);
+	}
+	else {
+		BLI_snprintf(path, sizeof(path), "%d.blend", pid);
+	}
 
 #ifdef WIN32
 	/* XXX Need to investigate how to handle default location of '/tmp/'
@@ -1064,12 +1094,12 @@ void wm_autosave_location(char *filepath)
 	 * If there is no C:\tmp autosave fails. */
 	if (!BLI_exists(BLI_temp_dir_base())) {
 		savedir = BLI_get_folder_create(BLENDER_USER_AUTOSAVE, NULL);
-		BLI_make_file_string("/", filepath, savedir, pidstr);
+		BLI_make_file_string("/", filepath, savedir, path);
 		return;
 	}
 #endif
 
-	BLI_make_file_string("/", filepath, BLI_temp_dir_base(), pidstr);
+	BLI_make_file_string("/", filepath, BLI_temp_dir_base(), path);
 }
 
 void WM_autosave_init(wmWindowManager *wm)

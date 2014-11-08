@@ -1047,7 +1047,7 @@ short view3d_opengl_select(ViewContext *vc, unsigned int *buffer, unsigned int b
 	Scene *scene = vc->scene;
 	View3D *v3d = vc->v3d;
 	ARegion *ar = vc->ar;
-	rctf rect, selrect;
+	rctf rect;
 	short hits;
 	const bool use_obedit_skip = (scene->obedit != NULL) && (vc->obedit == NULL);
 	const bool do_passes = do_nearest && GPU_select_query_check_active();
@@ -1064,8 +1064,6 @@ short view3d_opengl_select(ViewContext *vc, unsigned int *buffer, unsigned int b
 	else {
 		BLI_rctf_rcti_copy(&rect, input);
 	}
-
-	selrect = rect;
 	
 	view3d_winmatrix_set(ar, v3d, &rect);
 	mul_m4_m4m4(vc->rv3d->persmat, vc->rv3d->winmat, vc->rv3d->viewmat);
@@ -1079,9 +1077,9 @@ short view3d_opengl_select(ViewContext *vc, unsigned int *buffer, unsigned int b
 		ED_view3d_clipping_set(vc->rv3d);
 	
 	if (do_passes)
-		GPU_select_begin(buffer, bufsize, &selrect, GPU_SELECT_NEAREST_FIRST_PASS, 0);
+		GPU_select_begin(buffer, bufsize, &rect, GPU_SELECT_NEAREST_FIRST_PASS, 0);
 	else
-		GPU_select_begin(buffer, bufsize, &selrect, GPU_SELECT_ALL, 0);
+		GPU_select_begin(buffer, bufsize, &rect, GPU_SELECT_ALL, 0);
 
 	view3d_select_loop(vc, scene, v3d, ar, use_obedit_skip);
 
@@ -1089,7 +1087,7 @@ short view3d_opengl_select(ViewContext *vc, unsigned int *buffer, unsigned int b
 	
 	/* second pass, to get the closest object to camera */
 	if (do_passes) {
-		GPU_select_begin(buffer, bufsize, &selrect, GPU_SELECT_NEAREST_SECOND_PASS, hits);
+		GPU_select_begin(buffer, bufsize, &rect, GPU_SELECT_NEAREST_SECOND_PASS, hits);
 
 		view3d_select_loop(vc, scene, v3d, ar, use_obedit_skip);
 
@@ -1545,16 +1543,20 @@ static void game_set_commmandline_options(GameData *gm)
 
 static int game_engine_poll(bContext *C)
 {
+	bScreen *screen;
 	/* we need a context and area to launch BGE
 	 * it's a temporary solution to avoid crash at load time
 	 * if we try to auto run the BGE. Ideally we want the
 	 * context to be set as soon as we load the file. */
 
 	if (CTX_wm_window(C) == NULL) return 0;
-	if (CTX_wm_screen(C) == NULL) return 0;
+	if ((screen = CTX_wm_screen(C)) == NULL) return 0;
 	if (CTX_wm_area(C) == NULL) return 0;
 
 	if (CTX_data_mode_enum(C) != CTX_MODE_OBJECT)
+		return 0;
+
+	if (!BKE_scene_uses_blender_game(screen->scene))
 		return 0;
 
 	return 1;

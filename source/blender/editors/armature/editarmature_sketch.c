@@ -403,9 +403,7 @@ static void sk_retargetStroke(bContext *C, SK_Stroke *stk)
 	RigGraph *rg;
 
 	invert_m4_m4(imat, obedit->obmat);
-
-	copy_m3_m4(tmat, obedit->obmat);
-	transpose_m3(tmat);
+	transpose_m3_m4(tmat, obedit->obmat);
 
 	arc = sk_strokeToArc(stk, imat, tmat);
 
@@ -1358,9 +1356,7 @@ static void sk_convertStroke(bContext *C, SK_Stroke *stk)
 	head = NULL;
 
 	invert_m4_m4(invmat, obedit->obmat);
-
-	copy_m3_m4(tmat, obedit->obmat);
-	transpose_m3(tmat);
+	transpose_m3_m4(tmat, obedit->obmat);
 
 	for (i = 0; i < stk->nb_points; i++) {
 		SK_Point *pt = stk->points + i;
@@ -1698,7 +1694,7 @@ int sk_detectCommandGesture(bContext *UNUSED(C), SK_Gesture *gest, SK_Sketch *UN
 	if (gest->nb_segments > 2 && gest->nb_intersections == 2 && gest->nb_self_intersections == 1) {
 		SK_Intersection *isect, *self_isect;
 
-		/* get the the last intersection of the first pair */
+		/* get the last intersection of the first pair */
 		for (isect = gest->intersections.first; isect; isect = isect->next) {
 			if (isect->stroke == isect->next->stroke) {
 				isect = isect->next;

@@ -421,7 +421,8 @@ class VIEW3D_MT_view(Menu):
 
         layout.operator("screen.area_dupli")
         layout.operator("screen.region_quadview")
-        layout.operator("screen.screen_full_area")
+        layout.operator("screen.screen_full_area", text="Toggle Maximize Area")
+        layout.operator("screen.screen_full_area").use_hide_panels = True
 
 
 class VIEW3D_MT_view_navigation(Menu):
@@ -2306,6 +2307,8 @@ class VIEW3D_MT_edit_mesh_faces(Menu):
 
         layout.operator("mesh.faces_shade_smooth")
         layout.operator("mesh.faces_shade_flat")
+
+        layout.operator("mesh.normals_make_consistent", text="Recalculate Normals")
 
         layout.separator()
 

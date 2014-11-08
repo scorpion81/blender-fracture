@@ -479,6 +479,7 @@ static void template_ID(bContext *C, uiLayout *layout, TemplateID *template, Str
 			but = uiDefBut(block, BUT, 0, numstr, 0, 0, UI_UNIT_X + ((id->us < 10) ? 0 : 10), UI_UNIT_Y,
 			               NULL, 0, 0, 0, 0,
 			               TIP_("Display number of users of this data (click to make a single-user copy)"));
+			but->flag |= UI_BUT_UNDO;
 
 			uiButSetNFunc(but, template_id_cb, MEM_dupallocN(template), SET_INT_IN_POINTER(UI_ID_ALONE));
 			if (/* test only */
@@ -921,12 +922,18 @@ static uiLayout *draw_modifier(uiLayout *layout, Scene *scene, Object *ob,
 		
 		uiBlockSetEmboss(block, UI_EMBOSSN);
 		/* When Modifier is a simulation, show button to switch to context rather than the delete button. */
-		if (modifier_can_delete(md) && (!modifier_is_simulation(md) || STREQ(scene->r.engine, "BLENDER_GAME")))
+		if (modifier_can_delete(md) &&
+		    (!modifier_is_simulation(md) ||
+		     STREQ(scene->r.engine, RE_engine_id_BLENDER_GAME)))
+		{
 			uiItemO(row, "", ICON_X, "OBJECT_OT_modifier_remove");
-		else if (modifier_is_simulation(md) == 1)
+		}
+		else if (modifier_is_simulation(md) == 1) {
 			uiItemStringO(row, "", ICON_BUTS, "WM_OT_properties_context_change", "context", "PHYSICS");
-		else if (modifier_is_simulation(md) == 2)
+		}
+		else if (modifier_is_simulation(md) == 2) {
 			uiItemStringO(row, "", ICON_BUTS, "WM_OT_properties_context_change", "context", "PARTICLES");
+		}
 		uiBlockSetEmboss(block, UI_EMBOSS);
 	}
 
@@ -1900,7 +1907,6 @@ static uiBlock *curvemap_clipping_func(bContext *C, ARegion *ar, void *cumap_v)
 
 	uiBlockSetDirection(block, UI_RIGHT);
 
-	uiEndBlock(C, block);
 	return block;
 }
 
@@ -1975,7 +1981,6 @@ static uiBlock *curvemap_tools_posslope_func(bContext *C, ARegion *ar, void *cum
 	uiBlockSetDirection(block, UI_RIGHT);
 	uiTextBoundsBlock(block, 50);
 
-	uiEndBlock(C, block);
 	return block;
 }
 
@@ -2003,7 +2008,6 @@ static uiBlock *curvemap_tools_negslope_func(bContext *C, ARegion *ar, void *cum
 	uiBlockSetDirection(block, UI_RIGHT);
 	uiTextBoundsBlock(block, 50);
 
-	uiEndBlock(C, block);
 	return block;
 }
 
@@ -2027,7 +2031,6 @@ static uiBlock *curvemap_brush_tools_func(bContext *C, ARegion *ar, void *cumap_
 	uiBlockSetDirection(block, UI_RIGHT);
 	uiTextBoundsBlock(block, 50);
 
-	uiEndBlock(C, block);
 	return block;
 }
 
@@ -2275,6 +2278,7 @@ void uiTemplateColorPicker(uiLayout *layout, PointerRNA *ptr, const char *propna
 	uiBlock *block = uiLayoutGetBlock(layout);
 	uiLayout *col, *row;
 	uiBut *but = NULL;
+	ColorPicker *cpicker = ui_block_picker_new(block);
 	float softmin, softmax, step, precision;
 
 	if (!prop) {
@@ -2311,6 +2315,8 @@ void uiTemplateColorPicker(uiLayout *layout, PointerRNA *ptr, const char *propna
 
 	}
 
+	but->custom_data = cpicker;
+
 	if (lock) {
 		but->flag |= UI_BUT_COLOR_LOCK;
 	}
@@ -2330,33 +2336,35 @@ void uiTemplateColorPicker(uiLayout *layout, PointerRNA *ptr, const char *propna
 		switch (U.color_picker_type) {
 			case USER_CP_CIRCLE_HSL:
 				uiItemS(row);
-				uiDefButR_prop(block, HSVCUBE, 0, "", WHEEL_SIZE + 6, 0, 14, WHEEL_SIZE, ptr, prop,
-				               -1, softmin, softmax, UI_GRAD_L_ALT, 0, "");
+				but = uiDefButR_prop(block, HSVCUBE, 0, "", WHEEL_SIZE + 6, 0, 14, WHEEL_SIZE, ptr, prop,
+				                     -1, softmin, softmax, UI_GRAD_L_ALT, 0, "");
 				break;
 			case USER_CP_SQUARE_SV:
 				uiItemS(col);
-				uiDefButR_prop(block, HSVCUBE, 0, "", 0, 4, WHEEL_SIZE, 18, ptr, prop,
-				               -1, softmin, softmax, UI_GRAD_SV + 3, 0, "");
+				but = uiDefButR_prop(block, HSVCUBE, 0, "", 0, 4, WHEEL_SIZE, 18, ptr, prop,
+				                     -1, softmin, softmax, UI_GRAD_SV + 3, 0, "");
 				break;
 			case USER_CP_SQUARE_HS:
 				uiItemS(col);
-				uiDefButR_prop(block, HSVCUBE, 0, "", 0, 4, WHEEL_SIZE, 18, ptr, prop,
-				               -1, softmin, softmax, UI_GRAD_HS + 3, 0, "");
+				but = uiDefButR_prop(block, HSVCUBE, 0, "", 0, 4, WHEEL_SIZE, 18, ptr, prop,
+				                     -1, softmin, softmax, UI_GRAD_HS + 3, 0, "");
 				break;
 			case USER_CP_SQUARE_HV:
 				uiItemS(col);
-				uiDefButR_prop(block, HSVCUBE, 0, "", 0, 4, WHEEL_SIZE, 18, ptr, prop,
-				               -1, softmin, softmax, UI_GRAD_HV + 3, 0, "");
+				but = uiDefButR_prop(block, HSVCUBE, 0, "", 0, 4, WHEEL_SIZE, 18, ptr, prop,
+				                     -1, softmin, softmax, UI_GRAD_HV + 3, 0, "");
 				break;
 
 			/* user default */
 			case USER_CP_CIRCLE_HSV:
 			default:
 				uiItemS(row);
-				uiDefButR_prop(block, HSVCUBE, 0, "", WHEEL_SIZE + 6, 0, 14, WHEEL_SIZE, ptr, prop,
-				               -1, softmin, softmax, UI_GRAD_V_ALT, 0, "");
+				but = uiDefButR_prop(block, HSVCUBE, 0, "", WHEEL_SIZE + 6, 0, 14, WHEEL_SIZE, ptr, prop,
+				                     -1, softmin, softmax, UI_GRAD_V_ALT, 0, "");
 				break;
 		}
+
+		but->custom_data = cpicker;
 	}
 }
 
@@ -3244,10 +3252,10 @@ static void operator_call_cb(bContext *C, void *UNUSED(arg1), void *arg2)
 
 static void operator_search_cb(const bContext *C, void *UNUSED(arg), const char *str, uiSearchItems *items)
 {
-	GHashIterator *iter = WM_operatortype_iter();
+	GHashIterator iter;
 
-	for (; !BLI_ghashIterator_done(iter); BLI_ghashIterator_step(iter)) {
-		wmOperatorType *ot = BLI_ghashIterator_getValue(iter);
+	for (WM_operatortype_iter(&iter); !BLI_ghashIterator_done(&iter); BLI_ghashIterator_step(&iter)) {
+		wmOperatorType *ot = BLI_ghashIterator_getValue(&iter);
 
 		if ((ot->flag & OPTYPE_INTERNAL) && (G.debug & G_DEBUG_WM) == 0)
 			continue;
@@ -3274,7 +3282,6 @@ static void operator_search_cb(const bContext *C, void *UNUSED(arg), const char 
 			}
 		}
 	}
-	BLI_ghashIterator_free(iter);
 }
 
 void uiOperatorSearch_But(uiBut *but)

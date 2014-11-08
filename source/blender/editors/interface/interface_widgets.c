@@ -746,6 +746,8 @@ static void widgetbase_draw(uiWidgetBase *wtb, uiWidgetColors *wcol)
 		glEnableClientState(GL_VERTEX_ARRAY);
 
 		for (j = 0; j < WIDGET_AA_JITTER; j++) {
+			unsigned char emboss[4];
+
 			glTranslatef(jit[j][0], jit[j][1], 0.0f);
 			
 			/* outline */
@@ -753,13 +755,17 @@ static void widgetbase_draw(uiWidgetBase *wtb, uiWidgetColors *wcol)
 
 			glVertexPointer(2, GL_FLOAT, 0, quad_strip);
 			glDrawArrays(GL_QUAD_STRIP, 0, wtb->totvert * 2 + 2);
-		
-			/* emboss bottom shadow */
-			if (wtb->emboss) {
-				glColor4f(1.0f, 1.0f, 1.0f, 0.02f);
 
-				glVertexPointer(2, GL_FLOAT, 0, quad_strip_emboss);
-				glDrawArrays(GL_QUAD_STRIP, 0, wtb->halfwayvert * 2);
+			/* emboss bottom shadow */
+			UI_GetThemeColor4ubv(TH_EMBOSS, emboss);
+
+			if (wtb->emboss) {
+				UI_GetThemeColor4ubv(TH_EMBOSS, emboss);
+				if (emboss[3]) {
+					glColor4ubv(emboss);
+					glVertexPointer(2, GL_FLOAT, 0, quad_strip_emboss);
+					glDrawArrays(GL_QUAD_STRIP, 0, wtb->halfwayvert * 2);
+				}
 			}
 			
 			glTranslatef(-jit[j][0], -jit[j][1], 0.0f);
@@ -2131,7 +2137,8 @@ static void ui_draw_but_HSVCIRCLE(uiBut *but, uiWidgetColors *wcol, const rcti *
 	float radius = (float)min_ii(BLI_rcti_size_x(rect), BLI_rcti_size_y(rect)) / 2.0f;
 
 	/* gouraud triangle fan */
-	const float *hsv_ptr = ui_block_hsv_get(but->block);
+	ColorPicker *cpicker = but->custom_data;
+	const float *hsv_ptr = cpicker->color_data;
 	float xpos, ypos, ang = 0.0f;
 	float rgb[3], hsvo[3], hsv[3], col[3], colcent[3];
 	int a;
@@ -2398,7 +2405,8 @@ static void ui_draw_but_HSVCUBE(uiBut *but, const rcti *rect)
 {
 	float rgb[3];
 	float x = 0.0f, y = 0.0f;
-	const float *hsv = ui_block_hsv_get(but->block);
+	ColorPicker *cpicker = but->custom_data;
+	float *hsv = cpicker->color_data;
 	float hsv_n[3];
 	bool use_display_colorspace = ui_color_picker_use_display_colorspace(but);
 	
@@ -3873,6 +3881,14 @@ void ui_draw_pie_center(uiBlock *block)
 	glColor4ubv((GLubyte *)btheme->tui.wcol_pie_menu.outline);
 	glutil_draw_lined_arc(0.0f, (float)M_PI * 2.0f, pie_radius_internal, subd);
 	glutil_draw_lined_arc(0.0f, (float)M_PI * 2.0f, pie_radius_external, subd);
+
+	if (U.pie_menu_confirm > 0 && !(block->pie_data.flags & (UI_PIE_INVALID_DIR | UI_PIE_CLICK_STYLE))) {
+		float pie_confirm_radius = U.pixelsize * (pie_radius_internal + U.pie_menu_confirm);
+		float pie_confirm_external = U.pixelsize * (pie_radius_internal + U.pie_menu_confirm + 7.0f);
+
+		glColor4ub(btheme->tui.wcol_pie_menu.text_sel[0], btheme->tui.wcol_pie_menu.text_sel[1], btheme->tui.wcol_pie_menu.text_sel[2], 64);
+		draw_disk_shaded(angle - range / 2.0f, range, pie_confirm_radius, pie_confirm_external, subd, NULL, NULL, false);
+	}
 
 	glDisable(GL_BLEND);
 	glPopMatrix();

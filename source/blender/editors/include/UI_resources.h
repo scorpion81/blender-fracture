@@ -87,6 +87,7 @@ enum {
 
 	TH_GRID,
 	TH_WIRE,
+	TH_WIRE_INNER,
 	TH_WIRE_EDIT,
 	TH_SELECT,
 	TH_ACTIVE,
@@ -265,6 +266,8 @@ enum {
 	TH_NLA_SOUND,
 	TH_NLA_SOUND_SEL,
 	
+	TH_EMBOSS,
+
 	TH_AXIS_X,		/* X/Y/Z Axis */
 	TH_AXIS_Y,
 	TH_AXIS_Z,

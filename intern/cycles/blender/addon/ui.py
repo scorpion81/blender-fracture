@@ -729,11 +729,11 @@ class CyclesLamp_PT_lamp(CyclesButtonsPanel, Panel):
 
         if cscene.progressive == 'BRANCHED_PATH':
             col.prop(clamp, "samples")
+        col.prop(clamp, "max_bounces")
 
         col = split.column()
         col.prop(clamp, "cast_shadow")
-
-        layout.prop(clamp, "use_multiple_importance_sampling")
+        col.prop(clamp, "use_multiple_importance_sampling")
 
         if lamp.type == 'HEMI':
             layout.label(text="Not supported, interpreted as sun lamp")
@@ -936,6 +936,7 @@ class CyclesWorld_PT_settings(CyclesButtonsPanel, Panel):
         sub = col.column()
         sub.active = use_cpu(context)
         sub.prop(cworld, "volume_sampling", text="")
+        sub.prop(cworld, "volume_interpolation", text="")
         col.prop(cworld, "homogeneous_volume", text="Homogeneous")
 
 
@@ -1040,6 +1041,7 @@ class CyclesMaterial_PT_settings(CyclesButtonsPanel, Panel):
         sub = col.column()
         sub.active = use_cpu(context)
         sub.prop(cmat, "volume_sampling", text="")
+        col.prop(cmat, "volume_interpolation", text="")
         col.prop(cmat, "homogeneous_volume", text="Homogeneous")
 
 
@@ -1381,7 +1383,11 @@ def get_panels():
         "RENDER_PT_encoding",
         "RENDER_PT_dimensions",
         "RENDER_PT_stamp",
+        "RENDER_PT_freestyle",
         "RENDERLAYER_PT_layers",
+        "RENDERLAYER_PT_freestyle",
+        "RENDERLAYER_PT_freestyle_lineset",
+        "RENDERLAYER_PT_freestyle_linestyle",
         "SCENE_PT_scene",
         "SCENE_PT_color_management",
         "SCENE_PT_custom_props",
@@ -1419,6 +1425,7 @@ def get_panels():
         "DATA_PT_custom_props_curve",
         "DATA_PT_custom_props_lattice",
         "DATA_PT_custom_props_metaball",
+        "TEXTURE_PT_preview",
         "TEXTURE_PT_custom_props",
         "TEXTURE_PT_clouds",
         "TEXTURE_PT_wood",
@@ -1436,6 +1443,7 @@ def get_panels():
         "TEXTURE_PT_pointdensity",
         "TEXTURE_PT_pointdensity_turbulence",
         "TEXTURE_PT_mapping",
+        "TEXTURE_PT_ocean",
         "TEXTURE_PT_influence",
         "TEXTURE_PT_colors",
         "PARTICLE_PT_context_particles",
@@ -1457,6 +1465,7 @@ def get_panels():
         "PARTICLE_PT_force_fields",
         "PARTICLE_PT_vertexgroups",
         "MATERIAL_PT_custom_props",
+        "MATERIAL_PT_freestyle_line",
         "BONE_PT_custom_props",
         "OBJECT_PT_custom_props",
         ]

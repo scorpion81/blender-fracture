@@ -29,6 +29,7 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_listbase.h"
+#include "BLI_math.h"
 #include "BLI_task.h"
 #include "BLI_threads.h"
 
@@ -428,3 +429,131 @@ size_t BLI_task_pool_tasks_done(TaskPool *pool)
 	return pool->done;
 }
 
+/* Parallel range routines */
+
+/**
+ *
+ * Main functions:
+ * - #BLI_task_parallel_range
+ *
+ * TODO:
+ * - #BLI_task_parallel_foreach_listbase (#ListBase - double linked list)
+ * - #BLI_task_parallel_foreach_link (#Link - single linked list)
+ * - #BLI_task_parallel_foreach_ghash/gset (#GHash/#GSet - hash & set)
+ * - #BLI_task_parallel_foreach_mempool (#BLI_mempool - iterate over mempools)
+ *
+ * Possible improvements:
+ *
+ * - Chunk iterations to reduce number of spin locks.
+ */
+
+typedef struct ParallelRangeState {
+	int start, stop;
+	void *userdata;
+	TaskParallelRangeFunc func;
+
+	int iter;
+	int chunk_size;
+	SpinLock lock;
+} ParallelRangeState;
+
+BLI_INLINE bool parallel_range_next_iter_get(
+        ParallelRangeState * __restrict state,
+        int * __restrict iter, int * __restrict count)
+{
+	bool result = false;
+	if (state->iter < state->stop) {
+		BLI_spin_lock(&state->lock);
+		if (state->iter < state->stop) {
+			*count = min_ii(state->chunk_size, state->stop - state->iter);
+			*iter = state->iter;
+			state->iter += *count;
+			result = true;
+		}
+		BLI_spin_unlock(&state->lock);
+	}
+	return result;
+}
+
+static void parallel_range_func(
+        TaskPool * __restrict pool,
+        void *UNUSED(taskdata),
+        int UNUSED(threadid))
+{
+	ParallelRangeState * __restrict state = BLI_task_pool_userdata(pool);
+	int iter, count;
+	while (parallel_range_next_iter_get(state, &iter, &count)) {
+		int i;
+		for (i = 0; i < count; ++i) {
+			state->func(state->userdata, iter + i);
+		}
+	}
+}
+
+void BLI_task_parallel_range_ex(
+        int start, int stop,
+        void *userdata,
+        TaskParallelRangeFunc func,
+        const int range_threshold,
+        const bool use_dynamic_scheduling)
+{
+	TaskScheduler *task_scheduler;
+	TaskPool *task_pool;
+	ParallelRangeState state;
+	int i, num_threads, num_tasks;
+
+	BLI_assert(start < stop);
+
+	/* If it's not enough data to be crunched, don't bother with tasks at all,
+	 * do everything from the main thread.
+	 */
+	if (stop - start < range_threshold) {
+		for (i = start; i < stop; ++i) {
+			func(userdata, i);
+		}
+		return;
+	}
+
+	task_scheduler = BLI_task_scheduler_get();
+	task_pool = BLI_task_pool_create(task_scheduler, &state);
+	num_threads = BLI_task_scheduler_num_threads(task_scheduler);
+
+	/* The idea here is to prevent creating task for each of the loop iterations
+	 * and instead have tasks which are evenly distributed across CPU cores and
+	 * pull next iter to be crunched using the queue.
+	 */
+	num_tasks = num_threads * 2;
+
+	BLI_spin_init(&state.lock);
+	state.start = start;
+	state.stop = stop;
+	state.userdata = userdata;
+	state.func = func;
+	state.iter = start;
+	if (use_dynamic_scheduling) {
+		state.chunk_size = 32;
+	}
+	else {
+		state.chunk_size = (stop - start) / (num_tasks);
+	}
+
+	for (i = 0; i < num_tasks; i++) {
+		BLI_task_pool_push(task_pool,
+		                   parallel_range_func,
+		                   NULL, false,
+		                   TASK_PRIORITY_HIGH);
+	}
+
+	BLI_task_pool_work_and_wait(task_pool);
+	BLI_task_pool_free(task_pool);
+
+	BLI_spin_end(&state.lock);
+}
+
+void BLI_task_parallel_range(
+        int start, int stop,
+        void *userdata,
+        TaskParallelRangeFunc func)
+{
+	BLI_task_parallel_range_ex(start, stop, userdata, func, 64, false);
+}

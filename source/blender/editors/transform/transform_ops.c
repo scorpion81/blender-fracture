@@ -176,7 +176,7 @@ static int select_orientation_invoke(bContext *C, wmOperator *UNUSED(op), const 
 	uiItemsEnumO(layout, "TRANSFORM_OT_select_orientation", "orientation");
 	uiPupMenuEnd(C, pup);
 
-	return OPERATOR_CANCELLED;
+	return OPERATOR_INTERFACE;
 }
 
 static void TRANSFORM_OT_select_orientation(struct wmOperatorType *ot)
@@ -1106,9 +1106,6 @@ void transform_keymap_for_space(wmKeyConfig *keyconf, wmKeyMap *keymap, int spac
 			/* XXX release_confirm is set in the macro operator definition */
 			WM_keymap_add_item(keymap, "NODE_OT_move_detach_links_release", EVT_TWEAK_A, KM_ANY, KM_ALT, 0);
 			WM_keymap_add_item(keymap, "NODE_OT_move_detach_links", EVT_TWEAK_S, KM_ANY, KM_ALT, 0);
-
-			/* dettach and translate */
-			WM_keymap_add_item(keymap, "NODE_OT_detach_translate_attach", FKEY, KM_PRESS, KM_ALT, 0);
 			break;
 		case SPACE_SEQ:
 			WM_keymap_add_item(keymap, OP_SEQ_SLIDE, GKEY, KM_PRESS, 0, 0);

@@ -23,6 +23,7 @@
  * Contributor(s): Maarten Gribnau 05/2001
  *                 Damien Plisson  10/2009
  *                 Jason Wilkins   02/2014
+ *                 Jens Verwiebe   10/2014
  *
  * ***** END GPL LICENSE BLOCK *****
  */
@@ -45,8 +46,6 @@
 #  include <Carbon/Carbon.h>
 #endif
 
-
- 
 #include <sys/sysctl.h>
 
 #if MAC_OS_X_VERSION_MAX_ALLOWED < 1070
@@ -77,7 +76,6 @@ enum {
 - (void)windowDidChangeBackingProperties:(NSNotification *)notification;
 @end
 
-
 @implementation CocoaWindowDelegate : NSObject
 - (void)setSystemAndWindowCocoa:(GHOST_SystemCocoa *)sysCocoa windowCocoa:(GHOST_WindowCocoa *)winCocoa
 {
@@ -88,6 +86,8 @@ enum {
 - (void)windowDidBecomeKey:(NSNotification *)notification
 {
 	systemCocoa->handleWindowEvent(GHOST_kEventWindowActivate, associatedWindow);
+	// work around for broken appswitching when combining cmd-tab and missioncontrol
+	[(NSWindow*)associatedWindow->getOSWindow() orderFrontRegardless];
 }
 
 - (void)windowDidResignKey:(NSNotification *)notification
@@ -171,6 +171,7 @@ enum {
 - (void)setSystemAndWindowCocoa:(GHOST_SystemCocoa *)sysCocoa windowCocoa:(GHOST_WindowCocoa *)winCocoa;
 - (GHOST_SystemCocoa*)systemCocoa;
 @end
+
 @implementation CocoaWindow
 - (void)setSystemAndWindowCocoa:(GHOST_SystemCocoa *)sysCocoa windowCocoa:(GHOST_WindowCocoa *)winCocoa
 {
@@ -261,8 +262,6 @@ enum {
 
 @end
 
-
-
 #pragma mark NSOpenGLView subclass
 //We need to subclass it in order to give Cocoa the feeling key events are trapped
 @interface CocoaOpenGLView : NSOpenGLView <NSTextInput>
@@ -277,6 +276,7 @@ enum {
 }
 - (void)setSystemAndWindowCocoa:(GHOST_SystemCocoa *)sysCocoa windowCocoa:(GHOST_WindowCocoa *)winCocoa;
 @end
+
 @implementation CocoaOpenGLView
 
 - (void)setSystemAndWindowCocoa:(GHOST_SystemCocoa *)sysCocoa windowCocoa:(GHOST_WindowCocoa *)winCocoa
@@ -569,8 +569,9 @@ GHOST_WindowCocoa::GHOST_WindowCocoa(
 	rect.size.height = height;
 	
 	m_window = [[CocoaWindow alloc] initWithContentRect:rect
-										   styleMask:NSTitledWindowMask | NSClosableWindowMask | NSResizableWindowMask | NSMiniaturizableWindowMask
-											 backing:NSBackingStoreBuffered defer:NO];
+	        styleMask:NSTitledWindowMask | NSClosableWindowMask | NSResizableWindowMask | NSMiniaturizableWindowMask
+	        backing:NSBackingStoreBuffered defer:NO];
+
 	if (m_window == nil) {
 		[pool drain];
 		return;
@@ -623,7 +624,7 @@ GHOST_WindowCocoa::GHOST_WindowCocoa(
 #endif
 	
 	[m_window registerForDraggedTypes:[NSArray arrayWithObjects:NSFilenamesPboardType,
-										  NSStringPboardType, NSTIFFPboardType, nil]];
+	                                   NSStringPboardType, NSTIFFPboardType, nil]];
 	
 #if MAC_OS_X_VERSION_MIN_REQUIRED >= 1060
 	if (state != GHOST_kWindowStateFullScreen) {
@@ -634,12 +635,13 @@ GHOST_WindowCocoa::GHOST_WindowCocoa(
 	if (state == GHOST_kWindowStateFullScreen)
 		setState(GHOST_kWindowStateFullScreen);
 
-	//Starting with 10.9 (darwin 13.x.x), we always use Lion fullscreen, since it
-	//now has proper multi-monitor support for fullscreen
-	char darwin_ver[10];
-	size_t len = sizeof(darwin_ver);
-	sysctlbyname("kern.osrelease", &darwin_ver, &len, NULL, 0);
-	if(darwin_ver[0] == '1' && darwin_ver[1] >= '3') {
+	// Starting with 10.9 (darwin 13.x.x), we can use Lion fullscreen,
+	// since it now has better multi-monitor support
+	// if the screens are spawned, additional screens get useless,
+	// so we only use lionStyleFullScreen when screens have separate spaces
+	
+	if ([NSScreen respondsToSelector:@selector(screensHaveSeparateSpaces)] && [NSScreen screensHaveSeparateSpaces]) {
+		// implies we are on >= OSX 10.9
 		m_lionStyleFullScreen = true;
 	}
 	
@@ -785,7 +787,7 @@ void GHOST_WindowCocoa::getClientBounds(GHOST_Rect& bounds) const
 
 		//Max window contents as screen size (excluding title bar...)
 		NSRect contentRect = [CocoaWindow contentRectForFrameRect:screenSize
-													 styleMask:(NSTitledWindowMask | NSClosableWindowMask | NSMiniaturizableWindowMask | NSResizableWindowMask)];
+		                      styleMask:(NSTitledWindowMask | NSClosableWindowMask | NSMiniaturizableWindowMask | NSResizableWindowMask)];
 
 		rect = [m_window contentRectForFrameRect:[m_window frame]];
 		
@@ -870,12 +872,12 @@ GHOST_TWindowState GHOST_WindowCocoa::getState() const
 
 	if (masks & NSFullScreenWindowMask) {
 		// Lion style fullscreen
-        if (!m_immediateDraw) {
-            state = GHOST_kWindowStateFullScreen;
-        }
-        else {
-            state = GHOST_kWindowStateNormal;
-        }
+		if (!m_immediateDraw) {
+			state = GHOST_kWindowStateFullScreen;
+		}
+		else {
+			state = GHOST_kWindowStateNormal;
+		}
 	}
 	else
 #endif
@@ -889,12 +891,12 @@ GHOST_TWindowState GHOST_WindowCocoa::getState() const
 		state = GHOST_kWindowStateMaximized;
 	}
 	else {
-        if (m_immediateDraw) {
-            state = GHOST_kWindowStateFullScreen;
-        }
-        else {
-		state = GHOST_kWindowStateNormal;
-        }
+		if (m_immediateDraw) {
+			state = GHOST_kWindowStateFullScreen;
+		}
+		else {
+			state = GHOST_kWindowStateNormal;
+		}
 	}
 	[pool drain];
 	return state;
@@ -1037,10 +1039,10 @@ GHOST_TSuccess GHOST_WindowCocoa::setState(GHOST_TWindowState state)
 				}
 				//Create a fullscreen borderless window
 				CocoaWindow *tmpWindow = [[CocoaWindow alloc]
-										  initWithContentRect:[[m_window screen] frame]
-										  styleMask:NSBorderlessWindowMask
-										  backing:NSBackingStoreBuffered
-										  defer:YES];
+				                          initWithContentRect:[[m_window screen] frame]
+				                          styleMask:NSBorderlessWindowMask
+				                          backing:NSBackingStoreBuffered
+				                          defer:YES];
 				//Copy current window parameters
 				[tmpWindow setTitle:[m_window title]];
 				[tmpWindow setRepresentedFilename:[m_window representedFilename]];
@@ -1107,10 +1109,10 @@ GHOST_TSuccess GHOST_WindowCocoa::setState(GHOST_TWindowState state)
 				}
 				//Create a fullscreen borderless window
 				CocoaWindow *tmpWindow = [[CocoaWindow alloc]
-										  initWithContentRect:[[m_window screen] frame]
-													styleMask:(NSTitledWindowMask | NSClosableWindowMask | NSMiniaturizableWindowMask | NSResizableWindowMask)
-													  backing:NSBackingStoreBuffered
-														defer:YES];
+				                          initWithContentRect:[[m_window screen] frame]
+				                                    styleMask:(NSTitledWindowMask | NSClosableWindowMask | NSMiniaturizableWindowMask | NSResizableWindowMask)
+				                                      backing:NSBackingStoreBuffered
+				                                        defer:YES];
 				//Copy current window parameters
 				[tmpWindow setTitle:[m_window title]];
 				[tmpWindow setRepresentedFilename:[m_window representedFilename]];
@@ -1118,7 +1120,7 @@ GHOST_TSuccess GHOST_WindowCocoa::setState(GHOST_TWindowState state)
 				[tmpWindow setDelegate:[m_window delegate]];
 				[tmpWindow setSystemAndWindowCocoa:[m_window systemCocoa] windowCocoa:this];
 				[tmpWindow registerForDraggedTypes:[NSArray arrayWithObjects:NSFilenamesPboardType,
-												   NSStringPboardType, NSTIFFPboardType, nil]];
+				                                    NSStringPboardType, NSTIFFPboardType, nil]];
 				//Forbid to resize the window below the blender defined minimum one
 				[tmpWindow setContentMinSize:NSMakeSize(320, 240)];
 				
@@ -1324,7 +1326,16 @@ GHOST_TSuccess GHOST_WindowCocoa::setProgressBar(float progress)
 	return GHOST_kSuccess;
 }
 
-
+static void postNotification()
+{
+	NSUserNotification *notification = [[NSUserNotification alloc] init];
+	notification.title = @"Blender progress notification";
+	notification.informativeText = @"Calculation is finished";
+	notification.soundName = NSUserNotificationDefaultSoundName;
+	[[NSUserNotificationCenter defaultUserNotificationCenter] deliverNotification:notification];
+	[notification release];
+}
+	
 GHOST_TSuccess GHOST_WindowCocoa::endProgressBar()
 {
 	if (!m_progressBarVisible) return GHOST_kFailure;
@@ -1337,13 +1348,21 @@ GHOST_TSuccess GHOST_WindowCocoa::endProgressBar()
 	[[NSImage imageNamed:@"NSApplicationIcon"] drawAtPoint:NSZeroPoint fromRect:NSZeroRect operation:NSCompositeSourceOver fraction:1.0];
 	[dockIcon unlockFocus];
 	[NSApp setApplicationIconImage:dockIcon];
+	
+	
+	// With OSX 10.8 and later, we can use notifications to inform the user when the progress reached 100%
+	// Atm. just fire this when the progressbar ends, the behavior is controlled in the NotificationCenter
+	// If Blender is not frontmost window, a message pops up with sound, in any case an entry in notifications
+	
+	if ([NSUserNotificationCenter respondsToSelector:@selector(defaultUserNotificationCenter)]) {
+		postNotification();
+	}
+	
 	[dockIcon release];
 	
 	[pool drain];
 	return GHOST_kSuccess;
 }
-
-
 
 #pragma mark Cursor handling
 
@@ -1532,15 +1551,15 @@ GHOST_TSuccess GHOST_WindowCocoa::setWindowCustomCursorShape(GHOST_TUns8 *bitmap
 	
 
 	cursorImageRep = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:nil
-															 pixelsWide:sizex
-															 pixelsHigh:sizey
-														  bitsPerSample:1 
-														samplesPerPixel:2
-															   hasAlpha:YES
-															   isPlanar:YES
-														 colorSpaceName:NSDeviceWhiteColorSpace
+															pixelsWide:sizex
+															pixelsHigh:sizey
+															bitsPerSample:1
+															samplesPerPixel:2
+															hasAlpha:YES
+															isPlanar:YES
+															colorSpaceName:NSDeviceWhiteColorSpace
 															bytesPerRow:(sizex/8 + (sizex%8 >0 ?1:0))
-														   bitsPerPixel:1];
+															bitsPerPixel:1];
 	
 	
 	cursorBitmap = (GHOST_TUns16*)[cursorImageRep bitmapData];
@@ -1568,7 +1587,7 @@ GHOST_TSuccess GHOST_WindowCocoa::setWindowCustomCursorShape(GHOST_TUns8 *bitmap
 	
 	//foreground and background color parameter is not handled for now (10.6)
 	m_customCursor = [[NSCursor alloc] initWithImage:cursorImage
-											 hotSpot:hotSpotPoint];
+	                                                 hotSpot:hotSpotPoint];
 	
 	[cursorImageRep release];
 	[cursorImage release];

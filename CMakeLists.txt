@@ -116,7 +116,6 @@ set(TESTS_OUTPUT_DIR ${EXECUTABLE_OUTPUT_PATH}/tests CACHE INTERNAL "" FORCE)
 
 get_blender_version()
 
-
 # Blender internal features
 option(WITH_BLENDER "Build blender (disable to build only the blender player)" ON)
 mark_as_advanced(WITH_BLENDER)
@@ -274,6 +273,8 @@ option(WITH_PYTHON_INSTALL       "Copy system python into the blender install fo
 option(WITH_PYTHON_INSTALL_NUMPY "Copy system numpy into the blender install folder"  ON)
 set(PYTHON_NUMPY_PATH            "" CACHE PATH "Path to python site-packages or dist-packages containing 'numpy' module")
 mark_as_advanced(PYTHON_NUMPY_PATH)
+option(WITH_CPU_SSE              "Enable SIMD instruction if they're detected on the host machine" ON)
+mark_as_advanced(WITH_CPU_SSE)
 
 if(UNIX AND NOT APPLE)
 	option(WITH_PYTHON_INSTALL_REQUESTS "Copy system requests into the blender install folder" ON)
@@ -362,6 +363,23 @@ if(WITH_GLEW_ES AND WITH_SYSTEM_GLEW)
 	message(WARNING Ignoring WITH_SYSTEM_GLEW and using WITH_GLEW_ES)
 	set(WITH_SYSTEM_GLEW OFF)
 endif()
+
+if(MSVC)
+	getDefaultWindowsPrefixBase(CMAKE_GENERIC_PROGRAM_FILES)
+	set(CPACK_INSTALL_PREFIX ${CMAKE_GENERIC_PROGRAM_FILES}/${})
+endif()
+
+# By default we want to install to the directory we are compiling our executables
+# unless specified otherwise, which we currently do not allow
+if(MSVC)
+	set(BLENDER_INSTALL_PREFIX ${EXECUTABLE_OUTPUT_PATH}/\${BUILD_TYPE})
+elseif(APPLE)
+	set(BLENDER_INSTALL_PREFIX ${EXECUTABLE_OUTPUT_PATH}/\${BUILD_TYPE})
+else()
+	set(BLENDER_INSTALL_PREFIX ${EXECUTABLE_OUTPUT_PATH})
+endif()
+set(CMAKE_INSTALL_PREFIX ${BLENDER_INSTALL_PREFIX} CACHE INTERNAL "")
+
 
 # Apple
 
@@ -569,7 +587,13 @@ if(WITH_GHOST_SDL OR WITH_HEADLESS)
 	set(WITH_GHOST_XDND    OFF)
 endif()
 
-TEST_SSE_SUPPORT(COMPILER_SSE_FLAG COMPILER_SSE2_FLAG)
+if(WITH_CPU_SSE)
+	TEST_SSE_SUPPORT(COMPILER_SSE_FLAG COMPILER_SSE2_FLAG)
+else()
+	message(STATUS "SSE and SSE2 optimizations are DISABLED!")
+	set(COMPILER_SSE_FLAG)
+	set(COMPILER_SSE2_FLAG)
+endif()
 
 TEST_STDBOOL_SUPPORT()
 if(HAVE_STDBOOL_H)
@@ -782,7 +806,6 @@ if(UNIX AND NOT APPLE)
 
 		mark_as_advanced(FFMPEG_LIBRARIES)
 		set(FFMPEG_LIBPATH ${FFMPEG}/lib)
-		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__STDC_CONSTANT_MACROS")
 	endif()
 
 	if(WITH_FFTW3)
@@ -1794,7 +1817,6 @@ elseif(APPLE)
 		set(FFMPEG_INCLUDE_DIRS ${FFMPEG}/include)
 		set(FFMPEG_LIBRARIES avcodec avdevice avformat avutil mp3lame swscale x264 xvidcore theora theoradec theoraenc vorbis vorbisenc vorbisfile ogg)
 		set(FFMPEG_LIBPATH ${FFMPEG}/lib)
-		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__STDC_CONSTANT_MACROS")
 	endif()
 
 	find_library(SYSTEMSTUBS_LIBRARY

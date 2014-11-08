@@ -309,10 +309,14 @@
 #define ABS(a)  ({ \
 	typeof(a) a_ = (a); \
 	((a_) < 0 ? (-(a_)) : (a_)); })
+#define SQUARE(a)  ({ \
+	typeof(a) a_ = (a); \
+	((a_) * (a_)); })
 
 #else
 
 #define ABS(a)  ((a) < 0 ? (-(a)) : (a))
+#define SQUARE(a)  ((a) * (a))
 
 #endif
 
@@ -329,6 +333,60 @@
 
 #define CLAMP_MIN(a, b)  {          \
 	if      ((a) < (b)) (a) = (b);  \
+} (void)0
+
+#define CLAMP2(vec, b, c) { \
+	CLAMP((vec)[0], b, c); \
+	CLAMP((vec)[1], b, c); \
+} (void)0
+
+#define CLAMP2_MIN(vec, b) { \
+	CLAMP_MIN((vec)[0], b); \
+	CLAMP_MIN((vec)[1], b); \
+} (void)0
+
+#define CLAMP2_MAX(vec, b) { \
+	CLAMP_MAX((vec)[0], b); \
+	CLAMP_MAX((vec)[1], b); \
+} (void)0
+
+#define CLAMP3(vec, b, c) { \
+	CLAMP((vec)[0], b, c); \
+	CLAMP((vec)[1], b, c); \
+	CLAMP((vec)[2], b, c); \
+} (void)0
+
+#define CLAMP3_MIN(vec, b) { \
+	CLAMP_MIN((vec)[0], b); \
+	CLAMP_MIN((vec)[1], b); \
+	CLAMP_MIN((vec)[2], b); \
+} (void)0
+
+#define CLAMP3_MAX(vec, b) { \
+	CLAMP_MAX((vec)[0], b); \
+	CLAMP_MAX((vec)[1], b); \
+	CLAMP_MAX((vec)[2], b); \
+} (void)0
+
+#define CLAMP4(vec, b, c) { \
+	CLAMP((vec)[0], b, c); \
+	CLAMP((vec)[1], b, c); \
+	CLAMP((vec)[2], b, c); \
+	CLAMP((vec)[3], b, c); \
+} (void)0
+
+#define CLAMP4_MIN(vec, b) { \
+	CLAMP_MIN((vec)[0], b); \
+	CLAMP_MIN((vec)[1], b); \
+	CLAMP_MIN((vec)[2], b); \
+	CLAMP_MIN((vec)[3], b); \
+} (void)0
+
+#define CLAMP4_MAX(vec, b) { \
+	CLAMP_MAX((vec)[0], b); \
+	CLAMP_MAX((vec)[1], b); \
+	CLAMP_MAX((vec)[2], b); \
+	CLAMP_MAX((vec)[3], b); \
 } (void)0
 
 #define IS_EQ(a, b)  ( \

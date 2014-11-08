@@ -310,14 +310,16 @@ static int make_proxy_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 
 		/* present the menu and be done... */
 		uiPupMenuEnd(C, pup);
+
+		/* this invoke just calls another instance of this operator... */
+		return OPERATOR_INTERFACE;
 	}
 	else {
 		/* error.. cannot continue */
 		BKE_report(op->reports, RPT_ERROR, "Can only make proxy for a referenced object or group");
+		return OPERATOR_CANCELLED;
 	}
 
-	/* this invoke just calls another instance of this operator... */
-	return OPERATOR_CANCELLED;
 }
 
 static int make_proxy_exec(bContext *C, wmOperator *op)
@@ -700,6 +702,9 @@ bool ED_object_parent_set(ReportList *reports, Main *bmain, Scene *scene, Object
 								if (md) {
 									((CurveModifierData *)md)->object = par;
 								}
+								if (par->curve_cache && par->curve_cache->path == NULL) {
+									DAG_id_tag_update(&par->id, OB_RECALC_DATA);
+								}
 							}
 							break;
 						case PAR_LATTICE: /* lattice deform */
@@ -921,7 +926,7 @@ static int parent_set_invoke(bContext *C, wmOperator *UNUSED(op), const wmEvent 
 
 	uiPupMenuEnd(C, pup);
 
-	return OPERATOR_CANCELLED;
+	return OPERATOR_INTERFACE;
 }
 
 static bool parent_set_draw_check_prop(PointerRNA *ptr, PropertyRNA *prop)

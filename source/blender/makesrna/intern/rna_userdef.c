@@ -209,6 +209,14 @@ static void rna_userdef_gl_use_16bit_textures(Main *bmain, Scene *scene, Pointer
 	rna_userdef_update(bmain, scene, ptr);
 }
 
+static void rna_userdef_undo_steps_set(PointerRNA *ptr, int value)
+{
+	UserDef *userdef = (UserDef *)ptr->data;
+
+	/* Do not allow 1 undo steps, useless and breaks undo/redo process (see T42531). */
+	userdef->undosteps = (value == 1) ? 2 : value;
+}
+
 static void rna_userdef_select_mouse_set(PointerRNA *ptr, int value)
 {
 	UserDef *userdef = (UserDef *)ptr->data;
@@ -1018,6 +1026,12 @@ static void rna_def_userdef_theme_ui(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Icon Alpha", "Transparency of icons in the interface, to reduce contrast");
 	RNA_def_property_update(prop, 0, "rna_userdef_update");
 	
+	prop = RNA_def_property(srna, "emboss", PROP_FLOAT, PROP_COLOR_GAMMA);
+	RNA_def_property_float_sdna(prop, NULL, "emboss");
+	RNA_def_property_array(prop, 4);
+	RNA_def_property_ui_text(prop, "Emboss", "");
+	RNA_def_property_update(prop, 0, "rna_userdef_update");
+
 	/* axis */
 	prop = RNA_def_property(srna, "axis_x", PROP_FLOAT, PROP_COLOR_GAMMA);
 	RNA_def_property_float_sdna(prop, NULL, "xaxis");
@@ -2034,6 +2048,12 @@ static void rna_def_userdef_theme_space_node(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Wires", "");
 	RNA_def_property_update(prop, 0, "rna_userdef_update");
 
+	prop = RNA_def_property(srna, "wire_inner", PROP_FLOAT, PROP_COLOR_GAMMA);
+	RNA_def_property_float_sdna(prop, NULL, "syntaxr");
+	RNA_def_property_array(prop, 3);
+	RNA_def_property_ui_text(prop, "Wire Color", "");
+	RNA_def_property_update(prop, 0, "rna_userdef_update");
+
 	prop = RNA_def_property(srna, "wire_select", PROP_FLOAT, PROP_COLOR_GAMMA);
 	RNA_def_property_float_sdna(prop, NULL, "edge_select");
 	RNA_def_property_array(prop, 3);
@@ -2784,11 +2804,6 @@ static void rna_def_userdef_theme_space_clip(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Path After", "Color of path after current frame");
 	RNA_def_property_update(prop, 0, "rna_userdef_update");
 
-	prop = RNA_def_property(srna, "grid", PROP_FLOAT, PROP_COLOR_GAMMA);
-	RNA_def_property_array(prop, 3);
-	RNA_def_property_ui_text(prop, "Grid", "");
-	RNA_def_property_update(prop, 0, "rna_userdef_update");
-
 	prop = RNA_def_property(srna, "frame_current", PROP_FLOAT, PROP_COLOR_GAMMA);
 	RNA_def_property_float_sdna(prop, NULL, "cframe");
 	RNA_def_property_array(prop, 3);
@@ -3250,6 +3265,11 @@ static void rna_def_userdef_view(BlenderRNA *brna)
 	RNA_def_property_range(prop, 0, 1000);
 	RNA_def_property_ui_text(prop, "Threshold", "Distance from center needed before a selection can be made");
 
+	prop = RNA_def_property(srna, "pie_menu_confirm", PROP_INT, PROP_PIXEL);
+	RNA_def_property_range(prop, 0, 1000);
+	RNA_def_property_ui_text(prop, "Confirm Threshold",
+	                         "Distance threshold after which selection is made (zero to disable)");
+
 	prop = RNA_def_property(srna, "use_quit_dialog", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "uiflag", USER_QUIT_PROMPT);
 	RNA_def_property_ui_text(prop, "Prompt Quit",
@@ -3453,6 +3473,7 @@ static void rna_def_userdef_edit(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "undo_steps", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "undosteps");
 	RNA_def_property_range(prop, 0, 64);
+	RNA_def_property_int_funcs(prop, NULL, "rna_userdef_undo_steps_set", NULL);
 	RNA_def_property_ui_text(prop, "Undo Steps", "Number of undo steps available (smaller values conserve memory)");
 
 	prop = RNA_def_property(srna, "undo_memory_limit", PROP_INT, PROP_NONE);

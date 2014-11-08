@@ -261,6 +261,12 @@ void blo_reportf_wrap(ReportList *reports, ReportType type, const char *format, 
 	}
 }
 
+/* for reporting linking messages */
+static const char *library_parent_filepath(Library *lib)
+{
+	return lib->parent ? lib->parent->filepath : "<direct>";
+}
+
 static OldNewMap *oldnewmap_new(void) 
 {
 	OldNewMap *onm= MEM_callocN(sizeof(*onm), "OldNewMap");
@@ -3310,7 +3316,7 @@ static void direct_link_image(FileData *fd, Image *ima)
 {
 	/* for undo system, pointers could be restored */
 	if (fd->imamap)
-		ima->cache = newmclipadr(fd, ima->cache);
+		ima->cache = newimaadr(fd, ima->cache);
 	else
 		ima->cache = NULL;
 
@@ -9451,8 +9457,10 @@ static void read_libraries(FileData *basefd, ListBase *mainlist)
 					if (mainptr->curlib->packedfile) {
 						PackedFile *pf = mainptr->curlib->packedfile;
 						
-						blo_reportf_wrap(basefd->reports, RPT_INFO, TIP_("Read packed library:  '%s'"),
-						                 mainptr->curlib->name);
+						blo_reportf_wrap(
+						        basefd->reports, RPT_INFO, TIP_("Read packed library:  '%s', parent '%s'"),
+						        mainptr->curlib->name,
+						        library_parent_filepath(mainptr->curlib));
 						fd = blo_openblendermemory(pf->data, pf->size, basefd->reports);
 						
 						
@@ -9460,8 +9468,11 @@ static void read_libraries(FileData *basefd, ListBase *mainlist)
 						BLI_strncpy(fd->relabase, mainptr->curlib->filepath, sizeof(fd->relabase));
 					}
 					else {
-						blo_reportf_wrap(basefd->reports, RPT_INFO, TIP_("Read library:  '%s', '%s'"),
-						                 mainptr->curlib->filepath, mainptr->curlib->name);
+						blo_reportf_wrap(
+						        basefd->reports, RPT_INFO, TIP_("Read library:  '%s', '%s', parent '%s'"),
+						        mainptr->curlib->filepath,
+						        mainptr->curlib->name,
+						        library_parent_filepath(mainptr->curlib));
 						fd = blo_openblenderfile(mainptr->curlib->filepath, basefd->reports);
 					}
 					/* allow typing in a new lib path */
@@ -9532,10 +9543,13 @@ static void read_libraries(FileData *basefd, ListBase *mainlist)
 								
 								append_id_part(fd, mainptr, id, &realid);
 								if (!realid) {
-									blo_reportf_wrap(fd->reports, RPT_WARNING,
-									                 TIP_("LIB ERROR: %s: '%s' missing from '%s'"),
-									                 BKE_idcode_to_name(GS(id->name)),
-									                 id->name + 2, mainptr->curlib->filepath);
+									blo_reportf_wrap(
+									        fd->reports, RPT_WARNING,
+									        TIP_("LIB ERROR: %s: '%s' missing from '%s', parent '%s'"),
+									        BKE_idcode_to_name(GS(id->name)),
+									        id->name + 2,
+									        mainptr->curlib->filepath,
+									        library_parent_filepath(mainptr->curlib));
 								}
 								
 								change_idid_adr(mainlist, basefd, id, realid);
@@ -9564,9 +9578,13 @@ static void read_libraries(FileData *basefd, ListBase *mainlist)
 				idn = id->next;
 				if (id->flag & LIB_READ) {
 					BLI_remlink(lbarray[a], id);
-					blo_reportf_wrap(basefd->reports, RPT_WARNING,
-					                 TIP_("LIB ERROR: %s: '%s' unread lib block missing from '%s'"),
-					                 BKE_idcode_to_name(GS(id->name)), id->name + 2, mainptr->curlib->filepath);
+					blo_reportf_wrap(
+					        basefd->reports, RPT_WARNING,
+					        TIP_("LIB ERROR: %s: '%s' unread lib block missing from '%s', parent '%s'"),
+					        BKE_idcode_to_name(GS(id->name)),
+					        id->name + 2,
+					        mainptr->curlib->filepath,
+					        library_parent_filepath(mainptr->curlib));
 					change_idid_adr(mainlist, basefd, id, NULL);
 					
 					MEM_freeN(id);

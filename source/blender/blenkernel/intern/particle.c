@@ -1043,7 +1043,7 @@ static float interpolate_particle_value(float v1, float v2, float v3, float v4, 
 	return value;
 }
 
-void psys_interpolate_particle(short type, ParticleKey keys[4], float dt, ParticleKey *result, int velocity)
+void psys_interpolate_particle(short type, ParticleKey keys[4], float dt, ParticleKey *result, bool velocity)
 {
 	float t[4];
 
@@ -1071,7 +1071,6 @@ void psys_interpolate_particle(short type, ParticleKey keys[4], float dt, Partic
 		}
 	}
 }
-
 
 
 typedef struct ParticleInterpolationData {
@@ -4564,8 +4563,7 @@ void psys_get_dupli_path_transform(ParticleSimulationData *sim, ParticleData *pa
 		psys_particle_on_emitter(psmd, PART_FROM_FACE, cpa->num, DMCACHE_ISCHILD, cpa->fuv, cpa->foffset, loc, nor, 0, 0, 0, 0);
 
 	if (psys->part->rotmode == PART_ROT_VEL) {
-		copy_m3_m4(nmat, ob->imat);
-		transpose_m3(nmat);
+		transpose_m3_m4(nmat, ob->imat);
 		mul_m3_v3(nmat, nor);
 		normalize_v3(nor);
 

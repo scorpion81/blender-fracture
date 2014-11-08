@@ -122,12 +122,10 @@ static bool ED_view3d_snap_ray(bContext *C, float r_co[3],
 	bool ret;
 
 	Scene *scene = CTX_data_scene(C);
-	View3D *v3d = CTX_wm_view3d(C);
-	ARegion *ar = CTX_wm_region(C);
 	struct Object *obedit = CTX_data_edit_object(C);
 
 	/* try snap edge, then face if it fails */
-	ret = snapObjectsRayEx(scene, NULL, v3d, ar, obedit, SCE_SNAP_MODE_FACE,
+	ret = snapObjectsRayEx(scene, NULL, NULL, NULL, obedit, SCE_SNAP_MODE_FACE,
 	                       NULL, NULL,
 	                       ray_start, ray_normal, &ray_dist,
 	                       NULL, &dist_px, r_co, r_no_dummy, SNAP_ALL);
@@ -189,7 +187,6 @@ typedef struct RulerInfo {
 
 	/* wm state */
 	wmWindow *win;
-	ScrArea *sa;
 	ARegion *ar;
 	void *draw_handle_pixel;
 } RulerInfo;
@@ -800,7 +797,6 @@ static int view3d_ruler_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSE
 	op->customdata = ruler_info;
 
 	ruler_info->win = win;
-	ruler_info->sa = sa;
 	ruler_info->ar = ar;
 	ruler_info->draw_handle_pixel = ED_region_draw_cb_activate(ar->type, ruler_info_draw_pixel,
 	                                                           ruler_info, REGION_DRAW_POST_PIXEL);
@@ -827,11 +823,11 @@ static int view3d_ruler_modal(bContext *C, wmOperator *op, const wmEvent *event)
 	bool do_draw = false;
 	int exit_code = OPERATOR_RUNNING_MODAL;
 	RulerInfo *ruler_info = op->customdata;
-	ScrArea *sa = ruler_info->sa;
+	ScrArea *sa = CTX_wm_area(C);
 	ARegion *ar = ruler_info->ar;
 	RegionView3D *rv3d = ar->regiondata;
 
-	/* its possible to change  spaces while running the operator [#34894] */
+	/* its possible to change spaces while running the operator [#34894] */
 	if (UNLIKELY(ar != CTX_wm_region(C))) {
 		exit_code = OPERATOR_FINISHED;
 		goto exit;

@@ -223,6 +223,7 @@ class USERPREF_PT_interface(Panel):
         sub.prop(view, "pie_initial_timeout")
         sub.prop(view, "pie_menu_radius")
         sub.prop(view, "pie_menu_threshold")
+        sub.prop(view, "pie_menu_confirm")
         col.separator()
         col.separator()
         col.separator()
@@ -743,7 +744,7 @@ class USERPREF_PT_theme(Panel):
             col.separator()
             col.separator()
 
-            col.label("Menu Shadow:")
+            col.label("Styles:")
 
             row = col.row()
 
@@ -761,11 +762,6 @@ class USERPREF_PT_theme(Panel):
             colsub = padding.column()
             colsub.row().prop(ui, "menu_shadow_width")
 
-            col.separator()
-            col.separator()
-
-            col.label("Icons:")
-
             row = col.row()
 
             subsplit = row.split(percentage=0.95)
@@ -773,16 +769,14 @@ class USERPREF_PT_theme(Panel):
             padding = subsplit.split(percentage=0.15)
             colsub = padding.column()
             colsub = padding.column()
-            # Not working yet.
-            #~ colsub.active = False
-            #~ colsub.row().prop(ui, "icon_file")
+            colsub.row().prop(ui, "icon_alpha")
 
             subsplit = row.split(percentage=0.85)
 
             padding = subsplit.split(percentage=0.15)
             colsub = padding.column()
             colsub = padding.column()
-            colsub.row().prop(ui, "icon_alpha")
+            colsub.row().prop(ui, "emboss")
 
             col.separator()
             col.separator()

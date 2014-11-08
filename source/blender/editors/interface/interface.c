@@ -1170,8 +1170,7 @@ void uiBlockUpdateFromOld(const bContext *C, uiBlock *block)
 	block->auto_open = block->oldblock->auto_open;
 	block->auto_open_last = block->oldblock->auto_open_last;
 	block->tooltipdisabled = block->oldblock->tooltipdisabled;
-	copy_v3_v3(ui_block_hsv_get(block),
-	           ui_block_hsv_get(block->oldblock));
+	BLI_movelisttolist(&block->color_pickers.list, &block->oldblock->color_pickers.list);
 
 	block->oldblock = NULL;
 }
@@ -1312,10 +1311,6 @@ void uiDrawBlock(const bContext *C, uiBlock *block)
 	rcti rect;
 	int multisample_enabled;
 	
-	/* early exit if cancelled */
-	if ((block->flag & UI_BLOCK_RADIAL) && (block->pie_data.flags & UI_PIE_FINISHED))
-		return;
-
 	/* get menu region or area region */
 	ar = CTX_wm_menu(C);
 	if (!ar)
@@ -1751,11 +1746,9 @@ bool ui_is_but_compatible(const uiBut *but_a, const uiBut *but_b)
 		return false;
 
 	if (but_a->rnaprop) {
+		/* skip 'rnapoin.data', 'rnapoin.id.data'
+		 * allow different data to have the same props edited at once */
 		if (but_a->rnapoin.type != but_b->rnapoin.type)
-			return false;
-		if (but_a->rnapoin.data != but_b->rnapoin.data)
-			return false;
-		if (but_a->rnapoin.id.data != but_b->rnapoin.id.data)
 			return false;
 		if (RNA_property_type(but_a->rnaprop) != RNA_property_type(but_b->rnaprop))
 			return false;
@@ -2452,6 +2445,7 @@ void uiFreeBlock(const bContext *C, uiBlock *block)
 	CTX_store_free_list(&block->contexts);
 
 	BLI_freelistN(&block->saferct);
+	BLI_freelistN(&block->color_pickers.list);
 	
 	MEM_freeN(block);
 }

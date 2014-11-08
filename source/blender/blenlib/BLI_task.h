@@ -100,6 +100,19 @@ ThreadMutex *BLI_task_pool_user_mutex(TaskPool *pool);
 /* number of tasks done, for stats, don't use this to make decisions */
 size_t BLI_task_pool_tasks_done(TaskPool *pool);
 
+/* Parallel for routines */
+typedef void (*TaskParallelRangeFunc)(void *userdata, int iter);
+void BLI_task_parallel_range_ex(
+        int start, int stop,
+        void *userdata,
+        TaskParallelRangeFunc func,
+        const int range_threshold,
+        const bool use_dynamic_scheduling);
+void BLI_task_parallel_range(
+        int start, int stop,
+        void *userdata,
+        TaskParallelRangeFunc func);
+
 #ifdef __cplusplus
 }
 #endif

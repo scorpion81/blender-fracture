@@ -114,6 +114,19 @@ static void do_version_constraints_radians_degrees_270_5(ListBase *lb)
 	}
 }
 
+static void do_version_constraints_stretch_to_limits(ListBase *lb)
+{
+	bConstraint *con;
+
+	for (con = lb->first; con; con = con->next) {
+		if (con->type == CONSTRAINT_TYPE_STRETCHTO) {
+			bStretchToConstraint *data = (bStretchToConstraint *)con->data;
+			data->bulge_min = 1.0f;
+			data->bulge_max = 1.0f;
+		}
+	}
+}
+
 void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 {
 	if (!MAIN_VERSION_ATLEAST(main, 270, 0)) {
@@ -390,7 +403,7 @@ void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 			}
 		}
 	}
-	
+
 	if (!MAIN_VERSION_ATLEAST(main, 272, 1)) {
 		Brush *br;
 		for (br = main->brush.first; br; br = br->id.next) {
@@ -399,10 +412,29 @@ void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 		}
 	}
 
-	if (!DNA_struct_elem_find(fd->filesdna, "Image", "float", "gen_color")) {
-		Image *image;
-		for (image = main->image.first; image != NULL; image = image->id.next) {
-			image->gen_color[3] = 1.0f;
+	if (!MAIN_VERSION_ATLEAST(main, 272, 2)) {
+		if (!DNA_struct_elem_find(fd->filesdna, "Image", "float", "gen_color")) {
+			Image *image;
+			for (image = main->image.first; image != NULL; image = image->id.next) {
+				image->gen_color[3] = 1.0f;
+			}
+		}
+
+		if (!DNA_struct_elem_find(fd->filesdna, "bStretchToConstraint", "float", "bulge_min")) {
+			Object *ob;
+
+			/* Update Transform constraint (again :|). */
+			for (ob = main->object.first; ob; ob = ob->id.next) {
+				do_version_constraints_stretch_to_limits(&ob->constraints);
+
+				if (ob->pose) {
+					/* Bones constraints! */
+					bPoseChannel *pchan;
+					for (pchan = ob->pose->chanbase.first; pchan; pchan = pchan->next) {
+						do_version_constraints_stretch_to_limits(&pchan->constraints);
+					}
+				}
+			}
 		}
 	}
 }
