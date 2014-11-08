@@ -87,6 +87,7 @@ struct rbRigidBody {
 	btRigidBody *body;
 	int col_groups;
 	void *meshIsland;
+	void *blenderOb;
 	rbDynamicsWorld *world;
 };
 
@@ -112,9 +113,9 @@ struct rbCollisionShape {
 
 struct rbFilterCallback : public btOverlapFilterCallback
 {
-	int (*callback)(void* world, void* island1, void* island2);
+	int (*callback)(void* world, void* island1, void* island2, void* blenderOb1, void* blenderOb2);
 
-	rbFilterCallback(int (*callback)(void* world, void* island1, void* island2)) {
+	rbFilterCallback(int (*callback)(void* world, void* island1, void* island2, void* blenderOb1, void* blenderOb2)) {
 		this->callback = callback;
 	}
 
@@ -128,7 +129,7 @@ struct rbFilterCallback : public btOverlapFilterCallback
 		collides = collides && (proxy1->m_collisionFilterGroup & proxy0->m_collisionFilterMask);
 		collides = collides && (rb0->col_groups & rb1->col_groups);
 		if (this->callback != NULL) {
-			int result = this->callback(rb0->world->blenderWorld, rb0->meshIsland, rb1->meshIsland);
+			int result = this->callback(rb0->world->blenderWorld, rb0->meshIsland, rb1->meshIsland, rb0->blenderOb, rb1->blenderOb);
 			collides = collides && (bool)result;
 		}
 		
@@ -203,7 +204,7 @@ bool rbContactCallback::handle_contacts(btManifoldPoint& point, btCollisionObjec
 /* Setup ---------------------------- */
 
 //yuck, but need a handle for the world somewhere for collision callback...
-rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, int (*callback)(void *, void *, void *),
+rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, int (*callback)(void *, void *, void *, void *, void *),
 							   void (*contactCallback)(rbContactPoint * cp, void *bworld))
 {
 	rbDynamicsWorld *world = new rbDynamicsWorld;
@@ -320,12 +321,13 @@ void RB_dworld_export(rbDynamicsWorld *world, const char *filename)
 
 /* Setup ---------------------------- */
 
-void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *object, int col_groups, void* meshIsland)
+void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *object, int col_groups, void* meshIsland, void* blenderOb)
 {
 	btRigidBody *body = object->body;
 	object->col_groups = col_groups;
 	object->meshIsland = meshIsland;
 	object->world = world;
+	object->blenderOb = blenderOb;
 	
 	world->dynamicsWorld->addRigidBody(body);
 }

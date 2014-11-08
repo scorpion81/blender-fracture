@@ -1158,7 +1158,7 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 	}
 
 	if (rbw && rbw->physics_world && rbo->physics_object)
-		RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups, mi);
+		RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups, mi, ob);
 
 	rbo->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
 	rbo->flag &= ~RBO_FLAG_KINEMATIC_REBUILD;
@@ -1234,7 +1234,7 @@ static void rigidbody_validate_sim_object(RigidBodyWorld *rbw, Object *ob, bool 
 	}
 
 	if (rbw && rbw->physics_world)
-		RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups, NULL);
+		RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups, NULL, ob);
 }
 
 /* --------------------- */
@@ -1621,12 +1621,13 @@ static bool colgroup_check(int group1, int group2)
 }
 
 //this allows partial object activation, only some shards will be activated, called from bullet(!)
-static int filterCallback(void* world, void* island1, void* island2) {
+static int filterCallback(void* world, void* island1, void* island2, void *blenderOb1, void* blenderOb2) {
 	MeshIsland* mi1, *mi2;
 	RigidBodyWorld *rbw = (RigidBodyWorld*)world;
 	Object* ob1, *ob2;
 	int ob_index1, ob_index2;
 	FractureModifierData *fmd1, *fmd2;
+	bool validOb = true;
 
 	mi1 = (MeshIsland*)island1;
 	mi2 = (MeshIsland*)island2;
@@ -1636,20 +1637,50 @@ static int filterCallback(void* world, void* island1, void* island2) {
 		return 1;
 	}
 
-	if ((mi1 == NULL) || (mi2 == NULL)) {
+	/*if ((mi1 == NULL) || (mi2 == NULL)) {
 		return 1;
-	}
+	}*/
 
 	//cache offset map is a dull name for that...
-	ob_index1 = rbw->cache_offset_map[mi1->linear_index];
-	ob_index2 = rbw->cache_offset_map[mi2->linear_index];
+	if (mi1 != NULL)
+	{
+		ob_index1 = rbw->cache_offset_map[mi1->linear_index];
+		ob1 = rbw->objects[ob_index1];
+	}
+	else
+	{
+		ob1 = blenderOb1;
+	}
 
-	ob1 = rbw->objects[ob_index1];
-	ob2 = rbw->objects[ob_index2];
+	if (mi2 != NULL)
+	{
+		ob_index2 = rbw->cache_offset_map[mi2->linear_index];
+		ob2 = rbw->objects[ob_index2];
+	}
+	else
+	{
+		ob2 = blenderOb2;
+	}
 
-	if (ob_index1 != ob_index2 && colgroup_check(ob1->rigidbody_object->col_groups, ob2->rigidbody_object->col_groups) &&
-	   ((mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) ||
-	   (mi2->rigidbody->flag & RBO_FLAG_KINEMATIC)))
+	if ((mi1 != NULL) && (mi2 != NULL)) {
+		validOb = (ob_index1 != ob_index2 && colgroup_check(ob1->rigidbody_object->col_groups, ob2->rigidbody_object->col_groups) &&
+				  ((mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) || (mi2->rigidbody->flag & RBO_FLAG_KINEMATIC)));
+	}
+	else if ((mi1 == NULL) && (mi2 != NULL)) {
+		validOb = (colgroup_check(ob1->rigidbody_object->col_groups, ob2->rigidbody_object->col_groups) &&
+		          ((ob1->rigidbody_object->flag & RBO_FLAG_KINEMATIC) || (mi2->rigidbody->flag & RBO_FLAG_KINEMATIC)));
+	}
+	else if ((mi1 != NULL) && (mi2 == NULL)) {
+		validOb = (colgroup_check(ob1->rigidbody_object->col_groups, ob2->rigidbody_object->col_groups) &&
+		          ((mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) || (ob2->rigidbody_object->flag & RBO_FLAG_KINEMATIC)));
+	}
+	else
+	{
+		validOb = (colgroup_check(ob1->rigidbody_object->col_groups, ob2->rigidbody_object->col_groups) &&
+		          ((ob1->rigidbody_object->flag & RBO_FLAG_KINEMATIC) || (ob2->rigidbody_object->flag & RBO_FLAG_KINEMATIC)));
+	}
+
+	if (validOb)
 	{
 		MeshIsland *mi;
 
@@ -1662,6 +1693,7 @@ static int filterCallback(void* world, void* island1, void* island2) {
 			valid = valid && (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
 			valid = valid && (ob2->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
 
+			valid2 = valid2 && (fmd1 != NULL);
 			valid2 = valid2 && (fmd1->use_constraints == false);
 
 			if (valid || valid2)
@@ -1706,6 +1738,7 @@ static int filterCallback(void* world, void* island1, void* island2) {
 			valid = valid && (ob2->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
 			valid = valid && (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
 
+			valid2 = valid2 && (fmd2 != NULL);
 			valid2 = valid2 && (fmd2->use_constraints == false);
 
 			if (valid || valid2)
@@ -3176,17 +3209,19 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 		return;
 	else if ((rbw->objects == NULL) || (rbw->cache_index_map == NULL))
 		rigidbody_update_ob_array(rbw);
-	
+
 	/* try to read from cache */
 	// RB_TODO deal with interpolated, old and baked results
 	if (BKE_ptcache_read(&pid, ctime)) {
 		BKE_ptcache_validate(cache, (int)ctime);
+
 		rbw->ltime = ctime;
 		return;
 	}
 	else if (rbw->ltime == startframe)
 	{
 		restoreKinematic(rbw);
+		rigidbody_update_simulation(scene, rbw, true);
 	}
 
 	/* advance simulation, we can only step one frame forward */
