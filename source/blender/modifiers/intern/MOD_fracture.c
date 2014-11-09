@@ -813,6 +813,31 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 	return points;
 }
 
+static Material* find_material(const char* name)
+{
+	ID* mat;
+
+	for (mat = G.main->mat.first; mat; mat = mat->next)
+	{
+		if (strlen(name) <= MAX_ID_NAME - 2)
+		{
+			char *ptr;
+			char tmpnam[MAX_ID_NAME];
+			tmpnam[0] = 'M';
+			tmpnam[1] = 'A';
+
+			ptr = strcat(tmpnam, name);
+			//printf("%s %s %s\n", ptr, tmpnam, mat->name);
+			if (strcmp(ptr, mat->name) == 0)
+			{
+				return (Material*)mat;
+			}
+		}
+	}
+
+	return BKE_material_add(G.main, name);
+}
+
 static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, DerivedMesh *dm)
 {
 	/* dummy point cloud, random */
@@ -877,6 +902,41 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, D
 
 			/* get index again */
 			mat_index = find_material_index(obj, fracmd->inner_material);
+		}
+		else
+		{
+			/* autogenerate materials */
+			short* totmat = give_totcolp(obj);
+			if (*totmat == 0)
+			{
+				/*create both materials*/
+				Material* mat_inner;
+				Material* mat_outer = find_material("Outer");
+				object_add_material_slot(obj);
+				assign_material(obj, mat_outer, obj->totcol, BKE_MAT_ASSIGN_OBDATA);
+
+				mat_inner = find_material("Inner");
+				object_add_material_slot(obj);
+				assign_material(obj, mat_inner, obj->totcol, BKE_MAT_ASSIGN_OBDATA);
+
+				fracmd->inner_material = mat_inner;
+			}
+			else if (*totmat == 1)
+			{
+				Material* mat_inner = find_material("Inner");
+				object_add_material_slot(obj);
+				assign_material(obj, mat_inner, obj->totcol, BKE_MAT_ASSIGN_OBDATA);
+
+				fracmd->inner_material = mat_inner;
+			}
+			else /*use 2nd material slot*/
+			{
+				Material* mat_inner = give_current_material(obj, 2);
+
+				fracmd->inner_material = mat_inner;
+			}
+
+			mat_index = 2;
 		}
 
 		mat_index = mat_index > 0 ? mat_index - 1 : mat_index;
