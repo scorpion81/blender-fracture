@@ -4021,7 +4021,7 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "splinter_length", PROP_FLOAT, PROP_NONE);
-	RNA_def_property_range(prop, 1.0f, 1000.0f);
+	RNA_def_property_range(prop, 1.0f, FLT_MAX);
 	RNA_def_property_ui_text(prop, "Splinter length", "Length of splinters");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
@@ -4030,6 +4030,11 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_range(prop, 0, INT_MAX);
 	RNA_def_property_int_funcs(prop, NULL, "rna_RigidBodyModifier_cluster_solver_iterations_override_set", NULL);
 	RNA_def_property_ui_text(prop, "Cluster Solver Iterations Override", "Override the world constraint solver iteration value for INSIDE clusters with this value, 0 means no override");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "nor_range", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_range(prop, 0.0f, FLT_MAX);
+	RNA_def_property_ui_text(prop, "Normal Search Radius", "Radius in which to search for valid normals");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 

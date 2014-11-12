@@ -153,7 +153,8 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             box.prop_search(md, "inner_vertex_group", ob, "vertex_groups", text = "")
             box.prop(md, "autohide_dist")
 
-            box.prop(md, "fix_normals");
+            box.prop(md, "fix_normals")
+            box.prop(md, "nor_range")
             if not(md.refresh):
                 box.prop(md, "execute_threaded")
             box.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")

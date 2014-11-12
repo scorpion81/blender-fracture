@@ -126,6 +126,7 @@ static void initData(ModifierData *md)
 	 * default use case is with this flag being enabled, disable at own risk */
 	fmd->use_particle_birth_coordinates = true;
 	fmd->splinter_length = 1.0f;
+	fmd->nor_range = 1.0f;
 }
 
 static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
@@ -442,17 +443,38 @@ static KDTree *build_nor_tree(DerivedMesh *dm)
 	return tree;
 }
 
-static void find_normal(DerivedMesh *dm, KDTree *tree, float co[3], short no[3])
+static void find_normal(DerivedMesh *dm, KDTree *tree, float co[3], short no[3], short rno[3], float range)
 {
-	KDTreeNearest n;
-	int index = 0;
+	KDTreeNearest *n = NULL, n2;
+	int index = 0, i = 0, count = 0;
 	MVert mvert;
+	float fno[3], vno[3];
 
-	index = BLI_kdtree_find_nearest(tree, co, &n);
+	normal_short_to_float_v3(fno, no);
 
+	count = BLI_kdtree_range_search(tree, co, &n, range);
+	for (i = 0; i < count; i++)
+	{
+		index = n[i].index;
+		dm->getVert(dm, index, &mvert);
+		normal_short_to_float_v3(vno, mvert.no);
+		if ((dot_v3v3(fno, vno) > 0.0f)){
+			copy_v3_v3_short(rno, mvert.no);
+
+			if (n != NULL) {
+				MEM_freeN(n);
+				n = NULL;
+			}
+
+			return;
+		}
+	}
+
+	/*fallback if no valid normal in searchrange....*/
+	BLI_kdtree_find_nearest(tree, co, &n2);
+	index = n2.index;
 	dm->getVert(dm, index, &mvert);
-
-	copy_v3_v3_short(no, mvert.no);
+	copy_v3_v3_short(rno, mvert.no);
 }
 
 static DerivedMesh *get_clean_dm(Object *ob, DerivedMesh *dm)
@@ -1328,6 +1350,7 @@ static void mesh_separate_loose_partition(FractureModifierData *rmd, Object *ob,
 		if (!BM_elem_flag_test(v_seed, BM_ELEM_TAG) && !BM_elem_flag_test(v_seed, BM_ELEM_INTERNAL_TAG)) {
 
 			short no[3];
+			short vno[3];
 
 			v_tag = MEM_callocN(sizeof(BMVert *), "v_tag");
 			startco = MEM_callocN(sizeof(float), "mesh_separate_loose->startco");
@@ -1345,7 +1368,8 @@ static void mesh_separate_loose_partition(FractureModifierData *rmd, Object *ob,
 
 			startno = MEM_reallocN(startno, (tag_counter + 1) * 3 * sizeof(short));
 
-			find_normal(dm, rmd->nor_tree, v_seed->co, no);
+			normal_float_to_short_v3(vno, v_seed->no);
+			find_normal(dm, rmd->nor_tree, v_seed->co, vno, no, rmd->nor_range);
 			startno[3 * tag_counter] = no[0];
 			startno[3 * tag_counter + 1] = no[1];
 			startno[3 * tag_counter + 2] = no[2];
@@ -1366,6 +1390,7 @@ static void mesh_separate_loose_partition(FractureModifierData *rmd, Object *ob,
 		for (; e; e = BMW_step(&walker)) {
 			if (!BM_elem_flag_test(e->v1, BM_ELEM_TAG) && !BM_elem_flag_test(e->v1, BM_ELEM_INTERNAL_TAG)) {
 				short no[3];
+				short vno[3];
 
 				BM_elem_flag_enable(e->v1, BM_ELEM_TAG);
 				BM_elem_flag_enable(e->v1, BM_ELEM_INTERNAL_TAG);
@@ -1380,7 +1405,8 @@ static void mesh_separate_loose_partition(FractureModifierData *rmd, Object *ob,
 
 				startno = MEM_reallocN(startno, (tag_counter + 1) * 3 * sizeof(short));
 
-				find_normal(dm, rmd->nor_tree, e->v1->co, no);
+				normal_float_to_short_v3(vno, e->v1->no);
+				find_normal(dm, rmd->nor_tree, e->v1->co, vno, no, rmd->nor_range);
 				startno[3 * tag_counter] = no[0];
 				startno[3 * tag_counter + 1] = no[1];
 				startno[3 * tag_counter + 2] = no[2];
@@ -1390,6 +1416,7 @@ static void mesh_separate_loose_partition(FractureModifierData *rmd, Object *ob,
 			}
 			if (!BM_elem_flag_test(e->v2, BM_ELEM_TAG) && !BM_elem_flag_test(e->v2, BM_ELEM_INTERNAL_TAG)) {
 				short no[3];
+				short vno[3];
 
 				BM_elem_flag_enable(e->v2, BM_ELEM_TAG);
 				BM_elem_flag_enable(e->v2, BM_ELEM_INTERNAL_TAG);
@@ -1404,7 +1431,8 @@ static void mesh_separate_loose_partition(FractureModifierData *rmd, Object *ob,
 
 				startno = MEM_reallocN(startno, (tag_counter + 1) * 3 * sizeof(short));
 
-				find_normal(dm, rmd->nor_tree, e->v2->co, no);
+				normal_float_to_short_v3(vno, e->v2->no);
+				find_normal(dm, rmd->nor_tree, e->v2->co, vno, no, rmd->nor_range);
 				startno[3 * tag_counter] = no[0];
 				startno[3 * tag_counter + 1] = no[1];
 				startno[3 * tag_counter + 2] = no[2];
@@ -2240,7 +2268,7 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 						mi->vertco[j * 3 + 2] = mv->co[2];
 
 						/* either take orignormals or take ones from fractured mesh */
-						find_normal(orig_dm, fmd->nor_tree, mv->co, no);
+						find_normal(orig_dm, fmd->nor_tree, mv->co, mv->no, no, fmd->nor_range);
 
 						mi->vertno[j * 3] = no[0];
 						mi->vertno[j * 3 + 1] = no[1];

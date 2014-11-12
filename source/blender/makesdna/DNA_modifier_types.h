@@ -1462,6 +1462,7 @@ typedef struct FractureModifierData {
 	float cluster_breaking_threshold;
 	float contact_dist, autohide_dist;
 	float splinter_length;
+	float nor_range;
 
 	/* flags */
 	int refresh;
@@ -1488,7 +1489,7 @@ typedef struct FractureModifierData {
 	/* internal values */
 	float max_vol;
 
-	char pad[4];
+	//char pad[4];
 } FractureModifierData;
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */
