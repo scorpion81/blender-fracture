@@ -1451,6 +1451,7 @@ typedef struct FractureModifierData {
 
 	int constraint_limit;
 	int solver_iterations_override;
+	int cluster_solver_iterations_override;
 	int breaking_percentage;
 	int splinter_axis;
 
@@ -1487,7 +1488,7 @@ typedef struct FractureModifierData {
 	/* internal values */
 	float max_vol;
 
-	//char pad[4];
+	char pad[4];
 } FractureModifierData;
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */

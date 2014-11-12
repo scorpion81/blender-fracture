@@ -1695,7 +1695,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 			fmd1 = (FractureModifierData*)modifiers_findByType(ob1, eModifierType_Fracture);
 			valid = valid && (fmd1 != NULL);
 			valid = valid && (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
-			valid = valid && (ob2->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
+			//valid = valid && (ob2->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
 
 			valid2 = valid2 && (fmd1 != NULL);
 			valid2 = valid2 && (fmd1->use_constraints == false);
@@ -1737,7 +1737,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 			fmd2 = (FractureModifierData*)modifiers_findByType(ob2, eModifierType_Fracture);
 			valid = valid && (fmd2 != NULL);
 			valid = valid && (ob2->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
-			valid = valid && (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
+			//valid = valid && (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
 
 			valid2 = valid2 && (fmd2 != NULL);
 			valid2 = valid2 && (fmd2->use_constraints == false);
@@ -2715,7 +2715,12 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 						iterations = rbw->num_solver_iterations;
 					}
 					else {
-						iterations = rmd->solver_iterations_override;
+						if ((rbsc->mi1->particle_index != -1) && (rbsc->mi1->particle_index == rbsc->mi2->particle_index)) {
+							iterations = rmd->cluster_solver_iterations_override;
+						}
+						else {
+							iterations = rmd->solver_iterations_override;
+						}
 					}
 					
 					if (iterations > 0) {

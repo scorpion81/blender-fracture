@@ -109,6 +109,7 @@ static void initData(ModifierData *md)
 
 	fmd->cluster_breaking_threshold = 1000.0f;
 	fmd->solver_iterations_override = 0;
+	fmd->cluster_solver_iterations_override = 0;
 	fmd->shards_to_islands = false;
 	fmd->execute_threaded = false;
 	fmd->nor_tree = NULL;
@@ -1042,9 +1043,11 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->extra_group = rmd->extra_group;
 
 	/* sub object group  XXX Do we keep this ?*/
-	/* trmd->dm_group = rmd->dm_group;*/
+	trmd->dm_group = rmd->dm_group;
 
 	trmd->use_particle_birth_coordinates = rmd->use_particle_birth_coordinates;
+	trmd->splinter_length = rmd->splinter_length;
+	trmd->cluster_solver_iterations_override = rmd->cluster_solver_iterations_override;
 }
 
 /* mi->bb, its for volume fraction calculation.... */

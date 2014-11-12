@@ -141,7 +141,9 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             row.prop(md, "breaking_distance", text="Distance")
             row.prop(md, "breaking_distance_weighted")
 
-            box.prop(md, "solver_iterations_override")
+            col = box.column(align=True)
+            col.prop(md, "solver_iterations_override")
+            col.prop(md, "cluster_solver_iterations_override")
             box.prop(md, "use_mass_dependent_thresholds")
             box.label("Threshold Vertex Group:")
             box.prop_search(md, "thresh_vertex_group", ob, "vertex_groups", text = "")

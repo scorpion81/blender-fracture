@@ -713,6 +713,13 @@ static void rna_RigidBodyModifier_solver_iterations_override_set(PointerRNA *ptr
 	rmd->refresh_constraints = true;
 }
 
+static void rna_RigidBodyModifier_cluster_solver_iterations_override_set(PointerRNA *ptr, float value)
+{
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
+	rmd->cluster_solver_iterations_override = value;
+	rmd->refresh_constraints = true;
+}
+
 static void rna_RigidBodyModifier_autohide_dist_set(PointerRNA *ptr, float value)
 {
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
@@ -4016,6 +4023,13 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "splinter_length", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_range(prop, 1.0f, 1000.0f);
 	RNA_def_property_ui_text(prop, "Splinter length", "Length of splinters");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "cluster_solver_iterations_override", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "cluster_solver_iterations_override");
+	RNA_def_property_range(prop, 0, INT_MAX);
+	RNA_def_property_int_funcs(prop, NULL, "rna_RigidBodyModifier_cluster_solver_iterations_override_set", NULL);
+	RNA_def_property_ui_text(prop, "Cluster Solver Iterations Override", "Override the world constraint solver iteration value for INSIDE clusters with this value, 0 means no override");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
