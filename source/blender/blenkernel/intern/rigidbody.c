@@ -1692,7 +1692,6 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 		if (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
 			bool valid = true, valid2 = true;
-			RigidBodyShardCon *con;
 			fmd1 = (FractureModifierData*)modifiers_findByType(ob1, eModifierType_Fracture);
 			valid = valid && (fmd1 != NULL);
 			valid = valid && (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
@@ -1706,19 +1705,16 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 				for (mi = fmd1->meshIslands.first; mi; mi = mi->next)
 				{
 					RigidBodyOb* rbo = mi->rigidbody;
-					if ((mi->rigidbody->flag & RBO_FLAG_KINEMATIC) && ((mi1 == mi)))
+					if ((rbo->flag & RBO_FLAG_KINEMATIC) && ((mi1 == mi)))
 					{
-						rbo->flag &= ~RBO_FLAG_KINEMATIC;
-						rbo->flag |= RBO_FLAG_KINEMATIC_REBUILD;
-						rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
-					}
-				}
+						if (rbo->physics_object) {
+							rbo->flag &= ~RBO_FLAG_KINEMATIC;
+							RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
+							RB_body_set_kinematic_state(rbo->physics_object, false);
+							rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+						}
 
-				for (con = fmd1->meshConstraints.first; con; con = con->next)
-				{
-					RB_dworld_remove_constraint(rbw->physics_world, con->physics_constraint);
-					con->flag |= RBC_FLAG_NEEDS_VALIDATE;
-					con->flag |= RBC_FLAG_USE_KINEMATIC_DEACTIVATION;
+					}
 				}
 			}
 			else if (!fmd1)
@@ -1728,7 +1724,8 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 				if (rbo)
 				{
 					rbo->flag &= ~RBO_FLAG_KINEMATIC;
-					rbo->flag |= RBO_FLAG_KINEMATIC_REBUILD;
+					RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
+					RB_body_set_kinematic_state(rbo->physics_object, false);
 					rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 				}
 			}
@@ -1737,7 +1734,6 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 		if (ob2->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
 			bool valid = true, valid2 = true;
-			RigidBodyShardCon *con;
 			fmd2 = (FractureModifierData*)modifiers_findByType(ob2, eModifierType_Fracture);
 			valid = valid && (fmd2 != NULL);
 			valid = valid && (ob2->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
@@ -1752,19 +1748,15 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 				{
 					RigidBodyOb* rbo = mi->rigidbody;
 
-					if ((mi->rigidbody->flag & RBO_FLAG_KINEMATIC) && ((mi2 == mi)))
+					if ((rbo->flag & RBO_FLAG_KINEMATIC) && ((mi2 == mi)))
 					{
-						rbo->flag &= ~RBO_FLAG_KINEMATIC;
-						rbo->flag |= RBO_FLAG_KINEMATIC_REBUILD;
-						rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+						if (rbo->physics_object) {
+							rbo->flag &= ~RBO_FLAG_KINEMATIC;
+							RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
+							RB_body_set_kinematic_state(rbo->physics_object, false);
+							rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+						}
 					}
-				}
-
-				for (con = fmd2->meshConstraints.first; con; con = con->next)
-				{
-					RB_dworld_remove_constraint(rbw->physics_world, con->physics_constraint);
-					con->flag |= RBC_FLAG_NEEDS_VALIDATE;
-					con->flag |= RBC_FLAG_USE_KINEMATIC_DEACTIVATION;
 				}
 			}
 			else if (!fmd2)
@@ -1774,7 +1766,8 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 				if (rbo)
 				{
 					rbo->flag &= ~RBO_FLAG_KINEMATIC;
-					rbo->flag |= RBO_FLAG_KINEMATIC_REBUILD;
+					RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
+					RB_body_set_kinematic_state(rbo->physics_object, false);
 					rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 				}
 			}
@@ -1964,10 +1957,10 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi
 
 	/* make rigidbody object settings */
 	if (ob->rigidbody_object == NULL) {
-		ob->rigidbody_object = BKE_rigidbody_create_object(scene, ob, mi->ground_weight > 0.5f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE);
+		ob->rigidbody_object = BKE_rigidbody_create_object(scene, ob, RBO_TYPE_ACTIVE);
 	}
 	else {
-		ob->rigidbody_object->type = mi->ground_weight > 0.5f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
+		ob->rigidbody_object->type = RBO_TYPE_ACTIVE;
 		ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_VALIDATE;
 	}
 
