@@ -465,9 +465,13 @@ static void find_normal(DerivedMesh *dm, KDTree *tree, float co[3], short no[3],
 				MEM_freeN(n);
 				n = NULL;
 			}
-
 			return;
 		}
+	}
+
+	if (n != NULL) {
+		MEM_freeN(n);
+		n = NULL;
 	}
 
 	/*fallback if no valid normal in searchrange....*/
