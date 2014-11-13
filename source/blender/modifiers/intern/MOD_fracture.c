@@ -2734,7 +2734,7 @@ ModifierTypeInfo modifierType_Fracture = {
 	/* name */ "Fracture",
 	/* structName */ "FractureModifierData",
 	/* structSize */ sizeof(FractureModifierData),
-	/* type */ eModifierTypeType_Constructive,                 //eModifierTypeType_OnlyDeform,
+	/* type */  eModifierTypeType_Constructive,
 	/* flags */ eModifierTypeFlag_AcceptsMesh |
 	eModifierTypeFlag_AcceptsCVs |
 	eModifierTypeFlag_Single |

@@ -1941,7 +1941,7 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi
 		return NULL;
 	}
 	
-	if ((((Mesh *)ob->data)->totvert == 0) && (ob->type == OB_MESH)) {
+	if ((ob->type == OB_MESH) && (((Mesh *)ob->data)->totvert == 0)) {
 		return NULL;
 	}
 
