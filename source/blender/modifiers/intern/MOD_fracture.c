@@ -460,7 +460,6 @@ static void find_normal(DerivedMesh *dm, KDTree *tree, float co[3], short no[3],
 		normal_short_to_float_v3(vno, mvert.no);
 		if ((dot_v3v3(fno, vno) > 0.0f)){
 			copy_v3_v3_short(rno, mvert.no);
-
 			if (n != NULL) {
 				MEM_freeN(n);
 				n = NULL;
@@ -2192,7 +2191,7 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 				Shard *s;
 				MeshIsland *mi; /* can be created without shards even, when using fracturemethod = NONE (re-using islands)*/
 
-				int j, vertstart = 0, polystart = 0;
+				int i = 0, j, vertstart = 0, polystart = 0;
 
 				float dummyloc[3], rot[4];
 				MDeformVert *dvert = fmd->dm->getVertDataArray(fmd->dm, CD_MDEFORMVERT);
@@ -2219,6 +2218,11 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 					int totvert = fmd->visible_mesh_cached->getNumVerts(fmd->visible_mesh_cached);
 					ivert = CustomData_add_layer(&fmd->visible_mesh_cached->vertData, CD_MDEFORMVERT, CD_CALLOC,
 					                             NULL, totvert);
+				}
+
+				if (fmd->fix_normals)
+				{
+					start = PIL_check_seconds_timer();
 				}
 
 				for (s = fmd->frac_mesh->shard_map.first; s; s = s->next) {
@@ -2264,6 +2268,7 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 					verts = mi->physics_mesh->getVertArray(mi->physics_mesh);
 					mi->vertco = MEM_mallocN(sizeof(float) * 3 * totvert, "vertco");
 					mi->vertno = MEM_mallocN(sizeof(short) * 3 * totvert, "vertno");
+
 					for (mv = verts, j = 0; j < totvert; mv++, j++) {
 						short no[3];
 
@@ -2272,7 +2277,9 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 						mi->vertco[j * 3 + 2] = mv->co[2];
 
 						/* either take orignormals or take ones from fractured mesh */
-						find_normal(orig_dm, fmd->nor_tree, mv->co, mv->no, no, fmd->nor_range);
+						if (fmd->fix_normals) {
+							find_normal(orig_dm, fmd->nor_tree, mv->co, mv->no, no, fmd->nor_range);
+						}
 
 						mi->vertno[j * 3] = no[0];
 						mi->vertno[j * 3 + 1] = no[1];
@@ -2285,6 +2292,11 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 
 						/* then eliminate centroid in vertex coords*/
 						sub_v3_v3(mv->co, s->centroid);
+					}
+
+					if (fmd->fix_normals)
+					{
+						printf("Fixing Normals: %d\n", i);
 					}
 
 					/*copy fixed normals to physics mesh too (needed for convert to objects)*/
@@ -2314,7 +2326,11 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 					mi->start_frame = fmd->modifier.scene->rigidbody_world->pointcache->startframe;
 
 					polystart += s->totpoly;
+					i++;
+				}
 
+				if (fmd->fix_normals) {
+					printf("Fixing normals done, %g\n", PIL_check_seconds_timer() - start);
 				}
 
 				fill_vgroup(fmd, fmd->visible_mesh_cached, ivert, ob);

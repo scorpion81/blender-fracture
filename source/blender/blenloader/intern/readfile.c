@@ -5048,25 +5048,27 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 				mverts = CDDM_get_verts(fmd->visible_mesh_cached);
 
 				for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
+					MVert *mv;
 					int k = 0;
 					read_meshIsland(fd, &mi);
 					mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * mi->vertex_count, "mi->vertices_cached readfile");
+					mv = mi->physics_mesh->getVertArray(mi->physics_mesh);
 
 					for (k = 0; k < mi->vertex_count; k++) {
 						MVert* v = mverts + vertstart + k ;
+						MVert* v2 = mv + k;
 						mi->vertices_cached[k] = v;
 						mi->vertco[k*3] = v->co[0];
 						mi->vertco[k*3+1] = v->co[1];
 						mi->vertco[k*3+2] = v->co[2];
 
 						if (mi->vertno != NULL && fmd->fix_normals) {
-							float no[3];
 							short sno[3];
-							no[0] = mi->vertno[k*3];
-							no[1] = mi->vertno[k*3+1];
-							no[2] = mi->vertno[k*3+2];
-							normal_float_to_short_v3(sno, no);
-							copy_v3_v3_short(mi->vertices_cached[k]->no, sno);
+							sno[0] = mi->vertno[k*3];
+							sno[1] = mi->vertno[k*3+1];
+							sno[2] = mi->vertno[k*3+2];
+							copy_v3_v3_short(v->no, sno);
+							copy_v3_v3_short(v2->no, sno);
 						}
 					}
 					vertstart += mi->vertex_count;

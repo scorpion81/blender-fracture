@@ -2682,9 +2682,9 @@ void OBJECT_OT_rigidbody_convert_to_objects(wmOperatorType *ot)
 
 static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, Object* ob, Scene* scene, int start, int end)
 {
-	bool is_baked = false;
+//	bool is_baked = false;
 	PointCache* cache = NULL;
-	PTCacheID pid;
+//	PTCacheID pid;
 	MeshIsland *mi = NULL;
 	int j = 0;
 	Object *parent = NULL;
@@ -2699,6 +2699,7 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 		cache = scene->rigidbody_world->pointcache;
 	}
 
+#if 0
 	if (cache && cache->flag & PTCACHE_BAKED)
 	{
 		start = cache->startframe;
@@ -2706,6 +2707,7 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 		BKE_ptcache_id_from_rigidbody(&pid, NULL, scene->rigidbody_world);
 		is_baked = true;
 	}
+#endif
 
 	if (cache && (cache->flag & PTCACHE_OUTDATED) /* && !(cache->flag & PTCACHE_BAKED)*/)
 	{
@@ -2754,13 +2756,12 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 
 		ED_rigidbody_object_add(scene, ob_new, RBO_TYPE_ACTIVE, NULL);
 		ob_new->rigidbody_object->flag |= RBO_FLAG_KINEMATIC;
+		ob_new->rigidbody_object->mass = mi->rigidbody->mass;
 
 		/*set origin to centroid*/
 		copy_v3_v3(cent, mi->centroid);
 		mul_m4_v3(ob_new->obmat, cent);
 		copy_v3_v3(ob_new->loc, cent);
-
-
 
 		if (start < mi->start_frame) {
 			start = mi->start_frame;
@@ -2770,49 +2771,52 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 			end = mi->start_frame + mi->frame_count;
 		}
 
-		for (i = start+1; i < end-1; i++)
+		for (i = start; i < end; i++)
 		{
 			/*move object (loc, rot)*/
-
-			float loc[3] = {0.0f, 0.0f, 0.0f}, rot[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-			float mat[4][4];
-			float size[3] = {1.0f, 1.0f, 1.0f};
-
-			//is there a bake, if yes... use that
-			if (is_baked)
+			if (i > start)
 			{
-				BKE_ptcache_id_time(&pid, scene, (float)i, NULL, NULL, NULL);
-				if (BKE_ptcache_read(&pid, (float)i))
+				float loc[3] = {0.0f, 0.0f, 0.0f}, rot[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+				float mat[4][4];
+				float size[3] = {1.0f, 1.0f, 1.0f};
+
+				//is there a bake, if yes... use that (disabled for now, odd probs...)
+#if 0
+				if (is_baked)
 				{
-					BKE_ptcache_validate(cache, i);
-					copy_v3_v3(loc, mi->rigidbody->pos);
-					copy_qt_qt(rot, mi->rigidbody->orn);
+					BKE_ptcache_id_time(&pid, scene, (float)i, NULL, NULL, NULL);
+					if (BKE_ptcache_read(&pid, (float)i))
+					{
+						BKE_ptcache_validate(cache, i);
+						copy_v3_v3(loc, mi->rigidbody->pos);
+						copy_qt_qt(rot, mi->rigidbody->orn);
+					}
 				}
+				else
+#endif
+				{
+					loc[0] = mi->locs[i*3];
+					loc[1] = mi->locs[i*3+1];
+					loc[2] = mi->locs[i*3+2];
+
+					rot[0] = mi->rots[i*4];
+					rot[1] = mi->rots[i*4+1];
+					rot[2] = mi->rots[i*4+2];
+					rot[3] = mi->rots[i*4+3];
+				}
+
+				sub_v3_v3(loc, obloc);
+				add_v3_v3(loc, diff);
+
+				loc_quat_size_to_mat4(mat, loc, rot, size);
+				BKE_scene_frame_set(scene, (double)i);
+
+				copy_m4_m4(ob_new->obmat, mat);
+
+				copy_v3_v3(ob_new->loc, loc);
+				copy_qt_qt(ob_new->quat, rot);
+				quat_to_eul(ob_new->rot, rot);
 			}
-			else
-			{
-				loc[0] = mi->locs[i*3];
-				loc[1] = mi->locs[i*3+1];
-				loc[2] = mi->locs[i*3+2];
-
-				rot[0] = mi->rots[i*4];
-				rot[1] = mi->rots[i*4+1];
-				rot[2] = mi->rots[i*4+2];
-				rot[3] = mi->rots[i*4+3];
-			}
-
-			sub_v3_v3(loc, obloc);
-			add_v3_v3(loc, diff);
-
-			loc_quat_size_to_mat4(mat, loc, rot, size);
-
-			BKE_scene_frame_set(scene, (double)i);
-
-			copy_m4_m4(ob_new->obmat, mat);
-
-			copy_v3_v3(ob_new->loc, loc);
-			copy_qt_qt(ob_new->quat, rot);
-			quat_to_eul(ob_new->rot, rot);
 
 			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 0, i, 32);
 			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 1, i, 32);
@@ -2821,6 +2825,10 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 0, i, 32);
 			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 1, i, 32);
 			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 2, i, 32);
+
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 0, i, 32);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 1, i, 32);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 2, i, 32);
 		}
 
 		j++;
@@ -2950,11 +2958,12 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 				DAG_relations_tag_update(G.main);
 				WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
 				WM_event_add_notifier(C, NC_OBJECT | ND_PARENT, NULL);
+				WM_event_add_notifier(C, NC_SCENE | ND_FRAME, NULL);
 				return OPERATOR_FINISHED;
 			}
 			else
 			{
-				BKE_report(op->reports, RPT_WARNING, "No valid cache data found, please run or bake simulation first");
+				BKE_report(op->reports, RPT_WARNING, "No valid cache data found, please run simulation first (baked ones too !)");
 				return OPERATOR_CANCELLED;
 			}
 		}
