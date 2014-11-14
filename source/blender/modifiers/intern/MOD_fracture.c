@@ -2057,6 +2057,8 @@ static void make_face_pairs(FractureModifierData *fmd, DerivedMesh *dm)
 	KDTree *tree = BLI_kdtree_new(totpoly);
 	int i = 0;
 
+	//printf("Make Face Pairs\n");
+
 	for (i = 0, mp = mpoly; i < totpoly; mp++, i++) {
 		float co[3];
 		DM_face_calc_center_mean(dm, mp, co);
@@ -2143,9 +2145,21 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm)
 	for (i = 0; i < del_faces; i++) {
 		BMFace *f = faces[i];
 		if (f->l_first->e != NULL) { /* a lame check.... */
+			BMIter iter;
+			BMVert *v;
+			BM_ITER_ELEM(v, &iter, f, BM_VERTS_OF_FACE)
+			{
+				BM_elem_flag_enable(v, BM_ELEM_SELECT);
+			}
+
 			BM_face_kill(bm, f);
 		}
 	}
+
+	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+	             "automerge_keep_normals verts=%hv dist=%f", BM_ELEM_SELECT, fmd->autohide_dist * 100, false);
+
+	BM_mesh_elem_hflag_disable_all(bm, BM_VERT, BM_ELEM_SELECT, false);
 
 	result = CDDM_from_bmesh(bm, true);
 	BM_mesh_free(bm);
@@ -2389,16 +2403,7 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 
 		fmd->refresh = false;
 		fmd->refresh_constraints = true;
-
-		/*HERE make a kdtree of the fractured derivedmesh,
-		 * store pairs of faces (MPoly) here (will be most likely the inner faces) */
-		if (fmd->face_pairs != NULL) {
-			BLI_ghash_free(fmd->face_pairs, NULL, NULL);
-			fmd->face_pairs = NULL;
-		}
-
-		fmd->face_pairs = BLI_ghash_int_new("face_pairs");
-		make_face_pairs(fmd, fmd->visible_mesh_cached);
+		fmd->refresh_autohide = true;
 
 		if (fmd->execute_threaded) {
 			/* job done */
@@ -2431,6 +2436,33 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 		printf("Constraints: %d\n", BLI_countlist(&fmd->meshConstraints));
 	}
 
+	if (fmd->refresh_autohide)
+	{
+		fmd->refresh_autohide = false;
+		/*HERE make a kdtree of the fractured derivedmesh,
+		 * store pairs of faces (MPoly) here (will be most likely the inner faces) */
+		if (fmd->face_pairs != NULL) {
+			BLI_ghash_free(fmd->face_pairs, NULL, NULL);
+			fmd->face_pairs = NULL;
+		}
+
+		fmd->face_pairs = BLI_ghash_int_new("face_pairs");
+
+		if (fmd->dm)
+		{
+			make_face_pairs(fmd, fmd->dm);
+		}
+		else if (fmd->visible_mesh)
+		{
+			DerivedMesh *fdm = CDDM_from_bmesh(fmd->visible_mesh, true);
+			make_face_pairs(fmd, fdm);
+
+			fdm->needsFree = 1;
+			fdm->release(fdm);
+			fdm = NULL;
+		}
+	}
+
 	/*XXX better rename this, it checks whether we have a valid fractured mesh */
 	exploOK = !fmd->explo_shared || (fmd->explo_shared && fmd->dm && fmd->frac_mesh);
 
@@ -2460,8 +2492,9 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 		DerivedMesh *dm_final;
 		/* HERE Hide facepairs closer than dist X*/
 
-		if (fmd->autohide_dist > 0) {
+		if (fmd->autohide_dist > 0 && fmd->face_pairs) {
 			dm_final = do_autoHide(fmd, fmd->visible_mesh_cached);
+			//printf("Autohide1 \n");
 		}
 		else {
 			dm_final = CDDM_copy(fmd->visible_mesh_cached);
@@ -2471,7 +2504,8 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 	else if ((fmd->visible_mesh_cached != NULL) && exploOK) {
 		DerivedMesh *dm_final;
 
-		if (fmd->autohide_dist > 0) {
+		if (fmd->autohide_dist > 0 && fmd->face_pairs) {
+			//printf("Autohide2 \n");
 			dm_final = do_autoHide(fmd, fmd->visible_mesh_cached);
 		}
 		else {

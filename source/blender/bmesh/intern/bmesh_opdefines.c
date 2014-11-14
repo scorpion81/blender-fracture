@@ -350,6 +350,28 @@ static BMOpDefine bmo_automerge_def = {
 	 BMO_OPTYPE_FLAG_SELECT_VALIDATE),
 };
 
+
+/*
+ * Auto Merge (Keep Normals).
+ *
+ * Finds groups of vertices closer then **dist** and merges them together,
+ * using the weld verts bmop.  The merges must go from a vert not in
+ * **verts** to one in **verts**.
+ */
+static BMOpDefine bmo_automerge_keep_normal_def = {
+	"automerge_keep_normals",
+	/* slots_in */
+	{{"verts", BMO_OP_SLOT_ELEMENT_BUF, {BM_VERT}}, /* input verts */
+	 {"dist",         BMO_OP_SLOT_FLT}, /* minimum distance */
+	 {{'\0'}},
+	},
+	{{{'\0'}}},  /* no output */
+	bmo_remove_doubles_exec,
+	(BMO_OPTYPE_FLAG_UNTAN_MULTIRES |
+	 BMO_OPTYPE_FLAG_SELECT_FLUSH |
+	 BMO_OPTYPE_FLAG_SELECT_VALIDATE),
+};
+
 /*
  * Collapse Connected.
  *
@@ -1941,6 +1963,7 @@ static BMOpDefine bmo_symmetrize_def = {
 
 const BMOpDefine *bmo_opdefines[] = {
 	&bmo_automerge_def,
+	&bmo_automerge_keep_normal_def,
 	&bmo_average_vert_facedata_def,
 	&bmo_beautify_fill_def,
 	&bmo_bevel_def,

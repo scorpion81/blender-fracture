@@ -2934,11 +2934,27 @@ int  BKE_ptcache_object_reset(Scene *scene, Object *ob, int mode)
 	}
 
 	if (scene->rigidbody_world && (ob->rigidbody_object || ob->rigidbody_constraint)) {
-		if (ob->rigidbody_object)
-			ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_RESHAPE;
-		BKE_ptcache_id_from_rigidbody(&pid, ob, scene->rigidbody_world);
-		/* only flag as outdated, resetting should happen on start frame */
-		pid.cache->flag |= PTCACHE_OUTDATED;
+		ModifierData *md = modifiers_findByType(ob, eModifierType_Fracture);
+		if (md && md->type == eModifierType_Fracture)
+		{
+			FractureModifierData *fmd = (FractureModifierData*)md;
+			if (!fmd->refresh_autohide)
+			{
+				if (ob->rigidbody_object)
+					ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_RESHAPE;
+				BKE_ptcache_id_from_rigidbody(&pid, ob, scene->rigidbody_world);
+				/* only flag as outdated, resetting should happen on start frame */
+				pid.cache->flag |= PTCACHE_OUTDATED;
+			}
+		}
+		else
+		{
+			if (ob->rigidbody_object)
+				ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_RESHAPE;
+			BKE_ptcache_id_from_rigidbody(&pid, ob, scene->rigidbody_world);
+			/* only flag as outdated, resetting should happen on start frame */
+			pid.cache->flag |= PTCACHE_OUTDATED;
+		}
 	}
 
 	if (ob->type == OB_ARMATURE)

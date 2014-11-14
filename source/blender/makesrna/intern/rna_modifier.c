@@ -724,7 +724,7 @@ static void rna_RigidBodyModifier_autohide_dist_set(PointerRNA *ptr, float value
 {
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	rmd->autohide_dist = value;
-	rmd->refresh_constraints = true;
+	rmd->refresh_autohide = true;
 }
 
 #else

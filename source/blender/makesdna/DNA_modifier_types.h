@@ -1467,6 +1467,7 @@ typedef struct FractureModifierData {
 	/* flags */
 	int refresh;
 	int refresh_constraints;
+	int refresh_autohide;
 
 	int use_constraints;
 	int use_mass_dependent_thresholds;
@@ -1489,7 +1490,7 @@ typedef struct FractureModifierData {
 	/* internal values */
 	float max_vol;
 
-	//char pad[4];
+	char pad[4];
 } FractureModifierData;
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */
