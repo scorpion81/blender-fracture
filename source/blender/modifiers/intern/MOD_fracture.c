@@ -2134,7 +2134,10 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm)
 		BM_face_calc_center_mean(f2, f_centr_other);
 
 
-		if (len_squared_v3v3(f_centr, f_centr_other) < fmd->autohide_dist && f1 != f2) {
+		if ((len_squared_v3v3(f_centr, f_centr_other) < fmd->autohide_dist && f1 != f2) &&
+		    (f1->mat_nr == 1 && f2->mat_nr == 1))
+		{
+
 			faces = MEM_reallocN(faces, sizeof(BMFace *) * (del_faces + 2));
 			faces[del_faces] = f1;
 			faces[del_faces + 1] = f2;
@@ -2157,7 +2160,7 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm)
 	}
 
 	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-	             "automerge_keep_normals verts=%hv dist=%f", BM_ELEM_SELECT, fmd->autohide_dist * 100, false);
+	             "automerge_keep_normals verts=%hv dist=%f", BM_ELEM_SELECT, fmd->autohide_dist * 10, false);
 
 	BM_mesh_elem_hflag_disable_all(bm, BM_VERT, BM_ELEM_SELECT, false);
 

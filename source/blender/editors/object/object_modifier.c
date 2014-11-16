@@ -2682,9 +2682,9 @@ void OBJECT_OT_rigidbody_convert_to_objects(wmOperatorType *ot)
 
 static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, Object* ob, Scene* scene, int start, int end)
 {
-//	bool is_baked = false;
+	bool is_baked = false;
 	PointCache* cache = NULL;
-//	PTCacheID pid;
+	PTCacheID pid;
 	MeshIsland *mi = NULL;
 	int j = 0;
 	Object *parent = NULL;
@@ -2699,7 +2699,6 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 		cache = scene->rigidbody_world->pointcache;
 	}
 
-#if 0
 	if (cache && cache->flag & PTCACHE_BAKED)
 	{
 		start = cache->startframe;
@@ -2707,7 +2706,6 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 		BKE_ptcache_id_from_rigidbody(&pid, NULL, scene->rigidbody_world);
 		is_baked = true;
 	}
-#endif
 
 	if (cache && (cache->flag & PTCACHE_OUTDATED) /* && !(cache->flag & PTCACHE_BAKED)*/)
 	{
@@ -2781,7 +2779,6 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 				float size[3] = {1.0f, 1.0f, 1.0f};
 
 				//is there a bake, if yes... use that (disabled for now, odd probs...)
-#if 0
 				if (is_baked)
 				{
 					BKE_ptcache_id_time(&pid, scene, (float)i, NULL, NULL, NULL);
@@ -2793,7 +2790,6 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 					}
 				}
 				else
-#endif
 				{
 					loc[0] = mi->locs[i*3];
 					loc[1] = mi->locs[i*3+1];
