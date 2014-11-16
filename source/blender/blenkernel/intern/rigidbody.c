@@ -1629,6 +1629,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	int ob_index1, ob_index2;
 	FractureModifierData *fmd1, *fmd2;
 	bool validOb = true;
+	bool ret = false;
 
 	mi1 = (MeshIsland*)island1;
 	mi2 = (MeshIsland*)island2;
@@ -1774,7 +1775,8 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 		}
 	}
 
-	return colgroup_check(ob1->rigidbody_object->col_groups, ob2->rigidbody_object->col_groups);
+	ret = colgroup_check(ob1->rigidbody_object->col_groups, ob2->rigidbody_object->col_groups);
+	return ret && !(ob1->rigidbody_object->flag & RBO_FLAG_IS_GHOST) && !(ob2->rigidbody_object->flag & RBO_FLAG_IS_GHOST);
 }
 
 #if 0

@@ -164,6 +164,8 @@ typedef enum eRigidBodyOb_Flag {
 	RBO_FLAG_KINEMATIC_REBUILD	= (1 << 8),
 	/* enable / disable kinematic state change after collision */
 	RBO_FLAG_USE_KINEMATIC_DEACTIVATION = (1 << 9),
+	/* ghost flag, do not collide with object (but can activate although) */
+	RBO_FLAG_IS_GHOST = (1 << 10),
 } eRigidBodyOb_Flag;
 
 /* RigidBody Collision Shape */
