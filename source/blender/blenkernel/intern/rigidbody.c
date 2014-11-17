@@ -443,7 +443,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 		}
 		
 		vert = mi->vertices_cached[j];
-		if (vert == NULL) continue;
+		if (vert == NULL) break;
 		if (vert->co == NULL) break;
 		if (rmd->refresh == true) break;
 
@@ -451,13 +451,19 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 		startco[1] = mi->vertco[j * 3 + 1];
 		startco[2] = mi->vertco[j * 3 + 2];
 
-		if (rmd->fix_normals) {
+		if (rmd->fix_normals)
+		{
+			float irot[4], qrot[4];
 			startno[0] = mi->vertno[j * 3];
 			startno[1] = mi->vertno[j * 3 + 1];
 			startno[2] = mi->vertno[j * 3 + 2];
 
+			/*ignore global quaternion rotation here */
 			normal_short_to_float_v3(fno, startno);
+			mat4_to_quat(qrot, ob->obmat);
+			invert_qt_qt(irot, qrot);
 			mul_qt_v3(rot, fno);
+			mul_qt_v3(irot, fno);
 			normal_float_to_short_v3(vert->no, fno);
 		}
 

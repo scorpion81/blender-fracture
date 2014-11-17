@@ -1938,12 +1938,12 @@ static DerivedMesh *createCache(FractureModifierData *rmd, Object *ob, DerivedMe
 				}
 
 				if (mi->vertno != NULL && rmd->fix_normals) {
-					float no[3];
+					//float no[3];
 					short sno[3];
-					no[0] = mi->vertno[i * 3];
-					no[1] = mi->vertno[i * 3 + 1];
-					no[2] = mi->vertno[i * 3 + 2];
-					normal_float_to_short_v3(sno, no);
+					sno[0] = mi->vertno[i * 3];
+					sno[1] = mi->vertno[i * 3 + 1];
+					sno[2] = mi->vertno[i * 3 + 2];
+					//normal_float_to_short_v3(sno, no);
 					copy_v3_v3_short(mi->vertices_cached[i]->no, sno);
 				}
 			}
@@ -1952,7 +1952,7 @@ static DerivedMesh *createCache(FractureModifierData *rmd, Object *ob, DerivedMe
 		}
 		else {  /* halving case... */
 			for (i = 0; i < mi->vertex_count; i++) {
-				float no[3];
+				//float no[3];
 				int index = mi->vertex_indices[i];
 				if (index >= 0 && index <= rmd->visible_mesh->totvert) {
 					mi->vertices_cached[i] = verts + index;
@@ -1974,10 +1974,10 @@ static DerivedMesh *createCache(FractureModifierData *rmd, Object *ob, DerivedMe
 
 				if (mi->vertno != NULL && rmd->fix_normals) {
 					short sno[3];
-					no[0] = mi->vertno[i * 3];
-					no[1] = mi->vertno[i * 3 + 1];
-					no[2] = mi->vertno[i * 3 + 2];
-					normal_float_to_short_v3(sno, no);
+					sno[0] = mi->vertno[i * 3];
+					sno[1] = mi->vertno[i * 3 + 1];
+					sno[2] = mi->vertno[i * 3 + 2];
+					//normal_float_to_short_v3(sno, no);
 					copy_v3_v3_short(mi->vertices_cached[i]->no, sno);
 				}
 			}
