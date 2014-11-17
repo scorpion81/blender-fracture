@@ -1065,6 +1065,27 @@ static BMOpDefine bmo_dissolve_edges_def = {
 };
 
 /*
+ * Dissolve Edges (Keep Normals).
+ */
+static BMOpDefine bmo_dissolve_edges_keep_normal_def = {
+	"dissolve_edges_keep_normals",
+	/* slots_in */
+	{{"edges", BMO_OP_SLOT_ELEMENT_BUF, {BM_EDGE}},
+	 {"use_verts", BMO_OP_SLOT_BOOL},  /* dissolve verts left between only 2 edges. */
+	 {"use_face_split", BMO_OP_SLOT_BOOL},
+	 {{'\0'}},
+	},
+	/* slots_out */
+	{{"region.out", BMO_OP_SLOT_ELEMENT_BUF, {BM_FACE}},
+	 {{'\0'}},
+	},
+	bmo_dissolve_edges_exec,
+	(BMO_OPTYPE_FLAG_UNTAN_MULTIRES |
+	 BMO_OPTYPE_FLAG_SELECT_FLUSH |
+	 BMO_OPTYPE_FLAG_SELECT_VALIDATE),
+};
+
+/*
  * Dissolve Faces.
  */
 static BMOpDefine bmo_dissolve_faces_def = {
@@ -1283,6 +1304,24 @@ static BMOpDefine bmo_delete_def = {
 	bmo_delete_exec,
 	(BMO_OPTYPE_FLAG_NORMALS_CALC |
 	 BMO_OPTYPE_FLAG_SELECT_FLUSH |
+	 BMO_OPTYPE_FLAG_SELECT_VALIDATE),
+};
+
+/*
+ * Delete Geometry (Keep Normals).
+ *
+ * Utility operator to delete geometry.
+ */
+static BMOpDefine bmo_delete_keep_normal_def = {
+	"delete_keep_normals",
+	/* slots_in */
+	{{"geom", BMO_OP_SLOT_ELEMENT_BUF, {BM_VERT | BM_EDGE | BM_FACE}},
+	 {"context", BMO_OP_SLOT_INT},  /* enum DEL_VERTS ... */
+	 {{'\0'}},
+	},
+	{{{'\0'}}},  /* no output */
+	bmo_delete_exec,
+	(BMO_OPTYPE_FLAG_SELECT_FLUSH |
 	 BMO_OPTYPE_FLAG_SELECT_VALIDATE),
 };
 
@@ -1988,7 +2027,9 @@ const BMOpDefine *bmo_opdefines[] = {
 	&bmo_create_uvsphere_def,
 	&bmo_create_vert_def,
 	&bmo_delete_def,
+	&bmo_delete_keep_normal_def,
 	&bmo_dissolve_edges_def,
+	&bmo_dissolve_edges_keep_normal_def,
 	&bmo_dissolve_faces_def,
 	&bmo_dissolve_verts_def,
 	&bmo_dissolve_limit_def,

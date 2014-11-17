@@ -2053,6 +2053,8 @@ static void make_face_pairs(FractureModifierData *fmd, DerivedMesh *dm)
 	/* make kdtree of all faces of dm, then find closest face for each face*/
 	MPoly *mp = NULL;
 	MPoly *mpoly = dm->getPolyArray(dm);
+//	MLoop* mloop = dm->getLoopArray(dm);
+//	MVert* mvert = dm->getVertArray(dm);
 	int totpoly = dm->getNumPolys(dm);
 	KDTree *tree = BLI_kdtree_new(totpoly);
 	int i = 0;
@@ -2062,7 +2064,10 @@ static void make_face_pairs(FractureModifierData *fmd, DerivedMesh *dm)
 	for (i = 0, mp = mpoly; i < totpoly; mp++, i++) {
 		float co[3];
 		DM_face_calc_center_mean(dm, mp, co);
-		BLI_kdtree_insert(tree, i, co);
+		//if (mp->mat_nr == 1)
+		{
+			BLI_kdtree_insert(tree, i, co);
+		}
 	}
 
 	BLI_kdtree_balance(tree);
@@ -2071,28 +2076,62 @@ static void make_face_pairs(FractureModifierData *fmd, DerivedMesh *dm)
 
 	for (i = 0, mp = mpoly; i < totpoly; mp++, i++)
 	{
-		int index = -1, j = 0, r = 0;
-		KDTreeNearest *n;
-		float co[3];
+		//if (mp->mat_nr == 1)
+		{
+			int index = -1, j = 0, r = 0;
+			KDTreeNearest *n;
+			float co[3];
 
-		DM_face_calc_center_mean(dm, mp, co);
-		r = BLI_kdtree_range_search(tree, co, &n, fmd->autohide_dist * 4);
-		/*2nd nearest means not ourselves...*/
-		if (r == 0)
-			continue;
+			DM_face_calc_center_mean(dm, mp, co);
+			r = BLI_kdtree_range_search(tree, co, &n, fmd->autohide_dist * 4);
+			/*2nd nearest means not ourselves...*/
+			if (r == 0)
+				continue;
 
-		index = n[0].index;
-		while ((j < r) && i == index) {
-			index = n[j].index;
-			j++;
-		}
+			index = n[0].index;
+			while ((j < r) && i == index) {
+				index = n[j].index;
+				j++;
+			}
 
-		if (!BLI_ghash_haskey(fmd->face_pairs, SET_INT_IN_POINTER(index))) {
-			BLI_ghash_insert(fmd->face_pairs, SET_INT_IN_POINTER(i), SET_INT_IN_POINTER(index));
-		}
+			if (!BLI_ghash_haskey(fmd->face_pairs, SET_INT_IN_POINTER(index))) {
 
-		if (n != NULL) {
-			MEM_freeN(n);
+				//int j = 0;
+
+				BLI_ghash_insert(fmd->face_pairs, SET_INT_IN_POINTER(i), SET_INT_IN_POINTER(index));
+#if 0
+				/*match normals...*/
+				if (fmd->fix_normals)
+				{
+					MLoop ml, ml2;
+					MVert *v, *v2;
+					short sno[3];
+					float fno[3], fno2[3];
+					if (mp->totloop == (mpoly+index)->totloop)
+					{
+						for (j = 0; j < mp->totloop; j++)
+						{
+							ml = mloop[mp->loopstart + j];
+							ml2 = mloop[(mpoly+index)->loopstart + j];
+							v = mvert + ml.v;
+							v2 = mvert + ml2.v;
+
+							normal_short_to_float_v3(fno, v->no);
+							normal_short_to_float_v3(fno2, v2->no);
+							add_v3_v3(fno, fno2);
+							mul_v3_fl(fno, 0.5f);
+							normal_float_to_short_v3(sno, fno);
+							copy_v3_v3_short(v->no, sno);
+							copy_v3_v3_short(v2->no, sno);
+						}
+					}
+				}
+#endif
+			}
+
+			if (n != NULL) {
+				MEM_freeN(n);
+			}
 		}
 	}
 
@@ -2113,6 +2152,11 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm)
 	BM_mesh_elem_index_ensure(bm, BM_FACE);
 	BM_mesh_elem_table_ensure(bm, BM_FACE);
 	BM_mesh_elem_toolflags_ensure(bm);
+
+	BM_mesh_elem_hflag_disable_all(bm, BM_FACE | BM_EDGE | BM_VERT , BM_ELEM_SELECT, false);
+
+	//BM_mesh_elem_hflag_enable_all(bm, BM_EDGE, BM_ELEM_SELECT, false);
+	//BM_mesh_elem_hflag_disable_test(bm, BM_EDGE, BM_ELEM_SELECT, false, false, BM_ELEM_SMOOTH);
 
 	for (i = 0; i < totpoly; i++) {
 		BMFace *f1, *f2;
@@ -2155,12 +2199,20 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm)
 				BM_elem_flag_enable(v, BM_ELEM_SELECT);
 			}
 
-			BM_face_kill(bm, f);
+			//BM_face_kill(bm, f);
+			BM_elem_flag_enable(f, BM_ELEM_SELECT);
 		}
 	}
 
+	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "delete_keep_normals geom=%hf context=%i", BM_ELEM_SELECT, DEL_FACES);
 	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 	             "automerge_keep_normals verts=%hv dist=%f", BM_ELEM_SELECT, fmd->autohide_dist * 10, false);
+
+#if 0
+	//dissolve sharp edges
+	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "dissolve_edges_keep_normals edges=%he use_verts=%b use_face_split=%b",
+	             BM_ELEM_SELECT, true, false);
+#endif
 
 	BM_mesh_elem_hflag_disable_all(bm, BM_VERT, BM_ELEM_SELECT, false);
 
@@ -2175,7 +2227,7 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm)
 static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMesh *dm, DerivedMesh *orig_dm)
 {
 	bool exploOK = false; /* doFracture */
-	double start;
+	double start = 0.0;
 
 	if ((fmd->refresh) || (fmd->refresh_constraints && !fmd->execute_threaded) ||
 	    (fmd->refresh_constraints && fmd->execute_threaded && fmd->frac_mesh && fmd->frac_mesh->running == 0))
