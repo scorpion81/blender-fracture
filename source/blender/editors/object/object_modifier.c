@@ -2396,8 +2396,42 @@ static int fracture_refresh_exec(bContext *C, wmOperator *UNUSED(op))
 
 static int fracture_refresh_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
-	if (WM_jobs_test(CTX_wm_manager(C), CTX_data_scene(C), WM_JOB_TYPE_OBJECT_FRACTURE))
+	float mat[4][4], rsmat[3][3];
+	Object* ob = CTX_data_active_object(C);
+	Scene* scene = CTX_data_scene(C);
+
+	if (WM_jobs_test(CTX_wm_manager(C), scene, WM_JOB_TYPE_OBJECT_FRACTURE))
 		return OPERATOR_CANCELLED;
+
+	/*better apply rotation and scale beforehand */
+	BKE_object_to_mat3(ob, rsmat);
+	copy_m4_m3(mat, rsmat);
+
+	/* apply to object data */
+	if (ob->type == OB_MESH) {
+		Mesh *me = ob->data;
+
+		multiresModifier_scale_disp(scene, ob);
+
+		/* adjust data */
+		BKE_mesh_transform(me, mat, true);
+
+		/* update normals */
+		BKE_mesh_calc_normals(me);
+	}
+	else if (ELEM(ob->type, OB_CURVE, OB_SURF, OB_FONT)) {
+		float scale = 1.0f;
+		Curve *cu = ob->data;
+
+		scale = mat3_to_scale(rsmat);
+		BKE_curve_transform_ex(cu, mat, true, scale);
+	}
+
+	/*clear rotation and scale too*/
+	ob->size[0] = ob->size[1] = ob->size[2] = 1.0f;
+	zero_v3(ob->rot);
+	unit_qt(ob->quat);
+	unit_axis_angle(ob->rotAxis, &ob->rotAngle);
 
 	return fracture_refresh_exec(C, op);
 }
