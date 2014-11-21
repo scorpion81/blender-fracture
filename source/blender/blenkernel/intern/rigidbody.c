@@ -2309,8 +2309,10 @@ void BKE_rigidbody_remove_object(Scene *scene, Object *ob)
 						}
 						
 						/* this SHOULD be the correct global index*/
-						if (rbw->cache_index_map)
+						if ((rbw->cache_index_map != NULL) && (rbw->numbodies > 0))
+						{
 							rbw->cache_index_map[mi->linear_index] = NULL;
+						}
 						MEM_freeN(mi->rigidbody);
 						mi->rigidbody = NULL;
 					}

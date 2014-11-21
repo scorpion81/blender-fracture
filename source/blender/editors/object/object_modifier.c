@@ -2471,12 +2471,16 @@ static void convert_modifier_to_objects(ReportList *reports, Scene* scene, Objec
 	MeshIsland *mi;
 	RigidBodyShardCon* con;
 	int i = 0;
+	RigidBodyWorld *rbw = scene->rigidbody_world;
 
 	int count = BLI_countlist(&rmd->meshIslands);
 	KDTree* objtree = BLI_kdtree_new(count);
 	Object** objs = MEM_callocN(sizeof(Object*) * count, "convert_objs");
 	float max_con_mass = 0;
 	rmd->refresh = false;
+
+	if (rbw)
+		rbw->pointcache->flag |= PTCACHE_OUTDATED;
 
 	for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 		float cent[3];
@@ -2490,13 +2494,12 @@ static void convert_modifier_to_objects(ReportList *reports, Scene* scene, Objec
 			ob_new = base_new->object;
 		}
 		else {
-			RigidBodyWorld *rbw = NULL;
+
 
 			ob_new = BKE_object_add(G.main, scene, OB_MESH);
 
-			rbw = scene->rigidbody_world;
-
 			if (rbw) {
+				rbw->pointcache->flag |= PTCACHE_OUTDATED;
 				/* make rigidbody object settings */
 				if (ob_new->rigidbody_object == NULL) {
 					ob_new->rigidbody_object = BKE_rigidbody_create_object(scene, ob_new, RBO_TYPE_ACTIVE);
@@ -2604,6 +2607,10 @@ static void convert_modifier_to_objects(ReportList *reports, Scene* scene, Objec
 	/* free array and kdtree*/
 	MEM_freeN(objs);
 	BLI_kdtree_free(objtree);
+
+	/*argh, need to trigger a world rebuild, by all means */
+	if (rbw)
+		BKE_rigidbody_rebuild_world(scene, rbw->pointcache->startframe+1);
 }
 
 static int rigidbody_convert_exec(bContext *C, wmOperator *op)
