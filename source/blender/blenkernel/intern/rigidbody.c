@@ -397,7 +397,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 {
 	float startco[3], centr[3], size[3];
 	short startno[3];
-	int j, i, n;
+	int j, n = 0;
 	bool invalidData;
 
 	/* hrm have to init Normals HERE, because we cant do this in readfile.c in case the file is loaded (have no access to the Object there)*/
@@ -416,21 +416,19 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 
 	n = frame - mi->start_frame + 1;
 
-	if (mi->frame_count >= 0 && mi->frame_count < n)
+	if (n > mi->frame_count)
 	{
-		mi->locs = MEM_reallocN(mi->locs, sizeof(float) * 3 * (mi->frame_count+1));
-		mi->rots = MEM_reallocN(mi->rots, sizeof(float) * 4 * (mi->frame_count+1));
+		mi->locs = MEM_reallocN(mi->locs, sizeof(float) * 3 * (n+1));
+		mi->rots = MEM_reallocN(mi->rots, sizeof(float) * 4 * (n+1));
 
-		i = mi->frame_count;
-		mi->locs[i*3] = loc[0];
-		mi->locs[i*3+1] = loc[1];
-		mi->locs[i*3+2] = loc[2];
+		mi->locs[n*3] = loc[0];
+		mi->locs[n*3+1] = loc[1];
+		mi->locs[n*3+2] = loc[2];
 
-		mi->rots[i*4] = rot[0];
-		mi->rots[i*4+1] = rot[1];
-		mi->rots[i*4+2] = rot[2];
-		mi->rots[i*4+3] = rot[3];
-
+		mi->rots[n*4] = rot[0];
+		mi->rots[n*4+1] = rot[1];
+		mi->rots[n*4+2] = rot[2];
+		mi->rots[n*4+3] = rot[3];
 		mi->frame_count = n;
 	}
 	
