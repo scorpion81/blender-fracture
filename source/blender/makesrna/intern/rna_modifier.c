@@ -727,6 +727,28 @@ static void rna_RigidBodyModifier_autohide_dist_set(PointerRNA *ptr, float value
 	rmd->refresh_autohide = true;
 }
 
+static void rna_RigidBodyModifier_cluster_breaking_angle_set(PointerRNA *ptr, float value)
+{
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
+	rmd->cluster_breaking_angle = value;
+	rmd->refresh_constraints = true;
+}
+
+static void rna_RigidBodyModifier_cluster_breaking_distance_set(PointerRNA *ptr, float value)
+{
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
+	rmd->cluster_breaking_distance = value;
+	rmd->refresh_constraints = true;
+}
+
+static void rna_RigidBodyModifier_cluster_breaking_percentage_set(PointerRNA *ptr, int value)
+{
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
+	rmd->cluster_breaking_percentage = value;
+	rmd->refresh_constraints = true;
+}
+
+
 #else
 
 static PropertyRNA *rna_def_property_subdivision_common(StructRNA *srna, const char type[])
@@ -3846,7 +3868,7 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_float_default(prop, 1.0f);
 	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_contact_dist_set", NULL);
-	RNA_def_property_ui_text(prop, "Contact distance", "Limit distance up to which two mesh islands are considered to have contact, 0 for entire boundingbox");
+	RNA_def_property_ui_text(prop, "Search Radius", "Limit search radius up to which two mesh islands are being connected, 0 for entire boundingbox");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "use_mass_dependent_thresholds", PROP_BOOLEAN, PROP_NONE);
@@ -4035,6 +4057,27 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "nor_range", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_ui_text(prop, "Normal Search Radius", "Radius in which to search for valid normals");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "cluster_breaking_percentage", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "cluster_breaking_percentage");
+	RNA_def_property_range(prop, 0, 100);
+	RNA_def_property_int_funcs(prop, NULL, "rna_RigidBodyModifier_cluster_breaking_percentage_set", NULL);
+	RNA_def_property_ui_text(prop, "Cluster Breaking Percentage", "Percentage of broken constraints per cluster which leads to breaking of all others");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "cluster_breaking_angle", PROP_FLOAT, PROP_ANGLE);
+	RNA_def_property_float_sdna(prop, NULL, "cluster_breaking_angle");
+	RNA_def_property_range(prop, 0, DEG2RADF(360.0));
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_cluster_breaking_angle_set", NULL);
+	RNA_def_property_ui_text(prop, "Cluster Breaking Angle", "Angle in degrees above which constraint should break");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "cluster_breaking_distance", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "cluster_breaking_distance");
+	RNA_def_property_range(prop, 0, FLT_MAX);
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_cluster_breaking_distance_set", NULL);
+	RNA_def_property_ui_text(prop, "Cluster Breaking Distance", "Distance above which constraint should break");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 

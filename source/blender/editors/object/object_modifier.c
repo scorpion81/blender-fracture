@@ -2339,12 +2339,25 @@ static int fracture_refresh_exec(bContext *C, wmOperator *UNUSED(op))
 	Object *obact = ED_object_active_context(C);
 	Scene *scene = CTX_data_scene(C);
 	float cfra = BKE_scene_frame_get(scene);
+	double start = 1.0;
 	FractureModifierData *rmd;
 	FractureJob *fj;
 	wmJob* wm_job;
 
 	rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
-	if (!rmd || (rmd && rmd->refresh) || (scene->rigidbody_world && cfra != scene->rigidbody_world->pointcache->startframe)) {
+
+	if (scene->rigidbody_world != NULL)
+	{
+		start = (double)scene->rigidbody_world->pointcache->startframe;
+	}
+
+	BKE_scene_frame_set(scene, start);
+	DAG_relations_tag_update(G.main);
+	WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
+	WM_event_add_notifier(C, NC_OBJECT | ND_PARENT, NULL);
+	WM_event_add_notifier(C, NC_SCENE | ND_FRAME, NULL);
+
+	if (!rmd || (rmd && rmd->refresh) /*|| (scene->rigidbody_world && cfra != scene->rigidbody_world->pointcache->startframe)*/) {
 		rmd->refresh = false;
 		return OPERATOR_CANCELLED;
 	}

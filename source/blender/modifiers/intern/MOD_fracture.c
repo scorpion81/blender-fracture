@@ -127,6 +127,10 @@ static void initData(ModifierData *md)
 	fmd->use_particle_birth_coordinates = true;
 	fmd->splinter_length = 1.0f;
 	fmd->nor_range = 1.0f;
+
+	fmd->cluster_breaking_angle = 0;
+	fmd->cluster_breaking_distance = 0;
+	fmd->cluster_breaking_percentage = 0;
 }
 
 static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
@@ -1073,6 +1077,10 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->use_particle_birth_coordinates = rmd->use_particle_birth_coordinates;
 	trmd->splinter_length = rmd->splinter_length;
 	trmd->cluster_solver_iterations_override = rmd->cluster_solver_iterations_override;
+
+	trmd->cluster_breaking_angle = rmd->cluster_breaking_angle;
+	trmd->cluster_breaking_distance = rmd->cluster_breaking_distance;
+	trmd->cluster_breaking_percentage = rmd->cluster_breaking_percentage;
 }
 
 /* mi->bb, its for volume fraction calculation.... */

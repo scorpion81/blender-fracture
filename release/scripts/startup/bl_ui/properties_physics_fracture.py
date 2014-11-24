@@ -129,16 +129,21 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             box.prop(md, "percentage")
             box.label("Constraint Breaking Settings")
             col = box.column(align=True)
-            row = col.row()
+            row = col.row(align=True)
             row.prop(md, "breaking_percentage", text="Percentage")
-            row.prop(md, "breaking_percentage_weighted")
+            row.prop(md, "cluster_breaking_percentage", text="Cluster Percentage")
 
-            row = col.row()
+            row = col.row(align=True)
             row.prop(md, "breaking_angle", text="Angle")
-            row.prop(md, "breaking_angle_weighted")
+            row.prop(md, "cluster_breaking_angle", text="Cluster Angle")
 
-            row = col.row()
+            row = col.row(align=True)
             row.prop(md, "breaking_distance", text="Distance")
+            row.prop(md, "cluster_breaking_distance", text="Cluster Distance")
+
+            row = col.row(align=True)
+            row.prop(md, "breaking_percentage_weighted")
+            row.prop(md, "breaking_angle_weighted")
             row.prop(md, "breaking_distance_weighted")
 
             col = box.column(align=True)
