@@ -58,6 +58,12 @@ class FRACTURE_UL_fracture_levels(UIList):
 class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
     bl_label = "Fracture Settings"
 
+    def icon(self, bool):
+        if bool:
+            return 'TRIA_DOWN'
+        else:
+            return 'TRIA_RIGHT'
+
     def draw(self, context):
         layout = self.layout
 
@@ -80,24 +86,29 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         row = layout.row()
         row.prop(md, "shards_to_islands")
         row.prop(md, "auto_execute")
-        layout.label("Fracture Point Source:")
-        col = layout.column()
-        col.prop(md, "point_source")
-        col.prop(md, "extra_group")
-        col.prop(md, "dm_group")
-        col.prop(md, "use_particle_birth_coordinates")
-
         row = layout.row(align=True)
         row.prop(md, "splinter_axis")
         layout.prop(md, "splinter_length")
-        layout.prop(md, "percentage")
-        layout.label("Threshold Vertex Group:")
-        layout.prop_search(md, "thresh_vertex_group", ob, "vertex_groups", text = "")
-        layout.label("Passive Vertex Group:")
-        layout.prop_search(md, "ground_vertex_group", ob, "vertex_groups", text = "")
-        layout.label("Inner Vertex Group:")
-        layout.prop_search(md, "inner_vertex_group", ob, "vertex_groups", text = "")
-        layout.operator("object.fracture_refresh", text="Execute Fracture")
+
+        box = layout.box()
+        box.prop(md, "use_experimental", text="Advanced Fracture Settings", icon=self.icon(md.use_experimental), emboss = False)
+        if md.use_experimental:
+            box.label("Fracture Point Source:")
+            col = box.column()
+            col.prop(md, "point_source")
+            col.prop(md, "extra_group")
+            col.prop(md, "dm_group")
+            col.prop(md, "use_particle_birth_coordinates")
+
+            box.prop(md, "percentage")
+            box.label("Threshold Vertex Group:")
+            box.prop_search(md, "thresh_vertex_group", ob, "vertex_groups", text = "")
+            box.label("Passive Vertex Group:")
+            box.prop_search(md, "ground_vertex_group", ob, "vertex_groups", text = "")
+            box.label("Inner Vertex Group:")
+            box.prop_search(md, "inner_vertex_group", ob, "vertex_groups", text = "")
+
+        layout.operator("object.fracture_refresh", text="Execute Fracture", icon='MOD_EXPLODE')
 
 class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
     bl_label = "Fracture Constraint Settings"

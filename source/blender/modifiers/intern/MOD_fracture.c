@@ -131,6 +131,9 @@ static void initData(ModifierData *md)
 	fmd->cluster_breaking_angle = 0;
 	fmd->cluster_breaking_distance = 0;
 	fmd->cluster_breaking_percentage = 0;
+
+	/* used for advanced fracture settings now, XXX needs rename perhaps*/
+	fmd->use_experimental = 0;
 }
 
 static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
