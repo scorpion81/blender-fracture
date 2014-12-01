@@ -56,18 +56,13 @@ class FRACTURE_UL_fracture_levels(UIList):
             layout.label(text="", icon_value=icon)
 
 class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
-    bl_label = "Fracture"
-
-    def icon(self, bool):
-        if bool:
-            return 'TRIA_DOWN'
-        else:
-            return 'TRIA_RIGHT'
+    bl_label = "Fracture Settings"
 
     def draw(self, context):
         layout = self.layout
 
         md = context.fracture
+        ob = context.object
 
         layout.label(text="Presets:")
         sub = layout.row(align=True)
@@ -85,23 +80,33 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         row = layout.row()
         row.prop(md, "shards_to_islands")
         row.prop(md, "auto_execute")
+        layout.label("Fracture Point Source:")
+        col = layout.column()
+        col.prop(md, "point_source")
+        col.prop(md, "extra_group")
+        col.prop(md, "dm_group")
+        col.prop(md, "use_particle_birth_coordinates")
+
+        row = layout.row(align=True)
+        row.prop(md, "splinter_axis")
+        layout.prop(md, "splinter_length")
+        layout.prop(md, "percentage")
+        layout.label("Threshold Vertex Group:")
+        layout.prop_search(md, "thresh_vertex_group", ob, "vertex_groups", text = "")
+        layout.label("Passive Vertex Group:")
+        layout.prop_search(md, "ground_vertex_group", ob, "vertex_groups", text = "")
+        layout.label("Inner Vertex Group:")
+        layout.prop_search(md, "inner_vertex_group", ob, "vertex_groups", text = "")
         layout.operator("object.fracture_refresh", text="Execute Fracture")
 
 class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
-    bl_label = "Fracture Simulation"
-
-    def icon(self, bool):
-        if bool:
-            return 'TRIA_DOWN'
-        else:
-            return 'TRIA_RIGHT'
+    bl_label = "Fracture Constraint Settings"
 
     def draw(self, context):
         layout = self.layout
         md = context.fracture
         ob = context.object
 
-        #layout.operator("object.rigidbody_constraints_refresh", text="Refresh Constraints Only")
         layout.label("Constraint Building Settings")
         layout.prop(md, "use_constraints")
         col = layout.column(align=True)
@@ -112,58 +117,45 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
         col.prop(md, "breaking_threshold", text="Threshold")
         col.prop(md, "cluster_breaking_threshold")
 
-        #experimental stuff
-        box = layout.box()
-        box.prop(md, "use_experimental", text="Experimental, use with caution !", icon=self.icon(md.use_experimental), emboss = False)
-        if md.use_experimental:
-            box.label("Fracture Point Source:")
-            box.prop(md, "point_source")
-            box.prop(md, "extra_group")
-            box.prop(md, "dm_group")
-            box.prop(md, "use_particle_birth_coordinates")
+        layout.label("Constraint Breaking Settings")
+        col = layout.column(align=True)
+        row = col.row(align=True)
+        row.prop(md, "breaking_percentage", text="Percentage")
+        row.prop(md, "cluster_breaking_percentage", text="Cluster Percentage")
 
-            row = box.row(align=True)
-            row.prop(md, "splinter_axis")
-            box.prop(md, "splinter_length")
+        row = col.row(align=True)
+        row.prop(md, "breaking_angle", text="Angle")
+        row.prop(md, "cluster_breaking_angle", text="Cluster Angle")
 
-            box.prop(md, "percentage")
-            box.label("Constraint Breaking Settings")
-            col = box.column(align=True)
-            row = col.row(align=True)
-            row.prop(md, "breaking_percentage", text="Percentage")
-            row.prop(md, "cluster_breaking_percentage", text="Cluster Percentage")
+        row = col.row(align=True)
+        row.prop(md, "breaking_distance", text="Distance")
+        row.prop(md, "cluster_breaking_distance", text="Cluster Distance")
 
-            row = col.row(align=True)
-            row.prop(md, "breaking_angle", text="Angle")
-            row.prop(md, "cluster_breaking_angle", text="Cluster Angle")
+        row = col.row(align=True)
+        row.prop(md, "breaking_percentage_weighted")
+        row.prop(md, "breaking_angle_weighted")
+        row.prop(md, "breaking_distance_weighted")
 
-            row = col.row(align=True)
-            row.prop(md, "breaking_distance", text="Distance")
-            row.prop(md, "cluster_breaking_distance", text="Cluster Distance")
+        col = layout.column(align=True)
+        col.prop(md, "solver_iterations_override")
+        col.prop(md, "cluster_solver_iterations_override")
+        layout.prop(md, "use_mass_dependent_thresholds")
 
-            row = col.row(align=True)
-            row.prop(md, "breaking_percentage_weighted")
-            row.prop(md, "breaking_angle_weighted")
-            row.prop(md, "breaking_distance_weighted")
+class PHYSICS_PT_fracture_utilities(PhysicButtonsPanel, Panel):
+    bl_label = "Fracture Utilities"
 
-            col = box.column(align=True)
-            col.prop(md, "solver_iterations_override")
-            col.prop(md, "cluster_solver_iterations_override")
-            box.prop(md, "use_mass_dependent_thresholds")
-            box.label("Threshold Vertex Group:")
-            box.prop_search(md, "thresh_vertex_group", ob, "vertex_groups", text = "")
-            box.label("Passive Vertex Group:")
-            box.prop_search(md, "ground_vertex_group", ob, "vertex_groups", text = "")
-            box.label("Inner Vertex Group:")
-            box.prop_search(md, "inner_vertex_group", ob, "vertex_groups", text = "")
-            box.prop(md, "autohide_dist")
+    def draw(self, context):
+        layout = self.layout
+        md = context.fracture
+        layout.prop(md, "autohide_dist")
+        row = layout.row()
+        row.prop(md, "fix_normals")
+        row.prop(md, "nor_range")
+        if not(md.refresh):
+           layout.prop(md, "execute_threaded")
 
-            box.prop(md, "fix_normals")
-            box.prop(md, "nor_range")
-            if not(md.refresh):
-                box.prop(md, "execute_threaded")
-            box.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")
-            box.operator("object.rigidbody_convert_to_keyframes", text = "Convert To Keyframed Objects")
+        layout.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")
+        layout.operator("object.rigidbody_convert_to_keyframes", text = "Convert To Keyframed Objects")
 
 if __name__ == "__main__":  # only for live edit.
     bpy.utils.register_module(__name__)
