@@ -134,6 +134,7 @@ static void initData(ModifierData *md)
 
 	/* used for advanced fracture settings now, XXX needs rename perhaps*/
 	fmd->use_experimental = 0;
+	fmd->use_breaking = true;
 }
 
 static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
@@ -1711,7 +1712,7 @@ static void connect_meshislands(FractureModifierData *rmd, MeshIsland *mi1, Mesh
 			rbsc = BKE_rigidbody_create_shard_constraint(rmd->modifier.scene, con_type);
 			rbsc->mi1 = mi1;
 			rbsc->mi2 = mi2;
-			if (thresh == 0) {
+			if (thresh == 0 || rmd->use_breaking == false) {
 				rbsc->flag &= ~RBC_FLAG_USE_BREAKING;
 			}
 

@@ -1466,7 +1466,7 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 			}
 		}
 	}
-	if (rbc->physics_constraint == NULL || rebuild || (rbc->flag & RBC_FLAG_USE_KINEMATIC_DEACTIVATION)) {
+	if (rbc->physics_constraint == NULL || rebuild || (rbc->flag & RBC_FLAG_USE_KINEMATIC_DEACTIVATION) || (rbc->flag & RBC_FLAG_NEEDS_VALIDATE)) {
 
 		/* remove constraint if it already exists before creating a new one */
 		if (rbc->physics_constraint) {
@@ -1603,6 +1603,7 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 	}
 
 	rbc->flag &= ~RBC_FLAG_USE_KINEMATIC_DEACTIVATION;
+	rbc->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
 }
 
 static bool colgroup_check(int group1, int group2)
@@ -2656,8 +2657,8 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 
 			if (isModifierActive(rmd)) {
 				float max_con_mass = 0;
-			
 				int count = BLI_countlist(&rmd->meshIslands);
+
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 					if (mi->rigidbody == NULL) {
 						continue;
@@ -2666,65 +2667,74 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 						/* perform simulation data updates as tagged */
 						/* refresh object... */
 						int do_rebuild = rebuild;
-						float weight = mi->thresh_weight;
-						int breaking_percentage = rmd->breaking_percentage_weighted ? (rmd->breaking_percentage * weight) : rmd->breaking_percentage;
-						
-						if (rmd->breaking_percentage > 0 || (rmd->breaking_percentage_weighted && weight > 0)) {
-							int broken_cons = 0, cons = 0, i = 0, cluster_cons = 0, broken_cluster_cons = 0;
-							RigidBodyShardCon *con;
-							
-							cons = mi->participating_constraint_count;
-							/* calc ratio of broken cons here, per MeshIsland and flag the rest to be broken too*/
-							for (i = 0; i < cons; i++) {
-								con = mi->participating_constraints[i];
-								if (con && con->physics_constraint) {
-									if (rmd->cluster_breaking_percentage > 0)
-									{
-										/*only count as broken if between clusters!*/
-										if (con->mi1->particle_index != con->mi2->particle_index)
+						if (rmd->use_breaking)
+						{
+							float weight = mi->thresh_weight;
+							int breaking_percentage = rmd->breaking_percentage_weighted ? (rmd->breaking_percentage * weight) : rmd->breaking_percentage;
+
+							if (rmd->breaking_percentage > 0 || (rmd->breaking_percentage_weighted && weight > 0)) {
+								int broken_cons = 0, cons = 0, i = 0, cluster_cons = 0, broken_cluster_cons = 0;
+								RigidBodyShardCon *con;
+
+								cons = mi->participating_constraint_count;
+								/* calc ratio of broken cons here, per MeshIsland and flag the rest to be broken too*/
+								for (i = 0; i < cons; i++) {
+									con = mi->participating_constraints[i];
+									if (con && con->physics_constraint) {
+										if (rmd->cluster_breaking_percentage > 0)
 										{
-											cluster_cons++;
+											/*only count as broken if between clusters!*/
+											if (con->mi1->particle_index != con->mi2->particle_index)
+											{
+												cluster_cons++;
 
-											if (!RB_constraint_is_enabled(con->physics_constraint)) {
-												broken_cluster_cons++;
+												if (!RB_constraint_is_enabled(con->physics_constraint)) {
+													broken_cluster_cons++;
+												}
 											}
 										}
-									}
 
-									if (!RB_constraint_is_enabled(con->physics_constraint)) {
-										broken_cons++;
-									}
-								}
-							}
-
-							if (cluster_cons > 0) {
-								if ((float)broken_cluster_cons / (float)cluster_cons * 100 >= rmd->cluster_breaking_percentage) {
-									for (i = 0; i < cons; i++) {
-										con = mi->participating_constraints[i];
-										if (con && con->mi1->particle_index != con->mi2->particle_index) {
-											con->flag &= ~RBC_FLAG_ENABLED;
-											con->flag |= RBC_FLAG_NEEDS_VALIDATE;
-
-											if (con->physics_constraint) {
-												RB_constraint_set_enabled(con->physics_constraint, false);
-											}
+										if (!RB_constraint_is_enabled(con->physics_constraint)) {
+											broken_cons++;
 										}
 									}
 								}
-							}
 
-							
-							if (cons > 0) {
-								if ((float)broken_cons / (float)cons * 100 >= breaking_percentage) {
-									/* break all cons if over percentage */
-									for (i = 0; i < cons; i++) {
-										con = mi->participating_constraints[i];
-										if (con) {
-											con->flag &= ~RBC_FLAG_ENABLED;
-											con->flag |= RBC_FLAG_NEEDS_VALIDATE;
-											
-											if (con->physics_constraint) {
-												RB_constraint_set_enabled(con->physics_constraint, false);
+								if (cluster_cons > 0) {
+									if ((float)broken_cluster_cons / (float)cluster_cons * 100 >= rmd->cluster_breaking_percentage) {
+										for (i = 0; i < cons; i++) {
+											con = mi->participating_constraints[i];
+											if (con && con->mi1->particle_index != con->mi2->particle_index) {
+												if (rmd->use_breaking)
+												{
+													con->flag &= ~RBC_FLAG_ENABLED;
+													con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+
+													if (con->physics_constraint) {
+														RB_constraint_set_enabled(con->physics_constraint, false);
+													}
+												}
+											}
+										}
+									}
+								}
+
+
+								if (cons > 0) {
+									if ((float)broken_cons / (float)cons * 100 >= breaking_percentage) {
+										/* break all cons if over percentage */
+										for (i = 0; i < cons; i++) {
+											con = mi->participating_constraints[i];
+											if (con) {
+												if (rmd->use_breaking)
+												{
+													con->flag &= ~RBC_FLAG_ENABLED;
+													con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+
+													if (con->physics_constraint) {
+														RB_constraint_set_enabled(con->physics_constraint, false);
+													}
+												}
 											}
 										}
 									}
@@ -2760,61 +2770,50 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 							iterations = rmd->solver_iterations_override;
 						}
 					}
-					
+
 					if (iterations > 0) {
 						rbsc->flag |= RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS;
 						rbsc->num_solver_iterations = iterations;
 					}
-					
+
 					if ((rmd->use_mass_dependent_thresholds)) {
 						BKE_rigidbody_calc_threshold(max_con_mass, rmd, rbsc);
 					}
-					
+
 					if (((rmd->breaking_angle) > 0) || (rmd->breaking_angle_weighted && weight > 0) ||
-					    (((rmd->breaking_distance > 0) || (rmd->breaking_distance_weighted && weight > 0)) ||
-					     (rmd->cluster_breaking_angle > 0 || rmd->cluster_breaking_distance > 0)) && !rebuild )
+						(((rmd->breaking_distance > 0) || (rmd->breaking_distance_weighted && weight > 0)) ||
+						 (rmd->cluster_breaking_angle > 0 || rmd->cluster_breaking_distance > 0)) && !rebuild )
 					{
 						float dist, angle, distdiff, anglediff;
 						calc_dist_angle(rbsc, &dist, &angle);
-						
+
 						anglediff = fabs(angle - rbsc->start_angle);
 						distdiff = fabs(dist - rbsc->start_dist);
 
 						/* Treat angles here */
 						if ((rmd->breaking_angle > 0 || (rmd->breaking_angle_weighted && weight > 0)) &&
-						    (anglediff > breaking_angle))
+							(anglediff > breaking_angle))
 						{
 							/* if we have cluster breaking angle, then only treat equal cluster indexes like the default, else all */
 							if ((rmd->cluster_breaking_angle > 0 && rbsc->mi1->particle_index == rbsc->mi2->particle_index) ||
-							     rmd->cluster_breaking_angle == 0)
+								 rmd->cluster_breaking_angle == 0)
 							{
-								rbsc->flag &= ~RBC_FLAG_ENABLED;
-								rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
-							
-								if (rbsc->physics_constraint) {
-									RB_constraint_set_enabled(rbsc->physics_constraint, false);
+								if (rmd->use_breaking)
+								{
+									rbsc->flag &= ~RBC_FLAG_ENABLED;
+									rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
+
+									if (rbsc->physics_constraint) {
+										RB_constraint_set_enabled(rbsc->physics_constraint, false);
+									}
 								}
 							}
 						}
 
 						if ((rmd->cluster_breaking_angle > 0) && (rbsc->mi1->particle_index != rbsc->mi2->particle_index)
-						    && anglediff > rmd->cluster_breaking_angle)
+							&& anglediff > rmd->cluster_breaking_angle)
 						{
-							rbsc->flag &= ~RBC_FLAG_ENABLED;
-							rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
-
-							if (rbsc->physics_constraint) {
-								RB_constraint_set_enabled(rbsc->physics_constraint, false);
-							}
-						}
-						
-						/* Treat distances here */
-						if ((rmd->breaking_distance > 0 || (rmd->breaking_distance_weighted && weight > 0)) &&
-						    (distdiff > breaking_distance))
-						{
-							/* if we have cluster breaking distance, then only treat equal cluster indexes like the default, else all */
-							if ((rmd->cluster_breaking_distance > 0 && rbsc->mi1->particle_index == rbsc->mi2->particle_index) ||
-							     rmd->cluster_breaking_distance == 0)
+							if (rmd->use_breaking)
 							{
 								rbsc->flag &= ~RBC_FLAG_ENABLED;
 								rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
@@ -2825,20 +2824,43 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 							}
 						}
 
-						if ((rmd->cluster_breaking_distance > 0) && (rbsc->mi1->particle_index != rbsc->mi2->particle_index)
-						    && distdiff > rmd->cluster_breaking_distance)
+						/* Treat distances here */
+						if ((rmd->breaking_distance > 0 || (rmd->breaking_distance_weighted && weight > 0)) &&
+							(distdiff > breaking_distance))
 						{
-							rbsc->flag &= ~RBC_FLAG_ENABLED;
-							rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
+							/* if we have cluster breaking distance, then only treat equal cluster indexes like the default, else all */
+							if ((rmd->cluster_breaking_distance > 0 && rbsc->mi1->particle_index == rbsc->mi2->particle_index) ||
+								 rmd->cluster_breaking_distance == 0)
+							{
+								if (rmd->use_breaking)
+								{
+									rbsc->flag &= ~RBC_FLAG_ENABLED;
+									rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
 
-							if (rbsc->physics_constraint) {
-								RB_constraint_set_enabled(rbsc->physics_constraint, false);
+									if (rbsc->physics_constraint) {
+										RB_constraint_set_enabled(rbsc->physics_constraint, false);
+									}
+								}
+							}
+						}
+
+						if ((rmd->cluster_breaking_distance > 0) && (rbsc->mi1->particle_index != rbsc->mi2->particle_index)
+							&& distdiff > rmd->cluster_breaking_distance)
+						{
+							if (rmd->use_breaking)
+							{
+								rbsc->flag &= ~RBC_FLAG_ENABLED;
+								rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
+
+								if (rbsc->physics_constraint) {
+									RB_constraint_set_enabled(rbsc->physics_constraint, false);
+								}
 							}
 						}
 					}
 
 					if (rebuild || rbsc->mi1->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD ||
-					    rbsc->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD) {
+						rbsc->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD) {
 						/* World has been rebuilt so rebuild constraint */
 						BKE_rigidbody_validate_sim_shard_constraint(rbw, rbsc, true);
 						BKE_rigidbody_start_dist_angle(rbsc);

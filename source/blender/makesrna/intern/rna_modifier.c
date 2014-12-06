@@ -748,6 +748,26 @@ static void rna_RigidBodyModifier_cluster_breaking_percentage_set(PointerRNA *pt
 	rmd->refresh_constraints = true;
 }
 
+static void rna_RigidBodyModifier_use_breaking_set(PointerRNA *ptr, bool value)
+{
+	RigidBodyShardCon* rbsc;
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
+	rmd->use_breaking = value;
+	//rmd->refresh_constraints = true;
+
+	for (rbsc = rmd->meshConstraints.first; rbsc; rbsc = rbsc->next)
+	{
+		if (value == true){
+			rbsc->flag |= RBC_FLAG_USE_BREAKING;
+		}
+		else {
+			rbsc->flag &= ~RBC_FLAG_USE_BREAKING;
+		}
+
+		rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
+	}
+}
+
 
 #else
 
@@ -4079,6 +4099,13 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_cluster_breaking_distance_set", NULL);
 	RNA_def_property_ui_text(prop, "Cluster Breaking Distance", "Distance above which constraint should break");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	/*Breakable constraints*/
+	prop = RNA_def_property(srna, "use_breaking", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyModifier_use_breaking_set");
+	RNA_def_property_ui_text(prop, "Breakable",
+	                         "Constraints can be broken if it receives an impulse above the threshold");
+	//RNA_def_property_update(prop, /*NC_OBJECT | ND_POINTCACHE*/ 0, "rna_Modifier_update");
 }
 
 void RNA_def_modifier(BlenderRNA *brna)
