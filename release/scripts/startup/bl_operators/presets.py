@@ -207,7 +207,19 @@ class ExecutePreset(Operator):
 
         # execute the preset using script.python_file_run
         if ext == ".py":
-            bpy.ops.script.python_file_run(filepath=filepath)
+            #FRACTURE MODIFIER HACK, cant get bpy.context.fracture to be run via py script else...
+            #so fake a context here
+            mod = False
+            for md in context.object.modifiers:
+                if md.type == 'FRACTURE':
+                    mod = True
+                    break
+            if (mod):
+                ctx = bpy.context.copy()
+                ctx["fracture"] = md
+                bpy.ops.script.python_file_run(ctx, filepath=filepath)
+            else:
+                bpy.ops.script.python_file_run(filepath=filepath)
         elif ext == ".xml":
             import rna_xml
             rna_xml.xml_file_run(context,
@@ -565,6 +577,9 @@ class AddPresetFracture(AddPresetBase, Operator):
         "fracture.breaking_angle_weighted",
         "fracture.breaking_distance",
         "fracture.breaking_distance_weighted",
+        "fracture.cluster_breaking_percentage",
+        "fracture.cluster_breaking_angle",
+        "fracture.cluster_breaking_distance",
         "fracture.solver_iterations_override",
         "fracture.use_mass_dependent_thresholds",
         "fracture.thresh_vertex_group",
@@ -572,7 +587,9 @@ class AddPresetFracture(AddPresetBase, Operator):
         "fracture.inner_vertex_group",
         "fracture.autohide_dist",
         "fracture.fix_normals",
-        "fracture.execute_threaded"
+        "fracture.execute_threaded",
+        "fracture.use_breaking",
+        "fracture.nor_range"
     ]
 
     preset_subdir = "fracture"

@@ -22,12 +22,6 @@ from bpy.types import Panel, Menu, UIList
 from bpy.app.translations import pgettext_iface as iface_
 
 
-class FLUID_MT_presets(Menu):
-    bl_label = "Fluid Presets"
-    preset_subdir = "fluid"
-    preset_operator = "script.execute_preset"
-    draw = Menu.draw_preset
-
 class FRACTURE_MT_presets(Menu):
     bl_label = "Fracture Presets"
     preset_subdir = "fracture"
