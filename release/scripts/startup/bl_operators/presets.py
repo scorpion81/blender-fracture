@@ -210,10 +210,11 @@ class ExecutePreset(Operator):
             #FRACTURE MODIFIER HACK, cant get bpy.context.fracture to be run via py script else...
             #so fake a context here
             mod = False
-            for md in context.object.modifiers:
-                if md.type == 'FRACTURE':
-                    mod = True
-                    break
+            if context.object is not None:
+                for md in context.object.modifiers:
+                    if md.type == 'FRACTURE':
+                        mod = True
+                        break
             if (mod):
                 ctx = bpy.context.copy()
                 ctx["fracture"] = md
