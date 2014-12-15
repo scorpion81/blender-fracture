@@ -4106,6 +4106,11 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Breakable",
 	                         "Constraints can be broken if it receives an impulse above the threshold");
 	//RNA_def_property_update(prop, /*NC_OBJECT | ND_POINTCACHE*/ 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "use_smooth", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "use_smooth", false);
+	RNA_def_property_ui_text(prop, "Smooth Inner Faces", "Set Inner Faces to Smooth Shading (needs refracture)");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 void RNA_def_modifier(BlenderRNA *brna)

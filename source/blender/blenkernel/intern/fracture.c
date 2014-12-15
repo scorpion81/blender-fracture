@@ -901,6 +901,20 @@ static DerivedMesh *create_dm(FractureModifierData *fmd, bool doCustomData)
 					medge[ml.e].flag |= ME_SHARP;
 					mvert[ml.v].flag |= ME_VERT_TMP_TAG;
 				}
+
+				if (fmd->use_smooth)
+					mp->flag |= ME_SMOOTH;
+			}
+			else
+			{
+				/*remove verts from unselected faces again*/
+				int j = 0;
+				for (j = 0; j < mp->totloop; j++)
+				{
+					MLoop ml;
+					ml = mloop[mp->loopstart + j];
+					mvert[ml.v].flag &= ~ME_VERT_TMP_TAG;
+				}
 			}
 		}
 	}

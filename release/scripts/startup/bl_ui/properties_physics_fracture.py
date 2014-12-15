@@ -80,6 +80,7 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         row = layout.row()
         row.prop(md, "shards_to_islands")
         row.prop(md, "auto_execute")
+        row.prop(md, "use_smooth")
         row = layout.row(align=True)
         row.prop(md, "splinter_axis")
         layout.prop(md, "splinter_length")
@@ -119,12 +120,13 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
         col = layout.column(align=True)
         col.prop(md, "constraint_limit", text="Constraint limit, per MeshIsland")
         col.prop(md, "contact_dist")
+
         layout.label("Constraint Breaking Settings")
         col = layout.column(align=True)
         col.prop(md, "breaking_threshold", text="Threshold")
         col.prop(md, "cluster_breaking_threshold")
 
-        layout.label("Constraint Breaking Settings")
+        layout.label("Constraint Special Breaking Settings")
         col = layout.column(align=True)
         row = col.row(align=True)
         row.prop(md, "breaking_percentage", text="Percentage")

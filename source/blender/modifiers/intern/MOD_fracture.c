@@ -135,6 +135,7 @@ static void initData(ModifierData *md)
 	/* used for advanced fracture settings now, XXX needs rename perhaps*/
 	fmd->use_experimental = 0;
 	fmd->use_breaking = true;
+	fmd->use_smooth = false;
 }
 
 static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
@@ -2190,8 +2191,8 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm)
 		BM_face_calc_center_mean(f2, f_centr_other);
 
 
-		if ((len_squared_v3v3(f_centr, f_centr_other) < fmd->autohide_dist && f1 != f2) &&
-		    (f1->mat_nr == 1 && f2->mat_nr == 1))
+		if ((len_squared_v3v3(f_centr, f_centr_other) < fmd->autohide_dist) && (f1 != f2) &&
+		    (f1->mat_nr == 1) && (f2->mat_nr == 1))
 		{
 
 			faces = MEM_reallocN(faces, sizeof(BMFace *) * (del_faces + 2));
@@ -2218,7 +2219,7 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm)
 
 	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "delete_keep_normals geom=%hf context=%i", BM_ELEM_SELECT, DEL_FACES);
 	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-	             "automerge_keep_normals verts=%hv dist=%f", BM_ELEM_SELECT, fmd->autohide_dist * 10, false);
+	             "automerge_keep_normals verts=%hv dist=%f", BM_ELEM_SELECT, fmd->autohide_dist * 10, false); /*need to merge larger cracks*/
 
 #if 0
 	//dissolve sharp edges
