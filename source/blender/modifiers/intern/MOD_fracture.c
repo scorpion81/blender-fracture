@@ -2460,6 +2460,17 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 			fmd->visible_mesh_cached = createCache(fmd, ob, dm);
 			printf("Building cached DerivedMesh done, %g\n", PIL_check_seconds_timer() - start);
 		}
+		else
+		{
+			/* fallback, this branch is executed when the modifier data has been loaded via readfile.c,
+			 * although this might not be directly visible due to complex logic */
+
+			MDeformVert* dvert = NULL;
+			if (fmd->visible_mesh_cached)
+				dvert = fmd->visible_mesh_cached->getVertDataArray(fmd->visible_mesh_cached, CD_MDEFORMVERT);
+			if (dvert->dw == NULL)
+				fill_vgroup(fmd, fmd->visible_mesh_cached, dvert, ob);
+		}
 
 		if (fmd->refresh_images && fmd->visible_mesh_cached) {
 			/* need to ensure images are correct after loading... */
@@ -2480,6 +2491,7 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 	}
 
 	if (fmd->refresh_constraints) {
+
 		start = PIL_check_seconds_timer();
 
 		if ((fmd->visible_mesh != NULL || fmd->visible_mesh_cached != NULL)  && (fmd->use_constraints)) {
