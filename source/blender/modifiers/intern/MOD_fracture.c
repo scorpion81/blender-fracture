@@ -950,7 +950,7 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, D
 
 			short* totmat = give_totcolp(obj);
 
-			BLI_strncpy(name, obj->id.name + 2, strlen(obj->id.name) - 1);
+			BLI_strncpy(name, obj->id.name + 2, strlen(obj->id.name));
 			if (*totmat == 0)
 			{
 				/*create both materials*/
