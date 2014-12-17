@@ -2409,42 +2409,10 @@ static int fracture_refresh_exec(bContext *C, wmOperator *UNUSED(op))
 
 static int fracture_refresh_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
-	float mat[4][4], rsmat[3][3];
-	Object* ob = CTX_data_active_object(C);
 	Scene* scene = CTX_data_scene(C);
 
 	if (WM_jobs_test(CTX_wm_manager(C), scene, WM_JOB_TYPE_OBJECT_FRACTURE))
 		return OPERATOR_CANCELLED;
-
-	/*better apply rotation and scale beforehand */
-	BKE_object_to_mat3(ob, rsmat);
-	copy_m4_m3(mat, rsmat);
-
-	/* apply to object data */
-	if (ob->type == OB_MESH) {
-		Mesh *me = ob->data;
-
-		multiresModifier_scale_disp(scene, ob);
-
-		/* adjust data */
-		BKE_mesh_transform(me, mat, true);
-
-		/* update normals */
-		BKE_mesh_calc_normals(me);
-	}
-	else if (ELEM(ob->type, OB_CURVE, OB_SURF, OB_FONT)) {
-		float scale = 1.0f;
-		Curve *cu = ob->data;
-
-		scale = mat3_to_scale(rsmat);
-		BKE_curve_transform_ex(cu, mat, true, scale);
-	}
-
-	/*clear rotation and scale too*/
-	ob->size[0] = ob->size[1] = ob->size[2] = 1.0f;
-	zero_v3(ob->rot);
-	unit_qt(ob->quat);
-	unit_axis_angle(ob->rotAxis, &ob->rotAngle);
 
 	return fracture_refresh_exec(C, op);
 }
@@ -2734,6 +2702,42 @@ void OBJECT_OT_rigidbody_convert_to_objects(wmOperatorType *ot)
 	edit_modifier_properties(ot);
 }
 
+#if 0
+static void apply_rot_scale(Object* ob, Scene* scene)
+{
+	float mat[4][4], rsmat[3][3];
+	/*better apply rotation and scale during conversion*/
+	BKE_object_to_mat3(ob, rsmat);
+	copy_m4_m3(mat, rsmat);
+
+	/* apply to object data */
+	if (ob->type == OB_MESH) {
+		Mesh *me = ob->data;
+
+		multiresModifier_scale_disp(scene, ob);
+
+		/* adjust data */
+		BKE_mesh_transform(me, mat, true);
+
+		/* update normals */
+		BKE_mesh_calc_normals(me);
+	}
+	else if (ELEM(ob->type, OB_CURVE, OB_SURF, OB_FONT)) {
+		float scale = 1.0f;
+		Curve *cu = ob->data;
+
+		scale = mat3_to_scale(rsmat);
+		BKE_curve_transform_ex(cu, mat, true, scale);
+	}
+
+	/*clear rotation and scale too*/
+	ob->size[0] = ob->size[1] = ob->size[2] = 1.0f;
+	zero_v3(ob->rot);
+	unit_qt(ob->quat);
+	unit_axis_angle(ob->rotAxis, &ob->rotAngle);
+}
+#endif
+
 static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, Object* ob, Scene* scene, int start, int end)
 {
 	bool is_baked = false;
@@ -2761,10 +2765,12 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 		is_baked = true;
 	}
 
+#if 0
 	if (cache && (cache->flag & PTCACHE_OUTDATED) /* && !(cache->flag & PTCACHE_BAKED)*/)
 	{
 		return false;
 	}
+#endif
 
 	parent = BKE_object_add_named(G.main, scene, OB_EMPTY, name);
 	BKE_mesh_center_centroid(ob->data, obloc);
@@ -2825,12 +2831,14 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 
 		for (i = start; i < end; i++)
 		{
+			float size[3];
+			copy_v3_v3(size, ob->size);
+
 			/*move object (loc, rot)*/
 			if (i > start)
 			{
 				float loc[3] = {0.0f, 0.0f, 0.0f}, rot[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 				float mat[4][4];
-				float size[3] = {1.0f, 1.0f, 1.0f};
 
 				//is there a bake, if yes... use that (disabled for now, odd probs...)
 				if (is_baked)
@@ -2866,6 +2874,16 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 				copy_v3_v3(ob_new->loc, loc);
 				copy_qt_qt(ob_new->quat, rot);
 				quat_to_eul(ob_new->rot, rot);
+			}
+			else
+			{
+				mul_m4_v3(ob->obmat, ob_new->loc);
+				sub_v3_v3(ob_new->loc, obloc);
+				add_v3_v3(ob_new->loc, diff);
+
+				copy_qt_qt(ob_new->quat, ob->quat);
+				copy_v3_v3(ob_new->rot, ob->rot);
+				copy_v3_v3(ob_new->size, size);
 			}
 
 			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 0, i, 32);
@@ -2947,79 +2965,96 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 	FractureJob *fj;
 	wmJob* wm_job;
 
-	rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
-	if (rmd && rmd->refresh) {
-		return OPERATOR_CANCELLED;
+	bool convertable = true;
+
+	if (scene->rigidbody_world && scene->rigidbody_world)
+	{
+		PointCache* cache = NULL;
+		cache = scene->rigidbody_world->pointcache;
+		if (cache && (cache->flag & PTCACHE_OUTDATED))
+		{
+			convertable = false;
+		}
 	}
 
-	if (rmd) {
-		int count = BLI_countlist(&rmd->meshIslands);
-		int start = RNA_int_get(op->ptr, "start_frame");
-		int end = RNA_int_get(op->ptr, "end_frame");
-
-		if (count == 0)
+	if (convertable)
+	{
+		CTX_DATA_BEGIN(C, Object *, selob, selected_objects)
 		{
-			BKE_report(op->reports, RPT_WARNING, "No meshislands found, please execute fracture and simulate first");
-			return OPERATOR_CANCELLED;
-		}
-
-		gr = BKE_group_add(G.main, "Converted");
-
-		if (rmd->execute_threaded)
-		{
-			PointerRNA *ptr;
-			/* what a dirty hack.... disable poll function */
-			wmOperatorType *ot = WM_operatortype_find("ANIM_OT_keyframe_insert_menu", 0);
-			ot->poll = NULL;
-
-			ptr = MEM_dupallocN(op->ptr);
-			ptr->type = op->ptr->type;
-			ptr->id = op->ptr->id;
-			ptr->id.data = op->ptr->id.data;
-			ptr->data = op->ptr->data;
-
-			/* job stuff */
-			scene->r.cfra = cfra;
-
-			/* setup job */
-			wm_job = WM_jobs_get(CTX_wm_manager(C), CTX_wm_window(C), scene, "Convert to Keyframed Objects",
-								 WM_JOB_PROGRESS, WM_JOB_TYPE_OBJECT_FRACTURE);
-			fj = MEM_callocN(sizeof(FractureJob), "convert to Keyframes job");
-			fj->fmd = rmd;
-			fj->total_progress = count;
-			fj->gr = gr;
-			fj->ob = obact;
-			fj->scene = scene;
-			fj->start = start;
-			fj->end = end;
-
-			WM_jobs_customdata_set(wm_job, fj, convert_free);
-			WM_jobs_timer(wm_job, 0.1, NC_WM | ND_JOB, NC_OBJECT | ND_MODIFIER);
-			WM_jobs_callbacks(wm_job, convert_startjob, NULL, convert_update, NULL);
-
-			WM_jobs_start(CTX_wm_manager(C), wm_job);
-
-			return OPERATOR_FINISHED;
-		}
-		else
-		{
-			if (convert_modifier_to_keyframes(rmd, gr, obact, scene, start, end))
-			{
-				DAG_relations_tag_update(G.main);
-				WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
-				WM_event_add_notifier(C, NC_OBJECT | ND_PARENT, NULL);
-				WM_event_add_notifier(C, NC_SCENE | ND_FRAME, NULL);
-				return OPERATOR_FINISHED;
-			}
-			else
-			{
-				BKE_report(op->reports, RPT_WARNING, "No valid cache data found, please run simulation first (baked ones too !)");
+			rmd = (FractureModifierData *)modifiers_findByType(selob, eModifierType_Fracture);
+			if (rmd && rmd->refresh) {
 				return OPERATOR_CANCELLED;
 			}
-		}
-	}
 
-	return OPERATOR_CANCELLED;
+			if (rmd) {
+				int count = BLI_countlist(&rmd->meshIslands);
+				int start = RNA_int_get(op->ptr, "start_frame");
+				int end = RNA_int_get(op->ptr, "end_frame");
+
+				if (count == 0)
+				{
+					BKE_report(op->reports, RPT_WARNING, "No meshislands found, please execute fracture and simulate first");
+					return OPERATOR_CANCELLED;
+				}
+
+				gr = BKE_group_add(G.main, "Converted");
+
+				if (rmd->execute_threaded)
+				{
+					PointerRNA *ptr;
+					/* what a dirty hack.... disable poll function */
+					wmOperatorType *ot = WM_operatortype_find("ANIM_OT_keyframe_insert_menu", 0);
+					ot->poll = NULL;
+
+					ptr = MEM_dupallocN(op->ptr);
+					ptr->type = op->ptr->type;
+					ptr->id = op->ptr->id;
+					ptr->id.data = op->ptr->id.data;
+					ptr->data = op->ptr->data;
+
+					/* job stuff */
+					scene->r.cfra = cfra;
+
+					/* setup job */
+					wm_job = WM_jobs_get(CTX_wm_manager(C), CTX_wm_window(C), scene, "Convert to Keyframed Objects",
+										 WM_JOB_PROGRESS, WM_JOB_TYPE_OBJECT_FRACTURE);
+					fj = MEM_callocN(sizeof(FractureJob), "convert to Keyframes job");
+					fj->fmd = rmd;
+					fj->total_progress = count;
+					fj->gr = gr;
+					fj->ob = obact;
+					fj->scene = scene;
+					fj->start = start;
+					fj->end = end;
+
+					WM_jobs_customdata_set(wm_job, fj, convert_free);
+					WM_jobs_timer(wm_job, 0.1, NC_WM | ND_JOB, NC_OBJECT | ND_MODIFIER);
+					WM_jobs_callbacks(wm_job, convert_startjob, NULL, convert_update, NULL);
+
+					WM_jobs_start(CTX_wm_manager(C), wm_job);
+
+					return OPERATOR_FINISHED;
+				}
+				else
+				{
+					convert_modifier_to_keyframes(rmd, gr, selob, scene, start, end);
+				}
+			}
+		}
+
+		CTX_DATA_END;
+
+		DAG_relations_tag_update(G.main);
+		WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
+		WM_event_add_notifier(C, NC_OBJECT | ND_PARENT, NULL);
+		WM_event_add_notifier(C, NC_SCENE | ND_FRAME, NULL);
+		return OPERATOR_FINISHED;
+	}
+	else
+	{
+		BKE_report(op->reports, RPT_WARNING, "No valid cache data found, please run simulation first (baked ones too !)");
+		return OPERATOR_CANCELLED;
+	}
 }
 
 void OBJECT_OT_rigidbody_convert_to_keyframes(wmOperatorType *ot)

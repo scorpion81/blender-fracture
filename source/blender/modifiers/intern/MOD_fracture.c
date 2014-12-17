@@ -41,6 +41,7 @@
 #include "BLI_math_vector.h"
 #include "BLI_rand.h"
 #include "BLI_utildefines.h"
+#include "BLI_string.h"
 
 
 #include "BKE_cdderivedmesh.h"
@@ -58,6 +59,9 @@
 #include "BKE_pointcache.h"
 #include "BKE_rigidbody.h"
 #include "BKE_scene.h"
+#include "BKE_mesh.h"
+#include "BKE_curve.h"
+#include "BKE_multires.h"
 
 #include "bmesh.h"
 
@@ -70,6 +74,7 @@
 #include "DNA_particle_types.h"
 #include "DNA_rigidbody_types.h"
 #include "DNA_scene_types.h"
+#include "DNA_curve_types.h"
 
 #include "MOD_util.h"
 
@@ -941,26 +946,40 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, D
 		else
 		{
 			/* autogenerate materials */
+			char name[MAX_ID_NAME];
+
 			short* totmat = give_totcolp(obj);
+
+			BLI_strncpy(name, obj->id.name + 2, strlen(obj->id.name) - 1);
 			if (*totmat == 0)
 			{
 				/*create both materials*/
 				Material* mat_inner;
-				Material* mat_outer = find_material("Outer");
+				char *matname = BLI_strdupcat(name, "_Outer");
+				Material* mat_outer = find_material(matname);
 				object_add_material_slot(obj);
 				assign_material(obj, mat_outer, obj->totcol, BKE_MAT_ASSIGN_OBDATA);
 
-				mat_inner = find_material("Inner");
+				MEM_freeN(matname);
+				matname = NULL;
+				matname = BLI_strdupcat(name, "_Inner");
+				mat_inner = find_material(matname);
 				object_add_material_slot(obj);
 				assign_material(obj, mat_inner, obj->totcol, BKE_MAT_ASSIGN_OBDATA);
+
+				MEM_freeN(matname);
+				matname = NULL;
 
 				fracmd->inner_material = mat_inner;
 			}
 			else if (*totmat == 1)
 			{
-				Material* mat_inner = find_material("Inner");
+				char* matname = BLI_strdupcat(name, "_Inner");
+				Material* mat_inner = find_material(matname);
 				object_add_material_slot(obj);
 				assign_material(obj, mat_inner, obj->totcol, BKE_MAT_ASSIGN_OBDATA);
+				MEM_freeN(matname);
+				matname = NULL;
 
 				fracmd->inner_material = mat_inner;
 			}
