@@ -72,6 +72,14 @@
 
 #ifdef WITH_BULLET
 
+static void activateRigidbody(RigidBodyOb* rbo)
+{
+	rbo->flag &= ~RBO_FLAG_KINEMATIC;
+	RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
+	RB_body_set_kinematic_state(rbo->physics_object, false);
+	rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+}
+
 static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int rebuild);
 
 static bool isModifierActive(FractureModifierData *rmd) {
@@ -1714,10 +1722,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 					if ((rbo->flag & RBO_FLAG_KINEMATIC) && ((mi1 == mi)))
 					{
 						if (rbo->physics_object) {
-							rbo->flag &= ~RBO_FLAG_KINEMATIC;
-							RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
-							RB_body_set_kinematic_state(rbo->physics_object, false);
-							rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+							activateRigidbody(rbo);
 						}
 
 					}
@@ -1729,10 +1734,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 
 				if (rbo)
 				{
-					rbo->flag &= ~RBO_FLAG_KINEMATIC;
-					RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
-					RB_body_set_kinematic_state(rbo->physics_object, false);
-					rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+					activateRigidbody(rbo);
 				}
 			}
 		}
@@ -1757,10 +1759,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 					if ((rbo->flag & RBO_FLAG_KINEMATIC) && ((mi2 == mi)))
 					{
 						if (rbo->physics_object) {
-							rbo->flag &= ~RBO_FLAG_KINEMATIC;
-							RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
-							RB_body_set_kinematic_state(rbo->physics_object, false);
-							rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+							activateRigidbody(rbo);
 						}
 					}
 				}
@@ -1771,17 +1770,14 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 
 				if (rbo)
 				{
-					rbo->flag &= ~RBO_FLAG_KINEMATIC;
-					RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
-					RB_body_set_kinematic_state(rbo->physics_object, false);
-					rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+					activateRigidbody(rbo);
 				}
 			}
 		}
 	}
 
 	ret = colgroup_check(ob1->rigidbody_object->col_groups, ob2->rigidbody_object->col_groups);
-	return ret && !(ob1->rigidbody_object->flag & RBO_FLAG_IS_GHOST) && !(ob2->rigidbody_object->flag & RBO_FLAG_IS_GHOST);
+	return ret && (!(ob1->rigidbody_object->flag & RBO_FLAG_IS_GHOST) && !(ob2->rigidbody_object->flag & RBO_FLAG_IS_GHOST));
 }
 
 #if 0
@@ -2713,6 +2709,9 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 													if (con->physics_constraint) {
 														RB_constraint_set_enabled(con->physics_constraint, false);
 													}
+
+													activateRigidbody(con->mi1->rigidbody);
+													activateRigidbody(con->mi2->rigidbody);
 												}
 											}
 										}
@@ -2734,6 +2733,9 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 													if (con->physics_constraint) {
 														RB_constraint_set_enabled(con->physics_constraint, false);
 													}
+
+													activateRigidbody(con->mi1->rigidbody);
+													activateRigidbody(con->mi2->rigidbody);
 												}
 											}
 										}
@@ -2806,6 +2808,9 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 									if (rbsc->physics_constraint) {
 										RB_constraint_set_enabled(rbsc->physics_constraint, false);
 									}
+
+									activateRigidbody(rbsc->mi1->rigidbody);
+									activateRigidbody(rbsc->mi2->rigidbody);
 								}
 							}
 						}
@@ -2821,6 +2826,9 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 								if (rbsc->physics_constraint) {
 									RB_constraint_set_enabled(rbsc->physics_constraint, false);
 								}
+
+								activateRigidbody(rbsc->mi1->rigidbody);
+								activateRigidbody(rbsc->mi2->rigidbody);
 							}
 						}
 
@@ -2840,6 +2848,9 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 									if (rbsc->physics_constraint) {
 										RB_constraint_set_enabled(rbsc->physics_constraint, false);
 									}
+
+									activateRigidbody(rbsc->mi1->rigidbody);
+									activateRigidbody(rbsc->mi2->rigidbody);
 								}
 							}
 						}
@@ -2855,6 +2866,9 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 								if (rbsc->physics_constraint) {
 									RB_constraint_set_enabled(rbsc->physics_constraint, false);
 								}
+
+								activateRigidbody(rbsc->mi1->rigidbody);
+								activateRigidbody(rbsc->mi2->rigidbody);
 							}
 						}
 					}
