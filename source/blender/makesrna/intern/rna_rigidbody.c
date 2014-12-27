@@ -1010,6 +1010,11 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_IS_GHOST);
 	RNA_def_property_ui_text(prop, "Ghost", "Do not collide with object, but can activate other animated objects");
 	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+
+	prop = RNA_def_property(srna, "is_trigger", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_IS_TRIGGER);
+	RNA_def_property_ui_text(prop, "Trigger", "Can trigger activation of other animated objects, which are set up to be triggered");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
 	
 	/* Physics Parameters */
 	prop = RNA_def_property(srna, "mass", PROP_FLOAT, PROP_UNIT_MASS);

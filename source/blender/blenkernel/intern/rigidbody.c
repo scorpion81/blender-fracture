@@ -1709,12 +1709,12 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 			fmd1 = (FractureModifierData*)modifiers_findByType(ob1, eModifierType_Fracture);
 			valid = valid && (fmd1 != NULL);
 			valid = valid && (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
-			//valid = valid && (ob2->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
+			valid = valid && (ob2->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER);
 
-			valid2 = valid2 && (fmd1 != NULL);
-			valid2 = valid2 && (fmd1->use_constraints == false);
+			//valid2 = valid2 && (fmd1 != NULL);
+			//valid2 = valid2 && (fmd1->use_constraints == false);
 
-			if (valid || valid2)
+			if (valid /*|| valid2*/)
 			{
 				for (mi = fmd1->meshIslands.first; mi; mi = mi->next)
 				{
@@ -1724,15 +1724,15 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 						if (rbo->physics_object) {
 							activateRigidbody(rbo);
 						}
-
 					}
 				}
 			}
 			else if (!fmd1)
 			{
+				bool valid = ob2->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER;
 				RigidBodyOb* rbo = ob1->rigidbody_object;
 
-				if (rbo)
+				if (rbo && valid)
 				{
 					activateRigidbody(rbo);
 				}
@@ -1745,12 +1745,12 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 			fmd2 = (FractureModifierData*)modifiers_findByType(ob2, eModifierType_Fracture);
 			valid = valid && (fmd2 != NULL);
 			valid = valid && (ob2->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
-			//valid = valid && (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
+			valid = valid && (ob1->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER);
 
-			valid2 = valid2 && (fmd2 != NULL);
-			valid2 = valid2 && (fmd2->use_constraints == false);
+			//valid2 = valid2 && (fmd2 != NULL);
+			//valid2 = valid2 && (fmd2->use_constraints == false);
 
-			if (valid || valid2)
+			if (valid /* || valid2*/)
 			{
 				for (mi = fmd2->meshIslands.first; mi; mi = mi->next)
 				{
@@ -1766,9 +1766,10 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 			}
 			else if (!fmd2)
 			{
+				bool valid = ob1->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER;
 				RigidBodyOb* rbo = ob2->rigidbody_object;
 
-				if (rbo)
+				if (rbo && valid)
 				{
 					activateRigidbody(rbo);
 				}
@@ -3239,6 +3240,11 @@ static void restoreKinematic(RigidBodyWorld *rbw)
 						mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 					}
 				}
+			}
+			else
+			{
+				go->ob->rigidbody_object->flag |= RBO_FLAG_KINEMATIC;
+				go->ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_VALIDATE;
 			}
 		}
 	}
