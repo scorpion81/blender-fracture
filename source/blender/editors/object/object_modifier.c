@@ -2757,17 +2757,12 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 	if (cache && cache->flag & PTCACHE_BAKED)
 	{
 		start = cache->startframe;
-		end = cache->simframe;
+		end = cache->endframe;
+		/* need to "fill" the rigidbody world by doing 1 sim step, else bake cant be read properly */
+		BKE_rigidbody_do_simulation(scene, (float)(start+1));
 		BKE_ptcache_id_from_rigidbody(&pid, NULL, scene->rigidbody_world);
 		is_baked = true;
 	}
-
-#if 0
-	if (cache && (cache->flag & PTCACHE_OUTDATED) /* && !(cache->flag & PTCACHE_BAKED)*/)
-	{
-		return false;
-	}
-#endif
 
 	parent = BKE_object_add_named(G.main, scene, OB_EMPTY, name);
 	BKE_mesh_center_centroid(ob->data, obloc);
@@ -2788,7 +2783,7 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 		{
 			fmd->frac_mesh->cancel = 0;
 			fmd->frac_mesh->running = 0;
-			return true;
+			return false;
 		}
 
 		ob_new = BKE_object_add_named(G.main, scene, OB_MESH, name);
@@ -2968,7 +2963,7 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 	{
 		PointCache* cache = NULL;
 		cache = scene->rigidbody_world->pointcache;
-		if (cache && (cache->flag & PTCACHE_OUTDATED))
+		if (cache && (cache->flag & PTCACHE_OUTDATED) && !(cache->flag & PTCACHE_BAKED))
 		{
 			convertable = false;
 		}
@@ -3049,7 +3044,7 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 	}
 	else
 	{
-		BKE_report(op->reports, RPT_WARNING, "No valid cache data found, please run simulation first (baked ones too !)");
+		BKE_report(op->reports, RPT_WARNING, "No valid cache data found, please run or bake simulation first");
 		return OPERATOR_CANCELLED;
 	}
 }

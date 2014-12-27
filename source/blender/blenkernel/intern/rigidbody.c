@@ -1705,7 +1705,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 
 		if (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
-			bool valid = true, valid2 = true;
+			bool valid = true; //, valid2 = true;
 			fmd1 = (FractureModifierData*)modifiers_findByType(ob1, eModifierType_Fracture);
 			valid = valid && (fmd1 != NULL);
 			valid = valid && (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
@@ -1741,7 +1741,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 
 		if (ob2->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
-			bool valid = true, valid2 = true;
+			bool valid = true; // valid2 = true;
 			fmd2 = (FractureModifierData*)modifiers_findByType(ob2, eModifierType_Fracture);
 			valid = valid && (fmd2 != NULL);
 			valid = valid && (ob2->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
