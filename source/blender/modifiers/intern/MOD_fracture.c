@@ -859,19 +859,17 @@ static Material* find_material(const char* name)
 
 	for (mat = G.main->mat.first; mat; mat = mat->next)
 	{
-		if (strlen(name) <= MAX_ID_NAME - 2)
+		char *cmp = BLI_strdupcat("MA", name);
+		if (strcmp(cmp, mat->name) == 0)
 		{
-			char *ptr;
-			char tmpnam[MAX_ID_NAME];
-			tmpnam[0] = 'M';
-			tmpnam[1] = 'A';
-
-			ptr = strcat(tmpnam, name);
-			//printf("%s %s %s\n", ptr, tmpnam, mat->name);
-			if (strcmp(ptr, mat->name) == 0)
-			{
-				return (Material*)mat;
-			}
+			MEM_freeN(cmp);
+			cmp = NULL;
+			return (Material*)mat;
+		}
+		else
+		{
+			MEM_freeN(cmp);
+			cmp = NULL;
 		}
 	}
 
