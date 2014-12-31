@@ -56,6 +56,7 @@
 #include "MEM_guardedalloc.h"
 
 #include "GPU_extensions.h"
+#include "GPU_draw.h"
 #include "GPU_glew.h"
 
 extern GLubyte stipple_quarttone[128]; /* glutil.c, bad level data */
@@ -607,13 +608,17 @@ static void emDM_drawMappedFaces(DerivedMesh *dm,
 			int drawSmooth;
 
 			efa = ltri[0]->f;
-			drawSmooth = lnors || ((flag & DM_DRAW_ALWAYS_SMOOTH) ? 1 : BM_elem_flag_test(efa, BM_ELEM_SMOOTH));
-
+			drawSmooth = lnors || ((flag & DM_DRAW_ALWAYS_SMOOTH) ? 1 : BM_elem_flag_test(efa, BM_ELEM_SMOOTH));			
+			
 			draw_option = (!setDrawOptions ?
 			               DM_DRAW_OPTION_NORMAL :
 			               setDrawOptions(userData, BM_elem_index_get(efa)));
+
 			if (draw_option != DM_DRAW_OPTION_SKIP) {
 				const GLenum poly_type = GL_TRIANGLES; /* BMESH NOTE, this is odd but keep it for now to match trunk */
+
+				GPU_enable_material(efa->mat_nr + 1, NULL);
+				
 				if (draw_option == DM_DRAW_OPTION_STIPPLE) { /* enabled with stipple */
 
 					if (poly_prev != GL_ZERO) glEnd();
@@ -717,7 +722,7 @@ static void bmdm_get_tri_colpreview(BMLoop *ls[3], MLoopCol *lcol[3], unsigned c
 
 static void emDM_drawFacesTex_common(DerivedMesh *dm,
                                      DMSetDrawOptionsTex drawParams,
-                                     DMSetDrawOptions drawParamsMapped,
+                                     DMSetDrawOptionsMappedTex drawParamsMapped,
                                      DMCompareDrawOptions compareDrawOptions,
                                      void *userData)
 {
@@ -785,7 +790,7 @@ static void emDM_drawFacesTex_common(DerivedMesh *dm,
 			if (drawParams)
 				draw_option = drawParams(&mtf, has_vcol, efa->mat_nr);
 			else if (drawParamsMapped)
-				draw_option = drawParamsMapped(userData, BM_elem_index_get(efa));
+				draw_option = drawParamsMapped(userData, BM_elem_index_get(efa), efa->mat_nr);
 			else
 				draw_option = DM_DRAW_OPTION_NORMAL;
 
@@ -854,7 +859,7 @@ static void emDM_drawFacesTex_common(DerivedMesh *dm,
 			if (drawParams)
 				draw_option = drawParams(&mtf, has_vcol, efa->mat_nr);
 			else if (drawParamsMapped)
-				draw_option = drawParamsMapped(userData, BM_elem_index_get(efa));
+				draw_option = drawParamsMapped(userData, BM_elem_index_get(efa), efa->mat_nr);
 			else
 				draw_option = DM_DRAW_OPTION_NORMAL;
 
@@ -916,7 +921,7 @@ static void emDM_drawFacesTex(DerivedMesh *dm,
 }
 
 static void emDM_drawMappedFacesTex(DerivedMesh *dm,
-                                    DMSetDrawOptions setDrawOptions,
+                                    DMSetDrawOptionsMappedTex setDrawOptions,
                                     DMCompareDrawOptions compareDrawOptions,
                                     void *userData, DMDrawFlag UNUSED(flag))
 {
@@ -970,7 +975,7 @@ static void emdm_pass_attrib_vertex_glsl(const DMVertexAttribs *attribs, const B
 		GLubyte col[4];
 		if (attribs->mcol[i].em_offset != -1) {
 			const MLoopCol *cp = BM_ELEM_CD_GET_VOID_P(loop, attribs->mcol[i].em_offset);
-			col[0] = cp->b; col[1] = cp->g; col[2] = cp->r; col[3] = cp->a;
+			copy_v4_v4_char((char *)col, &cp->r);
 		}
 		else {
 			col[0] = 0; col[1] = 0; col[2] = 0; col[3] = 0;

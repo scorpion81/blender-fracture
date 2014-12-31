@@ -69,7 +69,6 @@
 #include "GPU_extensions.h"
 #include "GPU_glew.h"
 
-#include "wm_window.h"
 
 #include "render_intern.h"
 
@@ -187,7 +186,9 @@ static void screen_opengl_render_apply(OGLRender *oglrender)
 			wmOrtho2(0, sizex, 0, sizey);
 			glTranslatef(sizex / 2, sizey / 2, 0.0f);
 
-			ED_gpencil_draw_ex(gpd, sizex, sizey, scene->r.cfra);
+			G.f |= G_RENDER_OGL;
+			ED_gpencil_draw_ex(scene, gpd, sizex, sizey, scene->r.cfra, SPACE_SEQ);
+			G.f &= ~G_RENDER_OGL;
 
 			gp_rect = MEM_mallocN(sizex * sizey * sizeof(unsigned char) * 4, "offscreen rect");
 			GPU_offscreen_read_pixels(oglrender->ofs, GL_UNSIGNED_BYTE, gp_rect);
@@ -271,7 +272,7 @@ static void screen_opengl_render_apply(OGLRender *oglrender)
 		/* shouldnt suddenly give errors mid-render but possible */
 		char err_out[256] = "unknown";
 		ImBuf *ibuf_view = ED_view3d_draw_offscreen_imbuf_simple(scene, scene->camera, oglrender->sizex, oglrender->sizey,
-		                                                         IB_rect, OB_SOLID, false, true,
+		                                                         IB_rect, OB_SOLID, false, true, true,
 		                                                         (draw_sky) ? R_ADDSKY : R_ALPHAPREMUL, err_out);
 		camera = scene->camera;
 

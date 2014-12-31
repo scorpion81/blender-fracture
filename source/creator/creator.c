@@ -48,13 +48,6 @@
 #  include "utfconv.h"
 #endif
 
-/* for backtrace */
-#if defined(__linux__) || defined(__APPLE__)
-#  include <execinfo.h>
-#elif defined(_MSV_VER)
-#  include <DbgHelp.h>
-#endif
-
 #include <stdlib.h>
 #include <stddef.h>
 #include <string.h>
@@ -82,6 +75,7 @@
 #include "DNA_scene_types.h"
 #include "DNA_userdef_types.h"
 
+#include "BKE_appdir.h"
 #include "BKE_blender.h"
 #include "BKE_brush.h"
 #include "BKE_context.h"
@@ -152,6 +146,10 @@
 
 #ifdef WITH_CYCLES_LOGGING
 #  include "CCL_api.h"
+#endif
+
+#ifdef WITH_SDL_DYNLOAD
+#  include "sdlew.h"
 #endif
 
 /* from buildinfo.c */
@@ -511,72 +509,11 @@ static int set_fpe(int UNUSED(argc), const char **UNUSED(argv), void *UNUSED(dat
 	return 0;
 }
 
-#if defined(__linux__) || defined(__APPLE__)
-
-/* Unix */
 static void blender_crash_handler_backtrace(FILE *fp)
 {
-#define SIZE 100
-	void *buffer[SIZE];
-	int nptrs;
-	char **strings;
-	int i;
-
 	fputs("\n# backtrace\n", fp);
-
-	/* include a backtrace for good measure */
-	nptrs = backtrace(buffer, SIZE);
-	strings = backtrace_symbols(buffer, nptrs);
-	for (i = 0; i < nptrs; i++) {
-		fputs(strings[i], fp);
-		fputc('\n', fp);
-	}
-
-	free(strings);
-#undef SIZE
+	BLI_system_backtrace(fp);
 }
-
-#elif defined(_MSC_VER)
-
-static void blender_crash_handler_backtrace(FILE *fp)
-{
-	(void)fp;
-
-#if 0
-#define MAXSYMBOL 256
-	unsigned short	i;
-	void *stack[SIZE];
-	unsigned short nframes;
-	SYMBOL_INFO	*symbolinfo;
-	HANDLE process;
-
-	process = GetCurrentProcess();
-
-	SymInitialize(process, NULL, true);
-
-	nframes = CaptureStackBackTrace(0, SIZE, stack, NULL);
-	symbolinfo = MEM_callocN(sizeof(SYMBOL_INFO) + MAXSYMBOL * sizeof(char), "crash Symbol table");
-	symbolinfo->MaxNameLen = MAXSYMBOL - 1;
-	symbolinfo->SizeOfStruct = sizeof(SYMBOL_INFO);
-
-	for (i = 0; i < nframes; i++) {
-		SymFromAddr(process, ( DWORD64 )( stack[ i ] ), 0, symbolinfo);
-
-		fprintf(fp, "%u: %s - 0x%0X\n", nframes - i - 1, symbolinfo->Name, symbolinfo->Address);
-	}
-
-	MEM_freeN(symbolinfo);
-#endif
-}
-
-#else  /* non msvc/osx/linux */
-
-static void blender_crash_handler_backtrace(FILE *fp)
-{
-	(void)fp;
-}
-
-#endif
 
 static void blender_crash_handler(int signum)
 {
@@ -586,7 +523,7 @@ static void blender_crash_handler(int signum)
 		char fname[FILE_MAX];
 
 		if (!G.main->name[0]) {
-			BLI_make_file_string("/", fname, BLI_temp_dir_base(), "crash.blend");
+			BLI_make_file_string("/", fname, BKE_tempdir_base(), "crash.blend");
 		}
 		else {
 			BLI_strncpy(fname, G.main->name, sizeof(fname));
@@ -607,10 +544,10 @@ static void blender_crash_handler(int signum)
 	char fname[FILE_MAX];
 
 	if (!G.main->name[0]) {
-		BLI_join_dirfile(fname, sizeof(fname), BLI_temp_dir_base(), "blender.crash.txt");
+		BLI_join_dirfile(fname, sizeof(fname), BKE_tempdir_base(), "blender.crash.txt");
 	}
 	else {
-		BLI_join_dirfile(fname, sizeof(fname), BLI_temp_dir_base(), BLI_path_basename(G.main->name));
+		BLI_join_dirfile(fname, sizeof(fname), BKE_tempdir_base(), BLI_path_basename(G.main->name));
 		BLI_replace_extension(fname, sizeof(fname), ".crash.txt");
 	}
 
@@ -642,7 +579,7 @@ static void blender_crash_handler(int signum)
 	}
 
 	/* Delete content of temp dir! */
-	BLI_temp_dir_session_purge();
+	BKE_tempdir_session_purge();
 
 	/* really crash */
 	signal(signum, SIG_DFL);
@@ -1191,7 +1128,7 @@ static int run_python_file(int argc, const char **argv, void *data)
 		return 0;
 	}
 #else
-	(void)argc; (void)argv; (void)data; /* unused */
+	UNUSED_VARS(argc, argv, data);
 	printf("This blender was built without python support\n");
 	return 0;
 #endif /* WITH_PYTHON */
@@ -1221,7 +1158,7 @@ static int run_python_text(int argc, const char **argv, void *data)
 		return 0;
 	}
 #else
-	(void)argc; (void)argv; (void)data; /* unused */
+	UNUSED_VARS(argc, argv, data);
 	printf("This blender was built without python support\n");
 	return 0;
 #endif /* WITH_PYTHON */
@@ -1236,7 +1173,7 @@ static int run_python_console(int UNUSED(argc), const char **argv, void *data)
 
 	return 0;
 #else
-	(void)argv; (void)data; /* unused */
+	UNUSED_VARS(argv, data);
 	printf("This blender was built without python support\n");
 	return 0;
 #endif /* WITH_PYTHON */
@@ -1254,7 +1191,7 @@ static int set_addons(int argc, const char **argv, void *data)
 		BPY_CTX_SETUP(BPY_string_exec(C, str));
 		free(str);
 #else
-		(void)argv; (void)data; /* unused */
+		UNUSED_VARS(argv, data);
 #endif /* WITH_PYTHON */
 		return 1;
 	}
@@ -1586,6 +1523,10 @@ int main(
 	}
 #endif
 
+#ifdef WITH_SDL_DYNLOAD
+	sdlewInit();
+#endif
+
 	C = CTX_create();
 
 #ifdef WITH_PYTHON_MODULE
@@ -1610,13 +1551,28 @@ int main(
 #endif
 
 	setCallbacks();
+	
+#if defined(__APPLE__) && !defined(WITH_PYTHON_MODULE)
+/* patch to ignore argument finder gives us (pid?) */
+	if (argc == 2 && strncmp(argv[1], "-psn_", 5) == 0) {
+		extern int GHOST_HACK_getFirstFile(char buf[]);
+		static char firstfilebuf[512];
 
+		argc = 1;
+
+		if (GHOST_HACK_getFirstFile(firstfilebuf)) {
+			argc = 2;
+			argv[1] = firstfilebuf;
+		}
+	}
+#endif
+	
 #ifdef __FreeBSD__
 	fpsetmask(0);
 #endif
 
 	/* initialize path to executable */
-	BLI_init_program_path(argv[0]);
+	BKE_appdir_program_path_init(argv[0]);
 
 	BLI_threadapi_init();
 
@@ -1695,7 +1651,7 @@ int main(
 
 		/* this is properly initialized with user defs, but this is default */
 		/* call after loading the startup.blend so we can read U.tempdir */
-		BLI_temp_dir_init(U.tempdir);
+		BKE_tempdir_init(U.tempdir);
 	}
 	else {
 #ifndef WITH_PYTHON_MODULE
@@ -1705,7 +1661,7 @@ int main(
 		WM_init(C, argc, (const char **)argv);
 
 		/* don't use user preferences temp dir */
-		BLI_temp_dir_init(NULL);
+		BKE_tempdir_init(NULL);
 	}
 #ifdef WITH_PYTHON
 	/**

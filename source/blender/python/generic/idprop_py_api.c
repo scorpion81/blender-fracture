@@ -296,10 +296,10 @@ static PyObject *BPy_IDGroup_Map_GetItem(BPy_IDProperty *self, PyObject *item)
 }
 
 /* returns NULL on success, error string on failure */
-static int idp_sequence_type(PyObject *seq_fast)
+static char idp_sequence_type(PyObject *seq_fast)
 {
 	PyObject *item;
-	int type = IDP_INT;
+	char type = IDP_INT;
 
 	Py_ssize_t i, len = PySequence_Fast_GET_SIZE(seq_fast);
 	for (i = 0; i < len; i++) {
@@ -403,7 +403,7 @@ bool BPy_IDProperty_Map_ValidateAndCreate(PyObject *name_obj, IDProperty *group,
 			return false;
 		}
 
-		if ((val.array.type = idp_sequence_type(ob_seq_fast)) == -1) {
+		if ((val.array.type = idp_sequence_type(ob_seq_fast)) == (char)-1) {
 			Py_DECREF(ob_seq_fast);
 			PyErr_SetString(PyExc_TypeError, "only floats, ints and dicts are allowed in ID property arrays");
 			return false;
@@ -510,7 +510,26 @@ bool BPy_IDProperty_Map_ValidateAndCreate(PyObject *name_obj, IDProperty *group,
 		MEM_freeN(prop);
 	}
 	else {
-		IDP_ReplaceInGroup(group, prop);
+		IDProperty *prop_exist;
+
+		/* avoid freeing when types match in case they are referenced by the UI, see: T37073
+		 * obviously this isn't a complete solution, but helps for common cases. */
+		prop_exist = IDP_GetPropertyFromGroup(group, prop->name);
+		if ((prop_exist != NULL) &&
+		    (prop_exist->type == prop->type) &&
+		    (prop_exist->subtype == prop->subtype))
+		{
+			/* Preserve prev/next links!!! See T42593. */
+			prop->prev = prop_exist->prev;
+			prop->next = prop_exist->next;
+
+			IDP_FreeProperty(prop_exist);
+			*prop_exist = *prop;
+			MEM_freeN(prop);
+		}
+		else {
+			IDP_ReplaceInGroup_ex(group, prop, prop_exist);
+		}
 	}
 
 	return true;

@@ -43,6 +43,7 @@
 #include "DNA_lattice_types.h"
 #include "DNA_object_types.h"
 #include "DNA_curve_types.h"
+#include "DNA_gpencil_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_meta_types.h"
 #include "DNA_mask_types.h"
@@ -80,8 +81,6 @@
 
 #include "UI_interface.h"
 #include "UI_resources.h"
-
-#include "wm_window.h"
 
 #include "screen_intern.h"  /* own module include */
 
@@ -2150,6 +2149,7 @@ static int keyframe_jump_exec(bContext *C, wmOperator *op)
 	Main *bmain = CTX_data_main(C);
 	Scene *scene = CTX_data_scene(C);
 	Object *ob = CTX_data_active_object(C);
+	bGPdata *gpd = CTX_data_gpencil_data(C);
 	bDopeSheet ads = {NULL};
 	DLRBT_Tree keys;
 	ActKeyColumn *ak;
@@ -2177,7 +2177,9 @@ static int keyframe_jump_exec(bContext *C, wmOperator *op)
 
 	if (ob)
 		ob_to_keylist(&ads, ob, &keys, NULL);
-
+	
+	gpencil_to_keylist(&ads, gpd, &keys);
+	
 	{
 		Mask *mask = CTX_data_edit_mask(C);
 		if (mask) {
@@ -2320,7 +2322,7 @@ static int screen_set_exec(bContext *C, wmOperator *op)
 	bScreen *screen_prev = screen;
 	
 	ScrArea *sa = CTX_wm_area(C);
-	int tot = BLI_countlist(&bmain->screen);
+	int tot = BLI_listbase_count(&bmain->screen);
 	int delta = RNA_int_get(op->ptr, "delta");
 	
 	/* temp screens are for userpref or render display */
@@ -2737,8 +2739,8 @@ static int screen_area_options_invoke(bContext *C, wmOperator *op, const wmEvent
 	
 	if (actedge == NULL) return OPERATOR_CANCELLED;
 	
-	pup = uiPupMenuBegin(C, RNA_struct_ui_name(op->type->srna), ICON_NONE);
-	layout = uiPupMenuLayout(pup);
+	pup = UI_popup_menu_begin(C, RNA_struct_ui_name(op->type->srna), ICON_NONE);
+	layout = UI_popup_menu_layout(pup);
 	
 	WM_operator_properties_create(&ptr1, "SCREEN_OT_area_join");
 	
@@ -2757,7 +2759,7 @@ static int screen_area_options_invoke(bContext *C, wmOperator *op, const wmEvent
 	uiItemFullO(layout, "SCREEN_OT_area_split", NULL, ICON_NONE, ptr2.data, WM_OP_INVOKE_DEFAULT, 0);
 	uiItemFullO(layout, "SCREEN_OT_area_join", NULL, ICON_NONE, ptr1.data, WM_OP_INVOKE_DEFAULT, 0);
 	
-	uiPupMenuEnd(C, pup);
+	UI_popup_menu_end(C, pup);
 	
 	return OPERATOR_INTERFACE;
 }
@@ -2795,7 +2797,7 @@ static int spacedata_cleanup_exec(bContext *C, wmOperator *op)
 				SpaceLink *sl = sa->spacedata.first;
 
 				BLI_remlink(&sa->spacedata, sl);
-				tot += BLI_countlist(&sa->spacedata);
+				tot += BLI_listbase_count(&sa->spacedata);
 				BKE_spacedata_freelist(&sa->spacedata);
 				BLI_addtail(&sa->spacedata, sl);
 			}
@@ -2853,18 +2855,18 @@ static int repeat_history_invoke(bContext *C, wmOperator *op, const wmEvent *UNU
 	uiLayout *layout;
 	int items, i;
 	
-	items = BLI_countlist(&wm->operators);
+	items = BLI_listbase_count(&wm->operators);
 	if (items == 0)
 		return OPERATOR_CANCELLED;
 	
-	pup = uiPupMenuBegin(C, RNA_struct_ui_name(op->type->srna), ICON_NONE);
-	layout = uiPupMenuLayout(pup);
+	pup = UI_popup_menu_begin(C, RNA_struct_ui_name(op->type->srna), ICON_NONE);
+	layout = UI_popup_menu_layout(pup);
 	
 	for (i = items - 1, lastop = wm->operators.last; lastop; lastop = lastop->prev, i--)
 		if (WM_operator_repeat_check(C, lastop))
 			uiItemIntO(layout, RNA_struct_ui_name(lastop->type->srna), ICON_NONE, op->type->idname, "index", i);
 	
-	uiPupMenuEnd(C, pup);
+	UI_popup_menu_end(C, pup);
 	
 	return OPERATOR_INTERFACE;
 }
@@ -3255,12 +3257,12 @@ static int header_toolbox_invoke(bContext *C, wmOperator *UNUSED(op), const wmEv
 	uiPopupMenu *pup;
 	uiLayout *layout;
 
-	pup = uiPupMenuBegin(C, IFACE_("Header"), ICON_NONE);
-	layout = uiPupMenuLayout(pup);
+	pup = UI_popup_menu_begin(C, IFACE_("Header"), ICON_NONE);
+	layout = UI_popup_menu_layout(pup);
 
 	ED_screens_header_tools_menu_create(C, layout, NULL);
 
-	uiPupMenuEnd(C, pup);
+	UI_popup_menu_end(C, pup);
 
 	return OPERATOR_INTERFACE;
 }
@@ -3523,12 +3525,14 @@ static void SCREEN_OT_animation_step(wmOperatorType *ot)
 /* find window that owns the animation timer */
 bScreen *ED_screen_animation_playing(const wmWindowManager *wm)
 {
-	wmWindow *window;
+	wmWindow *win;
 
-	for (window = wm->windows.first; window; window = window->next)
-		if (window->screen->animtimer)
-			return window->screen;
-	
+	for (win = wm->windows.first; win; win = win->next) {
+		if (win->screen->animtimer) {
+			return win->screen;
+		}
+	}
+
 	return NULL;
 }
 

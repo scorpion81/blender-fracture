@@ -218,6 +218,8 @@ else:
 if not env['BF_FANCY']:
     B.bc.disable()
 
+if env['WITH_BF_SDL_DYNLOAD']:
+    env['BF_SDL_INC'] = '#extern/sdlew/include/SDL2'
 
 # remove install dir so old and new files are not mixed.
 # NOTE: only do the scripts directory for now, otherwise is too disruptive for developers
@@ -265,6 +267,7 @@ if 'blenderlite' in B.targets:
     target_env_defs['WITH_BF_REMESH'] = False
     target_env_defs['WITH_BF_VORONOI'] = False
     target_env_defs['WITH_BF_PYTHON'] = False
+    target_env_defs['WITH_BF_IME'] = False
     target_env_defs['WITH_BF_3DMOUSE'] = False
     target_env_defs['WITH_BF_LIBMV'] = False
     target_env_defs['WITH_BF_FREESTYLE'] = False
@@ -420,6 +423,9 @@ if env['OURPLATFORM']=='darwin':
         else:
             env.Append(LINKFLAGS=['-F/Library/Frameworks','-Xlinker','-weak_framework','-Xlinker','Jackmp'])
             print B.bc.OKGREEN + "Using Jack"
+
+    if env['WITH_BF_SDL']:
+        env.Append(LINKFLAGS=['-lazy_framework','ForceFeedback'])
 
     if env['WITH_BF_QUICKTIME'] == 1:
         env['PLATFORM_LINKFLAGS'] = env['PLATFORM_LINKFLAGS']+['-framework','QTKit']
@@ -753,6 +759,7 @@ if B.targets != ['cudakernels']:
     data_to_c_simple("source/blender/gpu/shaders/gpu_shader_sep_gaussian_blur_frag.glsl")
     data_to_c_simple("source/blender/gpu/shaders/gpu_shader_sep_gaussian_blur_vert.glsl")
     data_to_c_simple("source/blender/gpu/shaders/gpu_shader_vertex.glsl")
+    data_to_c_simple("source/blender/gpu/shaders/gpu_shader_vertex_world.glsl")
     data_to_c_simple("source/blender/gpu/shaders/gpu_shader_vsm_store_frag.glsl")
     data_to_c_simple("source/blender/gpu/shaders/gpu_shader_vsm_store_vert.glsl")
     data_to_c_simple("intern/opencolorio/gpu_shader_display_transform.glsl")
@@ -856,9 +863,11 @@ if B.targets != ['cudakernels']:
     from FindUnorderedMap import FindUnorderedMap
 
     conf = Configure(env)
+    old_linkflags = conf.env['LINKFLAGS']
     conf.env.Append(LINKFLAGS=env['PLATFORM_LINKFLAGS'])
     FindSharedPtr(conf)
     FindUnorderedMap(conf)
+    conf.env['LINKFLAGS'] = old_linkflags
     env = conf.Finish()
 
 # End of auto configuration
@@ -1181,7 +1190,7 @@ if env['OURPLATFORM'] in ('win32-vc', 'win32-mingw', 'win64-vc', 'linuxcross'):
         dllsources += ['${BF_PTHREADS_LIBPATH}/${BF_PTHREADS_LIB}.dll']
 
     if env['WITH_BF_SDL']:
-        dllsources.append('${BF_SDL_LIBPATH}/SDL.dll')
+        dllsources.append('${BF_SDL_LIBPATH}/SDL2.dll')
 
     if env['WITH_BF_PYTHON']:
         if env['BF_DEBUG']:

@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include <string.h>
@@ -880,7 +880,7 @@ bool OSLRenderServices::texture(ustring filename, TextureOpt &options,
 	bool status;
 
 	if(filename[0] == '@' && filename.find('.') == -1) {
-        int slot = atoi(filename.c_str() + 1);
+		int slot = atoi(filename.c_str() + 1);
 		float4 rgba = kernel_tex_image_interp(slot, s, 1.0f - t);
 
 		result[0] = rgba[0];

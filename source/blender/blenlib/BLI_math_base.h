@@ -48,13 +48,16 @@
 #define M_PI_2      1.57079632679489661923
 #endif
 #ifndef M_SQRT2
-#define M_SQRT2     1.41421356237309504880
+#define M_SQRT2     1.41421356237309504880  /* sqrt(2) */
 #endif
 #ifndef M_SQRT1_2
-#define M_SQRT1_2   0.70710678118654752440
+#define M_SQRT1_2   0.70710678118654752440  /* 1/sqrt(2) */
 #endif
 #ifndef M_SQRT3
-#define M_SQRT3   1.7320508075688772
+#define M_SQRT3     1.73205080756887729352  /* sqrt(3) */
+#endif
+#ifndef M_SQRT1_3
+#define M_SQRT1_3   0.57735026918962576450  /* 1/sqrt(3) */
 #endif
 #ifndef M_1_PI
 #define M_1_PI      0.318309886183790671538
@@ -157,6 +160,11 @@ static const int NAN_INT = 0x7FC00000;
 
 /******************************* Float ******************************/
 
+MINLINE float pow2f(float x);
+MINLINE float pow3f(float x);
+MINLINE float pow4f(float x);
+MINLINE float pow7f(float x);
+
 MINLINE float sqrt3f(float f);
 MINLINE double sqrt3d(double d);
 
@@ -186,6 +194,8 @@ MINLINE int min_iiii(int a, int b, int c, int d);
 MINLINE int max_iiii(int a, int b, int c, int d);
 
 MINLINE float signf(float f);
+MINLINE int signum_i_ex(float a, float eps);
+MINLINE int signum_i(float a);
 
 MINLINE float power_of_2(float f);
 

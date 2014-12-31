@@ -50,7 +50,6 @@
 #include "BLI_threads.h"
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
-#include "BLI_system.h"
 
 #include "BLF_translation.h"
 
@@ -58,6 +57,7 @@
 
 #include "WM_api.h"
 
+#include "BKE_appdir.h"
 #include "BKE_anim.h"
 #include "BKE_blender.h"
 #include "BKE_cloth.h"
@@ -1468,7 +1468,7 @@ static int ptcache_path(PTCacheID *pid, char *filename)
 	
 	/* use the temp path. this is weak but better then not using point cache at all */
 	/* temporary directory is assumed to exist and ALWAYS has a trailing slash */
-	BLI_snprintf(filename, MAX_PTCACHE_PATH, "%s"PTCACHE_PATH, BLI_temp_dir_session());
+	BLI_snprintf(filename, MAX_PTCACHE_PATH, "%s"PTCACHE_PATH, BKE_tempdir_session());
 	
 	return BLI_add_slash(filename); /* new strlen() */
 }
@@ -2570,12 +2570,19 @@ void BKE_ptcache_id_clear(PTCacheID *pid, int mode, unsigned int cfra)
 		if (pid->cache->flag & PTCACHE_DISK_CACHE) {
 			ptcache_path(pid, path);
 			
-			len = ptcache_filename(pid, filename, cfra, 0, 0); /* no path */
-			
 			dir = opendir(path);
 			if (dir==NULL)
 				return;
-
+			
+			len = ptcache_filename(pid, filename, cfra, 0, 0); /* no path */
+			/* append underscore terminator to ensure we don't match similar names
+			 * from objects whose names start with the same prefix
+			 */
+			if (len < sizeof(filename) - 2) {
+				BLI_strncpy(filename + len, "_", sizeof(filename) - 2 - len);
+				len += 1;
+			}
+			
 			BLI_snprintf(ext, sizeof(ext), "_%02u"PTCACHE_EXT, pid->stack_index);
 			
 			while ((de = readdir(dir)) != NULL) {

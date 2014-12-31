@@ -40,7 +40,6 @@
 #include "DNA_scene_types.h"
 #include "DNA_mask_types.h"
 
-#include "BLF_translation.h"
 
 #include "BKE_context.h"
 #include "BKE_global.h"
@@ -61,7 +60,6 @@
 #include "ED_screen.h"
 #include "ED_sequencer.h"
 
-#include "UI_view2d.h"
 
 #include "BKE_sound.h"
 
@@ -923,5 +921,6 @@ void SEQUENCER_OT_effect_strip_add(struct wmOperatorType *ot)
 	                               WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY);
 	sequencer_generic_props__internal(ot, SEQPROP_STARTFRAME | SEQPROP_ENDFRAME);
 	RNA_def_enum(ot->srna, "type", sequencer_prop_effect_types, SEQ_TYPE_CROSS, "Type", "Sequencer effect type");
-	RNA_def_float_vector(ot->srna, "color", 3, NULL, 0.0f, 1.0f, "Color", "Initialize the strip with this color (only used when type='COLOR')", 0.0f, 1.0f);
+	RNA_def_float_vector(ot->srna, "color", 3, NULL, 0.0f, 1.0f, "Color",
+	                     "Initialize the strip with this color (only used when type='COLOR')", 0.0f, 1.0f);
 }

@@ -309,17 +309,18 @@ int list_find_data_fcurves(ListBase *dst, ListBase *src, const char *dataPrefix,
 	return matches;
 }
 
-FCurve *rna_get_fcurve(PointerRNA *ptr, PropertyRNA *prop, int rnaindex, bAction **action, bool *r_driven)
+FCurve *rna_get_fcurve(PointerRNA *ptr, PropertyRNA *prop, int rnaindex, AnimData **adt, bAction **action, bool *r_driven)
 {
-	return rna_get_fcurve_context_ui(NULL, ptr, prop, rnaindex, action, r_driven);
+	return rna_get_fcurve_context_ui(NULL, ptr, prop, rnaindex, adt, action, r_driven);
 }
 
 FCurve *rna_get_fcurve_context_ui(bContext *C, PointerRNA *ptr, PropertyRNA *prop, int rnaindex,
-                                  bAction **action, bool *r_driven)
+                                  AnimData **animdata, bAction **action, bool *r_driven)
 {
 	FCurve *fcu = NULL;
 	PointerRNA tptr = *ptr;
 	
+	if (animdata) *animdata = NULL;
 	*r_driven = false;
 	
 	/* there must be some RNA-pointer + property combon */
@@ -350,11 +351,14 @@ FCurve *rna_get_fcurve_context_ui(bContext *C, PointerRNA *ptr, PropertyRNA *pro
 					if (!fcu && (adt->drivers.first)) {
 						fcu = list_find_fcurve(&adt->drivers, path, rnaindex);
 						
-						if (fcu)
+						if (fcu) {
+							if (animdata) *animdata = adt;
 							*r_driven = true;
+						}
 					}
 					
 					if (fcu && action) {
+						if (animdata) *animdata = adt;
 						*action = adt->action;
 						break;
 					}
@@ -683,11 +687,11 @@ bool fcurve_are_keyframes_usable(FCurve *fcu)
 {
 	/* F-Curve must exist */
 	if (fcu == NULL)
-		return 0;
+		return false;
 		
 	/* F-Curve must not have samples - samples are mutually exclusive of keyframes */
 	if (fcu->fpt)
-		return 0;
+		return false;
 	
 	/* if it has modifiers, none of these should "drastically" alter the curve */
 	if (fcu->modifiers.first) {
@@ -714,7 +718,7 @@ bool fcurve_are_keyframes_usable(FCurve *fcu)
 					FMod_Generator *data = (FMod_Generator *)fcm->data;
 					
 					if ((data->flag & FCM_GENERATOR_ADDITIVE) == 0)
-						return 0;
+						return false;
 					break;
 				}
 				case FMODIFIER_TYPE_FN_GENERATOR:
@@ -722,18 +726,18 @@ bool fcurve_are_keyframes_usable(FCurve *fcu)
 					FMod_FunctionGenerator *data = (FMod_FunctionGenerator *)fcm->data;
 					
 					if ((data->flag & FCM_GENERATOR_ADDITIVE) == 0)
-						return 0;
+						return false;
 					break;
 				}
 				/* always harmful - cannot allow */
 				default:
-					return 0;
+					return false;
 			}
 		}
 	}
 	
 	/* keyframes are usable */
-	return 1;
+	return true;
 }
 
 bool BKE_fcurve_is_protected(FCurve *fcu)
@@ -2153,18 +2157,29 @@ static float fcurve_eval_keyframes(FCurve *fcu, BezTriple *bezts, float evaltime
 						v4[0] = bezt->vec[1][0];
 						v4[1] = bezt->vec[1][1];
 						
-						/* adjust handles so that they don't overlap (forming a loop) */
-						correct_bezpart(v1, v2, v3, v4);
-						
-						/* try to get a value for this position - if failure, try another set of points */
-						b = findzero(evaltime, v1[0], v2[0], v3[0], v4[0], opl);
-						if (b) {
-							berekeny(v1[1], v2[1], v3[1], v4[1], opl, 1);
-							cvalue = opl[0];
-							/* break; */
+						if (fabsf(v1[1] - v4[1]) < FLT_EPSILON &&
+						    fabsf(v2[1] - v3[1]) < FLT_EPSILON &&
+						    fabsf(v3[1] - v4[1]) < FLT_EPSILON)
+						{
+							/* Optimisation: If all the handles are flat/at the same values,
+							 * the value is simply the shared value (see T40372 -> F91346)
+							 */
+							cvalue = v1[1];
 						}
 						else {
-							if (G.debug & G_DEBUG) printf("    ERROR: findzero() failed at %f with %f %f %f %f\n", evaltime, v1[0], v2[0], v3[0], v4[0]);
+							/* adjust handles so that they don't overlap (forming a loop) */
+							correct_bezpart(v1, v2, v3, v4);
+							
+							/* try to get a value for this position - if failure, try another set of points */
+							b = findzero(evaltime, v1[0], v2[0], v3[0], v4[0], opl);
+							if (b) {
+								berekeny(v1[1], v2[1], v3[1], v4[1], opl, 1);
+								cvalue = opl[0];
+								/* break; */
+							}
+							else {
+								if (G.debug & G_DEBUG) printf("    ERROR: findzero() failed at %f with %f %f %f %f\n", evaltime, v1[0], v2[0], v3[0], v4[0]);
+							}
 						}
 						break;
 						

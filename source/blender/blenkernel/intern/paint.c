@@ -316,7 +316,7 @@ void BKE_paint_curve_set(Brush *br, PaintCurve *pc)
 void BKE_palette_color_remove(Palette *palette, PaletteColor *color)
 {
 	if (color) {
-		int numcolors = BLI_countlist(&palette->colors);
+		int numcolors = BLI_listbase_count(&palette->colors);
 		if ((numcolors == palette->active_color + 1) && (numcolors != 1))
 			palette->active_color--;
 		
@@ -352,7 +352,7 @@ PaletteColor *BKE_palette_color_add(Palette *palette)
 {
 	PaletteColor *color = MEM_callocN(sizeof(*color), "Pallete Color");
 	BLI_addtail(&palette->colors, color);
-	palette->active_color = BLI_countlist(&palette->colors) - 1;
+	palette->active_color = BLI_listbase_count(&palette->colors) - 1;
 	return color;
 }
 
@@ -395,7 +395,7 @@ bool BKE_paint_select_elem_test(Object *ob)
 	        BKE_paint_select_face_test(ob));
 }
 
-void BKE_paint_init(Paint *p, const char col[3])
+void BKE_paint_init(UnifiedPaintSettings *ups, Paint *p, const char col[3])
 {
 	Brush *brush;
 
@@ -407,6 +407,9 @@ void BKE_paint_init(Paint *p, const char col[3])
 
 	memcpy(p->paint_cursor_col, col, 3);
 	p->paint_cursor_col[3] = 128;
+	ups->last_stroke_valid = false;
+	zero_v3(ups->average_stroke_accum);
+	ups->average_stroke_counter = 0;
 }
 
 void BKE_paint_free(Paint *paint)
@@ -424,6 +427,18 @@ void BKE_paint_copy(Paint *src, Paint *tar)
 	tar->brush = src->brush;
 	id_us_plus((ID *)tar->brush);
 	id_us_plus((ID *)tar->palette);
+}
+
+void BKE_paint_stroke_get_average(Scene *scene, Object *ob, float stroke[3])
+{
+	UnifiedPaintSettings *ups = &scene->toolsettings->unified_paint_settings;
+	if (ups->last_stroke_valid && ups->average_stroke_counter > 0) {
+		float fac = 1.0f / ups->average_stroke_counter;
+		mul_v3_v3fl(stroke, ups->average_stroke_accum, fac);
+	}
+	else {
+		copy_v3_v3(stroke, ob->obmat[3]);
+	}
 }
 
 /* returns non-zero if any of the face's vertices
@@ -477,19 +492,48 @@ float paint_grid_paint_mask(const GridPaintMask *gpm, unsigned level,
 /* threshold to move before updating the brush rotation */
 #define RAKE_THRESHHOLD 20
 
-void paint_calculate_rake_rotation(UnifiedPaintSettings *ups, const float mouse_pos[2])
+static void update_brush_rake_rotation(UnifiedPaintSettings *ups, Brush *brush, float rotation)
 {
-	const float u = 0.5f;
-	const float r = RAKE_THRESHHOLD;
+	if (brush->mtex.brush_angle_mode & MTEX_ANGLE_RAKE)
+		ups->brush_rotation = rotation;
+	else
+		ups->brush_rotation = 0.0f;
 
-	float dpos[2];
-	sub_v2_v2v2(dpos, ups->last_rake, mouse_pos);
+	if (brush->mask_mtex.brush_angle_mode & MTEX_ANGLE_RAKE)
+		/* here, translation contains the mouse coordinates. */
+		ups->brush_rotation_sec = rotation;
+	else
+		ups->brush_rotation_sec = 0.0f;
+}
 
-	if (len_squared_v2(dpos) >= r * r) {
-		ups->brush_rotation = atan2f(dpos[0], dpos[1]);
+void paint_calculate_rake_rotation(UnifiedPaintSettings *ups, Brush *brush, const float mouse_pos[2])
+{
+	if ((brush->mtex.brush_angle_mode & MTEX_ANGLE_RAKE) || (brush->mask_mtex.brush_angle_mode & MTEX_ANGLE_RAKE)) {
+		const float u = 0.5f;
+		const float r = RAKE_THRESHHOLD;
+		float rotation;
 
-		interp_v2_v2v2(ups->last_rake, ups->last_rake,
-		               mouse_pos, u);
+		float dpos[2];
+		sub_v2_v2v2(dpos, ups->last_rake, mouse_pos);
+
+		if (len_squared_v2(dpos) >= r * r) {
+			rotation = atan2f(dpos[0], dpos[1]);
+
+			interp_v2_v2v2(ups->last_rake, ups->last_rake,
+			               mouse_pos, u);
+
+			ups->last_rake_angle = rotation;
+
+			update_brush_rake_rotation(ups, brush, rotation);
+		}
+		/* make sure we reset here to the last rotation to avoid accumulating
+		 * values in case a random rotation is also added */
+		else {
+			update_brush_rake_rotation(ups, brush, ups->last_rake_angle);
+		}
+	}
+	else {
+		ups->brush_rotation = ups->brush_rotation_sec =0.0f;
 	}
 }
 
@@ -644,11 +688,11 @@ static bool sculpt_modifiers_active(Scene *scene, Sculpt *sd, Object *ob)
 	VirtualModifierData virtualModifierData;
 
 	if (mmd || ob->sculpt->bm)
-		return 0;
+		return false;
 
 	/* non-locked shape keys could be handled in the same way as deformed mesh */
 	if ((ob->shapeflag & OB_SHAPE_LOCK) == 0 && me->key && ob->shapenr)
-		return 1;
+		return true;
 
 	md = modifiers_getVirtualModifierList(ob, &virtualModifierData);
 
@@ -658,11 +702,11 @@ static bool sculpt_modifiers_active(Scene *scene, Sculpt *sd, Object *ob)
 		if (!modifier_isEnabled(scene, md, eModifierMode_Realtime)) continue;
 		if (ELEM(md->type, eModifierType_ShapeKey, eModifierType_Multires)) continue;
 
-		if (mti->type == eModifierTypeType_OnlyDeform) return 1;
-		else if ((sd->flags & SCULPT_ONLY_DEFORM) == 0) return 1;
+		if (mti->type == eModifierTypeType_OnlyDeform) return true;
+		else if ((sd->flags & SCULPT_ONLY_DEFORM) == 0) return true;
 	}
 
-	return 0;
+	return false;
 }
 
 /**
@@ -740,7 +784,7 @@ void BKE_sculpt_update_mesh_elements(Scene *scene, Sculpt *sd, Object *ob,
 
 			BKE_free_sculptsession_deformMats(ss);
 
-			ss->orig_cos = (ss->kb) ? BKE_key_convert_to_vertcos(ob, ss->kb) : BKE_mesh_vertexCos_get(me, NULL);
+			ss->orig_cos = (ss->kb) ? BKE_keyblock_convert_to_vertcos(ob, ss->kb) : BKE_mesh_vertexCos_get(me, NULL);
 
 			BKE_crazyspace_build_sculpt(scene, ob, &ss->deform_imats, &ss->deform_cos);
 			BKE_pbvh_apply_vertCos(ss->pbvh, ss->deform_cos);
@@ -755,14 +799,14 @@ void BKE_sculpt_update_mesh_elements(Scene *scene, Sculpt *sd, Object *ob,
 	}
 
 	if (ss->kb != NULL && ss->deform_cos == NULL) {
-		ss->deform_cos = BKE_key_convert_to_vertcos(ob, ss->kb);
+		ss->deform_cos = BKE_keyblock_convert_to_vertcos(ob, ss->kb);
 	}
 
 	/* if pbvh is deformed, key block is already applied to it */
 	if (ss->kb) {
 		bool pbvh_deformd = BKE_pbvh_isDeformed(ss->pbvh);
 		if (!pbvh_deformd || ss->deform_cos == NULL) {
-			float (*vertCos)[3] = BKE_key_convert_to_vertcos(ob, ss->kb);
+			float (*vertCos)[3] = BKE_keyblock_convert_to_vertcos(ob, ss->kb);
 
 			if (vertCos) {
 				if (!pbvh_deformd) {

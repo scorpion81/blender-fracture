@@ -1258,9 +1258,9 @@ static PyObject *Matrix_to_3x3(MatrixObject *self)
 PyDoc_STRVAR(Matrix_to_translation_doc,
 ".. method:: to_translation()\n"
 "\n"
-"   Return a the translation part of a 4 row matrix.\n"
+"   Return the translation part of a 4 row matrix.\n"
 "\n"
-"   :return: Return a the translation of a matrix.\n"
+"   :return: Return the translation of a matrix.\n"
 "   :rtype: :class:`Vector`\n"
 );
 static PyObject *Matrix_to_translation(MatrixObject *self)
@@ -1281,9 +1281,9 @@ static PyObject *Matrix_to_translation(MatrixObject *self)
 PyDoc_STRVAR(Matrix_to_scale_doc,
 ".. method:: to_scale()\n"
 "\n"
-"   Return a the scale part of a 3x3 or 4x4 matrix.\n"
+"   Return the scale part of a 3x3 or 4x4 matrix.\n"
 "\n"
-"   :return: Return a the scale of a matrix.\n"
+"   :return: Return the scale of a matrix.\n"
 "   :rtype: :class:`Vector`\n"
 "\n"
 "   .. note:: This method does not return negative a scale on any axis because it is not possible to obtain this data from the matrix alone.\n"
@@ -1589,7 +1589,7 @@ static PyObject *Matrix_adjugated(MatrixObject *self)
 PyDoc_STRVAR(Matrix_rotate_doc,
 ".. method:: rotate(other)\n"
 "\n"
-"   Rotates the matrix a by another mathutils value.\n"
+"   Rotates the matrix by another mathutils value.\n"
 "\n"
 "   :arg other: rotation component of mathutils value\n"
 "   :type other: :class:`Euler`, :class:`Quaternion` or :class:`Matrix`\n"
@@ -1715,7 +1715,7 @@ PyDoc_STRVAR(Matrix_determinant_doc,
 "\n"
 "   Return the determinant of a matrix.\n"
 "\n"
-"   :return: Return a the determinant of a matrix.\n"
+"   :return: Return the determinant of a matrix.\n"
 "   :rtype: float\n"
 "\n"
 "   .. seealso:: <http://en.wikipedia.org/wiki/Determinant>\n"
@@ -1836,7 +1836,6 @@ PyDoc_STRVAR(Matrix_zero_doc,
 "\n"
 "   Set all the matrix values to zero.\n"
 "\n"
-"   :return: an instance of itself\n"
 "   :rtype: :class:`Matrix`\n"
 );
 static PyObject *Matrix_zero(MatrixObject *self)
@@ -1847,8 +1846,24 @@ static PyObject *Matrix_zero(MatrixObject *self)
 		return NULL;
 
 	Py_RETURN_NONE;
+
 }
 /*---------------------------matrix.identity(() ------------------*/
+static void matrix_identity_internal(MatrixObject *self)
+{
+	BLI_assert((self->num_col == self->num_row) && (self->num_row <= 4));
+
+	if (self->num_col == 2) {
+		unit_m2((float (*)[2])self->matrix);
+	}
+	else if (self->num_col == 3) {
+		unit_m3((float (*)[3])self->matrix);
+	}
+	else {
+		unit_m4((float (*)[4])self->matrix);
+	}
+}
+
 PyDoc_STRVAR(Matrix_identity_doc,
 ".. method:: identity()\n"
 "\n"
@@ -1871,15 +1886,7 @@ static PyObject *Matrix_identity(MatrixObject *self)
 		return NULL;
 	}
 
-	if (self->num_col == 2) {
-		unit_m2((float (*)[2])self->matrix);
-	}
-	else if (self->num_col == 3) {
-		unit_m3((float (*)[3])self->matrix);
-	}
-	else {
-		unit_m4((float (*)[4])self->matrix);
-	}
+	matrix_identity_internal(self);
 
 	if (BaseMath_WriteCallback(self) == -1)
 		return NULL;
@@ -2809,8 +2816,7 @@ PyObject *Matrix_CreatePyObject(float *mat,
 			}
 			else if (num_col == num_row) {
 				/* or if no arguments are passed return identity matrix for square matrices */
-				PyObject *ret_dummy = Matrix_identity(self);
-				Py_DECREF(ret_dummy);
+				matrix_identity_internal(self);
 			}
 			else {
 				/* otherwise zero everything */

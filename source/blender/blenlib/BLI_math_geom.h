@@ -60,6 +60,7 @@ float area_poly_v3(const float verts[][3], unsigned int nr);
 float area_poly_v2(const float verts[][2], unsigned int nr);
 float cotangent_tri_weight_v3(const float v1[3], const float v2[3], const float v3[3]);
 
+void          cross_tri_v3(float n[3], const float v1[3], const float v2[3], const float v3[3]);
 MINLINE float cross_tri_v2(const float v1[2], const float v2[2], const float v3[2]);
 float cross_poly_v2(const float verts[][2], unsigned int nr);
 
@@ -77,6 +78,7 @@ float volume_tetrahedron_signed_v3(const float v1[3], const float v2[3], const f
 bool is_quad_convex_v3(const float v1[3], const float v2[3], const float v3[3], const float v4[3]);
 bool is_quad_convex_v2(const float v1[2], const float v2[2], const float v3[2], const float v4[2]);
 bool is_poly_convex_v2(const float verts[][2], unsigned int nr);
+int  is_quad_flip_v3(const float v1[3], const float v2[3], const float v3[3], const float v4[3]);
 
 /********************************* Distance **********************************/
 

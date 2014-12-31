@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include "background.h"
@@ -359,6 +359,8 @@ void ShaderManager::device_update_common(Device *device, DeviceScene *dscene, Sc
 			flag |= SD_VOLUME_MIS;
 		if(shader->volume_interpolation_method == VOLUME_INTERPOLATION_CUBIC)
 			flag |= SD_VOLUME_CUBIC;
+		if(shader->graph_bump)
+			flag |= SD_HAS_BUMP;
 
 		/* regular shader */
 		shader_flag[i++] = flag;

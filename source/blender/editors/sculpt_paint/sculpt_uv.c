@@ -60,7 +60,6 @@
 
 #include "RNA_access.h"
 #include "RNA_define.h"
-#include "RNA_enum_types.h"
 
 #include "paint_intern.h"
 #include "uvedit_intern.h"
@@ -237,7 +236,7 @@ void ED_space_image_uv_sculpt_update(wmWindowManager *wm, ToolSettings *settings
 			settings->uvsculpt->paint.flags |= PAINT_SHOW_BRUSH;
 		}
 
-		BKE_paint_init(&settings->uvsculpt->paint, PAINT_CURSOR_SCULPT);
+		BKE_paint_init(&settings->unified_paint_settings, &settings->uvsculpt->paint, PAINT_CURSOR_SCULPT);
 
 		settings->uvsculpt->paint.paint_cursor = WM_paint_cursor_activate(wm, uv_sculpt_brush_poll,
 		                                                                  brush_drawcursor_uvsculpt, NULL);

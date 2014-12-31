@@ -35,13 +35,13 @@
 
 #include "MEM_guardedalloc.h"
 
+#include "BKE_appdir.h"
 #include "BLI_utildefines.h"
 #include "BLI_listbase.h"
-#include "BLI_md5.h"
+#include "BLI_hash_md5.h"
 #include "BLI_path_util.h"
 #include "BLI_rect.h"
 #include "BLI_string.h"
-#include "BLI_system.h"
 #include "BLI_threads.h"
 
 #include "BKE_image.h"
@@ -94,6 +94,8 @@ void render_result_free(RenderResult *res)
 		MEM_freeN(res->rectf);
 	if (res->text)
 		MEM_freeN(res->text);
+	if (res->error)
+		MEM_freeN(res->error);
 	
 	MEM_freeN(res);
 }
@@ -1072,7 +1074,7 @@ void render_result_exr_file_path(Scene *scene, const char *layname, int sample, 
 		BLI_snprintf(name, sizeof(name), "%s_%s_%s%d.exr", fi, scene->id.name + 2, layname, sample);
 	}
 
-	BLI_make_file_string("/", filepath, BLI_temp_dir_session(), name);
+	BLI_make_file_string("/", filepath, BKE_tempdir_session(), name);
 }
 
 /* only for temp buffer, makes exact copy of render result */
@@ -1160,17 +1162,17 @@ static void render_result_exr_file_cache_path(Scene *sce, const char *root, char
 	if (G.main->name[0]) {
 		BLI_split_dirfile(G.main->name, dirname, filename, sizeof(dirname), sizeof(filename));
 		BLI_replace_extension(filename, sizeof(filename), "");  /* strip '.blend' */
-		md5_buffer(G.main->name, strlen(G.main->name), path_digest);
+		BLI_hash_md5_buffer(G.main->name, strlen(G.main->name), path_digest);
 	}
 	else {
-		BLI_strncpy(dirname, BLI_temp_dir_base(), sizeof(dirname));
+		BLI_strncpy(dirname, BKE_tempdir_base(), sizeof(dirname));
 		BLI_strncpy(filename, "UNSAVED", sizeof(filename));
 	}
-	md5_to_hexdigest(path_digest, path_hexdigest);
+	BLI_hash_md5_to_hexdigest(path_digest, path_hexdigest);
 
 	/* Default to *non-volatile* tmp dir. */
 	if (*root == '\0') {
-		root = BLI_temp_dir_base();
+		root = BKE_tempdir_base();
 	}
 
 	BLI_snprintf(filename_full, sizeof(filename_full), "cached_RR_%s_%s_%s.exr",

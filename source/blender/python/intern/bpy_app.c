@@ -44,11 +44,10 @@
 #include "bpy_driver.h"
 
 #include "BLI_utildefines.h"
-#include "BLI_path_util.h"
 
+#include "BKE_appdir.h"
 #include "BKE_blender.h"
 #include "BKE_global.h"
-#include "structseq.h"
 
 #include "../generic/py_capi_utils.h"
 
@@ -135,7 +134,7 @@ static PyObject *make_app_info(void)
 
 	SetStrItem(STRINGIFY(BLENDER_VERSION_CHAR));
 	SetStrItem(STRINGIFY(BLENDER_VERSION_CYCLE));
-	SetStrItem(BLI_program_path());
+	SetStrItem(BKE_appdir_program_path());
 	SetObjItem(PyBool_FromLong(G.background));
 
 	/* build info, use bytes since we can't assume _any_ encoding:
@@ -250,7 +249,7 @@ PyDoc_STRVAR(bpy_app_tempdir_doc,
 );
 static PyObject *bpy_app_tempdir_get(PyObject *UNUSED(self), void *UNUSED(closure))
 {
-	return PyC_UnicodeFromByte(BLI_temp_dir_session());
+	return PyC_UnicodeFromByte(BKE_tempdir_session());
 }
 
 PyDoc_STRVAR(bpy_app_driver_dict_doc,

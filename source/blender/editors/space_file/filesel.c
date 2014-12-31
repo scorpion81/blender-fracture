@@ -58,6 +58,7 @@
 #include "BLI_fileops_types.h"
 #include "BLI_fnmatch.h"
 
+#include "BKE_appdir.h"
 #include "BKE_context.h"
 #include "BKE_global.h"
 #include "BKE_main.h"
@@ -253,7 +254,7 @@ short ED_fileselect_set_params(SpaceFile *sfile)
 			BLI_split_dir_part(G.main->name, sfile->params->dir, sizeof(sfile->params->dir));
 		}
 		else {
-			const char *doc_path = BLI_getDefaultDocumentFolder();
+			const char *doc_path = BKE_appdir_folder_default();
 			if (doc_path) {
 				BLI_strncpy(sfile->params->dir, doc_path, sizeof(sfile->params->dir));
 			}
@@ -444,8 +445,8 @@ float file_shorten_string(char *string, float w, int front)
 
 float file_string_width(const char *str)
 {
-	uiStyle *style = UI_GetStyle();
-	uiStyleFontSet(&style->widget);
+	uiStyle *style = UI_style_get();
+	UI_fontstyle_set(&style->widget);
 	return BLF_width(style->widget.uifont_id, str, BLF_DRAW_STR_DUMMY_MAX);
 }
 
@@ -454,13 +455,13 @@ float file_font_pointsize(void)
 #if 0
 	float s;
 	char tmp[2] = "X";
-	uiStyle *style = UI_GetStyle();
-	uiStyleFontSet(&style->widget);
+	uiStyle *style = UI_style_get();
+	UI_fontstyle_set(&style->widget);
 	s = BLF_height(style->widget.uifont_id, tmp);
 	return style->widget.points;
 #else
-	uiStyle *style = UI_GetStyle();
-	uiStyleFontSet(&style->widget);
+	uiStyle *style = UI_style_get();
+	UI_fontstyle_set(&style->widget);
 	return style->widget.points * UI_DPI_FAC;
 #endif
 }
@@ -662,7 +663,7 @@ int autocomplete_directory(struct bContext *C, char *str, void *UNUSED(arg_v))
 		dir = opendir(dirname);
 
 		if (dir) {
-			AutoComplete *autocpl = autocomplete_begin(str, FILE_MAX);
+			AutoComplete *autocpl = UI_autocomplete_begin(str, FILE_MAX);
 
 			while ((de = readdir(dir)) != NULL) {
 				if (strcmp(".", de->d_name) == 0 || strcmp("..", de->d_name) == 0) {
@@ -676,14 +677,14 @@ int autocomplete_directory(struct bContext *C, char *str, void *UNUSED(arg_v))
 
 					if (BLI_stat(path, &status) == 0) {
 						if (S_ISDIR(status.st_mode)) { /* is subdir */
-							autocomplete_do_name(autocpl, path);
+							UI_autocomplete_update_name(autocpl, path);
 						}
 					}
 				}
 			}
 			closedir(dir);
 
-			match = autocomplete_end(autocpl, str);
+			match = UI_autocomplete_end(autocpl, str);
 			if (match) {
 				if (match == AUTOCOMPLETE_FULL_MATCH) {
 					BLI_add_slash(str);
@@ -705,17 +706,17 @@ int autocomplete_file(struct bContext *C, char *str, void *UNUSED(arg_v))
 
 	/* search if str matches the beginning of name */
 	if (str[0] && sfile->files) {
-		AutoComplete *autocpl = autocomplete_begin(str, FILE_MAX);
+		AutoComplete *autocpl = UI_autocomplete_begin(str, FILE_MAX);
 		int nentries = filelist_numfiles(sfile->files);
 		int i;
 
 		for (i = 0; i < nentries; ++i) {
 			struct direntry *file = filelist_file(sfile->files, i);
 			if (file && (S_ISREG(file->type) || S_ISDIR(file->type))) {
-				autocomplete_do_name(autocpl, file->relname);
+				UI_autocomplete_update_name(autocpl, file->relname);
 			}
 		}
-		match = autocomplete_end(autocpl, str);
+		match = UI_autocomplete_end(autocpl, str);
 	}
 
 	return match;

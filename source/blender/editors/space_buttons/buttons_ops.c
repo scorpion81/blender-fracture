@@ -72,10 +72,10 @@ static int toolbox_invoke(bContext *C, wmOperator *UNUSED(op), const wmEvent *UN
 
 	RNA_pointer_create(&sc->id, &RNA_SpaceProperties, sbuts, &ptr);
 
-	pup = uiPupMenuBegin(C, IFACE_("Align"), ICON_NONE);
-	layout = uiPupMenuLayout(pup);
+	pup = UI_popup_menu_begin(C, IFACE_("Align"), ICON_NONE);
+	layout = UI_popup_menu_layout(pup);
 	uiItemsEnumR(layout, &ptr, "align");
-	uiPupMenuEnd(C, pup);
+	UI_popup_menu_end(C, pup);
 
 	return OPERATOR_INTERFACE;
 }
@@ -176,7 +176,7 @@ static int file_browse_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 		return OPERATOR_CANCELLED;
 	}
 
-	uiFileBrowseContextProperty(C, &ptr, &prop);
+	UI_context_active_but_prop_get_filebrowser(C, &ptr, &prop);
 
 	if (!prop)
 		return OPERATOR_CANCELLED;
@@ -186,6 +186,7 @@ static int file_browse_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 	/* useful yet irritating feature, Shift+Click to open the file
 	 * Alt+Click to browse a folder in the OS's browser */
 	if (event->shift || event->alt) {
+		wmOperatorType *ot = WM_operatortype_find("WM_OT_path_open", true);
 		PointerRNA props_ptr;
 
 		if (event->alt) {
@@ -195,9 +196,9 @@ static int file_browse_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 		}
 
 
-		WM_operator_properties_create(&props_ptr, "WM_OT_path_open");
+		WM_operator_properties_create_ptr(&props_ptr, ot);
 		RNA_string_set(&props_ptr, "filepath", str);
-		WM_operator_name_call(C, "WM_OT_path_open", WM_OP_EXEC_DEFAULT, &props_ptr);
+		WM_operator_name_call_ptr(C, ot, WM_OP_EXEC_DEFAULT, &props_ptr);
 		WM_operator_properties_free(&props_ptr);
 
 		MEM_freeN(str);

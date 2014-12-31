@@ -19,6 +19,7 @@
 # <pep8 compliant>
 import bpy
 from bpy.types import Header, Menu, Panel
+from bl_ui.properties_grease_pencil_common import GreasePencilDataPanel, GreasePencilToolsPanel
 from bpy.app.translations import pgettext_iface as iface_
 
 
@@ -82,6 +83,7 @@ class SEQUENCER_HT_header(Header):
 
             layout.separator()
             layout.operator("sequencer.refresh_all")
+            layout.prop(st, "show_backdrop")
         else:
             if st.view_type == 'SEQUENCER_PREVIEW':
                 layout.separator()
@@ -101,6 +103,17 @@ class SEQUENCER_HT_header(Header):
                     row = layout.row()
                     row.prop(st, "overlay_type", text="")
 
+        if st.view_type in {'PREVIEW', 'SEQUENCER_PREVIEW'}:
+            gpd = context.gpencil_data
+            toolsettings = context.tool_settings
+
+            # Proportional editing
+            if gpd and gpd.use_stroke_edit_mode:
+                row = layout.row(align=True)
+                row.prop(toolsettings, "proportional_edit", icon_only=True)
+                if toolsettings.proportional_edit != 'DISABLED':
+                    row.prop(toolsettings, "proportional_edit_falloff", icon_only=True)
+					
         row = layout.row(align=True)
         row.operator("render.opengl", text="", icon='RENDER_STILL').sequencer = True
         props = row.operator("render.opengl", text="", icon='RENDER_ANIMATION')
@@ -149,8 +162,10 @@ class SEQUENCER_MT_view(Menu):
         layout = self.layout
 
         st = context.space_data
+        is_preview = st.view_type in {'PREVIEW', 'SEQUENCER_PREVIEW'}
+        is_sequencer_view = st.view_type in {'SEQUENCER', 'SEQUENCER_PREVIEW'}
 
-        if st.view_type in {'PREVIEW'}:
+        if st.view_type == 'PREVIEW':
             # Specifying the REGION_PREVIEW context is needed in preview-only
             # mode, else the lookup for the shortcut will fail in
             # wm_keymap_item_find_props() (see #32595).
@@ -160,10 +175,10 @@ class SEQUENCER_MT_view(Menu):
 
         layout.separator()
 
-        if st.view_type in {'SEQUENCER', 'SEQUENCER_PREVIEW'}:
+        if is_sequencer_view:
             layout.operator("sequencer.view_all", text="View all Sequences")
             layout.operator("sequencer.view_selected")
-        if st.view_type in {'PREVIEW', 'SEQUENCER_PREVIEW'}:
+        if is_preview:
             layout.operator_context = 'INVOKE_REGION_PREVIEW'
             layout.operator("sequencer.view_all_preview", text="Fit preview in window")
 
@@ -181,11 +196,14 @@ class SEQUENCER_MT_view(Menu):
             # # XXX, invokes in the header view
             # layout.operator("sequencer.view_ghost_border", text="Overlay Border")
 
-        if st.view_type in {'SEQUENCER', 'SEQUENCER_PREVIEW'}:
+        if is_sequencer_view:
             layout.prop(st, "show_seconds")
             layout.prop(st, "show_frame_indicator")
+            layout.prop(st, "show_strip_offset")
 
-        if st.view_type in {'PREVIEW', 'SEQUENCER_PREVIEW'}:
+            layout.prop_menu_enum(st, "waveform_draw_type")
+
+        if is_preview:
             if st.display_mode == 'IMAGE':
                 layout.prop(st, "show_safe_margin")
             elif st.display_mode == 'WAVEFORM':
@@ -193,7 +211,7 @@ class SEQUENCER_MT_view(Menu):
 
         layout.separator()
 
-        if st.view_type in {'SEQUENCER', 'SEQUENCER_PREVIEW'}:
+        if is_sequencer_view:
             layout.prop(st, "use_marker_sync")
             layout.separator()
 
@@ -716,6 +734,7 @@ class SEQUENCER_PT_sound(SequencerButtonsPanel, Panel):
     def draw(self, context):
         layout = self.layout
 
+        st = context.space_data
         strip = act_strip(context)
         sound = strip.sound
 
@@ -734,7 +753,9 @@ class SEQUENCER_PT_sound(SequencerButtonsPanel, Panel):
 
             row.prop(sound, "use_memory_cache")
 
-        layout.prop(strip, "show_waveform")
+        if st.waveform_draw_type == 'DEFAULT_WAVEFORMS':
+            layout.prop(strip, "show_waveform")
+
         layout.prop(strip, "volume")
         layout.prop(strip, "pitch")
         layout.prop(strip, "pan")
@@ -775,6 +796,8 @@ class SEQUENCER_PT_scene(SequencerButtonsPanel, Panel):
 
         layout.label(text="Camera Override")
         layout.template_ID(strip, "scene_camera")
+
+        layout.prop(strip, "use_grease_pencil", text="Show Grease Pencil")
 
         if scene:
             layout.prop(scene, "audio_volume", text="Audio Volume")
@@ -1010,6 +1033,23 @@ class SEQUENCER_PT_modifiers(SequencerButtonsPanel, Panel):
                     col = box.column()
                     col.prop(mod, "bright")
                     col.prop(mod, "contrast")
+
+
+class SEQUENCER_PT_grease_pencil(GreasePencilDataPanel, SequencerButtonsPanel_Output, Panel):
+    bl_space_type = 'SEQUENCE_EDITOR'
+    bl_region_type = 'UI'
+
+    # NOTE: this is just a wrapper around the generic GP Panel
+    # But, it should only show up when there are images in the preview region
+
+
+class SEQUENCER_PT_grease_pencil_tools(GreasePencilToolsPanel, SequencerButtonsPanel_Output, Panel):
+    bl_space_type = 'SEQUENCE_EDITOR'
+    bl_region_type = 'UI'
+
+    # NOTE: this is just a wrapper around the generic GP tools panel
+	# It contains access to some essential tools usually found only in
+	# toolbar, which doesn't exist here...
 
 
 if __name__ == "__main__":  # only for live edit.

@@ -53,7 +53,6 @@
 #include "ED_uvedit.h"
 
 #include "UI_interface.h"
-#include "UI_resources.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
@@ -158,12 +157,12 @@ static void uvedit_vertex_buttons(const bContext *C, uiBlock *block)
 			digits = 2;
 		}
 		
-		uiBlockBeginAlign(block);
-		uiDefButF(block, NUM, B_UVEDIT_VERTEX, IFACE_("X:"), 0, 0, width, UI_UNIT_Y, &uvedit_old_center[0],
+		UI_block_align_begin(block);
+		uiDefButF(block, UI_BTYPE_NUM, B_UVEDIT_VERTEX, IFACE_("X:"), 0, 0, width, UI_UNIT_Y, &uvedit_old_center[0],
 		          -10 * imx, 10.0 * imx, step, digits, "");
-		uiDefButF(block, NUM, B_UVEDIT_VERTEX, IFACE_("Y:"), width, 0, width, UI_UNIT_Y, &uvedit_old_center[1],
+		uiDefButF(block, UI_BTYPE_NUM, B_UVEDIT_VERTEX, IFACE_("Y:"), width, 0, width, UI_UNIT_Y, &uvedit_old_center[1],
 		          -10 * imy, 10.0 * imy, step, digits, "");
-		uiBlockEndAlign(block);
+		UI_block_align_end(block);
 	}
 }
 
@@ -212,7 +211,7 @@ static void image_panel_uv(const bContext *C, Panel *pa)
 	uiBlock *block;
 	
 	block = uiLayoutAbsoluteBlock(pa->layout);
-	uiBlockSetHandleFunc(block, do_uvedit_vertex, NULL);
+	UI_block_func_handle_set(block, do_uvedit_vertex, NULL);
 
 	uvedit_vertex_buttons(C, block);
 }	

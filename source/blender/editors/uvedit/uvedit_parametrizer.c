@@ -35,7 +35,6 @@
 #include "BLI_boxpack2d.h"
 #include "BLI_convexhull2d.h"
 
-#include "uvedit_intern.h"
 #include "uvedit_parametrizer.h"
 
 #include <math.h>
@@ -4194,7 +4193,7 @@ void param_delete(ParamHandle *handle)
 
 static void p_add_ngon(ParamHandle *handle, ParamKey key, int nverts,
                        ParamKey *vkeys, float **co, float **uv,
-                       ParamBool *pin, ParamBool *select, float normal[3])
+                       ParamBool *pin, ParamBool *select, const float normal[3])
 {
 	int *boundary = BLI_array_alloca(boundary, nverts);
 	int i;

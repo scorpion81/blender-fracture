@@ -68,8 +68,6 @@
 #include "BKE_depsgraph.h"
 #include "BKE_scene.h"
 
-#include "RNA_access.h"
-
 #ifdef WITH_BULLET
 
 static void activateRigidbody(RigidBodyOb* rbo)

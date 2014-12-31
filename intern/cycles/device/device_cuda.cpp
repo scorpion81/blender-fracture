@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include <stdio.h>
@@ -76,7 +76,7 @@ public:
 	{
 		if(first_error) {
 			fprintf(stderr, "\nRefer to the Cycles GPU rendering documentation for possible solutions:\n");
-			fprintf(stderr, "http://wiki.blender.org/index.php/Doc:2.6/Manual/Render/Cycles/GPU_Rendering\n\n");
+			fprintf(stderr, "http://www.blender.org/manual/render/cycles/gpu_rendering.html\n\n");
 			first_error = false;
 		}
 	}
@@ -202,23 +202,7 @@ public:
 		/* compute cubin name */
 		int major, minor;
 		cuDeviceComputeCapability(&major, &minor, cuDevId);
-		
 		string cubin;
-
-		/* ToDo: We don't bundle sm_52 kernel yet */
-		if(major == 5 && minor == 2) {
-			if(experimental)
-				cubin = path_get(string_printf("lib/kernel_experimental_sm_%d%d.cubin", major, minor));
-			else
-				cubin = path_get(string_printf("lib/kernel_sm_%d%d.cubin", major, minor));
-
-			if(path_exists(cubin))
-				/* self build sm_52 kernel? Use it. */
-				return cubin;
-			else
-				/* use 5.0 kernel as workaround */
-				minor = 0;
-		}
 
 		/* attempt to use kernel provided with blender */
 		if(experimental)

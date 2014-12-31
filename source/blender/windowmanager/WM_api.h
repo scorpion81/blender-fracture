@@ -268,6 +268,7 @@ void		WM_operator_properties_select_action_simple(struct wmOperatorType *ot, int
 
 bool        WM_operator_check_ui_enabled(const struct bContext *C, const char *idname);
 wmOperator *WM_operator_last_redo(const struct bContext *C);
+ID         *WM_operator_drop_load_path(struct bContext *C, struct wmOperator *op, const short idcode);
 
 bool        WM_operator_last_properties_init(struct wmOperator *op);
 bool        WM_operator_last_properties_store(struct wmOperator *op);
@@ -397,6 +398,7 @@ enum {
 	WM_JOB_TYPE_CLIP_SOLVE_CAMERA,
 	WM_JOB_TYPE_CLIP_PREFETCH,
 	WM_JOB_TYPE_SEQ_BUILD_PROXY,
+	WM_JOB_TYPE_SEQ_BUILD_PREVIEW,
 	WM_JOB_TYPE_OBJECT_FRACTURE,
 	/* add as needed, screencast, seq proxy build
 	 * if having hard coded values is a problem */
@@ -460,6 +462,10 @@ void        WM_event_ndof_to_quat(const struct wmNDOFMotionData *ndof, float q[4
 
 float       WM_event_tablet_data(const struct wmEvent *event, int *pen_flip, float tilt[2]);
 bool        WM_event_is_tablet(const struct wmEvent *event);
+
+#ifdef WITH_INPUT_IME
+bool        WM_event_is_ime_switch(const struct wmEvent *event);
+#endif
 
 #ifdef __cplusplus
 }

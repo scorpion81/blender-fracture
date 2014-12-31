@@ -70,7 +70,7 @@
  * \param r_co  hit location.
  * \param r_no  hit normal (optional).
  * \param co_ss  Screenspace coordinate.
- * \param use_depth  Snap to the closest element, use when using more then one snap type.
+ * \param use_depth  Snap to the closest element, use when using more than one snap type.
  * \param use_obedit  Use editmode cage.
  * \param use_vert  Snap to verts.
  * \param use_edge  Snap to edges.
@@ -549,10 +549,11 @@ static void ruler_info_draw_pixel(const struct bContext *C, ARegion *ar, void *a
 
 				/* draw text (bg) */
 				glColor4ubv(color_back);
-				uiSetRoundBox(UI_CNR_ALL);
-				uiRoundBox(pos[0] - bg_margin,                  pos[1] - bg_margin,
-				           pos[0] + bg_margin + numstr_size[0], pos[1] + bg_margin + numstr_size[1],
-				           bg_radius);
+				UI_draw_roundbox_corner_set(UI_CNR_ALL);
+				UI_draw_roundbox(
+				        pos[0] - bg_margin,                  pos[1] - bg_margin,
+				        pos[0] + bg_margin + numstr_size[0], pos[1] + bg_margin + numstr_size[1],
+				        bg_radius);
 				/* draw text */
 				glColor3ubv(color_text);
 				BLF_position(blf_mono_font, pos[0], pos[1], 0.0f);
@@ -638,8 +639,8 @@ static void ruler_info_draw_pixel(const struct bContext *C, ARegion *ar, void *a
 
 				/* draw text (bg) */
 				glColor4ubv(color_back);
-				uiSetRoundBox(UI_CNR_ALL);
-				uiRoundBox(pos[0] - bg_margin,                  pos[1] - bg_margin,
+				UI_draw_roundbox_corner_set(UI_CNR_ALL);
+				UI_draw_roundbox(pos[0] - bg_margin,                  pos[1] - bg_margin,
 				           pos[0] + bg_margin + numstr_size[0], pos[1] + bg_margin + numstr_size[1],
 				           bg_radius);
 				/* draw text */

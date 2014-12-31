@@ -19,7 +19,10 @@
 # <pep8 compliant>
 import bpy
 from bpy.types import Menu, Panel, UIList
-from bl_ui.properties_grease_pencil_common import GreasePencilPanel
+from bl_ui.properties_grease_pencil_common import (
+        GreasePencilDrawingToolsPanel,
+        GreasePencilStrokeEditPanel
+        )
 from bl_ui.properties_paint_common import (
         UnifiedPaintPanel,
         brush_texture_settings,
@@ -313,6 +316,7 @@ class VIEW3D_PT_tools_meshedit(View3DPanel, Panel):
         col.menu("VIEW3D_MT_edit_mesh_extrude")
         col.operator("view3d.edit_mesh_extrude_move_normal", text="Extrude Region")
         col.operator("view3d.edit_mesh_extrude_individual_move", text="Extrude Individual")
+        col.operator("mesh.edge_face_add")
         col.operator("mesh.subdivide")
         col.operator("mesh.loopcut_slide")
         col.operator("mesh.duplicate_move", text="Duplicate")
@@ -793,7 +797,7 @@ class VIEW3D_PT_imapaint_tools_missing(Panel, View3DPaintPanel):
         if toolsettings.missing_uvs:
             col.separator()
             col.label("Missing UVs", icon='INFO')
-            col.label("Unwrap the mesh in edit mode or generate a simple UVs")
+            col.label("Unwrap the mesh in edit mode or generate a simple UV layer")
             col.operator("paint.add_simple_uvs")
     
         if toolsettings.mode == 'MATERIAL':
@@ -1804,11 +1808,14 @@ class VIEW3D_PT_tools_particlemode(View3DPanel, Panel):
             sub.prop(pe, "fade_frames", slider=True)
 
 
-# Grease Pencil tools
-class VIEW3D_PT_tools_grease_pencil(GreasePencilPanel, Panel):
+# Grease Pencil drawing tools
+class VIEW3D_PT_tools_grease_pencil_draw(GreasePencilDrawingToolsPanel, Panel):
     bl_space_type = 'VIEW_3D'
-    bl_region_type = 'TOOLS'
-    bl_category = "Grease Pencil"
+
+
+# Grease Pencil stroke editing tools
+class VIEW3D_PT_tools_grease_pencil_edit(GreasePencilStrokeEditPanel, Panel):
+    bl_space_type = 'VIEW_3D'
 
 
 # Note: moved here so that it's always in last position in 'Tools' panels!

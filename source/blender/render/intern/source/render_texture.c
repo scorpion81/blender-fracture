@@ -48,7 +48,6 @@
 #include "DNA_node_types.h"
 
 #include "IMB_imbuf_types.h"
-#include "IMB_imbuf.h"
 #include "IMB_colormanagement.h"
 
 #include "BKE_image.h"
@@ -68,9 +67,7 @@
 #include "envmap.h"
 #include "pointdensity.h"
 #include "voxeldata.h"
-#include "renderpipeline.h"
 #include "render_types.h"
-#include "rendercore.h"
 #include "shading.h"
 #include "texture.h"
 #include "texture_ocean.h"
@@ -3053,7 +3050,7 @@ void do_sky_tex(const float rco[3], float lo[3], const float dxyview[2], float h
 			switch (mtex->texco) {
 			case TEXCO_ANGMAP:
 				/* only works with texture being "real" */
-				/* use saacos(), fixes bug [#22398], float precision caused lo[2] to be slightly less then -1.0 */
+				/* use saacos(), fixes bug [#22398], float precision caused lo[2] to be slightly less than -1.0 */
 				if (lo[0] || lo[1]) { /* check for zero case [#24807] */
 					fact= (1.0f/(float)M_PI)*saacos(lo[2])/(sqrtf(lo[0]*lo[0] + lo[1]*lo[1]));
 					tempvec[0]= lo[0]*fact;

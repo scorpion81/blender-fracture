@@ -34,6 +34,7 @@
 
 #include "BLO_readfile.h"
 
+#include "BKE_appdir.h"
 #include "BKE_context.h"
 #include "BKE_screen.h"
 #include "BKE_global.h"
@@ -340,8 +341,20 @@ static int file_select_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 	if (!BLI_rcti_isect_pt(&ar->v2d.mask, rect.xmin, rect.ymin))
 		return OPERATOR_CANCELLED;
 
-	/* single select, deselect all selected first */
-	if (!extend) file_deselect_all(sfile, SELECTED_FILE);
+	if (sfile && sfile->params) {
+		int idx = sfile->params->active_file;
+
+		if (idx >= 0) {
+			struct direntry *file = filelist_file(sfile->files, idx);
+			if (STREQ(file->relname, "..") || STREQ(file->relname, ".")) {
+				/* skip - If a readonly file (".." or ".") is selected, skip deselect all! */
+			}
+			else {
+				/* single select, deselect all selected first */
+				if (!extend) file_deselect_all(sfile, SELECTED_FILE);
+			}
+		}
+	}
 
 	ret = file_select(C, &rect, extend ? FILE_SEL_TOGGLE : FILE_SEL_ADD, fill, do_diropen);
 	if (FILE_SELECT_DIR == ret)
@@ -472,7 +485,7 @@ static int bookmark_add_exec(bContext *C, wmOperator *UNUSED(op))
 		char name[FILE_MAX];
 	
 		fsmenu_insert_entry(fsmenu, FS_CATEGORY_BOOKMARKS, params->dir, FS_INSERT_SAVE);
-		BLI_make_file_string("/", name, BLI_get_folder_create(BLENDER_USER_CONFIG, NULL), BLENDER_BOOKMARK_FILE);
+		BLI_make_file_string("/", name, BKE_appdir_folder_id_create(BLENDER_USER_CONFIG, NULL), BLENDER_BOOKMARK_FILE);
 		fsmenu_write_file(fsmenu, name);
 	}
 
@@ -504,7 +517,7 @@ static int bookmark_delete_exec(bContext *C, wmOperator *op)
 			char name[FILE_MAX];
 			
 			fsmenu_remove_entry(fsmenu, FS_CATEGORY_BOOKMARKS, index);
-			BLI_make_file_string("/", name, BLI_get_folder_create(BLENDER_USER_CONFIG, NULL), BLENDER_BOOKMARK_FILE);
+			BLI_make_file_string("/", name, BKE_appdir_folder_id_create(BLENDER_USER_CONFIG, NULL), BLENDER_BOOKMARK_FILE);
 			fsmenu_write_file(fsmenu, name);
 			ED_area_tag_redraw(sa);
 		}
@@ -540,7 +553,7 @@ static int reset_recent_exec(bContext *C, wmOperator *UNUSED(op))
 	while (fsmenu_get_entry(fsmenu, FS_CATEGORY_RECENT, 0) != NULL) {
 		fsmenu_remove_entry(fsmenu, FS_CATEGORY_RECENT, 0);
 	}
-	BLI_make_file_string("/", name, BLI_get_folder_create(BLENDER_USER_CONFIG, NULL), BLENDER_BOOKMARK_FILE);
+	BLI_make_file_string("/", name, BKE_appdir_folder_id_create(BLENDER_USER_CONFIG, NULL), BLENDER_BOOKMARK_FILE);
 	fsmenu_write_file(fsmenu, name);
 	ED_area_tag_redraw(sa);
 		
@@ -821,7 +834,7 @@ int file_exec(bContext *C, wmOperator *exec_op)
 			fsmenu_insert_entry(fsmenu_get(), FS_CATEGORY_RECENT, sfile->params->dir, FS_INSERT_SAVE | FS_INSERT_FIRST);
 		}
 
-		BLI_make_file_string(G.main->name, filepath, BLI_get_folder_create(BLENDER_USER_CONFIG, NULL), BLENDER_BOOKMARK_FILE);
+		BLI_make_file_string(G.main->name, filepath, BKE_appdir_folder_id_create(BLENDER_USER_CONFIG, NULL), BLENDER_BOOKMARK_FILE);
 		fsmenu_write_file(fsmenu_get(), filepath);
 		WM_event_fileselect_event(wm, op, EVT_FILESELECT_EXEC);
 
@@ -1197,7 +1210,7 @@ static void file_expand_directory(bContext *C)
 		else if (sfile->params->dir[0] == '~') {
 			char tmpstr[sizeof(sfile->params->dir) - 1];
 			BLI_strncpy(tmpstr, sfile->params->dir + 1, sizeof(tmpstr));
-			BLI_join_dirfile(sfile->params->dir, sizeof(sfile->params->dir), BLI_getDefaultDocumentFolder(), tmpstr);
+			BLI_join_dirfile(sfile->params->dir, sizeof(sfile->params->dir), BKE_appdir_folder_default(), tmpstr);
 		}
 
 		else if (sfile->params->dir[0] == '\0')
@@ -1498,6 +1511,15 @@ static int file_rename_poll(bContext *C)
 	SpaceFile *sfile = CTX_wm_space_file(C);
 
 	if (sfile && sfile->params) {
+		int idx = sfile->params->active_file;
+
+		if (idx >= 0) {
+			struct direntry *file = filelist_file(sfile->files, idx);
+			if (STREQ(file->relname, "..") || STREQ(file->relname, ".")) {
+				poll = 0;
+			}
+		}
+
 		if (sfile->params->active_file < 0) {
 			poll = 0;
 		}

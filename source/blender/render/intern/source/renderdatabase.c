@@ -78,11 +78,8 @@
 
 #include "rayintersection.h"
 #include "rayobject.h"
-#include "renderpipeline.h"
 #include "render_types.h"
 #include "renderdatabase.h"
-#include "texture.h"
-#include "strand.h"
 #include "zbuf.h"
 
 /* ------------------------------------------------------------------------- */
@@ -1394,7 +1391,7 @@ void RE_makeRenderInstances(Render *re)
 	int tot;
 
 	/* convert list of object instances to an array for index based lookup */
-	tot= BLI_countlist(&re->instancetable);
+	tot= BLI_listbase_count(&re->instancetable);
 	re->objectinstance= MEM_callocN(sizeof(ObjectInstanceRen)*tot, "ObjectInstance");
 	re->totinstance= tot;
 	newlist.first= newlist.last= NULL;

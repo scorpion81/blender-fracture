@@ -1331,7 +1331,7 @@ static void drawlamp(View3D *v3d, RegionView3D *rv3d, Base *base,
 
 		/* draw the circle/square representing spotbl */
 		if (la->type == LA_SPOT) {
-			float spotblcirc = fabsf(z) * (1.0f - powf(la->spotblend, 2));
+			float spotblcirc = fabsf(z) * (1.0f - pow2f(la->spotblend));
 			/* hide line if it is zero size or overlaps with outer border,
 			 * previously it adjusted to always to show it but that seems
 			 * confusing because it doesn't show the actual blend size */
@@ -2496,7 +2496,7 @@ static void draw_dm_edges_weight_interp(BMEditMesh *em, DerivedMesh *dm, const c
 
 	data.bm = em->bm;
 	data.cd_dvert_offset = CustomData_get_offset(&em->bm->vdata, CD_MDEFORMVERT);
-	data.defgroup_tot = BLI_countlist(&ob->defbase);
+	data.defgroup_tot = BLI_listbase_count(&ob->defbase);
 	data.vgroup_index = ob->actdef - 1;
 	data.weight_user = weight_user;
 	UI_GetThemeColor3fv(TH_VERTEX_UNREFERENCED, data.alert_color);
@@ -2952,21 +2952,23 @@ static void draw_em_fancy_edges(BMEditMesh *em, Scene *scene, View3D *v3d,
 			if (!sel_only) wireCol[3] = 255;
 		}
 
-		if (ts->selectmode == SCE_SELECT_FACE) {
-			draw_dm_edges_sel(em, cageDM, wireCol, selCol, actCol, eed_act);
-		}
-		else if ((me->drawflag & ME_DRAWEDGES) || (ts->selectmode & SCE_SELECT_EDGE)) {
+		if ((me->drawflag & ME_DRAWEDGES) || (ts->selectmode & SCE_SELECT_EDGE)) {
 			if (cageDM->drawMappedEdgesInterp &&
 			    ((ts->selectmode & SCE_SELECT_VERTEX) || (me->drawflag & ME_DRAWEIGHT)))
 			{
-				glShadeModel(GL_SMOOTH);
 				if (draw_dm_edges_weight_check(me, v3d)) {
+					glShadeModel(GL_SMOOTH);
 					draw_dm_edges_weight_interp(em, cageDM, ts->weightuser);
+					glShadeModel(GL_FLAT);
+				}
+				else if (ts->selectmode == SCE_SELECT_FACE) {
+					draw_dm_edges_sel(em, cageDM, wireCol, selCol, actCol, eed_act);
 				}
 				else {
+					glShadeModel(GL_SMOOTH);
 					draw_dm_edges_sel_interp(em, cageDM, wireCol, selCol);
+					glShadeModel(GL_FLAT);
 				}
-				glShadeModel(GL_FLAT);
 			}
 			else {
 				draw_dm_edges_sel(em, cageDM, wireCol, selCol, actCol, eed_act);
@@ -3374,7 +3376,6 @@ static DMDrawOption draw_em_fancy__setFaceOpts(void *userData, int index)
 
 	efa = BM_face_at_index(em->bm, index);
 	if (!BM_elem_flag_test(efa, BM_ELEM_HIDDEN)) {
-		GPU_enable_material(efa->mat_nr + 1, NULL);
 		return DM_DRAW_OPTION_NORMAL;
 	}
 	else {
@@ -3772,7 +3773,7 @@ static void draw_mesh_fancy(Scene *scene, ARegion *ar, View3D *v3d, RegionView3D
 			glFrontFace(GL_CCW);
 
 			if (draw_flags & DRAW_FACE_SELECT)
-				draw_mesh_face_select(rv3d, me, dm);
+				draw_mesh_face_select(rv3d, me, dm, false);
 		}
 		else {
 			draw_mesh_textured(scene, v3d, rv3d, ob, dm, draw_flags);
@@ -6858,14 +6859,17 @@ static void drawObjectSelect(Scene *scene, View3D *v3d, ARegion *ar, Base *base,
 	glDepthMask(0);
 	
 	if (ELEM(ob->type, OB_FONT, OB_CURVE, OB_SURF)) {
-		DerivedMesh *dm = ob->derivedFinal;
+		DerivedMesh *dm;
 		bool has_faces = false;
 
-		if (dm)
-			DM_update_materials(dm, ob);
 #ifdef SEQUENCER_DAG_WORKAROUND
 		ensure_curve_cache(scene, ob);
 #endif
+
+		dm = ob->derivedFinal;
+		if (dm) {
+			DM_update_materials(dm, ob);
+		}
 
 		if (dm) {
 			has_faces = dm->getNumTessFaces(dm) > 0;

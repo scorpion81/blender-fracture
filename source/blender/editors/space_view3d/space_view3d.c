@@ -414,7 +414,7 @@ static void view3d_free(SpaceLink *sl)
 	/* matcap material, its preview rect gets freed via icons */
 	if (vd->defmaterial) {
 		if (vd->defmaterial->gpumaterial.first)
-			GPU_material_free(vd->defmaterial);
+			GPU_material_free(&vd->defmaterial->gpumaterial);
 		BKE_previewimg_free(&vd->defmaterial->preview);
 		MEM_freeN(vd->defmaterial);
 	}
@@ -599,7 +599,7 @@ static int view3d_ima_drop_poll(bContext *UNUSED(C), wmDrag *drag, const wmEvent
 			return 1;
 	}
 	else if (drag->type == WM_DRAG_PATH) {
-		if (ELEM(drag->icon, 0, ICON_FILE_IMAGE))   /* rule might not work? */
+		if (ELEM(drag->icon, 0, ICON_FILE_IMAGE, ICON_FILE_MOVIE))   /* rule might not work? */
 			return 1;
 	}
 	return 0;
@@ -665,10 +665,14 @@ static void view3d_id_path_drop_copy(wmDrag *drag, wmDropBox *drop)
 {
 	ID *id = (ID *)drag->poin;
 	
-	if (id)
+	if (id) {
 		RNA_string_set(drop->ptr, "name", id->name + 2);
-	if (drag->path[0])
+		RNA_struct_property_unset(drop->ptr, "filepath");
+	}
+	else if (drag->path[0]) {
 		RNA_string_set(drop->ptr, "filepath", drag->path);
+		RNA_struct_property_unset(drop->ptr, "image");
+	}
 }
 
 
@@ -950,8 +954,9 @@ static void view3d_main_area_listener(bScreen *sc, ScrArea *sa, ARegion *ar, wmN
 
 			break;
 		case NC_GPENCIL:
-			if (wmn->action == NA_EDITED)
+			if (ELEM(wmn->action, NA_EDITED, NA_SELECTED)) {
 				ED_region_tag_redraw(ar);
+			}
 			break;
 	}
 }
@@ -1005,6 +1010,10 @@ static void view3d_header_area_listener(bScreen *UNUSED(sc), ScrArea *UNUSED(sa)
 			break;
 		case NC_SPACE:
 			if (wmn->data == ND_SPACE_VIEW3D)
+				ED_region_tag_redraw(ar);
+			break;
+		case NC_GPENCIL:
+			if (wmn->data & ND_GPENCIL_EDITMODE)
 				ED_region_tag_redraw(ar);
 			break;
 	}
@@ -1104,7 +1113,7 @@ static void view3d_buttons_area_listener(bScreen *UNUSED(sc), ScrArea *UNUSED(sa
 				ED_region_tag_redraw(ar);
 			break;
 		case NC_GPENCIL:
-			if (wmn->data == ND_DATA || wmn->action == NA_EDITED)
+			if ((wmn->data & (ND_DATA | ND_GPENCIL_EDITMODE)) || (wmn->action == NA_EDITED))
 				ED_region_tag_redraw(ar);
 			break;
 		case NC_IMAGE:
@@ -1168,7 +1177,8 @@ static void space_view3d_listener(bScreen *UNUSED(sc), ScrArea *sa, struct wmNot
 		case NC_WORLD:
 			switch (wmn->data) {
 				case ND_WORLD_DRAW:
-					if (v3d->flag2 & V3D_RENDER_OVERRIDE)
+				case ND_WORLD:
+					if (v3d->flag3 & V3D_SHOW_WORLD)
 						ED_area_tag_redraw_regiontype(sa, RGN_TYPE_WINDOW);
 					break;
 			}

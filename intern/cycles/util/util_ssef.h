@@ -12,7 +12,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __UTIL_SSEF_H__
@@ -151,7 +151,7 @@ __forceinline ssef maxi(const ssef& a, const ssef& b) {
 /// Ternary Operators
 ////////////////////////////////////////////////////////////////////////////////
 
-#if defined(__KERNEL_AVX2__)
+#if defined(__KERNEL_AVX2__) && !defined(_MSC_VER) // see T41066
 __forceinline const ssef madd (const ssef& a, const ssef& b, const ssef& c) { return _mm_fmadd_ps(a,b,c); }
 __forceinline const ssef msub (const ssef& a, const ssef& b, const ssef& c) { return _mm_fmsub_ps(a,b,c); }
 __forceinline const ssef nmadd(const ssef& a, const ssef& b, const ssef& c) { return _mm_fnmadd_ps(a,b,c); }

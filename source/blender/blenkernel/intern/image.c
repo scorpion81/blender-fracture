@@ -273,7 +273,13 @@ void BKE_image_free_buffers(Image *ima)
 		ima->rr = NULL;
 	}
 
-	GPU_free_image(ima);
+	if (!G.background) {
+		/* Background mode doesn't use opnegl,
+		 * so we can avoid freeing GPU images and save some
+		 * time by skipping mutex lock.
+		 */
+		GPU_free_image(ima);
+	}
 
 	ima->ok = IMA_OK;
 }
@@ -661,7 +667,7 @@ Image *BKE_image_load(Main *bmain, const char *filepath)
 /* otherwise creates new. */
 /* does not load ibuf itself */
 /* pass on optional frame for #name images */
-Image *BKE_image_load_exists(const char *filepath)
+Image *BKE_image_load_exists_ex(const char *filepath, bool *r_exists)
 {
 	Image *ima;
 	char str[FILE_MAX], strtest[FILE_MAX];
@@ -681,14 +687,22 @@ Image *BKE_image_load_exists(const char *filepath)
 					ima->id.us++;                                       /* officially should not, it doesn't link here! */
 					if (ima->ok == 0)
 						ima->ok = IMA_OK;
-					/* RETURN! */
+					if (r_exists)
+						*r_exists = true;
 					return ima;
 				}
 			}
 		}
 	}
 
+	if (r_exists)
+		*r_exists = false;
 	return BKE_image_load(G.main, filepath);
+}
+
+Image *BKE_image_load_exists(const char *filepath)
+{
+	return BKE_image_load_exists_ex(filepath, NULL);
 }
 
 static ImBuf *add_ibuf_size(unsigned int width, unsigned int height, const char *name, int depth, int floatbuf, short gen_type,
@@ -3393,9 +3407,9 @@ bool BKE_image_has_alpha(struct Image *image)
 	BKE_image_release_ibuf(image, ibuf, lock);
 
 	if (planes == 32)
-		return 1;
+		return true;
 	else
-		return 0;
+		return false;
 }
 
 void BKE_image_get_size(Image *image, ImageUser *iuser, int *width, int *height)

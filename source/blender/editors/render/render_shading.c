@@ -51,7 +51,6 @@
 #include "BKE_curve.h"
 #include "BKE_depsgraph.h"
 #include "BKE_font.h"
-#include "BKE_freestyle.h"
 #include "BKE_global.h"
 #include "BKE_image.h"
 #include "BKE_library.h"
@@ -65,17 +64,15 @@
 #include "BKE_world.h"
 #include "BKE_editmesh.h"
 
-#include "IMB_imbuf.h"
-#include "IMB_imbuf_types.h"
 
-#include "GPU_material.h"
 
 #ifdef WITH_FREESTYLE
+#  include "BKE_freestyle.h"
 #  include "FRS_freestyle.h"
+#  include "RNA_enum_types.h"
 #endif
 
 #include "RNA_access.h"
-#include "RNA_enum_types.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
@@ -408,7 +405,7 @@ static int new_material_exec(bContext *C, wmOperator *UNUSED(op))
 	}
 
 	/* hook into UI */
-	uiIDContextProperty(C, &ptr, &prop);
+	UI_context_active_but_prop_get_templateID(C, &ptr, &prop);
 
 	if (prop) {
 		/* when creating new ID blocks, use is already 1, but RNA
@@ -457,7 +454,7 @@ static int new_texture_exec(bContext *C, wmOperator *UNUSED(op))
 	}
 
 	/* hook into UI */
-	uiIDContextProperty(C, &ptr, &prop);
+	UI_context_active_but_prop_get_templateID(C, &ptr, &prop);
 
 	if (prop) {
 		/* when creating new ID blocks, use is already 1, but RNA
@@ -520,7 +517,7 @@ static int new_world_exec(bContext *C, wmOperator *UNUSED(op))
 	}
 
 	/* hook into UI */
-	uiIDContextProperty(C, &ptr, &prop);
+	UI_context_active_but_prop_get_templateID(C, &ptr, &prop);
 
 	if (prop) {
 		/* when creating new ID blocks, use is already 1, but RNA
@@ -558,7 +555,7 @@ static int render_layer_add_exec(bContext *C, wmOperator *UNUSED(op))
 	Scene *scene = CTX_data_scene(C);
 
 	BKE_scene_add_render_layer(scene, NULL);
-	scene->r.actlay = BLI_countlist(&scene->r.layers) - 1;
+	scene->r.actlay = BLI_listbase_count(&scene->r.layers) - 1;
 
 	DAG_id_tag_update(&scene->id, 0);
 	WM_event_add_notifier(C, NC_SCENE | ND_RENDER_OPTIONS, scene);

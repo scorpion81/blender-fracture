@@ -497,6 +497,8 @@ typedef struct SpaceSeq {
 	float zoom DNA_DEPRECATED;  /* deprecated, handled by View2D now */
 	int view; /* see SEQ_VIEW_* below */
 	int overlay_type;
+	int draw_flag; /* overlay an image of the editing on below the strips */
+	int pad;
 
 	struct bGPdata *gpd;        /* grease-pencil data */
 
@@ -513,6 +515,13 @@ typedef enum eSpaceSeq_RegionType {
 	SEQ_DRAW_IMG_HISTOGRAM = 4,
 } eSpaceSeq_RegionType;
 
+/* sseq->draw_flag */
+typedef enum eSpaceSeq_DrawFlag {
+	SEQ_DRAW_BACKDROP              = (1 << 0),
+	SEQ_DRAW_OFFSET_EXT            = (1 << 1),
+} eSpaceSeq_DrawFlag;
+
+
 /* sseq->flag */
 typedef enum eSpaceSeq_Flag {
 	SEQ_DRAWFRAMES              = (1 << 0),
@@ -522,6 +531,8 @@ typedef enum eSpaceSeq_Flag {
 	SEQ_SHOW_GPENCIL            = (1 << 4),
 	SEQ_NO_DRAW_CFRANUM         = (1 << 5),
 	SEQ_USE_ALPHA               = (1 << 6), /* use RGBA display mode for preview */
+	SEQ_ALL_WAVEFORMS           = (1 << 7), /* draw all waveforms */
+	SEQ_NO_WAVEFORMS            = (1 << 8), /* draw no waveforms */
 } eSpaceSeq_Flag;
 
 /* sseq->view */
@@ -565,8 +576,9 @@ typedef enum eSpaceSeq_OverlayType {
 /* Config and Input for File Selector */
 typedef struct FileSelectParams {
 	char title[96]; /* title, also used for the text of the execute button */
-	char dir[1056]; /* directory, FILE_MAX_LIBEXTRA, 1024 + 32, this is for extreme case when 1023 length path
+	char dir[1090]; /* directory, FILE_MAX_LIBEXTRA, 1024 + 66, this is for extreme case when 1023 length path
 	                 * needs to be linked in, where foo.blend/Armature need adding  */
+	char pad_c1[2];
 	char file[256]; /* file */
 	char renamefile[256];
 	char renameedit[256]; /* annoying but the first is only used for initialization */
@@ -809,7 +821,7 @@ typedef enum eSpaceImage_Flag {
 
 	SI_COLOR_CORRECTION   = (1 << 24),
 
-	SI_NO_DRAW_TEXPAINT   = (1 << 25)
+	SI_NO_DRAW_TEXPAINT   = (1 << 25),
 } eSpaceImage_Flag;
 
 /* Text Editor ============================================ */

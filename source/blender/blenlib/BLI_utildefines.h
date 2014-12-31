@@ -32,6 +32,10 @@
  *  \ingroup bli
  */
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* avoid many includes for now */
 #include "BLI_sys_types.h"
 #include "BLI_compiler_compat.h"
@@ -51,7 +55,7 @@
 	_49_, _50_, _51_, _52_, _53_, _54_, _55_, _56_, _57_, _58_, _59_, _60_, _61_, _62_, _63_, _64_, \
 	count, ...) count
 #define _VA_NARGS_EXPAND(args) _VA_NARGS_RETURN_COUNT args
-#define _VA_NARGS_COUNT_MAX32(...) _VA_NARGS_EXPAND((__VA_ARGS__, \
+#define _VA_NARGS_COUNT_MAX64(...) _VA_NARGS_EXPAND((__VA_ARGS__, \
 	64, 63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49, \
 	48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33, \
 	32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, \
@@ -61,7 +65,7 @@
 #define _VA_NARGS_OVERLOAD_MACRO(name,  count) _VA_NARGS_OVERLOAD_MACRO1(name, count)
 /* --- expose for re-use --- */
 #define VA_NARGS_CALL_OVERLOAD(name, ...) \
-	_VA_NARGS_GLUE(_VA_NARGS_OVERLOAD_MACRO(name, _VA_NARGS_COUNT_MAX32(__VA_ARGS__)), (__VA_ARGS__))
+	_VA_NARGS_GLUE(_VA_NARGS_OVERLOAD_MACRO(name, _VA_NARGS_COUNT_MAX64(__VA_ARGS__)), (__VA_ARGS__))
 
 /* useful for finding bad use of min/max */
 #if 0
@@ -179,8 +183,10 @@
 
 /* ELEM#(v, ...): is the first arg equal any others? */
 /* internal helpers*/
+#define _VA_ELEM2(v, a) \
+       ((v) == (a))
 #define _VA_ELEM3(v, a, b) \
-       (((v) == (a)) || ((v) == (b)))
+       (_VA_ELEM2(v, a) || ((v) == (b)))
 #define _VA_ELEM4(v, a, b, c) \
        (_VA_ELEM3(v, a, b) || ((v) == (c)))
 #define _VA_ELEM5(v, a, b, c, d) \
@@ -213,6 +219,8 @@
 /* reusable ELEM macro */
 #define ELEM(...) VA_NARGS_CALL_OVERLOAD(_VA_ELEM, __VA_ARGS__)
 
+/* no-op for expressions we don't want to instansiate, but must remian valid */
+#define EXPR_NOP(expr) (void)(0 ? ((void)(expr), 1) : 0)
 
 /* shift around elements */
 #define SHIFT3(type, a, b, c)  {                                              \
@@ -491,6 +499,56 @@
 #  define UNUSED_FUNCTION(x) UNUSED_ ## x
 #endif
 
+/**
+ * UNUSED_VARS#(a, ...): quiet unused warnings
+ *
+ * <pre>
+ * for i in range(16):
+ *     args = [(chr(ord('a') + (c % 26)) + (chr(ord('0') + (c // 26)))) for c in range(i + 1)]
+ *     print("#define _VA_UNUSED_VARS_%d(%s) \\" % (i + 1, ", ".join(args)))
+ *     print("\t((void)(%s)%s)" %
+ *             (args[0], ((", _VA_UNUSED_VARS_" + str(i) + "(%s)") if i else "%s") % ", ".join((args[1:]))))
+ * </pre>
+ *
+ */
+
+#define _VA_UNUSED_VARS_1(a0) \
+	((void)(a0))
+#define _VA_UNUSED_VARS_2(a0, b0) \
+	((void)(a0), _VA_UNUSED_VARS_1(b0))
+#define _VA_UNUSED_VARS_3(a0, b0, c0) \
+	((void)(a0), _VA_UNUSED_VARS_2(b0, c0))
+#define _VA_UNUSED_VARS_4(a0, b0, c0, d0) \
+	((void)(a0), _VA_UNUSED_VARS_3(b0, c0, d0))
+#define _VA_UNUSED_VARS_5(a0, b0, c0, d0, e0) \
+	((void)(a0), _VA_UNUSED_VARS_4(b0, c0, d0, e0))
+#define _VA_UNUSED_VARS_6(a0, b0, c0, d0, e0, f0) \
+	((void)(a0), _VA_UNUSED_VARS_5(b0, c0, d0, e0, f0))
+#define _VA_UNUSED_VARS_7(a0, b0, c0, d0, e0, f0, g0) \
+	((void)(a0), _VA_UNUSED_VARS_6(b0, c0, d0, e0, f0, g0))
+#define _VA_UNUSED_VARS_8(a0, b0, c0, d0, e0, f0, g0, h0) \
+	((void)(a0), _VA_UNUSED_VARS_7(b0, c0, d0, e0, f0, g0, h0))
+#define _VA_UNUSED_VARS_9(a0, b0, c0, d0, e0, f0, g0, h0, i0) \
+	((void)(a0), _VA_UNUSED_VARS_8(b0, c0, d0, e0, f0, g0, h0, i0))
+#define _VA_UNUSED_VARS_10(a0, b0, c0, d0, e0, f0, g0, h0, i0, j0) \
+	((void)(a0), _VA_UNUSED_VARS_9(b0, c0, d0, e0, f0, g0, h0, i0, j0))
+#define _VA_UNUSED_VARS_11(a0, b0, c0, d0, e0, f0, g0, h0, i0, j0, k0) \
+	((void)(a0), _VA_UNUSED_VARS_10(b0, c0, d0, e0, f0, g0, h0, i0, j0, k0))
+#define _VA_UNUSED_VARS_12(a0, b0, c0, d0, e0, f0, g0, h0, i0, j0, k0, l0) \
+	((void)(a0), _VA_UNUSED_VARS_11(b0, c0, d0, e0, f0, g0, h0, i0, j0, k0, l0))
+#define _VA_UNUSED_VARS_13(a0, b0, c0, d0, e0, f0, g0, h0, i0, j0, k0, l0, m0) \
+	((void)(a0), _VA_UNUSED_VARS_12(b0, c0, d0, e0, f0, g0, h0, i0, j0, k0, l0, m0))
+#define _VA_UNUSED_VARS_14(a0, b0, c0, d0, e0, f0, g0, h0, i0, j0, k0, l0, m0, n0) \
+	((void)(a0), _VA_UNUSED_VARS_13(b0, c0, d0, e0, f0, g0, h0, i0, j0, k0, l0, m0, n0))
+#define _VA_UNUSED_VARS_15(a0, b0, c0, d0, e0, f0, g0, h0, i0, j0, k0, l0, m0, n0, o0) \
+	((void)(a0), _VA_UNUSED_VARS_14(b0, c0, d0, e0, f0, g0, h0, i0, j0, k0, l0, m0, n0, o0))
+#define _VA_UNUSED_VARS_16(a0, b0, c0, d0, e0, f0, g0, h0, i0, j0, k0, l0, m0, n0, o0, p0) \
+	((void)(a0), _VA_UNUSED_VARS_15(b0, c0, d0, e0, f0, g0, h0, i0, j0, k0, l0, m0, n0, o0, p0))
+
+
+/* reusable ELEM macro */
+#define UNUSED_VARS(...) VA_NARGS_CALL_OVERLOAD(_VA_UNUSED_VARS_, __VA_ARGS__)
+
 /*little macro so inline keyword works*/
 #if defined(_MSC_VER)
 #  define BLI_INLINE static __forceinline
@@ -508,6 +566,7 @@
  * for aborting need to define WITH_ASSERT_ABORT
  */
 #ifndef NDEBUG
+extern void BLI_system_backtrace(FILE *fp);
 #  ifdef WITH_ASSERT_ABORT
 #    define _BLI_DUMMY_ABORT abort
 #  else
@@ -517,6 +576,7 @@
 #    define BLI_assert(a)                                                     \
 	(void)((!(a)) ?  (                                                        \
 		(                                                                     \
+		BLI_system_backtrace(stderr),                                         \
 		fprintf(stderr,                                                       \
 			"BLI_assert failed: %s:%d, %s(), at \'%s\'\n",                    \
 			__FILE__, __LINE__, __func__, STRINGIFY(a)),                      \
@@ -554,6 +614,10 @@
 #else
 #  define LIKELY(x)       (x)
 #  define UNLIKELY(x)     (x)
+#endif
+
+#ifdef __cplusplus
+}
 #endif
 
 #endif  /* __BLI_UTILDEFINES_H__ */

@@ -47,7 +47,7 @@ typedef unsigned int BLI_bitmap;
 
 /* size (in bytes) used to hold '_tot' bits */
 #define BLI_BITMAP_SIZE(_tot) \
-	(_BITMAP_NUM_BLOCKS(_tot) * sizeof(BLI_bitmap))
+	((size_t)(_BITMAP_NUM_BLOCKS(_tot)) * sizeof(BLI_bitmap))
 
 /* allocate memory for a bitmap with '_tot' bits; free
  *  with MEM_freeN() */
@@ -58,6 +58,11 @@ typedef unsigned int BLI_bitmap;
 /* allocate a bitmap on the stack */
 #define BLI_BITMAP_NEW_ALLOCA(_tot) \
 	((BLI_bitmap *)memset(alloca(BLI_BITMAP_SIZE(_tot)), 0, BLI_BITMAP_SIZE(_tot)))
+
+/* Allocate using given MemArena */
+#define BLI_BITMAP_NEW_MEMARENA(_mem, _tot) \
+	(CHECK_TYPE_INLINE(_mem, MemArena *), \
+	 ((BLI_bitmap *)BLI_memarena_calloc(_mem, BLI_BITMAP_SIZE(_tot))))
 
 /* get the value of a single bit at '_index' */
 #define BLI_BITMAP_TEST(_bitmap, _index) \

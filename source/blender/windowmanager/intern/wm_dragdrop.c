@@ -45,10 +45,8 @@
 #include "BIF_glutil.h"
 
 #include "BKE_context.h"
-#include "BKE_screen.h"
 
 #include "IMB_imbuf_types.h"
-#include "IMB_imbuf.h"
 
 #include "UI_interface.h"
 #include "UI_interface_icons.h"
@@ -58,8 +56,6 @@
 #include "WM_api.h"
 #include "WM_types.h"
 #include "wm_event_system.h"
-#include "wm.h"
-
 
 /* ****************************************************** */
 
@@ -271,16 +267,16 @@ void wm_drags_check_ops(bContext *C, wmEvent *event)
 
 static void wm_drop_operator_draw(const char *name, int x, int y)
 {
-	int width = UI_GetStringWidth(name);
+	int width = UI_fontstyle_string_width(name);
 	int padding = 4 * UI_DPI_FAC;
 	
 	glColor4ub(0, 0, 0, 50);
 	
-	uiSetRoundBox(UI_CNR_ALL | UI_RB_ALPHA);
-	uiRoundBox(x, y, x + width + 2 * padding, y + 4 * padding, padding);
+	UI_draw_roundbox_corner_set(UI_CNR_ALL | UI_RB_ALPHA);
+	UI_draw_roundbox(x, y, x + width + 2 * padding, y + 4 * padding, padding);
 	
 	glColor4ub(255, 255, 255, 255);
-	UI_DrawString(x + padding, y + padding, name);
+	UI_draw_string(x + padding, y + padding, name);
 }
 
 static const char *wm_drag_name(wmDrag *drag)
@@ -366,12 +362,12 @@ void wm_drags_draw(bContext *C, wmWindow *win, rcti *rect)
 		}
 		
 		if (rect) {
-			int w =  UI_GetStringWidth(wm_drag_name(drag));
+			int w =  UI_fontstyle_string_width(wm_drag_name(drag));
 			drag_rect_minmax(rect, x, y, x + w, y + iconsize);
 		}
 		else {
 			glColor4ub(255, 255, 255, 255);
-			UI_DrawString(x, y, wm_drag_name(drag));
+			UI_draw_string(x, y, wm_drag_name(drag));
 		}
 		
 		/* operator name with roundbox */
@@ -394,7 +390,7 @@ void wm_drags_draw(bContext *C, wmWindow *win, rcti *rect)
 			}
 			
 			if (rect) {
-				int w =  UI_GetStringWidth(wm_drag_name(drag));
+				int w =  UI_fontstyle_string_width(wm_drag_name(drag));
 				drag_rect_minmax(rect, x, y, x + w, y + iconsize);
 			}
 			else 

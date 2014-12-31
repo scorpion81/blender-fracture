@@ -43,11 +43,7 @@
 #include "bmesh_py_types.h"
 #include "bmesh_py_types_select.h"
 
-
-
 #include "../generic/py_capi_utils.h"
-
-#include "bmesh_py_api.h" /* own include */
 
 PyDoc_STRVAR(bpy_bmeditselseq_active_doc,
 "The last selected element or None (read-only).\n\n:type: :class:`BMVert`, :class:`BMEdge` or :class:`BMFace`"
@@ -165,7 +161,7 @@ static Py_ssize_t bpy_bmeditselseq_length(BPy_BMEditSelSeq *self)
 {
 	BPY_BM_CHECK_INT(self);
 
-	return BLI_countlist(&self->bm->selected);
+	return BLI_listbase_count(&self->bm->selected);
 }
 
 static PyObject *bpy_bmeditselseq_subscript_int(BPy_BMEditSelSeq *self, int keynum)

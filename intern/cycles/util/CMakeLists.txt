@@ -10,7 +10,6 @@ set(INC_SYS
 
 set(SRC
 	util_cache.cpp
-	util_dynlib.cpp
 	util_logging.cpp
 	util_md5.cpp
 	util_path.cpp
@@ -31,10 +30,10 @@ endif()
 set(SRC_HEADERS
 	util_algorithm.h
 	util_args.h
+	util_atomic.h
 	util_boundbox.h
 	util_cache.h
 	util_debug.h
-	util_dynlib.h
 	util_foreach.h
 	util_function.h
 	util_half.h

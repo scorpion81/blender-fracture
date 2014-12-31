@@ -892,7 +892,6 @@ void BKE_sequencer_sort(Scene *scene)
 	Editing *ed = BKE_sequencer_editing_get(scene, false);
 	Sequence *seq, *seqt;
 
-	
 	if (ed == NULL)
 		return;
 
@@ -1490,19 +1489,24 @@ static void seq_proxy_build_frame(const SeqRenderData *context, Sequence *seq, i
 	int quality;
 	int rectx, recty;
 	int ok;
-	ImBuf *ibuf;
+	ImBuf *ibuf_tmp, *ibuf;
 
 	if (!seq_proxy_get_fname(seq, cfra, proxy_render_size, name)) {
 		return;
 	}
 
-	ibuf = seq_render_strip(context, seq, cfra);
+	ibuf_tmp = seq_render_strip(context, seq, cfra);
 
-	rectx = (proxy_render_size * ibuf->x) / 100;
-	recty = (proxy_render_size * ibuf->y) / 100;
+	rectx = (proxy_render_size * ibuf_tmp->x) / 100;
+	recty = (proxy_render_size * ibuf_tmp->y) / 100;
 
-	if (ibuf->x != rectx || ibuf->y != recty) {
+	if (ibuf_tmp->x != rectx || ibuf_tmp->y != recty) {
+		ibuf = IMB_dupImBuf(ibuf_tmp);
+		IMB_freeImBuf(ibuf_tmp);
 		IMB_scalefastImBuf(ibuf, (short)rectx, (short)recty);
+	}
+	else {
+		ibuf = ibuf_tmp;
 	}
 
 	/* depth = 32 is intentionally left in, otherwise ALPHA channels
@@ -2525,6 +2529,7 @@ static ImBuf *seq_render_scene_strip(const SeqRenderData *context, Sequence *seq
 	int do_seq;
 	// bool have_seq = false;  /* UNUSED */
 	bool have_comp = false;
+	bool use_gpencil = true;
 	Scene *scene;
 	int is_thread_main = BLI_thread_is_main();
 
@@ -2548,6 +2553,10 @@ static ImBuf *seq_render_scene_strip(const SeqRenderData *context, Sequence *seq
 	else {
 		BKE_scene_camera_switch_update(scene);
 		camera = scene->camera;
+	}
+	
+	if (seq->flag & SEQ_SCENE_NO_GPENCIL) {
+		use_gpencil = false;
 	}
 
 	if (have_comp == false && camera == NULL) {
@@ -2582,7 +2591,7 @@ static ImBuf *seq_render_scene_strip(const SeqRenderData *context, Sequence *seq
 		ibuf = sequencer_view3d_cb(scene, camera, width, height, IB_rect,
 		                           context->scene->r.seq_prev_type,
 		                           (context->scene->r.seq_flag & R_SEQ_SOLID_TEX) != 0,
-		                           true, scene->r.alphamode, err_out);
+		                           use_gpencil, true, scene->r.alphamode, err_out);
 		if (ibuf == NULL) {
 			fprintf(stderr, "seq_render_scene_strip failed to get opengl buffer: %s\n", err_out);
 		}
@@ -3096,7 +3105,7 @@ ImBuf *BKE_sequencer_give_ibuf(const SeqRenderData *context, float cfra, int cha
 	if (ed == NULL) return NULL;
 
 	if ((chanshown < 0) && !BLI_listbase_is_empty(&ed->metastack)) {
-		int count = BLI_countlist(&ed->metastack);
+		int count = BLI_listbase_count(&ed->metastack);
 		count = max_ii(count + chanshown, 0);
 		seqbasep = ((MetaStack *)BLI_findlink(&ed->metastack, count))->oldbasep;
 	}
@@ -3411,7 +3420,7 @@ static bool update_changed_seq_recurs(Scene *scene, Sequence *seq, Sequence *cha
 	/* recurs downwards to see if this seq depends on the changed seq */
 	
 	if (seq == NULL)
-		return 0;
+		return false;
 	
 	if (seq == changed_seq)
 		free_imbuf = true;
@@ -4675,3 +4684,70 @@ bool BKE_sequence_is_valid_check(Sequence *seq)
 	return true;
 }
 
+int BKE_sequencer_find_next_prev_edit(
+        Scene *scene, int cfra, const short side,
+        const bool do_skip_mute, const bool do_center, const bool do_unselected)
+{
+	Editing *ed = BKE_sequencer_editing_get(scene, false);
+	Sequence *seq;
+
+	int dist, best_dist, best_frame = cfra;
+	int seq_frames[2], seq_frames_tot;
+
+	/* in case where both is passed, frame just finds the nearest end while frame_left the nearest start */
+
+	best_dist = MAXFRAME * 2;
+
+	if (ed == NULL) return cfra;
+
+	for (seq = ed->seqbasep->first; seq; seq = seq->next) {
+		int i;
+
+		if (do_skip_mute && (seq->flag & SEQ_MUTE)) {
+			continue;
+		}
+
+		if (do_unselected && (seq->flag & SELECT))
+			continue;
+
+		if (do_center) {
+			seq_frames[0] = (seq->startdisp + seq->enddisp) / 2;
+			seq_frames_tot = 1;
+		}
+		else {
+			seq_frames[0] = seq->startdisp;
+			seq_frames[1] = seq->enddisp;
+
+			seq_frames_tot = 2;
+		}
+
+		for (i = 0; i < seq_frames_tot; i++) {
+			const int seq_frame = seq_frames[i];
+
+			dist = MAXFRAME * 2;
+
+			switch (side) {
+				case SEQ_SIDE_LEFT:
+					if (seq_frame < cfra) {
+						dist = cfra - seq_frame;
+					}
+					break;
+				case SEQ_SIDE_RIGHT:
+					if (seq_frame > cfra) {
+						dist = seq_frame - cfra;
+					}
+					break;
+				case SEQ_SIDE_BOTH:
+					dist = abs(seq_frame - cfra);
+					break;
+			}
+
+			if (dist < best_dist) {
+				best_frame = seq_frame;
+				best_dist = dist;
+			}
+		}
+	}
+
+	return best_frame;
+}

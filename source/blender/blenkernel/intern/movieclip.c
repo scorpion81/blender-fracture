@@ -69,7 +69,6 @@
 #include "BKE_image.h"  /* openanim */
 #include "BKE_tracking.h"
 
-#include "IMB_colormanagement.h"
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"
 #include "IMB_moviecache.h"
@@ -77,8 +76,6 @@
 #ifdef WITH_OPENEXR
 #  include "intern/openexr/openexr_multi.h"
 #endif
-
-#include "NOD_composite.h"
 
 /*********************** movieclip buffer loaders *************************/
 
@@ -526,6 +523,15 @@ static bool put_imbuf_cache(MovieClip *clip, MovieClipUser *user, ImBuf *ibuf, i
 	else {
 		return IMB_moviecache_put_if_possible(clip->cache->moviecache, &key, ibuf);
 	}
+}
+
+static bool moviecache_check_free_proxy(ImBuf *UNUSED(ibuf),
+                                        void *userkey,
+                                        void *UNUSED(userdata))
+{
+	MovieClipImBufCacheKey *key = (MovieClipImBufCacheKey *)userkey;
+
+	return !(key->proxy == IMB_PROXY_NONE && key->render_flag == 0);
 }
 
 /*********************** common functions *************************/
@@ -1168,6 +1174,15 @@ static void free_buffers(MovieClip *clip)
 void BKE_movieclip_clear_cache(MovieClip *clip)
 {
 	free_buffers(clip);
+}
+
+void BKE_movieclip_clear_proxy_cache(MovieClip *clip)
+{
+	if (clip->cache && clip->cache->moviecache) {
+		IMB_moviecache_cleanup(clip->cache->moviecache,
+		                       moviecache_check_free_proxy,
+		                       NULL);
+	}
 }
 
 void BKE_movieclip_reload(MovieClip *clip)

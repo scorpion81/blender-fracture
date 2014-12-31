@@ -425,6 +425,10 @@ static void exporter_InitGeomArrays(ExportMeshData *export_data,
 	 * Will only create custom data layers for all the layers which appears in
 	 * the operand. Data for those layers will not be allocated or initialized.
 	 */
+
+	CustomData_merge(&dm_left->loopData, &dm->loopData, merge_mask, CD_DEFAULT, num_loops);
+	CustomData_merge(&dm_right->loopData, &dm->loopData, merge_mask, CD_DEFAULT, num_loops);
+
 	CustomData_merge(&dm_left->polyData, &dm->polyData, merge_mask, CD_DEFAULT, num_polys);
 	CustomData_merge(&dm_right->polyData, &dm->polyData, merge_mask, CD_DEFAULT, num_polys);
 

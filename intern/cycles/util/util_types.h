@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __UTIL_TYPES_H__
@@ -33,11 +33,7 @@
 
 #ifndef __KERNEL_GPU__
 
-#  ifdef NDEBUG
-#    define ccl_device static inline
-#  else
-#    define ccl_device static
-#  endif
+#define ccl_device static inline
 #define ccl_device_noinline static
 #define ccl_global
 #define ccl_constant
@@ -53,11 +49,7 @@
 #define ccl_try_align(...) /* not support for function arguments (error C2719) */
 #endif
 #define ccl_may_alias
-#  ifdef NDEBUG
-#    define ccl_always_inline __forceinline
-#  else
-#    define ccl_always_inline
-#  endif
+#define ccl_always_inline __forceinline
 #define ccl_maybe_unused
 
 #else
@@ -270,6 +262,19 @@ struct ccl_try_align(16) float4 {
 
 	__forceinline float operator[](int i) const { return *(&x + i); }
 	__forceinline float& operator[](int i) { return *(&x + i); }
+};
+
+template<typename T>
+class vector3
+{
+public:
+	T x, y, z;
+
+	ccl_always_inline vector3() {}
+	ccl_always_inline vector3(const T& a)
+	  : x(a), y(a), z(a) {}
+	ccl_always_inline vector3(const T& x, const T& y, const T& z)
+	  : x(x), y(y), z(z) {}
 };
 
 #endif

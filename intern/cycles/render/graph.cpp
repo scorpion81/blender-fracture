@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include "attribute.h"
@@ -844,7 +844,7 @@ void ShaderGraph::dump_graph(const char *filename)
 		return;
 	}
 
-	fprintf(fd, "digraph dependencygraph {\n");
+	fprintf(fd, "digraph shader_graph {\n");
 	fprintf(fd, "ranksep=1.5\n");
 	fprintf(fd, "splines=false\n");
 

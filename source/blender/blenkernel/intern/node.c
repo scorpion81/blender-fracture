@@ -2293,8 +2293,8 @@ bool ntreeHasType(const bNodeTree *ntree, int type)
 	if (ntree)
 		for (node = ntree->nodes.first; node; node = node->next)
 			if (node->type == type)
-				return 1;
-	return 0;
+				return true;
+	return false;
 }
 
 bool ntreeHasTree(const bNodeTree *ntree, const bNodeTree *lookup)
@@ -2559,8 +2559,8 @@ bool BKE_node_clipboard_validate(void)
 
 
 	/* lists must be aligned */
-	BLI_assert(BLI_countlist(&node_clipboard.nodes) ==
-	           BLI_countlist(&node_clipboard.nodes_extra_info));
+	BLI_assert(BLI_listbase_count(&node_clipboard.nodes) ==
+	           BLI_listbase_count(&node_clipboard.nodes_extra_info));
 
 	for (node = node_clipboard.nodes.first, node_info = node_clipboard.nodes_extra_info.first;
 	     node;

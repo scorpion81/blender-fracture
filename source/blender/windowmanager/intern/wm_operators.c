@@ -38,8 +38,11 @@
 #include <stdio.h>
 #include <stddef.h>
 #include <assert.h>
+#include <errno.h>
 
-#include "GHOST_C-api.h"
+#ifdef WIN32
+#  include "GHOST_C-api.h"
+#endif
 
 #include "MEM_guardedalloc.h"
 
@@ -64,6 +67,7 @@
 
 #include "BLO_readfile.h"
 
+#include "BKE_appdir.h"
 #include "BKE_autoexec.h"
 #include "BKE_blender.h"
 #include "BKE_brush.h"
@@ -78,6 +82,7 @@
 #include "BKE_report.h"
 #include "BKE_scene.h"
 #include "BKE_screen.h" /* BKE_ST_MAXNAME */
+#include "BKE_unit.h"
 #include "BKE_utildefines.h"
 
 #include "BKE_idcode.h"
@@ -90,6 +95,7 @@
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"
 
+#include "ED_numinput.h"
 #include "ED_screen.h"
 #include "ED_util.h"
 #include "ED_view3d.h"
@@ -1073,12 +1079,12 @@ int WM_menu_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 		return retval;
 	}
 	else {
-		pup = uiPupMenuBegin(C, RNA_struct_ui_name(op->type->srna), ICON_NONE);
-		layout = uiPupMenuLayout(pup);
+		pup = UI_popup_menu_begin(C, RNA_struct_ui_name(op->type->srna), ICON_NONE);
+		layout = UI_popup_menu_layout(pup);
 		/* set this so the default execution context is the same as submenus */
 		uiLayoutSetOperatorContext(layout, WM_OP_INVOKE_REGION_WIN);
 		uiItemsFullEnumO(layout, op->type->idname, RNA_property_identifier(prop), op->ptr->data, WM_OP_EXEC_REGION_WIN, 0);
-		uiPupMenuEnd(C, pup);
+		UI_popup_menu_end(C, pup);
 		return OPERATOR_INTERFACE;
 	}
 
@@ -1096,19 +1102,19 @@ static uiBlock *wm_enum_search_menu(bContext *C, ARegion *ar, void *arg_op)
 	uiBut *but;
 	wmOperator *op = (wmOperator *)arg_op;
 
-	block = uiBeginBlock(C, ar, "_popup", UI_EMBOSS);
-	uiBlockSetFlag(block, UI_BLOCK_LOOP | UI_BLOCK_MOVEMOUSE_QUIT | UI_BLOCK_SEARCH_MENU);
+	block = UI_block_begin(C, ar, "_popup", UI_EMBOSS);
+	UI_block_flag_enable(block, UI_BLOCK_LOOP | UI_BLOCK_MOVEMOUSE_QUIT | UI_BLOCK_SEARCH_MENU);
 
 #if 0 /* ok, this isn't so easy... */
-	uiDefBut(block, LABEL, 0, RNA_struct_ui_name(op->type->srna), 10, 10, uiSearchBoxWidth(), UI_UNIT_Y, NULL, 0.0, 0.0, 0, 0, "");
+	uiDefBut(block, UI_BTYPE_LABEL, 0, RNA_struct_ui_name(op->type->srna), 10, 10, UI_searchbox_size_x(), UI_UNIT_Y, NULL, 0.0, 0.0, 0, 0, "");
 #endif
 	but = uiDefSearchButO_ptr(block, op->type, op->ptr->data, search, 0, ICON_VIEWZOOM, sizeof(search),
-	                          10, 10, uiSearchBoxWidth(), UI_UNIT_Y, 0, 0, "");
+	                          10, 10, UI_searchbox_size_x(), UI_UNIT_Y, 0, 0, "");
 
 	/* fake button, it holds space for search items */
-	uiDefBut(block, LABEL, 0, "", 10, 10 - uiSearchBoxHeight(), uiSearchBoxWidth(), uiSearchBoxHeight(), NULL, 0, 0, 0, 0, NULL);
+	uiDefBut(block, UI_BTYPE_LABEL, 0, "", 10, 10 - UI_searchbox_size_y(), UI_searchbox_size_x(), UI_searchbox_size_y(), NULL, 0, 0, 0, 0, NULL);
 
-	uiPopupBoundsBlock(block, 6, 0, -UI_UNIT_Y); /* move it downwards, mouse over button */
+	UI_block_bounds_set_popup(block, 6, 0, -UI_UNIT_Y); /* move it downwards, mouse over button */
 
 	wm_event_init_from_window(win, &event);
 	event.type = EVT_BUT_OPEN;
@@ -1123,7 +1129,7 @@ static uiBlock *wm_enum_search_menu(bContext *C, ARegion *ar, void *arg_op)
 
 int WM_enum_search_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
-	uiPupBlock(C, wm_enum_search_menu, op);
+	UI_popup_block_invoke(C, wm_enum_search_menu, op);
 	return OPERATOR_INTERFACE;
 }
 
@@ -1141,10 +1147,10 @@ int WM_operator_confirm_message_ex(bContext *C, wmOperator *op,
 	else
 		properties = NULL;
 
-	pup = uiPupMenuBegin(C, title, icon);
-	layout = uiPupMenuLayout(pup);
+	pup = UI_popup_menu_begin(C, title, icon);
+	layout = UI_popup_menu_layout(pup);
 	uiItemFullO_ptr(layout, op->type, message, ICON_NONE, properties, WM_OP_EXEC_REGION_WIN, 0);
-	uiPupMenuEnd(C, pup);
+	UI_popup_menu_end(C, pup);
 	
 	return OPERATOR_INTERFACE;
 }
@@ -1397,6 +1403,64 @@ wmOperator *WM_operator_last_redo(const bContext *C)
 	return op;
 }
 
+/**
+ * Use for drag & drop a path or name with operators invoke() function.
+ */
+ID *WM_operator_drop_load_path(struct bContext *C, wmOperator *op, const short idcode)
+{
+	ID *id = NULL;
+	/* check input variables */
+	if (RNA_struct_property_is_set(op->ptr, "filepath")) {
+		const bool is_relative_path = RNA_boolean_get(op->ptr, "relative_path");
+		char path[FILE_MAX];
+		bool exists = false;
+
+		RNA_string_get(op->ptr, "filepath", path);
+
+		errno = 0;
+
+		if (idcode == ID_IM) {
+			id = (ID *)BKE_image_load_exists_ex(path, &exists);
+		}
+		else {
+			BLI_assert(0);
+		}
+
+		if (!id) {
+			BKE_reportf(op->reports, RPT_ERROR, "Cannot read %s '%s': %s",
+			            BKE_idcode_to_name(idcode), path,
+			            errno ? strerror(errno) : TIP_("unsupported format"));
+			return NULL;
+		}
+
+		if (is_relative_path ) {
+			if (exists == false) {
+				Main *bmain = CTX_data_main(C);
+
+				if (idcode == ID_IM) {
+					BLI_path_rel(((Image *)id)->name, bmain->name);
+				}
+				else {
+					BLI_assert(0);
+				}
+			}
+		}
+	}
+	else if (RNA_struct_property_is_set(op->ptr, "name")) {
+		char name[MAX_ID_NAME - 2];
+		RNA_string_get(op->ptr, "name", name);
+		id = BKE_libblock_find_name(idcode, name);
+		if (!id) {
+			BKE_reportf(op->reports, RPT_ERROR, "%s '%s' not found",
+			            BKE_idcode_to_name(idcode), name);
+			return NULL;
+		}
+		id_us_plus(id);
+	}
+
+	return id;
+}
+
 static void wm_block_redo_cb(bContext *C, void *arg_op, int UNUSED(arg_event))
 {
 	wmOperator *op = arg_op;
@@ -1428,19 +1492,19 @@ static uiBlock *wm_block_create_redo(bContext *C, ARegion *ar, void *arg_op)
 	wmOperator *op = arg_op;
 	uiBlock *block;
 	uiLayout *layout;
-	uiStyle *style = UI_GetStyle();
+	uiStyle *style = UI_style_get();
 	int width = 15 * UI_UNIT_X;
 
-	block = uiBeginBlock(C, ar, __func__, UI_EMBOSS);
-	uiBlockClearFlag(block, UI_BLOCK_LOOP);
-	uiBlockSetFlag(block, UI_BLOCK_KEEP_OPEN | UI_BLOCK_MOVEMOUSE_QUIT);
+	block = UI_block_begin(C, ar, __func__, UI_EMBOSS);
+	UI_block_flag_disable(block, UI_BLOCK_LOOP);
+	UI_block_flag_enable(block, UI_BLOCK_KEEP_OPEN | UI_BLOCK_MOVEMOUSE_QUIT);
 
 	/* if register is not enabled, the operator gets freed on OPERATOR_FINISHED
 	 * ui_apply_but_funcs_after calls ED_undo_operator_repeate_cb and crashes */
 	assert(op->type->flag & OPTYPE_REGISTER);
 
-	uiBlockSetHandleFunc(block, wm_block_redo_cb, arg_op);
-	layout = uiBlockLayout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, 0, 0, width, UI_UNIT_Y, 0, style);
+	UI_block_func_handle_set(block, wm_block_redo_cb, arg_op);
+	layout = UI_block_layout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, 0, 0, width, UI_UNIT_Y, 0, style);
 
 	if (op == WM_operator_last_redo(C))
 		if (!WM_operator_check_ui_enabled(C, op->type->name))
@@ -1455,7 +1519,7 @@ static uiBlock *wm_block_create_redo(bContext *C, ARegion *ar, void *arg_op)
 		uiLayoutOperatorButs(C, layout, op, NULL, 'H', UI_LAYOUT_OP_SHOW_TITLE);
 	}
 	
-	uiPopupBoundsBlock(block, 4, 0, 0);
+	UI_block_bounds_set_popup(block, 4, 0, 0);
 
 	return block;
 }
@@ -1482,7 +1546,7 @@ static void dialog_exec_cb(bContext *C, void *arg1, void *arg2)
 	/* in this case, wm_operator_ui_popup_cancel wont run */
 	MEM_freeN(data);
 
-	uiPupBlockClose(C, block);
+	UI_popup_block_close(C, block);
 }
 
 static void dialog_check_cb(bContext *C, void *op_ptr, void *UNUSED(arg))
@@ -1506,23 +1570,23 @@ static uiBlock *wm_block_dialog_create(bContext *C, ARegion *ar, void *userData)
 	wmOperator *op = data->op;
 	uiBlock *block;
 	uiLayout *layout;
-	uiStyle *style = UI_GetStyle();
+	uiStyle *style = UI_style_get();
 
-	block = uiBeginBlock(C, ar, __func__, UI_EMBOSS);
-	uiBlockClearFlag(block, UI_BLOCK_LOOP);
+	block = UI_block_begin(C, ar, __func__, UI_EMBOSS);
+	UI_block_flag_disable(block, UI_BLOCK_LOOP);
 
 	/* intentionally don't use 'UI_BLOCK_MOVEMOUSE_QUIT', some dialogues have many items
 	 * where quitting by accident is very annoying */
-	uiBlockSetFlag(block, UI_BLOCK_KEEP_OPEN);
+	UI_block_flag_enable(block, UI_BLOCK_KEEP_OPEN);
 
-	layout = uiBlockLayout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, 0, 0, data->width, data->height, 0, style);
+	layout = UI_block_layout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, 0, 0, data->width, data->height, 0, style);
 	
-	uiBlockSetFunc(block, dialog_check_cb, op, NULL);
+	UI_block_func_set(block, dialog_check_cb, op, NULL);
 
 	uiLayoutOperatorButs(C, layout, op, NULL, 'H', UI_LAYOUT_OP_SHOW_TITLE);
 	
 	/* clear so the OK button is left alone */
-	uiBlockSetFunc(block, NULL, NULL, NULL);
+	UI_block_func_set(block, NULL, NULL, NULL);
 
 	/* new column so as not to interfere with custom layouts [#26436] */
 	{
@@ -1533,12 +1597,12 @@ static uiBlock *wm_block_dialog_create(bContext *C, ARegion *ar, void *userData)
 		col = uiLayoutColumn(layout, false);
 		col_block = uiLayoutGetBlock(col);
 		/* Create OK button, the callback of which will execute op */
-		btn = uiDefBut(col_block, BUT, 0, IFACE_("OK"), 0, -30, 0, UI_UNIT_Y, NULL, 0, 0, 0, 0, "");
-		uiButSetFunc(btn, dialog_exec_cb, data, col_block);
+		btn = uiDefBut(col_block, UI_BTYPE_BUT, 0, IFACE_("OK"), 0, -30, 0, UI_UNIT_Y, NULL, 0, 0, 0, 0, "");
+		UI_but_func_set(btn, dialog_exec_cb, data, col_block);
 	}
 
 	/* center around the mouse */
-	uiPopupBoundsBlock(block, 4, data->width / -2, data->height / 2);
+	UI_block_bounds_set_popup(block, 4, data->width / -2, data->height / 2);
 
 	return block;
 }
@@ -1549,18 +1613,18 @@ static uiBlock *wm_operator_ui_create(bContext *C, ARegion *ar, void *userData)
 	wmOperator *op = data->op;
 	uiBlock *block;
 	uiLayout *layout;
-	uiStyle *style = UI_GetStyle();
+	uiStyle *style = UI_style_get();
 
-	block = uiBeginBlock(C, ar, __func__, UI_EMBOSS);
-	uiBlockClearFlag(block, UI_BLOCK_LOOP);
-	uiBlockSetFlag(block, UI_BLOCK_KEEP_OPEN | UI_BLOCK_MOVEMOUSE_QUIT);
+	block = UI_block_begin(C, ar, __func__, UI_EMBOSS);
+	UI_block_flag_disable(block, UI_BLOCK_LOOP);
+	UI_block_flag_enable(block, UI_BLOCK_KEEP_OPEN | UI_BLOCK_MOVEMOUSE_QUIT);
 
-	layout = uiBlockLayout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, 0, 0, data->width, data->height, 0, style);
+	layout = UI_block_layout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, 0, 0, data->width, data->height, 0, style);
 
 	/* since ui is defined the auto-layout args are not used */
 	uiLayoutOperatorButs(C, layout, op, NULL, 'V', 0);
 
-	uiPopupBoundsBlock(block, 4, 0, 0);
+	UI_block_bounds_set_popup(block, 4, 0, 0);
 
 	return block;
 }
@@ -1601,7 +1665,7 @@ int WM_operator_ui_popup(bContext *C, wmOperator *op, int width, int height)
 	data->width = width;
 	data->height = height;
 	data->free_op = true; /* if this runs and gets registered we may want not to free it */
-	uiPupBlockEx(C, wm_operator_ui_create, NULL, wm_operator_ui_popup_cancel, data);
+	UI_popup_block_ex(C, wm_operator_ui_create, NULL, wm_operator_ui_popup_cancel, data);
 	return OPERATOR_RUNNING_MODAL;
 }
 
@@ -1631,7 +1695,7 @@ static int wm_operator_props_popup_ex(bContext *C, wmOperator *op,
 	if (!do_redo || !(U.uiflag & USER_GLOBALUNDO))
 		return WM_operator_props_dialog_popup(C, op, 15 * UI_UNIT_X, UI_UNIT_Y);
 
-	uiPupBlockEx(C, wm_block_create_redo, NULL, wm_block_redo_cancel_cb, op);
+	UI_popup_block_ex(C, wm_block_create_redo, NULL, wm_block_redo_cancel_cb, op);
 
 	if (do_call)
 		wm_block_redo_cb(C, op, 0);
@@ -1671,7 +1735,7 @@ int WM_operator_props_dialog_popup(bContext *C, wmOperator *op, int width, int h
 	data->free_op = true; /* if this runs and gets registered we may want not to free it */
 
 	/* op is not executed until popup OK but is clicked */
-	uiPupBlockEx(C, wm_block_dialog_create, wm_operator_ui_popup_ok, wm_operator_ui_popup_cancel, data);
+	UI_popup_block_ex(C, wm_block_dialog_create, wm_operator_ui_popup_ok, wm_operator_ui_popup_cancel, data);
 
 	return OPERATOR_RUNNING_MODAL;
 }
@@ -1689,7 +1753,7 @@ int WM_operator_redo_popup(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 	
-	uiPupBlock(C, wm_block_create_redo, op);
+	UI_popup_block_invoke(C, wm_block_create_redo, op);
 
 	return OPERATOR_CANCELLED;
 }
@@ -1754,7 +1818,7 @@ static void WM_OT_operator_defaults(wmOperatorType *ot)
 
 static void wm_block_splash_close(bContext *C, void *arg_block, void *UNUSED(arg))
 {
-	uiPupBlockClose(C, arg_block);
+	UI_popup_block_close(C, arg_block);
 }
 
 static uiBlock *wm_block_create_splash(bContext *C, ARegion *ar, void *arg_unused);
@@ -1766,22 +1830,22 @@ static void wm_block_splash_refreshmenu(bContext *UNUSED(C), void *UNUSED(arg_bl
 	/* ugh, causes crashes in other buttons, disabling for now until 
 	 * a better fix */
 #if 0
-	uiPupBlockClose(C, arg_block);
-	uiPupBlock(C, wm_block_create_splash, NULL);
+	UI_popup_block_close(C, arg_block);
+	UI_popup_block_invoke(C, wm_block_create_splash, NULL);
 #endif
 }
 
 static int wm_resource_check_prev(void)
 {
 
-	const char *res = BLI_get_folder_version(BLENDER_RESOURCE_PATH_USER, BLENDER_VERSION, true);
+	const char *res = BKE_appdir_folder_id_version(BLENDER_RESOURCE_PATH_USER, BLENDER_VERSION, true);
 
 	// if (res) printf("USER: %s\n", res);
 
 #if 0 /* ignore the local folder */
 	if (res == NULL) {
 		/* with a local dir, copying old files isn't useful since local dir get priority for config */
-		res = BLI_get_folder_version(BLENDER_RESOURCE_PATH_LOCAL, BLENDER_VERSION, true);
+		res = BKE_appdir_folder_id_version(BLENDER_RESOURCE_PATH_LOCAL, BLENDER_VERSION, true);
 	}
 #endif
 
@@ -1790,7 +1854,7 @@ static int wm_resource_check_prev(void)
 		return false;
 	}
 	else {
-		return (BLI_get_folder_version(BLENDER_RESOURCE_PATH_USER, BLENDER_VERSION - 1, true) != NULL);
+		return (BKE_appdir_folder_id_version(BLENDER_RESOURCE_PATH_USER, BLENDER_VERSION - 1, true) != NULL);
 	}
 }
 
@@ -1799,7 +1863,7 @@ static uiBlock *wm_block_create_splash(bContext *C, ARegion *ar, void *UNUSED(ar
 	uiBlock *block;
 	uiBut *but;
 	uiLayout *layout, *split, *col;
-	uiStyle *style = UI_GetStyle();
+	uiStyle *style = UI_style_get();
 	const struct RecentFile *recent;
 	int i;
 	MenuType *mt = WM_menutype_find("USERPREF_MT_splash", true);
@@ -1845,17 +1909,17 @@ static uiBlock *wm_block_create_splash(bContext *C, ARegion *ar, void *UNUSED(ar
 	}
 #endif
 
-	block = uiBeginBlock(C, ar, "_popup", UI_EMBOSS);
+	block = UI_block_begin(C, ar, "_popup", UI_EMBOSS);
 
 	/* note on UI_BLOCK_NO_WIN_CLIP, the window size is not always synchronized
 	 * with the OS when the splash shows, window clipping in this case gives
 	 * ugly results and clipping the splash isn't useful anyway, just disable it [#32938] */
-	uiBlockSetFlag(block, UI_BLOCK_KEEP_OPEN | UI_BLOCK_NO_WIN_CLIP);
+	UI_block_flag_enable(block, UI_BLOCK_KEEP_OPEN | UI_BLOCK_NO_WIN_CLIP);
 
 	/* XXX splash scales with pixelsize, should become widget-units */
-	but = uiDefBut(block, BUT_IMAGE, 0, "", 0, 0.5f * U.widget_unit, U.pixelsize * 501, U.pixelsize * 282, ibuf, 0.0, 0.0, 0, 0, ""); /* button owns the imbuf now */
-	uiButSetFunc(but, wm_block_splash_close, block, NULL);
-	uiBlockSetFunc(block, wm_block_splash_refreshmenu, block, NULL);
+	but = uiDefBut(block, UI_BTYPE_IMAGE, 0, "", 0, 0.5f * U.widget_unit, U.pixelsize * 501, U.pixelsize * 282, ibuf, 0.0, 0.0, 0, 0, ""); /* button owns the imbuf now */
+	UI_but_func_set(but, wm_block_splash_close, block, NULL);
+	UI_block_func_set(block, wm_block_splash_refreshmenu, block, NULL);
 
 	/* label for 'a' bugfix releases, or 'Release Candidate 1'...
 	 *  avoids recreating splash for version updates */
@@ -1873,32 +1937,32 @@ static uiBlock *wm_block_create_splash(bContext *C, ARegion *ar, void *UNUSED(ar
 		int w = 240;
 
 		/* hack to have text draw 'text_sel' */
-		uiBlockSetEmboss(block, UI_EMBOSSN);
-		but = uiDefBut(block, LABEL, 0, version_suffix, x * U.pixelsize, y * U.pixelsize, w * U.pixelsize, UI_UNIT_Y, NULL, 0, 0, 0, 0, NULL);
+		UI_block_emboss_set(block, UI_EMBOSS_NONE);
+		but = uiDefBut(block, UI_BTYPE_LABEL, 0, version_suffix, x * U.pixelsize, y * U.pixelsize, w * U.pixelsize, UI_UNIT_Y, NULL, 0, 0, 0, 0, NULL);
 		/* XXX, set internal flag - UI_SELECT */
-		uiButSetFlag(but, 1);
-		uiBlockSetEmboss(block, UI_EMBOSS);
+		UI_but_flag_enable(but, 1);
+		UI_block_emboss_set(block, UI_EMBOSS);
 	}
 
 #ifdef WITH_BUILDINFO
 	if (build_commit_timestamp != 0) {
-		uiDefBut(block, LABEL, 0, date_buf, U.pixelsize * 494 - date_width, U.pixelsize * 270, date_width, UI_UNIT_Y, NULL, 0, 0, 0, 0, NULL);
+		uiDefBut(block, UI_BTYPE_LABEL, 0, date_buf, U.pixelsize * 494 - date_width, U.pixelsize * 270, date_width, UI_UNIT_Y, NULL, 0, 0, 0, 0, NULL);
 		label_delta = 12;
 	}
-	uiDefBut(block, LABEL, 0, hash_buf, U.pixelsize * 494 - hash_width, U.pixelsize * (270 - label_delta), hash_width, UI_UNIT_Y, NULL, 0, 0, 0, 0, NULL);
+	uiDefBut(block, UI_BTYPE_LABEL, 0, hash_buf, U.pixelsize * 494 - hash_width, U.pixelsize * (270 - label_delta), hash_width, UI_UNIT_Y, NULL, 0, 0, 0, 0, NULL);
 
 	if (!STREQ(build_branch, "master")) {
 		char branch_buf[128] = "\0";
 		int branch_width;
 		BLI_snprintf(branch_buf, sizeof(branch_buf), "Branch: %s", build_branch);
 		branch_width = (int)BLF_width(style->widgetlabel.uifont_id, branch_buf, sizeof(branch_buf)) + U.widget_unit;
-		uiDefBut(block, LABEL, 0, branch_buf, U.pixelsize * 494 - branch_width, U.pixelsize * (258 - label_delta), branch_width, UI_UNIT_Y, NULL, 0, 0, 0, 0, NULL);
+		uiDefBut(block, UI_BTYPE_LABEL, 0, branch_buf, U.pixelsize * 494 - branch_width, U.pixelsize * (258 - label_delta), branch_width, UI_UNIT_Y, NULL, 0, 0, 0, 0, NULL);
 	}
 #endif  /* WITH_BUILDINFO */
 	
-	layout = uiBlockLayout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, 10, 2, U.pixelsize * 480, U.pixelsize * 110, 0, style);
+	layout = UI_block_layout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, 10, 2, U.pixelsize * 480, U.pixelsize * 110, 0, style);
 	
-	uiBlockSetEmboss(block, UI_EMBOSS);
+	UI_block_emboss_set(block, UI_EMBOSS);
 	/* show the splash menu (containing interaction presets), using python */
 	if (mt) {
 		Menu menu = {NULL};
@@ -1910,7 +1974,7 @@ static uiBlock *wm_block_create_splash(bContext *C, ARegion *ar, void *UNUSED(ar
 //		uiItemM(layout, C, "USERPREF_MT_keyconfigs", U.keyconfigstr, ICON_NONE);
 	}
 	
-	uiBlockSetEmboss(block, UI_EMBOSSP);
+	UI_block_emboss_set(block, UI_EMBOSS_PULLDOWN);
 	uiLayoutSetOperatorContext(layout, WM_OP_EXEC_REGION_WIN);
 	
 	split = uiLayoutSplit(layout, 0.0f, false);
@@ -1926,7 +1990,7 @@ static uiBlock *wm_block_create_splash(bContext *C, ARegion *ar, void *UNUSED(ar
 	             BLENDER_VERSION / 100, BLENDER_VERSION % 100);
 	uiItemStringO(col, IFACE_("Release Log"), ICON_URL, "WM_OT_url_open", "url", url);
 	uiItemStringO(col, IFACE_("Manual"), ICON_URL, "WM_OT_url_open", "url",
-	              "http://wiki.blender.org/index.php/Doc:2.6/Manual");
+	              "http://www.blender.org/manual");
 	uiItemStringO(col, IFACE_("Blender Website"), ICON_URL, "WM_OT_url_open", "url", "http://www.blender.org");
 	if (STREQ(STRINGIFY(BLENDER_VERSION_CYCLE), "release")) {
 		BLI_snprintf(url, sizeof(url), "http://www.blender.org/documentation/blender_python_api_%d_%d"
@@ -1959,14 +2023,14 @@ static uiBlock *wm_block_create_splash(bContext *C, ARegion *ar, void *UNUSED(ar
 	uiItemO(col, NULL, ICON_RECOVER_LAST, "WM_OT_recover_last_session");
 	uiItemL(col, "", ICON_NONE);
 	
-	uiCenteredBoundsBlock(block, 0);
+	UI_block_bounds_set_centered(block, 0);
 	
 	return block;
 }
 
 static int wm_splash_invoke(bContext *C, wmOperator *UNUSED(op), const wmEvent *UNUSED(event))
 {
-	uiPupBlock(C, wm_block_create_splash, NULL);
+	UI_popup_block_invoke(C, wm_block_create_splash, NULL);
 	
 	return OPERATOR_FINISHED;
 }
@@ -1991,16 +2055,16 @@ static uiBlock *wm_block_search_menu(bContext *C, ARegion *ar, void *UNUSED(arg_
 	uiBlock *block;
 	uiBut *but;
 	
-	block = uiBeginBlock(C, ar, "_popup", UI_EMBOSS);
-	uiBlockSetFlag(block, UI_BLOCK_LOOP | UI_BLOCK_MOVEMOUSE_QUIT | UI_BLOCK_SEARCH_MENU);
+	block = UI_block_begin(C, ar, "_popup", UI_EMBOSS);
+	UI_block_flag_enable(block, UI_BLOCK_LOOP | UI_BLOCK_MOVEMOUSE_QUIT | UI_BLOCK_SEARCH_MENU);
 	
-	but = uiDefSearchBut(block, search, 0, ICON_VIEWZOOM, sizeof(search), 10, 10, uiSearchBoxWidth(), UI_UNIT_Y, 0, 0, "");
-	uiOperatorSearch_But(but);
+	but = uiDefSearchBut(block, search, 0, ICON_VIEWZOOM, sizeof(search), 10, 10, UI_searchbox_size_x(), UI_UNIT_Y, 0, 0, "");
+	UI_but_func_operator_search(but);
 	
 	/* fake button, it holds space for search items */
-	uiDefBut(block, LABEL, 0, "", 10, 10 - uiSearchBoxHeight(), uiSearchBoxWidth(), uiSearchBoxHeight(), NULL, 0, 0, 0, 0, NULL);
+	uiDefBut(block, UI_BTYPE_LABEL, 0, "", 10, 10 - UI_searchbox_size_y(), UI_searchbox_size_x(), UI_searchbox_size_y(), NULL, 0, 0, 0, 0, NULL);
 	
-	uiPopupBoundsBlock(block, 6, 0, -UI_UNIT_Y); /* move it downwards, mouse over button */
+	UI_block_bounds_set_popup(block, 6, 0, -UI_UNIT_Y); /* move it downwards, mouse over button */
 	
 	wm_event_init_from_window(win, &event);
 	event.type = EVT_BUT_OPEN;
@@ -2019,7 +2083,7 @@ static int wm_search_menu_exec(bContext *UNUSED(C), wmOperator *UNUSED(op))
 
 static int wm_search_menu_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
-	uiPupBlock(C, wm_block_search_menu, op);
+	UI_popup_block_invoke(C, wm_block_search_menu, op);
 	
 	return OPERATOR_INTERFACE;
 }
@@ -2060,7 +2124,7 @@ static int wm_call_menu_exec(bContext *C, wmOperator *op)
 	char idname[BKE_ST_MAXNAME];
 	RNA_string_get(op->ptr, "name", idname);
 
-	return uiPupMenuInvoke(C, idname, op->reports);
+	return UI_popup_menu_invoke(C, idname, op->reports);
 }
 
 static void WM_OT_call_menu(wmOperatorType *ot)
@@ -2082,7 +2146,7 @@ static int wm_call_pie_menu_invoke(bContext *C, wmOperator *op, const wmEvent *e
 	char idname[BKE_ST_MAXNAME];
 	RNA_string_get(op->ptr, "name", idname);
 
-	return uiPieMenuInvoke(C, idname, event);
+	return UI_pie_menu_invoke(C, idname, event);
 }
 
 static int wm_call_pie_menu_exec(bContext *C, wmOperator *op)
@@ -2090,7 +2154,7 @@ static int wm_call_pie_menu_exec(bContext *C, wmOperator *op)
 	char idname[BKE_ST_MAXNAME];
 	RNA_string_get(op->ptr, "name", idname);
 
-	return uiPieMenuInvoke(C, idname, CTX_wm_window(C)->eventstate);
+	return UI_pie_menu_invoke(C, idname, CTX_wm_window(C)->eventstate);
 }
 
 static void WM_OT_call_menu_pie(wmOperatorType *ot)
@@ -2579,6 +2643,13 @@ static int wm_link_append_exec(bContext *C, wmOperator *op)
 	lib = mainl->curlib;
 	BLI_assert(lib);
 
+	if (mainl->versionfile < 250) {
+		BKE_reportf(op->reports, RPT_WARNING,
+		            "Linking or appending from a very old .blend file format (%d.%d), no animation conversion will "
+		            "be done! You may want to re-save your lib file with current Blender",
+		            mainl->versionfile, mainl->subversionfile);
+	}
+
 	if (totfiles == 0) {
 		BLO_library_append_named_part_ex(C, mainl, &bh, name, idcode, flag);
 	}
@@ -2685,7 +2756,7 @@ void WM_recover_last_session(bContext *C, ReportList *reports)
 {
 	char filepath[FILE_MAX];
 	
-	BLI_make_file_string("/", filepath, BLI_temp_dir_base(), BLENDER_QUIT_FILE);
+	BLI_make_file_string("/", filepath, BKE_tempdir_base(), BLENDER_QUIT_FILE);
 	/* if reports==NULL, it's called directly without operator, we add a quick check here */
 	if (reports || BLI_exists(filepath)) {
 		G.fileflags |= G_FILE_RECOVER;
@@ -2842,6 +2913,8 @@ static int wm_save_as_mainfile_exec(bContext *C, wmOperator *op)
 	                 (RNA_struct_find_property(op->ptr, "use_mesh_compat") &&
 	                  RNA_boolean_get(op->ptr, "use_mesh_compat")),
 	                 G_FILE_MESH_COMPAT);
+#else
+#  error "don't remove by accident"
 #endif
 
 	if (wm_file_write(C, path, fileflags, op->reports) != 0)
@@ -3731,6 +3804,7 @@ void WM_OT_straightline_gesture(wmOperatorType *ot)
 #define WM_RADIAL_CONTROL_DISPLAY_SIZE 200
 #define WM_RADIAL_CONTROL_DISPLAY_MIN_SIZE 35
 #define WM_RADIAL_CONTROL_DISPLAY_WIDTH (WM_RADIAL_CONTROL_DISPLAY_SIZE - WM_RADIAL_CONTROL_DISPLAY_MIN_SIZE)
+#define WM_RADIAL_CONTROL_HEADER_LENGTH 180
 #define WM_RADIAL_MAX_STR 6
 
 typedef struct {
@@ -3748,7 +3822,23 @@ typedef struct {
 	ListBase orig_paintcursors;
 	bool use_secondary_tex;
 	void *cursor;
+	NumInput num_input;
 } RadialControl;
+
+static void radial_control_update_header(wmOperator *op, bContext *C)
+{
+	RadialControl *rc = op->customdata;
+	char msg[WM_RADIAL_CONTROL_HEADER_LENGTH];
+	ScrArea *sa = CTX_wm_area(C);
+	Scene *scene = CTX_data_scene(C);
+
+	if (sa && hasNumInput(&rc->num_input)) {
+		char num_str[NUM_STR_REP_LEN];
+		outputNumInput(&rc->num_input, num_str, &scene->unit);
+		BLI_snprintf(msg, WM_RADIAL_CONTROL_HEADER_LENGTH, "%s: %s", RNA_property_ui_name(rc->prop), num_str);
+		ED_area_headerprint(sa, msg);
+	}
+}
 
 static void radial_control_set_initial_mouse(RadialControl *rc, const wmEvent *event)
 {
@@ -3761,6 +3851,7 @@ static void radial_control_set_initial_mouse(RadialControl *rc, const wmEvent *e
 	switch (rc->subtype) {
 		case PROP_NONE:
 		case PROP_DISTANCE:
+		case PROP_PERCENTAGE:
 		case PROP_PIXEL:
 			d[0] = rc->initial_value;
 			break;
@@ -3856,7 +3947,7 @@ static void radial_control_paint_cursor(bContext *C, int x, int y, void *customd
 {
 	RadialControl *rc = customdata;
 	ARegion *ar = CTX_wm_region(C);
-	uiStyle *style = UI_GetStyle();
+	uiStyle *style = UI_style_get();
 	const uiFontStyle *fstyle = &style->widget;
 	const int fontid = fstyle->uifont_id;
 	short fstyle_points = fstyle->points;
@@ -3869,6 +3960,7 @@ static void radial_control_paint_cursor(bContext *C, int x, int y, void *customd
 	switch (rc->subtype) {
 		case PROP_NONE:
 		case PROP_DISTANCE:
+		case PROP_PERCENTAGE:
 		case PROP_PIXEL:
 			r1 = rc->current_value;
 			r2 = rc->initial_value;
@@ -4132,14 +4224,21 @@ static int radial_control_invoke(bContext *C, wmOperator *op, const wmEvent *eve
 			return OPERATOR_CANCELLED;
 	}
 
+	/* initialize numerical input */
+	initNumInput(&rc->num_input);
+	rc->num_input.idx_max = 0;
+	rc->num_input.val_flag[0] |= NUM_NO_NEGATIVE;
+	rc->num_input.unit_sys = USER_UNIT_NONE;
+	rc->num_input.unit_type[0] = B_UNIT_LENGTH;
+
 	/* get subtype of property */
 	rc->subtype = RNA_property_subtype(rc->prop);
-	if (!ELEM(rc->subtype, PROP_NONE, PROP_DISTANCE, PROP_FACTOR, PROP_ANGLE, PROP_PIXEL)) {
-		BKE_report(op->reports, RPT_ERROR, "Property must be a none, distance, a factor, or an angle");
+	if (!ELEM(rc->subtype, PROP_NONE, PROP_DISTANCE, PROP_FACTOR, PROP_PERCENTAGE, PROP_ANGLE, PROP_PIXEL)) {
+		BKE_report(op->reports, RPT_ERROR, "Property must be a none, distance, factor, percentage, angle, or pixel");
 		MEM_freeN(rc);
 		return OPERATOR_CANCELLED;
 	}
-		
+
 	rc->current_value = rc->initial_value;
 	radial_control_set_initial_mouse(rc, event);
 	radial_control_set_tex(rc);
@@ -4176,10 +4275,15 @@ static void radial_control_cancel(bContext *C, wmOperator *op)
 {
 	RadialControl *rc = op->customdata;
 	wmWindowManager *wm = CTX_wm_manager(C);
+    ScrArea *sa = CTX_wm_area(C);
 
 	if (rc->dial) {
 		MEM_freeN(rc->dial);
 		rc->dial = NULL;
+	}
+
+	if (sa) {
+		ED_area_headerprint(sa, NULL);
 	}
 	
 	WM_paint_cursor_end(wm, rc->cursor);
@@ -4204,125 +4308,165 @@ static int radial_control_modal(bContext *C, wmOperator *op, const wmEvent *even
 	float delta[2], ret = OPERATOR_RUNNING_MODAL;
 	bool snap;
 	float angle_precision = 0.0f;
+    const bool has_numInput = hasNumInput(&rc->num_input);
+    bool handled = false;
+    float numValue;
 	/* TODO: fix hardcoded events */
 
 	snap = event->ctrl != 0;
 
-	switch (event->type) {
-		case MOUSEMOVE:
-			if (rc->slow_mode) {
-				if (rc->subtype == PROP_ANGLE) {
-					float position[2] = {event->x, event->y};
-					
-					/* calculate the initial angle here first */
-					delta[0] = rc->initial_mouse[0] - rc->slow_mouse[0];
-					delta[1] = rc->initial_mouse[1] - rc->slow_mouse[1];
-					
-					/* precision angle gets calculated from dial and gets added later */
-					angle_precision = -0.1f * BLI_dial_angle(rc->dial, position);
-				}
-				else {
-					delta[0] = rc->initial_mouse[0] - rc->slow_mouse[0];
-					delta[1] = rc->initial_mouse[1] - rc->slow_mouse[1];
-					
-					if (rc->zoom_prop) {
-						RNA_property_float_get_array(&rc->zoom_ptr, rc->zoom_prop, zoom);
-						delta[0] /= zoom[0];
-						delta[1] /= zoom[1];
+	/* Modal numinput active, try to handle numeric inputs first... */
+	if (event->val == KM_PRESS && has_numInput && handleNumInput(C, &rc->num_input, event)) {
+		handled = true;
+		applyNumInput(&rc->num_input, &numValue);
+		CLAMP(numValue, rc->min_value, rc->max_value);
+		new_value = numValue;
+
+		radial_control_set_value(rc, new_value);
+		rc->current_value = new_value;
+		radial_control_update_header(op, C);
+		return OPERATOR_RUNNING_MODAL;
+	}
+	else {
+		handled = false;
+		switch (event->type) {
+			case ESCKEY:
+			case RIGHTMOUSE:
+				/* canceled; restore original value */
+				radial_control_set_value(rc, rc->initial_value);
+				ret = OPERATOR_CANCELLED;
+				break;
+
+			case LEFTMOUSE:
+			case PADENTER:
+			case RETKEY:
+				/* done; value already set */
+				RNA_property_update(C, &rc->ptr, rc->prop);
+				ret = OPERATOR_FINISHED;
+				break;
+
+			case MOUSEMOVE:
+				if (!has_numInput) {
+					if (rc->slow_mode) {
+						if (rc->subtype == PROP_ANGLE) {
+							float position[2] = {event->x, event->y};
+
+							/* calculate the initial angle here first */
+							delta[0] = rc->initial_mouse[0] - rc->slow_mouse[0];
+							delta[1] = rc->initial_mouse[1] - rc->slow_mouse[1];
+
+							/* precision angle gets calculated from dial and gets added later */
+							angle_precision = -0.1f * BLI_dial_angle(rc->dial, position);
+						}
+						else {
+							delta[0] = rc->initial_mouse[0] - rc->slow_mouse[0];
+							delta[1] = rc->initial_mouse[1] - rc->slow_mouse[1];
+
+							if (rc->zoom_prop) {
+								RNA_property_float_get_array(&rc->zoom_ptr, rc->zoom_prop, zoom);
+								delta[0] /= zoom[0];
+								delta[1] /= zoom[1];
+							}
+
+							dist = len_v2(delta);
+
+							delta[0] = event->x - rc->slow_mouse[0];
+							delta[1] = event->y - rc->slow_mouse[1];
+
+							if (rc->zoom_prop) {
+								delta[0] /= zoom[0];
+								delta[1] /= zoom[1];
+							}
+
+							dist = dist + 0.1f * (delta[0] + delta[1]);
+						}
 					}
-					
-					dist = len_v2(delta);
-					
-					delta[0] = event->x - rc->slow_mouse[0];
-					delta[1] = event->y - rc->slow_mouse[1];
-					
-					if (rc->zoom_prop) {
-						delta[0] /= zoom[0];
-						delta[1] /= zoom[1];
+					else {
+						delta[0] = rc->initial_mouse[0] - event->x;
+						delta[1] = rc->initial_mouse[1] - event->y;
+
+						if (rc->zoom_prop) {
+							RNA_property_float_get_array(&rc->zoom_ptr, rc->zoom_prop, zoom);
+							delta[0] /= zoom[0];
+							delta[1] /= zoom[1];
+						}
+
+						dist = len_v2(delta);
 					}
-					
-					dist = dist + 0.1f * (delta[0] + delta[1]);
+
+					/* calculate new value and apply snapping  */
+					switch (rc->subtype) {
+						case PROP_NONE:
+						case PROP_DISTANCE:
+						case PROP_PERCENTAGE:
+						case PROP_PIXEL:
+							new_value = dist;
+							if (snap) new_value = ((int)new_value + 5) / 10 * 10;
+							break;
+						case PROP_FACTOR:
+							new_value = (WM_RADIAL_CONTROL_DISPLAY_SIZE - dist) / WM_RADIAL_CONTROL_DISPLAY_WIDTH;
+							if (snap) new_value = ((int)ceil(new_value * 10.f) * 10.0f) / 100.f;
+							break;
+						case PROP_ANGLE:
+							new_value = atan2f(delta[1], delta[0]) + M_PI + angle_precision;
+							new_value = fmod(new_value, 2.0f * (float)M_PI);
+							if (new_value < 0.0f)
+								new_value += 2.0f * (float)M_PI;
+							if (snap) new_value = DEG2RADF(((int)RAD2DEGF(new_value) + 5) / 10 * 10);
+							break;
+						default:
+							new_value = dist; /* dummy value, should this ever happen? - campbell */
+							break;
+					}
+
+					/* clamp and update */
+					CLAMP(new_value, rc->min_value, rc->max_value);
+					radial_control_set_value(rc, new_value);
+					rc->current_value = new_value;
+					handled = true;
+					break;
 				}
-			}
-			else {
-				delta[0] = rc->initial_mouse[0] - event->x;
-				delta[1] = rc->initial_mouse[1] - event->y;
+				break;
 
-				if (rc->zoom_prop) {
-					RNA_property_float_get_array(&rc->zoom_ptr, rc->zoom_prop, zoom);
-					delta[0] /= zoom[0];
-					delta[1] /= zoom[1];
+			case LEFTSHIFTKEY:
+			case RIGHTSHIFTKEY:
+			{
+				if (event->val == KM_PRESS) {
+					rc->slow_mouse[0] = event->x;
+					rc->slow_mouse[1] = event->y;
+					rc->slow_mode = true;
+					if (rc->subtype == PROP_ANGLE) {
+						float initial_position[2] = {UNPACK2(rc->initial_mouse)};
+						float current_position[2] = {UNPACK2(rc->slow_mouse)};
+						rc->dial = BLI_dial_initialize(initial_position, 0.0f);
+						/* immediately set the position to get a an initial direction */
+						BLI_dial_angle(rc->dial, current_position);
+					}
+					handled = true;
 				}
-	
-				dist = len_v2(delta);				
+				if (event->val == KM_RELEASE) {
+					rc->slow_mode = false;
+					handled = true;
+					if (rc->dial) {
+						MEM_freeN(rc->dial);
+						rc->dial = NULL;
+					}
+				}
+				break;
 			}
+		}
 
-			/* calculate new value and apply snapping  */
-			switch (rc->subtype) {
-				case PROP_NONE:
-				case PROP_DISTANCE:
-				case PROP_PIXEL:
-					new_value = dist;
-					if (snap) new_value = ((int)new_value + 5) / 10 * 10;
-					break;
-				case PROP_FACTOR:
-					new_value = (WM_RADIAL_CONTROL_DISPLAY_SIZE - dist) / WM_RADIAL_CONTROL_DISPLAY_WIDTH;
-					if (snap) new_value = ((int)ceil(new_value * 10.f) * 10.0f) / 100.f;
-					break;
-				case PROP_ANGLE:
-					new_value = atan2f(delta[1], delta[0]) + M_PI + angle_precision;
-					new_value = fmod(new_value, 2.0f * (float)M_PI);
-					if (new_value < 0.0f)
-						new_value += 2.0f * (float)M_PI;
-					if (snap) new_value = DEG2RADF(((int)RAD2DEGF(new_value) + 5) / 10 * 10);
-					break;
-				default:
-					new_value = dist; /* dummy value, should this ever happen? - campbell */
-					break;
-			}
+		/* Modal numinput inactive, try to handle numeric inputs last... */
+		if (!handled && event->val == KM_PRESS && handleNumInput(C, &rc->num_input, event)) {
+			applyNumInput(&rc->num_input, &numValue);
+			CLAMP(numValue, rc->min_value, rc->max_value);
+			new_value = numValue;
 
-			/* clamp and update */
-			CLAMP(new_value, rc->min_value, rc->max_value);
 			radial_control_set_value(rc, new_value);
 			rc->current_value = new_value;
-			break;
-
-		case ESCKEY:
-		case RIGHTMOUSE:
-			/* canceled; restore original value */
-			radial_control_set_value(rc, rc->initial_value);
-			ret = OPERATOR_CANCELLED;
-			break;
-
-		case LEFTMOUSE:
-		case PADENTER:
-			/* done; value already set */
-			RNA_property_update(C, &rc->ptr, rc->prop);
-			ret = OPERATOR_FINISHED;
-			break;
-			
-		case LEFTSHIFTKEY:
-		case RIGHTSHIFTKEY:
-			if (event->val == KM_PRESS) {
-				rc->slow_mouse[0] = event->x;
-				rc->slow_mouse[1] = event->y;
-				rc->slow_mode = true;
-				if (rc->subtype == PROP_ANGLE) {
-					float initial_position[2] = {UNPACK2(rc->initial_mouse)};
-					float current_position[2] = {UNPACK2(rc->slow_mouse)};
-					rc->dial = BLI_dial_initialize(initial_position, 0.0f);
-					/* immediately set the position to get a an initial direction */
-					BLI_dial_angle(rc->dial, current_position);
-				}
-			}
-			if (event->val == KM_RELEASE) {
-				rc->slow_mode = false;
-				if (rc->dial) {
-					MEM_freeN(rc->dial);
-					rc->dial = NULL;
-				}
-			}
-			break;
+			radial_control_update_header(op, C);
+			return OPERATOR_RUNNING_MODAL;
+		}
 	}
 
 	ED_region_tag_redraw(CTX_wm_region(C));
@@ -4664,6 +4808,8 @@ static void gesture_circle_modal_keymap(wmKeyConfig *keyconf)
 	WM_modalkeymap_assign(keymap, "CLIP_OT_select_circle");
 	WM_modalkeymap_assign(keymap, "MASK_OT_select_circle");
 	WM_modalkeymap_assign(keymap, "NODE_OT_select_circle");
+	WM_modalkeymap_assign(keymap, "GPENCIL_OT_select_circle");
+	WM_modalkeymap_assign(keymap, "GRAPH_OT_select_circle");	
 
 }
 
@@ -4760,6 +4906,7 @@ static void gesture_border_modal_keymap(wmKeyConfig *keyconf)
 	WM_modalkeymap_assign(keymap, "VIEW3D_OT_select_border");
 	WM_modalkeymap_assign(keymap, "VIEW3D_OT_zoom_border"); /* XXX TODO: zoom border should perhaps map rightmouse to zoom out instead of in+cancel */
 	WM_modalkeymap_assign(keymap, "IMAGE_OT_render_border");
+	WM_modalkeymap_assign(keymap, "GPENCIL_OT_select_border");
 }
 
 /* zoom to border modal operators */

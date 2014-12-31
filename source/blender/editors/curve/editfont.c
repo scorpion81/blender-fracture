@@ -668,7 +668,7 @@ void ED_text_to_object(bContext *C, Text *text, const bool split_lines)
 		offset[1] = 0.0f;
 		offset[2] = 0.0f;
 
-		txt_add_object(C, text->lines.first, BLI_countlist(&text->lines), offset);
+		txt_add_object(C, text->lines.first, BLI_listbase_count(&text->lines), offset);
 	}
 }
 
@@ -1744,7 +1744,7 @@ static void font_ui_template_init(bContext *C, wmOperator *op)
 	PropertyPointerRNA *pprop;
 	
 	op->customdata = pprop = MEM_callocN(sizeof(PropertyPointerRNA), "OpenPropertyPointerRNA");
-	uiIDContextProperty(C, &pprop->ptr, &pprop->prop);
+	UI_context_active_but_prop_get_templateID(C, &pprop->ptr, &pprop->prop);
 }
 
 static void font_open_cancel(bContext *UNUSED(C), wmOperator *op)
@@ -1848,7 +1848,7 @@ static int font_unlink_exec(bContext *C, wmOperator *op)
 	PointerRNA idptr;
 	PropertyPointerRNA pprop;
 
-	uiIDContextProperty(C, &pprop.ptr, &pprop.prop);
+	UI_context_active_but_prop_get_templateID(C, &pprop.ptr, &pprop.prop);
 	
 	if (pprop.prop == NULL) {
 		BKE_report(op->reports, RPT_ERROR, "Incorrect context for running font unlink");

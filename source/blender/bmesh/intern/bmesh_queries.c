@@ -270,6 +270,36 @@ static float bm_face_calc_split_dot(BMLoop *l_a, BMLoop *l_b)
 }
 
 /**
+ * Check if a point is inside the corner defined by a loop
+ * (within the 2 planes defined by the loops corner & face normal).
+ *
+ * \return less than 0.0 when inside.
+ */
+float BM_loop_point_side_of_loop_test(const BMLoop *l, const float co[3])
+{
+	const float *axis = l->f->no;
+	return (angle_signed_on_axis_v3v3v3_v3(l->prev->v->co, l->v->co, co,             axis) -
+	        angle_signed_on_axis_v3v3v3_v3(l->prev->v->co, l->v->co, l->next->v->co, axis));
+}
+
+/**
+ * Check if a point is inside the edge defined by a loop
+ * (within the plane defined by the loops edge & face normal).
+ *
+ * \return less than 0.0 when inside.
+ */
+float BM_loop_point_side_of_edge_test(const BMLoop *l, const float co[3])
+{
+	const float *axis = l->f->no;
+	float dir[3];
+	float plane[3];
+	sub_v3_v3v3(dir, l->v->co, l->next->v->co);
+	cross_v3_v3v3(plane, axis, dir);
+	return (dot_v3v3(plane, co) -
+	        dot_v3v3(plane, l->v->co));
+}
+
+/**
  * Given 2 verts, find a face they share that has the lowest angle across these verts and give back both loops.
  *
  * This can be better then #BM_vert_pair_share_face_by_len because concave splits are ranked lowest.
@@ -1373,7 +1403,7 @@ float BM_vert_calc_shell_factor(BMVert *v)
 }
 /* alternate version of #BM_vert_calc_shell_factor which only
  * uses 'hflag' faces, but falls back to all if none found. */
-float BM_vert_calc_shell_factor_ex(BMVert *v, const char hflag)
+float BM_vert_calc_shell_factor_ex(BMVert *v, const float no[3], const char hflag)
 {
 	BMIter iter;
 	BMLoop *l;
@@ -1384,7 +1414,7 @@ float BM_vert_calc_shell_factor_ex(BMVert *v, const char hflag)
 	BM_ITER_ELEM (l, &iter, v, BM_LOOPS_OF_VERT) {
 		if (BM_elem_flag_test(l->f, hflag)) {  /* <-- main difference to BM_vert_calc_shell_factor! */
 			const float face_angle = BM_loop_calc_face_angle(l);
-			accum_shell += shell_v3v3_normalized_to_dist(v->no, l->f->no) * face_angle;
+			accum_shell += shell_v3v3_normalized_to_dist(no, l->f->no) * face_angle;
 			accum_angle += face_angle;
 			tot_sel++;
 		}
@@ -1797,7 +1827,7 @@ bool BM_face_exists_multi_edge(BMEdge **earr, int len)
  *
  * \note The face may contain other verts \b not in \a varr.
  *
- * \note Its possible there are more then one overlapping faces,
+ * \note Its possible there are more than one overlapping faces,
  * in this case the first one found will be assigned to \a r_f_overlap.
  *
  * \param varr  Array of unordered verts.

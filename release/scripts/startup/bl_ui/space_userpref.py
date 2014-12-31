@@ -776,7 +776,7 @@ class USERPREF_PT_theme(Panel):
             padding = subsplit.split(percentage=0.15)
             colsub = padding.column()
             colsub = padding.column()
-            colsub.row().prop(ui, "emboss")
+            colsub.row().prop(ui, "widget_emboss")
 
             col.separator()
             col.separator()
@@ -1160,7 +1160,7 @@ class USERPREF_MT_addons_dev_guides(Menu):
 
 class USERPREF_PT_addons(Panel):
     bl_space_type = 'USER_PREFERENCES'
-    bl_label = "Addons"
+    bl_label = "Add-ons"
     bl_region_type = 'WINDOW'
     bl_options = {'HIDE_HEADER'}
 

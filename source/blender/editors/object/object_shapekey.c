@@ -133,14 +133,14 @@ static bool ED_object_shape_key_remove(Main *bmain, Object *ob)
 				/* apply new basis key on original data */
 				switch (ob->type) {
 					case OB_MESH:
-						BKE_key_convert_to_mesh(key->refkey, ob->data);
+						BKE_keyblock_convert_to_mesh(key->refkey, ob->data);
 						break;
 					case OB_CURVE:
 					case OB_SURF:
-						BKE_key_convert_to_curve(key->refkey, ob->data, BKE_curve_nurbs_get(ob->data));
+						BKE_keyblock_convert_to_curve(key->refkey, ob->data, BKE_curve_nurbs_get(ob->data));
 						break;
 					case OB_LATTICE:
-						BKE_key_convert_to_lattice(key->refkey, ob->data);
+						BKE_keyblock_convert_to_lattice(key->refkey, ob->data);
 						break;
 				}
 			}
@@ -379,7 +379,6 @@ void OBJECT_OT_shape_key_remove(wmOperatorType *ot)
 	ot->description = "Remove shape key from the object";
 	
 	/* api callbacks */
-	ot->poll = shape_key_mode_poll;
 	ot->poll = shape_key_mode_exists_poll;
 	ot->exec = shape_key_remove_exec;
 

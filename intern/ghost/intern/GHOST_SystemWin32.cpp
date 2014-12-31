@@ -508,12 +508,17 @@ GHOST_TKey GHOST_SystemWin32::hardKey(GHOST_IWindow *window, RAWINPUT const &raw
 
 //! note: this function can be extended to include other exotic cases as they arise.
 // This function was added in response to bug [#25715]
+// This is going to be a long list [T42426]
 GHOST_TKey GHOST_SystemWin32::processSpecialKey(GHOST_IWindow *window, short vKey, short scanCode) const
 {
 	GHOST_TKey key = GHOST_kKeyUnknown;
 	switch (PRIMARYLANGID(m_langId)) {
 		case LANG_FRENCH:
 			if (vKey == VK_OEM_8) key = GHOST_kKeyF13;  // oem key; used purely for shortcuts .
+			break;
+		case LANG_ENGLISH:
+			if (SUBLANGID(m_langId) == SUBLANG_ENGLISH_UK && vKey == VK_OEM_8) // "`¬"
+				key = GHOST_kKeyAccentGrave;
 			break;
 	}
 
@@ -787,6 +792,15 @@ GHOST_Event *GHOST_SystemWin32::processWindowEvent(GHOST_TEventType type, GHOST_
 	return new GHOST_Event(system->getMilliSeconds(), type, window);
 }
 
+#ifdef WITH_INPUT_IME
+GHOST_Event *GHOST_SystemWin32::processImeEvent(GHOST_TEventType type, GHOST_IWindow *window, GHOST_TEventImeData *data)
+{
+	GHOST_System *system = (GHOST_System *)getSystem();
+	return new GHOST_EventIME(system->getMilliSeconds(), type, window, data);
+}
+#endif
+
+
 GHOST_TSuccess GHOST_SystemWin32::pushDragDropEvent(
         GHOST_TEventType eventType,
         GHOST_TDragnDropTypes draggedObjectType,
@@ -899,6 +913,7 @@ LRESULT WINAPI GHOST_SystemWin32::s_wndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 
 	LRESULT lResult = 0;
 	GHOST_SystemWin32 *system = ((GHOST_SystemWin32 *)getSystem());
+	GHOST_EventManager *eventManager = system->getEventManager();
 	GHOST_ASSERT(system, "GHOST_SystemWin32::s_wndProc(): system not initialized");
 
 	if (hwnd) {
@@ -907,8 +922,13 @@ LRESULT WINAPI GHOST_SystemWin32::s_wndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			switch (msg) {
 				// we need to check if new key layout has AltGr
 				case WM_INPUTLANGCHANGE:
+				{
 					system->handleKeyboardChange();
+#ifdef WITH_INPUT_IME
+					window->getImeInput()->SetInputLanguage();
+#endif
 					break;
+				}
 				////////////////////////////////////////////////////////////////////////
 				// Keyboard events, processed
 				////////////////////////////////////////////////////////////////////////
@@ -944,6 +964,56 @@ LRESULT WINAPI GHOST_SystemWin32::s_wndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 					}
 					break;
 				}
+#ifdef WITH_INPUT_IME
+				////////////////////////////////////////////////////////////////////////
+				// IME events, processed, read more in GHOST_IME.h
+				////////////////////////////////////////////////////////////////////////
+				case WM_IME_SETCONTEXT:
+				{
+					window->getImeInput()->SetInputLanguage();
+					window->getImeInput()->CreateImeWindow(window->getHWND());
+					window->getImeInput()->CleanupComposition(window->getHWND());
+					window->getImeInput()->CheckFirst(window->getHWND());
+					break;
+				}
+				case WM_IME_STARTCOMPOSITION:
+				{
+					eventHandled = true;
+					/* remove input event before start comp event, avoid redundant input */
+					eventManager->removeTypeEvents(GHOST_kEventKeyDown, window);
+					window->getImeInput()->CreateImeWindow(window->getHWND());
+					window->getImeInput()->ResetComposition(window->getHWND());
+					event = processImeEvent(
+					        GHOST_kEventImeCompositionStart,
+					        window,
+					        &window->getImeInput()->eventImeData);
+					break;
+				}
+				case WM_IME_COMPOSITION:
+				{
+					eventHandled = true;
+					window->getImeInput()->UpdateImeWindow(window->getHWND());
+					window->getImeInput()->UpdateInfo(window->getHWND());
+					event = processImeEvent(
+					        GHOST_kEventImeComposition,
+					        window,
+					        &window->getImeInput()->eventImeData);
+					break;
+				}
+				case WM_IME_ENDCOMPOSITION:
+				{
+					eventHandled = true;
+					/* remove input event after end comp event, avoid redundant input */
+					eventManager->removeTypeEvents(GHOST_kEventKeyDown, window);
+					window->getImeInput()->ResetComposition(window->getHWND());
+					window->getImeInput()->DestroyImeWindow(window->getHWND());
+					event = processImeEvent(
+					        GHOST_kEventImeCompositionEnd,
+					        window,
+					        &window->getImeInput()->eventImeData);
+					break;
+				}
+#endif /* WITH_INPUT_IME */
 				////////////////////////////////////////////////////////////////////////
 				// Keyboard events, ignored
 				////////////////////////////////////////////////////////////////////////
@@ -1060,17 +1130,13 @@ LRESULT WINAPI GHOST_SystemWin32::s_wndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 
 					/* Get the winow under the mouse and send event to it's queue. */
 					POINT mouse_pos = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
-					HWND mouse_hwnd = WindowFromPoint(mouse_pos);
+					HWND mouse_hwnd = ChildWindowFromPoint(HWND_DESKTOP, mouse_pos);
 					GHOST_WindowWin32 *mouse_window = (GHOST_WindowWin32 *)::GetWindowLongPtr(mouse_hwnd, GWLP_USERDATA);
 					if (mouse_window != NULL) {
 						event = processWheelEvent(mouse_window, wParam, lParam);
 					}
 					else {
-						/* If it happened so window under the mouse is not found (which i'm not
-						 * really sure might happen), then we add event to the focused window
-						 * in order to avoid some possible negative side effects.
-						 *                                                    - sergey -
-						 */
+						/* Happens when wmouse is not over of any of blender windows. */
 						event = processWheelEvent(window, wParam, lParam);
 					}
 

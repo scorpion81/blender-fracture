@@ -35,7 +35,6 @@
 
 #include "BLI_utildefines.h"
 
-#include "RNA_access.h"
 #include "RNA_define.h"
 #include "RNA_types.h"
 
@@ -45,6 +44,14 @@
 #  ifndef snprintf
 #    define snprintf _snprintf
 #  endif
+#endif
+
+/* stub for BLI_abort() */
+#ifndef NDEBUG
+void BLI_system_backtrace(FILE *fp)
+{
+	(void)fp;
+}
 #endif
 
 /* Replace if different */
@@ -3675,7 +3682,7 @@ static const char *cpp_classes = ""
 "	int length;\n"
 "\n"
 "	DynamicArray() : data(NULL), length(0) {}\n"
-"	DynamicArray(int new_length) : data(NULL), length(new_length) { data = (float *)malloc(sizeof(T) * new_length); }\n"
+"	DynamicArray(int new_length) : data(NULL), length(new_length) { data = (T *)malloc(sizeof(T) * new_length); }\n"
 "	DynamicArray(const DynamicArray<T>& other) { copy_from(other); }\n"
 "	const DynamicArray<T>& operator = (const DynamicArray<T>& other) { copy_from(other); return *this; }\n"
 "\n"
@@ -3686,7 +3693,7 @@ static const char *cpp_classes = ""
 "protected:\n"
 "	void copy_from(const DynamicArray<T>& other) {\n"
 "		if (data) free(data);\n"
-"		data = (float *)malloc(sizeof(T) * other.length);\n"
+"		data = (T *)malloc(sizeof(T) * other.length);\n"
 "		memcpy(data, other.data, sizeof(T) * other.length);\n"
 "		length = other.length;\n"
 "	}\n"

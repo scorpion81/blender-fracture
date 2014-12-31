@@ -37,9 +37,7 @@
 
 #include "BLI_math.h"
 #include "BLI_rect.h"
-#include "BLI_listbase.h"
 #include "BLI_utildefines.h"
-#include "BLI_callbacks.h"
 
 #include "BKE_anim.h"
 #include "BKE_action.h"
@@ -55,7 +53,6 @@
 #include "BIF_gl.h"
 #include "BIF_glutil.h"
 
-#include "GPU_draw.h"
 #include "GPU_select.h"
 
 #include "WM_api.h"
@@ -64,14 +61,16 @@
 #include "ED_screen.h"
 #include "ED_armature.h"
 
-#include "RE_engine.h"
 
 #ifdef WITH_GAMEENGINE
-#include "BL_System.h"
+#  include "BLI_listbase.h"
+#  include "BLI_callbacks.h"
+
+#  include "GPU_draw.h"
+
+#  include "BL_System.h"
 #endif
 
-#include "RNA_access.h"
-#include "RNA_define.h"
 
 #include "view3d_intern.h"  /* own include */
 
@@ -356,6 +355,7 @@ static int view3d_smoothview_invoke(bContext *C, wmOperator *UNUSED(op), const w
 			view3d_smooth_view_state_restore(&sms->dst, v3d, rv3d);
 
 			ED_view3d_camera_lock_sync(v3d, rv3d);
+			ED_view3d_camera_lock_autokey(v3d, rv3d, C, true, true);
 		}
 		
 		if ((rv3d->viewlock & RV3D_LOCKED) == 0) {
@@ -382,6 +382,10 @@ static int view3d_smoothview_invoke(bContext *C, wmOperator *UNUSED(op), const w
 		v3d->lens  = sms->dst.lens * step + sms->src.lens * step_inv;
 
 		ED_view3d_camera_lock_sync(v3d, rv3d);
+		if (ED_screen_animation_playing(CTX_wm_manager(C))) {
+			ED_view3d_camera_lock_autokey(v3d, rv3d, C, true, true);
+		}
+
 	}
 	
 	if (rv3d->viewlock & RV3D_BOXVIEW)

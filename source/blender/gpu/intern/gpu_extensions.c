@@ -49,7 +49,6 @@
 #include "GPU_extensions.h"
 #include "GPU_simple_shader.h"
 
-#include "intern/gpu_codegen.h"
 #include "intern/gpu_extensions_private.h"
 
 #include <stdlib.h>
@@ -102,6 +101,16 @@ static struct GPUGlobal {
 	GPUTexture *invalid_tex_2D;
 	GPUTexture *invalid_tex_3D;
 } GG = {1, 0};
+
+/* Number of maximum output slots. We support 4 outputs for now (usually we wouldn't need more to preserve fill rate) */
+#define GPU_FB_MAX_SLOTS 4
+
+struct GPUFrameBuffer {
+	GLuint object;
+	GPUTexture *colortex[GPU_FB_MAX_SLOTS];
+	GPUTexture *depthtex;
+};
+
 
 /* GPU Types */
 
@@ -259,7 +268,7 @@ int GPU_print_error(const char *str)
 {
 	GLenum errCode;
 
-	if (G.debug & G_DEBUG) {
+	if ((G.debug & G_DEBUG)) {
 		if ((errCode = glGetError()) != GL_NO_ERROR) {
 			fprintf(stderr, "%s opengl error: %s\n", str, gluErrorString(errCode));
 			return 1;
@@ -323,6 +332,7 @@ struct GPUTexture {
 	int fromblender;		/* we got the texture from Blender */
 
 	GPUFrameBuffer *fb;		/* GPUFramebuffer this texture is attached to */
+	int fb_attachment;		/* slot the texture is attached to */
 	int depth;				/* is a depth texture? */
 };
 
@@ -370,6 +380,7 @@ static GPUTexture *GPU_texture_create_nD(int w, int h, int n, float *fpixels, in
 	tex->refcount = 1;
 	tex->target = (n == 1)? GL_TEXTURE_1D: GL_TEXTURE_2D;
 	tex->depth = depth;
+	tex->fb_attachment = -1;
 
 	glGenTextures(1, &tex->bindcode);
 
@@ -737,7 +748,13 @@ void GPU_texture_bind(GPUTexture *tex, int number)
 		return;
 	}
 
-	if (number == -1)
+	if ((G.debug & G_DEBUG)) {
+		if (tex->fb && tex->fb->object == GG.currentfb) {
+			fprintf(stderr, "Feedback loop warning!: Attempting to bind texture attached to current framebuffer!\n");
+		}
+	}
+
+	if (number < 0)
 		return;
 
 	GPU_print_error("Pre Texture Bind");
@@ -791,7 +808,7 @@ void GPU_texture_free(GPUTexture *tex)
 	
 	if (tex->refcount == 0) {
 		if (tex->fb)
-			GPU_framebuffer_texture_detach(tex->fb, tex);
+			GPU_framebuffer_texture_detach(tex);
 		if (tex->bindcode && !tex->fromblender)
 			glDeleteTextures(1, &tex->bindcode);
 
@@ -831,12 +848,6 @@ GPUFrameBuffer *GPU_texture_framebuffer(GPUTexture *tex)
 
 /* GPUFrameBuffer */
 
-struct GPUFrameBuffer {
-	GLuint object;
-	GPUTexture *colortex;
-	GPUTexture *depthtex;
-};
-
 GPUFrameBuffer *GPU_framebuffer_create(void)
 {
 	GPUFrameBuffer *fb;
@@ -854,19 +865,35 @@ GPUFrameBuffer *GPU_framebuffer_create(void)
 		return NULL;
 	}
 
+	/* make sure no read buffer is enabled, so completeness check will not fail. We set those at binding time */
+	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fb->object);
+	glReadBuffer(GL_NONE);
+	glDrawBuffer(GL_NONE);
+	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
+	
 	return fb;
 }
 
-int GPU_framebuffer_texture_attach(GPUFrameBuffer *fb, GPUTexture *tex, char err_out[256])
+int GPU_framebuffer_texture_attach(GPUFrameBuffer *fb, GPUTexture *tex, int slot, char err_out[256])
 {
-	GLenum status;
 	GLenum attachment;
 	GLenum error;
+
+	if (slot >= GPU_FB_MAX_SLOTS) {
+		fprintf(stderr, "Attaching to index %d framebuffer slot unsupported in blender use at most %d\n", slot, GPU_FB_MAX_SLOTS);
+		return 0;
+	}
+
+	if ((G.debug & G_DEBUG)) {
+		if (tex->number != -1) {
+			fprintf(stderr, "Feedback loop warning!: Attempting to attach texture to framebuffer while still bound to texture unit for drawing!");
+		}
+	}
 
 	if (tex->depth)
 		attachment = GL_DEPTH_ATTACHMENT_EXT;
 	else
-		attachment = GL_COLOR_ATTACHMENT0_EXT;
+		attachment = GL_COLOR_ATTACHMENT0_EXT + slot;
 
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fb->object);
 	GG.currentfb = fb->object;
@@ -885,42 +912,29 @@ int GPU_framebuffer_texture_attach(GPUFrameBuffer *fb, GPUTexture *tex, char err
 		return 0;
 	}
 
-	if (tex->depth) {
-		glDrawBuffer(GL_NONE);
-		glReadBuffer(GL_NONE);
-	}
-	else {
-		glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);
-		glReadBuffer(GL_COLOR_ATTACHMENT0_EXT);
-	}
-
-	status = glCheckFramebufferStatusEXT(GL_FRAMEBUFFER_EXT);
-
-	if (status != GL_FRAMEBUFFER_COMPLETE_EXT) {
-		GPU_framebuffer_restore();
-		GPU_print_framebuffer_error(status, err_out);
-		return 0;
-	}
-
 	if (tex->depth)
 		fb->depthtex = tex;
 	else
-		fb->colortex = tex;
+		fb->colortex[slot] = tex;
 
 	tex->fb= fb;
+	tex->fb_attachment = slot;
 
 	return 1;
 }
 
-void GPU_framebuffer_texture_detach(GPUFrameBuffer *fb, GPUTexture *tex)
+void GPU_framebuffer_texture_detach(GPUTexture *tex)
 {
 	GLenum attachment;
+	GPUFrameBuffer *fb;
 
 	if (!tex->fb)
 		return;
 
-	if (GG.currentfb != tex->fb->object) {
-		glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, tex->fb->object);
+	fb = tex->fb;
+
+	if (GG.currentfb != fb->object) {
+		glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fb->object);
 		GG.currentfb = tex->fb->object;
 	}
 
@@ -929,18 +943,25 @@ void GPU_framebuffer_texture_detach(GPUFrameBuffer *fb, GPUTexture *tex)
 		attachment = GL_DEPTH_ATTACHMENT_EXT;
 	}
 	else {
-		fb->colortex = NULL;
-		attachment = GL_COLOR_ATTACHMENT0_EXT;
+		BLI_assert(fb->colortex[tex->fb_attachment] == tex);
+		fb->colortex[tex->fb_attachment] = NULL;
+		attachment = GL_COLOR_ATTACHMENT0_EXT + tex->fb_attachment;
 	}
 
 	glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, attachment,
 		tex->target, 0, 0);
 
 	tex->fb = NULL;
+	tex->fb_attachment = -1;
 }
 
-void GPU_framebuffer_texture_bind(GPUFrameBuffer *UNUSED(fb), GPUTexture *tex, int w, int h)
+void GPU_texture_bind_as_framebuffer(GPUTexture *tex)
 {
+	if (!tex->fb) {
+		fprintf(stderr, "Error, texture not bound to framebuffer!");
+		return;
+	}
+
 	/* push attributes */
 	glPushAttrib(GL_ENABLE_BIT | GL_VIEWPORT_BIT);
 	glDisable(GL_SCISSOR_TEST);
@@ -948,8 +969,18 @@ void GPU_framebuffer_texture_bind(GPUFrameBuffer *UNUSED(fb), GPUTexture *tex, i
 	/* bind framebuffer */
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, tex->fb->object);
 
+	if (tex->depth) {
+		glDrawBuffer(GL_NONE);
+		glReadBuffer(GL_NONE);
+	}
+	else {
+		/* last bound prevails here, better allow explicit control here too */
+		glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT + tex->fb_attachment);
+		glReadBuffer(GL_COLOR_ATTACHMENT0_EXT + tex->fb_attachment);
+	}
+	
 	/* push matrices and set default viewport and matrix */
-	glViewport(0, 0, w, h);
+	glViewport(0, 0, tex->w, tex->h);
 	GG.currentfb = tex->fb->object;
 
 	glMatrixMode(GL_PROJECTION);
@@ -957,6 +988,35 @@ void GPU_framebuffer_texture_bind(GPUFrameBuffer *UNUSED(fb), GPUTexture *tex, i
 	glMatrixMode(GL_MODELVIEW);
 	glPushMatrix();
 }
+
+void GPU_framebuffer_slot_bind(GPUFrameBuffer *fb, int slot)
+{
+	if (!fb->colortex[slot]) {
+		fprintf(stderr, "Error, framebuffer slot empty!");
+		return;
+	}
+
+	/* push attributes */
+	glPushAttrib(GL_ENABLE_BIT | GL_VIEWPORT_BIT);
+	glDisable(GL_SCISSOR_TEST);
+
+	/* bind framebuffer */
+	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fb->object);
+
+	/* last bound prevails here, better allow explicit control here too */
+	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT + slot);
+	glReadBuffer(GL_COLOR_ATTACHMENT0_EXT + slot);
+
+	/* push matrices and set default viewport and matrix */
+	glViewport(0, 0, fb->colortex[slot]->w, fb->colortex[slot]->h);
+	GG.currentfb = fb->object;
+
+	glMatrixMode(GL_PROJECTION);
+	glPushMatrix();
+	glMatrixMode(GL_MODELVIEW);
+	glPushMatrix();
+}
+
 
 void GPU_framebuffer_texture_unbind(GPUFrameBuffer *UNUSED(fb), GPUTexture *UNUSED(tex))
 {
@@ -968,15 +1028,42 @@ void GPU_framebuffer_texture_unbind(GPUFrameBuffer *UNUSED(fb), GPUTexture *UNUS
 
 	/* restore attributes */
 	glPopAttrib();
-	glEnable(GL_SCISSOR_TEST);
 }
+
+
+bool GPU_framebuffer_check_valid(GPUFrameBuffer *fb, char err_out[256])
+{
+	GLenum status;
+	
+	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fb->object);
+	GG.currentfb = fb->object;
+	
+	/* Clean glError buffer. */
+	while (glGetError() != GL_NO_ERROR) {}
+	
+	status = glCheckFramebufferStatusEXT(GL_FRAMEBUFFER_EXT);
+	
+	if (status != GL_FRAMEBUFFER_COMPLETE_EXT) {
+		GPU_framebuffer_restore();
+		GPU_print_framebuffer_error(status, err_out);
+		return false;
+	}
+	
+	return true;
+}
+
 
 void GPU_framebuffer_free(GPUFrameBuffer *fb)
 {
+	int i;
 	if (fb->depthtex)
-		GPU_framebuffer_texture_detach(fb, fb->depthtex);
-	if (fb->colortex)
-		GPU_framebuffer_texture_detach(fb, fb->colortex);
+		GPU_framebuffer_texture_detach(fb->depthtex);
+
+	for (i = 0; i < GPU_FB_MAX_SLOTS; i++) {
+		if (fb->colortex[i]) {
+			GPU_framebuffer_texture_detach(fb->colortex[i]);
+		}
+	}
 
 	if (fb->object) {
 		glDeleteFramebuffersEXT(1, &fb->object);
@@ -1017,6 +1104,10 @@ void GPU_framebuffer_blur(GPUFrameBuffer *fb, GPUTexture *tex, GPUFrameBuffer *b
 	/* We do the bind ourselves rather than using GPU_framebuffer_texture_bind() to avoid
 	 * pushing unnecessary matrices onto the OpenGL stack. */
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, blurfb->object);
+	glDrawBuffer(GL_COLOR_ATTACHMENT0);
+	
+	/* avoid warnings from texture binding */
+	GG.currentfb = blurfb->object;
 
 	GPU_shader_bind(blur_shader);
 	GPU_shader_uniform_vector(blur_shader, scale_uniform, 2, 1, (float *)scaleh);
@@ -1046,6 +1137,10 @@ void GPU_framebuffer_blur(GPUFrameBuffer *fb, GPUTexture *tex, GPUFrameBuffer *b
 	/* Blurring vertically */
 
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fb->object);
+	glDrawBuffer(GL_COLOR_ATTACHMENT0);
+	
+	GG.currentfb = fb->object;
+	
 	glViewport(0, 0, GPU_texture_opengl_width(tex), GPU_texture_opengl_height(tex));
 	GPU_shader_uniform_vector(blur_shader, scale_uniform, 2, 1, (float *)scalev);
 	GPU_shader_uniform_texture(blur_shader, texture_source_uniform, blurtex);
@@ -1067,10 +1162,6 @@ struct GPUOffScreen {
 	GPUFrameBuffer *fb;
 	GPUTexture *color;
 	GPUTexture *depth;
-
-	/* requested width/height, may be smaller than actual texture size due
-	 * to missing non-power of two support, so we compensate for that */
-	int w, h;
 };
 
 GPUOffScreen *GPU_offscreen_create(int width, int height, char err_out[256])
@@ -1078,8 +1169,6 @@ GPUOffScreen *GPU_offscreen_create(int width, int height, char err_out[256])
 	GPUOffScreen *ofs;
 
 	ofs= MEM_callocN(sizeof(GPUOffScreen), "GPUOffScreen");
-	ofs->w= width;
-	ofs->h= height;
 
 	ofs->fb = GPU_framebuffer_create();
 	if (!ofs->fb) {
@@ -1093,7 +1182,7 @@ GPUOffScreen *GPU_offscreen_create(int width, int height, char err_out[256])
 		return NULL;
 	}
 
-	if (!GPU_framebuffer_texture_attach(ofs->fb, ofs->depth, err_out)) {
+	if (!GPU_framebuffer_texture_attach(ofs->fb, ofs->depth, 0, err_out)) {
 		GPU_offscreen_free(ofs);
 		return NULL;
 	}
@@ -1104,9 +1193,15 @@ GPUOffScreen *GPU_offscreen_create(int width, int height, char err_out[256])
 		return NULL;
 	}
 
-	if (!GPU_framebuffer_texture_attach(ofs->fb, ofs->color, err_out)) {
+	if (!GPU_framebuffer_texture_attach(ofs->fb, ofs->color, 0, err_out)) {
 		GPU_offscreen_free(ofs);
 		return NULL;
+	}
+	
+	/* check validity at the very end! */
+	if (!GPU_framebuffer_check_valid(ofs->fb, err_out)) {
+		GPU_offscreen_free(ofs);
+		return NULL;		
 	}
 
 	GPU_framebuffer_restore();
@@ -1129,7 +1224,7 @@ void GPU_offscreen_free(GPUOffScreen *ofs)
 void GPU_offscreen_bind(GPUOffScreen *ofs)
 {
 	glDisable(GL_SCISSOR_TEST);
-	GPU_framebuffer_texture_bind(ofs->fb, ofs->color, ofs->w, ofs->h);
+	GPU_texture_bind_as_framebuffer(ofs->color);
 }
 
 void GPU_offscreen_unbind(GPUOffScreen *ofs)
@@ -1141,17 +1236,17 @@ void GPU_offscreen_unbind(GPUOffScreen *ofs)
 
 void GPU_offscreen_read_pixels(GPUOffScreen *ofs, int type, void *pixels)
 {
-	glReadPixels(0, 0, ofs->w, ofs->h, GL_RGBA, type, pixels);
+	glReadPixels(0, 0, ofs->color->w, ofs->color->h, GL_RGBA, type, pixels);
 }
 
 int GPU_offscreen_width(GPUOffScreen *ofs)
 {
-	return ofs->w;
+	return ofs->color->w;
 }
 
 int GPU_offscreen_height(GPUOffScreen *ofs)
 {
-	return ofs->h;
+	return ofs->color->h;
 }
 
 /* GPUShader */
@@ -1173,8 +1268,8 @@ static void shader_print_errors(const char *task, char *log, const char **code, 
 	for (i = 0; i < totcode; i++) {
 		const char *c, *pos, *end = code[i] + strlen(code[i]);
 		int line = 1;
-				
-		if (G.debug & G_DEBUG) {
+
+		if ((G.debug & G_DEBUG)) {
 			fprintf(stderr, "===== shader string %d ====\n", i + 1);
 
 			c = code[i];

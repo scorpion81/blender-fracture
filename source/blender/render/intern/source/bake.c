@@ -54,8 +54,6 @@
 #include "IMB_imbuf.h"
 #include "IMB_colormanagement.h"
 
-#include "RE_bake.h"
-
 /* local include */
 #include "rayintersection.h"
 #include "rayobject.h"
@@ -612,6 +610,10 @@ static int get_next_bake_face(BakeShade *bs)
 
 	for (; obi; obi = obi->next, v = 0) {
 		obr = obi->obr;
+
+		/* only allow non instances here */
+		if (obr->flag & R_INSTANCEABLE)
+			continue;
 
 		for (; v < obr->totvlak; v++) {
 			vlr = RE_findOrAddVlak(obr, v);

@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include "attribute.h"
@@ -25,6 +25,7 @@
 #include "blender_util.h"
 
 #include "util_foreach.h"
+#include "util_logging.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -577,6 +578,10 @@ void ExportCurveSegments(Scene *scene, Mesh *mesh, ParticleCurveData *CData)
 		}
 	}
 
+	if (num_curves > 0) {
+		VLOG(1) << "Exporting curve segments for mesh " << mesh->name;
+	}
+
 	mesh->curve_keys.reserve(mesh->curve_keys.size() + num_keys);
 	mesh->curves.reserve(mesh->curves.size() + num_curves);
 
@@ -612,9 +617,9 @@ void ExportCurveSegments(Scene *scene, Mesh *mesh, ParticleCurveData *CData)
 		}
 	}
 
-	/* check allocation*/
+	/* check allocation */
 	if((mesh->curve_keys.size() !=  num_keys) || (mesh->curves.size() !=  num_curves)) {
-		/* allocation failed -> clear data */
+		VLOG(1) << "Allocation failed, clearing data";
 		mesh->curve_keys.clear();
 		mesh->curves.clear();
 		mesh->curve_attributes.clear();
@@ -623,12 +628,16 @@ void ExportCurveSegments(Scene *scene, Mesh *mesh, ParticleCurveData *CData)
 
 static void ExportCurveSegmentsMotion(Scene *scene, Mesh *mesh, ParticleCurveData *CData, int time_index)
 {
+	VLOG(1) << "Exporting curve motion segments for mesh " << mesh->name
+	        << ", time index " << time_index;
+
 	/* find attribute */
 	Attribute *attr_mP = mesh->curve_attributes.find(ATTR_STD_MOTION_VERTEX_POSITION);
 	bool new_attribute = false;
 
 	/* add new attribute if it doesn't exist already */
 	if(!attr_mP) {
+		VLOG(1) << "Creating new motion vertex position attribute";
 		attr_mP = mesh->curve_attributes.add(ATTR_STD_MOTION_VERTEX_POSITION);
 		new_attribute = true;
 	}
@@ -675,9 +684,12 @@ static void ExportCurveSegmentsMotion(Scene *scene, Mesh *mesh, ParticleCurveDat
 	if(new_attribute) {
 		if(i != numkeys || !have_motion) {
 			/* no motion, remove attributes again */
+			VLOG(1) << "No motion, removing attribute";
 			mesh->curve_attributes.remove(ATTR_STD_MOTION_VERTEX_POSITION);
 		}
 		else if(time_index > 0) {
+			VLOG(1) << "Filling in new motion vertex position for time_index"
+			        << time_index;
 			/* motion, fill up previous steps that we might have skipped because
 			 * they had no motion, but we need them anyway now */
 			for(int step = 0; step < time_index; step++) {

@@ -31,8 +31,6 @@
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
 
-#include "BLF_translation.h"
-
 #include "BKE_context.h"
 #include "BKE_sketch.h"
 
@@ -1575,7 +1573,7 @@ static int sk_getIntersections(bContext *C, ListBase *list, SK_Sketch *sketch, S
 		added = MAX2(s_added, added);
 	}
 
-	BLI_sortlist(list, cmpIntersections);
+	BLI_listbase_sort(list, cmpIntersections);
 
 	return added;
 }

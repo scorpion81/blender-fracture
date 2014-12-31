@@ -85,6 +85,7 @@ typedef struct {
 	GHash *undoIndex;
 	ListBase fcurves, drivers;
 	int actnu;
+	int flag;
 } UndoCurve;
 
 /* Definitions needed for shape keys */
@@ -766,16 +767,7 @@ static void calc_shapeKeys(Object *obedit)
 
 		/* editing the base key should update others */
 		if (cu->key->type == KEY_RELATIVE) {
-			int act_is_basis = 0;
-			/* find if this key is a basis for any others */
-			for (currkey = cu->key->block.first; currkey; currkey = currkey->next) {
-				if (editnurb->shapenr - 1 == currkey->relative) {
-					act_is_basis = 1;
-					break;
-				}
-			}
-
-			if (act_is_basis) { /* active key is a base */
+			if (BKE_keyblock_is_basis(cu->key, editnurb->shapenr - 1)) { /* active key is a base */
 				int totvec = 0;
 
 				/* Calculate needed memory to store offset */
@@ -1358,7 +1350,7 @@ void make_editNurb(Object *obedit)
 		if (actkey) {
 			// XXX strcpy(G.editModeTitleExtra, "(Key) ");
 			undo_editmode_clear();
-			BKE_key_convert_to_curve(actkey, cu, &cu->nurb);
+			BKE_keyblock_convert_to_curve(actkey, cu, &cu->nurb);
 		}
 
 		if (editnurb) {
@@ -5382,10 +5374,10 @@ static int toggle_cyclic_invoke(bContext *C, wmOperator *op, const wmEvent *UNUS
 		for (nu = editnurb->first; nu; nu = nu->next) {
 			if (nu->pntsu > 1 || nu->pntsv > 1) {
 				if (nu->type == CU_NURBS) {
-					pup = uiPupMenuBegin(C, IFACE_("Direction"), ICON_NONE);
-					layout = uiPupMenuLayout(pup);
+					pup = UI_popup_menu_begin(C, IFACE_("Direction"), ICON_NONE);
+					layout = UI_popup_menu_layout(pup);
 					uiItemsEnumO(layout, op->type->idname, "direction");
-					uiPupMenuEnd(C, pup);
+					UI_popup_menu_end(C, pup);
 					return OPERATOR_INTERFACE;
 				}
 			}
@@ -6889,6 +6881,7 @@ static void undoCurve_to_editCurve(void *ucu, void *UNUSED(edata), void *cu_v)
 
 	cu->actvert = undoCurve->actvert;
 	cu->actnu = undoCurve->actnu;
+	cu->flag = undoCurve->flag;
 	ED_curve_updateAnimPaths(cu);
 }
 
@@ -6928,6 +6921,7 @@ static void *editCurve_to_undoCurve(void *UNUSED(edata), void *cu_v)
 
 	undoCurve->actvert = cu->actvert;
 	undoCurve->actnu = cu->actnu;
+	undoCurve->flag = cu->flag;
 
 	return undoCurve;
 }

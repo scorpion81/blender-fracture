@@ -49,13 +49,11 @@
 
 #include "DNA_genfile.h"
 
-#include "BLI_blenlib.h"
-#include "BLI_math.h"
-
 #include "BKE_main.h"
 #include "BKE_node.h"
 
 #include "BLI_math.h"
+#include "BLI_listbase.h"
 #include "BLI_string.h"
 
 #include "BLO_readfile.h"
@@ -310,7 +308,7 @@ void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 		{
 			Scene *scene;
 			for (scene = main->scene.first; scene; scene = scene->id.next) {
-				int num_layers = BLI_countlist(&scene->r.layers);
+				int num_layers = BLI_listbase_count(&scene->r.layers);
 				scene->r.actlay = min_ff(scene->r.actlay, num_layers - 1);
 			}
 		}
@@ -436,5 +434,28 @@ void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 				}
 			}
 		}
+	}
+
+	if (!MAIN_VERSION_ATLEAST(main, 273, 1)) {
+#define	BRUSH_RAKE (1 << 7)
+#define BRUSH_RANDOM_ROTATION (1 << 25)
+
+		Brush *br;
+
+		for (br = main->brush.first; br; br = br->id.next) {
+			if (br->flag & BRUSH_RAKE) {
+				br->mtex.brush_angle_mode |= MTEX_ANGLE_RAKE;
+				br->mask_mtex.brush_angle_mode |= MTEX_ANGLE_RAKE;
+			}
+			else if (br->flag & BRUSH_RANDOM_ROTATION) {
+				br->mtex.brush_angle_mode |= MTEX_ANGLE_RANDOM;
+				br->mask_mtex.brush_angle_mode |= MTEX_ANGLE_RANDOM;
+			}
+			br->mtex.random_angle = 2.0f * M_PI;
+			br->mask_mtex.random_angle = 2.0f * M_PI;
+		}
+
+#undef BRUSH_RAKE
+#undef BRUSH_RANDOM_ROTATION
 	}
 }

@@ -73,13 +73,11 @@ static DerivedMesh *navmesh_dm_createNavMeshForVisualization(DerivedMesh *dm);
 #include "BLI_sys_types.h" /* for intptr_t support */
 
 #include "GPU_buffers.h"
-#include "GPU_draw.h"
 #include "GPU_extensions.h"
 #include "GPU_glew.h"
-#include "GPU_material.h"
 
 /* very slow! enable for testing only! */
-// #define USE_MODIFIER_VALIDATE
+//#define USE_MODIFIER_VALIDATE
 
 #ifdef USE_MODIFIER_VALIDATE
 #  define ASSERT_IS_VALID_DM(dm) (BLI_assert((dm == NULL) || (DM_is_valid(dm) == true)))
@@ -914,7 +912,7 @@ DerivedMesh *mesh_create_derived_for_modifier(Scene *scene, Object *ob,
 	if (mti->isDisabled && mti->isDisabled(md, 0)) return NULL;
 	
 	if (build_shapekey_layers && me->key && (kb = BLI_findlink(&me->key->block, ob->shapenr - 1))) {
-		BKE_key_convert_to_mesh(kb, me);
+		BKE_keyblock_convert_to_mesh(kb, me);
 	}
 	
 	if (mti->type == eModifierTypeType_OnlyDeform) {
@@ -1221,14 +1219,14 @@ static void calc_weightpaint_vert_array(Object *ob, DerivedMesh *dm, int const d
 		unsigned int i;
 
 		/* variables for multipaint */
-		const int defbase_tot = BLI_countlist(&ob->defbase);
+		const int defbase_tot = BLI_listbase_count(&ob->defbase);
 		const int defbase_act = ob->actdef - 1;
 
 		int defbase_sel_tot = 0;
 		bool *defbase_sel = NULL;
 
 		if (draw_flag & CALC_WP_MULTIPAINT) {
-			defbase_sel = BKE_objdef_selected_get(ob, defbase_tot, &defbase_sel_tot);
+			defbase_sel = BKE_object_defgroup_selected_get(ob, defbase_tot, &defbase_sel_tot);
 		}
 
 		for (i = numVerts; i != 0; i--, wc++, dv++) {
@@ -1486,8 +1484,8 @@ static void mesh_calc_modifiers(Scene *scene, Object *ob, float (*inputVertexCos
 	MultiresModifierData *mmd = get_multires_modifier(scene, ob, 0);
 	const bool has_multires = (mmd && mmd->sculptlvl != 0);
 	bool multires_applied = false;
-	const bool sculpt_mode = ob->mode & OB_MODE_SCULPT && ob->sculpt;
-	const bool sculpt_dyntopo = (sculpt_mode && ob->sculpt->bm);
+	const bool sculpt_mode = ob->mode & OB_MODE_SCULPT && ob->sculpt && !useRenderParams;
+	const bool sculpt_dyntopo = (sculpt_mode && ob->sculpt->bm)  && !useRenderParams;
 	const int draw_flag = dm_drawflag_calc(scene->toolsettings);
 
 	/* Generic preview only in object mode! */
@@ -1977,10 +1975,10 @@ bool editbmesh_modifier_is_enabled(Scene *scene, ModifierData *md, DerivedMesh *
 	if (!modifier_isEnabled(scene, md, required_mode)) return 0;
 	if ((mti->flags & eModifierTypeFlag_RequiresOriginalData) && dm) {
 		modifier_setError(md, "Modifier requires original data, bad stack position");
-		return 0;
+		return false;
 	}
 	
-	return 1;
+	return true;
 }
 
 static void editbmesh_calc_modifiers(Scene *scene, Object *ob, BMEditMesh *em, DerivedMesh **cage_r,
@@ -2960,7 +2958,7 @@ void DM_vertex_attributes_from_gpu(DerivedMesh *dm, GPUVertexAttribs *gattribs, 
 				a = attribs->tottface++;
 
 				if (layer != -1) {
-					attribs->tface[a].array = tfdata->layers[layer].data;
+					attribs->tface[a].array = NULL;
 					attribs->tface[a].em_offset = ldata->layers[layer].offset;
 				}
 				else {
@@ -3007,7 +3005,7 @@ void DM_vertex_attributes_from_gpu(DerivedMesh *dm, GPUVertexAttribs *gattribs, 
 				a = attribs->totmcol++;
 
 				if (layer != -1) {
-					attribs->mcol[a].array = tfdata->layers[layer].data;
+					attribs->mcol[a].array = NULL;
 					/* odd, store the offset for a different layer type here, but editmode draw code expects it */
 					attribs->mcol[a].em_offset = ldata->layers[layer].offset;
 				}

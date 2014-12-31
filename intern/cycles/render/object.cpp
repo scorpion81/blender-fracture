@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include "device.h"
@@ -317,6 +317,9 @@ void ObjectManager::device_update_transforms(Device *device, DeviceScene *dscene
 			if(!mesh->attributes.find(ATTR_STD_MOTION_VERTEX_POSITION)) {
 				mtfm_pre = mtfm_pre * itfm;
 				mtfm_post = mtfm_post * itfm;
+			}
+			else {
+				flag |= SD_OBJECT_HAS_VERTEX_MOTION;
 			}
 
 			memcpy(&objects_vector[i*OBJECT_VECTOR_SIZE+0], &mtfm_pre, sizeof(float4)*3);

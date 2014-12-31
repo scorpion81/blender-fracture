@@ -200,6 +200,12 @@ static bool transdata_check_local_center(TransInfo *t, short around)
 	        );
 }
 
+bool transdata_check_local_islands(TransInfo *t, short around)
+{
+	return ((around == V3D_LOCAL) && (
+	        (t->obedit && ELEM(t->obedit->type, OB_MESH))));
+}
+
 /* ************************** SPACE DEPENDANT CODE **************************** */
 
 void setTransformViewMatrices(TransInfo *t)
@@ -2005,6 +2011,12 @@ bool initTransform(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *eve
 	if ((prop = RNA_struct_find_property(op->ptr, "texture_space")) && RNA_property_is_set(op->ptr, prop)) {
 		if (RNA_property_boolean_get(op->ptr, prop)) {
 			options |= CTX_TEXTURE;
+		}
+	}
+	
+	if ((prop = RNA_struct_find_property(op->ptr, "gpencil_strokes")) && RNA_property_is_set(op->ptr, prop)) {
+		if (RNA_property_boolean_get(op->ptr, prop)) {
+			options |= CTX_GPENCIL_STROKES;
 		}
 	}
 
@@ -4060,6 +4072,11 @@ static void initTranslation(TransInfo *t)
 		t->snap[0] = 0.0f;
 		t->snap[1] = ED_node_grid_size() * NODE_GRID_STEPS;
 		t->snap[2] = ED_node_grid_size();
+	}
+	else if (t->spacetype == SPACE_IPO) {
+		t->snap[0] = 0.0f;
+		t->snap[1] = 1.0;
+		t->snap[2] = 0.1f;
 	}
 	else {
 		t->snap[0] = 0.0f;
@@ -7121,10 +7138,11 @@ static void headerSeqSlide(TransInfo *t, float val[2], char str[MAX_INFO_LEN])
 	                    WM_bool_as_string((t->flag & T_ALT_TRANSFORM) != 0));
 }
 
-static void applySeqSlideValue(TransInfo *t, const float val[2])
+static void applySeqSlideValue(TransInfo *t, const float val[2], int frame)
 {
 	TransData *td = t->data;
 	int i;
+	TransSeq *ts = t->customData;
 
 	for (i = 0; i < t->total; i++, td++) {
 		float tvec[2];
@@ -7139,15 +7157,21 @@ static void applySeqSlideValue(TransInfo *t, const float val[2])
 
 		mul_v2_fl(tvec, td->factor);
 
-		td->loc[0] = td->iloc[0] + tvec[0];
+		if (t->modifiers & MOD_SNAP_INVERT) {
+			td->loc[0] = frame + td->factor * (td->iloc[0] - ts->min);
+		}
+		else {
+			td->loc[0] = td->iloc[0] + tvec[0];
+		}
+
 		td->loc[1] = td->iloc[1] + tvec[1];
 	}
 }
 
-static void applySeqSlide(TransInfo *t, const int UNUSED(mval[2]))
+static void applySeqSlide(TransInfo *t, const int mval[2])
 {
 	char str[MAX_INFO_LEN];
-
+	int snap_frame = 0;
 	if (t->con.mode & CON_APPLY) {
 		float pvec[3] = {0.0f, 0.0f, 0.0f};
 		float tvec[3];
@@ -7155,7 +7179,8 @@ static void applySeqSlide(TransInfo *t, const int UNUSED(mval[2]))
 		copy_v3_v3(t->values, tvec);
 	}
 	else {
-		snapGridIncrement(t, t->values);
+		snap_frame = snapSequenceBounds(t, mval);
+		// snapGridIncrement(t, t->values);
 		applyNumInput(&t->num, t->values);
 	}
 
@@ -7163,7 +7188,7 @@ static void applySeqSlide(TransInfo *t, const int UNUSED(mval[2]))
 	t->values[1] = floor(t->values[1] + 0.5f);
 
 	headerSeqSlide(t, t->values, str);
-	applySeqSlideValue(t, t->values);
+	applySeqSlideValue(t, t->values, snap_frame);
 
 	recalcData(t);
 
