@@ -371,14 +371,6 @@ BLI_INLINE MPoly *which_mpoly(ExportMeshData *export_data, int which_mesh)
 	return mpoly;
 }
 
-static void allocate_custom_layers(CustomData *data, int type, int num_elements, int num_layers)
-{
-	int i;
-	for (i = 0; i < num_layers; i++) {
-		CustomData_add_layer(data, type, CD_DEFAULT, NULL, num_elements);
-	}
-}
-
 /* Create new external mesh */
 static void exporter_InitGeomArrays(ExportMeshData *export_data,
                                     int num_verts, int num_edges,
@@ -398,33 +390,14 @@ static void exporter_InitGeomArrays(ExportMeshData *export_data,
 	export_data->mloop = dm->getLoopArray(dm);
 	export_data->mpoly = dm->getPolyArray(dm);
 
-	/* Allocate layers for UV layers and vertex colors.
-	 * Without this interpolation of those data will not happen.
-	 */
-	allocate_custom_layers(&dm->loopData, CD_MLOOPCOL, num_loops,
-	                       CustomData_number_of_layers(&dm_left->loopData, CD_MLOOPCOL));
-	allocate_custom_layers(&dm->loopData, CD_MLOOPUV, num_loops,
-	                       CustomData_number_of_layers(&dm_left->loopData, CD_MLOOPUV));
-
-	allocate_custom_layers(&dm->loopData, CD_MLOOPCOL, num_loops,
-	                       CustomData_number_of_layers(&dm_right->loopData, CD_MLOOPCOL));
-	allocate_custom_layers(&dm->loopData, CD_MLOOPUV, num_loops,
-	                       CustomData_number_of_layers(&dm_right->loopData, CD_MLOOPUV));
-
-
-	/* also allocate layers for vertex weights,
-	 * for painted weights interpolation on fracture modifier */
-	allocate_custom_layers(&dm->vertData, CD_MDEFORMVERT, num_verts,
-	                       CustomData_number_of_layers(&dm_left->vertData, CD_MDEFORMVERT));
-
-	allocate_custom_layers(&dm->vertData, CD_MDEFORMVERT, num_verts,
-	                       CustomData_number_of_layers(&dm_right->vertData, CD_MDEFORMVERT));
-
 	/* Merge custom data layers from operands.
 	 *
 	 * Will only create custom data layers for all the layers which appears in
 	 * the operand. Data for those layers will not be allocated or initialized.
 	 */
+
+	CustomData_merge(&dm_left->vertData, &dm->vertData, merge_mask, CD_DEFAULT, num_verts);
+	CustomData_merge(&dm_right->vertData, &dm->vertData, merge_mask, CD_DEFAULT, num_verts);
 
 	CustomData_merge(&dm_left->loopData, &dm->loopData, merge_mask, CD_DEFAULT, num_loops);
 	CustomData_merge(&dm_right->loopData, &dm->loopData, merge_mask, CD_DEFAULT, num_loops);
