@@ -2402,7 +2402,7 @@ static int rigidbody_group_count_items(const ListBase *group, int *r_num_objects
 				if (isModifierActive(rmd))
 				{
 					found_modifiers = true;
-					*r_num_shards += BLI_countlist(&rmd->meshIslands);
+					*r_num_shards += BLI_listbase_count(&rmd->meshIslands);
 				}
 			}
 		}
@@ -2652,7 +2652,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 
 			if (isModifierActive(rmd)) {
 				float max_con_mass = 0;
-				int count = BLI_countlist(&rmd->meshIslands);
+				int count = BLI_listbase_count(&rmd->meshIslands);
 
 				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 					if (mi->rigidbody == NULL) {

@@ -782,7 +782,7 @@ void BKE_fracmesh_free(FracMesh *fm, bool doCustomData)
 /* DerivedMesh */
 static DerivedMesh *create_dm(FractureModifierData *fmd, bool doCustomData)
 {
-	int shard_count = fmd->shards_to_islands ? BLI_countlist(&fmd->islandShards) : fmd->frac_mesh->shard_count;
+	int shard_count = fmd->shards_to_islands ? BLI_listbase_count(&fmd->islandShards) : fmd->frac_mesh->shard_count;
 	ListBase *shardlist;
 	Shard *shard, *s;
 	

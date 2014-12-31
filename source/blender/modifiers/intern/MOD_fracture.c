@@ -1816,7 +1816,7 @@ static int prepareConstraintSearch(FractureModifierData *rmd, MeshIsland ***mesh
 	MeshIsland *mi;
 	int i = 0, islands = 0;
 
-	islands = BLI_countlist(&rmd->meshIslands);
+	islands = BLI_listbase_count(&rmd->meshIslands);
 	*mesh_islands = MEM_reallocN(*mesh_islands, islands * sizeof(MeshIsland *));
 	for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 		(*mesh_islands)[i] = mi;
@@ -1917,7 +1917,7 @@ static DerivedMesh *createCache(FractureModifierData *rmd, Object *ob, DerivedMe
 	if (rmd->dm && !rmd->shards_to_islands && (rmd->dm->getNumPolys(rmd->dm) > 0)) {
 		dm = CDDM_copy(rmd->dm);
 	}
-	else if (rmd->visible_mesh && (rmd->visible_mesh->totface > 0) && BLI_countlist(&rmd->meshIslands) > 1) {
+	else if (rmd->visible_mesh && (rmd->visible_mesh->totface > 0) && BLI_listbase_count(&rmd->meshIslands) > 1) {
 		dm = CDDM_from_bmesh(rmd->visible_mesh, true);
 	}
 
@@ -2453,7 +2453,7 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 				fmd->explo_shared = false;
 			}
 
-			printf("Islands: %d\n", BLI_countlist(&fmd->meshIslands));
+			printf("Islands: %d\n", BLI_listbase_count(&fmd->meshIslands));
 		}
 
 		start = PIL_check_seconds_timer();
@@ -2530,7 +2530,7 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 		fmd->refresh_constraints = false;
 
 		printf("Building constraints done, %g\n", PIL_check_seconds_timer() - start);
-		printf("Constraints: %d\n", BLI_countlist(&fmd->meshConstraints));
+		printf("Constraints: %d\n", BLI_listbase_count(&fmd->meshConstraints));
 	}
 
 	if (fmd->refresh_autohide)

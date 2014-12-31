@@ -2522,7 +2522,7 @@ static void convert_modifier_to_objects(ReportList *reports, Scene* scene, Objec
 	int i = 0;
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 
-	int count = BLI_countlist(&rmd->meshIslands);
+	int count = BLI_listbase_count(&rmd->meshIslands);
 	KDTree* objtree = BLI_kdtree_new(count);
 	Object** objs = MEM_callocN(sizeof(Object*) * count, "convert_objs");
 	float max_con_mass = 0;
@@ -2745,7 +2745,7 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 	int j = 0;
 	Object *parent = NULL;
 	Base *bas = NULL;
-	int count = BLI_countlist(&fmd->meshIslands);
+	int count = BLI_listbase_count(&fmd->meshIslands);
 	const char *name = BLI_strdupcat(ob->id.name, "_p_key");
 	float diff[3] = {0.0f, 0.0f, 0.0f};
 	float obloc[3];
@@ -2916,7 +2916,7 @@ static void convert_update(void *customdata)
 	if ((G.is_break) && (fmd->frac_mesh))
 		fmd->frac_mesh->cancel = 1;
 
-	progress = (float)(BLI_countlist(&fj->gr->gobject)) / (float)(fj->total_progress);
+	progress = (float)(BLI_listbase_count(&fj->gr->gobject)) / (float)(fj->total_progress);
 	(*fj->progress) = progress;
 }
 
@@ -2980,7 +2980,7 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 			}
 
 			if (rmd) {
-				int count = BLI_countlist(&rmd->meshIslands);
+				int count = BLI_listbase_count(&rmd->meshIslands);
 				int start = RNA_int_get(op->ptr, "start_frame");
 				int end = RNA_int_get(op->ptr, "end_frame");
 

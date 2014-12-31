@@ -5056,7 +5056,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 				}
 
 				link_list(fd, &fmd->meshIslands);
-				count = BLI_countlist(&fmd->islandShards);
+				count = BLI_listbase_count(&fmd->islandShards);
 
 				if ((fmd->islandShards.first == NULL || count == 0) && fm->shard_count > 0) {
 					/* oops, a refresh was missing, so disable this flag here better, otherwise
