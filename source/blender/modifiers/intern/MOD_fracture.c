@@ -716,7 +716,7 @@ static void points_from_particles(Object **ob, int totobj, Scene *scene, FracPoi
 						 * positions "sabotaging" fracture, default use case is using birth coordinates, let user decide... */
 						if (fmd->use_particle_birth_coordinates)
 						{
-							psys_get_birth_coordinates(&sim, pa, &birth, 0, 0);
+							psys_get_birth_coords(&sim, pa, &birth, 0, 0);
 						}
 						else {
 							psys_get_particle_state(&sim, p, &birth, 1);
