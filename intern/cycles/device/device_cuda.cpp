@@ -25,9 +25,11 @@
 
 #include "cuew.h"
 #include "util_debug.h"
+#include "util_logging.h"
 #include "util_map.h"
 #include "util_opengl.h"
 #include "util_path.h"
+#include "util_string.h"
 #include "util_system.h"
 #include "util_types.h"
 #include "util_time.h"
@@ -209,8 +211,11 @@ public:
 			cubin = path_get(string_printf("lib/kernel_experimental_sm_%d%d.cubin", major, minor));
 		else
 			cubin = path_get(string_printf("lib/kernel_sm_%d%d.cubin", major, minor));
-		if(path_exists(cubin))
+		VLOG(1) << "Testing for pre-compiled kernel " << cubin;
+		if(path_exists(cubin)) {
+			VLOG(1) << "Using precompiled kernel";
 			return cubin;
+		}
 
 		/* not found, try to use locally compiled kernel */
 		string kernel_path = path_get("kernel");
@@ -221,10 +226,12 @@ public:
 		else
 			cubin = string_printf("cycles_kernel_sm%d%d_%s.cubin", major, minor, md5.c_str());
 		cubin = path_user_get(path_join("cache", cubin));
-
+		VLOG(1) << "Testing for locally compiled kernel " << cubin;
 		/* if exists already, use it */
-		if(path_exists(cubin))
+		if(path_exists(cubin)) {
+			VLOG(1) << "Using locally compiled kernel";
 			return cubin;
+		}
 
 #ifdef _WIN32
 		if(have_precompiled_kernels()) {
@@ -245,6 +252,7 @@ public:
 		}
 
 		int cuda_version = cuewCompilerVersion();
+		VLOG(1) << "Found nvcc " << nvcc << ", CUDA version " << cuda_version;
 
 		if(cuda_version == 0) {
 			cuda_error_message("CUDA nvcc compiler version could not be parsed.");
@@ -1026,14 +1034,29 @@ bool device_cuda_init(void)
 		return result;
 
 	initialized = true;
-
-	if (cuewInit() == CUEW_SUCCESS) {
-		if(CUDADevice::have_precompiled_kernels())
+	int cuew_result = cuewInit();
+	if (cuew_result == CUEW_SUCCESS) {
+		VLOG(1) << "CUEW initialization succeeded";
+		if(CUDADevice::have_precompiled_kernels()) {
+			VLOG(1) << "Found precompiled  kernels";
 			result = true;
+		}
 #ifndef _WIN32
-		else if(cuewCompilerPath() != NULL)
+		else if(cuewCompilerPath() != NULL) {
+			VLOG(1) << "Found CUDA compiled " << cuewCompilerPath();
 			result = true;
+		}
+		else {
+			VLOG(1) << "Neither precompiled kernels nor CUDA compiler wad found,"
+			        << " unable to use CUDA";
+		}
 #endif
+	}
+	else {
+		VLOG(1) << "CUEW initialization failed: "
+		        << ((cuew_result == CUEW_ERROR_ATEXIT_FAILED)
+		            ? "Error setting up atexit() handler"
+		            : "Error opening the library");
 	}
 
 	return result;
@@ -1097,5 +1120,135 @@ void device_cuda_info(vector<DeviceInfo>& devices)
 		devices.insert(devices.end(), display_devices.begin(), display_devices.end());
 }
 
-CCL_NAMESPACE_END
+string device_cuda_capabilities(void)
+{
+	CUresult result = cuInit(0);
+	if(result != CUDA_SUCCESS) {
+		if(result != CUDA_ERROR_NO_DEVICE) {
+			return string("Error initializing CUDA: ") + cuewErrorString(result);
+		}
+		return "No CUDA device found";
+	}
 
+	int count;
+	result = cuDeviceGetCount(&count);
+	if(result != CUDA_SUCCESS) {
+		return string("Error getting devices: ") + cuewErrorString(result);
+	}
+
+	string capabilities = "";
+	for(int num = 0; num < count; num++) {
+		char name[256];
+		if(cuDeviceGetName(name, 256, num) != CUDA_SUCCESS) {
+			continue;
+		}
+		capabilities += string("\t") + name + "\n";
+		int value;
+#define GET_ATTR(attr) \
+		{ \
+			if(cuDeviceGetAttribute(&value, \
+			                        CU_DEVICE_ATTRIBUTE_##attr, \
+			                        num) == CUDA_SUCCESS) \
+			{ \
+				capabilities += string_printf("\t\tCU_DEVICE_ATTRIBUTE_" #attr "\t\t\t%d\n", \
+				                              value); \
+			} \
+		} (void)0
+		/* TODO(sergey): Strip all attributes which are not useful for us
+		 * or does not depend on the driver.
+		 */
+		GET_ATTR(MAX_THREADS_PER_BLOCK);
+		GET_ATTR(MAX_BLOCK_DIM_X);
+		GET_ATTR(MAX_BLOCK_DIM_Y);
+		GET_ATTR(MAX_BLOCK_DIM_Z);
+		GET_ATTR(MAX_GRID_DIM_X);
+		GET_ATTR(MAX_GRID_DIM_Y);
+		GET_ATTR(MAX_GRID_DIM_Z);
+		GET_ATTR(MAX_SHARED_MEMORY_PER_BLOCK);
+		GET_ATTR(SHARED_MEMORY_PER_BLOCK);
+		GET_ATTR(TOTAL_CONSTANT_MEMORY);
+		GET_ATTR(WARP_SIZE);
+		GET_ATTR(MAX_PITCH);
+		GET_ATTR(MAX_REGISTERS_PER_BLOCK);
+		GET_ATTR(REGISTERS_PER_BLOCK);
+		GET_ATTR(CLOCK_RATE);
+		GET_ATTR(TEXTURE_ALIGNMENT);
+		GET_ATTR(GPU_OVERLAP);
+		GET_ATTR(MULTIPROCESSOR_COUNT);
+		GET_ATTR(KERNEL_EXEC_TIMEOUT);
+		GET_ATTR(INTEGRATED);
+		GET_ATTR(CAN_MAP_HOST_MEMORY);
+		GET_ATTR(COMPUTE_MODE);
+		GET_ATTR(MAXIMUM_TEXTURE1D_WIDTH);
+		GET_ATTR(MAXIMUM_TEXTURE2D_WIDTH);
+		GET_ATTR(MAXIMUM_TEXTURE2D_HEIGHT);
+		GET_ATTR(MAXIMUM_TEXTURE3D_WIDTH);
+		GET_ATTR(MAXIMUM_TEXTURE3D_HEIGHT);
+		GET_ATTR(MAXIMUM_TEXTURE3D_DEPTH);
+		GET_ATTR(MAXIMUM_TEXTURE2D_LAYERED_WIDTH);
+		GET_ATTR(MAXIMUM_TEXTURE2D_LAYERED_HEIGHT);
+		GET_ATTR(MAXIMUM_TEXTURE2D_LAYERED_LAYERS);
+		GET_ATTR(MAXIMUM_TEXTURE2D_ARRAY_WIDTH);
+		GET_ATTR(MAXIMUM_TEXTURE2D_ARRAY_HEIGHT);
+		GET_ATTR(MAXIMUM_TEXTURE2D_ARRAY_NUMSLICES);
+		GET_ATTR(SURFACE_ALIGNMENT);
+		GET_ATTR(CONCURRENT_KERNELS);
+		GET_ATTR(ECC_ENABLED);
+		GET_ATTR(TCC_DRIVER);
+		GET_ATTR(MEMORY_CLOCK_RATE);
+		GET_ATTR(GLOBAL_MEMORY_BUS_WIDTH);
+		GET_ATTR(L2_CACHE_SIZE);
+		GET_ATTR(MAX_THREADS_PER_MULTIPROCESSOR);
+		GET_ATTR(ASYNC_ENGINE_COUNT);
+		GET_ATTR(UNIFIED_ADDRESSING);
+		GET_ATTR(MAXIMUM_TEXTURE1D_LAYERED_WIDTH);
+		GET_ATTR(MAXIMUM_TEXTURE1D_LAYERED_LAYERS);
+		GET_ATTR(CAN_TEX2D_GATHER);
+		GET_ATTR(MAXIMUM_TEXTURE2D_GATHER_WIDTH);
+		GET_ATTR(MAXIMUM_TEXTURE2D_GATHER_HEIGHT);
+		GET_ATTR(MAXIMUM_TEXTURE3D_WIDTH_ALTERNATE);
+		GET_ATTR(MAXIMUM_TEXTURE3D_HEIGHT_ALTERNATE);
+		GET_ATTR(MAXIMUM_TEXTURE3D_DEPTH_ALTERNATE);
+		GET_ATTR(TEXTURE_PITCH_ALIGNMENT);
+		GET_ATTR(MAXIMUM_TEXTURECUBEMAP_WIDTH);
+		GET_ATTR(MAXIMUM_TEXTURECUBEMAP_LAYERED_WIDTH);
+		GET_ATTR(MAXIMUM_TEXTURECUBEMAP_LAYERED_LAYERS);
+		GET_ATTR(MAXIMUM_SURFACE1D_WIDTH);
+		GET_ATTR(MAXIMUM_SURFACE2D_WIDTH);
+		GET_ATTR(MAXIMUM_SURFACE2D_HEIGHT);
+		GET_ATTR(MAXIMUM_SURFACE3D_WIDTH);
+		GET_ATTR(MAXIMUM_SURFACE3D_HEIGHT);
+		GET_ATTR(MAXIMUM_SURFACE3D_DEPTH);
+		GET_ATTR(MAXIMUM_SURFACE1D_LAYERED_WIDTH);
+		GET_ATTR(MAXIMUM_SURFACE1D_LAYERED_LAYERS);
+		GET_ATTR(MAXIMUM_SURFACE2D_LAYERED_WIDTH);
+		GET_ATTR(MAXIMUM_SURFACE2D_LAYERED_HEIGHT);
+		GET_ATTR(MAXIMUM_SURFACE2D_LAYERED_LAYERS);
+		GET_ATTR(MAXIMUM_SURFACECUBEMAP_WIDTH);
+		GET_ATTR(MAXIMUM_SURFACECUBEMAP_LAYERED_WIDTH);
+		GET_ATTR(MAXIMUM_SURFACECUBEMAP_LAYERED_LAYERS);
+		GET_ATTR(MAXIMUM_TEXTURE1D_LINEAR_WIDTH);
+		GET_ATTR(MAXIMUM_TEXTURE2D_LINEAR_WIDTH);
+		GET_ATTR(MAXIMUM_TEXTURE2D_LINEAR_HEIGHT);
+		GET_ATTR(MAXIMUM_TEXTURE2D_LINEAR_PITCH);
+		GET_ATTR(MAXIMUM_TEXTURE2D_MIPMAPPED_WIDTH);
+		GET_ATTR(MAXIMUM_TEXTURE2D_MIPMAPPED_HEIGHT);
+		GET_ATTR(COMPUTE_CAPABILITY_MAJOR);
+		GET_ATTR(COMPUTE_CAPABILITY_MINOR);
+		GET_ATTR(MAXIMUM_TEXTURE1D_MIPMAPPED_WIDTH);
+		GET_ATTR(STREAM_PRIORITIES_SUPPORTED);
+		GET_ATTR(GLOBAL_L1_CACHE_SUPPORTED);
+		GET_ATTR(LOCAL_L1_CACHE_SUPPORTED);
+		GET_ATTR(MAX_SHARED_MEMORY_PER_MULTIPROCESSOR);
+		GET_ATTR(MAX_REGISTERS_PER_MULTIPROCESSOR);
+		GET_ATTR(MANAGED_MEMORY);
+		GET_ATTR(MULTI_GPU_BOARD);
+		GET_ATTR(MULTI_GPU_BOARD_GROUP_ID);
+#undef GET_ATTR
+		capabilities += "\n";
+	}
+
+	return capabilities;
+}
+
+CCL_NAMESPACE_END

@@ -42,6 +42,7 @@
 
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
+#include "../generic/python_utildefines.h"
 
 /*-------------------------DOC STRINGS ---------------------------*/
 PyDoc_STRVAR(M_Geometry_doc,
@@ -146,7 +147,7 @@ static PyObject *M_Geometry_intersect_ray_tri(PyObject *UNUSED(self), PyObject *
 	mul_v3_fl(dir, t);
 	add_v3_v3v3(pvec, orig, dir);
 
-	return Vector_CreatePyObject(pvec, 3, Py_NEW, NULL);
+	return Vector_CreatePyObject(pvec, 3, NULL);
 }
 
 /* Line-Line intersection using algorithm from mathworld.wolfram.com */
@@ -207,8 +208,9 @@ static PyObject *M_Geometry_intersect_line_line(PyObject *UNUSED(self), PyObject
 	}
 	else {
 		tuple = PyTuple_New(2);
-		PyTuple_SET_ITEM(tuple, 0, Vector_CreatePyObject(i1, len, Py_NEW, NULL));
-		PyTuple_SET_ITEM(tuple, 1, Vector_CreatePyObject(i2, len, Py_NEW, NULL));
+		PyTuple_SET_ITEMS(tuple,
+		        Vector_CreatePyObject(i1, len, NULL),
+		        Vector_CreatePyObject(i2, len, NULL));
 		return tuple;
 	}
 }
@@ -267,8 +269,9 @@ static PyObject *M_Geometry_intersect_sphere_sphere_2d(PyObject *UNUSED(self), P
 	    (dist < FLT_EPSILON))
 	{
 		/* out of range */
-		PyTuple_SET_ITEM(ret, 0,  Py_None); Py_INCREF(Py_None);
-		PyTuple_SET_ITEM(ret, 1,  Py_None); Py_INCREF(Py_None);
+		PyTuple_SET_ITEMS(ret,
+		        Py_INCREF_RET(Py_None),
+		        Py_INCREF_RET(Py_None));
 	}
 	else {
 		const float dist_delta = ((rad_a * rad_a) - (rad_b * rad_b) + (dist * dist)) / (2.0f * dist);
@@ -285,8 +288,9 @@ static PyObject *M_Geometry_intersect_sphere_sphere_2d(PyObject *UNUSED(self), P
 		i2[0] = i_cent[0] - h * v_ab[1] / dist;
 		i2[1] = i_cent[1] + h * v_ab[0] / dist;
 
-		PyTuple_SET_ITEM(ret, 0, Vector_CreatePyObject(i1, 2, Py_NEW, NULL));
-		PyTuple_SET_ITEM(ret, 1, Vector_CreatePyObject(i2, 2, Py_NEW, NULL));
+		PyTuple_SET_ITEMS(ret,
+		        Vector_CreatePyObject(i1, 2, NULL),
+		        Vector_CreatePyObject(i2, 2, NULL));
 	}
 
 	return ret;
@@ -324,7 +328,7 @@ static PyObject *M_Geometry_normal(PyObject *UNUSED(self), PyObject *args)
 	}
 
 	normal_poly_v3(n, (const float (*)[3])coords, coords_len);
-	ret = Vector_CreatePyObject(n, 3, Py_NEW, NULL);
+	ret = Vector_CreatePyObject(n, 3, NULL);
 
 finally:
 	PyMem_Free(coords);
@@ -446,7 +450,7 @@ static PyObject *M_Geometry_intersect_line_line_2d(PyObject *UNUSED(self), PyObj
 	}
 
 	if (isect_seg_seg_v2_point(UNPACK4(lines), vi) == 1) {
-		return Vector_CreatePyObject(vi, 2, Py_NEW, NULL);
+		return Vector_CreatePyObject(vi, 2, NULL);
 	}
 	else {
 		Py_RETURN_NONE;
@@ -497,7 +501,7 @@ static PyObject *M_Geometry_intersect_line_plane(PyObject *UNUSED(self), PyObjec
 
 	/* TODO: implements no_flip */
 	if (isect_line_plane_v3(isect, line_a, line_b, plane_co, plane_no) == 1) {
-		return Vector_CreatePyObject(isect, 3, Py_NEW, NULL);
+		return Vector_CreatePyObject(isect, 3, NULL);
 	}
 	else {
 		Py_RETURN_NONE;
@@ -532,7 +536,7 @@ static PyObject *M_Geometry_intersect_plane_plane(PyObject *UNUSED(self), PyObje
 
 	if (!PyArg_ParseTuple(
 	        args, "OOOO:intersect_plane_plane",
-	        &plane_a_co, &plane_a_no, &plane_b_co, &plane_b_no))
+	        &py_plane_a_co, &py_plane_a_no, &py_plane_b_co, &py_plane_b_no))
 	{
 		return NULL;
 	}
@@ -551,20 +555,18 @@ static PyObject *M_Geometry_intersect_plane_plane(PyObject *UNUSED(self), PyObje
 	{
 		normalize_v3(isect_no);
 
-		ret_co = Vector_CreatePyObject(isect_co, 3, Py_NEW, NULL);
-		ret_no = Vector_CreatePyObject(isect_no, 3, Py_NEW, NULL);
+		ret_co = Vector_CreatePyObject(isect_co, 3, NULL);
+		ret_no = Vector_CreatePyObject(isect_no, 3, NULL);
 	}
 	else {
-		ret_co = Py_None;
-		ret_no = Py_None;
-
-		Py_INCREF(ret_co);
-		Py_INCREF(ret_no);
+		ret_co = Py_INCREF_RET(Py_None);
+		ret_no = Py_INCREF_RET(Py_None);
 	}
 
 	ret = PyTuple_New(2);
-	PyTuple_SET_ITEM(ret, 0, ret_co);
-	PyTuple_SET_ITEM(ret, 1, ret_no);
+	PyTuple_SET_ITEMS(ret,
+	        ret_co,
+	        ret_no);
 	return ret;
 }
 
@@ -631,11 +633,9 @@ static PyObject *M_Geometry_intersect_line_sphere(PyObject *UNUSED(self), PyObje
 				break;
 		}
 
-		if (use_a) { PyTuple_SET_ITEM(ret, 0,  Vector_CreatePyObject(isect_a, 3, Py_NEW, NULL)); }
-		else       { PyTuple_SET_ITEM(ret, 0,  Py_None); Py_INCREF(Py_None); }
-
-		if (use_b) { PyTuple_SET_ITEM(ret, 1,  Vector_CreatePyObject(isect_b, 3, Py_NEW, NULL)); }
-		else       { PyTuple_SET_ITEM(ret, 1,  Py_None); Py_INCREF(Py_None); }
+		PyTuple_SET_ITEMS(ret,
+		        use_a ? Vector_CreatePyObject(isect_a, 3, NULL) : Py_INCREF_RET(Py_None),
+		        use_b ? Vector_CreatePyObject(isect_b, 3, NULL) : Py_INCREF_RET(Py_None));
 
 		return ret;
 	}
@@ -705,11 +705,9 @@ static PyObject *M_Geometry_intersect_line_sphere_2d(PyObject *UNUSED(self), PyO
 				break;
 		}
 
-		if (use_a) { PyTuple_SET_ITEM(ret, 0,  Vector_CreatePyObject(isect_a, 2, Py_NEW, NULL)); }
-		else       { PyTuple_SET_ITEM(ret, 0,  Py_None); Py_INCREF(Py_None); }
-
-		if (use_b) { PyTuple_SET_ITEM(ret, 1,  Vector_CreatePyObject(isect_b, 2, Py_NEW, NULL)); }
-		else       { PyTuple_SET_ITEM(ret, 1,  Py_None); Py_INCREF(Py_None); }
+		PyTuple_SET_ITEMS(ret,
+		        use_a ? Vector_CreatePyObject(isect_a, 2, NULL) : Py_INCREF_RET(Py_None),
+		        use_b ? Vector_CreatePyObject(isect_b, 2, NULL) : Py_INCREF_RET(Py_None));
 
 		return ret;
 	}
@@ -745,7 +743,7 @@ static PyObject *M_Geometry_intersect_point_line(PyObject *UNUSED(self), PyObjec
 	}
 
 	/* accept 2d verts */
-	if (((mathutils_array_parse(pt, 2, 3 | MU_ARRAY_SPILL | MU_ARRAY_ZERO, py_pt, error_prefix) != -1) &&
+	if ((((size = mathutils_array_parse(pt, 2, 3 | MU_ARRAY_SPILL | MU_ARRAY_ZERO, py_pt, error_prefix)) != -1) &&
 	     (mathutils_array_parse(line_a, 2, 3 | MU_ARRAY_SPILL | MU_ARRAY_ZERO, py_line_a, error_prefix) != -1) &&
 	     (mathutils_array_parse(line_b, 3, 3 | MU_ARRAY_SPILL | MU_ARRAY_ZERO, py_line_b, error_prefix) != -1)) == 0)
 	{
@@ -756,8 +754,9 @@ static PyObject *M_Geometry_intersect_point_line(PyObject *UNUSED(self), PyObjec
 	lambda = closest_to_line_v3(pt_out, pt, line_a, line_b);
 	
 	ret = PyTuple_New(2);
-	PyTuple_SET_ITEM(ret, 0, Vector_CreatePyObject(pt_out, size, Py_NEW, NULL));
-	PyTuple_SET_ITEM(ret, 1, PyFloat_FromDouble(lambda));
+	PyTuple_SET_ITEMS(ret,
+	        Vector_CreatePyObject(pt_out, size, NULL),
+	        PyFloat_FromDouble(lambda));
 	return ret;
 }
 
@@ -787,7 +786,7 @@ static PyObject *M_Geometry_intersect_point_tri(PyObject *UNUSED(self), PyObject
 
 	if (!PyArg_ParseTuple(
 	        args, "OOOO:intersect_point_tri",
-	        &py_pt, UNPACK3_EX(&, py_tri,)))
+	        &py_pt, UNPACK3_EX(&, py_tri, )))
 	{
 		return NULL;
 	}
@@ -802,7 +801,7 @@ static PyObject *M_Geometry_intersect_point_tri(PyObject *UNUSED(self), PyObject
 	}
 
 	if (isect_point_tri_v3(pt, UNPACK3(tri), vi)) {
-		return Vector_CreatePyObject(vi, 3, Py_NEW, NULL);
+		return Vector_CreatePyObject(vi, 3, NULL);
 	}
 	else {
 		Py_RETURN_NONE;
@@ -833,7 +832,7 @@ static PyObject *M_Geometry_intersect_point_tri_2d(PyObject *UNUSED(self), PyObj
 
 	if (!PyArg_ParseTuple(
 	        args, "OOOO:intersect_point_tri_2d",
-	        &py_pt, UNPACK3_EX(&, py_tri,)))
+	        &py_pt, UNPACK3_EX(&, py_tri, )))
 	{
 		return NULL;
 	}
@@ -878,7 +877,7 @@ static PyObject *M_Geometry_intersect_point_quad_2d(PyObject *UNUSED(self), PyOb
 	
 	if (!PyArg_ParseTuple(
 	        args, "OOOOO:intersect_point_quad_2d",
-	        &py_pt, UNPACK4_EX(&, py_quad,)))
+	        &py_pt, UNPACK4_EX(&, py_quad, )))
 	{
 		return NULL;
 	}
@@ -988,7 +987,7 @@ static PyObject *M_Geometry_barycentric_transform(PyObject *UNUSED(self), PyObje
 	        UNPACK3(tri_dst),
 	        UNPACK3(tri_src));
 
-	return Vector_CreatePyObject(pt_dst, 3, Py_NEW, NULL);
+	return Vector_CreatePyObject(pt_dst, 3, NULL);
 }
 
 PyDoc_STRVAR(M_Geometry_points_in_planes_doc,
@@ -1062,10 +1061,7 @@ static PyObject *M_Geometry_points_in_planes(PyObject *UNUSED(self), PyObject *a
 
 									if (l == len) { /* ok */
 										/* python */
-										PyObject *item = Vector_CreatePyObject(potentialVertex, 3, Py_NEW, NULL);
-										PyList_Append(py_verts, item);
-										Py_DECREF(item);
-
+										PyList_APPEND(py_verts, Vector_CreatePyObject(potentialVertex, 3, NULL));
 										planes_used[i] = planes_used[j] = planes_used[k] = true;
 									}
 								}
@@ -1081,17 +1077,16 @@ static PyObject *M_Geometry_points_in_planes(PyObject *UNUSED(self), PyObject *a
 		/* now make a list of used planes */
 		for (i = 0; i < len; i++) {
 			if (planes_used[i]) {
-				PyObject *item = PyLong_FromLong(i);
-				PyList_Append(py_plane_index, item);
-				Py_DECREF(item);
+				PyList_APPEND(py_plane_index, PyLong_FromLong(i));
 			}
 		}
 		PyMem_Free(planes_used);
 
 		{
 			PyObject *ret = PyTuple_New(2);
-			PyTuple_SET_ITEM(ret, 0, py_verts);
-			PyTuple_SET_ITEM(ret, 1, py_plane_index);
+			PyTuple_SET_ITEMS(ret,
+			        py_verts,
+			        py_plane_index);
 			return ret;
 		}
 	}
@@ -1157,7 +1152,7 @@ static PyObject *M_Geometry_interpolate_bezier(PyObject *UNUSED(self), PyObject 
 	list = PyList_New(resolu);
 	fp = coord_array;
 	for (i = 0; i < resolu; i++, fp = fp + dims) {
-		PyList_SET_ITEM(list, i, Vector_CreatePyObject(fp, dims, Py_NEW, NULL));
+		PyList_SET_ITEM(list, i, Vector_CreatePyObject(fp, dims, NULL));
 	}
 	MEM_freeN(coord_array);
 	return list;
@@ -1397,8 +1392,9 @@ static PyObject *M_Geometry_box_pack_2d(PyObject *UNUSED(self), PyObject *boxlis
 	}
 
 	ret = PyTuple_New(2);
-	PyTuple_SET_ITEM(ret, 0, PyFloat_FromDouble(tot_width));
-	PyTuple_SET_ITEM(ret, 1, PyFloat_FromDouble(tot_height));
+	PyTuple_SET_ITEMS(ret,
+	        PyFloat_FromDouble(tot_width),
+	        PyFloat_FromDouble(tot_height));
 	return ret;
 }
 

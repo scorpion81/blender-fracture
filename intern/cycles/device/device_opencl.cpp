@@ -20,12 +20,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "clew.h"
+
 #include "device.h"
 #include "device_intern.h"
 
 #include "buffers.h"
-
-#include "clew.h"
 
 #include "util_foreach.h"
 #include "util_map.h"
@@ -1195,7 +1195,12 @@ void device_opencl_info(vector<DeviceInfo>& devices)
 	}
 }
 
+string device_opencl_capabilities(void)
+{
+	/* TODO(sergey): Not implemented yet. */
+	return "";
+}
+
 CCL_NAMESPACE_END
 
 #endif /* WITH_OPENCL */
-

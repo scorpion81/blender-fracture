@@ -154,7 +154,7 @@ static void id_search_cb(const bContext *C, void *arg_template, const char *str,
 				char name_ui[MAX_ID_NAME + 1];
 				name_uiprefix_id(name_ui, id);
 
-				iconid = ui_id_icon_get((bContext *)C, id, template->preview);
+				iconid = ui_id_icon_get(C, id, template->preview);
 
 				if (false == UI_search_item_add(items, name_ui, id, iconid))
 					break;
@@ -2672,7 +2672,7 @@ static void uilist_filter_items_default(struct uiList *ui_list, struct bContext 
 			names = MEM_callocN(sizeof(StringCmp) * len, "StringCmp");
 		}
 		if (filter_raw[0]) {
-			size_t idx = 0, slen = strlen(filter_raw);
+			size_t slen = strlen(filter_raw);
 
 			dyn_data->items_filter_flags = MEM_callocN(sizeof(int) * len, "items_filter_flags");
 			dyn_data->items_shown = 0;
@@ -2684,15 +2684,7 @@ static void uilist_filter_items_default(struct uiList *ui_list, struct bContext 
 			else {
 				filter = filter_dyn = MEM_mallocN((slen + 3) * sizeof(char), "filter_dyn");
 			}
-			if (filter_raw[idx] != '*') {
-				filter[idx++] = '*';
-			}
-			memcpy(filter + idx, filter_raw, slen);
-			idx += slen;
-			if (filter[idx - 1] != '*') {
-				filter[idx++] = '*';
-			}
-			filter[idx] = '\0';
+			BLI_strncpy_ensure_pad(filter, filter_raw, '*', slen + 3);
 		}
 
 		RNA_PROP_BEGIN (dataptr, itemptr, prop)

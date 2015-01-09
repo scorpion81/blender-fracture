@@ -118,6 +118,19 @@ macro(target_link_libraries_debug TARGET LIBS)
 	unset(_LIB)
 endmacro()
 
+macro(target_link_libraries_decoupled target libraries_var)
+	if(NOT MSVC)
+		target_link_libraries(${target} ${${libraries_var}})
+	else()
+		# For MSVC we link to different libraries depending whether
+		# release or debug target is being built.
+		file_list_suffix(_libraries_debug "${${libraries_var}}" "_d")
+		target_link_libraries_debug(${target} "${_libraries_debug}")
+		target_link_libraries_optimized(${target} "${${libraries_var}}")
+		unset(_libraries_debug)
+	endif()
+endmacro()
+
 # Nicer makefiles with -I/1/foo/ instead of -I/1/2/3/../../foo/
 # use it instead of include_directories()
 macro(blender_include_dirs
@@ -284,7 +297,6 @@ macro(setup_liblinks
 	set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} ${PLATFORM_LINKFLAGS_DEBUG}")
 
 	target_link_libraries(${target}
-			${BLENDER_GL_LIBRARIES}
 			${PNG_LIBRARIES}
 			${ZLIB_LIBRARIES}
 			${FREETYPE_LIBRARY})
@@ -357,14 +369,6 @@ macro(setup_liblinks
 		target_link_libraries(${target} ${OPENJPEG_LIBRARIES})
 	endif()
 	if(WITH_CODEC_FFMPEG)
-
-		# Strange! Without this ffmpeg gives linking errors (on linux),
-		# even though it's linked above.
-		# XXX: Does FFMPEG depend on GLU?
-		if(WITH_GLU)
-			target_link_libraries(${target} ${OPENGL_glu_LIBRARY})
-		endif()
-
 		target_link_libraries(${target} ${FFMPEG_LIBRARIES})
 	endif()
 	if(WITH_OPENCOLLADA)
@@ -412,13 +416,17 @@ macro(setup_liblinks
 		target_link_libraries(${target} ${PTHREADS_LIBRARIES})
 	endif()
 
-	target_link_libraries(${target} ${PLATFORM_LINKLIBS} ${CMAKE_DL_LIBS})
-
 	# We put CLEW and CUEW here because OPENSUBDIV_LIBRARIES dpeends on them..
 	if(WITH_CYCLES OR WITH_COMPOSITOR OR WITH_OPENSUBDIV)
 		target_link_libraries(${target} "extern_clew")
 		target_link_libraries(${target} "extern_cuew")
 	endif()
+
+	#system libraries with no dependencies such as platform link libs or opengl should go last
+	target_link_libraries(${target}
+			${BLENDER_GL_LIBRARIES})
+
+	target_link_libraries(${target} ${PLATFORM_LINKLIBS} ${CMAKE_DL_LIBS})
 endmacro()
 
 macro(SETUP_BLENDER_SORTED_LIBS)

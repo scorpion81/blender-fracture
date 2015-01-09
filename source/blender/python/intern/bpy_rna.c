@@ -76,6 +76,7 @@
 
 #include "../generic/idprop_py_api.h" /* for IDprop lookups */
 #include "../generic/py_capi_utils.h"
+#include "../generic/python_utildefines.h"
 
 #define USE_PEDANTIC_WRITE
 #define USE_MATHUTILS
@@ -637,7 +638,7 @@ PyObject *pyrna_math_object_from_array(PointerRNA *ptr, PropertyRNA *prop)
 			case PROP_ALL_VECTOR_SUBTYPES:
 				if (len >= 2 && len <= 4) {
 					if (is_thick) {
-						ret = Vector_CreatePyObject(NULL, len, Py_NEW, NULL);
+						ret = Vector_CreatePyObject(NULL, len, NULL);
 						RNA_property_float_get_array(ptr, prop, ((VectorObject *)ret)->vec);
 					}
 					else {
@@ -650,7 +651,7 @@ PyObject *pyrna_math_object_from_array(PointerRNA *ptr, PropertyRNA *prop)
 			case PROP_MATRIX:
 				if (len == 16) {
 					if (is_thick) {
-						ret = Matrix_CreatePyObject(NULL, 4, 4, Py_NEW, NULL);
+						ret = Matrix_CreatePyObject(NULL, 4, 4, NULL);
 						RNA_property_float_get_array(ptr, prop, ((MatrixObject *)ret)->matrix);
 					}
 					else {
@@ -661,7 +662,7 @@ PyObject *pyrna_math_object_from_array(PointerRNA *ptr, PropertyRNA *prop)
 				}
 				else if (len == 9) {
 					if (is_thick) {
-						ret = Matrix_CreatePyObject(NULL, 3, 3, Py_NEW, NULL);
+						ret = Matrix_CreatePyObject(NULL, 3, 3, NULL);
 						RNA_property_float_get_array(ptr, prop, ((MatrixObject *)ret)->matrix);
 					}
 					else {
@@ -679,7 +680,7 @@ PyObject *pyrna_math_object_from_array(PointerRNA *ptr, PropertyRNA *prop)
 						PropertyRNA *prop_eul_order = NULL;
 						short order = pyrna_rotation_euler_order_get(ptr, &prop_eul_order, EULER_ORDER_XYZ);
 
-						ret = Euler_CreatePyObject(NULL, order, Py_NEW, NULL);  /* TODO, get order from RNA */
+						ret = Euler_CreatePyObject(NULL, order, NULL);  /* TODO, get order from RNA */
 						RNA_property_float_get_array(ptr, prop, ((EulerObject *)ret)->eul);
 					}
 					else {
@@ -691,7 +692,7 @@ PyObject *pyrna_math_object_from_array(PointerRNA *ptr, PropertyRNA *prop)
 				}
 				else if (len == 4) {
 					if (is_thick) {
-						ret = Quaternion_CreatePyObject(NULL, Py_NEW, NULL);
+						ret = Quaternion_CreatePyObject(NULL, NULL);
 						RNA_property_float_get_array(ptr, prop, ((QuaternionObject *)ret)->quat);
 					}
 					else {
@@ -705,7 +706,7 @@ PyObject *pyrna_math_object_from_array(PointerRNA *ptr, PropertyRNA *prop)
 			case PROP_COLOR_GAMMA:
 				if (len == 3) { /* color */
 					if (is_thick) {
-						ret = Color_CreatePyObject(NULL, Py_NEW, NULL);
+						ret = Color_CreatePyObject(NULL, NULL);
 						RNA_property_float_get_array(ptr, prop, ((ColorObject *)ret)->col);
 					}
 					else {
@@ -805,7 +806,7 @@ static PyObject *pyrna_struct_richcmp(PyObject *a, PyObject *b, int op)
 			return NULL;
 	}
 
-	return Py_INCREF(res), res;
+	return Py_INCREF_RET(res);
 }
 
 static PyObject *pyrna_prop_richcmp(PyObject *a, PyObject *b, int op)
@@ -835,7 +836,7 @@ static PyObject *pyrna_prop_richcmp(PyObject *a, PyObject *b, int op)
 			return NULL;
 	}
 
-	return Py_INCREF(res), res;
+	return Py_INCREF_RET(res);
 }
 
 /*----------------------repr--------------------------------------------*/
@@ -2301,8 +2302,7 @@ static PyObject *pyrna_prop_collection_subscript_slice(BPy_PropertyRNA *self, Py
 	     RNA_property_collection_next(&rna_macro_iter))
 	{
 		item = pyrna_struct_CreatePyObject(&rna_macro_iter.ptr);
-		PyList_Append(list, item);
-		Py_DECREF(item);
+		PyList_APPEND(list, item);
 
 		count++;
 		if (count == stop) {
@@ -3426,7 +3426,6 @@ static void pyrna_dir_members_py(PyObject *list, PyObject *self)
 
 static void pyrna_dir_members_rna(PyObject *list, PointerRNA *ptr)
 {
-	PyObject *pystring;
 	const char *idname;
 
 	/* for looping over attrs and funcs */
@@ -3442,10 +3441,7 @@ static void pyrna_dir_members_rna(PyObject *list, PointerRNA *ptr)
 			FunctionRNA *func = itemptr.data;
 			if (RNA_function_defined(func)) {
 				idname = RNA_function_identifier(itemptr.data);
-
-				pystring = PyUnicode_FromString(idname);
-				PyList_Append(list, pystring);
-				Py_DECREF(pystring);
+				PyList_APPEND(list, PyUnicode_FromString(idname));
 			}
 		}
 		RNA_PROP_END;
@@ -3465,9 +3461,7 @@ static void pyrna_dir_members_rna(PyObject *list, PointerRNA *ptr)
 			nameptr = RNA_struct_name_get_alloc(&itemptr, name, sizeof(name), &namelen);
 
 			if (nameptr) {
-				pystring = PyUnicode_FromStringAndSize(nameptr, namelen);
-				PyList_Append(list, pystring);
-				Py_DECREF(pystring);
+				PyList_APPEND(list, PyUnicode_FromStringAndSize(nameptr, namelen));
 
 				if (name != nameptr) {
 					MEM_freeN(nameptr);
@@ -3482,7 +3476,6 @@ static void pyrna_dir_members_rna(PyObject *list, PointerRNA *ptr)
 static PyObject *pyrna_struct_dir(BPy_StructRNA *self)
 {
 	PyObject *ret;
-	PyObject *pystring;
 
 	PYRNA_STRUCT_CHECK_OBJ(self);
 
@@ -3501,9 +3494,7 @@ static PyObject *pyrna_struct_dir(BPy_StructRNA *self)
 		LinkData *link;
 
 		for (link = lb.first; link; link = link->next) {
-			pystring = PyUnicode_FromString(link->data);
-			PyList_Append(ret, pystring);
-			Py_DECREF(pystring);
+			PyList_APPEND(ret, PyUnicode_FromString(link->data));
 		}
 
 		BLI_freelistN(&lb);
@@ -3583,14 +3574,11 @@ static PyObject *pyrna_struct_getattro(BPy_StructRNA *self, PyObject *pyname)
 					case CTX_DATA_TYPE_COLLECTION:
 					{
 						CollectionPointerLink *link;
-						PyObject *linkptr;
 
 						ret = PyList_New(0);
 
 						for (link = newlb.first; link; link = link->next) {
-							linkptr = pyrna_struct_CreatePyObject(&link->ptr);
-							PyList_Append(ret, linkptr);
-							Py_DECREF(linkptr);
+							PyList_APPEND(ret, pyrna_struct_CreatePyObject(&link->ptr));
 						}
 						break;
 					}
@@ -4097,7 +4085,6 @@ PyDoc_STRVAR(pyrna_prop_collection_keys_doc,
 static PyObject *pyrna_prop_collection_keys(BPy_PropertyRNA *self)
 {
 	PyObject *ret = PyList_New(0);
-	PyObject *item;
 	char name[256], *nameptr;
 	int namelen;
 
@@ -4106,11 +4093,7 @@ static PyObject *pyrna_prop_collection_keys(BPy_PropertyRNA *self)
 		nameptr = RNA_struct_name_get_alloc(&itemptr, name, sizeof(name), &namelen);
 
 		if (nameptr) {
-			/* add to python list */
-			item = PyUnicode_FromStringAndSize(nameptr, namelen);
-			PyList_Append(ret, item);
-			Py_DECREF(item);
-			/* done */
+			PyList_APPEND(ret, PyUnicode_FromStringAndSize(nameptr, namelen));
 
 			if (name != nameptr) {
 				MEM_freeN(nameptr);
@@ -4156,8 +4139,7 @@ static PyObject *pyrna_prop_collection_items(BPy_PropertyRNA *self)
 			}
 			PyTuple_SET_ITEM(item, 1, pyrna_struct_CreatePyObject(&itemptr));
 
-			PyList_Append(ret, item);
-			Py_DECREF(item);
+			PyList_APPEND(ret, item);
 
 			i++;
 		}
@@ -4223,7 +4205,7 @@ static PyObject *pyrna_struct_get(BPy_StructRNA *self, PyObject *args)
 		}
 	}
 
-	return Py_INCREF(def), def;
+	return Py_INCREF_RET(def);
 }
 
 PyDoc_STRVAR(pyrna_struct_as_pointer_doc,
@@ -4285,7 +4267,7 @@ static PyObject *pyrna_prop_collection_get(BPy_PropertyRNA *self, PyObject *args
 		             Py_TYPE(key_ob)->tp_name);
 	}
 
-	return Py_INCREF(def), def;
+	return Py_INCREF_RET(def);
 }
 
 PyDoc_STRVAR(pyrna_prop_collection_find_doc,
@@ -4798,8 +4780,7 @@ static PyObject *pyrna_prop_new(PyTypeObject *type, PyObject *args, PyObject *UN
 		return NULL;
 
 	if (type == Py_TYPE(base)) {
-		Py_INCREF(base);
-		return (PyObject *)base;
+		return Py_INCREF_RET((PyObject *)base);
 	}
 	else if (PyType_IsSubtype(type, &pyrna_prop_Type)) {
 		BPy_PropertyRNA *ret = (BPy_PropertyRNA *) type->tp_alloc(type, 0);
@@ -4851,15 +4832,15 @@ static PyObject *pyrna_param_to_py(PointerRNA *ptr, PropertyRNA *prop, void *dat
 				switch (RNA_property_subtype(prop)) {
 #ifdef USE_MATHUTILS
 					case PROP_ALL_VECTOR_SUBTYPES:
-						ret = Vector_CreatePyObject(data, len, Py_NEW, NULL);
+						ret = Vector_CreatePyObject(data, len, NULL);
 						break;
 					case PROP_MATRIX:
 						if (len == 16) {
-							ret = Matrix_CreatePyObject(data, 4, 4, Py_NEW, NULL);
+							ret = Matrix_CreatePyObject(data, 4, 4, NULL);
 							break;
 						}
 						else if (len == 9) {
-							ret = Matrix_CreatePyObject(data, 3, 3, Py_NEW, NULL);
+							ret = Matrix_CreatePyObject(data, 3, 3, NULL);
 							break;
 						}
 						/* fall-through */
@@ -4967,14 +4948,11 @@ static PyObject *pyrna_param_to_py(PointerRNA *ptr, PropertyRNA *prop, void *dat
 			{
 				ListBase *lb = (ListBase *)data;
 				CollectionPointerLink *link;
-				PyObject *linkptr;
 
 				ret = PyList_New(0);
 
 				for (link = lb->first; link; link = link->next) {
-					linkptr = pyrna_struct_CreatePyObject(&link->ptr);
-					PyList_Append(ret, linkptr);
-					Py_DECREF(linkptr);
+					PyList_APPEND(ret, pyrna_struct_CreatePyObject(&link->ptr));
 				}
 
 				break;
@@ -5138,9 +5116,7 @@ static PyObject *pyrna_func_call(BPy_FunctionRNA *self, PyObject *args, PyObject
 #ifdef DEBUG_STRING_FREE
 		if (item) {
 			if (PyUnicode_Check(item)) {
-				item = PyUnicode_FromString(_PyUnicode_AsString(item));
-				PyList_Append(string_free_ls, item);
-				Py_DECREF(item);
+				PyList_APPEND(string_free_ls, PyUnicode_FromString(_PyUnicode_AsString(item)));
 			}
 		}
 #endif
@@ -6283,7 +6259,7 @@ static PyObject *pyrna_srna_Subtype(StructRNA *srna)
 
 			/* arg[1] (bases=...) */
 			PyTuple_SET_ITEM(args, 1, item = PyTuple_New(1));
-			PyTuple_SET_ITEM(item, 0, py_base); Py_INCREF(py_base);
+			PyTuple_SET_ITEM(item, 0, Py_INCREF_RET(py_base));
 
 
 			/* arg[2] (dict=...) */
@@ -6597,7 +6573,6 @@ static PyObject *pyrna_basetype_dir(BPy_BaseTypeRNA *self)
 {
 	PyObject *list;
 #if 0
-	PyObject *name;
 	PyMethodDef *meth;
 #endif
 
@@ -6605,9 +6580,7 @@ static PyObject *pyrna_basetype_dir(BPy_BaseTypeRNA *self)
 
 #if 0 /* for now only contains __dir__ */
 	for (meth = pyrna_basetype_methods; meth->ml_name; meth++) {
-		name = PyUnicode_FromString(meth->ml_name);
-		PyList_Append(list, name);
-		Py_DECREF(name);
+		PyList_APPEND(list, PyUnicode_FromString(meth->ml_name));
 	}
 #endif
 	return list;
@@ -6618,7 +6591,6 @@ static PyObject *pyrna_basetype_dir(BPy_BaseTypeRNA *self)
 static PyObject *pyrna_basetype_dir(BPy_BaseTypeRNA *self)
 {
 	PyObject *ret = PyList_New(0);
-	PyObject *item;
 
 	RNA_PROP_BEGIN (&self->ptr, itemptr, self->prop)
 	{
@@ -6630,9 +6602,7 @@ static PyObject *pyrna_basetype_dir(BPy_BaseTypeRNA *self)
 		}
 		else {
 			/* add to python list */
-			item = PyUnicode_FromString(RNA_struct_identifier(srna));
-			PyList_Append(ret, item);
-			Py_DECREF(item);
+			PyList_APPEND(ret, PyUnicode_FromString(RNA_struct_identifier(srna)));
 		}
 	}
 	RNA_PROP_END;

@@ -111,6 +111,8 @@ enum {
 	TH_FACE_DOT,
 	TH_FACEDOT_SIZE,
 	TH_CFRAME,
+	TH_TIME_KEYFRAME,
+	TH_TIME_GP_KEYFRAME,
 	TH_NURB_ULINE,
 	TH_NURB_VLINE,
 	TH_NURB_SEL_ULINE,
@@ -207,6 +209,10 @@ enum {
 	TH_HANDLE_VERTEX_SELECT,
 	TH_HANDLE_VERTEX_SIZE,
 	
+	TH_GP_VERTEX,
+	TH_GP_VERTEX_SELECT,
+	TH_GP_VERTEX_SIZE,
+	
 	TH_DOPESHEET_CHANNELOB,
 	TH_DOPESHEET_CHANNELSUBOB,
 	
@@ -295,6 +301,11 @@ enum {
 struct bTheme;
 struct PointerRNA;
 
+struct bThemeState {
+	struct bTheme *theme;
+	int spacetype, regionid;
+};
+
 // THE CODERS API FOR THEMES:
 
 // sets the color
@@ -353,6 +364,9 @@ void    UI_SetTheme(int spacetype, int regionid);
 
 // get current theme
 struct bTheme *UI_GetTheme(void);
+
+void UI_Theme_Store(struct bThemeState *theme_state);
+void UI_Theme_Restore(struct bThemeState *theme_state);
 
 // return shadow width outside menus and popups */
 int UI_ThemeMenuShadowWidth(void);

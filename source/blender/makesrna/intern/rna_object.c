@@ -42,6 +42,7 @@
 #include "BLI_utildefines.h"
 #include "BLI_listbase.h"
 
+#include "BKE_camera.h"
 #include "BKE_paint.h"
 #include "BKE_editmesh.h"
 #include "BKE_group.h" /* needed for BKE_group_object_exists() */
@@ -777,7 +778,7 @@ static void rna_Object_rotation_axis_angle_set(PointerRNA *ptr, const float *val
 	
 	/* for now, assume that rotation mode is axis-angle */
 	ob->rotAngle = value[0];
-	copy_v3_v3(ob->rotAxis, (float *)&value[1]);
+	copy_v3_v3(ob->rotAxis, &value[1]);
 	
 	/* TODO: validate axis? */
 }

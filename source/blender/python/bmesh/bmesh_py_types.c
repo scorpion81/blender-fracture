@@ -44,6 +44,7 @@
 #include "../mathutils/mathutils.h"
 
 #include "../generic/py_capi_utils.h"
+#include "../generic/python_utildefines.h"
 
 #include "bmesh_py_types.h" /* own include */
 #include "bmesh_py_types_select.h"
@@ -342,7 +343,7 @@ PyDoc_STRVAR(bpy_bmvert_co_doc,
 static PyObject *bpy_bmvert_co_get(BPy_BMVert *self)
 {
 	BPY_BM_CHECK_OBJ(self);
-	return Vector_CreatePyObject(self->v->co, 3, Py_WRAP, NULL);
+	return Vector_CreatePyObject_wrap(self->v->co, 3, NULL);
 }
 
 static int bpy_bmvert_co_set(BPy_BMVert *self, PyObject *value)
@@ -364,7 +365,7 @@ PyDoc_STRVAR(bpy_bmvert_normal_doc,
 static PyObject *bpy_bmvert_normal_get(BPy_BMVert *self)
 {
 	BPY_BM_CHECK_OBJ(self);
-	return Vector_CreatePyObject(self->v->no, 3, Py_WRAP, NULL);
+	return Vector_CreatePyObject_wrap(self->v->no, 3, NULL);
 }
 
 static int bpy_bmvert_normal_set(BPy_BMVert *self, PyObject *value)
@@ -468,7 +469,7 @@ PyDoc_STRVAR(bpy_bmface_normal_doc,
 static PyObject *bpy_bmface_normal_get(BPy_BMFace *self)
 {
 	BPY_BM_CHECK_OBJ(self);
-	return Vector_CreatePyObject(self->f->no, 3, Py_WRAP, NULL);
+	return Vector_CreatePyObject_wrap(self->f->no, 3, NULL);
 }
 
 static int bpy_bmface_normal_set(BPy_BMFace *self, PyObject *value)
@@ -1530,7 +1531,7 @@ static PyObject *bpy_bmedge_calc_tangent(BPy_BMEdge *self, PyObject *args)
 		BPY_BM_CHECK_OBJ(py_loop);
 		/* no need to check if they are from the same mesh or even connected */
 		BM_edge_calc_face_tangent(self->e, py_loop->l, vec);
-		return Vector_CreatePyObject(vec, 3, Py_NEW, NULL);
+		return Vector_CreatePyObject(vec, 3, NULL);
 	}
 }
 
@@ -1711,7 +1712,7 @@ static PyObject *bpy_bmface_calc_center_mean(BPy_BMFace *self)
 
 	BPY_BM_CHECK_OBJ(self);
 	BM_face_calc_center_mean(self->f, cent);
-	return Vector_CreatePyObject(cent, 3, Py_NEW, NULL);
+	return Vector_CreatePyObject(cent, 3, NULL);
 }
 
 PyDoc_STRVAR(bpy_bmface_calc_center_mean_weighted_doc,
@@ -1728,7 +1729,7 @@ static PyObject *bpy_bmface_calc_center_mean_weighted(BPy_BMFace *self)
 
 	BPY_BM_CHECK_OBJ(self);
 	BM_face_calc_center_mean_weighted(self->f, cent);
-	return Vector_CreatePyObject(cent, 3, Py_NEW, NULL);
+	return Vector_CreatePyObject(cent, 3, NULL);
 }
 
 PyDoc_STRVAR(bpy_bmface_calc_center_bounds_doc,
@@ -1745,7 +1746,7 @@ static PyObject *bpy_bmface_calc_center_bounds(BPy_BMFace *self)
 
 	BPY_BM_CHECK_OBJ(self);
 	BM_face_calc_center_bounds(self->f, cent);
-	return Vector_CreatePyObject(cent, 3, Py_NEW, NULL);
+	return Vector_CreatePyObject(cent, 3, NULL);
 }
 
 
@@ -1849,7 +1850,7 @@ static PyObject *bpy_bmloop_calc_normal(BPy_BMLoop *self)
 	float vec[3];
 	BPY_BM_CHECK_OBJ(self);
 	BM_loop_calc_face_normal(self->l, vec);
-	return Vector_CreatePyObject(vec, 3, Py_NEW, NULL);
+	return Vector_CreatePyObject(vec, 3, NULL);
 }
 
 PyDoc_STRVAR(bpy_bmloop_calc_tangent_doc,
@@ -1866,7 +1867,7 @@ static PyObject *bpy_bmloop_calc_tangent(BPy_BMLoop *self)
 	float vec[3];
 	BPY_BM_CHECK_OBJ(self);
 	BM_loop_calc_face_tangent(self->l, vec);
-	return Vector_CreatePyObject(vec, 3, Py_NEW, NULL);
+	return Vector_CreatePyObject(vec, 3, NULL);
 }
 
 /* Vert Seq
@@ -2796,7 +2797,6 @@ static PyObject *bpy_bmelemseq_subscript_slice(BPy_BMElemSeq *self, Py_ssize_t s
 	bool ok;
 
 	PyObject *list;
-	PyObject *item;
 	BMHeader *ele;
 
 	BPY_BM_CHECK_OBJ(self);
@@ -2821,9 +2821,7 @@ static PyObject *bpy_bmelemseq_subscript_slice(BPy_BMElemSeq *self, Py_ssize_t s
 
 	/* add items until stop */
 	while ((ele = BM_iter_step(&iter))) {
-		item = BPy_BMElem_CreatePyObject(self->bm, ele);
-		PyList_Append(list, item);
-		Py_DECREF(item);
+		PyList_APPEND(list, BPy_BMElem_CreatePyObject(self->bm, ele));
 
 		count++;
 		if (count == stop) {

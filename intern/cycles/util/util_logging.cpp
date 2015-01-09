@@ -18,7 +18,55 @@
 
 #include "util_math.h"
 
+#include <stdio.h>
+#ifdef _MSC_VER
+#  define snprintf _snprintf
+#endif
+
 CCL_NAMESPACE_BEGIN
+
+void util_logging_init(const char *argv0)
+{
+#ifdef WITH_CYCLES_LOGGING
+	using CYCLES_GFLAGS_NAMESPACE::SetCommandLineOption;
+
+	/* Make it so FATAL messages are always print into console. */
+	char severity_fatal[32];
+	snprintf(severity_fatal, sizeof(severity_fatal), "%d",
+	         google::GLOG_FATAL);
+
+	google::InitGoogleLogging(argv0);
+	SetCommandLineOption("logtostderr", "1");
+	SetCommandLineOption("v", "0");
+	SetCommandLineOption("stderrthreshold", severity_fatal);
+	SetCommandLineOption("minloglevel", severity_fatal);
+#else
+	(void) argv0;
+#endif
+}
+
+void util_logging_start(void)
+{
+#ifdef WITH_CYCLES_LOGGING
+	using CYCLES_GFLAGS_NAMESPACE::SetCommandLineOption;
+	SetCommandLineOption("logtostderr", "1");
+	SetCommandLineOption("v", "2");
+	SetCommandLineOption("stderrthreshold", "1");
+	SetCommandLineOption("minloglevel", "0");
+#endif
+}
+
+void util_logging_verbosity_set(int verbosity)
+{
+#ifdef WITH_CYCLES_LOGGING
+	using CYCLES_GFLAGS_NAMESPACE::SetCommandLineOption;
+	char val[10];
+	snprintf(val, sizeof(val), "%d", verbosity);
+	SetCommandLineOption("v", val);
+#else
+	(void) verbosity;
+#endif
+}
 
 std::ostream& operator <<(std::ostream &os,
                           const float3 &value)

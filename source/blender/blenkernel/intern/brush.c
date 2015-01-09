@@ -178,6 +178,10 @@ Brush *BKE_brush_copy(Brush *brush)
 		brushn->id.us++;
 	}
 	
+	if (brush->id.lib) {
+		BKE_id_lib_local_paths(G.main, brush->id.lib, &brushn->id);
+	}
+
 	return brushn;
 }
 
@@ -949,7 +953,7 @@ void BKE_brush_jitter_pos(const Scene *scene, Brush *brush, const float pos[2], 
 	jitterpos[1] = pos[1] + 2 * rand_pos[1] * diameter * spread;
 }
 
-void BKE_brush_randomize_texture_coordinates(UnifiedPaintSettings *ups, bool mask)
+void BKE_brush_randomize_texture_coords(UnifiedPaintSettings *ups, bool mask)
 {
 	/* we multiply with brush radius as an optimization for the brush
 	 * texture sampling functions */

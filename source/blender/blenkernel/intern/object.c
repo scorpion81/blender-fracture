@@ -1547,6 +1547,10 @@ Object *BKE_object_copy_ex(Main *bmain, Object *ob, bool copy_caches)
 	/* Copy runtime surve data. */
 	obn->curve_cache = NULL;
 
+	if (ob->id.lib) {
+		BKE_id_lib_local_paths(bmain, ob->id.lib, &obn->id);
+	}
+
 	return obn;
 }
 
@@ -3376,7 +3380,7 @@ void BKE_object_delete_ptcache(Object *ob, int index)
 /* shape key utility function */
 
 /************************* Mesh ************************/
-static KeyBlock *insert_meshkey(Scene *scene, Object *ob, const char *name, const bool from_mix)
+static KeyBlock *insert_meshkey(Object *ob, const char *name, const bool from_mix)
 {
 	Mesh *me = ob->data;
 	Key *key = me->key;
@@ -3397,7 +3401,7 @@ static KeyBlock *insert_meshkey(Scene *scene, Object *ob, const char *name, cons
 	else {
 		/* copy from current values */
 		int totelem;
-		float *data = BKE_key_evaluate_object(scene, ob, &totelem);
+		float *data = BKE_key_evaluate_object(ob, &totelem);
 
 		/* create new block with prepared data */
 		kb = BKE_keyblock_add_ctime(key, name, false);
@@ -3408,7 +3412,7 @@ static KeyBlock *insert_meshkey(Scene *scene, Object *ob, const char *name, cons
 	return kb;
 }
 /************************* Lattice ************************/
-static KeyBlock *insert_lattkey(Scene *scene, Object *ob, const char *name, const bool from_mix)
+static KeyBlock *insert_lattkey(Object *ob, const char *name, const bool from_mix)
 {
 	Lattice *lt = ob->data;
 	Key *key = lt->key;
@@ -3435,7 +3439,7 @@ static KeyBlock *insert_lattkey(Scene *scene, Object *ob, const char *name, cons
 	else {
 		/* copy from current values */
 		int totelem;
-		float *data = BKE_key_evaluate_object(scene, ob, &totelem);
+		float *data = BKE_key_evaluate_object(ob, &totelem);
 
 		/* create new block with prepared data */
 		kb = BKE_keyblock_add_ctime(key, name, false);
@@ -3446,7 +3450,7 @@ static KeyBlock *insert_lattkey(Scene *scene, Object *ob, const char *name, cons
 	return kb;
 }
 /************************* Curve ************************/
-static KeyBlock *insert_curvekey(Scene *scene, Object *ob, const char *name, const bool from_mix)
+static KeyBlock *insert_curvekey(Object *ob, const char *name, const bool from_mix)
 {
 	Curve *cu = ob->data;
 	Key *key = cu->key;
@@ -3475,7 +3479,7 @@ static KeyBlock *insert_curvekey(Scene *scene, Object *ob, const char *name, con
 	else {
 		/* copy from current values */
 		int totelem;
-		float *data = BKE_key_evaluate_object(scene, ob, &totelem);
+		float *data = BKE_key_evaluate_object(ob, &totelem);
 
 		/* create new block with prepared data */
 		kb = BKE_keyblock_add_ctime(key, name, false);
@@ -3486,16 +3490,16 @@ static KeyBlock *insert_curvekey(Scene *scene, Object *ob, const char *name, con
 	return kb;
 }
 
-KeyBlock *BKE_object_insert_shape_key(Scene *scene, Object *ob, const char *name, const bool from_mix)
+KeyBlock *BKE_object_insert_shape_key(Object *ob, const char *name, const bool from_mix)
 {	
 	switch (ob->type) {
 		case OB_MESH:
-			return insert_meshkey(scene, ob, name, from_mix);
+			return insert_meshkey(ob, name, from_mix);
 		case OB_CURVE:
 		case OB_SURF:
-			return insert_curvekey(scene, ob, name, from_mix);
+			return insert_curvekey(ob, name, from_mix);
 		case OB_LATTICE:
-			return insert_lattkey(scene, ob, name, from_mix);
+			return insert_lattkey(ob, name, from_mix);
 		default:
 			return NULL;
 	}
