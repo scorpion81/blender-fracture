@@ -4748,6 +4748,120 @@ static void read_meshIsland(FileData *fd, MeshIsland **address)
 	mi->participating_constraints = NULL;
 }
 
+/*refactor this loading routine out, for better readability*/
+static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
+{
+	FracMesh* fm;
+
+	fm = fmd->frac_mesh = newdataadr(fd, fmd->frac_mesh);
+
+	fmd->refresh = false;  /* do not execute modifier here yet*/
+	fmd->refresh_constraints = false;
+	fmd->nor_tree = NULL;
+	fmd->face_pairs = NULL;
+
+	if (fm == NULL) {
+
+		fmd->dm = NULL;
+		fmd->meshIslands.first = NULL;
+		fmd->meshIslands.last = NULL;
+		fmd->visible_mesh = NULL;
+		fmd->visible_mesh_cached = NULL;
+		zero_m4(fmd->origmat);
+		fmd->meshConstraints.first = NULL;
+		fmd->meshConstraints.last = NULL;
+		fmd->explo_shared = false;
+		fmd->refresh = false;  /* do not execute modifier */
+		fmd->refresh_constraints = false;
+		fmd->max_vol = 0;
+		fmd->refresh_images = false;
+	}
+	else {
+		MeshIsland *mi;
+		MVert *mverts;
+		int vertstart = 0;
+		Shard *s;
+		int count = 0;
+
+		link_list(fd, &fmd->frac_mesh->shard_map);
+		for (s = fmd->frac_mesh->shard_map.first; s; s = s->next) {
+			read_shard(fd, &s);
+		}
+
+		fmd->dm = NULL;
+		fmd->visible_mesh = NULL;
+
+		link_list(fd, &fmd->islandShards);
+		for (s = fmd->islandShards.first; s; s = s->next) {
+			read_shard(fd, &s);
+		}
+
+		link_list(fd, &fmd->meshIslands);
+		count = BLI_listbase_count(&fmd->islandShards);
+
+		if ((fmd->islandShards.first == NULL || count == 0) && fm->shard_count > 0) {
+			/* oops, a refresh was missing, so disable this flag here better, otherwise
+			 * we attempt to load non existing data */
+			fmd->shards_to_islands = false;
+		}
+		else if (fm->shard_count == 0) {
+			fmd->shards_to_islands = true;
+		}
+
+		/* ugly ugly, need only the shard... the rest is to be generated on demand... */
+		BKE_fracture_create_dm(fmd, true);
+
+		if (fm->shard_count == 0) {
+			fmd->shards_to_islands = false;
+		}
+
+		fmd->visible_mesh_cached = CDDM_copy(fmd->dm);
+		if (fmd->visible_mesh == NULL) {
+			fmd->visible_mesh = DM_to_bmesh(fmd->visible_mesh_cached, true);
+		}
+
+		DM_ensure_tessface(fmd->visible_mesh_cached);
+		DM_ensure_normals(fmd->visible_mesh_cached);
+		DM_update_tessface_data(fmd->visible_mesh_cached);
+
+		/* re-init cached verts here... */
+		mverts = CDDM_get_verts(fmd->visible_mesh_cached);
+
+		for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
+			MVert *mv;
+			int k = 0;
+			read_meshIsland(fd, &mi);
+			mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * mi->vertex_count, "mi->vertices_cached readfile");
+			mv = mi->physics_mesh->getVertArray(mi->physics_mesh);
+
+			for (k = 0; k < mi->vertex_count; k++) {
+				MVert* v = mverts + vertstart + k ;
+				MVert* v2 = mv + k;
+				mi->vertices_cached[k] = v;
+				mi->vertco[k*3] = v->co[0];
+				mi->vertco[k*3+1] = v->co[1];
+				mi->vertco[k*3+2] = v->co[2];
+
+				if (mi->vertno != NULL && fmd->fix_normals) {
+					short sno[3];
+					sno[0] = mi->vertno[k*3];
+					sno[1] = mi->vertno[k*3+1];
+					sno[2] = mi->vertno[k*3+2];
+					copy_v3_v3_short(v->no, sno);
+					copy_v3_v3_short(v2->no, sno);
+				}
+			}
+			vertstart += mi->vertex_count;
+		}
+
+		fmd->refresh_constraints = true;
+		fmd->meshConstraints.first = NULL;
+		fmd->meshConstraints.last = NULL;
+
+		fmd->refresh_images = true;
+	}
+}
+
 static void direct_link_modifiers(FileData *fd, ListBase *lb)
 {
 	ModifierData *md;
@@ -5010,115 +5124,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 		}
 		else if (md->type == eModifierType_Fracture) {
 			FractureModifierData *fmd = (FractureModifierData *)md;
-			FracMesh* fm;
-
-			fm = fmd->frac_mesh = newdataadr(fd, fmd->frac_mesh);
-
-			fmd->refresh = false;  /* do not execute modifier here yet*/
-			fmd->refresh_constraints = false;
-			fmd->nor_tree = NULL;
-			fmd->face_pairs = NULL;
-
-			if (fm == NULL) {
-
-				fmd->dm = NULL;
-				fmd->meshIslands.first = NULL;
-				fmd->meshIslands.last = NULL;
-				fmd->visible_mesh = NULL;
-				fmd->visible_mesh_cached = NULL;
-				zero_m4(fmd->origmat);
-				fmd->meshConstraints.first = NULL;
-				fmd->meshConstraints.last = NULL;
-				fmd->explo_shared = false;
-				fmd->refresh = false;  /* do not execute modifier */
-				fmd->refresh_constraints = false;
-				fmd->max_vol = 0;
-				fmd->refresh_images = false;
-			}
-			else {
-				MeshIsland *mi;
-				MVert *mverts;
-				int vertstart = 0;
-				Shard *s;
-				int count = 0;
-
-				link_list(fd, &fmd->frac_mesh->shard_map);
-				for (s = fmd->frac_mesh->shard_map.first; s; s = s->next) {
-					read_shard(fd, &s);
-				}
-
-				fmd->dm = NULL;
-				fmd->visible_mesh = NULL;
-
-				link_list(fd, &fmd->islandShards);
-				for (s = fmd->islandShards.first; s; s = s->next) {
-					read_shard(fd, &s);
-				}
-
-				link_list(fd, &fmd->meshIslands);
-				count = BLI_listbase_count(&fmd->islandShards);
-
-				if ((fmd->islandShards.first == NULL || count == 0) && fm->shard_count > 0) {
-					/* oops, a refresh was missing, so disable this flag here better, otherwise
-					 * we attempt to load non existing data */
-					fmd->shards_to_islands = false;
-				}
-				else if (fm->shard_count == 0) {
-					fmd->shards_to_islands = true;
-				}
-
-				/* ugly ugly, need only the shard... the rest is to be generated on demand... */
-				BKE_fracture_create_dm(fmd, true);
-
-				if (fm->shard_count == 0) {
-					fmd->shards_to_islands = false;
-				}
-
-				fmd->visible_mesh_cached = CDDM_copy(fmd->dm);
-				if (fmd->visible_mesh == NULL) {
-					fmd->visible_mesh = DM_to_bmesh(fmd->visible_mesh_cached, true);
-				}
-
-				DM_ensure_tessface(fmd->visible_mesh_cached);
-				DM_ensure_normals(fmd->visible_mesh_cached);
-				DM_update_tessface_data(fmd->visible_mesh_cached);
-
-				/* re-init cached verts here... */
-				mverts = CDDM_get_verts(fmd->visible_mesh_cached);
-
-				for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
-					MVert *mv;
-					int k = 0;
-					read_meshIsland(fd, &mi);
-					mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * mi->vertex_count, "mi->vertices_cached readfile");
-					mv = mi->physics_mesh->getVertArray(mi->physics_mesh);
-
-					for (k = 0; k < mi->vertex_count; k++) {
-						MVert* v = mverts + vertstart + k ;
-						MVert* v2 = mv + k;
-						mi->vertices_cached[k] = v;
-						mi->vertco[k*3] = v->co[0];
-						mi->vertco[k*3+1] = v->co[1];
-						mi->vertco[k*3+2] = v->co[2];
-
-						if (mi->vertno != NULL && fmd->fix_normals) {
-							short sno[3];
-							sno[0] = mi->vertno[k*3];
-							sno[1] = mi->vertno[k*3+1];
-							sno[2] = mi->vertno[k*3+2];
-							copy_v3_v3_short(v->no, sno);
-							copy_v3_v3_short(v2->no, sno);
-						}
-					}
-					vertstart += mi->vertex_count;
-				}
-
-				fmd->refresh_constraints = true;
-				fmd->meshConstraints.first = NULL;
-				fmd->meshConstraints.last = NULL;
-
-				fmd->refresh_images = true;
-			}
+			load_fracture_modifier(fd, fmd);
 		}
 	}
 }
