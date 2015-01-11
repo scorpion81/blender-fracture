@@ -123,6 +123,7 @@ set(SRC
 	intern/mesh.c
 	intern/mesh_evaluate.c
 	intern/mesh_mapping.c
+	intern/mesh_remap.c
 	intern/mesh_validate.c
 	intern/modifier.c
 	intern/modifiers_bmesh.c
@@ -131,6 +132,7 @@ set(SRC
 	intern/nla.c
 	intern/node.c
 	intern/object.c
+	intern/object_data_transfer.c
 	intern/object_deform.c
 	intern/object_dupli.c
 	intern/ocean.c
@@ -234,12 +236,14 @@ set(SRC
 	BKE_mball.h
 	BKE_mesh.h
 	BKE_mesh_mapping.h
+	BKE_mesh_remap.h
 	BKE_modifier.h
 	BKE_movieclip.h
 	BKE_multires.h
 	BKE_nla.h
 	BKE_node.h
 	BKE_object.h
+	BKE_object_data_transfer.h
 	BKE_object_deform.h
 	BKE_ocean.h
 	BKE_packedFile.h
@@ -279,6 +283,7 @@ set(SRC
 	tracking_private.h
 	intern/CCGSubSurf.h
 	intern/pbvh_intern.h
+	intern/data_transfer_intern.h
 )
 
 if(WITH_BINRELOC)

@@ -615,7 +615,8 @@ short copy_animedit_keys(bAnimContext *ac, ListBase *anim_data)
 	return 0;
 }
 
-static void flip_names(tAnimCopybufItem *aci, char **name) {
+static void flip_names(tAnimCopybufItem *aci, char **name)
+{
 	if (aci->is_bone) {
 		char *str_start;
 		if ((str_start = strstr(aci->rna_path, "pose.bones["))) {
@@ -644,7 +645,7 @@ static void flip_names(tAnimCopybufItem *aci, char **name) {
 			BLI_strncpy(str_iter, bname_new, length + 1);
 			str_iter += length;
 			BLI_strncpy(str_iter, str_end, postfix_l + 1);
-			str_iter[postfix_l] = 0;
+			str_iter[postfix_l] = '\0';
 		}
 	}
 }
@@ -746,7 +747,7 @@ static tAnimCopybufItem *pastebuf_match_index_only(FCurve *fcu, const short from
 static void do_curve_mirror_flippping(tAnimCopybufItem *aci, BezTriple *bezt)
 {
 	if (aci->is_bone) {
-		int slength = strlen(aci->rna_path);
+		const size_t slength = strlen(aci->rna_path);
 		bool flip = false;
 		if (BLI_strn_endswith(aci->rna_path, "location", slength) && aci->array_index == 0)
 			flip = true;
