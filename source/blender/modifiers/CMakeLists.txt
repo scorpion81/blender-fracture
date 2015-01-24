@@ -52,7 +52,6 @@ set(SRC
 	intern/MOD_cloth.c
 	intern/MOD_collision.c
 	intern/MOD_curve.c
-	intern/MOD_datatransfer.c
 	intern/MOD_decimate.c
 	intern/MOD_displace.c
 	intern/MOD_dynamicpaint.c
