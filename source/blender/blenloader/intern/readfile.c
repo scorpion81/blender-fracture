@@ -4875,13 +4875,6 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 		/* if modifiers disappear, or for upward compatibility */
 		if (NULL == modifierType_getInfo(md->type))
 			md->type = eModifierType_None;
-
-		/* XXX hack, in Fracture Modifier Branch prior to 2.73.2 no DataTransfer Modifier
-		 * existed, but after 2.73 it takes the place of Fracture Modifier in internal numbering
-		 * so fix this temporarily here,  BRANCH ONLY !!! */
-		if ((md->type == eModifierType_DataTransfer) && (fd->fileversion < 273)) {
-			md->type = eModifierType_Fracture;
-		}
 			
 		if (md->type == eModifierType_Subsurf) {
 			SubsurfModifierData *smd = (SubsurfModifierData *)md;
