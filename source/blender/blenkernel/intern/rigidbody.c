@@ -3266,6 +3266,12 @@ void BKE_rigidbody_rebuild_world(Scene *scene, float ctime)
 	int startframe, endframe;
 	int shards = 0, objects = 0;
 
+	if (ctime == -1)
+	{
+		rigidbody_update_simulation(scene, rbw, true);
+		return;
+	}
+
 	BKE_ptcache_id_from_rigidbody(&pid, NULL, rbw);
 	BKE_ptcache_id_time(&pid, scene, ctime, &startframe, &endframe, NULL);
 	cache = rbw->pointcache;
