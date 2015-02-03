@@ -345,13 +345,16 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 	unwrap_shard_dm(left_dm);
 
 	/* set inner material on child shard */
-	mpoly = left_dm->getPolyArray(left_dm);
-	totpoly = left_dm->getNumPolys(left_dm);
-	for (i = 0, mp = mpoly; i < totpoly; i++, mp++) {
-		if (inner_material_index > 0) {
-			mp->mat_nr = inner_material_index;
+	if (other == NULL)
+	{
+		mpoly = left_dm->getPolyArray(left_dm);
+		totpoly = left_dm->getNumPolys(left_dm);
+		for (i = 0, mp = mpoly; i < totpoly; i++, mp++) {
+			if (inner_material_index > 0) {
+				mp->mat_nr = inner_material_index;
+			}
+			mp->flag |= ME_FACE_SEL;
 		}
-		mp->flag |= ME_FACE_SEL;
 	}
 
 	right_dm = dm_parent;
