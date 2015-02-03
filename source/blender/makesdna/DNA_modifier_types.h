@@ -1400,12 +1400,14 @@ enum {
 	MOD_WIREFRAME_CREASE        = (1 << 5),
 };
 
+/* Fracture Modifier */
 enum {
 	MOD_FRACTURE_BISECT_FAST      = (1 << 0),
 	MOD_FRACTURE_BISECT_FAST_FILL = (1 << 1),
 	MOD_FRACTURE_BOOLEAN          = (1 << 2),
 	MOD_FRACTURE_BISECT_FILL      = (1 << 3),
 	MOD_FRACTURE_BISECT           = (1 << 4),
+	MOD_FRACTURE_BOOLEAN_FRACTAL  = (1 << 5),
 };
 
 enum {
@@ -1455,6 +1457,7 @@ typedef struct FractureModifierData {
 	int breaking_percentage;
 	int cluster_breaking_percentage;
 	int splinter_axis;
+	int fractal_cuts;
 
 	float breaking_angle;
 	float breaking_distance;
@@ -1466,6 +1469,8 @@ typedef struct FractureModifierData {
 	float contact_dist, autohide_dist;
 	float splinter_length;
 	float nor_range;
+	float fractal_amount;
+	float physics_mesh_scale;
 
 	/* flags */
 	int refresh;
@@ -1495,7 +1500,7 @@ typedef struct FractureModifierData {
 	/* internal values */
 	float max_vol;
 
-	//char pad[4];
+	char pad[4];
 } FractureModifierData;
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */

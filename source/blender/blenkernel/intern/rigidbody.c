@@ -703,15 +703,41 @@ static rbCollisionShape *rigidbody_get_shape_convexhull_from_dm(DerivedMesh *dm,
 }
 
 
+static void scale_physics_mesh(DerivedMesh** dm, float loc[3], float scale)
+{
+	/*location is the centroid, scale factor comes from ob->rigidbody (main dummy rigidbody object) */
+	MVert* mv, *mvert;
+	int totvert, i;
+	float l[3], size[3], scale_v[3], cent[3];
+
+	DM_mesh_boundbox(*dm, l, size);
+
+	scale_v[0] = (size[0] * scale) / size[0];
+	scale_v[1] = (size[1] * scale) / size[1];
+	scale_v[2] = (size[2] * scale) / size[2];
+
+	copy_v3_v3(cent, loc);
+	mul_v3_fl(cent, scale);
+
+	mvert   = (*dm)->getVertArray(*dm);
+	totvert = (*dm)->getNumVerts(*dm);
+
+	for (i = 0, mv = mvert; i < totvert; i++, mv++ )
+	{
+		add_v3_v3(mv->co, loc);
+		mul_v3_v3(mv->co, scale_v);
+		sub_v3_v3(mv->co, cent);
+	}
+}
 
 /* create collision shape of mesh - triangulated mesh
  * returns NULL if creation fails.
  */
-static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh_shard(DerivedMesh *dmm, Object *ob)
+static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh_shard(MeshIsland *mi, Object *ob)
 {
 	rbCollisionShape *shape = NULL;
 
-	if (dmm) {
+	if (mi && mi->physics_mesh) {
 		DerivedMesh *dm = NULL;
 		MVert *mvert;
 		MFace *mface;
@@ -719,12 +745,20 @@ static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh_shard(DerivedMesh
 		int totface;
 		int tottris = 0;
 		int triangle_index = 0;
+		float scale = 0.99f;
+		FractureModifierData *fmd = NULL;
 
-		dm = CDDM_copy(dmm);
+		dm = CDDM_copy(mi->physics_mesh);
 
 		/* ensure mesh validity, then grab data */
 		if (dm == NULL)
 			return NULL;
+
+		/* shrink the bullet mesh a little bit, so it wont explode */
+		fmd = (FractureModifierData*) modifiers_findByType(ob, eModifierType_Fracture);
+		if (fmd)
+			scale = fmd->physics_mesh_scale;
+		scale_physics_mesh(&dm, mi->centroid, scale);
 
 		DM_ensure_tessface(dm);
 
@@ -813,6 +847,7 @@ static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh(Object *ob)
 		int totface;
 		int tottris = 0;
 		int triangle_index = 0;
+		float cent[3];
 
 		dm = rigidbody_get_mesh(ob);
 
@@ -1084,7 +1119,7 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 				rbo->margin = (can_embed && has_volume) ? 0.04f : 0.0f;      /* RB_TODO ideally we shouldn't directly change the margin here */
 			break;
 		case RB_SHAPE_TRIMESH:
-			new_shape = rigidbody_get_shape_trimesh_from_mesh_shard(mi->physics_mesh, ob);
+			new_shape = rigidbody_get_shape_trimesh_from_mesh_shard(mi, ob);
 			break;
 	}
 	/* assign new collision shape if creation was successful */

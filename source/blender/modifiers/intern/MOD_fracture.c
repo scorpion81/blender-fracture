@@ -141,6 +141,10 @@ static void initData(ModifierData *md)
 	fmd->use_experimental = 0;
 	fmd->use_breaking = true;
 	fmd->use_smooth = false;
+
+	fmd->fractal_cuts = 4;
+	fmd->fractal_amount = 1.0f;
+	fmd->physics_mesh_scale = 0.75f;
 }
 
 static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
@@ -396,12 +400,15 @@ static void doClusters(FractureModifierData *fmd)
 	KDTree *tree;
 	Shard *s, **seeds;
 	int seed_count;
+	ListBase shardlist;
 
 	/*for now, keep 1 hierarchy level only, should be sufficient */
 	int levels = 1;
 
+	shardlist = fmd->frac_mesh->shard_map;
+
 	/*initialize cluster "colors" -> membership of shards to clusters, initally all shards are "free" */
-	for (s = fmd->frac_mesh->shard_map.first; s; s = s->next ) {
+	for (s = shardlist.first; s; s = s->next ) {
 		if (s->cluster_colors == NULL) {
 			s->cluster_colors = MEM_mallocN(sizeof(int) * levels, "cluster_colors");
 			s->cluster_colors[0] = -1;
@@ -421,7 +428,7 @@ static void doClusters(FractureModifierData *fmd)
 	for (k = 0; k < seed_count; k++) {
 		int color = k;
 		int which_index = k * (int)(fmd->frac_mesh->shard_count / seed_count);
-		Shard *which = (Shard *)BLI_findlink(&fmd->frac_mesh->shard_map, which_index);
+		Shard *which = (Shard *)BLI_findlink(&shardlist, which_index);
 		which->cluster_colors[0] = color;
 		BLI_kdtree_insert(tree, k, which->centroid);
 		seeds[k] = which;
@@ -430,7 +437,7 @@ static void doClusters(FractureModifierData *fmd)
 	BLI_kdtree_balance(tree);
 
 	/* assign each shard to its closest center */
-	for (s = fmd->frac_mesh->shard_map.first; s; s = s->next ) {
+	for (s = shardlist.first; s; s = s->next ) {
 		KDTreeNearest n;
 		int index;
 
@@ -830,7 +837,8 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 		INIT_MINMAX(min, max);
 		BKE_get_shard_minmax(emd->frac_mesh, -1, min, max, fracmesh); //id 0 should be entire mesh
 
-		if (emd->frac_algorithm == MOD_FRACTURE_BISECT_FAST || emd->frac_algorithm == MOD_FRACTURE_BISECT_FAST_FILL) {
+		if (emd->frac_algorithm == MOD_FRACTURE_BISECT_FAST || emd->frac_algorithm == MOD_FRACTURE_BISECT_FAST_FILL ||
+		    emd->frac_algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL) {
 			/* XXX need double amount of shards, because we create 2 islands at each cut... so this matches the input count */
 			count *= 2;
 		}
@@ -992,7 +1000,7 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, D
 		}
 
 		mat_index = mat_index > 0 ? mat_index - 1 : mat_index;
-		BKE_fracture_shard_by_points(fracmd->frac_mesh, id, &points, fracmd->frac_algorithm, obj, dm, mat_index, mat2);
+		BKE_fracture_shard_by_points(fracmd->frac_mesh, id, &points, fracmd->frac_algorithm, obj, dm, mat_index, mat2, fracmd->fractal_cuts, fracmd->fractal_amount);
 
 		/* job has been cancelled, throw away all data */
 		if (fracmd->frac_mesh->cancel == 1)
@@ -1103,6 +1111,11 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->cluster_breaking_angle = rmd->cluster_breaking_angle;
 	trmd->cluster_breaking_distance = rmd->cluster_breaking_distance;
 	trmd->cluster_breaking_percentage = rmd->cluster_breaking_percentage;
+
+	trmd->use_breaking = rmd->use_breaking;
+	trmd->use_smooth = rmd->use_smooth;
+	trmd->fractal_cuts = rmd->fractal_cuts;
+	trmd->fractal_amount = rmd->fractal_amount;
 }
 
 /* mi->bb, its for volume fraction calculation.... */
@@ -2295,6 +2308,7 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 				float dummyloc[3], rot[4];
 				MDeformVert *dvert = fmd->dm->getVertDataArray(fmd->dm, CD_MDEFORMVERT);
 				MDeformVert *ivert;
+				ListBase shardlist;
 				const int thresh_defgrp_index = defgroup_name_index(ob, fmd->thresh_defgrp_name);
 				const int ground_defgrp_index = defgroup_name_index(ob, fmd->ground_defgrp_name);
 
@@ -2324,7 +2338,9 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 					start = PIL_check_seconds_timer();
 				}
 
-				for (s = fmd->frac_mesh->shard_map.first; s; s = s->next) {
+				shardlist = fmd->frac_mesh->shard_map;
+
+				for (s = shardlist.first; s; s = s->next) {
 					MVert *mv, *verts, *mverts;
 					int totvert, k;
 
@@ -2335,7 +2351,6 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 					fmd->frac_mesh->progress_counter++;
 
 					mi = MEM_callocN(sizeof(MeshIsland), "meshIsland");
-
 					mi->locs = MEM_mallocN(sizeof(float)*3, "mi->locs");
 					mi->rots = MEM_mallocN(sizeof(float)*4, "mi->rots");
 					mi->frame_count = 0;
@@ -2362,9 +2377,11 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 						}
 					}
 					vertstart += s->totvert;
+
 					mi->physics_mesh = BKE_shard_create_dm(s, true);
 					totvert = mi->physics_mesh->numVertData;
 					verts = mi->physics_mesh->getVertArray(mi->physics_mesh);
+
 					mi->vertco = MEM_mallocN(sizeof(float) * 3 * totvert, "vertco");
 					mi->vertno = MEM_mallocN(sizeof(short) * 3 * totvert, "vertno");
 
@@ -2402,7 +2419,9 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 
 					BKE_shard_calc_minmax(s);
 					mi->vertex_count = s->totvert;
+
 					copy_v3_v3(mi->centroid, s->centroid);
+
 					mat4_to_loc_quat(dummyloc, rot, ob->obmat);
 					copy_v3_v3(mi->rot, rot);
 

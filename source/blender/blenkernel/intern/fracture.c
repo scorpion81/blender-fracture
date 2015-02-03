@@ -142,6 +142,16 @@ static void shard_boundbox(Shard *s, float r_loc[3], float r_size[3])
 	r_size[2] = (max[2] - min[2]) / 2.0f;
 }
 
+#if 0
+static float shard_size(Shard* s)
+{
+	float size[3], loc[3];
+	shard_boundbox(s, loc, size);
+
+	return size[0] * size[1] * size[2];
+}
+#endif
+
 
 static int shard_sortsize(const void *s1, const void *s2, void* UNUSED(context))
 {
@@ -372,7 +382,7 @@ FracMesh *BKE_create_fracture_container(void)
 
 
 /* parse the voro++ cell data */
-static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, FracMesh *fm, int algorithm, Object *obj, DerivedMesh *dm, short inner_material_index, float mat[4][4])
+static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, FracMesh *fm, int algorithm, Object *obj, DerivedMesh *dm, short inner_material_index, float mat[4][4], int num_cuts, float fractal)
 {
 	/*Parse voronoi raw data*/
 	int i = 0;
@@ -381,8 +391,10 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 	float centroid[3];
 	BMesh *bm_parent = NULL;
 	DerivedMesh *dm_parent = NULL;
+	DerivedMesh *dm_p = NULL;
 	Shard **tempshards;
 	Shard **tempresults;
+	int max_retries = 50;
 
 	tempshards = MEM_mallocN(sizeof(Shard *) * expected_shards, "tempshards");
 	tempresults = MEM_mallocN(sizeof(Shard *) * expected_shards, "tempresults");
@@ -391,9 +403,10 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 	p->flag |= SHARD_FRACTURED;
 	unit_m4(obmat);
 
-	if (algorithm == MOD_FRACTURE_BOOLEAN) {
+	if ((algorithm == MOD_FRACTURE_BOOLEAN) || (algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL)) {
 		MPoly *mpoly, *mp;
 		int totpoly, i;
+
 		dm_parent = BKE_shard_create_dm(p, true);
 		mpoly = dm_parent->getPolyArray(dm_parent);
 		totpoly = dm_parent->getNumPolys(dm_parent);
@@ -441,7 +454,111 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 
 			/* XXX TODO, need object for material as well, or atleast a material index... */
 			if (algorithm == MOD_FRACTURE_BOOLEAN) {
-				s = BKE_fracture_shard_boolean(obj, dm_parent, t, inner_material_index);
+				s = BKE_fracture_shard_boolean(obj, dm_parent, t, inner_material_index, 0, 0.0f, NULL, NULL, 0.0f, false);
+			}
+			else if (algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL) {
+				/* physics shard and fractalized shard, so we need to booleanize twice */
+				/* and we need both halves, so twice again */
+				Shard *s2 = NULL;
+				int index = 0;
+
+				/*continue with "halves", randomly*/
+				if (i == 0) {
+					dm_p = dm_parent;
+				}
+
+				while (s == NULL || s2 == NULL) {
+
+					float radius;
+					float size[3];
+					float eul[3];
+					float loc[3];
+					float one[3] = {1.0f, 1.0f, 1.0f};
+					float matrix[4][4];
+
+					/*make a plane as cutter*/
+					BKE_object_dimensions_get(obj, size);
+					radius = MAX3(size[0], size[1], size[2]);
+
+					loc[0] = (BLI_frand() - 0.5f) * size[0];
+					loc[1] = (BLI_frand() - 0.5f) * size[1];
+					loc[2] = (BLI_frand() - 0.5f) * size[2];
+
+					eul[0] = BLI_frand() * M_PI;
+					eul[1] = BLI_frand() * M_PI;
+					eul[2] = BLI_frand() * M_PI;
+
+					//printf("(%f %f %f) (%f %f %f) \n", loc[0], loc[1], loc[2], eul[0], eul[1], eul[2]);
+
+					loc_eul_size_to_mat4(matrix, loc, eul, one);
+
+					/*visual shards next, fractalized cuts */
+					s = BKE_fracture_shard_boolean(obj, dm_p, t, inner_material_index, num_cuts,fractal, &s2, matrix, radius, false);
+
+					if (index < max_retries)
+					{
+						printf("Retrying...%d\n", index);
+						index++;
+					}
+					else if (s == NULL || s2 == NULL)
+					{
+						i++;
+						break;
+					}
+				}
+
+				if ((s != NULL) && (s2 != NULL)) {
+					int j = 0; //, k = 0;
+					//float size_max = 0;
+
+					s->parent_id = parent_id;
+					s->flag = SHARD_INTACT;
+					tempresults[i+1] = s;
+
+					s2->parent_id = parent_id;
+					s2->flag = SHARD_INTACT;
+					tempresults[i] = s2;
+
+					BLI_qsort_r(tempresults, i + 1, sizeof(Shard *), shard_sortsize, &i);
+					while (tempresults[j] == NULL && j < (i + 1)) {
+						/* ignore invalid shards */
+						j++;
+					}
+#if 0
+					/*search for biggest shard and keep aligned with fractalized one*/
+					for (k = 0; k < (i+2); k++)
+					{
+						float size;
+						if (tempresults[k] != NULL)
+						{
+							size = shard_size(tempresults[k]);
+							if (size > size_max)
+							{
+								j = k;
+								size_max = size;
+							}
+						}
+					}
+#endif
+					/* continue splitting if not all expected shards exist yet */
+					if ((i + 2) < expected_shards) {
+
+						Shard *p = tempresults[j];
+
+						if (dm_p != dm_parent && dm_p != NULL) {
+							dm_p->needsFree = 1;
+							dm_p->release(dm_p);
+						}
+
+						dm_p = BKE_shard_create_dm(p, true);
+
+						BKE_shard_free(tempresults[j], true);
+						tempresults[j] = NULL;
+
+					}
+
+					i++; //XXX remember to "double" the shard amount....
+				}
 			}
 			else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL) {
 				float co[3] = {0, 0, 0};
@@ -453,7 +570,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 				s = t;
 			}
 
-			if (s != NULL) {
+			if ((s != NULL) && (algorithm != MOD_FRACTURE_BOOLEAN_FRACTAL)) {
 				s->parent_id = parent_id;
 				s->flag = SHARD_INTACT;
 
@@ -553,6 +670,13 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 		dm_parent = NULL;
 	}
 
+	if (dm_p != NULL) {
+		dm_p->needsFree = 1;
+		dm_p->release(dm_p);
+		dm_p = NULL;
+	}
+
+
 	if (p->shard_id == -2)
 	{
 		BKE_shard_free(p, true);
@@ -566,6 +690,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 		{
 			for (i = 0; i < expected_shards; i++) {
 				Shard *s = tempresults[i];
+
 				if (s != NULL) {
 					add_shard(fm, s, mat);
 				}
@@ -692,7 +817,7 @@ static void parse_cell_neighbors(cell c, int *neighbors, int totpoly)
 	}
 }
 
-void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud, int algorithm, Object *obj, DerivedMesh *dm, short inner_material_index, float mat[4][4]) {
+void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud, int algorithm, Object *obj, DerivedMesh *dm, short inner_material_index, float mat[4][4], int num_cuts, float fractal) {
 	int n_size = 8;
 	
 	Shard *shard;
@@ -752,7 +877,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	container_compute_cells(voro_container, voro_cells);
 
 	/*Evaluate result*/
-	parse_cells(voro_cells, pointcloud->totpoints, id, fmesh, algorithm, obj, dm, inner_material_index, mat);
+	parse_cells(voro_cells, pointcloud->totpoints, id, fmesh, algorithm, obj, dm, inner_material_index, mat, num_cuts, fractal);
 
 	/*Free structs in C++ area of memory */
 	cells_free(voro_cells, pointcloud->totpoints);
@@ -833,8 +958,7 @@ static DerivedMesh *create_dm(FractureModifierData *fmd, bool doCustomData)
 	if (fmd->shards_to_islands) {
 		shardlist = &fmd->islandShards;
 	}
-	else
-	{
+	else {
 		shardlist = &fmd->frac_mesh->shard_map;
 	}
 

@@ -77,6 +77,12 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         col.prop(md, "point_seed")
         if md.frac_algorithm == 'BOOLEAN' or md.frac_algorithm == 'BISECT_FILL' or md.frac_algorithm == 'BISECT_FAST_FILL':
             layout.prop(md, "inner_material")
+        if md.frac_algorithm == 'BOOLEAN_FRACTAL':
+            layout.prop(md, "inner_material")
+            col = layout.column(align=True)
+            col.prop(md, "fractal_cuts")
+            col.prop(md, "fractal_amount")
+            col.prop(md, "physics_mesh_scale")
         row = layout.row()
         row.prop(md, "shards_to_islands")
         row.prop(md, "auto_execute")

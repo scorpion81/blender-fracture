@@ -35,6 +35,7 @@
 #include "BKE_fracture.h"
 #include "BKE_fracture_util.h"
 #include "BKE_material.h"
+#include "BKE_object.h"
 
 #include "BLI_alloca.h"
 #include "BLI_boxpack2d.h"
@@ -47,10 +48,12 @@
 #include "DNA_fracture_types.h"
 #include "DNA_meshdata_types.h"
 #include "DNA_material_types.h"
+#include "DNA_modifier_types.h"
 
 #include "MEM_guardedalloc.h"
 
 #include "bmesh.h"
+#include "bmesh_tools.h"
 #include "../../modifiers/intern/MOD_boolean_util.h"
 
 /*prototypes*/
@@ -199,14 +202,146 @@ void unwrap_shard_dm(DerivedMesh *dm)
 	CustomData_add_layer_named(&dm->polyData, CD_MTEXPOLY, CD_CALLOC, NULL, totpoly, "InnerUV");
 }
 
-Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *child, short inner_material_index)
+static bool check_non_manifold(DerivedMesh* dm)
+{
+	BMesh *bm;
+	BMVert* v;
+	BMIter iter;
+	BMEdge *e;
+
+	/*check for watertightness*/
+	bm = DM_to_bmesh(dm, true);
+
+	if (bm->totface < 4) {
+		BM_mesh_free(bm);
+		printf("Empty mesh...\n");
+		return true;
+	}
+
+	BM_ITER_MESH (v, &iter, bm, BM_VERTS_OF_MESH) {
+		if (!BM_vert_is_manifold(v)) {
+			BM_mesh_free(bm);
+			printf("Mesh not watertight...\n");
+			return true;
+		}
+	}
+
+	BM_ITER_MESH (e, &iter, bm, BM_EDGES_OF_MESH) {
+		if (BM_edge_is_wire(e) ||
+			BM_edge_is_boundary(e) ||
+			(BM_edge_is_manifold(e) && !BM_edge_is_contiguous(e)) ||
+			BM_edge_face_count(e) > 2)
+		{
+			/* check we never select perfect edge (in test above) */
+			BLI_assert(!(BM_edge_is_manifold(e) && BM_edge_is_contiguous(e)));
+			BM_mesh_free(bm);
+			printf("Mesh not watertight...\n");
+			return true;
+		}
+	}
+
+	BM_mesh_free(bm);
+	return false;
+}
+
+static int DM_mesh_minmax(DerivedMesh *dm, float r_min[3], float r_max[3])
+{
+	MVert *v;
+	int i = 0;
+	for (i = 0; i < dm->numVertData; i++) {
+		v = CDDM_get_vert(dm, i);
+		minmax_v3v3_v3(r_min, r_max, v->co);
+	}
+
+	return (dm->numVertData != 0);
+}
+
+static bool compare_dm_size(DerivedMesh *dmOld, DerivedMesh *dmNew)
+{
+	float min[3], max[3];
+	float size[3];
+	float v1, v2;
+
+	INIT_MINMAX(min, max);
+	DM_mesh_minmax(dmOld, min, max);
+	sub_v3_v3v3(size, max, min);
+
+	v1 = size[0] * size[1] * size[2];
+
+	INIT_MINMAX(min, max);
+	DM_mesh_minmax(dmNew, min, max);
+	sub_v3_v3v3(size, max, min);
+
+	v2 = size[0] * size[1] * size[2];
+
+	if (v2 >= v1)
+	{
+		printf("Size mismatch !\n");
+	}
+
+	return v2 < v1;
+}
+
+Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *child, short inner_material_index, int num_cuts, float fractal, Shard** other, float mat[4][4], float radius, bool use_smooth_inner)
 {
 	Shard *output_s;
-	DerivedMesh *left_dm, *right_dm, *output_dm;
+	DerivedMesh *left_dm, *right_dm, *output_dm, *other_dm;
 	MPoly *mpoly, *mp;
+	BMesh* bm = NULL;
 	int totpoly, i = 0;
+	BMFace* f;
+	BMIter iter;
 
-	left_dm = BKE_shard_create_dm(child, false);
+	if (other != NULL)
+	{
+		/*create a grid plane */
+
+		bm = BM_mesh_create(&bm_mesh_allocsize_default);
+		BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+		        "create_grid x_segments=%i y_segments=%i size=%f matrix=%m4",
+		        1, 1, radius*1.4, mat);
+
+		/*subdivide the plane fractally*/
+		for (i = 0; i < num_cuts; i++)
+		{
+			BMO_op_callf(bm,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+						 "subdivide_edges edges=ae "
+						 "smooth=%f smooth_falloff=%i use_smooth_even=%b "
+						 "fractal=%f along_normal=%f "
+						 "cuts=%i "
+						 "quad_corner_type=%i "
+						 "use_single_edge=%b use_grid_fill=%b "
+						 "use_only_quads=%b "
+						 "seed=%i",
+						 0.0f, SUBD_FALLOFF_ROOT, false,
+						 fractal, 1.0f,
+						 1,
+						 SUBD_CORNER_INNERVERT,
+						 false, true,
+						 true,
+						 0);
+		}
+
+		BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+		        "recalc_face_normals faces=af");
+
+		if (use_smooth_inner)
+		{
+			BM_ITER_MESH(f, &iter, bm, BM_FACES_OF_MESH)
+			{
+				BM_elem_flag_enable(f, BM_ELEM_SMOOTH);
+			}
+		}
+
+		/*convert back*/
+		left_dm = CDDM_from_bmesh(bm, true);
+	}
+	else
+	{
+		left_dm = BKE_shard_create_dm(child, false);
+	}
+
+
 	unwrap_shard_dm(left_dm);
 
 	/* set inner material on child shard */
@@ -220,7 +355,114 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 	}
 
 	right_dm = dm_parent;
-	output_dm = NewBooleanDerivedMesh(right_dm, obj, left_dm, obj, 1);
+	output_dm = NewBooleanDerivedMesh(right_dm, obj, left_dm, obj, 1); /*1 == intersection, 3 == difference*/
+
+	/*check for watertightness*/
+	if (!output_dm || check_non_manifold(output_dm) || !compare_dm_size(right_dm, output_dm)) {
+		if (other != NULL)
+			*other = NULL;
+		if (bm != NULL)
+			BM_mesh_free(bm);
+
+		if (left_dm != NULL) {
+			left_dm->needsFree = 1;
+			left_dm->release(left_dm);
+			left_dm = NULL;
+		}
+
+		if (output_dm != NULL) {
+			output_dm->needsFree = 1;
+			output_dm->release(output_dm);
+			output_dm = NULL;
+		}
+		return NULL;
+	}
+
+	if (other != NULL && bm != NULL)
+	{
+		BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+		        "reverse_faces faces=af");
+
+		left_dm->needsFree = 1;
+		left_dm->release(left_dm);
+		left_dm = NULL;
+
+		left_dm = CDDM_from_bmesh(bm, true);
+		BM_mesh_free(bm);
+
+		other_dm = NewBooleanDerivedMesh(right_dm, obj, left_dm, obj, 1);
+
+		/*check for watertightness again*/
+		if (!other_dm || check_non_manifold(other_dm) || !compare_dm_size(right_dm, other_dm)) {
+			if (other != NULL)
+				*other = NULL;
+			if (left_dm != NULL) {
+				left_dm->needsFree = 1;
+				left_dm->release(left_dm);
+				left_dm = NULL;
+			}
+			if (other_dm != NULL)
+			{
+				other_dm->needsFree = 1;
+				other_dm->release(other_dm);
+				other_dm = NULL;
+			}
+			if (output_dm != NULL) {
+				output_dm->needsFree = 1;
+				output_dm->release(output_dm);
+				output_dm = NULL;
+			}
+			return NULL;
+		}
+
+		if (other_dm)
+		{
+			*other = BKE_create_fracture_shard(other_dm->getVertArray(other_dm),
+			                                     other_dm->getPolyArray(other_dm),
+			                                     other_dm->getLoopArray(other_dm),
+			                                     other_dm->getNumVerts(other_dm),
+			                                     other_dm->getNumPolys(other_dm),
+			                                     other_dm->getNumLoops(other_dm),
+			                                     true);
+
+			*other = BKE_custom_data_to_shard(*other, other_dm);
+
+#if 0
+			/* XXX TODO this might be wrong by now ... */
+			output_s->neighbor_count = child->neighbor_count;
+			output_s->neighbor_ids = MEM_mallocN(sizeof(int) * child->neighbor_count, __func__);
+			memcpy(output_s->neighbor_ids, child->neighbor_ids, sizeof(int) * child->neighbor_count);
+#endif
+			BKE_fracture_shard_center_centroid(*other, (*other)->centroid);
+
+			/* free the temp derivedmesh */
+			other_dm->needsFree = 1;
+			other_dm->release(other_dm);
+			other_dm = NULL;
+		}
+		else
+		{
+			if (other != NULL)
+				*other = NULL;
+			if (left_dm != NULL) {
+				left_dm->needsFree = 1;
+				left_dm->release(left_dm);
+				left_dm = NULL;
+			}
+			if (other_dm != NULL)
+			{
+				other_dm->needsFree = 1;
+				other_dm->release(other_dm);
+				other_dm = NULL;
+			}
+			if (output_dm != NULL) {
+				output_dm->needsFree = 1;
+				output_dm->release(output_dm);
+				output_dm = NULL;
+			}
+			return NULL;
+		}
+	}
 
 	left_dm->needsFree = 1;
 	left_dm->release(left_dm);
@@ -238,10 +480,14 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 
 		output_s = BKE_custom_data_to_shard(output_s, output_dm);
 
-		/* XXX TODO this might be wrong by now ... */
-		output_s->neighbor_count = child->neighbor_count;
-		output_s->neighbor_ids = MEM_mallocN(sizeof(int) * child->neighbor_count, __func__);
-		memcpy(output_s->neighbor_ids, child->neighbor_ids, sizeof(int) * child->neighbor_count);
+		/* useless, because its a bisect fast-like approach here */
+		if (num_cuts == 0 || fractal == 0.0f || other == NULL) {
+			/* XXX TODO this might be wrong by now ... */
+			output_s->neighbor_count = child->neighbor_count;
+			output_s->neighbor_ids = MEM_mallocN(sizeof(int) * child->neighbor_count, __func__);
+			memcpy(output_s->neighbor_ids, child->neighbor_ids, sizeof(int) * child->neighbor_count);
+		}
+
 		BKE_fracture_shard_center_centroid(output_s, output_s->centroid);
 
 
