@@ -1458,6 +1458,7 @@ typedef struct FractureModifierData {
 	int cluster_breaking_percentage;
 	int splinter_axis;
 	int fractal_cuts;
+	int fractal_iterations;
 
 	float breaking_angle;
 	float breaking_distance;
@@ -1500,7 +1501,7 @@ typedef struct FractureModifierData {
 	/* internal values */
 	float max_vol;
 
-	char pad[4];
+	//char pad[4];
 } FractureModifierData;
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */

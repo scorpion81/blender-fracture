@@ -282,7 +282,7 @@ static bool compare_dm_size(DerivedMesh *dmOld, DerivedMesh *dmNew)
 	return v2 < v1;
 }
 
-Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *child, short inner_material_index, int num_cuts, float fractal, Shard** other, float mat[4][4], float radius, bool use_smooth_inner)
+Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *child, short inner_material_index, int num_cuts, float fractal, Shard** other, float mat[4][4], float radius, bool use_smooth_inner, int num_levels)
 {
 	Shard *output_s;
 	DerivedMesh *left_dm, *right_dm, *output_dm, *other_dm;
@@ -302,7 +302,7 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 		        1, 1, radius*1.4, mat);
 
 		/*subdivide the plane fractally*/
-		for (i = 0; i < num_cuts; i++)
+		for (i = 0; i < num_levels; i++)
 		{
 			BMO_op_callf(bm,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 						 "subdivide_edges edges=ae "
@@ -315,7 +315,7 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 						 "seed=%i",
 						 0.0f, SUBD_FALLOFF_ROOT, false,
 						 fractal, 1.0f,
-						 1,
+						 num_cuts,
 						 SUBD_CORNER_INNERVERT,
 						 false, true,
 						 true,

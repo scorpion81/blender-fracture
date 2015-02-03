@@ -142,9 +142,10 @@ static void initData(ModifierData *md)
 	fmd->use_breaking = true;
 	fmd->use_smooth = false;
 
-	fmd->fractal_cuts = 4;
+	fmd->fractal_cuts = 1;
 	fmd->fractal_amount = 1.0f;
 	fmd->physics_mesh_scale = 0.75f;
+	fmd->fractal_iterations = 5;
 }
 
 static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
@@ -1000,7 +1001,8 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, D
 		}
 
 		mat_index = mat_index > 0 ? mat_index - 1 : mat_index;
-		BKE_fracture_shard_by_points(fracmd->frac_mesh, id, &points, fracmd->frac_algorithm, obj, dm, mat_index, mat2, fracmd->fractal_cuts, fracmd->fractal_amount);
+		BKE_fracture_shard_by_points(fracmd->frac_mesh, id, &points, fracmd->frac_algorithm, obj, dm, mat_index, mat2,
+		                             fracmd->fractal_cuts, fracmd->fractal_amount, fracmd->use_smooth, fracmd->fractal_iterations);
 
 		/* job has been cancelled, throw away all data */
 		if (fracmd->frac_mesh->cancel == 1)

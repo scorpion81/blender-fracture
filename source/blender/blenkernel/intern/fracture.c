@@ -382,7 +382,7 @@ FracMesh *BKE_create_fracture_container(void)
 
 
 /* parse the voro++ cell data */
-static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, FracMesh *fm, int algorithm, Object *obj, DerivedMesh *dm, short inner_material_index, float mat[4][4], int num_cuts, float fractal)
+static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, FracMesh *fm, int algorithm, Object *obj, DerivedMesh *dm, short inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels)
 {
 	/*Parse voronoi raw data*/
 	int i = 0;
@@ -454,7 +454,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 
 			/* XXX TODO, need object for material as well, or atleast a material index... */
 			if (algorithm == MOD_FRACTURE_BOOLEAN) {
-				s = BKE_fracture_shard_boolean(obj, dm_parent, t, inner_material_index, 0, 0.0f, NULL, NULL, 0.0f, false);
+				s = BKE_fracture_shard_boolean(obj, dm_parent, t, inner_material_index, 0, 0.0f, NULL, NULL, 0.0f, false, 0);
 			}
 			else if (algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL) {
 				/* physics shard and fractalized shard, so we need to booleanize twice */
@@ -493,7 +493,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 					loc_eul_size_to_mat4(matrix, loc, eul, one);
 
 					/*visual shards next, fractalized cuts */
-					s = BKE_fracture_shard_boolean(obj, dm_p, t, inner_material_index, num_cuts,fractal, &s2, matrix, radius, false);
+					s = BKE_fracture_shard_boolean(obj, dm_p, t, inner_material_index, num_cuts,fractal, &s2, matrix, radius, smooth, num_levels);
 
 					if (index < max_retries)
 					{
@@ -817,7 +817,7 @@ static void parse_cell_neighbors(cell c, int *neighbors, int totpoly)
 	}
 }
 
-void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud, int algorithm, Object *obj, DerivedMesh *dm, short inner_material_index, float mat[4][4], int num_cuts, float fractal) {
+void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud, int algorithm, Object *obj, DerivedMesh *dm, short inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels) {
 	int n_size = 8;
 	
 	Shard *shard;
@@ -877,7 +877,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	container_compute_cells(voro_container, voro_cells);
 
 	/*Evaluate result*/
-	parse_cells(voro_cells, pointcloud->totpoints, id, fmesh, algorithm, obj, dm, inner_material_index, mat, num_cuts, fractal);
+	parse_cells(voro_cells, pointcloud->totpoints, id, fmesh, algorithm, obj, dm, inner_material_index, mat, num_cuts, fractal, smooth, num_levels);
 
 	/*Free structs in C++ area of memory */
 	cells_free(voro_cells, pointcloud->totpoints);

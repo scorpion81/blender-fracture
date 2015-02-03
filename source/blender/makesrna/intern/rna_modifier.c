@@ -4165,6 +4165,12 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_range(prop, 0.1f , 1.0f);
 	RNA_def_property_ui_text(prop, "Physics Mesh Scale", "Scale factor of physics mesh, reduce this to avoid explosion of the mesh (MESH SHAPE ONLY)");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "fractal_iterations", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "fractal_iterations");
+	RNA_def_property_range(prop, 1, 10);
+	RNA_def_property_ui_text(prop, "Fractal Iterations", "Number of times the number of cuts will be made to the grid, with the given fractal amount");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 void RNA_def_modifier(BlenderRNA *brna)
