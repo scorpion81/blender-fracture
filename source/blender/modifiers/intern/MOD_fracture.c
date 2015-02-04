@@ -1911,7 +1911,7 @@ static void fill_vgroup(FractureModifierData *rmd, DerivedMesh *dm, MDeformVert 
 				v = mv + l->v;
 				if (v->flag & ME_VERT_TMP_TAG) {
 					defvert_add_index_notest(dvert + l->v, inner_defgrp_index, 1.0f);
-					v->flag &= ~ME_VERT_TMP_TAG;
+					//v->flag &= ~ME_VERT_TMP_TAG;
 				}
 			}
 		}
