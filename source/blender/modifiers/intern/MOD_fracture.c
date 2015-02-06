@@ -146,6 +146,8 @@ static void initData(ModifierData *md)
 	fmd->fractal_amount = 1.0f;
 	fmd->physics_mesh_scale = 0.75f;
 	fmd->fractal_iterations = 5;
+
+	fmd->cluster_group = NULL;
 }
 
 static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
@@ -416,38 +418,69 @@ static void doClusters(FractureModifierData *fmd)
 		}
 	}
 
-	/* zero clusters or one mean no clusters, all shards keep free */
-	if (fmd->cluster_count < 2) {
-		return;
+	if (fmd->cluster_group)
+	{
+		seed_count = BLI_listbase_count(&fmd->cluster_group->gobject);
+		if (seed_count > 0)
+		{
+			GroupObject* go;
+			int i = 0;
+			tree = BLI_kdtree_new(seed_count);
+			for (i = 0, go = fmd->cluster_group->gobject.first; go; i++, go = go->next)
+			{
+				BLI_kdtree_insert(tree, i, go->ob->loc);
+			}
+
+			BLI_kdtree_balance(tree);
+
+			/* assign each shard to its closest center */
+			for (s = shardlist.first; s; s = s->next ) {
+				KDTreeNearest n;
+				int index;
+
+				index = BLI_kdtree_find_nearest(tree, s->centroid, &n);
+				s->cluster_colors[0] = index;
+			}
+
+			BLI_kdtree_free(tree);
+		}
 	}
+	else
+	{
+		/* zero clusters or one mean no clusters, all shards keep free */
+		if (fmd->cluster_count < 2) {
+			return;
+		}
 
-	seed_count = (fmd->cluster_count > fmd->frac_mesh->shard_count ? fmd->frac_mesh->shard_count : fmd->cluster_count);
-	seeds = MEM_mallocN(sizeof(Shard *) * seed_count, "seeds");
-	tree = BLI_kdtree_new(seed_count);
+		seed_count = (fmd->cluster_count > fmd->frac_mesh->shard_count ? fmd->frac_mesh->shard_count : fmd->cluster_count);
+		seeds = MEM_mallocN(sizeof(Shard *) * seed_count, "seeds");
+		tree = BLI_kdtree_new(seed_count);
 
-	/* pick n seed locations, randomly scattered over the object */
-	for (k = 0; k < seed_count; k++) {
-		int color = k;
-		int which_index = k * (int)(fmd->frac_mesh->shard_count / seed_count);
-		Shard *which = (Shard *)BLI_findlink(&shardlist, which_index);
-		which->cluster_colors[0] = color;
-		BLI_kdtree_insert(tree, k, which->centroid);
-		seeds[k] = which;
+		/* pick n seed locations, randomly scattered over the object */
+		for (k = 0; k < seed_count; k++) {
+			int color = k;
+			int which_index = k * (int)(fmd->frac_mesh->shard_count / seed_count);
+			Shard *which = (Shard *)BLI_findlink(&shardlist, which_index);
+			which->cluster_colors[0] = color;
+			BLI_kdtree_insert(tree, k, which->centroid);
+			seeds[k] = which;
+		}
+
+		BLI_kdtree_balance(tree);
+
+
+		/* assign each shard to its closest center */
+		for (s = shardlist.first; s; s = s->next ) {
+			KDTreeNearest n;
+			int index;
+
+			index = BLI_kdtree_find_nearest(tree, s->centroid, &n);
+			s->cluster_colors[0] = seeds[index]->cluster_colors[0];
+		}
+
+		BLI_kdtree_free(tree);
+		MEM_freeN(seeds);
 	}
-
-	BLI_kdtree_balance(tree);
-
-	/* assign each shard to its closest center */
-	for (s = shardlist.first; s; s = s->next ) {
-		KDTreeNearest n;
-		int index;
-
-		index = BLI_kdtree_find_nearest(tree, s->centroid, &n);
-		s->cluster_colors[0] = seeds[index]->cluster_colors[0];
-	}
-
-	BLI_kdtree_free(tree);
-	MEM_freeN(seeds);
 }
 
 static KDTree *build_nor_tree(DerivedMesh *dm)
@@ -1105,6 +1138,8 @@ static void copyData(ModifierData *md, ModifierData *target)
 
 	/* sub object group  XXX Do we keep this ?*/
 	trmd->dm_group = rmd->dm_group;
+
+	trmd->cluster_group = rmd->cluster_group;
 
 	trmd->use_particle_birth_coordinates = rmd->use_particle_birth_coordinates;
 	trmd->splinter_length = rmd->splinter_length;
@@ -2664,6 +2699,7 @@ static void foreachIDLink(ModifierData *md, Object *ob,
 	walk(userData, ob, (ID **)&fmd->inner_material);
 	walk(userData, ob, (ID **)&fmd->extra_group);
 	walk(userData, ob, (ID **)&fmd->dm_group);
+	walk(userData, ob, (ID **)&fmd->cluster_group);
 }
 
 static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *UNUSED(md))

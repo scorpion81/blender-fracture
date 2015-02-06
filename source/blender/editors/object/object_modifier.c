@@ -2534,11 +2534,16 @@ static void convert_modifier_to_objects(ReportList *reports, Scene* scene, Objec
 	int i = 0;
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 
+	const char *name = BLI_strdupcat(ob->id.name, "_conv");
+	Group *g = BKE_group_add(G.main, name);
+
 	int count = BLI_listbase_count(&rmd->meshIslands);
 	KDTree* objtree = BLI_kdtree_new(count);
 	Object** objs = MEM_callocN(sizeof(Object*) * count, "convert_objs");
 	float max_con_mass = 0;
 	rmd->refresh = false;
+
+	MEM_freeN((void*)name);
 
 	if (rbw)
 		rbw->pointcache->flag |= PTCACHE_OUTDATED;
@@ -2555,7 +2560,6 @@ static void convert_modifier_to_objects(ReportList *reports, Scene* scene, Objec
 			ob_new = base_new->object;
 		}
 		else {
-
 
 			ob_new = BKE_object_add(G.main, scene, OB_MESH);
 
@@ -2574,6 +2578,8 @@ static void convert_modifier_to_objects(ReportList *reports, Scene* scene, Objec
 				DAG_id_tag_update(&ob_new->id, OB_RECALC_OB);
 			}
 		}
+
+		BKE_group_object_add(g, ob_new, scene, NULL);
 
 		/* throw away all modifiers before fracture, result is stored inside it */
 		while (ob_new->modifiers.first != NULL) {

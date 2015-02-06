@@ -1431,6 +1431,7 @@ typedef struct FractureModifierData {
 	struct DerivedMesh *dm;
 	struct Group *extra_group;
 	struct Group *dm_group;
+	struct Group *cluster_group;
 	struct BMesh *visible_mesh;
 	struct DerivedMesh *visible_mesh_cached;
 	ListBase meshIslands, meshConstraints;
