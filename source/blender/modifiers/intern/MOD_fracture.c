@@ -396,7 +396,7 @@ static void freeData(ModifierData *md)
 
 }
 
-static void doClusters(FractureModifierData *fmd)
+static void doClusters(FractureModifierData *fmd, Object* obj)
 {
 	/*grow clusters from all shards */
 	int k = 0;
@@ -437,8 +437,11 @@ static void doClusters(FractureModifierData *fmd)
 			for (s = shardlist.first; s; s = s->next ) {
 				KDTreeNearest n;
 				int index;
+				float co[3];
 
-				index = BLI_kdtree_find_nearest(tree, s->centroid, &n);
+				mul_v3_m4v3(co, obj->obmat, s->centroid);
+
+				index = BLI_kdtree_find_nearest(tree, co, &n);
 				s->cluster_colors[0] = index;
 			}
 
@@ -1051,7 +1054,7 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, D
 
 		if (fracmd->frac_mesh->shard_count > 0)
 		{
-			doClusters(fracmd);
+			doClusters(fracmd, obj);
 		}
 
 		/* here we REALLY need to fracture so deactivate the shards to islands flag and activate afterwards */
