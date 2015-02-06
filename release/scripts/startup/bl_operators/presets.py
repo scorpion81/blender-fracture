@@ -590,7 +590,8 @@ class AddPresetFracture(AddPresetBase, Operator):
         "fracture.fix_normals",
         "fracture.execute_threaded",
         "fracture.use_breaking",
-        "fracture.nor_range"
+        "fracture.nor_range",
+        "fracture.cluster_group"
     ]
 
     preset_subdir = "fracture"
