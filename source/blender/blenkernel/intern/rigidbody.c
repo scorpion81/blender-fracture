@@ -2397,6 +2397,10 @@ void BKE_rigidbody_remove_object(Scene *scene, Object *ob)
 		}
 	}
 
+	/* force removal of object settings even if world may be invalid e.g. after link/append */
+	if (!rbw && rbo)
+		BKE_rigidbody_free_object(ob);
+
 	/* flag cache as outdated */
 	BKE_rigidbody_cache_reset(rbw);
 }
@@ -3283,10 +3287,10 @@ static void restoreKinematic(RigidBodyWorld *rbw)
 
 void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw)
 {
-	if (rbw)
+	if (rbw) {
 		rbw->pointcache->flag |= PTCACHE_OUTDATED;
-
-	restoreKinematic(rbw);
+		restoreKinematic(rbw);
+	}
 }
 
 /* ------------------ */
