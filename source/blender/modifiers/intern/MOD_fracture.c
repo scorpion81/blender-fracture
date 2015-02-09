@@ -2544,7 +2544,7 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 			MDeformVert* dvert = NULL;
 			if (fmd->visible_mesh_cached)
 				dvert = fmd->visible_mesh_cached->getVertDataArray(fmd->visible_mesh_cached, CD_MDEFORMVERT);
-			if (dvert->dw == NULL)
+			if ((dvert != NULL) && (dvert->dw == NULL))
 				fill_vgroup(fmd, fmd->visible_mesh_cached, dvert, ob);
 		}
 
