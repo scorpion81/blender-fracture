@@ -4068,6 +4068,7 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "autohide_dist", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "autohide_dist");
 	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_autohide_dist_set", NULL);
+	RNA_def_property_range(prop, 0.0f, 10.0f);
 	RNA_def_property_ui_text(prop, "Autohide Distance", "Distance between faces below which both faces should be hidden");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
