@@ -339,10 +339,8 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 	else
 	{
 		left_dm = BKE_shard_create_dm(child, false);
+		unwrap_shard_dm(left_dm);
 	}
-
-
-	unwrap_shard_dm(left_dm);
 
 	/* set inner material on child shard */
 	if (other == NULL)
