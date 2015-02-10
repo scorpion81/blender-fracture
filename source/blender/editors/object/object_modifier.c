@@ -343,7 +343,10 @@ static bool object_modifier_remove(Main *bmain, Object *ob, ModifierData *md,
 	{
 		/* need to clean up modifier remainders inside the rigidbody world
 		 * AFTER the modifier is gone...  but only from the operator ?*/
-		BKE_rigidbody_rebuild_world(scene, -1);
+		if (scene->rigidbody_world)
+		{
+			BKE_rigidbody_rebuild_world(scene, -1);
+		}
 		BKE_scene_frame_set(scene, 1.0);
 	}
 
