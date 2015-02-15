@@ -70,20 +70,21 @@
 
 #ifdef WITH_BULLET
 
+static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int rebuild);
+
 static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld* rbw, MeshIsland *mi, Object* ob)
 {
 	if (rbo->flag & RBO_FLAG_KINEMATIC)
 	{
 		rbo->flag &= ~RBO_FLAG_KINEMATIC;
-		RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
+		//RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
 		RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
 		RB_body_set_kinematic_state(rbo->physics_object, false);
-		RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups, mi, ob);
-		RB_body_activate(rbo->physics_object);
+		//RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups, mi, ob);
+		//RB_body_activate(rbo->physics_object);
+		rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 	}
 }
-
-static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int rebuild);
 
 static bool isModifierActive(FractureModifierData *rmd) {
 	return ((rmd != NULL) && (rmd->modifier.mode & (eModifierMode_Realtime | eModifierMode_Render)) && (rmd->refresh == false));
@@ -1772,7 +1773,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 
 				if (rbo && valid)
 				{
-					activateRigidbody(rbo, rbw, NULL, ob2);
+					activateRigidbody(rbo, rbw, NULL, ob1);
 				}
 			}
 		}
