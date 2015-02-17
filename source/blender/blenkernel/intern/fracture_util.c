@@ -325,11 +325,16 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 		BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 		        "recalc_face_normals faces=af");
 
-		if (use_smooth_inner)
+		BM_ITER_MESH(f, &iter, bm, BM_FACES_OF_MESH)
 		{
-			BM_ITER_MESH(f, &iter, bm, BM_FACES_OF_MESH)
+			if (use_smooth_inner)
 			{
 				BM_elem_flag_enable(f, BM_ELEM_SMOOTH);
+			}
+
+			if (inner_material_index > 0)
+			{
+				f->mat_nr = inner_material_index;
 			}
 		}
 
