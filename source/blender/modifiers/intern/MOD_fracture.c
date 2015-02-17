@@ -1353,6 +1353,22 @@ static float mesh_separate_tagged(FractureModifierData *rmd, Object *ob, BMVert 
 	mi->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi);
 	BKE_rigidbody_calc_shard_mass(ob, mi, orig_dm);
 
+	if (rmd->frac_algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL)
+	{
+		/* cant be kept together in other ways */
+		rmd->use_constraints = true;
+		rmd->contact_dist = 2.0f;
+		rmd->breaking_angle = DEG2RADF(1.0f);
+
+		/* this most likely will only work with "Mesh" shape*/
+		mi->rigidbody->shape = RB_SHAPE_TRIMESH;
+		mi->rigidbody->margin = 0.0f;
+
+		/* set values on "handle object" as well */
+		ob->rigidbody_object->shape = RB_SHAPE_TRIMESH;
+		ob->rigidbody_object->margin = 0.0f;
+	}
+
 	mi->start_frame = rmd->modifier.scene->rigidbody_world->pointcache->startframe;
 
 
@@ -2490,6 +2506,23 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 
 					mi->rigidbody = BKE_rigidbody_create_shard(fmd->modifier.scene, ob, mi);
 					BKE_rigidbody_calc_shard_mass(ob, mi, orig_dm);
+
+					if (fmd->frac_algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL)
+					{
+						/* cant be kept together in other ways */
+						fmd->use_constraints = true;
+						fmd->contact_dist = 2.0f;
+						fmd->breaking_angle = DEG2RADF(1.0f);
+
+						/* this most likely will only work with "Mesh" shape*/
+						mi->rigidbody->shape = RB_SHAPE_TRIMESH;
+						mi->rigidbody->margin = 0.0f;
+
+						/* set values on "handle object" as well */
+						ob->rigidbody_object->shape = RB_SHAPE_TRIMESH;
+						ob->rigidbody_object->margin = 0.0f;
+					}
+
 					mi->vertex_indices = NULL;
 					mi->start_frame = fmd->modifier.scene->rigidbody_world->pointcache->startframe;
 
