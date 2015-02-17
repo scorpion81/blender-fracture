@@ -148,6 +148,7 @@ static void initData(ModifierData *md)
 	fmd->fractal_iterations = 5;
 
 	fmd->cluster_group = NULL;
+	fmd->cutter_group = NULL;
 }
 
 static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
@@ -1037,8 +1038,16 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, D
 		}
 
 		mat_index = mat_index > 0 ? mat_index - 1 : mat_index;
-		BKE_fracture_shard_by_points(fracmd->frac_mesh, id, &points, fracmd->frac_algorithm, obj, dm, mat_index, mat2,
+
+		if (fracmd->frac_algorithm == MOD_FRACTURE_BOOLEAN && fracmd->cutter_group != NULL)
+		{
+			BKE_fracture_shard_by_planes(fracmd, obj, mat_index, mat2);
+		}
+		else
+		{
+			BKE_fracture_shard_by_points(fracmd->frac_mesh, id, &points, fracmd->frac_algorithm, obj, dm, mat_index, mat2,
 		                             fracmd->fractal_cuts, fracmd->fractal_amount, fracmd->use_smooth, fracmd->fractal_iterations);
+		}
 
 		/* job has been cancelled, throw away all data */
 		if (fracmd->frac_mesh->cancel == 1)
@@ -1143,6 +1152,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->dm_group = rmd->dm_group;
 
 	trmd->cluster_group = rmd->cluster_group;
+	trmd->cutter_group = rmd->cutter_group;
 
 	trmd->use_particle_birth_coordinates = rmd->use_particle_birth_coordinates;
 	trmd->splinter_length = rmd->splinter_length;
@@ -2742,6 +2752,15 @@ static void foreachObjectLink(
 	if (fmd->extra_group) {
 		GroupObject *go;
 		for (go = fmd->extra_group->gobject.first; go; go = go->next) {
+			if (go->ob) {
+				walk(userData, ob, &go->ob);
+			}
+		}
+	}
+
+	if (fmd->cutter_group) {
+		GroupObject *go;
+		for (go = fmd->cutter_group->gobject.first; go; go = go->next) {
 			if (go->ob) {
 				walk(userData, ob, &go->ob);
 			}

@@ -212,7 +212,7 @@ static bool check_non_manifold(DerivedMesh* dm)
 	/*check for watertightness*/
 	bm = DM_to_bmesh(dm, true);
 
-	if (bm->totface < 4) {
+	if (bm->totface == 0) {
 		BM_mesh_free(bm);
 		printf("Empty mesh...\n");
 		return true;
@@ -274,12 +274,12 @@ static bool compare_dm_size(DerivedMesh *dmOld, DerivedMesh *dmNew)
 
 	v2 = size[0] * size[1] * size[2];
 
-	if (v2 >= v1)
+	if (v2 > (v1 + 0.000001))
 	{
 		printf("Size mismatch !\n");
 	}
 
-	return v2 < v1;
+	return v2 <= (v1 + 0.000001);
 }
 
 Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *child, short inner_material_index, int num_cuts, float fractal, Shard** other, float mat[4][4], float radius, bool use_smooth_inner, int num_levels)
@@ -292,7 +292,7 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 	BMFace* f;
 	BMIter iter;
 
-	if (other != NULL)
+	if (other != NULL && mat != NULL)
 	{
 		/*create a grid plane */
 
@@ -343,7 +343,7 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 	}
 
 	/* set inner material on child shard */
-	if (other == NULL)
+	if (other == NULL || mat == NULL)
 	{
 		mpoly = left_dm->getPolyArray(left_dm);
 		totpoly = left_dm->getNumPolys(left_dm);
@@ -360,15 +360,18 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 
 	/*check for watertightness*/
 	if (!output_dm || check_non_manifold(output_dm) || !compare_dm_size(right_dm, output_dm)) {
-		if (other != NULL)
-			*other = NULL;
-		if (bm != NULL)
-			BM_mesh_free(bm);
+		if (mat != NULL)
+		{
+			if (other != NULL)
+				*other = NULL;
+			if (bm != NULL)
+				BM_mesh_free(bm);
 
-		if (left_dm != NULL) {
-			left_dm->needsFree = 1;
-			left_dm->release(left_dm);
-			left_dm = NULL;
+			if (left_dm != NULL) {
+				left_dm->needsFree = 1;
+				left_dm->release(left_dm);
+				left_dm = NULL;
+			}
 		}
 
 		if (output_dm != NULL) {
@@ -376,13 +379,22 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 			output_dm->release(output_dm);
 			output_dm = NULL;
 		}
-		return NULL;
+
+		if (mat != NULL)
+		{
+			return NULL;
+		}
 	}
 
-	if (other != NULL && bm != NULL)
+	if (other != NULL)
 	{
+		if (bm == NULL)
+		{
+			bm = DM_to_bmesh(left_dm, true);
+		}
+
 		BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-		        "reverse_faces faces=af");
+				"reverse_faces faces=af");
 
 		left_dm->needsFree = 1;
 		left_dm->release(left_dm);
@@ -408,12 +420,17 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 				other_dm->release(other_dm);
 				other_dm = NULL;
 			}
-			if (output_dm != NULL) {
-				output_dm->needsFree = 1;
-				output_dm->release(output_dm);
-				output_dm = NULL;
+
+			/*discard only at fractal boolean */
+			if (mat != NULL)
+			{
+				if (output_dm != NULL) {
+					output_dm->needsFree = 1;
+					output_dm->release(output_dm);
+					output_dm = NULL;
+				}
+				return NULL;
 			}
-			return NULL;
 		}
 
 		if (other_dm)
@@ -456,18 +473,26 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 				other_dm->release(other_dm);
 				other_dm = NULL;
 			}
-			if (output_dm != NULL) {
-				output_dm->needsFree = 1;
-				output_dm->release(output_dm);
-				output_dm = NULL;
+
+			/*discard only at fractal boolean */
+			if (mat != NULL)
+			{
+				if (output_dm != NULL) {
+					output_dm->needsFree = 1;
+					output_dm->release(output_dm);
+					output_dm = NULL;
+				}
+				return NULL;
 			}
-			return NULL;
 		}
 	}
 
-	left_dm->needsFree = 1;
-	left_dm->release(left_dm);
-	left_dm = NULL;
+	if (left_dm)
+	{
+		left_dm->needsFree = 1;
+		left_dm->release(left_dm);
+		left_dm = NULL;
+	}
 
 	if (output_dm)
 	{

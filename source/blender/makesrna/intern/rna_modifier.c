@@ -4174,7 +4174,12 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "cluster_group", PROP_POINTER, PROP_NONE);
-	RNA_def_property_ui_text(prop, "Cluster Group", "");
+	RNA_def_property_ui_text(prop, "Cluster Group", "Centroids of objects in this group determine where cluster centers will be");
+	RNA_def_property_flag(prop, PROP_EDITABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "cutter_group", PROP_POINTER, PROP_NONE);
+	RNA_def_property_ui_text(prop, "Cutter Group", "A set of objects to make boolean cuts against");
 	RNA_def_property_flag(prop, PROP_EDITABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }

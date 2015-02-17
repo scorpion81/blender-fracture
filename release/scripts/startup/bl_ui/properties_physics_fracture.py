@@ -71,6 +71,8 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         sub.operator("fracture.preset_add", text="", icon='ZOOMOUT').remove_active = True
 
         layout.prop(md, "frac_algorithm")
+        if md.frac_algorithm == 'BOOLEAN':
+            layout.prop(md, "cutter_group")
         col = layout.column(align=True)
         col.prop(md, "shard_count")
         col.prop(md, "cluster_count")

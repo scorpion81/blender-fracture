@@ -817,7 +817,148 @@ static void parse_cell_neighbors(cell c, int *neighbors, int totpoly)
 	}
 }
 
-void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud, int algorithm, Object *obj, DerivedMesh *dm, short inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels) {
+void BKE_fracture_shard_by_planes(FractureModifierData *fmd, Object *obj, short inner_material_index, float mat[4][4])
+{
+	DerivedMesh *dm_parent = NULL;
+	int shards = 0;
+
+	if (fmd->frac_algorithm == MOD_FRACTURE_BOOLEAN && fmd->cutter_group != NULL && obj->type == OB_MESH)
+	{
+		GroupObject* go;
+		float imat[4][4];
+
+		invert_m4_m4(imat, obj->obmat);
+
+		for (go = fmd->cutter_group->gobject.first; go; go = go->next)
+		{
+			Object* ob = go->ob;
+			Shard *s2 = NULL;
+			Shard *t = NULL;
+			Shard *s = NULL;
+
+			/*simple case....one cutter object per object*/
+			if (ob->type == OB_MESH)
+			{
+				int i = 0, j = 0, k = 0, count = 0;
+				DerivedMesh *d;
+				MVert *mv;
+
+				d = ob->derivedFinal;
+				if (d == NULL)
+				{
+					d = CDDM_from_mesh(ob->data);
+				}
+
+				t = BKE_create_fracture_shard(d->getVertArray(d), d->getPolyArray(d), d->getLoopArray(d),
+				                              d->getNumVerts(d), d->getNumPolys(d), d->getNumLoops(d), true);
+				t = BKE_custom_data_to_shard(t, d);
+
+				/*complicated cases, self intersecting planes which could be separated by loose first */
+				/*omit for now */
+
+				for (i = 0, mv = t->mvert; i < t->totvert; mv++, i++){
+					mul_m4_v3(ob->obmat, mv->co);
+					mul_m4_v3(imat, mv->co);
+				}
+
+				count = fmd->frac_mesh->shard_count;
+
+				if (count == 0)
+				{
+					if (obj->derivedFinal != NULL)
+					{
+						dm_parent = CDDM_copy(obj->derivedFinal);
+					}
+
+					if (dm_parent == NULL) {
+						dm_parent = CDDM_from_mesh(obj->data);
+					}
+
+					count = 1;
+				}
+
+				for (k = 0; k < count; k++)
+				{
+					/*just keep appending items at the end here */
+
+					MPoly *mpoly, *mp;
+					int totpoly, totvert;
+					Shard *parent = NULL;
+
+					if (count > 1)
+					{
+						parent = BLI_findlink(&fmd->frac_mesh->shard_map, k);
+						dm_parent = BKE_shard_create_dm(parent, true);
+					}
+
+					totvert = dm_parent->getNumVerts(dm_parent);
+					mpoly = dm_parent->getPolyArray(dm_parent);
+					totpoly = dm_parent->getNumPolys(dm_parent);
+					for (i = 0, mp = mpoly; i < totpoly; i++, mp++) {
+						mp->flag &= ~ME_FACE_SEL;
+					}
+
+					s = BKE_fracture_shard_boolean(obj, dm_parent, t, inner_material_index, 0, 0.0f, &s2, NULL, 0.0f, false, 0);
+					if (s != NULL)
+					{
+						add_shard(fmd->frac_mesh, s, mat);
+						shards++;
+						s = NULL;
+					}
+
+					if (s2 != NULL)
+					{
+						add_shard(fmd->frac_mesh, s2, mat);
+						shards++;
+						s2 = NULL;
+					}
+
+					if ((count == 1 && ob->derivedFinal == NULL) || (count > 1))
+					{
+						if (count == 1)
+						{
+							count = 0;
+						}
+
+						dm_parent->needsFree = 1;
+						dm_parent->release(dm_parent);
+						dm_parent = NULL;
+					}
+
+					//shards--;
+				}
+
+				count = fmd->frac_mesh->shard_count;
+
+				/*new count - shards = shards to remove*/
+				for (k = 0; k < count-shards; k++)
+				{
+					/*clean up old entries here to avoid unnecessary shards*/
+					Shard *first = fmd->frac_mesh->shard_map.first;
+					BLI_remlink_safe(&fmd->frac_mesh->shard_map,first);
+					BKE_shard_free(first, true);
+					first = NULL;
+					fmd->frac_mesh->shard_count--;
+				}
+
+				shards = 0;
+
+				BKE_shard_free(t, true);
+				if (ob->derivedFinal == NULL)
+				{	/*was copied before */
+					d->needsFree = 1;
+					d->release(d);
+					d = NULL;
+				}
+
+				j++;
+			}
+		}
+	}
+}
+
+void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud, int algorithm, Object *obj, DerivedMesh *dm, short
+                                  inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels) {
 	int n_size = 8;
 	
 	Shard *shard;
