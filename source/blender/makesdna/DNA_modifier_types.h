@@ -1425,6 +1425,12 @@ enum {
 	MOD_FRACTURE_SPLINTER_Z      = (1 << 2),
 };
 
+enum {
+	MOD_FRACTURE_CUTTER_X      = (1 << 0),
+	MOD_FRACTURE_CUTTER_Y      = (1 << 1),
+	MOD_FRACTURE_CUTTER_Z      = (1 << 2),
+};
+
 typedef struct FractureModifierData {
 	ModifierData modifier;
 	struct FracMesh *frac_mesh; /* store only the current fracmesh here first, later maybe an entire history...*/
@@ -1461,6 +1467,8 @@ typedef struct FractureModifierData {
 	int splinter_axis;
 	int fractal_cuts;
 	int fractal_iterations;
+	int grease_decimate;
+	int cutter_axis;
 
 	float breaking_angle;
 	float breaking_distance;
@@ -1474,6 +1482,7 @@ typedef struct FractureModifierData {
 	float nor_range;
 	float fractal_amount;
 	float physics_mesh_scale;
+	float grease_offset;
 
 	/* flags */
 	int refresh;
@@ -1485,6 +1494,7 @@ typedef struct FractureModifierData {
 	int use_particle_birth_coordinates;
 	int use_breaking;
 	int use_smooth;
+	int use_greasepencil_edges;
 
 	int shards_to_islands;
 	int execute_threaded;

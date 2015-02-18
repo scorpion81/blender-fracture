@@ -149,6 +149,12 @@ static void initData(ModifierData *md)
 
 	fmd->cluster_group = NULL;
 	fmd->cutter_group = NULL;
+
+	fmd->grease_decimate = 100.0f;
+	fmd->grease_offset = 0.5f;
+	fmd->use_greasepencil_edges = true;
+
+	fmd->cutter_axis = MOD_FRACTURE_CUTTER_Z;
 }
 
 static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
@@ -863,7 +869,7 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 		points_from_verts(go, totgroup, &points, ob->obmat, thresh, emd, fracmesh, ob);
 	}
 
-	if (emd->point_source & MOD_FRACTURE_GREASEPENCIL) {
+	if (emd->point_source & MOD_FRACTURE_GREASEPENCIL && !emd->use_greasepencil_edges) {
 		points_from_greasepencil(go, totgroup, &points, ob->obmat, thresh);
 	}
 
@@ -929,7 +935,7 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, D
 
 	points = get_points_global(fracmd, obj, dm);
 
-	if (points.totpoints > 0) {
+	if (points.totpoints > 0 || fracmd->use_greasepencil_edges) {
 		bool temp = fracmd->shards_to_islands;
 		short mat_index = 0;
 		float mat[4][4], imat[4][4];
@@ -1045,8 +1051,16 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, D
 		}
 		else
 		{
-			BKE_fracture_shard_by_points(fracmd->frac_mesh, id, &points, fracmd->frac_algorithm, obj, dm, mat_index, mat2,
+			if (points.totpoints > 0)
+			{
+				BKE_fracture_shard_by_points(fracmd->frac_mesh, id, &points, fracmd->frac_algorithm, obj, dm, mat_index, mat2,
 		                             fracmd->fractal_cuts, fracmd->fractal_amount, fracmd->use_smooth, fracmd->fractal_iterations);
+			}
+
+			if (fracmd->point_source & MOD_FRACTURE_GREASEPENCIL && fracmd->use_greasepencil_edges)
+			{
+				BKE_fracture_shard_by_greasepencil(fracmd, obj, mat_index, mat2);
+			}
 		}
 
 		/* job has been cancelled, throw away all data */
@@ -1166,6 +1180,11 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->use_smooth = rmd->use_smooth;
 	trmd->fractal_cuts = rmd->fractal_cuts;
 	trmd->fractal_amount = rmd->fractal_amount;
+
+	trmd->grease_decimate = rmd->grease_decimate;
+	trmd->grease_offset = rmd->grease_offset;
+	trmd->use_greasepencil_edges = rmd->use_greasepencil_edges;
+	trmd->cutter_axis = rmd->cutter_axis;
 }
 
 /* mi->bb, its for volume fraction calculation.... */

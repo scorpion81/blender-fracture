@@ -3896,6 +3896,13 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 
+	static EnumPropertyItem prop_cutter_axises[] = {
+		{MOD_FRACTURE_CUTTER_X, "CUTTER_X", 0, "Cutter X", "Cut in X Direction"},
+		{MOD_FRACTURE_CUTTER_Y, "CUTTER_Y", 0, "Cutter Y", "Cut in Y Direction"},
+		{MOD_FRACTURE_CUTTER_Z, "CUTTER_Z", 0, "Cutter Z", "Cut in Z Direction"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
 	srna = RNA_def_struct(brna, "FractureModifier", "Modifier");
 	RNA_def_struct_ui_text(srna, "Fracture Modifier", "Add a fracture container to this object");
 	RNA_def_struct_sdna(srna, "FractureModifierData");
@@ -4181,6 +4188,29 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "cutter_group", PROP_POINTER, PROP_NONE);
 	RNA_def_property_ui_text(prop, "Cutter Group", "A set of objects to make boolean cuts against");
 	RNA_def_property_flag(prop, PROP_EDITABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "use_greasepencil_edges", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "use_greasepencil_edges", false);
+	RNA_def_property_ui_text(prop, "Use Greasepencil Edges", "Use edges instead of points from Greasepencil strokes");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "grease_offset", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "grease_offset");
+	RNA_def_property_range(prop, 0.0f, FLT_MAX);
+	RNA_def_property_ui_text(prop, "Greasepencil Offset", "Extrusion offset of greasepencil stroke, to create a mesh from it");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "grease_decimate", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "grease_decimate");
+	RNA_def_property_range(prop, 0, 100);
+	RNA_def_property_ui_text(prop, "Greasepencil Decimate", "Decimate Factor in percent for greasepencil strokes");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "cutter_axis", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_items(prop, prop_cutter_axises);
+	RNA_def_property_enum_default(prop, MOD_FRACTURE_CUTTER_Z);
+	RNA_def_property_ui_text(prop, "Cutter Axis", "Global direction of cutters");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 

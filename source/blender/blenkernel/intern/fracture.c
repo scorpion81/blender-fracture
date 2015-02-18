@@ -52,6 +52,7 @@
 #include "BLI_utildefines.h"
 
 #include "DNA_fracture_types.h"
+#include "DNA_gpencil_types.h"
 #include "DNA_group_types.h"
 #include "DNA_meshdata_types.h"
 #include "DNA_modifier_types.h"
@@ -59,6 +60,7 @@
 #include "bmesh.h"
 
 #include "RBI_api.h"
+//#include "GPU_glew.h" /* uaahh, direct access to modelview matrix */
 
 /* debug timing */
 #define USE_DEBUG_TIMER
@@ -394,7 +396,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 	DerivedMesh *dm_p = NULL;
 	Shard **tempshards;
 	Shard **tempresults;
-	int max_retries = 50;
+	int max_retries = 20;
 
 	tempshards = MEM_mallocN(sizeof(Shard *) * expected_shards, "tempshards");
 	tempresults = MEM_mallocN(sizeof(Shard *) * expected_shards, "tempresults");
@@ -817,11 +819,292 @@ static void parse_cell_neighbors(cell c, int *neighbors, int totpoly)
 	}
 }
 
+static void stroke_to_faces(FractureModifierData *fmd, Object* ob, BMesh** bm, bGPDstroke *gps, int inner_material_index)
+{
+	BMVert *lastv = NULL;
+	BMEdge *laste = NULL;
+	int p = 0;
+	float imat[4][4];
+	float thresh = (float)fmd->grease_decimate / 100.0f;
+	float half[3];
+
+	invert_m4_m4(imat, ob->obmat);
+
+	for (p = 0; p < gps->totpoints; p++) {
+		if ((BLI_frand() < thresh) || (p == 0) || (p == gps->totpoints-1)) {
+			BMVert *v;
+			float point[3] = {0, 0, 0};
+
+			point[0] = gps->points[p].x;
+			point[1] = gps->points[p].y;
+			point[2] = gps->points[p].z;
+
+			mul_m4_v3(imat, point);
+			v = BM_vert_create(*bm, point, NULL, 0);
+
+			if (lastv) {
+				BMFace* f;
+				BMEdge* e, *e1, *e2, *e3;
+				BMVert* v1, *v2;
+
+				float nvec[3], co1[3], co2[3];
+				e = BM_edge_create(*bm, lastv, v, NULL, 0);
+
+				/*also "extrude" this along the normal, no...use global axises instead*/
+				if (fmd->cutter_axis == MOD_FRACTURE_CUTTER_X)
+				{
+					nvec[0] = 1.0f;
+					nvec[1] = 0.0f;
+					nvec[2] = 0.0f;
+				}
+
+				if (fmd->cutter_axis == MOD_FRACTURE_CUTTER_Y)
+				{
+					nvec[0] = 0.0f;
+					nvec[1] = 1.0f;
+					nvec[2] = 0.0f;
+				}
+
+				if (fmd->cutter_axis == MOD_FRACTURE_CUTTER_Z)
+				{
+					nvec[0] = 0.0f;
+					nvec[1] = 0.0f;
+					nvec[2] = 1.0f;
+				}
+#if 0
+				copy_v3_v3(vec, fmd->forward_vector);
+				if (is_zero_v3(vec))
+				{
+					sub_v3_v3v3(vec, v->co, lastv->co);
+				}
+
+				ortho_v3_v3(nvec, vec);
+				/*glGetFloatv(GL_MODELVIEW_MATRIX, viewmat);
+				nvec[0] = viewmat[2];
+				nvec[1] = viewmat[6];
+				nvec[2] = viewmat[10];*/
+
+				normalize_v3(nvec);
+#endif
+
+				mul_v3_fl(nvec, fmd->grease_offset);
+				mul_v3_v3fl(half, nvec, 0.5f);
+
+				/* move v and lastv a bit into the opposite direction */
+				//sub_v3_v3(v->co, half);
+/*
+				if (firstv != NULL) {
+					sub_v3_v3(firstv->co, half);
+					firstv = NULL;
+				} */
+
+				/* create orthogonal edge */
+				add_v3_v3v3(co1, v->co, nvec);
+				v1 = BM_vert_create(*bm, co1, NULL, 0);
+				e1 = BM_edge_create(*bm, v, v1, NULL, 0);
+				if (!laste)
+				{
+					/* no last edge, connect last vert with displaced one */
+					//sub_v3_v3(lastv->co, half);
+					add_v3_v3v3(co2, lastv->co, nvec);
+					v2 = BM_vert_create(*bm, co2, NULL, 0);
+					laste = e1;
+				}
+				else
+				{
+					/* update last edge with current */
+					e2 = laste;
+					v2 = laste->v2;
+					laste = e1;
+				}
+
+				/*create displaced edge */
+				e3 = BM_edge_create(*bm, v1, v2, NULL, 0);
+
+				/*create a quad face */
+				f = BM_face_create_quad_tri(*bm, lastv, v, v1, v2, NULL, 0);
+				f->mat_nr = inner_material_index;
+			}
+#if 0
+			else
+			{
+				firstv = v;
+			}
+#endif
+
+			lastv = v;
+		}
+	}
+
+	{
+		/* move the stroke mesh a bit out, half of offset */
+		BMIter iter;
+		BMVert *v;
+
+		BM_ITER_MESH(v, &iter, *bm, BM_VERTS_OF_MESH)
+		{
+			sub_v3_v3(v->co, half);
+		}
+	}
+}
+
+
+
+static void intersect_shards_by_dm(FractureModifierData* fmd, DerivedMesh *d, Object* ob, Object* ob2, short inner_mat_index, float mat[4][4])
+{
+	Shard *t = NULL, *s = NULL, *s2 = NULL;
+	int i = 0, count = 0, k = 0, shards = 0, j = 0;
+	float imat[4][4];
+	int* shard_counts = NULL;
+	bool is_zero = false;
+	MVert *mv;
+	DerivedMesh *dm_parent = NULL;
+
+	t = BKE_create_fracture_shard(d->getVertArray(d), d->getPolyArray(d), d->getLoopArray(d),
+	                              d->getNumVerts(d), d->getNumPolys(d), d->getNumLoops(d), true);
+	t = BKE_custom_data_to_shard(t, d);
+
+
+	invert_m4_m4(imat, ob->obmat);
+	for (i = 0, mv = t->mvert; i < t->totvert; mv++, i++){
+		if (ob2)
+			mul_m4_v3(ob2->obmat, mv->co);
+		mul_m4_v3(imat, mv->co);
+	}
+
+	count = fmd->frac_mesh->shard_count;
+
+	/*TODO, pass modifier mesh here !!! */
+	if (count == 0) {
+		if (ob->derivedFinal != NULL) {
+			dm_parent = CDDM_copy(ob->derivedFinal);
+		}
+
+		if (dm_parent == NULL) {
+			dm_parent = CDDM_from_mesh(ob->data);
+		}
+
+		count = 1;
+		is_zero = true;
+	}
+
+	shard_counts = MEM_mallocN(sizeof(int) * count, "shard_counts");
+
+	for (k = 0; k < count; k++) {
+		/*just keep appending items at the end here */
+		MPoly *mpoly, *mp;
+		int totpoly;
+		Shard *parent = NULL;
+
+		if (is_zero == false) {
+			parent = BLI_findlink(&fmd->frac_mesh->shard_map, k);
+			dm_parent = BKE_shard_create_dm(parent, true);
+		}
+
+		mpoly = dm_parent->getPolyArray(dm_parent);
+		totpoly = dm_parent->getNumPolys(dm_parent);
+
+		for (j = 0, mp = mpoly; j < totpoly; j++, mp++) {
+			mp->flag &= ~ME_FACE_SEL;
+		}
+
+		s = BKE_fracture_shard_boolean(ob, dm_parent, t, inner_mat_index, 0, 0.0f, &s2, NULL, 0.0f, false, 0);
+		printf("Fractured: %d\n", k);
+
+		if (s != NULL) {
+			add_shard(fmd->frac_mesh, s, mat);
+			shards++;
+			s = NULL;
+		}
+
+		if (s2 != NULL) {
+			add_shard(fmd->frac_mesh, s2, mat);
+			shards++;
+			s2 = NULL;
+		}
+
+		if ((is_zero && ob->derivedFinal == NULL) || !is_zero) {
+			if (is_zero) {
+				count = 0;
+			}
+
+			dm_parent->needsFree = 1;
+			dm_parent->release(dm_parent);
+			dm_parent = NULL;
+		}
+
+		if (is_zero) {
+			shards = 0;
+		}
+
+		shard_counts[k] = shards;
+		//printf("k, shards: %d %d \n", k, shards);
+		shards = 0;
+	}
+
+	for (k = 0; k < count; k++)
+	{
+		int cnt = shard_counts[k];
+
+		if (cnt > 0)
+		{
+			/*clean up old entries here to avoid unnecessary shards*/
+			Shard *first = fmd->frac_mesh->shard_map.first;
+			BLI_remlink_safe(&fmd->frac_mesh->shard_map,first);
+			BKE_shard_free(first, true);
+			first = NULL;
+			fmd->frac_mesh->shard_count--;
+		}
+	}
+
+	MEM_freeN(shard_counts);
+	shard_counts = NULL;
+
+	BKE_shard_free(t, true);
+}
+
+void BKE_fracture_shard_by_greasepencil(FractureModifierData *fmd, Object *obj, short inner_material_index, float mat[4][4])
+{
+	bGPDlayer *gpl;
+	bGPDframe *gpf;
+	bGPDstroke *gps;
+
+	if ((obj->gpd) && (obj->gpd->layers.first)) {
+
+		float imat[4][4];
+		invert_m4_m4(imat, mat);
+		for (gpl = obj->gpd->layers.first; gpl; gpl = gpl->next) {
+			for (gpf = gpl->frames.first; gpf; gpf = gpf->next) {
+				for (gps = gpf->strokes.first; gps; gps = gps->next) {
+					BMesh *bm = BM_mesh_create(&bm_mesh_allocsize_default);
+					DerivedMesh *dm = NULL;
+//					Object* o;
+
+					/*create stroke mesh */
+					stroke_to_faces(fmd, obj, &bm, gps, inner_material_index);
+					dm = CDDM_from_bmesh(bm, true);
+#if 0
+					/*create debug mesh*/
+					o = BKE_object_add(G.main, fmd->modifier.scene, OB_MESH);
+					BM_mesh_bm_to_me(bm, o->data, true);
+#endif
+
+					BM_mesh_free(bm);
+
+					/*do intersection*/
+					intersect_shards_by_dm(fmd, dm, obj, NULL, inner_material_index, mat);
+
+					dm->needsFree = 1;
+					dm->release(dm);
+					dm = NULL;
+				}
+			}
+		}
+	}
+}
+
 void BKE_fracture_shard_by_planes(FractureModifierData *fmd, Object *obj, short inner_material_index, float mat[4][4])
 {
-	DerivedMesh *dm_parent = NULL;
-	int shards = 0;
-
 	if (fmd->frac_algorithm == MOD_FRACTURE_BOOLEAN && fmd->cutter_group != NULL && obj->type == OB_MESH)
 	{
 		GroupObject* go;
@@ -832,24 +1115,19 @@ void BKE_fracture_shard_by_planes(FractureModifierData *fmd, Object *obj, short 
 		for (go = fmd->cutter_group->gobject.first; go; go = go->next)
 		{
 			Object* ob = go->ob;
-			Shard *s2 = NULL;
-			Shard *t = NULL;
-			Shard *s = NULL;
 
 			printf("Cutting with %s ...\n", ob->id.name);
 			/*simple case....one cutter object per object*/
 			if (ob->type == OB_MESH) {
-				int i = 0, k = 0, count = 0;
 				DerivedMesh *d;
-				MVert *mv;
-				int *shard_counts = NULL;
-				bool is_zero = false;
-
 				d = ob->derivedFinal;
 				if (d == NULL) {
 					d = CDDM_from_mesh(ob->data);
 				}
 
+				intersect_shards_by_dm(fmd, d, obj, ob, inner_material_index, mat);
+
+#if 0
 				t = BKE_create_fracture_shard(d->getVertArray(d), d->getPolyArray(d), d->getLoopArray(d),
 				                              d->getNumVerts(d), d->getNumPolys(d), d->getNumLoops(d), true);
 				t = BKE_custom_data_to_shard(t, d);
@@ -950,6 +1228,7 @@ void BKE_fracture_shard_by_planes(FractureModifierData *fmd, Object *obj, short 
 				shard_counts = NULL;
 
 				BKE_shard_free(t, true);
+#endif
 				if (ob->derivedFinal == NULL)
 				{	/*was copied before */
 					d->needsFree = 1;

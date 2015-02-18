@@ -212,7 +212,7 @@ static bool check_non_manifold(DerivedMesh* dm)
 	/*check for watertightness*/
 	bm = DM_to_bmesh(dm, true);
 
-	if (bm->totface == 0) {
+	if (bm->totface < 4) {
 		BM_mesh_free(bm);
 		printf("Empty mesh...\n");
 		return true;
@@ -524,7 +524,6 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 		}
 
 		BKE_fracture_shard_center_centroid(output_s, output_s->centroid);
-
 
 		/* free the temp derivedmesh */
 		output_dm->needsFree = 1;

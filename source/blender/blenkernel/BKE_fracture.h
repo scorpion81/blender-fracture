@@ -88,5 +88,6 @@ void BKE_fracture_shard_by_points(struct FracMesh *fmesh, ShardID id, struct Fra
 
 /* create shards from a base mesh and a set of other objects / cutter planes */
 void BKE_fracture_shard_by_planes(struct FractureModifierData *fmd, struct Object *obj, short inner_material_index, float mat[4][4]);
+void BKE_fracture_shard_by_greasepencil(struct FractureModifierData *fmd, struct Object *obj, short inner_material_index, float mat[4][4]);
 
 #endif /* BKE_FRACTURE_H */
