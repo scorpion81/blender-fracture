@@ -2050,7 +2050,7 @@ static DerivedMesh *createCache(FractureModifierData *rmd, Object *ob, DerivedMe
 		}
 
 		mi->vertices_cached = MEM_mallocN(sizeof(MVert *) * mi->vertex_count, "mi->vertices_cached");
-		if (rmd->dm != NULL && !rmd->shards_to_islands && !orig_chosen) {
+		if (rmd->dm != NULL && !rmd->shards_to_islands && !orig_chosen && rmd->visible_mesh == NULL) {
 			for (i = 0; i < mi->vertex_count; i++) {
 				mi->vertices_cached[i] = verts + vertstart + i;
 
