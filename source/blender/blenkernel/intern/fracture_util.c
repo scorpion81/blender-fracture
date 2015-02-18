@@ -393,6 +393,8 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 
 	if (other != NULL)
 	{
+
+#if 0
 		if (bm == NULL)
 		{
 			bm = DM_to_bmesh(left_dm, true);
@@ -406,9 +408,11 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 		left_dm = NULL;
 
 		left_dm = CDDM_from_bmesh(bm, true);
-		BM_mesh_free(bm);
+#endif
+		if (bm != NULL)
+			BM_mesh_free(bm);
 
-		other_dm = NewBooleanDerivedMesh(right_dm, obj, left_dm, obj, 1);
+		other_dm = NewBooleanDerivedMesh(left_dm, obj, right_dm, obj, 3);
 
 		/*check for watertightness again*/
 		if (!other_dm || check_non_manifold(other_dm) || !compare_dm_size(right_dm, other_dm)) {

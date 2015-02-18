@@ -836,16 +836,17 @@ void BKE_fracture_shard_by_planes(FractureModifierData *fmd, Object *obj, short 
 			Shard *t = NULL;
 			Shard *s = NULL;
 
+			printf("Cutting with %s ...\n", ob->id.name);
 			/*simple case....one cutter object per object*/
-			if (ob->type == OB_MESH)
-			{
-				int i = 0, j = 0, k = 0, count = 0;
+			if (ob->type == OB_MESH) {
+				int i = 0, k = 0, count = 0;
 				DerivedMesh *d;
 				MVert *mv;
+				int *shard_counts = NULL;
+				bool is_zero = false;
 
 				d = ob->derivedFinal;
-				if (d == NULL)
-				{
+				if (d == NULL) {
 					d = CDDM_from_mesh(ob->data);
 				}
 
@@ -862,11 +863,10 @@ void BKE_fracture_shard_by_planes(FractureModifierData *fmd, Object *obj, short 
 				}
 
 				count = fmd->frac_mesh->shard_count;
+				//printf("Count: %d\n", count);
 
-				if (count == 0)
-				{
-					if (obj->derivedFinal != NULL)
-					{
+				if (count == 0) {
+					if (obj->derivedFinal != NULL) {
 						dm_parent = CDDM_copy(obj->derivedFinal);
 					}
 
@@ -875,23 +875,22 @@ void BKE_fracture_shard_by_planes(FractureModifierData *fmd, Object *obj, short 
 					}
 
 					count = 1;
+					is_zero = true;
 				}
 
-				for (k = 0; k < count; k++)
-				{
-					/*just keep appending items at the end here */
+				shard_counts = MEM_mallocN(sizeof(int) * count, "shard_counts");
 
+				for (k = 0; k < count; k++) {
+					/*just keep appending items at the end here */
 					MPoly *mpoly, *mp;
-					int totpoly, totvert;
+					int totpoly;
 					Shard *parent = NULL;
 
-					if (count > 1)
-					{
+					if (is_zero == false) {
 						parent = BLI_findlink(&fmd->frac_mesh->shard_map, k);
 						dm_parent = BKE_shard_create_dm(parent, true);
 					}
 
-					totvert = dm_parent->getNumVerts(dm_parent);
 					mpoly = dm_parent->getPolyArray(dm_parent);
 					totpoly = dm_parent->getNumPolys(dm_parent);
 					for (i = 0, mp = mpoly; i < totpoly; i++, mp++) {
@@ -899,24 +898,20 @@ void BKE_fracture_shard_by_planes(FractureModifierData *fmd, Object *obj, short 
 					}
 
 					s = BKE_fracture_shard_boolean(obj, dm_parent, t, inner_material_index, 0, 0.0f, &s2, NULL, 0.0f, false, 0);
-					if (s != NULL)
-					{
+					if (s != NULL) {
 						add_shard(fmd->frac_mesh, s, mat);
 						shards++;
 						s = NULL;
 					}
 
-					if (s2 != NULL)
-					{
+					if (s2 != NULL) {
 						add_shard(fmd->frac_mesh, s2, mat);
 						shards++;
 						s2 = NULL;
 					}
 
-					if ((count == 1 && ob->derivedFinal == NULL) || (count > 1))
-					{
-						if (count == 1)
-						{
+					if ((is_zero && ob->derivedFinal == NULL) || !is_zero) {
+						if (is_zero) {
 							count = 0;
 						}
 
@@ -925,23 +920,34 @@ void BKE_fracture_shard_by_planes(FractureModifierData *fmd, Object *obj, short 
 						dm_parent = NULL;
 					}
 
-					//shards--;
+					if (is_zero) {
+						shards = 0;
+					}
+
+					shard_counts[k] = shards;
+					//printf("k, shards: %d %d \n", k, shards);
+					shards = 0;
 				}
 
-				count = fmd->frac_mesh->shard_count;
-
-				/*new count - shards = shards to remove*/
-				for (k = 0; k < count-shards; k++)
+				for (k = 0; k < count; k++)
 				{
-					/*clean up old entries here to avoid unnecessary shards*/
-					Shard *first = fmd->frac_mesh->shard_map.first;
-					BLI_remlink_safe(&fmd->frac_mesh->shard_map,first);
-					BKE_shard_free(first, true);
-					first = NULL;
-					fmd->frac_mesh->shard_count--;
+					int cnt = shard_counts[k];
+
+					if (cnt > 0)
+					{
+						/*clean up old entries here to avoid unnecessary shards*/
+						Shard *first = fmd->frac_mesh->shard_map.first;
+						BLI_remlink_safe(&fmd->frac_mesh->shard_map,first);
+						BKE_shard_free(first, true);
+						first = NULL;
+						fmd->frac_mesh->shard_count--;
+
+						printf("Removed first...\n");
+					}
 				}
 
-				shards = 0;
+				MEM_freeN(shard_counts);
+				shard_counts = NULL;
 
 				BKE_shard_free(t, true);
 				if (ob->derivedFinal == NULL)
@@ -950,8 +956,6 @@ void BKE_fracture_shard_by_planes(FractureModifierData *fmd, Object *obj, short 
 					d->release(d);
 					d = NULL;
 				}
-
-				j++;
 			}
 		}
 	}
