@@ -405,24 +405,21 @@ static void freeData(ModifierData *md)
 
 static void doClusters(FractureModifierData *fmd, Object* obj)
 {
-	/*grow clusters from all shards */
+	/*grow clusters from all meshIslands */
 	int k = 0;
 	KDTree *tree;
-	Shard *s, **seeds;
+	MeshIsland *mi, **seeds;
 	int seed_count;
-	ListBase shardlist;
+	ListBase mi_list;
 
 	/*for now, keep 1 hierarchy level only, should be sufficient */
-	int levels = 1;
+	//int levels = 1;
 
-	shardlist = fmd->frac_mesh->shard_map;
+	mi_list = fmd->meshIslands;
 
-	/*initialize cluster "colors" -> membership of shards to clusters, initally all shards are "free" */
-	for (s = shardlist.first; s; s = s->next ) {
-		if (s->cluster_colors == NULL) {
-			s->cluster_colors = MEM_mallocN(sizeof(int) * levels, "cluster_colors");
-			s->cluster_colors[0] = -1;
-		}
+	/*initialize cluster "colors" -> membership of meshislands to clusters, initally all shards are "free" */
+	for (mi = mi_list.first; mi; mi = mi->next ) {
+		mi->particle_index = -1;
 	}
 
 	if (fmd->cluster_group)
@@ -441,15 +438,15 @@ static void doClusters(FractureModifierData *fmd, Object* obj)
 			BLI_kdtree_balance(tree);
 
 			/* assign each shard to its closest center */
-			for (s = shardlist.first; s; s = s->next ) {
+			for (mi = mi_list.first; mi; mi = mi->next ) {
 				KDTreeNearest n;
 				int index;
 				float co[3];
 
-				mul_v3_m4v3(co, obj->obmat, s->centroid);
+				mul_v3_m4v3(co, obj->obmat, mi->centroid);
 
 				index = BLI_kdtree_find_nearest(tree, co, &n);
-				s->cluster_colors[0] = index;
+				mi->particle_index = index;
 			}
 
 			BLI_kdtree_free(tree);
@@ -457,21 +454,22 @@ static void doClusters(FractureModifierData *fmd, Object* obj)
 	}
 	else
 	{
+		int mi_count;
 		/* zero clusters or one mean no clusters, all shards keep free */
 		if (fmd->cluster_count < 2) {
 			return;
 		}
 
-		seed_count = (fmd->cluster_count > fmd->frac_mesh->shard_count ? fmd->frac_mesh->shard_count : fmd->cluster_count);
-		seeds = MEM_mallocN(sizeof(Shard *) * seed_count, "seeds");
+		mi_count = BLI_listbase_count(&fmd->meshIslands);
+		seed_count = (fmd->cluster_count > mi_count ? mi_count : fmd->cluster_count);
+		seeds = MEM_mallocN(sizeof(MeshIsland *) * seed_count, "seeds");
 		tree = BLI_kdtree_new(seed_count);
 
 		/* pick n seed locations, randomly scattered over the object */
 		for (k = 0; k < seed_count; k++) {
-			int color = k;
-			int which_index = k * (int)(fmd->frac_mesh->shard_count / seed_count);
-			Shard *which = (Shard *)BLI_findlink(&shardlist, which_index);
-			which->cluster_colors[0] = color;
+			int which_index = k * (int)(mi_count / seed_count);
+			MeshIsland *which = (MeshIsland *)BLI_findlink(&mi_list, which_index);
+			which->particle_index = k;
 			BLI_kdtree_insert(tree, k, which->centroid);
 			seeds[k] = which;
 		}
@@ -480,12 +478,12 @@ static void doClusters(FractureModifierData *fmd, Object* obj)
 
 
 		/* assign each shard to its closest center */
-		for (s = shardlist.first; s; s = s->next ) {
+		for (mi = mi_list.first; mi; mi = mi->next ) {
 			KDTreeNearest n;
 			int index;
 
-			index = BLI_kdtree_find_nearest(tree, s->centroid, &n);
-			s->cluster_colors[0] = seeds[index]->cluster_colors[0];
+			index = BLI_kdtree_find_nearest(tree, mi->centroid, &n);
+			mi->particle_index = seeds[index]->particle_index;
 		}
 
 		BLI_kdtree_free(tree);
@@ -1075,10 +1073,12 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, D
 			return;
 		}
 
+#if 0
 		if (fracmd->frac_mesh->shard_count > 0)
 		{
 			doClusters(fracmd, obj);
 		}
+#endif
 
 		/* here we REALLY need to fracture so deactivate the shards to islands flag and activate afterwards */
 		fracmd->shards_to_islands = false;
@@ -2514,7 +2514,7 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 					BKE_boundbox_init_from_minmax(mi->bb, s->min, s->max);
 
 					mi->id = s->shard_id;
-					mi->particle_index = s->cluster_colors[0];
+					mi->particle_index = -1; // s->cluster_colors[0];
 					mi->neighbor_ids = s->neighbor_ids;
 					mi->neighbor_count = s->neighbor_count;
 
@@ -2629,6 +2629,10 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 	}
 
 	if (fmd->refresh_constraints) {
+
+		start = PIL_check_seconds_timer();
+		doClusters(fmd, ob);
+		printf("Clustering done, %g\n", PIL_check_seconds_timer() - start);
 
 		start = PIL_check_seconds_timer();
 
