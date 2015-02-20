@@ -3292,7 +3292,7 @@ void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw)
 {
 	if (rbw) {
 		rbw->pointcache->flag |= PTCACHE_OUTDATED;
-		restoreKinematic(rbw);
+		//restoreKinematic(rbw);
 	}
 }
 

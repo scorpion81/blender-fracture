@@ -1243,6 +1243,18 @@ static int BM_calc_center_centroid(BMesh *bm, float cent[3], int tagged)
 	return (bm->totface != 0);
 }
 
+static int DM_mesh_minmax(DerivedMesh *dm, float r_min[3], float r_max[3])
+{
+	MVert *v;
+	int i = 0;
+	for (i = 0; i < dm->numVertData; i++) {
+		v = CDDM_get_vert(dm, i);
+		minmax_v3v3_v3(r_min, r_max, v->co);
+	}
+
+	return (dm->numVertData != 0);
+}
+
 
 static int BM_mesh_minmax(BMesh *bm, float r_min[3], float r_max[3], int tagged)
 {
@@ -1939,11 +1951,11 @@ static void create_constraints(FractureModifierData *rmd)
 	MeshIsland **mesh_islands = MEM_mallocN(sizeof(MeshIsland *), "mesh_islands");
 	int count, i = 0;
 
-	if (rmd->visible_mesh && rmd->contact_dist == 0.0f) {
+	if (rmd->visible_mesh_cached && rmd->contact_dist == 0.0f) {
 		/* extend contact dist to bbox max dimension here, in case we enter 0 */
 		float min[3], max[3], dim[3];
 		BoundBox *bb = BKE_boundbox_alloc_unit();
-		BM_mesh_minmax(rmd->visible_mesh, min, max, 0);
+		DM_mesh_minmax(rmd->visible_mesh_cached, min, max);
 		BKE_boundbox_init_from_minmax(bb, min, max);
 		bbox_dim(bb, dim);
 		rmd->contact_dist = MAX3(dim[0], dim[1], dim[2]);
@@ -2636,6 +2648,9 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 
 		start = PIL_check_seconds_timer();
 
+		create_constraints(fmd); /* check for actually creating the constraints inside*/
+
+#if 0
 		if ((fmd->visible_mesh != NULL || fmd->visible_mesh_cached != NULL)  && (fmd->use_constraints)) {
 			if (fmd->visible_mesh == NULL) {    /* ugh, needed to build constraints... */
 				fmd->visible_mesh = DM_to_bmesh(fmd->visible_mesh_cached, true);
@@ -2651,6 +2666,7 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 				fmd->visible_mesh = NULL;
 			}
 		}
+#endif
 
 		fmd->refresh_constraints = false;
 
