@@ -664,21 +664,32 @@ Shard *BKE_fracture_shard_bisect(BMesh *bm_orig, Shard *child, float obmat[4][4]
 		BMO_op_finish(bm_parent, &bmop);
 	}
 
-	dm_out = CDDM_from_bmesh(bm_parent, true);
-	output_s = BKE_create_fracture_shard(dm_out->getVertArray(dm_out),
-	                                     dm_out->getPolyArray(dm_out),
-	                                     dm_out->getLoopArray(dm_out),
-	                                     dm_out->getNumVerts(dm_out),
-	                                     dm_out->getNumPolys(dm_out),
-	                                     dm_out->getNumLoops(dm_out), true);
+	if (bm_parent->totvert >= 3)
+	{	/* atleast 3 verts form a face, so strip out invalid stuff */
+		dm_out = CDDM_from_bmesh(bm_parent, true);
+		output_s = BKE_create_fracture_shard(dm_out->getVertArray(dm_out),
+											 dm_out->getPolyArray(dm_out),
+											 dm_out->getLoopArray(dm_out),
+											 dm_out->getNumVerts(dm_out),
+											 dm_out->getNumPolys(dm_out),
+											 dm_out->getNumLoops(dm_out), true);
 
-	output_s = BKE_custom_data_to_shard(output_s, dm_out);
+		output_s = BKE_custom_data_to_shard(output_s, dm_out);
 
-	/*XXX TODO this might be wrong by now ... */
-	output_s->neighbor_count = child->neighbor_count;
-	output_s->neighbor_ids = MEM_mallocN(sizeof(int) * child->neighbor_count, __func__);
-	memcpy(output_s->neighbor_ids, child->neighbor_ids, sizeof(int) * child->neighbor_count);
-	BKE_fracture_shard_center_centroid(output_s, output_s->centroid);
+		/*XXX TODO this might be wrong by now ... */
+		output_s->neighbor_count = child->neighbor_count;
+		output_s->neighbor_ids = MEM_mallocN(sizeof(int) * child->neighbor_count, __func__);
+		memcpy(output_s->neighbor_ids, child->neighbor_ids, sizeof(int) * child->neighbor_count);
+		BKE_fracture_shard_center_centroid(output_s, output_s->centroid);
+
+		dm_out->needsFree = 1;
+		dm_out->release(dm_out);
+		dm_out = NULL;
+	}
+	else
+	{
+		output_s = NULL;
+	}
 
 	BM_mesh_free(bm_child);
 	BM_mesh_free(bm_parent);
@@ -687,9 +698,7 @@ Shard *BKE_fracture_shard_bisect(BMesh *bm_orig, Shard *child, float obmat[4][4]
 	dm_child->release(dm_child);
 	dm_child = NULL;
 
-	dm_out->needsFree = 1;
-	dm_out->release(dm_out);
-	dm_out = NULL;
+
 
 	return output_s;
 }

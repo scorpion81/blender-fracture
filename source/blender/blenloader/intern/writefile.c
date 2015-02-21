@@ -1650,18 +1650,15 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 					writestruct(wd, DATA, "FracMesh", 1, fm);
 
 					for (s = fm->shard_map.first; s; s = s->next) {
-						if (s->totvert > 1)
-							write_shard(wd, s);
+						write_shard(wd, s);
 					}
 
 					for (s = fmd->islandShards.first; s; s = s->next) {
-						if (s->totvert > 1)
-							write_shard(wd, s);
+						write_shard(wd, s);
 					}
 
 					for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
-						if (mi->vertex_count > 1)
-							write_meshIsland(wd, mi);
+						write_meshIsland(wd, mi);
 					}
 				}
 			}
