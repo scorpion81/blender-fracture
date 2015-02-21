@@ -1107,6 +1107,30 @@ static BMOpDefine bmo_dissolve_faces_def = {
 };
 
 /*
+ * Limited Dissolve (Keep Normals).
+ *
+ * Dissolve planar faces and co-linear edges.
+ */
+static BMOpDefine bmo_dissolve_limit_keep_normal_def = {
+	"dissolve_limit_keep_normals",
+	/* slots_in */
+	{{"angle_limit", BMO_OP_SLOT_FLT}, /* total rotation angle (radians) */
+	 {"use_dissolve_boundaries", BMO_OP_SLOT_BOOL},
+	 {"verts", BMO_OP_SLOT_ELEMENT_BUF, {BM_VERT}},
+	 {"edges", BMO_OP_SLOT_ELEMENT_BUF, {BM_EDGE}},
+	 {"delimit", BMO_OP_SLOT_INT},
+	 {{'\0'}},
+	},
+	/* slots_out */
+	{{"region.out", BMO_OP_SLOT_ELEMENT_BUF, {BM_FACE}},
+	 {{'\0'}}},
+	bmo_dissolve_limit_exec,
+	(BMO_OPTYPE_FLAG_UNTAN_MULTIRES |
+	 BMO_OPTYPE_FLAG_SELECT_FLUSH |
+	 BMO_OPTYPE_FLAG_SELECT_VALIDATE),
+};
+
+/*
  * Limited Dissolve.
  *
  * Dissolve planar faces and co-linear edges.
@@ -2033,6 +2057,7 @@ const BMOpDefine *bmo_opdefines[] = {
 	&bmo_dissolve_faces_def,
 	&bmo_dissolve_verts_def,
 	&bmo_dissolve_limit_def,
+	&bmo_dissolve_limit_keep_normal_def,
 	&bmo_dissolve_degenerate_def,
 	&bmo_duplicate_def,
 	&bmo_holes_fill_def,

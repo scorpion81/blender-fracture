@@ -2193,8 +2193,8 @@ static void make_face_pairs(FractureModifierData *fmd, DerivedMesh *dm)
 	/* make kdtree of all faces of dm, then find closest face for each face*/
 	MPoly *mp = NULL;
 	MPoly *mpoly = dm->getPolyArray(dm);
-//	MLoop* mloop = dm->getLoopArray(dm);
-//	MVert* mvert = dm->getVertArray(dm);
+	MLoop* mloop = dm->getLoopArray(dm);
+	MVert* mvert = dm->getVertArray(dm);
 	int totpoly = dm->getNumPolys(dm);
 	KDTree *tree = BLI_kdtree_new(totpoly);
 	int i = 0;
@@ -2204,7 +2204,7 @@ static void make_face_pairs(FractureModifierData *fmd, DerivedMesh *dm)
 	for (i = 0, mp = mpoly; i < totpoly; mp++, i++) {
 		float co[3];
 		DM_face_calc_center_mean(dm, mp, co);
-		//if (mp->mat_nr == 1)
+		if (mp->mat_nr == 1)
 		{
 			BLI_kdtree_insert(tree, i, co);
 		}
@@ -2216,7 +2216,7 @@ static void make_face_pairs(FractureModifierData *fmd, DerivedMesh *dm)
 
 	for (i = 0, mp = mpoly; i < totpoly; mp++, i++)
 	{
-		//if (mp->mat_nr == 1)
+		if (mp->mat_nr == 1)
 		{
 			int index = -1, j = 0, r = 0;
 			KDTreeNearest *n;
@@ -2236,10 +2236,10 @@ static void make_face_pairs(FractureModifierData *fmd, DerivedMesh *dm)
 
 			if (!BLI_ghash_haskey(fmd->face_pairs, SET_INT_IN_POINTER(index))) {
 
-				//int j = 0;
+				int j = 0;
 
 				BLI_ghash_insert(fmd->face_pairs, SET_INT_IN_POINTER(i), SET_INT_IN_POINTER(index));
-#if 0
+
 				/*match normals...*/
 				if (fmd->fix_normals)
 				{
@@ -2266,7 +2266,6 @@ static void make_face_pairs(FractureModifierData *fmd, DerivedMesh *dm)
 						}
 					}
 				}
-#endif
 			}
 
 			if (n != NULL) {
@@ -2295,9 +2294,6 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm)
 
 	BM_mesh_elem_hflag_disable_all(bm, BM_FACE | BM_EDGE | BM_VERT , BM_ELEM_SELECT, false);
 
-	//BM_mesh_elem_hflag_enable_all(bm, BM_EDGE, BM_ELEM_SELECT, false);
-	//BM_mesh_elem_hflag_disable_test(bm, BM_EDGE, BM_ELEM_SELECT, false, false, BM_ELEM_SMOOTH);
-
 	for (i = 0; i < totpoly; i++) {
 		BMFace *f1, *f2;
 		other = GET_INT_FROM_POINTER(BLI_ghash_lookup(fmd->face_pairs, SET_INT_IN_POINTER(i)));
@@ -2318,7 +2314,7 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm)
 		BM_face_calc_center_mean(f2, f_centr_other);
 
 
-		if ((len_squared_v3v3(f_centr, f_centr_other) < fmd->autohide_dist) && (f1 != f2) &&
+		if ((len_squared_v3v3(f_centr, f_centr_other) < (fmd->autohide_dist)) && (f1 != f2) &&
 		    (f1->mat_nr == 1) && (f2->mat_nr == 1))
 		{
 
@@ -2346,15 +2342,23 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm)
 
 	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "delete_keep_normals geom=%hf context=%i", BM_ELEM_SELECT, DEL_FACES);
 	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-	             "automerge_keep_normals verts=%hv dist=%f", BM_ELEM_SELECT, fmd->autohide_dist * 10, false); /*need to merge larger cracks*/
+	             "automerge_keep_normals verts=%hv dist=%f", BM_ELEM_SELECT,
+	             fmd->autohide_dist * 10); /*need to merge larger cracks*/
 
-#if 0
+	//BM_mesh_elem_hflag_disable_all(bm, BM_FACE | BM_EDGE | BM_VERT , BM_ELEM_SELECT, false);
+	BM_mesh_elem_hflag_enable_all(bm, BM_EDGE, BM_ELEM_SELECT, false);
+	BM_mesh_elem_hflag_disable_test(bm, BM_EDGE, BM_ELEM_SELECT, false, false, BM_ELEM_SMOOTH);
+
 	//dissolve sharp edges
-	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "dissolve_edges_keep_normals edges=%he use_verts=%b use_face_split=%b",
-	             BM_ELEM_SELECT, true, false);
-#endif
+	//BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "dissolve_edges_keep_normals edges=%he use_verts=%b use_face_split=%b",
+	//             BM_ELEM_SELECT, true, false);
 
-	BM_mesh_elem_hflag_disable_all(bm, BM_VERT, BM_ELEM_SELECT, false);
+	//dissolve sharp edges with limit dissolve
+	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "dissolve_limit_keep_normals "
+	             "angle_limit=%f use_dissolve_boundaries=%b verts=%av edges=%ae delimit=%i",
+	             DEG2RADF(1.0f), false, 0);
+
+	BM_mesh_elem_hflag_disable_all(bm, BM_FACE | BM_EDGE | BM_VERT , BM_ELEM_SELECT, false);
 
 	result = CDDM_from_bmesh(bm, true);
 	BM_mesh_free(bm);
