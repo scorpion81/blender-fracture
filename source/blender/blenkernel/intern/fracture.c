@@ -821,18 +821,19 @@ static void parse_cell_neighbors(cell c, int *neighbors, int totpoly)
 
 static void stroke_to_faces(FractureModifierData *fmd, Object* ob, BMesh** bm, bGPDstroke *gps, int inner_material_index)
 {
-	BMVert *lastv = NULL;
-	BMEdge *laste = NULL;
+	BMVert *lastv1 = NULL;
+	BMVert *lastv2 = NULL;
 	int p = 0;
 	float imat[4][4];
 	float thresh = (float)fmd->grease_decimate / 100.0f;
-	float half[3];
+	float half[3] = {0, 0, 1};
 
 	invert_m4_m4(imat, ob->obmat);
 
 	for (p = 0; p < gps->totpoints; p++) {
+
 		if ((BLI_frand() < thresh) || (p == 0) || (p == gps->totpoints-1)) {
-			BMVert *v;
+			BMVert *v1, *v2;
 			float point[3] = {0, 0, 0};
 
 			point[0] = gps->points[p].x;
@@ -840,15 +841,12 @@ static void stroke_to_faces(FractureModifierData *fmd, Object* ob, BMesh** bm, b
 			point[2] = gps->points[p].z;
 
 			mul_m4_v3(imat, point);
-			v = BM_vert_create(*bm, point, NULL, 0);
+			v1 = BM_vert_create(*bm, point, NULL, 0);
 
-			if (lastv) {
+			if (lastv1)
+			{
 				BMFace* f;
-				BMEdge* e, *e1, *e2, *e3;
-				BMVert* v1, *v2;
-
 				float nvec[3], co1[3], co2[3];
-				e = BM_edge_create(*bm, lastv, v, NULL, 0);
 
 				/*also "extrude" this along the normal, no...use global axises instead*/
 				if (fmd->cutter_axis == MOD_FRACTURE_CUTTER_X)
@@ -871,68 +869,25 @@ static void stroke_to_faces(FractureModifierData *fmd, Object* ob, BMesh** bm, b
 					nvec[1] = 0.0f;
 					nvec[2] = 1.0f;
 				}
-#if 0
-				copy_v3_v3(vec, fmd->forward_vector);
-				if (is_zero_v3(vec))
-				{
-					sub_v3_v3v3(vec, v->co, lastv->co);
-				}
-
-				ortho_v3_v3(nvec, vec);
-				/*glGetFloatv(GL_MODELVIEW_MATRIX, viewmat);
-				nvec[0] = viewmat[2];
-				nvec[1] = viewmat[6];
-				nvec[2] = viewmat[10];*/
-
-				normalize_v3(nvec);
-#endif
 
 				mul_v3_fl(nvec, fmd->grease_offset);
 				mul_v3_v3fl(half, nvec, 0.5f);
 
-				/* move v and lastv a bit into the opposite direction */
-				//sub_v3_v3(v->co, half);
-/*
-				if (firstv != NULL) {
-					sub_v3_v3(firstv->co, half);
-					firstv = NULL;
-				} */
+				add_v3_v3v3(co1, v1->co, nvec);
+				v2 = BM_vert_create(*bm, co1, NULL, 0);
 
-				/* create orthogonal edge */
-				add_v3_v3v3(co1, v->co, nvec);
-				v1 = BM_vert_create(*bm, co1, NULL, 0);
-				e1 = BM_edge_create(*bm, v, v1, NULL, 0);
-				if (!laste)
+				if (!lastv2)
 				{
-					/* no last edge, connect last vert with displaced one */
-					//sub_v3_v3(lastv->co, half);
-					add_v3_v3v3(co2, lastv->co, nvec);
-					v2 = BM_vert_create(*bm, co2, NULL, 0);
-					laste = e1;
-				}
-				else
-				{
-					/* update last edge with current */
-					e2 = laste;
-					v2 = laste->v2;
-					laste = e1;
+					add_v3_v3v3(co2, lastv1->co, nvec);
+					lastv2 = BM_vert_create(*bm, co2, NULL, 0);
 				}
 
-				/*create displaced edge */
-				e3 = BM_edge_create(*bm, v1, v2, NULL, 0);
-
-				/*create a quad face */
-				f = BM_face_create_quad_tri(*bm, lastv, v, v1, v2, NULL, 0);
+				f = BM_face_create_quad_tri(*bm, lastv1, v1, v2, lastv2, NULL, 0);
 				f->mat_nr = inner_material_index;
+				lastv2 = v2;
 			}
-#if 0
-			else
-			{
-				firstv = v;
-			}
-#endif
 
-			lastv = v;
+			lastv1 = v1;
 		}
 	}
 
@@ -1078,15 +1033,18 @@ void BKE_fracture_shard_by_greasepencil(FractureModifierData *fmd, Object *obj, 
 				for (gps = gpf->strokes.first; gps; gps = gps->next) {
 					BMesh *bm = BM_mesh_create(&bm_mesh_allocsize_default);
 					DerivedMesh *dm = NULL;
-//					Object* o;
+
 
 					/*create stroke mesh */
 					stroke_to_faces(fmd, obj, &bm, gps, inner_material_index);
 					dm = CDDM_from_bmesh(bm, true);
 #if 0
-					/*create debug mesh*/
-					o = BKE_object_add(G.main, fmd->modifier.scene, OB_MESH);
-					BM_mesh_bm_to_me(bm, o->data, true);
+					{
+						/*create debug mesh*/
+						Object* o;
+						o = BKE_object_add(G.main, fmd->modifier.scene, OB_MESH);
+						BM_mesh_bm_to_me(bm, o->data, true);
+					}
 #endif
 
 					BM_mesh_free(bm);
