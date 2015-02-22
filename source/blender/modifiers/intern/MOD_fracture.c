@@ -2303,8 +2303,8 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm)
 			continue;
 		}
 
-		f1 = BM_face_at_index_find(bm, i);
-		f2 = BM_face_at_index_find(bm, other);
+		f1 = BM_face_at_index(bm, i);
+		f2 = BM_face_at_index(bm, other);
 
 		if ((f1 == NULL) || (f2 == NULL)) {
 			continue;
@@ -2317,7 +2317,7 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm)
 		if ((len_squared_v3v3(f_centr, f_centr_other) < (fmd->autohide_dist)) && (f1 != f2) &&
 		    (f1->mat_nr == 1) && (f2->mat_nr == 1))
 		{
-
+			/*intact face pairs */
 			faces = MEM_reallocN(faces, sizeof(BMFace *) * (del_faces + 2));
 			faces[del_faces] = f1;
 			faces[del_faces + 1] = f2;
@@ -2335,8 +2335,8 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm)
 				BM_elem_flag_enable(v, BM_ELEM_SELECT);
 			}
 
-			//BM_face_kill(bm, f);
 			BM_elem_flag_enable(f, BM_ELEM_SELECT);
+
 		}
 	}
 
@@ -2345,20 +2345,10 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm)
 	             "automerge_keep_normals verts=%hv dist=%f", BM_ELEM_SELECT,
 	             fmd->autohide_dist * 10); /*need to merge larger cracks*/
 
-	//BM_mesh_elem_hflag_disable_all(bm, BM_FACE | BM_EDGE | BM_VERT , BM_ELEM_SELECT, false);
-	BM_mesh_elem_hflag_enable_all(bm, BM_EDGE, BM_ELEM_SELECT, false);
-	BM_mesh_elem_hflag_disable_test(bm, BM_EDGE, BM_ELEM_SELECT, false, false, BM_ELEM_SMOOTH);
-
-	//dissolve sharp edges
-	//BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "dissolve_edges_keep_normals edges=%he use_verts=%b use_face_split=%b",
-	//             BM_ELEM_SELECT, true, false);
-
 	//dissolve sharp edges with limit dissolve
 	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "dissolve_limit_keep_normals "
 	             "angle_limit=%f use_dissolve_boundaries=%b verts=%av edges=%ae delimit=%i",
 	             DEG2RADF(1.0f), false, 0);
-
-	BM_mesh_elem_hflag_disable_all(bm, BM_FACE | BM_EDGE | BM_VERT , BM_ELEM_SELECT, false);
 
 	result = CDDM_from_bmesh(bm, true);
 	BM_mesh_free(bm);
@@ -2644,40 +2634,6 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 		}
 	}
 
-	if (fmd->refresh_constraints) {
-
-		start = PIL_check_seconds_timer();
-		doClusters(fmd, ob);
-		printf("Clustering done, %g\n", PIL_check_seconds_timer() - start);
-
-		start = PIL_check_seconds_timer();
-
-		create_constraints(fmd); /* check for actually creating the constraints inside*/
-
-#if 0
-		if ((fmd->visible_mesh != NULL || fmd->visible_mesh_cached != NULL)  && (fmd->use_constraints)) {
-			if (fmd->visible_mesh == NULL) {    /* ugh, needed to build constraints... */
-				fmd->visible_mesh = DM_to_bmesh(fmd->visible_mesh_cached, true);
-				BM_mesh_elem_index_ensure(fmd->visible_mesh, BM_VERT | BM_EDGE | BM_FACE);
-				BM_mesh_elem_table_ensure(fmd->visible_mesh, BM_VERT | BM_EDGE | BM_FACE);
-				BM_mesh_elem_toolflags_ensure(fmd->visible_mesh);
-			}
-			create_constraints(fmd); /* check for actually creating the constraints inside*/
-
-			if (fmd->visible_mesh_cached != NULL) {
-				/* if we had a cached visible mesh, throw away this temp visible mesh again */
-				BM_mesh_free(fmd->visible_mesh);
-				fmd->visible_mesh = NULL;
-			}
-		}
-#endif
-
-		fmd->refresh_constraints = false;
-
-		printf("Building constraints done, %g\n", PIL_check_seconds_timer() - start);
-		printf("Constraints: %d\n", BLI_listbase_count(&fmd->meshConstraints));
-	}
-
 	if (fmd->refresh_autohide)
 	{
 		fmd->refresh_autohide = false;
@@ -2703,6 +2659,21 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 			fdm->release(fdm);
 			fdm = NULL;
 		}
+	}
+
+	if (fmd->refresh_constraints) {
+
+		start = PIL_check_seconds_timer();
+		doClusters(fmd, ob);
+		printf("Clustering done, %g\n", PIL_check_seconds_timer() - start);
+
+		start = PIL_check_seconds_timer();
+
+		create_constraints(fmd); /* check for actually creating the constraints inside*/
+		fmd->refresh_constraints = false;
+
+		printf("Building constraints done, %g\n", PIL_check_seconds_timer() - start);
+		printf("Constraints: %d\n", BLI_listbase_count(&fmd->meshConstraints));
 	}
 
 	/*XXX better rename this, it checks whether we have a valid fractured mesh */
