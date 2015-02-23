@@ -4760,8 +4760,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 	fmd->nor_tree = NULL;
 	fmd->face_pairs = NULL;
 
-	if (fm == NULL) {
-
+	if (fm == NULL || fmd->dm_group) {
 		fmd->dm = NULL;
 		fmd->meshIslands.first = NULL;
 		fmd->meshIslands.last = NULL;
@@ -4775,6 +4774,8 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 		fmd->refresh_constraints = false;
 		fmd->max_vol = 0;
 		fmd->refresh_images = false;
+		fmd->islandShards.first = NULL;
+		fmd->islandShards.last = NULL;
 	}
 	else {
 		MeshIsland *mi;
@@ -8065,119 +8066,50 @@ static BHead *read_userdef(BlendFileData *bfd, FileData *fd, BHead *bhead)
 
 static void fix_fracture_image_hack(Main* main)
 {
-	if (!MAIN_VERSION_ATLEAST(main, 273, 1)) {
+	if (!MAIN_VERSION_ATLEAST(main, 273, 1)) { /* XXX TODO is the version check here really necessary ?*/
 		Object *ob;
-#if 0
-		/*fix modifier images on modifiers without dm_group in a first pass */
+
 		for (ob = main->object.first; ob; ob = ob->id.next) {
 			FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
-			if (fmd && fmd->visible_mesh_cached && ob->type == OB_MESH) {
-				CustomData* pdata = &fmd->visible_mesh_cached->polyData;
-				int i = 0;
-				int totface = fmd->visible_mesh_cached->numPolyData;
-				Mesh* me = ob->data;
-				if (me && CustomData_has_layer(pdata, CD_MTEXPOLY)) {
-					for (i = 0; i < pdata->totlayer; i++) {
-						CustomDataLayer *layer = &pdata->layers[i];
-
-						if (layer->type == CD_MTEXPOLY) {
-							MTexPoly *tf = layer->data;
-							int j = 0;
-							for (j = 0; j < totface; j++, tf++) {
-								//simply use first image here...
-								tf->tpage = me->mtpoly->tpage;
-								tf->mode = me->mtpoly->mode;
-								tf->flag = me->mtpoly->flag;
-								tf->tile = me->mtpoly->tile;
-								tf->transp = me->mtpoly->transp;
-
-								if (tf->tpage && tf->tpage->id.us == 0) {
-									tf->tpage->id.us = 1;
-								}
-							}
-						}
-					}
-				}
+			if (fmd && fmd->dm_group) {
+				fmd->refresh_images = true;
+				fmd->refresh = true;
 			}
-		}
-#endif
-		for (ob = main->object.first; ob; ob = ob->id.next) {
-			FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
+
+#if 0
 			if (fmd && fmd->dm_group && fmd->visible_mesh_cached) {
 				GroupObject *go;
-//				int polystart = 0;
 
 				for (go = fmd->dm_group->gobject.first; go; go = go->next)
 				{
 					if (go->ob && go->ob->type == OB_MESH)
 					{
-#if 0
-						FractureModifierData *fmd2 = (FractureModifierData*)modifiers_findByType(go->ob, eModifierType_Fracture);
-						if (fmd2 && !fmd2->dm_group && fmd2->visible_mesh_cached)
-						{
-							CustomData* pdata = &fmd->visible_mesh_cached->polyData;
-							CustomData* pdata2 = &fmd2->visible_mesh_cached->polyData;
+						Mesh* me = go->ob->data;
+						CustomData* pdata = &fmd->visible_mesh_cached->polyData;
+
+						if (me && CustomData_has_layer(pdata, CD_MTEXPOLY)) {
+							/*argh, would need to know which images belong to which "part" of the mesh, but for now
+							 just allow proper loading and fix manually afterwards */
 							int i;
-							int totface = fmd2->visible_mesh_cached->numPolyData;
+							int totface = fmd->visible_mesh_cached->numPolyData;
 
-							/*assume same layer count !*/
-							if (pdata->totlayer == pdata2->totlayer)
-							{
-								for (i = 0; i < pdata->totlayer; i++) {
-									CustomDataLayer *layer = &pdata->layers[i];
-									CustomDataLayer *layer2 = &pdata2->layers[i];
+							for (i = 0; i < pdata->totlayer; i++) {
+								CustomDataLayer *layer = &pdata->layers[i];
 
-									if (layer->type == CD_MTEXPOLY && layer2->type == CD_MTEXPOLY) {
-										MTexPoly *tf = ((MTexPoly*)layer->data) + polystart;
-										MTexPoly *tf2 = layer2->data;
-										int j;
+								if (layer->type == CD_MTEXPOLY && me->mtpoly) {
+									MTexPoly *tf = layer->data;
+									int j;
 
-										for (j = 0; j < totface; j++, tf++, tf2++) {
-											tf->tpage = tf2->tpage;
-											tf->mode = tf2->mode;
-											tf->flag = tf2->flag;
-											tf->tile = tf2->tile;
-											tf->transp = tf2->transp;
+									for (j = 0; j < totface; j++, tf++) {
+										//simply use first image here...
+										tf->tpage = me->mtpoly->tpage;
+										tf->mode = me->mtpoly->mode;
+										tf->flag = me->mtpoly->flag;
+										tf->tile = me->mtpoly->tile;
+										tf->transp = me->mtpoly->transp;
 
-											if (tf->tpage && tf->tpage->id.us == 0) {
-												tf->tpage->id.us = 1;
-											}
-										}
-									}
-								}
-							}
-							polystart += totface;
-						}
-						else if (!fmd2)/*fallback*/
-#endif
-						{
-							Mesh* me = go->ob->data;
-							CustomData* pdata = &fmd->visible_mesh_cached->polyData;
-
-							if (me && CustomData_has_layer(pdata, CD_MTEXPOLY)) {
-								/*argh, would need to know which images belong to which "part" of the mesh, but for now
-								 just allow proper loading and fix manually afterwards */
-								int i;
-								int totface = fmd->visible_mesh_cached->numPolyData;
-
-								for (i = 0; i < pdata->totlayer; i++) {
-									CustomDataLayer *layer = &pdata->layers[i];
-
-									if (layer->type == CD_MTEXPOLY && me->mtpoly) {
-										MTexPoly *tf = layer->data;
-										int j;
-
-										for (j = 0; j < totface; j++, tf++) {
-											//simply use first image here...
-											tf->tpage = me->mtpoly->tpage;
-											tf->mode = me->mtpoly->mode;
-											tf->flag = me->mtpoly->flag;
-											tf->tile = me->mtpoly->tile;
-											tf->transp = me->mtpoly->transp;
-
-											if (tf->tpage && tf->tpage->id.us == 0) {
-												tf->tpage->id.us = 1;
-											}
+										if (tf->tpage && tf->tpage->id.us == 0) {
+											tf->tpage->id.us = 1;
 										}
 									}
 								}
@@ -8186,6 +8118,7 @@ static void fix_fracture_image_hack(Main* main)
 					}
 				}
 			}
+#endif
 		}
 	}
 }

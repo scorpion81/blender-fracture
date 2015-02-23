@@ -1645,7 +1645,7 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 				MeshIsland *mi;
 				Shard *s;
 
-				if (fm->running == 0)
+				if (fm->running == 0 && !fmd->dm_group)
 				{
 					writestruct(wd, DATA, "FracMesh", 1, fm);
 
