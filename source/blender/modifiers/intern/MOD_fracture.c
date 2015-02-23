@@ -602,7 +602,17 @@ static DerivedMesh *get_group_dm(FractureModifierData *fmd, DerivedMesh *dm)
 		for (i = 0; i < totgroup; i++)
 		{
 			Object *o = go[i];
-			dm_ob = o->derivedFinal;
+			/*ensure o->derivedFinal*/
+			FractureModifierData* fmd2 = (FractureModifierData*) modifiers_findByType(o, eModifierType_Fracture);
+			if (fmd2)
+			{
+				dm_ob = fmd2->visible_mesh_cached;
+			}
+			else
+			{
+				dm_ob = o->derivedFinal;
+			}
+
 			if (dm_ob == NULL) continue;
 
 			num_verts += dm_ob->getNumVerts(dm_ob);
@@ -633,7 +643,17 @@ static DerivedMesh *get_group_dm(FractureModifierData *fmd, DerivedMesh *dm)
 			MVert *mv;
 
 			Object *o = go[i];
-			dm_ob = o->derivedFinal; /* not very reliable... hmm */
+
+			/*ensure o->derivedFinal*/
+			FractureModifierData* fmd2 = (FractureModifierData*) modifiers_findByType(o, eModifierType_Fracture);
+			if (fmd2)
+			{
+				dm_ob = fmd2->visible_mesh_cached;
+			}
+			else
+			{
+				dm_ob = o->derivedFinal;
+			}
 
 			if (dm_ob == NULL)
 			{   /* avoid crash atleast...*/
@@ -645,8 +665,12 @@ static DerivedMesh *get_group_dm(FractureModifierData *fmd, DerivedMesh *dm)
 
 			for (j = 0, mp = mpolys + polystart; j < dm_ob->getNumPolys(dm_ob); ++j, ++mp) {
 				/* adjust loopstart index */
-				MTexPoly *mtp = CustomData_get(&dm_ob->polyData, j, CD_MTEXPOLY);
-				CustomData_set(&result->polyData, polystart + j, CD_MTEXPOLY, mtp);
+				if (CustomData_has_layer(&dm_ob->polyData, CD_MTEXPOLY))
+				{
+					MTexPoly *mtp = CustomData_get(&dm_ob->polyData, j, CD_MTEXPOLY);
+					if (mtp)
+						CustomData_set(&result->polyData, polystart + j, CD_MTEXPOLY, mtp);
+				}
 				mp->loopstart += loopstart;
 			}
 
@@ -654,15 +678,23 @@ static DerivedMesh *get_group_dm(FractureModifierData *fmd, DerivedMesh *dm)
 
 			for (j = 0, ml = mloops + loopstart; j < dm_ob->getNumLoops(dm_ob); ++j, ++ml) {
 				/* adjust vertex index */
-				MLoopUV *mluv = CustomData_get(&dm_ob->loopData, j, CD_MLOOPUV);
-				CustomData_set(&result->loopData, loopstart + j, CD_MLOOPUV, mluv);
+				if (CustomData_has_layer(&dm_ob->loopData, CD_MLOOPUV))
+				{
+					MLoopUV *mluv = CustomData_get(&dm_ob->loopData, j, CD_MLOOPUV);
+					if (mluv)
+						CustomData_set(&result->loopData, loopstart + j, CD_MLOOPUV, mluv);
+				}
 				ml->v += vertstart;
 			}
 
 			for (v = 0, mv = mverts + vertstart; v < dm_ob->getNumVerts(dm_ob); v++, mv++)
 			{
-				MDeformVert *mdv = CustomData_get(&dm_ob->vertData, v, CD_MDEFORMVERT);
-				CustomData_set(&result->vertData, vertstart + v, CD_MDEFORMVERT, mdv);
+				if (CustomData_has_layer(&dm_ob->vertData, CD_MDEFORMVERT))
+				{
+					MDeformVert *mdv = CustomData_get(&dm_ob->vertData, v, CD_MDEFORMVERT);
+					if (mdv)
+						CustomData_set(&result->vertData, vertstart + v, CD_MDEFORMVERT, mdv);
+				}
 				mul_m4_v3(o->obmat, mv->co);
 			}
 
