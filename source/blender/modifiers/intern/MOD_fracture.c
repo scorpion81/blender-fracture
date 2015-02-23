@@ -1336,7 +1336,7 @@ static float mesh_separate_tagged(FractureModifierData *rmd, Object *ob, BMVert 
 	BM_calc_center_centroid(bm_new, centroid, false);
 	BM_mesh_elem_index_ensure(bm_new, BM_VERT | BM_EDGE | BM_FACE);
 
-	if (rmd->shards_to_islands || rmd->frac_mesh->shard_count < 2) {
+	if ((rmd->shards_to_islands || rmd->frac_mesh->shard_count < 2) && (!rmd->dm_group)) {
 		/* store temporary shards for each island */
 		dmtemp = CDDM_from_bmesh(bm_new, true);
 		s = BKE_create_fracture_shard(dmtemp->getVertArray(dmtemp), dmtemp->getPolyArray(dmtemp), dmtemp->getLoopArray(dmtemp),
@@ -1544,7 +1544,8 @@ static void mesh_separate_loose_partition(FractureModifierData *rmd, Object *ob,
 			startno = MEM_reallocN(startno, (tag_counter + 1) * 3 * sizeof(short));
 
 			normal_float_to_short_v3(vno, v_seed->no);
-			find_normal(dm, rmd->nor_tree, v_seed->co, vno, no, rmd->nor_range);
+			if (rmd->fix_normals)
+				find_normal(dm, rmd->nor_tree, v_seed->co, vno, no, rmd->nor_range);
 			startno[3 * tag_counter] = no[0];
 			startno[3 * tag_counter + 1] = no[1];
 			startno[3 * tag_counter + 2] = no[2];
@@ -1581,7 +1582,8 @@ static void mesh_separate_loose_partition(FractureModifierData *rmd, Object *ob,
 				startno = MEM_reallocN(startno, (tag_counter + 1) * 3 * sizeof(short));
 
 				normal_float_to_short_v3(vno, e->v1->no);
-				find_normal(dm, rmd->nor_tree, e->v1->co, vno, no, rmd->nor_range);
+				if (rmd->fix_normals)
+					find_normal(dm, rmd->nor_tree, e->v1->co, vno, no, rmd->nor_range);
 				startno[3 * tag_counter] = no[0];
 				startno[3 * tag_counter + 1] = no[1];
 				startno[3 * tag_counter + 2] = no[2];
@@ -1607,7 +1609,8 @@ static void mesh_separate_loose_partition(FractureModifierData *rmd, Object *ob,
 				startno = MEM_reallocN(startno, (tag_counter + 1) * 3 * sizeof(short));
 
 				normal_float_to_short_v3(vno, e->v2->no);
-				find_normal(dm, rmd->nor_tree, e->v2->co, vno, no, rmd->nor_range);
+				if (rmd->fix_normals)
+					find_normal(dm, rmd->nor_tree, e->v2->co, vno, no, rmd->nor_range);
 				startno[3 * tag_counter] = no[0];
 				startno[3 * tag_counter + 1] = no[1];
 				startno[3 * tag_counter + 2] = no[2];
