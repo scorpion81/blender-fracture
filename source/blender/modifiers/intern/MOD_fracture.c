@@ -2193,9 +2193,9 @@ static void refresh_customdata_image(Mesh *me, CustomData *pdata, int totface)
 				tf->tile = me->mtpoly->tile;
 				tf->transp = me->mtpoly->transp;
 
-				if (tf->tpage && tf->tpage->id.us == 0) {
+				/*if (tf->tpage && tf->tpage->id.us == 0) {
 					tf->tpage->id.us = 1;
-				}
+				}*/
 			}
 		}
 	}
