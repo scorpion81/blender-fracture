@@ -819,16 +819,13 @@ static void parse_cell_neighbors(cell c, int *neighbors, int totpoly)
 	}
 }
 
-static void stroke_to_faces(FractureModifierData *fmd, Object* ob, BMesh** bm, bGPDstroke *gps, int inner_material_index)
+static void stroke_to_faces(FractureModifierData *fmd, BMesh** bm, bGPDstroke *gps, int inner_material_index)
 {
 	BMVert *lastv1 = NULL;
 	BMVert *lastv2 = NULL;
 	int p = 0;
-	float imat[4][4];
 	float thresh = (float)fmd->grease_decimate / 100.0f;
 	float half[3] = {0, 0, 1};
-
-	invert_m4_m4(imat, ob->obmat);
 
 	for (p = 0; p < gps->totpoints; p++) {
 
@@ -840,7 +837,6 @@ static void stroke_to_faces(FractureModifierData *fmd, Object* ob, BMesh** bm, b
 			point[1] = gps->points[p].y;
 			point[2] = gps->points[p].z;
 
-			mul_m4_v3(imat, point);
 			v1 = BM_vert_create(*bm, point, NULL, 0);
 
 			if (lastv1)
@@ -1036,7 +1032,7 @@ void BKE_fracture_shard_by_greasepencil(FractureModifierData *fmd, Object *obj, 
 
 
 					/*create stroke mesh */
-					stroke_to_faces(fmd, obj, &bm, gps, inner_material_index);
+					stroke_to_faces(fmd, &bm, gps, inner_material_index);
 					dm = CDDM_from_bmesh(bm, true);
 #if 0
 					{
