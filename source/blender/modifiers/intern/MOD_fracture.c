@@ -2795,6 +2795,7 @@ static void foreachIDLink(ModifierData *md, Object *ob,
 	walk(userData, ob, (ID **)&fmd->extra_group);
 	walk(userData, ob, (ID **)&fmd->dm_group);
 	walk(userData, ob, (ID **)&fmd->cluster_group);
+	walk(userData, ob, (ID **)&fmd->cutter_group);
 }
 
 static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *UNUSED(md))
