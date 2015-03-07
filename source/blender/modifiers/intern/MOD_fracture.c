@@ -1075,22 +1075,20 @@ static void do_fracture(FractureModifierData *fracmd, ShardID id, Object *obj, D
 
 		mat_index = mat_index > 0 ? mat_index - 1 : mat_index;
 
+		if (points.totpoints > 0)
+		{
+			BKE_fracture_shard_by_points(fracmd->frac_mesh, id, &points, fracmd->frac_algorithm, obj, dm, mat_index, mat2,
+								 fracmd->fractal_cuts, fracmd->fractal_amount, fracmd->use_smooth, fracmd->fractal_iterations);
+		}
+
+		if (fracmd->point_source & MOD_FRACTURE_GREASEPENCIL && fracmd->use_greasepencil_edges)
+		{
+			BKE_fracture_shard_by_greasepencil(fracmd, obj, mat_index, mat2);
+		}
+
 		if (fracmd->frac_algorithm == MOD_FRACTURE_BOOLEAN && fracmd->cutter_group != NULL)
 		{
 			BKE_fracture_shard_by_planes(fracmd, obj, mat_index, mat2);
-		}
-		else
-		{
-			if (points.totpoints > 0)
-			{
-				BKE_fracture_shard_by_points(fracmd->frac_mesh, id, &points, fracmd->frac_algorithm, obj, dm, mat_index, mat2,
-		                             fracmd->fractal_cuts, fracmd->fractal_amount, fracmd->use_smooth, fracmd->fractal_iterations);
-			}
-
-			if (fracmd->point_source & MOD_FRACTURE_GREASEPENCIL && fracmd->use_greasepencil_edges)
-			{
-				BKE_fracture_shard_by_greasepencil(fracmd, obj, mat_index, mat2);
-			}
 		}
 
 		/* job has been cancelled, throw away all data */
