@@ -74,7 +74,7 @@ static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int r
 
 static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld* rbw, MeshIsland *mi, Object* ob)
 {
-	if (rbo->flag & RBO_FLAG_KINEMATIC)
+	if (rbo->flag & RBO_FLAG_KINEMATIC && rbo->type == RBO_TYPE_ACTIVE)
 	{
 		rbo->flag &= ~RBO_FLAG_KINEMATIC;
 		//RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);

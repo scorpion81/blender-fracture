@@ -1449,6 +1449,7 @@ typedef struct FractureModifierData {
 	struct KDTree *nor_tree; /* store original vertices here (coords), to find them later and reuse their normals */
 	struct Material *inner_material;
 	struct GHash *face_pairs;
+	struct GHash *vert_index_map; /*used for autoconversion of former objects to clusters, marks object membership of each vert*/
 
 	/* values */
 	int frac_algorithm;
@@ -1469,6 +1470,7 @@ typedef struct FractureModifierData {
 	int fractal_iterations;
 	int grease_decimate;
 	int cutter_axis;
+	int cluster_constraint_type;
 
 	float breaking_angle;
 	float breaking_distance;
@@ -1513,7 +1515,7 @@ typedef struct FractureModifierData {
 	/* internal values */
 	float max_vol;
 
-	//char pad[4];
+	char pad[4];
 } FractureModifierData;
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */

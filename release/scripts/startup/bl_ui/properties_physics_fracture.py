@@ -76,6 +76,7 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         col.prop(md, "cluster_count")
         col.prop(md, "point_seed")
         layout.prop(md, "cluster_group")
+        layout.prop(md, "cluster_constraint_type")
         if md.frac_algorithm == 'BOOLEAN' or md.frac_algorithm == 'BISECT_FILL' or md.frac_algorithm == 'BISECT_FAST_FILL':
             layout.prop(md, "inner_material")
         if md.frac_algorithm == 'BOOLEAN_FRACTAL':

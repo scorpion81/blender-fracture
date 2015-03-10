@@ -4759,6 +4759,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 	fmd->refresh_constraints = false;
 	fmd->nor_tree = NULL;
 	fmd->face_pairs = NULL;
+	fmd->vert_index_map = NULL;
 
 	if (fm == NULL || fmd->dm_group) {
 		fmd->dm = NULL;

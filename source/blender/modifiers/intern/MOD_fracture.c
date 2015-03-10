@@ -155,6 +155,8 @@ static void initData(ModifierData *md)
 	fmd->use_greasepencil_edges = true;
 
 	fmd->cutter_axis = MOD_FRACTURE_CUTTER_Z;
+	fmd->cluster_constraint_type = RBC_TYPE_FIXED;
+	fmd->vert_index_map = NULL;
 }
 
 static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
@@ -290,6 +292,11 @@ static void freeData_internal(ModifierData *md)
 			rmd->islandShards.first = NULL;
 			rmd->islandShards.last = NULL;
 		}
+
+		if (rmd->vert_index_map != NULL) {
+			BLI_ghash_free(rmd->vert_index_map, NULL, NULL);
+			rmd->vert_index_map = NULL;
+		}
 	}
 
 	if (rmd->visible_mesh_cached && !rmd->shards_to_islands &&
@@ -417,13 +424,13 @@ static void doClusters(FractureModifierData *fmd, Object* obj)
 
 	mi_list = fmd->meshIslands;
 
-	/*initialize cluster "colors" -> membership of meshislands to clusters, initally all shards are "free" */
-	for (mi = mi_list.first; mi; mi = mi->next ) {
-		mi->particle_index = -1;
-	}
-
 	if (fmd->cluster_group)
 	{
+		/*initialize cluster "colors" -> membership of meshislands to clusters, initally all shards are "free" */
+		for (mi = mi_list.first; mi; mi = mi->next ) {
+			mi->particle_index = -1;
+		}
+
 		seed_count = BLI_listbase_count(&fmd->cluster_group->gobject);
 		if (seed_count > 0)
 		{
@@ -458,6 +465,11 @@ static void doClusters(FractureModifierData *fmd, Object* obj)
 		/* zero clusters or one mean no clusters, all shards keep free */
 		if (fmd->cluster_count < 2) {
 			return;
+		}
+
+		/*initialize cluster "colors" -> membership of meshislands to clusters, initally all shards are "free" */
+		for (mi = mi_list.first; mi; mi = mi->next ) {
+			mi->particle_index = -1;
 		}
 
 		mi_count = BLI_listbase_count(&fmd->meshIslands);
@@ -599,6 +611,13 @@ static DerivedMesh *get_group_dm(FractureModifierData *fmd, DerivedMesh *dm)
 	if (totgroup > 0 && (fmd->refresh == true || fmd->auto_execute == true))
 	{
 		DerivedMesh *dm_ob = NULL;
+		if (fmd->vert_index_map != NULL) {
+			BLI_ghash_free(fmd->vert_index_map, NULL, NULL);
+			fmd->vert_index_map = NULL;
+		}
+
+		fmd->vert_index_map = BLI_ghash_int_new("vert_index_map");
+
 		for (i = 0; i < totgroup; i++)
 		{
 			Object *o = go[i];
@@ -696,6 +715,7 @@ static DerivedMesh *get_group_dm(FractureModifierData *fmd, DerivedMesh *dm)
 						CustomData_set(&result->vertData, vertstart + v, CD_MDEFORMVERT, mdv);
 				}
 				mul_m4_v3(o->obmat, mv->co);
+				BLI_ghash_insert(fmd->vert_index_map, SET_INT_IN_POINTER(vertstart + v), SET_INT_IN_POINTER(i));
 			}
 
 			vertstart += dm_ob->getNumVerts(dm_ob);
@@ -1139,13 +1159,12 @@ static void copyData(ModifierData *md, ModifierData *target)
 	FractureModifierData *trmd = (FractureModifierData *)target;
 
 	/*todo -> copy fracture stuff as well, and dont forget readfile / writefile...*/
-
 	zero_m4(trmd->origmat);
-	trmd->breaking_threshold = rmd->breaking_threshold;
-	trmd->use_constraints = rmd->use_constraints;
-	trmd->contact_dist = rmd->contact_dist;
-	trmd->use_mass_dependent_thresholds = rmd->use_mass_dependent_thresholds;
-	trmd->explo_shared = rmd->explo_shared;
+
+	/* vgroups  XXX TODO non ascii strings ?*/
+	strncpy(trmd->thresh_defgrp_name, rmd->thresh_defgrp_name, strlen(rmd->thresh_defgrp_name));
+	strncpy(trmd->ground_defgrp_name, rmd->ground_defgrp_name, strlen(rmd->ground_defgrp_name));
+	strncpy(trmd->inner_defgrp_name, rmd->inner_defgrp_name, strlen(rmd->inner_defgrp_name));
 
 	trmd->visible_mesh = NULL;
 	trmd->visible_mesh_cached = NULL;
@@ -1153,6 +1172,14 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->meshIslands.last = NULL;
 	trmd->meshConstraints.first = NULL;
 	trmd->meshConstraints.last = NULL;
+	trmd->face_pairs = NULL;
+	trmd->vert_index_map = NULL;
+
+	trmd->breaking_threshold = rmd->breaking_threshold;
+	trmd->use_constraints = rmd->use_constraints;
+	trmd->contact_dist = rmd->contact_dist;
+	trmd->use_mass_dependent_thresholds = rmd->use_mass_dependent_thresholds;
+	trmd->explo_shared = rmd->explo_shared;
 
 	trmd->refresh = false;
 	trmd->constraint_limit = rmd->constraint_limit;
@@ -1183,11 +1210,6 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->point_seed = rmd->point_seed;
 	trmd->point_source = rmd->point_source;
 
-	/* vgroups  XXX TODO non ascii strings ?*/
-	strncpy(trmd->thresh_defgrp_name, rmd->thresh_defgrp_name, strlen(rmd->thresh_defgrp_name));
-	strncpy(trmd->ground_defgrp_name, rmd->ground_defgrp_name, strlen(rmd->ground_defgrp_name));
-	strncpy(trmd->inner_defgrp_name, rmd->inner_defgrp_name, strlen(rmd->inner_defgrp_name));
-
 	/*id refs ?*/
 	trmd->inner_material = rmd->inner_material;
 	trmd->extra_group = rmd->extra_group;
@@ -1215,6 +1237,8 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->grease_offset = rmd->grease_offset;
 	trmd->use_greasepencil_edges = rmd->use_greasepencil_edges;
 	trmd->cutter_axis = rmd->cutter_axis;
+
+	trmd->cluster_constraint_type = rmd->cluster_constraint_type;
 }
 
 /* mi->bb, its for volume fraction calculation.... */
@@ -1311,6 +1335,7 @@ static float mesh_separate_tagged(FractureModifierData *rmd, Object *ob, BMVert 
 	DerivedMesh *dm = NULL, *dmtemp = NULL;
 	Shard *s;
 	int i = 0;
+	short rb_type = RBO_TYPE_ACTIVE;
 
 	if (rmd->frac_mesh->cancel == 1)
 		return 0.0f;
@@ -1379,6 +1404,19 @@ static float mesh_separate_tagged(FractureModifierData *rmd, Object *ob, BMVert 
 		mi->vertex_indices[i] = mi->vertices[i]->head.index;
 	}
 
+	if (rmd->vert_index_map && rmd->dm_group && rmd->cluster_count == 0)
+	{
+		GroupObject* go = NULL;
+		/* autocreate clusters out of former objects, if we dont override */
+		mi->particle_index = GET_INT_FROM_POINTER(BLI_ghash_lookup(rmd->vert_index_map, SET_INT_IN_POINTER(mi->vertex_indices[0])));
+
+		/*look up whether original object is active or passive */
+		go = BLI_findlink(&rmd->dm_group->gobject, mi->particle_index);
+		if (go && go->ob && go->ob->rigidbody_object) {
+			rb_type = go->ob->rigidbody_object->type;
+		}
+	}
+
 	/* copy fixed normals to physicsmesh too, for convert to objects */
 	if (rmd->fix_normals) {
 		MVert *verts, *mv;
@@ -1412,6 +1450,7 @@ static float mesh_separate_tagged(FractureModifierData *rmd, Object *ob, BMVert 
 	mi->vertices_cached = NULL;
 
 	mi->rigidbody = BKE_rigidbody_create_shard(rmd->modifier.scene, ob, mi);
+	mi->rigidbody->type = rb_type;
 	BKE_rigidbody_calc_shard_mass(ob, mi, orig_dm);
 
 	if (rmd->frac_algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL)
@@ -1889,7 +1928,15 @@ static void connect_meshislands(FractureModifierData *rmd, MeshIsland *mi1, Mesh
 					rbsc->breaking_threshold = thresh;
 				}
 			}
-			else {
+			else
+			{
+				if ((mi1->particle_index != -1) && (mi2->particle_index != -1) &&
+				    (mi1->particle_index != mi2->particle_index))
+				{
+					/* set a different type of constraint between clusters */
+					rbsc->type = rmd->cluster_constraint_type;
+				}
+
 				rbsc->breaking_threshold = thresh;
 			}
 
@@ -2161,7 +2208,8 @@ static DerivedMesh *createCache(FractureModifierData *rmd, Object *ob, DerivedMe
 			mi->ground_weight /= mi->vertex_count;
 		}
 
-		if (mi->rigidbody != NULL) {
+		/*disable for dm_group, cannot paint onto this mesh at all */
+		if (mi->rigidbody != NULL && rmd->dm_group == NULL) {
 			mi->rigidbody->type = mi->ground_weight > 0.5f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
 		}
 
