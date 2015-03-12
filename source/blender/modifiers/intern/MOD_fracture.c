@@ -594,23 +594,25 @@ static int getGroupObjects(Group *gr, Object ***obs, int g_exist)
 }
 
 
-static DerivedMesh *get_group_dm(FractureModifierData *fmd, DerivedMesh *dm)
+static DerivedMesh *get_group_dm(FractureModifierData *fmd, DerivedMesh *dm, Object* ob)
 {
 	/* combine derived meshes from group objects into 1, trigger submodifiers if ob->derivedFinal is empty */
 	int totgroup = 0, i = 0;
 	int num_verts = 0, num_polys = 0, num_loops = 0;
-	int vertstart = 0, polystart = 0, loopstart = 0;
+	int vertstart = 0, polystart = 0, loopstart = 0, matstart = 0;
 	DerivedMesh *result;
 	MVert *mverts;
 	MPoly *mpolys;
 	MLoop *mloops;
 
 	Object **go = MEM_mallocN(sizeof(Object *), "groupdmobjects");
+	GHash *mat_index_map = NULL;
 	totgroup = getGroupObjects(fmd->dm_group, &go, totgroup);
 
 	if (totgroup > 0 && (fmd->refresh == true || fmd->auto_execute == true))
 	{
 		DerivedMesh *dm_ob = NULL;
+		mat_index_map = BLI_ghash_int_new("mat_index_map");
 		if (fmd->vert_index_map != NULL) {
 			BLI_ghash_free(fmd->vert_index_map, NULL, NULL);
 			fmd->vert_index_map = NULL;
@@ -658,9 +660,11 @@ static DerivedMesh *get_group_dm(FractureModifierData *fmd, DerivedMesh *dm)
 		{
 			MPoly *mp;
 			MLoop *ml;
-			int j, v;
+			int j, v, k = 0;
 			MVert *mv;
 
+			short *totcolp = NULL;
+			Material ***matarar = NULL;
 			Object *o = go[i];
 
 			/*ensure o->derivedFinal*/
@@ -679,10 +683,28 @@ static DerivedMesh *get_group_dm(FractureModifierData *fmd, DerivedMesh *dm)
 				return dm;
 			}
 
+			/* append materials to target object, if not existing yet */
+			totcolp = give_totcolp(o);
+			matarar = give_matarar(o);
+
+			for (j = 0; j < *totcolp; j++)
+			{
+				int index = find_material_index(ob, (*matarar)[j]);
+				if (index == 0)
+				{
+					k++;
+					assign_material(ob, (*matarar)[j], matstart + k, BKE_MAT_ASSIGN_USERPREF);
+				}
+
+				BLI_ghash_insert(mat_index_map, SET_INT_IN_POINTER(matstart+j+1), SET_INT_IN_POINTER(index));
+			}
+
+			j = 0;
 			memcpy(mverts + vertstart, dm_ob->getVertArray(dm_ob), dm_ob->getNumVerts(dm_ob) * sizeof(MVert));
 			memcpy(mpolys + polystart, dm_ob->getPolyArray(dm_ob), dm_ob->getNumPolys(dm_ob) * sizeof(MPoly));
 
 			for (j = 0, mp = mpolys + polystart; j < dm_ob->getNumPolys(dm_ob); ++j, ++mp) {
+				int index = 0;
 				/* adjust loopstart index */
 				if (CustomData_has_layer(&dm_ob->polyData, CD_MTEXPOLY))
 				{
@@ -691,6 +713,18 @@ static DerivedMesh *get_group_dm(FractureModifierData *fmd, DerivedMesh *dm)
 						CustomData_set(&result->polyData, polystart + j, CD_MTEXPOLY, mtp);
 				}
 				mp->loopstart += loopstart;
+
+				/* material index lookup and correction, avoid having the same material in different slots */
+				index = GET_INT_FROM_POINTER(BLI_ghash_lookup(mat_index_map, SET_INT_IN_POINTER(mp->mat_nr+matstart)));
+
+				if (index == 0)
+				{
+					mp->mat_nr += matstart;
+				}
+				else
+				{
+					mp->mat_nr = index;
+				}
 			}
 
 			memcpy(mloops + loopstart, dm_ob->getLoopArray(dm_ob), dm_ob->getNumLoops(dm_ob) * sizeof(MLoop));
@@ -721,6 +755,7 @@ static DerivedMesh *get_group_dm(FractureModifierData *fmd, DerivedMesh *dm)
 			vertstart += dm_ob->getNumVerts(dm_ob);
 			polystart += dm_ob->getNumPolys(dm_ob);
 			loopstart += dm_ob->getNumLoops(dm_ob);
+			matstart += (*totcolp);
 		}
 
 		CDDM_calc_edges(result);
@@ -728,6 +763,9 @@ static DerivedMesh *get_group_dm(FractureModifierData *fmd, DerivedMesh *dm)
 		result->dirty |= DM_DIRTY_NORMALS;
 		CDDM_calc_normals_mapping(result);
 		MEM_freeN(go);
+
+		BLI_ghash_free(mat_index_map, NULL, NULL);
+		mat_index_map = NULL;
 		return result;
 	}
 
@@ -2897,99 +2935,6 @@ static void foreachObjectLink(
 	}
 }
 
-static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
-                                    struct BMEditMesh *UNUSED(editData),
-                                    DerivedMesh *derivedData,
-                                    ModifierApplyFlag UNUSED(flag))
-{
-	FractureModifierData *fmd = (FractureModifierData *) md;
-	DerivedMesh *final_dm = derivedData;
-
-	DerivedMesh *group_dm = get_group_dm(fmd, derivedData);
-	DerivedMesh *clean_dm = get_clean_dm(ob, group_dm);
-
-	if (BKE_rigidbody_check_sim_running(md->scene->rigidbody_world, BKE_scene_frame_get(md->scene))) {
-		fmd->auto_execute = false;
-	}
-
-	if (fmd->auto_execute) {
-		fmd->refresh = true;
-	}
-
-	if (fmd->frac_mesh != NULL && fmd->frac_mesh->running == 1 && fmd->execute_threaded)
-	{
-		/* skip modifier execution when fracture job is running */
-		return final_dm;
-	}
-
-	if (fmd->refresh) {
-		if (fmd->dm != NULL) {
-			fmd->dm->needsFree = 1;
-			fmd->dm->release(fmd->dm);
-			fmd->dm = NULL;
-		}
-
-		if (fmd->frac_mesh != NULL) {
-			BKE_fracmesh_free(fmd->frac_mesh, true /*fmd->frac_algorithm != MOD_FRACTURE_VORONOI*/);
-			MEM_freeN(fmd->frac_mesh);
-			fmd->frac_mesh = NULL;
-		}
-
-		if (fmd->frac_mesh == NULL) {
-			fmd->frac_mesh = BKE_create_fracture_container();
-			if (fmd->execute_threaded) {
-				fmd->frac_mesh->running = 1;
-			}
-		}
-	}
-
-	{
-		if (fmd->refresh) {
-			/* build normaltree from origdm */
-			if (fmd->nor_tree != NULL) {
-				BLI_kdtree_free(fmd->nor_tree);
-				fmd->nor_tree = NULL;
-			}
-
-			fmd->nor_tree = build_nor_tree(clean_dm);
-			if (fmd->face_pairs != NULL) {
-				BLI_ghash_free(fmd->face_pairs, NULL, NULL);
-				fmd->face_pairs = NULL;
-			}
-
-			fmd->face_pairs = BLI_ghash_int_new("face_pairs");
-
-			do_fracture(fmd, -1, ob, clean_dm);
-
-			if (!fmd->refresh) { /*might have been changed from outside, job cancel*/
-				return derivedData;
-			}
-		}
-
-		if (fmd->dm && fmd->frac_mesh && (fmd->dm->getNumPolys(fmd->dm) > 0)) {
-			final_dm = doSimulate(fmd, ob, fmd->dm, clean_dm);
-		}
-		else {
-			final_dm = doSimulate(fmd, ob, clean_dm, clean_dm);
-		}
-	}
-
-	/* free newly created derivedmeshes only, but keep derivedData and final_dm*/
-	if ((clean_dm != group_dm) && (clean_dm != derivedData) && (clean_dm != final_dm))
-	{
-		clean_dm->needsFree = 1;
-		clean_dm->release(clean_dm);
-	}
-
-	if ((group_dm != derivedData) && (group_dm != final_dm))
-	{
-		group_dm->needsFree = 1;
-		group_dm->release(group_dm);
-	}
-
-	return final_dm;
-}
-
 static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
                                   DerivedMesh *derivedData,
                                   ModifierApplyFlag UNUSED(flag))
@@ -2998,7 +2943,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	FractureModifierData *fmd = (FractureModifierData *) md;
 	DerivedMesh *final_dm = derivedData;
 
-	DerivedMesh *group_dm = get_group_dm(fmd, derivedData);
+	DerivedMesh *group_dm = get_group_dm(fmd, derivedData, ob);
 	DerivedMesh *clean_dm = get_clean_dm(ob, group_dm);
 
 	/* disable that automatically if sim is started, but must be re-enabled manually */
@@ -3084,6 +3029,13 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	return final_dm;
 }
 
+static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
+                                    struct BMEditMesh *UNUSED(editData),
+                                    DerivedMesh *derivedData,
+                                    ModifierApplyFlag flag)
+{
+	return applyModifier(md, ob, derivedData, flag);
+}
 
 ModifierTypeInfo modifierType_Fracture = {
 	/* name */ "Fracture",
