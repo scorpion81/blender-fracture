@@ -599,7 +599,7 @@ static DerivedMesh *get_group_dm(FractureModifierData *fmd, DerivedMesh *dm, Obj
 	/* combine derived meshes from group objects into 1, trigger submodifiers if ob->derivedFinal is empty */
 	int totgroup = 0, i = 0;
 	int num_verts = 0, num_polys = 0, num_loops = 0;
-	int vertstart = 0, polystart = 0, loopstart = 0, matstart = 0;
+	int vertstart = 0, polystart = 0, loopstart = 0, matstart = 1;
 	DerivedMesh *result;
 	MVert *mverts;
 	MPoly *mpolys;
@@ -692,11 +692,12 @@ static DerivedMesh *get_group_dm(FractureModifierData *fmd, DerivedMesh *dm, Obj
 				int index = find_material_index(ob, (*matarar)[j]);
 				if (index == 0)
 				{
-					k++;
 					assign_material(ob, (*matarar)[j], matstart + k, BKE_MAT_ASSIGN_USERPREF);
+					index = matstart + k;
+					k++;
 				}
 
-				BLI_ghash_insert(mat_index_map, SET_INT_IN_POINTER(matstart+j+1), SET_INT_IN_POINTER(index));
+				BLI_ghash_insert(mat_index_map, SET_INT_IN_POINTER(matstart+j), SET_INT_IN_POINTER(index));
 			}
 
 			j = 0;
@@ -715,16 +716,8 @@ static DerivedMesh *get_group_dm(FractureModifierData *fmd, DerivedMesh *dm, Obj
 				mp->loopstart += loopstart;
 
 				/* material index lookup and correction, avoid having the same material in different slots */
-				index = GET_INT_FROM_POINTER(BLI_ghash_lookup(mat_index_map, SET_INT_IN_POINTER(mp->mat_nr+matstart)));
-
-				if (index == 0)
-				{
-					mp->mat_nr += matstart;
-				}
-				else
-				{
-					mp->mat_nr = index;
-				}
+				index = GET_INT_FROM_POINTER(BLI_ghash_lookup(mat_index_map, SET_INT_IN_POINTER(mp->mat_nr + matstart)));
+				mp->mat_nr = index-1;
 			}
 
 			memcpy(mloops + loopstart, dm_ob->getLoopArray(dm_ob), dm_ob->getNumLoops(dm_ob) * sizeof(MLoop));
