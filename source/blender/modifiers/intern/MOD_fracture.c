@@ -2813,6 +2813,7 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 		}
 	}
 
+#if 0
 	if ((fmd->visible_mesh != NULL) && exploOK) {
 		DerivedMesh *dm_final;
 		/* HERE Hide facepairs closer than dist X*/
@@ -2826,7 +2827,10 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 		}
 		return dm_final;
 	}
-	else if ((fmd->visible_mesh_cached != NULL) && exploOK) {
+	else
+#endif
+
+	if ((fmd->visible_mesh_cached != NULL) && exploOK) {
 		DerivedMesh *dm_final;
 
 		if (fmd->autohide_dist > 0 && fmd->face_pairs) {
