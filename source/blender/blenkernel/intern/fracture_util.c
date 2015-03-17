@@ -530,7 +530,7 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 
 	if (other != NULL && mat != NULL)
 	{
-		do_fractal(radius, mat, use_smooth_inner, inner_material_index, num_levels, num_cuts, fractal, &left_dm);
+		bm = do_fractal(radius, mat, use_smooth_inner, inner_material_index, num_levels, num_cuts, fractal, &left_dm);
 	}
 	else
 	{

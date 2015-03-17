@@ -436,18 +436,18 @@ static void handle_fast_bisect(FracMesh *fm, int expected_shards, int algorithm,
 }
 
 static void handle_boolean_fractal(Shard* s, Shard* t, int expected_shards, DerivedMesh* dm_parent, Object *obj, short inner_material_index,
-                                   int num_cuts, float fractal, int num_levels, bool smooth,int parent_id, int* i, Shard ***tempresults)
+                                   int num_cuts, float fractal, int num_levels, bool smooth,int parent_id, int* i, Shard ***tempresults,
+                                   DerivedMesh **dm_p)
 {
 	/* physics shard and fractalized shard, so we need to booleanize twice */
 	/* and we need both halves, so twice again */
 	Shard *s2 = NULL;
 	int index = 0;
 	int max_retries = 20;
-	DerivedMesh *dm_p = NULL;
 
 	/*continue with "halves", randomly*/
 	if ((*i) == 0) {
-		dm_p = dm_parent;
+		*dm_p = dm_parent;
 	}
 
 	while (s == NULL || s2 == NULL) {
@@ -476,7 +476,7 @@ static void handle_boolean_fractal(Shard* s, Shard* t, int expected_shards, Deri
 		loc_eul_size_to_mat4(matrix, loc, eul, one);
 
 		/*visual shards next, fractalized cuts */
-		s = BKE_fracture_shard_boolean(obj, dm_p, t, inner_material_index, num_cuts,fractal, &s2, matrix, radius, smooth, num_levels);
+		s = BKE_fracture_shard_boolean(obj, *dm_p, t, inner_material_index, num_cuts,fractal, &s2, matrix, radius, smooth, num_levels);
 
 		if (index < max_retries)
 		{
@@ -491,8 +491,7 @@ static void handle_boolean_fractal(Shard* s, Shard* t, int expected_shards, Deri
 	}
 
 	if ((s != NULL) && (s2 != NULL)) {
-		int j = 0; //, k = 0;
-		//float size_max = 0;
+		int j = 0;
 
 		s->parent_id = parent_id;
 		s->flag = SHARD_INTACT;
@@ -513,12 +512,12 @@ static void handle_boolean_fractal(Shard* s, Shard* t, int expected_shards, Deri
 
 			Shard *p = (*tempresults)[j];
 
-			if (dm_p != dm_parent && dm_p != NULL) {
-				dm_p->needsFree = 1;
-				dm_p->release(dm_p);
+			if (*dm_p != dm_parent && *dm_p != NULL) {
+				(*dm_p)->needsFree = 1;
+				(*dm_p)->release(*dm_p);
 			}
 
-			dm_p = BKE_shard_create_dm(p, true);
+			*dm_p = BKE_shard_create_dm(p, true);
 
 			BKE_shard_free((*tempresults)[j], true);
 			(*tempresults)[j] = NULL;
@@ -529,14 +528,14 @@ static void handle_boolean_fractal(Shard* s, Shard* t, int expected_shards, Deri
 
 static bool handle_boolean_bisect(FracMesh *fm, Object *obj, int expected_shards, int algorithm, int parent_id, Shard **tempshards,
                                   DerivedMesh *dm_parent, BMesh* bm_parent, float obmat[4][4], short inner_material_index, int num_cuts,
-                                  int num_levels, float fractal, int i, bool smooth, Shard*** tempresults)
+                                  int num_levels, float fractal, int *i, bool smooth, Shard*** tempresults, DerivedMesh **dm_p)
 {
 	Shard *s = NULL, *t = NULL;
 	if (fm->cancel == 1)
 		return true;
 
-	printf("Processing shard: %d\n", i);
-	t = tempshards[i];
+	printf("Processing shard: %d\n", *i);
+	t = tempshards[*i];
 
 	if (t != NULL) {
 		t->parent_id = parent_id;
@@ -553,11 +552,12 @@ static bool handle_boolean_bisect(FracMesh *fm, Object *obj, int expected_shards
 		s = BKE_fracture_shard_boolean(obj, dm_parent, t, inner_material_index, 0, 0.0f, NULL, NULL, 0.0f, false, 0);
 	}
 	else if (algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL) {
-		handle_boolean_fractal(s, t, expected_shards, dm_parent, obj, inner_material_index, num_cuts, fractal, num_levels, smooth, parent_id, &i, tempresults);
+		handle_boolean_fractal(s, t, expected_shards, dm_parent, obj, inner_material_index, num_cuts, fractal,
+		                       num_levels, smooth, parent_id, i, tempresults, dm_p);
 	}
 	else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL) {
 		float co[3] = {0, 0, 0};
-		printf("Bisecting cell %d...\n", i);
+		printf("Bisecting cell %d...\n", *i);
 		s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, false, true, 0, co, inner_material_index);
 	}
 	else {
@@ -569,7 +569,7 @@ static bool handle_boolean_bisect(FracMesh *fm, Object *obj, int expected_shards
 		s->parent_id = parent_id;
 		s->flag = SHARD_INTACT;
 
-		(*tempresults)[i] = s;
+		(*tempresults)[*i] = s;
 	}
 
 	fm->progress_counter++;
@@ -641,7 +641,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 		for (i = 0; i < expected_shards; i++) {
 			bool stop = handle_boolean_bisect(fm, obj, expected_shards, algorithm, parent_id, tempshards, dm_parent,
 			                      bm_parent, obmat, inner_material_index, num_cuts, num_levels, fractal,
-			                      i, smooth, &tempresults);
+			                      &i, smooth, &tempresults, &dm_p);
 			if (stop)
 				break;
 		}
@@ -880,29 +880,29 @@ static void stroke_to_faces(FractureModifierData *fmd, BMesh** bm, bGPDstroke *g
 }
 
 static void do_intersect(FractureModifierData *fmd, Object* ob, Shard *t, short inner_mat_index,
-                         bool is_zero, float mat[4][4], int **shard_counts, int* count)
+                         bool is_zero, float mat[4][4], int **shard_counts, int* count,
+                         int k, DerivedMesh **dm_parent)
 {
 	/*just keep appending items at the end here */
 	MPoly *mpoly, *mp;
 	int totpoly;
 	Shard *parent = NULL;
-	DerivedMesh *dm_parent = NULL;
 	Shard *s = NULL, *s2 = NULL;
-	int k = 0, shards = 0, j = 0;
+	int shards = 0, j = 0;
 
 	if (is_zero == false) {
 		parent = BLI_findlink(&fmd->frac_mesh->shard_map, k);
-		dm_parent = BKE_shard_create_dm(parent, true);
+		*dm_parent = BKE_shard_create_dm(parent, true);
 	}
 
-	mpoly = dm_parent->getPolyArray(dm_parent);
-	totpoly = dm_parent->getNumPolys(dm_parent);
+	mpoly = (*dm_parent)->getPolyArray(*dm_parent);
+	totpoly = (*dm_parent)->getNumPolys(*dm_parent);
 
 	for (j = 0, mp = mpoly; j < totpoly; j++, mp++) {
 		mp->flag &= ~ME_FACE_SEL;
 	}
 
-	s = BKE_fracture_shard_boolean(ob, dm_parent, t, inner_mat_index, 0, 0.0f, &s2, NULL, 0.0f, false, 0);
+	s = BKE_fracture_shard_boolean(ob, *dm_parent, t, inner_mat_index, 0, 0.0f, &s2, NULL, 0.0f, false, 0);
 	printf("Fractured: %d\n", k);
 
 	if (s != NULL) {
@@ -922,9 +922,9 @@ static void do_intersect(FractureModifierData *fmd, Object* ob, Shard *t, short 
 			*count = 0;
 		}
 
-		dm_parent->needsFree = 1;
-		dm_parent->release(dm_parent);
-		dm_parent = NULL;
+		(*dm_parent)->needsFree = 1;
+		(*dm_parent)->release(*dm_parent);
+		*dm_parent = NULL;
 	}
 
 	if (is_zero) {
@@ -979,7 +979,7 @@ static void intersect_shards_by_dm(FractureModifierData *fmd, DerivedMesh *d, Ob
 	shard_counts = MEM_mallocN(sizeof(int) * count, "shard_counts");
 
 	for (k = 0; k < count; k++) {
-		do_intersect(fmd, ob, t, inner_mat_index, is_zero, mat, &shard_counts, &count);
+		do_intersect(fmd, ob, t, inner_mat_index, is_zero, mat, &shard_counts, &count, k, &dm_parent);
 	}
 
 	for (k = 0; k < count; k++)
