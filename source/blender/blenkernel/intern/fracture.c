@@ -357,7 +357,7 @@ FracMesh *BKE_create_fracture_container(void)
 	return fmesh;
 }
 
-static void handle_fast_bisect(FracMesh *fm, int expected_shards, int algorithm, BMesh* bm_parent, float obmat[4][4],
+static void handle_fast_bisect(FracMesh *fm, int expected_shards, int algorithm, BMesh** bm_parent, float obmat[4][4],
                                float centroid[3], short inner_material_index, int parent_id, Shard **tempshards, Shard ***tempresults)
 {
 	int i = 0;
@@ -393,8 +393,8 @@ static void handle_fast_bisect(FracMesh *fm, int expected_shards, int algorithm,
 		printf("Bisecting cell %d...\n", i);
 		printf("Bisecting cell %d...\n", i + 1);
 
-		s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FAST_FILL, false, true, index, centroid, inner_material_index);
-		s2 = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FAST_FILL, true, false, index, centroid, inner_material_index);
+		s = BKE_fracture_shard_bisect(*bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FAST_FILL, false, true, index, centroid, inner_material_index);
+		s2 = BKE_fracture_shard_bisect(*bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FAST_FILL, true, false, index, centroid, inner_material_index);
 
 		if (s != NULL && s2 != NULL && tempresults != NULL) {
 			int j = 0;
@@ -407,9 +407,9 @@ static void handle_fast_bisect(FracMesh *fm, int expected_shards, int algorithm,
 			s2->parent_id = parent_id;
 			s2->flag = SHARD_INTACT;
 
-			if (bm_parent != NULL) {
-				BM_mesh_free(bm_parent);
-				bm_parent = NULL;
+			if (*bm_parent != NULL) {
+				BM_mesh_free(*bm_parent);
+				*bm_parent = NULL;
 			}
 
 			(*tempresults)[i] = s;
@@ -424,7 +424,7 @@ static void handle_fast_bisect(FracMesh *fm, int expected_shards, int algorithm,
 
 			/* continue splitting if not all expected shards exist yet */
 			if ((i + 2) < expected_shards) {
-				bm_parent = shard_to_bmesh((*tempresults)[j]);
+				*bm_parent = shard_to_bmesh((*tempresults)[j]);
 				copy_v3_v3(centroid, (*tempresults)[j]->centroid);
 
 				BKE_shard_free((*tempresults)[j], true);
@@ -647,7 +647,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 		}
 	}
 	else {
-		handle_fast_bisect(fm, expected_shards, algorithm, bm_parent, obmat, centroid, inner_material_index, parent_id, tempshards, &tempresults);
+		handle_fast_bisect(fm, expected_shards, algorithm, &bm_parent, obmat, centroid, inner_material_index, parent_id, tempshards, &tempresults);
 	}
 
 	if (bm_parent != NULL) {
