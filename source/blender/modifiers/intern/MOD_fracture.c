@@ -2981,7 +2981,6 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 		}
 
 		do_post_island_creation(fmd, ob, dm);
-		do_island_index_map(fmd);
 	}
 
 	if (fmd->refresh_autohide) {
@@ -2989,6 +2988,7 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 	}
 
 	if (fmd->refresh_constraints) {
+		do_island_index_map(fmd);
 		do_refresh_constraints(fmd, ob);
 	}
 
