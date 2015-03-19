@@ -157,6 +157,8 @@ static void initData(ModifierData *md)
 	fmd->cutter_axis = MOD_FRACTURE_CUTTER_Z;
 	fmd->cluster_constraint_type = RBC_TYPE_FIXED;
 	fmd->vert_index_map = NULL;
+	fmd->constraint_target = MOD_FRACTURE_CENTROID;
+	fmd->vertex_island_map = NULL;
 }
 
 static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
@@ -288,6 +290,11 @@ static void free_simulation(FractureModifierData *fmd)
 static void free_modifier(FractureModifierData *fmd)
 {
 	free_simulation(fmd);
+
+	if (fmd->vertex_island_map) {
+		BLI_ghash_free(fmd->vertex_island_map, NULL, NULL);
+		fmd->vertex_island_map = NULL;
+	}
 
 	if (fmd->nor_tree != NULL) {
 		BLI_kdtree_free(fmd->nor_tree);
@@ -1230,6 +1237,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->meshConstraints.last = NULL;
 	trmd->face_pairs = NULL;
 	trmd->vert_index_map = NULL;
+	trmd->vertex_island_map = NULL;
 
 	trmd->breaking_threshold = rmd->breaking_threshold;
 	trmd->use_constraints = rmd->use_constraints;
@@ -1295,6 +1303,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->cutter_axis = rmd->cutter_axis;
 
 	trmd->cluster_constraint_type = rmd->cluster_constraint_type;
+	trmd->constraint_target = rmd->constraint_target;
 }
 
 /* mi->bb, its for volume fraction calculation.... */
@@ -2029,7 +2038,7 @@ static void connect_meshislands(FractureModifierData *fmd, MeshIsland *mi1, Mesh
 	}
 }
 
-static void search_centroid_based(FractureModifierData *rmd, MeshIsland *mi, MeshIsland **meshIslands, KDTree **combined_tree)
+static void search_tree_based(FractureModifierData *rmd, MeshIsland *mi, MeshIsland **meshIslands, KDTree **combined_tree, float co[3])
 {
 	int r = 0, limit = 0, i = 0;
 	KDTreeNearest *n3 = NULL;
@@ -2038,13 +2047,26 @@ static void search_centroid_based(FractureModifierData *rmd, MeshIsland *mi, Mes
 	limit = rmd->constraint_limit;
 	dist = rmd->contact_dist;
 
-	mul_v3_m4v3(obj_centr, rmd->origmat, mi->centroid);
+	if (rmd->constraint_target == MOD_FRACTURE_CENTROID) {
+		mul_v3_m4v3(obj_centr, rmd->origmat, mi->centroid);
+	}
+	else if (rmd->constraint_target == MOD_FRACTURE_VERTEX){
+		mul_v3_m4v3(obj_centr, rmd->origmat, co);
+	}
 
 	r = BLI_kdtree_range_search(*combined_tree, obj_centr, &n3, dist);
 
 	/* use centroid dist based approach here, together with limit */
 	for (i = 0; i < r; i++) {
-		MeshIsland *mi2 = meshIslands[(n3 + i)->index];
+		MeshIsland *mi2 = NULL;
+
+		if (rmd->constraint_target == MOD_FRACTURE_CENTROID) {
+			mi2 = meshIslands[(n3 + i)->index];
+		}
+		else if(rmd->constraint_target == MOD_FRACTURE_VERTEX) {
+			int index = (n3 + i)->index;
+			mi2 = BLI_ghash_lookup(rmd->vertex_island_map, SET_INT_IN_POINTER(index));
+		}
 		if ((mi != mi2) && (mi2 != NULL)) {
 			float thresh = rmd->breaking_threshold;
 			int con_type = RBC_TYPE_FIXED;
@@ -2062,34 +2084,53 @@ static void search_centroid_based(FractureModifierData *rmd, MeshIsland *mi, Mes
 		n3 = NULL;
 	}
 }
-
 static int prepareConstraintSearch(FractureModifierData *rmd, MeshIsland ***mesh_islands, KDTree **combined_tree)
 {
 	MeshIsland *mi;
-	int i = 0, islands = 0;
+	int i = 0, ret = 0;
 
-	islands = BLI_listbase_count(&rmd->meshIslands);
+	int islands = BLI_listbase_count(&rmd->meshIslands);
 	*mesh_islands = MEM_reallocN(*mesh_islands, islands * sizeof(MeshIsland *));
 	for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 		(*mesh_islands)[i] = mi;
 		i++;
 	}
 
-	*combined_tree = BLI_kdtree_new(islands);
-	for (i = 0; i < islands; i++) {
-		float obj_centr[3];
-		mul_v3_m4v3(obj_centr, rmd->origmat, (*mesh_islands)[i]->centroid);
-		BLI_kdtree_insert(*combined_tree, i, obj_centr);
+	if (rmd->constraint_target == MOD_FRACTURE_CENTROID)
+	{
+		*combined_tree = BLI_kdtree_new(islands);
+		for (i = 0; i < islands; i++) {
+			float obj_centr[3];
+			mul_v3_m4v3(obj_centr, rmd->origmat, (*mesh_islands)[i]->centroid);
+			BLI_kdtree_insert(*combined_tree, i, obj_centr);
+		}
+
+		BLI_kdtree_balance(*combined_tree);
+		ret = islands;
+	}
+	else if (rmd->constraint_target == MOD_FRACTURE_VERTEX)
+	{
+		int totvert = rmd->visible_mesh_cached->getNumVerts(rmd->visible_mesh_cached);
+		MVert *mvert = rmd->visible_mesh_cached->getVertArray(rmd->visible_mesh_cached);
+		MVert *mv;
+
+		*combined_tree = BLI_kdtree_new(totvert);
+		for (i = 0, mv = mvert; i < totvert; i++, mv++) {
+			float co[3];
+			mul_v3_m4v3(co, rmd->origmat, mv->co);
+			BLI_kdtree_insert(*combined_tree, i, co);
+		}
+
+		BLI_kdtree_balance(*combined_tree);
+		ret = totvert;
 	}
 
-	BLI_kdtree_balance(*combined_tree);
-
-	return islands;
+	return ret;
 }
 
 static void create_constraints(FractureModifierData *rmd)
 {
-	KDTree *centroid_tree = NULL;
+	KDTree *coord_tree = NULL;
 	MeshIsland **mesh_islands = MEM_mallocN(sizeof(MeshIsland *), "mesh_islands");
 	int count, i = 0;
 
@@ -2104,15 +2145,25 @@ static void create_constraints(FractureModifierData *rmd)
 		MEM_freeN(bb);
 	}
 
-	count = prepareConstraintSearch(rmd, &mesh_islands, &centroid_tree);
+
+	count = prepareConstraintSearch(rmd, &mesh_islands, &coord_tree);
 
 	for (i = 0; i < count; i++) {
-		search_centroid_based(rmd, mesh_islands[i], mesh_islands, &centroid_tree);
+		if (rmd->constraint_target == MOD_FRACTURE_CENTROID) {
+			search_tree_based(rmd, mesh_islands[i], mesh_islands, &coord_tree, NULL);
+		}
+		else if (rmd->constraint_target == MOD_FRACTURE_VERTEX) {
+			MVert mv;
+			MeshIsland *mi = NULL;
+			rmd->visible_mesh_cached->getVert(rmd->visible_mesh_cached, i, &mv);
+			mi = BLI_ghash_lookup(rmd->vertex_island_map, SET_INT_IN_POINTER(i));
+			search_tree_based(rmd, mi, mesh_islands, &coord_tree, mv.co);
+		}
 	}
 
-	if (centroid_tree != NULL) {
-		BLI_kdtree_free(centroid_tree);
-		centroid_tree = NULL;
+	if (coord_tree != NULL) {
+		BLI_kdtree_free(coord_tree);
+		coord_tree = NULL;
 	}
 
 	MEM_freeN(mesh_islands);
@@ -2569,8 +2620,11 @@ static void do_verts_weights(FractureModifierData *fmd, Shard *s, MeshIsland *mi
 	mi->vertices_cached = MEM_mallocN(sizeof(MVert *) * s->totvert, "vert_cache");
 	mverts = CDDM_get_verts(fmd->visible_mesh_cached);
 
+	mi->vertex_indices = MEM_mallocN(sizeof(int) * mi->vertex_count, "mi->vertex_indices");
+
 	for (k = 0; k < s->totvert; k++) {
 		mi->vertices_cached[k] = mverts + vertstart + k;
+		mi->vertex_indices[k] = vertstart + k;
 		/* sum up vertexweights and divide by vertcount to get islandweight*/
 		if (dvert && fmd->thresh_defgrp_name[0]) {
 			float vweight = defvert_find_weight(dvert + vertstart + k, thresh_defgrp_index);
@@ -2611,12 +2665,12 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 	mi->participating_constraints = NULL;
 	mi->participating_constraint_count = 0;
 	mi->thresh_weight = 0;
+	mi->vertex_count = s->totvert;
 
 	do_verts_weights(fmd, s, mi, vertstart, thresh_defgrp_index, ground_defgrp_index);
 
 	/*copy fixed normals to physics mesh too (needed for convert to objects)*/
 	do_fix_normals_physics_mesh(fmd, s, mi, i, orig_dm);
-	mi->vertex_count = s->totvert;
 
 	BKE_shard_calc_minmax(s);
 	copy_v3_v3(mi->centroid, s->centroid);
@@ -2635,7 +2689,6 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 	rb_type = do_vert_index_map(fmd, mi);
 	do_rigidbody(fmd, mi, ob, orig_dm, rb_type);
 
-	mi->vertex_indices = NULL;
 	mi->start_frame = fmd->modifier.scene->rigidbody_world->pointcache->startframe;
 }
 
@@ -2881,6 +2934,27 @@ static void do_refresh(FractureModifierData *fmd, Object *ob, DerivedMesh* dm, D
 	printf("Islands: %d\n", BLI_listbase_count(&fmd->meshIslands));
 }
 
+static void do_island_index_map(FractureModifierData *fmd)
+{
+	MeshIsland *mi;
+
+	if (fmd->vertex_island_map) {
+		BLI_ghash_free(fmd->vertex_island_map, NULL, NULL);
+	}
+	fmd->vertex_island_map = BLI_ghash_ptr_new("island_index_map");
+
+	for (mi = fmd->meshIslands.first; mi; mi = mi->next){
+		int i = 0;
+		if (mi->vertex_indices != NULL)
+		{	/* might not existing yet for older files ! */
+			for (i = 0; i < mi->vertex_count; i++)
+			{
+				BLI_ghash_insert(fmd->vertex_island_map, SET_INT_IN_POINTER(mi->vertex_indices[i]), mi);
+			}
+		}
+	}
+}
+
 
 static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMesh *dm, DerivedMesh *orig_dm)
 {
@@ -2907,6 +2981,7 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 		}
 
 		do_post_island_creation(fmd, ob, dm);
+		do_island_index_map(fmd);
 	}
 
 	if (fmd->refresh_autohide) {

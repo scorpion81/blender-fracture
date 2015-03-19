@@ -1431,6 +1431,11 @@ enum {
 	MOD_FRACTURE_CUTTER_Z      = (1 << 2),
 };
 
+enum {
+	MOD_FRACTURE_CENTROID      = (1 << 0),
+	MOD_FRACTURE_VERTEX        = (1 << 1),
+};
+
 typedef struct FractureModifierData {
 	ModifierData modifier;
 	struct FracMesh *frac_mesh; /* store only the current fracmesh here first, later maybe an entire history...*/
@@ -1450,6 +1455,7 @@ typedef struct FractureModifierData {
 	struct Material *inner_material;
 	struct GHash *face_pairs;
 	struct GHash *vert_index_map; /*used for autoconversion of former objects to clusters, marks object membership of each vert*/
+	struct GHash *vertex_island_map; /* used for constraint building based on vertex proximity, temporary data */
 
 	/* values */
 	int frac_algorithm;
@@ -1506,6 +1512,7 @@ typedef struct FractureModifierData {
 	int breaking_distance_weighted;
 	int breaking_angle_weighted;
 	int breaking_percentage_weighted;
+	int constraint_target;
 
 	/* internal flags */
 	int use_experimental;
@@ -1515,7 +1522,7 @@ typedef struct FractureModifierData {
 	/* internal values */
 	float max_vol;
 
-	char pad[4];
+	//char pad[4];
 } FractureModifierData;
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */

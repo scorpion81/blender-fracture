@@ -776,6 +776,13 @@ static void rna_FractureModifier_cluster_constraint_type_set(PointerRNA* ptr, in
 	rmd->refresh_constraints = true;
 }
 
+static void rna_FractureModifier_constraint_target_set(PointerRNA* ptr, int value)
+{
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
+	rmd->constraint_target = value;
+	rmd->refresh_constraints = true;
+}
+
 
 /* NOTE: Curve and array modifiers requires curve path to be evaluated,
  * dependency graph will make sure that curve eval would create such a path,
@@ -3910,6 +3917,12 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 
+	static EnumPropertyItem prop_constraint_targets[] = {
+		{MOD_FRACTURE_CENTROID, "CENTROID", 0, "Centroid", "Build constraints based on distances between centroids"},
+		{MOD_FRACTURE_VERTEX, "VERTEX", 0, "Vertex", "Build constraints based on distances between vertices (use lower values here)"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
 	srna = RNA_def_struct(brna, "FractureModifier", "Modifier");
 	RNA_def_struct_ui_text(srna, "Fracture Modifier", "Add a fracture container to this object");
 	RNA_def_struct_sdna(srna, "FractureModifierData");
@@ -4275,6 +4288,14 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_enum_items(prop, rigidbody_constraint_type_items);
 	RNA_def_property_enum_funcs(prop, NULL, "rna_FractureModifier_cluster_constraint_type_set", NULL);
 	RNA_def_property_ui_text(prop, "Cluster Constraint Type", "Type of Rigid Body Constraint between clusters");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "constraint_target", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_items(prop, prop_constraint_targets);
+	RNA_def_property_enum_funcs(prop, NULL, "rna_FractureModifier_constraint_target_set", NULL);
+	RNA_def_property_enum_default(prop, MOD_FRACTURE_CENTROID);
+	RNA_def_property_ui_text(prop, "Constraint Method", "Method to build constraints");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
