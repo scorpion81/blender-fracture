@@ -4841,6 +4841,9 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 				MVert* v = mverts + vertstart + k ;
 				MVert* v2 = mv + k;
 				mi->vertices_cached[k] = v;
+				if (mi->vertex_indices) {
+					mi->vertex_indices[k] = vertstart + k;
+				}
 				mi->vertco[k*3] = v->co[0];
 				mi->vertco[k*3+1] = v->co[1];
 				mi->vertco[k*3+2] = v->co[2];
