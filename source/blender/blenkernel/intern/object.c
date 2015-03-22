@@ -1023,7 +1023,7 @@ Object *BKE_object_add_only_object(Main *bmain, int type, const char *name)
 
 /* general add: to scene, with layer from area and default name */
 /* creates minimum required data, but without vertices etc. */
-Object *BKE_object_add_named(Main *bmain, Scene *scene, int type, const char *custname)
+Object *BKE_object_add_named(Main *bmain, Scene *scene, int type, char *custname)
 {
 	Object *ob;
 	Base *base;
@@ -1031,6 +1031,7 @@ Object *BKE_object_add_named(Main *bmain, Scene *scene, int type, const char *cu
 
 	if (custname) {
 		BLI_strncpy(name, custname, sizeof(name));
+		MEM_freeN(custname);
 	}
 	else {
 		BLI_strncpy(name, get_obdata_defname(type), sizeof(name));

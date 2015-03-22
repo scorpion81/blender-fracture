@@ -87,7 +87,7 @@ bool BKE_object_is_in_wpaint_select_vert(struct Object *ob);
 
 struct Object *BKE_object_add_only_object(struct Main *bmain, int type, const char *name);
 struct Object *BKE_object_add(struct Main *bmain, struct Scene *scene, int type);
-struct Object *BKE_object_add_named(struct Main *bmain, struct Scene *scene, int type, const char *custname);
+struct Object *BKE_object_add_named(struct Main *bmain, struct Scene *scene, int type, char *custname);
 void *BKE_object_obdata_add_from_type(struct Main *bmain, int type);
 
 void BKE_object_lod_add(struct Object *ob);

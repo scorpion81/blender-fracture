@@ -159,6 +159,11 @@ static void initData(ModifierData *md)
 	fmd->vert_index_map = NULL;
 	fmd->constraint_target = MOD_FRACTURE_CENTROID;
 	fmd->vertex_island_map = NULL;
+
+	fmd->meshIslands.first = NULL;
+	fmd->meshIslands.last = NULL;
+	fmd->meshConstraints.first = NULL;
+	fmd->meshConstraints.last = NULL;
 }
 
 static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
@@ -2823,7 +2828,9 @@ static void do_refresh_constraints(FractureModifierData *fmd, Object *ob)
 
 	start = PIL_check_seconds_timer();
 
-	create_constraints(fmd); /* check for actually creating the constraints inside*/
+	if (fmd->use_constraints) {
+		create_constraints(fmd); /* check for actually creating the constraints inside*/
+	}
 	fmd->refresh_constraints = false;
 
 	printf("Building constraints done, %g\n", PIL_check_seconds_timer() - start);
