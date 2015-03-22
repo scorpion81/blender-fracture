@@ -2754,7 +2754,16 @@ static Object* do_convert_constraints(FractureModifierData *fmd, RigidBodyShardC
 
 	/*use same settings as in modifier
 	 *XXX Maybe use the CENTER between objects ? Might be correct for Non fixed constraints*/
-	copy_v3_v3(rbcon->loc, ob1->loc);
+	/* location for fixed constraints doesnt matter, so keep old setting */
+	/* keep in sync with rigidbody.c, BKE_rigidbody_validate_sim_shard_constraint() */
+	if (con->type == RBC_TYPE_FIXED) {
+		copy_v3_v3(rbcon->loc, ob1->loc);
+	}
+	else {
+		/* else set location to center */
+		add_v3_v3v3(rbcon->loc, ob1->loc, ob2->loc);
+		mul_v3_fl(rbcon->loc, 0.5f);
+	}
 
 	/*omit check for existing objects in group, since this seems very slow, and should not be necessary in this internal function*/
 	do_unchecked_constraint_add(scene, rbcon, con->type, reports, *base);

@@ -1519,7 +1519,16 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 		}
 
 		/* do this for all constraints */
-		copy_v3_v3(loc, rbc->mi1->rigidbody->pos);
+		/* location for fixed constraints doesnt matter, so keep old setting */
+		if (rbc->type == RBC_TYPE_FIXED) {
+			copy_v3_v3(loc, rbc->mi1->rigidbody->pos);
+		}
+		else {
+			/* else set location to center */
+			add_v3_v3v3(loc, rbc->mi1->rigidbody->pos, rbc->mi2->rigidbody->pos);
+			mul_v3_fl(loc, 0.5f);
+		}
+
 		copy_v4_v4(rot, rbc->mi1->rigidbody->orn);
 
 		if (rb1 && rb2) {
