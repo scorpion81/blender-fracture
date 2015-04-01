@@ -17,7 +17,7 @@
  *
  */
 
-/** \file blender/blenlib/intern/appdir.c
+/** \file blender/blenkernel/intern/appdir.c
  *  \ingroup bke
  *
  * Access to application level directories.
@@ -641,7 +641,7 @@ static void bli_where_am_i(char *fullname, const size_t maxlen, const char *name
 			}
 		}
 #if defined(DEBUG)
-		if (strcmp(name, fullname)) {
+		if (!STREQ(name, fullname)) {
 			printf("guessing '%s' == '%s'\n", name, fullname);
 		}
 #endif

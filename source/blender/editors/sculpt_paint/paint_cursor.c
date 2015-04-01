@@ -341,8 +341,8 @@ static int load_tex(Brush *br, ViewContext *vc, float zoom, bool col, bool prima
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
 	if (mtex->brush_map_mode == MTEX_MAP_MODE_VIEW) {
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
 	}
 
 	BKE_paint_reset_overlay_invalid(invalid);
@@ -464,8 +464,8 @@ static int load_tex_cursor(Brush *br, ViewContext *vc, float zoom)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
 
 	BKE_paint_reset_overlay_invalid(PAINT_INVALID_OVERLAY_CURVE);
 
@@ -652,16 +652,12 @@ static void paint_draw_tex_overlay(UnifiedPaintSettings *ups, Brush *brush,
 		}
 
 		/* set quad color. Colored overlay does not get blending */
-		if (col)
-			glColor4f(1.0,
-				      1.0,
-				      1.0,
-				      overlay_alpha / 100.0f);
-		else
-			glColor4f(U.sculpt_paint_overlay_col[0],
-				      U.sculpt_paint_overlay_col[1],
-				      U.sculpt_paint_overlay_col[2],
-				      overlay_alpha / 100.0f);
+		if (col) {
+			glColor4f(1.0, 1.0, 1.0, overlay_alpha / 100.0f);
+		}
+		else {
+			glColor4f(UNPACK3(U.sculpt_paint_overlay_col), overlay_alpha / 100.0f);
+		}
 
 		/* draw textured quad */
 		glBegin(GL_QUADS);
@@ -786,7 +782,7 @@ static void paint_draw_alpha_overlay(UnifiedPaintSettings *ups, Brush *brush,
 			paint_draw_cursor_overlay(ups, brush, vc, x, y, zoom);
 	}
 	else {
-		if (!(flags & PAINT_OVERLAY_OVERRIDE_PRIMARY))
+		if (!(flags & PAINT_OVERLAY_OVERRIDE_PRIMARY) && (mode != PAINT_WEIGHT))
 			paint_draw_tex_overlay(ups, brush, vc, x, y, zoom, false, true);
 		if (!(flags & PAINT_OVERLAY_OVERRIDE_CURSOR))
 			paint_draw_cursor_overlay(ups, brush, vc, x, y, zoom);

@@ -193,7 +193,7 @@ static int rna_Image_file_format_get(PointerRNA *ptr)
 {
 	Image *image = (Image *)ptr->data;
 	ImBuf *ibuf = BKE_image_acquire_ibuf(image, NULL, NULL);
-	int imtype = BKE_ftype_to_imtype(ibuf ? ibuf->ftype : 0);
+	int imtype = BKE_image_ftype_to_imtype(ibuf ? ibuf->ftype : 0);
 
 	BKE_image_release_ibuf(image, ibuf, NULL);
 
@@ -204,7 +204,7 @@ static void rna_Image_file_format_set(PointerRNA *ptr, int value)
 {
 	Image *image = (Image *)ptr->data;
 	if (BKE_imtype_is_movie(value) == 0) { /* should be able to throw an error here */
-		int ftype = BKE_imtype_to_ftype(value);
+		int ftype = BKE_image_imtype_to_ftype(value);
 		BKE_image_file_format_set(image, ftype);
 	}
 }
@@ -639,6 +639,11 @@ static void rna_def_image(BlenderRNA *brna)
 	RNA_def_property_boolean_negative_sdna(prop, NULL, "flag", IMA_IGNORE_ALPHA);
 	RNA_def_property_ui_text(prop, "Use Alpha", "Use the alpha channel information from the image or make image fully opaque");
 	RNA_def_property_update(prop, NC_IMAGE | ND_DISPLAY, "rna_Image_colormanage_update");
+
+	prop = RNA_def_property(srna, "use_deinterlace", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", IMA_DEINTERLACE);
+	RNA_def_property_ui_text(prop, "Deinterlace", "Deinterlace movie file on load");
+	RNA_def_property_update(prop, NC_IMAGE | ND_DISPLAY, "rna_Image_reload_update");
 
 	prop = RNA_def_property(srna, "is_dirty", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_funcs(prop, "rna_Image_dirty_get", NULL);

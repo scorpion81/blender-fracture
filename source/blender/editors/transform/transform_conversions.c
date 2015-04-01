@@ -4751,7 +4751,7 @@ static void createTransSeqData(bContext *C, TransInfo *t)
 	TransData2D *td2d = NULL;
 	TransDataSeq *tdsq = NULL;
 	TransSeq *ts = NULL;
-	float xmouse, ymouse;
+	int xmouse;
 
 	int count = 0;
 
@@ -4762,7 +4762,7 @@ static void createTransSeqData(bContext *C, TransInfo *t)
 
 	t->customFree = freeSeqData;
 
-	UI_view2d_region_to_view(v2d, t->imval[0], t->imval[1], &xmouse, &ymouse);
+	xmouse = (int)UI_view2d_region_to_view_x(v2d, t->imval[0]);
 
 	/* which side of the current frame should be allowed */
 	if (t->mode == TFM_TIME_EXTEND) {
@@ -5354,7 +5354,7 @@ void autokeyframe_pose_cb_func(bContext *C, Scene *scene, View3D *v3d, Object *o
 								/* only if bone name matches too... 
 								 * NOTE: this will do constraints too, but those are ok to do here too?
 								 */
-								if (pchanName && strcmp(pchanName, pchan->name) == 0) 
+								if (pchanName && STREQ(pchanName, pchan->name)) 
 									insert_keyframe(reports, id, act, ((fcu->grp) ? (fcu->grp->name) : (NULL)), fcu->rna_path, fcu->array_index, cfra, flag);
 									
 								if (pchanName) MEM_freeN(pchanName);
@@ -5597,6 +5597,12 @@ void special_aftertrans_update(bContext *C, TransInfo *t)
 					 * during cleanup - psy-fi */
 					freeEdgeSlideTempFaces(sld);
 				}
+				else if (t->mode == TFM_VERT_SLIDE) {
+					/* as above */
+					VertSlideData *sld = t->customData;
+					projectVertSlideData(t, true);
+					freeVertSlideTempFaces(sld);
+				}
 
 				if (t->obedit->type == OB_MESH) {
 					special_aftertrans_update__mesh(C, t);
@@ -5608,6 +5614,12 @@ void special_aftertrans_update(bContext *C, TransInfo *t)
 
 					sld->perc = 0.0;
 					projectEdgeSlideData(t, false);
+				}
+				else if (t->mode == TFM_VERT_SLIDE) {
+					VertSlideData *sld = t->customData;
+
+					sld->perc = 0.0;
+					projectVertSlideData(t, false);
 				}
 			}
 		}
@@ -7498,6 +7510,12 @@ static void createTransGPencil(bContext *C, TransInfo *t)
 							
 							if (pt->flag & GP_SPOINT_SELECT)
 								td->flag |= TD_SELECTED;
+								
+							/* for other transform modes (e.g. shrink-fatten), need to additional data */
+							if (t->mode == TFM_GPENCIL_SHRINKFATTEN) {
+								td->val = &pt->pressure;
+								td->ival = pt->pressure;
+							}
 							
 							/* configure 2D points so that they don't play up... */
 							if (gps->flag & (GP_STROKE_2DSPACE | GP_STROKE_2DIMAGE)) {

@@ -205,6 +205,9 @@ void BVH::build(Progress& progress)
 	pack.prim_type = prim_type;
 	pack.prim_index = prim_index;
 	pack.prim_object = prim_object;
+	prim_type.free_memory();
+	prim_index.free_memory();
+	prim_object.free_memory();
 
 	/* compute SAH */
 	if(!params.top_level)
@@ -226,9 +229,8 @@ void BVH::build(Progress& progress)
 
 	/* pack nodes */
 	progress.set_substatus("Packing BVH nodes");
-	array<int> tmp_prim_object = pack.prim_object;
-	pack_nodes(tmp_prim_object, root);
-	
+	pack_nodes(root);
+
 	/* free build nodes */
 	root->deleteSubtree();
 
@@ -263,10 +265,8 @@ void BVH::refit(Progress& progress)
 void BVH::pack_triangle(int idx, float4 woop[3])
 {
 	int tob = pack.prim_object[idx];
+	assert(tob >= 0 && tob < objects.size());
 	const Mesh *mesh = objects[tob]->mesh;
-
-	if(mesh->has_motion_blur())
-		return;
 
 	int tidx = pack.prim_index[idx];
 	const int *vidx = mesh->triangles[tidx].v;
@@ -296,9 +296,14 @@ void BVH::pack_primitives()
 		if(pack.prim_index[i] != -1) {
 			float4 woop[3];
 
-			if(pack.prim_type[i] & PRIMITIVE_ALL_TRIANGLE)
+			if(pack.prim_type[i] & PRIMITIVE_TRIANGLE) {
 				pack_triangle(i, woop);
-			
+			}
+			else {
+				/* Avoid use of uninitialized memory. */
+				memset(&woop, 0, sizeof(woop));
+			}
+
 			memcpy(&pack.tri_woop[i * nsize], woop, sizeof(float4)*3);
 
 			int tob = pack.prim_object[i];
@@ -455,7 +460,7 @@ void BVH::pack_instances(size_t nodes_size)
 			size_t nsize_bbox = (use_qbvh)? 6: 3;
 			int4 *bvh_nodes = &bvh->pack.nodes[0];
 			size_t bvh_nodes_size = bvh->pack.nodes.size(); 
-			int *bvh_is_leaf = (bvh->pack.is_leaf.size() != 0) ? &bvh->pack.is_leaf[0] : NULL;
+			bool *bvh_is_leaf = (bvh->pack.is_leaf.size() != 0) ? &bvh->pack.is_leaf[0] : NULL;
 
 			for(size_t i = 0, j = 0; i < bvh_nodes_size; i+=nsize, j++) {
 				memcpy(pack_nodes + pack_nodes_offset, bvh_nodes + i, nsize_bbox*sizeof(int4));
@@ -504,12 +509,20 @@ RegularBVH::RegularBVH(const BVHParams& params_, const vector<Object*>& objects_
 
 void RegularBVH::pack_leaf(const BVHStackEntry& e, const LeafNode *leaf)
 {
-	if(leaf->num_triangles() == 1 && pack.prim_index[leaf->m_lo] == -1)
+	if(leaf->num_triangles() == 1 && pack.prim_index[leaf->m_lo] == -1) {
 		/* object */
-		pack_node(e.idx, leaf->m_bounds, leaf->m_bounds, ~(leaf->m_lo), 0, leaf->m_visibility, leaf->m_visibility);
-	else
-		/* triangle */
-		pack_node(e.idx, leaf->m_bounds, leaf->m_bounds, leaf->m_lo, leaf->m_hi, leaf->m_visibility, leaf->m_visibility);
+		pack_node(e.idx, leaf->m_bounds, leaf->m_bounds, ~(leaf->m_lo), 0,
+		          leaf->m_visibility, leaf->m_visibility);
+	}
+	else {
+		int prim_type = leaf->num_triangles() ? pack.prim_type[leaf->m_lo] : 0;
+		/* Triangle/curve primitive leaf.  */
+		pack_node(e.idx, leaf->m_bounds, leaf->m_bounds,
+		          leaf->m_lo, leaf->m_hi,
+		          leaf->m_visibility,
+		          prim_type);
+	}
+
 }
 
 void RegularBVH::pack_inner(const BVHStackEntry& e, const BVHStackEntry& e0, const BVHStackEntry& e1)
@@ -530,7 +543,7 @@ void RegularBVH::pack_node(int idx, const BoundBox& b0, const BoundBox& b1, int 
 	memcpy(&pack.nodes[idx * BVH_NODE_SIZE], data, sizeof(int4)*BVH_NODE_SIZE);
 }
 
-void RegularBVH::pack_nodes(const array<int>& prims, const BVHNode *root)
+void RegularBVH::pack_nodes(const BVHNode *root)
 {
 	size_t node_size = root->getSubtreeSize(BVH_STAT_NODE_COUNT);
 
@@ -657,7 +670,7 @@ void RegularBVH::refit_node(int idx, bool leaf, BoundBox& bbox, uint& visibility
 			visibility |= ob->visibility;
 		}
 
-		pack_node(idx, bbox, bbox, c0, c1, visibility, visibility);
+		pack_node(idx, bbox, bbox, c0, c1, visibility, data[3].w);
 	}
 	else {
 		/* refit inner node, set bbox from children */
@@ -700,6 +713,9 @@ void QBVH::pack_leaf(const BVHStackEntry& e, const LeafNode *leaf)
 		data[6].y = __int_as_float(leaf->m_hi);
 	}
 	data[6].z = __uint_as_float(leaf->m_visibility);
+	if(leaf->num_triangles() != 0) {
+		data[6].w = __uint_as_float(pack.prim_type[leaf->m_lo]);
+	}
 
 	memcpy(&pack.nodes[e.idx * BVH_QNODE_SIZE], data, sizeof(float4)*BVH_QNODE_SIZE);
 }
@@ -743,7 +759,7 @@ void QBVH::pack_inner(const BVHStackEntry& e, const BVHStackEntry *en, int num)
 
 /* Quad SIMD Nodes */
 
-void QBVH::pack_nodes(const array<int>& prims, const BVHNode *root)
+void QBVH::pack_nodes(const BVHNode *root)
 {
 	size_t node_size = root->getSubtreeSize(BVH_STAT_QNODE_COUNT);
 
@@ -908,6 +924,7 @@ void QBVH::refit_node(int idx, bool leaf, BoundBox& bbox, uint& visibility)
 		leaf_data[6].x = __int_as_float(c.x);
 		leaf_data[6].y = __int_as_float(c.y);
 		leaf_data[6].z = __uint_as_float(visibility);
+		leaf_data[6].w = __uint_as_float(c.w);
 		memcpy(&pack.nodes[idx * BVH_QNODE_SIZE],
 		       leaf_data,
 		       sizeof(float4)*BVH_QNODE_SIZE);

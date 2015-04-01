@@ -52,22 +52,31 @@ float normal_quad_v3(float r[3], const float a[3], const float b[3], const float
 float normal_poly_v3(float r[3], const float verts[][3], unsigned int nr);
 
 MINLINE float area_tri_v2(const float a[2], const float b[2], const float c[2]);
+MINLINE float area_squared_tri_v2(const float a[2], const float b[2], const float c[2]);
 MINLINE float area_tri_signed_v2(const float v1[2], const float v2[2], const float v3[2]);
 float area_tri_v3(const float a[3], const float b[3], const float c[3]);
+float area_squared_tri_v3(const float a[3], const float b[3], const float c[3]);
 float area_tri_signed_v3(const float v1[3], const float v2[3], const float v3[3], const float normal[3]);
 float area_quad_v3(const float a[3], const float b[3], const float c[3], const float d[3]);
+float area_squared_quad_v3(const float a[3], const float b[3], const float c[3], const float d[3]);
 float area_poly_v3(const float verts[][3], unsigned int nr);
 float area_poly_v2(const float verts[][2], unsigned int nr);
+float area_squared_poly_v3(const float verts[][3], unsigned int nr);
+float area_squared_poly_v2(const float verts[][2], unsigned int nr);
+float area_poly_signed_v2(const float verts[][2], unsigned int nr);
 float cotangent_tri_weight_v3(const float v1[3], const float v2[3], const float v3[3]);
 
 void          cross_tri_v3(float n[3], const float v1[3], const float v2[3], const float v3[3]);
 MINLINE float cross_tri_v2(const float v1[2], const float v2[2], const float v3[2]);
+void cross_poly_v3(float n[3], const float verts[][3], unsigned int nr);
 float cross_poly_v2(const float verts[][2], unsigned int nr);
 
 /********************************* Planes **********************************/
 
 void  plane_from_point_normal_v3(float r_plane[4], const float plane_co[3], const float plane_no[3]);
-void  plane_to_point_normal_v3(const float plane[4], float r_plane_co[3], float r_plane_no[3]);
+void  plane_to_point_vector_v3(const float plane[4], float r_plane_co[3], float r_plane_no[3]);
+void  plane_to_point_vector_v3_normalized(const float plane[4], float r_plane_co[3], float r_plane_no[3]);
+
 MINLINE float plane_point_side_v3(const float plane[4], const float co[3]);
 
 /********************************* Volume **********************************/
@@ -97,6 +106,10 @@ float dist_squared_to_line_segment_v3(const float p[3], const float l1[3], const
 float         dist_to_line_segment_v3(const float p[3], const float l1[3], const float l2[3]);
 float dist_squared_to_line_v3(const float p[3], const float l1[3], const float l2[3]);
 float         dist_to_line_v3(const float p[3], const float l1[3], const float l2[3]);
+float dist_signed_squared_to_corner_v3v3v3(
+        const float p[3],
+        const float v1[3], const float v2[3], const float v3[3],
+        const float axis_ref[3]);
 float closest_to_line_v3(float r[3], const float p[3], const float l1[3], const float l2[3]);
 float closest_to_line_v2(float r[2], const float p[2], const float l1[2], const float l2[2]);
 void closest_to_line_segment_v3(float r_close[3], const float p[3], const float l1[3], const float l2[3]);

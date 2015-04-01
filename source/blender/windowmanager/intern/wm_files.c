@@ -101,7 +101,6 @@
 #include "GHOST_Path-api.h"
 
 #include "UI_interface.h"
-#include "UI_interface_icons.h"
 #include "UI_view2d.h"
 
 #include "GPU_draw.h"
@@ -356,7 +355,7 @@ static int wm_read_exotic(Scene *UNUSED(scene), const char *name)
 		else {
 			len = gzread(gzfile, header, sizeof(header));
 			gzclose(gzfile);
-			if (len == sizeof(header) && strncmp(header, "BLENDER", 7) == 0) {
+			if (len == sizeof(header) && STREQLEN(header, "BLENDER", 7)) {
 				retval = BKE_READ_EXOTIC_OK_BLEND;
 			}
 			else {
@@ -536,11 +535,13 @@ bool WM_file_read(bContext *C, const char *filepath, ReportList *reports)
 }
 
 
-/* called on startup,  (context entirely filled with NULLs) */
-/* or called for 'New File' */
-/* both startup.blend and userpref.blend are checked */
-/* the optional paramater custom_file points to an alterntive startup page */
-/* custom_file can be NULL */
+/**
+ * called on startup,  (context entirely filled with NULLs)
+ * or called for 'New File'
+ * both startup.blend and userpref.blend are checked
+ * the optional parameter custom_file points to an alternative startup page
+ * custom_file can be NULL
+ */
 int wm_homefile_read(bContext *C, ReportList *reports, bool from_memory, const char *custom_file)
 {
 	ListBase wmbase;
@@ -561,6 +562,10 @@ int wm_homefile_read(bContext *C, ReportList *reports, bool from_memory, const c
 
 	/* options exclude eachother */
 	BLI_assert((from_memory && custom_file) == 0);
+
+	if ((G.f & G_SCRIPT_OVERRIDE_PREF) == 0) {
+		BKE_BIT_TEST_SET(G.f, (U.flag & USER_SCRIPT_AUTOEXEC_DISABLE) == 0, G_SCRIPT_AUTOEXEC);
+	}
 
 	BLI_callback_exec(CTX_data_main(C), NULL, BLI_CB_EVT_LOAD_PRE);
 
@@ -841,11 +846,11 @@ static ImBuf *blend_file_thumb(Scene *scene, bScreen *screen, int **thumb_pt)
 	if (scene->camera) {
 		ibuf = ED_view3d_draw_offscreen_imbuf_simple(scene, scene->camera,
 		                                             BLEN_THUMB_SIZE * 2, BLEN_THUMB_SIZE * 2,
-		                                             IB_rect, OB_SOLID, false, false, false, R_ADDSKY, err_out);
+		                                             IB_rect, OB_SOLID, false, false, false, R_ALPHAPREMUL, err_out);
 	}
 	else {
 		ibuf = ED_view3d_draw_offscreen_imbuf(scene, v3d, ar, BLEN_THUMB_SIZE * 2, BLEN_THUMB_SIZE * 2,
-		                                      IB_rect, false, R_ADDSKY, err_out);
+		                                      IB_rect, false, R_ALPHAPREMUL, err_out);
 	}
 
 	if (ibuf) {
@@ -892,24 +897,6 @@ bool write_crash_blend(void)
 	else {
 		printf("failed: %s\n", path);
 		return 0;
-	}
-}
-
-static void UNUSED_FUNCTION(wm_ensure_previews)(bContext *C, Main *mainvar)
-{
-	ListBase *lb[] = {&mainvar->mat, &mainvar->tex, &mainvar->image, &mainvar->world, &mainvar->lamp, NULL};
-	ID *id;
-	int i;
-
-	for (i = 0; lb[i]; i++) {
-		for (id = lb[i]->first; id; id = id->next) {
-			/* Only preview non-library datablocks, lib ones do not pertain to this .blend file!
-			 * Same goes for ID with no user. */
-			if (!id->lib && (id->us != 0)) {
-				UI_id_icon_render(C, id, false, false);
-				UI_id_icon_render(C, id, true, false);
-			}
-		}
 	}
 }
 

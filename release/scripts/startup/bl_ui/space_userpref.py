@@ -120,6 +120,14 @@ class USERPREF_MT_splash(Menu):
         row.menu("USERPREF_MT_appconfigs", text="Preset")
 
 
+# only for addons
+class USERPREF_MT_splash_footer(Menu):
+    bl_label = ""
+
+    def draw(self, context):
+        pass
+
+
 class USERPREF_PT_interface(Panel):
     bl_space_type = 'USER_PREFERENCES'
     bl_label = "Interface"
@@ -162,6 +170,12 @@ class USERPREF_PT_interface(Panel):
         sub.prop(view, "mini_axis_brightness", text="Brightness")
 
         col.separator()
+
+        if sys.platform[:3] == "win":
+            col.label("Warnings")
+            col.prop(view, "use_quit_dialog")
+            col.prop(view, "use_gl_warn_support")
+
         row.separator()
         row.separator()
 
@@ -229,9 +243,6 @@ class USERPREF_PT_interface(Panel):
         col.separator()
 
         col.prop(view, "show_splash")
-
-        if sys.platform[:3] == "win":
-            col.prop(view, "use_quit_dialog")
 
 
 class USERPREF_PT_edit(Panel):

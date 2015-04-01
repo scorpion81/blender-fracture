@@ -259,6 +259,7 @@ void RNA_api_armature_edit_bone(StructRNA *srna);
 void RNA_api_bone(StructRNA *srna);
 void RNA_api_camera(StructRNA *srna);
 void RNA_api_curve(StructRNA *srna);
+void RNA_api_fcurves(StructRNA *srna);
 void RNA_api_drivers(StructRNA *srna);
 void RNA_api_image(struct StructRNA *srna);
 void RNA_api_lattice(struct StructRNA *srna);
@@ -296,6 +297,8 @@ void RNA_api_texture(struct StructRNA *srna);
 void RNA_api_environment_map(struct StructRNA *srna);
 void RNA_api_sequences(BlenderRNA *brna, PropertyRNA *cprop);
 void RNA_api_sequence_elements(BlenderRNA *brna, PropertyRNA *cprop);
+void RNA_api_sound(struct StructRNA *srna);
+void RNA_api_vfont(struct StructRNA *srna);
 
 /* main collection functions */
 void RNA_def_main_cameras(BlenderRNA *brna, PropertyRNA *cprop);

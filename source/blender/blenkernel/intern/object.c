@@ -385,7 +385,7 @@ void BKE_object_free_ex(Object *ob, bool do_id_user)
 	free_controllers(&ob->controllers);
 	free_actuators(&ob->actuators);
 	
-	BKE_constraints_free(&ob->constraints);
+	BKE_constraints_free_ex(&ob->constraints, do_id_user);
 	
 	free_partdeflect(ob->pd);
 	BKE_rigidbody_free_object(ob);
@@ -683,6 +683,7 @@ void BKE_object_unlink(Object *ob)
 			if (sce->camera == ob) sce->camera = NULL;
 			if (sce->toolsettings->skgen_template == ob) sce->toolsettings->skgen_template = NULL;
 			if (sce->toolsettings->particle.object == ob) sce->toolsettings->particle.object = NULL;
+			if (sce->toolsettings->particle.shape_object == ob) sce->toolsettings->particle.shape_object = NULL;
 
 #ifdef DURIAN_CAMERA_SWITCH
 			{
@@ -1263,7 +1264,7 @@ BulletSoftBody *copy_bulletsoftbody(BulletSoftBody *bsb)
 	return bsbn;
 }
 
-static ParticleSystem *copy_particlesystem(ParticleSystem *psys)
+ParticleSystem *BKE_object_copy_particlesystem(ParticleSystem *psys)
 {
 	ParticleSystem *psysn;
 	ParticleData *pa;
@@ -1343,7 +1344,7 @@ void BKE_object_copy_particlesystems(Object *obn, Object *ob)
 
 	BLI_listbase_clear(&obn->particlesystem);
 	for (psys = ob->particlesystem.first; psys; psys = psys->next) {
-		npsys = copy_particlesystem(psys);
+		npsys = BKE_object_copy_particlesystem(psys);
 
 		BLI_addtail(&obn->particlesystem, npsys);
 
@@ -3507,6 +3508,19 @@ KeyBlock *BKE_object_insert_shape_key(Object *ob, const char *name, const bool f
 
 }
 
+bool BKE_object_flag_test_recursive(const Object *ob, short flag)
+{
+	if (ob->flag & flag) {
+		return true;
+	}
+	else if (ob->parent) {
+		return BKE_object_flag_test_recursive(ob->parent, flag);
+	}
+	else {
+		return false;
+	}
+}
+
 bool BKE_object_is_child_recursive(Object *ob_parent, Object *ob_child)
 {
 	for (ob_child = ob_child->parent; ob_child; ob_child = ob_child->parent) {
@@ -3545,6 +3559,88 @@ int BKE_object_is_modified(Scene *scene, Object *ob)
 	return flag;
 }
 
+/* Check of objects moves in time. */
+/* NOTE: This function is currently optimized for usage in combination
+ * with mti->canDeform, so modifiers can quickly check if their target
+ * objects moves (causing deformation motion blur) or not.
+ *
+ * This makes it possible to give some degree of false-positives here,
+ * but it's currently an acceptable tradeoff between complexity and check
+ * speed. In combination with checks of modifier stack and real life usage
+ * percentage of false-positives shouldn't be that hight.
+ */
+static bool object_moves_in_time(Object *object)
+{
+	AnimData *adt = object->adt;
+	if (adt != NULL) {
+		/* If object has any sort of animation data assume it is moving. */
+		if (adt->action != NULL ||
+		    !BLI_listbase_is_empty(&adt->nla_tracks) ||
+		    !BLI_listbase_is_empty(&adt->drivers) ||
+		    !BLI_listbase_is_empty(&adt->overrides))
+		{
+			return true;
+		}
+	}
+	if (!BLI_listbase_is_empty(&object->constraints)) {
+		return true;
+	}
+	if (object->parent != NULL) {
+		/* TODO(sergey): Do recursive check here? */
+		return true;
+	}
+	return false;
+}
+
+static bool constructive_modifier_is_deform_modified(ModifierData *md)
+{
+	/* TODO(sergey): Consider generalizing this a bit so all modifier logic
+	 * is concentrated in MOD_{modifier}.c file,
+	 */
+	if (md->type == eModifierType_Array) {
+		ArrayModifierData *amd = (ArrayModifierData *)md;
+		/* TODO(sergey): Check if curve is deformed. */
+		return (amd->start_cap != NULL && object_moves_in_time(amd->start_cap)) ||
+		       (amd->end_cap != NULL && object_moves_in_time(amd->end_cap)) ||
+		       (amd->curve_ob != NULL && object_moves_in_time(amd->curve_ob)) ||
+		       (amd->offset_ob != NULL && object_moves_in_time(amd->offset_ob));
+	}
+	else if (md->type == eModifierType_Mirror) {
+		MirrorModifierData *mmd = (MirrorModifierData *)md;
+		return mmd->mirror_ob != NULL && object_moves_in_time(mmd->mirror_ob);
+	}
+	else if (md->type == eModifierType_Screw) {
+		ScrewModifierData *smd = (ScrewModifierData *)md;
+		return smd->ob_axis != NULL && object_moves_in_time(smd->ob_axis);
+	}
+	return false;
+}
+
+static bool modifiers_has_animation_check(Object *ob)
+{
+	/* TODO(sergey): This is a bit code duplication with depsgraph, but
+	 * would be nicer to solve this as a part of new dependency graph
+	 * work, so we avoid conflicts and so.
+	 */
+	if (ob->adt != NULL) {
+		AnimData *adt = ob->adt;
+		FCurve *fcu;
+		if (adt->action != NULL) {
+			for (fcu = adt->action->curves.first; fcu; fcu = fcu->next) {
+				if (fcu->rna_path && strstr(fcu->rna_path, "modifiers[")) {
+					return true;
+				}
+			}
+		}
+		for (fcu = adt->drivers.first; fcu; fcu = fcu->next) {
+			if (fcu->rna_path && strstr(fcu->rna_path, "modifiers[")) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 /* test if object is affected by deforming modifiers (for motion blur). again
  * most important is to avoid false positives, this is to skip computations
  * and we can still if there was actual deformation afterwards */
@@ -3553,6 +3649,7 @@ int BKE_object_is_deform_modified(Scene *scene, Object *ob)
 	ModifierData *md;
 	VirtualModifierData virtualModifierData;
 	int flag = 0;
+	const bool is_modifier_animated = modifiers_has_animation_check(ob);
 
 	if (BKE_key_from_object(ob))
 		flag |= eModifierMode_Realtime | eModifierMode_Render;
@@ -3563,9 +3660,15 @@ int BKE_object_is_deform_modified(Scene *scene, Object *ob)
 	     md = md->next)
 	{
 		ModifierTypeInfo *mti = modifierType_getInfo(md->type);
+		bool can_deform = mti->type == eModifierTypeType_OnlyDeform ||
+		                  md->type == eModifierType_Fracture ||
+		                  is_modifier_animated;
 
-		/* special case for fracture modifier, for object deformation motion blur with the shards */
-		if (mti->type == eModifierTypeType_OnlyDeform || md->type == eModifierType_Fracture) {
+		if (!can_deform) {
+			can_deform = constructive_modifier_is_deform_modified(md);
+		}
+
+		if (can_deform) {
 			if (!(flag & eModifierMode_Render) && modifier_isEnabled(scene, md, eModifierMode_Render))
 				flag |= eModifierMode_Render;
 

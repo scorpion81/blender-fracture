@@ -955,7 +955,7 @@ void nodeRemSocketLinks(bNodeTree *ntree, bNodeSocket *sock)
 	ntree->update |= NTREE_UPDATE_LINKS;
 }
 
-int nodeLinkIsHidden(bNodeLink *link)
+bool nodeLinkIsHidden(bNodeLink *link)
 {
 	return nodeSocketIsHidden(link->fromsock) || nodeSocketIsHidden(link->tosock);
 }
@@ -2250,7 +2250,7 @@ StructRNA *ntreeInterfaceTypeGet(bNodeTree *ntree, int create)
 		ntree_interface_identifier_base(ntree, base);
 		
 		/* RNA identifier may have a number suffix, but should start with the idbase string */
-		if (strncmp(RNA_struct_identifier(srna), base, sizeof(base)) != 0) {
+		if (!STREQLEN(RNA_struct_identifier(srna), base, sizeof(base))) {
 			/* generate new unique RNA identifier from the ID name */
 			ntree_interface_identifier(ntree, base, identifier, sizeof(identifier), name, description);
 			
@@ -2881,6 +2881,32 @@ static void ntree_update_node_level(bNodeTree *ntree)
 	}
 }
 
+void ntreeTagUsedSockets(bNodeTree *ntree)
+{
+	bNode *node;
+	bNodeSocket *sock;
+	bNodeLink *link;
+	
+	/* first clear data */
+	for (node = ntree->nodes.first; node; node = node->next) {
+		for (sock = node->inputs.first; sock; sock = sock->next) {
+			sock->flag &= ~SOCK_IN_USE;
+		}
+		for (sock = node->outputs.first; sock; sock = sock->next) {
+			sock->flag &= ~SOCK_IN_USE;
+		}
+	}
+	
+	for (link = ntree->links.first; link; link = link->next) {
+		/* link is unused if either side is disabled */
+		if ((link->fromsock->flag & SOCK_UNAVAIL) || (link->tosock->flag & SOCK_UNAVAIL))
+			continue;
+		
+		link->fromsock->flag |= SOCK_IN_USE;
+		link->tosock->flag |= SOCK_IN_USE;
+	}
+}
+
 static void ntree_update_link_pointers(bNodeTree *ntree)
 {
 	bNode *node;
@@ -2891,19 +2917,14 @@ static void ntree_update_link_pointers(bNodeTree *ntree)
 	for (node = ntree->nodes.first; node; node = node->next) {
 		for (sock = node->inputs.first; sock; sock = sock->next) {
 			sock->link = NULL;
-			sock->flag &= ~SOCK_IN_USE;
-		}
-		for (sock = node->outputs.first; sock; sock = sock->next) {
-			sock->flag &= ~SOCK_IN_USE;
 		}
 	}
 
 	for (link = ntree->links.first; link; link = link->next) {
 		link->tosock->link = link;
-		
-		link->fromsock->flag |= SOCK_IN_USE;
-		link->tosock->flag |= SOCK_IN_USE;
 	}
+	
+	ntreeTagUsedSockets(ntree);
 }
 
 static void ntree_validate_links(bNodeTree *ntree)

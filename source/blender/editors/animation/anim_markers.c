@@ -317,7 +317,7 @@ void debug_markers_print_list(ListBase *markers)
 
 /* function to draw markers */
 static void draw_marker(
-        View2D *v2d, TimeMarker *marker, int cfra, int flag,
+        View2D *v2d, const uiFontStyle *fstyle, TimeMarker *marker, int cfra, int flag,
         /* avoid re-calculating each time */
         const float ypixels, const float xscale, const float yscale)
 {
@@ -399,13 +399,14 @@ static void draw_marker(
 		}
 #endif
 
-		UI_draw_string(x, y, marker->name);
+		UI_fontstyle_draw_simple(fstyle, x, y, marker->name);
 	}
 }
 
 /* Draw Scene-Markers in time window */
 void ED_markers_draw(const bContext *C, int flag)
 {
+	const uiFontStyle *fstyle = UI_FSTYLE_WIDGET;
 	ListBase *markers = ED_context_get_markers(C);
 	View2D *v2d;
 	TimeMarker *marker;
@@ -455,7 +456,7 @@ void ED_markers_draw(const bContext *C, int flag)
 				if ((marker->frame >= v2d_clip_range_x[0]) &&
 				    (marker->frame <= v2d_clip_range_x[1]))
 				{
-					draw_marker(v2d, marker, scene->r.cfra, flag,
+					draw_marker(v2d, fstyle, marker, scene->r.cfra, flag,
 					            ypixels, xscale, yscale);
 				}
 			}
@@ -1056,7 +1057,7 @@ static void select_timeline_marker_frame(ListBase *markers, int frame, bool exte
 	}
 
 	BLI_LISTBASE_CIRCULAR_FORWARD_BEGIN (markers, marker, marker_first) {
-		/* this way a not-extend select will allways give 1 selected marker */
+		/* this way a not-extend select will always give 1 selected marker */
 		if (marker->frame == frame) {
 			marker->flag ^= SELECT;
 			break;

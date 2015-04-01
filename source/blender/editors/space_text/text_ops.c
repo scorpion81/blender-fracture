@@ -2537,10 +2537,14 @@ static void text_cursor_set_to_pos(SpaceText *st, ARegion *ar, int x, int y, con
 		y -= txt_get_span(text->lines.first, *linep) - st->top;
 		
 		if (y > 0) {
-			while (y-- != 0) if ((*linep)->next) *linep = (*linep)->next;
+			while (y-- != 0) {
+				if ((*linep)->next) *linep = (*linep)->next;
+			}
 		}
 		else if (y < 0) {
-			while (y++ != 0) if ((*linep)->prev) *linep = (*linep)->prev;
+			while (y++ != 0) {
+				if ((*linep)->prev) *linep = (*linep)->prev;
+			}
 		}
 
 		
@@ -2919,7 +2923,7 @@ static int text_find_and_replace(bContext *C, wmOperator *op, short mode)
 	if (mode != TEXT_FIND && txt_has_sel(text)) {
 		tmp = txt_sel_to_buf(text);
 
-		if (flags & ST_MATCH_CASE) found = strcmp(st->findstr, tmp) == 0;
+		if (flags & ST_MATCH_CASE) found = STREQ(st->findstr, tmp);
 		else found = BLI_strcasecmp(st->findstr, tmp) == 0;
 
 		if (found) {

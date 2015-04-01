@@ -288,9 +288,10 @@ typedef struct ThemeSpace {
 
 	char handle_vertex[4];
 	char handle_vertex_select[4];
-	char pad2[4];
 	
 	char handle_vertex_size;
+
+	char clipping_border_3d[4];
 	
 	char marker_outline[4], marker[4], act_marker[4], sel_marker[4], dis_marker[4], lock_marker[4];
 	char bundle_solid[4];
@@ -461,7 +462,7 @@ typedef struct UserDef {
 
 	int scrollback; /* console scrollback limit */
 	int dpi;		/* range 48-128? */
-	short encoding;
+	char pad2[2];
 	short transopts;
 	short menuthreshold1, menuthreshold2;
 	
@@ -666,9 +667,10 @@ typedef enum eUserpref_UI_Flag {
 
 /* uiflag2 */
 typedef enum eUserpref_UI_Flag2 {
-	USER_KEEP_SESSION		= (1 << 0),
-	USER_REGION_OVERLAP		= (1 << 1),
-	USER_TRACKPAD_NATURAL	= (1 << 2)
+	USER_KEEP_SESSION			= (1 << 0),
+	USER_REGION_OVERLAP			= (1 << 1),
+	USER_TRACKPAD_NATURAL		= (1 << 2),
+	USER_OPENGL_NO_WARN_SUPPORT	= (1 << 3)
 } eUserpref_UI_Flag2;
 	
 /* Auto-Keying mode */

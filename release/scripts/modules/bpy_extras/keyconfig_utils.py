@@ -33,7 +33,7 @@ KM_HIERARCHY = [
     ('View2D Buttons List', 'EMPTY', 'WINDOW', []),  # view 2d with buttons navigation
     ('Header', 'EMPTY', 'WINDOW', []),    # header stuff (per region)
 
-    ('Grease Pencil', 'EMPTY', 'WINDOW', [ # grease pencil stuff (per region)
+    ('Grease Pencil', 'EMPTY', 'WINDOW', [  # grease pencil stuff (per region)
         ('Grease Pencil Stroke Edit Mode', 'EMPTY', 'WINDOW', []),
         ]),
 
@@ -245,7 +245,7 @@ def keyconfig_export(wm, kc, filepath):
     # the default blender keyconfig, recreating the current setup from a fresh blender
     # without needing to export keymaps which haven't been edited.
 
-    class FakeKeyConfig():
+    class FakeKeyConfig:
         keymaps = []
     edited_kc = FakeKeyConfig()
     for km in wm.keyconfigs.user.keymaps:

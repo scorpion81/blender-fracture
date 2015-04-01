@@ -368,7 +368,7 @@ static bool surface_duplicateNameExists(void *arg, const char *name)
 	DynamicPaintSurface *surface = t_surface->canvas->surfaces.first;
 
 	for (; surface; surface = surface->next) {
-		if (surface != t_surface && !strcmp(name, surface->name)) return true;
+		if (surface != t_surface && STREQ(name, surface->name)) return true;
 	}
 	return false;
 }
@@ -1502,7 +1502,7 @@ static void dynamicPaint_setInitialColor(Scene *scene, DynamicPaintSurface *surf
 					uv[0] = tface[i].uv[j][0] * 2.0f - 1.0f;
 					uv[1] = tface[i].uv[j][1] * 2.0f - 1.0f;
 
-					multitex_ext_safe(tex, uv, &texres, pool, scene_color_manage);
+					multitex_ext_safe(tex, uv, &texres, pool, scene_color_manage, false);
 
 					if (texres.tin > pPoint[*vert].alpha) {
 						copy_v3_v3(pPoint[*vert].color, &texres.tr);
@@ -1536,7 +1536,7 @@ static void dynamicPaint_setInitialColor(Scene *scene, DynamicPaintSurface *surf
 				uv_final[0] = uv_final[0] * 2.0f - 1.0f;
 				uv_final[1] = uv_final[1] * 2.0f - 1.0f;
 
-				multitex_ext_safe(tex, uv_final, &texres, NULL, scene_color_manage);
+				multitex_ext_safe(tex, uv_final, &texres, NULL, scene_color_manage, false);
 
 				/* apply color */
 				copy_v3_v3(pPoint[i].color, &texres.tr);
@@ -2705,7 +2705,7 @@ void dynamicPaint_outputSurfaceImage(DynamicPaintSurface *surface, char *filenam
 	if (format == R_IMF_IMTYPE_OPENEXR) format = R_IMF_IMTYPE_PNG;
 #endif
 	BLI_strncpy(output_file, filename, sizeof(output_file));
-	BKE_add_image_extension_from_type(output_file, format);
+	BKE_image_path_ensure_ext_from_imtype(output_file, format);
 
 	/* Validate output file path	*/
 	BLI_path_abs(output_file, G.main->name);

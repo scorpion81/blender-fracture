@@ -182,6 +182,14 @@ static void cmp_node_image_add_multilayer_outputs(bNodeTree *ntree, bNode *node,
 		
 		sockdata->pass_index = index;
 		sockdata->pass_flag = rpass->passtype;
+
+		if (STREQ(rpass->chan_id, "RGBA")) {
+			sock = nodeAddStaticSocket(ntree, node, SOCK_OUT, SOCK_FLOAT, PROP_NONE, "Alpha", "Alpha");
+			sockdata = MEM_callocN(sizeof(NodeImageLayer), "node image layer");
+			sock->storage = sockdata;
+			sockdata->pass_index = index;
+			sockdata->pass_flag = rpass->passtype;
+		}
 	}
 }
 
@@ -439,7 +447,7 @@ static void node_composit_init_rlayers(const bContext *C, PointerRNA *ptr)
 
 static int node_composit_poll_rlayers(bNodeType *UNUSED(ntype), bNodeTree *ntree)
 {
-	if (strcmp(ntree->idname, "CompositorNodeTree") == 0) {
+	if (STREQ(ntree->idname, "CompositorNodeTree")) {
 		Scene *scene;
 		
 		/* XXX ugly: check if ntree is a local scene node tree.

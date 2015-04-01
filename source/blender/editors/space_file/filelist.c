@@ -37,10 +37,10 @@
 #include <string.h>
 
 #ifndef WIN32
-#include <unistd.h>
+#  include <unistd.h>
 #else
-#include <io.h>
-#include <direct.h>
+#  include <io.h>
+#  include <direct.h>
 #endif   
 #include "MEM_guardedalloc.h"
 
@@ -58,10 +58,10 @@
 #include "BKE_global.h"
 #include "BKE_library.h"
 #include "BKE_icons.h"
+#include "BKE_idcode.h"
 #include "BKE_main.h"
 #include "BKE_report.h"
 #include "BLO_readfile.h"
-#include "BKE_idcode.h"
 
 #include "DNA_space_types.h"
 
@@ -91,7 +91,7 @@ typedef struct FolderList {
 
 ListBase *folderlist_new(void)
 {
-	ListBase *p = MEM_callocN(sizeof(ListBase), "folderlist");
+	ListBase *p = MEM_callocN(sizeof(*p), __func__);
 	return p;
 }
 
@@ -128,7 +128,7 @@ void folderlist_pushdir(ListBase *folderlist, const char *dir)
 	}
 
 	/* create next folder element */
-	folder = (FolderList *)MEM_mallocN(sizeof(FolderList), "FolderList");
+	folder = MEM_mallocN(sizeof(*folder), __func__);
 	folder->foldername = BLI_strdup(dir);
 
 	/* add it to the end of the list */
@@ -178,7 +178,7 @@ ListBase *folderlist_duplicate(ListBase *folderlist)
 {
 	
 	if (folderlist) {
-		ListBase *folderlistn = MEM_callocN(sizeof(ListBase), "copy folderlist");
+		ListBase *folderlistn = MEM_callocN(sizeof(*folderlistn), __func__);
 		FolderList *folder;
 		
 		BLI_duplicatelist(folderlistn, folderlist);
@@ -237,9 +237,6 @@ typedef struct FileList {
 	bool (*filterf)(struct direntry *, const char *, FileListFilter *);
 } FileList;
 
-#define FILENAME_IS_BREADCRUMBS(_n) \
-	((_n)[0] == '.' && ((_n)[1] == '\0' || ((_n)[1] == '.' && (_n)[2] == '\0')))
-
 #define SPECIAL_IMG_SIZE 48
 #define SPECIAL_IMG_ROWS 4
 #define SPECIAL_IMG_COLS 4
@@ -289,25 +286,30 @@ static int compare_direntry_generic(const struct direntry *entry1, const struct 
 	/* type is equal to stat.st_mode */
 
 	if (compare_is_directory(entry1)) {
-		if (compare_is_directory(entry2) == 0) return (-1);
+		if (compare_is_directory(entry2) == 0) {
+			return -1;
+		}
 	}
-	else {
-		if (compare_is_directory(entry2)) return (1);
+	else if (compare_is_directory(entry2)) {
+		return 1;
 	}
+
 	if (S_ISREG(entry1->type)) {
-		if (S_ISREG(entry2->type) == 0) return (-1);
+		if (!S_ISREG(entry2->type)) {
+			return -1;
+		}
 	}
-	else {
-		if (S_ISREG(entry2->type)) return (1);
+	else if (S_ISREG(entry2->type)) {
+		return 1;
 	}
-	if ((entry1->type & S_IFMT) < (entry2->type & S_IFMT)) return (-1);
-	if ((entry1->type & S_IFMT) > (entry2->type & S_IFMT)) return (1);
+	if ((entry1->type & S_IFMT) < (entry2->type & S_IFMT)) return -1;
+	if ((entry1->type & S_IFMT) > (entry2->type & S_IFMT)) return 1;
 	
 	/* make sure "." and ".." are always first */
-	if (strcmp(entry1->relname, ".") == 0) return (-1);
-	if (strcmp(entry2->relname, ".") == 0) return (1);
-	if (strcmp(entry1->relname, "..") == 0) return (-1);
-	if (strcmp(entry2->relname, "..") == 0) return (1);
+	if (FILENAME_IS_CURRENT(entry1->relname)) return -1;
+	if (FILENAME_IS_CURRENT(entry2->relname)) return 1;
+	if (FILENAME_IS_PARENT(entry1->relname)) return -1;
+	if (FILENAME_IS_PARENT(entry2->relname)) return 1;
 	
 	return 0;
 }
@@ -328,15 +330,15 @@ static int compare_date(const void *a1, const void *a2)
 {
 	const struct direntry *entry1 = a1, *entry2 = a2;
 	int ret;
-	
+
 	if ((ret = compare_direntry_generic(entry1, entry2))) {
 		return ret;
 	}
 	
 	if (entry1->s.st_mtime < entry2->s.st_mtime) return 1;
 	if (entry1->s.st_mtime > entry2->s.st_mtime) return -1;
-	
-	else return BLI_natstrcmp(entry1->relname, entry2->relname);
+
+	return BLI_natstrcmp(entry1->relname, entry2->relname);
 }
 
 static int compare_size(const void *a1, const void *a2)	
@@ -350,7 +352,8 @@ static int compare_size(const void *a1, const void *a2)
 	
 	if (entry1->s.st_size < entry2->s.st_size) return 1;
 	if (entry1->s.st_size > entry2->s.st_size) return -1;
-	else return BLI_natstrcmp(entry1->relname, entry2->relname);
+
+	return BLI_natstrcmp(entry1->relname, entry2->relname);
 }
 
 static int compare_extension(const void *a1, const void *a2)
@@ -371,7 +374,7 @@ static int compare_extension(const void *a1, const void *a2)
 	if (!sufix1) sufix1 = nil;
 	if (!sufix2) sufix2 = nil;
 
-	return (BLI_strcasecmp(sufix1, sufix2));
+	return BLI_strcasecmp(sufix1, sufix2);
 }
 
 bool filelist_need_sorting(struct FileList *filelist)
@@ -447,7 +450,7 @@ static bool is_filtered_file(struct direntry *file, const char *UNUSED(root), Fi
 {
 	bool is_filtered = !is_hidden_file(file->relname, filter);
 
-	if (is_filtered && filter->filter && !FILENAME_IS_BREADCRUMBS(file->relname)) {
+	if (is_filtered && filter->filter && !FILENAME_IS_CURRPAR(file->relname)) {
 		if ((file->type & S_IFDIR) && !(filter->filter & FILE_TYPE_FOLDER)) {
 			is_filtered = false;
 		}
@@ -471,7 +474,7 @@ static bool is_filtered_lib(struct direntry *file, const char *root, FileListFil
 
 	if (BLO_is_a_library(root, dir, group)) {
 		is_filtered = !is_hidden_file(file->relname, filter);
-		if (is_filtered && filter->filter && !FILENAME_IS_BREADCRUMBS(file->relname)) {
+		if (is_filtered && filter->filter && !FILENAME_IS_CURRPAR(file->relname)) {
 			if (is_filtered && (filter->filter_search[0] != '\0')) {
 				if (fnmatch(filter->filter_search, file->relname, FNM_CASEFOLD) != 0) {
 					is_filtered = false;
@@ -524,7 +527,7 @@ void filelist_filter(FileList *filelist)
 	}
 
 	/* Note: maybe we could even accept filelist->fidx to be filelist->numfiles -len allocated? */
-	filelist->fidx = (int *)MEM_mallocN(sizeof(*filelist->fidx) * (size_t)num_filtered, __func__);
+	filelist->fidx = MEM_mallocN(sizeof(*filelist->fidx) * (size_t)num_filtered, __func__);
 	memcpy(filelist->fidx, fidx_tmp, sizeof(*filelist->fidx) * (size_t)num_filtered);
 	filelist->numfiltered = num_filtered;
 
@@ -634,10 +637,10 @@ ImBuf *filelist_geticon(struct FileList *filelist, const int index)
 	fidx = filelist->fidx[index];
 	file = &filelist->filelist[fidx];
 	if (file->type & S_IFDIR) {
-		if (strcmp(filelist->filelist[fidx].relname, "..") == 0) {
+		if (FILENAME_IS_PARENT(filelist->filelist[fidx].relname)) {
 			ibuf = gSpecialFileImages[SPECIAL_IMG_PARENT];
 		}
-		else if (strcmp(filelist->filelist[fidx].relname, ".") == 0) {
+		else if (FILENAME_IS_CURRENT(filelist->filelist[fidx].relname)) {
 			ibuf = gSpecialFileImages[SPECIAL_IMG_REFRESH];
 		}
 		else {
@@ -680,7 +683,8 @@ ImBuf *filelist_geticon(struct FileList *filelist, const int index)
 
 FileList *filelist_new(short type)
 {
-	FileList *p = MEM_callocN(sizeof(FileList), "filelist");
+	FileList *p = MEM_callocN(sizeof(*p), __func__);
+
 	switch (type) {
 		case FILE_MAIN:
 			p->readf = filelist_read_main;
@@ -694,7 +698,6 @@ FileList *filelist_new(short type)
 			p->readf = filelist_read_dir;
 			p->filterf = is_filtered_file;
 			break;
-
 	}
 	return p;
 }
@@ -764,28 +767,20 @@ struct direntry *filelist_file(struct FileList *filelist, int index)
 
 int filelist_find(struct FileList *filelist, const char *filename)
 {
-	int index = -1;
-	int i;
 	int fidx = -1;
 	
 	if (!filelist->fidx) 
 		return fidx;
 
-	
-	for (i = 0; i < filelist->numfiles; ++i) {
-		if (strcmp(filelist->filelist[i].relname, filename) == 0) {  /* not dealing with user input so don't need BLI_path_cmp */
-			index = i;
-			break;
+	for (fidx = 0; fidx < filelist->numfiltered; fidx++) {
+		int index = filelist->fidx[fidx];
+
+		if (STREQ(filelist->filelist[index].relname, filename)) {
+			return fidx;
 		}
 	}
 
-	for (i = 0; i < filelist->numfiltered; ++i) {
-		if (filelist->fidx[i] == index) {
-			fidx = i;
-			break;
-		}
-	}
-	return fidx;
+	return -1;
 }
 
 /* would recognize .blend as well */
@@ -901,9 +896,9 @@ static void filelist_setfiletypes(struct FileList *filelist)
 {
 	struct direntry *file;
 	int num;
-	
+
 	file = filelist->filelist;
-	
+
 	for (num = 0; num < filelist->numfiles; num++, file++) {
 		file->type = file->s.st_mode;  /* restore the mess below */
 #ifndef __APPLE__
@@ -912,12 +907,13 @@ static void filelist_setfiletypes(struct FileList *filelist)
 			continue;
 		}
 #endif
-		file->flags = file_extension_type(filelist->dir, file->relname);
-		
 		if (filelist->filter_data.filter_glob[0] &&
 		    BLI_testextensie_glob(file->relname, filelist->filter_data.filter_glob))
 		{
 			file->flags = FILE_TYPE_OPERATOR;
+		}
+		else {
+			file->flags = file_extension_type(filelist->dir, file->relname);
 		}
 	}
 }
@@ -1058,7 +1054,7 @@ static int groupname_to_code(const char *group)
 {
 	char buf[BLO_GROUP_MAX];
 	char *lslash;
-	
+
 	BLI_strncpy(buf, group, sizeof(buf));
 	lslash = (char *)BLI_last_slash(buf);
 	if (lslash)
@@ -1074,7 +1070,7 @@ static void filelist_from_library(struct FileList *filelist)
 	int ok, i, nprevs, nnames, idcode;
 	char filename[FILE_MAX];
 	char dir[FILE_MAX], group[BLO_GROUP_MAX];
-	
+
 	/* name test */
 	ok = filelist_islibrary(filelist, dir, group);
 	if (!ok) {
@@ -1113,10 +1109,10 @@ static void filelist_from_library(struct FileList *filelist)
 	}
 
 	filelist->numfiles = nnames + 1;
-	filelist->filelist = malloc(filelist->numfiles * sizeof(*filelist->filelist));
+	filelist->filelist = MEM_mallocN(filelist->numfiles * sizeof(*filelist->filelist), __func__);
 	memset(filelist->filelist, 0, filelist->numfiles * sizeof(*filelist->filelist));
 
-	filelist->filelist[0].relname = BLI_strdup("..");
+	filelist->filelist[0].relname = BLI_strdup(FILENAME_PARENT);
 	filelist->filelist[0].type |= S_IFDIR;
 		
 	for (i = 0, l = names; i < nnames; i++, l = l->next) {
@@ -1130,14 +1126,14 @@ static void filelist_from_library(struct FileList *filelist)
 			filelist->filelist[i + 1].type |= S_IFDIR;
 		}
 	}
-	
+
 	if (previews && (nnames != nprevs)) {
 		printf("filelist_from_library: error, found %d items, %d previews\n", nnames, nprevs);
 	}
 	else if (previews) {
 		for (i = 0, l = previews; i < nnames; i++, l = l->next) {
 			PreviewImage *img = l->link;
-			
+
 			if (img) {
 				unsigned int w = img->w[ICON_SIZE_PREVIEW];
 				unsigned int h = img->h[ICON_SIZE_PREVIEW];
@@ -1155,7 +1151,9 @@ static void filelist_from_library(struct FileList *filelist)
 	}
 
 	BLI_linklist_free(names, free);
-	if (previews) BLI_linklist_free(previews, BKE_previewimg_freefunc);
+	if (previews) {
+		BLI_linklist_free(previews, BKE_previewimg_freefunc);
+	}
 
 	BLI_strncpy(G.main->name, filename, sizeof(filename));  /* prevent G.main->name to change */
 }
@@ -1166,32 +1164,31 @@ static void filelist_from_main(struct FileList *filelist)
 	struct direntry *files, *firstlib = NULL;
 	ListBase *lb;
 	int a, fake, idcode, ok, totlib, totbl;
-	
+
 	// filelist->type = FILE_MAIN; // XXXXX TODO: add modes to filebrowser
 
 	if (filelist->dir[0] == '/') filelist->dir[0] = 0;
-	
+
 	if (filelist->dir[0]) {
 		idcode = groupname_to_code(filelist->dir);
 		if (idcode == 0) filelist->dir[0] = 0;
 	}
-	
+
 	if (filelist->dir[0] == 0) {
-		
 		/* make directories */
 #ifdef WITH_FREESTYLE
 		filelist->numfiles = 24;
 #else
 		filelist->numfiles = 23;
 #endif
-		filelist->filelist = (struct direntry *)malloc(filelist->numfiles * sizeof(struct direntry));
-		
+		filelist->filelist = MEM_mallocN(sizeof(*filelist->filelist) * filelist->numfiles, __func__);
+
 		for (a = 0; a < filelist->numfiles; a++) {
 			memset(&(filelist->filelist[a]), 0, sizeof(struct direntry));
 			filelist->filelist[a].type |= S_IFDIR;
 		}
-		
-		filelist->filelist[0].relname = BLI_strdup("..");
+
+		filelist->filelist[0].relname = BLI_strdup(FILENAME_PARENT);
 		filelist->filelist[1].relname = BLI_strdup("Scene");
 		filelist->filelist[2].relname = BLI_strdup("Object");
 		filelist->filelist[3].relname = BLI_strdup("Mesh");
@@ -1219,41 +1216,35 @@ static void filelist_from_main(struct FileList *filelist)
 #endif
 	}
 	else {
-
 		/* make files */
 		idcode = groupname_to_code(filelist->dir);
-		
+
 		lb = which_libbase(G.main, idcode);
 		if (lb == NULL) return;
-		
-		id = lb->first;
+
 		filelist->numfiles = 0;
-		while (id) {
+		for (id = lb->first; id; id = id->next) {
 			if (!filelist->filter_data.hide_dot || id->name[2] != '.') {
 				filelist->numfiles++;
 			}
-			
-			id = id->next;
 		}
-		
+
 		/* XXXXX TODO: if databrowse F4 or append/link filelist->hide_parent has to be set */
 		if (!filelist->filter_data.hide_parent) filelist->numfiles += 1;
-		filelist->filelist = filelist->numfiles > 0 ? (struct direntry *)malloc(filelist->numfiles * sizeof(struct direntry)) : NULL;
+		filelist->filelist = filelist->numfiles > 0 ? MEM_mallocN(sizeof(*filelist->filelist) * filelist->numfiles, __func__) : NULL;
 
 		files = filelist->filelist;
-		
+
 		if (!filelist->filter_data.hide_parent) {
 			memset(&(filelist->filelist[0]), 0, sizeof(struct direntry));
-			filelist->filelist[0].relname = BLI_strdup("..");
+			filelist->filelist[0].relname = BLI_strdup(FILENAME_PARENT);
 			filelist->filelist[0].type |= S_IFDIR;
-		
+
 			files++;
 		}
-		
-		id = lb->first;
+
 		totlib = totbl = 0;
-		
-		while (id) {
+		for (id = lb->first; id; id = id->next) {
 			ok = 1;
 			if (ok) {
 				if (!filelist->filter_data.hide_dot || id->name[2] != '.') {
@@ -1262,7 +1253,7 @@ static void filelist_from_main(struct FileList *filelist)
 						files->relname = BLI_strdup(id->name + 2);
 					}
 					else {
-						files->relname = MEM_mallocN(FILE_MAX + (MAX_ID_NAME - 2),     "filename for lib");
+						files->relname = MEM_mallocN(sizeof(*files->relname) * (FILE_MAX + (MAX_ID_NAME - 2)), __func__);
 						BLI_snprintf(files->relname, FILE_MAX + (MAX_ID_NAME - 2) + 3, "%s | %s", id->lib->name, id->name + 2);
 					}
 					files->type |= S_IFREG;
@@ -1286,20 +1277,18 @@ static void filelist_from_main(struct FileList *filelist)
 					else if (id->lib)         BLI_snprintf(files->extra, sizeof(files->extra), "L    %d",  id->us);
 					else if (fake)            BLI_snprintf(files->extra, sizeof(files->extra), "F    %d",  id->us);
 					else                      BLI_snprintf(files->extra, sizeof(files->extra), "      %d", id->us);
-					
+
 					if (id->lib) {
 						if (totlib == 0) firstlib = files;
 						totlib++;
 					}
-					
+
 					files++;
 				}
 				totbl++;
 			}
-			
-			id = id->next;
 		}
-		
+
 		/* only qsort of library blocks */
 		if (totlib > 1) {
 			qsort(firstlib, totlib, sizeof(struct direntry), compare_name);
@@ -1373,13 +1362,15 @@ static void thumbnails_update(void *tjv)
 		FileImage *limg = tj->loadimages.first;
 		while (limg) {
 			if (!limg->done && limg->img) {
-				tj->filelist->filelist[limg->index].image = limg->img;
+				tj->filelist->filelist[limg->index].image = IMB_dupImBuf(limg->img);
 				/* update flag for movie files where thumbnail can't be created */
 				if (limg->flags & FILE_TYPE_MOVIE_ICON) {
 					tj->filelist->filelist[limg->index].flags &= ~FILE_TYPE_MOVIE;
 					tj->filelist->filelist[limg->index].flags |= FILE_TYPE_MOVIE_ICON;
 				}
 				limg->done = true;
+				IMB_freeImBuf(limg->img);
+				limg->img = NULL;
 			}
 			limg = limg->next;
 		}
@@ -1408,17 +1399,20 @@ void thumbnails_start(FileList *filelist, const bContext *C)
 	wmJob *wm_job;
 	ThumbnailJob *tj;
 	int idx;
-	
+
 	/* prepare job data */
-	tj = MEM_callocN(sizeof(ThumbnailJob), "thumbnails\n");
+	tj = MEM_callocN(sizeof(*tj), __func__);
 	tj->filelist = filelist;
 	for (idx = 0; idx < filelist->numfiles; idx++) {
+		if (!filelist->filelist[idx].path) {
+			continue;
+		}
 		if (!filelist->filelist[idx].image) {
 			if (filelist->filelist[idx].flags & (FILE_TYPE_IMAGE | FILE_TYPE_MOVIE |
 			                                     FILE_TYPE_BLENDER | FILE_TYPE_BLENDER_BACKUP))
 			{
-				FileImage *limg = MEM_callocN(sizeof(FileImage), "loadimage");
-				BLI_strncpy(limg->path, filelist->filelist[idx].path, FILE_MAX);
+				FileImage *limg = MEM_callocN(sizeof(*limg), __func__);
+				BLI_strncpy(limg->path, filelist->filelist[idx].path, sizeof(limg->path));
 				limg->index = idx;
 				limg->flags = filelist->filelist[idx].flags;
 				BLI_addtail(&tj->loadimages, limg);

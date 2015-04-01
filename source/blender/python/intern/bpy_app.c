@@ -36,6 +36,7 @@
 #include "bpy_app_ffmpeg.h"
 #include "bpy_app_ocio.h"
 #include "bpy_app_oiio.h"
+#include "bpy_app_sdl.h"
 #include "bpy_app_build_options.h"
 
 #include "bpy_app_translations.h"
@@ -97,6 +98,7 @@ static PyStructSequence_Field app_info_fields[] = {
 	{(char *)"ffmpeg", (char *)"FFmpeg library information backend"},
 	{(char *)"ocio", (char *)"OpenColorIO library information backend"},
 	{(char *)"oiio", (char *)"OpenImageIO library information backend"},
+	{(char *)"sdl", (char *)"SDL library information backend"},
 	{(char *)"build_options", (char *)"A set containing most important enabled optional build features"},
 	{(char *)"handlers", (char *)"Application handler callbacks"},
 	{(char *)"translations", (char *)"Application and addons internationalization API"},
@@ -173,6 +175,7 @@ static PyObject *make_app_info(void)
 	SetObjItem(BPY_app_ffmpeg_struct());
 	SetObjItem(BPY_app_ocio_struct());
 	SetObjItem(BPY_app_oiio_struct());
+	SetObjItem(BPY_app_sdl_struct());
 	SetObjItem(BPY_app_build_options_struct());
 	SetObjItem(BPY_app_handlers_struct());
 	SetObjItem(BPY_app_translations_struct());
@@ -283,6 +286,7 @@ static PyGetSetDef bpy_app_getsets[] = {
 	{(char *)"debug_handlers",  bpy_app_debug_get, bpy_app_debug_set, (char *)bpy_app_debug_doc, (void *)G_DEBUG_HANDLERS},
 	{(char *)"debug_wm",        bpy_app_debug_get, bpy_app_debug_set, (char *)bpy_app_debug_doc, (void *)G_DEBUG_WM},
 	{(char *)"debug_depsgraph", bpy_app_debug_get, bpy_app_debug_set, (char *)bpy_app_debug_doc, (void *)G_DEBUG_DEPSGRAPH},
+	{(char *)"debug_simdata",   bpy_app_debug_get, bpy_app_debug_set, (char *)bpy_app_debug_doc, (void *)G_DEBUG_SIMDATA},
 
 	{(char *)"debug_value", bpy_app_debug_value_get, bpy_app_debug_value_set, (char *)bpy_app_debug_value_doc, NULL},
 	{(char *)"tempdir", bpy_app_tempdir_get, NULL, (char *)bpy_app_tempdir_doc, NULL},

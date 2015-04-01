@@ -36,6 +36,11 @@
 #include "util_foreach.h"
 #include "util_progress.h"
 
+#ifdef WITH_CYCLES_DEBUG
+#  include "util_guarded_allocator.h"
+#  include "util_logging.h"
+#endif
+
 CCL_NAMESPACE_BEGIN
 
 Scene::Scene(const SceneParams& params_, const DeviceInfo& device_info_)
@@ -165,6 +170,11 @@ void Scene::device_update(Device *device_, Progress& progress)
 
 	if(progress.get_cancel() || device->have_error()) return;
 
+	progress.set_status("Updating Camera");
+	camera->device_update(device, &dscene, this);
+
+	if(progress.get_cancel() || device->have_error()) return;
+
 	progress.set_status("Updating Objects");
 	object_manager->device_update(device, &dscene, this, progress);
 
@@ -185,6 +195,11 @@ void Scene::device_update(Device *device_, Progress& progress)
 
 	if(progress.get_cancel() || device->have_error()) return;
 
+	progress.set_status("Updating Camera Volume");
+	camera->device_update_volume(device, &dscene, this);
+
+	if(progress.get_cancel() || device->have_error()) return;
+
 	progress.set_status("Updating Hair Systems");
 	curve_system_manager->device_update(device, &dscene, this, progress);
 
@@ -192,12 +207,6 @@ void Scene::device_update(Device *device_, Progress& progress)
 
 	progress.set_status("Updating Lookup Tables");
 	lookup_tables->device_update(device, &dscene);
-
-	if(progress.get_cancel() || device->have_error()) return;
-
-	/* TODO(sergey): Make sure camera is not needed above. */
-	progress.set_status("Updating Camera");
-	camera->device_update(device, &dscene, this);
 
 	if(progress.get_cancel() || device->have_error()) return;
 
@@ -235,6 +244,12 @@ void Scene::device_update(Device *device_, Progress& progress)
 		progress.set_status("Updating Device", "Writing constant memory");
 		device->const_copy_to("__data", &dscene.data, sizeof(dscene.data));
 	}
+
+#ifdef WITH_CYCLES_DEBUG
+	VLOG(1) << "System memory statistics after full device sync:\n"
+	        << "  Usage: " << util_guarded_get_mem_used() << "\n"
+	        << "  Peak: " << util_guarded_get_mem_peak();
+#endif
 }
 
 Scene::MotionType Scene::need_motion(bool advanced_shading)

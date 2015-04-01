@@ -189,6 +189,7 @@ bool ED_view3d_camera_autokey(
         struct bContext *C, const bool do_rotate, const bool do_translate)
 {
 	if (autokeyframe_cfra_can_key(scene, id_key)) {
+		const float cfra = (float)CFRA;
 		ListBase dsources = {NULL, NULL};
 
 		/* add data-source override for the camera object */
@@ -200,12 +201,12 @@ bool ED_view3d_camera_autokey(
 		 *    TODO: need to check in future that frame changed before doing this
 		 */
 		if (do_rotate) {
-			struct KeyingSet *ks = ANIM_builtin_keyingset_get_named(NULL, ANIM_KS_ROTATION_ID);
-			ANIM_apply_keyingset(C, &dsources, NULL, ks, MODIFYKEY_MODE_INSERT, (float)CFRA);
+			struct KeyingSet *ks = ANIM_get_keyingset_for_autokeying(scene, ANIM_KS_ROTATION_ID);
+			ANIM_apply_keyingset(C, &dsources, NULL, ks, MODIFYKEY_MODE_INSERT, cfra);
 		}
 		if (do_translate) {
-			struct KeyingSet *ks = ANIM_builtin_keyingset_get_named(NULL, ANIM_KS_LOCATION_ID);
-			ANIM_apply_keyingset(C, &dsources, NULL, ks, MODIFYKEY_MODE_INSERT, (float)CFRA);
+			struct KeyingSet *ks = ANIM_get_keyingset_for_autokeying(scene, ANIM_KS_LOCATION_ID);
+			ANIM_apply_keyingset(C, &dsources, NULL, ks, MODIFYKEY_MODE_INSERT, cfra);
 		}
 
 		/* free temp data */
@@ -1034,7 +1035,7 @@ static void viewrotate_apply(ViewOpsData *vod, int x, int y)
 		 * - of rotation is linearly proportional
 		 * - to the distance that the mouse is
 		 * - dragged. */
-		phi = si * (float)(M_PI / 2.0);
+		phi = si * (float)M_PI_2;
 
 		q1[0] = cosf(phi);
 		mul_v3_fl(q1 + 1, sinf(phi));
@@ -1926,7 +1927,7 @@ static void viewmove_apply(ViewOpsData *vod, int x, int y)
 		vod->rv3d->ofs_lock[1] -= ((vod->oldy - y) * 2.0f) / (float)vod->ar->winy;
 	}
 	else if ((vod->rv3d->persp == RV3D_CAMOB) && !ED_view3d_camera_lock_check(vod->v3d, vod->rv3d)) {
-		const float zoomfac = BKE_screen_view3d_zoom_to_fac((float)vod->rv3d->camzoom) * 2.0f;
+		const float zoomfac = BKE_screen_view3d_zoom_to_fac(vod->rv3d->camzoom) * 2.0f;
 		vod->rv3d->camdx += (vod->oldx - x) / (vod->ar->winx * zoomfac);
 		vod->rv3d->camdy += (vod->oldy - y) / (vod->ar->winy * zoomfac);
 		CLAMP(vod->rv3d->camdx, -1.0f, 1.0f);
@@ -3373,7 +3374,8 @@ void VIEW3D_OT_render_border(wmOperatorType *ot)
 	/* rna */
 	WM_operator_properties_border(ot);
 
-	prop = RNA_def_boolean(ot->srna, "camera_only", 0, "Camera Only", "Set render border for camera view and final render only");
+	prop = RNA_def_boolean(ot->srna, "camera_only", false, "Camera Only",
+	                       "Set render border for camera view and final render only");
 	RNA_def_property_flag(prop, PROP_HIDDEN);
 }
 
@@ -5003,8 +5005,9 @@ BGpic *ED_view3D_background_image_new(View3D *v3d)
 {
 	BGpic *bgpic = MEM_callocN(sizeof(BGpic), "Background Image");
 
-	bgpic->size = 5.0;
-	bgpic->blend = 0.5;
+	bgpic->rotation = 0.0f;
+	bgpic->size = 5.0f;
+	bgpic->blend = 0.5f;
 	bgpic->iuser.fie_ima = 2;
 	bgpic->iuser.ok = 1;
 	bgpic->view = 0; /* 0 for all */

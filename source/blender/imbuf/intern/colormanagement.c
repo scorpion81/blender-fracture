@@ -1141,7 +1141,7 @@ void IMB_colormanagement_validate_settings(ColorManagedDisplaySettings *display_
 	for (view_link = display->views.first; view_link; view_link = view_link->next) {
 		ColorManagedView *view = view_link->data;
 
-		if (!strcmp(view->name, view_settings->view_transform))
+		if (STREQ(view->name, view_settings->view_transform))
 			break;
 	}
 
@@ -1496,7 +1496,7 @@ static bool is_ibuf_rect_in_display_space(ImBuf *ibuf, const ColorManagedViewSet
 		const char *from_colorspace = ibuf->rect_colorspace->name;
 		const char *to_colorspace = IMB_colormanagement_get_display_colorspace_name(view_settings, display_settings);
 
-		if (to_colorspace && !strcmp(from_colorspace, to_colorspace))
+		if (to_colorspace && STREQ(from_colorspace, to_colorspace))
 			return true;
 	}
 
@@ -1625,7 +1625,7 @@ static void colormanagement_transform_ex(float *buffer, int width, int height, i
 		return;
 	}
 
-	if (!strcmp(from_colorspace, to_colorspace)) {
+	if (STREQ(from_colorspace, to_colorspace)) {
 		/* if source and destination color spaces are identical, skip
 		 * threading overhead and simply do nothing
 		 */
@@ -1666,7 +1666,7 @@ void IMB_colormanagement_transform_v4(float pixel[4], const char *from_colorspac
 		return;
 	}
 
-	if (!strcmp(from_colorspace, to_colorspace)) {
+	if (STREQ(from_colorspace, to_colorspace)) {
 		/* if source and destination color spaces are identical, skip
 		 * threading overhead and simply do nothing
 		 */
@@ -1918,7 +1918,7 @@ ImBuf *IMB_colormanagement_imbuf_for_write(ImBuf *ibuf, bool save_as_render, boo
 		 * should be pretty safe since this image buffer is supposed to be used for
 		 * saving only and ftype would be overwritten a bit later by BKE_imbuf_write
 		 */
-		colormanaged_ibuf->ftype = BKE_imtype_to_ftype(image_format_data->imtype);
+		colormanaged_ibuf->ftype = BKE_image_imtype_to_ftype(image_format_data->imtype);
 
 		/* if file format isn't able to handle float buffer itself,
 		 * we need to allocate byte buffer and store color managed
@@ -2152,7 +2152,7 @@ ColorManagedDisplay *colormanage_display_get_named(const char *name)
 	ColorManagedDisplay *display;
 
 	for (display = global_displays.first; display; display = display->next) {
-		if (!strcmp(display->name, name))
+		if (STREQ(display->name, name))
 			return display;
 	}
 
@@ -2257,7 +2257,7 @@ ColorManagedView *colormanage_view_get_named(const char *name)
 	ColorManagedView *view;
 
 	for (view = global_views.first; view; view = view->next) {
-		if (!strcmp(view->name, name))
+		if (STREQ(view->name, name))
 			return view;
 	}
 
@@ -2373,7 +2373,7 @@ ColorSpace *colormanage_colorspace_get_named(const char *name)
 	ColorSpace *colorspace;
 
 	for (colorspace = global_colorspaces.first; colorspace; colorspace = colorspace->next) {
-		if (!strcmp(colorspace->name, name))
+		if (STREQ(colorspace->name, name))
 			return colorspace;
 	}
 
@@ -2459,7 +2459,7 @@ ColorManagedLook *colormanage_look_get_named(const char *name)
 	ColorManagedLook *look;
 
 	for (look = global_looks.first; look; look = look->next) {
-		if (!strcmp(look->name, name)) {
+		if (STREQ(look->name, name)) {
 			return look;
 		}
 	}

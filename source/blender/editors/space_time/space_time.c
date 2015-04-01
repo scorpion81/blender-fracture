@@ -58,6 +58,7 @@
 
 #include "UI_resources.h"
 #include "UI_view2d.h"
+#include "UI_interface.h"
 
 #include "ED_space_api.h"
 #include "ED_markers.h"
@@ -90,13 +91,12 @@ static void time_draw_sfra_efra(Scene *scene, View2D *v2d)
 	fdrawline((float)PEFRA, v2d->cur.ymin, (float)PEFRA, v2d->cur.ymax);
 }
 
-#define CACHE_DRAW_HEIGHT   3.0f
-
 static void time_draw_cache(SpaceTime *stime, Object *ob, Scene *scene)
 {
 	PTCacheID *pid;
 	ListBase pidlist;
 	SpaceTimeCache *stc = stime->caches.first;
+	const float cache_draw_height = (4.0f * UI_DPI_FAC * U.pixelsize);
 	float yoffs = 0.f;
 	
 	if (!(stime->cache_display & TIME_CACHE_DISPLAY) || (!ob))
@@ -172,7 +172,7 @@ static void time_draw_cache(SpaceTime *stime, Object *ob, Scene *scene)
 		
 		glPushMatrix();
 		glTranslatef(0.0, (float)V2D_SCROLL_HEIGHT + yoffs, 0.0);
-		glScalef(1.0, CACHE_DRAW_HEIGHT, 0.0);
+		glScalef(1.0, cache_draw_height, 0.0);
 		
 		switch (pid->type) {
 			case PTCACHE_TYPE_SOFTBODY:
@@ -230,7 +230,7 @@ static void time_draw_cache(SpaceTime *stime, Object *ob, Scene *scene)
 		
 		glPopMatrix();
 		
-		yoffs += CACHE_DRAW_HEIGHT;
+		yoffs += cache_draw_height;
 
 		stc = stc->next;
 	}
@@ -295,6 +295,8 @@ static void time_draw_idblock_keyframes(View2D *v2d, ID *id, short onlysel)
 	bDopeSheet ads = {NULL};
 	DLRBT_Tree keys;
 	ActKeyColumn *ak;
+	float ymin = v2d->tot.ymin;
+	float ymax = v2d->tot.ymax * 0.6f + ymin * 0.4f;
 	
 	/* init binarytree-list for getting keyframes */
 	BLI_dlrbTree_init(&keys);
@@ -302,7 +304,7 @@ static void time_draw_idblock_keyframes(View2D *v2d, ID *id, short onlysel)
 	/* init dopesheet settings */
 	if (onlysel)
 		ads.filterflag |= ADS_FILTER_ONLYSEL;
-	
+
 	/* populate tree with keyframe nodes */
 	switch (GS(id->name)) {
 		case ID_SCE:
@@ -329,8 +331,8 @@ static void time_draw_idblock_keyframes(View2D *v2d, ID *id, short onlysel)
 	     (ak) && (ak->cfra <= v2d->cur.xmax);
 	     ak = ak->next)
 	{
-		glVertex2f(ak->cfra, v2d->tot.ymin);
-		glVertex2f(ak->cfra, v2d->tot.ymax);
+		glVertex2f(ak->cfra, ymin);
+		glVertex2f(ak->cfra, ymax);
 	}
 	glEnd(); // GL_LINES
 		

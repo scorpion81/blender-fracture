@@ -295,7 +295,7 @@ int Controller::LoadMesh(Render *re, SceneRenderLayer *srl)
 		}
 		cam->setProjectionMatrix(proj);
 		_RootNode->AddChild(cam);
-		_RootNode->AddChild(new NodeSceneRenderLayer(*srl));
+		_RootNode->AddChild(new NodeSceneRenderLayer(*re->scene, *srl));
 
 		sceneHashFunc.reset();
 		//blenderScene->accept(sceneHashFunc);
@@ -869,7 +869,7 @@ void Controller::DrawStrokes()
 	real d = _Chrono.stop();
 	if (G.debug & G_DEBUG_FREESTYLE) {
 		cout << "Strokes generation  : " << d << endl;
-		cout << "Stroke count  : " << _Canvas->stroke_count << endl;
+		cout << "Stroke count  : " << _Canvas->getStrokeCount() << endl;
 	}
 	resetModified();
 	DeleteViewMap();

@@ -37,7 +37,7 @@ class CYCLES_MT_integrator_presets(Menu):
     draw = Menu.draw_preset
 
 
-class CyclesButtonsPanel():
+class CyclesButtonsPanel:
     bl_space_type = "PROPERTIES"
     bl_region_type = "WINDOW"
     bl_context = "render"
@@ -445,6 +445,7 @@ class CyclesCamera_PT_dof(CyclesButtonsPanel, Panel):
 
         cam = context.camera
         ccam = cam.cycles
+        dof_options = cam.gpu_dof
 
         split = layout.split()
 
@@ -455,6 +456,7 @@ class CyclesCamera_PT_dof(CyclesButtonsPanel, Panel):
         sub = col.row()
         sub.active = cam.dof_object is None
         sub.prop(cam, "dof_distance", text="Distance")
+        col.prop(dof_options, "fstop")
 
         col = split.column()
 
@@ -1417,6 +1419,7 @@ def get_panels():
         "DATA_PT_vertex_colors",
         "DATA_PT_camera",
         "DATA_PT_camera_display",
+        "DATA_PT_camera_safe_areas",
         "DATA_PT_lens",
         "DATA_PT_speaker",
         "DATA_PT_distance",

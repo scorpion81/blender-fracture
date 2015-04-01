@@ -61,6 +61,7 @@
 
 #include "RNA_access.h"
 
+#include "BKE_animsys.h"
 #include "BKE_curve.h"
 #include "BKE_key.h"
 #include "BKE_nla.h"
@@ -3519,6 +3520,7 @@ void ANIM_channel_draw(bAnimContext *ac, bAnimListElem *ale, float yminc, float 
 	/* step 5) draw name ............................................... */
 	/* TODO: when renaming, we might not want to draw this, especially if name happens to be longer than channel */
 	if (acf->name) {
+		const uiFontStyle *fstyle = UI_FSTYLE_WIDGET;
 		char name[ANIM_CHAN_NAME_SIZE]; /* hopefully this will be enough! */
 		
 		/* set text color */
@@ -3532,7 +3534,7 @@ void ANIM_channel_draw(bAnimContext *ac, bAnimListElem *ale, float yminc, float 
 		acf->name(ale, name);
 		
 		offset += 3;
-		UI_draw_string(offset, ytext, name);
+		UI_fontstyle_draw_simple(fstyle, offset, ytext, name);
 		
 		/* draw red underline if channel is disabled */
 		if ((ale->type == ANIMTYPE_FCURVE) && (ale->flag & FCURVE_DISABLED)) {
@@ -3688,6 +3690,7 @@ static void achannel_nlatrack_solo_widget_cb(bContext *C, void *adt_poin, void *
 static void achannel_setting_slider_cb(bContext *C, void *id_poin, void *fcu_poin)
 {
 	ID *id = (ID *)id_poin;
+	AnimData *adt = BKE_animdata_from_id(id);
 	FCurve *fcu = (FCurve *)fcu_poin;
 	
 	ReportList *reports = CTX_wm_reports(C);
@@ -3698,9 +3701,8 @@ static void achannel_setting_slider_cb(bContext *C, void *id_poin, void *fcu_poi
 	bool done = false;
 	float cfra;
 	
-	/* get current frame */
-	// NOTE: this will do for now...
-	cfra = (float)CFRA;
+	/* get current frame and apply NLA-mapping to it (if applicable) */
+	cfra = BKE_nla_tweakedit_remap(adt, (float)CFRA, NLATIME_CONVERT_UNMAP);
 	
 	/* get flags for keyframing */
 	flag = ANIM_get_keyframing_flags(scene, 1);
@@ -3737,9 +3739,8 @@ static void achannel_setting_slider_shapekey_cb(bContext *C, void *key_poin, voi
 	bool done = false;
 	float cfra;
 	
-	/* get current frame */
-	// NOTE: this will do for now...
-	cfra = (float)CFRA;
+	/* get current frame and apply NLA-mapping to it (if applicable) */
+	cfra = BKE_nla_tweakedit_remap(key->adt, (float)CFRA, NLATIME_CONVERT_UNMAP);
 	
 	/* get flags for keyframing */
 	flag = ANIM_get_keyframing_flags(scene, 1);

@@ -31,6 +31,7 @@
 
 #include "DNA_anim_types.h"
 #include "DNA_armature_types.h"
+#include "DNA_gpencil_types.h"
 #include "DNA_group_types.h"
 #include "DNA_lamp_types.h"
 #include "DNA_object_types.h"
@@ -175,16 +176,20 @@ static void restrictbutton_recursive_child(bContext *C, Scene *scene, Object *ob
 {
 	Main *bmain = CTX_data_main(C);
 	Object *ob;
+
 	for (ob = bmain->object.first; ob; ob = ob->id.next) {
 		if (BKE_object_is_child_recursive(ob_parent, ob)) {
-			if (state) {
-				ob->restrictflag |= flag;
-				if (deselect) {
-					ED_base_object_select(BKE_scene_base_find(scene, ob), BA_DESELECT);
+			/* only do if child object is selectable */
+			if ((flag == OB_RESTRICT_SELECT) || (ob->restrictflag & OB_RESTRICT_SELECT) == 0) {
+				if (state) {
+					ob->restrictflag |= flag;
+					if (deselect) {
+						ED_base_object_select(BKE_scene_base_find(scene, ob), BA_DESELECT);
+					}
 				}
-			}
-			else {
-				ob->restrictflag &= ~flag;
+				else {
+					ob->restrictflag &= ~flag;
+				}
 			}
 
 			if (rnapropname) {
@@ -346,6 +351,11 @@ static void restrictbutton_ebone_visibility_cb(bContext *C, void *UNUSED(poin), 
 	WM_event_add_notifier(C, NC_OBJECT | ND_POSE, NULL);
 }
 
+static void restrictbutton_gp_layer_flag_cb(bContext *C, void *UNUSED(poin), void *UNUSED(poin2))
+{
+	WM_event_add_notifier(C, NC_GPENCIL | ND_DATA | NA_EDITED, NULL);
+}
+
 static int group_restrict_flag(Group *gr, int flag)
 {
 	GroupObject *gob;
@@ -437,6 +447,20 @@ static void restrictbutton_gr_restrict_render(bContext *C, void *poin, void *poi
 	WM_event_add_notifier(C, NC_GROUP, NULL);
 }
 
+static void restrictbutton_id_user_toggle(bContext *UNUSED(C), void *poin, void *UNUSED(poin2))
+{
+	ID *id = (ID *)poin;
+	
+	BLI_assert(id != NULL);
+	
+	if (id->flag & LIB_FAKEUSER) {
+		id_us_plus(id);
+	}
+	else {
+		id_us_min(id);
+	}
+}
+
 
 static void namebutton_cb(bContext *C, void *tsep, char *oldname)
 {
@@ -447,7 +471,7 @@ static void namebutton_cb(bContext *C, void *tsep, char *oldname)
 	TreeStoreElem *tselem = tsep;
 	
 	if (ts && tselem) {
-		TreeElement *te = outliner_find_tse(soops, tselem);
+		TreeElement *te = outliner_find_tree_element(&soops->tree, tselem);
 		
 		if (tselem->type == 0) {
 			test_idbutton(tselem->id->name);  // library.c, unique name and alpha sort
@@ -547,6 +571,17 @@ static void namebutton_cb(bContext *C, void *tsep, char *oldname)
 					BLI_uniquename(&ob->pose->agroups, grp, CTX_DATA_(BLF_I18NCONTEXT_ID_ACTION, "Group"), '.',
 					               offsetof(bActionGroup, name), sizeof(grp->name));
 					WM_event_add_notifier(C, NC_OBJECT | ND_POSE, ob);
+					break;
+				}
+				case TSE_GP_LAYER:
+				{
+					bGPdata *gpd = (bGPdata *)tselem->id; // id = GP Datablock
+					bGPDlayer *gpl = te->directdata;
+					
+					// XXX: name needs translation stuff
+					BLI_uniquename(&gpd->layers, gpl, "GP Layer", '.',
+					               offsetof(bGPDlayer, info), sizeof(gpl->info));
+					WM_event_add_notifier(C, NC_GPENCIL | ND_DATA, gpd);
 					break;
 				}
 				case TSE_R_LAYER:
@@ -742,9 +777,92 @@ static void outliner_draw_restrictbuts(uiBlock *block, Scene *scene, ARegion *ar
 
 				UI_block_emboss_set(block, UI_EMBOSS);
 			}
+			else if (tselem->type == TSE_GP_LAYER) {
+				bGPDlayer *gpl = (bGPDlayer *)te->directdata;
+				
+				UI_block_emboss_set(block, UI_EMBOSS_NONE);
+				
+				bt = uiDefIconButBitS(block, UI_BTYPE_ICON_TOGGLE, GP_LAYER_HIDE, 0, ICON_RESTRICT_VIEW_OFF,
+				                      (int)(ar->v2d.cur.xmax - OL_TOG_RESTRICT_VIEWX), te->ys, UI_UNIT_X,
+				                      UI_UNIT_Y, &gpl->flag, 0, 0, 0, 0,
+				                      TIP_("Restrict/Allow visibility in the 3D View"));
+				UI_but_func_set(bt, restrictbutton_gp_layer_flag_cb, NULL, gpl);
+				UI_but_flag_enable(bt, UI_BUT_DRAG_LOCK);
+				
+				bt = uiDefIconButBitS(block, UI_BTYPE_ICON_TOGGLE, GP_LAYER_LOCKED, 0, ICON_UNLOCKED,
+				                      (int)(ar->v2d.cur.xmax - OL_TOG_RESTRICT_SELECTX), te->ys, UI_UNIT_X,
+				                      UI_UNIT_Y, &gpl->flag, 0, 0, 0, 0,
+				                      TIP_("Restrict/Allow editing of strokes and keyframes in this layer"));
+				UI_but_func_set(bt, restrictbutton_gp_layer_flag_cb, NULL, gpl);
+				UI_but_flag_enable(bt, UI_BUT_DRAG_LOCK);
+				
+				/* TODO: visibility in renders */
+				
+				UI_block_emboss_set(block, UI_EMBOSS);
+			}
 		}
 		
 		if (TSELEM_OPEN(tselem, soops)) outliner_draw_restrictbuts(block, scene, ar, soops, &te->subtree);
+	}
+}
+
+static void outliner_draw_userbuts(uiBlock *block, ARegion *ar, SpaceOops *soops, ListBase *lb)
+{
+	uiBut *bt;
+	TreeElement *te;
+	TreeStoreElem *tselem;
+
+	for (te = lb->first; te; te = te->next) {
+		tselem = TREESTORE(te);
+		if (te->ys + 2 * UI_UNIT_Y >= ar->v2d.cur.ymin && te->ys <= ar->v2d.cur.ymax) {
+			if (tselem->type == 0) {
+				ID *id = tselem->id;
+				const char *tip = NULL;
+				int icon = ICON_NONE;
+				char buf[16] = "";
+				int but_flag = UI_BUT_DRAG_LOCK;
+
+				if (id->lib)
+					but_flag |= UI_BUT_DISABLED;
+
+				UI_block_emboss_set(block, UI_EMBOSS_NONE);
+
+				if (id->flag & LIB_FAKEUSER) {
+					icon = ICON_FILE_TICK;
+					tip  = TIP_("Datablock will be retained using a fake user");
+				}
+				else {
+					icon = ICON_X;
+					tip  = TIP_("Datablock has no users and will be deleted");
+				}
+				bt = uiDefIconButBitS(block, UI_BTYPE_TOGGLE, LIB_FAKEUSER, 1, icon,
+				                      (int)(ar->v2d.cur.xmax - OL_TOG_RESTRICT_VIEWX), te->ys, UI_UNIT_X, UI_UNIT_Y,
+				                      &id->flag, 0, 0, 0, 0, tip);
+				UI_but_func_set(bt, restrictbutton_id_user_toggle, id, NULL);
+				UI_but_flag_enable(bt, but_flag);
+				
+				
+				BLI_str_format_int_grouped(buf, id->us);
+				bt = uiDefBut(block, UI_BTYPE_BUT, 1, buf, 
+				              (int)(ar->v2d.cur.xmax - OL_TOG_RESTRICT_SELECTX), te->ys, 
+				              UI_UNIT_X, UI_UNIT_Y, NULL, 0.0, 0.0, 0, 0,
+				              TIP_("Number of users of this datablock"));
+				UI_but_flag_enable(bt, but_flag);
+				
+				
+				bt = uiDefButBitS(block, UI_BTYPE_TOGGLE, LIB_FAKEUSER, 1, (id->flag & LIB_FAKEUSER) ? "F" : " ",
+				                  (int)(ar->v2d.cur.xmax - OL_TOG_RESTRICT_RENDERX), te->ys, UI_UNIT_X, UI_UNIT_Y,
+				                  &id->flag, 0, 0, 0, 0,
+				                  TIP_("Datablock has a 'fake' user which will keep it in the file "
+				                       "even if nothing else uses it"));
+				UI_but_func_set(bt, restrictbutton_id_user_toggle, id, NULL);
+				UI_but_flag_enable(bt, but_flag);
+				
+				UI_block_emboss_set(block, UI_EMBOSS);
+			}
+		}
+		
+		if (TSELEM_OPEN(tselem, soops)) outliner_draw_userbuts(block, ar, soops, &te->subtree);
 	}
 }
 
@@ -875,6 +993,36 @@ static void tselem_draw_icon_uibut(struct DrawIconArg *arg, int icon)
 			UI_but_drag_set_id(but, arg->id);
 	}
 
+}
+
+static void tselem_draw_gp_icon_uibut(struct DrawIconArg *arg, ID *id, bGPDlayer *gpl)
+{
+	/* restrict column clip - skip it for now... */
+	if (arg->x >= arg->xmax) {
+		/* pass */
+	}
+	else {
+		PointerRNA ptr;
+		float w = 0.85f * U.widget_unit;
+		float h = 0.85f * UI_UNIT_Y;
+		
+		RNA_pointer_create(id, &RNA_GPencilLayer, gpl, &ptr);
+		
+		UI_block_align_begin(arg->block);
+		
+		UI_block_emboss_set(arg->block, RNA_boolean_get(&ptr, "is_stroke_visible") ? UI_EMBOSS : UI_EMBOSS_NONE);
+		uiDefButR(arg->block, UI_BTYPE_COLOR, 1, "", arg->xb, arg->yb, w, h,
+		          &ptr, "color", -1,
+		          0, 0, 0, 0, NULL);
+		
+		UI_block_emboss_set(arg->block, RNA_boolean_get(&ptr, "is_fill_visible") ? UI_EMBOSS : UI_EMBOSS_NONE);
+		uiDefButR(arg->block, UI_BTYPE_COLOR, 1, "", arg->xb, arg->yb, w, h,
+		          &ptr, "fill_color", -1,
+		          0, 0, 0, 0, NULL);
+		
+		UI_block_emboss_set(arg->block, UI_EMBOSS_NONE);
+		UI_block_align_end(arg->block);
+	}
 }
 
 static void tselem_draw_icon(uiBlock *block, int xmax, float x, float y, TreeStoreElem *tselem, TreeElement *te,
@@ -1018,6 +1166,10 @@ static void tselem_draw_icon(uiBlock *block, int xmax, float x, float y, TreeSto
 						UI_icon_draw(x, y, ICON_MOD_WIREFRAME); break;
 					case eModifierType_LaplacianDeform:
 						UI_icon_draw(x, y, ICON_MOD_MESHDEFORM); break;  /* XXX, needs own icon */
+					case eModifierType_DataTransfer:
+						UI_icon_draw(x, y, ICON_MOD_DATA_TRANSFER); break;
+					case eModifierType_NormalEdit:
+						UI_icon_draw(x, y, ICON_MOD_NORMALEDIT); break;
 					case eModifierType_Fracture:
 						UI_icon_draw(x, y, ICON_MOD_EXPLODE); break;
 					/* Default */
@@ -1071,6 +1223,9 @@ static void tselem_draw_icon(uiBlock *block, int xmax, float x, float y, TreeSto
 				}
 				else
 					UI_icon_draw(x, y, RNA_struct_ui_icon(te->rnaptr.type));
+				break;
+			case TSE_GP_LAYER:
+				tselem_draw_gp_icon_uibut(&arg, tselem->id, te->directdata);
 				break;
 			default:
 				UI_icon_draw(x, y, ICON_DOT); break;
@@ -1165,6 +1320,8 @@ static void tselem_draw_icon(uiBlock *block, int xmax, float x, float y, TreeSto
 				tselem_draw_icon_uibut(&arg, ICON_LIBRARY_DATA_DIRECT); break;
 			case ID_LS:
 				tselem_draw_icon_uibut(&arg, ICON_LINE_DATA); break;
+			case ID_GD:
+				tselem_draw_icon_uibut(&arg, ICON_GREASEPENCIL); break;
 		}
 	}
 }
@@ -1248,8 +1405,9 @@ static void outliner_set_coord_tree_element(SpaceOops *soops, TreeElement *te, i
 }
 
 
-static void outliner_draw_tree_element(bContext *C, uiBlock *block, Scene *scene, ARegion *ar, SpaceOops *soops,
-                                       TreeElement *te, int startx, int *starty, TreeElement **te_edit)
+static void outliner_draw_tree_element(
+        bContext *C, uiBlock *block, const uiFontStyle *fstyle, Scene *scene, ARegion *ar, SpaceOops *soops,
+        TreeElement *te, int startx, int *starty, TreeElement **te_edit)
 {
 	TreeElement *ten;
 	TreeStoreElem *tselem;
@@ -1408,9 +1566,9 @@ static void outliner_draw_tree_element(bContext *C, uiBlock *block, Scene *scene
 		else if (ELEM(tselem->type, TSE_RNA_PROPERTY, TSE_RNA_ARRAY_ELEM)) UI_ThemeColorBlend(TH_BACK, TH_TEXT, 0.75f);
 		else UI_ThemeColor(TH_TEXT);
 		
-		UI_draw_string(startx + offsx, *starty + 5 * ufac, te->name);
+		UI_fontstyle_draw_simple(fstyle, startx + offsx, *starty + 5 * ufac, te->name);
 		
-		offsx += (int)(UI_UNIT_X + UI_fontstyle_string_width(te->name));
+		offsx += (int)(UI_UNIT_X + UI_fontstyle_string_width(fstyle, te->name));
 		
 		/* closed item, we draw the icons, not when it's a scene, or master-server list though */
 		if (!TSELEM_OPEN(tselem, soops)) {
@@ -1448,13 +1606,15 @@ static void outliner_draw_tree_element(bContext *C, uiBlock *block, Scene *scene
 		
 	if (TSELEM_OPEN(tselem, soops)) {
 		*starty -= UI_UNIT_Y;
-		
-		for (ten = te->subtree.first; ten; ten = ten->next)
-			outliner_draw_tree_element(C, block, scene, ar, soops, ten, startx + UI_UNIT_X, starty, te_edit);
+
+		for (ten = te->subtree.first; ten; ten = ten->next) {
+			outliner_draw_tree_element(C, block, fstyle, scene, ar, soops, ten, startx + UI_UNIT_X, starty, te_edit);
+		}
 	}
 	else {
-		for (ten = te->subtree.first; ten; ten = ten->next)
+		for (ten = te->subtree.first; ten; ten = ten->next) {
 			outliner_set_coord_tree_element(soops, ten, startx, *starty);
+		}
 		
 		*starty -= UI_UNIT_Y;
 	}
@@ -1537,6 +1697,7 @@ static void outliner_draw_selection(ARegion *ar, SpaceOops *soops, ListBase *lb,
 static void outliner_draw_tree(bContext *C, uiBlock *block, Scene *scene, ARegion *ar,
                                SpaceOops *soops, TreeElement **te_edit)
 {
+	const uiFontStyle *fstyle = UI_FSTYLE_WIDGET;
 	TreeElement *te;
 	int starty, startx;
 	float col[3];
@@ -1567,7 +1728,7 @@ static void outliner_draw_tree(bContext *C, uiBlock *block, Scene *scene, ARegio
 	starty = (int)ar->v2d.tot.ymax - UI_UNIT_Y - OL_Y_OFFSET;
 	startx = 0;
 	for (te = soops->tree.first; te; te = te->next) {
-		outliner_draw_tree_element(C, block, scene, ar, soops, te, startx, &starty, te_edit);
+		outliner_draw_tree_element(C, block, fstyle, scene, ar, soops, te, startx, &starty, te_edit);
 	}
 }
 
@@ -1693,6 +1854,11 @@ void draw_outliner(const bContext *C)
 		/* draw rna buttons */
 		outliner_draw_rnacols(ar, sizex_rna);
 		outliner_draw_rnabuts(block, scene, ar, soops, sizex_rna, &soops->tree);
+	}
+	else if ((soops->outlinevis == SO_ID_ORPHANS) && !(soops->flag & SO_HIDE_RESTRICTCOLS)) {
+		/* draw user toggle columns */
+		outliner_draw_restrictcols(ar);
+		outliner_draw_userbuts(block, ar, soops, &soops->tree);
 	}
 	else if (!(soops->flag & SO_HIDE_RESTRICTCOLS)) {
 		/* draw restriction columns */

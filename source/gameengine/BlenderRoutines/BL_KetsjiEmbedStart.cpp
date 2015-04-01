@@ -457,21 +457,13 @@ extern "C" void StartKetsjiShell(struct bContext *C, struct ARegion *ar, rcti *c
 				ketsjiengine->SetCameraOverrideUseOrtho((rv3d->persp == RV3D_ORTHO));
 				ketsjiengine->SetCameraOverrideProjectionMatrix(MT_CmMatrix4x4(rv3d->winmat));
 				ketsjiengine->SetCameraOverrideViewMatrix(MT_CmMatrix4x4(rv3d->viewmat));
-				if (rv3d->persp == RV3D_ORTHO)
-				{
-					ketsjiengine->SetCameraOverrideClipping(v3d->near, v3d->far);
-				}
-				else
-				{
-					ketsjiengine->SetCameraOverrideClipping(v3d->near, v3d->far);
-				}
+				ketsjiengine->SetCameraOverrideClipping(v3d->near, v3d->far);
 				ketsjiengine->SetCameraOverrideLens(v3d->lens);
 			}
 			
 			// create a scene converter, create and convert the startingscene
 			KX_ISceneConverter* sceneconverter = new KX_BlenderSceneConverter(blenderdata, ketsjiengine);
 			ketsjiengine->SetSceneConverter(sceneconverter);
-			sceneconverter->addInitFromFrame=false;
 			if (always_use_expand_framing)
 				sceneconverter->SetAlwaysUseExpandFraming(true);
 

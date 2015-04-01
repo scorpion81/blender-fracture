@@ -58,6 +58,12 @@ ccl_device bool BVH_FUNCTION_FULL_NAME(QBVH)(KernelGlobals *kg,
 	Transform ob_tfm;
 #endif
 
+#ifndef __KERNEL_SSE41__
+	if(!isfinite(P.x)) {
+		return false;
+	}
+#endif
+
 #if BVH_FEATURE(BVH_INSTANCING)
 	int num_hits_in_instance = 0;
 #endif
@@ -216,6 +222,8 @@ ccl_device bool BVH_FUNCTION_FULL_NAME(QBVH)(KernelGlobals *kg,
 				if(primAddr >= 0) {
 #endif
 					int primAddr2 = __float_as_int(leaf.y);
+					const uint type = __float_as_int(leaf.w);
+					const uint p_type = type & PRIMITIVE_ALL;
 
 					/* Pop. */
 					nodeAddr = traversalStack[stackPtr].addr;
@@ -223,14 +231,15 @@ ccl_device bool BVH_FUNCTION_FULL_NAME(QBVH)(KernelGlobals *kg,
 
 					/* Primitive intersection. */
 					while(primAddr < primAddr2) {
+						kernel_assert(kernel_tex_fetch(__prim_type, primAddr) == type);
+
 						bool hit;
-						uint type = kernel_tex_fetch(__prim_type, primAddr);
 
 						/* todo: specialized intersect functions which don't fill in
 						 * isect unless needed and check SD_HAS_TRANSPARENT_SHADOW?
 						 * might give a few % performance improvement */
 
-						switch(type & PRIMITIVE_ALL) {
+						switch(p_type) {
 							case PRIMITIVE_TRIANGLE: {
 								hit = triangle_intersect(kg, &isect_precalc, isect_array, P, dir, PATH_RAY_SHADOW, object, primAddr);
 								break;

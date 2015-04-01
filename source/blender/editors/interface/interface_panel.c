@@ -753,9 +753,13 @@ static int find_highest_panel(const void *a1, const void *a2)
 	const PanelSort *ps1 = a1, *ps2 = a2;
 	
 	/* stick uppermost header-less panels to the top of the region -
-	 * prevent them from being sorted */
-	if (ps1->pa->sortorder < ps2->pa->sortorder && ps1->pa->type->flag & PNL_NO_HEADER) return -1;
-	
+	 * prevent them from being sorted (multiple header-less panels have to be sorted though) */
+	if (ps1->pa->type->flag & PNL_NO_HEADER && ps2->pa->type->flag & PNL_NO_HEADER) {
+		/* skip and check for ofs and sortorder below */
+	}
+	else if (ps1->pa->type->flag & PNL_NO_HEADER) return -1;
+	else if (ps2->pa->type->flag & PNL_NO_HEADER) return 1;
+
 	if (ps1->pa->ofsy + ps1->pa->sizey < ps2->pa->ofsy + ps2->pa->sizey) return 1;
 	else if (ps1->pa->ofsy + ps1->pa->sizey > ps2->pa->ofsy + ps2->pa->sizey) return -1;
 	else if (ps1->pa->sortorder > ps2->pa->sortorder) return 1;
@@ -1486,7 +1490,7 @@ void UI_panel_category_draw_all(ARegion *ar, const char *category_id_active)
 	}
 
 	BLF_enable(fontid, BLF_ROTATION);
-	BLF_rotation(fontid, M_PI / 2);
+	BLF_rotation(fontid, M_PI_2);
 	//UI_fontstyle_set(&style->widget);
 	ui_fontscale(&fstyle_points, aspect / (U.pixelsize * 1.1f));
 	BLF_size(fontid, fstyle_points, U.dpi);
@@ -1753,7 +1757,7 @@ int ui_handler_panel_region(bContext *C, const wmEvent *event, ARegion *ar)
 		
 		/* XXX hardcoded key warning */
 		if ((inside || inside_header) && event->val == KM_PRESS) {
-			if (event->type == AKEY && !ELEM(KM_MOD_FIRST, event->ctrl, event->oskey, event->shift, event->alt)) {
+			if (event->type == AKEY && ((event->ctrl + event->oskey + event->shift + event->alt) == 0)) {
 				
 				if (pa->flag & PNL_CLOSEDY) {
 					if ((block->rect.ymax <= my) && (block->rect.ymax + PNL_HEADER >= my))

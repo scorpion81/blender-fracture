@@ -65,7 +65,7 @@ static int roundboxtype = UI_CNR_ALL;
 void UI_draw_roundbox_corner_set(int type)
 {
 	/* Not sure the roundbox function is the best place to change this
-	 * if this is undone, its not that big a deal, only makes curves edges
+	 * if this is undone, it's not that big a deal, only makes curves edges
 	 * square for the  */
 	roundboxtype = type;
 	
@@ -450,6 +450,51 @@ void ui_draw_but_IMAGE(ARegion *UNUSED(ar), uiBut *but, uiWidgetColors *UNUSED(w
 #endif
 }
 
+/**
+ * Draw title and text safe areas.
+ *
+ * The first 4 parameters are the offsets for the view, not the zones.
+ */
+void UI_draw_safe_areas(
+        float x1, float x2, float y1, float y2,
+        const float title_aspect[2], const float action_aspect[2])
+{
+	const float size_x_half = (x2 - x1) * 0.5f;
+	const float size_y_half = (y2 - y1) * 0.5f;
+
+	const float *safe_areas[] = {title_aspect, action_aspect};
+	int i, safe_len = ARRAY_SIZE(safe_areas);
+	bool is_first = true;
+
+	for (i = 0; i < safe_len; i++) {
+		if (safe_areas[i][0] || safe_areas[i][1]) {
+			float margin_x, margin_y;
+			float minx, miny, maxx, maxy;
+
+			if (is_first) {
+				UI_ThemeColorBlendShade(TH_VIEW_OVERLAY, TH_BACK, 0.25f, 0);
+				is_first = false;
+			}
+
+			margin_x = safe_areas[i][0] * size_x_half;
+			margin_y = safe_areas[i][1] * size_y_half;
+
+			minx = x1 + margin_x;
+			miny = y1 + margin_y;
+			maxx = x2 - margin_x;
+			maxy = y2 - margin_y;
+
+			glBegin(GL_LINE_LOOP);
+			glVertex2f(maxx, miny);
+			glVertex2f(maxx, maxy);
+			glVertex2f(minx, maxy);
+			glVertex2f(minx, miny);
+			glEnd();
+		}
+	}
+}
+
+
 static void draw_scope_end(const rctf *rect, GLint *scissor)
 {
 	/* restore scissortest */
@@ -494,7 +539,7 @@ static void histogram_draw_one(float r, float g, float b, float alpha,
 		glColor4f(r, g, b, alpha);
 
 		glShadeModel(GL_FLAT);
-		glBegin(GL_QUAD_STRIP);
+		glBegin(GL_TRIANGLE_STRIP);
 		glVertex2f(x, y);
 		glVertex2f(x, y + (data[0] * h));
 		for (i = 1; i < res; i++) {
@@ -777,8 +822,8 @@ static void vectorscope_draw_target(float centerx, float centery, float diam, co
 	if (u > 0 && v >= 0) tangle = atanf(v / u);
 	else if (u > 0 && v < 0) tangle = atanf(v / u) + 2.0f * (float)M_PI;
 	else if (u < 0) tangle = atanf(v / u) + (float)M_PI;
-	else if (u == 0 && v > 0.0f) tangle = (float)M_PI / 2.0f;
-	else if (u == 0 && v < 0.0f) tangle = -(float)M_PI / 2.0f;
+	else if (u == 0 && v > 0.0f) tangle = M_PI_2;
+	else if (u == 0 && v < 0.0f) tangle = -M_PI_2;
 	tampli = sqrtf(u * u + v * v);
 
 	/* small target vary by 2.5 degree and 2.5 IRE unit */
@@ -1102,7 +1147,7 @@ void ui_draw_but_COLORBAND(uiBut *but, uiWidgetColors *UNUSED(wcol), const rcti 
 	v1[1] = y1 + sizey_solid;
 	v2[1] = rect->ymax;
 	
-	glBegin(GL_QUAD_STRIP);
+	glBegin(GL_TRIANGLE_STRIP);
 	for (a = 0; a <= sizex; a++) {
 		pos = ((float)a) / sizex;
 		do_colorband(coba, pos, colf);
@@ -1121,7 +1166,7 @@ void ui_draw_but_COLORBAND(uiBut *but, uiWidgetColors *UNUSED(wcol), const rcti 
 	v1[1] = y1;
 	v2[1] = y1 + sizey_solid;
 
-	glBegin(GL_QUAD_STRIP);
+	glBegin(GL_TRIANGLE_STRIP);
 	for (a = 0; a <= sizex; a++) {
 		pos = ((float)a) / sizex;
 		do_colorband(coba, pos, colf);

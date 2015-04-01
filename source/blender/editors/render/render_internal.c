@@ -1146,8 +1146,8 @@ BLI_INLINE void rcti_scale_coords(rcti *scaled_rect, const rcti *rect,
 static void render_update_resolution(Render *re, const RenderPreview *rp,
                                      bool use_border, const rcti *clip_rect)
 {
-	int winx = rp->ar->winx / rp->resolution_divider,
-	    winy = rp->ar->winy / rp->resolution_divider;
+	int winx = rp->ar->winx / rp->resolution_divider;
+	int winy = rp->ar->winy / rp->resolution_divider;
 	if (use_border) {
 		rcti scaled_cliprct;
 		rcti_scale_coords(&scaled_cliprct, clip_rect,
@@ -1461,7 +1461,7 @@ static void render_view3d_do(RenderEngine *engine, const bContext *C)
 	engine->flag &= ~RE_ENGINE_DO_UPDATE;
 }
 
-/* callback for render engine , on changes */
+/* callback for render engine, on changes */
 void render_view3d_update(RenderEngine *engine, const bContext *C)
 {	
 	/* this shouldn't be needed and causes too many database rebuilds, but we
@@ -1617,7 +1617,17 @@ Scene *ED_render_job_get_scene(const bContext *C)
 	RenderJob *rj = (RenderJob *)WM_jobs_customdata_from_type(wm, WM_JOB_TYPE_RENDER);
 	
 	if (rj)
-		return rj->current_scene;
+		return rj->scene;
 	
+	return NULL;
+}
+
+Scene *ED_render_job_get_current_scene(const bContext *C)
+{
+	wmWindowManager *wm = CTX_wm_manager(C);
+	RenderJob *rj = (RenderJob *)WM_jobs_customdata_from_type(wm, WM_JOB_TYPE_RENDER);
+	if (rj) {
+		return rj->current_scene;
+	}
 	return NULL;
 }

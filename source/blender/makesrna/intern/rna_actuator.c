@@ -120,14 +120,10 @@ static StructRNA *rna_Actuator_refine(struct PointerRNA *ptr)
 
 static void rna_Actuator_name_set(PointerRNA *ptr, const char *value)
 {
-	bActuator *act = (bActuator *)ptr->data;
-
+	Object *ob = ptr->id.data;
+	bActuator *act = ptr->data;
 	BLI_strncpy_utf8(act->name, value, sizeof(act->name));
-
-	if (ptr->id.data) {
-		Object *ob = (Object *)ptr->id.data;
-		BLI_uniquename(&ob->actuators, act, DATA_("Actuator"), '.', offsetof(bActuator, name), sizeof(act->name));
-	}
+	BLI_uniquename(&ob->actuators, act, DATA_("Actuator"), '.', offsetof(bActuator, name), sizeof(act->name));
 }
 
 static void rna_Actuator_type_set(struct PointerRNA *ptr, int value)
@@ -494,11 +490,11 @@ static void rna_Actuator_Armature_update(Main *UNUSED(bmain), Scene *UNUSED(scen
 		bPoseChannel *pchan;
 		bPose *pose = ob->pose;
 		for (pchan = pose->chanbase.first; pchan; pchan = pchan->next) {
-			if (!strcmp(pchan->name, posechannel)) {
+			if (STREQ(pchan->name, posechannel)) {
 				/* found it, now look for constraint channel */
 				bConstraint *con;
 				for (con = pchan->constraints.first; con; con = con->next) {
-					if (!strcmp(con->name, constraint)) {
+					if (STREQ(con->name, constraint)) {
 						/* found it, all ok */
 						return;
 					}
@@ -533,14 +529,6 @@ static void rna_Actuator_editobject_mesh_set(PointerRNA *ptr, PointerRNA value)
 	bEditObjectActuator *eoa = (bEditObjectActuator *) act->data;
 
 	eoa->me = value.data;
-}
-
-static void rna_Actuator_action_action_set(PointerRNA *ptr, PointerRNA value)
-{
-	bActuator *act = (bActuator *)ptr->data;
-	bActionActuator *aa = (bActionActuator *) act->data;
-
-	aa->act = value.data;
 }
 
 #else
@@ -622,10 +610,8 @@ static void rna_def_action_actuator(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "action", PROP_POINTER, PROP_NONE);
 	RNA_def_property_pointer_sdna(prop, NULL, "act");
 	RNA_def_property_struct_type(prop, "Action");
-	RNA_def_property_flag(prop, PROP_EDITABLE);
+	RNA_def_property_flag(prop, PROP_EDITABLE | PROP_ID_REFCOUNT);
 	RNA_def_property_ui_text(prop, "Action", "");
-	/* note: custom set function is ONLY to avoid rna setting a user for this. */
-	RNA_def_property_pointer_funcs(prop, NULL, "rna_Actuator_action_action_set", NULL, NULL);
 	RNA_def_property_update(prop, NC_LOGIC, NULL);
 
 	prop = RNA_def_property(srna, "use_continue_last_frame", PROP_BOOLEAN, PROP_NONE);
@@ -2069,6 +2055,11 @@ static void rna_def_steering_actuator(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "normal_up", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", ACT_STEERING_NORMALUP);
 	RNA_def_property_ui_text(prop, "N", "Use normal of the navmesh to set \"UP\" vector");
+	RNA_def_property_update(prop, NC_LOGIC, NULL);
+
+	prop = RNA_def_property(srna, "lock_z_velocity", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", ACT_STEERING_LOCKZVEL);
+	RNA_def_property_ui_text(prop, "Lock Z velocity", "Disable simulation of linear motion along Z axis");
 	RNA_def_property_update(prop, NC_LOGIC, NULL);
 }
 

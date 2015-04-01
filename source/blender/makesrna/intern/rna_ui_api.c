@@ -295,7 +295,7 @@ static const char *rna_ui_get_enum_name(bContext *C, PointerRNA *ptr, const char
 
 	if (items) {
 		for (item = items; item->identifier; item++) {
-			if (item->identifier[0] && strcmp(item->identifier, identifier) == 0) {
+			if (item->identifier[0] && STREQ(item->identifier, identifier)) {
 				name = item->name;
 				break;
 			}
@@ -326,7 +326,7 @@ static const char *rna_ui_get_enum_description(bContext *C, PointerRNA *ptr, con
 
 	if (items) {
 		for (item = items; item->identifier; item++) {
-			if (item->identifier[0] && strcmp(item->identifier, identifier) == 0) {
+			if (item->identifier[0] && STREQ(item->identifier, identifier)) {
 				desc = item->description;
 				break;
 			}
@@ -356,7 +356,7 @@ static int rna_ui_get_enum_icon(bContext *C, PointerRNA *ptr, const char *propna
 
 	if (items) {
 		for (item = items; item->identifier; item++) {
-			if (item->identifier[0] && strcmp(item->identifier, identifier) == 0) {
+			if (item->identifier[0] && STREQ(item->identifier, identifier)) {
 				icon = item->icon;
 				break;
 			}
@@ -682,14 +682,14 @@ void RNA_api_ui_layout(StructRNA *srna)
 	
 	func = RNA_def_function(srna, "template_modifier", "uiTemplateModifier");
 	RNA_def_function_flag(func, FUNC_USE_CONTEXT);
-	RNA_def_function_ui_description(func, "Layout . Generates the UI layout for modifiers");
+	RNA_def_function_ui_description(func, "Generates the UI layout for modifiers");
 	parm = RNA_def_pointer(func, "data", "Modifier", "", "Modifier data");
 	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_RNAPTR | PROP_NEVER_NULL);
 	parm = RNA_def_pointer(func, "layout", "UILayout", "", "Sub-layout to put items in");
 	RNA_def_function_return(func, parm);
 
 	func = RNA_def_function(srna, "template_constraint", "uiTemplateConstraint");
-	RNA_def_function_ui_description(func, "Layout . Generates the UI layout for constraints");
+	RNA_def_function_ui_description(func, "Generates the UI layout for constraints");
 	parm = RNA_def_pointer(func, "data", "Constraint", "", "Constraint data");
 	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_RNAPTR | PROP_NEVER_NULL);
 	parm = RNA_def_pointer(func, "layout", "UILayout", "", "Sub-layout to put items in");
@@ -826,6 +826,8 @@ void RNA_api_ui_layout(StructRNA *srna)
 	parm = RNA_def_string(func, "active_propname", NULL, 0, "",
 	                      "Identifier of the integer property in active_data, index of the active item");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
+	RNA_def_string(func, "item_dyntip_propname", NULL, 0, "",
+	               "Identifier of a string property in items, to use as tooltip content");
 	RNA_def_int(func, "rows", 5, 0, INT_MAX, "", "Default and minimum number of rows to display", 0, INT_MAX);
 	RNA_def_int(func, "maxrows", 5, 0, INT_MAX, "", "Default maximum number of rows to display", 0, INT_MAX);
 	RNA_def_enum(func, "type", uilist_layout_type_items, UILST_LAYOUT_DEFAULT, "Type", "Type of layout to use");

@@ -515,7 +515,7 @@ static bool ui_editsource_uibut_match(uiBut *but_a, uiBut *but_b)
 	    (but_a->rnaprop == but_b->rnaprop) &&
 	    (but_a->optype == but_b->optype) &&
 	    (but_a->unit_type == but_b->unit_type) &&
-	    (strncmp(but_a->drawstr, but_b->drawstr, UI_MAX_DRAW_STR) == 0))
+	    STREQLEN(but_a->drawstr, but_b->drawstr, UI_MAX_DRAW_STR))
 	{
 		return true;
 	}
@@ -858,7 +858,7 @@ int UI_drop_color_poll(struct bContext *C, wmDrag *drag, const wmEvent *UNUSED(e
 
 void UI_drop_color_copy(wmDrag *drag, wmDropBox *drop)
 {
-	uiDragColorHandle *drag_info = (uiDragColorHandle *)drag->poin;
+	uiDragColorHandle *drag_info = drag->poin;
 
 	RNA_float_set_array(drop->ptr, "color", drag_info->color);
 	RNA_boolean_set(drop->ptr, "gamma", drag_info->gamma_corrected);
@@ -921,6 +921,7 @@ static void UI_OT_drop_color(wmOperatorType *ot)
 	ot->description = "Drop colors to buttons";
 
 	ot->invoke = drop_color_invoke;
+	ot->flag = OPTYPE_INTERNAL;
 
 	RNA_def_float_color(ot->srna, "color", 3, NULL, 0.0, FLT_MAX, "Color", "Source color", 0.0, 1.0);
 	RNA_def_boolean(ot->srna, "gamma", 0, "Gamma Corrected", "The source color is gamma corrected ");
@@ -949,4 +950,5 @@ void ED_button_operatortypes(void)
 	/* external */
 	WM_operatortype_append(UI_OT_eyedropper_color);
 	WM_operatortype_append(UI_OT_eyedropper_id);
+	WM_operatortype_append(UI_OT_eyedropper_depth);
 }

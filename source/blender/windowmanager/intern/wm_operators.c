@@ -61,6 +61,7 @@
 #include "BLI_blenlib.h"
 #include "BLI_dial.h"
 #include "BLI_dynstr.h" /*for WM_operator_pystring */
+#include "BLI_linklist_stack.h"
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
 #include "BLI_ghash.h"
@@ -76,6 +77,7 @@
 #include "BKE_idprop.h"
 #include "BKE_image.h"
 #include "BKE_library.h"
+#include "BKE_library_query.h"
 #include "BKE_global.h"
 #include "BKE_main.h"
 #include "BKE_material.h"
@@ -100,11 +102,14 @@
 #include "ED_util.h"
 #include "ED_view3d.h"
 
+#include "GPU_material.h"
+
 #include "RNA_access.h"
 #include "RNA_define.h"
 #include "RNA_enum_types.h"
 
 #include "UI_interface.h"
+#include "UI_interface_icons.h"
 #include "UI_resources.h"
 
 #include "WM_api.h"
@@ -1184,7 +1189,7 @@ bool WM_operator_filesel_ensure_ext_imtype(wmOperator *op, const struct ImageFor
 	/* dont NULL check prop, this can only run on ops with a 'filepath' */
 	prop = RNA_struct_find_property(op->ptr, "filepath");
 	RNA_property_string_get(op->ptr, prop, filepath);
-	if (BKE_add_image_extension(filepath, im_format)) {
+	if (BKE_image_path_ensure_ext_from_imformat(filepath, im_format)) {
 		RNA_property_string_set(op->ptr, prop, filepath);
 		/* note, we could check for and update 'filename' here,
 		 * but so far nothing needs this. */
@@ -1672,7 +1677,7 @@ int WM_operator_ui_popup(bContext *C, wmOperator *op, int width, int height)
 /**
  * For use by #WM_operator_props_popup_call, #WM_operator_props_popup only.
  *
- * \note operator menu needs undo flag enabled , for redo callback */
+ * \note operator menu needs undo flag enabled, for redo callback */
 static int wm_operator_props_popup_ex(bContext *C, wmOperator *op,
                                       const bool do_call, const bool do_redo)
 {
@@ -1924,7 +1929,7 @@ static uiBlock *wm_block_create_splash(bContext *C, ARegion *ar, void *UNUSED(ar
 	/* label for 'a' bugfix releases, or 'Release Candidate 1'...
 	 *  avoids recreating splash for version updates */
 	if (STREQ(STRINGIFY(BLENDER_VERSION_CYCLE), "rc")) {
-		version_suffix = "Release Candidate";
+		version_suffix = "Release Candidate 4";
 	}
 	else if (STREQ(STRINGIFY(BLENDER_VERSION_CYCLE), "release")) {
 		version_suffix = STRINGIFY(BLENDER_VERSION_CHAR);
@@ -2023,6 +2028,14 @@ static uiBlock *wm_block_create_splash(bContext *C, ARegion *ar, void *UNUSED(ar
 	uiItemO(col, NULL, ICON_RECOVER_LAST, "WM_OT_recover_last_session");
 	uiItemL(col, "", ICON_NONE);
 	
+	mt = WM_menutype_find("USERPREF_MT_splash_footer", false);
+	if (mt) {
+		Menu menu = {NULL};
+		menu.layout = uiLayoutColumn(layout, false);
+		menu.type = mt;
+		mt->draw(C, &menu);
+	}
+
 	UI_block_bounds_set_centered(block, 0);
 	
 	return block;
@@ -2679,7 +2692,9 @@ static int wm_link_append_exec(bContext *C, wmOperator *op)
 
 	/* recreate dependency graph to include new objects */
 	DAG_scene_relations_rebuild(bmain, scene);
-
+	
+	/* free gpu materials, some materials depend on existing objects, such as lamps so freeing correctly refreshes */
+	GPU_materials_free();
 	BLO_blendhandle_close(bh);
 
 	/* XXX TODO: align G.lib with other directory storage (like last opened image etc...) */
@@ -3156,14 +3171,16 @@ static int border_apply_rect(wmOperator *op)
 
 static int border_apply(bContext *C, wmOperator *op, int gesture_mode)
 {
+	PropertyRNA *prop;
+
 	int retval;
 
 	if (!border_apply_rect(op))
 		return 0;
 	
 	/* XXX weak; border should be configured for this without reading event types */
-	if (RNA_struct_find_property(op->ptr, "gesture_mode")) {
-		RNA_int_set(op->ptr, "gesture_mode", gesture_mode);
+	if ((prop = RNA_struct_find_property(op->ptr, "gesture_mode"))) {
+		RNA_property_int_set(op->ptr, prop, gesture_mode);
 	}
 
 	retval = op->type->exec(C, op);
@@ -3483,6 +3500,8 @@ void wm_tweakevent_test(bContext *C, wmEvent *event, int action)
 
 int WM_gesture_lasso_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
+	PropertyRNA *prop;
+
 	op->customdata = WM_gesture_new(C, event, WM_GESTURE_LASSO);
 	
 	/* add modal handler */
@@ -3490,8 +3509,8 @@ int WM_gesture_lasso_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 	
 	wm_gesture_tag_redraw(C);
 	
-	if (RNA_struct_find_property(op->ptr, "cursor")) {
-		WM_cursor_modal_set(CTX_wm_window(C), RNA_int_get(op->ptr, "cursor"));
+	if ((prop = RNA_struct_find_property(op->ptr, "cursor"))) {
+		WM_cursor_modal_set(CTX_wm_window(C), RNA_property_int_get(op->ptr, prop));
 	}
 	
 	return OPERATOR_RUNNING_MODAL;
@@ -3499,6 +3518,8 @@ int WM_gesture_lasso_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 
 int WM_gesture_lines_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
+	PropertyRNA *prop;
+
 	op->customdata = WM_gesture_new(C, event, WM_GESTURE_LINES);
 	
 	/* add modal handler */
@@ -3506,8 +3527,8 @@ int WM_gesture_lines_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 	
 	wm_gesture_tag_redraw(C);
 	
-	if (RNA_struct_find_property(op->ptr, "cursor")) {
-		WM_cursor_modal_set(CTX_wm_window(C), RNA_int_get(op->ptr, "cursor"));
+	if ((prop = RNA_struct_find_property(op->ptr, "cursor"))) {
+		WM_cursor_modal_set(CTX_wm_window(C), RNA_property_int_get(op->ptr, prop));
 	}
 	
 	return OPERATOR_RUNNING_MODAL;
@@ -3713,6 +3734,8 @@ static int straightline_apply(bContext *C, wmOperator *op)
 
 int WM_gesture_straightline_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
+	PropertyRNA *prop;
+
 	op->customdata = WM_gesture_new(C, event, WM_GESTURE_STRAIGHTLINE);
 	
 	/* add modal handler */
@@ -3720,8 +3743,8 @@ int WM_gesture_straightline_invoke(bContext *C, wmOperator *op, const wmEvent *e
 	
 	wm_gesture_tag_redraw(C);
 	
-	if (RNA_struct_find_property(op->ptr, "cursor")) {
-		WM_cursor_modal_set(CTX_wm_window(C), RNA_int_get(op->ptr, "cursor"));
+	if ((prop = RNA_struct_find_property(op->ptr, "cursor"))) {
+		WM_cursor_modal_set(CTX_wm_window(C), RNA_property_int_get(op->ptr, prop));
 	}
 		
 	return OPERATOR_RUNNING_MODAL;
@@ -3801,8 +3824,8 @@ void WM_OT_straightline_gesture(wmOperatorType *ot)
 
 /* *********************** radial control ****************** */
 
-#define WM_RADIAL_CONTROL_DISPLAY_SIZE 200
-#define WM_RADIAL_CONTROL_DISPLAY_MIN_SIZE 35
+#define WM_RADIAL_CONTROL_DISPLAY_SIZE (200 * U.pixelsize)
+#define WM_RADIAL_CONTROL_DISPLAY_MIN_SIZE (35 * U.pixelsize)
 #define WM_RADIAL_CONTROL_DISPLAY_WIDTH (WM_RADIAL_CONTROL_DISPLAY_SIZE - WM_RADIAL_CONTROL_DISPLAY_MIN_SIZE)
 #define WM_RADIAL_CONTROL_HEADER_LENGTH 180
 #define WM_RADIAL_MAX_STR 6
@@ -3853,7 +3876,7 @@ static void radial_control_set_initial_mouse(RadialControl *rc, const wmEvent *e
 		case PROP_DISTANCE:
 		case PROP_PERCENTAGE:
 		case PROP_PIXEL:
-			d[0] = rc->initial_value;
+			d[0] = rc->initial_value * U.pixelsize;
 			break;
 		case PROP_FACTOR:
 			d[0] = (1 - rc->initial_value) * WM_RADIAL_CONTROL_DISPLAY_WIDTH + WM_RADIAL_CONTROL_DISPLAY_MIN_SIZE;
@@ -3962,8 +3985,8 @@ static void radial_control_paint_cursor(bContext *C, int x, int y, void *customd
 		case PROP_DISTANCE:
 		case PROP_PERCENTAGE:
 		case PROP_PIXEL:
-			r1 = rc->current_value;
-			r2 = rc->initial_value;
+			r1 = rc->current_value * U.pixelsize;
+			r2 = rc->initial_value * U.pixelsize;
 			tex_radius = r1;
 			alpha = 0.75;
 			break;
@@ -3987,11 +4010,6 @@ static void radial_control_paint_cursor(bContext *C, int x, int y, void *customd
 			alpha = 0.75;
 			break;
 	}
-
-	/* adjust for DPI, like BKE_brush_size_get */
-	r1 *= U.pixelsize;
-	r2 *= U.pixelsize;
-	tex_radius *= U.pixelsize;
 
 	/* Keep cursor in the original place */
 	x = rc->initial_mouse[0] - ar->winrct.xmin;
@@ -4308,9 +4326,9 @@ static int radial_control_modal(bContext *C, wmOperator *op, const wmEvent *even
 	float delta[2], ret = OPERATOR_RUNNING_MODAL;
 	bool snap;
 	float angle_precision = 0.0f;
-    const bool has_numInput = hasNumInput(&rc->num_input);
-    bool handled = false;
-    float numValue;
+	const bool has_numInput = hasNumInput(&rc->num_input);
+	bool handled = false;
+	float numValue;
 	/* TODO: fix hardcoded events */
 
 	snap = event->ctrl != 0;
@@ -4402,13 +4420,14 @@ static int radial_control_modal(bContext *C, wmOperator *op, const wmEvent *even
 						case PROP_PIXEL:
 							new_value = dist;
 							if (snap) new_value = ((int)new_value + 5) / 10 * 10;
+							new_value /= U.pixelsize;
 							break;
 						case PROP_FACTOR:
 							new_value = (WM_RADIAL_CONTROL_DISPLAY_SIZE - dist) / WM_RADIAL_CONTROL_DISPLAY_WIDTH;
 							if (snap) new_value = ((int)ceil(new_value * 10.f) * 10.0f) / 100.f;
 							break;
 						case PROP_ANGLE:
-							new_value = atan2f(delta[1], delta[0]) + M_PI + angle_precision;
+							new_value = atan2f(delta[1], delta[0]) + (float)M_PI + angle_precision;
 							new_value = fmod(new_value, 2.0f * (float)M_PI);
 							if (new_value < 0.0f)
 								new_value += 2.0f * (float)M_PI;
@@ -4688,6 +4707,90 @@ static void WM_OT_dependency_relations(wmOperatorType *ot)
 	ot->exec = dependency_relations_exec;
 }
 
+/* *************************** Mat/tex/etc. previews generation ************* */
+
+typedef struct PreviewsIDEnsureStack {
+	Scene *scene;
+
+	BLI_LINKSTACK_DECLARE(id_stack, ID *);
+} PreviewsIDEnsureStack;
+
+static void previews_id_ensure(bContext *C, Scene *scene, ID *id)
+{
+	BLI_assert(ELEM(GS(id->name), ID_MA, ID_TE, ID_IM, ID_WO, ID_LA));
+
+	/* Only preview non-library datablocks, lib ones do not pertain to this .blend file!
+	 * Same goes for ID with no user. */
+	if (!id->lib && (id->us != 0)) {
+		UI_id_icon_render(C, scene, id, false, false);
+		UI_id_icon_render(C, scene, id, true, false);
+	}
+}
+
+static bool previews_id_ensure_callback(void *todo_v, ID **idptr, int UNUSED(cd_flag))
+{
+	PreviewsIDEnsureStack *todo = todo_v;
+	ID *id = *idptr;
+
+	if (id && (id->flag & LIB_DOIT)) {
+		if (ELEM(GS(id->name), ID_MA, ID_TE, ID_IM, ID_WO, ID_LA)) {
+			previews_id_ensure(NULL, todo->scene, id);
+		}
+		id->flag &= ~LIB_DOIT;  /* Tag the ID as done in any case. */
+		BLI_LINKSTACK_PUSH(todo->id_stack, id);
+	}
+
+	return true;
+}
+
+static int previews_ensure_exec(bContext *C, wmOperator *UNUSED(op))
+{
+	Main *bmain = CTX_data_main(C);
+	ListBase *lb[] = {&bmain->mat, &bmain->tex, &bmain->image, &bmain->world, &bmain->lamp, NULL};
+	PreviewsIDEnsureStack preview_id_stack;
+	Scene *scene;
+	ID *id;
+	int i;
+
+	/* We use LIB_DOIT to check whether we have already handled a given ID or not. */
+	BKE_main_id_flag_all(bmain, LIB_DOIT, true);
+
+	BLI_LINKSTACK_INIT(preview_id_stack.id_stack);
+
+	for (scene = bmain->scene.first; scene; scene = scene->id.next) {
+		preview_id_stack.scene = scene;
+		id = (ID *)scene;
+
+		do {
+			/* This will loop over all IDs linked by current one, render icons for them if needed,
+			 * and add them to 'todo' preview_id_stack. */
+			BKE_library_foreach_ID_link(id, previews_id_ensure_callback, &preview_id_stack, IDWALK_READONLY);
+		} while ((id = BLI_LINKSTACK_POP(preview_id_stack.id_stack)));
+	}
+
+	BLI_LINKSTACK_FREE(preview_id_stack.id_stack);
+
+	/* Check a last time for ID not used (fake users only, in theory), and
+	 * do our best for those, using current scene... */
+	for (i = 0; lb[i]; i++) {
+		for (id = lb[i]->first; id; id = id->next) {
+			previews_id_ensure(C, NULL, id);
+		}
+	}
+
+	return OPERATOR_FINISHED;
+}
+
+static void WM_OT_previews_ensure(wmOperatorType *ot)
+{
+	ot->name = "Refresh DataBlock Previews";
+	ot->idname = "WM_OT_previews_ensure";
+	ot->description = "Ensure datablock previews are available and up-to-date "
+	                  "(to be saved in .blend file, only for some types like materials, textures, etc.)";
+
+	ot->exec = previews_ensure_exec;
+}
+
 /* ******************************************************* */
 
 static void operatortype_ghash_free_cb(wmOperatorType *ot)
@@ -4751,6 +4854,7 @@ void wm_operatortype_init(void)
 #if defined(WIN32)
 	WM_operatortype_append(WM_OT_console_toggle);
 #endif
+	WM_operatortype_append(WM_OT_previews_ensure);
 }
 
 /* circleselect-like modal operators */

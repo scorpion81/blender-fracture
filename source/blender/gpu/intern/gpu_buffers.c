@@ -187,8 +187,10 @@ static void gpu_buffer_pool_free_unused(GPUBufferPool *pool)
 	while (pool->totbuf)
 		gpu_buffer_pool_delete_last(pool);
 
-	glDeleteBuffersARB(pool->totpbvhbufids, pool->pbvhbufids);
-	pool->totpbvhbufids = 0;
+	if (pool->totpbvhbufids > 0) {
+		glDeleteBuffersARB(pool->totpbvhbufids, pool->pbvhbufids);
+		pool->totpbvhbufids = 0;
+	}
 
 	BLI_mutex_unlock(&buffer_mutex);
 }
@@ -245,8 +247,9 @@ static GPUBuffer *gpu_buffer_alloc_intern(int size, bool use_VBO)
 		bufsize = pool->buffers[i]->size;
 
 		/* only return a buffer that matches the VBO preference */
-		 if (pool->buffers[i]->use_vbo != use_VBO)
+		if (pool->buffers[i]->use_vbo != use_VBO) {
 			 continue;
+		}
 		
 		/* check for an exact size match */
 		if (bufsize == size) {
@@ -651,8 +654,8 @@ static GPUBuffer *gpu_buffer_setup(DerivedMesh *dm, GPUDrawObject *object,
 
 			/* attempt to map the buffer */
 			if (!(varray = glMapBufferARB(target, GL_WRITE_ONLY_ARB))) {
-				 buffer = gpu_try_realloc(pool, buffer, size, true);
-				 
+				buffer = gpu_try_realloc(pool, buffer, size, true);
+
 				/* allocation still failed; fall back
 				 * to legacy mode */
 				if (!buffer) {
@@ -1361,6 +1364,7 @@ void GPU_buffer_unbind(void)
 		else
 			break;
 	}
+	attribData[0].index = -1;
 
 	/* not guaranteed we used VBOs but in that case it's just a no-op */
 	if (GLEW_ARB_vertex_buffer_object)

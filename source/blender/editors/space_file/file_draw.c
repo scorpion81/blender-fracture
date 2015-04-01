@@ -111,6 +111,7 @@ void file_draw_buttons(const bContext *C, ARegion *ar)
 	SpaceFile *sfile  = CTX_wm_space_file(C);
 	FileSelectParams *params = ED_fileselect_get_params(sfile);
 	ARegion *artmp;
+	const bool is_browse_only = (sfile->op == NULL);
 	
 	/* Initialize UI block. */
 	BLI_snprintf(uiblockstr, sizeof(uiblockstr), "win %p", (void *)ar);
@@ -118,21 +119,29 @@ void file_draw_buttons(const bContext *C, ARegion *ar)
 
 	/* exception to make space for collapsed region icon */
 	for (artmp = CTX_wm_area(C)->regionbase.first; artmp; artmp = artmp->next) {
-		if (artmp->regiontype == RGN_TYPE_CHANNELS && artmp->flag & RGN_FLAG_HIDDEN) {
+		if (artmp->regiontype == RGN_TYPE_TOOLS && artmp->flag & RGN_FLAG_HIDDEN) {
 			chan_offs = 16;
 			min_x += chan_offs;
 			available_w -= chan_offs;
 		}
 	}
-	
-	/* Is there enough space for the execute / cancel buttons? */
-	loadbutton = UI_fontstyle_string_width(params->title) + btn_margin;
-	CLAMP_MIN(loadbutton, btn_minw);
 
-	if (available_w <= loadbutton + separator + input_minw || params->title[0] == 0) {
+	/* Is there enough space for the execute / cancel buttons? */
+
+
+	if (is_browse_only) {
 		loadbutton = 0;
 	}
 	else {
+		const uiFontStyle *fstyle = UI_FSTYLE_WIDGET;
+		loadbutton = UI_fontstyle_string_width(fstyle, params->title) + btn_margin;
+		CLAMP_MIN(loadbutton, btn_minw);
+		if (available_w <= loadbutton + separator + input_minw) {
+			loadbutton = 0;
+		}
+	}
+
+	if (loadbutton) {
 		line1_w -= (loadbutton + separator);
 		line2_w  = line1_w;
 	}
@@ -145,7 +154,7 @@ void file_draw_buttons(const bContext *C, ARegion *ar)
 	else {
 		line2_w -= (fnumbuttons + separator);
 	}
-	
+
 	/* Text input fields for directory and file. */
 	if (available_w > 0) {
 		int overwrite_alert = file_draw_check_exists(sfile);
@@ -230,7 +239,7 @@ static void draw_tile(int sx, int sy, int width, int height, int colorid, int sh
 static int get_file_icon(struct direntry *file)
 {
 	if (file->type & S_IFDIR) {
-		if (strcmp(file->relname, "..") == 0) {
+		if (FILENAME_IS_PARENT(file->relname)) {
 			return ICON_FILE_PARENT;
 		}
 		if (file->flags & FILE_TYPE_APPLICATIONBUNDLE) {
@@ -278,8 +287,9 @@ static void file_draw_icon(uiBlock *block, char *path, int sx, int sy, int icon,
 
 	but = uiDefIconBut(block, UI_BTYPE_LABEL, 0, icon, x, y, width, height, NULL, 0.0f, 0.0f, 0.0f, 0.0f, "");
 
-	if (drag)
+	if (drag) {
 		UI_but_drag_set_path(but, path);
+	}
 }
 
 
@@ -315,70 +325,70 @@ void file_calc_previews(const bContext *C, ARegion *ar)
 
 static void file_draw_preview(uiBlock *block, struct direntry *file, int sx, int sy, ImBuf *imb, FileLayout *layout, bool dropshadow, bool drag)
 {
-	if (imb) {
-		uiBut *but;
-		float fx, fy;
-		float dx, dy;
-		int xco, yco;
-		float scaledx, scaledy;
-		float scale;
-		int ex, ey;
-		
-		if ((imb->x * UI_DPI_FAC > layout->prv_w) ||
-		    (imb->y * UI_DPI_FAC > layout->prv_h))
-		{
-			if (imb->x > imb->y) {
-				scaledx = (float)layout->prv_w;
-				scaledy =  ( (float)imb->y / (float)imb->x) * layout->prv_w;
-				scale = scaledx / imb->x;
-			}
-			else {
-				scaledy = (float)layout->prv_h;
-				scaledx =  ( (float)imb->x / (float)imb->y) * layout->prv_h;
-				scale = scaledy / imb->y;
-			}
+	uiBut *but;
+	float fx, fy;
+	float dx, dy;
+	int xco, yco;
+	float scaledx, scaledy;
+	float scale;
+	int ex, ey;
+
+	BLI_assert(imb != NULL);
+
+	if ((imb->x * UI_DPI_FAC > layout->prv_w) ||
+	    (imb->y * UI_DPI_FAC > layout->prv_h))
+	{
+		if (imb->x > imb->y) {
+			scaledx = (float)layout->prv_w;
+			scaledy =  ( (float)imb->y / (float)imb->x) * layout->prv_w;
+			scale = scaledx / imb->x;
 		}
 		else {
-			scaledx = (float)imb->x * UI_DPI_FAC;
-			scaledy = (float)imb->y * UI_DPI_FAC;
-			scale = UI_DPI_FAC;
+			scaledy = (float)layout->prv_h;
+			scaledx =  ( (float)imb->x / (float)imb->y) * layout->prv_h;
+			scale = scaledy / imb->y;
 		}
-
-		ex = (int)scaledx;
-		ey = (int)scaledy;
-		fx = ((float)layout->prv_w - (float)ex) / 2.0f;
-		fy = ((float)layout->prv_h - (float)ey) / 2.0f;
-		dx = (fx + 0.5f + layout->prv_border_x);
-		dy = (fy + 0.5f - layout->prv_border_y);
-		xco = sx + (int)dx;
-		yco = sy - layout->prv_h + (int)dy;
-		
-		glBlendFunc(GL_SRC_ALPHA,  GL_ONE_MINUS_SRC_ALPHA);
-		
-		/* shadow */
-		if (dropshadow)
-			UI_draw_box_shadow(220, (float)xco, (float)yco, (float)(xco + ex), (float)(yco + ey));
-
-		glEnable(GL_BLEND);
-		
-		/* the image */
-		glColor4f(1.0, 1.0, 1.0, 1.0);
-		glaDrawPixelsTexScaled((float)xco, (float)yco, imb->x, imb->y, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, imb->rect, scale, scale);
-		
-		/* border */
-		if (dropshadow) {
-			glColor4f(0.0f, 0.0f, 0.0f, 0.4f);
-			fdrawbox((float)xco, (float)yco, (float)(xco + ex), (float)(yco + ey));
-		}
-		
-		/* dragregion */
-		if (drag) {
-			but = uiDefBut(block, UI_BTYPE_LABEL, 0, "", xco, yco, ex, ey, NULL, 0.0, 0.0, 0, 0, "");
-			UI_but_drag_set_image(but, file->path, get_file_icon(file), imb, scale);
-		}
-		
-		glDisable(GL_BLEND);
 	}
+	else {
+		scaledx = (float)imb->x * UI_DPI_FAC;
+		scaledy = (float)imb->y * UI_DPI_FAC;
+		scale = UI_DPI_FAC;
+	}
+
+	ex = (int)scaledx;
+	ey = (int)scaledy;
+	fx = ((float)layout->prv_w - (float)ex) / 2.0f;
+	fy = ((float)layout->prv_h - (float)ey) / 2.0f;
+	dx = (fx + 0.5f + layout->prv_border_x);
+	dy = (fy + 0.5f - layout->prv_border_y);
+	xco = sx + (int)dx;
+	yco = sy - layout->prv_h + (int)dy;
+
+	glBlendFunc(GL_SRC_ALPHA,  GL_ONE_MINUS_SRC_ALPHA);
+
+	/* shadow */
+	if (dropshadow)
+		UI_draw_box_shadow(220, (float)xco, (float)yco, (float)(xco + ex), (float)(yco + ey));
+
+	glEnable(GL_BLEND);
+
+	/* the image */
+	glColor4f(1.0, 1.0, 1.0, 1.0);
+	glaDrawPixelsTexScaled((float)xco, (float)yco, imb->x, imb->y, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, imb->rect, scale, scale);
+
+	/* border */
+	if (dropshadow) {
+		glColor4f(0.0f, 0.0f, 0.0f, 0.4f);
+		fdrawbox((float)xco, (float)yco, (float)(xco + ex), (float)(yco + ey));
+	}
+
+	/* dragregion */
+	if (drag) {
+		but = uiDefBut(block, UI_BTYPE_LABEL, 0, "", xco, yco, ex, ey, NULL, 0.0, 0.0, 0, 0, "");
+		UI_but_drag_set_image(but, file->path, get_file_icon(file), imb, scale);
+	}
+
+	glDisable(GL_BLEND);
 }
 
 static void renamebutton_cb(bContext *C, void *UNUSED(arg1), char *oldname)
@@ -394,7 +404,7 @@ static void renamebutton_cb(bContext *C, void *UNUSED(arg1), char *oldname)
 	BLI_strncpy(filename, sfile->params->renameedit, sizeof(filename));
 	BLI_make_file_string(G.main->name, newname, sfile->params->dir, filename);
 
-	if (strcmp(orgname, newname) != 0) {
+	if (!STREQ(orgname, newname)) {
 		if (!BLI_exists(newname)) {
 			BLI_rename(orgname, newname);
 			/* to make sure we show what is on disk */
@@ -510,7 +520,7 @@ void file_draw_list(const bContext *C, ARegion *ar)
 		sy = (int)(v2d->tot.ymax - sy);
 
 		file = filelist_file(files, i);
-		
+
 		UI_ThemeColor4(TH_TEXT);
 
 
@@ -520,7 +530,7 @@ void file_draw_list(const bContext *C, ARegion *ar)
 				int shade = (params->active_file == i) || (file->selflag & FILE_SEL_HIGHLIGHTED) ? 20 : 0;
 
 				/* readonly files (".." and ".") must not be drawn as selected - set color back to normal */
-				if (STREQ(file->relname, "..") || STREQ(file->relname, ".")) {
+				if (FILENAME_IS_CURRPAR(file->relname)) {
 					colorid = TH_BACK;
 				}
 				draw_tile(sx, sy - 1, layout->tile_w + 4, sfile->layout->tile_h + layout->tile_border_y, colorid, shade);
@@ -529,7 +539,7 @@ void file_draw_list(const bContext *C, ARegion *ar)
 		UI_draw_roundbox_corner_set(UI_CNR_NONE);
 
 		/* don't drag parent or refresh items */
-		do_drag = !(STREQ(file->relname, "..") || STREQ(file->relname, "."));
+		do_drag = !(FILENAME_IS_CURRPAR(file->relname));
 
 		if (FILE_IMGDISPLAY == params->display) {
 			is_icon = 0;
@@ -538,7 +548,7 @@ void file_draw_list(const bContext *C, ARegion *ar)
 				imb = filelist_geticon(files, i);
 				is_icon = 1;
 			}
-			
+
 			file_draw_preview(block, file, sx, sy, imb, layout, !is_icon && (file->flags & FILE_TYPE_IMAGE), do_drag);
 		}
 		else {

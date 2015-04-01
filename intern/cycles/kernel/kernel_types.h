@@ -481,7 +481,12 @@ typedef enum PrimitiveType {
 	PRIMITIVE_ALL_TRIANGLE = (PRIMITIVE_TRIANGLE|PRIMITIVE_MOTION_TRIANGLE),
 	PRIMITIVE_ALL_CURVE = (PRIMITIVE_CURVE|PRIMITIVE_MOTION_CURVE),
 	PRIMITIVE_ALL_MOTION = (PRIMITIVE_MOTION_TRIANGLE|PRIMITIVE_MOTION_CURVE),
-	PRIMITIVE_ALL = (PRIMITIVE_ALL_TRIANGLE|PRIMITIVE_ALL_CURVE)
+	PRIMITIVE_ALL = (PRIMITIVE_ALL_TRIANGLE|PRIMITIVE_ALL_CURVE),
+
+	/* Total number of different primitives.
+	 * NOTE: This is an actual value, not a bitflag.
+	 */
+	PRIMITIVE_NUM_TOTAL = 4,
 } PrimitiveType;
 
 #define PRIMITIVE_PACK_SEGMENT(type, segment) ((segment << 16) | type)
@@ -529,6 +534,7 @@ typedef enum AttributeStandard {
 	ATTR_STD_VOLUME_FLAME,
 	ATTR_STD_VOLUME_HEAT,
 	ATTR_STD_VOLUME_VELOCITY,
+	ATTR_STD_POINTINESS,
 	ATTR_STD_NUM,
 
 	ATTR_STD_NOT_FOUND = ~0
@@ -589,7 +595,6 @@ enum ShaderDataFlag {
 	SD_EMISSION       = (1 << 1),   /* have emissive closure? */
 	SD_BSDF           = (1 << 2),   /* have bsdf closure? */
 	SD_BSDF_HAS_EVAL  = (1 << 3),   /* have non-singular bsdf closure? */
-	SD_PHASE_HAS_EVAL = (1 << 3),   /* have non-singular phase closure? */
 	SD_BSSRDF         = (1 << 4),   /* have bssrdf */
 	SD_HOLDOUT        = (1 << 5),   /* have holdout closure? */
 	SD_ABSORPTION     = (1 << 6),   /* have volume absorption closure? */
@@ -762,6 +767,7 @@ typedef struct KernelCamera {
 	int panorama_type;
 	float fisheye_fov;
 	float fisheye_lens;
+	float4 equirectangular_range;
 
 	/* matrices */
 	Transform cameratoworld;

@@ -58,7 +58,7 @@ enum_filter_types = (
 
 enum_aperture_types = (
     ('RADIUS', "Radius", "Directly change the size of the aperture"),
-    ('FSTOP', "F/stop", "Change the size of the aperture by f/stops"),
+    ('FSTOP', "F-stop", "Change the size of the aperture by f-stop"),
     )
 
 enum_panorama_types = (
@@ -116,7 +116,7 @@ enum_volume_sampling = (
 
 enum_volume_interpolation = (
     ('LINEAR', "Linear", "Good smoothness and speed"),
-    ('CUBIC', 'Cubic', 'Smoothed high quality interpolation, but slower')
+    ('CUBIC', "Cubic", "Smoothed high quality interpolation, but slower")
     )
 
 
@@ -481,7 +481,7 @@ class CyclesRenderSettings(bpy.types.PropertyGroup):
             name="Bake Type",
             default='COMBINED',
             description="Type of pass to bake",
-            items = (
+            items=(
                 ('COMBINED', "Combined", ""),
                 ('AO', "Ambient Occlusion", ""),
                 ('SHADOW', "Shadow", ""),
@@ -522,13 +522,13 @@ class CyclesCameraSettings(bpy.types.PropertyGroup):
 
         cls.aperture_type = EnumProperty(
                 name="Aperture Type",
-                description="Use F/stop number or aperture radius",
+                description="Use f-stop number or aperture radius",
                 items=enum_aperture_types,
                 default='RADIUS',
                 )
         cls.aperture_fstop = FloatProperty(
-                name="Aperture F/stop",
-                description="F/stop ratio (lower numbers give more defocus, higher numbers give a sharper image)",
+                name="Aperture f-stop",
+                description="F-stop ratio (lower numbers give more defocus, higher numbers give a sharper image)",
                 min=0.0, soft_min=0.1, soft_max=64.0,
                 default=5.6,
                 step=10,
@@ -582,6 +582,34 @@ class CyclesCameraSettings(bpy.types.PropertyGroup):
                 min=0.01, soft_max=15.0, max=100.0,
                 default=10.5,
                 )
+        cls.latitude_min = FloatProperty(
+                name="Min Latitude",
+                description="Minimum latitude (vertical angle) for the equirectangular lens",
+                min=-0.5 * math.pi, max=0.5 * math.pi,
+                subtype='ANGLE',
+                default=-0.5 * math.pi,
+                )
+        cls.latitude_max = FloatProperty(
+                name="Max Latitude",
+                description="Maximum latitude (vertical angle) for the equirectangular lens",
+                min=-0.5 * math.pi, max=0.5 * math.pi,
+                subtype='ANGLE',
+                default=0.5 * math.pi,
+                )
+        cls.longitude_min = FloatProperty(
+                name="Min Longitude",
+                description="Minimum longitude (horizontal angle) for the equirectangular lens",
+                min=-math.pi, max=math.pi,
+                subtype='ANGLE',
+                default=-math.pi,
+                )
+        cls.longitude_max = FloatProperty(
+                name="Max Longitude",
+                description="Maximum longitude (horizontal angle) for the equirectangular lens",
+                min=-math.pi, max=math.pi,
+                subtype='ANGLE',
+                default=math.pi,
+                )
 
     @classmethod
     def unregister(cls):
@@ -624,7 +652,7 @@ class CyclesMaterialSettings(bpy.types.PropertyGroup):
 
         cls.volume_interpolation = EnumProperty(
                 name="Volume Interpolation",
-                description="Interpolation method to use for volumes",
+                description="Interpolation method to use for smoke/fire volumes",
                 items=enum_volume_interpolation,
                 default='LINEAR',
                 )

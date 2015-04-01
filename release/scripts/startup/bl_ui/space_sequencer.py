@@ -113,7 +113,7 @@ class SEQUENCER_HT_header(Header):
                 row.prop(toolsettings, "proportional_edit", icon_only=True)
                 if toolsettings.proportional_edit != 'DISABLED':
                     row.prop(toolsettings, "proportional_edit_falloff", icon_only=True)
-					
+
         row = layout.row(align=True)
         row.operator("render.opengl", text="", icon='RENDER_STILL').sequencer = True
         props = row.operator("render.opengl", text="", icon='RENDER_ANIMATION')
@@ -205,7 +205,7 @@ class SEQUENCER_MT_view(Menu):
 
         if is_preview:
             if st.display_mode == 'IMAGE':
-                layout.prop(st, "show_safe_margin")
+                layout.prop(st, "show_safe_areas")
             elif st.display_mode == 'WAVEFORM':
                 layout.prop(st, "show_separate_color")
 
@@ -348,7 +348,7 @@ class SEQUENCER_MT_strip(Menu):
 
         layout.operator("transform.transform", text="Grab/Move").mode = 'TRANSLATION'
         layout.operator("transform.transform", text="Grab/Extend from frame").mode = 'TIME_EXTEND'
-        layout.operator("sequencer.gap_remove")
+        layout.operator("sequencer.gap_remove").all = False
         layout.operator("sequencer.gap_insert")
 
         #  uiItemO(layout, NULL, 0, "sequencer.strip_snap"); // TODO - add this operator
@@ -404,7 +404,7 @@ class SEQUENCER_MT_strip(Menu):
         #}
 
         layout.separator()
-        layout.operator("sequencer.reload", text="Reload Strips").adjust_length = False
+        layout.operator("sequencer.reload", text="Reload Strips")
         layout.operator("sequencer.reload", text="Reload Strips and Adjust Length").adjust_length = True
         layout.operator("sequencer.reassign_inputs")
         layout.operator("sequencer.swap_inputs")
@@ -413,7 +413,7 @@ class SEQUENCER_MT_strip(Menu):
         layout.operator("sequencer.lock")
         layout.operator("sequencer.unlock")
         layout.operator("sequencer.mute").unselected = False
-        layout.operator("sequencer.unmute")
+        layout.operator("sequencer.unmute").unselected = False
 
         layout.operator("sequencer.mute", text="Mute Deselected Strips").unselected = True
 
@@ -427,7 +427,7 @@ class SEQUENCER_MT_strip(Menu):
         layout.menu("SEQUENCER_MT_change")
 
 
-class SequencerButtonsPanel():
+class SequencerButtonsPanel:
     bl_space_type = 'SEQUENCE_EDITOR'
     bl_region_type = 'UI'
 
@@ -440,7 +440,7 @@ class SequencerButtonsPanel():
         return cls.has_sequencer(context) and (act_strip(context) is not None)
 
 
-class SequencerButtonsPanel_Output():
+class SequencerButtonsPanel_Output:
     bl_space_type = 'SEQUENCE_EDITOR'
     bl_region_type = 'UI'
 
@@ -924,11 +924,23 @@ class SEQUENCER_PT_proxy(SequencerButtonsPanel, Panel):
             if strip.use_proxy_custom_file:
                 flow.prop(strip.proxy, "filepath")
 
+            layout.label("Enabled Proxies:")
+            enabled = ""
             row = layout.row()
-            row.prop(strip.proxy, "build_25")
-            row.prop(strip.proxy, "build_50")
-            row.prop(strip.proxy, "build_75")
-            row.prop(strip.proxy, "build_100")
+            if (strip.proxy.build_25):
+                enabled += "25% "
+            if (strip.proxy.build_50):
+                enabled += "50% "
+            if (strip.proxy.build_75):
+                enabled += "75% "
+            if (strip.proxy.build_100):
+                enabled += "100% "
+
+            row.label(enabled)
+            if (strip.proxy.use_overwrite):
+                layout.label("Overwrite On")
+            else:
+                layout.label("Overwrite Off")
 
             col = layout.column()
             col.label(text="Build JPEG quality")
@@ -939,6 +951,10 @@ class SEQUENCER_PT_proxy(SequencerButtonsPanel, Panel):
                 col.label(text="Use timecode index:")
 
                 col.prop(strip.proxy, "timecode")
+
+        col = layout.column()
+        col.operator("sequencer.enable_proxies")
+        col.operator("sequencer.rebuild_proxy")
 
 
 class SEQUENCER_PT_preview(SequencerButtonsPanel_Output, Panel):
@@ -973,10 +989,39 @@ class SEQUENCER_PT_view(SequencerButtonsPanel_Output, Panel):
         col = layout.column()
         if st.display_mode == 'IMAGE':
             col.prop(st, "draw_overexposed")
-            col.prop(st, "show_safe_margin")
+            col.separator()
+
         elif st.display_mode == 'WAVEFORM':
             col.prop(st, "show_separate_color")
+
+        col = layout.column()
+        col.separator()
         col.prop(st, "proxy_render_size")
+
+
+class SEQUENCER_PT_view_safe_areas(SequencerButtonsPanel_Output, Panel):
+    bl_label = "Safe Areas"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    @classmethod
+    def poll(cls, context):
+        st = context.space_data
+        is_preview = st.view_type in {'PREVIEW', 'SEQUENCER_PREVIEW'}
+        return is_preview and (st.display_mode == 'IMAGE')
+
+    def draw_header(self, context):
+        st = context.space_data
+
+        self.layout.prop(st, "show_safe_areas", text="")
+
+    def draw(self, context):
+        from bl_ui.properties_data_camera import draw_display_safe_settings
+
+        layout = self.layout
+        st = context.space_data
+        safe_data = context.scene.safe_areas
+
+        draw_display_safe_settings(layout, safe_data, st)
 
 
 class SEQUENCER_PT_modifiers(SequencerButtonsPanel, Panel):
@@ -1049,8 +1094,8 @@ class SEQUENCER_PT_grease_pencil_tools(GreasePencilToolsPanel, SequencerButtonsP
     bl_region_type = 'UI'
 
     # NOTE: this is just a wrapper around the generic GP tools panel
-	# It contains access to some essential tools usually found only in
-	# toolbar, which doesn't exist here...
+    # It contains access to some essential tools usually found only in
+    # toolbar, which doesn't exist here...
 
 
 if __name__ == "__main__":  # only for live edit.

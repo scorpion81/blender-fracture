@@ -1133,6 +1133,9 @@ void node_update_nodetree(const bContext *C, bNodeTree *ntree)
 {
 	bNode *node;
 	
+	/* make sure socket "used" tags are correct, for displaying value buttons */
+	ntreeTagUsedSockets(ntree);
+	
 	/* update nodes front to back, so children sizes get updated before parents */
 	for (node = ntree->nodes.last; node; node = node->prev) {
 		node_update(C, ntree, node);
@@ -1300,6 +1303,11 @@ void drawnodespace(const bContext *C, ARegion *ar)
 		LinkData *linkdata;
 		
 		path = snode->treepath.last;
+		
+		/* update tree path name (drawn in the bottom left) */
+		if (snode->id && UNLIKELY(!STREQ(path->node_name, snode->id->name + 2))) {
+			BLI_strncpy(path->node_name, snode->id->name + 2, sizeof(path->node_name));
+		}
 		
 		/* current View2D center, will be set temporarily for parent node trees */
 		UI_view2d_center_get(v2d, &center[0], &center[1]);

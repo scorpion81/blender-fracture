@@ -100,7 +100,8 @@ bGPdata **ED_gpencil_data_get_pointers_direct(ID *screen_id, Scene *scene, ScrAr
 		
 		switch (sa->spacetype) {
 			case SPACE_VIEW3D: /* 3D-View */
-			case SPACE_TIME: /* Timeline - XXX: this is a hack to get it to show GP keyframes for 3D view */
+			case SPACE_TIME:   /* Timeline - XXX: this is a hack to get it to show GP keyframes for 3D view */
+			case SPACE_ACTION: /* DepeSheet - XXX: this is a hack to get the keyframe jump operator to take GP Keyframes into account */
 			{
 				BLI_assert(scene && ELEM(scene->toolsettings->gpencil_src,
 				                         GP_TOOL_SOURCE_SCENE, GP_TOOL_SOURCE_OBJECT));
@@ -732,6 +733,10 @@ static int gp_strokes_copy_exec(bContext *C, wmOperator *op)
 		
 		/* make copies of selected strokes, and deselect these once we're done */
 		for (gps = gpf->strokes.first; gps; gps = gps->next) {
+			/* skip strokes that are invalid for current view */
+			if (ED_gpencil_stroke_can_use(C, gps) == false)
+				continue;
+			
 			if (gps->flag & GP_STROKE_SELECT) {
 				if (gps->totpoints == 1) {
 					/* Special Case: If there's just a single point in this stroke... */
@@ -800,6 +805,30 @@ static int gp_strokes_paste_exec(bContext *C, wmOperator *op)
 		BKE_report(op->reports, RPT_ERROR, "Can not paste strokes when active layer is hidden or locked");
 		return OPERATOR_CANCELLED;
 	}
+	else {
+		/* Check that some of the strokes in the buffer can be used */
+		bGPDstroke *gps;
+		bool ok = false;
+		
+		for (gps = gp_strokes_copypastebuf.first; gps; gps = gps->next) {
+			if (ED_gpencil_stroke_can_use(C, gps)) {
+				ok = true;
+				break;
+			}
+		}
+		
+		if (ok == false) {
+			/* XXX: this check is not 100% accurate (i.e. image editor is incompatible with normal 2D strokes),
+			 * but should be enough to give users a good idea of what's going on
+			 */
+			if (CTX_wm_area(C)->spacetype == SPACE_VIEW3D)
+				BKE_report(op->reports, RPT_ERROR, "Cannot paste 2D strokes in 3D View");
+			else
+				BKE_report(op->reports, RPT_ERROR, "Cannot paste 3D strokes in 2D editors");
+				
+			return OPERATOR_CANCELLED;
+		}
+	}
 	
 	/* Deselect all strokes first */
 	CTX_DATA_BEGIN(C, bGPDstroke *, gps, editable_gpencil_strokes)
@@ -827,12 +856,14 @@ static int gp_strokes_paste_exec(bContext *C, wmOperator *op)
 		
 		/* Copy each stroke into the layer */
 		for (gps = gp_strokes_copypastebuf.first; gps; gps = gps->next) {
-			bGPDstroke *new_stroke = MEM_dupallocN(gps);
-			
-			new_stroke->points = MEM_dupallocN(gps->points);
-			new_stroke->next = new_stroke->prev = NULL;
-			
-			BLI_addtail(&gpf->strokes, new_stroke);
+			if (ED_gpencil_stroke_can_use(C, gps)) {
+				bGPDstroke *new_stroke = MEM_dupallocN(gps);
+				
+				new_stroke->points = MEM_dupallocN(gps->points);
+				new_stroke->next = new_stroke->prev = NULL;
+				
+				BLI_addtail(&gpf->strokes, new_stroke);
+			}
 		}
 	}
 	
@@ -2498,50 +2529,50 @@ static bool gp_convert_draw_check_prop(PointerRNA *ptr, PropertyRNA *prop)
 	const bool valid_timing = RNA_boolean_get(ptr, "use_timing_data");
 	
 	/* Always show those props */
-	if (strcmp(prop_id, "type") == 0 ||
-	    strcmp(prop_id, "use_normalize_weights") == 0 ||
-	    strcmp(prop_id, "radius_multiplier") == 0 ||
-	    strcmp(prop_id, "use_link_strokes") == 0)
+	if (STREQ(prop_id, "type") ||
+	    STREQ(prop_id, "use_normalize_weights") ||
+	    STREQ(prop_id, "radius_multiplier") ||
+	    STREQ(prop_id, "use_link_strokes"))
 	{
 		return true;
 	}
 	
 	/* Never show this prop */
-	if (strcmp(prop_id, "use_timing_data") == 0)
+	if (STREQ(prop_id, "use_timing_data"))
 		return false;
 	
 	if (link_strokes) {
 		/* Only show when link_stroke is true */
-		if (strcmp(prop_id, "timing_mode") == 0)
+		if (STREQ(prop_id, "timing_mode"))
 			return true;
 		
 		if (timing_mode != GP_STROKECONVERT_TIMING_NONE) {
 			/* Only show when link_stroke is true and stroke timing is enabled */
-			if (strcmp(prop_id, "frame_range") == 0 ||
-			    strcmp(prop_id, "start_frame") == 0)
+			if (STREQ(prop_id, "frame_range") ||
+			    STREQ(prop_id, "start_frame"))
 			{
 				return true;
 			}
 			
 			/* Only show if we have valid timing data! */
-			if (valid_timing && strcmp(prop_id, "use_realtime") == 0)
+			if (valid_timing && STREQ(prop_id, "use_realtime"))
 				return true;
 			
 			/* Only show if realtime or valid_timing is false! */
-			if ((!realtime || !valid_timing) && strcmp(prop_id, "end_frame") == 0)
+			if ((!realtime || !valid_timing) && STREQ(prop_id, "end_frame"))
 				return true;
 			
 			if (valid_timing && timing_mode == GP_STROKECONVERT_TIMING_CUSTOMGAP) {
 				/* Only show for custom gaps! */
-				if (strcmp(prop_id, "gap_duration") == 0)
+				if (STREQ(prop_id, "gap_duration"))
 					return true;
 				
 				/* Only show randomness for non-null custom gaps! */
-				if (strcmp(prop_id, "gap_randomness") == 0 && (gap_duration > 0.0f))
+				if (STREQ(prop_id, "gap_randomness") && (gap_duration > 0.0f))
 					return true;
 				
 				/* Only show seed for randomize action! */
-				if (strcmp(prop_id, "seed") == 0 && (gap_duration > 0.0f) && (gap_randomness > 0.0f))
+				if (STREQ(prop_id, "seed") && (gap_duration > 0.0f) && (gap_randomness > 0.0f))
 					return true;
 			}
 		}

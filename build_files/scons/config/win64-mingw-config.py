@@ -188,11 +188,12 @@ REL_CFLAGS = []
 REL_CXXFLAGS = []
 REL_CCFLAGS = ['-O2', '-ftree-vectorize']
 
+# NOTE: C_WARN seems to get ignored - at least -Wno-char-subscripts doesn't work!
 C_WARN = ['-Wno-char-subscripts', '-Wdeclaration-after-statement', '-Wstrict-prototypes']
 
-CC_WARN = [ '-Wall' ]
+CC_WARN = [ '-Wall', '-Wno-char-subscripts' ]
 
-LLIBS = ['-lshell32', '-lshfolder', '-lgdi32', '-lmsvcrt', '-lwinmm', '-lmingw32', '-lm', '-lws2_32', '-lz', '-lstdc++','-lole32','-luuid', '-lwsock32', '-lpsapi', '-lpthread']
+LLIBS = ['-lshell32', '-lshfolder', '-lgdi32', '-lmsvcrt', '-lwinmm', '-lmingw32', '-lm', '-lws2_32', '-lz', '-lstdc++','-lole32','-luuid', '-lwsock32', '-lpsapi', '-lpthread', '-ldbghelp']
 
 if WITH_BF_IME:
     LLIBS.append('-limm32')

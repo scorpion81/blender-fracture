@@ -27,8 +27,11 @@ ccl_device void svm_node_glass_setup(ShaderData *sd, ShaderClosure *sc, int type
 			sc->data2 = 0.0f;
 			sd->flag |= bsdf_refraction_setup(sc);
 		}
-		else
+		else {
+			sc->data0 = 0.0f;
+			sc->data1 = 0.0f;
 			sd->flag |= bsdf_reflection_setup(sc);
+		}
 	}
 	else if(type == CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID) {
 		sc->data0 = roughness;
@@ -384,6 +387,8 @@ ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *
 					 * spawned by transmission from the front */
 					sc->weight = make_float3(1.0f, 1.0f, 1.0f);
 					sc->N = N;
+					sc->data0 = 0.0f;
+					sc->data1 = 0.0f;
 					sd->flag |= bsdf_transparent_setup(sc);
 				}
 			}
@@ -402,7 +407,7 @@ ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *
 						sc->data2 = 0.0f;
 					}
 					else
-						sc->T = sd->dPdu;
+						sc->T = normalize(sd->dPdu);
 
 					if(type == CLOSURE_BSDF_HAIR_REFLECTION_ID) {
 						sd->flag |= bsdf_hair_reflection_setup(sc);
@@ -528,8 +533,8 @@ ccl_device void svm_node_closure_volume(KernelGlobals *kg, ShaderData *sd, float
 			ShaderClosure *sc = svm_node_closure_get_bsdf(sd, mix_weight * density);
 
 			if(sc) {
-				float g = param2;
-				sc->data0 = g;
+				sc->data0 = param2; /* g */
+				sc->data1 = 0.0f;
 				sd->flag |= volume_henyey_greenstein_setup(sc);
 			}
 			break;

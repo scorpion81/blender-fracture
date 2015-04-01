@@ -159,8 +159,8 @@ DerivedMesh *get_cddm(Object *ob, struct BMEditMesh *em, DerivedMesh *dm, float 
 	if (dm) {
 		if (dm->type != DM_TYPE_CDDM) {
 			dm = CDDM_copy(dm);
-			CDDM_apply_vert_coords(dm, vertexCos);
 		}
+		CDDM_apply_vert_coords(dm, vertexCos);
 
 		if (use_normals) {
 			DM_ensure_normals(dm);
@@ -304,6 +304,8 @@ void modifier_type_init(ModifierTypeInfo *types[])
 	INIT_TYPE(MeshCache);
 	INIT_TYPE(LaplacianDeform);
 	INIT_TYPE(Wireframe);
+	INIT_TYPE(DataTransfer);
+	INIT_TYPE(NormalEdit);
 	INIT_TYPE(Fracture);
 #undef INIT_TYPE
 }

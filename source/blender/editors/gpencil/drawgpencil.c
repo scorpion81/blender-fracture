@@ -363,6 +363,9 @@ static void gp_draw_stroke_fill(bGPDspoint *points, int totpoints, short UNUSED(
 static void gp_draw_stroke_point(bGPDspoint *points, short thickness, short dflag, short sflag,
                                  int offsx, int offsy, int winx, int winy)
 {
+	/* set point thickness (since there's only one of these) */
+	glPointSize((float)(thickness + 2) * points->pressure);
+	
 	/* draw point */
 	if (sflag & GP_STROKE_3DSPACE) {
 		glBegin(GL_POINTS);
@@ -966,9 +969,8 @@ static void gp_draw_data_layers(bGPdata *gpd, int offsx, int offsy, int winx, in
 		if (gpf == NULL)
 			continue;
 		
-		/* set color, stroke thickness, and point size */
+		/* set basic stroke thickness */
 		glLineWidth(lthick);
-		glPointSize((float)(gpl->thickness + 2));
 		
 		/* Add layer drawing settings to the set of "draw flags"
 		 * NOTE: If the setting doesn't apply, it *must* be cleared,
@@ -1051,8 +1053,10 @@ static void gp_draw_data(bGPdata *gpd, int offsx, int offsy, int winx, int winy,
 	/* turn on smooth lines (i.e. anti-aliasing) */
 	glEnable(GL_LINE_SMOOTH);
 	
-	glEnable(GL_POLYGON_SMOOTH);
-	glHint(GL_POLYGON_SMOOTH_HINT, GL_NICEST);
+	/* XXX: turn on some way of ensuring that the polygon edges get smoothed 
+	 *      GL_POLYGON_SMOOTH is nasty and shouldn't be used, as it ends up
+	 *      creating internal white rays due to the ways it accumulates stuff
+	 */
 	
 	/* turn on alpha-blending */
 	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
@@ -1064,7 +1068,6 @@ static void gp_draw_data(bGPdata *gpd, int offsx, int offsy, int winx, int winy,
 	/* turn off alpha blending, then smooth lines */
 	glDisable(GL_BLEND); // alpha blending
 	glDisable(GL_LINE_SMOOTH); // smooth lines
-	glDisable(GL_POLYGON_SMOOTH); // smooth poly lines
 	
 	/* restore initial gl conditions */
 	glLineWidth(1.0);

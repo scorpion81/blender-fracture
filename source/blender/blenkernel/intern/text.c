@@ -375,8 +375,12 @@ int BKE_text_reload(Text *text)
 
 	fclose(fp);
 
-	BLI_stat(str, &st);
-	text->mtime = st.st_mtime;
+	if (BLI_stat(str, &st) != -1) {
+		text->mtime = st.st_mtime;
+	}
+	else {
+		text->mtime = 0;
+	}
 
 	text_from_buf(text, buffer, len);
 
@@ -431,8 +435,12 @@ Text *BKE_text_load_ex(Main *bmain, const char *file, const char *relpath, const
 
 	fclose(fp);
 
-	BLI_stat(str, &st);
-	ta->mtime = st.st_mtime;
+	if (BLI_stat(str, &st) != -1) {
+		ta->mtime = st.st_mtime;
+	}
+	else {
+		ta->mtime = 0;
+	}
 	
 	text_from_buf(ta, buffer, len);
 	
@@ -508,10 +516,14 @@ void BKE_text_unlink(Main *bmain, Text *text)
 	bNodeTree *ntree;
 	bNode *node;
 	Material *mat;
+	Lamp *la;
+	Tex *te;
+	World *wo;
+	FreestyleLineStyle *linestyle;
 	Scene *sce;
 	SceneRenderLayer *srl;
 	FreestyleModuleConfig *module;
-	short update;
+	bool update;
 
 	for (ob = bmain->object.first; ob; ob = ob->id.next) {
 		/* game controllers */
@@ -563,23 +575,97 @@ void BKE_text_unlink(Main *bmain, Text *text)
 	}
 	
 	/* nodes */
+	for (la = bmain->lamp.first; la; la = la->id.next) {
+		ntree = la->nodetree;
+		if (!ntree)
+			continue;
+		for (node = ntree->nodes.first; node; node = node->next) {
+			if (node->type == NODE_FRAME) {
+				if ((Text *)node->id == text) {
+					node->id = NULL;
+				}
+			}
+		}
+	}
+
+	for (linestyle = bmain->linestyle.first; linestyle; linestyle = linestyle->id.next) {
+		ntree = linestyle->nodetree;
+		if (!ntree)
+			continue;
+		for (node = ntree->nodes.first; node; node = node->next) {
+			if (node->type == NODE_FRAME) {
+				if ((Text *)node->id == text) {
+					node->id = NULL;
+				}
+			}
+		}
+	}
+
 	for (mat = bmain->mat.first; mat; mat = mat->id.next) {
 		ntree = mat->nodetree;
 		if (!ntree)
 			continue;
 		for (node = ntree->nodes.first; node; node = node->next) {
-			if (node->type == SH_NODE_SCRIPT) {
+			if (ELEM(node->type, SH_NODE_SCRIPT, NODE_FRAME)) {
+				if ((Text *)node->id == text) {
+					node->id = NULL;
+				}
+			}
+		}
+	}
+
+	for (te = bmain->tex.first; te; te = te->id.next) {
+		ntree = te->nodetree;
+		if (!ntree)
+			continue;
+		for (node = ntree->nodes.first; node; node = node->next) {
+			if (node->type == NODE_FRAME) {
+				if ((Text *)node->id == text) {
+					node->id = NULL;
+				}
+			}
+		}
+	}
+
+	for (wo = bmain->world.first; wo; wo = wo->id.next) {
+		ntree = wo->nodetree;
+		if (!ntree)
+			continue;
+		for (node = ntree->nodes.first; node; node = node->next) {
+			if (node->type == NODE_FRAME) {
+				if ((Text *)node->id == text) {
+					node->id = NULL;
+				}
+			}
+		}
+	}
+
+	for (sce = bmain->scene.first; sce; sce = sce->id.next) {
+		ntree = sce->nodetree;
+		if (!ntree)
+			continue;
+		for (node = ntree->nodes.first; node; node = node->next) {
+			if (node->type == NODE_FRAME) {
 				Text *ntext = (Text *)node->id;
 				if (ntext == text) node->id = NULL;
 			}
 		}
+
+		/* Freestyle (while looping oer the scene) */
+		for (srl = sce->r.layers.first; srl; srl = srl->next) {
+			for (module = srl->freestyleConfig.modules.first; module; module = module->next) {
+				if (module->script == text)
+					module->script = NULL;
+			}
+		}
 	}
-	
+
 	for (ntree = bmain->nodetree.first; ntree; ntree = ntree->id.next) {
 		for (node = ntree->nodes.first; node; node = node->next) {
-			if (node->type == SH_NODE_SCRIPT) {
-				Text *ntext = (Text *)node->id;
-				if (ntext == text) node->id = NULL;
+			if (ELEM(node->type, SH_NODE_SCRIPT, NODE_FRAME)) {
+				if ((Text *)node->id == text) {
+					node->id = NULL;
+				}
 			}
 		}
 	}
@@ -600,16 +686,6 @@ void BKE_text_unlink(Main *bmain, Text *text)
 		}
 	}
 
-	/* Freestyle */
-	for (sce = bmain->scene.first; sce; sce = sce->id.next) {
-		for (srl = sce->r.layers.first; srl; srl = srl->next) {
-			for (module = srl->freestyleConfig.modules.first; module; module = module->next) {
-				if (module->script == text)
-					module->script = NULL;
-			}
-		}
-	}
-
 	text->id.us = 0;
 }
 
@@ -617,7 +693,7 @@ void BKE_text_clear(Text *text) /* called directly from rna */
 {
 	int oldstate;
 
-	oldstate = txt_get_undostate(  );
+	oldstate = txt_get_undostate();
 	txt_set_undostate(1);
 	txt_sel_all(text);
 	txt_delete_sel(text);
@@ -2740,7 +2816,7 @@ void txt_unindent(Text *text)
 
 	while (true) {
 		bool changed = false;
-		if (strncmp(text->curl->line, remove, indentlen) == 0) {
+		if (STREQLEN(text->curl->line, remove, indentlen)) {
 			if (num == 0)
 				unindented_first = true;
 			text->curl->len -= indentlen;

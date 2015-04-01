@@ -274,7 +274,7 @@ static int open_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event)
 		return open_exec(C, op);
 
 	if (!RNA_struct_property_is_set(op->ptr, "relative_path"))
-		RNA_boolean_set(op->ptr, "relative_path", U.flag & USER_RELPATHS);
+		RNA_boolean_set(op->ptr, "relative_path", (U.flag & USER_RELPATHS) != 0);
 
 	open_init(C, op);
 
@@ -1342,7 +1342,8 @@ static int clip_rebuild_proxy_exec(bContext *C, wmOperator *UNUSED(op))
 
 	if (clip->anim) {
 		pj->index_context = IMB_anim_index_rebuild_context(clip->anim, clip->proxy.build_tc_flag,
-		                                                   clip->proxy.build_size_flag, clip->proxy.quality);
+		                                                   clip->proxy.build_size_flag, clip->proxy.quality,
+		                                                   true, NULL);
 	}
 
 	WM_jobs_customdata_set(wm_job, pj, proxy_freejob);

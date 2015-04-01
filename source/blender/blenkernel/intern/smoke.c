@@ -66,6 +66,7 @@
 #include "BKE_bvhutils.h"
 #include "BKE_cdderivedmesh.h"
 #include "BKE_collision.h"
+#include "BKE_colortools.h"
 #include "BKE_constraint.h"
 #include "BKE_customdata.h"
 #include "BKE_deform.h"
@@ -730,7 +731,8 @@ static void obstacles_from_derivedmesh(Object *coll_ob, SmokeDomainSettings *sds
 		BVHTreeFromMesh treeData = {NULL};
 		int numverts, i, z;
 
-		float surface_distance = 0.6;
+		/* slightly rounded-up sqrt(3 * (0.5)^2) == max. distance of cell boundary along the diagonal */
+		const float surface_distance = 0.867f;
 
 		float *vert_vel = NULL;
 		int has_velocity = 0;
@@ -1237,6 +1239,12 @@ static void emit_from_particles(Object *flow_ob, SmokeDomainSettings *sds, Smoke
 		sim.scene = scene;
 		sim.ob = flow_ob;
 		sim.psys = psys;
+
+		/* prepare curvemapping tables */
+		if ((psys->part->child_flag & PART_CHILD_USE_CLUMP_CURVE) && psys->part->clumpcurve)
+			curvemapping_changed_all(psys->part->clumpcurve);
+		if ((psys->part->child_flag & PART_CHILD_USE_ROUGH_CURVE) && psys->part->roughcurve)
+			curvemapping_changed_all(psys->part->roughcurve);
 
 		/* initialize particle cache */
 		if (psys->part->type == PART_HAIR) {
@@ -2131,6 +2139,9 @@ static void update_flowsfluids(Scene *scene, Object *ob, SmokeDomainSettings *sd
 					if (sfs->source == MOD_SMOKE_FLOW_SOURCE_PARTICLES) {
 						/* emit_from_particles() updates timestep internally */
 						emit_from_particles(collob, sds, sfs, &em_temp, scene, sdt);
+						if (!(sfs->flags & MOD_SMOKE_FLOW_USE_PART_SIZE)) {
+							hires_multiplier = 1;
+						}
 					}
 					else { /* MOD_SMOKE_FLOW_SOURCE_MESH */
 						/* update flow object frame */

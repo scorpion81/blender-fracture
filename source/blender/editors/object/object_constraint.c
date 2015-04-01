@@ -471,7 +471,7 @@ static void test_constraints(Object *owner, bPoseChannel *pchan)
 								/* TODO: clear subtarget? */
 								curcon->flag |= CONSTRAINT_DISABLE;
 							}
-							else if (strcmp(pchan->name, ct->subtarget) == 0) {
+							else if (STREQ(pchan->name, ct->subtarget)) {
 								/* cannot target self */
 								ct->subtarget[0] = '\0';
 								curcon->flag |= CONSTRAINT_DISABLE;
@@ -1165,7 +1165,17 @@ void ED_object_constraint_dependency_update(Main *bmain, Object *ob)
 {
 	ED_object_constraint_update(ob);
 
-	if (ob->pose) ob->pose->flag |= POSE_RECALC;    // checks & sorts pose channels
+	if (ob->pose) {
+		ob->pose->flag |= POSE_RECALC;    /* Checks & sort pose channels. */
+		if (ob->proxy && ob->adt) {
+			/* We need to make use of ugly POSE_ANIMATION_WORKAROUND here too, else anim data are not reloaded
+			 * after calling `BKE_pose_rebuild()`, which causes T43872.
+			 * Note that this is a bit wide here, since we cannot be sure whether there are some locked proxy bones
+			 * or not...
+			 * XXX Temp hack until new depsgraph hopefully solves this. */
+			ob->adt->recalc |= ADT_RECALC_ANIM;
+		}
+	}
 	DAG_relations_tag_update(bmain);
 }
 
@@ -1182,19 +1192,12 @@ static int constraint_delete_exec(bContext *C, wmOperator *UNUSED(op))
 	Object *ob = ptr.id.data;
 	bConstraint *con = ptr.data;
 	ListBase *lb = get_constraint_lb(ob, con, NULL);
-	const bool is_ik = ELEM(con->type, CONSTRAINT_TYPE_KINEMATIC, CONSTRAINT_TYPE_SPLINEIK);
 
 	/* free the constraint */
-	if (BKE_constraint_remove(lb, con)) {
+	if (BKE_constraint_remove_ex(lb, ob, con, true)) {
 		/* there's no active constraint now, so make sure this is the case */
-		BKE_constraints_active_set(lb, NULL);
-		
+		BKE_constraints_active_set(&ob->constraints, NULL);
 		ED_object_constraint_update(ob); /* needed to set the flags on posebones correctly */
-		
-		/* ITASC needs to be rebuilt once a constraint is removed [#26920] */
-		if (is_ik) {
-			BIK_clear_data(ob->pose);
-		}
 		
 		/* notifiers */
 		WM_event_add_notifier(C, NC_OBJECT | ND_CONSTRAINT | NA_REMOVED, ob);
@@ -1732,6 +1735,12 @@ static int constraint_add_exec(bContext *C, wmOperator *op, Object *ob, ListBase
 	
 	if ((ob->type == OB_ARMATURE) && (pchan)) {
 		ob->pose->flag |= POSE_RECALC;  /* sort pose channels */
+		if (BKE_constraints_proxylocked_owner(ob, pchan) && ob->adt) {
+			/* We need to make use of ugly POSE_ANIMATION_WORKAROUND here too, else anim data are not reloaded
+			 * after calling `BKE_pose_rebuild()`, which causes T43872.
+			 * XXX Temp hack until new depsgraph hopefully solves this. */
+			ob->adt->recalc |= ADT_RECALC_ANIM;
+		}
 		DAG_id_tag_update(&ob->id, OB_RECALC_DATA | OB_RECALC_OB);
 	}
 	else

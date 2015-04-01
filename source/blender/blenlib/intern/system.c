@@ -27,10 +27,13 @@
 
 #include "BLI_system.h"
 
+#include "MEM_guardedalloc.h"
+
 /* for backtrace */
 #if defined(__linux__) || defined(__APPLE__)
 #  include <execinfo.h>
-#elif defined(_MSV_VER)
+#elif defined(WIN32)
+#  include <windows.h>
 #  include <DbgHelp.h>
 #endif
 
@@ -97,17 +100,18 @@ void BLI_system_backtrace(FILE *fp)
 #elif defined(_MSC_VER)
 
 	(void)fp;
-#if 0
+#if defined WIN32
 #define MAXSYMBOL 256
-	unsigned short	i;
+#define SIZE 100
+	unsigned short i;
 	void *stack[SIZE];
 	unsigned short nframes;
-	SYMBOL_INFO	*symbolinfo;
+	SYMBOL_INFO *symbolinfo;
 	HANDLE process;
 
 	process = GetCurrentProcess();
 
-	SymInitialize(process, NULL, true);
+	SymInitialize(process, NULL, TRUE);
 
 	nframes = CaptureStackBackTrace(0, SIZE, stack, NULL);
 	symbolinfo = MEM_callocN(sizeof(SYMBOL_INFO) + MAXSYMBOL * sizeof(char), "crash Symbol table");
@@ -115,13 +119,14 @@ void BLI_system_backtrace(FILE *fp)
 	symbolinfo->SizeOfStruct = sizeof(SYMBOL_INFO);
 
 	for (i = 0; i < nframes; i++) {
-		SymFromAddr(process, ( DWORD64 )( stack[ i ] ), 0, symbolinfo);
+		SymFromAddr(process, (DWORD64)(stack[i]), 0, symbolinfo);
 
 		fprintf(fp, "%u: %s - 0x%0X\n", nframes - i - 1, symbolinfo->Name, symbolinfo->Address);
 	}
 
 	MEM_freeN(symbolinfo);
 #undef MAXSYMBOL
+#undef SIZE
 #endif
 
 	/* ------------------ */

@@ -21,6 +21,7 @@
 __all__ = (
     "ExportHelper",
     "ImportHelper",
+    "orientation_helper_factory",
     "axis_conversion",
     "axis_conversion_ensure",
     "create_derived_objects",
@@ -114,6 +115,46 @@ class ImportHelper:
 
     def check(self, context):
         return _check_axis_conversion(self)
+
+
+def orientation_helper_factory(name, axis_forward='Y', axis_up='Z'):
+    members = {}
+
+    def _update_axis_forward(self, context):
+        if self.axis_forward[-1] == self.axis_up[-1]:
+            self.axis_up = self.axis_up[0:-1] + 'XYZ'[('XYZ'.index(self.axis_up[-1]) + 1) % 3]
+
+    members['axis_forward'] = EnumProperty(
+            name="Forward",
+            items=(('X', "X Forward", ""),
+                   ('Y', "Y Forward", ""),
+                   ('Z', "Z Forward", ""),
+                   ('-X', "-X Forward", ""),
+                   ('-Y', "-Y Forward", ""),
+                   ('-Z', "-Z Forward", ""),
+                   ),
+            default=axis_forward,
+            update=_update_axis_forward,
+            )
+
+    def _update_axis_up(self, context):
+        if self.axis_up[-1] == self.axis_forward[-1]:
+            self.axis_forward = self.axis_forward[0:-1] + 'XYZ'[('XYZ'.index(self.axis_forward[-1]) + 1) % 3]
+
+    members['axis_up'] = EnumProperty(
+            name="Up",
+            items=(('X', "X Up", ""),
+                   ('Y', "Y Up", ""),
+                   ('Z', "Z Up", ""),
+                   ('-X', "-X Up", ""),
+                   ('-Y', "-Y Up", ""),
+                   ('-Z', "-Z Up", ""),
+                   ),
+            default=axis_up,
+            update=_update_axis_up,
+            )
+
+    return type(name, (object,), members)
 
 
 # Axis conversion function, not pretty LUT

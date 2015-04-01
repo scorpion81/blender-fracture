@@ -549,7 +549,7 @@ static void text_update_drawcache(SpaceText *st, ARegion *ar)
 	full_update |= drawcache->tabnumber != st->tabnumber;     /* word-wrapping option was toggled */
 	full_update |= drawcache->lheight != st->lheight_dpi;         /* word-wrapping option was toggled */
 	full_update |= drawcache->cwidth != st->cwidth;           /* word-wrapping option was toggled */
-	full_update |= strncmp(drawcache->text_id, txt->id.name, MAX_ID_NAME); /* text datablock was changed */
+	full_update |= !STREQLEN(drawcache->text_id, txt->id.name, MAX_ID_NAME); /* text datablock was changed */
 
 	if (st->wordwrap) {
 		/* update line heights */
@@ -1447,7 +1447,6 @@ void draw_text_main(SpaceText *st, ARegion *ar)
 
 	/* draw other stuff */
 	draw_brackets(st, ar);
-	glTranslatef(GLA_PIXEL_OFS, GLA_PIXEL_OFS, 0.0f); /* XXX scroll requires exact pixel space */
 	draw_textscroll(st, &scroll, &back);
 	draw_documentation(st, ar);
 	draw_suggestion_list(st, ar);

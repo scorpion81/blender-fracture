@@ -18,15 +18,24 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-/** \file gpu_extensions_private.h
- *  \ingroup gpu
+#ifndef __BLI_ARRAY_UTILS_H__
+#define __BLI_ARRAY_UTILS_H__
+
+/** \file BLI_array_utils.h
+ *  \ingroup bli
+ *  \brief Generic array manipulation API.
  */
 
-#ifndef __GPU_EXTENSIONS_PRIVATE_H__
-#define __GPU_EXTENSIONS_PRIVATE_H__
+void _bli_array_reverse(void *arr, unsigned int arr_len, size_t arr_stride);
+#define BLI_array_reverse(arr, arr_len) \
+	_bli_array_reverse(arr, arr_len, sizeof(*(arr)))
 
-/* call this before running any of the functions below */
-void gpu_extensions_init(void);
-void gpu_extensions_exit(void);
+void _bli_array_wrap(void *arr, unsigned int arr_len, size_t arr_stride, int dir);
+#define BLI_array_wrap(arr, arr_len, dir) \
+	_bli_array_wrap(arr, arr_len, sizeof(*(arr)), dir)
 
-#endif  /* __GPU_EXTENSIONS_PRIVATE_H__ */
+int _bli_array_findindex(const void *arr, unsigned int arr_len, size_t arr_stride, const void *p);
+#define BLI_array_findindex(arr, arr_len, p) \
+	_bli_array_findindex(arr, arr_len, sizeof(*(arr)), p)
+
+#endif  /* __BLI_ARRAY_UTILS_H__ */

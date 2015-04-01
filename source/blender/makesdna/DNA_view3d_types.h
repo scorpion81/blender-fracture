@@ -46,6 +46,7 @@ struct bGPdata;
 struct SmoothView3DStore;
 struct wmTimer;
 struct Material;
+struct GPUFX;
 
 /* This is needed to not let VC choke on near and far... old
  * proprietary MS extensions... */
@@ -60,6 +61,7 @@ struct Material;
 #include "DNA_listBase.h"
 #include "DNA_image_types.h"
 #include "DNA_movieclip_types.h"
+#include "DNA_gpu_types.h"
 
 /* ******************************** */
 
@@ -74,10 +76,11 @@ typedef struct BGpic {
 	struct ImageUser iuser;
 	struct MovieClip *clip;
 	struct MovieClipUser cuser;
-	float xof, yof, size, blend;
+	float xof, yof, size, blend, rotation;
 	short view;
 	short flag;
-	short source, pad;
+	short source;
+	char pad[6];
 } BGpic;
 
 /* ********************************* */
@@ -89,11 +92,11 @@ typedef struct RegionView3D {
 	float viewinv[4][4];		/* inverse of viewmat */
 	float persmat[4][4];		/* viewmat*winmat */
 	float persinv[4][4];		/* inverse of persmat */
+	float viewcamtexcofac[4];	/* offset/scale for camera glsl texcoords */
 
 	/* viewmat/persmat multiplied with object matrix, while drawing and selection */
 	float viewmatob[4][4];
 	float persmatob[4][4];
-
 
 	/* user defined clipping planes */
 	float clip[6][4];
@@ -145,6 +148,7 @@ typedef struct RegionView3D {
 	float rot_angle;
 	float rot_axis[3];
 
+	struct GPUFX *compositor;
 } RegionView3D;
 
 /* 3D ViewPort Struct */
@@ -209,10 +213,16 @@ typedef struct View3D {
 	struct ListBase afterdraw_transp;
 	struct ListBase afterdraw_xray;
 	struct ListBase afterdraw_xraytransp;
-	
+
 	/* drawflags, denoting state */
 	char zbuf, transp, xray;
+
+	/* built-in shader effects (eGPUFXFlags) */
 	char pad3[5];
+
+	/* note, 'fx_settings.dof' is currently _not_ allocated,
+	 * instead set (temporarily) from camera */
+	struct GPUFXSettings fx_settings;
 
 	void *properties_storage;		/* Nkey panel stores stuff here (runtime only!) */
 	struct Material *defmaterial;	/* used by matcap now */
@@ -340,7 +350,11 @@ enum {
 
 	/* Camera framing options */
 	V3D_BGPIC_CAMERA_ASPECT = (1 << 5),  /* don't stretch to fit the camera view  */
-	V3D_BGPIC_CAMERA_CROP   = (1 << 6)   /* crop out the image */
+	V3D_BGPIC_CAMERA_CROP   = (1 << 6),  /* crop out the image */
+
+	/* Axis flip options */
+	V3D_BGPIC_FLIP_X        = (1 << 7),
+	V3D_BGPIC_FLIP_Y        = (1 << 8),
 };
 
 #define V3D_BGPIC_EXPANDED (V3D_BGPIC_EXPANDED | V3D_BGPIC_CAMERACLIP)

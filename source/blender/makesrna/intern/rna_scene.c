@@ -112,6 +112,7 @@ EnumPropertyItem proportional_falloff_items[] = {
 	{PROP_SMOOTH, "SMOOTH", ICON_SMOOTHCURVE, "Smooth", "Smooth falloff"},
 	{PROP_SPHERE, "SPHERE", ICON_SPHERECURVE, "Sphere", "Spherical falloff"},
 	{PROP_ROOT, "ROOT", ICON_ROOTCURVE, "Root", "Root falloff"},
+	{PROP_INVSQUARE, "INVERSE_SQUARE", ICON_ROOTCURVE, "Inverse Square", "Inverse Square falloff"},
 	{PROP_SHARP, "SHARP", ICON_SHARPCURVE, "Sharp", "Sharp falloff"},
 	{PROP_LIN, "LINEAR", ICON_LINCURVE, "Linear", "Linear falloff"},
 	{PROP_CONST, "CONSTANT", ICON_NOCURVE, "Constant", "Constant falloff"},
@@ -385,7 +386,7 @@ static int rna_Scene_object_bases_lookup_string(PointerRNA *ptr, const char *key
 	Base *base;
 
 	for (base = scene->base.first; base; base = base->next) {
-		if (strncmp(base->object->id.name + 2, key, sizeof(base->object->id.name) - 2) == 0) {
+		if (STREQLEN(base->object->id.name + 2, key, sizeof(base->object->id.name) - 2)) {
 			*r_ptr = rna_pointer_inherit_refine(ptr, &RNA_ObjectBase, base);
 			return true;
 		}
@@ -753,7 +754,7 @@ static int rna_RenderSettings_save_buffers_get(PointerRNA *ptr)
 	else if (!BKE_scene_use_new_shading_nodes(scene))
 		return (rd->scemode & (R_EXR_TILE_FILE | R_FULL_SAMPLE)) != 0;
 	else 
-		return (rd->scemode & R_EXR_TILE_FILE);
+		return (rd->scemode & R_EXR_TILE_FILE) != 0;
 }
 
 static int rna_RenderSettings_full_sample_get(PointerRNA *ptr)
@@ -942,7 +943,7 @@ static int rna_SceneRender_file_ext_length(PointerRNA *ptr)
 	RenderData *rd = (RenderData *)ptr->data;
 	char ext[8];
 	ext[0] = '\0';
-	BKE_add_image_extension(ext, &rd->im_format);
+	BKE_image_path_ensure_ext_from_imformat(ext, &rd->im_format);
 	return strlen(ext);
 }
 
@@ -950,7 +951,7 @@ static void rna_SceneRender_file_ext_get(PointerRNA *ptr, char *str)
 {
 	RenderData *rd = (RenderData *)ptr->data;
 	str[0] = '\0';
-	BKE_add_image_extension(str, &rd->im_format);
+	BKE_image_path_ensure_ext_from_imformat(str, &rd->im_format);
 }
 
 #ifdef WITH_QUICKTIME
@@ -1158,7 +1159,7 @@ static int rna_RenderSettings_engine_get(PointerRNA *ptr)
 	int a = 0;
 
 	for (type = R_engines.first; type; type = type->next, a++)
-		if (strcmp(type->idname, rd->engine) == 0)
+		if (STREQ(type->idname, rd->engine))
 			return a;
 	
 	return 0;
@@ -1243,8 +1244,8 @@ static int rna_RenderSettings_use_game_engine_get(PointerRNA *ptr)
 	RenderEngineType *type;
 
 	for (type = R_engines.first; type; type = type->next)
-		if (strcmp(type->idname, rd->engine) == 0)
-			return (type->flag & RE_GAME);
+		if (STREQ(type->idname, rd->engine))
+			return (type->flag & RE_GAME) != 0;
 	
 	return 0;
 }
@@ -1375,7 +1376,7 @@ static void rna_Scene_use_persistent_data_update(Main *UNUSED(bmain), Scene *UNU
 static int rna_Scene_use_audio_get(PointerRNA *ptr)
 {
 	Scene *scene = (Scene *)ptr->data;
-	return scene->audio.flag & AUDIO_MUTE;
+	return (scene->audio.flag & AUDIO_MUTE) != 0;
 }
 
 static void rna_Scene_use_audio_set(PointerRNA *ptr, int value)
@@ -1417,10 +1418,7 @@ static void rna_Scene_sync_mode_set(PointerRNA *ptr, int value)
 
 static int rna_GameSettings_auto_start_get(PointerRNA *UNUSED(ptr))
 {
-	if (G.fileflags & G_FILE_AUTOPLAY)
-		return 1;
-
-	return 0;
+	return (G.fileflags & G_FILE_AUTOPLAY) != 0;
 }
 
 static void rna_GameSettings_auto_start_set(PointerRNA *UNUSED(ptr), int value)
@@ -1689,6 +1687,28 @@ static void rna_FreestyleSettings_module_remove(ID *id, FreestyleSettings *confi
 
 	DAG_id_tag_update(&scene->id, 0);
 	WM_main_add_notifier(NC_SCENE | ND_RENDER_OPTIONS, NULL);
+}
+
+char *rna_GPUDOF_path(PointerRNA *ptr)
+{
+	/* if there is ID-data, resolve the path using the index instead of by name,
+	 * since the name used is the name of the texture assigned, but the texture
+	 * may be used multiple times in the same stack
+	 */
+	if (ptr->id.data) {
+		if (GS(((ID *)ptr->id.data)->name) == ID_CA) {
+			return BLI_strdup("gpu_dof");
+		}
+	}
+
+	return BLI_strdup("");;
+}
+
+static void rna_GPUFXSettings_fx_update(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *ptr)
+{
+	GPUFXSettings *fx_settings = ptr->data;
+
+	BKE_screen_gpu_fx_validate(fx_settings);
 }
 
 #else
@@ -3207,7 +3227,7 @@ static void rna_def_scene_game_recast_data(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "slope_max", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "agentmaxslope");
-	RNA_def_property_range(prop, 0, M_PI / 2);
+	RNA_def_property_range(prop, 0, M_PI_2);
 	RNA_def_property_ui_text(prop, "Max Slope", "Maximum walkable slope angle");
 	RNA_def_property_update(prop, NC_SCENE, NULL);
 
@@ -3622,8 +3642,8 @@ static void rna_def_scene_game_data(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "logic_step_max", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "maxlogicstep");
-	RNA_def_property_ui_range(prop, 1, 5, 1, 1);
-	RNA_def_property_range(prop, 1, 5);
+	RNA_def_property_range(prop, 1, 10000);
+	RNA_def_property_ui_range(prop, 1, 50, 1, 1);
 	RNA_def_property_ui_text(prop, "Max Logic Steps",
 	                         "Maximum number of logic frame per game frame if graphics slows down the game, "
 	                         "higher value allows better synchronization with physics");
@@ -3631,8 +3651,8 @@ static void rna_def_scene_game_data(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "physics_step_max", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "maxphystep");
-	RNA_def_property_ui_range(prop, 1, 5, 1, 1);
-	RNA_def_property_range(prop, 1, 5);
+	RNA_def_property_range(prop, 1, 10000);
+	RNA_def_property_ui_range(prop, 1, 50, 1, 1);
 	RNA_def_property_ui_text(prop, "Max Physics Steps",
 	                         "Maximum number of physics step per game frame if graphics slows down the game, "
 	                         "higher value allows physics to keep up with realtime");
@@ -3820,6 +3840,114 @@ static void rna_def_scene_game_data(BlenderRNA *brna)
 	/* Nestled Data  */
 	rna_def_scene_game_recast_data(brna);
 }
+
+static void rna_def_gpu_dof_fx(BlenderRNA *brna)
+{
+	StructRNA *srna;
+	PropertyRNA *prop;
+
+	srna = RNA_def_struct(brna, "GPUDOFSettings", NULL);
+	RNA_def_struct_ui_text(srna, "GPU DOF", "Settings for GPU based depth of field");
+	RNA_def_struct_ui_icon(srna, ICON_RENDERLAYERS);
+	RNA_def_struct_path_func(srna, "rna_GPUDOF_path");
+
+	prop = RNA_def_property(srna, "focus_distance", PROP_FLOAT, PROP_DISTANCE);
+	RNA_def_property_ui_text(prop, "Focus distance", "Viewport depth of field focus distance");
+	RNA_def_property_range(prop, 0.0f, FLT_MAX);
+	RNA_def_property_ui_range(prop, 0.0f, 5000.0f, 1, 2);
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, NULL);
+
+	prop = RNA_def_property(srna, "focal_length", PROP_FLOAT, PROP_DISTANCE_CAMERA);
+	RNA_def_property_ui_text(prop, "Focal Length", "Focal length for dof effect");
+	RNA_def_property_range(prop, 1.0f, FLT_MAX);
+	RNA_def_property_ui_range(prop, 1.0f, 5000.0f, 1, 2);
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, NULL);
+
+	prop = RNA_def_property(srna, "sensor", PROP_FLOAT, PROP_DISTANCE_CAMERA);
+	RNA_def_property_ui_text(prop, "Sensor", "Size of sensor");
+	RNA_def_property_range(prop, 1.0f, FLT_MAX);
+	RNA_def_property_ui_range(prop, 1.0f, 5000.0f, 1, 2);
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, NULL);
+
+	prop = RNA_def_property(srna, "fstop", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_ui_text(prop, "Viewport F-stop", "F-stop for dof effect");
+	RNA_def_property_range(prop, 0.0f, FLT_MAX);
+	RNA_def_property_ui_range(prop, 0.1f, 128.0f, 10, 1);
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, NULL);
+}
+
+static void rna_def_gpu_ssao_fx(BlenderRNA *brna)
+{
+	StructRNA *srna;
+	PropertyRNA *prop;
+
+	srna = RNA_def_struct(brna, "GPUSSAOSettings", NULL);
+	RNA_def_struct_ui_text(srna, "GPU SSAO", "Settings for GPU based screen space ambient occlusion");
+	RNA_def_struct_ui_icon(srna, ICON_RENDERLAYERS);
+
+	prop = RNA_def_property(srna, "factor", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_ui_text(prop, "Strength", "Strength of the SSAO effect");
+	RNA_def_property_range(prop, 0.0f, 250.0f);
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, NULL);
+
+	prop = RNA_def_property(srna, "distance_max", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_ui_text(prop, "Distance", "Distance of object that contribute to the SSAO effect");
+	RNA_def_property_range(prop, 0.0f, 100000.0f);
+	RNA_def_property_ui_range(prop, 0.0f, 100.0f, 1, 3);
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, NULL);
+
+	prop = RNA_def_property(srna, "attenuation", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_ui_text(prop, "Attenuation", "Attenuation constant");
+	RNA_def_property_range(prop, 1.0f, 100000.0f);
+	RNA_def_property_ui_range(prop, 1.0f, 100.0f, 1, 3);
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, NULL);
+
+	prop = RNA_def_property(srna, "samples", PROP_INT, PROP_NONE);
+	RNA_def_property_ui_text(prop, "Samples", "Number of samples");
+	RNA_def_property_range(prop, 1, 500);
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, NULL);
+
+	prop = RNA_def_property(srna, "color", PROP_FLOAT, PROP_COLOR_GAMMA);
+	RNA_def_property_ui_text(prop, "Color", "Color for screen space ambient occlusion effect");
+	RNA_def_property_range(prop, 0.0f, 1.0f);
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, NULL);
+}
+
+
+static void rna_def_gpu_fx(BlenderRNA *brna)
+{
+	StructRNA *srna;
+	PropertyRNA *prop;
+
+	rna_def_gpu_ssao_fx(brna);
+	rna_def_gpu_dof_fx(brna);
+
+	srna = RNA_def_struct(brna, "GPUFXSettings", NULL);
+	RNA_def_struct_ui_text(srna, "GPU FX Settings", "Settings for GPU based compositing");
+	RNA_def_struct_ui_icon(srna, ICON_RENDERLAYERS);
+
+	prop = RNA_def_property(srna, "dof", PROP_POINTER, PROP_NONE);
+	RNA_def_property_flag(prop, PROP_NEVER_NULL);
+	RNA_def_property_struct_type(prop, "GPUDOFSettings");
+	RNA_def_property_ui_text(prop, "Depth Of Field settings", "");
+
+	prop = RNA_def_property(srna, "use_dof", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "fx_flag", GPU_FX_FLAG_DOF);
+	RNA_def_property_ui_text(prop, "Depth Of Field", "Use depth of field on viewport using the values from active camera");
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, "rna_GPUFXSettings_fx_update");
+
+
+	prop = RNA_def_property(srna, "ssao", PROP_POINTER, PROP_NONE);
+	RNA_def_property_flag(prop, PROP_NEVER_NULL);
+	RNA_def_property_struct_type(prop, "GPUSSAOSettings");
+	RNA_def_property_ui_text(prop, "Screen Space Ambient Occlusion settings", "");
+
+	prop = RNA_def_property(srna, "use_ssao", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "fx_flag", GPU_FX_FLAG_SSAO);
+	RNA_def_property_ui_text(prop, "SSAO", "Use screen space ambient occlusion of field on viewport");
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, "rna_GPUFXSettings_fx_update");
+}
+
 
 static void rna_def_scene_render_layer(BlenderRNA *brna)
 {
@@ -4681,6 +4809,7 @@ static void rna_def_scene_render_data(BlenderRNA *brna)
 	RNA_def_property_update(prop, NC_SCENE | ND_RENDER_OPTIONS, "rna_Scene_glsl_update");
 	
 	prop = RNA_def_property(srna, "use_freestyle", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_boolean_sdna(prop, NULL, "mode", R_EDGE_FRS);
 	RNA_def_property_ui_text(prop, "Edge", "Draw stylized strokes using Freestyle");
 	RNA_def_property_update(prop, NC_SCENE | ND_RENDER_OPTIONS, "rna_Scene_freestyle_update");
@@ -5390,6 +5519,55 @@ static void rna_def_selected_uv_element(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Face Index", "");
 }
 
+static void rna_def_display_safe_areas(BlenderRNA *brna)
+{
+	StructRNA *srna;
+	PropertyRNA *prop;
+
+	static float default_title[2] = {0.035f, 0.035f};
+	static float default_action[2] = {0.1f, 0.05f};
+
+	static float default_title_center[2] = {0.175f, 0.05f};
+	static float default_action_center[2] = {0.15f, 0.05f};
+
+	srna = RNA_def_struct(brna, "DisplaySafeAreas", NULL);
+	RNA_def_struct_ui_text(srna, "Safe Areas", "Safe Areas used in 3D view and the VSE");
+	RNA_def_struct_sdna(srna, "DisplaySafeAreas");
+
+	/* SAFE AREAS */
+	prop = RNA_def_property(srna, "title", PROP_FLOAT, PROP_XYZ);
+	RNA_def_property_float_sdna(prop, NULL, "title");
+	RNA_def_property_array(prop, 2);
+	RNA_def_property_range(prop, 0.0f, 1.0f);
+	RNA_def_property_float_array_default(prop, default_title);
+	RNA_def_property_ui_text(prop, "Title Safe margins", "Safe area for text and graphics");
+	RNA_def_property_update(prop, NC_SCENE | ND_DRAW_RENDER_VIEWPORT, NULL);
+
+	prop = RNA_def_property(srna, "action", PROP_FLOAT, PROP_XYZ);
+	RNA_def_property_float_sdna(prop, NULL, "action");
+	RNA_def_property_array(prop, 2);
+	RNA_def_property_float_array_default(prop, default_action);
+	RNA_def_property_range(prop, 0.0f, 1.0f);
+	RNA_def_property_ui_text(prop, "Action Safe Margins", "Safe area for general elements");
+	RNA_def_property_update(prop, NC_SCENE | ND_DRAW_RENDER_VIEWPORT, NULL);
+
+
+	prop = RNA_def_property(srna, "title_center", PROP_FLOAT, PROP_XYZ);
+	RNA_def_property_float_sdna(prop, NULL, "title_center");
+	RNA_def_property_array(prop, 2);
+	RNA_def_property_float_array_default(prop, default_title_center);
+	RNA_def_property_range(prop, 0.0f, 1.0f);
+	RNA_def_property_ui_text(prop, "Center Title Safe Margins", "Safe area for text and graphics in a different aspect ratio");
+	RNA_def_property_update(prop, NC_SCENE | ND_DRAW_RENDER_VIEWPORT, NULL);
+
+	prop = RNA_def_property(srna, "action_center", PROP_FLOAT, PROP_XYZ);
+	RNA_def_property_float_sdna(prop, NULL, "action_center");
+	RNA_def_property_array(prop, 2);
+	RNA_def_property_float_array_default(prop, default_action_center);
+	RNA_def_property_range(prop, 0.0f, 1.0f);
+	RNA_def_property_ui_text(prop, "Center Action Safe Margins", "Safe area for general elements in a different aspect ratio");
+	RNA_def_property_update(prop, NC_SCENE | ND_DRAW_RENDER_VIEWPORT, NULL);
+}
 
 
 void RNA_def_scene(BlenderRNA *brna)
@@ -5685,6 +5863,13 @@ void RNA_def_scene(BlenderRNA *brna)
 	RNA_def_property_struct_type(prop, "RenderSettings");
 	RNA_def_property_ui_text(prop, "Render Data", "");
 	
+	/* Safe Areas */
+	prop = RNA_def_property(srna, "safe_areas", PROP_POINTER, PROP_NONE);
+	RNA_def_property_pointer_sdna(prop, NULL, "safe_areas");
+	RNA_def_property_flag(prop, PROP_NEVER_NULL);
+	RNA_def_property_struct_type(prop, "DisplaySafeAreas");
+	RNA_def_property_ui_text(prop, "Safe Areas", "");
+
 	/* Markers */
 	prop = RNA_def_property(srna, "timeline_markers", PROP_COLLECTION, PROP_NONE);
 	RNA_def_property_collection_sdna(prop, NULL, "markers", NULL);
@@ -5732,7 +5917,7 @@ void RNA_def_scene(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "audio_volume", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "audio.volume");
-	RNA_def_property_range(prop, 0.0f, 1.0f);
+	RNA_def_property_range(prop, 0.0f, 100.0f);
 	RNA_def_property_ui_text(prop, "Volume", "Audio volume");
 	RNA_def_property_translation_context(prop, BLF_I18NCONTEXT_ID_SOUND);
 	RNA_def_property_update(prop, NC_SCENE, NULL);
@@ -5799,11 +5984,14 @@ void RNA_def_scene(BlenderRNA *brna)
 	rna_def_scene_game_data(brna);
 	rna_def_transform_orientation(brna);
 	rna_def_selected_uv_element(brna);
+	rna_def_display_safe_areas(brna);
 	RNA_define_animate_sdna(true);
 	/* *** Animated *** */
 	rna_def_scene_render_data(brna);
 	rna_def_scene_render_layer(brna);
-	
+
+	rna_def_gpu_fx(brna);
+
 	/* Scene API */
 	RNA_api_scene(srna);
 }

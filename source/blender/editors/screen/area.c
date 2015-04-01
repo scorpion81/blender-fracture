@@ -895,7 +895,7 @@ static void region_azone_tria(ScrArea *sa, AZone *az, ARegion *ar)
 
 static void region_azone_initialize(ScrArea *sa, ARegion *ar, AZEdge edge, const bool is_fullscreen)
 {
-	AZone *az;
+	AZone *az = NULL;
 	const bool is_hidden = (ar->flag & (RGN_FLAG_HIDDEN | RGN_FLAG_TOO_SMALL)) == 0;
 	
 	if (is_hidden || !is_fullscreen) {
@@ -906,7 +906,7 @@ static void region_azone_initialize(ScrArea *sa, ARegion *ar, AZEdge edge, const
 		az->edge = edge;
 	}
 	
-	if (ar->flag & (RGN_FLAG_HIDDEN | RGN_FLAG_TOO_SMALL)) {
+	if (!is_hidden) {
 		if (!is_fullscreen) {
 			if (G.debug_value == 3)
 				region_azone_icon(sa, az, ar);
@@ -1478,7 +1478,7 @@ void region_toggle_hidden(bContext *C, ARegion *ar, const bool do_fade)
 /* exported to all editors, uses fading default */
 void ED_region_toggle_hidden(bContext *C, ARegion *ar)
 {
-	region_toggle_hidden(C, ar, 1);
+	region_toggle_hidden(C, ar, true);
 }
 
 /**
@@ -1522,10 +1522,10 @@ void ED_area_data_copy(ScrArea *sa_dst, ScrArea *sa_src, const bool do_free)
 
 void ED_area_data_swap(ScrArea *sa_dst, ScrArea *sa_src)
 {
-	sa_dst->headertype = sa_src->headertype;
-	sa_dst->spacetype = sa_src->spacetype;
-	sa_dst->type = sa_src->type;
-	sa_dst->butspacetype = sa_src->butspacetype;
+	SWAP(short, sa_dst->headertype, sa_src->headertype);
+	SWAP(char, sa_dst->spacetype, sa_src->spacetype);
+	SWAP(SpaceType *, sa_dst->type, sa_src->type);
+	SWAP(char, sa_dst->butspacetype, sa_src->butspacetype);
 
 
 	SWAP(ListBase, sa_dst->spacedata, sa_src->spacedata);
@@ -1631,7 +1631,7 @@ void ED_area_newspace(bContext *C, ScrArea *sa, int type)
 
 void ED_area_prevspace(bContext *C, ScrArea *sa)
 {
-	SpaceLink *sl = (sa) ? sa->spacedata.first : CTX_wm_space_data(C);
+	SpaceLink *sl = sa->spacedata.first;
 
 	if (sl && sl->next) {
 		/* workaround for case of double prevspace, render window
@@ -1645,6 +1645,8 @@ void ED_area_prevspace(bContext *C, ScrArea *sa)
 		/* no change */
 		return;
 	}
+	sa->flag &= ~AREA_FLAG_STACKED_FULLSCREEN;
+
 	ED_area_tag_redraw(sa);
 
 	/* send space change notifier */
@@ -2161,4 +2163,3 @@ void ED_region_cache_draw_cached_segments(const ARegion *ar, const int num_segme
 		}
 	}
 }
-

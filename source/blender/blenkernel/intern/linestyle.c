@@ -199,8 +199,11 @@ FreestyleLineStyle *BKE_linestyle_copy(FreestyleLineStyle *linestyle)
 	new_linestyle->dash3 = linestyle->dash3;
 	new_linestyle->gap3 = linestyle->gap3;
 	new_linestyle->panel = linestyle->panel;
+	new_linestyle->sort_key = linestyle->sort_key;
+	new_linestyle->integration_type = linestyle->integration_type;
 	new_linestyle->texstep = linestyle->texstep;
 	new_linestyle->pr_texture = linestyle->pr_texture;
+	new_linestyle->use_nodes = linestyle->use_nodes;
 	for (m = (LineStyleModifier *)linestyle->color_modifiers.first; m; m = m->next)
 		BKE_linestyle_color_modifier_copy(new_linestyle, m);
 	for (m = (LineStyleModifier *)linestyle->alpha_modifiers.first; m; m = m->next)
@@ -280,6 +283,9 @@ LineStyleModifier *BKE_linestyle_color_modifier_add(FreestyleLineStyle *linestyl
 	LineStyleModifier *m;
 
 	m = alloc_color_modifier(name, type);
+	if (UNLIKELY(m == NULL)) {
+		return NULL;
+	}
 	m->blend = MA_RAMP_BLEND;
 
 	switch (type) {
@@ -314,6 +320,9 @@ LineStyleModifier *BKE_linestyle_color_modifier_copy(FreestyleLineStyle *linesty
 	LineStyleModifier *new_m;
 
 	new_m = alloc_color_modifier(m->name, m->type);
+	if (UNLIKELY(new_m == NULL)) {
+		return NULL;
+	}
 	new_m->influence = m->influence;
 	new_m->flags = m->flags;
 	new_m->blend = m->blend;

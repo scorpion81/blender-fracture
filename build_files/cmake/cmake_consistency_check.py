@@ -187,6 +187,8 @@ def cmake_get_src(f):
                                 pass
                             elif new_file.endswith(".osl"):  # open shading language
                                 pass
+                            elif new_file.endswith(".glsl"):
+                                pass
                             else:
                                 raise Exception("unknown file type - not c or h %s -> %s" % (f, new_file))
 
@@ -305,7 +307,7 @@ if UTF8_CHECK:
                     try:
                         for l in open(f, "r", encoding="utf8"):
                             i += 1
-                    except:
+                    except UnicodeDecodeError:
                         print("Non utf8: %s:%d" % (f, i))
                         if i > 1:
                             traceback.print_exc()

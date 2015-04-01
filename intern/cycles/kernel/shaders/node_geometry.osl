@@ -26,7 +26,8 @@ shader node_geometry(
 	output normal TrueNormal = normal(0.0, 0.0, 0.0),
 	output vector Incoming = vector(0.0, 0.0, 0.0),
 	output point Parametric = point(0.0, 0.0, 0.0),
-	output float Backfacing = 0.0)
+	output float Backfacing = 0.0,
+	output float Pointiness = 0.0)
 {
 	Position = P;
 	Normal = NormalIn;
@@ -56,6 +57,14 @@ shader node_geometry(
 	else {
 		/* otherwise use surface derivatives */
 		Tangent = normalize(dPdu);
+	}
+
+	getattribute("geom:pointiness", Pointiness);
+	if (bump_offset == "dx") {
+		Pointiness += Dx(Pointiness);
+	}
+	else if (bump_offset == "dy") {
+		Pointiness += Dy(Pointiness);
 	}
 }
 

@@ -213,15 +213,15 @@ static int _ehashIterator_isStopped(EHashIterator *ehi)
 
 static void *_stdAllocator_alloc(CCGAllocatorHDL UNUSED(a), int numBytes)
 {
-	return malloc(numBytes);
+	return MEM_mallocN(numBytes, "CCG standard alloc");
 }
 static void *_stdAllocator_realloc(CCGAllocatorHDL UNUSED(a), void *ptr, int newSize, int UNUSED(oldSize))
 {
-	return realloc(ptr, newSize);
+	return MEM_reallocN(ptr, newSize);
 }
 static void _stdAllocator_free(CCGAllocatorHDL UNUSED(a), void *ptr)
 {
-	free(ptr);
+	MEM_freeN(ptr);
 }
 
 static CCGAllocatorIFC *_getStandardAllocatorIFC(void)
@@ -579,8 +579,14 @@ static float *_vert_getNo(CCGVert *v, int lvl, int dataSize, int normalDataOffse
 
 static void _vert_free(CCGVert *v, CCGSubSurf *ss)
 {
-	CCGSUBSURF_free(ss, v->edges);
-	CCGSUBSURF_free(ss, v->faces);
+	if (v->edges) {
+		CCGSUBSURF_free(ss, v->edges);
+	}
+
+	if (v->faces) {
+		CCGSUBSURF_free(ss, v->faces);
+	}
+
 	CCGSUBSURF_free(ss, v);
 }
 
@@ -669,7 +675,10 @@ static void *_edge_getCoVert(CCGEdge *e, CCGVert *v, int lvl, int x, int dataSiz
 
 static void _edge_free(CCGEdge *e, CCGSubSurf *ss)
 {
-	CCGSUBSURF_free(ss, e->faces);
+	if (e->faces) {
+		CCGSUBSURF_free(ss, e->faces);
+	}
+
 	CCGSUBSURF_free(ss, e);
 }
 static void _edge_unlinkMarkAndFree(CCGEdge *e, CCGSubSurf *ss)

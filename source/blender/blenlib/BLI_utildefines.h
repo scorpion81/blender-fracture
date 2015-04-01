@@ -436,50 +436,58 @@ extern "C" {
 
 /* assuming a static array */
 #if defined(__GNUC__) && !defined(__cplusplus)
-#  define ARRAY_SIZE(arr)                                                     \
-	((sizeof(struct {int isnt_array : ((void *)&(arr) == &(arr)[0]);}) * 0) + \
+#  define ARRAY_SIZE(arr) \
+	((sizeof(struct {int isnt_array : ((const void *)&(arr) == &(arr)[0]);}) * 0) + \
 	 (sizeof(arr) / sizeof(*(arr))))
 #else
 #  define ARRAY_SIZE(arr)  (sizeof(arr) / sizeof(*(arr)))
 #endif
 
-/* ELEM#(v, ...): is the first arg equal any others? */
-/* internal helpers*/
+/* ARRAY_SET_ITEMS#(v, ...): set indices of array 'v'  */
+/* internal helpers */
 #define _VA_ARRAY_SET_ITEMS2(v, a) \
-       ((v)[0] = (a))
+        ((v)[0] = (a))
 #define _VA_ARRAY_SET_ITEMS3(v, a, b) \
-       _VA_ARRAY_SET_ITEMS2(v, a); ((v)[1] = (b))
+        _VA_ARRAY_SET_ITEMS2(v, a); ((v)[1] = (b))
 #define _VA_ARRAY_SET_ITEMS4(v, a, b, c) \
-       _VA_ARRAY_SET_ITEMS3(v, a, b); ((v)[2] = (c))
+        _VA_ARRAY_SET_ITEMS3(v, a, b); ((v)[2] = (c))
 #define _VA_ARRAY_SET_ITEMS5(v, a, b, c, d) \
-       _VA_ARRAY_SET_ITEMS4(v, a, b, c); ((v)[3] = (d))
+        _VA_ARRAY_SET_ITEMS4(v, a, b, c); ((v)[3] = (d))
 #define _VA_ARRAY_SET_ITEMS6(v, a, b, c, d, e) \
-       _VA_ARRAY_SET_ITEMS5(v, a, b, c, d); ((v)[4] = (e))
+        _VA_ARRAY_SET_ITEMS5(v, a, b, c, d); ((v)[4] = (e))
 #define _VA_ARRAY_SET_ITEMS7(v, a, b, c, d, e, f) \
-       _VA_ARRAY_SET_ITEMS6(v, a, b, c, d, e); ((v)[5] = (f))
+        _VA_ARRAY_SET_ITEMS6(v, a, b, c, d, e); ((v)[5] = (f))
 #define _VA_ARRAY_SET_ITEMS8(v, a, b, c, d, e, f, g) \
-       _VA_ARRAY_SET_ITEMS7(v, a, b, c, d, e, f); ((v)[6] = (g))
+        _VA_ARRAY_SET_ITEMS7(v, a, b, c, d, e, f); ((v)[6] = (g))
 #define _VA_ARRAY_SET_ITEMS9(v, a, b, c, d, e, f, g, h) \
-       _VA_ARRAY_SET_ITEMS8(v, a, b, c, d, e, f, g); ((v)[7] = (h))
+        _VA_ARRAY_SET_ITEMS8(v, a, b, c, d, e, f, g); ((v)[7] = (h))
 #define _VA_ARRAY_SET_ITEMS10(v, a, b, c, d, e, f, g, h, i) \
-       _VA_ARRAY_SET_ITEMS9(v, a, b, c, d, e, f, g, h); ((v)[8] = (i))
+        _VA_ARRAY_SET_ITEMS9(v, a, b, c, d, e, f, g, h); ((v)[8] = (i))
 #define _VA_ARRAY_SET_ITEMS11(v, a, b, c, d, e, f, g, h, i, j) \
-       _VA_ARRAY_SET_ITEMS10(v, a, b, c, d, e, f, g, h, i); ((v)[9] = (j))
+        _VA_ARRAY_SET_ITEMS10(v, a, b, c, d, e, f, g, h, i); ((v)[9] = (j))
 #define _VA_ARRAY_SET_ITEMS12(v, a, b, c, d, e, f, g, h, i, j, k) \
-       _VA_ARRAY_SET_ITEMS11(v, a, b, c, d, e, f, g, h, i, j); ((v)[10] = (k))
+        _VA_ARRAY_SET_ITEMS11(v, a, b, c, d, e, f, g, h, i, j); ((v)[10] = (k))
 #define _VA_ARRAY_SET_ITEMS13(v, a, b, c, d, e, f, g, h, i, j, k, l) \
-       _VA_ARRAY_SET_ITEMS12(v, a, b, c, d, e, f, g, h, i, j, k); ((v)[11] = (l))
+        _VA_ARRAY_SET_ITEMS12(v, a, b, c, d, e, f, g, h, i, j, k); ((v)[11] = (l))
 #define _VA_ARRAY_SET_ITEMS14(v, a, b, c, d, e, f, g, h, i, j, k, l, m) \
-       _VA_ARRAY_SET_ITEMS13(v, a, b, c, d, e, f, g, h, i, j, k, l); ((v)[12] = (m))
+        _VA_ARRAY_SET_ITEMS13(v, a, b, c, d, e, f, g, h, i, j, k, l); ((v)[12] = (m))
 #define _VA_ARRAY_SET_ITEMS15(v, a, b, c, d, e, f, g, h, i, j, k, l, m, n) \
-       _VA_ARRAY_SET_ITEMS14(v, a, b, c, d, e, f, g, h, i, j, k, l, m); ((v)[13] = (n))
+        _VA_ARRAY_SET_ITEMS14(v, a, b, c, d, e, f, g, h, i, j, k, l, m); ((v)[13] = (n))
 #define _VA_ARRAY_SET_ITEMS16(v, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o) \
-       _VA_ARRAY_SET_ITEMS15(v, a, b, c, d, e, f, g, h, i, j, k, l, m, n); ((v)[14] = (o))
+        _VA_ARRAY_SET_ITEMS15(v, a, b, c, d, e, f, g, h, i, j, k, l, m, n); ((v)[14] = (o))
 #define _VA_ARRAY_SET_ITEMS17(v, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p) \
-       _VA_ARRAY_SET_ITEMS16(v, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o); ((v)[15] = (p))
+        _VA_ARRAY_SET_ITEMS16(v, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o); ((v)[15] = (p))
 
-/* reusable ELEM macro */
+/* reusable ARRAY_SET_ITEMS macro */
 #define ARRAY_SET_ITEMS(...) { VA_NARGS_CALL_OVERLOAD(_VA_ARRAY_SET_ITEMS, __VA_ARGS__); } (void)0
+
+#if defined(__GNUC__) || defined(__clang__)
+#define POINTER_OFFSET(v, ofs) \
+	((typeof(v))((char *)(v) + ofs))
+#else
+#define POINTER_OFFSET(v, ofs) \
+	((void *)((char *)(v) + ofs))
+#endif
 
 /* Like offsetof(typeof(), member), for non-gcc compilers */
 #define OFFSETOF_STRUCT(_struct, _member) \
@@ -515,6 +523,11 @@ extern "C" {
 
 
 /* generic strcmp macros */
+#if defined(_MSC_VER)
+#  define strcasecmp _stricmp
+#  define strncasecmp _strnicmp
+#endif
+
 #define STREQ(a, b) (strcmp(a, b) == 0)
 #define STRCASEEQ(a, b) (strcasecmp(a, b) == 0)
 #define STREQLEN(a, b, n) (strncmp(a, b, n) == 0)
@@ -541,14 +554,13 @@ extern "C" {
 /**
  * UNUSED_VARS#(a, ...): quiet unused warnings
  *
- * <pre>
+ * \code{.py}
  * for i in range(16):
  *     args = [(chr(ord('a') + (c % 26)) + (chr(ord('0') + (c // 26)))) for c in range(i + 1)]
  *     print("#define _VA_UNUSED_VARS_%d(%s) \\" % (i + 1, ", ".join(args)))
  *     print("\t((void)(%s)%s)" %
  *             (args[0], ((", _VA_UNUSED_VARS_" + str(i) + "(%s)") if i else "%s") % ", ".join((args[1:]))))
- * </pre>
- *
+ * \endcode
  */
 
 #define _VA_UNUSED_VARS_1(a0) \
@@ -587,6 +599,13 @@ extern "C" {
 
 /* reusable ELEM macro */
 #define UNUSED_VARS(...) VA_NARGS_CALL_OVERLOAD(_VA_UNUSED_VARS_, __VA_ARGS__)
+
+/* for debug-only variables */
+#ifndef NDEBUG
+#  define UNUSED_VARS_NDEBUG(...)
+#else
+#  define UNUSED_VARS_NDEBUG UNUSED_VARS
+#endif
 
 /*little macro so inline keyword works*/
 #if defined(_MSC_VER)

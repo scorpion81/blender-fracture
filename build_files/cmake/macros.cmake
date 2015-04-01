@@ -296,6 +296,12 @@ macro(setup_liblinks
 	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${PLATFORM_LINKFLAGS}")
 	set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} ${PLATFORM_LINKFLAGS_DEBUG}")
 
+	set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${PLATFORM_LINKFLAGS}")
+	set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} ${PLATFORM_LINKFLAGS_DEBUG}")
+
+	set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} ${PLATFORM_LINKFLAGS}")
+	set(CMAKE_MODULE_LINKER_FLAGS_DEBUG "${CMAKE_MODULE_LINKER_FLAGS_DEBUG} ${PLATFORM_LINKFLAGS_DEBUG}")
+
 	target_link_libraries(${target}
 			${PNG_LIBRARIES}
 			${ZLIB_LIBRARIES}
@@ -347,6 +353,9 @@ macro(setup_liblinks
 	endif()
 	if(WITH_OPENCOLORIO)
 		target_link_libraries(${target} ${OPENCOLORIO_LIBRARIES})
+	endif()
+	if(WITH_CYCLES_OSL)
+		target_link_libraries(${target} ${OSL_LIBRARIES})
 	endif()
 	if(WITH_BOOST)
 		target_link_libraries(${target} ${BOOST_LIBRARIES})
@@ -405,9 +414,6 @@ macro(setup_liblinks
 	endif()
 	if(WITH_MOD_CLOTH_ELTOPO)
 		target_link_libraries(${target} ${LAPACK_LIBRARIES})
-	endif()
-	if(WITH_CYCLES_OSL)
-		target_link_libraries(${target} ${OSL_LIBRARIES})
 	endif()
 	if(WITH_LLVM)
 		target_link_libraries(${target} ${LLVM_LIBRARY})
@@ -508,6 +514,7 @@ macro(SETUP_BLENDER_SORTED_LIBS)
 		bf_modifiers
 		bf_bmesh
 		bf_blenkernel
+		bf_physics
 		bf_nodes
 		bf_rna
 		bf_gpu
@@ -922,6 +929,7 @@ macro(remove_strict_flags)
 		remove_cc_flag("-Wstrict-prototypes")
 		remove_cc_flag("-Wmissing-prototypes")
 		remove_cc_flag("-Wunused-parameter")
+		remove_cc_flag("-Wunused-macros")
 		remove_cc_flag("-Wwrite-strings")
 		remove_cc_flag("-Wredundant-decls")
 		remove_cc_flag("-Wundef")
@@ -1012,6 +1020,15 @@ macro(ADD_CHECK_CXX_COMPILER_FLAG
 endmacro()
 
 function(get_blender_version)
+	# extracts header vars and defines them in the parent scope:
+	#
+	# - BLENDER_VERSION (major.minor)
+	# - BLENDER_VERSION_MAJOR
+	# - BLENDER_VERSION_MINOR
+	# - BLENDER_SUBVERSION (used for internal versioning mainly)
+	# - BLENDER_VERSION_CHAR (a, b, c, ...or empty string)
+	# - BLENDER_VERSION_CYCLE (alpha, beta, rc, release)
+
 	# So cmake depends on BKE_blender.h, beware of inf-loops!
 	CONFIGURE_FILE(${CMAKE_SOURCE_DIR}/source/blender/blenkernel/BKE_blender.h
 	               ${CMAKE_BINARY_DIR}/source/blender/blenkernel/BKE_blender.h.done)
@@ -1044,25 +1061,28 @@ function(get_blender_version)
 		message(FATAL_ERROR "Version parsing failed for BLENDER_VERSION_CYCLE")
 	endif()
 
-	math(EXPR BLENDER_VERSION_MAJOR "${_out_version} / 100")
-	math(EXPR BLENDER_VERSION_MINOR "${_out_version} % 100")
-	set(BLENDER_VERSION "${BLENDER_VERSION_MAJOR}.${BLENDER_VERSION_MINOR}" PARENT_SCOPE)
-
-	set(BLENDER_SUBVERSION ${_out_subversion} PARENT_SCOPE)
-	set(BLENDER_VERSION_CHAR ${_out_version_char} PARENT_SCOPE)
-	set(BLENDER_VERSION_CYCLE ${_out_version_cycle} PARENT_SCOPE)
+	math(EXPR _out_version_major "${_out_version} / 100")
+	math(EXPR _out_version_minor "${_out_version} % 100")
 
 	# for packaging, alpha to numbers
-	string(COMPARE EQUAL "${BLENDER_VERSION_CHAR}" "" _out_version_char_empty)
+	string(COMPARE EQUAL "${_out_version_char}" "" _out_version_char_empty)
 	if(${_out_version_char_empty})
-		set(BLENDER_VERSION_CHAR_INDEX "0" PARENT_SCOPE)
+		set(_out_version_char_index "0")
 	else()
 		set(_char_ls a b c d e f g h i j k l m n o p q r s t u v w x y z)
-		list(FIND _char_ls ${BLENDER_VERSION_CHAR} _out_version_char_index)
-		math(EXPR BLENDER_VERSION_CHAR_INDEX "${_out_version_char_index} + 1" PARENT_SCOPE)
+		list(FIND _char_ls ${_out_version_char} _out_version_char_index)
+		math(EXPR _out_version_char_index "${_out_version_char_index} + 1")
 	endif()
 
-	# message(STATUS "Version (Internal): ${BLENDER_VERSION}.${BLENDER_SUBVERSION}, Version (external): ${BLENDER_VERSION}${BLENDER_VERSION_CHAR}-${BLENDER_VERSION_CYCLE}")
+	# output vars
+	set(BLENDER_VERSION "${_out_version_major}.${_out_version_minor}" PARENT_SCOPE)
+	set(BLENDER_VERSION_MAJOR "${_out_version_major}" PARENT_SCOPE)
+	set(BLENDER_VERSION_MINOR "${_out_version_minor}" PARENT_SCOPE)
+	set(BLENDER_SUBVERSION "${_out_subversion}" PARENT_SCOPE)
+	set(BLENDER_VERSION_CHAR "${_out_version_char}" PARENT_SCOPE)
+	set(BLENDER_VERSION_CHAR_INDEX "${_out_version_char_index}" PARENT_SCOPE)
+	set(BLENDER_VERSION_CYCLE "${_out_version_cycle}" PARENT_SCOPE)
+
 endfunction()
 
 
@@ -1100,7 +1120,7 @@ endmacro()
 macro(blender_project_hack_post)
 	# --------------
 	# MINGW HACK END
-	if (_reset_standard_libraries)
+	if(_reset_standard_libraries)
 		# Must come after projecINCt(...)
 		#
 		# MINGW workaround for -ladvapi32 being included which surprisingly causes

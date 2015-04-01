@@ -654,6 +654,12 @@ int BlenderStrokeRenderer::GenerateScene()
 	{
 		GenerateStrokeMesh(*it, true);
 	}
+	return get_stroke_count();
+}
+
+// Return the number of strokes
+int BlenderStrokeRenderer::get_stroke_count() const
+{
 	return strokeGroups.size() + texturedStrokeGroups.size();
 }
 
@@ -724,7 +730,6 @@ void BlenderStrokeRenderer::GenerateStrokeMesh(StrokeGroup *group, bool hasTex)
 	     it != itend; ++it)
 	{
 		mesh->mat[material_index] = (*it)->getMaterial();
-		material_index++;
 
 		vector<Strip*>& strips = (*it)->getStrips();
 		for (vector<Strip*>::const_iterator s = strips.begin(), send = strips.end(); s != send; ++s) {
@@ -805,6 +810,7 @@ void BlenderStrokeRenderer::GenerateStrokeMesh(StrokeGroup *group, bool hasTex)
 					// poly
 					polys->loopstart = loop_index;
 					polys->totloop = 3;
+					polys->mat_nr = material_index;
 					++polys;
 
 					// Even and odd loops connect triangles vertices differently
@@ -903,6 +909,7 @@ void BlenderStrokeRenderer::GenerateStrokeMesh(StrokeGroup *group, bool hasTex)
 				}
 			} // loop over strip vertices
 		} // loop over strips
+		material_index++;
 	} // loop over strokes
 
 	test_object_materials(freestyle_bmain, (ID *)mesh);
@@ -912,7 +919,7 @@ void BlenderStrokeRenderer::GenerateStrokeMesh(StrokeGroup *group, bool hasTex)
 	BLI_assert(mesh->totedge == edge_index);
 	BLI_assert(mesh->totloop == loop_index);
 	BLI_assert(mesh->totcol == material_index);
-	BKE_mesh_validate(mesh, true);
+	BKE_mesh_validate(mesh, true, true);
 #endif
 }
 
@@ -956,7 +963,8 @@ Render *BlenderStrokeRenderer::RenderScene(Render *re, bool render)
 
 	Render *freestyle_render = RE_NewRender(freestyle_scene->id.name);
 
-	RE_RenderFreestyleStrokes(freestyle_render, freestyle_bmain, freestyle_scene, render);
+	RE_RenderFreestyleStrokes(freestyle_render, freestyle_bmain, freestyle_scene,
+	                          render && get_stroke_count() > 0);
 
 	return freestyle_render;
 }

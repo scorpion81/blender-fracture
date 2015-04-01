@@ -577,6 +577,17 @@ static void autosmooth(Render *UNUSED(re), ObjectRen *obr, float mat[4][4], shor
 	VlakRen *vlr;
 	int a, totvert;
 
+	float rot[3][3];
+
+	/* Note: For normals, we only want rotation, not scaling component.
+	 *       Negative scales (aka mirroring) give wrong results, see T44102. */
+	if (lnors) {
+		float mat3[3][3], size[3];
+
+		copy_m3_m4(mat3, mat);
+		mat3_to_rot_size(rot, size, mat3);
+	}
+
 	if (obr->totvert == 0)
 		return;
 
@@ -611,9 +622,8 @@ static void autosmooth(Render *UNUSED(re), ObjectRen *obr, float mat[4][4], shor
 		ver = RE_findOrAddVert(obr, a);
 		mul_m4_v3(mat, ver->co);
 		if (lnors) {
-			mul_mat3_m4_v3(mat, ver->n);
+			mul_m3_v3(rot, ver->n);
 			negate_v3(ver->n);
-			normalize_v3(ver->n);
 		}
 	}
 	for (a = 0; a < obr->totvlak; a++) {
@@ -1258,7 +1268,7 @@ static void get_particle_uvco_mcol(short from, DerivedMesh *dm, float *fuv, int 
 	/* get mcol */
 	if (sd->mcol && ELEM(from, PART_FROM_FACE, PART_FROM_VOLUME)) {
 		for (i=0; i<sd->totcol; i++) {
-			if (num != DMCACHE_NOTFOUND) {
+			if (!ELEM(num, DMCACHE_NOTFOUND, DMCACHE_ISCHILD)) {
 				MFace *mface = dm->getTessFaceData(dm, num, CD_MFACE);
 				MCol *mc = (MCol*)CustomData_get_layer_n(&dm->faceData, CD_MCOL, i);
 				mc += num * 4;
@@ -1321,6 +1331,9 @@ static int render_new_particle_system(Render *re, ObjectRen *obr, ParticleSystem
 	if ((re->r.scemode & R_VIEWPORT_PREVIEW) && (ob->mode & OB_MODE_PARTICLE_EDIT))
 		return 0;
 
+	if (part->ren_as == PART_DRAW_BB && part->bb_ob == NULL && RE_GetCamera(re) == NULL)
+		return 0;
+
 /* 2. start initializing things */
 
 	/* last possibility to bail out! */
@@ -1344,11 +1357,13 @@ static int render_new_particle_system(Render *re, ObjectRen *obr, ParticleSystem
 
 	if (re->r.scemode & R_VIEWPORT_PREVIEW) { /* preview render */
 		totchild = (int)((float)totchild * (float)part->disp / 100.0f);
-		step_nbr = part->draw_step;
+		step_nbr = 1 << part->draw_step;
 	}
 	else {
-		step_nbr = part->ren_step;
+		step_nbr = 1 << part->ren_step;
 	}
+	if (ELEM(part->kink, PART_KINK_SPIRAL))
+		step_nbr += part->kink_extra_steps;
 
 	psys->flag |= PSYS_DRAWING;
 
@@ -1432,7 +1447,7 @@ static int render_new_particle_system(Render *re, ObjectRen *obr, ParticleSystem
 
 /* 2.6 setup strand rendering */
 	if (part->ren_as == PART_DRAW_PATH && psys->pathcache) {
-		path_nbr=(int)pow(2.0, (double) step_nbr);
+		path_nbr = step_nbr;
 
 		if (path_nbr) {
 			if (!ELEM(ma->material_type, MA_TYPE_HALO, MA_TYPE_WIRE)) {
@@ -1551,7 +1566,7 @@ static int render_new_particle_system(Render *re, ObjectRen *obr, ParticleSystem
 
 			if (path_nbr) {
 				cache = psys->pathcache[a];
-				max_k = (int)cache->steps;
+				max_k = (int)cache->segments;
 			}
 
 			if (totchild && (part->draw&PART_DRAW_PARENT)==0) continue;
@@ -1562,10 +1577,10 @@ static int render_new_particle_system(Render *re, ObjectRen *obr, ParticleSystem
 			if (path_nbr) {
 				cache = psys->childcache[a-totpart];
 
-				if (cache->steps < 0)
+				if (cache->segments < 0)
 					continue;
 
-				max_k = (int)cache->steps;
+				max_k = (int)cache->segments;
 			}
 			
 			pa_time = psys_get_child_time(psys, cpa, cfra, &pa_birthtime, &pa_dietime);
@@ -2721,12 +2736,13 @@ static void init_render_curve(Render *re, ObjectRen *obr, int timeoffset)
 						vlr->v4= NULL;
 
 						/* to prevent float accuracy issues, we calculate normal in local object space (not world) */
-						if (area_tri_v3(co3, co2, co1)>FLT_EPSILON) {
-							if (negative_scale)
-								normal_tri_v3(tmp, co1, co2, co3);
-							else
-								normal_tri_v3(tmp, co3, co2, co1);
-							add_v3_v3(n, tmp);
+						if (normal_tri_v3(tmp, co1, co2, co3) > FLT_EPSILON) {
+							if (negative_scale == false) {
+								add_v3_v3(n, tmp);
+							}
+							else {
+								sub_v3_v3(n, tmp);
+							}
 						}
 
 						vlr->mat= matar[ dl->col ];
@@ -3313,7 +3329,7 @@ static void init_render_mesh(Render *re, ObjectRen *obr, int timeoffset)
 							v2= mface->v2;
 							v3= reverse_verts==0 ? mface->v3 : mface->v1;
 							v4= mface->v4;
-							flag= mface->flag & ME_SMOOTH;
+							flag = do_autosmooth ? ME_SMOOTH : mface->flag & ME_SMOOTH;
 
 							vlr= RE_findOrAddVlak(obr, obr->totvlak++);
 							vlr->v1= RE_findOrAddVert(obr, vertofs+v1);

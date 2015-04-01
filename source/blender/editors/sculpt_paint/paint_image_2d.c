@@ -345,8 +345,8 @@ static unsigned short *brush_painter_curve_mask_new(BrushPainter *painter, int d
 {
 	Brush *brush = painter->brush;
 
-	int xoff = -diameter * 0.5f + 0.5f;
-	int yoff = -diameter * 0.5f + 0.5f;
+	int xoff = -radius;
+	int yoff = -radius;
 
 	unsigned short *mask, *m;
 	int x, y;
@@ -408,11 +408,11 @@ static ImBuf *brush_painter_imbuf_new(BrushPainter *painter, int size, float pre
 			if (is_texbrush) {
 				brush_imbuf_tex_co(&tex_mapping, x, y, texco);
 				BKE_brush_sample_tex_3D(scene, brush, texco, rgba, thread, pool);
-				mul_v3_v3(rgba, brush_rgb);
 				/* TODO(sergey): Support texture paint color space. */
 				if (!use_float) {
 					IMB_colormanagement_scene_linear_to_display_v3(rgba, display);
 				}
+				mul_v3_v3(rgba, brush_rgb);
 			}
 			else {
 				copy_v3_v3(rgba, brush_rgb);
@@ -482,11 +482,11 @@ static void brush_painter_imbuf_update(BrushPainter *painter, ImBuf *oldtexibuf,
 				if (is_texbrush) {
 					brush_imbuf_tex_co(&tex_mapping, x, y, texco);
 					BKE_brush_sample_tex_3D(scene, brush, texco, rgba, thread, pool);
-					mul_v3_v3(rgba, brush_rgb);
 					/* TODO(sergey): Support texture paint color space. */
 					if (!use_float) {
 						IMB_colormanagement_scene_linear_to_display_v3(rgba, display);
 					}
+					mul_v3_v3(rgba, brush_rgb);
 				}
 				else {
 					copy_v3_v3(rgba, brush_rgb);

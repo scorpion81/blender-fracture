@@ -804,6 +804,7 @@ static void parent_set_vert_find(KDTree *tree, Object *child, int vert_par[3], b
 
 		tot = BLI_kdtree_find_nearest_n(tree, co_find, nearest, 3);
 		BLI_assert(tot == 3);
+		UNUSED_VARS(tot);
 
 		vert_par[0] = nearest[0].index;
 		vert_par[1] = nearest[1].index;
@@ -973,7 +974,7 @@ void OBJECT_OT_parent_set(wmOperatorType *ot)
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
-	RNA_def_enum(ot->srna, "type", prop_make_parent_types, 0, "Type", "");
+	ot->prop = RNA_def_enum(ot->srna, "type", prop_make_parent_types, 0, "Type", "");
 	RNA_def_boolean(ot->srna, "xmirror", false, "X Mirror",
 	                "Apply weights symmetrically along X axis, for Envelope/Automatic vertex groups creation");
 	RNA_def_boolean(ot->srna, "keep_transform", false, "Keep Transform",
@@ -1316,7 +1317,7 @@ static unsigned int move_to_layer_init(bContext *C, wmOperator *op)
 		CTX_DATA_END;
 
 		for (a = 0; a < 20; a++)
-			values[a] = (lay & (1 << a));
+			values[a] = (lay & (1 << a)) != 0;
 
 		RNA_boolean_set_array(op->ptr, "layers", values);
 	}
@@ -2349,10 +2350,8 @@ void OBJECT_OT_make_local(wmOperatorType *ot)
 }
 
 enum {
-	/* Be careful with those values, they are used as bitflags in some cases, in others as bool...
-	 * See single_object_users, single_obdata_users, single_object_action_users, etc.< */
-	MAKE_SINGLE_USER_ALL      = 0,
-	MAKE_SINGLE_USER_SELECTED = SELECT,
+	MAKE_SINGLE_USER_ALL      = 1,
+	MAKE_SINGLE_USER_SELECTED = 2,
 };
 
 static int make_single_user_exec(bContext *C, wmOperator *op)
@@ -2360,7 +2359,7 @@ static int make_single_user_exec(bContext *C, wmOperator *op)
 	Main *bmain = CTX_data_main(C);
 	Scene *scene = CTX_data_scene(C);
 	View3D *v3d = CTX_wm_view3d(C); /* ok if this is NULL */
-	const int flag = RNA_enum_get(op->ptr, "type");
+	const int flag = (RNA_enum_get(op->ptr, "type") == MAKE_SINGLE_USER_SELECTED) ? SELECT : 0;
 	const bool copy_groups = false;
 	bool update_deps = false;
 
@@ -2426,7 +2425,7 @@ void OBJECT_OT_make_single_user(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	/* properties */
-	ot->prop = RNA_def_enum(ot->srna, "type", type_items, SELECT, "Type", "");
+	ot->prop = RNA_def_enum(ot->srna, "type", type_items, MAKE_SINGLE_USER_SELECTED, "Type", "");
 
 	RNA_def_boolean(ot->srna, "object", 0, "Object", "Make single user objects");
 	RNA_def_boolean(ot->srna, "obdata", 0, "Object Data", "Make single user object data");

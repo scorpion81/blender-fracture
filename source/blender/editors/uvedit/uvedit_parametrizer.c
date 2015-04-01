@@ -2672,8 +2672,8 @@ static PBool p_abf_matrix_invert(PAbfSystem *sys, PChart *chart)
 		}
 
 		for (i = 0; i < ninterior; i++) {
-			sys->lambdaPlanar[i] += nlGetVariable(0, i);
-			sys->lambdaLength[i] += nlGetVariable(0, ninterior + i);
+			sys->lambdaPlanar[i] += (float)nlGetVariable(0, i);
+			sys->lambdaLength[i] += (float)nlGetVariable(0, ninterior + i);
 		}
 	}
 
@@ -3402,8 +3402,8 @@ static void p_chart_stretch_minimize(PChart *chart, RNG *rng)
 
 static int p_compare_geometric_uv(const void *a, const void *b)
 {
-	const PVert *v1 = *(const PVert **)a;
-	const PVert *v2 = *(const PVert **)b;
+	const PVert *v1 = *(const PVert * const *)a;
+	const PVert *v2 = *(const PVert * const *)b;
 
 	if (v1->uv[0] < v2->uv[0])
 		return -1;
@@ -3788,11 +3788,14 @@ static PBool p_node_intersect(SmoothNode *node, float co[2])
 
 /* smoothing */
 
-static int p_compare_float(const void *a, const void *b)
+static int p_compare_float(const void *a_, const void *b_)
 {
-	if (*((float *)a) < *((float *)b))
+	const float a = *(const float *)a_;
+	const float b = *(const float *)b_;
+
+	if (a < b)
 		return -1;
-	else if (*((float *)a) == *((float *)b))
+	else if (a == b)
 		return 0;
 	else
 		return 1;
@@ -4558,7 +4561,7 @@ void param_pack(ParamHandle *handle, float margin, bool do_rotate)
 		box->index = i; /* warning this index skips PCHART_NOPACK boxes */
 		
 		if (margin > 0.0f)
-			area += sqrtf(box->w * box->h);
+			area += (double)sqrtf(box->w * box->h);
 	}
 	
 	if (margin > 0.0f) {

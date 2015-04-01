@@ -230,7 +230,7 @@ FCurve *list_find_fcurve(ListBase *list, const char rna_path[], const int array_
 	/* check paths of curves, then array indices... */
 	for (fcu = list->first; fcu; fcu = fcu->next) {
 		/* simple string-compare (this assumes that they have the same root...) */
-		if (fcu->rna_path && !strcmp(fcu->rna_path, rna_path)) {
+		if (fcu->rna_path && STREQ(fcu->rna_path, rna_path)) {
 			/* now check indices */
 			if (fcu->array_index == array_index)
 				return fcu;
@@ -253,7 +253,7 @@ FCurve *iter_step_fcurve(FCurve *fcu_iter, const char rna_path[])
 	/* check paths of curves, then array indices... */
 	for (fcu = fcu_iter; fcu; fcu = fcu->next) {
 		/* simple string-compare (this assumes that they have the same root...) */
-		if (fcu->rna_path && !strcmp(fcu->rna_path, rna_path)) {
+		if (fcu->rna_path && STREQ(fcu->rna_path, rna_path)) {
 			return fcu;
 		}
 	}
@@ -290,7 +290,7 @@ int list_find_data_fcurves(ListBase *dst, ListBase *src, const char *dataPrefix,
 			
 			if (quotedName) {
 				/* check if the quoted name matches the required name */
-				if (strcmp(quotedName, dataName) == 0) {
+				if (STREQ(quotedName, dataName)) {
 					LinkData *ld = MEM_callocN(sizeof(LinkData), __func__);
 					
 					ld->data = fcu;
@@ -820,7 +820,7 @@ void fcurve_store_samples(FCurve *fcu, void *data, int start, int end, FcuSample
 		printf("Error: No F-Curve with F-Curve Modifiers to Bake\n");
 		return;
 	}
-	if (start >= end) {
+	if (start > end) {
 		printf("Error: Frame range for Sampled F-Curve creation is inappropriate\n");
 		return;
 	}
@@ -2102,7 +2102,7 @@ static float fcurve_eval_keyframes(FCurve *fcu, BezTriple *bezts, float evaltime
 		 *                                 This lower bound was established in b888a32eee8147b028464336ad2404d8155c64dd
 		 */
 		a = binarysearch_bezt_index_ex(bezts, evaltime, fcu->totvert, 0.0001, &exact);
-		if (G.debug & G_DEBUG) printf("eval fcurve '%s' - %f => %d/%d, %d\n", fcu->rna_path, evaltime, a, fcu->totvert, exact);
+		if (G.debug & G_DEBUG) printf("eval fcurve '%s' - %f => %u/%u, %d\n", fcu->rna_path, evaltime, a, fcu->totvert, exact);
 		
 		if (exact) {
 			/* index returned must be interpreted differently when it sits on top of an existing keyframe 

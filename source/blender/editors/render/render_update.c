@@ -61,6 +61,7 @@
 
 #include "ED_node.h"
 #include "ED_render.h"
+#include "ED_view3d.h"
 
 #include "render_intern.h"  // own include
 
@@ -141,26 +142,19 @@ void ED_render_scene_update(Main *bmain, Scene *scene, int updated)
 	recursive_check = false;
 }
 
-void ED_render_engine_area_exit(ScrArea *sa)
+void ED_render_engine_area_exit(Main *bmain, ScrArea *sa)
 {
 	/* clear all render engines in this area */
 	ARegion *ar;
+	wmWindowManager *wm = bmain->wm.first;
 
 	if (sa->spacetype != SPACE_VIEW3D)
 		return;
 
 	for (ar = sa->regionbase.first; ar; ar = ar->next) {
-		RegionView3D *rv3d;
-
 		if (ar->regiontype != RGN_TYPE_WINDOW || !(ar->regiondata))
 			continue;
-		
-		rv3d = ar->regiondata;
-
-		if (rv3d->render_engine) {
-			RE_engine_free(rv3d->render_engine);
-			rv3d->render_engine = NULL;
-		}
+		ED_view3d_stop_render_preview(wm, ar);
 	}
 }
 
@@ -173,7 +167,7 @@ void ED_render_engine_changed(Main *bmain)
 
 	for (sc = bmain->screen.first; sc; sc = sc->id.next)
 		for (sa = sc->areabase.first; sa; sa = sa->next)
-			ED_render_engine_area_exit(sa);
+			ED_render_engine_area_exit(bmain, sa);
 
 	RE_FreePersistentData();
 
@@ -306,7 +300,7 @@ static void material_changed(Main *bmain, Material *ma)
 	}
 
 	/* find textured objects */
-	if (texture_draw && !(U.gameflags & USER_DISABLE_VBO)) {
+	if (texture_draw) {
 		for (ob = bmain->object.first; ob; ob = ob->id.next) {
 			DerivedMesh *dm = ob->derivedFinal;
 			Material ***material = give_matarar(ob);
@@ -429,7 +423,7 @@ static void texture_changed(Main *bmain, Tex *tex)
 	}
 
 	/* find textured objects */
-	if (texture_draw && !(U.gameflags & USER_DISABLE_VBO)) {
+	if (texture_draw) {
 		for (ob = bmain->object.first; ob; ob = ob->id.next) {
 			DerivedMesh *dm = ob->derivedFinal;
 			Material ***material = give_matarar(ob);

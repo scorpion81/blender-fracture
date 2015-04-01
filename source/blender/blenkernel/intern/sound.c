@@ -118,9 +118,10 @@ void BKE_sound_free(bSound *sound)
 
 	sound_free_waveform(sound);
 	
-	if (sound->mutex) {
-		BLI_mutex_free(sound->mutex);
-		sound->mutex = NULL;
+	if (sound->spinlock) {
+		BLI_spin_end(sound->spinlock);
+		MEM_freeN(sound->spinlock);
+		sound->spinlock = NULL;
 	}
 	
 #endif  /* WITH_AUDASPACE */
@@ -616,6 +617,7 @@ void sound_seek_scene(struct Main *bmain, struct Scene *scene)
 	for (screen = bmain->screen.first; screen; screen = screen->id.next) {
 		if (screen->animtimer) {
 			animation_playing = 1;
+			break;
 		}
 	}
 
@@ -673,48 +675,54 @@ int sound_scene_playing(struct Scene *scene)
 
 void sound_free_waveform(bSound *sound)
 {
-	if (sound->waveform) {
-		MEM_freeN(((SoundWaveform *)sound->waveform)->data);
-		MEM_freeN(sound->waveform);
+	SoundWaveform *waveform = sound->waveform;
+	if (waveform) {
+		if (waveform->data) {
+			MEM_freeN(waveform->data);
+		}
+		MEM_freeN(waveform);
 	}
 
 	sound->waveform = NULL;
 }
 
-void sound_read_waveform(bSound *sound, bool locked, short *stop)
+void sound_read_waveform(bSound *sound, short *stop)
 {
-	AUD_SoundInfo info;
-	SoundWaveform *waveform = NULL;
-	
-	info = AUD_getInfo(sound->playback_handle);
-	
+	AUD_SoundInfo info = AUD_getInfo(sound->playback_handle);
+	SoundWaveform *waveform = MEM_mallocN(sizeof(SoundWaveform), "SoundWaveform");
+
 	if (info.length > 0) {
 		int length = info.length * SOUND_WAVE_SAMPLES_PER_SECOND;
 		
-		waveform = MEM_mallocN(sizeof(SoundWaveform), "SoundWaveform");
 		waveform->data = MEM_mallocN(length * sizeof(float) * 3, "SoundWaveform.samples");
 		waveform->length = AUD_readSound(sound->playback_handle, waveform->data, length, SOUND_WAVE_SAMPLES_PER_SECOND, stop);
-		
-		if (*stop) {
-			MEM_freeN(waveform->data);
-			MEM_freeN(waveform);
-			if (locked)
-				BLI_mutex_lock(sound->mutex);
-			sound->flags &= ~SOUND_FLAGS_WAVEFORM_LOADING;
-			if (locked)
-				BLI_mutex_unlock(sound->mutex);
-			return;
-		}
-		
-		sound_free_waveform(sound);
 	}
+	else {
+		/* Create an empty waveform here if the sound couldn't be
+		 * read. This indicates that reading the waveform is "done",
+		 * whereas just setting sound->waveform to NULL causes other
+		 * code to think the waveform still needs to be created. */
+		waveform->data = NULL;
+		waveform->length = 0;
+	}
+
+	if (*stop) {
+		if (waveform->data) {
+			MEM_freeN(waveform->data);
+		}
+		MEM_freeN(waveform);
+		BLI_spin_lock(sound->spinlock);
+		sound->flags &= ~SOUND_FLAGS_WAVEFORM_LOADING;
+		BLI_spin_unlock(sound->spinlock);
+		return;
+	}
+		
+	sound_free_waveform(sound);
 	
-	if (locked)
-		BLI_mutex_lock(sound->mutex);
+	BLI_spin_lock(sound->spinlock);
 	sound->waveform = waveform;
 	sound->flags &= ~SOUND_FLAGS_WAVEFORM_LOADING;
-	if (locked)
-		BLI_mutex_unlock(sound->mutex);
+	BLI_spin_unlock(sound->spinlock);
 }
 
 void sound_update_scene(Main *bmain, struct Scene *scene)
@@ -849,7 +857,7 @@ void sound_stop_scene(struct Scene *UNUSED(scene)) {}
 void sound_seek_scene(struct Main *UNUSED(bmain), struct Scene *UNUSED(scene)) {}
 float sound_sync_scene(struct Scene *UNUSED(scene)) { return NAN_FLT; }
 int sound_scene_playing(struct Scene *UNUSED(scene)) { return -1; }
-void sound_read_waveform(struct bSound *sound, bool locked, short *stop) { UNUSED_VARS(sound, locked, stop); }
+void sound_read_waveform(struct bSound *sound, short *stop) { UNUSED_VARS(sound, stop); }
 void sound_init_main(struct Main *UNUSED(bmain)) {}
 void sound_set_cfra(int UNUSED(cfra)) {}
 void sound_update_sequencer(struct Main *UNUSED(main), struct bSound *UNUSED(sound)) {}

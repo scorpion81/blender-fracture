@@ -1,5 +1,5 @@
 /*
- * Copyright 2011, Blender Foundation.
+ * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -15,21 +15,35 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * Contributor: 
- *		Jeroen Bakker 
- *		Monique Dewanchand
+ * ***** END GPL LICENSE BLOCK *****
  */
 
-#include "COM_ChannelInfo.h"
-#include "COM_defines.h"
-#include <stdio.h>
-
-/**
- * @brief create new ChannelInfo instance and sets the defaults.
+/** \file gpu_extensions_private.h
+ *  \ingroup gpu
  */
-ChannelInfo::ChannelInfo()
-{
-	this->m_number = 0;
-	this->m_premultiplied = true;
-	this->m_type = COM_CT_UNUSED;
-}
+
+#ifndef __GPU_PRIVATE_H__
+#define __GPU_PRIVATE_H__
+
+/* call this before running any of the functions below */
+void gpu_extensions_init(void);
+void gpu_extensions_exit(void);
+
+
+/* gpu_debug.c */
+#ifdef WITH_GPU_DEBUG
+
+void gpu_debug_init(void);
+void gpu_debug_exit(void);
+
+#  define GPU_DEBUG_INIT() gpu_debug_init()
+#  define GPU_DEBUG_EXIT() gpu_debug_exit()
+
+#else
+
+#  define GPU_DEBUG_INIT() ((void)0)
+#  define GPU_DEBUG_EXIT() ((void)0)
+
+#endif
+
+#endif  /* __GPU_PRIVATE_H__ */

@@ -1290,6 +1290,7 @@ typedef struct SeqIndexBuildContext {
 	int tc_flags;
 	int size_flags;
 	int quality;
+	bool overwrite;
 
 	Main *bmain;
 	Scene *scene;
@@ -1329,7 +1330,7 @@ static double seq_rendersize_to_scale_factor(int size)
 	return 0.25;
 }
 
-static void seq_open_anim_file(Sequence *seq)
+static void seq_open_anim_file(Sequence *seq, bool openfile)
 {
 	char name[FILE_MAX];
 	StripProxy *proxy;
@@ -1342,8 +1343,14 @@ static void seq_open_anim_file(Sequence *seq)
 	                 seq->strip->dir, seq->strip->stripdata->name);
 	BLI_path_abs(name, G.main->name);
 	
-	seq->anim = openanim(name, IB_rect | ((seq->flag & SEQ_FILTERY) ? IB_animdeinterlace : 0),
-	                     seq->streamindex, seq->strip->colorspace_settings.name);
+	if (openfile) {
+		seq->anim = openanim(name, IB_rect | ((seq->flag & SEQ_FILTERY) ? IB_animdeinterlace : 0),
+		                     seq->streamindex, seq->strip->colorspace_settings.name);
+	}
+	else {
+		seq->anim = openanim_noload(name, IB_rect | ((seq->flag & SEQ_FILTERY) ? IB_animdeinterlace : 0),
+		                            seq->streamindex, seq->strip->colorspace_settings.name);
+	}
 
 	if (seq->anim == NULL) {
 		return;
@@ -1457,7 +1464,7 @@ static ImBuf *seq_proxy_fetch(const SeqRenderData *context, Sequence *seq, int c
 			return NULL;
 		}
  
-		seq_open_anim_file(seq);
+		seq_open_anim_file(seq, true);
 
 		frameno = IMB_anim_index_get_frame_index(seq->anim, seq->strip->proxy->tc, frameno);
 
@@ -1481,7 +1488,8 @@ static ImBuf *seq_proxy_fetch(const SeqRenderData *context, Sequence *seq, int c
 	}
 }
 
-static void seq_proxy_build_frame(const SeqRenderData *context, Sequence *seq, int cfra, int proxy_render_size)
+static void seq_proxy_build_frame(const SeqRenderData *context, Sequence *seq, int cfra,
+                                  int proxy_render_size, const bool overwrite)
 {
 	char name[PROXY_MAXFILE];
 	int quality;
@@ -1490,6 +1498,10 @@ static void seq_proxy_build_frame(const SeqRenderData *context, Sequence *seq, i
 	ImBuf *ibuf_tmp, *ibuf;
 
 	if (!seq_proxy_get_fname(seq, cfra, proxy_render_size, name)) {
+		return;
+	}
+
+	if (!overwrite && BLI_exists(name)) {
 		return;
 	}
 
@@ -1526,7 +1538,7 @@ static void seq_proxy_build_frame(const SeqRenderData *context, Sequence *seq, i
 	IMB_freeImBuf(ibuf);
 }
 
-SeqIndexBuildContext *BKE_sequencer_proxy_rebuild_context(Main *bmain, Scene *scene, Sequence *seq)
+SeqIndexBuildContext *BKE_sequencer_proxy_rebuild_context(Main *bmain, Scene *scene, Sequence *seq, struct GSet *file_list)
 {
 	SeqIndexBuildContext *context;
 	Sequence *nseq;
@@ -1546,6 +1558,7 @@ SeqIndexBuildContext *BKE_sequencer_proxy_rebuild_context(Main *bmain, Scene *sc
 	context->tc_flags   = nseq->strip->proxy->build_tc_flags;
 	context->size_flags = nseq->strip->proxy->build_size_flags;
 	context->quality    = nseq->strip->proxy->quality;
+	context->overwrite = (nseq->strip->proxy->build_flags & SEQ_PROXY_SKIP_EXISTING) == 0;
 
 	context->bmain = bmain;
 	context->scene = scene;
@@ -1553,11 +1566,12 @@ SeqIndexBuildContext *BKE_sequencer_proxy_rebuild_context(Main *bmain, Scene *sc
 	context->seq = nseq;
 
 	if (nseq->type == SEQ_TYPE_MOVIE) {
-		seq_open_anim_file(nseq);
+		seq_open_anim_file(nseq, true);
 
 		if (nseq->anim) {
 			context->index_context = IMB_anim_index_rebuild_context(nseq->anim,
-			        context->tc_flags, context->size_flags, context->quality);
+			        context->tc_flags, context->size_flags, context->quality,
+			        context->overwrite, file_list);
 		}
 	}
 
@@ -1566,6 +1580,7 @@ SeqIndexBuildContext *BKE_sequencer_proxy_rebuild_context(Main *bmain, Scene *sc
 
 void BKE_sequencer_proxy_rebuild(SeqIndexBuildContext *context, short *stop, short *do_update, float *progress)
 {
+	const bool overwrite = context->overwrite;
 	SeqRenderData render_context;
 	Sequence *seq = context->seq;
 	Scene *scene = context->scene;
@@ -1602,16 +1617,16 @@ void BKE_sequencer_proxy_rebuild(SeqIndexBuildContext *context, short *stop, sho
 
 	for (cfra = seq->startdisp + seq->startstill;  cfra < seq->enddisp - seq->endstill; cfra++) {
 		if (context->size_flags & IMB_PROXY_25) {
-			seq_proxy_build_frame(&render_context, seq, cfra, 25);
+			seq_proxy_build_frame(&render_context, seq, cfra, 25, overwrite);
 		}
 		if (context->size_flags & IMB_PROXY_50) {
-			seq_proxy_build_frame(&render_context, seq, cfra, 50);
+			seq_proxy_build_frame(&render_context, seq, cfra, 50, overwrite);
 		}
 		if (context->size_flags & IMB_PROXY_75) {
-			seq_proxy_build_frame(&render_context, seq, cfra, 75);
+			seq_proxy_build_frame(&render_context, seq, cfra, 75, overwrite);
 		}
 		if (context->size_flags & IMB_PROXY_100) {
-			seq_proxy_build_frame(&render_context, seq, cfra, 100);
+			seq_proxy_build_frame(&render_context, seq, cfra, 100, overwrite);
 		}
 
 		*progress = (float) (cfra - seq->startdisp - seq->startstill) / (seq->enddisp - seq->endstill - seq->startdisp - seq->startstill);
@@ -1633,6 +1648,22 @@ void BKE_sequencer_proxy_rebuild_finish(SeqIndexBuildContext *context, bool stop
 	seq_free_sequence_recurse(NULL, context->seq);
 
 	MEM_freeN(context);
+}
+
+void BKE_sequencer_proxy_set(struct Sequence *seq, bool value)
+{
+	if (value) {
+		seq->flag |= SEQ_USE_PROXY;
+		if (seq->strip->proxy == NULL) {
+			seq->strip->proxy = MEM_callocN(sizeof(struct StripProxy), "StripProxy");
+			seq->strip->proxy->quality = 90;
+			seq->strip->proxy->build_tc_flags = SEQ_PROXY_TC_ALL;
+			seq->strip->proxy->build_size_flags = SEQ_PROXY_IMAGE_SIZE_25;
+		}
+	}
+	else {
+		seq->flag ^= SEQ_USE_PROXY;
+	}	
 }
 
 /*********************** color balance *************************/
@@ -2609,7 +2640,7 @@ static ImBuf *seq_render_scene_strip(const SeqRenderData *context, Sequence *seq
 		 * When rendering from command line renderer is called from main thread, in this
 		 * case it's always safe to render scene here
 		 */
-		if (!is_thread_main || is_rendering == false || is_background) {
+		if (!is_thread_main || is_rendering == false || is_background || context->eval_ctx->mode == DAG_EVAL_RENDER) {
 			if (re == NULL)
 				re = RE_NewRender(scene->id.name);
 
@@ -2755,15 +2786,22 @@ static ImBuf *do_render_strip_uncached(const SeqRenderData *context, Sequence *s
 
 		case SEQ_TYPE_MOVIE:
 		{
-			seq_open_anim_file(seq);
+			seq_open_anim_file(seq, false);
 
 			if (seq->anim) {
+				IMB_Proxy_Size proxy_size = seq_rendersize_to_proxysize(context->preview_render_size);
 				IMB_anim_set_preseek(seq->anim, seq->anim_preseek);
 
 				ibuf = IMB_anim_absolute(seq->anim, nr + seq->anim_startofs,
 				                         seq->strip->proxy ? seq->strip->proxy->tc : IMB_TC_RECORD_RUN,
-				                         seq_rendersize_to_proxysize(context->preview_render_size));
+				                         proxy_size);
 
+				/* fetching for requested proxy size failed, try fetching the original instead */
+				if (!ibuf && proxy_size != IMB_PROXY_NONE) {
+					ibuf = IMB_anim_absolute(seq->anim, nr + seq->anim_startofs,
+					                         seq->strip->proxy ? seq->strip->proxy->tc : IMB_TC_RECORD_RUN,
+					                         IMB_PROXY_NONE);
+				}
 				if (ibuf) {
 					BKE_sequencer_imbuf_to_sequencer_space(context->scene, ibuf, false);
 
@@ -3726,21 +3764,23 @@ Sequence *BKE_sequencer_foreground_frame_get(Scene *scene, int frame)
 }
 
 /* return 0 if there werent enough space */
-bool BKE_sequence_base_shuffle(ListBase *seqbasep, Sequence *test, Scene *evil_scene)
+bool BKE_sequence_base_shuffle_ex(ListBase *seqbasep, Sequence *test, Scene *evil_scene, int channel_delta)
 {
-	int orig_machine = test->machine;
-	test->machine++;
+	const int orig_machine = test->machine;
+	BLI_assert(ELEM(channel_delta, -1, 1));
+
+	test->machine += channel_delta;
 	BKE_sequence_calc(evil_scene, test);
-	while (BKE_sequence_test_overlap(seqbasep, test) ) {
-		if (test->machine >= MAXSEQ) {
+	while (BKE_sequence_test_overlap(seqbasep, test)) {
+		if ((channel_delta > 0) ? (test->machine >= MAXSEQ) : (test->machine <= 1)) {
 			break;
 		}
-		test->machine++;
+
+		test->machine += channel_delta;
 		BKE_sequence_calc(evil_scene, test); // XXX - I don't think this is needed since were only moving vertically, Campbell.
 	}
 
-	
-	if (test->machine >= MAXSEQ) {
+	if ((test->machine < 1) || (test->machine > MAXSEQ)) {
 		/* Blender 2.4x would remove the strip.
 		 * nicer to move it to the end */
 
@@ -3762,6 +3802,11 @@ bool BKE_sequence_base_shuffle(ListBase *seqbasep, Sequence *test, Scene *evil_s
 	else {
 		return true;
 	}
+}
+
+bool BKE_sequence_base_shuffle(ListBase *seqbasep, Sequence *test, Scene *evil_scene)
+{
+	return BKE_sequence_base_shuffle_ex(seqbasep, test, evil_scene, 1);
 }
 
 static int shuffle_seq_time_offset_test(ListBase *seqbasep, char dir)

@@ -106,15 +106,14 @@ static int brush_scale_size_exec(bContext *C, wmOperator *op)
 			const int old_size = BKE_brush_size_get(scene, brush);
 			int size = (int)(scalar * old_size);
 
-			if (old_size == size) {
+			if (abs(old_size - size) < U.pixelsize) {
 				if (scalar > 1) {
-					size++;
+					size += U.pixelsize;
 				}
 				else if (scalar < 1) {
-					size--;
+					size -= U.pixelsize;
 				}
 			}
-			CLAMP(size, 1, 2000); // XXX magic number
 
 			BKE_brush_size_set(scene, brush, size);
 		}
@@ -128,6 +127,8 @@ static int brush_scale_size_exec(bContext *C, wmOperator *op)
 
 			BKE_brush_unprojected_radius_set(scene, brush, unprojected_radius);
 		}
+
+		WM_main_add_notifier(NC_BRUSH | NA_EDITED, brush);
 	}
 
 	return OPERATOR_FINISHED;
@@ -1355,8 +1356,7 @@ void ED_keymap_paint(wmKeyConfig *keyconf)
 	kmi = WM_keymap_add_item(keymap, "WM_OT_context_toggle", SKEY, KM_PRESS, KM_SHIFT, 0);
 	RNA_string_set(kmi->ptr, "data_path", "tool_settings.sculpt.brush.use_smooth_stroke");
 
-	kmi = WM_keymap_add_item(keymap, "WM_OT_context_menu_enum", RKEY, KM_PRESS, 0, 0);
-	RNA_string_set(kmi->ptr, "data_path", "tool_settings.sculpt.brush.texture_angle_source_random");
+	WM_keymap_add_menu(keymap, "VIEW3D_MT_angle_control", RKEY, KM_PRESS, 0, 0);
 
 	/* Vertex Paint mode */
 	keymap = WM_keymap_find(keyconf, "Vertex Paint", 0, 0);
@@ -1380,8 +1380,7 @@ void ED_keymap_paint(wmKeyConfig *keyconf)
 	kmi = WM_keymap_add_item(keymap, "WM_OT_context_toggle", SKEY, KM_PRESS, KM_SHIFT, 0);
 	RNA_string_set(kmi->ptr, "data_path", "tool_settings.vertex_paint.brush.use_smooth_stroke");
 
-	kmi = WM_keymap_add_item(keymap, "WM_OT_context_menu_enum", RKEY, KM_PRESS, 0, 0);
-	RNA_string_set(kmi->ptr, "data_path", "tool_settings.vertex_paint.brush.texture_angle_source_random");
+	WM_keymap_add_menu(keymap, "VIEW3D_MT_angle_control", RKEY, KM_PRESS, 0, 0);
 
 	kmi = WM_keymap_add_item(keymap, "WM_OT_context_menu_enum", EKEY, KM_PRESS, 0, 0);
 	RNA_string_set(kmi->ptr, "data_path", "tool_settings.vertex_paint.brush.stroke_method");
@@ -1457,8 +1456,7 @@ void ED_keymap_paint(wmKeyConfig *keyconf)
 	kmi = WM_keymap_add_item(keymap, "WM_OT_context_toggle", SKEY, KM_PRESS, KM_SHIFT, 0);
 	RNA_string_set(kmi->ptr, "data_path", "tool_settings.image_paint.brush.use_smooth_stroke");
 
-	kmi = WM_keymap_add_item(keymap, "WM_OT_context_menu_enum", RKEY, KM_PRESS, 0, 0);
-	RNA_string_set(kmi->ptr, "data_path", "tool_settings.image_paint.brush.texture_angle_source_random");
+	WM_keymap_add_menu(keymap, "VIEW3D_MT_angle_control", RKEY, KM_PRESS, 0, 0);
 
 	kmi = WM_keymap_add_item(keymap, "WM_OT_context_menu_enum", EKEY, KM_PRESS, 0, 0);
 	RNA_string_set(kmi->ptr, "data_path", "tool_settings.image_paint.brush.stroke_method");

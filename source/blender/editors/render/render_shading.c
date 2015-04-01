@@ -1386,11 +1386,15 @@ void TEXTURE_OT_slot_move(wmOperatorType *ot)
 
 static int save_envmap(wmOperator *op, Scene *scene, EnvMap *env, char *path, const char imtype)
 {
+	PropertyRNA *prop;
 	float layout[12];
-	if (RNA_struct_find_property(op->ptr, "layout") )
-		RNA_float_get_array(op->ptr, "layout", layout);
-	else
+
+	if ((prop = RNA_struct_find_property(op->ptr, "layout"))) {
+		RNA_property_float_get_array(op->ptr, prop, layout);
+	}
+	else {
 		memcpy(layout, default_envmap_layout, sizeof(layout));
+	}
 
 	if (RE_WriteEnvmapResult(op->reports, scene, env, path, imtype, layout)) {
 		return OPERATOR_FINISHED;
@@ -1412,7 +1416,7 @@ static int envmap_save_exec(bContext *C, wmOperator *op)
 	RNA_string_get(op->ptr, "filepath", path);
 	
 	if (scene->r.scemode & R_EXTENSION) {
-		BKE_add_image_extension(path, &scene->r.im_format);
+		BKE_image_path_ensure_ext_from_imformat(path, &scene->r.im_format);
 	}
 	
 	WM_cursor_wait(1);

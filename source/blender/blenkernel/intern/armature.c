@@ -233,7 +233,7 @@ static Bone *get_named_bone_bonechildren(Bone *bone, const char *name)
 {
 	Bone *curBone, *rbone;
 
-	if (!strcmp(bone->name, name))
+	if (STREQ(bone->name, name))
 		return bone;
 
 	for (curBone = bone->childbase.first; curBone; curBone = curBone->next) {
@@ -261,6 +261,19 @@ Bone *BKE_armature_find_bone_name(bArmature *arm, const char *name)
 	}
 
 	return bone;
+}
+
+bool BKE_armature_bone_flag_test_recursive(const Bone *bone, int flag)
+{
+	if (bone->flag & flag) {
+		return true;
+	}
+	else if (bone->parent) {
+		return BKE_armature_bone_flag_test_recursive(bone->parent, flag);
+	}
+	else {
+		return false;
+	}
 }
 
 /* Finds the best possible extension to the name on a particular axis. (For renaming, check for
@@ -2166,9 +2179,9 @@ static void splineik_evaluate_bone(tSplineIK_Tree *tree, Scene *scene, Object *o
 				mul_v3_fl(poseMat[2], scale);
 				break;
 			}
-			case CONSTRAINT_SPLINEIK_XZS_VOLUMETRIC:
+			case CONSTRAINT_SPLINEIK_XZS_INVERSE:
 			{
-				/* 'volume preservation' */
+				/* old 'volume preservation' method using the inverse scale */
 				float scale;
 
 				/* calculate volume preservation factor which is
@@ -2187,6 +2200,54 @@ static void splineik_evaluate_bone(tSplineIK_Tree *tree, Scene *scene, Object *o
 				/* apply the scaling */
 				mul_v3_fl(poseMat[0], scale);
 				mul_v3_fl(poseMat[2], scale);
+				break;
+			}
+			case CONSTRAINT_SPLINEIK_XZS_VOLUMETRIC:
+			{
+				/* improved volume preservation based on the Stretch To constraint */
+				float final_scale;
+				
+				/* as the basis for volume preservation, we use the inverse scale factor... */
+				if (fabsf(scaleFac) != 0.0f) {
+					/* NOTE: The method here is taken wholesale from the Stretch To constraint */
+					float bulge = powf(1.0f / fabsf(scaleFac), ikData->bulge);
+					
+					if (bulge > 1.0f) {
+						if (ikData->flag & CONSTRAINT_SPLINEIK_USE_BULGE_MAX) {
+							float bulge_max = max_ff(ikData->bulge_max, 1.0f);
+							float hard = min_ff(bulge, bulge_max);
+							
+							float range = bulge_max - 1.0f;
+							float scale = (range > 0.0f) ? 1.0f / range : 0.0f;
+							float soft = 1.0f + range * atanf((bulge - 1.0f) * scale) / (float)M_PI_2;
+							
+							bulge = interpf(soft, hard, ikData->bulge_smooth);
+						}
+					}
+					if (bulge < 1.0f) {
+						if (ikData->flag & CONSTRAINT_SPLINEIK_USE_BULGE_MIN) {
+							float bulge_min = CLAMPIS(ikData->bulge_min, 0.0f, 1.0f);
+							float hard = max_ff(bulge, bulge_min);
+							
+							float range = 1.0f - bulge_min;
+							float scale = (range > 0.0f) ? 1.0f / range : 0.0f;
+							float soft = 1.0f - range * atanf((1.0f - bulge) * scale) / (float)M_PI_2;
+							
+							bulge = interpf(soft, hard, ikData->bulge_smooth);
+						}
+					}
+					
+					/* compute scale factor for xz axes from this value */
+					final_scale = sqrt(bulge);
+				}
+				else {
+					/* no scaling, so scale factor is simple */
+					final_scale = 1.0f;
+				}
+				
+				/* apply the scaling (assuming normalised scale) */
+				mul_v3_fl(poseMat[0], final_scale);
+				mul_v3_fl(poseMat[2], final_scale);
 				break;
 			}
 		}
@@ -2369,7 +2430,7 @@ static void do_strip_modifiers(Scene *scene, Object *armob, Bone *bone, bPoseCha
 						/* validate first */
 						if (amod->ob && amod->ob->type == OB_CURVE && amod->channel[0]) {
 
-							if (strcmp(pchan->name, amod->channel) == 0) {
+							if (STREQ(pchan->name, amod->channel)) {
 								float mat4[4][4], mat3[3][3];
 
 								curve_deform_vector(scene, amod->ob, armob, bone->arm_mat[3], pchan->pose_mat[3], mat3, amod->no_rot_axis);
@@ -2382,7 +2443,7 @@ static void do_strip_modifiers(Scene *scene, Object *armob, Bone *bone, bPoseCha
 					break;
 					case ACTSTRIP_MOD_NOISE:
 					{
-						if (strcmp(pchan->name, amod->channel) == 0) {
+						if (STREQ(pchan->name, amod->channel)) {
 							float nor[3], loc[3], ofs;
 							float eul[3], size[3], eulo[3], sizeo[3];
 

@@ -41,7 +41,7 @@ extern "C" {
 /* these lines are grep'd, watch out for our not-so-awesome regex
  * and keep comment above the defines.
  * Use STRINGIFY() rather than defining with quotes */
-#define BLENDER_VERSION         273
+#define BLENDER_VERSION         274
 #define BLENDER_SUBVERSION      0
 /* 262 was the last editmesh release but it has compatibility code for bmesh data */
 #define BLENDER_MINVERSION      270
@@ -49,7 +49,7 @@ extern "C" {
 
 /* used by packaging tools */
 /* can be left blank, otherwise a,b,c... etc with no quotes */
-#define BLENDER_VERSION_CHAR    a
+#define BLENDER_VERSION_CHAR   
 /* alpha/beta/rc/release, docs use this */
 #define BLENDER_VERSION_CYCLE   release
 
@@ -88,7 +88,7 @@ void BKE_userdef_free(void);
 void BKE_userdef_state(void);
 	
 /* set this callback when a UI is running */
-void set_blender_test_break_cb(void (*func)(void) );
+void set_blender_test_break_cb(void (*func)(void));
 int blender_test_break(void);
 
 #define BKE_UNDO_STR_MAX 64

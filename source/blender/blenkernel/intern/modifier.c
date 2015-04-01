@@ -143,13 +143,14 @@ void modifier_free(ModifierData *md)
 	MEM_freeN(md);
 }
 
-void modifier_unique_name(ListBase *modifiers, ModifierData *md)
+bool modifier_unique_name(ListBase *modifiers, ModifierData *md)
 {
 	if (modifiers && md) {
 		ModifierTypeInfo *mti = modifierType_getInfo(md->type);
 
-		BLI_uniquename(modifiers, md, DATA_(mti->name), '.', offsetof(ModifierData, name), sizeof(md->name));
+		return BLI_uniquename(modifiers, md, DATA_(mti->name), '.', offsetof(ModifierData, name), sizeof(md->name));
 	}
+	return false;
 }
 
 bool modifier_dependsOnTime(ModifierData *md)
@@ -262,8 +263,8 @@ void modifier_copyData_generic(const ModifierData *md_src, ModifierData *md_dst)
 {
 	ModifierTypeInfo *mti = modifierType_getInfo(md_src->type);
 	const size_t data_size = sizeof(ModifierData);
-	const char *md_src_data = ((char *)md_src) + data_size;
-	char       *md_dst_data = ((char *)md_dst) + data_size;
+	const char *md_src_data = ((const char *)md_src) + data_size;
+	char       *md_dst_data =       ((char *)md_dst) + data_size;
 	BLI_assert(data_size <= (size_t)mti->structSize);
 	memcpy(md_dst_data, md_src_data, (size_t)mti->structSize - data_size);
 }

@@ -391,7 +391,7 @@ int ED_operator_editarmature(bContext *C)
  * \brief check for pose mode (no mixed modes)
  *
  * We want to enable most pose operations in weight paint mode,
- * when it comes to transforming bones, but managing bomes layers/groups
+ * when it comes to transforming bones, but managing bones layers/groups
  * can be left for pose mode only. (not weight paint mode)
  */
 int ED_operator_posemode_exclusive(bContext *C)
@@ -598,19 +598,6 @@ typedef struct sActionzoneData {
 	int x, y, gesture_dir, modifier;
 } sActionzoneData;
 
-/* used by other operators too */
-static ScrArea *screen_areahascursor(bScreen *scr, int x, int y)
-{
-	ScrArea *sa = NULL;
-	sa = scr->areabase.first;
-	while (sa) {
-		if (BLI_rcti_isect_pt(&sa->totrct, x, y)) break;
-		sa = sa->next;
-	}
-	
-	return sa;
-}
-
 /* quick poll to save operators to be created and handled */
 static int actionzone_area_poll(bContext *C)
 {
@@ -808,7 +795,7 @@ static int actionzone_modal(bContext *C, wmOperator *op, const wmEvent *event)
 			/* gesture is large enough? */
 			if (is_gesture) {
 				/* second area, for join when (sa1 != sa2) */
-				sad->sa2 = screen_areahascursor(sc, event->x, event->y);
+				sad->sa2 = BKE_screen_find_area_xy(sc, SPACE_TYPE_ANY, event->x, event->y);
 				/* apply sends event */
 				actionzone_apply(C, op, sad->az->type);
 				actionzone_exit(op);
@@ -929,7 +916,7 @@ static int area_swap_modal(bContext *C, wmOperator *op, const wmEvent *event)
 	switch (event->type) {
 		case MOUSEMOVE:
 			/* second area, for join */
-			sad->sa2 = screen_areahascursor(CTX_wm_screen(C), event->x, event->y);
+			sad->sa2 = BKE_screen_find_area_xy(CTX_wm_screen(C), SPACE_TYPE_ANY, event->x, event->y);
 			break;
 		case LEFTMOUSE: /* release LMB */
 			if (event->val == KM_RELEASE) {
@@ -1679,7 +1666,8 @@ static int area_split_modal(bContext *C, wmOperator *op, const wmEvent *event)
 					sd->sarea->flag &= ~(AREA_FLAG_DRAWSPLIT_H | AREA_FLAG_DRAWSPLIT_V);
 					ED_area_tag_redraw(sd->sarea);
 				}
-				sd->sarea = screen_areahascursor(CTX_wm_screen(C), event->x, event->y);  /* area context not set */
+				/* area context not set */
+				sd->sarea = BKE_screen_find_area_xy(CTX_wm_screen(C), SPACE_TYPE_ANY, event->x, event->y);
 				
 				if (sd->sarea) {
 					ED_area_tag_redraw(sd->sarea);
@@ -2054,6 +2042,48 @@ static void SCREEN_OT_region_scale(wmOperatorType *ot)
 
 /* ************** frame change operator ***************************** */
 
+static void areas_do_frame_follow(bContext *C, bool middle)
+{
+	bScreen *scr = CTX_wm_screen(C);
+	Scene *scene = CTX_data_scene(C);
+	wmWindowManager *wm = CTX_wm_manager(C);
+	wmWindow *window;
+	for (window = wm->windows.first; window; window = window->next) {
+		ScrArea *sa;
+		for (sa = window->screen->areabase.first; sa; sa = sa->next) {
+			ARegion *ar;
+			for (ar = sa->regionbase.first; ar; ar = ar->next) {
+				/* do follow here if editor type supports it */
+				if ((scr->redraws_flag & TIME_FOLLOW)) {
+					if ((ar->regiontype == RGN_TYPE_WINDOW &&
+					     ELEM(sa->spacetype, SPACE_SEQ, SPACE_TIME, SPACE_IPO, SPACE_ACTION, SPACE_NLA)) ||
+					    (sa->spacetype == SPACE_CLIP && ar->regiontype == RGN_TYPE_PREVIEW))
+					{
+						float w = BLI_rctf_size_x(&ar->v2d.cur);
+
+						if (middle) {
+							if ((scene->r.cfra < ar->v2d.cur.xmin) || (scene->r.cfra > ar->v2d.cur.xmax)) {
+								ar->v2d.cur.xmax = scene->r.cfra + (w / 2);
+								ar->v2d.cur.xmin = scene->r.cfra - (w / 2);
+							}
+						}
+						else {
+							if (scene->r.cfra < ar->v2d.cur.xmin) {
+								ar->v2d.cur.xmax = scene->r.cfra;
+								ar->v2d.cur.xmin = ar->v2d.cur.xmax - w;
+							}
+							else if (scene->r.cfra > ar->v2d.cur.xmax) {
+								ar->v2d.cur.xmin = scene->r.cfra;
+								ar->v2d.cur.xmax = ar->v2d.cur.xmin + w;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
 /* function to be called outside UI context, or for redo */
 static int frame_offset_exec(bContext *C, wmOperator *op)
 {
@@ -2067,6 +2097,8 @@ static int frame_offset_exec(bContext *C, wmOperator *op)
 	FRAMENUMBER_MIN_CLAMP(CFRA);
 	SUBFRA = 0.f;
 	
+	areas_do_frame_follow(C, false);
+
 	sound_seek_scene(bmain, scene);
 
 	WM_event_add_notifier(C, NC_SCENE | ND_FRAME, scene);
@@ -2117,6 +2149,8 @@ static int frame_jump_exec(bContext *C, wmOperator *op)
 		else
 			CFRA = PSFRA;
 		
+		areas_do_frame_follow(C, true);
+
 		sound_seek_scene(bmain, scene);
 
 		WM_event_add_notifier(C, NC_SCENE | ND_FRAME, scene);
@@ -2221,6 +2255,8 @@ static int keyframe_jump_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 	else {
+		areas_do_frame_follow(C, true);
+
 		sound_seek_scene(bmain, scene);
 
 		WM_event_add_notifier(C, NC_SCENE | ND_FRAME, scene);
@@ -2280,6 +2316,8 @@ static int marker_jump_exec(bContext *C, wmOperator *op)
 	}
 	else {
 		CFRA = closest;
+
+		areas_do_frame_follow(C, true);
 
 		sound_seek_scene(bmain, scene);
 
@@ -2482,8 +2520,8 @@ static int area_join_init(bContext *C, wmOperator *op)
 	x2 = RNA_int_get(op->ptr, "max_x");
 	y2 = RNA_int_get(op->ptr, "max_y");
 	
-	sa1 = screen_areahascursor(CTX_wm_screen(C), x1, y1);
-	sa2 = screen_areahascursor(CTX_wm_screen(C), x2, y2);
+	sa1 = BKE_screen_find_area_xy(CTX_wm_screen(C), SPACE_TYPE_ANY, x1, y1);
+	sa2 = BKE_screen_find_area_xy(CTX_wm_screen(C), SPACE_TYPE_ANY, x2, y2);
 	if (sa1 == NULL || sa2 == NULL || sa1 == sa2)
 		return 0;
 	
@@ -2616,7 +2654,7 @@ static int area_join_modal(bContext *C, wmOperator *op, const wmEvent *event)
 			
 		case MOUSEMOVE: 
 		{
-			ScrArea *sa = screen_areahascursor(sc, event->x, event->y);
+			ScrArea *sa = BKE_screen_find_area_xy(sc, SPACE_TYPE_ANY, event->x, event->y);
 			int dir;
 			
 			if (sa) {
@@ -3399,7 +3437,12 @@ static int screen_animation_step(bContext *C, wmOperator *UNUSED(op), const wmEv
 		    (sad->flag & ANIMPLAY_FLAG_REVERSE) == false &&
 		    finite(time = sound_sync_scene(scene)))
 		{
-			scene->r.cfra = (double)time * FPS + 0.5;
+			double newfra = (double)time * FPS;
+			/* give some space here to avoid jumps */
+			if (newfra + 0.5 > scene->r.cfra && newfra - 0.5 < scene->r.cfra)
+				scene->r.cfra++;
+			else
+				scene->r.cfra = newfra + 0.5;
 		}
 		else {
 			if (sync) {
@@ -3476,11 +3519,33 @@ static int screen_animation_step(bContext *C, wmOperator *UNUSED(op), const wmEv
 			for (sa = window->screen->areabase.first; sa; sa = sa->next) {
 				ARegion *ar;
 				for (ar = sa->regionbase.first; ar; ar = ar->next) {
+					bool redraw = false;
 					if (ar == sad->ar) {
-						ED_region_tag_redraw(ar);
+						redraw = true;
 					}
 					else if (match_region_with_redraws(sa->spacetype, ar->regiontype, sad->redraws)) {
+						redraw = true;
+					}
+
+					if (redraw) {
 						ED_region_tag_redraw(ar);
+						/* do follow here if editor type supports it */
+						if ((sad->redraws & TIME_FOLLOW)) {
+							if ((ar->regiontype == RGN_TYPE_WINDOW &&
+							     ELEM(sa->spacetype, SPACE_SEQ, SPACE_TIME, SPACE_IPO, SPACE_ACTION, SPACE_NLA)) ||
+							    (sa->spacetype == SPACE_CLIP && ar->regiontype == RGN_TYPE_PREVIEW))
+							{
+								float w = BLI_rctf_size_x(&ar->v2d.cur);
+								if (scene->r.cfra < ar->v2d.cur.xmin) {
+									ar->v2d.cur.xmax = scene->r.cfra;
+									ar->v2d.cur.xmin = ar->v2d.cur.xmax - w;
+								}
+								else if (scene->r.cfra > ar->v2d.cur.xmax) {
+									ar->v2d.cur.xmin = scene->r.cfra;
+									ar->v2d.cur.xmax = ar->v2d.cur.xmin + w;
+								}
+							}
+						}
 					}
 				}
 				
@@ -3546,6 +3611,8 @@ int ED_screen_animation_play(bContext *C, int sync, int mode)
 		/* stop playback now */
 		ED_screen_animation_timer(C, 0, 0, 0, 0);
 		sound_stop_scene(scene);
+
+		WM_event_add_notifier(C, NC_SCENE | ND_FRAME, scene);
 	}
 	else {
 		int refresh = SPACE_TIME; /* these settings are currently only available from a menu in the TimeLine */
@@ -3707,9 +3774,9 @@ static int fullscreen_back_exec(bContext *C, wmOperator *op)
 		BKE_report(op->reports, RPT_ERROR, "No fullscreen areas were found");
 		return OPERATOR_CANCELLED;
 	}
-	
-	ED_screen_full_restore(C, sa);
-	
+
+	ED_screen_full_prevspace(C, sa);
+
 	return OPERATOR_FINISHED;
 }
 

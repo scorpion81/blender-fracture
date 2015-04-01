@@ -1682,6 +1682,11 @@ static void rna_def_userdef_theme_space_view3d(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Skin Root", "");
 	RNA_def_property_update(prop, 0, "rna_userdef_update");
 
+	prop = RNA_def_property(srna, "clipping_border_3d", PROP_FLOAT, PROP_COLOR_GAMMA);
+	RNA_def_property_array(prop, 4);
+	RNA_def_property_ui_text(prop, "Clipping Border", "");
+	RNA_def_property_update(prop, 0, "rna_userdef_update");
+	
 	rna_def_userdef_theme_spaces_paint_curves(srna);
 }
 
@@ -3331,7 +3336,12 @@ static void rna_def_userdef_view(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "use_quit_dialog", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "uiflag", USER_QUIT_PROMPT);
 	RNA_def_property_ui_text(prop, "Prompt Quit",
-	                         "Asks for confirmation when quitting through the window close button");
+	                         "Ask for confirmation when quitting through the window close button");
+
+	prop = RNA_def_property(srna, "use_gl_warn_support", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_negative_sdna(prop, NULL, "uiflag2", USER_OPENGL_NO_WARN_SUPPORT);
+	RNA_def_property_ui_text(prop, "Warn On Deprecated OpenGL",
+	                         "Pop up a warning when an old OpenGL version is detected");
 
 	/* Toolbox click-hold delay */
 	prop = RNA_def_property(srna, "open_left_mouse_delay", PROP_INT, PROP_NONE);
@@ -3530,7 +3540,7 @@ static void rna_def_userdef_edit(BlenderRNA *brna)
 	/* Undo */
 	prop = RNA_def_property(srna, "undo_steps", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "undosteps");
-	RNA_def_property_range(prop, 0, 64);
+	RNA_def_property_range(prop, 0, 256);
 	RNA_def_property_int_funcs(prop, NULL, "rna_userdef_undo_steps_set", NULL);
 	RNA_def_property_ui_text(prop, "Undo Steps", "Number of undo steps available (smaller values conserve memory)");
 
@@ -3862,6 +3872,11 @@ static void rna_def_userdef_system(BlenderRNA *brna)
 	RNA_def_property_enum_items(prop, virtual_pixel_mode_items);
 	RNA_def_property_ui_text(prop, "Virtual Pixel Mode", "Modify the pixel size for hi-res devices");
 	RNA_def_property_update(prop, 0, "rna_userdef_virtual_pixel_update");
+
+	prop = RNA_def_property(srna, "pixel_size", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+	RNA_def_property_float_sdna(prop, NULL, "pixelsize");
+	RNA_def_property_ui_text(prop, "Pixel Size", "");
 
 	prop = RNA_def_property(srna, "font_path_ui", PROP_STRING, PROP_FILEPATH);
 	RNA_def_property_string_sdna(prop, NULL, "font_path_ui");

@@ -470,9 +470,9 @@ int ED_object_modifier_convert(ReportList *UNUSED(reports), Main *bmain, Scene *
 	for (a = 0; a < totpart; a++) {
 		key = cache[a];
 
-		if (key->steps > 0) {
-			totvert += key->steps + 1;
-			totedge += key->steps;
+		if (key->segments > 0) {
+			totvert += key->segments + 1;
+			totedge += key->segments;
 		}
 	}
 
@@ -480,9 +480,9 @@ int ED_object_modifier_convert(ReportList *UNUSED(reports), Main *bmain, Scene *
 	for (a = 0; a < totchild; a++) {
 		key = cache[a];
 
-		if (key->steps > 0) {
-			totvert += key->steps + 1;
-			totedge += key->steps;
+		if (key->segments > 0) {
+			totvert += key->segments + 1;
+			totedge += key->segments;
 		}
 	}
 
@@ -506,7 +506,7 @@ int ED_object_modifier_convert(ReportList *UNUSED(reports), Main *bmain, Scene *
 	cache = psys->pathcache;
 	for (a = 0; a < totpart; a++) {
 		key = cache[a];
-		kmax = key->steps;
+		kmax = key->segments;
 		for (k = 0; k <= kmax; k++, key++, cvert++, mvert++) {
 			copy_v3_v3(mvert->co, key->co);
 			if (k) {
@@ -525,7 +525,7 @@ int ED_object_modifier_convert(ReportList *UNUSED(reports), Main *bmain, Scene *
 	cache = psys->childcache;
 	for (a = 0; a < totchild; a++) {
 		key = cache[a];
-		kmax = key->steps;
+		kmax = key->segments;
 		for (k = 0; k <= kmax; k++, key++, cvert++, mvert++) {
 			copy_v3_v3(mvert->co, key->co);
 			if (k) {

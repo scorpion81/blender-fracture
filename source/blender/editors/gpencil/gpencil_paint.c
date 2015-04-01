@@ -999,7 +999,7 @@ static void gp_session_validatebuffer(tGPsdata *p)
 }
 
 /* (re)init new painting data */
-static int gp_session_initdata(bContext *C, tGPsdata *p)
+static bool gp_session_initdata(bContext *C, tGPsdata *p)
 {
 	bGPdata **gpd_ptr = NULL;
 	ScrArea *curarea = CTX_wm_area(C);
@@ -1082,7 +1082,13 @@ static int gp_session_initdata(bContext *C, tGPsdata *p)
 		case SPACE_CLIP:
 		{
 			SpaceClip *sc = curarea->spacedata.first;
+			MovieClip *clip = ED_space_clip_get_clip(sc);
 			
+			if (clip == NULL) {
+				p->status = GP_STATUS_ERROR;
+				return false;
+			}
+
 			/* set the current area */
 			p->sa = curarea;
 			p->ar = ar;
@@ -1097,13 +1103,18 @@ static int gp_session_initdata(bContext *C, tGPsdata *p)
 			p->custom_color[3] = 0.9f;
 			
 			if (sc->gpencil_src == SC_GPENCIL_SRC_TRACK) {
-				MovieClip *clip = ED_space_clip_get_clip(sc);
 				int framenr = ED_space_clip_get_clip_frame_number(sc);
 				MovieTrackingTrack *track = BKE_tracking_track_get_active(&clip->tracking);
-				MovieTrackingMarker *marker = BKE_tracking_marker_get(track, framenr);
-				
-				p->imat[3][0] -= marker->pos[0];
-				p->imat[3][1] -= marker->pos[1];
+				MovieTrackingMarker *marker = track ? BKE_tracking_marker_get(track, framenr) : NULL;
+
+				if (marker) {
+					p->imat[3][0] -= marker->pos[0];
+					p->imat[3][1] -= marker->pos[1];
+				}
+				else {
+					p->status = GP_STATUS_ERROR;
+					return false;
+				}
 			}
 			
 			invert_m4_m4(p->mat, p->imat);
@@ -1222,6 +1233,16 @@ static void gp_paint_initstroke(tGPsdata *p, short paintmode)
 		if (p->sa->spacetype == SPACE_VIEW3D) {
 			if (p->gpl->flag & GP_LAYER_NO_XRAY) {
 				p->flags |= GP_PAINTFLAG_V3D_ERASER_DEPTH;
+			}
+		}
+	}
+	else {
+		/* disable eraser flags - so that we can switch modes during a session */
+		p->gpd->sbuffer_sflag &= ~GP_STROKE_ERASER;
+		
+		if (p->sa->spacetype == SPACE_VIEW3D) {
+			if (p->gpl->flag & GP_LAYER_NO_XRAY) {
+				p->flags &= ~GP_PAINTFLAG_V3D_ERASER_DEPTH;
 			}
 		}
 	}
@@ -1389,7 +1410,7 @@ static void gpencil_draw_toggle_eraser_cursor(bContext *C, tGPsdata *p, short en
 		WM_paint_cursor_end(CTX_wm_manager(C), p->erasercursor);
 		p->erasercursor = NULL;
 	}
-	else if (enable) {
+	else if (enable && !p->erasercursor) {
 		/* enable cursor */
 		p->erasercursor = WM_paint_cursor_activate(CTX_wm_manager(C),
 		                                           NULL, /* XXX */
@@ -1621,7 +1642,7 @@ static void gpencil_draw_apply_event(wmOperator *op, const wmEvent *event)
 	mousef[1] = p->mval[1];
 	RNA_float_set_array(&itemptr, "mouse", mousef);
 	RNA_float_set(&itemptr, "pressure", p->pressure);
-	RNA_boolean_set(&itemptr, "is_start", (p->flags & GP_PAINTFLAG_FIRSTRUN));
+	RNA_boolean_set(&itemptr, "is_start", (p->flags & GP_PAINTFLAG_FIRSTRUN) != 0);
 	
 	RNA_float_set(&itemptr, "time", p->curtime - p->inittime);
 	
@@ -1882,6 +1903,27 @@ static int gpencil_draw_modal(bContext *C, wmOperator *op, const wmEvent *event)
 				/* printf("\t\tGP - end stroke only\n"); */
 				gpencil_stroke_end(op);
 				
+				/* If eraser mode is on, turn it off after the stroke finishes
+				 * NOTE: This just makes it nicer to work with drawing sessions
+				 */
+				if (p->paintmode == GP_PAINTMODE_ERASER) {
+					p->paintmode = RNA_enum_get(op->ptr, "mode");
+					
+					/* if the original mode was *still* eraser,
+					 * we'll let it say for now, since this gives
+					 * users an opportunity to have visual feedback
+					 * when adjusting eraser size
+					 */
+					if (p->paintmode != GP_PAINTMODE_ERASER) {	
+						/* turn off cursor...
+						 * NOTE: this should be enough for now
+						 *       Just hiding this makes it seem like
+						 *       you can paint again...
+						 */
+						gpencil_draw_toggle_eraser_cursor(C, p, false);
+					}
+				}
+				
 				/* we've just entered idling state, so this event was processed (but no others yet) */
 				estate = OPERATOR_RUNNING_MODAL;
 				
@@ -1895,6 +1937,20 @@ static int gpencil_draw_modal(bContext *C, wmOperator *op, const wmEvent *event)
 			}
 		}
 		else if (event->val == KM_PRESS) {
+			/* Switch paintmode (temporarily if need be) based on which button was used
+			 * NOTE: This is to make it more convenient to erase strokes when using drawing sessions
+			 */
+			if (event->type == LEFTMOUSE) {
+				/* restore drawmode to default */
+				p->paintmode = RNA_enum_get(op->ptr, "mode");
+			}
+			else if (event->type == RIGHTMOUSE) {
+				/* turn on eraser */
+				p->paintmode = GP_PAINTMODE_ERASER;
+			}
+
+			gpencil_draw_toggle_eraser_cursor(C, p, p->paintmode == GP_PAINTMODE_ERASER);
+
 			/* not painting, so start stroke (this should be mouse-button down) */
 			p = gpencil_stroke_begin(C, op);
 			

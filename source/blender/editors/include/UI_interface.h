@@ -316,6 +316,10 @@ void UI_draw_roundbox_shade_x(int mode, float minx, float miny, float maxx, floa
 void UI_draw_roundbox_shade_y(int mode, float minx, float miny, float maxx, float maxy, float rad, float shadeLeft, float shadeRight);
 void UI_draw_text_underline(int pos_x, int pos_y, int len, int height);
 
+void UI_draw_safe_areas(
+        float x1, float x2, float y1, float y2,
+        const float title_aspect[2], const float action_aspect[2]);
+
 /* state for scrolldrawing */
 #define UI_SCROLL_PRESSED       (1 << 0)
 #define UI_SCROLL_ARROWS        (1 << 1)
@@ -344,6 +348,9 @@ typedef void (*uiButHandleRenameFunc)(struct bContext *C, void *arg, char *origs
 typedef void (*uiButHandleNFunc)(struct bContext *C, void *argN, void *arg2);
 typedef int (*uiButCompleteFunc)(struct bContext *C, char *str, void *arg);
 typedef void (*uiButSearchFunc)(const struct bContext *C, void *arg, const char *str, uiSearchItems *items);
+/* Must return allocated string. */
+typedef char *(*uiButToolTipFunc)(struct bContext *C, void *argN, const char *tip);
+
 typedef void (*uiBlockHandleFunc)(struct bContext *C, void *arg, int event);
 
 /* Menu Callbacks */
@@ -674,6 +681,8 @@ void    UI_but_func_drawextra_set(
         void (*func)(const struct bContext *C, void *, void *, void *, struct rcti *rect),
         void *arg1, void *arg2);
 
+void    UI_but_func_tooltip_set(uiBut *but, uiButToolTipFunc func, void *argN);
+
 bool UI_textbutton_activate_rna(const struct bContext *C, struct ARegion *ar,
                                 const void *rna_poin_data, const char *rna_prop_id);
 bool UI_textbutton_activate_but(const struct bContext *C, uiBut *but);
@@ -888,6 +897,7 @@ void uiTemplateGameStates(uiLayout *layout, struct PointerRNA *ptr, const char *
 void uiTemplateImage(uiLayout *layout, struct bContext *C, struct PointerRNA *ptr, const char *propname, struct PointerRNA *userptr, int compact);
 void uiTemplateImageSettings(uiLayout *layout, struct PointerRNA *imfptr, int color_management);
 void uiTemplateImageLayers(uiLayout *layout, struct bContext *C, struct Image *ima, struct ImageUser *iuser);
+void uiTemplateImageInfo(uiLayout *layout, struct bContext *C, Image *ima, ImageUser *iuser);
 void uiTemplateRunningJobs(uiLayout *layout, struct bContext *C);
 void UI_but_func_operator_search(uiBut *but);
 void uiTemplateOperatorSearch(uiLayout *layout);
@@ -902,7 +912,8 @@ void uiTemplateNodeSocket(uiLayout *layout, struct bContext *C, float *color);
 #define UI_UL_DEFAULT_CLASS_NAME "UI_UL_list"
 void uiTemplateList(uiLayout *layout, struct bContext *C, const char *listtype_name, const char *list_id,
                     struct PointerRNA *dataptr, const char *propname, struct PointerRNA *active_dataptr,
-                    const char *active_propname, int rows, int maxrows, int layout_type, int columns);
+                    const char *active_propname, const char *item_dyntip_propname,
+                    int rows, int maxrows, int layout_type, int columns);
 void uiTemplateNodeLink(uiLayout *layout, struct bNodeTree *ntree, struct bNode *node, struct bNodeSocket *input);
 void uiTemplateNodeView(uiLayout *layout, struct bContext *C, struct bNodeTree *ntree, struct bNode *node, struct bNodeSocket *input);
 void uiTemplateTextureUser(uiLayout *layout, struct bContext *C);
@@ -970,15 +981,20 @@ void UI_context_active_but_prop_get_filebrowser(const struct bContext *C, struct
 void UI_context_active_but_prop_get_templateID(struct bContext *C, struct PointerRNA *ptr, struct PropertyRNA **prop);
 
 /* Styled text draw */
-void UI_fontstyle_set(struct uiFontStyle *fs);
+void UI_fontstyle_set(const struct uiFontStyle *fs);
 void UI_fontstyle_draw_ex(
-        struct uiFontStyle *fs, const struct rcti *rect, const char *str,
+        const struct uiFontStyle *fs, const struct rcti *rect, const char *str,
         size_t len, float *r_xofs, float *r_yofs);
-void UI_fontstyle_draw(struct uiFontStyle *fs, const struct rcti *rect, const char *str);
-void UI_fontstyle_draw_rotated(struct uiFontStyle *fs, const struct rcti *rect, const char *str);
+void UI_fontstyle_draw(const struct uiFontStyle *fs, const struct rcti *rect, const char *str);
+void UI_fontstyle_draw_rotated(const struct uiFontStyle *fs, const struct rcti *rect, const char *str);
+void UI_fontstyle_draw_simple(const struct uiFontStyle *fs, float x, float y, const char *str);
+void UI_fontstyle_draw_simple_backdrop(
+        const uiFontStyle *fs, float x, float y, const char *str,
+        const unsigned char fg[4], const unsigned char bg[4]);
 
-int UI_fontstyle_string_width(const char *str); // XXX temp
-void UI_draw_string(float x, float y, const char *str); // XXX temp
+int UI_fontstyle_string_width(const struct uiFontStyle *fs, const char *str);
+int UI_fontstyle_height_max(const struct uiFontStyle *fs);
+
 void UI_draw_icon_tri(float x, float y, char dir);
 
 uiStyle *UI_style_get(void);		/* use for fonts etc */
@@ -1008,6 +1024,9 @@ void UI_butstore_unregister(uiButStore *bs_handle, uiBut **but_p);
 
 /* Float precision helpers */
 #define UI_PRECISION_FLOAT_MAX 7
+
+/* Typical UI text */
+#define UI_FSTYLE_WIDGET (const uiFontStyle *)&(UI_style_get()->widget)
 
 int UI_calc_float_precision(int prec, double value);
 

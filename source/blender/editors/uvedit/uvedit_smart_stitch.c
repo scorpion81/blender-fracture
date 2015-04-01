@@ -574,11 +574,11 @@ static void stitch_island_calculate_vert_rotation(UvElement *element, StitchStat
 			edgecos = dot_v2v2(normal, state->normals + index_tmp1 * 2);
 			edgesin = cross_v2v2(normal, state->normals + index_tmp1 * 2);
 			if (edgesin > 0.0f) {
-			    rotation += acosf(max_ff(-1.0f, min_ff(1.0f, edgecos)));
+				rotation += acosf(max_ff(-1.0f, min_ff(1.0f, edgecos)));
 				rot_elem++;
 			}
 			else {
-			    rotation_neg += acosf(max_ff(-1.0f, min_ff(1.0f, edgecos)));
+				rotation_neg += acosf(max_ff(-1.0f, min_ff(1.0f, edgecos)));
 				rot_elem_neg++;
 			}
 		}
@@ -1601,7 +1601,7 @@ static int stitch_init(bContext *C, wmOperator *op)
 	BMFace *efa;
 	BMLoop *l;
 	BMIter iter, liter;
-	GHashIterator *ghi;
+	GHashIterator gh_iter;
 	UvEdge *all_edges;
 	StitchState *state;
 	Scene *scene = CTX_data_scene(C);
@@ -1748,14 +1748,11 @@ static int stitch_init(bContext *C, wmOperator *op)
 		}
 	}
 
-
-	ghi = BLI_ghashIterator_new(edge_hash);
 	total_edges = BLI_ghash_size(edge_hash);
 	state->edges = edges = MEM_mallocN(sizeof(*edges) * total_edges, "stitch_edges");
 
 	/* I assume any system will be able to at least allocate an iterator :p */
 	if (!edges) {
-		BLI_ghashIterator_free(ghi);
 		state_delete(state);
 		return 0;
 	}
@@ -1763,12 +1760,12 @@ static int stitch_init(bContext *C, wmOperator *op)
 	state->total_separate_edges = total_edges;
 
 	/* fill the edges with data */
-	for (i = 0, BLI_ghashIterator_init(ghi, edge_hash); !BLI_ghashIterator_done(ghi); BLI_ghashIterator_step(ghi)) {
-		edges[i++] = *((UvEdge *)BLI_ghashIterator_getKey(ghi));
+	i = 0;
+	GHASH_ITER (gh_iter, edge_hash) {
+		edges[i++] = *((UvEdge *)BLI_ghashIterator_getKey(&gh_iter));
 	}
 
 	/* cleanup temporary stuff */
-	BLI_ghashIterator_free(ghi);
 	MEM_freeN(all_edges);
 
 	BLI_ghash_free(edge_hash, NULL, NULL);

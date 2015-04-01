@@ -508,7 +508,9 @@ static EnumPropertyItem *rna_Object_collision_bounds_itemf(bContext *UNUSED(C), 
 	EnumPropertyItem *item = NULL;
 	int totitem = 0;
 
-	RNA_enum_items_add_value(&item, &totitem, collision_bounds_items, OB_BOUND_TRIANGLE_MESH);
+	if (ob->body_type != OB_BODY_TYPE_CHARACTER) {
+		RNA_enum_items_add_value(&item, &totitem, collision_bounds_items, OB_BOUND_TRIANGLE_MESH);
+	}
 	RNA_enum_items_add_value(&item, &totitem, collision_bounds_items, OB_BOUND_CONVEX_HULL);
 
 	if (ob->body_type != OB_BODY_TYPE_SOFT) {
@@ -640,7 +642,7 @@ void rna_object_uvlayer_name_set(PointerRNA *ptr, const char *value, char *resul
 		for (a = 0; a < me->pdata.totlayer; a++) {
 			layer = &me->pdata.layers[a];
 
-			if (layer->type == CD_MTEXPOLY && strcmp(layer->name, value) == 0) {
+			if (layer->type == CD_MTEXPOLY && STREQ(layer->name, value)) {
 				BLI_strncpy(result, value, maxlen);
 				return;
 			}
@@ -663,7 +665,7 @@ void rna_object_vcollayer_name_set(PointerRNA *ptr, const char *value, char *res
 		for (a = 0; a < me->fdata.totlayer; a++) {
 			layer = &me->fdata.layers[a];
 
-			if (layer->type == CD_MCOL && strcmp(layer->name, value) == 0) {
+			if (layer->type == CD_MCOL && STREQ(layer->name, value)) {
 				BLI_strncpy(result, value, maxlen);
 				return;
 			}
@@ -1183,7 +1185,7 @@ static void rna_GameObjectSettings_col_group_get(PointerRNA *ptr, int *values)
 	int i;
 
 	for (i = 0; i < OB_MAX_COL_MASKS; i++) {
-		values[i] = (ob->col_group & (1 << i));
+		values[i] = (ob->col_group & (1 << i)) != 0;
 	}
 }
 
@@ -1212,7 +1214,7 @@ static void rna_GameObjectSettings_col_mask_get(PointerRNA *ptr, int *values)
 	int i;
 
 	for (i = 0; i < OB_MAX_COL_MASKS; i++) {
-		values[i] = (ob->col_mask & (1 << i));
+		values[i] = (ob->col_mask & (1 << i)) != 0;
 	}
 }
 
@@ -1631,7 +1633,7 @@ static void rna_def_object_game_settings(BlenderRNA *brna)
 		{OB_BODY_TYPE_DYNAMIC, "DYNAMIC", 0, "Dynamic", "Linear physics"},
 		{OB_BODY_TYPE_RIGID, "RIGID_BODY", 0, "Rigid Body", "Linear and angular physics"},
 		{OB_BODY_TYPE_SOFT, "SOFT_BODY", 0, "Soft Body", "Soft body"},
-		{OB_BODY_TYPE_OCCLUDER, "OCCLUDE", 0, "Occlude", "Occluder for optimizing scene rendering"},
+		{OB_BODY_TYPE_OCCLUDER, "OCCLUDER", 0, "Occluder", "Occluder for optimizing scene rendering"},
 		{OB_BODY_TYPE_SENSOR, "SENSOR", 0, "Sensor",
 		                      "Collision Sensor, detects static and dynamic objects but not the other "
 		                      "collision sensor objects"},
@@ -1816,7 +1818,7 @@ static void rna_def_object_game_settings(BlenderRNA *brna)
 	RNA_def_property_boolean_sdna(prop, NULL, "gameflag", OB_ANISOTROPIC_FRICTION);
 	RNA_def_property_ui_text(prop, "Anisotropic Friction", "Enable anisotropic friction");
 
-	prop = RNA_def_property(srna, "friction_coefficients", PROP_FLOAT, PROP_NONE);
+	prop = RNA_def_property(srna, "friction_coefficients", PROP_FLOAT, PROP_XYZ);
 	RNA_def_property_float_sdna(prop, NULL, "anisotropicFriction");
 	RNA_def_property_range(prop, 0.0, 1.0);
 	RNA_def_property_ui_text(prop, "Friction Coefficients",
@@ -1832,7 +1834,7 @@ static void rna_def_object_game_settings(BlenderRNA *brna)
 	RNA_def_property_enum_sdna(prop, NULL, "collision_boundtype");
 	RNA_def_property_enum_items(prop, collision_bounds_items);
 	RNA_def_property_enum_funcs(prop, NULL, NULL, "rna_Object_collision_bounds_itemf");
-	RNA_def_property_ui_text(prop, "Collision Bounds",  "Select the collision type");
+	RNA_def_property_ui_text(prop, "Collision Shape",  "Select the collision shape that better fits the object");
 	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, NULL);
 
 	prop = RNA_def_property(srna, "use_collision_compound", PROP_BOOLEAN, PROP_NONE);

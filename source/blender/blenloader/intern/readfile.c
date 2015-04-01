@@ -114,6 +114,7 @@
 
 #include "BKE_armature.h"
 #include "BKE_brush.h"
+#include "BKE_cloth.h"
 #include "BKE_constraint.h"
 #include "BKE_context.h"
 #include "BKE_curve.h"
@@ -781,7 +782,7 @@ static void decode_blender_header(FileData *fd)
 	readsize = fd->read(fd, header, sizeof(header));
 	
 	if (readsize == sizeof(header)) {
-		if (strncmp(header, "BLENDER", 7) == 0) {
+		if (STREQLEN(header, "BLENDER", 7)) {
 			int remove_this_endian_test = 1;
 			
 			fd->flags |= FD_FLAGS_FILE_OK;
@@ -1186,7 +1187,7 @@ bool BLO_is_a_library(const char *path, char *dir, char *group)
 		
 		/* now we know that we are in a blend file and it is safe to 
 		 * assume that gp actually points to a group */
-		if (strcmp("Screen", gp) != 0)
+		if (!STREQ("Screen", gp))
 			BLI_strncpy(group, gp, BLO_GROUP_MAX);
 	}
 	return 1;
@@ -3771,25 +3772,26 @@ static void lib_link_particlesettings(FileData *fd, Main *main)
 				BoidRule *rule;
 				for (; state; state=state->next) {
 					rule = state->rules.first;
-				for (; rule; rule=rule->next)
-					switch (rule->type) {
-						case eBoidRuleType_Goal:
-						case eBoidRuleType_Avoid:
-						{
-							BoidRuleGoalAvoid *brga = (BoidRuleGoalAvoid*)rule;
-							brga->ob = newlibadr(fd, part->id.lib, brga->ob);
-							break;
-						}
-						case eBoidRuleType_FollowLeader:
-						{
-							BoidRuleFollowLeader *brfl = (BoidRuleFollowLeader*)rule;
-							brfl->ob = newlibadr(fd, part->id.lib, brfl->ob);
-							break;
+					for (; rule; rule=rule->next) {
+						switch (rule->type) {
+							case eBoidRuleType_Goal:
+							case eBoidRuleType_Avoid:
+							{
+								BoidRuleGoalAvoid *brga = (BoidRuleGoalAvoid*)rule;
+								brga->ob = newlibadr(fd, part->id.lib, brga->ob);
+								break;
+							}
+							case eBoidRuleType_FollowLeader:
+							{
+								BoidRuleFollowLeader *brfl = (BoidRuleFollowLeader*)rule;
+								brfl->ob = newlibadr(fd, part->id.lib, brfl->ob);
+								break;
+							}
 						}
 					}
 				}
 			}
-			
+
 			for (a = 0; a < MAX_MTEX; a++) {
 				mtex= part->mtex[a];
 				if (mtex) {
@@ -3819,6 +3821,13 @@ static void direct_link_particlesettings(FileData *fd, ParticleSettings *part)
 	direct_link_animdata(fd, part->adt);
 	direct_link_partdeflect(part->pd);
 	direct_link_partdeflect(part->pd2);
+
+	part->clumpcurve = newdataadr(fd, part->clumpcurve);
+	if (part->clumpcurve)
+		direct_link_curvemapping(fd, part->clumpcurve);
+	part->roughcurve = newdataadr(fd, part->roughcurve);
+	if (part->roughcurve)
+		direct_link_curvemapping(fd, part->roughcurve);
 
 	part->effector_weights = newdataadr(fd, part->effector_weights);
 	if (!part->effector_weights)
@@ -3936,6 +3945,7 @@ static void direct_link_particlesystems(FileData *fd, ListBase *particles)
 		if (psys->clmd) {
 			psys->clmd = newdataadr(fd, psys->clmd);
 			psys->clmd->clothObject = NULL;
+			psys->clmd->hairdata = NULL;
 			
 			psys->clmd->sim_parms= newdataadr(fd, psys->clmd->sim_parms);
 			psys->clmd->coll_parms= newdataadr(fd, psys->clmd->coll_parms);
@@ -3947,6 +3957,7 @@ static void direct_link_particlesystems(FileData *fd, ListBase *particles)
 			}
 			
 			psys->hair_in_dm = psys->hair_out_dm = NULL;
+			psys->clmd->solver_result = NULL;
 			
 			psys->clmd->point_cache = psys->pointcache;
 		}
@@ -4550,11 +4561,11 @@ static void lib_link_object(FileData *fd, Main *main)
 				}
 				else if (act->type == ACT_ACTION) {
 					bActionActuator *aa = act->data;
-					aa->act= newlibadr(fd, ob->id.lib, aa->act);
+					aa->act= newlibadr_us(fd, ob->id.lib, aa->act);
 				}
 				else if (act->type == ACT_SHAPEACTION) {
 					bActionActuator *aa = act->data;
-					aa->act= newlibadr(fd, ob->id.lib, aa->act);
+					aa->act= newlibadr_us(fd, ob->id.lib, aa->act);
 				}
 				else if (act->type == ACT_PROPERTY) {
 					bPropertyActuator *pa = act->data;
@@ -4585,7 +4596,7 @@ static void lib_link_object(FileData *fd, Main *main)
 					steeringa->target = newlibadr(fd, ob->id.lib, steeringa->target);
 					steeringa->navmesh = newlibadr(fd, ob->id.lib, steeringa->navmesh);
 				}
-				else if(act->type == ACT_MOUSE) {
+				else if (act->type == ACT_MOUSE) {
 					/* bMouseActuator *moa= act->data; */
 				}
 			}
@@ -4896,6 +4907,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			ClothModifierData *clmd = (ClothModifierData *)md;
 			
 			clmd->clothObject = NULL;
+			clmd->hairdata = NULL;
 			
 			clmd->sim_parms= newdataadr(fd, clmd->sim_parms);
 			clmd->coll_parms= newdataadr(fd, clmd->coll_parms);
@@ -4914,6 +4926,8 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 					clmd->sim_parms->effector_weights = BKE_add_effector_weights(NULL);
 				}
 			}
+			
+			clmd->solver_result = NULL;
 		}
 		else if (md->type == eModifierType_Fluidsim) {
 			FluidsimModifierData *fluidmd = (FluidsimModifierData *)md;
@@ -5063,6 +5077,11 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			hmd->indexar = newdataadr(fd, hmd->indexar);
 			if (fd->flags & FD_FLAGS_SWITCH_ENDIAN) {
 				BLI_endian_switch_int32_array(hmd->indexar, hmd->totindex);
+			}
+
+			hmd->curfalloff = newdataadr(fd, hmd->curfalloff);
+			if (hmd->curfalloff) {
+				direct_link_curvemapping(fd, hmd->curfalloff);
 			}
 		}
 		else if (md->type == eModifierType_ParticleSystem) {
@@ -5492,6 +5511,8 @@ static void lib_link_scene(FileData *fd, Main *main)
 			
 			sce->toolsettings->skgen_template = newlibadr(fd, sce->id.lib, sce->toolsettings->skgen_template);
 			
+			sce->toolsettings->particle.shape_object = newlibadr(fd, sce->id.lib, sce->toolsettings->particle.shape_object);
+			
 			for (base = sce->base.first; base; base = next) {
 				next = base->next;
 				
@@ -5649,12 +5670,26 @@ static void link_recurs_seq(FileData *fd, ListBase *lb)
 	}
 }
 
-static void direct_link_paint(FileData *fd, Paint **paint)
+static void direct_link_paint(FileData *fd, Paint *p)
+{
+	if (p->num_input_samples < 1)
+		p->num_input_samples = 1;
+
+	p->cavity_curve = newdataadr(fd, p->cavity_curve);
+	if (p->cavity_curve)
+		direct_link_curvemapping(fd, p->cavity_curve);
+	else
+		BKE_paint_cavity_curve_preset(p, CURVE_PRESET_LINE);
+}
+
+static void direct_link_paint_helper(FileData *fd, Paint **paint)
 {
 	/* TODO. is this needed */
 	(*paint) = newdataadr(fd, (*paint));
-	if (*paint && (*paint)->num_input_samples < 1)
-		(*paint)->num_input_samples = 1;
+
+	if (*paint) {
+		direct_link_paint(fd, *paint);
+	}
 }
 
 static void direct_link_sequence_modifiers(FileData *fd, ListBase *lb)
@@ -5720,11 +5755,13 @@ static void direct_link_scene(FileData *fd, Scene *sce)
 	
 	sce->toolsettings= newdataadr(fd, sce->toolsettings);
 	if (sce->toolsettings) {
-		direct_link_paint(fd, (Paint**)&sce->toolsettings->sculpt);
-		direct_link_paint(fd, (Paint**)&sce->toolsettings->vpaint);
-		direct_link_paint(fd, (Paint**)&sce->toolsettings->wpaint);
-		direct_link_paint(fd, (Paint**)&sce->toolsettings->uvsculpt);
+		direct_link_paint_helper(fd, (Paint**)&sce->toolsettings->sculpt);
+		direct_link_paint_helper(fd, (Paint**)&sce->toolsettings->vpaint);
+		direct_link_paint_helper(fd, (Paint**)&sce->toolsettings->wpaint);
+		direct_link_paint_helper(fd, (Paint**)&sce->toolsettings->uvsculpt);
 		
+		direct_link_paint(fd, &sce->toolsettings->imapaint.paint);
+
 		sce->toolsettings->imapaint.paintcursor = NULL;
 		sce->toolsettings->particle.paintcursor = NULL;
 		sce->toolsettings->particle.scene = NULL;
@@ -6048,6 +6085,12 @@ static void lib_link_screen(FileData *fd, Main *main)
 		if (sc->id.flag & LIB_NEED_LINK) {
 			sc->id.us = 1;
 			sc->scene = newlibadr(fd, sc->id.lib, sc->scene);
+
+			/* this should not happen, but apparently it does somehow. Until we figure out the cause,
+			 * just assign first available scene */
+			if (!sc->scene)
+				sc->scene = main->scene.first;
+
 			sc->animtimer = NULL; /* saved in rare cases */
 			
 			for (sa = sc->areabase.first; sa; sa = sa->next) {
@@ -6239,7 +6282,7 @@ typedef enum ePointerUserMode {
 
 static bool restore_pointer(ID *id, ID *newid, ePointerUserMode user)
 {
-	if (strcmp(newid->name + 2, id->name + 2) == 0) {
+	if (STREQ(newid->name + 2, id->name + 2)) {
 		if (newid->lib == id->lib) {
 			if (user == USER_ONE) {
 				if (newid->us == 0) {
@@ -6628,6 +6671,7 @@ static void direct_link_region(FileData *fd, ARegion *ar, int spacetype)
 				rv3d->render_engine = NULL;
 				rv3d->sms = NULL;
 				rv3d->smooth_timer = NULL;
+				rv3d->compositor = NULL;
 			}
 		}
 	}
@@ -6735,7 +6779,7 @@ static bool direct_link_screen(FileData *fd, bScreen *sc)
 		/* add local view3d too */
 		else if (sa->spacetype == SPACE_VIEW3D)
 			blo_do_versions_view3d_split_250(sa->spacedata.first, &sa->regionbase);
-		
+
 		/* incase we set above */
 		sa->butspacetype = sa->spacetype;
 
@@ -6782,6 +6826,11 @@ static bool direct_link_screen(FileData *fd, bScreen *sc)
 				/* render can be quite heavy, set to solid on load */
 				if (v3d->drawtype == OB_RENDER)
 					v3d->drawtype = OB_SOLID;
+
+				if (v3d->fx_settings.dof)
+					v3d->fx_settings.dof = newdataadr(fd, v3d->fx_settings.dof);
+				if (v3d->fx_settings.ssao)
+					v3d->fx_settings.ssao = newdataadr(fd, v3d->fx_settings.ssao);
 				
 				blo_do_versions_view3d_split_250(v3d, &sl->regionbase);
 			}
@@ -7100,9 +7149,10 @@ static void direct_link_sound(FileData *fd, bSound *sound)
 		sound->waveform = NULL;
 	}
 		
-	if (sound->mutex)
-		sound->mutex = BLI_mutex_alloc();
-	
+	if (sound->spinlock) {
+		sound->spinlock = MEM_mallocN(sizeof(SpinLock), "sound_spinlock");
+		BLI_spin_init(sound->spinlock);
+	}
 	/* clear waveform loading flag */
 	sound->flags &= ~SOUND_FLAGS_WAVEFORM_LOADING;
 
@@ -7817,9 +7867,7 @@ static BHead *read_global(BlendFileData *bfd, FileData *fd, BHead *bhead)
 	bfd->main->build_commit_timestamp = fg->build_commit_timestamp;
 	BLI_strncpy(bfd->main->build_hash, fg->build_hash, sizeof(bfd->main->build_hash));
 	
-	bfd->winpos = fg->winpos;
 	bfd->fileflags = fg->fileflags;
-	bfd->displaymode = fg->displaymode;
 	bfd->globalf = fg->globalf;
 	BLI_strncpy(bfd->filename, fg->filename, sizeof(bfd->filename));
 	
@@ -9306,7 +9354,7 @@ static void give_base_to_objects(Main *mainvar, Scene *sce, Library *lib, const 
 					do_it = true;
 				}
 				else if (idcode==ID_GR) {
-					if (ob->id.us == 1 && is_link == false && ob->id.lib == lib) {
+					if ((is_link == false) && (ob->id.lib == lib)) {
 						if ((ob->flag & OB_FROMGROUP) && object_in_any_scene(mainvar, ob)==0) {
 							do_it = true;
 						}
@@ -9315,7 +9363,7 @@ static void give_base_to_objects(Main *mainvar, Scene *sce, Library *lib, const 
 				else {
 					/* when appending, make sure any indirectly loaded objects
 					 * get a base else they cant be accessed at all [#27437] */
-					if (ob->id.us==1 && is_link == false && ob->id.lib == lib) {
+					if ((is_link == false) && (ob->id.lib == lib)) {
 						/* we may be appending from a scene where we already
 						 *  have a linked object which is not in any scene [#27616] */
 						if ((ob->id.flag & LIB_PRE_EXISTING)==0) {
@@ -9335,7 +9383,9 @@ static void give_base_to_objects(Main *mainvar, Scene *sce, Library *lib, const 
 					base->lay = ob->lay;
 					base->object = ob;
 					base->flag = ob->flag;
-					ob->id.us = 1;
+
+					CLAMP_MIN(ob->id.us, 0);
+					ob->id.us += 1;
 					
 					ob->id.flag -= LIB_INDIRECT;
 					ob->id.flag |= LIB_EXTERN;
@@ -9391,7 +9441,7 @@ static ID *append_named_part(Main *mainl, FileData *fd, const char *idname, cons
 		if (bhead->code == idcode) {
 			const char *idname_test= bhead_id_name(fd, bhead);
 			
-			if (strcmp(idname_test + 2, idname) == 0) {
+			if (STREQ(idname_test + 2, idname)) {
 				found = 1;
 				id = is_yet_read(fd, mainl, bhead);
 				if (id == NULL) {
@@ -9512,7 +9562,7 @@ static void append_id_part(FileData *fd, Main *mainvar, ID *id, ID **r_id)
 	for (bhead = blo_firstbhead(fd); bhead; bhead = blo_nextbhead(fd, bhead)) {
 		if (bhead->code == GS(id->name)) {
 			
-			if (strcmp(id->name, bhead_id_name(fd, bhead))==0) {
+			if (STREQ(id->name, bhead_id_name(fd, bhead))) {
 				id->flag &= ~LIB_READ;
 				id->flag |= LIB_NEED_EXPAND;
 //				printf("read lib block %s\n", id->name);

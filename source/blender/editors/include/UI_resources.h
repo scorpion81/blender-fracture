@@ -293,6 +293,8 @@ enum {
 	TH_INFO_DEBUG,
 	TH_INFO_DEBUG_TEXT,
 	TH_VIEW_OVERLAY,
+	
+	TH_V3D_CLIPPING_BORDER
 };
 /* XXX WARNING: previous is saved in file, so do not change order! */
 
@@ -358,6 +360,9 @@ void    UI_GetColorPtrBlendShade3ubv(const unsigned char cp1[3], const unsigned 
 
 // clear the openGL ClearColor using the input colorid
 void    UI_ThemeClearColor(int colorid);
+
+// clear the openGL ClearColor using the input colorid using optional transparency
+void    UI_ThemeClearColorAlpha(int colorid, float alpha);
 
 // internal (blender) usage only, for init and set active
 void    UI_SetTheme(int spacetype, int regionid);
