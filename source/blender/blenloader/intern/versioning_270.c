@@ -45,6 +45,7 @@
 #include "DNA_mesh_types.h"
 #include "DNA_modifier_types.h"
 #include "DNA_particle_types.h"
+#include "DNA_rigidbody_types.h"
 #include "DNA_linestyle_types.h"
 #include "DNA_actuator_types.h"
 
@@ -639,6 +640,20 @@ void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 						}
 					}
 				}
+			}
+		}
+	}
+
+	if (!MAIN_VERSION_ATLEAST(main, 274, 0)) {
+		Object *ob;
+		for (ob = main->object.first; ob != NULL; ob = ob->id.next) {
+			/*initialize older blends to useful values */
+			FractureModifierData *fmd = (FractureModifierData* )modifiers_findByType(ob, eModifierType_Fracture);
+			if (fmd != NULL)
+			{
+				fmd->cluster_constraint_type = RBC_TYPE_FIXED;
+				fmd->constraint_target = MOD_FRACTURE_CENTROID;
+				fmd->use_breaking = true;
 			}
 		}
 	}

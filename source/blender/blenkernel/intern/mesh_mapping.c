@@ -389,7 +389,6 @@ typedef bool (*MeshRemap_CheckIslandBoundary)(
         const int nbr_egde_users);
 
 static void poly_edge_loop_islands_calc(
-int *BKE_mesh_calc_smoothgroups(const MEdge *medge, const int totedge,
         const MEdge *medge, const int totedge, const MPoly *mpoly, const int totpoly,
         const MLoop *mloop, const int totloop, MeshElemMap *edge_poly_map,
         const bool use_bitflags, MeshRemap_CheckIslandBoundary edge_boundary_check,
@@ -409,7 +408,6 @@ int *BKE_mesh_calc_smoothgroups(const MEdge *medge, const int totedge,
 
 	/* map vars */
 	int *edge_poly_mem = NULL;
-	int *edge_poly_mem;
 
 	if (totpoly == 0) {
 		*r_totgroup = 0;

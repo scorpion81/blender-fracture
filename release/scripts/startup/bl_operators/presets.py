@@ -647,6 +647,8 @@ class AddPresetFracture(AddPresetBase, Operator):
         "fracture.grease_decimate",
         "fracture.use_greasepencil_edges",
         "fracture.cutter_axis",
+        "fracture.cluster_constraint_type",
+        "fracture.constraint_target",
     ]
 
     preset_subdir = "fracture"
