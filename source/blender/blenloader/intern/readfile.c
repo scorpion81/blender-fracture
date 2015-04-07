@@ -8126,59 +8126,13 @@ static BHead *read_userdef(BlendFileData *bfd, FileData *fd, BHead *bhead)
 
 static void fix_fracture_image_hack(Main* main)
 {
-	if (!MAIN_VERSION_ATLEAST(main, 273, 1)) { /* XXX TODO is the version check here really necessary ?*/
-		Object *ob;
+	Object *ob;
 
-		for (ob = main->object.first; ob; ob = ob->id.next) {
-			FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
-			if (fmd && fmd->dm_group) {
-				fmd->refresh_images = true;
-				fmd->refresh = true;
-			}
-
-#if 0
-			if (fmd && fmd->dm_group && fmd->visible_mesh_cached) {
-				GroupObject *go;
-
-				for (go = fmd->dm_group->gobject.first; go; go = go->next)
-				{
-					if (go->ob && go->ob->type == OB_MESH)
-					{
-						Mesh* me = go->ob->data;
-						CustomData* pdata = &fmd->visible_mesh_cached->polyData;
-
-						if (me && CustomData_has_layer(pdata, CD_MTEXPOLY)) {
-							/*argh, would need to know which images belong to which "part" of the mesh, but for now
-							 just allow proper loading and fix manually afterwards */
-							int i;
-							int totface = fmd->visible_mesh_cached->numPolyData;
-
-							for (i = 0; i < pdata->totlayer; i++) {
-								CustomDataLayer *layer = &pdata->layers[i];
-
-								if (layer->type == CD_MTEXPOLY && me->mtpoly) {
-									MTexPoly *tf = layer->data;
-									int j;
-
-									for (j = 0; j < totface; j++, tf++) {
-										//simply use first image here...
-										tf->tpage = me->mtpoly->tpage;
-										tf->mode = me->mtpoly->mode;
-										tf->flag = me->mtpoly->flag;
-										tf->tile = me->mtpoly->tile;
-										tf->transp = me->mtpoly->transp;
-
-										if (tf->tpage && tf->tpage->id.us == 0) {
-											tf->tpage->id.us = 1;
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-#endif
+	for (ob = main->object.first; ob; ob = ob->id.next) {
+		FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
+		if (fmd && fmd->dm_group) {
+			fmd->refresh_images = true;
+			fmd->refresh = true;
 		}
 	}
 }
