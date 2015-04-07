@@ -39,6 +39,7 @@
 #include "DNA_scene_types.h"
 #include "DNA_group_types.h"
 #include "DNA_lattice_types.h"
+#include "DNA_modifier_types.h"
 
 #include "BLI_math.h"
 #include "BLI_listbase.h"
@@ -54,6 +55,7 @@
 #include "BKE_object.h"
 #include "BKE_report.h"
 #include "BKE_editmesh.h"
+#include "BKE_modifier.h"
 #include "BKE_multires.h"
 #include "BKE_armature.h"
 #include "BKE_lattice.h"
@@ -72,6 +74,17 @@
 #include "ED_view3d.h"
 
 #include "object_intern.h"
+
+static void reset_fracturemodifier_matrix(Object* ob, bool do_refresh)
+{
+	/* reset modifier matrix here as well, else clear transforms wont have an effect with Fracture Modifier enabled */
+	FractureModifierData *fmd = (FractureModifierData*) modifiers_findByType(ob, eModifierType_Fracture);
+
+	if (fmd) {
+		zero_m4(fmd->origmat);
+		fmd->refresh = do_refresh;
+	}
+}
 
 /*************************** Clear Transformation ****************************/
 
@@ -230,6 +243,10 @@ static int object_clear_transform_generic_exec(bContext *C, wmOperator *op,
 	CTX_DATA_BEGIN (C, Object *, ob, selected_editable_objects)
 	{
 		if (!(ob->mode & OB_MODE_WEIGHT_PAINT)) {
+
+			/* reset modifier matrix here as well, else clear transforms wont have an effect with Fracture Modifier enabled */
+			reset_fracturemodifier_matrix(ob, false);
+
 			/* run provided clearing function */
 			clear_func(ob);
 
@@ -319,6 +336,8 @@ static int object_origin_clear_exec(bContext *C, wmOperator *UNUSED(op))
 
 	CTX_DATA_BEGIN (C, Object *, ob, selected_editable_objects)
 	{
+		reset_fracturemodifier_matrix(ob, true);
+
 		if (ob->parent) {
 			/* vectors pointed to by v1 and v3 will get modified */
 			v1 = ob->loc;
@@ -429,6 +448,8 @@ static int apply_objects_internal(bContext *C, ReportList *reports, bool apply_l
 	/* now execute */
 	CTX_DATA_BEGIN (C, Object *, ob, selected_editable_objects)
 	{
+		/* reset modifier matrix here as well, else clear transforms wont have an effect with Fracture Modifier enabled */
+		reset_fracturemodifier_matrix(ob, true);
 
 		/* calculate rotation/scale matrix */
 		if (apply_scale && apply_rot)
@@ -572,6 +593,9 @@ static int visual_transform_apply_exec(bContext *C, wmOperator *UNUSED(op))
 	
 	CTX_DATA_BEGIN (C, Object *, ob, selected_editable_objects)
 	{
+		/* reset modifier matrix here as well, else clear transforms wont have an effect with Fracture Modifier enabled */
+		reset_fracturemodifier_matrix(ob, true);
+
 		BKE_object_where_is_calc(scene, ob);
 		BKE_object_apply_mat4(ob, ob->obmat, true, true);
 		BKE_object_where_is_calc(scene, ob);
@@ -730,6 +754,8 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 	{
 		Object *ob = ctx_ob->ptr.data;
 		ob->flag &= ~OB_DONE;
+
+		reset_fracturemodifier_matrix(ob, true);
 
 		/* move active first */
 		if (ob == obact) {

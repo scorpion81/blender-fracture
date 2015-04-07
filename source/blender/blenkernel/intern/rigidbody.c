@@ -1714,6 +1714,13 @@ static void do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBo
 	}
 }
 
+static int check_colgroup_ghost(Object* ob1, Object *ob2)
+{
+	int ret = 0;
+	ret = colgroup_check(ob1->rigidbody_object->col_groups, ob2->rigidbody_object->col_groups);
+	return ret && (!(ob1->rigidbody_object->flag & RBO_FLAG_IS_GHOST) && !(ob2->rigidbody_object->flag & RBO_FLAG_IS_GHOST));
+}
+
 /* this allows partial object activation, only some shards will be activated, called from bullet(!) */
 static int filterCallback(void* world, void* island1, void* island2, void *blenderOb1, void* blenderOb2) {
 	MeshIsland* mi1, *mi2;
@@ -1721,14 +1728,16 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	Object* ob1, *ob2;
 	int ob_index1, ob_index2;
 	bool validOb = true;
-	bool ret = false;
 
 	mi1 = (MeshIsland*)island1;
 	mi2 = (MeshIsland*)island2;
 
 	if (rbw == NULL)
 	{
-		return 1;
+		/* just check for ghost flags here, do not activate anything */
+		ob1 = blenderOb1;
+		ob2 = blenderOb2;
+		return check_colgroup_ghost(ob1, ob2);
 	}
 
 	/* cache offset map is a dull name for that... */
@@ -1787,8 +1796,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 		}
 	}
 
-	ret = colgroup_check(ob1->rigidbody_object->col_groups, ob2->rigidbody_object->col_groups);
-	return ret && (!(ob1->rigidbody_object->flag & RBO_FLAG_IS_GHOST) && !(ob2->rigidbody_object->flag & RBO_FLAG_IS_GHOST));
+	return check_colgroup_ghost(ob1, ob2);
 }
 
 /* --------------------- */

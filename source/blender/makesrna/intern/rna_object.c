@@ -184,6 +184,7 @@ EnumPropertyItem object_axis_unsigned_items[] = {
 #include "DNA_key_types.h"
 #include "DNA_constraint_types.h"
 #include "DNA_lattice_types.h"
+#include "DNA_modifier_types.h"
 #include "DNA_node_types.h"
 
 #include "BKE_armature.h"
@@ -198,6 +199,7 @@ EnumPropertyItem object_axis_unsigned_items[] = {
 #include "BKE_object.h"
 #include "BKE_material.h"
 #include "BKE_mesh.h"
+#include "BKE_modifier.h"
 #include "BKE_particle.h"
 #include "BKE_scene.h"
 #include "BKE_deform.h"
@@ -210,6 +212,14 @@ EnumPropertyItem object_axis_unsigned_items[] = {
 
 static void rna_Object_internal_update(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *ptr)
 {
+	/*keep object and modifier matrix in sync... but... what was the modifier matrix good for still ? XXX */
+
+	Object *ob = (Object*)ptr->id.data;
+	FractureModifierData *fmd = (FractureModifierData*) modifiers_findByType(ob, eModifierType_Fracture);
+	if (fmd) {
+		zero_m4(fmd->origmat);
+	}
+
 	DAG_id_tag_update(ptr->id.data, OB_RECALC_OB);
 }
 

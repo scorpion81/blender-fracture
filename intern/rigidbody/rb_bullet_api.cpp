@@ -206,7 +206,8 @@ struct rbFilterCallback : public btOverlapFilterCallback
 				}
 				else
 				{
-					result = 1;
+					//just check for ghost flags and collision groups there
+					result = this->callback(NULL, NULL, NULL, rb0->blenderOb, rb1->blenderOb);
 				}
 			}
 			else
