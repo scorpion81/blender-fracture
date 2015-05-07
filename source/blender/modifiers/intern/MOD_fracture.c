@@ -1001,7 +1001,10 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 		if (emd->frac_algorithm == MOD_FRACTURE_BISECT_FAST || emd->frac_algorithm == MOD_FRACTURE_BISECT_FAST_FILL ||
 		    emd->frac_algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL) {
 			/* XXX need double amount of shards, because we create 2 islands at each cut... so this matches the input count */
-			count *= 2;
+			if ((count > 1) || emd->frac_algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL) {
+				count--;
+				count *= 2;
+			}
 		}
 
 		BLI_srandom(emd->point_seed);

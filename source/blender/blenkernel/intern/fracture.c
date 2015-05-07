@@ -647,7 +647,18 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 		}
 	}
 	else {
-		handle_fast_bisect(fm, expected_shards, algorithm, &bm_parent, obmat, centroid, inner_material_index, parent_id, tempshards, &tempresults);
+
+		if (expected_shards == 1)
+		{
+			/* do not fracture case */
+			tempresults[0] = p;
+			p->shard_id = -1;
+		}
+		else
+		{
+			handle_fast_bisect(fm, expected_shards, algorithm, &bm_parent, obmat, centroid, inner_material_index, parent_id,
+			                   tempshards, &tempresults);
+		}
 	}
 
 	if (bm_parent != NULL) {
@@ -661,7 +672,8 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 		dm_parent = NULL;
 	}
 
-	if (dm_p != NULL) {
+	/*only used with fractal, and is doubly freed in case of 1 shard (doubled) */
+	if (dm_p != NULL && expected_shards > 2) {
 		dm_p->needsFree = 1;
 		dm_p->release(dm_p);
 		dm_p = NULL;

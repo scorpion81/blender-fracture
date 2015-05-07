@@ -543,8 +543,8 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 	right_dm = dm_parent;
 	output_dm = NewBooleanDerivedMesh(right_dm, obj, left_dm, obj, 1); /*1 == intersection, 3 == difference*/
 
-	/*check for watertightness*/
-	if (do_check_watertight(&output_dm, &bm, &left_dm, right_dm, other, mat))
+	/*check for watertightness, but for fractal only*/
+	if (other != NULL && do_check_watertight(&output_dm, &bm, &left_dm, right_dm, other, mat))
 	{
 		return NULL;
 	}
