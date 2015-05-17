@@ -74,6 +74,95 @@ subject to the following restrictions:
 #include "BulletCollision/CollisionShapes/btScaledBvhTriangleMeshShape.h"
 #include "BulletCollision/CollisionDispatch/btCollisionWorld.h"
 
+struct rbRigidBody {
+	btRigidBody *body;
+	int col_groups;
+	int linear_index;
+	void *meshIsland;
+	void *blenderOb;
+	rbDynamicsWorld *world;
+};
+
+static inline void copy_v3_btvec3(float vec[3], const btVector3 &btvec)
+{
+	vec[0] = (float)btvec[0];
+	vec[1] = (float)btvec[1];
+	vec[2] = (float)btvec[2];
+}
+
+typedef void (*rbContactCallback)(rbContactPoint * cp, void *bworld);
+
+class TickDiscreteDynamicsWorld : public btDiscreteDynamicsWorld
+{
+	public:
+		TickDiscreteDynamicsWorld(btDispatcher* dispatcher,btBroadphaseInterface* pairCache,
+		                          btConstraintSolver* constraintSolver,btCollisionConfiguration* collisionConfiguration,
+		                          rbContactCallback cont_callback, void *bworld);
+		rbContactPoint* make_contact_point(btManifoldPoint& point, const btCollisionObject *body0, const btCollisionObject *body1);
+		rbContactCallback m_contactCallback;
+		void* m_bworld;
+};
+
+void tickCallback(btDynamicsWorld *world, btScalar timeStep)
+{
+	int numManifolds = world->getDispatcher()->getNumManifolds();
+	for (int i=0;i<numManifolds;i++)
+	{
+		btPersistentManifold* contactManifold =  world->getDispatcher()->getManifoldByIndexInternal(i);
+		const btCollisionObject* obA = contactManifold->getBody0();
+		const btCollisionObject* obB = contactManifold->getBody1();
+
+		int numContacts = contactManifold->getNumContacts();
+		for (int j=0;j<numContacts;j++)
+		{
+			btManifoldPoint& pt = contactManifold->getContactPoint(j);
+			if (pt.getDistance()<0.f)
+			{
+				/*const btVector3& ptA = pt.getPositionWorldOnA();
+				const btVector3& ptB = pt.getPositionWorldOnB();
+				const btVector3& normalOnB = pt.m_normalWorldOnB;*/
+
+				TickDiscreteDynamicsWorld* tworld = (TickDiscreteDynamicsWorld*)world;
+				if (tworld->m_contactCallback)
+				{
+					rbContactPoint* cp = tworld->make_contact_point(pt, obA, obB);
+					tworld->m_contactCallback(cp, tworld->m_bworld);
+					delete cp;
+				}
+			}
+		}
+	}
+}
+
+TickDiscreteDynamicsWorld::TickDiscreteDynamicsWorld(btDispatcher* dispatcher,btBroadphaseInterface* pairCache,
+                                                     btConstraintSolver* constraintSolver,btCollisionConfiguration* collisionConfiguration,
+                                                     rbContactCallback cont_callback, void *bworld) :
+                                                     btDiscreteDynamicsWorld(dispatcher, pairCache, constraintSolver, collisionConfiguration)
+{
+	m_internalTickCallback = tickCallback;
+	m_contactCallback = cont_callback;
+	m_bworld = bworld;
+}
+
+rbContactPoint* TickDiscreteDynamicsWorld::make_contact_point(btManifoldPoint& point, const btCollisionObject* body0, const btCollisionObject* body1)
+{
+	rbContactPoint *cp = new rbContactPoint;
+	btRigidBody* bodyA = (btRigidBody*)(body0);
+	btRigidBody* bodyB = (btRigidBody*)(body1);
+	rbRigidBody* rbA = (rbRigidBody*)(bodyA->getUserPointer());
+	rbRigidBody* rbB = (rbRigidBody*)(bodyB->getUserPointer());
+	if (rbA)
+		cp->contact_body_indexA = rbA->linear_index;
+
+	if (rbB)
+		cp->contact_body_indexB = rbB->linear_index;
+
+	cp->contact_force = point.getAppliedImpulse();
+	copy_v3_btvec3(cp->contact_pos_world_onA, point.getPositionWorldOnA());
+	copy_v3_btvec3(cp->contact_pos_world_onB, point.getPositionWorldOnB());
+
+	return cp;
+}
 
 struct rbDynamicsWorld {
 	btDiscreteDynamicsWorld *dynamicsWorld;
@@ -83,14 +172,7 @@ struct rbDynamicsWorld {
 	btConstraintSolver *constraintSolver;
 	btOverlapFilterCallback *filterCallback;
 	void *blenderWorld;
-	struct rbContactCallback *contactCallback;
-};
-struct rbRigidBody {
-	btRigidBody *body;
-	int col_groups;
-	void *meshIsland;
-	void *blenderOb;
-	rbDynamicsWorld *world;
+	//struct rbContactCallback *contactCallback;
 };
 
 struct rbVert {
@@ -222,12 +304,6 @@ struct rbFilterCallback : public btOverlapFilterCallback
 	}
 };
 
-static inline void copy_v3_btvec3(float vec[3], const btVector3 &btvec)
-{
-	vec[0] = (float)btvec[0];
-	vec[1] = (float)btvec[1];
-	vec[2] = (float)btvec[2];
-}
 static inline void copy_quat_btquat(float quat[4], const btQuaternion &btquat)
 {
 	quat[0] = btquat.getW();
@@ -236,6 +312,7 @@ static inline void copy_quat_btquat(float quat[4], const btQuaternion &btquat)
 	quat[3] = btquat.getZ();
 }
 
+#if 0
 /*Contact Handling*/
 typedef void (*cont_callback)(rbContactPoint *cp, void* bworld);
 
@@ -247,11 +324,11 @@ struct rbContactCallback
 	static bool handle_contacts(btManifoldPoint& point, btCollisionObject* body0, btCollisionObject* body1);
 };
 
-rbContactCallback::rbContactCallback(cont_callback callback, void *bworld){
+/*rbContactCallback::rbContactCallback(cont_callback callback, void *bworld){
 	rbContactCallback::callback = callback;
 	rbContactCallback::bworld = bworld;
 	gContactProcessedCallback = (ContactProcessedCallback)&rbContactCallback::handle_contacts;
-}
+}*/
 
 cont_callback rbContactCallback::callback = 0;
 void* rbContactCallback::bworld = NULL;
@@ -267,10 +344,10 @@ bool rbContactCallback::handle_contacts(btManifoldPoint& point, btCollisionObjec
 		rbRigidBody* rbA = (rbRigidBody*)(bodyA->getUserPointer());
 		rbRigidBody* rbB = (rbRigidBody*)(bodyB->getUserPointer());
 		if (rbA)
-			cp->contact_bodyA = rbA->meshIsland;
+			cp->contact_body_indexA = rbA->linear_index;
 
 		if (rbB)
-			cp->contact_bodyB = rbB->meshIsland;
+			cp->contact_body_indexB = rbB->linear_index;
 
 		cp->contact_force = point.getAppliedImpulse();
 		copy_v3_btvec3(cp->contact_pos_world_onA, point.getPositionWorldOnA());
@@ -282,6 +359,7 @@ bool rbContactCallback::handle_contacts(btManifoldPoint& point, btCollisionObjec
 	}
 	return ret;
 }
+#endif
 
 /* ********************************** */
 /* Dynamics World Methods */
@@ -290,7 +368,7 @@ bool rbContactCallback::handle_contacts(btManifoldPoint& point, btCollisionObjec
 
 //yuck, but need a handle for the world somewhere for collision callback...
 rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, int (*callback)(void *, void *, void *, void *, void *),
-							   void (*contactCallback)(rbContactPoint * cp, void *bworld))
+							   void (*contactCallback)(rbContactPoint* cp, void *bworld))
 {
 	rbDynamicsWorld *world = new rbDynamicsWorld;
 	
@@ -308,20 +386,24 @@ rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, int (
 	/* constraint solving */
 	world->constraintSolver = new btSequentialImpulseConstraintSolver();
 
+	TickDiscreteDynamicsWorld *tworld = new TickDiscreteDynamicsWorld(world->dispatcher,
+	                                                                  world->pairCache,
+	                                                      world->constraintSolver,
+	                                                      world->collisionConfiguration,
+	                                                      contactCallback, blenderWorld);
+
 	/* world */
-	world->dynamicsWorld = new btDiscreteDynamicsWorld(world->dispatcher,
-	                                                   world->pairCache,
-	                                                   world->constraintSolver,
-	                                                   world->collisionConfiguration);
+	world->dynamicsWorld = (btDiscreteDynamicsWorld*)tworld;
 	world->blenderWorld = blenderWorld;
 
 	RB_dworld_set_gravity(world, gravity);
 
 	/*contact callback */
+/*
 	if (contactCallback)
 	{
 		world->contactCallback = new rbContactCallback(contactCallback, world->blenderWorld);
-	}
+	} */
 	
 	return world;
 }
@@ -406,13 +488,14 @@ void RB_dworld_export(rbDynamicsWorld *world, const char *filename)
 
 /* Setup ---------------------------- */
 
-void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *object, int col_groups, void* meshIsland, void* blenderOb)
+void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *object, int col_groups, void* meshIsland, void* blenderOb, int linear_index)
 {
 	btRigidBody *body = object->body;
 	object->col_groups = col_groups;
 	object->meshIsland = meshIsland;
 	object->world = world;
 	object->blenderOb = blenderOb;
+	object->linear_index = linear_index;
 	
 	world->dynamicsWorld->addRigidBody(body);
 }

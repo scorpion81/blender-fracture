@@ -70,6 +70,11 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         sub.operator("fracture.preset_add", text="", icon='ZOOMIN')
         sub.operator("fracture.preset_add", text="", icon='ZOOMOUT').remove_active = True
 
+        row = layout.row()
+        row.prop(md, "fracture_mode")
+        if md.fracture_mode == 'DYNAMIC':
+            layout.prop(md, "dynamic_force")
+
         layout.prop(md, "frac_algorithm")
         col = layout.column(align=True)
         col.prop(md, "shard_count")

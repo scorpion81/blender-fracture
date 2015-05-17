@@ -4345,6 +4345,12 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 
+	static EnumPropertyItem prop_fracture_modes[] = {
+		{MOD_FRACTURE_PREFRACTURED, "PREFRACTURED", 0, "Prefractured", "Fracture the mesh once prior to the simulation"},
+		{MOD_FRACTURE_DYNAMIC, "DYNAMIC", 0, "Dynamic", "Fracture the mesh dynamically during the simulation"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
 	srna = RNA_def_struct(brna, "FractureModifier", "Modifier");
 	RNA_def_struct_ui_text(srna, "Fracture Modifier", "Add a fracture container to this object");
 	RNA_def_struct_sdna(srna, "FractureModifierData");
@@ -4718,6 +4724,19 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_enum_funcs(prop, NULL, "rna_FractureModifier_constraint_target_set", NULL);
 	RNA_def_property_enum_default(prop, MOD_FRACTURE_CENTROID);
 	RNA_def_property_ui_text(prop, "Constraint Method", "Method to build constraints");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "fracture_mode", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_items(prop, prop_fracture_modes);
+	RNA_def_property_enum_default(prop, MOD_FRACTURE_PREFRACTURED);
+	RNA_def_property_ui_text(prop, "Fracture Mode", "Determines how to fracture the mesh");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "dynamic_force", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_range(prop, 0.0f, FLT_MAX);
+	RNA_def_property_ui_text(prop, "Dynamic force threshold", "Only break dynamically when force is above this threshold");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }

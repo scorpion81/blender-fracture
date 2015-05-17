@@ -615,7 +615,7 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 
 
 /* parse the voro++ cell data */
-static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, FracMesh *fm, int algorithm, Object *obj, DerivedMesh *dm, short inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels)
+static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, FracMesh *fm, int algorithm, Object *obj, DerivedMesh *dm, short inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode)
 {
 	/*Parse voronoi raw data*/
 	int i = 0;
@@ -633,6 +633,15 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 
 	p->flag = 0;
 	p->flag |= SHARD_FRACTURED;
+
+	if (mode == MOD_FRACTURE_DYNAMIC)
+	{
+		//remove parent shard from map as well
+		BLI_remlink(&fm->shard_map, p);
+		fm->shard_count--;
+		p->shard_id = -2;
+	}
+
 	unit_m4(obmat);
 
 	do_prepare_cells(fm, cells, expected_shards, algorithm, p, &centroid, &dm_parent, &bm_parent, &tempshards, &tempresults);
@@ -1094,7 +1103,7 @@ void BKE_fracture_shard_by_planes(FractureModifierData *fmd, Object *obj, short 
 }
 
 void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud, int algorithm, Object *obj, DerivedMesh *dm, short
-                                  inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels) {
+                                  inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode) {
 	int n_size = 8;
 	
 	Shard *shard;
@@ -1112,7 +1121,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 #endif
 	
 	shard = BKE_shard_by_id(fmesh, id, dm);
-	if (!shard || shard->flag & SHARD_FRACTURED)
+	if (!shard /*|| shard->flag & SHARD_FRACTURED*/)
 		return;
 
 	
@@ -1154,7 +1163,8 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	container_compute_cells(voro_container, voro_cells);
 
 	/*Evaluate result*/
-	parse_cells(voro_cells, pointcloud->totpoints, id, fmesh, algorithm, obj, dm, inner_material_index, mat, num_cuts, fractal, smooth, num_levels);
+	parse_cells(voro_cells, pointcloud->totpoints, id, fmesh, algorithm, obj, dm, inner_material_index, mat,
+	            num_cuts, fractal, smooth, num_levels, mode);
 
 	/*Free structs in C++ area of memory */
 	cells_free(voro_cells, pointcloud->totpoints);

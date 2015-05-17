@@ -74,7 +74,9 @@ typedef struct RigidBodyWorld {
 	/* References to Physics Sim objects. Exist at runtime only ---------------------- */
 	void *physics_world;		/* Physics sim world (i.e. btDiscreteDynamicsWorld) */
 	RigidBodyOb **cache_index_map;		/* Maps the linear RigidbodyOb index to the nested Object(Modifier) Index, at runtime*/
+	void *last_contact_point;
 	int *cache_offset_map;		/* Maps the linear RigidbodyOb index to the nested Object(Modifier) cell offset, at runtime, so it does not need to be calced in cache*/
+	int *local_index_map;
 	int refresh_modifiers;		/* If we have rigidbody modifiers, time to refresh them if flag is set*/
 	int object_changed;			/* Flag changes to objects (especially those with modifiers)*/
 	int rebuild_comp_con;
@@ -111,8 +113,10 @@ typedef struct RigidBodyOb {
 	
 	int flag;				/* (eRigidBodyOb_Flag) */
 	int col_groups;			/* Collision groups that determines wich rigid bodies can collide with each other */
+	int meshisland_index;	/* determines "offset" inside an objects meshisland list, -1 for regular rigidbodies */
 	short mesh_source;		/* (eRigidBody_MeshSource) mesh source for mesh based collision shapes */
 	short pad;
+	char pad2[4];
 	
 	/* Physics Parameters */
 	float mass;				/* how much object 'weighs' (i.e. absolute 'amount of stuff' it holds) */

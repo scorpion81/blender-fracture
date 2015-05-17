@@ -69,13 +69,15 @@ typedef struct rbConstraint rbConstraint;
 /* Collision feedback (manifolds and contact points */
 typedef struct rbContactPoint {
 	float contact_force;
-	void *contact_bodyA;
-	void *contact_bodyB;
+	int contact_body_indexA;
+	int contact_body_indexB;
 	float contact_pos_world_onA[3];
 	float contact_pos_world_onB[3];
 } rbContactPoint;
 
-typedef struct rbContactCallback rbContactCallback;
+/*Subclass because of Internal Tick Callback... sigh why doesnt this work with a simple collision callback ? */
+
+
 
 /* ********************************** */
 /* Dynamics World Methods */
@@ -117,7 +119,7 @@ void RB_dworld_export(rbDynamicsWorld *world, const char *filename);
 /* Setup ---------------------------- */
 
 /* Add RigidBody to dynamics world */
-void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *body, int col_groups, void* meshIsland, void *blenderOb);
+void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *body, int col_groups, void* meshIsland, void *blenderOb, int linear_index);
 
 /* Remove RigidBody from dynamics world */
 void RB_dworld_remove_body(rbDynamicsWorld *world, rbRigidBody *body);

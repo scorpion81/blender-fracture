@@ -1471,6 +1471,32 @@ enum {
 	MOD_FRACTURE_VERTEX        = (1 << 1),
 };
 
+enum {
+	MOD_FRACTURE_PREFRACTURED      = (1 << 0),
+	MOD_FRACTURE_DYNAMIC           = (1 << 1),
+};
+
+typedef struct ShardSequence {
+	struct ShardSequence *next, *prev;
+	struct FracMesh *frac_mesh;
+	int frame;
+	int is_new;
+} ShardSequence;
+
+typedef struct MeshIslandSequence {
+	struct MeshIslandSequence *next, *prev;
+	struct DerivedMesh *visible_dm;
+	ListBase meshIslands;
+	int frame;
+	int is_new;
+} MeshIslandSequence;
+
+typedef struct FractureID {
+	struct FractureID *next, *prev;
+	int shardID;
+	char pad[4];
+} FractureID;
+
 typedef struct FractureModifierData {
 	ModifierData modifier;
 	struct FracMesh *frac_mesh; /* store only the current fracmesh here first, later maybe an entire history...*/
@@ -1491,6 +1517,11 @@ typedef struct FractureModifierData {
 	struct GHash *face_pairs;
 	struct GHash *vert_index_map; /*used for autoconversion of former objects to clusters, marks object membership of each vert*/
 	struct GHash *vertex_island_map; /* used for constraint building based on vertex proximity, temporary data */
+	ListBase shard_sequence; /* used as mesh cache / history for dynamic fracturing, for shards (necessary for conversion to DM) */
+	ListBase meshIsland_sequence; /* used as mesh cache / history for dynamic fracturing, for meshIslands (necessary for loc/rot "pointcache") */
+	ShardSequence *current_shard_entry; /*volatile storage of current shard entry, so we dont have to search in the list */
+	MeshIslandSequence *current_mi_entry; /*analogous to current shard entry */
+	ListBase fracture_ids; /*volatile storage of shards being "hit" or fractured currently, needs to be cleaned up after usage! */
 
 	/* values */
 	int frac_algorithm;
@@ -1512,6 +1543,7 @@ typedef struct FractureModifierData {
 	int grease_decimate;
 	int cutter_axis;
 	int cluster_constraint_type;
+	int fracture_mode;
 
 	float breaking_angle;
 	float breaking_distance;
@@ -1526,6 +1558,7 @@ typedef struct FractureModifierData {
 	float fractal_amount;
 	float physics_mesh_scale;
 	float grease_offset;
+	float dynamic_force;
 
 	/* flags */
 	int refresh;
@@ -1556,8 +1589,9 @@ typedef struct FractureModifierData {
 
 	/* internal values */
 	float max_vol;
+	int last_frame;
 
-	//char pad[4];
+	char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

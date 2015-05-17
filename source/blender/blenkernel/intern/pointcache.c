@@ -993,10 +993,15 @@ static int ptcache_dynamicpaint_read(PTCacheFile *pf, void *dp_v)
 }
 
 /* Rigid Body functions */
-static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUSED(cfra))
+static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra)
 {
 	RigidBodyWorld *rbw = rb_v;
 	RigidBodyOb *rbo = NULL;
+
+	/* clumsy, clumsy, but we need to access our own (meshisland based) cache here in case of dynamic fracture*/
+	Object* ob = NULL;
+	FractureModifierData *fmd = NULL;
+
 	rbo = rbw->cache_index_map[index];
 	
 	if (rbo == NULL) {
@@ -1009,21 +1014,51 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUS
 		return 1;
 	}
 
-	if (rbo && rbo->type == RBO_TYPE_ACTIVE && rbo->physics_object) {
+	ob = rbw->objects[rbw->cache_offset_map[index]];
+	fmd = modifiers_findByType(ob, eModifierType_Fracture);
+
+	if (rbo && rbo->type == RBO_TYPE_ACTIVE && rbo->physics_object &&
+	    (!(rbo->flag & RBO_FLAG_NEEDS_VALIDATE)))
+	{
 #ifdef WITH_BULLET
 		RB_body_get_position(rbo->physics_object, rbo->pos);
 		RB_body_get_orientation(rbo->physics_object, rbo->orn);
 #endif
-		PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, rbo->pos);
-		PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, rbo->orn);
+		if (!fmd || fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+		{
+			PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, rbo->pos);
+			PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, rbo->orn);
+		}
+		else if (fmd && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+		{
+			MeshIsland *mi = BLI_findlink(&fmd->meshIslands, rbo->meshisland_index);
+			int frame = (int)cfra;
+
+		/*	if (mi == NULL) {
+				return 0;
+			}*/
+
+			mi->locs[3*frame] = rbo->pos[0];
+			mi->locs[3*frame+1] = rbo->pos[1];
+			mi->locs[3*frame+2] = rbo->pos[2];
+
+			mi->rots[4*frame] = rbo->orn[0];
+			mi->rots[4*frame+1] = rbo->orn[1];
+			mi->rots[4*frame+2] = rbo->orn[2];
+			mi->rots[4*frame+3] = rbo->orn[3];
+		}
 	}
 
 	return 1;
 }
-static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float UNUSED(cfra), float *old_data)
+static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfra, float *old_data)
 {
 	RigidBodyWorld *rbw = rb_v;
 	RigidBodyOb *rbo = NULL;
+
+	/* clumsy, clumsy, but we need to access our own (meshisland based) cache here in case of dynamic fracture*/
+	Object* ob = NULL;
+	FractureModifierData *fmd;
 	
 	rbo = rbw->cache_index_map[index];
 	
@@ -1031,14 +1066,45 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float UNU
 		return;
 	}
 
-	if (rbo && rbo->type == RBO_TYPE_ACTIVE) {
-		if (old_data) {
-			memcpy(rbo->pos, data, 3 * sizeof(float));
-			memcpy(rbo->orn, data + 3, 4 * sizeof(float));
+	ob = rbw->objects[rbw->cache_offset_map[index]];
+	fmd = modifiers_findByType(ob, eModifierType_Fracture);
+	if (!fmd || fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+	{
+		if (rbo && rbo->type == RBO_TYPE_ACTIVE) {
+			if (old_data) {
+				memcpy(rbo->pos, data, 3 * sizeof(float));
+				memcpy(rbo->orn, data + 3, 4 * sizeof(float));
+			}
+			else {
+				PTCACHE_DATA_TO(data, BPHYS_DATA_LOCATION, 0, rbo->pos);
+				PTCACHE_DATA_TO(data, BPHYS_DATA_ROTATION, 0, rbo->orn);
+			}
 		}
-		else {
-			PTCACHE_DATA_TO(data, BPHYS_DATA_LOCATION, 0, rbo->pos);
-			PTCACHE_DATA_TO(data, BPHYS_DATA_ROTATION, 0, rbo->orn);
+	}
+	else if (fmd && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+	{
+		if (rbo && rbo->type == RBO_TYPE_ACTIVE)
+		{
+			//damn, slow listbase based lookup
+			//TODO, need to speed this up.... array, hash ?
+
+			//modifier should have "switched" this to current set of meshislands already.... so access it
+			MeshIsland *mi = BLI_findlink(&fmd->meshIslands, rbo->meshisland_index);
+			int frame = (int)cfra;
+
+			/*if (mi == NULL)
+			{
+				return;
+			}*/
+
+			rbo->pos[0] = mi->locs[3*frame];
+			rbo->pos[1] = mi->locs[3*frame+1];
+			rbo->pos[2] = mi->locs[3*frame+2];
+
+			rbo->orn[0] = mi->rots[4*frame];
+			rbo->orn[1] = mi->rots[4*frame+1];
+			rbo->orn[2] = mi->rots[4*frame+2];
+			rbo->orn[3] = mi->rots[4*frame+3];
 		}
 	}
 }
