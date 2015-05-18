@@ -4786,14 +4786,14 @@ static void do_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, 
 	{
 		float co[3];
 
-		mul_qt_v3(rot, mi->vertices_cached[j]->co);
+		//mul_qt_v3(rot, mi->vertices_cached[j]->co);
 		add_v3_v3(mi->vertices_cached[j]->co, loc);
 
 		co[0] = mi->vertco[3*j];
 		co[1] = mi->vertco[3*j+1];
 		co[2] = mi->vertco[3*j+2];
 
-		mul_qt_v3(rot, co);
+		//mul_qt_v3(rot, co);
 		add_v3_v3(co, loc);
 
 		mi->vertco[3*j]   = co[0];

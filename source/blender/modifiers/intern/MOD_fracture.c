@@ -348,6 +348,8 @@ static void free_simulation(FractureModifierData *fmd, bool do_free_seq)
 
 		fmd->meshIslands.first = NULL;
 		fmd->meshIslands.last = NULL;
+
+		fmd->current_mi_entry = NULL;
 	}
 
 	if (!fmd->explo_shared && fmd->visible_mesh != NULL) {
@@ -379,6 +381,8 @@ static void free_shards(FractureModifierData *fmd)
 			fmd->frac_mesh = NULL;
 			fmd->shard_sequence.first = NULL;
 			fmd->shard_sequence.last = NULL;
+
+			fmd->current_shard_entry = NULL;
 		}
 	}
 }
@@ -2793,23 +2797,24 @@ static void do_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, 
 	mul_qt_qtqt(rot, irot, rot);
 
 	add_v3_v3(mi->centroid, loc);
-	mul_qt_qtqt(mi->rot, mi->rot, rot);
+	//mul_qt_qtqt(mi->rot, mi->rot, rot);
+
+	//add_v3_v3(mi->centroid, par->centroid);
+	//add_v3_v3(loc, par->centroid);
 
 	//match vertices and vertco, perhaps vertno too, yuck...
 	for (j = 0; j < mi->vertex_count; j++)
 	{
 		float co[3];
 
-		mul_qt_v3(rot, mi->vertices_cached[j]->co);
+		//mul_qt_v3(rot, mi->vertices_cached[j]->co);
 		add_v3_v3(mi->vertices_cached[j]->co, loc);
-
-		//sub_v3_v3(mi->vertices_cached[j]->co, mi->centroid);
 
 		co[0] = mi->vertco[3*j];
 		co[1] = mi->vertco[3*j+1];
 		co[2] = mi->vertco[3*j+2];
 
-		mul_qt_v3(rot, co);
+		//mul_qt_v3(rot, co);
 		add_v3_v3(co, loc);
 
 		mi->vertco[3*j]   = co[0];
@@ -2817,7 +2822,7 @@ static void do_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, 
 		mi->vertco[3*j+2] = co[2];
 
 		//mul_qt_v3(rot, mvert[j].co);
-		//add_v3_v3(mvert[j].co, loc);
+		//sub_v3_v3(mvert[j].co, mi->centroid);
 	}
 }
 
@@ -2827,7 +2832,7 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 	MeshIsland *mi;
 	short rb_type = RBO_TYPE_ACTIVE;
 	float dummyloc[3], rot[4];
-	float linvel[3], angvel[3];
+	//float linvel[3], angvel[3];
 
 	if (s->totvert == 0) {
 		return;
