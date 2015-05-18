@@ -1853,6 +1853,7 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 					fid1->shardID = rbw->cache_index_map[linear_index1]->meshisland_index;
 					BLI_addtail(&fmd1->fracture_ids, fid1);
 					//fmd1->refresh = true;
+					rbw->refresh_modifiers = true;
 				}
 			}
 		}
@@ -1872,6 +1873,7 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 					fid2->shardID = rbw->cache_index_map[linear_index2]->meshisland_index;
 					BLI_addtail(&fmd2->fracture_ids, fid2);
 					//fmd2->refresh = true;
+					rbw->refresh_modifiers = true;
 				}
 			}
 		}
@@ -3421,7 +3423,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	else if (rbw->ltime == startframe)
 	{
 		restoreKinematic(rbw);
-		//rigidbody_update_simulation(scene, rbw, true);
+		rigidbody_update_simulation(scene, rbw, true);
 	}
 
 	/* advance simulation, we can only step one frame forward */

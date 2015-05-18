@@ -301,11 +301,11 @@ void BKE_get_shard_minmax(FracMesh *mesh, ShardID id, float min_r[3], float max_
 	if (shard != NULL) {
 		copy_v3_v3(min_r, shard->min);
 		copy_v3_v3(max_r, shard->max);
-	}
 
-	if (shard->shard_id == -2)
-	{
-		BKE_shard_free(shard, true);
+		if (shard->shard_id == -2)
+		{
+			BKE_shard_free(shard, true);
+		}
 	}
 }
 
@@ -703,6 +703,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 
 		if (s != NULL) {
 			add_shard(fm, s, mat);
+			s->shard_id = i+1;
 		}
 
 		if (t != NULL) {

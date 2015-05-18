@@ -2394,6 +2394,7 @@ static int fracture_refresh_exec(bContext *C, wmOperator *UNUSED(op))
 		copy_v3_v3(rmd->forward_vector, vec);
 #endif
 		rmd->refresh = true;
+		rmd->last_frame = INT_MAX; // delete dynamic data as well
 		DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
 		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
 	}
