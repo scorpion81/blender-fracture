@@ -228,7 +228,7 @@ typedef struct OldNewMap {
 
 /* local prototypes */
 static void *read_struct(FileData *fd, BHead *bh, const char *blockname);
-static void direct_link_modifiers(FileData *fd, ListBase *lb);
+static void direct_link_modifiers(FileData *fd, ListBase *lb, Object* ob);
 static void convert_tface_mt(FileData *fd, Main *main);
 
 /* this function ensures that reports are printed,
@@ -4759,8 +4759,106 @@ static void read_meshIsland(FileData *fd, MeshIsland **address)
 	mi->participating_constraints = NULL;
 }
 
+/*inlined from MOD_fracture.c*/
+static void do_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, int frame)
+{
+	float loc[3] = {0.0f, 0.0f, 0.0f};
+	float rot[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+	int j = 0;
+	float irot[4];
+	invert_m4_m4(ob->imat, ob->obmat);
+
+	loc[0] = par->locs[3*frame];
+	loc[1] = par->locs[3*frame+1];
+	loc[2] = par->locs[3*frame+2];
+
+	rot[0] = par->rots[4*frame];
+	rot[1] = par->rots[4*frame+1];
+	rot[2] = par->rots[4*frame+2];
+	rot[3] = par->rots[4*frame+3];
+
+	mul_m4_v3(ob->imat, loc);
+	mat4_to_quat(irot, ob->imat);
+	mul_qt_qtqt(rot, rot, irot);
+
+	//match vertices and vertco, perhaps vertno too, yuck...
+	for (j = 0; j < mi->vertex_count; j++)
+	{
+		float co[3];
+
+		mul_qt_v3(rot, mi->vertices_cached[j]->co);
+		add_v3_v3(mi->vertices_cached[j]->co, loc);
+
+		co[0] = mi->vertco[3*j];
+		co[1] = mi->vertco[3*j+1];
+		co[2] = mi->vertco[3*j+2];
+
+		mul_qt_v3(rot, co);
+		add_v3_v3(co, loc);
+
+		mi->vertco[3*j]   = co[0];
+		mi->vertco[3*j+1] = co[1];
+		mi->vertco[3*j+2] = co[2];
+	}
+}
+
+static int initialize_meshisland(FractureModifierData* fmd, MeshIsland** mii, MVert* mverts, int vertstart, Object *ob, ShardID parent_id)
+{
+	MVert *mv;
+	int k = 0;
+	MeshIsland* mi = *mii;
+
+	mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * mi->vertex_count, "mi->vertices_cached readfile");
+	mv = mi->physics_mesh->getVertArray(mi->physics_mesh);
+
+	for (k = 0; k < mi->vertex_count; k++) {
+		MVert* v = mverts + vertstart + k ;
+		MVert* v2 = mv + k;
+		mi->vertices_cached[k] = v;
+		if (mi->vertex_indices) {
+			mi->vertex_indices[k] = vertstart + k;
+		}
+		mi->vertco[k*3] = v->co[0];
+		mi->vertco[k*3+1] = v->co[1];
+		mi->vertco[k*3+2] = v->co[2];
+
+		if (mi->vertno != NULL && fmd->fix_normals) {
+			short sno[3];
+			sno[0] = mi->vertno[k*3];
+			sno[1] = mi->vertno[k*3+1];
+			sno[2] = mi->vertno[k*3+2];
+			copy_v3_v3_short(v->no, sno);
+			copy_v3_v3_short(v2->no, sno);
+		}
+	}
+
+	if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+	{
+		MeshIslandSequence *prev = NULL;
+
+		if (fmd->current_mi_entry) {
+			prev = fmd->current_mi_entry->prev;
+		}
+
+		if (prev)
+		{
+			MeshIsland *par = NULL;
+			int frame = prev->frame;
+			par = BLI_findlink(&prev->meshIslands, parent_id);
+			frame -= par->start_frame;
+
+			if (par)
+			{
+				do_match_vertex_coords(mi, par, ob, frame);
+			}
+		}
+	}
+
+	return mi->vertex_count;
+}
+
 /*refactor this loading routine out, for better readability*/
-static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
+static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Object* ob)
 {
 	FracMesh* fm;
 
@@ -4797,78 +4895,124 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 		Shard *s;
 		int count = 0;
 
-		link_list(fd, &fmd->frac_mesh->shard_map);
-		for (s = fmd->frac_mesh->shard_map.first; s; s = s->next) {
-			read_shard(fd, &s);
+		if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+		{
+			link_list(fd, &fmd->frac_mesh->shard_map);
+			for (s = fmd->frac_mesh->shard_map.first; s; s = s->next) {
+				read_shard(fd, &s);
+			}
+
+			fmd->dm = NULL;
+			fmd->visible_mesh = NULL;
+
+			link_list(fd, &fmd->islandShards);
+			for (s = fmd->islandShards.first; s; s = s->next) {
+				read_shard(fd, &s);
+			}
+
+			link_list(fd, &fmd->meshIslands);
+			count = BLI_listbase_count(&fmd->islandShards);
+
+			if ((fmd->islandShards.first == NULL || count == 0) && fm->shard_count > 0) {
+				/* oops, a refresh was missing, so disable this flag here better, otherwise
+				 * we attempt to load non existing data */
+				fmd->shards_to_islands = false;
+			}
+			else if (fm->shard_count == 0) {
+				fmd->shards_to_islands = true;
+			}
+
+			/* ugly ugly, need only the shard... the rest is to be generated on demand... */
+			BKE_fracture_create_dm(fmd, true);
+
+			if (fm->shard_count == 0) {
+				fmd->shards_to_islands = false;
+			}
+
+			fmd->visible_mesh_cached = CDDM_copy(fmd->dm);
+			if (fmd->visible_mesh == NULL) {
+				fmd->visible_mesh = DM_to_bmesh(fmd->visible_mesh_cached, true);
+			}
+
+			DM_ensure_tessface(fmd->visible_mesh_cached);
+			DM_ensure_normals(fmd->visible_mesh_cached);
+			DM_update_tessface_data(fmd->visible_mesh_cached);
+
+			/* re-init cached verts here... */
+			mverts = CDDM_get_verts(fmd->visible_mesh_cached);
+
+			for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
+				read_meshIsland(fd, &mi);
+				vertstart += initialize_meshisland(fmd, &mi, mverts, vertstart, ob, -1);
+			}
 		}
+		else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+		{
+			ShardSequence *ssq = NULL;
+			MeshIslandSequence *msq = NULL;
+			fmd->dm = NULL;
 
-		fmd->dm = NULL;
-		fmd->visible_mesh = NULL;
-
-		link_list(fd, &fmd->islandShards);
-		for (s = fmd->islandShards.first; s; s = s->next) {
-			read_shard(fd, &s);
-		}
-
-		link_list(fd, &fmd->meshIslands);
-		count = BLI_listbase_count(&fmd->islandShards);
-
-		if ((fmd->islandShards.first == NULL || count == 0) && fm->shard_count > 0) {
-			/* oops, a refresh was missing, so disable this flag here better, otherwise
-			 * we attempt to load non existing data */
-			fmd->shards_to_islands = false;
-		}
-		else if (fm->shard_count == 0) {
-			fmd->shards_to_islands = true;
-		}
-
-		/* ugly ugly, need only the shard... the rest is to be generated on demand... */
-		BKE_fracture_create_dm(fmd, true);
-
-		if (fm->shard_count == 0) {
-			fmd->shards_to_islands = false;
-		}
-
-		fmd->visible_mesh_cached = CDDM_copy(fmd->dm);
-		if (fmd->visible_mesh == NULL) {
-			fmd->visible_mesh = DM_to_bmesh(fmd->visible_mesh_cached, true);
-		}
-
-		DM_ensure_tessface(fmd->visible_mesh_cached);
-		DM_ensure_normals(fmd->visible_mesh_cached);
-		DM_update_tessface_data(fmd->visible_mesh_cached);
-
-		/* re-init cached verts here... */
-		mverts = CDDM_get_verts(fmd->visible_mesh_cached);
-
-		for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
-			MVert *mv;
-			int k = 0;
-			read_meshIsland(fd, &mi);
-			mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * mi->vertex_count, "mi->vertices_cached readfile");
-			mv = mi->physics_mesh->getVertArray(mi->physics_mesh);
-
-			for (k = 0; k < mi->vertex_count; k++) {
-				MVert* v = mverts + vertstart + k ;
-				MVert* v2 = mv + k;
-				mi->vertices_cached[k] = v;
-				if (mi->vertex_indices) {
-					mi->vertex_indices[k] = vertstart + k;
-				}
-				mi->vertco[k*3] = v->co[0];
-				mi->vertco[k*3+1] = v->co[1];
-				mi->vertco[k*3+2] = v->co[2];
-
-				if (mi->vertno != NULL && fmd->fix_normals) {
-					short sno[3];
-					sno[0] = mi->vertno[k*3];
-					sno[1] = mi->vertno[k*3+1];
-					sno[2] = mi->vertno[k*3+2];
-					copy_v3_v3_short(v->no, sno);
-					copy_v3_v3_short(v2->no, sno);
+			link_list(fd, &fmd->shard_sequence);
+			for (ssq = fmd->shard_sequence.first; ssq; ssq = ssq->next)
+			{
+				ssq->is_new = false;
+				ssq->frac_mesh = newdataadr(fd, ssq->frac_mesh);
+				link_list(fd, &ssq->frac_mesh->shard_map);
+				for (s = ssq->frac_mesh->shard_map.first; s; s = s->next) {
+					read_shard(fd, &s);
 				}
 			}
-			vertstart += mi->vertex_count;
+
+			fmd->current_shard_entry = fmd->shard_sequence.first;
+
+			link_list(fd, &fmd->meshIsland_sequence);
+			for (msq = fmd->meshIsland_sequence.first; msq; msq = msq->next)
+			{
+				int vertstart = 0;
+				MVert* mverts;
+				Shard *sh;
+
+				msq->is_new = false;
+				fmd->frac_mesh = fmd->current_shard_entry->frac_mesh;
+				BKE_fracture_create_dm(fmd, true);
+				fmd->visible_mesh_cached = CDDM_copy(fmd->dm);
+				msq->visible_dm = fmd->visible_mesh_cached;
+				mverts = CDDM_get_verts(fmd->visible_mesh_cached);
+				sh = fmd->frac_mesh->shard_map.first;
+				fmd->current_mi_entry = msq;
+
+				link_list(fd, &msq->meshIslands);
+				for (mi = msq->meshIslands.first; mi; mi = mi->next) {
+					read_meshIsland(fd, &mi);
+					vertstart += initialize_meshisland(fmd, &mi, mverts, vertstart, ob, sh->parent_id);
+					sh = sh->next;
+				}
+
+				fmd->current_shard_entry = fmd->current_shard_entry->next;
+			}
+
+			//initialize to 1st entries here, maybe one needs to advance this to the current frame ?
+			ssq = fmd->shard_sequence.first;
+			msq = fmd->meshIsland_sequence.first;
+
+			while (ssq->frame < fmd->last_frame) {
+				ssq = ssq->next;
+			}
+
+			while (msq->frame < fmd->last_frame) {
+				msq = msq->next;
+			}
+
+			if (ssq) {
+				fmd->frac_mesh = ssq->frac_mesh;
+				fmd->current_shard_entry = ssq;
+			}
+
+			if (msq) {
+				fmd->meshIslands = msq->meshIslands;
+				fmd->visible_mesh_cached = fmd->dm = msq->visible_dm;
+				fmd->current_mi_entry = msq;
+			}
 		}
 
 		fmd->refresh_constraints = true;
@@ -4879,7 +5023,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 	}
 }
 
-static void direct_link_modifiers(FileData *fd, ListBase *lb)
+static void direct_link_modifiers(FileData *fd, ListBase *lb, Object *ob)
 {
 	ModifierData *md;
 	
@@ -5156,7 +5300,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 		}
 		else if (md->type == eModifierType_Fracture) {
 			FractureModifierData *fmd = (FractureModifierData *)md;
-			load_fracture_modifier(fd, fmd);
+			load_fracture_modifier(fd, fmd, ob);
 		}
 	}
 }
@@ -5211,7 +5355,7 @@ static void direct_link_object(FileData *fd, Object *ob)
 	ob->matbits= newdataadr(fd, ob->matbits);
 	
 	/* do it here, below old data gets converted */
-	direct_link_modifiers(fd, &ob->modifiers);
+	direct_link_modifiers(fd, &ob->modifiers, ob);
 	
 	link_list(fd, &ob->effect);
 	paf= ob->effect.first;

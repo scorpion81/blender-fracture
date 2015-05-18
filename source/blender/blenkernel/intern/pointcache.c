@@ -1032,11 +1032,7 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 		else if (fmd && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
 			MeshIsland *mi = BLI_findlink(&fmd->meshIslands, rbo->meshisland_index);
-			int frame = (int)cfra;
-
-		/*	if (mi == NULL) {
-				return 0;
-			}*/
+			int frame = (int)cfra - mi->start_frame;
 
 			mi->locs[3*frame] = rbo->pos[0];
 			mi->locs[3*frame+1] = rbo->pos[1];
@@ -1090,12 +1086,7 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfr
 
 			//modifier should have "switched" this to current set of meshislands already.... so access it
 			MeshIsland *mi = BLI_findlink(&fmd->meshIslands, rbo->meshisland_index);
-			int frame = (int)cfra;
-
-			/*if (mi == NULL)
-			{
-				return;
-			}*/
+			int frame = (int)cfra - mi->start_frame;
 
 			rbo->pos[0] = mi->locs[3*frame];
 			rbo->pos[1] = mi->locs[3*frame+1];
@@ -1114,23 +1105,50 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 	RigidBodyOb *rbo = NULL;
 	ParticleKey keys[4];
 	float dfra;
+	Object* ob;
+	FractureModifierData *fmd;
 	
 	rbo = rbw->cache_index_map[index];
 	if (rbo == NULL) {
 		return;
 	}
 
+	ob = rbw->objects[rbw->cache_offset_map[index]];
+	fmd = modifiers_findByType(ob, eModifierType_Fracture);
+
 	if (rbo->type == RBO_TYPE_ACTIVE) {
 
 		copy_v3_v3(keys[1].co, rbo->pos);
 		copy_qt_qt(keys[1].rot, rbo->orn);
 
-		if (old_data) {
-			memcpy(keys[2].co, data, 3 * sizeof(float));
-			memcpy(keys[2].rot, data + 3, 4 * sizeof(float));
+		if (!fmd || fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+		{
+			if (old_data) {
+				memcpy(keys[2].co, data, 3 * sizeof(float));
+				memcpy(keys[2].rot, data + 3, 4 * sizeof(float));
+			}
+			else {
+				BKE_ptcache_make_particle_key(keys+2, 0, data, cfra2);
+			}
 		}
-		else {
-			BKE_ptcache_make_particle_key(keys+2, 0, data, cfra2);
+		else if (fmd && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+		{
+			float loc[3], rot[4];
+
+			MeshIsland *mi = BLI_findlink(&fmd->meshIslands, rbo->meshisland_index);
+			int frame = (int)cfra2 - mi->start_frame;
+
+			loc[0] = mi->locs[3*frame];
+			loc[1] = mi->locs[3*frame+1];
+			loc[2] = mi->locs[3*frame+2];
+
+			rot[0] = mi->rots[4*frame];
+			rot[1] = mi->rots[4*frame+1];
+			rot[2] = mi->rots[4*frame+2];
+			rot[3] = mi->rots[4*frame+3];
+
+			copy_v3_v3(keys[2].co, loc);
+			copy_qt_qt(keys[2].rot, rot);
 		}
 
 		dfra = cfra2 - cfra1;

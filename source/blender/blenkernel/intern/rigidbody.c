@@ -1843,11 +1843,18 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 		ob1 = rbw->objects[ob_index1];
 		fmd1 = (FractureModifierData*)modifiers_findByType(ob1, eModifierType_Fracture);
 
-		if ((fmd1 && fmd1->fracture_mode == MOD_FRACTURE_DYNAMIC) && (force > fmd1->dynamic_force)) {
-			FractureID* fid1 = MEM_mallocN(sizeof(FractureID), "contact_callback_fractureid1");
-			fid1->shardID = rbw->cache_index_map[linear_index1]->meshisland_index;
-			BLI_addtail(&fmd1->fracture_ids, fid1);
-			fmd1->refresh = true;
+		if (fmd1 && fmd1->fracture_mode == MOD_FRACTURE_DYNAMIC) {
+			if (force > fmd1->dynamic_force) {
+				if (fmd1->current_shard_entry && fmd1->current_shard_entry->is_new)
+				{
+					/*only fracture on new entries, this is necessary because after loading a file
+					 *the pointcache thinks it is empty and a fracture is attempted ! */
+					FractureID* fid1 = MEM_mallocN(sizeof(FractureID), "contact_callback_fractureid1");
+					fid1->shardID = rbw->cache_index_map[linear_index1]->meshisland_index;
+					BLI_addtail(&fmd1->fracture_ids, fid1);
+					//fmd1->refresh = true;
+				}
+			}
 		}
 	}
 
@@ -1857,11 +1864,16 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 		ob2 = rbw->objects[ob_index2];
 		fmd2 = (FractureModifierData*)modifiers_findByType(ob2, eModifierType_Fracture);
 
-		if ((fmd2 && fmd2->fracture_mode == MOD_FRACTURE_DYNAMIC) && (force > fmd2->dynamic_force)) {
-			FractureID* fid2 = MEM_mallocN(sizeof(FractureID), "contact_callback_fractureid2");
-			fid2->shardID = rbw->cache_index_map[linear_index2]->meshisland_index;
-			BLI_addtail(&fmd2->fracture_ids, fid2);
-			fmd2->refresh = true;
+		if (fmd2 && fmd2->fracture_mode == MOD_FRACTURE_DYNAMIC) {
+			if (force > fmd2->dynamic_force){
+				if (fmd2->current_shard_entry && fmd2->current_shard_entry->is_new)
+				{
+					FractureID* fid2 = MEM_mallocN(sizeof(FractureID), "contact_callback_fractureid2");
+					fid2->shardID = rbw->cache_index_map[linear_index2]->meshisland_index;
+					BLI_addtail(&fmd2->fracture_ids, fid2);
+					//fmd2->refresh = true;
+				}
+			}
 		}
 	}
 
@@ -3409,7 +3421,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	else if (rbw->ltime == startframe)
 	{
 		restoreKinematic(rbw);
-		rigidbody_update_simulation(scene, rbw, true);
+		//rigidbody_update_simulation(scene, rbw, true);
 	}
 
 	/* advance simulation, we can only step one frame forward */
