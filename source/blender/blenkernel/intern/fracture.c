@@ -334,7 +334,7 @@ Shard *BKE_create_fracture_shard(MVert *mvert, MPoly *mpoly, MLoop *mloop, int t
 	}
 
 	shard->shard_id = -1;
-	shard->flag |= SHARD_INTACT;
+	shard->flag = SHARD_INTACT;
 	BKE_shard_calc_minmax(shard);
 
 	BKE_fracture_shard_center_centroid(shard, shard->centroid);
@@ -618,8 +618,8 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, FracMesh *fm, int algorithm, Object *obj, DerivedMesh *dm, short inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode)
 {
 	/*Parse voronoi raw data*/
-	int i = 0;
-	Shard *p = BKE_shard_by_id(fm, parent_id, dm);
+	int i = 0, j = 0;
+	Shard *p = BKE_shard_by_id(fm, parent_id, dm), *t;
 	float obmat[4][4]; /* use unit matrix for now */
 	float centroid[3];
 	BMesh *bm_parent = NULL;
@@ -697,18 +697,62 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 	fm->shard_count = 0; /* may be not matching with expected shards, so reset... did increment this for
 	                      *progressbar only */
 
+#if 0
+	if (mode == MOD_FRACTURE_DYNAMIC)
+	{
+		Shard *t;
+		/* correct ids of shards here,
+		 * count how many new shards we have*/
+		for (i = 0; i < expected_shards; i++) {
+			Shard *s = tempresults[i];
+			if (s != NULL) {
+				j++;
+			}
+		}
+
+		/* and start reassigning ids for existing shards */
+		for (t = fm->shard_map.first; t; t = t->next)
+		{
+			//t->parent_id = parent_id;
+			//if (t->shard_id > parent_id)
+			{
+				t->shard_id += j;
+				t->parent_id = t->shard_id;
+			}
+		}
+	}
+	//keep empty ids... need to catch this later
+	if (mode == MOD_FRACTURE_DYNAMIC)
+	{
+		j = BLI_listbase_count(&fm->shard_map);//parent_id + 1;
+	}
+	else
+	{
+		j = 0;
+	}
+#endif
+
+	//j = 0;
+
 	for (i = 0; i < expected_shards; i++) {
 		Shard *s = tempresults[i];
 		Shard *t = tempshards[i];
 
 		if (s != NULL) {
 			add_shard(fm, s, mat);
-			s->shard_id = i+1;
+			//s->shard_id += j;
+			//s->parent_id = parent_id;
+			//j++;
 		}
 
 		if (t != NULL) {
 			BKE_shard_free(t, false);
 		}
+	}
+
+	for (t = fm->shard_map.first; t; t = t->next)
+	{
+		printf("SHARD: %d %d\n", t->shard_id, t->parent_id);
 	}
 
 	MEM_freeN(tempshards);
@@ -1122,7 +1166,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 #endif
 	
 	shard = BKE_shard_by_id(fmesh, id, dm);
-	if (!shard /*|| shard->flag & SHARD_FRACTURED*/)
+	if (!shard || shard->flag & SHARD_FRACTURED)
 		return;
 
 	

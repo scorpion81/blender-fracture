@@ -48,6 +48,7 @@
 #  include "RBI_api.h"
 #endif
 
+#include "DNA_fracture_types.h"
 #include "DNA_group_types.h"
 #include "DNA_mesh_types.h"
 #include "DNA_meshdata_types.h"
@@ -58,6 +59,7 @@
 
 #include "BKE_cdderivedmesh.h"
 #include "BKE_effect.h"
+#include "BKE_fracture.h"
 #include "BKE_global.h"
 #include "BKE_group.h"
 #include "BKE_library.h"
@@ -1816,6 +1818,42 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	return check_colgroup_ghost(ob1, ob2);
 }
 
+static bool check_shard_size(FractureModifierData *fmd, int id)
+{
+	FractureID *fid;
+	float size = 0.1f;
+	//Shard *s = BLI_findlink(&fmd->frac_mesh->shard_map, id);
+
+	return true;
+#if 0
+
+	printf("FRACTURE : %d\n", id);
+	if (s == NULL || s->flag & SHARD_FRACTURED)
+	{
+		return false;
+	}
+
+	BKE_shard_calc_minmax(s);
+
+	if ((fabs(s->max[0] - s->min[0]) < size) ||
+	   (fabs(s->max[1] - s->min[1]) < size) ||
+	   (fabs(s->max[2] - s->min[2]) < size))
+	{
+		return false;
+	}
+
+	for (fid = fmd->fracture_ids.first; fid; fid = fid->next)
+	{
+		if (fid->shardID == id)
+		{
+			return false;
+		}
+	}
+
+	return true;
+#endif
+}
+
 static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 {
 	int linear_index1, linear_index2;
@@ -1845,15 +1883,19 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 
 		if (fmd1 && fmd1->fracture_mode == MOD_FRACTURE_DYNAMIC) {
 			if (force > fmd1->dynamic_force) {
-				if (fmd1->current_shard_entry && fmd1->current_shard_entry->is_new)
+				//if (fmd1->current_shard_entry && fmd1->current_shard_entry->is_new)
 				{
 					/*only fracture on new entries, this is necessary because after loading a file
 					 *the pointcache thinks it is empty and a fracture is attempted ! */
-					FractureID* fid1 = MEM_mallocN(sizeof(FractureID), "contact_callback_fractureid1");
-					fid1->shardID = rbw->cache_index_map[linear_index1]->meshisland_index;
-					BLI_addtail(&fmd1->fracture_ids, fid1);
-					//fmd1->refresh = true;
-					rbw->refresh_modifiers = true;
+					int id = rbw->cache_index_map[linear_index1]->meshisland_index;
+					if(check_shard_size(fmd1, id))
+					{
+						FractureID* fid1 = MEM_mallocN(sizeof(FractureID), "contact_callback_fractureid1");
+						fid1->shardID = rbw->cache_index_map[linear_index1]->meshisland_index;
+						BLI_addtail(&fmd1->fracture_ids, fid1);
+						//fmd1->refresh = true;
+						rbw->refresh_modifiers = true;
+					}
 				}
 			}
 		}
@@ -1867,13 +1909,17 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 
 		if (fmd2 && fmd2->fracture_mode == MOD_FRACTURE_DYNAMIC) {
 			if (force > fmd2->dynamic_force){
-				if (fmd2->current_shard_entry && fmd2->current_shard_entry->is_new)
+				//if (fmd2->current_shard_entry && fmd2->current_shard_entry->is_new)
 				{
-					FractureID* fid2 = MEM_mallocN(sizeof(FractureID), "contact_callback_fractureid2");
-					fid2->shardID = rbw->cache_index_map[linear_index2]->meshisland_index;
-					BLI_addtail(&fmd2->fracture_ids, fid2);
-					//fmd2->refresh = true;
-					rbw->refresh_modifiers = true;
+					int id = rbw->cache_index_map[linear_index2]->meshisland_index;
+					if(check_shard_size(fmd2, id))
+					{
+						FractureID* fid2 = MEM_mallocN(sizeof(FractureID), "contact_callback_fractureid2");
+						fid2->shardID = id;
+						BLI_addtail(&fmd2->fracture_ids, fid2);
+						//fmd2->refresh = true;
+						rbw->refresh_modifiers = true;
+					}
 				}
 			}
 		}
@@ -2473,7 +2519,7 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 	ModifierData *md;
 	FractureModifierData *rmd;
 	MeshIsland *mi;
-	int i, j, l = 0, m = 0, n = 0, counter = 0;
+	int i, j = 0, l = 0, m = 0, n = 0, counter = 0;
 	bool ismapped = false;
 	
 	if (rbw->objects != NULL) {
@@ -2508,7 +2554,7 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 			if (md->type == eModifierType_Fracture) {
 				rmd = (FractureModifierData *)md;
 				if (isModifierActive(rmd)) {
-					for (mi = rmd->meshIslands.first, j = 0; mi; mi = mi->next) {
+					for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 						rbw->cache_index_map[counter] = mi->rigidbody; /* map all shards of an object to this object index*/
 						rbw->cache_offset_map[counter] = i;
 						mi->linear_index = counter;
