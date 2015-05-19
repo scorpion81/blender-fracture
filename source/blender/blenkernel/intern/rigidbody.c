@@ -1821,13 +1821,9 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 static bool check_shard_size(FractureModifierData *fmd, int id)
 {
 	FractureID *fid;
-	float size = 0.1f;
-	//Shard *s = BLI_findlink(&fmd->frac_mesh->shard_map, id);
+	float size = 0.01f;
+	Shard *s = BLI_findlink(&fmd->frac_mesh->shard_map, id);
 
-	return true;
-#if 0
-
-	printf("FRACTURE : %d\n", id);
 	if (s == NULL || s->flag & SHARD_FRACTURED)
 	{
 		return false;
@@ -1842,6 +1838,7 @@ static bool check_shard_size(FractureModifierData *fmd, int id)
 		return false;
 	}
 
+#if 0
 	for (fid = fmd->fracture_ids.first; fid; fid = fid->next)
 	{
 		if (fid->shardID == id)
@@ -1849,9 +1846,11 @@ static bool check_shard_size(FractureModifierData *fmd, int id)
 			return false;
 		}
 	}
+#endif
+
+	printf("FRACTURE : %d\n", id);
 
 	return true;
-#endif
 }
 
 static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
@@ -1883,7 +1882,7 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 
 		if (fmd1 && fmd1->fracture_mode == MOD_FRACTURE_DYNAMIC) {
 			if (force > fmd1->dynamic_force) {
-				//if (fmd1->current_shard_entry && fmd1->current_shard_entry->is_new)
+				if (fmd1->current_shard_entry && fmd1->current_shard_entry->is_new)
 				{
 					/*only fracture on new entries, this is necessary because after loading a file
 					 *the pointcache thinks it is empty and a fracture is attempted ! */
@@ -1909,7 +1908,7 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 
 		if (fmd2 && fmd2->fracture_mode == MOD_FRACTURE_DYNAMIC) {
 			if (force > fmd2->dynamic_force){
-				//if (fmd2->current_shard_entry && fmd2->current_shard_entry->is_new)
+				if (fmd2->current_shard_entry && fmd2->current_shard_entry->is_new)
 				{
 					int id = rbw->cache_index_map[linear_index2]->meshisland_index;
 					if(check_shard_size(fmd2, id))
@@ -2554,7 +2553,7 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 			if (md->type == eModifierType_Fracture) {
 				rmd = (FractureModifierData *)md;
 				if (isModifierActive(rmd)) {
-					for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+					for (mi = rmd->meshIslands.first; j = 0, mi; mi = mi->next) {
 						rbw->cache_index_map[counter] = mi->rigidbody; /* map all shards of an object to this object index*/
 						rbw->cache_offset_map[counter] = i;
 						mi->linear_index = counter;

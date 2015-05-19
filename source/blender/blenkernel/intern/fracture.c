@@ -697,7 +697,6 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 	fm->shard_count = 0; /* may be not matching with expected shards, so reset... did increment this for
 	                      *progressbar only */
 
-#if 0
 	if (mode == MOD_FRACTURE_DYNAMIC)
 	{
 		Shard *t;
@@ -721,6 +720,8 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 			}
 		}
 	}
+
+#if 0
 	//keep empty ids... need to catch this later
 	if (mode == MOD_FRACTURE_DYNAMIC)
 	{
@@ -732,17 +733,15 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 	}
 #endif
 
-	//j = 0;
-
+	j = 0;
 	for (i = 0; i < expected_shards; i++) {
 		Shard *s = tempresults[i];
 		Shard *t = tempshards[i];
 
 		if (s != NULL) {
 			add_shard(fm, s, mat);
-			//s->shard_id += j;
-			//s->parent_id = parent_id;
-			//j++;
+			s->shard_id = j;
+			j++;
 		}
 
 		if (t != NULL) {

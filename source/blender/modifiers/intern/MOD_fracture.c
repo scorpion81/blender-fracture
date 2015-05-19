@@ -99,8 +99,8 @@ static FracMesh* copy_fracmesh(FracMesh* fm)
 	for (s = fm->shard_map.first; s; s = s->next)
 	{
 		t = BKE_create_fracture_shard(s->mvert, s->mpoly, s->mloop, s->totvert, s->totpoly, s->totloop, true);
-		t->parent_id = s->shard_id;
-		t->shard_id = i;
+		t->parent_id = s->parent_id;
+		t->shard_id = s->shard_id;
 
 		CustomData_reset(&t->vertData);
 		CustomData_reset(&t->loopData);
@@ -2801,7 +2801,7 @@ static void do_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, 
 	//mul_qt_qtqt(rot, irot, rot);
 
 	add_v3_v3(mi->centroid, loc);
-	mul_qt_qtqt(mi->rot, mi->rot, rot);
+	//mul_qt_qtqt(mi->rot, mi->rot, rot);
 
 	//match vertices and vertco, perhaps vertno too, yuck...
 	for (j = 0; j < mi->vertex_count; j++)
@@ -2921,13 +2921,13 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 		{
 			MeshIsland *par = NULL;
 			int frame = prev->frame;
-			par = BLI_findlink(&prev->meshIslands, s->parent_id);
+			par = BLI_findlink(&prev->meshIslands, s->shard_id);
 
 			if (par)
 			{
 				do_handle_parent_mi(fmd, mi, par, ob, frame);
 			}
-			else
+			/*else
 			{
 				printf("PAR NULL !!! %d %d \n", s->shard_id, s->parent_id);
 				par = BLI_findlink(&prev->meshIslands, s->shard_id);
@@ -2939,7 +2939,7 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 				{
 					printf("PAR NULL AGAIN !!! %d %d \n", s->shard_id, s->parent_id);
 				}
-			}
+			}*/
 		}
 	}
 
@@ -3530,7 +3530,6 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 {
 	if (fmd->refresh || fmd->modifier.scene->rigidbody_world->refresh_modifiers)
 	{
-		fmd->modifier.scene->rigidbody_world->refresh_modifiers = false;
 		if (fmd->last_frame == INT_MAX)
 		{
 			//data purge hack
@@ -3620,8 +3619,8 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 				fmd->modifier.scene->rigidbody_world->object_changed = true;
 			}
 		}
-		else if ((fmd->last_frame < frame) && (fmd->current_mi_entry) && (fmd->current_mi_entry->next != NULL) &&
-		         (fmd->current_mi_entry->next->is_new == false))
+		else if ((fmd->last_frame < frame) && (fmd->current_mi_entry) && (fmd->current_mi_entry->next != NULL))// &&
+		         /*(fmd->current_mi_entry->next->is_new == false))*/
 		{
 			/*forward playback*/
 			if (frame >= fmd->current_mi_entry->frame)
@@ -3650,6 +3649,11 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 				fmd->modifier.scene->rigidbody_world->object_changed = true;
 				fmd->refresh = true;
 				fmd->current_shard_entry->is_new = false;
+			}
+			else if (fmd->modifier.scene->rigidbody_world->refresh_modifiers)
+			{
+				fmd->modifier.scene->rigidbody_world->refresh_modifiers = false;
+				fmd->refresh = true;
 			}
 		}
 
