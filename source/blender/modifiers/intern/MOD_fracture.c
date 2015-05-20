@@ -1522,7 +1522,7 @@ static void do_rigidbody(FractureModifierData *fmd, MeshIsland* mi, Object* ob, 
 	mi->rigidbody = NULL;
 	mi->rigidbody = BKE_rigidbody_create_shard(fmd->modifier.scene, ob, mi);
 	mi->rigidbody->type = rb_type;
-	//mi->rigidbody->meshisland_index = i;
+	mi->rigidbody->meshisland_index = i;
 	BKE_rigidbody_calc_shard_mass(ob, mi, orig_dm);
 
 	if (fmd->frac_algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL)
@@ -2777,13 +2777,16 @@ static void do_verts_weights(FractureModifierData *fmd, Shard *s, MeshIsland *mi
 	}
 }
 
-static void do_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, int frame)
+#define OUT(name, id, co) printf("%s : %d -> (%.2f, %.2f, %.2f) \n", (name), (id), (co)[0], (co)[1], (co)[2]);
+#define OUT4(name,id, co) printf("%s : %d -> (%.2f, %.2f, %.2f, %.2f) \n", (name), (id), (co)[0], (co)[1], (co)[2], (co)[3]);
+
+static void do_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, int frame, bool is_parent)
 {
 	float loc[3] = {0.0f, 0.0f, 0.0f};
 	float rot[4] = {0.0f, 0.0f, 0.0f, 1.0f};
 	int j = 0;
 	float irot[4];
-	//MVert *mvert = mi->physics_mesh->getVertArray(mi->physics_mesh);
+	float centr[3] = {0.0f, 0.0f, 0.0f};
 
 	invert_m4_m4(ob->imat, ob->obmat);
 
@@ -2796,42 +2799,91 @@ static void do_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, 
 	rot[2] = par->rots[4*frame+2];
 	rot[3] = par->rots[4*frame+3];
 
+	mi->locs[0] = loc[0];
+	mi->locs[1] = loc[1];
+	mi->locs[2] = loc[2];
+
+	mi->rots[0] = rot[0];
+	mi->rots[1] = rot[1];
+	mi->rots[2] = rot[2];
+	mi->rots[3] = rot[3];
+
 	mul_m4_v3(ob->imat, loc);
-	//mat4_to_quat(irot, ob->imat);
-	//mul_qt_qtqt(rot, irot, rot);
+	mat4_to_quat(irot, ob->imat);
 
-	add_v3_v3(mi->centroid, loc);
-	//mul_qt_qtqt(mi->rot, mi->rot, rot);
+#if 0
+	OUT("mi->centroid",mi->id, mi->centroid);
+	OUT("par->centroid",par->id,  par->centroid);
+	OUT("centr", par->id, centr);
+	OUT("loc", par->id, loc);
+	OUT4("rot", par->id, rot);
+#endif
 
-	//match vertices and vertco, perhaps vertno too, yuck...
+	if (is_parent)
+	{
+		copy_v3_v3(centr, mi->centroid);
+		//mul_qt_v3(rot, centr);
+		add_v3_v3(centr, loc);
+	}
+	else
+	{
+		copy_v3_v3(centr, loc);
+	}
+
 	for (j = 0; j < mi->vertex_count; j++)
 	{
 		float co[3];
 
-		//mul_qt_v3(rot, mi->vertices_cached[j]->co);
-		add_v3_v3(mi->vertices_cached[j]->co, loc);
+		//first add vert to centroid, then rotate
+		copy_v3_v3(co, mi->vertices_cached[j]->co);
+		sub_v3_v3(co, mi->centroid);
+		mul_qt_v3(rot, co);
+		add_v3_v3(co, centr);
+		copy_v3_v3(mi->vertices_cached[j]->co, co);
 
 		co[0] = mi->vertco[3*j];
 		co[1] = mi->vertco[3*j+1];
 		co[2] = mi->vertco[3*j+2];
 
-		//mul_qt_v3(rot, co);
-		add_v3_v3(co, loc);
+		sub_v3_v3(co, mi->centroid);
+		mul_qt_v3(rot, co);
+		add_v3_v3(co, centr);
 
 		mi->vertco[3*j]   = co[0];
 		mi->vertco[3*j+1] = co[1];
 		mi->vertco[3*j+2] = co[2];
 	}
+
+	//init rigidbody properly ?
+	copy_v3_v3(mi->centroid, centr);
+	copy_qt_qt(mi->rot, rot);
+	mul_qt_qtqt(rot, irot, rot);
 }
 
-static void do_handle_parent_mi(FractureModifierData *fmd, MeshIsland *mi, MeshIsland *par, Object* ob, int frame)
+static void do_handle_parent_mi(FractureModifierData *fmd, MeshIsland *mi, MeshIsland *par, Object* ob, int frame, bool is_parent)
 {
 	frame -= par->start_frame;
-	do_match_vertex_coords(mi, par, ob, frame);
+	do_match_vertex_coords(mi, par, ob, frame, is_parent);
 
 	BKE_rigidbody_remove_shard(fmd->modifier.scene, par);
 	fmd->modifier.scene->rigidbody_world->object_changed = true;
 	par->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+}
+
+static MeshIsland* find_meshisland(ListBase* meshIslands, int id)
+{
+	MeshIsland* mi = meshIslands->first;
+	while (mi)
+	{
+		if (mi->id == id)
+		{
+			return mi;
+		}
+
+		mi = mi->next;
+	}
+
+	return NULL;
 }
 
 static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s, DerivedMesh *orig_dm,
@@ -2895,15 +2947,14 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 
 	mat4_to_loc_quat(dummyloc, rot, ob->obmat);
 	copy_v3_v3(mi->rot, rot);
+	mi->id = s->shard_id;
 
 	if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 	{
 		/*take care of previous transformation, if any*/
 		MeshIslandSequence *prev = NULL;
 
-
 		/*also take over the UNFRACTURED last shards transformation !!! */
-
 		mi->locs[0] = mi->centroid[0];
 		mi->locs[1] = mi->centroid[1];
 		mi->locs[2] = mi->centroid[2];
@@ -2915,29 +2966,46 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 
 		if (fmd->current_mi_entry) {
 			prev = fmd->current_mi_entry->prev;
+			//if (prev)
+			//	prev = prev->prev;
 		}
 
 		if (prev)
 		{
 			MeshIsland *par = NULL;
 			int frame = prev->frame;
-			par = BLI_findlink(&prev->meshIslands, s->shard_id);
 
-			if (par)
+			//if (s->parent_id > -1)
 			{
-				do_handle_parent_mi(fmd, mi, par, ob, frame);
-			}
-			/*else
-			{
-				printf("PAR NULL !!! %d %d \n", s->shard_id, s->parent_id);
-				par = BLI_findlink(&prev->meshIslands, s->shard_id);
+				par = find_meshisland(&prev->meshIslands, s->parent_id);
 				if (par)
 				{
-					do_handle_parent_mi(fmd, mi, par, ob, frame);
+					do_handle_parent_mi(fmd, mi, par, ob, frame, true);
 				}
 				else
 				{
-					printf("PAR NULL AGAIN !!! %d %d \n", s->shard_id, s->parent_id);
+					printf("OUCH parent ! %d\n", s->parent_id);
+					par = find_meshisland(&prev->meshIslands, s->shard_id);
+					if (par)
+					{
+						do_handle_parent_mi(fmd, mi, par, ob, frame, false);
+					}
+					else
+					{
+						printf("OUCH shard ! %d\n", s->shard_id);
+					}
+				}
+			}
+			/*else
+			{
+				par = find_meshisland(&prev->meshIslands, s->shard_id);
+				if (par)
+				{
+					do_handle_parent_mi(fmd, mi, par, ob, frame, false);
+				}
+				else
+				{
+					printf("OUCH shard ! %d\n", s->shard_id);
 				}
 			}*/
 		}
@@ -2946,7 +3014,6 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 	mi->bb = BKE_boundbox_alloc_unit();
 	BKE_boundbox_init_from_minmax(mi->bb, s->min, s->max);
 
-	mi->id = s->shard_id;
 	mi->particle_index = -1;
 	mi->neighbor_ids = s->neighbor_ids;
 	mi->neighbor_count = s->neighbor_count;
@@ -3088,7 +3155,7 @@ static void do_post_island_creation(FractureModifierData *fmd, Object *ob, Deriv
 		//if (fmd->modifier.scene->rigidbody_world->object_changed == false)
 		{
 			fmd->current_mi_entry->is_new = false;
-			fmd->current_shard_entry->is_new = false;
+			//fmd->current_shard_entry->is_new = false;
 		}
 	}
 
@@ -3454,48 +3521,21 @@ static void add_new_entries(FractureModifierData* fmd, DerivedMesh *dm, Object* 
 {
 	float frame = BKE_scene_frame_get(fmd->modifier.scene);
 	float end = fmd->modifier.scene->rigidbody_world->pointcache->endframe;
-	bool reuse = false;
 
-	if (fmd->current_shard_entry) {
-
-		if (0) //fmd->current_shard_entry->prev && fmd->current_shard_entry->prev->frame == frame)
-		{	//about to make a new state with same frame, reuse current one
-			fmd->current_shard_entry->is_new = true;
-			reuse = true;
-		}
-		else
-		{
-			fmd->current_shard_entry->frame = frame;
-			//fmd->current_shard_entry->is_new = false;
-		}
-	}
-
-	if (!reuse)
+	if (fmd->current_shard_entry)
 	{
-		if (fmd->current_shard_entry)
-			fmd->current_shard_entry->is_new = false;
-		fmd->current_shard_entry = shard_sequence_add(fmd, end, dm);
-		fmd->frac_mesh = fmd->current_shard_entry->frac_mesh;
+		fmd->current_shard_entry->is_new = false;
+		fmd->current_shard_entry->frame = frame;
 	}
+	fmd->current_shard_entry = shard_sequence_add(fmd, end, dm);
+	fmd->frac_mesh = fmd->current_shard_entry->frac_mesh;
 
 	if (fmd->current_mi_entry) {
-
-		if (reuse)
-		{
-			fmd->current_mi_entry->is_new = true;
-		}
-		else
-		{
-			fmd->current_mi_entry->frame = frame;
-		}
-		//fmd->current_mi_entry->is_new = false;
+		fmd->current_mi_entry->frame = frame;
 	}
 
-	if (!reuse)
-	{
-		fmd->current_mi_entry = meshisland_sequence_add(fmd, end, ob, dm);
-		fmd->meshIslands = fmd->current_mi_entry->meshIslands;
-	}
+	fmd->current_mi_entry = meshisland_sequence_add(fmd, end, ob, dm);
+	fmd->meshIslands = fmd->current_mi_entry->meshIslands;
 }
 
 static void get_next_entries(FractureModifierData *fmd)
@@ -3528,13 +3568,14 @@ static void get_prev_entries(FractureModifierData *fmd)
 
 static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 {
-	if (fmd->refresh || fmd->modifier.scene->rigidbody_world->refresh_modifiers)
+	if (fmd->refresh)
 	{
 		if (fmd->last_frame == INT_MAX)
 		{
 			//data purge hack
 			free_modifier(fmd, true);
 		}
+
 		if (fmd->dm != NULL) {
 			fmd->dm->needsFree = 1;
 			fmd->dm->release(fmd->dm);
@@ -3619,8 +3660,8 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 				fmd->modifier.scene->rigidbody_world->object_changed = true;
 			}
 		}
-		else if ((fmd->last_frame < frame) && (fmd->current_mi_entry) && (fmd->current_mi_entry->next != NULL))// &&
-		         /*(fmd->current_mi_entry->next->is_new == false))*/
+		else if ((fmd->last_frame < frame) && (fmd->current_mi_entry) && (fmd->current_mi_entry->next != NULL) &&
+		         (fmd->current_mi_entry->next->is_new == false))
 		{
 			/*forward playback*/
 			if (frame >= fmd->current_mi_entry->frame)
@@ -3636,12 +3677,13 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 			 * we need to loop over those shard IDs here, but lookup of shard ids might be slow, but fracturing of many shards is slower...
 			 * should not have a visible effect in general */
 
-			int count = BLI_listbase_count(&fmd->fracture_ids);
+			int count = 0;
 			while(fmd->fracture_ids.first){
 				FractureID* fid = (FractureID*)fmd->fracture_ids.first;
 				do_fracture(fmd, fid->shardID, ob, dm);
 				BLI_remlink(&fmd->fracture_ids, fid);
 				MEM_freeN(fid);
+				count++;
 			}
 
 			if (count > 0)
@@ -3650,10 +3692,11 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 				fmd->refresh = true;
 				fmd->current_shard_entry->is_new = false;
 			}
-			else if (fmd->modifier.scene->rigidbody_world->refresh_modifiers)
+
+			if (fmd->modifier.scene->rigidbody_world->refresh_modifiers)
 			{
 				fmd->modifier.scene->rigidbody_world->refresh_modifiers = false;
-				fmd->refresh = true;
+				add_new_entries(fmd, dm, ob);
 			}
 		}
 
@@ -3732,7 +3775,7 @@ static DerivedMesh *do_dynamic(FractureModifierData *fmd, Object *ob, DerivedMes
 		final_dm = doSimulate(fmd, ob, derivedData, derivedData);
 	}
 
-	fmd->last_frame = (int)BKE_scene_frame_get(fmd->modifier.scene);
+	//fmd->last_frame = (int)BKE_scene_frame_get(fmd->modifier.scene);
 
 	return final_dm;
 }

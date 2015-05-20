@@ -279,7 +279,18 @@ float BKE_shard_calc_minmax(Shard *shard)
 Shard *BKE_shard_by_id(FracMesh *mesh, ShardID id, DerivedMesh *dm) {
 	if ((id < mesh->shard_count) && (id >= 0)) {
 		//return mesh->shard_map[id];
-		return (Shard *)BLI_findlink(&mesh->shard_map, id);
+		//return (Shard *)BLI_findlink(&mesh->shard_map, id);
+		Shard *s = mesh->shard_map.first;
+		while (s)
+		{
+			if (s->shard_id == id)
+			{
+				return s;
+			}
+			s = s->next;
+		}
+
+		return NULL;
 	}
 	else if (id == -1)
 	{
@@ -299,6 +310,7 @@ void BKE_get_shard_minmax(FracMesh *mesh, ShardID id, float min_r[3], float max_
 {
 	Shard *shard = BKE_shard_by_id(mesh, id, dm);
 	if (shard != NULL) {
+		BKE_shard_calc_minmax(shard);
 		copy_v3_v3(min_r, shard->min);
 		copy_v3_v3(max_r, shard->max);
 
@@ -621,12 +633,17 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 	int i = 0, j = 0;
 	Shard *p = BKE_shard_by_id(fm, parent_id, dm), *t;
 	float obmat[4][4]; /* use unit matrix for now */
-	float centroid[3];
+	float centroid[3], pcentroid[3] = {0,0,0};
 	BMesh *bm_parent = NULL;
 	DerivedMesh *dm_parent = NULL;
 	DerivedMesh *dm_p = NULL;
 	Shard **tempshards;
 	Shard **tempresults;
+
+	if (p == NULL)
+	{
+		return;
+	}
 
 	tempshards = MEM_mallocN(sizeof(Shard *) * expected_shards, "tempshards");
 	tempresults = MEM_mallocN(sizeof(Shard *) * expected_shards, "tempresults");
@@ -636,6 +653,8 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 
 	if (mode == MOD_FRACTURE_DYNAMIC)
 	{
+		copy_v3_v3(pcentroid, p->centroid);
+		parent_id = p->shard_id;
 		//remove parent shard from map as well
 		BLI_remlink(&fm->shard_map, p);
 		fm->shard_count--;
@@ -697,51 +716,52 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 	fm->shard_count = 0; /* may be not matching with expected shards, so reset... did increment this for
 	                      *progressbar only */
 
-	if (mode == MOD_FRACTURE_DYNAMIC)
-	{
-		Shard *t;
-		/* correct ids of shards here,
-		 * count how many new shards we have*/
-		for (i = 0; i < expected_shards; i++) {
-			Shard *s = tempresults[i];
-			if (s != NULL) {
-				j++;
-			}
-		}
-
+#if 0
+	if (mode == MOD_FRACTURE_DYNAMIC) {
 		/* and start reassigning ids for existing shards */
 		for (t = fm->shard_map.first; t; t = t->next)
 		{
-			//t->parent_id = parent_id;
-			//if (t->shard_id > parent_id)
-			{
-				t->shard_id += j;
-				t->parent_id = t->shard_id;
-			}
+			//mark unfractured (other) shards, just need their meshislands movement instead of parent's
+			t->parent_id = -1;
 		}
 	}
+#endif
 
-#if 0
 	//keep empty ids... need to catch this later
 	if (mode == MOD_FRACTURE_DYNAMIC)
 	{
-		j = BLI_listbase_count(&fm->shard_map);//parent_id + 1;
+		j = 1;
+		if (fm->shard_map.last)
+		{
+			j += ((Shard*)(fm->shard_map.last))->shard_id;
+		}
+
 	}
 	else
 	{
 		j = 0;
 	}
-#endif
 
-	j = 0;
 	for (i = 0; i < expected_shards; i++) {
 		Shard *s = tempresults[i];
 		Shard *t = tempshards[i];
 
 		if (s != NULL) {
 			add_shard(fm, s, mat);
-			s->shard_id = j;
-			j++;
+			s->shard_id += j+1;
+			s->parent_id = parent_id;
+			//printf("ADDED: %d %d %d\n", i, j, s->shard_id);
+			if (parent_id > -1)
+			{
+				int i = 0;
+				MVert *v;
+
+				sub_v3_v3(s->centroid, pcentroid);
+				for (i = 0, v = s->mvert; i < s->totvert; i++, v++)
+				{
+					sub_v3_v3(v->co, pcentroid);
+				}
+			}
 		}
 
 		if (t != NULL) {

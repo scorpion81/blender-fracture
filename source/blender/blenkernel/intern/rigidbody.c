@@ -1821,10 +1821,22 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 static bool check_shard_size(FractureModifierData *fmd, int id)
 {
 	FractureID *fid;
-	float size = 0.01f;
-	Shard *s = BLI_findlink(&fmd->frac_mesh->shard_map, id);
+	float size = 0.1f;
+	Shard *t = fmd->frac_mesh->shard_map.first;
+	Shard *s = NULL;
 
-	if (s == NULL || s->flag & SHARD_FRACTURED)
+	while (t)
+	{
+		if (t->shard_id == id && t->flag & SHARD_INTACT)
+		{
+			printf("FOUND: %d\n", id);
+			s = t;
+			break;
+		}
+		t = t->next;
+	}
+
+	if (s == NULL)
 	{
 		return false;
 	}
@@ -1838,7 +1850,6 @@ static bool check_shard_size(FractureModifierData *fmd, int id)
 		return false;
 	}
 
-#if 0
 	for (fid = fmd->fracture_ids.first; fid; fid = fid->next)
 	{
 		if (fid->shardID == id)
@@ -1846,7 +1857,6 @@ static bool check_shard_size(FractureModifierData *fmd, int id)
 			return false;
 		}
 	}
-#endif
 
 	printf("FRACTURE : %d\n", id);
 
@@ -2553,7 +2563,7 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 			if (md->type == eModifierType_Fracture) {
 				rmd = (FractureModifierData *)md;
 				if (isModifierActive(rmd)) {
-					for (mi = rmd->meshIslands.first; j = 0, mi; mi = mi->next) {
+					for (mi = rmd->meshIslands.first, j = 0; mi; mi = mi->next) {
 						rbw->cache_index_map[counter] = mi->rigidbody; /* map all shards of an object to this object index*/
 						rbw->cache_offset_map[counter] = i;
 						mi->linear_index = counter;
