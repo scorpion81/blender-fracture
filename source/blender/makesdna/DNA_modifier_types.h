@@ -1588,12 +1588,13 @@ typedef struct FractureModifierData {
 	int use_experimental;
 	int explo_shared;
 	int refresh_images;
+	int update_dynamic;
 
 	/* internal values */
 	float max_vol;
 	int last_frame;
 
-	char pad[4];
+	//char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

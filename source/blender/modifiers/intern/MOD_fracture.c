@@ -206,6 +206,7 @@ static void initData(ModifierData *md)
 	fmd->fracture_mode = MOD_FRACTURE_PREFRACTURED;
 	fmd->last_frame = FLT_MIN;
 	fmd->dynamic_force = 10.0f;
+	fmd->update_dynamic = false;
 }
 
 static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
@@ -1413,6 +1414,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->fracture_mode = rmd->fracture_mode;
 	trmd->last_frame = rmd->last_frame;
 	trmd->dynamic_force = rmd->dynamic_force;
+	trmd->update_dynamic = false;
 }
 
 /* mi->bb, its for volume fraction calculation.... */
@@ -3586,6 +3588,7 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 {
 	if (fmd->refresh)
 	{
+		printf("ADD NEW 1: %s \n", ob->id.name);
 		if (fmd->last_frame == INT_MAX)
 		{
 			//data purge hack
@@ -3694,6 +3697,10 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 			 * should not have a visible effect in general */
 
 			int count = 0;
+
+			//if (!fmd->dm && fmd->frac_mesh)
+			//	BKE_fracture_create_dm(fmd, true);
+
 			while(fmd->fracture_ids.first){
 				FractureID* fid = (FractureID*)fmd->fracture_ids.first;
 				do_fracture(fmd, fid->shardID, ob, dm);
@@ -3704,14 +3711,16 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 
 			if (count > 0)
 			{
+				printf("REFRESH: %s \n", ob->id.name);
 				fmd->modifier.scene->rigidbody_world->object_changed = true;
 				fmd->refresh = true;
 				fmd->current_shard_entry->is_new = false;
 			}
 
-			if (fmd->modifier.scene->rigidbody_world->refresh_modifiers)
+			if (fmd->update_dynamic)
 			{
-				fmd->modifier.scene->rigidbody_world->refresh_modifiers = false;
+				printf("ADD NEW 2: %s \n", ob->id.name);
+				fmd->update_dynamic = false;
 				add_new_entries(fmd, dm, ob);
 			}
 		}

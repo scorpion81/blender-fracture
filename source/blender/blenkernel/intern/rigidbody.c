@@ -90,7 +90,7 @@ static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED(rbw), Mes
 }
 
 static bool isModifierActive(FractureModifierData *rmd) {
-	return ((rmd != NULL) && (rmd->modifier.mode & (eModifierMode_Realtime | eModifierMode_Render)) && (rmd->refresh == false));
+	return ((rmd != NULL) && (rmd->modifier.mode & (eModifierMode_Realtime | eModifierMode_Render)) && (rmd->refresh == false || rmd->fracture_mode == MOD_FRACTURE_DYNAMIC));
 }
 
 static void calc_dist_angle(RigidBodyShardCon *con, float *dist, float *angle)
@@ -1958,7 +1958,8 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 						fid1->shardID = rbw->cache_index_map[linear_index1]->meshisland_index;
 						BLI_addtail(&fmd1->fracture_ids, fid1);
 						//fmd1->refresh = true;
-						rbw->refresh_modifiers = true;
+						//rbw->refresh_modifiers = true;
+						fmd1->update_dynamic = true;
 						update_movement(fmd1, linear_index1, force, cp->contact_pos_world_onA, cp->contact_pos_world_onB);
 					}
 				}
@@ -1983,7 +1984,8 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 						fid2->shardID = id;
 						BLI_addtail(&fmd2->fracture_ids, fid2);
 						//fmd2->refresh = true;
-						rbw->refresh_modifiers = true;
+						//rbw->refresh_modifiers = true;
+						fmd2->update_dynamic = true;
 						update_movement(fmd2, id, force, cp->contact_pos_world_onB, cp->contact_pos_world_onA);
 					}
 				}
