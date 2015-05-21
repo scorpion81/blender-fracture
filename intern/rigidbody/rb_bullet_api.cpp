@@ -893,6 +893,20 @@ void RB_body_apply_central_force(rbRigidBody *object, const float v_in[3])
 	body->applyCentralForce(btVector3(v_in[0], v_in[1], v_in[2]));
 }
 
+void RB_body_apply_impulse(rbRigidBody* object, const float impulse[3], const float pos[3])
+{
+	btRigidBody *body = object->body;
+
+	body->applyImpulse(btVector3(impulse[0], impulse[1], impulse[2]), btVector3(pos[0], pos[1], pos[2]));
+}
+
+void RB_body_apply_force(rbRigidBody* object, const float force[3], const float pos[3])
+{
+	btRigidBody *body = object->body;
+
+	body->applyForce(btVector3(force[0], force[1], force[2]), btVector3(pos[0], pos[1], pos[2]));
+}
+
 /* ********************************** */
 /* Collision Shape Methods */
 

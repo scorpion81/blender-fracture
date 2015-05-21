@@ -2810,14 +2810,15 @@ static void do_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, 
 
 	mul_m4_v3(ob->imat, loc);
 	mat4_to_quat(irot, ob->imat);
-
+	//mul_qt_qtqt(rot, irot, rot);
 #if 0
 	OUT("mi->centroid",mi->id, mi->centroid);
 	OUT("par->centroid",par->id,  par->centroid);
 	OUT("centr", par->id, centr);
 	OUT("loc", par->id, loc);
-	OUT4("rot", par->id, rot);
 #endif
+	OUT4("rot", par->id, rot);
+	OUT4("par->rot", par->id, par->rot);
 
 	if (is_parent)
 	{
@@ -2829,6 +2830,8 @@ static void do_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, 
 	{
 		copy_v3_v3(centr, loc);
 	}
+
+	mul_qt_qtqt(rot, par->rot, rot);
 
 	for (j = 0; j < mi->vertex_count; j++)
 	{
@@ -2857,7 +2860,6 @@ static void do_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, 
 	//init rigidbody properly ?
 	copy_v3_v3(mi->centroid, centr);
 	copy_qt_qt(mi->rot, rot);
-	mul_qt_qtqt(rot, irot, rot);
 }
 
 static void do_handle_parent_mi(FractureModifierData *fmd, MeshIsland *mi, MeshIsland *par, Object* ob, int frame, bool is_parent)
@@ -2865,9 +2867,20 @@ static void do_handle_parent_mi(FractureModifierData *fmd, MeshIsland *mi, MeshI
 	frame -= par->start_frame;
 	do_match_vertex_coords(mi, par, ob, frame, is_parent);
 
+	if (par->rigidbody->physics_object)
+	{
+		RB_body_get_linear_velocity(par->rigidbody->physics_object, par->lin_vel);
+		RB_body_get_angular_velocity(par->rigidbody->physics_object, par->ang_vel);
+	}
+
 	BKE_rigidbody_remove_shard(fmd->modifier.scene, par);
 	fmd->modifier.scene->rigidbody_world->object_changed = true;
 	par->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+
+	copy_v3_v3(mi->lin_vel, par->lin_vel);
+	copy_v3_v3(mi->ang_vel, par->ang_vel);
+	copy_v3_v3(mi->impulse, par->impulse);
+	copy_v3_v3(mi->impulse_loc, par->impulse_loc);
 }
 
 static MeshIsland* find_meshisland(ListBase* meshIslands, int id)
@@ -2955,14 +2968,17 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 		MeshIslandSequence *prev = NULL;
 
 		/*also take over the UNFRACTURED last shards transformation !!! */
-		mi->locs[0] = mi->centroid[0];
-		mi->locs[1] = mi->centroid[1];
-		mi->locs[2] = mi->centroid[2];
+		if (s->parent_id == 0)
+		{
+			mi->locs[0] = mi->centroid[0];
+			mi->locs[1] = mi->centroid[1];
+			mi->locs[2] = mi->centroid[2];
 
-		mi->rots[0] = mi->rot[0];
-		mi->rots[1] = mi->rot[1];
-		mi->rots[2] = mi->rot[2];
-		mi->rots[3] = mi->rot[3];
+			mi->rots[0] = mi->rot[0];
+			mi->rots[1] = mi->rot[1];
+			mi->rots[2] = mi->rot[2];
+			mi->rots[3] = mi->rot[3];
+		}
 
 		if (fmd->current_mi_entry) {
 			prev = fmd->current_mi_entry->prev;

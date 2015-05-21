@@ -1145,6 +1145,31 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 			break;
 #endif
 
+static void apply_movement_update(RigidBodyOb *rbo, MeshIsland *mi)
+{
+	if (rbo && rbo->physics_object && mi)
+	{
+		if (!is_zero_v3(mi->lin_vel))
+		{
+			RB_body_set_linear_velocity(rbo->physics_object, mi->lin_vel);
+			zero_v3(mi->lin_vel);
+		}
+
+		if (!is_zero_v3(mi->ang_vel))
+		{
+			RB_body_set_angular_velocity(rbo->physics_object, mi->ang_vel);
+			zero_v3(mi->ang_vel);
+		}
+#if 0
+		if (!is_zero_v3(mi->impulse))
+		{
+			RB_body_apply_impulse(rbo->physics_object, mi->impulse, mi->impulse_loc);
+			zero_v3(mi->impulse);
+		}
+#endif
+	}
+}
+
 /* --------------------- */
 
 /* Create physics sim representation of shard given RigidBody settings
@@ -1212,7 +1237,11 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 	}
 
 	if (rbw && rbw->physics_world && rbo->physics_object)
+	{
 		RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups, mi, ob, mi->linear_index);
+
+		apply_movement_update(rbo, mi);
+	}
 
 	rbo->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
 	rbo->flag &= ~RBO_FLAG_KINEMATIC_REBUILD;
@@ -1863,6 +1892,32 @@ static bool check_shard_size(FractureModifierData *fmd, int id)
 	return true;
 }
 
+static void update_movement(FractureModifierData *fmd, int id, float force, float pos1[3], float pos2[3])
+{
+	//store values for update in next frame !
+	MeshIsland *mi = NULL, *temp = fmd->meshIslands.first;
+	while (temp)
+	{
+		if (temp->id == id)
+		{
+			mi = temp;
+			break;
+		}
+		temp = temp->next;
+	}
+
+	if (mi != NULL)
+	{
+		float impulse[3];
+		add_v3_v3v3(impulse, pos1, pos2);
+		//mul_v3_fl(impulse, force);
+
+		// this is the OLD meshisland !!!
+		copy_v3_v3(mi->impulse, impulse);
+		copy_v3_v3(mi->impulse_loc, pos1);
+	}
+}
+
 static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 {
 	int linear_index1, linear_index2;
@@ -1904,6 +1959,7 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 						BLI_addtail(&fmd1->fracture_ids, fid1);
 						//fmd1->refresh = true;
 						rbw->refresh_modifiers = true;
+						update_movement(fmd1, linear_index1, force, cp->contact_pos_world_onA, cp->contact_pos_world_onB);
 					}
 				}
 			}
@@ -1928,6 +1984,7 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 						BLI_addtail(&fmd2->fracture_ids, fid2);
 						//fmd2->refresh = true;
 						rbw->refresh_modifiers = true;
+						update_movement(fmd2, id, force, cp->contact_pos_world_onB, cp->contact_pos_world_onA);
 					}
 				}
 			}

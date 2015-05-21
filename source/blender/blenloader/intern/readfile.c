@@ -4872,7 +4872,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 	fmd->vertex_island_map = NULL;
 
 	/*HARDCODING this for now, until we can version it properly, say with 2.75 ? */
-	fmd->fracture_mode = MOD_FRACTURE_PREFRACTURED;
+	//fmd->fracture_mode = MOD_FRACTURE_PREFRACTURED;
 
 	if (fm == NULL || fmd->dm_group) {
 		fmd->dm = NULL;

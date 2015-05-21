@@ -1388,9 +1388,11 @@ typedef struct MeshIsland {
 	float centroid[3], start_co[3];
 	float rot[4]; /*hrm, need this for constraints probably */
 	float thresh_weight, ground_weight;
+	float impulse[3], impulse_loc[3];
+	float lin_vel[3], ang_vel[3];
 	int linear_index;  /* index in rigidbody world */
 	int particle_index;
-	//char pad[4];
+	//char pad[2];
 } MeshIsland;
 
 
