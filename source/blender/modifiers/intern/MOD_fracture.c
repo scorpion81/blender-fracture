@@ -292,6 +292,10 @@ static void free_constraints(FractureModifierData *fmd)
 	while (fmd->meshConstraints.first) {
 		rbsc = fmd->meshConstraints.first;
 		BLI_remlink(&fmd->meshConstraints, rbsc);
+		if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+		{
+			BKE_rigidbody_remove_shard_con(fmd->modifier.scene, rbsc);
+		}
 		MEM_freeN(rbsc);
 		rbsc = NULL;
 	}
@@ -2825,7 +2829,7 @@ static void do_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, 
 	if (is_parent)
 	{
 		copy_v3_v3(centr, mi->centroid);
-		//mul_qt_v3(rot, centr);
+		mul_qt_v3(rot, centr);
 		add_v3_v3(centr, loc);
 	}
 	else
@@ -2923,7 +2927,14 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 		mi->locs = MEM_mallocN(sizeof(float)*3, "mi->locs");
 		mi->rots = MEM_mallocN(sizeof(float)*4, "mi->rots");
 		mi->frame_count = 0;
-		mi->start_frame = fmd->modifier.scene->rigidbody_world->pointcache->startframe;
+		if (fmd->modifier.scene->rigidbody_world)
+		{
+			mi->start_frame = fmd->modifier.scene->rigidbody_world->pointcache->startframe;
+		}
+		else
+		{
+			mi->start_frame = 1;
+		}
 	}
 	else
 	{
@@ -3675,6 +3686,7 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 			 *then update*/
 			if (frame < fmd->current_mi_entry->prev->frame + 1)
 			{
+				free_constraints(fmd);
 				get_prev_entries(fmd);
 				fmd->modifier.scene->rigidbody_world->object_changed = true;
 			}
@@ -3685,6 +3697,7 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 			/*forward playback*/
 			if (frame >= fmd->current_mi_entry->frame)
 			{
+				free_constraints(fmd);
 				get_next_entries(fmd);
 				fmd->modifier.scene->rigidbody_world->object_changed = true;
 			}
@@ -3711,6 +3724,7 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 
 			if (count > 0)
 			{
+				free_constraints(fmd);
 				printf("REFRESH: %s \n", ob->id.name);
 				fmd->modifier.scene->rigidbody_world->object_changed = true;
 				fmd->refresh = true;
@@ -3719,6 +3733,7 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 
 			if (fmd->update_dynamic)
 			{
+				free_constraints(fmd);
 				printf("ADD NEW 2: %s \n", ob->id.name);
 				fmd->update_dynamic = false;
 				add_new_entries(fmd, dm, ob);

@@ -431,9 +431,15 @@ static void rna_Modifier_update(Main *UNUSED(bmain), Scene *UNUSED(scene), Point
 	if (md && md->type == eModifierType_Fracture)
 	{
 		FractureModifierData *fmd = (FractureModifierData*)md;
-		if (fmd->refresh)
+		if (fmd->refresh && fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
 		{
 			return;
+		}
+		else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+		{
+			// do purge
+			fmd->last_frame = INT_MAX;
+			fmd->refresh = true;
 		}
 	}
 
