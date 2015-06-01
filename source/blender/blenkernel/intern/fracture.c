@@ -647,8 +647,8 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 				float dist = len_squared_v3v3(n.co, cells[i].centroid);
 				if (t != NULL && dist < max)
 				{
-					if (dist < 0.001) {
-						if (fabsf(cells[i].volume - t->raw_volume) < 0.001) {
+					if (dist < 0.00001) {
+						if (fabsf(cells[i].volume - t->raw_volume) < 0.00001) {
 							//printf("Tagging skip: %d\n", i);
 							skipmap[i] = true;
 							deletemap[j] = false;
@@ -727,12 +727,6 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 
 	if (p == NULL)
 	{
-		return;
-	}
-
-	if (mode == MOD_FRACTURE_PREFRACTURED)
-	{
-		//rebuild tree
 		if (fm->last_shard_tree)
 		{
 			BLI_kdtree_free(fm->last_shard_tree);
@@ -745,7 +739,13 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 			fm->last_shards = NULL;
 		}
 
-		if (!fm->last_shard_tree && fm->shard_count > 0 &&
+		return;
+	}
+
+	if (mode == MOD_FRACTURE_PREFRACTURED)
+	{
+		//rebuild tree
+		if (!fm->last_shard_tree && (fm->shard_count > 0) &&
 			mode == MOD_FRACTURE_PREFRACTURED &&
 			algorithm != MOD_FRACTURE_BISECT_FAST &&
 			algorithm != MOD_FRACTURE_BISECT_FAST_FILL)
@@ -754,8 +754,8 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 			int i = 0;
 			count = BLI_listbase_count(&fm->shard_map);
 			fm->shard_count = count;
-			fm->last_shard_tree = BLI_kdtree_new(expected_shards + count);
-			fm->last_shards = MEM_callocN(sizeof(Shard*) * expected_shards, "last_shards");
+			fm->last_shard_tree = BLI_kdtree_new(fm->shard_count);
+			fm->last_shards = MEM_callocN(sizeof(Shard*) * fm->shard_count, "last_shards");
 
 			//fill tree from current shardmap
 			for (t = fm->shard_map.first; t; t = t->next)
@@ -794,6 +794,18 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 	unit_m4(obmat);
 
 	do_prepare_cells(fm, cells, expected_shards, algorithm, p, &centroid, &dm_parent, &bm_parent, &tempshards, &tempresults);
+
+	if (fm->last_shard_tree)
+	{
+		BLI_kdtree_free(fm->last_shard_tree);
+		fm->last_shard_tree = NULL;
+	}
+
+	if (fm->last_shards)
+	{
+		MEM_freeN(fm->last_shards);
+		fm->last_shards = NULL;
+	}
 
 	if (algorithm != MOD_FRACTURE_BISECT_FAST && algorithm != MOD_FRACTURE_BISECT_FAST_FILL) {
 		for (i = 0; i < expected_shards; i++) {
@@ -846,17 +858,6 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 	fm->shard_count = 0; /* may be not matching with expected shards, so reset... did increment this for
 	                      *progressbar only */
 
-#if 0
-	if (mode == MOD_FRACTURE_DYNAMIC) {
-		/* and start reassigning ids for existing shards */
-		for (t = fm->shard_map.first; t; t = t->next)
-		{
-			//mark unfractured (other) shards, just need their meshislands movement instead of parent's
-			t->parent_id = -1;
-		}
-	}
-#endif
-
 	//keep empty ids... need to catch this later
 	if (mode == MOD_FRACTURE_DYNAMIC)
 	{
@@ -899,12 +900,12 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 		}
 	}
 
-#if 0
-	for (t = fm->shard_map.first; t; t = t->next)
+	if (fm->shard_count == 0)
 	{
-		printf("SHARD: %d %d\n", t->shard_id, t->parent_id);
+		//might happen if all has been skipped, but this distracts the halving method (thinks shardmap is empty)
+		//so better correct this here
+		fm->shard_count = BLI_listbase_count(&fm->shard_map);
 	}
-#endif
 
 	MEM_freeN(tempshards);
 	MEM_freeN(tempresults);
