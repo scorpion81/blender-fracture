@@ -432,7 +432,7 @@ static void free_modifier(FractureModifierData *fmd, bool do_free_seq)
 		}
 	}
 
-	free_shards(fmd);
+	//free_shards(fmd);
 
 	if (fmd->vert_index_map != NULL) {
 		BLI_ghash_free(fmd->vert_index_map, NULL, NULL);
@@ -3615,9 +3615,11 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 		if (fmd->frac_mesh != NULL) {
 			if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED) {
 				/* in prefracture case, we can free this */
+#if 0
 				BKE_fracmesh_free(fmd->frac_mesh, true);
 				MEM_freeN(fmd->frac_mesh);
 				fmd->frac_mesh = NULL;
+#endif
 			}
 			else
 			{	/*MOD_FRACTURE_DYNAMIC*/

@@ -99,6 +99,9 @@ void container_compute_cells(container* con, cell* cells)
 				c.centroid[1] = (float)centroid[1] + (float)pp[1];
 				c.centroid[2] = (float)centroid[2] + (float)pp[2];
 
+				// volume
+				c.volume = (float)vc.volume();
+
 				// valid cell, store
 				cells[i] = c;
 

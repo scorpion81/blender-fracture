@@ -363,6 +363,8 @@ static Shard *do_output_shard_dm(DerivedMesh** output_dm, Shard *child, int num_
 		output_s->neighbor_count = child->neighbor_count;
 		output_s->neighbor_ids = MEM_mallocN(sizeof(int) * child->neighbor_count, __func__);
 		memcpy(output_s->neighbor_ids, child->neighbor_ids, sizeof(int) * child->neighbor_count);
+		copy_v3_v3(output_s->raw_centroid, child->raw_centroid);
+		output_s->raw_volume = child->raw_volume;
 	}
 
 	BKE_fracture_shard_center_centroid(output_s, output_s->centroid);
@@ -606,6 +608,8 @@ static Shard *do_output_shard(BMesh* bm_parent, Shard *child)
 		output_s->neighbor_ids = MEM_mallocN(sizeof(int) * child->neighbor_count, __func__);
 		memcpy(output_s->neighbor_ids, child->neighbor_ids, sizeof(int) * child->neighbor_count);
 		BKE_fracture_shard_center_centroid(output_s, output_s->centroid);
+		copy_v3_v3(output_s->raw_centroid, child->raw_centroid);
+		output_s->raw_volume = child->raw_volume;
 
 		dm_out->needsFree = 1;
 		dm_out->release(dm_out);

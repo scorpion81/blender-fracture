@@ -43,6 +43,7 @@
 #include "BKE_mesh.h"
 #include "BKE_object.h"
 
+#include "BLI_kdtree.h"
 #include "BLI_listbase.h"
 #include "BLI_math_vector.h"
 #include "BLI_mempool.h"
@@ -350,6 +351,7 @@ Shard *BKE_create_fracture_shard(MVert *mvert, MPoly *mpoly, MLoop *mloop, int t
 	BKE_shard_calc_minmax(shard);
 
 	BKE_fracture_shard_center_centroid(shard, shard->centroid);
+	copy_v3_v3(shard->raw_centroid, shard->centroid);
 
 	return shard;
 }
@@ -365,6 +367,8 @@ FracMesh *BKE_create_fracture_container(void)
 	fmesh->cancel = 0;
 	fmesh->running = 0;
 	fmesh->progress_counter = 0;
+	fmesh->last_shards = NULL;
+	fmesh->last_shard_tree = NULL;
 	
 	return fmesh;
 }
@@ -546,7 +550,6 @@ static bool handle_boolean_bisect(FracMesh *fm, Object *obj, int expected_shards
 	if (fm->cancel == 1)
 		return true;
 
-	printf("Processing shard: %d\n", *i);
 	t = tempshards[*i];
 
 	if (t != NULL) {
@@ -558,6 +561,8 @@ static bool handle_boolean_bisect(FracMesh *fm, Object *obj, int expected_shards
 		/* invalid shard, stop parsing */
 		return true;
 	}
+
+	printf("Processing shard: %d\n", *i);
 
 	/* XXX TODO, need object for material as well, or atleast a material index... */
 	if (algorithm == MOD_FRACTURE_BOOLEAN) {
@@ -593,6 +598,8 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 {
 	int i;
 	Shard *s = NULL;
+	int *skipmap = MEM_callocN(sizeof(int) * expected_shards, "skipmap");
+	int *deletemap = MEM_callocN(sizeof(int) * fm->shard_count, "deletemap");
 
 	if ((algorithm == MOD_FRACTURE_BOOLEAN) || (algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL)) {
 		MPoly *mpoly, *mp;
@@ -612,17 +619,95 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 		copy_v3_v3(*centroid, p->centroid);
 	}
 
-	for (i = 0; i < expected_shards; i++) {
+	if (fm->last_shard_tree)
+	{
+		fill_vn_i(skipmap, expected_shards, 1);
+		for (i = 0; i < expected_shards; i++)
+		{
+			KDTreeNearest n;
+			int l, j;
+			float max = 0;
+			for (l = 0; l < cells[i].totpoly; l++)
+			{
+				int index = cells[i].neighbors[l];
+				if (index > -1)
+				{
+					float dist = len_squared_v3v3(cells[index].centroid, cells[i].centroid);
+					if (dist > max)
+					{
+						max = dist;
+					}
+				}
+			}
+
+			j = BLI_kdtree_find_nearest(fm->last_shard_tree, cells[i].centroid, &n);
+			if (j > -1)
+			{
+				Shard *t = fm->last_shards[j];
+				float dist = len_squared_v3v3(n.co, cells[i].centroid);
+				if (t != NULL && dist < max)
+				{
+					if (dist < 0.001) {
+						if (fabsf(cells[i].volume - t->raw_volume) < 0.001) {
+							//printf("Tagging skip: %d\n", i);
+							skipmap[i] = true;
+							deletemap[j] = false;
+						}
+						else
+						{
+							deletemap[j] = true;
+							skipmap[i] = false;
+						}
+					}
+					else
+					{
+						skipmap[i] = false;
+						deletemap[j] = true;
+					}
+				}
+			}
+		}
+	}
+
+	//skipping /deletion pass
+	for (i = 0; i < expected_shards; i++)
+	{
 		if (fm->cancel == 1) {
 			break;
 		}
 
-		printf("Parsing shard: %d\n", i);
-		s = parse_cell(cells[i]);
-		(*tempshards)[i] = s;
+		if (skipmap[i])
+		{
+			printf("Skipping shard: %d\n", i);
+			(*tempshards)[i] = NULL;
+			(*tempresults)[i] = NULL;
+		}
+		else
+		{
+			printf("Parsing shard: %d\n", i);
+			s = parse_cell(cells[i]);
+			(*tempshards)[i] = s;
+		}
+
 		(*tempresults)[i] = NULL;
 		fm->progress_counter++;
 	}
+
+	for (i = 0; i < fm->shard_count; i++)
+	{
+		if (deletemap[i])
+		{
+			Shard *t = fm->last_shards[i];
+			BLI_remlink_safe(&fm->shard_map, t);
+			BKE_shard_free(t, true);
+			fm->last_shards[i] = NULL;
+
+			printf("Deleting shard: %d\n", i);
+		}
+	}
+
+	MEM_freeN(skipmap);
+	MEM_freeN(deletemap);
 }
 
 
@@ -630,8 +715,8 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, FracMesh *fm, int algorithm, Object *obj, DerivedMesh *dm, short inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode)
 {
 	/*Parse voronoi raw data*/
-	int i = 0, j = 0;
-	Shard *p = BKE_shard_by_id(fm, parent_id, dm), *t;
+	int i = 0, j = 0, count = 0;
+	Shard *p = BKE_shard_by_id(fm, parent_id, dm); // *t;
 	float obmat[4][4]; /* use unit matrix for now */
 	float centroid[3], pcentroid[3] = {0,0,0};
 	BMesh *bm_parent = NULL;
@@ -645,8 +730,45 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 		return;
 	}
 
-	tempshards = MEM_mallocN(sizeof(Shard *) * expected_shards, "tempshards");
-	tempresults = MEM_mallocN(sizeof(Shard *) * expected_shards, "tempresults");
+	//rebuild tree
+	if (fm->last_shard_tree)
+	{
+		BLI_kdtree_free(fm->last_shard_tree);
+		fm->last_shard_tree = NULL;
+	}
+
+	if (fm->last_shards)
+	{
+		MEM_freeN(fm->last_shards);
+		fm->last_shards = NULL;
+	}
+
+	if (!fm->last_shard_tree && fm->shard_count > 0 &&
+	    mode == MOD_FRACTURE_PREFRACTURED &&
+	    algorithm != MOD_FRACTURE_BISECT_FAST &&
+	    algorithm != MOD_FRACTURE_BISECT_FAST_FILL)
+	{
+		Shard *t;
+		int i = 0;
+		count = BLI_listbase_count(&fm->shard_map);
+		fm->shard_count = count;
+		fm->last_shard_tree = BLI_kdtree_new(expected_shards + count);
+		fm->last_shards = MEM_callocN(sizeof(Shard*) * expected_shards, "last_shards");
+
+		//fill tree from current shardmap
+		for (t = fm->shard_map.first; t; t = t->next)
+		{
+			t->flag &=~ (SHARD_SKIP | SHARD_DELETE);
+			BLI_kdtree_insert(fm->last_shard_tree, i, t->raw_centroid);
+			fm->last_shards[i] = t;
+			i++;
+		}
+
+		BLI_kdtree_balance(fm->last_shard_tree);
+	}
+
+	tempshards = MEM_callocN(sizeof(Shard *) * expected_shards, "tempshards");
+	tempresults = MEM_callocN(sizeof(Shard *) * expected_shards, "tempresults");
 
 	p->flag = 0;
 	p->flag |= SHARD_FRACTURED;
@@ -670,8 +792,8 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 			bool stop = handle_boolean_bisect(fm, obj, expected_shards, algorithm, parent_id, tempshards, dm_parent,
 			                      bm_parent, obmat, inner_material_index, num_cuts, num_levels, fractal,
 			                      &i, smooth, &tempresults, &dm_p);
-			if (stop)
-				break;
+			//if (stop)
+			//	break;
 		}
 	}
 	else {
@@ -769,10 +891,12 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 		}
 	}
 
+#if 0
 	for (t = fm->shard_map.first; t; t = t->next)
 	{
 		printf("SHARD: %d %d\n", t->shard_id, t->parent_id);
 	}
+#endif
 
 	MEM_freeN(tempshards);
 	MEM_freeN(tempresults);
@@ -816,9 +940,12 @@ static Shard *parse_cell(cell c)
 
 	s = BKE_create_fracture_shard(mvert, mpoly, mloop, totvert, totpoly, totloop, false);
 
+	s->flag &= ~(SHARD_SKIP | SHARD_DELETE);
 	s->neighbor_ids = neighbors;
 	s->neighbor_count = totpoly;
 	copy_v3_v3(s->centroid, centr);
+	copy_v3_v3(s->raw_centroid, centr);
+	s->raw_volume = c.volume;
 
 	return s;
 }
@@ -1251,6 +1378,18 @@ void BKE_fracmesh_free(FracMesh *fm, bool doCustomData)
 		Shard* s = (Shard*)fm->shard_map.first;
 		BLI_remlink_safe(&fm->shard_map, s);
 		BKE_shard_free(s, doCustomData);
+	}
+
+	if (fm->last_shard_tree)
+	{
+		BLI_kdtree_free(fm->last_shard_tree);
+		fm->last_shard_tree = NULL;
+	}
+
+	if (fm->last_shards)
+	{
+		MEM_freeN(fm->last_shards);
+		fm->last_shards = NULL;
 	}
 }
 

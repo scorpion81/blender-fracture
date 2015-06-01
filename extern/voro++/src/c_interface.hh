@@ -38,6 +38,7 @@ typedef struct cell {
 	int *neighbors;
 
 	float centroid[3];
+	float volume;
 	int index;
 	int totvert;
 	int totpoly;
