@@ -730,41 +730,49 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 		return;
 	}
 
-	//rebuild tree
-	if (fm->last_shard_tree)
+	if (mode == MOD_FRACTURE_PREFRACTURED)
 	{
-		BLI_kdtree_free(fm->last_shard_tree);
-		fm->last_shard_tree = NULL;
-	}
-
-	if (fm->last_shards)
-	{
-		MEM_freeN(fm->last_shards);
-		fm->last_shards = NULL;
-	}
-
-	if (!fm->last_shard_tree && fm->shard_count > 0 &&
-	    mode == MOD_FRACTURE_PREFRACTURED &&
-	    algorithm != MOD_FRACTURE_BISECT_FAST &&
-	    algorithm != MOD_FRACTURE_BISECT_FAST_FILL)
-	{
-		Shard *t;
-		int i = 0;
-		count = BLI_listbase_count(&fm->shard_map);
-		fm->shard_count = count;
-		fm->last_shard_tree = BLI_kdtree_new(expected_shards + count);
-		fm->last_shards = MEM_callocN(sizeof(Shard*) * expected_shards, "last_shards");
-
-		//fill tree from current shardmap
-		for (t = fm->shard_map.first; t; t = t->next)
+		//rebuild tree
+		if (fm->last_shard_tree)
 		{
-			t->flag &=~ (SHARD_SKIP | SHARD_DELETE);
-			BLI_kdtree_insert(fm->last_shard_tree, i, t->raw_centroid);
-			fm->last_shards[i] = t;
-			i++;
+			BLI_kdtree_free(fm->last_shard_tree);
+			fm->last_shard_tree = NULL;
 		}
 
-		BLI_kdtree_balance(fm->last_shard_tree);
+		if (fm->last_shards)
+		{
+			MEM_freeN(fm->last_shards);
+			fm->last_shards = NULL;
+		}
+
+		if (!fm->last_shard_tree && fm->shard_count > 0 &&
+			mode == MOD_FRACTURE_PREFRACTURED &&
+			algorithm != MOD_FRACTURE_BISECT_FAST &&
+			algorithm != MOD_FRACTURE_BISECT_FAST_FILL)
+		{
+			Shard *t;
+			int i = 0;
+			count = BLI_listbase_count(&fm->shard_map);
+			fm->shard_count = count;
+			fm->last_shard_tree = BLI_kdtree_new(expected_shards + count);
+			fm->last_shards = MEM_callocN(sizeof(Shard*) * expected_shards, "last_shards");
+
+			//fill tree from current shardmap
+			for (t = fm->shard_map.first; t; t = t->next)
+			{
+				t->flag &=~ (SHARD_SKIP | SHARD_DELETE);
+				BLI_kdtree_insert(fm->last_shard_tree, i, t->raw_centroid);
+				fm->last_shards[i] = t;
+				i++;
+			}
+
+			BLI_kdtree_balance(fm->last_shard_tree);
+		}
+	}
+	else
+	{
+		fm->last_shard_tree = NULL;
+		fm->last_shards = NULL;
 	}
 
 	tempshards = MEM_callocN(sizeof(Shard *) * expected_shards, "tempshards");

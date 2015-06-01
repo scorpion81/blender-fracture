@@ -4872,7 +4872,9 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 	fmd->vertex_island_map = NULL;
 
 	/*HARDCODING this for now, until we can version it properly, say with 2.75 ? */
-	//fmd->fracture_mode = MOD_FRACTURE_PREFRACTURED;
+	if (fd->fileversion < 275) {
+		fmd->fracture_mode = MOD_FRACTURE_PREFRACTURED;
+	}
 
 	if (fm == NULL || fmd->dm_group) {
 		fmd->dm = NULL;
@@ -4897,6 +4899,9 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 		int vertstart = 0;
 		Shard *s;
 		int count = 0;
+
+		fm->last_shard_tree = NULL;
+		fm->last_shards = NULL;
 
 		if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
 		{

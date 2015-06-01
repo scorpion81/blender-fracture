@@ -118,6 +118,8 @@ static FracMesh* copy_fracmesh(FracMesh* fm)
 	fmesh->cancel = 0;
 	fmesh->running = 0;
 	fmesh->progress_counter = 0;
+	fmesh->last_shard_tree = NULL;
+	fmesh->last_shards = NULL;
 
 	return fmesh;
 }
@@ -431,8 +433,10 @@ static void free_modifier(FractureModifierData *fmd, bool do_free_seq)
 			fmd->visible_mesh_cached = NULL;
 		}
 	}
-
-	//free_shards(fmd);
+	else
+	{
+		free_shards(fmd);
+	}
 
 	if (fmd->vert_index_map != NULL) {
 		BLI_ghash_free(fmd->vert_index_map, NULL, NULL);
@@ -3624,6 +3628,9 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 			else
 			{	/*MOD_FRACTURE_DYNAMIC*/
 				/* in dynamic case, we add a sequence step here and move the "current" pointers*/
+				if (!fmd->dm) {
+					BKE_fracture_create_dm(fmd, true);
+				}
 				add_new_entries(fmd, dm, ob);
 			}
 		}
