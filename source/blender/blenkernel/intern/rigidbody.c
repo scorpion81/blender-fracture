@@ -1858,7 +1858,7 @@ static bool check_shard_size(FractureModifierData *fmd, int id)
 	{
 		if (t->shard_id == id && t->flag & SHARD_INTACT)
 		{
-			printf("FOUND: %d\n", id);
+			//printf("FOUND: %d\n", id);
 			s = t;
 			break;
 		}
@@ -1872,9 +1872,9 @@ static bool check_shard_size(FractureModifierData *fmd, int id)
 
 	BKE_shard_calc_minmax(s);
 
-	if ((fabs(s->max[0] - s->min[0]) < size) ||
-	   (fabs(s->max[1] - s->min[1]) < size) ||
-	   (fabs(s->max[2] - s->min[2]) < size))
+	if ((fabsf(s->max[0] - s->min[0]) < size) ||
+	   (fabsf(s->max[1] - s->min[1]) < size) ||
+	   (fabsf(s->max[2] - s->min[2]) < size))
 	{
 		return false;
 	}

@@ -278,7 +278,7 @@ float BKE_shard_calc_minmax(Shard *shard)
 
 /*access shard directly by index / id*/
 Shard *BKE_shard_by_id(FracMesh *mesh, ShardID id, DerivedMesh *dm) {
-	if ((id < mesh->shard_count) && (id >= 0)) {
+	if (/*(id < mesh->shard_count) && */(id >= 0)) {
 		//return mesh->shard_map[id];
 		//return (Shard *)BLI_findlink(&mesh->shard_map, id);
 		Shard *s = mesh->shard_map.first;
@@ -319,6 +319,10 @@ void BKE_get_shard_minmax(FracMesh *mesh, ShardID id, float min_r[3], float max_
 		{
 			BKE_shard_free(shard, true);
 		}
+	}
+	else
+	{
+		printf("OOOOPS: %d is NULL!!!\n", id);
 	}
 }
 
@@ -1324,7 +1328,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	if (!shard || shard->flag & SHARD_FRACTURED)
 		return;
 
-	
+	printf("Fracturing with %d points...\n", pointcloud->totpoints);
 	/* calculate bounding box with theta margin */
 	copy_v3_v3(min, shard->min);
 	copy_v3_v3(max, shard->max);

@@ -1103,6 +1103,7 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 		int count = emd->shard_count;
 		INIT_MINMAX(min, max);
 		BKE_get_shard_minmax(emd->frac_mesh, id, min, max, fracmesh); //id 0 should be entire mesh
+		printf("min, max: (%f %f %f), (%f %f %f)\n", min[0], min[1], min[2], max[0], max[1], max[2]);
 
 		if (emd->frac_algorithm == MOD_FRACTURE_BISECT_FAST || emd->frac_algorithm == MOD_FRACTURE_BISECT_FAST_FILL ||
 		    emd->frac_algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL) {
@@ -2827,8 +2828,8 @@ static void do_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, 
 	OUT("centr", par->id, centr);
 	OUT("loc", par->id, loc);
 #endif
-	OUT4("rot", par->id, rot);
-	OUT4("par->rot", par->id, par->rot);
+	//OUT4("rot", par->id, rot);
+	//OUT4("par->rot", par->id, par->rot);
 
 	if (is_parent)
 	{
@@ -2841,7 +2842,7 @@ static void do_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, 
 		copy_v3_v3(centr, loc);
 	}
 
-	mul_qt_qtqt(rot, par->rot, rot);
+	mul_qt_qtqt(rot, rot, par->rot);
 
 	for (j = 0; j < mi->vertex_count; j++)
 	{
@@ -3017,7 +3018,7 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 				}
 				else
 				{
-					printf("OUCH parent ! %d\n", s->parent_id);
+					//printf("OUCH parent ! %d\n", s->parent_id);
 					par = find_meshisland(&prev->meshIslands, s->shard_id);
 					if (par)
 					{
@@ -3025,7 +3026,7 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 					}
 					else
 					{
-						printf("OUCH shard ! %d\n", s->shard_id);
+						//printf("OUCH shard ! %d\n", s->shard_id);
 					}
 				}
 			}
