@@ -75,7 +75,6 @@
 #include "DNA_rigidbody_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_curve_types.h"
-
 #include "MOD_util.h"
 
 #include "../../rigidbody/RBI_api.h"
@@ -84,6 +83,7 @@
 #include "depsgraph_private.h" /* for depgraph updates */
 #include "limits.h"
 
+static int lookup_mesh_state(FractureModifierData *fmd, int frame);
 
 static FracMesh* copy_fracmesh(FracMesh* fm)
 {
@@ -209,6 +209,7 @@ static void initData(ModifierData *md)
 	fmd->last_frame = FLT_MIN;
 	fmd->dynamic_force = 10.0f;
 	fmd->update_dynamic = false;
+
 }
 
 static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
@@ -3600,6 +3601,46 @@ static void get_prev_entries(FractureModifierData *fmd)
 	}
 }
 
+static int lookup_mesh_state(FractureModifierData *fmd, int frame)
+{
+	bool changed = false;
+	bool forward = false;
+	bool backward = false;
+
+	backward = ((fmd->last_frame > frame) && fmd->current_mi_entry && fmd->current_mi_entry->prev);
+	forward = ((fmd->last_frame < frame) && (fmd->current_mi_entry) && (fmd->current_mi_entry->next != NULL) &&
+	           (fmd->current_mi_entry->next->is_new == false));
+
+	if (backward)
+	{
+		while (fmd->current_mi_entry && fmd->current_mi_entry->prev &&
+			   frame < fmd->current_mi_entry->prev->frame + 1)
+		{
+			changed = true;
+			free_constraints(fmd);
+			get_prev_entries(fmd);
+		}
+	}
+	else if (forward)
+	{
+		while ((fmd->current_mi_entry) && (fmd->current_mi_entry->next != NULL) &&
+			   (fmd->current_mi_entry->next->is_new == false) &&
+			   frame >= fmd->current_mi_entry->frame)
+		{
+			changed = true;
+			free_constraints(fmd);
+			get_next_entries(fmd);
+		}
+	}
+
+	if (changed)
+	{
+		fmd->modifier.scene->rigidbody_world->object_changed = true;
+	}
+
+	return forward || backward;
+}
+
 static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 {
 	if (fmd->refresh)
@@ -3680,39 +3721,9 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 	else
 	{
 		int frame = (int)BKE_scene_frame_get(fmd->modifier.scene);
-		int start = fmd->modifier.scene->rigidbody_world->pointcache->startframe;
-		int end = fmd->modifier.scene->rigidbody_world->pointcache->endframe;
 
-		/*handle looping here*/
-		if (fmd->last_frame == end && frame == start)
+		if (!(lookup_mesh_state(fmd, frame)))
 		{
-			fmd->last_frame = INT_MIN;
-		}
-
-		if ((fmd->last_frame > frame) && fmd->current_mi_entry && fmd->current_mi_entry->prev)
-		{
-			/*backward playback*/
-			/*is frame < current entry->frame ?
-			 *then update*/
-			if (frame < fmd->current_mi_entry->prev->frame + 1)
-			{
-				free_constraints(fmd);
-				get_prev_entries(fmd);
-				fmd->modifier.scene->rigidbody_world->object_changed = true;
-			}
-		}
-		else if ((fmd->last_frame < frame) && (fmd->current_mi_entry) && (fmd->current_mi_entry->next != NULL) &&
-		         (fmd->current_mi_entry->next->is_new == false))
-		{
-			/*forward playback*/
-			if (frame >= fmd->current_mi_entry->frame)
-			{
-				free_constraints(fmd);
-				get_next_entries(fmd);
-				fmd->modifier.scene->rigidbody_world->object_changed = true;
-			}
-		}
-		else {
 			/*simulation mode*/
 			/* bullet callbacks may happen multiple times per frame, in next frame we can evaluate them all,
 			 * so we need some array of shardIDs or shards to fracture each *
