@@ -649,6 +649,9 @@ class AddPresetFracture(AddPresetBase, Operator):
         "fracture.cutter_axis",
         "fracture.cluster_constraint_type",
         "fracture.constraint_target",
+        "fracture.fracture_mode",
+        "fracture.dynamic_force",
+        "fracture.limit_impact"
     ]
 
     preset_subdir = "fracture"

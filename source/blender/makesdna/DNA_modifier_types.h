@@ -1586,6 +1586,7 @@ typedef struct FractureModifierData {
 	int breaking_angle_weighted;
 	int breaking_percentage_weighted;
 	int constraint_target;
+	int limit_impact;
 
 	/* internal flags */
 	int use_experimental;
@@ -1597,7 +1598,7 @@ typedef struct FractureModifierData {
 	float max_vol;
 	int last_frame;
 
-	//char pad[4];
+	char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

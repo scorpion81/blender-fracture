@@ -293,7 +293,7 @@ Shard *BKE_shard_by_id(FracMesh *mesh, ShardID id, DerivedMesh *dm) {
 
 		return NULL;
 	}
-	else if (id == -1)
+	else if (id == -1 && dm != NULL)
 	{
 		/* create temporary shard covering the entire mesh */
 		Shard *s = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
@@ -356,6 +356,10 @@ Shard *BKE_create_fracture_shard(MVert *mvert, MPoly *mpoly, MLoop *mloop, int t
 
 	BKE_fracture_shard_center_centroid(shard, shard->centroid);
 	copy_v3_v3(shard->raw_centroid, shard->centroid);
+	zero_v3(shard->impact_loc);
+	shard->impact_size[0] = 1.0f;
+	shard->impact_size[1] = 1.0f;
+	shard->impact_size[2] = 1.0f;
 
 	return shard;
 }

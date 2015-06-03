@@ -212,6 +212,7 @@ static void initData(ModifierData *md)
 	fmd->update_dynamic = false;
 	fmd->lookup_mesh_state = lookup_mesh_state;
 	fmd->do_match_vertex_coords = do_match_vertex_coords;
+	fmd->limit_impact = true;
 }
 
 static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
@@ -991,7 +992,7 @@ static void points_from_particles(Object **ob, int totobj, Scene *scene, FracPoi
 						/* birth coordinates are not sufficient in case we did pre-simulate the particles, so they are not
 						 * aligned with the emitter any more BUT as the particle cache is messy and shows initially wrong
 						 * positions "sabotaging" fracture, default use case is using birth coordinates, let user decide... */
-						if (fmd->use_particle_birth_coordinates)
+						if (fmd->use_particle_birth_coordinates && fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
 						{
 							psys_get_birth_coords(&sim, pa, &birth, 0, 0);
 						}
@@ -1541,10 +1542,13 @@ static void do_rigidbody(FractureModifierData *fmd, MeshIsland* mi, Object* ob, 
 
 	if (fmd->frac_algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL)
 	{
-		/* cant be kept together in other ways */
-		fmd->use_constraints = true;
-		fmd->contact_dist = 2.0f;
-		fmd->breaking_angle = DEG2RADF(1.0f);
+		if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+		{
+			/* cant be kept together in other ways */
+			fmd->use_constraints = true;
+			fmd->contact_dist = 2.0f;
+			fmd->breaking_angle = DEG2RADF(1.0f);
+		}
 
 		/* this most likely will only work with "Mesh" shape*/
 		mi->rigidbody->shape = RB_SHAPE_TRIMESH;
@@ -2913,6 +2917,47 @@ static MeshIsland* find_meshisland(ListBase* meshIslands, int id)
 	return NULL;
 }
 
+static bool contains(float loc[3], float size[3], float point[3])
+{
+	if ((fabsf(loc[0] - point[0]) < size[0]) &&
+	    (fabsf(loc[1] - point[1]) < size[1]) &&
+	    (fabsf(loc[2] - point[2]) < size[2]))
+	{
+		return true;
+	}
+
+	return false;
+}
+
+void set_rigidbody_type(FractureModifierData *fmd, Shard *s, MeshIsland *mi)
+{
+	//how far is impact location away from this shard, if beyond a bbox, keep passive
+	if (fmd->current_shard_entry)
+	{
+		ShardSequence *prev_shards = fmd->current_shard_entry->prev;
+
+		if (prev_shards && (prev_shards->prev == NULL)) //only affect primary fracture
+		{
+			Shard *par_shard = BKE_shard_by_id(prev_shards->frac_mesh, s->parent_id, NULL);
+			if (par_shard)
+			{
+				float impact_loc[3], impact_size[3];
+				copy_v3_v3(impact_loc, par_shard->impact_loc);
+				copy_v3_v3(impact_size, par_shard->impact_size);
+
+				if (contains(impact_loc, impact_size, s->centroid))
+				{
+					mi->rigidbody->flag &= ~RBO_FLAG_KINEMATIC;
+				}
+				else
+				{
+					mi->rigidbody->flag |= RBO_FLAG_KINEMATIC;
+				}
+			}
+		}
+	}
+}
+
 static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s, DerivedMesh *orig_dm,
                                  int i, int thresh_defgrp_index, int ground_defgrp_index, int vertstart)
 {
@@ -2947,8 +2992,14 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 	else
 	{
 		/* in dynamic case preallocate cache here */
-		int start = fmd->modifier.scene->rigidbody_world->pointcache->startframe;
-		int end = fmd->modifier.scene->rigidbody_world->pointcache->endframe;
+		int start = 1;
+		int end = 250;
+
+		if (fmd->modifier.scene->rigidbody_world)
+		{
+			start = fmd->modifier.scene->rigidbody_world->pointcache->startframe;
+			end = fmd->modifier.scene->rigidbody_world->pointcache->endframe;
+		}
 
 		if (fmd->current_mi_entry) {
 			MeshIslandSequence *prev = fmd->current_mi_entry->prev;
@@ -2987,6 +3038,7 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 	{
 		/*take care of previous transformation, if any*/
 		MeshIslandSequence *prev = NULL;
+
 
 		/*also take over the UNFRACTURED last shards transformation !!! */
 		if (s->parent_id == 0)
@@ -3035,6 +3087,11 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 
 	rb_type = do_vert_index_map(fmd, mi);
 	do_rigidbody(fmd, mi, ob, orig_dm, rb_type, i);
+
+	if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && fmd->limit_impact)
+	{
+		set_rigidbody_type(fmd, s, mi);
+	}
 }
 
 static MDeformVert* do_islands_from_shards(FractureModifierData* fmd, Object* ob, DerivedMesh *orig_dm)
@@ -3527,8 +3584,13 @@ static MeshIslandSequence* meshisland_sequence_add(FractureModifierData* fmd, fl
 
 static void add_new_entries(FractureModifierData* fmd, DerivedMesh *dm, Object* ob)
 {
-	float frame = BKE_scene_frame_get(fmd->modifier.scene);
-	float end = fmd->modifier.scene->rigidbody_world->pointcache->endframe;
+	int frame = (int)BKE_scene_frame_get(fmd->modifier.scene);
+	int end = 250;
+
+	if (fmd->modifier.scene->rigidbody_world)
+	{
+		end = fmd->modifier.scene->rigidbody_world->pointcache->endframe;
+	}
 
 	if (fmd->current_shard_entry)
 	{

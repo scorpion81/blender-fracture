@@ -1317,7 +1317,7 @@ static void rigidbody_validate_sim_object(RigidBodyWorld *rbw, Object *ob, bool 
 	}
 
 	if (rbw && rbw->physics_world)
-		RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups, NULL, ob, -1);
+		RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups, NULL, ob, rbo->meshisland_index);
 }
 
 /* --------------------- */
@@ -1847,12 +1847,13 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	return check_colgroup_ghost(ob1, ob2);
 }
 
-static bool check_shard_size(FractureModifierData *fmd, int id)
+static bool check_shard_size(FractureModifierData *fmd, int id, float impact_loc[3], Object* collider)
 {
 	FractureID *fid;
 	float size = 0.1f;
 	Shard *t = fmd->frac_mesh->shard_map.first;
 	Shard *s = NULL;
+	float dim[3];
 
 	while (t)
 	{
@@ -1886,6 +1887,12 @@ static bool check_shard_size(FractureModifierData *fmd, int id)
 			return false;
 		}
 	}
+
+	//simple calc, take just the 1st dimension here.... will be refined later, TODO
+	BKE_object_dimensions_get(collider, dim);
+
+	copy_v3_v3(s->impact_loc, impact_loc);
+	copy_v3_v3(s->impact_size, dim);
 
 	printf("FRACTURE : %d\n", id);
 
@@ -1939,6 +1946,12 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 		return;
 	}
 
+	if (linear_index2 > -1)
+	{
+		ob_index2 = rbw->cache_offset_map[linear_index2];
+		ob2 = rbw->objects[ob_index2];
+	}
+
 	if (linear_index1 > -1)
 	{
 		ob_index1 = rbw->cache_offset_map[linear_index1];
@@ -1952,7 +1965,7 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 					/*only fracture on new entries, this is necessary because after loading a file
 					 *the pointcache thinks it is empty and a fracture is attempted ! */
 					int id = rbw->cache_index_map[linear_index1]->meshisland_index;
-					if(check_shard_size(fmd1, id))
+					if(check_shard_size(fmd1, id, cp->contact_pos_world_onA, ob2))
 					{
 						FractureID* fid1 = MEM_mallocN(sizeof(FractureID), "contact_callback_fractureid1");
 						fid1->shardID = rbw->cache_index_map[linear_index1]->meshisland_index;
@@ -1969,8 +1982,8 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 
 	if (linear_index2 > -1)
 	{
-		ob_index2 = rbw->cache_offset_map[linear_index2];
-		ob2 = rbw->objects[ob_index2];
+		//ob_index2 = rbw->cache_offset_map[linear_index2];
+		//ob2 = rbw->objects[ob_index2];
 		fmd2 = (FractureModifierData*)modifiers_findByType(ob2, eModifierType_Fracture);
 
 		if (fmd2 && fmd2->fracture_mode == MOD_FRACTURE_DYNAMIC) {
@@ -1978,7 +1991,7 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 				if (fmd2->current_shard_entry && fmd2->current_shard_entry->is_new)
 				{
 					int id = rbw->cache_index_map[linear_index2]->meshisland_index;
-					if(check_shard_size(fmd2, id))
+					if(check_shard_size(fmd2, id, cp->contact_pos_world_onB, ob1))
 					{
 						FractureID* fid2 = MEM_mallocN(sizeof(FractureID), "contact_callback_fractureid2");
 						fid2->shardID = id;
@@ -2639,7 +2652,7 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 		if (!ismapped) {
 			rbw->cache_index_map[counter] = ob->rigidbody_object; /*1 object 1 index here (normal case)*/
 			rbw->cache_offset_map[counter] = i;
-			ob->rigidbody_object->meshisland_index = -1;
+			ob->rigidbody_object->meshisland_index = counter;
 			counter++;
 		}
 

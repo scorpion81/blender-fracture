@@ -74,6 +74,7 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         row.prop(md, "fracture_mode")
         if md.fracture_mode == 'DYNAMIC':
             layout.prop(md, "dynamic_force")
+            layout.prop(md, "limit_impact")
 
         layout.prop(md, "frac_algorithm")
         col = layout.column(align=True)
