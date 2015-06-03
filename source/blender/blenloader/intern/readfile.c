@@ -4760,49 +4760,24 @@ static void read_meshIsland(FileData *fd, MeshIsland **address)
 }
 
 /*inlined from MOD_fracture.c*/
-static void do_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, int frame)
+static MeshIsland* find_meshisland(ListBase* meshIslands, int id)
 {
-	float loc[3] = {0.0f, 0.0f, 0.0f};
-	float rot[4] = {0.0f, 0.0f, 0.0f, 1.0f};
-	int j = 0;
-	float irot[4];
-	invert_m4_m4(ob->imat, ob->obmat);
-
-	loc[0] = par->locs[3*frame];
-	loc[1] = par->locs[3*frame+1];
-	loc[2] = par->locs[3*frame+2];
-
-	rot[0] = par->rots[4*frame];
-	rot[1] = par->rots[4*frame+1];
-	rot[2] = par->rots[4*frame+2];
-	rot[3] = par->rots[4*frame+3];
-
-	mul_m4_v3(ob->imat, loc);
-	mat4_to_quat(irot, ob->imat);
-	mul_qt_qtqt(rot, rot, irot);
-
-	//match vertices and vertco, perhaps vertno too, yuck...
-	for (j = 0; j < mi->vertex_count; j++)
+	MeshIsland* mi = meshIslands->first;
+	while (mi)
 	{
-		float co[3];
+		if (mi->id == id)
+		{
+			return mi;
+		}
 
-		//mul_qt_v3(rot, mi->vertices_cached[j]->co);
-		add_v3_v3(mi->vertices_cached[j]->co, loc);
-
-		co[0] = mi->vertco[3*j];
-		co[1] = mi->vertco[3*j+1];
-		co[2] = mi->vertco[3*j+2];
-
-		//mul_qt_v3(rot, co);
-		add_v3_v3(co, loc);
-
-		mi->vertco[3*j]   = co[0];
-		mi->vertco[3*j+1] = co[1];
-		mi->vertco[3*j+2] = co[2];
+		mi = mi->next;
 	}
+
+	return NULL;
 }
 
-static int initialize_meshisland(FractureModifierData* fmd, MeshIsland** mii, MVert* mverts, int vertstart, Object *ob, ShardID parent_id)
+static int initialize_meshisland(FractureModifierData* fmd, MeshIsland** mii, MVert* mverts, int vertstart,
+                                 Object *ob, ShardID parent_id, ShardID shard_id)
 {
 	MVert *mv;
 	int k = 0;
@@ -4844,12 +4819,21 @@ static int initialize_meshisland(FractureModifierData* fmd, MeshIsland** mii, MV
 		{
 			MeshIsland *par = NULL;
 			int frame = prev->frame;
-			par = BLI_findlink(&prev->meshIslands, parent_id);
-			frame -= par->start_frame;
 
+			par = find_meshisland(&prev->meshIslands, parent_id);
 			if (par)
 			{
-				do_match_vertex_coords(mi, par, ob, frame);
+				frame -= par->start_frame;
+				fmd->do_match_vertex_coords(mi, par, ob, frame, true);
+			}
+			else
+			{
+				par = find_meshisland(&prev->meshIslands, shard_id);
+				if (par)
+				{
+					frame -= par->start_frame;
+					fmd->do_match_vertex_coords(mi, par, ob, frame, false);
+				}
 			}
 		}
 	}
@@ -4873,7 +4857,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 
 	/*HARDCODING this for now, until we can version it properly, say with 2.75 ? */
 	if (fd->fileversion < 275) {
-		fmd->fracture_mode = MOD_FRACTURE_PREFRACTURED;
+		//fmd->fracture_mode = MOD_FRACTURE_PREFRACTURED;
 	}
 
 	if (fm == NULL || fmd->dm_group) {
@@ -4951,7 +4935,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 
 			for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 				read_meshIsland(fd, &mi);
-				vertstart += initialize_meshisland(fmd, &mi, mverts, vertstart, ob, -1);
+				vertstart += initialize_meshisland(fmd, &mi, mverts, vertstart, ob, -1, -1);
 			}
 		}
 		else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
@@ -4992,7 +4976,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 				link_list(fd, &msq->meshIslands);
 				for (mi = msq->meshIslands.first; mi; mi = mi->next) {
 					read_meshIsland(fd, &mi);
-					vertstart += initialize_meshisland(fmd, &mi, mverts, vertstart, ob, sh->parent_id);
+					vertstart += initialize_meshisland(fmd, &mi, mverts, vertstart, ob, sh->parent_id, sh->shard_id);
 					sh = sh->next;
 				}
 

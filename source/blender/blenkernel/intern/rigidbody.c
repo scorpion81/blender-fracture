@@ -2664,7 +2664,8 @@ static void rigidbody_update_sim_world(Scene *scene, RigidBodyWorld *rbw)
 	RB_dworld_set_gravity(rbw->physics_world, adj_gravity);
 
 	/* update object array in case there are changes */
-	rigidbody_update_ob_array(rbw);
+	if (!rbw->refresh_modifiers)
+		rigidbody_update_ob_array(rbw);
 }
 
 static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *ob, RigidBodyOb *rbo, float centroid[3])
@@ -2953,7 +2954,18 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 
 	if (isModifierActive(fmd)) {
 		float max_con_mass = 0;
-		int count = BLI_listbase_count(&fmd->meshIslands);
+		int count = 0;//BLI_listbase_count(&fmd->meshIslands);
+
+		if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+		{
+			int frame = (int)BKE_scene_frame_get(scene);
+			if (fmd->lookup_mesh_state(fmd, frame, true))
+			{
+				rigidbody_update_ob_array(rbw);
+			}
+		}
+
+		count = BLI_listbase_count(&fmd->meshIslands);
 
 		for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 			if (mi->rigidbody == NULL) {
@@ -2963,6 +2975,13 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				/* perform simulation data updates as tagged */
 				/* refresh object... */
 				int do_rebuild = rebuild;
+
+				if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && mi->rigidbody->physics_object) {
+					//printf("Velocities...\n");
+					RB_body_get_linear_velocity(mi->rigidbody->physics_object, mi->lin_vel);
+					RB_body_get_angular_velocity(mi->rigidbody->physics_object, mi->ang_vel);
+				}
+
 				if (fmd->use_breaking)
 				{
 					float weight = mi->thresh_weight;
@@ -3253,6 +3272,15 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 				copy_m4_m4(ob->obmat, fmd->origmat);
 			}
 
+			if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+			{
+				int frame = (int)ctime;
+				if (fmd->lookup_mesh_state(fmd, frame, true))
+				{
+					rigidbody_update_ob_array(rbw);
+				}
+			}
+
 			for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 
 				rbo = mi->rigidbody;
@@ -3496,10 +3524,10 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 
 	/*trigger dynamic update*/
 	if ((rbw->object_changed))
-	{   /* flag modifier refresh at their next execution XXX TODO -> still used ? */
-		//rbw->refresh_modifiers = true;
+	{
 		rbw->object_changed = false;
 		rigidbody_update_simulation(scene, rbw, true);
+		rbw->refresh_modifiers = false;
 	}
 
 	if (ctime <= startframe) {
@@ -3507,7 +3535,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 		rbw->rebuild_comp_con = true;
 
 		rbw->ltime = startframe;
-		if ((rbw->object_changed))
+		if (rbw->object_changed)
 		{       /* flag modifier refresh at their next execution XXX TODO -> still used ? */
 			rbw->refresh_modifiers = true;
 			rbw->object_changed = false;
@@ -3529,6 +3557,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	/* try to read from cache */
 	// RB_TODO deal with interpolated, old and baked results
 	if (BKE_ptcache_read(&pid, ctime)) {
+		printf("Cache read:  %d\n", (int)ctime);
 		BKE_ptcache_validate(cache, (int)ctime);
 
 		rbw->ltime = ctime;

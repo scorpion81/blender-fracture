@@ -1015,7 +1015,7 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 	}
 
 	ob = rbw->objects[rbw->cache_offset_map[index]];
-	fmd = modifiers_findByType(ob, eModifierType_Fracture);
+	fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
 
 	if (rbo && rbo->type == RBO_TYPE_ACTIVE && rbo->physics_object &&
 	    (!(rbo->flag & RBO_FLAG_NEEDS_VALIDATE)))
@@ -1032,7 +1032,10 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 		else if (fmd && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
 			MeshIsland *mi = BLI_findlink(&fmd->meshIslands, rbo->meshisland_index);
-			int frame = (int)cfra - mi->start_frame;
+			int frame = (int)floor(cfra);
+			frame =  frame - mi->start_frame;
+
+			//printf("Writing frame %d %d %d %d\n", (int)cfra, mi->start_frame, frame, fmd->last_frame);
 
 			mi->locs[3*frame] = rbo->pos[0];
 			mi->locs[3*frame+1] = rbo->pos[1];
@@ -1042,6 +1045,10 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 			mi->rots[4*frame+1] = rbo->orn[1];
 			mi->rots[4*frame+2] = rbo->orn[2];
 			mi->rots[4*frame+3] = rbo->orn[3];
+
+			//dummy data
+			PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, rbo->pos);
+			PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, rbo->orn);
 		}
 	}
 
@@ -1063,7 +1070,7 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfr
 	}
 
 	ob = rbw->objects[rbw->cache_offset_map[index]];
-	fmd = modifiers_findByType(ob, eModifierType_Fracture);
+	fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
 	if (!fmd || fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
 	{
 		if (rbo && rbo->type == RBO_TYPE_ACTIVE) {
@@ -1086,7 +1093,10 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfr
 
 			//modifier should have "switched" this to current set of meshislands already.... so access it
 			MeshIsland *mi = BLI_findlink(&fmd->meshIslands, rbo->meshisland_index);
-			int frame = (int)cfra - mi->start_frame;
+			int frame = (int)floor(cfra);
+			frame = frame - mi->start_frame;
+
+			//printf("Reading frame %d %d %d %d\n", (int)cfra, mi->start_frame, frame, fmd->last_frame);
 
 			rbo->pos[0] = mi->locs[3*frame];
 			rbo->pos[1] = mi->locs[3*frame+1];
@@ -1114,7 +1124,7 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 	}
 
 	ob = rbw->objects[rbw->cache_offset_map[index]];
-	fmd = modifiers_findByType(ob, eModifierType_Fracture);
+	fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
 
 	if (rbo->type == RBO_TYPE_ACTIVE) {
 
@@ -1136,7 +1146,8 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 			float loc[3], rot[4];
 
 			MeshIsland *mi = BLI_findlink(&fmd->meshIslands, rbo->meshisland_index);
-			int frame = (int)cfra2 - mi->start_frame;
+			int frame = (int)floor(cfra);
+			frame = frame - mi->start_frame;
 
 			loc[0] = mi->locs[3*frame];
 			loc[1] = mi->locs[3*frame+1];

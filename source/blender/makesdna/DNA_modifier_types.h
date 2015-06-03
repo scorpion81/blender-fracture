@@ -1524,6 +1524,9 @@ typedef struct FractureModifierData {
 	ShardSequence *current_shard_entry; /*volatile storage of current shard entry, so we dont have to search in the list */
 	MeshIslandSequence *current_mi_entry; /*analogous to current shard entry */
 	ListBase fracture_ids; /*volatile storage of shards being "hit" or fractured currently, needs to be cleaned up after usage! */
+	int (*lookup_mesh_state)(struct FractureModifierData *fmd, int frame, int do_lookup);
+	void (*do_match_vertex_coords)(struct MeshIsland* mi, struct MeshIsland *par, struct Object *ob,
+	                               int frame, bool is_parent);
 
 	/* values */
 	int frac_algorithm;
