@@ -4857,7 +4857,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 
 	/*HARDCODING this for now, until we can version it properly, say with 2.75 ? */
 	if (fd->fileversion < 275) {
-		//fmd->fracture_mode = MOD_FRACTURE_PREFRACTURED;
+		fmd->fracture_mode = MOD_FRACTURE_PREFRACTURED;
 	}
 
 	if (fm == NULL || fmd->dm_group) {
@@ -4943,6 +4943,9 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 			ShardSequence *ssq = NULL;
 			MeshIslandSequence *msq = NULL;
 			fmd->dm = NULL;
+
+			fmd->lookup_mesh_state = newdataadr(fd, fmd->lookup_mesh_state);
+			fmd->do_match_vertex_coords = newdataadr(fd, fmd->do_match_vertex_coords);
 
 			link_list(fd, &fmd->shard_sequence);
 			for (ssq = fmd->shard_sequence.first; ssq; ssq = ssq->next)
