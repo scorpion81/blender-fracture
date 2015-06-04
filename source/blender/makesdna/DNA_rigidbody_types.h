@@ -74,13 +74,8 @@ typedef struct RigidBodyWorld {
 	/* References to Physics Sim objects. Exist at runtime only ---------------------- */
 	void *physics_world;		/* Physics sim world (i.e. btDiscreteDynamicsWorld) */
 	RigidBodyOb **cache_index_map;		/* Maps the linear RigidbodyOb index to the nested Object(Modifier) Index, at runtime*/
-	void *last_contact_point;
 	int *cache_offset_map;		/* Maps the linear RigidbodyOb index to the nested Object(Modifier) cell offset, at runtime, so it does not need to be calced in cache*/
-	int *local_index_map;
-	int refresh_modifiers;		/* If we have rigidbody modifiers, time to refresh them if flag is set*/
-	int object_changed;			/* Flag changes to objects (especially those with modifiers)*/
-	int rebuild_comp_con;
-	char pad2[4];
+	//char pad2[4];
 } RigidBodyWorld;
 
 /* Flags for RigidBodyWorld */
@@ -89,8 +84,14 @@ typedef enum eRigidBodyWorld_Flag {
 	RBW_FLAG_MUTED				= (1 << 0),
 	/* sim data needs to be rebuilt */
 	RBW_FLAG_NEEDS_REBUILD		= (1 << 1),
-	/* usse split impulse when stepping the simulation */
-	RBW_FLAG_USE_SPLIT_IMPULSE	= (1 << 2)
+	/* use split impulse when stepping the simulation */
+	RBW_FLAG_USE_SPLIT_IMPULSE	= (1 << 2),
+	/* Flag changes to objects (especially those with modifiers)*/
+	RBW_FLAG_OBJECT_CHANGED		= (1 << 3),
+	/* If we have rigidbody modifiers, time to refresh them if flag is set*/
+	RBW_FLAG_REFRESH_MODIFIERS	= (1 << 4),
+	/* Flag rebuild of constraints in fracture modifier objects */
+	RBW_FLAG_REBUILD_CONSTRAINTS = (1 << 5),
 } eRigidBodyWorld_Flag;
 
 /* ******************************** */
@@ -134,6 +135,8 @@ typedef struct RigidBodyOb {
 	
 	float orn[4];			/* rigid body orientation */
 	float pos[3];			/* rigid body position */
+	float lin_vel[3];		/* rigid body linear velocity, important for dynamic fracture*/
+	float ang_vel[3];		/* rigid body angular velocity, important for dynamic fracture*/
 	float pad1;
 } RigidBodyOb;
 

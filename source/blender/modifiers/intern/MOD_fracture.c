@@ -207,7 +207,7 @@ static void initData(ModifierData *md)
 	fmd->last_frame = FLT_MIN;
 	fmd->dynamic_force = 10.0f;
 	fmd->update_dynamic = false;
-	fmd->limit_impact = true;
+	fmd->limit_impact = false;
 }
 
 static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
@@ -2773,7 +2773,7 @@ static void do_handle_parent_mi(FractureModifierData *fmd, MeshIsland *mi, MeshI
 	BKE_match_vertex_coords(mi, par, ob, frame, is_parent);
 
 	BKE_rigidbody_remove_shard(fmd->modifier.scene, par);
-	fmd->modifier.scene->rigidbody_world->object_changed = true;
+	fmd->modifier.scene->rigidbody_world->flag |= RBW_FLAG_OBJECT_CHANGED;
 	par->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 }
 
@@ -2838,6 +2838,8 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
                                  int i, int thresh_defgrp_index, int ground_defgrp_index, int vertstart)
 {
 	MeshIsland *mi;
+	MeshIsland *par = NULL;
+	bool is_parent = false;
 	short rb_type = RBO_TYPE_ACTIVE;
 	float dummyloc[3], rot[4];
 	//float linvel[3], angvel[3];
@@ -2935,20 +2937,21 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 
 		if (prev)
 		{
-			MeshIsland *par = NULL;
 			int frame = prev->frame;
 
 			par = find_meshisland(&prev->meshIslands, s->parent_id);
 			if (par)
 			{
-				do_handle_parent_mi(fmd, mi, par, ob, frame, true);
+				is_parent = true;
+				do_handle_parent_mi(fmd, mi, par, ob, frame, is_parent);
 			}
 			else
 			{
 				par = find_meshisland(&prev->meshIslands, s->shard_id);
 				if (par)
 				{
-					do_handle_parent_mi(fmd, mi, par, ob, frame, false);
+					is_parent = false;
+					do_handle_parent_mi(fmd, mi, par, ob, frame, is_parent);
 				}
 			}
 		}
@@ -2964,9 +2967,18 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 	rb_type = do_vert_index_map(fmd, mi);
 	do_rigidbody(fmd, mi, ob, orig_dm, rb_type, i);
 
-	if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && fmd->limit_impact)
+	if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 	{
-		set_rigidbody_type(fmd, s, mi);
+		if (fmd->limit_impact)
+		{
+			set_rigidbody_type(fmd, s, mi);
+		}
+
+		if (par != NULL)
+		{
+			copy_v3_v3(mi->rigidbody->lin_vel, par->rigidbody->lin_vel);
+			copy_v3_v3(mi->rigidbody->ang_vel, par->rigidbody->ang_vel);
+		}
 	}
 }
 
@@ -3595,7 +3607,7 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 			{
 				BKE_free_constraints(fmd);
 				printf("REFRESH: %s \n", ob->id.name);
-				fmd->modifier.scene->rigidbody_world->object_changed = true;
+				fmd->modifier.scene->rigidbody_world->flag |= RBW_FLAG_OBJECT_CHANGED;
 				fmd->refresh = true;
 				//fmd->current_shard_entry->is_new = false;
 			}

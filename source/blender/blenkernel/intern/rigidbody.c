@@ -1209,13 +1209,23 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 
 		RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
 		RB_body_set_kinematic_state(rbo->physics_object, rbo->flag & RBO_FLAG_KINEMATIC || rbo->flag & RBO_FLAG_DISABLED);
+
+		if ((len_squared_v3(rbo->lin_vel) > (rbo->lin_sleep_thresh * rbo->lin_sleep_thresh)))
+		{
+			//printf("Setting linear velocity (%f, %f, %f)\n", rbo->lin_vel[0], rbo->lin_vel[1], rbo->lin_vel[2]);
+			RB_body_set_linear_velocity(rbo->physics_object, rbo->lin_vel);
+		}
+
+		if ((len_squared_v3(rbo->ang_vel) > (rbo->ang_sleep_thresh * rbo->ang_sleep_thresh)))
+		{
+			//printf("Setting angular velocity (%f, %f, %f)\n", rbo->ang_vel[0], rbo->ang_vel[1], rbo->ang_vel[2]);
+			RB_body_set_angular_velocity(rbo->physics_object, rbo->ang_vel);
+		}
 	}
 
 	if (rbw && rbw->physics_world && rbo->physics_object)
 	{
 		RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups, mi, ob, mi->linear_index);
-
-		//apply_movement_update(rbo, mi);
 	}
 
 	rbo->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
@@ -2010,8 +2020,8 @@ RigidBodyWorld *BKE_rigidbody_create_world(Scene *scene)
 
 	rbw->pointcache = BKE_ptcache_add(&(rbw->ptcaches));
 	rbw->pointcache->step = 1;
-	rbw->object_changed = false;
-	rbw->refresh_modifiers = false;
+	rbw->flag &=~ RBW_FLAG_OBJECT_CHANGED;
+	rbw->flag &=~ RBW_FLAG_REFRESH_MODIFIERS;
 
 	rbw->objects = MEM_mallocN(sizeof(Object *), "objects");
 	rbw->cache_index_map = MEM_mallocN(sizeof(RigidBodyOb *), "cache_index_map");
@@ -2170,6 +2180,9 @@ RigidBodyOb *BKE_rigidbody_create_object(Scene *scene, Object *ob, short type)
 	mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
 
 	rbo->meshisland_index = -1;
+
+	zero_v3(rbo->lin_vel);
+	zero_v3(rbo->ang_vel);
 
 	fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
 	if (fmd && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
@@ -2620,7 +2633,7 @@ static void rigidbody_update_sim_world(Scene *scene, RigidBodyWorld *rbw)
 	RB_dworld_set_gravity(rbw->physics_world, adj_gravity);
 
 	/* update object array in case there are changes */
-	if (!rbw->refresh_modifiers)
+	if (!(rbw->flag & RBW_FLAG_REFRESH_MODIFIERS))
 		rigidbody_update_ob_array(rbw);
 }
 
@@ -3009,7 +3022,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				BKE_rigidbody_validate_sim_shard_constraint(rbw, rbsc, false);
 			}
 
-			if (rbsc->physics_constraint && rbw && rbw->rebuild_comp_con) {
+			if (rbsc->physics_constraint && rbw && (rbw->flag & RBW_FLAG_REBUILD_CONSTRAINTS)) {
 				RB_constraint_set_enabled(rbsc->physics_constraint, true);
 			}
 
@@ -3088,7 +3101,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 			rigidbody_update_sim_ob(scene, rbw, ob, rbo, centroid);
 		}
 
-		rbw->refresh_modifiers = false;
+		rbw->flag &= ~RBW_FLAG_REFRESH_MODIFIERS;
 	}
 
 	/* update constraints */
@@ -3155,6 +3168,10 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 							if (rbo->type == RBO_TYPE_PASSIVE)
 								RB_body_deactivate(rbo->physics_object);
 						}
+
+						/* update stored velocities, can be set again after sim rebuild */
+						RB_body_get_linear_velocity(rbo->physics_object, rbo->lin_vel);
+						RB_body_get_angular_velocity(rbo->physics_object, rbo->ang_vel);
 					}
 					modFound = true;
 					break;
@@ -3208,7 +3225,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 				if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ && rbw) {
 					RigidBodyShardCon *con;
 
-					rbw->object_changed = true;
+					rbw->flag |= RBW_FLAG_OBJECT_CHANGED;
 					BKE_rigidbody_cache_reset(rbw);
 					/* re-enable all constraints as well */
 					for (con = fmd->meshConstraints.first; con; con = con->next) {
@@ -3218,7 +3235,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 				}
 			}
 
-			if (!is_zero_m4(fmd->origmat) && rbw && !rbw->object_changed) {
+			if (!is_zero_m4(fmd->origmat) && rbw && !(rbw->flag & RBW_FLAG_OBJECT_CHANGED)) {
 				copy_m4_m4(ob->obmat, fmd->origmat);
 			}
 
@@ -3316,7 +3333,7 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 		/* otherwise set rigid body transform to current obmat */
 		else {
 			if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)
-				rbw->object_changed = true;
+				rbw->flag |= RBW_FLAG_OBJECT_CHANGED;
 
 			mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
 		}
@@ -3473,22 +3490,22 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	cache = rbw->pointcache;
 
 	/*trigger dynamic update*/
-	if ((rbw->object_changed))
+	if ((rbw->flag & RBW_FLAG_OBJECT_CHANGED))
 	{
-		rbw->object_changed = false;
+		rbw->flag &= ~RBW_FLAG_OBJECT_CHANGED;
 		rigidbody_update_simulation(scene, rbw, true);
-		rbw->refresh_modifiers = false;
+		rbw->flag &= ~RBW_FLAG_REFRESH_MODIFIERS;
 	}
 
 	if (ctime <= startframe) {
 		/* rebuild constraints */
-		rbw->rebuild_comp_con = true;
+		rbw->flag |= RBW_FLAG_REBUILD_CONSTRAINTS;
 
 		rbw->ltime = startframe;
-		if (rbw->object_changed)
+		if (rbw->flag & RBW_FLAG_OBJECT_CHANGED)
 		{       /* flag modifier refresh at their next execution XXX TODO -> still used ? */
-			rbw->refresh_modifiers = true;
-			rbw->object_changed = false;
+			rbw->flag |= RBW_FLAG_REFRESH_MODIFIERS;
+			rbw->flag &= ~RBW_FLAG_OBJECT_CHANGED;
 			rigidbody_update_simulation(scene, rbw, true);
 		}
 		return;
@@ -3527,7 +3544,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 		}
 
 		if (rbw->ltime > startframe) {
-			rbw->rebuild_comp_con = false;
+			rbw->flag &= ~RBW_FLAG_REBUILD_CONSTRAINTS;
 		}
 
 		/* update and validate simulation */

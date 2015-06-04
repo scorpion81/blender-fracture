@@ -1698,8 +1698,8 @@ bool BKE_lookup_mesh_state(FractureModifierData *fmd, int frame, int do_lookup)
 	{
 		if (forward || backward)
 		{
-			fmd->modifier.scene->rigidbody_world->refresh_modifiers = true;
-			fmd->modifier.scene->rigidbody_world->object_changed = true;
+			fmd->modifier.scene->rigidbody_world->flag |= RBW_FLAG_REFRESH_MODIFIERS;
+			fmd->modifier.scene->rigidbody_world->flag |= RBW_FLAG_OBJECT_CHANGED;
 		}
 
 		return forward || backward;
