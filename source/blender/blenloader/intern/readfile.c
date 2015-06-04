@@ -4858,6 +4858,10 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 	/*HARDCODING this for now, until we can version it properly, say with 2.75 ? */
 	if (fd->fileversion < 275) {
 		fmd->fracture_mode = MOD_FRACTURE_PREFRACTURED;
+		fmd->shard_sequence.first = NULL;
+		fmd->shard_sequence.last = NULL;
+		fmd->meshIsland_sequence.first = NULL;
+		fmd->meshIsland_sequence.last = NULL;
 	}
 
 	if (fm == NULL || fmd->dm_group) {
@@ -4938,6 +4942,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 				vertstart += initialize_meshisland(fmd, &mi, mverts, vertstart, ob, -1, -1);
 			}
 		}
+#if 0
 		else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
 			ShardSequence *ssq = NULL;
@@ -5006,6 +5011,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 				fmd->current_mi_entry = msq;
 			}
 		}
+#endif
 
 		fmd->refresh_constraints = true;
 		fmd->meshConstraints.first = NULL;
