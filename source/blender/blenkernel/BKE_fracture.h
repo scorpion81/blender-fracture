@@ -41,6 +41,7 @@ struct FractureModifierData;
 struct DerivedMesh;
 struct Object;
 struct Group;
+struct MeshIsland;
 
 struct BoundBox;
 struct MVert;
@@ -89,5 +90,11 @@ void BKE_fracture_shard_by_points(struct FracMesh *fmesh, ShardID id, struct Fra
 /* create shards from a base mesh and a set of other objects / cutter planes */
 void BKE_fracture_shard_by_planes(struct FractureModifierData *fmd, struct Object *obj, short inner_material_index, float mat[4][4]);
 void BKE_fracture_shard_by_greasepencil(struct FractureModifierData *fmd, struct Object *obj, short inner_material_index, float mat[4][4]);
+
+void BKE_match_vertex_coords(struct MeshIsland* mi, struct MeshIsland *par, struct Object *ob, int frame, bool is_parent);
+bool BKE_lookup_mesh_state(struct FractureModifierData *fmd, int frame, int do_lookup);
+void BKE_get_prev_entries(struct FractureModifierData *fmd);
+void BKE_get_next_entries(struct FractureModifierData *fmd);
+void BKE_free_constraints(struct FractureModifierData *fmd);
 
 #endif /* BKE_FRACTURE_H */

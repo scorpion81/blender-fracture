@@ -42,6 +42,7 @@
 #include "BKE_global.h"
 #include "BKE_mesh.h"
 #include "BKE_object.h"
+#include "BKE_rigidbody.h"
 
 #include "BLI_kdtree.h"
 #include "BLI_listbase.h"
@@ -52,11 +53,13 @@
 #include "BLI_sort.h"
 #include "BLI_utildefines.h"
 
+#include "DNA_scene_types.h"
 #include "DNA_fracture_types.h"
 #include "DNA_gpencil_types.h"
 #include "DNA_group_types.h"
 #include "DNA_meshdata_types.h"
 #include "DNA_modifier_types.h"
+#include "DNA_rigidbody_types.h"
 
 #include "bmesh.h"
 
@@ -1617,4 +1620,190 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 	}
 
 	return dm;
+}
+
+void BKE_get_next_entries(FractureModifierData *fmd)
+{
+	/*meshislands and shards SHOULD be synchronized !!!!*/
+	if (fmd->current_mi_entry->next != NULL) { // && fmd->current_mi_entry->next->is_new == false) {
+
+		fmd->current_mi_entry = fmd->current_mi_entry->next;
+		fmd->current_shard_entry = fmd->current_shard_entry->next;
+
+		fmd->meshIslands = fmd->current_mi_entry->meshIslands;
+		fmd->frac_mesh = fmd->current_shard_entry->frac_mesh;
+		fmd->visible_mesh_cached = fmd->current_mi_entry->visible_dm;
+	}
+}
+
+void BKE_get_prev_entries(FractureModifierData *fmd)
+{
+	/*meshislands and shards SHOULD be synchronized !!!!*/
+	if (fmd->current_mi_entry->prev != NULL) {
+
+		fmd->current_mi_entry = fmd->current_mi_entry->prev;
+		fmd->current_shard_entry = fmd->current_shard_entry->prev;
+
+		fmd->meshIslands = fmd->current_mi_entry->meshIslands;
+		fmd->frac_mesh = fmd->current_shard_entry->frac_mesh;
+		fmd->visible_mesh_cached = fmd->current_mi_entry->visible_dm;
+	}
+}
+
+bool BKE_lookup_mesh_state(FractureModifierData *fmd, int frame, int do_lookup)
+{
+	bool changed = false;
+	bool forward = false;
+	bool backward = false;
+
+	backward = ((fmd->last_frame > frame) && fmd->current_mi_entry && fmd->current_mi_entry->prev);
+	forward = ((fmd->last_frame < frame) && (fmd->current_mi_entry) && (fmd->current_mi_entry->next != NULL) &&
+	           (fmd->current_mi_entry->next->is_new == false));
+
+	if (backward)
+	{
+		if (do_lookup)
+		{
+			while (fmd->current_mi_entry && fmd->current_mi_entry->prev &&
+				   frame <= fmd->current_mi_entry->prev->frame)
+			{
+				printf("Jumping backward because %d is smaller than %d\n", frame, fmd->current_mi_entry->prev->frame);
+				changed = true;
+				BKE_free_constraints(fmd);
+				BKE_get_prev_entries(fmd);
+			}
+		}
+	}
+	else if (forward)
+	{
+		if (do_lookup)
+		{
+			while ((fmd->current_mi_entry) && (fmd->current_mi_entry->next != NULL) &&
+				   (fmd->current_mi_entry->next->is_new == false) &&
+				   frame > fmd->current_mi_entry->frame)
+			{
+				printf("Jumping forward because %d is greater/equal than %d\n", frame, fmd->current_mi_entry->frame);
+				changed = true;
+				BKE_free_constraints(fmd);
+				BKE_get_next_entries(fmd);
+			}
+		}
+	}
+
+	if (do_lookup)
+	{
+		return changed;
+	}
+	else
+	{
+		if (forward || backward)
+		{
+			fmd->modifier.scene->rigidbody_world->refresh_modifiers = true;
+			fmd->modifier.scene->rigidbody_world->object_changed = true;
+		}
+
+		return forward || backward;
+	}
+}
+
+void BKE_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, int frame, bool is_parent)
+{
+	float loc[3] = {0.0f, 0.0f, 0.0f};
+	float rot[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+	int j = 0;
+	//float irot[4];
+	float centr[3] = {0.0f, 0.0f, 0.0f};
+
+	invert_m4_m4(ob->imat, ob->obmat);
+
+	loc[0] = par->locs[3*frame];
+	loc[1] = par->locs[3*frame+1];
+	loc[2] = par->locs[3*frame+2];
+
+	rot[0] = par->rots[4*frame];
+	rot[1] = par->rots[4*frame+1];
+	rot[2] = par->rots[4*frame+2];
+	rot[3] = par->rots[4*frame+3];
+
+	mi->locs[0] = loc[0];
+	mi->locs[1] = loc[1];
+	mi->locs[2] = loc[2];
+
+	mi->rots[0] = rot[0];
+	mi->rots[1] = rot[1];
+	mi->rots[2] = rot[2];
+	mi->rots[3] = rot[3];
+
+	mul_m4_v3(ob->imat, loc);
+	//mat4_to_quat(irot, ob->imat);
+	//mul_qt_qtqt(rot, rot, irot);
+
+	mul_qt_qtqt(rot, rot, par->rot);
+
+	if (is_parent)
+	{
+		copy_v3_v3(centr, mi->centroid);
+		mul_qt_v3(rot, centr);
+		add_v3_v3(centr, loc);
+	}
+	else
+	{
+		copy_v3_v3(centr, loc);
+	}
+
+	for (j = 0; j < mi->vertex_count; j++)
+	{
+		float co[3];
+
+		//first add vert to centroid, then rotate
+		copy_v3_v3(co, mi->vertices_cached[j]->co);
+		sub_v3_v3(co, mi->centroid);
+		mul_qt_v3(rot, co);
+		add_v3_v3(co, centr);
+		copy_v3_v3(mi->vertices_cached[j]->co, co);
+
+		co[0] = mi->vertco[3*j];
+		co[1] = mi->vertco[3*j+1];
+		co[2] = mi->vertco[3*j+2];
+
+		sub_v3_v3(co, mi->centroid);
+		mul_qt_v3(rot, co);
+		add_v3_v3(co, centr);
+
+		mi->vertco[3*j]   = co[0];
+		mi->vertco[3*j+1] = co[1];
+		mi->vertco[3*j+2] = co[2];
+	}
+
+	//init rigidbody properly ?
+	copy_v3_v3(mi->centroid, centr);
+	copy_qt_qt(mi->rot, rot);
+}
+
+void BKE_free_constraints(FractureModifierData *fmd)
+{
+	MeshIsland *mi = NULL;
+	RigidBodyShardCon *rbsc = NULL;
+
+	for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
+		if (mi->participating_constraints != NULL) {
+			MEM_freeN(mi->participating_constraints);
+			mi->participating_constraints = NULL;
+			mi->participating_constraint_count = 0;
+		}
+	}
+
+	while (fmd->meshConstraints.first) {
+		rbsc = fmd->meshConstraints.first;
+		BLI_remlink(&fmd->meshConstraints, rbsc);
+		if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+		{
+			BKE_rigidbody_remove_shard_con(fmd->modifier.scene, rbsc);
+		}
+		MEM_freeN(rbsc);
+		rbsc = NULL;
+	}
+
+	fmd->meshConstraints.first = NULL;
+	fmd->meshConstraints.last = NULL;
 }

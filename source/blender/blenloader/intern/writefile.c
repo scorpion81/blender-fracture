@@ -1701,9 +1701,6 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 				ShardSequence *ssq;
 				MeshIslandSequence *msq;
 
-				writedata(wd, DATA, sizeof(fmd->lookup_mesh_state), fmd->lookup_mesh_state);
-				writedata(wd, DATA, sizeof(fmd->do_match_vertex_coords), fmd->do_match_vertex_coords);
-
 				for (ssq = fmd->shard_sequence.first; ssq; ssq = ssq->next)
 				{
 					writestruct(wd, DATA, "ShardSequence", 1, ssq);

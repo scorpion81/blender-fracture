@@ -1388,8 +1388,6 @@ typedef struct MeshIsland {
 	float centroid[3], start_co[3];
 	float rot[4]; /*hrm, need this for constraints probably */
 	float thresh_weight, ground_weight;
-	float impulse[3], impulse_loc[3];
-	float lin_vel[3], ang_vel[3];
 	int linear_index;  /* index in rigidbody world */
 	int particle_index;
 	//char pad[2];
@@ -1524,9 +1522,6 @@ typedef struct FractureModifierData {
 	ShardSequence *current_shard_entry; /*volatile storage of current shard entry, so we dont have to search in the list */
 	MeshIslandSequence *current_mi_entry; /*analogous to current shard entry */
 	ListBase fracture_ids; /*volatile storage of shards being "hit" or fractured currently, needs to be cleaned up after usage! */
-	int (*lookup_mesh_state)(struct FractureModifierData *fmd, int frame, int do_lookup);
-	void (*do_match_vertex_coords)(struct MeshIsland* mi, struct MeshIsland *par, struct Object *ob,
-	                               int frame, bool is_parent);
 
 	/* values */
 	int frac_algorithm;

@@ -4824,7 +4824,7 @@ static int initialize_meshisland(FractureModifierData* fmd, MeshIsland** mii, MV
 			if (par)
 			{
 				frame -= par->start_frame;
-				fmd->do_match_vertex_coords(mi, par, ob, frame, true);
+				BKE_match_vertex_coords(mi, par, ob, frame, true);
 			}
 			else
 			{
@@ -4832,7 +4832,7 @@ static int initialize_meshisland(FractureModifierData* fmd, MeshIsland** mii, MV
 				if (par)
 				{
 					frame -= par->start_frame;
-					fmd->do_match_vertex_coords(mi, par, ob, frame, false);
+					BKE_match_vertex_coords(mi, par, ob, frame, false);
 				}
 			}
 		}
@@ -4943,9 +4943,6 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 			ShardSequence *ssq = NULL;
 			MeshIslandSequence *msq = NULL;
 			fmd->dm = NULL;
-
-			fmd->lookup_mesh_state = newdataadr(fd, fmd->lookup_mesh_state);
-			fmd->do_match_vertex_coords = newdataadr(fd, fmd->do_match_vertex_coords);
 
 			link_list(fd, &fmd->shard_sequence);
 			for (ssq = fmd->shard_sequence.first; ssq; ssq = ssq->next)

@@ -1145,31 +1145,6 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 			break;
 #endif
 
-static void apply_movement_update(RigidBodyOb *rbo, MeshIsland *mi)
-{
-	if (rbo && rbo->physics_object && mi)
-	{
-		if (!is_zero_v3(mi->lin_vel))
-		{
-			RB_body_set_linear_velocity(rbo->physics_object, mi->lin_vel);
-			zero_v3(mi->lin_vel);
-		}
-
-		if (!is_zero_v3(mi->ang_vel))
-		{
-			RB_body_set_angular_velocity(rbo->physics_object, mi->ang_vel);
-			zero_v3(mi->ang_vel);
-		}
-#if 0
-		if (!is_zero_v3(mi->impulse))
-		{
-			RB_body_apply_impulse(rbo->physics_object, mi->impulse, mi->impulse_loc);
-			zero_v3(mi->impulse);
-		}
-#endif
-	}
-}
-
 /* --------------------- */
 
 /* Create physics sim representation of shard given RigidBody settings
@@ -1240,7 +1215,7 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 	{
 		RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups, mi, ob, mi->linear_index);
 
-		apply_movement_update(rbo, mi);
+		//apply_movement_update(rbo, mi);
 	}
 
 	rbo->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
@@ -1899,32 +1874,6 @@ static bool check_shard_size(FractureModifierData *fmd, int id, float impact_loc
 	return true;
 }
 
-static void update_movement(FractureModifierData *fmd, int id, float force, float pos1[3], float pos2[3])
-{
-	//store values for update in next frame !
-	MeshIsland *mi = NULL, *temp = fmd->meshIslands.first;
-	while (temp)
-	{
-		if (temp->id == id)
-		{
-			mi = temp;
-			break;
-		}
-		temp = temp->next;
-	}
-
-	if (mi != NULL)
-	{
-		float impulse[3];
-		add_v3_v3v3(impulse, pos1, pos2);
-		//mul_v3_fl(impulse, force);
-
-		// this is the OLD meshisland !!!
-		copy_v3_v3(mi->impulse, impulse);
-		copy_v3_v3(mi->impulse_loc, pos1);
-	}
-}
-
 static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 {
 	int linear_index1, linear_index2;
@@ -1970,10 +1919,7 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 						FractureID* fid1 = MEM_mallocN(sizeof(FractureID), "contact_callback_fractureid1");
 						fid1->shardID = rbw->cache_index_map[linear_index1]->meshisland_index;
 						BLI_addtail(&fmd1->fracture_ids, fid1);
-						//fmd1->refresh = true;
-						//rbw->refresh_modifiers = true;
 						fmd1->update_dynamic = true;
-						update_movement(fmd1, linear_index1, force, cp->contact_pos_world_onA, cp->contact_pos_world_onB);
 					}
 				}
 			}
@@ -1996,10 +1942,7 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 						FractureID* fid2 = MEM_mallocN(sizeof(FractureID), "contact_callback_fractureid2");
 						fid2->shardID = id;
 						BLI_addtail(&fmd2->fracture_ids, fid2);
-						//fmd2->refresh = true;
-						//rbw->refresh_modifiers = true;
 						fmd2->update_dynamic = true;
-						update_movement(fmd2, id, force, cp->contact_pos_world_onB, cp->contact_pos_world_onA);
 					}
 				}
 			}
@@ -2972,7 +2915,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 		if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
 			int frame = (int)BKE_scene_frame_get(scene);
-			if (fmd->lookup_mesh_state(fmd, frame, true))
+			if (BKE_lookup_mesh_state(fmd, frame, true))
 			{
 				rigidbody_update_ob_array(rbw);
 			}
@@ -2988,12 +2931,6 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				/* perform simulation data updates as tagged */
 				/* refresh object... */
 				int do_rebuild = rebuild;
-
-				if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && mi->rigidbody->physics_object) {
-					//printf("Velocities...\n");
-					RB_body_get_linear_velocity(mi->rigidbody->physics_object, mi->lin_vel);
-					RB_body_get_angular_velocity(mi->rigidbody->physics_object, mi->ang_vel);
-				}
 
 				if (fmd->use_breaking)
 				{
@@ -3288,7 +3225,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 			if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 			{
 				int frame = (int)ctime;
-				if (fmd->lookup_mesh_state(fmd, frame, true))
+				if (BKE_lookup_mesh_state(fmd, frame, true))
 				{
 					rigidbody_update_ob_array(rbw);
 				}

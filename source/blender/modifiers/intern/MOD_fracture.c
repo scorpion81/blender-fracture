@@ -83,9 +83,6 @@
 #include "depsgraph_private.h" /* for depgraph updates */
 #include "limits.h"
 
-static int lookup_mesh_state(FractureModifierData *fmd, int frame, int do_lookup);
-static void do_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, int frame, bool is_parent);
-
 static FracMesh* copy_fracmesh(FracMesh* fm)
 {
 	FracMesh *fmesh;
@@ -210,8 +207,6 @@ static void initData(ModifierData *md)
 	fmd->last_frame = FLT_MIN;
 	fmd->dynamic_force = 10.0f;
 	fmd->update_dynamic = false;
-	fmd->lookup_mesh_state = lookup_mesh_state;
-	fmd->do_match_vertex_coords = do_match_vertex_coords;
 	fmd->limit_impact = true;
 }
 
@@ -282,34 +277,6 @@ static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remov
 	mi = NULL;
 }
 
-static void free_constraints(FractureModifierData *fmd)
-{
-	MeshIsland *mi = NULL;
-	RigidBodyShardCon *rbsc = NULL;
-
-	for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
-		if (mi->participating_constraints != NULL) {
-			MEM_freeN(mi->participating_constraints);
-			mi->participating_constraints = NULL;
-			mi->participating_constraint_count = 0;
-		}
-	}
-
-	while (fmd->meshConstraints.first) {
-		rbsc = fmd->meshConstraints.first;
-		BLI_remlink(&fmd->meshConstraints, rbsc);
-		if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
-		{
-			BKE_rigidbody_remove_shard_con(fmd->modifier.scene, rbsc);
-		}
-		MEM_freeN(rbsc);
-		rbsc = NULL;
-	}
-
-	fmd->meshConstraints.first = NULL;
-	fmd->meshConstraints.last = NULL;
-}
-
 static void free_meshislands(FractureModifierData* fmd, ListBase* meshIslands)
 {
 	MeshIsland *mi;
@@ -341,7 +308,7 @@ static void free_simulation(FractureModifierData *fmd, bool do_free_seq)
 	}
 
 	/* when freeing meshislands, we MUST get rid of constraints before too !!!! */
-	free_constraints(fmd);
+	BKE_free_constraints(fmd);
 
 	if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED) {
 		free_meshislands(fmd, &fmd->meshIslands);
@@ -477,7 +444,7 @@ static void freeData_internal(FractureModifierData *fmd, bool do_free_seq)
 	}
 	else if (fmd->refresh_constraints) {
 		/* refresh constraints only */
-		free_constraints(fmd);
+		BKE_free_constraints(fmd);
 	}
 }
 
@@ -2798,107 +2765,16 @@ static void do_verts_weights(FractureModifierData *fmd, Shard *s, MeshIsland *mi
 #define OUT(name, id, co) printf("%s : %d -> (%.2f, %.2f, %.2f) \n", (name), (id), (co)[0], (co)[1], (co)[2]);
 #define OUT4(name,id, co) printf("%s : %d -> (%.2f, %.2f, %.2f, %.2f) \n", (name), (id), (co)[0], (co)[1], (co)[2], (co)[3]);
 
-static void do_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, int frame, bool is_parent)
-{
-	float loc[3] = {0.0f, 0.0f, 0.0f};
-	float rot[4] = {0.0f, 0.0f, 0.0f, 1.0f};
-	int j = 0;
-	float irot[4];
-	float centr[3] = {0.0f, 0.0f, 0.0f};
 
-	invert_m4_m4(ob->imat, ob->obmat);
-
-	loc[0] = par->locs[3*frame];
-	loc[1] = par->locs[3*frame+1];
-	loc[2] = par->locs[3*frame+2];
-
-	rot[0] = par->rots[4*frame];
-	rot[1] = par->rots[4*frame+1];
-	rot[2] = par->rots[4*frame+2];
-	rot[3] = par->rots[4*frame+3];
-
-	mi->locs[0] = loc[0];
-	mi->locs[1] = loc[1];
-	mi->locs[2] = loc[2];
-
-	mi->rots[0] = rot[0];
-	mi->rots[1] = rot[1];
-	mi->rots[2] = rot[2];
-	mi->rots[3] = rot[3];
-
-	mul_m4_v3(ob->imat, loc);
-	mat4_to_quat(irot, ob->imat);
-	//mul_qt_qtqt(rot, irot, rot);
-#if 0
-	OUT("mi->centroid",mi->id, mi->centroid);
-	OUT("par->centroid",par->id,  par->centroid);
-	OUT("centr", par->id, centr);
-	OUT("loc", par->id, loc);
-#endif
-	//OUT4("rot", par->id, rot);
-	//OUT4("par->rot", par->id, par->rot);
-
-	if (is_parent)
-	{
-		copy_v3_v3(centr, mi->centroid);
-		mul_qt_v3(rot, centr);
-		add_v3_v3(centr, loc);
-	}
-	else
-	{
-		copy_v3_v3(centr, loc);
-	}
-
-	mul_qt_qtqt(rot, rot, par->rot);
-
-	for (j = 0; j < mi->vertex_count; j++)
-	{
-		float co[3];
-
-		//first add vert to centroid, then rotate
-		copy_v3_v3(co, mi->vertices_cached[j]->co);
-		sub_v3_v3(co, mi->centroid);
-		mul_qt_v3(rot, co);
-		add_v3_v3(co, centr);
-		copy_v3_v3(mi->vertices_cached[j]->co, co);
-
-		co[0] = mi->vertco[3*j];
-		co[1] = mi->vertco[3*j+1];
-		co[2] = mi->vertco[3*j+2];
-
-		sub_v3_v3(co, mi->centroid);
-		mul_qt_v3(rot, co);
-		add_v3_v3(co, centr);
-
-		mi->vertco[3*j]   = co[0];
-		mi->vertco[3*j+1] = co[1];
-		mi->vertco[3*j+2] = co[2];
-	}
-
-	//init rigidbody properly ?
-	copy_v3_v3(mi->centroid, centr);
-	copy_qt_qt(mi->rot, rot);
-}
 
 static void do_handle_parent_mi(FractureModifierData *fmd, MeshIsland *mi, MeshIsland *par, Object* ob, int frame, bool is_parent)
 {
 	frame -= par->start_frame;
-	do_match_vertex_coords(mi, par, ob, frame, is_parent);
-
-	if (par->rigidbody->physics_object)
-	{
-		RB_body_get_linear_velocity(par->rigidbody->physics_object, par->lin_vel);
-		RB_body_get_angular_velocity(par->rigidbody->physics_object, par->ang_vel);
-	}
+	BKE_match_vertex_coords(mi, par, ob, frame, is_parent);
 
 	BKE_rigidbody_remove_shard(fmd->modifier.scene, par);
 	fmd->modifier.scene->rigidbody_world->object_changed = true;
 	par->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
-
-	copy_v3_v3(mi->lin_vel, par->lin_vel);
-	copy_v3_v3(mi->ang_vel, par->ang_vel);
-	copy_v3_v3(mi->impulse, par->impulse);
-	copy_v3_v3(mi->impulse_loc, par->impulse_loc);
 }
 
 static MeshIsland* find_meshisland(ListBase* meshIslands, int id)
@@ -3608,90 +3484,6 @@ static void add_new_entries(FractureModifierData* fmd, DerivedMesh *dm, Object* 
 	fmd->meshIslands = fmd->current_mi_entry->meshIslands;
 }
 
-static void get_next_entries(FractureModifierData *fmd)
-{
-	/*meshislands and shards SHOULD be synchronized !!!!*/
-	if (fmd->current_mi_entry->next != NULL) { // && fmd->current_mi_entry->next->is_new == false) {
-
-		fmd->current_mi_entry = fmd->current_mi_entry->next;
-		fmd->current_shard_entry = fmd->current_shard_entry->next;
-
-		fmd->meshIslands = fmd->current_mi_entry->meshIslands;
-		fmd->frac_mesh = fmd->current_shard_entry->frac_mesh;
-		fmd->visible_mesh_cached = fmd->current_mi_entry->visible_dm;
-	}
-}
-
-static void get_prev_entries(FractureModifierData *fmd)
-{
-	/*meshislands and shards SHOULD be synchronized !!!!*/
-	if (fmd->current_mi_entry->prev != NULL) {
-
-		fmd->current_mi_entry = fmd->current_mi_entry->prev;
-		fmd->current_shard_entry = fmd->current_shard_entry->prev;
-
-		fmd->meshIslands = fmd->current_mi_entry->meshIslands;
-		fmd->frac_mesh = fmd->current_shard_entry->frac_mesh;
-		fmd->visible_mesh_cached = fmd->current_mi_entry->visible_dm;
-	}
-}
-
-static int lookup_mesh_state(FractureModifierData *fmd, int frame, int do_lookup)
-{
-	bool changed = false;
-	bool forward = false;
-	bool backward = false;
-
-	backward = ((fmd->last_frame > frame) && fmd->current_mi_entry && fmd->current_mi_entry->prev);
-	forward = ((fmd->last_frame < frame) && (fmd->current_mi_entry) && (fmd->current_mi_entry->next != NULL) &&
-	           (fmd->current_mi_entry->next->is_new == false));
-
-	if (backward)
-	{
-		if (do_lookup)
-		{
-			while (fmd->current_mi_entry && fmd->current_mi_entry->prev &&
-				   frame <= fmd->current_mi_entry->prev->frame)
-			{
-				printf("Jumping backward because %d is smaller than %d\n", frame, fmd->current_mi_entry->prev->frame);
-				changed = true;
-				free_constraints(fmd);
-				get_prev_entries(fmd);
-			}
-		}
-	}
-	else if (forward)
-	{
-		if (do_lookup)
-		{
-			while ((fmd->current_mi_entry) && (fmd->current_mi_entry->next != NULL) &&
-				   (fmd->current_mi_entry->next->is_new == false) &&
-				   frame > fmd->current_mi_entry->frame)
-			{
-				printf("Jumping forward because %d is greater/equal than %d\n", frame, fmd->current_mi_entry->frame);
-				changed = true;
-				free_constraints(fmd);
-				get_next_entries(fmd);
-			}
-		}
-	}
-
-	if (do_lookup)
-	{
-		return changed;
-	}
-	else
-	{
-		if (forward || backward)
-		{
-			fmd->modifier.scene->rigidbody_world->refresh_modifiers = true;
-			fmd->modifier.scene->rigidbody_world->object_changed = true;
-		}
-
-		return forward || backward;
-	}
-}
-
 static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 {
 	if (fmd->refresh)
@@ -3773,7 +3565,7 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 	{
 		int frame = (int)BKE_scene_frame_get(fmd->modifier.scene);
 
-		if (!(lookup_mesh_state(fmd, frame, false)))
+		if (!(BKE_lookup_mesh_state(fmd, frame, false)))
 		{
 			/*simulation mode*/
 			/* bullet callbacks may happen multiple times per frame, in next frame we can evaluate them all,
@@ -3785,7 +3577,7 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 
 			if (fmd->update_dynamic)
 			{
-				free_constraints(fmd);
+				BKE_free_constraints(fmd);
 				printf("ADD NEW 2: %s \n", ob->id.name);
 				fmd->update_dynamic = false;
 				add_new_entries(fmd, dm, ob);
@@ -3801,7 +3593,7 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 
 			if (count > 0)
 			{
-				free_constraints(fmd);
+				BKE_free_constraints(fmd);
 				printf("REFRESH: %s \n", ob->id.name);
 				fmd->modifier.scene->rigidbody_world->object_changed = true;
 				fmd->refresh = true;
@@ -3888,40 +3680,6 @@ static DerivedMesh *do_dynamic(FractureModifierData *fmd, Object *ob, DerivedMes
 
 	return final_dm;
 }
-
-#if 0
-static bool rigidbody_object_add(Scene *scene, Object *ob, int type)
-{
-	RigidBodyWorld *rbw = BKE_rigidbody_get_world(scene);
-
-	/* Add rigid body world and group if they don't exist for convenience */
-	if (rbw == NULL) {
-		rbw = BKE_rigidbody_create_world(scene);
-		if (rbw == NULL) {
-			return false;
-		}
-		BKE_rigidbody_validate_sim_world(scene, rbw, false);
-		scene->rigidbody_world = rbw;
-	}
-	if (rbw->group == NULL) {
-		rbw->group = BKE_group_add(G.main, "RigidBodyWorld");
-	}
-
-	/* make rigidbody object settings */
-	if (ob->rigidbody_object == NULL) {
-		ob->rigidbody_object = BKE_rigidbody_create_object(scene, ob, type);
-	}
-	ob->rigidbody_object->type = type;
-	ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_VALIDATE;
-
-	/* add object to rigid body group */
-	BKE_group_object_add(rbw->group, ob, scene, NULL);
-
-	DAG_id_tag_update(&ob->id, OB_RECALC_OB);
-
-	return true;
-}
-#endif
 
 static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
                                   DerivedMesh *derivedData,
