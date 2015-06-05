@@ -86,7 +86,7 @@ typedef struct FracMesh {
 	short cancel;           /* whether the process is cancelled (from the job, ugly, but this way we dont need the entire modifier) */
 	short running;          /* whether the process is currently in progress, so the modifier wont be touched from the main thread */
 	int progress_counter;   /* counts progress */
-	char pad[4];
+	int last_expected_shards;
 } FracMesh;
 
 #ifdef __cplusplus

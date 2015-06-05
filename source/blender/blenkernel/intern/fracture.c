@@ -380,6 +380,7 @@ FracMesh *BKE_create_fracture_container(void)
 	fmesh->progress_counter = 0;
 	fmesh->last_shards = NULL;
 	fmesh->last_shard_tree = NULL;
+	fmesh->last_expected_shards = 0;
 	
 	return fmesh;
 }
@@ -632,7 +633,15 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 
 	if (fm->last_shard_tree)
 	{
-		fill_vn_i(skipmap, expected_shards, 1);
+		if (expected_shards <= fm->last_expected_shards)
+		{
+			fill_vn_i(deletemap, fm->shard_count, 1);
+		}
+		else
+		{
+			fill_vn_i(skipmap, expected_shards, 1);
+		}
+
 		for (i = 0; i < expected_shards; i++)
 		{
 			KDTreeNearest n;
@@ -716,6 +725,8 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 			printf("Deleting shard: %d\n", i);
 		}
 	}
+
+	fm->last_expected_shards = expected_shards;
 
 	MEM_freeN(skipmap);
 	MEM_freeN(deletemap);
