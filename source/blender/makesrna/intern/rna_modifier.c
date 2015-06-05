@@ -447,6 +447,23 @@ static void rna_Modifier_update(Main *UNUSED(bmain), Scene *UNUSED(scene), Point
 	WM_main_add_notifier(NC_OBJECT | ND_MODIFIER, ptr->id.data);
 }
 
+static void rna_Modifier_update_and_keep(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *ptr)
+{
+	ModifierData* md = ptr->data;
+
+	if (md && md->type == eModifierType_Fracture)
+	{
+		FractureModifierData *fmd = (FractureModifierData*)md;
+		if (fmd->refresh)
+		{
+			return;
+		}
+	}
+
+	DAG_id_tag_update(ptr->id.data, OB_RECALC_DATA);
+	WM_main_add_notifier(NC_OBJECT | ND_MODIFIER, ptr->id.data);
+}
+
 static void rna_Modifier_dependency_update(Main *bmain, Scene *scene, PointerRNA *ptr)
 {
 	rna_Modifier_update(bmain, scene, ptr);
@@ -4744,13 +4761,13 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_ui_text(prop, "Dynamic force threshold", "Only break dynamically when force is above this threshold");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update_and_keep");
 
 	prop = RNA_def_property(srna, "limit_impact", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "limit_impact", false);
 	RNA_def_property_ui_text(prop, "Limit Impact", "Activates only shards within the impact object size approximately");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update_and_keep");
 }
 
 static void rna_def_modifier_datatransfer(BlenderRNA *brna)

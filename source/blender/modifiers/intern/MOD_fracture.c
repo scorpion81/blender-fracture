@@ -310,11 +310,11 @@ static void free_simulation(FractureModifierData *fmd, bool do_free_seq)
 	/* when freeing meshislands, we MUST get rid of constraints before too !!!! */
 	BKE_free_constraints(fmd);
 
-	if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED) {
+	if (!do_free_seq || fmd->meshIsland_sequence.first == NULL) {
 		free_meshislands(fmd, &fmd->meshIslands);
 	}
-	else if (do_free_seq)
-	{
+	else
+	{	
 		/* in dynamic mode we have to get rid of the entire Meshisland sequence */
 		MeshIslandSequence *msq;
 		while (fmd->meshIsland_sequence.first) {
@@ -440,7 +440,7 @@ static void freeData_internal(FractureModifierData *fmd, bool do_free_seq)
 	}
 	else if (!fmd->refresh_constraints) {
 		/* refreshing all simulation data only, no refracture */
-		free_simulation(fmd, false); // in this case keep the meshisland sequence!
+		free_simulation(fmd, fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED); // in this case keep the meshisland sequence!
 	}
 	else if (fmd->refresh_constraints) {
 		/* refresh constraints only */
@@ -1284,7 +1284,7 @@ static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, Deri
 		{
 			fmd->frac_mesh->running = 0;
 			fmd->refresh = true;
-			freeData_internal(fmd, false);
+			freeData_internal(fmd, fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED);
 			fmd->frac_mesh = NULL;
 			fmd->refresh = false;
 			MEM_freeN(points.points);
@@ -3050,7 +3050,7 @@ static DerivedMesh *output_dm(FractureModifierData* fmd, DerivedMesh *dm, bool e
 		if (fmd->visible_mesh == NULL && fmd->visible_mesh_cached == NULL) {
 			/* oops, something went definitely wrong... */
 			fmd->refresh = true;
-			freeData_internal(fmd, false);
+			freeData_internal(fmd, fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED);
 			fmd->visible_mesh_cached = NULL;
 			fmd->refresh = false;
 		}
@@ -3291,7 +3291,7 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 			(fmd->refresh_constraints && fmd->execute_threaded && fmd->frac_mesh && fmd->frac_mesh->running == 0))
 		{
 			/* if we changed the fracture parameters */
-			freeData_internal(fmd, false);
+			freeData_internal(fmd, fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED);
 
 			/* 2 cases, we can have a visible mesh or a cached visible mesh, the latter primarily when loading blend from file or using halving */
 			/* free cached mesh in case of "normal refracture here if we have a visible mesh, does that mean REfracture ?*/

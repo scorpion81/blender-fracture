@@ -1873,11 +1873,14 @@ static bool check_shard_size(FractureModifierData *fmd, int id, float impact_loc
 		}
 	}
 
-	//simple calc, take just the 1st dimension here.... will be refined later, TODO
-	BKE_object_dimensions_get(collider, dim);
+	if (collider)
+	{
+		//simple calc, take just dimensions here.... will be refined later
+		BKE_object_dimensions_get(collider, dim);
 
-	copy_v3_v3(s->impact_loc, impact_loc);
-	copy_v3_v3(s->impact_size, dim);
+		copy_v3_v3(s->impact_loc, impact_loc);
+		copy_v3_v3(s->impact_size, dim);
+	}
 
 	printf("FRACTURE : %d\n", id);
 
@@ -1905,13 +1908,13 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 		return;
 	}
 
-	if (linear_index2 > -1)
+	if (linear_index2 > -1 && linear_index2 < rbw->numbodies)
 	{
 		ob_index2 = rbw->cache_offset_map[linear_index2];
 		ob2 = rbw->objects[ob_index2];
 	}
 
-	if (linear_index1 > -1)
+	if (linear_index1 > -1 && linear_index1 < rbw->numbodies)
 	{
 		ob_index1 = rbw->cache_offset_map[linear_index1];
 		ob1 = rbw->objects[ob_index1];
@@ -1936,7 +1939,7 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 		}
 	}
 
-	if (linear_index2 > -1)
+	if (linear_index2 > -1 && linear_index2 < rbw->numbodies)
 	{
 		//ob_index2 = rbw->cache_offset_map[linear_index2];
 		//ob2 = rbw->objects[ob_index2];
