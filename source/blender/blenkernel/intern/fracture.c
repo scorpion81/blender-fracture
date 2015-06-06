@@ -631,6 +631,13 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 		copy_v3_v3(*centroid, p->centroid);
 	}
 
+	if (algorithm == MOD_FRACTURE_BISECT_FAST ||
+	    algorithm == MOD_FRACTURE_BISECT_FAST_FILL ||
+	    algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL)
+	{
+		fill_vn_i(deletemap, fm->shard_count, 1);
+	}
+
 	if (fm->last_shard_tree)
 	{
 		if (expected_shards <= fm->last_expected_shards)
@@ -746,6 +753,9 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 	DerivedMesh *dm_p = NULL;
 	Shard **tempshards;
 	Shard **tempresults;
+	bool do_tree = (algorithm != MOD_FRACTURE_BISECT_FAST &&
+					algorithm != MOD_FRACTURE_BISECT_FAST_FILL &&
+					algorithm != MOD_FRACTURE_BOOLEAN_FRACTAL);
 
 	if (p == NULL)
 	{
@@ -767,28 +777,36 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 	if (mode == MOD_FRACTURE_PREFRACTURED)
 	{
 		//rebuild tree
-		if (!fm->last_shard_tree && (fm->shard_count > 0) &&
-			mode == MOD_FRACTURE_PREFRACTURED &&
-			algorithm != MOD_FRACTURE_BISECT_FAST &&
-			algorithm != MOD_FRACTURE_BISECT_FAST_FILL)
+		if (!fm->last_shard_tree && (fm->shard_count > 0) && mode == MOD_FRACTURE_PREFRACTURED)
 		{
 			Shard *t;
 			int i = 0;
 			count = BLI_listbase_count(&fm->shard_map);
 			fm->shard_count = count;
-			fm->last_shard_tree = BLI_kdtree_new(fm->shard_count);
+			if (do_tree)
+			{
+				fm->last_shard_tree = BLI_kdtree_new(fm->shard_count);
+			}
+
 			fm->last_shards = MEM_callocN(sizeof(Shard*) * fm->shard_count, "last_shards");
 
 			//fill tree from current shardmap
 			for (t = fm->shard_map.first; t; t = t->next)
 			{
 				t->flag &=~ (SHARD_SKIP | SHARD_DELETE);
-				BLI_kdtree_insert(fm->last_shard_tree, i, t->raw_centroid);
+
+				if (do_tree)
+				{
+					BLI_kdtree_insert(fm->last_shard_tree, i, t->raw_centroid);
+				}
 				fm->last_shards[i] = t;
 				i++;
 			}
 
-			BLI_kdtree_balance(fm->last_shard_tree);
+			if (do_tree)
+			{
+				BLI_kdtree_balance(fm->last_shard_tree);
+			}
 		}
 	}
 	else

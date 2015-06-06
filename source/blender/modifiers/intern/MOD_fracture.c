@@ -1506,25 +1506,6 @@ static void do_rigidbody(FractureModifierData *fmd, MeshIsland* mi, Object* ob, 
 	mi->rigidbody->type = rb_type;
 	mi->rigidbody->meshisland_index = i;
 	BKE_rigidbody_calc_shard_mass(ob, mi, orig_dm);
-
-	if (fmd->frac_algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL)
-	{
-		if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
-		{
-			/* cant be kept together in other ways */
-			fmd->use_constraints = true;
-			fmd->contact_dist = 2.0f;
-			fmd->breaking_angle = DEG2RADF(1.0f);
-		}
-
-		/* this most likely will only work with "Mesh" shape*/
-		mi->rigidbody->shape = RB_SHAPE_TRIMESH;
-		mi->rigidbody->margin = 0.0f;
-
-		/* set values on "handle object" as well */
-		ob->rigidbody_object->shape = RB_SHAPE_TRIMESH;
-		ob->rigidbody_object->margin = 0.0f;
-	}
 }
 
 static short do_vert_index_map(FractureModifierData *fmd, MeshIsland *mi)
