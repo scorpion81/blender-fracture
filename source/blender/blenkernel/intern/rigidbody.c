@@ -73,7 +73,7 @@
 
 #ifdef WITH_BULLET
 
-static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int rebuild);
+static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int rebuild, int transfer_speed);
 
 static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED(rbw), MeshIsland *UNUSED(mi), Object *UNUSED(ob))
 {
@@ -1150,7 +1150,7 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 /* Create physics sim representation of shard given RigidBody settings
  * < rebuild: even if an instance already exists, replace it
  */
-void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, short rebuild)
+void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, short rebuild, int transfer_speeds)
 {
 	RigidBodyOb *rbo = (mi) ? mi->rigidbody : NULL;
 	float loc[3];
@@ -1210,16 +1210,19 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 		RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
 		RB_body_set_kinematic_state(rbo->physics_object, rbo->flag & RBO_FLAG_KINEMATIC || rbo->flag & RBO_FLAG_DISABLED);
 
-		if ((len_squared_v3(rbo->lin_vel) > (rbo->lin_sleep_thresh * rbo->lin_sleep_thresh)))
+		if (transfer_speeds)
 		{
-			//printf("Setting linear velocity (%f, %f, %f)\n", rbo->lin_vel[0], rbo->lin_vel[1], rbo->lin_vel[2]);
-			RB_body_set_linear_velocity(rbo->physics_object, rbo->lin_vel);
-		}
+			if ((len_squared_v3(rbo->lin_vel) > (rbo->lin_sleep_thresh * rbo->lin_sleep_thresh)))
+			{
+				//printf("Setting linear velocity (%f, %f, %f)\n", rbo->lin_vel[0], rbo->lin_vel[1], rbo->lin_vel[2]);
+				RB_body_set_linear_velocity(rbo->physics_object, rbo->lin_vel);
+			}
 
-		if ((len_squared_v3(rbo->ang_vel) > (rbo->ang_sleep_thresh * rbo->ang_sleep_thresh)))
-		{
-			//printf("Setting angular velocity (%f, %f, %f)\n", rbo->ang_vel[0], rbo->ang_vel[1], rbo->ang_vel[2]);
-			RB_body_set_angular_velocity(rbo->physics_object, rbo->ang_vel);
+			if ((len_squared_v3(rbo->ang_vel) > (rbo->ang_sleep_thresh * rbo->ang_sleep_thresh)))
+			{
+				//printf("Setting angular velocity (%f, %f, %f)\n", rbo->ang_vel[0], rbo->ang_vel[1], rbo->ang_vel[2]);
+				RB_body_set_angular_velocity(rbo->physics_object, rbo->ang_vel);
+			}
 		}
 	}
 
@@ -2731,7 +2734,7 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 	 */
 }
 
-static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int rebuild)
+static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int rebuild, int transfer_speed)
 {
 	if (mi == NULL || mi->rigidbody == NULL) {
 		return;
@@ -2739,10 +2742,10 @@ static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int r
 
 	if (rebuild || (mi->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD)) {
 		/* World has been rebuilt so rebuild object */
-		BKE_rigidbody_validate_sim_shard(rbw, mi, ob, true);
+		BKE_rigidbody_validate_sim_shard(rbw, mi, ob, true, transfer_speed);
 	}
 	else if (mi->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE) {
-		BKE_rigidbody_validate_sim_shard(rbw, mi, ob, false);
+		BKE_rigidbody_validate_sim_shard(rbw, mi, ob, false, transfer_speed);
 	}
 	/* refresh shape... */
 	if (mi->rigidbody->flag & RBO_FLAG_NEEDS_RESHAPE) {
@@ -2958,7 +2961,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 					}
 				}
 
-				validateShard(rbw, count == 0 ? NULL : mi, ob, do_rebuild);
+				validateShard(rbw, count == 0 ? NULL : mi, ob, do_rebuild, fmd->fracture_mode == MOD_FRACTURE_DYNAMIC);
 			}
 
 			/* update simulation object... */
@@ -3173,8 +3176,11 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 						}
 
 						/* update stored velocities, can be set again after sim rebuild */
-						RB_body_get_linear_velocity(rbo->physics_object, rbo->lin_vel);
-						RB_body_get_angular_velocity(rbo->physics_object, rbo->ang_vel);
+						if (rmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+						{
+							RB_body_get_linear_velocity(rbo->physics_object, rbo->lin_vel);
+							RB_body_get_angular_velocity(rbo->physics_object, rbo->ang_vel);
+						}
 					}
 					modFound = true;
 					break;
