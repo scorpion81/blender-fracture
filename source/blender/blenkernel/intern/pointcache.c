@@ -1017,8 +1017,7 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 	ob = rbw->objects[rbw->cache_offset_map[index]];
 	fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
 
-	if (rbo && rbo->type == RBO_TYPE_ACTIVE && rbo->physics_object &&
-	    (!(rbo->flag & RBO_FLAG_NEEDS_VALIDATE)))
+	if (rbo && rbo->type == RBO_TYPE_ACTIVE && rbo->physics_object)
 	{
 #ifdef WITH_BULLET
 		RB_body_get_position(rbo->physics_object, rbo->pos);
