@@ -41,6 +41,7 @@
 #include "BKE_fracture_util.h"
 #include "BKE_global.h"
 #include "BKE_mesh.h"
+#include "BKE_modifier.h"
 #include "BKE_object.h"
 #include "BKE_rigidbody.h"
 
@@ -1142,7 +1143,7 @@ static void stroke_to_faces(FractureModifierData *fmd, BMesh** bm, bGPDstroke *g
 
 static void do_intersect(FractureModifierData *fmd, Object* ob, Shard *t, short inner_mat_index,
                          bool is_zero, float mat[4][4], int **shard_counts, int* count,
-                         int k, DerivedMesh **dm_parent)
+                         int k, DerivedMesh **dm_parent, bool keep_other_shard)
 {
 	/*just keep appending items at the end here */
 	MPoly *mpoly, *mp;
@@ -1163,7 +1164,15 @@ static void do_intersect(FractureModifierData *fmd, Object* ob, Shard *t, short 
 		mp->flag &= ~ME_FACE_SEL;
 	}
 
-	s = BKE_fracture_shard_boolean(ob, *dm_parent, t, inner_mat_index, 0, 0.0f, &s2, NULL, 0.0f, false, 0);
+	if (keep_other_shard)
+	{
+		s = BKE_fracture_shard_boolean(ob, *dm_parent, t, inner_mat_index, 0, 0.0f, &s2, NULL, 0.0f, false, 0);
+	}
+	else
+	{
+		s = BKE_fracture_shard_boolean(ob, *dm_parent, t, inner_mat_index, 0, 0.0f, NULL, NULL, 0.0f, false, 0);
+	}
+
 	printf("Fractured: %d\n", k);
 
 	if (s != NULL) {
@@ -1199,7 +1208,8 @@ static void do_intersect(FractureModifierData *fmd, Object* ob, Shard *t, short 
 
 
 
-static void intersect_shards_by_dm(FractureModifierData *fmd, DerivedMesh *d, Object *ob, Object *ob2, short inner_mat_index, float mat[4][4])
+static void intersect_shards_by_dm(FractureModifierData *fmd, DerivedMesh *d, Object *ob, Object *ob2, short inner_mat_index, float mat[4][4],
+                                   bool keep_other_shard)
 {
 	Shard *t = NULL;
 	int i = 0, count = 0, k = 0;
@@ -1224,7 +1234,7 @@ static void intersect_shards_by_dm(FractureModifierData *fmd, DerivedMesh *d, Ob
 	count = fmd->frac_mesh->shard_count;
 
 	/*TODO, pass modifier mesh here !!! */
-	if (count == 0) {
+	if (count == 0 || !keep_other_shard) {
 		if (ob->derivedFinal != NULL) {
 			dm_parent = CDDM_copy(ob->derivedFinal);
 		}
@@ -1240,7 +1250,7 @@ static void intersect_shards_by_dm(FractureModifierData *fmd, DerivedMesh *d, Ob
 	shard_counts = MEM_mallocN(sizeof(int) * count, "shard_counts");
 
 	for (k = 0; k < count; k++) {
-		do_intersect(fmd, ob, t, inner_mat_index, is_zero, mat, &shard_counts, &count, k, &dm_parent);
+		do_intersect(fmd, ob, t, inner_mat_index, is_zero, mat, &shard_counts, &count, k, &dm_parent, keep_other_shard);
 	}
 
 	for (k = 0; k < count; k++)
@@ -1296,7 +1306,7 @@ void BKE_fracture_shard_by_greasepencil(FractureModifierData *fmd, Object *obj, 
 					BM_mesh_free(bm);
 
 					/*do intersection*/
-					intersect_shards_by_dm(fmd, dm, obj, NULL, inner_material_index, mat);
+					intersect_shards_by_dm(fmd, dm, obj, NULL, inner_material_index, mat, true);
 
 					dm->needsFree = 1;
 					dm->release(dm);
@@ -1323,19 +1333,50 @@ void BKE_fracture_shard_by_planes(FractureModifierData *fmd, Object *obj, short 
 			printf("Cutting with %s ...\n", ob->id.name);
 			/*simple case....one cutter object per object*/
 			if (ob->type == OB_MESH) {
-				DerivedMesh *d;
-				d = ob->derivedFinal;
-				if (d == NULL) {
-					d = CDDM_from_mesh(ob->data);
+
+				FractureModifierData *fmd2 = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
+				if (fmd2 && BLI_listbase_count(&fmd2->meshIslands) > 0)
+				{
+					MeshIsland* mi = NULL;
+					int j = 0;
+					for (mi = fmd2->meshIslands.first; mi; mi = mi->next)
+					{
+						DerivedMesh *dm = CDDM_copy(mi->physics_mesh);
+						MVert *mv = dm->getVertArray(dm), *v = NULL;
+						int totvert = dm->getNumVerts(dm);
+						int i = 0;
+
+						printf("Cutting with %s, island %d...\n", ob->id.name, j);
+						for (i = 0, v = mv; i < totvert; i++, v++)
+						{
+							add_v3_v3(v->co, mi->centroid);
+						}
+
+						intersect_shards_by_dm(fmd, dm, obj, ob, inner_material_index, mat, false);
+
+						dm->needsFree = 1;
+						dm->release(dm);
+						dm = NULL;
+						j++;
+					}
 				}
+				else
+				{
 
-				intersect_shards_by_dm(fmd, d, obj, ob, inner_material_index, mat);
+					DerivedMesh *d;
+					d = ob->derivedFinal;
+					if (d == NULL) {
+						d = CDDM_from_mesh(ob->data);
+					}
 
-				if (ob->derivedFinal == NULL)
-				{	/*was copied before */
-					d->needsFree = 1;
-					d->release(d);
-					d = NULL;
+					intersect_shards_by_dm(fmd, d, obj, ob, inner_material_index, mat, true);
+
+					if (ob->derivedFinal == NULL)
+					{	/*was copied before */
+						d->needsFree = 1;
+						d->release(d);
+						d = NULL;
+					}
 				}
 			}
 		}
