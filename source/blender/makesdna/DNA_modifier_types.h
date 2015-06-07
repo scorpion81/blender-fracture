@@ -1564,6 +1564,7 @@ typedef struct FractureModifierData {
 	int refresh;
 	int refresh_constraints;
 	int refresh_autohide;
+	int reset_shards;
 
 	int use_constraints;
 	int use_mass_dependent_thresholds;
@@ -1593,7 +1594,7 @@ typedef struct FractureModifierData {
 	float max_vol;
 	int last_frame;
 
-	char pad[4];
+	//char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

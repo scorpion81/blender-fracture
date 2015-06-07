@@ -742,7 +742,7 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 
 
 /* parse the voro++ cell data */
-static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, FracMesh *fm, int algorithm, Object *obj, DerivedMesh *dm, short inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode)
+static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, FracMesh *fm, int algorithm, Object *obj, DerivedMesh *dm, short inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode, bool reset)
 {
 	/*Parse voronoi raw data*/
 	int i = 0, j = 0, count = 0;
@@ -775,7 +775,18 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 		return;
 	}
 
-	if (mode == MOD_FRACTURE_PREFRACTURED)
+	if (reset)
+	{
+		while (fm->shard_map.first)
+		{
+			Shard *t = fm->shard_map.first;
+			BLI_remlink_safe(&fm->shard_map, t);
+			printf("Resetting shard: %d\n", t->shard_id);
+			BKE_shard_free(t, true);
+		}
+	}
+
+	if (mode == MOD_FRACTURE_PREFRACTURED && !reset)
 	{
 		//rebuild tree
 		if (!fm->last_shard_tree && (fm->shard_count > 0) && mode == MOD_FRACTURE_PREFRACTURED)
@@ -1173,7 +1184,7 @@ static void do_intersect(FractureModifierData *fmd, Object* ob, Shard *t, short 
 		s = BKE_fracture_shard_boolean(ob, *dm_parent, t, inner_mat_index, 0, 0.0f, NULL, NULL, 0.0f, false, 0);
 	}
 
-	printf("Fractured: %d\n", k);
+	//printf("Fractured: %d\n", k);
 
 	if (s != NULL) {
 		add_shard(fmd->frac_mesh, s, mat);
@@ -1234,7 +1245,8 @@ static void intersect_shards_by_dm(FractureModifierData *fmd, DerivedMesh *d, Ob
 	count = fmd->frac_mesh->shard_count;
 
 	/*TODO, pass modifier mesh here !!! */
-	if (count == 0 || !keep_other_shard) {
+	if (count == 0 && keep_other_shard) {
+
 		if (ob->derivedFinal != NULL) {
 			dm_parent = CDDM_copy(ob->derivedFinal);
 		}
@@ -1259,11 +1271,16 @@ static void intersect_shards_by_dm(FractureModifierData *fmd, DerivedMesh *d, Ob
 
 		if (cnt > 0)
 		{
-			/*clean up old entries here to avoid unnecessary shards*/
-			Shard *first = fmd->frac_mesh->shard_map.first;
-			BLI_remlink_safe(&fmd->frac_mesh->shard_map,first);
-			BKE_shard_free(first, true);
-			first = NULL;
+			if (keep_other_shard)
+			{
+				/*clean up old entries here to avoid unnecessary shards*/
+				Shard *first = fmd->frac_mesh->shard_map.first;
+				BLI_remlink_safe(&fmd->frac_mesh->shard_map,first);
+				BKE_shard_free(first, true);
+				first = NULL;
+			}
+
+			/* keep asynchronous by intent, to keep track of original shard count */
 			fmd->frac_mesh->shard_count--;
 		}
 	}
@@ -1346,7 +1363,7 @@ void BKE_fracture_shard_by_planes(FractureModifierData *fmd, Object *obj, short 
 						int totvert = dm->getNumVerts(dm);
 						int i = 0;
 
-						printf("Cutting with %s, island %d...\n", ob->id.name, j);
+						//printf("Cutting with %s, island %d...\n", ob->id.name, j);
 						for (i = 0, v = mv; i < totvert; i++, v++)
 						{
 							add_v3_v3(v->co, mi->centroid);
@@ -1359,6 +1376,20 @@ void BKE_fracture_shard_by_planes(FractureModifierData *fmd, Object *obj, short 
 						dm = NULL;
 						j++;
 					}
+
+					/*now delete first shards, those are the old ones */
+					while (fmd->frac_mesh->shard_count > 0)
+					{
+						/*clean up old entries here to avoid unnecessary shards*/
+						Shard *first = fmd->frac_mesh->shard_map.first;
+						BLI_remlink_safe(&fmd->frac_mesh->shard_map,first);
+						BKE_shard_free(first, true);
+						first = NULL;
+						fmd->frac_mesh->shard_count--;
+					}
+
+					/* re-synchronize counts, was possibly different before */
+					fmd->frac_mesh->shard_count = BLI_listbase_count(&fmd->frac_mesh->shard_map);
 				}
 				else
 				{
@@ -1384,7 +1415,7 @@ void BKE_fracture_shard_by_planes(FractureModifierData *fmd, Object *obj, short 
 }
 
 void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud, int algorithm, Object *obj, DerivedMesh *dm, short
-                                  inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode) {
+                                  inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode, bool reset) {
 	int n_size = 8;
 	
 	Shard *shard;
@@ -1445,7 +1476,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 
 	/*Evaluate result*/
 	parse_cells(voro_cells, pointcloud->totpoints, id, fmesh, algorithm, obj, dm, inner_material_index, mat,
-	            num_cuts, fractal, smooth, num_levels, mode);
+	            num_cuts, fractal, smooth, num_levels, mode, reset);
 
 	/*Free structs in C++ area of memory */
 	cells_free(voro_cells, pointcloud->totpoints);

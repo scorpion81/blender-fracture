@@ -208,6 +208,7 @@ static void initData(ModifierData *md)
 	fmd->dynamic_force = 10.0f;
 	fmd->update_dynamic = false;
 	fmd->limit_impact = false;
+	fmd->reset_shards = false;
 }
 
 static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
@@ -1268,7 +1269,7 @@ static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, Deri
 
 		if (points.totpoints > 0) {
 			BKE_fracture_shard_by_points(fmd->frac_mesh, id, &points, fmd->frac_algorithm, obj, dm, mat_index, mat,
-			                             fmd->fractal_cuts, fmd->fractal_amount, fmd->use_smooth, fmd->fractal_iterations, fmd->fracture_mode);
+			                             fmd->fractal_cuts, fmd->fractal_amount, fmd->use_smooth, fmd->fractal_iterations, fmd->fracture_mode, fmd->reset_shards);
 		}
 
 		if (fmd->point_source & MOD_FRACTURE_GREASEPENCIL && fmd->use_greasepencil_edges) {
@@ -1297,6 +1298,7 @@ static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, Deri
 		fmd->shards_to_islands = temp;
 
 		cleanup_splinters(fmd, dm, mat);
+		fmd->reset_shards = false;
 	}
 	MEM_freeN(points.points);
 }
@@ -1395,6 +1397,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->last_frame = rmd->last_frame;
 	trmd->dynamic_force = rmd->dynamic_force;
 	trmd->update_dynamic = false;
+	trmd->reset_shards = false;
 }
 
 /* mi->bb, its for volume fraction calculation.... */
