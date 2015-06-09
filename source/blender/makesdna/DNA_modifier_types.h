@@ -1543,6 +1543,7 @@ typedef struct FractureSetting {
 	/*input structs */
 	struct Group *extra_group;
 	struct Group *cutter_group;
+	struct DerivedMesh *start_mesh;
 
 	char thresh_defgrp_name[64];  /* MAX_VGROUP_NAME */
 	char ground_defgrp_name[64];  /* MAX_VGROUP_NAME */
