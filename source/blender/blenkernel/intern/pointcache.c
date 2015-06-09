@@ -1030,7 +1030,7 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 		}
 		else if (fmd && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
-			MeshIsland *mi = BLI_findlink(&fmd->meshIslands, rbo->meshisland_index);
+			MeshIsland *mi = BLI_findlink(&fmd->fracture->meshIslands, rbo->meshisland_index);
 			int frame = (int)floor(cfra);
 			frame =  frame - mi->start_frame;
 
@@ -1091,7 +1091,7 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfr
 			//TODO, need to speed this up.... array, hash ?
 
 			//modifier should have "switched" this to current set of meshislands already.... so access it
-			MeshIsland *mi = BLI_findlink(&fmd->meshIslands, rbo->meshisland_index);
+			MeshIsland *mi = BLI_findlink(&fmd->fracture->meshIslands, rbo->meshisland_index);
 			int frame = (int)floor(cfra);
 			frame = frame - mi->start_frame;
 
@@ -1144,7 +1144,7 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 		{
 			float loc[3], rot[4];
 
-			MeshIsland *mi = BLI_findlink(&fmd->meshIslands, rbo->meshisland_index);
+			MeshIsland *mi = BLI_findlink(&fmd->fracture->meshIslands, rbo->meshisland_index);
 			int frame = (int)floor(cfra);
 			frame = frame - mi->start_frame;
 
@@ -3039,7 +3039,7 @@ int  BKE_ptcache_object_reset(Scene *scene, Object *ob, int mode)
 		if (md && md->type == eModifierType_Fracture)
 		{
 			FractureModifierData *fmd = (FractureModifierData*)md;
-			if (!fmd->refresh_autohide)
+			if (!(fmd->flag & FM_FLAG_REFRESH_AUTOHIDE))
 			{
 				if (ob->rigidbody_object)
 					ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_RESHAPE;

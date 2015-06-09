@@ -4797,7 +4797,7 @@ static int initialize_meshisland(FractureModifierData* fmd, MeshIsland** mii, MV
 		mi->vertco[k*3+1] = v->co[1];
 		mi->vertco[k*3+2] = v->co[2];
 
-		if (mi->vertno != NULL && fmd->fix_normals) {
+		if (mi->vertno != NULL && (fmd->fracture->flag & FM_FLAG_FIX_NORMALS)) {
 			short sno[3];
 			sno[0] = mi->vertno[k*3];
 			sno[1] = mi->vertno[k*3+1];
@@ -4811,8 +4811,8 @@ static int initialize_meshisland(FractureModifierData* fmd, MeshIsland** mii, MV
 	{
 		MeshIslandSequence *prev = NULL;
 
-		if (fmd->current_mi_entry) {
-			prev = fmd->current_mi_entry->prev;
+		if (fmd->fracture->current_mi_entry) {
+			prev = fmd->fracture->current_mi_entry->prev;
 		}
 
 		if (prev)
@@ -4846,40 +4846,41 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 {
 	FracMesh* fm;
 
-	fm = fmd->frac_mesh = newdataadr(fd, fmd->frac_mesh);
+	fm = fmd->fracture->frac_mesh = newdataadr(fd, fmd->fracture->frac_mesh);
 
-	fmd->refresh = false;  /* do not execute modifier here yet*/
-	fmd->refresh_constraints = false;
-	fmd->nor_tree = NULL;
-	fmd->face_pairs = NULL;
+	fmd->fracture->flag &=~ FM_FLAG_REFRESH;  /* do not execute modifier here yet*/
+	fmd->constraint->flag &=~ FM_FLAG_REFRESH_CONSTRAINTS;
+	fmd->fracture->nor_tree = NULL;
+	fmd->fracture->face_pairs = NULL;
 	fmd->vert_index_map = NULL;
-	fmd->vertex_island_map = NULL;
+	fmd->fracture->vertex_island_map = NULL;
 
 	/*HARDCODING this for now, until we can version it properly, say with 2.75 ? */
 	if (fd->fileversion < 275) {
 		fmd->fracture_mode = MOD_FRACTURE_PREFRACTURED;
-		fmd->shard_sequence.first = NULL;
-		fmd->shard_sequence.last = NULL;
-		fmd->meshIsland_sequence.first = NULL;
-		fmd->meshIsland_sequence.last = NULL;
+		fmd->fracture->shard_sequence.first = NULL;
+		fmd->fracture->shard_sequence.last = NULL;
+		fmd->fracture->meshIsland_sequence.first = NULL;
+		fmd->fracture->meshIsland_sequence.last = NULL;
 	}
 
+	//loop over settings list here !
 	if (fm == NULL || fmd->dm_group) {
-		fmd->dm = NULL;
-		fmd->meshIslands.first = NULL;
-		fmd->meshIslands.last = NULL;
-		fmd->visible_mesh = NULL;
-		fmd->visible_mesh_cached = NULL;
+		fmd->fracture->dm = NULL;
+		fmd->fracture->meshIslands.first = NULL;
+		fmd->fracture->meshIslands.last = NULL;
+		fmd->fracture->visible_mesh = NULL;
+		fmd->fracture->visible_mesh_cached = NULL;
 		zero_m4(fmd->origmat);
-		fmd->meshConstraints.first = NULL;
-		fmd->meshConstraints.last = NULL;
-		fmd->explo_shared = false;
-		fmd->refresh = false;  /* do not execute modifier */
-		fmd->refresh_constraints = false;
-		fmd->max_vol = 0;
-		fmd->refresh_images = false;
-		fmd->islandShards.first = NULL;
-		fmd->islandShards.last = NULL;
+		fmd->constraint->meshConstraints.first = NULL;
+		fmd->constraint->meshConstraints.last = NULL;
+		fmd->fracture->flag &= ~FM_FLAG_USE_FRACMESH;
+		fmd->fracture->flag &= ~FM_FLAG_REFRESH;  /* do not execute modifier */
+		fmd->constraint->flag &= ~FM_FLAG_REFRESH_CONSTRAINTS;
+		fmd->fracture->max_vol = 0;
+		fmd->fracture->flag &= ~FM_FLAG_REFRESH_IMAGES;
+		fmd->fracture->islandShards.first = NULL;
+		fmd->fracture->islandShards.last = NULL;
 	}
 	else {
 		MeshIsland *mi;
@@ -4893,51 +4894,51 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 
 		if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
 		{
-			link_list(fd, &fmd->frac_mesh->shard_map);
-			for (s = fmd->frac_mesh->shard_map.first; s; s = s->next) {
+			link_list(fd, &fmd->fracture->frac_mesh->shard_map);
+			for (s = fmd->fracture->frac_mesh->shard_map.first; s; s = s->next) {
 				read_shard(fd, &s);
 			}
 
-			fmd->dm = NULL;
-			fmd->visible_mesh = NULL;
+			fmd->fracture->dm = NULL;
+			fmd->fracture->visible_mesh = NULL;
 
-			link_list(fd, &fmd->islandShards);
-			for (s = fmd->islandShards.first; s; s = s->next) {
+			link_list(fd, &fmd->fracture->islandShards);
+			for (s = fmd->fracture->islandShards.first; s; s = s->next) {
 				read_shard(fd, &s);
 			}
 
-			link_list(fd, &fmd->meshIslands);
-			count = BLI_listbase_count(&fmd->islandShards);
+			link_list(fd, &fmd->fracture->meshIslands);
+			count = BLI_listbase_count(&fmd->fracture->islandShards);
 
-			if ((fmd->islandShards.first == NULL || count == 0) && fm->shard_count > 0) {
+			if ((fmd->fracture->islandShards.first == NULL || count == 0) && fm->shard_count > 0) {
 				/* oops, a refresh was missing, so disable this flag here better, otherwise
 				 * we attempt to load non existing data */
-				fmd->shards_to_islands = false;
+				fmd->fracture->flag &= ~FM_FLAG_SHARDS_TO_ISLANDS;
 			}
 			else if (fm->shard_count == 0) {
-				fmd->shards_to_islands = true;
+				fmd->fracture->flag |= FM_FLAG_SHARDS_TO_ISLANDS;
 			}
 
 			/* ugly ugly, need only the shard... the rest is to be generated on demand... */
 			BKE_fracture_create_dm(fmd, true);
 
 			if (fm->shard_count == 0) {
-				fmd->shards_to_islands = false;
+				fmd->fracture->flag &= ~FM_FLAG_SHARDS_TO_ISLANDS;
 			}
 
-			fmd->visible_mesh_cached = CDDM_copy(fmd->dm);
-			if (fmd->visible_mesh == NULL) {
-				fmd->visible_mesh = DM_to_bmesh(fmd->visible_mesh_cached, true);
+			fmd->fracture->visible_mesh_cached = CDDM_copy(fmd->fracture->dm);
+			if (fmd->fracture->visible_mesh == NULL) {
+				fmd->fracture->visible_mesh = DM_to_bmesh(fmd->fracture->visible_mesh_cached, true);
 			}
 
-			DM_ensure_tessface(fmd->visible_mesh_cached);
-			DM_ensure_normals(fmd->visible_mesh_cached);
-			DM_update_tessface_data(fmd->visible_mesh_cached);
+			DM_ensure_tessface(fmd->fracture->visible_mesh_cached);
+			DM_ensure_normals(fmd->fracture->visible_mesh_cached);
+			DM_update_tessface_data(fmd->fracture->visible_mesh_cached);
 
 			/* re-init cached verts here... */
-			mverts = CDDM_get_verts(fmd->visible_mesh_cached);
+			mverts = CDDM_get_verts(fmd->fracture->visible_mesh_cached);
 
-			for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
+			for (mi = fmd->fracture->meshIslands.first; mi; mi = mi->next) {
 				read_meshIsland(fd, &mi);
 				vertstart += initialize_meshisland(fmd, &mi, mverts, vertstart, ob, -1, -1);
 			}
@@ -5013,11 +5014,11 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 		}
 #endif
 
-		fmd->refresh_constraints = true;
-		fmd->meshConstraints.first = NULL;
-		fmd->meshConstraints.last = NULL;
+		fmd->constraint->flag |= FM_FLAG_REFRESH_CONSTRAINTS;
+		fmd->constraint->meshConstraints.first = NULL;
+		fmd->constraint->meshConstraints.last = NULL;
 
-		fmd->refresh_images = true;
+		fmd->fracture->flag |= FM_FLAG_REFRESH_IMAGES;
 	}
 }
 
@@ -8273,8 +8274,8 @@ static void fix_fracture_image_hack(Main* main)
 	for (ob = main->object.first; ob; ob = ob->id.next) {
 		FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
 		if (fmd && fmd->dm_group) {
-			fmd->refresh_images = true;
-			fmd->refresh = true;
+			fmd->fracture->flag |= FM_FLAG_REFRESH_IMAGES;
+			fmd->fracture->flag |= FM_FLAG_REFRESH;
 		}
 	}
 }

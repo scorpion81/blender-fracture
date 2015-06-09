@@ -1389,8 +1389,9 @@ typedef struct MeshIsland {
 	float rot[4]; /*hrm, need this for constraints probably */
 	float thresh_weight, ground_weight;
 	int linear_index;  /* index in rigidbody world */
-	int particle_index;
-	//char pad[2];
+	int particle_index; /*used for clustering */
+	int setting_id;
+	char pad[4];
 } MeshIsland;
 
 
@@ -1497,104 +1498,167 @@ typedef struct FractureID {
 	char pad[4];
 } FractureID;
 
-typedef struct FractureModifierData {
-	ModifierData modifier;
-	struct FracMesh *frac_mesh; /* store only the current fracmesh here first, later maybe an entire history...*/
-	struct DerivedMesh *dm;
+/*fracture flags*/
+enum {
+	FM_FLAG_USE_SMOOTH                    = (1 << 0),
+	FM_FLAG_USE_GREASEPENCIL_EDGES        = (1 << 1),
+	FM_FLAG_USE_PARTICLE_BIRTH_COORDS     = (1 << 2),
+
+	FM_FLAG_SHARDS_TO_ISLANDS             = (1 << 3),
+	FM_FLAG_FIX_NORMALS                   = (1 << 4),
+	FM_FLAG_AUTO_EXECUTE                  = (1 << 5),
+
+	FM_FLAG_LIMIT_IMPACT                  = (1 << 6),
+	FM_FLAG_USE_FRACMESH                  = (1 << 7),
+
+	FM_FLAG_REFRESH                       = (1 << 8),
+	FM_FLAG_REFRESH_AUTOHIDE              = (1 << 9),
+	FM_FLAG_RESET_SHARDS                  = (1 << 10),
+	FM_FLAG_REFRESH_IMAGES                = (1 << 11),
+	FM_FLAG_UPDATE_DYNAMIC                = (1 << 12),
+	FM_FLAG_REFRESH_CONSTRAINTS           = (1 << 13),
+};
+
+/*constraint flags*/
+enum {
+	FMC_FLAG_USE_CONSTRAINTS               = (1 << 0),
+	FMC_FLAG_USE_BREAKING                  = (1 << 1),
+
+	FMC_FLAG_BREAKING_ANGLE_WEIGHTED       = (1 << 2),
+	FMC_FLAG_BREAKING_DISTANCE_WEIGHTED    = (1 << 3),
+	FMC_FLAG_BREAKING_PERCENTAGE_WEIGHTED  = (1 << 4),
+
+	FMC_FLAG_USE_MASS_DEPENDENT_THRESHOLDS = (1 << 5),
+};
+
+/*internal flags, global */
+enum {
+	FMI_FLAG_USE_EXPERIMENTAL    = (1 << 0),
+	FMI_FLAG_EXECUTE_THREADED    = (1 << 1),
+};
+
+typedef struct FractureSetting {
+	struct FractureSetting *next, *prev;
+
+	/*input structs */
 	struct Group *extra_group;
-	struct Group *dm_group;
-	struct Group *cluster_group;
 	struct Group *cutter_group;
-	struct BMesh *visible_mesh;
-	struct DerivedMesh *visible_mesh_cached;
-	ListBase meshIslands, meshConstraints;
-	ListBase islandShards;
+
 	char thresh_defgrp_name[64];  /* MAX_VGROUP_NAME */
 	char ground_defgrp_name[64];  /* MAX_VGROUP_NAME */
 	char inner_defgrp_name[64];  /* MAX_VGROUP_NAME */
-	struct KDTree *nor_tree; /* store original vertices here (coords), to find them later and reuse their normals */
+	char name[64];	/* MAX_VGROUP_NAME */
+
 	struct Material *inner_material;
-	struct GHash *face_pairs;
-	struct GHash *vert_index_map; /*used for autoconversion of former objects to clusters, marks object membership of each vert*/
-	struct GHash *vertex_island_map; /* used for constraint building based on vertex proximity, temporary data */
+
+	/*permanent storage*/
+	struct FracMesh *frac_mesh; /* store only the current fracmesh here first, later maybe an entire history...*/
+	struct ConstraintSetting **constraint_set;	/* this is the current constraint "working set", means all mapped constraint sets for this fracture working set */
+
+	ListBase meshIslands;
+	ListBase islandShards;
 	ListBase shard_sequence; /* used as mesh cache / history for dynamic fracturing, for shards (necessary for conversion to DM) */
 	ListBase meshIsland_sequence; /* used as mesh cache / history for dynamic fracturing, for meshIslands (necessary for loc/rot "pointcache") */
 	ShardSequence *current_shard_entry; /*volatile storage of current shard entry, so we dont have to search in the list */
 	MeshIslandSequence *current_mi_entry; /*analogous to current shard entry */
+
+	/*volatile storage*/
+	struct DerivedMesh *dm;
+	struct BMesh *visible_mesh;
+	struct DerivedMesh *visible_mesh_cached;
+	struct KDTree *nor_tree; /* store original vertices here (coords), to find them later and reuse their normals */
+	struct GHash *face_pairs;
+	struct GHash *vertex_island_map; /* used for constraint building based on vertex proximity, temporary data */
 	ListBase fracture_ids; /*volatile storage of shards being "hit" or fractured currently, needs to be cleaned up after usage! */
 
 	/* values */
-	int frac_algorithm;
-	int shard_count;
-	int shard_id;
-	int point_source;
-	int point_seed;
-	int percentage;
-	int cluster_count;
-
-	int constraint_limit;
-	int solver_iterations_override;
-	int cluster_solver_iterations_override;
-	int breaking_percentage;
-	int cluster_breaking_percentage;
-	int splinter_axis;
-	int fractal_cuts;
-	int fractal_iterations;
-	int grease_decimate;
-	int cutter_axis;
-	int cluster_constraint_type;
-	int fracture_mode;
-
-	float breaking_angle;
-	float breaking_distance;
-	float cluster_breaking_angle;
-	float cluster_breaking_distance;
-	float origmat[4][4];
-	float breaking_threshold;
-	float cluster_breaking_threshold;
-	float contact_dist, autohide_dist;
 	float splinter_length;
 	float nor_range;
 	float fractal_amount;
 	float physics_mesh_scale;
 	float grease_offset;
 	float dynamic_force;
+	float autohide_dist;
 
-	/* flags */
-	int refresh;
-	int refresh_constraints;
-	int refresh_autohide;
-	int reset_shards;
+	int constraint_count;
+	int frac_algorithm;
+	int shard_count;
+	int point_source;
+	int point_seed;
+	int percentage;
+	int splinter_axis;
+	int fractal_cuts;
+	int fractal_iterations;
+	int grease_decimate;
+	int cutter_axis;
+	int id;
 
-	int use_constraints;
-	int use_mass_dependent_thresholds;
-	int use_particle_birth_coordinates;
-	int use_breaking;
-	int use_smooth;
-	int use_greasepencil_edges;
-
-	int shards_to_islands;
-	int execute_threaded;
-	int fix_normals;
-	int auto_execute;
-
-	int breaking_distance_weighted;
-	int breaking_angle_weighted;
-	int breaking_percentage_weighted;
-	int constraint_target;
-	int limit_impact;
-
-	/* internal flags */
-	int use_experimental;
-	int explo_shared;
-	int refresh_images;
-	int update_dynamic;
+	/*flags*/
+	int flag;
 
 	/* internal values */
 	float max_vol;
-	int last_frame;
 
-	//char pad[4];
+	char pad[4];
+
+} FractureSetting;
+
+typedef struct ConstraintSetting {
+	struct ConstraintSetting *next, *prev;
+
+	struct Group *cluster_group;
+	ListBase fracture_mapping;
+	ListBase meshConstraints;
+
+	struct FractureSetting *partner1;
+	struct FractureSetting *partner2;
+
+	char name[64];	/* MAX_VGROUP_NAME */
+
+	float breaking_angle;
+	float breaking_distance;
+	float cluster_breaking_angle;
+	float cluster_breaking_distance;
+	float breaking_threshold;
+	float cluster_breaking_threshold;
+	float contact_dist;
+
+	int cluster_count;
+	int constraint_limit;
+	int solver_iterations_override;
+	int cluster_solver_iterations_override;
+	int breaking_percentage;
+	int cluster_breaking_percentage;
+	int cluster_constraint_type;
+	int constraint_target;
+
+	int flag;
+
+} ConstraintSetting;
+
+typedef struct FractureModifierData {
+	ModifierData modifier;
+
+	struct Group *dm_group;	 /* this is a global group for the entire FM */
+	struct GHash *vert_index_map; /*used for autoconversion of former objects to clusters, marks object membership of each vert*/
+
+	/*settings*/
+	ListBase fracture_settings;
+	ListBase constraint_settings;
+	struct FractureSetting *fracture;
+	struct ConstraintSetting *constraint; /*this is the current constraint setting */
+
+	/* values */
+	float origmat[4][4];
+	int fracture_mode;
+	int last_frame;
+	int active_setting;
+	int active_constraint_setting;
+
+	/*flags*/
+	int flag;
+
+	char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

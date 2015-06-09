@@ -651,9 +651,9 @@ void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 			FractureModifierData *fmd = (FractureModifierData* )modifiers_findByType(ob, eModifierType_Fracture);
 			if (fmd != NULL)
 			{
-				fmd->cluster_constraint_type = RBC_TYPE_FIXED;
-				fmd->constraint_target = MOD_FRACTURE_CENTROID;
-				fmd->use_breaking = true;
+				fmd->constraint->cluster_constraint_type = RBC_TYPE_FIXED;
+				fmd->constraint->constraint_target = MOD_FRACTURE_CENTROID;
+				fmd->constraint->flag |= FMC_FLAG_USE_BREAKING;
 			}
 		}
 	}

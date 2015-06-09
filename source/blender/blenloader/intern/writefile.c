@@ -1670,7 +1670,7 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 
 		else if (md->type==eModifierType_Fracture) {
 			FractureModifierData *fmd = (FractureModifierData*)md;
-			FracMesh* fm = fmd->frac_mesh;
+			FracMesh* fm = fmd->fracture->frac_mesh;
 			MeshIsland *mi;
 			Shard *s;
 
@@ -1686,11 +1686,11 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 							write_shard(wd, s);
 						}
 
-						for (s = fmd->islandShards.first; s; s = s->next) {
+						for (s = fmd->fracture->islandShards.first; s; s = s->next) {
 							write_shard(wd, s);
 						}
 
-						for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
+						for (mi = fmd->fracture->meshIslands.first; mi; mi = mi->next) {
 							write_meshIsland(wd, mi);
 						}
 					}

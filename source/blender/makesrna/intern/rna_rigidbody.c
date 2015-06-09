@@ -158,7 +158,7 @@ void foreach_shard_float(Object* ob, float value, void (*func)(RigidBodyOb *rbo,
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_Fracture) {
 			rmd = (FractureModifierData*)md;
-			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+			for (mi = rmd->fracture->meshIslands.first; mi; mi = mi->next) {
 				if (mi->rigidbody != NULL) {
 					func(mi->rigidbody, value);
 				}
@@ -176,7 +176,7 @@ void foreach_shard_mass(Object *ob)
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_Fracture) {
 			rmd = (FractureModifierData*)md;
-			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+			for (mi = rmd->fracture->meshIslands.first; mi; mi = mi->next) {
 				if (mi->rigidbody != NULL) {
 					BKE_rigidbody_calc_shard_mass(ob, mi, NULL);
 				}
@@ -193,7 +193,7 @@ void foreach_shard_int(Object *ob, int value, void (*func)(RigidBodyOb *rbo, int
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_Fracture) {
 			rmd = (FractureModifierData*)md;
-			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+			for (mi = rmd->fracture->meshIslands.first; mi; mi = mi->next) {
 				if (mi->rigidbody != NULL) {
 					func(mi->rigidbody, value);
 				}
@@ -211,7 +211,7 @@ void foreach_shard_ints(Object *ob, const int *value, void (*func)(RigidBodyOb *
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_Fracture) {
 			rmd = (FractureModifierData*)md;
-			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+			for (mi = rmd->fracture->meshIslands.first; mi; mi = mi->next) {
 				if (mi->rigidbody != NULL) {
 					func(mi->rigidbody, value);
 				}
@@ -229,7 +229,7 @@ void foreach_shard_flag_shape(Object *ob, int flag, short shape, bool reset)
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_Fracture) {
 			rmd = (FractureModifierData*)md;
-			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+			for (mi = rmd->fracture->meshIslands.first; mi; mi = mi->next) {
 				if (mi->rigidbody != NULL) {
 					mi->rigidbody->flag = flag;
 					mi->rigidbody->shape = shape;

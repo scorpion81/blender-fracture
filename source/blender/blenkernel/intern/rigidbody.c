@@ -90,7 +90,8 @@ static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED(rbw), Mes
 }
 
 static bool isModifierActive(FractureModifierData *rmd) {
-	return ((rmd != NULL) && (rmd->modifier.mode & (eModifierMode_Realtime | eModifierMode_Render)) && (rmd->refresh == false || rmd->fracture_mode == MOD_FRACTURE_DYNAMIC));
+	return ((rmd != NULL) && (rmd->modifier.mode & (eModifierMode_Realtime | eModifierMode_Render)) &&
+	        (!(rmd->fracture->flag & FM_FLAG_REFRESH) || rmd->fracture_mode == MOD_FRACTURE_DYNAMIC));
 }
 
 static void calc_dist_angle(RigidBodyShardCon *con, float *dist, float *angle)
@@ -130,7 +131,7 @@ float BKE_rigidbody_calc_max_con_mass(Object *ob)
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_Fracture) {
 			rmd = (FractureModifierData *)md;
-			for (con = rmd->meshConstraints.first; con; con = con->next) {
+			for (con = rmd->constraint->meshConstraints.first; con; con = con->next) {
 				if ((con->mi1 != NULL && con->mi1->rigidbody != NULL) &&
 				    (con->mi2 != NULL && con->mi2->rigidbody != NULL)) {
 					con_mass = con->mi1->rigidbody->mass + con->mi2->rigidbody->mass;
@@ -157,7 +158,7 @@ float BKE_rigidbody_calc_min_con_dist(Object *ob)
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_Fracture) {
 			rmd = (FractureModifierData *)md;
-			for (con = rmd->meshConstraints.first; con; con = con->next) {
+			for (con = rmd->constraint->meshConstraints.first; con; con = con->next) {
 				if ((con->mi1 != NULL && con->mi1->rigidbody != NULL) &&
 				    (con->mi2 != NULL && con->mi2->rigidbody != NULL)) {
 					sub_v3_v3v3(con_vec, con->mi1->centroid, con->mi2->centroid);
@@ -179,7 +180,7 @@ float BKE_rigidbody_calc_min_con_dist(Object *ob)
 void BKE_rigidbody_calc_threshold(float max_con_mass, FractureModifierData *rmd, RigidBodyShardCon *con) {
 
 	float max_thresh, thresh = 0.0f, con_mass;
-	if ((max_con_mass == 0) && (rmd->use_mass_dependent_thresholds)) {
+	if ((max_con_mass == 0) && (rmd->constraint->flag & FMC_FLAG_USE_MASS_DEPENDENT_THRESHOLDS)) {
 		return;
 	}
 
@@ -187,11 +188,11 @@ void BKE_rigidbody_calc_threshold(float max_con_mass, FractureModifierData *rmd,
 		return;
 	}
 
-	max_thresh = rmd->breaking_threshold;
+	max_thresh = rmd->constraint->breaking_threshold;
 	if ((con->mi1->rigidbody != NULL) && (con->mi2->rigidbody != NULL)) {
 		con_mass = con->mi1->rigidbody->mass + con->mi2->rigidbody->mass;
 
-		if (rmd->use_mass_dependent_thresholds)
+		if (rmd->constraint->flag & FMC_FLAG_USE_MASS_DEPENDENT_THRESHOLDS)
 		{
 			thresh = (con_mass / max_con_mass) * max_thresh;
 		}
@@ -361,6 +362,7 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland *mi, DerivedMesh *orig
 
 static void initNormals(struct MeshIsland *mi, Object *ob, FractureModifierData *fmd)
 {
+	// LIMIT This to the according VGROUP !!! TODO
 	/* hrm have to init Normals HERE, because we cant do this in readfile.c in case the file is loaded (have no access to the Object there) */
 	if (mi->vertno == NULL && mi->vertices_cached != NULL) {
 		KDTreeNearest n;
@@ -372,7 +374,7 @@ static void initNormals(struct MeshIsland *mi, Object *ob, FractureModifierData 
 			dm = CDDM_from_mesh(ob->data);
 		}
 
-		if (fmd->nor_tree == NULL) {
+		if (fmd->fracture->nor_tree == NULL) {
 			/* HRRRRRMMMM need to build the kdtree here as well if we start the sim after loading and not refreshing, again, no access to object.... */
 			int i = 0, totvert;
 			KDTree *tree;
@@ -387,13 +389,13 @@ static void initNormals(struct MeshIsland *mi, Object *ob, FractureModifierData 
 			}
 
 			BLI_kdtree_balance(tree);
-			fmd->nor_tree = tree;
+			fmd->fracture->nor_tree = tree;
 		}
 
 		mi->vertno = MEM_callocN(sizeof(short) * 3 * mi->vertex_count, "mi->vertno");
 		for (i = 0; i < mi->vertex_count; i++) {
 			MVert *v = mi->vertices_cached[i];
-			index = BLI_kdtree_find_nearest(fmd->nor_tree, v->co, &n);
+			index = BLI_kdtree_find_nearest(fmd->fracture->nor_tree, v->co, &n);
 			dm->getVert(dm, index, &mvrt);
 			mi->vertno[i * 3] = mvrt.no[0];
 			mi->vertno[i * 3 + 1] = mvrt.no[1];
@@ -416,7 +418,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 	bool invalidData;
 
 	/* hrm have to init Normals HERE, because we cant do this in readfile.c in case the file is loaded (have no access to the Object there)*/
-	if (mi->vertno == NULL && rmd->fix_normals) {
+	if (mi->vertno == NULL && (rmd->fracture->flag & FM_FLAG_FIX_NORMALS)) {
 		initNormals(mi, ob, rmd);
 	}
 	
@@ -466,7 +468,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 		startco[1] = mi->vertco[j * 3 + 1];
 		startco[2] = mi->vertco[j * 3 + 2];
 
-		if (rmd->fix_normals) {
+		if (rmd->fracture->flag & FM_FLAG_FIX_NORMALS) {
 			float irot[4], qrot[4];
 			startno[0] = mi->vertno[j * 3];
 			startno[1] = mi->vertno[j * 3 + 1];
@@ -763,7 +765,7 @@ static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh_shard(MeshIsland 
 		/* shrink the bullet mesh a little bit, so it wont explode */
 		fmd = (FractureModifierData*) modifiers_findByType(ob, eModifierType_Fracture);
 		if (fmd)
-			scale = fmd->physics_mesh_scale;
+			scale = fmd->fracture->physics_mesh_scale;
 		scale_physics_mesh(&dm, mi->centroid, scale);
 
 		DM_ensure_tessface(dm);
@@ -1714,7 +1716,7 @@ static void do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBo
 
 	if (valid)
 	{
-		for (mi = fmd->meshIslands.first; mi; mi = mi->next)
+		for (mi = fmd->fracture->meshIslands.first; mi; mi = mi->next)
 		{
 			RigidBodyOb* rbo = mi->rigidbody;
 			if ((rbo->flag & RBO_FLAG_KINEMATIC) && ((mi_compare == mi)))
@@ -1839,7 +1841,7 @@ static bool check_shard_size(FractureModifierData *fmd, int id, float impact_loc
 {
 	FractureID *fid;
 	float size = 0.1f;
-	Shard *t = fmd->frac_mesh->shard_map.first;
+	Shard *t = fmd->fracture->frac_mesh->shard_map.first;
 	Shard *s = NULL;
 	float dim[3];
 
@@ -1868,7 +1870,7 @@ static bool check_shard_size(FractureModifierData *fmd, int id, float impact_loc
 		return false;
 	}
 
-	for (fid = fmd->fracture_ids.first; fid; fid = fid->next)
+	for (fid = fmd->fracture->fracture_ids.first; fid; fid = fid->next)
 	{
 		if (fid->shardID == id)
 		{
@@ -1924,8 +1926,8 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 		fmd1 = (FractureModifierData*)modifiers_findByType(ob1, eModifierType_Fracture);
 
 		if (fmd1 && fmd1->fracture_mode == MOD_FRACTURE_DYNAMIC) {
-			if (force > fmd1->dynamic_force) {
-				if (fmd1->current_shard_entry && fmd1->current_shard_entry->is_new)
+			if (force > fmd1->fracture->dynamic_force) {
+				if (fmd1->fracture->current_shard_entry && fmd1->fracture->current_shard_entry->is_new)
 				{
 					/*only fracture on new entries, this is necessary because after loading a file
 					 *the pointcache thinks it is empty and a fracture is attempted ! */
@@ -1934,8 +1936,8 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 					{
 						FractureID* fid1 = MEM_mallocN(sizeof(FractureID), "contact_callback_fractureid1");
 						fid1->shardID = rbw->cache_index_map[linear_index1]->meshisland_index;
-						BLI_addtail(&fmd1->fracture_ids, fid1);
-						fmd1->update_dynamic = true;
+						BLI_addtail(&fmd1->fracture->fracture_ids, fid1);
+						fmd1->fracture->flag |= FM_FLAG_UPDATE_DYNAMIC;
 					}
 				}
 			}
@@ -1949,16 +1951,16 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 		fmd2 = (FractureModifierData*)modifiers_findByType(ob2, eModifierType_Fracture);
 
 		if (fmd2 && fmd2->fracture_mode == MOD_FRACTURE_DYNAMIC) {
-			if (force > fmd2->dynamic_force){
-				if (fmd2->current_shard_entry && fmd2->current_shard_entry->is_new)
+			if (force > fmd2->fracture->dynamic_force){
+				if (fmd2->fracture->current_shard_entry && fmd2->fracture->current_shard_entry->is_new)
 				{
 					int id = rbw->cache_index_map[linear_index2]->meshisland_index;
 					if(check_shard_size(fmd2, id, cp->contact_pos_world_onB, ob1))
 					{
 						FractureID* fid2 = MEM_mallocN(sizeof(FractureID), "contact_callback_fractureid2");
 						fid2->shardID = id;
-						BLI_addtail(&fmd2->fracture_ids, fid2);
-						fmd2->update_dynamic = true;
+						BLI_addtail(&fmd2->fracture->fracture_ids, fid2);
+						fmd2->fracture->flag |= FM_FLAG_UPDATE_DYNAMIC;
 					}
 				}
 			}
@@ -2398,7 +2400,7 @@ static bool do_remove_modifier(RigidBodyWorld* rbw, ModifierData *md)
 	{
 		fmd = (FractureModifierData *)md;
 		modFound = true;
-		for (con = fmd->meshConstraints.first; con; con = con->next) {
+		for (con = fmd->constraint->meshConstraints.first; con; con = con->next) {
 			if (rbw && rbw->physics_world && con->physics_constraint) {
 				RB_dworld_remove_constraint(rbw->physics_world, con->physics_constraint);
 				RB_constraint_delete(con->physics_constraint);
@@ -2406,7 +2408,7 @@ static bool do_remove_modifier(RigidBodyWorld* rbw, ModifierData *md)
 			}
 		}
 
-		for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
+		for (mi = fmd->fracture->meshIslands.first; mi; mi = mi->next) {
 			if (mi->rigidbody != NULL) {
 				if (rbw->physics_world && mi->rigidbody && mi->rigidbody->physics_object)
 					RB_dworld_remove_body(rbw->physics_world, mi->rigidbody->physics_object);
@@ -2539,7 +2541,7 @@ static int rigidbody_group_count_items(const ListBase *group, int *r_num_objects
 				if (isModifierActive(rmd))
 				{
 					found_modifiers = true;
-					*r_num_shards += BLI_listbase_count(&rmd->meshIslands);
+					*r_num_shards += BLI_listbase_count(&rmd->fracture->meshIslands);
 				}
 			}
 		}
@@ -2597,7 +2599,7 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 			if (md->type == eModifierType_Fracture) {
 				rmd = (FractureModifierData *)md;
 				if (isModifierActive(rmd)) {
-					for (mi = rmd->meshIslands.first, j = 0; mi; mi = mi->next) {
+					for (mi = rmd->fracture->meshIslands.first, j = 0; mi; mi = mi->next) {
 						rbw->cache_index_map[counter] = mi->rigidbody; /* map all shards of an object to this object index*/
 						rbw->cache_offset_map[counter] = i;
 						mi->linear_index = counter;
@@ -2768,7 +2770,7 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 	for (i = 0; i < cons; i++) {
 		con = mi->participating_constraints[i];
 		if (con && con->physics_constraint) {
-			if (fmd->cluster_breaking_percentage > 0)
+			if (fmd->constraint->cluster_breaking_percentage > 0)
 			{
 				/*only count as broken if between clusters!*/
 				if (con->mi1->particle_index != con->mi2->particle_index)
@@ -2788,11 +2790,11 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 	}
 
 	if (cluster_cons > 0) {
-		if ((float)broken_cluster_cons / (float)cluster_cons * 100 >= fmd->cluster_breaking_percentage) {
+		if ((float)broken_cluster_cons / (float)cluster_cons * 100 >= fmd->constraint->cluster_breaking_percentage) {
 			for (i = 0; i < cons; i++) {
 				con = mi->participating_constraints[i];
 				if (con && con->mi1->particle_index != con->mi2->particle_index) {
-					if (fmd->use_breaking)
+					if (fmd->constraint->flag & FMC_FLAG_USE_BREAKING)
 					{
 						con->flag &= ~RBC_FLAG_ENABLED;
 						con->flag |= RBC_FLAG_NEEDS_VALIDATE;
@@ -2814,7 +2816,7 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 			/* break all cons if over percentage */
 			for (i = 0; i < cons; i++) {
 				con = mi->participating_constraints[i];
-				if (con && fmd->use_breaking)
+				if (con && (fmd->constraint->flag & FMC_FLAG_USE_BREAKING))
 				{
 					con->flag &= ~RBC_FLAG_ENABLED;
 					con->flag |= RBC_FLAG_NEEDS_VALIDATE;
@@ -2833,14 +2835,14 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 static void handle_breaking_angle(FractureModifierData *fmd, Object *ob, RigidBodyShardCon *rbsc, RigidBodyWorld *rbw,
                                   float anglediff, float weight, float breaking_angle)
 {
-	if ((fmd->breaking_angle > 0 || (fmd->breaking_angle_weighted && weight > 0)) &&
+	if ((fmd->constraint->breaking_angle > 0 || ((fmd->constraint->flag & FMC_FLAG_BREAKING_ANGLE_WEIGHTED) && weight > 0)) &&
 		(anglediff > breaking_angle))
 	{
 		/* if we have cluster breaking angle, then only treat equal cluster indexes like the default, else all */
-		if ((fmd->cluster_breaking_angle > 0 && rbsc->mi1->particle_index == rbsc->mi2->particle_index) ||
-			 fmd->cluster_breaking_angle == 0)
+		if ((fmd->constraint->cluster_breaking_angle > 0 && rbsc->mi1->particle_index == rbsc->mi2->particle_index) ||
+			 fmd->constraint->cluster_breaking_angle == 0)
 		{
-			if (fmd->use_breaking)
+			if (fmd->constraint->flag & FMC_FLAG_USE_BREAKING)
 			{
 				rbsc->flag &= ~RBC_FLAG_ENABLED;
 				rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
@@ -2854,10 +2856,10 @@ static void handle_breaking_angle(FractureModifierData *fmd, Object *ob, RigidBo
 		}
 	}
 
-	if ((fmd->cluster_breaking_angle > 0) && (rbsc->mi1->particle_index != rbsc->mi2->particle_index)
-		&& anglediff > fmd->cluster_breaking_angle)
+	if ((fmd->constraint->cluster_breaking_angle > 0) && (rbsc->mi1->particle_index != rbsc->mi2->particle_index)
+		&& anglediff > fmd->constraint->cluster_breaking_angle)
 	{
-		if (fmd->use_breaking)
+		if (fmd->constraint->flag & FMC_FLAG_USE_BREAKING)
 		{
 			rbsc->flag &= ~RBC_FLAG_ENABLED;
 			rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
@@ -2874,14 +2876,14 @@ static void handle_breaking_angle(FractureModifierData *fmd, Object *ob, RigidBo
 static void handle_breaking_distance(FractureModifierData *fmd, Object *ob, RigidBodyShardCon *rbsc, RigidBodyWorld *rbw,
                                      float distdiff, float weight, float breaking_distance)
 {
-	if ((fmd->breaking_distance > 0 || (fmd->breaking_distance_weighted && weight > 0)) &&
+	if ((fmd->constraint->breaking_distance > 0 || ((fmd->constraint->flag & FMC_FLAG_BREAKING_DISTANCE_WEIGHTED) && weight > 0)) &&
 		(distdiff > breaking_distance))
 	{
 		/* if we have cluster breaking distance, then only treat equal cluster indexes like the default, else all */
-		if ((fmd->cluster_breaking_distance > 0 && rbsc->mi1->particle_index == rbsc->mi2->particle_index) ||
-			 fmd->cluster_breaking_distance == 0)
+		if ((fmd->constraint->cluster_breaking_distance > 0 && rbsc->mi1->particle_index == rbsc->mi2->particle_index) ||
+			 fmd->constraint->cluster_breaking_distance == 0)
 		{
-			if (fmd->use_breaking)
+			if (fmd->constraint->flag & FMC_FLAG_USE_BREAKING)
 			{
 				rbsc->flag &= ~RBC_FLAG_ENABLED;
 				rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
@@ -2895,10 +2897,10 @@ static void handle_breaking_distance(FractureModifierData *fmd, Object *ob, Rigi
 		}
 	}
 
-	if ((fmd->cluster_breaking_distance > 0) && (rbsc->mi1->particle_index != rbsc->mi2->particle_index)
-		&& distdiff > fmd->cluster_breaking_distance)
+	if ((fmd->constraint->cluster_breaking_distance > 0) && (rbsc->mi1->particle_index != rbsc->mi2->particle_index)
+		&& distdiff > fmd->constraint->cluster_breaking_distance)
 	{
-		if (fmd->use_breaking)
+		if (fmd->constraint->flag & FMC_FLAG_USE_BREAKING)
 		{
 			rbsc->flag &= ~RBC_FLAG_ENABLED;
 			rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
@@ -2940,9 +2942,9 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 			}
 		}
 
-		count = BLI_listbase_count(&fmd->meshIslands);
+		count = BLI_listbase_count(&fmd->fracture->meshIslands);
 
-		for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
+		for (mi = fmd->fracture->meshIslands.first; mi; mi = mi->next) {
 			if (mi->rigidbody == NULL) {
 				continue;
 			}
@@ -2951,12 +2953,14 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				/* refresh object... */
 				int do_rebuild = rebuild;
 
-				if (fmd->use_breaking)
+				//TODO USE MAPPING perhaps ?
+				if (fmd->constraint->flag & FMC_FLAG_USE_BREAKING)
 				{
 					float weight = mi->thresh_weight;
-					int breaking_percentage = fmd->breaking_percentage_weighted ? (fmd->breaking_percentage * weight) : fmd->breaking_percentage;
+					int breaking_percentage = (fmd->constraint->flag & FMC_FLAG_BREAKING_PERCENTAGE_WEIGHTED) ? (fmd->constraint->breaking_percentage * weight) :
+					                                                                          fmd->constraint->breaking_percentage;
 
-					if (fmd->breaking_percentage > 0 || (fmd->breaking_percentage_weighted && weight > 0)) {
+					if (fmd->constraint->breaking_percentage > 0 || ((fmd->constraint->flag & FMC_FLAG_BREAKING_PERCENTAGE_WEIGHTED) && weight > 0)) {
 						handle_breaking_percentage(fmd, ob, mi, rbw, breaking_percentage);
 					}
 				}
@@ -2968,25 +2972,27 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 			rigidbody_update_sim_ob(scene, rbw, ob, mi->rigidbody, mi->centroid);
 		}
 
-		if (fmd->use_mass_dependent_thresholds) {
+		if (fmd->constraint->flag & FMC_FLAG_USE_MASS_DEPENDENT_THRESHOLDS) {
 			max_con_mass = BKE_rigidbody_calc_max_con_mass(ob);
 		}
 
-		for (rbsc = fmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
+		for (rbsc = fmd->constraint->meshConstraints.first; rbsc; rbsc = rbsc->next) {
 			float weight = MIN2(rbsc->mi1->thresh_weight, rbsc->mi2->thresh_weight);
-			float breaking_angle = fmd->breaking_angle_weighted ? fmd->breaking_angle * weight : fmd->breaking_angle;
-			float breaking_distance = fmd->breaking_distance_weighted ? fmd->breaking_distance * weight : fmd->breaking_distance;
+			float breaking_angle = (fmd->constraint->flag & FMC_FLAG_BREAKING_ANGLE_WEIGHTED) ? fmd->constraint->breaking_angle * weight :
+			                                                                                    fmd->constraint->breaking_angle;
+			float breaking_distance = (fmd->constraint->flag & FMC_FLAG_BREAKING_DISTANCE_WEIGHTED) ? fmd->constraint->breaking_distance * weight :
+			                                                                                          fmd->constraint->breaking_distance;
 			int iterations;
 
-			if (fmd->solver_iterations_override == 0) {
+			if (fmd->constraint->solver_iterations_override == 0) {
 				iterations = rbw->num_solver_iterations;
 			}
 			else {
 				if ((rbsc->mi1->particle_index != -1) && (rbsc->mi1->particle_index == rbsc->mi2->particle_index)) {
-					iterations = fmd->cluster_solver_iterations_override;
+					iterations = fmd->constraint->cluster_solver_iterations_override;
 				}
 				else {
-					iterations = fmd->solver_iterations_override;
+					iterations = fmd->constraint->solver_iterations_override;
 				}
 			}
 
@@ -2995,13 +3001,13 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				rbsc->num_solver_iterations = iterations;
 			}
 
-			if ((fmd->use_mass_dependent_thresholds)) {
+			if ((fmd->constraint->flag & FMC_FLAG_USE_MASS_DEPENDENT_THRESHOLDS)) {
 				BKE_rigidbody_calc_threshold(max_con_mass, fmd, rbsc);
 			}
 
-			if (((fmd->breaking_angle) > 0) || (fmd->breaking_angle_weighted && weight > 0) ||
-				(((fmd->breaking_distance > 0) || (fmd->breaking_distance_weighted && weight > 0)) ||
-				 (fmd->cluster_breaking_angle > 0 || fmd->cluster_breaking_distance > 0)) && !rebuild )
+			if (((fmd->constraint->breaking_angle) > 0) || ((fmd->constraint->flag & FMC_FLAG_BREAKING_ANGLE_WEIGHTED) && weight > 0) ||
+				(((fmd->constraint->breaking_distance > 0) || ((fmd->constraint->flag & FMC_FLAG_BREAKING_DISTANCE_WEIGHTED) && weight > 0)) ||
+				 (fmd->constraint->cluster_breaking_angle > 0 || fmd->constraint->cluster_breaking_distance > 0)) && !rebuild )
 			{
 				float dist, angle, distdiff, anglediff;
 				calc_dist_angle(rbsc, &dist, &angle);
@@ -3163,7 +3169,7 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 			if (md->type == eModifierType_Fracture) {
 				rmd = (FractureModifierData *)md;
 				if (isModifierActive(rmd)) {
-					for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+					for (mi = rmd->fracture->meshIslands.first; mi; mi = mi->next) {
 						rbo = mi->rigidbody;
 						if (!rbo) continue;
 						/* reset kinematic state for transformed objects */
@@ -3221,7 +3227,8 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 
 	if (md->type == eModifierType_Fracture) {
 		fmd = (FractureModifierData *)md;
-		exploOK = !fmd->explo_shared || (fmd->explo_shared && fmd->frac_mesh && fmd->dm);
+		exploOK = !(fmd->fracture->flag & FM_FLAG_USE_FRACMESH) ||
+		          ((fmd->fracture->flag & FM_FLAG_USE_FRACMESH) && fmd->fracture->frac_mesh && fmd->fracture->dm);
 
 		if (isModifierActive(fmd) && exploOK) {
 			modFound = true;
@@ -3237,7 +3244,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 					rbw->flag |= RBW_FLAG_OBJECT_CHANGED;
 					BKE_rigidbody_cache_reset(rbw);
 					/* re-enable all constraints as well */
-					for (con = fmd->meshConstraints.first; con; con = con->next) {
+					for (con = fmd->constraint->meshConstraints.first; con; con = con->next) {
 						con->flag |= RBC_FLAG_ENABLED;
 						con->flag |= RBC_FLAG_NEEDS_VALIDATE;
 					}
@@ -3257,7 +3264,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 				}
 			}
 
-			for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
+			for (mi = fmd->fracture->meshIslands.first; mi; mi = mi->next) {
 
 				rbo = mi->rigidbody;
 				if (!rbo) {
@@ -3392,7 +3399,7 @@ void BKE_rigidbody_aftertrans_update(Object *ob, float loc[3], float rot[3], flo
 		MeshIsland *mi;
 		rmd = (FractureModifierData *)md;
 		copy_m4_m4(rmd->origmat, ob->obmat);
-		for (mi = rmd->meshIslands.first; mi; mi = mi->next)
+		for (mi = rmd->fracture->meshIslands.first; mi; mi = mi->next)
 		{
 			rbo = mi->rigidbody;
 			do_reset_rigidbody(rbo, ob, mi, loc, rot, quat, rotAxis, rotAngle);
@@ -3419,7 +3426,7 @@ static void restoreKinematic(RigidBodyWorld *rbw)
 			if (fmd && go->ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC)
 			{
 				MeshIsland* mi;
-				for (mi = fmd->meshIslands.first; mi; mi = mi->next)
+				for (mi = fmd->fracture->meshIslands.first; mi; mi = mi->next)
 				{
 					if (mi->rigidbody)
 					{

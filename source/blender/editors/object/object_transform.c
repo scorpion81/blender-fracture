@@ -82,7 +82,10 @@ static void reset_fracturemodifier_matrix(Object* ob, bool do_refresh)
 
 	if (fmd) {
 		zero_m4(fmd->origmat);
-		fmd->refresh = do_refresh;
+		if (do_refresh)
+		{
+			fmd->fracture->flag |= FM_FLAG_REFRESH;
+		}
 	}
 }
 

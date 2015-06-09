@@ -98,4 +98,8 @@ void BKE_get_prev_entries(struct FractureModifierData *fmd);
 void BKE_get_next_entries(struct FractureModifierData *fmd);
 void BKE_free_constraints(struct FractureModifierData *fmd);
 
+struct ConstraintSetting* BKE_fracture_constraint_setting_new(struct FractureModifierData *fmd, char name[64]);
+void BKE_fracture_constraint_setting_remove(struct FractureModifierData *fmd, struct ConstraintSetting *setting);
+void BKE_fracture_constraint_setting_remove_all(struct FractureModifierData *fmd);
+
 #endif /* BKE_FRACTURE_H */

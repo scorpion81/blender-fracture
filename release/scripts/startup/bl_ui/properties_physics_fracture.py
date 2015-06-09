@@ -28,7 +28,6 @@ class FRACTURE_MT_presets(Menu):
     preset_operator = "script.execute_preset"
     draw = Menu.draw_preset
 
-
 class PhysicButtonsPanel():
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
@@ -40,7 +39,7 @@ class PhysicButtonsPanel():
         rd = context.scene.render
         return (ob and (ob.type == 'MESH' or ob.type == 'CURVE' or ob.type == 'SURFACE' or ob.type == 'FONT')) and (not rd.use_game_engine) and (context.fracture)
 
-class FRACTURE_UL_fracture_levels(UIList):
+class FRACTURE_UL_fracture_settings(UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         fl = item
         if self.layout_type in {'DEFAULT', 'COMPACT'}:
@@ -49,8 +48,22 @@ class FRACTURE_UL_fracture_levels(UIList):
             layout.alignment = 'CENTER'
             layout.label(text="", icon_value=icon)
 
-class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
+class PHYSICS_PT_fracture_settings(PhysicButtonsPanel, Panel):
     bl_label = "Fracture Settings"
+
+    def draw(self, context):
+        layout = self.layout
+
+        md = context.fracture
+        ob = context.object
+        layout.prop(md, "fracture_mode")
+
+        row = layout.row()
+        row.template_list("FRACTURE_UL_fracture_settings", "", md, "fracture_settings", md.fracture_settings, "active_index", rows=2)
+        layout.prop(md, "dm_group")
+
+class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
+    bl_label = "Fracture"
 
     def icon(self, bool):
         if bool:
@@ -61,7 +74,7 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
     def draw(self, context):
         layout = self.layout
 
-        md = context.fracture
+        md = context.fracture.fracture;
         ob = context.object
 
         layout.label(text="Presets:")
@@ -70,19 +83,15 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         sub.operator("fracture.preset_add", text="", icon='ZOOMIN')
         sub.operator("fracture.preset_add", text="", icon='ZOOMOUT').remove_active = True
 
-        row = layout.row()
-        row.prop(md, "fracture_mode")
-        if md.fracture_mode == 'DYNAMIC':
+        if context.fracture.fracture_mode == 'DYNAMIC':
             layout.prop(md, "dynamic_force")
             layout.prop(md, "limit_impact")
 
         layout.prop(md, "frac_algorithm")
         col = layout.column(align=True)
         col.prop(md, "shard_count")
-        col.prop(md, "cluster_count")
         col.prop(md, "point_seed")
-        layout.prop(md, "cluster_group")
-        layout.prop(md, "cluster_constraint_type")
+
         if md.frac_algorithm == 'BOOLEAN' or md.frac_algorithm == 'BISECT_FILL' or md.frac_algorithm == 'BISECT_FAST_FILL':
             layout.prop(md, "inner_material")
         if md.frac_algorithm == 'BOOLEAN_FRACTAL':
@@ -103,8 +112,8 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         layout.prop(md, "splinter_length")
 
         box = layout.box()
-        box.prop(md, "use_experimental", text="Advanced Fracture Settings", icon=self.icon(md.use_experimental), emboss = False)
-        if md.use_experimental:
+        box.prop(context.fracture, "use_experimental", text="Advanced Fracture Settings", icon=self.icon(context.fracture.use_experimental), emboss = False)
+        if context.fracture.use_experimental:
             box.label("Fracture Point Source:")
             col = box.column()
             col.prop(md, "point_source")
@@ -114,7 +123,6 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
                 col.prop(md, "grease_decimate")
                 col.prop(md, "cutter_axis")
             col.prop(md, "extra_group")
-            col.prop(md, "dm_group")
             if md.frac_algorithm == 'BOOLEAN':
                 col.prop(md, "cutter_group")
             col.prop(md, "use_particle_birth_coordinates")
@@ -129,12 +137,28 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
 
         layout.operator("object.fracture_refresh", text="Execute Fracture", icon='MOD_EXPLODE')
 
-class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
+class PHYSICS_PT_fracture_constraint_settings(PhysicButtonsPanel, Panel):
     bl_label = "Fracture Constraint Settings"
 
     def draw(self, context):
         layout = self.layout
+
         md = context.fracture
+        ob = context.object
+
+        row = layout.row()
+        row.template_list("FRACTURE_UL_fracture_settings", "", md, "constraint_settings", md.constraint_settings, "active_index", rows=2)
+
+        col = row.column(align=True)
+        col.operator("object.fracture_constraint_setting_add", icon='ZOOMIN', text="")
+        col.operator("object.fracture_constraint_setting_remove", icon='ZOOMOUT', text="").all = False
+
+class PHYSICS_PT_fracture_constraint(PhysicButtonsPanel, Panel):
+    bl_label = "Fracture Constraints"
+
+    def draw(self, context):
+        layout = self.layout
+        md = context.fracture.constraint
         ob = context.object
 
         layout.label("Constraint Building Settings")
@@ -145,6 +169,10 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
         col = layout.column(align=True)
         col.prop(md, "constraint_limit", text="Constraint limit, per MeshIsland")
         col.prop(md, "contact_dist")
+
+        layout.prop(md, "cluster_count")
+        layout.prop(md, "cluster_group")
+        layout.prop(md, "cluster_constraint_type")
 
         layout.label("Constraint Breaking Settings")
         col = layout.column(align=True)
@@ -180,13 +208,13 @@ class PHYSICS_PT_fracture_utilities(PhysicButtonsPanel, Panel):
 
     def draw(self, context):
         layout = self.layout
-        md = context.fracture
+        md = context.fracture.fracture
         layout.prop(md, "autohide_dist")
         row = layout.row()
         row.prop(md, "fix_normals")
         row.prop(md, "nor_range")
         if not(md.refresh):
-           layout.prop(md, "execute_threaded")
+           layout.prop(context.fracture, "execute_threaded")
 
         layout.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")
         layout.operator("object.rigidbody_convert_to_keyframes", text = "Convert To Keyframed Objects")
