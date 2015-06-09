@@ -1567,6 +1567,7 @@ typedef struct FractureSetting {
 	struct DerivedMesh *dm;
 	struct BMesh *visible_mesh;
 	struct DerivedMesh *visible_mesh_cached;
+	struct DerivedMesh *final_mesh; //autohide processed mesh, just as temp storage
 	struct KDTree *nor_tree; /* store original vertices here (coords), to find them later and reuse their normals */
 	struct GHash *face_pairs;
 	struct GHash *vertex_island_map; /* used for constraint building based on vertex proximity, temporary data */

@@ -4920,7 +4920,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 			}
 
 			/* ugly ugly, need only the shard... the rest is to be generated on demand... */
-			BKE_fracture_create_dm(fmd, true);
+			BKE_fracture_create_dm(fmd, true, false);
 
 			if (fm->shard_count == 0) {
 				fmd->fracture->flag &= ~FM_FLAG_SHARDS_TO_ISLANDS;
@@ -5299,7 +5299,13 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb, Object *ob)
 		}
 		else if (md->type == eModifierType_Fracture) {
 			FractureModifierData *fmd = (FractureModifierData *)md;
-			load_fracture_modifier(fd, fmd, ob);
+			FractureSetting *fs = NULL;
+
+			for (fs = fmd->fracture_settings.first; fs; fs = fs->next)
+			{
+				fmd->fracture = fs;
+				load_fracture_modifier(fd, fmd, ob);
+			}
 		}
 	}
 }

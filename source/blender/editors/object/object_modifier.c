@@ -2383,18 +2383,7 @@ static int fracture_refresh_exec(bContext *C, wmOperator *UNUSED(op))
 	}
 	
 	if (!(rmd->flag & FMI_FLAG_EXECUTE_THREADED)) {
-#if 0
-		float vec[3] = {0.0f, 0.0f, 0.0f};
-		if (rv3d != NULL)
-		{
-			/* need 2, 6, and 10 as forward vector, as seen in a 16-float array */
-			vec[0] = rv3d->viewmat[0][2];
-			vec[1] = rv3d->viewmat[1][2];
-			vec[2] = rv3d->viewmat[2][2];
-		}
-		copy_v3_v3(rmd->forward_vector, vec);
-#endif
-		rmd->flag |= FM_FLAG_REFRESH;
+		rmd->fracture->flag |= FM_FLAG_REFRESH;
 		rmd->last_frame = INT_MAX; // delete dynamic data as well
 		DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
 		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);

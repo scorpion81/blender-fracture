@@ -786,8 +786,11 @@ static int rna_LaplacianDeformModifier_is_bind_get(PointerRNA *ptr)
 
 static void refresh_mapped_constraints(ConstraintSetting* cs)
 {
-	cs->partner1->flag |= FM_FLAG_REFRESH_CONSTRAINTS;
-	cs->partner2->flag |= FM_FLAG_REFRESH_CONSTRAINTS;
+	if (cs->partner1)
+		cs->partner1->flag |= FM_FLAG_REFRESH_CONSTRAINTS;
+
+	if (cs->partner2)
+		cs->partner2->flag |= FM_FLAG_REFRESH_CONSTRAINTS;
 }
 
 static void rna_FractureModifier_thresh_defgrp_name_set(PointerRNA *ptr, const char *value)

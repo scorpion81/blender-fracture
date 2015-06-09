@@ -48,6 +48,9 @@ struct MVert;
 struct MPoly;
 struct MLoop;
 
+struct BMesh;
+struct BMVert;
+
 typedef int ShardID;
 
 typedef struct FracPoint {
@@ -80,7 +83,7 @@ void BKE_shard_free(struct Shard *s, bool doCustomData);
 
 
 /* DerivedMesh */
-void BKE_fracture_create_dm(struct FractureModifierData *fmd, bool doCustomData);
+struct DerivedMesh *BKE_fracture_create_dm(struct FractureModifierData *fmd, bool doCustomData, bool join_result);
 struct DerivedMesh *BKE_shard_create_dm(struct Shard *s, bool doCustomData);
 
 /* create shards from base mesh and a list of points */
@@ -98,8 +101,11 @@ void BKE_get_prev_entries(struct FractureModifierData *fmd);
 void BKE_get_next_entries(struct FractureModifierData *fmd);
 void BKE_free_constraints(struct FractureModifierData *fmd);
 
-struct ConstraintSetting* BKE_fracture_constraint_setting_new(struct FractureModifierData *fmd, char name[64]);
+struct ConstraintSetting* BKE_fracture_constraint_setting_new(struct FractureModifierData *fmd, const char name[64]);
 void BKE_fracture_constraint_setting_remove(struct FractureModifierData *fmd, struct ConstraintSetting *setting);
 void BKE_fracture_constraint_setting_remove_all(struct FractureModifierData *fmd);
+void BKE_initialize_from_vertex_groups(struct FractureModifierData *fmd, struct Object *ob);
+void BKE_mesh_separate_selected(struct BMesh **bm_work, struct BMesh **bm_out, struct BMVert **orig_work, struct BMVert ***orig_out1, struct BMVert ***orig_out2);
+void BKE_select_linked(struct BMesh **bm_in);
 
 #endif /* BKE_FRACTURE_H */

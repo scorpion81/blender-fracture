@@ -1670,28 +1670,35 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 
 		else if (md->type==eModifierType_Fracture) {
 			FractureModifierData *fmd = (FractureModifierData*)md;
-			FracMesh* fm = fmd->fracture->frac_mesh;
+			FracMesh* fm = NULL;
 			MeshIsland *mi;
 			Shard *s;
+			FractureSetting *fs = NULL;
 
-			if (fm && fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+			for (fs = fmd->fracture_settings.first; fs; fs = fs->next)
 			{
-				if (fm->running == 0 && !fmd->dm_group)
+				fmd->fracture = fs;
+				fm = fmd->fracture->frac_mesh;
+
+				if (fm && fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
 				{
-					if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+					if (fm->running == 0 && !fmd->dm_group)
 					{
-						writestruct(wd, DATA, "FracMesh", 1, fm);
+						if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+						{
+							writestruct(wd, DATA, "FracMesh", 1, fm);
 
-						for (s = fm->shard_map.first; s; s = s->next) {
-							write_shard(wd, s);
-						}
+							for (s = fm->shard_map.first; s; s = s->next) {
+								write_shard(wd, s);
+							}
 
-						for (s = fmd->fracture->islandShards.first; s; s = s->next) {
-							write_shard(wd, s);
-						}
+							for (s = fmd->fracture->islandShards.first; s; s = s->next) {
+								write_shard(wd, s);
+							}
 
-						for (mi = fmd->fracture->meshIslands.first; mi; mi = mi->next) {
-							write_meshIsland(wd, mi);
+							for (mi = fmd->fracture->meshIslands.first; mi; mi = mi->next) {
+								write_meshIsland(wd, mi);
+							}
 						}
 					}
 				}
