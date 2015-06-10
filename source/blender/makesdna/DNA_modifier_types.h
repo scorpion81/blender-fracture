@@ -1533,8 +1533,10 @@ enum {
 
 /*internal flags, global */
 enum {
-	FMI_FLAG_USE_EXPERIMENTAL    = (1 << 0),
-	FMI_FLAG_EXECUTE_THREADED    = (1 << 1),
+	FMG_FLAG_USE_EXPERIMENTAL    = (1 << 0),
+	FMG_FLAG_EXECUTE_THREADED    = (1 << 1),
+	FMG_FLAG_REFRESH             = (1 << 2),
+	FMG_FLAG_REFRESH_IMAGES      = (1 << 3),
 };
 
 typedef struct FractureSetting {
@@ -1661,7 +1663,101 @@ typedef struct FractureModifierData {
 	int flag;
 
 	char pad[4];
-} FractureModifierData;
+
+	/* LOTS of deprecated stuff ahead, but all for the backwards compat.... */
+	struct FracMesh *frac_mesh DNA_DEPRECATED; /* store only the current fracmesh here first, later maybe an entire history...*/
+	struct DerivedMesh *dm	DNA_DEPRECATED;
+	struct Group *extra_group DNA_DEPRECATED;
+	struct Group *cluster_group DNA_DEPRECATED;
+	struct Group *cutter_group DNA_DEPRECATED;
+	struct BMesh *visible_mesh DNA_DEPRECATED;
+	struct DerivedMesh *visible_mesh_cached DNA_DEPRECATED;
+	ListBase meshIslands DNA_DEPRECATED;
+	ListBase meshConstraints DNA_DEPRECATED;
+	ListBase islandShards DNA_DEPRECATED;
+	char thresh_defgrp_name[64] DNA_DEPRECATED; /* MAX_VGROUP_NAME */
+	char ground_defgrp_name[64] DNA_DEPRECATED;  /* MAX_VGROUP_NAME */
+	char inner_defgrp_name[64]  DNA_DEPRECATED; /* MAX_VGROUP_NAME */
+	struct KDTree *nor_tree DNA_DEPRECATED;  /* store original vertices here (coords), to find them later and reuse their normals */
+	struct Material *inner_material DNA_DEPRECATED;
+	struct GHash *face_pairs DNA_DEPRECATED;
+	struct GHash *vertex_island_map DNA_DEPRECATED; /* used for constraint building based on vertex proximity, temporary data */
+	ListBase shard_sequence DNA_DEPRECATED; /* used as mesh cache / history for dynamic fracturing, for shards (necessary for conversion to DM) */
+	ListBase meshIsland_sequence DNA_DEPRECATED; /* used as mesh cache / history for dynamic fracturing, for meshIslands (necessary for loc/rot "pointcache") */
+	ShardSequence *current_shard_entry DNA_DEPRECATED; /*volatile storage of current shard entry, so we dont have to search in the list */
+	MeshIslandSequence *current_mi_entry DNA_DEPRECATED; /*analogous to current shard entry */
+	ListBase fracture_ids DNA_DEPRECATED; /*volatile storage of shards being "hit" or fractured currently, needs to be cleaned up after usage! */
+
+	/* values */
+	int frac_algorithm DNA_DEPRECATED;
+	int shard_count DNA_DEPRECATED;
+	int shard_id DNA_DEPRECATED;
+	int point_source DNA_DEPRECATED;
+	int point_seed DNA_DEPRECATED;
+	int percentage DNA_DEPRECATED;
+	int cluster_count DNA_DEPRECATED;
+
+	int constraint_limit DNA_DEPRECATED;
+	int solver_iterations_override DNA_DEPRECATED;
+	int cluster_solver_iterations_override DNA_DEPRECATED;
+	int breaking_percentage DNA_DEPRECATED;
+	int cluster_breaking_percentage DNA_DEPRECATED;
+	int splinter_axis DNA_DEPRECATED;
+	int fractal_cuts DNA_DEPRECATED;
+	int fractal_iterations DNA_DEPRECATED;
+	int grease_decimate DNA_DEPRECATED;
+	int cutter_axis DNA_DEPRECATED;
+	int cluster_constraint_type DNA_DEPRECATED;
+
+	float breaking_angle DNA_DEPRECATED;
+	float breaking_distance DNA_DEPRECATED;
+	float cluster_breaking_angle DNA_DEPRECATED;
+	float cluster_breaking_distance DNA_DEPRECATED;
+	float breaking_threshold DNA_DEPRECATED;
+	float cluster_breaking_threshold DNA_DEPRECATED;
+	float contact_dist DNA_DEPRECATED;
+	float autohide_dist DNA_DEPRECATED;
+	float splinter_length DNA_DEPRECATED;
+	float nor_range DNA_DEPRECATED;
+	float fractal_amount DNA_DEPRECATED;
+	float physics_mesh_scale DNA_DEPRECATED;
+	float grease_offset DNA_DEPRECATED;
+	float dynamic_force DNA_DEPRECATED;
+
+	/* flags */
+	int refresh DNA_DEPRECATED;
+	int refresh_constraints DNA_DEPRECATED;
+	int refresh_autohide DNA_DEPRECATED;
+	int reset_shards DNA_DEPRECATED;
+
+	int use_constraints DNA_DEPRECATED;
+	int use_mass_dependent_thresholds DNA_DEPRECATED;
+	int use_particle_birth_coordinates DNA_DEPRECATED;
+	int use_breaking DNA_DEPRECATED;
+	int use_smooth DNA_DEPRECATED;
+	int use_greasepencil_edges DNA_DEPRECATED;
+
+	int shards_to_islands DNA_DEPRECATED;
+	int execute_threaded DNA_DEPRECATED;
+	int fix_normals DNA_DEPRECATED;
+	int auto_execute DNA_DEPRECATED;
+
+	int breaking_distance_weighted DNA_DEPRECATED;
+	int breaking_angle_weighted DNA_DEPRECATED;
+	int breaking_percentage_weighted DNA_DEPRECATED;
+	int constraint_target DNA_DEPRECATED;
+	int limit_impact DNA_DEPRECATED;
+
+	/* internal flags */
+	int use_experimental DNA_DEPRECATED;
+	int explo_shared DNA_DEPRECATED;
+	int refresh_images DNA_DEPRECATED;
+	int update_dynamic DNA_DEPRECATED;
+
+	/* internal values */
+	float max_vol DNA_DEPRECATED;
+
+} FractureModifierData ;
 
 typedef struct DataTransferModifierData {
 	ModifierData modifier;

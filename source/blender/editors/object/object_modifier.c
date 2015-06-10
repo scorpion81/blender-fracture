@@ -908,7 +908,7 @@ static int modifier_remove_exec(bContext *C, wmOperator *op)
 	if (md && md->type == eModifierType_Fracture)
 	{
 		FractureModifierData* fmd = (FractureModifierData*)md;
-		if ((fmd->flag & FMI_FLAG_EXECUTE_THREADED) && fmd->fracture->frac_mesh && fmd->fracture->frac_mesh->running == 1)
+		if ((fmd->flag & FMG_FLAG_EXECUTE_THREADED) && fmd->fracture->frac_mesh && fmd->fracture->frac_mesh->running == 1)
 		{
 			return OPERATOR_CANCELLED;
 		}
@@ -2281,6 +2281,7 @@ typedef struct FractureJob {
 	struct FractureModifierData *fmd;
 	struct Object *ob;
 	struct Scene *scene;
+	struct DerivedMesh *derivedData;
 	struct Group *gr;
 } FractureJob;
 
@@ -2322,7 +2323,7 @@ static void fracture_startjob(void *customdata, short *stop, short *do_update, f
 	FractureJob *fj = customdata;
 	FractureModifierData *fmd = fj->fmd;
 	Object *ob = fj->ob;
-	Scene* scene = fj->scene;
+	DerivedMesh *derivedData = fj->derivedData;
 
 	fj->stop = stop;
 	fj->do_update = do_update;
@@ -2332,13 +2333,22 @@ static void fracture_startjob(void *customdata, short *stop, short *do_update, f
 	G.is_break = false;   /* XXX shared with render - replace with job 'stop' switch */
 
 	/* arm the modifier... */
-	fmd->fracture->flag |= FM_FLAG_REFRESH;
+	fmd->flag |= FMG_FLAG_REFRESH;
 	*(fj->do_update) = true;
 	*do_update = true;
 	*stop = 0;
 
 	/*...and trigger modifier execution HERE*/
-	makeDerivedMesh(scene, ob, NULL, scene->customdata_mask | CD_MASK_BAREMESH, 0);
+	//makeDerivedMesh(scene, ob, NULL, scene->customdata_mask | CD_MASK_BAREMESH, 0);
+	if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+	{
+		//perhaps copy...
+		ob->derivedFinal = BKE_prefracture_mesh(fmd, ob, derivedData);
+	}
+	else
+	{
+		ob->derivedFinal = BKE_dynamic_fracture_mesh(fmd, ob, derivedData);
+	}
 }
 
 static void fracture_endjob(void *customdata)
@@ -2382,7 +2392,7 @@ static int fracture_refresh_exec(bContext *C, wmOperator *UNUSED(op))
 		return OPERATOR_CANCELLED;
 	}
 	
-	if (!(rmd->flag & FMI_FLAG_EXECUTE_THREADED)) {
+	if (!(rmd->flag & FMG_FLAG_EXECUTE_THREADED)) {
 		rmd->fracture->flag |= FM_FLAG_REFRESH;
 		rmd->last_frame = INT_MAX; // delete dynamic data as well
 		DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
@@ -2399,7 +2409,12 @@ static int fracture_refresh_exec(bContext *C, wmOperator *UNUSED(op))
 		fj = MEM_callocN(sizeof(FractureJob), "object fracture job");
 		fj->fmd = rmd;
 		fj->ob = obact;
-		fj->scene = scene;
+
+		/*disable fm temporarily and trigger 1 evaluation to get the old mesh */
+		rmd->modifier.mode |= eModifierMode_DisableTemporary;
+		makeDerivedMesh(scene, obact, NULL, CD_MASK_BAREMESH, 0);
+		fj->derivedData = obact->derivedFinal; //copy ?
+		rmd->modifier.mode &= ~eModifierMode_DisableTemporary;
 
 		/* if we have shards, totalprogress = shards + islands
 		 * if we dont have shards, then calculate number of processed halving steps
@@ -3185,9 +3200,9 @@ static void convert_startjob(void *customdata, short *stop, short *do_update, fl
 	FractureModifierData *fmd = fj->fmd;
 	Group* gr = fj->gr;
 	Object* ob = fj->ob;
-	Scene *scene = fj->scene;
 	int start = fj->start;
 	int end = fj->end;
+	Scene* scene = fj->scene;
 
 	fj->stop = stop;
 	fj->do_update = do_update;
@@ -3251,7 +3266,7 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 
 				gr = BKE_group_add(G.main, "Converted");
 
-				if (rmd->flag & FMI_FLAG_EXECUTE_THREADED)
+				if (rmd->flag & FMG_FLAG_EXECUTE_THREADED)
 				{
 					PointerRNA *ptr;
 					/* what a dirty hack.... disable poll function */

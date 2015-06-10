@@ -66,6 +66,135 @@
 
 #include "MEM_guardedalloc.h"
 
+static void patch_fracture_modifier_struct(FractureModifierData *fmd)
+{
+	FractureSetting *fs = NULL;
+	ConstraintSetting *cs = NULL;
+
+	fs = MEM_callocN(sizeof(FractureSetting), "fs_readfile");
+	BLI_strncpy(fs->name, "Restored", sizeof(fs->name));
+	fs->flag = 0;
+
+	cs = MEM_callocN(sizeof(ConstraintSetting), "cs_readfile");
+	BLI_strncpy(cs->name, "Restored", sizeof(cs->name));
+	cs->partner1 = fs;
+	cs->partner2 = fs; //inner constraints !
+	cs->flag = 0;
+
+
+	fmd->flag = 0;
+	BLI_addtail(&fmd->fracture_settings, fs);
+	BLI_addtail(&fmd->constraint_settings, cs);
+	fmd->fracture = fs;
+	fmd->constraint = cs;
+
+	/*fill structs*/
+	/* global values */
+	copy_m4_m4(fmd->origmat, fmd->origmat);
+	fmd->last_frame = fmd->last_frame;
+
+	/* fracture values */
+	fs->max_vol = fmd->max_vol;
+	fs->frac_algorithm = fmd->frac_algorithm;
+	fs->shard_count = fmd->shard_count;
+	fs->point_source = fmd->point_source;
+	fs->point_seed = fmd->point_seed;
+	fs->percentage = fmd->percentage;
+
+	fs->splinter_axis = fmd->splinter_axis;
+	fs->splinter_length = fmd->splinter_length;
+
+	fs->fractal_cuts = fmd->fractal_cuts;
+	fs->fractal_iterations = fmd->fractal_iterations;
+	fs->fractal_amount = fmd->fractal_amount;
+	fs->physics_mesh_scale = fmd->physics_mesh_scale;
+
+	fs->grease_decimate = fmd->grease_decimate;
+	fs->cutter_axis = fmd->cutter_axis;
+	fs->grease_offset = fmd->grease_offset;
+
+	fs->autohide_dist = fmd->autohide_dist;
+	fs->nor_range = fmd->nor_range;
+
+	fs->dynamic_force = fmd->dynamic_force;
+
+	/* constraint values */
+	cs->constraint_target = fmd->constraint_target;
+	cs->contact_dist = fmd->contact_dist;
+	cs->cluster_count = fmd->cluster_count;
+	cs->constraint_limit = fmd->constraint_limit;
+	cs->solver_iterations_override = fmd->solver_iterations_override;
+	cs->breaking_threshold = fmd->breaking_threshold;
+	cs->breaking_angle = fmd->breaking_angle;
+	cs->breaking_distance = fmd->breaking_distance;
+	cs->breaking_percentage = fmd->breaking_percentage;
+
+	cs->cluster_breaking_angle = fmd->cluster_breaking_angle;
+	cs->cluster_breaking_distance = fmd->cluster_breaking_distance;
+	cs->cluster_constraint_type = fmd->cluster_constraint_type;
+	cs->cluster_breaking_percentage = fmd->cluster_breaking_percentage;
+	cs->cluster_breaking_threshold = fmd->cluster_breaking_threshold;
+	cs->cluster_solver_iterations_override = fmd->cluster_solver_iterations_override;
+
+	/* global flags */
+	if (fmd->execute_threaded)
+		fmd->flag |= FMG_FLAG_EXECUTE_THREADED;
+
+	if (fmd->use_experimental)
+		fmd->flag |= FMG_FLAG_USE_EXPERIMENTAL;
+
+	/* fracture flags */
+	if (fmd->use_particle_birth_coordinates)
+		fs->flag |= FM_FLAG_USE_PARTICLE_BIRTH_COORDS;
+
+	if (fmd->use_smooth)
+		fs->flag |= FM_FLAG_USE_SMOOTH;
+
+	if (fmd->use_greasepencil_edges)
+		fs->flag |= FM_FLAG_USE_GREASEPENCIL_EDGES;
+
+	if (fmd->shards_to_islands)
+		fs->flag |= FM_FLAG_SHARDS_TO_ISLANDS;
+
+	if (fmd->explo_shared)
+		fs->flag |= FM_FLAG_USE_FRACMESH;
+
+	if (fmd->auto_execute)
+		fs->flag |= FM_FLAG_AUTO_EXECUTE;
+
+	if (fmd->limit_impact)
+		fs->flag |= FM_FLAG_LIMIT_IMPACT;
+
+	/* constraint flags */
+	if (fmd->use_constraints)
+		cs->flag |= FMC_FLAG_USE_CONSTRAINTS;
+
+	if (fmd->use_mass_dependent_thresholds)
+		cs->flag |= FMC_FLAG_USE_MASS_DEPENDENT_THRESHOLDS;
+
+	if (fmd->use_breaking)
+		cs->flag |= FMC_FLAG_USE_BREAKING;
+
+	if (fmd->breaking_distance_weighted)
+		cs->flag |= FMC_FLAG_BREAKING_DISTANCE_WEIGHTED;
+
+	if (fmd->breaking_angle_weighted)
+		cs->flag |= FMC_FLAG_BREAKING_ANGLE_WEIGHTED;
+
+	if (fmd->breaking_percentage_weighted)
+		cs->flag |= FMC_FLAG_BREAKING_PERCENTAGE_WEIGHTED;
+
+	fs->meshIslands = fmd->meshIslands;
+	fs->visible_mesh = fmd->visible_mesh;
+	fs->visible_mesh_cached = fmd->visible_mesh_cached;
+	fs->dm = fmd->dm;
+	fs->extra_group = fmd->extra_group;
+	fs->cutter_group = fmd->cutter_group;
+	BLI_strncpy(fs->thresh_defgrp_name, fmd->thresh_defgrp_name, sizeof(fs->thresh_defgrp_name));
+	BLI_strncpy(fs->ground_defgrp_name, fmd->ground_defgrp_name, sizeof(fs->ground_defgrp_name));
+	BLI_strncpy(fs->inner_defgrp_name, fmd->inner_defgrp_name, sizeof(fs->inner_defgrp_name));
+}
+
 static void do_version_constraints_radians_degrees_270_1(ListBase *lb)
 {
 	bConstraint *con;
@@ -651,9 +780,9 @@ void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 			FractureModifierData *fmd = (FractureModifierData* )modifiers_findByType(ob, eModifierType_Fracture);
 			if (fmd != NULL)
 			{
-				fmd->constraint->cluster_constraint_type = RBC_TYPE_FIXED;
-				fmd->constraint->constraint_target = MOD_FRACTURE_CENTROID;
-				fmd->constraint->flag |= FMC_FLAG_USE_BREAKING;
+				fmd->cluster_constraint_type = RBC_TYPE_FIXED;
+				fmd->constraint_target = MOD_FRACTURE_CENTROID;
+				fmd->use_breaking = true;
 			}
 		}
 	}
@@ -685,5 +814,17 @@ void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 			}
 		}
 		FOREACH_NODETREE_END
+	}
+
+	if (!MAIN_VERSION_ATLEAST(main, 275, 0)) {
+		Object *ob;
+		for (ob = main->object.first; ob != NULL; ob = ob->id.next) {
+			/*initialize older blends to useful values */
+			FractureModifierData *fmd = (FractureModifierData* )modifiers_findByType(ob, eModifierType_Fracture);
+			if (fmd != NULL)
+			{
+				patch_fracture_modifier_struct(fmd);
+			}
+		}
 	}
 }

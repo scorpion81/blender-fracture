@@ -4776,7 +4776,7 @@ static MeshIsland* find_meshisland(ListBase* meshIslands, int id)
 	return NULL;
 }
 
-static int initialize_meshisland(FractureModifierData* fmd, MeshIsland** mii, MVert* mverts, int vertstart,
+static int initialize_meshisland(FractureModifierData* fmd, FractureSetting* fs, MeshIsland** mii, MVert* mverts, int vertstart,
                                  Object *ob, ShardID parent_id, ShardID shard_id)
 {
 	MVert *mv;
@@ -4797,22 +4797,45 @@ static int initialize_meshisland(FractureModifierData* fmd, MeshIsland** mii, MV
 		mi->vertco[k*3+1] = v->co[1];
 		mi->vertco[k*3+2] = v->co[2];
 
-		if (mi->vertno != NULL && (fs->flag & FM_FLAG_FIX_NORMALS)) {
-			short sno[3];
-			sno[0] = mi->vertno[k*3];
-			sno[1] = mi->vertno[k*3+1];
-			sno[2] = mi->vertno[k*3+2];
-			copy_v3_v3_short(v->no, sno);
-			copy_v3_v3_short(v2->no, sno);
+		if (fs)
+		{
+			if (mi->vertno != NULL && (fs->flag & FM_FLAG_FIX_NORMALS)) {
+				short sno[3];
+				sno[0] = mi->vertno[k*3];
+				sno[1] = mi->vertno[k*3+1];
+				sno[2] = mi->vertno[k*3+2];
+				copy_v3_v3_short(v->no, sno);
+				copy_v3_v3_short(v2->no, sno);
+			}
+		}
+		else
+		{
+			if (mi->vertno != NULL && fmd->fix_normals) {
+				short sno[3];
+				sno[0] = mi->vertno[k*3];
+				sno[1] = mi->vertno[k*3+1];
+				sno[2] = mi->vertno[k*3+2];
+				copy_v3_v3_short(v->no, sno);
+				copy_v3_v3_short(v2->no, sno);
+			}
 		}
 	}
 
-	if (fs_mode == MOD_FRACTURE_DYNAMIC)
+	if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 	{
 		MeshIslandSequence *prev = NULL;
 
-		if (fs->current_mi_entry) {
-			prev = fs->current_mi_entry->prev;
+		if (fs)
+		{
+			if (fs->current_mi_entry) {
+				prev = fs->current_mi_entry->prev;
+			}
+		}
+		else
+		{
+			if (fmd->current_mi_entry) {
+				prev = fmd->current_mi_entry->prev;
+			}
 		}
 
 		if (prev)
@@ -4922,7 +4945,7 @@ static void load_current_fracture_modifier(FileData* fd, FractureModifierData *f
 				}
 
 				/* ugly ugly, need only the shard... the rest is to be generated on demand... */
-				BKE_fracture_create_dm(fmd, true, false);
+				BKE_fracture_create_dm(fmd, fs, true, false);
 
 				if (fm->shard_count == 0) {
 					fs->flag &= ~FM_FLAG_SHARDS_TO_ISLANDS;
@@ -4942,7 +4965,7 @@ static void load_current_fracture_modifier(FileData* fd, FractureModifierData *f
 
 				for (mi = fs->meshIslands.first; mi; mi = mi->next) {
 					read_meshIsland(fd, &mi);
-					vertstart += initialize_meshisland(fmd, &mi, mverts, vertstart, ob, -1, -1);
+					vertstart += initialize_meshisland(fmd, fs, &mi, mverts, vertstart, ob, -1, -1);
 				}
 			}
 	#if 0
@@ -5028,145 +5051,9 @@ static void load_current_fracture_modifier(FileData* fd, FractureModifierData *f
 	}
 }
 
-static FractureModifierData* load_fracture_modifier_struct(FileData *fd, ModifierData *md, FractureModifierData_Legacy **lm)
-{
-	FractureModifierData_Legacy *lmd = NULL;
-	ModifierData *omd = NULL;
-	FractureModifierData *fmd = NULL;
-	FractureSetting *fs = NULL;
-	ConstraintSetting *cs = NULL;
 
-	char *compflags = NULL;
-	int fmd_nr;
 
-	fs = MEM_callocN(sizeof(FractureSetting), "fs_readfile");
-	BLI_strncpy(fs->name, "Restored", sizeof(fs->name));
-	fs->flag = 0;
-
-	cs = MEM_callocN(sizeof(ConstraintSetting), "cs_readfile");
-	BLI_strncpy(cs->name, "Restored", sizeof(cs->name));
-	cs->partner1 = fs;
-	cs->partner2 = fs; //inner constraints !
-	cs->flag = 0;
-
-	/*legacy part*/
-	/*reconstruct old FM struct from oldsdna and create void pointer*/
-	fmd_nr = DNA_struct_find_nr(fd->filesdna, "FractureModifierData");
-	compflags = DNA_struct_get_compareflags(fd->filesdna, fd->filesdna);
-	omd = DNA_struct_reconstruct(fd->filesdna, fd->filesdna, compflags, nr, 1, md);
-
-	/* in parallel build up the new struct */
-	fmd = newdataadr(fd, md);
-	fmd->flag = 0;
-	BLI_addtail(&fmd->fracture_settings, fs);
-	BLI_addtail(&fmd->constraint_settings, cs);
-	fmd->fracture = fs;
-	fmd->constraint = cs;
-
-	/*cast this to old FM struct, old definition is additionally provided here */
-	lmd = (*lm) = (FractureModifierData_Legacy*)omd;
-
-	/*fill structs*/
-	/* global values */
-	fmd->fracture_mode;
-	copy_m4_m4(fmd->origmat, lmd->origmat);
-	fmd->last_frame = lmd->last_frame;
-
-	/* fracture values */
-	fs->max_vol = lmd->max_vol;
-	fs->frac_algorithm = lmd->frac_algorithm;
-	fs->shard_count = lmd->shard_count;
-	fs->point_source = lmd->point_source;
-	fs->point_seed = lmd->point_seed;
-	fs->percentage = lmd->percentage;
-
-	fs->splinter_axis = lmd->splinter_axis;
-	fs->splinter_length = lmd->splinter_length;
-
-	fs->fractal_cuts = lmd->fractal_cuts;
-	fs->fractal_iterations = lmd->fractal_iterations;
-	fs->fractal_amount = lmd->fractal_amount;
-	fs->physics_mesh_scale = lmd->physics_mesh_scale;
-
-	fs->grease_decimate = lmd->grease_decimate;
-	fs->cutter_axis = lmd->cutter_axis;
-	fs->grease_offset = lmd->grease_offset;
-
-	fs->autohide_dist = lmd->autohide_dist;
-	fs->nor_range = lmd->nor_range;
-
-	fs->dynamic_force = lmd->dynamic_force;
-
-	/* constraint values */
-	cs->constraint_target = lmd->constraint_target;
-	cs->contact_dist = lmd->contact_dist;
-	cs->cluster_count = lmd->cluster_count;
-	cs->constraint_limit = lmd->constraint_limit;
-	cs->solver_iterations_override = lmd->solver_iterations_override;
-	cs->breaking_threshold = lmd->breaking_threshold;
-	cs->breaking_angle = lmd->breaking_angle;
-	cs->breaking_distance = lmd->breaking_distance;
-	cs->breaking_percentage = lmd->breaking_percentage;
-
-	cs->cluster_breaking_angle = lmd->cluster_breaking_angle;
-	cs->cluster_breaking_distance = lmd->cluster_breaking_distance;
-	cs->cluster_constraint_type = lmd->cluster_constraint_type;
-	cs->cluster_breaking_percentage = lmd->cluster_breaking_percentage;
-	cs->cluster_breaking_threshold = lmd->cluster_breaking_threshold;
-	cs->cluster_solver_iterations_override = lmd->cluster_solver_iterations_override;
-
-	/* global flags */
-	if (lmd->execute_threaded)
-		fmd->flag |= FMI_FLAG_EXECUTE_THREADED;
-
-	if (lmd->use_experimental)
-		fmd->flag |= FMI_FLAG_USE_EXPERIMENTAL;
-
-	/* fracture flags */
-	if (lmd->use_particle_birth_coordinates)
-		fs->flag |= FM_FLAG_USE_PARTICLE_BIRTH_COORDS;
-
-	if (lmd->use_smooth)
-		fs->flag |= FM_FLAG_USE_SMOOTH;
-
-	if (lmd->use_greasepencil_edges)
-		fs->flag |= FM_FLAG_USE_GREASEPENCIL_EDGES;
-
-	if (lmd->shards_to_islands)
-		fs->flag |= FM_FLAG_SHARDS_TO_ISLANDS;
-
-	if (lmd->explo_shared)
-		fs->flag |= FM_FLAG_USE_FRACMESH;
-
-	if (lmd->auto_execute)
-		fs->flag |= FM_FLAG_AUTO_EXECUTE;
-
-	if (lmd->limit_impact)
-		fs->flag |= FM_FLAG_LIMIT_IMPACT;
-
-	/* constraint flags */
-	if (lmd->use_constraints)
-		cs->flag |= FMC_FLAG_USE_CONSTRAINTS;
-
-	if (lmd->use_mass_dependent_thresholds)
-		cs->flag |= FMC_FLAG_USE_MASS_DEPENDENT_THRESHOLDS;
-
-	if (lmd->use_breaking)
-		cs->flag |= FMC_FLAG_USE_BREAKING;
-
-	if (lmd->breaking_distance_weighted)
-		cs->flag |= FMC_FLAG_BREAKING_DISTANCE_WEIGHTED;
-
-	if (lmd->breaking_angle_weighted)
-		cs->flag |= FMC_FLAG_BREAKING_ANGLE_WEIGHTED;
-
-	if (lmd->breaking_percentage_weighted)
-		cs->flag |= FMC_FLAG_BREAKING_PERCENTAGE_WEIGHTED;
-
-	return fmd;
-}
-
-static void load_fracture_modifier_pointers(FileData* fd, FractureModifierData_Legacy *fmd, Object* ob)
+static void load_legacy_fracture_modifier(FileData* fd, FractureModifierData *fmd, Object* ob)
 {
 	FracMesh* fm;
 
@@ -5243,7 +5130,7 @@ static void load_fracture_modifier_pointers(FileData* fd, FractureModifierData_L
 			}
 
 			/* ugly ugly, need only the shard... the rest is to be generated on demand... */
-			BKE_fracture_create_dm(fmd, true, false);
+			BKE_fracture_create_dm(fmd, NULL, true, false);
 
 			if (fm->shard_count == 0) {
 				fmd->shards_to_islands = false;
@@ -5263,7 +5150,7 @@ static void load_fracture_modifier_pointers(FileData* fd, FractureModifierData_L
 
 			for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 				read_meshIsland(fd, &mi);
-				vertstart += initialize_meshisland(fmd, &mi, mverts, vertstart, ob, -1, -1);
+				vertstart += initialize_meshisland(fmd, NULL, &mi, mverts, vertstart, ob, -1, -1);
 			}
 		}
 #if 0
@@ -5346,86 +5233,25 @@ static void load_fracture_modifier_pointers(FileData* fd, FractureModifierData_L
 }
 
 
-static ModifierData* load_fracture_modifier(FileData *fd, ModifierData *md)
+static void load_fracture_modifier(FileData *fd, ModifierData *md, Object *ob)
 {
-	FractureModifierData *fmd = NULL;
+	FractureModifierData *fmd = (FractureModifierData*)md;
 
 	if (DNA_struct_elem_find(fd->filesdna, "FractureModifierData", "ListBase", "fracture_settings"))
 	{
-		fmd = newdataadr(fd, md);
 		load_current_fracture_modifier(fd, fmd, ob);
 	}
 	else
 	{
-		//intercept ModifierData in link_list, better... provide own link_modifier_list() function
-		//oldaddr: start of former FM struct
-		//newaddr: start of current FM struct
-		//if old_addr contains fracture_settings for example, load as new modifier, else as legacy
-		FractureModifierData_Legacy *lmd;
-		fmd = load_fracture_modifier_struct(fd, md, &lmd);
-		load_fracture_modifier_pointers(fd, lmd, ob);
-
-		//copy or just reference pointer data ? better copy....(?) reference could leave legacy struct on heap or new struct holds a ref to old one...
-		BLI_movelisttolist(fmd->fracture->meshIslands, lmd->meshIslands);
-		fmd->fracture->frac_mesh = lmd->frac_mesh;
-		fmd->fracture->vertex_island_map = lmd->vertex_island_map;
-		fmd->fracture->visible_mesh = lmd->visible_mesh;
-		fmd->fracture->visible_mesh_cached = lmd->visible_mesh_cached;
-		fmd->fracture->dm = lmd->dm;
-
-		//walk over dependent objects as well !!!! and pass ref....
+		load_legacy_fracture_modifier(fd, fmd, ob);
 	}
-
-	return fmd;
-}
-
-static ModifierData* do_intercept(FileData *fd, ModifierData* md, int intercept_type,
-                                  ModifierData* (*intercept)(FileData *fd, ModifierData *oldaddr))
-{
-	if ((md->type == intercept_type) && intercept) {
-		if ((md->type == eModifierType_DataTransfer) && (fd->fileversion < 274)) {
-			md->type = eModifierType_Fracture;
-		}
-		return intercept(fd, md);
-	}
-	else
-	{
-		return newdataadr(fd, md);
-	}
-}
-
-static void link_modifier_list(FileData *fd, ListBase *lb, int intercept_type,
-                               ModifierData* (*intercept)(FileData *fd, ModifierData *oldaddr))		/* only modifier data */
-{
-	ModifierData *md, *prev;
-
-	if (BLI_listbase_is_empty(lb)) return;
-
-	lb->first = do_intercept(fd, lb->first, intercept_type, intercept);
-	md = lb->first;
-	prev = NULL;
-	while (md) {
-		md->next = do_intercept(fd, md->next, intercept_type, intercept);
-		md->prev = prev;
-		prev = md;
-		md = md->next;
-	}
-	lb->last = prev;
 }
 
 static void direct_link_modifiers(FileData *fd, ListBase *lb, Object *ob)
 {
 	ModifierData *md;
 	
-	if (fd->fileversion < 274)
-	{
-		/* modifier number was equal to current DataTransfer in older versions and DataTransfer didnt exist there in master! */
-		link_modifier_list(fd, lb, eModifierType_DataTransfer, load_fracture_modifier);
-	}
-	else
-	{
-		link_modifier_list(fd, lb, eModifierType_Fracture, load_fracture_modifier);
-	}
+	link_list(fd, lb);
 	
 	for (md=lb->first; md; md=md->next) {
 		md->error = NULL;
@@ -5443,7 +5269,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb, Object *ob)
 		}
 
 		if (md->type == eModifierType_Fracture) {
-			continue; /* pass here, because we handle in interception function*/
+			load_fracture_modifier(fd, md, ob);
 		}
 			
 		else if (md->type == eModifierType_Subsurf) {
@@ -8673,8 +8499,8 @@ static void fix_fracture_image_hack(Main* main)
 	for (ob = main->object.first; ob; ob = ob->id.next) {
 		FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
 		if (fmd && fmd->dm_group) {
-			fs->flag |= FM_FLAG_REFRESH_IMAGES;
-			fs->flag |= FM_FLAG_REFRESH;
+			fmd->flag |= FM_FLAG_REFRESH_IMAGES;
+			fmd->flag |= FM_FLAG_REFRESH;
 		}
 	}
 }

@@ -38,6 +38,7 @@ struct FracMesh;
 struct Shard;
 
 struct FractureModifierData;
+struct FractureSetting;
 struct DerivedMesh;
 struct Object;
 struct Group;
@@ -62,107 +63,6 @@ typedef struct FracPointCloud {
 	int totpoints; /* number of positions */
 } FracPointCloud;
 
-/* old FM struct definition, used in loading routine to retrieve data from old blends */
-typedef struct FractureModifierData_Legacy {
-	ModifierData modifier;
-	struct FracMesh *frac_mesh; /* store only the current fracmesh here first, later maybe an entire history...*/
-	struct DerivedMesh *dm;
-	struct Group *extra_group;
-	struct Group *dm_group;
-	struct Group *cluster_group;
-	struct Group *cutter_group;
-	struct BMesh *visible_mesh;
-	struct DerivedMesh *visible_mesh_cached;
-	ListBase meshIslands, meshConstraints;
-	ListBase islandShards;
-	char thresh_defgrp_name[64];  /* MAX_VGROUP_NAME */
-	char ground_defgrp_name[64];  /* MAX_VGROUP_NAME */
-	char inner_defgrp_name[64];  /* MAX_VGROUP_NAME */
-	struct KDTree *nor_tree; /* store original vertices here (coords), to find them later and reuse their normals */
-	struct Material *inner_material;
-	struct GHash *face_pairs;
-	struct GHash *vert_index_map; /*used for autoconversion of former objects to clusters, marks object membership of each vert*/
-	struct GHash *vertex_island_map; /* used for constraint building based on vertex proximity, temporary data */
-	ListBase shard_sequence; /* used as mesh cache / history for dynamic fracturing, for shards (necessary for conversion to DM) */
-	ListBase meshIsland_sequence; /* used as mesh cache / history for dynamic fracturing, for meshIslands (necessary for loc/rot "pointcache") */
-	ShardSequence *current_shard_entry; /*volatile storage of current shard entry, so we dont have to search in the list */
-	MeshIslandSequence *current_mi_entry; /*analogous to current shard entry */
-	ListBase fracture_ids; /*volatile storage of shards being "hit" or fractured currently, needs to be cleaned up after usage! */
-
-	/* values */
-	int frac_algorithm;
-	int shard_count;
-	int shard_id;
-	int point_source;
-	int point_seed;
-	int percentage;
-	int cluster_count;
-
-	int constraint_limit;
-	int solver_iterations_override;
-	int cluster_solver_iterations_override;
-	int breaking_percentage;
-	int cluster_breaking_percentage;
-	int splinter_axis;
-	int fractal_cuts;
-	int fractal_iterations;
-	int grease_decimate;
-	int cutter_axis;
-	int cluster_constraint_type;
-	int fracture_mode;
-
-	float breaking_angle;
-	float breaking_distance;
-	float cluster_breaking_angle;
-	float cluster_breaking_distance;
-	float origmat[4][4];
-	float breaking_threshold;
-	float cluster_breaking_threshold;
-	float contact_dist, autohide_dist;
-	float splinter_length;
-	float nor_range;
-	float fractal_amount;
-	float physics_mesh_scale;
-	float grease_offset;
-	float dynamic_force;
-
-	/* flags */
-	int refresh;
-	int refresh_constraints;
-	int refresh_autohide;
-	int reset_shards;
-
-	int use_constraints;
-	int use_mass_dependent_thresholds;
-	int use_particle_birth_coordinates;
-	int use_breaking;
-	int use_smooth;
-	int use_greasepencil_edges;
-
-	int shards_to_islands;
-	int execute_threaded;
-	int fix_normals;
-	int auto_execute;
-
-	int breaking_distance_weighted;
-	int breaking_angle_weighted;
-	int breaking_percentage_weighted;
-	int constraint_target;
-	int limit_impact;
-
-	/* internal flags */
-	int use_experimental;
-	int explo_shared;
-	int refresh_images;
-	int update_dynamic;
-
-	/* internal values */
-	float max_vol;
-	int last_frame;
-
-	//char pad[4];
-} FractureModifierData_Legacy ;
-
 /* direct access */
 struct Shard *BKE_shard_by_id(struct FracMesh *mesh, ShardID id, struct DerivedMesh *dm);
 
@@ -184,7 +84,7 @@ void BKE_shard_free(struct Shard *s, bool doCustomData);
 
 
 /* DerivedMesh */
-struct DerivedMesh *BKE_fracture_create_dm(struct FractureModifierData *fmd, bool doCustomData, bool join_result);
+struct DerivedMesh *BKE_fracture_create_dm(struct FractureModifierData *fmd, struct FractureSetting *fs, bool doCustomData, bool join_result);
 struct DerivedMesh *BKE_shard_create_dm(struct Shard *s, bool doCustomData);
 
 /* create shards from base mesh and a list of points */
@@ -208,5 +108,9 @@ void BKE_fracture_constraint_setting_remove_all(struct FractureModifierData *fmd
 void BKE_initialize_from_vertex_groups(struct FractureModifierData *fmd, struct Object *ob);
 void BKE_mesh_separate_selected(struct BMesh **bm_work, struct BMesh **bm_out, struct BMVert **orig_work, struct BMVert ***orig_out1, struct BMVert ***orig_out2);
 void BKE_select_linked(struct BMesh **bm_in);
+
+struct DerivedMesh *BKE_prefracture_mesh(struct FractureModifierData *fmd, struct Object *ob, struct DerivedMesh *derivedData);
+void BKE_free_fracture_modifier(struct FractureModifierData *fmd, bool do_free_seq);
+struct DerivedMesh *BKE_dynamic_fracture_mesh(struct FractureModifierData *fmd, struct Object *ob, struct DerivedMesh *derivedData);
 
 #endif /* BKE_FRACTURE_H */
