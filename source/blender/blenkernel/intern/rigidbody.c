@@ -3255,36 +3255,38 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 	RigidBodyOb *rbo;
 	float size[3] = {1, 1, 1};
 	float centr[3];
+	FractureSetting *fs = NULL;
 
 	if (md->type == eModifierType_Fracture) {
 		fmd = (FractureModifierData *)md;
-		exploOK = !(fmd->fracture->flag & FM_FLAG_USE_FRACMESH) ||
-		          ((fmd->fracture->flag & FM_FLAG_USE_FRACMESH) && fmd->fracture->frac_mesh && fmd->fracture->dm);
+		for (fs = fmd->fracture_settings.first; fs; fs = fs->next)
+		{
+			exploOK = !(fs->flag & FM_FLAG_USE_FRACMESH) ||
+					  ((fs->flag & FM_FLAG_USE_FRACMESH) && fs->frac_mesh && fs->dm);
 
-		if (isModifierActive(fmd) && exploOK) {
-			FractureSetting *fs = NULL;
-			modFound = true;
+			if (isModifierActive(fmd) && exploOK) {
+				modFound = true;
 
-			if ((ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) ||
-			    ((ob->rigidbody_object) && (ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC)))
-			{
-				/* update "original" matrix */
-				copy_m4_m4(fmd->origmat, ob->obmat);
-				if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ && rbw) {
-					RigidBodyShardCon *con;
-					ConstraintSetting *cs = NULL;
+				if ((ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) ||
+					((ob->rigidbody_object) && (ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC)))
+				{
+					/* update "original" matrix */
+					copy_m4_m4(fmd->origmat, ob->obmat);
+					if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ && rbw) {
+						RigidBodyShardCon *con;
+						ConstraintSetting *cs = NULL;
 
-					rbw->flag |= RBW_FLAG_OBJECT_CHANGED;
-					BKE_rigidbody_cache_reset(rbw);
-					/* re-enable all constraints as well */
+						rbw->flag |= RBW_FLAG_OBJECT_CHANGED;
+						BKE_rigidbody_cache_reset(rbw);
+						/* re-enable all constraints as well */
 
 
-					for (cs = fmd->constraint_settings.first; cs; cs = cs->next)
-					{
-						fmd->constraint = cs;
-						for (con = fmd->constraint->meshConstraints.first; con; con = con->next) {
-							con->flag |= RBC_FLAG_ENABLED;
-							con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+						for (cs = fmd->constraint_settings.first; cs; cs = cs->next)
+						{
+							for (con = cs->meshConstraints.first; con; con = con->next) {
+								con->flag |= RBC_FLAG_ENABLED;
+								con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+							}
 						}
 					}
 				}
@@ -3296,7 +3298,6 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 
 			for (fs = fmd->fracture_settings.first; fs; fs = fs->next)
 			{
-				fmd->fracture = fs;
 				if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 				{
 					int frame = (int)ctime;
@@ -3306,7 +3307,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 					}
 				}
 
-				for (mi = fmd->fracture->meshIslands.first; mi; mi = mi->next) {
+				for (mi = fs->meshIslands.first; mi; mi = mi->next) {
 
 					rbo = mi->rigidbody;
 					if (!rbo) {

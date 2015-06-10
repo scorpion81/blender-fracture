@@ -3402,13 +3402,22 @@ static void foreachIDLink(ModifierData *md, Object *ob,
                           IDWalkFunc walk, void *userData)
 {
 	FractureModifierData *fmd = (FractureModifierData *) md;
+	FractureSetting *fs = NULL;
+	ConstraintSetting *cs = NULL;
 
-	// do a loop here !!! TODO
-	walk(userData, ob, (ID **)&fmd->fracture->inner_material);
-	walk(userData, ob, (ID **)&fmd->fracture->extra_group);
 	walk(userData, ob, (ID **)&fmd->dm_group);
-	walk(userData, ob, (ID **)&fmd->constraint->cluster_group);
-	walk(userData, ob, (ID **)&fmd->fracture->cutter_group);
+
+	for (fs = fmd->fracture_settings.first; fs; fs = fs->next)
+	{
+		walk(userData, ob, (ID **)&fs->inner_material);
+		walk(userData, ob, (ID **)&fs->extra_group);
+		walk(userData, ob, (ID **)&fs->cutter_group);
+	}
+
+	for (cs = fmd->constraint_settings.first; cs; cs = cs->next)
+	{
+		walk(userData, ob, (ID **)&cs->cluster_group);
+	}
 }
 
 static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *UNUSED(md))
@@ -3424,15 +3433,19 @@ static void updateDepgraph(ModifierData *md, DagForest *forest,
                            DagNode *obNode)
 {
 	FractureModifierData *fmd = (FractureModifierData *) md;
+	FractureSetting *fs = NULL;
 
-	if (fmd->fracture->extra_group) {
-		GroupObject *go;
-		for (go = fmd->fracture->extra_group->gobject.first; go; go = go->next) {
-			if (go->ob)
-			{
-				DagNode *curNode = dag_get_node(forest, go->ob);
-				dag_add_relation(forest, curNode, obNode,
-				                 DAG_RL_DATA_DATA | DAG_RL_OB_DATA, "Fracture Modifier");
+	for (fs = fmd->fracture_settings.first; fs; fs = fs->next)
+	{
+		if (fs->extra_group) {
+			GroupObject *go;
+			for (go = fs->extra_group->gobject.first; go; go = go->next) {
+				if (go->ob)
+				{
+					DagNode *curNode = dag_get_node(forest, go->ob);
+					dag_add_relation(forest, curNode, obNode,
+									 DAG_RL_DATA_DATA | DAG_RL_OB_DATA, "Fracture Modifier Setting");
+				}
 			}
 		}
 	}
@@ -3444,21 +3457,25 @@ static void foreachObjectLink(
     void *userData)
 {
 	FractureModifierData *fmd = (FractureModifierData *) md;
+	FractureSetting *fs = NULL;
 
-	if (fmd->fracture->extra_group) {
-		GroupObject *go;
-		for (go = fmd->fracture->extra_group->gobject.first; go; go = go->next) {
-			if (go->ob) {
-				walk(userData, ob, &go->ob);
+	for (fs = fmd->fracture_settings.first; fs; fs = fs->next)
+	{
+		if (fs->extra_group) {
+			GroupObject *go;
+			for (go = fs->extra_group->gobject.first; go; go = go->next) {
+				if (go->ob) {
+					walk(userData, ob, &go->ob);
+				}
 			}
 		}
-	}
 
-	if (fmd->fracture->cutter_group) {
-		GroupObject *go;
-		for (go = fmd->fracture->cutter_group->gobject.first; go; go = go->next) {
-			if (go->ob) {
-				walk(userData, ob, &go->ob);
+		if (fs->cutter_group) {
+			GroupObject *go;
+			for (go = fs->cutter_group->gobject.first; go; go = go->next) {
+				if (go->ob) {
+					walk(userData, ob, &go->ob);
+				}
 			}
 		}
 	}
