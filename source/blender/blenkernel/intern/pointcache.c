@@ -38,6 +38,7 @@
 
 #include "DNA_ID.h"
 #include "DNA_dynamicpaint_types.h"
+#include "DNA_fracture_types.h"
 #include "DNA_modifier_types.h"
 #include "DNA_object_types.h"
 #include "DNA_object_force.h"
@@ -1412,17 +1413,17 @@ void BKE_ptcache_id_from_dynamicpaint(PTCacheID *pid, Object *ob, DynamicPaintSu
 	pid->max_step = 1;
 }
 
-void BKE_ptcache_id_from_rigidbody(PTCacheID *pid, Object *ob, RigidBodyWorld *rbw)
+void BKE_ptcache_id_from_rigidbody(PTCacheID *pid, Object *ob, FractureContainer *fc)
 {
 	
 	memset(pid, 0, sizeof(PTCacheID));
 	
 	pid->ob= ob;
-	pid->calldata= rbw;
+	pid->calldata=fc;
 	pid->type= PTCACHE_TYPE_RIGIDBODY;
-	pid->cache= rbw->pointcache;
-	pid->cache_ptr= &rbw->pointcache;
-	pid->ptcaches= &rbw->ptcaches;
+	pid->cache=fc->pointcache;
+	pid->cache_ptr= &fc->pointcache;
+	pid->ptcaches= &fc->ptcaches;
 	pid->totpoint= pid->totwrite= ptcache_rigidbody_totpoint;
 	pid->error					= ptcache_rigidbody_error;
 	

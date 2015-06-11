@@ -263,7 +263,7 @@ void BKE_ptcache_id_from_particles(PTCacheID *pid, struct Object *ob, struct Par
 void BKE_ptcache_id_from_cloth(PTCacheID *pid, struct Object *ob, struct ClothModifierData *clmd);
 void BKE_ptcache_id_from_smoke(PTCacheID *pid, struct Object *ob, struct SmokeModifierData *smd);
 void BKE_ptcache_id_from_dynamicpaint(PTCacheID *pid, struct Object *ob, struct DynamicPaintSurface *surface);
-void BKE_ptcache_id_from_rigidbody(PTCacheID *pid, struct Object *ob, struct RigidBodyWorld *rbw);
+void BKE_ptcache_id_from_rigidbody(PTCacheID *pid, struct Object *ob, struct FractureContainer *fc);
 
 void BKE_ptcache_ids_from_object(struct ListBase *lb, struct Object *ob, struct Scene *scene, int duplis);
 

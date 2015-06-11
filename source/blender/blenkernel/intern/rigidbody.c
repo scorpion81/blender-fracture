@@ -341,8 +341,9 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland *mi, DerivedMesh *orig
 		dm_ob->release(dm_ob);
 	}
 }
-
-static void initNormals(struct MeshIsland *mi, Object *ob, FractureModifierData *fmd)
+// TODO... move this to readfile or fracture, as BKE function
+#if 0
+static void initNormals(struct MeshIsland *mi, Object *ob)
 {
 	// LIMIT This to the according VGROUP !!! TODO
 	/* hrm have to init Normals HERE, because we cant do this in readfile.c in case the file is loaded (have no access to the Object there) */
@@ -391,6 +392,7 @@ static void initNormals(struct MeshIsland *mi, Object *ob, FractureModifierData 
 		}
 	}
 }
+#endif
 
 void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], float rot[4], FractureModifierData *rmd, int frame)
 {
@@ -2249,7 +2251,7 @@ RigidBodyCon *BKE_rigidbody_create_constraint(Scene *scene, Object *ob, short ty
 }
 
 /* Add rigid body constraint to the specified object */
-RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(Scene *scene, short type)
+RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(Scene* scene, short type)
 {
 	RigidBodyShardCon *rbc;
 	RigidBodyWorld *rbw = scene->rigidbody_world;
@@ -2301,7 +2303,7 @@ RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(Scene *scene, short typ
 	rbc->motor_ang_max_impulse = 1.0f;
 	rbc->motor_ang_target_velocity = 1.0f;
 
-	/* flag cache as outdated */
+	/* flag all caches as outdated */
 	BKE_rigidbody_cache_reset(rbw);
 
 	/* return this object */

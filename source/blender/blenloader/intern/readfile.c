@@ -9232,6 +9232,14 @@ static void expand_object(FileData *fd, Main *mainvar, Object *ob)
 	}
 #endif
 
+	if (ob->fracture_objects)
+	{
+		FractureContainer *fc = ob->fracture_objects;
+		expand_doit(fd, mainvar, fc->extra_group);
+		expand_doit(fd, mainvar, fc->cutter_group);
+		expand_doit(fd, mainvar, fc->cluster_group);
+	}
+
 	if (ob->fracture_constraints)
 	{
 		ConstraintContainer *cc = ob->fracture_constraints;

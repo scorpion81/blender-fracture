@@ -165,7 +165,7 @@ typedef struct FractureState {
 } FractureState;
 
 typedef struct ConstraintContainer {
-	ListBase meshConstraints;
+	ListBase constraint_map;
 
 	struct Object *partner1;
 	struct Object *partner2;
@@ -204,7 +204,7 @@ typedef struct MeshIsland {
 	struct Shard *shard;
 	struct RigidBodyOb *rigidbody;
 	int *neighbor_ids DNA_DEPRECATED;
-	int *vertex_indices DNA_DEPRECATED;
+	int *vertex_indices;
 	struct BoundBox *bb;
 	struct RigidBodyShardCon **participating_constraints;
 	float *locs DNA_DEPRECATED;
@@ -217,8 +217,9 @@ typedef struct MeshIsland {
 	float centroid[3];
 	float rot[4]; /*hrm, need this for constraints probably */
 	float thresh_weight, ground_weight;
-	int linear_index;  /* index in rigidbody world */
+	int linear_index DNA_DEPRECATED;  /* index in rigidbody world */
 	int particle_index; /*used for clustering */
+	short partner_index; /* is 1 or 2, to determine the partner object*/
 	char pad[4];
 } MeshIsland;
 
