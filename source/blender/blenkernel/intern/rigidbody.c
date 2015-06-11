@@ -122,7 +122,7 @@ float BKE_rigidbody_calc_max_con_mass(Object *ob)
 	RigidBodyShardCon *con;
 	float max_con_mass = 0, con_mass;
 
-	for (con = cc->meshConstraints.first; con; con = con->next) {
+	for (con = cc->constraint_map.first; con; con = con->next) {
 		if ((con->mi1 != NULL && con->mi1->rigidbody != NULL) &&
 			(con->mi2 != NULL && con->mi2->rigidbody != NULL)) {
 			con_mass = con->mi1->rigidbody->mass + con->mi2->rigidbody->mass;
@@ -141,7 +141,7 @@ float BKE_rigidbody_calc_min_con_dist(Object *ob)
 	RigidBodyShardCon *con;
 	float min_con_dist = FLT_MAX, con_dist, con_vec[3];
 
-	for (con = cc->meshConstraints.first; con; con = con->next) {
+	for (con = cc->constraint_map.first; con; con = con->next) {
 		if ((con->mi1 != NULL && con->mi1->rigidbody != NULL) &&
 			(con->mi2 != NULL && con->mi2->rigidbody != NULL)) {
 			sub_v3_v3v3(con_vec, con->mi1->centroid, con->mi2->centroid);
@@ -394,17 +394,20 @@ static void initNormals(struct MeshIsland *mi, Object *ob)
 }
 #endif
 
-void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], float rot[4], FractureModifierData *rmd, int frame)
+void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], float rot[4], int frame)
 {
 	float startco[3], centr[3], size[3];
 	short startno[3];
 	int j, n = 0;
 	bool invalidData;
+	FractureContainer *fc = ob->fracture_objects;
 
+#if 0 // TODO MOVE init normals elsewhere !
 	/* hrm have to init Normals HERE, because we cant do this in readfile.c in case the file is loaded (have no access to the Object there)*/
 	if (mi->vertno == NULL && (rmd->fracture->flag & FM_FLAG_FIX_NORMALS)) {
 		initNormals(mi, ob, rmd);
 	}
+#endif
 	
 	invalidData = (loc[0] == FLT_MIN) || (rot[0] == FLT_MIN);
 	
@@ -415,7 +418,8 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 	invert_m4_m4(ob->imat, ob->obmat);
 	mat4_to_size(size, ob->obmat);
 
-	if (rmd->fracture_mode == MOD_FRACTURE_PREFRACTURED) {
+#if 0 // TODO, utilize cache for this !!!
+	if (fc->fracture_mode == MOD_FRACTURE_PREFRACTURED) {
 		/*record only in prefracture case here, when you want to convert to keyframes*/
 		n = frame - mi->start_frame + 1;
 
@@ -434,6 +438,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 			mi->frame_count = n;
 		}
 	}
+#endif
 	
 	for (j = 0; j < mi->vertex_count; j++) {
 		struct MVert *vert;
@@ -448,15 +453,11 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 		//if (vert->co == NULL) break;
 		//if (rmd->refresh == true) break;
 
-		startco[0] = mi->vertco[j * 3];
-		startco[1] = mi->vertco[j * 3 + 1];
-		startco[2] = mi->vertco[j * 3 + 2];
+		copy_v3_v3(startco, mi->vertcos[j]);
 
-		if (rmd->fracture->flag & FM_FLAG_FIX_NORMALS) {
+		if (fc->flag & FM_FLAG_FIX_NORMALS) {
 			float irot[4], qrot[4];
-			startno[0] = mi->vertno[j * 3];
-			startno[1] = mi->vertno[j * 3 + 1];
-			startno[2] = mi->vertno[j * 3 + 2];
+			copy_v3_v3_short(startno, mi->vertnos[j]);
 
 			/*ignore global quaternion rotation here */
 			normal_short_to_float_v3(fno, startno);
@@ -534,9 +535,11 @@ void BKE_rigidbody_free_world(RigidBodyWorld *rbw)
 	}
 
 
+#if 0 //TODO, dont forget to free object caches when freeing objects !!!
 	/* free cache */
 	BKE_ptcache_free_list(&(rbw->ptcaches));
 	rbw->pointcache = NULL;
+#endif
 
 	/* free effector weights */
 	if (rbw->effector_weights)
@@ -694,7 +697,7 @@ static rbCollisionShape *rigidbody_get_shape_convexhull_from_dm(DerivedMesh *dm,
 	return shape;
 }
 
-
+#if 0
 static void scale_physics_mesh(DerivedMesh** dm, float loc[3], float scale)
 {
 	/*location is the centroid, scale factor comes from ob->rigidbody (main dummy rigidbody object) */
@@ -722,6 +725,8 @@ static void scale_physics_mesh(DerivedMesh** dm, float loc[3], float scale)
 	}
 }
 
+#endif
+
 /* create collision shape of mesh - triangulated mesh
  * returns NULL if creation fails.
  */
@@ -737,20 +742,12 @@ static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh_shard(MeshIsland 
 		int totface;
 		int tottris = 0;
 		int triangle_index = 0;
-		float scale = 0.99f;
-		FractureModifierData *fmd = NULL;
 
 		dm = CDDM_copy(mi->physics_mesh);
 
 		/* ensure mesh validity, then grab data */
 		if (dm == NULL)
 			return NULL;
-
-		/* shrink the bullet mesh a little bit, so it wont explode */
-		fmd = (FractureModifierData*) modifiers_findByType(ob, eModifierType_Fracture);
-		if (fmd)
-			scale = fmd->fracture->physics_mesh_scale;
-		scale_physics_mesh(&dm, mi->centroid, scale);
 
 		DM_ensure_tessface(dm);
 
@@ -1689,18 +1686,20 @@ static bool colgroup_check(int group1, int group2)
 
 static void do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBodyWorld *rbw)
 {
-	FractureModifierData *fmd;
+	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc2 = ob2->fracture_objects;
 	bool valid = true;
 	MeshIsland *mi;
 
-	fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
-	valid = valid && (fmd != NULL);
-	valid = valid && (ob->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
-	valid = valid && (ob2->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER);
+	valid = valid && (fc != NULL);
+
+	//TODO, add flag definitions to container as well, applies for all contained rigidbodies
+	valid = valid && (fc->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
+	valid = valid && (fc2->flag & RBO_FLAG_IS_TRIGGER);
 
 	if (valid)
 	{
-		for (mi = fmd->fracture->meshIslands.first; mi; mi = mi->next)
+		for (mi = fc->current->island_map.first; mi; mi = mi->next)
 		{
 			RigidBodyOb* rbo = mi->rigidbody;
 			if ((rbo->flag & RBO_FLAG_KINEMATIC) && ((mi_compare == mi)))
@@ -1711,21 +1710,12 @@ static void do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBo
 			}
 		}
 	}
-	else if (!fmd)
-	{
-		bool valid = ob2->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER;
-		RigidBodyOb* rbo = ob->rigidbody_object;
-
-		if (rbo && valid)
-		{
-			activateRigidbody(rbo, rbw, NULL, ob);
-		}
-	}
 }
 
 static int check_colgroup_ghost(Object* ob1, Object *ob2)
 {
 	int ret = 0;
+	// TODO colgroups will be added to container as well, for convenience ?
 	ret = colgroup_check(ob1->rigidbody_object->col_groups, ob2->rigidbody_object->col_groups);
 	return ret && (!(ob1->rigidbody_object->flag & RBO_FLAG_IS_GHOST) && !(ob2->rigidbody_object->flag & RBO_FLAG_IS_GHOST));
 }
@@ -1821,11 +1811,13 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	return check_colgroup_ghost(ob1, ob2);
 }
 
-static bool check_shard_size(FractureModifierData *fmd, int id, float impact_loc[3], Object* collider)
+static bool check_shard_size(Object* ob, int id, float impact_loc[3], Object* collider)
 {
+	FractureContainer *fc = ob->fracture_objects;
+	FractureState *fs = fc->current;
 	FractureID *fid;
 	float size = 0.1f;
-	Shard *t = fmd->fracture->frac_mesh->shard_map.first;
+	Shard *t = fs->frac_mesh->shard_map.first;
 	Shard *s = NULL;
 	float dim[3];
 

@@ -151,7 +151,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 {
 	if (ob->fracture_objects)
 	{
-		return ob->fracture_objects->current->visual_mesh;
+		return BKE_autohide_inner(ob);
 	}
 
 	return derivedData;

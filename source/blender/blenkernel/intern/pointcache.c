@@ -3053,6 +3053,7 @@ int  BKE_ptcache_object_reset(Scene *scene, Object *ob, int mode)
 		}
 	}
 
+#if 0 //TODO, what was this good for ?
 	if (scene->rigidbody_world && (ob->rigidbody_object || ob->rigidbody_constraint)) {
 		ModifierData *md = modifiers_findByType(ob, eModifierType_Fracture);
 		if (md && md->type == eModifierType_Fracture)
@@ -3076,6 +3077,7 @@ int  BKE_ptcache_object_reset(Scene *scene, Object *ob, int mode)
 			pid.cache->flag |= PTCACHE_OUTDATED;
 		}
 	}
+#endif
 
 	if (ob->type == OB_ARMATURE)
 		BIK_clear_cache(ob->pose);

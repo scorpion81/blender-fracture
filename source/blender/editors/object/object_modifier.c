@@ -2357,7 +2357,6 @@ static int fracture_refresh_exec(bContext *C, wmOperator *UNUSED(op))
 	FractureJob *fj;
 	wmJob* wm_job;
 	FractureContainer *fc = obact->fracture_objects;
-	FractureState *fs = fc->states.first;
 
 	if (scene->rigidbody_world != NULL)
 	{

@@ -213,7 +213,7 @@ typedef struct MeshIsland {
 	int start_frame DNA_DEPRECATED;
 	int frame_count DNA_DEPRECATED;
 	int participating_constraint_count;
-	int vertex_count DNA_DEPRECATED, id DNA_DEPRECATED, neighbor_count DNA_DEPRECATED;
+	int vertex_count, id, neighbor_count DNA_DEPRECATED;
 	float centroid[3];
 	float rot[4]; /*hrm, need this for constraints probably */
 	float thresh_weight, ground_weight;
