@@ -34,12 +34,9 @@
 #include "MEM_guardedalloc.h"
 
 #include "DNA_node_types.h"
-#include "DNA_object_types.h"
 #include "DNA_anim_types.h"
 
 #include "BLI_listbase.h"
-#include "BLI_string.h"
-#include "BLI_rect.h"
 #include "BLI_math.h"
 
 #include "BLF_translation.h"
@@ -58,7 +55,6 @@
 
 #include "RNA_access.h"
 #include "RNA_define.h"
-#include "RNA_enum_types.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
@@ -67,7 +63,6 @@
 
 #include "node_intern.h"  /* own include */
 #include "NOD_common.h"
-#include "NOD_socket.h"
 
 static int node_group_operator_active(bContext *C)
 {
@@ -147,7 +142,7 @@ static int node_group_edit_exec(bContext *C, wmOperator *op)
 	bNode *gnode;
 	const bool exit = RNA_boolean_get(op->ptr, "exit");
 	
-	ED_preview_kill_jobs(C);
+	ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
 	
 	gnode = node_group_get_active(C, node_idname);
 	
@@ -179,7 +174,7 @@ void NODE_OT_group_edit(wmOperatorType *ot)
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
-	RNA_def_boolean(ot->srna, "exit", FALSE, "Exit", "");
+	RNA_def_boolean(ot->srna, "exit", false, "Exit", "");
 }
 
 /* ******************** Ungroup operator ********************** */
@@ -203,7 +198,7 @@ static int node_group_ungroup(bNodeTree *ntree, bNode *gnode)
 	 * - ngroup (i.e. the source NodeTree) is left unscathed
 	 * - temp copy. don't change ID usercount
 	 */
-	wgroup = ntreeCopyTree_ex(ngroup, FALSE);
+	wgroup = ntreeCopyTree_ex(ngroup, G.main, false);
 	
 	/* Add the nodes into the ntree */
 	for (node = wgroup->nodes.first; node; node = nextnode) {
@@ -355,7 +350,7 @@ static int node_group_ungroup_exec(bContext *C, wmOperator *op)
 	const char *node_idname = group_node_idname(C);
 	bNode *gnode;
 
-	ED_preview_kill_jobs(C);
+	ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
 
 	gnode = node_group_get_active(C, node_idname);
 	if (!gnode)
@@ -401,7 +396,7 @@ static int node_group_separate_selected(bNodeTree *ntree, bNodeTree *ngroup, flo
 	
 	/* deselect all nodes in the target tree */
 	for (node = ntree->nodes.first; node; node = node->next)
-		nodeSetSelected(node, FALSE);
+		nodeSetSelected(node, false);
 	
 	/* clear new pointers, set in nodeCopyNode */
 	for (node = ngroup->nodes.first; node; node = node->next)
@@ -415,7 +410,7 @@ static int node_group_separate_selected(bNodeTree *ntree, bNodeTree *ngroup, flo
 		
 		/* ignore interface nodes */
 		if (ELEM(node->type, NODE_GROUP_INPUT, NODE_GROUP_OUTPUT)) {
-			nodeSetSelected(node, FALSE);
+			nodeSetSelected(node, false);
 			continue;
 		}
 		
@@ -525,7 +520,7 @@ static int node_group_separate_exec(bContext *C, wmOperator *op)
 	int type = RNA_enum_get(op->ptr, "type");
 	float offx, offy;
 
-	ED_preview_kill_jobs(C);
+	ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
 
 	/* are we inside of a group? */
 	ngroup = snode->edittree;
@@ -565,16 +560,16 @@ static int node_group_separate_exec(bContext *C, wmOperator *op)
 
 static int node_group_separate_invoke(bContext *C, wmOperator *UNUSED(op), const wmEvent *UNUSED(event))
 {
-	uiPopupMenu *pup = uiPupMenuBegin(C, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Separate"), ICON_NONE);
-	uiLayout *layout = uiPupMenuLayout(pup);
+	uiPopupMenu *pup = UI_popup_menu_begin(C, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Separate"), ICON_NONE);
+	uiLayout *layout = UI_popup_menu_layout(pup);
 	
 	uiLayoutSetOperatorContext(layout, WM_OP_EXEC_DEFAULT);
 	uiItemEnumO(layout, "NODE_OT_group_separate", NULL, 0, "type", NODE_GS_COPY);
 	uiItemEnumO(layout, "NODE_OT_group_separate", NULL, 0, "type", NODE_GS_MOVE);
 	
-	uiPupMenuEnd(C, pup);
+	UI_popup_menu_end(C, pup);
 	
-	return OPERATOR_CANCELLED;
+	return OPERATOR_INTERFACE;
 }
 
 void NODE_OT_group_separate(wmOperatorType *ot)
@@ -684,7 +679,7 @@ static void node_group_make_insert_selected(const bContext *C, bNodeTree *ntree,
 	ListBase anim_basepaths = {NULL, NULL};
 	float min[2], max[2], center[2];
 	int totselect;
-	int expose_all = FALSE;
+	bool expose_all = false;
 	bNode *input_node, *output_node;
 	
 	/* XXX rough guess, not nice but we don't have access to UI constants here ... */
@@ -693,7 +688,7 @@ static void node_group_make_insert_selected(const bContext *C, bNodeTree *ntree,
 	
 	/* deselect all nodes in the target tree */
 	for (node = ngroup->nodes.first; node; node = node->next)
-		nodeSetSelected(node, FALSE);
+		nodeSetSelected(node, false);
 	
 	totselect = node_get_selected_minmax(ntree, gnode, min, max);
 	add_v2_v2v2(center, min, max);
@@ -701,7 +696,7 @@ static void node_group_make_insert_selected(const bContext *C, bNodeTree *ntree,
 	
 	/* auto-add interface for "solo" nodes */
 	if (totselect == 1)
-		expose_all = TRUE;
+		expose_all = true;
 	
 	/* move nodes over */
 	for (node = ntree->nodes.first; node; node = nextn) {
@@ -831,10 +826,10 @@ static void node_group_make_insert_selected(const bContext *C, bNodeTree *ntree,
 			if (node_group_make_use_node(node, gnode)) {
 				for (sock = node->inputs.first; sock; sock = sock->next) {
 					bNodeSocket *iosock, *input_sock;
-					int skip = FALSE;
+					bool skip = false;
 					for (link = ngroup->links.first; link; link = link->next) {
 						if (link->tosock == sock) {
-							skip = TRUE;
+							skip = true;
 							break;
 						}
 					}
@@ -852,10 +847,10 @@ static void node_group_make_insert_selected(const bContext *C, bNodeTree *ntree,
 				
 				for (sock = node->outputs.first; sock; sock = sock->next) {
 					bNodeSocket *iosock, *output_sock;
-					int skip = FALSE;
+					bool skip = false;
 					for (link = ngroup->links.first; link; link = link->next)
 						if (link->fromsock == sock)
-							skip = TRUE;
+							skip = true;
 					if (skip)
 						continue;
 					
@@ -918,7 +913,7 @@ static int node_group_make_exec(bContext *C, wmOperator *op)
 	bNode *gnode;
 	Main *bmain = CTX_data_main(C);
 	
-	ED_preview_kill_jobs(C);
+	ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
 	
 	if (!node_group_make_test_selected(ntree, NULL, ntree_idname, op->reports))
 		return OPERATOR_CANCELLED;
@@ -969,7 +964,7 @@ static int node_group_insert_exec(bContext *C, wmOperator *op)
 	bNode *gnode;
 	Main *bmain = CTX_data_main(C);
 	
-	ED_preview_kill_jobs(C);
+	ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
 	
 	gnode = node_group_get_active(C, node_idname);
 	

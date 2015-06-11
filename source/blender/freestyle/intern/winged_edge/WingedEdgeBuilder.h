@@ -40,7 +40,7 @@
 
 namespace Freestyle {
 
-class LIB_WINGED_EDGE_EXPORT WingedEdgeBuilder : public SceneVisitor
+class WingedEdgeBuilder : public SceneVisitor
 {
 public:
 	inline WingedEdgeBuilder() : SceneVisitor()
@@ -117,7 +117,7 @@ public:
 	}
 
 protected:
-	virtual void buildWShape(WShape& shape, IndexedFaceSet& ifs);
+	virtual bool buildWShape(WShape& shape, IndexedFaceSet& ifs);
 	virtual void buildWVertices(WShape& shape, const real *vertices, unsigned vsize);
 
 	RenderMonitor *_pRenderMonitor;

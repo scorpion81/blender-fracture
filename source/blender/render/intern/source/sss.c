@@ -57,25 +57,17 @@
 
 #include "BLF_translation.h"
 
-#include "PIL_time.h"
 
 #include "DNA_material_types.h"
 
-#include "BKE_colortools.h"
 #include "BKE_global.h"
 #include "BKE_main.h"
-#include "BKE_material.h"
-#include "BKE_node.h"
 #include "BKE_scene.h"
 
 
 /* this module */
 #include "render_types.h"
-#include "rendercore.h"
-#include "renderdatabase.h" 
-#include "shading.h"
 #include "sss.h"
-#include "zbuf.h"
 
 /* Generic Multiple Scattering API */
 
@@ -168,7 +160,7 @@ static float f_Rd(float alpha_, float A, float ro)
 {
 	float sq;
 
-	sq= sqrt(3.0f*(1.0f - alpha_));
+	sq = sqrtf(3.0f * (1.0f - alpha_));
 	return (alpha_/2.0f)*(1.0f + expf((-4.0f/3.0f)*A*sq))*expf(-sq) - ro;
 }
 
@@ -215,8 +207,8 @@ static float Rd_rsquare(ScatterSettings *ss, float rr)
 {
 	float sr, sv, Rdr, Rdv;
 
-	sr= sqrt(rr + ss->zr*ss->zr);
-	sv= sqrt(rr + ss->zv*ss->zv);
+	sr = sqrtf(rr + ss->zr * ss->zr);
+	sv = sqrtf(rr + ss->zv * ss->zv);
 
 	Rdr= ss->zr*(1.0f + ss->sigma*sr)*expf(-ss->sigma*sr)/(sr*sr*sr);
 	Rdv= ss->zv*(1.0f + ss->sigma*sv)*expf(-ss->sigma*sv)/(sv*sv*sv);
@@ -244,7 +236,7 @@ static void approximate_Rd_rgb(ScatterSettings **ss, float rr, float *rd)
 		/* pass */
 	}
 	else if (rr > RD_TABLE_RANGE) {
-		rr= sqrt(rr);
+		rr = sqrtf(rr);
 		indexf= rr*(RD_TABLE_SIZE/RD_TABLE_RANGE_2);
 		index= (int)indexf;
 		idxf= (float)index;
@@ -289,7 +281,7 @@ static void build_Rd_table(ScatterSettings *ss)
 		r= i*(RD_TABLE_RANGE/RD_TABLE_SIZE);
 		/*if (r < ss->invsigma_t_*ss->invsigma_t_)
 			r= ss->invsigma_t_*ss->invsigma_t_;*/
-		ss->tableRd[i]= Rd(ss, sqrt(r));
+		ss->tableRd[i]= Rd(ss, sqrtf(r));
 
 		r= i*(RD_TABLE_RANGE_2/RD_TABLE_SIZE);
 		/*if (r < ss->invsigma_t_)
@@ -934,7 +926,7 @@ static void sss_create_tree_mat(Render *re, Material *mat)
 	if (!re->test_break(re->tbh)) {
 		SSSData *sss= MEM_callocN(sizeof(*sss), "SSSData");
 		float ior= mat->sss_ior, cfac= mat->sss_colfac;
-		float *radius= mat->sss_radius;
+		const float *radius = mat->sss_radius;
 		float fw= mat->sss_front, bw= mat->sss_back;
 		float error = mat->sss_error;
 
@@ -1039,14 +1031,12 @@ void make_sss_tree(Render *re)
 void free_sss(Render *re)
 {
 	if (re->sss_hash) {
-		GHashIterator *it= BLI_ghashIterator_new(re->sss_hash);
+		GHashIterator gh_iter;
 
-		while (!BLI_ghashIterator_done(it)) {
-			sss_free_tree(BLI_ghashIterator_getValue(it));
-			BLI_ghashIterator_step(it);
+		GHASH_ITER (gh_iter, re->sss_hash) {
+			sss_free_tree(BLI_ghashIterator_getValue(&gh_iter));
 		}
 
-		BLI_ghashIterator_free(it);
 		BLI_ghash_free(re->sss_hash, NULL, NULL);
 		re->sss_hash= NULL;
 	}

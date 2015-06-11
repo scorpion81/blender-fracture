@@ -41,36 +41,16 @@
 
 #include "BLI_math.h"
 #include "BLI_blenlib.h"
-#include "BLI_jitter.h"
 #include "BLI_rand.h"
 #include "BLI_threads.h"
 #include "BLI_utildefines.h"
 
-
-
 #include "DNA_image_types.h"
 #include "DNA_lamp_types.h"
 #include "DNA_material_types.h"
-#include "DNA_mesh_types.h"
-#include "DNA_meshdata_types.h"
 #include "DNA_group_types.h"
 
-#include "BKE_customdata.h"
-#include "BKE_depsgraph.h"
-#include "BKE_global.h"
-#include "BKE_image.h"
-#include "BKE_main.h"
-#include "BKE_node.h"
-#include "BKE_texture.h"
-#include "BKE_scene.h"
-
-#include "IMB_imbuf_types.h"
-#include "IMB_imbuf.h"
-#include "IMB_colormanagement.h"
-
 /* local include */
-#include "rayintersection.h"
-#include "rayobject.h"
 #include "renderpipeline.h"
 #include "render_result.h"
 #include "render_types.h"
@@ -82,8 +62,6 @@
 #include "shading.h"
 #include "sss.h"
 #include "zbuf.h"
-
-#include "PIL_time.h"
 
 /* own include */
 #include "rendercore.h"
@@ -349,7 +327,7 @@ static void lamphalo_tile(RenderPart *pa, RenderLayer *rl)
 	float *pass;
 	float fac, col[4];
 	intptr_t *rd= pa->rectdaps;
-	int *rz= pa->rectz;
+	const int *rz= pa->rectz;
 	int x, y, sample, totsample, fullsample, od;
 	
 	totsample= get_sample_layers(pa, rl, rlpp);
@@ -699,7 +677,8 @@ static void sky_tile(RenderPart *pa, RenderLayer *rl)
 	for (y=pa->disprect.ymin; y<pa->disprect.ymax; y++) {
 		for (x=pa->disprect.xmin; x<pa->disprect.xmax; x++, od+=4) {
 			float col[4];
-			int sample, done = FALSE;
+			int sample;
+			bool done = false;
 			
 			for (sample= 0; sample<totsample; sample++) {
 				float *pass= rlpp[sample]->rectf + od;
@@ -708,7 +687,7 @@ static void sky_tile(RenderPart *pa, RenderLayer *rl)
 					
 					if (done==0) {
 						shadeSkyPixel(col, x, y, pa->thread);
-						done = TRUE;
+						done = true;
 					}
 					
 					if (pass[3]==0.0f) {
@@ -763,10 +742,10 @@ static void atm_tile(RenderPart *pa, RenderLayer *rl)
 			int sample;
 			
 			for (sample=0; sample<totsample; sample++) {
-				float *zrect= RE_RenderLayerGetPass(rlpp[sample], SCE_PASS_Z) + od;
+				const float *zrect= RE_RenderLayerGetPass(rlpp[sample], SCE_PASS_Z) + od;
 				float *rgbrect = rlpp[sample]->rectf + 4*od;
 				float rgb[3] = {0};
-				int done = FALSE;
+				bool done = false;
 				
 				for (go=R.lights.first; go; go= go->next) {
 				
@@ -798,7 +777,7 @@ static void atm_tile(RenderPart *pa, RenderLayer *rl)
 							
 							if (done==0) {
 								copy_v3_v3(rgb, tmp_rgb);
-								done = TRUE;
+								done = true;
 							}
 							else {
 								rgb[0] = 0.5f*rgb[0] + 0.5f*tmp_rgb[0];
@@ -926,7 +905,7 @@ static void freeps(ListBase *lb)
 			MEM_freeN(psm->ps);
 		MEM_freeN(psm);
 	}
-	lb->first= lb->last= NULL;
+	BLI_listbase_clear(lb);
 }
 
 static void addps(ListBase *lb, intptr_t *rd, int obi, int facenr, int z, int maskz, unsigned short mask)
@@ -1157,10 +1136,10 @@ static void make_pixelstructs(RenderPart *pa, ZSpan *zspan, int sample, void *da
 	ZbufSolidData *sdata = (ZbufSolidData *)data;
 	ListBase *lb= sdata->psmlist;
 	intptr_t *rd= pa->rectdaps;
-	int *ro= zspan->recto;
-	int *rp= zspan->rectp;
-	int *rz= zspan->rectz;
-	int *rm= zspan->rectmask;
+	const int *ro= zspan->recto;
+	const int *rp= zspan->rectp;
+	const int *rz= zspan->rectz;
+	const int *rm= zspan->rectmask;
 	int x, y;
 	int mask= 1<<sample;
 
@@ -1363,8 +1342,8 @@ void zbufshade_tile(RenderPart *pa)
 			rr->renlay= rl;
 			
 			if (rl->layflag & SCE_LAY_SOLID) {
-				float *fcol= rl->rectf;
-				int *ro= pa->recto, *rp= pa->rectp, *rz= pa->rectz;
+				const float *fcol= rl->rectf;
+				const int *ro= pa->recto, *rp= pa->rectp, *rz= pa->rectz;
 				int x, y, offs=0, seed;
 				
 				/* we set per pixel a fixed seed, for random AO and shadow samples */
@@ -1910,16 +1889,16 @@ static void renderflare(RenderResult *rr, float *rectf, HaloRen *har)
 	
 	for (b=1; b<har->flarec; b++) {
 		
-		fla.r= fabs(rc[0]);
-		fla.g= fabs(rc[1]);
-		fla.b= fabs(rc[2]);
+		fla.r = fabsf(rc[0]);
+		fla.g = fabsf(rc[1]);
+		fla.b = fabsf(rc[2]);
 		fla.alfa= ma->flareboost*fabsf(alfa*visifac*rc[3]);
 		fla.hard= 20.0f + fabsf(70.0f*rc[7]);
 		fla.tex= 0;
 		
-		type= (int)(fabs(3.9f*rc[6]));
+		type= (int)(fabsf(3.9f*rc[6]));
 
-		fla.rad= ma->subsize*sqrtf(fabs(2.0f*har->rad*rc[4]));
+		fla.rad = ma->subsize * sqrtf(fabsf(2.0f * har->rad * rc[4]));
 		
 		if (type==3) {
 			fla.rad*= 3.0f;
@@ -1962,7 +1941,7 @@ void add_halo_flare(Render *re)
 	
 	/* for now, we get the first renderlayer in list with halos set */
 	for (rl= rr->layers.first; rl; rl= rl->next) {
-		int do_draw = FALSE;
+		bool do_draw = false;
 		
 		if ((rl->layflag & SCE_LAY_HALO) == 0)
 			continue;
@@ -1978,7 +1957,7 @@ void add_halo_flare(Render *re)
 			har= R.sortedhalos[a];
 			
 			if (har->flarec && (har->lay & rl->lay)) {
-				do_draw = TRUE;
+				do_draw = true;
 				renderflare(rr, rl->rectf, har);
 			}
 		}

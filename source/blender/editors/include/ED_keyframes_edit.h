@@ -56,7 +56,9 @@ typedef enum eEditKeyframes_Validate {
 	BEZT_OK_SELECTED,
 	BEZT_OK_VALUE,
 	BEZT_OK_VALUERANGE,
-	BEZT_OK_REGION
+	BEZT_OK_REGION,
+	BEZT_OK_REGION_LASSO,
+	BEZT_OK_REGION_CIRCLE,
 } eEditKeyframes_Validate;
 
 /* ------------ */
@@ -97,6 +99,23 @@ typedef enum eEditKeyframes_Mirror {
 	MIRROR_KEYS_MARKER,
 	MIRROR_KEYS_VALUE
 } eEditKeyframes_Mirror;
+
+/* use with BEZT_OK_REGION_LASSO */
+struct KeyframeEdit_LassoData {
+	const rctf *rectf_scaled;
+	const rctf *rectf_view;
+	const int (*mcords)[2];
+	int mcords_tot;
+};
+
+/* use with BEZT_OK_REGION_CIRCLE */
+struct KeyframeEdit_CircleData {
+	const rctf *rectf_scaled;
+	const rctf *rectf_view;
+	float mval[2];
+	float radius_squared;
+};
+
 
 /* ************************************************ */
 /* Non-Destuctive Editing API (keyframes_edit.c) */
@@ -207,6 +226,7 @@ KeyframeEditFunc ANIM_editkeyframes_select(short mode);
 KeyframeEditFunc ANIM_editkeyframes_handles(short mode);
 KeyframeEditFunc ANIM_editkeyframes_ipo(short mode);
 KeyframeEditFunc ANIM_editkeyframes_keytype(short mode);
+KeyframeEditFunc ANIM_editkeyframes_easing(short mode);
 
 /* -------- BezTriple Callbacks (Selection Map) ---------- */
 
@@ -222,7 +242,7 @@ short bezt_selmap_flush(KeyframeEditData *ked, struct BezTriple *bezt);
 
 /* ----------- BezTriple Callback (Assorted Utilities) ---------- */
 
-/* used to calculate the the average location of all relevant BezTriples by summing their locations */
+/* used to calculate the average location of all relevant BezTriples by summing their locations */
 short bezt_calc_average(KeyframeEditData *ked, struct BezTriple *bezt);
 
 /* used to extract a set of cfra-elems from the keyframes */
@@ -250,7 +270,7 @@ void sample_fcurve(struct FCurve *fcu);
 void free_anim_copybuf(void);
 short copy_animedit_keys(struct bAnimContext *ac, ListBase *anim_data);
 short paste_animedit_keys(struct bAnimContext *ac, ListBase *anim_data,
-                          const eKeyPasteOffset offset_mode, const eKeyMergeMode merge_mode);
+                          const eKeyPasteOffset offset_mode, const eKeyMergeMode merge_mode, bool flip);
 
 /* ************************************************ */
 

@@ -85,15 +85,10 @@ static StructRNA *rna_Controller_refine(struct PointerRNA *ptr)
 
 static void rna_Constroller_name_set(PointerRNA *ptr, const char *value)
 {
-	bController *cont = (bController *)ptr->data;
-
+	Object *ob = ptr->id.data;
+	bController *cont = ptr->data;
 	BLI_strncpy_utf8(cont->name, value, sizeof(cont->name));
-
-	if (ptr->id.data) {
-		Object *ob = (Object *)ptr->id.data;
-		BLI_uniquename(&ob->controllers, cont, DATA_("Controller"), '.', offsetof(bController, name),
-		               sizeof(cont->name));
-	}
+	BLI_uniquename(&ob->controllers, cont, DATA_("Controller"), '.', offsetof(bController, name), sizeof(cont->name));
 }
 
 static void rna_Controller_type_set(struct PointerRNA *ptr, int value)
@@ -226,6 +221,11 @@ void RNA_def_controller(BlenderRNA *brna)
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", CONT_SHOW);
 	RNA_def_property_ui_text(prop, "Expanded", "Set controller expanded in the user interface");
 	RNA_def_property_ui_icon(prop, ICON_TRIA_RIGHT, 1);
+	RNA_def_property_update(prop, NC_LOGIC, NULL);
+
+	prop = RNA_def_property(srna, "active", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_negative_sdna(prop, NULL, "flag", CONT_DEACTIVATE);
+	RNA_def_property_ui_text(prop, "Active", "Set the active state of the controller");
 	RNA_def_property_update(prop, NC_LOGIC, NULL);
 
 	prop = RNA_def_property(srna, "use_priority", PROP_BOOLEAN, PROP_NONE);

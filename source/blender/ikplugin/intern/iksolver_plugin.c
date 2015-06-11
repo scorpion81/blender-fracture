@@ -215,7 +215,7 @@ static void where_is_ik_bone(bPoseChannel *pchan, float ik_mat[3][3])   // nr = 
 	copy_m4_m3(ikmat, ik_mat);
 
 	if (pchan->parent)
-		mul_serie_m4(pchan->pose_mat, pchan->parent->pose_mat, pchan->chan_mat, ikmat, NULL, NULL, NULL, NULL, NULL);
+		mul_m4_series(pchan->pose_mat, pchan->parent->pose_mat, pchan->chan_mat, ikmat);
 	else
 		mul_m4_m4m4(pchan->pose_mat, pchan->chan_mat, ikmat);
 
@@ -307,8 +307,7 @@ static void execute_posetree(struct Scene *scene, Object *ob, PoseTree *tree)
 
 		/* compute rest basis and its inverse */
 		copy_m3_m3(rest_basis, bone->bone_mat);
-		copy_m3_m3(irest_basis, bone->bone_mat);
-		transpose_m3(irest_basis);
+		transpose_m3_m3(irest_basis, bone->bone_mat);
 
 		/* compute basis with rest_basis removed */
 		invert_m3_m3(iR_parmat, R_parmat);
@@ -374,7 +373,7 @@ static void execute_posetree(struct Scene *scene, Object *ob, PoseTree *tree)
 		/* 1.0=ctime, we pass on object for auto-ik (owner-type here is object, even though
 		 * strictly speaking, it is a posechannel)
 		 */
-		BKE_get_constraint_target_matrix(scene, target->con, 0, CONSTRAINT_OBTYPE_OBJECT, ob, rootmat, 1.0);
+		BKE_constraint_target_matrix_get(scene, target->con, 0, CONSTRAINT_OBTYPE_OBJECT, ob, rootmat, 1.0);
 
 		/* and set and transform goal */
 		mul_m4_m4m4(goal, goalinv, rootmat);
@@ -385,7 +384,7 @@ static void execute_posetree(struct Scene *scene, Object *ob, PoseTree *tree)
 
 		/* same for pole vector target */
 		if (data->poletar) {
-			BKE_get_constraint_target_matrix(scene, target->con, 1, CONSTRAINT_OBTYPE_OBJECT, ob, rootmat, 1.0);
+			BKE_constraint_target_matrix_get(scene, target->con, 1, CONSTRAINT_OBTYPE_OBJECT, ob, rootmat, 1.0);
 
 			if (data->flag & CONSTRAINT_IK_SETANGLE) {
 				/* don't solve IK when we are setting the pole angle */
@@ -420,7 +419,7 @@ static void execute_posetree(struct Scene *scene, Object *ob, PoseTree *tree)
 			/* end effector in world space */
 			copy_m4_m4(end_pose, pchan->pose_mat);
 			copy_v3_v3(end_pose[3], pchan->pose_tail);
-			mul_serie_m4(world_pose, goalinv, ob->obmat, end_pose, NULL, NULL, NULL, NULL, NULL);
+			mul_m4_series(world_pose, goalinv, ob->obmat, end_pose);
 
 			/* blend position */
 			goalpos[0] = fac * goalpos[0] + mfac * world_pose[3][0];

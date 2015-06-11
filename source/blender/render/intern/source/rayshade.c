@@ -27,7 +27,6 @@
  *  \ingroup render
  */
 
-
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
@@ -41,35 +40,26 @@
 #include "DNA_lamp_types.h"
 
 #include "BLI_blenlib.h"
-#include "BLI_cpu.h"
-#include "BLI_jitter.h"
+#include "BLI_system.h"
 #include "BLI_math.h"
 #include "BLI_rand.h"
 #include "BLI_utildefines.h"
 
 #include "BLF_translation.h"
 
-#include "BKE_global.h"
 #include "BKE_node.h"
-
-
-#include "PIL_time.h"
 
 #include "render_result.h"
 #include "render_types.h"
-#include "renderpipeline.h"
 #include "rendercore.h"
 #include "renderdatabase.h"
-#include "pixelblending.h"
 #include "pixelshading.h"
 #include "shading.h"
-#include "texture.h"
 #include "volumetric.h"
 
 #include "rayintersection.h"
 #include "rayobject.h"
 #include "raycounter.h"
-
 
 #define RAY_TRA		1
 #define RAY_INSIDE	2
@@ -120,8 +110,6 @@ RayObject *RE_rayobject_create(int type, int size, int octree_resolution)
 		
 	if (type == R_RAYSTRUCTURE_OCTREE) //TODO dynamic ocres
 		res = RE_rayobject_octree_create(octree_resolution, size);
-	else if (type == R_RAYSTRUCTURE_BLIBVH)
-		res = RE_rayobject_blibvh_create(size);
 	else if (type == R_RAYSTRUCTURE_VBVH)
 		res = RE_rayobject_vbvh_create(size);
 	else if (type == R_RAYSTRUCTURE_SIMD_SVBVH)
@@ -479,9 +467,9 @@ static void shade_ray_set_derivative(ShadeInput *shi)
 		t10= v3[axis1]-v2[axis1]; t11= v3[axis2]-v2[axis2];
 	}
 	else {
-		float *v1= shi->v1->co;
-		float *v2= shi->v2->co;
-		float *v3= shi->v3->co;
+		const float *v1= shi->v1->co;
+		const float *v2= shi->v2->co;
+		const float *v3= shi->v3->co;
 
 		/* same as above */
 		t00= v3[axis1]-v1[axis1]; t01= v3[axis2]-v1[axis2];
@@ -563,6 +551,7 @@ void shade_ray(Isect *is, ShadeInput *shi, ShadeResult *shr)
 		
 		/* raytrace likes to separate the spec color */
 		sub_v3_v3v3(shr->diff, shr->combined, shr->spec);
+		copy_v3_v3(shr->diffshad, shr->diff);
 	}
 
 }
@@ -654,7 +643,7 @@ static float shade_by_transmission(Isect *is, ShadeInput *shi, ShadeResult *shr)
 		const float dx= shi->co[0] - is->start[0];
 		const float dy= shi->co[1] - is->start[1];
 		const float dz= shi->co[2] - is->start[2];
-		d= sqrt(dx*dx+dy*dy+dz*dz);
+		d = sqrtf(dx * dx + dy * dy + dz * dz);
 		if (d > shi->mat->tx_limit)
 			d= shi->mat->tx_limit;
 
@@ -749,7 +738,7 @@ static void traceray(ShadeInput *origshi, ShadeResult *origshr, short depth, con
 		shi.lay= origshi->lay;
 		shi.passflag= SCE_PASS_COMBINED; /* result of tracing needs no pass info */
 		shi.combinedflag= 0xFFFFFF;		 /* ray trace does all options */
-		//shi.do_preview = FALSE; // memset above, so don't need this
+		//shi.do_preview = false; // memset above, so don't need this
 		shi.light_override= origshi->light_override;
 		shi.mat_override= origshi->mat_override;
 		
@@ -1120,7 +1109,7 @@ static void QMC_samplePhong(float vec[3], QMCSampler *qsa, int thread, int num, 
 
 	phi = s[0]*2*M_PI;
 	pz = pow(s[1], blur);
-	sqr = sqrt(1.0f-pz*pz);
+	sqr = sqrtf(1.0f - pz * pz);
 
 	vec[0] = (float)(cosf(phi)*sqr);
 	vec[1] = (float)(sinf(phi)*sqr);
@@ -1205,13 +1194,13 @@ static QMCSampler *get_thread_qmcsampler(Render *re, int thread, int type, int t
 
 	for (qsa=re->qmcsamplers[thread].first; qsa; qsa=qsa->next) {
 		if (qsa->type == type && qsa->tot == tot && !qsa->used) {
-			qsa->used = TRUE;
+			qsa->used = true;
 			return qsa;
 		}
 	}
 
 	qsa= QMC_initSampler(type, tot);
-	qsa->used = TRUE;
+	qsa->used = true;
 	BLI_addtail(&re->qmcsamplers[thread], qsa);
 
 	return qsa;
@@ -1284,7 +1273,7 @@ static float get_avg_speed(ShadeInput *shi)
 	post_x = (shi->winspeed[2] == PASS_VECTOR_MAX)?0.0f:shi->winspeed[2];
 	post_y = (shi->winspeed[3] == PASS_VECTOR_MAX)?0.0f:shi->winspeed[3];
 	
-	speedavg = (sqrt(pre_x*pre_x + pre_y*pre_y) + sqrt(post_x*post_x + post_y*post_y)) / 2.0;
+	speedavg = (sqrtf(pre_x * pre_x + pre_y * pre_y) + sqrtf(post_x * post_x + post_y * post_y)) / 2.0f;
 	
 	return speedavg;
 }
@@ -1302,7 +1291,7 @@ static void trace_refract(float col[4], ShadeInput *shi, ShadeResult *shr)
 	float v_refract[3], v_refract_new[3];
 	float sampcol[4], colsq[4];
 	
-	float blur = powf(1.0f - shi->mat->gloss_tra, 3);
+	float blur = pow3f(1.0f - shi->mat->gloss_tra);
 	short max_samples = shi->mat->samp_gloss_tra;
 	float adapt_thresh = shi->mat->adapt_thresh_tra;
 	
@@ -1403,7 +1392,7 @@ static void trace_reflect(float col[3], ShadeInput *shi, ShadeResult *shr, float
 	float v_nor_new[3], v_reflect[3];
 	float sampcol[4], colsq[4];
 		
-	float blur = powf(1.0f - shi->mat->gloss_mir, 3);
+	float blur = pow3f(1.0f - shi->mat->gloss_mir);
 	short max_samples = shi->mat->samp_gloss_mir;
 	float adapt_thresh = shi->mat->adapt_thresh_mir;
 	float aniso = 1.0f - shi->mat->aniso_gloss_mir;
@@ -1565,7 +1554,7 @@ void ray_trace(ShadeInput *shi, ShadeResult *shr)
 			}
 			
 			if (shi->combinedflag & SCE_PASS_REFLECT) {
-				/* values in shr->spec can be greater then 1.0.
+				/* values in shr->spec can be greater than 1.0.
 				 * In this case the mircol uses a zero blending factor, so ignoring it is ok.
 				 * Fixes bug #18837 - when the spec is higher then 1.0,
 				 * diff can become a negative color - Campbell  */
@@ -1672,18 +1661,6 @@ static void ray_trace_shadow_tra(Isect *is, ShadeInput *origshi, int depth, int 
 
 
 /* aolight: function to create random unit sphere vectors for total random sampling */
-static void RandomSpherical(RNG *rng, float v[3])
-{
-	float r;
-	v[2] = 2.f*BLI_rng_get_float(rng)-1.f;
-	if ((r = 1.f - v[2]*v[2])>0.f) {
-		float a = 6.283185307f*BLI_rng_get_float(rng);
-		r = sqrt(r);
-		v[0] = r * cosf(a);
-		v[1] = r * sinf(a);
-	}
-	else v[2] = 1.f;
-}
 
 /* calc distributed spherical energy */
 static void DS_energy(float *sphere, int tot, float vec[3])
@@ -1729,7 +1706,7 @@ void init_ao_sphere(World *wrld)
 	/* init */
 	fp= wrld->aosphere;
 	for (a=0; a<tot; a++, fp+= 3) {
-		RandomSpherical(rng, fp);
+		BLI_rng_get_float_unit_v3(rng, fp);
 	}
 	
 	while (iter--) {
@@ -1780,7 +1757,7 @@ static float *sphere_sampler(int type, int resol, int thread, int xs, int ys, in
 
 		vec= sphere;
 		for (a=0; a<tot; a++, vec+=3) {
-			RandomSpherical(rng, vec);
+			BLI_rng_get_float_unit_v3(rng, vec);
 		}
 
 		BLI_rng_free(rng);
@@ -1801,10 +1778,10 @@ static float *sphere_sampler(int type, int resol, int thread, int xs, int ys, in
 			sphere= threadsafe_table_sphere(0, thread, xs, ys, tot);
 			
 			/* random rotation */
-			ang= BLI_thread_frand(thread);
-			sinfi= sin(ang); cosfi= cos(ang);
-			ang= BLI_thread_frand(thread);
-			sint= sin(ang); cost= cos(ang);
+			ang = BLI_thread_frand(thread);
+			sinfi = sinf(ang); cosfi = cosf(ang);
+			ang = BLI_thread_frand(thread);
+			sint = sinf(ang); cost = cosf(ang);
 			
 			vec= R.wrld.aosphere;
 			vec1= sphere;
@@ -2168,7 +2145,8 @@ static void ray_shadow_qmc(ShadeInput *shi, LampRen *lar, const float lampco[3],
 	float adapt_thresh = lar->adapt_thresh;
 	int min_adapt_samples=4, max_samples = lar->ray_totsamp;
 	float start[3];
-	int do_soft = TRUE, full_osa = FALSE, i;
+	bool do_soft = true, full_osa = false;
+	int i;
 
 	float min[3], max[3];
 	RayHint bb_hint;
@@ -2183,8 +2161,8 @@ static void ray_shadow_qmc(ShadeInput *shi, LampRen *lar, const float lampco[3],
 	else
 		shadfac[3]= 1.0f;
 	
-	if (lar->ray_totsamp < 2) do_soft = FALSE;
-	if ((R.r.mode & R_OSA) && (R.osa > 0) && (shi->vlr->flag & R_FULL_OSA)) full_osa = TRUE;
+	if (lar->ray_totsamp < 2) do_soft = false;
+	if ((R.r.mode & R_OSA) && (R.osa > 0) && (shi->vlr->flag & R_FULL_OSA)) full_osa = true;
 	
 	if (full_osa) {
 		if (do_soft) max_samples  = max_samples/R.osa + 1;
@@ -2340,7 +2318,7 @@ static void ray_shadow_qmc(ShadeInput *shi, LampRen *lar, const float lampco[3],
 static void ray_shadow_jitter(ShadeInput *shi, LampRen *lar, const float lampco[3], float shadfac[4], Isect *isec)
 {
 	/* area soft shadow */
-	float *jitlamp;
+	const float *jitlamp;
 	float fac=0.0f, div=0.0f, vec[3];
 	int a, j= -1, mask;
 	RayHint point_hint;
@@ -2385,9 +2363,9 @@ static void ray_shadow_jitter(ShadeInput *shi, LampRen *lar, const float lampco[
 		mul_m3_v3(lar->mat, vec);
 		
 		/* set start and vec */
-		isec->dir[0] = vec[0]+lampco[0]-isec->start[0];
-		isec->dir[1] = vec[1]+lampco[1]-isec->start[1];
-		isec->dir[2] = vec[2]+lampco[2]-isec->start[2];
+		isec->dir[0] = vec[0]+lampco[0]-shi->co[0];
+		isec->dir[1] = vec[1]+lampco[1]-shi->co[1];
+		isec->dir[2] = vec[2]+lampco[2]-shi->co[2];
 		
 		RE_instance_rotate_ray_dir(shi->obi, isec);
 		
@@ -2420,9 +2398,9 @@ static void ray_shadow_jitter(ShadeInput *shi, LampRen *lar, const float lampco[
 	else {
 		/* sqrt makes nice umbra effect */
 		if (lar->ray_samp_type & LA_SAMP_UMBRA)
-			shadfac[3]= sqrt(1.0f-fac/div);
+			shadfac[3] = sqrtf(1.0f - fac / div);
 		else
-			shadfac[3]= 1.0f-fac/div;
+			shadfac[3] = 1.0f - fac / div;
 	}
 }
 /* extern call from shade_lamp_loop */

@@ -29,6 +29,10 @@ Import('env')
 
 sources = env.Glob('*.cpp')
 
+if env['OURPLATFORM'] in ['darwin']:
+    # Cocoa code to read user locale on OSX
+    sources.append('osx_user_locale.mm')
+
 incs = '.'
 defs = []
 
@@ -66,10 +70,6 @@ if env['WITH_BF_INTERNATIONAL']:
 
         locale = env.Clone()
 
-        msgfmt_executable = targetpath
-        if env['OURPLATFORM'] in ('win32-vc', 'win64-vc', 'win32-mingw', 'win64-mingw'):
-            msgfmt_executable += ".exe"
-
         # dependencies
         dependencies = [msgfmt_target]
 
@@ -82,7 +82,7 @@ if env['WITH_BF_INTERNATIONAL']:
             po_file = os.path.join(po_dir, f)
             mo_file = os.path.join(build_dir, os.path.splitext(f)[0] + ".mo")
 
-            command = "\"%s\" \"%s\" \"%s\"" % (msgfmt_executable, po_file, mo_file)
+            command = "\"%s\" \"%s\" \"%s\"" % (targetpath, po_file, mo_file)
 
             locale.Command(mo_file, po_file, command)
             locale.Depends(mo_file, dependencies)

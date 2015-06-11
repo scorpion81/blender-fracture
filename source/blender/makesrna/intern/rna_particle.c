@@ -131,6 +131,7 @@ static EnumPropertyItem part_hair_ren_as_items[] = {
 
 #include "BKE_context.h"
 #include "BKE_cloth.h"
+#include "BKE_colortools.h"
 #include "BKE_deform.h"
 #include "BKE_depsgraph.h"
 #include "BKE_DerivedMesh.h"
@@ -316,9 +317,9 @@ static void rna_Particle_uv_on_emitter(ParticleData *particle, ReportList *repor
 static void rna_ParticleSystem_co_hair(ParticleSystem *particlesystem, Object *object,
                                        int particle_no, int step, float n_co[3])
 {
-	ParticleSettings *part = 0;
-	ParticleData *pars = 0;
-	ParticleCacheKey *cache = 0;
+	ParticleSettings *part = NULL;
+	ParticleData *pars = NULL;
+	ParticleCacheKey *cache = NULL;
 	int totchild = 0;
 	int path_nbr = 0;
 	int totpart;
@@ -356,13 +357,15 @@ static void rna_ParticleSystem_co_hair(ParticleSystem *particlesystem, Object *o
 		return;
 
 	if (part->ren_as == PART_DRAW_PATH && particlesystem->pathcache)
-		path_nbr = (int)pow(2.0, step_nbr);
+		path_nbr = 1 << step_nbr;
+	if (part->kink == PART_KINK_SPIRAL)
+		path_nbr += part->kink_extra_steps;
 
 	if (particle_no < totpart) {
 
 		if (path_nbr) {
 			cache = particlesystem->pathcache[particle_no];
-			max_k = (int)cache->steps;
+			max_k = (int)cache->segments;
 		}
 
 	}
@@ -371,10 +374,10 @@ static void rna_ParticleSystem_co_hair(ParticleSystem *particlesystem, Object *o
 		if (path_nbr) {
 			cache = particlesystem->childcache[particle_no - totpart];
 
-			if (cache->steps < 0)
+			if (cache->segments < 0)
 				max_k = 0;
 			else
-				max_k = (int)cache->steps;
+				max_k = (int)cache->segments;
 		}
 	}
 
@@ -432,25 +435,24 @@ static EnumPropertyItem *rna_Particle_Material_itemf(bContext *C, PointerRNA *UN
 	return item;
 }
 
-static void rna_ParticleSystem_uv_on_emitter(ParticleSystem *particlesystem, ReportList *reports,
-                                             ParticleSystemModifierData *modifier, ParticleData *particle,
-                                             int particle_no, int uv_no,
-                                             float r_uv[2])
+/* return < 0 means invalid (no matching tessellated face could be found). */
+static int rna_ParticleSystem_tessfaceidx_on_emitter(ParticleSystem *particlesystem,
+                                                     ParticleSystemModifierData *modifier, ParticleData *particle,
+                                                     int particle_no, float (**r_fuv)[4])
 {
-	ParticleSettings *part = 0;
+	ParticleSettings *part = NULL;
 	int totpart;
 	int totchild = 0;
-	int num;
+	int totface;
+	int num = -1;
 
-	if (!CustomData_has_layer(&modifier->dm->loopData, CD_MLOOPUV)) {
-		BKE_report(reports, RPT_ERROR, "Mesh has no UV data");
-		return;
-	}
 	DM_ensure_tessface(modifier->dm); /* BMESH - UNTIL MODIFIER IS UPDATED FOR MPoly */
+	totface = modifier->dm->getNumTessFaces(modifier->dm);
 
 	/* 1. check that everything is ok & updated */
-	if (particlesystem == NULL)
-		return;
+	if (!particlesystem || !totface) {
+		return num;
+	}
 
 	part = particlesystem->part;
 
@@ -468,51 +470,31 @@ static void rna_ParticleSystem_uv_on_emitter(ParticleSystem *particlesystem, Rep
 	totpart = particlesystem->totpart;
 
 	if (particle_no >= totpart + totchild)
-		return;
+		return num;
 
-/* 3. start creating renderable things */
-	/* setup per particle individual stuff */
+	/* 2. get matching face index. */
 	if (particle_no < totpart) {
-
-		/* get uvco & mcol */
-		num = particle->num_dmcache;
+		num = (ELEM(particle->num_dmcache, DMCACHE_ISCHILD, DMCACHE_NOTFOUND)) ? particle->num : particle->num_dmcache;
 
 		if (num == DMCACHE_NOTFOUND)
-			if (particle->num < modifier->dm->getNumTessFaces(modifier->dm))
-				num = particle->num;
+			num = particle->num;
 
-		if (r_uv && ELEM(part->from, PART_FROM_FACE, PART_FROM_VOLUME)) {
-			if (num != DMCACHE_NOTFOUND) {
-				MFace *mface = modifier->dm->getTessFaceData(modifier->dm, num, CD_MFACE);
-				MTFace *mtface = (MTFace *)CustomData_get_layer_n(&modifier->dm->faceData, CD_MTFACE, uv_no);
-				mtface += num;
-				
-				psys_interpolate_uvs(mtface, mface->v4, particle->fuv, r_uv);
-			}
-			else {
-				r_uv[0] = 0.0f;
-				r_uv[1] = 0.0f;
+		if (ELEM(part->from, PART_FROM_FACE, PART_FROM_VOLUME)) {
+			if (num != DMCACHE_NOTFOUND && num < totface) {
+				*r_fuv = &particle->fuv;
+				return num;
 			}
 		}
 	}
 	else {
 		ChildParticle *cpa = particlesystem->child + particle_no - totpart;
-
 		num = cpa->num;
 
-		/* get uvco & mcol */
 		if (part->childtype == PART_CHILD_FACES) {
-			if (r_uv && ELEM(PART_FROM_FACE, PART_FROM_FACE, PART_FROM_VOLUME)) {
-				if (cpa->num != DMCACHE_NOTFOUND) {
-					MFace *mface = modifier->dm->getTessFaceData(modifier->dm, cpa->num, CD_MFACE);
-					MTFace *mtface = (MTFace *)CustomData_get_layer_n(&modifier->dm->faceData, CD_MTFACE, uv_no);
-					mtface += cpa->num;
-					
-					psys_interpolate_uvs(mtface, mface->v4, cpa->fuv, r_uv);
-				}
-				else {
-					r_uv[0] = 0.0f;
-					r_uv[1] = 0.0f;
+			if (ELEM(PART_FROM_FACE, PART_FROM_FACE, PART_FROM_VOLUME)) {
+				if (num != DMCACHE_NOTFOUND && num < totface) {
+					*r_fuv = &cpa->fuv;
+					return num;
 				}
 			}
 		}
@@ -521,137 +503,78 @@ static void rna_ParticleSystem_uv_on_emitter(ParticleSystem *particlesystem, Rep
 			num = parent->num_dmcache;
 
 			if (num == DMCACHE_NOTFOUND)
-				if (parent->num < modifier->dm->getNumTessFaces(modifier->dm))
-					num = parent->num;
+				num = parent->num;
 
-			if (r_uv && ELEM(part->from, PART_FROM_FACE, PART_FROM_VOLUME)) {
-				if (num != DMCACHE_NOTFOUND) {
-					MFace *mface = modifier->dm->getTessFaceData(modifier->dm, num, CD_MFACE);
-					MTFace *mtface = (MTFace *)CustomData_get_layer_n(&modifier->dm->faceData, CD_MTFACE, uv_no);
-					mtface += num;
-					
-					psys_interpolate_uvs(mtface, mface->v4, parent->fuv, r_uv);
-				}
-				else {
-					r_uv[0] = 0.0f;
-					r_uv[1] = 0.0f;
+			if (ELEM(part->from, PART_FROM_FACE, PART_FROM_VOLUME)) {
+				if (num != DMCACHE_NOTFOUND && num < totface) {
+					*r_fuv = &parent->fuv;
+					return num;
 				}
 			}
+		}
+	}
+
+	return -1;
+}
+
+static void rna_ParticleSystem_uv_on_emitter(ParticleSystem *particlesystem, ReportList *reports,
+                                             ParticleSystemModifierData *modifier, ParticleData *particle,
+                                             int particle_no, int uv_no, float r_uv[2])
+{
+	if (!CustomData_has_layer(&modifier->dm->loopData, CD_MLOOPUV)) {
+		BKE_report(reports, RPT_ERROR, "Mesh has no UV data");
+		zero_v2(r_uv);
+		return;
+	}
+
+	{
+		float (*fuv)[4];
+		/* Note all sanity checks are done in this helper func. */
+		const int num = rna_ParticleSystem_tessfaceidx_on_emitter(particlesystem, modifier, particle,
+		                                                          particle_no, &fuv);
+
+		if (num < 0) {
+			/* No matching face found. */
+			zero_v2(r_uv);
+		}
+		else {
+			MFace *mface = modifier->dm->getTessFaceData(modifier->dm, num, CD_MFACE);
+			MTFace *mtface = (MTFace *)CustomData_get_layer_n(&modifier->dm->faceData, CD_MTFACE, uv_no);
+
+			psys_interpolate_uvs(&mtface[num], mface->v4, *fuv, r_uv);
 		}
 	}
 }
 
-static void rna_ParticleSystem_mcol_on_emitter(ParticleSystem *particlesystem, ParticleSystemModifierData *modifier,
-                                               ParticleData *particle, int particle_no, int vcol_no,
-                                               float n_mcol[3])
+static void rna_ParticleSystem_mcol_on_emitter(ParticleSystem *particlesystem, ReportList *reports,
+                                               ParticleSystemModifierData *modifier, ParticleData *particle,
+                                               int particle_no, int vcol_no, float r_mcol[3])
 {
-	ParticleSettings *part;
-	int totpart;
-	int totchild = 0;
-	int num;
-	MCol mcol = {255, 255, 255, 255};
-
-	/* 1. check that everything is ok & updated */
-	if (particlesystem == NULL)
+	if (!CustomData_has_layer(&modifier->dm->loopData, CD_MLOOPCOL)) {
+		BKE_report(reports, RPT_ERROR, "Mesh has no VCol data");
+		zero_v3(r_mcol);
 		return;
-
-	part = particlesystem->part;
-
-	if (particlesystem->renderdata) {
-		totchild = particlesystem->totchild;
-	}
-	else {
-		totchild = (int)((float)particlesystem->totchild * (float)(part->disp) / 100.0f);
 	}
 
-	/* can happen for disconnected/global hair */
-	if (part->type == PART_HAIR && !particlesystem->childcache)
-		totchild = 0;
+	{
+		float (*fuv)[4];
+		/* Note all sanity checks are done in this helper func. */
+		const int num = rna_ParticleSystem_tessfaceidx_on_emitter(particlesystem, modifier, particle,
+		                                                          particle_no, &fuv);
 
-	totpart = particlesystem->totpart;
-
-	if (particle_no >= totpart + totchild)
-		return;
-
-	/* 3. start creating renderable things */
-	/* setup per particle individual stuff */
-	if (particle_no < totpart) {
-
-		/* get uvco & mcol */
-		num = particle->num_dmcache;
-
-		if (num == DMCACHE_NOTFOUND)
-			if (particle->num < modifier->dm->getNumTessFaces(modifier->dm))
-				num = particle->num;
-
-		if (n_mcol && ELEM(part->from, PART_FROM_FACE, PART_FROM_VOLUME)) {
-			if (num != DMCACHE_NOTFOUND) {
-				MFace *mface = modifier->dm->getTessFaceData(modifier->dm, num, CD_MFACE);
-				MCol *mc = (MCol *)CustomData_get_layer_n(&modifier->dm->faceData, CD_MCOL, vcol_no);
-				mc += num * 4;
-
-				psys_interpolate_mcol(mc, mface->v4, particle->fuv, &mcol);
-				n_mcol[0] = (float)mcol.b / 255.0f;
-				n_mcol[1] = (float)mcol.g / 255.0f;
-				n_mcol[2] = (float)mcol.r / 255.0f;
-			}
-			else {
-				n_mcol[0] = 0.0f;
-				n_mcol[1] = 0.0f;
-				n_mcol[2] = 0.0f;
-			}
-		}
-	}
-	else {
-		ChildParticle *cpa = particlesystem->child + particle_no - totpart;
-
-		num = cpa->num;
-
-		/* get uvco & mcol */
-		if (part->childtype == PART_CHILD_FACES) {
-			if (n_mcol && ELEM(PART_FROM_FACE, PART_FROM_FACE, PART_FROM_VOLUME)) {
-				if (cpa->num != DMCACHE_NOTFOUND) {
-					MFace *mface = modifier->dm->getTessFaceData(modifier->dm, cpa->num, CD_MFACE);
-					MCol *mc = (MCol *)CustomData_get_layer_n(&modifier->dm->faceData, CD_MCOL, vcol_no);
-					mc += cpa->num * 4;
-
-					psys_interpolate_mcol(mc, mface->v4, cpa->fuv, &mcol);
-					n_mcol[0] = (float)mcol.b / 255.0f;
-					n_mcol[1] = (float)mcol.g / 255.0f;
-					n_mcol[2] = (float)mcol.r / 255.0f;
-				}
-				else {
-					n_mcol[0] = 0.0f;
-					n_mcol[1] = 0.0f;
-					n_mcol[2] = 0.0f;
-				}
-			}
+		if (num < 0) {
+			/* No matching face found. */
+			zero_v3(r_mcol);
 		}
 		else {
-			ParticleData *parent = particlesystem->particles + cpa->parent;
-			num = parent->num_dmcache;
+			MFace *mface = modifier->dm->getTessFaceData(modifier->dm, num, CD_MFACE);
+			MCol *mc = (MCol *)CustomData_get_layer_n(&modifier->dm->faceData, CD_MCOL, vcol_no);
+			MCol mcol;
 
-			if (num == DMCACHE_NOTFOUND)
-				if (parent->num < modifier->dm->getNumTessFaces(modifier->dm))
-					num = parent->num;
-
-			if (n_mcol && ELEM(part->from, PART_FROM_FACE, PART_FROM_VOLUME)) {
-				if (num != DMCACHE_NOTFOUND) {
-					MFace *mface = modifier->dm->getTessFaceData(modifier->dm, num, CD_MFACE);
-					MCol *mc = (MCol *)CustomData_get_layer_n(&modifier->dm->faceData, CD_MCOL, vcol_no);
-					mc += num * 4;
-
-					psys_interpolate_mcol(mc, mface->v4, parent->fuv, &mcol);
-					n_mcol[0] = (float)mcol.b / 255.0f;
-					n_mcol[1] = (float)mcol.g / 255.0f;
-					n_mcol[2] = (float)mcol.r / 255.0f;
-				}
-				else {
-					n_mcol[0] = 0.0f;
-					n_mcol[1] = 0.0f;
-					n_mcol[2] = 0.0f;
-				}
-			}
+			psys_interpolate_mcol(&mc[num * 4], mface->v4, *fuv, &mcol);
+			r_mcol[0] = (float)mcol.b / 255.0f;
+			r_mcol[1] = (float)mcol.g / 255.0f;
+			r_mcol[2] = (float)mcol.r / 255.0f;
 		}
 	}
 }
@@ -669,8 +592,14 @@ static void rna_ParticleSystem_set_resolution(ParticleSystem *particlesystem, Sc
 		particle_system_update(scene, object, particlesystem);
 	}
 	else {
-		if (particlesystem->renderdata)
+		ParticleSystemModifierData *psmd = psys_get_modifier(object, particlesystem);
+		
+		if (particlesystem->renderdata) {
 			psys_render_restore(object, particlesystem);
+		}
+		
+		psmd->flag &= ~eParticleSystemFlag_psys_updated;
+		particle_system_update(scene, object, particlesystem);
 	}
 }
 
@@ -718,6 +647,15 @@ static void rna_Particle_redo_child(Main *bmain, Scene *scene, PointerRNA *ptr)
 {
 	particle_recalc(bmain, scene, ptr, PSYS_RECALC_CHILD);
 }
+
+static void rna_Particle_cloth_update(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *ptr)
+{
+	Object *ob = (Object *)ptr->id.data;
+
+	DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
+	WM_main_add_notifier(NC_OBJECT | ND_MODIFIER, ob);
+}
+
 
 static ParticleSystem *rna_particle_system_for_target(Object *ob, ParticleTarget *target)
 {
@@ -938,6 +876,32 @@ static int rna_PartSettings_is_fluid_get(PointerRNA *ptr)
 	return part->type == PART_FLUID;
 }
 
+static void rna_ParticleSettings_use_clump_curve_update(Main *bmain, Scene *scene, PointerRNA *ptr)
+{
+	ParticleSettings *part = ptr->data;
+	
+	if (part->child_flag & PART_CHILD_USE_CLUMP_CURVE) {
+		if (!part->clumpcurve) {
+			BKE_particlesettings_clump_curve_init(part);
+		}
+	}
+	
+	rna_Particle_redo_child(bmain, scene, ptr);
+}
+
+static void rna_ParticleSettings_use_roughness_curve_update(Main *bmain, Scene *scene, PointerRNA *ptr)
+{
+	ParticleSettings *part = ptr->data;
+	
+	if (part->child_flag & PART_CHILD_USE_ROUGH_CURVE) {
+		if (!part->roughcurve) {
+			BKE_particlesettings_rough_curve_init(part);
+		}
+	}
+	
+	rna_Particle_redo_child(bmain, scene, ptr);
+}
+
 static void rna_ParticleSystem_name_set(PointerRNA *ptr, const char *value)
 {
 	Object *ob = ptr->id.data;
@@ -966,7 +930,7 @@ static void rna_ParticleSystem_active_particle_target_index_range(PointerRNA *pt
 {
 	ParticleSystem *psys = (ParticleSystem *)ptr->data;
 	*min = 0;
-	*max = max_ii(0, BLI_countlist(&psys->targets) - 1);
+	*max = max_ii(0, BLI_listbase_count(&psys->targets) - 1);
 }
 
 static int rna_ParticleSystem_active_particle_target_index_get(PointerRNA *ptr)
@@ -1089,7 +1053,7 @@ static void rna_ParticleDupliWeight_active_index_range(PointerRNA *ptr, int *min
 {
 	ParticleSettings *part = (ParticleSettings *)ptr->id.data;
 	*min = 0;
-	*max = max_ii(0, BLI_countlist(&part->dupliweights) - 1);
+	*max = max_ii(0, BLI_listbase_count(&part->dupliweights) - 1);
 }
 
 static int rna_ParticleDupliWeight_active_index_get(PointerRNA *ptr)
@@ -1850,9 +1814,14 @@ static void rna_def_particle_settings_mtex(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Clump", "Affect the child clumping");
 	RNA_def_property_update(prop, 0, "rna_Particle_reset");
 
-	prop = RNA_def_property(srna, "use_map_kink", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "mapto", PAMAP_KINK);
-	RNA_def_property_ui_text(prop, "Kink", "Affect the child kink");
+	prop = RNA_def_property(srna, "use_map_kink_amp", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "mapto", PAMAP_KINK_AMP);
+	RNA_def_property_ui_text(prop, "Kink Amplitude", "Affect the child kink amplitude");
+	RNA_def_property_update(prop, 0, "rna_Particle_redo_child");
+
+	prop = RNA_def_property(srna, "use_map_kink_freq", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "mapto", PAMAP_KINK_FREQ);
+	RNA_def_property_ui_text(prop, "Kink Frequency", "Affect the child kink frequency");
 	RNA_def_property_update(prop, 0, "rna_Particle_redo_child");
 
 	prop = RNA_def_property(srna, "use_map_rough", PROP_BOOLEAN, PROP_NONE);
@@ -1929,10 +1898,16 @@ static void rna_def_particle_settings_mtex(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Clump Factor", "Amount texture affects child clump");
 	RNA_def_property_update(prop, 0, "rna_Particle_redo_child");
 
-	prop = RNA_def_property(srna, "kink_factor", PROP_FLOAT, PROP_NONE);
+	prop = RNA_def_property(srna, "kink_amp_factor", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "kinkampfac");
+	RNA_def_property_ui_range(prop, 0, 1, 10, 3);
+	RNA_def_property_ui_text(prop, "Kink Amplitude Factor", "Amount texture affects child kink amplitude");
+	RNA_def_property_update(prop, 0, "rna_Particle_redo_child");
+
+	prop = RNA_def_property(srna, "kink_freq_factor", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "kinkfac");
 	RNA_def_property_ui_range(prop, 0, 1, 10, 3);
-	RNA_def_property_ui_text(prop, "Kink Factor", "Amount texture affects child kink");
+	RNA_def_property_ui_text(prop, "Kink Frequency Factor", "Amount texture affects child kink frequency");
 	RNA_def_property_update(prop, 0, "rna_Particle_redo_child");
 
 	prop = RNA_def_property(srna, "rough_factor", PROP_FLOAT, PROP_NONE);
@@ -2018,6 +1993,7 @@ static void rna_def_particle_settings(BlenderRNA *brna)
 		{PART_KINK_RADIAL, "RADIAL", 0, "Radial", ""},
 		{PART_KINK_WAVE, "WAVE", 0, "Wave", ""},
 		{PART_KINK_BRAID, "BRAID", 0, "Braid", ""},
+		{PART_KINK_SPIRAL, "SPIRAL", 0, "Spiral", ""},
 		{0, NULL, 0, NULL, NULL}
 	};
 
@@ -2071,7 +2047,7 @@ static void rna_def_particle_settings(BlenderRNA *brna)
 
 	rna_def_mtex_common(brna, srna, "rna_ParticleSettings_mtex_begin", "rna_ParticleSettings_active_texture_get",
 	                    "rna_ParticleSettings_active_texture_set", NULL, "ParticleSettingsTextureSlot",
-	                    "ParticleSettingsTextureSlots", "rna_Particle_reset");
+	                    "ParticleSettingsTextureSlots", "rna_Particle_reset", NULL);
 
 	/* fluid particle type can't be checked from the type value in rna as it's not shown in the menu */
 	prop = RNA_def_property(srna, "is_fluid", PROP_BOOLEAN, PROP_NONE);
@@ -2141,7 +2117,7 @@ static void rna_def_particle_settings(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "use_dynamic_rotation", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", PART_ROT_DYN);
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
-	RNA_def_property_ui_text(prop, "Dynamic", "Particle rotations are effected by collisions and effectors");
+	RNA_def_property_ui_text(prop, "Dynamic", "Particle rotations are affected by collisions and effectors");
 	RNA_def_property_update(prop, 0, "rna_Particle_reset");
 
 	prop = RNA_def_property(srna, "use_multiply_size_mass", PROP_BOOLEAN, PROP_NONE);
@@ -2193,7 +2169,7 @@ static void rna_def_particle_settings(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "use_self_effect", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", PART_SELF_EFFECT);
-	RNA_def_property_ui_text(prop, "Self Effect", "Particle effectors effect themselves");
+	RNA_def_property_ui_text(prop, "Self Effect", "Particle effectors affect themselves");
 	RNA_def_property_update(prop, 0, "rna_Particle_reset");
 
 
@@ -2250,6 +2226,16 @@ static void rna_def_particle_settings(BlenderRNA *brna)
 	RNA_def_property_update(prop, 0, "rna_Particle_reset");
 
 	/*draw flag*/
+	prop = RNA_def_property(srna, "show_guide_hairs", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "draw", PART_DRAW_GUIDE_HAIRS);
+	RNA_def_property_ui_text(prop, "Guide Hairs", "Show guide hairs");
+	RNA_def_property_update(prop, 0, "rna_Particle_redo");
+
+	prop = RNA_def_property(srna, "show_hair_grid", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "draw", PART_DRAW_HAIR_GRID);
+	RNA_def_property_ui_text(prop, "Guide Hairs", "Show guide hairs");
+	RNA_def_property_update(prop, 0, "rna_Particle_redo");
+
 	prop = RNA_def_property(srna, "show_velocity", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "draw", PART_DRAW_VEL);
 	RNA_def_property_ui_text(prop, "Velocity", "Show particle velocity");
@@ -2381,6 +2367,11 @@ static void rna_def_particle_settings(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Segments", "Number of hair segments");
 	RNA_def_property_update(prop, 0, "rna_Particle_reset");
 
+	prop = RNA_def_property(srna, "bending_random", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "bending_random");
+	RNA_def_property_range(prop, 0.0f, 1.0f);
+	RNA_def_property_ui_text(prop, "Random Bending Stiffness", "Random stiffness of hairs");
+	RNA_def_property_update(prop, 0, "rna_Particle_cloth_update");
 
 	/*TODO: not found in UI, readonly? */
 	prop = RNA_def_property(srna, "keys_step", PROP_INT, PROP_NONE);
@@ -2519,7 +2510,7 @@ static void rna_def_particle_settings(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "simplify_refsize", PROP_INT, PROP_PIXEL);
 	RNA_def_property_int_sdna(prop, NULL, "simplify_refsize");
-	RNA_def_property_range(prop, 1, 32768);
+	RNA_def_property_range(prop, 1, SHRT_MAX);
 	RNA_def_property_ui_text(prop, "Reference Size", "Reference size in pixels, after which simplification begins");
 
 	prop = RNA_def_property(srna, "simplify_rate", PROP_FLOAT, PROP_NONE);
@@ -2846,6 +2837,29 @@ static void rna_def_particle_settings(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Shape", "Shape of clumping");
 	RNA_def_property_update(prop, 0, "rna_Particle_redo_child");
 
+	prop = RNA_def_property(srna, "use_clump_curve", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "child_flag", PART_CHILD_USE_CLUMP_CURVE);
+	RNA_def_property_ui_text(prop, "Use Clump Curve", "Use a curve to define clump tapering");
+	RNA_def_property_update(prop, 0, "rna_ParticleSettings_use_clump_curve_update");
+
+	prop = RNA_def_property(srna, "clump_curve", PROP_POINTER, PROP_NONE);
+	RNA_def_property_pointer_sdna(prop, NULL, "clumpcurve");
+	RNA_def_property_struct_type(prop, "CurveMapping");
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+	RNA_def_property_ui_text(prop, "Clump Curve", "Curve defining clump tapering");
+	RNA_def_property_update(prop, 0, "rna_Particle_redo_child");
+
+	prop = RNA_def_property(srna, "use_clump_noise", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "child_flag", PART_CHILD_USE_CLUMP_NOISE);
+	RNA_def_property_ui_text(prop, "Use Clump Noise", "Create random clumps around the parent");
+	RNA_def_property_update(prop, 0, "rna_Particle_redo_child");
+
+	prop = RNA_def_property(srna, "clump_noise_size", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "clump_noise_size");
+	RNA_def_property_range(prop, 0.00001f, 100000.0f);
+	RNA_def_property_ui_range(prop, 0.01f, 10.0f, 0.1f, 3);
+	RNA_def_property_ui_text(prop, "Clump Noise Size", "Size of clump noise");
+	RNA_def_property_update(prop, 0, "rna_Particle_redo_child");
 
 	/* kink */
 	prop = RNA_def_property(srna, "kink_amplitude", PROP_FLOAT, PROP_NONE);
@@ -2859,6 +2873,12 @@ static void rna_def_particle_settings(BlenderRNA *brna)
 	RNA_def_property_float_sdna(prop, NULL, "kink_amp_clump");
 	RNA_def_property_range(prop, 0.0f, 1.0f);
 	RNA_def_property_ui_text(prop, "Amplitude Clump", "How much clump affects kink amplitude");
+	RNA_def_property_update(prop, 0, "rna_Particle_redo_child");
+
+	prop = RNA_def_property(srna, "kink_amplitude_random", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "kink_amp_random");
+	RNA_def_property_range(prop, 0.0f, 1.0f);
+	RNA_def_property_ui_text(prop, "Amplitude Random", "Random variation of the amplitude");
 	RNA_def_property_update(prop, 0, "rna_Particle_redo_child");
 
 	prop = RNA_def_property(srna, "kink_frequency", PROP_FLOAT, PROP_NONE);
@@ -2876,6 +2896,17 @@ static void rna_def_particle_settings(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "kink_flat", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_range(prop, 0.0f, 1.0f);
 	RNA_def_property_ui_text(prop, "Flatness", "How flat the hairs are");
+	RNA_def_property_update(prop, 0, "rna_Particle_redo_child");
+
+	prop = RNA_def_property(srna, "kink_extra_steps", PROP_INT, PROP_NONE);
+	RNA_def_property_range(prop, 1, INT_MAX);
+	RNA_def_property_ui_range(prop, 1, 100, 1, -1);
+	RNA_def_property_ui_text(prop, "Extra Steps", "Extra steps for resolution of special kink features");
+	RNA_def_property_update(prop, 0, "rna_Particle_redo_child");
+
+	prop = RNA_def_property(srna, "kink_axis_random", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_range(prop, 0.0f, 1.0f);
+	RNA_def_property_ui_text(prop, "Axis Random", "Random variation of the orientation");
 	RNA_def_property_update(prop, 0, "rna_Particle_redo_child");
 
 	/* rough */
@@ -2924,6 +2955,18 @@ static void rna_def_particle_settings(BlenderRNA *brna)
 	RNA_def_property_float_sdna(prop, NULL, "rough_end_shape");
 	RNA_def_property_range(prop, 0.0f, 10.0f);
 	RNA_def_property_ui_text(prop, "Shape", "Shape of end point rough");
+	RNA_def_property_update(prop, 0, "rna_Particle_redo_child");
+
+	prop = RNA_def_property(srna, "use_roughness_curve", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "child_flag", PART_CHILD_USE_ROUGH_CURVE);
+	RNA_def_property_ui_text(prop, "Use Roughness Curve", "Use a curve to define roughness");
+	RNA_def_property_update(prop, 0, "rna_ParticleSettings_use_roughness_curve_update");
+
+	prop = RNA_def_property(srna, "roughness_curve", PROP_POINTER, PROP_NONE);
+	RNA_def_property_pointer_sdna(prop, NULL, "roughcurve");
+	RNA_def_property_struct_type(prop, "CurveMapping");
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+	RNA_def_property_ui_text(prop, "Roughness Curve", "Curve defining roughness");
 	RNA_def_property_update(prop, 0, "rna_Particle_redo_child");
 
 	prop = RNA_def_property(srna, "child_length", PROP_FLOAT, PROP_NONE);
@@ -3495,6 +3538,7 @@ static void rna_def_particle_system(BlenderRNA *brna)
 
 	/* extract hair mcols */
 	func = RNA_def_function(srna, "mcol_on_emitter", "rna_ParticleSystem_mcol_on_emitter");
+	RNA_def_function_flag(func, FUNC_USE_REPORTS);
 	RNA_def_function_ui_description(func, "Obtain mcol for all particles");
 	prop = RNA_def_pointer(func, "modifier", "ParticleSystemModifier", "", "Particle modifier");
 	RNA_def_property_flag(prop, PROP_REQUIRED | PROP_NEVER_NULL);

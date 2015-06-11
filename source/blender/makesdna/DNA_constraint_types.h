@@ -173,6 +173,12 @@ typedef struct bSplineIKConstraint {
 		/* settings */
 	short flag;				/* general settings for constraint */
 	short xzScaleMode;		/* method used for determining the x & z scaling of the bones */
+	
+		/* volume preservation settings */
+	float		bulge;
+	float		bulge_min;
+	float		bulge_max;
+	float		bulge_smooth;
 } bSplineIKConstraint;
 
 
@@ -284,10 +290,14 @@ typedef struct bFollowPathConstraint {
 /* Stretch to constraint */
 typedef struct bStretchToConstraint {
 	struct Object		*tar;
+	int			flag;
 	int			volmode; 
-	int         plane;
+	int			plane;
 	float		orglength;
 	float		bulge;
+	float		bulge_min;
+	float		bulge_max;
+	float		bulge_smooth;
 	char		subtarget[64];	/* MAX_ID_NAME-2 */
 } bStretchToConstraint;
 
@@ -338,9 +348,18 @@ typedef struct bTransformConstraint {
 	
 	float		from_min[3];	/* from_min/max defines range of target transform 	*/
 	float		from_max[3];	/* 	to map on to to_min/max range. 			*/
-	
 	float		to_min[3];		/* range of motion on owner caused by target  */
 	float		to_max[3];
+
+	float		from_min_rot[3];	/* from_min/max defines range of target transform 	*/
+	float		from_max_rot[3];	/* 	to map on to to_min/max range. 			*/
+	float		to_min_rot[3];		/* range of motion on owner caused by target  */
+	float		to_max_rot[3];
+
+	float		from_min_scale[3];	/* from_min/max defines range of target transform 	*/
+	float		from_max_scale[3];	/* 	to map on to to_min/max range. 			*/
+	float		to_min_scale[3];		/* range of motion on owner caused by target  */
+	float		to_max_scale[3];
 } bTransformConstraint;
 
 /* Pivot Constraint */
@@ -557,6 +576,13 @@ typedef enum eCopyScale_Flags {
 	SIZELIKE_OFFSET = (1<<3)
 } eCopyScale_Flags;
 
+/* bTransformConstraint.to/from */
+typedef enum eTransform_ToFrom {
+	TRANS_LOCATION = 0,
+	TRANS_ROTATION = 1,
+	TRANS_SCALE    = 2,
+} eTransform_ToFrom;
+
 /* bSameVolumeConstraint.flag */
 typedef enum eSameVolume_Modes {
 	SAMEVOL_X		= 0,
@@ -660,15 +686,19 @@ typedef enum eKinematic_Flags {
 /* bSplineIKConstraint->flag */
 typedef enum eSplineIK_Flags {
 	/* chain has been attached to spline */
-	CONSTRAINT_SPLINEIK_BOUND			= (1<<0),
+	CONSTRAINT_SPLINEIK_BOUND			= (1 << 0),
 	/* root of chain is not influenced by the constraint */
-	CONSTRAINT_SPLINEIK_NO_ROOT			= (1<<1),
+	CONSTRAINT_SPLINEIK_NO_ROOT			= (1 << 1),
 	/* bones in the chain should not scale to fit the curve */
-	CONSTRAINT_SPLINEIK_SCALE_LIMITED	= (1<<2),
+	CONSTRAINT_SPLINEIK_SCALE_LIMITED	= (1 << 2),
 	/* evenly distribute the bones along the path regardless of length */
-	CONSTRAINT_SPLINEIK_EVENSPLITS		= (1<<3),
+	CONSTRAINT_SPLINEIK_EVENSPLITS		= (1 << 3),
 	/* don't adjust the x and z scaling of the bones by the curve radius */
-	CONSTRAINT_SPLINEIK_NO_CURVERAD	= (1<<4)
+	CONSTRAINT_SPLINEIK_NO_CURVERAD		= (1 << 4),
+	
+	/* for "volumetric" xz scale mode, limit the minimum or maximum scale values */
+	CONSTRAINT_SPLINEIK_USE_BULGE_MIN 	= (1 << 5),
+	CONSTRAINT_SPLINEIK_USE_BULGE_MAX 	= (1 << 6),
 } eSplineIK_Flags;
 
 /* bSplineIKConstraint->xzScaleMode */
@@ -678,7 +708,9 @@ typedef enum eSplineIK_XZScaleModes {
 	/* bones in the chain should take their x/z scales from the original scaling */
 	CONSTRAINT_SPLINEIK_XZS_ORIGINAL		= 1,
 	/* x/z scales are the inverse of the y-scale */
-	CONSTRAINT_SPLINEIK_XZS_VOLUMETRIC		= 2
+	CONSTRAINT_SPLINEIK_XZS_INVERSE			= 2,
+	/* x/z scales are computed using a volume preserving technique (from Stretch To constraint) */
+	CONSTRAINT_SPLINEIK_XZS_VOLUMETRIC		= 3
 } eSplineIK_XZScaleModes;
 
 /* MinMax (floor) flags */
@@ -780,7 +812,8 @@ typedef enum ePivotConstraint_Flag {
 
 typedef enum eFollowTrack_Flags {
 	FOLLOWTRACK_ACTIVECLIP	= (1<<0),
-	FOLLOWTRACK_USE_3D_POSITION	= (1<<1)
+	FOLLOWTRACK_USE_3D_POSITION	= (1<<1),
+	FOLLOWTRACK_USE_UNDISTORTION	= (1<<2)
 } eFollowTrack_Flags;
 
 typedef enum eFollowTrack_FrameMethod {
@@ -802,6 +835,12 @@ typedef enum eObjectSolver_Flags {
 /* Rigid-Body Constraint */
 #define CONSTRAINT_DRAW_PIVOT 0x40
 #define 	CONSTRAINT_DISABLE_LINKED_COLLISION 0x80
+
+/* ObjectSolver Constraint -> flag */
+typedef enum eStretchTo_Flags {
+	STRETCHTOCON_USE_BULGE_MIN = (1 << 0),
+	STRETCHTOCON_USE_BULGE_MAX = (1 << 1),
+} eStretchTo_Flags;
 
 /* important: these defines need to match up with PHY_DynamicTypes headerfile */
 #define 	CONSTRAINT_RB_BALL		1

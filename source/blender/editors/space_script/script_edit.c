@@ -32,7 +32,6 @@
 #include <string.h>
 #include <stdio.h>
 
-#include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
 
 #include "BKE_context.h"
@@ -83,6 +82,8 @@ void SCRIPT_OT_python_file_run(wmOperatorType *ot)
 	ot->exec = run_pyfile_exec;
 	ot->poll = ED_operator_areaactive;
 
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
+
 	RNA_def_string_file_path(ot->srna, "filepath", NULL, FILE_MAX, "Path", "");
 }
 
@@ -129,7 +130,7 @@ static int script_reload_exec(bContext *C, wmOperator *op)
 	WM_event_add_notifier(C, NC_WINDOW, NULL);
 	return OPERATOR_FINISHED;
 #else
-	(void)C, (void)op; /* unused */
+	UNUSED_VARS(C, op);
 	return OPERATOR_CANCELLED;
 #endif
 }

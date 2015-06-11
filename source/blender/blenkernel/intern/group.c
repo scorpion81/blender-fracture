@@ -39,7 +39,6 @@
 #include "DNA_group_types.h"
 #include "DNA_material_types.h"
 #include "DNA_object_types.h"
-#include "DNA_nla_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_particle_types.h"
 
@@ -150,21 +149,25 @@ Group *BKE_group_copy(Group *group)
 	groupn = BKE_libblock_copy(&group->id);
 	BLI_duplicatelist(&groupn->gobject, &group->gobject);
 
+	if (group->id.lib) {
+		BKE_id_lib_local_paths(G.main, group->id.lib, &groupn->id);
+	}
+
 	return groupn;
 }
 
 /* external */
-static int group_object_add_internal(Group *group, Object *ob)
+static bool group_object_add_internal(Group *group, Object *ob)
 {
 	GroupObject *go;
 	
 	if (group == NULL || ob == NULL) {
-		return FALSE;
+		return false;
 	}
 	
 	/* check if the object has been added already */
 	if (BLI_findptr(&group->gobject, ob, offsetof(GroupObject, ob))) {
-		return FALSE;
+		return false;
 	}
 	
 	go = MEM_callocN(sizeof(GroupObject), "groupobject");
@@ -172,7 +175,7 @@ static int group_object_add_internal(Group *group, Object *ob)
 	
 	go->ob = ob;
 	
-	return TRUE;
+	return true;
 }
 
 bool BKE_group_object_add(Group *group, Object *object, Scene *scene, Base *base)
@@ -205,7 +208,9 @@ static int group_object_unlink_internal(Group *group, Object *ob)
 	go = group->gobject.first;
 	while (go) {
 		gon = go->next;
-		if (go->ob == ob) {
+		/* case go->ob == NULL occurs in Fracture Modifier helper object group, should be checked for here or will crash
+		 * in following depgraph update */
+		if (go->ob == ob || go->ob == NULL) {
 			BLI_remlink(&group->gobject, go);
 			free_group_object(go);
 			removed = 1;
@@ -214,6 +219,43 @@ static int group_object_unlink_internal(Group *group, Object *ob)
 		go = gon;
 	}
 	return removed;
+}
+
+static bool group_object_cyclic_check_internal(Object *object, Group *group)
+{
+	if (object->dup_group) {
+		Group *dup_group = object->dup_group;
+		if ((dup_group->id.flag & LIB_DOIT) == 0) {
+			/* Cycle already exists in groups, let's prevent further crappyness */
+			return true;
+		}
+		/* flag the object to identify cyclic dependencies in further dupli groups */
+		dup_group->id.flag &= ~LIB_DOIT;
+
+		if (dup_group == group)
+			return true;
+		else {
+			GroupObject *gob;
+			for (gob = dup_group->gobject.first; gob; gob = gob->next) {
+				if (group_object_cyclic_check_internal(gob->ob, group)) {
+					return true;
+				}
+			}
+		}
+
+		/* un-flag the object, it's allowed to have the same group multiple times in parallel */
+		dup_group->id.flag |= LIB_DOIT;
+	}
+
+	return false;
+}
+
+bool BKE_group_object_cyclic_check(Main *bmain, Object *object, Group *group)
+{
+	/* first flag all groups */
+	BKE_main_id_tag_listbase(&bmain->group, true);
+
+	return group_object_cyclic_check_internal(object, group);
 }
 
 bool BKE_group_object_unlink(Group *group, Object *object, Scene *scene, Base *base)
@@ -296,7 +338,7 @@ static void group_replaces_nla(Object *parent, Object *target, char mode)
 {
 	static ListBase nlastrips = {NULL, NULL};
 	static bAction *action = NULL;
-	static int done = FALSE;
+	static bool done = false;
 	bActionStrip *strip, *nstrip;
 	
 	if (mode == 's') {
@@ -306,11 +348,11 @@ static void group_replaces_nla(Object *parent, Object *target, char mode)
 				if (done == 0) {
 					/* clear nla & action from object */
 					nlastrips = target->nlastrips;
-					target->nlastrips.first = target->nlastrips.last = NULL;
+					BLI_listbase_clear(&target->nlastrips);
 					action = target->action;
 					target->action = NULL;
 					target->nlaflag |= OB_NLA_OVERRIDE;
-					done = TRUE;
+					done = true;
 				}
 				nstrip = MEM_dupallocN(strip);
 				BLI_addtail(&target->nlastrips, nstrip);
@@ -323,9 +365,9 @@ static void group_replaces_nla(Object *parent, Object *target, char mode)
 			target->nlastrips = nlastrips;
 			target->action = action;
 			
-			nlastrips.first = nlastrips.last = NULL;  /* not needed, but yah... :) */
+			BLI_listbase_clear(&nlastrips);  /* not needed, but yah... :) */
 			action = NULL;
-			done = FALSE;
+			done = false;
 		}
 	}
 }

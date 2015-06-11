@@ -50,9 +50,10 @@ typedef struct ShadeResult {
 	float col[4];
 	float alpha, mist, z;
 	float emit[3];
-	float diff[3];		/* no ramps, shadow, etc */
-	float spec[3];
-	float shad[4];		/* shad[3] is shadow intensity */
+	float diff[3];			/* diffuse with no ramps, shadow, etc */
+	float diffshad[3];		/* diffuse with shadow */
+	float spec[3];			/* specular with shadow */
+	float shad[4];			/* shad[3] is shadow intensity */
 	float ao[3];
 	float env[3];
 	float indirect[3];
@@ -80,7 +81,7 @@ struct ShadeInputCopy {
 	short osatex;
 	float vn[3], vno[3];			/* actual render normal, and a copy to restore it */
 	float n1[3], n2[3], n3[3];		/* vertex normals, corrected */
-	int mode;						/* base material mode (OR-ed result of entire node tree) */
+	int mode, mode2;			/* base material mode (OR-ed result of entire node tree) */
 };
 
 typedef struct ShadeInputUV {
@@ -112,7 +113,7 @@ typedef struct ShadeInput {
 	short osatex;
 	float vn[3], vno[3];			/* actual render normal, and a copy to restore it */
 	float n1[3], n2[3], n3[3];		/* vertex normals, corrected */
-	int mode;						/* base material mode (OR-ed result of entire node tree) */
+	int mode, mode2;			/* base material mode (OR-ed result of entire node tree) */
 	
 	/* internal face coordinates */
 	float u, v, dx_u, dx_v, dy_u, dy_v;
@@ -197,9 +198,9 @@ struct ImagePool;
 struct Object;
 
 /* this one uses nodes */
-int	multitex_ext(struct Tex *tex, float texvec[3], float dxt[3], float dyt[3], int osatex, struct TexResult *texres, struct ImagePool *pool, bool scene_color_manage);
+int	multitex_ext(struct Tex *tex, float texvec[3], float dxt[3], float dyt[3], int osatex, struct TexResult *texres, struct ImagePool *pool, bool scene_color_manage, const bool skip_load_image);
 /* nodes disabled */
-int multitex_ext_safe(struct Tex *tex, float texvec[3], struct TexResult *texres, struct ImagePool *pool, bool scene_color_manage);
+int multitex_ext_safe(struct Tex *tex, float texvec[3], struct TexResult *texres, struct ImagePool *pool, bool scene_color_manage, const bool skip_load_image);
 /* only for internal node usage */
 int multitex_nodes(struct Tex *tex, float texvec[3], float dxt[3], float dyt[3], int osatex, struct TexResult *texres,
                    const short thread, short which_output, struct ShadeInput *shi, struct MTex *mtex,

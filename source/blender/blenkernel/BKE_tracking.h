@@ -145,6 +145,9 @@ void BKE_tracking_plane_marker_delete(struct MovieTrackingPlaneTrack *plane_trac
 struct MovieTrackingPlaneMarker *BKE_tracking_plane_marker_get(struct MovieTrackingPlaneTrack *plane_track, int framenr);
 struct MovieTrackingPlaneMarker *BKE_tracking_plane_marker_get_exact(struct MovieTrackingPlaneTrack *plane_track, int framenr);
 struct MovieTrackingPlaneMarker *BKE_tracking_plane_marker_ensure(struct MovieTrackingPlaneTrack *plane_track, int framenr);
+void BKE_tracking_plane_marker_get_subframe_corners(struct MovieTrackingPlaneTrack *plane_track,
+                                                    float framenr,
+                                                    float corners[4][2]);
 
 /* **** Object **** */
 struct MovieTrackingObject *BKE_tracking_object_add(struct MovieTracking *tracking, const char *name);
@@ -175,7 +178,8 @@ void BKE_tracking_camera_get_reconstructed_interpolate(struct MovieTracking *tra
                                                        int framenr, float mat[4][4]);
 
 /* **** Distortion/Undistortion **** */
-struct MovieDistortion *BKE_tracking_distortion_new(void);
+struct MovieDistortion *BKE_tracking_distortion_new(struct MovieTracking *tracking,
+                                                    int calibration_width, int calibration_height);
 void BKE_tracking_distortion_update(struct MovieDistortion *distortion, struct MovieTracking *tracking,
                                     int calibration_width, int calibration_height);
 void BKE_tracking_distortion_set_threads(struct MovieDistortion *distortion, int threads);
@@ -192,7 +196,8 @@ struct ImBuf *BKE_tracking_undistort_frame(struct MovieTracking *tracking, struc
 struct ImBuf *BKE_tracking_distort_frame(struct MovieTracking *tracking, struct ImBuf *ibuf,
                                          int calibration_width, int calibration_height, float overscan);
 
-void BKE_tracking_max_undistortion_delta_across_bound(struct MovieTracking *tracking, struct rcti *rect, float delta[2]);
+void BKE_tracking_max_distortion_delta_across_bound(struct MovieTracking *tracking, struct rcti *rect,
+                                                    bool undistort, float delta[2]);
 
 /* **** Image sampling **** */
 struct ImBuf *BKE_tracking_sample_pattern(int frame_width, int frame_height,
@@ -208,15 +213,17 @@ void BKE_tracking_disable_channels(struct ImBuf *ibuf, bool disable_red, bool di
                                    bool disable_blue, bool grayscale);
 
 /* **** 2D tracking **** */
-struct MovieTrackingContext *BKE_tracking_context_new(struct MovieClip *clip, struct MovieClipUser *user,
-                                                      const bool backwards, const bool sequence);
-void BKE_tracking_context_free(struct MovieTrackingContext *context);
-void BKE_tracking_context_sync(struct MovieTrackingContext *context);
-void BKE_tracking_context_sync_user(const struct MovieTrackingContext *context, struct MovieClipUser *user);
-bool BKE_tracking_context_step(struct MovieTrackingContext *context);
-void BKE_tracking_context_finish(struct MovieTrackingContext *context);
-
 void BKE_tracking_refine_marker(struct MovieClip *clip, struct MovieTrackingTrack *track, struct MovieTrackingMarker *marker, bool backwards);
+
+/* *** 2D auto track  *** */
+
+struct AutoTrackContext *BKE_autotrack_context_new(struct MovieClip *clip, struct MovieClipUser *user,
+                                                   const bool backwards, const bool sequence);
+bool BKE_autotrack_context_step(struct AutoTrackContext *context);
+void BKE_autotrack_context_sync(struct AutoTrackContext *context);
+void BKE_autotrack_context_sync_user(struct AutoTrackContext *context, struct MovieClipUser *user);
+void BKE_autotrack_context_finish(struct AutoTrackContext *context);
+void BKE_autotrack_context_free(struct AutoTrackContext *context);
 
 /* **** Plane tracking **** */
 
@@ -270,6 +277,9 @@ void BKE_tracking_dopesheet_update(struct MovieTracking *tracking);
                                              (TRACK_AREA_SELECTED(track, TRACK_AREA_POINT) || \
                                               (((sc)->flag & SC_SHOW_MARKER_PATTERN) && TRACK_AREA_SELECTED(track, TRACK_AREA_PAT)) || \
                                               (((sc)->flag & SC_SHOW_MARKER_SEARCH) && TRACK_AREA_SELECTED(track, TRACK_AREA_SEARCH))))
+
+#define PLANE_TRACK_VIEW_SELECTED(plane_track) ((((plane_track)->flag & PLANE_TRACK_HIDDEN) == 0) && \
+                                                 ((plane_track)->flag & SELECT))
 
 #define MARKER_VISIBLE(sc, track, marker)       (((marker)->flag & MARKER_DISABLED) == 0 || ((sc)->flag & SC_HIDE_DISABLED) == 0 || (sc->clip->tracking.act_track == track))
 

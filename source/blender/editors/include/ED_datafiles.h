@@ -54,6 +54,9 @@ extern char datatoc_prvicons_png[];
 extern int datatoc_splash_png_size;
 extern char datatoc_splash_png[];
 
+extern int datatoc_splash_2x_png_size;
+extern char datatoc_splash_2x_png[];
+
 extern int datatoc_bfont_pfb_size;
 extern char datatoc_bfont_pfb[];
 
@@ -146,6 +149,12 @@ extern char datatoc_subtract_png[];
 
 extern int datatoc_texdraw_png_size;
 extern char datatoc_texdraw_png[];
+
+extern int datatoc_texfill_png_size;
+extern char datatoc_texfill_png[];
+
+extern int datatoc_texmask_png_size;
+extern char datatoc_texmask_png[];
 
 extern int datatoc_thumb_png_size;
 extern char datatoc_thumb_png[];

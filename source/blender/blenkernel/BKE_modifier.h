@@ -111,7 +111,10 @@ typedef enum ModifierApplyFlag {
 	MOD_APPLY_RENDER = 1 << 0,       /* Render time. */
 	MOD_APPLY_USECACHE = 1 << 1,     /* Result of evaluation will be cached, so modifier might
 	                                  * want to cache data for quick updates (used by subsurf) */
-	MOD_APPLY_ORCO = 1 << 2          /* Modifier evaluated for undeformed texture coordinates */
+	MOD_APPLY_ORCO = 1 << 2,         /* Modifier evaluated for undeformed texture coordinates */
+	MOD_APPLY_IGNORE_SIMPLIFY = 1 << 3, /* Ignore scene simplification flag and use subdivisions
+	                                     * level set in multires modifier.
+	                                     */
 } ModifierApplyFlag;
 
 
@@ -316,7 +319,7 @@ ModifierTypeInfo *modifierType_getInfo(ModifierType type);
 struct ModifierData  *modifier_new(int type);
 void          modifier_free(struct ModifierData *md);
 
-void          modifier_unique_name(struct ListBase *modifiers, struct ModifierData *md);
+bool          modifier_unique_name(struct ListBase *modifiers, struct ModifierData *md);
 
 void          modifier_copyData_generic(const struct ModifierData *md, struct ModifierData *target);
 void          modifier_copyData(struct ModifierData *md, struct ModifierData *target);
@@ -345,7 +348,7 @@ struct ModifierData  *modifiers_findByType(struct Object *ob, ModifierType type)
 struct ModifierData  *modifiers_findByName(struct Object *ob, const char *name);
 void          modifiers_clearErrors(struct Object *ob);
 int           modifiers_getCageIndex(struct Scene *scene, struct Object *ob,
-                                     int *lastPossibleCageIndex_r, int virtual_);
+                                     int *r_lastPossibleCageIndex, bool is_virtual);
 
 bool          modifiers_isModifierEnabled(struct Object *ob, int modifierType);
 bool          modifiers_isSoftbodyEnabled(struct Object *ob);
@@ -359,7 +362,6 @@ bool          modifiers_usesArmature(struct Object *ob, struct bArmature *arm);
 bool          modifiers_isCorrectableDeformed(struct Scene *scene, struct Object *ob);
 void          modifier_freeTemporaryData(struct ModifierData *md);
 bool          modifiers_isPreview(struct Object *ob);
-void          modifier_skin_customdata_ensure(struct Object *ob);
 
 typedef struct CDMaskLink {
 	struct CDMaskLink *next;

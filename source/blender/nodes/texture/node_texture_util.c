@@ -70,7 +70,7 @@ static void tex_call_delegate(TexDelegate *dg, float *out, TexParams *params, sh
 		dg->fn(out, params, dg->node, dg->in, thread);
 
 		if (dg->cdata->do_preview)
-			tex_do_preview(dg->preview, params->previewco, out);
+			tex_do_preview(dg->preview, params->previewco, out, dg->cdata->do_manage);
 	}
 }
 
@@ -127,24 +127,32 @@ void params_from_cdata(TexParams *out, TexCallData *in)
 	out->mtex = in->mtex;
 }
 
-void tex_do_preview(bNodePreview *preview, const float coord[2], const float col[4])
+void tex_do_preview(bNodePreview *preview, const float coord[2], const float col[4], bool do_manage)
 {
 	if (preview) {
 		int xs = ((coord[0] + 1.0f) * 0.5f) * preview->xsize;
 		int ys = ((coord[1] + 1.0f) * 0.5f) * preview->ysize;
 		
-		BKE_node_preview_set_pixel(preview, col, xs, ys, 0); /* 0 = no color management */
+		BKE_node_preview_set_pixel(preview, col, xs, ys, do_manage);
 	}
 }
 
 void tex_output(bNode *node, bNodeExecData *execdata, bNodeStack **in, bNodeStack *out, TexFn texfn, TexCallData *cdata)
 {
 	TexDelegate *dg;
-	if (!out->data)
-		/* Freed in tex_end_exec (node.c) */
-		dg = out->data = MEM_mallocN(sizeof(TexDelegate), "tex delegate");
-	else
-		dg = out->data;
+	
+	if (node->flag & NODE_MUTED) {
+		/* do not add a delegate if the node is muted */
+		return;
+	}
+	else {
+		if (!out->data)
+			/* Freed in tex_end_exec (node.c) */
+			dg = out->data = MEM_mallocN(sizeof(TexDelegate), "tex delegate");
+		else
+			dg = out->data;
+	}
+
 
 	dg->cdata = cdata;
 	dg->fn = texfn;

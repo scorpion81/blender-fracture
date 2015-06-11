@@ -35,6 +35,7 @@
 #include "DNA_listBase.h"
 #include "DNA_scene_types.h"
 #include "RNA_types.h"
+#include "RE_bake.h"
 
 struct bNode;
 struct bNodeTree;
@@ -47,6 +48,7 @@ struct RenderLayer;
 struct RenderResult;
 struct ReportList;
 struct Scene;
+struct BakePixel;
 
 /* External Engine */
 
@@ -58,6 +60,7 @@ struct Scene;
 #define RE_USE_SHADING_NODES	16
 #define RE_USE_EXCLUDE_LAYERS	32
 #define RE_USE_SAVE_BUFFERS		64
+#define RE_USE_TEXTURE_PREVIEW		128
 
 /* RenderEngine.flag */
 #define RE_ENGINE_ANIMATION		1
@@ -85,6 +88,7 @@ typedef struct RenderEngineType {
 
 	void (*update)(struct RenderEngine *engine, struct Main *bmain, struct Scene *scene);
 	void (*render)(struct RenderEngine *engine, struct Scene *scene);
+	void (*bake)(struct RenderEngine *engine, struct Scene *scene, struct Object *object, const int pass_type, const struct BakePixel *pixel_array, const int num_pixels, const int depth, void *result);
 
 	void (*view_update)(struct RenderEngine *engine, const struct bContext *context);
 	void (*view_draw)(struct RenderEngine *engine, const struct bContext *context);
@@ -101,6 +105,7 @@ typedef struct RenderEngine {
 
 	int flag;
 	struct Object *camera_override;
+	unsigned int layer_override;
 
 	int tile_x;
 	int tile_y;
@@ -139,10 +144,13 @@ void RE_engine_update_stats(RenderEngine *engine, const char *stats, const char 
 void RE_engine_update_progress(RenderEngine *engine, float progress);
 void RE_engine_update_memory_stats(RenderEngine *engine, float mem_used, float mem_peak);
 void RE_engine_report(RenderEngine *engine, int type, const char *msg);
+void RE_engine_set_error_message(RenderEngine *engine, const char *msg);
 
 int RE_engine_render(struct Render *re, int do_all);
 
 bool RE_engine_is_external(struct Render *re);
+
+void RE_engine_frame_set(struct RenderEngine *engine, int frame, float subframe);
 
 /* Engine Types */
 
@@ -153,6 +161,7 @@ RenderEngineType *RE_engines_find(const char *idname);
 
 void RE_engine_get_current_tiles(struct Render *re, int *total_tiles_r, rcti **tiles_r);
 struct RenderData *RE_engine_get_render_data(struct Render *re);
+void RE_bake_engine_set_engine_parameters(struct Render *re, struct Main *bmain, struct Scene *scene);
 
 #endif /* __RE_ENGINE_H__ */
 

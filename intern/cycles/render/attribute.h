@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __ATTRIBUTE_H__
@@ -27,11 +27,19 @@
 CCL_NAMESPACE_BEGIN
 
 class Attribute;
-class AttributeSet;
 class AttributeRequest;
 class AttributeRequestSet;
+class AttributeSet;
+class ImageManager;
 class Mesh;
 struct Transform;
+
+/* Attributes for voxels are images */
+
+struct VoxelAttribute {
+	ImageManager *manager;
+	int slot;
+};
 
 /* Attribute
  *
@@ -48,29 +56,39 @@ public:
 	AttributeElement element;
 
 	Attribute() {}
+	~Attribute();
 	void set(ustring name, TypeDesc type, AttributeElement element);
-	void reserve(int numverts, int numfaces, int numcurves, int numkeys);
+	void reserve(int numverts, int numfaces, int numsteps, int numcurves, int numkeys, bool resize);
 
 	size_t data_sizeof() const;
-	size_t element_size(int numverts, int numfaces, int numcurves, int numkeys) const;
-	size_t buffer_size(int numverts, int numfaces, int numcurves, int numkeys) const;
+	size_t element_size(int numverts, int numfaces, int numsteps, int numcurves, int numkeys) const;
+	size_t buffer_size(int numverts, int numfaces, int numsteps, int numcurves, int numkeys) const;
 
 	char *data() { return (buffer.size())? &buffer[0]: NULL; };
 	float3 *data_float3() { return (float3*)data(); }
+	float4 *data_float4() { return (float4*)data(); }
 	float *data_float() { return (float*)data(); }
+	uchar4 *data_uchar4() { return (uchar4*)data(); }
 	Transform *data_transform() { return (Transform*)data(); }
+	VoxelAttribute *data_voxel()  { return ( VoxelAttribute*)data(); }
 
 	const char *data() const { return (buffer.size())? &buffer[0]: NULL; }
 	const float3 *data_float3() const { return (const float3*)data(); }
+	const float4 *data_float4() const { return (const float4*)data(); }
 	const float *data_float() const { return (const float*)data(); }
 	const Transform *data_transform() const { return (const Transform*)data(); }
+	const VoxelAttribute *data_voxel() const { return (const VoxelAttribute*)data(); }
 
 	void add(const float& f);
 	void add(const float3& f);
+	void add(const uchar4& f);
 	void add(const Transform& f);
+	void add(const VoxelAttribute& f);
+	void add(const char *data);
 
 	static bool same_storage(TypeDesc a, TypeDesc b);
 	static const char *standard_name(AttributeStandard std);
+	static AttributeStandard name_standard(const char *name);
 };
 
 /* Attribute Set
@@ -86,7 +104,7 @@ public:
 	AttributeSet();
 	~AttributeSet();
 
-	Attribute *add(ustring name, TypeDesc type, AttributeElement element);
+	Attribute *add(ustring name, TypeDesc type, AttributeElement element, bool resize = true);
 	Attribute *find(ustring name) const;
 	void remove(ustring name);
 

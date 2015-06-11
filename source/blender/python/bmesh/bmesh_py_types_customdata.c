@@ -33,7 +33,6 @@
 #include <Python.h>
 
 #include "BLI_utildefines.h"
-#include "BLI_string.h"
 #include "BLI_math_vector.h"
 
 #include "bmesh.h"
@@ -43,6 +42,7 @@
 #include "bmesh_py_types_meshdata.h"
 
 #include "../mathutils/mathutils.h"
+#include "../generic/python_utildefines.h"
 
 #include "BKE_customdata.h"
 
@@ -282,7 +282,7 @@ static PyObject *bpy_bmlayeritem_copy_from(BPy_BMLayerItem *self, BPy_BMLayerIte
 	}
 
 	BPY_BM_CHECK_OBJ(self);
-	BPY_BM_CHECK_SOURCE_OBJ(value, self->bm, "layer.copy_from()");
+	BPY_BM_CHECK_SOURCE_OBJ(self->bm, "layer.copy_from()", value);
 
 	if ((self->htype != value->htype) ||
 	    (self->type  != value->type))
@@ -484,8 +484,9 @@ static PyObject *bpy_bmlayercollection_items(BPy_BMLayerCollection *self)
 
 	for (i = 0; tot-- > 0; index++) {
 		item = PyTuple_New(2);
-		PyTuple_SET_ITEM(item, 0, PyUnicode_FromString(data->layers[index].name));
-		PyTuple_SET_ITEM(item, 1, BPy_BMLayerItem_CreatePyObject(self->bm, self->htype, self->type, index));
+		PyTuple_SET_ITEMS(item,
+		        PyUnicode_FromString(data->layers[index].name),
+		        BPy_BMLayerItem_CreatePyObject(self->bm, self->htype, self->type, index));
 		PyList_SET_ITEM(ret, i++, item);
 	}
 
@@ -560,7 +561,7 @@ static PyObject *bpy_bmlayercollection_get(BPy_BMLayerCollection *self, PyObject
 		}
 	}
 
-	return Py_INCREF(def), def;
+	return Py_INCREF_RET(def);
 }
 
 static struct PyMethodDef bpy_bmlayeritem_methods[] = {
@@ -1015,7 +1016,7 @@ PyObject *BPy_BMLayerItem_GetItem(BPy_BMElem *py_ele, BPy_BMLayerItem *py_layer)
 		}
 		case CD_SHAPEKEY:
 		{
-			ret = Vector_CreatePyObject((float *)value, 3, Py_WRAP, NULL);
+			ret = Vector_CreatePyObject_wrap((float *)value, 3, NULL);
 			break;
 		}
 		case CD_BWEIGHT:

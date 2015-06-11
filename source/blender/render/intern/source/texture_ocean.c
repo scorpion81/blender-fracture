@@ -23,7 +23,7 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-/** \file blender/blenkernel/intern/texture_ocean.c
+/** \file blender/render/intern/source/texture_ocean.c
  *  \ingroup bke
  */
 
@@ -56,8 +56,6 @@ extern struct Render R;
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 
 
-
-
 /* ***** actual texture sampling ***** */
 int ocean_texture(Tex *tex, const float texvec[2], TexResult *texres)
 {
@@ -83,7 +81,7 @@ int ocean_texture(Tex *tex, const float texvec[2], TexResult *texres)
 		const float u = 0.5f + 0.5f * texvec[0];
 		const float v = 0.5f + 0.5f * texvec[1];
 
-		if (omd->oceancache && omd->cached == TRUE) {
+		if (omd->oceancache && omd->cached == true) {
 
 			CLAMP(cfra, omd->bakestart, omd->bakeend);
 			cfra -= omd->bakestart;	/* shift to 0 based */

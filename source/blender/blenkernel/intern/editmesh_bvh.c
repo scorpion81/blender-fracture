@@ -31,8 +31,6 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "DNA_object_types.h"
-
 #include "BLI_math.h"
 #include "BLI_kdopbvh.h"
 
@@ -55,13 +53,17 @@ struct BMBVHTree {
 	int flag;
 };
 
-BMBVHTree *BKE_bmbvh_new_from_editmesh(BMEditMesh *em, int flag, const float (*cos_cage)[3], const bool cos_cage_free)
+BMBVHTree *BKE_bmbvh_new_from_editmesh(
+        BMEditMesh *em, int flag,
+        const float (*cos_cage)[3], const bool cos_cage_free)
 {
 	return BKE_bmbvh_new(em->bm, em->looptris, em->tottri, flag, cos_cage, cos_cage_free);
 }
 
-BMBVHTree *BKE_bmbvh_new(BMesh *bm, BMLoop *(*looptris)[3], int looptris_tot, int flag, const float (*cos_cage)[3],
-const bool cos_cage_free)
+BMBVHTree *BKE_bmbvh_new_ex(
+        BMesh *bm, BMLoop *(*looptris)[3], int looptris_tot, int flag,
+        const float (*cos_cage)[3], const bool cos_cage_free,
+        bool (*test_fn)(BMFace *, void *user_data), void *user_data)
 {
 	/* could become argument */
 	const float epsilon = FLT_EPSILON * 2.0f;
@@ -70,6 +72,10 @@ const bool cos_cage_free)
 	float cos[3][3];
 	int i;
 	int tottri;
+
+	/* avoid testing every tri */
+	BMFace *f_test, *f_test_prev;
+	bool test_fn_ret;
 
 	/* BKE_editmesh_tessface_calc() must be called already */
 	BLI_assert(looptris_tot != 0 || bm->totface == 0);
@@ -85,18 +91,22 @@ const bool cos_cage_free)
 	bmtree->cos_cage_free = cos_cage_free;
 	bmtree->flag = flag;
 
-	if (flag & (BMBVH_RESPECT_SELECT)) {
+	if (test_fn) {
+		/* callback must do... */
+		BLI_assert(!(flag & (BMBVH_RESPECT_SELECT | BMBVH_RESPECT_HIDDEN)));
+
+		f_test_prev = NULL;
+		test_fn_ret = false;
+
 		tottri = 0;
 		for (i = 0; i < looptris_tot; i++) {
-			if (BM_elem_flag_test(looptris[i][0]->f, BM_ELEM_SELECT)) {
-				tottri++;
+			f_test = looptris[i][0]->f;
+			if (f_test != f_test_prev) {
+				test_fn_ret = test_fn(f_test, user_data);
+				f_test_prev = f_test;
 			}
-		}
-	}
-	else if (flag & (BMBVH_RESPECT_HIDDEN)) {
-		tottri = 0;
-		for (i = 0; i < looptris_tot; i++) {
-			if (!BM_elem_flag_test(looptris[i][0]->f, BM_ELEM_HIDDEN)) {
+
+			if (test_fn_ret) {
 				tottri++;
 			}
 		}
@@ -107,17 +117,19 @@ const bool cos_cage_free)
 
 	bmtree->tree = BLI_bvhtree_new(tottri, epsilon, 8, 8);
 
-	for (i = 0; i < looptris_tot; i++) {
+	f_test_prev = NULL;
+	test_fn_ret = false;
 
-		if (flag & BMBVH_RESPECT_SELECT) {
+	for (i = 0; i < looptris_tot; i++) {
+		if (test_fn) {
 			/* note, the arrays wont align now! take care */
-			if (!BM_elem_flag_test(looptris[i][0]->f, BM_ELEM_SELECT)) {
-				continue;
+			f_test = looptris[i][0]->f;
+			if (f_test != f_test_prev) {
+				test_fn_ret = test_fn(f_test, user_data);
+				f_test_prev = f_test;
 			}
-		}
-		else if (flag & BMBVH_RESPECT_HIDDEN) {
-			/* note, the arrays wont align now! take care */
-			if (BM_elem_flag_test(looptris[i][0]->f, BM_ELEM_HIDDEN)) {
+
+			if (!test_fn_ret) {
 				continue;
 			}
 		}
@@ -140,6 +152,38 @@ const bool cos_cage_free)
 	
 	return bmtree;
 }
+
+static bool bm_face_is_select(BMFace *f, void *UNUSED(user_data))
+{
+	return (BM_elem_flag_test(f, BM_ELEM_SELECT) != 0);
+}
+
+static bool bm_face_is_not_hidden(BMFace *f, void *UNUSED(user_data))
+{
+	return (BM_elem_flag_test(f, BM_ELEM_HIDDEN) == 0);
+}
+
+BMBVHTree *BKE_bmbvh_new(
+        BMesh *bm, BMLoop *(*looptris)[3], int looptris_tot, int flag,
+        const float (*cos_cage)[3], const bool cos_cage_free)
+{
+	bool (*test_fn)(BMFace *, void *user_data);
+
+	if (flag & BMBVH_RESPECT_SELECT) {
+		test_fn = bm_face_is_select;
+	}
+	else if (flag & BMBVH_RESPECT_HIDDEN) {
+		test_fn = bm_face_is_not_hidden;
+	}
+	else {
+		test_fn = NULL;
+	}
+
+	flag &= ~(BMBVH_RESPECT_SELECT | BMBVH_RESPECT_HIDDEN);
+
+	return BKE_bmbvh_new_ex(bm, looptris, looptris_tot, flag, cos_cage, cos_cage_free, test_fn, NULL);
+}
+
 
 void BKE_bmbvh_free(BMBVHTree *bmtree)
 {
@@ -195,6 +239,32 @@ struct RayCastUserData {
 	float uv[2];
 };
 
+
+static BMFace *bmbvh_ray_cast_handle_hit(
+        BMBVHTree *bmtree, struct RayCastUserData *bmcb_data, const BVHTreeRayHit *hit,
+        float *r_dist, float r_hitout[3], float r_cagehit[3])
+{
+	if (r_hitout) {
+		if (bmtree->flag & BMBVH_RETURN_ORIG) {
+			BMLoop **ltri = bmtree->looptris[hit->index];
+			interp_v3_v3v3v3_uv(r_hitout, ltri[0]->v->co, ltri[1]->v->co, ltri[2]->v->co, bmcb_data->uv);
+		}
+		else {
+			copy_v3_v3(r_hitout, hit->co);
+		}
+
+		if (r_cagehit) {
+			copy_v3_v3(r_cagehit, hit->co);
+		}
+	}
+
+	if (r_dist) {
+		*r_dist = hit->dist;
+	}
+
+	return bmtree->looptris[hit->index][0]->f;
+}
+
 static void bmbvh_ray_cast_cb(void *userdata, int index, const BVHTreeRay *ray, BVHTreeRayHit *hit)
 {
 	struct RayCastUserData *bmcb_data = userdata;
@@ -217,11 +287,8 @@ static void bmbvh_ray_cast_cb(void *userdata, int index, const BVHTreeRay *ray, 
 
 		copy_v3_v3(hit->no, ltri[0]->f->no);
 
-		copy_v3_v3(hit->co, ray->direction);
-		normalize_v3(hit->co);
-		mul_v3_fl(hit->co, dist);
-		add_v3_v3(hit->co, ray->origin);
-		
+		madd_v3_v3v3fl(hit->co, ray->origin, ray->direction, dist);
+
 		copy_v2_v2(bmcb_data->uv, uv);
 	}
 }
@@ -243,31 +310,67 @@ BMFace *BKE_bmbvh_ray_cast(BMBVHTree *bmtree, const float co[3], const float dir
 	bmcb_data.cos_cage = (const float (*)[3])bmtree->cos_cage;
 	
 	BLI_bvhtree_ray_cast(bmtree->tree, co, dir, radius, &hit, bmbvh_ray_cast_cb, &bmcb_data);
+
 	if (hit.index != -1 && hit.dist != dist) {
-		if (r_hitout) {
-			if (bmtree->flag & BMBVH_RETURN_ORIG) {
-				BMLoop **ltri = bmtree->looptris[hit.index];
-				interp_v3_v3v3v3_uv(r_hitout, ltri[0]->v->co, ltri[1]->v->co, ltri[2]->v->co, bmcb_data.uv);
-			}
-			else {
-				copy_v3_v3(r_hitout, hit.co);
-			}
-
-			if (r_cagehit) {
-				copy_v3_v3(r_cagehit, hit.co);
-			}
-		}
-
-		if (r_dist) {
-			*r_dist = hit.dist;
-		}
-
-		return bmtree->looptris[hit.index][0]->f;
+		return bmbvh_ray_cast_handle_hit(bmtree, &bmcb_data, &hit, r_dist, r_hitout, r_cagehit);
 	}
 
 	return NULL;
 }
 
+/* -------------------------------------------------------------------- */
+/* bmbvh_ray_cast_cb_filter */
+
+/* Same as BKE_bmbvh_ray_cast but takes a callback to filter out faces.
+ */
+
+struct RayCastUserData_Filter {
+	struct RayCastUserData bmcb_data;
+
+	BMBVHTree_FaceFilter filter_cb;
+	void                *filter_userdata;
+};
+
+static void bmbvh_ray_cast_cb_filter(void *userdata, int index, const BVHTreeRay *ray, BVHTreeRayHit *hit)
+{
+	struct RayCastUserData_Filter *bmcb_data_filter = userdata;
+	struct RayCastUserData *bmcb_data = &bmcb_data_filter->bmcb_data;
+	const BMLoop **ltri = bmcb_data->looptris[index];
+	if (bmcb_data_filter->filter_cb(ltri[0]->f, bmcb_data_filter->filter_userdata)) {
+		bmbvh_ray_cast_cb(bmcb_data, index, ray, hit);
+	}
+}
+
+BMFace *BKE_bmbvh_ray_cast_filter(
+        BMBVHTree *bmtree, const float co[3], const float dir[3], const float radius,
+        float *r_dist, float r_hitout[3], float r_cagehit[3],
+        BMBVHTree_FaceFilter filter_cb, void *filter_userdata)
+{
+	BVHTreeRayHit hit;
+	struct RayCastUserData_Filter bmcb_data_filter;
+	struct RayCastUserData *bmcb_data = &bmcb_data_filter.bmcb_data;
+
+	const float dist = r_dist ? *r_dist : FLT_MAX;
+
+	bmcb_data_filter.filter_cb = filter_cb;
+	bmcb_data_filter.filter_userdata = filter_userdata;
+
+	if (bmtree->cos_cage) BLI_assert(!(bmtree->bm->elem_index_dirty & BM_VERT));
+
+	hit.dist = dist;
+	hit.index = -1;
+
+	/* ok to leave 'uv' uninitialized */
+	bmcb_data->looptris = (const BMLoop *(*)[3])bmtree->looptris;
+	bmcb_data->cos_cage = (const float (*)[3])bmtree->cos_cage;
+
+	BLI_bvhtree_ray_cast(bmtree->tree, co, dir, radius, &hit, bmbvh_ray_cast_cb_filter, &bmcb_data_filter);
+	if (hit.index != -1 && hit.dist != dist) {
+		return bmbvh_ray_cast_handle_hit(bmtree, bmcb_data, &hit, r_dist, r_hitout, r_cagehit);
+	}
+
+	return NULL;
+}
 
 /* -------------------------------------------------------------------- */
 /* BKE_bmbvh_find_face_segment */
@@ -310,10 +413,7 @@ static void bmbvh_find_face_segment_cb(void *userdata, int index, const BVHTreeR
 
 		copy_v3_v3(hit->no, ltri[0]->f->no);
 
-		copy_v3_v3(hit->co, ray->direction);
-		normalize_v3(hit->co);
-		mul_v3_fl(hit->co, dist);
-		add_v3_v3(hit->co, ray->origin);
+		madd_v3_v3v3fl(hit->co, ray->origin, ray->direction, dist);
 
 		copy_v2_v2(bmcb_data->uv, uv);
 	}

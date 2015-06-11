@@ -51,6 +51,9 @@ void BM_log_mesh_elems_reorder(BMesh *bm, BMLog *log);
 /* Start a new log entry and update the log entry list */
 BMLogEntry *BM_log_entry_add(BMLog *log);
 
+/* Mark all used ids as unused for this node */
+void BM_log_cleanup_entry(BMLogEntry *entry);
+
 /* Remove an entry from the log */
 void BM_log_entry_drop(BMLogEntry *entry);
 
@@ -61,16 +64,19 @@ void BM_log_undo(BMesh *bm, BMLog *log);
 void BM_log_redo(BMesh *bm, BMLog *log);
 
 /* Log a vertex before it is modified */
-void BM_log_vert_before_modified(BMesh *bm, BMLog *log, struct BMVert *v);
+void BM_log_vert_before_modified(BMLog *log, struct BMVert *v, const int cd_vert_mask_offset);
 
 /* Log a new vertex as added to the BMesh */
-void BM_log_vert_added(BMesh *bm, BMLog *log, struct BMVert *v);
+void BM_log_vert_added(BMLog *log, struct BMVert *v, const int cd_vert_mask_offset);
+
+/* Log a face before it is modified */
+void BM_log_face_modified(BMLog *log, struct BMFace *f);
 
 /* Log a new face as added to the BMesh */
 void BM_log_face_added(BMLog *log, struct BMFace *f);
 
 /* Log a vertex as removed from the BMesh */
-void BM_log_vert_removed(BMesh *bm, BMLog *log, struct BMVert *v);
+void BM_log_vert_removed(BMLog *log, struct BMVert *v, const int cd_vert_mask_offset);
 
 /* Log a face as removed from the BMesh */
 void BM_log_face_removed(BMLog *log, struct BMFace *f);

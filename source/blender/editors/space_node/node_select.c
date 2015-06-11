@@ -32,10 +32,12 @@
 
 #include "DNA_node_types.h"
 
+#include "BLI_utildefines.h"
 #include "BLI_rect.h"
 #include "BLI_lasso.h"
+#include "BLI_math.h"
 #include "BLI_string.h"
-#include "BLI_utildefines.h"
+#include "BLI_string_utf8.h"
 
 #include "BKE_context.h"
 #include "BKE_main.h"
@@ -43,7 +45,6 @@
 
 #include "ED_node.h"  /* own include */
 #include "ED_screen.h"
-#include "ED_types.h"
 
 #include "RNA_access.h"
 #include "RNA_define.h"
@@ -141,7 +142,7 @@ void node_deselect_all(SpaceNode *snode)
 	bNode *node;
 	
 	for (node = snode->edittree->nodes.first; node; node = node->next)
-		nodeSetSelected(node, FALSE);
+		nodeSetSelected(node, false);
 }
 
 void node_deselect_all_input_sockets(SpaceNode *snode, const bool deselect_nodes)
@@ -206,79 +207,156 @@ void node_deselect_all_output_sockets(SpaceNode *snode, const bool deselect_node
 	}
 }
 
-/* return 1 if we need redraw otherwise zero. */
-int node_select_same_type(SpaceNode *snode)
+/* Return true if we need redraw, otherwise false. */
+
+static bool node_select_grouped_type(SpaceNode *snode, bNode *node_act)
 {
-	bNode *nac, *p;
-	int redraw;
+	bNode *node;
+	bool changed = false;
 
-	/* search for the active node. */
-	for (nac = snode->edittree->nodes.first; nac; nac = nac->next) {
-		if (nac->flag & SELECT)
-			break;
-	}
-
-	/* no active node, return. */
-	if (!nac)
-		return(0);
-
-	redraw = 0;
-	for (p = snode->edittree->nodes.first; p; p = p->next) {
-		if (p->type != nac->type && p->flag & SELECT) {
-			/* if it's selected but different type, unselect */
-			redraw = 1;
-			nodeSetSelected(p, FALSE);
-		}
-		else if (p->type == nac->type && (!(p->flag & SELECT))) {
-			/* if it's the same type and is not selected, select! */
-			redraw = 1;
-			nodeSetSelected(p, TRUE);
+	for (node = snode->edittree->nodes.first; node; node = node->next) {
+		if ((node->flag & SELECT) == 0) {
+			if (node->type == node_act->type) {
+				nodeSetSelected(node, true);
+				changed = true;
+			}
 		}
 	}
-	return(redraw);
+
+	return changed;
 }
 
-/* return 1 if we need redraw, otherwise zero.
- * dir can be 0 == next or 0 != prev.
- */
-int node_select_same_type_np(SpaceNode *snode, int dir)
+static bool node_select_grouped_color(SpaceNode *snode, bNode *node_act)
 {
-	bNode *nac, *p, *tnode;
+	bNode *node;
+	bool changed = false;
 
-	/* search the active one. */
-	for (nac = snode->edittree->nodes.first; nac; nac = nac->next) {
-		if (nac->flag & SELECT)
+	for (node = snode->edittree->nodes.first; node; node = node->next) {
+		if ((node->flag & SELECT) == 0) {
+			if (compare_v3v3(node->color, node_act->color, 0.005f)) {
+				nodeSetSelected(node, true);
+				changed = true;
+			}
+		}
+	}
+
+	return changed;
+}
+
+static bool node_select_grouped_name(SpaceNode *snode, bNode *node_act, const bool from_right)
+{
+	bNode *node;
+	bool changed = false;
+	const unsigned int delims[] = {'.', '-', '_', '\0'};
+	size_t pref_len_act, pref_len_curr;
+	char *sep, *suf_act, *suf_curr;
+
+	pref_len_act = BLI_str_partition_ex_utf8(node_act->name, delims, &sep, &suf_act, from_right);
+
+	/* Note: in case we are searching for suffix, and found none, use whole name as suffix. */
+	if (from_right && !(sep && suf_act)) {
+		pref_len_act = 0;
+		suf_act = node_act->name;
+	}
+
+	for (node = snode->edittree->nodes.first; node; node = node->next) {
+		if (node->flag & SELECT) {
+			continue;
+		}
+		pref_len_curr = BLI_str_partition_ex_utf8(node->name, delims, &sep, &suf_curr, from_right);
+
+		/* Same as with active node name! */
+		if (from_right && !(sep && suf_curr)) {
+			pref_len_curr = 0;
+			suf_curr = node->name;
+		}
+
+		if ((from_right && STREQ(suf_act, suf_curr)) ||
+		    (!from_right && (pref_len_act == pref_len_curr) && STREQLEN(node_act->name, node->name, pref_len_act)))
+		{
+			nodeSetSelected(node, true);
+			changed = true;
+		}
+	}
+
+	return changed;
+}
+
+enum {
+	NODE_SELECT_GROUPED_TYPE   = 0,
+	NODE_SELECT_GROUPED_COLOR  = 1,
+	NODE_SELECT_GROUPED_PREFIX = 2,
+	NODE_SELECT_GROUPED_SUFIX  = 3,
+};
+
+static int node_select_grouped_exec(bContext *C, wmOperator *op)
+{
+	SpaceNode *snode = CTX_wm_space_node(C);
+	bNode *node_act = nodeGetActive(snode->edittree);
+	bNode *node;
+	bool changed = false;
+	const bool extend = RNA_boolean_get(op->ptr, "extend");
+	const int type = RNA_enum_get(op->ptr, "type");
+
+	if (!extend) {
+		for (node = snode->edittree->nodes.first; node; node = node->next) {
+			nodeSetSelected(node, false);
+		}
+	}
+	nodeSetSelected(node_act, true);
+
+	switch (type) {
+		case NODE_SELECT_GROUPED_TYPE:
+			changed = node_select_grouped_type(snode, node_act);
+			break;
+		case NODE_SELECT_GROUPED_COLOR:
+			changed = node_select_grouped_color(snode, node_act);
+			break;
+		case NODE_SELECT_GROUPED_PREFIX:
+			changed = node_select_grouped_name(snode, node_act, false);
+			break;
+		case NODE_SELECT_GROUPED_SUFIX:
+			changed = node_select_grouped_name(snode, node_act, true);
+			break;
+		default:
 			break;
 	}
 
-	/* no active node, return. */
-	if (!nac)
-		return(0);
-
-	if (dir == 0)
-		p = nac->next;
-	else
-		p = nac->prev;
-
-	while (p) {
-		/* Now search the next with the same type. */
-		if (p->type == nac->type)
-			break;
-
-		if (dir == 0)
-			p = p->next;
-		else
-			p = p->prev;
+	if (changed) {
+		ED_node_sort(snode->edittree);
+		WM_event_add_notifier(C, NC_NODE | NA_SELECTED, NULL);
+		return OPERATOR_FINISHED;
 	}
 
-	if (p) {
-		for (tnode = snode->edittree->nodes.first; tnode; tnode = tnode->next)
-			if (tnode != p)
-				nodeSetSelected(tnode, FALSE);
-		nodeSetSelected(p, TRUE);
-		return(1);
-	}
-	return(0);
+	return OPERATOR_CANCELLED;
+}
+
+void NODE_OT_select_grouped(wmOperatorType *ot)
+{
+	static EnumPropertyItem prop_select_grouped_types[] = {
+		{NODE_SELECT_GROUPED_TYPE, "TYPE", 0, "Type", ""},
+		{NODE_SELECT_GROUPED_COLOR, "COLOR", 0, "Color", ""},
+		{NODE_SELECT_GROUPED_PREFIX, "PREFIX", 0, "Prefix", ""},
+		{NODE_SELECT_GROUPED_SUFIX, "SUFFIX", 0, "Suffix", ""},
+		{0, NULL, 0, NULL, NULL}
+	};
+
+	/* identifiers */
+	ot->name = "Select Grouped";
+	ot->description = "Select nodes with similar properties";
+	ot->idname = "NODE_OT_select_grouped";
+
+	/* api callbacks */
+	ot->invoke = WM_menu_invoke;
+	ot->exec = node_select_grouped_exec;
+	ot->poll = ED_operator_node_active;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+
+	/* properties */
+	RNA_def_boolean(ot->srna, "extend", false, "Extend", "Extend selection instead of deselecting everything first");
+	ot->prop = RNA_def_enum(ot->srna, "type", prop_select_grouped_types, 0, "Type", "");
 }
 
 void node_select_single(bContext *C, bNode *node)
@@ -289,8 +367,8 @@ void node_select_single(bContext *C, bNode *node)
 	
 	for (tnode = snode->edittree->nodes.first; tnode; tnode = tnode->next)
 		if (tnode != node)
-			nodeSetSelected(tnode, FALSE);
-	nodeSetSelected(node, TRUE);
+			nodeSetSelected(tnode, false);
+	nodeSetSelected(node, true);
 	
 	ED_node_set_active(bmain, snode->edittree, node);
 	ED_node_set_active_viewer_key(snode);
@@ -365,7 +443,7 @@ static int node_mouse_select(Main *bmain, SpaceNode *snode, ARegion *ar, const i
 			for (tnode = snode->edittree->nodes.first; tnode; tnode = tnode->next) {
 				nodeSetSelected(tnode, false);
 			}
-			nodeSetSelected(node, TRUE);
+			nodeSetSelected(node, true);
 			ED_node_set_active(bmain, snode->edittree, node);
 			selected = 1;
 		}
@@ -445,22 +523,19 @@ static int node_borderselect_exec(bContext *C, wmOperator *op)
 	SpaceNode *snode = CTX_wm_space_node(C);
 	ARegion *ar = CTX_wm_region(C);
 	bNode *node;
-	rcti rect;
 	rctf rectf;
 	int gesture_mode = RNA_int_get(op->ptr, "gesture_mode");
 	const bool extend = RNA_boolean_get(op->ptr, "extend");
 	
-	WM_operator_properties_border_to_rcti(op, &rect);
-
-	UI_view2d_region_to_view(&ar->v2d, rect.xmin, rect.ymin, &rectf.xmin, &rectf.ymin);
-	UI_view2d_region_to_view(&ar->v2d, rect.xmax, rect.ymax, &rectf.xmax, &rectf.ymax);
+	WM_operator_properties_border_to_rctf(op, &rectf);
+	UI_view2d_region_to_view_rctf(&ar->v2d, &rectf, &rectf);
 	
 	for (node = snode->edittree->nodes.first; node; node = node->next) {
 		if (BLI_rctf_isect(&rectf, &node->totr, NULL)) {
 			nodeSetSelected(node, (gesture_mode == GESTURE_MODAL_SELECT));
 		}
 		else if (!extend) {
-			nodeSetSelected(node, FALSE);
+			nodeSetSelected(node, false);
 		}
 	}
 	
@@ -510,7 +585,7 @@ void NODE_OT_select_border(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
 	/* rna */
-	WM_operator_properties_gesture_border(ot, TRUE);
+	WM_operator_properties_gesture_border(ot, true);
 	RNA_def_boolean(ot->srna, "tweak", 0, "Tweak", "Only activate when mouse is not over a node - useful for tweak gesture");
 }
 
@@ -567,7 +642,7 @@ void NODE_OT_select_circle(wmOperatorType *ot)
 	/* rna */
 	RNA_def_int(ot->srna, "x", 0, INT_MIN, INT_MAX, "X", "", INT_MIN, INT_MAX);
 	RNA_def_int(ot->srna, "y", 0, INT_MIN, INT_MAX, "Y", "", INT_MIN, INT_MAX);
-	RNA_def_int(ot->srna, "radius", 0, INT_MIN, INT_MAX, "Radius", "", INT_MIN, INT_MAX);
+	RNA_def_int(ot->srna, "radius", 1, 1, INT_MAX, "Radius", "", 1, INT_MAX);
 	RNA_def_int(ot->srna, "gesture_mode", 0, INT_MIN, INT_MAX, "Gesture Mode", "", INT_MIN, INT_MAX);
 }
 
@@ -593,11 +668,8 @@ static bool do_lasso_select_node(bContext *C, const int mcords[][2], short moves
 		                       BLI_rctf_cent_y(&node->totr)};
 
 		/* marker in screen coords */
-		UI_view2d_view_to_region(&ar->v2d,
-		                         cent[0], cent[1],
-		                         &screen_co[0], &screen_co[1]);
-
-		if (BLI_rcti_isect_pt(&rect, screen_co[0], screen_co[1]) &&
+		if (UI_view2d_view_to_region_clip(&ar->v2d, cent[0], cent[1], &screen_co[0], &screen_co[1]) &&
+		    BLI_rcti_isect_pt(&rect, screen_co[0], screen_co[1]) &&
 		    BLI_lasso_is_point_inside(mcords, moves, screen_co[0], screen_co[1], INT_MAX))
 		{
 			nodeSetSelected(node, select);
@@ -672,10 +744,10 @@ static int node_select_all_exec(bContext *C, wmOperator *op)
 	for (node = node_lb->first; node; node = node->next) {
 		switch (action) {
 			case SEL_SELECT:
-				nodeSetSelected(node, TRUE);
+				nodeSetSelected(node, true);
 				break;
 			case SEL_DESELECT:
-				nodeSetSelected(node, FALSE);
+				nodeSetSelected(node, false);
 				break;
 			case SEL_INVERT:
 				nodeSetSelected(node, !(node->flag & SELECT));
@@ -726,7 +798,7 @@ static int node_select_linked_to_exec(bContext *C, wmOperator *UNUSED(op))
 	
 	for (node = snode->edittree->nodes.first; node; node = node->next) {
 		if (node->flag & NODE_TEST)
-			nodeSetSelected(node, TRUE);
+			nodeSetSelected(node, true);
 	}
 	
 	ED_node_sort(snode->edittree);
@@ -770,7 +842,7 @@ static int node_select_linked_from_exec(bContext *C, wmOperator *UNUSED(op))
 	
 	for (node = snode->edittree->nodes.first; node; node = node->next) {
 		if (node->flag & NODE_TEST)
-			nodeSetSelected(node, TRUE);
+			nodeSetSelected(node, true);
 	}
 	
 	ED_node_sort(snode->edittree);
@@ -793,40 +865,6 @@ void NODE_OT_select_linked_from(wmOperatorType *ot)
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
-
-/* ****** Select Same Type ****** */
-
-static int node_select_same_type_exec(bContext *C, wmOperator *UNUSED(op))
-{
-	SpaceNode *snode = CTX_wm_space_node(C);
-
-	node_select_same_type(snode);
-
-	ED_node_sort(snode->edittree);
-
-	WM_event_add_notifier(C, NC_NODE | NA_SELECTED, NULL);
-	return OPERATOR_FINISHED;
-}
-
-void NODE_OT_select_same_type(wmOperatorType *ot)
-{
-	/* identifiers */
-	ot->name = "Select Same Type";
-	ot->description = "Select all the nodes of the same type";
-	ot->idname = "NODE_OT_select_same_type";
-	
-	/* api callbacks */
-	ot->exec = node_select_same_type_exec;
-	ot->poll = ED_operator_node_active;
-	
-	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
-}
-
-/* ****** Select The Next/Prev Node Of The Same Type ****** */
-
-/* ************************** */
-
 
 static int node_select_same_type_step_exec(bContext *C, wmOperator *op)
 {
@@ -934,7 +972,7 @@ static void node_find_cb(const struct bContext *C, void *UNUSED(arg), const char
 				BLI_snprintf(name, 256, "%s (%s)", node->name, node->label);
 			else
 				BLI_strncpy(name, node->name, 256);
-			if (false == uiSearchItemAdd(items, name, node, 0))
+			if (false == UI_search_item_add(items, name, node, 0))
 				break;
 		}
 	}
@@ -968,24 +1006,23 @@ static uiBlock *node_find_menu(bContext *C, ARegion *ar, void *arg_op)
 	uiBut *but;
 	wmOperator *op = (wmOperator *)arg_op;
 	
-	block = uiBeginBlock(C, ar, "_popup", UI_EMBOSS);
-	uiBlockSetFlag(block, UI_BLOCK_LOOP | UI_BLOCK_MOVEMOUSE_QUIT | UI_BLOCK_SEARCH_MENU);
+	block = UI_block_begin(C, ar, "_popup", UI_EMBOSS);
+	UI_block_flag_enable(block, UI_BLOCK_LOOP | UI_BLOCK_MOVEMOUSE_QUIT | UI_BLOCK_SEARCH_MENU);
 	
 	but = uiDefSearchBut(block, search, 0, ICON_VIEWZOOM, sizeof(search), 10, 10, 9 * UI_UNIT_X, UI_UNIT_Y, 0, 0, "");
-	uiButSetSearchFunc(but, node_find_cb, op->type, node_find_call_cb, NULL);
+	UI_but_func_search_set(but, node_find_cb, op->type, node_find_call_cb, NULL);
 	
 	/* fake button, it holds space for search items */
-	uiDefBut(block, LABEL, 0, "", 10, 10 - uiSearchBoxHeight(), uiSearchBoxWidth(), uiSearchBoxHeight(), NULL, 0, 0, 0, 0, NULL);
+	uiDefBut(block, UI_BTYPE_LABEL, 0, "", 10, 10 - UI_searchbox_size_y(), UI_searchbox_size_x(), UI_searchbox_size_y(), NULL, 0, 0, 0, 0, NULL);
 	
-	uiPopupBoundsBlock(block, 6, 0, -UI_UNIT_Y); /* move it downwards, mouse over button */
-	uiEndBlock(C, block);
+	UI_block_bounds_set_popup(block, 6, 0, -UI_UNIT_Y); /* move it downwards, mouse over button */
 	
-	//	uiButActiveOnly(C, ar, block, but); XXX using this here makes Blender hang - investigate
+	//	UI_but_active_only(C, ar, block, but); XXX using this here makes Blender hang - investigate
 	wm_event_init_from_window(win, &event);
 	event.type = EVT_BUT_OPEN;
 	event.val = KM_PRESS;
 	event.customdata = but;
-	event.customdatafree = FALSE;
+	event.customdatafree = false;
 	wm_event_add(win, &event);
 	
 	return block;
@@ -994,7 +1031,7 @@ static uiBlock *node_find_menu(bContext *C, ARegion *ar, void *arg_op)
 
 static int node_find_node_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
-	uiPupBlock(C, node_find_menu, op);
+	UI_popup_block_invoke(C, node_find_menu, op);
 	return OPERATOR_CANCELLED;
 }
 

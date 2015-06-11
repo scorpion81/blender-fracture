@@ -22,7 +22,6 @@
  */
 
 #include "COM_OutputFileOperation.h"
-#include "COM_SocketConnection.h"
 #include <string.h>
 #include "BLI_listbase.h"
 #include "BLI_path_util.h"
@@ -141,8 +140,9 @@ void OutputSingleLayerOperation::deinitExecution()
 		IMB_colormanagement_imbuf_for_write(ibuf, true, false, m_viewSettings, m_displaySettings,
 		                                    this->m_format);
 
-		BKE_makepicstring(filename, this->m_path, bmain->name, this->m_rd->cfra, this->m_format,
-		                  (this->m_rd->scemode & R_EXTENSION), true);
+		BKE_image_path_from_imformat(
+		        filename, this->m_path, bmain->name, this->m_rd->cfra,
+		        this->m_format, (this->m_rd->scemode & R_EXTENSION) != 0, true);
 		
 		if (0 == BKE_imbuf_write(ibuf, filename, this->m_format))
 			printf("Cannot save Node File Output to %s\n", filename);
@@ -156,10 +156,12 @@ void OutputSingleLayerOperation::deinitExecution()
 }
 
 
-OutputOpenExrLayer::OutputOpenExrLayer(const char *name_, DataType datatype_)
+OutputOpenExrLayer::OutputOpenExrLayer(const char *name_, DataType datatype_, bool use_layer_)
 {
 	BLI_strncpy(this->name, name_, sizeof(this->name));
 	this->datatype = datatype_;
+	this->use_layer = use_layer_;
+	
 	/* these are created in initExecution */
 	this->outputBuffer = 0;
 	this->imageInput = 0;
@@ -175,21 +177,20 @@ OutputOpenExrMultiLayerOperation::OutputOpenExrMultiLayerOperation(
 	this->m_exr_codec = exr_codec;
 }
 
-void OutputOpenExrMultiLayerOperation::add_layer(const char *name, DataType datatype)
+void OutputOpenExrMultiLayerOperation::add_layer(const char *name, DataType datatype, bool use_layer)
 {
 	this->addInputSocket(datatype);
-	this->m_layers.push_back(OutputOpenExrLayer(name, datatype));
+	this->m_layers.push_back(OutputOpenExrLayer(name, datatype, use_layer));
 }
 
 void OutputOpenExrMultiLayerOperation::initExecution()
 {
 	for (unsigned int i = 0; i < this->m_layers.size(); ++i) {
-		SocketReader *reader = getInputSocketReader(i);
-		this->m_layers[i].imageInput = reader;
-		if (reader)
+		if (this->m_layers[i].use_layer) {
+			SocketReader *reader = getInputSocketReader(i);
+			this->m_layers[i].imageInput = reader;
 			this->m_layers[i].outputBuffer = init_buffer(this->getWidth(), this->getHeight(), this->m_layers[i].datatype);
-		else
-			this->m_layers[i].outputBuffer = NULL;
+		}
 	}
 }
 
@@ -211,8 +212,9 @@ void OutputOpenExrMultiLayerOperation::deinitExecution()
 		char filename[FILE_MAX];
 		void *exrhandle = IMB_exr_get_handle();
 		
-		BKE_makepicstring_from_type(filename, this->m_path, bmain->name, this->m_rd->cfra, R_IMF_IMTYPE_MULTILAYER,
-		                  (this->m_rd->scemode & R_EXTENSION), true);
+		BKE_image_path_from_imtype(
+		        filename, this->m_path, bmain->name, this->m_rd->cfra, R_IMF_IMTYPE_MULTILAYER,
+		        (this->m_rd->scemode & R_EXTENSION) != 0, true);
 		BLI_make_existing_file(filename);
 		
 		for (unsigned int i = 0; i < this->m_layers.size(); ++i) {

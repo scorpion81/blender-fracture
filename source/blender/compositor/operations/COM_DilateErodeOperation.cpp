@@ -82,18 +82,18 @@ void DilateErodeThresholdOperation::executePixel(float output[4], int x, int y, 
 	const int bufferWidth = BLI_rcti_size_x(rect);
 	int offset;
 
-	this->m_inputProgram->read(inputValue, x, y, NULL);
+	inputBuffer->read(inputValue, x, y);
 	if (inputValue[0] > sw) {
 		for (int yi = miny; yi < maxy; yi++) {
 			const float dy = yi - y;
-			offset = ((yi - rect->ymin) * bufferWidth + (minx - rect->xmin)) * 4;
+			offset = ((yi - rect->ymin) * bufferWidth + (minx - rect->xmin));
 			for (int xi = minx; xi < maxx; xi++) {
 				if (buffer[offset] < sw) {
 					const float dx = xi - x;
 					const float dis = dx * dx + dy * dy;
 					mindist = min(mindist, dis);
 				}
-				offset += 4;
+				offset ++;
 			}
 		}
 		pixelvalue = -sqrtf(mindist);
@@ -101,15 +101,14 @@ void DilateErodeThresholdOperation::executePixel(float output[4], int x, int y, 
 	else {
 		for (int yi = miny; yi < maxy; yi++) {
 			const float dy = yi - y;
-			offset = ((yi - rect->ymin) * bufferWidth + (minx - rect->xmin)) * 4;
+			offset = ((yi - rect->ymin) * bufferWidth + (minx - rect->xmin));
 			for (int xi = minx; xi < maxx; xi++) {
 				if (buffer[offset] > sw) {
 					const float dx = xi - x;
 					const float dis = dx * dx + dy * dy;
 					mindist = min(mindist, dis);
 				}
-				offset += 4;
-
+				offset ++;
 			}
 		}
 		pixelvalue = sqrtf(mindist);
@@ -206,14 +205,14 @@ void DilateDistanceOperation::executePixel(float output[4], int x, int y, void *
 
 	for (int yi = miny; yi < maxy; yi++) {
 		const float dy = yi - y;
-		offset = ((yi - rect->ymin) * bufferWidth + (minx - rect->xmin)) * 4;
+		offset = ((yi - rect->ymin) * bufferWidth + (minx - rect->xmin));
 		for (int xi = minx; xi < maxx; xi++) {
 			const float dx = xi - x;
 			const float dis = dx * dx + dy * dy;
 			if (dis <= mindist) {
 				value = max(buffer[offset], value);
 			}
-			offset += 4;
+			offset ++;
 		}
 	}
 	output[0] = value;
@@ -280,14 +279,14 @@ void ErodeDistanceOperation::executePixel(float output[4], int x, int y, void *d
 
 	for (int yi = miny; yi < maxy; yi++) {
 		const float dy = yi - y;
-		offset = ((yi - rect->ymin) * bufferWidth + (minx - rect->xmin)) * 4;
+		offset = ((yi - rect->ymin) * bufferWidth + (minx - rect->xmin));
 		for (int xi = minx; xi < maxx; xi++) {
 			const float dx = xi - x;
 			const float dis = dx * dx + dy * dy;
 			if (dis <= mindist) {
 				value = min(buffer[offset], value);
 			}
-			offset += 4;
+			offset ++;
 		}
 	}
 	output[0] = value;
@@ -371,7 +370,7 @@ void *DilateStepOperation::initializeTileData(rcti *rect)
 	float *rectf = result->buffer;
 
 	// temp holds maxima for every step in the algorithm, buf holds a
-	// single row or column of input values, padded with MAXFLOATs to
+	// single row or column of input values, padded with FLT_MAX's to
 	// simplify the logic.
 	float *temp = (float *)MEM_mallocN(sizeof(float) * (2 * window - 1), "dilate erode temp");
 	float *buf = (float *)MEM_mallocN(sizeof(float) * (max(bwidth, bheight) + 5 * half_window), "dilate erode buf");
@@ -380,10 +379,10 @@ void *DilateStepOperation::initializeTileData(rcti *rect)
 	// first pass, horizontal dilate/erode
 	for (y = ymin; y < ymax; y++) {
 		for (x = 0; x < bwidth + 5 * half_window; x++) {
-			buf[x] = -MAXFLOAT;
+			buf[x] = -FLT_MAX;
 		}
 		for (x = xmin; x < xmax; ++x) {
-			buf[x - rect->xmin + window - 1] = buffer[4 * (y * width + x)];
+			buf[x - rect->xmin + window - 1] = buffer[(y * width + x)];
 		}
 
 		for (i = 0; i < (bwidth + 3 * half_window) / window; i++) {
@@ -405,7 +404,7 @@ void *DilateStepOperation::initializeTileData(rcti *rect)
 	// second pass, vertical dilate/erode
 	for (x = 0; x < bwidth; x++) {
 		for (y = 0; y < bheight + 5 * half_window; y++) {
-			buf[y] = -MAXFLOAT;
+			buf[y] = -FLT_MAX;
 		}
 		for (y = ymin; y < ymax; y++) {
 			buf[y - rect->ymin + window - 1] = rectf[(y - ymin) * bwidth + x];
@@ -498,7 +497,7 @@ void *ErodeStepOperation::initializeTileData(rcti *rect)
 	float *rectf = result->buffer;
 
 	// temp holds maxima for every step in the algorithm, buf holds a
-	// single row or column of input values, padded with MAXFLOATs to
+	// single row or column of input values, padded with FLT_MAX's to
 	// simplify the logic.
 	float *temp = (float *)MEM_mallocN(sizeof(float) * (2 * window - 1), "dilate erode temp");
 	float *buf = (float *)MEM_mallocN(sizeof(float) * (max(bwidth, bheight) + 5 * half_window), "dilate erode buf");
@@ -507,10 +506,10 @@ void *ErodeStepOperation::initializeTileData(rcti *rect)
 	// first pass, horizontal dilate/erode
 	for (y = ymin; y < ymax; y++) {
 		for (x = 0; x < bwidth + 5 * half_window; x++) {
-			buf[x] = MAXFLOAT;
+			buf[x] = FLT_MAX;
 		}
 		for (x = xmin; x < xmax; ++x) {
-			buf[x - rect->xmin + window - 1] = buffer[4 * (y * width + x)];
+			buf[x - rect->xmin + window - 1] = buffer[(y * width + x)];
 		}
 
 		for (i = 0; i < (bwidth + 3 * half_window) / window; i++) {
@@ -532,7 +531,7 @@ void *ErodeStepOperation::initializeTileData(rcti *rect)
 	// second pass, vertical dilate/erode
 	for (x = 0; x < bwidth; x++) {
 		for (y = 0; y < bheight + 5 * half_window; y++) {
-			buf[y] = MAXFLOAT;
+			buf[y] = FLT_MAX;
 		}
 		for (y = ymin; y < ymax; y++) {
 			buf[y - rect->ymin + window - 1] = rectf[(y - ymin) * bwidth + x];

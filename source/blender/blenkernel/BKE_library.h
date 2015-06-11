@@ -49,6 +49,7 @@ struct PropertyRNA;
 
 void *BKE_libblock_alloc(struct Main *bmain, short type, const char *name) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
 void *BKE_libblock_copy_ex(struct Main *bmain, struct ID *id) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
+void *BKE_libblock_copy_nolib(struct ID *id, const bool do_action) ATTR_NONNULL();
 void *BKE_libblock_copy(struct ID *id) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
 void  BKE_libblock_copy_data(struct ID *id, const struct ID *id_from, const bool do_action);
 
@@ -70,18 +71,21 @@ void id_clear_lib_data(struct Main *bmain, struct ID *id);
 
 struct ListBase *which_libbase(struct Main *mainlib, short type);
 
-#define MAX_LIBARRAY    41
-int set_listbasepointers(struct Main *main, struct ListBase **lb);
+#define MAX_LIBARRAY    35
+int set_listbasepointers(struct Main *main, struct ListBase *lb[MAX_LIBARRAY]);
 
 void BKE_libblock_free(struct Main *bmain, void *idv);
 void BKE_libblock_free_ex(struct Main *bmain, void *idv, bool do_id_user);
 void BKE_libblock_free_us(struct Main *bmain, void *idv);
-void BKE_libblock_free_data(struct ID *id);
+void BKE_libblock_free_data(struct Main *bmain, struct ID *id);
 
 
 /* Main API */
 struct Main *BKE_main_new(void);
 void BKE_main_free(struct Main *mainvar);
+
+void BKE_main_lock(struct Main *bmain);
+void BKE_main_unlock(struct Main *bmain);
 
 void BKE_main_id_tag_idcode(struct Main *mainvar, const short type, const bool tag);
 void BKE_main_id_tag_listbase(struct ListBase *lb, const bool tag);
@@ -100,17 +104,11 @@ void test_idbutton(char *name);
 
 void BKE_library_make_local(struct Main *bmain, struct Library *lib, bool untagged_only);
 
+struct ID *BKE_libblock_find_name_ex(struct Main *bmain, const short type, const char *name) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
 struct ID *BKE_libblock_find_name(const short type, const char *name) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
 
-#if 0
-void IDnames_to_pupstring(const char **str, const char *title, const char *extraops,
-                          struct ListBase *lb, struct ID *link, short *nr);
-void IMAnames_to_pupstring(const char **str, const char *title, const char *extraops,
-                           struct ListBase *lb, struct ID *link, short *nr);
-#endif
-
-void set_free_windowmanager_cb(void (*func)(struct bContext *, struct wmWindowManager *) );
-void set_free_notifier_reference_cb(void (*func)(const void *) );
+void set_free_windowmanager_cb(void (*func)(struct bContext *, struct wmWindowManager *));
+void set_free_notifier_reference_cb(void (*func)(const void *));
 
 /* use when "" is given to new_id() */
 #define ID_FALLBACK_NAME N_("Untitled")

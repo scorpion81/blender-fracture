@@ -39,11 +39,8 @@
 #include "BLI_math.h"
 
 #include "BKE_cdderivedmesh.h"
-#include "BKE_mesh.h"
 #include "BKE_modifier.h"
 #include "BKE_deform.h"
-
-#include "bmesh.h"
 
 #include "MEM_guardedalloc.h"
 #include "depsgraph_private.h"
@@ -272,7 +269,7 @@ static DerivedMesh *doMirrorOnAxis(MirrorModifierData *mmd,
 		MDeformVert *dvert = (MDeformVert *) CustomData_get_layer(&result->vertData, CD_MDEFORMVERT) + maxVerts;
 		int *flip_map = NULL, flip_map_len = 0;
 
-		flip_map = defgroup_flip_map(ob, &flip_map_len, FALSE);
+		flip_map = defgroup_flip_map(ob, &flip_map_len, false);
 		
 		if (flip_map) {
 			for (i = 0; i < maxVerts; dvert++, i++) {
@@ -291,7 +288,7 @@ static DerivedMesh *doMirrorOnAxis(MirrorModifierData *mmd,
 		/* slow - so only call if one or more merge verts are found,
 		 * users may leave this on and not realize there is nothing to merge - campbell */
 		if (tot_vtargetmap) {
-			result = CDDM_merge_verts(result, vtargetmap, tot_vtargetmap);
+			result = CDDM_merge_verts(result, vtargetmap, tot_vtargetmap, CDDM_MERGE_VERTS_DUMP_IF_MAPPED);
 		}
 		MEM_freeN(vtargetmap);
 	}

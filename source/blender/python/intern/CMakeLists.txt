@@ -47,11 +47,12 @@ set(SRC
 	gpu.c
 	bpy.c
 	bpy_app.c
-	bpy_app_ffmpeg.c
 	bpy_app_build_options.c
+	bpy_app_ffmpeg.c
 	bpy_app_handlers.c
 	bpy_app_ocio.c
 	bpy_app_oiio.c
+	bpy_app_sdl.c
 	bpy_app_translations.c
 	bpy_driver.c
 	bpy_interface.c
@@ -68,16 +69,18 @@ set(SRC
 	bpy_rna_callback.c
 	bpy_traceback.c
 	bpy_util.c
+	bpy_utils_units.c
 	stubs.c
 
 	gpu.h
 	bpy.h
 	bpy_app.h
-	bpy_app_ffmpeg.h
 	bpy_app_build_options.h
+	bpy_app_ffmpeg.h
 	bpy_app_handlers.h
 	bpy_app_ocio.h
 	bpy_app_oiio.h
+	bpy_app_sdl.h
 	bpy_app_translations.h
 	bpy_driver.h
 	bpy_intern_string.h
@@ -91,6 +94,7 @@ set(SRC
 	bpy_rna_callback.h
 	bpy_traceback.h
 	bpy_util.h
+	bpy_utils_units.h
 	../BPY_extern.h
 )
 
@@ -208,7 +212,17 @@ if(WITH_OPENAL)
 endif()
 
 if(WITH_SDL)
+	list(APPEND INC_SYS
+		${SDL_INCLUDE_DIR}
+	)
 	add_definitions(-DWITH_SDL)
+endif()
+
+if(WITH_SDL_DYNLOAD)
+	list(APPEND INC
+		../../../../extern/sdlew/include
+	)
+    add_definitions(-DWITH_SDL_DYNLOAD)
 endif()
 
 if(WITH_JACK)
@@ -258,5 +272,6 @@ if(WITH_PLAYER)
 	add_definitions(-DWITH_PLAYER)
 endif()
 
+add_definitions(${GL_DEFINITIONS})
 
 blender_add_lib(bf_python "${SRC}" "${INC}" "${INC_SYS}")

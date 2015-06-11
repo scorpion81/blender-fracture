@@ -125,7 +125,7 @@ void register_node_type_cmp_mask(void);
 void register_node_type_cmp_glare(void);
 void register_node_type_cmp_tonemap(void);
 void register_node_type_cmp_lensdist(void);
-
+void register_node_type_cmp_sunbeams(void);
 
 void register_node_type_cmp_colorcorrection(void);
 void register_node_type_cmp_boxmask(void);
@@ -136,6 +136,7 @@ void register_node_type_cmp_switch(void);
 void register_node_type_cmp_pixelate(void);
 void register_node_type_cmp_trackpos(void);
 void register_node_type_cmp_planetrackdeform(void);
+void register_node_type_cmp_cornerpin(void);
 
 void node_cmp_rlayers_force_hidden_passes(struct bNode *node);
 

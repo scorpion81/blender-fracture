@@ -29,7 +29,6 @@
  */
 
 #include <iterator>
-#include <math.h>
 #include <vector>
 
 #include "../geometry/Geom.h"
@@ -37,6 +36,8 @@
 #include "../scene_graph/FrsMaterial.h"
 
 #include "../system/FreestyleConfig.h"
+
+#include "BLI_math.h"
 
 #ifdef WITH_CXX_GUARDEDALLOC
 #include "MEM_guardedalloc.h"
@@ -63,7 +64,7 @@ class WEdge;
 class WShape;
 class WFace;
 
-class LIB_WINGED_EDGE_EXPORT WVertex
+class WVertex
 {
 protected:
 	int _Id; // an identificator
@@ -165,7 +166,7 @@ public:
 #if defined(__GNUC__) && (__GNUC__ < 3)
 	class incoming_edge_iterator : public input_iterator<WOEdge *, ptrdiff_t>
 #else
-	class LIB_WINGED_EDGE_EXPORT incoming_edge_iterator
+	class incoming_edge_iterator
 	: public iterator<input_iterator_tag, WOEdge *, ptrdiff_t>
 #endif
 	{
@@ -253,7 +254,7 @@ public:
 #if defined(__GNUC__) && (__GNUC__ < 3)
 	class face_iterator : public input_iterator<WFace *, ptrdiff_t>
 #else
-	class LIB_WINGED_EDGE_EXPORT face_iterator : public iterator<input_iterator_tag, WFace *, ptrdiff_t>
+	class face_iterator : public iterator<input_iterator_tag, WFace *, ptrdiff_t>
 #endif
 	{
 	private:
@@ -365,7 +366,7 @@ public:
 class WFace;
 class WEdge;
 
-class LIB_WINGED_EDGE_EXPORT WOEdge
+class WOEdge
 {
 protected:
 #if 0
@@ -524,8 +525,6 @@ public:
 	/*! Retrieves the list of edges in CW order */
 	inline void RetrieveCWOrderedEdges(vector<WEdge*>& oEdges);
 
-	/*! returns the vector between the two vertices */
-	Vec3r getVec3r ();
 	WOEdge *twin ();
 	WOEdge *getPrevOnFace();
 
@@ -548,7 +547,7 @@ public:
  *                                *
  **********************************/
 
-class LIB_WINGED_EDGE_EXPORT WEdge
+class WEdge
 {
 protected:
 	WOEdge *_paOEdge; // first oriented edge
@@ -736,7 +735,7 @@ public:
  **********************************/
 
 
-class LIB_WINGED_EDGE_EXPORT WFace
+class WFace
 {
 protected:
 	vector<WOEdge *> _OEdgeList; // list of oriented edges of bording the face
@@ -1019,7 +1018,7 @@ public:
  **********************************/
 
 
-class LIB_WINGED_EDGE_EXPORT WShape
+class WShape
 {
 protected:
 	vector<WVertex *> _VertexList;
@@ -1296,7 +1295,9 @@ protected:
 class WingedEdge
 {
 public:
-	WingedEdge() {}
+	WingedEdge() {
+		_numFaces = 0;
+	}
 
 	~WingedEdge()
 	{
@@ -1308,11 +1309,13 @@ public:
 		for (vector<WShape *>::iterator it = _wshapes.begin(); it != _wshapes.end(); it++)
 			delete *it;
 		_wshapes.clear();
+		_numFaces = 0;
 	}
 
 	void addWShape(WShape *wshape)
 	{
 		_wshapes.push_back(wshape);
+		_numFaces += wshape->GetFaceList().size();
 	}
 
 	vector<WShape *>& getWShapes()
@@ -1320,8 +1323,14 @@ public:
 		return _wshapes;
 	}
 
+	unsigned getNumFaces()
+	{
+		return _numFaces;
+	}
+
 private:
 	vector<WShape *> _wshapes;
+	unsigned _numFaces;
 
 #ifdef WITH_CXX_GUARDEDALLOC
 	MEM_CXX_CLASS_ALLOC_FUNCS("Freestyle:WingedEdge")

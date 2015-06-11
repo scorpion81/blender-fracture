@@ -25,6 +25,7 @@
  */
 
 #include <Python.h>
+
 #include "BLI_utildefines.h"
 
 #include "bpy_app_build_options.h"
@@ -56,6 +57,7 @@ static PyStructSequence_Field app_builtopts_info_fields[] = {
 	{(char *)"international", NULL},
 	{(char *)"openal", NULL},
 	{(char *)"sdl", NULL},
+	{(char *)"sdl_dynload", NULL},
 	{(char *)"jack", NULL},
 	{(char *)"libmv", NULL},
 	{(char *)"mod_boolean", NULL},
@@ -75,7 +77,7 @@ static PyStructSequence_Desc app_builtopts_info_desc = {
 	(char *)"bpy.app.build_options",     /* name */
 	(char *)"This module contains information about options blender is built with",    /* doc */
 	app_builtopts_info_fields,    /* fields */
-	(sizeof(app_builtopts_info_fields) / sizeof(PyStructSequence_Field)) - 1
+	ARRAY_SIZE(app_builtopts_info_fields) - 1
 };
 
 static PyObject *make_builtopts_info(void)
@@ -224,6 +226,12 @@ static PyObject *make_builtopts_info(void)
 #endif
 
 #ifdef WITH_SDL
+	SetObjIncref(Py_True);
+#else
+	SetObjIncref(Py_False);
+#endif
+
+#ifdef WITH_SDL_DYNLOAD
 	SetObjIncref(Py_True);
 #else
 	SetObjIncref(Py_False);

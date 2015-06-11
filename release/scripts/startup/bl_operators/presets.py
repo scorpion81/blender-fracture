@@ -23,7 +23,7 @@ from bpy.types import Menu, Operator
 from bpy.props import StringProperty, BoolProperty
 
 
-class AddPresetBase():
+class AddPresetBase:
     """Base preset class, only for subclassing
     subclasses must define
      - preset_values
@@ -207,7 +207,20 @@ class ExecutePreset(Operator):
 
         # execute the preset using script.python_file_run
         if ext == ".py":
-            bpy.ops.script.python_file_run(filepath=filepath)
+            #FRACTURE MODIFIER HACK, cant get bpy.context.fracture to be run via py script else...
+            #so fake a context here
+            mod = False
+            if context.object is not None:
+                for md in context.object.modifiers:
+                    if md.type == 'FRACTURE':
+                        mod = True
+                        break
+            if (mod):
+                ctx = bpy.context.copy()
+                ctx["fracture"] = md
+                bpy.ops.script.python_file_run(ctx, filepath=filepath)
+            else:
+                bpy.ops.script.python_file_run(filepath=filepath)
         elif ext == ".xml":
             import rna_xml
             rna_xml.xml_file_run(context,
@@ -253,16 +266,48 @@ class AddPresetCamera(AddPresetBase, Operator):
     preset_menu = "CAMERA_MT_presets"
 
     preset_defines = [
-        "cam = bpy.context.object.data"
-    ]
-
-    preset_values = [
-        "cam.sensor_width",
-        "cam.sensor_height",
-        "cam.sensor_fit"
+        "cam = bpy.context.camera"
     ]
 
     preset_subdir = "camera"
+
+    use_focal_length = BoolProperty(
+            name="Include Focal Length",
+            description="Include focal length into the preset",
+            options={'SKIP_SAVE'},
+            )
+
+    @property
+    def preset_values(self):
+        preset_values = [
+            "cam.sensor_width",
+            "cam.sensor_height",
+            "cam.sensor_fit"
+        ]
+        if self.use_focal_length:
+            preset_values.append("cam.lens")
+            preset_values.append("cam.lens_unit")
+        return preset_values
+
+
+class AddPresetSafeAreas(AddPresetBase, Operator):
+    """Add or remove a Safe Areas Preset"""
+    bl_idname = "safe_areas.preset_add"
+    bl_label = "Add Safe Area Preset"
+    preset_menu = "SAFE_AREAS_MT_presets"
+
+    preset_defines = [
+        "safe_areas = bpy.context.scene.safe_areas"
+    ]
+
+    preset_values = [
+        "safe_areas.title",
+        "safe_areas.action",
+        "safe_areas.title_center",
+        "safe_areas.action_center",
+    ]
+
+    preset_subdir = "safe_areas"
 
 
 class AddPresetSSS(AddPresetBase, Operator):
@@ -333,6 +378,36 @@ class AddPresetFluid(AddPresetBase, Operator):
     preset_subdir = "fluid"
 
 
+class AddPresetHairDynamics(AddPresetBase, Operator):
+    """Add or remove a Hair Dynamics Preset"""
+    bl_idname = "particle.hair_dynamics_preset_add"
+    bl_label = "Add Hair Dynamics Preset"
+    preset_menu = "PARTICLE_MT_hair_dynamics_presets"
+
+    preset_defines = [
+        "psys = bpy.context.particle_system",
+        "cloth = bpy.context.particle_system.cloth",
+        "settings = bpy.context.particle_system.cloth.settings",
+        "collision = bpy.context.particle_system.cloth.collision_settings",
+    ]
+
+    preset_subdir = "hair_dynamics"
+
+    preset_values = [
+        "settings.quality",
+        "settings.mass",
+        "settings.bending_stiffness",
+        "psys.settings.bending_random",
+        "settings.bending_damping",
+        "settings.air_damping",
+        "settings.internal_friction",
+        "settings.density_target",
+        "settings.density_strength",
+        "settings.voxel_cell_size",
+        "settings.pin_stiffness",
+        ]
+
+
 class AddPresetSunSky(AddPresetBase, Operator):
     """Add or remove a Sky & Atmosphere Preset"""
     bl_idname = "lamp.sunsky_preset_add"
@@ -340,7 +415,7 @@ class AddPresetSunSky(AddPresetBase, Operator):
     preset_menu = "LAMP_MT_sunsky_presets"
 
     preset_defines = [
-        "sky = bpy.context.object.data.sky"
+        "sky = bpy.context.lamp.sky"
     ]
 
     preset_values = [
@@ -398,17 +473,28 @@ class AddPresetTrackingCamera(AddPresetBase, Operator):
         "camera = bpy.context.edit_movieclip.tracking.camera"
     ]
 
-    preset_values = [
-        "camera.sensor_width",
-        "camera.units",
-        "camera.focal_length",
-        "camera.pixel_aspect",
-        "camera.k1",
-        "camera.k2",
-        "camera.k3"
-    ]
-
     preset_subdir = "tracking_camera"
+
+    use_focal_length = BoolProperty(
+            name="Include Focal Length",
+            description="Include focal length into the preset",
+            options={'SKIP_SAVE'},
+            default=True
+            )
+
+    @property
+    def preset_values(self):
+        preset_values = [
+            "camera.sensor_width",
+            "camera.pixel_aspect",
+            "camera.k1",
+            "camera.k2",
+            "camera.k3"
+        ]
+        if self.use_focal_length:
+            preset_values.append("camera.units")
+            preset_values.append("camera.focal_length")
+        return preset_values
 
 
 class AddPresetTrackingTrackColor(AddPresetBase, Operator):
@@ -453,6 +539,7 @@ class AddPresetTrackingSettings(AddPresetBase, Operator):
         "settings.use_default_red_channel",
         "settings.use_default_green_channel",
         "settings.use_default_blue_channel"
+        "settings.default_weight"
     ]
 
     preset_subdir = "tracking_settings"
@@ -505,6 +592,71 @@ class AddPresetKeyconfig(AddPresetBase, Operator):
         keyconfigs = bpy.context.window_manager.keyconfigs
         if self.remove_active:
             keyconfigs.remove(keyconfigs.active)
+
+class AddPresetFracture(AddPresetBase, Operator):
+    """Add or remove a Fracture Preset"""
+    bl_idname = "fracture.preset_add"
+    bl_label = "Add Fracture Preset"
+    preset_menu = "FRACTURE_MT_presets"
+
+    preset_defines = [
+        "fracture = bpy.context.fracture.fracture"
+        "constraint = bpy.context.fracture.constraint"
+        "fm = bpy.context.fracture"
+    ]
+
+    preset_values = [
+        "fracture.frac_algorithm",
+        "fracture.shard_count",
+        "fracture.point_seed",
+        "fracture.shards_to_islands",
+        "fracture.auto_execute",
+        "fracture.point_source",
+        "fracture.extra_group",
+        "fracture.use_particle_birth_coordinates",
+        "fracture.splinter_axis",
+        "fracture.splinter_length",
+        "fracture.percentage",
+        "fracture.autohide_dist",
+        "fracture.fix_normals",
+        "fracture.thresh_vertex_group",
+        "fracture.ground_vertex_group",
+        "fracture.inner_vertex_group",
+        "fracture.nor_range",
+        "fracture.grease_offset",
+        "fracture.grease_decimate",
+        "fracture.use_greasepencil_edges",
+        "fracture.cutter_axis",
+        "fracture.dynamic_force",
+        "fracture.limit_impact"
+        "constraint.breaking_percentage",
+        "constraint.breaking_percentage_weighted",
+        "constraint.breaking_angle",
+        "constraint.breaking_angle_weighted",
+        "constraint.breaking_distance",
+        "constraint.breaking_distance_weighted",
+        "constraint.cluster_breaking_percentage",
+        "constraint.cluster_breaking_angle",
+        "constraint.cluster_breaking_distance",
+        "constraint.solver_iterations_override",
+        "constraint.use_mass_dependent_thresholds",
+        "constraint.use_breaking",
+        "constraint.cluster_group",
+        "constraint.cutter_group",
+        "constraint.cluster_constraint_type",
+        "constraint.constraint_target",
+        "constraint.cluster_count",
+        "constraint.use_constraints",
+        "constraint.constraint_limit",
+        "constraint.contact_dist",
+        "constraint.breaking_threshold",
+        "constraint.cluster_breaking_threshold",
+        "fm.fracture_mode",
+        "fm.dm_group",
+        "fm.execute_threaded",
+    ]
+
+    preset_subdir = "fracture"
 
 
 class AddPresetOperator(AddPresetBase, Operator):

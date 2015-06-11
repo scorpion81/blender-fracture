@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 /* Optimized CPU kernel entry points. This file is compiled with AVX
@@ -24,20 +24,21 @@
 #define __KERNEL_SSE3__
 #define __KERNEL_SSSE3__
 #define __KERNEL_SSE41__
+#define __KERNEL_AVX__
 #endif
  
 #include "util_optimization.h"
  
 #ifdef WITH_CYCLES_OPTIMIZED_KERNEL_AVX
 
-#include "kernel.h"
 #include "kernel_compat_cpu.h"
+#include "kernel.h"
 #include "kernel_math.h"
 #include "kernel_types.h"
 #include "kernel_globals.h"
 #include "kernel_film.h"
 #include "kernel_path.h"
-#include "kernel_displace.h"
+#include "kernel_bake.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -67,9 +68,12 @@ void kernel_cpu_avx_convert_to_half_float(KernelGlobals *kg, uchar4 *rgba, float
 
 /* Shader Evaluate */
 
-void kernel_cpu_avx_shader(KernelGlobals *kg, uint4 *input, float4 *output, int type, int i)
+void kernel_cpu_avx_shader(KernelGlobals *kg, uint4 *input, float4 *output, int type, int i, int offset, int sample)
 {
-	kernel_shader_evaluate(kg, input, output, (ShaderEvalType)type, i);
+	if(type >= SHADER_EVAL_BAKE)
+		kernel_bake_evaluate(kg, input, output, (ShaderEvalType)type, i, offset, sample);
+	else
+		kernel_shader_evaluate(kg, input, output, (ShaderEvalType)type, i, sample);
 }
 
 CCL_NAMESPACE_END
@@ -77,6 +81,6 @@ CCL_NAMESPACE_END
 
 /* needed for some linkers in combination with scons making empty compilation unit in a library */
 void __dummy_function_cycles_avx(void);
-void __dummy_function_cycles_avx(void){}
+void __dummy_function_cycles_avx(void) {}
 
 #endif

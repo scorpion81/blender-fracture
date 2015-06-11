@@ -36,34 +36,17 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "PIL_time.h"
-
 #include "BLI_math.h"
 #include "BLI_blenlib.h"
 #include "BLI_jitter.h"
 #include "BLI_utildefines.h"
 
 #include "DNA_camera_types.h"
-#include "DNA_group_types.h"
 #include "DNA_image_types.h"
-#include "DNA_lamp_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 
-
 #include "BKE_camera.h"
-#include "BKE_global.h"
-#include "BKE_material.h"
-#include "BKE_object.h"
-#include "BKE_image.h"
-#include "BKE_ipo.h"
-#include "BKE_key.h"
-#include "BKE_action.h"
-#include "BKE_writeavi.h"
-#include "BKE_scene.h"
-
-#include "IMB_imbuf_types.h"
-#include "IMB_imbuf.h"
 
 #ifdef WITH_QUICKTIME
 #include "quicktime_export.h"
@@ -72,10 +55,6 @@
 /* this module */
 #include "renderpipeline.h"
 #include "render_types.h"
-
-#include "rendercore.h"
-#include "pixelshading.h"
-#include "zbuf.h"
 
 /* Own includes */
 #include "initrender.h"
@@ -92,10 +71,10 @@ static void init_render_jit(Render *re)
 	
 	if (lastjit != re->r.osa || last_mblur_jit != re->r.mblur_samples) {
 		memset(jit, 0, sizeof(jit));
-		BLI_jitter_init(jit[0], re->r.osa);
+		BLI_jitter_init(jit, re->r.osa);
 		
 		memset(mblur_jit, 0, sizeof(mblur_jit));
-		BLI_jitter_init(mblur_jit[0], re->r.mblur_samples);
+		BLI_jitter_init(mblur_jit, re->r.mblur_samples);
 	}
 	
 	lastjit = re->r.osa;
@@ -175,8 +154,11 @@ float RE_filter_value(int type, float x)
 			return 1.0f - x;
 			
 		case R_FILTER_GAUSS:
-			x *= gaussfac;
-			return (1.0f / expf(x * x) - 1.0f / expf(gaussfac * gaussfac * 2.25f));
+		{
+			const float two_gaussfac2 = 2.0f * gaussfac * gaussfac;
+			x *= 3.0f * gaussfac;
+			return 1.0f / sqrtf((float)M_PI * two_gaussfac2) * expf(-x*x / two_gaussfac2);
+		}
 			
 		case R_FILTER_MITCH:
 			return filt_mitchell(x * gaussfac);
@@ -201,7 +183,7 @@ static float calc_weight(Render *re, float *weight, int i, int j)
 	for (a = 0; a < re->osa; a++) {
 		x = re->jit[a][0] + i;
 		y = re->jit[a][1] + j;
-		dist = sqrt(x * x + y * y);
+		dist = sqrtf(x * x + y * y);
 
 		weight[a] = 0.0;
 
@@ -545,7 +527,7 @@ void RE_parts_clamp(Render *re)
 	re->party = max_ii(1, min_ii(re->r.tiley, re->recty));
 }
 
-void RE_parts_init(Render *re, int do_crop)
+void RE_parts_init(Render *re, bool do_crop)
 {
 	int nr, xd, yd, partx, party, xparts, yparts;
 	int xminb, xmaxb, yminb, ymaxb;

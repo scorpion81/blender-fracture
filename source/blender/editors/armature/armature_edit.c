@@ -38,6 +38,8 @@
 
 #include "MEM_guardedalloc.h"
 
+#include "BLF_translation.h"
+
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
 
@@ -70,7 +72,7 @@ void ED_armature_apply_transform(Object *ob, float mat[4][4])
 	/* Put the armature into editmode */
 	ED_armature_to_edit(arm);
 
-	/* Transform the bones*/
+	/* Transform the bones */
 	ED_armature_transform_bones(arm, mat);
 
 	/* Turn the list into an armature */
@@ -100,7 +102,7 @@ void ED_armature_transform_bones(struct bArmature *arm, float mat[4][4])
 		mul_m4_v3(mat, ebone->head);
 		mul_m4_v3(mat, ebone->tail);
 
-		/* apply the transfiormed roll back */
+		/* apply the transformed roll back */
 		mat3_to_vec_roll(tmat, NULL, &ebone->roll);
 		
 		ebone->rad_head *= scale;
@@ -190,7 +192,7 @@ void ED_armature_origin_set(Scene *scene, Object *ob, float cursor[3], int cente
 
 	/* Adjust object location for new centerpoint */
 	if (centermode && obedit == NULL) {
-		mul_mat3_m4_v3(ob->obmat, cent); /* ommit translation part */
+		mul_mat3_m4_v3(ob->obmat, cent); /* omit translation part */
 		add_v3_v3(ob->loc, cent);
 	}
 }
@@ -200,63 +202,85 @@ void ED_armature_origin_set(Scene *scene, Object *ob, float cursor[3], int cente
 /* adjust bone roll to align Z axis with vector
  * vec is in local space and is normalized
  */
-float ED_rollBoneToVector(EditBone *bone, const float align_axis[3], const short axis_only)
+float ED_rollBoneToVector(EditBone *bone, const float align_axis[3], const bool axis_only)
 {
 	float mat[3][3], nor[3];
+	float vec[3], align_axis_proj[3], roll = 0.0f;
+
+	BLI_ASSERT_UNIT_V3(align_axis);
 
 	sub_v3_v3v3(nor, bone->tail, bone->head);
-	vec_roll_to_mat3(nor, 0.0f, mat);
-	
-	/* check the bone isn't aligned with the axis */
-	if (!is_zero_v3(align_axis) && angle_v3v3(align_axis, mat[2]) > FLT_EPSILON) {
-		float vec[3], align_axis_proj[3], roll;
-		
-		/* project the new_up_axis along the normal */
-		project_v3_v3v3(vec, align_axis, nor);
-		sub_v3_v3v3(align_axis_proj, align_axis, vec);
-		
-		if (axis_only) {
-			if (angle_v3v3(align_axis_proj, mat[2]) > (float)(M_PI / 2.0)) {
-				negate_v3(align_axis_proj);
-			}
-		}
-		
-		roll = angle_v3v3(align_axis_proj, mat[2]);
-		
-		cross_v3_v3v3(vec, mat[2], align_axis_proj);
-		
-		if (dot_v3v3(vec, nor) < 0) {
-			roll = -roll;
-		}
-		
+
+	/* If tail == head or the bone is aligned with the axis... */
+	if (normalize_v3(nor) <= FLT_EPSILON || (fabsf(dot_v3v3(align_axis, nor)) >= (1.0f - FLT_EPSILON))) {
 		return roll;
 	}
 
-	return 0.0f;
+	vec_roll_to_mat3_normalized(nor, 0.0f, mat);
+
+	/* project the new_up_axis along the normal */
+	project_v3_v3v3(vec, align_axis, nor);
+	sub_v3_v3v3(align_axis_proj, align_axis, vec);
+
+	if (axis_only) {
+		if (angle_v3v3(align_axis_proj, mat[2]) > (float)(M_PI_2)) {
+			negate_v3(align_axis_proj);
+		}
+	}
+
+	roll = angle_v3v3(align_axis_proj, mat[2]);
+
+	cross_v3_v3v3(vec, mat[2], align_axis_proj);
+
+	if (dot_v3v3(vec, nor) < 0.0f) {
+		return -roll;
+	}
+	return roll;
 }
 
-
+/* note, ranges arithmatic is used below */
 typedef enum eCalcRollTypes {
-	CALC_ROLL_X          = 0,
-	CALC_ROLL_Y          = 1,
-	CALC_ROLL_Z          = 2,
-	
-	CALC_ROLL_TAN_X      = 3,
-	CALC_ROLL_TAN_Z      = 4,
+	/* pos */
+	CALC_ROLL_POS_X = 0,
+	CALC_ROLL_POS_Y,
+	CALC_ROLL_POS_Z,
 
-	CALC_ROLL_ACTIVE     = 5,
-	CALC_ROLL_VIEW       = 6,
-	CALC_ROLL_CURSOR     = 7,
+	CALC_ROLL_TAN_POS_X,
+	CALC_ROLL_TAN_POS_Z,
+
+	/* neg */
+	CALC_ROLL_NEG_X,
+	CALC_ROLL_NEG_Y,
+	CALC_ROLL_NEG_Z,
+
+	CALC_ROLL_TAN_NEG_X,
+	CALC_ROLL_TAN_NEG_Z,
+
+	/* no sign */
+	CALC_ROLL_ACTIVE,
+	CALC_ROLL_VIEW,
+	CALC_ROLL_CURSOR,
 } eCalcRollTypes;
 
 static EnumPropertyItem prop_calc_roll_types[] = {
-	{CALC_ROLL_TAN_X, "X", 0, "Local X Tangent", ""},
-	{CALC_ROLL_TAN_Z, "Z", 0, "Local Z Tangent", ""},
+	{0, "", 0, N_("Positive"), ""},
+	{CALC_ROLL_TAN_POS_X, "POS_X", 0, "Local +X Tangent", ""},
+	{CALC_ROLL_TAN_POS_Z, "POS_Z", 0, "Local +Z Tangent", ""},
 
-	{CALC_ROLL_X, "X", 0, "Global X Axis", ""},
-	{CALC_ROLL_Y, "Y", 0, "Global Y Axis", ""},
-	{CALC_ROLL_Z, "Z", 0, "Global Z Axis", ""},
+	{CALC_ROLL_POS_X, "GLOBAL_POS_X", 0, "Global +X Axis", ""},
+	{CALC_ROLL_POS_Y, "GLOBAL_POS_Y", 0, "Global +Y Axis", ""},
+	{CALC_ROLL_POS_Z, "GLOBAL_POS_Z", 0, "Global +Z Axis", ""},
 
+	{0, "", 0, N_("Negative"), ""},
+
+	{CALC_ROLL_TAN_NEG_X, "NEG_X", 0, "Local -X Tangent", ""},
+	{CALC_ROLL_TAN_NEG_Z, "NEG_Z", 0, "Local -Z Tangent", ""},
+
+	{CALC_ROLL_NEG_X, "GLOBAL_NEG_X", 0, "Global -X Axis", ""},
+	{CALC_ROLL_NEG_Y, "GLOBAL_NEG_Y", 0, "Global -Y Axis", ""},
+	{CALC_ROLL_NEG_Z, "GLOBAL_NEG_Z", 0, "Global -Z Axis", ""},
+
+	{0, "", 0, N_("Other"), ""},
 	{CALC_ROLL_ACTIVE, "ACTIVE", 0, "Active Bone", ""},
 	{CALC_ROLL_VIEW, "VIEW", 0, "View Axis", ""},
 	{CALC_ROLL_CURSOR, "CURSOR", 0, "Cursor", ""},
@@ -267,14 +291,21 @@ static EnumPropertyItem prop_calc_roll_types[] = {
 static int armature_calc_roll_exec(bContext *C, wmOperator *op) 
 {
 	Object *ob = CTX_data_edit_object(C);
-	const short type = RNA_enum_get(op->ptr, "type");
-	const short axis_only = RNA_boolean_get(op->ptr, "axis_only");
-	const short axis_flip = RNA_boolean_get(op->ptr, "axis_flip");
+	eCalcRollTypes type = RNA_enum_get(op->ptr, "type");
+	const bool axis_only = RNA_boolean_get(op->ptr, "axis_only");
+	/* axis_flip when matching the active bone never makes sense */
+	bool axis_flip = ((type >= CALC_ROLL_ACTIVE) ? RNA_boolean_get(op->ptr, "axis_flip") :
+	                  (type >= CALC_ROLL_TAN_NEG_X) ? true : false);
 
 	float imat[3][3];
 
 	bArmature *arm = ob->data;
 	EditBone *ebone;
+
+	if ((type >= CALC_ROLL_NEG_X) && (type <= CALC_ROLL_TAN_NEG_Z)) {
+		type -= (CALC_ROLL_ACTIVE - CALC_ROLL_NEG_X);
+		axis_flip = true;
+	}
 
 	copy_m3_m4(imat, ob->obmat);
 	invert_m3(imat);
@@ -295,11 +326,13 @@ static int armature_calc_roll_exec(bContext *C, wmOperator *op)
 				float cursor_rel[3];
 				sub_v3_v3v3(cursor_rel, cursor_local, ebone->head);
 				if (axis_flip) negate_v3(cursor_rel);
-				ebone->roll = ED_rollBoneToVector(ebone, cursor_rel, axis_only);
+				if (normalize_v3(cursor_rel) != 0.0f) {
+					ebone->roll = ED_rollBoneToVector(ebone, cursor_rel, axis_only);
+				}
 			}
 		}
 	}
-	else if (ELEM(type, CALC_ROLL_TAN_X, CALC_ROLL_TAN_Z)) {
+	else if (ELEM(type, CALC_ROLL_TAN_POS_X, CALC_ROLL_TAN_POS_Z)) {
 		for (ebone = arm->edbo->first; ebone; ebone = ebone->next) {
 			if (ebone->parent) {
 				bool is_edit        = (EBONE_VISIBLE(arm, ebone)         && EBONE_EDITABLE(ebone));
@@ -320,7 +353,7 @@ static int armature_calc_roll_exec(bContext *C, wmOperator *op)
 						sub_v3_v3v3(dir_b, ebone_other->head, ebone_other->tail);
 						normalize_v3(dir_b);
 
-						if (type == CALC_ROLL_TAN_Z) {
+						if (type == CALC_ROLL_TAN_POS_Z) {
 							cross_v3_v3v3(vec, dir_a, dir_b);
 						}
 						else {
@@ -371,7 +404,7 @@ static int armature_calc_roll_exec(bContext *C, wmOperator *op)
 			copy_v3_v3(vec, mat[2]);
 		}
 		else { /* Axis */
-			assert(type >= 0 && type <= 5);
+			assert(type <= 5);
 			if (type < 3) vec[type] = 1.0f;
 			else vec[type - 2] = -1.0f;
 			mul_m3_v3(imat, vec);
@@ -399,7 +432,7 @@ static int armature_calc_roll_exec(bContext *C, wmOperator *op)
 	}
 	
 	/* note, notifier might evolve */
-	WM_event_add_notifier(C, NC_OBJECT | ND_POSE, ob);
+	WM_event_add_notifier(C, NC_OBJECT | ND_BONE_SELECT, ob);
 	
 	return OPERATOR_FINISHED;
 }
@@ -420,7 +453,7 @@ void ARMATURE_OT_calculate_roll(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	/* properties */
-	ot->prop = RNA_def_enum(ot->srna, "type", prop_calc_roll_types, CALC_ROLL_TAN_X, "Type", "");
+	ot->prop = RNA_def_enum(ot->srna, "type", prop_calc_roll_types, CALC_ROLL_TAN_POS_X, "Type", "");
 	RNA_def_boolean(ot->srna, "axis_flip", 0, "Flip Axis", "Negate the alignment axis");
 	RNA_def_boolean(ot->srna, "axis_only", 0, "Shortest Rotation", "Ignore the axis direction, use the shortest rotation to align");
 }
@@ -545,6 +578,7 @@ static int armature_fill_bones_exec(bContext *C, wmOperator *op)
 	Scene *scene = CTX_data_scene(C);
 	View3D *v3d = CTX_wm_view3d(C);
 	ListBase points = {NULL, NULL};
+	EditBone *newbone = NULL;
 	int count;
 
 	/* sanity checks */
@@ -566,7 +600,7 @@ static int armature_fill_bones_exec(bContext *C, wmOperator *op)
 	 *  2) between the two joints (order is dependent on active-bone/hierarchy)
 	 *  3+) error (a smarter method involving finding chains needs to be worked out
 	 */
-	count = BLI_countlist(&points);
+	count = BLI_listbase_count(&points);
 	
 	if (count == 0) {
 		BKE_report(op->reports, RPT_ERROR, "No joints selected");
@@ -577,94 +611,97 @@ static int armature_fill_bones_exec(bContext *C, wmOperator *op)
 		float curs[3];
 		
 		/* Get Points - selected joint */
-		ebp = (EditBonePoint *)points.first;
+		ebp = points.first;
 		
 		/* Get points - cursor (tail) */
 		invert_m4_m4(obedit->imat, obedit->obmat);
 		mul_v3_m4v3(curs, obedit->imat, ED_view3d_cursor3d_get(scene, v3d));
 		
 		/* Create a bone */
-		/* newbone = */ add_points_bone(obedit, ebp->vec, curs);
+		newbone = add_points_bone(obedit, ebp->vec, curs);
 	}
 	else if (count == 2) {
-		EditBonePoint *ebp, *ebp2;
+		EditBonePoint *ebp_a, *ebp_b;
 		float head[3], tail[3];
 		short headtail = 0;
 		
 		/* check that the points don't belong to the same bone */
-		ebp = (EditBonePoint *)points.first;
-		ebp2 = ebp->next;
+		ebp_a = (EditBonePoint *)points.first;
+		ebp_b = ebp_a->next;
 		
-		if ((ebp->head_owner == ebp2->tail_owner) && (ebp->head_owner != NULL)) {
-			BKE_report(op->reports, RPT_ERROR, "Same bone selected...");
-			BLI_freelistN(&points);
-			return OPERATOR_CANCELLED;
-		}
-		if ((ebp->tail_owner == ebp2->head_owner) && (ebp->tail_owner != NULL)) {
+		if (((ebp_a->head_owner == ebp_b->tail_owner) && (ebp_a->head_owner != NULL)) ||
+		    ((ebp_a->tail_owner == ebp_b->head_owner) && (ebp_a->tail_owner != NULL)))
+		{
 			BKE_report(op->reports, RPT_ERROR, "Same bone selected...");
 			BLI_freelistN(&points);
 			return OPERATOR_CANCELLED;
 		}
 		
 		/* find which one should be the 'head' */
-		if ((ebp->head_owner && ebp2->head_owner) || (ebp->tail_owner && ebp2->tail_owner)) {
-			/* rule: whichever one is closer to 3d-cursor */
-			float curs[3];
-			float vecA[3], vecB[3];
-			float distA, distB;
-			
-			/* get cursor location */
-			invert_m4_m4(obedit->imat, obedit->obmat);
-			mul_v3_m4v3(curs, obedit->imat, ED_view3d_cursor3d_get(scene, v3d));
-			
-			/* get distances */
-			sub_v3_v3v3(vecA, ebp->vec, curs);
-			sub_v3_v3v3(vecB, ebp2->vec, curs);
-			distA = len_v3(vecA);
-			distB = len_v3(vecB);
-			
-			/* compare distances - closer one therefore acts as direction for bone to go */
-			headtail = (distA < distB) ? 2 : 1;
+		if ((ebp_a->head_owner && ebp_b->head_owner) || (ebp_a->tail_owner && ebp_b->tail_owner)) {
+			/* use active, nice predictable */
+			if (arm->act_edbone && ELEM(arm->act_edbone, ebp_a->head_owner, ebp_a->tail_owner)) {
+				headtail = 1;
+			}
+			else if (arm->act_edbone && ELEM(arm->act_edbone, ebp_b->head_owner, ebp_b->tail_owner)) {
+				headtail = 2;
+			}
+			else {
+				/* rule: whichever one is closer to 3d-cursor */
+				float curs[3];
+				float dist_sq_a, dist_sq_b;
+
+				/* get cursor location */
+				invert_m4_m4(obedit->imat, obedit->obmat);
+				mul_v3_m4v3(curs, obedit->imat, ED_view3d_cursor3d_get(scene, v3d));
+
+				/* get distances */
+				dist_sq_a = len_squared_v3v3(ebp_a->vec, curs);
+				dist_sq_b = len_squared_v3v3(ebp_b->vec, curs);
+
+				/* compare distances - closer one therefore acts as direction for bone to go */
+				headtail = (dist_sq_a < dist_sq_b) ? 2 : 1;
+			}
 		}
-		else if (ebp->head_owner) {
+		else if (ebp_a->head_owner) {
 			headtail = 1;
 		}
-		else if (ebp2->head_owner) {
+		else if (ebp_b->head_owner) {
 			headtail = 2;
 		}
 		
 		/* assign head/tail combinations */
 		if (headtail == 2) {
-			copy_v3_v3(head, ebp->vec);
-			copy_v3_v3(tail, ebp2->vec);
+			copy_v3_v3(head, ebp_a->vec);
+			copy_v3_v3(tail, ebp_b->vec);
 		}
 		else if (headtail == 1) {
-			copy_v3_v3(head, ebp2->vec);
-			copy_v3_v3(tail, ebp->vec);
+			copy_v3_v3(head, ebp_b->vec);
+			copy_v3_v3(tail, ebp_a->vec);
 		}
 		
 		/* add new bone and parent it to the appropriate end */
 		if (headtail) {
-			EditBone *newbone = add_points_bone(obedit, head, tail);
+			newbone = add_points_bone(obedit, head, tail);
 			
 			/* do parenting (will need to set connected flag too) */
 			if (headtail == 2) {
 				/* ebp tail or head - tail gets priority */
-				if (ebp->tail_owner)
-					newbone->parent = ebp->tail_owner;
+				if (ebp_a->tail_owner)
+					newbone->parent = ebp_a->tail_owner;
 				else
-					newbone->parent = ebp->head_owner;
+					newbone->parent = ebp_a->head_owner;
 			}
 			else {
-				/* ebp2 tail or head - tail gets priority */
-				if (ebp2->tail_owner)
-					newbone->parent = ebp2->tail_owner;
+				/* ebp_b tail or head - tail gets priority */
+				if (ebp_b->tail_owner)
+					newbone->parent = ebp_b->tail_owner;
 				else
-					newbone->parent = ebp2->head_owner;
+					newbone->parent = ebp_b->head_owner;
 			}
 
 			/* don't set for bone connecting two head points of bones */
-			if (ebp->tail_owner || ebp2->tail_owner) {
+			if (ebp_a->tail_owner || ebp_b->tail_owner) {
 				newbone->flag |= BONE_CONNECTED;
 			}
 		}
@@ -674,6 +711,12 @@ static int armature_fill_bones_exec(bContext *C, wmOperator *op)
 		BKE_reportf(op->reports, RPT_ERROR, "Too many points selected: %d", count);
 		BLI_freelistN(&points);
 		return OPERATOR_CANCELLED;
+	}
+
+	if (newbone) {
+		ED_armature_deselect_all(obedit, 0);
+		arm->act_edbone = newbone;
+		newbone->flag |= BONE_TIPSEL;
 	}
 	
 	/* updates */
@@ -808,7 +851,7 @@ static int armature_merge_exec(bContext *C, wmOperator *op)
 		
 		/* get chains (ends on chains) */
 		chains_find_tips(arm->edbo, &chains);
-		if (chains.first == NULL) return OPERATOR_CANCELLED;
+		if (BLI_listbase_is_empty(&chains)) return OPERATOR_CANCELLED;
 		
 		/* each 'chain' is the last bone in the chain (with no children) */
 		for (chain = chains.first; chain; chain = nchain) {
@@ -916,7 +959,7 @@ static int armature_switch_direction_exec(bContext *C, wmOperator *UNUSED(op))
 	
 	/* get chains of bones (ends on chains) */
 	chains_find_tips(arm->edbo, &chains);
-	if (chains.first == NULL) return OPERATOR_CANCELLED;
+	if (BLI_listbase_is_empty(&chains)) return OPERATOR_CANCELLED;
 	
 	/* ensure that mirror bones will also be operated on */
 	armature_tag_select_mirrored(arm);
@@ -1130,7 +1173,7 @@ static int armature_align_bones_exec(bContext *C, wmOperator *op)
 	}
 
 	/* note, notifier might evolve */
-	WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, ob);
+	WM_event_add_notifier(C, NC_OBJECT | ND_BONE_SELECT, ob);
 	
 	return OPERATOR_FINISHED;
 }
@@ -1221,7 +1264,7 @@ static int armature_delete_selected_exec(bContext *C, wmOperator *UNUSED(op))
 			}
 			else {
 				for (con = pchan->constraints.first; con; con = con->next) {
-					bConstraintTypeInfo *cti = BKE_constraint_get_typeinfo(con);
+					bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
 					ListBase targets = {NULL, NULL};
 					bConstraintTarget *ct;
 					
@@ -1342,7 +1385,9 @@ static int armature_reveal_exec(bContext *C, wmOperator *UNUSED(op))
 	for (ebone = arm->edbo->first; ebone; ebone = ebone->next) {
 		if (arm->layer & ebone->layer) {
 			if (ebone->flag & BONE_HIDDEN_A) {
-				ebone->flag |= (BONE_TIPSEL | BONE_SELECTED | BONE_ROOTSEL);
+				if (!(ebone->flag & BONE_UNSELECTABLE)) {
+					ebone->flag |= (BONE_TIPSEL | BONE_SELECTED | BONE_ROOTSEL);
+				}
 				ebone->flag &= ~BONE_HIDDEN_A;
 			}
 		}

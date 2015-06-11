@@ -37,19 +37,18 @@
 #include "DNA_object_types.h"
 
 #include "BLI_math.h"
-#include "BLI_string.h"
 #include "BLI_utildefines.h"
 
 #include "BKE_cdderivedmesh.h"
-#include "BKE_lattice.h"
 #include "BKE_modifier.h"
 #include "BKE_deform.h"
-#include "BKE_shrinkwrap.h"
 
 
 #include "depsgraph_private.h"
 
 #include "MOD_util.h"
+
+#define BEND_EPS 0.000001f
 
 /* Clamps/Limits the given coordinate to:  limits[0] <= co[axis] <= limits[1]
  * The amount of clamp is saved on dcut */
@@ -122,15 +121,15 @@ static void simpleDeform_bend(const float factor, const float dcut[3], float r_c
 	float x = r_co[0], y = r_co[1], z = r_co[2];
 	float theta, sint, cost;
 
+	BLI_assert(!(fabsf(factor) < BEND_EPS));
+
 	theta = x * factor;
 	sint = sinf(theta);
 	cost = cosf(theta);
 
-	if (fabsf(factor) > 1e-7f) {
-		r_co[0] = -(y - 1.0f / factor) * sint;
-		r_co[1] =  (y - 1.0f / factor) * cost + 1.0f / factor;
-		r_co[2] = z;
-	}
+	r_co[0] = -(y - 1.0f / factor) * sint;
+	r_co[1] =  (y - 1.0f / factor) * cost + 1.0f / factor;
+	r_co[2] = z;
 
 	{
 		r_co[0] += cost * dcut[0];
@@ -166,7 +165,7 @@ static void SimpleDeformModifier_do(SimpleDeformModifierData *smd, struct Object
 	/* Calculate matrixs do convert between coordinate spaces */
 	if (smd->origin) {
 		transf = &tmp_transf;
-		space_transform_from_matrixs(transf, ob->obmat, smd->origin->obmat);
+		BLI_SPACE_TRANSFORM_SETUP(transf, ob, smd->origin);
 	}
 
 	/* Setup vars,
@@ -182,7 +181,9 @@ static void SimpleDeformModifier_do(SimpleDeformModifierData *smd, struct Object
 			float tmp[3];
 			copy_v3_v3(tmp, vertexCos[i]);
 
-			if (transf) space_transform_apply(transf, tmp);
+			if (transf) {
+				BLI_space_transform_apply(transf, tmp);
+			}
 
 			lower = min_ff(lower, tmp[limit_axis]);
 			upper = max_ff(upper, tmp[limit_axis]);
@@ -196,8 +197,6 @@ static void SimpleDeformModifier_do(SimpleDeformModifierData *smd, struct Object
 		smd_factor   = smd->factor / max_ff(FLT_EPSILON, smd_limit[1] - smd_limit[0]);
 	}
 
-	modifier_get_vgroup(ob, dm, smd->vgroup_name, &dvert, &vgroup);
-
 	switch (smd->mode) {
 		case MOD_SIMPLEDEFORM_MODE_TWIST:   simpleDeform_callback = simpleDeform_twist;     break;
 		case MOD_SIMPLEDEFORM_MODE_BEND:    simpleDeform_callback = simpleDeform_bend;      break;
@@ -207,6 +206,14 @@ static void SimpleDeformModifier_do(SimpleDeformModifierData *smd, struct Object
 			return; /* No simpledeform mode? */
 	}
 
+	if (smd->mode == MOD_SIMPLEDEFORM_MODE_BEND) {
+		if (fabsf(smd_factor) < BEND_EPS) {
+			return;
+		}
+	}
+
+	modifier_get_vgroup(ob, dm, smd->vgroup_name, &dvert, &vgroup);
+
 	for (i = 0; i < numVerts; i++) {
 		float weight = defvert_array_find_weight_safe(dvert, i, vgroup);
 
@@ -214,7 +221,7 @@ static void SimpleDeformModifier_do(SimpleDeformModifierData *smd, struct Object
 			float co[3], dcut[3] = {0.0f, 0.0f, 0.0f};
 
 			if (transf) {
-				space_transform_apply(transf, vertexCos[i]);
+				BLI_space_transform_apply(transf, vertexCos[i]);
 			}
 
 			copy_v3_v3(co, vertexCos[i]);
@@ -230,13 +237,11 @@ static void SimpleDeformModifier_do(SimpleDeformModifierData *smd, struct Object
 			interp_v3_v3v3(vertexCos[i], vertexCos[i], co, weight);  /* Use vertex weight has coef of linear interpolation */
 
 			if (transf) {
-				space_transform_invert(transf, vertexCos[i]);
+				BLI_space_transform_invert(transf, vertexCos[i]);
 			}
 		}
 	}
 }
-
-
 
 
 /* SimpleDeform */

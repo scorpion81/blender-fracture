@@ -29,10 +29,7 @@
  *  \ingroup shdnodes
  */
 
-
 #include "DNA_texture_types.h"
-
-#include "IMB_colormanagement.h"
 
 #include "node_shader_util.h"
 
@@ -42,9 +39,9 @@ static bNodeSocketTemplate sh_node_texture_in[] = {
 	{	-1, 0, ""	}
 };
 static bNodeSocketTemplate sh_node_texture_out[] = {
-	{	SOCK_FLOAT, 0, N_("Value")},
-	{	SOCK_RGBA, 0, N_("Color")},
-	{	SOCK_VECTOR, 0, N_("Normal")},
+	{	SOCK_FLOAT, 0, N_("Value"), 0, 0, 0, 0, 0, 0, PROP_NONE, SOCK_NO_INTERNAL_LINK},
+	{	SOCK_RGBA, 0, N_("Color"), 0, 0, 0, 0, 0, 0, PROP_NONE, SOCK_NO_INTERNAL_LINK},
+	{	SOCK_VECTOR, 0, N_("Normal"), 0, 0, 0, 0, 0, 0, PROP_NONE, SOCK_NO_INTERNAL_LINK},
 	{	-1, 0, ""	}
 };
 
@@ -75,7 +72,7 @@ static void node_shader_exec_texture(void *data, int UNUSED(thread), bNode *node
 				retval = multitex_nodes((Tex *)node->id, vec, fp, fp + 3, shi->osatex, &texres, thread, which_output, NULL, NULL, NULL);
 			}
 			else if (in[0]->datatype == NS_OSA_VALUES) {
-				float *fp = in[0]->data;
+				const float *fp = in[0]->data;
 				float dxt[3], dyt[3];
 				
 				dxt[0] = fp[0]; dxt[1] = dxt[2] = 0.0f;
@@ -125,7 +122,7 @@ static int gpu_shader_texture(GPUMaterial *mat, bNode *node, bNodeExecData *UNUS
 	Tex *tex = (Tex *)node->id;
 
 	if (tex && tex->type == TEX_IMAGE && tex->ima) {
-		GPUNodeLink *texlink = GPU_image(tex->ima, &tex->iuser, FALSE);
+		GPUNodeLink *texlink = GPU_image(tex->ima, &tex->iuser, false);
 		int ret = GPU_stack_link(mat, "texture_image", in, out, texlink);
 
 		if (ret) {

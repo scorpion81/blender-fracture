@@ -36,6 +36,11 @@
 #include "../geometry/Bezier.h"
 #include "../geometry/Geom.h"
 
+extern "C" {
+struct MTex;
+struct bNodeTree;
+}
+
 using namespace std;
 
 namespace Freestyle {
@@ -52,7 +57,7 @@ namespace StrokeShaders {
 /*! [ Thickness Shader ].
  *  Assigns an absolute constant thickness to every vertices of the Stroke.
  */
-class LIB_STROKE_EXPORT ConstantThicknessShader : public StrokeShader
+class ConstantThicknessShader : public StrokeShader
 {
 public:
 	/*! Builds the shader.
@@ -85,7 +90,7 @@ private:
  *  is its thickness from the point to the strip border in the direction pointing outside the object the
  *  Stroke delimitates.
  */
-class LIB_STROKE_EXPORT ConstantExternThicknessShader : public StrokeShader
+class ConstantExternThicknessShader : public StrokeShader
 {
 public:
 	ConstantExternThicknessShader(float thickness) : StrokeShader()
@@ -112,7 +117,7 @@ private:
  *  and the last vertex.
  *  The thickness is linearly interpolated from A to B.
  */
-class LIB_STROKE_EXPORT IncreasingThicknessShader : public StrokeShader
+class IncreasingThicknessShader : public StrokeShader
 {
 public:
 	/*! Builds the shader.
@@ -147,7 +152,7 @@ private:
  *  Same as previous but here we allow the user to control the ratio thickness/length so that  we don't get
  *  fat short lines
  */
-class LIB_STROKE_EXPORT ConstrainedIncreasingThicknessShader : public StrokeShader
+class ConstrainedIncreasingThicknessShader : public StrokeShader
 {
 private:
 	float _ThicknessMin;
@@ -185,7 +190,7 @@ public:
 /*  [ Thickness Shader ].
  *  Modifys the thickness in a relative way depending on its length.
  */
-class LIB_STROKE_EXPORT LengthDependingThicknessShader : public StrokeShader
+class LengthDependingThicknessShader : public StrokeShader
 {
 private:
 	float _minThickness;
@@ -213,57 +218,12 @@ public:
 	virtual int shade(Stroke& stroke) const;
 };
 
-/*! [ Thickness Shader ].
-*  Applys a pattern (texture) to vary thickness.
-*  The new thicknesses are the result of the multiplication
-*  of the pattern and the original thickness
-*/
-class LIB_STROKE_EXPORT ThicknessVariationPatternShader : public StrokeShader
-{
-public:
-	/*! Builds the shader.
-	 *  \param pattern_name
-	 *    The texture file name.
-	 *  \param iMinThickness
-	 *    The minimum thickness we don't want to exceed.
-	 *  \param iMaxThickness
-	 *    The maximum thickness we don't want to exceed.
-	 *  \param stretch
-	 *    Tells whether the pattern texture must be stretched or repeted to fit the stroke.
-	 */
-	ThicknessVariationPatternShader(const string pattern_name, float iMinThickness = 1.0f, float iMaxThickness = 5.0f,
-	                                bool stretch = true);
-
-	/*! Destructor.*/
-	virtual ~ThicknessVariationPatternShader()
-	{
-		if (0 != _aThickness) {
-			delete[] _aThickness;
-			_aThickness = 0;
-		}
-	}
-
-	virtual string getName() const
-	{
-		return "ThicknessVariationPatternShader";
-	}
-
-	/*! The shading method. */
-	virtual int shade(Stroke& stroke) const;
-
-private:
-	float *_aThickness; // array of thickness values, in % of the max (i.e comprised between 0 and 1)
-	unsigned _size;
-	float _minThickness;
-	float _maxThickness;
-	bool _stretch;
-};
 
 /*!  [ Thickness Shader ].
  *   Adds some noise to the stroke thickness.
  *   \see \htmlonly <a href=noise/noise.html>noise/noise.html</a>\endhtmlonly
  */
-class LIB_STROKE_EXPORT ThicknessNoiseShader : public StrokeShader
+class ThicknessNoiseShader : public StrokeShader
 {
 private:
 	float _amplitude;
@@ -297,7 +257,7 @@ public:
 /*!  [ Color Shader ].
  *   Assigns a constant color to every vertices of the Stroke.
  */
-class LIB_STROKE_EXPORT ConstantColorShader : public StrokeShader
+class ConstantColorShader : public StrokeShader
 {
 public:
 	/*! Builds the shader from a user-specified color.
@@ -335,7 +295,7 @@ private:
  *   The user specifies 2 colors A and B. The stroke color will change linearly from A to B between the
  *   first and the last vertex.
  */
-class LIB_STROKE_EXPORT IncreasingColorShader : public StrokeShader
+class IncreasingColorShader : public StrokeShader
 {
 private:
 	float _colorMin[4];
@@ -384,48 +344,10 @@ public:
 	virtual int shade(Stroke& stroke) const;
 };
 
-/*! [ Color Shader ].
- *  Applys a pattern to vary original color.
- *  The new color is the result of the multiplication of the pattern and the original color
- */
-class LIB_STROKE_EXPORT ColorVariationPatternShader : public StrokeShader
-{
-public:
-	/*! Builds the shader from the pattern texture file name.
-	 *  \param pattern_name
-	 *    The file name of the texture file to use as pattern
-	 *  \param stretch
-	 *    Tells whether the texture must be strecthed or repeted to fit the stroke.
-	 */
-	ColorVariationPatternShader(const string pattern_name, bool stretch = true);
-
-	/*! Destructor */
-	virtual ~ColorVariationPatternShader()
-	{
-		if (0 != _aVariation) {
-			delete[] _aVariation;
-			_aVariation = 0;
-		}
-	}
-
-	virtual string getName() const
-	{
-		return "ColorVariationPatternShader";
-	}
-
-	/*! The shading method. */
-	virtual int shade(Stroke& stroke) const;
-
-private:
-	float *_aVariation; // array of coef values, in % of the max (i.e comprised between 0 and 1)
-	unsigned _size;
-	bool _stretch;
-};
-
 /* [ Color Shader ].
  *  Assigns a color to the stroke depending on the material of the shape to which ot belongs to. (Disney shader)
  */
-class LIB_STROKE_EXPORT MaterialColorShader : public StrokeShader
+class MaterialColorShader : public StrokeShader
 {
 private:
 	float _coefficient;
@@ -444,32 +366,10 @@ public:
 	virtual int shade(Stroke& stroke) const;
 };
 
-class LIB_STROKE_EXPORT CalligraphicColorShader : public StrokeShader
-{
-private:
-	/* UNUSED */
-	//  int _textureId;
-	Vec2d _orientation;
-
-public:
-	CalligraphicColorShader(const Vec2d &iOrientation) : StrokeShader()
-	{
-		_orientation = iOrientation;
-		_orientation.normalize();
-	}
-
-	virtual string getName() const
-	{
-		return "CalligraphicColorShader";
-	}
-
-	virtual int shade(Stroke& stroke) const;
-};
-
 /*! [ Color Shader ].
  *  Shader to add noise to the stroke colors.
  */
-class LIB_STROKE_EXPORT ColorNoiseShader : public StrokeShader
+class ColorNoiseShader : public StrokeShader
 {
 private:
 	float _amplitude;
@@ -496,112 +396,13 @@ public:
 };
 
 //
-//  Texture Shaders
-//
-///////////////////////////////////////////////////////////////////////////////
-/*! [ Texture Shader ].
-*  Assigns a texture to the stroke in order to simulate
-*  its marks system. This shader takes as input an integer value
-*  telling which texture and blending mode to use among a set of
-*  predefined textures.
-*  Here are the different presets:
-*  0) -> /brushes/charcoalAlpha.bmp, HUMID_MEDIUM
-*  1) -> /brushes/washbrushAlpha.bmp, HUMID_MEDIUM
-*  2) -> /brushes/oil.bmp, HUMID_MEDIUM
-*  3) -> /brushes/oilnoblend.bmp, HUMID_MEDIUM
-*  4) -> /brushes/charcoalAlpha.bmp, DRY_MEDIUM
-*  5) -> /brushes/washbrushAlpha.bmp, DRY_MEDIUM
-*  6) -> /brushes/opaqueDryBrushAlpha.bmp, OPAQUE_MEDIUM
-*  7) -> /brushes/opaqueBrushAlpha.bmp, Stroke::OPAQUE_MEDIUM
-*  Any other value will lead to the following preset:
-*  default) -> /brushes/smoothAlpha.bmp, OPAQUE_MEDIUM.
-*/
-class LIB_STROKE_EXPORT TextureAssignerShader : public StrokeShader // FIXME
-{
-private:
-	int _textureId;
-
-public:
-	/*! Builds the shader.
-	 *  \param id
-	 *    The number of the preset to use.
-	 */
-	TextureAssignerShader(int id) : StrokeShader()
-	{
-		_textureId = id;
-	}
-
-	virtual string getName() const
-	{
-		return "TextureAssignerShader";
-	}
-
-	/*! The shading method */
-	virtual int shade(Stroke& stroke) const;
-};
-
-/*! [ Texture Shader ].
-*  Assigns a texture and a blending mode to the stroke
-*  in order to simulate its marks system.
-*/
-class LIB_STROKE_EXPORT StrokeTextureShader : public StrokeShader
-{
-private:
-	string _texturePath;
-	Stroke::MediumType _mediumType;
-	bool _tips; // 0 or 1
-
-public:
-	/*! Builds the shader from the texture file name and the blending mode to use.
-	 *  \param textureFile
-	 *    The the texture file name.
-	 *    \attention The textures must be placed in the $FREESTYLE_DIR/data/textures/brushes directory.
-	 *  \param mediumType
-	 *    The medium type and therefore, the blending mode that must be used for the rendering of this stroke.
-	 *  \param iTips
-	 *    Tells whether the texture includes tips or not.
-	 *    If it is the case, the texture image must respect the following format:
-	 *    \verbatim
-	 *     __________
-	 *    |          |
-	 *    |    A     |
-	 *    |__________|
-	 *    |     |    |
-	 *    |  B  | C  |
-	 *    |_____|____|
-	 * 
-	 *    \endverbatim
-	 *    - A : The stroke's corpus texture
-	 *    - B : The stroke's left extremity texture
-	 *    - C : The stroke's right extremity texture
-	 */
-	StrokeTextureShader(const string textureFile, Stroke::MediumType mediumType = Stroke::OPAQUE_MEDIUM,
-	                    bool iTips = false)
-	: StrokeShader()
-	{
-		_texturePath = textureFile;
-		_mediumType = mediumType;
-		_tips = iTips;
-	}
-
-	virtual string getName() const
-	{
-		return "StrokeTextureShader";
-	}
-
-	/*! The shading method */
-	virtual int shade(Stroke& stroke) const;
-};
-
-
-//
 //  Geometry Shaders
 //
 ///////////////////////////////////////////////////////////////////////////////
 /*! [ Geometry Shader ].
  *  Stretches the stroke at its two extremities and following the respective directions: v(1)v(0) and v(n-1)v(n).
  */
-class LIB_STROKE_EXPORT BackboneStretcherShader : public StrokeShader
+class BackboneStretcherShader : public StrokeShader
 {
 private:
 	float _amount; 
@@ -629,7 +430,7 @@ public:
  *  Resamples the stroke.
  *  @see Stroke::Resample(float).
  */
-class LIB_STROKE_EXPORT SamplingShader: public StrokeShader
+class SamplingShader: public StrokeShader
 {
 private:
 	float _sampling;
@@ -654,7 +455,7 @@ public:
 };
 
 
-class LIB_STROKE_EXPORT ExternalContourStretcherShader : public StrokeShader
+class ExternalContourStretcherShader : public StrokeShader
 {
 private:
 	float _amount;
@@ -673,20 +474,6 @@ public:
 	virtual int shade(Stroke& stroke) const;
 };
 
-// B-Spline stroke shader
-class LIB_STROKE_EXPORT BSplineShader: public StrokeShader
-{
-public:
-	BSplineShader() : StrokeShader() {}
-
-	virtual string getName() const
-	{
-		return "BSplineShader";
-	}
-
-	virtual int shade(Stroke& stroke) const;
-};
-
 
 // Bezier curve stroke shader
 /*! [ Geometry Shader ].
@@ -694,7 +481,7 @@ public:
  *  original backbone geometry.
  *  @see \htmlonly <a href=bezier/bezier.html>bezier/bezier.html</a> \endhtmlonly
  */
-class LIB_STROKE_EXPORT BezierCurveShader : public StrokeShader
+class BezierCurveShader : public StrokeShader
 {
 private:
 	float _error;
@@ -719,44 +506,13 @@ public:
 	virtual int shade(Stroke& stroke) const;
 };
 
-/* Shader to inflate the curves. It keeps the extreme points positions and moves the other ones along the 2D normal.
- * The displacement value is proportional to the 2d curvature at the considered point (the higher the curvature,
- * the smaller the displacement) and to a value specified by the user.
- */
-class LIB_STROKE_EXPORT InflateShader : public StrokeShader
-{
-private:
-	float _amount; 
-	float _curvatureThreshold;
-
-public:
-	/*! Builds an inflate shader
-	 *    \param iAmount
-	 *      A multiplicative coefficient that acts on the amount and direction of displacement
-	 *    \param iThreshold
-	 *      The curves having a 2d curvature > iThreshold at one of their points is not inflated
-	 */
-	InflateShader(float iAmount, float iThreshold) : StrokeShader()
-	{
-		_amount = iAmount;
-		_curvatureThreshold = iThreshold;
-	}
-
-	virtual string getName() const
-	{
-		return "InflateShader";
-	}
-
-	/*! The shading method */
-	virtual int shade(Stroke& stroke) const;
-};
 
 /*! [ Geometry Shader ].
  *  Shader to modify the Stroke geometry so that it looks more "polygonal".
  *  The basic idea is to start from the minimal stroke approximation consisting in a line joining the first vertex
  *  to the last one and to subdivide using the original stroke vertices until a certain error is reached.
  */
-class LIB_STROKE_EXPORT PolygonalizationShader : public StrokeShader
+class PolygonalizationShader : public StrokeShader
 {
 private:
 	float _error;
@@ -789,7 +545,7 @@ public:
  *  Indeed, the precision of the approximation will depend on the size of the stroke's pieces.
  *  The bigger the pieces, the rougher the approximation.
  */
-class LIB_STROKE_EXPORT GuidingLinesShader : public StrokeShader
+class GuidingLinesShader : public StrokeShader
 {
 private:
 	float _offset;
@@ -817,7 +573,7 @@ public:
 /*! [ Geometry Shader ].
  *  Removes the stroke's extremities.
  */
-class LIB_STROKE_EXPORT TipRemoverShader : public StrokeShader 
+class TipRemoverShader : public StrokeShader
 {
 public:
 	/*! Builds the shader.
@@ -841,56 +597,71 @@ protected:
 	real _tipLength; 
 };
 
-/*! [ output Shader ].
- *  streams the Stroke
+/*! [ Texture Shader ].
+ *  Shader to assign texture to the Stroke material.
  */
-class LIB_STROKE_EXPORT streamShader : public StrokeShader
-{
-public:
-	/*! Destructor. */
-	virtual ~streamShader() {}
 
-	/*! Returns the string "streamShader".*/
-	virtual string getName() const
+class BlenderTextureShader : public StrokeShader
+{
+private:
+	MTex *_mtex;
+	bNodeTree *_nodeTree;
+
+public:
+	/*! Builds the shader.
+	 *  \param mtex
+	 *    The blender texture to use.
+	 */
+	BlenderTextureShader(MTex *mtex) : StrokeShader()
 	{
-		return "streamShader";
+		_mtex = mtex;
+		_nodeTree = NULL;
 	}
 
-	/*! The shading method. */
+	/*! Builds the shader.
+	*  \param nodetree
+	*    A node tree (of new shading nodes) to define textures.
+	*/
+	BlenderTextureShader(bNodeTree *nodetree) : StrokeShader()
+	{
+		_nodeTree = nodetree;
+		_mtex = NULL;
+	}
+
+	virtual string getName() const
+	{
+		return "BlenderTextureShader";
+	}
+
+	/*! The shading method */
 	virtual int shade(Stroke& stroke) const;
 };
 
-/*! [ output Shader ].
- *  streams the Stroke in a file
+/*! [ Texture Shader ].
+ *  Shader to assign texture to the Stroke material.
  */
-class LIB_STROKE_EXPORT fstreamShader : public StrokeShader
+
+class StrokeTextureStepShader : public StrokeShader
 {
-protected:
-	mutable ofstream _stream;
+private:
+	float _step;
 
 public:
-	/*! Builds the shader from the output file name */
-	fstreamShader(const char *iFileName) : StrokeShader()
+	/*! Builds the shader.
+	 *  \param id
+	 *    The number of the preset to use.
+	 */
+	StrokeTextureStepShader(float step) : StrokeShader()
 	{
-		_stream.open(iFileName);
-		if (!_stream.is_open()) {
-			cerr << "couldn't open file " << iFileName << endl;
-		}
+		_step = step;
 	}
 
-	/*! Destructor. */
-	virtual ~fstreamShader()
-	{
-		_stream.close();
-	}
-
-	/*! Returns the string "fstreamShader".*/
 	virtual string getName() const
 	{
-		return "fstreamShader";
+		return "StrokeTextureStepShader";
 	}
 
-	/*! The shading method. */
+	/*! The shading method */
 	virtual int shade(Stroke& stroke) const;
 };
 

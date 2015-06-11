@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include "device.h"
@@ -44,7 +44,7 @@ bool MeshManager::displace(Device *device, DeviceScene *dscene, Scene *scene, Me
 	progress.set_status("Updating Mesh", msg);
 
 	/* find object index. todo: is arbitrary */
-	size_t object_index = ~0;
+	size_t object_index = OBJECT_NONE;
 
 	for(size_t i = 0; i < scene->objects.size(); i++) {
 		if(scene->objects[i]->mesh == mesh) {
@@ -119,16 +119,21 @@ bool MeshManager::displace(Device *device, DeviceScene *dscene, Scene *scene, Me
 	task.shader_eval_type = SHADER_EVAL_DISPLACE;
 	task.shader_x = 0;
 	task.shader_w = d_output.size();
+	task.num_samples = 1;
+	task.get_cancel = function_bind(&Progress::get_cancel, &progress);
 
 	device->task_add(task);
 	device->task_wait();
 
+	if(progress.get_cancel()) {
+		device->mem_free(d_input);
+		device->mem_free(d_output);
+		return false;
+	}
+
 	device->mem_copy_from(d_output, 0, 1, d_output.size(), sizeof(float4));
 	device->mem_free(d_input);
 	device->mem_free(d_output);
-
-	if(progress.get_cancel())
-		return false;
 
 	/* read result */
 	done.clear();

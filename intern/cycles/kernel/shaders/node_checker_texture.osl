@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include "stdosl.h"
@@ -21,9 +21,9 @@
 
 float checker(point p)
 {
-	p[0] = (p[0] + 0.00001) * 0.9999;
-	p[1] = (p[1] + 0.00001) * 0.9999;
-	p[2] = (p[2] + 0.00001) * 0.9999;
+	p[0] = (p[0] + 0.000001) * 0.999999;
+	p[1] = (p[1] + 0.000001) * 0.999999;
+	p[2] = (p[2] + 0.000001) * 0.999999;
 	
 	int xi = (int)fabs(floor(p[0]));
 	int yi = (int)fabs(floor(p[1]));

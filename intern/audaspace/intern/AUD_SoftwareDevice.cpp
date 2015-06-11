@@ -422,6 +422,8 @@ bool AUD_SoftwareDevice::AUD_SoftwareHandle::setPitch(float pitch)
 {
 	if(!m_status)
 		return false;
+	if(pitch <= 0)
+		pitch = 1;
 	m_user_pitch = pitch;
 	return true;
 }
@@ -703,7 +705,7 @@ void AUD_SoftwareDevice::create()
 	m_playback = false;
 	m_volume = 1.0f;
 	m_mixer = boost::shared_ptr<AUD_Mixer>(new AUD_Mixer(m_specs));
-	m_speed_of_sound = 343.0f;
+	m_speed_of_sound = 343.3f;
 	m_doppler_factor = 1.0f;
 	m_distance_model = AUD_DISTANCE_MODEL_INVERSE_CLAMPED;
 	m_flags = 0;

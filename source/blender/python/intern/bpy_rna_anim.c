@@ -53,6 +53,8 @@
 #include "bpy_util.h"
 #include "bpy_rna_anim.h"
 
+#include "../generic/python_utildefines.h"
+
 /* for keyframes and drivers */
 static int pyrna_struct_anim_args_parse(
         PointerRNA *ptr, const char *error_prefix, const char *path,
@@ -168,8 +170,13 @@ static int pyrna_struct_keyframe_parse(
 		*cfra = CTX_data_scene(BPy_GetContext())->r.cfra;
 
 	/* flag may be null (no option currently for remove keyframes e.g.). */
-	if (pyoptions && options && (pyrna_set_to_enum_bitfield(keying_flag_items, pyoptions, options, error_prefix) == -1))
-		return -1;
+	if (options) {
+		if (pyoptions && (pyrna_set_to_enum_bitfield(keying_flag_items, pyoptions, options, error_prefix) == -1)) {
+			return -1;
+		}
+
+		*options |= INSERTKEY_NO_USERPREF;
+	}
 
 	return 0; /* success */
 }
@@ -324,16 +331,13 @@ PyObject *pyrna_struct_driver_add(BPy_StructRNA *self, PyObject *args)
 			FCurve *fcu;
 
 			PointerRNA tptr;
-			PyObject *item;
 
 			if (index == -1) { /* all, use a list */
 				int i = 0;
 				ret = PyList_New(0);
 				while ((fcu = list_find_fcurve(&adt->drivers, path_full, i++))) {
 					RNA_pointer_create(id, &RNA_FCurve, fcu, &tptr);
-					item = pyrna_struct_CreatePyObject(&tptr);
-					PyList_Append(ret, item);
-					Py_DECREF(item);
+					PyList_APPEND(ret, pyrna_struct_CreatePyObject(&tptr));
 				}
 			}
 			else {

@@ -70,6 +70,7 @@
 #include "KX_ParentActuator.h"
 #include "KX_SCA_DynamicActuator.h"
 #include "KX_SteeringActuator.h"
+#include "KX_MouseActuator.h"
 
 #include "KX_Scene.h"
 #include "KX_KetsjiEngine.h"
@@ -514,15 +515,7 @@ void BL_ConvertActuators(const char* maggiename,
 					break;
 				case ACT_EDOB_REPLACE_MESH:
 					{
-						RAS_MeshObject *tmpmesh = NULL;
-						if (editobact->me)
-							tmpmesh = BL_ConvertMesh(
-							            editobact->me,
-							            blenderobject,
-							            scene,
-							            converter,
-							            false
-							            );
+						RAS_MeshObject *tmpmesh = converter->FindGameMesh(editobact->me);
 
 						KX_SCA_ReplaceMeshActuator* tmpreplaceact = new KX_SCA_ReplaceMeshActuator(
 						            gameobj,
@@ -545,8 +538,8 @@ void BL_ConvertActuators(const char* maggiename,
 						            originalval,
 						            editobact->time,
 						            editobact->flag,
-						            blenderobject->trackflag,
-						            blenderobject->upflag);
+						            editobact->trackflag,
+						            editobact->upflag);
 						baseact = tmptrackact;
 						break;
 					}
@@ -758,7 +751,9 @@ void BL_ConvertActuators(const char* maggiename,
 					mode = KX_SceneActuator::KX_SCENE_SET_CAMERA;
 					if (sceneact->camera)
 					{
-						cam = (KX_Camera*) converter->FindGameObject(sceneact->camera);
+						KX_GameObject *tmp = converter->FindGameObject(sceneact->camera);
+						if (tmp && tmp->GetGameObjectType() == SCA_IObject::OBJ_CAMERA)
+							cam = (KX_Camera*)tmp;
 					}
 					break;
 				case ACT_SCENE_RESTART:
@@ -1092,19 +1087,64 @@ void BL_ConvertActuators(const char* maggiename,
 				bool enableVisualization = (stAct->flag & ACT_STEERING_ENABLEVISUALIZATION) !=0;
 				short facingMode = (stAct->flag & ACT_STEERING_AUTOMATICFACING) ? stAct->facingaxis : 0;
 				bool normalup = (stAct->flag & ACT_STEERING_NORMALUP) !=0;
+				bool lockzvel = (stAct->flag & ACT_STEERING_LOCKZVEL) !=0;
 				KX_SteeringActuator *tmpstact
 					= new KX_SteeringActuator(gameobj, mode, targetob, navmeshob,stAct->dist, 
 					stAct->velocity, stAct->acceleration, stAct->turnspeed, 
 					selfTerminated, stAct->updateTime,
-					scene->GetObstacleSimulation(), facingMode, normalup, enableVisualization);
+					scene->GetObstacleSimulation(), facingMode, normalup, enableVisualization, lockzvel);
 				baseact = tmpstact;
+				break;
+			}
+		case ACT_MOUSE:
+			{
+				bMouseActuator* mouAct = (bMouseActuator*) bact->data;
+				int mode = KX_MouseActuator::KX_ACT_MOUSE_NODEF;
+
+				switch (mouAct->type) {
+					case ACT_MOUSE_VISIBILITY:
+					{
+						mode = KX_MouseActuator::KX_ACT_MOUSE_VISIBILITY;
+						break;
+					}
+					case ACT_MOUSE_LOOK:
+					{
+						mode = KX_MouseActuator::KX_ACT_MOUSE_LOOK;
+						break;
+					}
+				}
+
+				bool visible = (mouAct->flag & ACT_MOUSE_VISIBLE) != 0;
+				bool use_axis[2] = {(mouAct->flag & ACT_MOUSE_USE_AXIS_X) != 0, (mouAct->flag & ACT_MOUSE_USE_AXIS_Y) != 0};
+				bool reset[2] = {(mouAct->flag & ACT_MOUSE_RESET_X) != 0, (mouAct->flag & ACT_MOUSE_RESET_Y) != 0};
+				bool local[2] = {(mouAct->flag & ACT_MOUSE_LOCAL_X) != 0, (mouAct->flag & ACT_MOUSE_LOCAL_Y) != 0};
+
+				SCA_MouseManager* eventmgr = (SCA_MouseManager*) logicmgr->FindEventManager(SCA_EventManager::MOUSE_EVENTMGR);
+				if (eventmgr) {
+					KX_MouseActuator* tmpbaseact = new KX_MouseActuator(gameobj,
+																		ketsjiEngine,
+																		eventmgr,
+																		mode,
+																		visible,
+																		use_axis,
+																		mouAct->threshold,
+																		reset,
+																		mouAct->object_axis,
+																		local,
+																		mouAct->sensitivity,
+																		mouAct->limit_x,
+																		mouAct->limit_y);
+					baseact = tmpbaseact;
+				} else {
+					//cout << "\n Couldn't find mouse event manager..."; - should throw an error here...
+				}
 				break;
 			}
 		default:
 			; /* generate some error */
 		}
 		
-		if (baseact)
+		if (baseact && !(bact->flag & ACT_DEACTIVATE))
 		{
 			baseact->SetExecutePriority(executePriority++);
 			uniquename += "#ACT#";
@@ -1120,6 +1160,8 @@ void BL_ConvertActuators(const char* maggiename,
 			// done with baseact, release it
 			baseact->Release();
 		}
+		else if (baseact)
+			baseact->Release();
 		
 		bact = bact->next;
 	}

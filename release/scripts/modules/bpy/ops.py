@@ -30,12 +30,13 @@ op_get_rna = ops_module.get_rna
 op_get_instance = ops_module.get_instance
 
 
-class BPyOps(object):
+class BPyOps:
     """
     Fake module like class.
 
      bpy.ops
     """
+    __slots__ = ()
 
     def __getattr__(self, module):
         """
@@ -68,16 +69,16 @@ class BPyOps(object):
         return "<module like class 'bpy.ops'>"
 
 
-class BPyOpsSubMod(object):
+class BPyOpsSubMod:
     """
     Utility class to fake submodules.
 
     eg. bpy.ops.object
     """
-    __slots__ = ("module",)
+    __slots__ = ("_module",)
 
     def __init__(self, module):
-        self.module = module
+        self._module = module
 
     def __getattr__(self, func):
         """
@@ -85,13 +86,13 @@ class BPyOpsSubMod(object):
         """
         if func.startswith('__'):
             raise AttributeError(func)
-        return BPyOpsSubModOp(self.module, func)
+        return BPyOpsSubModOp(self._module, func)
 
     def __dir__(self):
 
         functions = set()
 
-        module_upper = self.module.upper()
+        module_upper = self._module.upper()
 
         for id_name in op_dir():
             id_split = id_name.split('_OT_', 1)
@@ -101,17 +102,17 @@ class BPyOpsSubMod(object):
         return list(functions)
 
     def __repr__(self):
-        return "<module like class 'bpy.ops.%s'>" % self.module
+        return "<module like class 'bpy.ops.%s'>" % self._module
 
 
-class BPyOpsSubModOp(object):
+class BPyOpsSubModOp:
     """
     Utility class to fake submodule operators.
 
     eg. bpy.ops.object.somefunc
     """
 
-    __slots__ = ("module", "func")
+    __slots__ = ("_module", "_func")
 
     def _get_doc(self):
         return op_as_string(self.idname())
@@ -156,8 +157,8 @@ class BPyOpsSubModOp(object):
     __doc__ = property(_get_doc)
 
     def __init__(self, module, func):
-        self.module = module
-        self.func = func
+        self._module = module
+        self._func = func
 
     def poll(self, *args):
         C_dict, C_exec, C_undo = BPyOpsSubModOp._parse_args(args)
@@ -165,11 +166,11 @@ class BPyOpsSubModOp(object):
 
     def idname(self):
         # submod.foo -> SUBMOD_OT_foo
-        return self.module.upper() + "_OT_" + self.func
+        return self._module.upper() + "_OT_" + self._func
 
     def idname_py(self):
         # submod.foo -> SUBMOD_OT_foo
-        return self.module + "." + self.func
+        return self._module + "." + self._func
 
     def __call__(self, *args, **kw):
         import bpy
@@ -201,10 +202,15 @@ class BPyOpsSubModOp(object):
         return op_get_instance(self.idname())
 
     def __repr__(self):  # useful display, repr(op)
-        import bpy
+        # import bpy
         idname = self.idname()
         as_string = op_as_string(idname)
-        op_class = getattr(bpy.types, idname)
+        # XXX You never quite know what you get from bpy.types,
+        # with operators... Operator and OperatorProperties
+        # are shadowing each other, and not in the same way for
+        # native ops and py ones! See T39158.
+        # op_class = getattr(bpy.types, idname)
+        op_class = op_get_rna(idname)
         descr = op_class.bl_rna.description
         # XXX, workaround for not registering
         # every __doc__ to save time on load.
@@ -217,6 +223,6 @@ class BPyOpsSubModOp(object):
 
     def __str__(self):  # used for print(...)
         return ("<function bpy.ops.%s.%s at 0x%x'>" %
-                (self.module, self.func, id(self)))
+                (self._module, self._func, id(self)))
 
 ops_fake_module = BPyOps()

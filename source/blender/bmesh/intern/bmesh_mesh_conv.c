@@ -233,12 +233,12 @@ void BM_mesh_bm_from_me(BMesh *bm, Mesh *me,
 	BMEdge *e, **etable = NULL;
 	BMFace *f;
 	float (*keyco)[3] = NULL;
-	int *keyi;
-	int totuv, i, j;
+	int totuv, totloops, i, j;
 
 	int cd_vert_bweight_offset;
 	int cd_edge_bweight_offset;
 	int cd_edge_crease_offset;
+	int cd_shape_keyindex_offset;
 
 	/* free custom data */
 	/* this isnt needed in most cases but do just incase */
@@ -325,6 +325,7 @@ void BM_mesh_bm_from_me(BMesh *bm, Mesh *me,
 	cd_vert_bweight_offset = CustomData_get_offset(&bm->vdata, CD_BWEIGHT);
 	cd_edge_bweight_offset = CustomData_get_offset(&bm->edata, CD_BWEIGHT);
 	cd_edge_crease_offset  = CustomData_get_offset(&bm->edata, CD_CREASE);
+	cd_shape_keyindex_offset = me->key ? CustomData_get_offset(&bm->vdata, CD_SHAPE_KEYINDEX) : -1;
 
 	for (i = 0, mvert = me->mvert; i < me->totvert; i++, mvert++) {
 		v = vtable[i] = BM_vert_create(bm, keyco && set_key ? keyco[i] : mvert->co, NULL, BM_CREATE_SKIP_CD);
@@ -348,10 +349,7 @@ void BM_mesh_bm_from_me(BMesh *bm, Mesh *me,
 		/* set shapekey data */
 		if (me->key) {
 			/* set shape key original index */
-			keyi = CustomData_bmesh_get(&bm->vdata, v->head.data, CD_SHAPE_KEYINDEX);
-			if (keyi) {
-				*keyi = i;
-			}
+			if (cd_shape_keyindex_offset != -1) BM_ELEM_CD_SET_INT(v, cd_shape_keyindex_offset, i);
 
 			for (block = me->key->block.first, j = 0; block; block = block->next, j++) {
 				float *co = CustomData_bmesh_get_n(&bm->vdata, v->head.data, CD_SHAPEKEY, j);
@@ -397,7 +395,7 @@ void BM_mesh_bm_from_me(BMesh *bm, Mesh *me,
 
 	mloop = me->mloop;
 	mp = me->mpoly;
-	for (i = 0; i < me->totpoly; i++, mp++) {
+	for (i = 0, totloops = 0; i < me->totpoly; i++, mp++) {
 		BMLoop *l_iter;
 		BMLoop *l_first;
 
@@ -428,6 +426,9 @@ void BM_mesh_bm_from_me(BMesh *bm, Mesh *me,
 		j = mp->loopstart;
 		l_iter = l_first = BM_FACE_FIRST_LOOP(f);
 		do {
+			/* don't use 'j' since we may have skipped some faces, hence some loops. */
+			BM_elem_index_set(l_iter, totloops++); /* set_ok */
+
 			/* Save index of correspsonding MLoop */
 			CustomData_to_bmesh_block(&me->ldata, &bm->ldata, j++, &l_iter->head.data, true);
 		} while ((l_iter = l_iter->next) != l_first);
@@ -440,7 +441,7 @@ void BM_mesh_bm_from_me(BMesh *bm, Mesh *me,
 		}
 	}
 
-	bm->elem_index_dirty &= ~BM_FACE; /* added in order, clear dirty flag */
+	bm->elem_index_dirty &= ~(BM_FACE | BM_LOOP); /* added in order, clear dirty flag */
 
 	if (me->mselect && me->totselect != 0) {
 
@@ -495,9 +496,9 @@ void BM_mesh_bm_from_me(BMesh *bm, Mesh *me,
  */
 static BMVert **bm_to_mesh_vertex_map(BMesh *bm, int ototvert)
 {
+	const int cd_shape_keyindex_offset = CustomData_get_offset(&bm->vdata, CD_SHAPE_KEYINDEX);
 	BMVert **vertMap = NULL;
 	BMVert *eve;
-	int index;
 	int i = 0;
 	BMIter iter;
 
@@ -505,32 +506,22 @@ static BMVert **bm_to_mesh_vertex_map(BMesh *bm, int ototvert)
 	BLI_assert(ototvert > 0);
 
 	vertMap = MEM_callocN(sizeof(*vertMap) * ototvert, "vertMap");
-	if (CustomData_has_layer(&bm->vdata, CD_SHAPE_KEYINDEX)) {
-		int *keyi;
-		BM_ITER_MESH (eve, &iter, bm, BM_VERTS_OF_MESH) {
-			keyi = CustomData_bmesh_get(&bm->vdata, eve->head.data, CD_SHAPE_KEYINDEX);
-			if (keyi) {
-				if (((index = *keyi) != ORIGINDEX_NONE) && (index < ototvert)) {
-					vertMap[index] = eve;
-				}
+	if (cd_shape_keyindex_offset != -1) {
+		BM_ITER_MESH_INDEX (eve, &iter, bm, BM_VERTS_OF_MESH, i) {
+			const int keyi = BM_ELEM_CD_GET_INT(eve, cd_shape_keyindex_offset);
+			if ((keyi != ORIGINDEX_NONE) && (keyi < ototvert)) {
+				vertMap[keyi] = eve;
 			}
-			else {
-				if (i < ototvert) {
-					vertMap[i] = eve;
-				}
-			}
-			i++;
 		}
 	}
 	else {
-		BM_ITER_MESH (eve, &iter, bm, BM_VERTS_OF_MESH) {
+		BM_ITER_MESH_INDEX (eve, &iter, bm, BM_VERTS_OF_MESH, i) {
 			if (i < ototvert) {
 				vertMap[i] = eve;
 			}
 			else {
 				break;
 			}
-			i++;
 		}
 	}
 
@@ -634,6 +625,7 @@ void BM_mesh_bm_to_me(BMesh *bm, Mesh *me, bool do_tessface)
 	 * end up with 'me->totface' and me->mface == NULL which can crash [#28625]
 	 */
 	me->totface = 0;
+	me->act_face = -1;
 
 	CustomData_copy(&bm->vdata, &me->vdata, CD_MASK_MESH, CD_CALLOC, me->totvert);
 	CustomData_copy(&bm->edata, &me->edata, CD_MASK_MESH, CD_CALLOC, me->totedge);
@@ -796,7 +788,7 @@ void BM_mesh_bm_to_me(BMesh *bm, Mesh *me, bool do_tessface)
 
 	{
 		BMEditSelection *selected;
-		me->totselect = BLI_countlist(&(bm->selected));
+		me->totselect = BLI_listbase_count(&(bm->selected));
 
 		if (me->mselect) MEM_freeN(me->mselect);
 
@@ -823,6 +815,8 @@ void BM_mesh_bm_to_me(BMesh *bm, Mesh *me, bool do_tessface)
 	/* see comment below, this logic is in twice */
 
 	if (me->key) {
+		const int cd_shape_keyindex_offset = CustomData_get_offset(&bm->vdata, CD_SHAPE_KEYINDEX);
+
 		KeyBlock *currkey;
 		KeyBlock *actkey = BLI_findlink(&me->key->block, bm->shapenr - 1);
 
@@ -856,26 +850,19 @@ void BM_mesh_bm_to_me(BMesh *bm, Mesh *me, bool do_tessface)
 		                                        * bmesh and the mesh are out of sync */
 		    (oldverts != NULL))                /* not used here, but 'oldverts' is used later for applying 'ofs' */
 		{
-			bool act_is_basis = false;
+			const bool act_is_basis = BKE_keyblock_is_basis(me->key, bm->shapenr - 1);
 
-			/* find if this key is a basis for any others */
-			for (currkey = me->key->block.first; currkey; currkey = currkey->next) {
-				if (bm->shapenr - 1 == currkey->relative) {
-					act_is_basis = true;
-					break;
-				}
-			}
-
-			if (act_is_basis) { /* active key is a base */
+			/* active key is a base */
+			if (act_is_basis && (cd_shape_keyindex_offset != -1)) {
 				float (*fp)[3] = actkey->data;
-				int *keyi;
 
 				ofs = MEM_callocN(sizeof(float) * 3 * bm->totvert,  "currkey->data");
 				mvert = me->mvert;
 				BM_ITER_MESH_INDEX (eve, &iter, bm, BM_VERTS_OF_MESH, i) {
-					keyi = CustomData_bmesh_get(&bm->vdata, eve->head.data, CD_SHAPE_KEYINDEX);
-					if (keyi && *keyi != ORIGINDEX_NONE) {
-						sub_v3_v3v3(ofs[i], mvert->co, fp[*keyi]);
+					const int keyi = BM_ELEM_CD_GET_INT(eve, cd_shape_keyindex_offset);
+
+					if (keyi != ORIGINDEX_NONE) {
+						sub_v3_v3v3(ofs[i], mvert->co, fp[keyi]);
 					}
 					else {
 						/* if there are new vertices in the mesh, we can't propagate the offset
@@ -892,12 +879,14 @@ void BM_mesh_bm_to_me(BMesh *bm, Mesh *me, bool do_tessface)
 		}
 
 		for (currkey = me->key->block.first; currkey; currkey = currkey->next) {
-			int apply_offset = (ofs && (currkey != actkey) && (bm->shapenr - 1 == currkey->relative));
-			int *keyi;
+			const bool apply_offset = (ofs && (currkey != actkey) && (bm->shapenr - 1 == currkey->relative));
+			int cd_shape_offset;
+			int keyi;
 			float (*ofs_pt)[3] = ofs;
-			float *newkey, *oldkey, *fp;
+			float *newkey, (*oldkey)[3], *fp;
 
 			j = bm_to_mesh_shape_layer_index_from_kb(bm, currkey);
+			cd_shape_offset = CustomData_get_n_offset(&bm->vdata, CD_SHAPEKEY, j);
 
 
 			fp = newkey = MEM_callocN(me->key->elemsize * bm->totvert,  "currkey->data");
@@ -910,26 +899,29 @@ void BM_mesh_bm_to_me(BMesh *bm, Mesh *me, bool do_tessface)
 					copy_v3_v3(fp, eve->co);
 
 					if (actkey != me->key->refkey) { /* important see bug [#30771] */
-						if (oldverts) {
-							keyi = CustomData_bmesh_get(&bm->vdata, eve->head.data, CD_SHAPE_KEYINDEX);
-							if (*keyi != ORIGINDEX_NONE && *keyi < currkey->totelem) { /* valid old vertex */
-								copy_v3_v3(mvert->co, oldverts[*keyi].co);
+						if (cd_shape_keyindex_offset != -1) {
+							if (oldverts) {
+								keyi = BM_ELEM_CD_GET_INT(eve, cd_shape_keyindex_offset);
+								if (keyi != ORIGINDEX_NONE && keyi < currkey->totelem) { /* valid old vertex */
+									copy_v3_v3(mvert->co, oldverts[keyi].co);
+								}
 							}
 						}
 					}
 				}
 				else if (j != -1) {
 					/* in most cases this runs */
-					copy_v3_v3(fp, CustomData_bmesh_get_n(&bm->vdata, eve->head.data, CD_SHAPEKEY, j));
+					copy_v3_v3(fp, BM_ELEM_CD_GET_VOID_P(eve, cd_shape_offset));
 				}
-				else if (oldkey &&
-				         (keyi = CustomData_bmesh_get(&bm->vdata, eve->head.data, CD_SHAPE_KEYINDEX)) &&
-				         (*keyi != ORIGINDEX_NONE && *keyi < currkey->totelem))
+				else if ((oldkey != NULL) &&
+				         (cd_shape_keyindex_offset != -1) &&
+				         ((keyi = BM_ELEM_CD_GET_INT(eve, cd_shape_keyindex_offset)) != ORIGINDEX_NONE) &&
+				         (keyi < currkey->totelem))
 				{
 					/* old method of reconstructing keys via vertice's original key indices,
 					 * currently used if the new method above fails (which is theoretically
 					 * possible in certain cases of undo) */
-					copy_v3_v3(fp, &oldkey[3 * (*keyi)]);
+					copy_v3_v3(fp, oldkey[keyi]);
 				}
 				else {
 					/* fail! fill in with dummy value */

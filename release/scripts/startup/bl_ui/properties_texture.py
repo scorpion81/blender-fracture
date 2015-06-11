@@ -20,13 +20,16 @@
 import bpy
 from bpy.types import Menu, Panel, UIList
 
-from bpy.types import (Brush,
-                       Lamp,
-                       Material,
-                       Object,
-                       ParticleSettings,
-                       Texture,
-                       World)
+from bpy.types import (
+        Brush,
+        FreestyleLineStyle,
+        Lamp,
+        Material,
+        Object,
+        ParticleSettings,
+        Texture,
+        World,
+        )
 
 from rna_prop_ui import PropertyPanel
 
@@ -94,6 +97,10 @@ def context_tex_datablock(context):
     if idblock:
         return idblock
 
+    idblock = context.line_style
+    if idblock:
+        return idblock
+
     if context.particle_system:
         idblock = context.particle_system.settings
 
@@ -109,7 +116,7 @@ def id_tex_datablock(bid):
     return bid
 
 
-class TextureButtonsPanel():
+class TextureButtonsPanel:
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "texture"
@@ -128,12 +135,13 @@ class TEXTURE_PT_context_texture(TextureButtonsPanel, Panel):
     @classmethod
     def poll(cls, context):
         engine = context.scene.render.engine
-        #if not (hasattr(context, "texture_slot") or hasattr(context, "texture_node")):
-            #return False
+        # if not (hasattr(context, "texture_slot") or hasattr(context, "texture_node")):
+        #     return False
         return ((context.material or
                  context.world or
                  context.lamp or
                  context.texture or
+                 context.line_style or
                  context.particle_system or
                  isinstance(context.space_data.pin_id, ParticleSettings) or
                  context.texture_user) and
@@ -166,14 +174,13 @@ class TEXTURE_PT_context_texture(TextureButtonsPanel, Panel):
             if user or pin_id:
                 layout.separator()
 
-                split = layout.split(percentage=0.65)
-                col = split.column()
+                row = layout.row()
 
                 if pin_id:
-                    col.template_ID(space, "pin_id")
+                    row.template_ID(space, "pin_id")
                 else:
                     propname = context.texture_user_property.identifier
-                    col.template_ID(user, propname, new="texture.new")
+                    row.template_ID(user, propname, new="texture.new")
 
                 if tex:
                     split = layout.split(percentage=0.2)
@@ -765,6 +772,9 @@ class TEXTURE_PT_voxeldata(TextureButtonsPanel, Panel):
         elif vd.file_format == 'SMOKE':
             layout.prop(vd, "domain_object")
             layout.prop(vd, "smoke_data_type")
+        elif vd.file_format == 'HAIR':
+            layout.prop(vd, "domain_object")
+            layout.prop(vd, "hair_data_type")
         elif vd.file_format == 'IMAGE_SEQUENCE':
             layout.template_ID(tex, "image", open="image.open")
             layout.template_image(tex, "image", tex.image_user, compact=True)
@@ -952,11 +962,28 @@ class TEXTURE_PT_mapping(TextureSlotPanel, Panel):
                 split.label(text="Object:")
                 split.prop(tex, "object", text="")
 
+            elif tex.texture_coords == 'ALONG_STROKE':
+                split = layout.split(percentage=0.3)
+                split.label(text="Use Tips:")
+                split.prop(tex, "use_tips", text="")
+
         if isinstance(idblock, Brush):
             if context.sculpt_object or context.image_paint_object:
                 brush_texture_settings(layout, idblock, context.sculpt_object)
         else:
-            if isinstance(idblock, Material):
+            if isinstance(idblock, FreestyleLineStyle):
+                split = layout.split(percentage=0.3)
+                split.label(text="Projection:")
+                split.prop(tex, "mapping", text="")
+
+                split = layout.split(percentage=0.3)
+                split.separator()
+                row = split.row()
+                row.prop(tex, "mapping_x", text="")
+                row.prop(tex, "mapping_y", text="")
+                row.prop(tex, "mapping_z", text="")
+
+            elif isinstance(idblock, Material):
                 split = layout.split(percentage=0.3)
                 split.label(text="Projection:")
                 split.prop(tex, "mapping", text="")
@@ -1067,6 +1094,8 @@ class TEXTURE_PT_influence(TextureSlotPanel, Panel):
                 factor_but(col, "use_map_hardness", "hardness_factor", "Hardness")
                 factor_but(col, "use_map_translucency", "translucency_factor", "Add")
             elif idblock.type == 'VOLUME':
+                layout.label(text="Volume:")
+
                 split = layout.split()
 
                 col = split.column()
@@ -1080,6 +1109,16 @@ class TEXTURE_PT_influence(TextureSlotPanel, Panel):
                 factor_but(col, "use_map_color_emission", "emission_color_factor", "Emission Color")
                 factor_but(col, "use_map_color_transmission", "transmission_color_factor", "Transmission Color")
                 factor_but(col, "use_map_color_reflection", "reflection_color_factor", "Reflection Color")
+
+                layout.label(text="Geometry:")
+
+                split = layout.split()
+
+                col = split.column()
+                factor_but(col, "use_map_warp", "warp_factor", "Warp")
+
+                col = split.column()
+                factor_but(col, "use_map_displacement", "displacement_factor", "Displace")
 
         elif isinstance(idblock, Lamp):
             split = layout.split()
@@ -1126,8 +1165,17 @@ class TEXTURE_PT_influence(TextureSlotPanel, Panel):
             factor_but(col, "use_map_clump", "clump_factor", "Clump")
 
             col = split.column()
-            factor_but(col, "use_map_kink", "kink_factor", "Kink")
+            factor_but(col, "use_map_kink_amp", "kink_amp_factor", "Kink Amplitude")
+            factor_but(col, "use_map_kink_freq", "kink_freq_factor", "Kink Frequency")
             factor_but(col, "use_map_rough", "rough_factor", "Rough")
+
+        elif isinstance(idblock, FreestyleLineStyle):
+            split = layout.split()
+
+            col = split.column()
+            factor_but(col, "use_map_color_diffuse", "diffuse_color_factor", "Color")
+            col = split.column()
+            factor_but(col, "use_map_alpha", "alpha_factor", "Alpha")
 
         layout.separator()
 

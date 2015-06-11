@@ -33,6 +33,10 @@
 #ifndef __RENDERDATABASE_H__
 #define __RENDERDATABASE_H__
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct Object;
 struct VlakRen;
 struct VertRen;
@@ -92,7 +96,7 @@ void free_renderdata_tables(struct Render *re);
 void free_renderdata_vertnodes(struct VertTableNode *vertnodes);
 void free_renderdata_vlaknodes(struct VlakTableNode *vlaknodes);
 
-void project_renderdata(struct Render *re, void (*projectfunc)(const float *, float mat[4][4], float *),  int do_pano, float xoffs, int do_buckets);
+void project_renderdata(struct Render *re, void (*projectfunc)(const float *, float mat[4][4], float *),  bool do_pano, float xoffs, bool do_buckets);
 int clip_render_object(float boundbox[2][3], float bounds[4], float mat[4][4]);
 
 /* functions are not exported... so wrong names */
@@ -159,6 +163,9 @@ void area_lamp_vectors(struct LampRen *lar);
 void init_render_world(Render *re);
 void RE_Database_FromScene_Vectors(Render *re, struct Main *bmain, struct Scene *sce, unsigned int lay);
 
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* __RENDERDATABASE_H__ */
 

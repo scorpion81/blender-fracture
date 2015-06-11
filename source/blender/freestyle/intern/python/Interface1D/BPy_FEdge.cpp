@@ -46,7 +46,7 @@ PyDoc_STRVAR(FEdge_doc,
 "silhouettes, the FEdge is oriented so that the visible face lies on\n"
 "the left of the edge.  For borders, the FEdge is oriented so that the\n"
 "face lies on the left of the edge.  An FEdge can represent an initial\n"
-"edge of the mesh or runs accross a face of the initial mesh depending\n"
+"edge of the mesh or runs across a face of the initial mesh depending\n"
 "on the smoothness or sharpness of the mesh.  This class is specialized\n"
 "into a smooth and a sharp version since their properties slightly vary\n"
 "from one to the other.\n"
@@ -94,7 +94,7 @@ static int FEdge_init(BPy_FEdge *self, PyObject *args, PyObject *kwds)
 		return -1;
 	}
 	self->py_if1D.if1D = self->fe;
-	self->py_if1D.borrowed = 0;
+	self->py_if1D.borrowed = false;
 	return 0;
 }
 

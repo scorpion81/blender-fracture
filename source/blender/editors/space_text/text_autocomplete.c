@@ -183,7 +183,7 @@ static GHash *text_autocomplete_build(Text *text)
 					const int choice_len = i_end - i_start;
 
 					if ((choice_len > seek_len) &&
-					    (seek_len == 0 || strncmp(seek, str_sub, seek_len) == 0) &&
+					    (seek_len == 0 || STREQLEN(seek, str_sub, seek_len)) &&
 					    (seek != str_sub))
 					{
 						// printf("Adding: %s\n", s);
@@ -207,18 +207,16 @@ static GHash *text_autocomplete_build(Text *text)
 		}
 
 		{
-			GHashIterator *iter = BLI_ghashIterator_new(gh);
+			GHashIterator gh_iter;
 
 			/* get the formatter for highlighting */
 			TextFormatType *tft;
 			tft = ED_text_format_get(text);
 
-			for (; !BLI_ghashIterator_done(iter); BLI_ghashIterator_step(iter)) {
-				const char *s = BLI_ghashIterator_getValue(iter);
+			GHASH_ITER (gh_iter, gh) {
+				const char *s = BLI_ghashIterator_getValue(&gh_iter);
 				texttool_suggest_add(s, tft->format_identifier(s));
 			}
-			BLI_ghashIterator_free(iter);
-
 		}
 	}
 
@@ -232,7 +230,7 @@ static GHash *text_autocomplete_build(Text *text)
 static void get_suggest_prefix(Text *text, int offset)
 {
 	int i, len;
-	char *line;
+	const char *line;
 
 	if (!text) return;
 	if (!texttool_text_is_active(text)) return;
@@ -280,7 +278,7 @@ static int text_autocomplete_invoke(bContext *C, wmOperator *op, const wmEvent *
 	SpaceText *st = CTX_wm_space_text(C);
 	Text *text = CTX_data_edit_text(C);
 
-	st->doplugins = TRUE;
+	st->doplugins = true;
 	op->customdata = text_autocomplete_build(text);
 
 	if (texttool_suggest_first()) {
@@ -494,7 +492,7 @@ static int text_autocomplete_modal(bContext *C, wmOperator *op, const wmEvent *e
 	}
 
 	if (draw) {
-		ED_area_tag_redraw(CTX_wm_area(C));
+		ED_area_tag_redraw(sa);
 	}
 
 //	if (swallow) {
@@ -524,7 +522,7 @@ static void text_autocomplete_free(bContext *C, wmOperator *op)
 	/* other stuff */
 	{
 		SpaceText *st = CTX_wm_space_text(C);
-		st->doplugins = FALSE;
+		st->doplugins = false;
 		texttool_text_clear();
 	}
 }

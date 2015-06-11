@@ -30,9 +30,8 @@
 
 
 GHOST_NDOFManagerX11::GHOST_NDOFManagerX11(GHOST_System& sys)
-	:
-	GHOST_NDOFManager(sys),
-	m_available(false)
+    : GHOST_NDOFManager(sys),
+      m_available(false)
 {
 	setDeadZone(0.1f); /* how to calibrate on Linux? throw away slight motion! */
 
@@ -43,8 +42,8 @@ GHOST_NDOFManagerX11::GHOST_NDOFManagerX11(GHOST_System& sys)
 
 #define MAX_LINE_LENGTH 100
 
-		/* look for USB devices with Logitech's vendor ID */
-		FILE *command_output = popen("lsusb -d 046d:", "r");
+		/* look for USB devices with Logitech or 3Dconnexion's vendor ID */
+		FILE *command_output = popen("lsusb | grep '046d:\|256f:'", "r");
 		if (command_output) {
 			char line[MAX_LINE_LENGTH] = {0};
 			while (fgets(line, MAX_LINE_LENGTH, command_output)) {
@@ -59,7 +58,7 @@ GHOST_NDOFManagerX11::GHOST_NDOFManagerX11(GHOST_System& sys)
 	}
 	else {
 #ifdef DEBUG
-		/* annoying for official builds, just adds noise and most prople don't own these */
+		/* annoying for official builds, just adds noise and most people don't own these */
 		puts("ndof: spacenavd not found");
 		/* This isn't a hard error, just means the user doesn't have a 3D mouse. */
 #endif
@@ -77,32 +76,69 @@ bool GHOST_NDOFManagerX11::available()
 	return m_available;
 }
 
+/*
+ * Workaround for a problem where we don't enter the 'GHOST_kFinished' state,
+ * this causes any proceeding event to have a very high 'dt' (time delta),
+ * many seconds for eg, causing the view to jump.
+ *
+ * this workaround expects continuous events, if we miss a motion event,
+ * immediately send a dummy event with no motion to ensure the finished state is reached.
+ */
+#define USE_FINISH_GLITCH_WORKAROUND
+/* TODO: make this available on all platforms */
+
+#ifdef USE_FINISH_GLITCH_WORKAROUND
+static bool motion_test_prev = false;
+#endif
+
 bool GHOST_NDOFManagerX11::processEvents()
 {
 	bool anyProcessed = false;
 
 	if (m_available) {
-		GHOST_TUns64 now = m_system.getMilliSeconds();
-
 		spnav_event e;
+
+#ifdef USE_FINISH_GLITCH_WORKAROUND
+		bool motion_test = false;
+#endif
+
 		while (spnav_poll_event(&e)) {
 			switch (e.type) {
 				case SPNAV_EVENT_MOTION:
 				{
 					/* convert to blender view coords */
-					short t[3] = {(short)e.motion.x, (short)e.motion.y, (short)-e.motion.z};
-					short r[3] = {(short)-e.motion.rx, (short)-e.motion.ry, (short)e.motion.rz};
+					GHOST_TUns64 now = m_system.getMilliSeconds();
+					const short t[3] = {(short)e.motion.x, (short)e.motion.y, (short)-e.motion.z};
+					const short r[3] = {(short)-e.motion.rx, (short)-e.motion.ry, (short)e.motion.rz};
 
 					updateTranslation(t, now);
 					updateRotation(r, now);
+#ifdef USE_FINISH_GLITCH_WORKAROUND
+					motion_test = true;
+#endif
 					break;
 				}
 				case SPNAV_EVENT_BUTTON:
+					GHOST_TUns64 now = m_system.getMilliSeconds();
 					updateButton(e.button.bnum, e.button.press, now);
 					break;
 			}
 			anyProcessed = true;
 		}
+
+#ifdef USE_FINISH_GLITCH_WORKAROUND
+		if (motion_test_prev == true && motion_test == false) {
+			GHOST_TUns64 now = m_system.getMilliSeconds();
+			const short v[3] = {0, 0, 0};
+
+			updateTranslation(v, now);
+			updateRotation(v, now);
+
+			anyProcessed = true;
+		}
+		motion_test_prev = motion_test;
+#endif
+
 	}
 
 	return anyProcessed;

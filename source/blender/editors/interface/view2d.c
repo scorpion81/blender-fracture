@@ -38,9 +38,11 @@
 #include "DNA_scene_types.h"
 #include "DNA_userdef_types.h"
 
-#include "BLI_blenlib.h"
-#include "BLI_math.h"
 #include "BLI_utildefines.h"
+#include "BLI_link_utils.h"
+#include "BLI_rect.h"
+#include "BLI_math.h"
+#include "BLI_memarena.h"
 #include "BLI_timecode.h"
 
 #include "BKE_context.h"
@@ -54,7 +56,6 @@
 
 #include "BLF_api.h"
 
-#include "ED_anim_api.h"
 #include "ED_screen.h"
 
 #include "UI_interface.h"
@@ -65,6 +66,35 @@
 static void ui_view2d_curRect_validate_resize(View2D *v2d, int resize, int mask_scrollers);
 
 /* *********************************************************************** */
+
+BLI_INLINE int clamp_float_to_int(const float f)
+{
+	const float min = INT_MIN;
+	const float max = INT_MAX;
+
+	if (UNLIKELY(f < min)) {
+		return min;
+	}
+	else if (UNLIKELY(f > max)) {
+		return max;
+	}
+	else {
+		return (int)f;
+	}
+}
+
+/**
+ * use instead of #BLI_rcti_rctf_copy so we have consistent behavior
+ * with users of #clamp_float_to_int.
+ */
+BLI_INLINE void clamp_rctf_to_rcti(rcti *dst, const rctf *src)
+{
+	dst->xmin = clamp_float_to_int(src->xmin);
+	dst->xmax = clamp_float_to_int(src->xmax);
+	dst->ymin = clamp_float_to_int(src->ymin);
+	dst->ymax = clamp_float_to_int(src->ymax);
+}
+
 
 /* XXX still unresolved: scrolls hide/unhide vs region mask handling */
 /* XXX there's V2D_SCROLL_HORIZONTAL_HIDE and V2D_SCROLL_HORIZONTAL_FULLR ... */
@@ -176,7 +206,7 @@ static void view2d_masks(View2D *v2d, int check_scrollers)
 void UI_view2d_region_reinit(View2D *v2d, short type, int winx, int winy)
 {
 	bool tot_changed = false, do_init;
-	uiStyle *style = UI_GetStyle();
+	uiStyle *style = UI_style_get();
 
 	do_init = (v2d->flag & V2D_IS_INITIALISED) == 0;
 		
@@ -341,7 +371,8 @@ static void ui_view2d_curRect_validate_resize(View2D *v2d, int resize, int mask_
 	float winx, winy;
 	rctf *cur, *tot;
 	
-	/* use mask as size of region that View2D resides in, as it takes into account scrollbars already  */
+	/* use mask as size of region that View2D resides in, as it takes into account
+	 * scrollbars already - keep in sync with zoomx/zoomy in view_zoomstep_apply_ex! */
 	winx = (float)(BLI_rcti_size_x(&v2d->mask) + 1);
 	winy = (float)(BLI_rcti_size_y(&v2d->mask) + 1);
 	
@@ -354,7 +385,7 @@ static void ui_view2d_curRect_validate_resize(View2D *v2d, int resize, int mask_
 	 *	- cur must not fall outside of tot
 	 *	- axis locks (zoom and offset) must be maintained
 	 *	- zoom must not be excessive (check either sizes or zoom values)
-	 *	- aspect ratio should be respected (NOTE: this is quite closely realted to zoom too)
+	 *	- aspect ratio should be respected (NOTE: this is quite closely related to zoom too)
 	 */
 	
 	/* Step 1: if keepzoom, adjust the sizes of the rects only
@@ -363,6 +394,7 @@ static void ui_view2d_curRect_validate_resize(View2D *v2d, int resize, int mask_
 	 */
 	totwidth  = BLI_rctf_size_x(tot);
 	totheight = BLI_rctf_size_y(tot);
+	/* keep in sync with zoomx/zoomy in view_zoomstep_apply_ex! */
 	curwidth  = width  = BLI_rctf_size_x(cur);
 	curheight = height = BLI_rctf_size_y(cur);
 	
@@ -1069,7 +1101,7 @@ void UI_view2d_view_ortho(View2D *v2d)
 /* Set view matrices to only use one axis of 'cur' only
  *	- xaxis     = if non-zero, only use cur x-axis, otherwise use cur-yaxis (mostly this will be used for x)
  */
-void UI_view2d_view_orthoSpecial(ARegion *ar, View2D *v2d, short xaxis)
+void UI_view2d_view_orthoSpecial(ARegion *ar, View2D *v2d, const bool xaxis)
 {
 	rctf curmasked;
 	float xofs, yofs;
@@ -1689,7 +1721,7 @@ void UI_view2d_scrollers_draw(const bContext *C, View2D *v2d, View2DScrollers *v
 			glRecti(v2d->hor.xmin, v2d->hor.ymin, v2d->hor.xmax, v2d->hor.ymax);
 		}
 		
-		uiWidgetScrollDraw(&wcol, &hor, &slider, state);
+		UI_draw_widget_scroll(&wcol, &hor, &slider, state);
 		
 		/* scale indicators */
 		if ((scroll & V2D_SCROLL_SCALE_HORIZONTAL) && (vs->grid)) {
@@ -1790,7 +1822,7 @@ void UI_view2d_scrollers_draw(const bContext *C, View2D *v2d, View2DScrollers *v
 			glRecti(v2d->vert.xmin, v2d->vert.ymin, v2d->vert.xmax, v2d->vert.ymax);
 		}
 		
-		uiWidgetScrollDraw(&wcol, &vert, &slider, state);
+		UI_draw_widget_scroll(&wcol, &vert, &slider, state);
 		
 		
 		/* scale indiators */
@@ -1821,7 +1853,7 @@ void UI_view2d_scrollers_draw(const bContext *C, View2D *v2d, View2DScrollers *v
 			/* draw vertical steps */
 			if (dfac > 0.0f) {
 				
-				BLF_rotation_default(M_PI / 2);
+				BLF_rotation_default(M_PI_2);
 				BLF_enable_default(BLF_ROTATION);
 
 				for (; fac < vert.ymax - 10; fac += dfac, val += grid->dy) {
@@ -1948,7 +1980,7 @@ void UI_view2d_listview_visible_cells(View2D *v2d, float columnwidth, float rowh
 		/* min */
 		UI_view2d_listview_view_to_cell(v2d, columnwidth, rowheight, startx, starty, 
 		                                v2d->cur.xmin, v2d->cur.ymin, column_min, row_min);
-					
+
 		/* max*/
 		UI_view2d_listview_view_to_cell(v2d, columnwidth, rowheight, startx, starty, 
 		                                v2d->cur.xmax, v2d->cur.ymax, column_max, row_max);
@@ -1958,28 +1990,44 @@ void UI_view2d_listview_visible_cells(View2D *v2d, float columnwidth, float rowh
 /* *********************************************************************** */
 /* Coordinate Conversions */
 
+float UI_view2d_region_to_view_x(struct View2D *v2d, float x)
+{
+	return (v2d->cur.xmin + (BLI_rctf_size_x(&v2d->cur) * (x - v2d->mask.xmin) / BLI_rcti_size_x(&v2d->mask)));
+}
+float UI_view2d_region_to_view_y(struct View2D *v2d, float y)
+{
+	return (v2d->cur.ymin + (BLI_rctf_size_y(&v2d->cur) * (y - v2d->mask.ymin) / BLI_rcti_size_y(&v2d->mask)));
+}
+
 /* Convert from screen/region space to 2d-View space 
  *	
  *	- x,y           = coordinates to convert
  *	- viewx,viewy		= resultant coordinates
  */
-void UI_view2d_region_to_view(View2D *v2d, float x, float y, float *r_viewx, float *r_viewy)
+void UI_view2d_region_to_view(View2D *v2d, float x, float y, float *r_view_x, float *r_view_y)
 {
-	float div, ofs;
+	*r_view_x = UI_view2d_region_to_view_x(v2d, x);
+	*r_view_y = UI_view2d_region_to_view_y(v2d, y);
+}
 
-	if (r_viewx) {
-		div = (float)BLI_rcti_size_x(&v2d->mask);
-		ofs = (float)v2d->mask.xmin;
-		
-		*r_viewx = v2d->cur.xmin + BLI_rctf_size_x(&v2d->cur) * ((float)x - ofs) / div;
-	}
+void UI_view2d_region_to_view_rctf(View2D *v2d, const rctf *rect_src, rctf *rect_dst)
+{
+	const float cur_size[2]  = {BLI_rctf_size_x(&v2d->cur),  BLI_rctf_size_y(&v2d->cur)};
+	const float mask_size[2] = {BLI_rcti_size_x(&v2d->mask), BLI_rcti_size_y(&v2d->mask)};
 
-	if (r_viewy) {
-		div = (float)BLI_rcti_size_y(&v2d->mask);
-		ofs = (float)v2d->mask.ymin;
-		
-		*r_viewy = v2d->cur.ymin + BLI_rctf_size_y(&v2d->cur) * ((float)y - ofs) / div;
-	}
+	rect_dst->xmin = (v2d->cur.xmin + (cur_size[0] * (rect_src->xmin - v2d->mask.xmin) / mask_size[0]));
+	rect_dst->xmax = (v2d->cur.xmin + (cur_size[0] * (rect_src->xmax - v2d->mask.xmin) / mask_size[0]));
+	rect_dst->ymin = (v2d->cur.ymin + (cur_size[1] * (rect_src->ymin - v2d->mask.ymin) / mask_size[1]));
+	rect_dst->ymax = (v2d->cur.ymin + (cur_size[1] * (rect_src->ymax - v2d->mask.ymin) / mask_size[1]));
+}
+
+float UI_view2d_view_to_region_x(View2D *v2d, float x)
+{
+	return (v2d->mask.xmin + (((x - v2d->cur.xmin) / BLI_rctf_size_x(&v2d->cur)) * BLI_rcti_size_x(&v2d->mask)));
+}
+float UI_view2d_view_to_region_y(View2D *v2d, float y)
+{
+	return (v2d->mask.ymin + (((y - v2d->cur.ymin) / BLI_rctf_size_y(&v2d->cur)) * BLI_rcti_size_y(&v2d->mask)));
 }
 
 /* Convert from 2d-View space to screen/region space
@@ -1988,24 +2036,24 @@ void UI_view2d_region_to_view(View2D *v2d, float x, float y, float *r_viewx, flo
  *	- x,y               = coordinates to convert
  *	- regionx,regiony   = resultant coordinates
  */
-void UI_view2d_view_to_region(View2D *v2d, float x, float y, int *regionx, int *regiony)
+bool UI_view2d_view_to_region_clip(View2D *v2d, float x, float y, int *r_region_x, int *r_region_y)
 {
-	/* set initial value in case coordinate lies outside of bounds */
-	if (regionx)
-		*regionx = V2D_IS_CLIPPED;
-	if (regiony)
-		*regiony = V2D_IS_CLIPPED;
-	
 	/* express given coordinates as proportional values */
 	x = (x - v2d->cur.xmin) / BLI_rctf_size_x(&v2d->cur);
 	y = (y - v2d->cur.ymin) / BLI_rctf_size_y(&v2d->cur);
 	
 	/* check if values are within bounds */
 	if ((x >= 0.0f) && (x <= 1.0f) && (y >= 0.0f) && (y <= 1.0f)) {
-		if (regionx)
-			*regionx = (int)(v2d->mask.xmin + x * BLI_rcti_size_x(&v2d->mask));
-		if (regiony)
-			*regiony = (int)(v2d->mask.ymin + y * BLI_rcti_size_y(&v2d->mask));
+		*r_region_x = (int)(v2d->mask.xmin + (x * BLI_rcti_size_x(&v2d->mask)));
+		*r_region_y = (int)(v2d->mask.ymin + (y * BLI_rcti_size_y(&v2d->mask)));
+
+		return true;
+	}
+	else {
+		/* set initial value in case coordinate lies outside of bounds */
+		*r_region_x = *r_region_y = V2D_IS_CLIPPED;
+
+		return false;
 	}
 }
 
@@ -2015,38 +2063,86 @@ void UI_view2d_view_to_region(View2D *v2d, float x, float y, int *regionx, int *
  *	- x,y               = coordinates to convert
  *	- regionx,regiony   = resultant coordinates
  */
-void UI_view2d_to_region_no_clip(View2D *v2d, float x, float y, int *regionx, int *regiony)
+void UI_view2d_view_to_region(View2D *v2d, float x, float y, int *r_region_x, int *r_region_y)
 {
 	/* step 1: express given coordinates as proportional values */
 	x = (x - v2d->cur.xmin) / BLI_rctf_size_x(&v2d->cur);
 	y = (y - v2d->cur.ymin) / BLI_rctf_size_y(&v2d->cur);
-	
+
 	/* step 2: convert proportional distances to screen coordinates  */
-	x = v2d->mask.xmin + x * BLI_rcti_size_x(&v2d->mask);
-	y = v2d->mask.ymin + y * BLI_rcti_size_y(&v2d->mask);
-	
+	x = v2d->mask.xmin + (x * BLI_rcti_size_x(&v2d->mask));
+	y = v2d->mask.ymin + (y * BLI_rcti_size_y(&v2d->mask));
+
 	/* although we don't clamp to lie within region bounds, we must avoid exceeding size of ints */
-	if (regionx) {
-		if (x < INT_MIN) *regionx = INT_MIN;
-		else if (x > INT_MAX) *regionx = INT_MAX;
-		else *regionx = (int)x;
-	}
-	if (regiony) {
-		if (y < INT_MIN) *regiony = INT_MIN;
-		else if (y > INT_MAX) *regiony = INT_MAX;
-		else *regiony = (int)y;
-	}
+	*r_region_x = clamp_float_to_int(x);
+	*r_region_y = clamp_float_to_int(y);
 }
 
-void UI_view2d_to_region_float(View2D *v2d, float x, float y, float *regionx, float *regiony)
+void UI_view2d_view_to_region_fl(View2D *v2d, float x, float y, float *r_region_x, float *r_region_y)
 {
 	/* express given coordinates as proportional values */
-	x = -v2d->cur.xmin / BLI_rctf_size_x(&v2d->cur);
-	y = -v2d->cur.ymin / BLI_rctf_size_y(&v2d->cur);
+	x = (x - v2d->cur.xmin) / BLI_rctf_size_x(&v2d->cur);
+	y = (y - v2d->cur.ymin) / BLI_rctf_size_y(&v2d->cur);
 
 	/* convert proportional distances to screen coordinates */
-	*regionx = v2d->mask.xmin + x * BLI_rcti_size_x(&v2d->mask);
-	*regiony = v2d->mask.ymin + y * BLI_rcti_size_y(&v2d->mask);
+	*r_region_x = v2d->mask.xmin + (x * BLI_rcti_size_x(&v2d->mask));
+	*r_region_y = v2d->mask.ymin + (y * BLI_rcti_size_y(&v2d->mask));
+}
+
+void UI_view2d_view_to_region_rcti(View2D *v2d, const rctf *rect_src, rcti *rect_dst)
+{
+	const float cur_size[2]  = {BLI_rctf_size_x(&v2d->cur),  BLI_rctf_size_y(&v2d->cur)};
+	const float mask_size[2] = {BLI_rcti_size_x(&v2d->mask), BLI_rcti_size_y(&v2d->mask)};
+	rctf rect_tmp;
+
+	/* step 1: express given coordinates as proportional values */
+	rect_tmp.xmin = (rect_src->xmin - v2d->cur.xmin) / cur_size[0];
+	rect_tmp.xmax = (rect_src->xmax - v2d->cur.xmin) / cur_size[0];
+	rect_tmp.ymin = (rect_src->ymin - v2d->cur.ymin) / cur_size[1];
+	rect_tmp.ymax = (rect_src->ymax - v2d->cur.ymin) / cur_size[1];
+
+
+	/* step 2: convert proportional distances to screen coordinates  */
+	rect_tmp.xmin = v2d->mask.xmin + (rect_tmp.xmin * mask_size[0]);
+	rect_tmp.xmax = v2d->mask.xmin + (rect_tmp.xmax * mask_size[0]);
+	rect_tmp.ymin = v2d->mask.ymin + (rect_tmp.ymin * mask_size[1]);
+	rect_tmp.ymax = v2d->mask.ymin + (rect_tmp.ymax * mask_size[1]);
+
+	clamp_rctf_to_rcti(rect_dst, &rect_tmp);
+}
+
+bool UI_view2d_view_to_region_rcti_clip(View2D *v2d, const rctf *rect_src, rcti *rect_dst)
+{
+	const float cur_size[2]  = {BLI_rctf_size_x(&v2d->cur),  BLI_rctf_size_y(&v2d->cur)};
+	const float mask_size[2] = {BLI_rcti_size_x(&v2d->mask), BLI_rcti_size_y(&v2d->mask)};
+	rctf rect_tmp;
+
+	BLI_assert(rect_src->xmin <= rect_src->xmax && rect_src->ymin <= rect_src->ymax);
+
+	/* step 1: express given coordinates as proportional values */
+	rect_tmp.xmin = (rect_src->xmin - v2d->cur.xmin) / cur_size[0];
+	rect_tmp.xmax = (rect_src->xmax - v2d->cur.xmin) / cur_size[0];
+	rect_tmp.ymin = (rect_src->ymin - v2d->cur.ymin) / cur_size[1];
+	rect_tmp.ymax = (rect_src->ymax - v2d->cur.ymin) / cur_size[1];
+
+	if (((rect_tmp.xmax < 0.0f) || (rect_tmp.xmin > 1.0f) ||
+	     (rect_tmp.ymax < 0.0f) || (rect_tmp.ymin > 1.0f)) == 0)
+	{
+		/* step 2: convert proportional distances to screen coordinates  */
+		rect_tmp.xmin = v2d->mask.xmin + (rect_tmp.xmin * mask_size[0]);
+		rect_tmp.xmax = v2d->mask.ymin + (rect_tmp.xmax * mask_size[0]);
+		rect_tmp.ymin = v2d->mask.ymin + (rect_tmp.ymin * mask_size[1]);
+		rect_tmp.ymax = v2d->mask.ymin + (rect_tmp.ymax * mask_size[1]);
+
+		clamp_rctf_to_rcti(rect_dst, &rect_tmp);
+
+		return true;
+	}
+	else {
+		rect_dst->xmin = rect_dst->xmax = rect_dst->ymin = rect_dst->ymax = V2D_IS_CLIPPED;
+
+		return false;
+	}
 }
 
 /* *********************************************************************** */
@@ -2085,13 +2181,13 @@ View2D *UI_view2d_fromcontext_rwin(const bContext *C)
  *
  *	- x,y	= scale on each axis
  */
-void UI_view2d_getscale(View2D *v2d, float *x, float *y) 
+void UI_view2d_scale_get(View2D *v2d, float *x, float *y) 
 {
 	if (x) *x = BLI_rcti_size_x(&v2d->mask) / BLI_rctf_size_x(&v2d->cur);
 	if (y) *y = BLI_rcti_size_y(&v2d->mask) / BLI_rctf_size_y(&v2d->cur);
 }
-/* Same as UI_view2d_getscale() - 1.0f / x, y */
-void UI_view2d_getscale_inverse(View2D *v2d, float *x, float *y)
+/* Same as UI_view2d_scale_get() - 1.0f / x, y */
+void UI_view2d_scale_get_inverse(View2D *v2d, float *x, float *y)
 {
 	if (x) *x = BLI_rctf_size_x(&v2d->cur) / BLI_rcti_size_x(&v2d->mask);
 	if (y) *y = BLI_rctf_size_y(&v2d->cur) / BLI_rcti_size_y(&v2d->mask);
@@ -2100,17 +2196,46 @@ void UI_view2d_getscale_inverse(View2D *v2d, float *x, float *y)
 /* Simple functions for consistent center offset access.
  * Used by node editor to shift view center for each individual node tree.
  */
-void UI_view2d_getcenter(struct View2D *v2d, float *x, float *y)
+void UI_view2d_center_get(struct View2D *v2d, float *x, float *y)
 {
 	/* get center */
 	if (x) *x = BLI_rctf_cent_x(&v2d->cur);
 	if (y) *y = BLI_rctf_cent_y(&v2d->cur);
 }
-void UI_view2d_setcenter(struct View2D *v2d, float x, float y)
+void UI_view2d_center_set(struct View2D *v2d, float x, float y)
 {
 	BLI_rctf_recenter(&v2d->cur, x, y);
 
 	/* make sure that 'cur' rect is in a valid state as a result of these changes */
+	UI_view2d_curRect_validate(v2d);
+}
+
+/**
+ * Simple pan function
+ *  (0.0, 0.0) bottom left
+ *  (0.5, 0.5) center
+ *  (1.0, 1.0) top right.
+ */
+void UI_view2d_offset(struct View2D *v2d, float xfac, float yfac)
+{
+	if (xfac != -1.0f) {
+		const float xsize = BLI_rctf_size_x(&v2d->cur);
+		const float xmin = v2d->tot.xmin;
+		const float xmax = v2d->tot.xmax - xsize;
+
+		v2d->cur.xmin = (xmin * (1.0f - xfac)) + (xmax * xfac);
+		v2d->cur.xmax = v2d->cur.xmin + xsize;
+	}
+
+	if (yfac != -1.0f) {
+		const float ysize = BLI_rctf_size_y(&v2d->cur);
+		const float ymin = v2d->tot.ymin;
+		const float ymax = v2d->tot.ymax - ysize;
+
+		v2d->cur.ymin = (ymin * (1.0f - yfac)) + (ymax * yfac);
+		v2d->cur.ymax = v2d->cur.ymin + ysize;
+	}
+
 	UI_view2d_curRect_validate(v2d);
 }
 
@@ -2146,56 +2271,82 @@ short UI_view2d_mouse_in_scrollers(const bContext *C, View2D *v2d, int x, int y)
 
 /* ******************* view2d text drawing cache ******************** */
 
-/* assumes caches are used correctly, so for time being no local storage in v2d */
-static ListBase strings = {NULL, NULL};
-
 typedef struct View2DString {
-	struct View2DString *next, *prev;
+	struct View2DString *next;
 	union {
 		unsigned char ub[4];
 		int pack;
 	} col;
-	int mval[2];
 	rcti rect;
+	int mval[2];
+
+	/* str is allocated past the end */
+	char str[0];
 } View2DString;
 
+/* assumes caches are used correctly, so for time being no local storage in v2d */
+static MemArena     *g_v2d_strings_arena = NULL;
+static View2DString *g_v2d_strings = NULL;
 
-void UI_view2d_text_cache_add(View2D *v2d, float x, float y, const char *str, const char col[4])
+void UI_view2d_text_cache_add(View2D *v2d, float x, float y,
+                              const char *str, size_t str_len, const char col[4])
 {
 	int mval[2];
 	
-	UI_view2d_view_to_region(v2d, x, y, mval, mval + 1);
-	
-	if (mval[0] != V2D_IS_CLIPPED && mval[1] != V2D_IS_CLIPPED) {
-		int len = strlen(str) + 1;
-		/* use calloc, rect has to be zeroe'd */
-		View2DString *v2s = MEM_callocN(sizeof(View2DString) + len, "View2DString");
-		char *v2s_str = (char *)(v2s + 1);
-		memcpy(v2s_str, str, len);
+	BLI_assert(str_len == strlen(str));
 
-		BLI_addtail(&strings, v2s);
-		v2s->col.pack = *((int *)col);
+	if (UI_view2d_view_to_region_clip(v2d, x, y, &mval[0], &mval[1])) {
+		int alloc_len = str_len + 1;
+		View2DString *v2s;
+
+		if (g_v2d_strings_arena == NULL) {
+			g_v2d_strings_arena = BLI_memarena_new(MEM_SIZE_OPTIMAL(1 << 14), __func__);
+		}
+
+		v2s = BLI_memarena_alloc(g_v2d_strings_arena, sizeof(View2DString) + alloc_len);
+
+		BLI_LINKS_PREPEND(g_v2d_strings, v2s);
+
+		v2s->col.pack = *((const int *)col);
+
+		memset(&v2s->rect, 0, sizeof(v2s->rect));
+
 		v2s->mval[0] = mval[0];
 		v2s->mval[1] = mval[1];
+
+		memcpy(v2s->str, str, alloc_len);
 	}
 }
 
 /* no clip (yet) */
-void UI_view2d_text_cache_rectf(View2D *v2d, const rctf *rect, const char *str, const char col[4])
+void UI_view2d_text_cache_add_rectf(View2D *v2d, const rctf *rect_view,
+                                    const char *str, size_t str_len, const char col[4])
 {
-	int len = strlen(str) + 1;
-	View2DString *v2s = MEM_callocN(sizeof(View2DString) + len, "View2DString");
-	char *v2s_str = (char *)(v2s + 1);
-	memcpy(v2s_str, str, len);
+	rcti rect;
 
-	UI_view2d_to_region_no_clip(v2d, rect->xmin, rect->ymin, &v2s->rect.xmin, &v2s->rect.ymin);
-	UI_view2d_to_region_no_clip(v2d, rect->xmax, rect->ymax, &v2s->rect.xmax, &v2s->rect.ymax);
+	BLI_assert(str_len == strlen(str));
 
-	v2s->col.pack = *((int *)col);
-	v2s->mval[0] = v2s->rect.xmin;
-	v2s->mval[1] = v2s->rect.ymin;
+	if (UI_view2d_view_to_region_rcti_clip(v2d, rect_view, &rect)) {
+		int alloc_len = str_len + 1;
+		View2DString *v2s;
 
-	BLI_addtail(&strings, v2s);
+		if (g_v2d_strings_arena == NULL) {
+			g_v2d_strings_arena = BLI_memarena_new(MEM_SIZE_OPTIMAL(1 << 14), __func__);
+		}
+
+		v2s = BLI_memarena_alloc(g_v2d_strings_arena, sizeof(View2DString) + alloc_len);
+
+		BLI_LINKS_PREPEND(g_v2d_strings, v2s);
+
+		v2s->col.pack = *((const int *)col);
+
+		v2s->rect = rect;
+
+		v2s->mval[0] = v2s->rect.xmin;
+		v2s->mval[1] = v2s->rect.ymin;
+
+		memcpy(v2s->str, str, alloc_len);
+	}
 }
 
 
@@ -2205,16 +2356,11 @@ void UI_view2d_text_cache_draw(ARegion *ar)
 	int col_pack_prev = 0;
 
 	/* investigate using BLF_ascender() */
-	const float default_height = strings.first ? BLF_height_default("28", 3) : 0.0f;
-	
-	// glMatrixMode(GL_PROJECTION);
-	// glPushMatrix();
-	// glMatrixMode(GL_MODELVIEW);
-	// glPushMatrix();
-	ED_region_pixelspace(ar);
+	const float default_height = g_v2d_strings ? BLF_height_default("28", 3) : 0.0f;
 
-	for (v2s = strings.first; v2s; v2s = v2s->next) {
-		const char *str = (const char *)(v2s + 1);
+	wmOrtho2_region_ui(ar);
+
+	for (v2s = g_v2d_strings; v2s; v2s = v2s->next) {
 		int xofs = 0, yofs;
 
 		yofs = ceil(0.5f * (BLI_rcti_size_y(&v2s->rect) - default_height));
@@ -2226,22 +2372,27 @@ void UI_view2d_text_cache_draw(ARegion *ar)
 		}
 
 		if (v2s->rect.xmin >= v2s->rect.xmax)
-			BLF_draw_default((float)v2s->mval[0] + xofs, (float)v2s->mval[1] + yofs, 0.0, str, BLF_DRAW_STR_DUMMY_MAX);
+			BLF_draw_default((float)(v2s->mval[0] + xofs), (float)(v2s->mval[1] + yofs), 0.0,
+			                  v2s->str, BLF_DRAW_STR_DUMMY_MAX);
 		else {
 			BLF_clipping_default(v2s->rect.xmin - 4, v2s->rect.ymin - 4, v2s->rect.xmax + 4, v2s->rect.ymax + 4);
 			BLF_enable_default(BLF_CLIPPING);
-			BLF_draw_default(v2s->rect.xmin + xofs, v2s->rect.ymin + yofs, 0.0f, str, BLF_DRAW_STR_DUMMY_MAX);
+			BLF_draw_default(v2s->rect.xmin + xofs, v2s->rect.ymin + yofs, 0.0f,
+			                 v2s->str, BLF_DRAW_STR_DUMMY_MAX);
 			BLF_disable_default(BLF_CLIPPING);
 		}
 	}
-	
+	g_v2d_strings = NULL;
+
+	if (g_v2d_strings_arena) {
+		BLI_memarena_free(g_v2d_strings_arena);
+		g_v2d_strings_arena = NULL;
+	}
+
 	// glMatrixMode(GL_PROJECTION);
 	// glPopMatrix();
 	// glMatrixMode(GL_MODELVIEW);
 	// glPopMatrix();
-	
-	if (strings.first) 
-		BLI_freelistN(&strings);
 }
 
 

@@ -82,7 +82,9 @@ typedef enum ModifierType {
 	eModifierType_MeshCache         = 46,
 	eModifierType_LaplacianDeform   = 47,
 	eModifierType_Wireframe         = 48,
-	eModifierType_Fracture          = 49,
+	eModifierType_DataTransfer      = 49,
+	eModifierType_NormalEdit        = 50,
+	eModifierType_Fracture          = (1 << 20),
 	NUM_MODIFIER_TYPES
 } ModifierType;
 
@@ -309,6 +311,9 @@ typedef struct BevelModifierData {
 	short val_flags;      /* used to interpret the bevel value */
 	short lim_flags;      /* flags to tell the tool how to limit the bevel */
 	short e_flags;        /* flags to direct how edge weights are applied to verts */
+	short mat;            /* material index if >= 0, else material inherited from surrounding faces */
+	short pad;
+	int pad2;
 	float profile;        /* controls profile shape (0->1, .5 is round) */
 	/* if the MOD_BEVEL_ANGLE is set, this will be how "sharp" an edge must be before it gets beveled */
 	float bevel_angle;
@@ -532,15 +537,38 @@ typedef struct ArmatureModifierData {
 	char defgrp_name[64];     /* MAX_VGROUP_NAME */
 } ArmatureModifierData;
 
+enum {
+	MOD_HOOK_UNIFORM_SPACE = (1 << 0),
+};
+
+/* same as WarpModifierFalloff */
+typedef enum {
+	eHook_Falloff_None   = 0,
+	eHook_Falloff_Curve  = 1,
+	eHook_Falloff_Sharp  = 2, /* PROP_SHARP */
+	eHook_Falloff_Smooth = 3, /* PROP_SMOOTH */
+	eHook_Falloff_Root   = 4, /* PROP_ROOT */
+	eHook_Falloff_Linear = 5, /* PROP_LIN */
+	eHook_Falloff_Const  = 6, /* PROP_CONST */
+	eHook_Falloff_Sphere = 7, /* PROP_SPHERE */
+	eHook_Falloff_InvSquare = 8, /* PROP_INVSQUARE */
+	/* PROP_RANDOM not used */
+} HookModifierFalloff;
+
 typedef struct HookModifierData {
 	ModifierData modifier;
 
 	struct Object *object;
 	char subtarget[64];     /* optional name of bone target, MAX_ID_NAME-2 */
 
+	char flag;
+	char falloff_type;      /* use enums from WarpModifier (exact same functionality) */
+	char pad[6];
 	float parentinv[4][4];  /* matrix making current transform unmodified */
 	float cent[3];          /* visualization of hook */
 	float falloff;          /* if not zero, falloff is distance where influence zero */
+
+	struct CurveMapping *curfalloff;
 
 	int *indexar;           /* if NULL, it's using vertexgroup */
 	int totindex;
@@ -561,6 +589,15 @@ typedef struct ClothModifierData {
 	struct ClothCollSettings *coll_parms; /* definition is in DNA_cloth_types.h */
 	struct PointCache *point_cache;       /* definition is in DNA_object_force.h */
 	struct ListBase ptcaches;
+	/* XXX nasty hack, remove once hair can be separated from cloth modifier data */
+	struct ClothHairData *hairdata;
+	/* grid geometry values of hair continuum */
+	float hair_grid_min[3];
+	float hair_grid_max[3];
+	int hair_grid_res[3];
+	float hair_grid_cellsize;
+	
+	struct ClothSolverResult *solver_result;
 } ClothModifierData;
 
 typedef struct CollisionModifierData {
@@ -838,6 +875,7 @@ enum {
 	MOD_SOLIDIFY_VGROUP_INV     = (1 << 3),
 	MOD_SOLIDIFY_RIM_MATERIAL   = (1 << 4),  /* deprecated, used in do_versions */
 	MOD_SOLIDIFY_FLIP           = (1 << 5),
+	MOD_SOLIDIFY_NOSHELL        = (1 << 6),
 };
 
 #if (DNA_DEPRECATED_GCC_POISON == 1)
@@ -965,6 +1003,7 @@ typedef enum {
 	eWarp_Falloff_Linear = 5, /* PROP_LIN */
 	eWarp_Falloff_Const  = 6, /* PROP_CONST */
 	eWarp_Falloff_Sphere = 7, /* PROP_SPHERE */
+	eWarp_Falloff_InvSquare = 8, /* PROP_INVSQUARE */
 	/* PROP_RANDOM not used */
 } WarpModifierFalloff;
 
@@ -1222,7 +1261,7 @@ enum {
 /* Triangulate methods - NGons */
 enum {
 	MOD_TRIANGULATE_NGON_BEAUTY = 0,
-	MOD_TRIANGULATE_NGON_SCANFILL,
+	MOD_TRIANGULATE_NGON_EARCLIP,
 };
 
 /* Triangulate methods - Quads */
@@ -1326,7 +1365,6 @@ enum {
 	MOD_MESHCACHE_PLAY_EVAL = 1,
 };
 
-
 typedef struct LaplacianDeformModifierData {
 	ModifierData modifier;
 	char anchor_grp_name[64];  /* MAX_VGROUP_NAME */
@@ -1363,21 +1401,178 @@ enum {
 	MOD_WIREFRAME_CREASE        = (1 << 5),
 };
 
-enum {
-	MOD_FRACTURE_VORONOI        = (1 << 0),
-	MOD_FRACTURE_BOOLEAN        = (1 << 1),
-	MOD_FRACTURE_BISECT_FILL    = (1 << 2),
-	MOD_FRACTURE_BISECT         = (1 << 3),
-};
-
 typedef struct FractureModifierData {
 	ModifierData modifier;
-	struct FracMesh *frac_mesh; //store only the current fracmesh here first, later maybe an entire history...
-	struct DerivedMesh *dm;
-	int frac_algorithm;
-	int shard_count;
-	int shard_id;
-	char pad[4];
-} FractureModifierData;
+
+	/* values */
+	float origmat[4][4] DNA_DEPRECATED;
+	int fracture_mode DNA_DEPRECATED;
+
+	/* LOTS of deprecated stuff ahead, but all for the backwards compat.... */
+	struct FracMesh *frac_mesh DNA_DEPRECATED; /* store only the current fracmesh here first, later maybe an entire history...*/
+	struct DerivedMesh *dm	DNA_DEPRECATED;
+	struct Group *extra_group DNA_DEPRECATED;
+	struct Group *cluster_group DNA_DEPRECATED;
+	struct Group *dm_group DNA_DEPRECATED;
+	struct Group *cutter_group DNA_DEPRECATED;
+	struct BMesh *visible_mesh DNA_DEPRECATED;
+	struct DerivedMesh *visible_mesh_cached DNA_DEPRECATED;
+	ListBase meshIslands DNA_DEPRECATED;
+	ListBase meshConstraints DNA_DEPRECATED;
+	ListBase islandShards DNA_DEPRECATED;
+	char thresh_defgrp_name[64] DNA_DEPRECATED; /* MAX_VGROUP_NAME */
+	char ground_defgrp_name[64] DNA_DEPRECATED;  /* MAX_VGROUP_NAME */
+	char inner_defgrp_name[64]  DNA_DEPRECATED; /* MAX_VGROUP_NAME */
+	struct KDTree *nor_tree DNA_DEPRECATED;  /* store original vertices here (coords), to find them later and reuse their normals */
+	struct Material *inner_material DNA_DEPRECATED;
+	struct GHash *face_pairs DNA_DEPRECATED;
+	struct GHash *vertex_island_map DNA_DEPRECATED; /* used for constraint building based on vertex proximity, temporary data */
+	struct GHash *vert_index_map DNA_DEPRECATED;
+
+	/* values */
+	int frac_algorithm DNA_DEPRECATED;
+	int shard_count DNA_DEPRECATED;
+	int shard_id DNA_DEPRECATED;
+	int point_source DNA_DEPRECATED;
+	int point_seed DNA_DEPRECATED;
+	int percentage DNA_DEPRECATED;
+	int cluster_count DNA_DEPRECATED;
+
+	int constraint_limit DNA_DEPRECATED;
+	int solver_iterations_override DNA_DEPRECATED;
+	int cluster_solver_iterations_override DNA_DEPRECATED;
+	int breaking_percentage DNA_DEPRECATED;
+	int cluster_breaking_percentage DNA_DEPRECATED;
+	int splinter_axis DNA_DEPRECATED;
+	int fractal_cuts DNA_DEPRECATED;
+	int fractal_iterations DNA_DEPRECATED;
+	int grease_decimate DNA_DEPRECATED;
+	int cutter_axis DNA_DEPRECATED;
+	int cluster_constraint_type DNA_DEPRECATED;
+
+	float breaking_angle DNA_DEPRECATED;
+	float breaking_distance DNA_DEPRECATED;
+	float cluster_breaking_angle DNA_DEPRECATED;
+	float cluster_breaking_distance DNA_DEPRECATED;
+	float breaking_threshold DNA_DEPRECATED;
+	float cluster_breaking_threshold DNA_DEPRECATED;
+	float contact_dist DNA_DEPRECATED;
+	float autohide_dist DNA_DEPRECATED;
+	float splinter_length DNA_DEPRECATED;
+	float nor_range DNA_DEPRECATED;
+	float fractal_amount DNA_DEPRECATED;
+	float physics_mesh_scale DNA_DEPRECATED;
+	float grease_offset DNA_DEPRECATED;
+	float dynamic_force DNA_DEPRECATED;
+
+	/* flags */
+	int refresh DNA_DEPRECATED;
+	int refresh_constraints DNA_DEPRECATED;
+	int refresh_autohide DNA_DEPRECATED;
+	int reset_shards DNA_DEPRECATED;
+
+	int use_constraints DNA_DEPRECATED;
+	int use_mass_dependent_thresholds DNA_DEPRECATED;
+	int use_particle_birth_coordinates DNA_DEPRECATED;
+	int use_breaking DNA_DEPRECATED;
+	int use_smooth DNA_DEPRECATED;
+	int use_greasepencil_edges DNA_DEPRECATED;
+
+	int shards_to_islands DNA_DEPRECATED;
+	int execute_threaded DNA_DEPRECATED;
+	int fix_normals DNA_DEPRECATED;
+	int auto_execute DNA_DEPRECATED;
+
+	int breaking_distance_weighted DNA_DEPRECATED;
+	int breaking_angle_weighted DNA_DEPRECATED;
+	int breaking_percentage_weighted DNA_DEPRECATED;
+	int constraint_target DNA_DEPRECATED;
+	int limit_impact DNA_DEPRECATED;
+
+	/* internal flags */
+	int use_experimental DNA_DEPRECATED;
+	int explo_shared DNA_DEPRECATED;
+	int refresh_images DNA_DEPRECATED;
+	int update_dynamic DNA_DEPRECATED;
+
+	/* internal values */
+	float max_vol DNA_DEPRECATED;
+
+} FractureModifierData ;
+
+typedef struct DataTransferModifierData {
+	ModifierData modifier;
+
+	struct Object *ob_source;
+
+	int data_types;  /* See DT_TYPE_ enum in ED_object.h */
+
+	/* See MREMAP_MODE_ enum in BKE_mesh_mapping.h */
+	int vmap_mode;
+	int emap_mode;
+	int lmap_mode;
+	int pmap_mode;
+
+	float map_max_distance;
+	float map_ray_radius;
+	float islands_precision;
+
+	int pad_i1;
+
+	int layers_select_src[4];  /* DT_MULTILAYER_INDEX_MAX; See DT_FROMLAYERS_ enum in ED_object.h */
+	int layers_select_dst[4];  /* DT_MULTILAYER_INDEX_MAX; See DT_TOLAYERS_ enum in ED_object.h */
+
+	int mix_mode;  /* See CDT_MIX_ enum in BKE_customdata.h */
+	float mix_factor;
+	char defgrp_name[64];  /* MAX_VGROUP_NAME */
+
+	int flags;
+} DataTransferModifierData;
+
+/* DataTransferModifierData.flags */
+enum {
+	MOD_DATATRANSFER_OBSRC_TRANSFORM  = 1 << 0,
+	MOD_DATATRANSFER_MAP_MAXDIST      = 1 << 1,
+	MOD_DATATRANSFER_INVERT_VGROUP    = 1 << 2,
+
+	/* Only for UI really. */
+	MOD_DATATRANSFER_USE_VERT         = 1 << 28,
+	MOD_DATATRANSFER_USE_EDGE         = 1 << 29,
+	MOD_DATATRANSFER_USE_LOOP         = 1 << 30,
+	MOD_DATATRANSFER_USE_POLY         = 1 << 31,
+};
+
+/* Set Split Normals modifier */
+typedef struct NormalEditModifierData {
+	ModifierData modifier;
+	char defgrp_name[64];  /* MAX_VGROUP_NAME */
+	struct Object *target;  /* Source of normals, or center of ellipsoid. */
+	short mode;
+	short flag;
+	short mix_mode;
+	char pad[2];
+	float mix_factor;
+	float offset[3];
+} NormalEditModifierData;
+
+/* NormalEditModifierData.mode */
+enum {
+	MOD_NORMALEDIT_MODE_RADIAL        = 0,
+	MOD_NORMALEDIT_MODE_DIRECTIONAL   = 1,
+};
+
+/* NormalEditModifierData.flags */
+enum {
+	MOD_NORMALEDIT_INVERT_VGROUP            = (1 << 0),
+	MOD_NORMALEDIT_USE_DIRECTION_PARALLEL   = (1 << 1),
+};
+
+/* NormalEditModifierData.mix_mode */
+enum {
+	MOD_NORMALEDIT_MIX_COPY = 0,
+	MOD_NORMALEDIT_MIX_ADD  = 1,
+	MOD_NORMALEDIT_MIX_SUB  = 2,
+	MOD_NORMALEDIT_MIX_MUL  = 3,
+};
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */

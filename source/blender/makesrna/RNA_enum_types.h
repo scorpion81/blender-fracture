@@ -65,13 +65,19 @@ extern EnumPropertyItem modifier_triangulate_ngon_method_items[];
 
 extern EnumPropertyItem image_type_items[];
 extern EnumPropertyItem image_color_mode_items[];
-extern EnumPropertyItem image_depth_mode_items[];
+extern EnumPropertyItem image_color_depth_items[];
 extern EnumPropertyItem image_generated_type_items[];
 
+extern EnumPropertyItem normal_space_items[];
+extern EnumPropertyItem normal_swizzle_items[];
+extern EnumPropertyItem bake_save_mode_items[];
+
+extern EnumPropertyItem exr_codec_items[];
 extern EnumPropertyItem color_sets_items[];
 
 extern EnumPropertyItem beztriple_keyframe_type_items[];
 extern EnumPropertyItem beztriple_interpolation_mode_items[];
+extern EnumPropertyItem beztriple_interpolation_easing_items[];
 extern EnumPropertyItem keyframe_handle_type_items[];
 
 extern EnumPropertyItem keyblock_type_items[];
@@ -117,6 +123,8 @@ extern EnumPropertyItem object_axis_items[];
 extern EnumPropertyItem object_axis_unsigned_items[];
 
 extern EnumPropertyItem controller_type_items[];
+
+extern EnumPropertyItem render_pass_type_items[];
 
 extern EnumPropertyItem keymap_propvalue_items[];
 
@@ -175,6 +183,14 @@ extern EnumPropertyItem linestyle_thickness_modifier_type_items[];
 extern EnumPropertyItem linestyle_geometry_modifier_type_items[];
 
 extern EnumPropertyItem window_cursor_items[];
+
+extern EnumPropertyItem DT_method_vertex_items[];
+extern EnumPropertyItem DT_method_edge_items[];
+extern EnumPropertyItem DT_method_loop_items[];
+extern EnumPropertyItem DT_method_poly_items[];
+extern EnumPropertyItem DT_mix_mode_items[];
+extern EnumPropertyItem DT_layers_select_src_items[];
+extern EnumPropertyItem DT_layers_select_dst_items[];
 
 struct bContext;
 struct PointerRNA;

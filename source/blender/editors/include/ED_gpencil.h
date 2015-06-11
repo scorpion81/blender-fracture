@@ -30,6 +30,7 @@
 #ifndef __ED_GPENCIL_H__
 #define __ED_GPENCIL_H__
 
+struct ID;
 struct ListBase;
 struct bContext;
 struct bScreen;
@@ -38,11 +39,12 @@ struct ARegion;
 struct View3D;
 struct SpaceNode;
 struct SpaceSeq;
+struct Object;
 struct bGPdata;
 struct bGPDlayer;
 struct bGPDframe;
+struct bGPDstroke;
 struct PointerRNA;
-struct Panel;
 struct ImBuf;
 struct wmKeyConfig;
 
@@ -65,31 +67,53 @@ typedef struct tGPspoint {
 
 /* ----------- Grease Pencil Tools/Context ------------- */
 
-struct bGPdata **gpencil_data_get_pointers(const struct bContext *C, struct PointerRNA *ptr);
-struct bGPdata *gpencil_data_get_active(const struct bContext *C);
-struct bGPdata *gpencil_data_get_active_v3d(struct Scene *scene); /* for offscreen rendering */
+/* Context-dependent */
+struct bGPdata **ED_gpencil_data_get_pointers(const struct bContext *C, struct PointerRNA *ptr);
+struct bGPdata  *ED_gpencil_data_get_active(const struct bContext *C);
+
+/* Context independent (i.e. each required part is passed in instead) */
+struct bGPdata **ED_gpencil_data_get_pointers_direct(struct ID *screen_id, struct Scene *scene,
+                                                     struct ScrArea *sa, struct Object *ob,
+                                                     struct PointerRNA *ptr);
+struct bGPdata *ED_gpencil_data_get_active_direct(struct ID *screen_id, struct Scene *scene,
+                                                  struct ScrArea *sa, struct Object *ob);
+
+/* 3D View */
+struct bGPdata  *ED_gpencil_data_get_active_v3d(struct Scene *scene, struct View3D *v3d);
+
+/* ----------- Stroke Editing Utilities ---------------- */
+
+bool ED_gpencil_stroke_can_use_direct(const struct ScrArea *sa, const struct bGPDstroke *gps);
+bool ED_gpencil_stroke_can_use(const struct bContext *C, const struct bGPDstroke *gps);
 
 /* ----------- Grease Pencil Operators ----------------- */
 
 void ED_keymap_gpencil(struct wmKeyConfig *keyconf);
+
 void ED_operatortypes_gpencil(void);
+void ED_operatormacros_gpencil(void);
+
+/* ------------- Copy-Paste Buffers -------------------- */
+
+/* Strokes copybuf */
+void ED_gpencil_strokes_copybuf_free(void);
+
 
 /* ------------ Grease-Pencil Drawing API ------------------ */
 /* drawgpencil.c */
 
-void draw_gpencil_2dimage(const struct bContext *C);
-void draw_gpencil_view2d(const struct bContext *C, short onlyv2d);
-void draw_gpencil_view3d(struct Scene *scene, struct View3D *v3d, struct ARegion *ar, bool only3d);
-
-void gpencil_panel_standard_header(const struct bContext *C, struct Panel *pa);
-void gpencil_panel_standard(const struct bContext *C, struct Panel *pa);
+void ED_gpencil_draw_2dimage(const struct bContext *C);
+void ED_gpencil_draw_view2d(const struct bContext *C, bool onlyv2d);
+void ED_gpencil_draw_view3d(struct Scene *scene, struct View3D *v3d, struct ARegion *ar, bool only3d);
+void ED_gpencil_draw_ex(struct Scene *scene, struct bGPdata *gpd, int winx, int winy,
+                        const int cfra, const char spacetype);
 
 /* ----------- Grease-Pencil AnimEdit API ------------------ */
-short ED_gplayer_frames_looper(struct bGPDlayer *gpl, struct Scene *scene,
+bool  ED_gplayer_frames_looper(struct bGPDlayer *gpl, struct Scene *scene,
                                short (*gpf_cb)(struct bGPDframe *, struct Scene *));
-void ED_gplayer_make_cfra_list(struct bGPDlayer *gpl, ListBase *elems, short onlysel);
+void ED_gplayer_make_cfra_list(struct bGPDlayer *gpl, ListBase *elems, bool onlysel);
 
-short ED_gplayer_frame_select_check(struct bGPDlayer *gpl);
+bool  ED_gplayer_frame_select_check(struct bGPDlayer *gpl);
 void  ED_gplayer_frame_select_set(struct bGPDlayer *gpl, short mode);
 void  ED_gplayer_frames_select_border(struct bGPDlayer *gpl, float min, float max, short select_mode);
 void  ED_gpencil_select_frames(struct bGPDlayer *gpl, short select_mode);
@@ -97,6 +121,8 @@ void  ED_gpencil_select_frame(struct bGPDlayer *gpl, int selx, short select_mode
 
 bool  ED_gplayer_frames_delete(struct bGPDlayer *gpl);
 void  ED_gplayer_frames_duplicate(struct bGPDlayer *gpl);
+
+void ED_gplayer_frames_keytype_set(struct bGPDlayer *gpl, short type);
 
 void  ED_gplayer_snap_frames(struct bGPDlayer *gpl, struct Scene *scene, short mode);
 

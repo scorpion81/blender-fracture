@@ -45,9 +45,7 @@
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
 
-
 #include "BKE_context.h"
-#include "BKE_global.h"
 
 #include "BIF_gl.h"
 
@@ -55,7 +53,6 @@
 
 #include "WM_api.h"
 #include "wm_subwindow.h"
-#include "wm_window.h"
 
 /* wmSubWindow stored in wmWindow... but not exposed outside this C file */
 /* it seems a bit redundant (area regions can store it too, but we keep it
@@ -95,7 +92,7 @@ void wm_subwindows_free(wmWindow *win)
 }
 
 
-int wm_subwindow_get(wmWindow *win)	
+int wm_subwindow_get_id(wmWindow *win)
 {
 	if (win->curswin)
 		return win->curswin->swinid;
@@ -112,55 +109,91 @@ static wmSubWindow *swin_from_swinid(wmWindow *win, int swinid)
 	return swin;
 }
 
-void wm_subwindow_getsize(wmWindow *win, int swinid, int *x, int *y) 
+
+static void wm_swin_size_get(wmSubWindow *swin, int *x, int *y)
+{
+	*x = BLI_rcti_size_x(&swin->winrct) + 1;
+	*y = BLI_rcti_size_y(&swin->winrct) + 1;
+}
+void wm_subwindow_size_get(wmWindow *win, int swinid, int *x, int *y)
 {
 	wmSubWindow *swin = swin_from_swinid(win, swinid);
 
 	if (swin) {
-		*x = BLI_rcti_size_x(&swin->winrct) + 1;
-		*y = BLI_rcti_size_y(&swin->winrct) + 1;
+		wm_swin_size_get(swin, x, y);
 	}
 }
 
-void wm_subwindow_getorigin(wmWindow *win, int swinid, int *x, int *y)
+
+static void wm_swin_origin_get(wmSubWindow *swin, int *x, int *y)
+{
+	*x = swin->winrct.xmin;
+	*y = swin->winrct.ymin;
+}
+void wm_subwindow_origin_get(wmWindow *win, int swinid, int *x, int *y)
 {
 	wmSubWindow *swin = swin_from_swinid(win, swinid);
 
 	if (swin) {
-		*x = swin->winrct.xmin;
-		*y = swin->winrct.ymin;
+		wm_swin_origin_get(swin, x, y);
 	}
 }
 
-void wm_subwindow_getmatrix(wmWindow *win, int swinid, float mat[4][4])
+
+static void wm_swin_matrix_get(wmWindow *win, wmSubWindow *swin, float mat[4][4])
+{
+	/* used by UI, should find a better way to get the matrix there */
+	if (swin->swinid == win->screen->mainwin) {
+		int width, height;
+
+		wm_swin_size_get(swin, &width, &height);
+		orthographic_m4(mat, -GLA_PIXEL_OFS, (float)width - GLA_PIXEL_OFS, -GLA_PIXEL_OFS, (float)height - GLA_PIXEL_OFS, -100, 100);
+	}
+	else {
+		glGetFloatv(GL_PROJECTION_MATRIX, (float *)mat);
+	}
+}
+void wm_subwindow_matrix_get(wmWindow *win, int swinid, float mat[4][4])
 {
 	wmSubWindow *swin = swin_from_swinid(win, swinid);
 
 	if (swin) {
-		/* used by UI, should find a better way to get the matrix there */
-		if (swinid == win->screen->mainwin) {
-			int width, height;
-
-			wm_subwindow_getsize(win, swin->swinid, &width, &height);
-			orthographic_m4(mat, -GLA_PIXEL_OFS, (float)width - GLA_PIXEL_OFS, -GLA_PIXEL_OFS, (float)height - GLA_PIXEL_OFS, -100, 100);
-		}
-		else
-			glGetFloatv(GL_PROJECTION_MATRIX, (float *)mat);
+		wm_swin_matrix_get(win, swin, mat);
 	}
 }
 
-void wm_subwindow_getrect(wmWindow *win, int swinid, rcti *r_rect)
+
+static void wm_swin_rect_get(wmSubWindow *swin, rcti *r_rect)
+{
+	*r_rect = swin->winrct;
+}
+void wm_subwindow_rect_get(wmWindow *win, int swinid, rcti *r_rect)
 {
 	wmSubWindow *swin = swin_from_swinid(win, swinid);
 
 	if (swin) {
-		*r_rect = swin->winrct;
+		wm_swin_rect_get(swin, r_rect);
 	}
 }
+
+
+static void wm_swin_rect_set(wmSubWindow *swin, const rcti *rect)
+{
+	swin->winrct = *rect;
+}
+void wm_subwindow_rect_set(wmWindow *win, int swinid, const rcti *rect)
+{
+	wmSubWindow *swin = swin_from_swinid(win, swinid);
+
+	if (swin) {
+		wm_swin_rect_set(swin, rect);
+	}
+}
+
 
 /* always sets pixel-precise 2D window/view matrices */
 /* coords is in whole pixels. xmin = 15, xmax = 16: means window is 2 pix big */
-int wm_subwindow_open(wmWindow *win, rcti *winrct)
+int wm_subwindow_open(wmWindow *win, const rcti *winrct)
 {
 	wmSubWindow *swin;
 	int width, height;
@@ -180,8 +213,8 @@ int wm_subwindow_open(wmWindow *win, rcti *winrct)
 	wmSubWindowSet(win, swin->swinid);
 	
 	/* extra service */
-	wm_subwindow_getsize(win, swin->swinid, &width, &height);
-	wmOrtho2(-GLA_PIXEL_OFS, (float)width - GLA_PIXEL_OFS, -GLA_PIXEL_OFS, (float)height - GLA_PIXEL_OFS);
+	wm_swin_size_get(swin, &width, &height);
+	wmOrtho2_pixelspace(width, height);
 	glLoadIdentity();
 
 	return swin->swinid;
@@ -205,7 +238,7 @@ void wm_subwindow_close(wmWindow *win, int swinid)
 }
 
 /* pixels go from 0-99 for a 100 pixel window */
-void wm_subwindow_position(wmWindow *win, int swinid, rcti *winrct)
+void wm_subwindow_position(wmWindow *win, int swinid, const rcti *winrct)
 {
 	wmSubWindow *swin = swin_from_swinid(win, swinid);
 	
@@ -237,8 +270,8 @@ void wm_subwindow_position(wmWindow *win, int swinid, rcti *winrct)
 		
 		/* extra service */
 		wmSubWindowSet(win, swinid);
-		wm_subwindow_getsize(win, swinid, &width, &height);
-		wmOrtho2(-GLA_PIXEL_OFS, (float)width - GLA_PIXEL_OFS, -GLA_PIXEL_OFS, (float)height - GLA_PIXEL_OFS);
+		wm_swin_size_get(swin, &width, &height);
+		wmOrtho2_pixelspace(width, height);
 	}
 	else {
 		printf("%s: Internal error, bad winid: %d\n", __func__, swinid);
@@ -274,7 +307,7 @@ void wmSubWindowScissorSet(wmWindow *win, int swinid, const rcti *srct, bool src
 		int scissor_height = BLI_rcti_size_y(srct);
 
 		/* typically a single pixel doesn't matter,
-		 * but one pixel offset is noticable with viewport border render */
+		 * but one pixel offset is noticeable with viewport border render */
 		if (srct_pad) {
 			scissor_width  += 1;
 			scissor_height += 1;
@@ -285,7 +318,7 @@ void wmSubWindowScissorSet(wmWindow *win, int swinid, const rcti *srct, bool src
 	else
 		glScissor(_curswin->winrct.xmin, _curswin->winrct.ymin, width, height);
 	
-	wmOrtho2(-GLA_PIXEL_OFS, (float)width - GLA_PIXEL_OFS, -GLA_PIXEL_OFS, (float)height - GLA_PIXEL_OFS);
+	wmOrtho2_pixelspace(width, height);
 	glLoadIdentity();
 	
 	glFlush();
@@ -322,6 +355,35 @@ void wmOrtho2(float x1, float x2, float y1, float y2)
 	if (y1 == y2) y2 += 1.0f;
 
 	wmOrtho(x1, x2, y1, y2, -100, 100);
+}
+
+static void wmOrtho2_offset(const float x, const float y, const float ofs)
+{
+	wmOrtho2(ofs, x + ofs, ofs, y + ofs);
+}
+
+/**
+ * default pixel alignment.
+ */
+void wmOrtho2_region_pixelspace(const struct ARegion *ar)
+{
+	wmOrtho2_offset(ar->winx, ar->winy, -0.01f);
+}
+
+void wmOrtho2_pixelspace(const float x, const float y)
+{
+	wmOrtho2_offset(x, y, -GLA_PIXEL_OFS);
+}
+
+/**
+ * use for drawing uiBlock, any UI elements and text.
+ * \note prevents blurry text with multi-sample (FSAA), see T41749
+ */
+void wmOrtho2_region_ui(const ARegion *ar)
+{
+	/* note, intentionally no '+ 1',
+	 * as with wmOrtho2_region_pixelspace */
+	wmOrtho2_offset(ar->winx, ar->winy, -0.01f);
 }
 
 /* *************************** Framebuffer color depth, for selection codes ********************** */

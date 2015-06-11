@@ -37,8 +37,8 @@
 #include "MEM_guardedalloc.h"
 
 #include "DNA_ID.h"
-#include "DNA_cloth_types.h"
 #include "DNA_dynamicpaint_types.h"
+#include "DNA_fracture_types.h"
 #include "DNA_modifier_types.h"
 #include "DNA_object_types.h"
 #include "DNA_object_force.h"
@@ -58,13 +58,12 @@
 
 #include "WM_api.h"
 
+#include "BKE_appdir.h"
 #include "BKE_anim.h"
 #include "BKE_blender.h"
 #include "BKE_cloth.h"
-#include "BKE_depsgraph.h"
 #include "BKE_dynamicpaint.h"
 #include "BKE_global.h"
-#include "BKE_library.h"
 #include "BKE_main.h"
 #include "BKE_modifier.h"
 #include "BKE_object.h"
@@ -73,6 +72,7 @@
 #include "BKE_scene.h"
 #include "BKE_smoke.h"
 #include "BKE_softbody.h"
+#include "BKE_rigidbody.h"
 
 #include "BIK_api.h"
 
@@ -87,22 +87,20 @@
 
 #ifdef WITH_LZO
 #include "minilzo.h"
-#else
-/* used for non-lzo cases */
-#define LZO_OUT_LEN(size)     ((size) + (size) / 16 + 64 + 3)
+#define LZO_HEAP_ALLOC(var,size) \
+	lzo_align_t __LZO_MMODEL var [ ((size) + (sizeof(lzo_align_t) - 1)) / sizeof(lzo_align_t) ]
 #endif
+
+#define LZO_OUT_LEN(size)     ((size) + (size) / 16 + 64 + 3)
 
 #ifdef WITH_LZMA
 #include "LzmaLib.h"
 #endif
 
 /* needed for directory lookup */
-/* untitled blend's need getpid for a unique name */
 #ifndef WIN32
 #  include <dirent.h>
-#  include <unistd.h>
 #else
-#  include <process.h>
 #  include "BLI_winstuff.h"
 #endif
 
@@ -776,7 +774,7 @@ static int ptcache_smoke_read(PTCacheFile *pf, void *smoke_v)
 
 	/* version header */
 	ptcache_file_read(pf, version, 4, sizeof(char));
-	if (strncmp(version, SMOKE_CACHE_VERSION, 4))
+	if (!STREQLEN(version, SMOKE_CACHE_VERSION, 4))
 	{
 		/* reset file pointer */
 		fseek(pf->fp, -4, SEEK_CUR);
@@ -958,7 +956,7 @@ static int ptcache_dynamicpaint_read(PTCacheFile *pf, void *dp_v)
 	
 	/* version header */
 	ptcache_file_read(pf, version, 1, sizeof(char) * 4);
-	if (strncmp(version, DPAINT_CACHE_VERSION, 4)) {
+	if (!STREQLEN(version, DPAINT_CACHE_VERSION, 4)) {
 		printf("Dynamic Paint: Invalid cache version: '%c%c%c%c'!\n", UNPACK4(version));
 		return 0;
 	}
@@ -996,42 +994,99 @@ static int ptcache_dynamicpaint_read(PTCacheFile *pf, void *dp_v)
 }
 
 /* Rigid Body functions */
-static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUSED(cfra))
+static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra)
 {
 	RigidBodyWorld *rbw = rb_v;
-	Object *ob = NULL;
+	RigidBodyOb *rbo = NULL;
+
+	/* clumsy, clumsy, but we need to access our own (meshisland based) cache here in case of dynamic fracture*/
+	Object* ob = NULL;
+	FractureModifierData *fmd = NULL;
+
+	rbo = rbw->cache_index_map[index];
 	
-	if (rbw->objects)
-		ob = rbw->objects[index];
-	
-	if (ob && ob->rigidbody_object) {
-		RigidBodyOb *rbo = ob->rigidbody_object;
+	if (rbo == NULL) {
+		float dummyloc[3] = {FLT_MIN, FLT_MIN, FLT_MIN};
+		float dummyrot[4] = {FLT_MIN, FLT_MIN, FLT_MIN, FLT_MIN};
 		
-		if (rbo->type == RBO_TYPE_ACTIVE) {
+		//need to write dummy data obviously... hmm
+		PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, dummyloc);
+		PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, dummyrot);
+		return 1;
+	}
+
+	ob = rbw->objects[rbw->cache_offset_map[index]];
+	fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
+
+	if (rbo && rbo->type == RBO_TYPE_ACTIVE && rbo->physics_object)
+	{
 #ifdef WITH_BULLET
-			RB_body_get_position(rbo->physics_object, rbo->pos);
-			RB_body_get_orientation(rbo->physics_object, rbo->orn);
+		RB_body_get_position(rbo->physics_object, rbo->pos);
+		RB_body_get_orientation(rbo->physics_object, rbo->orn);
 #endif
+
+		PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, rbo->pos);
+		PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, rbo->orn);
+#if 0
+		if (!fmd || fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+		{
 			PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, rbo->pos);
 			PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, rbo->orn);
 		}
+		else if (fmd && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+		{
+			MeshIsland *mi = BLI_findlink(&fmd->fracture->meshIslands, rbo->meshisland_index);
+			int frame = (int)floor(cfra);
+			frame =  frame - mi->start_frame;
+
+			//printf("Writing frame %d %d %d %d\n", (int)cfra, mi->start_frame, frame, fmd->last_frame);
+
+			mi->locs[3*frame] = rbo->pos[0];
+			mi->locs[3*frame+1] = rbo->pos[1];
+			mi->locs[3*frame+2] = rbo->pos[2];
+
+			mi->rots[4*frame] = rbo->orn[0];
+			mi->rots[4*frame+1] = rbo->orn[1];
+			mi->rots[4*frame+2] = rbo->orn[2];
+			mi->rots[4*frame+3] = rbo->orn[3];
+
+			//dummy data
+			PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, rbo->pos);
+			PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, rbo->orn);
+		}
+#endif
 	}
 
 	return 1;
 }
-static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float UNUSED(cfra), float *old_data)
+static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfra, float *old_data)
 {
 	RigidBodyWorld *rbw = rb_v;
-	Object *ob = NULL;
+	RigidBodyOb *rbo = NULL;
 	
-	if (rbw->objects)
-		ob = rbw->objects[index];
+	rbo = rbw->cache_index_map[index];
 	
-	if (ob && ob->rigidbody_object) {
-		RigidBodyOb *rbo = ob->rigidbody_object;
-		
-		if (rbo->type == RBO_TYPE_ACTIVE) {
-			
+	if (rbo == NULL) {
+		return;
+	}
+
+	if (rbo && rbo->type == RBO_TYPE_ACTIVE) {
+		if (old_data) {
+			memcpy(rbo->pos, data, 3 * sizeof(float));
+			memcpy(rbo->orn, data + 3, 4 * sizeof(float));
+		}
+		else {
+			PTCACHE_DATA_TO(data, BPHYS_DATA_LOCATION, 0, rbo->pos);
+			PTCACHE_DATA_TO(data, BPHYS_DATA_ROTATION, 0, rbo->orn);
+		}
+	}
+
+#if 0
+	ob = rbw->objects[rbw->cache_offset_map[index]];
+	fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
+	if (!fmd || fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+	{
+		if (rbo && rbo->type == RBO_TYPE_ACTIVE) {
 			if (old_data) {
 				memcpy(rbo->pos, data, 3 * sizeof(float));
 				memcpy(rbo->orn, data + 3, 4 * sizeof(float));
@@ -1042,25 +1097,51 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float UNU
 			}
 		}
 	}
+	else if (fmd && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+	{
+		if (rbo && rbo->type == RBO_TYPE_ACTIVE)
+		{
+			//damn, slow listbase based lookup
+			//TODO, need to speed this up.... array, hash ?
+
+			//modifier should have "switched" this to current set of meshislands already.... so access it
+			MeshIsland *mi = BLI_findlink(&fmd->fracture->meshIslands, rbo->meshisland_index);
+			int frame = (int)floor(cfra);
+			frame = frame - mi->start_frame;
+
+			//printf("Reading frame %d %d %d %d\n", (int)cfra, mi->start_frame, frame, fmd->last_frame);
+
+			rbo->pos[0] = mi->locs[3*frame];
+			rbo->pos[1] = mi->locs[3*frame+1];
+			rbo->pos[2] = mi->locs[3*frame+2];
+
+			rbo->orn[0] = mi->rots[4*frame];
+			rbo->orn[1] = mi->rots[4*frame+1];
+			rbo->orn[2] = mi->rots[4*frame+2];
+			rbo->orn[3] = mi->rots[4*frame+3];
+		}
+	}
+#endif
 }
 static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, float cfra, float cfra1, float cfra2, float *old_data)
 {
 	RigidBodyWorld *rbw = rb_v;
-	Object *ob = NULL;
+	RigidBodyOb *rbo = NULL;
 	ParticleKey keys[4];
 	float dfra;
 	
-	if (rbw->objects)
-		ob = rbw->objects[index];
-	
-	if (ob && ob->rigidbody_object) {
-		RigidBodyOb *rbo = ob->rigidbody_object;
-		
-		if (rbo->type == RBO_TYPE_ACTIVE) {
-			
-			copy_v3_v3(keys[1].co, rbo->pos);
-			copy_v3_v3(keys[1].rot, rbo->orn);
-			
+	rbo = rbw->cache_index_map[index];
+	if (rbo == NULL) {
+		return;
+	}
+
+	if (rbo->type == RBO_TYPE_ACTIVE) {
+
+		copy_v3_v3(keys[1].co, rbo->pos);
+		copy_qt_qt(keys[1].rot, rbo->orn);
+#if 0
+		if (!fmd || fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+		{
 			if (old_data) {
 				memcpy(keys[2].co, data, 3 * sizeof(float));
 				memcpy(keys[2].rot, data + 3, 4 * sizeof(float));
@@ -1068,15 +1149,46 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 			else {
 				BKE_ptcache_make_particle_key(keys+2, 0, data, cfra2);
 			}
-			
-			dfra = cfra2 - cfra1;
-		
-			psys_interpolate_particle(-1, keys, (cfra - cfra1) / dfra, keys, 1);
-			interp_qt_qtqt(keys->rot, keys[1].rot, keys[2].rot, (cfra - cfra1) / dfra);
-			
-			copy_v3_v3(rbo->pos, keys->co);
-			copy_v3_v3(rbo->orn, keys->rot);
 		}
+		else if (fmd && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+		{
+			float loc[3], rot[4];
+
+			MeshIsland *mi = BLI_findlink(&fmd->fracture->meshIslands, rbo->meshisland_index);
+			int frame = (int)floor(cfra);
+			frame = frame - mi->start_frame;
+
+			loc[0] = mi->locs[3*frame];
+			loc[1] = mi->locs[3*frame+1];
+			loc[2] = mi->locs[3*frame+2];
+
+			rot[0] = mi->rots[4*frame];
+			rot[1] = mi->rots[4*frame+1];
+			rot[2] = mi->rots[4*frame+2];
+			rot[3] = mi->rots[4*frame+3];
+
+			copy_v3_v3(keys[2].co, loc);
+			copy_qt_qt(keys[2].rot, rot);
+		}
+#endif
+
+		if (old_data) {
+			memcpy(keys[2].co, data, 3 * sizeof(float));
+			memcpy(keys[2].rot, data + 3, 4 * sizeof(float));
+		}
+		else {
+			BKE_ptcache_make_particle_key(keys+2, 0, data, cfra2);
+		}
+
+		dfra = cfra2 - cfra1;
+
+		/*psys_interpolate_particle(-1, keys, (cfra - cfra1) / dfra, keys, 1) */
+		/* XXX temporary deform motion blur fix */
+		interp_v3_v3v3(keys->co, keys[1].co, keys[2].co, (cfra - cfra1) / dfra);
+		interp_qt_qtqt(keys->rot, keys[1].rot, keys[2].rot, (cfra - cfra1) / dfra);
+
+		copy_v3_v3(rbo->pos, keys->co);
+		copy_qt_qt(rbo->orn, keys->rot);
 	}
 }
 static int ptcache_rigidbody_totpoint(void *rb_v, int UNUSED(cfra))
@@ -1301,17 +1413,17 @@ void BKE_ptcache_id_from_dynamicpaint(PTCacheID *pid, Object *ob, DynamicPaintSu
 	pid->max_step = 1;
 }
 
-void BKE_ptcache_id_from_rigidbody(PTCacheID *pid, Object *ob, RigidBodyWorld *rbw)
+void BKE_ptcache_id_from_rigidbody(PTCacheID *pid, Object *ob, FractureContainer *fc)
 {
 	
 	memset(pid, 0, sizeof(PTCacheID));
 	
 	pid->ob= ob;
-	pid->calldata= rbw;
+	pid->calldata=fc;
 	pid->type= PTCACHE_TYPE_RIGIDBODY;
-	pid->cache= rbw->pointcache;
-	pid->cache_ptr= &rbw->pointcache;
-	pid->ptcaches= &rbw->ptcaches;
+	pid->cache=fc->pointcache;
+	pid->cache_ptr= &fc->pointcache;
+	pid->ptcaches= &fc->ptcaches;
 	pid->totpoint= pid->totwrite= ptcache_rigidbody_totpoint;
 	pid->error					= ptcache_rigidbody_error;
 	
@@ -1409,7 +1521,7 @@ void BKE_ptcache_ids_from_object(ListBase *lb, Object *ob, Scene *scene, int dup
 	if (scene && (duplis-- > 0) && (ob->transflag & OB_DUPLI)) {
 		ListBase *lb_dupli_ob;
 		/* don't update the dupli groups, we only want their pid's */
-		if ((lb_dupli_ob = object_duplilist_ex(G.main->eval_ctx, scene, ob, FALSE))) {
+		if ((lb_dupli_ob = object_duplilist_ex(G.main->eval_ctx, scene, ob, false))) {
 			DupliObject *dob;
 			for (dob= lb_dupli_ob->first; dob; dob= dob->next) {
 				if (dob->ob != ob) { /* avoids recursive loops with dupliframes: bug 22988 */
@@ -1469,7 +1581,7 @@ static int ptcache_path(PTCacheID *pid, char *filename)
 	
 	/* use the temp path. this is weak but better then not using point cache at all */
 	/* temporary directory is assumed to exist and ALWAYS has a trailing slash */
-	BLI_snprintf(filename, MAX_PTCACHE_PATH, "%s"PTCACHE_PATH"%d", BLI_temporary_dir(), abs(getpid()));
+	BLI_snprintf(filename, MAX_PTCACHE_PATH, "%s"PTCACHE_PATH, BKE_tempdir_session());
 	
 	return BLI_add_slash(filename); /* new strlen() */
 }
@@ -1493,7 +1605,7 @@ static int ptcache_filename(PTCacheID *pid, char *filename, int cfra, short do_p
 		idname = (pid->ob->id.name + 2);
 		/* convert chars to hex so they are always a valid filename */
 		while ('\0' != *idname) {
-			BLI_snprintf(newname, MAX_PTCACHE_FILE, "%02X", (char)(*idname++));
+			BLI_snprintf(newname, MAX_PTCACHE_FILE, "%02X", (unsigned int)(*idname++));
 			newname+=2;
 			len += 2;
 		}
@@ -1716,7 +1828,7 @@ static int ptcache_file_header_begin_read(PTCacheFile *pf)
 	if (fread(bphysics, sizeof(char), 8, pf->fp) != 8)
 		error = 1;
 	
-	if (!error && strncmp(bphysics, "BPHYSICS", 8))
+	if (!error && !STREQLEN(bphysics, "BPHYSICS", 8))
 		error = 1;
 
 	if (!error && !fread(&typeflag, sizeof(unsigned int), 1, pf->fp))
@@ -2447,7 +2559,7 @@ static int ptcache_write_needed(PTCacheID *pid, int cfra, int *overwrite)
 	PointCache *cache = pid->cache;
 	int ofra = 0, efra = cache->endframe;
 
-	/* allways start from scratch on the first frame */
+	/* always start from scratch on the first frame */
 	if (cfra && cfra == cache->startframe) {
 		BKE_ptcache_id_clear(pid, PTCACHE_CLEAR_ALL, cfra);
 		cache->flag &= ~PTCACHE_REDO_NEEDED;
@@ -2571,17 +2683,24 @@ void BKE_ptcache_id_clear(PTCacheID *pid, int mode, unsigned int cfra)
 		if (pid->cache->flag & PTCACHE_DISK_CACHE) {
 			ptcache_path(pid, path);
 			
-			len = ptcache_filename(pid, filename, cfra, 0, 0); /* no path */
-			
 			dir = opendir(path);
 			if (dir==NULL)
 				return;
-
+			
+			len = ptcache_filename(pid, filename, cfra, 0, 0); /* no path */
+			/* append underscore terminator to ensure we don't match similar names
+			 * from objects whose names start with the same prefix
+			 */
+			if (len < sizeof(filename) - 2) {
+				BLI_strncpy(filename + len, "_", sizeof(filename) - 2 - len);
+				len += 1;
+			}
+			
 			BLI_snprintf(ext, sizeof(ext), "_%02u"PTCACHE_EXT, pid->stack_index);
 			
 			while ((de = readdir(dir)) != NULL) {
 				if (strstr(de->d_name, ext)) { /* do we have the right extension?*/
-					if (strncmp(filename, de->d_name, len ) == 0) { /* do we have the right prefix */
+					if (STREQLEN(filename, de->d_name, len)) { /* do we have the right prefix */
 						if (mode == PTCACHE_CLEAR_ALL) {
 							pid->cache->last_exact = MIN2(pid->cache->startframe, 0);
 							BLI_join_dirfile(path_full, sizeof(path_full), path, de->d_name);
@@ -2787,7 +2906,7 @@ void BKE_ptcache_id_time(PTCacheID *pid, Scene *scene, float cfra, int *startfra
 			
 			while ((de = readdir(dir)) != NULL) {
 				if (strstr(de->d_name, ext)) { /* do we have the right extension?*/
-					if (strncmp(filename, de->d_name, len ) == 0) { /* do we have the right prefix */
+					if (STREQLEN(filename, de->d_name, len)) { /* do we have the right prefix */
 						/* read the number of the file */
 						unsigned int frame, len2 = (int)strlen(de->d_name);
 						char num[7];
@@ -2934,13 +3053,31 @@ int  BKE_ptcache_object_reset(Scene *scene, Object *ob, int mode)
 		}
 	}
 
+#if 0 //TODO, what was this good for ?
 	if (scene->rigidbody_world && (ob->rigidbody_object || ob->rigidbody_constraint)) {
-		if (ob->rigidbody_object)
-			ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_RESHAPE;
-		BKE_ptcache_id_from_rigidbody(&pid, ob, scene->rigidbody_world);
-		/* only flag as outdated, resetting should happen on start frame */
-		pid.cache->flag |= PTCACHE_OUTDATED;
+		ModifierData *md = modifiers_findByType(ob, eModifierType_Fracture);
+		if (md && md->type == eModifierType_Fracture)
+		{
+			FractureModifierData *fmd = (FractureModifierData*)md;
+			if (!(fmd->flag & FM_FLAG_REFRESH_AUTOHIDE))
+			{
+				if (ob->rigidbody_object)
+					ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_RESHAPE;
+				BKE_ptcache_id_from_rigidbody(&pid, ob, scene->rigidbody_world);
+				/* only flag as outdated, resetting should happen on start frame */
+				pid.cache->flag |= PTCACHE_OUTDATED;
+			}
+		}
+		else
+		{
+			if (ob->rigidbody_object)
+				ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_RESHAPE;
+			BKE_ptcache_id_from_rigidbody(&pid, ob, scene->rigidbody_world);
+			/* only flag as outdated, resetting should happen on start frame */
+			pid.cache->flag |= PTCACHE_OUTDATED;
+		}
 	}
+#endif
 
 	if (ob->type == OB_ARMATURE)
 		BIK_clear_cache(ob->pose);
@@ -2968,7 +3105,7 @@ void BKE_ptcache_remove(void)
 			return;
 		
 		while ((de = readdir(dir)) != NULL) {
-			if ( strcmp(de->d_name, ".")==0 || strcmp(de->d_name, "..")==0) {
+			if (FILENAME_IS_CURRPAR(de->d_name)) {
 				/* do nothing */
 			}
 			else if (strstr(de->d_name, PTCACHE_EXT)) { /* do we have the right extension?*/
@@ -3000,7 +3137,7 @@ PointCache *BKE_ptcache_add(ListBase *ptcaches)
 	cache= MEM_callocN(sizeof(PointCache), "PointCache");
 	cache->startframe= 1;
 	cache->endframe= 250;
-	cache->step= 10;
+	cache->step = 1;
 	cache->index = -1;
 
 	BLI_addtail(ptcaches, cache);
@@ -3039,18 +3176,15 @@ void BKE_ptcache_free_list(ListBase *ptcaches)
 	}
 }
 
-static PointCache *ptcache_copy(PointCache *cache, int copy_data)
+static PointCache *ptcache_copy(PointCache *cache, bool copy_data)
 {
 	PointCache *ncache;
 
 	ncache= MEM_dupallocN(cache);
 
-	ncache->mem_cache.first = NULL;
-	ncache->mem_cache.last = NULL;
+	BLI_listbase_clear(&ncache->mem_cache);
 
-	if (copy_data == FALSE) {
-		ncache->mem_cache.first = NULL;
-		ncache->mem_cache.last = NULL;
+	if (copy_data == false) {
 		ncache->cached_frames = NULL;
 
 		/* flag is a mix of user settings and simulator/baking state */
@@ -3085,11 +3219,11 @@ static PointCache *ptcache_copy(PointCache *cache, int copy_data)
 }
 
 /* returns first point cache */
-PointCache *BKE_ptcache_copy_list(ListBase *ptcaches_new, ListBase *ptcaches_old, int copy_data)
+PointCache *BKE_ptcache_copy_list(ListBase *ptcaches_new, ListBase *ptcaches_old, bool copy_data)
 {
 	PointCache *cache = ptcaches_old->first;
 
-	ptcaches_new->first = ptcaches_new->last = NULL;
+	BLI_listbase_clear(ptcaches_new);
 
 	for (; cache; cache=cache->next)
 		BLI_addtail(ptcaches_new, ptcache_copy(cache, copy_data));
@@ -3147,7 +3281,8 @@ static void ptcache_dt_to_str(char *str, double dtime)
 
 static void *ptcache_bake_thread(void *ptr)
 {
-	int use_timer = FALSE, sfra, efra;
+	bool use_timer = false;
+	int sfra, efra;
 	double stime, ptime, ctime, fetd;
 	char run[32], cur[32], etd[32];
 
@@ -3168,7 +3303,7 @@ static void *ptcache_bake_thread(void *ptr)
 			fetd = (ctime-ptime)*(efra-*data->cfra_ptr)/data->step;
 
 			if (use_timer || fetd > 60.0) {
-				use_timer = TRUE;
+				use_timer = true;
 
 				ptcache_dt_to_str(cur, ctime-ptime);
 				ptcache_dt_to_str(run, ctime-stime);
@@ -3186,7 +3321,7 @@ static void *ptcache_bake_thread(void *ptr)
 		printf("\nBake %s %s (%i frames simulated).\n", (data->break_operation ? "canceled after" : "finished in"), run, *data->cfra_ptr-sfra);
 	}
 
-	data->thread_ended = TRUE;
+	data->thread_ended = true;
 	return NULL;
 }
 
@@ -3215,7 +3350,7 @@ void BKE_ptcache_bake(PTCacheBaker *baker)
 	thread_data.scene = baker->scene;
 	thread_data.main = baker->main;
 
-	G.is_break = FALSE;
+	G.is_break = false;
 
 	/* set caches to baking mode and figure out start frame */
 	if (pid) {
@@ -3307,8 +3442,8 @@ void BKE_ptcache_bake(PTCacheBaker *baker)
 
 	CFRA = startframe;
 	scene->r.framelen = 1.0;
-	thread_data.break_operation = FALSE;
-	thread_data.thread_ended = FALSE;
+	thread_data.break_operation = false;
+	thread_data.thread_ended = false;
 	old_progress = -1;
 
 	WM_cursor_wait(1);
@@ -3320,7 +3455,7 @@ void BKE_ptcache_bake(PTCacheBaker *baker)
 		BLI_init_threads(&threads, ptcache_bake_thread, 1);
 		BLI_insert_thread(&threads, (void*)&thread_data);
 
-		while (thread_data.thread_ended == FALSE) {
+		while (thread_data.thread_ended == false) {
 
 			if (bake)
 				progress = (int)(100.0f * (float)(CFRA - startframe)/(float)(thread_data.endframe-startframe));
@@ -3338,7 +3473,7 @@ void BKE_ptcache_bake(PTCacheBaker *baker)
 
 			/* NOTE: breaking baking should leave calculated frames in cache, not clear it */
 			if (blender_test_break() && !thread_data.break_operation) {
-				thread_data.break_operation = TRUE;
+				thread_data.break_operation = true;
 				if (baker->progressend)
 					baker->progressend(baker->progresscontext);
 				WM_cursor_wait(1);
@@ -3483,6 +3618,13 @@ void BKE_ptcache_toggle_disk_cache(PTCacheID *pid)
 	BKE_ptcache_id_time(pid, NULL, 0.0f, NULL, NULL, NULL);
 
 	BKE_ptcache_update_info(pid);
+
+	if ((cache->flag & PTCACHE_DISK_CACHE) == 0) {
+		if (cache->index) {
+			BKE_object_delete_ptcache(pid->ob, cache->index);
+			cache->index = -1;
+		}
+	}
 }
 
 void BKE_ptcache_disk_cache_rename(PTCacheID *pid, const char *name_src, const char *name_dst)
@@ -3520,7 +3662,7 @@ void BKE_ptcache_disk_cache_rename(PTCacheID *pid, const char *name_src, const c
 
 	while ((de = readdir(dir)) != NULL) {
 		if (strstr(de->d_name, ext)) { /* do we have the right extension?*/
-			if (strncmp(old_filename, de->d_name, len ) == 0) { /* do we have the right prefix */
+			if (STREQLEN(old_filename, de->d_name, len)) { /* do we have the right prefix */
 				/* read the number of the file */
 				int frame, len2 = (int)strlen(de->d_name);
 				char num[7];
@@ -3575,7 +3717,7 @@ void BKE_ptcache_load_external(PTCacheID *pid)
 	
 	while ((de = readdir(dir)) != NULL) {
 		if (strstr(de->d_name, ext)) { /* do we have the right extension?*/
-			if (strncmp(filename, de->d_name, len ) == 0) { /* do we have the right prefix */
+			if (STREQLEN(filename, de->d_name, len)) { /* do we have the right prefix */
 				/* read the number of the file */
 				int frame, len2 = (int)strlen(de->d_name);
 				char num[7];

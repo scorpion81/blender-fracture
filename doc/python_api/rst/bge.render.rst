@@ -8,9 +8,13 @@ Intro
 
 .. module:: bge.render
 
+Example of using a :class:`bge.types.SCA_MouseSensor`, and two :class:`bge.types.KX_ObjectActuator` to implement MouseLook:
+
+.. note::
+   This can also be achieved with the :class:`bge.types.KX_MouseActuator`.
+
 .. code-block:: python
 
-   # Example Uses an L{SCA_MouseSensor}, and two L{KX_ObjectActuator}s to implement MouseLook::
    # To use a mouse movement sensor "Mouse" and a
    # motion actuator to mouse look:
    import bge
@@ -74,6 +78,14 @@ Constants
 .. DATA:: VSYNC_ADAPTIVE
 
    Enables adaptive vsync if supported. Adaptive vsync enables vsync if the framerate is above the monitors refresh rate. Otherwise, vsync is diabled if the framerate is too low.
+
+.. data:: LEFT_EYE
+
+   Left eye being used during stereoscopic rendering.
+
+.. data:: RIGHT_EYE
+
+   Right eye being used during stereoscopic rendering.
 
 *********
 Functions
@@ -217,6 +229,15 @@ Functions
    
    :rtype: float
 
+.. function:: getStereoEye()
+
+   Gets the current stereoscopy eye being rendered.
+   This function is mainly used in a :class:`bge.types.KX_Scene.pre_draw` callback
+   function to customize the camera projection matrices for each
+   stereoscopic eye.
+
+   :rtype: LEFT_EYE, RIGHT_EYE
+
 .. function:: setMaterialMode(mode)
 
    Set the material mode to use for OpenGL rendering.
@@ -300,6 +321,34 @@ Functions
 .. function:: disableMotionBlur()
 
    Disable the motion blur effect.
+
+.. function:: showFramerate(enable)
+
+   Show or hide the framerate.
+
+   :type enable: boolean
+
+.. function:: showProfile(enable)
+
+   Show or hide the profile.
+
+   :type enable: boolean
+
+.. function:: showProperties(enable)
+
+   Show or hide the debug properties.
+
+   :type enable: boolean
+
+.. function:: autoDebugList(enable)
+
+   Enable or disable auto adding debug properties to the debug list.
+
+   :type enable: boolean
+
+.. function:: clearDebugList()
+
+   Clears the debug property list.
 
 .. function:: setVsync(value)
 

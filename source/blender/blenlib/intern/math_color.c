@@ -29,75 +29,58 @@
 
 #include <assert.h>
 
-#include "MEM_guardedalloc.h"
 
 #include "BLI_math.h"
-#include "BLI_rand.h"
 #include "BLI_utildefines.h"
 
 #include "BLI_strict_flags.h"
 
 void hsv_to_rgb(float h, float s, float v, float *r, float *g, float *b)
 {
-	if (s != 0.0f) {
-		float i, f, p;
-		h = (h - floorf(h)) * 6.0f;
+	float nr, ng, nb;
 
-		i = floorf(h);
-		f = h - i;
+	nr =        fabsf(h * 6.0f - 3.0f) - 1.0f;
+	ng = 2.0f - fabsf(h * 6.0f - 2.0f);
+	nb = 2.0f - fabsf(h * 6.0f - 4.0f);
 
-		/* avoid computing q/t when not needed */
-		p = (v * (1.0f - s));
-#define q   (v * (1.0f - (s * f)))
-#define t   (v * (1.0f - (s * (1.0f - f))))
+	CLAMP(nr, 0.0f, 1.0f);
+	CLAMP(nb, 0.0f, 1.0f);
+	CLAMP(ng, 0.0f, 1.0f);
 
-		/* faster to compare floats then int conversion */
-		if (i < 1.0f) {
-			*r = v;
-			*g = t;
-			*b = p;
-		}
-		else if (i < 2.0f) {
-			*r = q;
-			*g = v;
-			*b = p;
-		}
-		else if (i < 3.0f) {
-			*r = p;
-			*g = v;
-			*b = t;
-		}
-		else if (i < 4.0f) {
-			*r = p;
-			*g = q;
-			*b = v;
-		}
-		else if (i < 5.0f) {
-			*r = t;
-			*g = p;
-			*b = v;
-		}
-		else {
-			*r = v;
-			*g = p;
-			*b = q;
-		}
+	*r = ((nr - 1.0f) * s + 1.0f) * v;
+	*g = ((ng - 1.0f) * s + 1.0f) * v;
+	*b = ((nb - 1.0f) * s + 1.0f) * v;
+}
 
-#undef q
-#undef t
+void hsl_to_rgb(float h, float s, float l, float *r, float *g, float *b)
+{
+	float nr, ng, nb, chroma;
 
-	}
-	else {
-		*r = v;
-		*g = v;
-		*b = v;
-	}
+	nr =        fabsf(h * 6.0f - 3.0f) - 1.0f;
+	ng = 2.0f - fabsf(h * 6.0f - 2.0f);
+	nb = 2.0f - fabsf(h * 6.0f - 4.0f);
+
+	CLAMP(nr, 0.0f, 1.0f);
+	CLAMP(nb, 0.0f, 1.0f);
+	CLAMP(ng, 0.0f, 1.0f);
+
+	chroma = (1.0f - fabsf(2.0f * l - 1.0f)) * s;
+
+	*r = (nr - 0.5f) * chroma + l;
+	*g = (ng - 0.5f) * chroma + l;
+	*b = (nb - 0.5f) * chroma + l;
 }
 
 /* convenience function for now */
 void hsv_to_rgb_v(const float hsv[3], float r_rgb[3])
 {
 	hsv_to_rgb(hsv[0], hsv[1], hsv[2], &r_rgb[0], &r_rgb[1], &r_rgb[2]);
+}
+
+/* convenience function for now */
+void hsl_to_rgb_v(const float hsl[3], float r_rgb[3])
+{
+	hsl_to_rgb(hsl[0], hsl[1], hsl[2], &r_rgb[0], &r_rgb[1], &r_rgb[2]);
 }
 
 void rgb_to_yuv(float r, float g, float b, float *ly, float *lu, float *lv)
@@ -130,7 +113,7 @@ void yuv_to_rgb(float y, float u, float v, float *lr, float *lg, float *lb)
 void rgb_to_ycc(float r, float g, float b, float *ly, float *lcb, float *lcr, int colorspace)
 {
 	float sr, sg, sb;
-	float y = 128.f, cr = 128.f, cb = 128.f;
+	float y = 128.0f, cr = 128.0f, cb = 128.0f;
 
 	sr = 255.0f * r;
 	sg = 255.0f * g;
@@ -169,7 +152,7 @@ void rgb_to_ycc(float r, float g, float b, float *ly, float *lcb, float *lcr, in
 /* FIXME comment above must be wrong because BLI_YCC_ITU_BT601 y 16.0 cr 16.0 -> r -0.7009 */
 void ycc_to_rgb(float y, float cb, float cr, float *lr, float *lg, float *lb, int colorspace)
 {
-	float r = 128.f, g = 128.f, b = 128.f;
+	float r = 128.0f, g = 128.0f, b = 128.0f;
 
 	switch (colorspace) {
 		case BLI_YCC_ITU_BT601:
@@ -227,57 +210,26 @@ void hex_to_rgb(char *hexcol, float *r, float *g, float *b)
 
 void rgb_to_hsv(float r, float g, float b, float *lh, float *ls, float *lv)
 {
-	float h, s, v;
-	float cmax, cmin;
+	float k = 0.0f;
+	float chroma;
+	float min_gb;
 
-	cmax = r;
-	cmin = r;
-	cmax = (g > cmax ? g : cmax);
-	cmin = (g < cmin ? g : cmin);
-	cmax = (b > cmax ? b : cmax);
-	cmin = (b < cmin ? b : cmin);
-
-	v = cmax; /* value */
-	if (cmax != 0.0f) {
-		float cdelta;
-
-		cdelta = cmax - cmin;
-		s = cdelta / cmax;
-
-		if (s != 0.0f) {
-			float rc, gc, bc;
-
-			rc = (cmax - r) / cdelta;
-			gc = (cmax - g) / cdelta;
-			bc = (cmax - b) / cdelta;
-
-			if (r == cmax) {
-				h = bc - gc;
-				if (h < 0.0f) {
-					h += 6.0f;
-				}
-			}
-			else if (g == cmax) {
-				h = 2.0f + rc - bc;
-			}
-			else {
-				h = 4.0f + gc - rc;
-			}
-
-			h *= (1.0f / 6.0f);
-		}
-		else {
-			h = 0.0f;
-		}
+	if (g < b) {
+		SWAP(float, g, b);
+		k = -1.0f;
 	}
-	else {
-		h = 0.0f;
-		s = 0.0f;
+	min_gb = b;
+	if (r < g) {
+		SWAP(float, r, g);
+		k = -2.0f / 6.0f - k;
+		min_gb = min_ff(g, b);
 	}
 
-	*lh = h;
-	*ls = s;
-	*lv = v;
+	chroma = r - min_gb;
+
+	*lh = fabsf(k + (g - b) / (6.0f * chroma + 1e-20f));
+	*ls = chroma / (r + 1e-20f);
+	*lv = r;
 }
 
 /* convenience function for now */
@@ -290,7 +242,7 @@ void rgb_to_hsl(float r, float g, float b, float *lh, float *ls, float *ll)
 {
 	const float cmax = max_fff(r, g, b);
 	const float cmin = min_fff(r, g, b);
-	float h, s, l = (cmax + cmin) / 2.0f;
+	float h, s, l = min_ff(1.0, (cmax + cmin) / 2.0f);
 
 	if (cmax == cmin) {
 		h = s = 0.0f; // achromatic
@@ -315,6 +267,33 @@ void rgb_to_hsl(float r, float g, float b, float *lh, float *ls, float *ll)
 	*ll = l;
 }
 
+void rgb_to_hsl_compat(float r, float g, float b, float *lh, float *ls, float *ll)
+{
+	const float orig_s = *ls;
+	const float orig_h = *lh;
+
+	rgb_to_hsl(r, g, b, lh, ls, ll);
+
+	if (*ll <= 0.0f) {
+		*lh = orig_h;
+		*ls = orig_s;
+	}
+	else if (*ls <= 0.0f) {
+		*lh = orig_h;
+		*ls = orig_s;
+	}
+
+	if (*lh == 0.0f && orig_h >= 1.0f) {
+		*lh = 1.0f;
+	}
+}
+
+void rgb_to_hsl_compat_v(const float rgb[3], float r_hsl[3])
+{
+	rgb_to_hsl_compat(rgb[0], rgb[1], rgb[2], &r_hsl[0], &r_hsl[1], &r_hsl[2]);
+}
+
+
 /* convenience function for now */
 void rgb_to_hsl_v(const float rgb[3], float r_hsl[3])
 {
@@ -323,8 +302,8 @@ void rgb_to_hsl_v(const float rgb[3], float r_hsl[3])
 
 void rgb_to_hsv_compat(float r, float g, float b, float *lh, float *ls, float *lv)
 {
-	float orig_h = *lh;
-	float orig_s = *ls;
+	const float orig_h = *lh;
+	const float orig_s = *ls;
 
 	rgb_to_hsv(r, g, b, lh, ls, lv);
 
@@ -345,6 +324,16 @@ void rgb_to_hsv_compat(float r, float g, float b, float *lh, float *ls, float *l
 void rgb_to_hsv_compat_v(const float rgb[3], float r_hsv[3])
 {
 	rgb_to_hsv_compat(rgb[0], rgb[1], rgb[2], &r_hsv[0], &r_hsv[1], &r_hsv[2]);
+}
+
+/* clamp hsv to usable values */
+void hsv_clamp_v(float hsv[3], float v_max)
+{
+	if (UNLIKELY(hsv[0] < 0.0f || hsv[0] > 1.0f)) {
+		hsv[0] = hsv[0] - floorf(hsv[0]);
+	}
+	CLAMP(hsv[1], 0.0f, 1.0f);
+	CLAMP(hsv[2], 0.0f, v_max);
 }
 
 /*http://brucelindbloom.com/index.html?Eqn_RGB_XYZ_Matrix.html */
@@ -412,54 +401,33 @@ void cpack_to_rgb(unsigned int col, float *r, float *g, float *b)
 	*b = ((float)(((col) >> 16) & 0xFF)) * (1.0f / 255.0f);
 }
 
-void rgb_uchar_to_float(float col_r[3], const unsigned char col_ub[3])
+void rgb_uchar_to_float(float r_col[3], const unsigned char col_ub[3])
 {
-	col_r[0] = ((float)col_ub[0]) * (1.0f / 255.0f);
-	col_r[1] = ((float)col_ub[1]) * (1.0f / 255.0f);
-	col_r[2] = ((float)col_ub[2]) * (1.0f / 255.0f);
+	r_col[0] = ((float)col_ub[0]) * (1.0f / 255.0f);
+	r_col[1] = ((float)col_ub[1]) * (1.0f / 255.0f);
+	r_col[2] = ((float)col_ub[2]) * (1.0f / 255.0f);
 }
 
-void rgba_uchar_to_float(float col_r[4], const unsigned char col_ub[4])
+void rgba_uchar_to_float(float r_col[4], const unsigned char col_ub[4])
 {
-	col_r[0] = ((float)col_ub[0]) * (1.0f / 255.0f);
-	col_r[1] = ((float)col_ub[1]) * (1.0f / 255.0f);
-	col_r[2] = ((float)col_ub[2]) * (1.0f / 255.0f);
-	col_r[3] = ((float)col_ub[3]) * (1.0f / 255.0f);
+	r_col[0] = ((float)col_ub[0]) * (1.0f / 255.0f);
+	r_col[1] = ((float)col_ub[1]) * (1.0f / 255.0f);
+	r_col[2] = ((float)col_ub[2]) * (1.0f / 255.0f);
+	r_col[3] = ((float)col_ub[3]) * (1.0f / 255.0f);
 }
 
-void rgb_float_to_uchar(unsigned char col_r[3], const float col_f[3])
+void rgb_float_to_uchar(unsigned char r_col[3], const float col_f[3])
 {
-	F3TOCHAR3(col_f, col_r);
+	F3TOCHAR3(col_f, r_col);
 }
 
-void rgba_float_to_uchar(unsigned char col_r[4], const float col_f[4])
+void rgba_float_to_uchar(unsigned char r_col[4], const float col_f[4])
 {
-	F4TOCHAR4(col_f, col_r);
+	F4TOCHAR4(col_f, r_col);
 }
 
 /* ********************************* color transforms ********************************* */
 
-
-void gamma_correct(float *c, float gamma)
-{
-	*c = powf((*c), gamma);
-}
-
-float rec709_to_linearrgb(float c)
-{
-	if (c < 0.081f)
-		return (c < 0.0f) ? 0.0f : c * (1.0f / 4.5f);
-	else
-		return powf((c + 0.099f) * (1.0f / 1.099f), (1.0f / 0.45f));
-}
-
-float linearrgb_to_rec709(float c)
-{
-	if (c < 0.018f)
-		return (c < 0.0f) ? 0.0f : c * 4.5f;
-	else
-		return 1.099f * powf(c, 0.45f) - 0.099f;
-}
 
 float srgb_to_linearrgb(float c)
 {
@@ -609,11 +577,12 @@ static float index_to_float(const unsigned short i)
 
 void BLI_init_srgb_conversion(void)
 {
-	static int initialized = 0;
+	static bool initialized = false;
 	unsigned int i, b;
 
-	if (initialized) return;
-	initialized = 1;
+	if (initialized)
+		return;
+	initialized = true;
 
 	/* Fill in the lookup table to convert floats to bytes: */
 	for (i = 0; i < 0x10000; i++) {
@@ -642,6 +611,9 @@ static float inverse_srgb_companding(float v)
 	}
 }
 
+/**
+ * \note Does sRGB to linear conversion
+ */
 void rgb_to_xyz(float r, float g, float b, float *x, float *y, float *z)
 {
 	r = inverse_srgb_companding(r) * 100.0f;
@@ -668,13 +640,13 @@ static float xyz_to_lab_component(float v)
 
 void xyz_to_lab(float x, float y, float z, float *l, float *a, float *b)
 {
-	float xr = x / 95.047f;
-	float yr = y / 100.0f;
-	float zr = z / 108.883f;
+	const float xr = x / 95.047f;
+	const float yr = y / 100.0f;
+	const float zr = z / 108.883f;
 
-	float fx = xyz_to_lab_component(xr);
-	float fy = xyz_to_lab_component(yr);
-	float fz = xyz_to_lab_component(zr);
+	const float fx = xyz_to_lab_component(xr);
+	const float fy = xyz_to_lab_component(yr);
+	const float fz = xyz_to_lab_component(zr);
 
 	*l = 116.0f * fy - 16.0f;
 	*a = 500.0f * (fx - fy);

@@ -25,10 +25,12 @@
 ARGS=$( \
 getopt \
 -o s:i:t:h \
---long source:,install:,tmp:,threads:,help,with-all,with-opencollada,all-static,force-all,\
-force-python,force-numpy,force-boost,force-ocio,force-oiio,force-llvm,force-osl,force-opencollada,\
-force-ffmpeg,skip-python,skip-numpy,skip-boost,skip-ocio,skip-oiio,skip-llvm,skip-osl,skip-ffmpeg,\
-skip-opencollada,required-numpy \
+--long source:,install:,tmp:,info:,threads:,help,no-sudo,with-all,with-opencollada,\
+ver-ocio:,ver-oiio:,ver-llvm:,ver-osl:,\
+force-all,force-python,force-numpy,force-boost,force-ocio,force-oiio,force-llvm,force-osl,force-opencollada,\
+force-ffmpeg,\
+skip-python,skip-numpy,skip-boost,skip-ocio,skip-openexr,skip-oiio,skip-llvm,skip-osl,skip-ffmpeg,skip-opencollada,\
+required-numpy: \
 -- "$@" \
 )
 
@@ -38,6 +40,7 @@ SRC="$HOME/src/blender-deps"
 INST="/opt/lib"
 TMP="/tmp"
 CWD=$PWD
+INFO_PATH=$CWD
 
 # Do not install some optional, potentially conflicting libs by default...
 WITH_ALL=false
@@ -45,13 +48,7 @@ WITH_ALL=false
 # Do not yet enable opencollada, use --with-opencollada (or --with-all) option to try it.
 WITH_OPENCOLLADA=false
 
-# Try to link everything statically. Use this to produce portable versions of blender.
-ALL_STATIC=false
-
-THREADS=`cat /proc/cpuinfo | grep processor | wc -l`
-if [ -z "$THREADS" ]; then
-  THREADS=1
-fi
+THREADS=$(nproc)
 
 COMMON_INFO="\"Source code of dependencies needed to be compiled will be downloaded and extracted into '\$SRC'.
 Built libs of dependencies needed to be compiled will be installed into '\$INST'.
@@ -61,9 +58,6 @@ or use --source/--install options, if you want to use other paths!
 Number of threads for building: \$THREADS (automatically detected, use --threads=<nbr> to override it).
 Full install: \$WITH_ALL (use --with-all option to enable it).
 Building OpenCOLLADA: \$WITH_OPENCOLLADA (use --with-opencollada option to enable it).
-All static linking: \$ALL_STATIC (use --all-static option to enable it).
-
-WARNING: Static build works fine with CMake, but with scons it may be tricky to get a valid Blender build!
 
 Example:
 Full install without OpenCOLLADA: --with-all --skip-opencollada
@@ -83,8 +77,14 @@ ARGUMENTS_INFO="\"COMMAND LINE ARGUMENTS:
     --tmp=<path>
         Use a specific temp path (defaults to '\$TMP').
 
+    --info=<path>
+        Use a specific info path (to store BUILD_NOTES.txt, defaults to '\$INFO_PATH').
+
     -t n, --threads=n
         Use a specific number of threads when building the libraries (auto-detected as '\$THREADS').
+
+    --no-sudo
+        Disable use of sudo (this script won't be able to do much though, will just print needed packages...).
 
     --with-all
         By default, a number of optional and not-so-often needed libraries are not installed.
@@ -95,8 +95,21 @@ ARGUMENTS_INFO="\"COMMAND LINE ARGUMENTS:
     --with-opencollada
         Build and install the OpenCOLLADA libraries.
 
-    --all-static
-        *BROKEN CURRENTLY, do not use!* Build libraries as statically as possible, to create static builds of Blender.
+    --ver-ocio=<ver>
+        Force version of OCIO library.
+
+    --ver-oiio=<ver>
+        Force version of OIIO library.
+
+    --ver-llvm=<ver>
+        Force version of LLVM library.
+
+    --ver-osl=<ver>
+        Force version of OSL library.
+
+    Note about the --ver-foo options:
+        It may not always work as expected (some libs are actually checked out from a git rev...), yet it might help
+        to fix some build issues (like LLVM mismatch with the version used by your graphic system).
 
     --force-all
         Force the rebuild of all built libraries.
@@ -136,7 +149,6 @@ ARGUMENTS_INFO="\"COMMAND LINE ARGUMENTS:
           (i.e. if there is no available and satisfactory package)!
         * If the “force-rebuilt” library is a dependency of others, it will force the rebuild
           of those libraries too (e.g. --force-boost will also rebuild oiio and osl...).
-        * Do not forget --with-osl if you built it and still want it!
 
     --skip-python
         Unconditionally skip Python installation/building.
@@ -170,82 +182,64 @@ ARGUMENTS_INFO="\"COMMAND LINE ARGUMENTS:
 
     --required-numpy
         Use this in case your distro features a valid python package, but no matching Numpy one.
-        It will force compilation of both python 3.3 and numpy 1.7.\""
+        It will force compilation of both python and numpy\""
 
 ##### Main Vars #####
 
-PYTHON_VERSION="3.3.3"
-PYTHON_VERSION_MIN="3.3"
-PYTHON_SOURCE="http://python.org/ftp/python/$PYTHON_VERSION/Python-$PYTHON_VERSION.tar.bz2"
+SUDO="sudo"
+
+PYTHON_VERSION="3.4.0"
+PYTHON_VERSION_MIN="3.4"
 PYTHON_FORCE_REBUILD=false
 PYTHON_SKIP=false
 
-NUMPY_VERSION="1.7.0"
-NUMPY_VERSION_MIN="1.7"
-NUMPY_SOURCE="http://sourceforge.net/projects/numpy/files/NumPy/$NUMPY_VERSION/numpy-$NUMPY_VERSION.tar.gz"
+NUMPY_VERSION="1.8.1"
+NUMPY_VERSION_MIN="1.8"
 NUMPY_FORCE_REBUILD=false
 NUMPY_SKIP=false
 NUMPY_REQUIRED=false
 
 BOOST_VERSION="1.51.0"
-_boost_version_nodots=`echo "$BOOST_VERSION" | sed -r 's/\./_/g'`
-BOOST_SOURCE="http://sourceforge.net/projects/boost/files/boost/$BOOST_VERSION/boost_$_boost_version_nodots.tar.bz2/download"
 BOOST_VERSION_MIN="1.49"
 BOOST_FORCE_REBUILD=false
 BOOST_SKIP=false
 
-OCIO_VERSION="1.0.7"
-OCIO_SOURCE="https://github.com/imageworks/OpenColorIO/tarball/v$OCIO_VERSION"
+OCIO_VERSION="1.0.9"
 OCIO_VERSION_MIN="1.0"
 OCIO_FORCE_REBUILD=false
 OCIO_SKIP=false
 
-OPENEXR_VERSION="2.1.0"
+OPENEXR_VERSION="2.2.0"
 OPENEXR_VERSION_MIN="2.0.1"
-#OPENEXR_SOURCE="http://download.savannah.nongnu.org/releases/openexr/openexr-$OPENEXR_VERSION.tar.gz"
-OPENEXR_SOURCE="https://github.com/mont29/openexr.git"
-OPENEXR_REPO_UID="2787aa1cf652d244ed45ae124eb1553f6cff11ee"
-ILMBASE_VERSION="2.1.0"
-ILMBASE_SOURCE="http://download.savannah.nongnu.org/releases/openexr/ilmbase-$ILMBASE_VERSION.tar.gz"
+ILMBASE_VERSION="2.2.0"
 OPENEXR_FORCE_REBUILD=false
 OPENEXR_SKIP=false
 _with_built_openexr=false
 
-OIIO_VERSION="1.3.9"
-OIIO_VERSION_MIN="1.3.9"
-#OIIO_SOURCE="https://github.com/OpenImageIO/oiio/archive/Release-$OIIO_VERSION.tar.gz"
-OIIO_SOURCE="https://github.com/mont29/oiio.git"
-OIIO_REPO_UID="99113d12619c90cf44721195a759674ea61f02b1"
+OIIO_VERSION="1.4.16"
+OIIO_VERSION_MIN="1.4.0"
 OIIO_FORCE_REBUILD=false
 OIIO_SKIP=false
 
-LLVM_VERSION="3.3"
-LLVM_VERSION_MIN="3.3"
+LLVM_VERSION="3.4"
+LLVM_VERSION_MIN="3.4"
 LLVM_VERSION_FOUND=""
-LLVM_SOURCE="http://llvm.org/releases/$LLVM_VERSION/llvm-$LLVM_VERSION.src.tar.gz"
-LLVM_CLANG_SOURCE="http://llvm.org/releases/$LLVM_VERSION/clang-$LLVM_VERSION.src.tar.gz"
 LLVM_FORCE_REBUILD=false
 LLVM_SKIP=false
 
 # OSL needs to be compiled for now!
-OSL_VERSION="1.4.0"
+OSL_VERSION="1.5.11"
 OSL_VERSION_MIN=$OSL_VERSION
-#OSL_SOURCE="https://github.com/imageworks/OpenShadingLanguage/archive/Release-$OSL_VERSION.tar.gz"
-OSL_SOURCE="https://github.com/mont29/OpenShadingLanguage.git"
-OSL_REPO_UID="175989f2610a7d54e8edfb5ace0143e28e11ac70"
 OSL_FORCE_REBUILD=false
 OSL_SKIP=false
 
 # Version??
 OPENCOLLADA_VERSION="1.3"
-OPENCOLLADA_SOURCE="https://github.com/KhronosGroup/OpenCOLLADA.git"
-OPENCOLLADA_REPO_UID="18da7f4109a8eafaa290a33f5550501cc4c8bae8"
 OPENCOLLADA_FORCE_REBUILD=false
 OPENCOLLADA_SKIP=false
 
-FFMPEG_VERSION="1.0"
-FFMPEG_SOURCE="http://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.bz2"
-FFMPEG_VERSION_MIN="0.7.6"
+FFMPEG_VERSION="2.1.5"
+FFMPEG_VERSION_MIN="2.1.5"
 FFMPEG_FORCE_REBUILD=false
 FFMPEG_SKIP=false
 _ffmpeg_list_sep=";"
@@ -332,6 +326,9 @@ while true; do
     --tmp)
       TMP="$2"; shift; shift; continue
     ;;
+    --info)
+      INFO_PATH="$2"; shift; shift; continue
+    ;;
     -t|--threads)
       THREADS="$2"; shift; shift; continue
     ;;
@@ -345,14 +342,38 @@ while true; do
       PRINT ""
       exit 0
     ;;
+    --no-sudo)
+      PRINT ""
+      WARNING "--no-sudo enabled, this script might not be able to do much..."
+      PRINT ""
+      SUDO=""; shift; continue
+    ;;
     --with-all)
       WITH_ALL=true; shift; continue
     ;;
     --with-opencollada)
       WITH_OPENCOLLADA=true; shift; continue
     ;;
-    --all-static)
-      ALL_STATIC=true; shift; continue
+    --ver-ocio)
+      OCIO_VERSION="$2"
+      OCIO_VERSION_MIN=$OCIO_VERSION
+      echo $OCIO_VERSION
+      shift; shift; continue
+    ;;
+    --ver-oiio)
+      OIIO_VERSION="$2"
+      OIIO_VERSION_MIN=$OIIO_VERSION
+      shift; shift; continue
+    ;;
+    --ver-llvm)
+      LLVM_VERSION="$2"
+      LLVM_VERSION_MIN=$LLVM_VERSION
+      shift; shift; continue
+    ;;
+    --ver-osl)
+      OSL_VERSION="$2"
+      OSL_VERSION_MIN=$OSL_VERSION
+      shift; shift; continue
     ;;
     --force-all)
       PYTHON_FORCE_REBUILD=true
@@ -450,11 +471,71 @@ while true; do
   esac
 done
 
-if $WITH_ALL; then
+if [ $WITH_ALL == true -a $OPENCOLLADA_SKIP == false ]; then
   WITH_OPENCOLLADA=true
 fi
 
+
+
+# This has to be done here, because user might force some versions...
+PYTHON_SOURCE=( "http://python.org/ftp/python/$PYTHON_VERSION/Python-$PYTHON_VERSION.tgz" )
+NUMPY_SOURCE=( "http://sourceforge.net/projects/numpy/files/NumPy/$NUMPY_VERSION/numpy-$NUMPY_VERSION.tar.gz" )
+_boost_version_nodots=`echo "$BOOST_VERSION" | sed -r 's/\./_/g'`
+BOOST_SOURCE=( "http://sourceforge.net/projects/boost/files/boost/$BOOST_VERSION/boost_$_boost_version_nodots.tar.bz2/download" )
+
+OCIO_SOURCE=( "https://github.com/imageworks/OpenColorIO/tarball/v$OCIO_VERSION" )
+
+OPENEXR_USE_REPO=false
+OPENEXR_SOURCE=( "http://download.savannah.nongnu.org/releases/openexr/openexr-$OPENEXR_VERSION.tar.gz" )
+OPENEXR_SOURCE_REPO=( "https://github.com/mont29/openexr.git" )
+OPENEXR_SOURCE_REPO_UID="2787aa1cf652d244ed45ae124eb1553f6cff11ee"
+ILMBASE_SOURCE=( "http://download.savannah.nongnu.org/releases/openexr/ilmbase-$ILMBASE_VERSION.tar.gz" )
+
+OIIO_USE_REPO=false
+OIIO_SOURCE=( "https://github.com/OpenImageIO/oiio/archive/Release-$OIIO_VERSION.tar.gz" )
+OIIO_SOURCE_REPO=( "https://github.com/OpenImageIO/oiio.git" )
+OIIO_SOURCE_REPO_UID="c9e67275a0b248ead96152f6d2221cc0c0f278a4"
+
+LLVM_SOURCE=( "http://llvm.org/releases/$LLVM_VERSION/llvm-$LLVM_VERSION.src.tar.gz" )
+LLVM_CLANG_SOURCE=( "http://llvm.org/releases/$LLVM_VERSION/clang-$LLVM_VERSION.src.tar.gz" "http://llvm.org/releases/$LLVM_VERSION/cfe-$LLVM_VERSION.src.tar.gz" )
+OSL_USE_REPO=true
+#~ OSL_SOURCE=( "https://github.com/imageworks/OpenShadingLanguage/archive/Release-$OSL_VERSION.tar.gz" )
+OSL_SOURCE=( "https://github.com/Nazg-Gul/OpenShadingLanguage/archive/Release-1.5.11.tar.gz" )
+#~ OSL_SOURCE_REPO=( "https://github.com/imageworks/OpenShadingLanguage.git" )
+#~ OSL_SOURCE_REPO=( "https://github.com/mont29/OpenShadingLanguage.git" )
+#~ OSL_SOURCE_REPO_UID="85179714e1bc69cd25ecb6bb711c1a156685d395"
+#~ OSL_SOURCE_REPO_BRANCH="master"
+OSL_SOURCE_REPO=( "https://github.com/Nazg-Gul/OpenShadingLanguage.git" )
+OSL_SOURCE_REPO_UID="22ee5ea298fd215430dfbd160b5aefd507f06db0"
+OSL_SOURCE_REPO_BRANCH="blender-fixes"
+
+OPENCOLLADA_SOURCE=( "https://github.com/KhronosGroup/OpenCOLLADA.git" )
+OPENCOLLADA_REPO_UID="18da7f4109a8eafaa290a33f5550501cc4c8bae8"
+FFMPEG_SOURCE=( "http://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.bz2" )
+
+
 ##### Generic Helpers #####
+
+# Check return code of wget for success...
+download() {
+  declare -a sources=("${!1}")
+  sources_count=${#sources[@]}
+  error=1
+
+  for (( i=0; $i < $sources_count; i++ ))
+  do
+    wget -c ${sources[$i]} -O $2
+    if [ $? -eq 0 ]; then
+      error=0
+      break
+    fi
+  done
+
+  if [ $error -eq 1 ]; then
+    ERROR "wget could not find $1, or could not write it to $2, exiting"
+    exit 1
+  fi
+}
 
 # Return 0 if $1 = $2 (i.e. 1.01.0 = 1.1, but 1.1.1 != 1.1), else 1.
 # $1 and $2 should be version numbers made of numbers only.
@@ -543,13 +624,16 @@ version_match() {
 ##### Generic compile helpers #####
 prepare_opt() {
   INFO "Ensuring $INST exists and is writable by us"
+  if [ ! $SUDO ]; then
+    WARNING "--no-sudo enabled, might be impossible to create install dir..."
+  fi
   if [ ! -d  $INST ]; then
-    sudo mkdir -p $INST
+    $SUDO mkdir -p $INST
   fi
 
   if [ ! -w $INST ]; then
-    sudo chown $USER $INST
-    sudo chmod 775 $INST
+    $SUDO chown $USER $INST
+    $SUDO chmod 775 $INST
   fi
 }
 
@@ -588,9 +672,13 @@ run_ldconfig() {
   _lib_path="$INST/$1/lib"
   _ldconf_path="/etc/ld.so.conf.d/$1.conf"
   PRINT ""
-  INFO "Running ldconfig for $1..."
-  sudo sh -c "echo \"$_lib_path\" > $_ldconf_path"
-  sudo /sbin/ldconfig  # XXX OpenSuse does not include sbin in command path with sudo!!!
+  if [ ! $SUDO ]; then
+    WARNING "--no-sudo enabled, impossible to run ldconfig for $1, you'll have to do it yourself..."
+  else
+    INFO "Running ldconfig for $1..."
+    $SUDO sh -c "echo \"$_lib_path\" > $_ldconf_path"
+    $SUDO /sbin/ldconfig  # XXX OpenSuse does not include sbin in command path with sudo!!!
+  fi
   PRINT ""
 }
 
@@ -599,7 +687,7 @@ _init_python() {
   _src=$SRC/Python-$PYTHON_VERSION
   _git=false
   _inst=$INST/python-$PYTHON_VERSION
-  _inst_shortcut=$INST/python-3.3
+  _inst_shortcut=$INST/python-$PYTHON_VERSION_MIN
 }
 
 clean_Python() {
@@ -626,10 +714,10 @@ compile_Python() {
 
     if [ ! -d $_src ]; then
       mkdir -p $SRC
-      wget -c $PYTHON_SOURCE -O $_src.tar.bz2
+      download PYTHON_SOURCE[@] $_src.tgz
 
       INFO "Unpacking Python-$PYTHON_VERSION"
-      tar -C $SRC -xf $_src.tar.bz2
+      tar -C $SRC -xf $_src.tgz
     fi
 
     cd $_src
@@ -664,7 +752,7 @@ _init_numpy() {
   _git=false
   _inst=$INST/numpy-$NUMPY_VERSION
   _python=$INST/python-$PYTHON_VERSION
-  _site=lib/python3.3/site-packages
+  _site=lib/python$PYTHON_VERSION_MIN/site-packages
   _inst_shortcut=$_python/$_site/numpy
 }
 
@@ -691,7 +779,7 @@ compile_Numpy() {
 
     if [ ! -d $_src ]; then
       mkdir -p $SRC
-      wget -c $NUMPY_SOURCE -O $_src.tar.gz
+      download NUMPY_SOURCE[@] $_src.tar.gz
 
       INFO "Unpacking Numpy-$NUMPY_VERSION"
       tar -C $SRC -xf $_src.tar.gz
@@ -757,7 +845,7 @@ compile_Boost() {
     if [ ! -d $_src ]; then
       INFO "Downloading Boost-$BOOST_VERSION"
       mkdir -p $SRC
-      wget -c $BOOST_SOURCE -O $_src.tar.bz2
+      download BOOST_SOURCE[@] $_src.tar.bz2
       tar -C $SRC --transform "s,(.*/?)boost_1_[^/]+(.*),\1boost-$BOOST_VERSION\2,x" -xf $_src.tar.bz2
     fi
 
@@ -821,7 +909,7 @@ compile_OCIO() {
     if [ ! -d $_src ]; then
       INFO "Downloading OpenColorIO-$OCIO_VERSION"
       mkdir -p $SRC
-      wget -c $OCIO_SOURCE -O $_src.tar.gz
+      download OCIO_SOURCE[@] $_src.tar.gz
 
       INFO "Unpacking OpenColorIO-$OCIO_VERSION"
       tar -C $SRC --transform "s,(.*/?)imageworks-OpenColorIO[^/]*(.*),\1OpenColorIO-$OCIO_VERSION\2,x" \
@@ -895,12 +983,11 @@ clean_ILMBASE() {
 
 compile_ILMBASE() {
   # To be changed each time we make edits that would modify the compiled result!
-  ilmbase_magic=8
+  ilmbase_magic=10
   _init_ilmbase
 
   # Clean install if needed!
   magic_compile_check ilmbase-$ILMBASE_VERSION $ilmbase_magic
-
   if [ $? -eq 1 -o $OPENEXR_FORCE_REBUILD == true ]; then
     clean_ILMBASE
     rm -rf $_openexr_inst
@@ -917,11 +1004,10 @@ compile_ILMBASE() {
     if [ ! -d $_src ]; then
       INFO "Downloading ILMBase-$ILMBASE_VERSION"
       mkdir -p $SRC
-      wget -c $ILMBASE_SOURCE -O $_src.tar.gz
+      download ILMBASE_SOURCE[@] $_src.tar.gz
 
       INFO "Unpacking ILMBase-$ILMBASE_VERSION"
-      tar -C $SRC --transform "s,(.*/?)ilmbase-[^/]*(.*),\1ILMBase-$ILMBASE_VERSION\2,x" \
-          -xf $_src.tar.gz
+      tar -C $SRC --transform "s,(.*/?)ilmbase-[^/]*(.*),\1ILMBase-$ILMBASE_VERSION\2,x" -xf $_src.tar.gz
 
     fi
 
@@ -936,11 +1022,8 @@ compile_ILMBASE() {
     cmake_d="-D CMAKE_BUILD_TYPE=Release"
     cmake_d="$cmake_d -D CMAKE_PREFIX_PATH=$_inst"
     cmake_d="$cmake_d -D CMAKE_INSTALL_PREFIX=$_inst"
-    if [ $ALL_STATIC == true ]; then
-      cmake_d="$cmake_d -D BUILD_SHARED_LIBS=OFF"
-    else
-      cmake_d="$cmake_d -D BUILD_SHARED_LIBS=ON"
-    fi
+    cmake_d="$cmake_d -D BUILD_SHARED_LIBS=ON"
+    cmake_d="$cmake_d -D NAMESPACE_VERSIONING=OFF"  # VERY IMPORTANT!!!
 
     if file /bin/cp | grep -q '32-bit'; then
       cflags="-fPIC -m32 -march=i686"
@@ -986,7 +1069,7 @@ clean_OPENEXR() {
 
 compile_OPENEXR() {
   # To be changed each time we make edits that would modify the compiled result!
-  openexr_magic=12
+  openexr_magic=13
 
   # Clean install if needed!
   magic_compile_check openexr-$OPENEXR_VERSION $openexr_magic
@@ -1013,24 +1096,28 @@ compile_OPENEXR() {
       INFO "Downloading OpenEXR-$OPENEXR_VERSION"
       mkdir -p $SRC
 
-#      wget -c $OPENEXR_SOURCE -O $_src.tar.gz
-
-#      INFO "Unpacking OpenEXR-$OPENEXR_VERSION"
-#      tar -C $SRC --transform "s,(.*/?)openexr[^/]*(.*),\1OpenEXR-$OPENEXR_VERSION\2,x" \
-#          -xf $_src.tar.gz
-
-      git clone $OPENEXR_SOURCE $_src
+      if [ $OPENEXR_USE_REPO == true ]; then
+        git clone ${OPENEXR_SOURCE_REPO[0]} $_src
+      else
+        download OPENEXR_SOURCE[@] $_src.tar.gz
+        INFO "Unpacking OpenEXR-$OPENEXR_VERSION"
+        tar -C $SRC --transform "s,(.*/?)openexr[^/]*(.*),\1OpenEXR-$OPENEXR_VERSION\2,x" -xf $_src.tar.gz
+      fi
 
     fi
 
     cd $_src
 
-    # XXX For now, always update from latest repo...
-    git pull origin master
-
-    # Stick to same rev as windows' libs...
-    git checkout $OPENEXR_REPO_UID
-    git reset --hard
+    if [ $OPENEXR_USE_REPO == true ]; then
+      # XXX For now, always update from latest repo...
+      git pull origin master
+      # Stick to same rev as windows' libs...
+      git checkout $OPENEXR_SOURCE_REPO_UID
+      git reset --hard
+      oiio_src_path="../OpenEXR"
+    else
+      oiio_src_path=".."
+    fi
 
     # Always refresh the whole build!
     if [ -d build ]; then
@@ -1043,11 +1130,8 @@ compile_OPENEXR() {
     cmake_d="$cmake_d -D CMAKE_PREFIX_PATH=$_inst"
     cmake_d="$cmake_d -D CMAKE_INSTALL_PREFIX=$_inst"
     cmake_d="$cmake_d -D ILMBASE_PACKAGE_PREFIX=$_ilmbase_inst"
-    if [ $ALL_STATIC == true ]; then
-      cmake_d="$cmake_d -D BUILD_SHARED_LIBS=OFF"
-    else
-      cmake_d="$cmake_d -D BUILD_SHARED_LIBS=ON"
-    fi
+    cmake_d="$cmake_d -D BUILD_SHARED_LIBS=ON"
+    cmake_d="$cmake_d -D NAMESPACE_VERSIONING=OFF"  # VERY IMPORTANT!!!
 
     if file /bin/cp | grep -q '32-bit'; then
       cflags="-fPIC -m32 -march=i686"
@@ -1055,12 +1139,9 @@ compile_OPENEXR() {
       cflags="-fPIC"
     fi
 
-    cmake $cmake_d -D CMAKE_CXX_FLAGS="$cflags" -D CMAKE_EXE_LINKER_FLAGS="-lgcc_s -lgcc" ../OpenEXR
+    cmake $cmake_d -D CMAKE_CXX_FLAGS="$cflags" -D CMAKE_EXE_LINKER_FLAGS="-lgcc_s -lgcc" $oiio_src_path
 
     make -j$THREADS && make install
-
-    # Force linking against static libs
-#    rm -f $_inst/lib/*.so*
 
     make clean
 
@@ -1122,24 +1203,25 @@ compile_OIIO() {
 
     if [ ! -d $_src ]; then
       mkdir -p $SRC
-#      wget -c $OIIO_SOURCE -O "$_src.tar.gz"
 
-#      INFO "Unpacking OpenImageIO-$OIIO_VERSION"
-#      tar -C $SRC --transform "s,(.*/?)oiio-Release-[^/]*(.*),\1OpenImageIO-$OIIO_VERSION\2,x" \
-#          -xf $_src.tar.gz
-
-      git clone $OIIO_SOURCE $_src
-
+      if [ $OIIO_USE_REPO == true ]; then
+        git clone ${OIIO_SOURCE_REPO[0]} $_src
+      else
+        download OIIO_SOURCE[@] "$_src.tar.gz"
+        INFO "Unpacking OpenImageIO-$OIIO_VERSION"
+        tar -C $SRC --transform "s,(.*/?)oiio-Release-[^/]*(.*),\1OpenImageIO-$OIIO_VERSION\2,x" -xf $_src.tar.gz
+      fi
     fi
 
     cd $_src
 
-    # XXX For now, always update from latest repo...
-    git pull origin master
-
-    # Stick to same rev as windows' libs...
-    git checkout $OIIO_REPO_UID
-    git reset --hard
+    if [ $OIIO_USE_REPO == true ]; then
+      # XXX For now, always update from latest repo...
+      git pull origin master
+      # Stick to same rev as windows' libs...
+      git checkout $OIIO_SOURCE_REPO_UID
+      git reset --hard
+    fi
 
     # Always refresh the whole build!
     if [ -d build ]; then
@@ -1152,19 +1234,16 @@ compile_OIIO() {
     cmake_d="$cmake_d -D CMAKE_PREFIX_PATH=$_inst"
     cmake_d="$cmake_d -D CMAKE_INSTALL_PREFIX=$_inst"
     cmake_d="$cmake_d -D STOP_ON_WARNING=OFF"
-    if [ $ALL_STATIC == true ]; then
-      cmake_d="$cmake_d -D BUILDSTATIC=ON"
-      cmake_d="$cmake_d -D LINKSTATIC=ON"
-    else
-      cmake_d="$cmake_d -D BUILDSTATIC=OFF"
-      cmake_d="$cmake_d -D LINKSTATIC=OFF"
-    fi
+    cmake_d="$cmake_d -D BUILDSTATIC=OFF"
+    cmake_d="$cmake_d -D LINKSTATIC=OFF"
+
+    cmake_d="$cmake_d -D ILMBASE_VERSION=$ILMBASE_VERSION"
+    cmake_d="$cmake_d -D OPENEXR_VERSION=$OPENEXR_VERSION"
 
     if [ $_with_built_openexr == true ]; then
       cmake_d="$cmake_d -D ILMBASE_HOME=$INST/openexr"
-      cmake_d="$cmake_d -D ILMBASE_VERSION=$ILMBASE_VERSION"
       cmake_d="$cmake_d -D OPENEXR_HOME=$INST/openexr"
-      cmake_d="$cmake_d -D OPENEXR_VERSION=$OPENEXR_VERSION"
+      INFO "ILMBASE_HOME=$INST/openexr"
     fi
 
     # Optional tests and cmd tools
@@ -1176,17 +1255,8 @@ compile_OIIO() {
     #cmake_d="$cmake_d -D CMAKE_EXPORT_COMPILE_COMMANDS=ON"
     #cmake_d="$cmake_d -D CMAKE_VERBOSE_MAKEFILE=ON"
 
-    # linking statically could give issues on Debian/Ubuntu (and probably other distros
-    # which doesn't like static linking) when linking shared oiio library due to missing
-    # text symbols (static libs should be compiled with -fPIC)
-    # cmake_d="$cmake_d -D LINKSTATIC=ON"
-
     if [ -d $INST/boost ]; then
       cmake_d="$cmake_d -D BOOST_ROOT=$INST/boost -D Boost_NO_SYSTEM_PATHS=ON"
-      # XXX Does not work (looks like static boost are built without fPIC :/ ).
-      #if $ALL_STATIC; then
-        #cmake_d="$cmake_d -D Boost_USE_STATIC_LIBS=ON"
-      #fi
     fi
 
     # Looks like we do not need ocio in oiio for now...
@@ -1258,15 +1328,16 @@ compile_LLVM() {
 
     if [ ! -d $_src -o true ]; then
       mkdir -p $SRC
-      wget -c $LLVM_SOURCE -O "$_src.tar.gz"
-      wget -c $LLVM_CLANG_SOURCE -O "$_src_clang.tar.gz"
+      download LLVM_SOURCE[@] "$_src.tar.gz"
+      download LLVM_CLANG_SOURCE[@] "$_src_clang.tar.gz"
 
       INFO "Unpacking LLVM-$LLVM_VERSION"
       tar -C $SRC --transform "s,([^/]*/?)llvm-[^/]*(.*),\1LLVM-$LLVM_VERSION\2,x" \
           -xf $_src.tar.gz
       INFO "Unpacking CLANG-$LLVM_VERSION to $_src/tools/clang"
+      # Stupid clang guys renamed 'clang' to 'cfe' for now handle both cases... :(
       tar -C $_src/tools \
-          --transform "s,([^/]*/?)clang-[^/]*(.*),\1clang\2,x" \
+          --transform "s,([^/]*/?)(clang|cfe)-[^/]*(.*),\1clang\3,x" \
           -xf $_src_clang.tar.gz
 
       cd $_src
@@ -1303,6 +1374,7 @@ EOF
     cmake_d="$cmake_d -D CMAKE_INSTALL_PREFIX=$_inst"
     cmake_d="$cmake_d -D LLVM_ENABLE_FFI=ON"
     cmake_d="$cmake_d -D LLVM_TARGETS_TO_BUILD=X86"
+    cmake_d="$cmake_d -D -DLLVM_ENABLE_TERMINFO=OFF"
 
     if [ -d $_FFI_INCLUDE_DIR ]; then
       cmake_d="$cmake_d -D FFI_INCLUDE_DIR=$_FFI_INCLUDE_DIR"
@@ -1348,14 +1420,15 @@ clean_OSL() {
 
 compile_OSL() {
   # To be changed each time we make edits that would modify the compiled result!
-  osl_magic=14
+  osl_magic=17
   _init_osl
 
   # Clean install if needed!
   magic_compile_check osl-$OSL_VERSION $osl_magic
-  if [ $? -eq 1 -o $OSL_FORCE_REBUILD == true ]; then
-    clean_OSL
-  fi
+  #~ if [ $? -eq 1 -o $OSL_FORCE_REBUILD == true ]; then
+    #~ rm -Rf $_src  # XXX Radical, but not easy to change remote repo fully automatically
+    #~ clean_OSL
+  #~ fi
 
   if [ ! -d $_inst ]; then
     INFO "Building OpenShadingLanguage-$OSL_VERSION"
@@ -1365,24 +1438,26 @@ compile_OSL() {
     if [ ! -d $_src ]; then
       mkdir -p $SRC
 
-#      wget -c $OSL_SOURCE -O "$_src.tar.gz"
-
-#      INFO "Unpacking OpenShadingLanguage-$OSL_VERSION"
-#      tar -C $SRC --transform "s,(.*/?)OpenShadingLanguage-[^/]*(.*),\1OpenShadingLanguage-$OSL_VERSION\2,x" \
-#          -xf $_src.tar.gz
-
-      git clone $OSL_SOURCE $_src
-
+      if [ $OSL_USE_REPO == true ]; then
+        git clone ${OSL_SOURCE_REPO[0]} $_src
+      else
+        download OSL_SOURCE[@] "$_src.tar.gz"
+        INFO "Unpacking OpenShadingLanguage-$OSL_VERSION"
+        tar -C $SRC --transform "s,(.*/?)OpenShadingLanguage-[^/]*(.*),\1OpenShadingLanguage-$OSL_VERSION\2,x" \
+            -xf $_src.tar.gz
+      fi
     fi
 
     cd $_src
 
-    # XXX For now, always update from latest repo...
-    git pull origin master
-
-    # Stick to same rev as windows' libs...
-    git checkout $OSL_REPO_UID
-    git reset --hard
+    if [ $OSL_USE_REPO == true ]; then
+      git remote set-url origin ${OSL_SOURCE_REPO[0]}
+      # XXX For now, always update from latest repo...
+      git pull --no-edit -X theirs origin $OSL_SOURCE_REPO_BRANCH
+      # Stick to same rev as windows' libs...
+      git checkout $OSL_SOURCE_REPO_UID
+      git reset --hard
+    fi
 
     # Always refresh the whole build!
     if [ -d build ]; then
@@ -1395,22 +1470,20 @@ compile_OSL() {
     cmake_d="$cmake_d -D CMAKE_INSTALL_PREFIX=$_inst"
     cmake_d="$cmake_d -D BUILD_TESTING=OFF"
     cmake_d="$cmake_d -D STOP_ON_WARNING=OFF"
-    if [ $ALL_STATIC == true ]; then
-      cmake_d="$cmake_d -D BUILDSTATIC=ON"
-    else
-      cmake_d="$cmake_d -D BUILDSTATIC=OFF"
-    fi
+    cmake_d="$cmake_d -D BUILDSTATIC=OFF"
+
+    #~ cmake_d="$cmake_d -D ILMBASE_VERSION=$ILMBASE_VERSION"
 
     if [ $_with_built_openexr == true ]; then
+      INFO "ILMBASE_HOME=$INST/openexr"
       cmake_d="$cmake_d -D ILMBASE_HOME=$INST/openexr"
-      cmake_d="$cmake_d -D ILMBASE_VERSION=$ILMBASE_VERSION"
+      # XXX Temp workaround... sigh, ILMBase really messed the things up by defining their custom names ON by default :(
+      cmake_d="$cmake_d -D ILMBASE_CUSTOM=ON"
+      cmake_d="$cmake_d -D ILMBASE_CUSTOM_LIBRARIES='Half;Iex;Imath;IlmThread'"
     fi
 
     if [ -d $INST/boost ]; then
       cmake_d="$cmake_d -D BOOST_ROOT=$INST/boost -D Boost_NO_SYSTEM_PATHS=ON"
-      if $ALL_STATIC; then
-        cmake_d="$cmake_d -D Boost_USE_STATIC_LIBS=ON"        
-      fi
     fi
 
     if [ -d $INST/oiio ]; then
@@ -1420,7 +1493,7 @@ compile_OSL() {
     if [ ! -z $LLVM_VERSION_FOUND ]; then
       cmake_d="$cmake_d -D LLVM_VERSION=$LLVM_VERSION_FOUND"
       if [ -d $INST/llvm ]; then
-        cmake_d="$cmake_d -D LLVM_DIRECTORY=$INST/llvm"
+        cmake_d="$cmake_d -D LLVM_ROOT_DIR=$INST/llvm"
         cmake_d="$cmake_d -D LLVM_STATIC=ON"
       fi
     fi
@@ -1504,11 +1577,7 @@ compile_OpenCOLLADA() {
     cmake_d="$cmake_d -D USE_EXPAT=OFF"
     cmake_d="$cmake_d -D USE_LIBXML=ON"
     # XXX Does not work!
-#    if [ $ALL_STATIC == true ]; then
-#      cmake_d="$cmake_d -D USE_STATIC=ON"
-#    else
-#      cmake_d="$cmake_d -D USE_STATIC=OFF"
-#    fi
+#    cmake_d="$cmake_d -D USE_STATIC=OFF"
     cmake_d="$cmake_d -D USE_STATIC=ON"
 
     cmake $cmake_d ../
@@ -1564,7 +1633,7 @@ compile_FFmpeg() {
     if [ ! -d $_src ]; then
       INFO "Downloading ffmpeg-$FFMPEG_VERSION"
       mkdir -p $SRC
-      wget -c $FFMPEG_SOURCE -O "$_src.tar.bz2"
+      download FFMPEG_SOURCE[@] "$_src.tar.bz2"
 
       INFO "Unpacking ffmpeg-$FFMPEG_VERSION"
       tar -C $SRC -xf $_src.tar.bz2
@@ -1611,8 +1680,9 @@ compile_FFmpeg() {
         --disable-bzlib --disable-libgsm --disable-libspeex \
         --enable-pthreads --enable-zlib --enable-stripping --enable-runtime-cpudetect \
         --disable-vaapi --disable-libfaac --disable-nonfree --enable-gpl \
-        --disable-postproc --disable-x11grab --disable-librtmp --disable-libopencore-amrnb \
+        --disable-postproc --disable-librtmp --disable-libopencore-amrnb \
         --disable-libopencore-amrwb --disable-libdc1394 --disable-version3 --disable-outdev=sdl \
+        --disable-outdev=xv \
         --disable-outdev=alsa --disable-indev=sdl --disable-indev=alsa --disable-indev=jack \
         --disable-indev=lavfi $extra
 
@@ -1652,6 +1722,16 @@ check_package_DEB() {
   fi
 }
 
+check_package_installed_DEB() {
+  r=`dpkg-query -W -f='${Status}' $1 | grep -c "install ok"`
+
+  if [ $r -ge 1 ]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
 check_package_version_match_DEB() {
   v=`apt-cache policy $1 | grep 'Candidate:' | sed -r 's/.*:\s*([0-9]+:)(([0-9]+\.?)+).*/\2/'`
 
@@ -1675,10 +1755,14 @@ check_package_version_ge_DEB() {
 }
 
 install_packages_DEB() {
-  sudo apt-get install -y --force-yes $@
-  if [ $? -ge 1 ]; then
-    ERROR "apt-get failed to install requested packages, exiting."
-    exit 1
+  if [ ! $SUDO ]; then
+    WARNING "--no-sudo enabled, impossible to run apt-get install for $@, you'll have to do it yourself..."
+  else
+    $SUDO apt-get install -y --force-yes $@
+    if [ $? -ge 1 ]; then
+      ERROR "apt-get failed to install requested packages, exiting."
+      exit 1
+    fi
   fi
 }
 
@@ -1716,7 +1800,11 @@ install_DEB() {
     fi
   fi
 
-  sudo apt-get update
+  if [ ! $SUDO ]; then
+    WARNING "--no-sudo enabled, impossible to run apt-get update, you'll have to do it yourself..."
+  else
+    $SUDO apt-get update
+  fi
 
   # These libs should always be available in debian/ubuntu official repository...
   OPENJPEG_DEV="libopenjpeg-dev"
@@ -1727,7 +1815,7 @@ install_DEB() {
   _packages="gawk cmake cmake-curses-gui scons build-essential libjpeg-dev libpng-dev \
              libfreetype6-dev libx11-dev libxi-dev wget libsqlite3-dev libbz2-dev \
              libncurses5-dev libssl-dev liblzma-dev libreadline-dev $OPENJPEG_DEV \
-             libopenal-dev libglew-dev yasm $THEORA_DEV $VORBIS_DEV $OGG_DEV \
+             libopenal-dev libglew-dev libglewmx-dev yasm $THEORA_DEV $VORBIS_DEV $OGG_DEV \
              libsdl1.2-dev libfftw3-dev patch bzip2 libxml2-dev libtinyxml-dev"
 
   OPENJPEG_USE=true
@@ -1735,10 +1823,23 @@ install_DEB() {
   OGG_USE=true
   THEORA_USE=true
 
+  PRINT "$LIBYAML_CPP_VER"
   # Some not-so-old distro (ubuntu 12.4) do not have it, do not fail in this case, just warn.
   YAMLCPP_DEV="libyaml-cpp-dev"
   check_package_DEB $YAMLCPP_DEV
   if [ $? -eq 0 ]; then
+    # Another Ubuntu hack - in 14.4, ocio uses (old) 0.3, while default is now 0.5... grrrrr.
+    if $LIBYAML_CPP_VER_DEFINED; then
+      YAMLCPP_VER_DEV="libyaml-cpp$LIBYAML_CPP_VER-dev"
+      check_package_DEB $YAMLCPP_VER_DEV
+      if [ $? -eq 0 ]; then
+        YAMLCPP_DEV=$YAMLCPP_VER_DEV
+      else
+        PRINT ""
+        WARNING "libyaml-cpp$LIBYAML_CPP_VER-dev not found!"
+        PRINT ""
+      fi
+    fi
     _packages="$_packages $YAMLCPP_DEV"
   else
     PRINT ""
@@ -1778,7 +1879,16 @@ install_DEB() {
   fi
 
   if $WITH_ALL; then
-    _packages="$_packages libspnav-dev libjack-dev"
+    _packages="$_packages libspnav-dev"
+    # Only install jack if jack2 is not already installed!
+    JACK="libjack-dev"
+    JACK2="libjack-jackd2-dev"
+    check_package_installed_DEB $JACK2
+    if [ $? -eq 0 ]; then
+      _packages="$_packages $JACK2"
+    else
+      _packages="$_packages $JACK"
+    fi
   fi
 
   PRINT ""
@@ -1839,9 +1949,9 @@ install_DEB() {
       if $NUMPY_SKIP; then
         WARNING "Skipping NumPy installation, as requested..."
       else
-        check_package_DEB python$PYTHON_VERSION_MIN-numpy
+        check_package_DEB python3-numpy
         if [ $? -eq 0 ]; then
-          install_packages_DEB python$PYTHON_VERSION_MIN-numpy
+          install_packages_DEB python3-numpy
         elif $NUMPY_REQUIRED; then
           WARNING "Valid python package but no valid numpy package!" \
                  "    Building both Python and Numpy from sources!"
@@ -1882,7 +1992,7 @@ install_DEB() {
       if [ $? -eq 0 ]; then
         install_packages_DEB libboost-locale$boost_version-dev libboost-filesystem$boost_version-dev \
                              libboost-regex$boost_version-dev libboost-system$boost_version-dev \
-                             libboost-thread$boost_version-dev
+                             libboost-thread$boost_version-dev libboost-wave$boost_version-dev
         clean_Boost
       else
         compile_Boost
@@ -1896,13 +2006,14 @@ install_DEB() {
   if $OCIO_SKIP; then
     WARNING "Skipping OpenColorIO installation, as requested..."
   else
-    check_package_version_ge_DEB libopencolorio-dev $OCIO_VERSION_MIN
-    if [ $? -eq 0 ]; then
-      install_packages_DEB libopencolorio-dev
-      clean_OCIO
-    else
+    # XXX Always force build of own OCIO, until linux distro guys update their package to default libyaml-cpp ver (0.5)!
+    #check_package_version_ge_DEB libopencolorio-dev $OCIO_VERSION_MIN
+    #if [ $? -eq 0 ]; then
+      #install_packages_DEB libopencolorio-dev
+      #clean_OCIO
+    #else
       compile_OCIO
-    fi
+    #fi
   fi
 
   PRINT ""
@@ -2079,17 +2190,25 @@ check_package_version_ge_RPM() {
 install_packages_RPM() {
   rpm_flavour
   if [ $RPM = "FEDORA" -o $RPM = "RHEL" ]; then
-    sudo yum install -y $@
-    if [ $? -ge 1 ]; then
-      ERROR "yum failed to install requested packages, exiting."
-      exit 1
+    if [ ! $SUDO ]; then
+      WARNING "--no-sudo enabled, impossible to run yum install for $@, you'll have to do it yourself..."
+    else
+      $SUDO yum install -y $@
+      if [ $? -ge 1 ]; then
+        ERROR "yum failed to install requested packages, exiting."
+        exit 1
+      fi
     fi
 
   elif [ $RPM = "SUSE" ]; then
-    sudo zypper --non-interactive install --auto-agree-with-licenses $@
-    if [ $? -ge 1 ]; then
-      ERROR "zypper failed to install requested packages, exiting."
-      exit 1
+    if [ ! $SUDO ]; then
+      WARNING "--no-sudo enabled, impossible to run zypper install for $@, you'll have to do it yourself..."
+    else
+      $SUDO zypper --non-interactive install --auto-agree-with-licenses $@
+      if [ $? -ge 1 ]; then
+        ERROR "zypper failed to install requested packages, exiting."
+        exit 1
+      fi
     fi
   fi
 }
@@ -2105,57 +2224,61 @@ install_RPM() {
   [ "$(echo ${REPLY:=Y} | tr [:upper:] [:lower:])" != "y" ] && exit
 
   # Enable non-free repositories for all flavours
-  rpm_flavour
-  if [ $RPM = "FEDORA" ]; then
-    _fedora_rel="`egrep "[0-9]{1,}" /etc/fedora-release -o`"
-    sudo yum -y localinstall --nogpgcheck \
-    http://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$_fedora_rel.noarch.rpm \
-    http://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$_fedora_rel.noarch.rpm
+  if [ ! $SUDO ]; then
+    WARNING "--no-sudo enabled, impossible to install third party repositories, you'll have to do it yourself..."
+  else
+    rpm_flavour
+    if [ $RPM = "FEDORA" ]; then
+      _fedora_rel="`egrep "[0-9]{1,}" /etc/fedora-release -o`"
+      $SUDO yum -y localinstall --nogpgcheck \
+      http://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$_fedora_rel.noarch.rpm \
+      http://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$_fedora_rel.noarch.rpm
 
-    sudo yum -y update
+      $SUDO yum -y update
 
-    # Install cmake now because of difference with RHEL
-    sudo yum -y install cmake
+      # Install cmake now because of difference with RHEL
+      $SUDO yum -y install cmake
 
-  elif [ $RPM = "RHEL" ]; then
-    sudo yum -y localinstall --nogpgcheck \
-    http://download.fedoraproject.org/pub/epel/6/$(uname -i)/epel-release-6-8.noarch.rpm \
-    http://download1.rpmfusion.org/free/el/updates/6/$(uname -i)/rpmfusion-free-release-6-1.noarch.rpm \
-    http://download1.rpmfusion.org/nonfree/el/updates/6/$(uname -i)/rpmfusion-nonfree-release-6-1.noarch.rpm
+    elif [ $RPM = "RHEL" ]; then
+      $SUDO yum -y localinstall --nogpgcheck \
+      http://download.fedoraproject.org/pub/epel/6/$(uname -i)/epel-release-6-8.noarch.rpm \
+      http://download1.rpmfusion.org/free/el/updates/6/$(uname -i)/rpmfusion-free-release-6-1.noarch.rpm \
+      http://download1.rpmfusion.org/nonfree/el/updates/6/$(uname -i)/rpmfusion-nonfree-release-6-1.noarch.rpm
 
-    sudo yum -y update
+      $SUDO yum -y update
 
-    # Install cmake 2.8 from other repo
-    mkdir -p $SRC
-    if [ -f $SRC/cmake-2.8.8-4.el6.$(uname -m).rpm ]; then
+      # Install cmake 2.8 from other repo
+      mkdir -p $SRC
+      if [ -f $SRC/cmake-2.8.8-4.el6.$(uname -m).rpm ]; then
+        PRINT ""
+        INFO "Special cmake already installed"
+      else
+        curl -O ftp://ftp.pbone.net/mirror/atrpms.net/el6-$(uname -i)/atrpms/testing/cmake-2.8.8-4.el6.$(uname -m).rpm
+        mv cmake-2.8.8-4.el6.$(uname -m).rpm $SRC/
+        $SUDO rpm -ihv $SRC/cmake-2.8.8-4.el6.$(uname -m).rpm
+      fi
+
+    elif [ $RPM = "SUSE" ]; then
+      # Install this now to avoid using the version from packman repository...
+      if $WITH_ALL; then
+        install_packages_RPM libjack-devel
+      fi
+
+      _suse_rel="`grep VERSION /etc/SuSE-release | gawk '{print $3}'`"
+
       PRINT ""
-      INFO "Special cmake already installed"
-    else
-      curl -O ftp://ftp.pbone.net/mirror/atrpms.net/el6-$(uname -i)/atrpms/testing/cmake-2.8.8-4.el6.$(uname -m).rpm
-      mv cmake-2.8.8-4.el6.$(uname -m).rpm $SRC/
-      sudo rpm -ihv $SRC/cmake-2.8.8-4.el6.$(uname -m).rpm
+      INFO "About to add 'packman' repository from http://packman.inode.at/suse/openSUSE_$_suse_rel/"
+      INFO "This is only needed if you do not already have a packman repository enabled..."
+      read -p "Do you want to add this repo (Y/n)?"
+      if [ "$(echo ${REPLY:=Y} | tr [:upper:] [:lower:])" == "y" ]; then
+        INFO "    Installing packman..."
+        $SUDO zypper ar --refresh --name 'Packman Repository' http://ftp.gwdg.de/pub/linux/packman/suse/openSUSE_$_suse_rel/ ftp.gwdg.de-suse
+        INFO "    Done."
+      else
+        INFO "    Skipping packman installation."
+      fi
+      $SUDO zypper --non-interactive --gpg-auto-import-keys update --auto-agree-with-licenses
     fi
-
-  elif [ $RPM = "SUSE" ]; then
-    # Install this now to avoid using the version from packman repository...
-    if $WITH_ALL; then
-      install_packages_RPM libjack-devel
-    fi
-
-    _suse_rel="`grep VERSION /etc/SuSE-release | gawk '{print $3}'`"
-
-    PRINT ""
-    INFO "About to add 'packman' repository from http://packman.inode.at/suse/openSUSE_$_suse_rel/"
-    INFO "This is only needed if you do not already have a packman repository enabled..."
-    read -p "Do you want to add this repo (Y/n)?"
-    if [ "$(echo ${REPLY:=Y} | tr [:upper:] [:lower:])" == "y" ]; then
-      INFO "    Installing packman..."
-      sudo zypper ar --refresh --name 'Packman Repository' http://ftp.gwdg.de/pub/linux/packman/suse/openSUSE_$_suse_rel/ ftp.gwdg.de-suse
-      INFO "    Done."
-    else
-      INFO "    Skipping packman installation."
-    fi
-    sudo zypper --non-interactive --gpg-auto-import-keys update --auto-agree-with-licenses
   fi
 
   # These libs should always be available in fedora/suse official repository...
@@ -2318,13 +2441,14 @@ install_RPM() {
   if $OCIO_SKIP; then
     WARNING "Skipping OpenColorIO installation, as requested..."
   else
-    check_package_version_ge_RPM OpenColorIO-devel $OCIO_VERSION_MIN
-    if [ $? -eq 0 ]; then
-      install_packages_RPM OpenColorIO-devel
-      clean_OCIO
-    else
+    # XXX Always force build of own OCIO, until linux distro guys update their package to default libyaml-cpp ver (0.5)!
+    #check_package_version_ge_RPM OpenColorIO-devel $OCIO_VERSION_MIN
+    #if [ $? -eq 0 ]; then
+      #install_packages_RPM OpenColorIO-devel
+      #clean_OCIO
+    #else
       compile_OCIO
-    fi
+    #fi
   fi
 
   PRINT ""
@@ -2470,10 +2594,14 @@ check_package_version_ge_ARCH() {
 }
 
 install_packages_ARCH() {
-  sudo pacman -S --needed --noconfirm $@
-  if [ $? -ge 1 ]; then
-    ERROR "pacman failed to install requested packages, exiting."
-    exit 1
+  if [ ! $SUDO ]; then
+    WARNING "--no-sudo enabled, impossible to run pacman for $@, you'll have to do it yourself..."
+  else
+    $SUDO pacman -S --needed --noconfirm $@
+    if [ $? -ge 1 ]; then
+      ERROR "pacman failed to install requested packages, exiting."
+      exit 1
+    fi
   fi
 }
 
@@ -2488,17 +2616,23 @@ install_ARCH() {
   [ "$(echo ${REPLY:=Y} | tr [:upper:] [:lower:])" != "y" ] && exit
 
   # Check for sudo...
-  if [ ! -x "/usr/bin/sudo" ]; then
-    PRINT ""
-    ERROR "This script requires sudo but it is not installed."
-    PRINT "Please setup sudo according to:" 
-    PRINT "https://wiki.archlinux.org/index.php/Sudo"
-    PRINT "and try again."
-    PRINT ""
-    exit
+  if [ $SUDO ]; then
+    if [ ! -x "/usr/bin/sudo" ]; then
+      PRINT ""
+      ERROR "This script requires sudo but it is not installed."
+      PRINT "Please setup sudo according to:"
+      PRINT "https://wiki.archlinux.org/index.php/Sudo"
+      PRINT "and try again."
+      PRINT ""
+      exit
+    fi
   fi
 
-  sudo pacman -Sy
+  if [ ! $SUDO ]; then
+    WARNING "--no-sudo enabled, impossible to run pacman -Sy, you'll have to do it yourself..."
+  else
+    $SUDO pacman -Sy
+  fi
 
   # These libs should always be available in arch official repository...
   OPENJPEG_DEV="openjpeg"
@@ -2617,14 +2751,15 @@ install_ARCH() {
   if $OCIO_SKIP; then
     WARNING "Skipping OpenColorIO installation, as requested..."
   else
-    check_package_version_ge_ARCH opencolorio $OCIO_VERSION_MIN
-    if [ $? -eq 0 ]; then
-      install_packages_ARCH opencolorio yaml-cpp tinyxml
-      clean_OCIO
-    else
+    # XXX Always force build of own OCIO, until linux distro guys update their package to default libyaml-cpp ver (0.5)!
+    #check_package_version_ge_ARCH opencolorio $OCIO_VERSION_MIN
+    #if [ $? -eq 0 ]; then
+      #install_packages_ARCH opencolorio yaml-cpp tinyxml
+      #clean_OCIO
+    #else
       install_packages_ARCH yaml-cpp tinyxml
       compile_OCIO
-    fi
+    #fi
   fi
 
   PRINT ""
@@ -2738,24 +2873,14 @@ install_ARCH() {
 #### Printing User Info ####
 
 print_info_ffmpeglink_DEB() {
-  if $ALL_STATIC; then
-    dpkg -L $_packages | grep -e ".*\/lib[^\/]\+\.a" | gawk '{ printf(nlines ? "'"$_ffmpeg_list_sep"'%s" : "%s", $0); nlines++ }'
-  else
-    dpkg -L $_packages | grep -e ".*\/lib[^\/]\+\.so" | gawk '{ printf(nlines ? "'"$_ffmpeg_list_sep"'%s" : "%s", gensub(/.*lib([^\/]+)\.so/, "\\1", "g", $0)); nlines++ }'
-  fi
+  dpkg -L $_packages | grep -e ".*\/lib[^\/]\+\.so" | gawk '{ printf(nlines ? "'"$_ffmpeg_list_sep"'%s" : "%s", gensub(/.*lib([^\/]+)\.so/, "\\1", "g", $0)); nlines++ }'
 }
 
 print_info_ffmpeglink_RPM() {
-#  # XXX No static libs...
-#  if $ALL_STATIC; then
-#    rpm -ql $_packages | grep -e ".*\/lib[^\/]\+\.a" | gawk '{ printf(nlines ? "'"$_ffmpeg_list_sep"'%s" : "%s", $0); nlines++ }'
-#  else
   rpm -ql $_packages | grep -e ".*\/lib[^\/]\+\.so" | gawk '{ printf(nlines ? "'"$_ffmpeg_list_sep"'%s" : "%s", gensub(/.*lib([^\/]+)\.so/, "\\1", "g", $0)); nlines++ }'
-#  fi
 }
 
 print_info_ffmpeglink_ARCH() {
-# No static libs...
   pacman -Ql $_packages | grep -e ".*\/lib[^\/]\+\.so$" | gawk '{ printf(nlines ? "'"$_ffmpeg_list_sep"'%s" : "%s", gensub(/.*lib([^\/]+)\.so/, "\\1", $0)); nlines++ }'
 }
 
@@ -2826,21 +2951,6 @@ print_info() {
 
   _buildargs=""
 
-  if $ALL_STATIC; then
-    _1="-D WITH_STATIC_LIBS=ON"
-    # XXX Force linking with shared SDL lib!
-    _2="-D SDL_LIBRARY='libSDL.so;-lpthread'"
-    PRINT "  $_1"
-    PRINT "  $_2"
-    _buildargs="$_buildargs $_1 $_2"
-    # XXX Arch linux needs to link freetype dynamically...
-    if [ "$DISTRO" = "ARCH" ]; then
-      _1="-D FREETYPE_LIBRARY=/usr/lib/libfreetype.so"
-      PRINT "  $_1"
-      _buildargs="$_buildargs $_1"
-    fi
-  fi
-
   if [ -d $INST/python-$PYTHON_VERSION_MIN ]; then
     _1="-D PYTHON_ROOT_DIR=$INST/python-$PYTHON_VERSION_MIN"
     PRINT "  $_1"
@@ -2853,28 +2963,6 @@ print_info() {
     PRINT "  $_1"
     PRINT "  $_2"
     _buildargs="$_buildargs $_1 $_2"
-  elif $ALL_STATIC; then
-    _1="-D WITH_BOOST_ICU=ON"
-    PRINT "  $_1"
-    _buildargs="$_buildargs $_1"
-    # XXX Arch linux fails static linking without these...
-    if [ "$DISTRO" = "ARCH" ]; then
-      _1="-D ICU_LIBRARY_DATA=/usr/lib/libicudata.so"
-      _2="-D ICU_LIBRARY_I18N=/usr/lib/libicui18n.so"
-      _3="-D ICU_LIBRARY_IO=/usr/lib/libicuio.so"
-      _4="-D ICU_LIBRARY_LE=/usr/lib/libicule.so"
-      _5="-D ICU_LIBRARY_LX=/usr/lib/libiculx.so"
-      _6="-D ICU_LIBRARY_TU=/usr/lib/libicutu.so"
-      _7="-D ICU_LIBRARY_UC=/usr/lib/libicuuc.so"
-      PRINT "  $_1"
-      PRINT "  $_2"
-      PRINT "  $_3"
-      PRINT "  $_4"
-      PRINT "  $_5"
-      PRINT "  $_6"
-      PRINT "  $_7"
-      _buildargs="$_buildargs $_1 $_2 $_3 $_4 $_5 $_6 $_7"
-    fi
   fi
 
   if [ -d $INST/ocio ]; then
@@ -2895,21 +2983,29 @@ print_info() {
     _buildargs="$_buildargs $_1"
   fi
 
-  _1="-D WITH_CYCLES_OSL=ON"
-  _2="-D WITH_LLVM=ON"
-  _3="-D LLVM_VERSION=$LLVM_VERSION_FOUND"
-  PRINT "  $_1"
-  PRINT "  $_2"
-  PRINT "  $_3"
-  _buildargs="$_buildargs $_1 $_2 $_3"
-  if [ -d $INST/osl ]; then
-    _1="-D CYCLES_OSL=$INST/osl"
+  if [ "$OSL_SKIP" = false ]; then
+    _1="-D WITH_CYCLES_OSL=ON"
+    _2="-D WITH_LLVM=ON"
+    _3="-D LLVM_VERSION=$LLVM_VERSION_FOUND"
     PRINT "  $_1"
-    _buildargs="$_buildargs $_1"
-  fi
-  if [ -d $INST/llvm ]; then
-    _1="-D LLVM_DIRECTORY=$INST/llvm"
-    _2="-D LLVM_STATIC=ON"
+    PRINT "  $_2"
+    PRINT "  $_3"
+    _buildargs="$_buildargs $_1 $_2 $_3"
+    if [ -d $INST/osl ]; then
+      _1="-D CYCLES_OSL=$INST/osl"
+      PRINT "  $_1"
+      _buildargs="$_buildargs $_1"
+    fi
+    if [ -d $INST/llvm ]; then
+      _1="-D LLVM_ROOT_DIR=$INST/llvm"
+      _2="-D LLVM_STATIC=ON"
+      PRINT "  $_1"
+      PRINT "  $_2"
+      _buildargs="$_buildargs $_1 $_2"
+    fi
+  else
+    _1="-D WITH_CYCLES_OSL=OFF"
+    _2="-D WITH_LLVM=OFF"
     PRINT "  $_1"
     PRINT "  $_2"
     _buildargs="$_buildargs $_1 $_2"
@@ -2919,22 +3015,19 @@ print_info() {
     _1="-D WITH_OPENCOLLADA=ON"
     PRINT "  $_1"
     _buildargs="$_buildargs $_1"
-    if $ALL_STATIC; then
-      _1="-D XML2_LIBRARY=$_XML2_LIB"
+  fi
+
+  if [ "$FFMPEG_SKIP" = false ]; then
+    _1="-D WITH_CODEC_FFMPEG=ON"
+    _2="-D FFMPEG_LIBRARIES='avformat;avcodec;avutil;avdevice;swscale;rt;`print_info_ffmpeglink`'"
+    PRINT "  $_1"
+    PRINT "  $_2"
+    _buildargs="$_buildargs $_1 $_2"
+    if [ -d $INST/ffmpeg ]; then
+      _1="-D FFMPEG=$INST/ffmpeg"
       PRINT "  $_1"
       _buildargs="$_buildargs $_1"
     fi
-  fi
-
-  _1="-D WITH_CODEC_FFMPEG=ON"
-  _2="-D FFMPEG_LIBRARIES='avformat;avcodec;avutil;avdevice;swscale;rt;`print_info_ffmpeglink`'"
-  PRINT "  $_1"
-  PRINT "  $_2"
-  _buildargs="$_buildargs $_1 $_2"
-  if [ -d $INST/ffmpeg ]; then
-    _1="-D FFMPEG=$INST/ffmpeg"
-    PRINT "  $_1"
-    _buildargs="$_buildargs $_1"
   fi
 
   PRINT ""
@@ -2948,63 +3041,48 @@ print_info() {
     PRINT "BF_PYTHON = '$INST/python-$PYTHON_VERSION_MIN'"
     PRINT "BF_PYTHON_ABI_FLAGS = 'm'"
   fi
-  if $ALL_STATIC; then
-    PRINT "WITH_BF_STATICPYTHON = True"
-  fi
 
-  PRINT "WITH_BF_OCIO = True"
-  if [ -d $INST/ocio ]; then
-    PRINT "BF_OCIO = '$INST/ocio'"
-  fi
-  if $ALL_STATIC; then
-    PRINT "WITH_BF_STATICOCIO = True"
+  if [ "$OCIO_SKIP" = false ]; then
+    PRINT "WITH_BF_OCIO = True"
+    if [ -d $INST/ocio ]; then
+      PRINT "BF_OCIO = '$INST/ocio'"
+    fi
   fi
 
   if [ -d $INST/openexr ]; then
     PRINT "BF_OPENEXR = '$INST/openexr'"
 
     _ilm_libs_ext=""
-    version_ge $OPENEXR_VERSION "2.1.0"
-    if [ $? -eq 0 ]; then
-      _ilm_libs_ext=`echo $OPENEXR_VERSION | sed -r 's/([0-9]+)\.([0-9]+).*/-\1_\2/'`
-    fi
+    #~ version_ge $OPENEXR_VERSION "2.1.0"
+    #~ if [ $? -eq 0 ]; then
+      #~ _ilm_libs_ext=`echo $OPENEXR_VERSION | sed -r 's/([0-9]+)\.([0-9]+).*/-\1_\2/'`
+    #~ fi
     PRINT "BF_OPENEXR_LIB = 'Half IlmImf$_ilm_libs_ext Iex$_ilm_libs_ext Imath$_ilm_libs_ext '"
-    if $ALL_STATIC; then
-      PRINT "BF_OPENEXR_LIB_STATIC = '\${BF_OPENEXR}/lib/libHalf.a \${BF_OPENEXR}/lib/libIlmImf$_ilm_libs_ext.a \${BF_OPENEXR}/lib/libIex$_ilm_libs_ext.a \${BF_OPENEXR}/lib/libImath$_ilm_libs_ext.a \${BF_OPENEXR}/lib/libIlmThread$_ilm_libs_ext.a'"
-    else
-      # BF_OPENEXR_LIB does not work, things like '-lIlmImf-2_1' do not suit ld.
-      # For now, hack around!!!
-      PRINT "BF_OPENEXR_LIB_STATIC = '\${BF_OPENEXR}/lib/libHalf.so \${BF_OPENEXR}/lib/libIlmImf$_ilm_libs_ext.so \${BF_OPENEXR}/lib/libIex$_ilm_libs_ext.so \${BF_OPENEXR}/lib/libImath$_ilm_libs_ext.so \${BF_OPENEXR}/lib/libIlmThread$_ilm_libs_ext.so'"
-      PRINT "WITH_BF_STATICOPENEXR = True"
-    fi
-
-  fi
-  if $ALL_STATIC; then
+    # BF_OPENEXR_LIB does not work, things like '-lIlmImf-2_1' do not suit ld.
+    # For now, hack around!!!
+    PRINT "BF_OPENEXR_LIB_STATIC = '\${BF_OPENEXR}/lib/libHalf.so \${BF_OPENEXR}/lib/libIlmImf$_ilm_libs_ext.so \${BF_OPENEXR}/lib/libIex$_ilm_libs_ext.so \${BF_OPENEXR}/lib/libImath$_ilm_libs_ext.so \${BF_OPENEXR}/lib/libIlmThread$_ilm_libs_ext.so'"
     PRINT "WITH_BF_STATICOPENEXR = True"
   fi
 
-  PRINT "WITH_BF_OIIO = True"
-  if [ -d $INST/oiio ]; then
-    PRINT "BF_OIIO = '$INST/oiio'"
+  if [ "$OIIO_SKIP" = false ]; then
+    PRINT "WITH_BF_OIIO = True"
+    if [ -d $INST/oiio ]; then
+      PRINT "BF_OIIO = '$INST/oiio'"
+    fi
   fi
-  # XXX No more static oiio for now :/
-  #if $ALL_STATIC; then
-    #PRINT "WITH_BF_STATICOIIO = True"
-  #fi
+
   PRINT "WITH_BF_CYCLES = True"
 
   if [ -d $INST/osl ]; then
     PRINT "BF_OSL = '$INST/osl'"
   fi
 
-  PRINT "WITH_BF_BOOST = True"
-  if [ -d $INST/boost ]; then
-    PRINT "BF_BOOST = '$INST/boost'"
+  if [ "$BOOST_SKIP" = false ]; then
+    PRINT "WITH_BF_BOOST = True"
+    if [ -d $INST/boost ]; then
+      PRINT "BF_BOOST = '$INST/boost'"
+    fi
   fi
-  # XXX Broken in scons...
-  #if $ALL_STATIC; then
-    #PRINT "WITH_BF_STATICBOOST = True"
-  #fi
 
   if $WITH_OPENCOLLADA; then
     PRINT "WITH_BF_COLLADA = True"
@@ -3013,32 +3091,24 @@ print_info() {
     fi
   fi
 
-  _ffmpeg_list_sep=" "
-  if [ -d $INST/ffmpeg ]; then
-    PRINT "BF_FFMPEG = '$INST/ffmpeg'"
-  fi
-  if $ALL_STATIC; then
-    PRINT "WITH_BF_STATICFFMPEG = True"
-    PRINT "BF_FFMPEG_LIB_STATIC = '\${BF_FFMPEG_LIBPATH}/libavformat.a \${BF_FFMPEG_LIBPATH}/libavcodec.a \${BF_FFMPEG_LIBPATH}/libswscale.a \${BF_FFMPEG_LIBPATH}/libavutil.a \${BF_FFMPEG_LIBPATH}/libavdevice.a `print_info_ffmpeglink`'"
-  else
+  if [ "$FFMPEG_SKIP" = false ]; then
+    _ffmpeg_list_sep=" "
+    if [ -d $INST/ffmpeg ]; then
+      PRINT "BF_FFMPEG = '$INST/ffmpeg'"
+    fi
     PRINT "BF_FFMPEG_LIB = 'avformat avcodec swscale avutil avdevice `print_info_ffmpeglink`'"
   fi
 
-  if ! $WITH_ALL; then
+  if [ "$WITH_ALL" = false ]; then
     PRINT "WITH_BF_3DMOUSE = False"
   # No libspacenav in official arch repos...
   elif [ "$DISTRO" = "ARCH" ]; then
     PRINT "WITH_BF_3DMOUSE = False"
   fi
 
-  if [ $ALL_STATIC -o $WITH_OPENCOLLADA ]; then
+  if $WITH_OPENCOLLADA; then
     PRINT "LLIBS = [\""xml2"\", \""expat"\"] + LLIBS"
   fi
-
-  PRINT ""
-  PRINT "NOTE: static build with scons are very tricky to set-up, if you choose that option"
-  PRINT "      you will likely have to edit these settings manually!"
-  PRINT ""
 }
 
 #### "Main" ####
@@ -3057,9 +3127,9 @@ else
   exit 1
 fi
 
-print_info | tee BUILD_NOTES.txt
+print_info | tee $INFO_PATH/BUILD_NOTES.txt
 PRINT ""
-PRINT "This information has been written to BUILD_NOTES.txt"
+PRINT "This information has been written to $INFO_PATH/BUILD_NOTES.txt"
 PRINT ""
 
 # Switch back to user language.

@@ -38,7 +38,6 @@
 #include "DNA_text_types.h"
 
 #include "BLI_blenlib.h"
-#include "BLI_math.h"
 
 #include "BLF_translation.h"
 
@@ -172,7 +171,7 @@ static int text_new_exec(bContext *C, wmOperator *UNUSED(op))
 	text = BKE_text_add(bmain, "Text");
 
 	/* hook into UI */
-	uiIDContextProperty(C, &ptr, &prop);
+	UI_context_active_but_prop_get_templateID(C, &ptr, &prop);
 
 	if (prop) {
 		RNA_id_pointer_create(&text->id, &idptr);
@@ -215,7 +214,7 @@ static void text_open_init(bContext *C, wmOperator *op)
 	PropertyPointerRNA *pprop;
 
 	op->customdata = pprop = MEM_callocN(sizeof(PropertyPointerRNA), "OpenPropertyPointerRNA");
-	uiIDContextProperty(C, &pprop->ptr, &pprop->prop);
+	UI_context_active_but_prop_get_templateID(C, &pprop->ptr, &pprop->prop);
 }
 
 static void text_open_cancel(bContext *UNUSED(C), wmOperator *op)
@@ -272,7 +271,7 @@ static int text_open_exec(bContext *C, wmOperator *op)
 static int text_open_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
 	Text *text = CTX_data_edit_text(C);
-	char *path = (text && text->name) ? text->name : G.main->name;
+	const char *path = (text && text->name) ? text->name : G.main->name;
 
 	if (RNA_struct_property_is_set(op->ptr, "filepath"))
 		return text_open_exec(C, op);
@@ -301,7 +300,7 @@ void TEXT_OT_open(wmOperatorType *ot)
 	ot->flag = OPTYPE_UNDO;
 	
 	/* properties */
-	WM_operator_properties_filesel(ot, FOLDERFILE | TEXTFILE | PYSCRIPTFILE, FILE_SPECIAL, FILE_OPENFILE,
+	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_TEXT | FILE_TYPE_PYSCRIPT, FILE_SPECIAL, FILE_OPENFILE,
 	                               WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY);  //XXX TODO, relative_path
 	RNA_def_boolean(ot->srna, "internal", 0, "Make internal", "Make text file internal after loading");
 }
@@ -459,7 +458,7 @@ static void txt_write_file(Text *text, ReportList *reports)
 {
 	FILE *fp;
 	TextLine *tmp;
-	struct stat st;
+	BLI_stat_t st;
 	char filepath[FILE_MAX];
 	
 	BLI_strncpy(filepath, text->name, FILE_MAX);
@@ -472,18 +471,20 @@ static void txt_write_file(Text *text, ReportList *reports)
 		return;
 	}
 
-	tmp = text->lines.first;
-	while (tmp) {
-		if (tmp->next) fprintf(fp, "%s\n", tmp->line);
-		else fprintf(fp, "%s", tmp->line);
-		
-		tmp = tmp->next;
+	for (tmp = text->lines.first; tmp; tmp = tmp->next) {
+		fputs(tmp->line, fp);
+		if (tmp->next) {
+			fputc('\n', fp);
+		}
 	}
 	
 	fclose(fp);
 
 	if (BLI_stat(filepath, &st) == 0) {
 		text->mtime = st.st_mtime;
+
+		/* report since this can be called from key-shortcuts */
+		BKE_reportf(reports, RPT_INFO, "Saved Text '%s'", filepath);
 	}
 	else {
 		text->mtime = 0;
@@ -545,7 +546,7 @@ static int text_save_as_exec(bContext *C, wmOperator *op)
 static int text_save_as_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
 	Text *text = CTX_data_edit_text(C);
-	char *str;
+	const char *str;
 
 	if (RNA_struct_property_is_set(op->ptr, "filepath"))
 		return text_save_as_exec(C, op);
@@ -576,7 +577,7 @@ void TEXT_OT_save_as(wmOperatorType *ot)
 	ot->poll = text_edit_poll;
 
 	/* properties */
-	WM_operator_properties_filesel(ot, FOLDERFILE | TEXTFILE | PYSCRIPTFILE, FILE_SPECIAL, FILE_SAVE,
+	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_TEXT | FILE_TYPE_PYSCRIPT, FILE_SPECIAL, FILE_SAVE,
 	                               WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY);  //XXX TODO, relative_path
 }
 
@@ -713,88 +714,6 @@ void TEXT_OT_refresh_pyconstraints(wmOperatorType *ot)
 
 /******************* paste operator *********************/
 
-static char *txt_copy_selected(Text *text)
-{
-	TextLine *tmp, *linef, *linel;
-	char *buf = NULL;
-	int charf, charl, length = 0;
-	
-	if (!text) return NULL;
-	if (!text->curl) return NULL;
-	if (!text->sell) return NULL;
-
-	if (!txt_has_sel(text)) return NULL;
-
-	if (text->curl == text->sell) {
-		linef = linel = text->curl;
-		
-		if (text->curc < text->selc) {
-			charf = text->curc;
-			charl = text->selc;
-		}
-		else {
-			charf = text->selc;
-			charl = text->curc;
-		}
-	}
-	else if (txt_get_span(text->curl, text->sell) < 0) {
-		linef = text->sell;
-		linel = text->curl;
-
-		charf = text->selc;
-		charl = text->curc;
-	}
-	else {
-		linef = text->curl;
-		linel = text->sell;
-		
-		charf = text->curc;
-		charl = text->selc;
-	}
-
-	if (linef == linel) {
-		length = charl - charf;
-
-		buf = MEM_callocN(length + 1, "cut buffera");
-		
-		BLI_strncpy(buf, linef->line + charf, length + 1);
-	}
-	else {
-		length += linef->len - charf;
-		length += charl;
-		length++; /* For the '\n' */
-		
-		tmp = linef->next;
-		while (tmp && tmp != linel) {
-			length += tmp->len + 1;
-			tmp = tmp->next;
-		}
-		
-		buf = MEM_callocN(length + 1, "cut bufferb");
-		
-		strncpy(buf, linef->line + charf, linef->len - charf);
-		length = linef->len - charf;
-		
-		buf[length++] = '\n';
-		
-		tmp = linef->next;
-		while (tmp && tmp != linel) {
-			strncpy(buf + length, tmp->line, tmp->len);
-			length += tmp->len;
-			
-			buf[length++] = '\n';
-			
-			tmp = tmp->next;
-		}
-		strncpy(buf + length, linel->line, charl);
-		length += charl;
-		
-		buf[length] = 0;
-	}
-
-	return buf;
-}
-
 static int text_paste_exec(bContext *C, wmOperator *op)
 {
 	const bool selection = RNA_boolean_get(op->ptr, "selection");
@@ -875,7 +794,10 @@ static void txt_copy_clipboard(Text *text)
 {
 	char *buf;
 
-	buf = txt_copy_selected(text);
+	if (!txt_has_sel(text))
+		return;
+
+	buf = txt_sel_to_buf(text);
 
 	if (buf) {
 		WM_clipboard_text_set(buf, 0);
@@ -1571,7 +1493,7 @@ static int cursor_skip_find_line(SpaceText *st, ARegion *ar,
 	return 1;
 }
 
-static void txt_wrap_move_bol(SpaceText *st, ARegion *ar, short sel)
+static void txt_wrap_move_bol(SpaceText *st, ARegion *ar, const bool sel)
 {
 	Text *text = st->text;
 	TextLine **linep;
@@ -1643,7 +1565,7 @@ static void txt_wrap_move_bol(SpaceText *st, ARegion *ar, short sel)
 	if (!sel) txt_pop_sel(text);
 }
 
-static void txt_wrap_move_eol(SpaceText *st, ARegion *ar, short sel)
+static void txt_wrap_move_eol(SpaceText *st, ARegion *ar, const bool sel)
 {
 	Text *text = st->text;
 	TextLine **linep;
@@ -1713,7 +1635,7 @@ static void txt_wrap_move_eol(SpaceText *st, ARegion *ar, short sel)
 	if (!sel) txt_pop_sel(text);
 }
 
-static void txt_wrap_move_up(SpaceText *st, ARegion *ar, short sel)
+static void txt_wrap_move_up(SpaceText *st, ARegion *ar, const bool sel)
 {
 	Text *text = st->text;
 	TextLine **linep;
@@ -1746,7 +1668,7 @@ static void txt_wrap_move_up(SpaceText *st, ARegion *ar, short sel)
 	if (!sel) txt_pop_sel(text);
 }
 
-static void txt_wrap_move_down(SpaceText *st, ARegion *ar, short sel)
+static void txt_wrap_move_down(SpaceText *st, ARegion *ar, const bool sel)
 {
 	Text *text = st->text;
 	TextLine **linep;
@@ -1783,7 +1705,7 @@ static void txt_wrap_move_down(SpaceText *st, ARegion *ar, short sel)
  *
  * This is to replace screen_skip for PageUp/Down operations.
  */
-static void cursor_skip(SpaceText *st, ARegion *ar, Text *text, int lines, int sel)
+static void cursor_skip(SpaceText *st, ARegion *ar, Text *text, int lines, const bool sel)
 {
 	TextLine **linep;
 	int *charp;
@@ -1814,7 +1736,7 @@ static void cursor_skip(SpaceText *st, ARegion *ar, Text *text, int lines, int s
 	if (!sel) txt_pop_sel(text);
 }
 
-static int text_move_cursor(bContext *C, int type, int select)
+static int text_move_cursor(bContext *C, int type, bool select)
 {
 	SpaceText *st = CTX_wm_space_text(C);
 	Text *text = CTX_data_edit_text(C);
@@ -1826,11 +1748,17 @@ static int text_move_cursor(bContext *C, int type, int select)
 
 	switch (type) {
 		case LINE_BEGIN:
+			if (!select) {
+				txt_sel_clear(text);
+			}
 			if (st && st->wordwrap && ar) txt_wrap_move_bol(st, ar, select);
 			else txt_move_bol(text, select);
 			break;
 			
 		case LINE_END:
+			if (!select) {
+				txt_sel_clear(text);
+			}
 			if (st && st->wordwrap && ar) txt_wrap_move_eol(st, ar, select);
 			else txt_move_eol(text, select);
 			break;
@@ -2408,6 +2336,7 @@ typedef struct SetSelection {
 	int selecting;
 	int selc, sell;
 	short old[2];
+	wmTimer *timer;  /* needed for scrolling when mouse at region bounds */
 } SetSelection;
 
 static int flatten_width(SpaceText *st, const char *str)
@@ -2465,7 +2394,7 @@ static TextLine *get_first_visible_line(SpaceText *st, ARegion *ar, int *y)
 	return linep;
 }
 
-static void text_cursor_set_to_pos_wrapped(SpaceText *st, ARegion *ar, int x, int y, int sel)
+static void text_cursor_set_to_pos_wrapped(SpaceText *st, ARegion *ar, int x, int y, const bool sel)
 {
 	Text *text = st->text;
 	int max = wrap_width(st, ar); /* column */
@@ -2582,7 +2511,7 @@ static void text_cursor_set_to_pos_wrapped(SpaceText *st, ARegion *ar, int x, in
 	}
 }
 
-static void text_cursor_set_to_pos(SpaceText *st, ARegion *ar, int x, int y, int sel)
+static void text_cursor_set_to_pos(SpaceText *st, ARegion *ar, int x, int y, const bool sel)
 {
 	Text *text = st->text;
 	text_update_character_width(st);
@@ -2608,10 +2537,14 @@ static void text_cursor_set_to_pos(SpaceText *st, ARegion *ar, int x, int y, int
 		y -= txt_get_span(text->lines.first, *linep) - st->top;
 		
 		if (y > 0) {
-			while (y-- != 0) if ((*linep)->next) *linep = (*linep)->next;
+			while (y-- != 0) {
+				if ((*linep)->next) *linep = (*linep)->next;
+			}
 		}
 		else if (y < 0) {
-			while (y++ != 0) if ((*linep)->prev) *linep = (*linep)->prev;
+			while (y++ != 0) {
+				if ((*linep)->prev) *linep = (*linep)->prev;
+			}
 		}
 
 		
@@ -2622,6 +2555,29 @@ static void text_cursor_set_to_pos(SpaceText *st, ARegion *ar, int x, int y, int
 	if (!sel) txt_pop_sel(text);
 }
 
+static void text_cursor_timer_ensure(bContext *C, SetSelection *ssel)
+{
+	if (ssel->timer == NULL) {
+		wmWindowManager *wm = CTX_wm_manager(C);
+		wmWindow *win = CTX_wm_window(C);
+
+		ssel->timer = WM_event_add_timer(wm, win, TIMER, 0.02f);
+	}
+}
+
+static void text_cursor_timer_remove(bContext *C, SetSelection *ssel)
+{
+	if (ssel->timer) {
+		wmWindowManager *wm = CTX_wm_manager(C);
+		wmWindow *win = CTX_wm_window(C);
+
+		WM_event_remove_timer(wm, win, ssel->timer);
+	}
+	ssel->timer = NULL;
+}
+
+
+
 static void text_cursor_set_apply(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	SpaceText *st = CTX_wm_space_text(C);
@@ -2629,32 +2585,34 @@ static void text_cursor_set_apply(bContext *C, wmOperator *op, const wmEvent *ev
 	SetSelection *ssel = op->customdata;
 
 	if (event->mval[1] < 0 || event->mval[1] > ar->winy) {
-		int d = (ssel->old[1] - event->mval[1]) * st->pix_per_line;
-		if (d) txt_screen_skip(st, ar, d);
+		text_cursor_timer_ensure(C, ssel);
 
-		text_cursor_set_to_pos(st, ar, event->mval[0], event->mval[1] < 0 ? 0 : ar->winy, 1);
-
-		text_update_cursor_moved(C);
-		WM_event_add_notifier(C, NC_TEXT | ND_CURSOR, st->text);
+		if (event->type == TIMER) {
+			text_cursor_set_to_pos(st, ar, event->mval[0], event->mval[1], 1);
+			text_scroll_to_cursor(st, ar, false);
+			WM_event_add_notifier(C, NC_TEXT | ND_CURSOR, st->text);
+		}
 	}
 	else if (!st->wordwrap && (event->mval[0] < 0 || event->mval[0] > ar->winx)) {
-		if (event->mval[0] > ar->winx) st->left++;
-		else if (event->mval[0] < 0 && st->left > 0) st->left--;
+		text_cursor_timer_ensure(C, ssel);
 		
-		text_cursor_set_to_pos(st, ar, event->mval[0], event->mval[1], 1);
-		
-		text_update_cursor_moved(C);
-		WM_event_add_notifier(C, NC_TEXT | ND_CURSOR, st->text);
-		// XXX PIL_sleep_ms(10);
+		if (event->type == TIMER) {
+			text_cursor_set_to_pos(st, ar, CLAMPIS(event->mval[0], 0, ar->winx), event->mval[1], 1);
+			text_scroll_to_cursor(st, ar, false);
+			WM_event_add_notifier(C, NC_TEXT | ND_CURSOR, st->text);
+		}
 	}
 	else {
-		text_cursor_set_to_pos(st, ar, event->mval[0], event->mval[1], 1);
+		text_cursor_timer_remove(C, ssel);
 
-		text_update_cursor_moved(C);
-		WM_event_add_notifier(C, NC_TEXT | ND_CURSOR, st->text);
+		if (event->type != TIMER) {
+			text_cursor_set_to_pos(st, ar, event->mval[0], event->mval[1], 1);
+			text_scroll_to_cursor(st, ar, false);
+			WM_event_add_notifier(C, NC_TEXT | ND_CURSOR, st->text);
 
-		ssel->old[0] = event->mval[0];
-		ssel->old[1] = event->mval[1];
+			ssel->old[0] = event->mval[0];
+			ssel->old[1] = event->mval[1];
+		}
 	}
 }
 
@@ -2674,6 +2632,7 @@ static void text_cursor_set_exit(bContext *C, wmOperator *op)
 	text_update_cursor_moved(C);
 	WM_event_add_notifier(C, NC_TEXT | ND_CURSOR, st->text);
 
+	text_cursor_timer_remove(C, ssel);
 	MEM_freeN(ssel);
 }
 
@@ -2710,6 +2669,7 @@ static int text_set_selection_modal(bContext *C, wmOperator *op, const wmEvent *
 		case RIGHTMOUSE:
 			text_cursor_set_exit(C, op);
 			return OPERATOR_FINISHED;
+		case TIMER:
 		case MOUSEMOVE:
 			text_cursor_set_apply(C, op, event);
 			break;
@@ -2845,7 +2805,7 @@ static int text_insert_exec(bContext *C, wmOperator *op)
 	SpaceText *st = CTX_wm_space_text(C);
 	Text *text = CTX_data_edit_text(C);
 	char *str;
-	int done = FALSE;
+	bool done = false;
 	size_t i = 0;
 	unsigned int code;
 
@@ -2963,7 +2923,7 @@ static int text_find_and_replace(bContext *C, wmOperator *op, short mode)
 	if (mode != TEXT_FIND && txt_has_sel(text)) {
 		tmp = txt_sel_to_buf(text);
 
-		if (flags & ST_MATCH_CASE) found = strcmp(st->findstr, tmp) == 0;
+		if (flags & ST_MATCH_CASE) found = STREQ(st->findstr, tmp);
 		else found = BLI_strcasecmp(st->findstr, tmp) == 0;
 
 		if (found) {
@@ -3137,36 +3097,36 @@ static int text_resolve_conflict_invoke(bContext *C, wmOperator *op, const wmEve
 		case 1:
 			if (text->flags & TXT_ISDIRTY) {
 				/* modified locally and externally, ahhh. offer more possibilites. */
-				pup = uiPupMenuBegin(C, IFACE_("File Modified Outside and Inside Blender"), ICON_NONE);
-				layout = uiPupMenuLayout(pup);
+				pup = UI_popup_menu_begin(C, IFACE_("File Modified Outside and Inside Blender"), ICON_NONE);
+				layout = UI_popup_menu_layout(pup);
 				uiItemEnumO_ptr(layout, op->type, IFACE_("Reload from disk (ignore local changes)"),
 				                0, "resolution", RESOLVE_RELOAD);
 				uiItemEnumO_ptr(layout, op->type, IFACE_("Save to disk (ignore outside changes)"),
 				                0, "resolution", RESOLVE_SAVE);
 				uiItemEnumO_ptr(layout, op->type, IFACE_("Make text internal (separate copy)"),
 				                0, "resolution", RESOLVE_MAKE_INTERNAL);
-				uiPupMenuEnd(C, pup);
+				UI_popup_menu_end(C, pup);
 			}
 			else {
-				pup = uiPupMenuBegin(C, IFACE_("File Modified Outside Blender"), ICON_NONE);
-				layout = uiPupMenuLayout(pup);
+				pup = UI_popup_menu_begin(C, IFACE_("File Modified Outside Blender"), ICON_NONE);
+				layout = UI_popup_menu_layout(pup);
 				uiItemEnumO_ptr(layout, op->type, IFACE_("Reload from disk"), 0, "resolution", RESOLVE_RELOAD);
 				uiItemEnumO_ptr(layout, op->type, IFACE_("Make text internal (separate copy)"),
 				                0, "resolution", RESOLVE_MAKE_INTERNAL);
 				uiItemEnumO_ptr(layout, op->type, IFACE_("Ignore"), 0, "resolution", RESOLVE_IGNORE);
-				uiPupMenuEnd(C, pup);
+				UI_popup_menu_end(C, pup);
 			}
 			break;
 		case 2:
-			pup = uiPupMenuBegin(C, IFACE_("File Deleted Outside Blender"), ICON_NONE);
-			layout = uiPupMenuLayout(pup);
+			pup = UI_popup_menu_begin(C, IFACE_("File Deleted Outside Blender"), ICON_NONE);
+			layout = UI_popup_menu_layout(pup);
 			uiItemEnumO_ptr(layout, op->type, IFACE_("Make text internal"), 0, "resolution", RESOLVE_MAKE_INTERNAL);
 			uiItemEnumO_ptr(layout, op->type, IFACE_("Recreate file"), 0, "resolution", RESOLVE_SAVE);
-			uiPupMenuEnd(C, pup);
+			UI_popup_menu_end(C, pup);
 			break;
 	}
 
-	return OPERATOR_CANCELLED;
+	return OPERATOR_INTERFACE;
 }
 
 void TEXT_OT_resolve_conflict(wmOperatorType *ot)

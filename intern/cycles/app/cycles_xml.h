@@ -11,11 +11,11 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
-#ifndef __CYCLES_XML__
-#define __CYCLES_XML__
+#ifndef __CYCLES_XML_H__
+#define __CYCLES_XML_H__
 
 CCL_NAMESPACE_BEGIN
 
@@ -23,7 +23,10 @@ class Scene;
 
 void xml_read_file(Scene *scene, const char *filepath);
 
+/* macros for importing */
+#define RAD2DEGF(_rad) ((_rad) * (float)(180.0 / M_PI))
+#define DEG2RADF(_deg) ((_deg) * (float)(M_PI / 180.0))
+
 CCL_NAMESPACE_END
 
-#endif /* __CYCLES_XML__ */
-
+#endif /* __CYCLES_XML_H__ */

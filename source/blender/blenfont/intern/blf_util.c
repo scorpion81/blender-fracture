@@ -37,7 +37,7 @@
 
 #include "blf_internal.h"
 
-#include "BLI_string_utf8.h"
+#include "BLI_utildefines.h"
 
 unsigned int blf_next_p2(unsigned int x)
 {

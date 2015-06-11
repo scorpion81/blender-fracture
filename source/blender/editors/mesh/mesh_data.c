@@ -43,14 +43,13 @@
 
 #include "BKE_context.h"
 #include "BKE_depsgraph.h"
-#include "BKE_image.h"
 #include "BKE_library.h"
 #include "BKE_main.h"
 #include "BKE_mesh.h"
+#include "BKE_paint.h"
 #include "BKE_report.h"
 #include "BKE_editmesh.h"
 
-#include "RNA_access.h"
 #include "RNA_define.h"
 
 #include "WM_api.h"
@@ -58,6 +57,7 @@
 
 #include "ED_mesh.h"
 #include "ED_object.h"
+#include "ED_screen.h"
 #include "ED_uvedit.h"
 #include "ED_view3d.h"
 
@@ -335,6 +335,26 @@ int ED_mesh_uv_texture_add(Mesh *me, const char *name, const bool active_set)
 	return layernum_dst;
 }
 
+void ED_mesh_uv_texture_ensure(struct Mesh *me, const char *name)
+{
+	BMEditMesh *em;
+	int layernum_dst;
+
+	if (me->edit_btmesh) {
+		em = me->edit_btmesh;
+
+		layernum_dst = CustomData_number_of_layers(&em->bm->pdata, CD_MTEXPOLY);
+		if (layernum_dst == 0)
+			ED_mesh_uv_texture_add(me, name, true);
+	}
+	else {
+		layernum_dst = CustomData_number_of_layers(&me->pdata, CD_MTEXPOLY);
+		if (layernum_dst == 0)
+			ED_mesh_uv_texture_add(me, name, true);
+	}
+}
+
+
 bool ED_mesh_uv_texture_remove_index(Mesh *me, const int n)
 {
 	CustomData *pdata = GET_CD_DATA(me, pdata), *ldata = GET_CD_DATA(me, ldata);
@@ -502,6 +522,12 @@ static int mesh_uv_texture_add_exec(bContext *C, wmOperator *UNUSED(op))
 	if (ED_mesh_uv_texture_add(me, NULL, true) == -1)
 		return OPERATOR_CANCELLED;
 
+	if (ob->mode & OB_MODE_TEXTURE_PAINT) {
+		Scene *scene = CTX_data_scene(C);
+		BKE_paint_proj_mesh_data_check(scene, ob, NULL, NULL, NULL, NULL);
+		WM_event_add_notifier(C, NC_SCENE | ND_TOOLSETTINGS, NULL);
+	}
+	
 	return OPERATOR_FINISHED;
 }
 
@@ -544,24 +570,13 @@ static int drop_named_image_invoke(bContext *C, wmOperator *op, const wmEvent *e
 		return OPERATOR_CANCELLED;
 	}
 	
-	/* check input variables */
-	if (RNA_struct_property_is_set(op->ptr, "filepath")) {
-		char path[FILE_MAX];
-		
-		RNA_string_get(op->ptr, "filepath", path);
-		ima = BKE_image_load_exists(path);
-	}
-	else {
-		char name[MAX_ID_NAME - 2];
-		RNA_string_get(op->ptr, "name", name);
-		ima = (Image *)BKE_libblock_find_name(ID_IM, name);
-	}
-	
+	ima = (Image *)WM_operator_drop_load_path(C, op, ID_IM);
 	if (!ima) {
-		BKE_report(op->reports, RPT_ERROR, "Not an image");
 		return OPERATOR_CANCELLED;
 	}
-	
+	/* handled below */
+	id_us_min((ID *)ima);
+
 	/* put mesh in editmode */
 
 	obedit = base->object;
@@ -612,6 +627,7 @@ void MESH_OT_drop_named_image(wmOperatorType *ot)
 	/* properties */
 	RNA_def_string(ot->srna, "name", "Image", MAX_ID_NAME - 2, "Name", "Image name to assign");
 	RNA_def_string(ot->srna, "filepath", "Path", FILE_MAX, "Filepath", "Path to image file");
+	RNA_def_boolean(ot->srna, "relative_path", true, "Relative Path", "Select the file relative to the blend file");
 }
 
 static int mesh_uv_texture_remove_exec(bContext *C, wmOperator *UNUSED(op))
@@ -622,6 +638,12 @@ static int mesh_uv_texture_remove_exec(bContext *C, wmOperator *UNUSED(op))
 	if (!ED_mesh_uv_texture_remove_active(me))
 		return OPERATOR_CANCELLED;
 
+	if (ob->mode & OB_MODE_TEXTURE_PAINT) {
+		Scene *scene = CTX_data_scene(C);
+		BKE_paint_proj_mesh_data_check(scene, ob, NULL, NULL, NULL, NULL);
+		WM_event_add_notifier(C, NC_SCENE | ND_TOOLSETTINGS, NULL);
+	}
+	
 	return OPERATOR_FINISHED;
 }
 
@@ -817,6 +839,71 @@ void MESH_OT_customdata_clear_skin(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
 
+/* Clear custom loop normals */
+static int mesh_customdata_custom_splitnormals_add_exec(bContext *C, wmOperator *UNUSED(op))
+{
+	Object *ob = ED_object_context(C);
+	Mesh *me = ob->data;
+
+	if (!BKE_mesh_has_custom_loop_normals(me)) {
+		CustomData *data = GET_CD_DATA(me, ldata);
+
+		if (me->edit_btmesh) {
+			BM_data_layer_add(me->edit_btmesh->bm, data, CD_CUSTOMLOOPNORMAL);
+		}
+		else {
+			CustomData_add_layer(data, CD_CUSTOMLOOPNORMAL, CD_DEFAULT, NULL, me->totloop);
+		}
+
+		DAG_id_tag_update(&me->id, 0);
+		WM_event_add_notifier(C, NC_GEOM | ND_DATA, me);
+
+		return OPERATOR_FINISHED;
+	}
+	return OPERATOR_CANCELLED;
+}
+
+void MESH_OT_customdata_custom_splitnormals_add(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Add Custom Split Normals Data";
+	ot->idname = "MESH_OT_customdata_custom_splitnormals_add";
+	ot->description = "Add a custom split normals layer, if none exists yet";
+
+	/* api callbacks */
+	ot->exec = mesh_customdata_custom_splitnormals_add_exec;
+	ot->poll = ED_operator_object_active_editable_mesh;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+}
+
+static int mesh_customdata_custom_splitnormals_clear_exec(bContext *C, wmOperator *UNUSED(op))
+{
+	Object *ob = ED_object_context(C);
+	Mesh *me = ob->data;
+
+	if (BKE_mesh_has_custom_loop_normals(me)) {
+		return mesh_customdata_clear_exec__internal(C, BM_LOOP, CD_CUSTOMLOOPNORMAL);
+	}
+	return OPERATOR_CANCELLED;
+}
+
+void MESH_OT_customdata_custom_splitnormals_clear(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Clear Custom Split Normals Data";
+	ot->idname = "MESH_OT_customdata_custom_splitnormals_clear";
+	ot->description = "Remove the custom split normals layer, if it exists";
+
+	/* api callbacks */
+	ot->exec = mesh_customdata_custom_splitnormals_clear_exec;
+	ot->poll = ED_operator_object_active_editable_mesh;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+}
+
 /************************** Add Geometry Layers *************************/
 
 void ED_mesh_update(Mesh *mesh, bContext *C, int calc_edges, int calc_tessface)
@@ -878,17 +965,6 @@ static void mesh_add_verts(Mesh *mesh, int len)
 
 	/* set final vertex list size */
 	mesh->totvert = totvert;
-}
-
-void ED_mesh_transform(Mesh *me, float mat[4][4])
-{
-	int i;
-	MVert *mvert = me->mvert;
-
-	for (i = 0; i < me->totvert; i++, mvert++)
-		mul_m4_v3(mat, mvert->co);
-
-	/* don't update normals, caller can do this explicitly */
 }
 
 static void mesh_add_edges(Mesh *mesh, int len)

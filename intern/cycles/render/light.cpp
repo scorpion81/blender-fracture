@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include "background.h"
@@ -29,7 +29,7 @@
 
 CCL_NAMESPACE_BEGIN
 
-static void shade_background_pixels(Device *device, DeviceScene *dscene, int res, vector<float3>& pixels)
+static void shade_background_pixels(Device *device, DeviceScene *dscene, int res, vector<float3>& pixels, Progress& progress)
 {
 	/* create input */
 	int width = res;
@@ -66,10 +66,12 @@ static void shade_background_pixels(Device *device, DeviceScene *dscene, int res
 	main_task.shader_eval_type = SHADER_EVAL_BACKGROUND;
 	main_task.shader_x = 0;
 	main_task.shader_w = width*height;
+	main_task.num_samples = 1;
+	main_task.get_cancel = function_bind(&Progress::get_cancel, &progress);
 
 	/* disabled splitting for now, there's an issue with multi-GPU mem_copy_from */
 	list<DeviceTask> split_tasks;
-	main_task.split_max_size(split_tasks, 128*128); 
+	main_task.split(split_tasks, 1, 128*128);
 
 	foreach(DeviceTask& task, split_tasks) {
 		device->task_add(task);
@@ -79,6 +81,8 @@ static void shade_background_pixels(Device *device, DeviceScene *dscene, int res
 
 	device->mem_free(d_input);
 	device->mem_free(d_output);
+
+	d_input.clear();
 
 	float4 *d_output_data = reinterpret_cast<float4*>(d_output.data_pointer);
 
@@ -119,9 +123,11 @@ Light::Light()
 	use_diffuse = true;
 	use_glossy = true;
 	use_transmission = true;
+	use_scatter = true;
 
 	shader = 0;
 	samples = 1;
+	max_bounces = 1024;
 }
 
 void Light::tag_update(Scene *scene)
@@ -149,7 +155,6 @@ void LightManager::device_update_distribution(Device *device, DeviceScene *dscen
 	size_t num_lights = scene->lights.size();
 	size_t num_background_lights = 0;
 	size_t num_triangles = 0;
-	size_t num_curve_segments = 0;
 
 	foreach(Object *object, scene->objects) {
 		Mesh *mesh = object->mesh;
@@ -157,6 +162,10 @@ void LightManager::device_update_distribution(Device *device, DeviceScene *dscen
 
 		/* skip if we are not visible for BSDFs */
 		if(!(object->visibility & (PATH_RAY_DIFFUSE|PATH_RAY_GLOSSY|PATH_RAY_TRANSMIT)))
+			continue;
+
+		/* skip motion blurred deforming meshes, not supported yet */
+		if(mesh->has_motion_blur())
 			continue;
 
 		/* skip if we have no emission shaders */
@@ -177,20 +186,10 @@ void LightManager::device_update_distribution(Device *device, DeviceScene *dscen
 				if(shader->use_mis && shader->has_surface_emission)
 					num_triangles++;
 			}
-
-			/* disabled for curves */
-#if 0
-			foreach(Mesh::Curve& curve, mesh->curves) {
-				Shader *shader = scene->shaders[curve.shader];
-
-				if(shader->use_mis && shader->has_surface_emission)
-					num_curve_segments += curve.num_segments();
-#endif
 		}
 	}
 
-	size_t num_distribution = num_triangles + num_curve_segments;
-	num_distribution += num_lights;
+	size_t num_distribution = num_triangles + num_lights;
 
 	/* emission area */
 	float4 *distribution = dscene->light_distribution.resize(num_distribution + 1);
@@ -210,6 +209,12 @@ void LightManager::device_update_distribution(Device *device, DeviceScene *dscen
 			continue;
 		}
 
+		/* skip motion blurred deforming meshes, not supported yet */
+		if(mesh->has_motion_blur()) {
+			j++;
+			continue;
+		}
+
 		/* skip if we have no emission shaders */
 		foreach(uint sindex, mesh->used_shaders) {
 			Shader *shader = scene->shaders[sindex];
@@ -225,21 +230,25 @@ void LightManager::device_update_distribution(Device *device, DeviceScene *dscen
 			bool transform_applied = mesh->transform_applied;
 			Transform tfm = object->tfm;
 			int object_id = j;
-			int shader_id = SHADER_MASK;
+			int shader_flag = 0;
 
 			if(transform_applied)
 				object_id = ~object_id;
 
 			if(!(object->visibility & PATH_RAY_DIFFUSE)) {
-				shader_id |= SHADER_EXCLUDE_DIFFUSE;
+				shader_flag |= SHADER_EXCLUDE_DIFFUSE;
 				use_light_visibility = true;
 			}
 			if(!(object->visibility & PATH_RAY_GLOSSY)) {
-				shader_id |= SHADER_EXCLUDE_GLOSSY;
+				shader_flag |= SHADER_EXCLUDE_GLOSSY;
 				use_light_visibility = true;
 			}
 			if(!(object->visibility & PATH_RAY_TRANSMIT)) {
-				shader_id |= SHADER_EXCLUDE_TRANSMIT;
+				shader_flag |= SHADER_EXCLUDE_TRANSMIT;
+				use_light_visibility = true;
+			}
+			if(!(object->visibility & PATH_RAY_VOLUME_SCATTER)) {
+				shader_flag |= SHADER_EXCLUDE_SCATTER;
 				use_light_visibility = true;
 			}
 
@@ -249,7 +258,7 @@ void LightManager::device_update_distribution(Device *device, DeviceScene *dscen
 				if(shader->use_mis && shader->has_surface_emission) {
 					distribution[offset].x = totarea;
 					distribution[offset].y = __int_as_float(i + mesh->tri_offset);
-					distribution[offset].z = __int_as_float(shader_id);
+					distribution[offset].z = __int_as_float(shader_flag);
 					distribution[offset].w = __int_as_float(object_id);
 					offset++;
 
@@ -267,40 +276,6 @@ void LightManager::device_update_distribution(Device *device, DeviceScene *dscen
 					totarea += triangle_area(p1, p2, p3);
 				}
 			}
-
-			/* sample as light disabled for strands */
-#if 0
-			size_t i = 0;
-
-			foreach(Mesh::Curve& curve, mesh->curves) {
-				Shader *shader = scene->shaders[curve.shader];
-				int first_key = curve.first_key;
-
-				if(shader->use_mis && shader->has_surface_emission) {
-					for(int j = 0; j < curve.num_segments(); j++) {
-						distribution[offset].x = totarea;
-						distribution[offset].y = __int_as_float(i + mesh->curve_offset); // XXX fix kernel code
-						distribution[offset].z = __int_as_float(j) & SHADER_MASK;
-						distribution[offset].w = __int_as_float(object_id);
-						offset++;
-				
-						float3 p1 = mesh->curve_keys[first_key + j].loc;
-						float r1 = mesh->curve_keys[first_key + j].radius;
-						float3 p2 = mesh->curve_keys[first_key + j + 1].loc;
-						float r2 = mesh->curve_keys[first_key + j + 1].radius;
-				
-						if(!transform_applied) {
-							p1 = transform_point(&tfm, p1);
-							p2 = transform_point(&tfm, p2);
-						}
-				
-						totarea += M_PI_F * (r1 + r2) * len(p1 - p2);
-					}
-				}
-
-				i++;
-			}
-#endif
 		}
 
 		if(progress.get_cancel()) return;
@@ -432,7 +407,7 @@ void LightManager::device_update_background(Device *device, DeviceScene *dscene,
 	assert(res > 0);
 
 	vector<float3> pixels;
-	shade_background_pixels(device, dscene, res, pixels);
+	shade_background_pixels(device, dscene, res, pixels, progress);
 
 	if(progress.get_cancel())
 		return;
@@ -517,6 +492,7 @@ void LightManager::device_update_points(Device *device, DeviceScene *dscene, Sce
 		float3 co = light->co;
 		int shader_id = scene->shader_manager->get_shader_id(scene->lights[i]->shader);
 		float samples = __int_as_float(light->samples);
+		float max_bounces = __int_as_float(light->max_bounces);
 
 		if(!light->cast_shadow)
 			shader_id &= ~SHADER_CAST_SHADOW;
@@ -533,6 +509,10 @@ void LightManager::device_update_points(Device *device, DeviceScene *dscene, Sce
 			shader_id |= SHADER_EXCLUDE_TRANSMIT;
 			use_light_visibility = true;
 		}
+		if(!light->use_scatter) {
+			shader_id |= SHADER_EXCLUDE_SCATTER;
+			use_light_visibility = true;
+		}
 
 		if(light->type == LIGHT_POINT) {
 			shader_id &= ~SHADER_AREA_LIGHT;
@@ -547,6 +527,7 @@ void LightManager::device_update_points(Device *device, DeviceScene *dscene, Sce
 			light_data[i*LIGHT_SIZE + 1] = make_float4(__int_as_float(shader_id), radius, invarea, 0.0f);
 			light_data[i*LIGHT_SIZE + 2] = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
 			light_data[i*LIGHT_SIZE + 3] = make_float4(samples, 0.0f, 0.0f, 0.0f);
+			light_data[i*LIGHT_SIZE + 4] = make_float4(max_bounces, 0.0f, 0.0f, 0.0f);
 		}
 		else if(light->type == LIGHT_DISTANT) {
 			shader_id &= ~SHADER_AREA_LIGHT;
@@ -557,9 +538,8 @@ void LightManager::device_update_points(Device *device, DeviceScene *dscene, Sce
 			float area = M_PI_F*radius*radius;
 			float invarea = (area > 0.0f)? 1.0f/area: 1.0f;
 			float3 dir = light->dir;
-			
-			if(len(dir) > 0.0f)
-				dir = normalize(dir);
+
+			dir = safe_normalize(dir);
 
 			if(light->use_mis && area > 0.0f)
 				shader_id |= SHADER_USE_MIS;
@@ -568,6 +548,7 @@ void LightManager::device_update_points(Device *device, DeviceScene *dscene, Sce
 			light_data[i*LIGHT_SIZE + 1] = make_float4(__int_as_float(shader_id), radius, cosangle, invarea);
 			light_data[i*LIGHT_SIZE + 2] = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
 			light_data[i*LIGHT_SIZE + 3] = make_float4(samples, 0.0f, 0.0f, 0.0f);
+			light_data[i*LIGHT_SIZE + 4] = make_float4(max_bounces, 0.0f, 0.0f, 0.0f);
 		}
 		else if(light->type == LIGHT_BACKGROUND) {
 			uint visibility = scene->background->visibility;
@@ -587,11 +568,16 @@ void LightManager::device_update_points(Device *device, DeviceScene *dscene, Sce
 				shader_id |= SHADER_EXCLUDE_TRANSMIT;
 				use_light_visibility = true;
 			}
+			if(!(visibility & PATH_RAY_VOLUME_SCATTER)) {
+				shader_id |= SHADER_EXCLUDE_SCATTER;
+				use_light_visibility = true;
+			}
 
 			light_data[i*LIGHT_SIZE + 0] = make_float4(__int_as_float(light->type), 0.0f, 0.0f, 0.0f);
 			light_data[i*LIGHT_SIZE + 1] = make_float4(__int_as_float(shader_id), 0.0f, 0.0f, 0.0f);
 			light_data[i*LIGHT_SIZE + 2] = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
 			light_data[i*LIGHT_SIZE + 3] = make_float4(samples, 0.0f, 0.0f, 0.0f);
+			light_data[i*LIGHT_SIZE + 4] = make_float4(max_bounces, 0.0f, 0.0f, 0.0f);
 		}
 		else if(light->type == LIGHT_AREA) {
 			float3 axisu = light->axisu*(light->sizeu*light->size);
@@ -600,8 +586,7 @@ void LightManager::device_update_points(Device *device, DeviceScene *dscene, Sce
 			float invarea = (area > 0.0f)? 1.0f/area: 1.0f;
 			float3 dir = light->dir;
 			
-			if(len(dir) > 0.0f)
-				dir = normalize(dir);
+			dir = safe_normalize(dir);
 
 			if(light->use_mis && area > 0.0f)
 				shader_id |= SHADER_USE_MIS;
@@ -610,6 +595,7 @@ void LightManager::device_update_points(Device *device, DeviceScene *dscene, Sce
 			light_data[i*LIGHT_SIZE + 1] = make_float4(__int_as_float(shader_id), axisu.x, axisu.y, axisu.z);
 			light_data[i*LIGHT_SIZE + 2] = make_float4(invarea, axisv.x, axisv.y, axisv.z);
 			light_data[i*LIGHT_SIZE + 3] = make_float4(samples, dir.x, dir.y, dir.z);
+			light_data[i*LIGHT_SIZE + 4] = make_float4(max_bounces, 0.0f, 0.0f, 0.0f);
 		}
 		else if(light->type == LIGHT_SPOT) {
 			shader_id &= ~SHADER_AREA_LIGHT;
@@ -620,8 +606,7 @@ void LightManager::device_update_points(Device *device, DeviceScene *dscene, Sce
 			float spot_smooth = (1.0f - spot_angle)*light->spot_smooth;
 			float3 dir = light->dir;
 			
-			if(len(dir) > 0.0f)
-				dir = normalize(dir);
+			dir = safe_normalize(dir);
 
 			if(light->use_mis && radius > 0.0f)
 				shader_id |= SHADER_USE_MIS;
@@ -630,6 +615,7 @@ void LightManager::device_update_points(Device *device, DeviceScene *dscene, Sce
 			light_data[i*LIGHT_SIZE + 1] = make_float4(__int_as_float(shader_id), radius, invarea, spot_angle);
 			light_data[i*LIGHT_SIZE + 2] = make_float4(spot_smooth, dir.x, dir.y, dir.z);
 			light_data[i*LIGHT_SIZE + 3] = make_float4(samples, 0.0f, 0.0f, 0.0f);
+			light_data[i*LIGHT_SIZE + 4] = make_float4(max_bounces, 0.0f, 0.0f, 0.0f);
 		}
 	}
 	

@@ -24,10 +24,12 @@ set(INC
 	../../blenkernel
 	../../blenlib
 	../../bmesh
+	../../gpu
 	../../makesdna
 	../../makesrna
 	../../windowmanager
 	../../../../intern/guardedalloc
+	../../../../intern/glew-mx
 )
 
 set(INC_SYS
@@ -40,7 +42,6 @@ set(SRC
 	editmode_undo.c
 	numinput.c
 	undo.c
-	crazyspace.c
 
 	util_intern.h
 	# general includes
@@ -53,7 +54,6 @@ set(SRC
 	../include/ED_curve.h
 	../include/ED_datafiles.h
 	../include/ED_fileselect.h
-	../include/ED_fluidsim.h
 	../include/ED_gpencil.h
 	../include/ED_image.h
 	../include/ED_info.h
@@ -69,6 +69,7 @@ set(SRC
 	../include/ED_node.h
 	../include/ED_numinput.h
 	../include/ED_object.h
+	../include/ED_paint.h
 	../include/ED_particle.h
 	../include/ED_physics.h
 	../include/ED_render.h
@@ -92,7 +93,7 @@ set(SRC
 	../include/UI_view2d.h
 )
 
-add_definitions(-DGLEW_STATIC)
+add_definitions(${GL_DEFINITIONS})
 
 if(WITH_INTERNATIONAL)
 	add_definitions(-DWITH_INTERNATIONAL)

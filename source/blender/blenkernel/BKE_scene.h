@@ -39,6 +39,7 @@ extern "C" {
 
 struct AviCodecData;
 struct Base;
+struct DisplaySafeAreas;
 struct EvaluationContext;
 struct bglMats;
 struct Main;
@@ -48,6 +49,7 @@ struct RenderData;
 struct SceneRenderLayer;
 struct Scene;
 struct Text;
+struct UnitSettings;
 struct Main;
 
 #define SCE_COPY_NEW        0
@@ -84,6 +86,7 @@ typedef struct SceneBaseIter {
 	struct ListBase *duplilist;
 	struct DupliObject *dupob;
 	float omat[4][4];
+	struct Object *dupli_refob;
 	int phase;
 } SceneBaseIter;
 
@@ -108,7 +111,7 @@ char *BKE_scene_find_marker_name(struct Scene *scene, int frame);
 char *BKE_scene_find_last_marker_name(struct Scene *scene, int frame);
 
 /* checks for cycle, returns 1 if it's all OK */
-int BKE_scene_validate_setscene(struct Main *bmain, struct Scene *sce);
+bool BKE_scene_validate_setscene(struct Main *bmain, struct Scene *sce);
 
 float BKE_scene_frame_get(struct Scene *scene);
 float BKE_scene_frame_get_from_ctime(struct Scene *scene, const float frame);
@@ -117,6 +120,7 @@ void  BKE_scene_frame_set(struct Scene *scene, double cfra);
 /* **  Scene evaluation ** */
 void BKE_scene_update_tagged(struct EvaluationContext *eval_ctx, struct Main *bmain, struct Scene *sce);
 void BKE_scene_update_for_newframe(struct EvaluationContext *eval_ctx, struct Main *bmain, struct Scene *sce, unsigned int lay);
+void BKE_scene_update_for_newframe_ex(struct EvaluationContext *eval_ctx, struct Main *bmain, struct Scene *sce, unsigned int lay, bool do_invisible_flush);
 
 struct SceneRenderLayer *BKE_scene_add_render_layer(struct Scene *sce, const char *name);
 bool BKE_scene_remove_render_layer(struct Main *main, struct Scene *scene, struct SceneRenderLayer *srl);
@@ -129,12 +133,17 @@ float get_render_aosss_error(struct RenderData *r, float error);
 
 bool BKE_scene_use_new_shading_nodes(struct Scene *scene);
 
+bool BKE_scene_uses_blender_internal(struct Scene *scene);
+bool BKE_scene_uses_blender_game(struct Scene *scene);
+
 void BKE_scene_disable_color_management(struct Scene *scene);
 bool BKE_scene_check_color_management_enabled(const struct Scene *scene);
 bool BKE_scene_check_rigidbody_active(const struct Scene *scene);
 
 int BKE_scene_num_threads(const struct Scene *scene);
 int BKE_render_num_threads(const struct RenderData *r);
+
+double BKE_scene_unit_scale(const struct UnitSettings *unit, const int unit_type, double value);
 
 #ifdef __cplusplus
 }

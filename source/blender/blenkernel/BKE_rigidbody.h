@@ -36,10 +36,13 @@
 
 struct RigidBodyWorld;
 struct RigidBodyOb;
+struct RigidBodyShardCon;
 
 struct Scene;
 struct Object;
 struct Group;
+struct MeshIsland;
+struct FractureModifierData;
 
 /* -------------- */
 /* Memory Management */
@@ -61,6 +64,8 @@ void BKE_rigidbody_relink_constraint(struct RigidBodyCon *rbc);
 struct RigidBodyWorld *BKE_rigidbody_create_world(struct Scene *scene);
 struct RigidBodyOb *BKE_rigidbody_create_object(struct Scene *scene, struct Object *ob, short type);
 struct RigidBodyCon *BKE_rigidbody_create_constraint(struct Scene *scene, struct Object *ob, short type);
+struct RigidBodyOb *BKE_rigidbody_create_shard(struct Scene *scene, struct Object *ob, struct MeshIsland *mi);
+struct RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(struct Scene *scene, short type);
 
 /* copy */
 struct RigidBodyWorld *BKE_rigidbody_world_copy(struct RigidBodyWorld *rbw);
@@ -68,6 +73,18 @@ void BKE_rigidbody_world_groups_relink(struct RigidBodyWorld *rbw);
 
 /* 'validate' (i.e. make new or replace old) Physics-Engine objects */
 void BKE_rigidbody_validate_sim_world(struct Scene *scene, struct RigidBodyWorld *rbw, bool rebuild);
+void BKE_rigidbody_validate_sim_object(struct RigidBodyWorld *rbw, struct Object *ob, short rebuild);
+void BKE_rigidbody_validate_sim_shape(struct Object *ob, short rebuild);
+void BKE_rigidbody_validate_sim_constraint(struct RigidBodyWorld *rbw, struct Object *ob, short rebuild);
+void BKE_rigidbody_validate_sim_shard_constraint(struct RigidBodyWorld *rbw, struct RigidBodyShardCon *rbsc, short rebuild);
+
+void BKE_rigidbody_validate_sim_shard(struct RigidBodyWorld *rbw, struct MeshIsland *mi, struct Object *ob, short rebuild, int transfer_speeds);
+void BKE_rigidbody_validate_sim_shard_shape(struct MeshIsland *mi, struct Object *ob, short rebuild);
+
+/* move the islands of the visible mesh according to shard rigidbody movement */
+void BKE_rigidbody_update_cell(struct MeshIsland *mi, struct Object* ob, float loc[3], float rot[4], int frame);
+
+void BKE_rigidbody_calc_center_of_mass(struct Object *ob, float r_com[3]);
 
 /* -------------- */
 /* Utilities */
@@ -75,7 +92,14 @@ void BKE_rigidbody_validate_sim_world(struct Scene *scene, struct RigidBodyWorld
 struct RigidBodyWorld *BKE_rigidbody_get_world(struct Scene *scene);
 void BKE_rigidbody_remove_object(struct Scene *scene, struct Object *ob);
 void BKE_rigidbody_remove_constraint(struct Scene *scene, struct Object *ob);
-
+float BKE_rigidbody_calc_volume(struct DerivedMesh *dm, struct RigidBodyOb *rbo);
+void BKE_rigidbody_calc_shard_mass(struct Object* ob, struct MeshIsland* mi, struct DerivedMesh* dm);
+void BKE_rigidbody_calc_threshold(float max_con_mass, struct Object* rmd, struct RigidBodyShardCon *con);
+float BKE_rigidbody_calc_max_con_mass(struct Object* ob);
+float BKE_rigidbody_calc_min_con_dist(struct Object* ob);
+void BKE_rigidbody_start_dist_angle(struct RigidBodyShardCon* con);
+void BKE_rigidbody_remove_shard_con(struct Scene* scene, struct RigidBodyShardCon* con);
+void BKE_rigidbody_remove_shard(struct Scene* scene, struct MeshIsland *mi);
 /* -------------- */
 /* Utility Macros */
 

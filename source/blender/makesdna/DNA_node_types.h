@@ -112,7 +112,8 @@ typedef struct bNodeSocket {
 	short stack_index;			/* local stack index */
 	/* XXX deprecated, kept for forward compatibility */
 	short stack_type  DNA_DEPRECATED;
-	int resizemode;				/* compositor resize mode of the socket */
+	int pad;
+	
 	void *cache;				/* cached data from execution */
 	
 	/* internal data to retrieve relations and groups
@@ -131,16 +132,17 @@ typedef struct bNodeSocket {
 } bNodeSocket;
 
 /* sock->type */
-#define SOCK_CUSTOM			-1	/* socket has no integer type */
-#define SOCK_FLOAT			0
-#define SOCK_VECTOR			1
-#define SOCK_RGBA			2
-#define SOCK_SHADER			3
-#define SOCK_BOOLEAN		4
-#define __SOCK_MESH			5	/* deprecated */
-#define SOCK_INT			6
-#define SOCK_STRING			7
-#define NUM_SOCKET_TYPES	8	/* must be last! */
+typedef enum eNodeSocketDatatype {
+	SOCK_CUSTOM			= -1,	/* socket has no integer type */
+	SOCK_FLOAT			= 0,
+	SOCK_VECTOR			= 1,
+	SOCK_RGBA			= 2,
+	SOCK_SHADER			= 3,
+	SOCK_BOOLEAN		= 4,
+	__SOCK_MESH			= 5,	/* deprecated */
+	SOCK_INT			= 6,
+	SOCK_STRING			= 7
+} eNodeSocketDatatype;
 
 /* socket side (input/output) */
 typedef enum eNodeSocketInOut {
@@ -157,7 +159,8 @@ typedef enum eNodeSocketFlag {
 	// SOCK_INTERNAL = 32,				/* DEPRECATED  group socket should not be exposed */
 	SOCK_COLLAPSED = 64,				/* socket collapsed in UI */
 	SOCK_HIDE_VALUE = 128,				/* hide socket value, if it gets auto default */
-	SOCK_AUTO_HIDDEN__DEPRECATED = 256	/* socket hidden automatically, to distinguish from manually hidden */
+	SOCK_AUTO_HIDDEN__DEPRECATED = 256,	/* socket hidden automatically, to distinguish from manually hidden */
+	SOCK_NO_INTERNAL_LINK = 512
 } eNodeSocketFlag;
 
 /* limit data in bNode to what we want to see saved? */
@@ -722,7 +725,7 @@ typedef struct NodeTexImage {
 	int color_space;
 	int projection;
 	float projection_blend;
-	int pad;
+	int interpolation;
 } NodeTexImage;
 
 typedef struct NodeTexChecker {
@@ -822,6 +825,10 @@ typedef struct NodeTranslateData {
 typedef struct NodePlaneTrackDeformData {
 	char tracking_object[64];
 	char plane_track_name[64];
+	char flag;
+	char motion_blur_samples;
+	char pad[2];
+	float motion_blur_shutter;
 } NodePlaneTrackDeformData;
 
 typedef struct NodeShaderScript {
@@ -845,6 +852,16 @@ typedef struct NodeShaderNormalMap {
 	char uv_map[64];
 } NodeShaderNormalMap;
 
+typedef struct NodeShaderUVMap {
+	char uv_map[64];
+} NodeShaderUVMap;
+
+typedef struct NodeSunBeams {
+	float source[2];
+
+	float ray_length;
+} NodeSunBeams;
+
 /* script node mode */
 #define NODE_SCRIPT_INTERNAL		0
 #define NODE_SCRIPT_EXTERNAL		1
@@ -867,9 +884,10 @@ typedef struct NodeShaderNormalMap {
 #define CMP_NODE_CHANNEL_MATTE_CS_YCC	4
 
 /* glossy distributions */
-#define SHD_GLOSSY_BECKMANN	0
-#define SHD_GLOSSY_SHARP	1
-#define SHD_GLOSSY_GGX		2
+#define SHD_GLOSSY_BECKMANN				0
+#define SHD_GLOSSY_SHARP				1
+#define SHD_GLOSSY_GGX					2
+#define SHD_GLOSSY_ASHIKHMIN_SHIRLEY	3
 
 /* vector transform */
 #define SHD_VECT_TRANSFORM_TYPE_VECTOR	0
@@ -948,6 +966,14 @@ typedef struct NodeShaderNormalMap {
 /* image texture */
 #define SHD_PROJ_FLAT				0
 #define SHD_PROJ_BOX				1
+#define SHD_PROJ_SPHERE				2
+#define SHD_PROJ_TUBE				3
+
+/* image texture interpolation */
+#define SHD_INTERP_LINEAR		0
+#define SHD_INTERP_CLOSEST		1
+#define SHD_INTERP_CUBIC			2
+#define SHD_INTERP_SMART			3
 
 /* tangent */
 #define SHD_TANGENT_RADIAL			0
@@ -964,6 +990,36 @@ typedef struct NodeShaderNormalMap {
 #define SHD_NORMAL_MAP_WORLD			2
 #define SHD_NORMAL_MAP_BLENDER_OBJECT	3
 #define SHD_NORMAL_MAP_BLENDER_WORLD	4
+
+/* math node clamp */
+#define SHD_MATH_CLAMP		1
+
+/* Math node operation/ */
+enum {
+	NODE_MATH_ADD     = 0,
+	NODE_MATH_SUB     = 1,
+	NODE_MATH_MUL     = 2,
+	NODE_MATH_DIVIDE  = 3,
+	NODE_MATH_SIN     = 4,
+	NODE_MATH_COS     = 5,
+	NODE_MATH_TAN     = 6,
+	NODE_MATH_ASIN    = 7,
+	NODE_MATH_ACOS    = 8,
+	NODE_MATH_ATAN    = 9,
+	NODE_MATH_POW     = 10,
+	NODE_MATH_LOG     = 11,
+	NODE_MATH_MIN     = 12,
+	NODE_MATH_MAX     = 13,
+	NODE_MATH_ROUND   = 14,
+	NODE_MATH_LESS    = 15,
+	NODE_MATH_GREATER = 16,
+	NODE_MATH_MOD     = 17,
+	NODE_MATH_ABS     = 18,
+};
+
+/* mix rgb node flags */
+#define SHD_MIXRGB_USE_ALPHA	1
+#define SHD_MIXRGB_CLAMP	2
 
 /* subsurface */
 enum {
@@ -1027,5 +1083,12 @@ enum {
 
 /* viewer and cmposite output */
 #define CMP_NODE_OUTPUT_IGNORE_ALPHA		1
+
+/* Plane track deform node */
+enum {
+	CMP_NODEFLAG_PLANETRACKDEFORM_MOTION_BLUR = 1,
+};
+
+#define CMP_NODE_PLANETRACKDEFORM_MBLUR_SAMPLES_MAX 64
 
 #endif

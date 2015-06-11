@@ -139,6 +139,7 @@ protected:
 		virtual	float		GetFixedTimeStep() { return 0.f; }
 
 		virtual void		SetDebugMode(int debugMode);
+		virtual int			GetDebugMode()const;
 
 		virtual	void		SetGravity(float x,float y,float z);
 		virtual	void		GetGravity(MT_Vector3& grav);
@@ -258,7 +259,20 @@ protected:
 	
 		class btConstraintSolver*	GetConstraintSolver();
 
-		void MergeEnvironment(CcdPhysicsEnvironment *other);
+		void MergeEnvironment(PHY_IPhysicsEnvironment *other_env);
+
+		static CcdPhysicsEnvironment *Create(struct Scene *blenderscene, bool visualizePhysics);
+
+		virtual void ConvertObject(KX_GameObject* gameobj,
+							RAS_MeshObject* meshobj,
+							DerivedMesh* dm,
+							KX_Scene* kxscene,
+							PHY_ShapeProps* shapeprops,
+							PHY_MaterialProps*	smmaterial,
+							PHY_IMotionState *motionstate,
+							int activeLayerBitInfo,
+							bool isCompoundChild,
+							bool hasCompoundChildren);
 
 	protected:
 		

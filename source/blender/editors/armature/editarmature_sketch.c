@@ -31,8 +31,6 @@
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
 
-#include "BLF_translation.h"
-
 #include "BKE_context.h"
 #include "BKE_sketch.h"
 
@@ -52,6 +50,8 @@
 
 #include "WM_api.h"
 #include "WM_types.h"
+
+#include "GPU_select.h"
 
 typedef int (*GestureDetectFct)(bContext *, SK_Gesture *, SK_Sketch *);
 typedef void (*GestureApplyFct)(bContext *, SK_Gesture *, SK_Sketch *);
@@ -165,6 +165,7 @@ void BIF_makeListTemplates(const bContext *C)
 	}
 }
 
+#if 0  /* UNUSED */
 const char *BIF_listTemplates(const bContext *UNUSED(C))
 {
 	GHashIterator ghi;
@@ -194,6 +195,7 @@ const char *BIF_listTemplates(const bContext *UNUSED(C))
 
 	return TEMPLATES_MENU;
 }
+#endif
 
 int   BIF_currentTemplate(const bContext *C)
 {
@@ -331,11 +333,11 @@ static void sk_autoname(bContext *C, ReebArc *arc)
 			if (side[0] == '\0') {
 				valid = 1;
 			}
-			else if (strcmp(side, "R") == 0 || strcmp(side, "L") == 0) {
+			else if (STREQ(side, "R") || STREQ(side, "L")) {
 				valid = 1;
 				caps = 1;
 			}
-			else if (strcmp(side, "r") == 0 || strcmp(side, "l") == 0) {
+			else if (STREQ(side, "r") || STREQ(side, "l")) {
 				valid = 1;
 				caps = 0;
 			}
@@ -399,9 +401,7 @@ static void sk_retargetStroke(bContext *C, SK_Stroke *stk)
 	RigGraph *rg;
 
 	invert_m4_m4(imat, obedit->obmat);
-
-	copy_m3_m4(tmat, obedit->obmat);
-	transpose_m3(tmat);
+	transpose_m3_m4(tmat, obedit->obmat);
 
 	arc = sk_strokeToArc(stk, imat, tmat);
 
@@ -491,7 +491,7 @@ static void sk_drawStroke(SK_Stroke *stk, int id, float color[3], int start, int
 	gluQuadricNormals(quad, GLU_SMOOTH);
 
 	if (id != -1) {
-		glLoadName(id);
+		GPU_select_load_id(id);
 
 		for (i = 0; i < stk->nb_points; i++) {
 			glPushMatrix();
@@ -930,7 +930,6 @@ static void sk_projectDrawPoint(bContext *C, float vec[3], SK_Stroke *stk, SK_Dr
 
 	zfac = ED_view3d_calc_zfac(ar->regiondata, fp, NULL);
 
-	/* method taken from editview.c - mouse_cursor() */
 	if (ED_view3d_project_short_global(ar, fp, cval, V3D_PROJ_TEST_NOP) == V3D_PROJ_RET_OK) {
 		VECSUB2D(mval_f, cval, dd->mval);
 		ED_view3d_win_to_delta(ar, mval_f, dvec, zfac);
@@ -979,7 +978,7 @@ static int sk_getStrokeSnapPoint(bContext *C, SK_Point *pt, SK_Sketch *sketch, S
 		float mvalf[2];
 
 		BLI_freelistN(&sketch->depth_peels);
-		sketch->depth_peels.first = sketch->depth_peels.last = NULL;
+		BLI_listbase_clear(&sketch->depth_peels);
 
 		mvalf[0] = dd->mval[0];
 		mvalf[1] = dd->mval[1];
@@ -1355,9 +1354,7 @@ static void sk_convertStroke(bContext *C, SK_Stroke *stk)
 	head = NULL;
 
 	invert_m4_m4(invmat, obedit->obmat);
-
-	copy_m3_m4(tmat, obedit->obmat);
-	transpose_m3(tmat);
+	transpose_m3_m4(tmat, obedit->obmat);
 
 	for (i = 0; i < stk->nb_points; i++) {
 		SK_Point *pt = stk->points + i;
@@ -1489,9 +1486,9 @@ static int sk_getSelfIntersections(bContext *C, ListBase *list, SK_Stroke *gestu
 	return added;
 }
 
-static int cmpIntersections(void *i1, void *i2)
+static int cmpIntersections(const void *i1, const void *i2)
 {
-	SK_Intersection *isect1 = i1, *isect2 = i2;
+	const SK_Intersection *isect1 = i1, *isect2 = i2;
 
 	if (isect1->stroke == isect2->stroke) {
 		if (isect1->before < isect2->before) {
@@ -1576,7 +1573,7 @@ static int sk_getIntersections(bContext *C, ListBase *list, SK_Sketch *sketch, S
 		added = MAX2(s_added, added);
 	}
 
-	BLI_sortlist(list, cmpIntersections);
+	BLI_listbase_sort(list, cmpIntersections);
 
 	return added;
 }
@@ -1695,7 +1692,7 @@ int sk_detectCommandGesture(bContext *UNUSED(C), SK_Gesture *gest, SK_Sketch *UN
 	if (gest->nb_segments > 2 && gest->nb_intersections == 2 && gest->nb_self_intersections == 1) {
 		SK_Intersection *isect, *self_isect;
 
-		/* get the the last intersection of the first pair */
+		/* get the last intersection of the first pair */
 		for (isect = gest->intersections.first; isect; isect = isect->next) {
 			if (isect->stroke == isect->next->stroke) {
 				isect = isect->next;
@@ -1915,8 +1912,8 @@ void sk_applyConvertGesture(bContext *C, SK_Gesture *UNUSED(gest), SK_Sketch *sk
 
 static void sk_initGesture(bContext *C, SK_Gesture *gest, SK_Sketch *sketch)
 {
-	gest->intersections.first = gest->intersections.last = NULL;
-	gest->self_intersections.first = gest->self_intersections.last = NULL;
+	BLI_listbase_clear(&gest->intersections);
+	BLI_listbase_clear(&gest->self_intersections);
 
 	gest->segments = sk_createStroke();
 	gest->stk = sketch->gesture;
@@ -1954,7 +1951,7 @@ static void sk_applyGesture(bContext *C, SK_Sketch *sketch)
 /********************************************/
 
 
-static int sk_selectStroke(bContext *C, SK_Sketch *sketch, const int mval[2], int extend)
+static bool sk_selectStroke(bContext *C, SK_Sketch *sketch, const int mval[2], const bool extend)
 {
 	ViewContext vc;
 	rcti rect;
@@ -1968,7 +1965,7 @@ static int sk_selectStroke(bContext *C, SK_Sketch *sketch, const int mval[2], in
 	rect.ymin = mval[1] - 5;
 	rect.ymax = mval[1] + 5;
 
-	hits = view3d_opengl_select(&vc, buffer, MAXPICKBUF, &rect);
+	hits = view3d_opengl_select(&vc, buffer, MAXPICKBUF, &rect, true);
 
 	if (hits > 0) {
 		int besthitresult = -1;
@@ -2031,7 +2028,7 @@ static void sk_drawSketch(Scene *scene, View3D *UNUSED(v3d), SK_Sketch *sketch, 
 			sk_drawStroke(stk, id, NULL, -1, -1);
 		}
 
-		glLoadName(-1);
+		GPU_select_load_id(-1);
 	}
 	else {
 		float selected_rgb[3] = {1, 0, 0};
@@ -2093,8 +2090,7 @@ static void sk_drawSketch(Scene *scene, View3D *UNUSED(v3d), SK_Sketch *sketch, 
 	}
 
 #if 0
-	if (sketch->depth_peels.first != NULL)
-	{
+	if (BLI_listbase_is_empty(&sketch->depth_peels) == false) {
 		float colors[8][3] = {
 			{1, 0, 0},
 			{0, 1, 0},
@@ -2243,15 +2239,19 @@ static int sketch_delete(bContext *C, wmOperator *UNUSED(op), const wmEvent *UNU
 	return OPERATOR_FINISHED;
 }
 
-void BIF_sk_selectStroke(bContext *C, const int mval[2], short extend)
+bool BIF_sk_selectStroke(bContext *C, const int mval[2], const bool extend)
 {
 	ToolSettings *ts = CTX_data_tool_settings(C);
 	SK_Sketch *sketch = contextSketch(C, 0);
 
 	if (sketch != NULL && ts->bone_sketching & BONE_SKETCHING) {
-		if (sk_selectStroke(C, sketch, mval, extend))
+		if (sk_selectStroke(C, sketch, mval, extend)) {
 			ED_area_tag_redraw(CTX_wm_area(C));
+			return true;
+		}
 	}
+
+	return false;
 }
 
 void BIF_convertSketch(bContext *C)
@@ -2387,7 +2387,7 @@ static int sketch_draw_stroke(bContext *C, wmOperator *op, const wmEvent *event)
 	SK_DrawData *dd;
 	SK_Sketch *sketch = contextSketch(C, 1);
 
-	op->customdata = dd = MEM_callocN(sizeof("SK_DrawData"), "SketchDrawData");
+	op->customdata = dd = MEM_callocN(sizeof(SK_DrawData), "SketchDrawData");
 	sk_initDrawData(dd, event->mval);
 
 	sk_start_draw_stroke(sketch);
@@ -2413,7 +2413,7 @@ static int sketch_draw_gesture(bContext *C, wmOperator *op, const wmEvent *event
 	SK_Sketch *sketch = contextSketch(C, 1); /* create just to be sure */
 	sk_cancelStroke(sketch);
 
-	op->customdata = dd = MEM_callocN(sizeof("SK_DrawData"), "SketchDrawData");
+	op->customdata = dd = MEM_callocN(sizeof(SK_DrawData), "SketchDrawData");
 	sk_initDrawData(dd, event->mval);
 
 	sk_start_draw_gesture(sketch);

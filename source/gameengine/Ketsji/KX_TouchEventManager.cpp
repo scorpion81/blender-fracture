@@ -60,7 +60,7 @@ bool	KX_TouchEventManager::NewHandleCollision(void* object1, void* object2, cons
 	PHY_IPhysicsController* obj1 = static_cast<PHY_IPhysicsController*>(object1);
 	PHY_IPhysicsController* obj2 = static_cast<PHY_IPhysicsController*>(object2);
 	
-	m_newCollisions.insert(std::pair<PHY_IPhysicsController*, PHY_IPhysicsController*>(obj1, obj2));
+	m_newCollisions.insert(NewCollision(obj1, obj2, coll_data));
 		
 	return false;
 }
@@ -85,7 +85,7 @@ bool	 KX_TouchEventManager::newBroadphaseResponse(void *client_data,
 	PHY_IPhysicsController* ctrl2 = static_cast<PHY_IPhysicsController*>(object2);
 
 	KX_ClientObjectInfo *info1 = (ctrl1) ? static_cast<KX_ClientObjectInfo*>(ctrl1->GetNewClientInfo()) : NULL;
-	KX_ClientObjectInfo *info2 = (ctrl1) ? static_cast<KX_ClientObjectInfo*>(ctrl2->GetNewClientInfo()) : NULL;
+	KX_ClientObjectInfo *info2 = (ctrl2) ? static_cast<KX_ClientObjectInfo*>(ctrl2->GetNewClientInfo()) : NULL;
 
 	// This call back should only be called for controllers of Near and Radar sensor
 	if (!info1)
@@ -97,9 +97,14 @@ bool	 KX_TouchEventManager::newBroadphaseResponse(void *client_data,
 
 	bool has_py_callbacks = false;
 
+#ifdef WITH_PYTHON
 	// Consider callbacks for broadphase inclusion if it's a sensor object type
 	if (gobj1 && gobj2)
 		has_py_callbacks = gobj1->m_collisionCallbacks || gobj2->m_collisionCallbacks;
+#else
+	(void)gobj1;
+	(void)gobj2;
+#endif
 
 	switch (info1->m_type)
 	{
@@ -204,9 +209,11 @@ void KX_TouchEventManager::NextFrame()
 				}
 			}
 			// Run python callbacks
-			kxObj1->RunCollisionCallbacks(kxObj2);
-			kxObj2->RunCollisionCallbacks(kxObj1);
+			PHY_CollData *colldata = cit->colldata;
+			kxObj1->RunCollisionCallbacks(kxObj2, colldata->m_point1, colldata->m_normal);
+			kxObj2->RunCollisionCallbacks(kxObj1, colldata->m_point2, -colldata->m_normal);
 
+			delete cit->colldata;
 		}
 			
 		m_newCollisions.clear();
@@ -214,3 +221,19 @@ void KX_TouchEventManager::NextFrame()
 		for (it.begin();!it.end();++it)
 			(*it)->Activate(m_logicmgr);
 	}
+
+
+KX_TouchEventManager::NewCollision::NewCollision(PHY_IPhysicsController *first,
+                                                 PHY_IPhysicsController *second,
+                                                 const PHY_CollData *colldata)
+    : first(first), second(second), colldata(new PHY_CollData(*colldata))
+{}
+
+KX_TouchEventManager::NewCollision::NewCollision(const NewCollision &to_copy)
+	: first(to_copy.first), second(to_copy.second), colldata(to_copy.colldata)
+{}
+
+bool KX_TouchEventManager::NewCollision::operator<(const NewCollision &other) const
+{
+	return first < other.first || second < other.second || colldata < other.colldata;
+}

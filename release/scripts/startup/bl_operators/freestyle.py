@@ -16,10 +16,13 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 
-import sys
 import bpy
 
-from bpy.props import (BoolProperty, EnumProperty, StringProperty)
+from bpy.props import (
+        BoolProperty,
+        EnumProperty,
+        StringProperty,
+        )
 
 
 class SCENE_OT_freestyle_fill_range_by_selection(bpy.types.Operator):
@@ -29,11 +32,16 @@ class SCENE_OT_freestyle_fill_range_by_selection(bpy.types.Operator):
     bl_label = "Fill Range by Selection"
     bl_options = {'INTERNAL'}
 
-    type = EnumProperty(name="Type", description="Type of the modifier to work on",
-                        items=(("COLOR", "Color", "Color modifier type"),
-                               ("ALPHA", "Alpha", "Alpha modifier type"),
-                               ("THICKNESS", "Thickness", "Thickness modifier type")))
-    name = StringProperty(name="Name", description="Name of the modifier to work on")
+    type = EnumProperty(
+            name="Type", description="Type of the modifier to work on",
+            items=(("COLOR", "Color", "Color modifier type"),
+                   ("ALPHA", "Alpha", "Alpha modifier type"),
+                   ("THICKNESS", "Thickness", "Thickness modifier type")),
+            )
+    name = StringProperty(
+            name="Name",
+            description="Name of the modifier to work on",
+            )
 
     @classmethod
     def poll(cls, context):
@@ -41,6 +49,8 @@ class SCENE_OT_freestyle_fill_range_by_selection(bpy.types.Operator):
         return rl and rl.freestyle_settings.linesets.active
 
     def execute(self, context):
+        import sys
+
         scene = context.scene
         rl = scene.render.layers.active
         lineset = rl.freestyle_settings.linesets.active
@@ -105,7 +115,7 @@ class SCENE_OT_freestyle_add_edge_marks_to_keying_set(bpy.types.Operator):
         bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
         for i, edge in enumerate(mesh.edges):
             if not edge.hide and edge.select:
-                path = 'edges[%d].use_freestyle_edge_mark' % i
+                path = 'edges[%d].use_freestyle_mark' % i
                 ks.paths.add(mesh, path, index=0)
         bpy.ops.object.mode_set(mode=ob_mode, toggle=False)
         return {'FINISHED'}
@@ -136,7 +146,7 @@ class SCENE_OT_freestyle_add_face_marks_to_keying_set(bpy.types.Operator):
         bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
         for i, polygon in enumerate(mesh.polygons):
             if not polygon.hide and polygon.select:
-                path = 'polygons[%d].use_freestyle_face_mark' % i
+                path = 'polygons[%d].use_freestyle_mark' % i
                 ks.paths.add(mesh, path, index=0)
         bpy.ops.object.mode_set(mode=ob_mode, toggle=False)
         return {'FINISHED'}

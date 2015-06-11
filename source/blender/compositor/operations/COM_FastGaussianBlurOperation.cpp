@@ -29,7 +29,6 @@
 FastGaussianBlurOperation::FastGaussianBlurOperation() : BlurBaseOperation(COM_DT_COLOR)
 {
 	this->m_iirgaus = NULL;
-	this->m_chunksize = 256;
 }
 
 void FastGaussianBlurOperation::executePixel(float output[4], int x, int y, void *data)
@@ -38,56 +37,22 @@ void FastGaussianBlurOperation::executePixel(float output[4], int x, int y, void
 	newData->read(output, x, y);
 }
 
-// Calculate the depending area of interest. This depends on the
-// size of the blur operation; if the blur is large it is faster
-// to just calculate the whole image at once.
-// Returns true if the area is just a tile and false if it is
-// the whole image.
-bool FastGaussianBlurOperation::getDAI(rcti *rect, rcti *output)
-{
-	// m_data->sizex * m_size should be enough? For some reason there
-	// seem to be errors in the boundary between tiles.
-	int sx = this->m_data->sizex * this->m_size * 2;
-	if (sx < 1)
-		sx = 1;
-	int sy = this->m_data->sizey * this->m_size * 2;
-	if (sy < 1)
-		sy = 1;
-
-	if (sx >= this->m_chunksize || sy >= this->m_chunksize) {
-		output->xmin = 0;
-		output->xmax = this->getWidth();
-		output->ymin = 0;
-		output->ymax = this->getHeight();
-		return false;
-	}
-	else {
-		output->xmin = rect->xmin - sx - 1;
-		output->xmax = rect->xmax + sx + 1;
-		output->ymin = rect->ymin - sy - 1;
-		output->ymax = rect->ymax + sy + 1;
-		return true;
-	}
-}
-
 bool FastGaussianBlurOperation::determineDependingAreaOfInterest(rcti *input, ReadBufferOperation *readOperation, rcti *output)
 {
 	rcti newInput;
-	
-	if (!this->m_sizeavailable) {
-		rcti sizeInput;
-		sizeInput.xmin = 0;
-		sizeInput.ymin = 0;
-		sizeInput.xmax = 5;
-		sizeInput.ymax = 5;
-		NodeOperation *operation = this->getInputOperation(1);
-		if (operation->determineDependingAreaOfInterest(&sizeInput, readOperation, output)) {
-			return true;
-		}
+	rcti sizeInput;
+	sizeInput.xmin = 0;
+	sizeInput.ymin = 0;
+	sizeInput.xmax = 5;
+	sizeInput.ymax = 5;
+
+	NodeOperation *operation = this->getInputOperation(1);
+	if (operation->determineDependingAreaOfInterest(&sizeInput, readOperation, output)) {
+		return true;
 	}
-	{
-		if (this->m_sizeavailable) {
-			getDAI(input, &newInput);
+	else {
+		if (this->m_iirgaus) {
+			return false;
 		}
 		else {
 			newInput.xmin = 0;
@@ -116,7 +81,6 @@ void FastGaussianBlurOperation::deinitExecution()
 
 void *FastGaussianBlurOperation::initializeTileData(rcti *rect)
 {
-#if 0
 	lockMutex();
 	if (!this->m_iirgaus) {
 		MemoryBuffer *newBuf = (MemoryBuffer *)this->m_inputProgram->initializeTileData(rect);
@@ -124,20 +88,20 @@ void *FastGaussianBlurOperation::initializeTileData(rcti *rect)
 		updateSize();
 
 		int c;
-		this->m_sx = this->m_data->sizex * this->m_size / 2.0f;
-		this->m_sy = this->m_data->sizey * this->m_size / 2.0f;
+		this->m_sx = this->m_data.sizex * this->m_size / 2.0f;
+		this->m_sy = this->m_data.sizey * this->m_size / 2.0f;
 		
 		if ((this->m_sx == this->m_sy) && (this->m_sx > 0.f)) {
-			for (c = 0; c < COM_NUMBER_OF_CHANNELS; ++c)
+			for (c = 0; c < COM_NUM_CHANNELS_COLOR; ++c)
 				IIR_gauss(copy, this->m_sx, c, 3);
 		}
 		else {
 			if (this->m_sx > 0.0f) {
-				for (c = 0; c < COM_NUMBER_OF_CHANNELS; ++c)
+				for (c = 0; c < COM_NUM_CHANNELS_COLOR; ++c)
 					IIR_gauss(copy, this->m_sx, c, 1);
 			}
 			if (this->m_sy > 0.0f) {
-				for (c = 0; c < COM_NUMBER_OF_CHANNELS; ++c)
+				for (c = 0; c < COM_NUM_CHANNELS_COLOR; ++c)
 					IIR_gauss(copy, this->m_sy, c, 2);
 			}
 		}
@@ -145,67 +109,7 @@ void *FastGaussianBlurOperation::initializeTileData(rcti *rect)
 	}
 	unlockMutex();
 	return this->m_iirgaus;
-#else
-
-	lockMutex();
-	if (this->m_iirgaus) {
-		// if this->m_iirgaus is set, we don't do tile rendering, so
-		// we can return the already calculated cache
-		unlockMutex();
-		return this->m_iirgaus;
-	}
-	updateSize();
-	rcti dai;
-	bool use_tiles = getDAI(rect, &dai);
-	if (use_tiles) {
-		unlockMutex();
-	}
-
-	MemoryBuffer *buffer = (MemoryBuffer *)this->m_inputProgram->initializeTileData(NULL);
-	rcti *buf_rect = buffer->getRect();
-
-	dai.xmin = max(dai.xmin, buf_rect->xmin);
-	dai.xmax = min(dai.xmax, buf_rect->xmax);
-	dai.ymin = max(dai.ymin, buf_rect->ymin);
-	dai.ymax = min(dai.ymax, buf_rect->ymax);
-
-	MemoryBuffer *tile = new MemoryBuffer(NULL, &dai);
-	tile->copyContentFrom(buffer);
-
-	int c;
-	float sx = this->m_data->sizex * this->m_size / 2.0f;
-	float sy = this->m_data->sizey * this->m_size / 2.0f;
-
-	if ((sx == sy) && (sx > 0.f)) {
-		for (c = 0; c < COM_NUMBER_OF_CHANNELS; ++c)
-			IIR_gauss(tile, sx, c, 3);
-	}
-	else {
-		if (sx > 0.0f) {
-			for (c = 0; c < COM_NUMBER_OF_CHANNELS; ++c)
-				IIR_gauss(tile, sx, c, 1);
-		}
-		if (sy > 0.0f) {
-			for (c = 0; c < COM_NUMBER_OF_CHANNELS; ++c)
-				IIR_gauss(tile, sy, c, 2);
-		}
-	}
-	if (!use_tiles) {
-		this->m_iirgaus = tile;
-		unlockMutex();
-	}
-	return tile;
-#endif
 }
-
-void FastGaussianBlurOperation::deinitializeTileData(rcti *rect, void *data)
-{
-	if (!this->m_iirgaus && data) {
-		MemoryBuffer *tile = (MemoryBuffer *)data;
-		delete tile;
-	}
-}
-
 
 void FastGaussianBlurOperation::IIR_gauss(MemoryBuffer *src, float sigma, unsigned int chan, unsigned int xy)
 {
@@ -216,6 +120,7 @@ void FastGaussianBlurOperation::IIR_gauss(MemoryBuffer *src, float sigma, unsign
 	unsigned int x, y, sz;
 	unsigned int i;
 	float *buffer = src->getBuffer();
+	const unsigned int num_channels = src->get_num_channels();
 	
 	// <0.5 not valid, though can have a possibly useful sort of sharpening effect
 	if (sigma < 0.5f) return;
@@ -294,31 +199,31 @@ void FastGaussianBlurOperation::IIR_gauss(MemoryBuffer *src, float sigma, unsign
 		int offset;
 		for (y = 0; y < src_height; ++y) {
 			const int yx = y * src_width;
-			offset = yx * COM_NUMBER_OF_CHANNELS + chan;
+			offset = yx * num_channels + chan;
 			for (x = 0; x < src_width; ++x) {
 				X[x] = buffer[offset];
-				offset += COM_NUMBER_OF_CHANNELS;
+				offset += num_channels;
 			}
 			YVV(src_width);
-			offset = yx * COM_NUMBER_OF_CHANNELS + chan;
+			offset = yx * num_channels + chan;
 			for (x = 0; x < src_width; ++x) {
 				buffer[offset] = Y[x];
-				offset += COM_NUMBER_OF_CHANNELS;
+				offset += num_channels;
 			}
 		}
 	}
 	if (xy & 2) {   // V
 		int offset;
-		const int add = src_width * COM_NUMBER_OF_CHANNELS;
+		const int add = src_width * num_channels;
 
 		for (x = 0; x < src_width; ++x) {
-			offset = x * COM_NUMBER_OF_CHANNELS + chan;
+			offset = x * num_channels + chan;
 			for (y = 0; y < src_height; ++y) {
 				X[y] = buffer[offset];
 				offset += add;
 			}
 			YVV(src_height);
-			offset = x * COM_NUMBER_OF_CHANNELS + chan;
+			offset = x * num_channels + chan;
 			for (y = 0; y < src_height; ++y) {
 				buffer[offset] = Y[y];
 				offset += add;
@@ -394,7 +299,7 @@ void *FastGaussianBlurValueOperation::initializeTileData(rcti *rect)
 		if (this->m_overlay == FAST_GAUSS_OVERLAY_MIN) {
 			float *src = newBuf->getBuffer();
 			float *dst = copy->getBuffer();
-			for (int i = copy->getWidth() * copy->getHeight(); i != 0; i--, src += COM_NUMBER_OF_CHANNELS, dst += COM_NUMBER_OF_CHANNELS) {
+			for (int i = copy->getWidth() * copy->getHeight(); i != 0; i--, src += COM_NUM_CHANNELS_VALUE, dst += COM_NUM_CHANNELS_VALUE) {
 				if (*src < *dst) {
 					*dst = *src;
 				}
@@ -403,7 +308,7 @@ void *FastGaussianBlurValueOperation::initializeTileData(rcti *rect)
 		else if (this->m_overlay == FAST_GAUSS_OVERLAY_MAX) {
 			float *src = newBuf->getBuffer();
 			float *dst = copy->getBuffer();
-			for (int i = copy->getWidth() * copy->getHeight(); i != 0; i--, src += COM_NUMBER_OF_CHANNELS, dst += COM_NUMBER_OF_CHANNELS) {
+			for (int i = copy->getWidth() * copy->getHeight(); i != 0; i--, src += COM_NUM_CHANNELS_VALUE, dst += COM_NUM_CHANNELS_VALUE) {
 				if (*src > *dst) {
 					*dst = *src;
 				}

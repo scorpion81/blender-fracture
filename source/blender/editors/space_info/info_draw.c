@@ -27,17 +27,13 @@
  *  \ingroup spinfo
  */
 
-
-
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <limits.h>
 
-#include "BLF_api.h"
 
-#include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
 
 #include "DNA_space_types.h"
@@ -46,14 +42,8 @@
 // #include "BKE_suggestions.h"
 #include "BKE_report.h"
 
-
-#include "MEM_guardedalloc.h"
-
 #include "BIF_gl.h"
-#include "BIF_glutil.h"
 
-#include "ED_datafiles.h"
-#include "ED_types.h"
 
 #include "UI_resources.h"
 #include "UI_interface.h"
@@ -149,10 +139,10 @@ static int report_textview_begin(TextViewContext *tvc)
 		tvc->iter_char = 0;
 		report_textview_init__internal(tvc);
 
-		return TRUE;
+		return true;
 	}
 	else {
-		return FALSE;
+		return false;
 	}
 #else
 	return (tvc->iter != NULL);
@@ -178,10 +168,10 @@ static int report_textview_step(TextViewContext *tvc)
 			tvc->iter_char = 0; /* reset start */
 			report_textview_init__internal(tvc);
 
-			return TRUE;
+			return true;
 		}
 		else {
-			return FALSE;
+			return false;
 		}
 	}
 	else {
@@ -189,7 +179,7 @@ static int report_textview_step(TextViewContext *tvc)
 		tvc->iter_char = tvc->iter_char_next + 1;
 		report_textview_init__internal(tvc);
 
-		return TRUE;
+		return true;
 	}
 }
 

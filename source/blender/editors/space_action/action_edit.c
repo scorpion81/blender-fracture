@@ -40,8 +40,11 @@
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
 
+#include "BLF_translation.h"
+
 #include "DNA_anim_types.h"
 #include "DNA_gpencil_types.h"
+#include "DNA_key_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_mask_types.h"
@@ -53,6 +56,8 @@
 #include "BKE_action.h"
 #include "BKE_fcurve.h"
 #include "BKE_global.h"
+#include "BKE_library.h"
+#include "BKE_key.h"
 #include "BKE_main.h"
 #include "BKE_nla.h"
 #include "BKE_context.h"
@@ -65,7 +70,6 @@
 #include "ED_keyframing.h"
 #include "ED_keyframes_edit.h"
 #include "ED_screen.h"
-#include "ED_transform.h"
 #include "ED_markers.h"
 #include "ED_mask.h"
 
@@ -79,50 +83,188 @@
 /* ************************************************************************** */
 /* ACTION MANAGEMENT */
 
+/* Helper function to find the active AnimData block from the Action Editor context */
+static AnimData *actedit_animdata_from_context(bContext *C)
+{
+	SpaceAction *saction = (SpaceAction *)CTX_wm_space_data(C);
+	Object *ob = CTX_data_active_object(C);
+	AnimData *adt = NULL;
+	
+	/* Get AnimData block to use */
+	if (saction->mode == SACTCONT_ACTION) {
+		/* Currently, "Action Editor" means object-level only... */
+		if (ob) {
+			adt = ob->adt;
+		}
+	}
+	else if (saction->mode == SACTCONT_SHAPEKEY) {
+		Key *key = BKE_key_from_object(ob);
+		if (key) {
+			adt = key->adt;
+		}
+	}
+	
+	return adt;
+}
+
+/* Create new action */
+static bAction *action_create_new(bContext *C, bAction *oldact)
+{
+	ScrArea *sa = CTX_wm_area(C);
+	bAction *action;
+	
+	/* create action - the way to do this depends on whether we've got an
+	 * existing one there already, in which case we make a copy of it
+	 * (which is useful for "versioning" actions within the same file)
+	 */
+	if (oldact && GS(oldact->id.name) == ID_AC) {
+		/* make a copy of the existing action */
+		action = BKE_action_copy(oldact);
+	}
+	else {
+		/* just make a new (empty) action */
+		action = add_empty_action(CTX_data_main(C), "Action");
+	}
+	
+	/* when creating new ID blocks, there is already 1 user (as for all new datablocks), 
+	 * but the RNA pointer code will assign all the proper users instead, so we compensate
+	 * for that here
+	 */
+	BLI_assert(action->id.us == 1);
+	action->id.us--;
+	
+	/* set ID-Root type */
+	if (sa->spacetype == SPACE_ACTION) {
+		SpaceAction *saction = (SpaceAction *)sa->spacedata.first;
+		
+		if (saction->mode == SACTCONT_SHAPEKEY)
+			action->idroot = ID_KE;
+		else
+			action->idroot = ID_OB;
+	}
+	
+	return action;
+}
+
+/* Change the active action used by the action editor */
+static void actedit_change_action(bContext *C, bAction *act)
+{
+	bScreen *screen = CTX_wm_screen(C);
+	SpaceAction *saction = (SpaceAction *)CTX_wm_space_data(C);
+	
+	PointerRNA ptr, idptr;
+	PropertyRNA *prop;
+	
+	/* create RNA pointers and get the property */
+	RNA_pointer_create(&screen->id, &RNA_SpaceDopeSheetEditor, saction, &ptr);
+	prop = RNA_struct_find_property(&ptr, "action");
+	
+	/* NOTE: act may be NULL here, so better to just use a cast here */
+	RNA_id_pointer_create((ID *)act, &idptr);
+	
+	/* set the new pointer, and force a refresh */
+	RNA_property_pointer_set(&ptr, prop, idptr);
+	RNA_property_update(C, &ptr, prop);
+}
+
 /* ******************** New Action Operator *********************** */
 
-static int act_new_exec(bContext *C, wmOperator *UNUSED(op))
+/* Criteria:
+ *  1) There must be an dopesheet/action editor, and it must be in a mode which uses actions...
+ *        OR
+ *     The NLA Editor is active (i.e. Animation Data panel -> new action)
+ *  2) The associated AnimData block must not be in tweakmode
+ */
+static int action_new_poll(bContext *C)
+{
+	Scene *scene = CTX_data_scene(C);
+	
+	/* Check tweakmode is off (as you don't want to be tampering with the action in that case) */
+	/* NOTE: unlike for pushdown, this operator needs to be run when creating an action from nothing... */
+	if (!(scene->flag & SCE_NLA_EDIT_ON)) {
+		if (ED_operator_action_active(C)) {
+			SpaceAction *saction = (SpaceAction *)CTX_wm_space_data(C);
+			Object *ob = CTX_data_active_object(C);
+			
+			/* For now, actions are only for the active object, and on object and shapekey levels... */
+			if (saction->mode == SACTCONT_ACTION) {
+				/* XXX: This assumes that actions are assigned to the active object */
+				if (ob)
+					return true;
+			}
+			else if (saction->mode == SACTCONT_SHAPEKEY) {
+				Key *key = BKE_key_from_object(ob);
+				if (key)
+					return true;
+			}
+		}
+		else if (ED_operator_nla_active(C)) {
+			return true;
+		}
+	}
+	
+	/* something failed... */
+	return false;
+}
+
+static int action_new_exec(bContext *C, wmOperator *UNUSED(op))
 {
 	PointerRNA ptr, idptr;
 	PropertyRNA *prop;
-
+	
 	/* hook into UI */
-	uiIDContextProperty(C, &ptr, &prop);
+	UI_context_active_but_prop_get_templateID(C, &ptr, &prop);
 	
 	if (prop) {
 		bAction *action = NULL, *oldact = NULL;
+		AnimData *adt = NULL;
 		PointerRNA oldptr;
 		
-		/* create action - the way to do this depends on whether we've got an
-		 * existing one there already, in which case we make a copy of it
-		 * (which is useful for "versioning" actions within the same file)
-		 */
 		oldptr = RNA_property_pointer_get(&ptr, prop);
 		oldact = (bAction *)oldptr.id.data;
 		
-		if (oldact && GS(oldact->id.name) == ID_AC) {
-			/* make a copy of the existing action */
-			action = BKE_action_copy(oldact);
+		/* stash the old action to prevent it from being lost */
+		if (ptr.type == &RNA_AnimData) {
+			adt = ptr.data;
 		}
-		else {
-			Main *bmain = CTX_data_main(C);
-
-			/* just make a new (empty) action */
-			action = add_empty_action(bmain, "Action");
+		else if (ptr.type == &RNA_SpaceDopeSheetEditor) {
+			adt = actedit_animdata_from_context(C);
 		}
 		
-		/* when creating new ID blocks, use is already 1 (fake user), 
-		 * but RNA pointer use also increases user, so this compensates it 
+		/* Perform stashing operation - But only if there is an action */
+		if (adt && oldact) {
+			/* stash the action */
+			if (BKE_nla_action_stash(adt)) {
+				/* The stash operation will remove the user already
+				 * (and unlink the action from the AnimData action slot).
+				 * Hence, we must unset the ref to the action in the
+				 * action editor too (if this is where we're being called from)
+				 * first before setting the new action once it is created,
+				 * or else the user gets decremented twice!
+				 */
+				if (ptr.type == &RNA_SpaceDopeSheetEditor) {
+					SpaceAction *saction = (SpaceAction *)ptr.data;
+					saction->action = NULL;
+				}
+			}
+			else {
+				//printf("WARNING: Failed to stash %s. It may already exist in the NLA stack though\n", oldact->id.name);
+			}
+		}
+		
+		/* create action */
+		action = action_create_new(C, oldact);
+		
+		/* set this new action
+		 * NOTE: we can't use actedit_change_action, as this function is also called from the NLA
 		 */
-		action->id.us--;
-		
 		RNA_id_pointer_create(&action->id, &idptr);
 		RNA_property_pointer_set(&ptr, prop, idptr);
 		RNA_property_update(C, &ptr, prop);
 	}
 	
 	/* set notifier that keyframes have changed */
-	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_EDITED, NULL);
+	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_ADDED, NULL);
 	
 	return OPERATOR_FINISHED;
 }
@@ -135,9 +277,231 @@ void ACTION_OT_new(wmOperatorType *ot)
 	ot->description = "Create new action";
 	
 	/* api callbacks */
-	ot->exec = act_new_exec;
-	/* NOTE: this is used in the NLA too... */
-	//ot->poll = ED_operator_action_active;
+	ot->exec = action_new_exec;
+	ot->poll = action_new_poll;
+	
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+}
+
+/* ******************* Action Push-Down Operator ******************** */
+
+/* Criteria:
+ *  1) There must be an dopesheet/action editor, and it must be in a mode which uses actions 
+ *  2) There must be an action active
+ *  3) The associated AnimData block must not be in tweakmode
+ */
+static int action_pushdown_poll(bContext *C)
+{
+	if (ED_operator_action_active(C)) {
+		SpaceAction *saction = (SpaceAction *)CTX_wm_space_data(C);
+		Scene *scene = CTX_data_scene(C);
+		Object *ob = CTX_data_active_object(C);
+		
+		/* Check for actions and that tweakmode is off */
+		if ((saction->action) && !(scene->flag & SCE_NLA_EDIT_ON)) {
+			/* For now, actions are only for the active object, and on object and shapekey levels... */
+			if (saction->mode == SACTCONT_ACTION) {
+				return (ob->adt != NULL);
+			}
+			else if (saction->mode == SACTCONT_SHAPEKEY) {
+				Key *key = BKE_key_from_object(ob);
+				
+				return (key && key->adt);
+			}
+		}	
+	}
+	
+	/* something failed... */
+	return false;
+}
+
+static int action_pushdown_exec(bContext *C, wmOperator *op)
+{
+	SpaceAction *saction = (SpaceAction *)CTX_wm_space_data(C);
+	AnimData *adt = actedit_animdata_from_context(C);
+	
+	/* Do the deed... */
+	if (adt) {
+		/* Perform the pushdown operation
+		 * - This will deal with all the AnimData-side usercounts
+		 */
+		if (action_has_motion(adt->action) == 0) {
+			/* action may not be suitable... */
+			BKE_report(op->reports, RPT_WARNING, "Action must have at least one keyframe or F-Modifier");
+			return OPERATOR_CANCELLED;
+		}
+		else {
+			/* action can be safely added */
+			BKE_nla_action_pushdown(adt);
+		}
+		
+		/* Stop displaying this action in this editor
+		 * NOTE: The editor itself doesn't set a user...
+		 */
+		saction->action = NULL;
+	}
+	
+	/* Send notifiers that stuff has changed */
+	WM_event_add_notifier(C, NC_ANIMATION | ND_NLA_ACTCHANGE, NULL);
+	return OPERATOR_FINISHED;
+}
+
+void ACTION_OT_push_down(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Push Down Action";
+	ot->idname = "ACTION_OT_push_down";
+	ot->description = "Push action down on to the NLA stack as a new strip";
+	
+	/* callbacks */
+	ot->exec = action_pushdown_exec;
+	ot->poll = action_pushdown_poll;
+	
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+}
+
+/* ******************* Action Stash Operator ******************** */
+
+static int action_stash_exec(bContext *C, wmOperator *op)
+{
+	SpaceAction *saction = (SpaceAction *)CTX_wm_space_data(C);
+	AnimData *adt = actedit_animdata_from_context(C);
+	
+	/* Perform stashing operation */
+	if (adt) {
+		/* don't do anything if this action is empty... */
+		if (action_has_motion(adt->action) == 0) {
+			/* action may not be suitable... */
+			BKE_report(op->reports, RPT_WARNING, "Action must have at least one keyframe or F-Modifier");
+			return OPERATOR_CANCELLED;
+		}
+		else {
+			/* stash the action */
+			if (BKE_nla_action_stash(adt)) {
+				/* The stash operation will remove the user already,
+				 * so the flushing step later shouldn't double up
+				 * the usercount fixes. Hence, we must unset this ref
+				 * first before setting the new action.
+				 */
+				saction->action = NULL;
+			}
+			else {
+				/* action has already been added - simply warn about this, and clear */
+				BKE_report(op->reports, RPT_ERROR, "Action has already been stashed");
+			}
+			
+			/* clear action refs from editor, and then also the backing data (not necessary) */
+			actedit_change_action(C, NULL);
+		}
+	}
+	
+	/* Send notifiers that stuff has changed */
+	WM_event_add_notifier(C, NC_ANIMATION | ND_NLA_ACTCHANGE, NULL);
+	return OPERATOR_FINISHED;
+}
+
+void ACTION_OT_stash(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Stash Action";
+	ot->idname = "ACTION_OT_stash";
+	ot->description = "Store this action in the NLA stack as a non-contributing strip for later use";
+	
+	/* callbacks */
+	ot->exec = action_stash_exec;
+	ot->poll = action_pushdown_poll;
+	
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	
+	/* properties */
+	ot->prop = RNA_def_boolean(ot->srna, "create_new", true, "Create New Action", 
+	                           "Create a new action once the existing one has been safely stored");
+}
+
+/* ----------------- */
+
+/* Criteria:
+ *  1) There must be an dopesheet/action editor, and it must be in a mode which uses actions 
+ *  2) The associated AnimData block must not be in tweakmode
+ */
+static int action_stash_create_poll(bContext *C)
+{
+	if (ED_operator_action_active(C)) {
+		SpaceAction *saction = (SpaceAction *)CTX_wm_space_data(C);
+		Scene *scene = CTX_data_scene(C);
+		
+		/* Check tweakmode is off (as you don't want to be tampering with the action in that case) */
+		/* NOTE: unlike for pushdown, this operator needs to be run when creating an action from nothing... */
+		if (!(scene->flag & SCE_NLA_EDIT_ON)) {
+			/* For now, actions are only for the active object, and on object and shapekey levels... */
+			return ELEM(saction->mode, SACTCONT_ACTION, SACTCONT_SHAPEKEY);
+		}
+	}
+	
+	/* something failed... */
+	return false;
+}
+
+static int action_stash_create_exec(bContext *C, wmOperator *op)
+{
+	SpaceAction *saction = (SpaceAction *)CTX_wm_space_data(C);
+	AnimData *adt = actedit_animdata_from_context(C);
+	
+	/* Check for no action... */
+	if (saction->action == NULL) {
+		/* just create a new action */
+		bAction *action = action_create_new(C, NULL);
+		actedit_change_action(C, action);
+	}
+	else if (adt) {
+		/* Perform stashing operation */
+		if (action_has_motion(adt->action) == 0) {
+			/* don't do anything if this action is empty... */
+			BKE_report(op->reports, RPT_WARNING, "Action must have at least one keyframe or F-Modifier");
+			return OPERATOR_CANCELLED;
+		}
+		else {
+			/* stash the action */
+			if (BKE_nla_action_stash(adt)) {
+				bAction *new_action = NULL;
+				
+				/* create new action not based on the old one (since the "new" operator already does that) */
+				new_action = action_create_new(C, NULL);
+				
+				/* The stash operation will remove the user already,
+				 * so the flushing step later shouldn't double up
+				 * the usercount fixes. Hence, we must unset this ref
+				 * first before setting the new action.
+				 */
+				saction->action = NULL;
+				actedit_change_action(C, new_action);
+			}
+			else {
+				/* action has already been added - simply warn about this, and clear */
+				BKE_report(op->reports, RPT_ERROR, "Action has already been stashed");
+				actedit_change_action(C, NULL);
+			}
+		}
+	}
+	
+	/* Send notifiers that stuff has changed */
+	WM_event_add_notifier(C, NC_ANIMATION | ND_NLA_ACTCHANGE, NULL);
+	return OPERATOR_FINISHED;
+}
+
+void ACTION_OT_stash_and_create(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Stash Action";
+	ot->idname = "ACTION_OT_stash_and_create";
+	ot->description = "Store this action in the NLA stack as a non-contributing strip for later use, and create a new action";
+	
+	/* callbacks */
+	ot->exec = action_stash_create_exec;
+	ot->poll = action_stash_create_poll;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
@@ -285,7 +649,7 @@ static bool get_keyframe_extents(bAnimContext *ac, float *min, float *max, const
 				float tmin, tmax;
 
 				/* get range and apply necessary scaling before processing */
-				if (calc_fcurve_range(fcu, &tmin, &tmax, onlySel, TRUE)) {
+				if (calc_fcurve_range(fcu, &tmin, &tmax, onlySel, true)) {
 
 					if (adt) {
 						tmin = BKE_nla_tweakedit_remap(adt, tmin, NLATIME_CONVERT_MAP);
@@ -301,7 +665,7 @@ static bool get_keyframe_extents(bAnimContext *ac, float *min, float *max, const
 		}
 		
 		/* free memory */
-		BLI_freelistN(&anim_data);
+		ANIM_animdata_freelist(&anim_data);
 	}
 	else {
 		/* set default range */
@@ -335,7 +699,7 @@ static int actkeys_previewrange_exec(bContext *C, wmOperator *UNUSED(op))
 		scene = ac.scene;
 	
 	/* set the range directly */
-	get_keyframe_extents(&ac, &min, &max, FALSE);
+	get_keyframe_extents(&ac, &min, &max, false);
 	scene->r.flag |= SCER_PRV_RANGE;
 	scene->r.psfra = iroundf(min);
 	scene->r.pefra = iroundf(max);
@@ -364,11 +728,66 @@ void ACTION_OT_previewrange_set(wmOperatorType *ot)
 
 /* ****************** View-All Operator ****************** */
 
-static int actkeys_viewall(bContext *C, const bool only_sel, const bool only_xaxis)
+/**
+ * Find the extents of the active channel
+ *
+ * \param[out] min Bottom y-extent of channel
+ * \param[out] max Top y-extent of channel
+ * \return Success of finding a selected channel
+ */
+static bool actkeys_channels_get_selected_extents(bAnimContext *ac, float *min, float *max)
+{
+	ListBase anim_data = {NULL, NULL};
+	bAnimListElem *ale;
+	int filter;
+	
+	short found = 0; /* NOTE: not bool, since we want prioritise individual channels over expanders */
+	float y;
+	
+	/* get all items - we need to do it this way */
+	filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_LIST_VISIBLE | ANIMFILTER_LIST_CHANNELS);
+	ANIM_animdata_filter(ac, &anim_data, filter, ac->data, ac->datatype);
+	
+	/* loop through all channels, finding the first one that's selected */
+	y = (float)ACHANNEL_FIRST;
+	
+	for (ale = anim_data.first; ale; ale = ale->next) {
+		bAnimChannelType *acf = ANIM_channel_get_typeinfo(ale);
+		
+		/* must be selected... */
+		if (acf && acf->has_setting(ac, ale, ACHANNEL_SETTING_SELECT) && 
+		    ANIM_channel_setting_get(ac, ale, ACHANNEL_SETTING_SELECT))
+		{
+			/* update best estimate */
+			*min = (float)(y - ACHANNEL_HEIGHT_HALF);
+			*max = (float)(y + ACHANNEL_HEIGHT_HALF);
+			
+			/* is this high enough priority yet? */
+			found = acf->channel_role;
+			
+			/* only stop our search when we've found an actual channel
+			 * - datablock expanders get less priority so that we don't abort prematurely
+			 */
+			if (found == ACHANNEL_ROLE_CHANNEL) {
+				break;
+			}
+		}
+		
+		/* adjust y-position for next one */
+		y -= ACHANNEL_STEP;
+	}
+	
+	/* free all temp data */
+	ANIM_animdata_freelist(&anim_data);
+	
+	return (found != 0);
+}
+
+static int actkeys_viewall(bContext *C, const bool only_sel)
 {
 	bAnimContext ac;
 	View2D *v2d;
-	float extra;
+	float extra, min, max;
 	bool found;
 	
 	/* get editor data */
@@ -377,19 +796,37 @@ static int actkeys_viewall(bContext *C, const bool only_sel, const bool only_xax
 	v2d = &ac.ar->v2d;
 	
 	/* set the horizontal range, with an extra offset so that the extreme keys will be in view */
-	found = get_keyframe_extents(&ac, &v2d->cur.xmin, &v2d->cur.xmax, only_sel);
+	found = get_keyframe_extents(&ac, &min, &max, only_sel);
 
 	if (only_sel && (found == false))
 		return OPERATOR_CANCELLED;
-	
+
+	v2d->cur.xmin = min;
+	v2d->cur.xmax = max;
+
 	extra = 0.1f * BLI_rctf_size_x(&v2d->cur);
 	v2d->cur.xmin -= extra;
 	v2d->cur.xmax += extra;
 	
 	/* set vertical range */
-	if (only_xaxis == false) {
+	if (only_sel == false) {
+		/* view all -> the summary channel is usually the shows everything, and resides right at the top... */
 		v2d->cur.ymax = 0.0f;
 		v2d->cur.ymin = (float)-BLI_rcti_size_y(&v2d->mask);
+	}
+	else {
+		/* locate first selected channel (or the active one), and frame those */
+		float ymin = v2d->cur.ymin;
+		float ymax = v2d->cur.ymax;
+		
+		if (actkeys_channels_get_selected_extents(&ac, &ymin, &ymax)) {
+			/* recenter the view so that this range is in the middle */
+			float ymid = (ymax - ymin) / 2.0f + ymin;
+			float x_center;
+			
+			UI_view2d_center_get(v2d, &x_center, NULL);
+			UI_view2d_center_set(v2d, x_center, ymid);
+		}
 	}
 	
 	/* do View2D syncing */
@@ -406,13 +843,13 @@ static int actkeys_viewall(bContext *C, const bool only_sel, const bool only_xax
 static int actkeys_viewall_exec(bContext *C, wmOperator *UNUSED(op))
 {	
 	/* whole range */
-	return actkeys_viewall(C, false, false);
+	return actkeys_viewall(C, false);
 }
 
 static int actkeys_viewsel_exec(bContext *C, wmOperator *UNUSED(op))
 {
 	/* only selected */
-	return actkeys_viewall(C, true, true);
+	return actkeys_viewall(C, true);
 }
  
 void ACTION_OT_view_all(wmOperatorType *ot)
@@ -467,14 +904,14 @@ static short copy_action_keys(bAnimContext *ac)
 	ok = copy_animedit_keys(ac, &anim_data);
 	
 	/* clean up */
-	BLI_freelistN(&anim_data);
+	ANIM_animdata_freelist(&anim_data);
 
 	return ok;
 }
 
 
 static short paste_action_keys(bAnimContext *ac,
-                               const eKeyPasteOffset offset_mode, const eKeyMergeMode merge_mode)
+                               const eKeyPasteOffset offset_mode, const eKeyMergeMode merge_mode, bool flip)
 {	
 	ListBase anim_data = {NULL, NULL};
 	int filter, ok = 0;
@@ -491,10 +928,10 @@ static short paste_action_keys(bAnimContext *ac,
 		ANIM_animdata_filter(ac, &anim_data, filter, ac->data, ac->datatype);
 	
 	/* paste keyframes */
-	ok = paste_animedit_keys(ac, &anim_data, offset_mode, merge_mode);
-	
+	ok = paste_animedit_keys(ac, &anim_data, offset_mode, merge_mode, flip);
+
 	/* clean up */
-	BLI_freelistN(&anim_data);
+	ANIM_animdata_freelist(&anim_data);
 
 	return ok;
 }
@@ -551,6 +988,7 @@ static int actkeys_paste_exec(bContext *C, wmOperator *op)
 
 	const eKeyPasteOffset offset_mode = RNA_enum_get(op->ptr, "offset");
 	const eKeyMergeMode merge_mode = RNA_enum_get(op->ptr, "merge");
+	const bool flipped = RNA_boolean_get(op->ptr, "flipped");
 	
 	/* get editor data */
 	if (ANIM_animdata_get_context(C, &ac) == 0)
@@ -567,14 +1005,11 @@ static int actkeys_paste_exec(bContext *C, wmOperator *op)
 	}
 	else {
 		/* non-zero return means an error occurred while trying to paste */
-		if (paste_action_keys(&ac, offset_mode, merge_mode)) {
+		if (paste_action_keys(&ac, offset_mode, merge_mode, flipped)) {
 			return OPERATOR_CANCELLED;
 		}
 	}
-	
-	/* validate keyframes after editing */
-	ANIM_editkeyframes_refresh(&ac);
-	
+
 	/* set notifier that keyframes have changed */
 	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_EDITED, NULL);
 	
@@ -583,6 +1018,7 @@ static int actkeys_paste_exec(bContext *C, wmOperator *op)
  
 void ACTION_OT_paste(wmOperatorType *ot)
 {
+	PropertyRNA *prop;
 	/* identifiers */
 	ot->name = "Paste Keyframes";
 	ot->idname = "ACTION_OT_paste";
@@ -599,6 +1035,8 @@ void ACTION_OT_paste(wmOperatorType *ot)
 	/* props */
 	RNA_def_enum(ot->srna, "offset", keyframe_paste_offset_items, KEYFRAME_PASTE_OFFSET_CFRA_START, "Offset", "Paste time offset of keys");
 	RNA_def_enum(ot->srna, "merge", keyframe_paste_merge_items, KEYFRAME_PASTE_MERGE_MIX, "Type", "Method of merging pasted keys and existing");
+	prop = RNA_def_boolean(ot->srna, "flipped", false, "Flipped", "Paste keyframes from mirrored bones if they exist");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 }
 
 /* ******************** Insert Keyframes Operator ************************* */
@@ -649,9 +1087,12 @@ static void insert_action_keys(bAnimContext *ac, short mode)
 			insert_keyframe(reports, ale->id, NULL, ((fcu->grp) ? (fcu->grp->name) : (NULL)), fcu->rna_path, fcu->array_index, cfra, flag);
 		else
 			insert_vert_fcurve(fcu, cfra, fcu->curval, 0);
+
+		ale->update |= ANIM_UPDATE_DEFAULT;
 	}
-	
-	BLI_freelistN(&anim_data);
+
+	ANIM_animdata_update(ac, &anim_data);
+	ANIM_animdata_freelist(&anim_data);
 }
 
 /* ------------------- */
@@ -672,12 +1113,9 @@ static int actkeys_insertkey_exec(bContext *C, wmOperator *op)
 	
 	/* insert keyframes */
 	insert_action_keys(&ac, mode);
-	
-	/* validate keyframes after editing */
-	ANIM_editkeyframes_refresh(&ac);
-	
+
 	/* set notifier that keyframes have changed */
-	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_EDITED, NULL);
+	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_ADDED, NULL);
 	
 	return OPERATOR_FINISHED;
 }
@@ -726,10 +1164,12 @@ static void duplicate_action_keys(bAnimContext *ac)
 			ED_masklayer_frames_duplicate((MaskLayer *)ale->data);
 		else
 			BLI_assert(0);
+
+		ale->update |= ANIM_UPDATE_DEFAULT;
 	}
-	
-	/* free filtered list */
-	BLI_freelistN(&anim_data);
+
+	ANIM_animdata_update(ac, &anim_data);
+	ANIM_animdata_freelist(&anim_data);
 }
 
 /* ------------------- */
@@ -744,13 +1184,9 @@ static int actkeys_duplicate_exec(bContext *C, wmOperator *UNUSED(op))
 		
 	/* duplicate keyframes */
 	duplicate_action_keys(&ac);
-	
-	/* validate keyframes after editing */
-	if (!ELEM(ac.datatype, ANIMCONT_GPENCIL, ANIMCONT_MASK))
-		ANIM_editkeyframes_refresh(&ac);
-	
+
 	/* set notifier that keyframes have changed */
-	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_EDITED, NULL);
+	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_ADDED, NULL);
 	
 	return OPERATOR_FINISHED;
 }
@@ -785,40 +1221,49 @@ static bool delete_action_keys(bAnimContext *ac)
 	ListBase anim_data = {NULL, NULL};
 	bAnimListElem *ale;
 	int filter;
-	bool changed = false;
-	
+	bool changed_final = false;
+
 	/* filter data */
 	if (ELEM(ac->datatype, ANIMCONT_GPENCIL, ANIMCONT_MASK))
 		filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_LIST_VISIBLE | ANIMFILTER_FOREDIT | ANIMFILTER_NODUPLIS);
 	else
 		filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_LIST_VISIBLE | ANIMFILTER_FOREDIT /*| ANIMFILTER_CURVESONLY*/ | ANIMFILTER_NODUPLIS);
 	ANIM_animdata_filter(ac, &anim_data, filter, ac->data, ac->datatype);
-	
+
 	/* loop through filtered data and delete selected keys */
 	for (ale = anim_data.first; ale; ale = ale->next) {
+		bool changed = false;
+
 		if (ale->type == ANIMTYPE_GPLAYER) {
-			changed |= ED_gplayer_frames_delete((bGPDlayer *)ale->data);
+			changed = ED_gplayer_frames_delete((bGPDlayer *)ale->data);
 		}
 		else if (ale->type == ANIMTYPE_MASKLAYER) {
-			changed |= ED_masklayer_frames_delete((MaskLayer *)ale->data);
+			changed = ED_masklayer_frames_delete((MaskLayer *)ale->data);
 		}
 		else {
 			FCurve *fcu = (FCurve *)ale->key_data;
 			AnimData *adt = ale->adt;
 			
 			/* delete selected keyframes only */
-			changed |= delete_fcurve_keys(fcu);
+			changed = delete_fcurve_keys(fcu);
 			
 			/* Only delete curve too if it won't be doing anything anymore */
-			if ((fcu->totvert == 0) && (list_has_suitable_fmodifier(&fcu->modifiers, 0, FMI_TYPE_GENERATE_CURVE) == 0))
+			if ((fcu->totvert == 0) && (list_has_suitable_fmodifier(&fcu->modifiers, 0, FMI_TYPE_GENERATE_CURVE) == 0)) {
 				ANIM_fcurve_delete_from_animdata(ac, adt, fcu);
+				ale->key_data = NULL;
+			}
+		}
+
+		if (changed) {
+			ale->update |= ANIM_UPDATE_DEFAULT;
+			changed_final = true;
 		}
 	}
-	
-	/* free filtered list */
-	BLI_freelistN(&anim_data);
 
-	return changed;
+	ANIM_animdata_update(ac, &anim_data);
+	ANIM_animdata_freelist(&anim_data);
+
+	return changed_final;
 }
 
 /* ------------------- */
@@ -835,12 +1280,8 @@ static int actkeys_delete_exec(bContext *C, wmOperator *UNUSED(op))
 	if (!delete_action_keys(&ac))
 		return OPERATOR_CANCELLED;
 	
-	/* validate keyframes after editing */
-	if (!ELEM(ac.datatype, ANIMCONT_GPENCIL, ANIMCONT_MASK))
-		ANIM_editkeyframes_refresh(&ac);
-	
 	/* set notifier that keyframes have changed */
-	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_EDITED, NULL);
+	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_REMOVED, NULL);
 	
 	return OPERATOR_FINISHED;
 }
@@ -874,11 +1315,14 @@ static void clean_action_keys(bAnimContext *ac, float thresh)
 	ANIM_animdata_filter(ac, &anim_data, filter, ac->data, ac->datatype);
 	
 	/* loop through filtered data and clean curves */
-	for (ale = anim_data.first; ale; ale = ale->next)
+	for (ale = anim_data.first; ale; ale = ale->next) {
 		clean_fcurve((FCurve *)ale->key_data, thresh);
-	
-	/* free temp data */
-	BLI_freelistN(&anim_data);
+
+		ale->update |= ANIM_UPDATE_DEFAULT;
+	}
+
+	ANIM_animdata_update(ac, &anim_data);
+	ANIM_animdata_freelist(&anim_data);
 }
 
 /* ------------------- */
@@ -891,17 +1335,17 @@ static int actkeys_clean_exec(bContext *C, wmOperator *op)
 	/* get editor data */
 	if (ANIM_animdata_get_context(C, &ac) == 0)
 		return OPERATOR_CANCELLED;
-	if (ELEM(ac.datatype, ANIMCONT_GPENCIL, ANIMCONT_MASK))
+		
+	if (ELEM(ac.datatype, ANIMCONT_GPENCIL, ANIMCONT_MASK)) {
+		BKE_report(op->reports, RPT_ERROR, "Not implemented");
 		return OPERATOR_PASS_THROUGH;
+	}
 		
 	/* get cleaning threshold */
 	thresh = RNA_float_get(op->ptr, "threshold");
 	
 	/* clean keyframes */
 	clean_action_keys(&ac, thresh);
-	
-	/* validate keyframes after editing */
-	ANIM_editkeyframes_refresh(&ac);
 	
 	/* set notifier that keyframes have changed */
 	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_EDITED, NULL);
@@ -942,30 +1386,33 @@ static void sample_action_keys(bAnimContext *ac)
 	ANIM_animdata_filter(ac, &anim_data, filter, ac->data, ac->datatype);
 	
 	/* loop through filtered data and add keys between selected keyframes on every frame  */
-	for (ale = anim_data.first; ale; ale = ale->next)
+	for (ale = anim_data.first; ale; ale = ale->next) {
 		sample_fcurve((FCurve *)ale->key_data);
-	
-	/* admin and redraws */
-	BLI_freelistN(&anim_data);
+
+		ale->update |= ANIM_UPDATE_DEPS;
+	}
+
+	ANIM_animdata_update(ac, &anim_data);
+	ANIM_animdata_freelist(&anim_data);
 }
 
 /* ------------------- */
 
-static int actkeys_sample_exec(bContext *C, wmOperator *UNUSED(op))
+static int actkeys_sample_exec(bContext *C, wmOperator *op)
 {
 	bAnimContext ac;
 	
 	/* get editor data */
 	if (ANIM_animdata_get_context(C, &ac) == 0)
 		return OPERATOR_CANCELLED;
-	if (ELEM(ac.datatype, ANIMCONT_GPENCIL, ANIMCONT_MASK))
+		
+	if (ELEM(ac.datatype, ANIMCONT_GPENCIL, ANIMCONT_MASK)) {
+		BKE_report(op->reports, RPT_ERROR, "Not implemented");
 		return OPERATOR_PASS_THROUGH;
+	}
 	
 	/* sample keyframes */
 	sample_action_keys(&ac);
-	
-	/* validate keyframes after editing */
-	ANIM_editkeyframes_refresh(&ac);
 	
 	/* set notifier that keyframes have changed */
 	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_EDITED, NULL);
@@ -1049,10 +1496,12 @@ static void setexpo_action_keys(bAnimContext *ac, short mode)
 				}
 			}
 		}
+
+		ale->update |= ANIM_UPDATE_DEFAULT;
 	}
-	
-	/* cleanup */
-	BLI_freelistN(&anim_data);
+
+	ANIM_animdata_update(ac, &anim_data);
+	ANIM_animdata_freelist(&anim_data);
 }
 
 /* ------------------- */
@@ -1065,17 +1514,17 @@ static int actkeys_expo_exec(bContext *C, wmOperator *op)
 	/* get editor data */
 	if (ANIM_animdata_get_context(C, &ac) == 0)
 		return OPERATOR_CANCELLED;
-	if (ELEM(ac.datatype, ANIMCONT_GPENCIL, ANIMCONT_MASK))
+		
+	if (ELEM(ac.datatype, ANIMCONT_GPENCIL, ANIMCONT_MASK)) {
+		BKE_report(op->reports, RPT_ERROR, "Not implemented");
 		return OPERATOR_PASS_THROUGH;
+	}
 		
 	/* get handle setting mode */
 	mode = RNA_enum_get(op->ptr, "type");
 	
 	/* set handle type */
 	setexpo_action_keys(&ac, mode);
-	
-	/* validate keyframes after editing */
-	ANIM_editkeyframes_refresh(&ac);
 	
 	/* set notifier that keyframe properties have changed */
 	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME_PROP, NULL);
@@ -1119,11 +1568,14 @@ static void setipo_action_keys(bAnimContext *ac, short mode)
 	/* loop through setting BezTriple interpolation
 	 * Note: we do not supply KeyframeEditData to the looper yet. Currently that's not necessary here...
 	 */
-	for (ale = anim_data.first; ale; ale = ale->next)
+	for (ale = anim_data.first; ale; ale = ale->next) {
 		ANIM_fcurve_keyframes_loop(NULL, ale->key_data, NULL, set_cb, calchandles_fcurve);
-	
-	/* cleanup */
-	BLI_freelistN(&anim_data);
+
+		ale->update |= ANIM_UPDATE_DEFAULT;
+	}
+
+	ANIM_animdata_update(ac, &anim_data);
+	ANIM_animdata_freelist(&anim_data);
 }
 
 /* ------------------- */
@@ -1136,17 +1588,17 @@ static int actkeys_ipo_exec(bContext *C, wmOperator *op)
 	/* get editor data */
 	if (ANIM_animdata_get_context(C, &ac) == 0)
 		return OPERATOR_CANCELLED;
-	if (ELEM(ac.datatype, ANIMCONT_GPENCIL, ANIMCONT_MASK))
+		
+	if (ELEM(ac.datatype, ANIMCONT_GPENCIL, ANIMCONT_MASK)) {
+		BKE_report(op->reports, RPT_ERROR, "Not implemented");
 		return OPERATOR_PASS_THROUGH;
+	}
 		
 	/* get handle setting mode */
 	mode = RNA_enum_get(op->ptr, "type");
 	
 	/* set handle type */
 	setipo_action_keys(&ac, mode);
-	
-	/* validate keyframes after editing */
-	ANIM_editkeyframes_refresh(&ac);
 	
 	/* set notifier that keyframe properties have changed */
 	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME_PROP, NULL);
@@ -1199,11 +1651,13 @@ static void sethandles_action_keys(bAnimContext *ac, short mode)
 		if (ANIM_fcurve_keyframes_loop(NULL, fcu, NULL, sel_cb, NULL)) {
 			/* change type of selected handles */
 			ANIM_fcurve_keyframes_loop(NULL, fcu, NULL, edit_cb, calchandles_fcurve);
+
+			ale->update |= ANIM_UPDATE_DEFAULT;
 		}
 	}
-	
-	/* cleanup */
-	BLI_freelistN(&anim_data);
+
+	ANIM_animdata_update(ac, &anim_data);
+	ANIM_animdata_freelist(&anim_data);
 }
 
 /* ------------------- */
@@ -1216,17 +1670,17 @@ static int actkeys_handletype_exec(bContext *C, wmOperator *op)
 	/* get editor data */
 	if (ANIM_animdata_get_context(C, &ac) == 0)
 		return OPERATOR_CANCELLED;
-	if (ELEM(ac.datatype, ANIMCONT_GPENCIL, ANIMCONT_MASK))
+		
+	if (ELEM(ac.datatype, ANIMCONT_GPENCIL, ANIMCONT_MASK)) {
+		BKE_report(op->reports, RPT_ERROR, "Not implemented");
 		return OPERATOR_PASS_THROUGH;
+	}
 		
 	/* get handle setting mode */
 	mode = RNA_enum_get(op->ptr, "type");
 	
 	/* set handle type */
 	sethandles_action_keys(&ac, mode);
-	
-	/* validate keyframes after editing */
-	ANIM_editkeyframes_refresh(&ac);
 	
 	/* set notifier that keyframe properties have changed */
 	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME_PROP, NULL);
@@ -1255,7 +1709,7 @@ void ACTION_OT_handle_type(wmOperatorType *ot)
 
 /* ******************** Set Keyframe-Type Operator *********************** */
 
-/* this function is responsible for setting interpolation mode for keyframes */
+/* this function is responsible for setting keyframe type for keyframes */
 static void setkeytype_action_keys(bAnimContext *ac, short mode) 
 {
 	ListBase anim_data = {NULL, NULL};
@@ -1270,11 +1724,37 @@ static void setkeytype_action_keys(bAnimContext *ac, short mode)
 	/* loop through setting BezTriple interpolation
 	 * Note: we do not supply KeyframeEditData to the looper yet. Currently that's not necessary here...
 	 */
-	for (ale = anim_data.first; ale; ale = ale->next)
+	for (ale = anim_data.first; ale; ale = ale->next) {
 		ANIM_fcurve_keyframes_loop(NULL, ale->key_data, NULL, set_cb, NULL);
+
+		ale->update |= ANIM_UPDATE_DEPS | ANIM_UPDATE_HANDLES;
+	}
+
+	ANIM_animdata_update(ac, &anim_data);
+	ANIM_animdata_freelist(&anim_data);
+}
+
+/* this function is responsible for setting the keyframe type for Grease Pencil frames */
+static void setkeytype_gpencil_keys(bAnimContext *ac, short mode)
+{
+	ListBase anim_data = {NULL, NULL};
+	bAnimListElem *ale;
+	int filter;
 	
-	/* cleanup */
-	BLI_freelistN(&anim_data);
+	/* filter data */
+	filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_LIST_VISIBLE | ANIMFILTER_FOREDIT | ANIMFILTER_NODUPLIS);
+	ANIM_animdata_filter(ac, &anim_data, filter, ac->data, ac->datatype);
+	
+	/* loop through each layer */
+	for (ale = anim_data.first; ale; ale = ale->next) {
+		if (ale->type == ANIMTYPE_GPLAYER) {
+			ED_gplayer_frames_keytype_set(ale->data, mode);
+			ale->update |= ANIM_UPDATE_DEPS;
+		}
+	}
+
+	ANIM_animdata_update(ac, &anim_data);
+	ANIM_animdata_freelist(&anim_data);
 }
 
 /* ------------------- */
@@ -1287,17 +1767,22 @@ static int actkeys_keytype_exec(bContext *C, wmOperator *op)
 	/* get editor data */
 	if (ANIM_animdata_get_context(C, &ac) == 0)
 		return OPERATOR_CANCELLED;
-	if (ELEM(ac.datatype, ANIMCONT_GPENCIL, ANIMCONT_MASK))
+		
+	if (ac.datatype == ANIMCONT_MASK) {
+		BKE_report(op->reports, RPT_ERROR, "Not implemented for Masks");
 		return OPERATOR_PASS_THROUGH;
+	}
 		
 	/* get handle setting mode */
 	mode = RNA_enum_get(op->ptr, "type");
 	
 	/* set handle type */
-	setkeytype_action_keys(&ac, mode);
-	
-	/* validate keyframes after editing */
-	ANIM_editkeyframes_refresh(&ac);
+	if (ac.datatype == ANIMCONT_GPENCIL) {
+		setkeytype_gpencil_keys(&ac, mode);
+	}
+	else {
+		setkeytype_action_keys(&ac, mode);
+	}
 	
 	/* set notifier that keyframe properties have changed */
 	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME_PROP, NULL);
@@ -1367,7 +1852,7 @@ static int actkeys_framejump_exec(bContext *C, wmOperator *UNUSED(op))
 			ANIM_fcurve_keyframes_loop(&ked, ale->key_data, NULL, bezt_calc_average, NULL);
 	}
 	
-	BLI_freelistN(&anim_data);
+	ANIM_animdata_freelist(&anim_data);
 	
 	/* set the new current frame value, based on the average time */
 	if (ked.i1) {
@@ -1456,9 +1941,12 @@ static void snap_action_keys(bAnimContext *ac, short mode)
 		else {
 			ANIM_fcurve_keyframes_loop(&ked, ale->key_data, NULL, edit_cb, calchandles_fcurve);
 		}
+
+		ale->update |= ANIM_UPDATE_DEFAULT;
 	}
-	
-	BLI_freelistN(&anim_data);
+
+	ANIM_animdata_update(ac, &anim_data);
+	ANIM_animdata_freelist(&anim_data);
 }
 
 /* ------------------- */
@@ -1477,10 +1965,6 @@ static int actkeys_snap_exec(bContext *C, wmOperator *op)
 	
 	/* snap keyframes */
 	snap_action_keys(&ac, mode);
-	
-	/* validate keyframes after editing */
-	if (!ELEM(ac.datatype, ANIMCONT_GPENCIL, ANIMCONT_MASK))
-		ANIM_editkeyframes_refresh(&ac);
 	
 	/* set notifier that keyframes have changed */
 	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_EDITED, NULL);
@@ -1566,9 +2050,12 @@ static void mirror_action_keys(bAnimContext *ac, short mode)
 		//	snap_gplayer_frames(ale->data, mode);
 		else 
 			ANIM_fcurve_keyframes_loop(&ked, ale->key_data, NULL, edit_cb, calchandles_fcurve);
+
+		ale->update |= ANIM_UPDATE_DEFAULT;
 	}
-	
-	BLI_freelistN(&anim_data);
+
+	ANIM_animdata_update(ac, &anim_data);
+	ANIM_animdata_freelist(&anim_data);
 }
 
 /* ------------------- */
@@ -1591,9 +2078,6 @@ static int actkeys_mirror_exec(bContext *C, wmOperator *op)
 	
 	/* mirror keyframes */
 	mirror_action_keys(&ac, mode);
-	
-	/* validate keyframes after editing */
-	ANIM_editkeyframes_refresh(&ac);
 	
 	/* set notifier that keyframes have changed */
 	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_EDITED, NULL);

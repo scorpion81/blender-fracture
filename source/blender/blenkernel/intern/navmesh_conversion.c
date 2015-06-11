@@ -123,7 +123,7 @@ int buildRawVertIndicesData(DerivedMesh *dm, int *nverts_r, float **verts_r,
 		printf("Converting navmesh: Error! Too many vertices. Max number of vertices %d\n", 0xffff);
 		return 0;
 	}
-	verts = MEM_callocN(sizeof(float) * 3 * nverts, "buildRawVertIndicesData verts");
+	verts = MEM_mallocN(sizeof(float[3]) * nverts, "buildRawVertIndicesData verts");
 	dm->getVertCos(dm, (float(*)[3])verts);
 
 	/* flip coordinates */
@@ -305,7 +305,7 @@ struct SortContext {
 	const int *trisToFacesMap;
 };
 
-static int compareByData(void *ctx, const void *a, const void *b)
+static int compareByData(const void *a, const void *b, void *ctx)
 {
 	return (((struct SortContext *)ctx)->recastData[((struct SortContext *)ctx)->trisToFacesMap[*(int *)a]] -
 	        ((struct SortContext *)ctx)->recastData[((struct SortContext *)ctx)->trisToFacesMap[*(int *)b]]);
@@ -341,7 +341,7 @@ int buildNavMeshData(const int nverts, const float *verts,
 		trisMapping[i] = i;
 	context.recastData = recastData;
 	context.trisToFacesMap = trisToFacesMap;
-	BLI_qsort_r(trisMapping, ntris, sizeof(int), &context, compareByData);
+	BLI_qsort_r(trisMapping, ntris, sizeof(int), compareByData, &context);
 
 	/* search first valid triangle - triangle of convex polygon */
 	validTriStart = -1;
@@ -400,7 +400,7 @@ int buildNavMeshData(const int nverts, const float *verts,
 		if (curpolyidx != prevpolyidx) {
 			if (curpolyidx != prevpolyidx + 1) {
 				printf("Converting navmesh: Error! Wrong order of detailed mesh faces\n");
-				return 0;
+				goto fail;
 			}
 			dmesh = dmesh == NULL ? dmeshes : dmesh + 4;
 			dmesh[2] = (unsigned short)i;  /* tbase */
@@ -427,6 +427,12 @@ int buildNavMeshData(const int nverts, const float *verts,
 	*dtrisToTrisMap_r = dtrisToTrisMap;
 
 	return 1;
+
+fail:
+	MEM_freeN(dmeshes);
+	MEM_freeN(dtrisToPolysMap);
+	MEM_freeN(dtrisToTrisMap);
+	return 0;
 }
 
 

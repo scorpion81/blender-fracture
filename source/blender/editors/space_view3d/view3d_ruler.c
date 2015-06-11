@@ -70,7 +70,7 @@
  * \param r_co  hit location.
  * \param r_no  hit normal (optional).
  * \param co_ss  Screenspace coordinate.
- * \param use_depth  Snap to the closest element, use when using more then one snap type.
+ * \param use_depth  Snap to the closest element, use when using more than one snap type.
  * \param use_obedit  Use editmode cage.
  * \param use_vert  Snap to verts.
  * \param use_edge  Snap to edges.
@@ -122,12 +122,10 @@ static bool ED_view3d_snap_ray(bContext *C, float r_co[3],
 	bool ret;
 
 	Scene *scene = CTX_data_scene(C);
-	View3D *v3d = CTX_wm_view3d(C);
-	ARegion *ar = CTX_wm_region(C);
 	struct Object *obedit = CTX_data_edit_object(C);
 
 	/* try snap edge, then face if it fails */
-	ret = snapObjectsRayEx(scene, NULL, v3d, ar, obedit, SCE_SNAP_MODE_FACE,
+	ret = snapObjectsRayEx(scene, NULL, NULL, NULL, obedit, SCE_SNAP_MODE_FACE,
 	                       NULL, NULL,
 	                       ray_start, ray_normal, &ray_dist,
 	                       NULL, &dist_px, r_co, r_no_dummy, SNAP_ALL);
@@ -189,7 +187,6 @@ typedef struct RulerInfo {
 
 	/* wm state */
 	wmWindow *win;
-	ScrArea *sa;
 	ARegion *ar;
 	void *draw_handle_pixel;
 } RulerInfo;
@@ -222,7 +219,7 @@ static void ruler_item_active_set(RulerInfo *ruler_info, RulerItem *ruler_item)
 static void ruler_item_as_string(RulerItem *ruler_item, UnitSettings *unit,
                                  char *numstr, size_t numstr_size, int prec)
 {
-	const int do_split = unit->flag & USER_UNIT_OPT_SPLIT;
+	const bool do_split = (unit->flag & USER_UNIT_OPT_SPLIT) != 0;
 
 	if (ruler_item->flag & RULERITEM_USE_ANGLE) {
 		const float ruler_angle = angle_v3v3v3(ruler_item->co[0],
@@ -282,9 +279,11 @@ static bool view3d_ruler_pick(RulerInfo *ruler_info, const float mval[2],
 				ruler_item_best = ruler_item;
 
 				{
-					float dist_points[3] = {len_squared_v2v2(co_ss[0], mval),
-					                        len_squared_v2v2(co_ss[1], mval),
-					                        len_squared_v2v2(co_ss[2], mval)};
+					const float dist_points[3] = {
+					    len_squared_v2v2(co_ss[0], mval),
+					    len_squared_v2v2(co_ss[1], mval),
+					    len_squared_v2v2(co_ss[2], mval),
+					};
 					if (min_fff(UNPACK3(dist_points)) < RULER_PICK_DIST_SQ) {
 						co_index_best = min_axis_v3(dist_points);
 					}
@@ -301,8 +300,10 @@ static bool view3d_ruler_pick(RulerInfo *ruler_info, const float mval[2],
 				ruler_item_best = ruler_item;
 
 				{
-					float dist_points[2] = {len_squared_v2v2(co_ss[0], mval),
-					                        len_squared_v2v2(co_ss[2], mval)};
+					const float dist_points[2] = {
+					    len_squared_v2v2(co_ss[0], mval),
+					    len_squared_v2v2(co_ss[2], mval),
+					};
 					if (min_ff(UNPACK2(dist_points)) < RULER_PICK_DIST_SQ) {
 						co_index_best = (dist_points[0] < dist_points[1]) ? 0 : 2;
 					}
@@ -548,10 +549,11 @@ static void ruler_info_draw_pixel(const struct bContext *C, ARegion *ar, void *a
 
 				/* draw text (bg) */
 				glColor4ubv(color_back);
-				uiSetRoundBox(UI_CNR_ALL);
-				uiRoundBox(pos[0] - bg_margin,                  pos[1] - bg_margin,
-				           pos[0] + bg_margin + numstr_size[0], pos[1] + bg_margin + numstr_size[1],
-				           bg_radius);
+				UI_draw_roundbox_corner_set(UI_CNR_ALL);
+				UI_draw_roundbox(
+				        pos[0] - bg_margin,                  pos[1] - bg_margin,
+				        pos[0] + bg_margin + numstr_size[0], pos[1] + bg_margin + numstr_size[1],
+				        bg_radius);
 				/* draw text */
 				glColor3ubv(color_text);
 				BLF_position(blf_mono_font, pos[0], pos[1], 0.0f);
@@ -637,8 +639,8 @@ static void ruler_info_draw_pixel(const struct bContext *C, ARegion *ar, void *a
 
 				/* draw text (bg) */
 				glColor4ubv(color_back);
-				uiSetRoundBox(UI_CNR_ALL);
-				uiRoundBox(pos[0] - bg_margin,                  pos[1] - bg_margin,
+				UI_draw_roundbox_corner_set(UI_CNR_ALL);
+				UI_draw_roundbox(pos[0] - bg_margin,                  pos[1] - bg_margin,
 				           pos[0] + bg_margin + numstr_size[0], pos[1] + bg_margin + numstr_size[1],
 				           bg_radius);
 				/* draw text */
@@ -796,7 +798,6 @@ static int view3d_ruler_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSE
 	op->customdata = ruler_info;
 
 	ruler_info->win = win;
-	ruler_info->sa = sa;
 	ruler_info->ar = ar;
 	ruler_info->draw_handle_pixel = ED_region_draw_cb_activate(ar->type, ruler_info_draw_pixel,
 	                                                           ruler_info, REGION_DRAW_POST_PIXEL);
@@ -823,11 +824,11 @@ static int view3d_ruler_modal(bContext *C, wmOperator *op, const wmEvent *event)
 	bool do_draw = false;
 	int exit_code = OPERATOR_RUNNING_MODAL;
 	RulerInfo *ruler_info = op->customdata;
-	ScrArea *sa = ruler_info->sa;
+	ScrArea *sa = CTX_wm_area(C);
 	ARegion *ar = ruler_info->ar;
 	RegionView3D *rv3d = ar->regiondata;
 
-	/* its possible to change  spaces while running the operator [#34894] */
+	/* its possible to change spaces while running the operator [#34894] */
 	if (UNLIKELY(ar != CTX_wm_region(C))) {
 		exit_code = OPERATOR_FINISHED;
 		goto exit;
@@ -857,7 +858,7 @@ static int view3d_ruler_modal(bContext *C, wmOperator *op, const wmEvent *event)
 
 					if (event->ctrl ||
 					    /* weak - but user friendly */
-					    (ruler_info->items.first == NULL))
+					    BLI_listbase_is_empty(&ruler_info->items))
 					{
 						View3D *v3d = CTX_wm_view3d(C);
 						const bool use_depth = (v3d->drawtype >= OB_SOLID);

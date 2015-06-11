@@ -401,6 +401,12 @@ static void rna_EditBone_matrix_get(PointerRNA *ptr, float *values)
 	ED_armature_ebone_to_mat4(ebone, (float(*)[4])values);
 }
 
+static void rna_EditBone_matrix_set(PointerRNA *ptr, const float *values)
+{
+	EditBone *ebone = (EditBone *)(ptr->data);
+	ED_armature_ebone_from_mat4(ebone, (float(*)[4])values);
+}
+
 static void rna_Armature_editbone_transform_update(Main *bmain, Scene *scene, PointerRNA *ptr)
 {
 	bArmature *arm = (bArmature *)ptr->id.data;
@@ -441,7 +447,7 @@ static void rna_Armature_editbone_transform_update(Main *bmain, Scene *scene, Po
 
 static void rna_Armature_bones_next(CollectionPropertyIterator *iter)
 {
-	ListBaseIterator *internal = iter->internal;
+	ListBaseIterator *internal = &iter->internal.listbase;
 	Bone *bone = (Bone *)internal->link;
 
 	if (bone->childbase.first)
@@ -469,7 +475,7 @@ static int rna_Armature_is_editmode_get(PointerRNA *ptr)
 	return (arm->edbo != NULL);
 }
 
-void rna_Armature_transform(struct bArmature *arm, float *mat)
+static void rna_Armature_transform(struct bArmature *arm, float *mat)
 {
 	ED_armature_transform(arm, (float (*)[4])mat);
 }
@@ -795,11 +801,12 @@ static void rna_def_edit_bone(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "matrix", PROP_FLOAT, PROP_MATRIX);
 	/*RNA_def_property_float_sdna(prop, NULL, "");  *//* doesnt access any real data */
 	RNA_def_property_multi_array(prop, 2, rna_matrix_dimsize_4x4);
-	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+	//RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 	RNA_def_property_flag(prop, PROP_THICK_WRAP); /* no reference to original data */
-	RNA_def_property_ui_text(prop, "Editbone Matrix", "Read-only matrix calculated from the roll (armature space)");
-	/* TODO - this could be made writable also */
-	RNA_def_property_float_funcs(prop, "rna_EditBone_matrix_get", NULL, NULL);
+	RNA_def_property_ui_text(prop, "Editbone Matrix",
+	                         "Matrix combining loc/rot of the bone (head position, direction and roll), "
+	                         "in armature space (WARNING: does not include/support bone's length/size)");
+	RNA_def_property_float_funcs(prop, "rna_EditBone_matrix_get", "rna_EditBone_matrix_set", NULL);
 
 	RNA_api_armature_edit_bone(srna);
 

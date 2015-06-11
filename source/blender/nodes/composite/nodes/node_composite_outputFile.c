@@ -40,9 +40,6 @@
 
 #include "node_composite_util.h"
 
-#include "IMB_imbuf.h"
-#include "IMB_imbuf_types.h"
-
 #include "intern/openexr/openexr_multi.h"
 
 
@@ -129,7 +126,7 @@ bNodeSocket *ntreeCompositOutputFileAddSocket(bNodeTree *ntree, bNode *node, con
 	else
 		BKE_imformat_defaults(&sockdata->format);
 	/* use node data format by default */
-	sockdata->use_node_format = TRUE;
+	sockdata->use_node_format = true;
 	
 	nimf->active_input = BLI_findindex(&node->inputs, sock);
 	
@@ -140,7 +137,7 @@ int ntreeCompositOutputFileRemoveActiveSocket(bNodeTree *ntree, bNode *node)
 {
 	NodeImageMultiFile *nimf = node->storage;
 	bNodeSocket *sock = BLI_findlink(&node->inputs, nimf->active_input);
-	int totinputs = BLI_countlist(&node->inputs);
+	int totinputs = BLI_listbase_count(&node->inputs);
 	
 	if (!sock)
 		return 0;
@@ -178,8 +175,6 @@ static void init_output_file(const bContext *C, PointerRNA *ptr)
 	NodeImageMultiFile *nimf = MEM_callocN(sizeof(NodeImageMultiFile), "node image multi file");
 	ImageFormatData *format = NULL;
 	node->storage = nimf;
-	
-	node->id = &scene->id;
 	
 	if (scene) {
 		RenderData *rd = &scene->r;

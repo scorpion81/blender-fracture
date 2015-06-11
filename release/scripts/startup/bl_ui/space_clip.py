@@ -21,6 +21,11 @@
 import bpy
 from bpy.types import Panel, Header, Menu, UIList
 from bpy.app.translations import pgettext_iface as iface_
+from bl_ui.properties_grease_pencil_common import (
+        GreasePencilDrawingToolsPanel,
+        GreasePencilStrokeEditPanel,
+        GreasePencilDataPanel
+        )
 
 
 class CLIP_UL_tracking_objects(UIList):
@@ -63,7 +68,7 @@ class CLIP_HT_header(Header):
             if sc.view == 'CLIP':
                 layout.prop(sc, "mode", text="")
                 layout.prop(sc, "view", text="", expand=True)
-                layout.prop(sc, "pivot_point", icon_only=True)
+                layout.prop(sc, "pivot_point", text="", icon_only=True)
 
                 r = active_object.reconstruction
 
@@ -122,26 +127,27 @@ class CLIP_HT_header(Header):
         row = layout.row()
         row.template_ID(sc, "clip", open="clip.open")
 
-        layout.prop(sc, "mode", text="")
+        if clip:
+            layout.prop(sc, "mode", text="")
 
-        row = layout.row()
-        row.template_ID(sc, "mask", new="mask.new")
+            row = layout.row()
+            row.template_ID(sc, "mask", new="mask.new")
 
-        layout.prop(sc, "pivot_point", icon_only=True)
+            layout.prop(sc, "pivot_point", text="", icon_only=True)
 
-        row = layout.row(align=True)
-        row.prop(toolsettings, "use_proportional_edit_mask",
-                 icon_only=True)
-        if toolsettings.use_proportional_edit_mask:
-            row.prop(toolsettings, "proportional_edit_falloff",
-                     icon_only=True)
+            row = layout.row(align=True)
+            row.prop(toolsettings, "use_proportional_edit_mask",
+                     text="", icon_only=True)
+            if toolsettings.use_proportional_edit_mask:
+                row.prop(toolsettings, "proportional_edit_falloff",
+                         text="", icon_only=True)
 
     def draw(self, context):
         layout = self.layout
 
         sc = context.space_data
 
-        if sc.mode in {'TRACKING', 'RECONSTRUCTION', 'DISTORTION'}:
+        if sc.mode in {'TRACKING'}:
             self._draw_tracking(context)
         else:
             self._draw_masking(context)
@@ -223,87 +229,131 @@ class CLIP_PT_reconstruction_panel:
         sc = context.space_data
         clip = sc.clip
 
-        return clip and sc.mode == 'RECONSTRUCTION' and sc.view == 'CLIP'
+        return clip and sc.view == 'CLIP'
+
+
+class CLIP_PT_tools_clip(Panel):
+    bl_space_type = 'CLIP_EDITOR'
+    bl_region_type = 'TOOLS'
+    bl_label = "Clip"
+    bl_translation_context = bpy.app.translations.contexts.id_movieclip
+    bl_category = "Track"
+
+    @classmethod
+    def poll(cls, context):
+        sc = context.space_data
+        clip = sc.clip
+
+        return clip and sc.view == 'CLIP' and sc.mode != 'MASK'
+
+    def draw(self, context):
+        layout = self.layout
+        col = layout.column(align=True)
+        row = col.row(align=True)
+        row.operator("clip.prefetch", text="Prefetch")
+        row.operator("clip.reload", text="Reload")
+        col.operator("clip.set_scene_frames")
 
 
 class CLIP_PT_tools_marker(CLIP_PT_tracking_panel, Panel):
     bl_space_type = 'CLIP_EDITOR'
     bl_region_type = 'TOOLS'
     bl_label = "Marker"
+    bl_category = "Track"
 
     def draw(self, context):
         layout = self.layout
 
+        # sc = context.space_data
+        # clip = sc.clip
+
+        col = layout.column(align=True)
+        row = col.row(align=True)
+        row.operator("clip.add_marker_at_click", text="Add")
+        row.operator("clip.delete_track", text="Delete")
+        col.operator("clip.detect_features")
+
+
+class CLIP_PT_tracking_settings(CLIP_PT_tracking_panel, Panel):
+    bl_space_type = 'CLIP_EDITOR'
+    bl_region_type = 'TOOLS'
+    bl_label = "Tracking Settings"
+    bl_category = "Track"
+
+    def draw(self, context):
+
         sc = context.space_data
         clip = sc.clip
         settings = clip.tracking.settings
+        layout = self.layout
+        col = layout.column()
 
-        col = layout.column(align=True)
-        col.operator("clip.add_marker_at_click", text="Add Marker")
-        col.operator("clip.detect_features")
-        col.operator("clip.delete_track")
+        row = col.row(align=True)
+        label = CLIP_MT_tracking_settings_presets.bl_label
+        row.menu('CLIP_MT_tracking_settings_presets', text=label)
+        row.operator("clip.tracking_settings_preset_add",
+                     text="", icon='ZOOMIN')
+        row.operator("clip.tracking_settings_preset_add",
+                     text="", icon='ZOOMOUT').remove_active = True
+
+        row = col.row(align=True)
+        row.prop(settings, "use_default_red_channel",
+                 text="R", toggle=True)
+        row.prop(settings, "use_default_green_channel",
+                 text="G", toggle=True)
+        row.prop(settings, "use_default_blue_channel",
+                 text="B", toggle=True)
+
+        col.separator()
+
+        sub = col.column(align=True)
+        sub.prop(settings, "default_pattern_size")
+        sub.prop(settings, "default_search_size")
+
+        col.prop(settings, "default_motion_model")
+
+        row = col.row(align=True)
+        row.label(text="Match:")
+        row.prop(settings, "default_pattern_match", text="")
+
+        row = col.row(align=True)
+        row.prop(settings, "use_default_brute")
+        row.prop(settings, "use_default_normalization")
+
+        col.separator()
+        col.operator("clip.track_settings_as_default",
+                     text="Copy From Active Track")
 
         box = layout.box()
         row = box.row(align=True)
         row.prop(settings, "show_default_expanded", text="", emboss=False)
-        row.label(text="Tracking Settings")
+        row.label(text="Extra Settings")
 
         if settings.show_default_expanded:
             col = box.column()
-            row = col.row(align=True)
-            label = CLIP_MT_tracking_settings_presets.bl_label
-            row.menu('CLIP_MT_tracking_settings_presets', text=label)
-            row.operator("clip.tracking_settings_preset_add",
-                         text="", icon='ZOOMIN')
-            row.operator("clip.tracking_settings_preset_add",
-                         text="", icon='ZOOMOUT').remove_active = True
-
-            col.separator()
-
-            row = col.row(align=True)
-            row.prop(settings, "use_default_red_channel",
-                     text="R", toggle=True)
-            row.prop(settings, "use_default_green_channel",
-                     text="G", toggle=True)
-            row.prop(settings, "use_default_blue_channel",
-                     text="B", toggle=True)
-
-            col.separator()
+            row = col.row()
+            row.prop(settings, "use_default_mask")
 
             sub = col.column(align=True)
-            sub.prop(settings, "default_pattern_size")
-            sub.prop(settings, "default_search_size")
-
-            col.label(text="Tracker:")
-            col.prop(settings, "default_motion_model")
-            col.prop(settings, "use_default_brute")
-            col.prop(settings, "use_default_normalization")
-            col.prop(settings, "use_default_mask")
-            col.prop(settings, "default_correlation_min")
-
-            col.separator()
-
-            sub = col.column(align=True)
+            sub.prop(settings, "default_correlation_min")
             sub.prop(settings, "default_frames_limit")
             sub.prop(settings, "default_margin")
 
-            col.label(text="Match:")
-            col.prop(settings, "default_pattern_match", text="")
-
-            col.separator()
-            col.operator("clip.track_settings_as_default",
-                         text="Copy From Active Track")
+            col = box.column()
+            col.prop(settings, "default_weight")
 
 
 class CLIP_PT_tools_tracking(CLIP_PT_tracking_panel, Panel):
     bl_space_type = 'CLIP_EDITOR'
     bl_region_type = 'TOOLS'
     bl_label = "Track"
+    bl_category = "Track"
 
     def draw(self, context):
         layout = self.layout
 
         row = layout.row(align=True)
+        row.label(text="Track:")
 
         props = row.operator("clip.track_markers", text="", icon='FRAME_PREV')
         props.backwards = True
@@ -319,19 +369,32 @@ class CLIP_PT_tools_tracking(CLIP_PT_tracking_panel, Panel):
         props.backwards = False
         props.sequence = False
 
-        col = layout.column()
-        col.label(text="Refine:")
+        col = layout.column(align=True)
         row = col.row(align=True)
-        row.operator("clip.refine_markers", text="Backwards").backwards = True
-        row.operator("clip.refine_markers", text="Forwards").backwards = False
+        row.label(text="Clear:")
+        row.scale_x = 2.0
+
+        props = row.operator("clip.clear_track_path", text="", icon='BACK')
+        props.action = 'UPTO'
+
+        props = row.operator("clip.clear_track_path", text="", icon='FORWARD')
+        props.action = 'REMAINED'
 
         col = layout.column()
-        col.label(text="Clear:")
         row = col.row(align=True)
-        row.operator("clip.clear_track_path", text="Before").action = 'UPTO'
-        row.operator("clip.clear_track_path", text="After").action = 'REMAINED'
+        row.label(text="Refine:")
+        row.scale_x = 2.0
 
-        layout.operator("clip.join_tracks", text="Join")
+        props = row.operator("clip.refine_markers", text="", icon='LOOP_BACK')
+        props.backwards = True
+
+        props = row.operator("clip.refine_markers", text="", icon='LOOP_FORWARDS')
+        props.backwards = False
+
+        col = layout.column(align=True)
+        row = col.row(align=True)
+        row.label(text="Merge:")
+        row.operator("clip.join_tracks", text="Join Tracks")
 
 
 class CLIP_PT_tools_plane_tracking(CLIP_PT_tracking_panel, Panel):
@@ -339,6 +402,7 @@ class CLIP_PT_tools_plane_tracking(CLIP_PT_tracking_panel, Panel):
     bl_region_type = 'TOOLS'
     bl_label = "Plane Track"
     bl_options = {'DEFAULT_CLOSED'}
+    bl_category = "Solve"
 
     def draw(self, context):
         layout = self.layout
@@ -349,6 +413,7 @@ class CLIP_PT_tools_solve(CLIP_PT_tracking_panel, Panel):
     bl_space_type = 'CLIP_EDITOR'
     bl_region_type = 'TOOLS'
     bl_label = "Solve"
+    bl_category = "Solve"
 
     def draw(self, context):
         layout = self.layout
@@ -358,16 +423,12 @@ class CLIP_PT_tools_solve(CLIP_PT_tracking_panel, Panel):
         settings = tracking.settings
         tracking_object = tracking.objects.active
 
-        col = layout.column(align=True)
-
-        col.operator("clip.solve_camera",
-                     text="Camera Motion" if tracking_object.is_camera
-                     else "Object Motion")
-        col.operator("clip.clear_solution")
-
         col = layout.column()
-        col.prop(settings, "use_tripod_solver")
-        col.prop(settings, "use_keyframe_selection")
+        row = col.row()
+        row.prop(settings, "use_tripod_solver", text="Tripod")
+        sub = row.row()
+        sub.active = not settings.use_tripod_solver
+        sub.prop(settings, "use_keyframe_selection", text="Keyframe")
 
         col = layout.column(align=True)
         col.active = (not settings.use_tripod_solver and
@@ -377,14 +438,24 @@ class CLIP_PT_tools_solve(CLIP_PT_tracking_panel, Panel):
 
         col = layout.column(align=True)
         col.active = tracking_object.is_camera
-        col.label(text="Refine:")
-        col.prop(settings, "refine_intrinsics", text="")
+        row = col.row(align=True)
+        row.label(text="Refine:")
+        row.prop(settings, "refine_intrinsics", text="")
+
+        col = layout.column(align=True)
+        col.scale_y = 2.0
+
+        col.operator("clip.solve_camera",
+                     text="Solve Camera Motion" if tracking_object.is_camera
+                     else "Solve Object Motion")
 
 
 class CLIP_PT_tools_cleanup(CLIP_PT_tracking_panel, Panel):
     bl_space_type = 'CLIP_EDITOR'
     bl_region_type = 'TOOLS'
     bl_label = "Clean up"
+    bl_options = {'DEFAULT_CLOSED'}
+    bl_category = "Solve"
 
     def draw(self, context):
         layout = self.layout
@@ -396,12 +467,15 @@ class CLIP_PT_tools_cleanup(CLIP_PT_tracking_panel, Panel):
         layout.prop(settings, "clean_frames", text="Frames")
         layout.prop(settings, "clean_error", text="Error")
         layout.prop(settings, "clean_action", text="")
+        layout.operator("clip.filter_tracks")
 
 
-class CLIP_PT_tools_geometry(CLIP_PT_reconstruction_panel, Panel):
+class CLIP_PT_tools_geometry(CLIP_PT_tracking_panel, Panel):
     bl_space_type = 'CLIP_EDITOR'
     bl_region_type = 'TOOLS'
     bl_label = "Geometry"
+    bl_options = {'DEFAULT_CLOSED'}
+    bl_category = "Solve"
 
     def draw(self, context):
         layout = self.layout
@@ -410,10 +484,11 @@ class CLIP_PT_tools_geometry(CLIP_PT_reconstruction_panel, Panel):
         layout.operator("clip.track_to_empty")
 
 
-class CLIP_PT_tools_orientation(CLIP_PT_reconstruction_panel, Panel):
+class CLIP_PT_tools_orientation(CLIP_PT_tracking_panel, Panel):
     bl_space_type = 'CLIP_EDITOR'
     bl_region_type = 'TOOLS'
     bl_label = "Orientation"
+    bl_category = "Solve"
 
     def draw(self, context):
         sc = context.space_data
@@ -474,43 +549,6 @@ class CLIP_PT_tools_object(CLIP_PT_reconstruction_panel, Panel):
 
         col.operator("clip.set_solution_scale", text="Set Scale")
         col.prop(settings, "object_distance")
-
-
-class CLIP_PT_tools_grease_pencil(Panel):
-    bl_space_type = 'CLIP_EDITOR'
-    bl_region_type = 'TOOLS'
-    bl_label = "Grease Pencil"
-
-    @classmethod
-    def poll(cls, context):
-        sc = context.space_data
-        clip = sc.clip
-
-        if not clip:
-            return False
-
-        if sc.mode == 'DISTORTION':
-            return sc.view == 'CLIP'
-        elif sc.mode == 'MASK':
-            return True
-
-        return False
-
-    def draw(self, context):
-        layout = self.layout
-
-        col = layout.column(align=True)
-
-        row = col.row(align=True)
-        row.operator("gpencil.draw", text="Draw").mode = 'DRAW'
-        row.operator("gpencil.draw", text="Line").mode = 'DRAW_STRAIGHT'
-
-        row = col.row(align=True)
-        row.operator("gpencil.draw", text="Poly").mode = 'DRAW_POLY'
-        row.operator("gpencil.draw", text="Erase").mode = 'ERASER'
-
-        row = col.row(align=True)
-        row.prop(context.tool_settings, "use_grease_pencil_sessions")
 
 
 class CLIP_PT_objects(CLIP_PT_clip_view_panel, Panel):
@@ -578,6 +616,12 @@ class CLIP_PT_track(CLIP_PT_tracking_panel, Panel):
         row.prop(act_track, "use_alpha_preview",
                  text="", toggle=True, icon='IMAGE_ALPHA')
 
+        layout.prop(act_track, "weight")
+
+        if act_track.has_bundle:
+            label_text = "Average Error: %.4f" % (act_track.average_error)
+            layout.label(text=label_text)
+
         layout.separator()
 
         row = layout.row(align=True)
@@ -593,12 +637,6 @@ class CLIP_PT_track(CLIP_PT_tracking_panel, Panel):
         if act_track.use_custom_color:
             row.prop(act_track, "color", text="")
 
-        layout.prop(act_track, "weight")
-
-        if act_track.has_bundle:
-            label_text = "Average Error: %.4f" % (act_track.average_error)
-            layout.label(text=label_text)
-
 
 class CLIP_PT_plane_track(CLIP_PT_tracking_panel, Panel):
     bl_space_type = 'CLIP_EDITOR'
@@ -609,7 +647,6 @@ class CLIP_PT_plane_track(CLIP_PT_tracking_panel, Panel):
     def draw(self, context):
         layout = self.layout
 
-        sc = context.space_data
         clip = context.space_data.clip
         active_track = clip.tracking.plane_tracks.active
 
@@ -644,23 +681,34 @@ class CLIP_PT_track_settings(CLIP_PT_tracking_panel, Panel):
         active = clip.tracking.tracks.active
         if active:
             col.prop(active, "motion_model")
-            col.prop(active, "use_brute")
-            col.prop(active, "use_normalization")
-            col.prop(active, "use_mask")
-            col.prop(active, "correlation_min")
-
-            col.separator()
-            col.prop(active, "frames_limit")
-            col.prop(active, "margin")
             col.prop(active, "pattern_match", text="Match")
+            col = layout.column()
+            row = col.row(align=True)
+            row.prop(active, "use_brute")
+            row.prop(active, "use_normalization")
 
-        col.prop(settings, "speed")
+            box = layout.box()
+            row = box.row(align=True)
+            row.prop(settings, "show_extra_expanded", text="", emboss=False)
+            row.label(text="Extra Settings")
+
+            if settings.show_extra_expanded:
+                col = box.column()
+                row = col.row()
+                row.prop(active, "use_mask")
+
+                sub = col.column(align=True)
+                sub.prop(active, "correlation_min")
+                sub.prop(active, "frames_limit")
+                sub.prop(active, "margin")
+                sub.separator()
+                sub.prop(settings, "speed")
 
 
 class CLIP_PT_tracking_camera(Panel):
     bl_space_type = 'CLIP_EDITOR'
     bl_region_type = 'UI'
-    bl_label = "Camera Data"
+    bl_label = "Camera"
     bl_options = {'DEFAULT_CLOSED'}
 
     @classmethod
@@ -668,7 +716,7 @@ class CLIP_PT_tracking_camera(Panel):
         if CLIP_PT_clip_view_panel.poll(context):
             sc = context.space_data
 
-            return sc.mode in {'TRACKING', 'DISTORTION'} and sc.clip
+            return sc.mode in {'TRACKING'} and sc.clip
 
         return False
 
@@ -685,14 +733,6 @@ class CLIP_PT_tracking_camera(Panel):
         row.operator("clip.camera_preset_add", text="",
                      icon='ZOOMOUT').remove_active = True
 
-        row = layout.row(align=True)
-        sub = row.split(percentage=0.65, align=True)
-        if clip.tracking.camera.units == 'MILLIMETERS':
-            sub.prop(clip.tracking.camera, "focal_length")
-        else:
-            sub.prop(clip.tracking.camera, "focal_length_pixels")
-        sub.prop(clip.tracking.camera, "units", text="")
-
         col = layout.column(align=True)
         col.label(text="Sensor:")
         col.prop(clip.tracking.camera, "sensor_width", text="Width")
@@ -704,11 +744,49 @@ class CLIP_PT_tracking_camera(Panel):
         row.prop(clip.tracking.camera, "principal", text="")
         col.operator("clip.set_center_principal", text="Center")
 
-        col = layout.column(align=True)
+
+class CLIP_PT_tracking_lens(Panel):
+    bl_space_type = 'CLIP_EDITOR'
+    bl_region_type = 'UI'
+    bl_label = "Lens"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    @classmethod
+    def poll(cls, context):
+        if CLIP_PT_clip_view_panel.poll(context):
+            sc = context.space_data
+
+            return sc.mode in {'TRACKING'} and sc.clip
+
+        return False
+
+    def draw(self, context):
+        layout = self.layout
+
+        sc = context.space_data
+        clip = sc.clip
+
+        row = layout.row(align=True)
+        sub = row.split(percentage=0.65, align=True)
+        if clip.tracking.camera.units == 'MILLIMETERS':
+            sub.prop(clip.tracking.camera, "focal_length")
+        else:
+            sub.prop(clip.tracking.camera, "focal_length_pixels")
+        sub.prop(clip.tracking.camera, "units", text="")
+
+        col = layout.column()
         col.label(text="Lens Distortion:")
-        col.prop(clip.tracking.camera, "k1")
-        col.prop(clip.tracking.camera, "k2")
-        col.prop(clip.tracking.camera, "k3")
+        camera = clip.tracking.camera
+        col.prop(camera, "distortion_model", text="")
+        if camera.distortion_model == 'POLYNOMIAL':
+            col = layout.column(align=True)
+            col.prop(camera, "k1")
+            col.prop(camera, "k2")
+            col.prop(camera, "k3")
+        elif camera.distortion_model == 'DIVISION':
+            col = layout.column(align=True)
+            col.prop(camera, "division_k1")
+            col.prop(camera, "division_k2")
 
 
 class CLIP_PT_display(CLIP_PT_clip_view_panel, Panel):
@@ -721,33 +799,25 @@ class CLIP_PT_display(CLIP_PT_clip_view_panel, Panel):
         sc = context.space_data
 
         row = layout.row(align=True)
+
         sub = row.row(align=True)
         sub.prop(sc, "show_red_channel", text="R", toggle=True)
         sub.prop(sc, "show_green_channel", text="G", toggle=True)
         sub.prop(sc, "show_blue_channel", text="B", toggle=True)
-
         row.separator()
-
         row.prop(sc, "use_grayscale_preview", text="B/W", toggle=True)
+        row.separator()
+        row.prop(sc, "use_mute_footage", text="", icon='VISIBLE_IPO_ON', toggle=True)
 
         col = layout.column(align=True)
-
-        col.prop(sc, "show_disabled", "Disabled Tracks")
-        col.prop(sc, "show_names", text="Names and Status")
-        if sc.mode != 'MASK':
-            col.prop(sc, "show_bundles", text="3D Markers")
-
-        col.prop(sc, "use_mute_footage", text="Mute Footage")
-        col.prop(sc, "lock_selection")
-
+        col.prop(sc.clip_user, "use_render_undistorted", text="Render Undistorted")
+        col.prop(sc, "lock_selection", text="Lock to Selection")
+        col.prop(sc, "show_stable", text="Display Stabilization")
         if sc.view == 'GRAPH':
             col.prop(sc, "lock_time_cursor")
-
-        if sc.mode == 'DISTORTION':
-            col.prop(sc, "show_grid", text="Grid")
-            col.prop(sc, "use_manual_calibration")
-        elif sc.mode == 'RECONSTRUCTION':
-            col.prop(sc, "show_stable", text="Stable")
+        row = col.row(align=True)
+        row.prop(sc, "show_grid", text="Grid")
+        row.prop(sc, "use_manual_calibration", text="Calibration")
 
         clip = sc.clip
         if clip:
@@ -772,24 +842,60 @@ class CLIP_PT_marker_display(CLIP_PT_clip_view_panel, Panel):
         sc = context.space_data
 
         col = layout.column(align=True)
-
         row = col.row(align=True)
         row.prop(sc, "show_marker_pattern", text="Pattern")
         row.prop(sc, "show_marker_search", text="Search")
 
-        col.prop(sc, "show_tiny_markers", text="Thin Markers")
-        col.prop(sc, "show_track_path", text="Path")
-
         row = col.row(align=True)
         row.active = sc.show_track_path
+        row.prop(sc, "show_track_path", text="Path")
         row.prop(sc, "path_length", text="Length")
+
+        col = layout.column(align=True)
+        row = col.row(align=True)
+        row.prop(sc, "show_disabled", "Disabled")
+        row.prop(sc, "show_names", text="Info")
+
+        row = col.row(align=True)
+        if sc.mode != 'MASK':
+            row.prop(sc, "show_bundles", text="3D Markers")
+        row.prop(sc, "show_tiny_markers", text="Thin")
+
+
+class CLIP_PT_marker(CLIP_PT_tracking_panel, Panel):
+    bl_space_type = 'CLIP_EDITOR'
+    bl_region_type = 'UI'
+    bl_label = "Marker"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw(self, context):
+        layout = self.layout
+        sc = context.space_data
+        clip = context.space_data.clip
+        act_track = clip.tracking.tracks.active
+
+        if act_track:
+            layout.template_marker(sc, "clip", sc.clip_user, act_track, False)
+        else:
+            layout.active = False
+            layout.label(text="No active track")
 
 
 class CLIP_PT_stabilization(CLIP_PT_reconstruction_panel, Panel):
     bl_space_type = 'CLIP_EDITOR'
     bl_region_type = 'UI'
     bl_label = "2D Stabilization"
+    bl_category = "Stabilization"
     bl_options = {'DEFAULT_CLOSED'}
+
+    @classmethod
+    def poll(cls, context):
+        if CLIP_PT_clip_view_panel.poll(context):
+            sc = context.space_data
+
+            return sc.mode in {'TRACKING'} and sc.clip
+
+        return False
 
     def draw_header(self, context):
         stab = context.space_data.clip.tracking.stabilization
@@ -837,25 +943,6 @@ class CLIP_PT_stabilization(CLIP_PT_reconstruction_panel, Panel):
         row.prop(stab, "influence_rotation")
 
         layout.prop(stab, "filter_type")
-
-
-class CLIP_PT_marker(CLIP_PT_tracking_panel, Panel):
-    bl_space_type = 'CLIP_EDITOR'
-    bl_region_type = 'UI'
-    bl_label = "Marker"
-    bl_options = {'DEFAULT_CLOSED'}
-
-    def draw(self, context):
-        layout = self.layout
-        sc = context.space_data
-        clip = context.space_data.clip
-        act_track = clip.tracking.tracks.active
-
-        if act_track:
-            layout.template_marker(sc, "clip", sc.clip_user, act_track, False)
-        else:
-            layout.active = False
-            layout.label(text="No active track")
 
 
 class CLIP_PT_proxy(CLIP_PT_clip_view_panel, Panel):
@@ -913,8 +1000,62 @@ class CLIP_PT_proxy(CLIP_PT_clip_view_panel, Panel):
 
         col.prop(sc.clip_user, "proxy_render_size", text="")
 
-        col = layout.column()
-        col.prop(sc.clip_user, "use_render_undistorted")
+
+# -----------------------------------------------------------------------------
+# Mask (similar code in space_image.py, keep in sync)
+
+from bl_ui.properties_mask_common import (
+        MASK_PT_mask,
+        MASK_PT_layers,
+        MASK_PT_spline,
+        MASK_PT_point,
+        MASK_PT_display,
+        MASK_PT_tools,
+        MASK_PT_transforms,
+        MASK_PT_add,
+        )
+
+
+class CLIP_PT_mask_layers(MASK_PT_layers, Panel):
+    bl_space_type = 'CLIP_EDITOR'
+    bl_region_type = 'UI'
+
+
+class CLIP_PT_mask_display(MASK_PT_display, Panel):
+    bl_space_type = 'CLIP_EDITOR'
+    bl_region_type = 'UI'
+
+
+class CLIP_PT_active_mask_spline(MASK_PT_spline, Panel):
+    bl_space_type = 'CLIP_EDITOR'
+    bl_region_type = 'UI'
+
+
+class CLIP_PT_active_mask_point(MASK_PT_point, Panel):
+    bl_space_type = 'CLIP_EDITOR'
+    bl_region_type = 'UI'
+
+
+class CLIP_PT_mask(MASK_PT_mask, Panel):
+    bl_space_type = 'CLIP_EDITOR'
+    bl_region_type = 'UI'
+
+
+class CLIP_PT_tools_mask_add(MASK_PT_add, Panel):
+    bl_space_type = 'CLIP_EDITOR'
+    bl_region_type = 'TOOLS'
+
+
+class CLIP_PT_tools_mask_transforms(MASK_PT_transforms, Panel):
+    bl_space_type = 'CLIP_EDITOR'
+    bl_region_type = 'TOOLS'
+
+
+class CLIP_PT_tools_mask(MASK_PT_tools, Panel):
+    bl_space_type = 'CLIP_EDITOR'
+    bl_region_type = 'TOOLS'
+
+# --- end mask ---
 
 
 class CLIP_PT_footage(CLIP_PT_clip_view_panel, Panel):
@@ -945,25 +1086,50 @@ class CLIP_PT_footage_info(CLIP_PT_clip_view_panel, Panel):
         layout = self.layout
 
         sc = context.space_data
-        clip = sc.clip
 
         col = layout.column()
         col.template_movieclip_information(sc, "clip", sc.clip_user)
 
 
-class CLIP_PT_tools_clip(CLIP_PT_clip_view_panel, Panel):
+class CLIP_PT_tools_scenesetup(Panel):
     bl_space_type = 'CLIP_EDITOR'
     bl_region_type = 'TOOLS'
-    bl_label = "Clip"
+    bl_label = "Scene Setup"
     bl_translation_context = bpy.app.translations.contexts.id_movieclip
+    bl_category = "Solve"
+
+    @classmethod
+    def poll(cls, context):
+        sc = context.space_data
+        clip = sc.clip
+
+        return clip and sc.view == 'CLIP' and sc.mode != 'MASK'
 
     def draw(self, context):
         layout = self.layout
 
         layout.operator("clip.set_viewport_background")
         layout.operator("clip.setup_tracking_scene")
-        layout.operator("clip.prefetch")
-        layout.operator("clip.set_scene_frames")
+
+
+# Grease Pencil properties
+class CLIP_PT_grease_pencil(GreasePencilDataPanel, CLIP_PT_clip_view_panel, Panel):
+    bl_space_type = 'CLIP_EDITOR'
+    bl_region_type = 'UI'
+    bl_options = {'DEFAULT_CLOSED'}
+
+    # NOTE: this is just a wrapper around the generic GP Panel
+    # But, this should only be visible in "clip" view
+
+
+# Grease Pencil drawing tools
+class CLIP_PT_tools_grease_pencil_draw(GreasePencilDrawingToolsPanel, Panel):
+    bl_space_type = 'CLIP_EDITOR'
+
+
+# Grease Pencil stroke editing tools
+class CLIP_PT_tools_grease_pencil_edit(GreasePencilStrokeEditPanel, Panel):
+    bl_space_type = 'CLIP_EDITOR'
 
 
 class CLIP_MT_view(Menu):
@@ -1003,11 +1169,13 @@ class CLIP_MT_view(Menu):
                 layout.operator_context = 'INVOKE_DEFAULT'
 
             layout.prop(sc, "show_seconds")
+            layout.prop(sc, "show_locked_time")
             layout.separator()
 
         layout.separator()
         layout.operator("screen.area_dupli")
-        layout.operator("screen.screen_full_area")
+        layout.operator("screen.screen_full_area", text="Toggle Maximize Area")
+        layout.operator("screen.screen_full_area").use_hide_panels = True
 
 
 class CLIP_MT_clip(Menu):
@@ -1048,14 +1216,17 @@ class CLIP_MT_track(Menu):
         layout.operator("clip.solve_camera")
 
         layout.separator()
-        layout.operator("clip.clear_track_path",
-                        text="Clear After").action = 'REMAINED'
+        props = layout.operator("clip.clear_track_path", text="Clear After")
+        props.clear_active = False
+        props.action = 'REMAINED'
 
-        layout.operator("clip.clear_track_path",
-                        text="Clear Before").action = 'UPTO'
+        props = layout.operator("clip.clear_track_path", text="Clear Before")
+        props.clear_active = False
+        props.action = 'UPTO'
 
-        layout.operator("clip.clear_track_path",
-                        text="Clear Track Path").action = 'ALL'
+        props = layout.operator("clip.clear_track_path", text="Clear Track Path")
+        props.clear_active = False
+        props.action = 'ALL'
 
         layout.separator()
         layout.operator("clip.join_tracks")
@@ -1068,16 +1239,21 @@ class CLIP_MT_track(Menu):
         layout.operator("clip.paste_tracks")
 
         layout.separator()
-        layout.operator("clip.track_markers",
-                        text="Track Frame Backwards").backwards = True
+        props = layout.operator("clip.track_markers", text="Track Frame Backwards")
+        props.backwards = True
+        props.sequence = False
 
         props = layout.operator("clip.track_markers", text="Track Backwards")
         props.backwards = True
         props.sequence = True
 
-        layout.operator("clip.track_markers",
-                        text="Track Forwards").sequence = True
-        layout.operator("clip.track_markers", text="Track Frame Forwards")
+        props = layout.operator("clip.track_markers", text="Track Forwards")
+        props.backwards = False
+        props.sequence = True
+
+        props = layout.operator("clip.track_markers", text="Track Frame Forwards")
+        props.backwards = False
+        props.sequence = False
 
         layout.separator()
         layout.operator("clip.delete_track")
@@ -1119,10 +1295,8 @@ class CLIP_MT_track_visibility(Menu):
         layout = self.layout
 
         layout.operator("clip.hide_tracks_clear", text="Show Hidden")
-        layout.operator("clip.hide_tracks", text="Hide Selected")
-
-        layout.operator("clip.hide_tracks",
-                        text="Hide Unselected").unselected = True
+        layout.operator("clip.hide_tracks", text="Hide Selected").unselected = False
+        layout.operator("clip.hide_tracks", text="Hide Unselected").unselected = True
 
 
 class CLIP_MT_track_transform(Menu):
@@ -1193,17 +1367,6 @@ class CLIP_MT_tracking_specials(Menu):
                         text="Unlock Tracks").action = 'UNLOCK'
 
 
-class CLIP_MT_select_mode(Menu):
-    bl_label = "Select Mode"
-
-    def draw(self, context):
-        layout = self.layout
-
-        layout.operator_context = 'INVOKE_REGION_WIN'
-
-        layout.operator_enum("clip.mode_set", "mode")
-
-
 class CLIP_MT_camera_presets(Menu):
     """Predefined tracking camera intrinsics"""
     bl_label = "Camera Presets"
@@ -1245,49 +1408,6 @@ class CLIP_MT_stabilize_2d_specials(Menu):
 
         layout.operator("clip.stabilize_2d_select")
 
-
-# -----------------------------------------------------------------------------
-# Mask (similar code in space_image.py, keep in sync)
-
-
-from bl_ui.properties_mask_common import (MASK_PT_mask,
-                                          MASK_PT_layers,
-                                          MASK_PT_spline,
-                                          MASK_PT_point,
-                                          MASK_PT_display,
-                                          MASK_PT_tools)
-
-
-class CLIP_PT_mask(MASK_PT_mask, Panel):
-    bl_space_type = 'CLIP_EDITOR'
-    bl_region_type = 'UI'
-
-
-class CLIP_PT_mask_layers(MASK_PT_layers, Panel):
-    bl_space_type = 'CLIP_EDITOR'
-    bl_region_type = 'UI'
-
-
-class CLIP_PT_mask_display(MASK_PT_display, Panel):
-    bl_space_type = 'CLIP_EDITOR'
-    bl_region_type = 'UI'
-
-
-class CLIP_PT_active_mask_spline(MASK_PT_spline, Panel):
-    bl_space_type = 'CLIP_EDITOR'
-    bl_region_type = 'UI'
-
-
-class CLIP_PT_active_mask_point(MASK_PT_point, Panel):
-    bl_space_type = 'CLIP_EDITOR'
-    bl_region_type = 'UI'
-
-
-class CLIP_PT_tools_mask(MASK_PT_tools, Panel):
-    bl_space_type = 'CLIP_EDITOR'
-    bl_region_type = 'TOOLS'
-
-# --- end mask ---
 
 if __name__ == "__main__":  # only for live edit.
     bpy.utils.register_module(__name__)

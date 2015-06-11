@@ -38,7 +38,6 @@
 #include "BKE_context.h"
 #include "BKE_depsgraph.h"
 #include "BKE_mask.h"
-#include "BKE_report.h"
 
 #include "DNA_object_types.h"
 #include "DNA_mask_types.h"
@@ -257,8 +256,8 @@ static int mask_shape_key_rekey_exec(bContext *C, wmOperator *op)
 	MaskLayer *masklay;
 	bool changed = false;
 
-	const short do_feather  = RNA_boolean_get(op->ptr, "feather");
-	const short do_location = RNA_boolean_get(op->ptr, "location");
+	const bool do_feather  = RNA_boolean_get(op->ptr, "feather");
+	const bool do_location = RNA_boolean_get(op->ptr, "location");
 
 	for (masklay = mask->masklayers.first; masklay; masklay = masklay->next) {
 
@@ -272,15 +271,17 @@ static int mask_shape_key_rekey_exec(bContext *C, wmOperator *op)
 		}
 
 		if (masklay->splines_shapes.first) {
-			MaskLayerShape *masklay_shape;
+			MaskLayerShape *masklay_shape, *masklay_shape_next;
 			MaskLayerShape *masklay_shape_lastsel = NULL;
 
 			for (masklay_shape = masklay->splines_shapes.first;
 			     masklay_shape;
-			     masklay_shape = masklay_shape->next)
+			     masklay_shape = masklay_shape_next)
 			{
 				MaskLayerShape *masklay_shape_a = NULL;
 				MaskLayerShape *masklay_shape_b = NULL;
+
+				masklay_shape_next = masklay_shape->next;
 
 				/* find contiguous selections */
 				if (masklay_shape->flag & MASK_SHAPE_SELECT) {
@@ -293,6 +294,9 @@ static int mask_shape_key_rekey_exec(bContext *C, wmOperator *op)
 						masklay_shape_a = masklay_shape_lastsel;
 						masklay_shape_b = masklay_shape;
 						masklay_shape_lastsel = NULL;
+
+						/* this will be freed below, step over selection */
+						masklay_shape_next = masklay_shape->next;
 					}
 				}
 
@@ -406,8 +410,8 @@ void MASK_OT_shape_key_rekey(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	/* properties */
-	RNA_def_boolean(ot->srna, "location", TRUE, "Location", "");
-	RNA_def_boolean(ot->srna, "feather", TRUE, "Feather", "");
+	RNA_def_boolean(ot->srna, "location", true, "Location", "");
+	RNA_def_boolean(ot->srna, "feather", true, "Feather", "");
 }
 
 

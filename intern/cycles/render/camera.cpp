@@ -11,14 +11,17 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include "camera.h"
+#include "mesh.h"
+#include "object.h"
 #include "scene.h"
 
 #include "device.h"
 
+#include "util_foreach.h"
 #include "util_vector.h"
 
 CCL_NAMESPACE_BEGIN
@@ -38,14 +41,20 @@ Camera::Camera()
 	motion.post = transform_identity();
 	use_motion = false;
 
+	aperture_ratio = 1.0f;
+
 	type = CAMERA_PERSPECTIVE;
 	panorama_type = PANORAMA_EQUIRECTANGULAR;
 	fisheye_fov = M_PI_F;
 	fisheye_lens = 10.5f;
+	latitude_min = -M_PI_2_F;
+	latitude_max = M_PI_2_F;
+	longitude_min = -M_PI_F;
+	longitude_max = M_PI_F;
 	fov = M_PI_4_F;
 
-	sensorwidth = 0.036;
-	sensorheight = 0.024;
+	sensorwidth = 0.036f;
+	sensorheight = 0.024f;
 
 	nearclip = 1e-5f;
 	farclip = 1e5f;
@@ -78,20 +87,39 @@ Camera::~Camera()
 {
 }
 
+void Camera::compute_auto_viewplane()
+{
+	float aspect = (float)width/(float)height;
+
+	if(width >= height) {
+		viewplane.left = -aspect;
+		viewplane.right = aspect;
+		viewplane.bottom = -1.0f;
+		viewplane.top = 1.0f;
+	}
+	else {
+		viewplane.left = -1.0f;
+		viewplane.right = 1.0f;
+		viewplane.bottom = -1.0f/aspect;
+		viewplane.top = 1.0f/aspect;
+	}
+}
+
 void Camera::update()
 {
 	if(!need_update)
 		return;
-	
+
+	/* Full viewport to camera border in the viewport. */
+	Transform fulltoborder = transform_from_viewplane(viewport_camera_border);
+	Transform bordertofull = transform_inverse(fulltoborder);
+
 	/* ndc to raster */
 	Transform screentocamera;
-	Transform ndctoraster = transform_scale(width, height, 1.0f);
+	Transform ndctoraster = transform_scale(width, height, 1.0f) * bordertofull;
 
 	/* raster to screen */
-	Transform screentondc = 
-		transform_scale(1.0f/(viewplane.right - viewplane.left),
-		                1.0f/(viewplane.top - viewplane.bottom), 1.0f) *
-		transform_translate(-viewplane.left, -viewplane.bottom, 0.0f);
+	Transform screentondc = fulltoborder * transform_from_viewplane(viewplane);
 
 	Transform screentoraster = ndctoraster * screentondc;
 	Transform rastertoscreen = transform_inverse(screentoraster);
@@ -223,10 +251,15 @@ void Camera::device_update(Device *device, DeviceScene *dscene, Scene *scene)
 	/* type */
 	kcam->type = type;
 
+	/* anamorphic lens bokeh */
+	kcam->inv_aperture_ratio = 1.0f / aperture_ratio;
+
 	/* panorama */
 	kcam->panorama_type = panorama_type;
 	kcam->fisheye_fov = fisheye_fov;
 	kcam->fisheye_lens = fisheye_lens;
+	kcam->equirectangular_range = make_float4(longitude_min - longitude_max, -longitude_min,
+	                                          latitude_min -  latitude_max, -latitude_min + M_PI_2_F);
 
 	/* sensor size */
 	kcam->sensorwidth = sensorwidth;
@@ -245,8 +278,32 @@ void Camera::device_update(Device *device, DeviceScene *dscene, Scene *scene)
 	kcam->nearclip = nearclip;
 	kcam->cliplength = (farclip == FLT_MAX)? FLT_MAX: farclip - nearclip;
 
-	need_device_update = false;
+	/* Camera in volume. */
+	kcam->is_inside_volume = 0;
+
 	previous_need_motion = need_motion;
+}
+
+void Camera::device_update_volume(Device *device,
+                                  DeviceScene *dscene,
+                                  Scene *scene)
+{
+	if(!need_device_update) {
+		return;
+	}
+	KernelCamera *kcam = &dscene->data.cam;
+	BoundBox viewplane_boundbox = viewplane_bounds_get();
+	for(size_t i = 0; i < scene->objects.size(); ++i) {
+		Object *object = scene->objects[i];
+		if(object->mesh->has_volume &&
+		   viewplane_boundbox.intersects(object->bounds))
+		{
+			/* TODO(sergey): Consider adding more grained check. */
+			kcam->is_inside_volume = 1;
+			break;
+		}
+	}
+	need_device_update = false;
 }
 
 void Camera::device_free(Device *device, DeviceScene *dscene)
@@ -273,9 +330,14 @@ bool Camera::modified(const Camera& cam)
 		(viewplane == cam.viewplane) &&
 		(border == cam.border) &&
 		(matrix == cam.matrix) &&
+		(aperture_ratio == cam.aperture_ratio) &&
 		(panorama_type == cam.panorama_type) &&
 		(fisheye_fov == cam.fisheye_fov) &&
-		(fisheye_lens == cam.fisheye_lens));
+		(fisheye_lens == cam.fisheye_lens) &&
+		(latitude_min == cam.latitude_min) &&
+		(latitude_max == cam.latitude_max) &&
+		(longitude_min == cam.longitude_min) &&
+		(longitude_max == cam.longitude_max));
 }
 
 bool Camera::motion_modified(const Camera& cam)
@@ -289,5 +351,73 @@ void Camera::tag_update()
 	need_update = true;
 }
 
-CCL_NAMESPACE_END
+float3 Camera::transform_raster_to_world(float raster_x, float raster_y)
+{
+	float3 D, P;
+	if(type == CAMERA_PERSPECTIVE) {
+		D = transform_perspective(&rastertocamera,
+		                          make_float3(raster_x, raster_y, 0.0f));
+		float3 Pclip = normalize(D);
+		P = make_float3(0.0f, 0.0f, 0.0f);
+		/* TODO(sergey): Aperture support? */
+		P = transform_point(&cameratoworld, P);
+		D = normalize(transform_direction(&cameratoworld, D));
+		/* TODO(sergey): Clipping is conditional in kernel, and hence it could
+		 * be mistakes in here, currently leading to wrong camera-in-volume
+		 * detection.
+		 */
+		P += nearclip * D / Pclip.z;
+	}
+	else if (type == CAMERA_ORTHOGRAPHIC) {
+		D = make_float3(0.0f, 0.0f, 1.0f);
+		/* TODO(sergey): Aperture support? */
+		P = transform_perspective(&rastertocamera,
+		                          make_float3(raster_x, raster_y, 0.0f));
+		P = transform_point(&cameratoworld, P);
+		D = normalize(transform_direction(&cameratoworld, D));
+	}
+	else {
+		assert(!"unsupported camera type");
+	}
+	return P;
+}
 
+BoundBox Camera::viewplane_bounds_get()
+{
+	/* TODO(sergey): This is all rather stupid, but is there a way to perform
+	 * checks we need in a more clear and smart fasion?
+	 */
+	BoundBox bounds = BoundBox::empty;
+
+	if(type == CAMERA_PANORAMA) {
+		bounds.grow(make_float3(cameratoworld.w.x,
+		                        cameratoworld.w.y,
+		                        cameratoworld.w.z));
+	}
+	else {
+		bounds.grow(transform_raster_to_world(0.0f, 0.0f));
+		bounds.grow(transform_raster_to_world(0.0f, (float)height));
+		bounds.grow(transform_raster_to_world((float)width, (float)height));
+		bounds.grow(transform_raster_to_world((float)width, 0.0f));
+		if(type == CAMERA_PERSPECTIVE) {
+			/* Center point has the most distancei in local Z axis,
+			 * use it to construct bounding box/
+			 */
+			bounds.grow(transform_raster_to_world(0.5f*width, 0.5f*height));
+		}
+	}
+	return bounds;
+}
+
+Transform Camera::transform_from_viewplane(BoundBox2D &viewplane)
+{
+	return
+		transform_scale(1.0f / (viewplane.right - viewplane.left),
+		                1.0f / (viewplane.top - viewplane.bottom),
+		                1.0f) *
+		transform_translate(-viewplane.left,
+		                    -viewplane.bottom,
+		                    0.0f);
+}
+
+CCL_NAMESPACE_END

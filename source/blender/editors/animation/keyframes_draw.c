@@ -39,33 +39,16 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BLI_blenlib.h"
-#include "BLI_math.h"
 #include "BLI_dlrbTree.h"
 #include "BLI_utildefines.h"
 
 #include "DNA_anim_types.h"
-#include "DNA_armature_types.h"
-#include "DNA_camera_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
-#include "DNA_key_types.h"
-#include "DNA_lamp_types.h"
-#include "DNA_lattice_types.h"
-#include "DNA_mesh_types.h"
-#include "DNA_material_types.h"
-#include "DNA_meta_types.h"
-#include "DNA_node_types.h"
-#include "DNA_particle_types.h"
-#include "DNA_speaker_types.h"
-#include "DNA_world_types.h"
 #include "DNA_gpencil_types.h"
 #include "DNA_mask_types.h"
 
-#include "BKE_key.h"
-#include "BKE_material.h"
-#include "BKE_global.h"     // XXX remove me!
-
+#include "BKE_fcurve.h"
 
 #include "BIF_gl.h"
 
@@ -84,11 +67,15 @@
 short compare_ak_cfraPtr(void *node, void *data)
 {
 	ActKeyColumn *ak = (ActKeyColumn *)node;
-	float *cframe = data;
+	const float *cframe = data;
+	float val = *cframe;
 	
-	if (*cframe < ak->cfra)
+	if (IS_EQT(val, ak->cfra, BEZT_BINARYSEARCH_THRESH))
+		return 0;
+	
+	if (val < ak->cfra)
 		return -1;
-	else if (*cframe > ak->cfra)
+	else if (val > ak->cfra)
 		return 1;
 	else
 		return 0;
@@ -167,6 +154,7 @@ static DLRBT_Node *nalloc_ak_gpframe(void *data)
 	/* store settings based on state of BezTriple */
 	ak->cfra = gpf->framenum;
 	ak->sel = (gpf->flag & GP_FRAME_SELECT) ? SELECT : 0;
+	ak->key_type = gpf->key_type;
 	
 	/* set 'modified', since this is used to identify long keyframes */
 	ak->modified = 1;
@@ -183,6 +171,10 @@ static void nupdate_ak_gpframe(void *node, void *data)
 	/* set selection status and 'touched' status */
 	if (gpf->flag & GP_FRAME_SELECT) ak->sel = SELECT;
 	ak->modified += 1;
+	
+	/* for keyframe type, 'proper' keyframes have priority over breakdowns (and other types for now) */
+	if (gpf->key_type == BEZT_KEYTYPE_KEYFRAME)
+		ak->key_type = BEZT_KEYTYPE_KEYFRAME;
 }
 
 /* ......... */
@@ -258,110 +250,6 @@ static void add_masklay_to_keycolumns_list(DLRBT_Tree *keys, MaskLayerShape *mas
 		BLI_dlrbTree_add(keys, compare_ak_masklayshape, nalloc_ak_masklayshape, nupdate_ak_masklayshape, masklay_shape);
 }
 
-/* ActBeztColumns (Helpers for Long Keyframes) ------------------------------ */
-
-/* maximum size of default buffer for BezTriple columns */
-#define MAX_ABK_BUFSIZE     4
-
-/* BezTriple Container Node */
-// NOTE: only used internally while building Long Keyframes for now, but may be useful externally?
-typedef struct ActBeztColumn {
-	/* Tree Node interface ---------------- */
-	/* ListBase linkage */
-	struct ActBeztColumn *next, *prev;
-	
-	/* sorting-tree linkage */
-	struct ActBeztColumn *left, *right; /* 'children' of this node, less than and greater than it (respectively) */
-	struct ActBeztColumn *parent;       /* parent of this node in the tree */
-	char tree_col;                      /* DLRB_BLACK or DLRB_RED */
-	char pad;
-	
-	/* BezTriple Store -------------------- */
-	short numBezts;                     /* number of BezTriples on this frame */
-	float cfra;                         /* frame that the BezTriples occur on */
-	
-	BezTriple *bezts[MAX_ABK_BUFSIZE];  /* buffer of pointers to BezTriples on the same frame */
-	//BezTriple **bezts_extra;			/* secondary buffer of pointers if need be */
-} ActBeztColumn;
-
-/* --------------- */
-
-/* Comparator callback used for ActBeztColumns and BezTriple */
-static short compare_abk_bezt(void *node, void *data)
-{
-	ActBeztColumn *abk = (ActBeztColumn *)node;
-	BezTriple *bezt = (BezTriple *)data;
-	
-	if (bezt->vec[1][0] < abk->cfra)
-		return -1;
-	else if (bezt->vec[1][0] > abk->cfra)
-		return 1;
-	else
-		return 0;
-}
-
-/* New node callback used for building ActBeztColumns from BezTriples */
-static DLRBT_Node *nalloc_abk_bezt(void *data)
-{
-	ActBeztColumn *abk = MEM_callocN(sizeof(ActBeztColumn), "ActKeyColumn");
-	BezTriple *bezt = (BezTriple *)data;
-	
-	/* store the BeztTriple in the buffer, and keep track of its frame number */
-	abk->cfra = bezt->vec[1][0];
-	abk->bezts[abk->numBezts++] = bezt;
-	
-	return (DLRBT_Node *)abk;
-}
-
-/* Node updater callback used for building ActBeztColumns from BezTriples */
-static void nupdate_abk_bezt(void *node, void *data)
-{
-	ActBeztColumn *abk = (ActBeztColumn *)node;
-	BezTriple *bezt = (BezTriple *)data;
-	
-	/* just add the BezTriple to the buffer if there's space, or allocate a new one */
-	if (abk->numBezts >= MAX_ABK_BUFSIZE) {
-		// TODO: need to allocate new array to cater...
-		//bezts_extra = MEM_callocN(...);
-		if (G.debug & G_DEBUG)
-			printf("FIXME: nupdate_abk_bezt() missing case for too many overlapping BezTriples\n");
-	}
-	else {
-		/* just store an extra one */
-		abk->bezts[abk->numBezts++] = bezt;
-	}
-}
-
-/* --------------- */
-
-/* Return the BezTriple in the given ActBeztColumn that matches the requested value */
-static BezTriple *abk_get_bezt_with_value(ActBeztColumn *abk, float value)
-{
-	BezTriple *bezt;
-	int i;
-	
-	/* sanity checks */
-	if (abk == NULL)
-		return NULL;
-	
-	/* look over each BezTriple in this container */
-	for (i = 0; i < abk->numBezts; i++) {
-		/* only do exact match for now... */
-		if (/*i >= MAX_ABK_BUFSIZE*/ 0) {
-			// TODO: this case needs special handling
-		}
-		else {
-			/* just use the default buffer */
-			bezt = abk->bezts[i];
-			
-			if (bezt->vec[1][1] == value)
-				return bezt;
-		}
-	}
-	
-	return NULL;
-}
-
 /* ActKeyBlocks (Long Keyframes) ------------------------------------------ */
 
 /* Comparator callback used for ActKeyBlock and cframe float-value pointer */
@@ -369,11 +257,12 @@ static BezTriple *abk_get_bezt_with_value(ActBeztColumn *abk, float value)
 short compare_ab_cfraPtr(void *node, void *data)
 {
 	ActKeyBlock *ab = (ActKeyBlock *)node;
-	float *cframe = data;
+	const float *cframe = data;
+	float val = *cframe;
 	
-	if (*cframe < ab->start)
+	if (val < ab->start)
 		return -1;
-	else if (*cframe > ab->start)
+	else if (val > ab->start)
 		return 1;
 	else
 		return 0;
@@ -396,17 +285,25 @@ static ActKeyBlock *bezts_to_new_actkeyblock(BezTriple *prev, BezTriple *beztn)
 	return ab;
 }
 
-static void add_bezt_to_keyblocks_list(DLRBT_Tree *blocks, DLRBT_Tree *beztTree, BezTriple *beztn)
+static void add_bezt_to_keyblocks_list(DLRBT_Tree *blocks, BezTriple *first_bezt, BezTriple *beztn)
 {
 	ActKeyBlock *new_ab = NULL;
-	ActBeztColumn *abk;
-	BezTriple *prev;
+	BezTriple *prev = NULL;
 	
 	/* get the BezTriple immediately before the given one which has the same value */
-	/* the keyframes immediately before the ones containing the specified keyframe */
-	abk = (ActBeztColumn *)BLI_dlrbTree_search_prev(beztTree, compare_abk_bezt, beztn);
-	/* if applicable, the BezTriple with the same value */
-	prev = (abk) ? abk_get_bezt_with_value(abk, beztn->vec[1][1]) : NULL;
+	if (beztn != first_bezt) {
+		/* XXX: Unless I'm overlooking some details from the past, this should be sufficient? 
+		 *      The old code did some elaborate stuff trying to find keyframe columns for
+		 *      the given BezTriple, then step backwards to the column before that, and find
+		 *      an appropriate BezTriple with matching values there. Maybe that was warranted
+		 *      in the past, but now, that list is only ever filled with keyframes from the 
+		 *      current FCurve.
+		 *
+		 *      -- Aligorith (20140415)
+		 */
+		prev = beztn - 1;
+	}
+	
 	
 	/* check if block needed - same value(s)?
 	 *	-> firstly, handles must have same central value as each other
@@ -414,6 +311,7 @@ static void add_bezt_to_keyblocks_list(DLRBT_Tree *blocks, DLRBT_Tree *beztTree,
 	 */
 	if (prev == NULL) return;
 	if (IS_EQF(beztn->vec[1][1], prev->vec[1][1]) == 0) return;
+	
 	if (IS_EQF(beztn->vec[1][1], beztn->vec[0][1]) == 0) return;
 	if (IS_EQF(prev->vec[1][1], prev->vec[2][1]) == 0) return;
 	
@@ -428,6 +326,7 @@ static void add_bezt_to_keyblocks_list(DLRBT_Tree *blocks, DLRBT_Tree *beztTree,
 		ActKeyBlock *ab, *abn = NULL;
 		
 		/* try to find a keyblock that starts on the previous beztriple, and add a new one if none start there
+		 * Note: we perform a tree traversal here NOT a standard linked-list traversal...
 		 * Note: we can't search from end to try to optimize this as it causes errors there's
 		 *      an A ___ B |---| B situation
 		 */
@@ -436,17 +335,19 @@ static void add_bezt_to_keyblocks_list(DLRBT_Tree *blocks, DLRBT_Tree *beztTree,
 		//		A|------------------------------------------------|A
 		//		A|----|A|---|A|-----------------------------------|A
 		for (ab = blocks->root; ab; ab = abn) {
-			/* check if this is a match, or whether we go left or right */
-			if (ab->start == prev->vec[1][0]) {
+			/* check if this is a match, or whether we go left or right 
+			 * NOTE: we now use a float threshold to prevent precision errors causing problems with summaries
+			 */
+			if (IS_EQT(ab->start, prev->vec[1][0], BEZT_BINARYSEARCH_THRESH)) {
 				/* set selection status and 'touched' status */
 				if (BEZSELECTED(beztn)) ab->sel = SELECT;
-				ab->modified += 1;
+				ab->modified++;
 				
 				/* done... no need to insert */
 				return;
 			}
 			else {
-				ActKeyBlock **abnp = NULL;
+				ActKeyBlock **abnp = NULL; /* branch to go down - used to hook new blocks to parents */
 				
 				/* check if go left or right, but if not available, add new node */
 				if (ab->start < prev->vec[1][0]) 
@@ -666,7 +567,7 @@ static void draw_keylist(View2D *v2d, DLRBT_Tree *keys, DLRBT_Tree *blocks, floa
 	glEnable(GL_BLEND);
 	
 	/* get View2D scaling factor */
-	UI_view2d_getscale(v2d, &xscale, NULL);
+	UI_view2d_scale_get(v2d, &xscale, NULL);
 	
 	/* locked channels are less strongly shown, as feedback for locked channels in DopeSheet */
 	/* TODO: allow this opacity factor to be themed? */
@@ -674,18 +575,23 @@ static void draw_keylist(View2D *v2d, DLRBT_Tree *keys, DLRBT_Tree *blocks, floa
 	
 	/* draw keyblocks */
 	if (blocks) {
+		float sel_color[4], unsel_color[4];
+		
+		/* cache colours first */
+		UI_GetThemeColor4fv(TH_STRIP_SELECT, sel_color);
+		UI_GetThemeColor4fv(TH_STRIP, unsel_color);
+		
+		sel_color[3]   *= alpha;
+		unsel_color[3] *= alpha;
+		
+		/* NOTE: the tradeoff for changing colors between each draw is dwarfed by the cost of checking validity */
 		for (ab = blocks->first; ab; ab = ab->next) {
 			if (actkeyblock_is_valid(ab, keys)) {
-				float color[4];
-				
 				/* draw block */
 				if (ab->sel)
-					UI_GetThemeColor4fv(TH_STRIP_SELECT, color);
+					glColor4fv(sel_color);
 				else
-					UI_GetThemeColor4fv(TH_STRIP, color);
-					
-				color[3] *= alpha;
-				glColor4fv(color);
+					glColor4fv(unsel_color);
 				
 				glRectf(ab->start, ypos - iconsize, ab->end, ypos + iconsize);
 			}
@@ -830,6 +736,21 @@ void draw_action_channel(View2D *v2d, AnimData *adt, bAction *act, float ypos)
 	BLI_dlrbTree_free(&blocks);
 }
 
+void draw_gpencil_channel(View2D *v2d, bDopeSheet *ads, bGPdata *gpd, float ypos)
+{
+	DLRBT_Tree keys;
+	
+	BLI_dlrbTree_init(&keys);
+	
+	gpencil_to_keylist(ads, gpd, &keys);
+	
+	BLI_dlrbTree_linkedlist_sync(&keys);
+	
+	draw_keylist(v2d, &keys, NULL, ypos, 0);
+	
+	BLI_dlrbTree_free(&keys);
+}
+
 void draw_gpl_channel(View2D *v2d, bDopeSheet *ads, bGPDlayer *gpl, float ypos)
 {
 	DLRBT_Tree keys;
@@ -875,7 +796,6 @@ void summary_to_keylist(bAnimContext *ac, DLRBT_Tree *keys, DLRBT_Tree *blocks)
 		
 		/* loop through each F-Curve, grabbing the keyframes */
 		for (ale = anim_data.first; ale; ale = ale->next) {
-
 			/* Why not use all #eAnim_KeyType here?
 			 * All of the other key types are actually "summaries" themselves, and will just end up duplicating stuff
 			 * that comes up through standard filtering of just F-Curves.
@@ -896,8 +816,8 @@ void summary_to_keylist(bAnimContext *ac, DLRBT_Tree *keys, DLRBT_Tree *blocks)
 					break;
 			}
 		}
-
-		BLI_freelistN(&anim_data);
+		
+		ANIM_animdata_freelist(&anim_data);
 	}
 }
 
@@ -931,7 +851,7 @@ void scene_to_keylist(bDopeSheet *ads, Scene *sce, DLRBT_Tree *keys, DLRBT_Tree 
 	for (ale = anim_data.first; ale; ale = ale->next)
 		fcurve_to_keylist(ale->adt, ale->data, keys, blocks);
 	
-	BLI_freelistN(&anim_data);
+	ANIM_animdata_freelist(&anim_data);
 }
 
 void ob_to_keylist(bDopeSheet *ads, Object *ob, DLRBT_Tree *keys, DLRBT_Tree *blocks)
@@ -967,12 +887,11 @@ void ob_to_keylist(bDopeSheet *ads, Object *ob, DLRBT_Tree *keys, DLRBT_Tree *bl
 	for (ale = anim_data.first; ale; ale = ale->next)
 		fcurve_to_keylist(ale->adt, ale->data, keys, blocks);
 	
-	BLI_freelistN(&anim_data);
+	ANIM_animdata_freelist(&anim_data);
 }
 
 void fcurve_to_keylist(AnimData *adt, FCurve *fcu, DLRBT_Tree *keys, DLRBT_Tree *blocks)
 {
-	DLRBT_Tree *beztTree = NULL;
 	BezTriple *bezt;
 	unsigned int v;
 
@@ -981,25 +900,10 @@ void fcurve_to_keylist(AnimData *adt, FCurve *fcu, DLRBT_Tree *keys, DLRBT_Tree 
 		if (adt)
 			ANIM_nla_mapping_apply_fcurve(adt, fcu, 0, 0);
 		
-		/* if getting long keyframes too, grab the BezTriples in a BST for 
-		 * accelerated searching...
-		 */
-		if (blocks) {
-			/* init new tree */
-			beztTree = BLI_dlrbTree_new();
-			
-			/* populate tree with the BezTriples */
-			for (v = 0, bezt = fcu->bezt; v < fcu->totvert; v++, bezt++)
-				BLI_dlrbTree_add(beztTree, compare_abk_bezt, nalloc_abk_bezt, nupdate_abk_bezt, bezt);
-			
-			/* make sure that it is suitable for linked-list searching too */
-			BLI_dlrbTree_linkedlist_sync(beztTree);
-		}
-		
 		/* loop through beztriples, making ActKeysColumns and ActKeyBlocks */
 		for (v = 0, bezt = fcu->bezt; v < fcu->totvert; v++, bezt++) {
 			add_bezt_to_keycolumns_list(keys, bezt);
-			if (blocks) add_bezt_to_keyblocks_list(blocks, beztTree, bezt);
+			if (blocks) add_bezt_to_keyblocks_list(blocks, fcu->bezt, bezt);
 		}
 		
 		/* update the number of curves that elements have appeared in  */
@@ -1007,12 +911,6 @@ void fcurve_to_keylist(AnimData *adt, FCurve *fcu, DLRBT_Tree *keys, DLRBT_Tree 
 			set_touched_actkeycolumn(keys->root);
 		if (blocks)
 			set_touched_actkeyblock(blocks->root);
-			
-		/* free temp data for building long keyframes */
-		if (blocks && beztTree) {
-			BLI_dlrbTree_free(beztTree);
-			MEM_freeN(beztTree);
-		}
 		
 		/* unapply NLA-mapping if applicable */
 		if (adt)
@@ -1044,6 +942,20 @@ void action_to_keylist(AnimData *adt, bAction *act, DLRBT_Tree *keys, DLRBT_Tree
 	}
 }
 
+
+void gpencil_to_keylist(bDopeSheet *ads, bGPdata *gpd, DLRBT_Tree *keys)
+{
+	bGPDlayer *gpl;
+	
+	if (gpd && keys) {
+		/* for now, just aggregate out all the frames, but only for visible layers */
+		for (gpl = gpd->layers.first; gpl; gpl = gpl->next) {
+			if ((gpl->flag & GP_LAYER_HIDE) == 0) {
+				gpl_to_keylist(ads, gpl, keys);
+			}
+		}
+	}
+}
 
 void gpl_to_keylist(bDopeSheet *UNUSED(ads), bGPDlayer *gpl, DLRBT_Tree *keys)
 {

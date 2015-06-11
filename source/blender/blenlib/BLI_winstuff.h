@@ -37,9 +37,7 @@
 #  error "This include is for Windows only!"
 #endif
 
-#ifndef FREE_WINDOWS
-#  pragma warning(once: 4761 4305 4244 4018)
-#else
+#ifdef FREE_WINDOWS
 #  ifdef WINVER
 #    undef WINVER
 #  endif
@@ -127,10 +125,6 @@ typedef long ssize_t;
 #  endif
 #endif
 
-
-#ifdef FREE_WINDOWS
-#include <dirent.h>
-#else
 struct dirent {
 	int d_ino;
 	int d_off;
@@ -153,7 +147,6 @@ typedef struct _DIR {
 DIR *opendir(const char *path);
 struct dirent *readdir(DIR *dp);
 int closedir(DIR *dp);
-#endif
 
 void RegisterBlendExtension(void);
 void get_default_root(char *root);

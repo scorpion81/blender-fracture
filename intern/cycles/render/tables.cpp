@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include "device.h"
@@ -39,7 +39,10 @@ void LookupTables::device_update(Device *device, DeviceScene *dscene)
 	if(!need_update)
 		return;
 
-	device->tex_alloc("__lookup_table", dscene->lookup_table);
+	device->tex_free(dscene->lookup_table);
+
+	if(lookup_tables.size() > 0)
+		device->tex_alloc("__lookup_table", dscene->lookup_table);
 
 	need_update = false;
 }

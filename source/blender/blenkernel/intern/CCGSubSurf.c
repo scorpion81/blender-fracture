@@ -119,7 +119,7 @@ static void _ehash_insert(EHash *eh, EHEntry *entry)
 	eh->buckets[hash] = entry;
 	eh->numEntries++;
 
-	if (eh->numEntries > (numBuckets * 3)) {
+	if (UNLIKELY(eh->numEntries > (numBuckets * 3))) {
 		EHEntry **oldBuckets = eh->buckets;
 		eh->curSize = kHashSizes[++eh->curSizeIdx];
 		
@@ -172,29 +172,19 @@ static void *_ehash_lookup(EHash *eh, void *key)
 
 /**/
 
-typedef struct _EHashIterator {
-	EHash *eh;
-	int curBucket;
-	EHEntry *curEntry;
-} EHashIterator;
-
-static EHashIterator *_ehashIterator_new(EHash *eh)
+static void _ehashIterator_init(EHash *eh, EHashIterator *ehi)
 {
-	EHashIterator *ehi = EHASH_alloc(eh, sizeof(*ehi));
+	/* fill all members */
 	ehi->eh = eh;
-	ehi->curEntry = NULL;
 	ehi->curBucket = -1;
+	ehi->curEntry = NULL;
+
 	while (!ehi->curEntry) {
 		ehi->curBucket++;
 		if (ehi->curBucket == ehi->eh->curSize)
 			break;
 		ehi->curEntry = ehi->eh->buckets[ehi->curBucket];
 	}
-	return ehi;
-}
-static void _ehashIterator_free(EHashIterator *ehi)
-{
-	EHASH_free(ehi->eh, ehi);
 }
 
 static void *_ehashIterator_getCurrent(EHashIterator *ehi)
@@ -223,15 +213,15 @@ static int _ehashIterator_isStopped(EHashIterator *ehi)
 
 static void *_stdAllocator_alloc(CCGAllocatorHDL UNUSED(a), int numBytes)
 {
-	return malloc(numBytes);
+	return MEM_mallocN(numBytes, "CCG standard alloc");
 }
 static void *_stdAllocator_realloc(CCGAllocatorHDL UNUSED(a), void *ptr, int newSize, int UNUSED(oldSize))
 {
-	return realloc(ptr, newSize);
+	return MEM_reallocN(ptr, newSize);
 }
 static void _stdAllocator_free(CCGAllocatorHDL UNUSED(a), void *ptr)
 {
-	free(ptr);
+	MEM_freeN(ptr);
 }
 
 static CCGAllocatorIFC *_getStandardAllocatorIFC(void)
@@ -299,6 +289,22 @@ BLI_INLINE int ccg_edgebase(int level)
 #define NormZero(av)     { float *_a = (float *) av; _a[0] = _a[1] = _a[2] = 0.0f; } (void)0
 #define NormCopy(av, bv) { float *_a = (float *) av, *_b = (float *) bv; _a[0]  = _b[0]; _a[1]  = _b[1]; _a[2]  = _b[2]; } (void)0
 #define NormAdd(av, bv)  { float *_a = (float *) av, *_b = (float *) bv; _a[0] += _b[0]; _a[1] += _b[1]; _a[2] += _b[2]; } (void)0
+
+BLI_INLINE void Normalize(float no[3])
+{
+	const float length = sqrtf(no[0] * no[0] + no[1] * no[1] + no[2] * no[2]);
+
+	if (length > EPSILON) {
+		const float length_inv = 1.0f / length;
+
+		no[0] *= length_inv;
+		no[1] *= length_inv;
+		no[2] *= length_inv;
+	}
+	else {
+		NormZero(no);
+	}
+}
 
 /***/
 
@@ -573,8 +579,14 @@ static float *_vert_getNo(CCGVert *v, int lvl, int dataSize, int normalDataOffse
 
 static void _vert_free(CCGVert *v, CCGSubSurf *ss)
 {
-	CCGSUBSURF_free(ss, v->edges);
-	CCGSUBSURF_free(ss, v->faces);
+	if (v->edges) {
+		CCGSUBSURF_free(ss, v->edges);
+	}
+
+	if (v->faces) {
+		CCGSUBSURF_free(ss, v->faces);
+	}
+
 	CCGSUBSURF_free(ss, v);
 }
 
@@ -663,7 +675,10 @@ static void *_edge_getCoVert(CCGEdge *e, CCGVert *v, int lvl, int x, int dataSiz
 
 static void _edge_free(CCGEdge *e, CCGSubSurf *ss)
 {
-	CCGSUBSURF_free(ss, e->faces);
+	if (e->faces) {
+		CCGSUBSURF_free(ss, e->faces);
+	}
+
 	CCGSUBSURF_free(ss, e);
 }
 static void _edge_unlinkMarkAndFree(CCGEdge *e, CCGSubSurf *ss)
@@ -806,24 +821,12 @@ static void _face_calcIFNo(CCGFace *f, int lvl, int S, int x, int y, float no[3]
 	float *d = _face_getIFCo(f, lvl, S, x + 0, y + 1, levels, dataSize);
 	float a_cX = c[0] - a[0], a_cY = c[1] - a[1], a_cZ = c[2] - a[2];
 	float b_dX = d[0] - b[0], b_dY = d[1] - b[1], b_dZ = d[2] - b[2];
-	float length;
 
 	no[0] = b_dY * a_cZ - b_dZ * a_cY;
 	no[1] = b_dZ * a_cX - b_dX * a_cZ;
 	no[2] = b_dX * a_cY - b_dY * a_cX;
 
-	length = sqrtf(no[0] * no[0] + no[1] * no[1] + no[2] * no[2]);
-
-	if (length > EPSILON) {
-		float invLength = 1.0f / length;
-
-		no[0] *= invLength;
-		no[1] *= invLength;
-		no[2] *= invLength;
-	}
-	else {
-		NormZero(no);
-	}
+	Normalize(no);
 }
 
 static void _face_free(CCGFace *f, CCGSubSurf *ss)
@@ -1270,7 +1273,7 @@ CCGError ccgSubSurf_syncFace(CCGSubSurf *ss, CCGFaceHDL fHDL, int numVerts, CCGV
 	CCGFace *f = NULL, *fNew;
 	int j, k, topologyChanged = 0;
 
-	if (numVerts > ss->lenTempArrays) {
+	if (UNLIKELY(numVerts > ss->lenTempArrays)) {
 		ss->lenTempArrays = (numVerts < ss->lenTempArrays * 2) ? ss->lenTempArrays * 2 : numVerts;
 		ss->tempVerts = MEM_reallocN(ss->tempVerts, sizeof(*ss->tempVerts) * ss->lenTempArrays);
 		ss->tempEdges = MEM_reallocN(ss->tempEdges, sizeof(*ss->tempEdges) * ss->lenTempArrays);
@@ -1418,7 +1421,9 @@ CCGError ccgSubSurf_processSync(CCGSubSurf *ss)
 	return eCCGError_None;
 }
 
+#define VERT_getCo(v, lvl)                  _vert_getCo(v, lvl, vertDataSize)
 #define VERT_getNo(e, lvl)                  _vert_getNo(v, lvl, vertDataSize, normalDataOffset)
+#define EDGE_getCo(e, lvl, x)               _edge_getCo(e, lvl, x, vertDataSize)
 #define EDGE_getNo(e, lvl, x)               _edge_getNo(e, lvl, x, vertDataSize, normalDataOffset)
 #define FACE_getIFNo(f, lvl, S, x, y)       _face_getIFNo(f, lvl, S, x, y, subdivLevels, vertDataSize, normalDataOffset)
 #define FACE_calcIFNo(f, lvl, S, x, y, no)  _face_calcIFNo(f, lvl, S, x, y, no, subdivLevels, vertDataSize)
@@ -1519,7 +1524,7 @@ static void ccgSubSurf__calcVertNormals(CCGSubSurf *ss,
 	/* XXX can I reduce the number of normalisations here? */
 	for (ptrIdx = 0; ptrIdx < numEffectedV; ptrIdx++) {
 		CCGVert *v = (CCGVert *) effectedV[ptrIdx];
-		float length, *no = VERT_getNo(v, lvl);
+		float *no = VERT_getNo(v, lvl);
 
 		NormZero(no);
 
@@ -1528,17 +1533,11 @@ static void ccgSubSurf__calcVertNormals(CCGSubSurf *ss,
 			NormAdd(no, FACE_getIFNo(f, lvl, _face_getVertIndex(f, v), gridSize - 1, gridSize - 1));
 		}
 
-		length = sqrtf(no[0] * no[0] + no[1] * no[1] + no[2] * no[2]);
+		if (UNLIKELY(v->numFaces == 0)) {
+			NormCopy(no, VERT_getCo(v, lvl));
+		}
 
-		if (length > EPSILON) {
-			float invLength = 1.0f / length;
-			no[0] *= invLength;
-			no[1] *= invLength;
-			no[2] *= invLength;
-		}
-		else {
-			NormZero(no);
-		}
+		Normalize(no);
 
 		for (i = 0; i < v->numFaces; i++) {
 			CCGFace *f = v->faces[i];
@@ -1590,17 +1589,7 @@ static void ccgSubSurf__calcVertNormals(CCGSubSurf *ss,
 			for (y = 0; y < gridSize; y++) {
 				for (x = 0; x < gridSize; x++) {
 					float *no = FACE_getIFNo(f, lvl, S, x, y);
-					float length = sqrtf(no[0] * no[0] + no[1] * no[1] + no[2] * no[2]);
-
-					if (length > EPSILON) {
-						float invLength = 1.0f / length;
-						no[0] *= invLength;
-						no[1] *= invLength;
-						no[2] *= invLength;
-					}
-					else {
-						NormZero(no);
-					}
+					Normalize(no);
 				}
 			}
 
@@ -1633,15 +1622,15 @@ static void ccgSubSurf__calcVertNormals(CCGSubSurf *ss,
 			int x;
 
 			for (x = 0; x < edgeSize; x++) {
-				NormZero(EDGE_getNo(e, lvl, x));
+				float *no = EDGE_getNo(e, lvl, x);
+				NormCopy(no, EDGE_getCo(e, lvl, x));
+				Normalize(no);
 			}
 		}
 	}
 }
 #undef FACE_getIFNo
 
-#define VERT_getCo(v, lvl)              _vert_getCo(v, lvl, vertDataSize)
-#define EDGE_getCo(e, lvl, x)           _edge_getCo(e, lvl, x, vertDataSize)
 #define FACE_getIECo(f, lvl, S, x)      _face_getIECo(f, lvl, S, x, subdivLevels, vertDataSize)
 #define FACE_getIFCo(f, lvl, S, x, y)   _face_getIFCo(f, lvl, S, x, y, subdivLevels, vertDataSize)
 
@@ -3061,17 +3050,17 @@ void *ccgSubSurf_getFaceGridData(CCGSubSurf *ss, CCGFace *f, int gridIndex, int 
 
 /*** External API iterator functions ***/
 
-CCGVertIterator *ccgSubSurf_getVertIterator(CCGSubSurf *ss)
+void ccgSubSurf_initVertIterator(CCGSubSurf *ss, CCGVertIterator *viter)
 {
-	return (CCGVertIterator *) _ehashIterator_new(ss->vMap);
+	_ehashIterator_init(ss->vMap, viter);
 }
-CCGEdgeIterator *ccgSubSurf_getEdgeIterator(CCGSubSurf *ss)
+void ccgSubSurf_initEdgeIterator(CCGSubSurf *ss, CCGEdgeIterator *eiter)
 {
-	return (CCGEdgeIterator *) _ehashIterator_new(ss->eMap);
+	_ehashIterator_init(ss->eMap, eiter);
 }
-CCGFaceIterator *ccgSubSurf_getFaceIterator(CCGSubSurf *ss)
+void ccgSubSurf_initFaceIterator(CCGSubSurf *ss, CCGFaceIterator *fiter)
 {
-	return (CCGFaceIterator *) _ehashIterator_new(ss->fMap);
+	_ehashIterator_init(ss->fMap, fiter);
 }
 
 CCGVert *ccgVertIterator_getCurrent(CCGVertIterator *vi)
@@ -3086,10 +3075,6 @@ void ccgVertIterator_next(CCGVertIterator *vi)
 {
 	_ehashIterator_next((EHashIterator *) vi);
 }
-void ccgVertIterator_free(CCGVertIterator *vi)
-{
-	_ehashIterator_free((EHashIterator *) vi);
-}
 
 CCGEdge *ccgEdgeIterator_getCurrent(CCGEdgeIterator *vi)
 {
@@ -3103,10 +3088,6 @@ void ccgEdgeIterator_next(CCGEdgeIterator *vi)
 {
 	_ehashIterator_next((EHashIterator *) vi);
 }
-void ccgEdgeIterator_free(CCGEdgeIterator *vi)
-{
-	_ehashIterator_free((EHashIterator *) vi);
-}
 
 CCGFace *ccgFaceIterator_getCurrent(CCGFaceIterator *vi)
 {
@@ -3119,10 +3100,6 @@ int ccgFaceIterator_isStopped(CCGFaceIterator *vi)
 void ccgFaceIterator_next(CCGFaceIterator *vi)
 {
 	_ehashIterator_next((EHashIterator *) vi);
-}
-void ccgFaceIterator_free(CCGFaceIterator *vi)
-{
-	_ehashIterator_free((EHashIterator *) vi);
 }
 
 /*** Extern API final vert/edge/face interface ***/

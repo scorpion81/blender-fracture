@@ -37,11 +37,14 @@
 
 #include "py_capi_utils.h"
 
+#include "../generic/python_utildefines.h"
+
 /* only for BLI_strncpy_wchar_from_utf8, should replace with py funcs but too late in release now */
 #include "BLI_string_utf8.h"
 
-#ifdef _WIN32 /* BLI_setenv */
-#include "BLI_path_util.h"
+#ifdef _WIN32
+#include "BLI_path_util.h"  /* BLI_setenv() */
+#include "BLI_math_base.h"  /* finite() */
 #endif
 
 /* array utility function */
@@ -177,6 +180,17 @@ void PyC_Tuple_Fill(PyObject *tuple, PyObject *value)
 	}
 }
 
+void PyC_List_Fill(PyObject *list, PyObject *value)
+{
+	unsigned int tot = PyList_GET_SIZE(list);
+	unsigned int i;
+
+	for (i = 0; i < tot; i++) {
+		PyList_SET_ITEM(list, i, value);
+		Py_INCREF(value);
+	}
+}
+
 /* for debugging */
 void PyC_ObSpit(const char *name, PyObject *var)
 {
@@ -284,7 +298,7 @@ PyObject *PyC_Object_GetAttrStringArgs(PyObject *o, Py_ssize_t n, ...)
 {
 	Py_ssize_t i;
 	PyObject *item = o;
-	char *attr;
+	const char *attr;
 	
 	va_list vargs;
 
@@ -418,7 +432,7 @@ PyObject *PyC_ExceptionBuffer(void)
 	if (!(string_io_mod = PyImport_ImportModule("io"))) {
 		goto error_cleanup;
 	}
-	else if (!(string_io = PyObject_CallMethod(string_io_mod, (char *)"StringIO", NULL))) {
+	else if (!(string_io = PyObject_CallMethod(string_io_mod, "StringIO", NULL))) {
 		goto error_cleanup;
 	}
 	else if (!(string_io_getvalue = PyObject_GetAttrString(string_io, "getvalue"))) {
@@ -543,8 +557,9 @@ PyObject *PyC_DefaultNameSpace(const char *filename)
 	Py_DECREF(mod_main); /* sys.modules owns now */
 	PyModule_AddStringConstant(mod_main, "__name__", "__main__");
 	if (filename) {
-		/* __file__ mainly for nice UI'ness */
-		PyModule_AddObject(mod_main, "__file__", PyUnicode_DecodeFSDefault(filename));
+		/* __file__ mainly for nice UI'ness
+		 * note: this wont map to a real file when executing text-blocks and buttons. */
+		PyModule_AddObject(mod_main, "__file__", PyC_UnicodeFromByte(filename));
 	}
 	PyModule_AddObject(mod_main, "__builtins__", interp->builtins);
 	Py_INCREF(interp->builtins); /* AddObject steals a reference */
@@ -566,7 +581,7 @@ void PyC_MainModule_Restore(PyObject *main_mod)
 	Py_XDECREF(main_mod);
 }
 
-/* must be called before Py_Initialize, expects output of BLI_get_folder(BLENDER_PYTHON, NULL) */
+/* must be called before Py_Initialize, expects output of BKE_appdir_folder_id(BLENDER_PYTHON, NULL) */
 void PyC_SetHomePath(const char *py_path_bundle)
 {
 	if (py_path_bundle == NULL) {
@@ -605,8 +620,7 @@ void PyC_SetHomePath(const char *py_path_bundle)
 		/* cant use this, on linux gives bug: #23018, TODO: try LANG="en_US.UTF-8" /usr/bin/blender, suggested 22008 */
 		/* mbstowcs(py_path_bundle_wchar, py_path_bundle, FILE_MAXDIR); */
 
-		BLI_strncpy_wchar_from_utf8(py_path_bundle_wchar, py_path_bundle,
-		                            sizeof(py_path_bundle_wchar) / sizeof(wchar_t));
+		BLI_strncpy_wchar_from_utf8(py_path_bundle_wchar, py_path_bundle, ARRAY_SIZE(py_path_bundle_wchar));
 
 		Py_SetPythonHome(py_path_bundle_wchar);
 		// printf("found python (wchar_t) '%ls'\n", py_path_bundle_wchar);
@@ -647,15 +661,15 @@ void PyC_RunQuicky(const char *filepath, int n, ...)
 
 		va_start(vargs, n);
 		for (i = 0; i * 2 < n; i++) {
-			char *format = va_arg(vargs, char *);
+			const char *format = va_arg(vargs, char *);
 			void *ptr = va_arg(vargs, void *);
 
-			ret = PyObject_CallFunction(calcsize, (char *)"s", format);
+			ret = PyObject_CallFunction(calcsize, "s", format);
 
 			if (ret) {
 				sizes[i] = PyLong_AsLong(ret);
 				Py_DECREF(ret);
-				ret = PyObject_CallFunction(unpack, (char *)"sy#", format, (char *)ptr, sizes[i]);
+				ret = PyObject_CallFunction(unpack, "sy#", format, (char *)ptr, sizes[i]);
 			}
 
 			if (ret == NULL) {
@@ -663,8 +677,7 @@ void PyC_RunQuicky(const char *filepath, int n, ...)
 				PyErr_Print();
 				PyErr_Clear();
 
-				PyList_SET_ITEM(values, i, Py_None); /* hold user */
-				Py_INCREF(Py_None);
+				PyList_SET_ITEM(values, i, Py_INCREF_RET(Py_None)); /* hold user */
 
 				sizes[i] = 0;
 			}
@@ -704,7 +717,7 @@ void PyC_RunQuicky(const char *filepath, int n, ...)
 				/* now get the values back */
 				va_start(vargs, n);
 				for (i = 0; i * 2 < n; i++) {
-					char *format = va_arg(vargs, char *);
+					const char *format = va_arg(vargs, char *);
 					void *ptr = va_arg(vargs, void *);
 					
 					PyObject *item;
@@ -761,6 +774,9 @@ void PyC_RunQuicky(const char *filepath, int n, ...)
 		PyMem_FREE(sizes);
 
 		PyGILState_Release(gilstate);
+	}
+	else {
+		fprintf(stderr, "%s: '%s' missing\n", __func__, filepath);
 	}
 }
 
@@ -902,18 +918,72 @@ PyObject *PyC_FlagSet_FromBitfield(PyC_FlagSet *items, int flag)
 	return ret;
 }
 
-/* compat only */
-#if PY_VERSION_HEX <  0x03030200
-int
-_PyLong_AsInt(PyObject *obj)
+
+/**
+ * \return -1 on error, else 0
+ *
+ * \note it is caller's responsibility to acquire & release GIL!
+ */
+int PyC_RunString_AsNumber(const char *expr, double *value, const char *filename)
 {
-	int overflow;
-	long result = PyLong_AsLongAndOverflow(obj, &overflow);
-	if (overflow || result > INT_MAX || result < INT_MIN) {
-		PyErr_SetString(PyExc_OverflowError,
-		                "Python int too large to convert to C int");
-		return -1;
+	PyObject *py_dict, *mod, *retval;
+	int error_ret = 0;
+	PyObject *main_mod = NULL;
+
+	PyC_MainModule_Backup(&main_mod);
+
+	py_dict = PyC_DefaultNameSpace(filename);
+
+	mod = PyImport_ImportModule("math");
+	if (mod) {
+		PyDict_Merge(py_dict, PyModule_GetDict(mod), 0); /* 0 - don't overwrite existing values */
+		Py_DECREF(mod);
 	}
-	return (int)result;
+	else { /* highly unlikely but possibly */
+		PyErr_Print();
+		PyErr_Clear();
+	}
+
+	retval = PyRun_String(expr, Py_eval_input, py_dict, py_dict);
+
+	if (retval == NULL) {
+		error_ret = -1;
+	}
+	else {
+		double val;
+
+		if (PyTuple_Check(retval)) {
+			/* Users my have typed in 10km, 2m
+			 * add up all values */
+			int i;
+			val = 0.0;
+
+			for (i = 0; i < PyTuple_GET_SIZE(retval); i++) {
+				const double val_item = PyFloat_AsDouble(PyTuple_GET_ITEM(retval, i));
+				if (val_item == -1 && PyErr_Occurred()) {
+					val = -1;
+					break;
+				}
+				val += val_item;
+			}
+		}
+		else {
+			val = PyFloat_AsDouble(retval);
+		}
+		Py_DECREF(retval);
+
+		if (val == -1 && PyErr_Occurred()) {
+			error_ret = -1;
+		}
+		else if (!finite(val)) {
+			*value = 0.0;
+		}
+		else {
+			*value = val;
+		}
+	}
+
+	PyC_MainModule_Restore(main_mod);
+
+	return error_ret;
 }
-#endif

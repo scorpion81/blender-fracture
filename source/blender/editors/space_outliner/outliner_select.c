@@ -31,8 +31,6 @@
 
 #include <stdlib.h>
 
-#include "MEM_guardedalloc.h"
-
 #include "DNA_armature_types.h"
 #include "DNA_group_types.h"
 #include "DNA_lamp_types.h"
@@ -47,7 +45,6 @@
 
 #include "BKE_context.h"
 #include "BKE_depsgraph.h"
-#include "BKE_main.h"
 #include "BKE_object.h"
 #include "BKE_scene.h"
 #include "BKE_sequencer.h"
@@ -293,6 +290,10 @@ static eOLDrawState tree_element_active_material(
 		}
 	}
 	if (set != OL_SETSEL_NONE) {
+		/* Tagging object for update seems a bit stupid here, but looks like we have to do it
+		 * for render views to update. See T42973.
+		 * Note that RNA material update does it too, see e.g. rna_MaterialSlot_update(). */
+		DAG_id_tag_update((ID *)ob, OB_RECALC_OB);
 		WM_event_add_notifier(C, NC_MATERIAL | ND_SHADING_LINKS, NULL);
 	}
 	return OL_DRAWSEL_NONE;
@@ -618,19 +619,19 @@ static eOLDrawState tree_element_active_ebone(
 		if (set == OL_SETSEL_NORMAL) {
 			if (!(ebone->flag & BONE_HIDDEN_A)) {
 				ED_armature_deselect_all(scene->obedit, 0); // deselect
-				tree_element_active_ebone__sel(C, scene, arm, ebone, TRUE);
+				tree_element_active_ebone__sel(C, scene, arm, ebone, true);
 				status = OL_DRAWSEL_NORMAL;
 			}
 		}
 		else if (set == OL_SETSEL_EXTEND) {
 			if (!(ebone->flag & BONE_HIDDEN_A)) {
 				if (!(ebone->flag & BONE_SELECTED)) {
-					tree_element_active_ebone__sel(C, scene, arm, ebone, TRUE);
+					tree_element_active_ebone__sel(C, scene, arm, ebone, true);
 					status = OL_DRAWSEL_NORMAL;
 				}
 				else {
 					/* entirely selected, so de-select */
-					tree_element_active_ebone__sel(C, scene, arm, ebone, FALSE);
+					tree_element_active_ebone__sel(C, scene, arm, ebone, false);
 					status = OL_DRAWSEL_NONE;
 				}
 			}
@@ -724,7 +725,7 @@ static eOLDrawState tree_element_active_sequence(
         bContext *C, Scene *scene, TreeElement *te, TreeStoreElem *UNUSED(tselem), const eOLSetState set)
 {
 	Sequence *seq = (Sequence *) te->directdata;
-	Editing *ed = BKE_sequencer_editing_get(scene, FALSE);
+	Editing *ed = BKE_sequencer_editing_get(scene, false);
 
 	if (set != OL_SETSEL_NONE) {
 		/* only check on setting */
@@ -757,7 +758,7 @@ static eOLDrawState tree_element_active_sequence_dup(
         Scene *scene, TreeElement *te, TreeStoreElem *UNUSED(tselem), const eOLSetState set)
 {
 	Sequence *seq, *p;
-	Editing *ed = BKE_sequencer_editing_get(scene, FALSE);
+	Editing *ed = BKE_sequencer_editing_get(scene, false);
 
 	seq = (Sequence *)te->directdata;
 	if (set == OL_SETSEL_NONE) {
@@ -774,7 +775,7 @@ static eOLDrawState tree_element_active_sequence_dup(
 			continue;
 		}
 
-//		if (!strcmp(p->strip->stripdata->name, seq->strip->stripdata->name))
+//		if (STREQ(p->strip->stripdata->name, seq->strip->stripdata->name))
 // XXX			select_single_seq(p, 0);
 		p = p->next;
 	}
@@ -801,14 +802,17 @@ static eOLDrawState tree_element_active_keymap_item(
 /* ---------------------------------------------- */
 
 /* generic call for ID data check or make/check active in UI */
-eOLDrawState tree_element_active(
-        bContext *C, Scene *scene, SpaceOops *soops,
-        TreeElement *te, const eOLSetState set)
+eOLDrawState tree_element_active(bContext *C, Scene *scene, SpaceOops *soops, TreeElement *te,
+                                 const eOLSetState set, const bool handle_all_types)
 {
-
 	switch (te->idcode) {
-		/* Note: no ID_OB: objects are handled specially to allow multiple
+		/* Note: ID_OB only if handle_all_type is true, else objects are handled specially to allow multiple
 		 * selection. See do_outliner_item_activate. */
+		case ID_OB:
+			if (handle_all_types) {
+				return tree_element_set_active_object(C, scene, soops, te, set, false);
+			}
+			break;
 		case ID_MA:
 			return tree_element_active_material(C, scene, soops, te, set);
 		case ID_WO:
@@ -869,6 +873,9 @@ eOLDrawState tree_element_type_active(
 			return tree_element_active_sequence_dup(scene, te, tselem, set);
 		case TSE_KEYMAP_ITEM:
 			return tree_element_active_keymap_item(C, te, tselem, set);
+		case TSE_GP_LAYER:
+			//return tree_element_active_gplayer(C, scene, te, tselem, set);
+			break;
 			
 	}
 	return OL_DRAWSEL_NONE;
@@ -911,7 +918,7 @@ static bool do_outliner_item_activate(bContext *C, Scene *scene, ARegion *ar, Sp
 			if (tselem->type != TSE_SEQUENCE && tselem->type != TSE_SEQ_STRIP && tselem->type != TSE_SEQUENCE_DUP)
 				tree_element_set_active_object(C, scene, soops, te,
 				                               (extend && tselem->type == 0) ? OL_SETSEL_EXTEND : OL_SETSEL_NORMAL,
-				                               recursive && tselem->type == 0 );
+				                               recursive && tselem->type == 0);
 			
 			if (tselem->type == 0) { // the lib blocks
 				/* editmode? */
@@ -948,11 +955,11 @@ static bool do_outliner_item_activate(bContext *C, Scene *scene, ARegion *ar, Sp
 					
 					WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, scene);
 				}
-				else if (ELEM5(te->idcode, ID_ME, ID_CU, ID_MB, ID_LT, ID_AR)) {
+				else if (ELEM(te->idcode, ID_ME, ID_CU, ID_MB, ID_LT, ID_AR)) {
 					WM_operator_name_call(C, "OBJECT_OT_editmode_toggle", WM_OP_INVOKE_REGION_WIN, NULL);
 				}
 				else {  // rest of types
-					tree_element_active(C, scene, soops, te, OL_SETSEL_NORMAL);
+					tree_element_active(C, scene, soops, te, OL_SETSEL_NORMAL, false);
 				}
 
 			}
@@ -982,7 +989,7 @@ int outliner_item_do_activate(bContext *C, int x, int y, bool extend, bool recur
 	TreeElement *te;
 	float fmval[2];
 
-	UI_view2d_region_to_view(&ar->v2d, x, y, fmval, fmval + 1);
+	UI_view2d_region_to_view(&ar->v2d, x, y, &fmval[0], &fmval[1]);
 
 	if (!ELEM(soops->outlinevis, SO_DATABLOCKS, SO_USERDEF) &&
 	    !(soops->flag & SO_HIDE_RESTRICTCOLS) &&
@@ -1076,14 +1083,11 @@ static int outliner_border_select_exec(bContext *C, wmOperator *op)
 	SpaceOops *soops = CTX_wm_space_outliner(C);
 	ARegion *ar = CTX_wm_region(C);
 	TreeElement *te;
-	rcti rect;
 	rctf rectf;
 	int gesture_mode = RNA_int_get(op->ptr, "gesture_mode");
 
-	WM_operator_properties_border_to_rcti(op, &rect);
-
-	UI_view2d_region_to_view(&ar->v2d, rect.xmin, rect.ymin, &rectf.xmin, &rectf.ymin);
-	UI_view2d_region_to_view(&ar->v2d, rect.xmax, rect.ymax, &rectf.xmax, &rectf.ymax);
+	WM_operator_properties_border_to_rctf(op, &rectf);
+	UI_view2d_region_to_view_rctf(&ar->v2d, &rectf, &rectf);
 
 	for (te = soops->tree.first; te; te = te->next) {
 		outliner_item_border_select(scene, soops, &rectf, te, gesture_mode);
@@ -1114,7 +1118,7 @@ void OUTLINER_OT_select_border(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	/* rna */
-	WM_operator_properties_gesture_border(ot, FALSE);
+	WM_operator_properties_gesture_border(ot, false);
 }
 
 /* ****************************************************** */

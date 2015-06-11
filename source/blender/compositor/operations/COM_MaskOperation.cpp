@@ -54,7 +54,7 @@ void MaskOperation::initExecution()
 
 			BKE_maskrasterize_handle_init(this->m_rasterMaskHandles[0], this->m_mask,
 			        this->m_maskWidth, this->m_maskHeight,
-			        TRUE, this->m_do_smooth, this->m_do_feather);
+			        true, this->m_do_smooth, this->m_do_feather);
 		}
 		else {
 			/* make a throw away copy of the mask */
@@ -88,7 +88,7 @@ void MaskOperation::initExecution()
 
 				BKE_maskrasterize_handle_init(this->m_rasterMaskHandles[i], mask_temp,
 				                              this->m_maskWidth, this->m_maskHeight,
-				                              TRUE, this->m_do_smooth, this->m_do_feather);
+				                              true, this->m_do_smooth, this->m_do_feather);
 
 				frame_iter += frame_step;
 			}
@@ -129,8 +129,9 @@ void MaskOperation::determineResolution(unsigned int resolution[2], unsigned int
 
 void MaskOperation::executePixelSampled(float output[4], float x, float y, PixelSampler sampler)
 {
-	const float xy[2] = {x * this->m_maskWidthInv,
-	                     y * this->m_maskHeightInv};
+	const float xy[2] = {
+	    (x * this->m_maskWidthInv)  + this->m_mask_px_ofs[0],
+	    (y * this->m_maskHeightInv) + this->m_mask_px_ofs[1]};
 
 	if (this->m_rasterMaskHandleTot == 1) {
 		if (this->m_rasterMaskHandles[0]) {

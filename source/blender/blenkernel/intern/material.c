@@ -45,6 +45,7 @@
 #include "DNA_customdata_types.h"
 #include "DNA_ID.h"
 #include "DNA_meta_types.h"
+#include "DNA_modifier_types.h"
 #include "DNA_node_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
@@ -56,6 +57,7 @@
 
 #include "BKE_animsys.h"
 #include "BKE_displist.h"
+#include "BKE_DerivedMesh.h"
 #include "BKE_global.h"
 #include "BKE_icons.h"
 #include "BKE_image.h"
@@ -63,6 +65,8 @@
 #include "BKE_main.h"
 #include "BKE_material.h"
 #include "BKE_mesh.h"
+#include "BKE_modifier.h"
+#include "BKE_scene.h"
 #include "BKE_node.h"
 #include "BKE_curve.h"
 
@@ -80,7 +84,7 @@ void init_def_material(void)
 /* not material itself */
 void BKE_material_free(Material *ma)
 {
-	BKE_material_free_ex(ma, TRUE);
+	BKE_material_free_ex(ma, true);
 }
 
 /* not material itself */
@@ -111,8 +115,11 @@ void BKE_material_free_ex(Material *ma, bool do_id_user)
 		MEM_freeN(ma->nodetree);
 	}
 
+	if (ma->texpaintslot)
+		MEM_freeN(ma->texpaintslot);
+
 	if (ma->gpumaterial.first)
-		GPU_material_free(ma);
+		GPU_material_free(&ma->gpumaterial);
 }
 
 void init_material(Material *ma)
@@ -203,6 +210,7 @@ void init_material(Material *ma)
 	ma->game.face_orientation = 0;
 	
 	ma->mode = MA_TRACEBLE | MA_SHADBUF | MA_SHADOW | MA_RAYBIAS | MA_TANGENT_STR | MA_ZTRANSP;
+	ma->mode2 = MA_CASTSHADOW;
 	ma->shade_flag = MA_APPROX_OCCLUSION;
 	ma->preview = NULL;
 }
@@ -245,8 +253,12 @@ Material *BKE_material_copy(Material *ma)
 		man->nodetree = ntreeCopyTree(ma->nodetree);
 	}
 
-	man->gpumaterial.first = man->gpumaterial.last = NULL;
+	BLI_listbase_clear(&man->gpumaterial);
 	
+	if (ma->id.lib) {
+		BKE_id_lib_local_paths(G.main, ma->id.lib, &man->id);
+	}
+
 	return man;
 }
 
@@ -256,8 +268,7 @@ Material *localize_material(Material *ma)
 	Material *man;
 	int a;
 	
-	man = BKE_libblock_copy(&ma->id);
-	BLI_remlink(&G.main->mat, man);
+	man = BKE_libblock_copy_nolib(&ma->id, false);
 
 	/* no increment for texture ID users, in previewrender.c it prevents decrement */
 	for (a = 0; a < MAX_MTEX; a++) {
@@ -269,13 +280,14 @@ Material *localize_material(Material *ma)
 	
 	if (ma->ramp_col) man->ramp_col = MEM_dupallocN(ma->ramp_col);
 	if (ma->ramp_spec) man->ramp_spec = MEM_dupallocN(ma->ramp_spec);
-	
+
+	man->texpaintslot = NULL;
 	man->preview = NULL;
 	
 	if (ma->nodetree)
 		man->nodetree = ntreeLocalize(ma->nodetree);
 	
-	man->gpumaterial.first = man->gpumaterial.last = NULL;
+	BLI_listbase_clear(&man->gpumaterial);
 	
 	return man;
 }
@@ -295,7 +307,8 @@ void BKE_material_make_local(Material *ma)
 	Mesh *me;
 	Curve *cu;
 	MetaBall *mb;
-	int a, is_local = FALSE, is_lib = FALSE;
+	int a;
+	bool is_local = false, is_lib = false;
 
 	/* - only lib users: do nothing
 	 * - only local users: set flag
@@ -319,8 +332,8 @@ void BKE_material_make_local(Material *ma)
 		if (ob->mat) {
 			for (a = 0; a < ob->totcol; a++) {
 				if (ob->mat[a] == ma) {
-					if (ob->id.lib) is_lib = TRUE;
-					else is_local = TRUE;
+					if (ob->id.lib) is_lib = true;
+					else is_local = true;
 				}
 			}
 		}
@@ -332,8 +345,8 @@ void BKE_material_make_local(Material *ma)
 		if (me->mat) {
 			for (a = 0; a < me->totcol; a++) {
 				if (me->mat[a] == ma) {
-					if (me->id.lib) is_lib = TRUE;
-					else is_local = TRUE;
+					if (me->id.lib) is_lib = true;
+					else is_local = true;
 				}
 			}
 		}
@@ -345,8 +358,8 @@ void BKE_material_make_local(Material *ma)
 		if (cu->mat) {
 			for (a = 0; a < cu->totcol; a++) {
 				if (cu->mat[a] == ma) {
-					if (cu->id.lib) is_lib = TRUE;
-					else is_local = TRUE;
+					if (cu->id.lib) is_lib = true;
+					else is_local = true;
 				}
 			}
 		}
@@ -358,8 +371,8 @@ void BKE_material_make_local(Material *ma)
 		if (mb->mat) {
 			for (a = 0; a < mb->totcol; a++) {
 				if (mb->mat[a] == ma) {
-					if (mb->id.lib) is_lib = TRUE;
-					else is_local = TRUE;
+					if (mb->id.lib) is_lib = true;
+					else is_local = true;
 				}
 			}
 		}
@@ -367,7 +380,7 @@ void BKE_material_make_local(Material *ma)
 	}
 
 	/* Only local users. */
-	if (is_local && is_lib == FALSE) {
+	if (is_local && is_lib == false) {
 		id_clear_lib_data(bmain, &ma->id);
 		extern_local_material(ma);
 	}
@@ -466,7 +479,7 @@ Material ***give_matarar(Object *ob)
 		me = ob->data;
 		return &(me->mat);
 	}
-	else if (ELEM3(ob->type, OB_CURVE, OB_FONT, OB_SURF)) {
+	else if (ELEM(ob->type, OB_CURVE, OB_FONT, OB_SURF)) {
 		cu = ob->data;
 		return &(cu->mat);
 	}
@@ -487,7 +500,7 @@ short *give_totcolp(Object *ob)
 		me = ob->data;
 		return &(me->totcol);
 	}
-	else if (ELEM3(ob->type, OB_CURVE, OB_FONT, OB_SURF)) {
+	else if (ELEM(ob->type, OB_CURVE, OB_FONT, OB_SURF)) {
 		cu = ob->data;
 		return &(cu->totcol);
 	}
@@ -507,13 +520,10 @@ Material ***give_matarar_id(ID *id)
 	switch (GS(id->name)) {
 		case ID_ME:
 			return &(((Mesh *)id)->mat);
-			break;
 		case ID_CU:
 			return &(((Curve *)id)->mat);
-			break;
 		case ID_MB:
 			return &(((MetaBall *)id)->mat);
-			break;
 	}
 	return NULL;
 }
@@ -526,13 +536,10 @@ short *give_totcolp_id(ID *id)
 	switch (GS(id->name)) {
 		case ID_ME:
 			return &(((Mesh *)id)->totcol);
-			break;
 		case ID_CU:
 			return &(((Curve *)id)->totcol);
-			break;
 		case ID_MB:
 			return &(((MetaBall *)id)->totcol);
-			break;
 	}
 	return NULL;
 }
@@ -674,23 +681,23 @@ void BKE_material_clear_id(struct ID *id, bool update_data)
 Material *give_current_material(Object *ob, short act)
 {
 	Material ***matarar, *ma;
-	short *totcolp;
+	const short *totcolp;
 
 	if (ob == NULL) return NULL;
 	
 	/* if object cannot have material, (totcolp == NULL) */
 	totcolp = give_totcolp(ob);
 	if (totcolp == NULL || ob->totcol == 0) return NULL;
-	
-	if (act < 0) {
-		printf("Negative material index!\n");
-	}
-	
+
 	/* return NULL for invalid 'act', can happen for mesh face indices */
 	if (act > ob->totcol)
 		return NULL;
-	else if (act <= 0)
+	else if (act <= 0) {
+		if (act < 0) {
+			printf("Negative material index!\n");
+		}
 		return NULL;
+	}
 
 	if (ob->matbits && ob->matbits[act - 1]) {    /* in object */
 		ma = ob->mat[act - 1];
@@ -779,17 +786,19 @@ void test_object_materials(Main *bmain, ID *id)
 {
 	/* make the ob mat-array same size as 'ob->data' mat-array */
 	Object *ob;
-	short *totcol;
+	const short *totcol;
 
 	if (id == NULL || (totcol = give_totcolp_id(id)) == NULL) {
 		return;
 	}
 
+	BKE_main_lock(bmain);
 	for (ob = bmain->object.first; ob; ob = ob->id.next) {
 		if (ob->data == id) {
 			BKE_material_resize_object(ob, *totcol, false);
 		}
 	}
+	BKE_main_unlock(bmain);
 }
 
 void assign_material_id(ID *id, Material *ma, short act)
@@ -951,14 +960,14 @@ short find_material_index(Object *ob, Material *ma)
 	return 0;
 }
 
-int object_add_material_slot(Object *ob)
+bool object_add_material_slot(Object *ob)
 {
-	if (ob == NULL) return FALSE;
-	if (ob->totcol >= MAXMAT) return FALSE;
+	if (ob == NULL) return false;
+	if (ob->totcol >= MAXMAT) return false;
 	
 	assign_material(ob, NULL, ob->totcol + 1, BKE_MAT_ASSIGN_USERPREF);
 	ob->actcol = ob->totcol;
-	return TRUE;
+	return true;
 }
 
 static void do_init_render_material(Material *ma, int r_mode, float *amb)
@@ -1015,23 +1024,13 @@ static void do_init_render_material(Material *ma, int r_mode, float *amb)
 		ma->ambg = ma->amb * amb[1];
 		ma->ambb = ma->amb * amb[2];
 	}
-	/* will become or-ed result of all node modes */
-	ma->mode_l = ma->mode;
-	ma->mode_l &= ~MA_SHLESS;
-
-	if (ma->strand_surfnor > 0.0f)
-		ma->mode_l |= MA_STR_SURFDIFF;
-
-	/* parses the geom+tex nodes */
-	if (ma->nodetree && ma->use_nodes)
-		ntreeShaderGetTexcoMode(ma->nodetree, r_mode, &ma->texco, &ma->mode_l);
 
 	/* local group override */
 	if ((ma->shade_flag & MA_GROUP_LOCAL) && ma->id.lib && ma->group && ma->group->id.lib) {
 		Group *group;
 
 		for (group = G.main->group.first; group; group = group->id.next) {
-			if (!group->id.lib && strcmp(group->id.name, ma->group->id.name) == 0) {
+			if (!group->id.lib && STREQ(group->id.name, ma->group->id.name)) {
 				ma->group = group;
 			}
 		}
@@ -1049,8 +1048,16 @@ static void init_render_nodetree(bNodeTree *ntree, Material *basemat, int r_mode
 				if (ma != basemat) {
 					do_init_render_material(ma, r_mode, amb);
 					basemat->texco |= ma->texco;
-					basemat->mode_l |= ma->mode_l & ~(MA_TRANSP | MA_ZTRANSP | MA_RAYTRANSP);
 				}
+
+				basemat->mode_l |= ma->mode & ~(MA_MODE_PIPELINE | MA_SHLESS);
+				basemat->mode2_l |= ma->mode2 & ~MA_MODE2_PIPELINE;
+				/* basemat only considered shadeless if all node materials are too */
+				if (!(ma->mode & MA_SHLESS))
+					basemat->mode_l &= ~MA_SHLESS;
+
+				if (ma->strand_surfnor > 0.0f)
+					basemat->mode_l |= MA_STR_SURFDIFF;
 			}
 			else if (node->type == NODE_GROUP)
 				init_render_nodetree((bNodeTree *)node->id, basemat, r_mode, amb);
@@ -1064,10 +1071,26 @@ void init_render_material(Material *mat, int r_mode, float *amb)
 	do_init_render_material(mat, r_mode, amb);
 	
 	if (mat->nodetree && mat->use_nodes) {
+		/* mode_l will take the pipeline options from the main material, and the or-ed
+		 * result of non-pipeline options from the nodes. shadeless is an exception,
+		 * mode_l will have it set when all node materials are shadeless. */
+		mat->mode_l = (mat->mode & MA_MODE_PIPELINE) | MA_SHLESS;
+		mat->mode2_l = mat->mode2 & MA_MODE2_PIPELINE;
+
+		/* parses the geom+tex nodes */
+		ntreeShaderGetTexcoMode(mat->nodetree, r_mode, &mat->texco, &mat->mode_l);
+
 		init_render_nodetree(mat->nodetree, mat, r_mode, amb);
 		
 		if (!mat->nodetree->execdata)
 			mat->nodetree->execdata = ntreeShaderBeginExecTree(mat->nodetree);
+	}
+	else {
+		mat->mode_l = mat->mode;
+		mat->mode2_l = mat->mode2;
+
+		if (mat->strand_surfnor > 0.0f)
+			mat->mode_l |= MA_STR_SURFDIFF;
 	}
 }
 
@@ -1093,7 +1116,7 @@ void init_render_materials(Main *bmain, int r_mode, float *amb)
 			init_render_material(ma, r_mode, amb);
 	}
 	
-	do_init_render_material(&defmaterial, r_mode, amb);
+	init_render_material(&defmaterial, r_mode, amb);
 }
 
 /* only needed for nodes now */
@@ -1113,7 +1136,7 @@ void end_render_materials(Main *bmain)
 			end_render_material(ma);
 }
 
-static int material_in_nodetree(bNodeTree *ntree, Material *mat)
+static bool material_in_nodetree(bNodeTree *ntree, Material *mat)
 {
 	bNode *node;
 
@@ -1121,28 +1144,28 @@ static int material_in_nodetree(bNodeTree *ntree, Material *mat)
 		if (node->id) {
 			if (GS(node->id->name) == ID_MA) {
 				if (node->id == (ID *)mat) {
-					return 1;
+					return true;
 				}
 			}
 			else if (node->type == NODE_GROUP) {
 				if (material_in_nodetree((bNodeTree *)node->id, mat)) {
-					return 1;
+					return true;
 				}
 			}
 		}
 	}
 
-	return 0;
+	return false;
 }
 
-int material_in_material(Material *parmat, Material *mat)
+bool material_in_material(Material *parmat, Material *mat)
 {
 	if (parmat == mat)
-		return 1;
+		return true;
 	else if (parmat->nodetree && parmat->use_nodes)
 		return material_in_nodetree(parmat->nodetree, mat);
 	else
-		return 0;
+		return false;
 }
 
 
@@ -1203,22 +1226,23 @@ void material_drivers_update(Scene *scene, Material *ma, float ctime)
 	ma->id.flag &= ~LIB_DOIT;
 }
 
-int object_remove_material_slot(Object *ob)
+bool object_remove_material_slot(Object *ob)
 {
 	Material *mao, ***matarar;
 	Object *obt;
 	short *totcolp;
 	short a, actcol;
+	FractureModifierData *fmd;
 	
 	if (ob == NULL || ob->totcol == 0) {
-		return FALSE;
+		return false;
 	}
 
 	/* this should never happen and used to crash */
 	if (ob->actcol <= 0) {
 		printf("%s: invalid material index %d, report a bug!\n", __func__, ob->actcol);
 		BLI_assert(0);
-		return FALSE;
+		return false;
 	}
 
 	/* take a mesh/curve/mball as starting point, remove 1 index,
@@ -1280,14 +1304,172 @@ int object_remove_material_slot(Object *ob)
 	}
 
 	/* check indices from mesh */
-	if (ELEM4(ob->type, OB_MESH, OB_CURVE, OB_SURF, OB_FONT)) {
+	if (ELEM(ob->type, OB_MESH, OB_CURVE, OB_SURF, OB_FONT)) {
 		material_data_index_remove_id((ID *)ob->data, actcol - 1);
 		if (ob->curve_cache) {
 			BKE_displist_free(&ob->curve_cache->disp);
 		}
 	}
 
-	return TRUE;
+	return true;
+}
+
+static bool get_mtex_slot_valid_texpaint(struct MTex *mtex)
+{
+	return (mtex && (mtex->texco == TEXCO_UV) &&
+	        mtex->tex && (mtex->tex->type == TEX_IMAGE) &&
+	        mtex->tex->ima);
+}
+
+static bNode *nodetree_uv_node_recursive(bNode *node)
+{
+	bNode *inode;
+	bNodeSocket *sock;
+	
+	for (sock = node->inputs.first; sock; sock = sock->next) {
+		if (sock->link) {
+			inode = sock->link->fromnode;
+			if (inode->typeinfo->nclass == NODE_CLASS_INPUT && inode->typeinfo->type == SH_NODE_UVMAP) {
+				return inode;
+			}
+			else {
+				return nodetree_uv_node_recursive(inode);
+			}
+		}
+	}
+	
+	return NULL;
+}
+
+void BKE_texpaint_slot_refresh_cache(Scene *scene, Material *ma)
+{
+	MTex **mtex;
+	short count = 0;
+	short index = 0, i;
+
+	bool use_nodes = BKE_scene_use_new_shading_nodes(scene);
+	bool is_bi = BKE_scene_uses_blender_internal(scene) || BKE_scene_uses_blender_game(scene);
+	
+	if (!ma)
+		return;
+
+	if (ma->texpaintslot) {
+		MEM_freeN(ma->texpaintslot);
+		ma->tot_slots = 0;
+		ma->texpaintslot = NULL;
+	}
+
+	if (scene->toolsettings->imapaint.mode == IMAGEPAINT_MODE_IMAGE) {
+		ma->paint_active_slot = 0;
+		ma->paint_clone_slot = 0;
+		return;
+	}
+	
+	if (use_nodes || ma->use_nodes) {
+		bNode *node, *active_node;
+
+		if (!(ma->nodetree)) {
+			ma->paint_active_slot = 0;
+			ma->paint_clone_slot = 0;
+			return;
+		}
+
+		for (node = ma->nodetree->nodes.first; node; node = node->next) {
+			if (node->typeinfo->nclass == NODE_CLASS_TEXTURE && node->typeinfo->type == SH_NODE_TEX_IMAGE && node->id)
+				count++;
+		}
+
+		if (count == 0) {
+			ma->paint_active_slot = 0;
+			ma->paint_clone_slot = 0;
+			return;
+		}
+		ma->texpaintslot = MEM_callocN(sizeof(*ma->texpaintslot) * count, "texpaint_slots");
+
+		active_node = nodeGetActiveTexture(ma->nodetree);
+
+		for (node = ma->nodetree->nodes.first; node; node = node->next) {
+			if (node->typeinfo->nclass == NODE_CLASS_TEXTURE && node->typeinfo->type == SH_NODE_TEX_IMAGE && node->id) {
+				if (active_node == node)
+					ma->paint_active_slot = index;
+				ma->texpaintslot[index].ima = (Image *)node->id;
+				
+				/* for new renderer, we need to traverse the treeback in search of a UV node */
+				if (use_nodes) {
+					bNode *uvnode = nodetree_uv_node_recursive(node);
+					
+					if (uvnode) {
+						NodeShaderUVMap *storage = (NodeShaderUVMap *)uvnode->storage;
+						ma->texpaintslot[index].uvname = storage->uv_map;
+						/* set a value to index so UI knows that we have a valid pointer for the mesh */
+						ma->texpaintslot[index].index = 0;
+					}
+					else {
+						/* just invalidate the index here so UV map does not get displayed on the UI */
+						ma->texpaintslot[index].index = -1;
+					}
+				}
+				else {
+					ma->texpaintslot[index].index = -1;
+				}
+				index++;
+			}
+		}
+	}
+	else if (is_bi) {
+		for (mtex = ma->mtex, i = 0; i < MAX_MTEX; i++, mtex++) {
+			if (get_mtex_slot_valid_texpaint(*mtex)) {
+				count++;
+			}
+		}
+
+		if (count == 0) {
+			ma->paint_active_slot = 0;
+			ma->paint_clone_slot = 0;
+			return;
+		}
+
+		ma->texpaintslot = MEM_callocN(sizeof(*ma->texpaintslot) * count, "texpaint_slots");
+
+		for (mtex = ma->mtex, i = 0; i < MAX_MTEX; i++, mtex++) {
+			if (get_mtex_slot_valid_texpaint(*mtex)) {
+				ma->texpaintslot[index].ima = (*mtex)->tex->ima;
+				ma->texpaintslot[index].uvname = (*mtex)->uvname;
+				ma->texpaintslot[index].index = i;
+				
+				index++;
+			}
+		}
+	}
+	else {
+		ma->paint_active_slot = 0;
+		ma->paint_clone_slot = 0;
+		return;
+	}	
+
+
+	ma->tot_slots = count;
+	
+	
+	if (ma->paint_active_slot >= count) {
+		ma->paint_active_slot = count - 1;
+	}
+
+	if (ma->paint_clone_slot >= count) {
+		ma->paint_clone_slot = count - 1;
+	}
+
+	return;
+}
+
+void BKE_texpaint_slots_refresh_object(Scene *scene, struct Object *ob)
+{
+	int i;
+
+	for (i = 1; i < ob->totcol + 1; i++) {
+		Material *ma = give_current_material(ob, i);
+		BKE_texpaint_slot_refresh_cache(scene, ma);
+	}
 }
 
 
@@ -1350,12 +1532,9 @@ void ramp_blend(int type, float r_col[3], const float fac, const float col[3])
 			r_col[2] = facm * (r_col[2]) + fac * fabsf(r_col[2] - col[2]);
 			break;
 		case MA_RAMP_DARK:
-			tmp = col[0] + ((1 - col[0]) * facm);
-			if (tmp < r_col[0]) r_col[0] = tmp;
-			tmp = col[1] + ((1 - col[1]) * facm);
-			if (tmp < r_col[1]) r_col[1] = tmp;
-			tmp = col[2] + ((1 - col[2]) * facm);
-			if (tmp < r_col[2]) r_col[2] = tmp;
+			r_col[0] = min_ff(r_col[0], col[0]) * fac + r_col[0] * facm;
+			r_col[1] = min_ff(r_col[1], col[1]) * fac + r_col[1] * facm;
+			r_col[2] = min_ff(r_col[2], col[2]) * fac + r_col[2] * facm;
 			break;
 		case MA_RAMP_LIGHT:
 			tmp = fac * col[0];
@@ -1539,7 +1718,7 @@ void free_matcopybuf(void)
 	matcopybuf.ramp_spec = NULL;
 
 	if (matcopybuf.nodetree) {
-		ntreeFreeTree_ex(matcopybuf.nodetree, FALSE);
+		ntreeFreeTree_ex(matcopybuf.nodetree, false);
 		MEM_freeN(matcopybuf.nodetree);
 		matcopybuf.nodetree = NULL;
 	}
@@ -1565,9 +1744,9 @@ void copy_matcopybuf(Material *ma)
 			matcopybuf.mtex[a] = MEM_dupallocN(mtex);
 		}
 	}
-	matcopybuf.nodetree = ntreeCopyTree_ex(ma->nodetree, FALSE);
+	matcopybuf.nodetree = ntreeCopyTree_ex(ma->nodetree, G.main, false);
 	matcopybuf.preview = NULL;
-	matcopybuf.gpumaterial.first = matcopybuf.gpumaterial.last = NULL;
+	BLI_listbase_clear(&matcopybuf.gpumaterial);
 	matcopied = 1;
 }
 
@@ -1593,7 +1772,7 @@ void paste_matcopybuf(Material *ma)
 		MEM_freeN(ma->nodetree);
 	}
 
-	GPU_material_free(ma);
+	GPU_material_free(&ma->gpumaterial);
 
 	id = (ma->id);
 	memcpy(ma, &matcopybuf, sizeof(Material));
@@ -1618,7 +1797,7 @@ void paste_matcopybuf(Material *ma)
 		}
 	}
 
-	ma->nodetree = ntreeCopyTree_ex(matcopybuf.nodetree, FALSE);
+	ma->nodetree = ntreeCopyTree_ex(matcopybuf.nodetree, G.main, false);
 }
 
 

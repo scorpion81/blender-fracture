@@ -28,7 +28,6 @@
 
 #include "sunsky.h"
 #include "BLI_math.h"
-#include "BKE_global.h"
 
 /**
  * These macros are defined for vector operations
@@ -90,14 +89,14 @@ void ClipColor(float c[3])
  * */
 static float AngleBetween(float thetav, float phiv, float theta, float phi)
 {
-	float cospsi = sin(thetav) * sin(theta) * cos(phi - phiv) + cos(thetav) * cos(theta);
+	float cospsi = sinf(thetav) * sinf(theta) * cosf(phi - phiv) + cosf(thetav) * cosf(theta);
 
 	if (cospsi > 1.0f)
 		return 0;
 	if (cospsi < -1.0f)
 		return M_PI;
 
-	return acos(cospsi);
+	return acosf(cospsi);
 }
 
 /**
@@ -109,11 +108,11 @@ static float AngleBetween(float thetav, float phiv, float theta, float phi)
  * */
 static void DirectionToThetaPhi(float *toSun, float *theta, float *phi)
 {
-	*theta = acos(toSun[2]);
-	if (fabs(*theta) < 1e-5)
+	*theta = acosf(toSun[2]);
+	if (fabsf(*theta) < 1e-5f)
 		*phi = 0;
 	else
-		*phi = atan2(toSun[1], toSun[0]);
+		*phi = atan2f(toSun[1], toSun[0]);
 }
 
 /**
@@ -255,14 +254,14 @@ void GetSkyXYZRadiance(struct SunSky *sunsky, float theta, float phi, float colo
 	float hfade = 1, nfade = 1;
 
 
-	if (theta > (0.5f * (float)M_PI)) {
+	if (theta > (float)M_PI_2) {
 		hfade = 1.0f - (theta * (float)M_1_PI - 0.5f) * 2.0f;
 		hfade = hfade * hfade * (3.0f - 2.0f * hfade);
-		theta = 0.5 * M_PI;
+		theta = M_PI_2;
 	}
 
-	if (sunsky->theta > (0.5f * (float)M_PI)) {
-		if (theta <= 0.5f * (float)M_PI) {
+	if (sunsky->theta > (float)M_PI_2) {
+		if (theta <= (float)M_PI_2) {
 			nfade = 1.0f - (0.5f - theta * (float)M_1_PI) * 2.0f;
 			nfade *= 1.0f - (sunsky->theta * (float)M_1_PI - 0.5f) * 2.0f;
 			nfade = nfade * nfade * (3.0f - 2.0f * nfade);
@@ -300,8 +299,7 @@ void GetSkyXYZRadiancef(struct SunSky *sunsky, const float varg[3], float color_
 	float theta, phi;
 	float v[3];
 
-	copy_v3_v3(v, (float *)varg);
-	normalize_v3(v);
+	normalize_v3_v3(v, varg);
 
 	if (v[2] < 0.001f) {
 		v[2] = 0.001f;

@@ -210,13 +210,18 @@ static StructRNA *rna_Panel_register(Main *bmain, ReportList *reports, void *dat
 		            identifier, (int)sizeof(dummypt.idname));
 		return NULL;
 	}
-	
+
+	if ((dummypt.category[0] == '\0') && (dummypt.region_type == RGN_TYPE_TOOLS)) {
+		/* Use a fallback, otherwise an empty value will draw the panel in every category. */
+		strcpy(dummypt.category, PNL_CATEGORY_FALLBACK);
+	}
+
 	if (!(art = region_type_find(reports, dummypt.space_type, dummypt.region_type)))
 		return NULL;
 
 	/* check if we have registered this panel type before, and remove it */
 	for (pt = art->paneltypes.first; pt; pt = pt->next) {
-		if (strcmp(pt->idname, dummypt.idname) == 0) {
+		if (STREQ(pt->idname, dummypt.idname)) {
 			if (pt->ext.srna)
 				rna_Panel_unregister(bmain, pt->ext.srna);
 			else
@@ -483,7 +488,7 @@ static StructRNA *rna_UIList_register(Main *bmain, ReportList *reports, void *da
 	}
 
 	/* check if we have registered this uilist type before, and remove it */
-	ult = WM_uilisttype_find(dummyult.idname, TRUE);
+	ult = WM_uilisttype_find(dummyult.idname, true);
 	if (ult && ult->ext.srna)
 		rna_UIList_unregister(bmain, ult->ext.srna);
 
@@ -582,7 +587,7 @@ static StructRNA *rna_Header_register(Main *bmain, ReportList *reports, void *da
 
 	/* check if we have registered this header type before, and remove it */
 	for (ht = art->headertypes.first; ht; ht = ht->next) {
-		if (strcmp(ht->idname, dummyht.idname) == 0) {
+		if (STREQ(ht->idname, dummyht.idname)) {
 			if (ht->ext.srna)
 				rna_Header_unregister(bmain, ht->ext.srna);
 			break;
@@ -677,7 +682,6 @@ static void rna_Menu_unregister(Main *UNUSED(bmain), StructRNA *type)
 	WM_main_add_notifier(NC_WINDOW, NULL);
 }
 
-static char _menu_descr[RNA_DYN_DESCR_MAX];
 static StructRNA *rna_Menu_register(Main *bmain, ReportList *reports, void *data, const char *identifier,
                                     StructValidateFunc validate, StructCallbackFunc call, StructFreeFunc free)
 {
@@ -687,14 +691,14 @@ static StructRNA *rna_Menu_register(Main *bmain, ReportList *reports, void *data
 	int have_function[2];
 	size_t over_alloc = 0; /* warning, if this becomes a bess, we better do another alloc */
 	size_t description_size = 0;
+	char _menu_descr[RNA_DYN_DESCR_MAX];
 
 	/* setup dummy menu & menu type to store static properties in */
 	dummymenu.type = &dummymt;
+	_menu_descr[0] = '\0';
 	dummymenu.type->description = _menu_descr;
 	RNA_pointer_create(NULL, &RNA_Menu, &dummymenu, &dummymtr);
 
-	/* clear in case they are left unset */
-	_menu_descr[0] = '\0';
 	/* We have to set default context! Else we get a void string... */
 	strcpy(dummymt.translation_context, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
 
@@ -709,7 +713,7 @@ static StructRNA *rna_Menu_register(Main *bmain, ReportList *reports, void *data
 	}
 
 	/* check if we have registered this menu type before, and remove it */
-	mt = WM_menutype_find(dummymt.idname, TRUE);
+	mt = WM_menutype_find(dummymt.idname, true);
 	if (mt && mt->ext.srna)
 		rna_Menu_unregister(bmain, mt->ext.srna);
 	
@@ -727,6 +731,8 @@ static StructRNA *rna_Menu_register(Main *bmain, ReportList *reports, void *data
 		memcpy(buf, _menu_descr, description_size);
 		mt->description = buf;
 	}
+	else
+		mt->description = "";
 
 	mt->ext.srna = RNA_def_struct_ptr(&BLENDER_RNA, mt->idname, &RNA_Menu);
 	RNA_def_struct_translation_context(mt->ext.srna, mt->translation_context);
@@ -964,7 +970,7 @@ static void rna_def_panel(BlenderRNA *brna)
 	/* registration */
 	prop = RNA_def_property(srna, "bl_idname", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "type->idname");
-	RNA_def_property_flag(prop, PROP_REGISTER | PROP_NEVER_CLAMP);
+	RNA_def_property_flag(prop, PROP_REGISTER);
 	RNA_def_property_ui_text(prop, "ID Name",
 	                         "If this is set, the panel gets a custom ID, otherwise it takes the "
 	                         "name of the class used to define the panel. For example, if the "
@@ -982,11 +988,10 @@ static void rna_def_panel(BlenderRNA *brna)
 	RNA_def_property_string_sdna(prop, NULL, "type->translation_context");
 	RNA_def_property_string_default(prop, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
 	RNA_def_property_flag(prop, PROP_REGISTER_OPTIONAL);
-	RNA_define_verify_sdna(TRUE);
+	RNA_define_verify_sdna(true);
 
 	prop = RNA_def_property(srna, "bl_category", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "type->category");
-	RNA_def_property_string_default(prop, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
 	RNA_def_property_flag(prop, PROP_REGISTER_OPTIONAL);
 
 	prop = RNA_def_property(srna, "bl_space_type", PROP_ENUM, PROP_NONE);
@@ -1038,7 +1043,7 @@ static void rna_def_uilist(BlenderRNA *brna)
 	/* Registration */
 	prop = RNA_def_property(srna, "bl_idname", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "type->idname");
-	RNA_def_property_flag(prop, PROP_REGISTER | PROP_NEVER_CLAMP);
+	RNA_def_property_flag(prop, PROP_REGISTER);
 	RNA_def_property_ui_text(prop, "ID Name",
 	                         "If this is set, the uilist gets a custom ID, otherwise it takes the "
 	                         "name of the class used to define the uilist (for example, if the "
@@ -1057,6 +1062,7 @@ static void rna_def_uilist(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "filter_name", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "filter_byname");
+	RNA_def_property_flag(prop, PROP_TEXTEDIT_UPDATE);
 	RNA_def_property_ui_text(prop, "Filter by Name", "Only show items matching this name (use '*' as wildcard)");
 
 	prop = RNA_def_property(srna, "use_filter_invert", PROP_BOOLEAN, PROP_NONE);
@@ -1172,7 +1178,7 @@ static void rna_def_header(BlenderRNA *brna)
 	/* registration */
 	prop = RNA_def_property(srna, "bl_idname", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "type->idname");
-	RNA_def_property_flag(prop, PROP_REGISTER | PROP_NEVER_CLAMP);
+	RNA_def_property_flag(prop, PROP_REGISTER);
 	RNA_def_property_ui_text(prop, "ID Name",
 	                         "If this is set, the header gets a custom ID, otherwise it takes the "
 	                         "name of the class used to define the panel; for example, if the "
@@ -1217,7 +1223,7 @@ static void rna_def_menu(BlenderRNA *brna)
 	parm = RNA_def_pointer(func, "context", "Context", "", "");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 
-	RNA_define_verify_sdna(FALSE); /* not in sdna */
+	RNA_define_verify_sdna(false); /* not in sdna */
 
 	prop = RNA_def_property(srna, "layout", PROP_POINTER, PROP_NONE);
 	RNA_def_property_pointer_sdna(prop, NULL, "layout");
@@ -1227,7 +1233,7 @@ static void rna_def_menu(BlenderRNA *brna)
 	/* registration */
 	prop = RNA_def_property(srna, "bl_idname", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "type->idname");
-	RNA_def_property_flag(prop, PROP_REGISTER | PROP_NEVER_CLAMP);
+	RNA_def_property_flag(prop, PROP_REGISTER);
 	RNA_def_property_ui_text(prop, "ID Name",
 	                         "If this is set, the menu gets a custom ID, otherwise it takes the "
 	                         "name of the class used to define the menu (for example, if the "

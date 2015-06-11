@@ -66,7 +66,7 @@ using namespace Geometry;
  *  Thus, a CurvePoint is built by lineraly interpolating two SVertex.
  *  CurvePoint can be used as virtual points while querying 0D information along a curve at a given resolution.
  */
-class LIB_STROKE_EXPORT CurvePoint : public Interface0D
+class CurvePoint : public Interface0D
 {
 public: // Implementation of Interface0D
 	/*! Returns the string "CurvePoint"*/
@@ -95,7 +95,7 @@ public: // Implementation of Interface0D
 	}
 
 	/*!  Returns the 3D point. */ 
-	virtual Vec3f getPoint3D() const
+	virtual Vec3r getPoint3D() const
 	{
 		return _Point3d;
 	}
@@ -119,9 +119,9 @@ public: // Implementation of Interface0D
 	}
 
 	/*!  Returns the 2D point. */ 
-	virtual Vec2f getPoint2D() const
+	virtual Vec2r getPoint2D() const
 	{
-		return Vec2f((float)_Point2d.x(), (float)_Point2d.y());
+		return Vec2r(_Point2d.x(), _Point2d.y());
 	}
 
 	virtual FEdge *getFEdge(Interface0D& inter);
@@ -337,10 +337,14 @@ public:
 	Vec3r curvature2d_as_vector() const;
 	/*! angle in radians */
 	real curvature2d_as_angle() const;
-#endif
 
 	real curvatureFredo() const;
 	Vec2d directionFredo() const;
+#endif
+
+#ifdef WITH_CXX_GUARDEDALLOC
+	MEM_CXX_CLASS_ALLOC_FUNCS("Freestyle:CurvePoint")
+#endif
 };
 
 
@@ -365,7 +369,7 @@ class CurvePointIterator;
  *  SVertex is the type of the initial curve vertices.
  *  A Chain is a specialization of a Curve.
  */
-class LIB_STROKE_EXPORT Curve : public Interface1D
+class Curve : public Interface1D
 {
 public:
 	typedef CurvePoint Vertex;
@@ -422,8 +426,10 @@ public:
 		return "Curve";
 	}
 
+#if 0
 	/* fredo's curvature storage */
 	void computeCurvatureAndOrientation();
+#endif
 
 	/*! Adds a single vertex (CurvePoint) at the end of the Curve */
 	inline void push_vertex_back(Vertex *iVertex)
@@ -584,6 +590,10 @@ public:
 	 *  At each iteration a virtual temporary CurvePoint is created.
 	 */
 	virtual Interface0DIterator pointsEnd(float t = 0.0f);
+
+#ifdef WITH_CXX_GUARDEDALLOC
+	MEM_CXX_CLASS_ALLOC_FUNCS("Freestyle:Curve")
+#endif
 };
 
 } /* namespace Freestyle */

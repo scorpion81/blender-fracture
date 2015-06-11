@@ -37,25 +37,23 @@
 #include "DNA_scene_types.h"
 #include "DNA_object_types.h"
 
+#include "BLI_utildefines.h"
 #include "BLI_kdtree.h"
 #include "BLI_rand.h"
 #include "BLI_math.h"
 #include "BLI_edgehash.h"
-#include "BLI_utildefines.h"
 
 #include "BKE_cdderivedmesh.h"
 #include "BKE_deform.h"
 #include "BKE_lattice.h"
 #include "BKE_mesh.h"
 #include "BKE_modifier.h"
-#include "BKE_object.h"
 #include "BKE_particle.h"
 #include "BKE_scene.h"
 
 
 #include "MEM_guardedalloc.h"
 
-#include "MOD_util.h"
 
 static void initData(ModifierData *md)
 {
@@ -150,7 +148,7 @@ static void createFacepa(ExplodeModifierData *emd,
 	tree = BLI_kdtree_new(totpart);
 	for (p = 0, pa = psys->particles; p < totpart; p++, pa++) {
 		psys_particle_on_emitter(psmd, psys->part->from, pa->num, pa->num_dmcache, pa->fuv, pa->foffset, co, NULL, NULL, NULL, NULL, NULL);
-		BLI_kdtree_insert(tree, p, co, NULL);
+		BLI_kdtree_insert(tree, p, co);
 	}
 	BLI_kdtree_balance(tree);
 
@@ -165,7 +163,7 @@ static void createFacepa(ExplodeModifierData *emd,
 		else
 			mul_v3_fl(center, 1.0f / 3.0f);
 
-		p = BLI_kdtree_find_nearest(tree, center, NULL, NULL);
+		p = BLI_kdtree_find_nearest(tree, center, NULL);
 
 		v1 = vertpa[fa->v1];
 		v2 = vertpa[fa->v2];
@@ -218,7 +216,7 @@ static MFace *get_dface(DerivedMesh *dm, DerivedMesh *split, int cur, int i, MFa
 	} (void)0
 
 #define GET_ES(v1, v2) edgecut_get(eh, v1, v2)
-#define INT_UV(uvf, c0, c1) interp_v2_v2v2(uvf, mf->uv[c0], mf->uv[c1], 0.5f)
+#define INT_UV(uvf, c0, c1) mid_v2_v2v2(uvf, mf->uv[c0], mf->uv[c1])
 
 static void remap_faces_3_6_9_12(DerivedMesh *dm, DerivedMesh *split, MFace *mf, int *facepa, int *vertpa, int i, EdgeHash *eh, int cur, int v1, int v2, int v3, int v4)
 {
@@ -801,7 +799,7 @@ static DerivedMesh *explodeMesh(ExplodeModifierData *emd,
 	float rot[4];
 	float cfra;
 	/* float timestep; */
-	int *facepa = emd->facepa;
+	const int *facepa = emd->facepa;
 	int totdup = 0, totvert = 0, totface = 0, totpart = 0, delface = 0;
 	int i, v, u;
 	unsigned int ed_v1, ed_v2, mindex = 0;
@@ -893,7 +891,7 @@ static DerivedMesh *explodeMesh(ExplodeModifierData *emd,
 			/* get particle */
 			pa = pars + ed_v2;
 
-			psys_get_birth_coordinates(&sim, pa, &birth, 0, 0);
+			psys_get_birth_coords(&sim, pa, &birth, 0, 0);
 
 			state.time = cfra;
 			psys_get_particle_state(&sim, ed_v2, &state, 1);

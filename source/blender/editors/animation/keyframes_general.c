@@ -36,7 +36,6 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_blenlib.h"
-#include "BLI_math.h"
 #include "BLI_utildefines.h"
 
 #include "DNA_anim_types.h"
@@ -44,13 +43,14 @@
 #include "DNA_scene_types.h"
 
 
+#include "BKE_action.h"
 #include "BKE_fcurve.h"
 #include "BKE_report.h"
 #include "BKE_library.h"
 #include "BKE_global.h"
+#include "BKE_deform.h"
 
 #include "RNA_access.h"
-#include "RNA_enum_types.h"
 
 #include "ED_anim_api.h"
 #include "ED_keyframing.h"
@@ -359,7 +359,7 @@ void smooth_fcurve(FCurve *fcu)
 		/* round 2: apply new values */
 		tsb = tarray;
 		for (i = 0; i < totSel; i++, tsb++) {
-			/* don't touch end points, as their values were't touched above */
+			/* don't touch end points, as their values weren't touched above */
 			if (ELEM(i, 0, (totSel - 1)) == 0) {
 				/* y2 takes the average of the 2 points */
 				*tsb->h2 = tsb->y2;
@@ -409,8 +409,8 @@ void sample_fcurve(FCurve *fcu)
 				 * keyframes while sampling will affect the outcome...
 				 *	- only start sampling+adding from index=1, so that we don't overwrite original keyframe
 				 */
-				range = (int)(ceil(end->vec[1][0] - start->vec[1][0]) );
-				sfra = (int)(floor(start->vec[1][0]) );
+				range = (int)(ceil(end->vec[1][0] - start->vec[1][0]));
+				sfra = (int)(floor(start->vec[1][0]));
 				
 				if (range) {
 					value_cache = MEM_callocN(sizeof(TempFrameValCache) * range, "IcuFrameValCache");
@@ -479,6 +479,7 @@ typedef struct tAnimCopybufItem {
 	BezTriple *bezt;    /* keyframes in buffer */
 
 	short id_type;      /* Result of GS(id->name)*/
+	bool  is_bone;      /* special flag for armature bones */
 } tAnimCopybufItem;
 
 
@@ -505,7 +506,7 @@ void free_anim_copybuf(void)
 	}
 	
 	/* restore initial state */
-	animcopybuf.first = animcopybuf.last = NULL;
+	BLI_listbase_clear(&animcopybuf);
 	animcopy_firstframe = 999999999.0f;
 	animcopy_lastframe = -999999999.0f;
 }
@@ -542,6 +543,31 @@ short copy_animedit_keys(bAnimContext *ac, ListBase *anim_data)
 		aci->grp = fcu->grp;
 		aci->rna_path = MEM_dupallocN(fcu->rna_path);
 		aci->array_index = fcu->array_index;
+		
+		/* detect if this is a bone. We do that here rather than during pasting because ID pointers will get invalidated if we undo.
+		 * storing the relevant information here helps avoiding crashes if we undo-repaste */
+		if ((aci->id_type == ID_OB) && (((Object *)aci->id)->type == OB_ARMATURE) && aci->rna_path) {
+			Object *ob = (Object *)aci->id;
+			char *str_start;
+			
+			if ((str_start = strstr(aci->rna_path, "pose.bones["))) {
+				bPoseChannel *pchan;
+				int length = 0;
+				char *str_end;
+				
+				str_start += 12;
+				str_end = strchr(str_start, '\"');
+				length = str_end - str_start;
+				str_start[length] = 0;
+				pchan = BKE_pose_channel_find_name(ob->pose, str_start);
+				str_start[length] = '\"';
+		
+				if (pchan) {
+					aci->is_bone = true;
+				}
+			}
+		}
+		
 		BLI_addtail(&animcopybuf, aci);
 		
 		/* add selected keyframes to buffer */
@@ -589,19 +615,64 @@ short copy_animedit_keys(bAnimContext *ac, ListBase *anim_data)
 	return 0;
 }
 
+static void flip_names(tAnimCopybufItem *aci, char **name) {
+	if (aci->is_bone) {
+		char *str_start;
+		if ((str_start = strstr(aci->rna_path, "pose.bones["))) {
+			/* ninja coding, try to change the name */
+			char bname_new[MAX_VGROUP_NAME];
+			char *str_iter, *str_end;
+			int length, prefix_l, postfix_l;
+			
+			str_start += 12;
+			prefix_l = str_start - aci->rna_path;
+			
+			str_end = strchr(str_start, '\"');
+			
+			length = str_end - str_start;
+			postfix_l = strlen(str_end);
+			
+			/* more ninja stuff, temporary substitute with NULL terminator */
+			str_start[length] = 0;
+			BKE_deform_flip_side_name(bname_new, str_start, false);
+			str_start[length] = '\"';
+			
+			str_iter = *name = MEM_mallocN(sizeof(char) * (prefix_l + postfix_l + length + 1), "flipped_path");
+			
+			BLI_strncpy(str_iter, aci->rna_path, prefix_l + 1);
+			str_iter += prefix_l;
+			BLI_strncpy(str_iter, bname_new, length + 1);
+			str_iter += length;
+			BLI_strncpy(str_iter, str_end, postfix_l + 1);
+			str_iter[postfix_l] = 0;
+		}
+	}
+}
+
 /* ------------------- */
 
 /* most strict method: exact matches only */
-static tAnimCopybufItem *pastebuf_match_path_full(FCurve *fcu, const short from_single, const short to_simple)
+static tAnimCopybufItem *pastebuf_match_path_full(FCurve *fcu, const short from_single, const short to_simple, bool flip)
 {
 	tAnimCopybufItem *aci;
 
 	for (aci = animcopybuf.first; aci; aci = aci->next) {
-		/* check that paths exist */
 		if (to_simple || (aci->rna_path && fcu->rna_path)) {
-			if (to_simple || (strcmp(aci->rna_path, fcu->rna_path) == 0)) {
-				if ((from_single) || (aci->array_index == fcu->array_index))
+			if (!to_simple && flip && aci->is_bone && fcu->rna_path) {
+				if ((from_single) || (aci->array_index == fcu->array_index)) {
+					char *name = NULL;
+					flip_names(aci, &name);
+					if (STREQ(name, fcu->rna_path)) {
+						MEM_freeN(name);
+						break;
+					}
+					MEM_freeN(name);
+				}
+			}
+			else if (to_simple || STREQ(aci->rna_path, fcu->rna_path)) {
+				if ((from_single) || (aci->array_index == fcu->array_index)) {
 					break;
+				}
 			}
 		}
 	}
@@ -639,7 +710,7 @@ static tAnimCopybufItem *pastebuf_match_path_property(FCurve *fcu, const short f
 					int len_path = strlen(fcu->rna_path);
 					if (len_id <= len_path) {
 						/* note, paths which end with "] will fail with this test - Animated ID Props */
-						if (strcmp(identifier, fcu->rna_path + (len_path - len_id)) == 0) {
+						if (STREQ(identifier, fcu->rna_path + (len_path - len_id))) {
 							if ((from_single) || (aci->array_index == fcu->array_index))
 								break;
 						}
@@ -672,15 +743,37 @@ static tAnimCopybufItem *pastebuf_match_index_only(FCurve *fcu, const short from
 
 /* ................ */
 
+static void do_curve_mirror_flippping(tAnimCopybufItem *aci, BezTriple *bezt)
+{
+	if (aci->is_bone) {
+		int slength = strlen(aci->rna_path);
+		bool flip = false;
+		if (BLI_strn_endswith(aci->rna_path, "location", slength) && aci->array_index == 0)
+			flip = true;
+		else if (BLI_strn_endswith(aci->rna_path, "rotation_quaternion", slength) && ELEM(aci->array_index, 2, 3))
+			flip = true;
+		else if (BLI_strn_endswith(aci->rna_path, "rotation_euler", slength) && ELEM(aci->array_index, 1, 2))
+			flip = true;
+		else if (BLI_strn_endswith(aci->rna_path, "rotation_axis_angle", slength) && ELEM(aci->array_index, 2, 3))
+			flip = true;
+		
+		if (flip) {
+			bezt->vec[0][1] = -bezt->vec[0][1];
+			bezt->vec[1][1] = -bezt->vec[1][1];
+			bezt->vec[2][1] = -bezt->vec[2][1];
+		}
+	}
+}
+
 /* helper for paste_animedit_keys() - performs the actual pasting */
-static void paste_animedit_keys_fcurve(FCurve *fcu, tAnimCopybufItem *aci, float offset, const eKeyMergeMode merge_mode)
+static void paste_animedit_keys_fcurve(FCurve *fcu, tAnimCopybufItem *aci, float offset, const eKeyMergeMode merge_mode, bool flip)
 {
 	BezTriple *bezt;
 	int i;
 
 	/* First de-select existing FCurve's keyframes */
 	for (i = 0, bezt = fcu->bezt; i < fcu->totvert; i++, bezt++) {
-		bezt->f2 &= ~SELECT;
+		BEZ_DESEL(bezt);
 	}
 
 	/* mix mode with existing data */
@@ -725,22 +818,29 @@ static void paste_animedit_keys_fcurve(FCurve *fcu, tAnimCopybufItem *aci, float
 		}
 	}
 	
-	/* just start pasting, with the the first keyframe on the current frame, and so on */
+	/* just start pasting, with the first keyframe on the current frame, and so on */
 	for (i = 0, bezt = aci->bezt; i < aci->totvert; i++, bezt++) {
 		/* temporarily apply offset to src beztriple while copying */
+		if (flip)
+			do_curve_mirror_flippping(aci, bezt);
+		
 		bezt->vec[0][0] += offset;
 		bezt->vec[1][0] += offset;
 		bezt->vec[2][0] += offset;
 		
 		/* insert the keyframe
-		 * NOTE: no special flags here for now
+		 * NOTE: we do not want to inherit handles from existing keyframes in this case!
 		 */
-		insert_bezt_fcurve(fcu, bezt, 0); 
 		
+		insert_bezt_fcurve(fcu, bezt, INSERTKEY_OVERWRITE_FULL);
+
 		/* un-apply offset from src beztriple after copying */
 		bezt->vec[0][0] -= offset;
 		bezt->vec[1][0] -= offset;
 		bezt->vec[2][0] -= offset;
+		
+		if (flip)
+			do_curve_mirror_flippping(aci, bezt);
 	}
 	
 	/* recalculate F-Curve's handles? */
@@ -764,29 +864,31 @@ EnumPropertyItem keyframe_paste_merge_items[] = {
 	{0, NULL, 0, NULL, NULL}};
 
 
-/* This function pastes data from the keyframes copy/paste buffer 
- * > return status code is whether the method FAILED to do anything
+/**
+ * This function pastes data from the keyframes copy/paste buffer
+ *
+ * \return Status code is whether the method FAILED to do anything
  */
 short paste_animedit_keys(bAnimContext *ac, ListBase *anim_data,
-                          const eKeyPasteOffset offset_mode, const eKeyMergeMode merge_mode)
+                          const eKeyPasteOffset offset_mode, const eKeyMergeMode merge_mode, bool flip)
 {
 	bAnimListElem *ale;
 	
 	const Scene *scene = (ac->scene);
 	
-	const short from_single = (animcopybuf.first == animcopybuf.last);
-	const short to_simple = (anim_data->first == anim_data->last);
+	const bool from_single = BLI_listbase_is_single(&animcopybuf);
+	const bool to_simple = BLI_listbase_is_single(anim_data);
 	
 	float offset = 0.0f;
 	int pass;
 
 	/* check if buffer is empty */
-	if (animcopybuf.first == NULL) {
+	if (BLI_listbase_is_empty(&animcopybuf)) {
 		BKE_report(ac->reports, RPT_ERROR, "No animation data in buffer to paste");
 		return -1;
 	}
 
-	if (anim_data->first == NULL) {
+	if (BLI_listbase_is_empty(anim_data)) {
 		BKE_report(ac->reports, RPT_ERROR, "No selected F-Curves to paste into");
 		return -1;
 	}
@@ -816,7 +918,7 @@ short paste_animedit_keys(bAnimContext *ac, ListBase *anim_data,
 		fcu = (FCurve *)ale->data;  /* destination F-Curve */
 		aci = animcopybuf.first;
 		
-		paste_animedit_keys_fcurve(fcu, aci, offset, merge_mode);
+		paste_animedit_keys_fcurve(fcu, aci, offset, merge_mode, false);
 	}
 	else {
 		/* from selected channels 
@@ -839,7 +941,7 @@ short paste_animedit_keys(bAnimContext *ac, ListBase *anim_data,
 				switch (pass) {
 					case 0:
 						/* most strict, must be exact path match data_path & index */
-						aci = pastebuf_match_path_full(fcu, from_single, to_simple);
+						aci = pastebuf_match_path_full(fcu, from_single, to_simple, flip);
 						break;
 					
 					case 1:
@@ -856,8 +958,10 @@ short paste_animedit_keys(bAnimContext *ac, ListBase *anim_data,
 				/* copy the relevant data from the matching buffer curve */
 				if (aci) {
 					totmatch++;
-					paste_animedit_keys_fcurve(fcu, aci, offset, merge_mode);
+					paste_animedit_keys_fcurve(fcu, aci, offset, merge_mode, flip);
 				}
+
+				ale->update |= ANIM_UPDATE_DEFAULT;
 			}
 			
 			/* don't continue if some fcurves were pasted */
@@ -866,6 +970,8 @@ short paste_animedit_keys(bAnimContext *ac, ListBase *anim_data,
 		}
 	}
 	
+	ANIM_animdata_update(ac, anim_data);
+
 	return 0;
 }
 

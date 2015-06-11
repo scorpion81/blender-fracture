@@ -51,15 +51,12 @@
 #include "BKE_context.h"
 #include "BKE_colortools.h"
 #include "BKE_depsgraph.h"
-#include "BKE_freestyle.h"
 #include "BKE_global.h"
 #include "BKE_image.h"
 #include "BKE_library.h"
 #include "BKE_main.h"
 #include "BKE_node.h"
-#include "BKE_multires.h"
 #include "BKE_object.h"
-#include "BKE_paint.h"
 #include "BKE_report.h"
 #include "BKE_sequencer.h"
 #include "BKE_screen.h"
@@ -78,10 +75,8 @@
 #include "RE_engine.h"
 
 #include "IMB_colormanagement.h"
-#include "IMB_imbuf.h"
 #include "IMB_imbuf_types.h"
 
-#include "GPU_extensions.h"
 
 #include "BIF_gl.h"
 #include "BIF_glutil.h"
@@ -89,7 +84,6 @@
 #include "RNA_access.h"
 #include "RNA_define.h"
 
-#include "wm_window.h"
 
 #include "render_intern.h"
 
@@ -99,12 +93,13 @@ static int render_break(void *rjv);
 typedef struct RenderJob {
 	Main *main;
 	Scene *scene;
+	Scene *current_scene;
 	Render *re;
 	SceneRenderLayer *srl;
 	struct Object *camera_override;
 	int lay_override;
 	bool v3d_override;
-	short anim, write_still;
+	bool anim, write_still;
 	Image *image;
 	ImageUser iuser;
 	bool image_outdated;
@@ -124,14 +119,19 @@ typedef struct RenderJob {
 static void image_buffer_rect_update(RenderJob *rj, RenderResult *rr, ImBuf *ibuf, ImageUser *iuser, volatile rcti *renrect)
 {
 	Scene *scene = rj->scene;
-	float *rectf = NULL;
+	const float *rectf = NULL;
 	int ymin, ymax, xmin, xmax;
 	int rymin, rxmin;
 	int linear_stride, linear_offset_x, linear_offset_y;
 	ColorManagedViewSettings *view_settings;
 	ColorManagedDisplaySettings *display_settings;
 
-	if (ibuf->userflags & IB_DISPLAY_BUFFER_INVALID) {
+	/* Exception for exr tiles -- display buffer conversion happens here,
+	 * NOT in the color management pipeline.
+	 */
+	if (ibuf->userflags & IB_DISPLAY_BUFFER_INVALID &&
+	    rr->do_exr_tile == false)
+	{
 		/* The whole image buffer it so be color managed again anyway. */
 		return;
 	}
@@ -299,7 +299,7 @@ static int screen_render_exec(bContext *C, wmOperator *op)
 	re = RE_NewRender(scene->id.name);
 	lay_override = (v3d && v3d->lay != scene->lay) ? v3d->lay : 0;
 
-	G.is_break = FALSE;
+	G.is_break = false;
 	RE_test_break_cb(re, NULL, render_break);
 
 	ima = BKE_image_verify_viewer(IMA_TYPE_R_RESULT, "Render Result");
@@ -314,10 +314,12 @@ static int screen_render_exec(bContext *C, wmOperator *op)
 
 	RE_SetReports(re, op->reports);
 
+	BLI_begin_threaded_malloc();
 	if (is_animation)
 		RE_BlenderAnim(re, mainp, scene, camera_override, lay_override, scene->r.sfra, scene->r.efra, scene->r.frame_step);
 	else
 		RE_BlenderFrame(re, mainp, scene, srl, camera_override, lay_override, scene->r.cfra, is_write_still);
+	BLI_end_threaded_malloc();
 
 	RE_SetReports(re, NULL);
 
@@ -338,7 +340,11 @@ static void render_freejob(void *rjv)
 }
 
 /* str is IMA_MAX_RENDER_TEXT in size */
-static void make_renderinfo_string(RenderStats *rs, Scene *scene, bool v3d_override, char *str)
+static void make_renderinfo_string(const RenderStats *rs,
+                                   const Scene *scene,
+                                   const bool v3d_override,
+                                   const char *error,
+                                   char *str)
 {
 	char info_time_str[32]; // used to be extern to header_info.c
 	uintptr_t mem_in_use, mmap_in_use, peak_memory;
@@ -411,8 +417,12 @@ static void make_renderinfo_string(RenderStats *rs, Scene *scene, bool v3d_overr
 		spos += sprintf(spos, IFACE_("| Full Sample %d "), rs->curfsa);
 	
 	/* extra info */
-	if (rs->infostr && rs->infostr[0])
+	if (rs->infostr && rs->infostr[0]) {
 		spos += sprintf(spos, "| %s ", rs->infostr);
+	}
+	else if (error && error[0]) {
+		spos += sprintf(spos, "| %s ", error);
+	}
 
 	/* very weak... but 512 characters is quite safe */
 	if (spos >= str + IMA_MAX_RENDER_TEXT)
@@ -433,13 +443,14 @@ static void image_renderinfo_cb(void *rjv, RenderStats *rs)
 		if (rr->text == NULL)
 			rr->text = MEM_callocN(IMA_MAX_RENDER_TEXT, "rendertext");
 
-		make_renderinfo_string(rs, rj->scene, rj->v3d_override, rr->text);
+		make_renderinfo_string(rs, rj->scene, rj->v3d_override,
+		                       rr->error, rr->text);
 	}
 
 	RE_ReleaseResult(rj->re);
 
 	/* make jobs timer to send notifier */
-	*(rj->do_update) = TRUE;
+	*(rj->do_update) = true;
 
 }
 
@@ -451,7 +462,7 @@ static void render_progress_update(void *rjv, float progress)
 		*rj->progress = progress;
 
 		/* make jobs timer to send notifier */
-		*(rj->do_update) = TRUE;
+		*(rj->do_update) = true;
 	}
 }
 
@@ -473,7 +484,8 @@ static void render_image_update_pass_and_layer(RenderJob *rj, RenderResult *rr, 
 			for (sa = win->screen->areabase.first; sa; sa = sa->next) {
 				if (sa->spacetype == SPACE_IMAGE) {
 					SpaceImage *sima = sa->spacedata.first;
-					if (sima->image == rj->image) {
+					// sa->spacedata might be empty when toggling fullscreen mode.
+					if (sima != NULL && sima->image == rj->image) {
 						if (first_sa == NULL) {
 							first_sa = sa;
 						}
@@ -529,10 +541,13 @@ static void image_rect_update(void *rjv, RenderResult *rr, volatile rcti *renrec
 		/* update entire render */
 		rj->image_outdated = false;
 		BKE_image_signal(ima, NULL, IMA_SIGNAL_COLORMANAGE);
-		*(rj->do_update) = TRUE;
+		*(rj->do_update) = true;
 		return;
 	}
-
+	
+	if (rr == NULL)
+		return;
+	
 	/* update part of render */
 	render_image_update_pass_and_layer(rj, rr, &rj->iuser);
 	ibuf = BKE_image_acquire_ibuf(ima, &rj->iuser, &lock);
@@ -550,11 +565,18 @@ static void image_rect_update(void *rjv, RenderResult *rr, volatile rcti *renrec
 		{
 			image_buffer_rect_update(rj, rr, ibuf, &rj->iuser, renrect);
 		}
-
+		
 		/* make jobs timer to send notifier */
-		*(rj->do_update) = TRUE;
+		*(rj->do_update) = true;
 	}
 	BKE_image_release_ibuf(ima, ibuf, lock);
+}
+
+static void current_scene_update(void *rjv, Scene *scene)
+{
+	RenderJob *rj = rjv;
+	rj->current_scene = scene;
+	rj->iuser.scene = scene;
 }
 
 static void render_startjob(void *rjv, short *stop, short *do_update, float *progress)
@@ -632,7 +654,7 @@ static void render_endjob(void *rjv)
 	}
 
 	/* XXX render stability hack */
-	G.is_rendering = FALSE;
+	G.is_rendering = false;
 	WM_main_add_notifier(NC_SCENE | ND_RENDER_RESULT, NULL);
 
 	/* Partial render result will always update display buffer
@@ -736,7 +758,6 @@ static int screen_render_modal(bContext *C, wmOperator *op, const wmEvent *event
 	switch (event->type) {
 		case ESCKEY:
 			return OPERATOR_RUNNING_MODAL;
-			break;
 	}
 	return OPERATOR_PASS_THROUGH;
 }
@@ -804,6 +825,9 @@ static int screen_render_invoke(bContext *C, wmOperator *op, const wmEvent *even
 	if (WM_jobs_test(CTX_wm_manager(C), scene, WM_JOB_TYPE_RENDER))
 		return OPERATOR_CANCELLED;
 
+	if (RE_force_single_renderlayer(scene))
+		WM_event_add_notifier(C, NC_SCENE | ND_RENDER_OPTIONS, NULL);
+
 	if (!RE_is_rendering_allowed(scene, camera_override, op->reports)) {
 		return OPERATOR_CANCELLED;
 	}
@@ -859,6 +883,7 @@ static int screen_render_invoke(bContext *C, wmOperator *op, const wmEvent *even
 	rj = MEM_callocN(sizeof(RenderJob), "render job");
 	rj->main = mainp;
 	rj->scene = scene;
+	rj->current_scene = rj->scene;
 	rj->srl = srl;
 	rj->camera_override = camera_override;
 	rj->lay_override = 0;
@@ -931,11 +956,12 @@ static int screen_render_invoke(bContext *C, wmOperator *op, const wmEvent *even
 	RE_test_break_cb(re, rj, render_breakjob);
 	RE_draw_lock_cb(re, rj, render_drawlock);
 	RE_display_update_cb(re, rj, image_rect_update);
+	RE_current_scene_update_cb(re, rj, current_scene_update);
 	RE_stats_draw_cb(re, rj, image_renderinfo_cb);
 	RE_progress_cb(re, rj, render_progress_update);
 
 	rj->re = re;
-	G.is_break = FALSE;
+	G.is_break = false;
 
 	/* store actual owner of job, so modal operator could check for it,
 	 * the reason of this is that active scene could change when rendering
@@ -951,7 +977,7 @@ static int screen_render_invoke(bContext *C, wmOperator *op, const wmEvent *even
 	/* we set G.is_rendering here already instead of only in the job, this ensure
 	 * main loop or other scene updates are disabled in time, since they may
 	 * have started before the job thread */
-	G.is_rendering = TRUE;
+	G.is_rendering = true;
 
 	/* add modal handler for ESC */
 	WM_event_add_modal_handler(C, op);
@@ -1009,6 +1035,10 @@ typedef struct RenderPreview {
 	RenderEngine *engine;
 	
 	float viewmat[4][4];
+
+	int start_resolution_divider;
+	int resolution_divider;
+	bool has_freestyle;
 } RenderPreview;
 
 static int render_view3d_disprect(Scene *scene, ARegion *ar, View3D *v3d, RegionView3D *rv3d, rcti *disprect)
@@ -1085,7 +1115,7 @@ static void render_view3d_display_update(void *rpv, RenderResult *UNUSED(rr), vo
 {
 	RenderPreview *rp = rpv;
 	
-	*(rp->do_update) = TRUE;
+	*(rp->do_update) = true;
 }
 
 static void render_view3d_renderinfo_cb(void *rjp, RenderStats *rs)
@@ -1097,33 +1127,66 @@ static void render_view3d_renderinfo_cb(void *rjp, RenderStats *rs)
 		*rp->stop = 1;
 	}
 	else {
-		make_renderinfo_string(rs, rp->scene, false, rp->engine->text);
+		make_renderinfo_string(rs, rp->scene, false, NULL, rp->engine->text);
 	
 		/* make jobs timer to send notifier */
-		*(rp->do_update) = TRUE;
+		*(rp->do_update) = true;
 	}
 }
 
+BLI_INLINE void rcti_scale_coords(rcti *scaled_rect, const rcti *rect,
+                                  const float scale)
+{
+	scaled_rect->xmin = rect->xmin * scale;
+	scaled_rect->ymin = rect->ymin * scale;
+	scaled_rect->xmax = rect->xmax * scale;
+	scaled_rect->ymax = rect->ymax * scale;
+}
+
+static void render_update_resolution(Render *re, const RenderPreview *rp,
+                                     bool use_border, const rcti *clip_rect)
+{
+	int winx = rp->ar->winx / rp->resolution_divider;
+	int winy = rp->ar->winy / rp->resolution_divider;
+	if (use_border) {
+		rcti scaled_cliprct;
+		rcti_scale_coords(&scaled_cliprct, clip_rect,
+		                  1.0f / rp->resolution_divider);
+		RE_ChangeResolution(re, winx, winy, &scaled_cliprct);
+	}
+	else {
+		RE_ChangeResolution(re, winx, winy, NULL);
+	}
+
+	if (rp->has_freestyle) {
+		if (rp->resolution_divider == 1) {
+			RE_ChangeModeFlag(re, R_EDGE_FRS, false);
+		}
+		else {
+			RE_ChangeModeFlag(re, R_EDGE_FRS, true);
+		}
+	}
+}
 
 static void render_view3d_startjob(void *customdata, short *stop, short *do_update, float *UNUSED(progress))
 {
 	RenderPreview *rp = customdata;
 	Render *re;
 	RenderStats *rstats;
-	RenderData rdata;
 	rctf viewplane;
 	rcti cliprct;
 	float clipsta, clipend, pixsize;
 	bool orth, restore = 0;
 	char name[32];
 	int update_flag;
+	bool use_border;
 
 	update_flag = rp->engine->job_update_flag;
 	rp->engine->job_update_flag = 0;
 
 	//printf("ma %d res %d view %d db %d\n", update_flag & PR_UPDATE_MATERIAL, update_flag & PR_UPDATE_RENDERSIZE, update_flag & PR_UPDATE_VIEW, update_flag & PR_UPDATE_DATABASE);
 
-	G.is_break = FALSE;
+	G.is_break = false;
 	
 	if (false == render_view3d_get_rects(rp->ar, rp->v3d, rp->rv3d, &viewplane, rp->engine, &clipsta, &clipend, &pixsize, &orth))
 		return;
@@ -1144,18 +1207,37 @@ static void render_view3d_startjob(void *customdata, short *stop, short *do_upda
 	
 	rstats = RE_GetStats(re);
 
+	if (update_flag & PR_UPDATE_VIEW) {
+		Object *object;
+		rp->resolution_divider = rp->start_resolution_divider;
+
+		/* Same as database_init_objects(), loop over all objects.
+		 * We might consider de-duplicating the code between this two cases.
+		 */
+		for (object = rp->bmain->object.first; object; object = object->id.next) {
+			float mat[4][4];
+			mul_m4_m4m4(mat, rp->viewmat, object->obmat);
+			invert_m4_m4(object->imat_ren, mat);
+		}
+	}
+
+	use_border = render_view3d_disprect(rp->scene, rp->ar, rp->v3d,
+	                                    rp->rv3d, &cliprct);
+
 	if ((update_flag & (PR_UPDATE_RENDERSIZE | PR_UPDATE_DATABASE)) || rstats->convertdone == 0) {
+		RenderData rdata;
+
 		/* no osa, blur, seq, layers, etc for preview render */
 		rdata = rp->scene->r;
 		rdata.mode &= ~(R_OSA | R_MBLUR | R_BORDER | R_PANORAMA);
 		rdata.scemode &= ~(R_DOSEQ | R_DOCOMP | R_FREE_IMAGE);
 		rdata.scemode |= R_VIEWPORT_PREVIEW;
-		
+
 		/* we do use layers, but only active */
 		rdata.scemode |= R_SINGLE_LAYER;
 
 		/* initalize always */
-		if (render_view3d_disprect(rp->scene, rp->ar, rp->v3d, rp->rv3d, &cliprct)) {
+		if (use_border) {
 			rdata.mode |= R_BORDER;
 			RE_InitState(re, NULL, &rdata, NULL, rp->ar->winx, rp->ar->winy, &cliprct);
 		}
@@ -1208,8 +1290,34 @@ static void render_view3d_startjob(void *customdata, short *stop, short *do_upda
 
 	/* OK, can we enter render code? */
 	if (rstats->convertdone) {
-		RE_TileProcessor(re);
-		
+		bool first_time = true;
+		for (;;) {
+			if (first_time == false) {
+				if (restore)
+					RE_DataBase_IncrementalView(re, rp->viewmat, 1);
+
+				rp->resolution_divider /= 2;
+				*do_update = 1;
+
+				render_update_resolution(re, rp, use_border, &cliprct);
+
+				RE_DataBase_IncrementalView(re, rp->viewmat, 0);
+				RE_DataBase_ApplyWindow(re);
+				restore = 1;
+			}
+			else {
+				render_update_resolution(re, rp, use_border, &cliprct);
+			}
+
+			RE_TileProcessor(re);
+
+			first_time = false;
+
+			if (*stop || rp->resolution_divider == 1) {
+				break;
+			}
+		}
+
 		/* always rotate back */
 		if (restore)
 			RE_DataBase_IncrementalView(re, rp->viewmat, 1);
@@ -1305,7 +1413,12 @@ static void render_view3d_do(RenderEngine *engine, const bContext *C)
 	wmJob *wm_job;
 	RenderPreview *rp;
 	Scene *scene = CTX_data_scene(C);
-	
+	ARegion *ar = CTX_wm_region(C);
+	int width = ar->winx, height = ar->winy;
+	int divider = 1;
+	int resolution_threshold = scene->r.preview_start_resolution *
+	                           scene->r.preview_start_resolution;
+
 	if (CTX_wm_window(C) == NULL)
 		return;
 	if (!render_view3d_flag_changed(engine, C))
@@ -1316,6 +1429,12 @@ static void render_view3d_do(RenderEngine *engine, const bContext *C)
 	rp = MEM_callocN(sizeof(RenderPreview), "render preview");
 	rp->job = wm_job;
 
+	while (width * height > resolution_threshold) {
+		width = max_ii(1, width / 2);
+		height = max_ii(1, height / 2);
+		divider *= 2;
+	}
+
 	/* customdata for preview thread */
 	rp->scene = scene;
 	rp->engine = engine;
@@ -1324,6 +1443,9 @@ static void render_view3d_do(RenderEngine *engine, const bContext *C)
 	rp->v3d = rp->sa->spacedata.first;
 	rp->rv3d = CTX_wm_region_view3d(C);
 	rp->bmain = CTX_data_main(C);
+	rp->resolution_divider = divider;
+	rp->start_resolution_divider = divider;
+	rp->has_freestyle = (scene->r.mode & R_EDGE_FRS) != 0;
 	copy_m4_m4(rp->viewmat, rp->rv3d->viewmat);
 	
 	/* clear info text */
@@ -1339,7 +1461,7 @@ static void render_view3d_do(RenderEngine *engine, const bContext *C)
 	engine->flag &= ~RE_ENGINE_DO_UPDATE;
 }
 
-/* callback for render engine , on changes */
+/* callback for render engine, on changes */
 void render_view3d_update(RenderEngine *engine, const bContext *C)
 {	
 	/* this shouldn't be needed and causes too many database rebuilds, but we
@@ -1368,24 +1490,42 @@ void render_view3d_draw(RenderEngine *engine, const bContext *C)
 	RE_AcquireResultImage(re, &rres);
 	
 	if (rres.rectf) {
+		RegionView3D *rv3d = CTX_wm_region_view3d(C);
+		View3D *v3d = CTX_wm_view3d(C);
 		Scene *scene = CTX_data_scene(C);
+		ARegion *ar = CTX_wm_region(C);
 		bool force_fallback = false;
 		bool need_fallback = true;
 		float dither = scene->r.dither_intensity;
+		float scale_x, scale_y;
+		rcti clip_rect;
+		int xof, yof;
 
-		/* Dithering is not supported on GLSL yet */
-		force_fallback |= dither != 0.0f;
+		if (render_view3d_disprect(scene, ar, v3d, rv3d, &clip_rect)) {
+			scale_x = (float) BLI_rcti_size_x(&clip_rect) / rres.rectx;
+			scale_y = (float) BLI_rcti_size_y(&clip_rect) / rres.recty;
+			xof = clip_rect.xmin;
+			yof = clip_rect.ymin;
+		}
+		else {
+			scale_x = (float) ar->winx / rres.rectx;
+			scale_y = (float) ar->winy / rres.recty;
+			xof = rres.xof;
+			yof = rres.yof;
+		}
 
 		/* If user decided not to use GLSL, fallback to glaDrawPixelsAuto */
 		force_fallback |= (U.image_draw_method != IMAGE_DRAW_METHOD_GLSL);
 
 		/* Try using GLSL display transform. */
 		if (force_fallback == false) {
-			if (IMB_colormanagement_setup_glsl_draw(&scene->view_settings, &scene->display_settings, 0.0f, true)) {
+			if (IMB_colormanagement_setup_glsl_draw(&scene->view_settings, &scene->display_settings, dither, true)) {
 				glEnable(GL_BLEND);
 				glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-				glaDrawPixelsTex(rres.xof, rres.yof, rres.rectx, rres.recty, GL_RGBA, GL_FLOAT,
-				                 GL_NEAREST, rres.rectf);
+				glPixelZoom(scale_x, scale_y);
+				glaDrawPixelsTex(xof, yof, rres.rectx, rres.recty,
+				                 GL_RGBA, GL_FLOAT, GL_NEAREST, rres.rectf);
+				glPixelZoom(1.0f, 1.0f);
 				glDisable(GL_BLEND);
 
 				IMB_colormanagement_finish_glsl_draw();
@@ -1403,8 +1543,11 @@ void render_view3d_draw(RenderEngine *engine, const bContext *C)
 
 			glEnable(GL_BLEND);
 			glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-			glaDrawPixelsAuto(rres.xof, rres.yof, rres.rectx, rres.recty, GL_RGBA, GL_UNSIGNED_BYTE,
+			glPixelZoom(scale_x, scale_y);
+			glaDrawPixelsAuto(xof, yof, rres.rectx, rres.recty,
+			                  GL_RGBA, GL_UNSIGNED_BYTE,
 			                  GL_NEAREST, display_buffer);
+			glPixelZoom(1.0f, 1.0f);
 			glDisable(GL_BLEND);
 
 			MEM_freeN(display_buffer);
@@ -1414,10 +1557,10 @@ void render_view3d_draw(RenderEngine *engine, const bContext *C)
 	RE_ReleaseResultImage(re);
 }
 
-void ED_viewport_render_kill_jobs(const bContext *C, bool free_database)
+void ED_viewport_render_kill_jobs(wmWindowManager *wm,
+                                  Main *bmain,
+                                  bool free_database)
 {
-	wmWindowManager *wm = CTX_wm_manager(C);
-	Main *bmain = CTX_data_main(C);
 	bScreen *sc;
 	ScrArea *sa;
 	ARegion *ar;
@@ -1476,5 +1619,15 @@ Scene *ED_render_job_get_scene(const bContext *C)
 	if (rj)
 		return rj->scene;
 	
+	return NULL;
+}
+
+Scene *ED_render_job_get_current_scene(const bContext *C)
+{
+	wmWindowManager *wm = CTX_wm_manager(C);
+	RenderJob *rj = (RenderJob *)WM_jobs_customdata_from_type(wm, WM_JOB_TYPE_RENDER);
+	if (rj) {
+		return rj->current_scene;
+	}
 	return NULL;
 }

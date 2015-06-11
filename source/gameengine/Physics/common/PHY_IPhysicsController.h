@@ -41,6 +41,9 @@ class MT_Vector3;
 class MT_Point3;
 class MT_Matrix3x3;
 
+class KX_GameObject;
+class RAS_MeshObject;
+
 /**
  * PHY_IPhysicsController is the abstract simplified Interface to a physical object.
  * It contains the IMotionState and IDeformableMesh Interfaces.
@@ -79,12 +82,18 @@ class PHY_IPhysicsController : public PHY_IController
 		virtual void		SetMass(MT_Scalar newmass)=0;
 
 		// physics methods
-		virtual void		ApplyImpulse(const MT_Point3& attach, const MT_Vector3& impulse)=0;
+		virtual void		ApplyImpulse(const MT_Point3& attach, const MT_Vector3& impulse,bool local)=0;
 		virtual void		ApplyTorque(const MT_Vector3& torque,bool local)=0;
 		virtual void		ApplyForce(const MT_Vector3& force,bool local)=0;
 		virtual void		SetAngularVelocity(const MT_Vector3& ang_vel,bool local)=0;
 		virtual void		SetLinearVelocity(const MT_Vector3& lin_vel,bool local)=0;
 		virtual void		ResolveCombinedVelocities(float linvelX,float linvelY,float linvelZ,float angVelX,float angVelY,float angVelZ) = 0;
+
+		virtual float		GetLinearDamping() const=0;
+		virtual float		GetAngularDamping() const=0;
+		virtual void		SetLinearDamping(float damping)=0;
+		virtual void		SetAngularDamping(float damping)=0;
+		virtual void		SetDamping(float linear, float angular)=0;
 
 		virtual void		SuspendDynamics(bool ghost=false)=0;
 		virtual void		RestoreDynamics()=0;
@@ -123,6 +132,8 @@ class PHY_IPhysicsController : public PHY_IController
 
 		virtual bool IsDynamic() = 0;
 		virtual bool IsCompound() = 0;
+
+		virtual bool ReinstancePhysicsShape(KX_GameObject *from_gameobj, RAS_MeshObject* from_meshobj) = 0;
 
 
 #ifdef WITH_CXX_GUARDEDALLOC

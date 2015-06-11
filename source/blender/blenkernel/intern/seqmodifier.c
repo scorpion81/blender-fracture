@@ -50,7 +50,7 @@
 #include "IMB_imbuf_types.h"
 
 static SequenceModifierTypeInfo *modifiersTypes[NUM_SEQUENCE_MODIFIER_TYPES];
-static int modifierTypesInit = FALSE;
+static bool modifierTypesInit = false;
 
 /*********************** Modifiers *************************/
 
@@ -77,7 +77,7 @@ typedef struct ModifierThread {
 } ModifierThread;
 
 
-static ImBuf *modifier_mask_get(SequenceModifierData *smd, const SeqRenderData *context, int cfra, int make_float)
+static ImBuf *modifier_mask_get(SequenceModifierData *smd, const SeqRenderData *context, int cfra, bool make_float)
 {
 	return BKE_sequencer_render_mask_input(context, smd->mask_input_type, smd->mask_sequence, smd->mask_id, cfra, make_float);
 }
@@ -160,7 +160,7 @@ static void colorBalance_apply(SequenceModifierData *smd, ImBuf *ibuf, ImBuf *ma
 {
 	ColorBalanceModifierData *cbmd = (ColorBalanceModifierData *) smd;
 
-	BKE_sequencer_color_balance_apply(&cbmd->color_balance, ibuf, cbmd->color_multiply, FALSE, mask);
+	BKE_sequencer_color_balance_apply(&cbmd->color_balance, ibuf, cbmd->color_multiply, false, mask);
 }
 
 static SequenceModifierTypeInfo seqModifier_ColorBalance = {
@@ -214,7 +214,7 @@ static void curves_apply_threaded(int width, int height, unsigned char *rect, fl
 				curvemapping_evaluate_premulRGBF(curve_mapping, result, pixel);
 
 				if (mask_rect_float) {
-					float *m = mask_rect_float + pixel_index;
+					const float *m = mask_rect_float + pixel_index;
 
 					pixel[0] = pixel[0] * (1.0f - m[0]) + result[0] * m[0];
 					pixel[1] = pixel[1] * (1.0f - m[1]) + result[1] * m[1];
@@ -454,7 +454,7 @@ static void brightcontrast_apply_threaded(int width, int height, unsigned char *
 					v = a * i + b;
 
 					if (mask_rect_float) {
-						float *m = mask_rect_float + pixel_index;
+						const float *m = mask_rect_float + pixel_index;
 
 						pixel[c] = pixel[c] * (1.0f - m[c]) + v * m[c];
 					}
@@ -518,7 +518,7 @@ static void maskmodifier_apply_threaded(int width, int height, unsigned char *re
 			else if (rect_float) {
 				int c;
 				float *pixel = rect_float + pixel_index;
-				float *mask_pixel = mask_rect_float + pixel_index;
+				const float *mask_pixel = mask_rect_float + pixel_index;
 				float mask = min_fff(mask_pixel[0], mask_pixel[1], mask_pixel[2]);
 
 				/* float buffers are premultiplied, so need to premul color
@@ -531,15 +531,11 @@ static void maskmodifier_apply_threaded(int width, int height, unsigned char *re
 	}
 }
 
-static void maskmodifier_apply(struct SequenceModifierData *smd, ImBuf *ibuf, ImBuf *mask)
+static void maskmodifier_apply(struct SequenceModifierData *UNUSED(smd), ImBuf *ibuf, ImBuf *mask)
 {
-	BrightContrastModifierData *bcmd = (BrightContrastModifierData *) smd;
-	BrightContrastThreadData data;
+	// SequencerMaskModifierData *bcmd = (SequencerMaskModifierData *)smd;
 
-	data.bright = bcmd->bright;
-	data.contrast = bcmd->contrast;
-
-	modifier_apply_threaded(ibuf, mask, maskmodifier_apply_threaded, &data);
+	modifier_apply_threaded(ibuf, mask, maskmodifier_apply_threaded, NULL);
 }
 
 static SequenceModifierTypeInfo seqModifier_Mask = {
@@ -571,7 +567,7 @@ SequenceModifierTypeInfo *BKE_sequence_modifier_type_info_get(int type)
 {
 	if (!modifierTypesInit) {
 		sequence_modifier_type_info_init();
-		modifierTypesInit = TRUE;
+		modifierTypesInit = true;
 	}
 
 	return modifiersTypes[type];
@@ -602,15 +598,15 @@ SequenceModifierData *BKE_sequence_modifier_new(Sequence *seq, const char *name,
 	return smd;
 }
 
-int BKE_sequence_modifier_remove(Sequence *seq, SequenceModifierData *smd)
+bool BKE_sequence_modifier_remove(Sequence *seq, SequenceModifierData *smd)
 {
 	if (BLI_findindex(&seq->modifiers, smd) == -1)
-		return FALSE;
+		return false;
 
 	BLI_remlink(&seq->modifiers, smd);
 	BKE_sequence_modifier_free(smd);
 
-	return TRUE;
+	return true;
 }
 
 void BKE_sequence_modifier_clear(Sequence *seq)
@@ -622,7 +618,7 @@ void BKE_sequence_modifier_clear(Sequence *seq)
 		BKE_sequence_modifier_free(smd);
 	}
 
-	seq->modifiers.first = seq->modifiers.last = NULL;
+	BLI_listbase_clear(&seq->modifiers);
 }
 
 void BKE_sequence_modifier_free(SequenceModifierData *smd)
@@ -684,7 +680,7 @@ ImBuf *BKE_sequence_modifier_apply_stack(const SeqRenderData *context, Sequence 
 	}
 
 	if (seq->modifiers.first && (seq->flag & SEQ_USE_LINEAR_MODIFIERS)) {
-		BKE_sequencer_imbuf_to_sequencer_space(context->scene, processed_ibuf, FALSE);
+		BKE_sequencer_imbuf_to_sequencer_space(context->scene, processed_ibuf, false);
 	}
 
 	return processed_ibuf;

@@ -37,30 +37,19 @@
 #include "DNA_rigidbody_types.h"
 #include "DNA_scene_types.h"
 
-#include "BLI_blenlib.h"
-#include "BLI_math.h"
-
 #ifdef WITH_BULLET
 #  include "RBI_api.h"
 #endif
 
 #include "BKE_context.h"
-#include "BKE_depsgraph.h"
-#include "BKE_group.h"
-#include "BKE_global.h"
-#include "BKE_main.h"
 #include "BKE_report.h"
 #include "BKE_rigidbody.h"
-#include "BKE_utildefines.h"
 
 #include "RNA_access.h"
-#include "RNA_define.h"
-#include "RNA_enum_types.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
 
-#include "ED_physics.h"
 #include "ED_screen.h"
 
 #include "physics_intern.h"
@@ -159,7 +148,7 @@ static int rigidbody_world_export_exec(bContext *C, wmOperator *op)
 	char path[FILE_MAX];
 
 	/* sanity checks */
-	if ELEM(NULL, scene, rbw) {
+	if (ELEM(NULL, scene, rbw)) {
 		BKE_report(op->reports, RPT_ERROR, "No Rigid Body World to export");
 		return OPERATOR_CANCELLED;
 	}
@@ -178,7 +167,7 @@ static int rigidbody_world_export_exec(bContext *C, wmOperator *op)
 static int rigidbody_world_export_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
 	if (!RNA_struct_property_is_set(op->ptr, "relative_path"))
-		RNA_boolean_set(op->ptr, "relative_path", (U.flag & USER_RELPATHS));
+		RNA_boolean_set(op->ptr, "relative_path", (U.flag & USER_RELPATHS) != 0);
 
 	if (RNA_struct_property_is_set(op->ptr, "filepath"))
 		return rigidbody_world_export_exec(C, op);
@@ -206,5 +195,5 @@ void RIGIDBODY_OT_world_export(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 
 	/* properties */
-	WM_operator_properties_filesel(ot, FOLDERFILE, FILE_SPECIAL, FILE_SAVE, FILE_RELPATH, FILE_DEFAULTDISPLAY);
+	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER, FILE_SPECIAL, FILE_SAVE, FILE_RELPATH, FILE_DEFAULTDISPLAY);
 }

@@ -38,7 +38,6 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_blenlib.h"
-#include "BLI_math.h"
 
 #include "BKE_nla.h"
 #include "BKE_context.h"
@@ -67,16 +66,13 @@ static short selmodes_to_flagmodes(short sel)
 	switch (sel) {
 		case SELECT_SUBTRACT:
 			return ACHANNEL_SETFLAG_CLEAR;
-			break;
-			
+
 		case SELECT_INVERT:
 			return ACHANNEL_SETFLAG_INVERT;
-			break;
-			
+
 		case SELECT_ADD:
 		default:
 			return ACHANNEL_SETFLAG_ADD;
-			break;
 	}
 }
 
@@ -157,7 +153,7 @@ static void deselect_nla_strips(bAnimContext *ac, short test, short sel)
 	}
 	
 	/* Cleanup */
-	BLI_freelistN(&anim_data);
+	ANIM_animdata_freelist(&anim_data);
 }
 
 /* ------------------- */
@@ -272,7 +268,7 @@ static void borderselect_nla_strips(bAnimContext *ac, rcti rect, short mode, sho
 	}
 	
 	/* cleanup */
-	BLI_freelistN(&anim_data);
+	ANIM_animdata_freelist(&anim_data);
 }
 
 /* ------------------- */
@@ -416,7 +412,7 @@ static void nlaedit_select_leftright(bContext *C, bAnimContext *ac, short leftri
 	}
 	
 	/* Cleanup */
-	BLI_freelistN(&anim_data);
+	ANIM_animdata_freelist(&anim_data);
 }
 
 /* ------------------- */
@@ -467,11 +463,11 @@ static int nlaedit_select_leftright_invoke(bContext *C, wmOperator *op, const wm
 		float x;
 		
 		/* determine which side of the current frame mouse is on */
-		UI_view2d_region_to_view(v2d, event->mval[0], event->mval[1], &x, NULL);
+		x = UI_view2d_region_to_view_x(v2d, event->mval[0]);
 		if (x < CFRA)
-			RNA_int_set(op->ptr, "mode", NLAEDIT_LRSEL_LEFT);
+			RNA_enum_set(op->ptr, "mode", NLAEDIT_LRSEL_LEFT);
 		else
-			RNA_int_set(op->ptr, "mode", NLAEDIT_LRSEL_RIGHT);
+			RNA_enum_set(op->ptr, "mode", NLAEDIT_LRSEL_RIGHT);
 	}
 	
 	/* perform selection */
@@ -518,7 +514,7 @@ static void mouse_nla_strips(bContext *C, bAnimContext *ac, const int mval[2], s
 	Scene *scene = ac->scene;
 	NlaStrip *strip = NULL;
 	int channel_index;
-	float xmin, xmax, dummy;
+	float xmin, xmax;
 	float x, y;
 	
 	
@@ -529,8 +525,8 @@ static void mouse_nla_strips(bContext *C, bAnimContext *ac, const int mval[2], s
 	/* x-range to check is +/- 7 (in screen/region-space) on either side of mouse click 
 	 * (that is the size of keyframe icons, so user should be expecting similar tolerances) 
 	 */
-	UI_view2d_region_to_view(v2d, mval[0] - 7, mval[1], &xmin, &dummy);
-	UI_view2d_region_to_view(v2d, mval[0] + 7, mval[1], &xmax, &dummy);
+	xmin = UI_view2d_region_to_view_x(v2d, mval[0] - 7);
+	xmax = UI_view2d_region_to_view_x(v2d, mval[0] + 7);
 	
 	/* filter data */
 	filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_LIST_VISIBLE | ANIMFILTER_LIST_CHANNELS);
@@ -541,7 +537,7 @@ static void mouse_nla_strips(bContext *C, bAnimContext *ac, const int mval[2], s
 	if (ale == NULL) {
 		/* channel not found */
 		printf("Error: animation channel (index = %d) not found in mouse_nla_strips()\n", channel_index);
-		BLI_freelistN(&anim_data);
+		ANIM_animdata_freelist(&anim_data);
 		return;
 	}
 	else {
@@ -560,7 +556,7 @@ static void mouse_nla_strips(bContext *C, bAnimContext *ac, const int mval[2], s
 		BLI_remlink(&anim_data, ale);
 		
 		/* free list of channels, since it's not used anymore */
-		BLI_freelistN(&anim_data);
+		ANIM_animdata_freelist(&anim_data);
 	}
 	
 	/* if currently in tweakmode, exit tweakmode before changing selection states
@@ -579,14 +575,6 @@ static void mouse_nla_strips(bContext *C, bAnimContext *ac, const int mval[2], s
 		
 		/* deselect all other channels first */
 		ANIM_deselect_anim_channels(ac, ac->data, ac->datatype, 0, ACHANNEL_SETFLAG_CLEAR);
-		
-		/* Highlight NLA-Track */
-		if (ale->type == ANIMTYPE_NLATRACK) {
-			NlaTrack *nlt = (NlaTrack *)ale->data;
-			
-			nlt->flag |= NLATRACK_SELECTED;
-			ANIM_set_active_channel(ac, ac->data, ac->datatype, filter, nlt, ANIMTYPE_NLATRACK);
-		}
 	}
 	
 	/* only select strip if we clicked on a valid channel and hit something */
@@ -598,10 +586,21 @@ static void mouse_nla_strips(bContext *C, bAnimContext *ac, const int mval[2], s
 			
 			/* if we selected it, we can make it active too
 			 *	- we always need to clear the active strip flag though... 
+			 *  - as well as selecting its track...
 			 */
 			deselect_nla_strips(ac, DESELECT_STRIPS_CLEARACTIVE, 0);
-			if (strip->flag & NLASTRIP_FLAG_SELECT)
+			
+			if (strip->flag & NLASTRIP_FLAG_SELECT) {
 				strip->flag |= NLASTRIP_FLAG_ACTIVE;
+				
+				/* Highlight NLA-Track */
+				if (ale->type == ANIMTYPE_NLATRACK) {
+					NlaTrack *nlt = (NlaTrack *)ale->data;
+					
+					nlt->flag |= NLATRACK_SELECTED;
+					ANIM_set_active_channel(ac, ac->data, ac->datatype, filter, nlt, ANIMTYPE_NLATRACK);
+				}
+			}
 		}
 		
 		/* free this channel */

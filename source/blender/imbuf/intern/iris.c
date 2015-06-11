@@ -40,7 +40,6 @@
 #include "imbuf.h"
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"
-#include "IMB_allocimbuf.h"
 #include "IMB_filetype.h"
 
 #include "IMB_colormanagement.h"
@@ -72,7 +71,7 @@ typedef struct {
 	unsigned int    offset;
 	unsigned int    rleend;        /* for rle images */
 	unsigned int   *rowstart;  /* for rle images */
-	int            *rowsize;   /* for rle images */
+	const int            *rowsize;   /* for rle images */
 } IMAGE;
 
 #define RINTLUM (79)

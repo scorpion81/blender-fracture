@@ -107,8 +107,12 @@ class MASK_PT_layers:
             layout.prop(active_layer, "blend")
             layout.prop(active_layer, "falloff")
 
+            row = layout.row(align=True)
+            row.prop(active_layer, "use_fill_overlap", text="Overlap")
+            row.prop(active_layer, "use_fill_holes", text="Holes")
 
-class MASK_PT_spline():
+
+class MASK_PT_spline:
     # subclasses must define...
     #~ bl_space_type = 'CLIP_EDITOR'
     #~ bl_region_type = 'UI'
@@ -142,7 +146,7 @@ class MASK_PT_spline():
         col.prop(spline, "use_self_intersection_check")
 
 
-class MASK_PT_point():
+class MASK_PT_point:
     # subclasses must define...
     #~ bl_space_type = 'CLIP_EDITOR'
     #~ bl_region_type = 'UI'
@@ -169,11 +173,8 @@ class MASK_PT_point():
         parent = point.parent
 
         col = layout.column()
-        col.prop(point, "handle_type")
-
-        col = layout.column()
-        # Currently only parenting yo movie clip is allowed, so do not
-        # ver-oplicate things for now and use single template_ID
+        # Currently only parenting the movie-clip is allowed,
+        # so do not over-complicate things for now by using single template_ID
         #col.template_any_ID(parent, "id", "id_type", text="")
 
         col.label("Parent:")
@@ -200,7 +201,7 @@ class MASK_PT_point():
                                 tracks_list, icon='ANIM_DATA', text="Track:")
 
 
-class MASK_PT_display():
+class MASK_PT_display:
     # subclasses must define...
     #~ bl_space_type = 'CLIP_EDITOR'
     #~ bl_region_type = 'UI'
@@ -216,21 +217,23 @@ class MASK_PT_display():
         layout = self.layout
 
         space_data = context.space_data
+        row = layout.row(align=True)
+        row.prop(space_data, "show_mask_smooth", text="Smooth")
+        row.prop(space_data, "mask_draw_type", text="")
+        row = layout.row(align=True)
+        row.prop(space_data, "show_mask_overlay", text="Overlay")
+        sub = row.row()
+        sub.active = space_data.show_mask_overlay
+        sub.prop(space_data, "mask_overlay_mode", text="")
 
-        layout.prop(space_data, "mask_draw_type", text="")
-        layout.prop(space_data, "show_mask_smooth")
 
-        layout.prop(space_data, "show_mask_overlay")
-        row = layout.row()
-        row.active = space_data.show_mask_overlay
-        row.prop(space_data, "mask_overlay_mode", text="")
-
-
-class MASK_PT_tools():
+class MASK_PT_transforms:
     # subclasses must define...
     #~ bl_space_type = 'CLIP_EDITOR'
     #~ bl_region_type = 'TOOLS'
-    bl_label = "Mask Tools"
+    bl_label = "Transforms"
+    bl_category = "Mask"
+    bl_options = {'DEFAULT_CLOSED'}
 
     @classmethod
     def poll(cls, context):
@@ -247,24 +250,63 @@ class MASK_PT_tools():
         col.operator("transform.resize", text="Scale")
         col.operator("transform.transform", text="Scale Feather").mode = 'MASK_SHRINKFATTEN'
 
+
+class MASK_PT_tools:
+    # subclasses must define...
+    #~ bl_space_type = 'CLIP_EDITOR'
+    #~ bl_region_type = 'TOOLS'
+    bl_label = "Mask Tools"
+    bl_category = "Mask"
+
+    @classmethod
+    def poll(cls, context):
+        space_data = context.space_data
+        return space_data.mask and space_data.mode == 'MASK'
+
+    def draw(self, context):
+        layout = self.layout
+
         col = layout.column(align=True)
         col.label(text="Spline:")
         col.operator("mask.delete")
         col.operator("mask.cyclic_toggle")
         col.operator("mask.switch_direction")
         col.operator("mask.handle_type_set")
+        col.operator("mask.feather_weight_clear")
 
         col = layout.column(align=True)
         col.label(text="Parenting:")
-        col.operator("mask.parent_set")
-        col.operator("mask.parent_clear")
+        row = col.row(align=True)
+        row.operator("mask.parent_set", text="Parent")
+        row.operator("mask.parent_clear", text="Clear")
 
         col = layout.column(align=True)
         col.label(text="Animation:")
-        col.operator("mask.shape_key_clear")
-        col.operator("mask.shape_key_insert")
-        col.operator("mask.shape_key_feather_reset")
-        col.operator("mask.shape_key_rekey")
+        row = col.row(align=True)
+        row.operator("mask.shape_key_insert", text="Insert Key")
+        row.operator("mask.shape_key_clear", text="Clear Key")
+        col.operator("mask.shape_key_feather_reset", text="Reset Feather Animation")
+        col.operator("mask.shape_key_rekey", text="Re-Key Shape Points")
+
+
+class MASK_PT_add:
+    # subclasses must define...
+    #~ bl_space_type = 'CLIP_EDITOR'
+    #~ bl_region_type = 'TOOLS'
+    bl_label = "Add"
+    bl_category = "Mask"
+
+    @classmethod
+    def poll(cls, context):
+        space_data = context.space_data
+        return space_data.mode == 'MASK'
+
+    def draw(self, context):
+        layout = self.layout
+
+        col = layout.column(align=True)
+        col.operator("mask.primitive_circle_add", icon='MESH_CIRCLE')
+        col.operator("mask.primitive_square_add", icon='MESH_PLANE')
 
 
 class MASK_MT_mask(Menu):
@@ -302,7 +344,7 @@ class MASK_MT_visibility(Menu):
         layout = self.layout
 
         layout.operator("mask.hide_view_clear", text="Show Hidden")
-        layout.operator("mask.hide_view_set", text="Hide Selected")
+        layout.operator("mask.hide_view_set", text="Hide Selected").unselected = False
         layout.operator("mask.hide_view_set", text="Hide Unselected").unselected = True
 
 
@@ -335,7 +377,6 @@ class MASK_MT_select(Menu):
 
     def draw(self, context):
         layout = self.layout
-        sc = context.space_data
 
         layout.operator("mask.select_border")
         layout.operator("mask.select_circle")
@@ -349,6 +390,7 @@ class MASK_MT_select(Menu):
 
         layout.operator("mask.select_all").action = 'TOGGLE'
         layout.operator("mask.select_all", text="Inverse").action = 'INVERT'
+        layout.operator("mask.select_linked", text="Select Linked")
 
 if __name__ == "__main__":  # only for live edit.
     bpy.utils.register_module(__name__)

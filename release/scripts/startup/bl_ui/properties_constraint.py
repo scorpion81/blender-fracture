@@ -21,7 +21,7 @@ import bpy
 from bpy.types import Panel
 
 
-class ConstraintButtonsPanel():
+class ConstraintButtonsPanel:
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "constraint"
@@ -502,6 +502,20 @@ class ConstraintButtonsPanel():
         row.operator("constraint.stretchto_reset", text="Reset")
 
         layout.prop(con, "bulge", text="Volume Variation")
+        split = layout.split()
+        col = split.column(align=True)
+        col.prop(con, "use_bulge_min", text="Volume Min")
+        sub = col.column()
+        sub.active = con.use_bulge_min
+        sub.prop(con, "bulge_min", text="")
+        col = split.column(align=True)
+        col.prop(con, "use_bulge_max", text="Volume Max")
+        sub = col.column()
+        sub.active = con.use_bulge_max
+        sub.prop(con, "bulge_max", text="")
+        col = layout.column()
+        col.active = con.use_bulge_min or con.use_bulge_max
+        col.prop(con, "bulge_smooth", text="Smooth")
 
         row = layout.row()
         row.label(text="Volume:")
@@ -653,21 +667,22 @@ class ConstraintButtonsPanel():
         col.row().prop(con, "map_from", expand=True)
 
         split = layout.split()
+        ext = "" if con.map_from == 'LOCATION' else "_rot" if con.map_from == 'ROTATION' else "_scale"
 
         sub = split.column(align=True)
         sub.label(text="X:")
-        sub.prop(con, "from_min_x", text="Min")
-        sub.prop(con, "from_max_x", text="Max")
+        sub.prop(con, "from_min_x" + ext, text="Min")
+        sub.prop(con, "from_max_x" + ext, text="Max")
 
         sub = split.column(align=True)
         sub.label(text="Y:")
-        sub.prop(con, "from_min_y", text="Min")
-        sub.prop(con, "from_max_y", text="Max")
+        sub.prop(con, "from_min_y" + ext, text="Min")
+        sub.prop(con, "from_max_y" + ext, text="Max")
 
         sub = split.column(align=True)
         sub.label(text="Z:")
-        sub.prop(con, "from_min_z", text="Min")
-        sub.prop(con, "from_max_z", text="Max")
+        sub.prop(con, "from_min_z" + ext, text="Min")
+        sub.prop(con, "from_max_z" + ext, text="Max")
 
         col = layout.column()
         row = col.row()
@@ -694,27 +709,28 @@ class ConstraintButtonsPanel():
         col.row().prop(con, "map_to", expand=True)
 
         split = layout.split()
+        ext = "" if con.map_to == 'LOCATION' else "_rot" if con.map_to == 'ROTATION' else "_scale"
 
         col = split.column()
         col.label(text="X:")
 
         sub = col.column(align=True)
-        sub.prop(con, "to_min_x", text="Min")
-        sub.prop(con, "to_max_x", text="Max")
+        sub.prop(con, "to_min_x" + ext, text="Min")
+        sub.prop(con, "to_max_x" + ext, text="Max")
 
         col = split.column()
         col.label(text="Y:")
 
         sub = col.column(align=True)
-        sub.prop(con, "to_min_y", text="Min")
-        sub.prop(con, "to_max_y", text="Max")
+        sub.prop(con, "to_min_y" + ext, text="Min")
+        sub.prop(con, "to_max_y" + ext, text="Max")
 
         col = split.column()
         col.label(text="Z:")
 
         sub = col.column(align=True)
-        sub.prop(con, "to_min_z", text="Min")
-        sub.prop(con, "to_max_z", text="Max")
+        sub.prop(con, "to_min_z" + ext, text="Min")
+        sub.prop(con, "to_max_z" + ext, text="Max")
 
         self.space_template(layout, con)
 
@@ -752,8 +768,26 @@ class ConstraintButtonsPanel():
         col = layout.column()
         col.label(text="Chain Scaling:")
         col.prop(con, "use_y_stretch")
-        col.prop(con, "xz_scale_mode")
         col.prop(con, "use_curve_radius")
+
+        layout.prop(con, "xz_scale_mode")
+
+        if con.xz_scale_mode == 'VOLUME_PRESERVE':
+            layout.prop(con, "bulge", text="Volume Variation")
+            split = layout.split()
+            col = split.column(align=True)
+            col.prop(con, "use_bulge_min", text="Volume Min")
+            sub = col.column()
+            sub.active = con.use_bulge_min
+            sub.prop(con, "bulge_min", text="")
+            col = split.column(align=True)
+            col.prop(con, "use_bulge_max", text="Volume Max")
+            sub = col.column()
+            sub.active = con.use_bulge_max
+            sub.prop(con, "bulge_max", text="")
+            col = layout.column()
+            col.active = con.use_bulge_min or con.use_bulge_max
+            col.prop(con, "bulge_smooth", text="Smooth")
 
     def PIVOT(self, context, layout, con):
         self.target_template(layout, con)
@@ -785,6 +819,10 @@ class ConstraintButtonsPanel():
         row = layout.row()
         row.prop(con, "use_active_clip")
         row.prop(con, "use_3d_position")
+
+        sub = row.column()
+        sub.active = not con.use_3d_position
+        sub.prop(con, "use_undistorted_position")
 
         col = layout.column()
 
@@ -856,10 +894,12 @@ class OBJECT_PT_constraints(ConstraintButtonsPanel, Panel):
 
         obj = context.object
 
-        if obj.type == 'ARMATURE' and obj.mode in {'EDIT', 'POSE'}:
+        if obj.type == 'ARMATURE' and obj.mode in {'POSE'}:
             box = layout.box()
-            box.alert = True
-            box.label(icon='INFO', text="See Bone Constraints tab to Add Constraints to active bone")
+            box.alert = True  # XXX: this should apply to the box background
+            box.label(icon='INFO', text="Constraints for active bone do not live here")
+            box.operator("wm.properties_context_change", icon='CONSTRAINT_BONE',
+                         text="Go to Bone Constraints tab...").context = 'BONE_CONSTRAINT'
         else:
             layout.operator_menu_enum("object.constraint_add", "type", text="Add Object Constraint")
 

@@ -1,13 +1,13 @@
 // Begin License:
-// Copyright (C) 2006-2011 Tobias Sargeant (tobias.sargeant@gmail.com).
+// Copyright (C) 2006-2014 Tobias Sargeant (tobias.sargeant@gmail.com).
 // All rights reserved.
 //
 // This file is part of the Carve CSG Library (http://carve-csg.com/)
 //
-// This file may be used under the terms of the GNU General Public
-// License version 2.0 as published by the Free Software Foundation
-// and appearing in the file LICENSE.GPL2 included in the packaging of
-// this file.
+// This file may be used under the terms of either the GNU General
+// Public License version 2 or 3 (at your option) as published by the
+// Free Software Foundation and appearing in the files LICENSE.GPL2
+// and LICENSE.GPL3 included in the packaging of this file.
 //
 // This file is provided "AS IS" with NO WARRANTY OF ANY KIND,
 // INCLUDING THE WARRANTIES OF DESIGN, MERCHANTABILITY AND FITNESS FOR
@@ -31,8 +31,6 @@
 #include <set>
 #include <algorithm>
 #include <vector>
-
-#include "write_ply.hpp"
 
 
 namespace carve {
@@ -1184,6 +1182,33 @@ namespace carve {
         return modifications;
       }
 
+      void dissolveMeshEdges(mesh_t *mesh, std::unordered_set<edge_t *> dissolve_edges) {
+        while (dissolve_edges.size()) {
+            MeshSet<3>::edge_t *edge = *dissolve_edges.begin();
+            if (edge->face == edge->rev->face) {
+                dissolve_edges.erase(edge);
+                continue;
+            }
+
+            MeshSet<3>::edge_t *removed = edge->mergeFaces();
+            if (removed == NULL) {
+                dissolve_edges.erase(edge);
+            } else {
+                MeshSet<3>::edge_t *e = removed;
+                do {
+                    MeshSet<3>::edge_t *n = e->next;
+                    dissolve_edges.erase(std::min(e, e->rev));
+                    delete e->rev;
+                    delete e;
+                    e = n;
+                } while (e != removed);
+            }
+        }
+
+        removeRemnantFaces(mesh);
+        cleanFaceEdges(mesh);
+        mesh->cacheEdges();
+     }
 
 
       size_t improveMesh(meshset_t *meshset,
@@ -1414,7 +1439,7 @@ namespace carve {
 
 
       size_t removeLowVolumeManifolds(meshset_t *meshset, double min_abs_volume) {
-        size_t n_removed;
+        size_t n_removed = 0;
         for (size_t i = 0; i < meshset->meshes.size(); ++i) {
           if (fabs(meshset->meshes[i]->volume()) < min_abs_volume) {
             delete meshset->meshes[i];
@@ -1445,7 +1470,7 @@ namespace carve {
         heapval_t last;
         std::vector<heapval_t> heap;
 
-        point_enumerator_t(vector_t _origin, int _base, int _n_dp) : origin(_origin), rounding_fac(pow(_base, _n_dp)), last(-1.0, _origin), heap() {
+        point_enumerator_t(vector_t _origin, int _base, int _n_dp) : origin(_origin), rounding_fac(pow((double)_base, _n_dp)), last(-1.0, _origin), heap() {
           for (size_t i = 0; i < (1 << 3); ++i) {
             vector_t t = origin;
             for (size_t j = 0; j < 3; ++j) {
@@ -1502,7 +1527,7 @@ namespace carve {
         }
 
         aabb_t getAABB() const {
-          std::set<face_t *>::iterator i = faces.begin();
+          std::set<face_t *>::const_iterator i = faces.begin();
           aabb_t aabb = (*i)->getAABB();
           while (++i != faces.end()) {
             aabb.unionAABB((*i)->getAABB());

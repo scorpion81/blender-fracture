@@ -56,6 +56,9 @@ struct Text;
 struct ImBuf;
 struct EditBone;
 struct bPoseChannel;
+struct bGPdata;
+struct bGPDlayer;
+struct bGPDframe;
 struct wmWindow;
 struct wmWindowManager;
 struct SpaceText;
@@ -185,7 +188,7 @@ enum {
 PointerRNA CTX_data_pointer_get(const bContext *C, const char *member);
 PointerRNA CTX_data_pointer_get_type(const bContext *C, const char *member, StructRNA *type);
 ListBase CTX_data_collection_get(const bContext *C, const char *member);
-ListBase CTX_data_dir_get_ex(const bContext *C, const short use_store, const short use_rna, const short use_all);
+ListBase CTX_data_dir_get_ex(const bContext *C, const bool use_store, const bool use_rna, const bool use_all);
 ListBase CTX_data_dir_get(const bContext *C);
 int CTX_data_get(const bContext *C, const char *member, PointerRNA *r_ptr, ListBase *r_lb, short *r_type);
 
@@ -274,6 +277,14 @@ int CTX_data_editable_bones(const bContext *C, ListBase *list);
 struct bPoseChannel *CTX_data_active_pose_bone(const bContext *C);
 int CTX_data_selected_pose_bones(const bContext *C, ListBase *list);
 int CTX_data_visible_pose_bones(const bContext *C, ListBase *list);
+
+struct bGPdata *CTX_data_gpencil_data(const bContext *C);
+struct bGPDlayer *CTX_data_active_gpencil_layer(const bContext *C);
+struct bGPDframe *CTX_data_active_gpencil_frame(const bContext *C);
+int CTX_data_visible_gpencil_layers(const bContext *C, ListBase *list);
+int CTX_data_editable_gpencil_layers(const bContext *C, ListBase *list);
+int CTX_data_editable_gpencil_strokes(const bContext *C, ListBase *list);
+
 
 #ifdef __cplusplus
 }

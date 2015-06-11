@@ -300,6 +300,12 @@ public:
 	 */
 	void UpdateActionManager(float curtime);
 
+	/**
+	 * Have the action manager update IPOs
+	 * note: not thread-safe!
+	 */
+	void UpdateActionIPOs();
+
 	/*********************************
 	 * End Animation API
 	 *********************************/
@@ -678,6 +684,12 @@ public:
 		bool local
 	);
 
+	virtual float	getLinearDamping() const;
+	virtual float	getAngularDamping() const;
+	virtual void	setLinearDamping(float damping);
+	virtual void	setAngularDamping(float damping);
+	virtual void	setDamping(float linear, float angular);
+
 	/**
 	 * Update the physics object transform based upon the current SG_Node
 	 * position.
@@ -907,7 +919,7 @@ public:
 
 	void RegisterCollisionCallbacks();
 	void UnregisterCollisionCallbacks();
-	void RunCollisionCallbacks(KX_GameObject *collider);
+	void RunCollisionCallbacks(KX_GameObject *collider, const MT_Vector3 &point, const MT_Vector3 &normal);
 	/**
 	 * Stop making progress
 	 */
@@ -928,6 +940,11 @@ public:
 		m_pObstacleSimulation = NULL;
 	}
 	
+	/**
+	 * add debug object to the debuglist.
+	 */
+	void SetUseDebugProperties(bool debug, bool recursive);
+
 	KX_ClientObjectInfo* getClientInfo() { return m_pClient_info; }
 	
 	CListValue* GetChildren();
@@ -954,6 +971,7 @@ public:
 	KX_PYMETHOD_VARARGS(KX_GameObject,GetAngularVelocity);
 	KX_PYMETHOD_VARARGS(KX_GameObject,SetAngularVelocity);
 	KX_PYMETHOD_VARARGS(KX_GameObject,GetVelocity);
+	KX_PYMETHOD_VARARGS(KX_GameObject,SetDamping);
 
 	KX_PYMETHOD_NOARGS(KX_GameObject,GetReactionForce);
 
@@ -987,6 +1005,7 @@ public:
 	KX_PYMETHOD_DOC_O(KX_GameObject,getVectTo);
 	KX_PYMETHOD_DOC_VARARGS(KX_GameObject, sendMessage);
 	KX_PYMETHOD_VARARGS(KX_GameObject, ReinstancePhysicsMesh);
+	KX_PYMETHOD_DOC(KX_GameObject, addDebugProperty);
 
 	KX_PYMETHOD_DOC(KX_GameObject, playAction);
 	KX_PYMETHOD_DOC(KX_GameObject, stopAction);
@@ -1054,7 +1073,15 @@ public:
 	static int			pyattr_set_obcolor(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef, PyObject *value);
 	static PyObject*	pyattr_get_collisionCallbacks(void *selv_v, const KX_PYATTRIBUTE_DEF *attrdef);
 	static int			pyattr_set_collisionCallbacks(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef, PyObject *value);
-	
+	static PyObject*	pyattr_get_debug(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef);
+	static int			pyattr_set_debug(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef, PyObject *value);
+	static PyObject*	pyattr_get_debugRecursive(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef);
+	static int			pyattr_set_debugRecursive(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef, PyObject *value);
+	static PyObject*	pyattr_get_linearDamping(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef);
+	static int			pyattr_set_linearDamping(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef, PyObject *value);
+	static PyObject*	pyattr_get_angularDamping(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef);
+	static int			pyattr_set_angularDamping(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef, PyObject *value);
+
 	/* Experimental! */
 	static PyObject*	pyattr_get_sensors(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef);
 	static PyObject*	pyattr_get_controllers(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef);

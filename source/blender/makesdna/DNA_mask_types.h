@@ -216,7 +216,11 @@ enum {
 /* masklay->flag */
 enum {
 	MASK_LAYERFLAG_LOCKED = (1 << 4),
-	MASK_LAYERFLAG_SELECT = (1 << 5)
+	MASK_LAYERFLAG_SELECT = (1 << 5),
+
+	/* no holes */
+	MASK_LAYERFLAG_FILL_DISCRETE = (1 << 6),
+	MASK_LAYERFLAG_FILL_OVERLAP  = (1 << 7),
 };
 
 /* masklay_shape->flag */

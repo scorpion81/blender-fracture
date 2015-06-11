@@ -30,9 +30,7 @@
 
 #include <cstring> // for memset
 #include <float.h>
-#ifndef _MSC_VER
 #include <stdint.h> // For SET_UINT_IN_POINTER, i.e. uintptr_t.
-#endif
 #include <vector>
 
 #include "Geom.h"
@@ -62,7 +60,7 @@ typedef vector<Polygon3r*> OccludersSet;
 //
 ///////////////////////////////////////////////////////////////////////////////
 
-class LIB_GEOMETRY_EXPORT Cell
+class Cell
 {
 public:
 	Cell(Vec3r& orig) {
@@ -175,7 +173,7 @@ public:
 //
 ///////////////////////////////////////////////////////////////////////////////
 
-class LIB_GEOMETRY_EXPORT Grid
+class Grid
 {
 public:
 	/*! Builds a Grid. Must be followed by a call to configure() */

@@ -29,9 +29,10 @@
 #include "../system/PythonInterpreter.h"
 
 extern "C" {
-#include "BKE_global.h"
-#include "BKE_library.h"
-#include "BKE_text.h"
+#include "BLI_utildefines.h" // BLI_assert()
+
+struct Scene;
+struct Text;
 }
 
 namespace Freestyle {
@@ -52,7 +53,7 @@ protected:
 	virtual int interpret()
 	{
 		PythonInterpreter *py_inter = dynamic_cast<PythonInterpreter*>(_inter);
-		assert(py_inter != 0);
+		BLI_assert(py_inter != 0);
 		return py_inter->interpretText(_text, getFileName());
 	}
 

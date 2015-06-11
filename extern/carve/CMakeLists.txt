@@ -140,6 +140,7 @@ set(SRC
 	include/carve/tag.hpp
 	include/carve/timing.hpp
 	include/carve/tree.hpp
+	include/carve/triangle_intersection.hpp
 	include/carve/triangulator.hpp
 	include/carve/triangulator_impl.hpp
 	include/carve/util.hpp
@@ -160,6 +161,7 @@ if(WITH_BOOST)
 
 	add_definitions(
 		-DCARVE_SYSTEM_BOOST
+		-DHAVE_BOOST_LIBRARY
 	)
 
 	list(APPEND INC_SYS

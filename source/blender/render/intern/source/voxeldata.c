@@ -51,26 +51,28 @@
 #include "IMB_imbuf.h"
 #include "IMB_imbuf_types.h"
 
+#include "BKE_cloth.h"
 #include "BKE_global.h"
 #include "BKE_image.h"
 #include "BKE_main.h"
 #include "BKE_modifier.h"
 
 #include "smoke_API.h"
+#include "BPH_mass_spring.h"
 
 #include "DNA_texture_types.h"
 #include "DNA_object_force.h"
 #include "DNA_object_types.h"
+#include "DNA_particle_types.h"
 #include "DNA_modifier_types.h"
 #include "DNA_smoke_types.h"
 
 
 #include "render_types.h"
-#include "renderdatabase.h"
 #include "texture.h"
 #include "voxeldata.h"
 
-static int is_vd_res_ok(VoxelData *vd)
+static bool is_vd_res_ok(VoxelData *vd)
 {
 	/* arbitrary large value so corrupt headers don't break */
 	const int min = 1, max = 100000;
@@ -90,7 +92,7 @@ static int load_frame_blendervoxel(VoxelData *vd, FILE *fp, int frame)
 	const size_t size = vd_resol_size(vd);
 	size_t offset = sizeof(VoxelDataHeader);
 	
-	if (is_vd_res_ok(vd) == FALSE)
+	if (is_vd_res_ok(vd) == false)
 		return 0;
 
 	vd->dataset = MEM_mapallocN(sizeof(float) * size, "voxel dataset");
@@ -112,7 +114,7 @@ static int load_frame_raw8(VoxelData *vd, FILE *fp, int frame)
 	size_t i;
 	char *data_c;
 
-	if (is_vd_res_ok(vd) == FALSE)
+	if (is_vd_res_ok(vd) == false)
 		return 0;
 
 	vd->dataset = MEM_mapallocN(sizeof(float) * size, "voxel dataset");
@@ -154,7 +156,7 @@ static void load_frame_image_sequence(VoxelData *vd, Tex *tex)
 	ImageUser *tiuser = &tex->iuser;
 	ImageUser iuser = *(tiuser);
 	int x = 0, y = 0, z = 0;
-	float *rf;
+	const float *rf;
 
 	if (!ima) return;
 	if (iuser.frames == 0) return;
@@ -365,6 +367,27 @@ static void init_frame_smoke(VoxelData *vd, int cfra)
 #endif
 }
 
+static void init_frame_hair(VoxelData *vd, int UNUSED(cfra))
+{
+	Object *ob;
+	ModifierData *md;
+	bool found = false;
+	
+	vd->dataset = NULL;
+	if (vd->object == NULL) return;
+	ob = vd->object;
+	
+	if ((md = (ModifierData *)modifiers_findByType(ob, eModifierType_ParticleSystem))) {
+		ParticleSystemModifierData *pmd = (ParticleSystemModifierData *)md;
+		
+		if (pmd->psys && pmd->psys->clmd) {
+			found |= BPH_cloth_solver_get_texture_data(ob, pmd->psys->clmd, vd);
+		}
+	}
+	
+	vd->ok = found;
+}
+
 void cache_voxeldata(Tex *tex, int scene_frame)
 {	
 	VoxelData *vd = tex->vd;
@@ -397,6 +420,9 @@ void cache_voxeldata(Tex *tex, int scene_frame)
 			return;
 		case TEX_VD_SMOKE:
 			init_frame_smoke(vd, scene_frame);
+			return;
+		case TEX_VD_HAIR:
+			init_frame_hair(vd, scene_frame);
 			return;
 		case TEX_VD_BLENDERVOXEL:
 			BLI_path_abs(path, G.main->name);

@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include <stdlib.h>
@@ -20,12 +20,10 @@
 #include "device.h"
 #include "device_intern.h"
 
-#include "util_cuda.h"
 #include "util_debug.h"
 #include "util_foreach.h"
 #include "util_half.h"
 #include "util_math.h"
-#include "util_opencl.h"
 #include "util_opengl.h"
 #include "util_time.h"
 #include "util_types.h"
@@ -53,7 +51,8 @@ void Device::pixels_free(device_memory& mem)
 	mem_free(mem);
 }
 
-void Device::draw_pixels(device_memory& rgba, int y, int w, int h, int dy, int width, int height, bool transparent)
+void Device::draw_pixels(device_memory& rgba, int y, int w, int h, int dy, int width, int height, bool transparent,
+	const DeviceDrawParams &draw_params)
 {
 	pixels_copy_from(rgba, y, w, h);
 
@@ -65,7 +64,7 @@ void Device::draw_pixels(device_memory& rgba, int y, int w, int h, int dy, int w
 	glColor3f(1.0f, 1.0f, 1.0f);
 
 	if(rgba.data_type == TYPE_HALF) {
-		/* for multi devices, this assumes the ineffecient method that we allocate
+		/* for multi devices, this assumes the inefficient method that we allocate
 		 * all pixels on the device even though we only render to a subset */
 		GLhalf *data_pointer = (GLhalf*)rgba.data_pointer;
 		data_pointer += 4*y*w;
@@ -79,6 +78,10 @@ void Device::draw_pixels(device_memory& rgba, int y, int w, int h, int dy, int w
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
 		glEnable(GL_TEXTURE_2D);
+
+		if(draw_params.bind_display_space_shader_cb) {
+			draw_params.bind_display_space_shader_cb();
+		}
 
 		glPushMatrix();
 		glTranslatef(0.0f, (float)dy, 0.0f);
@@ -97,6 +100,10 @@ void Device::draw_pixels(device_memory& rgba, int y, int w, int h, int dy, int w
 		glEnd();
 
 		glPopMatrix();
+
+		if(draw_params.unbind_display_space_shader_cb) {
+			draw_params.unbind_display_space_shader_cb();
+		}
 
 		glBindTexture(GL_TEXTURE_2D, 0);
 		glDisable(GL_TEXTURE_2D);
@@ -132,7 +139,7 @@ Device *Device::create(DeviceInfo& info, Stats &stats, bool background)
 			break;
 #ifdef WITH_CUDA
 		case DEVICE_CUDA:
-			if(cuLibraryInit())
+			if(device_cuda_init())
 				device = device_cuda_create(info, stats, background);
 			else
 				device = NULL;
@@ -150,7 +157,7 @@ Device *Device::create(DeviceInfo& info, Stats &stats, bool background)
 #endif
 #ifdef WITH_OPENCL
 		case DEVICE_OPENCL:
-			if(clLibraryInit())
+			if(device_opencl_init())
 				device = device_opencl_create(info, stats, background);
 			else
 				device = NULL;
@@ -204,12 +211,12 @@ vector<DeviceType>& Device::available_types()
 		types.push_back(DEVICE_CPU);
 
 #ifdef WITH_CUDA
-		if(cuLibraryInit())
+		if(device_cuda_init())
 			types.push_back(DEVICE_CUDA);
 #endif
 
 #ifdef WITH_OPENCL
-		if(clLibraryInit())
+		if(device_opencl_init())
 			types.push_back(DEVICE_OPENCL);
 #endif
 
@@ -233,12 +240,12 @@ vector<DeviceInfo>& Device::available_devices()
 
 	if(!devices_init) {
 #ifdef WITH_CUDA
-		if(cuLibraryInit())
+		if(device_cuda_init())
 			device_cuda_info(devices);
 #endif
 
 #ifdef WITH_OPENCL
-		if(clLibraryInit())
+		if(device_opencl_init())
 			device_opencl_info(devices);
 #endif
 
@@ -258,5 +265,28 @@ vector<DeviceInfo>& Device::available_devices()
 	return devices;
 }
 
-CCL_NAMESPACE_END
+string Device::device_capabilities()
+{
+	string capabilities = "CPU device capabilities: ";
+	capabilities += device_cpu_capabilities() + "\n";
+#ifdef WITH_CUDA
+	if(device_cuda_init()) {
+		capabilities += "\nCUDA device capabilities:\n";
+		capabilities += device_cuda_capabilities();
+	}
+#endif
 
+#ifdef WITH_OPENCL
+	/* TODO(sergey): Needs proper usable implementation. */
+	/*
+	if(device_opencl_init()) {
+		capabilities += "\nOpenCL device capabilities:\n";
+		capabilities += device_opencl_capabilities();
+	}
+	*/
+#endif
+
+	return capabilities;
+}
+
+CCL_NAMESPACE_END

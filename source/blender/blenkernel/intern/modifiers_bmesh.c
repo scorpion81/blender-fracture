@@ -33,9 +33,6 @@
 #include "BLI_math.h"
 #include "BLI_alloca.h"
 
-#include "DNA_object_types.h"
-
-
 #include "BKE_DerivedMesh.h"
 #include "BKE_editmesh.h"
 
@@ -73,17 +70,17 @@ void DM_to_bmesh_ex(DerivedMesh *dm, BMesh *bm, const bool calc_face_normal)
 	int i, j, totvert, totedge /* , totface */ /* UNUSED */ ;
 	bool is_init = (bm->totvert == 0) && (bm->totedge == 0) && (bm->totface == 0);
 	bool is_cddm = (dm->type == DM_TYPE_CDDM);  /* duplicate the arrays for non cddm */
-	char has_orig_hflag = 0;
+	char has_orig_htype = 0;
 
 	int cd_vert_bweight_offset;
 	int cd_edge_bweight_offset;
 	int cd_edge_crease_offset;
 
-	if (is_init == FALSE) {
+	if (is_init == false) {
 		/* check if we have an origflag */
-		has_orig_hflag |= CustomData_has_layer(&bm->vdata, CD_ORIGINDEX) ? BM_VERT : 0;
-		has_orig_hflag |= CustomData_has_layer(&bm->edata, CD_ORIGINDEX) ? BM_EDGE : 0;
-		has_orig_hflag |= CustomData_has_layer(&bm->pdata, CD_ORIGINDEX) ? BM_FACE : 0;
+		has_orig_htype |= CustomData_has_layer(&bm->vdata, CD_ORIGINDEX) ? BM_VERT : 0;
+		has_orig_htype |= CustomData_has_layer(&bm->edata, CD_ORIGINDEX) ? BM_EDGE : 0;
+		has_orig_htype |= CustomData_has_layer(&bm->pdata, CD_ORIGINDEX) ? BM_FACE : 0;
 	}
 
 	/*merge custom data layout*/
@@ -104,8 +101,8 @@ void DM_to_bmesh_ex(DerivedMesh *dm, BMesh *bm, const bool calc_face_normal)
 	totedge = dm->getNumEdges(dm);
 	/* totface = dm->getNumPolys(dm); */ /* UNUSED */
 
-	vtable = MEM_callocN(sizeof(void **) * totvert, __func__);
-	etable = MEM_callocN(sizeof(void **) * totedge, __func__);
+	vtable = MEM_mallocN(sizeof(*vtable) * totvert, __func__);
+	etable = MEM_mallocN(sizeof(*etable) * totedge, __func__);
 
 	/*do verts*/
 	mv = mvert = is_cddm ? dm->getVertArray(dm) : dm->dupVertArray(dm);
@@ -121,7 +118,7 @@ void DM_to_bmesh_ex(DerivedMesh *dm, BMesh *bm, const bool calc_face_normal)
 		/* add bevel weight */
 		if (cd_vert_bweight_offset != -1) BM_ELEM_CD_SET_FLOAT(v, cd_vert_bweight_offset, (float)mv->bweight / 255.0f);
 
-		if (UNLIKELY(has_orig_hflag & BM_VERT)) {
+		if (UNLIKELY(has_orig_htype & BM_VERT)) {
 			int *orig_index = CustomData_bmesh_get(&bm->vdata, v->head.data, CD_ORIGINDEX);
 			*orig_index = ORIGINDEX_NONE;
 		}
@@ -144,7 +141,7 @@ void DM_to_bmesh_ex(DerivedMesh *dm, BMesh *bm, const bool calc_face_normal)
 		if (cd_edge_bweight_offset != -1) BM_ELEM_CD_SET_FLOAT(e, cd_edge_bweight_offset, (float)me->bweight / 255.0f);
 		if (cd_edge_crease_offset  != -1) BM_ELEM_CD_SET_FLOAT(e, cd_edge_crease_offset,  (float)me->crease  / 255.0f);
 
-		if (UNLIKELY(has_orig_hflag & BM_EDGE)) {
+		if (UNLIKELY(has_orig_htype & BM_EDGE)) {
 			int *orig_index = CustomData_bmesh_get(&bm->edata, e->head.data, CD_ORIGINDEX);
 			*orig_index = ORIGINDEX_NONE;
 		}
@@ -176,7 +173,8 @@ void DM_to_bmesh_ex(DerivedMesh *dm, BMesh *bm, const bool calc_face_normal)
 		l_iter = l_first = BM_FACE_FIRST_LOOP(f);
 		do {
 			/* Save index of correspsonding MLoop */
-			CustomData_to_bmesh_block(&dm->loopData, &bm->ldata, j++, &l_iter->head.data, true);
+			CustomData_to_bmesh_block(&dm->loopData, &bm->ldata, j, &l_iter->head.data, true);
+			BM_elem_index_set(l_iter, j++); /* set_inline */
 		} while ((l_iter = l_iter->next) != l_first);
 
 		CustomData_to_bmesh_block(&dm->polyData, &bm->pdata, i, &f->head.data, true);
@@ -190,12 +188,12 @@ void DM_to_bmesh_ex(DerivedMesh *dm, BMesh *bm, const bool calc_face_normal)
 			}
 		}
 
-		if (UNLIKELY(has_orig_hflag & BM_FACE)) {
+		if (UNLIKELY(has_orig_htype & BM_FACE)) {
 			int *orig_index = CustomData_bmesh_get(&bm->pdata, f->head.data, CD_ORIGINDEX);
 			*orig_index = ORIGINDEX_NONE;
 		}
 	}
-	if (is_init) bm->elem_index_dirty &= ~BM_FACE;
+	if (is_init) bm->elem_index_dirty &= ~(BM_FACE | BM_LOOP);
 
 	MEM_freeN(vtable);
 	MEM_freeN(etable);

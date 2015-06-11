@@ -86,6 +86,7 @@ struct anim;
 
 struct ColorManagedDisplay;
 
+struct GSet;
 /**
  *
  * \attention Defined in allocimbuf.c
@@ -123,6 +124,13 @@ void IMB_freeImBuf(struct ImBuf *ibuf);
  */
 struct ImBuf *IMB_allocImBuf(unsigned int x, unsigned int y,
                              unsigned char d, unsigned int flags);
+
+/**
+ * Create a copy of a pixel buffer and wrap it to a new ImBuf
+ * \attention Defined in allocimbuf.c
+ */
+struct ImBuf *IMB_allocFromBuffer(const unsigned int *rect, const float *rectf,
+                                  unsigned int w, unsigned int h);
 
 /**
  *
@@ -163,6 +171,22 @@ typedef enum IMB_BlendMode {
 	IMB_BLEND_DARKEN = 5,
 	IMB_BLEND_ERASE_ALPHA = 6,
 	IMB_BLEND_ADD_ALPHA = 7,
+	IMB_BLEND_OVERLAY = 8,
+	IMB_BLEND_HARDLIGHT	= 9,
+	IMB_BLEND_COLORBURN	= 10,
+	IMB_BLEND_LINEARBURN = 11,
+	IMB_BLEND_COLORDODGE = 12,
+	IMB_BLEND_SCREEN = 13,
+	IMB_BLEND_SOFTLIGHT	= 14,
+	IMB_BLEND_PINLIGHT = 15,
+	IMB_BLEND_VIVIDLIGHT = 16,
+	IMB_BLEND_LINEARLIGHT = 17,
+	IMB_BLEND_DIFFERENCE = 18,
+	IMB_BLEND_EXCLUSION	= 19,
+	IMB_BLEND_HUE = 20,
+	IMB_BLEND_SATURATION = 21,
+	IMB_BLEND_LUMINOSITY = 22,
+	IMB_BLEND_COLOR	= 23,
 
 	IMB_BLEND_COPY = 1000,
 	IMB_BLEND_COPY_RGB = 1001,
@@ -179,9 +203,9 @@ void IMB_rectclip(struct ImBuf *dbuf, struct ImBuf *sbuf, int *destx,
 void IMB_rectcpy(struct ImBuf *drect, struct ImBuf *srect, int destx,
 	int desty, int srcx, int srcy, int width, int height);
 void IMB_rectblend(struct ImBuf *dbuf, struct ImBuf *obuf, struct ImBuf *sbuf,
-	unsigned short *dmask, unsigned short *smask, unsigned short mask_max,
+	unsigned short *dmask, unsigned short *curvemask, unsigned short *mmask, float mask_max,
 	int destx,  int desty, int origx, int origy, int srcx, int srcy,
-	int width, int height, IMB_BlendMode mode);
+	int width, int height, IMB_BlendMode mode, bool accumulate);
 
 /**
  *
@@ -220,11 +244,14 @@ void IMB_anim_set_index_dir(struct anim *anim, const char *dir);
 int IMB_anim_index_get_frame_index(struct anim *anim, IMB_Timecode_Type tc,
                                    int position);
 
+IMB_Proxy_Size IMB_anim_proxy_get_existing(struct anim *anim);
+
 struct IndexBuildContext;
 
 /* prepare context for proxies/imecodes builder */
 struct IndexBuildContext *IMB_anim_index_rebuild_context(struct anim *anim, IMB_Timecode_Type tcs_in_use,
-                                                         IMB_Proxy_Size proxy_sizes_in_use, int quality);
+                                                         IMB_Proxy_Size proxy_sizes_in_use, int quality,
+                                                         const bool overwite, struct GSet *file_list);
 
 /* will rebuild all used indices and proxies at once */
 void IMB_anim_index_rebuild(struct IndexBuildContext *context,
@@ -240,11 +267,11 @@ int IMB_anim_get_duration(struct anim *anim, IMB_Timecode_Type tc);
 
 
 /**
- * Return the fps contained in movie files (function rval is FALSE,
+ * Return the fps contained in movie files (function rval is false,
  * and frs_sec and frs_sec_base untouched if none available!)
  */
-int IMB_anim_get_fps(struct anim *anim,
-                     short *frs_sec, float *frs_sec_base);
+bool IMB_anim_get_fps(struct anim *anim,
+                      short *frs_sec, float *frs_sec_base);
 
 /**
  *
@@ -354,7 +381,8 @@ short IMB_saveiff(struct ImBuf *ibuf, const char *filepath, int flags);
  *
  * \attention Defined in util.c
  */
-int IMB_ispic(const char *name);
+bool IMB_ispic(const char *name);
+int  IMB_ispic_type(const char *name);
 
 /**
  *
@@ -379,23 +407,28 @@ void IMB_interlace(struct ImBuf *ibuf);
 void IMB_rect_from_float(struct ImBuf *ibuf);
 /* Create char buffer for part of the image, color corrected if necessary,
  * Changed part will be stored in buffer. This is expected to be used for texture painting updates */
-void IMB_partial_rect_from_float(struct ImBuf *ibuf, float *buffer, int x, int y, int w, int h, int is_data);
+void IMB_partial_rect_from_float(struct ImBuf *ibuf, float *buffer, int x, int y, int w, int h, bool is_data);
 void IMB_float_from_rect(struct ImBuf *ibuf);
 void IMB_color_to_bw(struct ImBuf *ibuf);
 void IMB_saturation(struct ImBuf *ibuf, float sat);
 
 /* converting pixel buffers */
 void IMB_buffer_byte_from_float(unsigned char *rect_to, const float *rect_from,
-	int channels_from, float dither, int profile_to, int profile_from, int predivide,
+	int channels_from, float dither, int profile_to, int profile_from, bool predivide,
 	int width, int height, int stride_to, int stride_from);
+void IMB_buffer_byte_from_float_mask(unsigned char *rect_to, const float *rect_from,
+	int channels_from, float dither, bool predivide,
+	int width, int height, int stride_to, int stride_from, char *mask);
 void IMB_buffer_float_from_byte(float *rect_to, const unsigned char *rect_from,
-	int profile_to, int profile_from, int predivide,
+	int profile_to, int profile_from, bool predivide,
 	int width, int height, int stride_to, int stride_from);
 void IMB_buffer_float_from_float(float *rect_to, const float *rect_from,
-	int channels_from, int profile_to, int profile_from, int predivide,
+	int channels_from, int profile_to, int profile_from, bool predivide,
 	int width, int height, int stride_to, int stride_from);
+void IMB_buffer_float_from_float_mask(float *rect_to, const float *rect_from,
+	int channels_from, int width, int height, int stride_to, int stride_from, char *mask);
 void IMB_buffer_byte_from_byte(unsigned char *rect_to, const unsigned char *rect_from,
-	int profile_to, int profile_from, int predivide,
+	int profile_to, int profile_from, bool predivide,
 	int width, int height, int stride_to, int stride_from);
 void IMB_buffer_float_clamp(float *buf, int width, int height);
 void IMB_buffer_float_unpremultiply(float *buf, int width, int height);

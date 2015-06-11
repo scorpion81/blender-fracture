@@ -1,121 +1,122 @@
+/*
+ * ***** BEGIN GPL LICENSE BLOCK *****
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ * The Original Code is Copyright (C) Blender Foundation
+ * All rights reserved.
+ *
+ * The Original Code is: all of this file.
+ *
+ * Contributor(s): Martin Felke
+ *
+ * ***** END GPL LICENSE BLOCK *****
+ */
+
+/** \file blender/blenkernel/BKE_fracture.h
+ *  \ingroup blenkernel
+ */
+
 #ifndef BKE_FRACTURE_H
 #define BKE_FRACTURE_H
 
 #include "BLI_sys_types.h"
 
 struct FracMesh;
-struct FracHistory;
 struct Shard;
 
 struct FractureModifierData;
+struct FractureSetting;
 struct DerivedMesh;
 struct Object;
+struct Group;
+struct MeshIsland;
 
 struct BoundBox;
 struct MVert;
 struct MPoly;
 struct MLoop;
 
+struct BMesh;
+struct BMVert;
+
 typedef int ShardID;
-
-typedef struct ShardIterator {
-	struct FracMesh* frac_mesh;
-	int		current;
-} ShardIterator;
-
-typedef struct FracMeshIterator {
-	struct FracHistory* frac_history;
-	int		current_step;
-} FracMeshIterator;
 
 typedef struct FracPoint {
 	float co[3];
 } FracPoint;
 
 typedef struct FracPointCloud {
-	struct FracPoint *points;	// just a bunch of positions in space
-	int totpoints; // number of positions
+	struct FracPoint *points;   /* just a bunch of positions in space*/
+	int totpoints; /* number of positions */
 } FracPointCloud;
 
-/* iterator functions for efficient looping over shards */
-struct ShardIterator* BKE_shards_begin(struct FracMesh *fmesh);
-struct ShardIterator* BKE_shards_next(struct ShardIterator *iter);
-bool BKE_shards_valid(struct ShardIterator* iter);
-void BKE_shards_end(struct ShardIterator* iter); 
-struct Shard* BKE_shard_by_iterator(struct ShardIterator *iter);
+typedef struct FractureID {
+	struct FractureID *next, *prev;
+	int shardID;
+	char pad[4];
+} FractureID;
 
-/*direct access*/
-struct Shard* BKE_shard_by_id(struct FracMesh* mesh, ShardID id);
+/* direct access */
+struct Shard *BKE_shard_by_id(struct FracMesh *mesh, ShardID id, struct DerivedMesh *dm);
 
 /* detailed info to the particular shards */
-void BKE_get_shard_geometry(struct FracMesh* mesh, ShardID id, struct MVert** vert, int *totvert);
-void BKE_get_shard_minmax(struct FracMesh* mesh, ShardID id, float min_r[3], float max_r[3]);
+void BKE_get_shard_minmax(struct FracMesh *mesh, ShardID id, float min_r[3], float max_r[3], struct DerivedMesh *dm);
 
 /* container object handling functions */
-//create container -> for each island or for whole mesh create shards in a fracmesh, init fracmodifier (function for opening container makes here a fracmesh, operator will
-//receive it and init a fracmodifier (or this is called from modifiers init function, yeah, a single modifier as well, physics "Fracture")
-//open container -> for each island create a temp object for user manip, in a containergroup, 
-//execute fractures on objects....with random pointclouds / helper objects / psys on helpers, like in addon
-//close container -> commit (or discard) changes in group to fracmesh, also create parenting hierarchy !!! (empty->with a child group for easy finding, but group would
-// be unnecessary then, hmm, maybe one global containergroup...ya...
-//drop container -> restore basemesh and purge modifier and fracmesh
-//modifier serves as storage backend for container, but could use a new ID block as well....
-//pointcache / modifier or id block could store mesh fracture history, best would be optionally in pointcache, only needed for replay...
-//add fracture step -> write to pointcache, first ... write to array in modifier, make optional as well
-//object topology will remain same... transforms can be altered, and written AS IS into fracmesh, 
-//container hierarchy -> write info to fracmesh / shard (like parent id and child ids) 
-//tag small shards for "standardbrösel" -> instances of simple primitives, selected from a group, randomly rotated scaled in a certain range
-struct FracMesh *BKE_create_fracture_container(struct DerivedMesh* dm); //check for mesh; for curves / fonts... convert to mesh automatically, warn user (fonts, ensure remeshing before)
-//FracMesh* BKE_close_fracture_container(Group* g);
-//Group* BKE_open_fracture_container(FracMesh* fm);
-//void BKE_drop_fracture_container(Object* ob); //delete in modifier->free...
+struct FracMesh *BKE_create_fracmesh(void);
 struct Shard *BKE_create_fracture_shard(struct MVert *mvert, struct MPoly *mpoly, struct MLoop *mloop, int totvert, int totpoly, int totloop, bool copy);
+struct Shard *BKE_custom_data_to_shard(struct Shard *s, struct DerivedMesh *dm);
 
-//hmm maybe a listbase of steps, its dynamically created by user interaction(THIS is in hierarchy!!! prefractured) or a dynafrac step (THIS suits.)
-void BKE_add_fracture_step(struct FracHistory* fh, struct FracMesh* ob);
-void BKE_remove_fracture_step(struct FracHistory* fh); //do this via framemap entry ? needs to be a hash, index->frame->fracmesh ? hmm just append at end and remove the last, should suffice... just to grow / shrink it, no direct manip necessary....
-//also throw away history when editing the fracmesh or even transforming it, because this invalidates the whole sim cache
-
-/* iterator functions for efficient / abstract iterating over fracture history */
-struct FracMeshIterator* BKE_fracture_steps_begin(struct Object *ob);
-struct FracMeshIterator* BKE_fracture_steps_next(struct FracMeshIterator *iter);
-struct FracMeshIterator* BKE_fracture_steps_prev(struct FracMeshIterator *iter);
-bool BKE_fracture_steps_valid(struct FracMeshIterator* iter);
-void BKE_fracture_steps_end(struct FracMeshIterator* iter); 
-
-//utility functions
+/* utility functions */
 bool BKE_fracture_shard_center_median(struct Shard *shard, float cent[3]);
 bool BKE_fracture_shard_center_centroid(struct Shard *shard, float cent[3]);
-void BKE_shard_calc_minmax(struct Shard *shard);
+float BKE_shard_calc_minmax(struct Shard *shard);
 
-void BKE_fracmesh_free(struct FracMesh* fm);
-void BKE_shard_free(struct Shard* s);
+void BKE_fracmesh_free(struct FracMesh *fm, bool doCustomData);
+void BKE_shard_free(struct Shard *s, bool doCustomData);
 
 
 /* DerivedMesh */
-void BKE_fracture_release_dm(struct FractureModifierData *fmd);
-void BKE_fracture_create_dm(struct FractureModifierData *fmd, bool do_merge);
-struct DerivedMesh *BKE_shard_create_dm(struct Shard *s);
+struct DerivedMesh *BKE_fracture_create_dm(struct Object *ob, bool doCustomData, bool join_result);
+struct DerivedMesh *BKE_shard_create_dm(struct Shard *s, bool doCustomData);
 
+/* create shards from base mesh and a list of points */
+void BKE_fracture_shard_by_points(struct Object *obj, ShardID id, struct FracPointCloud *points, short inner_material_index, float mat[4][4]);
 
-/*** Bullet API erweiterungen für fracturing ***/
+/* create shards from a base mesh and a set of other objects / cutter planes */
+void BKE_fracture_shard_by_planes(struct Object *obj, short inner_material_index, float mat[4][4]);
+void BKE_fracture_shard_by_greasepencil(struct Object *obj, short inner_material_index, float mat[4][4]);
 
-// erzeugt collision shape für ein einzelnes shard
-//rbCollisionShape *make_collision_shape(FracMesh *fmesh, ShardID id);
+void BKE_match_vertex_coords(struct MeshIsland* mi, struct MeshIsland *par, struct Object *ob, int frame, bool is_parent);
+bool BKE_lookup_mesh_state(struct FractureModifierData *fmd, int frame, int do_lookup);
+void BKE_get_prev_entries(struct FractureModifierData *fmd);
+void BKE_get_next_entries(struct FractureModifierData *fmd);
+void BKE_free_constraints(struct FractureModifierData *fmd);
 
-// eine liste mit neuen shard aus fracture methoden
-// muss vom caller gelöscht werden wenn es als return value verwendet wird
-// alternativ könnte auch jedes shard eine "ShardID parent_id" speichern,
-// dann muss der caller über alle shards loopen um die neuen sub-shards zu behandeln
+struct ConstraintSetting* BKE_fracture_constraint_setting_new(struct FractureModifierData *fmd, const char name[64]);
+void BKE_fracture_constraint_setting_remove(struct FractureModifierData *fmd, struct ConstraintSetting *setting);
+void BKE_fracture_constraint_setting_remove_all(struct FractureModifierData *fmd);
+void BKE_initialize_from_vertex_groups(struct FractureModifierData *fmd, struct Object *ob);
+void BKE_mesh_separate_selected(struct BMesh **bm_work, struct BMesh **bm_out, struct BMVert **orig_work, struct BMVert ***orig_out1, struct BMVert ***orig_out2);
+void BKE_select_linked(struct BMesh **bm_in);
 
-// erzeuge shards aus dem basis mesh und einer liste von points (nicht weiter spezifiziert, können auch particles oder so sein)
-void BKE_fracture_shard_by_points(struct FracMesh *fmesh, ShardID id, struct FracPointCloud *points, int algorithm, Object *obj);
+void BKE_prefracture_mesh(struct Object *ob);
+void BKE_free_fracture_modifier(struct FractureModifierData *fmd, bool do_free_seq);
+struct DerivedMesh *BKE_dynamic_fracture_mesh(struct FractureModifierData *fmd, struct Object *ob, struct DerivedMesh *derivedData);
+int BKE_initialize_meshisland(struct Object* ob, struct MeshIsland** mii, struct MVert* mverts, int vertstart);
+struct DerivedMesh *BKE_autohide_inner(struct Object* ob);
 
-// Zerbreche ein einzelnes shard basierend auf collision
-// btManifoldPoint ist eine Bullet class, das sollte wahrscheinlich etwas abstrahiert werden
-// Jeder contact hat ein "applied impulse" was dem fracture system erlaubt dynamisch auf kollisionen zu reagieren (festigkeiten usw.)
-// Die contact point Koordinaten werden in Object space umgerechnet, so dass fracture local arbeiten kann ohne die eigentliche world transform zu kennen
-//ShardList fracture_by_impulse(FracMesh *fmesh, ShardID id, btManifoldPoint *contact, int num_contacts)
-
-
-#endif // BKE_FRACTURE_H
+#endif /* BKE_FRACTURE_H */

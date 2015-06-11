@@ -65,7 +65,7 @@ class ViewShape;
 class TVertex;
 
 /*! Class defining the ViewMap.*/
-class LIB_VIEW_MAP_EXPORT ViewMap
+class ViewMap
 {
 public:
 	typedef vector<ViewEdge*> viewedges_container;
@@ -236,6 +236,9 @@ public:
 	/* connects a FEdge to the graph trough a SVertex */
 	//FEdge *Connect(FEdge *ioEdge, SVertex *ioVertex);
 
+	/* Clean temporary FEdges created by chaining */
+	virtual void Clean();
+
 #ifdef WITH_CXX_GUARDEDALLOC
 	MEM_CXX_CLASS_ALLOC_FUNCS("Freestyle:ViewMap")
 #endif
@@ -268,7 +271,7 @@ class orientedViewEdgeIterator;
  *  NonTVertex when it corresponds to a vertex of the initial input mesh (it is the case for vertices such as corners
  *  for example). Thus, this class can be specialized into two classes, the TVertex class and the NonTVertex class.
  */
-class LIB_VIEW_MAP_EXPORT ViewVertex : public Interface0D
+class ViewVertex : public Interface0D
 {
 public: // Implementation of Interface0D
 	/*! Returns the string "ViewVertex". */
@@ -369,7 +372,6 @@ public:
 #ifdef WITH_CXX_GUARDEDALLOC
 	MEM_CXX_CLASS_ALLOC_FUNCS("Freestyle:ViewVertex")
 #endif
-
 };
 
 /**********************************/
@@ -386,7 +388,7 @@ public:
  *  Basically the front edge hides part of the back edge.
  *  So, among the back edges, 1 is of invisibility n and the other of visibility n+1
  */
-class LIB_VIEW_MAP_EXPORT TVertex : public ViewVertex
+class TVertex : public ViewVertex
 {
 public:
 	typedef vector<directedViewEdge*> edge_pointers_container;
@@ -419,7 +421,7 @@ public: // Implementation of Interface0D
 	}
 
 	/*! Returns the 3D point. */
-	virtual Vec3f getPoint3D() const
+	virtual Vec3r getPoint3D() const
 	{
 		cerr << "Warning: getPoint3D() undefined for this point" << endl;
 		return _FrontSVertex->getPoint3D();
@@ -443,7 +445,7 @@ public: // Implementation of Interface0D
 	}
 
 	/*! Returns the 2D point. */
-	virtual Vec2f getPoint2D() const
+	virtual Vec2r getPoint2D() const
 	{
 		return _FrontSVertex->getPoint2D();
 	}
@@ -642,7 +644,6 @@ public:
 #ifdef WITH_CXX_GUARDEDALLOC
 	MEM_CXX_CLASS_ALLOC_FUNCS("Freestyle:TVertex")
 #endif
-
 };
 
 
@@ -660,7 +661,7 @@ public:
  *  Associated to a single SVertex.
  *  Can be associated to 2 or several view edges
  */
-class LIB_VIEW_MAP_EXPORT NonTVertex : public ViewVertex
+class NonTVertex : public ViewVertex
 {
 public:
 	typedef vector<directedViewEdge> edges_container;
@@ -692,7 +693,7 @@ public: // Implementation of Interface0D
 	}
 
 	/*!  Returns the 3D point. */
-	virtual Vec3f getPoint3D() const
+	virtual Vec3r getPoint3D() const
 	{
 		return _SVertex->getPoint3D();
 	}
@@ -716,7 +717,7 @@ public: // Implementation of Interface0D
 	}
 
 	/*! Returns the 2D point. */
-	virtual Vec2f getPoint2D() const
+	virtual Vec2r getPoint2D() const
 	{
 		return _SVertex->getPoint2D();
 	}
@@ -859,7 +860,6 @@ public:
 #ifdef WITH_CXX_GUARDEDALLOC
 	MEM_CXX_CLASS_ALLOC_FUNCS("Freestyle:NonTVertex")
 #endif
-
 };
 
 /**********************************/
@@ -891,7 +891,7 @@ template<class Traits> class vertex_iterator_base;
 /*! Class defining a ViewEdge. A ViewEdge in an edge of the image graph. it connects two ViewVertex.
  *  It is made by connecting a set of FEdges.
  */
-class LIB_VIEW_MAP_EXPORT ViewEdge : public Interface1D
+class ViewEdge : public Interface1D
 {
 public: // Implementation of Interface0D
 	/*! Returns the string "ViewEdge". */
@@ -1379,7 +1379,6 @@ public:
 #ifdef WITH_CXX_GUARDEDALLOC
 	MEM_CXX_CLASS_ALLOC_FUNCS("Freestyle:ViewEdge")
 #endif
-
 };
 
 
@@ -1392,7 +1391,7 @@ public:
 /**********************************/
 
 /*! Class gathering the elements of the ViewMap (ViewVertex, ViewEdge) that are issued from the same input shape. */
-class LIB_VIEW_MAP_EXPORT ViewShape
+class ViewShape
 {
 private:
 	vector<ViewVertex*> _Vertices;

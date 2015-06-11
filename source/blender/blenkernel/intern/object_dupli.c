@@ -101,7 +101,7 @@ static void init_context(DupliContext *r_ctx, EvaluationContext *eval_ctx, Scene
 	r_ctx->eval_ctx = eval_ctx;
 	r_ctx->scene = scene;
 	/* don't allow BKE_object_handle_update for viewport during render, can crash */
-	r_ctx->do_update = update && !(G.is_rendering && !eval_ctx->for_render);
+	r_ctx->do_update = update && !(G.is_rendering && eval_ctx->mode != DAG_EVAL_RENDER);
 	r_ctx->animated = false;
 	r_ctx->group = NULL;
 
@@ -161,9 +161,6 @@ static DupliObject *make_dupli(const DupliContext *ctx,
 	mul_m4_m4m4(dob->mat, (float (*)[4])ctx->space_mat, mat);
 	dob->type = ctx->gen->type;
 	dob->animated = animated || ctx->animated; /* object itself or some parent is animated */
-
-	dob->origlay = ob->lay;
-	ob->lay = ctx->lay;
 
 	/* set persistent id, which is an array with a persistent index for each level
 	 * (particle number, vertex number, ..). by comparing this we can find the same
@@ -250,13 +247,6 @@ static void make_child_duplis(const DupliContext *ctx, void *userdata, MakeChild
 					ob->flag |= OB_DONE;  /* doesnt render */
 
 				make_child_duplis_cb(ctx, userdata, ob);
-
-				/* Set proper layer in case of scene looping,
-				 * in case of groups the object layer will be
-				 * changed when it's duplicated due to the
-				 * group duplication.
-				 */
-				ob->lay = ctx->object->lay;
 			}
 		}
 	}
@@ -268,7 +258,7 @@ static void make_child_duplis(const DupliContext *ctx, void *userdata, MakeChild
 /* OB_DUPLIGROUP */
 static void make_duplis_group(const DupliContext *ctx)
 {
-	bool for_render = ctx->eval_ctx->for_render;
+	bool for_render = (ctx->eval_ctx->mode == DAG_EVAL_RENDER);
 	Object *ob = ctx->object;
 	Group *group;
 	GroupObject *go;
@@ -300,6 +290,18 @@ static void make_duplis_group(const DupliContext *ctx)
 		/* note, if you check on layer here, render goes wrong... it still deforms verts and uses parent imat */
 		if (go->ob != ob) {
 			float mat[4][4];
+
+			/* Special case for instancing dupli-groups, see: T40051
+			 * this object may be instanced via dupli-verts/faces, in this case we don't want to render
+			 * (blender convention), but _do_ show in the viewport.
+			 *
+			 * Regular objects work fine but not if we're instancing dupli-groups,
+			 * because the rules for rendering aren't applied to objects they instance.
+			 * We could recursively pass down the 'hide' flag instead, but that seems unnecessary.
+			 */
+			if (for_render && go->ob->parent && go->ob->parent->transflag & (OB_DUPLIVERTS | OB_DUPLIFACES)) {
+				continue;
+			}
 
 			/* group dupli offset, should apply after everything else */
 			mul_m4_m4m4(mat, group_mat, go->ob->obmat);
@@ -337,7 +339,7 @@ static void make_duplis_frames(const DupliContext *ctx)
 	/* if we don't have any data/settings which will lead to object movement,
 	 * don't waste time trying, as it will all look the same...
 	 */
-	if (ob->parent == NULL && ob->constraints.first == NULL && ob->adt == NULL)
+	if (ob->parent == NULL && BLI_listbase_is_empty(&ob->constraints) && ob->adt == NULL)
 		return;
 
 	/* make a copy of the object's original data (before any dupli-data overwrites it)
@@ -446,7 +448,6 @@ static void vertex_dupli__mapFunc(void *userData, int index, const float co[3],
 	Object *inst_ob = vdd->inst_ob;
 	DupliObject *dob;
 	float obmat[4][4], space_mat[4][4];
-	unsigned int origlay;
 
 	/* obmat is transform to vertex */
 	get_duplivert_transform(co, nor_f, nor_s, vdd->use_rotation, inst_ob->trackflag, inst_ob->upflag, obmat);
@@ -460,10 +461,7 @@ static void vertex_dupli__mapFunc(void *userData, int index, const float co[3],
 	 */
 	mul_m4_m4m4(space_mat, obmat, inst_ob->imat);
 
-	origlay = vdd->inst_ob->lay;
 	dob = make_dupli(vdd->ctx, vdd->inst_ob, obmat, index, false, false);
-	/* restore the original layer so that each dupli will have proper dob->origlay */
-	vdd->inst_ob->lay = origlay;
 
 	if (vdd->orco)
 		copy_v3_v3(dob->orco, vdd->orco[index]);
@@ -512,7 +510,7 @@ static void make_duplis_verts(const DupliContext *ctx)
 {
 	Scene *scene = ctx->scene;
 	Object *parent = ctx->object;
-	bool for_render = ctx->eval_ctx->for_render;
+	bool use_texcoords = ELEM(ctx->eval_ctx->mode, DAG_EVAL_RENDER, DAG_EVAL_PREVIEW);
 	VertexDupliData vdd;
 
 	vdd.ctx = ctx;
@@ -522,7 +520,7 @@ static void make_duplis_verts(const DupliContext *ctx)
 	{
 		Mesh *me = parent->data;
 		BMEditMesh *em = BKE_editmesh_from_object(parent);
-		CustomDataMask dm_mask = (for_render ? CD_MASK_BAREMESH | CD_MASK_ORCO : CD_MASK_BAREMESH);
+		CustomDataMask dm_mask = (use_texcoords ? CD_MASK_BAREMESH | CD_MASK_ORCO : CD_MASK_BAREMESH);
 
 		if (em)
 			vdd.dm = editbmesh_get_derived_cage(scene, parent, em, dm_mask);
@@ -530,7 +528,7 @@ static void make_duplis_verts(const DupliContext *ctx)
 			vdd.dm = mesh_get_derived_final(scene, parent, dm_mask);
 		vdd.edit_btmesh = me->edit_btmesh;
 
-		if (for_render)
+		if (use_texcoords)
 			vdd.orco = vdd.dm->getVertDataArray(vdd.dm, CD_ORCO);
 		else
 			vdd.orco = NULL;
@@ -684,7 +682,7 @@ static void get_dupliface_transform(MPoly *mpoly, MLoop *mloop, MVert *mvert,
 	BKE_mesh_calc_poly_center(mpoly, mloop, mvert, loc);
 	/* rotation */
 	{
-		float *v1, *v2, *v3;
+		const float *v1, *v2, *v3;
 		BKE_mesh_calc_poly_normal(mpoly, mloop, mvert, f_no);
 		v1 = mvert[mloop[0].v].co;
 		v2 = mvert[mloop[1].v].co;
@@ -693,7 +691,7 @@ static void get_dupliface_transform(MPoly *mpoly, MLoop *mloop, MVert *mvert,
 	}
 	/* scale */
 	if (use_scale) {
-		float area = BKE_mesh_calc_poly_area(mpoly, mloop, mvert, f_no);
+		float area = BKE_mesh_calc_poly_area(mpoly, mloop, mvert);
 		scale = sqrtf(area) * scale_fac;
 	}
 	else
@@ -712,6 +710,7 @@ static void make_child_duplis_faces(const DupliContext *ctx, void *userdata, Obj
 	float (*orco)[3] = fdd->orco;
 	MLoopUV *mloopuv = fdd->mloopuv;
 	int a, totface = fdd->totface;
+	bool use_texcoords = ELEM(ctx->eval_ctx->mode, DAG_EVAL_RENDER, DAG_EVAL_PREVIEW);
 	float child_imat[4][4];
 	DupliObject *dob;
 
@@ -750,19 +749,19 @@ static void make_child_duplis_faces(const DupliContext *ctx, void *userdata, Obj
 		mul_m4_m4m4(space_mat, obmat, inst_ob->imat);
 
 		dob = make_dupli(ctx, inst_ob, obmat, a, false, false);
-		if (ctx->eval_ctx->for_render) {
+		if (use_texcoords) {
 			float w = 1.0f / (float)mp->totloop;
 
 			if (orco) {
 				int j;
-				for (j = 0; j < mpoly->totloop; j++) {
+				for (j = 0; j < mp->totloop; j++) {
 					madd_v3_v3fl(dob->orco, orco[loopstart[j].v], w);
 				}
 			}
 
 			if (mloopuv) {
 				int j;
-				for (j = 0; j < mpoly->totloop; j++) {
+				for (j = 0; j < mp->totloop; j++) {
 					madd_v2_v2fl(dob->uv, mloopuv[mp->loopstart + j].uv, w);
 				}
 			}
@@ -777,22 +776,22 @@ static void make_duplis_faces(const DupliContext *ctx)
 {
 	Scene *scene = ctx->scene;
 	Object *parent = ctx->object;
-	bool for_render = ctx->eval_ctx->for_render;
+	bool use_texcoords = ELEM(ctx->eval_ctx->mode, DAG_EVAL_RENDER, DAG_EVAL_PREVIEW);
 	FaceDupliData fdd;
 
-	fdd.use_scale = parent->transflag & OB_DUPLIFACES_SCALE;
+	fdd.use_scale = ((parent->transflag & OB_DUPLIFACES_SCALE) != 0);
 
 	/* gather mesh info */
 	{
 		BMEditMesh *em = BKE_editmesh_from_object(parent);
-		CustomDataMask dm_mask = (for_render ? CD_MASK_BAREMESH | CD_MASK_ORCO | CD_MASK_MLOOPUV : CD_MASK_BAREMESH);
+		CustomDataMask dm_mask = (use_texcoords ? CD_MASK_BAREMESH | CD_MASK_ORCO | CD_MASK_MLOOPUV : CD_MASK_BAREMESH);
 
 		if (em)
 			fdd.dm = editbmesh_get_derived_cage(scene, parent, em, dm_mask);
 		else
 			fdd.dm = mesh_get_derived_final(scene, parent, dm_mask);
 
-		if (for_render) {
+		if (use_texcoords) {
 			fdd.orco = fdd.dm->getVertDataArray(fdd.dm, CD_ORCO);
 			fdd.mloopuv = fdd.dm->getLoopDataArray(fdd.dm, CD_MLOOPUV);
 		}
@@ -822,7 +821,8 @@ static void make_duplis_particle_system(const DupliContext *ctx, ParticleSystem 
 {
 	Scene *scene = ctx->scene;
 	Object *par = ctx->object;
-	bool for_render = ctx->eval_ctx->for_render;
+	bool for_render = ctx->eval_ctx->mode == DAG_EVAL_RENDER;
+	bool use_texcoords = ELEM(ctx->eval_ctx->mode, DAG_EVAL_RENDER, DAG_EVAL_PREVIEW);
 
 	GroupObject *go;
 	Object *ob = NULL, **oblist = NULL, obcopy, *obcopylist = NULL;
@@ -877,7 +877,7 @@ static void make_duplis_particle_system(const DupliContext *ctx, ParticleSystem 
 				return;
 		}
 		else { /*PART_DRAW_GR */
-			if (part->dup_group == NULL || part->dup_group->gobject.first == NULL)
+			if (part->dup_group == NULL || BLI_listbase_is_empty(&part->dup_group->gobject))
 				return;
 
 			if (BLI_findptr(&part->dup_group->gobject, par, offsetof(GroupObject, ob))) {
@@ -969,9 +969,9 @@ static void make_duplis_particle_system(const DupliContext *ctx, ParticleSystem 
 			}
 
 			/* some hair paths might be non-existent so they can't be used for duplication */
-			if (hair &&
-			    ((a < totpart && psys->pathcache[a]->steps < 0) ||
-			     (a >= totpart && psys->childcache[a - totpart]->steps < 0)))
+			if (hair && psys->pathcache &&
+			    ((a < totpart && psys->pathcache[a]->segments < 0) ||
+			     (a >= totpart && psys->childcache[a - totpart]->segments < 0)))
 			{
 				continue;
 			}
@@ -1039,7 +1039,7 @@ static void make_duplis_particle_system(const DupliContext *ctx, ParticleSystem 
 
 					dob = make_dupli(ctx, go->ob, mat, a, false, false);
 					dob->particle_system = psys;
-					if (for_render)
+					if (use_texcoords)
 						psys_get_dupli_texture(psys, part, sim.psmd, pa, cpa, dob->uv, dob->orco);
 				}
 			}
@@ -1088,7 +1088,7 @@ static void make_duplis_particle_system(const DupliContext *ctx, ParticleSystem 
 
 				dob = make_dupli(ctx, ob, mat, a, false, false);
 				dob->particle_system = psys;
-				if (for_render)
+				if (use_texcoords)
 					psys_get_dupli_texture(psys, part, sim.psmd, pa, cpa, dob->uv, dob->orco);
 				/* XXX blender internal needs this to be set to dupligroup to render
 				 * groups correctly, but we don't want this hack for cycles */
@@ -1149,7 +1149,7 @@ static const DupliGenerator *get_dupli_generator(const DupliContext *ctx)
 		return NULL;
 
 	/* Should the dupli's be generated for this object? - Respect restrict flags */
-	if (ctx->eval_ctx->for_render ? (restrictflag & OB_RESTRICT_RENDER) : (restrictflag & OB_RESTRICT_VIEW))
+	if (ctx->eval_ctx->mode == DAG_EVAL_RENDER ? (restrictflag & OB_RESTRICT_RENDER) : (restrictflag & OB_RESTRICT_VIEW))
 		return NULL;
 
 	if (transflag & OB_DUPLIPARTS) {
@@ -1203,15 +1203,6 @@ ListBase *object_duplilist(EvaluationContext *eval_ctx, Scene *sce, Object *ob)
 
 void free_object_duplilist(ListBase *lb)
 {
-	DupliObject *dob;
-
-	/* loop in reverse order, if object is instanced multiple times
-	 * the original layer may not really be original otherwise, proper
-	 * solution is more complicated */
-	for (dob = lb->last; dob; dob = dob->prev) {
-		dob->ob->lay = dob->origlay;
-	}
-
 	BLI_freelistN(lb);
 	MEM_freeN(lb);
 }
@@ -1244,4 +1235,51 @@ int count_duplilist(Object *ob)
 		}
 	}
 	return 1;
+}
+
+DupliApplyData *duplilist_apply(Object *ob, ListBase *duplilist)
+{
+	DupliApplyData *apply_data = NULL;
+	int num_objects = BLI_listbase_count(duplilist);
+	
+	if (num_objects > 0) {
+		DupliObject *dob;
+		int i;
+		apply_data = MEM_mallocN(sizeof(DupliApplyData), "DupliObject apply data");
+		apply_data->num_objects = num_objects;
+		apply_data->extra = MEM_mallocN(sizeof(DupliExtraData) * (size_t) num_objects,
+		                                "DupliObject apply extra data");
+
+		for (dob = duplilist->first, i = 0; dob; dob = dob->next, ++i) {
+			/* copy obmat from duplis */
+			copy_m4_m4(apply_data->extra[i].obmat, dob->ob->obmat);
+			copy_m4_m4(dob->ob->obmat, dob->mat);
+			
+			/* copy layers from the main duplicator object */
+			apply_data->extra[i].lay = dob->ob->lay;
+			dob->ob->lay = ob->lay;
+		}
+	}
+	return apply_data;
+}
+
+void duplilist_restore(ListBase *duplilist, DupliApplyData *apply_data)
+{
+	DupliObject *dob;
+	int i;
+	/* Restore object matrices.
+	 * NOTE: this has to happen in reverse order, since nested
+	 * dupli objects can repeatedly override the obmat.
+	 */
+	for (dob = duplilist->last, i = apply_data->num_objects - 1; dob; dob = dob->prev, --i) {
+		copy_m4_m4(dob->ob->obmat, apply_data->extra[i].obmat);
+		
+		dob->ob->lay = apply_data->extra[i].lay;
+	}
+}
+
+void duplilist_free_apply_data(DupliApplyData *apply_data)
+{
+	MEM_freeN(apply_data->extra);
+	MEM_freeN(apply_data);
 }

@@ -170,11 +170,11 @@ bool BLI_hasAdjacencyList(BGraph *graph)
 	
 	for (node = graph->nodes.first; node; node = node->next) {
 		if (node->arcs == NULL) {
-			return 0;
+			return false;
 		}
 	}
 	
-	return 1;
+	return true;
 }
 
 void BLI_replaceNodeInArc(BGraph *graph, BArc *arc, BNode *node_src, BNode *node_replaced)
@@ -337,7 +337,7 @@ static bool detectCycle(BNode *node, BArc *src_arc)
 		}
 	}
 	else {
-		value = 1;
+		value = true;
 	}
 	
 	return value;
@@ -354,7 +354,7 @@ bool BLI_isGraphCyclic(BGraph *graph)
 	BLI_flagNodes(graph, 0);
 
 	/* detectCycles in subgraphs */
-	for (node = graph->nodes.first; node && value == 0; node = node->next) {
+	for (node = graph->nodes.first; node && value == false; node = node->next) {
 		/* only for nodes in subgraphs that haven't been visited yet */
 		if (node->flag == 0) {
 			value = value || detectCycle(node, NULL);
@@ -722,13 +722,13 @@ static void testAxialSymmetry(BGraph *graph, BNode *root_node, BNode *node1, BNo
 	
 	cross_v3_v3v3(nor, vec, axis);
 	
-	if (abs(nor[0]) > abs(nor[1]) && abs(nor[0]) > abs(nor[2]) && nor[0] < 0) {
+	if (fabsf(nor[0]) > fabsf(nor[1]) && fabsf(nor[0]) > fabsf(nor[2]) && nor[0] < 0) {
 		negate_v3(nor);
 	}
-	else if (abs(nor[1]) > abs(nor[0]) && abs(nor[1]) > abs(nor[2]) && nor[1] < 0) {
+	else if (fabsf(nor[1]) > fabsf(nor[0]) && fabsf(nor[1]) > fabsf(nor[2]) && nor[1] < 0) {
 		negate_v3(nor);
 	}
-	else if (abs(nor[2]) > abs(nor[1]) && abs(nor[2]) > abs(nor[0]) && nor[2] < 0) {
+	else if (fabsf(nor[2]) > fabsf(nor[1]) && fabsf(nor[2]) > fabsf(nor[0]) && nor[2] < 0) {
 		negate_v3(nor);
 	}
 	

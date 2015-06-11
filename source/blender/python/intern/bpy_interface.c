@@ -37,13 +37,16 @@
 
 #include <Python.h>
 
+#ifdef WIN32
+#  include "BLI_math_base.h"  /* finite */
+#endif
+
 #include "MEM_guardedalloc.h"
 
 #include "BLI_utildefines.h"
 #include "BLI_path_util.h"
 #include "BLI_fileops.h"
 #include "BLI_listbase.h"
-#include "BLI_math_base.h"
 #include "BLI_string.h"
 #include "BLI_string_utf8.h"
 #include "BLI_threads.h"
@@ -58,9 +61,9 @@
 #include "bpy_traceback.h"
 #include "bpy_intern_string.h"
 
-#include "DNA_space_types.h"
 #include "DNA_text_types.h"
 
+#include "BKE_appdir.h"
 #include "BKE_context.h"
 #include "BKE_text.h"
 #include "BKE_main.h"
@@ -210,25 +213,29 @@ static PyObject *CCL_initPython(void)
 #endif
 
 static struct _inittab bpy_internal_modules[] = {
-	{(char *)"mathutils", PyInit_mathutils},
-//	{(char *)"mathutils.geometry", PyInit_mathutils_geometry},
-//	{(char *)"mathutils.noise", PyInit_mathutils_noise},
-//	{(char *)"mathutils.kdtree", PyInit_mathutils_kdtree},
-	{(char *)"_bpy_path", BPyInit__bpy_path},
-	{(char *)"bgl", BPyInit_bgl},
-	{(char *)"blf", BPyInit_blf},
-	{(char *)"bmesh", BPyInit_bmesh},
-	// {(char *)"bmesh.types", BPyInit_bmesh_types},
-	// {(char *)"bmesh.utils", BPyInit_bmesh_utils},
-	// {(char *)"bmesh.utils", BPyInit_bmesh_geometry},
+	{"mathutils", PyInit_mathutils},
+#if 0
+	{"mathutils.geometry", PyInit_mathutils_geometry},
+	{"mathutils.noise", PyInit_mathutils_noise},
+	{"mathutils.kdtree", PyInit_mathutils_kdtree},
+#endif
+	{"_bpy_path", BPyInit__bpy_path},
+	{"bgl", BPyInit_bgl},
+	{"blf", BPyInit_blf},
+	{"bmesh", BPyInit_bmesh},
+#if 0
+	{"bmesh.types", BPyInit_bmesh_types},
+	{"bmesh.utils", BPyInit_bmesh_utils},
+	{"bmesh.utils", BPyInit_bmesh_geometry},
+#endif
 #ifdef WITH_AUDASPACE
-	{(char *)"aud", AUD_initPython},
+	{"aud", AUD_initPython},
 #endif
 #ifdef WITH_CYCLES
-	{(char *)"_cycles", CCL_initPython},
+	{"_cycles", CCL_initPython},
 #endif
-	{(char *)"gpu", GPU_initPython},
-	{(char *)"idprop", BPyInit_idprop},
+	{"gpu", GPU_initPython},
+	{"idprop", BPyInit_idprop},
 	{NULL, NULL}
 };
 
@@ -237,11 +244,11 @@ void BPY_python_start(int argc, const char **argv)
 {
 #ifndef WITH_PYTHON_MODULE
 	PyThreadState *py_tstate = NULL;
-	const char *py_path_bundle = BLI_get_folder(BLENDER_SYSTEM_PYTHON, NULL);
+	const char *py_path_bundle = BKE_appdir_folder_id(BLENDER_SYSTEM_PYTHON, NULL);
 
 	/* not essential but nice to set our name */
 	static wchar_t program_path_wchar[FILE_MAX]; /* python holds a reference */
-	BLI_strncpy_wchar_from_utf8(program_path_wchar, BLI_program_path(), sizeof(program_path_wchar) / sizeof(wchar_t));
+	BLI_strncpy_wchar_from_utf8(program_path_wchar, BKE_appdir_program_path(), ARRAY_SIZE(program_path_wchar));
 	Py_SetProgramName(program_path_wchar);
 
 	/* must run before python initializes */
@@ -255,11 +262,7 @@ void BPY_python_start(int argc, const char **argv)
 	 * an error, this is highly annoying, another stumbling block for devs,
 	 * so use a more relaxed error handler and enforce utf-8 since the rest of
 	 * blender is utf-8 too - campbell */
-
-	/* XXX, update: this is unreliable! 'PYTHONIOENCODING' is ignored in MS-Windows
-	 * when dynamically linked, see: [#31555] for details.
-	 * Python doesn't expose a good way to set this. */
-	BLI_setenv("PYTHONIOENCODING", "utf-8:surrogateescape");
+	Py_SetStandardStreamEncoding("utf-8", "surrogateescape");
 
 	/* Update, Py3.3 resolves attempting to parse non-existing header */
 #if 0
@@ -274,24 +277,6 @@ void BPY_python_start(int argc, const char **argv)
 	Py_FrozenFlag = 1;
 
 	Py_Initialize();
-
-	/* THIS IS BAD: see http://bugs.python.org/issue16129 */
-	/* this clobbers the stdout on exit (no 'MEM_printmemlist_stats') */
-#if 0
-	/* until python provides a reliable way to set the env var */
-	PyRun_SimpleString("import sys, io\n"
-	                   "sys.__backup_stdio__ = sys.__stdout__, sys.__stderr__\n"  /* else we loose the FD's [#32720] */
-	                   "sys.__stdout__ = sys.stdout = io.TextIOWrapper(io.open(sys.stdout.fileno(), 'wb', -1), "
-	                   "encoding='utf-8', errors='surrogateescape', newline='\\n', line_buffering=True)\n"
-	                   "sys.__stderr__ = sys.stderr = io.TextIOWrapper(io.open(sys.stderr.fileno(), 'wb', -1), "
-	                   "encoding='utf-8', errors='surrogateescape', newline='\\n', line_buffering=True)\n");
-	if (PyErr_Occurred()) {
-		PyErr_Print();
-		PyErr_Clear();
-	}
-#endif
-	/* end the baddness */
-
 
 	// PySys_SetArgv(argc, argv);  /* broken in py3, not a huge deal */
 	/* sigh, why do python guys not have a (char **) version anymore? */
@@ -361,8 +346,10 @@ void BPY_python_start(int argc, const char **argv)
 void BPY_python_end(void)
 {
 	// fprintf(stderr, "Ending Python!\n");
+	PyGILState_STATE gilstate;
 
-	PyGILState_Ensure(); /* finalizing, no need to grab the state */
+	/* finalizing, no need to grab the state, except when we are a module */
+	gilstate = PyGILState_Ensure();
 	
 	/* free other python data. */
 	pyrna_free_types();
@@ -373,10 +360,14 @@ void BPY_python_end(void)
 
 #ifndef WITH_PYTHON_MODULE
 	BPY_atexit_unregister(); /* without this we get recursive calls to WM_exit */
-#endif
 
 	Py_Finalize();
-	
+
+	(void)gilstate;
+#else
+	PyGILState_Release(gilstate);
+#endif
+
 #ifdef TIME_PY_RUN
 	/* measure time since py started */
 	bpy_timer = PIL_check_seconds_timer() - bpy_timer;
@@ -430,7 +421,7 @@ static void python_script_error_jump_text(struct Text *text)
 typedef struct {
 	PyObject_HEAD
 	PyObject *md_dict;
-	/* ommit other values, we only want the dict. */
+	/* omit other values, we only want the dict. */
 } PyModuleObject;
 #endif
 
@@ -457,11 +448,16 @@ static int python_script_exec(bContext *C, const char *fn, struct Text *text,
 		bpy_text_filename_get(fn_dummy, sizeof(fn_dummy), text);
 
 		if (text->compiled == NULL) {   /* if it wasn't already compiled, do it now */
-			char *buf = txt_to_buf(text);
+			char *buf;
+			PyObject *fn_dummy_py;
 
-			text->compiled = Py_CompileString(buf, fn_dummy, Py_file_input);
+			fn_dummy_py = PyC_UnicodeFromByte(fn_dummy);
 
+			buf = txt_to_buf(text);
+			text->compiled = Py_CompileStringObject(buf, fn_dummy_py, Py_file_input, NULL, -1);
 			MEM_freeN(buf);
+
+			Py_DECREF(fn_dummy_py);
 
 			if (PyErr_Occurred()) {
 				if (do_jump) {
@@ -490,15 +486,11 @@ static int python_script_exec(bContext *C, const char *fn, struct Text *text,
 			 * incompatible'.
 			 * So now we load the script file data to a buffer */
 			{
-				char *pystring;
+				const char *pystring = "with open(__file__, 'r') as f: exec(f.read())";
 
 				fclose(fp);
 
-				pystring = MEM_mallocN(strlen(fn) + 37, "pystring");
-				pystring[0] = '\0';
-				sprintf(pystring, "f=open(r'%s');exec(f.read());f.close()", fn);
 				py_result = PyRun_String(pystring, Py_file_input, py_dict, py_dict);
-				MEM_freeN(pystring);
 			}
 #else
 			py_result = PyRun_File(fp, fn, Py_file_input, py_dict, py_dict);
@@ -579,15 +571,12 @@ void BPY_DECREF_RNA_INVALIDATE(void *pyob_ptr)
 	PyGILState_Release(gilstate);
 }
 
-
 /* return -1 on error, else 0 */
 int BPY_button_exec(bContext *C, const char *expr, double *value, const bool verbose)
 {
 	PyGILState_STATE gilstate;
-	PyObject *py_dict, *mod, *retval;
 	int error_ret = 0;
-	PyObject *main_mod = NULL;
-	
+
 	if (!value || !expr) return -1;
 
 	if (expr[0] == '\0') {
@@ -597,59 +586,8 @@ int BPY_button_exec(bContext *C, const char *expr, double *value, const bool ver
 
 	bpy_context_set(C, &gilstate);
 
-	PyC_MainModule_Backup(&main_mod);
+	error_ret = PyC_RunString_AsNumber(expr, value, "<blender button>");
 
-	py_dict = PyC_DefaultNameSpace("<blender button>");
-
-	mod = PyImport_ImportModule("math");
-	if (mod) {
-		PyDict_Merge(py_dict, PyModule_GetDict(mod), 0); /* 0 - don't overwrite existing values */
-		Py_DECREF(mod);
-	}
-	else { /* highly unlikely but possibly */
-		PyErr_Print();
-		PyErr_Clear();
-	}
-	
-	retval = PyRun_String(expr, Py_eval_input, py_dict, py_dict);
-	
-	if (retval == NULL) {
-		error_ret = -1;
-	}
-	else {
-		double val;
-
-		if (PyTuple_Check(retval)) {
-			/* Users my have typed in 10km, 2m
-			 * add up all values */
-			int i;
-			val = 0.0;
-
-			for (i = 0; i < PyTuple_GET_SIZE(retval); i++) {
-				const double val_item = PyFloat_AsDouble(PyTuple_GET_ITEM(retval, i));
-				if (val_item == -1 && PyErr_Occurred()) {
-					val = -1;
-					break;
-				}
-				val += val_item;
-			}
-		}
-		else {
-			val = PyFloat_AsDouble(retval);
-		}
-		Py_DECREF(retval);
-		
-		if (val == -1 && PyErr_Occurred()) {
-			error_ret = -1;
-		}
-		else if (!finite(val)) {
-			*value = 0.0;
-		}
-		else {
-			*value = val;
-		}
-	}
-	
 	if (error_ret) {
 		if (verbose) {
 			BPy_errors_to_report(CTX_wm_reports(C));
@@ -659,10 +597,8 @@ int BPY_button_exec(bContext *C, const char *expr, double *value, const bool ver
 		}
 	}
 
-	PyC_MainModule_Restore(main_mod);
-	
 	bpy_context_clear(C, &gilstate);
-	
+
 	return error_ret;
 }
 

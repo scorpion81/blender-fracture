@@ -37,6 +37,7 @@
 
 #include "BLI_math.h"
 #include "BLI_heap.h"
+#include "BLI_polyfill2d_beautify.h"
 
 #include "MEM_guardedalloc.h"
 
@@ -59,16 +60,15 @@ typedef struct EdRotState {
 	int f1, f2; /*	face vert, small -> large */
 } EdRotState;
 
+#if 0
+/* use BLI_ghashutil_inthash_v4 direct */
 static unsigned int erot_gsetutil_hash(const void *ptr)
 {
 	const EdRotState *e_state = (const EdRotState *)ptr;
-	unsigned int
-	hash  = BLI_ghashutil_inthash(SET_INT_IN_POINTER(e_state->v1));
-	hash ^= BLI_ghashutil_inthash(SET_INT_IN_POINTER(e_state->v2));
-	hash ^= BLI_ghashutil_inthash(SET_INT_IN_POINTER(e_state->f1));
-	hash ^= BLI_ghashutil_inthash(SET_INT_IN_POINTER(e_state->f2));
-	return hash;
+	return BLI_ghashutil_inthash_v4(&e_state->v1);
 }
+#endif
+#if 0
 static int erot_gsetutil_cmp(const void *a, const void *b)
 {
 	const EdRotState *e_state_a = (const EdRotState *)a;
@@ -83,10 +83,10 @@ static int erot_gsetutil_cmp(const void *a, const void *b)
 	else if (e_state_a->f2 > e_state_b->f2) return  1;
 	else                                    return  0;
 }
-
+#endif
 static GSet *erot_gset_new(void)
 {
-	return BLI_gset_new(erot_gsetutil_hash, erot_gsetutil_cmp, __func__);
+	return BLI_gset_new(BLI_ghashutil_inthash_v4_p, BLI_ghashutil_inthash_v4_cmp, __func__);
 }
 
 /* ensure v0 is smaller */
@@ -97,7 +97,7 @@ static GSet *erot_gset_new(void)
 
 static void erot_state_ex(const BMEdge *e, int v_index[2], int f_index[2])
 {
-	BLI_assert(BM_edge_is_manifold((BMEdge *)e));
+	BLI_assert(BM_edge_is_manifold(e));
 	BLI_assert(BM_vert_in_edge(e, e->l->prev->v)              == false);
 	BLI_assert(BM_vert_in_edge(e, e->l->radial_next->prev->v) == false);
 
@@ -126,9 +126,6 @@ static void erot_state_alternate(const BMEdge *e, EdRotState *e_state)
 /* -------------------------------------------------------------------- */
 /* Calculate the improvement of rotating the edge */
 
-/**
- * \return a negative value means the edge can be rotated.
- */
 static float bm_edge_calc_rotate_beauty__area(
         const float v1[3], const float v2[3], const float v3[3], const float v4[3])
 {
@@ -138,85 +135,54 @@ static float bm_edge_calc_rotate_beauty__area(
 
 		/* first get the 2d values */
 		{
-			bool is_zero_a, is_zero_b;
+			const float eps = 1e-5;
+			float no_a[3], no_b[3];
 			float no[3];
 			float axis_mat[3][3];
+			float no_scale;
+			cross_tri_v3(no_a, v2, v3, v4);
+			cross_tri_v3(no_b, v2, v4, v1);
 
 			// printf("%p %p %p %p - %p %p\n", v1, v2, v3, v4, e->l->f, e->l->radial_next->f);
-			BLI_assert((ELEM3(v1, v2, v3, v4) == false) &&
-			           (ELEM3(v2, v1, v3, v4) == false) &&
-			           (ELEM3(v3, v1, v2, v4) == false) &&
-			           (ELEM3(v4, v1, v2, v3) == false));
+			BLI_assert((ELEM(v1, v2, v3, v4) == false) &&
+			           (ELEM(v2, v1, v3, v4) == false) &&
+			           (ELEM(v3, v1, v2, v4) == false) &&
+			           (ELEM(v4, v1, v2, v3) == false));
 
-			is_zero_a = area_tri_v3(v2, v3, v4) <= FLT_EPSILON;
-			is_zero_b = area_tri_v3(v2, v4, v1) <= FLT_EPSILON;
-
-			if (LIKELY(is_zero_a == false && is_zero_b == false)) {
-				float no_a[3], no_b[3];
-				normal_tri_v3(no_a, v2, v3, v4);  /* a */
-				normal_tri_v3(no_b, v2, v4, v1);  /* b */
-				add_v3_v3v3(no, no_a, no_b);
-				if (UNLIKELY(normalize_v3(no) <= FLT_EPSILON)) {
-					break;
-				}
-			}
-			else if (is_zero_a == false) {
-				normal_tri_v3(no, v2, v3, v4);  /* a */
-			}
-			else if (is_zero_b == false) {
-				normal_tri_v3(no, v2, v4, v1);  /* b */
-			}
-			else {
-				/* both zero area, no useful normal can be calculated */
+			add_v3_v3v3(no, no_a, no_b);
+			if (UNLIKELY((no_scale = normalize_v3(no)) <= FLT_EPSILON)) {
 				break;
 			}
-
-			// { float a = angle_normalized_v3v3(no_a, no_b); printf("~ %.7f\n", a); fflush(stdout);}
 
 			axis_dominant_v3_to_m3(axis_mat, no);
 			mul_v2_m3v3(v1_xy, axis_mat, v1);
 			mul_v2_m3v3(v2_xy, axis_mat, v2);
 			mul_v2_m3v3(v3_xy, axis_mat, v3);
 			mul_v2_m3v3(v4_xy, axis_mat, v4);
+
+			/**
+			 * Check if input faces are already flipped.
+			 * Logic for 'signum_i' addition is:
+			 *
+			 * Accept:
+			 * - (1, 1) or (-1, -1): same side (common case).
+			 * - (-1/1, 0): one degenerate, OK since we may rotate into a valid state.
+			 *
+			 * Ignore:
+			 * - (-1, 1): opposite winding, ignore.
+			 * - ( 0, 0): both degenerate, ignore.
+			 *
+			 * \note The cross product is divided by 'no_scale'
+			 * so the rotation calculation is scale independent.
+			 */
+			if (!(signum_i_ex(cross_tri_v2(v2_xy, v3_xy, v4_xy) / no_scale, eps) +
+			      signum_i_ex(cross_tri_v2(v2_xy, v4_xy, v1_xy) / no_scale, eps)))
+			{
+				break;
+			}
 		}
 
-		// printf("%p %p %p %p - %p %p\n", v1, v2, v3, v4, e->l->f, e->l->radial_next->f);
-
-		if (is_quad_convex_v2(v1_xy, v2_xy, v3_xy, v4_xy)) {
-			/* testing rule: the area divided by the perimeter,
-			 * check if (1-3) beats the existing (2-4) edge rotation */
-			float area_a, area_b;
-			float prim_a, prim_b;
-			float fac_24, fac_13;
-
-			float len_12, len_23, len_34, len_41, len_24, len_13;
-
-			/* edges around the quad */
-			len_12 = len_v2v2(v1_xy, v2_xy);
-			len_23 = len_v2v2(v2_xy, v3_xy);
-			len_34 = len_v2v2(v3_xy, v4_xy);
-			len_41 = len_v2v2(v4_xy, v1_xy);
-			/* edges crossing the quad interior */
-			len_13 = len_v2v2(v1_xy, v3_xy);
-			len_24 = len_v2v2(v2_xy, v4_xy);
-
-			/* edge (2-4), current state */
-			area_a = area_tri_v2(v2_xy, v3_xy, v4_xy);
-			area_b = area_tri_v2(v2_xy, v4_xy, v1_xy);
-			prim_a = len_23 + len_34 + len_24;
-			prim_b = len_24 + len_41 + len_12;
-			fac_24 = (area_a / prim_a) + (area_b / prim_b);
-
-			/* edge (1-3), new state */
-			area_a = area_tri_v2(v1_xy, v2_xy, v3_xy);
-			area_b = area_tri_v2(v1_xy, v3_xy, v4_xy);
-			prim_a = len_12 + len_23 + len_13;
-			prim_b = len_34 + len_41 + len_13;
-			fac_13 = (area_a / prim_a) + (area_b / prim_b);
-
-			/* negative number if (1-3) is an improved state */
-			return fac_24 - fac_13;
-		}
+		return BLI_polyfill_beautify_quad_rotate_calc(v1_xy, v2_xy, v3_xy, v4_xy);
 	} while (false);
 
 	return FLT_MAX;
@@ -250,8 +216,15 @@ static float bm_edge_calc_rotate_beauty__angle(
 	return FLT_MAX;
 }
 
+/**
+ * Assuming we have 2 triangles sharing an edge (2 - 4),
+ * check if the edge running from (1 - 3) gives better results.
+ *
+ * \return (negative number means the edge can be rotated, lager == better).
+ */
 float BM_verts_calc_rotate_beauty(
-const BMVert *v1, const BMVert *v2, const BMVert *v3, const BMVert *v4, const short flag, const short method)
+        const BMVert *v1, const BMVert *v2, const BMVert *v3, const BMVert *v4,
+        const short flag, const short method)
 {
 	/* not a loop (only to be able to break out) */
 	do {
@@ -377,15 +350,16 @@ static void bm_edge_update_beauty_cost(BMEdge *e, Heap *eheap, HeapNode **eheap_
 /**
  * \note This function sets the edge indices to invalid values.
  */
-void BM_mesh_beautify_fill(BMesh *bm, BMEdge **edge_array, const int edge_array_len,
-                                  const short flag, const short method,
-                                  const short oflag_edge, const short oflag_face)
+void BM_mesh_beautify_fill(
+        BMesh *bm, BMEdge **edge_array, const int edge_array_len,
+        const short flag, const short method,
+        const short oflag_edge, const short oflag_face)
 {
 	Heap *eheap;             /* edge heap */
 	HeapNode **eheap_table;  /* edge index aligned table pointing to the eheap */
 
 	GSet       **edge_state_arr  = MEM_callocN((size_t)edge_array_len * sizeof(GSet *), __func__);
-	BLI_mempool *edge_state_pool = BLI_mempool_create(sizeof(EdRotState), 512, 512, BLI_MEMPOOL_SYSMALLOC);
+	BLI_mempool *edge_state_pool = BLI_mempool_create(sizeof(EdRotState), 0, 512, BLI_MEMPOOL_NOP);
 	int i;
 
 #ifdef DEBUG_TIME

@@ -39,12 +39,7 @@
 #endif
 
 #include "MEM_guardedalloc.h"
-#include "MEM_CacheLimiterC-Api.h"
 
-#include "IMB_imbuf_types.h"
-#include "IMB_imbuf.h"
-
-#include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_userdef_types.h"
 #include "DNA_windowmanager_types.h"
@@ -56,13 +51,12 @@
 #include "BLI_threads.h"
 #include "BLI_utildefines.h"
 
+#include "BLO_writefile.h"
+
 #include "BKE_blender.h"
 #include "BKE_context.h"
 #include "BKE_screen.h"
-#include "BKE_curve.h"
-#include "BKE_displist.h"
 #include "BKE_DerivedMesh.h"
-#include "BKE_font.h"
 #include "BKE_global.h"
 #include "BKE_library.h"
 #include "BKE_main.h"
@@ -71,7 +65,7 @@
 #include "BKE_report.h"
 
 #include "BKE_addon.h"
-#include "BKE_packedFile.h"
+#include "BKE_appdir.h"
 #include "BKE_sequencer.h" /* free seq clipboard */
 #include "BKE_material.h" /* clear_matcopybuf */
 #include "BKE_tracking.h" /* free tracking clipboard */
@@ -102,6 +96,7 @@
 #include "wm_window.h"
 
 #include "ED_armature.h"
+#include "ED_gpencil.h"
 #include "ED_keyframing.h"
 #include "ED_node.h"
 #include "ED_render.h"
@@ -114,8 +109,8 @@
 #include "BLF_translation.h"
 
 #include "GPU_buffers.h"
-#include "GPU_extensions.h"
 #include "GPU_draw.h"
+#include "GPU_init_exit.h"
 
 #include "BKE_depsgraph.h"
 #include "BKE_sound.h"
@@ -123,11 +118,17 @@
 
 static void wm_init_reports(bContext *C)
 {
-	BKE_reports_init(CTX_wm_reports(C), RPT_STORE);
+	ReportList *reports = CTX_wm_reports(C);
+
+	BLI_assert(!reports || BLI_listbase_is_empty(&reports->list));
+
+	BKE_reports_init(reports, RPT_STORE);
 }
 static void wm_free_reports(bContext *C)
 {
-	BKE_reports_clear(CTX_wm_reports(C));
+	ReportList *reports = CTX_wm_reports(C);
+
+	BKE_reports_clear(reports);
 }
 
 bool wm_start_with_console = false; /* used in creator.c */
@@ -161,10 +162,15 @@ void WM_init(bContext *C, int argc, const char **argv)
 	BLF_init(11, U.dpi); /* Please update source/gamengine/GamePlayer/GPG_ghost.cpp if you change this */
 	BLF_lang_init();
 
+	/* Enforce loading the UI for the initial homefile */
+	G.fileflags &= ~G_FILE_NO_UI;
+
 	/* get the default database, plus a wm */
 	wm_homefile_read(C, NULL, G.factory_startup, NULL);
 	
 	BLF_lang_set(NULL);
+
+	ED_spacemacros_init();
 
 	/* note: there is a bug where python needs initializing before loading the
 	 * startup.blend because it may contain PyDrivers. It also needs to be after
@@ -190,7 +196,8 @@ void WM_init(bContext *C, int argc, const char **argv)
 	wm_init_reports(C); /* reports cant be initialized before the wm */
 
 	if (!G.background) {
-		GPU_extensions_init();
+		GPU_init();
+
 		GPU_set_mipmap(!(U.gameflags & USER_DISABLE_MIPMAP));
 		GPU_set_anisotropic(U.anisotropic_filter);
 		GPU_set_gpu_mipmapping(U.use_gpu_mipmap);
@@ -210,7 +217,7 @@ void WM_init(bContext *C, int argc, const char **argv)
 	/* allow a path of "", this is what happens when making a new file */
 #if 0
 	if (G.main->name[0] == 0)
-		BLI_make_file_string("/", G.main->name, BLI_getDefaultDocumentFolder(), "untitled.blend");
+		BLI_make_file_string("/", G.main->name, BKE_appdir_folder_default(), "untitled.blend");
 #endif
 
 	BLI_strncpy(G.lib, G.main->name, FILE_MAX);
@@ -233,6 +240,7 @@ void WM_init(bContext *C, int argc, const char **argv)
 		 *
 		 * unlikely any handlers are set but its possible,
 		 * note that recovering the last session does its own callbacks. */
+		BLI_callback_exec(CTX_data_main(C), NULL, BLI_CB_EVT_VERSION_UPDATE);
 		BLI_callback_exec(CTX_data_main(C), NULL, BLI_CB_EVT_LOAD_POST);
 	}
 }
@@ -298,7 +306,7 @@ bool WM_init_game(bContext *C)
 
 		/* full screen the area */
 		if (!sa->full) {
-			ED_screen_full_toggle(C, win, sa);
+			ED_screen_state_toggle(C, win, sa, SCREENMAXIMIZED);
 		}
 
 		/* Fullscreen */
@@ -401,11 +409,18 @@ void WM_exit_ext(bContext *C, const bool do_python)
 			if ((U.uiflag2 & USER_KEEP_SESSION) || BKE_undo_valid(NULL)) {
 				/* save the undo state as quit.blend */
 				char filename[FILE_MAX];
-				
-				BLI_make_file_string("/", filename, BLI_temporary_dir(), BLENDER_QUIT_FILE);
+				bool has_edited;
+				int fileflags = G.fileflags & ~(G_FILE_COMPRESS | G_FILE_AUTOPLAY | G_FILE_LOCK | G_FILE_SIGN | G_FILE_HISTORY);
 
-				if (BKE_undo_save_file(filename))
+				BLI_make_file_string("/", filename, BKE_tempdir_base(), BLENDER_QUIT_FILE);
+
+				has_edited = ED_editors_flush_edits(C, false);
+
+				if ((has_edited && BLO_write_file(CTX_data_main(C), filename, fileflags, NULL, NULL)) ||
+				    BKE_undo_save_file(filename))
+				{
 					printf("Saved session recovery to '%s'\n", filename);
+				}
 			}
 		}
 		
@@ -461,6 +476,7 @@ void WM_exit_ext(bContext *C, const bool do_python)
 	free_anim_copybuf();
 	free_anim_drivers_copybuf();
 	free_fmodifiers_copybuf();
+	ED_gpencil_strokes_copybuf_free();
 	ED_clipboard_posebuf_free();
 	BKE_node_clipboard_clear();
 
@@ -493,9 +509,12 @@ void WM_exit_ext(bContext *C, const bool do_python)
 	(void)do_python;
 #endif
 
-	GPU_global_buffer_pool_free();
-	GPU_free_unused_buffers();
-	GPU_extensions_exit();
+	if (!G.background) {
+		GPU_global_buffer_pool_free();
+		GPU_free_unused_buffers();
+
+		GPU_exit();
+	}
 
 	BKE_reset_undo(); 
 	
@@ -518,24 +537,30 @@ void WM_exit_ext(bContext *C, const bool do_python)
 	BLI_threadapi_exit();
 
 	if (MEM_get_memory_blocks_in_use() != 0) {
-		printf("Error: Not freed memory blocks: %d\n", MEM_get_memory_blocks_in_use());
+		size_t mem_in_use = MEM_get_memory_in_use() + MEM_get_memory_in_use();
+		printf("Error: Not freed memory blocks: %d, total unfreed memory %f MB\n",
+		       MEM_get_memory_blocks_in_use(),
+		       (double)mem_in_use / 1024 / 1024);
 		MEM_printmemlist();
 	}
 	wm_autosave_delete();
-	
-	printf("\nBlender quit\n");
-	
-#ifdef WIN32   
-	/* ask user to press a key when in debug mode */
-	if (G.debug & G_DEBUG) {
-		printf("Press any key to exit . . .\n\n");
-		wait_for_console_key();
-	}
-#endif 
+
+	BKE_tempdir_session_purge();
 }
 
 void WM_exit(bContext *C)
 {
 	WM_exit_ext(C, 1);
-	exit(G.is_break == TRUE);
+
+	printf("\nBlender quit\n");
+
+#ifdef WIN32
+	/* ask user to press a key when in debug mode */
+	if (G.debug & G_DEBUG) {
+		printf("Press any key to exit . . .\n\n");
+		wait_for_console_key();
+	}
+#endif
+
+	exit(G.is_break == true);
 }

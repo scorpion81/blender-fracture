@@ -38,17 +38,18 @@
 #include "DNA_scene_types.h"
 #include "DNA_texture_types.h"
 
-#include "BLI_listbase.h"
 #include "BLI_utildefines.h"
+#include "BLI_listbase.h"
 
 #include "BKE_animsys.h"
 #include "BKE_global.h"
 #include "BKE_icons.h"
 #include "BKE_library.h"
-#include "BKE_library.h"
 #include "BKE_main.h"
 #include "BKE_node.h"
 #include "BKE_world.h"
+
+#include "GPU_material.h"
 
 void BKE_world_free_ex(World *wrld, bool do_id_user)
 {
@@ -70,13 +71,16 @@ void BKE_world_free_ex(World *wrld, bool do_id_user)
 		MEM_freeN(wrld->nodetree);
 	}
 
+	if (wrld->gpumaterial.first)
+		GPU_material_free(&wrld->gpumaterial);
+	
 	BKE_icon_delete((struct ID *)wrld);
 	wrld->id.icon_id = 0;
 }
 
 void BKE_world_free(World *wrld)
 {
-	BKE_world_free_ex(wrld, TRUE);
+	BKE_world_free_ex(wrld, true);
 }
 
 World *add_world(Main *bmain, const char *name)
@@ -135,6 +139,12 @@ World *BKE_world_copy(World *wrld)
 	if (wrld->preview)
 		wrldn->preview = BKE_previewimg_copy(wrld->preview);
 
+	BLI_listbase_clear(&wrldn->gpumaterial);
+
+	if (wrld->id.lib) {
+		BKE_id_lib_local_paths(G.main, wrld->id.lib, &wrldn->id);
+	}
+
 	return wrldn;
 }
 
@@ -143,8 +153,7 @@ World *localize_world(World *wrld)
 	World *wrldn;
 	int a;
 	
-	wrldn = BKE_libblock_copy(&wrld->id);
-	BLI_remlink(&G.main->world, wrldn);
+	wrldn = BKE_libblock_copy_nolib(&wrld->id, false);
 	
 	for (a = 0; a < MAX_MTEX; a++) {
 		if (wrld->mtex[a]) {
@@ -160,6 +169,8 @@ World *localize_world(World *wrld)
 	
 	wrldn->preview = NULL;
 	
+	BLI_listbase_clear(&wrldn->gpumaterial);
+	
 	return wrldn;
 }
 
@@ -167,7 +178,7 @@ void BKE_world_make_local(World *wrld)
 {
 	Main *bmain = G.main;
 	Scene *sce;
-	int is_local = FALSE, is_lib = FALSE;
+	bool is_local = false, is_lib = false;
 
 	/* - only lib users: do nothing
 	 * - only local users: set flag
@@ -180,14 +191,14 @@ void BKE_world_make_local(World *wrld)
 		return;
 	}
 	
-	for (sce = bmain->scene.first; sce && ELEM(FALSE, is_lib, is_local); sce = sce->id.next) {
+	for (sce = bmain->scene.first; sce && ELEM(false, is_lib, is_local); sce = sce->id.next) {
 		if (sce->world == wrld) {
-			if (sce->id.lib) is_lib = TRUE;
-			else is_local = TRUE;
+			if (sce->id.lib) is_lib = true;
+			else is_local = true;
 		}
 	}
 
-	if (is_local && is_lib == FALSE) {
+	if (is_local && is_lib == false) {
 		id_clear_lib_data(bmain, &wrld->id);
 	}
 	else if (is_local && is_lib) {

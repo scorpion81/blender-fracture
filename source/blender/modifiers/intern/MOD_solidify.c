@@ -20,6 +20,7 @@
  *
  * Contributor(s): Campbell Barton
  *                 Shinsuke Irie
+ *                 Martin Felke
  *
  * ***** END GPL LICENSE BLOCK *****
  *
@@ -35,9 +36,9 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_utildefines.h"
+#include "BLI_stackdefines.h"
 #include "BLI_bitmap.h"
 #include "BLI_math.h"
-#include "BLI_string.h"
 
 #include "BKE_cdderivedmesh.h"
 #include "BKE_mesh.h"
@@ -208,7 +209,6 @@ static DerivedMesh *applyModifier(
         DerivedMesh *dm,
         ModifierApplyFlag UNUSED(flag))
 {
-	unsigned int i;
 	DerivedMesh *result;
 	const SolidifyModifierData *smd = (SolidifyModifierData *) md;
 
@@ -220,7 +220,7 @@ static DerivedMesh *applyModifier(
 	const unsigned int numEdges = (unsigned int)dm->getNumEdges(dm);
 	const unsigned int numFaces = (unsigned int)dm->getNumPolys(dm);
 	const unsigned int numLoops = (unsigned int)dm->getNumLoops(dm);
-	unsigned int newLoops = 0, newFaces = 0, newEdges = 0;
+	unsigned int newLoops = 0, newFaces = 0, newEdges = 0, newVerts = 0, rimVerts = 0;
 
 	/* only use material offsets if we have 2 or more materials  */
 	const short mat_nr_max = ob->totcol > 1 ? ob->totcol - 1 : 0;
@@ -251,11 +251,15 @@ static DerivedMesh *applyModifier(
 	const float offset_fac_vg_inv = 1.0f - smd->offset_fac_vg;
 	const bool do_flip = (smd->flag & MOD_SOLIDIFY_FLIP) != 0;
 	const bool do_clamp = (smd->offset_clamp != 0.0f);
+	const bool do_shell = ((smd->flag & MOD_SOLIDIFY_RIM) && (smd->flag & MOD_SOLIDIFY_NOSHELL)) == 0;
 
 	/* weights */
-	MDeformVert *dvert, *dv = NULL;
+	MDeformVert *dvert;
 	const int defgrp_invert = ((smd->flag & MOD_SOLIDIFY_VGROUP_INV) != 0);
 	int defgrp_index;
+
+	/* array size is doubled in case of using a shell */
+	const unsigned int stride = do_shell ? 2 : 1;
 
 	modifier_get_vgroup(ob, dm, smd->defgrp_name, &dvert, &defgrp_index);
 
@@ -274,12 +278,13 @@ static DerivedMesh *applyModifier(
 		            face_nors, true);
 	}
 
-	STACK_INIT(new_vert_arr);
-	STACK_INIT(new_edge_arr);
+	STACK_INIT(new_vert_arr, numVerts * 2);
+	STACK_INIT(new_edge_arr, numEdges * 2);
 
 	if (smd->flag & MOD_SOLIDIFY_RIM) {
 		BLI_bitmap *orig_mvert_tag = BLI_BITMAP_NEW(numVerts, __func__);
 		unsigned int eidx;
+		unsigned int i;
 
 #define INVALID_UNUSED ((unsigned int)-1)
 #define INVALID_PAIR ((unsigned int)-2)
@@ -326,26 +331,38 @@ static DerivedMesh *applyModifier(
 
 		for (eidx = 0, ed = orig_medge; eidx < numEdges; eidx++, ed++) {
 			if (!ELEM(edge_users[eidx], INVALID_UNUSED, INVALID_PAIR)) {
-				BLI_BITMAP_SET(orig_mvert_tag, ed->v1);
-				BLI_BITMAP_SET(orig_mvert_tag, ed->v2);
+				BLI_BITMAP_ENABLE(orig_mvert_tag, ed->v1);
+				BLI_BITMAP_ENABLE(orig_mvert_tag, ed->v2);
 				STACK_PUSH(new_edge_arr, eidx);
 				newFaces++;
 				newLoops += 4;
 			}
 		}
 
-#undef INVALID_UNUSED
-#undef INVALID_PAIR
-
 		for (i = 0; i < numVerts; i++) {
-			if (BLI_BITMAP_GET(orig_mvert_tag, i)) {
+			if (BLI_BITMAP_TEST(orig_mvert_tag, i)) {
 				old_vert_arr[i] = STACK_SIZE(new_vert_arr);
 				STACK_PUSH(new_vert_arr, i);
-				newEdges++;
+				rimVerts++;
+			}
+			else {
+				old_vert_arr[i] = INVALID_UNUSED;
 			}
 		}
 
 		MEM_freeN(orig_mvert_tag);
+	}
+
+	if (do_shell == false) {
+		/* only add rim vertices */
+		newVerts = rimVerts;
+		/* each extruded face needs an opposite edge */
+		newEdges = newFaces;
+	}
+	else {
+		/* (stride == 2) in this case, so no need to add newVerts/newEdges */
+		BLI_assert(newVerts == 0);
+		BLI_assert(newEdges == 0);
 	}
 
 	if (smd->flag & MOD_SOLIDIFY_NORMAL_CALC) {
@@ -354,63 +371,123 @@ static DerivedMesh *applyModifier(
 	}
 
 	result = CDDM_from_template(dm,
-	                            (int)(numVerts * 2),
-	                            (int)((numEdges * 2) + newEdges), 0,
-	                            (int)((numLoops * 2) + newLoops),
-	                            (int)((numFaces * 2) + newFaces));
+	                            (int)((numVerts * stride) + newVerts),
+	                            (int)((numEdges * stride) + newEdges + rimVerts), 0,
+	                            (int)((numLoops * stride) + newLoops),
+	                            (int)((numFaces * stride) + newFaces));
 
 	mpoly = CDDM_get_polys(result);
 	mloop = CDDM_get_loops(result);
 	medge = CDDM_get_edges(result);
 	mvert = CDDM_get_verts(result);
 
-	DM_copy_edge_data(dm, result, 0, 0, (int)numEdges);
-	DM_copy_edge_data(dm, result, 0, (int)numEdges, (int)numEdges);
+	if (do_shell) {
+		DM_copy_vert_data(dm, result, 0, 0, (int)numVerts);
+		DM_copy_vert_data(dm, result, 0, (int)numVerts, (int)numVerts);
 
-	DM_copy_vert_data(dm, result, 0, 0, (int)numVerts);
-	DM_copy_vert_data(dm, result, 0, (int)numVerts, (int)numVerts);
+		DM_copy_edge_data(dm, result, 0, 0, (int)numEdges);
+		DM_copy_edge_data(dm, result, 0, (int)numEdges, (int)numEdges);
 
-	DM_copy_loop_data(dm, result, 0, 0, (int)numLoops);
-	DM_copy_loop_data(dm, result, 0, (int)numLoops, (int)numLoops);
+		DM_copy_loop_data(dm, result, 0, 0, (int)numLoops);
+		DM_copy_loop_data(dm, result, 0, (int)numLoops, (int)numLoops);
 
-	DM_copy_poly_data(dm, result, 0, 0, (int)numFaces);
-	DM_copy_poly_data(dm, result, 0, (int)numFaces, (int)numFaces);
-
-	/* flip normals */
-	mp = mpoly + numFaces;
-	for (i = 0; i < dm->numPolyData; i++, mp++) {
-		MLoop *ml2;
-		unsigned int e;
-		int j;
-
-		ml2 = mloop + mp->loopstart + dm->numLoopData;
-		for (j = 0; j < mp->totloop; j++) {
-			CustomData_copy_data(&dm->loopData, &result->loopData, mp->loopstart + j,
-			                     mp->loopstart + (mp->totloop - j - 1) + dm->numLoopData, 1);
+		DM_copy_poly_data(dm, result, 0, 0, (int)numFaces);
+		DM_copy_poly_data(dm, result, 0, (int)numFaces, (int)numFaces);
+	}
+	else {
+		int i, j;
+		DM_copy_vert_data(dm, result, 0, 0, (int)numVerts);
+		for (i = 0, j = (int)numVerts; i < numVerts; i++) {
+			if (old_vert_arr[i] != INVALID_UNUSED) {
+				DM_copy_vert_data(dm, result, i, j, 1);
+				j++;
+			}
 		}
 
-		if (mat_ofs) {
-			mp->mat_nr += mat_ofs;
-			CLAMP(mp->mat_nr, 0, mat_nr_max);
+		DM_copy_edge_data(dm, result, 0, 0, (int)numEdges);
+
+		for (i = 0, j = (int)numEdges; i < numEdges; i++) {
+			if (!ELEM(edge_users[i], INVALID_UNUSED, INVALID_PAIR)) {
+				MEdge *ed_src, *ed_dst;
+				DM_copy_edge_data(dm, result, i, j, 1);
+
+				ed_src = &medge[i];
+				ed_dst = &medge[j];
+				ed_dst->v1 = old_vert_arr[ed_src->v1] + numVerts;
+				ed_dst->v2 = old_vert_arr[ed_src->v2] + numVerts;
+				j++;
+			}
 		}
 
-		e = ml2[0].e;
-		for (j = 0; j < mp->totloop - 1; j++) {
-			ml2[j].e = ml2[j + 1].e;
-		}
-		ml2[mp->totloop - 1].e = e;
-
-		mp->loopstart += dm->numLoopData;
-
-		for (j = 0; j < mp->totloop; j++) {
-			ml2[j].e += numEdges;
-			ml2[j].v += numVerts;
-		}
+		/* will be created later */
+		DM_copy_loop_data(dm, result, 0, 0, (int)numLoops);
+		DM_copy_poly_data(dm, result, 0, 0, (int)numFaces);
 	}
 
-	for (i = 0, ed = medge + numEdges; i < numEdges; i++, ed++) {
-		ed->v1 += numVerts;
-		ed->v2 += numVerts;
+#undef INVALID_UNUSED
+#undef INVALID_PAIR
+
+
+	/* initializes: (i_end, do_shell_align, mv)  */
+#define INIT_VERT_ARRAY_OFFSETS(test) \
+	if (((ofs_new >= ofs_orig) == do_flip) == test) { \
+		i_end = numVerts; \
+		do_shell_align = true; \
+		mv = mvert; \
+	} \
+	else { \
+		if (do_shell) { \
+			i_end = numVerts; \
+			do_shell_align = true; \
+		} \
+		else { \
+			i_end = newVerts ; \
+			do_shell_align = false; \
+		} \
+		mv = &mvert[numVerts]; \
+	} (void)0
+
+
+	/* flip normals */
+
+	if (do_shell) {
+		unsigned int i;
+
+		mp = mpoly + numFaces;
+		for (i = 0; i < dm->numPolyData; i++, mp++) {
+			MLoop *ml2;
+			unsigned int e;
+			int j;
+
+			ml2 = mloop + mp->loopstart + dm->numLoopData;
+			for (j = 0; j < mp->totloop; j++) {
+				CustomData_copy_data(&dm->loopData, &result->loopData, mp->loopstart + j,
+				                     mp->loopstart + (mp->totloop - j - 1) + dm->numLoopData, 1);
+			}
+
+			if (mat_ofs) {
+				mp->mat_nr += mat_ofs;
+				CLAMP(mp->mat_nr, 0, mat_nr_max);
+			}
+
+			e = ml2[0].e;
+			for (j = 0; j < mp->totloop - 1; j++) {
+				ml2[j].e = ml2[j + 1].e;
+			}
+			ml2[mp->totloop - 1].e = e;
+
+			mp->loopstart += dm->numLoopData;
+
+			for (j = 0; j < mp->totloop; j++) {
+				ml2[j].e += numEdges;
+				ml2[j].v += numVerts;
+			}
+		}
+
+		for (i = 0, ed = medge + numEdges; i < numEdges; i++, ed++) {
+			ed->v1 += numVerts;
+			ed->v2 += numVerts;
+		}
 	}
 
 	/* note, copied vertex layers don't have flipped normals yet. do this after applying offset */
@@ -425,6 +502,8 @@ static DerivedMesh *applyModifier(
 		const float offset_sq = offset * offset;
 
 		if (do_clamp) {
+			unsigned int i;
+
 			vert_lens = MEM_mallocN(sizeof(float) * numVerts, "vert_lens");
 			fill_vn_fl(vert_lens, (int)numVerts, FLT_MAX);
 			for (i = 0; i < numEdges; i++) {
@@ -435,19 +514,24 @@ static DerivedMesh *applyModifier(
 		}
 
 		if (ofs_new != 0.0f) {
+			unsigned int i_orig, i_end;
+			bool do_shell_align;
+
 			scalar_short = scalar_short_vgroup = ofs_new / 32767.0f;
-			mv = mvert + (((ofs_new >= ofs_orig) == do_flip) ? numVerts : 0);
-			dv = dvert;
-			for (i = 0; i < numVerts; i++, mv++) {
-				if (dv) {
+
+			INIT_VERT_ARRAY_OFFSETS(false);
+
+			for (i_orig = 0; i_orig < i_end; i_orig++, mv++) {
+				const unsigned int i = do_shell_align ? i_orig : new_vert_arr[i_orig];
+				if (dvert) {
+					MDeformVert *dv = &dvert[i];
 					if (defgrp_invert) scalar_short_vgroup = 1.0f - defvert_find_weight(dv, defgrp_index);
 					else scalar_short_vgroup = defvert_find_weight(dv, defgrp_index);
 					scalar_short_vgroup = (offset_fac_vg + (scalar_short_vgroup * offset_fac_vg_inv)) * scalar_short;
-					dv++;
 				}
 				if (do_clamp) {
 					/* always reset becaise we may have set before */
-					if (dv == NULL) {
+					if (dvert == NULL) {
 						scalar_short_vgroup = scalar_short;
 					}
 					if (vert_lens[i] < offset_sq) {
@@ -460,19 +544,25 @@ static DerivedMesh *applyModifier(
 		}
 
 		if (ofs_orig != 0.0f) {
+			unsigned int i_orig, i_end;
+			bool do_shell_align;
+
 			scalar_short = scalar_short_vgroup = ofs_orig / 32767.0f;
-			mv = mvert + (((ofs_new >= ofs_orig) == do_flip) ? 0 : numVerts); /* as above but swapped */
-			dv = dvert;
-			for (i = 0; i < numVerts; i++, mv++) {
-				if (dv) {
+
+			/* as above but swapped */
+			INIT_VERT_ARRAY_OFFSETS(true);
+
+			for (i_orig = 0; i_orig < i_end; i_orig++, mv++) {
+				const unsigned int i = do_shell_align ? i_orig : new_vert_arr[i_orig];
+				if (dvert) {
+					MDeformVert *dv = &dvert[i];
 					if (defgrp_invert) scalar_short_vgroup = 1.0f - defvert_find_weight(dv, defgrp_index);
 					else scalar_short_vgroup = defvert_find_weight(dv, defgrp_index);
 					scalar_short_vgroup = (offset_fac_vg + (scalar_short_vgroup * offset_fac_vg_inv)) * scalar_short;
-					dv++;
 				}
 				if (do_clamp) {
 					/* always reset becaise we may have set before */
-					if (dv == NULL) {
+					if (dvert == NULL) {
 						scalar_short_vgroup = scalar_short;
 					}
 					if (vert_lens[i] < offset_sq) {
@@ -496,6 +586,7 @@ static DerivedMesh *applyModifier(
 		float *vert_angles = MEM_callocN(sizeof(float) * numVerts * 2, "mod_solid_pair"); /* 2 in 1 */
 		float *vert_accum = vert_angles + numVerts;
 		unsigned int vidx;
+		unsigned int i;
 
 		if (vert_nors == NULL) {
 			vert_nors = MEM_mallocN(sizeof(float) * numVerts * 3, "mod_solid_vno");
@@ -538,13 +629,13 @@ static DerivedMesh *applyModifier(
 				    LIKELY(((orig_medge[ml[i_curr].e].flag & ME_EDGE_TMP_TAG) == 0) &&
 				           ((orig_medge[ml[i_next].e].flag & ME_EDGE_TMP_TAG) == 0)))
 				{
-					vert_angles[vidx] += shell_angle_to_dist(angle_normalized_v3v3(vert_nors[vidx], face_nors[i])) * angle;
+					vert_angles[vidx] += shell_v3v3_normalized_to_dist(vert_nors[vidx], face_nors[i]) * angle;
 				}
 				else {
 					vert_angles[vidx] += angle;
 				}
 #else
-				vert_angles[vidx] += shell_angle_to_dist(angle_normalized_v3v3(vert_nors[vidx], face_nors[i])) * angle;
+				vert_angles[vidx] += shell_v3v3_normalized_to_dist(vert_nors[vidx], face_nors[i]) * angle;
 #endif
 				/* --- end non-angle-calc section --- */
 
@@ -558,9 +649,9 @@ static DerivedMesh *applyModifier(
 
 		/* vertex group support */
 		if (dvert) {
+			MDeformVert *dv = dvert;
 			float scalar;
 
-			dv = dvert;
 			if (defgrp_invert) {
 				for (i = 0; i < numVerts; i++, dv++) {
 					scalar = 1.0f - defvert_find_weight(dv, defgrp_index);
@@ -578,7 +669,7 @@ static DerivedMesh *applyModifier(
 		}
 
 		if (do_clamp) {
-			float *vert_lens_sq = MEM_callocN(sizeof(float) * numVerts, "vert_lens");
+			float *vert_lens_sq = MEM_mallocN(sizeof(float) * numVerts, "vert_lens");
 			const float offset    = fabsf(smd->offset) * smd->offset_clamp;
 			const float offset_sq = offset * offset;
 			fill_vn_fl(vert_lens_sq, (int)numVerts, FLT_MAX);
@@ -596,21 +687,29 @@ static DerivedMesh *applyModifier(
 			MEM_freeN(vert_lens_sq);
 		}
 
-		if (ofs_new) {
-			mv = mvert + (((ofs_new >= ofs_orig) == do_flip) ? numVerts : 0);
+		if (ofs_new != 0.0f) {
+			unsigned int i_orig, i_end;
+			bool do_shell_align;
 
-			for (i = 0; i < numVerts; i++, mv++) {
+			INIT_VERT_ARRAY_OFFSETS(false);
+
+			for (i_orig = 0; i_orig < i_end; i_orig++, mv++) {
+				const unsigned int i = do_shell_align ? i_orig : new_vert_arr[i_orig];
 				if (vert_accum[i]) { /* zero if unselected */
 					madd_v3_v3fl(mv->co, vert_nors[i], ofs_new * (vert_angles[i] / vert_accum[i]));
 				}
 			}
 		}
 
-		if (ofs_orig) {
-			/* same as above but swapped, intentional use of 'ofs_new' */
-			mv = mvert + (((ofs_new >= ofs_orig) == do_flip) ? 0 : numVerts);
+		if (ofs_orig != 0.0f) {
+			unsigned int i_orig, i_end;
+			bool do_shell_align;
 
-			for (i = 0; i < numVerts; i++, mv++) {
+			/* same as above but swapped, intentional use of 'ofs_new' */
+			INIT_VERT_ARRAY_OFFSETS(true);
+
+			for (i_orig = 0; i_orig < i_end; i_orig++, mv++) {
+				const unsigned int i = do_shell_align ? i_orig : new_vert_arr[i_orig];
 				if (vert_accum[i]) { /* zero if unselected */
 					madd_v3_v3fl(mv->co, vert_nors[i], ofs_orig * (vert_angles[i] / vert_accum[i]));
 				}
@@ -627,7 +726,8 @@ static DerivedMesh *applyModifier(
 	if ((dm->dirty & DM_DIRTY_NORMALS) || (smd->flag & MOD_SOLIDIFY_RIM) || dvert) {
 		result->dirty |= DM_DIRTY_NORMALS;
 	}
-	else {
+	else if (do_shell) {
+		unsigned int i;
 		/* flip vertex normals for copied verts */
 		mv = mvert + numVerts;
 		for (i = 0; i < numVerts; i++, mv++) {
@@ -636,6 +736,7 @@ static DerivedMesh *applyModifier(
 	}
 
 	if (smd->flag & MOD_SOLIDIFY_RIM) {
+		unsigned int i;
 
 		/* bugger, need to re-calculate the normals for the new edge faces.
 		 * This could be done in many ways, but probably the quickest way
@@ -668,11 +769,11 @@ static DerivedMesh *applyModifier(
 
 		/* add faces & edges */
 		origindex_edge = result->getEdgeDataArray(result, CD_ORIGINDEX);
-		ed = &medge[numEdges * 2];
-		orig_ed = &origindex_edge[numEdges * 2];
-		for (i = 0; i < newEdges; i++, ed++, orig_ed++) {
+		ed = &medge[(numEdges * stride) + newEdges];  /* start after copied edges */
+		orig_ed = &origindex_edge[(numEdges * stride) + newEdges];
+		for (i = 0; i < rimVerts; i++, ed++, orig_ed++) {
 			ed->v1 = new_vert_arr[i];
-			ed->v2 = new_vert_arr[i] + numVerts;
+			ed->v2 = (do_shell ? new_vert_arr[i] : i) + numVerts;
 			ed->flag |= ME_EDGEDRAW;
 
 			*orig_ed = ORIGINDEX_NONE;
@@ -683,8 +784,8 @@ static DerivedMesh *applyModifier(
 		}
 
 		/* faces */
-		mp = mpoly + (numFaces * 2);
-		ml = mloop + (numLoops * 2);
+		mp = mpoly + (numFaces * stride);
+		ml = mloop + (numLoops * stride);
 		j = 0;
 		for (i = 0; i < newFaces; i++, mp++) {
 			unsigned int eidx = new_edge_arr[i];
@@ -703,8 +804,8 @@ static DerivedMesh *applyModifier(
 			ed = medge + eidx;
 
 			/* copy most of the face settings */
-			DM_copy_poly_data(dm, result, (int)fidx, (int)((numFaces * 2) + i), 1);
-			mp->loopstart = (int)(j + numLoops * 2);
+			DM_copy_poly_data(dm, result, (int)fidx, (int)((numFaces * stride) + i), 1);
+			mp->loopstart = (int)(j + (numLoops * stride));
 			mp->flag = mpoly[fidx].flag;
 
 			/* notice we use 'mp->totloop' which is later overwritten,
@@ -715,36 +816,36 @@ static DerivedMesh *applyModifier(
 
 			mp->totloop = 4;
 
-			CustomData_copy_data(&dm->loopData, &result->loopData, k2, (int)(numLoops * 2 + j + 0), 1);
-			CustomData_copy_data(&dm->loopData, &result->loopData, k1, (int)(numLoops * 2 + j + 1), 1);
-			CustomData_copy_data(&dm->loopData, &result->loopData, k1, (int)(numLoops * 2 + j + 2), 1);
-			CustomData_copy_data(&dm->loopData, &result->loopData, k2, (int)(numLoops * 2 + j + 3), 1);
+			CustomData_copy_data(&dm->loopData, &result->loopData, k2, (int)((numLoops * stride) + j + 0), 1);
+			CustomData_copy_data(&dm->loopData, &result->loopData, k1, (int)((numLoops * stride) + j + 1), 1);
+			CustomData_copy_data(&dm->loopData, &result->loopData, k1, (int)((numLoops * stride) + j + 2), 1);
+			CustomData_copy_data(&dm->loopData, &result->loopData, k2, (int)((numLoops * stride) + j + 3), 1);
 
-			if (flip == FALSE) {
+			if (flip == false) {
 				ml[j].v = ed->v1;
 				ml[j++].e = eidx;
 
 				ml[j].v = ed->v2;
-				ml[j++].e = numEdges * 2 + old_vert_arr[ed->v2];
+				ml[j++].e = (numEdges * stride) + old_vert_arr[ed->v2] + newEdges;
 
-				ml[j].v = ed->v2 + numVerts;
-				ml[j++].e = eidx + numEdges;
+				ml[j].v = (do_shell ? ed->v2 : old_vert_arr[ed->v2]) + numVerts;
+				ml[j++].e = (do_shell ? eidx : i) + numEdges;
 
-				ml[j].v = ed->v1 + numVerts;
-				ml[j++].e = numEdges * 2 + old_vert_arr[ed->v1];
+				ml[j].v = (do_shell ? ed->v1 : old_vert_arr[ed->v1]) + numVerts;
+				ml[j++].e = (numEdges * stride) + old_vert_arr[ed->v1] + newEdges;
 			}
 			else {
 				ml[j].v = ed->v2;
 				ml[j++].e = eidx;
 
 				ml[j].v = ed->v1;
-				ml[j++].e = numEdges * 2 + old_vert_arr[ed->v1];
+				ml[j++].e = (numEdges * stride) + old_vert_arr[ed->v1] + newEdges;
 
-				ml[j].v = ed->v1 + numVerts;
-				ml[j++].e = eidx + numEdges;
+				ml[j].v = (do_shell ? ed->v1 : old_vert_arr[ed->v1]) + numVerts;
+				ml[j++].e = (do_shell ? eidx : i) + numEdges;
 
-				ml[j].v = ed->v2 + numVerts;
-				ml[j++].e = numEdges * 2 + old_vert_arr[ed->v2];
+				ml[j].v = (do_shell ? ed->v2 : old_vert_arr[ed->v2]) + numVerts;
+				ml[j++].e = (numEdges * stride) + old_vert_arr[ed->v2] + newEdges;
 			}
 
 			origindex_edge[ml[j - 3].e] = ORIGINDEX_NONE;
@@ -757,14 +858,14 @@ static DerivedMesh *applyModifier(
 			}
 			if (crease_outer) {
 				/* crease += crease_outer; without wrapping */
-				unsigned char *cr = (unsigned char *)&(ed->crease);
+				char *cr = &(ed->crease);
 				int tcr = *cr + crease_outer;
 				*cr = tcr > 255 ? 255 : tcr;
 			}
 
 			if (crease_inner) {
 				/* crease += crease_inner; without wrapping */
-				unsigned char *cr = (unsigned char *)&(medge[numEdges + eidx].crease);
+				char *cr = &(medge[numEdges + (do_shell ? eidx : i)].crease);
 				int tcr = *cr + crease_inner;
 				*cr = tcr > 255 ? 255 : tcr;
 			}
@@ -785,8 +886,8 @@ static DerivedMesh *applyModifier(
 
 #ifdef SOLIDIFY_SIDE_NORMALS
 		if (do_side_normals) {
-			ed = medge + (numEdges * 2);
-			for (i = 0; i < newEdges; i++, ed++) {
+			ed = medge + (numEdges * stride);
+			for (i = 0; i < rimVerts; i++, ed++) {
 				float nor_cpy[3];
 				short *nor_short;
 				int k;
@@ -813,9 +914,6 @@ static DerivedMesh *applyModifier(
 		MEM_freeN(edge_users);
 		MEM_freeN(edge_order);
 	}
-
-	STACK_FREE(new_vert_arr);
-	STACK_FREE(new_edge_arr);
 
 	if (old_vert_arr)
 		MEM_freeN(old_vert_arr);

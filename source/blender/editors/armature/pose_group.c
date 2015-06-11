@@ -62,12 +62,12 @@ static int pose_group_add_exec(bContext *C, wmOperator *UNUSED(op))
 {
 	Object *ob = ED_pose_object_from_context(C);
 
-	/* only continue if there's an object */
-	if (ob == NULL)
+	/* only continue if there's an object and pose */
+	if (ELEM(NULL, ob, ob->pose))
 		return OPERATOR_CANCELLED;
 	
 	/* for now, just call the API function for this */
-	BKE_pose_add_group(ob);
+	BKE_pose_add_group(ob->pose, NULL);
 	
 	/* notifiers for updates */
 	WM_event_add_notifier(C, NC_OBJECT | ND_POSE, ob);
@@ -95,12 +95,12 @@ static int pose_group_remove_exec(bContext *C, wmOperator *UNUSED(op))
 {
 	Object *ob = ED_pose_object_from_context(C);
 	
-	/* only continue if there's an object */
-	if (ob == NULL)
+	/* only continue if there's an object and pose */
+	if (ELEM(NULL, ob, ob->pose))
 		return OPERATOR_CANCELLED;
 	
 	/* for now, just call the API function for this */
-	BKE_pose_remove_group(ob);
+	BKE_pose_remove_group_index(ob->pose, ob->pose->active_group);
 	
 	/* notifiers for updates */
 	WM_event_add_notifier(C, NC_OBJECT | ND_POSE, ob);
@@ -144,8 +144,8 @@ static int pose_groups_menu_invoke(bContext *C, wmOperator *op, const wmEvent *U
 	/* if there's no active group (or active is invalid), create a new menu to find it */
 	if (pose->active_group <= 0) {
 		/* create a new menu, and start populating it with group names */
-		pup = uiPupMenuBegin(C, op->type->name, ICON_NONE);
-		layout = uiPupMenuLayout(pup);
+		pup = UI_popup_menu_begin(C, op->type->name, ICON_NONE);
+		layout = UI_popup_menu_layout(pup);
 		
 		/* special entry - allow to create new group, then use that 
 		 *	(not to be used for removing though)
@@ -160,9 +160,9 @@ static int pose_groups_menu_invoke(bContext *C, wmOperator *op, const wmEvent *U
 			uiItemIntO(layout, grp->name, ICON_NONE, op->idname, "type", i);
 			
 		/* finish building the menu, and process it (should result in calling self again) */
-		uiPupMenuEnd(C, pup);
+		UI_popup_menu_end(C, pup);
 		
-		return OPERATOR_CANCELLED;
+		return OPERATOR_INTERFACE;
 	}
 	else {
 		/* just use the active group index, and call the exec callback for the calling operator */
@@ -176,7 +176,7 @@ static int pose_group_assign_exec(bContext *C, wmOperator *op)
 {
 	Object *ob = ED_pose_object_from_context(C);
 	bPose *pose;
-	short done = FALSE;
+	bool done = false;
 
 	/* only continue if there's an object, and a pose there too */
 	if (ELEM(NULL, ob, ob->pose))
@@ -189,13 +189,13 @@ static int pose_group_assign_exec(bContext *C, wmOperator *op)
 	 */
 	pose->active_group = RNA_int_get(op->ptr, "type");
 	if (pose->active_group == 0)
-		BKE_pose_add_group(ob);
+		BKE_pose_add_group(ob->pose, NULL);
 	
 	/* add selected bones to group then */
 	CTX_DATA_BEGIN (C, bPoseChannel *, pchan, selected_pose_bones)
 	{
 		pchan->agrp_index = pose->active_group;
-		done = TRUE;
+		done = true;
 	}
 	CTX_DATA_END;
 
@@ -232,7 +232,7 @@ void POSE_OT_group_assign(wmOperatorType *ot)
 static int pose_group_unassign_exec(bContext *C, wmOperator *UNUSED(op))
 {
 	Object *ob = ED_pose_object_from_context(C);
-	short done = FALSE;
+	bool done = false;
 	
 	/* only continue if there's an object, and a pose there too */
 	if (ELEM(NULL, ob, ob->pose))
@@ -243,7 +243,7 @@ static int pose_group_unassign_exec(bContext *C, wmOperator *UNUSED(op))
 	{
 		if (pchan->agrp_index) {
 			pchan->agrp_index = 0;
-			done = TRUE;
+			done = true;
 		}
 	}
 	CTX_DATA_END;
@@ -365,8 +365,8 @@ typedef struct tSortActionGroup {
 /* compare bone groups by name */
 static int compare_agroup(const void *sgrp_a_ptr, const void *sgrp_b_ptr)
 {
-	tSortActionGroup *sgrp_a = (tSortActionGroup *)sgrp_a_ptr;
-	tSortActionGroup *sgrp_b = (tSortActionGroup *)sgrp_b_ptr;
+	const tSortActionGroup *sgrp_a = sgrp_a_ptr;
+	const tSortActionGroup *sgrp_b = sgrp_b_ptr;
 
 	return strcmp(sgrp_a->agrp->name, sgrp_b->agrp->name);
 }
@@ -387,7 +387,7 @@ static int group_sort_exec(bContext *C, wmOperator *UNUSED(op))
 		return OPERATOR_CANCELLED;
 
 	/* create temporary array with bone groups and indices */
-	agrp_count = BLI_countlist(&pose->agroups);
+	agrp_count = BLI_listbase_count(&pose->agroups);
 	agrp_array = MEM_mallocN(sizeof(tSortActionGroup) * agrp_count, "sort bone groups");
 	for (agrp = pose->agroups.first, i = 0; agrp; agrp = agrp->next, i++) {
 		BLI_assert(i < agrp_count);
@@ -399,7 +399,7 @@ static int group_sort_exec(bContext *C, wmOperator *UNUSED(op))
 	qsort(agrp_array, agrp_count, sizeof(tSortActionGroup), compare_agroup);
 
 	/* create sorted bone group list from sorted array */
-	pose->agroups.first = pose->agroups.last = NULL;
+	BLI_listbase_clear(&pose->agroups);
 	for (i = 0; i < agrp_count; i++) {
 		BLI_addtail(&pose->agroups, agrp_array[i].agrp);
 	}
@@ -438,7 +438,7 @@ void POSE_OT_group_sort(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
 
-static void pose_group_select(bContext *C, Object *ob, int select)
+static void pose_group_select(bContext *C, Object *ob, bool select)
 {
 	bPose *pose = ob->pose;
 	

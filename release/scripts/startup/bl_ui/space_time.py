@@ -122,15 +122,17 @@ class TIME_MT_view(Menu):
     def draw(self, context):
         layout = self.layout
 
+        scene = context.scene
         st = context.space_data
 
         layout.prop(st, "show_seconds")
+        layout.prop(st, "show_locked_time")
         layout.operator("time.view_all")
 
         layout.separator()
 
         layout.prop(st, "show_frame_indicator")
-        layout.prop(st, "show_only_selected")
+        layout.prop(scene, "show_keys_from_selected_only")
 
         layout.separator()
 
@@ -143,7 +145,8 @@ class TIME_MT_view(Menu):
         layout.separator()
 
         layout.operator("screen.area_dupli")
-        layout.operator("screen.screen_full_area")
+        layout.operator("screen.screen_full_area", text="Toggle Maximize Area")
+        layout.operator("screen.screen_full_area").use_hide_panels = True
 
 
 class TIME_MT_cache(Menu):
@@ -174,8 +177,11 @@ class TIME_MT_frame(Menu):
     def draw(self, context):
         layout = self.layout
 
-        layout.operator("time.start_frame_set")
+        layout.operator("anim.previewrange_clear")
+        layout.operator("anim.previewrange_set")
+        layout.separator()
         layout.operator("time.end_frame_set")
+        layout.operator("time.start_frame_set")
 
         layout.separator()
 
@@ -200,6 +206,8 @@ class TIME_MT_playback(Menu):
         layout.prop(screen, "use_play_node_editors")
         layout.prop(screen, "use_play_clip_editors")
 
+        layout.separator()
+        layout.prop(screen, "use_follow")
         layout.separator()
 
         layout.prop(scene, "use_frame_drop", text="Frame Dropping")

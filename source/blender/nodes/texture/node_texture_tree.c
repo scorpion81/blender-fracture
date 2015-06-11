@@ -43,8 +43,7 @@
 #include "BLF_translation.h"
 
 #include "BKE_context.h"
-#include "BKE_global.h"
-#include "BKE_main.h"
+#include "BKE_linestyle.h"
 #include "BKE_node.h"
 #include "BKE_paint.h"
 
@@ -56,7 +55,6 @@
 
 #include "RNA_access.h"
 
-#include "RE_pipeline.h"
 #include "RE_shader_ext.h"
 
 
@@ -92,7 +90,7 @@ static void texture_get_from_context(const bContext *C, bNodeTreeType *UNUSED(tr
 			}
 		}
 	}
-	else {
+	else if (snode->texfrom == SNODE_TEX_BRUSH) {
 		struct Brush *brush = NULL;
 		
 		if (ob && (ob->mode & OB_MODE_SCULPT))
@@ -103,6 +101,17 @@ static void texture_get_from_context(const bContext *C, bNodeTreeType *UNUSED(tr
 		if (brush) {
 			*r_from = (ID *)brush;
 			tx = give_current_brush_texture(brush);
+			if (tx) {
+				*r_id = &tx->id;
+				*r_ntree = tx->nodetree;
+			}
+		}
+	}
+	else if (snode->texfrom == SNODE_TEX_LINESTYLE) {
+		FreestyleLineStyle *linestyle = BKE_linestyle_active_from_scene(scene);
+		if (linestyle) {
+			*r_from = (ID *)linestyle;
+			tx = give_current_linestyle_texture(linestyle);
 			if (tx) {
 				*r_id = &tx->id;
 				*r_ntree = tx->nodetree;
@@ -125,6 +134,10 @@ static void foreach_nodeclass(Scene *UNUSED(scene), void *calldata, bNodeClassCa
 	func(calldata, NODE_CLASS_LAYOUT, N_("Layout"));
 }
 
+/* XXX muting disabled in previews because of threading issues with the main execution
+ * it works here, but disabled for consistency
+ */
+#if 1
 static void localize(bNodeTree *localtree, bNodeTree *UNUSED(ntree))
 {
 	bNode *node, *node_next;
@@ -139,6 +152,11 @@ static void localize(bNodeTree *localtree, bNodeTree *UNUSED(ntree))
 		}
 	}
 }
+#else
+static void localize(bNodeTree *UNUSED(localtree), bNodeTree *UNUSED(ntree))
+{
+}
+#endif
 
 static void local_sync(bNodeTree *localtree, bNodeTree *ntree)
 {
@@ -318,6 +336,7 @@ int ntreeTexExecTree(
 	data.osatex = osatex;
 	data.target = texres;
 	data.do_preview = preview;
+	data.do_manage = (shi) ? shi->do_manage : 0;
 	data.thread = thread;
 	data.which_output = which_output;
 	data.cfra = cfra;

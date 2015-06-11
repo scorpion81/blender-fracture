@@ -71,22 +71,27 @@ typedef struct Path {
 /* These two Lines with # tell makesdna this struct can be excluded. */
 #
 #
+typedef struct BevPoint {
+	float vec[3], alfa, radius, weight, offset;
+	float sina, cosa;				/* 2D Only */
+	float dir[3], tan[3], quat[4];	/* 3D Only */
+	short split_tag, dupe_tag;
+} BevPoint;
+
+/* These two Lines with # tell makesdna this struct can be excluded. */
+#
+#
 typedef struct BevList {
 	struct BevList *next, *prev;
 	int nr, dupe_nr;
 	int poly, hole;
 	int charidx;
-} BevList;
+	int *segbevcount;
+	float *seglen;
 
-/* These two Lines with # tell makesdna this struct can be excluded. */
-#
-#
-typedef struct BevPoint {
-	float vec[3], alfa, radius, weight;
-	float sina, cosa;				/* 2D Only */
-	float dir[3], tan[3], quat[4];	/* 3D Only */
-	short split_tag, dupe_tag;
-} BevPoint;
+	/* over-alloc */
+	BevPoint bevpoints[0];
+} BevList;
 
 /**
  * Keyframes on F-Curves (allows code reuse of Bezier eval code) and
@@ -108,10 +113,19 @@ typedef struct BevPoint {
 typedef struct BezTriple {
 	float vec[3][3];
 	float alfa, weight, radius;	/* alfa: tilt in 3D View, weight: used for softbody goal weight, radius: for bevel tapering */
-	short ipo;					/* ipo: interpolation mode for segment from this BezTriple to the next */
+	
+	char ipo;					/* ipo: interpolation mode for segment from this BezTriple to the next */
+	
 	char h1, h2; 				/* h1, h2: the handle type of the two handles */
 	char f1, f2, f3;			/* f1, f2, f3: used for selection status */
+	
 	char hide;					/* hide: used to indicate whether BezTriple is hidden (3D), type of keyframe (eBezTriple_KeyframeTypes) */
+	
+	char easing;				/* easing: easing type for interpolation mode (eBezTriple_Easing) */
+	float back;					/* BEZT_IPO_BACK */
+	float amplitude, period;	/* BEZT_IPO_ELASTIC */
+
+	char  pad[4];
 } BezTriple;
 
 /* note; alfa location in struct is abused by Key system */
@@ -248,85 +262,109 @@ typedef struct Curve {
 
 	float ctime;			/* current evaltime - for use by Objects parented to curves */
 	float bevfac1, bevfac2;
+	char bevfac1_mapping, bevfac2_mapping;
 
-	char pad2[4];
+	char pad2[2];
+
 } Curve;
 
 /* **************** CURVE ********************* */
 
-/* texflag */
-#define CU_AUTOSPACE	1
+/* Curve.texflag */
+enum {
+	CU_AUTOSPACE          = 1,
+};
 
-/* drawflag */
-#define CU_HIDE_HANDLES	(1 << 0)
-#define CU_HIDE_NORMALS	(1 << 1)
+/* Curve.drawflag */
+enum {
+	CU_HIDE_HANDLES       = 1 << 0,
+	CU_HIDE_NORMALS       = 1 << 1,
+};
 
-/* flag */
-#define CU_3D			1
-#define CU_FRONT		2
-#define CU_BACK			4
-#define CU_PATH			8
-#define CU_FOLLOW		16
-#define CU_UV_ORCO		32
-#define CU_DEFORM_BOUNDS_OFF 64 
-#define CU_STRETCH		128
-#define CU_OFFS_PATHDIST	256
-#define CU_FAST			512 /* Font: no filling inside editmode */
-/* #define CU_RETOPO               1024 */ /* DEPRECATED */
-#define CU_DS_EXPAND	2048
-#define CU_PATH_RADIUS	4096 /* make use of the path radius if this is enabled (default for new curves) */
-#define CU_DEFORM_FILL	8192 /* fill 2d curve after deformation */
-#define CU_FILL_CAPS	16384 /* fill bevel caps */
-#define CU_MAP_TAPER	32768 /* map taper object to bevelled area */
+/* Curve.flag */
+enum {
+	CU_3D                 = 1 << 0,
+	CU_FRONT              = 1 << 1,
+	CU_BACK               = 1 << 2,
+	CU_PATH               = 1 << 3,
+	CU_FOLLOW             = 1 << 4,
+	CU_UV_ORCO            = 1 << 5,
+	CU_DEFORM_BOUNDS_OFF  = 1 << 6,
+	CU_STRETCH            = 1 << 7,
+	/* CU_OFFS_PATHDIST   = 1 << 8, */  /* DEPRECATED */
+	CU_FAST               = 1 << 9,  /* Font: no filling inside editmode */
+	/* CU_RETOPO          = 1 << 10, */  /* DEPRECATED */
+	CU_DS_EXPAND          = 1 << 11,
+	CU_PATH_RADIUS        = 1 << 12,  /* make use of the path radius if this is enabled (default for new curves) */
+	CU_DEFORM_FILL        = 1 << 13,  /* fill 2d curve after deformation */
+	CU_FILL_CAPS          = 1 << 14,  /* fill bevel caps */
+	CU_MAP_TAPER          = 1 << 15,  /* map taper object to beveled area */
+};
 
-/* twist mode */
-#define CU_TWIST_Z_UP			0
-// #define CU_TWIST_Y_UP			1 // not used yet
-// #define CU_TWIST_X_UP			2
-#define CU_TWIST_MINIMUM		3
-#define CU_TWIST_TANGENT		4
+/* Curve.twist_mode */
+enum {
+	CU_TWIST_Z_UP         = 0,
+	/* CU_TWIST_Y_UP      = 1, */  /* not used yet */
+	/* CU_TWIST_X_UP      = 2, */
+	CU_TWIST_MINIMUM      = 3,
+	CU_TWIST_TANGENT      = 4,
+};
 
-/* spacemode */
-#define CU_LEFT			0
-#define CU_MIDDLE		1
-#define CU_RIGHT		2
-#define CU_JUSTIFY		3
-#define CU_FLUSH		4
+/* Curve.bevfac1_mapping, Curve.bevfac2_mapping, bevel factor mapping */
+enum {
+	CU_BEVFAC_MAP_RESOLU  = 0,
+	CU_BEVFAC_MAP_SEGMENT = 1,
+	CU_BEVFAC_MAP_SPLINE  = 2,
+};
 
-/* flag (nurb) */
-#define CU_SMOOTH		1
-#define CU_2D			8 /* moved from type since 2.4x */
+/* Curve.spacemode */
+enum {
+	CU_LEFT               = 0,
+	CU_MIDDLE             = 1,
+	CU_RIGHT              = 2,
+	CU_JUSTIFY            = 3,
+	CU_FLUSH              = 4,
+};
 
-/* type (nurb) */
-#define CU_POLY			0
-#define CU_BEZIER		1
-#define CU_BSPLINE		2
-#define CU_CARDINAL		3
-#define CU_NURBS		4
-#define CU_TYPE			(CU_POLY|CU_BEZIER|CU_BSPLINE|CU_CARDINAL|CU_NURBS)
+/* Nurb.flag */
+enum {
+	CU_SMOOTH             = 1 << 0,
+	CU_2D                 = 1 << 3,  /* moved from type since 2.4x */
+};
 
-		/* only for adding */
-#define CU_PRIMITIVE	0xF00
+/* Nurb.type */
+enum {
+	CU_POLY               = 0,
+	CU_BEZIER             = 1,
+	CU_BSPLINE            = 2,
+	CU_CARDINAL           = 3,
+	CU_NURBS              = 4,
+	CU_TYPE               = (CU_POLY | CU_BEZIER | CU_BSPLINE | CU_CARDINAL | CU_NURBS),
 
-		/* 2 or 4 points */
-#define CU_PRIM_CURVE	0x100
-		/* 8 points circle */
-#define CU_PRIM_CIRCLE	0x200
-		/* 4x4 patch Nurb */
-#define CU_PRIM_PATCH	0x300
-#define CU_PRIM_TUBE	0x400
-#define CU_PRIM_SPHERE	0x500
-#define CU_PRIM_DONUT	0x600
-		/* 5 points,  5th order straight line (for anim path) */
-#define CU_PRIM_PATH	0x700
+	/* only for adding */
+	CU_PRIMITIVE          = 0xF00,
 
+	/* 2 or 4 points */
+	CU_PRIM_CURVE         = 0x100,
+	/* 8 points circle */
+	CU_PRIM_CIRCLE        = 0x200,
+	/* 4x4 patch Nurb */
+	CU_PRIM_PATCH         = 0x300,
+	CU_PRIM_TUBE          = 0x400,
+	CU_PRIM_SPHERE        = 0x500,
+	CU_PRIM_DONUT         = 0x600,
+	/* 5 points,  5th order straight line (for anim path) */
+	CU_PRIM_PATH          = 0x700,
+};
 
-/* flagu flagv (nurb) */
-#define CU_NURB_CYCLIC		1
-#define CU_NURB_ENDPOINT	2
-#define CU_NURB_BEZIER		4
+/* Nurb.flagu, Nurb.flagv */
+enum {
+	CU_NURB_CYCLIC        = 1 << 0,
+	CU_NURB_ENDPOINT      = 1 << 1,
+	CU_NURB_BEZIER        = 1 << 2,
+};
 
-#define CU_ACT_NONE		-1
+#define CU_ACT_NONE  -1
 
 /* *************** BEZTRIPLE **************** */
 
@@ -336,22 +374,45 @@ typedef enum eBezTriple_Handle {
 	HD_AUTO = 1,
 	HD_VECT = 2,
 	HD_ALIGN = 3,
-	HD_AUTO_ANIM = 4 	/* auto-clamped handles for animation */
+	HD_AUTO_ANIM = 4,         /* auto-clamped handles for animation */
+	HD_ALIGN_DOUBLESIDE = 5,  /* align handles, displayed both of them. used for masks */
 } eBezTriple_Handle;
 
 /* interpolation modes (used only for BezTriple->ipo) */
 typedef enum eBezTriple_Interpolation {
-	BEZT_IPO_CONST = 0,	/* constant interpolation */
-	BEZT_IPO_LIN = 1,	/* linear interpolation */
-	BEZT_IPO_BEZ = 2	/* bezier interpolation */
+	/* traditional interpolation */
+	BEZT_IPO_CONST = 0, /* constant interpolation */
+	BEZT_IPO_LIN = 1,   /* linear interpolation */
+	BEZT_IPO_BEZ = 2,   /* bezier interpolation */
+	
+	/* easing equations */
+	BEZT_IPO_BACK = 3,
+	BEZT_IPO_BOUNCE = 4,
+	BEZT_IPO_CIRC = 5,
+	BEZT_IPO_CUBIC = 6,
+	BEZT_IPO_ELASTIC = 7,
+	BEZT_IPO_EXPO = 8,
+	BEZT_IPO_QUAD = 9,
+	BEZT_IPO_QUART = 10,
+	BEZT_IPO_QUINT = 11,
+	BEZT_IPO_SINE = 12,
 } eBezTriple_Interpolation;
+
+/* easing modes (used only for Keyframes - BezTriple->easing) */
+typedef enum eBezTriple_Easing {
+	BEZT_IPO_EASE_AUTO = 0,
+	
+	BEZT_IPO_EASE_IN = 1,
+	BEZT_IPO_EASE_OUT = 2,
+	BEZT_IPO_EASE_IN_OUT = 3,
+} eBezTriple_Easing;
 
 /* types of keyframe (used only for BezTriple->hide when BezTriple is used in F-Curves) */
 typedef enum eBezTriple_KeyframeType {
-	BEZT_KEYTYPE_KEYFRAME = 0,	/* default - 'proper' Keyframe */
-	BEZT_KEYTYPE_EXTREME = 1,	/* 'extreme' keyframe */
-	BEZT_KEYTYPE_BREAKDOWN = 2,	/* 'breakdown' keyframe */
-	BEZT_KEYTYPE_JITTER = 3,	/* 'jitter' keyframe (for adding 'filler' secondary motion) */
+	BEZT_KEYTYPE_KEYFRAME = 0,  /* default - 'proper' Keyframe */
+	BEZT_KEYTYPE_EXTREME = 1,   /* 'extreme' keyframe */
+	BEZT_KEYTYPE_BREAKDOWN = 2, /* 'breakdown' keyframe */
+	BEZT_KEYTYPE_JITTER = 3,    /* 'jitter' keyframe (for adding 'filler' secondary motion) */
 } eBezTriple_KeyframeType;
 
 /* checks if the given BezTriple is selected */
@@ -360,14 +421,16 @@ typedef enum eBezTriple_KeyframeType {
 
 /* *************** CHARINFO **************** */
 
-/* flag */
-/* note: CU_CHINFO_WRAP and CU_CHINFO_SMALLCAPS_TEST are set dynamically */
-#define CU_CHINFO_BOLD			(1<<0)
-#define CU_CHINFO_ITALIC		(1<<1)
-#define CU_CHINFO_UNDERLINE	(1<<2)
-#define CU_CHINFO_WRAP			(1<<3)	/* wordwrap occurred here */
-#define CU_CHINFO_SMALLCAPS	(1<<4)
-#define CU_CHINFO_SMALLCAPS_CHECK (1<<5) /* set at runtime, checks if case switching is needed */
+/* CharInfo.flag */
+enum {
+	/* note: CU_CHINFO_WRAP and CU_CHINFO_SMALLCAPS_TEST are set dynamically */
+	CU_CHINFO_BOLD            = 1 << 0,
+	CU_CHINFO_ITALIC          = 1 << 1,
+	CU_CHINFO_UNDERLINE       = 1 << 2,
+	CU_CHINFO_WRAP            = 1 << 3,  /* wordwrap occurred here */
+	CU_CHINFO_SMALLCAPS       = 1 << 4,
+	CU_CHINFO_SMALLCAPS_CHECK = 1 << 5,  /* set at runtime, checks if case switching is needed */
+};
 
 /* mixed with KEY_LINEAR but define here since only curve supports */
 #define KEY_CU_EASE			3

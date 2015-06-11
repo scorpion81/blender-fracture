@@ -36,8 +36,9 @@
 #  include <windows.h>
 #endif
 
-#include "GL/glew.h"
+#include "glew-mx.h"
 #include "GPU_extensions.h"
+#include "GPU_init_exit.h"
 
 #include "GPG_Application.h"
 #include "BL_BlenderDataConversion.h"
@@ -187,7 +188,7 @@ static POINT scr_save_mouse_pos;
 
 static LRESULT CALLBACK screenSaverWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-	BOOL close = FALSE;
+	BOOL close = false;
 	switch (uMsg)
 	{
 		case WM_MOUSEMOVE:
@@ -199,7 +200,7 @@ static LRESULT CALLBACK screenSaverWindowProc(HWND hwnd, UINT uMsg, WPARAM wPara
 			if (abs(dx) > SCR_SAVE_MOUSE_MOVE_THRESHOLD
 			        || abs(dy) > SCR_SAVE_MOUSE_MOVE_THRESHOLD)
 			{
-				close = TRUE;
+				close = true;
 			}
 			scr_save_mouse_pos = pt;
 			break;
@@ -208,7 +209,7 @@ static LRESULT CALLBACK screenSaverWindowProc(HWND hwnd, UINT uMsg, WPARAM wPara
 		case WM_MBUTTONDOWN: 
 		case WM_RBUTTONDOWN: 
 		case WM_KEYDOWN:
-			close = TRUE;
+			close = true;
 	}
 	if (close)
 		PostMessage(hwnd,WM_CLOSE,0,0);
@@ -218,11 +219,11 @@ static LRESULT CALLBACK screenSaverWindowProc(HWND hwnd, UINT uMsg, WPARAM wPara
 BOOL CALLBACK findGhostWindowHWNDProc(HWND hwnd, LPARAM lParam)
 {
 	GHOST_IWindow *p = (GHOST_IWindow*) GetWindowLongPtr(hwnd, GWLP_USERDATA);
-	BOOL ret = TRUE;
+	BOOL ret = true;
 	if (p == ghost_window_to_find)
 	{
 		found_ghost_window_hwnd = hwnd;
-		ret = FALSE;
+		ret = false;
 	}
 	return ret;
 }
@@ -249,9 +250,15 @@ bool GPG_Application::startScreenSaverPreview(
 		int windowWidth = rc.right - rc.left;
 		int windowHeight = rc.bottom - rc.top;
 		STR_String title = "";
-							
+		GHOST_GLSettings glSettings = {0};
+
+		if (stereoVisual) {
+			glSettings.flags |= GHOST_glStereoVisual;
+		}
+		glSettings.numOfAASamples = samples;
+
 		m_mainWindow = fSystem->createWindow(title, 0, 0, windowWidth, windowHeight, GHOST_kWindowStateMinimized,
-			GHOST_kDrawingContextTypeOpenGL, stereoVisual, samples);
+		                                     GHOST_kDrawingContextTypeOpenGL, glSettings);
 		if (!m_mainWindow) {
 			printf("error: could not create main window\n");
 			exit(-1);
@@ -268,7 +275,7 @@ bool GPG_Application::startScreenSaverPreview(
 		LONG_PTR exstyle = GetWindowLongPtr(ghost_hwnd, GWL_EXSTYLE);
 
 		RECT adjrc = { 0, 0, windowWidth, windowHeight };
-		AdjustWindowRectEx(&adjrc, style, FALSE, exstyle);
+		AdjustWindowRectEx(&adjrc, style, false, exstyle);
 
 		style = (style & (~(WS_POPUP|WS_OVERLAPPEDWINDOW|WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_THICKFRAME|WS_MINIMIZEBOX|WS_MAXIMIZEBOX|WS_TILEDWINDOW ))) | WS_CHILD;
 		SetWindowLongPtr(ghost_hwnd, GWL_STYLE, style);
@@ -322,11 +329,16 @@ bool GPG_Application::startWindow(
         const int stereoMode,
         const GHOST_TUns16 samples)
 {
+	GHOST_GLSettings glSettings = {0};
 	bool success;
 	// Create the main window
 	//STR_String title ("Blender Player - GHOST");
+	if (stereoVisual)
+		glSettings.flags |= GHOST_glStereoVisual;
+	glSettings.numOfAASamples = samples;
+
 	m_mainWindow = fSystem->createWindow(title, windowLeft, windowTop, windowWidth, windowHeight, GHOST_kWindowStateNormal,
-	                                     GHOST_kDrawingContextTypeOpenGL, stereoVisual, false, samples);
+	                                     GHOST_kDrawingContextTypeOpenGL, glSettings);
 	if (!m_mainWindow) {
 		printf("error: could not create main window\n");
 		exit(-1);
@@ -353,10 +365,16 @@ bool GPG_Application::startEmbeddedWindow(
         const GHOST_TUns16 samples)
 {
 	GHOST_TWindowState state = GHOST_kWindowStateNormal;
+	GHOST_GLSettings glSettings = {0};
+
+	if (stereoVisual)
+		glSettings.flags |= GHOST_glStereoVisual;
+	glSettings.numOfAASamples = samples;
+
 	if (parentWindow != 0)
 		state = GHOST_kWindowStateEmbedded;
 	m_mainWindow = fSystem->createWindow(title, 0, 0, 0, 0, state,
-	                                     GHOST_kDrawingContextTypeOpenGL, stereoVisual, false, samples, parentWindow);
+	                                     GHOST_kDrawingContextTypeOpenGL, glSettings, parentWindow);
 
 	if (!m_mainWindow) {
 		printf("error: could not create main window\n");
@@ -545,7 +563,7 @@ bool GPG_Application::initEngine(GHOST_IWindow* window, const int stereoMode)
 {
 	if (!m_engineInitialized)
 	{
-		GPU_extensions_init();
+		GPU_init();
 		bgl::InitExtensions(true);
 
 		// get and set the preferences
@@ -566,7 +584,7 @@ bool GPG_Application::initEngine(GHOST_IWindow* window, const int stereoMode)
 		bool frameRate = (SYS_GetCommandLineInt(syshandle, "show_framerate", 0) != 0);
 		bool useLists = (SYS_GetCommandLineInt(syshandle, "displaylists", gm->flag & GAME_DISPLAY_LISTS) != 0) && GPU_display_list_support();
 		bool nodepwarnings = (SYS_GetCommandLineInt(syshandle, "ignore_deprecation_warnings", 1) != 0);
-		bool restrictAnimFPS = gm->flag & GAME_RESTRICT_ANIM_UPDATES;
+		bool restrictAnimFPS = (gm->flag & GAME_RESTRICT_ANIM_UPDATES) != 0;
 
 		if (GLEW_ARB_multitexture && GLEW_VERSION_1_1)
 			m_blendermat = (SYS_GetCommandLineInt(syshandle, "blender_material", 1) != 0);
@@ -867,7 +885,7 @@ void GPG_Application::exitEngine()
 		m_canvas = 0;
 	}
 
-	GPU_extensions_exit();
+	GPU_exit();
 
 #ifdef WITH_PYTHON
 	// Call this after we're sure nothing needs Python anymore (e.g., destructors)

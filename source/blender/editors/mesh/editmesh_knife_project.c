@@ -65,7 +65,7 @@ static LinkNode *knifeproject_poly_from_object(ARegion *ar, Scene *scene, Object
 		dm = ob->derivedFinal ? ob->derivedFinal : mesh_get_derived_final(scene, ob, CD_MASK_BAREMESH);
 		dm_needsFree = false;
 	}
-	else if (ELEM3(ob->type, OB_FONT, OB_CURVE, OB_SURF)) {
+	else if (ELEM(ob->type, OB_FONT, OB_CURVE, OB_SURF)) {
 		dm = CDDM_from_curve(ob);
 		dm_needsFree = true;
 	}
@@ -143,7 +143,7 @@ static int knifeproject_exec(bContext *C, wmOperator *op)
 		 * note: call after de-select to avoid selection flushing */
 		EDBM_selectmode_disable(scene, em, SCE_SELECT_VERTEX, SCE_SELECT_EDGE);
 
-		BM_mesh_elem_hflag_enable_test(em->bm, BM_FACE, BM_ELEM_SELECT, true, BM_ELEM_TAG);
+		BM_mesh_elem_hflag_enable_test(em->bm, BM_FACE, BM_ELEM_SELECT, true, false, BM_ELEM_TAG);
 
 		BM_mesh_select_mode_flush(em->bm);
 

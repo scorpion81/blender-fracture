@@ -36,7 +36,7 @@ BLI_INLINE bool BM_vert_in_edge(const BMEdge *e, const BMVert *v)
 }
 
 /**
- * Returns whether or not a given edge is is part of a given loop.
+ * Returns whether or not a given edge is part of a given loop.
  */
 BLI_INLINE bool BM_edge_in_loop(const BMEdge *e, const BMLoop *l)
 {
@@ -135,6 +135,18 @@ BLI_INLINE bool BM_loop_is_adjacent(const BMLoop *l_a, const BMLoop *l_b)
 	BLI_assert(l_a->f == l_b->f);
 	BLI_assert(l_a != l_b);
 	return (ELEM(l_b, l_a->next, l_a->prev));
+}
+
+/**
+ * Check if we have a single wire edge user.
+ */
+BLI_INLINE bool BM_vert_is_wire_endpoint(const BMVert *v)
+{
+	const BMEdge *e = v->e;
+	if (e && e->l == NULL) {
+		return (BM_DISK_EDGE_NEXT(e, v) == e);
+	}
+	return false;
 }
 
 #endif /* __BMESH_QUERIES_INLINE_H__ */

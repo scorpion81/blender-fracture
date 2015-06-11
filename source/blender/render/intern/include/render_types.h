@@ -108,8 +108,9 @@ typedef struct RenderPart {
 
 	rcti disprect;					/* part coordinates within total picture */
 	int rectx, recty;				/* the size */
+	int nr;							/* nr is partnr */
 	short crop, status;				/* crop is amount of pixels we crop, for filter */
-	short sample, nr;				/* sample can be used by zbuffers, nr is partnr */
+	short sample;					/* sample can be used by zbuffers */
 	short thread;					/* thread id */
 	
 	char *clipflag;					/* clipflags for part zbuffering */
@@ -191,7 +192,7 @@ struct Render
 	RenderData r;
 	World wrld;
 	struct Object *camera_override;
-	unsigned int lay;
+	unsigned int lay, layer_override;
 	
 	ListBase parts;
 	
@@ -239,7 +240,7 @@ struct Render
 	ListBase volumes;
 
 #ifdef WITH_FREESTYLE
-	struct Main freestyle_bmain;
+	struct Main *freestyle_bmain;
 	ListBase freestyle_renders;
 #endif
 
@@ -255,6 +256,8 @@ struct Render
 	void *dch;
 	void (*display_update)(void *handle, RenderResult *rr, volatile rcti *rect);
 	void *duh;
+	void (*current_scene_update)(void *handle, struct Scene *scene);
+	void *suh;
 	
 	void (*stats_draw)(void *handle, RenderStats *ri);
 	void *sdh;
@@ -421,6 +424,7 @@ typedef struct HaloRen {
 	unsigned int lay;
 	struct Material *mat;
 	struct ImagePool *pool;
+	bool skip_load_image;
 } HaloRen;
 
 /* ------------------------------------------------------------------------- */
@@ -592,7 +596,9 @@ typedef struct LampRen {
 	float imat[3][3];
 	float spottexfac;
 	float sh_invcampos[3], sh_zfac;	/* sh_= spothalo */
-	
+
+	float lampmat[4][4];	/* worls space lamp matrix, used for scene rotation */
+
 	float mat[3][3];	/* 3x3 part from lampmat x viewmat */
 	float area[8][3], areasize;
 	

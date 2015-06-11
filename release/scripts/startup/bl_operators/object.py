@@ -20,11 +20,13 @@
 
 import bpy
 from bpy.types import Operator
-from bpy.props import (StringProperty,
-                       BoolProperty,
-                       EnumProperty,
-                       IntProperty,
-                       FloatProperty)
+from bpy.props import (
+        StringProperty,
+        BoolProperty,
+        EnumProperty,
+        IntProperty,
+        FloatProperty,
+        )
 
 
 class SelectPattern(Operator):
@@ -248,13 +250,17 @@ class SubdivisionSet(Operator):
             for mod in obj.modifiers:
                 if mod.type == 'MULTIRES':
                     if not relative:
-                        if level <= mod.total_levels:
-                            if obj.mode == 'SCULPT':
-                                if mod.sculpt_levels != level:
-                                    mod.sculpt_levels = level
-                            elif obj.mode == 'OBJECT':
-                                if mod.levels != level:
-                                    mod.levels = level
+                        if level > mod.total_levels:
+                            sub = level - mod.total_levels
+                            for i in range(sub):
+                                bpy.ops.object.multires_subdivide(modifier="Multires")
+
+                        if obj.mode == 'SCULPT':
+                            if mod.sculpt_levels != level:
+                                mod.sculpt_levels = level
+                        elif obj.mode == 'OBJECT':
+                            if mod.levels != level:
+                                mod.levels = level
                         return
                     else:
                         if obj.mode == 'SCULPT':
@@ -276,8 +282,14 @@ class SubdivisionSet(Operator):
 
             # add a new modifier
             try:
-                mod = obj.modifiers.new("Subsurf", 'SUBSURF')
-                mod.levels = level
+                if obj.mode == 'SCULPT':
+                    mod = obj.modifiers.new("Multires", 'MULTIRES')
+                    if level > 0:
+                        for i in range(0, level):
+                            bpy.ops.object.multires_subdivide(modifier="Multires")
+                else:
+                    mod = obj.modifiers.new("Subsurf", 'SUBSURF')
+                    mod.levels = level
             except:
                 self.report({'WARNING'},
                             "Modifiers cannot be added to object: " + obj.name)
@@ -356,6 +368,11 @@ class ShapeTransfer(Operator):
         orig_coords = me_cos(me.shape_keys.key_blocks[0].data)
 
         for ob_other in objects:
+            if ob_other.type != 'MESH':
+                self.report({'WARNING'},
+                            ("Skipping '%s', "
+                             "not a mesh") % ob_other.name)
+                continue
             me_other = ob_other.data
             if len(me_other.vertices) != len(me.vertices):
                 self.report({'WARNING'},
@@ -687,7 +704,6 @@ class TransformsToDeltasAnim(Operator):
         DELTA_PATHS = STANDARD_TO_DELTA_PATHS.values()
 
         # try to apply on each selected object
-        success = False
         for obj in context.selected_editable_objects:
             adt = obj.animation_data
             if (adt is None) or (adt.action is None):
@@ -761,22 +777,15 @@ class DupliOffsetFromCursor(Operator):
     bl_label = "Set Offset From Cursor"
     bl_options = {'REGISTER', 'UNDO'}
 
-    group = IntProperty(
-            name="Group",
-            description="Group index to set offset for",
-            default=0,
-            )
-
     @classmethod
     def poll(cls, context):
         return (context.active_object is not None)
 
     def execute(self, context):
         scene = context.scene
-        ob = context.active_object
-        group = self.group
+        group = context.group
 
-        ob.users_group[group].dupli_offset = scene.cursor_location
+        group.dupli_offset = scene.cursor_location
 
         return {'FINISHED'}
 
@@ -792,7 +801,6 @@ class LodByName(Operator):
         return (context.active_object is not None)
 
     def execute(self, context):
-        scene = context.scene
         ob = context.active_object
 
         prefix = ""
@@ -843,7 +851,6 @@ class LodClearAll(Operator):
         return (context.active_object is not None)
 
     def execute(self, context):
-        scene = context.scene
         ob = context.active_object
 
         if ob.lod_levels:
@@ -938,4 +945,3 @@ class LodGenerate(Operator):
         scene.objects.active = ob
 
         return {'FINISHED'}
-

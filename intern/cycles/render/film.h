@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __FILM_H__
@@ -50,6 +50,7 @@ class Film {
 public:
 	float exposure;
 	vector<Pass> passes;
+	float pass_alpha_threshold;
 
 	FilterType filter_type;
 	float filter_width;
@@ -60,6 +61,7 @@ public:
 	float mist_falloff;
 
 	bool use_light_visibility;
+	bool use_sample_clamp;
 
 	bool need_update;
 

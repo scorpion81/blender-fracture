@@ -11,11 +11,11 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
-#ifndef CCL_API_H
-#define CCL_API_H
+#ifndef __CCL_API_H__
+#define __CCL_API_H__
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,9 +36,12 @@ CCLDeviceInfo *CCL_compute_device_list(int device_type);
 
 void *CCL_python_module_init(void);
 
+void CCL_init_logging(const char *argv0);
+void CCL_start_debug_logging(void);
+void CCL_logging_verbosity_set(int verbosity);
+
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* CCL_API_H */
-
+#endif /* __CCL_API_H__ */

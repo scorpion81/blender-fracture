@@ -34,27 +34,21 @@
 
 
 #include "BLI_math.h"
-#include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
 
-#include "DNA_curve_types.h"
-#include "DNA_group_types.h"
 #include "DNA_lamp_types.h"
 #include "DNA_meshdata_types.h"
 #include "DNA_material_types.h"
 
-#include "BKE_colortools.h"
 #include "BKE_scene.h"
 
 #include "BKE_node.h"
 
 /* local include */
 #include "raycounter.h"
-#include "renderpipeline.h"
 #include "render_types.h"
 #include "renderdatabase.h"
 #include "rendercore.h"
-#include "shadbuf.h"
 #include "shading.h"
 #include "strand.h"
 #include "texture.h"
@@ -118,8 +112,10 @@ void shade_material_loop(ShadeInput *shi, ShadeResult *shr)
 		madd_v3_v3fl(shr->combined, shr_t.combined, fac);
 		if (shi->passflag & SCE_PASS_SPEC)
 			madd_v3_v3fl(shr->spec, shr_t.spec, fac);
-		if (shi->passflag & SCE_PASS_DIFFUSE)
+		if (shi->passflag & SCE_PASS_DIFFUSE) {
 			madd_v3_v3fl(shr->diff, shr_t.diff, fac);
+			madd_v3_v3fl(shr->diffshad, shr_t.diffshad, fac);
+		}
 		if (shi->passflag & SCE_PASS_SHADOW)
 			madd_v3_v3fl(shr->shad, shr_t.shad, fac);
 
@@ -274,6 +270,7 @@ void shade_input_set_triangle_i(ShadeInput *shi, ObjectInstanceRen *obi, VlakRen
 	
 	shi->osatex = (shi->mat->texco & TEXCO_OSA);
 	shi->mode = shi->mat->mode_l;        /* or-ed result for all nodes */
+	shi->mode2 = shi->mat->mode2_l;
 
 	/* facenormal copy, can get flipped */
 	shi->flippednor = 0;
@@ -393,7 +390,7 @@ void shade_input_set_strand_texco(ShadeInput *shi, StrandRen *strand, StrandVert
 	}
 
 	if (mode & MA_STR_SURFDIFF) {
-		float *surfnor = RE_strandren_get_surfnor(obr, strand, 0);
+		const float *surfnor = RE_strandren_get_surfnor(obr, strand, 0);
 
 		if (surfnor)
 			copy_v3_v3(shi->surfnor, surfnor);
@@ -409,7 +406,7 @@ void shade_input_set_strand_texco(ShadeInput *shi, StrandRen *strand, StrandVert
 	}
 
 	if (R.r.mode & R_SPEED) {
-		float *speed;
+		const float *speed;
 		
 		speed = RE_strandren_get_winspeed(shi->obi, strand, 0);
 		if (speed)
@@ -448,7 +445,7 @@ void shade_input_set_strand_texco(ShadeInput *shi, StrandRen *strand, StrandVert
 
 		if ((texco & TEXCO_UV) || (mode & (MA_VERTEXCOL | MA_VERTEXCOLP | MA_FACETEXTURE))) {
 			MCol *mcol;
-			float *uv;
+			const float *uv;
 			char *name;
 			int i;
 
@@ -460,7 +457,7 @@ void shade_input_set_strand_texco(ShadeInput *shi, StrandRen *strand, StrandVert
 			if (mode & (MA_VERTEXCOL | MA_VERTEXCOLP)) {
 				for (i = 0; (mcol = RE_strandren_get_mcol(obr, strand, i, &name, 0)); i++) {
 					ShadeInputCol *scol = &shi->col[i];
-					char *cp = (char *)mcol;
+					const char *cp = (char *)mcol;
 					
 					shi->totcol++;
 					scol->name = name;
@@ -883,7 +880,7 @@ void shade_input_set_shade_texco(ShadeInput *shi)
 	if (shi->vlr->flag & R_SMOOTH) {
 		
 		if (shi->osatex && (texco & (TEXCO_NORM | TEXCO_REFL)) ) {
-			float *n1 = shi->n1, *n2 = shi->n2, *n3 = shi->n3;
+			const float *n1 = shi->n1, *n2 = shi->n2, *n3 = shi->n3;
 			
 			dl = shi->dx_u + shi->dx_v;
 			shi->dxno[0] = dl * n3[0] - shi->dx_u * n1[0] - shi->dx_v * n2[0];
@@ -899,7 +896,7 @@ void shade_input_set_shade_texco(ShadeInput *shi)
 
 	/* calc tangents */
 	if (mode & (MA_TANGENT_V | MA_NORMAP_TANG) || R.flag & R_NEED_TANGENT) {
-		float *tangent, *s1, *s2, *s3;
+		const float *tangent, *s1, *s2, *s3;
 		float tl, tu, tv;
 
 		if (shi->vlr->flag & R_SMOOTH) {
@@ -971,7 +968,7 @@ void shade_input_set_shade_texco(ShadeInput *shi)
 	}
 
 	if (mode & MA_STR_SURFDIFF) {
-		float *surfnor = RE_vlakren_get_surfnor(obr, shi->vlr, 0);
+		const float *surfnor = RE_vlakren_get_surfnor(obr, shi->vlr, 0);
 
 		if (surfnor) {
 			copy_v3_v3(shi->surfnor, surfnor);
@@ -985,7 +982,7 @@ void shade_input_set_shade_texco(ShadeInput *shi)
 	}
 	
 	if (R.r.mode & R_SPEED) {
-		float *s1, *s2, *s3;
+		const float *s1, *s2, *s3;
 		
 		s1 = RE_vertren_get_winspeed(obi, v1, 0);
 		s2 = RE_vertren_get_winspeed(obi, v2, 0);
@@ -1010,7 +1007,7 @@ void shade_input_set_shade_texco(ShadeInput *shi)
 		
 		if (texco & TEXCO_ORCO) {
 			if (v1->orco) {
-				float *o1, *o2, *o3;
+				const float *o1, *o2, *o3;
 				
 				o1 = v1->orco;
 				o2 = v2->orco;
@@ -1074,7 +1071,7 @@ void shade_input_set_shade_texco(ShadeInput *shi)
 			if ((mode & (MA_VERTEXCOL | MA_VERTEXCOLP)) || (R.flag & R_NEED_VCOL)) {
 				for (i = 0; (mcol = RE_vlakren_get_mcol(obr, vlr, i, &name, 0)); i++) {
 					ShadeInputCol *scol = &shi->col[i];
-					char *cp1, *cp2, *cp3;
+					const char *cp1, *cp2, *cp3;
 					float a[3];
 					
 					shi->totcol++;
@@ -1254,7 +1251,7 @@ void shade_input_set_shade_texco(ShadeInput *shi)
 		}
 		
 		if (texco & TEXCO_STRESS) {
-			float *s1, *s2, *s3;
+			const float *s1, *s2, *s3;
 			
 			s1 = RE_vertren_get_stress(obr, v1, 0);
 			s2 = RE_vertren_get_stress(obr, v2, 0);

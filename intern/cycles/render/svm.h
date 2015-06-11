@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __SVM_H__
@@ -52,8 +52,7 @@ public:
 
 class SVMCompiler {
 public:
-	SVMCompiler(ShaderManager *shader_manager, ImageManager *image_manager,
-		bool use_multi_closure_);
+	SVMCompiler(ShaderManager *shader_manager, ImageManager *image_manager);
 	void compile(Shader *shader, vector<int4>& svm_nodes, int index);
 
 	void stack_assign(ShaderOutput *output);
@@ -123,12 +122,22 @@ protected:
 	bool node_skip_input(ShaderNode *node, ShaderInput *input);
 
 	/* single closure */
-	void find_dependencies(set<ShaderNode*>& dependencies, const set<ShaderNode*>& done, ShaderInput *input);
+	void find_dependencies(set<ShaderNode*>& dependencies,
+	                       const set<ShaderNode*>& done,
+	                       ShaderInput *input,
+	                       ShaderNode *skip_node = NULL);
+	void generate_node(ShaderNode *node, set<ShaderNode*>& done);
+	void generate_closure_node(ShaderNode *node, set<ShaderNode*>& done);
+	void generated_shared_closure_nodes(ShaderNode *root_node, ShaderNode *node,
+	                                    set<ShaderNode*>& done,
+		set<ShaderNode*>& closure_done, const set<ShaderNode*>& shared);
 	void generate_svm_nodes(const set<ShaderNode*>& nodes, set<ShaderNode*>& done);
-	void generate_closure(ShaderNode *node, set<ShaderNode*>& done);
 
 	/* multi closure */
-	void generate_multi_closure(ShaderNode *node, set<ShaderNode*>& done, set<ShaderNode*>& closure_done);
+	void generate_multi_closure(ShaderNode *root_node,
+	                            ShaderNode *node,
+	                            set<ShaderNode*>& done,
+	                            set<ShaderNode*>& closure_done);
 
 	/* compile */
 	void compile_type(Shader *shader, ShaderGraph *graph, ShaderType type);
@@ -140,7 +149,6 @@ protected:
 	Stack active_stack;
 	int max_stack_use;
 	uint mix_weight_offset;
-	bool use_multi_closure;
 	bool compile_failed;
 };
 

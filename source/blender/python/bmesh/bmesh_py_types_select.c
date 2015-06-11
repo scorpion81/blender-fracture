@@ -43,13 +43,8 @@
 #include "bmesh_py_types.h"
 #include "bmesh_py_types_select.h"
 
-#include "BKE_editmesh.h"
-
-#include "DNA_mesh_types.h"
-
 #include "../generic/py_capi_utils.h"
-
-#include "bmesh_py_api.h" /* own include */
+#include "../generic/python_utildefines.h"
 
 PyDoc_STRVAR(bpy_bmeditselseq_active_doc,
 "The last selected element or None (read-only).\n\n:type: :class:`BMVert`, :class:`BMEdge` or :class:`BMFace`"
@@ -114,7 +109,7 @@ static PyObject *bpy_bmeditselseq_add(BPy_BMEditSelSeq *self, BPy_BMElem *value)
 		return NULL;
 	}
 
-	BPY_BM_CHECK_SOURCE_OBJ(value, self->bm, "select_history.add()");
+	BPY_BM_CHECK_SOURCE_OBJ(self->bm, "select_history.add()", value);
 
 	BM_select_history_store(self->bm, value->ele);
 
@@ -139,7 +134,7 @@ static PyObject *bpy_bmeditselseq_remove(BPy_BMEditSelSeq *self, BPy_BMElem *val
 		return NULL;
 	}
 
-	BPY_BM_CHECK_SOURCE_OBJ(value, self->bm, "select_history.remove()");
+	BPY_BM_CHECK_SOURCE_OBJ(self->bm, "select_history.remove()", value);
 
 	if (BM_select_history_remove(self->bm, value->ele) == false) {
 		PyErr_SetString(PyExc_ValueError,
@@ -167,7 +162,7 @@ static Py_ssize_t bpy_bmeditselseq_length(BPy_BMEditSelSeq *self)
 {
 	BPY_BM_CHECK_INT(self);
 
-	return BLI_countlist(&self->bm->selected);
+	return BLI_listbase_count(&self->bm->selected);
 }
 
 static PyObject *bpy_bmeditselseq_subscript_int(BPy_BMEditSelSeq *self, int keynum)
@@ -199,7 +194,6 @@ static PyObject *bpy_bmeditselseq_subscript_slice(BPy_BMEditSelSeq *self, Py_ssi
 	bool ok;
 
 	PyObject *list;
-	PyObject *item;
 	BMEditSelection *ese;
 
 	BPY_BM_CHECK_OBJ(self);
@@ -224,9 +218,7 @@ static PyObject *bpy_bmeditselseq_subscript_slice(BPy_BMEditSelSeq *self, Py_ssi
 
 	/* add items until stop */
 	while ((ese = ese->next)) {
-		item = BPy_BMElem_CreatePyObject(self->bm, &ese->ele->head);
-		PyList_Append(list, item);
-		Py_DECREF(item);
+		PyList_APPEND(list, BPy_BMElem_CreatePyObject(self->bm, &ese->ele->head));
 
 		count++;
 		if (count == stop) {

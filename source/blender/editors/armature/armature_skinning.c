@@ -43,6 +43,7 @@
 #include "BKE_action.h"
 #include "BKE_armature.h"
 #include "BKE_deform.h"
+#include "BKE_object_deform.h"
 #include "BKE_report.h"
 #include "BKE_subsurf.h"
 #include "BKE_modifier.h"
@@ -52,7 +53,10 @@
 
 
 #include "armature_intern.h"
-#include "meshlaplacian.h"
+
+#ifdef WITH_OPENNL
+#  include "meshlaplacian.h"
+#endif
 
 #if 0
 #include "reeb.h"
@@ -113,11 +117,11 @@ static int vgroup_add_unique_bone_cb(Object *ob, Bone *bone, void *UNUSED(ptr))
 {
 	/* This group creates a vertex group to ob that has the
 	 * same name as bone (provided the bone is skinnable). 
-	 * If such a vertex group aleady exist the routine exits.
+	 * If such a vertex group already exist the routine exits.
 	 */
 	if (!(bone->flag & BONE_NO_DEFORM)) {
 		if (!defgroup_find_name(ob, bone->name)) {
-			ED_vgroup_add_name(ob, bone->name);
+			BKE_object_defgroup_add_name(ob, bone->name);
 			return 1;
 		}
 	}
@@ -162,9 +166,15 @@ static int dgroup_skinnable_cb(Object *ob, Bone *bone, void *datap)
 			else
 				segments = 1;
 			
-			if (!wpmode || ((arm->layer & bone->layer) && (bone->flag & BONE_SELECTED)))
-				if (!(defgroup = defgroup_find_name(ob, bone->name)))
-					defgroup = ED_vgroup_add_name(ob, bone->name);
+			if (!wpmode || ((arm->layer & bone->layer) && (bone->flag & BONE_SELECTED))) {
+				if (!(defgroup = defgroup_find_name(ob, bone->name))) {
+					defgroup = BKE_object_defgroup_add_name(ob, bone->name);
+				}
+				else if (defgroup->flag & DG_LOCK_WEIGHT) {
+					/* In case vgroup already exists and is locked, do not modify it here. See T43814. */
+					defgroup = NULL;
+				}
+			}
 			
 			if (data->list != NULL) {
 				hgroup = (bDeformGroup ***) &data->list;
@@ -180,18 +190,9 @@ static int dgroup_skinnable_cb(Object *ob, Bone *bone, void *datap)
 	return 0;
 }
 
-static void add_vgroups__mapFunc(void *userData, int index, const float co[3],
-                                 const float UNUSED(no_f[3]), const short UNUSED(no_s[3]))
-{
-	/* DerivedMesh mapFunc for getting final coords in weight paint mode */
-
-	float (*verts)[3] = userData;
-	copy_v3_v3(verts[index], co);
-}
-
 static void envelope_bone_weighting(Object *ob, Mesh *mesh, float (*verts)[3], int numbones, Bone **bonelist,
                                     bDeformGroup **dgrouplist, bDeformGroup **dgroupflip,
-                                    float (*root)[3], float (*tip)[3], int *selected, float scale)
+                                    float (*root)[3], float (*tip)[3], const int *selected, float scale)
 {
 	/* Create vertex group weights from envelopes */
 
@@ -200,10 +201,22 @@ static void envelope_bone_weighting(Object *ob, Mesh *mesh, float (*verts)[3], i
 	float distance;
 	int i, iflip, j;
 	bool use_topology = (mesh->editflag & ME_EDIT_MIRROR_TOPO) != 0;
+	bool use_mask = false;
+
+	if ((ob->mode & OB_MODE_WEIGHT_PAINT) &&
+	    (mesh->editflag & (ME_EDIT_PAINT_FACE_SEL | ME_EDIT_PAINT_VERT_SEL)))
+	{
+		use_mask = true;
+	}
 
 	/* for each vertex in the mesh */
 	for (i = 0; i < mesh->totvert; i++) {
-		iflip = (dgroupflip) ? mesh_get_x_mirror_vert(ob, i, use_topology) : 0;
+
+		if (use_mask && !(mesh->mvert[i].flag & SELECT)) {
+			continue;
+		}
+
+		iflip = (dgroupflip) ? mesh_get_x_mirror_vert(ob, i, use_topology) : -1;
 		
 		/* for each skinnable bone */
 		for (j = 0; j < numbones; ++j) {
@@ -224,7 +237,7 @@ static void envelope_bone_weighting(Object *ob, Mesh *mesh, float (*verts)[3], i
 				ED_vgroup_vert_remove(ob, dgroup, i);
 			
 			/* do same for mirror */
-			if (dgroupflip && dgroupflip[j] && iflip >= 0) {
+			if (dgroupflip && dgroupflip[j] && iflip != -1) {
 				if (distance != 0.0f)
 					ED_vgroup_vert_add(ob, dgroupflip[j], iflip, distance,
 					                   WEIGHT_REPLACE);
@@ -235,7 +248,8 @@ static void envelope_bone_weighting(Object *ob, Mesh *mesh, float (*verts)[3], i
 	}
 }
 
-static void add_verts_to_dgroups(ReportList *reports, Scene *scene, Object *ob, Object *par, int heat, int mirror)
+static void add_verts_to_dgroups(ReportList *reports, Scene *scene, Object *ob, Object *par,
+                                 int heat, const bool mirror)
 {
 	/* This functions implements the automatic computation of vertex group
 	 * weights, either through envelopes or using a heat equilibrium.
@@ -272,7 +286,7 @@ static void add_verts_to_dgroups(ReportList *reports, Scene *scene, Object *ob, 
 	if (numbones == 0)
 		return;
 	
-	if (ED_vgroup_data_create(ob->data) == FALSE)
+	if (BKE_object_defgroup_data_create(ob->data) == NULL)
 		return;
 
 	/* create an array of pointer to bones that are skinnable
@@ -362,7 +376,7 @@ static void add_verts_to_dgroups(ReportList *reports, Scene *scene, Object *ob, 
 		DerivedMesh *dm = mesh_get_derived_final(scene, ob, CD_MASK_BAREMESH);
 		
 		if (dm->foreachMappedVert) {
-			dm->foreachMappedVert(dm, add_vgroups__mapFunc, (void *)verts, DM_FOREACH_NOP);
+			mesh_get_mapped_verts_coords(dm, verts, mesh->totvert);
 			vertsfilled = 1;
 		}
 		
@@ -403,7 +417,7 @@ static void add_verts_to_dgroups(ReportList *reports, Scene *scene, Object *ob, 
 	}
 
 	/* only generated in some cases but can call anyway */
-	mesh_octree_table(ob, NULL, NULL, 'e');
+	ED_mesh_mirror_spatial_table(ob, NULL, NULL, 'e');
 
 	/* free the memory allocated */
 	MEM_freeN(bonelist);
@@ -415,7 +429,8 @@ static void add_verts_to_dgroups(ReportList *reports, Scene *scene, Object *ob, 
 	MEM_freeN(verts);
 }
 
-void create_vgroups_from_armature(ReportList *reports, Scene *scene, Object *ob, Object *par, int mode, int mirror)
+void create_vgroups_from_armature(ReportList *reports, Scene *scene, Object *ob, Object *par,
+                                  const int mode, const bool mirror)
 {
 	/* Lets try to create some vertex groups 
 	 * based on the bones of the parent armature.
@@ -423,7 +438,7 @@ void create_vgroups_from_armature(ReportList *reports, Scene *scene, Object *ob,
 	bArmature *arm = par->data;
 
 	if (mode == ARM_GROUPS_NAME) {
-		const int defbase_tot = BLI_countlist(&ob->defbase);
+		const int defbase_tot = BLI_listbase_count(&ob->defbase);
 		int defbase_add;
 		/* Traverse the bone list, trying to create empty vertex 
 		 * groups corresponding to the bone.
@@ -436,7 +451,7 @@ void create_vgroups_from_armature(ReportList *reports, Scene *scene, Object *ob,
 			ED_vgroup_data_clamp_range(ob->data, defbase_tot);
 		}
 	}
-	else if (mode == ARM_GROUPS_ENVELOPE || mode == ARM_GROUPS_AUTO) {
+	else if (ELEM(mode, ARM_GROUPS_ENVELOPE, ARM_GROUPS_AUTO)) {
 		/* Traverse the bone list, trying to create vertex groups 
 		 * that are populated with the vertices for which the
 		 * bone is closest.

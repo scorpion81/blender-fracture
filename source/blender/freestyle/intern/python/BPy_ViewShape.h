@@ -25,7 +25,9 @@
 #ifndef __FREESTYLE_PYTHON_VIEWSHAPE_H__
 #define __FREESTYLE_PYTHON_VIEWSHAPE_H__
 
+extern "C" {
 #include <Python.h>
+}
 
 #include "../view_map/ViewMap.h"
 
@@ -47,7 +49,7 @@ extern PyTypeObject ViewShape_Type;
 typedef struct {
 	PyObject_HEAD
 	ViewShape *vs;
-	int borrowed; /* non-zero if *vs a borrowed object */
+	bool borrowed; /* true if *vs a borrowed object */
 	BPy_SShape *py_ss;
 } BPy_ViewShape;
 

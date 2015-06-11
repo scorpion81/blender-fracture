@@ -31,6 +31,7 @@
 #include "BLI_math.h"
 #include "BLI_array.h"
 #include "BLI_alloca.h"
+#include "BLI_stackdefines.h"
 
 #include "BKE_customdata.h"
 
@@ -91,8 +92,8 @@ static void remdoubles_createface(BMesh *bm, BMFace *f, BMOpSlot *slot_targetmap
 	STACK_DECLARE(edges);
 	STACK_DECLARE(loops);
 
-	STACK_INIT(edges);
-	STACK_INIT(loops);
+	STACK_INIT(edges, f->len);
+	STACK_INIT(loops, f->len);
 
 	BM_ITER_ELEM (l, &liter, f, BM_LOOPS_OF_FACE) {
 		BMVert *v1 = l->v;
@@ -151,9 +152,6 @@ static void remdoubles_createface(BMesh *bm, BMFace *f, BMOpSlot *slot_targetmap
 			}
 		}
 	}
-
-	STACK_FREE(edges);
-	STACK_FREE(loops);
 }
 
 /**
@@ -219,7 +217,7 @@ void bmo_weld_verts_exec(BMesh *bm, BMOperator *op)
 			}
 		}
 	}
-	bm->elem_index_dirty |= BM_FACE;
+	bm->elem_index_dirty |= BM_FACE | BM_LOOP;
 
 	/* faces get "modified" by creating new faces here, then at the
 	 * end the old faces are deleted */
@@ -240,7 +238,7 @@ void bmo_weld_verts_exec(BMesh *bm, BMOperator *op)
 
 static int vergaverco(const void *e1, const void *e2)
 {
-	const BMVert *v1 = *(void **)e1, *v2 = *(void **)e2;
+	const BMVert *v1 = *(const void **)e1, *v2 = *(const void **)e2;
 	float x1 = v1->co[0] + v1->co[1] + v1->co[2];
 	float x2 = v2->co[0] + v2->co[1] + v2->co[2];
 
@@ -389,7 +387,7 @@ void bmo_collapse_exec(BMesh *bm, BMOperator *op)
 
 	BMO_slot_buffer_flag_enable(bm, op->slots_in, "edges", BM_EDGE, EDGE_MARK);
 
-	BMW_init(&walker, bm, BMW_SHELL,
+	BMW_init(&walker, bm, BMW_VERT_SHELL,
 	         BMW_MASK_NOP, EDGE_MARK, BMW_MASK_NOP,
 	         BMW_FLAG_NOP, /* no need to use BMW_FLAG_TEST_HIDDEN, already marked data */
 	         BMW_NIL_LAY);
@@ -530,7 +528,8 @@ static void bmesh_find_doubles_common(BMesh *bm, BMOperator *op,
 	int i, j, keepvert = 0;
 
 	const float dist  = BMO_slot_float_get(op->slots_in, "dist");
-	const float dist3 = dist * 3.0f;
+	const float dist_sq = dist * dist;
+	const float dist3 = ((float)M_SQRT3 + 0.00005f) * dist;   /* Just above sqrt(3) */
 
 	/* Test whether keep_verts arg exists and is non-empty */
 	if (BMO_slot_exists(op->slots_in, "keep_verts")) {
@@ -578,7 +577,7 @@ static void bmesh_find_doubles_common(BMesh *bm, BMOperator *op,
 					continue;
 			}
 
-			if (compare_len_v3v3(v_check->co, v_other->co, dist)) {
+			if (compare_len_squared_v3v3(v_check->co, v_other->co, dist_sq)) {
 
 				/* If one vert is marked as keep, make sure it will be the target */
 				if (BMO_elem_flag_test(bm, v_other, VERT_KEEP)) {

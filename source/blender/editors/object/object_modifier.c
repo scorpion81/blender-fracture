@@ -42,6 +42,9 @@
 #include "DNA_meshdata_types.h"
 #include "DNA_object_force.h"
 #include "DNA_scene_types.h"
+#include "DNA_rigidbody_types.h"
+#include "DNA_fracture_types.h"
+#include "DNA_group_types.h"
 
 #include "BLI_bitmap.h"
 #include "BLI_math.h"
@@ -50,6 +53,7 @@
 #include "BLI_string_utf8.h"
 #include "BLI_path_util.h"
 #include "BLI_utildefines.h"
+#include "BLI_kdtree.h"
 
 #include "BKE_animsys.h"
 #include "BKE_curve.h"
@@ -58,6 +62,7 @@
 #include "BKE_displist.h"
 #include "BKE_DerivedMesh.h"
 #include "BKE_effect.h"
+#include "BKE_fracture.h"
 #include "BKE_global.h"
 #include "BKE_key.h"
 #include "BKE_lattice.h"
@@ -68,10 +73,19 @@
 #include "BKE_multires.h"
 #include "BKE_report.h"
 #include "BKE_object.h"
+#include "BKE_object_deform.h"
 #include "BKE_ocean.h"
+#include "BKE_paint.h"
 #include "BKE_particle.h"
+#include "BKE_pointcache.h"
+#include "BKE_report.h"
 #include "BKE_softbody.h"
 #include "BKE_editmesh.h"
+#include "BKE_scene.h"
+#include "BKE_material.h"
+#include "BKE_library.h"
+#include "BKE_rigidbody.h"
+#include "BKE_group.h"
 
 #include "RNA_access.h"
 #include "RNA_define.h"
@@ -80,13 +94,16 @@
 #include "ED_armature.h"
 #include "ED_object.h"
 #include "ED_screen.h"
-#include "ED_sculpt.h"
 #include "ED_mesh.h"
+#include "ED_physics.h"
+#include "ED_keyframing.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
 
 #include "object_intern.h"
+
+#include "PIL_time.h"
 
 static void modifier_skin_customdata_delete(struct Object *ob);
 
@@ -98,7 +115,7 @@ ModifierData *ED_object_modifier_add(ReportList *reports, Main *bmain, Scene *sc
 	ModifierTypeInfo *mti = modifierType_getInfo(type);
 	
 	/* only geometry objects should be able to get modifiers [#25291] */
-	if (!ELEM5(ob->type, OB_MESH, OB_CURVE, OB_SURF, OB_FONT, OB_LATTICE)) {
+	if (!ELEM(ob->type, OB_MESH, OB_CURVE, OB_SURF, OB_FONT, OB_LATTICE)) {
 		BKE_reportf(reports, RPT_WARNING, "Modifiers cannot be added to object '%s'", ob->id.name + 2);
 		return NULL;
 	}
@@ -161,12 +178,12 @@ ModifierData *ED_object_modifier_add(ReportList *reports, Main *bmain, Scene *sc
 
 			if (ob->mode & OB_MODE_SCULPT) {
 				/* ensure that grid paint mask layer is created */
-				ED_sculpt_mask_layers_ensure(ob, (MultiresModifierData *)new_md);
+				BKE_sculpt_mask_layers_ensure(ob, (MultiresModifierData *)new_md);
 			}
 		}
 		else if (type == eModifierType_Skin) {
 			/* ensure skin-node customdata exists */
-			modifier_skin_customdata_ensure(ob);
+			BKE_mesh_ensure_skin_customdata(ob->data);
 		}
 	}
 
@@ -175,8 +192,8 @@ ModifierData *ED_object_modifier_add(ReportList *reports, Main *bmain, Scene *sc
 	return new_md;
 }
 
-/* Return TRUE if the object has a modifier of type 'type' other than
- * the modifier pointed to be 'exclude', otherwise returns FALSE. */
+/* Return true if the object has a modifier of type 'type' other than
+ * the modifier pointed to be 'exclude', otherwise returns false. */
 static bool object_has_modifier(const Object *ob, const ModifierData *exclude,
                                 ModifierType type)
 {
@@ -184,19 +201,19 @@ static bool object_has_modifier(const Object *ob, const ModifierData *exclude,
 
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if ((md != exclude) && (md->type == type))
-			return TRUE;
+			return true;
 	}
 
-	return FALSE;
+	return false;
 }
 
 /* If the object data of 'orig_ob' has other users, run 'callback' on
  * each of them.
  *
- * If include_orig is TRUE, the callback will run on 'orig_ob' too.
+ * If include_orig is true, the callback will run on 'orig_ob' too.
  * 
- * If the callback ever returns TRUE, iteration will stop and the
- * function value will be TRUE. Otherwise the function returns FALSE.
+ * If the callback ever returns true, iteration will stop and the
+ * function value will be true. Otherwise the function returns false.
  */
 bool ED_object_iter_other(Main *bmain, Object *orig_ob, const bool include_orig,
                           bool (*callback)(Object *ob, void *callback_data),
@@ -220,7 +237,7 @@ bool ED_object_iter_other(Main *bmain, Object *orig_ob, const bool include_orig,
 			    (ob->data == orig_ob->data))
 			{
 				if (callback(ob, callback_data))
-					return TRUE;
+					return true;
 
 				totfound++;
 			}
@@ -230,7 +247,7 @@ bool ED_object_iter_other(Main *bmain, Object *orig_ob, const bool include_orig,
 		return callback(orig_ob, callback_data);
 	}
 
-	return FALSE;
+	return false;
 }
 
 static bool object_has_modifier_cb(Object *ob, void *data)
@@ -254,22 +271,26 @@ bool ED_object_multires_update_totlevels_cb(Object *ob, void *totlevel_v)
 			DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
 		}
 	}
-	return FALSE;
+	return false;
 }
 
-/* Return TRUE if no modifier of type 'type' other than 'exclude' */
+/* Return true if no modifier of type 'type' other than 'exclude' */
 static bool object_modifier_safe_to_delete(Main *bmain, Object *ob,
                                            ModifierData *exclude,
                                            ModifierType type)
 {
 	return (!object_has_modifier(ob, exclude, type) &&
-	        !ED_object_iter_other(bmain, ob, FALSE,
+	        !ED_object_iter_other(bmain, ob, false,
 	                              object_has_modifier_cb, &type));
 }
 
 static bool object_modifier_remove(Main *bmain, Object *ob, ModifierData *md,
                                    bool *r_sort_depsgraph)
 {
+	/* keep some data from modifier which is necessary for the afterwards cleanup */
+	bool do_rigidbody_cleanup = (md->type == eModifierType_Fracture);
+	Scene *scene = md->scene;
+
 	/* It seems on rapid delete it is possible to
 	 * get called twice on same modifier, so make
 	 * sure it is in list. */
@@ -313,13 +334,24 @@ static bool object_modifier_remove(Main *bmain, Object *ob, ModifierData *md,
 	}
 
 	if (ELEM(md->type, eModifierType_Softbody, eModifierType_Cloth) &&
-	    ob->particlesystem.first == NULL)
+	    BLI_listbase_is_empty(&ob->particlesystem))
 	{
 		ob->mode &= ~OB_MODE_PARTICLE_EDIT;
 	}
 
 	BLI_remlink(&ob->modifiers, md);
 	modifier_free(md);
+
+	if (do_rigidbody_cleanup)
+	{
+		/* need to clean up modifier remainders inside the rigidbody world
+		 * AFTER the modifier is gone...  but only from the operator ?*/
+		if (scene->rigidbody_world)
+		{
+			BKE_rigidbody_rebuild_world(scene, -1);
+		}
+		BKE_scene_frame_set(scene, 1.0);
+	}
 
 	return 1;
 }
@@ -393,7 +425,7 @@ int ED_object_modifier_move_down(ReportList *reports, Object *ob, ModifierData *
 		if (mti->flags & eModifierTypeFlag_RequiresOriginalData) {
 			ModifierTypeInfo *nmti = modifierType_getInfo(md->next->type);
 
-			if (nmti->type != eModifierTypeType_OnlyDeform) {
+			if ((nmti->type != eModifierTypeType_OnlyDeform) && (md->next->type != eModifierType_Fracture)) {
 				BKE_report(reports, RPT_WARNING, "Cannot move beyond a non-deforming modifier");
 				return 0;
 			}
@@ -439,9 +471,9 @@ int ED_object_modifier_convert(ReportList *UNUSED(reports), Main *bmain, Scene *
 	for (a = 0; a < totpart; a++) {
 		key = cache[a];
 
-		if (key->steps > 0) {
-			totvert += key->steps + 1;
-			totedge += key->steps;
+		if (key->segments > 0) {
+			totvert += key->segments + 1;
+			totedge += key->segments;
 		}
 	}
 
@@ -449,9 +481,9 @@ int ED_object_modifier_convert(ReportList *UNUSED(reports), Main *bmain, Scene *
 	for (a = 0; a < totchild; a++) {
 		key = cache[a];
 
-		if (key->steps > 0) {
-			totvert += key->steps + 1;
-			totedge += key->steps;
+		if (key->segments > 0) {
+			totvert += key->segments + 1;
+			totedge += key->segments;
 		}
 	}
 
@@ -475,7 +507,7 @@ int ED_object_modifier_convert(ReportList *UNUSED(reports), Main *bmain, Scene *
 	cache = psys->pathcache;
 	for (a = 0; a < totpart; a++) {
 		key = cache[a];
-		kmax = key->steps;
+		kmax = key->segments;
 		for (k = 0; k <= kmax; k++, key++, cvert++, mvert++) {
 			copy_v3_v3(mvert->co, key->co);
 			if (k) {
@@ -494,7 +526,7 @@ int ED_object_modifier_convert(ReportList *UNUSED(reports), Main *bmain, Scene *
 	cache = psys->childcache;
 	for (a = 0; a < totchild; a++) {
 		key = cache[a];
-		kmax = key->steps;
+		kmax = key->segments;
 		for (k = 0; k <= kmax; k++, key++, cvert++, mvert++) {
 			copy_v3_v3(mvert->co, key->co);
 			if (k) {
@@ -560,7 +592,7 @@ static int modifier_apply_shape(ReportList *reports, Scene *scene, Object *ob, M
 			/* if that was the first key block added, then it was the basis.
 			 * Initialize it with the mesh, and add another for the modifier */
 			kb = BKE_keyblock_add(key, NULL);
-			BKE_key_convert_from_mesh(me, kb);
+			BKE_keyblock_convert_from_mesh(me, kb);
 		}
 
 		kb = BKE_keyblock_add(key, md->name);
@@ -678,7 +710,7 @@ int ED_object_modifier_apply(ReportList *reports, Scene *scene, Object *ob, Modi
 	}
 	else if ((ob->mode & OB_MODE_SCULPT) &&
 	         (find_multires_modifier_before(scene, md)) &&
-	         (modifier_isSameTopology(md) == FALSE))
+	         (modifier_isSameTopology(md) == false))
 	{
 		BKE_report(reports, RPT_ERROR, "Constructive modifier cannot be applied to multi-res data in sculpt mode");
 		return 0;
@@ -807,7 +839,7 @@ void OBJECT_OT_modifier_add(wmOperatorType *ot)
 
 /************************ generic functions for operators using mod names and data context *********************/
 
-static int edit_modifier_poll_generic(bContext *C, StructRNA *rna_type, int obtype_flag)
+int edit_modifier_poll_generic(bContext *C, StructRNA *rna_type, int obtype_flag)
 {
 	PointerRNA ptr = CTX_data_pointer_get_type(C, "modifier", rna_type);
 	Object *ob = (ptr.id.data) ? ptr.id.data : ED_object_active_context(C);
@@ -819,36 +851,36 @@ static int edit_modifier_poll_generic(bContext *C, StructRNA *rna_type, int obty
 	return 1;
 }
 
-static int edit_modifier_poll(bContext *C)
+int edit_modifier_poll(bContext *C)
 {
 	return edit_modifier_poll_generic(C, &RNA_Modifier, 0);
 }
 
-static void edit_modifier_properties(wmOperatorType *ot)
+void edit_modifier_properties(wmOperatorType *ot)
 {
 	RNA_def_string(ot->srna, "modifier", NULL, MAX_NAME, "Modifier", "Name of the modifier to edit");
 }
 
-static int edit_modifier_invoke_properties(bContext *C, wmOperator *op)
+int edit_modifier_invoke_properties(bContext *C, wmOperator *op)
 {
 	ModifierData *md;
 	
 	if (RNA_struct_property_is_set(op->ptr, "modifier")) {
-		return TRUE;
+		return true;
 	}
 	else {
 		PointerRNA ptr = CTX_data_pointer_get_type(C, "modifier", &RNA_Modifier);
 		if (ptr.data) {
 			md = ptr.data;
 			RNA_string_set(op->ptr, "modifier", md->name);
-			return TRUE;
+			return true;
 		}
 	}
 
-	return FALSE;
+	return false;
 }
 
-static ModifierData *edit_modifier_property_get(wmOperator *op, Object *ob, int type)
+ModifierData *edit_modifier_property_get(wmOperator *op, Object *ob, int type)
 {
 	char modifier_name[MAX_NAME];
 	ModifierData *md;
@@ -1134,7 +1166,7 @@ static int multires_higher_levels_delete_exec(bContext *C, wmOperator *op)
 	
 	multiresModifier_del_levels(mmd, ob, 1);
 
-	ED_object_iter_other(CTX_data_main(C), ob, TRUE,
+	ED_object_iter_other(CTX_data_main(C), ob, true,
 	                     ED_object_multires_update_totlevels_cb,
 	                     &mmd->totlvl);
 	
@@ -1178,7 +1210,7 @@ static int multires_subdivide_exec(bContext *C, wmOperator *op)
 	
 	multiresModifier_subdivide(mmd, ob, 0, mmd->simple);
 
-	ED_object_iter_other(CTX_data_main(C), ob, TRUE,
+	ED_object_iter_other(CTX_data_main(C), ob, true,
 	                     ED_object_multires_update_totlevels_cb,
 	                     &mmd->totlvl);
 
@@ -1187,7 +1219,7 @@ static int multires_subdivide_exec(bContext *C, wmOperator *op)
 
 	if (ob->mode & OB_MODE_SCULPT) {
 		/* ensure that grid paint mask layer is created */
-		ED_sculpt_mask_layers_ensure(ob, mmd);
+		BKE_sculpt_mask_layers_ensure(ob, mmd);
 	}
 	
 	return OPERATOR_FINISHED;
@@ -1353,7 +1385,7 @@ void OBJECT_OT_multires_external_save(wmOperatorType *ot)
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
-	WM_operator_properties_filesel(ot, FOLDERFILE | BTXFILE, FILE_SPECIAL, FILE_SAVE,
+	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_BTX, FILE_SPECIAL, FILE_SAVE,
 	                               WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY);
 	edit_modifier_properties(ot);
 }
@@ -1431,39 +1463,6 @@ void OBJECT_OT_multires_base_apply(wmOperatorType *ot)
 
 /************************** skin modifier ***********************/
 
-void modifier_skin_customdata_ensure(Object *ob)
-{
-	Mesh *me = ob->data;
-	BMesh *bm = me->edit_btmesh ? me->edit_btmesh->bm : NULL;
-	MVertSkin *vs;
-
-	if (bm && !CustomData_has_layer(&bm->vdata, CD_MVERT_SKIN)) {
-		BMVert *v;
-		BMIter iter;
-
-		BM_data_layer_add(bm, &bm->vdata, CD_MVERT_SKIN);
-		
-		/* Mark an arbitrary vertex as root */
-		BM_ITER_MESH (v, &iter, bm, BM_VERTS_OF_MESH) {
-			vs = CustomData_bmesh_get(&bm->vdata, v->head.data,
-			                          CD_MVERT_SKIN);
-			vs->flag |= MVERT_SKIN_ROOT;
-			break;
-		}
-	}
-	else if (!CustomData_has_layer(&me->vdata, CD_MVERT_SKIN)) {
-		vs = CustomData_add_layer(&me->vdata,
-		                          CD_MVERT_SKIN,
-		                          CD_DEFAULT,
-		                          NULL,
-		                          me->totvert);
-
-		/* Mark an arbitrary vertex as root */
-		if (vs)
-			vs->flag |= MVERT_SKIN_ROOT;
-	}
-}
-
 static void modifier_skin_customdata_delete(Object *ob)
 {
 	Mesh *me = ob->data;
@@ -1487,7 +1486,7 @@ static int skin_edit_poll(bContext *C)
 	        edit_modifier_poll_generic(C, &RNA_SkinModifier, (1 << OB_MESH)));
 }
 
-static void skin_root_clear(BMesh *bm, BMVert *bm_vert, GHash *visited)
+static void skin_root_clear(BMesh *bm, BMVert *bm_vert, GSet *visited)
 {
 	BMEdge *bm_edge;
 	BMIter bm_iter;
@@ -1495,14 +1494,14 @@ static void skin_root_clear(BMesh *bm, BMVert *bm_vert, GHash *visited)
 	BM_ITER_ELEM (bm_edge, &bm_iter, bm_vert, BM_EDGES_OF_VERT) {
 		BMVert *v2 = BM_edge_other_vert(bm_edge, bm_vert);
 
-		if (!BLI_ghash_lookup(visited, v2)) {
+		if (!BLI_gset_haskey(visited, v2)) {
 			MVertSkin *vs = CustomData_bmesh_get(&bm->vdata,
 			                                     v2->head.data,
 			                                     CD_MVERT_SKIN);
 
 			/* clear vertex root flag and add to visited set */
 			vs->flag &= ~MVERT_SKIN_ROOT;
-			BLI_ghash_insert(visited, v2, v2);
+			BLI_gset_insert(visited, v2);
 
 			skin_root_clear(bm, v2, visited);
 		}
@@ -1516,14 +1515,14 @@ static int skin_root_mark_exec(bContext *C, wmOperator *UNUSED(op))
 	BMesh *bm = em->bm;
 	BMVert *bm_vert;
 	BMIter bm_iter;
-	GHash *visited;
+	GSet *visited;
 
-	visited = BLI_ghash_ptr_new("skin_root_mark_exec visited");
+	visited = BLI_gset_ptr_new(__func__);
 
-	modifier_skin_customdata_ensure(ob);
+	BKE_mesh_ensure_skin_customdata(ob->data);
 
 	BM_ITER_MESH (bm_vert, &bm_iter, bm, BM_VERTS_OF_MESH) {
-		if (!BLI_ghash_lookup(visited, bm_vert) &&
+		if (!BLI_gset_haskey(visited, bm_vert) &&
 		    BM_elem_flag_test(bm_vert, BM_ELEM_SELECT))
 		{
 			MVertSkin *vs = CustomData_bmesh_get(&bm->vdata,
@@ -1532,14 +1531,14 @@ static int skin_root_mark_exec(bContext *C, wmOperator *UNUSED(op))
 
 			/* mark vertex as root and add to visited set */
 			vs->flag |= MVERT_SKIN_ROOT;
-			BLI_ghash_insert(visited, bm_vert, bm_vert);
+			BLI_gset_insert(visited, bm_vert);
 
 			/* clear root flag from all connected vertices (recursively) */
 			skin_root_clear(bm, bm_vert, visited);
 		}
 	}
 
-	BLI_ghash_free(visited, NULL, NULL);
+	BLI_gset_free(visited, NULL);
 
 	DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
 	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
@@ -1683,9 +1682,9 @@ static void skin_armature_bone_create(Object *skin_ob,
 		int v;
 
 		/* ignore edge if already visited */
-		if (BLI_BITMAP_GET(edges_visited, endx))
+		if (BLI_BITMAP_TEST(edges_visited, endx))
 			continue;
-		BLI_BITMAP_SET(edges_visited, endx);
+		BLI_BITMAP_ENABLE(edges_visited, endx);
 
 		v = (e->v1 == parent_v ? e->v2 : e->v1);
 
@@ -1700,7 +1699,7 @@ static void skin_armature_bone_create(Object *skin_ob,
 		BLI_snprintf(bone->name, sizeof(bone->name), "Bone.%.2d", endx);
 
 		/* add bDeformGroup */
-		if ((dg = ED_vgroup_add_name(skin_ob, bone->name))) {
+		if ((dg = BKE_object_defgroup_add_name(skin_ob, bone->name))) {
 			ED_vgroup_vert_add(skin_ob, dg, parent_v, 1, WEIGHT_REPLACE);
 			ED_vgroup_vert_add(skin_ob, dg, v, 1, WEIGHT_REPLACE);
 		}
@@ -1909,7 +1908,7 @@ static int meshdeform_bind_exec(bContext *C, wmOperator *op)
 		else if (ob->type == OB_MBALL) {
 			BKE_displist_make_mball(CTX_data_main(C)->eval_ctx, scene, ob);
 		}
-		else if (ELEM3(ob->type, OB_CURVE, OB_SURF, OB_FONT)) {
+		else if (ELEM(ob->type, OB_CURVE, OB_SURF, OB_FONT)) {
 			BKE_displist_make_curveTypes(scene, ob, 0);
 		}
 
@@ -2007,7 +2006,7 @@ static void init_ocean_modifier_bake(struct Ocean *oc, struct OceanModifierData 
 	
 	if (!omd || !oc) return; 
 	
-	do_heightfield = TRUE;
+	do_heightfield = true;
 	do_chop = (omd->chop_amount > 0);
 	do_normals = (omd->flag & MOD_OCEAN_GENERATE_NORMALS);
 	do_jacobian = (omd->flag & MOD_OCEAN_GENERATE_FOAM);
@@ -2056,7 +2055,7 @@ static void oceanbake_update(void *customdata, float progress, int *cancel)
 	if (oceanbake_breakjob(oj))
 		*cancel = 1;
 	
-	*(oj->do_update) = TRUE;
+	*(oj->do_update) = true;
 	*(oj->progress) = progress;
 }
 
@@ -2068,11 +2067,11 @@ static void oceanbake_startjob(void *customdata, short *stop, short *do_update, 
 	oj->do_update = do_update;
 	oj->progress = progress;
 	
-	G.is_break = FALSE;   /* XXX shared with render - replace with job 'stop' switch */
+	G.is_break = false;   /* XXX shared with render - replace with job 'stop' switch */
 	
 	BKE_bake_ocean(oj->ocean, oj->och, oceanbake_update, (void *)oj);
 	
-	*do_update = TRUE;
+	*do_update = true;
 	*stop = 0;
 }
 
@@ -2086,7 +2085,7 @@ static void oceanbake_endjob(void *customdata)
 	}
 	
 	oj->omd->oceancache = oj->och;
-	oj->omd->cached = TRUE;
+	oj->omd->cached = true;
 }
 
 static int ocean_bake_exec(bContext *C, wmOperator *op)
@@ -2153,7 +2152,7 @@ static int ocean_bake_exec(bContext *C, wmOperator *op)
 	BKE_bake_ocean(ocean, och);
 	
 	omd->oceancache = och;
-	omd->cached = TRUE;
+	omd->cached = true;
 	
 	scene->r.cfra = cfra;
 	
@@ -2207,7 +2206,7 @@ void OBJECT_OT_ocean_bake(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 	edit_modifier_properties(ot);
 	
-	RNA_def_boolean(ot->srna, "free", FALSE, "Free", "Free the bake, rather than generating it");
+	RNA_def_boolean(ot->srna, "free", false, "Free", "Free the bake, rather than generating it");
 }
 
 /************************ LaplacianDeform bind operator *********************/
@@ -2259,3 +2258,767 @@ void OBJECT_OT_laplaciandeform_bind(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 	edit_modifier_properties(ot);
 }
+
+/****************** rigidbody modifier refresh operator *********************/
+
+typedef struct FractureJob {
+	/* from wmJob */
+	void *owner;
+	short *stop, *do_update;
+	float *progress;
+	int current_frame, total_progress;
+	int start, end;
+	struct Object *ob;
+	struct DerivedMesh *derivedData;
+} FractureJob;
+
+
+static void fracture_free(void *customdata)
+{
+	FractureJob *fj = customdata;
+	MEM_freeN(fj);
+}
+
+static int fracture_breakjob(void *UNUSED(customdata))
+{
+	/* FractureJob *fj = (FractureJob *)customdata;
+	 * return *(fj->stop); */
+	return G.is_break; /* a workaround solution */
+}
+
+static void fracture_update(void *customdata)
+{
+	FractureJob *fj = customdata;
+	float progress;
+
+	/*threaded fracture only in prefracture mode !*/
+	FractureState *fs = fj->ob->fracture_objects->states.first;
+
+	if (fs->frac_mesh == NULL)
+		(*fj->progress) = 0.0f;
+
+	if (fracture_breakjob(fj) && fs->frac_mesh)
+		fs->frac_mesh->cancel = 1;
+
+	/*(fj->do_update) = true;  useless here... because in wm_jobs.c its set to false again, preventing update*/
+	if (fs->frac_mesh)
+	{
+		progress = (float)(fs->frac_mesh->progress_counter) / (float)(fj->total_progress);
+		(*fj->progress) = progress;
+	}
+}
+
+static void fracture_startjob(void *customdata, short *stop, short *do_update, float *progress)
+{
+	FractureJob *fj = customdata;
+	Object *ob = fj->ob;
+	FractureContainer *fc = ob->fracture_objects;
+
+	fj->stop = stop;
+	fj->do_update = do_update;
+	fj->progress = progress;
+	*(fj->stop) = 0; /*false*/
+
+	G.is_break = false;   /* XXX shared with render - replace with job 'stop' switch */
+
+	*(fj->do_update) = true;
+	*do_update = true;
+	*stop = 0;
+
+	/*...and trigger modifier execution HERE*/
+	//makeDerivedMesh(scene, ob, NULL, scene->customdata_mask | CD_MASK_BAREMESH, 0);
+	if (fc->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+	{
+		//perhaps copy...
+		BKE_prefracture_mesh(ob);
+	}
+}
+
+#if 0
+static void fracture_endjob(void *customdata)
+{
+	FractureJob *fj = customdata;
+	FractureModifierData *fmd = fj->fmd;
+	fmd->fracture->flag &= ~FM_FLAG_REFRESH;
+}
+#endif
+
+static int fracture_poll(bContext *C)
+{
+	return edit_modifier_poll_generic(C, &RNA_FractureModifier, 0);
+}
+
+static int fracture_refresh_exec(bContext *C, wmOperator *UNUSED(op))
+{
+	Object *obact = ED_object_active_context(C);
+	Scene *scene = CTX_data_scene(C);
+	float cfra = BKE_scene_frame_get(scene);
+	double start = 1.0;
+	FractureJob *fj;
+	wmJob* wm_job;
+	FractureContainer *fc = obact->fracture_objects;
+
+	if (scene->rigidbody_world != NULL)
+	{
+		start = (double)fc->pointcache->startframe;
+	}
+
+	BKE_scene_frame_set(scene, start);
+	DAG_relations_tag_update(G.main);
+	WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
+	WM_event_add_notifier(C, NC_OBJECT | ND_PARENT, NULL);
+	WM_event_add_notifier(C, NC_SCENE | ND_FRAME, NULL);
+
+	if (!(fc->flag & FMG_FLAG_EXECUTE_THREADED)) {
+
+		//perhaps trigger modifier eval before, but probably this is updated correctly...
+		//makeDerivedMesh(scene, obact, NULL, CD_MASK_BAREMESH, 0);
+		BKE_prefracture_mesh(obact);
+
+		//do we need this still ? TODO
+		DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
+		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
+	}
+	else {
+		/* job stuff */
+		int factor, verts, shardprogress, halvingprogress, totalprogress;
+		scene->r.cfra = cfra;
+
+		/* setup job */
+		wm_job = WM_jobs_get(CTX_wm_manager(C), CTX_wm_window(C), scene, "Fracture",
+							 WM_JOB_PROGRESS, WM_JOB_TYPE_OBJECT_FRACTURE);
+		fj = MEM_callocN(sizeof(FractureJob), "object fracture job");
+		fj->ob = obact;
+		fj->derivedData = obact->derivedFinal; //copy ?
+
+		/* if we have shards, totalprogress = shards + islands
+		 * if we dont have shards, then calculate number of processed halving steps
+		 * if we split island to shards, add both */
+		factor = (fc->frac_algorithm == MOD_FRACTURE_BISECT_FAST) ? 4 : 2;
+		shardprogress = fc->shard_count * (factor+1); /* +1 for the meshisland creation */
+
+		if (obact->derivedFinal) {
+			verts = obact->derivedFinal->getNumVerts(obact->derivedFinal);
+		}
+		else {
+			verts = ((Mesh*)obact->data)->totvert;
+		}
+
+		halvingprogress = (int)(verts / 1000) + (fc->shard_count * factor); /*-> 1000 size of each partitioned separate loose*/
+		totalprogress = ((fc->flag & FM_FLAG_SHARDS_TO_ISLANDS) ||
+		                  fc->point_source != MOD_FRACTURE_UNIFORM) ? shardprogress + halvingprogress : shardprogress;
+		fj->total_progress = totalprogress;
+
+		WM_jobs_customdata_set(wm_job, fj, fracture_free);
+		WM_jobs_timer(wm_job, 0.1, NC_WM | ND_JOB, NC_OBJECT | ND_MODIFIER);
+		WM_jobs_callbacks(wm_job, fracture_startjob, NULL, fracture_update, NULL);
+
+		WM_jobs_start(CTX_wm_manager(C), wm_job);
+	}
+
+	return OPERATOR_FINISHED;
+}
+
+static void apply_scale(Object* ob, Scene* scene)
+{
+	float mat[4][4], smat[3][3];
+	/*better apply scale prior to fracture, else shards get distorted*/
+	BKE_object_scale_to_mat3(ob, smat);
+	copy_m4_m3(mat, smat);
+
+	/* apply to object data */
+	if (ob->type == OB_MESH) {
+		Mesh *me = ob->data;
+
+		multiresModifier_scale_disp(scene, ob);
+
+		/* adjust data */
+		BKE_mesh_transform(me, mat, true);
+
+		/* update normals */
+		BKE_mesh_calc_normals(me);
+	}
+	else if (ELEM(ob->type, OB_CURVE, OB_SURF, OB_FONT)) {
+		float scale = 1.0f;
+		Curve *cu = ob->data;
+
+		scale = mat3_to_scale(smat);
+		BKE_curve_transform_ex(cu, mat, true, scale);
+	}
+
+	/*clear scale too*/
+	ob->size[0] = ob->size[1] = ob->size[2] = 1.0f;
+}
+
+static int fracture_refresh_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
+{
+	Scene* scene = CTX_data_scene(C);
+	Object* ob = CTX_data_active_object(C);
+
+	if (WM_jobs_test(CTX_wm_manager(C), scene, WM_JOB_TYPE_OBJECT_FRACTURE))
+		return OPERATOR_CANCELLED;
+
+	apply_scale(ob, scene);
+	return fracture_refresh_exec(C, op);
+}
+
+
+void OBJECT_OT_fracture_refresh(wmOperatorType *ot)
+{
+	ot->name = "Fracture Refresh";
+	ot->description = "Refresh data in the Fracture modifier";
+	ot->idname = "OBJECT_OT_fracture_refresh";
+
+	ot->poll = fracture_poll;
+	ot->invoke = fracture_refresh_invoke;
+	ot->exec = fracture_refresh_exec;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
+	edit_modifier_properties(ot);
+}
+
+#if 0
+static void do_add_group_unchecked(Group* group, Object *ob, Base *bas)
+{
+	GroupObject *go;
+
+	go = MEM_callocN(sizeof(GroupObject), "groupobject");
+	BLI_addtail(&group->gobject, go);
+	go->ob = ob;
+
+	ob->flag |= OB_FROMGROUP;
+	bas->flag |= OB_FROMGROUP;
+}
+
+static bool do_unchecked_constraint_add(Scene *scene, Object *ob, int type, ReportList *reports, Base* base)
+{
+	RigidBodyWorld *rbw = BKE_rigidbody_get_world(scene);
+
+	/* check that object doesn't already have a constraint */
+	if (ob->rigidbody_constraint) {
+		BKE_reportf(reports, RPT_INFO, "Object '%s' already has a Rigid Body Constraint", ob->id.name + 2);
+		return false;
+	}
+	/* create constraint group if it doesn't already exits */
+	if (rbw->constraints == NULL) {
+		rbw->constraints = BKE_group_add(G.main, "RigidBodyConstraints");
+	}
+	/* make rigidbody constraint settings */
+	ob->rigidbody_constraint = BKE_rigidbody_create_constraint(scene, ob, type);
+	ob->rigidbody_constraint->flag |= RBC_FLAG_NEEDS_VALIDATE;
+
+	/* add constraint to rigid body constraint group */
+	//BKE_group_object_add(rbw->constraints, ob, scene, NULL);
+	do_add_group_unchecked(rbw->constraints, ob, base);
+
+	DAG_id_tag_update(&ob->id, OB_RECALC_OB);
+	return true;
+}
+
+static Object* do_convert_meshisland_to_object(MeshIsland *mi, Scene* scene, Group* g, Object* ob,
+                                            RigidBodyWorld *rbw, int i, Object*** objs, KDTree **objtree, Base** base)
+{
+	float cent[3];
+	Mesh* me;
+	ModifierData *md;
+	bool foundFracture = false;
+	Object* ob_new = NULL;
+	char *name = BLI_strdupcat(ob->id.name + 2, "_shard");
+
+	/* create separate objects for meshislands */
+#if 0
+	if (ob->type == OB_MESH) {
+		base_new = ED_object_add_duplicate(G.main, scene, base_old, USER_DUP_MESH);
+		ob_new = base_new->object;
+	}
+	else {
+#endif
+
+	ob_new = BKE_object_add_named(G.main, scene, OB_MESH, name);
+	/*set by BKE_object_add ! */
+	*base = scene->basact;
+
+	copy_m4_m4(ob_new->obmat, ob->obmat);
+	copy_v3_v3(ob_new->rot, ob->rot);
+	copy_qt_qt(ob_new->quat, ob->quat);
+	copy_v3_v3(ob_new->rotAxis, ob->rotAxis);
+	ob_new->rotAngle = ob->rotAngle;
+	copy_v3_v3(ob_new->size, ob->size);
+
+	if (rbw) {
+		rbw->pointcache->flag |= PTCACHE_OUTDATED;
+		/* make rigidbody object settings */
+		if (ob_new->rigidbody_object == NULL) {
+			ob_new->rigidbody_object = BKE_rigidbody_create_object(scene, ob_new, RBO_TYPE_ACTIVE);
+		}
+		ob_new->rigidbody_object->type = RBO_TYPE_ACTIVE;
+		ob_new->rigidbody_object->flag |= RBO_FLAG_NEEDS_VALIDATE;
+
+		/* add object to rigid body group */
+		//BKE_group_object_add(rbw->group, ob_new, scene, NULL);
+		do_add_group_unchecked(rbw->group, ob_new, *base);
+
+		DAG_id_tag_update(&ob_new->id, OB_RECALC_OB);
+	}
+//}
+
+	//BKE_group_object_add(g, ob_new, scene, NULL);
+	do_add_group_unchecked(g, ob_new, *base);
+
+	/* throw away all modifiers before fracture, result is stored inside it */
+	while (ob_new->modifiers.first != NULL) {
+		md = ob_new->modifiers.first;
+		if (md->type == eModifierType_Fracture) {
+			/*remove fracture itself too*/
+			foundFracture = true;
+			BLI_remlink(&ob_new->modifiers, md);
+			modifier_free(md);
+			md = NULL;
+		}
+		else if (!foundFracture) {
+			BLI_remlink(&ob_new->modifiers, md);
+			modifier_free(md);
+			md = NULL;
+		}
+		/* XXX else keep following modifiers, or apply them ? */
+	}
+
+	assign_matarar(ob_new, give_matarar(ob), *give_totcolp(ob));
+
+	me = (Mesh*)ob_new->data;
+	me->edit_btmesh = NULL;
+
+	DM_to_mesh(mi->physics_mesh, me, ob_new, CD_MASK_MESH);
+
+	/*set origin to centroid*/
+	copy_v3_v3(cent, mi->centroid);
+	mul_m4_v3(ob_new->obmat, cent);
+	copy_v3_v3(ob_new->loc, cent);
+
+	/*set mass*/
+	ob_new->rigidbody_object->mass = mi->rigidbody->mass;
+
+	/*store obj indexes in kdtree and objs in array*/
+	BLI_kdtree_insert(*objtree, i, mi->centroid);
+	(*objs)[i] = ob_new;
+	//i++;
+
+	BKE_rigidbody_remove_shard(scene, mi);
+
+	return ob_new;
+}
+
+static void do_relink_scene(Object* obj, Scene* scene, Scene* bgscene, Base ***basarray, int i, int count, int *j, Base ***basarray_old)
+{
+	/* add link to 2nd scene as well */
+	Base *bas = BKE_scene_base_add(bgscene, obj);
+	(*basarray)[i] = bas;
+
+	if (((i > 0) && ((i % 10) == 0)) || i == count-1) {
+		/*only add 10 objects to scene, then delete them in current scene (keep links being set to another scene,
+		 *so the scene is empty again -> way faster */
+		int k = 0;
+		for (k = (*j); k < i+1; k++)
+		{
+			/* keep rigidbody settings ! -> dont use BKE_scene_base_unlink() */
+			Base *b = (*basarray_old)[k];
+			//Base *ba = BKE_scene_base_find(scene, b->object);
+			BLI_remlink(&scene->base, b);
+			MEM_freeN(b);
+			(*basarray_old)[k] = NULL;
+		}
+		(*j) = i+1;
+	}
+}
+
+static void do_restore_scene_link(Scene* scene, int count, Scene **bgscene, Base ***basarray, Base ***basarray_old)
+{
+	int i = 0;
+	/*after conversion link all from second scene back to first one*/
+	for (i = 0; i < count; i++) {
+		Base *bas = (*basarray)[i];
+		Base *b = NULL;
+
+		/* keep rigidbody settings ! -> dont use BKE_scene_base_unlink() */
+		BLI_remlink(&(*bgscene)->base, bas);
+		b = BKE_scene_base_add(scene, bas->object);
+		ED_base_object_select(b, BA_SELECT);
+		scene->basact = b;
+		MEM_freeN(bas);
+		(*basarray)[i] = NULL;
+	}
+
+	/*delete 2nd scene and basarrays*/
+	MEM_freeN(*basarray);
+	*basarray = NULL;
+
+	MEM_freeN(*basarray_old);
+	*basarray_old = NULL;
+
+	BKE_scene_unlink(G.main, *bgscene, scene);
+	*bgscene = NULL;
+}
+
+static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, Group* gr, Object* ob, Scene* scene,
+                                  int start, int end, int count, Object* parent, bool is_baked,
+                                  PTCacheID* pid, PointCache *cache, float obloc[3], float diff[3], int *j, Base **base)
+{
+	int i = 0;
+	Object* ob_new = NULL;
+	Mesh* me;
+	float cent[3];
+
+	char *name = BLI_strdupcat(ob->id.name + 2, "_key");
+
+	if (fmd->fracture->frac_mesh->cancel == 1)
+	{
+		fmd->fracture->frac_mesh->cancel = 0;
+		fmd->fracture->frac_mesh->running = 0;
+		return NULL;
+	}
+
+	ob_new = BKE_object_add_named(G.main, scene, OB_MESH, name);
+	*base = scene->basact;
+
+	//MEM_freeN((void*)name);
+
+	ED_object_parent_set(NULL, G.main, scene, ob_new, parent, PAR_OBJECT, false, false, NULL);
+
+	assign_matarar(ob_new, give_matarar(ob), *give_totcolp(ob));
+
+	do_add_group_unchecked(gr, ob_new, *base);
+	//bas = BKE_scene_base_find(scene, ob_new);
+	//BKE_group_object_add(gr, ob_new, scene, bas);
+	//scene->basact = bas;
+
+	//old
+	//ED_base_object_select(bas, BA_SELECT);
+
+	me = (Mesh*)ob_new->data;
+	me->edit_btmesh = NULL;
+
+	DM_to_mesh(mi->physics_mesh, me, ob_new, CD_MASK_MESH);
+
+	ED_rigidbody_object_add(scene, ob_new, RBO_TYPE_ACTIVE, NULL);
+	ob_new->rigidbody_object->flag |= RBO_FLAG_KINEMATIC;
+	ob_new->rigidbody_object->mass = mi->rigidbody->mass;
+
+	/*set origin to centroid*/
+	copy_v3_v3(cent, mi->centroid);
+	mul_m4_v3(ob_new->obmat, cent);
+	copy_v3_v3(ob_new->loc, cent);
+
+	if (start < mi->start_frame) {
+		start = mi->start_frame;
+	}
+
+	if (end > mi->start_frame + mi->frame_count) {
+		end = mi->start_frame + mi->frame_count;
+	}
+
+	for (i = start; i < end; i++)
+	{
+		float size[3];
+		copy_v3_v3(size, ob->size);
+
+		/*move object (loc, rot)*/
+		if (i > start)
+		{
+			float loc[3] = {0.0f, 0.0f, 0.0f}, rot[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+			float mat[4][4];
+
+			//is there a bake, if yes... use that (disabled for now, odd probs...)
+			if (is_baked)
+			{
+				BKE_ptcache_id_time(pid, scene, (float)i, NULL, NULL, NULL);
+				if (BKE_ptcache_read(pid, (float)i))
+				{
+					BKE_ptcache_validate(cache, i);
+					copy_v3_v3(loc, mi->rigidbody->pos);
+					copy_qt_qt(rot, mi->rigidbody->orn);
+				}
+			}
+			else
+			{
+				loc[0] = mi->locs[i*3];
+				loc[1] = mi->locs[i*3+1];
+				loc[2] = mi->locs[i*3+2];
+
+				rot[0] = mi->rots[i*4];
+				rot[1] = mi->rots[i*4+1];
+				rot[2] = mi->rots[i*4+2];
+				rot[3] = mi->rots[i*4+3];
+			}
+
+			sub_v3_v3(loc, obloc);
+			add_v3_v3(loc, diff);
+
+			loc_quat_size_to_mat4(mat, loc, rot, size);
+			BKE_scene_frame_set(scene, (double)i);
+
+			copy_m4_m4(ob_new->obmat, mat);
+
+			copy_v3_v3(ob_new->loc, loc);
+			copy_qt_qt(ob_new->quat, rot);
+			quat_to_eul(ob_new->rot, rot);
+		}
+		else
+		{
+			mul_m4_v3(ob->obmat, ob_new->loc);
+			sub_v3_v3(ob_new->loc, obloc);
+			add_v3_v3(ob_new->loc, diff);
+
+			copy_qt_qt(ob_new->quat, ob->quat);
+			copy_v3_v3(ob_new->rot, ob->rot);
+			copy_v3_v3(ob_new->size, size);
+		}
+
+		insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 0, i, 32);
+		insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 1, i, 32);
+		insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 2, i, 32);
+
+		insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 0, i, 32);
+		insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 1, i, 32);
+		insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 2, i, 32);
+
+		insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 0, i, 32);
+		insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 1, i, 32);
+		insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 2, i, 32);
+	}
+
+	(*j)++;
+	printf("Converted %d from %d objects....\n", *j, count);
+
+	return ob_new;
+}
+
+static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, Object* ob, Scene* scene, int start, int end)
+{
+	bool is_baked = false;
+	PointCache* cache = NULL;
+	PTCacheID pid;
+	MeshIsland *mi = NULL;
+	Object *parent = NULL;
+	int count = BLI_listbase_count(&fmd->fracture->meshIslands);
+	char *name = BLI_strdupcat(ob->id.name + 2, "_p_key");
+	float diff[3] = {0.0f, 0.0f, 0.0f};
+	float obloc[3];
+	int i = 0, j = 0, k = 0;
+	Scene *bgscene = BKE_scene_add(G.main, "Conversion");
+	Base** basarray = MEM_mallocN(sizeof(Base*) * count, "conversion_tempbases");
+	Base** basarray_old = MEM_mallocN(sizeof(Base*) * count, "conversion_tempbases_old");
+	double starttime;
+
+	if (scene->rigidbody_world && scene->rigidbody_world)
+	{
+		cache = scene->rigidbody_world->pointcache;
+	}
+
+	if (cache && cache->flag & PTCACHE_BAKED)
+	{
+		start = cache->startframe;
+		end = cache->endframe;
+		/* need to "fill" the rigidbody world by doing 1 sim step, else bake cant be read properly */
+		BKE_rigidbody_do_simulation(scene, (float)(start+1));
+		BKE_ptcache_id_from_rigidbody(&pid, NULL, scene->rigidbody_world);
+		is_baked = true;
+	}
+
+	parent = BKE_object_add_named(G.main, scene, OB_EMPTY, name);
+	BKE_mesh_center_centroid(ob->data, obloc);
+	copy_v3_v3(parent->loc, ob->loc);
+	sub_v3_v3v3(diff, obloc, parent->loc);
+	//MEM_freeN((void*)name);
+
+	starttime = PIL_check_seconds_timer();
+	for (mi = fmd->fracture->meshIslands.first; mi; mi = mi->next)
+	{
+		Object *obj = do_convert_meshIsland(fmd, mi, gr, ob, scene, start, end, count,
+		                                    parent, is_baked, &pid, cache, obloc, diff, &k, &basarray_old[i]);
+		if (!obj) {
+			return false;
+		}
+		else
+		{
+			do_relink_scene(obj, scene, bgscene, &basarray, i, count, &j, &basarray_old);
+		}
+		i++;
+	}
+
+	do_restore_scene_link(scene, count, &bgscene, &basarray, &basarray_old);
+
+	printf("Converting Islands to Keyframed Objects done, %g\n", PIL_check_seconds_timer() - starttime);
+
+	BKE_scene_frame_set(scene, (double)start);
+
+	return true;
+}
+
+static void convert_free(void *customdata)
+{
+	FractureJob *fj = customdata;
+	MEM_freeN(fj);
+}
+
+static void convert_update(void *customdata)
+{
+	FractureJob *fj = customdata;
+	FractureModifierData *fmd = fj->fmd;
+	float progress;
+
+	if ((G.is_break) && (fmd->fracture->frac_mesh))
+		fmd->fracture->frac_mesh->cancel = 1;
+
+	progress = (float)(BLI_listbase_count(&fj->gr->gobject)) / (float)(fj->total_progress);
+	(*fj->progress) = progress;
+}
+
+static void convert_startjob(void *customdata, short *stop, short *do_update, float *progress)
+{
+	FractureJob *fj = customdata;
+	FractureModifierData *fmd = fj->fmd;
+	Group* gr = fj->gr;
+	Object* ob = fj->ob;
+	int start = fj->start;
+	int end = fj->end;
+	Scene* scene = fj->scene;
+
+	fj->stop = stop;
+	fj->do_update = do_update;
+	fj->progress = progress;
+	*(fj->stop) = 0; /*false*/
+
+	G.is_break = false;   /* XXX shared with render - replace with job 'stop' switch */
+	*(fj->do_update) = true;
+	*do_update = true;
+	*stop = 0;
+
+	if (fmd->fracture->frac_mesh) {
+		fmd->fracture->frac_mesh->cancel = 0;
+		fmd->fracture->frac_mesh->running = 1;
+	}
+
+	convert_modifier_to_keyframes(fmd, gr, ob, scene, start, end);
+}
+
+static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
+{
+	Object *obact = ED_object_active_context(C);
+	Scene *scene = CTX_data_scene(C);
+	float cfra = BKE_scene_frame_get(scene);
+	Group *gr;
+	FractureModifierData *rmd;
+	FractureJob *fj;
+	wmJob* wm_job;
+
+	bool convertable = true;
+
+	if (scene->rigidbody_world && scene->rigidbody_world)
+	{
+		PointCache* cache = NULL;
+		cache = scene->rigidbody_world->pointcache;
+		if (cache && (cache->flag & PTCACHE_OUTDATED) && !(cache->flag & PTCACHE_BAKED))
+		{
+			convertable = false;
+		}
+	}
+
+	if (convertable)
+	{
+		CTX_DATA_BEGIN(C, Object *, selob, selected_objects)
+		{
+			rmd = (FractureModifierData *)modifiers_findByType(selob, eModifierType_Fracture);
+			if (rmd && (rmd->fracture->flag & FM_FLAG_REFRESH)) {
+				return OPERATOR_CANCELLED;
+			}
+
+			if (rmd) {
+				int count = BLI_listbase_count(&rmd->fracture->meshIslands);
+				int start = RNA_int_get(op->ptr, "start_frame");
+				int end = RNA_int_get(op->ptr, "end_frame");
+
+				if (count == 0)
+				{
+					BKE_report(op->reports, RPT_WARNING, "No meshislands found, please execute fracture and simulate first");
+					return OPERATOR_CANCELLED;
+				}
+
+				gr = BKE_group_add(G.main, "Converted");
+
+				if (rmd->flag & FMG_FLAG_EXECUTE_THREADED)
+				{
+					PointerRNA *ptr;
+					/* what a dirty hack.... disable poll function */
+					wmOperatorType *ot = WM_operatortype_find("ANIM_OT_keyframe_insert_menu", 0);
+					ot->poll = NULL;
+
+					ptr = MEM_dupallocN(op->ptr);
+					ptr->type = op->ptr->type;
+					ptr->id = op->ptr->id;
+					ptr->id.data = op->ptr->id.data;
+					ptr->data = op->ptr->data;
+
+					/* job stuff */
+					scene->r.cfra = cfra;
+
+					/* setup job */
+					wm_job = WM_jobs_get(CTX_wm_manager(C), CTX_wm_window(C), scene, "Convert to Keyframed Objects",
+										 WM_JOB_PROGRESS, WM_JOB_TYPE_OBJECT_FRACTURE);
+					fj = MEM_callocN(sizeof(FractureJob), "convert to Keyframes job");
+					fj->fmd = rmd;
+					fj->total_progress = count;
+					fj->gr = gr;
+					fj->ob = obact;
+					fj->scene = scene;
+					fj->start = start;
+					fj->end = end;
+
+					WM_jobs_customdata_set(wm_job, fj, convert_free);
+					WM_jobs_timer(wm_job, 0.1, NC_WM | ND_JOB, NC_OBJECT | ND_MODIFIER);
+					WM_jobs_callbacks(wm_job, convert_startjob, NULL, convert_update, NULL);
+
+					WM_jobs_start(CTX_wm_manager(C), wm_job);
+
+					return OPERATOR_FINISHED;
+				}
+				else
+				{
+					convert_modifier_to_keyframes(rmd, gr, selob, scene, start, end);
+				}
+			}
+		}
+
+		CTX_DATA_END;
+
+		DAG_relations_tag_update(G.main);
+		WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
+		WM_event_add_notifier(C, NC_OBJECT | ND_PARENT, NULL);
+		WM_event_add_notifier(C, NC_SCENE | ND_FRAME, NULL);
+		return OPERATOR_FINISHED;
+	}
+	else
+	{
+		BKE_report(op->reports, RPT_WARNING, "No valid cache data found, please run or bake simulation first");
+		return OPERATOR_CANCELLED;
+	}
+}
+
+void OBJECT_OT_rigidbody_convert_to_keyframes(wmOperatorType *ot)
+{
+	ot->name = "Convert To Keyframed Objects";
+	ot->description = "Convert the Rigid Body modifier shards to keyframed real objects";
+	ot->idname = "OBJECT_OT_rigidbody_convert_to_keyframes";
+
+	ot->poll = fracture_poll;
+	ot->exec = rigidbody_convert_keyframes_exec;
+
+	RNA_def_int(ot->srna, "start_frame", 1,  0, 100000, "Start Frame", "", 0, 100000);
+	RNA_def_int(ot->srna, "end_frame", 250, 0, 100000, "End Frame", "", 0, 100000);
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
+	edit_modifier_properties(ot);
+}
+
+#endif

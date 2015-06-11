@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
-# limitations under the License
+# limitations under the License.
 #
 
 # <pep8 compliant>
@@ -25,10 +25,10 @@ def init():
     path = os.path.dirname(__file__)
     user_path = os.path.dirname(os.path.abspath(bpy.utils.user_resource('CONFIG', '')))
 
-    _cycles.init(path, user_path)
+    _cycles.init(path, user_path, bpy.app.background)
 
 
-def create(engine, data, scene, region=0, v3d=0, rv3d=0, preview_osl=False):
+def create(engine, data, scene, region=None, v3d=None, rv3d=None, preview_osl=False):
     import bpy
     import _cycles
 
@@ -57,6 +57,13 @@ def render(engine):
     import _cycles
     if hasattr(engine, "session"):
         _cycles.render(engine.session)
+
+
+def bake(engine, obj, pass_type, pixel_array, num_pixels, depth, result):
+    import _cycles
+    session = getattr(engine, "session", None)
+    if session is not None:
+        _cycles.bake(engine.session, obj.as_pointer(), pass_type, pixel_array.as_pointer(), num_pixels, depth, result.as_pointer())
 
 
 def reset(engine, data, scene):
@@ -88,7 +95,13 @@ def available_devices():
 def with_osl():
     import _cycles
     return _cycles.with_osl
-    
+
+
 def with_network():
     import _cycles
     return _cycles.with_network
+
+
+def system_info():
+    import _cycles
+    return _cycles.system_info()

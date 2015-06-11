@@ -20,8 +20,10 @@
 import bpy
 from bpy.types import Menu, Panel
 
-from bl_ui.properties_physics_common import (point_cache_ui,
-                                             effector_weights_ui)
+from bl_ui.properties_physics_common import (
+        point_cache_ui,
+        effector_weights_ui,
+        )
 
 
 def cloth_panel_enabled(md):
@@ -35,7 +37,7 @@ class CLOTH_MT_presets(Menu):
     draw = Menu.draw_preset
 
 
-class PhysicButtonsPanel():
+class PhysicButtonsPanel:
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "physics"
@@ -89,9 +91,6 @@ class PHYSICS_PT_cloth(PhysicButtonsPanel, Panel):
         sub.active = cloth.use_pin_cloth
         sub.prop_search(cloth, "vertex_group_mass", ob, "vertex_groups", text="")
         sub.prop(cloth, "pin_stiffness", text="Stiffness")
-
-        col.label(text="Pre roll:")
-        col.prop(cloth, "pre_roll", text="Frames")
 
         # Disabled for now
         """
@@ -189,6 +188,39 @@ class PHYSICS_PT_cloth_stiffness(PhysicButtonsPanel, Panel):
         col.label(text="Bending Stiffness:")
         col.prop_search(cloth, "vertex_group_bending", ob, "vertex_groups", text="")
         col.prop(cloth, "bending_stiffness_max", text="Max")
+
+
+class PHYSICS_PT_cloth_sewing(PhysicButtonsPanel, Panel):
+    bl_label = "Cloth Sewing Springs"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw_header(self, context):
+        cloth = context.cloth.settings
+
+        self.layout.active = cloth_panel_enabled(context.cloth)
+        self.layout.prop(cloth, "use_sewing_springs", text="")
+
+    def draw(self, context):
+        layout = self.layout
+
+        md = context.cloth
+        ob = context.object
+        cloth = context.cloth.settings
+
+        layout.active = (cloth.use_sewing_springs and cloth_panel_enabled(md))
+
+        layout.prop(cloth, "sewing_force_max", text="Sewing Force")
+
+        split = layout.split()
+
+        col = split.column(align=True)
+        col.label(text="Shrinking:")
+        col.prop_search(cloth, "vertex_group_shrink", ob, "vertex_groups", text="")
+
+        col = split.column(align=True)
+        col.label()
+        col.prop(cloth, "shrink_min", text="Min")
+        col.prop(cloth, "shrink_max", text="Max")
 
 
 class PHYSICS_PT_cloth_field_weights(PhysicButtonsPanel, Panel):

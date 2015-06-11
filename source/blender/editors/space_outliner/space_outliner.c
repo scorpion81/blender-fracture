@@ -35,10 +35,8 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_blenlib.h"
-#include "BLI_math.h"
 #include "BLI_utildefines.h"
 #include "BLI_mempool.h"
-#include "BLI_ghash.h"
 
 #include "BKE_context.h"
 #include "BKE_screen.h"
@@ -100,10 +98,10 @@ static int outliner_parent_drop_poll(bContext *C, wmDrag *drag, const wmEvent *e
 	UI_view2d_region_to_view(&ar->v2d, event->mval[0], event->mval[1], &fmval[0], &fmval[1]);
 
 	if (drag->type == WM_DRAG_ID) {
-		ID *id = (ID *)drag->poin;
+		ID *id = drag->poin;
 		if (GS(id->name) == ID_OB) {
 			/* Ensure item under cursor is valid drop target */
-			TreeElement *te = outliner_dropzone_find(soops, fmval, 1);
+			TreeElement *te = outliner_dropzone_find(soops, fmval, true);
 
 			if (te && te->idcode == ID_OB && TREESTORE(te)->type == 0) {
 				Scene *scene;
@@ -131,7 +129,7 @@ static int outliner_parent_drop_poll(bContext *C, wmDrag *drag, const wmEvent *e
 
 static void outliner_parent_drop_copy(wmDrag *drag, wmDropBox *drop)
 {
-	ID *id = (ID *)drag->poin;
+	ID *id = drag->poin;
 
 	RNA_string_set(drop->ptr, "child", id->name + 2);
 }
@@ -145,20 +143,20 @@ static int outliner_parent_clear_poll(bContext *C, wmDrag *drag, const wmEvent *
 
 	UI_view2d_region_to_view(&ar->v2d, event->mval[0], event->mval[1], &fmval[0], &fmval[1]);
 
-	if (!ELEM4(soops->outlinevis, SO_ALL_SCENES, SO_CUR_SCENE, SO_VISIBLE, SO_GROUPS)) {
-		return FALSE;
+	if (!ELEM(soops->outlinevis, SO_ALL_SCENES, SO_CUR_SCENE, SO_VISIBLE, SO_GROUPS)) {
+		return false;
 	}
 
 	if (drag->type == WM_DRAG_ID) {
-		ID *id = (ID *)drag->poin;
+		ID *id = drag->poin;
 		if (GS(id->name) == ID_OB) {
 			if (((Object *)id)->parent) {
-				if ((te = outliner_dropzone_find(soops, fmval, 1))) {
+				if ((te = outliner_dropzone_find(soops, fmval, true))) {
 					TreeStoreElem *tselem = TREESTORE(te);
 
 					switch (te->idcode) {
 						case ID_SCE:
-							return (ELEM3(tselem->type, TSE_R_LAYER_BASE, TSE_R_LAYER, TSE_R_PASS));
+							return (ELEM(tselem->type, TSE_R_LAYER_BASE, TSE_R_LAYER, TSE_R_PASS));
 						case ID_OB:
 							return (ELEM(tselem->type, TSE_MODIFIER_BASE, TSE_CONSTRAINT_BASE));
 						/* Other codes to ignore? */
@@ -173,7 +171,7 @@ static int outliner_parent_clear_poll(bContext *C, wmDrag *drag, const wmEvent *
 
 static void outliner_parent_clear_copy(wmDrag *drag, wmDropBox *drop)
 {
-	ID *id = (ID *)drag->poin;
+	ID *id = drag->poin;
 	RNA_string_set(drop->ptr, "dragged_obj", id->name + 2);
 
 	/* Set to simple parent clear type. Avoid menus for drag and drop if possible.
@@ -190,10 +188,10 @@ static int outliner_scene_drop_poll(bContext *C, wmDrag *drag, const wmEvent *ev
 	UI_view2d_region_to_view(&ar->v2d, event->mval[0], event->mval[1], &fmval[0], &fmval[1]);
 
 	if (drag->type == WM_DRAG_ID) {
-		ID *id = (ID *)drag->poin;
+		ID *id = drag->poin;
 		if (GS(id->name) == ID_OB) {
 			/* Ensure item under cursor is valid drop target */
-			TreeElement *te = outliner_dropzone_find(soops, fmval, 0);
+			TreeElement *te = outliner_dropzone_find(soops, fmval, false);
 			return (te && te->idcode == ID_SCE && TREESTORE(te)->type == 0);
 		}
 	}
@@ -202,7 +200,7 @@ static int outliner_scene_drop_poll(bContext *C, wmDrag *drag, const wmEvent *ev
 
 static void outliner_scene_drop_copy(wmDrag *drag, wmDropBox *drop)
 {
-	ID *id = (ID *)drag->poin;
+	ID *id = drag->poin;
 
 	RNA_string_set(drop->ptr, "object", id->name + 2);
 }
@@ -215,10 +213,10 @@ static int outliner_material_drop_poll(bContext *C, wmDrag *drag, const wmEvent 
 	UI_view2d_region_to_view(&ar->v2d, event->mval[0], event->mval[1], &fmval[0], &fmval[1]);
 
 	if (drag->type == WM_DRAG_ID) {
-		ID *id = (ID *)drag->poin;
+		ID *id = drag->poin;
 		if (GS(id->name) == ID_MA) {
 			/* Ensure item under cursor is valid drop target */
-			TreeElement *te = outliner_dropzone_find(soops, fmval, 1);
+			TreeElement *te = outliner_dropzone_find(soops, fmval, true);
 			return (te && te->idcode == ID_OB && TREESTORE(te)->type == 0);
 		}
 	}
@@ -227,9 +225,33 @@ static int outliner_material_drop_poll(bContext *C, wmDrag *drag, const wmEvent 
 
 static void outliner_material_drop_copy(wmDrag *drag, wmDropBox *drop)
 {
-	ID *id = (ID *)drag->poin;
+	ID *id = drag->poin;
 
 	RNA_string_set(drop->ptr, "material", id->name + 2);
+}
+
+static int outliner_group_link_poll(bContext *C, wmDrag *drag, const wmEvent *event)
+{
+	ARegion *ar = CTX_wm_region(C);
+	SpaceOops *soops = CTX_wm_space_outliner(C);
+	float fmval[2];
+	UI_view2d_region_to_view(&ar->v2d, event->mval[0], event->mval[1], &fmval[0], &fmval[1]);
+
+	if (drag->type == WM_DRAG_ID) {
+		ID *id = drag->poin;
+		if (GS(id->name) == ID_OB) {
+			/* Ensure item under cursor is valid drop target */
+			TreeElement *te = outliner_dropzone_find(soops, fmval, true);
+			return (te && te->idcode == ID_GR && TREESTORE(te)->type == 0);
+		}
+	}
+	return 0;
+}
+
+static void outliner_group_link_copy(wmDrag *drag, wmDropBox *drop)
+{
+	ID *id = drag->poin;
+	RNA_string_set(drop->ptr, "object", id->name + 2);
 }
 
 /* region dropbox definition */
@@ -241,6 +263,7 @@ static void outliner_dropboxes(void)
 	WM_dropbox_add(lb, "OUTLINER_OT_parent_clear", outliner_parent_clear_poll, outliner_parent_clear_copy);
 	WM_dropbox_add(lb, "OUTLINER_OT_scene_drop", outliner_scene_drop_poll, outliner_scene_drop_copy);
 	WM_dropbox_add(lb, "OUTLINER_OT_material_drop", outliner_material_drop_poll, outliner_material_drop_copy);
+	WM_dropbox_add(lb, "OUTLINER_OT_group_link", outliner_group_link_poll, outliner_group_link_copy);
 }
 
 static void outliner_main_area_draw(const bContext *C, ARegion *ar)
@@ -347,6 +370,7 @@ static void outliner_main_area_listener(bScreen *UNUSED(sc), ScrArea *UNUSED(sa)
 		case NC_GEOM:
 			switch (wmn->data) {
 				case ND_VERTEX_GROUP:
+				case ND_DATA:
 					ED_region_tag_redraw(ar);
 					break;
 			}
@@ -362,6 +386,10 @@ static void outliner_main_area_listener(bScreen *UNUSED(sc), ScrArea *UNUSED(sa)
 						ED_region_tag_redraw(ar);
 					break;
 			}
+			break;
+		case NC_GPENCIL:
+			if (ELEM(wmn->action, NA_EDITED, NA_SELECTED))
+				ED_region_tag_redraw(ar);
 			break;
 	}
 	
@@ -451,7 +479,7 @@ static SpaceLink *outliner_duplicate(SpaceLink *sl)
 	SpaceOops *soutliner = (SpaceOops *)sl;
 	SpaceOops *soutlinern = MEM_dupallocN(soutliner);
 
-	soutlinern->tree.first = soutlinern->tree.last = NULL;
+	BLI_listbase_clear(&soutlinern->tree);
 	soutlinern->treestore = NULL;
 	soutlinern->treehash = NULL;
 	

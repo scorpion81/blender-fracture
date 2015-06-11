@@ -47,7 +47,6 @@
 #include "BLI_math.h"
 #include "BLI_math_base.h"
 #include "BLI_listbase.h"
-#include "BLI_ghash.h"
 #include "BLI_path_util.h"
 #include "BLI_string.h"
 #include "BLI_threads.h"
@@ -55,7 +54,6 @@
 #include "BLF_translation.h"
 
 #include "BKE_fcurve.h"
-#include "BKE_global.h"
 #include "BKE_tracking.h"
 #include "BKE_movieclip.h"
 #include "BKE_object.h"
@@ -163,8 +161,8 @@ static void tracking_dopesheet_free(MovieTrackingDopesheet *dopesheet)
 	BLI_freelistN(&dopesheet->coverage_segments);
 
 	/* Ensure lists are clean. */
-	dopesheet->channels.first = dopesheet->channels.last = NULL;
-	dopesheet->coverage_segments.first = dopesheet->coverage_segments.last = NULL;
+	BLI_listbase_clear(&dopesheet->channels);
+	BLI_listbase_clear(&dopesheet->coverage_segments);
 	dopesheet->tot_channel = 0;
 }
 
@@ -197,9 +195,10 @@ void BKE_tracking_settings_init(MovieTracking *tracking)
 
 	tracking->settings.default_motion_model = TRACK_MOTION_MODEL_TRANSLATION;
 	tracking->settings.default_minimum_correlation = 0.75;
-	tracking->settings.default_pattern_size = 15;
-	tracking->settings.default_search_size = 61;
+	tracking->settings.default_pattern_size = 21;
+	tracking->settings.default_search_size = 71;
 	tracking->settings.default_algorithm_flag |= TRACK_ALGORITHM_FLAG_USE_BRUTE;
+	tracking->settings.default_weight = 1.0f;
 	tracking->settings.dist = 1;
 	tracking->settings.object_distance = 1;
 
@@ -330,7 +329,7 @@ void BKE_tracking_clipboard_free(void)
 		track = next_track;
 	}
 
-	tracking_clipboard.tracks.first = tracking_clipboard.tracks.last = NULL;
+	BLI_listbase_clear(&tracking_clipboard.tracks);
 }
 
 /* Copy selected tracks from specified object to the clipboard. */
@@ -357,7 +356,7 @@ void BKE_tracking_clipboard_copy_tracks(MovieTracking *tracking, MovieTrackingOb
 /* Check whether there're any tracks in the clipboard. */
 bool BKE_tracking_clipboard_has_tracks(void)
 {
-	return tracking_clipboard.tracks.first != NULL;
+	return (BLI_listbase_is_empty(&tracking_clipboard.tracks) == false);
 }
 
 /* Paste tracks from clipboard to specified object.
@@ -372,6 +371,9 @@ void BKE_tracking_clipboard_paste_tracks(MovieTracking *tracking, MovieTrackingO
 
 	while (track) {
 		MovieTrackingTrack *new_track = BKE_tracking_track_duplicate(track);
+		if (track->prev == NULL) {
+			tracking->act_track = new_track;
+		}
 
 		BLI_addtail(tracksbase, new_track);
 		BKE_tracking_track_unique_name(tracksbase, new_track);
@@ -418,7 +420,7 @@ MovieTrackingTrack *BKE_tracking_track_add(MovieTracking *tracking, ListBase *tr
 	track->frames_limit = settings->default_frames_limit;
 	track->flag = settings->default_flag;
 	track->algorithm_flag = settings->default_algorithm_flag;
-	track->weight = 1.0f;
+	track->weight = settings->default_weight;
 
 	memset(&marker, 0, sizeof(marker));
 	marker.pos[0] = x;
@@ -719,7 +721,7 @@ MovieTrackingTrack *BKE_tracking_track_get_named(MovieTracking *tracking, MovieT
 	MovieTrackingTrack *track = tracksbase->first;
 
 	while (track) {
-		if (!strcmp(track->name, name))
+		if (STREQ(track->name, name))
 			return track;
 
 		track = track->next;
@@ -1265,7 +1267,7 @@ MovieTrackingPlaneTrack *BKE_tracking_plane_track_get_named(MovieTracking *track
 	     plane_track;
 	     plane_track = plane_track->next)
 	{
-		if (!strcmp(plane_track->name, name)) {
+		if (STREQ(plane_track->name, name)) {
 			return plane_track;
 		}
 	}
@@ -1454,6 +1456,35 @@ MovieTrackingPlaneMarker *BKE_tracking_plane_marker_ensure(MovieTrackingPlaneTra
 	return plane_marker;
 }
 
+void BKE_tracking_plane_marker_get_subframe_corners(MovieTrackingPlaneTrack *plane_track,
+                                                    float framenr,
+                                                    float corners[4][2])
+{
+	MovieTrackingPlaneMarker *marker = BKE_tracking_plane_marker_get(plane_track, (int)framenr);
+	MovieTrackingPlaneMarker *marker_last = plane_track->markers + (plane_track->markersnr - 1);
+	int i;
+	if (marker != marker_last) {
+		MovieTrackingPlaneMarker *marker_next = marker + 1;
+		if (marker_next->framenr == marker->framenr + 1) {
+			float fac = (framenr - (int) framenr) / (marker_next->framenr - marker->framenr);
+			for (i = 0; i < 4; ++i) {
+				interp_v2_v2v2(corners[i], marker->corners[i],
+				               marker_next->corners[i], fac);
+			}
+		}
+		else {
+			for (i = 0; i < 4; ++i) {
+				copy_v2_v2(corners[i], marker->corners[i]);
+			}
+		}
+	}
+	else {
+		for (i = 0; i < 4; ++i) {
+			copy_v2_v2(corners[i], marker->corners[i]);
+		}
+	}
+}
+
 /*********************** Object *************************/
 
 MovieTrackingObject *BKE_tracking_object_add(MovieTracking *tracking, const char *name)
@@ -1473,7 +1504,7 @@ MovieTrackingObject *BKE_tracking_object_add(MovieTracking *tracking, const char
 	BLI_addtail(&tracking->objects, object);
 
 	tracking->tot_object++;
-	tracking->objectnr = BLI_countlist(&tracking->objects) - 1;
+	tracking->objectnr = BLI_listbase_count(&tracking->objects) - 1;
 
 	object->scale = 1.0f;
 	object->keyframe1 = 1;
@@ -1532,7 +1563,7 @@ MovieTrackingObject *BKE_tracking_object_get_named(MovieTracking *tracking, cons
 	MovieTrackingObject *object = tracking->objects.first;
 
 	while (object) {
-		if (!strcmp(object->name, name))
+		if (STREQ(object->name, name))
 			return object;
 
 		object = object->next;
@@ -1732,32 +1763,19 @@ void BKE_tracking_camera_get_reconstructed_interpolate(MovieTracking *tracking, 
 
 /*********************** Distortion/Undistortion *************************/
 
-static void cameraIntrinscisOptionsFromTracking(libmv_CameraIntrinsicsOptions *camera_intrinsics_options,
-                                                MovieTracking *tracking, int calibration_width, int calibration_height)
-{
-	MovieTrackingCamera *camera = &tracking->camera;
-	float aspy = 1.0f / tracking->camera.pixel_aspect;
-
-	camera_intrinsics_options->focal_length = camera->focal;
-
-	camera_intrinsics_options->principal_point_x = camera->principal[0];
-	camera_intrinsics_options->principal_point_y = camera->principal[1] * aspy;
-
-	camera_intrinsics_options->k1 = camera->k1;
-	camera_intrinsics_options->k2 = camera->k2;
-	camera_intrinsics_options->k3 = camera->k3;
-
-	camera_intrinsics_options->image_width = calibration_width;
-	camera_intrinsics_options->image_height = (int) (calibration_height * aspy);
-}
-
-MovieDistortion *BKE_tracking_distortion_new(void)
+MovieDistortion *BKE_tracking_distortion_new(MovieTracking *tracking,
+                                             int calibration_width, int calibration_height)
 {
 	MovieDistortion *distortion;
+	libmv_CameraIntrinsicsOptions camera_intrinsics_options;
+
+	tracking_cameraIntrinscisOptionsFromTracking(tracking,
+	                                             calibration_width,
+	                                             calibration_height,
+	                                             &camera_intrinsics_options);
 
 	distortion = MEM_callocN(sizeof(MovieDistortion), "BKE_tracking_distortion_create");
-
-	distortion->intrinsics = libmv_cameraIntrinsicsNewEmpty();
+	distortion->intrinsics = libmv_cameraIntrinsicsNew(&camera_intrinsics_options);
 
 	return distortion;
 }
@@ -1767,8 +1785,10 @@ void BKE_tracking_distortion_update(MovieDistortion *distortion, MovieTracking *
 {
 	libmv_CameraIntrinsicsOptions camera_intrinsics_options;
 
-	cameraIntrinscisOptionsFromTracking(&camera_intrinsics_options, tracking,
-	                                    calibration_width, calibration_height);
+	tracking_cameraIntrinscisOptionsFromTracking(tracking,
+	                                             calibration_width,
+	                                             calibration_height,
+	                                             &camera_intrinsics_options);
 
 	libmv_cameraIntrinsicsUpdate(&camera_intrinsics_options, distortion->intrinsics);
 }
@@ -1801,13 +1821,19 @@ ImBuf *BKE_tracking_distortion_exec(MovieDistortion *distortion, MovieTracking *
 	if (ibuf->rect_float) {
 		if (undistort) {
 			libmv_cameraIntrinsicsUndistortFloat(distortion->intrinsics,
-			                                     ibuf->rect_float, resibuf->rect_float,
-			                                     ibuf->x, ibuf->y, overscan, ibuf->channels);
+			                                     ibuf->rect_float,
+			                                     ibuf->x, ibuf->y,
+			                                     overscan,
+			                                     ibuf->channels,
+			                                     resibuf->rect_float);
 		}
 		else {
 			libmv_cameraIntrinsicsDistortFloat(distortion->intrinsics,
-			                                   ibuf->rect_float, resibuf->rect_float,
-			                                   ibuf->x, ibuf->y, overscan, ibuf->channels);
+			                                   ibuf->rect_float,
+			                                   ibuf->x, ibuf->y,
+			                                   overscan,
+			                                   ibuf->channels,
+			                                   resibuf->rect_float);
 		}
 
 		if (ibuf->rect)
@@ -1816,13 +1842,19 @@ ImBuf *BKE_tracking_distortion_exec(MovieDistortion *distortion, MovieTracking *
 	else {
 		if (undistort) {
 			libmv_cameraIntrinsicsUndistortByte(distortion->intrinsics,
-			                                    (unsigned char *)ibuf->rect, (unsigned char *)resibuf->rect,
-			                                    ibuf->x, ibuf->y, overscan, ibuf->channels);
+			                                    (unsigned char *)ibuf->rect,
+			                                    ibuf->x, ibuf->y,
+			                                    overscan,
+			                                    ibuf->channels,
+			                                    (unsigned char *)resibuf->rect);
 		}
 		else {
 			libmv_cameraIntrinsicsDistortByte(distortion->intrinsics,
-			                                  (unsigned char *)ibuf->rect, (unsigned char *)resibuf->rect,
-			                                  ibuf->x, ibuf->y, overscan, ibuf->channels);
+			                                  (unsigned char *)ibuf->rect,
+			                                  ibuf->x, ibuf->y,
+			                                  overscan,
+			                                  ibuf->channels,
+			                                  (unsigned char *)resibuf->rect);
 		}
 	}
 
@@ -1844,7 +1876,9 @@ void BKE_tracking_distort_v2(MovieTracking *tracking, const float co[2], float r
 	double x, y;
 	float aspy = 1.0f / tracking->camera.pixel_aspect;
 
-	cameraIntrinscisOptionsFromTracking(&camera_intrinsics_options, tracking, 0, 0);
+	tracking_cameraIntrinscisOptionsFromTracking(tracking,
+	                                             0, 0,
+	                                             &camera_intrinsics_options);
 
 	/* normalize coords */
 	x = (co[0] - camera->principal[0]) / camera->focal;
@@ -1865,7 +1899,9 @@ void BKE_tracking_undistort_v2(MovieTracking *tracking, const float co[2], float
 	double x = co[0], y = co[1];
 	float aspy = 1.0f / tracking->camera.pixel_aspect;
 
-	cameraIntrinscisOptionsFromTracking(&camera_intrinsics_options, tracking, 0, 0);
+	tracking_cameraIntrinscisOptionsFromTracking(tracking,
+	                                             0, 0,
+	                                             &camera_intrinsics_options);
 
 	libmv_cameraIntrinsicsInvert(&camera_intrinsics_options, x, y, &x, &y);
 
@@ -1878,8 +1914,9 @@ ImBuf *BKE_tracking_undistort_frame(MovieTracking *tracking, ImBuf *ibuf, int ca
 {
 	MovieTrackingCamera *camera = &tracking->camera;
 
-	if (camera->intrinsics == NULL)
-		camera->intrinsics = BKE_tracking_distortion_new();
+	if (camera->intrinsics == NULL) {
+		camera->intrinsics = BKE_tracking_distortion_new(tracking, calibration_width, calibration_height);
+	}
 
 	return BKE_tracking_distortion_exec(camera->intrinsics, tracking, ibuf, calibration_width,
 	                                    calibration_height, overscan, true);
@@ -1890,18 +1927,29 @@ ImBuf *BKE_tracking_distort_frame(MovieTracking *tracking, ImBuf *ibuf, int cali
 {
 	MovieTrackingCamera *camera = &tracking->camera;
 
-	if (camera->intrinsics == NULL)
-		camera->intrinsics = BKE_tracking_distortion_new();
+	if (camera->intrinsics == NULL) {
+		camera->intrinsics = BKE_tracking_distortion_new(tracking, calibration_width, calibration_height);
+	}
 
 	return BKE_tracking_distortion_exec(camera->intrinsics, tracking, ibuf, calibration_width,
 	                                    calibration_height, overscan, false);
 }
 
-void BKE_tracking_max_undistortion_delta_across_bound(MovieTracking *tracking, rcti *rect, float delta[2])
+void BKE_tracking_max_distortion_delta_across_bound(MovieTracking *tracking, rcti *rect,
+                                                    bool undistort, float delta[2])
 {
 	int a;
 	float pos[2], warped_pos[2];
 	const int coord_delta = 5;
+	void (*apply_distortion) (MovieTracking *tracking,
+	                         const float pos[2], float out[2]);
+
+	if (undistort) {
+		apply_distortion = BKE_tracking_undistort_v2;
+	}
+	else {
+		apply_distortion = BKE_tracking_distort_v2;
+	}
 
 	delta[0] = delta[1] = -FLT_MAX;
 
@@ -1913,7 +1961,7 @@ void BKE_tracking_max_undistortion_delta_across_bound(MovieTracking *tracking, r
 		pos[0] = a;
 		pos[1] = rect->ymin;
 
-		BKE_tracking_undistort_v2(tracking, pos, warped_pos);
+		apply_distortion(tracking, pos, warped_pos);
 
 		delta[0] = max_ff(delta[0], fabsf(pos[0] - warped_pos[0]));
 		delta[1] = max_ff(delta[1], fabsf(pos[1] - warped_pos[1]));
@@ -1922,7 +1970,7 @@ void BKE_tracking_max_undistortion_delta_across_bound(MovieTracking *tracking, r
 		pos[0] = a;
 		pos[1] = rect->ymax;
 
-		BKE_tracking_undistort_v2(tracking, pos, warped_pos);
+		apply_distortion(tracking, pos, warped_pos);
 
 		delta[0] = max_ff(delta[0], fabsf(pos[0] - warped_pos[0]));
 		delta[1] = max_ff(delta[1], fabsf(pos[1] - warped_pos[1]));
@@ -1939,7 +1987,7 @@ void BKE_tracking_max_undistortion_delta_across_bound(MovieTracking *tracking, r
 		pos[0] = rect->xmin;
 		pos[1] = a;
 
-		BKE_tracking_undistort_v2(tracking, pos, warped_pos);
+		apply_distortion(tracking, pos, warped_pos);
 
 		delta[0] = max_ff(delta[0], fabsf(pos[0] - warped_pos[0]));
 		delta[1] = max_ff(delta[1], fabsf(pos[1] - warped_pos[1]));
@@ -1948,7 +1996,7 @@ void BKE_tracking_max_undistortion_delta_across_bound(MovieTracking *tracking, r
 		pos[0] = rect->xmax;
 		pos[1] = a;
 
-		BKE_tracking_undistort_v2(tracking, pos, warped_pos);
+		apply_distortion(tracking, pos, warped_pos);
 
 		delta[0] = max_ff(delta[0], fabsf(pos[0] - warped_pos[0]));
 		delta[1] = max_ff(delta[1], fabsf(pos[1] - warped_pos[1]));
@@ -1980,11 +2028,9 @@ ImBuf *BKE_tracking_sample_pattern(int frame_width, int frame_height, ImBuf *sea
 	if (num_samples_x <= 0 || num_samples_y <= 0)
 		return NULL;
 
-	pattern_ibuf = IMB_allocImBuf(num_samples_x, num_samples_y, 32, IB_rectfloat);
-
-	if (!search_ibuf->rect_float) {
-		IMB_float_from_rect(search_ibuf);
-	}
+	pattern_ibuf = IMB_allocImBuf(num_samples_x, num_samples_y,
+	                              32,
+	                              search_ibuf->rect_float ? IB_rectfloat : IB_rect);
 
 	tracking_get_marker_coords_for_tracking(frame_width, frame_height, marker, src_pixel_x, src_pixel_y);
 
@@ -2014,10 +2060,26 @@ ImBuf *BKE_tracking_sample_pattern(int frame_width, int frame_height, ImBuf *sea
 		mask = BKE_tracking_track_get_mask(frame_width, frame_height, track, marker);
 	}
 
-	libmv_samplePlanarPatch(search_ibuf->rect_float, search_ibuf->x, search_ibuf->y, 4,
-	                        src_pixel_x, src_pixel_y, num_samples_x,
-	                        num_samples_y, mask, pattern_ibuf->rect_float,
-	                        &warped_position_x, &warped_position_y);
+	if (search_ibuf->rect_float) {
+		libmv_samplePlanarPatchFloat(search_ibuf->rect_float,
+		                             search_ibuf->x, search_ibuf->y, 4,
+		                             src_pixel_x, src_pixel_y,
+		                             num_samples_x, num_samples_y,
+		                             mask,
+		                             pattern_ibuf->rect_float,
+		                             &warped_position_x,
+		                             &warped_position_y);
+	}
+	else {
+		libmv_samplePlanarPatchByte((unsigned char *) search_ibuf->rect,
+		                            search_ibuf->x, search_ibuf->y, 4,
+		                            src_pixel_x, src_pixel_y,
+		                            num_samples_x, num_samples_y,
+		                            mask,
+		                            (unsigned char *) pattern_ibuf->rect,
+		                            &warped_position_x,
+		                            &warped_position_y);
+	}
 
 	if (pos) {
 		pos[0] = warped_position_x;
@@ -2167,10 +2229,10 @@ void BKE_tracking_disable_channels(ImBuf *ibuf, bool disable_red, bool disable_g
 
 /* ** Channels sort comparators ** */
 
-static int channels_alpha_sort(void *a, void *b)
+static int channels_alpha_sort(const void *a, const void *b)
 {
-	MovieTrackingDopesheetChannel *channel_a = a;
-	MovieTrackingDopesheetChannel *channel_b = b;
+	const MovieTrackingDopesheetChannel *channel_a = a;
+	const MovieTrackingDopesheetChannel *channel_b = b;
 
 	if (BLI_strcasecmp(channel_a->track->name, channel_b->track->name) > 0)
 		return 1;
@@ -2178,10 +2240,10 @@ static int channels_alpha_sort(void *a, void *b)
 		return 0;
 }
 
-static int channels_total_track_sort(void *a, void *b)
+static int channels_total_track_sort(const void *a, const void *b)
 {
-	MovieTrackingDopesheetChannel *channel_a = a;
-	MovieTrackingDopesheetChannel *channel_b = b;
+	const MovieTrackingDopesheetChannel *channel_a = a;
+	const MovieTrackingDopesheetChannel *channel_b = b;
 
 	if (channel_a->total_frames > channel_b->total_frames)
 		return 1;
@@ -2189,10 +2251,10 @@ static int channels_total_track_sort(void *a, void *b)
 		return 0;
 }
 
-static int channels_longest_segment_sort(void *a, void *b)
+static int channels_longest_segment_sort(const void *a, const void *b)
 {
-	MovieTrackingDopesheetChannel *channel_a = a;
-	MovieTrackingDopesheetChannel *channel_b = b;
+	const MovieTrackingDopesheetChannel *channel_a = a;
+	const MovieTrackingDopesheetChannel *channel_b = b;
 
 	if (channel_a->max_segment > channel_b->max_segment)
 		return 1;
@@ -2200,10 +2262,10 @@ static int channels_longest_segment_sort(void *a, void *b)
 		return 0;
 }
 
-static int channels_average_error_sort(void *a, void *b)
+static int channels_average_error_sort(const void *a, const void *b)
 {
-	MovieTrackingDopesheetChannel *channel_a = a;
-	MovieTrackingDopesheetChannel *channel_b = b;
+	const MovieTrackingDopesheetChannel *channel_a = a;
+	const MovieTrackingDopesheetChannel *channel_b = b;
 
 	if (channel_a->track->error > channel_b->track->error)
 		return 1;
@@ -2211,7 +2273,7 @@ static int channels_average_error_sort(void *a, void *b)
 		return 0;
 }
 
-static int channels_alpha_inverse_sort(void *a, void *b)
+static int channels_alpha_inverse_sort(const void *a, const void *b)
 {
 	if (channels_alpha_sort(a, b))
 		return 0;
@@ -2219,7 +2281,7 @@ static int channels_alpha_inverse_sort(void *a, void *b)
 		return 1;
 }
 
-static int channels_total_track_inverse_sort(void *a, void *b)
+static int channels_total_track_inverse_sort(const void *a, const void *b)
 {
 	if (channels_total_track_sort(a, b))
 		return 0;
@@ -2227,7 +2289,7 @@ static int channels_total_track_inverse_sort(void *a, void *b)
 		return 1;
 }
 
-static int channels_longest_segment_inverse_sort(void *a, void *b)
+static int channels_longest_segment_inverse_sort(const void *a, const void *b)
 {
 	if (channels_longest_segment_sort(a, b))
 		return 0;
@@ -2235,10 +2297,10 @@ static int channels_longest_segment_inverse_sort(void *a, void *b)
 		return 1;
 }
 
-static int channels_average_error_inverse_sort(void *a, void *b)
+static int channels_average_error_inverse_sort(const void *a, const void *b)
 {
-	MovieTrackingDopesheetChannel *channel_a = a;
-	MovieTrackingDopesheetChannel *channel_b = b;
+	const MovieTrackingDopesheetChannel *channel_a = a;
+	const MovieTrackingDopesheetChannel *channel_b = b;
 
 	if (channel_a->track->error < channel_b->track->error)
 		return 1;
@@ -2339,8 +2401,8 @@ static void tracking_dopesheet_channels_calc(MovieTracking *tracking)
 		BKE_tracking_object_get_reconstruction(tracking, object);
 	ListBase *tracksbase = BKE_tracking_object_get_tracks(tracking, object);
 
-	short sel_only = dopesheet->flag & TRACKING_DOPE_SELECTED_ONLY;
-	short show_hidden = dopesheet->flag & TRACKING_DOPE_SHOW_HIDDEN;
+	bool sel_only = (dopesheet->flag & TRACKING_DOPE_SELECTED_ONLY) != 0;
+	bool show_hidden = (dopesheet->flag & TRACKING_DOPE_SHOW_HIDDEN) != 0;
 
 	for (track = tracksbase->first; track; track = track->next) {
 		MovieTrackingDopesheetChannel *channel;
@@ -2377,30 +2439,30 @@ static void tracking_dopesheet_channels_sort(MovieTracking *tracking, int sort_m
 
 	if (inverse) {
 		if (sort_method == TRACKING_DOPE_SORT_NAME) {
-			BLI_sortlist(&dopesheet->channels, channels_alpha_inverse_sort);
+			BLI_listbase_sort(&dopesheet->channels, channels_alpha_inverse_sort);
 		}
 		else if (sort_method == TRACKING_DOPE_SORT_LONGEST) {
-			BLI_sortlist(&dopesheet->channels, channels_longest_segment_inverse_sort);
+			BLI_listbase_sort(&dopesheet->channels, channels_longest_segment_inverse_sort);
 		}
 		else if (sort_method == TRACKING_DOPE_SORT_TOTAL) {
-			BLI_sortlist(&dopesheet->channels, channels_total_track_inverse_sort);
+			BLI_listbase_sort(&dopesheet->channels, channels_total_track_inverse_sort);
 		}
 		else if (sort_method == TRACKING_DOPE_SORT_AVERAGE_ERROR) {
-			BLI_sortlist(&dopesheet->channels, channels_average_error_inverse_sort);
+			BLI_listbase_sort(&dopesheet->channels, channels_average_error_inverse_sort);
 		}
 	}
 	else {
 		if (sort_method == TRACKING_DOPE_SORT_NAME) {
-			BLI_sortlist(&dopesheet->channels, channels_alpha_sort);
+			BLI_listbase_sort(&dopesheet->channels, channels_alpha_sort);
 		}
 		else if (sort_method == TRACKING_DOPE_SORT_LONGEST) {
-			BLI_sortlist(&dopesheet->channels, channels_longest_segment_sort);
+			BLI_listbase_sort(&dopesheet->channels, channels_longest_segment_sort);
 		}
 		else if (sort_method == TRACKING_DOPE_SORT_TOTAL) {
-			BLI_sortlist(&dopesheet->channels, channels_total_track_sort);
+			BLI_listbase_sort(&dopesheet->channels, channels_total_track_sort);
 		}
 		else if (sort_method == TRACKING_DOPE_SORT_AVERAGE_ERROR) {
-			BLI_sortlist(&dopesheet->channels, channels_average_error_sort);
+			BLI_listbase_sort(&dopesheet->channels, channels_average_error_sort);
 		}
 	}
 }
@@ -2499,7 +2561,7 @@ void BKE_tracking_dopesheet_tag_update(MovieTracking *tracking)
 {
 	MovieTrackingDopesheet *dopesheet = &tracking->dopesheet;
 
-	dopesheet->ok = FALSE;
+	dopesheet->ok = false;
 }
 
 /* Do dopesheet update, if update is not needed nothing will happen. */
@@ -2522,5 +2584,5 @@ void BKE_tracking_dopesheet_update(MovieTracking *tracking)
 	/* frame coverage */
 	tracking_dopesheet_calc_coverage(tracking);
 
-	dopesheet->ok = TRUE;
+	dopesheet->ok = true;
 }

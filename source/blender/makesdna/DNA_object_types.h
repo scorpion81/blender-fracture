@@ -57,6 +57,8 @@ struct DerivedMesh;
 struct SculptSession;
 struct bGPdata;
 struct RigidBodyOb;
+struct FractureContainer;
+struct ConstraintContainer;
 
 
 /* Vertex Groups - Name Info */
@@ -127,7 +129,7 @@ typedef struct Object {
 	struct Object *proxy, *proxy_group, *proxy_from;
 	struct Ipo *ipo  DNA_DEPRECATED;  /* old animation system, deprecated for 2.5 */
 	/* struct Path *path; */
-	struct BoundBox *bb;
+	struct BoundBox *bb;  /* axis aligned boundbox (in localspace) */
 	struct bAction *action  DNA_DEPRECATED;	 // XXX deprecated... old animation system
 	struct bAction *poselib;
 	struct bPose *pose;  /* pose data, armature objects only */
@@ -176,8 +178,6 @@ typedef struct Object {
 	float imat_ren[4][4];
 	
 	unsigned int lay;	/* copy of Base's layer in the scene */
-	
-	float sf; /* sf is time-offset */
 
 	short flag;			/* copy of Base */
 	short colbits DNA_DEPRECATED;		/* deprecated, use 'matbits' */
@@ -190,7 +190,10 @@ typedef struct Object {
 	char scavisflag;			/* more display settings for game logic */
 	char depsflag;
 
+	/* dupli-frame settings */
 	int dupon, dupoff, dupsta, dupend;
+
+	int pad;
 
 	/* during realtime */
 
@@ -208,11 +211,10 @@ typedef struct Object {
 	 */
 
 	float formfactor;
-	float rdamping, sizefac;
+	float rdamping;
 	float margin;
 	float max_vel; /* clamp the maximum velocity 0.0 is disabled */
 	float min_vel; /* clamp the minimum velocity 0.0 is disabled */
-	float m_contactProcessingThreshold;
 	float obstacleRad;
 	
 	/* "Character" physics properties */
@@ -239,7 +241,8 @@ typedef struct Object {
 	ListBase controllers;	/* game logic controllers */
 	ListBase actuators;		/* game logic actuators */
 
-	float bbsize[3]  DNA_DEPRECATED;
+	float sf; /* sf is time-offset */
+
 	short index;			/* custom index, for renderpasses */
 	unsigned short actdef;	/* current deformation group, note: index starts at 1 */
 	float col[4];			/* object color */
@@ -270,8 +273,10 @@ typedef struct Object {
 
 	struct FluidsimSettings *fluidsimSettings; /* if fluidsim enabled, store additional settings */
 
+	/* Runtime valuated curve-specific data, not stored in the file */
+	struct CurveCache *curve_cache;
+
 	struct DerivedMesh *derivedDeform, *derivedFinal;
-	int *pad;
 	uint64_t lastDataMask;   /* the custom data layer mask that was last used to calculate derivedDeform and derivedFinal */
 	uint64_t customdata_mask; /* (extra) custom data layer mask to use for creating derivedmesh, set by depsgraph */
 	unsigned int state;			/* bit masks of game controllers that are active */
@@ -281,17 +286,16 @@ typedef struct Object {
 	ListBase pc_ids;
 	ListBase *duplilist;	/* for temporary dupli list storage, only for use by RNA API */
 	
-	struct RigidBodyOb *rigidbody_object;		/* settings for Bullet rigid body */
-	struct RigidBodyCon *rigidbody_constraint;	/* settings for Bullet constraint */
+	struct RigidBodyOb *rigidbody_object DNA_DEPRECATED;		/* settings for Bullet rigid body */
+	struct RigidBodyCon *rigidbody_constraint DNA_DEPRECATED;	/* settings for Bullet constraint */
+	struct FractureContainer *fracture_objects;
+	struct ConstraintContainer *fracture_constraints;
 
 	float ima_ofs[2];		/* offset for image empties */
 	ImageUser *iuser;		/* must be non-null when oject is an empty image */
 
 	ListBase lodlevels;		/* contains data for levels of detail */
 	LodLevel *currentlod;
-
-	/* Runtime valuated curve-specific data, not stored in the file */
-	struct CurveCache *curve_cache;
 } Object;
 
 /* Warning, this is not used anymore because hooks are now modifiers */
@@ -316,7 +320,6 @@ typedef struct ObHook {
 typedef struct DupliObject {
 	struct DupliObject *next, *prev;
 	struct Object *ob;
-	unsigned int origlay, pad;
 	float mat[4][4];
 	float orco[3], uv[2];
 
@@ -363,13 +366,13 @@ enum {
 #define OB_TYPE_SUPPORT_VGROUP(_type) \
 	(ELEM(_type, OB_MESH, OB_LATTICE))
 #define OB_TYPE_SUPPORT_EDITMODE(_type) \
-	(ELEM7(_type, OB_MESH, OB_FONT, OB_CURVE, OB_SURF, OB_MBALL, OB_LATTICE, OB_ARMATURE))
+	(ELEM(_type, OB_MESH, OB_FONT, OB_CURVE, OB_SURF, OB_MBALL, OB_LATTICE, OB_ARMATURE))
 #define OB_TYPE_SUPPORT_PARVERT(_type) \
-	(ELEM4(_type, OB_MESH, OB_SURF, OB_CURVE, OB_LATTICE))
+	(ELEM(_type, OB_MESH, OB_SURF, OB_CURVE, OB_LATTICE))
 
 /* is this ID type used as object data */
 #define OB_DATA_SUPPORT_ID(_id_type) \
-	(ELEM8(_id_type, ID_ME, ID_CU, ID_MB, ID_LA, ID_SPK, ID_CA, ID_LT, ID_AR))
+	(ELEM(_id_type, ID_ME, ID_CU, ID_MB, ID_LA, ID_SPK, ID_CA, ID_LT, ID_AR))
 
 #define OB_DATA_SUPPORT_ID_CASE \
 	ID_ME: case ID_CU: case ID_MB: case ID_LA: case ID_SPK: case ID_CA: case ID_LT: case ID_AR
@@ -511,7 +514,7 @@ enum {
 
 
 #define OB_FROMDUPLI        (1 << 9)
-#define OB_DONE             (1 << 10)
+#define OB_DONE             (1 << 10)  /* unknown state, clear before use */
 /* #define OB_RADIO            (1 << 11) */  /* deprecated */
 #define OB_FROMGROUP        (1 << 12)
 
@@ -673,7 +676,6 @@ typedef enum ObjectMode {
 	OB_MODE_TEXTURE_PAINT = 1 << 4,
 	OB_MODE_PARTICLE_EDIT = 1 << 5,
 	OB_MODE_POSE          = 1 << 6,
-	OB_MODE_FRACTURE      = 1 << 7,
 } ObjectMode;
 
 /* any mode where the brush system is used */

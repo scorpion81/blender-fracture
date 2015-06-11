@@ -41,6 +41,7 @@
 #endif
 
 struct MTex;
+struct Image;
 struct ColorBand;
 struct Group;
 struct bNodeTree;
@@ -82,6 +83,13 @@ typedef struct GameSettings {
 	int pad1;
 } GameSettings;
 
+typedef struct TexPaintSlot {
+	struct Image *ima; /* image to be painted on */
+	char *uvname;      /* customdata index for uv layer, MAX_NAME*/
+	int index;         /* index for mtex slot in material for blender internal */
+	int pad;
+} TexPaintSlot;
+
 typedef struct Material {
 	ID id;
 	struct AnimData *adt;	/* animation data (must be immediately after id for utilities to use it) */ 
@@ -117,6 +125,7 @@ typedef struct Material {
 	short shade_flag;		/* like Cubic interpolation */
 		
 	int mode, mode_l;		/* mode_l is the or-ed result of all layer modes */
+	int mode2, mode2_l;		/* additional mode flags */
 	short flarec, starc, linec, ringc;
 	float hasize, flaresize, subsize, flareboost;
 	float strand_sta, strand_end, strand_ease, strand_surfnor;
@@ -177,9 +186,19 @@ typedef struct Material {
 	short shadowonly_flag;  /* "shadowsonly" type */
 	short index;            /* custom index for render passes */
 
+	/* Freestyle line settings */
+	float line_col[4];
+	short line_priority;
 	short vcol_alpha;
+
+	/* texture painting */
+	short paint_active_slot;
+	short paint_clone_slot;
+	short tot_slots;
 	short pad4[3];
 
+	struct TexPaintSlot *texpaintslot; /* cached slot for painting. Make sure to recalculate before use
+	                                    * with refresh_texpaint_image_cache */
 	ListBase gpumaterial;		/* runtime */
 } Material;
 
@@ -278,6 +297,13 @@ typedef struct Material {
 #define MA_STR_SURFDIFF 0x80000000
 
 #define	MA_MODE_MASK	0x6fffffff	/* all valid mode bits */
+#define MA_MODE_PIPELINE	(MA_TRANSP | MA_ZTRANSP | MA_RAYTRANSP \
+				 | MA_TRACEBLE | MA_FULL_OSA | MA_ENV | MA_ZINV \
+				 | MA_ONLYCAST | MA_SHADBUF)
+
+/* mode2 (is int) */
+#define MA_CASTSHADOW		(1 << 0)
+#define MA_MODE2_PIPELINE	(MA_CASTSHADOW)
 
 /* mapflag */
 #define MA_MAPFLAG_UVPROJECT (1 << 0)
@@ -412,6 +438,7 @@ typedef struct Material {
 #define MAP_PA_CLUMP	128
 #define MAP_PA_KINK		256
 #define MAP_PA_ROUGH	512
+#define MAP_PA_FREQ		1024
 
 /* pr_type */
 #define MA_FLAT			0

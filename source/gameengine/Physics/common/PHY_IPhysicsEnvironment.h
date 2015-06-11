@@ -46,6 +46,16 @@ class PHY_ICharacter;
 class RAS_MeshObject;
 class PHY_IPhysicsController;
 
+
+class RAS_MeshObject;
+struct DerivedMesh;
+class KX_GameObject;
+class KX_Scene;
+
+struct PHY_ShapeProps;
+struct PHY_MaterialProps;
+class PHY_IMotionState;
+
 /**
  * pass back information from rayTest
  */
@@ -116,6 +126,8 @@ class PHY_IPhysicsEnvironment
 		//returns 0.f if no fixed timestep is used
 		virtual	float		GetFixedTimeStep()=0;
 
+		///getDebugMode return the actual debug visualization state
+		virtual int			GetDebugMode()const=0;
 		///setDebugMode is used to support several ways of debug lines, contact point visualization
 		virtual void		SetDebugMode(int debugMode) {}
 		///setNumIterations set the number of iterations for iterative solvers
@@ -187,6 +199,19 @@ class PHY_IPhysicsEnvironment
 		virtual float	GetConstraintParam(int constraintId,int param) = 0;
 		
 		virtual void	ExportFile(const char* filename) {};
+
+		virtual void MergeEnvironment(PHY_IPhysicsEnvironment *other_env) = 0;
+
+		virtual void ConvertObject(KX_GameObject* gameobj,
+							RAS_MeshObject* meshobj,
+							DerivedMesh* dm,
+							KX_Scene* kxscene,
+							PHY_ShapeProps* shapeprops,
+							PHY_MaterialProps*	smmaterial,
+							PHY_IMotionState *motionstate,
+							int activeLayerBitInfo,
+							bool isCompoundChild,
+							bool hasCompoundChildren) = 0;
 
 
 #ifdef WITH_CXX_GUARDEDALLOC

@@ -34,12 +34,6 @@
 #include <wchar.h>
 #include <errno.h>
 
-#ifndef WIN32 
-#  include <unistd.h>
-#else
-#  include <io.h>
-#endif
-
 #include "MEM_guardedalloc.h"
 
 #include "BLI_blenlib.h"
@@ -57,7 +51,6 @@
 #include "BKE_curve.h"
 #include "BKE_depsgraph.h"
 #include "BKE_font.h"
-#include "BKE_library.h"
 #include "BKE_main.h"
 #include "BKE_object.h"
 #include "BKE_report.h"
@@ -72,6 +65,7 @@
 #include "ED_object.h"
 #include "ED_screen.h"
 #include "ED_util.h"
+#include "ED_view3d.h"
 
 #include "UI_interface.h"
 
@@ -248,15 +242,28 @@ static int insert_into_textbuf(Object *obedit, uintptr_t c)
 		return 0;
 }
 
-static void text_update_edited(bContext *C, Object *obedit, const bool recalc, int mode)
+static void text_update_edited(bContext *C, Object *obedit, int mode)
 {
 	struct Main *bmain = CTX_data_main(C);
 	Curve *cu = obedit->data;
 	EditFont *ef = cu->editfont;
+
+	BLI_assert(ef->len >= 0);
+
+	/* run update first since it can move the cursor */
+	if (mode == FO_EDIT) {
+		/* re-tesselllate */
+		DAG_id_tag_update(obedit->data, 0);
+	}
+	else {
+		/* depsgraph runs above, but since we're not tagging for update, call direct */
+		BKE_vfont_to_curve(bmain, obedit, mode);
+	}
+
 	cu->curinfo = ef->textbufinfo[ef->pos ? ef->pos - 1 : 0];
-	
+
 	if (obedit->totcol > 0) {
-		obedit->actcol = ef->textbufinfo[ef->pos ? ef->pos - 1 : 0].mat_nr;
+		obedit->actcol = cu->curinfo.mat_nr;
 
 		/* since this array is calloc'd, it can be 0 even though we try ensure
 		 * (mat_nr > 0) almost everywhere */
@@ -264,11 +271,6 @@ static void text_update_edited(bContext *C, Object *obedit, const bool recalc, i
 			obedit->actcol = 1;
 		}
 	}
-
-	BKE_vfont_to_curve(bmain, obedit, mode);
-
-	if (recalc)
-		DAG_id_tag_update(obedit->data, 0);
 
 	WM_event_add_notifier(C, NC_GEOM | ND_DATA, obedit->data);
 }
@@ -437,7 +439,7 @@ static int paste_from_file(bContext *C, ReportList *reports, const char *filenam
 
 
 	if (strp && font_paste_utf8(C, strp, filelen)) {
-		text_update_edited(C, obedit, 1, FO_EDIT);
+		text_update_edited(C, obedit, FO_EDIT);
 		retval = OPERATOR_FINISHED;
 
 	}
@@ -498,7 +500,7 @@ void FONT_OT_text_paste_from_file(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	/* properties */
-	WM_operator_properties_filesel(ot, FOLDERFILE | TEXTFILE, FILE_SPECIAL, FILE_OPENFILE,
+	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_TEXT, FILE_SPECIAL, FILE_OPENFILE,
 	                               WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY);
 }
 
@@ -520,7 +522,7 @@ static int paste_from_clipboard(bContext *C, ReportList *reports)
 	}
 
 	if ((filelen <= MAXTEXT) && font_paste_utf8(C, strp, filelen)) {
-		text_update_edited(C, obedit, 1, FO_EDIT);
+		text_update_edited(C, obedit, FO_EDIT);
 		retval = OPERATOR_FINISHED;
 	}
 	else {
@@ -556,7 +558,7 @@ void FONT_OT_text_paste_from_clipboard(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	/* properties */
-	WM_operator_properties_filesel(ot, FOLDERFILE | TEXTFILE, FILE_SPECIAL, FILE_OPENFILE,
+	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_TEXT, FILE_SPECIAL, FILE_OPENFILE,
 	                               WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY);
 }
 
@@ -666,7 +668,7 @@ void ED_text_to_object(bContext *C, Text *text, const bool split_lines)
 		offset[1] = 0.0f;
 		offset[2] = 0.0f;
 
-		txt_add_object(C, text->lines.first, BLI_countlist(&text->lines), offset);
+		txt_add_object(C, text->lines.first, BLI_listbase_count(&text->lines), offset);
 	}
 }
 
@@ -711,7 +713,7 @@ static EnumPropertyItem style_items[] = {
 	{0, NULL, 0, NULL, NULL}
 };
 
-static int set_style(bContext *C, const int style, const int clear)
+static int set_style(bContext *C, const int style, const bool clear)
 {
 	Object *obedit = CTX_data_edit_object(C);
 	Curve *cu = obedit->data;
@@ -737,7 +739,7 @@ static int set_style(bContext *C, const int style, const int clear)
 static int set_style_exec(bContext *C, wmOperator *op)
 {
 	const int style = RNA_enum_get(op->ptr, "style");
-	const int clear = RNA_boolean_get(op->ptr, "clear");
+	const bool clear = RNA_boolean_get(op->ptr, "clear");
 
 	return set_style(C, style, clear);
 }
@@ -813,7 +815,7 @@ static int font_select_all_exec(bContext *C, wmOperator *UNUSED(op))
 		ef->selend = ef->len;
 		ef->pos = ef->len;
 
-		text_update_edited(C, obedit, true, FO_SELCHANGE);
+		text_update_edited(C, obedit, FO_SELCHANGE);
 
 		return OPERATOR_FINISHED;
 	}
@@ -889,7 +891,7 @@ static int cut_text_exec(bContext *C, wmOperator *UNUSED(op))
 	copy_selection(obedit);
 	kill_selection(obedit, 0);
 
-	text_update_edited(C, obedit, 1, FO_EDIT);
+	text_update_edited(C, obedit, FO_EDIT);
 
 	return OPERATOR_FINISHED;
 }
@@ -933,7 +935,7 @@ static int paste_text_exec(bContext *C, wmOperator *op)
 	if (!paste_selection(obedit, op->reports))
 		return OPERATOR_CANCELLED;
 
-	text_update_edited(C, obedit, 1, FO_EDIT);
+	text_update_edited(C, obedit, FO_EDIT);
 
 	return OPERATOR_FINISHED;
 }
@@ -968,16 +970,19 @@ static EnumPropertyItem move_type_items[] = {
 	{NEXT_PAGE, "NEXT_PAGE", 0, "Next Page", ""},
 	{0, NULL, 0, NULL, NULL}};
 
-static int move_cursor(bContext *C, int type, int select)
+static int move_cursor(bContext *C, int type, const bool select)
 {
 	Object *obedit = CTX_data_edit_object(C);
 	Curve *cu = obedit->data;
 	EditFont *ef = cu->editfont;
 	int cursmove = -1;
 
+	if ((select) && (ef->selstart == 0)) {
+		ef->selstart = ef->selend = ef->pos + 1;
+	}
+
 	switch (type) {
 		case LINE_BEGIN:
-			if ((select) && (ef->selstart == 0)) ef->selstart = ef->selend = ef->pos + 1;
 			while (ef->pos > 0) {
 				if (ef->textbuf[ef->pos - 1] == '\n') break;
 				if (ef->textbufinfo[ef->pos - 1].flag & CU_CHINFO_WRAP) break;
@@ -987,7 +992,6 @@ static int move_cursor(bContext *C, int type, int select)
 			break;
 			
 		case LINE_END:
-			if ((select) && (ef->selstart == 0)) ef->selstart = ef->selend = ef->pos + 1;
 			while (ef->pos < ef->len) {
 				if (ef->textbuf[ef->pos] == 0) break;
 				if (ef->textbuf[ef->pos] == '\n') break;
@@ -1000,7 +1004,6 @@ static int move_cursor(bContext *C, int type, int select)
 		case PREV_WORD:
 		{
 			int pos = ef->pos;
-			if ((select) && (ef->selstart == 0)) ef->selstart = ef->selend = ef->pos + 1;
 			BLI_str_cursor_step_wchar(ef->textbuf, ef->len, &pos, STRCUR_DIR_PREV, STRCUR_JUMP_DELIM, true);
 			ef->pos = pos;
 			cursmove = FO_CURS;
@@ -1010,7 +1013,6 @@ static int move_cursor(bContext *C, int type, int select)
 		case NEXT_WORD:
 		{
 			int pos = ef->pos;
-			if ((select) && (ef->selstart == 0)) ef->selstart = ef->selend = ef->pos + 1;
 			BLI_str_cursor_step_wchar(ef->textbuf, ef->len, &pos, STRCUR_DIR_NEXT, STRCUR_JUMP_DELIM, true);
 			ef->pos = pos;
 			cursmove = FO_CURS;
@@ -1018,35 +1020,29 @@ static int move_cursor(bContext *C, int type, int select)
 		}
 
 		case PREV_CHAR:
-			if ((select) && (ef->selstart == 0)) ef->selstart = ef->selend = ef->pos + 1;
 			ef->pos--;
 			cursmove = FO_CURS;
 			break;
 
 		case NEXT_CHAR:
-			if ((select) && (ef->selstart == 0)) ef->selstart = ef->selend = ef->pos + 1;
 			ef->pos++;
 			cursmove = FO_CURS;
 
 			break;
 
 		case PREV_LINE:
-			if ((select) && (ef->selstart == 0)) ef->selstart = ef->selend = ef->pos + 1;
 			cursmove = FO_CURSUP;
 			break;
 			
 		case NEXT_LINE:
-			if ((select) && (ef->selstart == 0)) ef->selstart = ef->selend = ef->pos + 1;
 			cursmove = FO_CURSDOWN;
 			break;
 
 		case PREV_PAGE:
-			if ((select) && (ef->selstart == 0)) ef->selstart = ef->selend = ef->pos + 1;
 			cursmove = FO_PAGEUP;
 			break;
 
 		case NEXT_PAGE:
-			if ((select) && (ef->selstart == 0)) ef->selstart = ef->selend = ef->pos + 1;
 			cursmove = FO_PAGEDOWN;
 			break;
 	}
@@ -1058,6 +1054,14 @@ static int move_cursor(bContext *C, int type, int select)
 	else if (ef->pos >= MAXTEXT) ef->pos = MAXTEXT;
 	else if (ef->pos < 0)        ef->pos = 0;
 
+	/* apply virtical cursor motion to position immediately
+	 * otherwise the selection will lag behind */
+	if (FO_CURS_IS_MOTION(cursmove)) {
+		struct Main *bmain = CTX_data_main(C);
+		BKE_vfont_to_curve(bmain, obedit, cursmove);
+		cursmove = FO_CURS;
+	}
+
 	if (select == 0) {
 		if (ef->selstart) {
 			struct Main *bmain = CTX_data_main(C);
@@ -1066,10 +1070,10 @@ static int move_cursor(bContext *C, int type, int select)
 		}
 	}
 
-	text_update_edited(C, obedit, select, cursmove);
-
 	if (select)
 		ef->selend = ef->pos;
+
+	text_update_edited(C, obedit, cursmove);
 
 	return OPERATOR_FINISHED;
 }
@@ -1078,7 +1082,7 @@ static int move_exec(bContext *C, wmOperator *op)
 {
 	int type = RNA_enum_get(op->ptr, "type");
 
-	return move_cursor(C, type, 0);
+	return move_cursor(C, type, false);
 }
 
 void FONT_OT_move(wmOperatorType *ot)
@@ -1105,7 +1109,7 @@ static int move_select_exec(bContext *C, wmOperator *op)
 {
 	int type = RNA_enum_get(op->ptr, "type");
 
-	return move_cursor(C, type, 1);
+	return move_cursor(C, type, true);
 }
 
 void FONT_OT_move_select(wmOperatorType *ot)
@@ -1144,7 +1148,7 @@ static int change_spacing_exec(bContext *C, wmOperator *op)
 
 	ef->textbufinfo[ef->pos - 1].kern = kern;
 
-	text_update_edited(C, obedit, 1, FO_EDIT);
+	text_update_edited(C, obedit, FO_EDIT);
 
 	return OPERATOR_FINISHED;
 }
@@ -1188,7 +1192,7 @@ static int change_character_exec(bContext *C, wmOperator *op)
 
 	ef->textbuf[ef->pos - 1] = character;
 
-	text_update_edited(C, obedit, 1, FO_EDIT);
+	text_update_edited(C, obedit, FO_EDIT);
 
 	return OPERATOR_FINISHED;
 }
@@ -1223,7 +1227,7 @@ static int line_break_exec(bContext *C, wmOperator *UNUSED(op))
 
 	ef->selstart = ef->selend = 0;
 
-	text_update_edited(C, obedit, 1, FO_EDIT);
+	text_update_edited(C, obedit, FO_EDIT);
 
 	return OPERATOR_FINISHED;
 }
@@ -1309,7 +1313,7 @@ static int delete_exec(bContext *C, wmOperator *op)
 			return OPERATOR_CANCELLED;
 	}
 
-	text_update_edited(C, obedit, 1, FO_EDIT);
+	text_update_edited(C, obedit, FO_EDIT);
 
 	return OPERATOR_FINISHED;
 }
@@ -1357,7 +1361,7 @@ static int insert_text_exec(bContext *C, wmOperator *op)
 	MEM_freeN(inserted_utf8);
 
 	kill_selection(obedit, 1);
-	text_update_edited(C, obedit, 1, FO_EDIT);
+	text_update_edited(C, obedit, FO_EDIT);
 
 	return OPERATOR_FINISHED;
 }
@@ -1427,12 +1431,12 @@ static int insert_text_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 			}
 			
 			kill_selection(obedit, 1);
-			text_update_edited(C, obedit, 1, FO_EDIT);
+			text_update_edited(C, obedit, FO_EDIT);
 		}
 		else {
 			inserted_text[0] = ascii;
 			insert_into_textbuf(obedit, ascii);
-			text_update_edited(C, obedit, 1, FO_EDIT);
+			text_update_edited(C, obedit, FO_EDIT);
 		}
 	}
 	else
@@ -1575,6 +1579,7 @@ void make_editText(Object *obedit)
 	len_wchar = BLI_strncpy_wchar_from_utf8(ef->textbuf, cu->str, MAXTEXT + 4);
 	BLI_assert(len_wchar == cu->len_wchar);
 	ef->len = len_wchar;
+	BLI_assert(ef->len >= 0);
 
 	memcpy(ef->textbufinfo, cu->strinfo, ef->len * sizeof(CharInfo));
 
@@ -1586,6 +1591,9 @@ void make_editText(Object *obedit)
 	ef->pos = cu->pos;
 	ef->selstart = cu->selstart;
 	ef->selend = cu->selend;
+
+	/* text may have been modified by Python */
+	BKE_vfont_select_clamp(obedit);
 }
 
 void load_editText(Object *obedit)
@@ -1660,7 +1668,7 @@ static int set_case(bContext *C, int ccase)
 			}
 		}
 
-		text_update_edited(C, obedit, 1, FO_EDIT);
+		text_update_edited(C, obedit, FO_EDIT);
 	}
 
 	return OPERATOR_FINISHED;
@@ -1736,7 +1744,7 @@ static void font_ui_template_init(bContext *C, wmOperator *op)
 	PropertyPointerRNA *pprop;
 	
 	op->customdata = pprop = MEM_callocN(sizeof(PropertyPointerRNA), "OpenPropertyPointerRNA");
-	uiIDContextProperty(C, &pprop->ptr, &pprop->prop);
+	UI_context_active_but_prop_get_templateID(C, &pprop->ptr, &pprop->prop);
 }
 
 static void font_open_cancel(bContext *UNUSED(C), wmOperator *op)
@@ -1785,7 +1793,7 @@ static int font_open_exec(bContext *C, wmOperator *op)
 static int open_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
 	VFont *vfont = NULL;
-	char *path;
+	const char *path;
 
 	PointerRNA idptr;
 	PropertyPointerRNA *pprop;
@@ -1827,7 +1835,7 @@ void FONT_OT_open(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
 	/* properties */
-	WM_operator_properties_filesel(ot, FOLDERFILE | FTFONTFILE, FILE_SPECIAL, FILE_OPENFILE,
+	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_FTFONT, FILE_SPECIAL, FILE_OPENFILE,
 	                               WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY);
 }
 
@@ -1840,7 +1848,7 @@ static int font_unlink_exec(bContext *C, wmOperator *op)
 	PointerRNA idptr;
 	PropertyPointerRNA pprop;
 
-	uiIDContextProperty(C, &pprop.ptr, &pprop.prop);
+	UI_context_active_but_prop_get_templateID(C, &pprop.ptr, &pprop.prop);
 	
 	if (pprop.prop == NULL) {
 		BKE_report(op->reports, RPT_ERROR, "Incorrect context for running font unlink");
@@ -1874,10 +1882,10 @@ static void undoFont_to_editFont(void *strv, void *ecu, void *UNUSED(obdata))
 {
 	Curve *cu = (Curve *)ecu;
 	EditFont *ef = cu->editfont;
-	char *str = strv;
+	const char *str = strv;
 
-	ef->pos = *((short *)str);
-	ef->len = *((short *)(str + 2));
+	ef->pos = *((const short *)str);
+	ef->len = *((const short *)(str + 2));
 
 	memcpy(ef->textbuf, str + 4, (ef->len + 1) * sizeof(wchar_t));
 	memcpy(ef->textbufinfo, str + 4 + (ef->len + 1) * sizeof(wchar_t), ef->len * sizeof(CharInfo));
@@ -1923,4 +1931,90 @@ static void *get_undoFont(bContext *C)
 void undo_push_font(bContext *C, const char *name)
 {
 	undo_editmode_push(C, name, get_undoFont, free_undoFont, undoFont_to_editFont, editFont_to_undoFont, NULL);
+}
+
+/**
+ * TextBox selection
+ */
+bool mouse_font(bContext *C, const int mval[2], bool extend, bool deselect, bool toggle)
+{
+	Object *obedit = CTX_data_edit_object(C);
+	Curve *cu = obedit->data;
+	ViewContext vc;
+	/* bias against the active, in pixels, allows cycling */
+	const float active_bias_px = 4.0f;
+	const float mval_fl[2] = {UNPACK2(mval)};
+	const int i_actbox = max_ii(0, cu->actbox - 1);
+	int i_iter, actbox_select = -1;
+	const float dist = ED_view3d_select_dist_px();
+	float dist_sq_best = dist * dist;
+
+	view3d_set_viewcontext(C, &vc);
+
+	ED_view3d_init_mats_rv3d(vc.obedit, vc.rv3d);
+
+	/* currently only select active */
+	(void)extend;
+	(void)deselect;
+	(void)toggle;
+
+	for (i_iter = 0; i_iter < cu->totbox; i_iter++) {
+		int i = (i_iter + i_actbox) % cu->totbox;
+		float dist_sq_min;
+		int j, j_prev;
+
+		float obedit_co[4][3];
+		float screen_co[4][2];
+		rctf rect;
+		int project_ok = 0;
+
+
+		BKE_curve_rect_from_textbox(cu, &cu->tb[i], &rect);
+
+		copy_v3_fl3(obedit_co[0], rect.xmin, rect.ymin, 0.0f);
+		copy_v3_fl3(obedit_co[1], rect.xmin, rect.ymax, 0.0f);
+		copy_v3_fl3(obedit_co[2], rect.xmax, rect.ymax, 0.0f);
+		copy_v3_fl3(obedit_co[3], rect.xmax, rect.ymin, 0.0f);
+
+		for (j = 0; j < 4; j++) {
+			if (ED_view3d_project_float_object(vc.ar, obedit_co[j], screen_co[j],
+			                                   V3D_PROJ_TEST_CLIP_BB) == V3D_PROJ_RET_OK)
+			{
+				project_ok |= (1 << j);
+			}
+		}
+
+		dist_sq_min = dist_sq_best;
+		for (j = 0, j_prev = 3; j < 4; j_prev = j++) {
+			if ((project_ok & (1 << j)) &&
+			    (project_ok & (1 << j_prev)))
+			{
+				const float dist_test_sq = dist_squared_to_line_segment_v2(mval_fl, screen_co[j_prev], screen_co[j]);
+				if (dist_sq_min > dist_test_sq) {
+					dist_sq_min = dist_test_sq;
+				}
+			}
+		}
+
+		/* bias in pixels to cycle seletion */
+		if (i_iter == 0) {
+			dist_sq_min += active_bias_px;
+		}
+
+		if (dist_sq_min < dist_sq_best) {
+			dist_sq_best = dist_sq_min;
+			actbox_select = i + 1;
+		}
+	}
+
+	if (actbox_select != -1) {
+		if (cu->actbox != actbox_select) {
+			cu->actbox = actbox_select;
+			WM_event_add_notifier(C, NC_GEOM | ND_DATA, obedit->data);
+		}
+		return true;
+	}
+	else {
+		return false;
+	}
 }

@@ -32,14 +32,12 @@
  *  \ingroup modifiers
  */
 
-
 #include <string.h>
 
 #include "DNA_scene_types.h"
 #include "DNA_object_types.h"
 
 #include "BLI_utildefines.h"
-#include "BLI_string.h"
 
 
 #include "BKE_cdderivedmesh.h"
@@ -48,7 +46,6 @@
 
 #include "depsgraph_private.h"
 
-#include "MOD_util.h"
 
 static void initData(ModifierData *md)
 {
@@ -120,7 +117,7 @@ static void deformVerts(ModifierData *md, Object *ob,
 
 	/* silly that defaxis and curve_deform_verts are off by 1
 	 * but leave for now to save having to call do_versions */
-	curve_deform_verts(cmd->object, ob, derivedData, vertexCos, numVerts,
+	curve_deform_verts(md->scene, cmd->object, ob, derivedData, vertexCos, numVerts,
 	                   cmd->name, cmd->defaxis - 1);
 }
 

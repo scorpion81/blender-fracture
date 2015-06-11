@@ -54,7 +54,7 @@
 #  include <sys/time.h>
 #endif
 
-#if defined(__APPLE__) && defined(_OPENMP) && (__GNUC__ == 4) && (__GNUC_MINOR__ == 2)
+#if defined(__APPLE__) && defined(_OPENMP) && (__GNUC__ == 4) && (__GNUC_MINOR__ == 2) && !defined(__clang__)
 #  define USE_APPLE_OMP_FIX
 #endif
 
@@ -121,6 +121,7 @@ static pthread_mutex_t _opengl_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t _nodes_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t _movieclip_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t _colormanage_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t _fftw_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_t mainid;
 static int thread_levels = 0;  /* threads can be invoked inside threads */
 static int num_threads_override = 0;
@@ -184,7 +185,7 @@ void BLI_init_threads(ListBase *threadbase, void *(*do_thread)(void *), int tot)
 	int a;
 
 	if (threadbase != NULL && tot > 0) {
-		threadbase->first = threadbase->last = NULL;
+		BLI_listbase_clear(threadbase);
 	
 		if (tot > RE_MAX_THREAD) tot = RE_MAX_THREAD;
 		else if (tot < 1) tot = 1;
@@ -318,7 +319,7 @@ void BLI_end_threads(ListBase *threadbase)
 	/* only needed if there's actually some stuff to end
 	 * this way we don't end up decrementing thread_levels on an empty threadbase 
 	 * */
-	if (threadbase && threadbase->first != NULL) {
+	if (threadbase && (BLI_listbase_is_empty(threadbase) == false)) {
 		for (tslot = threadbase->first; tslot; tslot = tslot->next) {
 			if (tslot->avail == 0) {
 				pthread_join(tslot->pthread, NULL);
@@ -399,6 +400,8 @@ void BLI_lock_thread(int type)
 		pthread_mutex_lock(&_movieclip_lock);
 	else if (type == LOCK_COLORMANAGE)
 		pthread_mutex_lock(&_colormanage_lock);
+	else if (type == LOCK_FFTW)
+		pthread_mutex_lock(&_fftw_lock);
 }
 
 void BLI_unlock_thread(int type)
@@ -421,6 +424,8 @@ void BLI_unlock_thread(int type)
 		pthread_mutex_unlock(&_movieclip_lock);
 	else if (type == LOCK_COLORMANAGE)
 		pthread_mutex_unlock(&_colormanage_lock);
+	else if (type == LOCK_FFTW)
+		pthread_mutex_unlock(&_fftw_lock);
 }
 
 /* Mutex Locks */

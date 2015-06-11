@@ -44,8 +44,6 @@
  *
  * Note that the values and keys are often pointers or index values,
  * use the maximum values to avoid real pointers colliding with magic numbers.
- *
- * \note these have the SMHASH prefix because we may want to make them public.
  */
 
 #include <string.h>
@@ -55,7 +53,6 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_utildefines.h"
-#include "BLI_alloca.h"
 
 #include "BLI_smallhash.h"
 
@@ -87,6 +84,11 @@ BLI_INLINE bool smallhash_val_is_used(const void *val)
 
 extern const unsigned int hashsizes[];
 
+BLI_INLINE unsigned int smallhash_key(const uintptr_t key)
+{
+	return (unsigned int)key;
+}
+
 /**
  * Check if the number of items in the smallhash is large enough to require more buckets.
  */
@@ -116,10 +118,10 @@ BLI_INLINE void smallhash_buckets_reserve(SmallHash *sh, const unsigned int nent
 	}
 }
 
-BLI_INLINE SmallHashEntry *smallhash_lookup(SmallHash *sh, const uintptr_t key)
+BLI_INLINE SmallHashEntry *smallhash_lookup(const SmallHash *sh, const uintptr_t key)
 {
 	SmallHashEntry *e;
-	unsigned int h = (unsigned int)key;
+	unsigned int h = smallhash_key(key);
 	unsigned int hoff = 1;
 
 	BLI_assert(key != SMHASH_KEY_UNUSED);
@@ -143,7 +145,7 @@ BLI_INLINE SmallHashEntry *smallhash_lookup(SmallHash *sh, const uintptr_t key)
 BLI_INLINE SmallHashEntry *smallhash_lookup_first_free(SmallHash *sh, const uintptr_t key)
 {
 	SmallHashEntry *e;
-	unsigned int h = (unsigned int)key;
+	unsigned int h = smallhash_key(key);
 	unsigned int hoff = 1;
 
 	for (e = &sh->buckets[h % sh->nbuckets];
@@ -244,6 +246,26 @@ void BLI_smallhash_insert(SmallHash *sh, uintptr_t key, void *val)
 	e->val = val;
 }
 
+/**
+ * Inserts a new value to a key that may already be in ghash.
+ *
+ * Avoids #BLI_smallhash_remove, #BLI_smallhash_insert calls (double lookups)
+ *
+ * \returns true if a new key has been added.
+ */
+bool BLI_smallhash_reinsert(SmallHash *sh, uintptr_t key, void *item)
+{
+	SmallHashEntry *e = smallhash_lookup(sh, key);
+	if (e) {
+		e->val = item;
+		return false;
+	}
+	else {
+		BLI_smallhash_insert(sh, key, item);
+		return true;
+	}
+}
+
 #ifdef USE_REMOVE
 bool BLI_smallhash_remove(SmallHash *sh, uintptr_t key)
 {
@@ -262,33 +284,33 @@ bool BLI_smallhash_remove(SmallHash *sh, uintptr_t key)
 }
 #endif
 
-void *BLI_smallhash_lookup(SmallHash *sh, uintptr_t key)
+void *BLI_smallhash_lookup(const SmallHash *sh, uintptr_t key)
 {
 	SmallHashEntry *e = smallhash_lookup(sh, key);
 
 	return e ? e->val : NULL;
 }
 
-void **BLI_smallhash_lookup_p(SmallHash *sh, uintptr_t key)
+void **BLI_smallhash_lookup_p(const SmallHash *sh, uintptr_t key)
 {
 	SmallHashEntry *e = smallhash_lookup(sh, key);
 
 	return e ? &e->val : NULL;
 }
 
-bool BLI_smallhash_haskey(SmallHash *sh, uintptr_t key)
+bool BLI_smallhash_haskey(const SmallHash *sh, uintptr_t key)
 {
 	SmallHashEntry *e = smallhash_lookup(sh, key);
 
 	return (e != NULL);
 }
 
-int BLI_smallhash_count(SmallHash *sh)
+int BLI_smallhash_count(const SmallHash *sh)
 {
 	return (int)sh->nentries;
 }
 
-void *BLI_smallhash_iternext(SmallHashIter *iter, uintptr_t *key)
+BLI_INLINE SmallHashEntry *smallhash_iternext(SmallHashIter *iter, uintptr_t *key)
 {
 	while (iter->i < iter->sh->nbuckets) {
 		if (smallhash_val_is_used(iter->sh->buckets[iter->i].val)) {
@@ -296,7 +318,7 @@ void *BLI_smallhash_iternext(SmallHashIter *iter, uintptr_t *key)
 				*key = iter->sh->buckets[iter->i].key;
 			}
 
-			return iter->sh->buckets[iter->i++].val;
+			return &iter->sh->buckets[iter->i++];
 		}
 
 		iter->i++;
@@ -305,13 +327,39 @@ void *BLI_smallhash_iternext(SmallHashIter *iter, uintptr_t *key)
 	return NULL;
 }
 
-void *BLI_smallhash_iternew(SmallHash *sh, SmallHashIter *iter, uintptr_t *key)
+void *BLI_smallhash_iternext(SmallHashIter *iter, uintptr_t *key)
+{
+	SmallHashEntry *e = smallhash_iternext(iter, key);
+
+	return e ? e->val : NULL;
+}
+
+void **BLI_smallhash_iternext_p(SmallHashIter *iter, uintptr_t *key)
+{
+	SmallHashEntry *e = smallhash_iternext(iter, key);
+
+	return e ? &e->val : NULL;
+}
+
+void *BLI_smallhash_iternew(const SmallHash *sh, SmallHashIter *iter, uintptr_t *key)
 {
 	iter->sh = sh;
 	iter->i = 0;
 
 	return BLI_smallhash_iternext(iter, key);
 }
+
+void **BLI_smallhash_iternew_p(const SmallHash *sh, SmallHashIter *iter, uintptr_t *key)
+{
+	iter->sh = sh;
+	iter->i = 0;
+
+	return BLI_smallhash_iternext_p(iter, key);
+}
+
+
+/** \name Debugging & Introspection
+ * \{ */
 
 /* note, this was called _print_smhash in knifetool.c
  * it may not be intended for general use - campbell */
@@ -346,3 +394,41 @@ void BLI_smallhash_print(SmallHash *sh)
 	fflush(stdout);
 }
 #endif
+
+#ifdef DEBUG
+/**
+ * Measure how well the hash function performs
+ * (1.0 is perfect - no stepping needed).
+ *
+ * Smaller is better!
+ */
+double BLI_smallhash_calc_quality(SmallHash *sh)
+{
+	uint64_t sum = 0;
+	unsigned int i;
+
+	if (sh->nentries == 0)
+		return -1.0;
+
+	for (i = 0; i < sh->nbuckets; i++) {
+		if (sh->buckets[i].key != SMHASH_KEY_UNUSED) {
+			uint64_t count = 0;
+			SmallHashEntry *e, *e_final = &sh->buckets[i];
+			unsigned int h = smallhash_key(e_final->key);
+			unsigned int hoff = 1;
+
+			for (e = &sh->buckets[h % sh->nbuckets];
+			     e != e_final;
+			     h = SMHASH_NEXT(h, hoff), e = &sh->buckets[h % sh->nbuckets])
+			{
+				count += 1;
+			}
+
+			sum += count;
+		}
+	}
+	return ((double)(sh->nentries + sum) / (double)sh->nentries);
+}
+#endif
+
+/** \} */

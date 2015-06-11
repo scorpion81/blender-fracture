@@ -28,27 +28,26 @@ class BVHParams
 {
 public:
 	/* spatial split area threshold */
-	int use_spatial_split;
+	bool use_spatial_split;
 	float spatial_split_alpha;
 
 	/* SAH costs */
 	float sah_node_cost;
-	float sah_triangle_cost;
+	float sah_primitive_cost;
 
-	/* number of triangles in leaf */
+	/* number of primitives in leaf */
 	int min_leaf_size;
-	int max_leaf_size;
+	int max_triangle_leaf_size;
+	int max_curve_leaf_size;
 
 	/* object or mesh level bvh */
-	int top_level;
+	bool top_level;
 
 	/* disk cache */
-	int use_cache;
+	bool use_cache;
 
 	/* QBVH */
-	int use_qbvh;
-
-	int pad;
+	bool use_qbvh;
 
 	/* fixed parameters */
 	enum {
@@ -62,24 +61,26 @@ public:
 		use_spatial_split = true;
 		spatial_split_alpha = 1e-5f;
 
+		/* todo: see if splitting up primitive cost to be separate for triangles
+		 * and curves can help. so far in tests it doesn't help, but why? */
 		sah_node_cost = 1.0f;
-		sah_triangle_cost = 1.0f;
+		sah_primitive_cost = 1.0f;
 
 		min_leaf_size = 1;
-		max_leaf_size = 8;
+		max_triangle_leaf_size = 8;
+		max_curve_leaf_size = 2;
 
 		top_level = false;
 		use_cache = false;
 		use_qbvh = false;
-		pad = false;
 	}
 
 	/* SAH costs */
-	__forceinline float cost(int num_nodes, int num_tris) const
-	{ return node_cost(num_nodes) + triangle_cost(num_tris); }
+	__forceinline float cost(int num_nodes, int num_primitives) const
+	{ return node_cost(num_nodes) + primitive_cost(num_primitives); }
 
-	__forceinline float triangle_cost(int n) const
-	{ return n*sah_triangle_cost; }
+	__forceinline float primitive_cost(int n) const
+	{ return n*sah_primitive_cost; }
 
 	__forceinline float node_cost(int n) const
 	{ return n*sah_node_cost; }
@@ -98,28 +99,35 @@ class BVHReference
 public:
 	__forceinline BVHReference() {}
 
-	__forceinline BVHReference(const BoundBox& bounds_, int prim_index_, int prim_object_, int prim_segment)
+	__forceinline BVHReference(const BoundBox& bounds_, int prim_index_, int prim_object_, int prim_type)
 	: rbounds(bounds_)
 	{
 		rbounds.min.w = __int_as_float(prim_index_);
 		rbounds.max.w = __int_as_float(prim_object_);
-		segment = prim_segment;
+		type = prim_type;
 	}
 
 	__forceinline const BoundBox& bounds() const { return rbounds; }
 	__forceinline int prim_index() const { return __float_as_int(rbounds.min.w); }
 	__forceinline int prim_object() const { return __float_as_int(rbounds.max.w); }
-	__forceinline int prim_segment() const { return segment; }
+	__forceinline int prim_type() const { return type; }
+
+	BVHReference& operator=(const BVHReference &arg) {
+		if(&arg != this) {
+			memcpy(this, &arg, sizeof(BVHReference));
+		}
+		return *this;
+	}
 
 protected:
 	BoundBox rbounds;
-	uint segment;
+	uint type;
 };
 
 /* BVH Range
  *
  * Build range used during construction, to indicate the bounds and place in
- * the reference array of a subset of pirmitives Again uses trickery to pack
+ * the reference array of a subset of primitives Again uses trickery to pack
  * integers into BoundBox for alignment purposes. */
 
 class BVHRange

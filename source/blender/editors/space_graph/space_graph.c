@@ -182,7 +182,7 @@ static void graph_init(struct wmWindowManager *UNUSED(wm), ScrArea *sa)
 {
 	SpaceIpo *sipo = (SpaceIpo *)sa->spacedata.first;
 	
-	/* init dopesheet data if non-existant (i.e. for old files) */
+	/* init dopesheet data if non-existent (i.e. for old files) */
 	if (sipo->ads == NULL) {
 		sipo->ads = MEM_callocN(sizeof(bDopeSheet), "GraphEdit DopeSheet");
 		sipo->ads->source = (ID *)(G.main->scene.first); // FIXME: this is a really nasty hack here for now...
@@ -256,7 +256,7 @@ static void graph_main_area_draw(const bContext *C, ARegion *ar)
 		graph_draw_curves(&ac, sipo, ar, grid, 1);
 		
 		/* XXX the slow way to set tot rect... but for nice sliders needed (ton) */
-		get_graph_keyframe_extents(&ac, &v2d->tot.xmin, &v2d->tot.xmax, &v2d->tot.ymin, &v2d->tot.ymax, FALSE, TRUE);
+		get_graph_keyframe_extents(&ac, &v2d->tot.xmin, &v2d->tot.xmax, &v2d->tot.ymin, &v2d->tot.ymax, false, true);
 		/* extra offset so that these items are visible */
 		v2d->tot.xmin -= 10.0f;
 		v2d->tot.xmax += 10.0f;
@@ -293,7 +293,7 @@ static void graph_main_area_draw(const bContext *C, ARegion *ar)
 	
 	/* markers */
 	UI_view2d_view_orthoSpecial(ar, v2d, 1);
-	draw_markers_time(C, 0);
+	ED_markers_draw(C, DRAW_MARKERS_MARGIN);
 	
 	/* preview range */
 	UI_view2d_view_ortho(v2d);
@@ -548,6 +548,8 @@ static void graph_refresh(const bContext *C, ScrArea *sa)
 		int filter;
 		int i;
 		
+		UI_SetTheme(SPACE_IPO, RGN_TYPE_WINDOW);
+
 		/* build list of F-Curves which will be visible as channels in channel-region
 		 *  - we don't include ANIMFILTER_CURVEVISIBLE filter, as that will result in a
 		 *    mismatch between channel-colors and the drawn curves
@@ -605,7 +607,7 @@ static void graph_refresh(const bContext *C, ScrArea *sa)
 		}
 		
 		/* free temp list */
-		BLI_freelistN(&anim_data);
+		ANIM_animdata_freelist(&anim_data);
 	}
 }
 

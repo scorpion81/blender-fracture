@@ -37,6 +37,8 @@
 #include <iostream>
 #include <stdio.h>
 
+#include "BLI_task.h"
+
 #include "KX_KetsjiEngine.h"
 
 #include "ListValue.h"
@@ -49,6 +51,7 @@
 #include "RAS_Rect.h"
 #include "RAS_IRasterizer.h"
 #include "RAS_ICanvas.h"
+#include "RAS_ILightObject.h"
 #include "MT_Vector3.h"
 #include "MT_Transform.h"
 #include "SCA_IInputDevice.h"
@@ -77,9 +80,6 @@
 
 #include "KX_NavMeshObject.h"
 
-// If define: little test for Nzc: guarded drawing. If the canvas is
-// not valid, skip rendering this frame.
-//#define NZC_GUARDED_OUTPUT
 #define DEFAULT_LOGIC_TIC_RATE 60.0
 //#define DEFAULT_PHYSICS_TIC_RATE 60.0
 
@@ -142,8 +142,7 @@ KX_KetsjiEngine::KX_KetsjiEngine(KX_ISystem* system)
 
 	m_exitcode(KX_EXIT_REQUEST_NO_REQUEST),
 	m_exitstring(""),
-	
-	m_drawingmode(5),
+
 	m_cameraZoom(1.0),
 	
 	m_overrideCam(false),
@@ -162,6 +161,7 @@ KX_KetsjiEngine::KX_KetsjiEngine(KX_ISystem* system)
 	m_showProperties(false),
 	m_showBackground(false),
 	m_show_debug_properties(false),
+	m_autoAddDebugProperties(true),
 
 	m_animation_record(false),
 
@@ -184,6 +184,8 @@ KX_KetsjiEngine::KX_KetsjiEngine(KX_ISystem* system)
 #ifdef WITH_PYTHON
 	m_pyprofiledict = PyDict_New();
 #endif
+
+	m_taskscheduler = BLI_task_scheduler_create(TASK_SCHEDULER_AUTO_THREADS);
 }
 
 
@@ -200,6 +202,9 @@ KX_KetsjiEngine::~KX_KetsjiEngine()
 #ifdef WITH_PYTHON
 	Py_CLEAR(m_pyprofiledict);
 #endif
+
+	if (m_taskscheduler)
+		BLI_task_scheduler_free(m_taskscheduler);
 }
 
 
@@ -487,7 +492,7 @@ bool KX_KetsjiEngine::BeginFrame()
 	{
 		ClearFrame();
 
-		m_rasterizer->BeginFrame(m_drawingmode , m_kxsystem->GetTimeInSeconds());
+		m_rasterizer->BeginFrame(m_kxsystem->GetTimeInSeconds());
 
 		return true;
 	}
@@ -507,13 +512,13 @@ void KX_KetsjiEngine::EndFrame()
 		RenderDebugProperties();
 	}
 
-	double tottime = m_logger->GetAverage(), time;
+	double tottime = m_logger->GetAverage();
 	if (tottime < 1e-6)
 		tottime = 1e-6;
 
 #ifdef WITH_PYTHON
 	for (int i = tc_first; i < tc_numCategories; ++i) {
-		time = m_logger->GetAverage((KX_TimeCategory)i);
+		double time = m_logger->GetAverage((KX_TimeCategory)i);
 		PyObject *val = PyTuple_New(2);
 		PyTuple_SetItem(val, 0, PyFloat_FromDouble(time*1000.f));
 		PyTuple_SetItem(val, 1, PyFloat_FromDouble(time/tottime * 100.f));
@@ -679,6 +684,9 @@ bool KX_KetsjiEngine::NextFrame()
 				SG_SetActiveStage(SG_STAGE_ACTUATOR_UPDATE);
 				scene->UpdateParents(m_frameTime);
 
+				// update levels of detail
+				scene->UpdateObjectLods();
+
 				if (!GetRestrictAnimationFPS())
 				{
 					m_logger->StartLog(tc_animations, m_kxsystem->GetTimeInSeconds(), true);
@@ -730,65 +738,6 @@ bool KX_KetsjiEngine::NextFrame()
 		frames--;
 	}
 
-	bool bUseAsyncLogicBricks= false;//true;
-
-	if (bUseAsyncLogicBricks)
-	{
-		// Logic update sub frame: this will let some logic bricks run at the
-		// full frame rate.
-		for (sceneit = m_scenes.begin();sceneit != m_scenes.end(); ++sceneit)
-		// for each scene, call the proceed functions
-		{
-			KX_Scene* scene = *sceneit;
-
-			if (!scene->IsSuspended())
-			{
-				// if the scene was suspended recalcutlate the delta tu "curtime"
-				m_suspendedtime = scene->getSuspendedTime();
-				if (scene->getSuspendedTime()!=0.0)
-					scene->setSuspendedDelta(scene->getSuspendedDelta()+m_clockTime-scene->getSuspendedTime());
-				m_suspendeddelta = scene->getSuspendedDelta();
-				
-				// set Python hooks for each scene
-#ifdef WITH_PYTHON
-				PHY_SetActiveEnvironment(scene->GetPhysicsEnvironment());
-#endif
-				KX_SetActiveScene(scene);
-				
-				m_logger->StartLog(tc_scenegraph, m_kxsystem->GetTimeInSeconds(), true);
-				SG_SetActiveStage(SG_STAGE_PHYSICS1);
-				scene->UpdateParents(m_clockTime);
-
-				// Perform physics calculations on the scene. This can involve 
-				// many iterations of the physics solver.
-				m_logger->StartLog(tc_physics, m_kxsystem->GetTimeInSeconds(), true);
-				scene->GetPhysicsEnvironment()->ProceedDeltaTime(m_clockTime,timestep,timestep);
-				// Update scenegraph after physics step. This maps physics calculations
-				// into node positions.
-				m_logger->StartLog(tc_scenegraph, m_kxsystem->GetTimeInSeconds(), true);
-				SG_SetActiveStage(SG_STAGE_PHYSICS2);
-				scene->UpdateParents(m_clockTime);
-				
-				// Do some cleanup work for this logic frame
-				m_logger->StartLog(tc_logic, m_kxsystem->GetTimeInSeconds(), true);
-				scene->LogicUpdateFrame(m_clockTime, false);
-
-				// Actuators can affect the scenegraph
-				m_logger->StartLog(tc_scenegraph, m_kxsystem->GetTimeInSeconds(), true);
-				SG_SetActiveStage(SG_STAGE_ACTUATOR);
-				scene->UpdateParents(m_clockTime);
-
-				scene->setSuspendedTime(0.0);
-			} // suspended
-			else
-				if (scene->getSuspendedTime()==0.0)
-					scene->setSuspendedTime(m_clockTime);
-
-			m_logger->StartLog(tc_services, m_kxsystem->GetTimeInSeconds(), true);
-		}
-	}
-
-		
 	// Handle the animations independently of the logic time step
 	if (GetRestrictAnimationFPS())
 	{
@@ -837,7 +786,7 @@ void KX_KetsjiEngine::Render()
 	// clear the entire game screen with the border color
 	// only once per frame
 	m_canvas->BeginDraw();
-	if (m_drawingmode == RAS_IRasterizer::KX_TEXTURED) {
+	if (m_rasterizer->GetDrawingMode() == RAS_IRasterizer::KX_TEXTURED) {
 		m_canvas->SetViewPort(0, 0, m_canvas->GetWidth(), m_canvas->GetHeight());
 		if (m_overrideFrameColor)
 		{
@@ -1018,7 +967,7 @@ void KX_KetsjiEngine::SetBackGround(KX_WorldInfo* wi)
 {
 	if (wi->hasWorld())
 	{
-		if (m_drawingmode == RAS_IRasterizer::KX_TEXTURED)
+		if (m_rasterizer->GetDrawingMode() == RAS_IRasterizer::KX_TEXTURED)
 		{
 			m_rasterizer->SetBackColor(
 				wi->getBackColorRed(),
@@ -1043,7 +992,7 @@ void KX_KetsjiEngine::SetWorldSettings(KX_WorldInfo* wi)
 			wi->getAmbientColorBlue()
 		);
 
-		if (m_drawingmode >= RAS_IRasterizer::KX_SOLID)
+		if (m_rasterizer->GetDrawingMode() >= RAS_IRasterizer::KX_SOLID)
 		{
 			if (wi->hasMist())
 			{
@@ -1057,13 +1006,6 @@ void KX_KetsjiEngine::SetWorldSettings(KX_WorldInfo* wi)
 			}
 		}
 	}
-}
-
-
-
-void KX_KetsjiEngine::SetDrawType(int drawingmode)
-{
-	m_drawingmode = drawingmode;
 }
 
 
@@ -1163,10 +1105,11 @@ void KX_KetsjiEngine::RenderShadowBuffers(KX_Scene *scene)
 		KX_GameObject *gameobj = (KX_GameObject*)lightlist->GetValue(i);
 
 		KX_LightObject *light = (KX_LightObject*)gameobj;
+		RAS_ILightObject *raslight = light->GetLightData();
 
-		light->Update();
+		raslight->Update();
 
-		if (m_drawingmode == RAS_IRasterizer::KX_TEXTURED && light->HasShadowBuffer()) {
+		if (m_rasterizer->GetDrawingMode() == RAS_IRasterizer::KX_TEXTURED && raslight->HasShadowBuffer()) {
 			/* make temporary camera */
 			RAS_CameraData camdata = RAS_CameraData();
 			KX_Camera *cam = new KX_Camera(scene, scene->m_callbacks, camdata, true, true);
@@ -1179,10 +1122,10 @@ void KX_KetsjiEngine::RenderShadowBuffers(KX_Scene *scene)
 			m_rasterizer->SetDrawingMode(RAS_IRasterizer::KX_SHADOW);
 
 			/* binds framebuffer object, sets up camera .. */
-			light->BindShadowBuffer(m_rasterizer, m_canvas, cam, camtrans);
+			raslight->BindShadowBuffer(m_canvas, cam, camtrans);
 
 			/* update scene */
-			scene->CalculateVisibleMeshes(m_rasterizer, cam, light->GetShadowLayer());
+			scene->CalculateVisibleMeshes(m_rasterizer, cam, raslight->GetShadowLayer());
 
 			/* render */
 			m_rasterizer->ClearDepthBuffer();
@@ -1190,7 +1133,7 @@ void KX_KetsjiEngine::RenderShadowBuffers(KX_Scene *scene)
 			scene->RenderBuckets(camtrans, m_rasterizer);
 
 			/* unbind framebuffer object, restore drawmode, free camera */
-			light->UnbindShadowBuffer(m_rasterizer);
+			raslight->UnbindShadowBuffer();
 			m_rasterizer->SetDrawingMode(drawmode);
 			cam->Release();
 		}
@@ -1314,9 +1257,6 @@ void KX_KetsjiEngine::RenderFrame(KX_Scene* scene, KX_Camera* cam)
 	SG_SetActiveStage(SG_STAGE_CULLING);
 
 	scene->CalculateVisibleMeshes(m_rasterizer,cam);
-
-	// update levels of detail
-	scene->UpdateObjectLods();
 
 	m_logger->StartLog(tc_rasterizer, m_kxsystem->GetTimeInSeconds(), true);
 	SG_SetActiveStage(SG_STAGE_RENDER);
@@ -1702,6 +1642,8 @@ KX_Scene* KX_KetsjiEngine::CreateScene(Scene *scene, bool libloading)
 KX_Scene* KX_KetsjiEngine::CreateScene(const STR_String& scenename)
 {
 	Scene *scene = m_sceneconverter->GetBlenderSceneForName(scenename);
+	if (!scene)
+		return NULL;
 	return CreateScene(scene);
 }
 
@@ -1717,8 +1659,12 @@ void KX_KetsjiEngine::AddScheduledScenes()
 		{
 			STR_String scenename = *scenenameit;
 			KX_Scene* tmpscene = CreateScene(scenename);
-			m_scenes.push_back(tmpscene);
-			PostProcessScene(tmpscene);
+			if (tmpscene) {
+				m_scenes.push_back(tmpscene);
+				PostProcessScene(tmpscene);
+			} else {
+				printf("warning: scene %s could not be found, not added!\n",scenename.ReadPtr());
+			}
 		}
 		m_addingOverlayScenes.clear();
 	}
@@ -1731,9 +1677,12 @@ void KX_KetsjiEngine::AddScheduledScenes()
 		{
 			STR_String scenename = *scenenameit;
 			KX_Scene* tmpscene = CreateScene(scenename);
-			m_scenes.insert(m_scenes.begin(),tmpscene);
-			PostProcessScene(tmpscene);
-
+			if (tmpscene) {
+				m_scenes.insert(m_scenes.begin(),tmpscene);
+				PostProcessScene(tmpscene);
+			} else {
+				printf("warning: scene %s could not be found, not added!\n",scenename.ReadPtr());
+			}
 		}
 		m_addingBackgroundScenes.clear();
 	}
@@ -1741,9 +1690,19 @@ void KX_KetsjiEngine::AddScheduledScenes()
 
 
 
-void KX_KetsjiEngine::ReplaceScene(const STR_String& oldscene,const STR_String& newscene)
+bool KX_KetsjiEngine::ReplaceScene(const STR_String& oldscene,const STR_String& newscene)
 {
-	m_replace_scenes.push_back(std::make_pair(oldscene,newscene));
+	// Don't allow replacement if the new scene doesn't exists.
+	// Allows smarter game design (used to have no check here).
+	// Note that it creates a small backward compatbility issue
+	// for a game that did a replace followed by a lib load with the
+	// new scene in the lib => it won't work anymore, the lib
+	// must be loaded before doing the replace.
+	if (m_sceneconverter->GetBlenderSceneForName(newscene) != NULL) {
+		m_replace_scenes.push_back(std::make_pair(oldscene,newscene));
+		return true;
+	}
+	return false;
 }
 
 // replace scene is not the same as removing and adding because the
@@ -1765,15 +1724,20 @@ void KX_KetsjiEngine::ReplaceScheduledScenes()
 			int i=0;
 			/* Scenes are not supposed to be included twice... I think */
 			KX_SceneList::iterator sceneit;
-			for (sceneit = m_scenes.begin();sceneit != m_scenes.end() ; sceneit++)
-			{
+			for (sceneit = m_scenes.begin();sceneit != m_scenes.end() ; sceneit++) {
 				KX_Scene* scene = *sceneit;
-				if (scene->GetName() == oldscenename)
-				{
-					m_sceneconverter->RemoveScene(scene);
-					KX_Scene* tmpscene = CreateScene(newscenename);
-					m_scenes[i]=tmpscene;
-					PostProcessScene(tmpscene);
+				if (scene->GetName() == oldscenename) {
+					// avoid crash if the new scene doesn't exist, just do nothing
+					Scene *blScene = m_sceneconverter->GetBlenderSceneForName(newscenename);
+					if (blScene) {
+						m_sceneconverter->RemoveScene(scene);
+						KX_Scene* tmpscene = CreateScene(blScene);
+						m_scenes[i]=tmpscene;
+						PostProcessScene(tmpscene);
+					}
+					else {
+						printf("warning: scene %s could not be found, not replaced!\n",newscenename.ReadPtr());
+					}
 				}
 				i++;
 			}
@@ -1905,6 +1869,46 @@ void KX_KetsjiEngine::SetExitKey(short key)
 short KX_KetsjiEngine::GetExitKey()
 {
 	return m_exitkey;
+}
+
+void KX_KetsjiEngine::SetShowFramerate(bool frameRate)
+{
+	m_show_framerate = frameRate;
+}
+
+bool KX_KetsjiEngine::GetShowFramerate()
+{
+	return m_show_framerate;
+}
+
+void KX_KetsjiEngine::SetShowProfile(bool profile)
+{
+	m_show_profile = profile;
+}
+
+bool KX_KetsjiEngine::GetShowProfile()
+{
+	return m_show_profile;
+}
+
+void KX_KetsjiEngine::SetShowProperties(bool properties)
+{
+	m_show_debug_properties = properties;
+}
+
+bool KX_KetsjiEngine::GetShowProperties()
+{
+	return m_show_debug_properties;
+}
+
+void KX_KetsjiEngine::SetAutoAddDebugProperties(bool add)
+{
+	m_autoAddDebugProperties = add;
+}
+
+bool KX_KetsjiEngine::GetAutoAddDebugProperties()
+{
+	return m_autoAddDebugProperties;
 }
 
 void KX_KetsjiEngine::SetTimingDisplay(bool frameRate, bool profile, bool properties)

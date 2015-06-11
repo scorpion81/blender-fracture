@@ -140,22 +140,6 @@ static int laplacian_edge_count(EdgeHash *edgehash, int v1, int v2)
 	return (int)(intptr_t)BLI_edgehash_lookup(edgehash, v1, v2);
 }
 
-static float cotan_weight(float *v1, float *v2, float *v3)
-{
-	float a[3], b[3], c[3], clen;
-
-	sub_v3_v3v3(a, v2, v1);
-	sub_v3_v3v3(b, v3, v1);
-	cross_v3_v3v3(c, a, b);
-
-	clen = len_v3(c);
-
-	if (clen == 0.0f)
-		return 0.0f;
-	
-	return dot_v3v3(a, b) / clen;
-}
-
 static void laplacian_triangle_area(LaplacianSystem *sys, int i1, int i2, int i3)
 {
 	float t1, t2, t3, len1, len2, len3, area;
@@ -166,9 +150,9 @@ static void laplacian_triangle_area(LaplacianSystem *sys, int i1, int i2, int i3
 	v2 = sys->verts[i2];
 	v3 = sys->verts[i3];
 
-	t1 = cotan_weight(v1, v2, v3);
-	t2 = cotan_weight(v2, v3, v1);
-	t3 = cotan_weight(v3, v1, v2);
+	t1 = cotangent_tri_weight_v3(v1, v2, v3);
+	t2 = cotangent_tri_weight_v3(v2, v3, v1);
+	t3 = cotangent_tri_weight_v3(v3, v1, v2);
 
 	if      (angle_v3v3v3(v2, v1, v3) > DEG2RADF(90.0f)) obtuse = 1;
 	else if (angle_v3v3v3(v1, v2, v3) > DEG2RADF(90.0f)) obtuse = 2;
@@ -207,9 +191,9 @@ static void laplacian_triangle_weights(LaplacianSystem *sys, int f, int i1, int 
 
 	/* instead of *0.5 we divided by the number of faces of the edge, it still
 	 * needs to be verified that this is indeed the correct thing to do! */
-	t1 = cotan_weight(v1, v2, v3) / laplacian_edge_count(sys->edgehash, i2, i3);
-	t2 = cotan_weight(v2, v3, v1) / laplacian_edge_count(sys->edgehash, i3, i1);
-	t3 = cotan_weight(v3, v1, v2) / laplacian_edge_count(sys->edgehash, i1, i2);
+	t1 = cotangent_tri_weight_v3(v1, v2, v3) / laplacian_edge_count(sys->edgehash, i2, i3);
+	t2 = cotangent_tri_weight_v3(v2, v3, v1) / laplacian_edge_count(sys->edgehash, i3, i1);
+	t3 = cotangent_tri_weight_v3(v3, v1, v2) / laplacian_edge_count(sys->edgehash, i1, i2);
 
 	nlMatrixAdd(i1, i1, (t2 + t3) * varea[i1]);
 	nlMatrixAdd(i2, i2, (t1 + t3) * varea[i2]);
@@ -651,8 +635,8 @@ void heat_bone_weighting(Object *ob, Mesh *me, float (*verts)[3], int numsource,
 	bool use_topology = (me->editflag & ME_EDIT_MIRROR_TOPO) != 0;
 
 	MVert *mvert = me->mvert;
-	int use_vert_sel = FALSE;
-	int use_face_sel = FALSE;
+	bool use_vert_sel = (me->editflag & ME_EDIT_PAINT_VERT_SEL) != 0;
+	bool use_face_sel = (me->editflag & ME_EDIT_PAINT_FACE_SEL) != 0;
 
 	*err_str = NULL;
 
@@ -668,9 +652,8 @@ void heat_bone_weighting(Object *ob, Mesh *me, float (*verts)[3], int numsource,
 		return;
 
 	/* count triangles and create mask */
-	if (ob->mode == OB_MODE_WEIGHT_PAINT &&
-	    ((use_face_sel = ((me->editflag & ME_EDIT_PAINT_FACE_SEL) != 0)) ||
-	     (use_vert_sel = ((me->editflag & ME_EDIT_PAINT_VERT_SEL) != 0))))
+	if (ob->mode & OB_MODE_WEIGHT_PAINT &&
+	    (use_face_sel || use_vert_sel))
 	{
 		mask = MEM_callocN(sizeof(int) * me->totvert, "heat_bone_weighting mask");
 
@@ -678,9 +661,7 @@ void heat_bone_weighting(Object *ob, Mesh *me, float (*verts)[3], int numsource,
 		if (use_vert_sel) {
 			for (a = 0, mp = me->mpoly; a < me->totpoly; mp++, a++) {
 				for (j = 0, ml = me->mloop + mp->loopstart; j < mp->totloop; j++, ml++) {
-					if (use_vert_sel) {
-						mask[ml->v] = (mvert[ml->v].flag & SELECT) != 0;
-					}
+					mask[ml->v] = (mvert[ml->v].flag & SELECT) != 0;
 				}
 			}
 		}
@@ -1227,7 +1208,7 @@ static void harmonic_ray_callback(void *userdata, int index, const BVHTreeRay *r
 	}
 }
 
-static MDefBoundIsect *meshdeform_ray_tree_intersect(MeshDeformBind *mdb, float *co1, float *co2)
+static MDefBoundIsect *meshdeform_ray_tree_intersect(MeshDeformBind *mdb, const float co1[3], const float co2[3])
 {
 	MDefBoundIsect *isect;
 	BVHTreeRayHit hit;
@@ -1236,14 +1217,23 @@ static MDefBoundIsect *meshdeform_ray_tree_intersect(MeshDeformBind *mdb, float 
 	void *data[3] = {mdb->cagedm->getTessFaceArray(mdb->cagedm), mdb, &isect_mdef};
 	MFace *mface1 = data[0], *mface;
 	float vert[4][3], len, end[3];
-	static float epsilon[3] = {0, 0, 0}; //1e-4, 1e-4, 1e-4};
+	// static float epsilon[3] = {1e-4, 1e-4, 1e-4};
+
+	/* happens binding when a cage has no faces */
+	if (UNLIKELY(mdb->bvhtree == NULL))
+		return NULL;
 
 	/* setup isec */
 	memset(&isect_mdef, 0, sizeof(isect_mdef));
 	isect_mdef.lambda = 1e10f;
 
+#if 0
 	add_v3_v3v3(isect_mdef.start, co1, epsilon);
 	add_v3_v3v3(end, co2, epsilon);
+#else
+	copy_v3_v3(isect_mdef.start, co1);
+	copy_v3_v3(end, co2);
+#endif
 	sub_v3_v3v3(isect_mdef.vec, end, isect_mdef.start);
 
 	hit.index = -1;
@@ -1313,7 +1303,7 @@ static int meshdeform_inside_cage(MeshDeformBind *mdb, float *co)
 
 /* solving */
 
-static int meshdeform_index(MeshDeformBind *mdb, int x, int y, int z, int n)
+BLI_INLINE int meshdeform_index(MeshDeformBind *mdb, int x, int y, int z, int n)
 {
 	int size = mdb->size;
 	
@@ -1331,7 +1321,7 @@ static int meshdeform_index(MeshDeformBind *mdb, int x, int y, int z, int n)
 	return x + y * size + z * size * size;
 }
 
-static void meshdeform_cell_center(MeshDeformBind *mdb, int x, int y, int z, int n, float *center)
+BLI_INLINE void meshdeform_cell_center(MeshDeformBind *mdb, int x, int y, int z, int n, float *center)
 {
 	x += MESHDEFORM_OFFSET[n][0];
 	y += MESHDEFORM_OFFSET[n][1];

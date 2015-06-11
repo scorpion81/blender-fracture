@@ -51,14 +51,19 @@
 #include "DNA_screen_types.h"
 #include "DNA_space_types.h"
 #include "DNA_world_types.h"
+#include "DNA_linestyle_types.h"
 
 #include "BKE_context.h"
+#include "BKE_linestyle.h"
 #include "BKE_material.h"
 #include "BKE_modifier.h"
 #include "BKE_node.h"
 #include "BKE_paint.h"
 #include "BKE_particle.h"
 #include "BKE_scene.h"
+#ifdef WITH_FREESTYLE
+#  include "BKE_freestyle.h"
+#endif
 
 #include "RNA_access.h"
 
@@ -97,6 +102,32 @@ bool ED_texture_context_check_particles(const bContext *C)
 {
 	Object *ob = CTX_data_active_object(C);
 	return (ob && ob->particlesystem.first);
+}
+
+bool ED_texture_context_check_linestyle(const bContext *C)
+{
+#ifdef WITH_FREESTYLE
+	Scene *scene = CTX_data_scene(C);
+	SceneRenderLayer *actsrl;
+	FreestyleConfig *config;
+	FreestyleLineSet *lineset;
+	FreestyleLineStyle *linestyle;
+
+	if (scene && (scene->r.mode & R_EDGE_FRS)) {
+		actsrl = BLI_findlink(&scene->r.layers, scene->r.actlay);
+		config = &actsrl->freestyleConfig;
+		if (config->mode == FREESTYLE_CONTROL_EDITOR_MODE) {
+			lineset = BKE_freestyle_lineset_get_active(config);
+			if (lineset) {
+				linestyle = lineset->linestyle;
+				return linestyle && (linestyle->flag & LS_TEXTURE);
+			}
+		}
+	}
+#else
+	(void)C;
+#endif
+	return false;
 }
 
 static void texture_context_check_modifier_foreach(void *userData, Object *UNUSED(ob), ModifierData *UNUSED(md),
@@ -148,6 +179,7 @@ static void set_texture_context(const bContext *C, SpaceButs *sbuts)
 		bool valid_material = ED_texture_context_check_material(C);
 		bool valid_lamp = ED_texture_context_check_lamp(C);
 		bool valid_particles = ED_texture_context_check_particles(C);
+		bool valid_linestyle = ED_texture_context_check_linestyle(C);
 		bool valid_others = ED_texture_context_check_others(C);
 
 		/* this is similar to direct user action, no need to keep "better" ctxt in _prev */
@@ -163,6 +195,9 @@ static void set_texture_context(const bContext *C, SpaceButs *sbuts)
 		else if ((sbuts->mainb == BCONTEXT_PARTICLE) && valid_particles) {
 			sbuts->texture_context = sbuts->texture_context_prev = SB_TEXC_PARTICLES;
 		}
+		else if ((sbuts->mainb == BCONTEXT_RENDER_LAYER) && valid_linestyle) {
+			sbuts->texture_context = sbuts->texture_context_prev = SB_TEXC_LINESTYLE;
+		}
 		else if ((ELEM(sbuts->mainb, BCONTEXT_MODIFIER, BCONTEXT_PHYSICS)) && valid_others) {
 			sbuts->texture_context = sbuts->texture_context_prev = SB_TEXC_OTHER;
 		}
@@ -172,6 +207,7 @@ static void set_texture_context(const bContext *C, SpaceButs *sbuts)
 		          ((sbuts->texture_context_prev == SB_TEXC_MATERIAL) && valid_material) ||
 		          ((sbuts->texture_context_prev == SB_TEXC_LAMP) && valid_lamp) ||
 		          ((sbuts->texture_context_prev == SB_TEXC_PARTICLES) && valid_particles) ||
+		          ((sbuts->texture_context_prev == SB_TEXC_LINESTYLE) && valid_linestyle) ||
 		          ((sbuts->texture_context_prev == SB_TEXC_OTHER) && valid_others)))
 		{
 			sbuts->texture_context = sbuts->texture_context_prev;
@@ -181,6 +217,7 @@ static void set_texture_context(const bContext *C, SpaceButs *sbuts)
 		         ((sbuts->texture_context == SB_TEXC_MATERIAL) && !valid_material) ||
 		         ((sbuts->texture_context == SB_TEXC_LAMP) && !valid_lamp) ||
 		         ((sbuts->texture_context == SB_TEXC_PARTICLES) && !valid_particles) ||
+		         ((sbuts->texture_context == SB_TEXC_LINESTYLE) && !valid_linestyle) ||
 		         ((sbuts->texture_context == SB_TEXC_OTHER) && !valid_others))
 		{
 			/* this is default fallback, do keep "better" ctxt in _prev */
@@ -193,6 +230,9 @@ static void set_texture_context(const bContext *C, SpaceButs *sbuts)
 			}
 			else if (valid_particles) {
 				sbuts->texture_context = SB_TEXC_PARTICLES;
+			}
+			else if (valid_linestyle) {
+				sbuts->texture_context = SB_TEXC_LINESTYLE;
 			}
 			else if (valid_world) {
 				sbuts->texture_context = SB_TEXC_WORLD;
@@ -218,7 +258,7 @@ static void buttons_texture_user_property_add(ListBase *users, ID *id,
 	user->category = category;
 	user->icon = icon;
 	user->name = name;
-	user->index = BLI_countlist(users);
+	user->index = BLI_listbase_count(users);
 
 	BLI_addtail(users, user);
 }
@@ -235,7 +275,7 @@ static void buttons_texture_user_node_add(ListBase *users, ID *id,
 	user->category = category;
 	user->icon = icon;
 	user->name = name;
-	user->index = BLI_countlist(users);
+	user->index = BLI_listbase_count(users);
 
 	BLI_addtail(users, user);
 }
@@ -284,6 +324,7 @@ static void buttons_texture_users_from_context(ListBase *users, const bContext *
 	Material *ma = NULL;
 	Lamp *la = NULL;
 	World *wrld = NULL;
+	FreestyleLineStyle *linestyle = NULL;
 	Brush *brush = NULL;
 	ID *pinid = sbuts->pinid;
 	bool limited_mode = (sbuts->flag & SB_TEX_USER_LIMITED) != 0;
@@ -302,6 +343,8 @@ static void buttons_texture_users_from_context(ListBase *users, const bContext *
 			ma = (Material *)pinid;
 		else if (GS(pinid->name) == ID_BR)
 			brush = (Brush *)pinid;
+		else if (GS(pinid->name) == ID_LS)
+			linestyle = (FreestyleLineStyle *)pinid;
 	}
 
 	if (!scene)
@@ -311,6 +354,7 @@ static void buttons_texture_users_from_context(ListBase *users, const bContext *
 		ob = (scene->basact) ? scene->basact->object : NULL;
 		wrld = scene->world;
 		brush = BKE_paint_brush(BKE_paint_get_active_from_context(C));
+		linestyle = BKE_linestyle_active_from_scene(scene);
 	}
 
 	if (ob && ob->type == OB_LAMP && !la)
@@ -319,7 +363,7 @@ static void buttons_texture_users_from_context(ListBase *users, const bContext *
 		ma = give_current_material(ob, ob->actcol);
 
 	/* fill users */
-	users->first = users->last = NULL;
+	BLI_listbase_clear(users);
 
 	if (ma && !limited_mode)
 		buttons_texture_users_find_nodetree(users, &ma->id, ma->nodetree, "Material");
@@ -327,6 +371,8 @@ static void buttons_texture_users_from_context(ListBase *users, const bContext *
 		buttons_texture_users_find_nodetree(users, &la->id, la->nodetree, "Lamp");
 	if (wrld && !limited_mode)
 		buttons_texture_users_find_nodetree(users, &wrld->id, wrld->nodetree, "World");
+	if (linestyle && !limited_mode)
+		buttons_texture_users_find_nodetree(users, &linestyle->id, linestyle->nodetree, "Line Style");
 
 	if (ob) {
 		ParticleSystem *psys = psys_get_current(ob);
@@ -398,7 +444,7 @@ void buttons_texture_context_compute(const bContext *C, SpaceButs *sbuts)
 
 	set_texture_context(C, sbuts);
 
-	if (!(BKE_scene_use_new_shading_nodes(scene) || (sbuts->texture_context == SB_TEXC_OTHER))) {
+	if (!((sbuts->texture_context == SB_TEXC_OTHER) || BKE_scene_use_new_shading_nodes(scene))) {
 		if (ct) {
 			BLI_freelistN(&ct->users);
 			MEM_freeN(ct);
@@ -424,7 +470,7 @@ void buttons_texture_context_compute(const bContext *C, SpaceButs *sbuts)
 	}
 	else {
 		/* set one user as active based on active index */
-		if (ct->index >= BLI_countlist(&ct->users))
+		if (ct->index == BLI_listbase_count_ex(&ct->users, ct->index + 1))
 			ct->index = 0;
 
 		ct->user = BLI_findlink(&ct->users, ct->index);
@@ -513,7 +559,7 @@ static void template_texture_user_menu(bContext *C, uiLayout *layout, void *UNUS
 		char name[UI_MAX_NAME_STR];
 
 		/* add label per category */
-		if (!last_category || strcmp(last_category, user->category) != 0) {
+		if (!last_category || !STREQ(last_category, user->category)) {
 			uiItemL(layout, user->category, ICON_NONE);
 			but = block->buttons.last;
 			but->drawflag = UI_BUT_TEXT_LEFT;
@@ -532,9 +578,9 @@ static void template_texture_user_menu(bContext *C, uiLayout *layout, void *UNUS
 		else
 			BLI_snprintf(name, UI_MAX_NAME_STR, "  %s", user->name);
 
-		but = uiDefIconTextBut(block, BUT, 0, user->icon, name, 0, 0, UI_UNIT_X * 4, UI_UNIT_Y,
+		but = uiDefIconTextBut(block, UI_BTYPE_BUT, 0, user->icon, name, 0, 0, UI_UNIT_X * 4, UI_UNIT_Y,
 		                       NULL, 0.0, 0.0, 0.0, 0.0, "");
-		uiButSetNFunc(but, template_texture_select, MEM_dupallocN(user), NULL);
+		UI_but_funcN_set(but, template_texture_select, MEM_dupallocN(user), NULL);
 
 		last_category = user->category;
 	}
@@ -576,9 +622,9 @@ void uiTemplateTextureUser(uiLayout *layout, bContext *C)
 	}
 
 	/* some cosmetic tweaks */
-	but->type = MENU;
-	but->drawflag |= UI_BUT_TEXT_LEFT;
-	but->flag &= ~UI_ICON_SUBMENU;
+	UI_but_type_set_menu_from_pulldown(but);
+
+	but->flag &= ~UI_BUT_ICON_SUBMENU;
 }
 
 /************************* Texture Show **************************/
@@ -631,9 +677,9 @@ void uiTemplateTextureShow(uiLayout *layout, bContext *C, PointerRNA *ptr, Prope
 		uiBlock *block = uiLayoutGetBlock(layout);
 		uiBut *but;
 		
-		but = uiDefIconBut(block, BUT, 0, ICON_BUTS, 0, 0, UI_UNIT_X, UI_UNIT_Y,
+		but = uiDefIconBut(block, UI_BTYPE_BUT, 0, ICON_BUTS, 0, 0, UI_UNIT_X, UI_UNIT_Y,
 		                   NULL, 0.0, 0.0, 0.0, 0.0, "Show texture in texture tab");
-		uiButSetFunc(but, template_texture_show, user->ptr.data, user->prop);
+		UI_but_func_set(but, template_texture_show, user->ptr.data, user->prop);
 	}
 }
 

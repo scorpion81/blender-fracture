@@ -43,6 +43,8 @@ struct DriverVar;
 struct DriverTarget;
 struct FCM_EnvelopeData;
 
+struct bContext;
+struct AnimData;
 struct bAction;
 struct BezTriple;
 struct StructRNA;
@@ -197,7 +199,10 @@ int BKE_fcm_envelope_find_index(struct FCM_EnvelopeData *array, float frame, int
 
 /* ************** F-Curves API ******************** */
 
-/* -------- Data Managemnt  --------  */
+/* threshold for binary-searching keyframes - threshold here should be good enough for now, but should become userpref */
+#define BEZT_BINARYSEARCH_THRESH   0.01f /* was 0.00001, but giving errors */
+
+/* -------- Data Management  --------  */
 
 void free_fcurve(struct FCurve *fcu);
 struct FCurve *copy_fcurve(struct FCurve *fcu);
@@ -218,8 +223,12 @@ struct FCurve *id_data_find_fcurve(ID *id, void *data, struct StructRNA *type, c
  */
 int list_find_data_fcurves(ListBase *dst, ListBase *src, const char *dataPrefix, const char *dataName);
 
-/* find an f-curve based on an rna property */
-struct FCurve *rna_get_fcurve(struct PointerRNA *ptr, struct PropertyRNA *prop, int rnaindex, struct bAction **action, bool *r_driven);
+/* find an f-curve based on an rna property. */
+struct FCurve *rna_get_fcurve(struct PointerRNA *ptr, struct PropertyRNA *prop, int rnaindex,
+                              struct AnimData **adt, struct bAction **action, bool *r_driven);
+/* Same as above, but takes a context data, temp hack needed for complex paths like texture ones. */
+struct FCurve *rna_get_fcurve_context_ui(struct bContext *C, struct PointerRNA *ptr, struct PropertyRNA *prop,
+                                         int rnaindex, struct AnimData **adt, struct bAction **action, bool *r_driven);
 
 /* Binary search algorithm for finding where to 'insert' BezTriple with given frame number.
  * Returns the index to insert at (data already at that index will be offset if replace is 0)
@@ -250,7 +259,7 @@ void testhandles_fcurve(struct FCurve *fcu, const bool use_handle);
 void sort_time_fcurve(struct FCurve *fcu);
 short test_time_fcurve(struct FCurve *fcu);
 
-void correct_bezpart(float *v1, float *v2, float *v3, float *v4);
+void correct_bezpart(float v1[2], float v2[2], float v3[2], float v4[2]);
 
 /* -------- Evaluation --------  */
 

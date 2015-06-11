@@ -47,11 +47,8 @@
 
 
 #include "render_types.h"
-#include "initrender.h"
 #include "rendercore.h"
 #include "renderdatabase.h"
-#include "renderpipeline.h"
-#include "pixelblending.h"
 #include "shading.h"
 #include "strand.h"
 #include "zbuf.h"
@@ -79,7 +76,7 @@ void strand_eval_point(StrandSegment *sseg, StrandPoint *spoint)
 {
 	Material *ma;
 	StrandBuffer *strandbuf;
-	float *simplify;
+	const float *simplify;
 	float p[4][3], data[4], cross[3], w, dx, dy, t;
 	int type;
 
@@ -145,7 +142,7 @@ void strand_eval_point(StrandSegment *sseg, StrandPoint *spoint)
 	w= spoint->co[2]*strandbuf->winmat[2][3] + strandbuf->winmat[3][3];
 	dx= strandbuf->winx*cross[0]*strandbuf->winmat[0][0]/w;
 	dy= strandbuf->winy*cross[1]*strandbuf->winmat[1][1]/w;
-	w= sqrt(dx*dx + dy*dy);
+	w = sqrtf(dx * dx + dy * dy);
 
 	if (w > 0.0f) {
 		if (strandbuf->flag & R_STRAND_B_UNITS) {
@@ -216,8 +213,10 @@ static void interpolate_shade_result(ShadeResult *shr1, ShadeResult *shr2, float
 		}
 		if (addpassflag & SCE_PASS_EMIT)
 			interpolate_vec3(shr1->emit, shr2->emit, t, negt, shr->emit);
-		if (addpassflag & SCE_PASS_DIFFUSE)
+		if (addpassflag & SCE_PASS_DIFFUSE) {
 			interpolate_vec3(shr1->diff, shr2->diff, t, negt, shr->diff);
+			interpolate_vec3(shr1->diffshad, shr2->diffshad, t, negt, shr->diffshad);
+		}
 		if (addpassflag & SCE_PASS_SPEC)
 			interpolate_vec3(shr1->spec, shr2->spec, t, negt, shr->spec);
 		if (addpassflag & SCE_PASS_SHADOW)
@@ -860,7 +859,7 @@ int zbuffer_strands_abuf(Render *re, RenderPart *pa, APixstrand *apixbuf, ListBa
 		/* test if we should skip it */
 		ma = obr->strandbuf->ma;
 
-		if (shadow && !(ma->mode & MA_SHADBUF))
+		if (shadow && (!(ma->mode2 & MA_CASTSHADOW) || !(ma->mode & MA_SHADBUF)))
 			continue;
 		else if (!shadow && (ma->mode & MA_ONLYCAST))
 			continue;

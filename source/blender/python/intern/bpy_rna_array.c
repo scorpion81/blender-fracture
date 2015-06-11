@@ -30,11 +30,11 @@
 
 #include "RNA_types.h"
 
-#include "BLI_utildefines.h"
-
 #include "bpy_rna.h"
 #include "BKE_global.h"
 #include "MEM_guardedalloc.h"
+
+#include "BLI_utildefines.h"
 
 #include "RNA_access.h"
 
@@ -83,7 +83,7 @@ static int validate_array_type(PyObject *seq, int dim, int totdim, int dimsize[]
 		for (i = 0; i < seq_size; i++) {
 			Py_ssize_t item_seq_size;
 			PyObject *item;
-			int ok = 1;
+			bool ok = true;
 			item = PySequence_GetItem(seq, i);
 
 			if (item == NULL) {

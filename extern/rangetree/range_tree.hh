@@ -79,10 +79,6 @@ struct RangeTree {
 		TreeIter iter = tree.find(Range(t));
 		assert(iter != tree.end());
 		Range cur = *iter;
-		TreeIter prev = iter;
-		TreeIter next = iter;
-		--prev;
-		++next;
 
 		/* Remove the original range (note that this does not
 		   invalidate the prev/next iterators) */
@@ -95,6 +91,28 @@ struct RangeTree {
 		if (t + 1 <= cur.max)
 			tree.insert(Range(t + 1, cur.max));
 	}
+
+	/* clone of 'take' that checks if the item exists */
+	bool retake(T t) {
+		#if RANGE_TREE_DEBUG_PRINT_FUNCTION
+		std::cout << __func__ << "(" << t << ")\n";
+		#endif
+
+		TreeIter iter = tree.find(Range(t));
+		if (iter == tree.end()) {
+			return false;
+		}
+
+		Range cur = *iter;
+		tree.erase(iter);
+		if (t > cur.min)
+			tree.insert(Range(cur.min, t - 1));
+		if (t + 1 <= cur.max)
+			tree.insert(Range(t + 1, cur.max));
+
+		return true;
+	}
+
 
 	/* Take the first element out of the first range in the
 	   tree. Precondition: tree must not be empty. */

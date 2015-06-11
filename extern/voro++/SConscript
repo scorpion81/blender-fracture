@@ -4,9 +4,9 @@ import os
 Import ('env')
 
 sources = env.Glob('src/*.cc')
+sources.remove('src'+os.sep+'voro++.cc')
 sources.remove('src'+os.sep+'v_base_wl.cc')
 defs = []
 incs = ['src']
-
 
 env.BlenderLib ('extern_voro++', Split(sources), incs, defs, libtype=['extern'], priority=[40] )

@@ -29,8 +29,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "MEM_guardedalloc.h"
-
 #include "DNA_lamp_types.h"
 #include "DNA_material_types.h"
 #include "DNA_meshdata_types.h"
@@ -43,21 +41,17 @@
 #include "DNA_world_types.h"
 #include "DNA_windowmanager_types.h"
 
+#include "BLI_listbase.h"
 #include "BLI_threads.h"
 #include "BLI_utildefines.h"
 
 #include "BKE_context.h"
-#include "BKE_depsgraph.h"
 #include "BKE_DerivedMesh.h"
 #include "BKE_icons.h"
-#include "BKE_image.h"
 #include "BKE_main.h"
 #include "BKE_material.h"
 #include "BKE_node.h"
 #include "BKE_paint.h"
-#include "BKE_scene.h"
-#include "BKE_texture.h"
-#include "BKE_world.h"
 
 #include "GPU_material.h"
 #include "GPU_buffers.h"
@@ -67,6 +61,7 @@
 
 #include "ED_node.h"
 #include "ED_render.h"
+#include "ED_view3d.h"
 
 #include "render_intern.h"  // own include
 
@@ -81,7 +76,7 @@ void ED_render_scene_update(Main *bmain, Scene *scene, int updated)
 	bContext *C;
 	wmWindowManager *wm;
 	wmWindow *win;
-	static int recursive_check = FALSE;
+	static bool recursive_check = false;
 
 	/* don't do this render engine update if we're updating the scene from
 	 * other threads doing e.g. rendering or baking jobs */
@@ -91,8 +86,12 @@ void ED_render_scene_update(Main *bmain, Scene *scene, int updated)
 	/* don't call this recursively for frame updates */
 	if (recursive_check)
 		return;
-	
-	recursive_check = TRUE;
+
+	/* Do not call if no WM available, see T42688. */
+	if (BLI_listbase_is_empty(&bmain->wm))
+		return;
+
+	recursive_check = true;
 
 	C = CTX_create();
 	CTX_data_main_set(C, bmain);
@@ -140,29 +139,22 @@ void ED_render_scene_update(Main *bmain, Scene *scene, int updated)
 
 	CTX_free(C);
 
-	recursive_check = FALSE;
+	recursive_check = false;
 }
 
-void ED_render_engine_area_exit(ScrArea *sa)
+void ED_render_engine_area_exit(Main *bmain, ScrArea *sa)
 {
 	/* clear all render engines in this area */
 	ARegion *ar;
+	wmWindowManager *wm = bmain->wm.first;
 
 	if (sa->spacetype != SPACE_VIEW3D)
 		return;
 
 	for (ar = sa->regionbase.first; ar; ar = ar->next) {
-		RegionView3D *rv3d;
-
 		if (ar->regiontype != RGN_TYPE_WINDOW || !(ar->regiondata))
 			continue;
-		
-		rv3d = ar->regiondata;
-
-		if (rv3d->render_engine) {
-			RE_engine_free(rv3d->render_engine);
-			rv3d->render_engine = NULL;
-		}
+		ED_view3d_stop_render_preview(wm, ar);
 	}
 }
 
@@ -175,7 +167,7 @@ void ED_render_engine_changed(Main *bmain)
 
 	for (sc = bmain->screen.first; sc; sc = sc->id.next)
 		for (sa = sc->areabase.first; sa; sa = sa->next)
-			ED_render_engine_area_exit(sa);
+			ED_render_engine_area_exit(bmain, sa);
 
 	RE_FreePersistentData();
 
@@ -275,14 +267,14 @@ static void material_changed(Main *bmain, Material *ma)
 	Material *parent;
 	Object *ob;
 	Scene *scene;
-	int texture_draw = FALSE;
+	int texture_draw = false;
 
 	/* icons */
 	BKE_icon_changed(BKE_icon_getid(&ma->id));
 
 	/* glsl */
 	if (ma->gpumaterial.first)
-		GPU_material_free(ma);
+		GPU_material_free(&ma->gpumaterial);
 
 	/* find node materials using this */
 	for (parent = bmain->mat.first; parent; parent = parent->id.next) {
@@ -296,19 +288,19 @@ static void material_changed(Main *bmain, Material *ma)
 		BKE_icon_changed(BKE_icon_getid(&parent->id));
 
 		if (parent->gpumaterial.first)
-			GPU_material_free(parent);
+			GPU_material_free(&parent->gpumaterial);
 	}
 
 	/* find if we have a scene with textured display */
 	for (scene = bmain->scene.first; scene; scene = scene->id.next) {
 		if (scene->customdata_mask & CD_MASK_MTFACE) {
-			texture_draw = TRUE;
+			texture_draw = true;
 			break;
 		}
 	}
 
 	/* find textured objects */
-	if (texture_draw && !(U.gameflags & USER_DISABLE_VBO)) {
+	if (texture_draw) {
 		for (ob = bmain->object.first; ob; ob = ob->id.next) {
 			DerivedMesh *dm = ob->derivedFinal;
 			Material ***material = give_matarar(ob);
@@ -342,20 +334,20 @@ static void lamp_changed(Main *bmain, Lamp *la)
 
 	for (ma = bmain->mat.first; ma; ma = ma->id.next)
 		if (ma->gpumaterial.first)
-			GPU_material_free(ma);
+			GPU_material_free(&ma->gpumaterial);
 
 	if (defmaterial.gpumaterial.first)
-		GPU_material_free(&defmaterial);
+		GPU_material_free(&defmaterial.gpumaterial);
 }
 
 static int material_uses_texture(Material *ma, Tex *tex)
 {
 	if (mtex_use_tex(ma->mtex, MAX_MTEX, tex))
-		return TRUE;
+		return true;
 	else if (ma->use_nodes && ma->nodetree && nodes_use_tex(ma->nodetree, tex))
-		return TRUE;
+		return true;
 	
-	return FALSE;
+	return false;
 }
 
 static void texture_changed(Main *bmain, Tex *tex)
@@ -366,7 +358,7 @@ static void texture_changed(Main *bmain, Tex *tex)
 	Scene *scene;
 	Object *ob;
 	bNode *node;
-	int texture_draw = FALSE;
+	bool texture_draw = false;
 
 	/* icons */
 	BKE_icon_changed(BKE_icon_getid(&tex->id));
@@ -383,7 +375,7 @@ static void texture_changed(Main *bmain, Tex *tex)
 		BKE_icon_changed(BKE_icon_getid(&ma->id));
 
 		if (ma->gpumaterial.first)
-			GPU_material_free(ma);
+			GPU_material_free(&ma->gpumaterial);
 	}
 
 	/* find lamps */
@@ -412,6 +404,9 @@ static void texture_changed(Main *bmain, Tex *tex)
 		}
 
 		BKE_icon_changed(BKE_icon_getid(&wo->id));
+		
+		if (wo->gpumaterial.first)
+			GPU_material_free(&wo->gpumaterial);		
 	}
 
 	/* find compositing nodes */
@@ -424,11 +419,11 @@ static void texture_changed(Main *bmain, Tex *tex)
 		}
 
 		if (scene->customdata_mask & CD_MASK_MTFACE)
-			texture_draw = TRUE;
+			texture_draw = true;
 	}
 
 	/* find textured objects */
-	if (texture_draw && !(U.gameflags & USER_DISABLE_VBO)) {
+	if (texture_draw) {
 		for (ob = bmain->object.first; ob; ob = ob->id.next) {
 			DerivedMesh *dm = ob->derivedFinal;
 			Material ***material = give_matarar(ob);
@@ -457,14 +452,17 @@ static void world_changed(Main *bmain, World *wo)
 
 	/* icons */
 	BKE_icon_changed(BKE_icon_getid(&wo->id));
-
+	
 	/* glsl */
 	for (ma = bmain->mat.first; ma; ma = ma->id.next)
 		if (ma->gpumaterial.first)
-			GPU_material_free(ma);
+			GPU_material_free(&ma->gpumaterial);
 
 	if (defmaterial.gpumaterial.first)
-		GPU_material_free(&defmaterial);
+		GPU_material_free(&defmaterial.gpumaterial);
+	
+	if (wo->gpumaterial.first)
+		GPU_material_free(&wo->gpumaterial);
 }
 
 static void image_changed(Main *bmain, Image *ima)
@@ -480,22 +478,34 @@ static void image_changed(Main *bmain, Image *ima)
 			texture_changed(bmain, tex);
 }
 
-static void scene_changed(Main *bmain, Scene *UNUSED(scene))
+static void scene_changed(Main *bmain, Scene *scene)
 {
 	Object *ob;
 	Material *ma;
+	World *wo;
 
 	/* glsl */
-	for (ob = bmain->object.first; ob; ob = ob->id.next)
+	for (ob = bmain->object.first; ob; ob = ob->id.next) {
 		if (ob->gpulamp.first)
 			GPU_lamp_free(ob);
+		
+		if (ob->mode & OB_MODE_TEXTURE_PAINT) {
+			BKE_texpaint_slots_refresh_object(scene, ob);
+			BKE_paint_proj_mesh_data_check(scene, ob, NULL, NULL, NULL, NULL);
+			GPU_drawobject_free(ob->derivedFinal);
+		}
+	}
 
 	for (ma = bmain->mat.first; ma; ma = ma->id.next)
 		if (ma->gpumaterial.first)
-			GPU_material_free(ma);
+			GPU_material_free(&ma->gpumaterial);
 
+	for (wo = bmain->world.first; wo; wo = wo->id.next)
+		if (wo->gpumaterial.first)
+			GPU_material_free(&wo->gpumaterial);
+	
 	if (defmaterial.gpumaterial.first)
-		GPU_material_free(&defmaterial);
+		GPU_material_free(&defmaterial.gpumaterial);
 }
 
 void ED_render_id_flush_update(Main *bmain, ID *id)
@@ -537,7 +547,7 @@ void ED_render_id_flush_update(Main *bmain, ID *id)
 
 void ED_render_internal_init(void)
 {
-	RenderEngineType *ret = RE_engines_find("BLENDER_RENDER");
+	RenderEngineType *ret = RE_engines_find(RE_engine_id_BLENDER_RENDER);
 	
 	ret->view_update = render_view3d_update;
 	ret->view_draw = render_view3d_draw;

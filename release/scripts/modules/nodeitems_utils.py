@@ -18,10 +18,9 @@
 
 # <pep8 compliant>
 import bpy
-from bpy.types import Menu, Panel
 
 
-class NodeCategory():
+class NodeCategory:
     @classmethod
     def poll(cls, context):
         return True
@@ -43,7 +42,7 @@ class NodeCategory():
             self.items = items_gen
 
 
-class NodeItem():
+class NodeItem:
     def __init__(self, nodetype, label=None, settings={}, poll=None):
         self.nodetype = nodetype
         self._label = label
@@ -74,7 +73,7 @@ class NodeItem():
             ops.value = setting[1]
 
 
-class NodeItemCustom():
+class NodeItemCustom:
     def __init__(self, poll=None, draw=None):
         self.poll = poll
         self.draw = draw
@@ -92,7 +91,6 @@ def register_node_categories(identifier, cat_list):
     def draw_node_item(self, context):
         layout = self.layout
         col = layout.column()
-        default_context = bpy.app.translations.contexts.default
         for item in self.category.items(context):
             item.draw(item, col, context)
 
@@ -110,7 +108,7 @@ def register_node_categories(identifier, cat_list):
             "bl_space_type": 'NODE_EDITOR',
             "bl_region_type": 'TOOLS',
             "bl_label": cat.name,
-            "bl_options": {'DEFAULT_CLOSED'},
+            "bl_category": cat.name,
             "category": cat,
             "poll": cat.poll,
             "draw": draw_node_item,

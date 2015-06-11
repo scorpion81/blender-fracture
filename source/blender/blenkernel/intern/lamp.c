@@ -41,7 +41,6 @@
 #include "DNA_scene_types.h"
 #include "DNA_texture_types.h"
 
-#include "BLI_listbase.h"
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
 
@@ -127,6 +126,10 @@ Lamp *BKE_lamp_copy(Lamp *la)
 	if (la->preview)
 		lan->preview = BKE_previewimg_copy(la->preview);
 	
+	if (la->id.lib) {
+		BKE_id_lib_local_paths(G.main, la->id.lib, &lan->id);
+	}
+
 	return lan;
 }
 
@@ -135,8 +138,7 @@ Lamp *localize_lamp(Lamp *la)
 	Lamp *lan;
 	int a;
 	
-	lan = BKE_libblock_copy(&la->id);
-	BLI_remlink(&G.main->lamp, lan);
+	lan = BKE_libblock_copy_nolib(&la->id, false);
 
 	for (a = 0; a < MAX_MTEX; a++) {
 		if (lan->mtex[a]) {
@@ -161,7 +163,7 @@ void BKE_lamp_make_local(Lamp *la)
 {
 	Main *bmain = G.main;
 	Object *ob;
-	int is_local = FALSE, is_lib = FALSE;
+	bool is_local = false, is_lib = false;
 
 	/* - only lib users: do nothing
 	 * - only local users: set flag
@@ -177,13 +179,13 @@ void BKE_lamp_make_local(Lamp *la)
 	ob = bmain->object.first;
 	while (ob) {
 		if (ob->data == la) {
-			if (ob->id.lib) is_lib = TRUE;
-			else is_local = TRUE;
+			if (ob->id.lib) is_lib = true;
+			else is_local = true;
 		}
 		ob = ob->id.next;
 	}
 	
-	if (is_local && is_lib == FALSE) {
+	if (is_local && is_lib == false) {
 		id_clear_lib_data(bmain, &la->id);
 	}
 	else if (is_local && is_lib) {

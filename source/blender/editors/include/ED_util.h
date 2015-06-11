@@ -46,7 +46,7 @@ struct Mesh;
 void    ED_editors_init(struct bContext *C);
 void    ED_editors_exit(struct bContext *C);
 
-void    ED_editors_flush_edits(const struct bContext *C, bool for_render);
+bool    ED_editors_flush_edits(const struct bContext *C, bool for_render);
 
 /* ************** Undo ************************ */
 
@@ -78,13 +78,6 @@ void undo_editmode_push(struct bContext *C, const char *name,
 
 
 void    undo_editmode_clear(void);
-
-/* crazyspace.c */
-float (*crazyspace_get_mapped_editverts(struct Scene *scene, struct Object *obedit))[3];
-void crazyspace_set_quats_editmesh(struct BMEditMesh *em, float (*origcos)[3], float (*mappedcos)[3], float (*quats)[4]);
-void crazyspace_set_quats_mesh(struct Mesh *me, float (*origcos)[3], float (*mappedcos)[3], float (*quats)[4]);
-int sculpt_get_first_deform_matrices(struct Scene *scene, struct Object *ob, float (**deformmats)[3][3], float (**deformcos)[3]);
-void crazyspace_build_sculpt(struct Scene *scene, struct Object *ob, float (**deformmats)[3][3], float (**deformcos)[3]);
 
 /* cut-paste buffer free */
 void ED_clipboard_posebuf_free(void);

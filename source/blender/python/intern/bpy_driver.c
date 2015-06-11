@@ -186,7 +186,7 @@ float BPY_driver_exec(ChannelDriver *driver, const float evaltime)
 
 	/* get the py expression to be evaluated */
 	expr = driver->expression;
-	if ((expr == NULL) || (expr[0] == '\0'))
+	if (expr[0] == '\0')
 		return 0.0f;
 
 	if (!(G.f & G_SCRIPT_AUTOEXEC)) {
@@ -245,7 +245,7 @@ float BPY_driver_exec(ChannelDriver *driver, const float evaltime)
 		expr_vars = PyTuple_GET_ITEM(((PyObject *)driver->expr_comp), 1);
 		Py_XDECREF(expr_vars);
 
-		expr_vars = PyTuple_New(BLI_countlist(&driver->variables));
+		expr_vars = PyTuple_New(BLI_listbase_count(&driver->variables));
 		PyTuple_SET_ITEM(((PyObject *)driver->expr_comp), 1, expr_vars);
 
 		for (dvar = driver->variables.first, i = 0; dvar; dvar = dvar->next) {

@@ -29,10 +29,7 @@
  *  \ingroup edphys
  */
 
-
 #include <stdlib.h>
-
-#include "MEM_guardedalloc.h"
 
 #include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
@@ -42,12 +39,8 @@
 #include "BKE_context.h"
 #include "BKE_global.h"
 #include "BKE_main.h"
-#include "BKE_modifier.h"
 #include "BKE_particle.h"
 #include "BKE_pointcache.h"
-#include "BKE_report.h"
-#include "BKE_scene.h"
- 
 
 #include "ED_particle.h"
 
@@ -61,7 +54,7 @@
 
 static int cache_break_test(void *UNUSED(cbd))
 {
-	return (G.is_break == TRUE);
+	return (G.is_break == true);
 }
 static int ptcache_bake_all_poll(bContext *C)
 {

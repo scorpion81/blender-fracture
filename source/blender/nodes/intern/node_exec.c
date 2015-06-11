@@ -33,7 +33,6 @@
 #include "DNA_node_types.h"
 
 #include "BLI_listbase.h"
-#include "BLI_math.h"
 #include "BLI_utildefines.h"
 
 #include "BKE_global.h"
@@ -48,7 +47,7 @@
 /* supported socket types in old nodes */
 int node_exec_socket_use_stack(bNodeSocket *sock)
 {
-	return ELEM4(sock->type, SOCK_FLOAT, SOCK_VECTOR, SOCK_RGBA, SOCK_SHADER);
+	return ELEM(sock->type, SOCK_FLOAT, SOCK_VECTOR, SOCK_RGBA, SOCK_SHADER);
 }
 
 /* for a given socket, find the actual stack entry */
@@ -160,6 +159,7 @@ bNodeTreeExec *ntree_exec_begin(bNodeExecContext *context, bNodeTree *ntree, bNo
 	int index;
 	bNode **nodelist;
 	int totnodes, n;
+	/* XXX texnodes have threading issues with muting, have to disable it there ... */
 	
 	/* ensure all sock->link pointers and node levels are correct */
 	ntreeUpdateTree(G.main, ntree);
@@ -265,7 +265,7 @@ bNodeThreadStack *ntreeGetThreadStack(bNodeTreeExec *exec, int thread)
 	
 	for (nts = lb->first; nts; nts = nts->next) {
 		if (!nts->used) {
-			nts->used = TRUE;
+			nts->used = true;
 			break;
 		}
 	}
@@ -273,7 +273,7 @@ bNodeThreadStack *ntreeGetThreadStack(bNodeTreeExec *exec, int thread)
 	if (!nts) {
 		nts = MEM_callocN(sizeof(bNodeThreadStack), "bNodeThreadStack");
 		nts->stack = MEM_dupallocN(exec->stack);
-		nts->used = TRUE;
+		nts->used = true;
 		BLI_addtail(lb, nts);
 	}
 
@@ -305,7 +305,7 @@ bool ntreeExecThreadNodes(bNodeTreeExec *exec, bNodeThreadStack *nts, void *call
 			 */
 //			if (node->typeinfo->compatibility == NODE_NEW_SHADING)
 //				return false;
-			if (node->typeinfo->execfunc)
+			if (node->typeinfo->execfunc && !(node->flag & NODE_MUTED))
 				node->typeinfo->execfunc(callerdata, thread, node, &nodeexec->data, nsin, nsout);
 		}
 	}

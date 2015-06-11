@@ -32,7 +32,6 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "DNA_mesh_types.h"
 #include "DNA_meshdata_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
@@ -47,7 +46,6 @@
 
 #include "BKE_context.h"
 #include "BKE_customdata.h"
-#include "BKE_mesh.h"
 #include "BKE_screen.h"
 #include "BKE_editmesh.h"
 
@@ -55,7 +53,6 @@
 #include "ED_uvedit.h"
 
 #include "UI_interface.h"
-#include "UI_resources.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
@@ -137,17 +134,32 @@ static void uvedit_vertex_buttons(const bContext *C, uiBlock *block)
 	BMEditMesh *em;
 	float center[2];
 	int imx, imy, step, digits;
+	float width = 8 * UI_UNIT_X;
 
 	ED_space_image_get_size(sima, &imx, &imy);
 	
 	em = BKE_editmesh_from_object(obedit);
 
 	if (uvedit_center(scene, em, ima, center)) {
+		float range_xy[2][2] = {
+		    {-10.0f, 10.0f},
+		    {-10.0f, 10.0f},
+		};
+
 		copy_v2_v2(uvedit_old_center, center);
+
+		/* expand UI range by center */
+		CLAMP_MAX(range_xy[0][0], uvedit_old_center[0]);
+		CLAMP_MIN(range_xy[0][1], uvedit_old_center[0]);
+		CLAMP_MAX(range_xy[1][0], uvedit_old_center[1]);
+		CLAMP_MIN(range_xy[1][1], uvedit_old_center[1]);
 
 		if (!(sima->flag & SI_COORDFLOATS)) {
 			uvedit_old_center[0] *= imx;
 			uvedit_old_center[1] *= imy;
+
+			mul_v2_fl(range_xy[0], imx);
+			mul_v2_fl(range_xy[1], imy);
 		}
 
 		if (sima->flag & SI_COORDFLOATS) {
@@ -159,12 +171,12 @@ static void uvedit_vertex_buttons(const bContext *C, uiBlock *block)
 			digits = 2;
 		}
 		
-		uiBlockBeginAlign(block);
-		uiDefButF(block, NUM, B_UVEDIT_VERTEX, IFACE_("X:"), 10, 10, 145, 19, &uvedit_old_center[0],
-		          -10 * imx, 10.0 * imx, step, digits, "");
-		uiDefButF(block, NUM, B_UVEDIT_VERTEX, IFACE_("Y:"), 165, 10, 145, 19, &uvedit_old_center[1],
-		          -10 * imy, 10.0 * imy, step, digits, "");
-		uiBlockEndAlign(block);
+		UI_block_align_begin(block);
+		uiDefButF(block, UI_BTYPE_NUM, B_UVEDIT_VERTEX, IFACE_("X:"), 0, 0, width, UI_UNIT_Y, &uvedit_old_center[0],
+		          UNPACK2(range_xy[0]), step, digits, "");
+		uiDefButF(block, UI_BTYPE_NUM, B_UVEDIT_VERTEX, IFACE_("Y:"), width, 0, width, UI_UNIT_Y, &uvedit_old_center[1],
+		          UNPACK2(range_xy[1]), step, digits, "");
+		UI_block_align_end(block);
 	}
 }
 
@@ -213,7 +225,7 @@ static void image_panel_uv(const bContext *C, Panel *pa)
 	uiBlock *block;
 	
 	block = uiLayoutAbsoluteBlock(pa->layout);
-	uiBlockSetHandleFunc(block, do_uvedit_vertex, NULL);
+	UI_block_func_handle_set(block, do_uvedit_vertex, NULL);
 
 	uvedit_vertex_buttons(C, block);
 }	

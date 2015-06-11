@@ -34,20 +34,25 @@
 #include <assert.h>
 
 #include "DNA_object_types.h"
+#include "DNA_screen_types.h"
 
 #include "BLI_utildefines.h"
 #include "BLI_math.h"
 #include "BLI_string.h"
+#include "BLI_listbase.h"
 
 #include "BLF_translation.h"
 
-#include "BKE_context.h"
+#include "BKE_report.h"
 
+#include "MEM_guardedalloc.h"
 
 #include "RNA_access.h"
 
 #include "UI_interface.h"
 #include "UI_resources.h"
+
+#include "interface_intern.h"
 
 
 /*************************** RNA Utilities ******************************/
@@ -65,11 +70,11 @@ uiBut *uiDefAutoButR(uiBlock *block, PointerRNA *ptr, PropertyRNA *prop, int ind
 				return NULL;
 			
 			if (icon && name && name[0] == '\0')
-				but = uiDefIconButR_prop(block, ICONTOG, 0, icon, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+				but = uiDefIconButR_prop(block, UI_BTYPE_ICON_TOGGLE, 0, icon, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
 			else if (icon)
-				but = uiDefIconTextButR_prop(block, ICONTOG, 0, icon, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+				but = uiDefIconTextButR_prop(block, UI_BTYPE_ICON_TOGGLE, 0, icon, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
 			else
-				but = uiDefButR_prop(block, OPTION, 0, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+				but = uiDefButR_prop(block, UI_BTYPE_CHECKBOX, 0, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
 			break;
 		}
 		case PROP_INT:
@@ -78,30 +83,42 @@ uiBut *uiDefAutoButR(uiBlock *block, PointerRNA *ptr, PropertyRNA *prop, int ind
 			int arraylen = RNA_property_array_length(ptr, prop);
 
 			if (arraylen && index == -1) {
-				if (ELEM(RNA_property_subtype(prop), PROP_COLOR, PROP_COLOR_GAMMA))
-					but = uiDefButR_prop(block, COLOR, 0, name, x1, y1, x2, y2, ptr, prop, -1, 0, 0, -1, -1, NULL);
+				if (ELEM(RNA_property_subtype(prop), PROP_COLOR, PROP_COLOR_GAMMA)) {
+					but = uiDefButR_prop(block, UI_BTYPE_COLOR, 0, name, x1, y1, x2, y2, ptr, prop, -1, 0, 0, -1, -1, NULL);
+				}
+				else {
+					return NULL;
+				}
 			}
 			else if (RNA_property_subtype(prop) == PROP_PERCENTAGE || RNA_property_subtype(prop) == PROP_FACTOR)
-				but = uiDefButR_prop(block, NUMSLI, 0, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+				but = uiDefButR_prop(block, UI_BTYPE_NUM_SLIDER, 0, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
 			else
-				but = uiDefButR_prop(block, NUM, 0, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+				but = uiDefButR_prop(block, UI_BTYPE_NUM, 0, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+
+			if (RNA_property_flag(prop) & PROP_TEXTEDIT_UPDATE) {
+				UI_but_flag_enable(but, UI_BUT_TEXTEDIT_UPDATE);
+			}
 			break;
 		}
 		case PROP_ENUM:
 			if (icon && name && name[0] == '\0')
-				but = uiDefIconButR_prop(block, MENU, 0, icon, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+				but = uiDefIconButR_prop(block, UI_BTYPE_MENU, 0, icon, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
 			else if (icon)
-				but = uiDefIconTextButR_prop(block, MENU, 0, icon, NULL, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+				but = uiDefIconTextButR_prop(block, UI_BTYPE_MENU, 0, icon, NULL, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
 			else
-				but = uiDefButR_prop(block, MENU, 0, NULL, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+				but = uiDefButR_prop(block, UI_BTYPE_MENU, 0, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
 			break;
 		case PROP_STRING:
 			if (icon && name && name[0] == '\0')
-				but = uiDefIconButR_prop(block, TEX, 0, icon, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+				but = uiDefIconButR_prop(block, UI_BTYPE_TEXT, 0, icon, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
 			else if (icon)
-				but = uiDefIconTextButR_prop(block, TEX, 0, icon, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+				but = uiDefIconTextButR_prop(block, UI_BTYPE_TEXT, 0, icon, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
 			else
-				but = uiDefButR_prop(block, TEX, 0, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+				but = uiDefButR_prop(block, UI_BTYPE_TEXT, 0, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+
+			if (RNA_property_flag(prop) & PROP_TEXTEDIT_UPDATE) {
+				UI_but_flag_enable(but, UI_BUT_TEXTEDIT_UPDATE);
+			}
 			break;
 		case PROP_POINTER:
 		{
@@ -114,15 +131,15 @@ uiBut *uiDefAutoButR(uiBlock *block, PointerRNA *ptr, PropertyRNA *prop, int ind
 			if (icon == ICON_DOT)
 				icon = 0;
 
-			but = uiDefIconTextButR_prop(block, SEARCH_MENU, 0, icon, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+			but = uiDefIconTextButR_prop(block, UI_BTYPE_SEARCH_MENU, 0, icon, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
 			break;
 		}
 		case PROP_COLLECTION:
 		{
 			char text[256];
 			BLI_snprintf(text, sizeof(text), IFACE_("%d items"), RNA_property_collection_length(ptr, prop));
-			but = uiDefBut(block, LABEL, 0, text, x1, y1, x2, y2, NULL, 0, 0, 0, 0, NULL);
-			uiButSetFlag(but, UI_BUT_DISABLED);
+			but = uiDefBut(block, UI_BTYPE_LABEL, 0, text, x1, y1, x2, y2, NULL, 0, 0, 0, 0, NULL);
+			UI_but_flag_enable(but, UI_BUT_DISABLED);
 			break;
 		}
 		default:
@@ -146,7 +163,7 @@ int uiDefAutoButsRNA(uiLayout *layout, PointerRNA *ptr,
 	const char *name;
 	int tot = 0;
 
-	assert(ELEM3(label_align, '\0', 'H', 'V'));
+	assert(ELEM(label_align, '\0', 'H', 'V'));
 
 	RNA_STRUCT_BEGIN (ptr, prop)
 	{
@@ -166,15 +183,13 @@ int uiDefAutoButsRNA(uiLayout *layout, PointerRNA *ptr,
 				if (!is_boolean)
 					uiItemL(col, name, ICON_NONE);
 			}
-			else if (label_align == 'H') {
+			else {  /* (label_align == 'H') */
+				BLI_assert(label_align == 'H');
 				split = uiLayoutSplit(layout, 0.5f, false);
 
 				col = uiLayoutColumn(split, false);
 				uiItemL(col, (is_boolean) ? "" : name, ICON_NONE);
 				col = uiLayoutColumn(split, false);
-			}
-			else {
-				col = NULL;
 			}
 
 			/* may meed to add more cases here.
@@ -198,7 +213,7 @@ int uiDefAutoButsRNA(uiLayout *layout, PointerRNA *ptr,
 
 /***************************** ID Utilities *******************************/
 
-int uiIconFromID(ID *id)
+int UI_icon_from_id(ID *id)
 {
 	Object *ob;
 	PointerRNA ptr;
@@ -216,7 +231,7 @@ int uiIconFromID(ID *id)
 		if (ob->type == OB_EMPTY)
 			return ICON_EMPTY_DATA;
 		else
-			return uiIconFromID(ob->data);
+			return UI_icon_from_id(ob->data);
 	}
 
 	/* otherwise get it through RNA, creating the pointer
@@ -226,18 +241,31 @@ int uiIconFromID(ID *id)
 	return (ptr.type) ? RNA_struct_ui_icon(ptr.type) : ICON_NONE;
 }
 
+/* see: report_type_str */
+int UI_icon_from_report_type(int type)
+{
+	if (type & RPT_ERROR_ALL)
+		return ICON_ERROR;
+	else if (type & RPT_WARNING_ALL)
+		return ICON_ERROR;
+	else if (type & RPT_INFO_ALL)
+		return ICON_INFO;
+	else
+		return ICON_NONE;
+}
+
 /********************************** Misc **************************************/
 
 /**
  * Returns the best "UI" precision for given floating value, so that e.g. 10.000001 rather gets drawn as '10'...
  */
-int uiFloatPrecisionCalc(int prec, double value)
+int UI_calc_float_precision(int prec, double value)
 {
 	static const double pow10_neg[UI_PRECISION_FLOAT_MAX + 1] = {1e0, 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7};
 	static const double max_pow = 10000000.0;  /* pow(10, UI_PRECISION_FLOAT_MAX) */
 
 	BLI_assert(prec <= UI_PRECISION_FLOAT_MAX);
-	BLI_assert(pow10_neg[prec] == pow(10, -prec));
+	BLI_assert(fabs(pow10_neg[prec] - pow(10, -prec)) < 1e-16);
 
 	/* check on the number of decimal places need to display the number, this is so 0.00001 is not displayed as 0.00,
 	 * _but_, this is only for small values si 10.0001 will not get the same treatment.
@@ -280,3 +308,181 @@ int uiFloatPrecisionCalc(int prec, double value)
 
 	return prec;
 }
+
+
+/* -------------------------------------------------------------------- */
+/* Modal Button Store API */
+
+/** \name Button Store
+ *
+ * Store for modal operators & handlers to register button pointers
+ * which are maintained while drawing or NULL when removed.
+ *
+ * This is needed since button pointers are continuously freed and re-allocated.
+ *
+ * \{ */
+
+struct uiButStore {
+	struct uiButStore *next, *prev;
+	uiBlock *block;
+	ListBase items;
+};
+
+struct uiButStoreElem {
+	struct uiButStoreElem *next, *prev;
+	uiBut **but_p;
+};
+
+/**
+ * Create a new button store, the caller must manage and run #UI_butstore_free
+ */
+uiButStore *UI_butstore_create(uiBlock *block)
+{
+	uiButStore *bs_handle = MEM_callocN(sizeof(uiButStore), __func__);
+
+	bs_handle->block = block;
+	BLI_addtail(&block->butstore, bs_handle);
+
+	return bs_handle;
+}
+
+void UI_butstore_free(uiBlock *block, uiButStore *bs_handle)
+{
+	BLI_freelistN(&bs_handle->items);
+	BLI_remlink(&block->butstore, bs_handle);
+
+	MEM_freeN(bs_handle);
+}
+
+bool UI_butstore_is_valid(uiButStore *bs)
+{
+	return (bs->block != NULL);
+}
+
+bool UI_butstore_is_registered(uiBlock *block, uiBut *but)
+{
+	uiButStore *bs_handle;
+
+	for (bs_handle = block->butstore.first; bs_handle; bs_handle = bs_handle->next) {
+		uiButStoreElem *bs_elem;
+
+		for (bs_elem = bs_handle->items.first; bs_elem; bs_elem = bs_elem->next) {
+			if (*bs_elem->but_p == but) {
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+void UI_butstore_register(uiButStore *bs_handle, uiBut **but_p)
+{
+	uiButStoreElem *bs_elem = MEM_callocN(sizeof(uiButStoreElem), __func__);
+	BLI_assert(*but_p);
+	bs_elem->but_p = but_p;
+
+	BLI_addtail(&bs_handle->items, bs_elem);
+
+}
+
+void UI_butstore_unregister(uiButStore *bs_handle, uiBut **but_p)
+{
+	uiButStoreElem *bs_elem, *bs_elem_next;
+
+	for (bs_elem = bs_handle->items.first; bs_elem; bs_elem = bs_elem_next) {
+		bs_elem_next = bs_elem->next;
+		if (bs_elem->but_p == but_p) {
+			BLI_remlink(&bs_handle->items, bs_elem);
+			MEM_freeN(bs_elem);
+		}
+	}
+
+	BLI_assert(0);
+}
+
+/**
+ * Update the pointer for a registered button.
+ */
+bool UI_butstore_register_update(uiBlock *block, uiBut *but_dst, const uiBut *but_src)
+{
+	uiButStore *bs_handle;
+	bool found = false;
+
+	for (bs_handle = block->butstore.first; bs_handle; bs_handle = bs_handle->next) {
+		uiButStoreElem *bs_elem;
+		for (bs_elem = bs_handle->items.first; bs_elem; bs_elem = bs_elem->next) {
+			if (*bs_elem->but_p == but_src) {
+				*bs_elem->but_p = but_dst;
+				found = true;
+			}
+		}
+	}
+
+	return found;
+}
+
+/**
+ * NULL all pointers, don't free since the owner needs to be able to inspect.
+ */
+void UI_butstore_clear(uiBlock *block)
+{
+	uiButStore *bs_handle;
+
+	for (bs_handle = block->butstore.first; bs_handle; bs_handle = bs_handle->next) {
+		uiButStoreElem *bs_elem;
+
+		bs_handle->block = NULL;
+
+		for (bs_elem = bs_handle->items.first; bs_elem; bs_elem = bs_elem->next) {
+			*bs_elem->but_p = NULL;
+		}
+	}
+}
+
+/**
+ * Map freed buttons from the old block and update pointers.
+ */
+void UI_butstore_update(uiBlock *block)
+{
+	uiButStore *bs_handle;
+
+	/* move this list to the new block */
+	if (block->oldblock) {
+		if (block->oldblock->butstore.first) {
+			block->butstore = block->oldblock->butstore;
+			BLI_listbase_clear(&block->oldblock->butstore);
+		}
+	}
+
+	if (LIKELY(block->butstore.first == NULL))
+		return;
+
+	/* warning, loop-in-loop, in practice we only store <10 buttons at a time,
+	 * so this isn't going to be a problem, if that changes old-new mapping can be cached first */
+	for (bs_handle = block->butstore.first; bs_handle; bs_handle = bs_handle->next) {
+
+		BLI_assert((bs_handle->block == NULL) ||
+		           (bs_handle->block == block) ||
+		           (block->oldblock && block->oldblock == bs_handle->block));
+
+		if (bs_handle->block == block->oldblock) {
+			uiButStoreElem *bs_elem;
+
+			bs_handle->block = block;
+
+			for (bs_elem = bs_handle->items.first; bs_elem; bs_elem = bs_elem->next) {
+				if (*bs_elem->but_p) {
+					uiBut *but_new = ui_but_find_new(block, *bs_elem->but_p);
+
+					/* can be NULL if the buttons removed,
+					 * note: we could allow passing in a callback when buttons are removed
+					 * so the caller can cleanup */
+					*bs_elem->but_p = but_new;
+				}
+			}
+		}
+	}
+}
+
+/** \} */

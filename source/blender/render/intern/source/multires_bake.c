@@ -42,7 +42,7 @@
 #include "BLI_threads.h"
 
 #include "BKE_ccg.h"
-#include "BKE_context.h"
+#include "BKE_depsgraph.h"
 #include "BKE_global.h"
 #include "BKE_image.h"
 #include "BKE_multires.h"
@@ -76,7 +76,7 @@ typedef struct {
 	MFace *mface;
 	MTFace *mtface;
 	float *pvtangent;
-	float *precomputed_normals;
+	const float *precomputed_normals;
 	int w, h;
 	int face_index;
 	int i0, i1, i2;
@@ -137,7 +137,7 @@ static void multiresbake_get_normal(const MResolvePixelData *data, float norm[],
 		}
 		else {
 			float nor[3];
-			float *p0, *p1, *p2;
+			const float *p0, *p1, *p2;
 			const int iGetNrVerts = data->mface[face_num].v4 != 0 ? 4 : 3;
 
 			p0 = data->mvert[indices[0]].co;
@@ -145,7 +145,7 @@ static void multiresbake_get_normal(const MResolvePixelData *data, float norm[],
 			p2 = data->mvert[indices[2]].co;
 
 			if (iGetNrVerts == 4) {
-				float *p3 = data->mvert[indices[3]].co;
+				const float *p3 = data->mvert[indices[3]].co;
 				normal_quad_v3(nor, p0, p1, p2, p3);
 			}
 			else {
@@ -156,7 +156,7 @@ static void multiresbake_get_normal(const MResolvePixelData *data, float norm[],
 		}
 	}
 	else {
-		short *no = data->mvert[indices[vert_index]].no;
+		const short *no = data->mvert[indices[vert_index]].no;
 
 		normal_short_to_float_v3(norm, no);
 		normalize_v3(norm);
@@ -181,8 +181,8 @@ static void init_bake_rast(MBakeRast *bake_rast, const ImBuf *ibuf, const MResol
 static void flush_pixel(const MResolvePixelData *data, const int x, const int y)
 {
 	float st[2] = {(x + 0.5f) / data->w, (y + 0.5f) / data->h};
-	float *st0, *st1, *st2;
-	float *tang0, *tang1, *tang2;
+	const float *st0, *st1, *st2;
+	const float *tang0, *tang1, *tang2;
 	float no0[3], no1[3], no2[3];
 	float fUV[2], from_tang[3][3], to_tang[3][3];
 	float u, v, w, sign;
@@ -200,7 +200,7 @@ static void flush_pixel(const MResolvePixelData *data, const int x, const int y)
 	multiresbake_get_normal(data, no1, data->face_index, i1);
 	multiresbake_get_normal(data, no2, data->face_index, i2);
 
-	resolve_tri_uv(fUV, st, st0, st1, st2);
+	resolve_tri_uv_v2(fUV, st, st0, st1, st2);
 
 	u = fUV[0];
 	v = fUV[1];
@@ -432,7 +432,7 @@ static void *do_multires_bake_thread(void *data_v)
 		bkr->baked_faces++;
 
 		if (bkr->do_update)
-			*bkr->do_update = TRUE;
+			*bkr->do_update = true;
 
 		if (bkr->progress)
 			*bkr->progress = ((float)bkr->baked_objects + (float)bkr->baked_faces / handle->queue->tot_face) / bkr->tot_obj;
@@ -451,7 +451,7 @@ static void init_ccgdm_arrays(DerivedMesh *dm)
 	CCGElem **grid_data;
 	CCGKey key;
 	int grid_size;
-	int *grid_offset;
+	const int *grid_offset;
 
 	grid_size = dm->getGridSize(dm);
 	grid_data = dm->getGridData(dm);
@@ -463,7 +463,7 @@ static void init_ccgdm_arrays(DerivedMesh *dm)
 	(void) grid_offset;
 }
 
-static void do_multires_bake(MultiresBakeRender *bkr, Image *ima, int require_tangent, MPassKnownData passKnownData,
+static void do_multires_bake(MultiresBakeRender *bkr, Image *ima, bool require_tangent, MPassKnownData passKnownData,
                              MInitBakeData initBakeData, MFreeBakeData freeBakeData, MultiresBakeResult *result)
 {
 	DerivedMesh *dm = bkr->lores_dm;
@@ -478,7 +478,7 @@ static void do_multires_bake(MultiresBakeRender *bkr, Image *ima, int require_ta
 		MVert *mvert = dm->getVertArray(dm);
 		MFace *mface = dm->getTessFaceArray(dm);
 		MTFace *mtface = dm->getTessFaceDataArray(dm, CD_MTFACE);
-		float *precomputed_normals = dm->getTessFaceDataArray(dm, CD_NORMAL);
+		const float *precomputed_normals = dm->getTessFaceDataArray(dm, CD_NORMAL);
 		float *pvtangent = NULL;
 
 		ListBase threads;
@@ -772,10 +772,10 @@ static void apply_heights_callback(DerivedMesh *lores_dm, DerivedMesh *hires_dm,
 
 	if (mface.v4) {
 		st3 = mtface[face_index].uv[3];
-		resolve_quad_uv(uv, st, st0, st1, st2, st3);
+		resolve_quad_uv_v2(uv, st, st0, st1, st2, st3);
 	}
 	else
-		resolve_tri_uv(uv, st, st0, st1, st2);
+		resolve_tri_uv_v2(uv, st, st0, st1, st2);
 
 	CLAMP(uv[0], 0.0f, 1.0f);
 	CLAMP(uv[1], 0.0f, 1.0f);
@@ -868,10 +868,10 @@ static void apply_tangmat_callback(DerivedMesh *lores_dm, DerivedMesh *hires_dm,
 
 	if (mface.v4) {
 		st3 = mtface[face_index].uv[3];
-		resolve_quad_uv(uv, st, st0, st1, st2, st3);
+		resolve_quad_uv_v2(uv, st, st0, st1, st2, st3);
 	}
 	else
-		resolve_tri_uv(uv, st, st0, st1, st2);
+		resolve_tri_uv_v2(uv, st, st0, st1, st2);
 
 	CLAMP(uv[0], 0.0f, 1.0f);
 	CLAMP(uv[1], 0.0f, 1.0f);
@@ -937,7 +937,7 @@ static void build_permutation_table(unsigned short permutation[], unsigned short
 
 	for (i = 0; i < number_of_rays; i++) {
 		const unsigned int nr_entries_left = number_of_rays - i;
-		unsigned short rnd = is_first_perm_table != FALSE ? get_ao_random1(i) : get_ao_random2(i);
+		unsigned short rnd = is_first_perm_table != false ? get_ao_random1(i) : get_ao_random2(i);
 		const unsigned short entry = rnd % nr_entries_left;
 
 		/* pull entry */
@@ -1072,7 +1072,7 @@ static void build_coordinate_frame(float axisX[3], float axisY[3], const float a
 	}
 }
 
-/* return FALSE if nothing was hit and TRUE otherwise */
+/* return false if nothing was hit and true otherwise */
 static int trace_ao_ray(MAOBakeData *ao_data, float ray_start[3], float ray_direction[3])
 {
 	Isect isect = {{0}};
@@ -1112,10 +1112,10 @@ static void apply_ao_callback(DerivedMesh *lores_dm, DerivedMesh *hires_dm, void
 
 	if (mface.v4) {
 		st3 = mtface[face_index].uv[3];
-		resolve_quad_uv(uv, st, st0, st1, st2, st3);
+		resolve_quad_uv_v2(uv, st, st0, st1, st2, st3);
 	}
 	else
-		resolve_tri_uv(uv, st, st0, st1, st2);
+		resolve_tri_uv_v2(uv, st, st0, st1, st2);
 
 	CLAMP(uv[0], 0.0f, 1.0f);
 	CLAMP(uv[1], 0.0f, 1.0f);
@@ -1155,10 +1155,10 @@ static void apply_ao_callback(DerivedMesh *lores_dm, DerivedMesh *hires_dm, void
 		/* this gives results identical to the so-called cosine
 		 * weighted distribution relative to the north pole.
 		 */
-		float SiPhi = sqrt(SiSqPhi);
+		float SiPhi = sqrtf(SiSqPhi);
 		float CoPhi = SiSqPhi < 1.0f ? sqrtf(1.0f - SiSqPhi) : 0;
-		float CoThe = cos(Theta);
-		float SiThe = sin(Theta);
+		float CoThe = cosf(Theta);
+		float SiThe = sinf(Theta);
 
 		const float dx = CoThe * CoPhi;
 		const float dy = SiThe * CoPhi;
@@ -1197,7 +1197,7 @@ static void count_images(MultiresBakeRender *bkr)
 	DerivedMesh *dm = bkr->lores_dm;
 	MTFace *mtface = CustomData_get_layer(&dm->faceData, CD_MTFACE);
 
-	bkr->image.first = bkr->image.last = NULL;
+	BLI_listbase_clear(&bkr->image);
 	bkr->tot_image = 0;
 
 	totface = dm->getNumTessFaces(dm);
@@ -1234,14 +1234,14 @@ static void bake_images(MultiresBakeRender *bkr, MultiresBakeResult *result)
 
 			switch (bkr->mode) {
 				case RE_BAKE_NORMALS:
-					do_multires_bake(bkr, ima, TRUE, apply_tangmat_callback, init_normal_data, free_normal_data, result);
+					do_multires_bake(bkr, ima, true, apply_tangmat_callback, init_normal_data, free_normal_data, result);
 					break;
 				case RE_BAKE_DISPLACEMENT:
 				case RE_BAKE_DERIVATIVE:
-					do_multires_bake(bkr, ima, FALSE, apply_heights_callback, init_heights_data, free_heights_data, result);
+					do_multires_bake(bkr, ima, false, apply_heights_callback, init_heights_data, free_heights_data, result);
 					break;
 				case RE_BAKE_AO:
-					do_multires_bake(bkr, ima, FALSE, apply_ao_callback, init_ao_data, free_ao_data, result);
+					do_multires_bake(bkr, ima, false, apply_ao_callback, init_ao_data, free_ao_data, result);
 					break;
 			}
 		}
@@ -1298,6 +1298,7 @@ static void finish_images(MultiresBakeRender *bkr, MultiresBakeResult *result)
 		}
 
 		BKE_image_release_ibuf(ima, ibuf, NULL);
+		DAG_id_tag_update(&ima->id, 0);		
 	}
 }
 

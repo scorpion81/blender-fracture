@@ -61,14 +61,21 @@ typedef struct MovieReconstructedCamera {
 typedef struct MovieTrackingCamera {
 	void *intrinsics;   /* intrinsics handle */
 
+	short distortion_model;
+	short pad;
+
 	float sensor_width; /* width of CCD sensor */
 	float pixel_aspect; /* pixel aspect ratio */
-	float pad;
 	float focal;        /* focal length */
 	short units;        /* units of focal length user is working with */
 	short pad1;
 	float principal[2]; /* principal point */
-	float k1, k2, k3;   /* radial distortion */
+
+	/* Polynomial distortion */
+	float k1, k2, k3;   /* polynomial radial distortion */
+
+	/* Division distortion model coefficients */
+	float division_k1, division_k2;
 } MovieTrackingCamera;
 
 typedef struct MovieTrackingMarker {
@@ -210,6 +217,7 @@ typedef struct MovieTrackingSettings {
 	short default_margin;               /* margin from frame boundaries */
 	short default_pattern_match;        /* re-adjust every N frames */
 	short default_flag;                 /* default flags like color channels used by default */
+	float default_weight;               /* default weight of the track */
 
 	short motion_flag;      /* flags describes motion type */
 
@@ -222,7 +230,7 @@ typedef struct MovieTrackingSettings {
 		                             * were moved to per-tracking object settings
 		                             */
 
-	int reconstruction_flag, pad;
+	int reconstruction_flag;
 
 	/* which camera intrinsics to refine. uses on the REFINE_* flags */
 	short refine_camera_intrinsics, pad2;
@@ -347,6 +355,12 @@ typedef struct MovieTracking {
 	MovieTrackingDopesheet dopesheet;   /* dopesheet data */
 } MovieTracking;
 
+/* MovieTrackingCamera->distortion_model */
+enum {
+	TRACKING_DISTORTION_MODEL_POLYNOMIAL = 0,
+	TRACKING_DISTORTION_MODEL_DIVISION = 1
+};
+
 /* MovieTrackingCamera->units */
 enum {
 	CAMERA_UNITS_PX = 0,
@@ -402,7 +416,8 @@ enum {
 
 /* MovieTrackingSettings->flag */
 enum {
-	TRACKING_SETTINGS_SHOW_DEFAULT_EXPANDED = (1 << 0)
+	TRACKING_SETTINGS_SHOW_DEFAULT_EXPANDED = (1 << 0),
+	TRACKING_SETTINGS_SHOW_EXTRA_EXPANDED = (1 << 1)
 };
 
 /* MovieTrackingSettings->motion_flag */

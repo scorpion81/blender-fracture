@@ -43,6 +43,7 @@
  *
  * little array macro library.  example of usage:
  *
+ * \code{.c}
  * int *arr = NULL;
  * BLI_array_declare(arr);
  * int i;
@@ -52,6 +53,7 @@
  *     arr[i] = something;
  * }
  * BLI_array_free(arr);
+ * \endcode
  *
  * arrays are buffered, using double-buffering (so on each reallocation,
  * the array size is doubled).  supposedly this should give good Big Oh
@@ -59,13 +61,10 @@
  */
 
 #include <string.h>
-#include <stdlib.h>
 
 #include "BLI_array.h"
 
 #include "BLI_sys_types.h"
-#include "BLI_utildefines.h"
-#include "BLI_alloca.h"
 
 #include "MEM_guardedalloc.h"
 
@@ -99,41 +98,4 @@ void _bli_array_grow_func(void **arr_p, const void *arr_static,
 #if 0
 	arr_count += num;
 #endif
-}
-
-void _bli_array_reverse(void *arr_v, unsigned int arr_len, size_t arr_stride)
-{
-	const unsigned int arr_half_stride = (arr_len / 2) * arr_stride;
-	unsigned int i, i_end;
-	char *arr = arr_v;
-	char *buf = BLI_array_alloca(buf, arr_stride);
-
-	for (i = 0, i_end = (arr_len - 1) * arr_stride;
-	     i < arr_half_stride;
-	     i += arr_stride, i_end -= arr_stride)
-	{
-		memcpy(buf, &arr[i], arr_stride);
-		memcpy(&arr[i], &arr[i_end], arr_stride);
-		memcpy(&arr[i_end], buf, arr_stride);
-	}
-}
-
-void _bli_array_wrap(void *arr_v, unsigned int arr_len, size_t arr_stride, int dir)
-{
-	char *arr = arr_v;
-	char *buf = BLI_array_alloca(buf, arr_stride);
-
-	if (dir == -1) {
-		memcpy(buf, arr, arr_stride);
-		memmove(arr, arr + arr_stride, arr_stride * (arr_len - 1));
-		memcpy(arr + (arr_stride * (arr_len - 1)), buf, arr_stride);
-	}
-	else if (dir == 1) {
-		memcpy(buf, arr + (arr_stride * (arr_len - 1)), arr_stride);
-		memmove(arr + arr_stride, arr, arr_stride * (arr_len - 1));
-		memcpy(arr, buf, arr_stride);
-	}
-	else {
-		BLI_assert(0);
-	}
 }

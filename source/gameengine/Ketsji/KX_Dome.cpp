@@ -41,7 +41,7 @@
 #include "RAS_CameraData.h"
 #include "BLI_math.h"
 
-#include "GL/glew.h"
+#include "glew-mx.h"
 
 // constructor
 KX_Dome::KX_Dome (
@@ -61,7 +61,7 @@ KX_Dome::KX_Dome (
         ):
     dlistSupported(false),
     canvaswidth(-1), canvasheight(-1),
-    m_drawingmode(engine->GetDrawType()),
+    m_drawingmode(rasterizer->GetDrawingMode()),
     m_resolution(res),
     m_mode(mode),
     m_angle(angle),
@@ -2045,8 +2045,5 @@ void KX_Dome::RenderDomeFrame(KX_Scene* scene, KX_Camera* cam, int i)
 
 	scene->CalculateVisibleMeshes(m_rasterizer,cam);
 	scene->RenderBuckets(camtrans, m_rasterizer);
-
-	// update levels of detail
-	scene->UpdateObjectLods();
 }
 

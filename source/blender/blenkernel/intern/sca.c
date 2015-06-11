@@ -323,15 +323,23 @@ void unlink_actuators(ListBase *lb)
 
 void free_actuator(bActuator *act)
 {
-	bSoundActuator *sa;
-
 	if (act->data) {
 		switch (act->type) {
-		case ACT_SOUND:
-			sa = (bSoundActuator *) act->data;
-			if (sa->sound)
-				id_us_min((ID *) sa->sound);
-			break;
+			case ACT_ACTION:
+			case ACT_SHAPEACTION:
+			{
+				bActionActuator *aa = (bActionActuator *)act->data;
+				if (aa->act)
+					id_us_min((ID *)aa->act);
+				break;
+			}
+			case ACT_SOUND:
+			{
+				bSoundActuator *sa = (bSoundActuator *) act->data;
+				if (sa->sound)
+					id_us_min((ID *)sa->sound);
+				break;
+			}
 		}
 
 		MEM_freeN(act->data);
@@ -351,7 +359,6 @@ void free_actuators(ListBase *lb)
 bActuator *copy_actuator(bActuator *act)
 {
 	bActuator *actn;
-	bSoundActuator *sa;
 	
 	act->mynew=actn= MEM_dupallocN(act);
 	actn->flag |= ACT_NEW;
@@ -360,11 +367,21 @@ bActuator *copy_actuator(bActuator *act)
 	}
 	
 	switch (act->type) {
-		case ACT_SOUND:
-			sa= (bSoundActuator *)act->data;
-			if (sa->sound)
-				id_us_plus((ID *) sa->sound);
+		case ACT_ACTION:
+		case ACT_SHAPEACTION:
+		{
+			bActionActuator *aa = (bActionActuator *)act->data;
+			if (aa->act)
+				id_us_plus((ID *)aa->act);
 			break;
+		}
+		case ACT_SOUND:
+		{
+			bSoundActuator *sa = (bSoundActuator *)act->data;
+			if (sa->sound)
+				id_us_plus((ID *)sa->sound);
+			break;
+		}
 	}
 	return actn;
 }
@@ -391,6 +408,8 @@ void init_actuator(bActuator *act)
 	bSoundActuator *sa;
 	bSteeringActuator *sta;
 	bArmatureActuator *arma;
+	bMouseActuator *ma;
+	bEditObjectActuator *eoa;
 	
 	if (act->data) MEM_freeN(act->data);
 	act->data= NULL;
@@ -429,6 +448,9 @@ void init_actuator(bActuator *act)
 		break;
 	case ACT_EDIT_OBJECT:
 		act->data= MEM_callocN(sizeof(bEditObjectActuator), "editobact");
+		eoa = act->data;
+		eoa->upflag= ACT_TRACK_UP_Z;
+		eoa->trackflag= ACT_TRACK_TRAXIS_Y;
 		break;
 	case ACT_CONSTRAINT:
 		act->data= MEM_callocN(sizeof(bConstraintActuator), "cons act");
@@ -474,8 +496,17 @@ void init_actuator(bActuator *act)
 		sta->turnspeed = 120.f;
 		sta->dist = 1.f;
 		sta->velocity= 3.f;
-		sta->flag = ACT_STEERING_AUTOMATICFACING;
+		sta->flag = ACT_STEERING_AUTOMATICFACING | ACT_STEERING_LOCKZVEL;
 		sta->facingaxis = 1;
+		break;
+	case ACT_MOUSE:
+		ma = act->data = MEM_callocN(sizeof( bMouseActuator ), "mouse act");
+		ma->flag = ACT_MOUSE_VISIBLE|ACT_MOUSE_USE_AXIS_X|ACT_MOUSE_USE_AXIS_Y|ACT_MOUSE_RESET_X|ACT_MOUSE_RESET_Y|ACT_MOUSE_LOCAL_Y;
+		ma->sensitivity[0] = ma->sensitivity[1] = 2.f;
+		ma->object_axis[0] = ACT_MOUSE_OBJECT_AXIS_Z;
+		ma->object_axis[1] = ACT_MOUSE_OBJECT_AXIS_X;
+		ma->limit_y[0] = DEG2RADF(-90.0f);
+		ma->limit_y[1] = DEG2RADF(90.0f);
 		break;
 	default:
 		; /* this is very severe... I cannot make any memory for this        */

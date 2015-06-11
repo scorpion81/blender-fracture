@@ -107,7 +107,7 @@ static VertexData *allocVertexData(EditMesh *em)
 	EditVert *eve;
 	int totvert, index;
 	
-	totvert = BLI_countlist(&em->verts);
+	totvert = BLI_listbase_count(&em->verts);
 	
 	data = MEM_callocN(sizeof(VertexData) * totvert, "VertexData");
 
@@ -1141,7 +1141,7 @@ static int compareNodesWeight(void *vnode1, void *vnode2)
 
 void sortNodes(ReebGraph *rg)
 {
-	BLI_sortlist(&rg->nodes, compareNodesWeight);
+	BLI_listbase_sort(&rg->nodes, compareNodesWeight);
 }
 
 static int compareArcsWeight(void *varc1, void *varc2)
@@ -1166,7 +1166,7 @@ static int compareArcsWeight(void *varc1, void *varc2)
 
 void sortArcs(ReebGraph *rg)
 {
-	BLI_sortlist(&rg->arcs, compareArcsWeight);
+	BLI_listbase_sort(&rg->arcs, compareArcsWeight);
 }
 /******************************************* JOINING ***************************************************/
 
@@ -1512,7 +1512,7 @@ static int filterInternalExternalReebGraph(ReebGraph *rg, float threshold_intern
 	ReebArc *arc = NULL, *nextArc = NULL;
 	int value = 0;
 	
-	BLI_sortlist(&rg->arcs, compareArcs);
+	BLI_listbase_sort(&rg->arcs, compareArcs);
 	
 	for (arc = rg->arcs.first; arc; arc = nextArc) {
 		nextArc = arc->next;
@@ -1632,7 +1632,7 @@ int filterSmartReebGraph(ReebGraph *UNUSED(rg), float UNUSED(threshold))
 #if 0 //XXX
 	ReebArc *arc = NULL, *nextArc = NULL;
 	
-	BLI_sortlist(&rg->arcs, compareArcs);
+	BLI_listbase_sort(&rg->arcs, compareArcs);
 
 #ifdef DEBUG_REEB
 	{
@@ -1796,7 +1796,7 @@ int filterSmartReebGraph(ReebGraph *UNUSED(rg), float UNUSED(threshold))
 
 static void filterGraph(ReebGraph *rg, short options, float threshold_internal, float threshold_external)
 {
-	int done = TRUE;
+	bool done = true;
 	
 	calculateGraphLength(rg);
 
@@ -1810,8 +1810,8 @@ static void filterGraph(ReebGraph *rg, short options, float threshold_internal, 
 
 	if (threshold_internal > 0 || threshold_external > 0) {
 		/* filter until there's nothing more to do */
-		while (done == 1) {
-			done = FALSE; /* no work done yet */
+		while (done == true) {
+			done = false; /* no work done yet */
 			
 			done = filterInternalExternalReebGraph(rg, threshold_internal, threshold_external);
 		}
@@ -1867,7 +1867,7 @@ static void spreadWeight(EditMesh *em)
 {
 	EditVert **verts, *eve;
 	float lastWeight = 0.0f;
-	int totvert = BLI_countlist(&em->verts);
+	int totvert = BLI_listbase_count(&em->verts);
 	int i;
 	int work_needed = 1;
 	
@@ -2399,9 +2399,9 @@ ReebGraph *generateReebGraph(EditMesh *em, int subdivisions)
 	
 	rg->resolution = subdivisions;
 	
-	/*totvert = BLI_countlist(&em->verts);*/ /*UNUSED*/
+	/*totvert = BLI_listbase_count(&em->verts);*/ /*UNUSED*/
 #ifdef DEBUG_REEB
-	totfaces = BLI_countlist(&em->faces);
+	totfaces = BLI_listbase_count(&em->faces);
 #endif
 	
 	renormalizeWeight(em, 1.0f);
@@ -2460,7 +2460,7 @@ void renormalizeWeight(EditMesh *em, float newmax)
 	EditVert *eve;
 	float minimum, maximum, range;
 	
-	if (em == NULL || BLI_countlist(&em->verts) == 0)
+	if (em == NULL || BLI_listbase_is_empty(&em->verts))
 		return;
 
 	/* First pass, determine maximum and minimum */
@@ -2486,7 +2486,7 @@ int weightFromLoc(EditMesh *em, int axis)
 {
 	EditVert *eve;
 	
-	if (em == NULL || BLI_countlist(&em->verts) == 0 || axis < 0 || axis > 2)
+	if (em == NULL || BLI_listbase_is_empty(&em->verts) || axis < 0 || axis > 2)
 		return 0;
 
 	/* Copy coordinate in weight */
@@ -2497,32 +2497,16 @@ int weightFromLoc(EditMesh *em, int axis)
 	return 1;
 }
 
-static float cotan_weight(float *v1, float *v2, float *v3)
-{
-	float a[3], b[3], c[3], clen;
-
-	sub_v3_v3v3(a, v2, v1);
-	sub_v3_v3v3(b, v3, v1);
-	cross_v3_v3v3(c, a, b);
-
-	clen = len_v3(c);
-
-	if (clen == 0.0f)
-		return 0.0f;
-	
-	return dot_v3v3(a, b) / clen;
-}
-
 static void addTriangle(EditVert *v1, EditVert *v2, EditVert *v3, int e1, int e2, int e3)
 {
 	/* Angle opposite e1 */
-	float t1 = cotan_weight(v1->co, v2->co, v3->co) / e2;
+	float t1 = cotangent_tri_weight_v3(v1->co, v2->co, v3->co) / e2;
 	
 	/* Angle opposite e2 */
-	float t2 = cotan_weight(v2->co, v3->co, v1->co) / e3;
+	float t2 = cotangent_tri_weight_v3(v2->co, v3->co, v1->co) / e3;
 
 	/* Angle opposite e3 */
-	float t3 = cotan_weight(v3->co, v1->co, v2->co) / e1;
+	float t3 = cotangent_tri_weight_v3(v3->co, v1->co, v2->co) / e1;
 	
 	int i1 = indexData(v1);
 	int i2 = indexData(v2);
@@ -2754,7 +2738,7 @@ static void buildIndexedEdges(EditMesh *em, EdgeIndex *indexed_edges)
 	int tot_indexed = 0;
 	int offset = 0;
 
-	totvert = BLI_countlist(&em->verts);
+	totvert = BLI_listbase_count(&em->verts);
 
 	indexed_edges->offset = MEM_callocN(totvert * sizeof(int), "EdgeIndex offset");
 
@@ -2807,13 +2791,13 @@ int weightFromDistance(EditMesh *em, EdgeIndex *indexed_edges)
 	int totvert = 0;
 	int vCount = 0;
 	
-	totvert = BLI_countlist(&em->verts);
+	totvert = BLI_listbase_count(&em->verts);
 	
 	if (em == NULL || totvert == 0) {
 		return 0;
 	}
 	
-	totedge = BLI_countlist(&em->edges);
+	totedge = BLI_listbase_count(&em->edges);
 	
 	if (totedge == 0) {
 		return 0;

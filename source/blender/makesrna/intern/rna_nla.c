@@ -231,6 +231,34 @@ static void rna_NlaStrip_blend_out_set(PointerRNA *ptr, float value)
 	data->blendout = value;
 }
 
+static void rna_NlaStrip_use_auto_blend_set(PointerRNA *ptr, int value)
+{
+	NlaStrip *data = (NlaStrip *)ptr->data;
+	
+	if (value) {
+		/* set the flag */
+		data->flag |= NLASTRIP_FLAG_AUTO_BLENDS;
+		
+		/* validate state to ensure that auto-blend gets applied immediately */
+		if (ptr->id.data) {
+			IdAdtTemplate *iat = (IdAdtTemplate *)ptr->id.data;
+			
+			if (iat->adt) {
+				BKE_nla_validate_state(iat->adt);
+			}
+		}
+	}
+	else {
+		/* clear the flag */
+		data->flag &= ~NLASTRIP_FLAG_AUTO_BLENDS;
+		
+		/* clear the values too, so that it's clear that there has been an effect */
+		/* TODO: it's somewhat debatable whether it's better to leave these in instead... */
+		data->blendin  = 0.0f;
+		data->blendout = 0.0f;
+	}
+}
+
 static int rna_NlaStrip_action_editable(PointerRNA *ptr)
 {
 	NlaStrip *strip = (NlaStrip *)ptr->data;
@@ -502,6 +530,7 @@ static void rna_def_nlastrip(BlenderRNA *brna)
 	
 	prop = RNA_def_property(srna, "use_auto_blend", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", NLASTRIP_FLAG_AUTO_BLENDS);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_NlaStrip_use_auto_blend_set");
 	RNA_def_property_ui_text(prop, "Auto Blend In/Out",
 	                         "Number of frames for Blending In/Out is automatically determined from "
 	                         "overlapping strips");

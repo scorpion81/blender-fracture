@@ -35,6 +35,7 @@ struct Main;
 struct bContext;
 struct Image;
 struct ImageUser;
+struct ImBuf;
 struct ToolSettings;
 struct uiBlock;
 struct wmWindowManager;
@@ -47,7 +48,7 @@ void          ED_space_image_set(struct SpaceImage *sima, struct Scene *scene, s
 struct Mask  *ED_space_image_get_mask(struct SpaceImage *sima);
 void          ED_space_image_set_mask(struct bContext *C, struct SpaceImage *sima, struct Mask *mask);
 
-bool ED_space_image_color_sample(struct SpaceImage *sima, struct ARegion *ar, int mval[2], float r_col[3]);
+bool ED_space_image_color_sample(struct Scene *scene, struct SpaceImage *sima, struct ARegion *ar, int mval[2], float r_col[3]);
 struct ImBuf *ED_space_image_acquire_buffer(struct SpaceImage *sima, void **lock_r);
 void ED_space_image_release_buffer(struct SpaceImage *sima, struct ImBuf *ibuf, void *lock);
 bool ED_space_image_has_buffer(struct SpaceImage *sima);
@@ -57,6 +58,8 @@ void ED_space_image_get_size_fl(struct SpaceImage *sima, float size[2]);
 void ED_space_image_get_aspect(struct SpaceImage *sima, float *aspx, float *aspy);
 void ED_space_image_get_zoom(struct SpaceImage *sima, struct ARegion *ar, float *zoomx, float *zoomy);
 void ED_space_image_get_uv_aspect(struct SpaceImage *sima, float *aspx, float *aspy);
+
+void ED_space_image_scopes_update(const struct bContext *C, struct SpaceImage *sima, struct ImBuf *ibuf, bool use_view_settings);
 
 void ED_space_image_paint_update(struct wmWindowManager *wm, struct ToolSettings *settings);
 void ED_space_image_uv_sculpt_update(struct wmWindowManager *wm, struct ToolSettings *settings);
@@ -69,14 +72,17 @@ void ED_image_point_pos__reverse(struct SpaceImage *sima, struct ARegion *ar, co
 bool ED_space_image_show_render(struct SpaceImage *sima);
 bool ED_space_image_show_paint(struct SpaceImage *sima);
 bool ED_space_image_show_uvedit(struct SpaceImage *sima, struct Object *obedit);
-bool ED_space_image_show_uvshadow(struct SpaceImage *sima, struct Object *obedit);
+
+bool ED_space_image_paint_curve(const struct bContext *C);
 
 bool ED_space_image_check_show_maskedit(struct Scene *scene, struct SpaceImage *sima);
 int ED_space_image_maskedit_poll(struct bContext *C);
 int ED_space_image_maskedit_mask_poll(struct bContext *C);
 
-void ED_image_draw_info(struct Scene *scene, struct ARegion *ar, int color_manage, int use_default_view, int channels, int x, int y,
+void ED_image_draw_info(struct Scene *scene, struct ARegion *ar, bool color_manage, bool use_default_view, int channels, int x, int y,
                         const unsigned char cp[4], const float fp[4], const float linearcol[4], int *zp, float *zpf);
+
+bool ED_space_image_show_cache(struct SpaceImage *sima);
 
 #endif /* __ED_IMAGE_H__ */
 

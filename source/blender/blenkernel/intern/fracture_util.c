@@ -20,671 +20,674 @@
  *
  * The Original Code is: all of this file.
  *
- * Contributor(s): none yet.
+ * Contributor(s): Martin Felke
  *
  * ***** END GPL LICENSE BLOCK *****
- * CSG operations.
  */
 
 /** \file blender/blenkernel/intern/fracture_util.c
  *  \ingroup blenkernel
+ *  \brief CSG operations
  */
 
-#include "stdbool.h"
-#include "carve-capi.h"
-
-#include "DNA_meshdata_types.h"
-#include "DNA_material_types.h"
-#include "DNA_fracture_types.h"
-
-#include "MEM_guardedalloc.h"
-
-#include "BLI_alloca.h"
-#include "BLI_ghash.h"
-#include "BLI_math.h"
-#include "BKE_editmesh.h"
 #include "BKE_cdderivedmesh.h"
+#include "BKE_editmesh.h"
 #include "BKE_fracture.h"
 #include "BKE_fracture_util.h"
 #include "BKE_material.h"
+#include "BKE_object.h"
+
+#include "BLI_alloca.h"
+#include "BLI_boxpack2d.h"
+#include "BLI_convexhull2d.h"
+#include "BLI_ghash.h"
+#include "BLI_math.h"
+#include "BLI_rand.h"
+#include "BLI_sys_types.h"
+
+#include "DNA_fracture_types.h"
+#include "DNA_meshdata_types.h"
+#include "DNA_material_types.h"
+#include "DNA_modifier_types.h"
+#include "DNA_object_types.h"
+
+#include "MEM_guardedalloc.h"
+
 #include "bmesh.h"
+#include "bmesh_tools.h"
 #include "../../modifiers/intern/MOD_boolean_util.h"
 
-#if 0
-static void DM_loop_interp_from_poly(DerivedMesh *source_dm, MPoly *source_poly,
-                                     DerivedMesh *target_dm, int target_loop_index)
+/*prototypes*/
+void uv_bbox(float uv[][2], int num_uv, float minv[2], float maxv[2]);
+void uv_translate(float uv[][2], int num_uv, float trans[2]);
+void uv_scale(float uv[][2], int num_uv, float scale);
+void uv_transform(float uv[][2], int num_uv, float mat[2][2]);
+void unwrap_shard_dm(DerivedMesh *dm);
+
+/* UV Helpers */
+void uv_bbox(float uv[][2], int num_uv, float minv[2], float maxv[2])
 {
-	/* TODO(sergey): Arrays we could get once per poly, or once per mesh even. */
-	MVert *source_mvert = source_dm->getVertArray(source_dm);
-	MVert *target_mvert = target_dm->getVertArray(target_dm);
-	MLoop *source_mloop = source_dm->getLoopArray(source_dm);
-	MLoop *target_mloop = target_dm->getLoopArray(target_dm);
-	float (*cos_3d)[3] = BLI_array_alloca(cos_3d, source_poly->totloop);
-	int *source_indices = BLI_array_alloca(source_indices, source_poly->totloop);
-	float *weights = BLI_array_alloca(weights, source_poly->totloop);
-	int i;
-	int target_vert_index = target_mloop[target_loop_index].v;
+	int v;
+	INIT_MINMAX2(minv, maxv);
 
-	for (i = 0; i < source_poly->totloop; ++i) {
-		MLoop *mloop = &source_mloop[source_poly->loopstart + i];
-		source_indices[i] = source_poly->loopstart + i;
-		copy_v3_v3(cos_3d[i], source_mvert[mloop->v].co);
+	for (v = 0; v < num_uv; v++) {
+		minmax_v2v2_v2(minv, maxv, uv[v]);
 	}
-
-	interp_weights_poly_v3(weights, cos_3d, source_poly->totloop,
-	                       target_mvert[target_vert_index].co);
-
-	DM_interp_loop_data(source_dm, target_dm, source_indices, weights,
-	                    source_poly->totloop, target_loop_index);
 }
 
-/* **** Importer from shard to Carve ****  */
-typedef struct ImportMeshData {
-	DerivedMesh *dm;
-	float obmat[4][4];
+void uv_translate(float uv[][2], int num_uv, float trans[2])
+{
+	int v;
+	for (v = 0; v < num_uv; v++) {
+		uv[v][0] += trans[0];
+		uv[v][1] += trans[1];
+	}
+}
+
+void uv_scale(float uv[][2], int num_uv, float scale)
+{
+	int v;
+	for (v = 0; v < num_uv; v++) {
+		uv[v][0] *= scale;
+		uv[v][1] *= scale;
+	}
+}
+
+void uv_transform(float uv[][2], int num_uv, float mat[2][2])
+{
+	int v;
+	for (v = 0; v < num_uv; v++) {
+		mul_m2v2(mat, uv[v]);
+	}
+}
+
+static void do_unwrap(MPoly *mp, MVert *mvert, MLoop* mloop, int i, MLoopUV **mluv, BoxPack **boxpack)
+{
+	MLoop *ml;
+	int j = 0;
+	float (*verts)[3] = MEM_mallocN(sizeof(float[3]) * mp->totloop, "unwrap_shard_dm verts");
+	float nor[3];
+	float mat[3][3];
+	float (*uv)[2] = MEM_mallocN(sizeof(float[2]) * mp->totloop, "unwrap_shard_dm_uv");
+	BoxPack *box;
+	float uvbbox[2][2];
+	float angle;
+
+	/* uv unwrap cells, so inner faces get a uv map */
+	for (j = 0; j < mp->totloop; j++) {
+		ml = mloop + mp->loopstart + j;
+		copy_v3_v3(verts[j], (mvert + ml->v)->co);
+	}
+
+	normal_poly_v3(nor, (const float (*)[3])verts, mp->totloop);
+	normalize_v3(nor);
+	axis_dominant_v3_to_m3(mat, nor);
+
+	for (j = 0; j < mp->totloop; j++) {
+		mul_v2_m3v3(uv[j], mat, verts[j]);
+	}
+
+	/* rotate uvs for better packing */
+	angle = BLI_convexhull_aabb_fit_points_2d((const float (*)[2])uv, mp->totloop);
+
+	if (angle != 0.0f) {
+		float mat[2][2];
+		angle_to_mat2(mat, angle);
+		uv_transform((float (*)[2])uv, mp->totloop, mat);
+	}
+
+	/* prepare box packing... one poly is a box */
+	box = (*boxpack) + i;
+	uv_bbox((float (*)[2])uv, mp->totloop, uvbbox[0], uvbbox[1]);
+
+	uvbbox[0][0] = -uvbbox[0][0];
+	uvbbox[0][1] = -uvbbox[0][1];
+
+	uv_translate((float (*)[2])uv, mp->totloop, uvbbox[0]);
+
+	box->w = uvbbox[1][0] + uvbbox[0][0];
+	box->h = uvbbox[1][1] + uvbbox[0][1];
+	box->index = i;
+
+	/* copy coords back */
+	for (j = 0; j < mp->totloop; j++) {
+		copy_v2_v2((*mluv)[j + mp->loopstart].uv, uv[j]);
+		(*mluv)[j + mp->loopstart].flag = 0;
+	}
+
+	MEM_freeN(uv);
+	MEM_freeN(verts);
+}
+
+void unwrap_shard_dm(DerivedMesh *dm)
+{
 	MVert *mvert;
-	MEdge *medge;
 	MLoop *mloop;
-	MPoly *mpoly;
-} ImportMeshData;
+	MPoly *mpoly, *mp;
+	int totpoly, i = 0;
+	MLoopUV *mluv = MEM_callocN(sizeof(MLoopUV) * dm->numLoopData, "mluv");
+	BoxPack *boxpack = MEM_mallocN(sizeof(BoxPack) * dm->numPolyData, "boxpack");
+	float scale, tot_width, tot_height;
 
-/* Get number of vertices. */
-static int importer_GetNumVerts(ImportMeshData *import_data)
-{
-	DerivedMesh* dm = import_data->dm;
-	return dm->getNumVerts(dm);
-}
-
-/* Get number of polys. */
-static int importer_GetNumPolys(ImportMeshData *import_data)
-{
-	DerivedMesh* dm = import_data->dm;
-	return dm->getNumPolys(dm);
-}
-
-/* Get 3D coordinate of vertex with given index. */
-static void importer_GetVertCoord(ImportMeshData *import_data, int index, float coord[3])
-{
-	MVert *mvert = import_data->mvert;
-
-	BLI_assert(index >= 0 && index < import_data->dm->getNumVerts(import_data->dm));
-
-	mul_v3_m4v3(coord, import_data->obmat, mvert[index].co);
-}
-
-/* Get index of vertices which are adjucent to edge specified by it's index. */
-static void importer_GetEdgeVerts(ImportMeshData *import_data, int edge_index, int *v1, int *v2)
-{
-	MEdge *medge = &import_data->medge[edge_index];
-
-	BLI_assert(edge_index >= 0 && edge_index < import_data->dm->getNumEdges(import_data->dm));
-
-	*v1 = medge->v1;
-	*v2 = medge->v2;
-}
-
-/* Get number of adjucent vertices to the poly specified by it's index. */
-static int importer_GetPolyNumVerts(ImportMeshData *import_data, int index)
-{
-	MPoly *mpoly = import_data->mpoly;
-	return mpoly[index].totloop;
-}
-
-/* Get list of adjucent vertices to the poly specified by it's index. */
-static void importer_GetPolyVerts(ImportMeshData *import_data, int index, int *verts)
-{
-	MPoly *mpoly = &import_data->mpoly[index];
-	MLoop *mloop = import_data->mloop + mpoly->loopstart;
-	int i;
-	BLI_assert(index >= 0 && index < import_data->dm->getNumPolys(import_data->dm));
-	for (i = 0; i < mpoly->totloop; i++, mloop++) {
-		verts[i] = mloop->v;
-	}
-}
-
-static CarveMeshImporter MeshImporter = {
-	importer_GetNumVerts,
-	importer_GetNumPolys,
-	importer_GetVertexCoord,
-	importer_GetEdgeVerts,
-	importer_GetPolyNumVerts,
-	importer_GetPolyVerts
-};
-
-
-/* **** Exporter from Carve to derivedmesh ****  */
-
-typedef struct ExportMeshData {
-	DerivedMesh *dm;
-	float obimat[4][4];
-	MVert *mvert;
-	MEdge *medge;
-	MLoop *mloop;
-	MPoly *mpoly;
-	int *edge_origindex;
-	int *poly_origindex;
-	int *loop_origindex;
-
-	/* Objects (wtf) and derived meshes of left and right operands.
-	 * Used for custom data merge and interpolation.
-	 */
-	Object *ob_left;
-	Object *ob_right;
-	DerivedMesh *dm_left;
-	DerivedMesh *dm_right;
-
-	/* Hash to map materials from right object to result. */
-	GHash *material_hash;
-
-} ExportMeshData;
-
-static Object *which_object(ExportMeshData *export_data, int which_mesh)
-{
-	Object *object = NULL;
-	switch (which_mesh) {
-		case CARVE_MESH_LEFT:
-			object = export_data->ob_left;
-			break;
-		case CARVE_MESH_RIGHT:
-			object = export_data->ob_right;
-			break;
-	}
-	return object;
-}
-
-static DerivedMesh *which_dm(ExportMeshData *export_data, int which_mesh)
-{
-	DerivedMesh *dm = NULL;
-	switch (which_mesh) {
-		case CARVE_MESH_LEFT:
-			dm = export_data->dm_left;
-			break;
-		case CARVE_MESH_RIGHT:
-			dm = export_data->dm_right;
-			break;
-	}
-	return dm;
-}
-
-static void allocate_custom_layers(CustomData *data, int type, int num_elements, int num_layers)
-{
-	int i;
-	/* TODO(sergey): Names of those layers will be default,
-	 * ideally we need to copy names as well/
-	 */
-	for (i = 0; i < num_layers; i++) {
-		CustomData_add_layer(data, type, CD_CALLOC, NULL, num_elements);
-	}
-}
-
-/* Create new external mesh */
-static void exporter_InitGeomArrays(ExportMeshData *export_data,
-                                    int num_verts, int num_edges,
-                                    int num_loops, int num_polys)
-{
-	DerivedMesh *dm = CDDM_new(num_verts, num_edges, 0,
-	                           num_loops, num_polys);
-	DerivedMesh *dm_left = export_data->dm_left,
-	            *dm_right = export_data->dm_right;
-
-	/* Mask for custom data layers to be merhed from operands. */
-	CustomDataMask merge_mask = CD_MASK_DERIVEDMESH & ~CD_MASK_ORIGINDEX;
-
-	export_data->dm = dm;
-	export_data->mvert = dm->getVertArray(dm);
-	export_data->medge = dm->getEdgeArray(dm);
-	export_data->mloop = dm->getLoopArray(dm);
-	export_data->mpoly = dm->getPolyArray(dm);
-
-	/* Allocate layers for UV layers and vertex colors.
-	 * Without this interpolation of those data will not happen.
-	 */
-	allocate_custom_layers(&dm->loopData, CD_MLOOPCOL, num_loops,
-	                       CustomData_number_of_layers(&dm_left->loopData, CD_MLOOPCOL));
-	allocate_custom_layers(&dm->loopData, CD_MLOOPUV, num_loops,
-	                       CustomData_number_of_layers(&dm_left->loopData, CD_MLOOPUV));
-
-	/* Merge custom data layers from operands.
-	 *
-	 * Will only create custom data layers for all the layers which appears in
-	 * the operand. Data for those layers will not be allocated or initialized.
-	 */
-	CustomData_merge(&dm_left->polyData, &dm->polyData, merge_mask, CD_DEFAULT, num_polys);
-	CustomData_merge(&dm_right->polyData, &dm->polyData, merge_mask, CD_DEFAULT, num_polys);
-
-	export_data->edge_origindex = dm->getEdgeDataArray(dm, CD_ORIGINDEX);
-	export_data->poly_origindex = dm->getPolyDataArray(dm, CD_ORIGINDEX);
-	export_data->loop_origindex = dm->getLoopDataArray(dm, CD_ORIGINDEX);
-}
-
-/* Set coordinate of vertex with given index. */
-static void exporter_SetVert(ExportMeshData *export_data, int vert_index, float coord[3])
-{
-	DerivedMesh *dm = export_data->dm;
-	MVert *mvert = export_data->mvert;
-
-	BLI_assert(vert_index >= 0 && vert_index <= dm->getNumVerts(dm));
-
-	mul_v3_m4v3(mvert[vert_index].co, export_data->obimat, coord);
-
-	CustomData_copy_data(&export_data->dm_left->vertData, &dm->vertData, 0, 0, 1);
-}
-
-/* Set vertices which are adjucent to the edge specified by it's index. */
-static void exporter_SetEdge(ExportMeshData *export_data,
-                             int edge_index, int v1, int v2,
-                             int which_orig_mesh, int orig_edge_index)
-{
-	DerivedMesh *dm = export_data->dm;
-	MEdge *medge = &export_data->medge[edge_index];
-	DerivedMesh *dm_orig;
-
-	BLI_assert(edge_index >= 0 && edge_index < dm->getNumEdges(dm));
-	BLI_assert(v1 >= 0 && v1 < dm->getNumVerts(dm));
-	BLI_assert(v2 >= 0 && v2 < dm->getNumVerts(dm));
-
-	dm_orig = which_dm(export_data, which_orig_mesh);
-	if (dm_orig) {
-		BLI_assert(orig_edge_index >= 0 && orig_edge_index < dm_orig->getNumEdges(dm_orig));
-
-		/* Copy all edge layers, including mpoly. */
-		CustomData_copy_data(&dm_orig->edgeData, &dm->edgeData, orig_edge_index, edge_index, 1);
+	/* set inner material on child shard */
+	mvert = dm->getVertArray(dm);
+	mpoly = dm->getPolyArray(dm);
+	mloop = dm->getLoopArray(dm);
+	totpoly = dm->getNumPolys(dm);
+	for (i = 0, mp = mpoly; i < totpoly; i++, mp++) {
+		do_unwrap(mp, mvert, mloop, i, &mluv, &boxpack);
 	}
 
-	/* Set original index of the edge. */
-	if (export_data->edge_origindex) {
-		if (which_orig_mesh == CARVE_MESH_LEFT) {
-			export_data->edge_origindex[edge_index] = orig_edge_index;
-		}
-		else {
-			export_data->edge_origindex[edge_index] = ORIGINDEX_NONE;
-		}
-	}
+	/* do box packing and match uvs according to it */
+	BLI_box_pack_2d(boxpack, totpoly, &tot_width, &tot_height);
 
-	medge->v1 = v1;
-	medge->v2 = v2;
+	if (tot_height > tot_width)
+		scale = 1.0f / tot_height;
+	else
+		scale = 1.0f / tot_width;
 
-	medge->flag |= ME_EDGEDRAW | ME_EDGERENDER;
-}
+	for (i = 0, mp = mpoly; i < totpoly; i++, mp++) {
+		float trans[2];
+		BoxPack *box;
+		int j;
 
-static void setMPolyMaterial(ExportMeshData *export_data,
-                             MPoly *mpoly,
-                             int which_orig_mesh)
-{
-	Object *orig_object;
-	GHash *material_hash;
-	Material *orig_mat;
+		box = boxpack + i;
+		trans[0] = box->x;
+		trans[1] = box->y;
 
-	if (which_orig_mesh == CARVE_MESH_LEFT) {
-		/* No need to change materian index for faces from left operand */
-		return;
-	}
-
-	material_hash = export_data->material_hash;
-	//orig_object = which_object(export_data, which_orig_mesh);
-
-	/* Set material, based on lookup in hash table. */
-	orig_mat = give_current_material(orig_object, mpoly->mat_nr + 1);
-
-	if (orig_mat) {
-		/* For faces from right operand check if there's requested material
-		 * in the left operand. And if it is, use index of that material,
-		 * otherwise fallback to first material (material with index=0).
-		 */
-		if (!BLI_ghash_haskey(material_hash, orig_mat)) {
-			int a, mat_nr;;
-
-			mat_nr = 0;
-			for (a = 0; a < export_data->ob_left->totcol; a++) {
-				if (give_current_material(export_data->ob_left, a + 1) == orig_mat) {
-					mat_nr = a;
-					break;
-				}
-			}
-
-			BLI_ghash_insert(material_hash, orig_mat, SET_INT_IN_POINTER(mat_nr));
-
-			mpoly->mat_nr = mat_nr;
-		}
-		else
-			mpoly->mat_nr = GET_INT_FROM_POINTER(BLI_ghash_lookup(material_hash, orig_mat));
-	}
-	else {
-		mpoly->mat_nr = 0;
-	}
-}
-
-/* Set list of adjucent loops to the poly specified by it's index. */
-static void exporter_SetPoly(ExportMeshData *export_data,
-                             int poly_index, int start_loop, int num_loops,
-                             int which_orig_mesh, int orig_poly_index)
-{
-	DerivedMesh *dm = export_data->dm;
-	MPoly *mpoly = &export_data->mpoly[poly_index];
-	DerivedMesh *dm_orig;
-
-	/* Poly is always to be either from left or right operand. */
-	dm_orig = which_dm(export_data, which_orig_mesh);
-
-	BLI_assert(poly_index >= 0 && poly_index < dm->getNumPolys(dm));
-	BLI_assert(start_loop >= 0 && start_loop <= dm->getNumLoops(dm) - num_loops);
-	BLI_assert(num_loops >= 3);
-	BLI_assert(dm_orig != NULL);
-	BLI_assert(orig_poly_index >= 0 && orig_poly_index < dm_orig->getNumPolys(dm_orig));
-
-	/* Copy all poly layers, including mpoly. */
-	/* TODO(sergey): This we can avoid actually, we'll interpolate later anyway. */
-	CustomData_copy_data(&dm_orig->polyData, &dm->polyData, orig_poly_index, poly_index, 1);
-
-	setMPolyMaterial(export_data, mpoly, which_orig_mesh);
-
-	/* Set original index of the poly. */
-	if (export_data->poly_origindex) {
-		if (which_orig_mesh == CARVE_MESH_LEFT) {
-			export_data->poly_origindex[poly_index] = orig_poly_index;
-		}
-		else {
-			export_data->poly_origindex[poly_index] = ORIGINDEX_NONE;
-		}
-	}
-
-	mpoly->loopstart = start_loop;
-	mpoly->totloop = num_loops;
-}
-
-/* Set list vertex and edge which are adjucent to loop with given index. */
-static void exporter_SetLoop(ExportMeshData *export_data,
-                             int loop_index, int vertex, int edge,
-                             int which_orig_mesh, int orig_loop_index)
-{
-	DerivedMesh *dm = export_data->dm;
-	MLoop *mloop = &export_data->mloop[loop_index];
-	DerivedMesh *dm_orig;
-
-	BLI_assert(loop_index >= 0 && loop_index < dm->getNumLoops(dm));
-	BLI_assert(vertex >= 0 && vertex < dm->getNumVerts(dm));
-	BLI_assert(edge >= 0 && vertex < dm->getNumEdges(dm));
-
-	dm_orig = which_dm(export_data, which_orig_mesh);
-	if (dm_orig) {
-		BLI_assert(orig_loop_index >= 0 && orig_loop_index < dm_orig->getNumLoops(dm_orig));
-
-		/* Copy all loop layers, including mpoly. */
-		CustomData_copy_data(&dm_orig->loopData, &dm->loopData, orig_loop_index, loop_index, 1);
-	}
-
-	/* Set original index of the loop. */
-	if (export_data->loop_origindex) {
-		if (which_orig_mesh == CARVE_MESH_LEFT) {
-			export_data->loop_origindex[loop_index] = orig_loop_index;
-		}
-		else {
-			export_data->loop_origindex[loop_index] = ORIGINDEX_NONE;
-		}
-	}
-
-	mloop->v = vertex;
-	mloop->e = edge;
-}
-
-/* TOOO(sergey): We could move this code to the bottom of SetPoly and
- * reshuffle calls in carve-capi.cc. This would save one API call.
- */
-static void exporter_InterpPoly(ExportMeshData *export_data,
-                                int poly_index, int which_orig_mesh, int orig_poly_index)
-{
-	MPoly *mpoly, *mpoly_orig;
-	DerivedMesh *dm = export_data->dm;
-	DerivedMesh *dm_orig;
-	int i;
-
-	/* Poly is always to be either from left or right operand. */
-	dm_orig = which_dm(export_data, which_orig_mesh);
-
-	BLI_assert(poly_index >= 0 && poly_index < dm->getNumPolys(dm));
-	BLI_assert(orig_poly_index >= 0 && orig_poly_index < dm_orig->getNumPolys(dm_orig));
-
-	mpoly = &export_data->mpoly[poly_index];
-	mpoly_orig = &(dm_orig->getPolyArray(dm_orig) [orig_poly_index]);
-
-	for (i = 0; i < mpoly->totloop; i++) {
-		DM_loop_interp_from_poly(dm_orig, mpoly_orig, dm, i + mpoly->loopstart);
-	}
-}
-
-static CarveMeshExporter MeshExporter = {
-	exporter_InitGeomArrays,
-	exporter_SetVert,
-	exporter_SetEdge,
-	exporter_SetPoly,
-	exporter_SetLoop,
-	exporter_InterpPoly
-};
-
-static int operation_from_optype(int int_op_type)
-{
-	int operation;
-
-	switch (int_op_type) {
-		case 1:
-			operation = CARVE_OP_INTERSECTION;
-			break;
-		case 2:
-			operation = CARVE_OP_UNION;
-			break;
-		case 3:
-			operation = CARVE_OP_A_MINUS_B;
-			break;
-		default:
-			BLI_assert(!"Should not happen");
-			operation = -1;
-			break;
-	}
-
-	return operation;
-}
-
-static void prepare_import_data(Object *obj, DerivedMesh* dm, ImportMeshData *import_data)
-{
-	import_data->dm = dm;
-	copy_m4_m4(import_data->obmat, obj->obmat);
-	import_data->mvert = dm->getVertArray(dm);
-	import_data->mloop = dm->getLoopArray(dm);
-	import_data->mpoly = dm->getPolyArray(dm);
-	import_data->medge = dm->getEdgeArray(dm);
-
-#if 0
-	if (flip)
-	{
-		//swap loops, per poly
-		int i, j;
-		MPoly *p = s->mpoly;
-		import_data->mloop = MEM_mallocN(sizeof(MLoop) * s->totloop, __func__);
-		for (i = 0; i < s->totpoly; i++, p++)
+		for (j = 0; j < mp->totloop; j++)
 		{
-			MLoop* l = &s->mloop[p->loopstart + p->totloop - 1];
-			for (j = 0; j < p->totloop; j++, l--)
-			{
-				import_data->mloop[j + p->loopstart].v = l->v;
-				import_data->mloop[j + p->loopstart].e = l->e;
-			}
+			uv_translate((float (*)[2])mluv[j + mp->loopstart].uv, 1, trans);
+			uv_scale((float (*)[2])mluv[j + mp->loopstart].uv, 1, scale);
 		}
+	}
+
+	MEM_freeN(boxpack);
+
+	CustomData_add_layer_named(&dm->loopData, CD_MLOOPUV, CD_ASSIGN, mluv, dm->numLoopData, "InnerUV");
+	CustomData_add_layer_named(&dm->polyData, CD_MTEXPOLY, CD_CALLOC, NULL, totpoly, "InnerUV");
+}
+
+static bool check_non_manifold(DerivedMesh* dm)
+{
+	BMesh *bm;
+	BMVert* v;
+	BMIter iter;
+	BMEdge *e;
+
+	/*check for watertightness*/
+	bm = DM_to_bmesh(dm, true);
+
+	if (bm->totface < 4) {
+		BM_mesh_free(bm);
+		printf("Empty mesh...\n");
+		return true;
+	}
+
+	BM_ITER_MESH (v, &iter, bm, BM_VERTS_OF_MESH) {
+		if (!BM_vert_is_manifold(v)) {
+			BM_mesh_free(bm);
+			printf("Mesh not watertight...\n");
+			return true;
+		}
+	}
+
+	BM_ITER_MESH (e, &iter, bm, BM_EDGES_OF_MESH) {
+		if (BM_edge_is_wire(e) ||
+			BM_edge_is_boundary(e) ||
+			(BM_edge_is_manifold(e) && !BM_edge_is_contiguous(e)) ||
+			BM_edge_face_count(e) > 2)
+		{
+			/* check we never select perfect edge (in test above) */
+			BLI_assert(!(BM_edge_is_manifold(e) && BM_edge_is_contiguous(e)));
+			BM_mesh_free(bm);
+			printf("Mesh not watertight...\n");
+			return true;
+		}
+	}
+
+	BM_mesh_free(bm);
+	return false;
+}
+
+static int DM_mesh_minmax(DerivedMesh *dm, float r_min[3], float r_max[3])
+{
+	MVert *v;
+	int i = 0;
+	for (i = 0; i < dm->numVertData; i++) {
+		v = CDDM_get_vert(dm, i);
+		minmax_v3v3_v3(r_min, r_max, v->co);
+	}
+
+	return (dm->numVertData != 0);
+}
+
+static bool compare_dm_size(DerivedMesh *dmOld, DerivedMesh *dmNew)
+{
+	float min[3], max[3];
+	float size[3];
+	float v1, v2;
+
+	INIT_MINMAX(min, max);
+	DM_mesh_minmax(dmOld, min, max);
+	sub_v3_v3v3(size, max, min);
+
+	v1 = size[0] * size[1] * size[2];
+
+	INIT_MINMAX(min, max);
+	DM_mesh_minmax(dmNew, min, max);
+	sub_v3_v3v3(size, max, min);
+
+	v2 = size[0] * size[1] * size[2];
+
+	if (v2 > (v1 + 0.000001))
+	{
+		printf("Size mismatch !\n");
+	}
+
+	return v2 <= (v1 + 0.000001);
+}
+
+static bool do_other_output(DerivedMesh** other_dm, Shard** other, DerivedMesh** output_dm, DerivedMesh** left_dm, float mat[4][4])
+{
+	if (*other_dm)
+	{
+		*other = BKE_create_fracture_shard((*other_dm)->getVertArray(*other_dm),
+											(*other_dm)->getPolyArray(*other_dm),
+											(*other_dm)->getLoopArray(*other_dm),
+											(*other_dm)->getNumVerts(*other_dm),
+											(*other_dm)->getNumPolys(*other_dm),
+											(*other_dm)->getNumLoops(*other_dm),
+											 true);
+
+		*other = BKE_custom_data_to_shard(*other, *other_dm);
+
+	#if 0
+		/* XXX TODO this might be wrong by now ... */
+		output_s->neighbor_count = child->neighbor_count;
+		output_s->neighbor_ids = MEM_mallocN(sizeof(int) * child->neighbor_count, __func__);
+		memcpy(output_s->neighbor_ids, child->neighbor_ids, sizeof(int) * child->neighbor_count);
+	#endif
+		BKE_fracture_shard_center_centroid(*other, (*other)->centroid);
+
+		/* free the temp derivedmesh */
+		(*other_dm)->needsFree = 1;
+		(*other_dm)->release(*other_dm);
+		*other_dm = NULL;
 	}
 	else
-
 	{
-		import_data->mloop = dm->mloop;
+		if (other != NULL)
+			*other = NULL;
+		if (*left_dm != NULL) {
+			(*left_dm)->needsFree = 1;
+			(*left_dm)->release(*left_dm);
+			(*left_dm) = NULL;
+		}
+		if (*other_dm != NULL)
+		{
+			(*other_dm)->needsFree = 1;
+			(*other_dm)->release(*other_dm);
+			(*other_dm) = NULL;
+		}
+
+		/*discard only at fractal boolean */
+		if (mat != NULL)
+		{
+			if (*output_dm != NULL) {
+				(*output_dm)->needsFree = 1;
+				(*output_dm)->release(*output_dm);
+				(*output_dm) = NULL;
+			}
+			return true;
+		}
 	}
-#endif
+
+	return false;
 }
 
-static struct CarveMeshDescr *carve_mesh_from_dm(Object* obj, DerivedMesh *dm)
+static Shard *do_output_shard_dm(DerivedMesh** output_dm, Shard *child, int num_cuts, float fractal, Shard **other)
 {
-	ImportMeshData import_data;
-	prepare_import_data(obj, dm, &import_data);
-	return carve_addMesh(&import_data, &MeshImporter);
+	Shard* output_s = BKE_create_fracture_shard((*output_dm)->getVertArray(*output_dm),
+	                                     (*output_dm)->getPolyArray(*output_dm),
+	                                     (*output_dm)->getLoopArray(*output_dm),
+	                                     (*output_dm)->getNumVerts(*output_dm),
+	                                     (*output_dm)->getNumPolys(*output_dm),
+	                                     (*output_dm)->getNumLoops(*output_dm),
+	                                     true);
+
+	output_s = BKE_custom_data_to_shard(output_s, *output_dm);
+
+	/* useless, because its a bisect fast-like approach here */
+	if (num_cuts == 0 || fractal == 0.0f || other == NULL) {
+		/* XXX TODO this might be wrong by now ... */
+		output_s->neighbor_count = child->neighbor_count;
+		output_s->neighbor_ids = MEM_mallocN(sizeof(int) * child->neighbor_count, __func__);
+		memcpy(output_s->neighbor_ids, child->neighbor_ids, sizeof(int) * child->neighbor_count);
+		copy_v3_v3(output_s->raw_centroid, child->raw_centroid);
+		output_s->raw_volume = child->raw_volume;
+	}
+
+	BKE_fracture_shard_center_centroid(output_s, output_s->centroid);
+
+	/* free the temp derivedmesh */
+	(*output_dm)->needsFree = 1;
+	(*output_dm)->release(*output_dm);
+	*output_dm = NULL;
+
+	return output_s;
 }
 
-static void prepare_export_data(Object* obj, DerivedMesh *dm_left, DerivedMesh *dm_right,
-                                ExportMeshData *export_data)
+static BMesh* do_fractal(float radius, float mat[4][4], bool use_smooth_inner, short inner_material_index,
+                         int num_levels, int num_cuts, float fractal, DerivedMesh** left_dm)
 {
-	/* Only initialize inverse object matrix here, all the rest will be
-	 * initialized in initGeomArrays
-	 */
-	invert_m4_m4(export_data->obimat, obj->obmat);
+	BMFace* f;
+	BMIter iter;
+	BMesh *bm;
+	int i;
 
-	export_data->ob_left = obj;
-	export_data->ob_right = obj;
-	export_data->dm_left = dm_left;
-	export_data->dm_right = dm_right;
+	/*create a grid plane */
+	bm = BM_mesh_create(&bm_mesh_allocsize_default);
+	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+	        "create_grid x_segments=%i y_segments=%i size=%f matrix=%m4",
+	        1, 1, radius*1.4, mat);
 
-	export_data->material_hash = BLI_ghash_ptr_new("CSG_mat gh");
+	/*subdivide the plane fractally*/
+	for (i = 0; i < num_levels; i++)
+	{
+		BMO_op_callf(bm,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+					 "subdivide_edges edges=ae "
+					 "smooth=%f smooth_falloff=%i use_smooth_even=%b "
+					 "fractal=%f along_normal=%f "
+					 "cuts=%i "
+					 "quad_corner_type=%i "
+					 "use_single_edge=%b use_grid_fill=%b "
+					 "use_only_quads=%b "
+					 "seed=%i",
+					 0.0f, SUBD_FALLOFF_ROOT, false,
+					 fractal, 1.0f,
+					 num_cuts,
+					 SUBD_CORNER_INNERVERT,
+					 false, true,
+					 true,
+					 0);
+	}
+
+	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+	        "recalc_face_normals faces=af");
+
+	BM_ITER_MESH(f, &iter, bm, BM_FACES_OF_MESH)
+	{
+		if (use_smooth_inner)
+		{
+			BM_elem_flag_enable(f, BM_ELEM_SMOOTH);
+		}
+
+		if (inner_material_index > 0)
+		{
+			f->mat_nr = inner_material_index;
+		}
+	}
+
+	/*convert back*/
+	*left_dm = CDDM_from_bmesh(bm, true);
+
+	return bm;
 }
 
-Shard *BKE_fracture_shard_boolean(Object* obj, Shard *parent, Shard* child)
+static bool do_check_watertight_other(DerivedMesh **other_dm, DerivedMesh **output_dm, Shard **other, DerivedMesh *right_dm,
+                                      DerivedMesh **left_dm, float mat[4][4])
 {
-	bool result;
+	bool do_return = false;
 
-	Shard *output_s;
-	DerivedMesh *output_dm, *left_dm, *right_dm;
-	struct CarveMeshDescr *left, *right, *output = NULL;
-	int operation = -1;
-	int int_op_type = 1;
+	if (!other_dm || check_non_manifold(*other_dm) || !compare_dm_size(right_dm, *other_dm)) {
+		if (other != NULL)
+			*other = NULL;
+		if (*left_dm != NULL) {
+			(*left_dm)->needsFree = 1;
+			(*left_dm)->release(*left_dm);
+			(*left_dm) = NULL;
+		}
+		if (*other_dm != NULL)
+		{
+			(*other_dm)->needsFree = 1;
+			(*other_dm)->release(*other_dm);
+			(*other_dm) = NULL;
+		}
 
-	if (parent == NULL || child == NULL) {
+		/*discard only at fractal boolean */
+		if (mat != NULL)
+		{
+			if (*output_dm != NULL) {
+				(*output_dm)->needsFree = 1;
+				(*output_dm)->release(*output_dm);
+				(*output_dm) = NULL;
+			}
+			do_return = true;
+		}
+	}
+
+	return do_return;
+}
+
+static bool do_check_watertight(DerivedMesh **output_dm, BMesh** bm, DerivedMesh** left_dm, DerivedMesh *right_dm, Shard **other, float mat[4][4])
+{
+	bool do_return = false;
+
+	if (!(*output_dm) || check_non_manifold(*output_dm) || !compare_dm_size(right_dm, (*output_dm))) {
+		if (mat != NULL)
+		{
+			if (other != NULL)
+				*other = NULL;
+			if (*bm != NULL) {
+				BM_mesh_free(*bm);
+				*bm = NULL;
+			}
+
+			if (*left_dm != NULL) {
+				(*left_dm)->needsFree = 1;
+				(*left_dm)->release(*left_dm);
+				*left_dm = NULL;
+			}
+		}
+
+		if (*output_dm != NULL) {
+			(*output_dm)->needsFree = 1;
+			(*output_dm)->release(*output_dm);
+			*output_dm = NULL;
+		}
+
+		if (mat != NULL)
+		{
+			do_return = true;
+		}
+	}
+
+	return do_return;
+}
+
+static void do_set_inner_material(Shard **other, float mat[4][4], DerivedMesh* left_dm, short inner_material_index)
+{
+	MPoly *mpoly, *mp;
+	int totpoly, i = 0;
+
+	/* set inner material on child shard */
+	if (other == NULL || mat == NULL)
+	{
+		mpoly = left_dm->getPolyArray(left_dm);
+		totpoly = left_dm->getNumPolys(left_dm);
+		for (i = 0, mp = mpoly; i < totpoly; i++, mp++) {
+			if (inner_material_index > 0) {
+				mp->mat_nr = inner_material_index;
+			}
+			mp->flag |= ME_FACE_SEL;
+		}
+	}
+}
+
+Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *child, short inner_material_index,
+                                  int num_cuts, float fractal, Shard** other, float mat[4][4], float radius, bool use_smooth_inner, int num_levels)
+{
+	DerivedMesh *left_dm = NULL, *right_dm, *output_dm, *other_dm;
+	BMesh* bm = NULL;
+
+	if (other != NULL && mat != NULL)
+	{
+		bm = do_fractal(radius, mat, use_smooth_inner, inner_material_index, num_levels, num_cuts, fractal, &left_dm);
+	}
+	else
+	{
+		left_dm = BKE_shard_create_dm(child, false);
+		unwrap_shard_dm(left_dm);
+	}
+
+	do_set_inner_material(other, mat, left_dm, inner_material_index);
+
+	right_dm = dm_parent;
+	output_dm = NewBooleanDerivedMesh(right_dm, obj, left_dm, obj, 1); /*1 == intersection, 3 == difference*/
+
+	/*check for watertightness, but for fractal only*/
+	if (other != NULL && do_check_watertight(&output_dm, &bm, &left_dm, right_dm, other, mat))
+	{
 		return NULL;
 	}
 
-	if ((parent->totpoly == 0) || (child->totpoly == 0)) return NULL;
+	if (other != NULL)
+	{
+		if (bm != NULL)
+			BM_mesh_free(bm);
 
-	left_dm = BKE_shard_create_dm(child);
-	right_dm = BKE_shard_create_dm(parent);
+		other_dm = NewBooleanDerivedMesh(left_dm, obj, right_dm, obj, 3);
 
-	operation = operation_from_optype(int_op_type);
-	if (operation == -1) {
-		return NULL;
+		/*check for watertightness again, true means do return NULL here*/
+		if (do_check_watertight_other(&other_dm, &output_dm, other, right_dm, &left_dm, mat))
+		{
+			return NULL;
+		}
+
+		/*return here if this function returns true */
+		if (do_other_output(&other_dm, other, &output_dm, &left_dm, mat))
+		{
+			return NULL;
+		}
 	}
 
-	left = carve_mesh_from_dm(obj, left_dm);
-	right = carve_mesh_from_dm(obj, right_dm);
-
-	result = carve_performBooleanOperation(left, right, operation, &output);
-
-	carve_deleteMesh(left);
-	carve_deleteMesh(right);
-
-	if (result) {
-		ExportMeshData export_data;
-		prepare_export_data(obj, left_dm, right_dm, &export_data);
-
-		carve_exportMesh(output, &MeshExporter, &export_data);
-		output_dm = export_data.dm;
-		output_dm->dirty |= DM_DIRTY_NORMALS;
-
-		/* Free memory used by export mesh. */
-		BLI_ghash_free(export_data.material_hash, NULL, NULL);
-
-		carve_deleteMesh(output);
-
+	if (left_dm)
+	{
 		left_dm->needsFree = 1;
 		left_dm->release(left_dm);
 		left_dm = NULL;
-
-		right_dm->needsFree = 1;
-		right_dm->release(right_dm);
-		right_dm = NULL;
-
-		if (output_dm)
-		{
-			output_s = BKE_create_fracture_shard(output_dm->getVertArray(output_dm),
-			                                     output_dm->getPolyArray(output_dm),
-			                                     output_dm->getLoopArray(output_dm),
-			                                     output_dm->getNumVerts(output_dm),
-			                                     output_dm->getNumPolys(output_dm),
-			                                     output_dm->getNumLoops(output_dm),
-			                                     true);
-
-			/*XXX TODO this might be wrong by now ... */
-			output_s->neighbor_count = child->neighbor_count;
-			output_s->neighbor_ids = MEM_mallocN(sizeof(int) * child->neighbor_count, __func__);
-			memcpy(output_s->neighbor_ids, child->neighbor_ids, sizeof(int) * child->neighbor_count);
-			BKE_fracture_shard_center_centroid(output_s, output_s->centroid);
-
-			/*free the bbox shard*/
-			BKE_shard_free(child);
-
-			/*free the temp derivedmesh*/
-			output_dm->needsFree = 1;
-			output_dm->release(output_dm);
-			output_dm = NULL;
-
-			return output_s;
-		}
-
-		return NULL;
 	}
-	return NULL;
-}
-#endif
-
-Shard *BKE_fracture_shard_boolean(Object* obj, Shard *parent, Shard* child)
-{
-	Shard *output_s;
-	DerivedMesh *left_dm, *right_dm, *output_dm;
-
-	left_dm = BKE_shard_create_dm(child);
-	right_dm = BKE_shard_create_dm(parent);
-
-	output_dm = NewBooleanDerivedMesh(right_dm, obj, left_dm, obj, 1);
-
-	left_dm->needsFree = 1;
-	left_dm->release(left_dm);
-	left_dm = NULL;
-
-	right_dm->needsFree = 1;
-	right_dm->release(right_dm);
-	right_dm = NULL;
 
 	if (output_dm)
 	{
-		output_s = BKE_create_fracture_shard(output_dm->getVertArray(output_dm),
-		                                     output_dm->getPolyArray(output_dm),
-		                                     output_dm->getLoopArray(output_dm),
-		                                     output_dm->getNumVerts(output_dm),
-		                                     output_dm->getNumPolys(output_dm),
-		                                     output_dm->getNumLoops(output_dm),
-		                                     true);
+		return do_output_shard_dm(&output_dm, child, num_cuts, fractal, other);
+	}
+
+	return NULL;
+}
+
+static Shard *do_output_shard(BMesh* bm_parent, Shard *child)
+{
+	Shard *output_s = NULL;
+	DerivedMesh *dm_out;
+
+	if (bm_parent->totvert >= 3)
+	{	/* atleast 3 verts form a face, so strip out invalid stuff */
+		dm_out = CDDM_from_bmesh(bm_parent, true);
+		output_s = BKE_create_fracture_shard(dm_out->getVertArray(dm_out),
+											 dm_out->getPolyArray(dm_out),
+											 dm_out->getLoopArray(dm_out),
+											 dm_out->getNumVerts(dm_out),
+											 dm_out->getNumPolys(dm_out),
+											 dm_out->getNumLoops(dm_out), true);
+
+		output_s = BKE_custom_data_to_shard(output_s, dm_out);
 
 		/*XXX TODO this might be wrong by now ... */
 		output_s->neighbor_count = child->neighbor_count;
 		output_s->neighbor_ids = MEM_mallocN(sizeof(int) * child->neighbor_count, __func__);
 		memcpy(output_s->neighbor_ids, child->neighbor_ids, sizeof(int) * child->neighbor_count);
 		BKE_fracture_shard_center_centroid(output_s, output_s->centroid);
+		copy_v3_v3(output_s->raw_centroid, child->raw_centroid);
+		output_s->raw_volume = child->raw_volume;
 
-		/*free the bbox shard*/
-		BKE_shard_free(child);
-
-		/*free the temp derivedmesh*/
-		output_dm->needsFree = 1;
-		output_dm->release(output_dm);
-		output_dm = NULL;
-
-		return output_s;
+		dm_out->needsFree = 1;
+		dm_out->release(dm_out);
+		dm_out = NULL;
 	}
 
-	return NULL;
+	return output_s;
 }
 
-
-Shard *BKE_fracture_shard_bisect(Shard* parent, Shard* child, float obmat[4][4], bool use_fill)
+static void do_fill(float plane_no[3], bool clear_outer, bool clear_inner, BMOperator bmop, short inner_mat_index, BMesh* bm_parent)
 {
+	float normal_fill[3];
+	BMOperator bmop_fill;
+	BMOperator bmop_attr;
 
-	Shard *output_s;
-	DerivedMesh *dm_parent = BKE_shard_create_dm(parent);
-	DerivedMesh *dm_child = BKE_shard_create_dm(child);
-	DerivedMesh *dm_out;
-	BMesh *bm_parent = DM_to_bmesh(dm_parent, true);
-	BMesh *bm_child = DM_to_bmesh(dm_child, true);
+	normalize_v3_v3(normal_fill, plane_no);
+	if (clear_outer == true && clear_inner == false) {
+		negate_v3(normal_fill);
+	}
+
+	/* Fill, XXX attempted different fill algorithms here, needs further thoughts because none really suited */
+#if 0
+	BMO_op_initf(bm_parent, &bmop_fill, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+	             "contextual_create geom=%S mat_nr=%i use_smooth=%b",
+	             &bmop, "geom_cut.out", 0, false);
+	BMO_op_exec(bm_parent, &bmop_fill);
+
+	BMO_op_initf(bm_parent, &bmop_attr, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+	             "face_attribute_fill faces=%S use_normals=%b use_data=%b",
+	             &bmop_fill, "faces.out", false, true);
+	BMO_op_exec(bm_parent, &bmop_attr);
+
+	BMO_op_initf(bm_parent, &bmop_del, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+	             "delete geom=%S context=%i", &bmop_fill, "edges.out", DEL_EDGESFACES);
+	BMO_op_exec(bm_parent, &bmop_del);
+
+	BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "faces.out", BM_FACE, BM_ELEM_TAG, true);
+#endif
+
+	if (inner_mat_index == 0) { /* dont use inner material here*/
+		BMO_op_initf(
+		    bm_parent, &bmop_fill, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+		    "triangle_fill edges=%S normal=%v use_dissolve=%b use_beauty=%b",
+		    &bmop, "geom_cut.out", normal_fill, true, true);
+		BMO_op_exec(bm_parent, &bmop_fill);
+
+		BMO_op_initf(bm_parent, &bmop_attr, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+		             "face_attribute_fill faces=%S use_normals=%b use_data=%b",
+		             &bmop_fill, "geom.out", false, true);
+		BMO_op_exec(bm_parent, &bmop_attr);
+
+		BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "geom.out", BM_FACE, BM_ELEM_TAG | BM_ELEM_SELECT, true);
+	}
+	else {
+		/* use edgenet fill with inner material */
+		BMO_op_initf(
+		    bm_parent, &bmop_fill, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+		    "edgenet_fill edges=%S mat_nr=%i use_smooth=%b sides=%i",
+		    &bmop, "geom_cut.out", inner_mat_index, false, 2);
+		BMO_op_exec(bm_parent, &bmop_fill);
+
+		/* Copy Attributes */
+		BMO_op_initf(bm_parent, &bmop_attr, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+		             "face_attribute_fill faces=%S use_normals=%b use_data=%b",
+		             &bmop_fill, "faces.out", true, false);
+		BMO_op_exec(bm_parent, &bmop_attr);
+
+		BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "faces.out", BM_FACE, BM_ELEM_TAG | BM_ELEM_SELECT, true);
+	}
+
+	BMO_op_finish(bm_parent, &bmop_attr);
+	BMO_op_finish(bm_parent, &bmop_fill);
+}
+
+static void do_bisect(BMesh* bm_parent, BMesh* bm_child, float obmat[4][4], bool use_fill, bool clear_inner,
+               bool clear_outer, int cutlimit, float centroid[3], short inner_mat_index)
+{
 	BMIter iter;
 	BMFace *f;
 
@@ -694,118 +697,78 @@ Shard *BKE_fracture_shard_bisect(Shard* parent, Shard* child, float obmat[4][4],
 	float imat[4][4];
 
 	float thresh = 0.00001f;
-	bool clear_inner = true;
-	bool clear_outer = false;
+	bool do_break = false;
 
+	int cut_index = 0;
 	invert_m4_m4(imat, obmat);
 
-	BM_ITER_MESH(f, &iter, bm_child, BM_FACES_OF_MESH)
+	BM_ITER_MESH_INDEX (f, &iter, bm_child, BM_FACES_OF_MESH, cut_index)
 	{
-		copy_v3_v3(plane_co, f->l_first->v->co);
-		copy_v3_v3(plane_no, f->no);
+		if (do_break) {
+			break;
+		}
+
+		if (cutlimit > 0) {
+			f = BM_face_at_index_find(bm_child, cutlimit);
+			copy_v3_v3(plane_co, centroid);
+			copy_v3_v3(plane_no, f->no /*normal*/);
+			do_break = true;
+		}
+		else {
+			copy_v3_v3(plane_co, f->l_first->v->co);
+			copy_v3_v3(plane_no, f->no);
+		}
 
 		mul_m4_v3(imat, plane_co);
 		mul_mat3_m4_v3(imat, plane_no);
 
-		BM_mesh_elem_hflag_enable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT, false);
+		BM_mesh_elem_hflag_enable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, false);
 
 		BMO_op_initf(bm_parent, &bmop, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-		             "bisect_plane geom=%hvef plane_co=%v plane_no=%v dist=%f clear_inner=%b clear_outer=%b",
-		             BM_ELEM_SELECT, plane_co, plane_no, thresh, clear_inner, clear_outer);
+		             "bisect_plane geom=%hvef dist=%f plane_co=%v plane_no=%v use_snap_center=%b clear_inner=%b clear_outer=%b",
+		             BM_ELEM_TAG, thresh, plane_co, plane_no, false, clear_inner, clear_outer);
 		BMO_op_exec(bm_parent, &bmop);
 
-		BM_mesh_elem_hflag_disable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT, false);
+		BM_mesh_elem_hflag_disable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, false);
 
 		if (use_fill) {
-			float normal_fill[3];
-			BMOperator bmop_fill;
-			BMOperator bmop_attr;
-
-			normalize_v3_v3(normal_fill, plane_no);
-			{//if (clear_outer == true && clear_inner == false) {
-				negate_v3(normal_fill);
-			}
-
-			/* Fill */
-			/*BMO_op_initf(
-			        bm_parent, &bmop_fill,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-			        "triangle_fill edges=%S use_beauty=%b",
-			        &bmop, "geom_cut.out", true);
-			BMO_op_exec(bm_parent, &bmop_fill);*/
-
-			/*BMO_op_initf(bm_parent, &bmop_fill, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-			            "contextual_create geom=%S mat_nr=%i use_smooth=%b",
-			            &bmop, "geom_cut.out", 0, false);
-			BMO_op_exec(bm_parent, &bmop_fill);*/
-
-			BMO_op_initf(
-			        bm_parent, &bmop_fill,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-			        "triangle_fill edges=%S normal=%v use_dissolve=%b",
-			        &bmop, "geom_cut.out", normal_fill, true);
-			BMO_op_exec(bm_parent, &bmop_fill);
-
-			/*BMO_op_initf(
-			        bm_parent, &bmop_fill,(BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-			       "edgenet_fill edges=%S mat_nr=%i use_smooth=%b sides=%i",
-			        &bmop, "geom_cut.out", 0, false, 1);
-			BMO_op_exec(bm_parent, &bmop_fill);*/
-
-			/* Copy Attributes */
-			/*BMO_op_initf(bm_parent, &bmop_attr, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-			             "face_attribute_fill faces=%S use_normals=%b use_data=%b",
-			             &bmop_fill, "faces.out", false, true);
-			BMO_op_exec(bm_parent, &bmop_attr);
-
-			BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "faces.out", BM_FACE, BM_ELEM_SELECT, true);*/
-
-			BMO_op_initf(bm_parent, &bmop_attr, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-			             "face_attribute_fill faces=%S use_normals=%b use_data=%b",
-			             &bmop_fill, "geom.out", false, true);
-			BMO_op_exec(bm_parent, &bmop_attr);
-
-			BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "geom.out", BM_FACE, BM_ELEM_SELECT, true);
-
-			BMO_op_finish(bm_parent, &bmop_attr);
-			BMO_op_finish(bm_parent, &bmop_fill);
+			do_fill(plane_no, clear_outer, clear_inner, bmop, inner_mat_index, bm_parent);
 		}
 
-		BMO_slot_buffer_hflag_enable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, BM_ELEM_SELECT, true);
+		BMO_slot_buffer_hflag_enable(bm_parent, bmop.slots_out, "geom_cut.out", BM_VERT | BM_EDGE, BM_ELEM_TAG, true);
 
 		BMO_op_finish(bm_parent, &bmop);
-		BM_mesh_select_flush(bm_parent);
 	}
+}
 
-	dm_out = CDDM_from_bmesh(bm_parent, true);
-	output_s = BKE_create_fracture_shard(dm_out->getVertArray(dm_out),
-	                                   dm_out->getPolyArray(dm_out),
-	                                   dm_out->getLoopArray(dm_out),
-	                                   dm_out->getNumVerts(dm_out),
-	                                   dm_out->getNumPolys(dm_out),
-	                                   dm_out->getNumLoops(dm_out), true);
 
-	/*XXX TODO this might be wrong by now ... */
-	output_s->neighbor_count = child->neighbor_count;
-	output_s->neighbor_ids = MEM_mallocN(sizeof(int) * child->neighbor_count, __func__);
-	memcpy(output_s->neighbor_ids, child->neighbor_ids, sizeof(int) * child->neighbor_count);
-	BKE_fracture_shard_center_centroid(output_s, output_s->centroid);
+Shard *BKE_fracture_shard_bisect(BMesh *bm_orig, Shard *child, float obmat[4][4], bool use_fill, bool clear_inner,
+                                 bool clear_outer, int cutlimit, float centroid[3], short inner_mat_index)
+{
 
-	/*free the bbox shard*/
-	BKE_shard_free(child);
+	Shard *output_s;
+	DerivedMesh *dm_child = BKE_shard_create_dm(child, false);
+
+	BMesh *bm_parent = BM_mesh_copy(bm_orig);
+	BMesh *bm_child;
+
+
+	unwrap_shard_dm(dm_child);
+	bm_child = DM_to_bmesh(dm_child, true);
+
+
+	BM_mesh_elem_hflag_enable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, false);
+
+	do_bisect(bm_parent, bm_child, obmat, use_fill, clear_inner, clear_outer, cutlimit, centroid, inner_mat_index);
+
+	output_s = do_output_shard(bm_parent, child);
 
 	BM_mesh_free(bm_child);
 	BM_mesh_free(bm_parent);
 
-	dm_parent->needsFree = 1;
-	dm_parent->release(dm_parent);
-	dm_parent = NULL;
-
 	dm_child->needsFree = 1;
 	dm_child->release(dm_child);
 	dm_child = NULL;
-
-	dm_out->needsFree = 1;
-	dm_out->release(dm_out);
-	dm_out = NULL;
 
 	return output_s;
 }

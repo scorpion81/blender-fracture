@@ -216,7 +216,7 @@ static bool actedit_get_context(bAnimContext *ac, SpaceAction *saction)
 /* Get data being edited in Graph Editor (depending on current 'mode') */
 static bool graphedit_get_context(bAnimContext *ac, SpaceIpo *sipo)
 {
-	/* init dopesheet data if non-existant (i.e. for old files) */
+	/* init dopesheet data if non-existent (i.e. for old files) */
 	if (sipo->ads == NULL) {
 		sipo->ads = MEM_callocN(sizeof(bDopeSheet), "GraphEdit DopeSheet");
 		sipo->ads->source = (ID *)ac->scene;
@@ -267,7 +267,7 @@ static bool graphedit_get_context(bAnimContext *ac, SpaceIpo *sipo)
 /* Get data being edited in Graph Editor (depending on current 'mode') */
 static bool nlaedit_get_context(bAnimContext *ac, SpaceNla *snla)
 {
-	/* init dopesheet data if non-existant (i.e. for old files) */
+	/* init dopesheet data if non-existent (i.e. for old files) */
 	if (snla->ads == NULL)
 		snla->ads = MEM_callocN(sizeof(bDopeSheet), "NlaEdit DopeSheet");
 	ac->ads = snla->ads;
@@ -771,6 +771,21 @@ static bAnimListElem *make_new_animlistelem(void *data, short datatype, ID *owne
 				ale->adt = BKE_animdata_from_id(data);
 				break;
 			}
+			case ANIMTYPE_DSGPENCIL:
+			{
+				bGPdata *gpd = (bGPdata *)data;
+				AnimData *adt = gpd->adt;
+				
+				/* NOTE: we just reuse the same expand filter for this case */
+				ale->flag = EXPANDED_GPD(gpd);
+				
+				// XXX: currently, this is only used for access to its animation data
+				ale->key_data = (adt) ? adt->action : NULL;
+				ale->datatype = ALE_ACT;
+				
+				ale->adt = BKE_animdata_from_id(data);
+				break;
+			}
 			case ANIMTYPE_GROUP:
 			{
 				bActionGroup *agrp = (bActionGroup *)data;
@@ -914,14 +929,14 @@ static bool skip_fcurve_selected_data(bDopeSheet *ads, FCurve *fcu, ID *owner_id
 		
 		/* only consider if F-Curve involves sequence_editor.sequences */
 		if ((fcu->rna_path) && strstr(fcu->rna_path, "sequences_all")) {
-			Editing *ed = BKE_sequencer_editing_get(scene, FALSE);
+			Editing *ed = BKE_sequencer_editing_get(scene, false);
 			Sequence *seq = NULL;
 			char *seq_name;
 			
 			if (ed) {
 				/* get strip name, and check if this strip is selected */
 				seq_name = BLI_str_quoted_substrN(fcu->rna_path, "sequences_all[");
-				seq = BKE_sequence_get_by_name(ed->seqbasep, seq_name, FALSE);
+				seq = BKE_sequence_get_by_name(ed->seqbasep, seq_name, false);
 				if (seq_name) MEM_freeN(seq_name);
 			}
 			
@@ -987,8 +1002,10 @@ static bool skip_fcurve_with_name(bDopeSheet *ads, FCurve *fcu, ID *owner_id)
 	return true;
 }
 
-/* Check if F-Curve has errors and/or is disabled 
- * > returns: (bool) True if F-Curve has errors/is disabled
+/**
+ * Check if F-Curve has errors and/or is disabled
+ *
+ * \return true if F-Curve has errors/is disabled
  */
 static bool fcurve_has_errors(FCurve *fcu)
 {
@@ -1175,7 +1192,7 @@ static size_t animfilter_act_group(bAnimContext *ac, ListBase *anim_data, bDopeS
 		
 		/* now add the list of collected channels */
 		BLI_movelisttolist(anim_data, &tmp_data);
-		BLI_assert((tmp_data.first == tmp_data.last) && (tmp_data.first == NULL));
+		BLI_assert(BLI_listbase_is_empty(&tmp_data));
 		items += tmp_items;
 	}
 	
@@ -1253,7 +1270,7 @@ static size_t animfilter_nla(bAnimContext *UNUSED(ac), ListBase *anim_data, bDop
 		first = adt->nla_tracks.last;
 	}
 	else {
-		/* first track to include will the the first one (as per normal) */
+		/* first track to include will the first one (as per normal) */
 		first = adt->nla_tracks.first;
 	}
 	
@@ -1411,27 +1428,77 @@ static size_t animdata_filter_gpencil(ListBase *anim_data, void *UNUSED(data), i
 		/* only show if gpd is used by something... */
 		if (ID_REAL_USERS(gpd) < 1)
 			continue;
-			
-		/* add gpencil animation channels */
-		BEGIN_ANIMFILTER_SUBCHANNELS(EXPANDED_GPD(gpd))
-		{
-			tmp_items += animdata_filter_gpencil_data(&tmp_data, gpd, filter_mode);
-		}
-		END_ANIMFILTER_SUBCHANNELS;
 		
-		/* did we find anything? */
-		if (tmp_items) {
-			/* include data-expand widget first */
-			if (filter_mode & ANIMFILTER_LIST_CHANNELS) {
-				/* add gpd as channel too (if for drawing, and it has layers) */
-				ANIMCHANNEL_NEW_CHANNEL(gpd, ANIMTYPE_GPDATABLOCK, NULL);
-			}
-			
-			/* now add the list of collected channels */
-			BLI_movelisttolist(anim_data, &tmp_data);
-			BLI_assert((tmp_data.first == tmp_data.last) && (tmp_data.first == NULL));
-			items += tmp_items;
+		/* When asked from "AnimData" blocks (i.e. the top-level containers for normal animation),
+		 * for convenience, this will return GP Datablocks instead. This may cause issues down
+		 * the track, but for now, this will do...
+		 */
+		if (filter_mode & ANIMFILTER_ANIMDATA) {
+			/* just add GPD as a channel - this will add everything needed */
+			ANIMCHANNEL_NEW_CHANNEL(gpd, ANIMTYPE_GPDATABLOCK, NULL);
 		}
+		else {
+			/* add gpencil animation channels */
+			BEGIN_ANIMFILTER_SUBCHANNELS(EXPANDED_GPD(gpd))
+			{
+				tmp_items += animdata_filter_gpencil_data(&tmp_data, gpd, filter_mode);
+			}
+			END_ANIMFILTER_SUBCHANNELS;
+			
+			/* did we find anything? */
+			if (tmp_items) {
+				/* include data-expand widget first */
+				if (filter_mode & ANIMFILTER_LIST_CHANNELS) {
+					/* add gpd as channel too (if for drawing, and it has layers) */
+					ANIMCHANNEL_NEW_CHANNEL(gpd, ANIMTYPE_GPDATABLOCK, NULL);
+				}
+				
+				/* now add the list of collected channels */
+				BLI_movelisttolist(anim_data, &tmp_data);
+				BLI_assert(BLI_listbase_is_empty(&tmp_data));
+				items += tmp_items;
+			}
+		}
+	}
+	
+	/* return the number of items added to the list */
+	return items;
+}
+
+/* Helper for Grease Pencil data integrated with main DopeSheet */
+static size_t animdata_filter_ds_gpencil(bAnimContext *ac, ListBase *anim_data, bDopeSheet *ads, bGPdata *gpd, int filter_mode)
+{
+	ListBase tmp_data = {NULL, NULL};
+	size_t tmp_items = 0;
+	size_t items = 0;
+	
+	/* add relevant animation channels for Grease Pencil */
+	BEGIN_ANIMFILTER_SUBCHANNELS(EXPANDED_GPD(gpd))
+	{
+		/* add animation channels */
+		tmp_items += animfilter_block_data(ac, &tmp_data, ads, &gpd->id, filter_mode);
+		
+		/* add Grease Pencil layers */
+		// TODO: do these need a separate expander?
+		// XXX:  what order should these go in?
+	}
+	END_ANIMFILTER_SUBCHANNELS;
+	
+	/* did we find anything? */
+	if (tmp_items) {
+		/* include data-expand widget first */
+		if (filter_mode & ANIMFILTER_LIST_CHANNELS) {
+			/* check if filtering by active status */
+			// XXX: active check here needs checking
+			if (ANIMCHANNEL_ACTIVEOK(gpd)) {
+				ANIMCHANNEL_NEW_CHANNEL(gpd, ANIMTYPE_DSGPENCIL, gpd);
+			}
+		}
+		
+		/* now add the list of collected channels */
+		BLI_movelisttolist(anim_data, &tmp_data);
+		BLI_assert(BLI_listbase_is_empty(&tmp_data));
+		items += tmp_items;
 	}
 	
 	/* return the number of items added to the list */
@@ -1496,7 +1563,7 @@ static size_t animdata_filter_mask(ListBase *anim_data, void *UNUSED(data), int 
 			
 			/* now add the list of collected channels */
 			BLI_movelisttolist(anim_data, &tmp_data);
-			BLI_assert((tmp_data.first == tmp_data.last) && (tmp_data.first == NULL));
+			BLI_assert(BLI_listbase_is_empty(&tmp_data));
 			items += tmp_items;
 		}
 	}
@@ -1532,7 +1599,7 @@ static size_t animdata_filter_ds_nodetree_group(bAnimContext *ac, ListBase *anim
 		
 		/* now add the list of collected channels */
 		BLI_movelisttolist(anim_data, &tmp_data);
-		BLI_assert((tmp_data.first == tmp_data.last) && (tmp_data.first == NULL));
+		BLI_assert(BLI_listbase_is_empty(&tmp_data));
 		items += tmp_items;
 	}
 	
@@ -1614,7 +1681,7 @@ static size_t animdata_filter_ds_linestyle(bAnimContext *ac, ListBase *anim_data
 				
 				/* now add the list of collected channels */
 				BLI_movelisttolist(anim_data, &tmp_data);
-				BLI_assert((tmp_data.first == tmp_data.last) && (tmp_data.first == NULL));
+				BLI_assert(BLI_listbase_is_empty(&tmp_data));
 				items += tmp_items;
 			}
 		}
@@ -1659,7 +1726,7 @@ static size_t animdata_filter_ds_texture(bAnimContext *ac, ListBase *anim_data, 
 		
 		/* now add the list of collected channels */
 		BLI_movelisttolist(anim_data, &tmp_data);
-		BLI_assert((tmp_data.first == tmp_data.last) && (tmp_data.first == NULL));
+		BLI_assert(BLI_listbase_is_empty(&tmp_data));
 		items += tmp_items;
 	}
 	
@@ -1695,6 +1762,12 @@ static size_t animdata_filter_ds_textures(bAnimContext *ac, ListBase *anim_data,
 		{
 			World *wo = (World *)owner_id;
 			mtex = (MTex **)(&wo->mtex);
+			break;
+		}
+		case ID_PA:
+		{
+			ParticleSettings *part = (ParticleSettings *)owner_id;
+			mtex = (MTex **)(&part->mtex);
 			break;
 		}
 		default: 
@@ -1757,7 +1830,7 @@ static size_t animdata_filter_ds_material(bAnimContext *ac, ListBase *anim_data,
 		
 		/* now add the list of collected channels */
 		BLI_movelisttolist(anim_data, &tmp_data);
-		BLI_assert((tmp_data.first == tmp_data.last) && (tmp_data.first == NULL));
+		BLI_assert(BLI_listbase_is_empty(&tmp_data));
 		items += tmp_items;
 	}
 	
@@ -1796,9 +1869,14 @@ static size_t animdata_filter_ds_materials(bAnimContext *ac, ListBase *anim_data
 			Material *base = give_current_material(ob, a);
 			Material *ma   = give_node_material(base);
 			
-			/* add channels from the nested material if it exists */
-			if (ma)
+			/* add channels from the nested material if it exists
+			 *   - skip if the same material is referenced in its node tree
+			 *     (which is common for BI materials) as that results in
+			 *     confusing duplicates
+			 */
+			if ((ma) && (ma != base)) {
 				items += animdata_filter_ds_material(ac, anim_data, ads, ma, filter_mode);
+			}
 		}
 	}
 	
@@ -1862,7 +1940,7 @@ static size_t animdata_filter_ds_modifiers(bAnimContext *ac, ListBase *anim_data
 	size_t items = 0;
 	
 	/* 1) create a temporary "context" containing all the info we have here to pass to the callback 
-	 *    use to walk thorugh the dependencies of the modifiers
+	 *    use to walk through the dependencies of the modifiers
 	 *
 	 * ! Assumes that all other unspecified values (i.e. accumulation buffers) are zero'd out properly
 	 */
@@ -1877,7 +1955,7 @@ static size_t animdata_filter_ds_modifiers(bAnimContext *ac, ListBase *anim_data
 	if (afm.items) {
 		/* now add the list of collected channels */
 		BLI_movelisttolist(anim_data, &afm.tmp_data);
-		BLI_assert((afm.tmp_data.first == afm.tmp_data.last) && (afm.tmp_data.first == NULL));
+		BLI_assert(BLI_listbase_is_empty(&afm.tmp_data));
 		items += afm.items;
 	}
 	
@@ -1903,8 +1981,12 @@ static size_t animdata_filter_ds_particles(bAnimContext *ac, ListBase *anim_data
 		/* add particle-system's animation data to temp collection */
 		BEGIN_ANIMFILTER_SUBCHANNELS(FILTER_PART_OBJD(psys->part))
 		{
-			/* material's animation data */
+			/* particle system's animation data */
 			tmp_items += animfilter_block_data(ac, &tmp_data, ads, (ID *)psys->part, filter_mode);
+			
+			/* textures */
+			if (!(ads->filterflag & ADS_FILTER_NOTEX))
+				tmp_items += animdata_filter_ds_textures(ac, &tmp_data, ads, (ID *)psys->part, filter_mode);
 		}
 		END_ANIMFILTER_SUBCHANNELS;
 		
@@ -1920,7 +2002,7 @@ static size_t animdata_filter_ds_particles(bAnimContext *ac, ListBase *anim_data
 			
 			/* now add the list of collected channels */
 			BLI_movelisttolist(anim_data, &tmp_data);
-			BLI_assert((tmp_data.first == tmp_data.last) && (tmp_data.first == NULL));
+			BLI_assert(BLI_listbase_is_empty(&tmp_data));
 			items += tmp_items;
 		}
 	}
@@ -2068,7 +2150,7 @@ static size_t animdata_filter_ds_obdata(bAnimContext *ac, ListBase *anim_data, b
 		
 		/* now add the list of collected channels */
 		BLI_movelisttolist(anim_data, &tmp_data);
-		BLI_assert((tmp_data.first == tmp_data.last) && (tmp_data.first == NULL));
+		BLI_assert(BLI_listbase_is_empty(&tmp_data));
 		items += tmp_items;
 	}
 	
@@ -2102,7 +2184,7 @@ static size_t animdata_filter_ds_keyanim(bAnimContext *ac, ListBase *anim_data, 
 		
 		/* now add the list of collected channels */
 		BLI_movelisttolist(anim_data, &tmp_data);
-		BLI_assert((tmp_data.first == tmp_data.last) && (tmp_data.first == NULL));
+		BLI_assert(BLI_listbase_is_empty(&tmp_data));
 		items += tmp_items;
 	}
 	
@@ -2158,7 +2240,7 @@ static size_t animdata_filter_ds_obanim(bAnimContext *ac, ListBase *anim_data, b
 		
 		/* now add the list of collected channels */
 		BLI_movelisttolist(anim_data, &tmp_data);
-		BLI_assert((tmp_data.first == tmp_data.last) && (tmp_data.first == NULL));
+		BLI_assert(BLI_listbase_is_empty(&tmp_data));
 		items += tmp_items;
 	}
 	
@@ -2208,6 +2290,11 @@ static size_t animdata_filter_dopesheet_ob(bAnimContext *ac, ListBase *anim_data
 		if ((ob->particlesystem.first) && !(ads->filterflag & ADS_FILTER_NOPART)) {
 			tmp_items += animdata_filter_ds_particles(ac, &tmp_data, ads, ob, filter_mode);
 		}
+		
+		/* grease pencil */
+		if ((ob->gpd) && !(ads->filterflag & ADS_FILTER_NOGPENCIL)) {
+			tmp_items += animdata_filter_ds_gpencil(ac, &tmp_data, ads, ob->gpd, filter_mode);
+		}
 	}
 	END_ANIMFILTER_SUBCHANNELS;
 	
@@ -2228,7 +2315,7 @@ static size_t animdata_filter_dopesheet_ob(bAnimContext *ac, ListBase *anim_data
 		
 		/* now add the list of collected channels */
 		BLI_movelisttolist(anim_data, &tmp_data);
-		BLI_assert((tmp_data.first == tmp_data.last) && (tmp_data.first == NULL));
+		BLI_assert(BLI_listbase_is_empty(&tmp_data));
 		items += tmp_items;
 	}
 	
@@ -2250,7 +2337,7 @@ static size_t animdata_filter_ds_world(bAnimContext *ac, ListBase *anim_data, bD
 		
 		/* textures for world */
 		if (!(ads->filterflag & ADS_FILTER_NOTEX))
-			items += animdata_filter_ds_textures(ac, &tmp_data, ads, (ID *)wo, filter_mode);
+			tmp_items += animdata_filter_ds_textures(ac, &tmp_data, ads, (ID *)wo, filter_mode);
 			
 		/* nodes */
 		if ((wo->nodetree) && !(ads->filterflag & ADS_FILTER_NONTREE)) 
@@ -2270,7 +2357,7 @@ static size_t animdata_filter_ds_world(bAnimContext *ac, ListBase *anim_data, bD
 		
 		/* now add the list of collected channels */
 		BLI_movelisttolist(anim_data, &tmp_data);
-		BLI_assert((tmp_data.first == tmp_data.last) && (tmp_data.first == NULL));
+		BLI_assert(BLI_listbase_is_empty(&tmp_data));
 		items += tmp_items;
 	}
 	
@@ -2324,7 +2411,7 @@ static size_t animdata_filter_ds_scene(bAnimContext *ac, ListBase *anim_data, bD
 		
 		/* now add the list of collected channels */
 		BLI_movelisttolist(anim_data, &tmp_data);
-		BLI_assert((tmp_data.first == tmp_data.last) && (tmp_data.first == NULL));
+		BLI_assert(BLI_listbase_is_empty(&tmp_data));
 		items += tmp_items;
 	}
 	
@@ -2342,6 +2429,7 @@ static size_t animdata_filter_dopesheet_scene(bAnimContext *ac, ListBase *anim_d
 	BEGIN_ANIMFILTER_SUBCHANNELS(EXPANDED_SCEC(sce))
 	{
 		bNodeTree *ntree = sce->nodetree;
+		bGPdata *gpd = sce->gpd;
 		World *wo = sce->world;
 		
 		/* Action, Drivers, or NLA for Scene */
@@ -2364,6 +2452,11 @@ static size_t animdata_filter_dopesheet_scene(bAnimContext *ac, ListBase *anim_d
 			tmp_items += animdata_filter_ds_linestyle(ac, &tmp_data, ads, sce, filter_mode);
 		}
 		
+		/* grease pencil */
+		if ((gpd) && !(ads->filterflag & ADS_FILTER_NOGPENCIL)) {
+			tmp_items += animdata_filter_ds_gpencil(ac, &tmp_data, ads, gpd, filter_mode);
+		}
+		
 		/* TODO: one day, when sequencer becomes its own datatype, perhaps it should be included here */
 	}
 	END_ANIMFILTER_SUBCHANNELS;
@@ -2381,7 +2474,7 @@ static size_t animdata_filter_dopesheet_scene(bAnimContext *ac, ListBase *anim_d
 		
 		/* now add the list of collected channels */
 		BLI_movelisttolist(anim_data, &tmp_data);
-		BLI_assert((tmp_data.first == tmp_data.last) && (tmp_data.first == NULL));
+		BLI_assert(BLI_listbase_is_empty(&tmp_data));
 		items += tmp_items;
 	}
 	
@@ -2588,7 +2681,7 @@ static size_t animdata_filter_remove_duplis(ListBase *anim_data)
 		 *	- just use ale->data for now, though it would be nicer to involve 
 		 *	  ale->type in combination too to capture corner cases (where same data performs differently)
 		 */
-		if (BLI_gset_reinsert(gs, ale->data, NULL)) {
+		if (BLI_gset_add(gs, ale->data)) {
 			/* this entry is 'unique' and can be kept */
 			items++;
 		}
@@ -2614,7 +2707,7 @@ static size_t animdata_filter_remove_duplis(ListBase *anim_data)
  *		will be placed for use.
  *	filter_mode: how should the data be filtered - bitmapping accessed flags
  */
-size_t ANIM_animdata_filter(bAnimContext *ac, ListBase *anim_data, int filter_mode, void *data, short datatype)
+size_t ANIM_animdata_filter(bAnimContext *ac, ListBase *anim_data, eAnimFilter_Flags filter_mode, void *data, eAnimCont_Types datatype)
 {
 	size_t items = 0;
 	
@@ -2705,6 +2798,13 @@ size_t ANIM_animdata_filter(bAnimContext *ac, ListBase *anim_data, int filter_mo
 				
 				/* based on the channel type, filter relevant data for this */
 				items = animdata_filter_animchan(ac, anim_data, ads, data, filter_mode);
+				break;
+			}
+			
+			/* unhandled */
+			default:
+			{
+				printf("ANIM_animdata_filter() - Invalid datatype argument %d\n", datatype);
 				break;
 			}
 		}

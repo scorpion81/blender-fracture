@@ -40,6 +40,7 @@
 #include "BKE_blender.h"
 #include "BKE_context.h"
 #include "BKE_deform.h"
+#include "BKE_object_deform.h"
 #include "BKE_depsgraph.h"
 #include "BKE_dynamicpaint.h"
 #include "BKE_global.h"
@@ -235,11 +236,11 @@ static int output_toggle_exec(bContext *C, wmOperator *op)
 		/* Vertex Weight Layer */
 		else if (surface->type == MOD_DPAINT_SURFACE_T_WEIGHT) {
 			if (!exists) {
-				ED_vgroup_add_name(ob, name);
+				BKE_object_defgroup_add_name(ob, name);
 			}
 			else {
 				bDeformGroup *defgroup = defgroup_find_name(ob, name);
-				if (defgroup) ED_vgroup_delete(ob, defgroup);
+				if (defgroup) BKE_object_defgroup_remove(ob, defgroup);
 			}
 		}
 	}
@@ -381,7 +382,7 @@ static int dynamicPaint_initBake(struct bContext *C, struct wmOperator *op)
 	/* Set state to baking and init surface */
 	canvas->error[0] = '\0';
 	canvas->flags |= MOD_DPAINT_BAKING;
-	G.is_break = FALSE;  /* reset blender_test_break*/
+	G.is_break = false;  /* reset blender_test_break*/
 
 	/*  Bake Dynamic Paint	*/
 	status = dynamicPaint_bakeImageSequence(C, surface, ob);

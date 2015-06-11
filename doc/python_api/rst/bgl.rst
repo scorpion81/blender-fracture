@@ -8,26 +8,24 @@ This module wraps OpenGL constants and functions, making them available from
 within Blender Python.
 
 The complete list can be retrieved from the module itself, by listing its
-contents: dir(bgl).  A simple search on the net can point to more
+contents: dir(bgl).  A simple search on the web can point to more
 than enough material to teach OpenGL programming, from books to many
 collections of tutorials.
 
-The "red book": "I{OpenGL Programming Guide: The Official Guide to Learning
-OpenGL}" and the online NeHe tutorials are two of the best resources.
+Here is a comprehensive `list of books <http://www.opengl.org/documentation/books/>`_ (non free). The `arcsynthesis tutorials  <http://www.arcsynthesis.org/gltut/>`_ is one of the best resources to learn modern OpenGL and `g-truc <http://www.g-truc.net/post-tech-content-sample.html>`_ offers a set of extensive examples, including advanced features.
+    
 
 .. note::
    You can use the :class:`Image` type to load and set textures.
    See :class:`Image.gl_load` and :class:`Image.gl_load`,
    for example.
-   `OpenGL.org <http://www.opengl.org>`_
-   `NeHe GameDev <http://nehe.gamedev.net>`_
 
 
 .. function:: glAccum(op, value):
 
    Operate on the accumulation buffer.
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glAccum.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glAccum.xml>`_
 
    :type op: Enumerated constant
    :arg op: The accumulation buffer operation.
@@ -39,7 +37,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Specify the alpha test function.
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glAlphaFunc.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glAlphaFunc.xml>`_
 
    :type func: Enumerated constant
    :arg func: Specifies the alpha comparison function.
@@ -52,7 +50,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Determine if textures are loaded in texture memory
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glAreTexturesResident.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glAreTexturesResident.xml>`_
 
    :type n: int
    :arg n: Specifies the number of textures to be queried.
@@ -68,7 +66,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Delimit the vertices of a primitive or a group of like primatives
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glBegin.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glBegin.xml>`_
 
    :type mode: Enumerated constant
    :arg mode: Specifies the primitive that will be create from vertices between
@@ -79,7 +77,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Bind a named texture to a texturing target
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glBindTexture.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glBindTexture.xml>`_
 
    :type target: Enumerated constant
    :arg target: Specifies the target to which the texture is bound.
@@ -91,7 +89,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Draw a bitmap
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glBitmap.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glBitmap.xml>`_
 
    :type width, height: int
    :arg width, height: Specify the pixel width and height of the bitmap image.
@@ -109,7 +107,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Specify pixel arithmetic
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glBlendFunc.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glBlendFunc.xml>`_
 
    :type sfactor: Enumerated constant
    :arg sfactor: Specifies how the red, green, blue, and alpha source blending factors are
@@ -123,7 +121,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Execute a display list
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glCallList.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glCallList.xml>`_
 
    :type list: unsigned int
    :arg list: Specifies the integer name of the display list to be executed.
@@ -133,7 +131,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Execute a list of display lists
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glCallLists.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glCallLists.xml>`_
 
    :type n: int
    :arg n: Specifies the number of display lists to be executed.
@@ -149,7 +147,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Clear buffers to preset values
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glClear.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glClear.xml>`_
 
    :type mask: Enumerated constant(s)
    :arg mask: Bitwise OR of masks that indicate the buffers to be cleared.
@@ -159,7 +157,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Specify clear values for the accumulation buffer
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glClearAccum.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glClearAccum.xml>`_
 
    :type red, green, blue, alpha: float
    :arg red, green, blue, alpha: Specify the red, green, blue, and alpha values used when the
@@ -170,7 +168,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Specify clear values for the color buffers
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glClearColor.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glClearColor.xml>`_
 
    :type red, green, blue, alpha: float
    :arg red, green, blue, alpha: Specify the red, green, blue, and alpha values used when the
@@ -181,7 +179,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Specify the clear value for the depth buffer
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glClearDepth.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glClearDepth.xml>`_
 
    :type depth: int
    :arg depth: Specifies the depth value used when the depth buffer is cleared.
@@ -192,7 +190,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Specify the clear value for the color index buffers
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glClearIndex.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glClearIndex.xml>`_
 
    :type c: float
    :arg c: Specifies the index used when the color index buffers are cleared.
@@ -203,7 +201,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Specify the clear value for the stencil buffer
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glClearStencil.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glClearStencil.xml>`_
 
    :type s: int
    :arg s: Specifies the index used when the stencil buffer is cleared. The initial value is 0.
@@ -213,7 +211,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Specify a plane against which all geometry is clipped
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glClipPlane.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glClipPlane.xml>`_
 
    :type plane: Enumerated constant
    :arg plane: Specifies which clipping plane is being positioned.
@@ -232,7 +230,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Set a new color.
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glColor.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glColor.xml>`_
 
    :type red, green, blue, alpha: Depends on function prototype.
    :arg red, green, blue: Specify new red, green, and blue values for the current color.
@@ -244,7 +242,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Enable and disable writing of frame buffer color components
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glColorMask.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glColorMask.xml>`_
 
    :type red, green, blue, alpha: int (boolean)
    :arg red, green, blue, alpha: Specify whether red, green, blue, and alpha can or cannot be
@@ -256,7 +254,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Cause a material color to track the current color
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glColorMaterial.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glColorMaterial.xml>`_
 
    :type face: Enumerated constant
    :arg face: Specifies whether front, back, or both front and back material parameters should
@@ -269,7 +267,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Copy pixels in the frame buffer
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glCopyPixels.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glCopyPixels.xml>`_
 
    :type x, y: int
    :arg x, y: Specify the window coordinates of the lower left corner of the rectangular
@@ -285,7 +283,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Copy pixels into a 2D texture image
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glCopyTexImage2D.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glCopyTexImage2D.xml>`_
 
    :type target: Enumerated constant
    :arg target: Specifies the target texture.
@@ -314,7 +312,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Specify whether front- or back-facing facets can be culled
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glCullFace.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glCullFace.xml>`_
 
    :type mode: Enumerated constant
    :arg mode: Specifies whether front- or back-facing facets are candidates for culling.
@@ -324,7 +322,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Delete a contiguous group of display lists
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glDeleteLists.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glDeleteLists.xml>`_
 
    :type list: unsigned int
    :arg list: Specifies the integer name of the first display list to delete
@@ -336,7 +334,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Delete named textures
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glDeleteTextures.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glDeleteTextures.xml>`_
 
    :type n: int
    :arg n: Specifies the number of textures to be deleted
@@ -348,7 +346,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Specify the value used for depth buffer comparisons
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glDepthFunc.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glDepthFunc.xml>`_
 
    :type func: Enumerated constant
    :arg func: Specifies the depth comparison function.
@@ -358,7 +356,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Enable or disable writing into the depth buffer
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glDepthMask.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glDepthMask.xml>`_
 
    :type flag: int (boolean)
    :arg flag: Specifies whether the depth buffer is enabled for writing. If flag is GL_FALSE,
@@ -370,7 +368,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Specify mapping of depth values from normalized device coordinates to window coordinates
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glDepthRange.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glDepthRange.xml>`_
 
    :type zNear: int
    :arg zNear: Specifies the mapping of the near clipping plane to window coordinates.
@@ -384,7 +382,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Disable server-side GL capabilities
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glEnable.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glEnable.xml>`_
 
    :type cap: Enumerated constant
    :arg cap: Specifies a symbolic constant indicating a GL capability.
@@ -394,7 +392,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Specify which color buffers are to be drawn into
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glDrawBuffer.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glDrawBuffer.xml>`_
 
    :type mode: Enumerated constant
    :arg mode: Specifies up to four color buffers to be drawn into.
@@ -404,7 +402,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Write a block of pixels to the frame buffer
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glDrawPixels.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glDrawPixels.xml>`_
 
    :type width, height: int
    :arg width, height: Specify the dimensions of the pixel rectangle to be
@@ -423,7 +421,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Flag edges as either boundary or non-boundary
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glEdgeFlag.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glEdgeFlag.xml>`_
 
    :type flag: Depends of function prototype
    :arg flag: Specifies the current edge flag value.The initial value is GL_TRUE.
@@ -433,7 +431,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Enable server-side GL capabilities
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glEnable.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glEnable.xml>`_
 
    :type cap: Enumerated constant
    :arg cap: Specifies a symbolic constant indicating a GL capability.
@@ -443,14 +441,14 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Delimit the vertices of a primitive or group of like primitives
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glBegin.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glBegin.xml>`_
 
 
 .. function:: glEndList():
 
    Create or replace a display list
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glNewList.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glNewList.xml>`_
 
 
 .. function:: glEvalCoord (u,v):
@@ -460,7 +458,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Evaluate enabled one- and two-dimensional maps
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glEvalCoord.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glEvalCoord.xml>`_
 
    :type u: Depends on function prototype.
    :arg u: Specifies a value that is the domain coordinate u to the basis function defined
@@ -478,7 +476,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Compute a one- or two-dimensional grid of points or lines
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glEvalMesh.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glEvalMesh.xml>`_
 
    :type mode: Enumerated constant
    :arg mode: In glEvalMesh1, specifies whether to compute a one-dimensional
@@ -493,7 +491,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Generate and evaluate a single point in a mesh
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glEvalPoint.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glEvalPoint.xml>`_
 
    :type i: int
    :arg i: Specifies the integer value for grid domain variable i.
@@ -505,7 +503,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Controls feedback mode
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glFeedbackBuffer.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glFeedbackBuffer.xml>`_
 
    :type size: int
    :arg size: Specifies the maximum number of values that can be written into buffer.
@@ -520,14 +518,14 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Block until all GL execution is complete
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glFinish.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glFinish.xml>`_
 
 
 .. function:: glFlush():
 
    Force Execution of GL commands in finite time
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glFlush.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glFlush.xml>`_
 
 
 .. function:: glFog (pname, param):
@@ -536,7 +534,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Specify fog parameters
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glFog.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glFog.xml>`_
 
    :type pname: Enumerated constant
    :arg pname: Specifies a single-valued fog parameter. If the function prototype
@@ -551,7 +549,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Define front- and back-facing polygons
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glFrontFace.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glFrontFace.xml>`_
 
    :type mode: Enumerated constant
    :arg mode: Specifies the orientation of front-facing polygons.
@@ -561,7 +559,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Multiply the current matrix by a perspective matrix
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glFrustum.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glFrustum.xml>`_
 
    :type left, right: double (float)
    :arg left, right: Specify the coordinates for the left and right vertical
@@ -578,7 +576,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Generate a contiguous set of empty display lists
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glGenLists.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glGenLists.xml>`_
 
    :type range: int
    :arg range: Specifies the number of contiguous empty display lists to be generated.
@@ -588,7 +586,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Generate texture names
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glGenTextures.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glGenTextures.xml>`_
 
    :type n: int
    :arg n: Specifies the number of textures name to be generated.
@@ -602,7 +600,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Return the value or values of a selected parameter
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glGet.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glGet.xml>`_
 
    :type pname: Enumerated constant
    :arg pname: Specifies the parameter value to be returned.
@@ -614,7 +612,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Return the coefficients of the specified clipping plane
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glGetClipPlane.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glGetClipPlane.xml>`_
 
    :type plane: Enumerated constant
    :arg plane: Specifies a clipping plane. The number of clipping planes depends on the
@@ -629,7 +627,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Return error information
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glGetError.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glGetError.xml>`_
 
 
 .. function:: glGetLight (light, pname, params):
@@ -638,7 +636,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Return light source parameter values
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glGetLight.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glGetLight.xml>`_
 
    :type light: Enumerated constant
    :arg light: Specifies a light source. The number of possible lights depends on the
@@ -656,7 +654,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Return evaluator parameters
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glGetMap.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glGetMap.xml>`_
 
    :type target: Enumerated constant
    :arg target: Specifies the symbolic name of a map.
@@ -672,7 +670,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Return material parameters
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glGetMaterial.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glGetMaterial.xml>`_
 
    :type face: Enumerated constant
    :arg face: Specifies which of the two materials is being queried.
@@ -711,7 +709,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Return a string describing the current GL connection
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glGetString.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glGetString.xml>`_
 
    :type name: Enumerated constant
    :arg name: Specifies a symbolic constant.
@@ -724,7 +722,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Return texture environment parameters
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glGetTexEnv.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glGetTexEnv.xml>`_
 
    :type target: Enumerated constant
    :arg target: Specifies a texture environment. Must be GL_TEXTURE_ENV.
@@ -740,7 +738,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Return texture coordinate generation parameters
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glGetTexGen.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glGetTexGen.xml>`_
 
    :type coord: Enumerated constant
    :arg coord: Specifies a texture coordinate.
@@ -754,7 +752,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Return a texture image
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glGetTexImage.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glGetTexImage.xml>`_
 
    :type target: Enumerated constant
    :arg target: Specifies which texture is to be obtained.
@@ -776,7 +774,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    return texture parameter values for a specific level of detail
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glGetTexLevelParameter.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glGetTexLevelParameter.xml>`_
 
    :type target: Enumerated constant
    :arg target: Specifies the symbolic name of the target texture.
@@ -795,7 +793,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Return texture parameter values
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glGetTexParameter.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glGetTexParameter.xml>`_
 
    :type target: Enumerated constant
    :arg target: Specifies the symbolic name of the target texture.
@@ -809,7 +807,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Specify implementation-specific hints
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glHint.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glHint.xml>`_
 
    :type target: Enumerated constant
    :arg target: Specifies a symbolic constant indicating the behavior to be
@@ -847,14 +845,14 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Initialize the name stack
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glInitNames.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glInitNames.xml>`_
 
 
 .. function:: glIsEnabled(cap):
 
    Test whether a capability is enabled
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glIsEnabled.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glIsEnabled.xml>`_
 
    :type cap: Enumerated constant
    :arg cap: Specifies a constant representing a GL capability.
@@ -864,7 +862,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Determine if a name corresponds to a display-list
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glIsList.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glIsList.xml>`_
 
    :type list: unsigned int
    :arg list: Specifies a potential display-list name.
@@ -874,7 +872,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Determine if a name corresponds to a texture
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glIsTexture.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glIsTexture.xml>`_
 
    :type texture: unsigned int
    :arg texture: Specifies a value that may be the name of a texture.
@@ -886,7 +884,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Set the light source parameters
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glLight.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glLight.xml>`_
 
    :type light: Enumerated constant
    :arg light: Specifies a light. The number of lights depends on the implementation,
@@ -906,7 +904,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Set the lighting model parameters
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glLightModel.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glLightModel.xml>`_
 
    :type pname:  Enumerated constant
    :arg pname: Specifies a single-value light model parameter.
@@ -919,7 +917,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Specify the line stipple pattern
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glLineStipple.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glLineStipple.xml>`_
 
    :type factor: int
    :arg factor: Specifies a multiplier for each bit in the line stipple pattern.
@@ -936,7 +934,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Specify the width of rasterized lines.
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glLineWidth.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glLineWidth.xml>`_
 
    :type width: float
    :arg width: Specifies the width of rasterized lines. The initial value is 1.
@@ -946,7 +944,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Set the display-list base for glCallLists
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glListBase.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glListBase.xml>`_
 
    :type base: unsigned int
    :arg base: Specifies an integer offset that will be added to glCallLists
@@ -957,7 +955,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Replace the current matrix with the identity matrix
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glLoadIdentity.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glLoadIdentity.xml>`_
 
 
 .. function:: glLoadMatrix (m):
@@ -966,7 +964,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Replace the current matrix with the specified matrix
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glLoadMatrix.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glLoadMatrix.xml>`_
 
    :type m: :class:`bgl.Buffer` object. Depends on function prototype.
    :arg m: Specifies a pointer to 16 consecutive values, which are used as the elements
@@ -977,7 +975,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Load a name onto the name stack.
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glLoadName.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glLoadName.xml>`_
 
    :type name: unsigned int
    :arg name: Specifies a name that will replace the top value on the name stack.
@@ -987,7 +985,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Specify a logical pixel operation for color index rendering
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glLogicOp.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glLogicOp.xml>`_
 
    :type opcode: Enumerated constant
    :arg opcode: Specifies a symbolic constant that selects a logical operation.
@@ -999,7 +997,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Define a one-dimensional evaluator
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glMap1.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glMap1.xml>`_
 
    :type target: Enumerated constant
    :arg target: Specifies the kind of values that are generated by the evaluator.
@@ -1024,7 +1022,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Define a two-dimensional evaluator
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glMap2.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glMap2.xml>`_
 
    :type target: Enumerated constant
    :arg target: Specifies the kind of values that are generated by the evaluator.
@@ -1065,7 +1063,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Define a one- or two-dimensional mesh
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glMapGrid.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glMapGrid.xml>`_
 
    :type un: int
    :arg un: Specifies the number of partitions in the grid range interval
@@ -1084,7 +1082,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Specify material parameters for the lighting model.
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glMaterial.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glMaterial.xml>`_
 
    :type face: Enumerated constant
    :arg face: Specifies which face or faces are being updated. Must be one of:
@@ -1101,7 +1099,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Specify which matrix is the current matrix.
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glMatrixMode.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glMatrixMode.xml>`_
 
    :type mode: Enumerated constant
    :arg mode: Specifies which matrix stack is the target for subsequent matrix operations.
@@ -1113,7 +1111,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Multiply the current matrix with the specified matrix
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glMultMatrix.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glMultMatrix.xml>`_
 
    :type m: :class:`bgl.Buffer` object. Depends on function prototype.
    :arg m: Points to 16 consecutive values that are used as the elements of a 4x4 column
@@ -1124,7 +1122,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Create or replace a display list
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glNewList.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glNewList.xml>`_
 
    :type list: unsigned int
    :arg list: Specifies the display list name
@@ -1139,7 +1137,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Set the current normal vector
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glNormal.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glNormal.xml>`_
 
    :type nx, ny, nz: Depends on function prototype. (non - 'v' prototypes only)
    :arg nx, ny, nz: Specify the x, y, and z coordinates of the new current normal.
@@ -1153,7 +1151,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Multiply the current matrix with an orthographic matrix
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glOrtho.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glOrtho.xml>`_
 
    :type left, right: double (float)
    :arg left, right: Specify the coordinates for the left and
@@ -1170,7 +1168,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Place a marker in the feedback buffer
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glPassThrough.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glPassThrough.xml>`_
 
    :type token: float
    :arg token: Specifies a marker value to be placed in the feedback
@@ -1183,7 +1181,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Set up pixel transfer maps
 
-   .. seealso::  `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glPixelMap.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glPixelMap.xml>`_
 
    :type map: Enumerated constant
    :arg map: Specifies a symbolic map name.
@@ -1199,7 +1197,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Set pixel storage modes
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glPixelStore.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glPixelStore.xml>`_
 
    :type pname: Enumerated constant
    :arg pname: Specifies the symbolic name of the parameter to be set.
@@ -1215,7 +1213,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Set pixel transfer modes
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glPixelTransfer.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glPixelTransfer.xml>`_
 
    :type pname: Enumerated constant
    :arg pname: Specifies the symbolic name of the pixel transfer parameter to be set.
@@ -1227,7 +1225,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Specify the pixel zoom factors
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glPixelZoom.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glPixelZoom.xml>`_
 
    :type xfactor, yfactor: float
    :arg xfactor, yfactor: Specify the x and y zoom factors for pixel write operations.
@@ -1237,7 +1235,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Specify the diameter of rasterized points
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glPointSize.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glPointSize.xml>`_
 
    :type size: float
    :arg size: Specifies the diameter of rasterized points. The initial value is 1.
@@ -1247,7 +1245,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Select a polygon rasterization mode
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glPolygonMode.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glPolygonMode.xml>`_
 
    :type face: Enumerated constant
    :arg face: Specifies the polygons that mode applies to.
@@ -1262,7 +1260,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Set the scale and units used to calculate depth values
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glPolygonOffset.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glPolygonOffset.xml>`_
 
    :type factor: float
    :arg factor: Specifies a scale factor that is used to create a variable depth
@@ -1276,7 +1274,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Set the polygon stippling pattern
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glPolygonStipple.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glPolygonStipple.xml>`_
 
    :type mask: :class:`bgl.Buffer` object I{type GL_BYTE}
    :arg mask: Specifies a pointer to a 32x32 stipple pattern that will be unpacked
@@ -1287,35 +1285,35 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Pop the server attribute stack
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glPopAttrib.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glPopAttrib.xml>`_
 
 
 .. function:: glPopClientAttrib():
 
    Pop the client attribute stack
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glPopClientAttrib.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glPopClientAttrib.xml>`_
 
 
 .. function:: glPopMatrix():
 
    Pop the current matrix stack
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glPopMatrix.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glPopMatrix.xml>`_
 
 
 .. function:: glPopName():
 
    Pop the name stack
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glPopName.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glPopName.xml>`_
 
 
 .. function:: glPrioritizeTextures(n, textures, priorities):
 
    Set texture residence priority
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glPrioritizeTextures.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glPrioritizeTextures.xml>`_
 
    :type n: int
    :arg n: Specifies the number of textures to be prioritized.
@@ -1331,7 +1329,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Push the server attribute stack
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glPushAttrib.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glPushAttrib.xml>`_
 
    :type mask: Enumerated constant(s)
    :arg mask: Specifies a mask that indicates which attributes to save.
@@ -1341,7 +1339,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Push the client attribute stack
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glPushClientAttrib.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glPushClientAttrib.xml>`_
 
    :type mask: Enumerated constant(s)
    :arg mask: Specifies a mask that indicates which attributes to save.
@@ -1351,14 +1349,14 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Push the current matrix stack
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glPushMatrix.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glPushMatrix.xml>`_
 
 
 .. function:: glPushName(name):
 
    Push the name stack
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glPushName.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glPushName.xml>`_
 
    :type name: unsigned int
    :arg name: Specifies a name that will be pushed onto the name stack.
@@ -1374,7 +1372,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Specify the raster position for pixel operations
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glRasterPos.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glRasterPos.xml>`_
 
    :type x, y, z, w: Depends on function prototype. (z and w for '3' and '4' prototypes only)
    :arg x, y, z, w: Specify the x,y,z, and w object coordinates (if present) for the
@@ -1406,7 +1404,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Select a color buffer source for pixels.
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glReadBuffer.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glReadBuffer.xml>`_
 
    :type mode: Enumerated constant
    :arg mode: Specifies a color buffer.
@@ -1416,7 +1414,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Read a block of pixels from the frame buffer
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glReadPixels.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glReadPixels.xml>`_
 
    :type x, y: int
    :arg x, y: Specify the window coordinates of the first pixel that is read
@@ -1439,7 +1437,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Draw a rectangle
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glRect.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glRect.xml>`_
 
    :type x1, y1: Depends on function prototype. (for non 'v' prototypes only)
    :arg x1, y1: Specify one vertex of a rectangle
@@ -1454,7 +1452,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Set rasterization mode
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glRenderMode.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glRenderMode.xml>`_
 
    :type mode: Enumerated constant
    :arg mode: Specifies the rasterization mode.
@@ -1466,7 +1464,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Multiply the current matrix by a rotation matrix
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glRotate.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glRotate.xml>`_
 
    :type angle:  Depends on function prototype.
    :arg angle:  Specifies the angle of rotation in degrees.
@@ -1480,7 +1478,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Multiply the current matrix by a general scaling matrix
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glScale.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glScale.xml>`_
 
    :type x, y, z: Depends on function prototype.
    :arg x, y, z: Specify scale factors along the x, y, and z axes, respectively.
@@ -1490,7 +1488,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Define the scissor box
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glScissor.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glScissor.xml>`_
 
    :type x, y: int
    :arg x, y: Specify the lower left corner of the scissor box. Initially (0, 0).
@@ -1504,7 +1502,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Establish a buffer for selection mode values
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glSelectBuffer.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glSelectBuffer.xml>`_
 
    :type size: int
    :arg size: Specifies the size of buffer
@@ -1516,7 +1514,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Select flat or smooth shading
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glShadeModel.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glShadeModel.xml>`_
 
    :type mode: Enumerated constant
    :arg mode: Specifies a symbolic value representing a shading technique.
@@ -1526,7 +1524,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Set function and reference value for stencil testing
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glStencilFuc.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glStencilFuc.xml>`_
 
    :type func: Enumerated constant
    :arg func: Specifies the test function.
@@ -1543,7 +1541,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Control the writing of individual bits in the stencil planes
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glStencilMask.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glStencilMask.xml>`_
 
    :type mask: unsigned int
    :arg mask: Specifies a bit mask to enable and disable writing of individual bits
@@ -1554,7 +1552,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Set stencil test actions
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glStencilOp.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glStencilOp.xml>`_
 
    :type fail: Enumerated constant
    :arg fail: Specifies the action to take when the stencil test fails.
@@ -1582,7 +1580,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Set the current texture coordinates
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glTexCoord.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glTexCoord.xml>`_
 
    :type s, t, r, q: Depends on function prototype. (r and q for '3' and '4' prototypes only)
    :arg s, t, r, q: Specify s, t, r, and q texture coordinates. Not all parameters are
@@ -1598,7 +1596,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Set texture environment parameters
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glTexEnv.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glTexEnv.xml>`_
 
    :type target: Enumerated constant
    :arg target: Specifies a texture environment. Must be GL_TEXTURE_ENV.
@@ -1617,7 +1615,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Control the generation of texture coordinates
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glTexGen.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glTexGen.xml>`_
 
    :type coord: Enumerated constant
    :arg coord: Specifies a texture coordinate.
@@ -1635,7 +1633,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Specify a one-dimensional texture image
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glTexImage1D.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glTexImage1D.xml>`_
 
    :type target: Enumerated constant
    :arg target: Specifies the target texture.
@@ -1662,7 +1660,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Specify a two-dimensional texture image
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glTexImage2D.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glTexImage2D.xml>`_
 
    :type target: Enumerated constant
    :arg target: Specifies the target texture.
@@ -1695,7 +1693,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Set texture parameters
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glTexParameter.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glTexParameter.xml>`_
 
    :type target: Enumerated constant
    :arg target: Specifies the target texture.
@@ -1712,7 +1710,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Multiply the current matrix by a translation matrix
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glTranslate.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glTranslate.xml>`_
 
    :type x, y, z: Depends on function prototype.
    :arg x, y, z: Specify the x, y, and z coordinates of a translation vector.
@@ -1727,7 +1725,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Specify a vertex
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glVertex.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glVertex.xml>`_
 
    :type x, y, z, w: Depends on function prototype (z and w for '3' and '4' prototypes only)
    :arg x, y, z, w: Specify x, y, z, and w coordinates of a vertex. Not all parameters
@@ -1743,7 +1741,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Set the viewport
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glViewport.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glViewport.xml>`_
 
    :type x, y: int
    :arg x, y: Specify the lower left corner of the viewport rectangle,
@@ -1851,7 +1849,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Installs a program object as part of current rendering state
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glUseProgram.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glUseProgram.xml>`_
 
    :type program: int
    :arg program: Specifies the handle of the program object whose executables are to be used as part of current rendering state.
@@ -1861,7 +1859,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Validates a program object
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glValidateProgram.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glValidateProgram.xml>`_
 
    :type program: int
    :arg program: Specifies the handle of the program object to be validated.
@@ -1871,7 +1869,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Links a program object.
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glLinkProgram.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glLinkProgram.xml>`_
 
    :type program: int
    :arg program: Specifies the handle of the program object to be linked.
@@ -1881,7 +1879,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Select active texture unit.
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glActiveTexture.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glActiveTexture.xml>`_
 
    :type texture: int
    :arg texture: Constant in ``GL_TEXTURE0`` 0 - 8
@@ -1891,7 +1889,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Attaches a shader object to a program object.
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glAttachShader.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glAttachShader.xml>`_
 
    :type program: int
    :arg program: Specifies the program object to which a shader object will be attached.
@@ -1903,7 +1901,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Compiles a shader object.
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glCompileShader.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glCompileShader.xml>`_
 
    :type shader: int
    :arg shader: Specifies the shader object to be compiled.
@@ -1913,7 +1911,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Creates a program object
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glCreateProgram.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glCreateProgram.xml>`_
 
    :rtype: int
    :return: The new program or zero if an error occurs.
@@ -1923,7 +1921,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Creates a shader object.
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glCreateShader.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glCreateShader.xml>`_
 
    :type shaderType: Specifies the type of shader to be created.
       Must be one of ``GL_VERTEX_SHADER``,
@@ -1940,7 +1938,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Deletes a program object.
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glDeleteProgram.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glDeleteProgram.xml>`_
 
    :type program: int
    :arg program: Specifies the program object to be deleted.
@@ -1950,7 +1948,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Deletes a shader object.
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glDeleteShader.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glDeleteShader.xml>`_
 
    :type shader: int
    :arg shader: Specifies the shader object to be deleted.
@@ -1960,7 +1958,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Detaches a shader object from a program object to which it is attached.
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glDetachShader.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glDetachShader.xml>`_
 
    :type program: int
    :arg program: Specifies the program object from which to detach the shader object.
@@ -1972,7 +1970,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Returns the handles of the shader objects attached to a program object.
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glGetAttachedShaders.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glGetAttachedShaders.xml>`_
 
    :type program: int
    :arg program: Specifies the program object to be queried.
@@ -1988,7 +1986,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Returns the information log for a program object.
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glGetProgramInfoLog.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glGetProgramInfoLog.xml>`_
 
    :type program: int
    :arg program: Specifies the program object whose information log is to be queried.
@@ -2004,7 +2002,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Returns the information log for a shader object.
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glGetShaderInfoLog.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glGetShaderInfoLog.xml>`_
 
    :type shader: int
    :arg shader: Specifies the shader object whose information log is to be queried.
@@ -2020,7 +2018,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Returns a parameter from a program object.
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glGetProgram.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glGetProgram.xml>`_
 
    :type program: int
    :arg program: Specifies the program object to be queried.
@@ -2034,7 +2032,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Determines if a name corresponds to a shader object.
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glIsShader.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glIsShader.xml>`_
 
    :type shader: int
    :arg shader: Specifies a potential shader object.
@@ -2044,7 +2042,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Determines if a name corresponds to a program object
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glIsProgram.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glIsProgram.xml>`_
 
    :type program: int
    :arg program: Specifies a potential program object.
@@ -2054,7 +2052,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Returns the source code string from a shader object
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glGetShaderSource.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glGetShaderSource.xml>`_
 
    :type shader: int
    :arg shader: Specifies the shader object to be queried.
@@ -2070,7 +2068,7 @@ OpenGL}" and the online NeHe tutorials are two of the best resources.
 
    Replaces the source code in a shader object.
 
-   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man/xhtml/glShaderSource.xml>`_
+   .. seealso:: `OpenGL Docs <http://www.opengl.org/sdk/docs/man2/xhtml/glShaderSource.xml>`_
 
    :type shader: int
    :arg shader: Specifies the handle of the shader object whose source code is to be replaced.

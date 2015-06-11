@@ -52,28 +52,37 @@ struct Main;
 void   BKE_images_init(void);
 void   BKE_images_exit(void);
 
+void    BKE_image_free_buffers(struct Image *image);
 /* call from library */
-void    BKE_image_free(struct Image *me);
+void    BKE_image_free(struct Image *image);
 
 void    BKE_imbuf_stamp_info(struct Scene *scene, struct Object *camera, struct ImBuf *ibuf);
-void    BKE_stamp_buf(struct Scene *scene, struct Object *camera, unsigned char *rect, float *rectf, int width, int height, int channels);
+void    BKE_image_stamp_buf(
+        struct Scene *scene, struct Object *camera,
+        unsigned char *rect, float *rectf, int width, int height, int channels);
 bool    BKE_imbuf_alpha_test(struct ImBuf *ibuf);
 int     BKE_imbuf_write_stamp(struct Scene *scene, struct Object *camera, struct ImBuf *ibuf, const char *name, struct ImageFormatData *imf);
 int     BKE_imbuf_write(struct ImBuf *ibuf, const char *name, struct ImageFormatData *imf);
-int     BKE_imbuf_write_as(struct ImBuf *ibuf, const char *name, struct ImageFormatData *imf, const short is_copy);
-void    BKE_makepicstring(char *string, const char *base, const char *relbase, int frame, const struct ImageFormatData *im_format, const short use_ext, const short use_frames);
-void    BKE_makepicstring_from_type(char *string, const char *base, const char *relbase, int frame, const char imtype, const short use_ext, const short use_frames);
-int     BKE_add_image_extension(char *string, const struct ImageFormatData *im_format);
-int     BKE_add_image_extension_from_type(char *string, const char imtype);
-char    BKE_ftype_to_imtype(const int ftype);
-int     BKE_imtype_to_ftype(const char imtype);
+int     BKE_imbuf_write_as(struct ImBuf *ibuf, const char *name, struct ImageFormatData *imf, const bool is_copy);
+
+void    BKE_image_path_from_imformat(
+        char *string, const char *base, const char *relbase, int frame,
+        const struct ImageFormatData *im_format, const bool use_ext, const bool use_frames);
+void    BKE_image_path_from_imtype(
+        char *string, const char *base, const char *relbase, int frame,
+        const char imtype, const bool use_ext, const bool use_frames);
+
+bool    BKE_image_path_ensure_ext_from_imformat(char *string, const struct ImageFormatData *im_format);
+bool    BKE_image_path_ensure_ext_from_imtype(char *string, const char imtype);
+char    BKE_image_ftype_to_imtype(const int ftype);
+int     BKE_image_imtype_to_ftype(const char imtype);
 
 bool    BKE_imtype_is_movie(const char imtype);
 int     BKE_imtype_supports_zbuf(const char imtype);
 int     BKE_imtype_supports_compress(const char imtype);
 int     BKE_imtype_supports_quality(const char imtype);
 int     BKE_imtype_requires_linear_float(const char imtype);
-char    BKE_imtype_valid_channels(const char imtype);
+char    BKE_imtype_valid_channels(const char imtype, bool write_file);
 char    BKE_imtype_valid_depths(const char imtype);
 
 char    BKE_imtype_from_arg(const char *arg);
@@ -82,13 +91,13 @@ void    BKE_imformat_defaults(struct ImageFormatData *im_format);
 void    BKE_imbuf_to_image_format(struct ImageFormatData *im_format, const struct ImBuf *imbuf);
 
 struct anim *openanim(const char *name, int flags, int streamindex, char colorspace[IMA_MAX_SPACE]);
+struct anim *openanim_noload(const char *name, int flags, int streamindex, char colorspace[IMA_MAX_SPACE]);
 
 void    BKE_image_de_interlace(struct Image *ima, int odd);
 
 void    BKE_image_make_local(struct Image *ima);
 
 void    BKE_image_tag_time(struct Image *ima);
-void    free_old_images(void);
 
 /* ********************************** NEW IMAGE API *********************** */
 
@@ -159,10 +168,12 @@ void BKE_image_alpha_mode_from_extension(struct Image *image);
 /* returns a new image or NULL if it can't load */
 struct Image *BKE_image_load(struct Main *bmain, const char *filepath);
 /* returns existing Image when filename/type is same (frame optional) */
+struct Image *BKE_image_load_exists_ex(const char *filepath, bool *r_exists);
 struct Image *BKE_image_load_exists(const char *filepath);
 
 /* adds image, adds ibuf, generates color or pattern */
-struct Image *BKE_image_add_generated(struct Main *bmain, unsigned int width, unsigned int height, const char *name, int depth, int floatbuf, short gen_type, const float color[4]);
+struct Image *BKE_image_add_generated(
+        struct Main *bmain, unsigned int width, unsigned int height, const char *name, int depth, int floatbuf, short gen_type, const float color[4]);
 /* adds image from imbuf, owns imbuf */
 struct Image *BKE_image_add_from_imbuf(struct ImBuf *ibuf);
 
@@ -174,9 +185,6 @@ void BKE_image_walk_all_users(const struct Main *mainp, void *customdata,
 
 /* ensures an Image exists for viewing nodes or render */
 struct Image *BKE_image_verify_viewer(int type, const char *name);
-
-/* force an ImBuf to become part of Image */
-void BKE_image_assign_ibuf(struct Image *ima, struct ImBuf *ibuf);
 
 /* called on frame change or before render */
 void BKE_image_user_frame_calc(struct ImageUser *iuser, int cfra, int fieldnr);

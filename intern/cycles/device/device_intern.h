@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __DEVICE_INTERN_H__
@@ -22,7 +22,9 @@ CCL_NAMESPACE_BEGIN
 class Device;
 
 Device *device_cpu_create(DeviceInfo& info, Stats &stats, bool background);
+bool device_opencl_init(void);
 Device *device_opencl_create(DeviceInfo& info, Stats &stats, bool background);
+bool device_cuda_init(void);
 Device *device_cuda_create(DeviceInfo& info, Stats &stats, bool background);
 Device *device_network_create(DeviceInfo& info, Stats &stats, const char *address);
 Device *device_multi_create(DeviceInfo& info, Stats &stats, bool background);
@@ -32,6 +34,10 @@ void device_opencl_info(vector<DeviceInfo>& devices);
 void device_cuda_info(vector<DeviceInfo>& devices);
 void device_network_info(vector<DeviceInfo>& devices);
 void device_multi_info(vector<DeviceInfo>& devices);
+
+string device_cpu_capabilities(void);
+string device_opencl_capabilities(void);
+string device_cuda_capabilities(void);
 
 CCL_NAMESPACE_END
 

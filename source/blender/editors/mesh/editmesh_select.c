@@ -38,10 +38,8 @@
 #include "BLI_math.h"
 #include "BLI_rand.h"
 #include "BLI_array.h"
-#include "BLI_smallhash.h"
 
 #include "BKE_context.h"
-#include "BKE_displist.h"
 #include "BKE_report.h"
 #include "BKE_paint.h"
 #include "BKE_editmesh.h"
@@ -59,15 +57,13 @@
 #include "ED_screen.h"
 #include "ED_view3d.h"
 
-#include "BIF_gl.h"
-
 #include "DNA_mesh_types.h"
 #include "DNA_meshdata_types.h"
 #include "DNA_object_types.h"
 
-#include "GPU_extensions.h"
-
 #include "UI_resources.h"
+
+#include "bmesh_tools.h"
 
 #include "mesh_intern.h"  /* own include */
 
@@ -168,7 +164,7 @@ void EDBM_select_mirrored(BMEditMesh *em, bool extend,
 
 void EDBM_automerge(Scene *scene, Object *obedit, bool update, const char hflag)
 {
-	int ok;
+	bool ok;
 	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 
 	ok = BMO_op_callf(em->bm, BMO_FLAG_DEFAULTS,
@@ -216,7 +212,7 @@ bool EDBM_backbuf_border_init(ViewContext *vc, short xmin, short ymin, short xma
 	a = (xmax - xmin + 1) * (ymax - ymin + 1);
 	while (a--) {
 		if (*dr > 0 && *dr <= bm_vertoffs) {
-			BLI_BITMAP_SET(selbuf, *dr);
+			BLI_BITMAP_ENABLE(selbuf, *dr);
 		}
 		dr++;
 	}
@@ -233,7 +229,7 @@ bool EDBM_backbuf_check(unsigned int index)
 		return true;
 
 	if (index > 0 && index <= bm_vertoffs)
-		return BLI_BITMAP_GET_BOOL(selbuf, index);
+		return BLI_BITMAP_TEST_BOOL(selbuf, index);
 
 	return false;
 }
@@ -271,7 +267,7 @@ bool EDBM_backbuf_border_mask_init(ViewContext *vc, const int mcords[][2], short
 	
 	/* method in use for face selecting too */
 	if (vc->obedit == NULL) {
-		if (!(paint_facesel_test(vc->obact) || paint_vertsel_test(vc->obact))) {
+		if (!BKE_paint_select_elem_test(vc->obact)) {
 			return false;
 		}
 	}
@@ -300,7 +296,7 @@ bool EDBM_backbuf_border_mask_init(ViewContext *vc, const int mcords[][2], short
 	a = (xmax - xmin + 1) * (ymax - ymin + 1);
 	while (a--) {
 		if (*dr > 0 && *dr <= bm_vertoffs && *dr_mask == true) {
-			BLI_BITMAP_SET(selbuf, *dr);
+			BLI_BITMAP_ENABLE(selbuf, *dr);
 		}
 		dr++; dr_mask++;
 	}
@@ -320,7 +316,7 @@ bool EDBM_backbuf_circle_init(ViewContext *vc, short xs, short ys, short rads)
 	
 	/* method in use for face selecting too */
 	if (vc->obedit == NULL) {
-		if (!(paint_facesel_test(vc->obact) || paint_vertsel_test(vc->obact))) {
+		if (!BKE_paint_select_elem_test(vc->obact)) {
 			return false;
 		}
 	}
@@ -343,7 +339,7 @@ bool EDBM_backbuf_circle_init(ViewContext *vc, short xs, short ys, short rads)
 		for (xc = -rads; xc <= rads; xc++, dr++) {
 			if (xc * xc + yc * yc < radsq) {
 				if (*dr > 0 && *dr <= bm_vertoffs) {
-					BLI_BITMAP_SET(selbuf, *dr);
+					BLI_BITMAP_ENABLE(selbuf, *dr);
 				}
 			}
 		}
@@ -385,8 +381,6 @@ static void findnearestvert__doClosest(void *userData, BMVert *eve, const float 
 		}
 	}
 }
-
-
 
 
 static bool findnearestvert__backbufIndextest(void *handle, unsigned int index)
@@ -649,7 +643,7 @@ BMFace *EDBM_face_find_nearest(ViewContext *vc, float *r_dist)
 static int unified_findnearest(ViewContext *vc, BMVert **r_eve, BMEdge **r_eed, BMFace **r_efa)
 {
 	BMEditMesh *em = vc->em;
-	float dist = 75.0f;
+	float dist = ED_view3d_select_dist_px();
 	
 	*r_eve = NULL;
 	*r_eed = NULL;
@@ -712,6 +706,7 @@ static EnumPropertyItem prop_similar_types[] = {
 	{SIMFACE_PERIMETER, "PERIMETER", 0, "Perimeter", ""},
 	{SIMFACE_NORMAL, "NORMAL", 0, "Normal", ""},
 	{SIMFACE_COPLANAR, "COPLANAR", 0, "Co-planar", ""},
+	{SIMFACE_SMOOTH, "SMOOTH", 0, "Flat/Smooth", ""},
 #ifdef WITH_FREESTYLE
 	{SIMFACE_FREESTYLE, "FREESTYLE_FACE", 0, "Freestyle Face Marks", ""},
 #endif
@@ -889,7 +884,7 @@ static EnumPropertyItem *select_similar_type_itemf(bContext *C, PointerRNA *UNUS
 #ifdef WITH_FREESTYLE
 			const int a_end = SIMFACE_FREESTYLE;
 #else
-			const int a_end = SIMFACE_COPLANAR;
+			const int a_end = SIMFACE_SMOOTH;
 #endif
 			for (a = SIMFACE_MATERIAL; a <= a_end; a++) {
 				RNA_enum_items_add_value(&item, &totitem, prop_similar_types, a);
@@ -929,6 +924,97 @@ void MESH_OT_select_similar(wmOperatorType *ot)
 	RNA_def_enum(ot->srna, "compare", prop_similar_compare_types, SIM_CMP_EQ, "Compare", "");
 
 	RNA_def_float(ot->srna, "threshold", 0.0, 0.0, 1.0, "Threshold", "", 0.0, 1.0);
+}
+
+
+/* -------------------------------------------------------------------- */
+/* Select Similar Regions */
+
+static int edbm_select_similar_region_exec(bContext *C, wmOperator *op)
+{
+	Object *obedit = CTX_data_edit_object(C);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
+	BMesh *bm = em->bm;
+	bool changed = false;
+
+	/* group vars */
+	int *groups_array;
+	int (*group_index)[2];
+	int group_tot;
+	int i;
+
+	if (bm->totfacesel < 2) {
+		BKE_report(op->reports, RPT_ERROR, "No face regions selected");
+		return OPERATOR_CANCELLED;
+	}
+
+	groups_array = MEM_mallocN(sizeof(*groups_array) * bm->totfacesel, __func__);
+	group_tot = BM_mesh_calc_face_groups(bm, groups_array, &group_index,
+	                                     NULL, NULL,
+	                                     BM_ELEM_SELECT, BM_VERT);
+
+	BM_mesh_elem_table_ensure(bm, BM_FACE);
+
+	for (i = 0; i < group_tot; i++) {
+		ListBase faces_regions;
+		int tot;
+
+		const int fg_sta = group_index[i][0];
+		const int fg_len = group_index[i][1];
+		int j;
+		BMFace **fg = MEM_mallocN(sizeof(*fg) * fg_len, __func__);
+
+
+		for (j = 0; j < fg_len; j++) {
+			fg[j] = BM_face_at_index(bm, groups_array[fg_sta + j]);
+		}
+
+		tot = BM_mesh_region_match(bm, fg, fg_len, &faces_regions);
+
+		MEM_freeN(fg);
+
+		if (tot) {
+			LinkData *link;
+			while ((link = BLI_pophead(&faces_regions))) {
+				BMFace *f, **faces = link->data;
+				unsigned int i = 0;
+				while ((f = faces[i++])) {
+					BM_face_select_set(bm, f, true);
+				}
+				MEM_freeN(faces);
+				MEM_freeN(link);
+
+				changed = true;
+			}
+		}
+	}
+
+	MEM_freeN(groups_array);
+	MEM_freeN(group_index);
+
+	if (changed) {
+		WM_event_add_notifier(C, NC_GEOM | ND_SELECT, obedit);
+	}
+	else {
+		BKE_report(op->reports, RPT_WARNING, "No matching face regions found");
+	}
+
+	return OPERATOR_FINISHED;
+}
+
+void MESH_OT_select_similar_region(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Select Similar Regions";
+	ot->idname = "MESH_OT_select_similar_region";
+	ot->description = "Select similar face regions to the current selection";
+
+	/* api callbacks */
+	ot->exec = edbm_select_similar_region_exec;
+	ot->poll = ED_operator_editmesh;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
 
 
@@ -1006,6 +1092,34 @@ void MESH_OT_select_mode(wmOperatorType *ot)
 /* ***************************************************** */
 
 /* ****************  LOOP SELECTS *************** */
+
+static void walker_select_count(BMEditMesh *em, int walkercode, void *start, const bool select, const bool select_mix,
+                                int *r_totsel, int *r_totunsel)
+{
+	BMesh *bm = em->bm;
+	BMElem *ele;
+	BMWalker walker;
+	int tot[2] = {0, 0};
+
+	BMW_init(&walker, bm, walkercode,
+	         BMW_MASK_NOP, BMW_MASK_NOP, BMW_MASK_NOP,
+	         BMW_FLAG_TEST_HIDDEN,
+	         BMW_NIL_LAY);
+
+	for (ele = BMW_begin(&walker, start); ele; ele = BMW_step(&walker)) {
+		tot[(BM_elem_flag_test_bool(ele, BM_ELEM_SELECT) != select)] += 1;
+
+		if (!select_mix && tot[0] && tot[1]) {
+			tot[0] = tot[1] = -1;
+			break;
+		}
+	}
+
+	*r_totsel = tot[0];
+	*r_totunsel = tot[1];
+
+	BMW_end(&walker);
+}
 
 static void walker_select(BMEditMesh *em, int walkercode, void *start, const bool select)
 {
@@ -1101,13 +1215,69 @@ void MESH_OT_loop_multi_select(wmOperatorType *ot)
 
 /* ***************** loop select (non modal) ************** */
 
-static void mouse_mesh_loop(bContext *C, const int mval[2], bool extend, bool deselect, bool toggle, bool ring)
+static void mouse_mesh_loop_face(BMEditMesh *em, BMEdge *eed, bool select, bool select_clear)
+{
+	if (select_clear) {
+		EDBM_flag_disable_all(em, BM_ELEM_SELECT);
+	}
+
+	walker_select(em, BMW_FACELOOP, eed, select);
+}
+
+static void mouse_mesh_loop_edge_ring(BMEditMesh *em, BMEdge *eed, bool select, bool select_clear)
+{
+	if (select_clear) {
+		EDBM_flag_disable_all(em, BM_ELEM_SELECT);
+	}
+
+	walker_select(em, BMW_EDGERING, eed, select);
+}
+
+static void mouse_mesh_loop_edge(BMEditMesh *em, BMEdge *eed, bool select, bool select_clear, bool select_cycle)
+{
+	bool edge_boundary = false;
+
+	/* cycle between BMW_LOOP / BMW_EDGEBOUNDARY  */
+	if (select_cycle && BM_edge_is_boundary(eed)) {
+		int tot[2];
+
+		/* if the loops selected toggle the boundaries */
+		walker_select_count(em, BMW_LOOP, eed, select, false,
+		                    &tot[0], &tot[1]);
+		if (tot[select] == 0) {
+			edge_boundary = true;
+
+			/* if the boundaries selected, toggle back to the loop */
+			walker_select_count(em, BMW_EDGEBOUNDARY, eed, select, false,
+			                    &tot[0], &tot[1]);
+			if (tot[select] == 0) {
+				edge_boundary = false;
+			}
+		}
+	}
+
+	if (select_clear) {
+		EDBM_flag_disable_all(em, BM_ELEM_SELECT);
+	}
+
+	if (edge_boundary) {
+		walker_select(em, BMW_EDGEBOUNDARY, eed, select);
+	}
+	else {
+		walker_select(em, BMW_LOOP, eed, select);
+	}
+}
+
+
+static bool mouse_mesh_loop(bContext *C, const int mval[2], bool extend, bool deselect, bool toggle, bool ring)
 {
 	ViewContext vc;
 	BMEditMesh *em;
 	BMEdge *eed;
 	bool select = true;
-	float dist = 50.0f;
+	bool select_clear = false;
+	bool select_cycle = true;
+	float dist = ED_view3d_select_dist_px() * 0.6666f;
 	float mvalf[2];
 
 	em_setup_viewcontext(C, &vc);
@@ -1119,105 +1289,105 @@ static void mouse_mesh_loop(bContext *C, const int mval[2], bool extend, bool de
 	view3d_validate_backbuf(&vc);
 
 	eed = EDBM_edge_find_nearest(&vc, &dist);
-	if (eed) {
-		if (extend == false && deselect == false && toggle == false) {
-			EDBM_flag_disable_all(em, BM_ELEM_SELECT);
-		}
-	
-		if (extend) {
-			select = true;
-		}
-		else if (deselect) {
-			select = false;
-		}
-		else if (BM_elem_flag_test(eed, BM_ELEM_SELECT) == 0) {
-			select = true;
-		}
-		else if (toggle) {
-			select = false;
-		}
+	if (eed == NULL) {
+		return false;
+	}
 
-		if (em->selectmode & SCE_SELECT_FACE) {
-			walker_select(em, BMW_FACELOOP, eed, select);
+	if (extend == false && deselect == false && toggle == false) {
+		select_clear = true;
+	}
+
+	if (extend) {
+		select = true;
+	}
+	else if (deselect) {
+		select = false;
+	}
+	else if (select_clear || (BM_elem_flag_test(eed, BM_ELEM_SELECT) == 0)) {
+		select = true;
+	}
+	else if (toggle) {
+		select = false;
+		select_cycle = false;
+	}
+
+	if (em->selectmode & SCE_SELECT_FACE) {
+		mouse_mesh_loop_face(em, eed, select, select_clear);
+	}
+	else {
+		if (ring) {
+			mouse_mesh_loop_edge_ring(em, eed, select, select_clear);
+		}
+		else {
+			mouse_mesh_loop_edge(em, eed, select, select_clear, select_cycle);
+		}
+	}
+
+	EDBM_selectmode_flush(em);
+
+	/* sets as active, useful for other tools */
+	if (select) {
+		if (em->selectmode & SCE_SELECT_VERTEX) {
+			/* Find nearest vert from mouse
+			 * (initialize to large values incase only one vertex can be projected) */
+			float v1_co[2], v2_co[2];
+			float length_1 = FLT_MAX;
+			float length_2 = FLT_MAX;
+
+			/* We can't be sure this has already been set... */
+			ED_view3d_init_mats_rv3d(vc.obedit, vc.rv3d);
+
+			if (ED_view3d_project_float_object(vc.ar, eed->v1->co, v1_co, V3D_PROJ_TEST_CLIP_NEAR) == V3D_PROJ_RET_OK) {
+				length_1 = len_squared_v2v2(mvalf, v1_co);
+			}
+
+			if (ED_view3d_project_float_object(vc.ar, eed->v2->co, v2_co, V3D_PROJ_TEST_CLIP_NEAR) == V3D_PROJ_RET_OK) {
+				length_2 = len_squared_v2v2(mvalf, v2_co);
+			}
+#if 0
+			printf("mouse to v1: %f\nmouse to v2: %f\n", len_squared_v2v2(mvalf, v1_co),
+			       len_squared_v2v2(mvalf, v2_co));
+#endif
+			BM_select_history_store(em->bm, (length_1 < length_2) ? eed->v1 : eed->v2);
 		}
 		else if (em->selectmode & SCE_SELECT_EDGE) {
-			if (ring)
-				walker_select(em, BMW_EDGERING, eed, select);
-			else
-				walker_select(em, BMW_LOOP, eed, select);
+			BM_select_history_store(em->bm, eed);
 		}
-		else if (em->selectmode & SCE_SELECT_VERTEX) {
-			if (ring)
-				walker_select(em, BMW_EDGERING, eed, select);
+		else if (em->selectmode & SCE_SELECT_FACE) {
+			/* Select the face of eed which is the nearest of mouse. */
+			BMFace *f, *efa = NULL;
+			BMIter iterf;
+			float best_dist = FLT_MAX;
 
-			else
-				walker_select(em, BMW_LOOP, eed, select);
-		}
+			/* We can't be sure this has already been set... */
+			ED_view3d_init_mats_rv3d(vc.obedit, vc.rv3d);
 
-		EDBM_selectmode_flush(em);
+			BM_ITER_ELEM (f, &iterf, eed, BM_FACES_OF_EDGE) {
+				if (BM_elem_flag_test(f, BM_ELEM_SELECT)) {
+					float cent[3];
+					float co[2], tdist;
 
-		/* sets as active, useful for other tools */
-		if (select) {
-			if (em->selectmode & SCE_SELECT_VERTEX) {
-				/* Find nearest vert from mouse
-				 * (initialize to large values incase only one vertex can be projected) */
-				float v1_co[2], v2_co[2];
-				float length_1 = FLT_MAX;
-				float length_2 = FLT_MAX;
-
-				/* We can't be sure this has already been set... */
-				ED_view3d_init_mats_rv3d(vc.obedit, vc.rv3d);
-
-				if (ED_view3d_project_float_object(vc.ar, eed->v1->co, v1_co, V3D_PROJ_TEST_CLIP_NEAR) == V3D_PROJ_RET_OK) {
-					length_1 = len_squared_v2v2(mvalf, v1_co);
-				}
-
-				if (ED_view3d_project_float_object(vc.ar, eed->v2->co, v2_co, V3D_PROJ_TEST_CLIP_NEAR) == V3D_PROJ_RET_OK) {
-					length_2 = len_squared_v2v2(mvalf, v2_co);
-				}
-#if 0
-				printf("mouse to v1: %f\nmouse to v2: %f\n", len_squared_v2v2(mvalf, v1_co),
-				       len_squared_v2v2(mvalf, v2_co));
-#endif
-				BM_select_history_store(em->bm, (length_1 < length_2) ? eed->v1 : eed->v2);
-			}
-			else if (em->selectmode & SCE_SELECT_EDGE) {
-				BM_select_history_store(em->bm, eed);
-			}
-			else if (em->selectmode & SCE_SELECT_FACE) {
-				/* Select the face of eed which is the nearest of mouse. */
-				BMFace *f, *efa = NULL;
-				BMIter iterf;
-				float best_dist = FLT_MAX;
-
-				/* We can't be sure this has already been set... */
-				ED_view3d_init_mats_rv3d(vc.obedit, vc.rv3d);
-
-				BM_ITER_ELEM (f, &iterf, eed, BM_FACES_OF_EDGE) {
-					if (BM_elem_flag_test(f, BM_ELEM_SELECT)) {
-						float cent[3];
-						float co[2], tdist;
-
-						BM_face_calc_center_mean(f, cent);
-						if (ED_view3d_project_float_object(vc.ar, cent, co, V3D_PROJ_TEST_CLIP_NEAR) == V3D_PROJ_RET_OK) {
-							tdist = len_squared_v2v2(mvalf, co);
-							if (tdist < best_dist) {
-/*								printf("Best face: %p (%f)\n", f, tdist);*/
-								best_dist = tdist;
-								efa = f;
-							}
+					BM_face_calc_center_mean(f, cent);
+					if (ED_view3d_project_float_object(vc.ar, cent, co, V3D_PROJ_TEST_CLIP_NEAR) == V3D_PROJ_RET_OK) {
+						tdist = len_squared_v2v2(mvalf, co);
+						if (tdist < best_dist) {
+/*							printf("Best face: %p (%f)\n", f, tdist);*/
+							best_dist = tdist;
+							efa = f;
 						}
 					}
 				}
-				if (efa) {
-					BM_mesh_active_face_set(em->bm, efa);
-					BM_select_history_store(em->bm, efa);
-				}
+			}
+			if (efa) {
+				BM_mesh_active_face_set(em->bm, efa);
+				BM_select_history_store(em->bm, efa);
 			}
 		}
-
-		WM_event_add_notifier(C, NC_GEOM | ND_SELECT, vc.obedit);
 	}
+
+	WM_event_add_notifier(C, NC_GEOM | ND_SELECT, vc.obedit);
+
+	return true;
 }
 
 static int edbm_select_loop_invoke(bContext *C, wmOperator *op, const wmEvent *event)
@@ -1225,14 +1395,17 @@ static int edbm_select_loop_invoke(bContext *C, wmOperator *op, const wmEvent *e
 	
 	view3d_operator_needs_opengl(C);
 	
-	mouse_mesh_loop(C, event->mval,
-	                RNA_boolean_get(op->ptr, "extend"),
-	                RNA_boolean_get(op->ptr, "deselect"),
-	                RNA_boolean_get(op->ptr, "toggle"),
-	                RNA_boolean_get(op->ptr, "ring"));
-	
-	/* cannot do tweaks for as long this keymap is after transform map */
-	return OPERATOR_FINISHED;
+	if (mouse_mesh_loop(C, event->mval,
+	                    RNA_boolean_get(op->ptr, "extend"),
+	                    RNA_boolean_get(op->ptr, "deselect"),
+	                    RNA_boolean_get(op->ptr, "toggle"),
+	                    RNA_boolean_get(op->ptr, "ring")))
+	{
+		return OPERATOR_FINISHED;
+	}
+	else {
+		return OPERATOR_CANCELLED;
+	}
 }
 
 void MESH_OT_loop_select(wmOperatorType *ot)
@@ -1560,12 +1733,24 @@ void EDBM_selectmode_set(BMEditMesh *em)
 }
 
 /**
+ * Expand & Contract the Selection
+ * (used when chaning modes and Ctrl key held)
+ *
  * Flush the selection up:
  * - vert -> edge
+ * - vert -> face
  * - edge -> face
+ *
+ * Flush the selection down:
+ * - face -> edge
+ * - face -> vert
+ * - edge -> vert
  */
 void EDBM_selectmode_convert(BMEditMesh *em, const short selectmode_old, const short selectmode_new)
 {
+	BMesh *bm = em->bm;
+
+	BMVert *eve;
 	BMEdge *eed;
 	BMFace *efa;
 	BMIter iter;
@@ -1574,54 +1759,96 @@ void EDBM_selectmode_convert(BMEditMesh *em, const short selectmode_old, const s
 
 	/* have to find out what the selectionmode was previously */
 	if (selectmode_old == SCE_SELECT_VERTEX) {
-		if (em->bm->totvertsel == 0) {
+		if (bm->totvertsel == 0) {
 			/* pass */
 		}
 		else if (selectmode_new == SCE_SELECT_EDGE) {
+			/* flush up (vert -> edge) */
+
 			/* select all edges associated with every selected vert */
-			BM_ITER_MESH (eed, &iter, em->bm, BM_EDGES_OF_MESH) {
+			BM_ITER_MESH (eed, &iter, bm, BM_EDGES_OF_MESH) {
 				BM_elem_flag_set(eed, BM_ELEM_TAG, BM_edge_is_any_vert_flag_test(eed, BM_ELEM_SELECT));
 			}
 
-			BM_ITER_MESH (eed, &iter, em->bm, BM_EDGES_OF_MESH) {
+			BM_ITER_MESH (eed, &iter, bm, BM_EDGES_OF_MESH) {
 				if (BM_elem_flag_test(eed, BM_ELEM_TAG)) {
-					BM_edge_select_set(em->bm, eed, true);
+					BM_edge_select_set(bm, eed, true);
 				}
 			}
 		}
 		else if (selectmode_new == SCE_SELECT_FACE) {
+			/* flush up (vert -> face) */
+
 			/* select all faces associated with every selected vert */
-			BM_ITER_MESH (efa, &iter, em->bm, BM_FACES_OF_MESH) {
+			BM_ITER_MESH (efa, &iter, bm, BM_FACES_OF_MESH) {
 				BM_elem_flag_set(efa, BM_ELEM_TAG, BM_face_is_any_vert_flag_test(efa, BM_ELEM_SELECT));
 			}
 
-			BM_ITER_MESH (efa, &iter, em->bm, BM_FACES_OF_MESH) {
+			BM_ITER_MESH (efa, &iter, bm, BM_FACES_OF_MESH) {
 				if (BM_elem_flag_test(efa, BM_ELEM_TAG)) {
-					BM_face_select_set(em->bm, efa, true);
+					BM_face_select_set(bm, efa, true);
 				}
 			}
 		}
 	}
 	else if (selectmode_old == SCE_SELECT_EDGE) {
-		if (em->bm->totedgesel == 0) {
+		if (bm->totedgesel == 0) {
 			/* pass */
 		}
 		else if (selectmode_new == SCE_SELECT_FACE) {
+			/* flush up (edge -> face) */
+
 			/* select all faces associated with every selected edge */
-			BM_ITER_MESH (efa, &iter, em->bm, BM_FACES_OF_MESH) {
+			BM_ITER_MESH (efa, &iter, bm, BM_FACES_OF_MESH) {
 				BM_elem_flag_set(efa, BM_ELEM_TAG, BM_face_is_any_edge_flag_test(efa, BM_ELEM_SELECT));
 			}
 
-			BM_ITER_MESH (efa, &iter, em->bm, BM_FACES_OF_MESH) {
+			BM_ITER_MESH (efa, &iter, bm, BM_FACES_OF_MESH) {
 				if (BM_elem_flag_test(efa, BM_ELEM_TAG)) {
-					BM_face_select_set(em->bm, efa, true);
+					BM_face_select_set(bm, efa, true);
 				}
 			}
+		}
+		else if (selectmode_new == SCE_SELECT_VERTEX) {
+			/* flush down (edge -> vert) */
+
+			BM_ITER_MESH (eve, &iter, bm, BM_VERTS_OF_MESH) {
+				if (!BM_vert_is_all_edge_flag_test(eve, BM_ELEM_SELECT, true)) {
+					BM_vert_select_set(bm, eve, false);
+				}
+			}
+			/* deselect edges without both verts selected */
+			BM_mesh_deselect_flush(bm);
+		}
+	}
+	else if (selectmode_old == SCE_SELECT_FACE) {
+		if (bm->totfacesel == 0) {
+			/* pass */
+		}
+		else if (selectmode_new == SCE_SELECT_EDGE) {
+			/* flush down (face -> edge) */
+
+			BM_ITER_MESH (eed, &iter, bm, BM_EDGES_OF_MESH) {
+				if (!BM_edge_is_all_face_flag_test(eed, BM_ELEM_SELECT, true)) {
+					BM_edge_select_set(bm, eed, false);
+				}
+			}
+		}
+		else if (selectmode_new == SCE_SELECT_VERTEX) {
+			/* flush down (face -> vert) */
+
+			BM_ITER_MESH (eve, &iter, bm, BM_VERTS_OF_MESH) {
+				if (!BM_vert_is_all_face_flag_test(eve, BM_ELEM_SELECT, true)) {
+					BM_vert_select_set(bm, eve, false);
+				}
+			}
+			/* deselect faces without verts selected */
+			BM_mesh_deselect_flush(bm);
 		}
 	}
 }
 
-/* user facing function, does notification and undo push */
+/* user facing function, does notification */
 bool EDBM_selectmode_toggle(bContext *C, const short selectmode_new,
                             const int action, const bool use_extend, const bool use_expand)
 {
@@ -1668,22 +1895,24 @@ bool EDBM_selectmode_toggle(bContext *C, const short selectmode_new,
 			break;
 	}
 
+	if (use_extend == 0 || em->selectmode == 0) {
+		if (use_expand) {
+			const short selmode_max = highest_order_bit_s(ts->selectmode);
+			EDBM_selectmode_convert(em, selmode_max, selectmode_new);
+		}
+	}
+
 	switch (selectmode_new) {
 		case SCE_SELECT_VERTEX:
-			if (use_extend == 0 || em->selectmode == 0)
+			if (use_extend == 0 || em->selectmode == 0) {
 				em->selectmode = SCE_SELECT_VERTEX;
+			}
 			ts->selectmode = em->selectmode;
 			EDBM_selectmode_set(em);
 			ret = true;
 			break;
 		case SCE_SELECT_EDGE:
 			if (use_extend == 0 || em->selectmode == 0) {
-				if (use_expand) {
-					const short selmode_max = highest_order_bit_s(ts->selectmode);
-					if (selmode_max == SCE_SELECT_VERTEX) {
-						EDBM_selectmode_convert(em, selmode_max, SCE_SELECT_EDGE);
-					}
-				}
 				em->selectmode = SCE_SELECT_EDGE;
 			}
 			ts->selectmode = em->selectmode;
@@ -1692,13 +1921,6 @@ bool EDBM_selectmode_toggle(bContext *C, const short selectmode_new,
 			break;
 		case SCE_SELECT_FACE:
 			if (use_extend == 0 || em->selectmode == 0) {
-				if (use_expand) {
-					const short selmode_max = highest_order_bit_s(ts->selectmode);
-					if (ELEM(selmode_max, SCE_SELECT_VERTEX, SCE_SELECT_EDGE)) {
-						EDBM_selectmode_convert(em, selmode_max, SCE_SELECT_FACE);
-					}
-				}
-
 				em->selectmode = SCE_SELECT_FACE;
 			}
 			ts->selectmode = em->selectmode;
@@ -1749,7 +1971,7 @@ bool EDBM_selectmode_disable(Scene *scene, BMEditMesh *em,
 	}
 }
 
-void EDBM_deselect_by_material(BMEditMesh *em, const short index, const short select)
+void EDBM_deselect_by_material(BMEditMesh *em, const short index, const bool select)
 {
 	BMIter iter;
 	BMFace *efa;
@@ -1906,7 +2128,7 @@ static int edbm_select_linked_exec(bContext *C, wmOperator *op)
 			BM_elem_flag_set(v, BM_ELEM_TAG, BM_elem_flag_test(v, BM_ELEM_SELECT));
 		}
 
-		BMW_init(&walker, em->bm, BMW_SHELL,
+		BMW_init(&walker, em->bm, BMW_VERT_SHELL,
 		         BMW_MASK_NOP, BMW_MASK_NOP, BMW_MASK_NOP,
 		         BMW_FLAG_TEST_HIDDEN,
 		         BMW_NIL_LAY);
@@ -1956,7 +2178,7 @@ static int edbm_select_linked_pick_invoke(bContext *C, wmOperator *op, const wmE
 	BMVert *eve;
 	BMEdge *e, *eed;
 	BMFace *efa;
-	int sel = !RNA_boolean_get(op->ptr, "deselect");
+	const bool sel = !RNA_boolean_get(op->ptr, "deselect");
 
 	int limit;
 
@@ -2024,7 +2246,7 @@ static int edbm_select_linked_pick_invoke(bContext *C, wmOperator *op, const wmE
 			eed = eve->e;
 		}
 
-		BMW_init(&walker, bm, BMW_SHELL,
+		BMW_init(&walker, bm, BMW_VERT_SHELL,
 		         BMW_MASK_NOP, BMW_MASK_NOP, BMW_MASK_NOP,
 		         BMW_FLAG_TEST_HIDDEN,
 		         BMW_NIL_LAY);
@@ -2075,7 +2297,7 @@ static int edbm_select_face_by_sides_exec(bContext *C, wmOperator *op)
 
 	BM_ITER_MESH (efa, &iter, em->bm, BM_FACES_OF_MESH) {
 
-		int select;
+		bool select;
 
 		switch (type) {
 			case 0:
@@ -2248,12 +2470,13 @@ void MESH_OT_select_mirror(wmOperatorType *ot)
 
 /* ******************** **************** */
 
-static int edbm_select_more_exec(bContext *C, wmOperator *UNUSED(op))
+static int edbm_select_more_exec(bContext *C, wmOperator *op)
 {
 	Object *obedit = CTX_data_edit_object(C);
 	BMEditMesh *em = BKE_editmesh_from_object(obedit);
+	const bool use_face_step = RNA_boolean_get(op->ptr, "use_face_step");
 
-	EDBM_select_more(em);
+	EDBM_select_more(em, use_face_step);
 
 	WM_event_add_notifier(C, NC_GEOM | ND_SELECT, obedit);
 	return OPERATOR_FINISHED;
@@ -2272,14 +2495,17 @@ void MESH_OT_select_more(wmOperatorType *ot)
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+
+	RNA_def_boolean(ot->srna, "use_face_step", true, "Face Step", "Connected faces (instead of edges)");
 }
 
-static int edbm_select_less_exec(bContext *C, wmOperator *UNUSED(op))
+static int edbm_select_less_exec(bContext *C, wmOperator *op)
 {
 	Object *obedit = CTX_data_edit_object(C);
 	BMEditMesh *em = BKE_editmesh_from_object(obedit);
+	const bool use_face_step = RNA_boolean_get(op->ptr, "use_face_step");
 
-	EDBM_select_less(em);
+	EDBM_select_less(em, use_face_step);
 
 	WM_event_add_notifier(C, NC_GEOM | ND_SELECT, obedit);
 	return OPERATOR_FINISHED;
@@ -2298,6 +2524,29 @@ void MESH_OT_select_less(wmOperatorType *ot)
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+
+	RNA_def_boolean(ot->srna, "use_face_step", true, "Face Step", "Connected faces (instead of edges)");
+}
+
+/**
+ * Check if we're connected to another selected efge.
+ */
+static bool bm_edge_is_select_isolated(BMEdge *e)
+{
+	BMIter viter;
+	BMVert *v;
+
+	BM_ITER_ELEM (v, &viter, e, BM_VERTS_OF_EDGE) {
+		BMIter eiter;
+		BMEdge *e_other;
+
+		BM_ITER_ELEM (e_other, &eiter, v, BM_EDGES_OF_VERT) {
+			if ((e_other != e) && BM_elem_flag_test(e_other, BM_ELEM_SELECT)) {
+				return false;
+			}
+		}
+	}
+	return true;
 }
 
 /* Walk all reachable elements of the same type as h_act in breadth-first
@@ -2327,8 +2576,10 @@ static void walker_deselect_nth(BMEditMesh *em, int nth, int offset, BMHeader *h
 			mask_vert = BMO_ELE_TAG;
 			break;
 		case BM_EDGE:
+			/* When an edge has no connected-selected edges,
+			 * use face-stepping (supports edge-rings) */
 			itertype = BM_EDGES_OF_MESH;
-			walktype = BMW_SHELL;
+			walktype = bm_edge_is_select_isolated((BMEdge *)h_act) ? BMW_FACE_SHELL : BMW_VERT_SHELL;
 			flushtype = SCE_SELECT_EDGE;
 			mask_edge = BMO_ELE_TAG;
 			break;
@@ -2467,6 +2718,8 @@ static int edbm_select_nth_exec(bContext *C, wmOperator *op)
 
 	/* so input of offset zero ends up being (nth - 1) */
 	offset = mod_i(offset, nth);
+	/* depth starts at 1, this keeps active item selected */
+	offset -= 1;
 
 	if (edbm_deselect_nth(em, nth, offset) == false) {
 		BKE_report(op->reports, RPT_ERROR, "Mesh has no active vert/edge/face");
@@ -2649,6 +2902,13 @@ static int edbm_select_non_manifold_exec(bContext *C, wmOperator *op)
 	BMEdge *e;
 	BMIter iter;
 
+	const bool use_wire = RNA_boolean_get(op->ptr, "use_wire");
+	const bool use_boundary = RNA_boolean_get(op->ptr, "use_boundary");
+	const bool use_multi_face = RNA_boolean_get(op->ptr, "use_multi_face");
+	const bool use_non_contiguous = RNA_boolean_get(op->ptr, "use_non_contiguous");
+	const bool use_verts = RNA_boolean_get(op->ptr, "use_verts");
+
+
 	if (!RNA_boolean_get(op->ptr, "extend"))
 		EDBM_flag_disable_all(em, BM_ELEM_SELECT);
 
@@ -2661,15 +2921,30 @@ static int edbm_select_non_manifold_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 	
-	BM_ITER_MESH (v, &iter, em->bm, BM_VERTS_OF_MESH) {
-		if (!BM_elem_flag_test(v, BM_ELEM_HIDDEN) && !BM_vert_is_manifold(v)) {
-			BM_vert_select_set(em->bm, v, true);
+	if (use_verts) {
+		BM_ITER_MESH (v, &iter, em->bm, BM_VERTS_OF_MESH) {
+			if (!BM_elem_flag_test(v, BM_ELEM_HIDDEN)) {
+				if (!BM_vert_is_manifold(v)) {
+					BM_vert_select_set(em->bm, v, true);
+				}
+			}
 		}
 	}
 	
-	BM_ITER_MESH (e, &iter, em->bm, BM_EDGES_OF_MESH) {
-		if (!BM_elem_flag_test(e, BM_ELEM_HIDDEN) && !BM_edge_is_manifold(e)) {
-			BM_edge_select_set(em->bm, e, true);
+	if (use_wire || use_boundary || use_multi_face || use_non_contiguous) {
+		BM_ITER_MESH (e, &iter, em->bm, BM_EDGES_OF_MESH) {
+			if (!BM_elem_flag_test(e, BM_ELEM_HIDDEN)) {
+				if ((use_wire && BM_edge_is_wire(e)) ||
+				    (use_boundary && BM_edge_is_boundary(e)) ||
+				    (use_non_contiguous && (BM_edge_is_manifold(e) && !BM_edge_is_contiguous(e))) ||
+				    (use_multi_face && (BM_edge_face_count(e) > 2)))
+				{
+					/* check we never select perfect edge (in test above) */
+					BLI_assert(!(BM_edge_is_manifold(e) && BM_edge_is_contiguous(e)));
+
+					BM_edge_select_set(em->bm, e, true);
+				}
+			}
 		}
 	}
 
@@ -2696,6 +2971,18 @@ void MESH_OT_select_non_manifold(wmOperatorType *ot)
 
 	/* props */
 	RNA_def_boolean(ot->srna, "extend", true, "Extend", "Extend the selection");
+	/* edges */
+	RNA_def_boolean(ot->srna, "use_wire", true, "Wire",
+	                "Wire edges");
+	RNA_def_boolean(ot->srna, "use_boundary", true, "Boundaries",
+	                "Boundary edges");
+	RNA_def_boolean(ot->srna, "use_multi_face", true,
+	                "Multiple Faces", "Edges shared by 3+ faces");
+	RNA_def_boolean(ot->srna, "use_non_contiguous", true, "Non Contiguous",
+	                "Edges between faces pointing in alternate directions");
+	/* verts */
+	RNA_def_boolean(ot->srna, "use_verts", true, "Vertices",
+	                "Vertices connecting multiple face regions");
 }
 
 static int edbm_select_random_exec(bContext *C, wmOperator *op)
@@ -2733,7 +3020,8 @@ static int edbm_select_random_exec(bContext *C, wmOperator *op)
 	}
 
 	if (select) {
-		EDBM_select_flush(em);
+		/* was EDBM_select_flush, but it over select in edge/face mode */
+		EDBM_selectmode_flush(em);
 	}
 	else {
 		EDBM_deselect_flush(em);
@@ -2774,7 +3062,7 @@ static int edbm_select_ungrouped_poll(bContext *C)
 		if ((em->selectmode & SCE_SELECT_VERTEX) == 0) {
 			CTX_wm_operator_poll_msg_set(C, "Must be in vertex selection mode");
 		}
-		else if (obedit->defbase.first == NULL || cd_dvert_offset == -1) {
+		else if (BLI_listbase_is_empty(&obedit->defbase) || cd_dvert_offset == -1) {
 			CTX_wm_operator_poll_msg_set(C, "No weights/vertex groups on object");
 		}
 		else {
@@ -3030,7 +3318,7 @@ void MESH_OT_region_to_loop(wmOperatorType *ot)
 }
 
 static int loop_find_region(BMLoop *l, int flag,
-                            SmallHash *fhash, BMFace ***region_out)
+                            GSet *visit_face_set, BMFace ***region_out)
 {
 	BMFace **region = NULL;
 	BMFace **stack = NULL;
@@ -3039,7 +3327,7 @@ static int loop_find_region(BMLoop *l, int flag,
 	BMFace *f;
 	
 	BLI_array_append(stack, l->f);
-	BLI_smallhash_insert(fhash, (uintptr_t)l->f, NULL);
+	BLI_gset_insert(visit_face_set, l->f);
 	
 	while (BLI_array_count(stack) > 0) {
 		BMIter liter1, liter2;
@@ -3053,11 +3341,15 @@ static int loop_find_region(BMLoop *l, int flag,
 				continue;
 			
 			BM_ITER_ELEM (l2, &liter2, l1->e, BM_LOOPS_OF_EDGE) {
-				if (BLI_smallhash_haskey(fhash, (uintptr_t)l2->f))
+				/* avoids finding same region twice
+				 * (otherwise) the logic works fine without */
+				if (BM_elem_flag_test(l2->f, BM_ELEM_TAG)) {
 					continue;
-				
-				BLI_array_append(stack, l2->f);
-				BLI_smallhash_insert(fhash, (uintptr_t)l2->f, NULL);
+				}
+
+				if (BLI_gset_add(visit_face_set, l2->f)) {
+					BLI_array_append(stack, l2->f);
+				}
 			}
 		}
 	}
@@ -3070,8 +3362,8 @@ static int loop_find_region(BMLoop *l, int flag,
 
 static int verg_radial(const void *va, const void *vb)
 {
-	BMEdge *e_a = *((BMEdge **)va);
-	BMEdge *e_b = *((BMEdge **)vb);
+	const BMEdge *e_a = *((const BMEdge **)va);
+	const BMEdge *e_b = *((const BMEdge **)vb);
 
 	int a, b;
 	a = BM_edge_face_count(e_a);
@@ -3082,21 +3374,22 @@ static int verg_radial(const void *va, const void *vb)
 	return  0;
 }
 
+/**
+ * This function leaves faces tagged which are apart of the new region.
+ *
+ * \note faces already tagged are ignored, to avoid finding the same regions twice:
+ * important when we have regions with equal face counts, see: T40309
+ */
 static int loop_find_regions(BMEditMesh *em, const bool selbigger)
 {
-	SmallHash visithash;
+	GSet *visit_face_set;
 	BMIter iter;
 	const int edges_len = em->bm->totedgesel;
 	BMEdge *e, **edges;
-	BMFace *f;
 	int count = 0, i;
 	
-	BLI_smallhash_init_ex(&visithash, edges_len);
+	visit_face_set = BLI_gset_ptr_new_ex(__func__, edges_len);
 	edges = MEM_mallocN(sizeof(*edges) * edges_len, __func__);
-	
-	BM_ITER_MESH (f, &iter, em->bm, BM_FACES_OF_MESH) {
-		BM_elem_flag_disable(f, BM_ELEM_TAG);
-	}
 
 	i = 0;
 	BM_ITER_MESH (e, &iter, em->bm, BM_EDGES_OF_MESH) {
@@ -3124,10 +3417,10 @@ static int loop_find_regions(BMEditMesh *em, const bool selbigger)
 			continue;
 		
 		BM_ITER_ELEM (l, &liter, e, BM_LOOPS_OF_EDGE) {
-			if (BLI_smallhash_haskey(&visithash, (uintptr_t)l->f))
+			if (BLI_gset_haskey(visit_face_set, l->f))
 				continue;
-						
-			c = loop_find_region(l, BM_ELEM_SELECT, &visithash, &region_out);
+
+			c = loop_find_region(l, BM_ELEM_SELECT, visit_face_set, &region_out);
 
 			if (!region || (selbigger ? c >= tot : c < tot)) {
 				/* this region is the best seen so far */
@@ -3162,7 +3455,7 @@ static int loop_find_regions(BMEditMesh *em, const bool selbigger)
 	}
 	
 	MEM_freeN(edges);
-	BLI_smallhash_release(&visithash);
+	BLI_gset_free(visit_face_set, NULL);
 	
 	return count;
 }
@@ -3176,13 +3469,14 @@ static int edbm_loop_to_region_exec(bContext *C, wmOperator *op)
 	const bool select_bigger = RNA_boolean_get(op->ptr, "select_bigger");
 	int a, b;
 
+
 	/* find the set of regions with smallest number of total faces */
+	BM_mesh_elem_hflag_disable_all(em->bm, BM_FACE, BM_ELEM_TAG, false);
 	a = loop_find_regions(em, select_bigger);
 	b = loop_find_regions(em, !select_bigger);
-	
-	if ((a <= b) ^ select_bigger) {
-		loop_find_regions(em, select_bigger);
-	}
+
+	BM_mesh_elem_hflag_disable_all(em->bm, BM_FACE, BM_ELEM_TAG, false);
+	loop_find_regions(em, ((a <= b) != select_bigger) ? select_bigger : !select_bigger);
 	
 	EDBM_flag_disable_all(em, BM_ELEM_SELECT);
 	

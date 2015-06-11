@@ -107,14 +107,10 @@ static StructRNA *rna_Sensor_refine(struct PointerRNA *ptr)
 
 static void rna_Sensor_name_set(PointerRNA *ptr, const char *value)
 {
-	bSensor *sens = (bSensor *)ptr->data;
-
+	Object *ob = ptr->id.data;
+	bSensor *sens = ptr->data;
 	BLI_strncpy_utf8(sens->name, value, sizeof(sens->name));
-
-	if (ptr->id.data) {
-		Object *ob = (Object *)ptr->id.data;
-		BLI_uniquename(&ob->sensors, sens, DATA_("Sensor"), '.', offsetof(bSensor, name), sizeof(sens->name));
-	}
+	BLI_uniquename(&ob->sensors, sens, DATA_("Sensor"), '.', offsetof(bSensor, name), sizeof(sens->name));
 }
 
 static void rna_Sensor_type_set(struct PointerRNA *ptr, int value)
@@ -246,11 +242,11 @@ static void rna_Sensor_Armature_update(Main *UNUSED(bmain), Scene *UNUSED(scene)
 		bPoseChannel *pchan;
 		bPose *pose = ob->pose;
 		for (pchan = pose->chanbase.first; pchan; pchan = pchan->next) {
-			if (!strcmp(pchan->name, posechannel)) {
+			if (STREQ(pchan->name, posechannel)) {
 				/* found it, now look for constraint channel */
 				bConstraint *con;
 				for (con = pchan->constraints.first; con; con = con->next) {
-					if (!strcmp(con->name, constraint)) {
+					if (STREQ(con->name, constraint)) {
 						/* found it, all ok */
 						return;
 					}
@@ -294,6 +290,11 @@ static void rna_def_sensor(BlenderRNA *brna)
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", SENS_PIN);
 	RNA_def_property_ui_text(prop, "Pinned", "Display when not linked to a visible states controller");
 	RNA_def_property_ui_icon(prop, ICON_UNPINNED, 1);
+	RNA_def_property_update(prop, NC_LOGIC, NULL);
+
+	prop = RNA_def_property(srna, "active", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_negative_sdna(prop, NULL, "flag", SENS_DEACTIVATE);
+	RNA_def_property_ui_text(prop, "Active", "Set active state of the sensor");
 	RNA_def_property_update(prop, NC_LOGIC, NULL);
 
 	prop = RNA_def_property(srna, "show_expanded", PROP_BOOLEAN, PROP_NONE);
@@ -400,6 +401,12 @@ static void rna_def_mouse_sensor(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 
+	static const EnumPropertyItem prop_mouse_type_items[] = {
+		{SENS_COLLISION_PROPERTY, "PROPERTY", ICON_LOGIC, "Property", "Use a material for ray intersections"},
+		{SENS_COLLISION_MATERIAL, "MATERIAL", ICON_MATERIAL_DATA, "Material", "Use a property for ray intersections"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
 	srna = RNA_def_struct(brna, "MouseSensor", "Sensor");
 	RNA_def_struct_ui_text(srna, "Mouse Sensor", "Sensor to detect mouse events");
 	RNA_def_struct_sdna_from(srna, "bMouseSensor", "data");
@@ -413,6 +420,27 @@ static void rna_def_mouse_sensor(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "use_pulse", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", SENS_MOUSE_FOCUS_PULSE);
 	RNA_def_property_ui_text(prop, "Pulse", "Moving the mouse over a different object generates a pulse");
+	RNA_def_property_update(prop, NC_LOGIC, NULL);
+	
+	prop = RNA_def_property(srna, "use_material", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_bitflag_sdna(prop, NULL, "mode");
+	RNA_def_property_enum_items(prop, prop_mouse_type_items);
+	RNA_def_property_ui_text(prop, "M/P", "Toggle collision on material or property");
+	RNA_def_property_update(prop, NC_LOGIC, NULL);
+
+	prop = RNA_def_property(srna, "property", PROP_STRING, PROP_NONE);
+	RNA_def_property_string_sdna(prop, NULL, "propname");
+	RNA_def_property_ui_text(prop, "Property", "Only look for objects with this property (blank = all objects)");
+	RNA_def_property_update(prop, NC_LOGIC, NULL);
+
+	prop = RNA_def_property(srna, "material", PROP_STRING, PROP_NONE);
+	RNA_def_property_string_sdna(prop, NULL, "matname");
+	RNA_def_property_ui_text(prop, "Material", "Only look for objects with this material (blank = all objects)");
+	RNA_def_property_update(prop, NC_LOGIC, NULL);	
+
+	prop = RNA_def_property(srna, "use_x_ray", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", SENS_RAY_XRAY);
+	RNA_def_property_ui_text(prop, "X-Ray", "Toggle X-Ray option (see through objects that don't have the property)");
 	RNA_def_property_update(prop, NC_LOGIC, NULL);
 }
 
@@ -473,6 +501,8 @@ static void rna_def_property_sensor(BlenderRNA *brna)
 		{SENS_PROP_INTERVAL, "PROPINTERVAL", 0, "Interval", ""},
 		{SENS_PROP_CHANGED, "PROPCHANGED", 0, "Changed", ""},
 		/* {SENS_PROP_EXPRESSION, "PROPEXPRESSION", 0, "Expression", ""},  NOT_USED_IN_UI */
+		{SENS_PROP_LESSTHAN, "PROPLESSTHAN", 0, "Less Than", ""},
+		{SENS_PROP_GREATERTHAN, "PROPGREATERTHAN", 0, "Greater Than", ""},
 		{0, NULL, 0, NULL, NULL}
 	};
 
@@ -493,7 +523,7 @@ static void rna_def_property_sensor(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "value", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "value");
-	RNA_def_property_ui_text(prop, "Value", "Check for this value in types in Equal or Not Equal types");
+	RNA_def_property_ui_text(prop, "Value", "Check for this value in types in Equal, Not Equal, Less Than and Greater Than types");
 	RNA_def_property_update(prop, NC_LOGIC, NULL);
 
 	prop = RNA_def_property(srna, "value_min", PROP_STRING, PROP_NONE);

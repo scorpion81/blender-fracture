@@ -15,8 +15,8 @@ kmi = km.keymap_items.new('wm.call_menu', 'O', 'PRESS', shift=True, ctrl=True)
 kmi.properties.name = 'INFO_MT_file_open_recent'
 kmi = km.keymap_items.new('wm.open_mainfile', 'O', 'PRESS', ctrl=True)
 kmi = km.keymap_items.new('wm.open_mainfile', 'F1', 'PRESS')
-kmi = km.keymap_items.new('wm.link_append', 'O', 'PRESS', ctrl=True, alt=True)
-kmi = km.keymap_items.new('wm.link_append', 'F1', 'PRESS', shift=True)
+kmi = km.keymap_items.new('wm.link', 'O', 'PRESS', ctrl=True, alt=True)
+kmi = km.keymap_items.new('wm.append', 'F1', 'PRESS', shift=True)
 kmi.properties.link = False
 kmi.properties.instance_groups = False
 kmi = km.keymap_items.new('wm.save_mainfile', 'S', 'PRESS', ctrl=True)
@@ -64,18 +64,18 @@ kmi.properties.value = 'TEXT_EDITOR'
 kmi = km.keymap_items.new('wm.context_set_enum', 'F12', 'PRESS', shift=True)
 kmi.properties.data_path = 'area.type'
 kmi.properties.value = 'DOPESHEET_EDITOR'
-kmi = km.keymap_items.new('wm.ndof_sensitivity_change', 'NDOF_BUTTON_PLUS', 'PRESS')
-kmi.properties.decrease = False
-kmi.properties.fast = False
-kmi = km.keymap_items.new('wm.ndof_sensitivity_change', 'NDOF_BUTTON_MINUS', 'PRESS')
-kmi.properties.decrease = True
-kmi.properties.fast = False
-kmi = km.keymap_items.new('wm.ndof_sensitivity_change', 'NDOF_BUTTON_PLUS', 'PRESS', shift=True)
-kmi.properties.decrease = False
-kmi.properties.fast = True
-kmi = km.keymap_items.new('wm.ndof_sensitivity_change', 'NDOF_BUTTON_MINUS', 'PRESS', shift=True)
-kmi.properties.decrease = True
-kmi.properties.fast = True
+kmi = km.keymap_items.new('wm.context_scale_float', 'NDOF_BUTTON_PLUS', 'PRESS')
+kmi.properties.data_path = 'user_preferences.inputs.ndof_sensitivity'
+kmi.properties.value = 1.1
+kmi = km.keymap_items.new('wm.context_scale_float', 'NDOF_BUTTON_MINUS', 'PRESS')
+kmi.properties.data_path = 'user_preferences.inputs.ndof_sensitivity'
+kmi.properties.value = 1.0 / 1.1
+kmi = km.keymap_items.new('wm.context_scale_float', 'NDOF_BUTTON_PLUS', 'PRESS', shift=True)
+kmi.properties.data_path = 'user_preferences.inputs.ndof_sensitivity'
+kmi.properties.value = 1.5
+kmi = km.keymap_items.new('wm.context_scale_float', 'NDOF_BUTTON_MINUS', 'PRESS', shift=True)
+kmi.properties.data_path = 'user_preferences.inputs.ndof_sensitivity'
+kmi.properties.value = 1.0 / 1.5
 kmi = km.keymap_items.new('info.reports_display_update', 'TIMER', 'ANY', any=True)
 
 # Map Screen
@@ -142,9 +142,9 @@ kmi = km.keymap_items.new('screen.frame_offset', 'LEFT_ARROW', 'PRESS')
 kmi.properties.delta = -1
 kmi = km.keymap_items.new('screen.frame_offset', 'RIGHT_ARROW', 'PRESS')
 kmi.properties.delta = 1
-kmi = km.keymap_items.new('screen.frame_offset', 'WHEELDOWNMOUSE', 'PRESS', alt=True)
+kmi = km.keymap_items.new('screen.frame_offset', 'WHEELDOWNMOUSE', 'PRESS', ctrl=True, alt=True)
 kmi.properties.delta = 1
-kmi = km.keymap_items.new('screen.frame_offset', 'WHEELUPMOUSE', 'PRESS', alt=True)
+kmi = km.keymap_items.new('screen.frame_offset', 'WHEELUPMOUSE', 'PRESS', ctrl=True, alt=True)
 kmi.properties.delta = -1
 kmi = km.keymap_items.new('screen.frame_jump', 'V', 'PRESS', shift=True, alt=True)
 kmi.properties.end = False
@@ -326,9 +326,10 @@ kmi.properties.name = 'VIEW3D_MT_pose_group'
 kmi = km.keymap_items.new('wm.call_menu', 'RIGHTMOUSE', 'PRESS')
 kmi.properties.name = 'VIEW3D_MT_bone_options_toggle'
 kmi = km.keymap_items.new('armature.layers_show_all', 'ACCENT_GRAVE', 'PRESS', ctrl=True)
-kmi = km.keymap_items.new('pose.armature_layers', 'M', 'PRESS', shift=True)
+kmi = km.keymap_items.new('armature.armature_layers', 'M', 'PRESS', shift=True)
 kmi = km.keymap_items.new('pose.bone_layers', 'M', 'PRESS')
 kmi = km.keymap_items.new('transform.transform', 'S', 'PRESS', ctrl=True, alt=True)
+kmi.properties.mode = 'BONE_SIZE'
 kmi = km.keymap_items.new('anim.keyframe_insert_menu', 'S', 'PRESS')
 kmi = km.keymap_items.new('anim.keyframe_delete_v3d', 'S', 'PRESS', alt=True)
 kmi = km.keymap_items.new('anim.keying_set_active_set', 'I', 'PRESS', shift=True, ctrl=True, alt=True)
@@ -707,10 +708,10 @@ kmi = km.keymap_items.new_modal('CONFIRM', 'NUMPAD_ENTER', 'PRESS', any=True)
 kmi = km.keymap_items.new_modal('CONFIRM', 'SPACE', 'PRESS', any=True)
 kmi = km.keymap_items.new_modal('NEW_CUT', 'E', 'PRESS')
 
-kmi = km.keymap_items.new_modal('SNAP_MIDPOINT_ON', 'LEFT_CTRL', 'PRESS', any=True)
-kmi = km.keymap_items.new_modal('SNAP_MIDPOINT_OFF', 'LEFT_CTRL', 'RELEASE', any=True)
-kmi = km.keymap_items.new_modal('SNAP_MIDPOINT_ON', 'RIGHT_CTRL', 'PRESS', any=True)
-kmi = km.keymap_items.new_modal('SNAP_MIDPOINT_OFF', 'RIGHT_CTRL', 'RELEASE', any=True)
+kmi = km.keymap_items.new_modal('SNAP_MIDPOINTS_ON', 'LEFT_CTRL', 'PRESS', any=True)
+kmi = km.keymap_items.new_modal('SNAP_MIDPOINTS_OFF', 'LEFT_CTRL', 'RELEASE', any=True)
+kmi = km.keymap_items.new_modal('SNAP_MIDPOINTS_ON', 'RIGHT_CTRL', 'PRESS', any=True)
+kmi = km.keymap_items.new_modal('SNAP_MIDPOINTS_OFF', 'RIGHT_CTRL', 'RELEASE', any=True)
 
 kmi = km.keymap_items.new_modal('IGNORE_SNAP_ON', 'LEFT_SHIFT', 'PRESS', any=True)
 kmi = km.keymap_items.new_modal('IGNORE_SNAP_OFF', 'LEFT_SHIFT', 'RELEASE', any=True)
@@ -956,6 +957,10 @@ kmi = km.keymap_items.new('view3d.zoom', 'WHEELINMOUSE', 'PRESS')
 kmi.properties.delta = 1
 kmi = km.keymap_items.new('view3d.zoom', 'WHEELOUTMOUSE', 'PRESS')
 kmi.properties.delta = -1
+kmi = km.keymap_items.new('view3d.zoom', 'WHEELINMOUSE', 'PRESS', alt=True)
+kmi.properties.delta = 1
+kmi = km.keymap_items.new('view3d.zoom', 'WHEELOUTMOUSE', 'PRESS', alt=True)
+kmi.properties.delta = -1
 kmi = km.keymap_items.new('view3d.view_all', 'A', 'PRESS')
 kmi.properties.center = False
 kmi = km.keymap_items.new('view3d.viewnumpad', 'ZERO', 'PRESS', ctrl=True)
@@ -1094,6 +1099,8 @@ kmi = km.keymap_items.new('wm.context_set_enum', 'V', 'PRESS')
 kmi.properties.data_path = 'tool_settings.snap_element'
 kmi.properties.value = 'VERTEX'
 
+km.keymap_items.new('view3d.render_border', 'B', 'PRESS', ctrl=True)
+
 # Map Animation Channels
 km = kc.keymaps.new('Animation Channels', space_type='EMPTY', region_type='WINDOW', modal=False)
 
@@ -1173,7 +1180,7 @@ kmi = km.keymap_items.new('uv.pin', 'P', 'PRESS')
 kmi.properties.clear = False
 kmi = km.keymap_items.new('uv.pin', 'P', 'PRESS', alt=True)
 kmi.properties.clear = True
-kmi = km.keymap_items.new('uv.unwrap', 'E', 'PRESS')
+kmi = km.keymap_items.new('uv.unwrap', 'U', 'PRESS')
 kmi = km.keymap_items.new('uv.hide', 'H', 'PRESS', ctrl=True)
 kmi.properties.unselected = False
 kmi = km.keymap_items.new('uv.hide', 'H', 'PRESS', alt=True)
@@ -1416,39 +1423,36 @@ kmi = km.keymap_items.new('object.mode_set', 'TAB', 'PRESS')
 kmi.properties.mode = 'EDIT'
 kmi.properties.toggle = True
 kmi = km.keymap_items.new('wm.context_set_int', 'ONE', 'PRESS')
-kmi.properties.data_path = 'space_data.image.render_slot'
+kmi.properties.data_path = 'space_data.image.render_slots.active_index'
 kmi.properties.value = 0
 kmi = km.keymap_items.new('wm.context_set_int', 'TWO', 'PRESS')
-kmi.properties.data_path = 'space_data.image.render_slot'
+kmi.properties.data_path = 'space_data.image.render_slots.active_index'
 kmi.properties.value = 1
 kmi = km.keymap_items.new('wm.context_set_int', 'THREE', 'PRESS')
-kmi.properties.data_path = 'space_data.image.render_slot'
+kmi.properties.data_path = 'space_data.image.render_slots.active_index'
 kmi.properties.value = 2
 kmi = km.keymap_items.new('wm.context_set_int', 'FOUR', 'PRESS')
-kmi.properties.data_path = 'space_data.image.render_slot'
+kmi.properties.data_path = 'space_data.image.render_slots.active_index'
 kmi.properties.value = 3
 kmi = km.keymap_items.new('wm.context_set_int', 'FIVE', 'PRESS')
-kmi.properties.data_path = 'space_data.image.render_slot'
+kmi.properties.data_path = 'space_data.image.render_slots.active_index'
 kmi.properties.value = 4
 kmi = km.keymap_items.new('wm.context_set_int', 'SIX', 'PRESS')
-kmi.properties.data_path = 'space_data.image.render_slot'
+kmi.properties.data_path = 'space_data.image.render_slots.active_index'
 kmi.properties.value = 5
 kmi = km.keymap_items.new('wm.context_set_int', 'SEVEN', 'PRESS')
-kmi.properties.data_path = 'space_data.image.render_slot'
+kmi.properties.data_path = 'space_data.image.render_slots.active_index'
 kmi.properties.value = 6
 kmi = km.keymap_items.new('wm.context_set_int', 'EIGHT', 'PRESS')
-kmi.properties.data_path = 'space_data.image.render_slot'
+kmi.properties.data_path = 'space_data.image.render_slots.active_index'
 kmi.properties.value = 7
-kmi = km.keymap_items.new('wm.context_set_int', 'NINE', 'PRESS')
-kmi.properties.data_path = 'space_data.image.render_slot'
-kmi.properties.value = 8
 
 # Map Node Editor
 km = kc.keymaps.new('Node Editor', space_type='NODE_EDITOR', region_type='WINDOW', modal=False)
 
-kmi = km.keymap_items.new('node.select', 'SELECTMOUSE', 'CLICK')
+kmi = km.keymap_items.new('node.select', 'SELECTMOUSE', 'PRESS')
 kmi.properties.extend = False
-kmi = km.keymap_items.new('node.select', 'SELECTMOUSE', 'CLICK', shift=True)
+kmi = km.keymap_items.new('node.select', 'SELECTMOUSE', 'PRESS', shift=True)
 kmi.properties.extend = True
 kmi = km.keymap_items.new('node.select_border', 'EVT_TWEAK_S', 'ANY')
 kmi.properties.extend = False
@@ -1484,7 +1488,7 @@ kmi = km.keymap_items.new('node.delete_reconnect', 'X', 'PRESS', ctrl=True)
 kmi = km.keymap_items.new('node.select_all', 'A', 'PRESS', ctrl=True)
 kmi = km.keymap_items.new('node.select_linked_to', 'L', 'PRESS', shift=True)
 kmi = km.keymap_items.new('node.select_linked_from', 'L', 'PRESS')
-kmi = km.keymap_items.new('node.select_same_type', 'G', 'PRESS', shift=True)
+kmi = km.keymap_items.new('node.select_grouped', 'G', 'PRESS', shift=True)
 kmi = km.keymap_items.new('node.select_same_type_step', 'RIGHT_BRACKET', 'PRESS', shift=True)
 kmi.properties.prev = True
 kmi = km.keymap_items.new('node.select_same_type_step', 'LEFT_BRACKET', 'PRESS', shift=True)
@@ -1743,32 +1747,32 @@ kmi.properties.camera = 10
 kmi = km.keymap_items.new('sequencer.select', 'SELECTMOUSE', 'CLICK')
 kmi.properties.extend = False
 kmi.properties.linked_handle = False
-kmi.properties.left_right = False
+kmi.properties.left_right = 'NONE'
 kmi.properties.linked_time = False
 kmi = km.keymap_items.new('sequencer.select', 'SELECTMOUSE', 'CLICK', shift=True)
 kmi.properties.extend = True
 kmi.properties.linked_handle = False
-kmi.properties.left_right = False
+kmi.properties.left_right = 'NONE'
 kmi.properties.linked_time = False
 kmi = km.keymap_items.new('sequencer.select', 'SELECTMOUSE', 'PRESS', alt=True)
 kmi.properties.extend = False
 kmi.properties.linked_handle = True
-kmi.properties.left_right = False
+kmi.properties.left_right = 'NONE'
 kmi.properties.linked_time = False
 kmi = km.keymap_items.new('sequencer.select', 'SELECTMOUSE', 'CLICK', shift=True, alt=True)
 kmi.properties.extend = True
 kmi.properties.linked_handle = True
-kmi.properties.left_right = False
+kmi.properties.left_right = 'NONE'
 kmi.properties.linked_time = False
 kmi = km.keymap_items.new('sequencer.select', 'SELECTMOUSE', 'PRESS', ctrl=True)
 kmi.properties.extend = False
 kmi.properties.linked_handle = False
-kmi.properties.left_right = True
+kmi.properties.left_right = 'MOUSE'
 kmi.properties.linked_time = True
 kmi = km.keymap_items.new('sequencer.select', 'SELECTMOUSE', 'PRESS', shift=True, ctrl=True)
 kmi.properties.extend = True
 kmi.properties.linked_handle = False
-kmi.properties.left_right = False
+kmi.properties.left_right = 'NONE'
 kmi.properties.linked_time = True
 kmi = km.keymap_items.new('sequencer.select_more', 'PERIOD', 'PRESS', shift=True)
 kmi = km.keymap_items.new('sequencer.select_less', 'COMMA', 'PRESS', shift=True)

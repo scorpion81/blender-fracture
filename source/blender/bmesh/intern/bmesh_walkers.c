@@ -47,7 +47,7 @@
  *
  * basic design pattern: the walker step function goes through it's
  * list of possible choices for recursion, and recurses (by pushing a new state)
- * using the first non-visited one.  this choise is the flagged as visited using
+ * using the first non-visited one.  This choice is the flagged as visited using
  * the ghash.  each step may push multiple new states onto the worklist at once.
  *
  * - Walkers use tool flags, not header flags.
@@ -60,6 +60,8 @@
 
 void *BMW_begin(BMWalker *walker, void *start)
 {
+	BLI_assert(((BMHeader *)start)->htype & walker->begin_htype);
+
 	walker->begin(walker, start);
 	
 	return BMW_current_state(walker) ? walker->step(walker) : NULL;
@@ -100,6 +102,7 @@ void BMW_init(BMWalker *walker, BMesh *bm, int type,
 	}
 	
 	if (type != BMW_CUSTOM) {
+		walker->begin_htype = bm_walker_types[type]->begin_htype;
 		walker->begin = bm_walker_types[type]->begin;
 		walker->yield = bm_walker_types[type]->yield;
 		walker->step = bm_walker_types[type]->step;
@@ -115,8 +118,8 @@ void BMW_init(BMWalker *walker, BMesh *bm, int type,
 		BLI_assert(mask_face == 0 || (walker->valid_mask & BM_FACE));
 	}
 	
-	walker->worklist = BLI_mempool_create(walker->structsize, 100, 100, BLI_MEMPOOL_SYSMALLOC);
-	walker->states.first = walker->states.last = NULL;
+	walker->worklist = BLI_mempool_create(walker->structsize, 0, 128, BLI_MEMPOOL_NOP);
+	BLI_listbase_clear(&walker->states);
 }
 
 /**
@@ -177,7 +180,7 @@ void *BMW_walk(BMWalker *walker)
  * \brief Current Walker State
  *
  * Returns the first state from the walker state
- * worklist. This state is the the next in the
+ * worklist. This state is the next in the
  * worklist for processing.
  */
 void *BMW_current_state(BMWalker *walker)

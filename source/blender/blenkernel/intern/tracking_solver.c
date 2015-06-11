@@ -66,11 +66,7 @@ typedef struct MovieReconstructContext {
 	bool is_camera;
 	short motion_flag;
 
-	float focal_length;
-	float principal_point[2];
-	float k1, k2, k3;
-
-	int width, height;
+	libmv_CameraIntrinsicsOptions camera_intrinsics_options;
 
 	float reprojection_error;
 
@@ -134,22 +130,11 @@ static void reconstruct_retrieve_libmv_intrinsics(MovieReconstructContext *conte
 	struct libmv_Reconstruction *libmv_reconstruction = context->reconstruction;
 	struct libmv_CameraIntrinsics *libmv_intrinsics = libmv_reconstructionExtractIntrinsics(libmv_reconstruction);
 
-	float aspy = 1.0f / tracking->camera.pixel_aspect;
+	libmv_CameraIntrinsicsOptions camera_intrinsics_options;
+	libmv_cameraIntrinsicsExtractOptions(libmv_intrinsics, &camera_intrinsics_options);
 
-	double focal_length, principal_x, principal_y, k1, k2, k3;
-	int width, height;
-
-	libmv_cameraIntrinsicsExtract(libmv_intrinsics, &focal_length, &principal_x, &principal_y,
-	                              &k1, &k2, &k3, &width, &height);
-
-	tracking->camera.focal = focal_length;
-
-	tracking->camera.principal[0] = principal_x;
-	tracking->camera.principal[1] = principal_y / (double)aspy;
-
-	tracking->camera.k1 = k1;
-	tracking->camera.k2 = k2;
-	tracking->camera.k3 = k3;
+	tracking_trackingCameraFromIntrinscisOptions(tracking,
+	                                             &camera_intrinsics_options);
 }
 
 /* Retrieve reconstructed tracks from libmv to blender.
@@ -344,7 +329,7 @@ bool BKE_tracking_reconstruction_check(MovieTracking *tracking, MovieTrackingObj
 		/* automatic keyframe selection does not require any pre-process checks */
 		if (reconstruct_count_tracks_on_both_keyframes(tracking, object) < 8) {
 			BLI_strncpy(error_msg,
-			            N_("At least 8 common tracks on both of keyframes are needed for reconstruction"),
+			            N_("At least 8 common tracks on both keyframes are needed for reconstruction"),
 			            error_size);
 
 			return false;
@@ -369,10 +354,9 @@ MovieReconstructContext *BKE_tracking_reconstruction_context_new(MovieClip *clip
 {
 	MovieTracking *tracking = &clip->tracking;
 	MovieReconstructContext *context = MEM_callocN(sizeof(MovieReconstructContext), "MovieReconstructContext data");
-	MovieTrackingCamera *camera = &tracking->camera;
 	ListBase *tracksbase = BKE_tracking_object_get_tracks(tracking, object);
 	float aspy = 1.0f / tracking->camera.pixel_aspect;
-	int num_tracks = BLI_countlist(tracksbase);
+	int num_tracks = BLI_listbase_count(tracksbase);
 	int sfra = INT_MAX, efra = INT_MIN;
 	MovieTrackingTrack *track;
 
@@ -383,16 +367,9 @@ MovieReconstructContext *BKE_tracking_reconstruction_context_new(MovieClip *clip
 	context->select_keyframes =
 		(tracking->settings.reconstruction_flag & TRACKING_USE_KEYFRAME_SELECTION) != 0;
 
-	context->focal_length = camera->focal;
-	context->principal_point[0] = camera->principal[0];
-	context->principal_point[1] = camera->principal[1] * aspy;
-
-	context->width = width;
-	context->height = height;
-
-	context->k1 = camera->k1;
-	context->k2 = camera->k2;
-	context->k3 = camera->k3;
+	tracking_cameraIntrinscisOptionsFromTracking(tracking,
+                                                 width, height,
+                                                 &context->camera_intrinsics_options);
 
 	context->tracks_map = tracks_map_new(context->object_name, context->is_camera, num_tracks, 0);
 
@@ -414,7 +391,7 @@ MovieReconstructContext *BKE_tracking_reconstruction_context_new(MovieClip *clip
 			last_marker--;
 		}
 
-		if (first < track->markersnr - 1)
+		if (first <= track->markersnr - 1)
 			sfra = min_ii(sfra, first_marker->framenr);
 
 		if (last >= 0)
@@ -456,26 +433,10 @@ static void reconstruct_update_solve_cb(void *customdata, double progress, const
 
 	if (progressdata->progress) {
 		*progressdata->progress = progress;
-		*progressdata->do_update = TRUE;
+		*progressdata->do_update = true;
 	}
 
 	BLI_snprintf(progressdata->stats_message, progressdata->message_size, "Solving camera | %s", message);
-}
-/* FIll in camera intrinsics structure from reconstruction context. */
-static void camraIntrincicsOptionsFromContext(libmv_CameraIntrinsicsOptions *camera_intrinsics_options,
-                                              MovieReconstructContext *context)
-{
-	camera_intrinsics_options->focal_length = context->focal_length;
-
-	camera_intrinsics_options->principal_point_x = context->principal_point[0];
-	camera_intrinsics_options->principal_point_y = context->principal_point[1];
-
-	camera_intrinsics_options->k1 = context->k1;
-	camera_intrinsics_options->k2 = context->k2;
-	camera_intrinsics_options->k3 = context->k3;
-
-	camera_intrinsics_options->image_width = context->width;
-	camera_intrinsics_options->image_height = context->height;
 }
 
 /* Fill in reconstruction options structure from reconstruction context. */
@@ -506,7 +467,6 @@ void BKE_tracking_reconstruction_solve(MovieReconstructContext *context, short *
 
 	ReconstructProgressData progressdata;
 
-	libmv_CameraIntrinsicsOptions camera_intrinsics_options;
 	libmv_ReconstructionOptions reconstruction_options;
 
 	progressdata.stop = stop;
@@ -515,18 +475,17 @@ void BKE_tracking_reconstruction_solve(MovieReconstructContext *context, short *
 	progressdata.stats_message = stats_message;
 	progressdata.message_size = message_size;
 
-	camraIntrincicsOptionsFromContext(&camera_intrinsics_options, context);
 	reconstructionOptionsFromContext(&reconstruction_options, context);
 
 	if (context->motion_flag & TRACKING_MOTION_MODAL) {
 		context->reconstruction = libmv_solveModal(context->tracks,
-		                                           &camera_intrinsics_options,
+		                                           &context->camera_intrinsics_options,
 		                                           &reconstruction_options,
 		                                           reconstruct_update_solve_cb, &progressdata);
 	}
 	else {
 		context->reconstruction = libmv_solveReconstruction(context->tracks,
-		                                                    &camera_intrinsics_options,
+		                                                    &context->camera_intrinsics_options,
 		                                                    &reconstruction_options,
 		                                                    reconstruct_update_solve_cb, &progressdata);
 
@@ -549,6 +508,11 @@ bool BKE_tracking_reconstruction_finish(MovieReconstructContext *context, MovieT
 {
 	MovieTrackingReconstruction *reconstruction;
 	MovieTrackingObject *object;
+
+	if (!libmv_reconstructionIsValid(context->reconstruction)) {
+		printf("Failed solve the motion: most likely there are no good keyframes\n");
+		return false;
+	}
 
 	tracks_map_merge(context->tracks_map, tracking);
 	BKE_tracking_dopesheet_tag_update(tracking);
@@ -576,7 +540,7 @@ bool BKE_tracking_reconstruction_finish(MovieReconstructContext *context, MovieT
 }
 
 static void tracking_scale_reconstruction(ListBase *tracksbase, MovieTrackingReconstruction *reconstruction,
-                                          float scale[3])
+                                          const float scale[3])
 {
 	MovieTrackingTrack *track;
 	int i;

@@ -43,10 +43,12 @@
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
 
+#include "BKE_context.h"
+#include "BKE_freestyle.h"
 #include "BKE_global.h"
 #include "BKE_library.h"
 #include "BKE_linestyle.h"
-#include "BKE_main.h"
+#include "BKE_node.h"
 #include "BKE_texture.h"
 #include "BKE_colortools.h"
 #include "BKE_animsys.h"
@@ -81,7 +83,7 @@ static void default_linestyle_settings(FreestyleLineStyle *linestyle)
 	linestyle->thickness = 3.0f;
 	linestyle->thickness_position = LS_THICKNESS_CENTER;
 	linestyle->thickness_ratio = 0.5f;
-	linestyle->flag = LS_SAME_OBJECT;
+	linestyle->flag = LS_SAME_OBJECT | LS_NO_SORTING | LS_TEXTURE;
 	linestyle->chaining = LS_CHAINING_PLAIN;
 	linestyle->rounds = 3;
 	linestyle->min_angle = DEG2RADF(0.0f);
@@ -89,18 +91,23 @@ static void default_linestyle_settings(FreestyleLineStyle *linestyle)
 	linestyle->min_length = 0.0f;
 	linestyle->max_length = 10000.0f;
 	linestyle->split_length = 100;
+	linestyle->chain_count = 10;
+	linestyle->sort_key = LS_SORT_KEY_DISTANCE_FROM_CAMERA;
+	linestyle->integration_type = LS_INTEGRATION_MEAN;
+	linestyle->texstep = 1.0f;
+	linestyle->pr_texture = TEX_PR_TEXTURE;
 
-	linestyle->color_modifiers.first = linestyle->color_modifiers.last = NULL;
-	linestyle->alpha_modifiers.first = linestyle->alpha_modifiers.last = NULL;
-	linestyle->thickness_modifiers.first = linestyle->thickness_modifiers.last = NULL;
-	linestyle->geometry_modifiers.first = linestyle->geometry_modifiers.last = NULL;
+	BLI_listbase_clear(&linestyle->color_modifiers);
+	BLI_listbase_clear(&linestyle->alpha_modifiers);
+	BLI_listbase_clear(&linestyle->thickness_modifiers);
+	BLI_listbase_clear(&linestyle->geometry_modifiers);
 
-	BKE_add_linestyle_geometry_modifier(linestyle, LS_MODIFIER_SAMPLING);
+	BKE_linestyle_geometry_modifier_add(linestyle, NULL, LS_MODIFIER_SAMPLING);
 
 	linestyle->caps = LS_CAPS_BUTT;
 }
 
-FreestyleLineStyle *BKE_new_linestyle(const char *name, struct Main *main)
+FreestyleLineStyle *BKE_linestyle_new(const char *name, struct Main *main)
 {
 	FreestyleLineStyle *linestyle;
 
@@ -114,28 +121,53 @@ FreestyleLineStyle *BKE_new_linestyle(const char *name, struct Main *main)
 	return linestyle;
 }
 
-void BKE_free_linestyle(FreestyleLineStyle *linestyle)
+void BKE_linestyle_free(FreestyleLineStyle *linestyle)
 {
 	LineStyleModifier *m;
+
+	MTex *mtex;
+	int a;
+
+	for (a = 0; a < MAX_MTEX; a++) {
+		mtex = linestyle->mtex[a];
+		if (mtex && mtex->tex) mtex->tex->id.us--;
+		if (mtex) MEM_freeN(mtex);
+	}
+	if (linestyle->nodetree) {
+		ntreeFreeTree(linestyle->nodetree);
+		MEM_freeN(linestyle->nodetree);
+	}
 
 	BKE_free_animdata(&linestyle->id);
 	while ((m = (LineStyleModifier *)linestyle->color_modifiers.first))
-		BKE_remove_linestyle_color_modifier(linestyle, m);
+		BKE_linestyle_color_modifier_remove(linestyle, m);
 	while ((m = (LineStyleModifier *)linestyle->alpha_modifiers.first))
-		BKE_remove_linestyle_alpha_modifier(linestyle, m);
+		BKE_linestyle_alpha_modifier_remove(linestyle, m);
 	while ((m = (LineStyleModifier *)linestyle->thickness_modifiers.first))
-		BKE_remove_linestyle_thickness_modifier(linestyle, m);
+		BKE_linestyle_thickness_modifier_remove(linestyle, m);
 	while ((m = (LineStyleModifier *)linestyle->geometry_modifiers.first))
-		BKE_remove_linestyle_geometry_modifier(linestyle, m);
+		BKE_linestyle_geometry_modifier_remove(linestyle, m);
 }
 
-FreestyleLineStyle *BKE_copy_linestyle(FreestyleLineStyle *linestyle)
+FreestyleLineStyle *BKE_linestyle_copy(FreestyleLineStyle *linestyle)
 {
 	FreestyleLineStyle *new_linestyle;
 	LineStyleModifier *m;
+	int a;
 
-	new_linestyle = BKE_new_linestyle(linestyle->id.name + 2, NULL);
-	BKE_free_linestyle(new_linestyle);
+	new_linestyle = BKE_linestyle_new(linestyle->id.name + 2, NULL);
+	BKE_linestyle_free(new_linestyle);
+
+	for (a = 0; a < MAX_MTEX; a++) {
+		if (linestyle->mtex[a]) {
+			new_linestyle->mtex[a] = MEM_mallocN(sizeof(MTex), "BKE_linestyle_copy");
+			memcpy(new_linestyle->mtex[a], linestyle->mtex[a], sizeof(MTex));
+			id_us_plus((ID *)new_linestyle->mtex[a]->tex);
+		}
+	}
+	if (linestyle->nodetree) {
+		new_linestyle->nodetree = ntreeCopyTree(linestyle->nodetree);
+	}
 
 	new_linestyle->r = linestyle->r;
 	new_linestyle->g = linestyle->g;
@@ -153,6 +185,7 @@ FreestyleLineStyle *BKE_copy_linestyle(FreestyleLineStyle *linestyle)
 	new_linestyle->max_angle = linestyle->max_angle;
 	new_linestyle->min_length = linestyle->min_length;
 	new_linestyle->max_length = linestyle->max_length;
+	new_linestyle->chain_count = linestyle->chain_count;
 	new_linestyle->split_dash1 = linestyle->split_dash1;
 	new_linestyle->split_gap1 = linestyle->split_gap1;
 	new_linestyle->split_dash2 = linestyle->split_dash2;
@@ -166,25 +199,49 @@ FreestyleLineStyle *BKE_copy_linestyle(FreestyleLineStyle *linestyle)
 	new_linestyle->dash3 = linestyle->dash3;
 	new_linestyle->gap3 = linestyle->gap3;
 	new_linestyle->panel = linestyle->panel;
+	new_linestyle->sort_key = linestyle->sort_key;
+	new_linestyle->integration_type = linestyle->integration_type;
+	new_linestyle->texstep = linestyle->texstep;
+	new_linestyle->pr_texture = linestyle->pr_texture;
+	new_linestyle->use_nodes = linestyle->use_nodes;
 	for (m = (LineStyleModifier *)linestyle->color_modifiers.first; m; m = m->next)
-		BKE_copy_linestyle_color_modifier(new_linestyle, m);
+		BKE_linestyle_color_modifier_copy(new_linestyle, m);
 	for (m = (LineStyleModifier *)linestyle->alpha_modifiers.first; m; m = m->next)
-		BKE_copy_linestyle_alpha_modifier(new_linestyle, m);
+		BKE_linestyle_alpha_modifier_copy(new_linestyle, m);
 	for (m = (LineStyleModifier *)linestyle->thickness_modifiers.first; m; m = m->next)
-		BKE_copy_linestyle_thickness_modifier(new_linestyle, m);
+		BKE_linestyle_thickness_modifier_copy(new_linestyle, m);
 	for (m = (LineStyleModifier *)linestyle->geometry_modifiers.first; m; m = m->next)
-		BKE_copy_linestyle_geometry_modifier(new_linestyle, m);
+		BKE_linestyle_geometry_modifier_copy(new_linestyle, m);
+
+	if (linestyle->id.lib) {
+		BKE_id_lib_local_paths(G.main, linestyle->id.lib, &new_linestyle->id);
+	}
 
 	return new_linestyle;
 }
 
-static LineStyleModifier *new_modifier(int type, size_t size)
+FreestyleLineStyle *BKE_linestyle_active_from_scene(Scene *scene)
+{
+	SceneRenderLayer *actsrl = BLI_findlink(&scene->r.layers, scene->r.actlay);
+	FreestyleConfig *config = &actsrl->freestyleConfig;
+	FreestyleLineSet *lineset = BKE_freestyle_lineset_get_active(config);
+
+	if (lineset) {
+		return lineset->linestyle;
+	}
+	return NULL;
+}
+
+static LineStyleModifier *new_modifier(const char *name, int type, size_t size)
 {
 	LineStyleModifier *m;
 
+	if (!name) {
+		name = modifier_name[type];
+	}
 	m = (LineStyleModifier *)MEM_callocN(size, "line style modifier");
 	m->type = type;
-	BLI_strncpy(m->name, modifier_name[type], sizeof(m->name));
+	BLI_strncpy(m->name, name, sizeof(m->name));
 	m->influence = 1.0f;
 	m->flags = LS_MODIFIER_ENABLED | LS_MODIFIER_EXPANDED;
 
@@ -197,7 +254,7 @@ static void add_to_modifier_list(ListBase *lb, LineStyleModifier *m)
 	BLI_uniquename(lb, m, modifier_name[m->type], '.', offsetof(LineStyleModifier, name), sizeof(m->name));
 }
 
-static LineStyleModifier *alloc_color_modifier(int type)
+static LineStyleModifier *alloc_color_modifier(const char *name, int type)
 {
 	size_t size;
 
@@ -218,14 +275,17 @@ static LineStyleModifier *alloc_color_modifier(int type)
 			return NULL; /* unknown modifier type */
 	}
 
-	return new_modifier(type, size);
+	return new_modifier(name, type, size);
 }
 
-LineStyleModifier *BKE_add_linestyle_color_modifier(FreestyleLineStyle *linestyle, int type)
+LineStyleModifier *BKE_linestyle_color_modifier_add(FreestyleLineStyle *linestyle, const char *name, int type)
 {
 	LineStyleModifier *m;
 
-	m = alloc_color_modifier(type);
+	m = alloc_color_modifier(name, type);
+	if (UNLIKELY(m == NULL)) {
+		return NULL;
+	}
 	m->blend = MA_RAMP_BLEND;
 
 	switch (type) {
@@ -245,7 +305,7 @@ LineStyleModifier *BKE_add_linestyle_color_modifier(FreestyleLineStyle *linestyl
 			break;
 		case LS_MODIFIER_MATERIAL:
 			((LineStyleColorModifier_Material *)m)->color_ramp = add_colorband(1);
-			((LineStyleColorModifier_Material *)m)->mat_attr = LS_MODIFIER_MATERIAL_DIFF;
+			((LineStyleColorModifier_Material *)m)->mat_attr = LS_MODIFIER_MATERIAL_LINE;
 			break;
 		default:
 			return NULL; /* unknown modifier type */
@@ -255,11 +315,14 @@ LineStyleModifier *BKE_add_linestyle_color_modifier(FreestyleLineStyle *linestyl
 	return m;
 }
 
-LineStyleModifier *BKE_copy_linestyle_color_modifier(FreestyleLineStyle *linestyle, LineStyleModifier *m)
+LineStyleModifier *BKE_linestyle_color_modifier_copy(FreestyleLineStyle *linestyle, LineStyleModifier *m)
 {
 	LineStyleModifier *new_m;
 
-	new_m = alloc_color_modifier(m->type);
+	new_m = alloc_color_modifier(m->name, m->type);
+	if (UNLIKELY(new_m == NULL)) {
+		return NULL;
+	}
 	new_m->influence = m->influence;
 	new_m->flags = m->flags;
 	new_m->blend = m->blend;
@@ -310,8 +373,10 @@ LineStyleModifier *BKE_copy_linestyle_color_modifier(FreestyleLineStyle *linesty
 	return new_m;
 }
 
-void BKE_remove_linestyle_color_modifier(FreestyleLineStyle *linestyle, LineStyleModifier *m)
+int BKE_linestyle_color_modifier_remove(FreestyleLineStyle *linestyle, LineStyleModifier *m)
 {
+	if (BLI_findindex(&linestyle->color_modifiers, m) == -1)
+		return -1;
 	switch (m->type) {
 		case LS_MODIFIER_ALONG_STROKE:
 			MEM_freeN(((LineStyleColorModifier_AlongStroke *)m)->color_ramp);
@@ -327,9 +392,10 @@ void BKE_remove_linestyle_color_modifier(FreestyleLineStyle *linestyle, LineStyl
 			break;
 	}
 	BLI_freelinkN(&linestyle->color_modifiers, m);
+	return 0;
 }
 
-static LineStyleModifier *alloc_alpha_modifier(int type)
+static LineStyleModifier *alloc_alpha_modifier(const char *name, int type)
 {
 	size_t size;
 
@@ -349,14 +415,14 @@ static LineStyleModifier *alloc_alpha_modifier(int type)
 		default:
 			return NULL; /* unknown modifier type */
 	}
-	return new_modifier(type, size);
+	return new_modifier(name, type, size);
 }
 
-LineStyleModifier *BKE_add_linestyle_alpha_modifier(FreestyleLineStyle *linestyle, int type)
+LineStyleModifier *BKE_linestyle_alpha_modifier_add(FreestyleLineStyle *linestyle, const char *name, int type)
 {
 	LineStyleModifier *m;
 
-	m = alloc_alpha_modifier(type);
+	m = alloc_alpha_modifier(name, type);
 	m->blend = LS_VALUE_BLEND;
 
 	switch (type) {
@@ -387,7 +453,7 @@ LineStyleModifier *BKE_add_linestyle_alpha_modifier(FreestyleLineStyle *linestyl
 		{
 			LineStyleAlphaModifier_Material *p = (LineStyleAlphaModifier_Material *)m;
 			p->curve = curvemapping_add(1, 0.0f, 0.0f, 1.0f, 1.0f);
-			p->mat_attr = LS_MODIFIER_MATERIAL_DIFF;
+			p->mat_attr = LS_MODIFIER_MATERIAL_LINE_A;
 			break;
 		}
 		default:
@@ -398,11 +464,11 @@ LineStyleModifier *BKE_add_linestyle_alpha_modifier(FreestyleLineStyle *linestyl
 	return m;
 }
 
-LineStyleModifier *BKE_copy_linestyle_alpha_modifier(FreestyleLineStyle *linestyle, LineStyleModifier *m)
+LineStyleModifier *BKE_linestyle_alpha_modifier_copy(FreestyleLineStyle *linestyle, LineStyleModifier *m)
 {
 	LineStyleModifier *new_m;
 
-	new_m = alloc_alpha_modifier(m->type);
+	new_m = alloc_alpha_modifier(m->name, m->type);
 	new_m->influence = m->influence;
 	new_m->flags = m->flags;
 	new_m->blend = m->blend;
@@ -456,8 +522,10 @@ LineStyleModifier *BKE_copy_linestyle_alpha_modifier(FreestyleLineStyle *linesty
 	return new_m;
 }
 
-void BKE_remove_linestyle_alpha_modifier(FreestyleLineStyle *linestyle, LineStyleModifier *m)
+int BKE_linestyle_alpha_modifier_remove(FreestyleLineStyle *linestyle, LineStyleModifier *m)
 {
+	if (BLI_findindex(&linestyle->alpha_modifiers, m) == -1)
+		return -1;
 	switch (m->type) {
 		case LS_MODIFIER_ALONG_STROKE:
 			curvemapping_free(((LineStyleAlphaModifier_AlongStroke *)m)->curve);
@@ -473,9 +541,10 @@ void BKE_remove_linestyle_alpha_modifier(FreestyleLineStyle *linestyle, LineStyl
 			break;
 	}
 	BLI_freelinkN(&linestyle->alpha_modifiers, m);
+	return 0;
 }
 
-static LineStyleModifier *alloc_thickness_modifier(int type)
+static LineStyleModifier *alloc_thickness_modifier(const char *name, int type)
 {
 	size_t size;
 
@@ -499,14 +568,14 @@ static LineStyleModifier *alloc_thickness_modifier(int type)
 			return NULL; /* unknown modifier type */
 	}
 
-	return new_modifier(type, size);
+	return new_modifier(name, type, size);
 }
 
-LineStyleModifier *BKE_add_linestyle_thickness_modifier(FreestyleLineStyle *linestyle, int type)
+LineStyleModifier *BKE_linestyle_thickness_modifier_add(FreestyleLineStyle *linestyle, const char *name, int type)
 {
 	LineStyleModifier *m;
 
-	m = alloc_thickness_modifier(type);
+	m = alloc_thickness_modifier(name, type);
 	m->blend = LS_VALUE_BLEND;
 
 	switch (type) {
@@ -543,7 +612,7 @@ LineStyleModifier *BKE_add_linestyle_thickness_modifier(FreestyleLineStyle *line
 		{
 			LineStyleThicknessModifier_Material *p = (LineStyleThicknessModifier_Material *)m;
 			p->curve = curvemapping_add(1, 0.0f, 0.0f, 1.0f, 1.0f);
-			p->mat_attr = LS_MODIFIER_MATERIAL_DIFF;
+			p->mat_attr = LS_MODIFIER_MATERIAL_LINE;
 			p->value_min = 0.0f;
 			p->value_max = 1.0f;
 			break;
@@ -564,11 +633,11 @@ LineStyleModifier *BKE_add_linestyle_thickness_modifier(FreestyleLineStyle *line
 	return m;
 }
 
-LineStyleModifier *BKE_copy_linestyle_thickness_modifier(FreestyleLineStyle *linestyle, LineStyleModifier *m)
+LineStyleModifier *BKE_linestyle_thickness_modifier_copy(FreestyleLineStyle *linestyle, LineStyleModifier *m)
 {
 	LineStyleModifier *new_m;
 
-	new_m = alloc_thickness_modifier(m->type);
+	new_m = alloc_thickness_modifier(m->name, m->type);
 	if (!new_m)
 		return NULL;
 	new_m->influence = m->influence;
@@ -641,8 +710,10 @@ LineStyleModifier *BKE_copy_linestyle_thickness_modifier(FreestyleLineStyle *lin
 	return new_m;
 }
 
-void BKE_remove_linestyle_thickness_modifier(FreestyleLineStyle *linestyle, LineStyleModifier *m)
+int BKE_linestyle_thickness_modifier_remove(FreestyleLineStyle *linestyle, LineStyleModifier *m)
 {
+	if (BLI_findindex(&linestyle->thickness_modifiers, m) == -1)
+		return -1;
 	switch (m->type) {
 		case LS_MODIFIER_ALONG_STROKE:
 			curvemapping_free(((LineStyleThicknessModifier_AlongStroke *)m)->curve);
@@ -660,9 +731,10 @@ void BKE_remove_linestyle_thickness_modifier(FreestyleLineStyle *linestyle, Line
 			break;
 	}
 	BLI_freelinkN(&linestyle->thickness_modifiers, m);
+	return 0;
 }
 
-static LineStyleModifier *alloc_geometry_modifier(int type)
+static LineStyleModifier *alloc_geometry_modifier(const char *name, int type)
 {
 	size_t size;
 
@@ -710,14 +782,14 @@ static LineStyleModifier *alloc_geometry_modifier(int type)
 			return NULL; /* unknown modifier type */
 	}
 
-	return new_modifier(type, size);
+	return new_modifier(name, type, size);
 }
 
-LineStyleModifier *BKE_add_linestyle_geometry_modifier(FreestyleLineStyle *linestyle, int type)
+LineStyleModifier *BKE_linestyle_geometry_modifier_add(FreestyleLineStyle *linestyle, const char *name, int type)
 {
 	LineStyleModifier *m;
 
-	m = alloc_geometry_modifier(type);
+	m = alloc_geometry_modifier(name, type);
 
 	switch (type) {
 		case LS_MODIFIER_SAMPLING:
@@ -831,11 +903,11 @@ LineStyleModifier *BKE_add_linestyle_geometry_modifier(FreestyleLineStyle *lines
 	return m;
 }
 
-LineStyleModifier *BKE_copy_linestyle_geometry_modifier(FreestyleLineStyle *linestyle, LineStyleModifier *m)
+LineStyleModifier *BKE_linestyle_geometry_modifier_copy(FreestyleLineStyle *linestyle, LineStyleModifier *m)
 {
 	LineStyleModifier *new_m;
 
-	new_m = alloc_geometry_modifier(m->type);
+	new_m = alloc_geometry_modifier(m->name, m->type);
 	new_m->flags = m->flags;
 
 	switch (m->type) {
@@ -965,9 +1037,12 @@ LineStyleModifier *BKE_copy_linestyle_geometry_modifier(FreestyleLineStyle *line
 	return new_m;
 }
 
-void BKE_remove_linestyle_geometry_modifier(FreestyleLineStyle *linestyle, LineStyleModifier *m)
+int BKE_linestyle_geometry_modifier_remove(FreestyleLineStyle *linestyle, LineStyleModifier *m)
 {
+	if (BLI_findindex(&linestyle->geometry_modifiers, m) == -1)
+		return -1;
 	BLI_freelinkN(&linestyle->geometry_modifiers, m);
+	return 0;
 }
 
 static void move_modifier(ListBase *lb, LineStyleModifier *modifier, int direction)
@@ -979,33 +1054,34 @@ static void move_modifier(ListBase *lb, LineStyleModifier *modifier, int directi
 		BLI_insertlinkafter(lb, modifier->next, modifier);
 }
 
-void BKE_move_linestyle_color_modifier(FreestyleLineStyle *linestyle, LineStyleModifier *modifier, int direction)
+void BKE_linestyle_color_modifier_move(FreestyleLineStyle *linestyle, LineStyleModifier *modifier, int direction)
 {
 	move_modifier(&linestyle->color_modifiers, modifier, direction);
 }
 
-void BKE_move_linestyle_alpha_modifier(FreestyleLineStyle *linestyle, LineStyleModifier *modifier, int direction)
+void BKE_linestyle_alpha_modifier_move(FreestyleLineStyle *linestyle, LineStyleModifier *modifier, int direction)
 {
 	move_modifier(&linestyle->alpha_modifiers, modifier, direction);
 }
 
-void BKE_move_linestyle_thickness_modifier(FreestyleLineStyle *linestyle, LineStyleModifier *modifier, int direction)
+void BKE_linestyle_thickness_modifier_move(FreestyleLineStyle *linestyle, LineStyleModifier *modifier, int direction)
 {
 	move_modifier(&linestyle->thickness_modifiers, modifier, direction);
 }
 
-void BKE_move_linestyle_geometry_modifier(FreestyleLineStyle *linestyle, LineStyleModifier *modifier, int direction)
+void BKE_linestyle_geometry_modifier_move(FreestyleLineStyle *linestyle, LineStyleModifier *modifier, int direction)
 {
 	move_modifier(&linestyle->geometry_modifiers, modifier, direction);
 }
 
-void BKE_list_modifier_color_ramps(FreestyleLineStyle *linestyle, ListBase *listbase)
+void BKE_linestyle_modifier_list_color_ramps(FreestyleLineStyle *linestyle, ListBase *listbase)
 {
 	LineStyleModifier *m;
 	ColorBand *color_ramp;
 	LinkData *link;
 
-	listbase->first = listbase->last = NULL;
+	BLI_listbase_clear(listbase);
+
 	for (m = (LineStyleModifier *)linestyle->color_modifiers.first; m; m = m->next) {
 		switch (m->type) {
 			case LS_MODIFIER_ALONG_STROKE:
@@ -1023,13 +1099,13 @@ void BKE_list_modifier_color_ramps(FreestyleLineStyle *linestyle, ListBase *list
 			default:
 				continue;
 		}
-		link = (LinkData *) MEM_callocN( sizeof(LinkData), "link to color ramp");
+		link = (LinkData *) MEM_callocN(sizeof(LinkData), "link to color ramp");
 		link->data = color_ramp;
 		BLI_addtail(listbase, link);
 	}
 }
 
-char *BKE_path_from_ID_to_color_ramp(FreestyleLineStyle *linestyle, ColorBand *color_ramp)
+char *BKE_linestyle_path_to_color_ramp(FreestyleLineStyle *linestyle, ColorBand *color_ramp)
 {
 	LineStyleModifier *m;
 	bool found = false;
@@ -1060,11 +1136,11 @@ char *BKE_path_from_ID_to_color_ramp(FreestyleLineStyle *linestyle, ColorBand *c
 			return BLI_sprintfN("color_modifiers[\"%s\"].color_ramp", name_esc);
 		}
 	}
-	printf("BKE_path_from_ID_to_color_ramp: No color ramps correspond to the given pointer.\n");
+	printf("BKE_linestyle_path_to_color_ramp: No color ramps correspond to the given pointer.\n");
 	return NULL;
 }
 
-void BKE_unlink_linestyle_target_object(FreestyleLineStyle *linestyle, struct Object *ob)
+void BKE_linestyle_target_object_unlink(FreestyleLineStyle *linestyle, struct Object *ob)
 {
 	LineStyleModifier *m;
 
@@ -1089,4 +1165,65 @@ void BKE_unlink_linestyle_target_object(FreestyleLineStyle *linestyle, struct Ob
 			}
 		}
 	}
+}
+
+bool BKE_linestyle_use_textures(FreestyleLineStyle *linestyle, const bool use_shading_nodes)
+{
+	if (use_shading_nodes) {
+		if (linestyle && linestyle->use_nodes && linestyle->nodetree) {
+			bNode *node;
+
+			for (node = linestyle->nodetree->nodes.first; node; node = node->next) {
+				if (node->typeinfo->nclass == NODE_CLASS_TEXTURE) {
+					return true;
+				}
+			}
+		}
+	}
+	else {
+		if (linestyle && (linestyle->flag & LS_TEXTURE)) {
+			return (linestyle->mtex[0] != NULL);
+		}
+	}
+	return false;
+}
+
+void BKE_linestyle_default_shader(const bContext *C, FreestyleLineStyle *linestyle)
+{
+	bNode *uv_along_stroke, *input_texure, *output_linestyle;
+	bNodeSocket *fromsock, *tosock;
+	bNodeTree *ntree;
+
+	BLI_assert(linestyle->nodetree == NULL);
+
+	ntree = ntreeAddTree(NULL, "stroke_shader", "ShaderNodeTree");
+
+	linestyle->nodetree = ntree;
+
+	uv_along_stroke = nodeAddStaticNode(C, ntree, SH_NODE_UVALONGSTROKE);
+	uv_along_stroke->locx = 0.0f;
+	uv_along_stroke->locy = 300.0f;
+	uv_along_stroke->custom1 = 0; // use_tips
+
+	input_texure = nodeAddStaticNode(C, ntree, SH_NODE_TEX_IMAGE);
+	input_texure->locx = 200.0f;
+	input_texure->locy = 300.0f;
+
+	output_linestyle = nodeAddStaticNode(C, ntree, SH_NODE_OUTPUT_LINESTYLE);
+	output_linestyle->locx = 400.0f;
+	output_linestyle->locy = 300.0f;
+	output_linestyle->custom1 = MA_RAMP_BLEND;
+	output_linestyle->custom2 = 0; // use_clamp
+
+	nodeSetActive(ntree, input_texure);
+
+	fromsock = BLI_findlink(&uv_along_stroke->outputs, 0); // UV
+	tosock = BLI_findlink(&input_texure->inputs, 0); // UV
+	nodeAddLink(ntree, uv_along_stroke, fromsock, input_texure, tosock);
+
+	fromsock = BLI_findlink(&input_texure->outputs, 0); // Color
+	tosock = BLI_findlink(&output_linestyle->inputs, 0); // Color
+	nodeAddLink(ntree, input_texure, fromsock, output_linestyle, tosock);
+
+	ntreeUpdateTree(CTX_data_main(C), ntree);
 }

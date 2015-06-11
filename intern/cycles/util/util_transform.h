@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __UTIL_TRANSFORM_H__
@@ -108,9 +108,9 @@ ccl_device_inline Transform transform_transpose(const Transform a)
 }
 
 ccl_device_inline Transform make_transform(float a, float b, float c, float d,
-									float e, float f, float g, float h,
-									float i, float j, float k, float l,
-									float m, float n, float o, float p)
+                                           float e, float f, float g, float h,
+                                           float i, float j, float k, float l,
+                                           float m, float n, float o, float p)
 {
 	Transform t;
 
@@ -216,12 +216,13 @@ ccl_device_inline Transform transform_rotate(float angle, float3 axis)
 		0.0f, 0.0f, 0.0f, 1.0f);
 }
 
+/* Euler is assumed to be in XYZ order. */
 ccl_device_inline Transform transform_euler(float3 euler)
 {
 	return
-		transform_rotate(euler.x, make_float3(1.0f, 0.0f, 0.0f)) *
+		transform_rotate(euler.z, make_float3(0.0f, 0.0f, 1.0f)) *
 		transform_rotate(euler.y, make_float3(0.0f, 1.0f, 0.0f)) *
-		transform_rotate(euler.z, make_float3(0.0f, 0.0f, 1.0f));
+		transform_rotate(euler.x, make_float3(1.0f, 0.0f, 0.0f));
 }
 
 ccl_device_inline Transform transform_orthographic(float znear, float zfar)

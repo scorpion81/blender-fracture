@@ -88,6 +88,7 @@ typedef struct FileData {
 	struct OldNewMap *libmap;
 	struct OldNewMap *imamap;
 	struct OldNewMap *movieclipmap;
+	struct OldNewMap *soundmap;
 	struct OldNewMap *packedmap;
 	
 	struct BHeadSort *bheadmap;
@@ -133,6 +134,8 @@ void blo_make_image_pointer_map(FileData *fd, Main *oldmain);
 void blo_end_image_pointer_map(FileData *fd, Main *oldmain);
 void blo_make_movieclip_pointer_map(FileData *fd, Main *oldmain);
 void blo_end_movieclip_pointer_map(FileData *fd, Main *oldmain);
+void blo_make_sound_pointer_map(FileData *fd, Main *oldmain);
+void blo_end_sound_pointer_map(FileData *fd, Main *oldmain);
 void blo_make_packed_pointer_map(FileData *fd, Main *oldmain);
 void blo_end_packed_pointer_map(FileData *fd, Main *oldmain);
 void blo_add_library_pointer_map(ListBase *mainlist, FileData *fd);
@@ -161,6 +164,7 @@ void blo_do_versions_key_uidgen(struct Key *key);
 void blo_do_versions_pre250(struct FileData *fd, struct Library *lib, struct Main *main);
 void blo_do_versions_250(struct FileData *fd, struct Library *lib, struct Main *main);
 void blo_do_versions_260(struct FileData *fd, struct Library *lib, struct Main *main);
+void blo_do_versions_270(struct FileData *fd, struct Library *lib, struct Main *main);
 
 #endif
 

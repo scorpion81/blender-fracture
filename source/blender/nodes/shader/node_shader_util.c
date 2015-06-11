@@ -54,7 +54,7 @@ void sh_node_type_base(struct bNodeType *ntype, int type, const char *name, shor
 
 void nodestack_get_vec(float *in, short type_in, bNodeStack *ns)
 {
-	float *from = ns->vec;
+	const float *from = ns->vec;
 		
 	if (type_in == SOCK_FLOAT) {
 		if (ns->sockettype == SOCK_FLOAT)
@@ -195,31 +195,55 @@ static void data_from_gpu_stack_list(ListBase *sockets, bNodeStack **ns, GPUNode
 bNode *nodeGetActiveTexture(bNodeTree *ntree)
 {
 	/* this is the node we texture paint and draw in textured draw */
-	bNode *node, *tnode, *inactivenode = NULL;
+	bNode *node, *tnode, *inactivenode = NULL, *activetexnode = NULL, *activegroup = NULL;
+	bool hasgroup = false;
 
 	if (!ntree)
 		return NULL;
 
 	for (node = ntree->nodes.first; node; node = node->next) {
-		if (node->flag & NODE_ACTIVE_TEXTURE)
-			return node;
+		if (node->flag & NODE_ACTIVE_TEXTURE) {
+			activetexnode = node;
+			/* if active we can return immediately */
+			if (node->flag & NODE_ACTIVE)
+				return node;
+		}
 		else if (!inactivenode && node->typeinfo->nclass == NODE_CLASS_TEXTURE)
 			inactivenode = node;
+		else if (node->type == NODE_GROUP) {
+			if (node->flag & NODE_ACTIVE)
+				activegroup = node;
+			else
+				hasgroup = true;
+		}
 	}
+
+	/* first, check active group for textures */
+	if (activegroup) {
+		tnode = nodeGetActiveTexture((bNodeTree *)activegroup->id);
+		/* active node takes priority, so ignore any other possible nodes here */
+		if (tnode)
+			return tnode;
+	}
+
+	if (activetexnode)
+		return activetexnode;
 	
-	/* node active texture node in this tree, look inside groups */
-	for (node = ntree->nodes.first; node; node = node->next) {
-		if (node->type == NODE_GROUP) {
-			tnode = nodeGetActiveTexture((bNodeTree *)node->id);
-			if (tnode && ((tnode->flag & NODE_ACTIVE_TEXTURE) || !inactivenode))
-				return tnode;
+	if (hasgroup) {
+		/* node active texture node in this tree, look inside groups */
+		for (node = ntree->nodes.first; node; node = node->next) {
+			if (node->type == NODE_GROUP) {
+				tnode = nodeGetActiveTexture((bNodeTree *)node->id);
+				if (tnode && ((tnode->flag & NODE_ACTIVE_TEXTURE) || !inactivenode))
+					return tnode;
+			}
 		}
 	}
 	
 	return inactivenode;
 }
 
-void ntreeExecGPUNodes(bNodeTreeExec *exec, GPUMaterial *mat, int do_outputs)
+void ntreeExecGPUNodes(bNodeTreeExec *exec, GPUMaterial *mat, int do_outputs, short compatibility)
 {
 	bNodeExec *nodeexec;
 	bNode *node;
@@ -228,21 +252,23 @@ void ntreeExecGPUNodes(bNodeTreeExec *exec, GPUMaterial *mat, int do_outputs)
 	bNodeStack *nsin[MAX_SOCKET];   /* arbitrary... watch this */
 	bNodeStack *nsout[MAX_SOCKET];  /* arbitrary... watch this */
 	GPUNodeStack gpuin[MAX_SOCKET + 1], gpuout[MAX_SOCKET + 1];
-	int do_it;
+	bool do_it;
 
 	stack = exec->stack;
 
 	for (n = 0, nodeexec = exec->nodeexec; n < exec->totnodes; ++n, ++nodeexec) {
 		node = nodeexec->node;
 		
-		do_it = FALSE;
+		do_it = false;
 		/* for groups, only execute outputs for edited group */
 		if (node->typeinfo->nclass == NODE_CLASS_OUTPUT) {
-			if (do_outputs && (node->flag & NODE_DO_OUTPUT))
-				do_it = TRUE;
+			if (node->typeinfo->compatibility & compatibility)
+				if (do_outputs && (node->flag & NODE_DO_OUTPUT))
+					do_it = true;
 		}
-		else
-			do_it = TRUE;
+		else {
+			do_it = true;
+		}
 
 		if (do_it) {
 			if (node->typeinfo->gpufunc) {

@@ -43,10 +43,11 @@ __all__ = (
 import bpy as _bpy
 import os as _os
 
-from _bpy_path import (extensions_audio,
-                       extensions_movie,
-                       extensions_image,
-                       )
+from _bpy_path import (
+        extensions_audio,
+        extensions_movie,
+        extensions_image,
+        )
 
 
 def _getattr_bytes(var, attr):
@@ -115,7 +116,11 @@ def is_subdir(path, directory):
     from os.path import normpath, normcase
     path = normpath(normcase(path))
     directory = normpath(normcase(directory))
-    return path.startswith(directory)
+    if len(path) > len(directory):
+        if path.startswith(directory):
+            sep = ord(_os.sep) if isinstance(directory, bytes) else _os.sep
+            return (path[len(directory)] == sep)
+    return False
 
 
 def clean_name(name, replace="_"):
@@ -219,7 +224,10 @@ def resolve_ncase(path):
 
         # we are expecting 'dirpath' to be a directory, but it could be a file
         if _os.path.isdir(dirpath):
-            files = _os.listdir(dirpath)
+            try:
+                files = _os.listdir(dirpath)
+            except PermissionError:  # We might not have the permission to list dirpath...
+                return path, False
         else:
             return path, False
 

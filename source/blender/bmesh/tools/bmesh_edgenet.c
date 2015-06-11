@@ -203,12 +203,18 @@ static BMEdge *bm_edgenet_path_step(
         BMVert *v_curr, LinkNode **v_ls,
         VertNetInfo *vnet_info, BLI_mempool *path_pool)
 {
-	const VertNetInfo *vn_curr = &vnet_info[BM_elem_index_get(v_curr)];
+	const VertNetInfo *vn_curr;
 
 	BMEdge *e;
 	BMIter iter;
-	unsigned int tot = 0;
-	unsigned int v_ls_tot = 0;
+	unsigned int tot;
+	unsigned int v_ls_tot;
+
+
+begin:
+	tot = 0;
+	v_ls_tot = 0;
+	vn_curr = &vnet_info[BM_elem_index_get(v_curr)];
 
 	BM_ITER_ELEM (e, &iter, v_curr, BM_EDGES_OF_VERT) {
 		BMVert *v_next = BM_edge_other_vert(e, v_curr);
@@ -256,7 +262,12 @@ static BMEdge *bm_edgenet_path_step(
 	/* trick to walk along wire-edge paths */
 	if (v_ls_tot == 1 && tot == 1) {
 		v_curr = BLI_linklist_pop_pool(v_ls, path_pool);
+		/* avoid recursion, can crash on very large nets */
+#if 0
 		bm_edgenet_path_step(v_curr, v_ls, vnet_info, path_pool);
+#else
+		goto begin;
+#endif
 	}
 
 	return NULL;
@@ -382,8 +393,8 @@ static LinkNode *bm_edgenet_path_calc_best(
 	if (path == NULL) {
 		return NULL;
 	}
-	else if (path_cost <= 1) {
-		/* any face that takes 1-2 iterations to find we consider valid */
+	else if (path_cost < 1) {
+		/* any face that takes 1 iteration to find we consider valid */
 		return path;
 	}
 	else {
@@ -443,8 +454,8 @@ void BM_mesh_edgenet(BMesh *bm,
                      const bool use_edge_tag, const bool use_new_face_tag)
 {
 	VertNetInfo *vnet_info = MEM_callocN(sizeof(*vnet_info) * (size_t)bm->totvert, __func__);
-	BLI_mempool *edge_queue_pool = BLI_mempool_create(sizeof(LinkNode), 1, 512, 0);
-	BLI_mempool *path_pool = BLI_mempool_create(sizeof(LinkNode), 1, 512, 0);
+	BLI_mempool *edge_queue_pool = BLI_mempool_create(sizeof(LinkNode), 0, 512, BLI_MEMPOOL_NOP);
+	BLI_mempool *path_pool = BLI_mempool_create(sizeof(LinkNode), 0, 512, BLI_MEMPOOL_NOP);
 	LinkNode *edge_queue = NULL;
 
 	BMEdge *e;
@@ -454,7 +465,6 @@ void BM_mesh_edgenet(BMesh *bm,
 
 	if (use_edge_tag == false) {
 		BM_ITER_MESH (e, &iter, bm, BM_EDGES_OF_MESH) {
-			BM_elem_flag_enable(e, BM_ELEM_TAG);
 			BM_elem_flag_set(e, BM_ELEM_TAG, bm_edge_step_ok(e));
 		}
 	}
@@ -500,7 +510,7 @@ void BM_mesh_edgenet(BMesh *bm,
 		BLI_assert(BLI_mempool_count(path_pool) == 0);
 	}
 
-	bm->elem_index_dirty |= BM_FACE;
+	bm->elem_index_dirty |= BM_FACE | BM_LOOP;
 
 	BLI_mempool_destroy(edge_queue_pool);
 	BLI_mempool_destroy(path_pool);

@@ -32,6 +32,7 @@
 #include <string.h>
 #include <stdio.h>
 
+#include "DNA_gpencil_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 
@@ -42,7 +43,6 @@
 #include "BLI_utildefines.h"
 
 #include "BKE_context.h"
-#include "BKE_global.h"
 #include "BKE_screen.h"
 #include "BKE_pointcache.h"
 
@@ -58,6 +58,7 @@
 
 #include "UI_resources.h"
 #include "UI_view2d.h"
+#include "UI_interface.h"
 
 #include "ED_space_api.h"
 #include "ED_markers.h"
@@ -90,13 +91,12 @@ static void time_draw_sfra_efra(Scene *scene, View2D *v2d)
 	fdrawline((float)PEFRA, v2d->cur.ymin, (float)PEFRA, v2d->cur.ymax);
 }
 
-#define CACHE_DRAW_HEIGHT   3.0f
-
 static void time_draw_cache(SpaceTime *stime, Object *ob, Scene *scene)
 {
 	PTCacheID *pid;
 	ListBase pidlist;
 	SpaceTimeCache *stc = stime->caches.first;
+	const float cache_draw_height = (4.0f * UI_DPI_FAC * U.pixelsize);
 	float yoffs = 0.f;
 	
 	if (!(stime->cache_display & TIME_CACHE_DISPLAY) || (!ob))
@@ -172,7 +172,7 @@ static void time_draw_cache(SpaceTime *stime, Object *ob, Scene *scene)
 		
 		glPushMatrix();
 		glTranslatef(0.0, (float)V2D_SCROLL_HEIGHT + yoffs, 0.0);
-		glScalef(1.0, CACHE_DRAW_HEIGHT, 0.0);
+		glScalef(1.0, cache_draw_height, 0.0);
 		
 		switch (pid->type) {
 			case PTCACHE_TYPE_SOFTBODY:
@@ -230,7 +230,7 @@ static void time_draw_cache(SpaceTime *stime, Object *ob, Scene *scene)
 		
 		glPopMatrix();
 		
-		yoffs += CACHE_DRAW_HEIGHT;
+		yoffs += cache_draw_height;
 
 		stc = stc->next;
 	}
@@ -295,6 +295,8 @@ static void time_draw_idblock_keyframes(View2D *v2d, ID *id, short onlysel)
 	bDopeSheet ads = {NULL};
 	DLRBT_Tree keys;
 	ActKeyColumn *ak;
+	float ymin = v2d->tot.ymin;
+	float ymax = v2d->tot.ymax * 0.6f + ymin * 0.4f;
 	
 	/* init binarytree-list for getting keyframes */
 	BLI_dlrbTree_init(&keys);
@@ -302,7 +304,7 @@ static void time_draw_idblock_keyframes(View2D *v2d, ID *id, short onlysel)
 	/* init dopesheet settings */
 	if (onlysel)
 		ads.filterflag |= ADS_FILTER_ONLYSEL;
-	
+
 	/* populate tree with keyframe nodes */
 	switch (GS(id->name)) {
 		case ID_SCE:
@@ -310,6 +312,9 @@ static void time_draw_idblock_keyframes(View2D *v2d, ID *id, short onlysel)
 			break;
 		case ID_OB:
 			ob_to_keylist(&ads, (Object *)id, &keys, NULL);
+			break;
+		case ID_GD:
+			gpencil_to_keylist(&ads, (bGPdata *)id, &keys);
 			break;
 	}
 		
@@ -326,8 +331,8 @@ static void time_draw_idblock_keyframes(View2D *v2d, ID *id, short onlysel)
 	     (ak) && (ak->cfra <= v2d->cur.xmax);
 	     ak = ak->next)
 	{
-		glVertex2f(ak->cfra, v2d->tot.ymin);
-		glVertex2f(ak->cfra, v2d->tot.ymax);
+		glVertex2f(ak->cfra, ymin);
+		glVertex2f(ak->cfra, ymax);
 	}
 	glEnd(); // GL_LINES
 		
@@ -336,20 +341,27 @@ static void time_draw_idblock_keyframes(View2D *v2d, ID *id, short onlysel)
 }
 
 /* draw keyframe lines for timeline */
-static void time_draw_keyframes(const bContext *C, SpaceTime *stime, ARegion *ar)
+static void time_draw_keyframes(const bContext *C, ARegion *ar)
 {
 	Scene *scene = CTX_data_scene(C);
 	Object *ob = CTX_data_active_object(C);
+	bGPdata *gpd = CTX_data_gpencil_data(C);
 	View2D *v2d = &ar->v2d;
-	short onlysel = (stime->flag & TIME_ONLYACTSEL);
+	bool onlysel = ((scene->flag & SCE_KEYS_NO_SELONLY) == 0);
+	
+	/* draw grease pencil keyframes (if available) */
+	if (gpd) {
+		UI_ThemeColor(TH_TIME_GP_KEYFRAME);
+		time_draw_idblock_keyframes(v2d, (ID *)gpd, onlysel);
+	}
 	
 	/* draw scene keyframes first 
 	 *	- don't try to do this when only drawing active/selected data keyframes,
 	 *	  since this can become quite slow
 	 */
-	if (scene && onlysel == 0) {
+	if (onlysel == 0) {
 		/* set draw color */
-		glColor3ub(0xDD, 0xA7, 0x00);
+		UI_ThemeColorShade(TH_TIME_KEYFRAME, -50);
 		time_draw_idblock_keyframes(v2d, (ID *)scene, onlysel);
 	}
 	
@@ -358,14 +370,14 @@ static void time_draw_keyframes(const bContext *C, SpaceTime *stime, ARegion *ar
 	 *    OR the onlysel flag was set, which means that only active object's keyframes should
 	 *    be considered
 	 */
-	glColor3ub(0xDD, 0xD7, 0x00);
+	UI_ThemeColor(TH_TIME_KEYFRAME);
 	
 	if (ob && ((ob->mode == OB_MODE_POSE) || onlysel)) {
 		/* draw keyframes for active object only */
 		time_draw_idblock_keyframes(v2d, (ID *)ob, onlysel);
 	}
 	else {
-		short active_done = FALSE;
+		bool active_done = false;
 		
 		/* draw keyframes from all selected objects */
 		CTX_DATA_BEGIN (C, Object *, obsel, selected_objects)
@@ -375,7 +387,7 @@ static void time_draw_keyframes(const bContext *C, SpaceTime *stime, ARegion *ar
 			
 			/* if this object is the active one, set flag so that we don't draw again */
 			if (obsel == ob)
-				active_done = TRUE;
+				active_done = true;
 		}
 		CTX_DATA_END;
 		
@@ -406,6 +418,7 @@ static void time_listener(bScreen *UNUSED(sc), ScrArea *sa, wmNotifier *wmn)
 		case NC_OBJECT:
 		{
 			switch (wmn->data) {
+				case ND_BONE_SELECT:
 				case ND_BONE_ACTIVE:
 				case ND_POINTCACHE:
 				case ND_MODIFIER:
@@ -516,11 +529,11 @@ static void time_main_area_draw(const bContext *C, ARegion *ar)
 	UI_view2d_view_ortho(v2d);
 	
 	/* keyframes */
-	time_draw_keyframes(C, stime, ar);
+	time_draw_keyframes(C, ar);
 	
 	/* markers */
 	UI_view2d_view_orthoSpecial(ar, v2d, 1);
-	draw_markers_time(C, 0);
+	ED_markers_draw(C, 0);
 	
 	/* caches */
 	time_draw_cache(stime, obact, scene);
@@ -691,7 +704,7 @@ static SpaceLink *time_duplicate(SpaceLink *sl)
 	SpaceTime *stime = (SpaceTime *)sl;
 	SpaceTime *stimen = MEM_dupallocN(stime);
 	
-	stimen->caches.first = stimen->caches.last = NULL;
+	BLI_listbase_clear(&stimen->caches);
 	
 	return (SpaceLink *)stimen;
 }

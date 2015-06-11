@@ -43,10 +43,11 @@ struct TimeMarker;
 /* flags for drawing markers */
 enum {
 	DRAW_MARKERS_LINES  = (1 << 0),
-	DRAW_MARKERS_LOCAL  = (1 << 1)
+	DRAW_MARKERS_LOCAL  = (1 << 1),
+	DRAW_MARKERS_MARGIN = (1 << 2),
 };
 
-void draw_markers_time(const struct bContext *C, int flag);
+void ED_markers_draw(const struct bContext *C, int flag);
 
 /* Backend API ----------------------------- */
 
@@ -69,7 +70,7 @@ struct TimeMarker *ED_markers_get_first_selected(ListBase *markers);
 /* called in screen_ops.c:ED_operatortypes_screen() */
 void ED_operatortypes_marker(void); 
 /* called in screen_ops.c:ED_keymap_screen() */
-void ED_marker_keymap(struct wmKeyConfig *keyconf);
+void ED_keymap_marker(struct wmKeyConfig *keyconf);
 
 /* called in animation editors - keymap defines */
 void ED_marker_keymap_animedit_conflictfree(struct wmKeyMap *keymap);

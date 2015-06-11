@@ -35,11 +35,12 @@
 
 #include "BLI_utildefines.h"
 #include "BLI_fileops.h"
-
 #include "BLI_math.h"
-#include "MEM_guardedalloc.h"
 
-#include "imbuf.h"
+#include "BKE_global.h"
+#include "BKE_idprop.h"
+
+#include "MEM_guardedalloc.h"
 
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"
@@ -397,24 +398,25 @@ int imb_savepng(struct ImBuf *ibuf, const char *name, int flags)
 	/* image text info */
 	if (ibuf->metadata) {
 		png_text *metadata;
-		ImMetaData *iptr;
+		IDProperty *prop;
+
 		int num_text = 0;
-		iptr = ibuf->metadata;
-		while (iptr) {
-			num_text++;
-			iptr = iptr->next;
+
+		for (prop = ibuf->metadata->data.group.first; prop; prop = prop->next) {
+			if (prop->type == IDP_STRING) {
+				num_text++;
+			}
 		}
 		
 		metadata = MEM_callocN(num_text * sizeof(png_text), "png_metadata");
-		iptr = ibuf->metadata;
 		num_text = 0;
-		while (iptr) {
-			
-			metadata[num_text].compression = PNG_TEXT_COMPRESSION_NONE;
-			metadata[num_text].key = iptr->key;
-			metadata[num_text].text = iptr->value;
-			num_text++;
-			iptr = iptr->next;
+		for (prop = ibuf->metadata->data.group.first; prop; prop = prop->next) {
+			if (prop->type == IDP_STRING) {
+				metadata[num_text].compression = PNG_TEXT_COMPRESSION_NONE;
+				metadata[num_text].key = prop->name;
+				metadata[num_text].text = IDP_String(prop);
+				num_text++;
+			}
 		}
 		
 		png_set_text(png_ptr, info_ptr, metadata, num_text);
@@ -484,6 +486,23 @@ int imb_savepng(struct ImBuf *ibuf, const char *name, int flags)
 	return(1);
 }
 
+static void imb_png_warning(png_structp UNUSED(png_ptr), png_const_charp message)
+{
+	/* We suppress iCCP warnings. That's how Blender always used to behave,
+	 * and with new libpng it became too much picky, giving a warning on
+	 * the splash screen even.
+	 */
+	if ((G.debug & G_DEBUG) == 0 && STREQLEN(message, "iCCP", 4)) {
+		return;
+	}
+	fprintf(stderr, "libpng warning: %s\n", message);
+}
+
+static void imb_png_error(png_structp UNUSED(png_ptr), png_const_charp message)
+{
+	fprintf(stderr, "libpng error: %s\n", message);
+}
+
 ImBuf *imb_loadpng(unsigned char *mem, size_t size, int flags, char colorspace[IM_MAX_SPACE])
 {
 	struct ImBuf *ibuf = NULL;
@@ -512,6 +531,8 @@ ImBuf *imb_loadpng(unsigned char *mem, size_t size, int flags, char colorspace[I
 		printf("Cannot png_create_read_struct\n");
 		return NULL;
 	}
+
+	png_set_error_fn(png_ptr, NULL, imb_png_error, imb_png_warning);
 
 	info_ptr = png_create_info_struct(png_ptr);
 	if (info_ptr == NULL) {

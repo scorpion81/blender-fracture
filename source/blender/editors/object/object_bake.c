@@ -45,11 +45,8 @@
 #include "BLI_blenlib.h"
 #include "BLI_threads.h"
 #include "BLI_utildefines.h"
-#include "BLI_math.h"
-#include "BLI_math_geom.h"
 
 #include "BKE_blender.h"
-#include "BKE_ccg.h"
 #include "BKE_screen.h"
 #include "BKE_context.h"
 #include "BKE_global.h"
@@ -60,7 +57,6 @@
 #include "BKE_cdderivedmesh.h"
 #include "BKE_modifier.h"
 #include "BKE_DerivedMesh.h"
-#include "BKE_subsurf.h"
 #include "BKE_depsgraph.h"
 #include "BKE_mesh.h"
 #include "BKE_scene.h"
@@ -73,7 +69,6 @@
 
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"
-#include "IMB_colormanagement.h"
 
 #include "GPU_draw.h" /* GPU_free_image */
 
@@ -81,6 +76,7 @@
 #include "WM_types.h"
 
 #include "ED_object.h"
+#include "ED_screen.h"
 
 #include "object_intern.h"
 
@@ -439,7 +435,7 @@ static void multiresbake_startjob(void *bkv, short *stop, short *do_update, floa
 	MultiresBakeJob *bkj = bkv;
 	int baked_objects = 0, tot_obj;
 
-	tot_obj = BLI_countlist(&bkj->data);
+	tot_obj = BLI_listbase_count(&bkj->data);
 
 	if (bkj->bake_clear) {  /* clear images */
 		for (data = bkj->data.first; data; data = data->next) {
@@ -548,7 +544,7 @@ static int multiresbake_image_exec(bContext *C, wmOperator *op)
 	WM_jobs_timer(wm_job, 0.5, NC_IMAGE, 0); /* TODO - only draw bake image, can we enforce this */
 	WM_jobs_callbacks(wm_job, multiresbake_startjob, NULL, NULL, NULL);
 
-	G.is_break = FALSE;
+	G.is_break = false;
 
 	WM_jobs_start(CTX_wm_manager(C), wm_job);
 	WM_cursor_wait(0);
@@ -683,6 +679,7 @@ static void finish_bake_internal(BakeRender *bkr)
 			}
 
 			BKE_image_release_ibuf(ima, ibuf, NULL);
+			DAG_id_tag_update(&ima->id, 0);			
 		}
 	}
 
@@ -721,7 +718,7 @@ static void bake_startjob(void *bkv, short *stop, short *do_update, float *progr
 	bkr->progress = progress;
 
 	RE_test_break_cb(bkr->re, NULL, thread_break);
-	G.is_break = FALSE;   /* blender_test_break uses this global */
+	G.is_break = false;   /* blender_test_break uses this global */
 
 	RE_Database_Baking(bkr->re, bmain, scene, scene->lay, scene->r.bake_mode, bkr->actob);
 
@@ -751,7 +748,7 @@ static void bake_freejob(void *bkv)
 		BKE_report(bkr->reports, RPT_WARNING, "Circular reference in texture stack");
 
 	MEM_freeN(bkr);
-	G.is_rendering = FALSE;
+	G.is_rendering = false;
 }
 
 /* catch esc */
@@ -765,14 +762,13 @@ static int objects_bake_render_modal(bContext *C, wmOperator *UNUSED(op), const 
 	switch (event->type) {
 		case ESCKEY:
 			return OPERATOR_RUNNING_MODAL;
-			break;
 	}
 	return OPERATOR_PASS_THROUGH;
 }
 
 static bool is_multires_bake(Scene *scene)
 {
-	if (ELEM4(scene->r.bake_mode, RE_BAKE_NORMALS, RE_BAKE_DISPLACEMENT, RE_BAKE_DERIVATIVE, RE_BAKE_AO))
+	if (ELEM(scene->r.bake_mode, RE_BAKE_NORMALS, RE_BAKE_DISPLACEMENT, RE_BAKE_DERIVATIVE, RE_BAKE_AO))
 		return scene->r.bake_flag & R_BAKE_MULTIRES;
 
 	return 0;
@@ -808,8 +804,8 @@ static int objects_bake_render_invoke(bContext *C, wmOperator *op, const wmEvent
 			WM_jobs_timer(wm_job, 0.5, NC_IMAGE, 0); /* TODO - only draw bake image, can we enforce this */
 			WM_jobs_callbacks(wm_job, bake_startjob, NULL, bake_update, NULL);
 
-			G.is_break = FALSE;
-			G.is_rendering = TRUE;
+			G.is_break = false;
+			G.is_rendering = true;
 
 			WM_jobs_start(CTX_wm_manager(C), wm_job);
 
@@ -849,7 +845,7 @@ static int bake_image_exec(bContext *C, wmOperator *op)
 			bkr.reports = op->reports;
 
 			RE_test_break_cb(bkr.re, NULL, thread_break);
-			G.is_break = FALSE;   /* blender_test_break uses this global */
+			G.is_break = false;   /* blender_test_break uses this global */
 
 			RE_Database_Baking(bkr.re, bmain, scene, scene->lay, scene->r.bake_mode, (scene->r.bake_flag & R_BAKE_TO_ACTIVE) ? OBACT : NULL);
 
@@ -896,4 +892,5 @@ void OBJECT_OT_bake_image(wmOperatorType *ot)
 	ot->exec = bake_image_exec;
 	ot->invoke = objects_bake_render_invoke;
 	ot->modal = objects_bake_render_modal;
+	ot->poll = ED_operator_object_active;
 }

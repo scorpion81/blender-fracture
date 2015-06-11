@@ -75,7 +75,6 @@ variables on the UI for now
 #include "BKE_global.h"
 #include "BKE_modifier.h"
 #include "BKE_softbody.h"
-#include "BKE_DerivedMesh.h"
 #include "BKE_pointcache.h"
 #include "BKE_deform.h"
 #include "BKE_mesh.h"
@@ -523,10 +522,8 @@ static void ccd_mesh_update(Object *ob, ccd_Mesh *pccd_M)
 			mima->maxz = max_ff(mima->maxz, v[2] + hull);
 		}
 
-
-	mima++;
-	mface++;
-
+		mima++;
+		mface++;
 	}
 	return;
 }
@@ -708,7 +705,7 @@ static void add_2nd_order_roller(Object *ob, float UNUSED(stiffness), int *count
 						}
 					}
 					if ((bs2->v2 !=notthis)&&(bs2->v2 > v0)) {
-					(*counter)++;/*hit */
+						(*counter)++;  /* hit */
 						if (addsprings) {
 							bs3->v1= v0;
 							bs3->v2= bs2->v2;
@@ -1642,7 +1639,7 @@ static void scan_for_ext_spring_forces(Scene *scene, Object *ob, float timenow)
 	SoftBody *sb = ob->soft;
 	ListBase *do_effector = NULL;
 
-	do_effector = pdInitEffectors(scene, ob, NULL, sb->effector_weights);
+	do_effector = pdInitEffectors(scene, ob, NULL, sb->effector_weights, true);
 	_scan_for_ext_spring_forces(scene, ob, timenow, 0, sb->totspring, do_effector);
 	pdEndEffectors(&do_effector);
 }
@@ -1662,7 +1659,7 @@ static void sb_sfesf_threads_run(Scene *scene, struct Object *ob, float timenow,
 	int i, totthread, left, dec;
 	int lowsprings =100; /* wild guess .. may increase with better thread management 'above' or even be UI option sb->spawn_cf_threads_nopts */
 
-	do_effector= pdInitEffectors(scene, ob, NULL, ob->soft->effector_weights);
+	do_effector= pdInitEffectors(scene, ob, NULL, ob->soft->effector_weights, true);
 
 	/* figure the number of threads while preventing pretty pointless threading overhead */
 	totthread= BKE_scene_num_threads(scene);
@@ -1688,7 +1685,7 @@ static void sb_sfesf_threads_run(Scene *scene, struct Object *ob, float timenow,
 		else
 			sb_threads[i].ifirst  = 0;
 		sb_threads[i].do_effector = do_effector;
-		sb_threads[i].do_deflector = FALSE;// not used here
+		sb_threads[i].do_deflector = false;// not used here
 		sb_threads[i].fieldfactor = 0.0f;// not used here
 		sb_threads[i].windfactor  = 0.0f;// not used here
 		sb_threads[i].nr= i;
@@ -1946,7 +1943,7 @@ static int sb_detect_vertex_collisionCached(float opco[3], float facenormal[3], 
 							float dist;
 
 							closest_to_line_segment_v3(ve, opco, nv1, nv2);
-							 sub_v3_v3v3(ve, opco, ve);
+							sub_v3_v3v3(ve, opco, ve);
 							dist = normalize_v3(ve);
 							if ((dist < outerfacethickness)&&(dist < mindistedge )) {
 								copy_v3_v3(coledge, ve);
@@ -2161,7 +2158,7 @@ static void sb_spring_force(Object *ob, int bpi, BodySpring *bs, float iks, floa
 		// dfdx_spring(ia, ia, op, dir, bs->len, distance, -mpos);
 		/* depending on my vel */
 		// dfdv_goal(ia, ia, mvel); // well that ignores geometie
-		if (bp2->goal < SOFTGOALSNAP) { /* ommit this bp when it snaps */
+		if (bp2->goal < SOFTGOALSNAP) {  /* omit this bp when it snaps */
 			/* depending on other pos */
 			// dfdx_spring(ia, ic, op, dir, bs->len, distance, mpos);
 			/* depending on other vel */
@@ -2258,7 +2255,7 @@ static int _softbody_calc_forces_slice_in_a_thread(Scene *scene, Object *ob, flo
 		}
 		/* naive ball self collision done */
 
-		if (_final_goal(ob, bp) < SOFTGOALSNAP) { /* ommit this bp when it snaps */
+		if (_final_goal(ob, bp) < SOFTGOALSNAP) {  /* omit this bp when it snaps */
 			float auxvect[3];
 			float velgoal[3];
 
@@ -2468,7 +2465,7 @@ static void softbody_calc_forcesEx(Scene *scene, Object *ob, float forcetime, fl
 	sb_sfesf_threads_run(scene, ob, timenow, sb->totspring, NULL);
 
 	/* after spring scan because it uses Effoctors too */
-	do_effector= pdInitEffectors(scene, ob, NULL, sb->effector_weights);
+	do_effector= pdInitEffectors(scene, ob, NULL, sb->effector_weights, true);
 
 	if (do_deflector) {
 		float defforce[3];
@@ -2543,7 +2540,7 @@ static void softbody_calc_forces(Scene *scene, Object *ob, float forcetime, floa
 
 		if (do_springcollision || do_aero)  scan_for_ext_spring_forces(scene, ob, timenow);
 		/* after spring scan because it uses Effoctors too */
-		do_effector= pdInitEffectors(scene, ob, NULL, ob->soft->effector_weights);
+		do_effector= pdInitEffectors(scene, ob, NULL, ob->soft->effector_weights, true);
 
 		if (do_deflector) {
 			float defforce[3];
@@ -2653,7 +2650,7 @@ static void softbody_calc_forces(Scene *scene, Object *ob, float forcetime, floa
 			}
 			/* naive ball self collision done */
 
-			if (_final_goal(ob, bp) < SOFTGOALSNAP) { /* ommit this bp when it snaps */
+			if (_final_goal(ob, bp) < SOFTGOALSNAP) {  /* omit this bp when it snaps */
 				float auxvect[3];
 				float velgoal[3];
 
@@ -3350,7 +3347,7 @@ static void mesh_to_softbody(Scene *scene, Object *ob)
 			build_bps_springlist(ob); /* scan for springs attached to bodypoints ONCE */
 			/* insert *other second order* springs if desired */
 			if (sb->secondspring > 0.0000001f) {
-				add_2nd_order_springs(ob, sb->secondspring); /* exploits the the first run of build_bps_springlist(ob);*/
+				add_2nd_order_springs(ob, sb->secondspring); /* exploits the first run of build_bps_springlist(ob);*/
 				build_bps_springlist(ob); /* yes we need to do it again*/
 			}
 			springs_from_mesh(ob); /* write the 'rest'-length of the springs */
@@ -3562,7 +3559,7 @@ static void curve_surf_to_softbody(Scene *scene, Object *ob)
 
 	if (ob->softflag & OB_SB_EDGES) {
 		if (ob->type==OB_CURVE) {
-			totspring= totvert - BLI_countlist(&cu->nurb);
+			totspring = totvert - BLI_listbase_count(&cu->nurb);
 		}
 	}
 

@@ -100,7 +100,7 @@ void make_editLatt(Object *obedit)
 
 	actkey = BKE_keyblock_from_object(obedit);
 	if (actkey)
-		BKE_key_convert_to_lattice(actkey, lt);
+		BKE_keyblock_convert_to_lattice(actkey, lt);
 
 	lt->editlatt = MEM_callocN(sizeof(EditLatt), "editlatt");
 	lt->editlatt->latt = MEM_dupallocN(lt);
@@ -172,21 +172,6 @@ void load_editLatt(Object *obedit)
 		lt->dvert = MEM_mallocN(sizeof(MDeformVert) * tot, "Lattice MDeformVert");
 		BKE_defvert_array_copy(lt->dvert, editlt->dvert, tot);
 	}
-}
-
-/*************************** Transform Operator ************************/
-
-void ED_lattice_transform(Lattice *lt, float mat[4][4])
-{
-	BPoint *bp = lt->def;
-	int a = lt->pntsu * lt->pntsv * lt->pntsw;
-
-	while (a--) {
-		mul_m4_v3(mat, bp->vec);
-		bp++;
-	}
-
-	DAG_id_tag_update(&lt->id, 0);
 }
 
 static void bpoint_select_set(BPoint *bp, bool select)
@@ -285,7 +270,7 @@ static int lattice_select_mirror_exec(bContext *C, wmOperator *op)
 		const int i_flip = BKE_lattice_index_flip(lt, i, flip_uvw[0], flip_uvw[1], flip_uvw[2]);
 		bp = &lt->def[i];
 		if (!bp->hide) {
-			if (BLI_BITMAP_GET(selpoints, i_flip)) {
+			if (BLI_BITMAP_TEST(selpoints, i_flip)) {
 				bp->f1 |= SELECT;
 			}
 			else {
@@ -338,7 +323,7 @@ static bool lattice_test_bitmap_uvw(Lattice *lt, BLI_bitmap *selpoints, int u, i
 	else {
 		int i = BKE_lattice_index_from_uvw(lt, u, v, w);
 		if (lt->def[i].hide == 0) {
-			return (BLI_BITMAP_GET(selpoints, i) != 0) == selected;
+			return (BLI_BITMAP_TEST(selpoints, i) != 0) == selected;
 		}
 		return false;
 	}
@@ -523,7 +508,7 @@ static int lattice_select_ungrouped_exec(bContext *C, wmOperator *op)
 	BPoint *bp;
 	int a, tot;
 
-	if (obedit->defbase.first == NULL || lt->dvert == NULL) {
+	if (BLI_listbase_is_empty(&obedit->defbase) || lt->dvert == NULL) {
 		BKE_report(op->reports, RPT_ERROR, "No weights/vertex groups on object");
 		return OPERATOR_CANCELLED;
 	}
@@ -867,7 +852,7 @@ static BPoint *findnearestLattvert(ViewContext *vc, const int mval[2], int sel)
 	/* return 0 1 2: handlepunt */
 	struct { BPoint *bp; float dist; int select; float mval_fl[2]; } data = {NULL};
 
-	data.dist = 100;
+	data.dist = ED_view3d_select_dist_px();
 	data.select = sel;
 	data.mval_fl[0] = mval[0];
 	data.mval_fl[1] = mval[1];
@@ -886,7 +871,7 @@ bool mouse_lattice(bContext *C, const int mval[2], bool extend, bool deselect, b
 
 	view3d_set_viewcontext(C, &vc);
 	lt = ((Lattice *)vc.obedit->data)->editlatt->latt;
-	bp = findnearestLattvert(&vc, mval, TRUE);
+	bp = findnearestLattvert(&vc, mval, true);
 
 	if (bp) {
 		if (extend) {

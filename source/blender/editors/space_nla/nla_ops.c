@@ -28,15 +28,10 @@
  *  \ingroup spnla
  */
 
-
 #include <string.h>
 #include <stdio.h>
 
 #include "DNA_scene_types.h"
-
-
-#include "BLI_blenlib.h"
-#include "BLI_math.h"
 
 #include "BKE_context.h"
 #include "BKE_screen.h"
@@ -118,6 +113,8 @@ void nla_operatortypes(void)
 	/* channels */
 	WM_operatortype_append(NLA_OT_channels_click);
 	
+	WM_operatortype_append(NLA_OT_action_pushdown);
+	
 	WM_operatortype_append(NLA_OT_tracks_add);
 	WM_operatortype_append(NLA_OT_tracks_delete);
 	
@@ -132,6 +129,8 @@ void nla_operatortypes(void)
 	/* view */
 	WM_operatortype_append(NLA_OT_view_all);
 	WM_operatortype_append(NLA_OT_view_selected);
+	
+	WM_operatortype_append(NLA_OT_previewrange_set);
 	
 	/* edit */
 	WM_operatortype_append(NLA_OT_tweakmode_enter);
@@ -156,6 +155,8 @@ void nla_operatortypes(void)
 	
 	WM_operatortype_append(NLA_OT_action_sync_length);
 	
+	WM_operatortype_append(NLA_OT_make_single_user);
+	
 	WM_operatortype_append(NLA_OT_apply_scale);
 	WM_operatortype_append(NLA_OT_clear_scale);
 	
@@ -178,16 +179,16 @@ static void nla_keymap_channels(wmKeyMap *keymap)
 	/* click-select */
 	// XXX for now, only leftmouse....
 	kmi = WM_keymap_add_item(keymap, "NLA_OT_channels_click", LEFTMOUSE, KM_PRESS, 0, 0);
-	RNA_boolean_set(kmi->ptr, "extend", FALSE);
+	RNA_boolean_set(kmi->ptr, "extend", false);
 	kmi = WM_keymap_add_item(keymap, "NLA_OT_channels_click", LEFTMOUSE, KM_PRESS, KM_SHIFT, 0);
-	RNA_boolean_set(kmi->ptr, "extend", TRUE);
+	RNA_boolean_set(kmi->ptr, "extend", true);
 	
 	/* channel operations ------------------------------------------------------------ */
 	/* add tracks */
 	kmi = WM_keymap_add_item(keymap, "NLA_OT_tracks_add", AKEY, KM_PRESS, KM_SHIFT, 0);
-	RNA_boolean_set(kmi->ptr, "above_selected", FALSE);
+	RNA_boolean_set(kmi->ptr, "above_selected", false);
 	kmi = WM_keymap_add_item(keymap, "NLA_OT_tracks_add", AKEY, KM_PRESS, KM_CTRL | KM_SHIFT, 0);
-	RNA_boolean_set(kmi->ptr, "above_selected", TRUE);
+	RNA_boolean_set(kmi->ptr, "above_selected", true);
 	
 	/* delete tracks */
 	WM_keymap_add_item(keymap, "NLA_OT_tracks_delete", XKEY, KM_PRESS, 0, 0);
@@ -201,43 +202,45 @@ static void nla_keymap_main(wmKeyConfig *keyconf, wmKeyMap *keymap)
 	/* selection ------------------------------------------------ */
 	/* click select */
 	kmi = WM_keymap_add_item(keymap, "NLA_OT_click_select", SELECTMOUSE, KM_PRESS, 0, 0);
-	RNA_boolean_set(kmi->ptr, "extend", FALSE);
+	RNA_boolean_set(kmi->ptr, "extend", false);
 	kmi = WM_keymap_add_item(keymap, "NLA_OT_click_select", SELECTMOUSE, KM_PRESS, KM_SHIFT, 0);
-	RNA_boolean_set(kmi->ptr, "extend", TRUE);
+	RNA_boolean_set(kmi->ptr, "extend", true);
 		
 	/* select left/right */
 	kmi = WM_keymap_add_item(keymap, "NLA_OT_select_leftright", SELECTMOUSE, KM_PRESS, KM_CTRL, 0);
-	RNA_boolean_set(kmi->ptr, "extend", FALSE);
+	RNA_boolean_set(kmi->ptr, "extend", false);
 	RNA_enum_set(kmi->ptr, "mode", NLAEDIT_LRSEL_TEST);
 	kmi = WM_keymap_add_item(keymap, "NLA_OT_select_leftright", SELECTMOUSE, KM_PRESS, KM_CTRL | KM_SHIFT, 0);
-	RNA_boolean_set(kmi->ptr, "extend", TRUE);
+	RNA_boolean_set(kmi->ptr, "extend", true);
 	RNA_enum_set(kmi->ptr, "mode", NLAEDIT_LRSEL_TEST);
 	
 	kmi = WM_keymap_add_item(keymap, "NLA_OT_select_leftright", LEFTBRACKETKEY, KM_PRESS, 0, 0);
-	RNA_boolean_set(kmi->ptr, "extend", FALSE);
+	RNA_boolean_set(kmi->ptr, "extend", false);
 	RNA_enum_set(kmi->ptr, "mode", NLAEDIT_LRSEL_LEFT);
 	kmi = WM_keymap_add_item(keymap, "NLA_OT_select_leftright", RIGHTBRACKETKEY, KM_PRESS, 0, 0);
-	RNA_boolean_set(kmi->ptr, "extend", FALSE);
+	RNA_boolean_set(kmi->ptr, "extend", false);
 	RNA_enum_set(kmi->ptr, "mode", NLAEDIT_LRSEL_RIGHT);
 		
 	
 	/* deselect all */
 	/* TODO: uniformize with other select_all ops? */
 	kmi = WM_keymap_add_item(keymap, "NLA_OT_select_all_toggle", AKEY, KM_PRESS, 0, 0);
-	RNA_boolean_set(kmi->ptr, "invert", FALSE);
+	RNA_boolean_set(kmi->ptr, "invert", false);
 	kmi = WM_keymap_add_item(keymap, "NLA_OT_select_all_toggle", IKEY, KM_PRESS, KM_CTRL, 0);
-	RNA_boolean_set(kmi->ptr, "invert", TRUE);
+	RNA_boolean_set(kmi->ptr, "invert", true);
 	
 	/* borderselect */
 	kmi = WM_keymap_add_item(keymap, "NLA_OT_select_border", BKEY, KM_PRESS, 0, 0);
-	RNA_boolean_set(kmi->ptr, "axis_range", FALSE);
+	RNA_boolean_set(kmi->ptr, "axis_range", false);
 	kmi = WM_keymap_add_item(keymap, "NLA_OT_select_border", BKEY, KM_PRESS, KM_ALT, 0);
-	RNA_boolean_set(kmi->ptr, "axis_range", TRUE);
+	RNA_boolean_set(kmi->ptr, "axis_range", true);
 	
 	/* view ---------------------------------------------------- */
 	/* auto-set range */
-	//WM_keymap_add_item(keymap, "NLA_OT_previewrange_set", PKEY, KM_PRESS, KM_CTRL|KM_ALT, 0);
+	WM_keymap_add_item(keymap, "NLA_OT_previewrange_set", PKEY, KM_PRESS, KM_CTRL | KM_ALT, 0);
+	
 	WM_keymap_add_item(keymap, "NLA_OT_view_all", HOMEKEY, KM_PRESS, 0, 0);
+	WM_keymap_add_item(keymap, "NLA_OT_view_all", NDOF_BUTTON_FIT, KM_PRESS, 0, 0);
 	WM_keymap_add_item(keymap, "NLA_OT_view_selected", PADPERIOD, KM_PRESS, 0, 0);
 	
 	/* editing ------------------------------------------------ */
@@ -252,7 +255,14 @@ static void nla_keymap_main(wmKeyConfig *keyconf, wmKeyMap *keymap)
 	WM_keymap_add_item(keymap, "NLA_OT_meta_remove", GKEY, KM_PRESS, KM_ALT, 0);
 		
 	/* duplicate */
-	WM_keymap_add_item(keymap, "NLA_OT_duplicate", DKEY, KM_PRESS, KM_SHIFT, 0);
+	kmi = WM_keymap_add_item(keymap, "NLA_OT_duplicate", DKEY, KM_PRESS, KM_SHIFT, 0);
+	RNA_boolean_set(kmi->ptr, "linked", false);
+	
+	kmi = WM_keymap_add_item(keymap, "NLA_OT_duplicate", DKEY, KM_PRESS, KM_ALT, 0);
+	RNA_boolean_set(kmi->ptr, "linked", true);
+	
+	/* single user */
+	WM_keymap_add_item(keymap, "NLA_OT_make_single_user", UKEY, KM_PRESS, 0, 0);
 		
 	/* delete */
 	WM_keymap_add_item(keymap, "NLA_OT_delete", XKEY, KM_PRESS, 0, 0);
@@ -308,6 +318,9 @@ void nla_keymap(wmKeyConfig *keyconf)
 	 */
 	WM_keymap_add_item(keymap, "NLA_OT_tweakmode_enter", TABKEY, KM_PRESS, 0, 0);
 	WM_keymap_add_item(keymap, "NLA_OT_tweakmode_exit", TABKEY, KM_PRESS, 0, 0);
+	
+	/* find (i.e. a shortcut for setting the name filter) */
+	WM_keymap_add_item(keymap, "ANIM_OT_channels_find", FKEY, KM_PRESS, KM_CTRL, 0);
 	
 	/* channels ---------------------------------------------------------- */
 	/* Channels are not directly handled by the NLA Editor module, but are inherited from the Animation module. 

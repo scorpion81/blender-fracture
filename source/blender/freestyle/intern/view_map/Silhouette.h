@@ -74,7 +74,7 @@ class ViewVertex;
 class SShape;
 
 /*! Class to define a vertex of the embedding. */
-class LIB_VIEW_MAP_EXPORT SVertex : public Interface0D
+class SVertex : public Interface0D
 {
 public: // Implementation of Interface0D
 	/*! Returns the string "SVertex" .*/
@@ -103,7 +103,7 @@ public: // Implementation of Interface0D
 	}
 
 	/*!  Returns the 3D point. */ 
-	virtual Vec3f getPoint3D() const
+	virtual Vec3r getPoint3D() const
 	{
 		return _Point3D;
 	}
@@ -127,9 +127,9 @@ public: // Implementation of Interface0D
 	}
 
 	/*!  Returns the 2D point. */ 
-	virtual Vec2f getPoint2D() const
+	virtual Vec2r getPoint2D() const
 	{
-		return Vec2f((float)_Point2D.x(), (float)_Point2D.y());
+		return Vec2r(_Point2D.x(), _Point2D.y());
 	}
 
 	/*! Returns the FEdge that lies between this Svertex and the Interface0D given as argument. */
@@ -167,8 +167,10 @@ private:
 	vector<FEdge*> _FEdges; // the edges containing this vertex
 	SShape *_Shape;  // the shape to which belongs the vertex
 	ViewVertex *_pViewVertex; // The associated viewvertex, in case there is one.
+#if 0
 	real _curvatureFredo;
 	Vec2r _directionFredo;
+#endif
 	CurvatureInfo *_curvature_info;
 
 public:
@@ -326,6 +328,7 @@ public:
 		return _curvature_info;
 	}
 
+#if 0
 	/* Fredo's normal and curvature*/
 	void setCurvatureFredo(real c)
 	{
@@ -346,6 +349,7 @@ public:
 	{
 		return _directionFredo;
 	}
+#endif
 
 	/*! Sets the Id */
 	inline void setId(const Id& id)
@@ -372,6 +376,17 @@ public:
 	inline void AddFEdge(FEdge *iFEdge)
 	{
 		_FEdges.push_back(iFEdge);
+	}
+
+	/*! Remove an FEdge from the list of edges emanating from this SVertex. */
+	inline void RemoveFEdge(FEdge *iFEdge)
+	{
+		for (vector<FEdge *>::iterator fe = _FEdges.begin(), fend = _FEdges.end(); fe != fend; fe++) {
+			if (iFEdge == (*fe)) {
+				_FEdges.erase(fe);
+				break;
+			}
+		}
 	}
 
 	/* replaces edge 1 by edge 2 in the list of edges */
@@ -437,6 +452,10 @@ public:
 	/*! angle in radians */
 	inline real curvature2d_as_angle() const;
 #endif
+
+#ifdef WITH_CXX_GUARDEDALLOC
+	MEM_CXX_CLASS_ALLOC_FUNCS("Freestyle:SVertex")
+#endif
 };
 
 /**********************************/
@@ -458,7 +477,7 @@ class ViewEdge;
  *  This class is specialized into a smooth and a sharp version since their properties slightly vary from
  *  one to the other.
  */
-class LIB_VIEW_MAP_EXPORT FEdge : public Interface1D
+class FEdge : public Interface1D
 {
 public: // Implementation of Interface0D
 	/*! Returns the string "FEdge". */
@@ -514,6 +533,8 @@ protected:
 
 	bool _isInImage;
 
+	bool _isTemporary;
+
 public:
 	/*! A field that can be used by the user to store any data.
 	 *  This field must be reseted afterwards using ResetUserData().
@@ -534,6 +555,7 @@ public:
 		_occludeeEmpty = true;
 		_isSmooth = false;
 		_isInImage = true;
+		_isTemporary = false;
 	}
 
 	/*! Builds an FEdge going from vA to vB. */
@@ -550,6 +572,7 @@ public:
 		_occludeeEmpty = true;
 		_isSmooth = false;
 		_isInImage = true;
+		_isTemporary = false;
 	}
 
 	/*! Copy constructor */
@@ -569,6 +592,7 @@ public:
 		_occludeeEmpty = iBrother._occludeeEmpty;
 		_isSmooth = iBrother._isSmooth;
 		_isInImage = iBrother._isInImage;
+		_isTemporary = iBrother._isTemporary;
 		iBrother.userdata = this;
 		userdata = 0;
 	}
@@ -704,6 +728,11 @@ public:
 		return _isInImage;
 	}
 
+	inline bool isTemporary() const
+	{
+		return _isTemporary;
+	}
+
 	/* modifiers */
 	/*! Sets the first SVertex. */
 	inline void setVertexA(SVertex *vA)
@@ -797,6 +826,11 @@ public:
 	inline void setIsInImage (bool iFlag)
 	{
 		_isInImage = iFlag;
+	}
+
+	inline void setTemporary(bool iFlag)
+	{
+		_isTemporary = iFlag;
 	}
 
 	/* checks whether two FEdge have a common vertex.
@@ -927,6 +961,10 @@ public:
 	 *    The sampling with which we want to iterate over points of this FEdge.
 	 */
 	virtual inline Interface0DIterator pointsEnd(float t = 0.0f);
+
+#ifdef WITH_CXX_GUARDEDALLOC
+	MEM_CXX_CLASS_ALLOC_FUNCS("Freestyle:FEdge")
+#endif
 };
 
 //
@@ -1099,7 +1137,7 @@ Interface0DIterator FEdge::pointsEnd(float t)
  *  by two faces of the mesh. Face a lies on its right whereas Face b lies on its left.
  *  If it is a border edge, then it doesn't have any face on its right, and thus Face a = 0.
  */
-class LIB_VIEW_MAP_EXPORT FEdgeSharp : public FEdge
+class FEdgeSharp : public FEdge
 {
 protected:
 	Vec3r _aNormal; // When following the edge, normal of the right face
@@ -1237,12 +1275,16 @@ public:
 	{
 		_bFaceMark = iFaceMark;
 	}
+
+#ifdef WITH_CXX_GUARDEDALLOC
+	MEM_CXX_CLASS_ALLOC_FUNCS("Freestyle:FEdgeSharp")
+#endif
 };
 
 /*! Class defining a smooth edge. This kind of edge typically runs across a face of the input mesh. It can be
  *  a silhouette, a ridge or valley, a suggestive contour.
  */
-class LIB_VIEW_MAP_EXPORT FEdgeSmooth : public FEdge
+class FEdgeSmooth : public FEdge
 {
 protected:
 	Vec3r _Normal;
@@ -1349,6 +1391,10 @@ public:
 	{
 		_FrsMaterialIndex = i;
 	}
+
+#ifdef WITH_CXX_GUARDEDALLOC
+	MEM_CXX_CLASS_ALLOC_FUNCS("Freestyle:FEdgeSmooth")
+#endif
 };
 
 
@@ -1362,7 +1408,7 @@ public:
 
 
 /*! Class to define a feature shape. It is the gathering of feature elements from an identified input shape */
-class LIB_VIEW_MAP_EXPORT SShape
+class SShape
 {
 private:
 	vector<FEdge*> _chains;          // list of fedges that are chains starting points.

@@ -61,11 +61,6 @@ PyDoc_STRVAR(SVertex_doc,
 "   :arg id: An Id object.\n"
 "   :type id: :class:`Id`");
 
-static int convert_v3(PyObject *obj, void *v)
-{
-	return float_array_from_PyObject(obj, (float *)v, 3);
-}
-
 static int SVertex_init(BPy_SVertex *self, PyObject *args, PyObject *kwds)
 {
 	static const char *kwlist_1[] = {"brother", NULL};
@@ -90,7 +85,7 @@ static int SVertex_init(BPy_SVertex *self, PyObject *args, PyObject *kwds)
 		return -1;
 	}
 	self->py_if0D.if0D = self->sv;
-	self->py_if0D.borrowed = 0;
+	self->py_if0D.borrowed = false;
 	return 0;
 }
 
@@ -273,7 +268,7 @@ void SVertex_mathutils_register_callback()
 PyDoc_STRVAR(SVertex_point_3d_doc,
 "The 3D coordinates of the SVertex.\n"
 "\n"
-":type: mathutils.Vector");
+":type: :class:`mathutils.Vector`");
 
 static PyObject *SVertex_point_3d_get(BPy_SVertex *self, void *UNUSED(closure))
 {
@@ -283,8 +278,9 @@ static PyObject *SVertex_point_3d_get(BPy_SVertex *self, void *UNUSED(closure))
 static int SVertex_point_3d_set(BPy_SVertex *self, PyObject *value, void *UNUSED(closure))
 {
 	float v[3];
-	if (!float_array_from_PyObject(value, v, 3)) {
-		PyErr_SetString(PyExc_ValueError, "value must be a 3-dimensional vector");
+	if (mathutils_array_parse(v, 3, 3, value,
+	                          "value must be a 3-dimensional vector") == -1)
+	{
 		return -1;
 	}
 	Vec3r p(v[0], v[1], v[2]);
@@ -295,7 +291,7 @@ static int SVertex_point_3d_set(BPy_SVertex *self, PyObject *value, void *UNUSED
 PyDoc_STRVAR(SVertex_point_2d_doc,
 "The projected 3D coordinates of the SVertex.\n"
 "\n"
-":type: mathutils.Vector");
+":type: :class:`mathutils.Vector`");
 
 static PyObject *SVertex_point_2d_get(BPy_SVertex *self, void *UNUSED(closure))
 {
@@ -305,8 +301,9 @@ static PyObject *SVertex_point_2d_get(BPy_SVertex *self, void *UNUSED(closure))
 static int SVertex_point_2d_set(BPy_SVertex *self, PyObject *value, void *UNUSED(closure))
 {
 	float v[3];
-	if (!float_array_from_PyObject(value, v, 3)) {
-		PyErr_SetString(PyExc_ValueError, "value must be a 3-dimensional vector");
+	if (mathutils_array_parse(v, 3, 3, value,
+	                          "value must be a 3-dimensional vector") == -1)
+	{
 		return -1;
 	}
 	Vec3r p(v[0], v[1], v[2]);
@@ -345,13 +342,14 @@ PyDoc_STRVAR(SVertex_normals_doc,
 static PyObject *SVertex_normals_get(BPy_SVertex *self, void *UNUSED(closure))
 {
 	PyObject *py_normals; 
-	set< Vec3r > normals;
-	
-	py_normals = PyList_New(0);
-	normals = self->sv->normals();
-	for (set< Vec3r >::iterator set_iterator = normals.begin(); set_iterator != normals.end(); set_iterator++) {
-		Vec3r v(*set_iterator);
-		PyList_Append(py_normals, Vector_from_Vec3r(v));
+	set< Vec3r > normals = self->sv->normals();
+	set< Vec3r >::iterator it;
+	py_normals = PyList_New(normals.size());
+	unsigned int i = 0;
+
+	for (it = normals.begin(); it != normals.end(); it++) {
+		Vec3r v(*it);
+		PyList_SET_ITEM(py_normals, i++, Vector_from_Vec3r(v));
 	}
 	return py_normals;
 }
@@ -402,13 +400,14 @@ static PyObject *SVertex_curvatures_get(BPy_SVertex *self, void *UNUSED(closure)
 	Vec3r e2(info->e2.x(), info->e2.y(), info->e2.z());
 	Vec3r er(info->er.x(), info->er.y(), info->er.z());
 	PyObject *retval = PyTuple_New(7);
-	PyTuple_SET_ITEM(retval, 0, PyFloat_FromDouble(info->K1));
-	PyTuple_SET_ITEM(retval, 2, Vector_from_Vec3r(e1));
-	PyTuple_SET_ITEM(retval, 1, PyFloat_FromDouble(info->K2));
-	PyTuple_SET_ITEM(retval, 3, Vector_from_Vec3r(e2));
-	PyTuple_SET_ITEM(retval, 4, PyFloat_FromDouble(info->Kr));
-	PyTuple_SET_ITEM(retval, 5, Vector_from_Vec3r(er));
-	PyTuple_SET_ITEM(retval, 6, PyFloat_FromDouble(info->dKr));
+	PyTuple_SET_ITEMS(retval,
+	        PyFloat_FromDouble(info->K1),
+	        PyFloat_FromDouble(info->K2),
+	        Vector_from_Vec3r(e1),
+	        Vector_from_Vec3r(e2),
+	        PyFloat_FromDouble(info->Kr),
+	        Vector_from_Vec3r(er),
+	        PyFloat_FromDouble(info->dKr));
 	return retval;
 }
 

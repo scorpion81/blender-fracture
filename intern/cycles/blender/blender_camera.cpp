@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include "camera.h"
@@ -19,6 +19,8 @@
 
 #include "blender_sync.h"
 #include "blender_util.h"
+
+#include "util_logging.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -46,9 +48,15 @@ struct BlenderCamera {
 
 	float2 pixelaspect;
 
+	float aperture_ratio;
+
 	PanoramaType panorama_type;
 	float fisheye_fov;
 	float fisheye_lens;
+	float latitude_min;
+	float latitude_max;
+	float longitude_min;
+	float longitude_max;
 
 	enum { AUTO, HORIZONTAL, VERTICAL } sensor_fit;
 	float sensor_width;
@@ -59,6 +67,7 @@ struct BlenderCamera {
 
 	BoundBox2D border;
 	BoundBox2D pano_viewplane;
+	BoundBox2D viewport_camera_border;
 
 	Transform matrix;
 };
@@ -78,6 +87,8 @@ static void blender_camera_init(BlenderCamera *bcam, BL::RenderSettings b_render
 	bcam->border.top = 1.0f;
 	bcam->pano_viewplane.right = 1.0f;
 	bcam->pano_viewplane.top = 1.0f;
+	bcam->viewport_camera_border.right = 1.0f;
+	bcam->viewport_camera_border.top = 1.0f;
 
 	/* render resolution */
 	bcam->full_width = render_resolution_x(b_render);
@@ -143,6 +154,10 @@ static void blender_camera_from_object(BlenderCamera *bcam, BL::Object b_ob, boo
 
 		bcam->fisheye_fov = RNA_float_get(&ccamera, "fisheye_fov");
 		bcam->fisheye_lens = RNA_float_get(&ccamera, "fisheye_lens");
+		bcam->latitude_min = RNA_float_get(&ccamera, "latitude_min");
+		bcam->latitude_max = RNA_float_get(&ccamera, "latitude_max");
+		bcam->longitude_min = RNA_float_get(&ccamera, "longitude_min");
+		bcam->longitude_max = RNA_float_get(&ccamera, "longitude_max");
 
 		bcam->ortho_scale = b_camera.ortho_scale();
 
@@ -167,6 +182,7 @@ static void blender_camera_from_object(BlenderCamera *bcam, BL::Object b_ob, boo
 		bcam->apertureblades = RNA_int_get(&ccamera, "aperture_blades");
 		bcam->aperturerotation = RNA_float_get(&ccamera, "aperture_rotation");
 		bcam->focaldistance = blender_camera_focal_distance(b_ob, b_camera);
+		bcam->aperture_ratio = RNA_float_get(&ccamera, "aperture_ratio");
 
 		bcam->shift.x = b_camera.shift_x();
 		bcam->shift.y = b_camera.shift_y();
@@ -212,8 +228,8 @@ static void blender_camera_viewplane(BlenderCamera *bcam, int width, int height,
 	BoundBox2D *viewplane, float *aspectratio, float *sensor_size)
 {
 	/* dimensions */
-	float xratio = width*bcam->pixelaspect.x;
-	float yratio = height*bcam->pixelaspect.y;
+	float xratio = (float)width*bcam->pixelaspect.x;
+	float yratio = (float)height*bcam->pixelaspect.y;
 
 	/* compute x/y aspect and ratio */
 	float xaspect, yaspect;
@@ -288,8 +304,8 @@ static void blender_camera_sync(Camera *cam, BlenderCamera *bcam, int width, int
 
 	/* panorama sensor */
 	if (bcam->type == CAMERA_PANORAMA && bcam->panorama_type == PANORAMA_FISHEYE_EQUISOLID) {
-		float fit_xratio = bcam->full_width*bcam->pixelaspect.x;
-		float fit_yratio = bcam->full_height*bcam->pixelaspect.y;
+		float fit_xratio = (float)bcam->full_width*bcam->pixelaspect.x;
+		float fit_yratio = (float)bcam->full_height*bcam->pixelaspect.y;
 		bool horizontal_fit;
 		float sensor_size;
 
@@ -327,6 +343,14 @@ static void blender_camera_sync(Camera *cam, BlenderCamera *bcam, int width, int
 	cam->panorama_type = bcam->panorama_type;
 	cam->fisheye_fov = bcam->fisheye_fov;
 	cam->fisheye_lens = bcam->fisheye_lens;
+	cam->latitude_min = bcam->latitude_min;
+	cam->latitude_max = bcam->latitude_max;
+
+	cam->longitude_min = bcam->longitude_min;
+	cam->longitude_max = bcam->longitude_max;
+
+	/* anamorphic lens bokeh */
+	cam->aperture_ratio = bcam->aperture_ratio;
 
 	/* perspective */
 	cam->fov = 2.0f * atanf((0.5f * sensor_size) / bcam->lens / aspectratio);
@@ -344,6 +368,7 @@ static void blender_camera_sync(Camera *cam, BlenderCamera *bcam, int width, int
 
 	/* border */
 	cam->border = bcam->border;
+	cam->viewport_camera_border = bcam->viewport_camera_border;
 
 	/* set update flag */
 	if(cam->modified(prevcam))
@@ -386,7 +411,7 @@ void BlenderSync::sync_camera(BL::RenderSettings b_render, BL::Object b_override
 	blender_camera_sync(cam, &bcam, width, height);
 }
 
-void BlenderSync::sync_camera_motion(BL::Object b_ob, int motion)
+void BlenderSync::sync_camera_motion(BL::Object b_ob, float motion_time)
 {
 	Camera *cam = scene->camera;
 
@@ -394,12 +419,15 @@ void BlenderSync::sync_camera_motion(BL::Object b_ob, int motion)
 	tfm = blender_camera_matrix(tfm, cam->type);
 
 	if(tfm != cam->matrix) {
-		if(motion == -1)
+		VLOG(1) << "Camera " << b_ob.name() << " motion detected.";
+		if(motion_time == -1.0f) {
 			cam->motion.pre = tfm;
-		else
+			cam->use_motion = true;
+		}
+		else if(motion_time == 1.0f) {
 			cam->motion.post = tfm;
-
-		cam->use_motion = true;
+			cam->use_motion = true;
+		}
 	}
 }
 
@@ -492,6 +520,25 @@ static void blender_camera_view_subset(BL::RenderSettings b_render, BL::Scene b_
 	*cam_box = cam * (1.0f/cam_aspect);
 }
 
+static void blender_camera_border_subset(BL::RenderSettings b_render,
+                                         BL::Scene b_scene,
+                                         BL::SpaceView3D b_v3d,
+                                         BL::RegionView3D b_rv3d,
+                                         BL::Object b_ob,
+                                         int width, int height,
+                                         const BoundBox2D &border,
+                                         BoundBox2D *result)
+{
+	/* Determine camera viewport subset. */
+	BoundBox2D view_box, cam_box;
+	blender_camera_view_subset(b_render, b_scene, b_ob, b_v3d, b_rv3d, width, height,
+	                           &view_box, &cam_box);
+
+	/* Determine viewport subset matching given border. */
+	cam_box = cam_box.make_relative_to(view_box);
+	*result = cam_box.subset(border);
+}
+
 static void blender_camera_border(BlenderCamera *bcam, BL::RenderSettings b_render, BL::Scene b_scene, BL::SpaceView3D b_v3d,
 	BL::RegionView3D b_rv3d, int width, int height)
 {
@@ -510,32 +557,45 @@ static void blender_camera_border(BlenderCamera *bcam, BL::RenderSettings b_rend
 			bcam->border.right = b_v3d.render_border_max_x();
 			bcam->border.bottom = b_v3d.render_border_min_y();
 			bcam->border.top = b_v3d.render_border_max_y();
-
-			return;
 		}
-	}
-	else if(!b_render.use_border())
 		return;
+	}
 
 	BL::Object b_ob = (b_v3d.lock_camera_and_layers())? b_scene.camera(): b_v3d.camera();
 
 	if(!b_ob)
 		return;
 
+	/* Determine camera border inside the viewport. */
+	BoundBox2D full_border;
+	blender_camera_border_subset(b_render,
+	                             b_scene,
+	                             b_v3d,
+	                             b_rv3d,
+	                             b_ob,
+	                             width, height,
+	                             full_border,
+	                             &bcam->viewport_camera_border);
+
+	if(!b_render.use_border()) {
+		return;
+	}
+
 	bcam->border.left = b_render.border_min_x();
 	bcam->border.right = b_render.border_max_x();
 	bcam->border.bottom = b_render.border_min_y();
 	bcam->border.top = b_render.border_max_y();
 
-	/* determine camera viewport subset */
-	BoundBox2D view_box, cam_box;
-
-	blender_camera_view_subset(b_render, b_scene, b_ob, b_v3d, b_rv3d, width, height,
-		&view_box, &cam_box);
-
-	/* determine viewport subset matching camera border */
-	cam_box = cam_box.make_relative_to(view_box);
-	bcam->border = cam_box.subset(bcam->border).clamp();
+	/* Determine viewport subset matching camera border. */
+	blender_camera_border_subset(b_render,
+	                             b_scene,
+	                             b_v3d,
+	                             b_rv3d,
+	                             b_ob,
+	                             width, height,
+	                             bcam->border,
+	                             &bcam->border);
+	bcam->border.clamp();
 }
 
 void BlenderSync::sync_view(BL::SpaceView3D b_v3d, BL::RegionView3D b_rv3d, int width, int height)
@@ -563,10 +623,12 @@ BufferParams BlenderSync::get_buffer_params(BL::RenderSettings b_render, BL::Sce
 
 	if(use_border) {
 		/* border render */
-		params.full_x = cam->border.left*width;
-		params.full_y = cam->border.bottom*height;
-		params.width = (int)(cam->border.right*width) - params.full_x;
-		params.height = (int)(cam->border.top*height) - params.full_y;
+		/* the viewport may offset the border outside the view */
+		BoundBox2D border = cam->border.clamp();
+		params.full_x = (int)(border.left * (float)width);
+		params.full_y = (int)(border.bottom * (float)height);
+		params.width = (int)(border.right * (float)width) - params.full_x;
+		params.height = (int)(border.top * (float)height) - params.full_y;
 
 		/* survive in case border goes out of view or becomes too small */
 		params.width = max(params.width, 1);

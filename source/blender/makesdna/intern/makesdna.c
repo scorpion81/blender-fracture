@@ -53,7 +53,6 @@
 #include <stdio.h>
 
 #include "MEM_guardedalloc.h"
-#include "DNA_sdna_types.h"
 
 #include "../blenlib/BLI_sys_types.h" // for intptr_t support
 
@@ -74,6 +73,7 @@ static const char *includefiles[] = {
 	"DNA_key_types.h",
 	"DNA_text_types.h",
 	"DNA_packedFile_types.h",
+	"DNA_gpu_types.h",
 	"DNA_camera_types.h",
 	"DNA_image_types.h",
 	"DNA_texture_types.h",
@@ -522,7 +522,7 @@ static int preprocess_include(char *maindata, int len)
 	return newlen;
 }
 
-static void *read_file_data(char *filename, int *len_r)
+static void *read_file_data(char *filename, int *r_len)
 {
 #ifdef WIN32
 	FILE *fp = fopen(filename, "rb");
@@ -532,23 +532,23 @@ static void *read_file_data(char *filename, int *len_r)
 	void *data;
 
 	if (!fp) {
-		*len_r = -1;
+		*r_len = -1;
 		return NULL;
 	}
 
 	fseek(fp, 0L, SEEK_END);
-	*len_r = ftell(fp);
+	*r_len = ftell(fp);
 	fseek(fp, 0L, SEEK_SET);
 
-	data = MEM_mallocN(*len_r, "read_file_data");
+	data = MEM_mallocN(*r_len, "read_file_data");
 	if (!data) {
-		*len_r = -1;
+		*r_len = -1;
 		fclose(fp);
 		return NULL;
 	}
 
-	if (fread(data, *len_r, 1, fp) != 1) {
-		*len_r = -1;
+	if (fread(data, *r_len, 1, fp) != 1) {
+		*r_len = -1;
 		MEM_freeN(data);
 		fclose(fp);
 		return NULL;
@@ -725,7 +725,7 @@ static int arraysize(const char *str)
 static int calculate_structlens(int firststruct)
 {
 	int a, b, len_native, len_32, len_64, unknown = nr_structs, lastunknown, structtype, type, mul, namelen;
-	short *sp, *structpoin;
+	const short *sp, *structpoin;
 	const char *cp;
 	int has_pointer, dna_error = 0;
 		
@@ -909,9 +909,9 @@ static void dna_write(FILE *file, const void *pntr, const int size)
 {
 	static int linelength = 0;
 	int i;
-	char *data;
+	const char *data;
 
-	data = (char *) pntr;
+	data = (const char *)pntr;
 	
 	for (i = 0; i < size; i++) {
 		fprintf(file, "%d, ", data[i]);
@@ -927,7 +927,7 @@ void printStructLengths(void)
 {
 	int a, unknown = nr_structs, structtype;
 	/*int lastunknown;*/ /*UNUSED*/
-	short *structpoin;
+	const short *structpoin;
 	printf("\n\n*** All detected structs:\n");
 
 	while (unknown) {
@@ -950,7 +950,7 @@ void printStructLengths(void)
 static int make_structDNA(const char *baseDirectory, FILE *file)
 {
 	int len, i;
-	short *sp;
+	const short *sp;
 	/* str contains filenames. Since we now include paths, I stretched       */
 	/* it a bit. Hope this is enough :) -nzc-                                */
 	char str[SDNA_MAX_FILENAME_LENGTH], *cp;

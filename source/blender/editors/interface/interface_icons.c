@@ -27,24 +27,14 @@
  *  \ingroup edinterface
  */
 
-
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
-
-#ifndef WIN32
-#  include <unistd.h>
-#else
-#  include <io.h>
-#  include <direct.h>
-#  include "BLI_winstuff.h"
-#endif
 
 #include "MEM_guardedalloc.h"
 
 #include "GPU_extensions.h"
 
-#include "BLI_math.h"
 #include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
 #include "BLI_fileops_types.h"
@@ -61,6 +51,7 @@
 #include "BKE_context.h"
 #include "BKE_global.h"
 #include "BKE_icons.h"
+#include "BKE_appdir.h"
 
 #include "IMB_imbuf.h"
 #include "IMB_imbuf_types.h"
@@ -479,13 +470,13 @@ static void init_brush_icons(void)
 
 #define INIT_BRUSH_ICON(icon_id, name)                                          \
 	{                                                                           \
-		unsigned char *rect = (unsigned char *)datatoc_ ##name## _png;			\
-		int size = datatoc_ ##name## _png_size;									\
-		DrawInfo *di;															\
+		unsigned char *rect = (unsigned char *)datatoc_ ##name## _png;          \
+		int size = datatoc_ ##name## _png_size;                                 \
+		DrawInfo *di;                                                           \
 		\
-		di = def_internal_icon(NULL, icon_id, 0, 0, w, ICON_TYPE_BUFFER);		\
-		di->data.buffer.image->datatoc_rect = rect;								\
-		di->data.buffer.image->datatoc_size = size;								\
+		di = def_internal_icon(NULL, icon_id, 0, 0, w, ICON_TYPE_BUFFER);       \
+		di->data.buffer.image->datatoc_rect = rect;                             \
+		di->data.buffer.image->datatoc_size = size;                             \
 	}
 	/* end INIT_BRUSH_ICON */
 
@@ -518,6 +509,8 @@ static void init_brush_icons(void)
 	INIT_BRUSH_ICON(ICON_BRUSH_SOFTEN, soften);
 	INIT_BRUSH_ICON(ICON_BRUSH_SUBTRACT, subtract);
 	INIT_BRUSH_ICON(ICON_BRUSH_TEXDRAW, texdraw);
+	INIT_BRUSH_ICON(ICON_BRUSH_TEXFILL, texfill);
+	INIT_BRUSH_ICON(ICON_BRUSH_TEXMASK, texmask);
 	INIT_BRUSH_ICON(ICON_BRUSH_THUMB, thumb);
 	INIT_BRUSH_ICON(ICON_BRUSH_ROTATE, twist);
 	INIT_BRUSH_ICON(ICON_BRUSH_VERTEXDRAW, vertexdraw);
@@ -595,7 +588,7 @@ static void init_internal_icons(void)
 
 #if 0 // temp disabled
 	if ((btheme != NULL) && btheme->tui.iconfile[0]) {
-		char *icondir = BLI_get_folder(BLENDER_DATAFILES, "icons");
+		char *icondir = BKE_appdir_folder_id(BLENDER_DATAFILES, "icons");
 		char iconfilestr[FILE_MAX];
 		
 		if (icondir) {
@@ -614,13 +607,13 @@ static void init_internal_icons(void)
 #endif
 	if (b16buf == NULL)
 		b16buf = IMB_ibImageFromMemory((unsigned char *)datatoc_blender_icons16_png,
-		                             datatoc_blender_icons16_png_size, IB_rect, NULL, "<blender icons>");
+		                               datatoc_blender_icons16_png_size, IB_rect, NULL, "<blender icons>");
 	if (b16buf)
 		IMB_premultiply_alpha(b16buf);
 
 	if (b32buf == NULL)
 		b32buf = IMB_ibImageFromMemory((unsigned char *)datatoc_blender_icons32_png,
-		                             datatoc_blender_icons32_png_size, IB_rect, NULL, "<blender icons>");
+		                               datatoc_blender_icons32_png_size, IB_rect, NULL, "<blender icons>");
 	if (b32buf)
 		IMB_premultiply_alpha(b32buf);
 	
@@ -709,17 +702,17 @@ static void init_iconfile_list(struct ListBase *list)
 	int totfile, i, index = 1;
 	const char *icondir;
 
-	list->first = list->last = NULL;
-	icondir = BLI_get_folder(BLENDER_DATAFILES, "icons");
+	BLI_listbase_clear(list);
+	icondir = BKE_appdir_folder_id(BLENDER_DATAFILES, "icons");
 
 	if (icondir == NULL)
 		return;
 	
-	totfile = BLI_dir_contents(icondir, &dir);
+	totfile = BLI_filelist_dir_contents(icondir, &dir);
 
 	for (i = 0; i < totfile; i++) {
 		if ((dir[i].type & S_IFREG)) {
-			char *filename = dir[i].relname;
+			const char *filename = dir[i].relname;
 			
 			if (BLI_testextensie(filename, ".png")) {
 				/* loading all icons on file start is overkill & slows startup
@@ -763,7 +756,7 @@ static void init_iconfile_list(struct ListBase *list)
 		}
 	}
 
-	BLI_free_filelist(dir, totfile);
+	BLI_filelist_free(dir, totfile, NULL);
 	dir = NULL;
 }
 
@@ -938,7 +931,8 @@ static void icon_create_rect(struct PreviewImage *prv_img, enum eIconSizes size)
 
 /* only called when icon has changed */
 /* only call with valid pointer from UI_icon_draw */
-static void icon_set_image(bContext *C, ID *id, PreviewImage *prv_img, enum eIconSizes size)
+static void icon_set_image(
+        const bContext *C, Scene *scene, ID *id, PreviewImage *prv_img, enum eIconSizes size, const bool use_job)
 {
 	if (!prv_img) {
 		if (G.debug & G_DEBUG)
@@ -948,8 +942,17 @@ static void icon_set_image(bContext *C, ID *id, PreviewImage *prv_img, enum eIco
 
 	icon_create_rect(prv_img, size);
 
-	ED_preview_icon_job(C, prv_img, id, prv_img->rect[size],
-	                    prv_img->w[size], prv_img->h[size]);
+	if (use_job) {
+		/* Job (background) version */
+		ED_preview_icon_job(C, prv_img, id, prv_img->rect[size], prv_img->w[size], prv_img->h[size]);
+	}
+	else {
+		if (!scene) {
+			scene = CTX_data_scene(C);
+		}
+		/* Immediate version */
+		ED_preview_icon_render(scene, id, prv_img->rect[size], prv_img->w[size], prv_img->h[size]);
+	}
 }
 
 PreviewImage *UI_icon_to_preview(int icon_id)
@@ -1137,7 +1140,7 @@ static void icon_draw_size(float x, float y, int icon_id, float aspect, float al
 #endif
 		if (!iimg->rect) return;  /* something has gone wrong! */
 
-		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		icon_draw_rect(x, y, w, h, aspect, iimg->w, iimg->h, iimg->rect, alpha, rgb, is_preview);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	}
@@ -1156,29 +1159,30 @@ static void icon_draw_size(float x, float y, int icon_id, float aspect, float al
 	}
 }
 
-static void ui_id_preview_image_render_size(bContext *C, ID *id, PreviewImage *pi, int size)
+static void ui_id_preview_image_render_size(
+        const bContext *C, Scene *scene, ID *id, PreviewImage *pi, int size, const bool use_job)
 {
 	if ((pi->changed[size] || !pi->rect[size])) { /* changed only ever set by dynamic icons */
 		/* create the rect if necessary */
-		icon_set_image(C, id, pi, size);
+		icon_set_image(C, scene, id, pi, size, use_job);
 
 		pi->changed[size] = 0;
 	}
 }
 
-static void ui_id_icon_render(bContext *C, ID *id, const bool big)
+void UI_id_icon_render(const bContext *C, Scene *scene, ID *id, const bool big, const bool use_job)
 {
 	PreviewImage *pi = BKE_previewimg_get(id);
 
 	if (pi) {
 		if (big)
-			ui_id_preview_image_render_size(C, id, pi, ICON_SIZE_PREVIEW);  /* bigger preview size */
+			ui_id_preview_image_render_size(C, scene, id, pi, ICON_SIZE_PREVIEW, use_job);  /* bigger preview size */
 		else
-			ui_id_preview_image_render_size(C, id, pi, ICON_SIZE_ICON);     /* icon size */
+			ui_id_preview_image_render_size(C, scene, id, pi, ICON_SIZE_ICON, use_job);     /* icon size */
 	}
 }
 
-static void ui_id_brush_render(bContext *C, ID *id)
+static void ui_id_brush_render(const bContext *C, ID *id)
 {
 	PreviewImage *pi = BKE_previewimg_get(id); 
 	enum eIconSizes i;
@@ -1190,14 +1194,14 @@ static void ui_id_brush_render(bContext *C, ID *id)
 		/* check if rect needs to be created; changed
 		 * only set by dynamic icons */
 		if ((pi->changed[i] || !pi->rect[i])) {
-			icon_set_image(C, id, pi, i);
+			icon_set_image(C, NULL, id, pi, i, true);
 			pi->changed[i] = 0;
 		}
 	}
 }
 
 
-static int ui_id_brush_get_icon(bContext *C, ID *id)
+static int ui_id_brush_get_icon(const bContext *C, ID *id)
 {
 	Brush *br = (Brush *)id;
 
@@ -1250,7 +1254,7 @@ static int ui_id_brush_get_icon(bContext *C, ID *id)
 	return id->icon_id;
 }
 
-int ui_id_icon_get(bContext *C, ID *id, const bool big)
+int ui_id_icon_get(const bContext *C, ID *id, const bool big)
 {
 	int iconid = 0;
 	
@@ -1266,7 +1270,7 @@ int ui_id_icon_get(bContext *C, ID *id, const bool big)
 		case ID_LA: /* fall through */
 			iconid = BKE_icon_getid(id);
 			/* checks if not exists, or changed */
-			ui_id_icon_render(C, id, big);
+			UI_id_icon_render(C, NULL, id, big, true);
 			break;
 		default:
 			break;

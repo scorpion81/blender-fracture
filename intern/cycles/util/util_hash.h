@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __UTIL_HASH_H__
@@ -23,7 +23,7 @@ CCL_NAMESPACE_BEGIN
 
 static inline uint hash_int_2d(uint kx, uint ky)
 {
-	#define rot(x,k) (((x)<<(k)) | ((x)>>(32-(k))))
+#define rot(x,k) (((x)<<(k)) | ((x)>>(32-(k))))
 
 	uint a, b, c;
 
@@ -41,7 +41,7 @@ static inline uint hash_int_2d(uint kx, uint ky)
 
 	return c;
 
-	#undef rot
+#undef rot
 }
 
 static inline uint hash_int(uint k)

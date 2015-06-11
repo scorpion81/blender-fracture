@@ -51,10 +51,10 @@ class GrayImage;
 /*! This class checks for every FEdge in which steerable it belongs and stores the mapping allowing to retrieve 
  *  this information from the FEdge Id.
  */
-class LIB_VIEW_MAP_EXPORT SteerableViewMap
+class SteerableViewMap
 {
 protected:
-	// for each vector the list of nbOrientations weigths corresponding to its contributions
+	// for each vector the list of nbOrientations weights corresponding to its contributions
 	// to the nbOrientations directional maps
 	map<unsigned int, double*> _mapping;
 	unsigned _nbOrientations;
@@ -73,7 +73,7 @@ public:
 	virtual void Reset();
 
 	/*! Adds a FEdge to steerable VM.
-	 *  Returns the nbOrientations weigths corresponding to the FEdge contributions to the nbOrientations
+	 *  Returns the nbOrientations weights corresponding to the FEdge contributions to the nbOrientations
 	 *  directional maps.
 	 */
 	double *AddFEdge(FEdge *iFEdge);

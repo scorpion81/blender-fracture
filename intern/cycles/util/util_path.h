@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __UTIL_PATH_H__
@@ -41,6 +41,7 @@ string path_filename(const string& path);
 string path_dirname(const string& path);
 string path_join(const string& dir, const string& file);
 string path_escape(const string& path);
+bool path_is_relative(const string& path);
 
 /* file info */
 bool path_exists(const string& path);

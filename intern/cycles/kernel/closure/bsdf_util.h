@@ -35,14 +35,15 @@
 
 CCL_NAMESPACE_BEGIN
 
-ccl_device float fresnel_dielectric(float eta, const float3 N,
-		const float3 I, float3 *R, float3 *T,
+ccl_device float fresnel_dielectric(
+        float eta, const float3 N,
+        const float3 I, float3 *R, float3 *T,
 #ifdef __RAY_DIFFERENTIALS__
-		const float3 dIdx, const float3 dIdy,
-		float3 *dRdx, float3 *dRdy,
-		float3 *dTdx, float3 *dTdy, 
+        const float3 dIdx, const float3 dIdy,
+        float3 *dRdx, float3 *dRdy,
+        float3 *dTdx, float3 *dTdy,
 #endif
-		bool *is_inside)
+        bool *is_inside)
 {
 	float cos = dot(N, I), neta;
 	float3 Nn;
@@ -110,16 +111,20 @@ ccl_device float fresnel_dielectric_cos(float cosi, float eta)
 	return 1.0f; // TIR(no refracted component)
 }
 
-ccl_device float fresnel_conductor(float cosi, float eta, float k)
+#if 0
+ccl_device float3 fresnel_conductor(float cosi, const float3 eta, const float3 k)
 {
-	float tmp_f = eta * eta + k * k;
-	float tmp = tmp_f * cosi * cosi;
-	float Rparl2 = (tmp - (2.0f * eta * cosi) + 1)/
-	               (tmp + (2.0f * eta * cosi) + 1);
-	float Rperp2 = (tmp_f - (2.0f * eta * cosi) + cosi * cosi)/
-	               (tmp_f + (2.0f * eta * cosi) + cosi * cosi);
+	float3 cosi2 = make_float3(cosi*cosi);
+	float3 one = make_float3(1.0f, 1.0f, 1.0f);
+	float3 tmp_f = eta * eta + k * k;
+	float3 tmp = tmp_f * cosi2;
+	float3 Rparl2 = (tmp - (2.0f * eta * cosi) + one) /
+					(tmp + (2.0f * eta * cosi) + one);
+	float3 Rperp2 = (tmp_f - (2.0f * eta * cosi) + cosi2) /
+					(tmp_f + (2.0f * eta * cosi) + cosi2);
 	return(Rparl2 + Rperp2) * 0.5f;
 }
+#endif
 
 ccl_device float smooth_step(float edge0, float edge1, float x)
 {

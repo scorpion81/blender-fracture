@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __UTIL_MATH_H__
@@ -71,21 +71,17 @@ CCL_NAMESPACE_BEGIN
 #define M_SQRT2_F	((float)1.41421356237309504880) 					/* sqrt(2) */
 #endif
 
+#ifndef M_LN2_F
+#define M_LN2_F      ((float)0.6931471805599453)        /* ln(2) */
+#endif
+
+#ifndef M_LN10_F
+#define M_LN10_F     ((float)2.3025850929940457)        /* ln(10) */
+#endif
 
 /* Scalar */
 
 #ifdef _WIN32
-
-#ifndef __KERNEL_GPU__
-
-#if defined(_MSC_VER) && (_MSC_VER < 1800)
-#  define copysignf(x, y) ((float)_copysign(x, y))
-#  define hypotf(x, y) _hypotf(x, y)
-#  define isnan(x) _isnan(x)
-#  define isfinite(x) _finite(x)
-#endif
-
-#endif
 
 #ifndef __KERNEL_OPENCL__
 
@@ -135,6 +131,24 @@ ccl_device_inline double min(double a, double b)
 	return (a < b)? a: b;
 }
 
+/* These 2 guys are templated for usage with registers data.
+ *
+ * NOTE: Since this is CPU-only functions it is ok to use references here.
+ * But for other devices we'll need to be careful about this.
+ */
+
+template<typename T>
+ccl_device_inline T min4(const T& a, const T& b, const T& c, const T& d)
+{
+	return min(min(a,b),min(c,d));
+}
+
+template<typename T>
+ccl_device_inline T max4(const T& a, const T& b, const T& c, const T& d)
+{
+	return max(max(a,b),max(c,d));
+}
+
 #endif
 
 ccl_device_inline float min4(float a, float b, float c, float d)
@@ -163,11 +177,7 @@ ccl_device_inline float clamp(float a, float mn, float mx)
 
 ccl_device_inline int float_to_int(float f)
 {
-#if defined(__KERNEL_SSE2__) && !defined(_MSC_VER)
-	return _mm_cvtt_ss2si(_mm_load_ss(&f));
-#else
 	return (int)f;
-#endif
 }
 
 ccl_device_inline int floor_to_int(float f)
@@ -329,6 +339,12 @@ ccl_device_inline float2 normalize_len(const float2 a, float *t)
 	return a/(*t);
 }
 
+ccl_device_inline float2 safe_normalize(const float2 a)
+{
+	float t = len(a);
+	return (t)? a/t: a;
+}
+
 ccl_device_inline bool operator==(const float2 a, const float2 b)
 {
 	return (a.x == b.x && a.y == b.y);
@@ -469,6 +485,15 @@ ccl_device_inline float dot(const float3 a, const float3 b)
 #endif
 }
 
+ccl_device_inline float dot(const float4 a, const float4 b)
+{
+#if defined(__KERNEL_SSE41__) && defined(__KERNEL_SSE__)
+	return _mm_cvtss_f32(_mm_dp_ps(a, b, 0xFF));
+#else	
+	return (a.x*b.x + a.y*b.y) + (a.z*b.z + a.w*b.w);
+#endif
+}
+
 ccl_device_inline float3 cross(const float3 a, const float3 b)
 {
 	float3 r = make_float3(a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x);
@@ -493,6 +518,11 @@ ccl_device_inline float len_squared(const float3 a)
 
 #ifndef __KERNEL_OPENCL__
 
+ccl_device_inline float len_squared(const float4 a)
+{
+	return dot(a, a);
+}
+
 ccl_device_inline float3 normalize(const float3 a)
 {
 #if defined(__KERNEL_SSE41__) && defined(__KERNEL_SSE__)
@@ -509,6 +539,12 @@ ccl_device_inline float3 normalize_len(const float3 a, float *t)
 {
 	*t = len(a);
 	return a/(*t);
+}
+
+ccl_device_inline float3 safe_normalize(const float3 a)
+{
+	float t = len(a);
+	return (t)? a/t: a;
 }
 
 #ifndef __KERNEL_OPENCL__
@@ -612,11 +648,7 @@ ccl_device_inline bool is_zero(const float3 a)
 
 ccl_device_inline float reduce_add(const float3 a)
 {
-#ifdef __KERNEL_SSE__
 	return (a.x + a.y + a.z);
-#else
-	return (a.x + a.y + a.z);
-#endif
 }
 
 ccl_device_inline float average(const float3 a)
@@ -812,11 +844,6 @@ ccl_device_inline float average(const float4& a)
 	return reduce_add(a) * 0.25f;
 }
 
-ccl_device_inline float dot(const float4& a, const float4& b)
-{
-	return reduce_add(a * b);
-}
-
 ccl_device_inline float len(const float4 a)
 {
 	return sqrtf(dot(a, a));
@@ -825,6 +852,12 @@ ccl_device_inline float len(const float4 a)
 ccl_device_inline float4 normalize(const float4 a)
 {
 	return a/len(a);
+}
+
+ccl_device_inline float4 safe_normalize(const float4 a)
+{
+	float t = len(a);
+	return (t)? a/t: a;
 }
 
 ccl_device_inline float4 min(float4 a, float4 b)
@@ -852,7 +885,6 @@ ccl_device_inline float4 max(float4 a, float4 b)
 ccl_device_inline float4 select(const int4& mask, const float4& a, const float4& b)
 {
 #ifdef __KERNEL_SSE__
-	/* blendv is sse4, and apparently broken on vs2008 */
 	return _mm_or_ps(_mm_and_ps(_mm_cvtepi32_ps(mask), a), _mm_andnot_ps(_mm_cvtepi32_ps(mask), b)); /* todo: avoid cvt */
 #else
 	return make_float4((mask.x)? a.x: b.x, (mask.y)? a.y: b.y, (mask.z)? a.z: b.z, (mask.w)? a.w: b.w);
@@ -1113,6 +1145,17 @@ ccl_device_inline void make_orthonormals(const float3 N, float3 *a, float3 *b)
 
 /* Color division */
 
+ccl_device_inline float3 safe_invert_color(float3 a)
+{
+	float x, y, z;
+
+	x = (a.x != 0.0f)? 1.0f/a.x: 0.0f;
+	y = (a.y != 0.0f)? 1.0f/a.y: 0.0f;
+	z = (a.z != 0.0f)? 1.0f/a.z: 0.0f;
+
+	return make_float3(x, y, z);
+}
+
 ccl_device_inline float3 safe_divide_color(float3 a, float3 b)
 {
 	float x, y, z;
@@ -1221,7 +1264,7 @@ ccl_device float compatible_powf(float x, float y)
 
 ccl_device float safe_powf(float a, float b)
 {
-	if(a < 0.0f && b != float_to_int(b))
+	if(UNLIKELY(a < 0.0f && b != float_to_int(b)))
 		return 0.0f;
 
 	return compatible_powf(a, b);
@@ -1229,7 +1272,7 @@ ccl_device float safe_powf(float a, float b)
 
 ccl_device float safe_logf(float a, float b)
 {
-	if(a < 0.0f || b < 0.0f)
+	if(UNLIKELY(a < 0.0f || b < 0.0f))
 		return 0.0f;
 
 	return logf(a)/logf(b);
@@ -1289,7 +1332,7 @@ ccl_device bool ray_aligned_disk_intersect(
 	float3 disk_N = normalize_len(ray_P - disk_P, &disk_t);
 	float div = dot(ray_D, disk_N);
 
-	if(div == 0.0f)
+	if(UNLIKELY(div == 0.0f))
 		return false;
 
 	/* compute t to intersection point */
@@ -1319,7 +1362,7 @@ ccl_device bool ray_triangle_intersect(
 	float3 s1 = cross(ray_D, e2);
 
 	const float divisor = dot(s1, e1);
-	if(divisor == 0.0f)
+	if(UNLIKELY(divisor == 0.0f))
 		return false;
 
 	const float invdivisor = 1.0f/divisor;
@@ -1351,6 +1394,50 @@ ccl_device bool ray_triangle_intersect(
 	return true;
 }
 
+ccl_device bool ray_triangle_intersect_uv(
+	float3 ray_P, float3 ray_D, float ray_t,
+	float3 v0, float3 v1, float3 v2,
+	float *isect_u, float *isect_v, float *isect_t)
+{
+	/* Calculate intersection */
+	float3 e1 = v1 - v0;
+	float3 e2 = v2 - v0;
+	float3 s1 = cross(ray_D, e2);
+
+	const float divisor = dot(s1, e1);
+	if(UNLIKELY(divisor == 0.0f))
+		return false;
+
+	const float invdivisor = 1.0f/divisor;
+
+	/* compute first barycentric coordinate */
+	const float3 d = ray_P - v0;
+	const float u = dot(d, s1)*invdivisor;
+	if(u < 0.0f)
+		return false;
+
+	/* Compute second barycentric coordinate */
+	const float3 s2 = cross(d, e1);
+	const float v = dot(ray_D, s2)*invdivisor;
+	if(v < 0.0f)
+		return false;
+
+	const float b0 = 1.0f - u - v;
+	if(b0 < 0.0f)
+		return false;
+
+	/* compute t to intersection point */
+	const float t = dot(e2, s2)*invdivisor;
+	if(t < 0.0f || t > ray_t)
+		return false;
+
+	*isect_u = u;
+	*isect_v = v;
+	*isect_t = t;
+
+	return true;
+}
+
 ccl_device bool ray_quad_intersect(
 	float3 ray_P, float3 ray_D, float ray_t,
 	float3 quad_P, float3 quad_u, float3 quad_v,
@@ -1367,6 +1454,56 @@ ccl_device bool ray_quad_intersect(
 		return true;
 	
 	return false;
+}
+
+/* projections */
+ccl_device_inline float2 map_to_tube(const float3 co)
+{
+	float len, u, v;
+	len = sqrtf(co.x * co.x + co.y * co.y);
+	if (len > 0.0f) {
+		u = (1.0f - (atan2f(co.x / len, co.y / len) / M_PI_F)) * 0.5f;
+		v = (co.x + 1.0f) * 0.5f;
+	}
+	else {
+		u = v = 0.0f;
+	}
+	return make_float2(u, v);
+}
+
+ccl_device_inline float2 map_to_sphere(const float3 co)
+{
+	float l = len(co);
+	float u, v;
+	if(l > 0.0f) {
+		if(UNLIKELY(co.x == 0.0f && co.y == 0.0f)) {
+			u = 0.0f;  /* othwise domain error */
+		}
+		else {
+			u = (1.0f - atan2f(co.x, co.y) / M_PI_F) / 2.0f;
+		}
+		v = 1.0f - safe_acosf(co.z / l) / M_PI_F;
+	}
+	else {
+		u = v = 0.0f;
+	}
+	return make_float2(u, v);
+}
+
+ccl_device_inline int util_max_axis(float3 vec)
+{
+	if(vec.x > vec.y) {
+		if(vec.x > vec.z)
+			return 0;
+		else
+			return 2;
+	}
+	else {
+		if(vec.y > vec.z)
+			return 1;
+		else
+			return 2;
+	}
 }
 
 CCL_NAMESPACE_END

@@ -7,6 +7,7 @@
 Import ('env')
 
 sources = env.Glob('lib/*.cpp')
+sources += env.Glob('*.cc')
 
 defs = []
 incs = ['include']
@@ -18,6 +19,7 @@ if env['WITH_BF_BOOST']:
             defs.append('HAVE_BOOST_UNORDERED_COLLECTIONS')
 
     defs.append('CARVE_SYSTEM_BOOST')
+    defs.append('HAVE_BOOST_LIBRARY')
     incs.append(env['BF_BOOST_INC'])
 
 env.BlenderLib ('extern_carve', Split(sources), incs, defs, libtype=['extern'], priority=[40] )

@@ -28,8 +28,6 @@
  *  \ingroup spnode
  */
 
-
-
 #include "DNA_lamp_types.h"
 #include "DNA_material_types.h"
 #include "DNA_node_types.h"
@@ -42,6 +40,7 @@
 
 #include "BKE_context.h"
 #include "BKE_library.h"
+#include "BKE_scene.h"
 #include "BKE_screen.h"
 #include "BKE_node.h"
 
@@ -49,7 +48,6 @@
 #include "ED_node.h"
 #include "ED_render.h"
 #include "ED_screen.h"
-#include "ED_node.h"
 #include "WM_api.h"
 #include "WM_types.h"
 
@@ -70,7 +68,7 @@ void ED_node_tree_start(SpaceNode *snode, bNodeTree *ntree, ID *id, ID *from)
 		path_next = path->next;
 		MEM_freeN(path);
 	}
-	snode->treepath.first = snode->treepath.last = NULL;
+	BLI_listbase_clear(&snode->treepath);
 	
 	if (ntree) {
 		path = MEM_callocN(sizeof(bNodeTreePath), "node tree path");
@@ -152,7 +150,7 @@ void ED_node_tree_pop(SpaceNode *snode)
 
 int ED_node_tree_depth(SpaceNode *snode)
 {
-	return BLI_countlist(&snode->treepath);
+	return BLI_listbase_count(&snode->treepath);
 }
 
 bNodeTree *ED_node_tree_get(SpaceNode *snode, int level)
@@ -384,11 +382,12 @@ static void node_init(struct wmWindowManager *UNUSED(wm), ScrArea *UNUSED(sa))
 
 }
 
-static void node_area_listener(bScreen *UNUSED(sc), ScrArea *sa, wmNotifier *wmn)
+static void node_area_listener(bScreen *sc, ScrArea *sa, wmNotifier *wmn)
 {
 	/* note, ED_area_tag_refresh will re-execute compositor */
 	SpaceNode *snode = sa->spacedata.first;
-	short shader_type = snode->shaderfrom;
+	/* shaderfrom is only used for new shading nodes, otherwise all shaders are from objects */
+	short shader_type = BKE_scene_use_new_shading_nodes(sc->scene) ? snode->shaderfrom : SNODE_SHADER_OBJECT;
 
 	/* preview renders */
 	switch (wmn->category) {
@@ -400,7 +399,7 @@ static void node_area_listener(bScreen *UNUSED(sc), ScrArea *sa, wmNotifier *wmn
 					bNodeTreePath *path = snode->treepath.last;
 					/* shift view to node tree center */
 					if (ar && path)
-						UI_view2d_setcenter(&ar->v2d, path->view_center[0], path->view_center[1]);
+						UI_view2d_center_set(&ar->v2d, path->view_center[0], path->view_center[1]);
 					
 					ED_area_tag_refresh(sa);
 					break;
@@ -418,6 +417,9 @@ static void node_area_listener(bScreen *UNUSED(sc), ScrArea *sa, wmNotifier *wmn
 							ED_area_tag_refresh(sa);
 						}
 					}
+					break;
+				case ND_LAYER_CONTENT:
+					ED_area_tag_refresh(sa);
 					break;
 			}
 			break;
@@ -500,6 +502,22 @@ static void node_area_listener(bScreen *UNUSED(sc), ScrArea *sa, wmNotifier *wmn
 				}
 			}
 			break;
+
+		case NC_LINESTYLE:
+			if (ED_node_is_shader(snode) && shader_type == SNODE_SHADER_LINESTYLE) {
+				ED_area_tag_refresh(sa);
+			}
+			break;
+		case NC_WM:
+			if (wmn->data == ND_UNDO) {
+				ED_area_tag_refresh(sa);
+			}
+			break;
+		case NC_GPENCIL:
+			if (ELEM(wmn->action, NA_EDITED, NA_SELECTED)) {
+				ED_area_tag_redraw(sa);
+			}
+			break;
 	}
 }
 
@@ -558,7 +576,7 @@ static SpaceLink *node_duplicate(SpaceLink *sl)
 	BLI_duplicatelist(&snoden->treepath, &snode->treepath);
 
 	/* clear or remove stuff from old */
-	snoden->linkdrag.first = snoden->linkdrag.last = NULL;
+	BLI_listbase_clear(&snoden->linkdrag);
 
 	/* Note: no need to set node tree user counts,
 	 * the editor only keeps at least 1 (id_us_ensure_real),
@@ -650,12 +668,12 @@ static void node_main_area_draw(const bContext *C, ARegion *ar)
 static int node_ima_drop_poll(bContext *UNUSED(C), wmDrag *drag, const wmEvent *UNUSED(event))
 {
 	if (drag->type == WM_DRAG_ID) {
-		ID *id = (ID *)drag->poin;
+		ID *id = drag->poin;
 		if (GS(id->name) == ID_IM)
 			return 1;
 	}
 	else if (drag->type == WM_DRAG_PATH) {
-		if (ELEM(drag->icon, 0, ICON_FILE_IMAGE))   /* rule might not work? */
+		if (ELEM(drag->icon, 0, ICON_FILE_IMAGE, ICON_FILE_MOVIE))   /* rule might not work? */
 			return 1;
 	}
 	return 0;
@@ -664,7 +682,7 @@ static int node_ima_drop_poll(bContext *UNUSED(C), wmDrag *drag, const wmEvent *
 static int node_mask_drop_poll(bContext *UNUSED(C), wmDrag *drag, const wmEvent *UNUSED(event))
 {
 	if (drag->type == WM_DRAG_ID) {
-		ID *id = (ID *)drag->poin;
+		ID *id = drag->poin;
 		if (GS(id->name) == ID_MSK)
 			return 1;
 	}
@@ -673,20 +691,22 @@ static int node_mask_drop_poll(bContext *UNUSED(C), wmDrag *drag, const wmEvent 
 
 static void node_id_drop_copy(wmDrag *drag, wmDropBox *drop)
 {
-	ID *id = (ID *)drag->poin;
+	ID *id = drag->poin;
 
 	RNA_string_set(drop->ptr, "name", id->name + 2);
 }
 
 static void node_id_path_drop_copy(wmDrag *drag, wmDropBox *drop)
 {
-	ID *id = (ID *)drag->poin;
+	ID *id = drag->poin;
 
 	if (id) {
 		RNA_string_set(drop->ptr, "name", id->name + 2);
+		RNA_struct_property_unset(drop->ptr, "filepath");
 	}
-	if (drag->path[0]) {
+	else if (drag->path[0]) {
 		RNA_string_set(drop->ptr, "filepath", drag->path);
+		RNA_struct_property_unset(drop->ptr, "name");
 	}
 }
 
@@ -739,6 +759,7 @@ static void node_region_listener(bScreen *UNUSED(sc), ScrArea *UNUSED(sa), ARegi
 		case NC_TEXTURE:
 		case NC_WORLD:
 		case NC_NODE:
+		case NC_LINESTYLE:
 			ED_region_tag_redraw(ar);
 			break;
 		case NC_OBJECT:
@@ -751,6 +772,8 @@ static void node_region_listener(bScreen *UNUSED(sc), ScrArea *UNUSED(sa), ARegi
 			break;
 		case NC_GPENCIL:
 			if (wmn->action == NA_EDITED)
+				ED_region_tag_redraw(ar);
+			else if (wmn->data & ND_GPENCIL_EDITMODE)
 				ED_region_tag_redraw(ar);
 			break;
 	}
@@ -827,7 +850,7 @@ void ED_spacetype_node(void)
 	art->draw = node_main_area_draw;
 	art->listener = node_region_listener;
 	art->cursor = node_cursor;
-	art->event_cursor = TRUE;
+	art->event_cursor = true;
 	art->keymapflag = ED_KEYMAP_UI | ED_KEYMAP_VIEW2D | ED_KEYMAP_FRAMES | ED_KEYMAP_GPENCIL;
 
 	BLI_addhead(&st->regiontypes, art);

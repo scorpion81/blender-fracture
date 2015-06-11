@@ -25,6 +25,8 @@
  *  \date 01/07/2003
  */
 
+#include "../python/Director.h"
+
 #include "ChainingIterators.h"
 
 #include "../system/TimeStamp.h"
@@ -60,6 +62,16 @@ bool AdjacencyIterator::isValid(ViewEdge *edge)
 			return false;
 	}
 	return true;
+}
+
+int ChainingIterator::init()
+{
+	return Director_BPy_ChainingIterator_init(this);
+}
+
+int ChainingIterator::traverse(const AdjacencyIterator &it)
+{
+	return Director_BPy_ChainingIterator_traverse(this, const_cast<AdjacencyIterator &>(it));
 }
 
 int ChainingIterator::increment()
@@ -140,16 +152,19 @@ int ChainSilhouetteIterator::traverse(const AdjacencyIterator& ait)
 		//soc NonTVertex *nontvertex = (NonTVertex*)nextVertex;
 		ViewEdge *newEdge(0);
 		// we'll try to chain the edges by keeping the same nature...
-		// the preseance order is : SILHOUETTE, BORDER, CREASE, SUGGESTIVE, VALLEY, RIDGE
-		Nature::EdgeNature natures[6] = {
+		// the preseance order is : SILHOUETTE, BORDER, CREASE, MATERIAL_BOUNDARY, EDGE_MARK, SUGGESTIVE, VALLEY, RIDGE
+		Nature::EdgeNature natures[8] = {
 			Nature::SILHOUETTE,
 			Nature::BORDER,
 			Nature::CREASE,
+			Nature::MATERIAL_BOUNDARY,
+			Nature::EDGE_MARK,
 			Nature::SUGGESTIVE_CONTOUR,
 			Nature::VALLEY,
 			Nature::RIDGE
 		};
-		for (unsigned int i = 0; i < 6; ++i) {
+		int numNatures = sizeof(natures) / sizeof(Nature::EdgeNature);
+		for (int i = 0; i < numNatures; ++i) {
 			if (getCurrentEdge()->getNature() & natures[i]) {
 				int n = 0;
 				while (!it.isEnd()) {

@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __SESSION_H__
@@ -19,6 +19,7 @@
 
 #include "buffers.h"
 #include "device.h"
+#include "shader.h"
 #include "tile.h"
 
 #include "util_progress.h"
@@ -58,8 +59,9 @@ public:
 	double cancel_timeout;
 	double reset_timeout;
 	double text_timeout;
+	double progressive_update_timeout;
 
-	enum { OSL, SVM } shadingsystem;
+	ShadingSystem shadingsystem;
 
 	SessionParams()
 	{
@@ -79,8 +81,9 @@ public:
 		cancel_timeout = 0.1;
 		reset_timeout = 0.1;
 		text_timeout = 1.0;
+		progressive_update_timeout = 1.0;
 
-		shadingsystem = SVM;
+		shadingsystem = SHADINGSYSTEM_SVM;
 		tile_order = TILE_CENTER;
 	}
 
@@ -100,6 +103,7 @@ public:
 		&& cancel_timeout == params.cancel_timeout
 		&& reset_timeout == params.reset_timeout
 		&& text_timeout == params.text_timeout
+		&& progressive_update_timeout == params.progressive_update_timeout
 		&& tile_order == params.tile_order
 		&& shadingsystem == params.shadingsystem); }
 
@@ -128,7 +132,7 @@ public:
 	~Session();
 
 	void start();
-	bool draw(BufferParams& params);
+	bool draw(BufferParams& params, DeviceDrawParams& draw_params);
 	void wait();
 
 	bool ready_to_reset();
@@ -136,7 +140,11 @@ public:
 	void set_samples(int samples);
 	void set_pause(bool pause);
 
+	void update_scene();
+	void load_kernels();
+
 	void device_free();
+
 protected:
 	struct DelayedReset {
 		thread_mutex mutex;
@@ -147,19 +155,18 @@ protected:
 
 	void run();
 
-	void update_scene();
 	void update_status_time(bool show_pause = false, bool show_done = false);
 
-	void tonemap();
+	void tonemap(int sample);
 	void path_trace();
 	void reset_(BufferParams& params, int samples);
 
 	void run_cpu();
-	bool draw_cpu(BufferParams& params);
+	bool draw_cpu(BufferParams& params, DeviceDrawParams& draw_params);
 	void reset_cpu(BufferParams& params, int samples);
 
 	void run_gpu();
-	bool draw_gpu(BufferParams& params);
+	bool draw_gpu(BufferParams& params, DeviceDrawParams& draw_params);
 	void reset_gpu(BufferParams& params, int samples);
 
 	bool acquire_tile(Device *tile_device, RenderTile& tile);

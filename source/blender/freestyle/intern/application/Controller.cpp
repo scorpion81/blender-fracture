@@ -22,6 +22,10 @@
  *  \ingroup freestyle
  */
 
+extern "C" {
+#include <Python.h>
+}
+
 #include <string>
 #include <fstream>
 #include <float.h>
@@ -36,6 +40,7 @@
 #include "../scene_graph/NodeDrawingStyle.h"
 #include "../scene_graph/NodeShape.h"
 #include "../scene_graph/NodeTransform.h"
+#include "../scene_graph/NodeSceneRenderLayer.h"
 #include "../scene_graph/ScenePrettyPrinter.h"
 #include "../scene_graph/VertexRep.h"
 
@@ -62,6 +67,8 @@
 #include "../blender_interface/BlenderStyleModule.h"
 
 #include "BKE_global.h"
+#include "BLI_utildefines.h"
+#include "BLI_path_util.h"
 
 #include "DNA_freestyle_types.h"
 
@@ -113,6 +120,7 @@ Controller::Controller()
 	_Canvas = new AppCanvas;
 
 	_inter = new PythonInterpreter();
+	_EnableViewMapCache = false;
 	_EnableQI = true;
 	_EnableFaceSmoothness = false;
 	_ComputeRidges = true;
@@ -121,6 +129,7 @@ Controller::Controller()
 	_ComputeMaterialBoundaries = true;
 	_sphereRadius = 1.0;
 	_creaseAngle = 134.43;
+	prevSceneHash = -1.0;
 
 	init_options();
 }
@@ -190,14 +199,14 @@ void Controller::setRenderMonitor(RenderMonitor *iRenderMonitor)
 void Controller::setPassDiffuse(float *buf, int width, int height)
 {
 	AppCanvas *app_canvas = dynamic_cast<AppCanvas *>(_Canvas);
-	assert(app_canvas != 0);
+	BLI_assert(app_canvas != 0);
 	app_canvas->setPassDiffuse(buf, width, height);
 }
 
 void Controller::setPassZ(float *buf, int width, int height)
 {
 	AppCanvas *app_canvas = dynamic_cast<AppCanvas *>(_Canvas);
-	assert(app_canvas != 0);
+	BLI_assert(app_canvas != 0);
 	app_canvas->setPassZ(buf, width, height);
 }
 
@@ -205,6 +214,18 @@ void Controller::setContext(bContext *C)
 {
 	PythonInterpreter *py_inter = dynamic_cast<PythonInterpreter*>(_inter);
 	py_inter->setContext(C);
+}
+
+bool Controller::hitViewMapCache()
+{
+	if (!_EnableViewMapCache) {
+		return false;
+	}
+	if (sceneHashFunc.match()) {
+		return (NULL != _ViewMap);
+	}
+	sceneHashFunc.store();
+	return false;
 }
 
 int Controller::LoadMesh(Render *re, SceneRenderLayer *srl)
@@ -237,6 +258,7 @@ int Controller::LoadMesh(Render *re, SceneRenderLayer *srl)
 	if (G.debug & G_DEBUG_FREESTYLE) {
 		cout << "Scene loaded" << endl;
 		printf("Mesh cleaning    : %lf\n", duration);
+		printf("View map cache   : %s\n", _EnableViewMapCache ? "enabled" : "disabled");
 	}
 	_SceneNumFaces += loader.numFacesRead();
 
@@ -257,6 +279,39 @@ int Controller::LoadMesh(Render *re, SceneRenderLayer *srl)
 
 	if (_pRenderMonitor->testBreak())
 		return 0;
+
+	if (_EnableViewMapCache) {
+
+		NodeCamera *cam;
+		if (freestyle_proj[3][3] != 0.0)
+			cam = new NodeOrthographicCamera;
+		else
+			cam = new NodePerspectiveCamera;
+		double proj[16];
+		for (int i = 0; i < 4; i++) {
+			for (int j = 0; j < 4; j++) {
+				proj[i * 4 + j] = freestyle_proj[i][j];
+			}
+		}
+		cam->setProjectionMatrix(proj);
+		_RootNode->AddChild(cam);
+		_RootNode->AddChild(new NodeSceneRenderLayer(*re->scene, *srl));
+
+		sceneHashFunc.reset();
+		//blenderScene->accept(sceneHashFunc);
+		_RootNode->accept(sceneHashFunc);
+		if (G.debug & G_DEBUG_FREESTYLE) {
+			cout << "Scene hash       : " << sceneHashFunc.toString() << endl;
+		}
+		if (hitViewMapCache()) {
+			ClearRootNode();
+			return 0;
+		}
+		else {
+			delete _ViewMap;
+			_ViewMap = NULL;
+		}
+	}
 
 	_Chrono.start();
 
@@ -293,11 +348,18 @@ int Controller::LoadMesh(Render *re, SceneRenderLayer *srl)
 
 	_bboxDiag = (_RootNode->bbox().getMax() - _RootNode->bbox().getMin()).norm();
 	if (G.debug & G_DEBUG_FREESTYLE) {
-		cout << "Triangles nb     : " << _SceneNumFaces << endl;
+		cout << "Triangles nb     : " << _SceneNumFaces << " imported, " <<
+		        _winged_edge->getNumFaces() << " retained" << endl;
 		cout << "Bounding Box     : " << _bboxDiag << endl;
 	}
 
 	ClearRootNode();
+
+	_SceneNumFaces = _winged_edge->getNumFaces();
+	if (_SceneNumFaces == 0) {
+		DeleteWingedEdge();
+		return 1;
+	}
 
 	return 0;
 }
@@ -345,7 +407,7 @@ void Controller::DeleteWingedEdge()
 	_minEdgeSize = DBL_MAX;
 }
 
-void Controller::DeleteViewMap()
+void Controller::DeleteViewMap(bool freeCache)
 {
 	_pView->DetachSilhouette();
 	if (NULL != _SilhouetteNode) {
@@ -375,14 +437,20 @@ void Controller::DeleteViewMap()
 
 	_pView->DetachDebug();
 	if (NULL != _DebugNode) {
-	int ref = _DebugNode->destroy();
+		int ref = _DebugNode->destroy();
 		if (0 == ref)
 			_DebugNode->addRef();
 	}
 
 	if (NULL != _ViewMap) {
-		delete _ViewMap;
-		_ViewMap = NULL;
+		if (freeCache || !_EnableViewMapCache) {
+			delete _ViewMap;
+			_ViewMap = NULL;
+			prevSceneHash = -1.0;
+		}
+		else {
+			_ViewMap->Clean();
+		}
 	}
 }
 
@@ -391,40 +459,7 @@ void Controller::ComputeViewMap()
 	if (!_ListOfModels.size())
 		return;
 
-	if (NULL != _ViewMap) {
-		delete _ViewMap;
-		_ViewMap = NULL;
-	}
-
-	_pView->DetachDebug();
-	if (NULL != _DebugNode) {
-		int ref = _DebugNode->destroy();
-		if (0 == ref)
-			_DebugNode->addRef();
-	}
-
-	_pView->DetachSilhouette();
-	if (NULL != _SilhouetteNode) {
-		int ref = _SilhouetteNode->destroy();
-		if (0 == ref)
-			delete _SilhouetteNode;
-	}
-
-#if 0
-	if (NULL != _ProjectedSilhouette) {
-		int ref = _ProjectedSilhouette->destroy();
-		if (0 == ref)
-			delete _ProjectedSilhouette;
-	}
-
-	if (NULL != _VisibleProjectedSilhouette) {
-		int ref = _VisibleProjectedSilhouette->destroy();
-		if (0 == ref) {
-			delete _VisibleProjectedSilhouette;
-			_VisibleProjectedSilhouette = NULL;
-		}
-	}
-#endif
+	DeleteViewMap(true);
 
 	// retrieve the 3D viewpoint and transformations information
 	//----------------------------------------------------------
@@ -751,6 +786,16 @@ int Controller::getVisibilityAlgo()
 	return FREESTYLE_ALGO_ADAPTIVE_TRADITIONAL;
 }
 
+void Controller::setViewMapCache(bool iBool)
+{
+	_EnableViewMapCache = iBool;
+}
+
+bool Controller::getViewMapCache() const
+{
+	return _EnableViewMapCache;
+}
+
 void Controller::setQuantitativeInvisibility(bool iBool)
 {
 	_EnableQI = iBool;
@@ -824,7 +869,7 @@ void Controller::DrawStrokes()
 	real d = _Chrono.stop();
 	if (G.debug & G_DEBUG_FREESTYLE) {
 		cout << "Strokes generation  : " << d << endl;
-		cout << "Stroke count  : " << _Canvas->stroke_count << endl;
+		cout << "Stroke count  : " << _Canvas->getStrokeCount() << endl;
 	}
 	resetModified();
 	DeleteViewMap();
@@ -837,10 +882,13 @@ void Controller::ResetRenderCount()
 
 Render *Controller::RenderStrokes(Render *re, bool render)
 {
+	int totmesh = 0;
 	_Chrono.start();
 	BlenderStrokeRenderer *blenderRenderer = new BlenderStrokeRenderer(re, ++_render_count);
-	if (render)
+	if (render) {
 		_Canvas->Render(blenderRenderer);
+		totmesh = blenderRenderer->GenerateScene();
+	}
 	real d = _Chrono.stop();
 	if (G.debug & G_DEBUG_FREESTYLE) {
 		cout << "Temporary scene generation: " << d << endl;
@@ -850,6 +898,18 @@ Render *Controller::RenderStrokes(Render *re, bool render)
 	d = _Chrono.stop();
 	if (G.debug & G_DEBUG_FREESTYLE) {
 		cout << "Stroke rendering  : " << d << endl;
+
+		uintptr_t mem_in_use = MEM_get_memory_in_use();
+		uintptr_t mmap_in_use = MEM_get_mapped_memory_in_use();
+		uintptr_t peak_memory = MEM_get_peak_memory();
+
+		float megs_used_memory = (mem_in_use - mmap_in_use) / (1024.0 * 1024.0);
+		float mmap_used_memory = (mmap_in_use) / (1024.0 * 1024.0);
+		float megs_peak_memory = (peak_memory) / (1024.0 * 1024.0);
+
+		printf("%d objs, %d verts, %d faces, mem %.2fM (%.2fM, peak %.2fM)\n",
+		       totmesh, freestyle_render->i.totvert, freestyle_render->i.totface,
+		       megs_used_memory, mmap_used_memory, megs_peak_memory);
 	}
 	delete blenderRenderer;
 
@@ -1024,7 +1084,6 @@ void Controller::init_options()
 
 	// Directories
 	ViewMapIO::Options::setModelsPath(cpath->getModelsPath());
-	PythonInterpreter::Options::setPythonPath(cpath->getPythonPath());
 	TextureManager::Options::setPatternsPath(cpath->getPatternsPath());
 	TextureManager::Options::setBrushesPath(cpath->getModelsPath());
 

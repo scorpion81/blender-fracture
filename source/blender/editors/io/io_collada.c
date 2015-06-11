@@ -96,7 +96,9 @@ static int wm_collada_export_exec(bContext *C, wmOperator *op)
 	int use_object_instantiation;
 	int sort_by_name;
 	int export_transformation_type;
-	int open_sim; 
+	int open_sim;
+
+	int export_count;
 
 	if (!RNA_struct_property_is_set(op->ptr, "filepath")) {
 		BKE_report(op->reports, RPT_ERROR, "No filename given");
@@ -148,33 +150,36 @@ static int wm_collada_export_exec(bContext *C, wmOperator *op)
 	ED_object_editmode_load(CTX_data_edit_object(C));
 
 
+	export_count = collada_export(CTX_data_scene(C),
+		filepath,
+		apply_modifiers,
+		export_mesh_type,
+		selected,
+		include_children,
+		include_armatures,
+		include_shapekeys,
+		deform_bones_only,
 
-	if (collada_export(CTX_data_scene(C),
-	                   filepath,
-	                   apply_modifiers,
-	                   export_mesh_type,
-	                   selected,
-	                   include_children,
-	                   include_armatures,
-	                   include_shapekeys,
-	                   deform_bones_only,
+		active_uv_only,
+		include_uv_textures,
+		include_material_textures,
+		use_texture_copies,
 
-	                   active_uv_only,
-	                   include_uv_textures,
-	                   include_material_textures,
-	                   use_texture_copies,
+		triangulate,
+		use_object_instantiation,
+		sort_by_name,
+		export_transformation_type,
+		open_sim);
 
-	                   triangulate,
-	                   use_object_instantiation,
-	                   sort_by_name,
-	                   export_transformation_type,
-	                   open_sim))
-	{
-		return OPERATOR_FINISHED;
+	if (export_count == 0) {
+		BKE_report(op->reports, RPT_WARNING, "Export file is empty");
+		return OPERATOR_CANCELLED;
 	}
 	else {
-		BKE_report(op->reports, RPT_WARNING, "Export file not created");
-		return OPERATOR_CANCELLED;
+		char buff[100];
+		sprintf(buff, "Exported %d Objects", export_count);
+		BKE_report(op->reports, RPT_INFO, buff);
+		return OPERATOR_FINISHED;
 	}
 }
 
@@ -184,76 +189,76 @@ static void uiCollada_exportSettings(uiLayout *layout, PointerRNA *imfptr)
 
 	/* Export Options: */
 	box = uiLayoutBox(layout);
-	row = uiLayoutRow(box, FALSE);
+	row = uiLayoutRow(box, false);
 	uiItemL(row, IFACE_("Export Data Options:"), ICON_MESH_DATA);
 
-	row = uiLayoutRow(box, FALSE);
+	row = uiLayoutRow(box, false);
 	split = uiLayoutSplit(row, 0.6f, UI_LAYOUT_ALIGN_RIGHT);
-	col   = uiLayoutColumn(split, FALSE);
+	col   = uiLayoutColumn(split, false);
 	uiItemR(col, imfptr, "apply_modifiers", 0, NULL, ICON_NONE);
-	col   = uiLayoutColumn(split, FALSE);
+	col   = uiLayoutColumn(split, false);
 	uiItemR(col, imfptr, "export_mesh_type_selection", 0, "", ICON_NONE);
 	uiLayoutSetEnabled(col, RNA_boolean_get(imfptr, "apply_modifiers"));
 
-	row = uiLayoutRow(box, FALSE);
+	row = uiLayoutRow(box, false);
 	uiItemR(row, imfptr, "selected", 0, NULL, ICON_NONE);
 
-	row = uiLayoutRow(box, FALSE);
+	row = uiLayoutRow(box, false);
 	uiItemR(row, imfptr, "include_children", 0, NULL, ICON_NONE);
 	uiLayoutSetEnabled(row, RNA_boolean_get(imfptr, "selected"));
 
-	row = uiLayoutRow(box, FALSE);
+	row = uiLayoutRow(box, false);
 	uiItemR(row, imfptr, "include_armatures", 0, NULL, ICON_NONE);
 	uiLayoutSetEnabled(row, RNA_boolean_get(imfptr, "selected"));
 
-	row = uiLayoutRow(box, FALSE);
+	row = uiLayoutRow(box, false);
 	uiItemR(row, imfptr, "include_shapekeys", 0, NULL, ICON_NONE);
 	uiLayoutSetEnabled(row, RNA_boolean_get(imfptr, "selected"));
 
 	/* Texture options */
 	box = uiLayoutBox(layout);
-	row = uiLayoutRow(box, FALSE);
+	row = uiLayoutRow(box, false);
 	uiItemL(row, IFACE_("Texture Options:"), ICON_TEXTURE_DATA);
 
-	row = uiLayoutRow(box, FALSE);
+	row = uiLayoutRow(box, false);
 	uiItemR(row, imfptr, "active_uv_only", 0, NULL, ICON_NONE);
 
-	row = uiLayoutRow(box, FALSE);
+	row = uiLayoutRow(box, false);
 	uiItemR(row, imfptr, "include_uv_textures", 0, NULL, ICON_NONE);
 
-	row = uiLayoutRow(box, FALSE);
+	row = uiLayoutRow(box, false);
 	uiItemR(row, imfptr, "include_material_textures", 0, NULL, ICON_NONE);
 
-	row = uiLayoutRow(box, FALSE);
+	row = uiLayoutRow(box, false);
 	uiItemR(row, imfptr, "use_texture_copies", 1, NULL, ICON_NONE);
 
 
 	/* Armature options */
 	box = uiLayoutBox(layout);
-	row = uiLayoutRow(box, FALSE);
+	row = uiLayoutRow(box, false);
 	uiItemL(row, IFACE_("Armature Options:"), ICON_ARMATURE_DATA);
 
-	row = uiLayoutRow(box, FALSE);
+	row = uiLayoutRow(box, false);
 	uiItemR(row, imfptr, "deform_bones_only", 0, NULL, ICON_NONE);
-	row = uiLayoutRow(box, FALSE);
+	row = uiLayoutRow(box, false);
 	uiItemR(row, imfptr, "open_sim", 0, NULL, ICON_NONE);
 
 	/* Collada options: */
 	box = uiLayoutBox(layout);
-	row = uiLayoutRow(box, FALSE);
+	row = uiLayoutRow(box, false);
 	uiItemL(row, IFACE_("Collada Options:"), ICON_MODIFIER);
 
-	row = uiLayoutRow(box, FALSE);
+	row = uiLayoutRow(box, false);
 	uiItemR(row, imfptr, "triangulate", 0, NULL, ICON_NONE);
-	row = uiLayoutRow(box, FALSE);
+	row = uiLayoutRow(box, false);
 	uiItemR(row, imfptr, "use_object_instantiation", 0, NULL, ICON_NONE);
 
-	row = uiLayoutRow(box, FALSE);
+	row = uiLayoutRow(box, false);
 	split = uiLayoutSplit(row, 0.6f, UI_LAYOUT_ALIGN_RIGHT);
-    uiItemL(split, IFACE_("Transformation Type"), ICON_NONE);
+	uiItemL(split, IFACE_("Transformation Type"), ICON_NONE);
 	uiItemR(split, imfptr, "export_transformation_type_selection", 0, "", ICON_NONE);
 
-	row = uiLayoutRow(box, FALSE);
+	row = uiLayoutRow(box, false);
 	uiItemR(row, imfptr, "sort_by_name", 0, NULL, ICON_NONE);
 
 }
@@ -293,7 +298,7 @@ void WM_OT_collada_export(wmOperatorType *ot)
 
 	ot->ui = wm_collada_export_draw;
 
-	WM_operator_properties_filesel(ot, FOLDERFILE | COLLADAFILE, FILE_BLENDER, FILE_SAVE,
+	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_COLLADA, FILE_BLENDER, FILE_SAVE,
 	                               WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY);
 
 	RNA_def_boolean(ot->srna,
@@ -322,11 +327,11 @@ void WM_OT_collada_export(wmOperatorType *ot)
 	                "Only export deforming bones with armatures");
 
 
-	RNA_def_boolean(ot->srna, "active_uv_only", 0, "Only Active UV layer",
-	                "Export textures assigned to the object UV maps");
+	RNA_def_boolean(ot->srna, "active_uv_only", 0, "Only Selected UV Map",
+	                "Export only the selected UV Map");
 
 	RNA_def_boolean(ot->srna, "include_uv_textures", 0, "Include UV Textures",
-	                "Export textures assigned to the object UV maps");
+	                "Export textures assigned to the object UV Maps");
 
 	RNA_def_boolean(ot->srna, "include_material_textures", 0, "Include Material Textures",
 	                "Export textures assigned to the object Materials");
@@ -350,8 +355,8 @@ void WM_OT_collada_export(wmOperatorType *ot)
 	RNA_def_enum(ot->srna, "export_transformation_type_selection", prop_bc_export_transformation_type, 0,
 	             "Transform", "Transformation type for translation, scale and rotation");
 
-	RNA_def_boolean(ot->srna, "open_sim", 0, "Export for OpenSim",
-	                "Compatibility mode for OpenSim and compatible online worlds");
+	RNA_def_boolean(ot->srna, "open_sim", 0, "Export to SL/OpenSim",
+	                "Compatibility mode for SL, OpenSim and other compatible online worlds");
 }
 
 
@@ -360,6 +365,9 @@ static int wm_collada_import_exec(bContext *C, wmOperator *op)
 {
 	char filename[FILE_MAX];
 	int import_units;
+	int find_chains;
+	int fix_orientation;
+	int  min_chain_length;
 
 	if (!RNA_struct_property_is_set(op->ptr, "filepath")) {
 		BKE_report(op->reports, RPT_ERROR, "No filename given");
@@ -367,10 +375,19 @@ static int wm_collada_import_exec(bContext *C, wmOperator *op)
 	}
 
 	/* Options panel */
-	import_units = RNA_boolean_get(op->ptr, "import_units");
+	import_units     = RNA_boolean_get(op->ptr, "import_units");
+	find_chains      = RNA_boolean_get(op->ptr, "find_chains");
+	fix_orientation  = RNA_boolean_get(op->ptr, "fix_orientation");
+	min_chain_length = RNA_int_get(op->ptr, "min_chain_length");
 
 	RNA_string_get(op->ptr, "filepath", filename);
-	if (collada_import(C, filename, import_units)) {
+	if (collada_import(
+	        C, filename,
+	        import_units,
+	        find_chains,
+	        fix_orientation,
+	        min_chain_length))
+	{
 		return OPERATOR_FINISHED;
 	}
 	else {
@@ -385,11 +402,24 @@ static void uiCollada_importSettings(uiLayout *layout, PointerRNA *imfptr)
 
 	/* Import Options: */
 	box = uiLayoutBox(layout);
-	row = uiLayoutRow(box, FALSE);
+	row = uiLayoutRow(box, false);
 	uiItemL(row, IFACE_("Import Data Options:"), ICON_MESH_DATA);
 
-	row = uiLayoutRow(box, FALSE);
+	row = uiLayoutRow(box, false);
 	uiItemR(row, imfptr, "import_units", 0, NULL, ICON_NONE);
+
+	box = uiLayoutBox(layout);
+	row = uiLayoutRow(box, false);
+	uiItemL(row, IFACE_("Armature Options:"), ICON_MESH_DATA);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "fix_orientation", 0, NULL, ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "find_chains", 0, NULL, ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "min_chain_length", 0, NULL, ICON_NONE);
 }
 
 static void wm_collada_import_draw(bContext *UNUSED(C), wmOperator *op)
@@ -414,13 +444,31 @@ void WM_OT_collada_import(wmOperatorType *ot)
 
 	ot->ui = wm_collada_import_draw;
 
-	WM_operator_properties_filesel(ot, FOLDERFILE | COLLADAFILE, FILE_BLENDER, FILE_OPENFILE,
+	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_COLLADA, FILE_BLENDER, FILE_OPENFILE,
 	                               WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY);
 
 	RNA_def_boolean(ot->srna,
-	                "import_units", 0, "Import Units",
-	                "If disabled match import to Blender's current Unit settings, "
-	                "otherwise use the settings from the Imported scene");
+		"import_units", 0, "Import Units",
+		"If disabled match import to Blender's current Unit settings, "
+		"otherwise use the settings from the Imported scene");
+
+	RNA_def_boolean(ot->srna,
+		"fix_orientation", 0, "Fix Leaf Bones",
+		"Fix Orientation of Leaf Bones (Collada does only support Joints)");
+
+	RNA_def_boolean(ot->srna,
+		"find_chains", 0, "Find Bone Chains",
+		"Find best matching Bone Chains and ensure bones in chain are connected");
+
+	RNA_def_int(ot->srna,
+		"min_chain_length",
+		0,
+		0,
+		INT_MAX,
+		"Minimum Chain Length",
+		"When searching Bone Chains disregard chains of length below this value",
+		0,
+		INT_MAX);
 
 }
 #endif

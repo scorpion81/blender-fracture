@@ -189,7 +189,9 @@ static bAction *poselib_init_new(Object *ob)
 	/* init object's poselib action (unlink old one if there) */
 	if (ob->poselib)
 		id_us_min(&ob->poselib->id);
+		
 	ob->poselib = add_empty_action(G.main, "PoseLib");
+	ob->poselib->idroot = ID_OB;
 	
 	return ob->poselib;
 }
@@ -305,7 +307,7 @@ static int poselib_sanitize_exec(bContext *C, wmOperator *op)
 		/* check if any pose matches this */
 		/* TODO: don't go looking through the list like this every time... */
 		for (marker = act->markers.first; marker; marker = marker->next) {
-			if (IS_EQ(marker->frame, (double)ak->cfra)) {
+			if (IS_EQ((double)marker->frame, (double)ak->cfra)) {
 				marker->flag = -1;
 				break;
 			}
@@ -402,8 +404,8 @@ static int poselib_add_menu_invoke(bContext *C, wmOperator *op, const wmEvent *U
 		return OPERATOR_CANCELLED;
 	
 	/* start building */
-	pup = uiPupMenuBegin(C, op->type->name, ICON_NONE);
-	layout = uiPupMenuLayout(pup);
+	pup = UI_popup_menu_begin(C, op->type->name, ICON_NONE);
+	layout = UI_popup_menu_layout(pup);
 	uiLayoutSetOperatorContext(layout, WM_OP_EXEC_DEFAULT);
 	
 	/* add new (adds to the first unoccupied frame) */
@@ -418,10 +420,10 @@ static int poselib_add_menu_invoke(bContext *C, wmOperator *op, const wmEvent *U
 		uiItemMenuF(layout, IFACE_("Replace Existing..."), 0, poselib_add_menu_invoke__replacemenu, NULL);
 	}
 	
-	uiPupMenuEnd(C, pup);
+	UI_popup_menu_end(C, pup);
 	
 	/* this operator is only for a menu, not used further */
-	return OPERATOR_CANCELLED;
+	return OPERATOR_INTERFACE;
 }
 
 
@@ -470,7 +472,7 @@ static int poselib_add_exec(bContext *C, wmOperator *op)
 	ANIM_apply_keyingset(C, NULL, act, ks, MODIFYKEY_MODE_INSERT, (float)frame);
 	
 	/* store new 'active' pose number */
-	act->active_marker = BLI_countlist(&act->markers);
+	act->active_marker = BLI_listbase_count(&act->markers);
 	
 	/* done */
 	return OPERATOR_FINISHED;
@@ -610,6 +612,7 @@ void POSELIB_OT_pose_remove(wmOperatorType *ot)
 	/* properties */
 	prop = RNA_def_enum(ot->srna, "pose", DummyRNA_NULL_items, 0, "Pose", "The pose to remove");
 	RNA_def_enum_funcs(prop, poselib_stored_pose_itemf);
+	RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
 	ot->prop = prop;
 }
 
@@ -699,6 +702,7 @@ void POSELIB_OT_pose_rename(wmOperatorType *ot)
 	ot->prop = RNA_def_string(ot->srna, "name", "RenamedPose", 64, "New Pose Name", "New name for pose");
 	prop = RNA_def_enum(ot->srna, "pose", DummyRNA_NULL_items, 0, "Pose", "The pose to rename");
 	RNA_def_enum_funcs(prop, poselib_stored_pose_itemf);
+	RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
 }
 
 /* ************************************************************* */
@@ -878,7 +882,7 @@ static void poselib_apply_pose(tPoseLib_PreviewData *pld)
 			pchan = BKE_pose_channel_find_name(pose, agrp->name);
 			
 			if (pchan) {
-				short ok = 0;
+				bool ok = 0;
 				
 				/* check if this bone should get any animation applied */
 				if (pld->selcount == 0) {
@@ -912,7 +916,7 @@ static void poselib_keytag_pose(bContext *C, Scene *scene, tPoseLib_PreviewData 
 	
 	KeyingSet *ks = ANIM_get_keyingset_for_autokeying(scene, ANIM_KS_WHOLE_CHARACTER_ID);
 	ListBase dsources = {NULL, NULL};
-	short autokey = autokeyframe_cfra_can_key(scene, &pld->ob->id);
+	bool autokey = autokeyframe_cfra_can_key(scene, &pld->ob->id);
 	
 	/* start tagging/keying */
 	for (agrp = act->groups.first; agrp; agrp = agrp->next) {
@@ -1046,7 +1050,7 @@ static void poselib_preview_get_next(tPoseLib_PreviewData *pld, int step)
 		LinkData *ld, *ldn, *ldc;
 		
 		/* free and rebuild if needed (i.e. if search-str changed) */
-		if (strcmp(pld->searchstr, pld->searchold)) {
+		if (!STREQ(pld->searchstr, pld->searchold)) {
 			/* free list of temporary search matches */
 			BLI_freelistN(&pld->searchp);
 			
@@ -1069,7 +1073,7 @@ static void poselib_preview_get_next(tPoseLib_PreviewData *pld, int step)
 		}
 		
 		/* check if any matches */
-		if (pld->searchp.first == NULL) {
+		if (BLI_listbase_is_empty(&pld->searchp)) {
 			pld->marker = NULL;
 			return;
 		}
@@ -1344,7 +1348,7 @@ static int poselib_preview_handle_event(bContext *UNUSED(C), wmOperator *op, con
 			else {
 				/* change to last pose */
 				pld->marker = pld->act->markers.last;
-				pld->act->active_marker = BLI_countlist(&pld->act->markers);
+				pld->act->active_marker = BLI_listbase_count(&pld->act->markers);
 				
 				pld->redraw = PL_PREVIEW_REDRAWALL;
 			}
@@ -1413,7 +1417,7 @@ static void poselib_preview_init_data(bContext *C, wmOperator *op)
 		pld->marker = (pld->act) ? BLI_findlink(&pld->act->markers, pose_index) : NULL;
 	
 	/* check if valid poselib */
-	if (ELEM3(NULL, pld->ob, pld->pose, pld->arm)) {
+	if (ELEM(NULL, pld->ob, pld->pose, pld->arm)) {
 		BKE_report(op->reports, RPT_ERROR, "Pose lib is only for armatures in pose mode");
 		pld->state = PL_PREVIEW_ERROR;
 		return;
@@ -1486,7 +1490,6 @@ static void poselib_preview_cleanup(bContext *C, wmOperator *op)
 			DAG_id_tag_update(&ob->id, OB_RECALC_DATA);  /* sets recalc flags */
 		else
 			BKE_pose_where_is(scene, ob);
-		
 	}
 	else if (pld->state == PL_PREVIEW_CONFIRM) {
 		/* tag poses as appropriate */
@@ -1506,6 +1509,9 @@ static void poselib_preview_cleanup(bContext *C, wmOperator *op)
 		else
 			BKE_pose_where_is(scene, ob);
 	}
+	
+	/* Request final redraw of the view. */
+	WM_event_add_notifier(C, NC_OBJECT | ND_POSE, pld->ob);
 	
 	/* free memory used for backups and searching */
 	poselib_backup_free_data(pld);

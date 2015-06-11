@@ -45,11 +45,10 @@
 #include "DNA_gpencil_types.h"
 #include "DNA_userdef_types.h"
 
+#include "BKE_animsys.h"
 #include "BKE_global.h"
 #include "BKE_gpencil.h"
 #include "BKE_library.h"
-#include "BKE_main.h"
-
 
 
 /* ************************************************** */
@@ -61,7 +60,7 @@
 bool free_gpencil_strokes(bGPDframe *gpf)
 {
 	bGPDstroke *gps, *gpsn;
-	bool changed = (gpf->strokes.first != NULL);
+	bool changed = (BLI_listbase_is_empty(&gpf->strokes) == false);
 
 	/* free strokes */
 	for (gps = gpf->strokes.first; gps; gps = gpsn) {
@@ -117,6 +116,12 @@ void BKE_gpencil_free(bGPdata *gpd)
 {
 	/* free layers */
 	free_gpencil_layers(&gpd->layers);
+	
+	/* free animation data */
+	if (gpd->adt) {
+		BKE_free_animdata(&gpd->id);
+		gpd->adt = NULL;
+	}
 }
 
 /* -------- Container Creation ---------- */
@@ -234,7 +239,7 @@ bGPDframe *gpencil_frame_duplicate(bGPDframe *src)
 	dst->prev = dst->next = NULL;
 	
 	/* copy strokes */
-	dst->strokes.first = dst->strokes.last = NULL;
+	BLI_listbase_clear(&dst->strokes);
 	for (gps = src->strokes.first; gps; gps = gps->next) {
 		/* make copy of source stroke, then adjust pointer to points too */
 		gpsd = MEM_dupallocN(gps);
@@ -262,7 +267,7 @@ bGPDlayer *gpencil_layer_duplicate(bGPDlayer *src)
 	dst->prev = dst->next = NULL;
 	
 	/* copy frames */
-	dst->frames.first = dst->frames.last = NULL;
+	BLI_listbase_clear(&dst->frames);
 	for (gpf = src->frames.first; gpf; gpf = gpf->next) {
 		/* make a copy of source frame */
 		gpfd = gpencil_frame_duplicate(gpf);
@@ -278,7 +283,7 @@ bGPDlayer *gpencil_layer_duplicate(bGPDlayer *src)
 }
 
 /* make a copy of a given gpencil datablock */
-bGPdata *gpencil_data_duplicate(bGPdata *src)
+bGPdata *gpencil_data_duplicate(bGPdata *src, bool internal_copy)
 {
 	bGPDlayer *gpl, *gpld;
 	bGPdata *dst;
@@ -288,10 +293,17 @@ bGPdata *gpencil_data_duplicate(bGPdata *src)
 		return NULL;
 	
 	/* make a copy of the base-data */
-	dst = MEM_dupallocN(src);
+	if (internal_copy) {
+		/* make a straight copy for undo buffers used during stroke drawing */
+		dst = MEM_dupallocN(src);
+	}
+	else {
+		/* make a copy when others use this */
+		dst = BKE_libblock_copy(&src->id);
+	}
 	
 	/* copy layers */
-	dst->layers.first = dst->layers.last = NULL;
+	BLI_listbase_clear(&dst->layers);
 	for (gpl = src->layers.first; gpl; gpl = gpl->next) {
 		/* make a copy of source layer and its data */
 		gpld = gpencil_layer_duplicate(gpl);
@@ -300,6 +312,31 @@ bGPdata *gpencil_data_duplicate(bGPdata *src)
 	
 	/* return new */
 	return dst;
+}
+
+/* -------- GP-Stroke API --------- */
+
+/* ensure selection status of stroke is in sync with its points */
+void gpencil_stroke_sync_selection(bGPDstroke *gps)
+{
+	bGPDspoint *pt;
+	int i;
+	
+	/* error checking */
+	if (gps == NULL)
+		return;
+	
+	/* we'll stop when we find the first selected point,
+	 * so initially, we must deselect
+	 */
+	gps->flag &= ~GP_STROKE_SELECT;
+	
+	for (i = 0, pt = gps->points; i < gps->totpoints; i++, pt++) {
+		if (pt->flag & GP_SPOINT_SELECT) {
+			gps->flag |= GP_STROKE_SELECT;
+			break;
+		}
+	}
 }
 
 /* -------- GP-Frame API ---------- */
@@ -319,7 +356,7 @@ void gpencil_frame_delete_laststroke(bGPDlayer *gpl, bGPDframe *gpf)
 	BLI_freelinkN(&gpf->strokes, gps);
 	
 	/* if frame has no strokes after this, delete it */
-	if (gpf->strokes.first == NULL) {
+	if (BLI_listbase_is_empty(&gpf->strokes)) {
 		gpencil_layer_delframe(gpl, gpf);
 		gpencil_layer_getframe(gpl, cfra, 0);
 	}
@@ -361,7 +398,7 @@ bGPDframe *gpencil_layer_getframe(bGPDlayer *gpl, int cframe, short addnew)
 		/* do not allow any changes to layer's active frame if layer is locked from changes
 		 * or if the layer has been set to stay on the current frame
 		 */
-		if (gpl->flag & (GP_LAYER_LOCKED | GP_LAYER_FRAMELOCK))
+		if (gpl->flag & GP_LAYER_FRAMELOCK)
 			return gpf;
 		/* do not allow any changes to actframe if frame has painting tag attached to it */
 		if (gpf->flag & GP_FRAME_PAINT) 
@@ -470,16 +507,23 @@ bGPDframe *gpencil_layer_getframe(bGPDlayer *gpl, int cframe, short addnew)
 bool gpencil_layer_delframe(bGPDlayer *gpl, bGPDframe *gpf)
 {
 	bool changed = false;
-
+	
 	/* error checking */
 	if (ELEM(NULL, gpl, gpf))
 		return false;
-		
+	
+	/* if this frame was active, make the previous frame active instead 
+	 * since it's tricky to set active frame otherwise
+	 */
+	if (gpl->actframe == gpf)
+		gpl->actframe = gpf->prev;
+	else
+		gpl->actframe = NULL;
+	
 	/* free the frame and its data */
 	changed = free_gpencil_strokes(gpf);
 	BLI_freelinkN(&gpl->frames, gpf);
-	gpl->actframe = NULL;
-
+	
 	return changed;
 }
 
@@ -508,7 +552,7 @@ void gpencil_layer_setactive(bGPdata *gpd, bGPDlayer *active)
 	bGPDlayer *gpl;
 	
 	/* error checking */
-	if (ELEM3(NULL, gpd, gpd->layers.first, active))
+	if (ELEM(NULL, gpd, gpd->layers.first, active))
 		return;
 		
 	/* loop over layers deactivating all */

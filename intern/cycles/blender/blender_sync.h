@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __BLENDER_SYNC_H__
@@ -53,7 +53,7 @@ public:
 
 	/* sync */
 	bool sync_recalc();
-	void sync_data(BL::SpaceView3D b_v3d, BL::Object b_override, const char *layer = 0);
+	void sync_data(BL::SpaceView3D b_v3d, BL::Object b_override, void **python_thread_state, const char *layer = 0);
 	void sync_render_layers(BL::SpaceView3D b_v3d, const char *layer);
 	void sync_integrator();
 	void sync_camera(BL::RenderSettings b_render, BL::Object b_override, int width, int height);
@@ -62,8 +62,11 @@ public:
 	int get_layer_bound_samples() { return render_layer.bound_samples; }
 
 	/* get parameters */
-	static SceneParams get_scene_params(BL::Scene b_scene, bool background);
-	static SessionParams get_session_params(BL::RenderEngine b_engine, BL::UserPreferences b_userpref, BL::Scene b_scene, bool background);
+	static SceneParams get_scene_params(BL::Scene b_scene, bool background, bool is_cpu);
+	static SessionParams get_session_params(BL::RenderEngine b_engine,
+	                                        BL::UserPreferences b_userpref,
+	                                        BL::Scene b_scene,
+	                                        bool background);
 	static bool get_session_pause(BL::Scene b_scene, bool background);
 	static BufferParams get_buffer_params(BL::RenderSettings b_render, BL::Scene b_scene, BL::SpaceView3D b_v3d, BL::RegionView3D b_rv3d, Camera *cam, int width, int height);
 
@@ -71,8 +74,8 @@ private:
 	/* sync */
 	void sync_lamps(bool update_all);
 	void sync_materials(bool update_all);
-	void sync_objects(BL::SpaceView3D b_v3d, int motion = 0);
-	void sync_motion(BL::SpaceView3D b_v3d, BL::Object b_override);
+	void sync_objects(BL::SpaceView3D b_v3d, float motion_time = 0.0f);
+	void sync_motion(BL::SpaceView3D b_v3d, BL::Object b_override, void **python_thread_state);
 	void sync_film();
 	void sync_view();
 	void sync_world(bool update_all);
@@ -81,12 +84,13 @@ private:
 
 	void sync_nodes(Shader *shader, BL::ShaderNodeTree b_ntree);
 	Mesh *sync_mesh(BL::Object b_ob, bool object_updated, bool hide_tris);
-	void sync_curves(Mesh *mesh, BL::Mesh b_mesh, BL::Object b_ob, int motion);
-	Object *sync_object(BL::Object b_parent, int persistent_id[OBJECT_PERSISTENT_ID_SIZE], BL::DupliObject b_dupli_object, Transform& tfm, uint layer_flag, int motion, bool hide_tris);
+	void sync_curves(Mesh *mesh, BL::Mesh b_mesh, BL::Object b_ob, bool motion, int time_index = 0);
+	Object *sync_object(BL::Object b_parent, int persistent_id[OBJECT_PERSISTENT_ID_SIZE], BL::DupliObject b_dupli_ob,
+	                                 Transform& tfm, uint layer_flag, float motion_time, bool hide_tris);
 	void sync_light(BL::Object b_parent, int persistent_id[OBJECT_PERSISTENT_ID_SIZE], BL::Object b_ob, Transform& tfm);
 	void sync_background_light();
-	void sync_mesh_motion(BL::Object b_ob, Mesh *mesh, int motion);
-	void sync_camera_motion(BL::Object b_ob, int motion);
+	void sync_mesh_motion(BL::Object b_ob, Object *object, float motion_time);
+	void sync_camera_motion(BL::Object b_ob, float motion_time);
 
 	/* particles */
 	bool sync_dupli_particle(BL::Object b_ob, BL::DupliObject b_dup, Object *object);
@@ -109,6 +113,7 @@ private:
 	id_map<ParticleSystemKey, ParticleSystem> particle_system_map;
 	set<Mesh*> mesh_synced;
 	set<Mesh*> mesh_motion_synced;
+	std::set<float> motion_times;
 	void *world_map;
 	bool world_recalc;
 

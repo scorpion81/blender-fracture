@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
-# limitations under the License
+# limitations under the License.
 #
 
 # <pep8 compliant>
@@ -33,11 +33,11 @@ enum_devices = (
     )
 
 if _cycles.with_network:
-  enum_devices += (('NETWORK', "Networked Device", "Use networked device for rendering"),)
+    enum_devices += (('NETWORK', "Networked Device", "Use networked device for rendering"),)
 
 enum_feature_set = (
     ('SUPPORTED', "Supported", "Only use finished and supported features"),
-    ('EXPERIMENTAL', "Experimental", "Use experimental and incomplete features that might be broken or change in the future"),
+    ('EXPERIMENTAL', "Experimental", "Use experimental and incomplete features that might be broken or change in the future", 'ERROR', 1),
     )
 
 enum_displacement_methods = (
@@ -58,7 +58,7 @@ enum_filter_types = (
 
 enum_aperture_types = (
     ('RADIUS', "Radius", "Directly change the size of the aperture"),
-    ('FSTOP', "F/stop", "Change the size of the aperture by f/stops"),
+    ('FSTOP', "F-stop", "Change the size of the aperture by f-stop"),
     )
 
 enum_panorama_types = (
@@ -106,6 +106,17 @@ enum_sampling_pattern = (
 enum_integrator = (
     ('BRANCHED_PATH', "Branched Path Tracing", "Path tracing integrator that branches on the first bounce, giving more control over the number of light and material samples"),
     ('PATH', "Path Tracing", "Pure path tracing integrator"),
+    )
+
+enum_volume_sampling = (
+    ('DISTANCE', "Distance", "Use distance sampling, best for dense volumes with lights far away"),
+    ('EQUIANGULAR', "Equiangular", "Use equiangular sampling, best for volumes with low density with light inside or near the volume"),
+    ('MULTIPLE_IMPORTANCE', "Multiple Importance", "Combine distance and equi-angular sampling for volumes where neither method is ideal"),
+    )
+
+enum_volume_interpolation = (
+    ('LINEAR', "Linear", "Good smoothness and speed"),
+    ('CUBIC', "Cubic", "Smoothed high quality interpolation, but slower")
     )
 
 
@@ -224,7 +235,7 @@ class CyclesRenderSettings(bpy.types.PropertyGroup):
                 name="Volume Samples",
                 description="Number of volume scattering samples to render for each AA sample",
                 min=1, max=10000,
-                default=1,
+                default=0,
                 )
 
         cls.sampling_pattern = EnumProperty(
@@ -241,11 +252,30 @@ class CyclesRenderSettings(bpy.types.PropertyGroup):
                 default='USE',
                 )
 
-        cls.no_caustics = BoolProperty(
-                name="No Caustics",
-                description="Leave out caustics, resulting in a darker image with less noise",
-                default=False,
+        cls.sample_all_lights_direct = BoolProperty(
+                name="Sample All Direct Lights",
+                description="Sample all lights (for direct samples), rather than randomly picking one",
+                default=True,
                 )
+
+        cls.sample_all_lights_indirect = BoolProperty(
+                name="Sample All Indirect Lights",
+                description="Sample all lights (for indirect samples), rather than randomly picking one",
+                default=True,
+                )
+
+        cls.caustics_reflective = BoolProperty(
+                name="Reflective Caustics",
+                description="Use reflective caustics, resulting in a brighter image (more noise but added realism)",
+                default=True,
+                )
+
+        cls.caustics_refractive = BoolProperty(
+                name="Refractive Caustics",
+                description="Use refractive caustics, resulting in a brighter image (more noise but added realism)",
+                default=True,
+                )
+
         cls.blur_glossy = FloatProperty(
                 name="Filter Glossy",
                 description="Adaptively blur glossy shaders after blurry bounces, "
@@ -291,7 +321,7 @@ class CyclesRenderSettings(bpy.types.PropertyGroup):
                 name="Volume Bounces",
                 description="Maximum number of volumetric scattering events",
                 min=0, max=1024,
-                default=1,
+                default=0,
                 )
 
         cls.transparent_min_bounces = IntProperty(
@@ -320,7 +350,7 @@ class CyclesRenderSettings(bpy.types.PropertyGroup):
                 description="Distance between volume shader samples when rendering the volume "
                             "(lower values give more accurate and detailed results, but also increased render time)",
                 default=0.1,
-                min=0.0000001, max=100000.0
+                min=0.0000001, max=100000.0, soft_min=0.01, soft_max=1.0
                 )
 
         cls.volume_max_steps = IntProperty(
@@ -363,9 +393,18 @@ class CyclesRenderSettings(bpy.types.PropertyGroup):
                 default=0,
                 )
 
-        cls.sample_clamp = FloatProperty(
-                name="Clamp",
-                description="If non-zero, the maximum value for a sample, "
+        cls.sample_clamp_direct = FloatProperty(
+                name="Clamp Direct",
+                description="If non-zero, the maximum value for a direct sample, "
+                            "higher values will be scaled down to avoid too "
+                            "much noise and slow convergence at the cost of accuracy",
+                min=0.0, max=1e8,
+                default=0.0,
+                )
+
+        cls.sample_clamp_indirect = FloatProperty(
+                name="Clamp Indirect",
+                description="If non-zero, the maximum value for an indirect sample, "
                             "higher values will be scaled down to avoid too "
                             "much noise and slow convergence at the cost of accuracy",
                 min=0.0, max=1e8,
@@ -438,6 +477,33 @@ class CyclesRenderSettings(bpy.types.PropertyGroup):
                 default=False,
                 )
 
+        cls.bake_type = EnumProperty(
+            name="Bake Type",
+            default='COMBINED',
+            description="Type of pass to bake",
+            items=(
+                ('COMBINED', "Combined", ""),
+                ('AO', "Ambient Occlusion", ""),
+                ('SHADOW', "Shadow", ""),
+                ('NORMAL', "Normal", ""),
+                ('UV', "UV", ""),
+                ('EMIT', "Emit", ""),
+                ('ENVIRONMENT', "Environment", ""),
+                ('DIFFUSE_DIRECT', "Diffuse Direct", ""),
+                ('DIFFUSE_INDIRECT', "Diffuse Indirect", ""),
+                ('DIFFUSE_COLOR', "Diffuse Color", ""),
+                ('GLOSSY_DIRECT', "Glossy Direct", ""),
+                ('GLOSSY_INDIRECT', "Glossy Indirect", ""),
+                ('GLOSSY_COLOR', "Glossy Color", ""),
+                ('TRANSMISSION_DIRECT', "Transmission Direct", ""),
+                ('TRANSMISSION_INDIRECT', "Transmission Indirect", ""),
+                ('TRANSMISSION_COLOR', "Transmission Color", ""),
+                ('SUBSURFACE_DIRECT', "Subsurface Direct", ""),
+                ('SUBSURFACE_INDIRECT', "Subsurface Indirect", ""),
+                ('SUBSURFACE_COLOR', "Subsurface Color", ""),
+                ),
+            )
+
     @classmethod
     def unregister(cls):
         del bpy.types.Scene.cycles
@@ -456,13 +522,13 @@ class CyclesCameraSettings(bpy.types.PropertyGroup):
 
         cls.aperture_type = EnumProperty(
                 name="Aperture Type",
-                description="Use F/stop number or aperture radius",
+                description="Use f-stop number or aperture radius",
                 items=enum_aperture_types,
                 default='RADIUS',
                 )
         cls.aperture_fstop = FloatProperty(
-                name="Aperture F/stop",
-                description="F/stop ratio (lower numbers give more defocus, higher numbers give a sharper image)",
+                name="Aperture f-stop",
+                description="F-stop ratio (lower numbers give more defocus, higher numbers give a sharper image)",
                 min=0.0, soft_min=0.1, soft_max=64.0,
                 default=5.6,
                 step=10,
@@ -490,6 +556,13 @@ class CyclesCameraSettings(bpy.types.PropertyGroup):
                 subtype='ANGLE',
                 default=0,
                 )
+        cls.aperture_ratio = FloatProperty(
+                name="Aperture Ratio",
+                description="Distortion to simulate anamorphic lens bokeh",
+                min=0.01, soft_min=1.0, soft_max=2.0,
+                default=1.0,
+                precision=4,
+                )
         cls.panorama_type = EnumProperty(
                 name="Panorama Type",
                 description="Distortion to use for the calculation",
@@ -508,6 +581,34 @@ class CyclesCameraSettings(bpy.types.PropertyGroup):
                 description="Lens focal length (mm)",
                 min=0.01, soft_max=15.0, max=100.0,
                 default=10.5,
+                )
+        cls.latitude_min = FloatProperty(
+                name="Min Latitude",
+                description="Minimum latitude (vertical angle) for the equirectangular lens",
+                min=-0.5 * math.pi, max=0.5 * math.pi,
+                subtype='ANGLE',
+                default=-0.5 * math.pi,
+                )
+        cls.latitude_max = FloatProperty(
+                name="Max Latitude",
+                description="Maximum latitude (vertical angle) for the equirectangular lens",
+                min=-0.5 * math.pi, max=0.5 * math.pi,
+                subtype='ANGLE',
+                default=0.5 * math.pi,
+                )
+        cls.longitude_min = FloatProperty(
+                name="Min Longitude",
+                description="Minimum longitude (horizontal angle) for the equirectangular lens",
+                min=-math.pi, max=math.pi,
+                subtype='ANGLE',
+                default=-math.pi,
+                )
+        cls.longitude_max = FloatProperty(
+                name="Max Longitude",
+                description="Maximum longitude (horizontal angle) for the equirectangular lens",
+                min=-math.pi, max=math.pi,
+                subtype='ANGLE',
+                default=math.pi,
                 )
 
     @classmethod
@@ -542,6 +643,19 @@ class CyclesMaterialSettings(bpy.types.PropertyGroup):
                             "(not using any textures), for faster rendering",
                 default=False,
                 )
+        cls.volume_sampling = EnumProperty(
+                name="Volume Sampling",
+                description="Sampling method to use for volumes",
+                items=enum_volume_sampling,
+                default='DISTANCE',
+                )
+
+        cls.volume_interpolation = EnumProperty(
+                name="Volume Interpolation",
+                description="Interpolation method to use for smoke/fire volumes",
+                items=enum_volume_interpolation,
+                default='LINEAR',
+                )
 
     @classmethod
     def unregister(cls):
@@ -566,6 +680,12 @@ class CyclesLampSettings(bpy.types.PropertyGroup):
                 description="Number of light samples to render for each AA sample",
                 min=1, max=10000,
                 default=1,
+                )
+        cls.max_bounces = IntProperty(
+                name="Max Bounces",
+                description="Maximum number of bounces the light will contribute to the render",
+                min=0, max=1024,
+                default=1024,
                 )
         cls.use_multiple_importance_sampling = BoolProperty(
                 name="Multiple Importance Sample",
@@ -612,6 +732,19 @@ class CyclesWorldSettings(bpy.types.PropertyGroup):
                             "(not using any textures), for faster rendering",
                 default=False,
                 )
+        cls.volume_sampling = EnumProperty(
+                name="Volume Sampling",
+                description="Sampling method to use for volumes",
+                items=enum_volume_sampling,
+                default='EQUIANGULAR',
+                )
+
+        cls.volume_interpolation = EnumProperty(
+                name="Volume Interpolation",
+                description="Interpolation method to use for volumes",
+                items=enum_volume_interpolation,
+                default='LINEAR',
+                )
 
     @classmethod
     def unregister(cls):
@@ -656,6 +789,11 @@ class CyclesVisibilitySettings(bpy.types.PropertyGroup):
         cls.shadow = BoolProperty(
                 name="Shadow",
                 description="Object visibility for shadow rays",
+                default=True,
+                )
+        cls.scatter = BoolProperty(
+                name="Volume Scatter",
+                description="Object visibility for volume scatter rays",
                 default=True,
                 )
 
@@ -707,6 +845,41 @@ class CyclesMeshSettings(bpy.types.PropertyGroup):
         del bpy.types.Mesh.cycles
         del bpy.types.Curve.cycles
         del bpy.types.MetaBall.cycles
+
+
+class CyclesObjectBlurSettings(bpy.types.PropertyGroup):
+
+    @classmethod
+    def register(cls):
+
+        bpy.types.Object.cycles = PointerProperty(
+                name="Cycles Object Settings",
+                description="Cycles object settings",
+                type=cls,
+                )
+
+        cls.use_motion_blur = BoolProperty(
+                name="Use Motion Blur",
+                description="Use motion blur for this object",
+                default=True,
+                )
+
+        cls.use_deform_motion = BoolProperty(
+                name="Use Deformation Motion",
+                description="Use deformation motion blur for this object",
+                default=True,
+                )
+
+        cls.motion_steps = IntProperty(
+                name="Motion Steps",
+                description="Control accuracy of deformation motion blur, more steps gives more memory usage (actual number of steps is 2^(steps - 1))",
+                min=1, soft_max=8,
+                default=1,
+                )
+
+    @classmethod
+    def unregister(cls):
+        del bpy.types.Object.cycles
 
 
 class CyclesCurveRenderSettings(bpy.types.PropertyGroup):

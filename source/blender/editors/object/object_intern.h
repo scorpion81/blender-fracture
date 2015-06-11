@@ -72,6 +72,7 @@ void OBJECT_OT_make_links_scene(struct wmOperatorType *ot);
 void OBJECT_OT_make_links_data(struct wmOperatorType *ot);
 void OBJECT_OT_move_to_layer(struct wmOperatorType *ot);
 void OBJECT_OT_drop_named_material(struct wmOperatorType *ot);
+void OBJECT_OT_unlink_data(struct wmOperatorType *ot);
 
 /* object_edit.c */
 void OBJECT_OT_mode_set(struct wmOperatorType *ot);
@@ -154,6 +155,12 @@ void GROUP_OT_objects_add_active(struct wmOperatorType *ot);
 void GROUP_OT_objects_remove_active(struct wmOperatorType *ot);
 
 /* object_modifier.c */
+int edit_modifier_poll_generic(struct bContext *C, struct StructRNA *rna_type, int obtype_flag);
+int edit_modifier_poll(struct bContext *C);
+void edit_modifier_properties(struct wmOperatorType *ot);
+int edit_modifier_invoke_properties(struct bContext *C, struct wmOperator *op);
+struct ModifierData *edit_modifier_property_get(struct wmOperator *op, struct Object *ob, int type);
+
 void OBJECT_OT_modifier_add(struct wmOperatorType *ot);
 void OBJECT_OT_modifier_remove(struct wmOperatorType *ot);
 void OBJECT_OT_modifier_move_up(struct wmOperatorType *ot);
@@ -170,6 +177,12 @@ void OBJECT_OT_multires_external_pack(struct wmOperatorType *ot);
 void OBJECT_OT_meshdeform_bind(struct wmOperatorType *ot);
 void OBJECT_OT_explode_refresh(struct wmOperatorType *ot);
 void OBJECT_OT_ocean_bake(struct wmOperatorType *ot);
+void OBJECT_OT_fracture_refresh(struct wmOperatorType *ot);
+void OBJECT_OT_fracture_constraint_setting_add(wmOperatorType *ot);
+void OBJECT_OT_fracture_constraint_setting_remove(wmOperatorType *ot);
+void OBJECT_OT_rigidbody_constraints_refresh(struct wmOperatorType *ot);
+void OBJECT_OT_rigidbody_convert_to_objects(struct wmOperatorType *ot);
+void OBJECT_OT_rigidbody_convert_to_keyframes(struct wmOperatorType *ot);
 void OBJECT_OT_skin_root_mark(struct wmOperatorType *ot);
 void OBJECT_OT_skin_loose_mark_clear(struct wmOperatorType *ot);
 void OBJECT_OT_skin_radii_equalize(struct wmOperatorType *ot);
@@ -213,7 +226,6 @@ void OBJECT_OT_vertex_group_remove_from(struct wmOperatorType *ot);
 void OBJECT_OT_vertex_group_select(struct wmOperatorType *ot);
 void OBJECT_OT_vertex_group_deselect(struct wmOperatorType *ot);
 void OBJECT_OT_vertex_group_copy_to_linked(struct wmOperatorType *ot);
-void OBJECT_OT_vertex_group_transfer_weight(struct wmOperatorType *ot);
 void OBJECT_OT_vertex_group_copy_to_selected(struct wmOperatorType *ot);
 void OBJECT_OT_vertex_group_copy(struct wmOperatorType *ot);
 void OBJECT_OT_vertex_group_normalize(struct wmOperatorType *ot);
@@ -251,13 +263,23 @@ void OBJECT_OT_shape_key_move(struct wmOperatorType *ot);
 void OBJECT_OT_group_add(struct wmOperatorType *ot);
 void OBJECT_OT_group_link(struct wmOperatorType *ot);
 void OBJECT_OT_group_remove(struct wmOperatorType *ot);
+void OBJECT_OT_group_unlink(struct wmOperatorType *ot);
+void OBJECT_OT_grouped_select(struct wmOperatorType *ot);
 
 /* object_bake.c */
 void OBJECT_OT_bake_image(wmOperatorType *ot);
+void OBJECT_OT_bake(wmOperatorType *ot);
 
 /* object_lod.c */
 void OBJECT_OT_lod_add(struct wmOperatorType *ot);
 void OBJECT_OT_lod_remove(struct wmOperatorType *ot);
+
+/* object_random.c */
+void OBJECT_OT_vertex_random(struct wmOperatorType *ot);
+
+/* object_transfer_data.c */
+void OBJECT_OT_data_transfer(struct wmOperatorType *ot);
+void OBJECT_OT_datalayout_transfer(struct wmOperatorType *ot);
 
 #endif /* __OBJECT_INTERN_H__ */
 

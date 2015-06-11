@@ -87,18 +87,21 @@ int bone_autoside_name(char name[64], int strip_number, short axis, float head, 
 
 struct Bone *BKE_armature_find_bone_name(struct bArmature *arm, const char *name);
 
+bool         BKE_armature_bone_flag_test_recursive(const struct Bone *bone, int flag);
+
 float distfactor_to_bone(const float vec[3], const float b1[3], const float b2[3], float r1, float r2, float rdist);
 
 void BKE_armature_where_is(struct bArmature *arm);
 void BKE_armature_where_is_bone(struct Bone *bone, struct Bone *prevbone);
 void BKE_pose_rebuild(struct Object *ob, struct bArmature *arm);
 void BKE_pose_where_is(struct Scene *scene, struct Object *ob);
-void BKE_pose_where_is_bone(struct Scene *scene, struct Object *ob, struct bPoseChannel *pchan, float ctime, int do_extra);
+void BKE_pose_where_is_bone(struct Scene *scene, struct Object *ob, struct bPoseChannel *pchan, float ctime, bool do_extra);
 void BKE_pose_where_is_bone_tail(struct bPoseChannel *pchan);
 
 /* get_objectspace_bone_matrix has to be removed still */
 void get_objectspace_bone_matrix(struct Bone *bone, float M_accumulatedMatrix[4][4], int root, int posed);
 void vec_roll_to_mat3(const float vec[3], const float roll, float mat[3][3]);
+void vec_roll_to_mat3_normalized(const float nor[3], const float roll, float mat[3][3]);
 void mat3_to_vec_roll(float mat[3][3], float r_vec[3], float *r_roll);
 
 /* Common Conversions Between Co-ordinate Spaces */
@@ -111,8 +114,8 @@ void BKE_armature_mat_pose_to_delta(float delta_mat[4][4], float pose_mat[4][4],
 
 void BKE_armature_mat_pose_to_bone_ex(struct Object *ob, struct bPoseChannel *pchan, float inmat[4][4], float outmat[4][4]);
 
-void BKE_pchan_mat3_to_rot(struct bPoseChannel *pchan, float mat[3][3], short use_compat);
-void BKE_pchan_apply_mat4(struct bPoseChannel *pchan, float mat[4][4], short use_comat);
+void BKE_pchan_mat3_to_rot(struct bPoseChannel *pchan, float mat[3][3], bool use_compat);
+void BKE_pchan_apply_mat4(struct bPoseChannel *pchan, float mat[4][4], bool use_comat);
 void BKE_pchan_to_mat4(struct bPoseChannel *pchan, float chan_mat[4][4]);
 void BKE_pchan_calc_mat(struct bPoseChannel *pchan);
 

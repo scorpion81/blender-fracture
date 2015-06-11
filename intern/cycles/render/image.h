@@ -11,12 +11,13 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __IMAGE_H__
 #define __IMAGE_H__
 
+#include "device.h"
 #include "device_memory.h"
 
 #include "util_string.h"
@@ -27,11 +28,16 @@
 
 CCL_NAMESPACE_BEGIN
 
-#define TEX_NUM_IMAGES			95
+/* generic */
+#define TEX_NUM_IMAGES			94
 #define TEX_IMAGE_BYTE_START	TEX_NUM_FLOAT_IMAGES
 
+/* extended gpu */
+#define TEX_EXTENDED_NUM_IMAGES_GPU		145
+
+/* extended cpu */
 #define TEX_EXTENDED_NUM_FLOAT_IMAGES	1024
-#define TEX_EXTENDED_NUM_IMAGES			1024
+#define TEX_EXTENDED_NUM_IMAGES_CPU		1024
 #define TEX_EXTENDED_IMAGE_BYTE_START	TEX_EXTENDED_NUM_FLOAT_IMAGES
 
 /* color to use when textures are not found */
@@ -49,38 +55,47 @@ public:
 	ImageManager();
 	~ImageManager();
 
-	int add_image(const string& filename, void *builtin_data, bool animated, bool& is_float, bool& is_linear);
-	void remove_image(const string& filename, void *builtin_data);
+	int add_image(const string& filename, void *builtin_data, bool animated, float frame,
+		bool& is_float, bool& is_linear, InterpolationType interpolation, bool use_alpha);
+	void remove_image(int slot);
+	void remove_image(const string& filename, void *builtin_data, InterpolationType interpolation);
+	void tag_reload_image(const string& filename, void *builtin_data, InterpolationType interpolation);
 	bool is_float_image(const string& filename, void *builtin_data, bool& is_linear);
 
 	void device_update(Device *device, DeviceScene *dscene, Progress& progress);
 	void device_free(Device *device, DeviceScene *dscene);
+	void device_free_builtin(Device *device, DeviceScene *dscene);
 
 	void set_osl_texture_system(void *texture_system);
 	void set_pack_images(bool pack_images_);
-	void set_extended_image_limits(void);
+	void set_extended_image_limits(const DeviceInfo& info);
 	bool set_animation_frame_update(int frame);
 
 	bool need_update;
 
-	boost::function<void(const string &filename, void *data, bool &is_float, int &width, int &height, int &channels)> builtin_image_info_cb;
+	boost::function<void(const string &filename, void *data, bool &is_float, int &width, int &height, int &depth, int &channels)> builtin_image_info_cb;
 	boost::function<bool(const string &filename, void *data, unsigned char *pixels)> builtin_image_pixels_cb;
 	boost::function<bool(const string &filename, void *data, float *pixels)> builtin_image_float_pixels_cb;
+
+	struct Image {
+		string filename;
+		void *builtin_data;
+
+		bool use_alpha;
+		bool need_load;
+		bool animated;
+		float frame;
+		InterpolationType interpolation;
+
+		int users;
+	};
+
 private:
 	int tex_num_images;
 	int tex_num_float_images;
 	int tex_image_byte_start;
 	thread_mutex device_mutex;
 	int animation_frame;
-
-	struct Image {
-		string filename;
-		void *builtin_data;
-
-		bool need_load;
-		bool animated;
-		int users;
-	};
 
 	vector<Image*> images;
 	vector<Image*> float_images;

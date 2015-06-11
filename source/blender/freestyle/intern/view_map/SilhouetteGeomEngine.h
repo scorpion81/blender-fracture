@@ -46,7 +46,7 @@ using namespace Geometry;
 class SVertex;
 class FEdge;
 
-class LIB_VIEW_MAP_EXPORT SilhouetteGeomEngine 
+class SilhouetteGeomEngine
 {
 private:
 	// The viewpoint under which the silhouette has to be computed
@@ -130,6 +130,9 @@ public:
 
 	/*! From world to image */
 	static Vec3r WorldToImage(const Vec3r& M);
+
+	/*! From camera to image */
+	static Vec3r CameraToImage(const Vec3r& M);
 
 #ifdef WITH_CXX_GUARDEDALLOC
 	MEM_CXX_CLASS_ALLOC_FUNCS("Freestyle:SilhouetteGeomEngine")

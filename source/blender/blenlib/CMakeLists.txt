@@ -29,8 +29,8 @@ set(INC
 	.
 	# ../blenkernel  # dont add this back!
 	../makesdna
-	../../../intern/ghost
 	../../../intern/guardedalloc
+	../../../intern/atomic
 	../../../extern/wcwidth
 )
 
@@ -42,6 +42,7 @@ set(INC_SYS
 set(SRC
 	intern/BLI_args.c
 	intern/BLI_array.c
+	intern/BLI_dial.c
 	intern/BLI_dynstr.c
 	intern/BLI_ghash.c
 	intern/BLI_heap.c
@@ -51,12 +52,14 @@ set(SRC
 	intern/BLI_memarena.c
 	intern/BLI_mempool.c
 	intern/DLRB_tree.c
+	intern/array_utils.c
+	intern/astar.c
 	intern/boxpack2d.c
 	intern/buffer.c
 	intern/callbacks.c
 	intern/convexhull2d.c
-	intern/cpu.c
 	intern/dynlib.c
+	intern/easing.c
 	intern/edgehash.c
 	intern/endian_switch.c
 	intern/fileops.c
@@ -64,6 +67,8 @@ set(SRC
 	intern/freetypefont.c
 	intern/graph.c
 	intern/gsqueue.c
+	intern/hash_md5.c
+	intern/hash_mm2a.c
 	intern/jitter.c
 	intern/lasso.c
 	intern/listbase.c
@@ -79,14 +84,15 @@ set(SRC
 	intern/math_rotation.c
 	intern/math_vector.c
 	intern/math_vector_inline.c
-	intern/md5.c
 	intern/noise.c
 	intern/path_util.c
 	intern/polyfill2d.c
+	intern/polyfill2d_beautify.c
 	intern/quadric.c
 	intern/rand.c
 	intern/rct.c
 	intern/scanfill.c
+	intern/scanfill_utils.c
 	intern/smallhash.c
 	intern/sort.c
 	intern/sort_utils.c
@@ -95,6 +101,7 @@ set(SRC
 	intern/string.c
 	intern/string_cursor_utf8.c
 	intern/string_utf8.c
+	intern/system.c
 	intern/task.c
 	intern/threads.c
 	intern/time.c
@@ -108,17 +115,22 @@ set(SRC
 	BLI_alloca.h
 	BLI_args.h
 	BLI_array.h
+	BLI_array_utils.h
+	BLI_astar.h
 	BLI_bitmap.h
 	BLI_blenlib.h
 	BLI_boxpack2d.h
 	BLI_buffer.h
 	BLI_callbacks.h
 	BLI_compiler_attrs.h
+	BLI_compiler_compat.h
+	BLI_compiler_typecheck.h
 	BLI_convexhull2d.h
-	BLI_cpu.h
+	BLI_dial.h
 	BLI_dlrbTree.h
 	BLI_dynlib.h
 	BLI_dynstr.h
+	BLI_easing.h
 	BLI_edgehash.h
 	BLI_endian_switch.h
 	BLI_endian_switch_inline.h
@@ -128,11 +140,14 @@ set(SRC
 	BLI_ghash.h
 	BLI_graph.h
 	BLI_gsqueue.h
+	BLI_hash_md5.h
+	BLI_hash_mm2a.h
 	BLI_heap.h
 	BLI_jitter.h
 	BLI_kdopbvh.h
 	BLI_kdtree.h
 	BLI_lasso.h
+	BLI_link_utils.h
 	BLI_linklist.h
 	BLI_linklist_stack.h
 	BLI_listbase.h
@@ -146,12 +161,12 @@ set(SRC
 	BLI_math_matrix.h
 	BLI_math_rotation.h
 	BLI_math_vector.h
-	BLI_md5.h
 	BLI_memarena.h
 	BLI_mempool.h
 	BLI_noise.h
 	BLI_path_util.h
 	BLI_polyfill2d.h
+	BLI_polyfill2d_beautify.h
 	BLI_quadric.h
 	BLI_rand.h
 	BLI_rect.h
@@ -160,11 +175,13 @@ set(SRC
 	BLI_sort.h
 	BLI_sort_utils.h
 	BLI_stack.h
+	BLI_stackdefines.h
 	BLI_strict_flags.h
 	BLI_string.h
 	BLI_string_cursor_utf8.h
 	BLI_string_utf8.h
 	BLI_sys_types.h
+	BLI_system.h
 	BLI_task.h
 	BLI_threads.h
 	BLI_timecode.h
@@ -177,13 +194,6 @@ set(SRC
 	PIL_time.h
 	PIL_time_utildefines.h
 )
-
-if(WITH_BINRELOC)
-	list(APPEND INC_SYS
-		${BINRELOC_INCLUDE_DIRS}
-	)
-	add_definitions(-DWITH_BINRELOC)
-endif()
 
 if(WITH_MEM_VALGRIND)
 	add_definitions(-DWITH_MEM_VALGRIND)

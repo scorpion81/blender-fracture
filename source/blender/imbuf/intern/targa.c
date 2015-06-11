@@ -44,7 +44,6 @@
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"
 
-#include "IMB_allocimbuf.h"
 #include "IMB_filetype.h"
 
 #include "IMB_colormanagement.h"
@@ -117,7 +116,7 @@ static int tga_out4(unsigned int data, FILE *file)
 	return ~EOF;
 }
 
-static short makebody_tga(ImBuf *ibuf, FILE *file, int (*out)(unsigned int, FILE *))
+static bool makebody_tga(ImBuf *ibuf, FILE *file, int (*out)(unsigned int, FILE *))
 {
 	register int last, this;
 	register int copy, bytes;
@@ -163,7 +162,7 @@ static short makebody_tga(ImBuf *ibuf, FILE *file, int (*out)(unsigned int, FILE
 				rect = temp;
 				last = this;
 
-				copy = FALSE;
+				copy = 0;
 			}
 			else {
 				while (*rect++ == this) {       /* seek for first different byte */
@@ -189,14 +188,14 @@ static short makebody_tga(ImBuf *ibuf, FILE *file, int (*out)(unsigned int, FILE
 					}
 					if (out(last, file) == EOF) return 0;
 				}
-				copy = TRUE;
+				copy = 1;
 			}
 		}
 	}
 	return 1;
 }
 
-static int dumptarga(struct ImBuf *ibuf, FILE *file)
+static bool dumptarga(struct ImBuf *ibuf, FILE *file)
 {
 	int size;
 	uchar *rect;
@@ -253,7 +252,7 @@ int imb_savetarga(struct ImBuf *ibuf, const char *name, int flags)
 {
 	char buf[20] = {0};
 	FILE *fildes;
-	short ok = 0;
+	bool ok = false;
 	
 	(void)flags; /* unused */
 
@@ -618,6 +617,9 @@ ImBuf *imb_loadtarga(unsigned char *mem, size_t mem_size, int flags, char colors
 	}
 	
 	if (flags & IB_test) {
+		if (cmap) {
+			MEM_freeN(cmap);
+		}
 		return ibuf;
 	}
 

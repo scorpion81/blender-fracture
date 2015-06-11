@@ -25,7 +25,10 @@
 #ifndef __FREESTYLE_PYTHON_CONVERT_H__
 #define __FREESTYLE_PYTHON_CONVERT_H__
 
+extern "C" {
 #include <Python.h>
+}
+
 #include <typeinfo>
 
 #include "../geometry/Geom.h"
@@ -89,6 +92,7 @@ extern "C" {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 #include "mathutils/mathutils.h"
+#include "generic/python_utildefines.h"
 
 //==============================
 // C++ => Python
@@ -167,6 +171,9 @@ bool Vec3r_ptr_from_PyTuple(PyObject *obj, Vec3r &vec);
 
 bool float_array_from_PyObject(PyObject *obj, float *v, int n);
 
+int convert_v4(PyObject *obj, void *v);
+int convert_v3(PyObject *obj, void *v);
+int convert_v2(PyObject *obj, void *v);
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 

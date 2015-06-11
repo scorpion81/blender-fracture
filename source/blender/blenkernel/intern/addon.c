@@ -29,21 +29,15 @@
 
 #include "BLI_utildefines.h"
 #include "BLI_ghash.h"
-#include "BLI_string.h"
 
 #include "BKE_addon.h"  /* own include */
-
-#include "RNA_access.h"
-#include "RNA_define.h"
-
-#include "BLF_translation.h"
 
 #include "MEM_guardedalloc.h"
 
 static GHash *global_addonpreftype_hash = NULL;
 
 
-bAddonPrefType *BKE_addon_pref_type_find(const char *idname, int quiet)
+bAddonPrefType *BKE_addon_pref_type_find(const char *idname, bool quiet)
 {
 	if (idname[0]) {
 		bAddonPrefType *apt;

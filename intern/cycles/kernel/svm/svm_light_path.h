@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 CCL_NAMESPACE_BEGIN
@@ -34,6 +34,7 @@ ccl_device void svm_node_light_path(ShaderData *sd, float *stack, uint type, uin
 		case NODE_LP_backfacing: info = (sd->flag & SD_BACKFACING)? 1.0f: 0.0f; break;
 		case NODE_LP_ray_length: info = sd->ray_length; break;
 		case NODE_LP_ray_depth: info = (float)sd->ray_depth; break;
+		case NODE_LP_ray_transparent: info = sd->transparent_depth; break;
 	}
 
 	stack_store_float(stack, out_offset, info);

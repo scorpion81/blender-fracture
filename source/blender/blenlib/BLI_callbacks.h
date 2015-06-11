@@ -29,12 +29,21 @@ struct bContext;
 struct Main;
 struct ID;
 
+/**
+ * Common suffix uses:
+ * - ``_PRE/_POST``:
+ *   For handling discrete non-interactive events.
+ * - ``_INIT/_COMPLETE/_CANCEL``:
+ *   For handling jobs (which may in turn cause other handlers to be called).
+ */
 typedef enum {
 	BLI_CB_EVT_FRAME_CHANGE_PRE,
 	BLI_CB_EVT_FRAME_CHANGE_POST,
 	BLI_CB_EVT_RENDER_PRE,
 	BLI_CB_EVT_RENDER_POST,
+	BLI_CB_EVT_RENDER_WRITE,
 	BLI_CB_EVT_RENDER_STATS,
+	BLI_CB_EVT_RENDER_INIT,
 	BLI_CB_EVT_RENDER_COMPLETE,
 	BLI_CB_EVT_RENDER_CANCEL,
 	BLI_CB_EVT_LOAD_PRE,
@@ -45,6 +54,7 @@ typedef enum {
 	BLI_CB_EVT_SCENE_UPDATE_POST,
 	BLI_CB_EVT_GAME_PRE,
 	BLI_CB_EVT_GAME_POST,
+	BLI_CB_EVT_VERSION_UPDATE,
 	BLI_CB_EVT_TOT
 } eCbEvent;
 

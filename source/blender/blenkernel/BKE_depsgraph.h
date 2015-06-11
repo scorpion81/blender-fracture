@@ -56,9 +56,14 @@ struct ListBase;
  * which is needed for it's evaluation,
  */
 typedef struct EvaluationContext {
-	bool for_render;  /* Set to true if evaluation shall be performed for render purposes,
-	                     keep at false if update shall happen for the viewport. */
+	int mode;               /* evaluation mode */
 } EvaluationContext;
+
+typedef enum eEvaluationMode {
+	DAG_EVAL_VIEWPORT       = 0,    /* evaluate for OpenGL viewport */
+	DAG_EVAL_PREVIEW        = 1,    /* evaluate for render with preview settings */
+	DAG_EVAL_RENDER         = 2,    /* evaluate for render purposes */
+} eEvaluationMode;
 
 /* DagNode->eval_flags */
 enum {
@@ -106,7 +111,7 @@ void DAG_scene_free(struct Scene *sce);
  * not cause any updates but is used by external render engines to detect if for
  * example a datablock was removed. */
 
-void DAG_scene_update_flags(struct Main *bmain, struct Scene *sce, unsigned int lay, const bool do_time);
+void DAG_scene_update_flags(struct Main *bmain, struct Scene *sce, unsigned int lay, const bool do_time, const bool do_invisible_flush);
 void DAG_on_visible_update(struct Main *bmain, const bool do_time);
 
 void DAG_id_tag_update(struct ID *id, short flag);
@@ -127,7 +132,7 @@ int  DAG_id_type_tagged(struct Main *bmain, short idtype);
 
 void DAG_scene_flush_update(struct Main *bmain, struct Scene *sce, unsigned int lay, const short do_time);
 void DAG_ids_flush_tagged(struct Main *bmain);
-void DAG_ids_check_recalc(struct Main *bmain, struct Scene *scene, int time);
+void DAG_ids_check_recalc(struct Main *bmain, struct Scene *scene, bool time);
 void DAG_ids_clear_recalc(struct Main *bmain);
 
 /* Armature: sorts the bones according to dependencies between them */
@@ -157,7 +162,7 @@ void DAG_print_dependencies(struct Main *bmain, struct Scene *scene, struct Obje
 /* ************************ DAG querying ********************* */
 
 struct Object *DAG_get_node_object(void *node_v);
-const char *DAG_get_node_name(void *node_v);
+const char *DAG_get_node_name(struct Scene *scene, void *node_v);
 short DAG_get_eval_flags_for_object(struct Scene *scene, void *object);
 bool DAG_is_acyclic(struct Scene *scene);
 

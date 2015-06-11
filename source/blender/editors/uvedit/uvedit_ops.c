@@ -60,7 +60,6 @@
 #include "BKE_library.h"
 #include "BKE_main.h"
 #include "BKE_material.h"
-#include "BKE_mesh.h"
 #include "BKE_mesh_mapping.h"
 #include "BKE_node.h"
 #include "BKE_report.h"
@@ -137,23 +136,27 @@ static bool is_image_texture_node(bNode *node)
 	return ELEM(node->type, SH_NODE_TEX_IMAGE, SH_NODE_TEX_ENVIRONMENT);
 }
 
-bool ED_object_get_active_image(Object *ob, int mat_nr, Image **ima, ImageUser **iuser, bNode **node_r)
+bool ED_object_get_active_image(Object *ob, int mat_nr,
+                                Image **r_ima, ImageUser **r_iuser, bNode **r_node, bNodeTree **r_ntree)
 {
 	Material *ma = give_current_material(ob, mat_nr);
-	bNode *node = (ma && ma->use_nodes) ? nodeGetActiveTexture(ma->nodetree) : NULL;
+	bNodeTree *ntree = (ma && ma->use_nodes) ? ma->nodetree : NULL;
+	bNode *node = (ntree) ? nodeGetActiveTexture(ntree) : NULL;
 
 	if (node && is_image_texture_node(node)) {
-		if (ima) *ima = (Image *)node->id;
-		if (iuser) *iuser = NULL;
-		if (node_r) *node_r = node;
-		return TRUE;
+		if (r_ima) *r_ima = (Image *)node->id;
+		if (r_iuser) *r_iuser = NULL;
+		if (r_node) *r_node = node;
+		if (r_ntree) *r_ntree = ntree;
+		return true;
 	}
 	
-	if (ima) *ima = NULL;
-	if (iuser) *iuser = NULL;
-	if (node_r) *node_r = node;
+	if (r_ima) *r_ima = NULL;
+	if (r_iuser) *r_iuser = NULL;
+	if (r_node) *r_node = node;
+	if (r_ntree) *r_ntree = ntree;
 
-	return FALSE;
+	return false;
 }
 
 void ED_object_assign_active_image(Main *bmain, Object *ob, int mat_nr, Image *ima)
@@ -388,7 +391,7 @@ bool uvedit_face_select_enable(Scene *scene, BMEditMesh *em, BMFace *efa, const 
 	ToolSettings *ts = scene->toolsettings;
 
 	if (ts->uv_flag & UV_SYNC_SELECTION) {
-		BM_face_select_set(em->bm, efa, TRUE);
+		BM_face_select_set(em->bm, efa, true);
 		if (do_history) {
 			BM_select_history_store(em->bm, (BMElem *)efa);
 		}
@@ -415,7 +418,7 @@ bool uvedit_face_select_disable(Scene *scene, BMEditMesh *em, BMFace *efa,
 	ToolSettings *ts = scene->toolsettings;
 
 	if (ts->uv_flag & UV_SYNC_SELECTION) {
-		BM_face_select_set(em->bm, efa, FALSE);
+		BM_face_select_set(em->bm, efa, false);
 	}
 	else {
 		BMLoop *l;
@@ -480,12 +483,12 @@ void uvedit_edge_select_enable(BMEditMesh *em, Scene *scene, BMLoop *l, const bo
 
 	if (ts->uv_flag & UV_SYNC_SELECTION) {
 		if (ts->selectmode & SCE_SELECT_FACE)
-			BM_face_select_set(em->bm, l->f, TRUE);
+			BM_face_select_set(em->bm, l->f, true);
 		else if (ts->selectmode & SCE_SELECT_EDGE)
-			BM_edge_select_set(em->bm, l->e, TRUE);
+			BM_edge_select_set(em->bm, l->e, true);
 		else {
-			BM_vert_select_set(em->bm, l->e->v1, TRUE);
-			BM_vert_select_set(em->bm, l->e->v2, TRUE);
+			BM_vert_select_set(em->bm, l->e->v1, true);
+			BM_vert_select_set(em->bm, l->e->v2, true);
 		}
 
 		if (do_history) {
@@ -511,12 +514,12 @@ void uvedit_edge_select_disable(BMEditMesh *em, Scene *scene, BMLoop *l,
 
 	if (ts->uv_flag & UV_SYNC_SELECTION) {
 		if (ts->selectmode & SCE_SELECT_FACE)
-			BM_face_select_set(em->bm, l->f, FALSE);
+			BM_face_select_set(em->bm, l->f, false);
 		else if (ts->selectmode & SCE_SELECT_EDGE)
-			BM_edge_select_set(em->bm, l->e, FALSE);
+			BM_edge_select_set(em->bm, l->e, false);
 		else {
-			BM_vert_select_set(em->bm, l->e->v1, FALSE);
-			BM_vert_select_set(em->bm, l->e->v2, FALSE);
+			BM_vert_select_set(em->bm, l->e->v1, false);
+			BM_vert_select_set(em->bm, l->e->v2, false);
 		}
 	}
 	else {
@@ -565,9 +568,9 @@ void uvedit_uv_select_enable(BMEditMesh *em, Scene *scene, BMLoop *l,
 
 	if (ts->uv_flag & UV_SYNC_SELECTION) {
 		if (ts->selectmode & SCE_SELECT_FACE)
-			BM_face_select_set(em->bm, l->f, TRUE);
+			BM_face_select_set(em->bm, l->f, true);
 		else
-			BM_vert_select_set(em->bm, l->v, TRUE);
+			BM_vert_select_set(em->bm, l->v, true);
 
 		if (do_history) {
 			BM_select_history_remove(em->bm, (BMElem *)l->v);
@@ -586,9 +589,9 @@ void uvedit_uv_select_disable(BMEditMesh *em, Scene *scene, BMLoop *l,
 
 	if (ts->uv_flag & UV_SYNC_SELECTION) {
 		if (ts->selectmode & SCE_SELECT_FACE)
-			BM_face_select_set(em->bm, l->f, FALSE);
+			BM_face_select_set(em->bm, l->f, false);
 		else
-			BM_vert_select_set(em->bm, l->v, FALSE);
+			BM_vert_select_set(em->bm, l->v, false);
 	}
 	else {
 		MLoopUV *luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
@@ -663,6 +666,24 @@ bool ED_uvedit_minmax(Scene *scene, Image *ima, Object *obedit, float r_min[2], 
 	}
 
 	return changed;
+}
+
+/* Be careful when using this, it bypasses all synchronization options */
+void ED_uvedit_select_all(BMesh *bm)
+{
+	BMFace *efa;
+	BMLoop *l;
+	BMIter iter, liter;
+	MLoopUV *luv;
+
+	const int cd_loop_uv_offset  = CustomData_get_offset(&bm->ldata, CD_MLOOPUV);
+
+	BM_ITER_MESH (efa, &iter, bm, BM_FACES_OF_MESH) {
+		BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
+			luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
+			luv->flag |= MLOOPUV_VERTSEL;
+		}
+	}
 }
 
 static bool ED_uvedit_median(Scene *scene, Image *ima, Object *obedit, float co[2])
@@ -990,7 +1011,7 @@ static bool uv_select_edgeloop_edge_tag_faces(BMEditMesh *em, UvMapVert *first1,
 }
 
 static int uv_select_edgeloop(Scene *scene, Image *ima, BMEditMesh *em, NearestHit *hit,
-                              float limit[2], const bool extend)
+                              const float limit[2], const bool extend)
 {
 	BMFace *efa;
 	BMIter iter, liter;
@@ -1015,7 +1036,7 @@ static int uv_select_edgeloop(Scene *scene, Image *ima, BMEditMesh *em, NearestH
 		uv_select_all_perform(scene, ima, em, SEL_DESELECT);
 	}
 
-	BM_mesh_elem_hflag_disable_all(em->bm, BM_FACE, BM_ELEM_TAG, FALSE);
+	BM_mesh_elem_hflag_disable_all(em->bm, BM_FACE, BM_ELEM_TAG, false);
 
 	/* set flags for first face and verts */
 	iterv_curr = uv_select_edgeloop_vertex_map_get(vmap, hit->efa, hit->l);
@@ -1288,10 +1309,10 @@ static int uv_select_more_less(bContext *C, const bool select)
 
 	if (ts->uv_flag & UV_SYNC_SELECTION) {
 		if (select) {
-			EDBM_select_more(em);
+			EDBM_select_more(em, true);
 		}
 		else {
-			EDBM_select_less(em);
+			EDBM_select_less(em, true);
 		}
 
 		WM_event_add_notifier(C, NC_GEOM | ND_SELECT, obedit->data);
@@ -1581,8 +1602,8 @@ static void uv_weld_align(bContext *C, int tool)
 			if (BLI_array_count(eve_line) > 2) {
 
 				/* we know the returns from these must be valid */
-				float *uv_start = uv_sel_co_from_eve(scene, ima, em, eve_line[0]);
-				float *uv_end   = uv_sel_co_from_eve(scene, ima, em, eve_line[BLI_array_count(eve_line) - 1]);
+				const float *uv_start = uv_sel_co_from_eve(scene, ima, em, eve_line[0]);
+				const float *uv_end   = uv_sel_co_from_eve(scene, ima, em, eve_line[BLI_array_count(eve_line) - 1]);
 				/* For t & u modes */
 				float a = 0.0f;
 
@@ -1683,7 +1704,7 @@ typedef struct UVvert {
 static int uv_remove_doubles_exec(bContext *C, wmOperator *op)
 {
 	const float threshold = RNA_float_get(op->ptr, "threshold");
-	const int use_unselected = RNA_boolean_get(op->ptr, "use_unselected");
+	const bool use_unselected = RNA_boolean_get(op->ptr, "use_unselected");
 
 	SpaceImage *sima;
 	Scene *scene;
@@ -1694,7 +1715,7 @@ static int uv_remove_doubles_exec(bContext *C, wmOperator *op)
 	int uv_a_index;
 	int uv_b_index;
 	float *uv_a;
-	float *uv_b;
+	const float *uv_b;
 
 	BMIter iter, liter;
 	BMFace *efa;
@@ -1707,7 +1728,7 @@ static int uv_remove_doubles_exec(bContext *C, wmOperator *op)
 	scene = CTX_data_scene(C);
 	ima = CTX_data_edit_image(C);
 
-	if (use_unselected == FALSE) {
+	if (use_unselected == false) {
 		UVvert *vert_arr = NULL;
 		BLI_array_declare(vert_arr);
 		MLoopUV **loop_arr = NULL;
@@ -1750,7 +1771,7 @@ static int uv_remove_doubles_exec(bContext *C, wmOperator *op)
 					if ((vert_arr[uv_b_index].weld == false) &&
 					    (len_manhattan_v2v2(uv_a, uv_b) < threshold))
 					{
-						minmax_v2v2_v2(uv_max, uv_min, uv_b);
+						minmax_v2v2_v2(uv_min, uv_max, uv_b);
 						BLI_array_append(loop_arr, vert_arr[uv_b_index].uv_loop);
 						vert_arr[uv_b_index].weld = true;
 					}
@@ -2157,7 +2178,7 @@ static int uv_mouse_select(bContext *C, const float co[2], bool extend, bool loo
 
 		/* de-selecting an edge may deselect a face too - validate */
 		if (sync) {
-			if (select == FALSE) {
+			if (select == false) {
 				BM_select_history_validate(em->bm);
 			}
 		}
@@ -2487,10 +2508,10 @@ static int uv_select_split_exec(bContext *C, wmOperator *op)
 			luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
 
 			if (luv->flag & MLOOPUV_VERTSEL) {
-				is_sel = TRUE;
+				is_sel = true;
 			}
 			else {
-				is_unsel = TRUE;
+				is_unsel = true;
 			}
 
 			/* we have mixed selection, bail out */
@@ -2537,7 +2558,7 @@ static void uv_select_sync_flush(ToolSettings *ts, BMEditMesh *em, const short s
 	/* bmesh API handles flushing but not on de-select */
 	if (ts->uv_flag & UV_SYNC_SELECTION) {
 		if (ts->selectmode != SCE_SELECT_FACE) {
-			if (select == FALSE) {
+			if (select == false) {
 				EDBM_deselect_flush(em);
 			}
 			else {
@@ -2545,7 +2566,7 @@ static void uv_select_sync_flush(ToolSettings *ts, BMEditMesh *em, const short s
 			}
 		}
 
-		if (select == FALSE) {
+		if (select == false) {
 			BM_select_history_validate(em->bm);
 		}
 	}
@@ -2795,7 +2816,6 @@ static int uv_border_select_exec(bContext *C, wmOperator *op)
 	BMIter iter, liter;
 	MTexPoly *tf;
 	MLoopUV *luv;
-	rcti rect;
 	rctf rectf;
 	bool changed, pinned, select, extend;
 	const bool use_face_center = (ts->uv_flag & UV_SYNC_SELECTION) ?
@@ -2806,10 +2826,8 @@ static int uv_border_select_exec(bContext *C, wmOperator *op)
 	const int cd_poly_tex_offset = CustomData_get_offset(&em->bm->pdata, CD_MTEXPOLY);
 
 	/* get rectangle from operator */
-	WM_operator_properties_border_to_rcti(op, &rect);
-		
-	UI_view2d_region_to_view(&ar->v2d, rect.xmin, rect.ymin, &rectf.xmin, &rectf.ymin);
-	UI_view2d_region_to_view(&ar->v2d, rect.xmax, rect.ymax, &rectf.xmax, &rectf.ymax);
+	WM_operator_properties_border_to_rctf(op, &rectf);
+	UI_view2d_region_to_view_rctf(&ar->v2d, &rectf, &rectf);
 
 	/* figure out what to select/deselect */
 	select = (RNA_int_get(op->ptr, "gesture_mode") == GESTURE_MODAL_SELECT);
@@ -2905,7 +2923,7 @@ static void UV_OT_select_border(wmOperatorType *ot)
 	/* properties */
 	RNA_def_boolean(ot->srna, "pinned", 0, "Pinned", "Border select pinned UVs only");
 
-	WM_operator_properties_gesture_border(ot, TRUE);
+	WM_operator_properties_gesture_border(ot, true);
 }
 
 /* ******************** circle select operator **************** */
@@ -3029,14 +3047,15 @@ static void UV_OT_circle_select(wmOperatorType *ot)
 	/* properties */
 	RNA_def_int(ot->srna, "x", 0, INT_MIN, INT_MAX, "X", "", INT_MIN, INT_MAX);
 	RNA_def_int(ot->srna, "y", 0, INT_MIN, INT_MAX, "Y", "", INT_MIN, INT_MAX);
-	RNA_def_int(ot->srna, "radius", 0, INT_MIN, INT_MAX, "Radius", "", INT_MIN, INT_MAX);
+	RNA_def_int(ot->srna, "radius", 1, 1, INT_MAX, "Radius", "", 1, INT_MAX);
 	RNA_def_int(ot->srna, "gesture_mode", 0, INT_MIN, INT_MAX, "Gesture Mode", "", INT_MIN, INT_MAX);
 }
 
 
 /* ******************** lasso select operator **************** */
 
-static bool do_lasso_select_mesh_uv(bContext *C, const int mcords[][2], short moves, const bool select)
+static bool do_lasso_select_mesh_uv(bContext *C, const int mcords[][2], short moves,
+                                    const bool select, const bool extend)
 {
 	SpaceImage *sima = CTX_wm_space_image(C);
 	Image *ima = CTX_data_edit_image(C);
@@ -3063,6 +3082,10 @@ static bool do_lasso_select_mesh_uv(bContext *C, const int mcords[][2], short mo
 
 	BLI_lasso_boundbox(&rect, mcords, moves);
 
+	if (!extend && select) {
+		uv_select_all_perform(scene, ima, em, SEL_DESELECT);
+	}
+
 	if (use_face_center) { /* Face Center Sel */
 		BM_ITER_MESH (efa, &iter, em->bm, BM_FACES_OF_MESH) {
 			BM_elem_flag_disable(efa, BM_ELEM_TAG);
@@ -3070,8 +3093,9 @@ static bool do_lasso_select_mesh_uv(bContext *C, const int mcords[][2], short mo
 			if (select != uvedit_face_select_test(scene, efa, cd_loop_uv_offset)) {
 				float cent[2];
 				uv_poly_center(efa, cent, cd_loop_uv_offset);
-				UI_view2d_view_to_region(&ar->v2d, cent[0], cent[1], &screen_uv[0], &screen_uv[1]);
-				if (BLI_rcti_isect_pt_v(&rect, screen_uv) &&
+
+				if (UI_view2d_view_to_region_clip(&ar->v2d, cent[0], cent[1], &screen_uv[0], &screen_uv[1]) &&
+				    BLI_rcti_isect_pt_v(&rect, screen_uv) &&
 				    BLI_lasso_is_point_inside(mcords, moves, screen_uv[0], screen_uv[1], V2D_IS_CLIPPED))
 				{
 					BM_elem_flag_enable(efa, BM_ELEM_TAG);
@@ -3092,8 +3116,10 @@ static bool do_lasso_select_mesh_uv(bContext *C, const int mcords[][2], short mo
 				BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
 					if ((select) != (uvedit_uv_select_test(scene, l, cd_loop_uv_offset))) {
 						MLoopUV *luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
-						UI_view2d_view_to_region(&ar->v2d, luv->uv[0], luv->uv[1], &screen_uv[0], &screen_uv[1]);
-						if (BLI_rcti_isect_pt_v(&rect, screen_uv) &&
+						if (UI_view2d_view_to_region_clip(&ar->v2d,
+						                                  luv->uv[0], luv->uv[1],
+						                                  &screen_uv[0], &screen_uv[1]) &&
+						    BLI_rcti_isect_pt_v(&rect, screen_uv) &&
 						    BLI_lasso_is_point_inside(mcords, moves, screen_uv[0], screen_uv[1], V2D_IS_CLIPPED))
 						{
 							uvedit_uv_select_set(em, scene, l, select, false, cd_loop_uv_offset);
@@ -3122,11 +3148,12 @@ static int uv_lasso_select_exec(bContext *C, wmOperator *op)
 	const int (*mcords)[2] = WM_gesture_lasso_path_to_array(C, op, &mcords_tot);
 
 	if (mcords) {
-		bool select;
+		bool select, extend;
 		bool changed;
 
 		select = !RNA_boolean_get(op->ptr, "deselect");
-		changed = do_lasso_select_mesh_uv(C, mcords, mcords_tot, select);
+		extend = RNA_boolean_get(op->ptr, "extend");
+		changed = do_lasso_select_mesh_uv(C, mcords, mcords_tot, select, extend);
 
 		MEM_freeN((void *)mcords);
 
@@ -3162,8 +3189,8 @@ static void UV_OT_select_lasso(wmOperatorType *ot)
 
 static void uv_snap_to_pixel(float uvco[2], float w, float h)
 {
-	uvco[0] = ((float)((int)((uvco[0] * w) + 0.5f))) / w;
-	uvco[1] = ((float)((int)((uvco[1] * h) + 0.5f))) / h;
+	uvco[0] = roundf(uvco[0] * w) / w;
+	uvco[1] = roundf(uvco[1] * h) / h;
 }
 
 static void uv_snap_cursor_to_pixels(SpaceImage *sima)
@@ -3249,7 +3276,7 @@ static bool uv_snap_uvs_to_cursor(Scene *scene, Image *ima, Object *obedit, cons
 		BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
 			if (uvedit_uv_select_test(scene, l, cd_loop_uv_offset)) {
 				luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
-				copy_v2_v2 (luv->uv, cursor);
+				copy_v2_v2(luv->uv, cursor);
 				changed = true;
 			}
 		}
@@ -3628,7 +3655,7 @@ static int uv_hide_exec(bContext *C, wmOperator *op)
 				if (em->selectmode == SCE_SELECT_FACE) {
 					/* check that every UV is selected */
 					if (bm_face_is_all_uv_sel(efa, true, cd_loop_uv_offset) == !swap) {
-						BM_face_select_set(em->bm, efa, FALSE);
+						BM_face_select_set(em->bm, efa, false);
 					}
 					uvedit_face_select_disable(scene, em, efa, cd_loop_uv_offset);
 				}
@@ -3637,7 +3664,7 @@ static int uv_hide_exec(bContext *C, wmOperator *op)
 						BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
 							luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
 							if (UV_SEL_TEST(luv, !swap)) {
-								BM_vert_select_set(em->bm, l->v, FALSE);
+								BM_vert_select_set(em->bm, l->v, false);
 							}
 						}
 					}
@@ -3647,7 +3674,7 @@ static int uv_hide_exec(bContext *C, wmOperator *op)
 			else if (em->selectmode == SCE_SELECT_FACE) {
 				/* check if a UV is de-selected */
 				if (bm_face_is_all_uv_sel(efa, false, cd_loop_uv_offset) != !swap) {
-					BM_face_select_set(em->bm, efa, FALSE);
+					BM_face_select_set(em->bm, efa, false);
 					uvedit_face_select_disable(scene, em, efa, cd_loop_uv_offset);
 				}
 			}
@@ -3655,7 +3682,7 @@ static int uv_hide_exec(bContext *C, wmOperator *op)
 				BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
 					luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
 					if (UV_SEL_TEST(luv, !swap)) {
-						BM_vert_select_set(em->bm, l->v, FALSE);
+						BM_vert_select_set(em->bm, l->v, false);
 						if (!swap) luv->flag &= ~MLOOPUV_VERTSEL;
 					}
 				}
@@ -3728,7 +3755,7 @@ static int uv_reveal_exec(bContext *C, wmOperator *UNUSED(op))
 						luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
 						luv->flag |= MLOOPUV_VERTSEL;
 					}
-					/* BM_face_select_set(em->bm, efa, TRUE); */
+					/* BM_face_select_set(em->bm, efa, true); */
 					BM_elem_flag_enable(efa, BM_ELEM_TAG);
 				}
 			}
@@ -3749,7 +3776,7 @@ static int uv_reveal_exec(bContext *C, wmOperator *UNUSED(op))
 								luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
 								luv->flag |= MLOOPUV_VERTSEL;
 							}
-							/* BM_face_select_set(em->bm, efa, TRUE); */
+							/* BM_face_select_set(em->bm, efa, true); */
 							BM_elem_flag_enable(efa, BM_ELEM_TAG);
 						}
 					}
@@ -3765,7 +3792,7 @@ static int uv_reveal_exec(bContext *C, wmOperator *UNUSED(op))
 								luv->flag |= MLOOPUV_VERTSEL;
 							}
 						}
-						/* BM_face_select_set(em->bm, efa, TRUE); */
+						/* BM_face_select_set(em->bm, efa, true); */
 						BM_elem_flag_enable(efa, BM_ELEM_TAG);
 					}
 				}
@@ -3780,7 +3807,7 @@ static int uv_reveal_exec(bContext *C, wmOperator *UNUSED(op))
 					luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
 					luv->flag |= MLOOPUV_VERTSEL;
 				}
-				/* BM_face_select_set(em->bm, efa, TRUE); */
+				/* BM_face_select_set(em->bm, efa, true); */
 				BM_elem_flag_enable(efa, BM_ELEM_TAG);
 			}
 		}
@@ -3795,14 +3822,14 @@ static int uv_reveal_exec(bContext *C, wmOperator *UNUSED(op))
 						luv->flag |= MLOOPUV_VERTSEL;
 					}
 				}
-				/* BM_face_select_set(em->bm, efa, TRUE); */
+				/* BM_face_select_set(em->bm, efa, true); */
 				BM_elem_flag_enable(efa, BM_ELEM_TAG);
 			}
 		}
 	}
 	
 	/* re-select tagged faces */
-	BM_mesh_elem_hflag_enable_test(em->bm, BM_FACE, BM_ELEM_SELECT, TRUE, BM_ELEM_TAG);
+	BM_mesh_elem_hflag_enable_test(em->bm, BM_FACE, BM_ELEM_SELECT, true, false, BM_ELEM_TAG);
 
 	WM_event_add_notifier(C, NC_GEOM | ND_SELECT, obedit->data);
 
@@ -3827,7 +3854,8 @@ static void UV_OT_reveal(wmOperatorType *ot)
 static int uv_set_2d_cursor_poll(bContext *C)
 {
 	return ED_operator_uvedit_space_image(C) ||
-	       ED_space_image_maskedit_poll(C);
+	       ED_space_image_maskedit_poll(C) ||
+	       ED_space_image_paint_curve(C);
 }
 
 static int uv_set_2d_cursor_exec(bContext *C, wmOperator *op)
@@ -3848,6 +3876,15 @@ static int uv_set_2d_cursor_invoke(bContext *C, wmOperator *op, const wmEvent *e
 {
 	ARegion *ar = CTX_wm_region(C);
 	float location[2];
+
+	if (ar->regiontype == RGN_TYPE_WINDOW) {
+		if (event->mval[1] <= 16) {
+			SpaceImage *sima = CTX_wm_space_image(C);
+			if (sima && ED_space_image_show_cache(sima)) {
+				return OPERATOR_PASS_THROUGH;
+			}
+		}
+	}
 
 	UI_view2d_region_to_view(&ar->v2d, event->mval[0], event->mval[1], &location[0], &location[1]);
 	RNA_float_set_array(op->ptr, "location", location);
@@ -4094,7 +4131,7 @@ static int uv_mark_seam_exec(bContext *C, wmOperator *UNUSED(op))
 	me->drawflag |= ME_DRAWSEAMS;
 
 	if (scene->toolsettings->edge_mode_live_unwrap)
-		ED_unwrap_lscm(scene, ob, FALSE);
+		ED_unwrap_lscm(scene, ob, false);
 
 	DAG_id_tag_update(&me->id, 0);
 	WM_event_add_notifier(C, NC_GEOM | ND_DATA, me);
@@ -4181,30 +4218,30 @@ void ED_keymap_uvedit(wmKeyConfig *keyconf)
 	WM_keymap_add_item(keymap, "UV_OT_mark_seam", EKEY, KM_PRESS, KM_CTRL, 0);
 	
 	/* pick selection */
-	RNA_boolean_set(WM_keymap_add_item(keymap, "UV_OT_select", SELECTMOUSE, KM_PRESS, 0, 0)->ptr, "extend", FALSE);
-	RNA_boolean_set(WM_keymap_add_item(keymap, "UV_OT_select", SELECTMOUSE, KM_PRESS, KM_SHIFT, 0)->ptr, "extend", TRUE);
-	RNA_boolean_set(WM_keymap_add_item(keymap, "UV_OT_select_loop", SELECTMOUSE, KM_PRESS, KM_ALT, 0)->ptr, "extend", FALSE);
-	RNA_boolean_set(WM_keymap_add_item(keymap, "UV_OT_select_loop", SELECTMOUSE, KM_PRESS, KM_SHIFT | KM_ALT, 0)->ptr, "extend", TRUE);
+	RNA_boolean_set(WM_keymap_add_item(keymap, "UV_OT_select", SELECTMOUSE, KM_PRESS, 0, 0)->ptr, "extend", false);
+	RNA_boolean_set(WM_keymap_add_item(keymap, "UV_OT_select", SELECTMOUSE, KM_PRESS, KM_SHIFT, 0)->ptr, "extend", true);
+	RNA_boolean_set(WM_keymap_add_item(keymap, "UV_OT_select_loop", SELECTMOUSE, KM_PRESS, KM_ALT, 0)->ptr, "extend", false);
+	RNA_boolean_set(WM_keymap_add_item(keymap, "UV_OT_select_loop", SELECTMOUSE, KM_PRESS, KM_SHIFT | KM_ALT, 0)->ptr, "extend", true);
 	WM_keymap_add_item(keymap, "UV_OT_select_split", YKEY, KM_PRESS, 0, 0);
 
 	/* border/circle selection */
 	kmi = WM_keymap_add_item(keymap, "UV_OT_select_border", BKEY, KM_PRESS, 0, 0);
-	RNA_boolean_set(kmi->ptr, "pinned", FALSE);
+	RNA_boolean_set(kmi->ptr, "pinned", false);
 	kmi = WM_keymap_add_item(keymap, "UV_OT_select_border", BKEY, KM_PRESS, KM_SHIFT, 0);
-	RNA_boolean_set(kmi->ptr, "pinned", TRUE);
+	RNA_boolean_set(kmi->ptr, "pinned", true);
 
 	WM_keymap_add_item(keymap, "UV_OT_circle_select", CKEY, KM_PRESS, 0, 0);
 
 	kmi = WM_keymap_add_item(keymap, "UV_OT_select_lasso", EVT_TWEAK_A, KM_ANY, KM_CTRL, 0);
-	RNA_boolean_set(kmi->ptr, "deselect", FALSE);
+	RNA_boolean_set(kmi->ptr, "deselect", false);
 	kmi = WM_keymap_add_item(keymap, "UV_OT_select_lasso", EVT_TWEAK_A, KM_ANY, KM_CTRL | KM_SHIFT, 0);
-	RNA_boolean_set(kmi->ptr, "deselect", TRUE);
+	RNA_boolean_set(kmi->ptr, "deselect", true);
 
 	/* selection manipulation */
-	RNA_boolean_set(WM_keymap_add_item(keymap, "UV_OT_select_linked", LKEY, KM_PRESS, KM_CTRL, 0)->ptr, "extend", FALSE);
-	RNA_boolean_set(WM_keymap_add_item(keymap, "UV_OT_select_linked_pick", LKEY, KM_PRESS, 0, 0)->ptr, "extend", FALSE);
-	RNA_boolean_set(WM_keymap_add_item(keymap, "UV_OT_select_linked", LKEY, KM_PRESS, KM_CTRL | KM_SHIFT, 0)->ptr, "extend", TRUE);
-	RNA_boolean_set(WM_keymap_add_item(keymap, "UV_OT_select_linked_pick", LKEY, KM_PRESS, KM_SHIFT, 0)->ptr, "extend", TRUE);
+	RNA_boolean_set(WM_keymap_add_item(keymap, "UV_OT_select_linked", LKEY, KM_PRESS, KM_CTRL, 0)->ptr, "extend", false);
+	RNA_boolean_set(WM_keymap_add_item(keymap, "UV_OT_select_linked_pick", LKEY, KM_PRESS, 0, 0)->ptr, "extend", false);
+	RNA_boolean_set(WM_keymap_add_item(keymap, "UV_OT_select_linked", LKEY, KM_PRESS, KM_CTRL | KM_SHIFT, 0)->ptr, "extend", true);
+	RNA_boolean_set(WM_keymap_add_item(keymap, "UV_OT_select_linked_pick", LKEY, KM_PRESS, KM_SHIFT, 0)->ptr, "extend", true);
 
 	/* select more/less */
 	WM_keymap_add_item(keymap, "UV_OT_select_more", PADPLUSKEY, KM_PRESS, KM_CTRL, 0);
@@ -4222,9 +4259,9 @@ void ED_keymap_uvedit(wmKeyConfig *keyconf)
 	/* uv operations */
 	WM_keymap_add_item(keymap, "UV_OT_stitch", VKEY, KM_PRESS, 0, 0);
 	kmi = WM_keymap_add_item(keymap, "UV_OT_pin", PKEY, KM_PRESS, 0, 0);
-	RNA_boolean_set(kmi->ptr, "clear", FALSE);
+	RNA_boolean_set(kmi->ptr, "clear", false);
 	kmi = WM_keymap_add_item(keymap, "UV_OT_pin", PKEY, KM_PRESS, KM_ALT, 0);
-	RNA_boolean_set(kmi->ptr, "clear", TRUE);
+	RNA_boolean_set(kmi->ptr, "clear", true);
 
 	/* unwrap */
 	WM_keymap_add_item(keymap, "UV_OT_unwrap", EKEY, KM_PRESS, 0, 0);
@@ -4234,9 +4271,9 @@ void ED_keymap_uvedit(wmKeyConfig *keyconf)
 
 	/* hide */
 	kmi = WM_keymap_add_item(keymap, "UV_OT_hide", HKEY, KM_PRESS, 0, 0);
-	RNA_boolean_set(kmi->ptr, "unselected", FALSE);
+	RNA_boolean_set(kmi->ptr, "unselected", false);
 	kmi = WM_keymap_add_item(keymap, "UV_OT_hide", HKEY, KM_PRESS, KM_SHIFT, 0);
-	RNA_boolean_set(kmi->ptr, "unselected", TRUE);
+	RNA_boolean_set(kmi->ptr, "unselected", true);
 
 	WM_keymap_add_item(keymap, "UV_OT_reveal", HKEY, KM_PRESS, KM_ALT, 0);
 
@@ -4249,7 +4286,7 @@ void ED_keymap_uvedit(wmKeyConfig *keyconf)
 	WM_keymap_add_menu(keymap, "IMAGE_MT_uvs_select_mode", TABKEY, KM_PRESS, KM_CTRL, 0);
 
 	ED_keymap_proportional_cycle(keyconf, keymap);
-	ED_keymap_proportional_editmode(keyconf, keymap, FALSE);
+	ED_keymap_proportional_editmode(keyconf, keymap, false);
 
 	transform_keymap_for_space(keyconf, keymap, SPACE_IMAGE);
 }

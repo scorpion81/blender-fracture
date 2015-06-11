@@ -25,7 +25,9 @@
 #ifndef __FREESTYLE_PYTHON_STROKEATTRIBUTE_H__
 #define __FREESTYLE_PYTHON_STROKEATTRIBUTE_H__
 
+extern "C" {
 #include <Python.h>
+}
 
 #include "../stroke/Stroke.h"
 
@@ -45,7 +47,7 @@ extern PyTypeObject StrokeAttribute_Type;
 typedef struct {
 	PyObject_HEAD
 	StrokeAttribute *sa;
-	int borrowed; /* non-zero if *sa is a borrowed reference */
+	bool borrowed; /* true if *sa is a borrowed reference */
 } BPy_StrokeAttribute;
 
 /*---------------------------Python BPy_StrokeAttribute visible prototypes-----------*/

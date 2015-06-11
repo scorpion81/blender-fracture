@@ -32,6 +32,7 @@ set(INC
 	../../blender/blenlib
 	../../blender/blenkernel
 	../../../intern/container
+	../../../intern/glew-mx
 	../../../intern/guardedalloc
 	../../../intern/string
 )
@@ -61,7 +62,7 @@ set(SRC
 	RAS_ICanvas.h
 	RAS_IPolygonMaterial.h
 	RAS_IRasterizer.h
-	RAS_LightObject.h
+	RAS_ILightObject.h
 	RAS_MaterialBucket.h
 	RAS_MeshObject.h
 	RAS_ObjectColor.h
@@ -81,6 +82,6 @@ set(SRC
 	RAS_OpenGLFilters/RAS_Sobel2DFilter.h
 )
 
-add_definitions(-DGLEW_STATIC)
+add_definitions(${GL_DEFINITIONS})
 
 blender_add_lib(ge_rasterizer "${SRC}" "${INC}" "${INC_SYS}")

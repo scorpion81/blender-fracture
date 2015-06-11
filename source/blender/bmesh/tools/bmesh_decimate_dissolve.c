@@ -235,9 +235,9 @@ void BM_mesh_decimate_dissolve_ex(BMesh *bm, const float angle_limit, const bool
 		for (i = 0; i < vinput_len; i++) {
 			BMVert *v = vinput_arr[i];
 			if (LIKELY(v != NULL) &&
-			    BM_vert_edge_count(v) == 2)
+			    BM_vert_is_edge_pair(v))
 			{
-				BM_vert_collapse_edge(bm, v->e, v, true); /* join edges */
+				BM_vert_collapse_edge(bm, v->e, v, true, true);  /* join edges */
 			}
 		}
 	}
@@ -274,8 +274,8 @@ void BM_mesh_decimate_dissolve_ex(BMesh *bm, const float angle_limit, const bool
 			v = BLI_heap_node_ptr(vnode_top);
 			i = BM_elem_index_get(v);
 
-			if (BM_vert_edge_count(v) == 2) {
-				e_new = BM_vert_collapse_edge(bm, v->e, v, true); /* join edges */
+			if (BM_vert_is_edge_pair(v)) {
+				e_new = BM_vert_collapse_edge(bm, v->e, v, true, true);  /* join edges */
 
 				if (e_new) {
 
@@ -325,6 +325,10 @@ void BM_mesh_decimate_dissolve(BMesh *bm, const float angle_limit, const bool do
 	BMVert **vinput_arr = BM_iter_as_arrayN(bm, BM_VERTS_OF_MESH, NULL, &vinput_len, NULL, 0);
 	BMEdge **einput_arr = BM_iter_as_arrayN(bm, BM_EDGES_OF_MESH, NULL, &einput_len, NULL, 0);
 
+	/* caused crashes in conjunction with fracture modifier when using limited dissolve operator from there,
+	 * so added a sanity check here as crash prevention */
+	if (vinput_arr == NULL || einput_arr == NULL)
+		return;
 
 	BM_mesh_decimate_dissolve_ex(bm, angle_limit, do_dissolve_boundaries,
 	                             delimit,

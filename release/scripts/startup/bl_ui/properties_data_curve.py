@@ -24,7 +24,7 @@ from rna_prop_ui import PropertyPanel
 from bpy.types import Curve, SurfaceCurve, TextCurve
 
 
-class CurveButtonsPanel():
+class CurveButtonsPanel:
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "data"
@@ -182,14 +182,27 @@ class DATA_PT_geometry_curve(CurveButtonsPanelCurve, Panel):
         col.label(text="Bevel Object:")
         col.prop(curve, "bevel_object", text="")
 
-        col = layout.column(align=True)
-        col.prop(curve, "bevel_factor_start")
-        col.prop(curve, "bevel_factor_end")
+        if type(curve) is not TextCurve:
+            col = layout.column(align=True)
+            row = col.row()
+            row.label(text="Bevel Factor:")
 
-        row = col.row()
-        row.active = (curve.bevel_object is not None)
-        row.prop(curve, "use_fill_caps")
-        row.prop(curve, "use_map_taper")
+            col = layout.column()
+            col.active = (curve.bevel_depth > 0 or curve.bevel_object is not None)
+            row = col.row(align=True)
+            row.prop(curve, "bevel_factor_mapping_start", text="")
+            row.prop(curve, "bevel_factor_start", text="Start")
+            row = col.row(align=True)
+            row.prop(curve, "bevel_factor_mapping_end", text="")
+            row.prop(curve, "bevel_factor_end", text="End")
+
+            row = layout.row()
+            sub = row.row()
+            sub.active = curve.taper_object is not None
+            sub.prop(curve, "use_map_taper")
+            sub = row.row()
+            sub.active = curve.bevel_object is not None
+            sub.prop(curve, "use_fill_caps")
 
 
 class DATA_PT_pathanim(CurveButtonsPanelCurve, Panel):
@@ -214,7 +227,6 @@ class DATA_PT_pathanim(CurveButtonsPanelCurve, Panel):
         # these are for paths only
         row = layout.row()
         row.prop(curve, "use_path_follow")
-        row.prop(curve, "use_time_offset", text="Offset Children")
 
 
 class DATA_PT_active_spline(CurveButtonsPanelActive, Panel):

@@ -32,20 +32,13 @@
 
 #include <stdio.h>
 
-#include "DNA_anim_types.h"
 #include "DNA_color_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_node_types.h"
 
-#include "BLI_listbase.h"
-#include "BLI_threads.h"
-
 #include "BLF_translation.h"
 
-#include "BKE_animsys.h"
-#include "BKE_colortools.h"
 #include "BKE_context.h"
-#include "BKE_fcurve.h"
 #include "BKE_global.h"
 #include "BKE_main.h"
 #include "BKE_node.h"
@@ -53,8 +46,6 @@
 
 #include "node_common.h"
 #include "node_util.h"
-
-#include "PIL_time.h"
 
 #include "RNA_access.h"
 
@@ -72,10 +63,6 @@ static void composite_get_from_context(const bContext *C, bNodeTreeType *UNUSED(
 	*r_from = NULL;
 	*r_id = &scene->id;
 	*r_ntree = scene->nodetree;
-	
-	/* update output sockets based on available layers */
-	ntreeCompositForceHidden(scene->nodetree);
-	
 }
 
 static void foreach_nodeclass(Scene *UNUSED(scene), void *calldata, bNodeClassCallback func)
@@ -112,9 +99,9 @@ static void free_cache(bNodeTree *ntree)
 }
 
 /* local tree then owns all compbufs */
-static void localize(bNodeTree *localtree, bNodeTree *ntree)
+static void localize(bNodeTree *UNUSED(localtree), bNodeTree *ntree)
 {
-	bNode *node, *node_next;
+	bNode *node;
 	bNodeSocket *sock;
 	
 	for (node = ntree->nodes.first; node; node = node->next) {
@@ -138,26 +125,6 @@ static void localize(bNodeTree *localtree, bNodeTree *ntree)
 			sock->new_sock->cache = sock->cache;
 			sock->cache = NULL;
 			sock->new_sock->new_sock = sock;
-		}
-	}
-	
-	/* replace muted nodes and reroute nodes by internal links */
-	for (node = localtree->nodes.first; node; node = node_next) {
-		node_next = node->next;
-		
-		if (node->flag & NODE_MUTED || node->type == NODE_REROUTE) {
-			/* make sure the update tag isn't lost when removing the muted node.
-			 * propagate this to all downstream nodes.
-			 */
-			if (node->need_exec) {
-				bNodeLink *link;
-				for (link = localtree->links.first; link; link = link->next)
-					if (link->fromnode == node && link->tonode)
-						link->tonode->need_exec = 1;
-			}
-			
-			nodeInternalRelink(localtree, node);
-			nodeFreeNode(localtree, node);
 		}
 	}
 }
@@ -257,18 +224,17 @@ void register_node_tree_type_cmp(void)
 
 void *COM_linker_hack = NULL;
 
-void ntreeCompositExecTree(bNodeTree *ntree, RenderData *rd, int rendering, int do_preview,
+void ntreeCompositExecTree(Scene *scene, bNodeTree *ntree, RenderData *rd, int rendering, int do_preview,
                            const ColorManagedViewSettings *view_settings,
                            const ColorManagedDisplaySettings *display_settings)
 {
 #ifdef WITH_COMPOSITOR
-	COM_execute(rd, ntree, rendering, view_settings, display_settings);
+	COM_execute(rd, scene, ntree, rendering, view_settings, display_settings);
 #else
-	(void)ntree, (void)rd, (void)rendering, (void)do_preview;
-	(void)view_settings, (void)display_settings;
+	UNUSED_VARS(scene, ntree, rd, rendering, view_settings, display_settings);
 #endif
 
-	(void)do_preview;
+	UNUSED_VARS(do_preview);
 }
 
 /* *********************************************** */

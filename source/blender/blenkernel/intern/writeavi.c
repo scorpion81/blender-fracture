@@ -80,7 +80,9 @@ static void filepath_avi(char *string, RenderData *rd);
 #  include "BKE_writeffmpeg.h"
 #endif
 
-#include "BKE_writeframeserver.h"
+#ifdef WITH_FRAMESERVER
+#  include "BKE_writeframeserver.h"
+#endif
 
 bMovieHandle *BKE_movie_handle_get(const char imtype)
 {
@@ -110,7 +112,7 @@ bMovieHandle *BKE_movie_handle_get(const char imtype)
 	}
 #endif
 #ifdef WITH_FFMPEG
-	if (ELEM4(imtype, R_IMF_IMTYPE_FFMPEG, R_IMF_IMTYPE_H264, R_IMF_IMTYPE_XVID, R_IMF_IMTYPE_THEORA)) {
+	if (ELEM(imtype, R_IMF_IMTYPE_FFMPEG, R_IMF_IMTYPE_H264, R_IMF_IMTYPE_XVID, R_IMF_IMTYPE_THEORA)) {
 		mh.start_movie = BKE_ffmpeg_start;
 		mh.append_movie = BKE_ffmpeg_append;
 		mh.end_movie = BKE_ffmpeg_end;
@@ -236,7 +238,7 @@ static int append_avi(RenderData *UNUSED(rd), int start_frame, int frame, int *p
 	}
 	
 	AVI_write_frame(avi, (frame - start_frame), AVI_FORMAT_RGB32, rectot, rectx * recty * 4);
-//	printf ("added frame %3d (frame %3d in avi): ", frame, frame-start_frame);
+//	printf("added frame %3d (frame %3d in avi): ", frame, frame-start_frame);
 
 	return 1;
 }
@@ -251,7 +253,7 @@ static void end_avi(void)
 }
 #endif  /* WITH_AVI */
 
-/* similar to BKE_makepicstring() */
+/* similar to BKE_image_path_from_imformat() */
 void BKE_movie_filepath_get(char *string, RenderData *rd)
 {
 	bMovieHandle *mh = BKE_movie_handle_get(rd->im_format.imtype);

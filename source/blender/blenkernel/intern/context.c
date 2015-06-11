@@ -36,6 +36,8 @@
 #include "DNA_view3d_types.h"
 #include "DNA_windowmanager_types.h"
 #include "DNA_object_types.h"
+#include "DNA_linestyle_types.h"
+#include "DNA_gpencil_types.h"
 
 #include "BLI_listbase.h"
 #include "BLI_string.h"
@@ -232,18 +234,31 @@ struct bContextDataResult {
 	short type; /* 0: normal, 1: seq */
 };
 
-static void *ctx_wm_python_context_get(const bContext *C, const char *member, void *fall_through)
+static void *ctx_wm_python_context_get(
+        const bContext *C,
+        const char *member, const StructRNA *member_type,
+        void *fall_through)
 {
 #ifdef WITH_PYTHON
 	if (UNLIKELY(C && CTX_py_dict_get(C))) {
 		bContextDataResult result;
 		memset(&result, 0, sizeof(bContextDataResult));
 		BPY_context_member_get((bContext *)C, member, &result);
-		if (result.ptr.data)
-			return result.ptr.data;
+
+		if (result.ptr.data) {
+			if (RNA_struct_is_a(result.ptr.type, member_type)) {
+				return result.ptr.data;
+			}
+			else {
+				printf("PyContext '%s' is a '%s', expected a '%s'\n",
+				       member,
+				       RNA_struct_identifier(result.ptr.type),
+				       RNA_struct_identifier(member_type));
+			}
+		}
 	}
 #else
-	(void)C, (void)member;
+	UNUSED_VARS(C, member, member_type);
 #endif
 
 	/* don't allow UI context access from non-main threads */
@@ -258,7 +273,7 @@ static int ctx_data_get(bContext *C, const char *member, bContextDataResult *res
 	bScreen *sc;
 	ScrArea *sa;
 	ARegion *ar;
-	int done = FALSE, recursion = C->data.recursion;
+	int done = 0, recursion = C->data.recursion;
 	int ret = 0;
 
 	memset(result, 0, sizeof(bContextDataResult));
@@ -275,7 +290,7 @@ static int ctx_data_get(bContext *C, const char *member, bContextDataResult *res
 		return done;
 
 	/* we check recursion to ensure that we do not get infinite
-	 * loops requesting data from ourselfs in a context callback */
+	 * loops requesting data from ourselves in a context callback */
 
 	/* Ok, this looks evil...
 	 * if (ret) done = -(-ret | -done);
@@ -291,7 +306,7 @@ static int ctx_data_get(bContext *C, const char *member, bContextDataResult *res
 		entry = BLI_rfindstring(&C->wm.store->entries, member, offsetof(bContextStoreEntry, name));
 		if (entry) {
 			result->ptr = entry->ptr;
-			done = TRUE;
+			done = 1;
 		}
 	}
 	if (done != 1 && recursion < 2 && (ar = CTX_wm_region(C))) {
@@ -366,8 +381,7 @@ static int ctx_data_collection_get(const bContext *C, const char *member, ListBa
 		return 1;
 	}
 
-	list->first = NULL;
-	list->last = NULL;
+	BLI_listbase_clear(list);
 
 	return 0;
 }
@@ -436,11 +450,11 @@ int CTX_data_get(const bContext *C, const char *member, PointerRNA *r_ptr, ListB
 	return ret;
 }
 
-static void data_dir_add(ListBase *lb, const char *member, const short use_all)
+static void data_dir_add(ListBase *lb, const char *member, const bool use_all)
 {
 	LinkData *link;
 	
-	if ((use_all == FALSE) && strcmp(member, "scene") == 0) /* exception */
+	if ((use_all == false) && STREQ(member, "scene")) /* exception */
 		return;
 
 	if (BLI_findstring(lb, member, offsetof(LinkData, data)))
@@ -457,7 +471,7 @@ static void data_dir_add(ListBase *lb, const char *member, const short use_all)
  * \param use_rna Use Include the properties from 'RNA_Context'
  * \param use_all Don't skip values (currently only "scene")
  */
-ListBase CTX_data_dir_get_ex(const bContext *C, const short use_store, const short use_rna, const short use_all)
+ListBase CTX_data_dir_get_ex(const bContext *C, const bool use_store, const bool use_rna, const bool use_all)
 {
 	bContextDataResult result;
 	ListBase lb;
@@ -527,12 +541,12 @@ ListBase CTX_data_dir_get_ex(const bContext *C, const short use_store, const sho
 
 ListBase CTX_data_dir_get(const bContext *C)
 {
-	return CTX_data_dir_get_ex(C, TRUE, FALSE, FALSE);
+	return CTX_data_dir_get_ex(C, true, false, false);
 }
 
 bool CTX_data_equals(const char *member, const char *str)
 {
-	return (strcmp(member, str) == 0);
+	return (STREQ(member, str));
 }
 
 bool CTX_data_dir(const char *member)
@@ -575,7 +589,7 @@ int ctx_data_list_count(const bContext *C, int (*func)(const bContext *, ListBas
 	ListBase list;
 
 	if (func(C, &list)) {
-		int tot = BLI_countlist(&list);
+		int tot = BLI_listbase_count(&list);
 		BLI_freelistN(&list);
 		return tot;
 	}
@@ -609,17 +623,17 @@ wmWindowManager *CTX_wm_manager(const bContext *C)
 
 wmWindow *CTX_wm_window(const bContext *C)
 {
-	return ctx_wm_python_context_get(C, "window", C->wm.window);
+	return ctx_wm_python_context_get(C, "window", &RNA_Window, C->wm.window);
 }
 
 bScreen *CTX_wm_screen(const bContext *C)
 {
-	return ctx_wm_python_context_get(C, "screen", C->wm.screen);
+	return ctx_wm_python_context_get(C, "screen", &RNA_Screen, C->wm.screen);
 }
 
 ScrArea *CTX_wm_area(const bContext *C)
 {
-	return ctx_wm_python_context_get(C, "area", C->wm.area);
+	return ctx_wm_python_context_get(C, "area", &RNA_Area, C->wm.area);
 }
 
 SpaceLink *CTX_wm_space_data(const bContext *C)
@@ -630,7 +644,7 @@ SpaceLink *CTX_wm_space_data(const bContext *C)
 
 ARegion *CTX_wm_region(const bContext *C)
 {
-	return ctx_wm_python_context_get(C, "region", C->wm.region);
+	return ctx_wm_python_context_get(C, "region", &RNA_Region, C->wm.region);
 }
 
 void *CTX_wm_region_data(const bContext *C)
@@ -1076,5 +1090,35 @@ int CTX_data_selected_pose_bones(const bContext *C, ListBase *list)
 int CTX_data_visible_pose_bones(const bContext *C, ListBase *list)
 {
 	return ctx_data_collection_get(C, "visible_pose_bones", list);
+}
+
+bGPdata *CTX_data_gpencil_data(const bContext *C)
+{
+	return ctx_data_pointer_get(C, "gpencil_data");
+}
+
+bGPDlayer *CTX_data_active_gpencil_layer(const bContext *C)
+{
+	return ctx_data_pointer_get(C, "active_gpencil_layer");
+}
+
+bGPDframe *CTX_data_active_gpencil_frame(const bContext *C)
+{
+	return ctx_data_pointer_get(C, "active_gpencil_frame");
+}
+
+int CTX_data_visible_gpencil_layers(const bContext *C, ListBase *list)
+{
+	return ctx_data_collection_get(C, "visible_gpencil_layers", list);
+}
+
+int CTX_data_editable_gpencil_layers(const bContext *C, ListBase *list)
+{
+	return ctx_data_collection_get(C, "editable_gpencil_layers", list);
+}
+
+int CTX_data_editable_gpencil_strokes(const bContext *C, ListBase *list)
+{
+	return ctx_data_collection_get(C, "editable_gpencil_strokes", list);
 }
 

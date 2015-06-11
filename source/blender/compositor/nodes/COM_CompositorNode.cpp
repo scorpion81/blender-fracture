@@ -29,26 +29,33 @@ CompositorNode::CompositorNode(bNode *editorNode) : Node(editorNode)
 	/* pass */
 }
 
-void CompositorNode::convertToOperations(ExecutionSystem *graph, CompositorContext *context)
+void CompositorNode::convertToOperations(NodeConverter &converter, const CompositorContext &context) const
 {
 	bNode *editorNode = this->getbNode();
 	bool is_active = (editorNode->flag & NODE_DO_OUTPUT_RECALC) ||
-	                 context->isRendering();
+	                 context.isRendering();
+	bool ignore_alpha = (editorNode->custom2 & CMP_NODE_OUTPUT_IGNORE_ALPHA) != 0;
 
-	InputSocket *imageSocket = this->getInputSocket(0);
-	InputSocket *alphaSocket = this->getInputSocket(1);
-	InputSocket *depthSocket = this->getInputSocket(2);
+	NodeInput *imageSocket = this->getInputSocket(0);
+	NodeInput *alphaSocket = this->getInputSocket(1);
+	NodeInput *depthSocket = this->getInputSocket(2);
 
 	CompositorOperation *compositorOperation = new CompositorOperation();
-	compositorOperation->setSceneName(editorNode->id->name);
-	compositorOperation->setRenderData(context->getRenderData());
-	compositorOperation->setbNodeTree(context->getbNodeTree());
-	compositorOperation->setIgnoreAlpha(editorNode->custom2 & CMP_NODE_OUTPUT_IGNORE_ALPHA);
+	compositorOperation->setSceneName(context.getScene()->id.name);
+	compositorOperation->setRenderData(context.getRenderData());
+	compositorOperation->setbNodeTree(context.getbNodeTree());
+	/* alpha socket gives either 1 or a custom alpha value if "use alpha" is enabled */
+	compositorOperation->setUseAlphaInput(ignore_alpha || alphaSocket->isLinked());
 	compositorOperation->setActive(is_active);
-	imageSocket->relinkConnections(compositorOperation->getInputSocket(0), 0, graph);
-	alphaSocket->relinkConnections(compositorOperation->getInputSocket(1));
-	depthSocket->relinkConnections(compositorOperation->getInputSocket(2));
-	graph->addOperation(compositorOperation);
-
-	addPreviewOperation(graph, context, compositorOperation->getInputSocket(0));
+	
+	converter.addOperation(compositorOperation);
+	converter.mapInputSocket(imageSocket, compositorOperation->getInputSocket(0));
+	/* only use alpha link if "use alpha" is enabled */
+	if (ignore_alpha)
+		converter.addInputValue(compositorOperation->getInputSocket(1), 1.0f);
+	else
+		converter.mapInputSocket(alphaSocket, compositorOperation->getInputSocket(1));
+	converter.mapInputSocket(depthSocket, compositorOperation->getInputSocket(2));
+	
+	converter.addNodeInputPreview(imageSocket);
 }

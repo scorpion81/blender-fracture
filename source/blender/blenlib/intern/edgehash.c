@@ -23,11 +23,12 @@
 /** \file blender/blenlib/intern/edgehash.c
  *  \ingroup bli
  *
- * A general (pointer -> pointer) hash table ADT
+ * An (edge -> pointer) chaining hash table.
+ * Using unordered int-pairs as keys.
  *
- * \note Based on 'BLI_ghash.c', make sure these stay in sync.
+ * \note Based on 'BLI_ghash.c', which is a more generalized hash-table
+ * make sure these stay in sync.
  */
-
 
 #include <stdlib.h>
 #include <string.h>
@@ -93,7 +94,7 @@ BLI_INLINE unsigned int edgehash_keyhash(EdgeHash *eh, unsigned int v0, unsigned
 {
 	BLI_assert(v0 < v1);
 
-	return ((v0 * 39) ^ (v1 * 31)) % eh->nbuckets;
+	return ((v0 * 65) ^ (v1 * 31)) % eh->nbuckets;
 }
 
 /**
@@ -146,7 +147,7 @@ BLI_INLINE void edgehash_buckets_reserve(EdgeHash *eh, const unsigned int nentri
 
 /**
  * Internal lookup function.
- * Takes a hash argument to avoid calling #ghash_keyhash multiple times.
+ * Takes a hash argument to avoid calling #edgehash_keyhash multiple times.
  */
 BLI_INLINE EdgeEntry *edgehash_lookup_entry_ex(EdgeHash *eh, unsigned int v0, unsigned int v1,
                                                const unsigned int hash)
@@ -190,7 +191,7 @@ static EdgeHash *edgehash_new(const char *info,
 	}
 
 	eh->buckets = MEM_callocN(eh->nbuckets * sizeof(*eh->buckets), "eh buckets");
-	eh->epool = BLI_mempool_create(entry_size, 512, 512, BLI_MEMPOOL_SYSMALLOC);
+	eh->epool = BLI_mempool_create(entry_size, nentries_reserve, 512, BLI_MEMPOOL_NOP);
 
 	return eh;
 }
@@ -256,6 +257,35 @@ BLI_INLINE void edgehash_insert(EdgeHash *eh, unsigned int v0, unsigned int v1, 
 }
 
 /**
+ * Remove the entry and return it, caller must free from eh->epool.
+ */
+static EdgeEntry *edgehash_remove_ex(EdgeHash *eh, unsigned int v0, unsigned int v1, EdgeHashFreeFP valfreefp,
+                                     unsigned int hash)
+{
+	EdgeEntry *e;
+	EdgeEntry *e_prev = NULL;
+
+	BLI_assert(v0 < v1);
+
+	for (e = eh->buckets[hash]; e; e = e->next) {
+		if (UNLIKELY(v0 == e->v0 && v1 == e->v1)) {
+			EdgeEntry *e_next = e->next;
+
+			if (valfreefp) valfreefp(e->val);
+
+			if (e_prev) e_prev->next = e_next;
+			else   eh->buckets[hash] = e_next;
+
+			eh->nentries--;
+			return e;
+		}
+		e_prev = e;
+	}
+
+	return NULL;
+}
+
+/**
  * Run free callbacks for freeing entries.
  */
 static void edgehash_free_cb(EdgeHash *eh, EdgeHashFreeFP valfreefp)
@@ -270,7 +300,7 @@ static void edgehash_free_cb(EdgeHash *eh, EdgeHashFreeFP valfreefp)
 		for (e = eh->buckets[i]; e; ) {
 			EdgeEntry *e_next = e->next;
 
-			if (valfreefp) valfreefp(e->val);
+			valfreefp(e->val);
 
 			e = e_next;
 		}
@@ -356,6 +386,67 @@ void *BLI_edgehash_lookup(EdgeHash *eh, unsigned int v0, unsigned int v1)
 }
 
 /**
+ * A version of #BLI_edgehash_lookup which accepts a fallback argument.
+ */
+void *BLI_edgehash_lookup_default(EdgeHash *eh, unsigned int v0, unsigned int v1, void *val_default)
+{
+	EdgeEntry *e = edgehash_lookup_entry(eh, v0, v1);
+	IS_EDGEHASH_ASSERT(eh);
+	return e ? e->val : val_default;
+}
+
+/**
+ * Remove \a key from \a eh, or return false if the key wasn't found.
+ *
+ * \param key  The key to remove.
+ * \param valfreefp  Optional callback to free the value.
+ * \return true if \a key was removed from \a eh.
+ */
+bool BLI_edgehash_remove(EdgeHash *eh, unsigned int v0, unsigned int v1, EdgeHashFreeFP valfreefp)
+{
+	unsigned int hash;
+	EdgeEntry *e;
+
+	EDGE_ORD(v0, v1); /* ensure v0 is smaller */
+	hash = edgehash_keyhash(eh, v0, v1);
+	e = edgehash_remove_ex(eh, v0, v1, valfreefp, hash);
+	if (e) {
+		BLI_mempool_free(eh->epool, e);
+		return true;
+	}
+	else {
+		return false;
+	}
+}
+
+/* same as above but return the value,
+ * no free value argument since it will be returned */
+/**
+ * Remove \a key from \a eh, returning the value or NULL if the key wasn't found.
+ *
+ * \param key  The key to remove.
+ * \return the value of \a key int \a eh or NULL.
+ */
+void *BLI_edgehash_popkey(EdgeHash *eh, unsigned int v0, unsigned int v1)
+{
+	unsigned int hash;
+	EdgeEntry *e;
+
+	EDGE_ORD(v0, v1); /* ensure v0 is smaller */
+	hash = edgehash_keyhash(eh, v0, v1);
+	e = edgehash_remove_ex(eh, v0, v1, NULL, hash);
+	IS_EDGEHASH_ASSERT(eh);
+	if (e) {
+		void *val = e->val;
+		BLI_mempool_free(eh->epool, e);
+		return val;
+	}
+	else {
+		return NULL;
+	}
+}
+
+/**
  * Return boolean true/false if edge (v0,v1) in hash.
  */
 bool BLI_edgehash_haskey(EdgeHash *eh, unsigned int v0, unsigned int v1)
@@ -394,6 +485,14 @@ void BLI_edgehash_clear_ex(EdgeHash *eh, EdgeHashFreeFP valfreefp,
 	BLI_mempool_clear_ex(eh->epool, nentries_reserve ? (int)nentries_reserve : -1);
 }
 
+/**
+ * Wraps #BLI_edgehash_clear_ex with zero entries reserved.
+ */
+void BLI_edgehash_clear(EdgeHash *eh, EdgeHashFreeFP valfreefp)
+{
+	BLI_edgehash_clear_ex(eh, valfreefp, 0);
+}
+
 void BLI_edgehash_free(EdgeHash *eh, EdgeHashFreeFP valfreefp)
 {
 	BLI_assert((int)eh->nentries == BLI_mempool_count(eh->epool));
@@ -427,75 +526,40 @@ void BLI_edgehash_flag_clear(EdgeHash *eh, unsigned int flag)
 /** \name Iterator API
  * \{ */
 
-struct EdgeHashIterator {
-	EdgeHash *eh;
-	unsigned int curBucket;
-	EdgeEntry *curEntry;
-};
-
-
 /**
  * Create a new EdgeHashIterator. The hash table must not be mutated
  * while the iterator is in use, and the iterator will step exactly
- * BLI_edgehash_size(gh) times before becoming done.
+ * BLI_edgehash_size(eh) times before becoming done.
  */
 EdgeHashIterator *BLI_edgehashIterator_new(EdgeHash *eh)
 {
 	EdgeHashIterator *ehi = MEM_mallocN(sizeof(*ehi), "eh iter");
-	ehi->eh = eh;
-	ehi->curEntry = NULL;
-	ehi->curBucket = UINT_MAX;  /* wraps to zero */
-	while (!ehi->curEntry) {
-		ehi->curBucket++;
-		if (ehi->curBucket == ehi->eh->nbuckets)
-			break;
-		ehi->curEntry = ehi->eh->buckets[ehi->curBucket];
-	}
+	BLI_edgehashIterator_init(ehi, eh);
 	return ehi;
 }
 
 /**
- * Free an EdgeHashIterator.
+ * Init an already allocated EdgeHashIterator. The hash table must not
+ * be mutated while the iterator is in use, and the iterator will
+ * step exactly BLI_edgehash_size(eh) times before becoming done.
+ *
+ * \param ehi The EdgeHashIterator to initialize.
+ * \param eh The EdgeHash to iterate over.
  */
-void BLI_edgehashIterator_free(EdgeHashIterator *ehi)
+void BLI_edgehashIterator_init(EdgeHashIterator *ehi, EdgeHash *eh)
 {
-	MEM_freeN(ehi);
-}
+	ehi->eh = eh;
+	ehi->curEntry = NULL;
+	ehi->curBucket = UINT_MAX;  /* wraps to zero */
+	if (eh->nentries) {
+		do {
+			ehi->curBucket++;
+			if (UNLIKELY(ehi->curBucket == ehi->eh->nbuckets)) {
+				break;
+			}
 
-/**
- * Retrieve the key from an iterator.
- */
-void BLI_edgehashIterator_getKey(EdgeHashIterator *ehi, unsigned int *v0_r, unsigned int *v1_r)
-{
-	if (ehi->curEntry) {
-		*v0_r = ehi->curEntry->v0;
-		*v1_r = ehi->curEntry->v1;
-	}
-}
-
-/**
- * Retrieve the value from an iterator.
- */
-void *BLI_edgehashIterator_getValue(EdgeHashIterator *ehi)
-{
-	return ehi->curEntry ? ehi->curEntry->val : NULL;
-}
-
-/**
- * Retrieve the pointer to the value from an iterator.
- */
-void **BLI_edgehashIterator_getValue_p(EdgeHashIterator *ehi)
-{
-	return ehi->curEntry ? &ehi->curEntry->val : NULL;
-}
-
-/**
- * Set the value for an iterator.
- */
-void BLI_edgehashIterator_setValue(EdgeHashIterator *ehi, void *val)
-{
-	if (ehi->curEntry) {
-		ehi->curEntry->val = val;
+			ehi->curEntry = ehi->eh->buckets[ehi->curBucket];
+		} while (!ehi->curEntry);
 	}
 }
 
@@ -508,7 +572,7 @@ void BLI_edgehashIterator_step(EdgeHashIterator *ehi)
 		ehi->curEntry = ehi->curEntry->next;
 		while (!ehi->curEntry) {
 			ehi->curBucket++;
-			if (ehi->curBucket == ehi->eh->nbuckets) {
+			if (UNLIKELY(ehi->curBucket == ehi->eh->nbuckets)) {
 				break;
 			}
 
@@ -518,12 +582,56 @@ void BLI_edgehashIterator_step(EdgeHashIterator *ehi)
 }
 
 /**
+ * Free an EdgeHashIterator.
+ */
+void BLI_edgehashIterator_free(EdgeHashIterator *ehi)
+{
+	MEM_freeN(ehi);
+}
+
+/* inline functions now */
+#if 0
+/**
+ * Retrieve the key from an iterator.
+ */
+void BLI_edgehashIterator_getKey(EdgeHashIterator *ehi, unsigned int *r_v0, unsigned int *r_v1)
+{
+	*r_v0 = ehi->curEntry->v0;
+	*r_v1 = ehi->curEntry->v1;
+}
+
+/**
+ * Retrieve the value from an iterator.
+ */
+void *BLI_edgehashIterator_getValue(EdgeHashIterator *ehi)
+{
+	return ehi->curEntry->val;
+}
+
+/**
+ * Retrieve the pointer to the value from an iterator.
+ */
+void **BLI_edgehashIterator_getValue_p(EdgeHashIterator *ehi)
+{
+	return &ehi->curEntry->val;
+}
+
+/**
+ * Set the value for an iterator.
+ */
+void BLI_edgehashIterator_setValue(EdgeHashIterator *ehi, void *val)
+{
+	ehi->curEntry->val = val;
+}
+
+/**
  * Determine if an iterator is done.
  */
 bool BLI_edgehashIterator_isDone(EdgeHashIterator *ehi)
 {
 	return (ehi->curEntry == NULL);
 }
+#endif
 
 /** \} */
 
@@ -569,9 +677,12 @@ void BLI_edgeset_insert(EdgeSet *es, unsigned int v0, unsigned int v1)
 }
 
 /**
- * Assign a new value to a key that may already be in edgehash.
+ * A version of BLI_edgeset_insert which checks first if the key is in the set.
+ * \returns true if a new key has been added.
+ *
+ * \note EdgeHash has no equivalent to this because typically the value would be different.
  */
-bool BLI_edgeset_reinsert(EdgeSet *es, unsigned int v0, unsigned int v1)
+bool BLI_edgeset_add(EdgeSet *es, unsigned int v0, unsigned int v1)
 {
 	unsigned int hash;
 	EdgeEntry *e;
@@ -600,4 +711,49 @@ void BLI_edgeset_free(EdgeSet *es)
 	BLI_edgehash_free((EdgeHash *)es, NULL);
 }
 
+void BLI_edgeset_flag_set(EdgeSet *es, unsigned int flag)
+{
+	((EdgeHash *)es)->flag |= flag;
+}
+
+void BLI_edgeset_flag_clear(EdgeSet *es, unsigned int flag)
+{
+	((EdgeHash *)es)->flag &= ~flag;
+}
+
+/** \} */
+
+/** \name Debugging & Introspection
+ * \{ */
+#ifdef DEBUG
+
+/**
+ * Measure how well the hash function performs
+ * (1.0 is approx as good as random distribution).
+ */
+double BLI_edgehash_calc_quality(EdgeHash *eh)
+{
+	uint64_t sum = 0;
+	unsigned int i;
+
+	if (eh->nentries == 0)
+		return -1.0;
+
+	for (i = 0; i < eh->nbuckets; i++) {
+		uint64_t count = 0;
+		EdgeEntry *e;
+		for (e = eh->buckets[i]; e; e = e->next) {
+			count += 1;
+		}
+		sum += count * (count + 1);
+	}
+	return ((double)sum * (double)eh->nbuckets /
+	        ((double)eh->nentries * (eh->nentries + 2 * eh->nbuckets - 1)));
+}
+double BLI_edgeset_calc_quality(EdgeSet *es)
+{
+	return BLI_edgehash_calc_quality((EdgeHash *)es);
+}
+
+#endif
 /** \} */

@@ -33,14 +33,13 @@
 
 #include "DNA_anim_types.h"
 #include "DNA_armature_types.h"
-#include "DNA_key_types.h"
 #include "DNA_mesh_types.h"
-#include "DNA_meshdata_types.h"
 #include "DNA_meta_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_group_types.h"
 #include "DNA_lattice_types.h"
+#include "DNA_modifier_types.h"
 
 #include "BLI_math.h"
 #include "BLI_listbase.h"
@@ -56,6 +55,7 @@
 #include "BKE_object.h"
 #include "BKE_report.h"
 #include "BKE_editmesh.h"
+#include "BKE_modifier.h"
 #include "BKE_multires.h"
 #include "BKE_armature.h"
 #include "BKE_lattice.h"
@@ -69,12 +69,27 @@
 
 #include "ED_armature.h"
 #include "ED_keyframing.h"
-#include "ED_mball.h"
 #include "ED_mesh.h"
 #include "ED_screen.h"
 #include "ED_view3d.h"
 
 #include "object_intern.h"
+
+#if 0
+static void reset_fracturemodifier_matrix(Object* ob, bool do_refresh)
+{
+	/* reset modifier matrix here as well, else clear transforms wont have an effect with Fracture Modifier enabled */
+	FractureModifierData *fmd = (FractureModifierData*) modifiers_findByType(ob, eModifierType_Fracture);
+
+	if (fmd) {
+		zero_m4(fmd->origmat);
+		if (do_refresh)
+		{
+			fmd->fracture->flag |= FM_FLAG_REFRESH;
+		}
+	}
+}
+#endif
 
 /*************************** Clear Transformation ****************************/
 
@@ -233,6 +248,10 @@ static int object_clear_transform_generic_exec(bContext *C, wmOperator *op,
 	CTX_DATA_BEGIN (C, Object *, ob, selected_editable_objects)
 	{
 		if (!(ob->mode & OB_MODE_WEIGHT_PAINT)) {
+
+			/* reset modifier matrix here as well, else clear transforms wont have an effect with Fracture Modifier enabled */
+			//reset_fracturemodifier_matrix(ob, false);
+
 			/* run provided clearing function */
 			clear_func(ob);
 
@@ -322,6 +341,8 @@ static int object_origin_clear_exec(bContext *C, wmOperator *UNUSED(op))
 
 	CTX_DATA_BEGIN (C, Object *, ob, selected_editable_objects)
 	{
+		//reset_fracturemodifier_matrix(ob, true);
+
 		if (ob->parent) {
 			/* vectors pointed to by v1 and v3 will get modified */
 			v1 = ob->loc;
@@ -368,14 +389,14 @@ static void ignore_parent_tx(Main *bmain, Scene *scene, Object *ob)
 	/* a change was made, adjust the children to compensate */
 	for (ob_child = bmain->object.first; ob_child; ob_child = ob_child->id.next) {
 		if (ob_child->parent == ob) {
-			BKE_object_apply_mat4(ob_child, ob_child->obmat, TRUE, FALSE);
+			BKE_object_apply_mat4(ob_child, ob_child->obmat, true, false);
 			BKE_object_workob_calc_parent(scene, ob_child, &workob);
 			invert_m4_m4(ob_child->parentinv, workob.obmat);
 		}
 	}
 }
 
-static int apply_objects_internal(bContext *C, ReportList *reports, int apply_loc, int apply_rot, int apply_scale)
+static int apply_objects_internal(bContext *C, ReportList *reports, bool apply_loc, bool apply_rot, bool apply_scale)
 {
 	Main *bmain = CTX_data_main(C);
 	Scene *scene = CTX_data_scene(C);
@@ -385,7 +406,7 @@ static int apply_objects_internal(bContext *C, ReportList *reports, int apply_lo
 	/* first check if we can execute */
 	CTX_DATA_BEGIN (C, Object *, ob, selected_editable_objects)
 	{
-		if (ELEM6(ob->type, OB_MESH, OB_ARMATURE, OB_LATTICE, OB_MBALL, OB_CURVE, OB_SURF)) {
+		if (ELEM(ob->type, OB_MESH, OB_ARMATURE, OB_LATTICE, OB_MBALL, OB_CURVE, OB_SURF)) {
 			ID *obdata = ob->data;
 			if (ID_REAL_USERS(obdata) > 1) {
 				BKE_reportf(reports, RPT_ERROR,
@@ -432,6 +453,8 @@ static int apply_objects_internal(bContext *C, ReportList *reports, int apply_lo
 	/* now execute */
 	CTX_DATA_BEGIN (C, Object *, ob, selected_editable_objects)
 	{
+		/* reset modifier matrix here as well, else clear transforms wont have an effect with Fracture Modifier enabled */
+		//reset_fracturemodifier_matrix(ob, true);
 
 		/* calculate rotation/scale matrix */
 		if (apply_scale && apply_rot)
@@ -442,7 +465,7 @@ static int apply_objects_internal(bContext *C, ReportList *reports, int apply_lo
 			float tmat[3][3], timat[3][3];
 
 			/* simple rotation matrix */
-			BKE_object_rot_to_mat3(ob, rsmat, TRUE);
+			BKE_object_rot_to_mat3(ob, rsmat, true);
 
 			/* correct for scale, note mul_m3_m3m3 has swapped args! */
 			BKE_object_scale_to_mat3(ob, tmat);
@@ -472,27 +495,12 @@ static int apply_objects_internal(bContext *C, ReportList *reports, int apply_lo
 		/* apply to object data */
 		if (ob->type == OB_MESH) {
 			Mesh *me = ob->data;
-			MVert *mvert;
-			int a;
 
 			if (apply_scale)
 				multiresModifier_scale_disp(scene, ob);
 			
 			/* adjust data */
-			mvert = me->mvert;
-			for (a = 0; a < me->totvert; a++, mvert++)
-				mul_m4_v3(mat, mvert->co);
-			
-			if (me->key) {
-				KeyBlock *kb;
-				
-				for (kb = me->key->block.first; kb; kb = kb->next) {
-					float *fp = kb->data;
-					
-					for (a = 0; a < kb->totelem; a++, fp += 3)
-						mul_m4_v3(mat, fp);
-				}
-			}
+			BKE_mesh_transform(me, mat, true);
 			
 			/* update normals */
 			BKE_mesh_calc_normals(me);
@@ -502,45 +510,17 @@ static int apply_objects_internal(bContext *C, ReportList *reports, int apply_lo
 		}
 		else if (ob->type == OB_LATTICE) {
 			Lattice *lt = ob->data;
-			BPoint *bp = lt->def;
-			int a = lt->pntsu * lt->pntsv * lt->pntsw;
-			
-			while (a--) {
-				mul_m4_v3(mat, bp->vec);
-				bp++;
-			}
+
+			BKE_lattice_transform(lt, mat, true);
 		}
 		else if (ob->type == OB_MBALL) {
 			MetaBall *mb = ob->data;
-			ED_mball_transform(mb, mat);
+			BKE_mball_transform(mb, mat);
 		}
 		else if (ELEM(ob->type, OB_CURVE, OB_SURF)) {
 			Curve *cu = ob->data;
-
-			Nurb *nu;
-			BPoint *bp;
-			BezTriple *bezt;
-			int a;
-
 			scale = mat3_to_scale(rsmat);
-
-			for (nu = cu->nurb.first; nu; nu = nu->next) {
-				if (nu->type == CU_BEZIER) {
-					a = nu->pntsu;
-					for (bezt = nu->bezt; a--; bezt++) {
-						mul_m4_v3(mat, bezt->vec[0]);
-						mul_m4_v3(mat, bezt->vec[1]);
-						mul_m4_v3(mat, bezt->vec[2]);
-						bezt->radius *= scale;
-					}
-					BKE_nurb_handles_calc(nu);
-				}
-				else {
-					a = nu->pntsu * nu->pntsv;
-					for (bp = nu->bp; a--; bp++)
-						mul_m4_v3(mat, bp->vec);
-				}
-			}
+			BKE_curve_transform_ex(cu, mat, true, scale);
 		}
 		else if (ob->type == OB_CAMERA) {
 			MovieClip *clip = BKE_object_movieclip_get(scene, ob, false);
@@ -566,8 +546,14 @@ static int apply_objects_internal(bContext *C, ReportList *reports, int apply_lo
 			 *    and is something that many users would be willing to
 			 *    sacrifice for having an easy way to do this.
 			 */
-			 float max_scale = MAX3(ob->size[0], ob->size[1], ob->size[2]);
-			 ob->empty_drawsize *= max_scale;
+
+			if ((apply_loc == false) &&
+			    (apply_rot == false) &&
+			    (apply_scale == true))
+			{
+				float max_scale = max_fff(fabsf(ob->size[0]), fabsf(ob->size[1]), fabsf(ob->size[2]));
+				ob->empty_drawsize *= max_scale;
+			}
 		}
 		else {
 			continue;
@@ -612,8 +598,11 @@ static int visual_transform_apply_exec(bContext *C, wmOperator *UNUSED(op))
 	
 	CTX_DATA_BEGIN (C, Object *, ob, selected_editable_objects)
 	{
+		/* reset modifier matrix here as well, else clear transforms wont have an effect with Fracture Modifier enabled */
+		//reset_fracturemodifier_matrix(ob, true);
+
 		BKE_object_where_is_calc(scene, ob);
-		BKE_object_apply_mat4(ob, ob->obmat, TRUE, TRUE);
+		BKE_object_apply_mat4(ob, ob->obmat, true, true);
 		BKE_object_where_is_calc(scene, ob);
 
 		/* update for any children that may get moved */
@@ -647,15 +636,16 @@ void OBJECT_OT_visual_transform_apply(wmOperatorType *ot)
 
 static int object_transform_apply_exec(bContext *C, wmOperator *op)
 {
-	const int loc = RNA_boolean_get(op->ptr, "location");
-	const int rot = RNA_boolean_get(op->ptr, "rotation");
-	const int sca = RNA_boolean_get(op->ptr, "scale");
+	const bool loc = RNA_boolean_get(op->ptr, "location");
+	const bool rot = RNA_boolean_get(op->ptr, "rotation");
+	const bool sca = RNA_boolean_get(op->ptr, "scale");
 
 	if (loc || rot || sca) {
 		return apply_objects_internal(C, op->reports, loc, rot, sca);
 	}
 	else {
-		return OPERATOR_CANCELLED;
+		/* allow for redo */
+		return OPERATOR_FINISHED;
 	}
 }
 
@@ -770,6 +760,8 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 		Object *ob = ctx_ob->ptr.data;
 		ob->flag &= ~OB_DONE;
 
+		//reset_fracturemodifier_matrix(ob, true);
+
 		/* move active first */
 		if (ob == obact) {
 			ctx_ob_act = ctx_ob;
@@ -777,7 +769,7 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 	}
 
 	if (ctx_ob_act) {
-		BLI_rotatelist_first(&ctx_data_list, (LinkData *)ctx_ob_act);
+		BLI_listbase_rotate_first(&ctx_data_list, (LinkData *)ctx_ob_act);
 	}
 
 	for (tob = bmain->object.first; tob; tob = tob->id.next) {
@@ -817,7 +809,7 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 							float min[3], max[3];
 							/* only bounds support */
 							INIT_MINMAX(min, max);
-							BKE_object_minmax_dupli(scene, ob, min, max, TRUE);
+							BKE_object_minmax_dupli(scene, ob, min, max, true);
 							mid_v3_v3v3(cent, min, max);
 							invert_m4_m4(ob->imat, ob->obmat);
 							mul_m4_v3(ob->imat, cent);
@@ -827,7 +819,7 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 
 						tot_change++;
 						ob->dup_group->id.flag |= LIB_DOIT;
-						do_inverse_offset = TRUE;
+						do_inverse_offset = true;
 					}
 				}
 			}
@@ -848,7 +840,7 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 
 				tot_change++;
 				me->id.flag |= LIB_DOIT;
-				do_inverse_offset = TRUE;
+				do_inverse_offset = true;
 			}
 			else if (ELEM(ob->type, OB_CURVE, OB_SURF)) {
 				Curve *cu = ob->data;
@@ -866,7 +858,7 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 
 				tot_change++;
 				cu->id.flag |= LIB_DOIT;
-				do_inverse_offset = TRUE;
+				do_inverse_offset = true;
 
 				if (obedit) {
 					if (centermode == GEOMETRY_TO_ORIGIN) {
@@ -880,7 +872,7 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 
 				Curve *cu = ob->data;
 
-				if (cu->bb == NULL && (centermode != ORIGIN_TO_CURSOR)) {
+				if (ob->bb == NULL && (centermode != ORIGIN_TO_CURSOR)) {
 					/* do nothing*/
 				}
 				else {
@@ -888,8 +880,9 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 						/* done */
 					}
 					else {
-						cent[0] = 0.5f * (cu->bb->vec[4][0] + cu->bb->vec[0][0]);
-						cent[1] = 0.5f * (cu->bb->vec[0][1] + cu->bb->vec[2][1]) - 0.5f;    /* extra 0.5 is the height o above line */
+						/* extra 0.5 is the height o above line */
+						cent[0] = 0.5f * (ob->bb->vec[4][0] + ob->bb->vec[0][0]);
+						cent[1] = 0.5f * (ob->bb->vec[0][1] + ob->bb->vec[2][1]);
 					}
 
 					cent[2] = 0.0f;
@@ -899,7 +892,7 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 
 					tot_change++;
 					cu->id.flag |= LIB_DOIT;
-					do_inverse_offset = TRUE;
+					do_inverse_offset = true;
 				}
 			}
 			else if (ob->type == OB_ARMATURE) {
@@ -920,7 +913,7 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 
 					tot_change++;
 					arm->id.flag |= LIB_DOIT;
-					/* do_inverse_offset = TRUE; */ /* docenter_armature() handles this */
+					/* do_inverse_offset = true; */ /* docenter_armature() handles this */
 
 					BKE_object_where_is_calc(scene, ob);
 					BKE_pose_where_is(scene, ob); /* needed for bone parents */
@@ -943,7 +936,7 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 
 				tot_change++;
 				mb->id.flag |= LIB_DOIT;
-				do_inverse_offset = TRUE;
+				do_inverse_offset = true;
 
 				if (obedit) {
 					if (centermode == GEOMETRY_TO_ORIGIN) {
@@ -964,7 +957,7 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 
 				tot_change++;
 				lt->id.flag |= LIB_DOIT;
-				do_inverse_offset = TRUE;
+				do_inverse_offset = true;
 			}
 
 			/* offset other selected objects */
@@ -1009,7 +1002,7 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 						DAG_id_tag_update(&ob_other->id, OB_RECALC_OB | OB_RECALC_DATA);
 
 						copy_v3_v3(centn, cent);
-						mul_mat3_m4_v3(ob_other->obmat, centn); /* ommit translation part */
+						mul_mat3_m4_v3(ob_other->obmat, centn); /* omit translation part */
 						add_v3_v3(ob_other->loc, centn);
 
 						BKE_object_where_is_calc(scene, ob_other);

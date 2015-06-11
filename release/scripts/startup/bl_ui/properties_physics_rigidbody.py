@@ -21,7 +21,7 @@ import bpy
 from bpy.types import Panel
 
 
-class PHYSICS_PT_rigidbody_panel():
+class PHYSICS_PT_rigidbody_panel:
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "physics"
@@ -48,6 +48,12 @@ class PHYSICS_PT_rigid_body(PHYSICS_PT_rigidbody_panel, Panel):
             if rbo.type == 'ACTIVE':
                 row.prop(rbo, "enabled", text="Dynamic")
             row.prop(rbo, "kinematic", text="Animated")
+            if rbo.type == 'ACTIVE':
+                row = layout.row()
+                row.prop(rbo, "use_kinematic_deactivation", text="Triggered")
+                row.prop(rbo, "is_trigger")
+                row = layout.row()
+                row.prop(rbo, "is_ghost")
 
             if rbo.type == 'ACTIVE':
                 layout.prop(rbo, "mass")

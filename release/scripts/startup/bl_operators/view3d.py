@@ -19,7 +19,6 @@
 # <pep8-80 compliant>
 
 import bpy
-import mathutils
 from bpy.types import Operator
 from bpy.props import BoolProperty
 
@@ -169,6 +168,13 @@ class VIEW3D_OT_select_or_deselect_all(Operator):
             description="Use object selection (editmode only)",
             default=False,
             )
+
+    @classmethod
+    def poll(cls, context):
+        active_object = context.active_object
+        if active_object:
+            return active_object.mode in {'EDIT', 'OBJECT', 'POSE'}
+        return True
 
     def invoke(self, context, event):
         x = event.mouse_region_x

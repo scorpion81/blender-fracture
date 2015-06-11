@@ -81,8 +81,16 @@ void RenderLayersBaseProg::doInterpolation(float output[4], float x, float y, Pi
 		case COM_PS_NEAREST: {
 			int ix = x;
 			int iy = y;
-			if (ix < 0 || iy < 0 || ix >= width || iy >= height)
+			if (ix < 0 || iy < 0 || ix >= width || iy >= height) {
+				if (this->m_elementsize == 1)
+					output[0] = 0.0f;
+				else if (this->m_elementsize == 3)
+					zero_v3(output);
+				else
+					zero_v4(output);
 				break;
+				
+			}
 
 			offset = (iy * width + ix) * this->m_elementsize;
 
@@ -102,15 +110,6 @@ void RenderLayersBaseProg::doInterpolation(float output[4], float x, float y, Pi
 		case COM_PS_BICUBIC:
 			BLI_bicubic_interpolation_fl(this->m_inputBuffer, output, width, height, this->m_elementsize, x, y);
 			break;
-	}
-
-	if (this->m_elementsize == 1) {
-		output[1] = 0.0f;
-		output[2] = 0.0f;
-		output[3] = 0.0f;
-	}
-	else if (this->m_elementsize == 3) {
-		output[3] = 1.0f;
 	}
 }
 
@@ -134,16 +133,44 @@ void RenderLayersBaseProg::executePixelSampled(float output[4], float x, float y
 
 	int ix = x - dx;
 	int iy = y - dy;
-#else
-	int ix = x;
-	int iy = y;
+#endif
+
+#ifndef NDEBUG
+	{
+		const DataType data_type = this->getOutputSocket()->getDataType();
+		int actual_element_size = this->m_elementsize;
+		int expected_element_size;
+		if (data_type == COM_DT_VALUE) {
+			expected_element_size = 1;
+		}
+		else if (data_type == COM_DT_VECTOR) {
+			expected_element_size = 3;
+		}
+		else if (data_type == COM_DT_COLOR) {
+			expected_element_size = 4;
+		}
+		else {
+			BLI_assert(!"Something horribly wrong just happened");
+		}
+		BLI_assert(expected_element_size == actual_element_size);
+	}
 #endif
 
 	if (this->m_inputBuffer == NULL) {
-		zero_v4(output);
+		int elemsize = this->m_elementsize;
+		if (elemsize == 1) {
+			output[0] = 0.0f;
+		}
+		else if (elemsize == 3) {
+			zero_v3(output);
+		}
+		else {
+			BLI_assert(elemsize == 4);
+			zero_v4(output);
+		}
 	}
 	else {
-		doInterpolation(output, ix, iy, sampler);
+		doInterpolation(output, x, y, sampler);
 	}
 }
 
@@ -187,6 +214,19 @@ RenderLayersAOOperation::RenderLayersAOOperation() : RenderLayersBaseProg(SCE_PA
 	this->addOutputSocket(COM_DT_COLOR);
 }
 
+
+void RenderLayersAOOperation::executePixelSampled(float output[4], float x, float y, PixelSampler sampler)
+{
+	float *inputBuffer = this->getInputBuffer();
+	if (inputBuffer == NULL) {
+		zero_v3(output);
+	}
+	else {
+		doInterpolation(output, x, y, sampler);
+	}
+	output[3] = 1.0f;
+}
+
 /* ******** Render Layers Alpha Operation ******** */
 
 RenderLayersAlphaProg::RenderLayersAlphaProg() : RenderLayersBaseProg(SCE_PASS_COMBINED, 4)
@@ -196,22 +236,15 @@ RenderLayersAlphaProg::RenderLayersAlphaProg() : RenderLayersBaseProg(SCE_PASS_C
 
 void RenderLayersAlphaProg::executePixelSampled(float output[4], float x, float y, PixelSampler sampler)
 {
-	int ix = x;
-	int iy = y;
 	float *inputBuffer = this->getInputBuffer();
 
-	if (inputBuffer == NULL || ix < 0 || iy < 0 || ix >= (int)this->getWidth() || iy >= (int)this->getHeight() ) {
+	if (inputBuffer == NULL) {
 		output[0] = 0.0f;
-		output[1] = 0.0f;
-		output[2] = 0.0f;
-		output[3] = 0.0f;
 	}
 	else {
-		unsigned int offset = (iy * this->getWidth() + ix) * 4;
-		output[0] = inputBuffer[offset + 3];
-		output[1] = 0.0f;
-		output[2] = 0.0f;
-		output[3] = 0.0f;
+		float temp[4];
+		doInterpolation(temp, x, y, sampler);
+		output[0] = temp[3];
 	}
 }
 
@@ -226,7 +259,7 @@ RenderLayersColorOperation::RenderLayersColorOperation() : RenderLayersBaseProg(
 
 RenderLayersCyclesOperation::RenderLayersCyclesOperation(int pass) : RenderLayersBaseProg(pass, 3)
 {
-	this->addOutputSocket(COM_DT_COLOR);
+	this->addOutputSocket(COM_DT_VECTOR);
 }
 
 /* ******** Render Layers Depth Operation ******** */
@@ -244,16 +277,10 @@ void RenderLayersDepthProg::executePixelSampled(float output[4], float x, float 
 
 	if (inputBuffer == NULL || ix < 0 || iy < 0 || ix >= (int)this->getWidth() || iy >= (int)this->getHeight() ) {
 		output[0] = 0.0f;
-		output[1] = 0.0f;
-		output[2] = 0.0f;
-		output[3] = 0.0f;
 	}
 	else {
 		unsigned int offset = (iy * this->getWidth() + ix);
 		output[0] = inputBuffer[offset];
-		output[1] = 0.0f;
-		output[2] = 0.0f;
-		output[3] = 0.0f;
 	}
 }
 
@@ -261,21 +288,21 @@ void RenderLayersDepthProg::executePixelSampled(float output[4], float x, float 
 
 RenderLayersDiffuseOperation::RenderLayersDiffuseOperation() : RenderLayersBaseProg(SCE_PASS_DIFFUSE, 3)
 {
-	this->addOutputSocket(COM_DT_COLOR);
+	this->addOutputSocket(COM_DT_VECTOR);
 }
 
 /* ******** Render Layers Emit Operation ******** */
 
 RenderLayersEmitOperation::RenderLayersEmitOperation() : RenderLayersBaseProg(SCE_PASS_EMIT, 3)
 {
-	this->addOutputSocket(COM_DT_COLOR);
+	this->addOutputSocket(COM_DT_VECTOR);
 }
 
 /* ******** Render Layers Environment Operation ******** */
 
 RenderLayersEnvironmentOperation::RenderLayersEnvironmentOperation() : RenderLayersBaseProg(SCE_PASS_ENVIRONMENT, 3)
 {
-	this->addOutputSocket(COM_DT_COLOR);
+	this->addOutputSocket(COM_DT_VECTOR);
 }
 
 /* ******** Render Layers Image Operation ******** */
@@ -289,7 +316,7 @@ RenderLayersColorProg::RenderLayersColorProg() : RenderLayersBaseProg(SCE_PASS_C
 
 RenderLayersIndirectOperation::RenderLayersIndirectOperation() : RenderLayersBaseProg(SCE_PASS_INDIRECT, 3)
 {
-	this->addOutputSocket(COM_DT_COLOR);
+	this->addOutputSocket(COM_DT_VECTOR);
 }
 
 /* ******** Render Layers Material Index Operation ******** */
@@ -324,28 +351,28 @@ RenderLayersObjectIndexOperation::RenderLayersObjectIndexOperation() : RenderLay
 
 RenderLayersReflectionOperation::RenderLayersReflectionOperation() : RenderLayersBaseProg(SCE_PASS_REFLECT, 3)
 {
-	this->addOutputSocket(COM_DT_COLOR);
+	this->addOutputSocket(COM_DT_VECTOR);
 }
 
 /* ******** Render Layers Refraction Operation ******** */
 
 RenderLayersRefractionOperation::RenderLayersRefractionOperation() : RenderLayersBaseProg(SCE_PASS_REFRACT, 3)
 {
-	this->addOutputSocket(COM_DT_COLOR);
+	this->addOutputSocket(COM_DT_VECTOR);
 }
 
 /* ******** Render Layers Shadow Operation ******** */
 
 RenderLayersShadowOperation::RenderLayersShadowOperation() : RenderLayersBaseProg(SCE_PASS_SHADOW, 3)
 {
-	this->addOutputSocket(COM_DT_COLOR);
+	this->addOutputSocket(COM_DT_VECTOR);
 }
 
 /* ******** Render Layers Specular Operation ******** */
 
 RenderLayersSpecularOperation::RenderLayersSpecularOperation() : RenderLayersBaseProg(SCE_PASS_SPEC, 3)
 {
-	this->addOutputSocket(COM_DT_COLOR);
+	this->addOutputSocket(COM_DT_VECTOR);
 }
 
 /* ******** Render Layers Speed Operation ******** */

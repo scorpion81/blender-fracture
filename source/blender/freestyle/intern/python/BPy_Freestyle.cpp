@@ -60,6 +60,8 @@ extern "C" {
 
 #include "FRS_freestyle.h"
 #include "RNA_access.h"
+#include "BKE_appdir.h"
+#include "DNA_scene_types.h"
 #include "bpy_rna.h" /* pyrna_struct_CreatePyObject() */
 
 static char Freestyle_getCurrentScene___doc__[] =
@@ -77,7 +79,7 @@ static PyObject *Freestyle_getCurrentScene(PyObject *self)
 		return NULL;
 	}
 	PointerRNA ptr_scene;
-	RNA_pointer_create(NULL, &RNA_Scene, freestyle_scene, &ptr_scene);
+	RNA_pointer_create(&freestyle_scene->id, &RNA_Scene, freestyle_scene, &ptr_scene);
 	return pyrna_struct_CreatePyObject(&ptr_scene);
 }
 
@@ -85,24 +87,24 @@ static PyObject *Freestyle_getCurrentScene(PyObject *self)
 
 static int ramp_blend_type(const char *type)
 {
-	if (!strcmp(type, "MIX"))           return MA_RAMP_BLEND;
-	if (!strcmp(type, "ADD"))           return MA_RAMP_ADD;
-	if (!strcmp(type, "MULTIPLY"))      return MA_RAMP_MULT;
-	if (!strcmp(type, "SUBTRACT"))      return MA_RAMP_SUB;
-	if (!strcmp(type, "SCREEN"))        return MA_RAMP_SCREEN;
-	if (!strcmp(type, "DIVIDE"))        return MA_RAMP_DIV;
-	if (!strcmp(type, "DIFFERENCE"))    return MA_RAMP_DIFF;
-	if (!strcmp(type, "DARKEN"))        return MA_RAMP_DARK;
-	if (!strcmp(type, "LIGHTEN"))       return MA_RAMP_LIGHT;
-	if (!strcmp(type, "OVERLAY"))       return MA_RAMP_OVERLAY;
-	if (!strcmp(type, "DODGE"))         return MA_RAMP_DODGE;
-	if (!strcmp(type, "BURN"))          return MA_RAMP_BURN;
-	if (!strcmp(type, "HUE"))           return MA_RAMP_HUE;
-	if (!strcmp(type, "SATURATION"))    return MA_RAMP_SAT;
-	if (!strcmp(type, "VALUE"))         return MA_RAMP_VAL;
-	if (!strcmp(type, "COLOR"))         return MA_RAMP_COLOR;
-	if (!strcmp(type, "SOFT_LIGHT"))    return MA_RAMP_SOFT;
-	if (!strcmp(type, "LINEAR_LIGHT"))  return MA_RAMP_LINEAR;
+	if (STREQ(type, "MIX"))           return MA_RAMP_BLEND;
+	if (STREQ(type, "ADD"))           return MA_RAMP_ADD;
+	if (STREQ(type, "MULTIPLY"))      return MA_RAMP_MULT;
+	if (STREQ(type, "SUBTRACT"))      return MA_RAMP_SUB;
+	if (STREQ(type, "SCREEN"))        return MA_RAMP_SCREEN;
+	if (STREQ(type, "DIVIDE"))        return MA_RAMP_DIV;
+	if (STREQ(type, "DIFFERENCE"))    return MA_RAMP_DIFF;
+	if (STREQ(type, "DARKEN"))        return MA_RAMP_DARK;
+	if (STREQ(type, "LIGHTEN"))       return MA_RAMP_LIGHT;
+	if (STREQ(type, "OVERLAY"))       return MA_RAMP_OVERLAY;
+	if (STREQ(type, "DODGE"))         return MA_RAMP_DODGE;
+	if (STREQ(type, "BURN"))          return MA_RAMP_BURN;
+	if (STREQ(type, "HUE"))           return MA_RAMP_HUE;
+	if (STREQ(type, "SATURATION"))    return MA_RAMP_SAT;
+	if (STREQ(type, "VALUE"))         return MA_RAMP_VAL;
+	if (STREQ(type, "COLOR"))         return MA_RAMP_COLOR;
+	if (STREQ(type, "SOFT_LIGHT"))    return MA_RAMP_SOFT;
+	if (STREQ(type, "LINEAR_LIGHT"))  return MA_RAMP_LINEAR;
 	return -1;
 }
 
@@ -138,18 +140,20 @@ static PyObject *Freestyle_blendRamp(PyObject *self, PyObject *args)
 		PyErr_SetString(PyExc_TypeError, "argument 1 is an unknown ramp blend type");
 		return NULL;
 	}
-	if (!float_array_from_PyObject(obj1, a, 3)) {
-		PyErr_SetString(PyExc_TypeError,
-		                "argument 2 must be a 3D vector (either a tuple/list of 3 elements or Vector)");
+	if (mathutils_array_parse(a, 3, 3, obj1,
+	                          "argument 2 must be a 3D vector "
+	                          "(either a tuple/list of 3 elements or Vector)") == -1)
+	{
 		return NULL;
 	}
-	if (!float_array_from_PyObject(obj2, b, 3)) {
-		PyErr_SetString(PyExc_TypeError,
-		                "argument 4 must be a 3D vector (either a tuple/list of 3 elements or Vector)");
+	if (mathutils_array_parse(b, 3, 3, obj2,
+	                          "argument 4 must be a 3D vector "
+	                          "(either a tuple/list of 3 elements or Vector)") == -1)
+	{
 		return NULL;
 	}
 	ramp_blend(type, a, fac, b);
-	return Vector_CreatePyObject(a, 3, Py_NEW, NULL);
+	return Vector_CreatePyObject(a, 3, NULL);
 }
 
 #include "BKE_texture.h" /* do_colorband() */
@@ -183,7 +187,7 @@ static PyObject *Freestyle_evaluateColorRamp(PyObject *self, PyObject *args)
 		PyErr_SetString(PyExc_ValueError, "failed to evaluate the color ramp");
 		return NULL;
 	}
-	return Vector_CreatePyObject(out, 4, Py_NEW, NULL);
+	return Vector_CreatePyObject(out, 4, NULL);
 }
 
 #include "DNA_color_types.h"
@@ -301,6 +305,7 @@ static char module_docstring[] =
 "\n"
 "  - :class:`BackboneStretcherShader`\n"
 "  - :class:`BezierCurveShader`\n"
+"  - :class:`BlenderTextureShader`\n"
 "  - :class:`CalligraphicShader`\n"
 "  - :class:`ColorNoiseShader`\n"
 "  - :class:`ColorVariationPatternShader`\n"
@@ -315,6 +320,7 @@ static char module_docstring[] =
 "  - :class:`SmoothingShader`\n"
 "  - :class:`SpatialNoiseShader`\n"
 "  - :class:`StrokeTextureShader`\n"
+"  - :class:`StrokeTextureStepShader`\n"
 "  - :class:`TextureAssignerShader`\n"
 "  - :class:`ThicknessNoiseShader`\n"
 "  - :class:`ThicknessVariationPatternShader`\n"
@@ -485,6 +491,23 @@ PyObject *Freestyle_Init(void)
 	if (!module)
 		return NULL;
 	PyDict_SetItemString(PySys_GetObject("modules"), module_definition.m_name, module);
+
+	// update 'sys.path' for Freestyle Python API modules
+	const char * const path = BKE_appdir_folder_id(BLENDER_SYSTEM_SCRIPTS, "freestyle");
+	if (path) {
+		char modpath[FILE_MAX];
+		BLI_join_dirfile(modpath, sizeof(modpath), path, "modules");
+		PyObject *sys_path = PySys_GetObject("path"); /* borrow */
+		PyObject *py_modpath = PyUnicode_FromString(modpath);
+		PyList_Append(sys_path, py_modpath);
+		Py_DECREF(py_modpath);
+#if 0
+		printf("Adding Python path: %s\n", modpath);
+#endif
+	}
+	else {
+		printf("Freestyle: couldn't find 'scripts/freestyle/modules', Freestyle won't work properly.\n");
+	}
 	
 	// attach its classes (adding the object types to the module)
 	

@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include "camera.h"
@@ -80,22 +80,13 @@ void Pass::add(PassType type, vector<Pass>& passes)
 			pass.components = 1;
 			break;
 		case PASS_OBJECT_ID:
-			pass.components = 1;
-			pass.filter = false;
-			break;
 		case PASS_MATERIAL_ID:
 			pass.components = 1;
 			pass.filter = false;
 			break;
 		case PASS_DIFFUSE_COLOR:
-			pass.components = 4;
-			break;
 		case PASS_GLOSSY_COLOR:
-			pass.components = 4;
-			break;
 		case PASS_TRANSMISSION_COLOR:
-			pass.components = 4;
-			break;
 		case PASS_SUBSURFACE_COLOR:
 			pass.components = 4;
 			break;
@@ -141,9 +132,6 @@ void Pass::add(PassType type, vector<Pass>& passes)
 			break;
 
 		case PASS_EMISSION:
-			pass.components = 4;
-			pass.exposure = true;
-			break;
 		case PASS_BACKGROUND:
 			pass.components = 4;
 			pass.exposure = true;
@@ -155,6 +143,15 @@ void Pass::add(PassType type, vector<Pass>& passes)
 			pass.components = 4;
 			pass.exposure = false;
 			break;
+		case PASS_LIGHT:
+			/* ignores */
+			break;
+#ifdef WITH_CYCLES_DEBUG
+		case PASS_BVH_TRAVERSAL_STEPS:
+			pass.components = 1;
+			pass.exposure = false;
+			break;
+#endif
 	}
 
 	passes.push_back(pass);
@@ -261,6 +258,7 @@ Film::Film()
 {
 	exposure = 0.8f;
 	Pass::add(PASS_COMBINED, passes);
+	pass_alpha_threshold = 0.5f;
 
 	filter_type = FILTER_BOX;
 	filter_width = 1.0f;
@@ -271,6 +269,7 @@ Film::Film()
 	mist_falloff = 1.0f;
 
 	use_light_visibility = false;
+	use_sample_clamp = false;
 
 	need_update = true;
 }
@@ -292,7 +291,7 @@ void Film::device_update(Device *device, DeviceScene *dscene, Scene *scene)
 	kfilm->exposure = exposure;
 	kfilm->pass_flag = 0;
 	kfilm->pass_stride = 0;
-	kfilm->use_light_pass = use_light_visibility;
+	kfilm->use_light_pass = use_light_visibility || use_sample_clamp;
 
 	foreach(Pass& pass, passes) {
 		kfilm->pass_flag |= pass.type;
@@ -391,6 +390,17 @@ void Film::device_update(Device *device, DeviceScene *dscene, Scene *scene)
 				kfilm->pass_shadow = kfilm->pass_stride;
 				kfilm->use_light_pass = 1;
 				break;
+
+			case PASS_LIGHT:
+				kfilm->use_light_pass = 1;
+				break;
+
+#ifdef WITH_CYCLES_DEBUG
+			case PASS_BVH_TRAVERSAL_STEPS:
+				kfilm->pass_bvh_traversal_steps = kfilm->pass_stride;
+				break;
+#endif
+
 			case PASS_NONE:
 				break;
 		}
@@ -399,6 +409,7 @@ void Film::device_update(Device *device, DeviceScene *dscene, Scene *scene)
 	}
 
 	kfilm->pass_stride = align_up(kfilm->pass_stride, 4);
+	kfilm->pass_alpha_threshold = pass_alpha_threshold;
 
 	/* update filter table */
 	vector<float> table = filter_table(filter_type, filter_width);
@@ -425,8 +436,13 @@ bool Film::modified(const Film& film)
 {
 	return !(exposure == film.exposure
 		&& Pass::equals(passes, film.passes)
+		&& pass_alpha_threshold == film.pass_alpha_threshold
+		&& use_sample_clamp == film.use_sample_clamp
 		&& filter_type == film.filter_type
-		&& filter_width == film.filter_width);
+		&& filter_width == film.filter_width
+		&& mist_start == film.mist_start
+		&& mist_depth == film.mist_depth
+		&& mist_falloff == film.mist_falloff);
 }
 
 void Film::tag_passes_update(Scene *scene, const vector<Pass>& passes_)

@@ -30,6 +30,7 @@ Import ('env')
 SConscript(['audaspace/SConscript',
             'string/SConscript',
             'ghost/SConscript',
+            'glew-mx/SConscript',
             'guardedalloc/SConscript',
             'moto/SConscript',
             'memutil/SConscript/',
@@ -53,17 +54,11 @@ if env['WITH_BF_FLUID']:
 if env['WITH_BF_CYCLES']:
     SConscript(['cycles/SConscript'])
 
-if env['WITH_BF_BOOLEAN']:
-    SConscript(['bsp/SConscript'])
-
 if env['WITH_BF_INTERNATIONAL']:
     SConscript(['locale/SConscript'])
 
 if env['WITH_BF_BULLET']:
     SConscript (['rigidbody/SConscript'])
-
-if env['WITH_BF_COMPOSITOR']:
-    SConscript (['opencl/SConscript'])
 
 if env['OURPLATFORM'] in ('win32-vc', 'win32-mingw', 'win64-mingw', 'linuxcross', 'win64-vc'):
     SConscript(['utfconv/SConscript'])

@@ -21,7 +21,6 @@
  */
 
 #include "COM_ViewerOperation.h"
-#include "COM_SocketConnection.h"
 #include "BLI_listbase.h"
 #include "BKE_image.h"
 #include "WM_api.h"
@@ -49,7 +48,7 @@ ViewerOperation::ViewerOperation() : NodeOperation()
 	this->m_doDepthBuffer = false;
 	this->m_viewSettings = NULL;
 	this->m_displaySettings = NULL;
-	this->m_ignoreAlpha = false;
+	this->m_useAlphaInput = false;
 	
 	this->addInputSocket(COM_DT_COLOR);
 	this->addInputSocket(COM_DT_VALUE);
@@ -102,19 +101,12 @@ void ViewerOperation::executeRegion(rcti *rect, unsigned int tileNumber)
 	for (y = y1; y < y2 && (!breaked); y++) {
 		for (x = x1; x < x2; x++) {
 			this->m_imageInput->readSampled(&(buffer[offset4]), x, y, COM_PS_NEAREST);
-			if (this->m_ignoreAlpha) {
-				buffer[offset4 + 3] = 1.0f;
+			if (this->m_useAlphaInput) {
+				this->m_alphaInput->readSampled(alpha, x, y, COM_PS_NEAREST);
+				buffer[offset4 + 3] = alpha[0];
 			}
-			else {
-				if (this->m_alphaInput != NULL) {
-					this->m_alphaInput->readSampled(alpha, x, y, COM_PS_NEAREST);
-					buffer[offset4 + 3] = alpha[0];
-				}
-			}
-			if (m_depthInput) {
-				this->m_depthInput->readSampled(depth, x, y, COM_PS_NEAREST);
-				depthbuffer[offset] = depth[0];
-			}
+			this->m_depthInput->readSampled(depth, x, y, COM_PS_NEAREST);
+			depthbuffer[offset] = depth[0];
 
 			offset ++;
 			offset4 += 4;
@@ -143,7 +135,9 @@ void ViewerOperation::initImage()
 		IMB_freezbuffloatImBuf(ibuf);
 		ibuf->x = getWidth();
 		ibuf->y = getHeight();
-		imb_addrectfloatImBuf(ibuf);
+		/* zero size can happen if no image buffers exist to define a sensible resolution */
+		if (ibuf->x > 0 && ibuf->y > 0)
+			imb_addrectfloatImBuf(ibuf);
 		ima->ok = IMA_OK_LOADED;
 
 		ibuf->userflags |= IB_DISPLAY_BUFFER_INVALID;

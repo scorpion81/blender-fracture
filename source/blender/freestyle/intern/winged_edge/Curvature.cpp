@@ -45,7 +45,6 @@
 
 #include <assert.h>
 #include <cstdlib> // for malloc and free
-#include <math.h>
 #include <set>
 #include <stack>
 
@@ -54,7 +53,7 @@
 
 #include "../geometry/normal_cycle.h"
 
-#include "../system/FreestyleConfig.h"
+#include "BLI_math.h"
 
 namespace Freestyle {
 
@@ -130,7 +129,7 @@ static real angle_from_cotan(WVertex *vo, WVertex *v1, WVertex *v2)
  *      VisMath '02, Berlin (Germany)
  *      http://www-grail.usc.edu/pubs.html
  *
- *  Returns: %TRUE if the operator could be evaluated, %FALSE if the evaluation failed for some reason (@v is
+ *  Returns: %true if the operator could be evaluated, %false if the evaluation failed for some reason (@v is
  *  boundary or is the endpoint of a non-manifold edge.)
  */
 bool gts_vertex_mean_curvature_normal(WVertex *v, Vec3r &Kh)
@@ -192,7 +191,7 @@ bool gts_vertex_mean_curvature_normal(WVertex *v, Vec3r &Kh)
  *      VisMath '02, Berlin (Germany)
  *      http://www-grail.usc.edu/pubs.html
  *
- *  Returns: %TRUE if the operator could be evaluated, %FALSE if the evaluation failed for some reason (@v is
+ *  Returns: %true if the operator could be evaluated, %false if the evaluation failed for some reason (@v is
  * boundary or is the endpoint of a non-manifold edge.)
  */
 bool gts_vertex_gaussian_curvature(WVertex *v, real *Kg)
@@ -212,8 +211,9 @@ bool gts_vertex_gaussian_curvature(WVertex *v, real *Kg)
 	}
 
 	WVertex::incoming_edge_iterator itE;
-	for (itE = v->incoming_edges_begin(); itE != v->incoming_edges_end(); itE++)
-		 area += (*itE)->GetaFace()->getArea();
+	for (itE = v->incoming_edges_begin(); itE != v->incoming_edges_end(); itE++) {
+		area += (*itE)->GetaFace()->getArea();
+	}
 
 	for (itE = v->incoming_edges_begin(); itE != v->incoming_edges_end(); itE++) {
 		WOEdge *e = (*itE)->getPrevOnFace();
@@ -536,11 +536,12 @@ void gts_vertex_principal_directions(WVertex *v, Vec3r Kh, real Kg, Vec3r &e1, V
 
 namespace OGF {
 
+#if 0
 inline static real angle(WOEdge *h)
 {
 	const Vec3r& n1 = h->GetbFace()->GetNormal();
 	const Vec3r& n2 = h->GetaFace()->GetNormal();
-	const Vec3r v = h->getVec3r();
+	const Vec3r v = h->GetVec();
 	real sine = (n1 ^ n2) * v / v.norm();
 	if (sine >= 1.0) {
 		return M_PI / 2.0;
@@ -550,6 +551,7 @@ inline static real angle(WOEdge *h)
 	}
 	return ::asin(sine);
 }
+#endif
 
 // precondition1: P is inside the sphere
 // precondition2: P,V points to the outside of the sphere (i.e. OP.V > 0)

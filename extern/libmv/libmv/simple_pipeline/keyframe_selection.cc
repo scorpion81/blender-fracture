@@ -33,22 +33,6 @@
 namespace libmv {
 namespace {
 
-Vec2 NorrmalizedToPixelSpace(const Vec2 &vec,
-                             const CameraIntrinsics &intrinsics) {
-  Vec2 result;
-
-  double focal_length_x = intrinsics.focal_length_x();
-  double focal_length_y = intrinsics.focal_length_y();
-
-  double principal_point_x = intrinsics.principal_point_x();
-  double principal_point_y = intrinsics.principal_point_y();
-
-  result(0) = vec(0) * focal_length_x + principal_point_x;
-  result(1) = vec(1) * focal_length_y + principal_point_y;
-
-  return result;
-}
-
 Mat3 IntrinsicsNormalizationMatrix(const CameraIntrinsics &intrinsics) {
   Mat3 T = Mat3::Identity(), S = Mat3::Identity();
 
@@ -85,63 +69,79 @@ double GRIC(const Vec &e, int d, int k, int r) {
   // http://www.robots.ox.ac.uk/~vgg/publications/papers/torr99.ps.gz
   double lambda3 = 2.0;
 
-  // measurement error of tracker
+  // Variance of tracker position. Physically, this is typically about 0.1px,
+  // and when squared becomes 0.01 px^2.
   double sigma2 = 0.01;
 
-  // Actual GRIC computation
-  double gric_result = 0.0;
-
+  // Finally, calculate the GRIC score.
+  double gric = 0.0;
   for (int i = 0; i < n; i++) {
-    double rho = std::min(e(i) * e(i) / sigma2, lambda3 * (r - d));
-    gric_result += rho;
+    gric += std::min(e(i) * e(i) / sigma2, lambda3 * (r - d));
   }
-
-  gric_result += lambda1 * d * n;
-  gric_result += lambda2 * k;
-
-  return gric_result;
+  gric += lambda1 * d * n;
+  gric += lambda2 * k;
+  return gric;
 }
 
-// Compute a generalized inverse using eigen value decomposition.
-// It'll actually also zero 7 last eigen values to deal with
-// gauges, since this function is used to compute variance of
+// Compute a generalized inverse using eigen value decomposition, clamping the
+// smallest eigenvalues if requested. This is needed to compute the variance of
 // reconstructed 3D points.
 //
-// TODO(sergey): Could be generalized by making it so number
-//               of values to be zeroed is passed by an argument
-//               and moved to numeric module.
-Mat pseudoInverse(const Mat &matrix) {
-  Eigen::EigenSolver<Mat> eigenSolver(matrix);
-  Mat D = eigenSolver.pseudoEigenvalueMatrix();
-  Mat V = eigenSolver.pseudoEigenvectors();
+// TODO(keir): Consider moving this into the numeric code, since this is not
+// related to keyframe selection.
+Mat PseudoInverseWithClampedEigenvalues(const Mat &matrix,
+                                        int num_eigenvalues_to_clamp) {
+  Eigen::EigenSolver<Mat> eigen_solver(matrix);
+  Mat D = eigen_solver.pseudoEigenvalueMatrix();
+  Mat V = eigen_solver.pseudoEigenvectors();
 
+  // Clamp too-small singular values to zero to prevent numeric blowup.
   double epsilon = std::numeric_limits<double>::epsilon();
-
   for (int i = 0; i < D.cols(); ++i) {
-    if (D(i, i) > epsilon)
+    if (D(i, i) > epsilon) {
       D(i, i) = 1.0 / D(i, i);
-    else
+    } else {
       D(i, i) = 0.0;
+    }
   }
 
-  // Zero last 7 (which corresponds to smallest eigen values).
-  // 7 equals to the number of gauge freedoms.
-  for (int i = D.cols() - 7; i < D.cols(); ++i)
+  // Apply the clamp.
+  for (int i = D.cols() - num_eigenvalues_to_clamp; i < D.cols(); ++i) {
     D(i, i) = 0.0;
-
+  }
   return V * D * V.inverse();
 }
+
+void FilterZeroWeightMarkersFromTracks(const Tracks &tracks,
+                                       Tracks *filtered_tracks) {
+  vector<Marker> all_markers = tracks.AllMarkers();
+
+  for (int i = 0; i < all_markers.size(); ++i) {
+    Marker &marker = all_markers[i];
+    if (marker.weight != 0.0) {
+      filtered_tracks->Insert(marker.image,
+                              marker.track,
+                              marker.x,
+                              marker.y,
+                              marker.weight);
+    }
+  }
+}
+
 }  // namespace
 
-void SelectKeyframesBasedOnGRICAndVariance(const Tracks &tracks,
-                                           CameraIntrinsics &intrinsics,
+void SelectKeyframesBasedOnGRICAndVariance(const Tracks &_tracks,
+                                           const CameraIntrinsics &intrinsics,
                                            vector<int> &keyframes) {
   // Mirza Tahir Ahmed, Matthew N. Dailey
   // Robust key frame extraction for 3D reconstruction from video streams
   //
   // http://www.cs.ait.ac.th/~mdailey/papers/Tahir-KeyFrame.pdf
 
-  int max_image = tracks.MaxImage();
+  Tracks filtered_tracks;
+  FilterZeroWeightMarkersFromTracks(_tracks, &filtered_tracks);
+
+  int max_image = filtered_tracks.MaxImage();
   int next_keyframe = 1;
   int number_keyframes = 0;
 
@@ -173,11 +173,13 @@ void SelectKeyframesBasedOnGRICAndVariance(const Tracks &tracks,
          candidate_image++) {
       // Conjunction of all markers from both keyframes
       vector<Marker> all_markers =
-        tracks.MarkersInBothImages(current_keyframe, candidate_image);
+        filtered_tracks.MarkersInBothImages(current_keyframe,
+                                            candidate_image);
 
       // Match keypoints between frames current_keyframe and candidate_image
       vector<Marker> tracked_markers =
-        tracks.MarkersForTracksInBothImages(current_keyframe, candidate_image);
+        filtered_tracks.MarkersForTracksInBothImages(current_keyframe,
+                                                     candidate_image);
 
       // Correspondences in normalized space
       Mat x1, x2;
@@ -218,9 +220,9 @@ void SelectKeyframesBasedOnGRICAndVariance(const Tracks &tracks,
 
       EstimateFundamentalOptions estimate_fundamental_options;
       EstimateFundamentalFromCorrespondences(x1,
-                                        x2,
-                                        estimate_fundamental_options,
-                                        &F);
+                                             x2,
+                                             estimate_fundamental_options,
+                                             &F);
 
       // Convert fundamental to original pixel space.
       F = N_inverse * F * N;
@@ -234,10 +236,13 @@ void SelectKeyframesBasedOnGRICAndVariance(const Tracks &tracks,
       H_e.resize(x1.cols());
       F_e.resize(x1.cols());
       for (int i = 0; i < x1.cols(); i++) {
-        Vec2 current_x1 =
-          NorrmalizedToPixelSpace(Vec2(x1(0, i), x1(1, i)), intrinsics);
-        Vec2 current_x2 =
-          NorrmalizedToPixelSpace(Vec2(x2(0, i), x2(1, i)), intrinsics);
+        Vec2 current_x1, current_x2;
+
+        intrinsics.NormalizedToImageSpace(x1(0, i), x1(1, i),
+                                          &current_x1(0), &current_x1(1));
+
+        intrinsics.NormalizedToImageSpace(x2(0, i), x2(1, i),
+                                          &current_x2(0), &current_x2(1));
 
         H_e(i) = SymmetricGeometricDistance(H, current_x1, current_x2);
         F_e(i) = SymmetricEpipolarDistance(F, current_x1, current_x2);
@@ -356,7 +361,7 @@ void SelectKeyframesBasedOnGRICAndVariance(const Tracks &tracks,
       success_intersects_factor_best = success_intersects_factor;
 
       Tracks two_frames_tracks(tracked_markers);
-      CameraIntrinsics empty_intrinsics;
+      PolynomialCameraIntrinsics empty_intrinsics;
       BundleEvaluation evaluation;
       evaluation.evaluate_jacobian = true;
 
@@ -370,7 +375,8 @@ void SelectKeyframesBasedOnGRICAndVariance(const Tracks &tracks,
       Mat &jacobian = evaluation.jacobian;
 
       Mat JT_J = jacobian.transpose() * jacobian;
-      Mat JT_J_inv = pseudoInverse(JT_J);
+      // There are 7 degrees of freedom, so clamp them out.
+      Mat JT_J_inv = PseudoInverseWithClampedEigenvalues(JT_J, 7);
 
       Mat temp_derived = JT_J * JT_J_inv * JT_J;
       bool is_inversed = (temp_derived - JT_J).cwiseAbs2().sum() <

@@ -44,9 +44,9 @@ void BM_face_hide_set(BMFace *f, const bool hide);
 void BM_elem_select_set(BMesh *bm, BMElem *ele, const bool select);
 
 void BM_mesh_elem_hflag_enable_test(BMesh *bm, const char htype, const char hflag,
-                                    const bool respecthide, const char hflag_test);
+                                    const bool respecthide, const bool overwrite, const char hflag_test);
 void BM_mesh_elem_hflag_disable_test(BMesh *bm, const char htype, const char hflag,
-                                     const bool respecthide, const char hflag_test);
+                                     const bool respecthide, const bool overwrite, const char hflag_test);
 
 void BM_mesh_elem_hflag_enable_all(BMesh *bm, const char htype, const char hflag,
                                    const bool respecthide);
@@ -58,6 +58,10 @@ void BM_mesh_elem_hflag_disable_all(BMesh *bm, const char htype, const char hfla
 void BM_vert_select_set(BMesh *bm, BMVert *v, const bool select);
 void BM_edge_select_set(BMesh *bm, BMEdge *e, const bool select);
 void BM_face_select_set(BMesh *bm, BMFace *f, const bool select);
+
+/* lower level functions which don't do flushing */
+void BM_edge_select_set_noflush(BMesh *bm, BMEdge *e, const bool select);
+void BM_face_select_set_noflush(BMesh *bm, BMFace *e, const bool select);
 
 void BM_mesh_select_mode_clean_ex(BMesh *bm, const short selectmode);
 void BM_mesh_select_mode_clean(BMesh *bm);
@@ -98,7 +102,14 @@ void _bm_select_history_store_after(BMesh *bm,  BMEditSelection *ese_ref, BMHead
 void _bm_select_history_store_after_notest(BMesh *bm,  BMEditSelection *ese_ref, BMHeader *ele);
 
 void BM_select_history_validate(BMesh *bm);
-void BM_select_history_clear(BMesh *em);
+void BM_select_history_clear(BMesh *bm);
 bool BM_select_history_active_get(BMesh *bm, struct BMEditSelection *ese);
+struct GHash *BM_select_history_map_create(BMesh *bm);
+
+#define BM_SELECT_HISTORY_BACKUP(bm) { \
+	ListBase _bm_prev_selected = (bm)->selected; BLI_listbase_clear(&(bm)->selected)
+
+#define BM_SELECT_HISTORY_RESTORE(bm) \
+	(bm)->selected = _bm_prev_selected; } (void)0
 
 #endif /* __BMESH_MARKING_H__ */

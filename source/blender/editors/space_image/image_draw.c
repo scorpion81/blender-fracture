@@ -40,6 +40,7 @@
 #include "DNA_scene_types.h"
 #include "DNA_screen_types.h"
 #include "DNA_brush_types.h"
+#include "DNA_mask_types.h"
 
 #include "PIL_time.h"
 
@@ -52,6 +53,7 @@
 #include "IMB_imbuf.h"
 #include "IMB_imbuf_types.h"
 #include "IMB_colormanagement.h"
+#include "IMB_moviecache.h"
 
 #include "BKE_context.h"
 #include "BKE_global.h"
@@ -65,33 +67,42 @@
 
 #include "ED_gpencil.h"
 #include "ED_image.h"
+#include "ED_mask.h"
+#include "ED_render.h"
 #include "ED_screen.h"
 
 #include "UI_interface.h"
 #include "UI_resources.h"
 #include "UI_view2d.h"
 
-#include "WM_api.h"
-#include "WM_types.h"
-
 #include "RE_pipeline.h"
 #include "RE_engine.h"
 
 #include "image_intern.h"
 
-static void draw_render_info(Scene *scene, Image *ima, ARegion *ar, float zoomx, float zoomy)
+static void draw_render_info(const bContext *C,
+                             Scene *scene,
+                             Image *ima,
+                             ARegion *ar,
+                             float zoomx,
+                             float zoomy)
 {
 	RenderResult *rr;
 	Render *re = RE_GetRender(scene->id.name);
+	RenderData *rd = RE_engine_get_render_data(re);
+	Scene *stats_scene = ED_render_job_get_scene(C);
+	if (stats_scene == NULL) {
+		stats_scene = CTX_data_scene(C);
+	}
 
-	rr = BKE_image_acquire_renderresult(scene, ima);
+	rr = BKE_image_acquire_renderresult(stats_scene, ima);
 
 	if (rr && rr->text) {
 		float fill_color[4] = {0.0f, 0.0f, 0.0f, 0.25f};
 		ED_region_info_draw(ar, rr->text, 1, fill_color);
 	}
 
-	BKE_image_release_renderresult(scene, ima);
+	BKE_image_release_renderresult(stats_scene, ima);
 
 	if (re) {
 		int total_tiles;
@@ -104,54 +115,22 @@ static void draw_render_info(Scene *scene, Image *ima, ARegion *ar, float zoomx,
 			rcti *tile;
 
 			/* find window pixel coordinates of origin */
-			UI_view2d_to_region_no_clip(&ar->v2d, 0.0f, 0.0f, &x, &y);
+			UI_view2d_view_to_region(&ar->v2d, 0.0f, 0.0f, &x, &y);
 
 			glPushMatrix();
 			glTranslatef(x, y, 0.0f);
 			glScalef(zoomx, zoomy, 1.0f);
 
-			if (scene->r.mode & R_BORDER) {
-				glTranslatef((int)(-scene->r.border.xmin * scene->r.xsch * scene->r.size / 100.0f),
-				             (int)(-scene->r.border.ymin * scene->r.ysch * scene->r.size / 100.0f),
+			if (rd->mode & R_BORDER) {
+				glTranslatef((int)(-rd->border.xmin * rd->xsch * rd->size / 100.0f),
+				             (int)(-rd->border.ymin * rd->ysch * rd->size / 100.0f),
 				             0.0f);
 			}
 
 			UI_ThemeColor(TH_FACE_SELECT);
 
 			for (i = 0, tile = tiles; i < total_tiles; i++, tile++) {
-				float delta_x = 4.0f * UI_DPI_FAC / zoomx;
-				float delta_y = 4.0f * UI_DPI_FAC / zoomy;
-
-				delta_x = min_ff(delta_x, tile->xmax - tile->xmin);
-				delta_y = min_ff(delta_y, tile->ymax - tile->ymin);
-
-				/* left bottom corner */
-				glBegin(GL_LINE_STRIP);
-				glVertex2f(tile->xmin, tile->ymin + delta_y);
-				glVertex2f(tile->xmin, tile->ymin);
-				glVertex2f(tile->xmin + delta_x, tile->ymin);
-				glEnd();
-
-				/* left top corner */
-				glBegin(GL_LINE_STRIP);
-				glVertex2f(tile->xmin, tile->ymax - delta_y);
-				glVertex2f(tile->xmin, tile->ymax);
-				glVertex2f(tile->xmin + delta_x, tile->ymax);
-				glEnd();
-
-				/* right bottom corner */
-				glBegin(GL_LINE_STRIP);
-				glVertex2f(tile->xmax - delta_x, tile->ymin);
-				glVertex2f(tile->xmax, tile->ymin);
-				glVertex2f(tile->xmax, tile->ymin + delta_y);
-				glEnd();
-
-				/* right top corner */
-				glBegin(GL_LINE_STRIP);
-				glVertex2f(tile->xmax - delta_x, tile->ymax);
-				glVertex2f(tile->xmax, tile->ymax);
-				glVertex2f(tile->xmax, tile->ymax - delta_y);
-				glEnd();
+				glaDrawBorderCorners(tile, zoomx, zoomy);
 			}
 
 			MEM_freeN(tiles);
@@ -162,7 +141,7 @@ static void draw_render_info(Scene *scene, Image *ima, ARegion *ar, float zoomx,
 }
 
 /* used by node view too */
-void ED_image_draw_info(Scene *scene, ARegion *ar, int color_manage, int use_default_view, int channels, int x, int y,
+void ED_image_draw_info(Scene *scene, ARegion *ar, bool color_manage, bool use_default_view, int channels, int x, int y,
                         const unsigned char cp[4], const float fp[4], const float linearcol[4], int *zp, float *zpf)
 {
 	rcti color_rect;
@@ -506,7 +485,7 @@ static void draw_image_buffer(const bContext *C, SpaceImage *sima, ARegion *ar, 
 	glaDefine2DArea(&ar->winrct);
 	
 	/* find window pixel coordinates of origin */
-	UI_view2d_to_region_no_clip(&ar->v2d, fx, fy, &x, &y);
+	UI_view2d_view_to_region(&ar->v2d, fx, fy, &x, &y);
 
 	/* this part is generic image display */
 	if (sima->flag & SI_SHOW_ALPHA) {
@@ -597,7 +576,7 @@ static void draw_image_buffer_tiled(SpaceImage *sima, ARegion *ar, Scene *scene,
 	/* draw repeated */
 	for (sy = 0; sy + dy <= ibuf->y; sy += dy) {
 		for (sx = 0; sx + dx <= ibuf->x; sx += dx) {
-			UI_view2d_to_region_no_clip(&ar->v2d, fx + (float)sx / (float)ibuf->x, fy + (float)sy / (float)ibuf->y, &x, &y);
+			UI_view2d_view_to_region(&ar->v2d, fx + (float)sx / (float)ibuf->x, fy + (float)sy / (float)ibuf->y, &x, &y);
 
 			glaDrawPixelsSafe(x, y, dx, dy, dx, GL_RGBA, GL_UNSIGNED_BYTE, rect);
 		}
@@ -639,19 +618,19 @@ static void draw_image_buffer_repeated(const bContext *C, SpaceImage *sima, AReg
 /* draw uv edit */
 
 /* draw grease pencil */
-void draw_image_grease_pencil(bContext *C, short onlyv2d)
+void draw_image_grease_pencil(bContext *C, bool onlyv2d)
 {
 	/* draw in View2D space? */
 	if (onlyv2d) {
 		/* draw grease-pencil ('image' strokes) */
-		draw_gpencil_2dimage(C);
+		ED_gpencil_draw_2dimage(C);
 	}
 	else {
 		/* assume that UI_view2d_restore(C) has been called... */
 		//SpaceImage *sima = (SpaceImage *)CTX_wm_space_data(C);
 		
 		/* draw grease-pencil ('screen' strokes) */
-		draw_gpencil_view2d(C, 0);
+		ED_gpencil_draw_view2d(C, 0);
 	}
 }
 
@@ -776,7 +755,7 @@ static void draw_image_paint_helpers(const bContext *C, ARegion *ar, Scene *scen
 		clonerect = get_alpha_clone_image(C, scene, &w, &h);
 
 		if (clonerect) {
-			UI_view2d_to_region_no_clip(&ar->v2d, brush->clone.offset[0], brush->clone.offset[1], &x, &y);
+			UI_view2d_view_to_region(&ar->v2d, brush->clone.offset[0], brush->clone.offset[1], &x, &y);
 
 			glPixelZoom(zoomx, zoomy);
 
@@ -882,5 +861,66 @@ void draw_image_main(const bContext *C, ARegion *ar)
 
 	/* render info */
 	if (ima && show_render)
-		draw_render_info(scene, ima, ar, zoomx, zoomy);
+		draw_render_info(C, sima->iuser.scene, ima, ar, zoomx, zoomy);
+}
+
+bool ED_space_image_show_cache(SpaceImage *sima)
+{
+	Image *image = ED_space_image(sima);
+	Mask *mask = NULL;
+	if (sima->mode == SI_MODE_MASK) {
+		mask = ED_space_image_get_mask(sima);
+	}
+	if (image == NULL && mask == NULL) {
+		return false;
+	}
+	if (mask == NULL) {
+		return ELEM(image->source, IMA_SRC_SEQUENCE, IMA_SRC_MOVIE);
+	}
+	return true;
+}
+
+void draw_image_cache(const bContext *C, ARegion *ar)
+{
+	SpaceImage *sima = CTX_wm_space_image(C);
+	Scene *scene = CTX_data_scene(C);
+	Image *image = ED_space_image(sima);
+	float x, cfra = CFRA, sfra = SFRA, efra = EFRA, framelen = ar->winx / (efra - sfra + 1);
+	Mask *mask = NULL;
+
+	if (!ED_space_image_show_cache(sima)) {
+		return;
+	}
+
+	if (sima->mode == SI_MODE_MASK) {
+		mask = ED_space_image_get_mask(sima);
+	}
+
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	/* Draw cache background. */
+	ED_region_cache_draw_background(ar);
+
+	/* Draw cached segments. */
+	if (image != NULL && image->cache != NULL && ELEM(image->source, IMA_SRC_SEQUENCE, IMA_SRC_MOVIE)) {
+		int num_segments = 0;
+		int *points = NULL;
+
+		IMB_moviecache_get_cache_segments(image->cache, IMB_PROXY_NONE, 0, &num_segments, &points);
+		ED_region_cache_draw_cached_segments(ar, num_segments, points, sfra + sima->iuser.offset, efra + sima->iuser.offset);
+	}
+
+	glDisable(GL_BLEND);
+
+	/* Draw current frame. */
+	x = (cfra - sfra) / (efra - sfra + 1) * ar->winx;
+
+	UI_ThemeColor(TH_CFRAME);
+	glRecti(x, 0, x + ceilf(framelen), 8 * UI_DPI_FAC);
+	ED_region_cache_draw_curfra_label(cfra, x, 8.0f * UI_DPI_FAC);
+
+	if (mask != NULL) {
+		ED_mask_draw_frames(mask, ar, cfra, sfra, efra);
+	}
 }

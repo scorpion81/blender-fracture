@@ -28,6 +28,7 @@ Physics Constraints (bge.constraints)
    - :class:`ANGULAR_CONSTRAINT`
    - :class:`CONETWIST_CONSTRAINT`
    - :class:`VEHICLE_CONSTRAINT`
+   - :class:`GENERIC_6DOF_CONSTRAINT`
 
    :type constrainttype: int
 
@@ -49,7 +50,7 @@ Physics Constraints (bge.constraints)
    :arg axisZ: Z axis
    :type axisZ: float
 
-   :arg flag: .. to do
+   :arg flag: 128 to disable collision between linked bodies
    :type flag: int
 
 .. attribute:: error
@@ -78,7 +79,7 @@ Physics Constraints (bge.constraints)
 
    :return: a vehicle constraint object.
    :rtype: :class:`bge.types.KX_VehicleWrapper`
-   
+
 .. function:: getCharacter(gameobj)
 
    :arg gameobj: The game object with the character physics.
@@ -237,101 +238,101 @@ Physics Constraints (bge.constraints)
    Not implemented.
 
 .. data:: DBG_NODEBUG
-   
+
    .. note::
       Debug mode to be used with function :class:`setDebugMode`
-   
+
    No debug.
 
 .. data:: DBG_DRAWWIREFRAME
-   
+
    .. note::
       Debug mode to be used with function :class:`setDebugMode`
-   
+
    Draw wireframe in debug.
 
 .. data:: DBG_DRAWAABB
-   
+
    .. note::
       Debug mode to be used with function :class:`setDebugMode`
-   
+
    Draw Axis Aligned Bounding Box in debug.
 
 .. data:: DBG_DRAWFREATURESTEXT
-   
+
    .. note::
       Debug mode to be used with function :class:`setDebugMode`
-   
+
    Draw freatures text in debug.
 
 .. data:: DBG_DRAWCONTACTPOINTS
-   
+
    .. note::
       Debug mode to be used with function :class:`setDebugMode`
-   
+
    Draw contact points in debug.
 
 .. data:: DBG_NOHELPTEXT
-   
+
    .. note::
       Debug mode to be used with function :class:`setDebugMode`
-   
+
    Debug without help text.
 
 .. data:: DBG_DRAWTEXT
-   
+
    .. note::
       Debug mode to be used with function :class:`setDebugMode`
-   
+
    Draw text in debug.
 
 .. data:: DBG_PROFILETIMINGS
-   
+
    .. note::
       Debug mode to be used with function :class:`setDebugMode`
-   
+
    Draw profile timings in debug.
 
 .. data:: DBG_ENABLESATCOMPARISION
-   
+
    .. note::
       Debug mode to be used with function :class:`setDebugMode`
-   
+
    Enable sat comparision in debug.
 
 .. data:: DBG_DISABLEBULLETLCP
-   
+
    .. note::
       Debug mode to be used with function :class:`setDebugMode`
-   
+
    Disable Bullet LCP.
 
 .. data:: DBG_ENABLECCD
 
    .. note::
       Debug mode to be used with function :class:`setDebugMode`
-   
+
    Enable Continous Colision Detection in debug.
 
 .. data:: DBG_DRAWCONSTRAINTS
-   
+
    .. note::
       Debug mode to be used with function :class:`setDebugMode`
-   
+
    Draw constraints in debug.
 
 .. data:: DBG_DRAWCONSTRAINTLIMITS
-   
+
    .. note::
       Debug mode to be used with function :class:`setDebugMode`
-   
+
    Draw constraint limits in debug.
 
 .. data:: DBG_FASTWIREFRAME
-   
+
    .. note::
       Debug mode to be used with function :class:`setDebugMode`
-   
+
    Draw a fast wireframe in debug.
 
 .. data:: POINTTOPOINT_CONSTRAINT
@@ -363,6 +364,13 @@ Physics Constraints (bge.constraints)
    .. to do
 
 .. data:: VEHICLE_CONSTRAINT
+
+   .. note::
+      Constraint type to be used with function :class:`createConstraint`
+
+   .. to do
+
+.. data:: GENERIC_6DOF_CONSTRAINT
 
    .. note::
       Constraint type to be used with function :class:`createConstraint`

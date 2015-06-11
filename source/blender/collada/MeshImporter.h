@@ -77,6 +77,14 @@ public:
 	void getUV(int uv_index, float *uv);
 };
 
+class VCOLDataWrapper
+{
+	COLLADAFW::MeshVertexData *mVData;
+public:
+	VCOLDataWrapper(COLLADAFW::MeshVertexData& vdata);
+	void get_vcol(int v_index, MLoopCol *mloopcol);
+};
+
 class MeshImporter : public MeshImporterBase
 {
 private:
@@ -113,6 +121,12 @@ private:
 					 COLLADAFW::IndexList& index_list,
 					 int count);
 
+	void set_vcol(MLoopCol *mloopcol,
+		          VCOLDataWrapper &vob,
+		          int loop_index,
+		          COLLADAFW::IndexList& index_list,
+		          int count);
+
 #ifdef COLLADA_DEBUG
 	void print_index_list(COLLADAFW::IndexList& index_list);
 #endif
@@ -146,8 +160,6 @@ private:
 public:
 
 	MeshImporter(UnitConverter *unitconv, ArmatureImporter *arm, Scene *sce);
-
-	void bmeshConversion();
 
 	virtual Object *get_object_by_geom_uid(const COLLADAFW::UniqueId& geom_uid);
 

@@ -39,6 +39,8 @@
 
 #include "MEM_guardedalloc.h"
 
+#include "GPU_compositing.h"
+
 #include "DNA_scene_types.h"
 #include "DNA_screen_types.h"
 #include "DNA_space_types.h"
@@ -46,6 +48,7 @@
 
 #include "BLI_listbase.h"
 #include "BLI_utildefines.h"
+#include "BLI_rect.h"
 
 #include "BKE_idprop.h"
 #include "BKE_screen.h"
@@ -137,7 +140,7 @@ void BKE_spacetype_register(SpaceType *st)
 	BLI_addtail(&spacetypes, st);
 }
 
-int BKE_spacetype_exists(int spaceid)
+bool BKE_spacetype_exists(int spaceid)
 {
 	return BKE_spacetype_from_id(spaceid) != NULL;
 }
@@ -171,11 +174,11 @@ ARegion *BKE_area_region_copy(SpaceType *st, ARegion *ar)
 	Panel *pa, *newpa, *patab;
 	
 	newar->prev = newar->next = NULL;
-	newar->handlers.first = newar->handlers.last = NULL;
-	newar->uiblocks.first = newar->uiblocks.last = NULL;
-	newar->panels_category.first = newar->panels_category.last = NULL;
-	newar->panels_category_active.first = newar->panels_category_active.last = NULL;
-	newar->ui_lists.first = newar->ui_lists.last = NULL;
+	BLI_listbase_clear(&newar->handlers);
+	BLI_listbase_clear(&newar->uiblocks);
+	BLI_listbase_clear(&newar->panels_category);
+	BLI_listbase_clear(&newar->panels_category_active);
+	BLI_listbase_clear(&newar->ui_lists);
 	newar->swinid = 0;
 	
 	/* use optional regiondata callback */
@@ -191,9 +194,12 @@ ARegion *BKE_area_region_copy(SpaceType *st, ARegion *ar)
 	if (ar->v2d.tab_offset)
 		newar->v2d.tab_offset = MEM_dupallocN(ar->v2d.tab_offset);
 	
-	newar->panels.first = newar->panels.last = NULL;
+	BLI_listbase_clear(&newar->panels);
 	BLI_duplicatelist(&newar->panels, &ar->panels);
-	
+
+	BLI_listbase_clear(&newar->ui_previews);
+	BLI_duplicatelist(&newar->ui_previews, &ar->ui_previews);
+
 	/* copy panel pointers */
 	for (newpa = newar->panels.first; newpa; newpa = newpa->next) {
 		patab = newar->panels.first;
@@ -218,7 +224,7 @@ static void region_copylist(SpaceType *st, ListBase *lb1, ListBase *lb2)
 	ARegion *ar;
 	
 	/* to be sure */
-	lb1->first = lb1->last = NULL;
+	BLI_listbase_clear(lb1);
 	
 	for (ar = lb2->first; ar; ar = ar->next) {
 		ARegion *arnew = BKE_area_region_copy(st, ar);
@@ -232,7 +238,7 @@ void BKE_spacedata_copylist(ListBase *lb1, ListBase *lb2)
 {
 	SpaceLink *sl;
 	
-	lb1->first = lb1->last = NULL;    /* to be sure */
+	BLI_listbase_clear(lb1);  /* to be sure */
 	
 	for (sl = lb2->first; sl; sl = sl->next) {
 		SpaceType *st = BKE_spacetype_from_id(sl->spacetype);
@@ -261,7 +267,7 @@ void BKE_spacedata_draw_locks(int set)
 			if (set) 
 				art->do_lock = art->lock;
 			else 
-				art->do_lock = FALSE;
+				art->do_lock = false;
 		}
 	}
 }
@@ -308,6 +314,7 @@ void BKE_area_region_free(SpaceType *st, ARegion *ar)
 		}
 	}
 	BLI_freelistN(&ar->ui_lists);
+	BLI_freelistN(&ar->ui_previews);
 	BLI_freelistN(&ar->panels_category);
 	BLI_freelistN(&ar->panels_category_active);
 }
@@ -398,16 +405,34 @@ ARegion *BKE_area_find_region_active_win(ScrArea *sa)
 	return NULL;
 }
 
-/* note, using this function is generally a last resort, you really want to be
+/**
+ * \note, ideally we can get the area from the context,
+ * there are a few places however where this isn't practical.
+ */
+ScrArea *BKE_screen_find_area_from_space(struct bScreen *sc, SpaceLink *sl)
+{
+	ScrArea *sa;
+
+	for (sa = sc->areabase.first; sa; sa = sa->next) {
+		if (BLI_findindex(&sa->spacedata, sl) != -1) {
+			break;
+		}
+	}
+
+	return sa;
+}
+
+/**
+ * \note Using this function is generally a last resort, you really want to be
  * using the context when you can - campbell
- * -1 for any type */
+ */
 ScrArea *BKE_screen_find_big_area(bScreen *sc, const int spacetype, const short min)
 {
 	ScrArea *sa, *big = NULL;
 	int size, maxsize = 0;
 
 	for (sa = sc->areabase.first; sa; sa = sa->next) {
-		if ((spacetype == -1) || sa->spacetype == spacetype) {
+		if ((spacetype == SPACE_TYPE_ANY) || (sa->spacetype == spacetype)) {
 			if (min <= sa->winx && min <= sa->winy) {
 				size = sa->winx * sa->winy;
 				if (size > maxsize) {
@@ -419,6 +444,48 @@ ScrArea *BKE_screen_find_big_area(bScreen *sc, const int spacetype, const short 
 	}
 
 	return big;
+}
+
+ScrArea *BKE_screen_find_area_xy(bScreen *sc, const int spacetype, int x, int y)
+{
+	ScrArea *sa, *sa_found = NULL;
+
+	for (sa = sc->areabase.first; sa; sa = sa->next) {
+		if (BLI_rcti_isect_pt(&sa->totrct, x, y)) {
+			if ((spacetype == SPACE_TYPE_ANY) || (sa->spacetype == spacetype)) {
+				sa_found = sa;
+			}
+			break;
+		}
+	}
+	return sa_found;
+}
+
+
+/**
+ * Utility function to get the active layer to use when adding new objects.
+ */
+unsigned int BKE_screen_view3d_layer_active_ex(const View3D *v3d, const Scene *scene, bool use_localvd)
+{
+	unsigned int lay;
+	if ((v3d == NULL) || (v3d->scenelock && !v3d->localvd)) {
+		lay = scene->layact;
+	}
+	else {
+		lay = v3d->layact;
+	}
+
+	if (use_localvd) {
+		if (v3d && v3d->localvd) {
+			lay |= v3d->lay;
+		}
+	}
+
+	return lay;
+}
+unsigned int BKE_screen_view3d_layer_active(const struct View3D *v3d, const struct Scene *scene)
+{
+	return BKE_screen_view3d_layer_active_ex(v3d, scene, true);
 }
 
 void BKE_screen_view3d_sync(View3D *v3d, struct Scene *scene)
@@ -532,4 +599,27 @@ float BKE_screen_view3d_zoom_to_fac(float camzoom)
 float BKE_screen_view3d_zoom_from_fac(float zoomfac)
 {
 	return ((sqrtf(4.0f * zoomfac) - (float)M_SQRT2) * 50.0f);
+}
+
+void BKE_screen_gpu_fx_validate(GPUFXSettings *fx_settings)
+{
+	/* currently we use DOF from the camera _only_,
+	 * so we never allocate this, only copy from the Camera */
+#if 0
+	if ((fx_settings->dof == NULL) &&
+	    (fx_settings->fx_flag & GPU_FX_FLAG_DOF))
+	{
+		GPUDOFSettings *fx_dof;
+		fx_dof = fx_settings->dof = MEM_callocN(sizeof(GPUDOFSettings), __func__);
+	}
+#endif
+
+	if ((fx_settings->ssao == NULL) &&
+	    (fx_settings->fx_flag & GPU_FX_FLAG_SSAO))
+	{
+		GPUSSAOSettings *fx_ssao;
+		fx_ssao = fx_settings->ssao = MEM_callocN(sizeof(GPUSSAOSettings), __func__);
+
+		GPU_fx_compositor_init_ssao_settings(fx_ssao);
+	}
 }

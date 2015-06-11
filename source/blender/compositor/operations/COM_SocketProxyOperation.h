@@ -26,14 +26,17 @@
 #include "COM_NodeOperation.h"
 
 class SocketProxyOperation : public NodeOperation {
-private:
-	SocketReader *m_inputOperation;
 public:
-	SocketProxyOperation(DataType type);
-	void executePixelSampled(float output[4], float x, float y, PixelSampler sampler);
+	SocketProxyOperation(DataType type, bool use_conversion);
 	
-	void initExecution();
-	void deinitExecution();
+	bool isProxyOperation() const { return true; }
+	bool useDatatypeConversion() const { return m_use_conversion; }
+	
+	bool getUseConversion() const { return m_use_conversion; }
+	void setUseConversion(bool use_conversion) { m_use_conversion = use_conversion; }
+	
+private:
+	bool m_use_conversion;
 };
 
 #endif

@@ -47,171 +47,185 @@ static bNodeSocketTemplate sh_node_math_out[] = {
 
 static void node_shader_exec_math(void *UNUSED(data), int UNUSED(thread), bNode *node, bNodeExecData *UNUSED(execdata), bNodeStack **in, bNodeStack **out) 
 {
+	float a, b, r = 0.0f;
+	
+	nodestack_get_vec(&a, SOCK_FLOAT, in[0]);
+	nodestack_get_vec(&b, SOCK_FLOAT, in[1]);
+	
 	switch (node->custom1) {
 	
-		case 0: /* Add */
-			out[0]->vec[0] = in[0]->vec[0] + in[1]->vec[0];
+		case NODE_MATH_ADD:
+			r = a + b;
 			break;
-		case 1: /* Subtract */
-			out[0]->vec[0] = in[0]->vec[0] - in[1]->vec[0];
+		case NODE_MATH_SUB:
+			r = a - b;
 			break;
-		case 2: /* Multiply */
-			out[0]->vec[0] = in[0]->vec[0] * in[1]->vec[0];
+		case NODE_MATH_MUL:
+			r = a * b;
 			break;
-		case 3: /* Divide */
+		case NODE_MATH_DIVIDE:
 		{
-			if (in[1]->vec[0] == 0) /* We don't want to divide by zero. */
-				out[0]->vec[0] = 0.0;
+			if (b == 0) /* We don't want to divide by zero. */
+				r = 0.0;
 			else
-				out[0]->vec[0] = in[0]->vec[0] / in[1]->vec[0];
+				r = a / b;
 			break;
 		}
-		case 4: /* Sine */
-		{
-			if (in[0]->hasinput || !in[1]->hasinput)  /* This one only takes one input, so we've got to choose. */
-				out[0]->vec[0] = sin(in[0]->vec[0]);
-			else
-				out[0]->vec[0] = sin(in[1]->vec[0]);
-			break;
-		}
-		case 5: /* Cosine */
+		case NODE_MATH_SIN:
 		{
 			if (in[0]->hasinput || !in[1]->hasinput)  /* This one only takes one input, so we've got to choose. */
-				out[0]->vec[0] = cos(in[0]->vec[0]);
+				r = sinf(a);
 			else
-				out[0]->vec[0] = cos(in[1]->vec[0]);
+				r = sinf(b);
 			break;
 		}
-		case 6: /* Tangent */
+		case NODE_MATH_COS:
 		{
 			if (in[0]->hasinput || !in[1]->hasinput)  /* This one only takes one input, so we've got to choose. */
-				out[0]->vec[0] = tan(in[0]->vec[0]);
+				r = cosf(a);
 			else
-				out[0]->vec[0] = tan(in[1]->vec[0]);
+				r = cosf(b);
 			break;
 		}
-		case 7: /* Arc-Sine */
+		case NODE_MATH_TAN:
+		{
+			if (in[0]->hasinput || !in[1]->hasinput)  /* This one only takes one input, so we've got to choose. */
+				r = tanf(a);
+			else
+				r = tanf(b);
+			break;
+		}
+		case NODE_MATH_ASIN:
 		{
 			if (in[0]->hasinput || !in[1]->hasinput) { /* This one only takes one input, so we've got to choose. */
 				/* Can't do the impossible... */
-				if (in[0]->vec[0] <= 1 && in[0]->vec[0] >= -1)
-					out[0]->vec[0] = asin(in[0]->vec[0]);
+				if (a <= 1 && a >= -1)
+					r = asinf(a);
 				else
-					out[0]->vec[0] = 0.0;
+					r = 0.0;
 			}
 			else {
 				/* Can't do the impossible... */
-				if (in[1]->vec[0] <= 1 && in[1]->vec[0] >= -1)
-					out[0]->vec[0] = asin(in[1]->vec[0]);
+				if (b <= 1 && b >= -1)
+					r = asinf(b);
 				else
-					out[0]->vec[0] = 0.0;
+					r = 0.0;
 			}
 			break;
 		}
-		case 8: /* Arc-Cosine */
+		case NODE_MATH_ACOS:
 		{
 			if (in[0]->hasinput || !in[1]->hasinput) { /* This one only takes one input, so we've got to choose. */
 				/* Can't do the impossible... */
-				if (in[0]->vec[0] <= 1 && in[0]->vec[0] >= -1)
-					out[0]->vec[0] = acos(in[0]->vec[0]);
+				if (a <= 1 && a >= -1)
+					r = acosf(a);
 				else
-					out[0]->vec[0] = 0.0;
+					r = 0.0;
 			}
 			else {
 				/* Can't do the impossible... */
-				if (in[1]->vec[0] <= 1 && in[1]->vec[0] >= -1)
-					out[0]->vec[0] = acos(in[1]->vec[0]);
+				if (b <= 1 && b >= -1)
+					r = acosf(b);
 				else
-					out[0]->vec[0] = 0.0;
+					r = 0.0;
 			}
 			break;
 		}
-		case 9: /* Arc-Tangent */
+		case NODE_MATH_ATAN:
 		{
 			if (in[0]->hasinput || !in[1]->hasinput) /* This one only takes one input, so we've got to choose. */
-				out[0]->vec[0] = atan(in[0]->vec[0]);
+				r = atan(a);
 			else
-				out[0]->vec[0] = atan(in[1]->vec[0]);
+				r = atan(b);
 			break;
 		}
-		case 10: /* Power */
+		case NODE_MATH_POW:
 		{
 			/* Only raise negative numbers by full integers */
-			if (in[0]->vec[0] >= 0) {
-				out[0]->vec[0] = pow(in[0]->vec[0], in[1]->vec[0]);
+			if (a >= 0) {
+				r = pow(a, b);
 			}
 			else {
-				float y_mod_1 = fabsf(fmodf(in[1]->vec[0], 1.0f));
+				float y_mod_1 = fabsf(fmodf(b, 1.0f));
 				
 				/* if input value is not nearly an integer, fall back to zero, nicer than straight rounding */
 				if (y_mod_1 > 0.999f || y_mod_1 < 0.001f) {
-					out[0]->vec[0] = powf(in[0]->vec[0], floorf(in[1]->vec[0] + 0.5f));
+					r = powf(a, floorf(b + 0.5f));
 				}
 				else {
-					out[0]->vec[0] = 0.0f;
+					r = 0.0f;
 				}
 			}
 
 			break;
 		}
-		case 11: /* Logarithm */
+		case NODE_MATH_LOG:
 		{
 			/* Don't want any imaginary numbers... */
-			if (in[0]->vec[0] > 0  && in[1]->vec[0] > 0)
-				out[0]->vec[0] = log(in[0]->vec[0]) / log(in[1]->vec[0]);
+			if (a > 0  && b > 0)
+				r = log(a) / log(b);
 			else
-				out[0]->vec[0] = 0.0;
+				r = 0.0;
 			break;
 		}
-		case 12: /* Minimum */
+		case NODE_MATH_MIN:
 		{
-			if (in[0]->vec[0] < in[1]->vec[0])
-				out[0]->vec[0] = in[0]->vec[0];
+			if (a < b)
+				r = a;
 			else
-				out[0]->vec[0] = in[1]->vec[0];
+				r = b;
 			break;
 		}
-		case 13: /* Maximum */
+		case NODE_MATH_MAX:
 		{
-			if (in[0]->vec[0] > in[1]->vec[0])
-				out[0]->vec[0] = in[0]->vec[0];
+			if (a > b)
+				r = a;
 			else
-				out[0]->vec[0] = in[1]->vec[0];
+				r = b;
 			break;
 		}
-		case 14: /* Round */
+		case NODE_MATH_ROUND:
 		{
 			if (in[0]->hasinput || !in[1]->hasinput) /* This one only takes one input, so we've got to choose. */
-				out[0]->vec[0] = (in[0]->vec[0] < 0) ? (int)(in[0]->vec[0] - 0.5f) : (int)(in[0]->vec[0] + 0.5f);
+				r = (a < 0) ? (int)(a - 0.5f) : (int)(a + 0.5f);
 			else
-				out[0]->vec[0] = (in[1]->vec[0] < 0) ? (int)(in[1]->vec[0] - 0.5f) : (int)(in[1]->vec[0] + 0.5f);
+				r = (b < 0) ? (int)(b - 0.5f) : (int)(b + 0.5f);
 			break;
 		}
-		case 15: /* Less Than */
+		case NODE_MATH_LESS:
 		{
-			if (in[0]->vec[0] < in[1]->vec[0])
-				out[0]->vec[0] = 1.0f;
+			if (a < b)
+				r = 1.0f;
 			else
-				out[0]->vec[0] = 0.0f;
+				r = 0.0f;
 			break;
 		}
-		case 16: /* Greater Than */
+		case NODE_MATH_GREATER:
 		{
-			if (in[0]->vec[0] > in[1]->vec[0])
-				out[0]->vec[0] = 1.0f;
+			if (a > b)
+				r = 1.0f;
 			else
-				out[0]->vec[0] = 0.0f;
+				r = 0.0f;
 			break;
 		}
-		case 17: /* Modulo */
+		case NODE_MATH_MOD:
 		{
-			if (in[1]->vec[0] == 0.0f)
-				out[0]->vec[0] = 0.0f;
+			if (b == 0.0f)
+				r = 0.0f;
 			else
-				out[0]->vec[0] = fmod(in[0]->vec[0], in[1]->vec[0]);
+				r = fmod(a, b);
+			break;
+		}
+		case NODE_MATH_ABS:
+		{
+			r = fabsf(a);
 			break;
 		}
 	}
+	if (node->custom2 & SHD_MATH_CLAMP) {
+		CLAMP(r, 0.0f, 1.0f);
+	}
+	out[0]->vec[0] = r;
 }
 
 static int gpu_shader_math(GPUMaterial *mat, bNode *node, bNodeExecData *UNUSED(execdata), GPUNodeStack *in, GPUNodeStack *out)
@@ -219,29 +233,30 @@ static int gpu_shader_math(GPUMaterial *mat, bNode *node, bNodeExecData *UNUSED(
 	static const char *names[] = {"math_add", "math_subtract", "math_multiply",
 		                          "math_divide", "math_sine", "math_cosine", "math_tangent", "math_asin",
 		                          "math_acos", "math_atan", "math_pow", "math_log", "math_min", "math_max",
-		                          "math_round", "math_less_than", "math_greater_than", "math_modulo"};
+                                  "math_round", "math_less_than", "math_greater_than", "math_modulo", "math_abs"};
 
 	switch (node->custom1) {
-		case 0:
-		case 1:
-		case 2:
-		case 3:
-		case 10:
-		case 11:
-		case 12:
-		case 13:
-		case 15:
-		case 16:
-		case 17:
+		case NODE_MATH_ADD:
+		case NODE_MATH_SUB:
+		case NODE_MATH_MUL:
+		case NODE_MATH_DIVIDE:
+		case NODE_MATH_POW:
+		case NODE_MATH_LOG:
+		case NODE_MATH_MIN:
+		case NODE_MATH_MAX:
+		case NODE_MATH_LESS:
+		case NODE_MATH_GREATER:
+		case NODE_MATH_MOD:
 			GPU_stack_link(mat, names[node->custom1], in, out);
 			break;
-		case 4:
-		case 5:
-		case 6:
-		case 7:
-		case 8:
-		case 9:
-		case 14:
+		case NODE_MATH_SIN:
+		case NODE_MATH_COS:
+		case NODE_MATH_TAN:
+		case NODE_MATH_ASIN:
+		case NODE_MATH_ACOS:
+		case NODE_MATH_ATAN:
+		case NODE_MATH_ROUND:
+		case NODE_MATH_ABS:
 			if (in[0].hasinput || !in[1].hasinput) {
 				/* use only first item and terminator */
 				GPUNodeStack tmp_in[2];
@@ -260,7 +275,13 @@ static int gpu_shader_math(GPUMaterial *mat, bNode *node, bNodeExecData *UNUSED(
 		default:
 			return 0;
 	}
-	
+
+	if (node->custom2 & SHD_MATH_CLAMP) {
+		float min[3] = {0.0f, 0.0f, 0.0f};
+		float max[3] = {1.0f, 1.0f, 1.0f};
+		GPU_link(mat, "clamp_val", out[0].link, GPU_uniform(min), GPU_uniform(max), &out[0].link);
+	}
+
 	return 1;
 }
 
@@ -272,7 +293,7 @@ void register_node_type_sh_math(void)
 	node_type_compatibility(&ntype, NODE_OLD_SHADING | NODE_NEW_SHADING);
 	node_type_socket_templates(&ntype, sh_node_math_in, sh_node_math_out);
 	node_type_label(&ntype, node_math_label);
-	node_type_storage(&ntype, "node_math", NULL, NULL);
+	node_type_storage(&ntype, "", NULL, NULL);
 	node_type_exec(&ntype, NULL, NULL, node_shader_exec_math);
 	node_type_gpu(&ntype, gpu_shader_math);
 

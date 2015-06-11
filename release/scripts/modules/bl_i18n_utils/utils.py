@@ -31,9 +31,10 @@ import sys
 import tempfile
 #import time
 
-from bl_i18n_utils import (settings,
-                           utils_rtl,
-                          )
+from bl_i18n_utils import (
+        settings,
+        utils_rtl,
+        )
 
 import bpy
 
@@ -1285,7 +1286,6 @@ class I18n:
                 return path, env[tuple_id]
         return None, None  # No data...
 
-
     def parse(self, kind, src, langs=set()):
         self.parsers[kind](self, src, langs)
 
@@ -1344,7 +1344,7 @@ class I18n:
         #key = self.settings.PO_HEADER_KEY
         #for uid, trans in self.trans.items():
             #if key not in trans.msgs:
-                #trans.msgs[key] 
+                #trans.msgs[key]
         self.unescape()
 
     def write(self, kind, langs=set()):
@@ -1372,6 +1372,7 @@ class I18n:
               ({} currently).
         """.format(self.settings.PARSER_TEMPLATE_ID)
         default_context = self.settings.DEFAULT_CONTEXT
+
         def _gen_py(self, langs, tab="    "):
             _lencomm = len(self.settings.PO_COMMENT_PREFIX)
             _lengen = len(self.settings.PO_COMMENT_PREFIX_GENERATED)
@@ -1451,7 +1452,7 @@ class I18n:
                         ret.append(tab + lngsp + '  "' + comments[-1] + '"))),')
                     else:
                         ret[-1] = ret[-1] + " (" + (('"' + comments[0] + '",') if comments else "") + "))),"
-                    
+
                 ret.append(tab + "),")
             ret += [
                 ")",

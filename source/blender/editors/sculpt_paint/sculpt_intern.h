@@ -51,22 +51,18 @@ struct Sculpt;
 struct SculptStroke;
 struct SculptUndoNode;
 
-/* Interface */
-struct MultiresModifierData *sculpt_multires_active(struct Scene *scene, struct Object *ob);
-
 int sculpt_mode_poll(struct bContext *C);
 int sculpt_mode_poll_view3d(struct bContext *C);
 /* checks for a brush, not just sculpt mode */
 int sculpt_poll(struct bContext *C);
 int sculpt_poll_view3d(struct bContext *C);
-void sculpt_update_mesh_elements(struct Scene *scene, struct Sculpt *sd, struct Object *ob,
-                                 int need_pmap, int need_mask);
 
 /* Stroke */
-int sculpt_stroke_get_location(bContext *C, float out[3], const float mouse[2]);
+bool sculpt_stroke_get_location(bContext *C, float out[3], const float mouse[2]);
 
 /* Dynamic topology */
 void sculpt_pbvh_clear(Object *ob);
+void sculpt_dyntopo_node_layers_add(struct SculptSession *ss);
 void sculpt_update_after_dynamic_topology_toggle(bContext *C);
 void sculpt_dynamic_topology_enable(struct bContext *C);
 void sculpt_dynamic_topology_disable(struct bContext *C,
@@ -111,7 +107,7 @@ typedef struct SculptUndoNode {
 
 	/* bmesh */
 	struct BMLogEntry *bm_entry;
-	int applied;
+	bool applied;
 	CustomData bm_enter_vdata;
 	CustomData bm_enter_edata;
 	CustomData bm_enter_ldata;
@@ -131,5 +127,14 @@ void sculpt_undo_push_begin(const char *name);
 void sculpt_undo_push_end(void);
 
 void sculpt_vertcos_to_key(Object *ob, KeyBlock *kb, float (*vertCos)[3]);
+
+void sculpt_update_object_bounding_box(struct Object *ob);
+
+/* Setting zero so we can catch bugs in OpenMP/sculpt. */
+#ifdef DEBUG
+#  define SCULPT_OMP_LIMIT 0
+#else
+#  define SCULPT_OMP_LIMIT 4
+#endif
 
 #endif

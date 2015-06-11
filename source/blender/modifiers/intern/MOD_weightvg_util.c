@@ -34,7 +34,6 @@
 #include "BLI_utildefines.h"
 
 #include "DNA_color_types.h"      /* CurveMapping. */
-#include "DNA_mesh_types.h"
 #include "DNA_meshdata_types.h"
 #include "DNA_modifier_types.h"
 #include "DNA_object_types.h"
@@ -43,11 +42,9 @@
 #include "BKE_cdderivedmesh.h"
 #include "BKE_colortools.h"       /* CurveMapping. */
 #include "BKE_deform.h"
-#include "BKE_mesh.h"
 #include "BKE_modifier.h"
 #include "BKE_texture.h"          /* Texture masking. */
 
-#include "depsgraph_private.h"
 #include "MEM_guardedalloc.h"
 #include "MOD_util.h"
 #include "MOD_weightvg_util.h"
@@ -66,9 +63,9 @@ void weightvg_do_map(int num, float *new_w, short falloff_type, CurveMapping *cm
 	/* Return immediately, if we have nothing to do! */
 	/* Also security checks... */
 	if (((falloff_type == MOD_WVG_MAPPING_CURVE) && (cmap == NULL)) ||
-	    !ELEM7(falloff_type, MOD_WVG_MAPPING_CURVE, MOD_WVG_MAPPING_SHARP, MOD_WVG_MAPPING_SMOOTH,
-	           MOD_WVG_MAPPING_ROOT, MOD_WVG_MAPPING_SPHERE, MOD_WVG_MAPPING_RANDOM,
-	           MOD_WVG_MAPPING_STEP))
+	    !ELEM(falloff_type, MOD_WVG_MAPPING_CURVE, MOD_WVG_MAPPING_SHARP, MOD_WVG_MAPPING_SMOOTH,
+	          MOD_WVG_MAPPING_ROOT, MOD_WVG_MAPPING_SPHERE, MOD_WVG_MAPPING_RANDOM,
+	          MOD_WVG_MAPPING_STEP))
 	{
 		return;
 	}
@@ -94,10 +91,10 @@ void weightvg_do_map(int num, float *new_w, short falloff_type, CurveMapping *cm
 				fac = 3.0f * fac * fac - 2.0f * fac * fac * fac;
 				break;
 			case MOD_WVG_MAPPING_ROOT:
-				fac = (float)sqrt(fac);
+				fac = sqrtf(fac);
 				break;
 			case MOD_WVG_MAPPING_SPHERE:
-				fac = (float)sqrt(2 * fac - fac * fac);
+				fac = sqrtf(2 * fac - fac * fac);
 				break;
 			case MOD_WVG_MAPPING_RANDOM:
 				fac = BLI_rng_get_float(rng) * fac;
@@ -233,8 +230,6 @@ void weightvg_do_mask(int num, const int *indices, float *org_w, const float *ne
 		}
 	}
 }
-
-
 
 
 /* Applies weights to given vgroup (defgroup), and optionally add/remove vertices from the group.

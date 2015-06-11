@@ -29,20 +29,14 @@
  *  \ingroup spclip
  */
 
-#include "DNA_object_types.h"	/* SELECT */
 #include "DNA_scene_types.h"
-
-#include "MEM_guardedalloc.h"
 
 #include "BLI_utildefines.h"
 #include "BLI_math.h"
-#include "BLI_listbase.h"
 #include "BLI_rect.h"
 
 #include "BKE_context.h"
-#include "BKE_movieclip.h"
 #include "BKE_tracking.h"
-#include "BKE_depsgraph.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
@@ -71,7 +65,7 @@ static int space_clip_dopesheet_poll(bContext *C)
 		}
 	}
 
-	return FALSE;
+	return false;
 }
 
 /********************** select channel operator *********************/
@@ -83,7 +77,7 @@ static int dopesheet_select_channel_poll(bContext *C)
 	if (sc && sc->clip)
 		return sc->view == SC_VIEW_DOPESHEET;
 
-	return FALSE;
+	return false;
 }
 
 static int dopesheet_select_channel_exec(bContext *C, wmOperator *op)
@@ -98,6 +92,7 @@ static int dopesheet_select_channel_exec(bContext *C, wmOperator *op)
 	float location[2];
 	const bool extend = RNA_boolean_get(op->ptr, "extend");
 	int current_channel_index = 0, channel_index;
+	const bool show_selected_only = (dopesheet->flag & TRACKING_DOPE_SELECTED_ONLY) != 0;
 
 	RNA_float_get_array(op->ptr, "location", location);
 	channel_index = -(location[1] - (CHANNEL_FIRST + CHANNEL_HEIGHT_HALF)) / CHANNEL_STEP;
@@ -113,7 +108,10 @@ static int dopesheet_select_channel_exec(bContext *C, wmOperator *op)
 
 			if (track->flag & TRACK_DOPE_SEL) {
 				tracking->act_track = track;
-				BKE_tracking_track_select(tracksbase, track, TRACK_AREA_ALL, TRUE);
+				BKE_tracking_track_select(tracksbase, track, TRACK_AREA_ALL, true);
+			}
+			else if (show_selected_only == false) {
+				BKE_tracking_track_deselect(track, TRACK_AREA_ALL);
 			}
 		}
 		else if (!extend)

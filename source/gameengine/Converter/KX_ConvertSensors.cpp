@@ -49,6 +49,7 @@
 #include "DNA_object_types.h"
 #include "DNA_material_types.h"
 #include "DNA_sensor_types.h"
+#include "DNA_controller_types.h"
 #include "DNA_actuator_types.h" /* for SENS_ALL_KEYS ? this define is
                                  * probably misplaced */
 /* end of blender include block */
@@ -84,7 +85,6 @@
 #include "PHY_IPhysicsEnvironment.h"
 
 #include "KX_KetsjiEngine.h"
-#include "KX_BlenderSceneConverter.h"
 #include "BL_BlenderDataConversion.h"
 
 void BL_ConvertSensors(struct Object* blenderobject,
@@ -329,12 +329,19 @@ void BL_ConvertSensors(struct Object* blenderobject,
 							gameobj);
 					} else {
 						/* give us a focus-aware sensor */
+						bool bFindMaterial = (bmouse->mode & SENS_COLLISION_MATERIAL);
+						bool bXRay = (bmouse->flag & SENS_RAY_XRAY);					
+						STR_String checkname = (bFindMaterial? bmouse->matname : bmouse->propname);
+					
 						gamesensor = new KX_MouseFocusSensor(eventmgr,
 							startx,
 							starty,
 							keytype,
 							trackfocus,
 							(bmouse->flag & SENS_MOUSE_FOCUS_PULSE) ? true:false,
+							checkname,
+							bFindMaterial,
+							bXRay,
 							kxscene,
 							kxengine,
 							gameobj); 
@@ -376,6 +383,12 @@ void BL_ConvertSensors(struct Object* blenderobject,
 					case SENS_PROP_EXPRESSION:
 						propchecktype = SCA_PropertySensor::KX_PROPSENSOR_EXPRESSION;
 						/* error */
+						break;
+					case SENS_PROP_LESSTHAN:
+						propchecktype = SCA_PropertySensor::KX_PROPSENSOR_LESSTHAN;
+						break;
+					case SENS_PROP_GREATERTHAN:
+						propchecktype = SCA_PropertySensor::KX_PROPSENSOR_GREATERTHAN;
 						break;
 					default:
 						; /* error */
@@ -576,7 +589,7 @@ void BL_ConvertSensors(struct Object* blenderobject,
 			}
 		}
 
-		if (gamesensor)
+		if (gamesensor && !(sens->flag & SENS_DEACTIVATE))
 		{
 			gamesensor->SetExecutePriority(executePriority++);
 			STR_String uniquename = sens->name;
@@ -607,16 +620,19 @@ void BL_ConvertSensors(struct Object* blenderobject,
 			{
 				bController* linkedcont = (bController*) sens->links[i];
 				if (linkedcont) {
-					SCA_IController* gamecont = converter->FindGameController(linkedcont);
+					// If the controller is deactived doesn't register it
+					if (!(linkedcont->flag & CONT_DEACTIVATE)) {
+						SCA_IController* gamecont = converter->FindGameController(linkedcont);
 
-					if (gamecont) {
-						logicmgr->RegisterToSensor(gamecont,gamesensor);
-					}
-					else {
-						printf("Warning, sensor \"%s\" could not find its controller "
-						       "(link %d of %d) from object \"%s\"\n"
-						       "\tthere has been an error converting the blender controller for the game engine,"
-						       "logic may be incorrect\n", sens->name, i+1, sens->totlinks, blenderobject->id.name+2);
+						if (gamecont) {
+							logicmgr->RegisterToSensor(gamecont,gamesensor);
+						}
+						else {
+							printf("Warning, sensor \"%s\" could not find its controller "
+							       "(link %d of %d) from object \"%s\"\n"
+							       "\tthere has been an error converting the blender controller for the game engine,"
+							       "logic may be incorrect\n", sens->name, i+1, sens->totlinks, blenderobject->id.name+2);
+						}
 					}
 				}
 				else {
@@ -637,6 +653,9 @@ void BL_ConvertSensors(struct Object* blenderobject,
 			gamesensor->Release();
 			
 		}
+		else if (gamesensor)
+			gamesensor->Release();
+
 		sens=sens->next;
 	}
 }

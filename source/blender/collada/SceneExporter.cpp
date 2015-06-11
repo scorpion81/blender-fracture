@@ -27,6 +27,7 @@
 extern "C" {
 	#include "BLI_utildefines.h"
 	#include "BKE_object.h"
+	#include "BLI_listbase.h"
 }
 
 #include "SceneExporter.h"
@@ -189,11 +190,13 @@ void SceneExporter::writeNodes(Object *ob, Scene *sce)
 		colladaNode.end();
 	}
 
-	if (ob->constraints.first != NULL ) {
+	if (BLI_listbase_is_empty(&ob->constraints) == false) {
 		bConstraint *con = (bConstraint *) ob->constraints.first;
 		while (con) {
-			std::string con_name(id_name(con));
+			std::string con_name(translate_id(con->name));
 			std::string con_tag = con_name + "_constraint";
+			printf("%s\n", con_name.c_str());
+			printf("%s\n\n", con_tag.c_str());
 			colladaNode.addExtraTechniqueChildParameter("blender",con_tag,"type",con->type);
 			colladaNode.addExtraTechniqueChildParameter("blender",con_tag,"enforce",con->enforce);
 			colladaNode.addExtraTechniqueChildParameter("blender",con_tag,"flag",con->flag);
@@ -207,7 +210,7 @@ void SceneExporter::writeNodes(Object *ob, Scene *sce)
 			//not ideal: add the target object name as another parameter. 
 			//No real mapping in the .dae
 			//Need support for multiple target objects also.
-			bConstraintTypeInfo *cti = BKE_constraint_get_typeinfo(con);
+			bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
 			ListBase targets = {NULL, NULL};
 			if (cti && cti->get_constraint_targets) {
 			

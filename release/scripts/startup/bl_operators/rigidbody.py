@@ -64,17 +64,19 @@ class CopyRigidbodySettings(Operator):
         for o in context.selected_objects:
             if o.type != 'MESH':
                 o.select = False
+            elif o.rigid_body is None:
+                # Add rigidbody to object!
+                scene.objects.active = o
+                bpy.ops.rigidbody.object_add()
+        scene.objects.active = obj_act
 
         objects = context.selected_objects
         if objects:
-            # add selected objects to active one groups and recalculate
-            bpy.ops.group.objects_add_active()
-            scene.frame_set(scene.frame_current)
             rb_from = obj_act.rigid_body
             # copy settings
             for o in objects:
                 rb_to = o.rigid_body
-                if (o == obj_act) or (rb_to is None):
+                if o == obj_act:
                     continue
                 for attr in self._attrs:
                     setattr(rb_to, attr, getattr(rb_from, attr))
@@ -112,6 +114,14 @@ class BakeToKeyframes(Operator):
         obj = context.object
         return (obj and obj.rigid_body)
 
+    def has_fracture_modifier(self, ob, report=False):
+        for m in ob.modifiers:
+            if m.type == 'FRACTURE':
+               if (report == True):
+                   self.report({'WARNING'}, "Object '%s' has a fracture modifier, use 'Convert to Objects' before 'Bake to Keyframes'" % ob.name)
+               return True
+        return False
+
     def execute(self, context):
         bake = []
         objects = []
@@ -120,10 +130,13 @@ class BakeToKeyframes(Operator):
         frames_step = range(self.frame_start, self.frame_end + 1, self.step)
         frames_full = range(self.frame_start, self.frame_end + 1)
 
+        constraints = []
         # filter objects selection
         for obj in context.selected_objects:
-            if not obj.rigid_body or obj.rigid_body.type != 'ACTIVE':
+            if (not obj.rigid_body or obj.rigid_body.type != 'ACTIVE' or self.has_fracture_modifier(obj, True)):
                 obj.select = False
+            if (obj.rigid_body_constraint):
+               constraints.append(obj)
 
         objects = context.selected_objects
 
@@ -143,6 +156,9 @@ class BakeToKeyframes(Operator):
                 scene.frame_set(f)
                 for j, obj in enumerate(objects):
                     mat = bake[i][j]
+                    # convert world space transform to parent space, so parented objects don't get offset after baking
+                    if (obj.parent):
+                        mat = obj.matrix_parent_inverse.inverted() * obj.parent.matrix_world.inverted() * mat
 
                     obj.location = mat.to_translation()
 
@@ -166,8 +182,29 @@ class BakeToKeyframes(Operator):
 
                 bpy.ops.anim.keyframe_insert(type='BUILTIN_KSI_LocRot', confirm_success=False)
 
-            # remove baked objects from simulation
-            bpy.ops.rigidbody.objects_remove()
+            # remove baked objects from simulation, only if no Fracture Modifier is detected (messes up bake possibly)!
+            hasFracture = False
+            for obj in bpy.data.objects:
+                 if (self.has_fracture_modifier(obj)):
+                     hasFracture = True
+                     break
+
+            if (hasFracture == False):
+                #remove (selected) constraints first
+                for obj in constraints:
+                    obj.select = True
+
+                bpy.ops.rigidbody.constraints_remove()
+
+                for obj in constraints:
+                    obj.select = False
+                    obj.hide = True
+
+                bpy.ops.rigidbody.objects_remove()
+            else:
+                 # set to kinematic only
+                 for obj in objects:
+                    obj.rigid_body.kinematic = True
 
             # clean up keyframes
             for obj in objects:

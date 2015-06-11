@@ -61,12 +61,12 @@
 #include "ED_armature.h"
 #include "ED_keyframes_draw.h"
 
-#include "BLF_api.h"
 
 #include "UI_resources.h"
 
 #include "view3d_intern.h"
 
+#include "GPU_select.h"
 
 /* *************** Armature Drawing - Coloring API ***************************** */
 
@@ -93,7 +93,7 @@ static void set_pchan_colorset(Object *ob, bPoseChannel *pchan)
 	short color_index = 0;
 	
 	/* sanity check */
-	if (ELEM4(NULL, ob, arm, pose, pchan)) {
+	if (ELEM(NULL, ob, arm, pose, pchan)) {
 		bcolor = NULL;
 		return;
 	}
@@ -271,7 +271,7 @@ static bool set_pchan_glColor(short colCode, int boneflag, short constflag)
 			}
 			else {
 				if (bcolor) {
-					char *cp = bcolor->solid;
+					const char *cp = bcolor->solid;
 					glColor4ub(cp[0], cp[1], cp[2], 204);
 				}
 				else
@@ -466,10 +466,10 @@ static const unsigned int bone_octahedral_solid_tris[8][3] = {
 
 /* aligned with bone_octahedral_solid_tris */
 static const float bone_octahedral_solid_normals[8][3] = {
-	{ 0.70710683f, -0.70710683f,  0.00000000f},
-	{-0.00000000f, -0.70710683f, -0.70710683f},
-	{-0.70710683f, -0.70710683f,  0.00000000f},
-	{ 0.00000000f, -0.70710683f,  0.70710683f},
+	{ M_SQRT1_2,   -M_SQRT1_2,    0.00000000f},
+	{-0.00000000f, -M_SQRT1_2,   -M_SQRT1_2},
+	{-M_SQRT1_2,   -M_SQRT1_2,    0.00000000f},
+	{ 0.00000000f, -M_SQRT1_2,    M_SQRT1_2},
 	{ 0.99388373f,  0.11043154f, -0.00000000f},
 	{ 0.00000000f,  0.11043154f, -0.99388373f},
 	{-0.99388373f,  0.11043154f,  0.00000000f},
@@ -551,7 +551,7 @@ static void draw_bone_points(const short dt, int armflag, unsigned int boneflag,
 	/*	Draw root point if we are not connected */
 	if ((boneflag & BONE_CONNECTED) == 0) {
 		if (id != -1)
-			glLoadName(id | BONESEL_ROOT);
+			GPU_select_load_id(id | BONESEL_ROOT);
 		
 		if (dt <= OB_WIRE) {
 			if (armflag & ARM_EDITMODE) {
@@ -574,7 +574,7 @@ static void draw_bone_points(const short dt, int armflag, unsigned int boneflag,
 	
 	/*	Draw tip point */
 	if (id != -1)
-		glLoadName(id | BONESEL_TIP);
+		GPU_select_load_id(id | BONESEL_TIP);
 	
 	if (dt <= OB_WIRE) {
 		if (armflag & ARM_EDITMODE) {
@@ -787,7 +787,7 @@ static void draw_sphere_bone_wire(float smat[4][4], float imat[4][4],
 	/*	Draw root point if we are not connected */
 	if ((boneflag & BONE_CONNECTED) == 0) {
 		if (id != -1)
-			glLoadName(id | BONESEL_ROOT);
+			GPU_select_load_id(id | BONESEL_ROOT);
 		
 		drawcircball(GL_LINE_LOOP, headvec, head, imat);
 	}
@@ -799,7 +799,7 @@ static void draw_sphere_bone_wire(float smat[4][4], float imat[4][4],
 	}
 	
 	if (id != -1)
-		glLoadName(id | BONESEL_TIP);
+		GPU_select_load_id(id | BONESEL_TIP);
 	
 	drawcircball(GL_LINE_LOOP, tailvec, tail, imat);
 	
@@ -830,7 +830,7 @@ static void draw_sphere_bone_wire(float smat[4][4], float imat[4][4],
 		cross_v3_v3v3(norvect, vec, imat[2]);
 		
 		if (id != -1)
-			glLoadName(id | BONESEL_BONE);
+			GPU_select_load_id(id | BONESEL_BONE);
 		
 		glBegin(GL_LINES);
 
@@ -907,7 +907,7 @@ static void draw_sphere_bone(const short dt, int armflag, int boneflag, short co
 	/*	Draw root point if we are not connected */
 	if ((boneflag & BONE_CONNECTED) == 0) {
 		if (id != -1)
-			glLoadName(id | BONESEL_ROOT);
+			GPU_select_load_id(id | BONESEL_ROOT);
 		gluSphere(qobj, head, 16, 10);
 	}
 	
@@ -918,7 +918,7 @@ static void draw_sphere_bone(const short dt, int armflag, int boneflag, short co
 	}
 
 	if (id != -1)
-		glLoadName(id | BONESEL_TIP);
+		GPU_select_load_id(id | BONESEL_TIP);
 	
 	glTranslatef(0.0f, 0.0f, length);
 	gluSphere(qobj, tail, 16, 10);
@@ -939,7 +939,7 @@ static void draw_sphere_bone(const short dt, int armflag, int boneflag, short co
 	
 	if (length > (head + tail)) {
 		if (id != -1)
-			glLoadName(id | BONESEL_BONE);
+			GPU_select_load_id(id | BONESEL_BONE);
 		
 		glEnable(GL_POLYGON_OFFSET_FILL);
 		glPolygonOffset(-1.0f, -1.0f);
@@ -1009,7 +1009,7 @@ static void draw_line_bone(int armflag, int boneflag, short constflag, unsigned 
 		/*	Draw root point if we are not connected */
 		if ((boneflag & BONE_CONNECTED) == 0) {
 			if (G.f & G_PICKSEL) {  /* no bitmap in selection mode, crashes 3d cards... */
-				glLoadName(id | BONESEL_ROOT);
+				GPU_select_load_id(id | BONESEL_ROOT);
 				glBegin(GL_POINTS);
 				glVertex3f(0.0f, 0.0f, 0.0f);
 				glEnd();
@@ -1021,7 +1021,7 @@ static void draw_line_bone(int armflag, int boneflag, short constflag, unsigned 
 		}
 		
 		if (id != -1)
-			glLoadName((GLuint) id | BONESEL_BONE);
+			GPU_select_load_id((GLuint) id | BONESEL_BONE);
 		
 		glBegin(GL_LINES);
 		glVertex3f(0.0f, 0.0f, 0.0f);
@@ -1031,7 +1031,7 @@ static void draw_line_bone(int armflag, int boneflag, short constflag, unsigned 
 		/* tip */
 		if (G.f & G_PICKSEL) {
 			/* no bitmap in selection mode, crashes 3d cards... */
-			glLoadName(id | BONESEL_TIP);
+			GPU_select_load_id(id | BONESEL_TIP);
 			glBegin(GL_POINTS);
 			glVertex3f(0.0f, 1.0f, 0.0f);
 			glEnd();
@@ -1043,7 +1043,7 @@ static void draw_line_bone(int armflag, int boneflag, short constflag, unsigned 
 		
 		/* further we send no names */
 		if (id != -1)
-			glLoadName(id & 0xFFFF);  /* object tag, for bordersel optim */
+			GPU_select_load_id(id & 0xFFFF);  /* object tag, for bordersel optim */
 		
 		if (armflag & ARM_POSEMODE)
 			set_pchan_glColor(PCHAN_COLOR_LINEBONE, boneflag, constflag);
@@ -1161,7 +1161,7 @@ static void draw_b_bone(const short dt, int armflag, int boneflag, short constfl
 	}
 	
 	if (id != -1) {
-		glLoadName((GLuint) id | BONESEL_BONE);
+		GPU_select_load_id((GLuint) id | BONESEL_BONE);
 	}
 	
 	/* set up solid drawing */
@@ -1266,13 +1266,13 @@ static void draw_wire_bone(const short dt, int armflag, int boneflag, short cons
 	/* this chunk not in object mode */
 	if (armflag & (ARM_EDITMODE | ARM_POSEMODE)) {
 		if (id != -1)
-			glLoadName((GLuint) id | BONESEL_BONE);
+			GPU_select_load_id((GLuint) id | BONESEL_BONE);
 		
 		draw_wire_bone_segments(pchan, bbones, length, segments);
 		
 		/* further we send no names */
 		if (id != -1)
-			glLoadName(id & 0xFFFF);    /* object tag, for bordersel optim */
+			GPU_select_load_id(id & 0xFFFF);    /* object tag, for bordersel optim */
 	}
 	
 	/* colors for modes */
@@ -1315,7 +1315,7 @@ static void draw_bone(const short dt, int armflag, int boneflag, short constflag
 	
 	/* now draw the bone itself */
 	if (id != -1) {
-		glLoadName((GLuint) id | BONESEL_BONE);
+		GPU_select_load_id((GLuint) id | BONESEL_BONE);
 	}
 	
 	/* wire? */
@@ -1370,7 +1370,7 @@ static void draw_custom_bone(Scene *scene, View3D *v3d, RegionView3D *rv3d, Obje
 	}
 	
 	if (id != -1) {
-		glLoadName((GLuint) id | BONESEL_BONE);
+		GPU_select_load_id((GLuint) id | BONESEL_BONE);
 	}
 	
 	draw_object_instance(scene, v3d, rv3d, ob, dt, armflag & ARM_POSEMODE);
@@ -1456,7 +1456,7 @@ static void bgl_sphere_project(float ax, float az)
 	float dir[3], sine, q3;
 
 	sine = 1.0f - ax * ax - az * az;
-	q3 = (sine < 0.0f) ? 0.0f : (float)(2.0 * sqrt(sine));
+	q3 = (sine < 0.0f) ? 0.0f : (2.0f * sqrtf(sine));
 
 	dir[0] = -az * q3;
 	dir[1] = 1.0f - 2.0f * sine;
@@ -1467,7 +1467,7 @@ static void bgl_sphere_project(float ax, float az)
 
 static void draw_dof_ellipse(float ax, float az)
 {
-	static float staticSine[16] = {
+	const float staticSine[16] = {
 		0.0f, 0.104528463268f, 0.207911690818f, 0.309016994375f,
 		0.406736643076f, 0.5f, 0.587785252292f, 0.669130606359f,
 		0.743144825477f, 0.809016994375f, 0.866025403784f,
@@ -1619,7 +1619,7 @@ static void draw_pose_dofs(Object *ob)
 								for (a = -16; a <= 16; a++) {
 									/* *0.5f here comes from M_PI/360.0f when rotations were still in degrees */
 									float fac = ((float)a) / 16.0f * 0.5f;
-									phi = (float)(0.5 * M_PI) + fac * (pchan->limitmax[0] - pchan->limitmin[0]);
+									phi = (float)M_PI_2 + fac * (pchan->limitmax[0] - pchan->limitmin[0]);
 									
 									i = (a == -16) ? 2 : 3;
 									corner[i][0] = 0.0f;
@@ -1667,6 +1667,7 @@ static void draw_pose_bones(Scene *scene, View3D *v3d, ARegion *ar, Base *base,
 	short do_dashed = 3;
 	bool draw_wire = false;
 	int flag;
+	bool is_cull_enabled;
 	
 	/* being set below */
 	arm->layer_used = 0;
@@ -1714,9 +1715,15 @@ static void draw_pose_bones(Scene *scene, View3D *v3d, ARegion *ar, Base *base,
 	}
 	
 	/* little speedup, also make sure transparent only draws once */
-	glCullFace(GL_BACK); 
-	glEnable(GL_CULL_FACE);
-	
+	glCullFace(GL_BACK);
+	if (v3d->flag2 & V3D_BACKFACE_CULLING) {
+		glEnable(GL_CULL_FACE);
+		is_cull_enabled = true;
+	}
+	else {
+		is_cull_enabled = false;
+	}
+
 	/* if solid we draw that first, with selection codes, but without names, axes etc */
 	if (dt > OB_WIRE) {
 		if (arm->flag & ARM_POSEMODE) 
@@ -1765,26 +1772,38 @@ static void draw_pose_bones(Scene *scene, View3D *v3d, ARegion *ar, Base *base,
 							draw_wire = true;
 						}
 						else {
+							if (is_cull_enabled && (v3d->flag2 & V3D_BACKFACE_CULLING) == 0) {
+								is_cull_enabled = false;
+								glDisable(GL_CULL_FACE);
+							}
+
 							draw_custom_bone(scene, v3d, rv3d, pchan->custom,
 							                 OB_SOLID, arm->flag, flag, index, bone->length);
 						}
 					}
-					else if (arm->drawtype == ARM_LINE) {
-						/* nothing in solid */
-					}
-					else if (arm->drawtype == ARM_WIRE) {
-						/* nothing in solid */
-					}
-					else if (arm->drawtype == ARM_ENVELOPE) {
-						draw_sphere_bone(OB_SOLID, arm->flag, flag, 0, index, pchan, NULL);
-					}
-					else if (arm->drawtype == ARM_B_BONE) {
-						draw_b_bone(OB_SOLID, arm->flag, flag, 0, index, pchan, NULL);
-					}
 					else {
-						draw_bone(OB_SOLID, arm->flag, flag, 0, index, bone->length);
+						if (is_cull_enabled == false) {
+							is_cull_enabled = true;
+							glEnable(GL_CULL_FACE);
+						}
+
+						if (arm->drawtype == ARM_LINE) {
+							/* nothing in solid */
+						}
+						else if (arm->drawtype == ARM_WIRE) {
+							/* nothing in solid */
+						}
+						else if (arm->drawtype == ARM_ENVELOPE) {
+							draw_sphere_bone(OB_SOLID, arm->flag, flag, 0, index, pchan, NULL);
+						}
+						else if (arm->drawtype == ARM_B_BONE) {
+							draw_b_bone(OB_SOLID, arm->flag, flag, 0, index, pchan, NULL);
+						}
+						else {
+							draw_bone(OB_SOLID, arm->flag, flag, 0, index, bone->length);
+						}
 					}
-						
+
 					glPopMatrix();
 				}
 			}
@@ -1793,12 +1812,12 @@ static void draw_pose_bones(Scene *scene, View3D *v3d, ARegion *ar, Base *base,
 				index += 0x10000;  /* pose bones count in higher 2 bytes only */
 		}
 		
-		/* very very confusing... but in object mode, solid draw, we cannot do glLoadName yet,
+		/* very very confusing... but in object mode, solid draw, we cannot do GPU_select_load_id yet,
 		 * stick bones and/or wire custom-shapes are drawn in next loop 
 		 */
-		if (ELEM(arm->drawtype, ARM_LINE, ARM_WIRE) == 0 && (draw_wire == false)) {
+		if (ELEM(arm->drawtype, ARM_LINE, ARM_WIRE) == 0 && (draw_wire == false) && index != -1) {
 			/* object tag, for bordersel optim */
-			glLoadName(index & 0xFFFF);
+			GPU_select_load_id(index & 0xFFFF);
 			index = -1;
 		}
 	}
@@ -1862,9 +1881,9 @@ static void draw_pose_bones(Scene *scene, View3D *v3d, ARegion *ar, Base *base,
 				index += 0x10000;  /* pose bones count in higher 2 bytes only */
 		}
 		/* stick or wire bones have not been drawn yet so don't clear object selection in this case */
-		if (ELEM(arm->drawtype, ARM_LINE, ARM_WIRE) == 0 && draw_wire) {
+		if (ELEM(arm->drawtype, ARM_LINE, ARM_WIRE) == 0 && draw_wire && index != -1) {
 			/* object tag, for bordersel optim */
-			glLoadName(index & 0xFFFF);
+			GPU_select_load_id(index & 0xFFFF);
 			index = -1;
 		}
 	}
@@ -1885,7 +1904,12 @@ static void draw_pose_bones(Scene *scene, View3D *v3d, ARegion *ar, Base *base,
 			if (arm->flag & ARM_POSEMODE) 
 				index = base->selcol;
 		}
-		
+
+		if (is_cull_enabled == false) {
+			is_cull_enabled = true;
+			glEnable(GL_CULL_FACE);
+		}
+
 		for (pchan = ob->pose->chanbase.first; pchan; pchan = pchan->next) {
 			bone = pchan->bone;
 			arm->layer_used |= bone->layer;
@@ -1902,7 +1926,7 @@ static void draw_pose_bones(Scene *scene, View3D *v3d, ARegion *ar, Base *base,
 						 */
 						if ((do_dashed & 2) && ((bone->flag & BONE_CONNECTED) == 0)) {
 							if (arm->flag & ARM_POSEMODE) {
-								glLoadName(index & 0xFFFF);  /* object tag, for bordersel optim */
+								GPU_select_load_id(index & 0xFFFF);  /* object tag, for bordersel optim */
 								UI_ThemeColor(TH_WIRE);
 							}
 							setlinestyle(3);
@@ -1922,7 +1946,7 @@ static void draw_pose_bones(Scene *scene, View3D *v3d, ARegion *ar, Base *base,
 									if (constflag & PCHAN_HAS_TARGET) glColor3ub(200, 120, 0);
 									else glColor3ub(200, 200, 50);  /* add theme! */
 
-									glLoadName(index & 0xFFFF);
+									GPU_select_load_id(index & 0xFFFF);
 									pchan_draw_IK_root_lines(pchan, !(do_dashed & 2));
 								}
 							}
@@ -1930,7 +1954,7 @@ static void draw_pose_bones(Scene *scene, View3D *v3d, ARegion *ar, Base *base,
 								if (bone->flag & BONE_SELECTED) {
 									glColor3ub(150, 200, 50);  /* add theme! */
 									
-									glLoadName(index & 0xFFFF);
+									GPU_select_load_id(index & 0xFFFF);
 									pchan_draw_IK_root_lines(pchan, !(do_dashed & 2));
 								}
 							}
@@ -1990,11 +2014,13 @@ static void draw_pose_bones(Scene *scene, View3D *v3d, ARegion *ar, Base *base,
 	}
 	
 	/* restore */
-	glDisable(GL_CULL_FACE);
+	if (is_cull_enabled) {
+		glDisable(GL_CULL_FACE);
+	}
 	
 	/* draw DoFs */
 	if (arm->flag & ARM_POSEMODE) {
-		if (((base->flag & OB_FROMDUPLI) == 0)) {
+		if (((base->flag & OB_FROMDUPLI) == 0) && ((v3d->flag & V3D_HIDE_HELPLINES) == 0)) {
 			draw_pose_dofs(ob);
 		}
 	}
@@ -2039,7 +2065,7 @@ static void draw_pose_bones(Scene *scene, View3D *v3d, ARegion *ar, Base *base,
 						/*  Draw names of bone  */
 						if (arm->flag & ARM_DRAWNAMES) {
 							mid_v3_v3v3(vec, pchan->pose_head, pchan->pose_tail);
-							view3d_cached_text_draw_add(vec, pchan->name, 10, 0, col);
+							view3d_cached_text_draw_add(vec, pchan->name, strlen(pchan->name), 10, 0, col);
 						}
 						
 						/*	Draw additional axes on the bone tail  */
@@ -2060,6 +2086,10 @@ static void draw_pose_bones(Scene *scene, View3D *v3d, ARegion *ar, Base *base,
 			
 			if (v3d->zbuf) glEnable(GL_DEPTH_TEST);
 		}
+	}
+
+	if (index != -1) {
+		GPU_select_load_id(-1);
 	}
 }
 
@@ -2148,7 +2178,7 @@ static void draw_ebones(View3D *v3d, ARegion *ar, Object *ob, const short dt)
 	
 	/* if wire over solid, set offset */
 	index = -1;
-	glLoadName(-1);
+	GPU_select_load_id(-1);
 	if (ELEM(arm->drawtype, ARM_LINE, ARM_WIRE)) {
 		if (G.f & G_PICKSEL)
 			index = 0;
@@ -2197,7 +2227,7 @@ static void draw_ebones(View3D *v3d, ARegion *ar, Object *ob, const short dt)
 				/* offset to parent */
 				if (eBone->parent) {
 					UI_ThemeColor(TH_WIRE_EDIT);
-					glLoadName(-1);  /* -1 here is OK! */
+					GPU_select_load_id(-1);  /* -1 here is OK! */
 					setlinestyle(3);
 					
 					glBegin(GL_LINES);
@@ -2214,7 +2244,7 @@ static void draw_ebones(View3D *v3d, ARegion *ar, Object *ob, const short dt)
 	
 	/* restore */
 	if (index != -1) {
-		glLoadName(-1);
+		GPU_select_load_id(-1);
 	}
 
 	if (ELEM(arm->drawtype, ARM_LINE, ARM_WIRE)) {
@@ -2244,7 +2274,7 @@ static void draw_ebones(View3D *v3d, ARegion *ar, Object *ob, const short dt)
 						if (arm->flag & ARM_DRAWNAMES) {
 							mid_v3_v3v3(vec, eBone->head, eBone->tail);
 							glRasterPos3fv(vec);
-							view3d_cached_text_draw_add(vec, eBone->name, 10, 0, col);
+							view3d_cached_text_draw_add(vec, eBone->name, strlen(eBone->name), 10, 0, col);
 						}
 						/*	Draw additional axes */
 						if (arm->flag & ARM_DRAWAXES) {
@@ -2365,9 +2395,9 @@ static void draw_ghost_poses_range(Scene *scene, View3D *v3d, ARegion *ar, Base 
 	if (v3d->zbuf) glDisable(GL_DEPTH_TEST);
 	
 	/* draw from first frame of range to last */
-	for (CFRA = (int)start; CFRA < end; CFRA += (int)stepsize) {
+	for (CFRA = (int)start; CFRA <= end; CFRA += (int)stepsize) {
 		colfac = (end - (float)CFRA) / range;
-		UI_ThemeColorShadeAlpha(TH_WIRE, 0, -128 - (int)(120.0 * sqrt(colfac)));
+		UI_ThemeColorShadeAlpha(TH_WIRE, 0, -128 - (int)(120.0f * sqrtf(colfac)));
 		
 		BKE_animsys_evaluate_animdata(scene, &ob->id, adt, (float)CFRA, ADT_RECALC_ALL);
 		BKE_pose_where_is(scene, ob);
@@ -2447,7 +2477,7 @@ static void draw_ghost_poses_keys(Scene *scene, View3D *v3d, ARegion *ar, Base *
 	/* draw from first frame of range to last */
 	for (ak = keys.first, i = 0; ak; ak = ak->next, i++) {
 		colfac = i / range;
-		UI_ThemeColorShadeAlpha(TH_WIRE, 0, -128 - (int)(120.0 * sqrt(colfac)));
+		UI_ThemeColorShadeAlpha(TH_WIRE, 0, -128 - (int)(120.0f * sqrtf(colfac)));
 		
 		CFRA = (int)ak->cfra;
 		
@@ -2517,7 +2547,7 @@ static void draw_ghost_poses(Scene *scene, View3D *v3d, ARegion *ar, Base *base)
 	for (cur = stepsize; cur < range; cur += stepsize) {
 		ctime = cur - (float)fmod(cfrao, stepsize);  /* ensures consistent stepping */
 		colfac = ctime / range;
-		UI_ThemeColorShadeAlpha(TH_WIRE, 0, -128 - (int)(120.0 * sqrt(colfac)));
+		UI_ThemeColorShadeAlpha(TH_WIRE, 0, -128 - (int)(120.0f * sqrtf(colfac)));
 		
 		/* only within action range */
 		if (actframe + ctime >= start && actframe + ctime <= end) {
@@ -2532,7 +2562,7 @@ static void draw_ghost_poses(Scene *scene, View3D *v3d, ARegion *ar, Base *base)
 		
 		ctime = cur + (float)fmod((float)cfrao, stepsize) - stepsize + 1.0f;   /* ensures consistent stepping */
 		colfac = ctime / range;
-		UI_ThemeColorShadeAlpha(TH_WIRE, 0, -128 - (int)(120.0 * sqrt(colfac)));
+		UI_ThemeColorShadeAlpha(TH_WIRE, 0, -128 - (int)(120.0f * sqrtf(colfac)));
 		
 		/* only within action range */
 		if ((actframe - ctime >= start) && (actframe - ctime <= end)) {

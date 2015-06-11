@@ -123,7 +123,7 @@ base class --- :class:`PyObjectPlus`
 
       The scene gravity using the world x, y and z axis.
 
-      :type: list [fx, fy, fz]
+      :type: Vector((gx, gy, gz))
 
    .. method:: addObject(object, other, time=0)
 
@@ -152,6 +152,8 @@ base class --- :class:`PyObjectPlus`
 
       :arg scene: The name of the scene to replace this scene with.
       :type scene: string
+      :return: True if the scene exists and was scheduled for addition, False otherwise.
+      :rtype: boolean
 
    .. method:: suspend()
 

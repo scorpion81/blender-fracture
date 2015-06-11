@@ -18,11 +18,11 @@
 
 # <pep8 compliant>
 import bpy
-from bpy.types import Panel
+from bpy.types import Panel, Menu
 from rna_prop_ui import PropertyPanel
 
 
-class ObjectButtonsPanel():
+class ObjectButtonsPanel:
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "object"
@@ -152,6 +152,17 @@ class OBJECT_PT_relations(ObjectButtonsPanel, Panel):
         sub.active = (parent is not None)
 
 
+class GROUP_MT_specials(Menu):
+    bl_label = "Group Specials"
+
+    def draw(self, context):
+        layout = self.layout
+
+        layout.operator("object.group_unlink", icon='X')
+        layout.operator("object.grouped_select")
+        layout.operator("object.dupli_offset_from_cursor")
+
+
 class OBJECT_PT_groups(ObjectButtonsPanel, Panel):
     bl_label = "Groups"
 
@@ -167,8 +178,6 @@ class OBJECT_PT_groups(ObjectButtonsPanel, Panel):
             row.operator("object.group_add", text="Add to Group")
         row.operator("object.group_add", text="", icon='ZOOMIN')
 
-        # XXX, this is bad practice, yes, I wrote it :( - campbell
-        index = 0
         obj_name = obj.name
         for group in bpy.data.groups:
             # XXX this is slow and stupid!, we need 2 checks, one thats fast
@@ -183,6 +192,7 @@ class OBJECT_PT_groups(ObjectButtonsPanel, Panel):
                 row = col.box().row()
                 row.prop(group, "name", text="")
                 row.operator("object.group_remove", text="", icon='X', emboss=False)
+                row.menu("GROUP_MT_specials", icon='DOWNARROW_HLT', text="")
 
                 split = col.box().split()
 
@@ -191,10 +201,6 @@ class OBJECT_PT_groups(ObjectButtonsPanel, Panel):
 
                 col = split.column()
                 col.prop(group, "dupli_offset", text="")
-
-                props = col.operator("object.dupli_offset_from_cursor", text="From Cursor")
-                props.group = index
-                index += 1
 
 
 class OBJECT_PT_display(ObjectButtonsPanel, Panel):
@@ -206,17 +212,20 @@ class OBJECT_PT_display(ObjectButtonsPanel, Panel):
         obj = context.object
         obj_type = obj.type
         is_geometry = (obj_type in {'MESH', 'CURVE', 'SURFACE', 'META', 'FONT'})
+        is_wire = (obj_type in {'CAMERA', 'EMPTY'})
         is_empty_image = (obj_type == 'EMPTY' and obj.empty_draw_type == 'IMAGE')
+        is_dupli = (obj.dupli_type != 'NONE')
 
         split = layout.split()
 
         col = split.column()
         col.prop(obj, "show_name", text="Name")
         col.prop(obj, "show_axis", text="Axis")
-        if is_geometry:
-            # Makes no sense for cameras, armatures, etc.!
+        # Makes no sense for cameras, armatures, etc.!
+        # but these settings do apply to dupli instances
+        if is_geometry or is_dupli:
             col.prop(obj, "show_wire", text="Wire")
-        if obj_type == 'MESH':
+        if obj_type == 'MESH' or is_dupli:
             col.prop(obj, "show_all_edges")
 
         col = split.column()
@@ -235,9 +244,13 @@ class OBJECT_PT_display(ObjectButtonsPanel, Panel):
         split = layout.split()
 
         col = split.column()
-        if obj_type not in {'CAMERA', 'EMPTY'}:
+        if is_wire:
+            # wire objects only use the max. draw type for duplis
+            col.active = is_dupli
+            col.label(text="Maximum Dupli Draw Type:")
+        else:
             col.label(text="Maximum Draw Type:")
-            col.prop(obj, "draw_type", text="")
+        col.prop(obj, "draw_type", text="")
 
         col = split.column()
         if is_geometry or is_empty_image:
@@ -294,10 +307,11 @@ class OBJECT_PT_relations_extras(ObjectButtonsPanel, Panel):
 
         split = layout.split()
 
-        col = split.column()
-        col.label(text="Tracking Axes:")
-        col.prop(ob, "track_axis", text="Axis")
-        col.prop(ob, "up_axis", text="Up Axis")
+        if context.scene.render.engine != 'BLENDER_GAME':
+            col = split.column()
+            col.label(text="Tracking Axes:")
+            col.prop(ob, "track_axis", text="Axis")
+            col.prop(ob, "up_axis", text="Up Axis")
 
         col = split.column()
         col.prop(ob, "use_slow_parent")
@@ -309,8 +323,10 @@ class OBJECT_PT_relations_extras(ObjectButtonsPanel, Panel):
         layout.prop(ob, "use_extra_recalc_data")
 
 
-from bl_ui.properties_animviz import (MotionPathButtonsPanel,
-                                      OnionSkinButtonsPanel)
+from bl_ui.properties_animviz import (
+        MotionPathButtonsPanel,
+        OnionSkinButtonsPanel,
+        )
 
 
 class OBJECT_PT_motion_paths(MotionPathButtonsPanel, Panel):
@@ -322,7 +338,7 @@ class OBJECT_PT_motion_paths(MotionPathButtonsPanel, Panel):
         return (context.object)
 
     def draw(self, context):
-        layout = self.layout
+        # layout = self.layout
 
         ob = context.object
         avs = ob.animation_visualization

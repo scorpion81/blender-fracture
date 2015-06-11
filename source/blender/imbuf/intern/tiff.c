@@ -53,9 +53,7 @@
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"
 
-#include "IMB_allocimbuf.h"
 #include "IMB_filetype.h"
-#include "IMB_filter.h"
 
 #include "IMB_colormanagement.h"
 #include "IMB_colormanagement_intern.h"
@@ -311,8 +309,8 @@ int imb_is_a_tiff(unsigned char *mem)
 	char big_endian[IMB_TIFF_NCB] = { 0x4d, 0x4d, 0x00, 0x2a };
 	char lil_endian[IMB_TIFF_NCB] = { 0x49, 0x49, 0x2a, 0x00 };
 
-	return ( (memcmp(big_endian, mem, IMB_TIFF_NCB) == 0) ||
-	         (memcmp(lil_endian, mem, IMB_TIFF_NCB) == 0) );
+	return ((memcmp(big_endian, mem, IMB_TIFF_NCB) == 0) ||
+	        (memcmp(lil_endian, mem, IMB_TIFF_NCB) == 0));
 }
 
 static void scanline_contig_16bit(float *rectf, const unsigned short *sbuf, int scanline_w, int spp)
@@ -596,7 +594,7 @@ ImBuf *imb_loadtiff(unsigned char *mem, size_t size, int flags, char colorspace[
 		format = NULL;
 		TIFFGetField(image, TIFFTAG_PIXAR_TEXTUREFORMAT, &format);
 
-		if (format && strcmp(format, "Plain Texture") == 0 && TIFFIsTiled(image)) {
+		if (format && STREQ(format, "Plain Texture") && TIFFIsTiled(image)) {
 			int numlevel = TIFFNumberOfDirectories(image);
 
 			/* create empty mipmap levels in advance */
@@ -859,7 +857,7 @@ int imb_savetiff(ImBuf *ibuf, const char *name, int flags)
 	TIFFSetField(image, TIFFTAG_RESOLUTIONUNIT,  RESUNIT_INCH);
 	if (TIFFWriteEncodedStrip(image, 0,
 	                          (bitspersample == 16) ? (unsigned char *)pixels16 : pixels,
-	                          ibuf->x * ibuf->y * samplesperpixel * bitspersample / 8) == -1)
+	                          (size_t)ibuf->x * ibuf->y * samplesperpixel * bitspersample / 8) == -1)
 	{
 		fprintf(stderr,
 		        "imb_savetiff: Could not write encoded TIFF.\n");

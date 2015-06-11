@@ -47,7 +47,6 @@
 #include "DNA_mesh_types.h"
 #include "DNA_lattice_types.h"
 #include "DNA_meshdata_types.h"
-#include "DNA_nla_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_object_types.h"
 
@@ -137,7 +136,7 @@ void BKE_armature_free(bArmature *arm)
 void BKE_armature_make_local(bArmature *arm)
 {
 	Main *bmain = G.main;
-	int is_local = FALSE, is_lib = FALSE;
+	bool is_local = false, is_lib = false;
 	Object *ob;
 
 	if (arm->id.lib == NULL)
@@ -150,13 +149,13 @@ void BKE_armature_make_local(bArmature *arm)
 	for (ob = bmain->object.first; ob && ELEM(0, is_lib, is_local); ob = ob->id.next) {
 		if (ob->data == arm) {
 			if (ob->id.lib)
-				is_lib = TRUE;
+				is_lib = true;
 			else
-				is_local = TRUE;
+				is_local = true;
 		}
 	}
 
-	if (is_local && is_lib == FALSE) {
+	if (is_local && is_lib == false) {
 		id_clear_lib_data(bmain, &arm->id);
 	}
 	else if (is_local && is_lib) {
@@ -223,6 +222,10 @@ bArmature *BKE_armature_copy(bArmature *arm)
 	newArm->act_edbone = NULL;
 	newArm->sketch = NULL;
 
+	if (arm->id.lib) {
+		BKE_id_lib_local_paths(G.main, arm->id.lib, &newArm->id);
+	}
+
 	return newArm;
 }
 
@@ -230,7 +233,7 @@ static Bone *get_named_bone_bonechildren(Bone *bone, const char *name)
 {
 	Bone *curBone, *rbone;
 
-	if (!strcmp(bone->name, name))
+	if (STREQ(bone->name, name))
 		return bone;
 
 	for (curBone = bone->childbase.first; curBone; curBone = curBone->next) {
@@ -258,6 +261,19 @@ Bone *BKE_armature_find_bone_name(bArmature *arm, const char *name)
 	}
 
 	return bone;
+}
+
+bool BKE_armature_bone_flag_test_recursive(const Bone *bone, int flag)
+{
+	if (bone->flag & flag) {
+		return true;
+	}
+	else if (bone->parent) {
+		return BKE_armature_bone_flag_test_recursive(bone->parent, flag);
+	}
+	else {
+		return false;
+	}
 }
 
 /* Finds the best possible extension to the name on a particular axis. (For renaming, check for
@@ -506,7 +522,7 @@ void b_bone_spline_setup(bPoseChannel *pchan, int rest, Mat4 result_array[MAX_BB
 			invert_m3_m3(imat3, mat3);
 			mul_m3_m3m3(mat3, result, imat3); /* the matrix transforming vec_roll to desired roll */
 
-			roll1 = (float)atan2(mat3[2][0], mat3[2][2]);
+			roll1 = atan2f(mat3[2][0], mat3[2][2]);
 		}
 	}
 	else {
@@ -544,7 +560,7 @@ void b_bone_spline_setup(bPoseChannel *pchan, int rest, Mat4 result_array[MAX_BB
 		invert_m3_m3(imat3, mat3);
 		mul_m3_m3m3(mat3, imat3, result); /* the matrix transforming vec_roll to desired roll */
 
-		roll2 = (float)atan2(mat3[2][0], mat3[2][2]);
+		roll2 = atan2f(mat3[2][0], mat3[2][2]);
 
 		/* and only now negate handle */
 		mul_v3_fl(h2, -hlength2);
@@ -575,7 +591,7 @@ void b_bone_spline_setup(bPoseChannel *pchan, int rest, Mat4 result_array[MAX_BB
 
 		if (do_scale) {
 			/* correct for scaling when this matrix is used in scaled space */
-			mul_serie_m4(result_array[a].mat, iscalemat, result_array[a].mat, scalemat, NULL, NULL, NULL, NULL, NULL);
+			mul_m4_series(result_array[a].mat, iscalemat, result_array[a].mat, scalemat);
 		}
 	}
 }
@@ -594,7 +610,6 @@ static void pchan_b_bone_defmats(bPoseChannel *pchan, bPoseChanDeform *pdef_info
 	Mat4 b_bone[MAX_BBONE_SUBDIV], b_bone_rest[MAX_BBONE_SUBDIV];
 	Mat4 *b_bone_mats;
 	DualQuat *b_bone_dual_quats = NULL;
-	float tmat[4][4] = MAT4_UNITY;
 	int a;
 
 	b_bone_spline_setup(pchan, 0, b_bone);
@@ -620,10 +635,11 @@ static void pchan_b_bone_defmats(bPoseChannel *pchan, bPoseChanDeform *pdef_info
 	 * - transform back into global space */
 
 	for (a = 0; a < bone->segments; a++) {
+		float tmat[4][4];
+
 		invert_m4_m4(tmat, b_bone_rest[a].mat);
 
-		mul_serie_m4(b_bone_mats[a + 1].mat, pchan->chan_mat, bone->arm_mat, b_bone[a].mat, tmat, b_bone_mats[0].mat,
-		             NULL, NULL, NULL);
+		mul_m4_series(b_bone_mats[a + 1].mat, pchan->chan_mat, bone->arm_mat, b_bone[a].mat, tmat, b_bone_mats[0].mat);
 
 		if (use_quaternion)
 			mat4_to_dquat(&b_bone_dual_quats[a], bone->arm_mat, b_bone_mats[a + 1].mat);
@@ -674,7 +690,7 @@ float distfactor_to_bone(const float vec[3], const float b1[3], const float b2[3
 	sub_v3_v3v3(pdelta, vec, b1);
 
 	a = dot_v3v3(bdelta, pdelta);
-	hsqr = dot_v3v3(pdelta, pdelta);
+	hsqr = len_squared_v3(pdelta);
 
 	if (a < 0.0f) {
 		/* If we're past the end of the bone, do a spherical field attenuation thing */
@@ -827,7 +843,7 @@ void armature_deform_verts(Object *armOb, Object *target, DerivedMesh *dm, float
 	const short invert_vgroup = deformflag & ARM_DEF_INVERT_VGROUP;
 	int defbase_tot = 0;       /* safety for vertexgroup index overflow */
 	int i, target_totvert = 0; /* safety for vertexgroup overflow */
-	int use_dverts = FALSE;
+	bool use_dverts = false;
 	int armature_def_nr;
 	int totchan;
 
@@ -841,7 +857,7 @@ void armature_deform_verts(Object *armOb, Object *target, DerivedMesh *dm, float
 	/* bone defmats are already in the channels, chan_mat */
 
 	/* initialize B_bone matrices and dual quaternions */
-	totchan = BLI_countlist(&armOb->pose->chanbase);
+	totchan = BLI_listbase_count(&armOb->pose->chanbase);
 
 	if (use_quaternion) {
 		dualquats = MEM_callocN(sizeof(DualQuat) * totchan, "dualquats");
@@ -867,7 +883,7 @@ void armature_deform_verts(Object *armOb, Object *target, DerivedMesh *dm, float
 	armature_def_nr = defgroup_name_index(target, defgrp_name);
 
 	if (ELEM(target->type, OB_MESH, OB_LATTICE)) {
-		defbase_tot = BLI_countlist(&target->defbase);
+		defbase_tot = BLI_listbase_count(&target->defbase);
 
 		if (target->type == OB_MESH) {
 			Mesh *me = target->data;
@@ -888,10 +904,10 @@ void armature_deform_verts(Object *armOb, Object *target, DerivedMesh *dm, float
 		if (ELEM(target->type, OB_MESH, OB_LATTICE)) {
 			/* if we have a DerivedMesh, only use dverts if it has them */
 			if (dm) {
-				use_dverts = (dm->getVertData(dm, 0, CD_MDEFORMVERT) != NULL);
+				use_dverts = (dm->getVertDataArray(dm, CD_MDEFORMVERT) != NULL);
 			}
 			else if (dverts) {
-				use_dverts = TRUE;
+				use_dverts = true;
 			}
 
 			if (use_dverts) {
@@ -1042,7 +1058,7 @@ void armature_deform_verts(Object *armOb, Object *target, DerivedMesh *dm, float
 				if (!use_quaternion) /* quaternion already is scale corrected */
 					mul_m3_fl(smat, armature_weight / contrib);
 
-				mul_serie_m3(defMats[i], tmpmat, pre, smat, post, NULL, NULL, NULL, NULL);
+				mul_m3_series(defMats[i], post, smat, pre, tmpmat);
 			}
 		}
 
@@ -1108,10 +1124,11 @@ void BKE_armature_mat_world_to_pose(Object *ob, float inmat[4][4], float outmat[
  *       pose-channel into its local space (i.e. 'visual'-keyframing) */
 void BKE_armature_loc_world_to_pose(Object *ob, const float inloc[3], float outloc[3])
 {
-	float xLocMat[4][4] = MAT4_UNITY;
+	float xLocMat[4][4];
 	float nLocMat[4][4];
 
 	/* build matrix for location */
+	unit_m4(xLocMat);
 	copy_v3_v3(xLocMat[3], inloc);
 
 	/* get bone-space cursor matrix and extract location */
@@ -1277,10 +1294,11 @@ void BKE_armature_mat_bone_to_pose(bPoseChannel *pchan, float inmat[4][4], float
  *       pose-channel into its local space (i.e. 'visual'-keyframing) */
 void BKE_armature_loc_pose_to_bone(bPoseChannel *pchan, const float inloc[3], float outloc[3])
 {
-	float xLocMat[4][4] = MAT4_UNITY;
+	float xLocMat[4][4];
 	float nLocMat[4][4];
 
 	/* build matrix for location */
+	unit_m4(xLocMat);
 	copy_v3_v3(xLocMat[3], inloc);
 
 	/* get bone-space cursor matrix and extract location */
@@ -1294,19 +1312,19 @@ void BKE_armature_mat_pose_to_bone_ex(Object *ob, bPoseChannel *pchan, float inm
 
 	/* recalculate pose matrix with only parent transformations,
 	 * bone loc/sca/rot is ignored, scene and frame are not used. */
-	BKE_pose_where_is_bone(NULL, ob, &work_pchan, 0.0f, FALSE);
+	BKE_pose_where_is_bone(NULL, ob, &work_pchan, 0.0f, false);
 
 	/* find the matrix, need to remove the bone transforms first so this is
 	 * calculated as a matrix to set rather then a difference ontop of whats
 	 * already there. */
 	unit_m4(outmat);
-	BKE_pchan_apply_mat4(&work_pchan, outmat, FALSE);
+	BKE_pchan_apply_mat4(&work_pchan, outmat, false);
 
 	BKE_armature_mat_pose_to_bone(&work_pchan, inmat, outmat);
 }
 
 /* same as BKE_object_mat3_to_rot() */
-void BKE_pchan_mat3_to_rot(bPoseChannel *pchan, float mat[3][3], short use_compat)
+void BKE_pchan_mat3_to_rot(bPoseChannel *pchan, float mat[3][3], bool use_compat)
 {
 	switch (pchan->rotmode) {
 		case ROT_MODE_QUAT:
@@ -1326,7 +1344,7 @@ void BKE_pchan_mat3_to_rot(bPoseChannel *pchan, float mat[3][3], short use_compa
 
 /* Apply a 4x4 matrix to the pose bone,
  * similar to BKE_object_apply_mat4() */
-void BKE_pchan_apply_mat4(bPoseChannel *pchan, float mat[4][4], short use_compat)
+void BKE_pchan_apply_mat4(bPoseChannel *pchan, float mat[4][4], bool use_compat)
 {
 	float rot[3][3];
 	mat4_to_loc_rot_size(pchan->loc, rot, pchan->size, mat);
@@ -1414,6 +1432,7 @@ void BKE_rotMode_change_values(float quat[4], float eul[3], float axis[3], float
  * pose_mat(b)= arm_mat(b) * chan_mat(b)
  *
  * *************************************************************************** */
+
 /* Computes vector and roll based on a rotation.
  * "mat" must contain only a rotation, and no scaling. */
 void mat3_to_vec_roll(float mat[3][3], float r_vec[3], float *r_roll)
@@ -1433,52 +1452,98 @@ void mat3_to_vec_roll(float mat[3][3], float r_vec[3], float *r_roll)
 	}
 }
 
-/* Calculates the rest matrix of a bone based
- * On its vector and a roll around that vector */
-void vec_roll_to_mat3(const float vec[3], const float roll, float mat[3][3])
+/* Calculates the rest matrix of a bone based on its vector and a roll around that vector. */
+/* Given v = (v.x, v.y, v.z) our (normalized) bone vector, we want the rotation matrix M
+ * from the Y axis (so that M * (0, 1, 0) = v).
+ *   -> The rotation axis a lays on XZ plane, and it is orthonormal to v, hence to the projection of v onto XZ plane.
+ *   -> a = (v.z, 0, -v.x)
+ * We know a is eigenvector of M (so M * a = a).
+ * Finally, we have w, such that M * w = (0, 1, 0) (i.e. the vector that will be aligned with Y axis once transformed).
+ * We know w is symmetric to v by the Y axis.
+ *   -> w = (-v.x, v.y, -v.z)
+ *
+ * Solving this, we get (x, y and z being the components of v):
+ *     ┌ (x^2 * y + z^2) / (x^2 + z^2),   x,   x * z * (y - 1) / (x^2 + z^2) ┐
+ * M = │  x * (y^2 - 1)  / (x^2 + z^2),   y,    z * (y^2 - 1)  / (x^2 + z^2) │
+ *     └ x * z * (y - 1) / (x^2 + z^2),   z,   (x^2 + z^2 * y) / (x^2 + z^2) ┘
+ *
+ * This is stable as long as v (the bone) is not too much aligned with +/-Y (i.e. x and z components
+ * are not too close to 0).
+ *
+ * Since v is normalized, we have x^2 + y^2 + z^2 = 1, hence x^2 + z^2 = 1 - y^2 = (1 - y)(1 + y).
+ * This allows to simplifies M like this:
+ *     ┌ 1 - x^2 / (1 + y),   x,     -x * z / (1 + y) ┐
+ * M = │                -x,   y,                   -z │
+ *     └  -x * z / (1 + y),   z,    1 - z^2 / (1 + y) ┘
+ *
+ * Written this way, we see the case v = +Y is no more a singularity. The only one remaining is the bone being
+ * aligned with -Y.
+ *
+ * Let's handle the asymptotic behavior when bone vector is reaching the limit of y = -1. Each of the four corner
+ * elements can vary from -1 to 1, depending on the axis a chosen for doing the rotation. And the "rotation" here
+ * is in fact established by mirroring XZ plane by that given axis, then inversing the Y-axis.
+ * For sufficiently small x and z, and with y approaching -1, all elements but the four corner ones of M
+ * will degenerate. So let's now focus on these corner elements.
+ *
+ * We rewrite M so that it only contains its four corner elements, and combine the 1 / (1 + y) factor:
+ *                    ┌ 1 + y - x^2,        -x * z ┐
+ * M* = 1 / (1 + y) * │                            │
+ *                    └      -x * z,   1 + y - z^2 ┘
+ *
+ * When y is close to -1, computing 1 / (1 + y) will cause severe numerical instability, so we ignore it and
+ * normalize M instead. We know y^2 = 1 - (x^2 + z^2), and y < 0, hence y = -sqrt(1 - (x^2 + z^2)).
+ * Since x and z are both close to 0, we apply the binomial expansion to the first order:
+ * y = -sqrt(1 - (x^2 + z^2)) = -1 + (x^2 + z^2) / 2. Which gives:
+ *                        ┌  z^2 - x^2,  -2 * x * z ┐
+ * M* = 1 / (x^2 + z^2) * │                         │
+ *                        └ -2 * x * z,   x^2 - z^2 ┘
+ */
+void vec_roll_to_mat3_normalized(const float nor[3], const float roll, float mat[3][3])
 {
-	float nor[3], axis[3], target[3] = {0, 1, 0};
+#define THETA_THRESHOLD_NEGY 1.0e-9f
+#define THETA_THRESHOLD_NEGY_CLOSE 1.0e-5f
+
 	float theta;
 	float rMatrix[3][3], bMatrix[3][3];
 
-	normalize_v3_v3(nor, vec);
+	theta = 1.0f + nor[1];
 
-	/* Find Axis & Amount for bone matrix */
-	cross_v3_v3v3(axis, target, nor);
-
-	/* was 0.0000000000001, caused bug [#23954], smaller values give unstable
-	 * roll when toggling editmode.
+	/* With old algo, 1.0e-13f caused T23954 and T31333, 1.0e-6f caused T27675 and T30438,
+	 * so using 1.0e-9f as best compromise.
 	 *
-	 * was 0.00001, causes bug [#27675], with 0.00000495,
-	 * so a value inbetween these is needed.
+	 * New algo is supposed much more precise, since less complex computations are performed,
+	 * but it uses two different threshold values...
 	 *
-	 * was 0.000001, causes bug [#30438] (which is same as [#27675, imho).
-	 * Resetting it to org value seems to cause no more [#23954]...
-	 *
-	 * was 0.0000000000001, caused bug [#31333], smaller values give unstable
-	 * roll when toggling editmode again...
-	 * No good value here, trying 0.000000001 as best compromise. :/
+	 * Note: When theta is close to zero, we have to check we do have non-null X/Z components as well
+	 *       (due to float precision errors, we can have nor = (0.0, 0.99999994, 0.0)...).
 	 */
-	if (dot_v3v3(axis, axis) > 1.0e-9f) {
-		/* if nor is *not* a multiple of target ... */
-		normalize_v3(axis);
-
-		theta = angle_normalized_v3v3(target, nor);
-
-		/* Make Bone matrix*/
-		axis_angle_normalized_to_mat3(bMatrix, axis, theta);
+	if (theta > THETA_THRESHOLD_NEGY_CLOSE || ((nor[0] || nor[2]) && theta > THETA_THRESHOLD_NEGY)) {
+		/* nor is *not* -Y.
+		 * We got these values for free... so be happy with it... ;)
+		 */
+		bMatrix[0][1] = -nor[0];
+		bMatrix[1][0] = nor[0];
+		bMatrix[1][1] = nor[1];
+		bMatrix[1][2] = nor[2];
+		bMatrix[2][1] = -nor[2];
+		if (theta > THETA_THRESHOLD_NEGY_CLOSE) {
+			/* If nor is far enough from -Y, apply the general case. */
+			bMatrix[0][0] = 1 - nor[0] * nor[0] / theta;
+			bMatrix[2][2] = 1 - nor[2] * nor[2] / theta;
+			bMatrix[2][0] = bMatrix[0][2] = -nor[0] * nor[2] / theta;
+		}
+		else {
+			/* If nor is too close to -Y, apply the special case. */
+			theta = nor[0] * nor[0] + nor[2] * nor[2];
+			bMatrix[0][0] = (nor[0] + nor[2]) * (nor[0] - nor[2]) / -theta;
+			bMatrix[2][2] = -bMatrix[0][0];
+			bMatrix[2][0] = bMatrix[0][2] = 2.0f * nor[0] * nor[2] / theta;
+		}
 	}
 	else {
-		/* if nor is a multiple of target ... */
-		float updown;
-
-		/* point same direction, or opposite? */
-		updown = (dot_v3v3(target, nor) > 0) ? 1.0f : -1.0f;
-
-		/* I think this should work... */
-		bMatrix[0][0] = updown; bMatrix[0][1] = 0.0;    bMatrix[0][2] = 0.0;
-		bMatrix[1][0] = 0.0;    bMatrix[1][1] = updown; bMatrix[1][2] = 0.0;
-		bMatrix[2][0] = 0.0;    bMatrix[2][1] = 0.0;    bMatrix[2][2] = 1.0;
+		/* If nor is -Y, simple symmetry by Z axis. */
+		unit_m3(bMatrix);
+		bMatrix[0][0] = bMatrix[1][1] = -1.0;
 	}
 
 	/* Make Roll matrix */
@@ -1486,8 +1551,18 @@ void vec_roll_to_mat3(const float vec[3], const float roll, float mat[3][3])
 
 	/* Combine and output result */
 	mul_m3_m3m3(mat, rMatrix, bMatrix);
+
+#undef THETA_THRESHOLD_NEGY
+#undef THETA_THRESHOLD_NEGY_CLOSE
 }
 
+void vec_roll_to_mat3(const float vec[3], const float roll, float mat[3][3])
+{
+	float nor[3];
+
+	normalize_v3_v3(nor, vec);
+	vec_roll_to_mat3_normalized(nor, roll, mat);
+}
 
 /* recursive part, calculates restposition of entire tree of children */
 /* used by exiting editmode too */
@@ -1596,6 +1671,7 @@ static void pose_proxy_synchronize(Object *ob, Object *from, int layer_protected
 			pchanw.next = pchan->next;
 			pchanw.parent = pchan->parent;
 			pchanw.child = pchan->child;
+			pchanw.custom_tx = pchan->custom_tx;
 
 			pchanw.mpath = pchan->mpath;
 			pchan->mpath = NULL;
@@ -1604,7 +1680,7 @@ static void pose_proxy_synchronize(Object *ob, Object *from, int layer_protected
 			if (pchanw.prop) {
 				pchanw.prop = IDP_CopyProperty(pchanw.prop);
 				
-				/* use the values from the the existing props */
+				/* use the values from the existing props */
 				if (pchan->prop) {
 					IDP_SyncGroupValues(pchanw.prop, pchan->prop);
 				}
@@ -1615,16 +1691,16 @@ static void pose_proxy_synchronize(Object *ob, Object *from, int layer_protected
 			 *     2. copy proxy-pchan's constraints on-to new
 			 *     3. add extracted local constraints back on top
 			 *
-			 * Note for BKE_copy_constraints: when copying constraints, disable 'do_extern' otherwise
+			 * Note for BKE_constraints_copy: when copying constraints, disable 'do_extern' otherwise
 			 *                                we get the libs direct linked in this blend.
 			 */
-			BKE_extract_proxylocal_constraints(&proxylocal_constraints, &pchan->constraints);
-			BKE_copy_constraints(&pchanw.constraints, &pchanp->constraints, FALSE);
+			BKE_constraints_proxylocal_extract(&proxylocal_constraints, &pchan->constraints);
+			BKE_constraints_copy(&pchanw.constraints, &pchanp->constraints, false);
 			BLI_movelisttolist(&pchanw.constraints, &proxylocal_constraints);
 			
 			/* constraints - set target ob pointer to own object */
 			for (con = pchanw.constraints.first; con; con = con->next) {
-				bConstraintTypeInfo *cti = BKE_constraint_get_typeinfo(con);
+				bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
 				ListBase targets = {NULL, NULL};
 				bConstraintTarget *ct;
 				
@@ -1768,7 +1844,7 @@ typedef struct tSplineIK_Tree {
 
 	int type;                    /* type of IK that this serves (CONSTRAINT_TYPE_KINEMATIC or ..._SPLINEIK) */
 
-	short free_points;           /* free the point positions array */
+	bool free_points;            /* free the point positions array */
 	short chainlen;              /* number of bones in the chain */
 
 	float *points;               /* parametric positions for the joints along the curve */
@@ -1791,7 +1867,7 @@ static void splineik_init_tree_from_pchan(Scene *scene, Object *UNUSED(ob), bPos
 	bSplineIKConstraint *ikData = NULL;
 	float boneLengths[255], *jointPoints;
 	float totLength = 0.0f;
-	short free_joints = 0;
+	bool free_joints = 0;
 	int segcount = 0;
 
 	/* find the SplineIK constraint */
@@ -1822,7 +1898,7 @@ static void splineik_init_tree_from_pchan(Scene *scene, Object *UNUSED(ob), bPos
 		 */
 
 		/* only happens on reload file, but violates depsgraph still... fix! */
-		if (ELEM3(NULL,  ikData->tar->curve_cache, ikData->tar->curve_cache->path, ikData->tar->curve_cache->path->data)) {
+		if (ELEM(NULL,  ikData->tar->curve_cache, ikData->tar->curve_cache->path, ikData->tar->curve_cache->path->data)) {
 			BKE_displist_make_curveTypes(scene, ikData->tar, 0);
 			
 			/* path building may fail in EditMode after removing verts [#33268]*/
@@ -1858,7 +1934,7 @@ static void splineik_init_tree_from_pchan(Scene *scene, Object *UNUSED(ob), bPos
 		if (ikData->points)
 			MEM_freeN(ikData->points);
 		ikData->numpoints = ikData->chainlen + 1;
-		ikData->points = MEM_callocN(sizeof(float) * ikData->numpoints, "Spline IK Binding");
+		ikData->points = MEM_mallocN(sizeof(float) * ikData->numpoints, "Spline IK Binding");
 
 		/* bind 'tip' of chain (i.e. first joint = tip of bone with the Spline IK Constraint) */
 		ikData->points[0] = 1.0f;
@@ -1885,6 +1961,9 @@ static void splineik_init_tree_from_pchan(Scene *scene, Object *UNUSED(ob), bPos
 		/* spline has now been bound */
 		ikData->flag |= CONSTRAINT_SPLINEIK_BOUND;
 	}
+
+	/* disallow negative values (happens with float precision) */
+	CLAMP_MIN(ikData->points[segcount], 0.0f);
 
 	/* apply corrections for sensitivity to scaling on a copy of the bind points,
 	 * since it's easier to determine the positions of all the joints beforehand this way
@@ -1931,7 +2010,7 @@ static void splineik_init_tree_from_pchan(Scene *scene, Object *UNUSED(ob), bPos
 		tree->chainlen = segcount;
 
 		/* copy over the array of links to bones in the chain (from tip to root) */
-		tree->chain = MEM_callocN(sizeof(bPoseChannel *) * segcount, "SplineIK Chain");
+		tree->chain = MEM_mallocN(sizeof(bPoseChannel *) * segcount, "SplineIK Chain");
 		memcpy(tree->chain, pchanChain, sizeof(bPoseChannel *) * segcount);
 
 		/* store reference to joint position array */
@@ -2100,9 +2179,9 @@ static void splineik_evaluate_bone(tSplineIK_Tree *tree, Scene *scene, Object *o
 				mul_v3_fl(poseMat[2], scale);
 				break;
 			}
-			case CONSTRAINT_SPLINEIK_XZS_VOLUMETRIC:
+			case CONSTRAINT_SPLINEIK_XZS_INVERSE:
 			{
-				/* 'volume preservation' */
+				/* old 'volume preservation' method using the inverse scale */
 				float scale;
 
 				/* calculate volume preservation factor which is
@@ -2121,6 +2200,54 @@ static void splineik_evaluate_bone(tSplineIK_Tree *tree, Scene *scene, Object *o
 				/* apply the scaling */
 				mul_v3_fl(poseMat[0], scale);
 				mul_v3_fl(poseMat[2], scale);
+				break;
+			}
+			case CONSTRAINT_SPLINEIK_XZS_VOLUMETRIC:
+			{
+				/* improved volume preservation based on the Stretch To constraint */
+				float final_scale;
+				
+				/* as the basis for volume preservation, we use the inverse scale factor... */
+				if (fabsf(scaleFac) != 0.0f) {
+					/* NOTE: The method here is taken wholesale from the Stretch To constraint */
+					float bulge = powf(1.0f / fabsf(scaleFac), ikData->bulge);
+					
+					if (bulge > 1.0f) {
+						if (ikData->flag & CONSTRAINT_SPLINEIK_USE_BULGE_MAX) {
+							float bulge_max = max_ff(ikData->bulge_max, 1.0f);
+							float hard = min_ff(bulge, bulge_max);
+							
+							float range = bulge_max - 1.0f;
+							float scale = (range > 0.0f) ? 1.0f / range : 0.0f;
+							float soft = 1.0f + range * atanf((bulge - 1.0f) * scale) / (float)M_PI_2;
+							
+							bulge = interpf(soft, hard, ikData->bulge_smooth);
+						}
+					}
+					if (bulge < 1.0f) {
+						if (ikData->flag & CONSTRAINT_SPLINEIK_USE_BULGE_MIN) {
+							float bulge_min = CLAMPIS(ikData->bulge_min, 0.0f, 1.0f);
+							float hard = max_ff(bulge, bulge_min);
+							
+							float range = 1.0f - bulge_min;
+							float scale = (range > 0.0f) ? 1.0f / range : 0.0f;
+							float soft = 1.0f - range * atanf((1.0f - bulge) * scale) / (float)M_PI_2;
+							
+							bulge = interpf(soft, hard, ikData->bulge_smooth);
+						}
+					}
+					
+					/* compute scale factor for xz axes from this value */
+					final_scale = sqrt(bulge);
+				}
+				else {
+					/* no scaling, so scale factor is simple */
+					final_scale = 1.0f;
+				}
+				
+				/* apply the scaling (assuming normalised scale) */
+				mul_v3_fl(poseMat[0], final_scale);
+				mul_v3_fl(poseMat[2], final_scale);
 				break;
 			}
 		}
@@ -2261,13 +2388,13 @@ static void do_strip_modifiers(Scene *scene, Object *armob, Bone *bone, bPoseCha
 	int do_modif;
 
 	for (strip = armob->nlastrips.first; strip; strip = strip->next) {
-		do_modif = FALSE;
+		do_modif = false;
 
 		if (scene_cfra >= strip->start && scene_cfra <= strip->end)
-			do_modif = TRUE;
+			do_modif = true;
 
 		if ((scene_cfra > strip->end) && (strip->flag & ACTSTRIP_HOLDLASTFRAME)) {
-			do_modif = TRUE;
+			do_modif = true;
 
 			/* if there are any other strips active, ignore modifiers for this strip -
 			 * 'hold' option should only hold action modifiers if there are
@@ -2277,7 +2404,7 @@ static void do_strip_modifiers(Scene *scene, Object *armob, Bone *bone, bPoseCha
 
 				if (scene_cfra >= strip2->start && scene_cfra <= strip2->end) {
 					if (!(strip2->flag & ACTSTRIP_MUTE))
-						do_modif = FALSE;
+						do_modif = false;
 				}
 			}
 
@@ -2286,7 +2413,7 @@ static void do_strip_modifiers(Scene *scene, Object *armob, Bone *bone, bPoseCha
 			for (strip2 = strip->next; strip2; strip2 = strip2->next) {
 				if (scene_cfra < strip2->start) continue;
 				if ((strip2->flag & ACTSTRIP_HOLDLASTFRAME) && !(strip2->flag & ACTSTRIP_MUTE)) {
-					do_modif = FALSE;
+					do_modif = false;
 				}
 			}
 		}
@@ -2303,10 +2430,10 @@ static void do_strip_modifiers(Scene *scene, Object *armob, Bone *bone, bPoseCha
 						/* validate first */
 						if (amod->ob && amod->ob->type == OB_CURVE && amod->channel[0]) {
 
-							if (strcmp(pchan->name, amod->channel) == 0) {
+							if (STREQ(pchan->name, amod->channel)) {
 								float mat4[4][4], mat3[3][3];
 
-								curve_deform_vector(amod->ob, armob, bone->arm_mat[3], pchan->pose_mat[3], mat3, amod->no_rot_axis);
+								curve_deform_vector(scene, amod->ob, armob, bone->arm_mat[3], pchan->pose_mat[3], mat3, amod->no_rot_axis);
 								copy_m4_m4(mat4, pchan->pose_mat);
 								mul_m4_m3m4(pchan->pose_mat, mat3, mat4);
 
@@ -2316,7 +2443,7 @@ static void do_strip_modifiers(Scene *scene, Object *armob, Bone *bone, bPoseCha
 					break;
 					case ACTSTRIP_MOD_NOISE:
 					{
-						if (strcmp(pchan->name, amod->channel) == 0) {
+						if (STREQ(pchan->name, amod->channel)) {
 							float nor[3], loc[3], ofs;
 							float eul[3], size[3], eulo[3], sizeo[3];
 
@@ -2390,7 +2517,7 @@ void BKE_pose_where_is_bone_tail(bPoseChannel *pchan)
 /* pchan is validated, as having bone and parent pointer
  * 'do_extra': when zero skips loc/size/rot, constraints and strip modifiers.
  */
-void BKE_pose_where_is_bone(Scene *scene, Object *ob, bPoseChannel *pchan, float ctime, int do_extra)
+void BKE_pose_where_is_bone(Scene *scene, Object *ob, bPoseChannel *pchan, float ctime, bool do_extra)
 {
 	/* This gives a chan_mat with actions (ipos) results. */
 	if (do_extra)
@@ -2429,7 +2556,7 @@ void BKE_pose_where_is_bone(Scene *scene, Object *ob, bPoseChannel *pchan, float
 			cob = BKE_constraints_make_evalob(scene, ob, pchan, CONSTRAINT_OBTYPE_BONE);
 
 			/* Solve PoseChannel's Constraints */
-			BKE_solve_constraints(&pchan->constraints, cob, ctime); /* ctime doesnt alter objects */
+			BKE_constraints_solve(&pchan->constraints, cob, ctime); /* ctime doesnt alter objects */
 
 			/* cleanup after Constraint Solving
 			 * - applies matrix back to pchan, and frees temporary struct used
@@ -2537,7 +2664,7 @@ static int minmax_armature(Object *ob, float r_min[3], float r_max[3])
 		minmax_v3v3_v3(r_min, r_max, pchan->pose_tail);
 	}
 
-	return (ob->pose->chanbase.first != NULL);
+	return (BLI_listbase_is_empty(&ob->pose->chanbase) == false);
 }
 
 static void boundbox_armature(Object *ob, float loc[3], float size[3])

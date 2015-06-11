@@ -223,7 +223,7 @@ static Node *addnode(Octree *oc)
 	return oc->adrnode[index] + (oc->nodecount & 4095);
 }
 
-static int face_in_node(RayFace *face, short x, short y, short z, float rtf[4][3])
+static bool face_in_node(RayFace *face, short x, short y, short z, float rtf[4][3])
 {
 	static float nor[3], d;
 	float fx, fy, fz;
@@ -380,7 +380,7 @@ static void d2dda(Octree *oc, short b1, short b2, short c1, short c2, char *ocfa
 	x = ocx1; y = ocy1;
 	lambda = MIN2(lambda_x, lambda_y);
 	
-	while (TRUE) {
+	while (true) {
 		
 		if (x < 0 || y < 0 || x >= oc->ocres || y >= oc->ocres) {
 			/* pass*/
@@ -657,7 +657,7 @@ static void RE_rayobject_octree_done(RayObject *tree)
 	oc->ocfacy = (oc->ocres - 0.1f) / t01;
 	oc->ocfacz = (oc->ocres - 0.1f) / t02;
 	
-	oc->ocsize = sqrt(t00 * t00 + t01 * t01 + t02 * t02);  /* global, max size octree */
+	oc->ocsize = sqrtf(t00 * t00 + t01 * t01 + t02 * t02);  /* global, max size octree */
 
 	for (c = 0; c < oc->ro_nodes_used; c++) {
 		octree_fill_rayface(oc, oc->ro_nodes[c]);
@@ -1004,7 +1004,7 @@ static int RE_rayobject_octree_intersect(RayObject *tree, Isect *is)
 		/* this loop has been constructed to make sure the first and last node of ray
 		 * are always included, even when dda_lambda==1.0f or larger */
 
-		while (TRUE) {
+		while (true) {
 
 			no = ocread(oc, xo, yo, zo);
 			if (no) {

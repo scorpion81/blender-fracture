@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include <string.h>
@@ -23,6 +23,7 @@
 #include "integrator.h"
 #include "scene.h"
 #include "session.h"
+#include "bake.h"
 
 #include "util_foreach.h"
 #include "util_function.h"
@@ -50,7 +51,7 @@ Session::Session(const SessionParams& params_)
 
 	device = Device::create(params.device, stats, params.background);
 
-	if(params.background) {
+	if(params.background && params.output_path.empty()) {
 		buffers = NULL;
 		display = NULL;
 	}
@@ -81,6 +82,7 @@ Session::Session(const SessionParams& params_)
 Session::~Session()
 {
 	if(session_thread) {
+		/* wait for session thread to end */
 		progress.set_cancel("Exiting");
 
 		gpu_need_tonemap = false;
@@ -95,13 +97,19 @@ Session::~Session()
 		wait();
 	}
 
-	if(display && !params.output_path.empty()) {
-		tonemap();
+	if(!params.output_path.empty()) {
+		/* tonemap and write out image if requested */
+		delete display;
+
+		display = new DisplayBuffer(device, false);
+		display->reset(device, buffers->params);
+		tonemap(params.samples);
 
 		progress.set_status("Writing Image", params.output_path);
 		display->write(device, params.output_path);
 	}
 
+	/* clean up */
 	foreach(RenderBuffers *buffers, tile_buffers)
 		delete buffers;
 
@@ -151,7 +159,7 @@ void Session::reset_gpu(BufferParams& buffer_params, int samples)
 	pause_cond.notify_all();
 }
 
-bool Session::draw_gpu(BufferParams& buffer_params)
+bool Session::draw_gpu(BufferParams& buffer_params, DeviceDrawParams& draw_params)
 {
 	/* block for buffer access */
 	thread_scoped_lock display_lock(display_mutex);
@@ -165,12 +173,12 @@ bool Session::draw_gpu(BufferParams& buffer_params)
 			 * only access GL buffers from the main thread */
 			if(gpu_need_tonemap) {
 				thread_scoped_lock buffers_lock(buffers_mutex);
-				tonemap();
+				tonemap(tile_manager.state.sample);
 				gpu_need_tonemap = false;
 				gpu_need_tonemap_cond.notify_all();
 			}
 
-			display->draw(device);
+			display->draw(device, draw_params);
 
 			if(display_outdated && (time_dt() - reset_time) > params.text_timeout)
 				return false;
@@ -191,8 +199,7 @@ void Session::run_gpu()
 	paused_time = 0.0;
 	last_update_time = time_dt();
 
-	if(!params.background)
-		progress.set_start_time(start_time + paused_time);
+	progress.set_render_start_time(start_time + paused_time);
 
 	while(!progress.get_cancel()) {
 		/* advance to next tile */
@@ -225,6 +232,7 @@ void Session::run_gpu()
 
 					if(!params.background)
 						progress.set_start_time(start_time + paused_time);
+					progress.set_render_start_time(start_time + paused_time);
 
 					update_status_time(pause, no_tiles);
 					progress.set_update();
@@ -243,7 +251,7 @@ void Session::run_gpu()
 			update_scene();
 
 			if(!device->error_message().empty())
-				progress.set_cancel(device->error_message());
+				progress.set_error(device->error_message());
 
 			if(progress.get_cancel())
 				break;
@@ -284,7 +292,7 @@ void Session::run_gpu()
 			}
 
 			if(!device->error_message().empty())
-				progress.set_cancel(device->error_message());
+				progress.set_error(device->error_message());
 
 			tiles_written = update_progressive_refine(progress.get_cancel());
 
@@ -315,7 +323,7 @@ void Session::reset_cpu(BufferParams& buffer_params, int samples)
 	pause_cond.notify_all();
 }
 
-bool Session::draw_cpu(BufferParams& buffer_params)
+bool Session::draw_cpu(BufferParams& buffer_params, DeviceDrawParams& draw_params)
 {
 	thread_scoped_lock display_lock(display_mutex);
 
@@ -324,7 +332,7 @@ bool Session::draw_cpu(BufferParams& buffer_params)
 		/* then verify the buffers have the expected size, so we don't
 		 * draw previous results in a resized window */
 		if(!buffer_params.modified(display->params)) {
-			display->draw(device);
+			display->draw(device, draw_params);
 
 			if(display_outdated && (time_dt() - reset_time) > params.text_timeout)
 				return false;
@@ -367,7 +375,7 @@ bool Session::acquire_tile(Device *tile_device, RenderTile& rtile)
 
 	/* in case of a permanent buffer, return it, otherwise we will allocate
 	 * a new temporary buffer */
-	if(!params.background) {
+	if(!(params.background && params.output_path.empty())) {
 		tile_manager.state.buffer.get_offset_stride(rtile.offset, rtile.stride);
 
 		rtile.buffer = buffers->buffer.device_pointer;
@@ -509,6 +517,7 @@ void Session::run_cpu()
 
 					if(!params.background)
 						progress.set_start_time(start_time + paused_time);
+					progress.set_render_start_time(start_time + paused_time);
 
 					update_status_time(pause, no_tiles);
 					progress.set_update();
@@ -532,7 +541,7 @@ void Session::run_cpu()
 			update_scene();
 
 			if(!device->error_message().empty())
-				progress.set_cancel(device->error_message());
+				progress.set_error(device->error_message());
 
 			if(progress.get_cancel())
 				break;
@@ -550,7 +559,7 @@ void Session::run_cpu()
 				need_tonemap = true;
 
 			if(!device->error_message().empty())
-				progress.set_cancel(device->error_message());
+				progress.set_error(device->error_message());
 		}
 
 		device->task_wait();
@@ -567,12 +576,12 @@ void Session::run_cpu()
 			}
 			else if(need_tonemap) {
 				/* tonemap only if we do not reset, we don't we don't
-				 * want to show the result of an incomplete sample*/
-				tonemap();
+				 * want to show the result of an incomplete sample */
+				tonemap(tile_manager.state.sample);
 			}
 
 			if(!device->error_message().empty())
-				progress.set_cancel(device->error_message());
+				progress.set_error(device->error_message());
 
 			tiles_written = update_progressive_refine(progress.get_cancel());
 		}
@@ -584,9 +593,10 @@ void Session::run_cpu()
 		update_progressive_refine(true);
 }
 
-void Session::run()
+void Session::load_kernels()
 {
-	/* load kernels */
+	thread_scoped_lock scene_lock(scene->mutex);
+
 	if(!kernels_loaded) {
 		progress.set_status("Loading render kernels (may take a few minutes the first time)");
 
@@ -595,6 +605,7 @@ void Session::run()
 			if(message.empty())
 				message = "Failed loading render kernel, see console for errors";
 
+			progress.set_error(message);
 			progress.set_status("Error", message);
 			progress.set_update();
 			return;
@@ -602,6 +613,12 @@ void Session::run()
 
 		kernels_loaded = true;
 	}
+}
+
+void Session::run()
+{
+	/* load kernels */
+	load_kernels();
 
 	/* session thread loop */
 	progress.set_status("Waiting for render to start");
@@ -624,12 +641,12 @@ void Session::run()
 		progress.set_update();
 }
 
-bool Session::draw(BufferParams& buffer_params)
+bool Session::draw(BufferParams& buffer_params, DeviceDrawParams &draw_params)
 {
 	if(device_use_gl)
-		return draw_gpu(buffer_params);
+		return draw_gpu(buffer_params, draw_params);
 	else
-		return draw_cpu(buffer_params);
+		return draw_cpu(buffer_params, draw_params);
 }
 
 void Session::reset_(BufferParams& buffer_params, int samples)
@@ -649,7 +666,8 @@ void Session::reset_(BufferParams& buffer_params, int samples)
 	paused_time = 0.0;
 
 	if(!params.background)
-		progress.set_start_time(start_time + paused_time);
+		progress.set_start_time(start_time);
+	progress.set_render_start_time(start_time);
 }
 
 void Session::reset(BufferParams& buffer_params, int samples)
@@ -726,10 +744,14 @@ void Session::update_scene()
 		cam->tag_update();
 	}
 
-	/* number of samples is needed by multi jittered sampling pattern */
+	/* number of samples is needed by multi jittered
+	 * sampling pattern and by baking */
 	Integrator *integrator = scene->integrator;
+	BakeManager *bake_manager = scene->bake_manager;
 
-	if(integrator->sampling_pattern == SAMPLING_PATTERN_CMJ) {
+	if(integrator->sampling_pattern == SAMPLING_PATTERN_CMJ ||
+	   bake_manager->get_baking())
+	{
 		int aa_samples = tile_manager.num_samples;
 
 		if(aa_samples != integrator->aa_samples) {
@@ -834,7 +856,7 @@ void Session::path_trace()
 	device->task_add(task);
 }
 
-void Session::tonemap()
+void Session::tonemap(int sample)
 {
 	/* add tonemap task */
 	DeviceTask task(DeviceTask::FILM_CONVERT);
@@ -846,7 +868,7 @@ void Session::tonemap()
 	task.rgba_byte = display->rgba_byte.device_pointer;
 	task.rgba_half = display->rgba_half.device_pointer;
 	task.buffer = buffers->buffer.device_pointer;
-	task.sample = tile_manager.state.sample;
+	task.sample = sample;
 	tile_manager.state.buffer.get_offset_stride(task.offset, task.stride);
 
 	if(task.w > 0 && task.h > 0) {
@@ -867,7 +889,7 @@ bool Session::update_progressive_refine(bool cancel)
 
 	double current_time = time_dt();
 
-	if (current_time - last_update_time < 1.0) {
+	if (current_time - last_update_time < params.progressive_update_timeout) {
 		/* if last sample was processed, we need to write buffers anyway  */
 		if (!write)
 			return false;

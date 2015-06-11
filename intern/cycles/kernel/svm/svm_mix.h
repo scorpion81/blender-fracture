@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 CCL_NAMESPACE_BEGIN
@@ -89,7 +89,7 @@ ccl_device float3 svm_mix_diff(float t, float3 col1, float3 col2)
 
 ccl_device float3 svm_mix_dark(float t, float3 col1, float3 col2)
 {
-	return min(col1, col2*t);
+	return min(col1, col2)*t + col1*(1.0f - t);
 }
 
 ccl_device float3 svm_mix_light(float t, float3 col1, float3 col2)

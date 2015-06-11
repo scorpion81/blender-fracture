@@ -93,10 +93,12 @@ static int rna_use_shadow_get(PointerRNA *ptr)
 {
 	Lamp *la = (Lamp *)ptr->data;
 
-	if (la->type == LA_SPOT)
-		return la->mode & LA_SHAD_BUF;
-	else
-		return la->mode & LA_SHAD_RAY;
+	if (la->type == LA_SPOT) {
+		return (la->mode & LA_SHAD_BUF) != 0;
+	}
+	else {
+		return (la->mode & LA_SHAD_RAY) != 0;
+	}
 }
 
 static void rna_use_shadow_set(PointerRNA *ptr, int value)
@@ -410,7 +412,8 @@ static void rna_def_lamp(BlenderRNA *brna)
 	
 	/* textures */
 	rna_def_mtex_common(brna, srna, "rna_Lamp_mtex_begin", "rna_Lamp_active_texture_get",
-	                    "rna_Lamp_active_texture_set", NULL, "LampTextureSlot", "LampTextureSlots", "rna_Lamp_draw_update");
+	                    "rna_Lamp_active_texture_set", NULL, "LampTextureSlot", "LampTextureSlots",
+	                    "rna_Lamp_draw_update", "rna_Lamp_draw_update");
 }
 
 static void rna_def_lamp_falloff(StructRNA *srna)

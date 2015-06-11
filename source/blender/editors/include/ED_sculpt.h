@@ -32,51 +32,16 @@
 
 struct ARegion;
 struct bContext;
-struct MultiresModifierData;
 struct Object;
 struct RegionView3D;
-struct wmKeyConfig;
-struct wmWindowManager;
+struct Scene;
 struct ViewContext;
 struct rcti;
 
 /* sculpt.c */
 void ED_operatortypes_sculpt(void);
-void sculpt_get_redraw_planes(float planes[4][4], struct ARegion *ar,
-                              struct RegionView3D *rv3d, struct Object *ob);
-void ED_sculpt_get_average_stroke(struct Object *ob, float stroke[3]);
-int ED_sculpt_minmax(struct bContext *C, float min[3], float max[3]);
-int ED_sculpt_mask_layers_ensure(struct Object *ob,
-                                  struct MultiresModifierData *mmd);
-int do_sculpt_mask_box_select(struct ViewContext *vc, struct rcti *rect, bool select, bool extend);
+void ED_sculpt_redraw_planes_get(float planes[4][4], struct ARegion *ar,
+                                 struct RegionView3D *rv3d, struct Object *ob);
+int  ED_sculpt_mask_box_select(struct bContext *C, struct ViewContext *vc, const struct rcti *rect, bool select, bool extend);
 
-enum {
-	ED_SCULPT_MASK_LAYER_CALC_VERT = (1 << 0),
-	ED_SCULPT_MASK_LAYER_CALC_LOOP = (1 << 1)
-};
-
-/* paint_ops.c */
-void ED_operatortypes_paint(void);
-void ED_keymap_paint(struct wmKeyConfig *keyconf);
-
-/* paint_undo.c */
-#define UNDO_PAINT_IMAGE    0
-#define UNDO_PAINT_MESH     1
-
-typedef void (*UndoRestoreCb)(struct bContext *C, struct ListBase *lb);
-typedef void (*UndoFreeCb)(struct ListBase *lb);
-
-int ED_undo_paint_step(struct bContext *C, int type, int step, const char *name);
-void ED_undo_paint_free(void);
-int ED_undo_paint_valid(int type, const char *name);
-void ED_undo_paint_push_begin(int type, const char *name, UndoRestoreCb restore, UndoFreeCb free);
-void ED_undo_paint_push_end(int type);
-
-/* image painting specific undo */
-void ED_image_undo_restore(struct bContext *C, struct ListBase *lb);
-void ED_image_undo_free(struct ListBase *lb);
-void ED_imapaint_clear_partial_redraw(void);
-void ED_imapaint_dirty_region(struct Image *ima, struct ImBuf *ibuf, int x, int y, int w, int h);
-
-
-#endif
+#endif /* __ED_SCULPT_H__ */

@@ -65,6 +65,7 @@ MINLINE void swap_v4_v4(float a[4], float b[4]);
 MINLINE void copy_v2_v2_char(char r[2], const char a[2]);
 MINLINE void copy_v3_v3_char(char r[3], const char a[3]);
 MINLINE void copy_v4_v4_char(char r[4], const char a[4]);
+
 /* short */
 MINLINE void copy_v2_v2_short(short r[2], const short a[2]);
 MINLINE void copy_v3_v3_short(short r[3], const short a[3]);
@@ -117,6 +118,8 @@ MINLINE void mul_v3_v3(float r[3], const float a[3]);
 MINLINE void mul_v3_v3v3(float r[3], const float a[3], const float b[3]);
 MINLINE void mul_v4_fl(float r[4], float f);
 MINLINE void mul_v4_v4fl(float r[3], const float a[3], float f);
+MINLINE void mul_v2_v2_cw(float r[2], const float mat[2], const float vec[2]);
+MINLINE void mul_v2_v2_ccw(float r[2], const float mat[2], const float vec[2]);
 MINLINE float mul_project_m4_v3_zfac(float mat[4][4], const float co[3]) ATTR_WARN_UNUSED_RESULT;
 MINLINE float dot_m3_v3_row_x(float M[3][3], const float a[3]) ATTR_WARN_UNUSED_RESULT;
 MINLINE float dot_m3_v3_row_y(float M[3][3], const float a[3]) ATTR_WARN_UNUSED_RESULT;
@@ -143,8 +146,16 @@ MINLINE void negate_v4_v4(float r[4], const float a[3]);
 
 MINLINE void negate_v3_short(short r[3]);
 
+MINLINE void abs_v2(float r[2]);
+MINLINE void abs_v2_v2(float r[2], const float a[2]);
+MINLINE void abs_v3(float r[3]);
+MINLINE void abs_v3_v3(float r[3], const float a[3]);
+MINLINE void abs_v4(float r[4]);
+MINLINE void abs_v4_v4(float r[4], const float a[4]);
+
 MINLINE float dot_v2v2(const float a[2], const float b[2]) ATTR_WARN_UNUSED_RESULT;
 MINLINE float dot_v3v3(const float a[3], const float b[3]) ATTR_WARN_UNUSED_RESULT;
+MINLINE float dot_v3v3v3(const float p[3], const float a[3], const float b[3]) ATTR_WARN_UNUSED_RESULT;
 MINLINE float dot_v4v4(const float a[4], const float b[4]) ATTR_WARN_UNUSED_RESULT;
 
 MINLINE float cross_v2v2(const float a[2], const float b[2]) ATTR_WARN_UNUSED_RESULT;
@@ -163,6 +174,7 @@ MINLINE int   len_manhattan_v2_int(const int v[2]) ATTR_WARN_UNUSED_RESULT;
 MINLINE float len_manhattan_v3(const float v[3]) ATTR_WARN_UNUSED_RESULT;
 MINLINE float len_v2(const float a[2]) ATTR_WARN_UNUSED_RESULT;
 MINLINE float len_v2v2(const float a[2], const float b[2]) ATTR_WARN_UNUSED_RESULT;
+MINLINE float len_v2v2_int(const int v1[2], const int v2[2]);
 MINLINE float len_squared_v2v2(const float a[2], const float b[2]) ATTR_WARN_UNUSED_RESULT;
 MINLINE float len_squared_v3v3(const float a[3], const float b[3]) ATTR_WARN_UNUSED_RESULT;
 MINLINE float len_manhattan_v2v2(const float a[2], const float b[2]) ATTR_WARN_UNUSED_RESULT;
@@ -189,9 +201,21 @@ void interp_v4_v4v4v4(float p[4], const float v1[4], const float v2[4], const fl
 void interp_v4_v4v4v4v4(float p[4], const float v1[4], const float v2[4], const float v3[4], const float v4[4], const float w[4]);
 void interp_v3_v3v3v3_uv(float p[3], const float v1[3], const float v2[3], const float v3[3], const float uv[2]);
 
+bool interp_v3_v3v3_slerp(float target[3], const float a[3], const float b[3], const float t)  ATTR_WARN_UNUSED_RESULT;
+bool interp_v2_v2v2_slerp(float target[2], const float a[2], const float b[2], const float t)  ATTR_WARN_UNUSED_RESULT;
+
+void interp_v3_v3v3_slerp_safe(float target[3], const float a[3], const float b[3], const float t);
+void interp_v2_v2v2_slerp_safe(float target[2], const float a[2], const float b[2], const float t);
+
+void interp_v3_v3v3_char(char target[3], const char a[3], const char b[3], const float t);
+void interp_v3_v3v3_uchar(unsigned char target[3], const unsigned char a[3], const unsigned char b[3], const float t);
+void interp_v4_v4v4_char(char target[4], const char a[4], const char b[4], const float t);
+void interp_v4_v4v4_uchar(unsigned char target[4], const unsigned char a[4], const unsigned char b[4], const float t);
+
 void mid_v3_v3v3(float r[3], const float a[3], const float b[3]);
 void mid_v2_v2v2(float r[2], const float a[2], const float b[2]);
 void mid_v3_v3v3v3(float v[3], const float v1[3], const float v2[3], const float v3[3]);
+void mid_v3_v3v3v3v3(float v[3], const float v1[3], const float v2[3], const float v3[3], const float v4[3]);
 
 void mid_v3_v3v3_angle_weighted(float r[3], const float a[3], const float b[3]);
 void mid_v3_angle_weighted(float r[3]);
@@ -217,6 +241,7 @@ MINLINE bool equals_v3v3(const float a[3], const float b[3])  ATTR_WARN_UNUSED_R
 MINLINE bool compare_v2v2(const float a[2], const float b[2], const float limit)  ATTR_WARN_UNUSED_RESULT;
 MINLINE bool compare_v3v3(const float a[3], const float b[3], const float limit)  ATTR_WARN_UNUSED_RESULT;
 MINLINE bool compare_len_v3v3(const float a[3], const float b[3], const float limit)  ATTR_WARN_UNUSED_RESULT;
+MINLINE bool compare_len_squared_v3v3(const float a[3], const float b[3], const float limit)  ATTR_WARN_UNUSED_RESULT;
 
 MINLINE bool compare_v4v4(const float a[4], const float b[4], const float limit)  ATTR_WARN_UNUSED_RESULT;
 MINLINE bool equals_v4v4(const float a[4], const float b[4])  ATTR_WARN_UNUSED_RESULT;
@@ -237,6 +262,7 @@ float angle_v3v3v3(const float a[3], const float b[3], const float c[3]) ATTR_WA
 float cos_v3v3v3(const float p1[3], const float p2[3], const float p3[3]) ATTR_WARN_UNUSED_RESULT;
 float angle_normalized_v3v3(const float v1[3], const float v2[3]) ATTR_WARN_UNUSED_RESULT;
 float angle_on_axis_v3v3v3_v3(const float v1[3], const float v2[3], const float v3[3], const float axis[3]) ATTR_WARN_UNUSED_RESULT;
+float angle_signed_on_axis_v3v3v3_v3(const float v1[3], const float v2[3], const float v3[3], const float axis[3]) ATTR_WARN_UNUSED_RESULT;
 void angle_tri_v3(float angles[3], const float v1[3], const float v2[3], const float v3[3]);
 void angle_quad_v3(float angles[4], const float v1[3], const float v2[3], const float v3[3], const float v4[3]);
 void angle_poly_v3(float *angles, const float *verts[3], int len);
@@ -247,7 +273,9 @@ void project_v2_v2v2(float c[2], const float v1[2], const float v2[2]);
 void project_v3_v3v3(float r[3], const float p[3], const float n[3]);
 void project_v3_plane(float v[3], const float n[3], const float p[3]);
 void reflect_v3_v3v3(float r[3], const float v[3], const float n[3]);
-void ortho_basis_v3v3_v3(float r1[3], float r2[3], const float a[3]);
+void ortho_basis_v3v3_v3(float r_n1[3], float r_n2[3], const float n[3]);
+void ortho_v3_v3(float p[3], const float v[3]);
+void ortho_v2_v2(float p[2], const float v[2]);
 void bisect_v3_v3v3v3(float r[3], const float a[3], const float b[3], const float c[3]);
 void rotate_v3_v3v3fl(float v[3], const float p[3], const float axis[3], const float angle);
 void rotate_normalized_v3_v3v3fl(float v[3], const float p[3], const float axis[3], const float angle);
@@ -259,11 +287,18 @@ void print_v3(const char *str, const float a[3]);
 void print_v4(const char *str, const float a[4]);
 void print_vn(const char *str, const float v[], const int n);
 
+#define print_v2_id(v) print_v2(STRINGIFY(v), v)
+#define print_v3_id(v) print_v3(STRINGIFY(v), v)
+#define print_v4_id(v) print_v4(STRINGIFY(v), v)
+#define print_vn_id(v, n) print_vn(STRINGIFY(v), v, n)
+
 MINLINE void normal_short_to_float_v3(float r[3], const short n[3]);
 MINLINE void normal_float_to_short_v3(short r[3], const float n[3]);
 
 void minmax_v3v3_v3(float min[3], float max[3], const float vec[3]);
 void minmax_v2v2_v2(float min[2], float max[2], const float vec[2]);
+
+void minmax_v3v3_v3_array(float r_min[3], float r_max[3], float (*vec_arr)[3], int nbr);
 
 void dist_ensure_v3_v3fl(float v1[3], const float v2[3], const float dist);
 void dist_ensure_v2_v2fl(float v1[2], const float v2[2], const float dist);
@@ -273,6 +308,7 @@ void axis_sort_v3(const float axis_values[3], int r_axis_order[3]);
 /***************************** Array Functions *******************************/
 /* attempted to follow fixed length vertex functions. names could be improved*/
 double dot_vn_vn(const float *array_src_a, const float *array_src_b, const int size) ATTR_WARN_UNUSED_RESULT;
+double len_squared_vn(const float *array, const int size) ATTR_WARN_UNUSED_RESULT;
 float normalize_vn_vn(float *array_tar, const float *array_src, const int size);
 float normalize_vn(float *array_tar, const int size);
 void range_vn_i(int *array_tar, const int size, const int start);
@@ -291,7 +327,9 @@ void msub_vn_vn(float *array_tar, const float *array_src, const float f, const i
 void msub_vn_vnvn(float *array_tar, const float *array_src_a, const float *array_src_b, const float f, const int size);
 void interp_vn_vn(float *array_tar, const float *array_src, const float t, const int size);
 void fill_vn_i(int *array_tar, const int size, const int val);
+void fill_vn_short(short *array_tar, const int size, const short val);
 void fill_vn_ushort(unsigned short *array_tar, const int size, const unsigned short val);
+void fill_vn_uchar(unsigned char *array_tar, const int size, const unsigned char val);
 void fill_vn_fl(float *array_tar, const int size, const float val);
 
 /**************************** Inline Definitions ******************************/

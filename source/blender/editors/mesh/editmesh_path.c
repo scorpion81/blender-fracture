@@ -32,8 +32,11 @@
 #include "DNA_scene_types.h"
 #include "DNA_object_types.h"
 #include "DNA_mesh_types.h"
-#include "DNA_meshdata_types.h"
 #include "DNA_windowmanager_types.h"
+
+#ifdef WITH_FREESTYLE
+#  include "DNA_meshdata_types.h"
+#endif
 
 #include "BLI_math.h"
 #include "BLI_linklist.h"
@@ -88,7 +91,7 @@ static bool mouse_mesh_shortest_path_vert(ViewContext *vc)
 	BMEditMesh *em = vc->em;
 	BMesh *bm = em->bm;
 	BMVert *v_dst;
-	float dist = 75.0f;
+	float dist = ED_view3d_select_dist_px();
 	const bool use_length = true;
 
 	v_dst = EDBM_vert_find_nearest(vc, &dist, false, false);
@@ -99,7 +102,7 @@ static bool mouse_mesh_shortest_path_vert(ViewContext *vc)
 
 		if (v_act && (v_act != v_dst)) {
 			if ((path = BM_mesh_calc_path_vert(bm, v_act, v_dst, use_length,
-			                                   &user_data, verttag_filter_cb)))
+			                                   verttag_filter_cb, &user_data)))
 			{
 				BM_select_history_remove(bm, v_act);
 			}
@@ -176,11 +179,10 @@ static bool edgetag_test_cb(BMEdge *e, void *user_data_v)
 			return BM_elem_float_data_get(&bm->edata, e, CD_BWEIGHT) ? true : false;
 #ifdef WITH_FREESTYLE
 		case EDGE_MODE_TAG_FREESTYLE:
-			{
-				FreestyleEdge *fed = CustomData_bmesh_get(&bm->edata, e->head.data, CD_FREESTYLE_EDGE);
-				return (!fed) ? FALSE : (fed->flag & FREESTYLE_EDGE_MARK) ? true : false;
-			}
-			break;
+		{
+			FreestyleEdge *fed = CustomData_bmesh_get(&bm->edata, e->head.data, CD_FREESTYLE_EDGE);
+			return (!fed) ? false : (fed->flag & FREESTYLE_EDGE_MARK) ? true : false;
+		}
 #endif
 	}
 	return 0;
@@ -253,7 +255,7 @@ static bool mouse_mesh_shortest_path_edge(ViewContext *vc)
 	BMEditMesh *em = vc->em;
 	BMesh *bm = em->bm;
 	BMEdge *e_dst;
-	float dist = 75.0f;
+	float dist = ED_view3d_select_dist_px();
 	const bool use_length = true;
 
 	e_dst = EDBM_edge_find_nearest(vc, &dist);
@@ -268,7 +270,7 @@ static bool mouse_mesh_shortest_path_edge(ViewContext *vc)
 
 		if (e_act && (e_act != e_dst)) {
 			if ((path = BM_mesh_calc_path_edge(bm, e_act, e_dst, use_length,
-			                                   &user_data, edgetag_filter_cb)))
+			                                   edgetag_filter_cb, &user_data)))
 			{
 				BM_select_history_remove(bm, e_act);
 			}
@@ -377,7 +379,7 @@ static bool mouse_mesh_shortest_path_face(ViewContext *vc)
 	BMEditMesh *em = vc->em;
 	BMesh *bm = em->bm;
 	BMFace *f_dst;
-	float dist = 75.0f;
+	float dist = ED_view3d_select_dist_px();
 	const bool use_length = true;
 
 	f_dst = EDBM_face_find_nearest(vc, &dist);
@@ -389,7 +391,7 @@ static bool mouse_mesh_shortest_path_face(ViewContext *vc)
 		if (f_act) {
 			if (f_act != f_dst) {
 				if ((path = BM_mesh_calc_path_face(bm, f_act, f_dst, use_length,
-				                                   &user_data, facetag_filter_cb)))
+				                                   facetag_filter_cb, &user_data)))
 				{
 					BM_select_history_remove(bm, f_act);
 				}
@@ -449,14 +451,21 @@ static int edbm_shortest_path_pick_invoke(bContext *C, wmOperator *UNUSED(op), c
 {
 	ViewContext vc;
 	BMEditMesh *em;
+	BMElem *ele;
 
-	view3d_operator_needs_opengl(C);
 
 	em_setup_viewcontext(C, &vc);
 	copy_v2_v2_int(vc.mval, event->mval);
 	em = vc.em;
 
-	if (em->selectmode & SCE_SELECT_VERTEX) {
+	ele = BM_mesh_active_elem_get(em->bm);
+	if (ele == NULL) {
+		return OPERATOR_PASS_THROUGH;
+	}
+
+	view3d_operator_needs_opengl(C);
+
+	if ((em->selectmode & SCE_SELECT_VERTEX) && (ele->head.htype == BM_VERT)) {
 		if (mouse_mesh_shortest_path_vert(&vc)) {
 			return OPERATOR_FINISHED;
 		}
@@ -464,7 +473,7 @@ static int edbm_shortest_path_pick_invoke(bContext *C, wmOperator *UNUSED(op), c
 			return OPERATOR_PASS_THROUGH;
 		}
 	}
-	else if (em->selectmode & SCE_SELECT_EDGE) {
+	else if ((em->selectmode & SCE_SELECT_EDGE) && (ele->head.htype == BM_EDGE)) {
 		if (mouse_mesh_shortest_path_edge(&vc)) {
 			return OPERATOR_FINISHED;
 		}
@@ -472,7 +481,7 @@ static int edbm_shortest_path_pick_invoke(bContext *C, wmOperator *UNUSED(op), c
 			return OPERATOR_PASS_THROUGH;
 		}
 	}
-	else if (em->selectmode & SCE_SELECT_FACE) {
+	else if ((em->selectmode & SCE_SELECT_FACE) && (ele->head.htype == BM_FACE)) {
 		if (mouse_mesh_shortest_path_face(&vc)) {
 			return OPERATOR_FINISHED;
 		}
@@ -506,11 +515,6 @@ void MESH_OT_shortest_path_pick(wmOperatorType *ot)
 
 /* -------------------------------------------------------------------- */
 /* Select path between existing selection */
-
-static bool ele_filter_visible_cb(BMElem *ele, void *UNUSED(user_data))
-{
-	return !BM_elem_flag_test(ele, BM_ELEM_HIDDEN);
-}
 
 static int edbm_shortest_path_select_exec(bContext *C, wmOperator *op)
 {
@@ -571,17 +575,17 @@ static int edbm_shortest_path_select_exec(bContext *C, wmOperator *op)
 			case BM_VERT:
 				path = BM_mesh_calc_path_vert(
 				           bm, (BMVert *)ele_src, (BMVert *)ele_dst, use_length,
-				           NULL, (bool (*)(BMVert *, void *))ele_filter_visible_cb);
+				           BM_elem_cb_check_hflag_disabled_simple(BMVert *, BM_ELEM_HIDDEN));
 				break;
 			case BM_EDGE:
 				path = BM_mesh_calc_path_edge(
 				           bm, (BMEdge *)ele_src, (BMEdge *)ele_dst, use_length,
-				           NULL, (bool (*)(BMEdge *, void *))ele_filter_visible_cb);
+				           BM_elem_cb_check_hflag_disabled_simple(BMEdge *, BM_ELEM_HIDDEN));
 				break;
 			case BM_FACE:
 				path = BM_mesh_calc_path_face(
 				           bm, (BMFace *)ele_src, (BMFace *)ele_dst, use_length,
-				           NULL, (bool (*)(BMFace *, void *))ele_filter_visible_cb);
+				           BM_elem_cb_check_hflag_disabled_simple(BMFace *, BM_ELEM_HIDDEN));
 				break;
 		}
 

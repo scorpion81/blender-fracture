@@ -49,6 +49,7 @@ set(INC
 	../../blender/python/generic
 	../../blender/python/mathutils
 	../../../intern/container
+	../../../intern/glew-mx
 	../../../intern/guardedalloc
 	../../../intern/string
 )
@@ -77,7 +78,6 @@ set(SRC
 	KX_CharacterWrapper.cpp
 	KX_ConstraintActuator.cpp
 	KX_ConstraintWrapper.cpp
-	KX_ConvertPhysicsObjects.cpp
 	KX_Dome.cpp
 	KX_EmptyObject.cpp
 	KX_FontObject.cpp
@@ -92,6 +92,7 @@ set(SRC
 	KX_MaterialIpoController.cpp
 	KX_MeshProxy.cpp
 	KX_MotionState.cpp
+	KX_MouseActuator.cpp
 	KX_MouseFocusSensor.cpp
 	KX_NavMeshObject.cpp
 	KX_NearSensor.cpp
@@ -151,7 +152,6 @@ set(SRC
 	KX_ClientObjectInfo.h
 	KX_ConstraintActuator.h
 	KX_ConstraintWrapper.h
-	KX_ConvertPhysicsObject.h
 	KX_Dome.h
 	KX_EmptyObject.h
 	KX_FontObject.h
@@ -171,6 +171,7 @@ set(SRC
 	KX_MaterialIpoController.h
 	KX_MeshProxy.h
 	KX_MotionState.h
+	KX_MouseActuator.h
 	KX_MouseFocusSensor.h
 	KX_NavMeshObject.h
 	KX_NearSensor.h
@@ -229,7 +230,7 @@ set(SRC
 
 )
 
-add_definitions(-DGLEW_STATIC)
+add_definitions(${GL_DEFINITIONS})
 
 if(WITH_IMAGE_DDS)
 	add_definitions(-DWITH_DDS)

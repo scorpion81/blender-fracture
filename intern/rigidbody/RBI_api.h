@@ -20,7 +20,7 @@
  *
  * The Original Code is: all of this file.
  *
- * Contributor(s): Joshua Leung, Sergej Reich
+ * Contributor(s): Joshua Leung, Sergej Reich, Martin Felke
  *
  * ***** END GPL LICENSE BLOCK *****
  */
@@ -66,6 +66,19 @@ typedef struct rbMeshData rbMeshData;
 /* Constraint */
 typedef struct rbConstraint rbConstraint;
 
+/* Collision feedback (manifolds and contact points */
+typedef struct rbContactPoint {
+	float contact_force;
+	int contact_body_indexA;
+	int contact_body_indexB;
+	float contact_pos_world_onA[3];
+	float contact_pos_world_onB[3];
+} rbContactPoint;
+
+/*Subclass because of Internal Tick Callback... sigh why doesnt this work with a simple collision callback ? */
+
+
+
 /* ********************************** */
 /* Dynamics World Methods */
 
@@ -73,7 +86,8 @@ typedef struct rbConstraint rbConstraint;
 
 /* Create a new dynamics world instance */
 // TODO: add args to set the type of constraint solvers, etc.
-rbDynamicsWorld *RB_dworld_new(const float gravity[3]);
+rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, int (*callback)(void*, void*, void*, void*, void*),
+							     void (*contactCallback)(rbContactPoint *, void *));
 
 /* Delete the given dynamics world, and free any extra data it may require */
 void RB_dworld_delete(rbDynamicsWorld *world);
@@ -105,7 +119,7 @@ void RB_dworld_export(rbDynamicsWorld *world, const char *filename);
 /* Setup ---------------------------- */
 
 /* Add RigidBody to dynamics world */
-void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *body, int col_groups);
+void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *body, int col_groups, void* meshIsland, void *blenderOb, int linear_index);
 
 /* Remove RigidBody from dynamics world */
 void RB_dworld_remove_body(rbDynamicsWorld *world, rbRigidBody *body);
@@ -210,6 +224,9 @@ void RB_body_get_orientation(rbRigidBody *body, float v_out[4]);
 
 void RB_body_apply_central_force(rbRigidBody *body, const float v_in[3]);
 
+void RB_body_apply_impulse(rbRigidBody* object, const float impulse[3], const float pos[3]);
+void RB_body_apply_force(rbRigidBody* object, const float force[3], const float pos[3]);
+
 /* ********************************** */
 /* Collision Shape Methods */
 
@@ -280,6 +297,7 @@ void RB_constraint_delete(rbConstraint *con);
 
 /* Enable or disable constraint */
 void RB_constraint_set_enabled(rbConstraint *con, int enabled);
+int RB_constraint_is_enabled(rbConstraint *con);
 
 /* Limits */
 #define RB_LIMIT_LIN_X 0

@@ -61,6 +61,7 @@ struct wmEvent;
 struct wmTimer;
 struct ARegion;
 struct ReportList;
+struct EditBone;
 
 /* transinfo->redraw */
 typedef enum {
@@ -80,9 +81,9 @@ typedef struct TransSnap {
 	short	modePoint;
 	short	modeSelect;
 	bool	align;
-	char	project;
-	char	snap_self;
-	short	peel;
+	bool	project;
+	bool	snap_self;
+	bool	peel;
 	short  	status;
 	float	snapPoint[3]; /* snapping from this point */
 	float	snapTarget[3]; /* to this point */
@@ -96,7 +97,8 @@ typedef struct TransSnap {
 	void  (*applySnap)(struct TransInfo *, float *);
 	void  (*calcSnap)(struct TransInfo *, float *);
 	void  (*targetSnap)(struct TransInfo *);
-	float  (*distance)(struct TransInfo *, float p1[3], float p2[3]); // Get the transform distance between two points (used by Closest snap)
+	/* Get the transform distance between two points (used by Closest snap) */
+	float  (*distance)(struct TransInfo *, const float p1[3], const float p2[3]);
 } TransSnap;
 
 typedef struct TransCon {
@@ -128,15 +130,15 @@ typedef struct TransDataExtension {
 	// float drotAxis[3];	 /* Initial object drotAxis, TODO: not yet implemented */
 	float dquat[4];		 /* Initial object dquat */
 	float dscale[3];     /* Initial object dscale */
-	float *rot;          /* Rotation of the data to transform (Faculative)                                 */
+	float *rot;          /* Rotation of the data to transform                                              */
 	float  irot[3];      /* Initial rotation                                                               */
-	float *quat;         /* Rotation quaternion of the data to transform (Faculative)                      */
+	float *quat;         /* Rotation quaternion of the data to transform                                   */
 	float  iquat[4];	 /* Initial rotation quaternion                                                    */
-	float *rotAngle;	 /* Rotation angle of the data to transform (Faculative)                           */
+	float *rotAngle;	 /* Rotation angle of the data to transform                                        */
 	float  irotAngle;	 /* Initial rotation angle                                                         */
-	float *rotAxis;		 /* Rotation axis of the data to transform (Faculative)                            */
+	float *rotAxis;		 /* Rotation axis of the data to transform                                         */
 	float  irotAxis[4];	 /* Initial rotation axis                                                          */
-	float *size;         /* Size of the data to transform (Faculative)                                     */
+	float *size;         /* Size of the data to transform                                                  */
 	float  isize[3];	 /* Initial size                                                                   */
 	float  obmat[4][4];	 /* Object matrix */
 	float  l_smtx[3][3]; /* use instead of td->smtx, It is the same but without the 'bone->bone_mat', see TD_PBONE_LOCAL_MTX_C */
@@ -171,6 +173,13 @@ typedef struct TransDataSeq {
 
 } TransDataSeq;
 
+typedef struct TransSeq {
+	TransDataSeq *tdseq;
+	int min;
+	int max;
+	bool snap_left;
+} TransSeq;
+
 /* for NLA transform (stored in td->extra pointer) */
 typedef struct TransDataNla {
 	ID *id;						/* ID-block NLA-data is attached to */
@@ -191,12 +200,23 @@ typedef struct TransDataNla {
 struct LinkNode;
 struct GHash;
 
-typedef struct TransDataEdgeSlideVert {
-	struct BMVert *v_a, *v_b;
+/* header of TransDataEdgeSlideVert, TransDataEdgeSlideEdge */
+typedef struct TransDataGenericSlideVert {
 	struct BMVert *v;
+	struct LinkNode **cd_loop_groups;
+	float co_orig_3d[3];
+} TransDataGenericSlideVert;
+
+typedef struct TransDataEdgeSlideVert {
+	/* TransDataGenericSlideVert */
+	struct BMVert *v;
+	struct LinkNode **cd_loop_groups;
 	float v_co_orig[3];
+	/* end generic */
 
 	float edge_len;
+
+	struct BMVert *v_a, *v_b;
 
 	/* add origvert.co to get the original locations */
 	float dir_a[3], dir_b[3];
@@ -204,18 +224,31 @@ typedef struct TransDataEdgeSlideVert {
 	int loop_nr;
 } TransDataEdgeSlideVert;
 
+
+/* store original data so we can correct UV's and similar when sliding */
+typedef struct SlideOrigData {
+	/* flag that is set when origfaces is initialized */
+	bool use_origfaces;
+	struct GHash    *origverts;  /* map {BMVert: TransDataGenericSlideVert} */
+	struct GHash    *origfaces;
+	struct BMesh *bm_origfaces;
+
+	struct MemArena *arena;
+	/* number of math BMLoop layers */
+	int  layer_math_map_num;
+	/* array size of 'layer_math_map_num'
+	 * maps TransDataVertSlideVert.cd_group index to absolute CustomData layer index */
+	int *layer_math_map;
+} SlideOrigData;
+
 typedef struct EdgeSlideData {
 	TransDataEdgeSlideVert *sv;
 	int totsv;
-	
-	struct GHash *origfaces;
 
 	int mval_start[2], mval_end[2];
 	struct BMEditMesh *em;
 
-	/* flag that is set when origfaces is initialized */
-	bool use_origfaces;
-	struct BMesh *bm_origfaces;
+	SlideOrigData orig_data;
 
 	float perc;
 
@@ -227,8 +260,12 @@ typedef struct EdgeSlideData {
 
 
 typedef struct TransDataVertSlideVert {
+	/* TransDataGenericSlideVert */
 	BMVert *v;
+	struct LinkNode **cd_loop_groups;
 	float   co_orig_3d[3];
+	/* end generic */
+
 	float   co_orig_2d[2];
 	float (*co_link_orig_3d)[3];
 	float (*co_link_orig_2d)[2];
@@ -242,6 +279,8 @@ typedef struct VertSlideData {
 
 	struct BMEditMesh *em;
 
+	SlideOrigData orig_data;
+
 	float perc;
 
 	bool is_proportional;
@@ -249,6 +288,17 @@ typedef struct VertSlideData {
 
 	int curr_sv_index;
 } VertSlideData;
+
+typedef struct BoneInitData {
+	struct EditBone *bone;
+	float tail[3];
+	float rad_tail;
+	float roll;
+	float head[3];
+	float dist;
+	float xwidth;
+	float zwidth;
+} BoneInitData;
 
 typedef struct TransData {
 	float  dist;         /* Distance needed to affect element (for Proportionnal Editing)                  */
@@ -276,7 +326,7 @@ typedef struct MouseInput {
 	void	(*post)(struct TransInfo *t, float values[3]);
 
 	int     imval[2];       	/* initial mouse position                */
-	char	precision;
+	bool	precision;
 	int     precision_mval[2];	/* mouse position when precision key was pressed */
 	float	center[2];
 	float	factor;
@@ -349,7 +399,7 @@ typedef struct TransInfo {
 	float		axis[3];
 	float		axis_orig[3];	/* TransCon can change 'axis', store the original value here */
 
-	short		remove_on_cancel; /* remove elements if operator is canceled */
+	bool		remove_on_cancel; /* remove elements if operator is canceled */
 
 	void		*view;
 	struct bContext *context; /* Only valid (non null) during an operator called function. */
@@ -384,6 +434,7 @@ typedef struct TransInfo {
 #define T_EDIT			(1 << 1)
 #define T_POSE			(1 << 2)
 #define T_TEXTURE		(1 << 3)
+	/* transforming the camera while in camera view */
 #define T_CAMERA		(1 << 4)
 		 // trans on points, having no rotation/scale
 #define T_POINTS		(1 << 6)
@@ -424,7 +475,6 @@ typedef struct TransInfo {
 
 	/* alternative transformation. used to add offset to tracking markers */
 #define T_ALT_TRANSFORM		(1 << 24)
-#define T_TOGGLE_HIDDEN		(1 << 25)	/* node editor: toggle state of the hidden flags */
 
 /* TransInfo->modifiers */
 #define	MOD_CONSTRAINT_SELECT	0x01
@@ -460,7 +510,6 @@ typedef struct TransInfo {
 
 /* transdata->flag */
 #define TD_SELECTED			1
-#define TD_ACTIVE			(1 << 1)
 #define	TD_NOACTION			(1 << 2)
 #define	TD_USEQUAT			(1 << 3)
 #define TD_NOTCONNECTED		(1 << 4)
@@ -478,7 +527,6 @@ typedef struct TransInfo {
 #define TD_MOVEHANDLE2		(1 << 18)
 #define TD_PBONE_LOCAL_MTX_P (1 << 19)	/* exceptional case with pose bone rotating when a parent bone has 'Local Location' option enabled and rotating also transforms it. */
 #define TD_PBONE_LOCAL_MTX_C (1 << 20)	/* same as above but for a child bone */
-#define TD_HIDDEN		(1 << 21)	/* for hide toggling node editor */
 
 /* transsnap->status */
 #define SNAP_FORCED		1
@@ -486,7 +534,7 @@ typedef struct TransInfo {
 #define POINT_INIT		4
 #define MULTI_POINTS	8
 
-int initTransform(struct bContext *C, struct TransInfo *t, struct wmOperator *op, const struct wmEvent *event, int mode);
+bool initTransform(struct bContext *C, struct TransInfo *t, struct wmOperator *op, const struct wmEvent *event, int mode);
 void saveTransform(struct bContext *C, struct TransInfo *t, struct wmOperator *op);
 int  transformEvent(TransInfo *t, const struct wmEvent *event);
 void transformApply(struct bContext *C, TransInfo *t);
@@ -499,8 +547,8 @@ void projectIntView(TransInfo *t, const float vec[3], int adr[2]);
 void projectFloatViewEx(TransInfo *t, const float vec[3], float adr[2], const eV3DProjTest flag);
 void projectFloatView(TransInfo *t, const float vec[3], float adr[2]);
 
-void applyAspectRatio(TransInfo *t, float *vec);
-void removeAspectRatio(TransInfo *t, float *vec);
+void applyAspectRatio(TransInfo *t, float vec[2]);
+void removeAspectRatio(TransInfo *t, float vec[2]);
 
 void drawPropCircle(const struct bContext *C, TransInfo *t);
 
@@ -521,10 +569,11 @@ void flushTransNodes(TransInfo *t);
 void flushTransSeq(TransInfo *t);
 void flushTransTracking(TransInfo *t);
 void flushTransMasking(TransInfo *t);
+void flushTransPaintCurve(TransInfo *t);
+void restoreBones(TransInfo *t);
 
 /*********************** exported from transform_manipulator.c ********** */
-int gimbal_axis(struct Object *ob, float gmat[3][3]); /* return 0 when no gimbal for selection */
-int calc_manipulator_stats(const struct bContext *C);
+bool gimbal_axis(struct Object *ob, float gmat[3][3]); /* return 0 when no gimbal for selection */
 
 /*********************** TransData Creation and General Handling *********** */
 void createTransData(struct bContext *C, TransInfo *t);
@@ -533,6 +582,7 @@ void special_aftertrans_update(struct bContext *C, TransInfo *t);
 int  special_transform_moving(TransInfo *t);
 
 void transform_autoik_update(TransInfo *t, short mode);
+bool transdata_check_local_islands(TransInfo *t, short around);
 
 int count_set_pose_transflags(int *out_mode, short around, struct Object *ob);
 
@@ -576,6 +626,8 @@ typedef enum {
 void snapGridIncrement(TransInfo *t, float *val);
 void snapGridIncrementAction(TransInfo *t, float *val, GearsType action);
 
+void snapSequenceBounds(TransInfo *t, const int mval[2]);
+
 bool activeSnap(TransInfo *t);
 bool validSnap(TransInfo *t);
 
@@ -601,6 +653,7 @@ typedef enum {
 	INPUT_VECTOR,
 	INPUT_SPRING,
 	INPUT_SPRING_FLIP,
+	INPUT_SPRING_DELTA,
 	INPUT_ANGLE,
 	INPUT_ANGLE_SPRING,
 	INPUT_TRACKBALL,
@@ -609,7 +662,7 @@ typedef enum {
 	INPUT_VERTICAL_RATIO,
 	INPUT_VERTICAL_ABSOLUTE,
 	INPUT_CUSTOM_RATIO,
-	INPUT_CUSTOM_RATIO_FLIP
+	INPUT_CUSTOM_RATIO_FLIP,
 } MouseInputMode;
 
 void initMouseInput(TransInfo *t, MouseInput *mi, const float center[2], const int mval[2]);
@@ -636,13 +689,18 @@ void applyTransObjects(TransInfo *t);
 void restoreTransObjects(TransInfo *t);
 void recalcData(TransInfo *t);
 
-void calculateCenter(TransInfo *t);
 void calculateCenter2D(TransInfo *t);
-void calculateCenterBound(TransInfo *t);
-void calculateCenterMedian(TransInfo *t);
-void calculateCenterCursor(TransInfo *t);
 
-void calculateCenterCursor2D(TransInfo *t);
+void calculateCenter(TransInfo *t);
+
+/* API functions for getting center points */
+void calculateCenterBound(TransInfo *t, float r_center[3]);
+void calculateCenterMedian(TransInfo *t, float r_center[3]);
+void calculateCenterCursor(TransInfo *t, float r_center[3]);
+void calculateCenterCursor2D(TransInfo *t, float r_center[2]);
+void calculateCenterCursorGraph2D(TransInfo *t, float r_center[2]);
+bool calculateCenterActive(TransInfo *t, bool select_only, float r_center[3]);
+
 void calculatePropRatio(TransInfo *t);
 
 void getViewVector(TransInfo *t, float coord[3], float vec[3]);
@@ -671,11 +729,12 @@ void freeEdgeSlideTempFaces(EdgeSlideData *sld);
 void freeEdgeSlideVerts(TransInfo *t);
 void projectEdgeSlideData(TransInfo *t, bool is_final);
 
+void freeVertSlideTempFaces(VertSlideData *sld);
 void freeVertSlideVerts(TransInfo *t);
+void projectVertSlideData(TransInfo *t, bool is_final);
 
 
 /* TODO. transform_queries.c */
-bool checkUseLocalCenter_GraphEdit(TransInfo *t);
 bool checkUseAxisMatrix(TransInfo *t);
 
 #endif

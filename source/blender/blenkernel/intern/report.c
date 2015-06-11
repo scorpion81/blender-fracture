@@ -97,7 +97,7 @@ void BKE_reports_clear(ReportList *reports)
 		report = report_next;
 	}
 
-	reports->list.first = reports->list.last = NULL;
+	BLI_listbase_clear(&reports->list);
 }
 
 void BKE_report(ReportList *reports, ReportType type, const char *_message)
@@ -284,22 +284,22 @@ Report *BKE_reports_last_displayable(ReportList *reports)
 	Report *report;
 	
 	for (report = reports->list.last; report; report = report->prev) {
-		if (ELEM3(report->type, RPT_ERROR, RPT_WARNING, RPT_INFO))
+		if (ELEM(report->type, RPT_ERROR, RPT_WARNING, RPT_INFO))
 			return report;
 	}
 	
 	return NULL;
 }
 
-int BKE_reports_contain(ReportList *reports, ReportType level)
+bool BKE_reports_contain(ReportList *reports, ReportType level)
 {
 	Report *report;
 	if (reports != NULL) {
 		for (report = reports->list.first; report; report = report->next)
 			if (report->type >= level)
-				return TRUE;
+				return true;
 	}
-	return FALSE;
+	return false;
 }
 
 bool BKE_report_write_file_fp(FILE *fp, ReportList *reports, const char *header)

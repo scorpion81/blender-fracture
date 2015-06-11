@@ -48,9 +48,8 @@
 #include "BLI_string.h"
 #include "BLI_path_util.h"
 #include "BLI_math.h"
+#include "BLI_math_color_blend.h"
 #include "BLI_mempool.h"
-#include "BLI_utildefines.h"
-#include "BLI_alloca.h"
 
 #include "BLF_translation.h"
 
@@ -58,6 +57,8 @@
 #include "BKE_customdata_file.h"
 #include "BKE_global.h"
 #include "BKE_main.h"
+#include "BKE_mesh_mapping.h"
+#include "BKE_mesh_remap.h"
 #include "BKE_multires.h"
 
 #include "bmesh.h"
@@ -94,7 +95,7 @@ typedef struct LayerTypeInfo {
 	 * (deep copy if appropriate)
 	 * if NULL, memcpy is used
 	 */
-	void (*copy)(const void *source, void *dest, int count);
+	cd_copy copy;
 
 	/**
 	 * a function to free any dynamically allocated components of this
@@ -119,8 +120,7 @@ typedef struct LayerTypeInfo {
 	 *       applying changes while reading from sources.
 	 *       See bug [#32395] - Campbell.
 	 */
-	void (*interp)(void **sources, const float *weights, const float *sub_weights,
-	               int count, void *dest);
+	cd_interp interp;
 
 	/** a function to swap the data in corners of the element */
 	void (*swap)(void *data, const int *corner_indices);
@@ -131,21 +131,24 @@ typedef struct LayerTypeInfo {
 	void (*set_default)(void *data, int count);
 
 	/** functions necessary for geometry collapse */
-	bool (*equal)(void *data1, void *data2);
+	bool (*equal)(const void *data1, const void *data2);
 	void (*multiply)(void *data, float fac);
 	void (*initminmax)(void *min, void *max);
-	void (*add)(void *data1, void *data2);
-	void (*dominmax)(void *data1, void *min, void *max);
-	void (*copyvalue)(void *source, void *dest);
+	void (*add)(void *data1, const void *data2);
+	void (*dominmax)(const void *data1, void *min, void *max);
+	void (*copyvalue)(const void *source, void *dest, const int mixmode, const float mixfactor);
 
 	/** a function to read data from a cdf file */
 	int (*read)(CDataFile *cdf, void *data, int count);
 
 	/** a function to write data to a cdf file */
-	int (*write)(CDataFile *cdf, void *data, int count);
+	int (*write)(CDataFile *cdf, const void *data, int count);
 
 	/** a function to determine file size */
-	size_t (*filesize)(CDataFile *cdf, void *data, int count);
+	size_t (*filesize)(CDataFile *cdf, const void *data, int count);
+
+	/** a function to determine max allowed number of layers, should be NULL or return -1 if no limit */
+	int (*layers_max)(void);
 } LayerTypeInfo;
 
 static void layerCopy_mdeformvert(const void *source, void *dest,
@@ -156,7 +159,7 @@ static void layerCopy_mdeformvert(const void *source, void *dest,
 	memcpy(dest, source, count * size);
 
 	for (i = 0; i < count; ++i) {
-		MDeformVert *dvert = (MDeformVert *)((char *)dest + i * size);
+		MDeformVert *dvert = POINTER_OFFSET(dest, i * size);
 
 		if (dvert->totweight) {
 			MDeformWeight *dw = MEM_mallocN(dvert->totweight * sizeof(*dw),
@@ -175,7 +178,7 @@ static void layerFree_mdeformvert(void *data, int count, int size)
 	int i;
 
 	for (i = 0; i < count; ++i) {
-		MDeformVert *dvert = (MDeformVert *)((char *)data + i * size);
+		MDeformVert *dvert = POINTER_OFFSET(data, i * size);
 
 		if (dvert->dw) {
 			MEM_freeN(dvert->dw);
@@ -192,7 +195,7 @@ static void layerCopy_bmesh_elem_py_ptr(const void *UNUSED(source), void *dest,
 	int i, size = sizeof(void *);
 
 	for (i = 0; i < count; ++i) {
-		void **ptr = (void **)((char *)dest + i * size);
+		void **ptr = POINTER_OFFSET(dest, i * size);
 		*ptr = NULL;
 	}
 }
@@ -209,15 +212,16 @@ static void layerFree_bmesh_elem_py_ptr(void *data, int count, int size)
 	int i;
 
 	for (i = 0; i < count; ++i) {
-		void **ptr = (void *)((char *)data + i * size);
+		void **ptr = POINTER_OFFSET(data, i * size);
 		if (*ptr) {
 			bpy_bm_generic_invalidate(*ptr);
 		}
 	}
 }
 
-static void layerInterp_mdeformvert(void **sources, const float *weights,
-                                    const float *UNUSED(sub_weights), int count, void *dest)
+static void layerInterp_mdeformvert(
+        const void **sources, const float *weights,
+        const float *UNUSED(sub_weights), int count, void *dest)
 {
 	/* a single linked list of MDeformWeight's
 	 * use this to avoid double allocs (which LinkNode would do) */
@@ -236,7 +240,7 @@ static void layerInterp_mdeformvert(void **sources, const float *weights,
 	/* build a list of unique def_nrs for dest */
 	totweight = 0;
 	for (i = 0; i < count; ++i) {
-		MDeformVert *source = sources[i];
+		const MDeformVert *source = sources[i];
 		float interp_weight = weights ? weights[i] : 1.0f;
 
 		for (j = 0; j < source->totweight; ++j) {
@@ -297,6 +301,50 @@ static void layerInterp_mdeformvert(void **sources, const float *weights,
 	}
 }
 
+static void layerInterp_normal(
+        const void **sources, const float *weights,
+        const float *UNUSED(sub_weights), int count, void *dest)
+{
+	float no[3] = {0.0f};
+
+	while (count--) {
+		madd_v3_v3fl(no, (const float *)sources[count], weights[count]);
+	}
+
+	copy_v3_v3((float *)dest, no);
+}
+
+static void layerCopyValue_normal(const void *source, void *dest, const int mixmode, const float mixfactor)
+{
+	const float *no_src = source;
+	float *no_dst = dest;
+	float no_tmp[3];
+
+	if (ELEM(mixmode, CDT_MIX_NOMIX, CDT_MIX_REPLACE_ABOVE_THRESHOLD, CDT_MIX_REPLACE_BELOW_THRESHOLD)) {
+		/* Above/below threshold modes are not supported here, fallback to nomix (just in case). */
+		copy_v3_v3(no_dst, no_src);
+	}
+	else {  /* Modes that support 'real' mix factor. */
+		/* Since we normalize in the end, MIX and ADD are the same op here. */
+		if (ELEM(mixmode, CDT_MIX_MIX, CDT_MIX_ADD)) {
+			add_v3_v3v3(no_tmp, no_dst, no_src);
+			normalize_v3(no_tmp);
+		}
+		else if (mixmode == CDT_MIX_SUB) {
+			sub_v3_v3v3(no_tmp, no_dst, no_src);
+			normalize_v3(no_tmp);
+		}
+		else if (mixmode == CDT_MIX_MUL) {
+			mul_v3_v3v3(no_tmp, no_dst, no_src);
+			normalize_v3(no_tmp);
+		}
+		else {
+			copy_v3_v3(no_tmp, no_src);
+		}
+		interp_v3_v3v3_slerp_safe(no_dst, no_dst, no_tmp, mixfactor);
+	}
+}
+
 static void layerCopy_tface(const void *source, void *dest, int count)
 {
 	const MTFace *source_tf = (const MTFace *)source;
@@ -307,8 +355,9 @@ static void layerCopy_tface(const void *source, void *dest, int count)
 		dest_tf[i] = source_tf[i];
 }
 
-static void layerInterp_tface(void **sources, const float *weights,
-                              const float *sub_weights, int count, void *dest)
+static void layerInterp_tface(
+        const void **sources, const float *weights,
+        const float *sub_weights, int count, void *dest)
 {
 	MTFace *tf = dest;
 	int i, j, k;
@@ -320,7 +369,7 @@ static void layerInterp_tface(void **sources, const float *weights,
 	sub_weight = sub_weights;
 	for (i = 0; i < count; ++i) {
 		float weight = weights ? weights[i] : 1;
-		MTFace *src = sources[i];
+		const MTFace *src = sources[i];
 
 		for (j = 0; j < 4; ++j) {
 			if (sub_weights) {
@@ -381,6 +430,11 @@ static void layerDefault_tface(void *data, int count)
 		tf[i] = default_tf;
 }
 
+static int layerMaxNum_tface(void)
+{
+	return MAX_MTFACE;
+}
+
 static void layerCopy_propFloat(const void *source, void *dest,
                                 int count)
 {
@@ -409,8 +463,9 @@ static void layerCopy_origspace_face(const void *source, void *dest, int count)
 		dest_tf[i] = source_tf[i];
 }
 
-static void layerInterp_origspace_face(void **sources, const float *weights,
-                                       const float *sub_weights, int count, void *dest)
+static void layerInterp_origspace_face(
+        const void **sources, const float *weights,
+        const float *sub_weights, int count, void *dest)
 {
 	OrigSpaceFace *osf = dest;
 	int i, j, k;
@@ -422,7 +477,7 @@ static void layerInterp_origspace_face(void **sources, const float *weights,
 	sub_weight = sub_weights;
 	for (i = 0; i < count; ++i) {
 		float weight = weights ? weights[i] : 1;
-		OrigSpaceFace *src = sources[i];
+		const OrigSpaceFace *src = sources[i];
 
 		for (j = 0; j < 4; ++j) {
 			if (sub_weights) {
@@ -554,9 +609,9 @@ static int layerRead_mdisps(CDataFile *cdf, void *data, int count)
 	return 1;
 }
 
-static int layerWrite_mdisps(CDataFile *cdf, void *data, int count)
+static int layerWrite_mdisps(CDataFile *cdf, const void *data, int count)
 {
-	MDisps *d = data;
+	const MDisps *d = data;
 	int i;
 
 	for (i = 0; i < count; ++i) {
@@ -569,9 +624,9 @@ static int layerWrite_mdisps(CDataFile *cdf, void *data, int count)
 	return 1;
 }
 
-static size_t layerFilesize_mdisps(CDataFile *UNUSED(cdf), void *data, int count)
+static size_t layerFilesize_mdisps(CDataFile *UNUSED(cdf), const void *data, int count)
 {
-	MDisps *d = data;
+	const MDisps *d = data;
 	size_t size = 0;
 	int i;
 
@@ -614,19 +669,59 @@ static void layerFree_grid_paint_mask(void *data, int count, int UNUSED(size))
 }
 
 /* --------- */
-static void layerCopyValue_mloopcol(void *source, void *dest)
+static void layerCopyValue_mloopcol(const void *source, void *dest, const int mixmode, const float mixfactor)
 {
-	MLoopCol *m1 = source, *m2 = dest;
-	
-	m2->r = m1->r;
-	m2->g = m1->g;
-	m2->b = m1->b;
+	const MLoopCol *m1 = source;
+	MLoopCol *m2 = dest;
+	unsigned char tmp_col[4];
+
+	if (ELEM(mixmode, CDT_MIX_NOMIX, CDT_MIX_REPLACE_ABOVE_THRESHOLD, CDT_MIX_REPLACE_BELOW_THRESHOLD)) {
+		/* Modes that do a full copy or nothing. */
+		if (ELEM(mixmode, CDT_MIX_REPLACE_ABOVE_THRESHOLD, CDT_MIX_REPLACE_BELOW_THRESHOLD)) {
+			/* TODO: Check for a real valid way to get 'factor' value of our dest color? */
+			const float f = ((float)m2->r + (float)m2->g + (float)m2->b) / 3.0f;
+			if (mixmode == CDT_MIX_REPLACE_ABOVE_THRESHOLD && f < mixfactor) {
+				return;  /* Do Nothing! */
+			}
+			else if (mixmode == CDT_MIX_REPLACE_BELOW_THRESHOLD && f > mixfactor) {
+				return;  /* Do Nothing! */
+			}
+		}
+		m2->r = m1->r;
+		m2->g = m1->g;
+		m2->b = m1->b;
+	}
+	else {  /* Modes that support 'real' mix factor. */
+		unsigned char src[4] = {m1->r, m1->g, m1->b, m1->a};
+		unsigned char dst[4] = {m2->r, m2->g, m2->b, m2->a};
+
+		if (mixmode == CDT_MIX_MIX) {
+			blend_color_mix_byte(tmp_col, dst, src);
+		}
+		else if (mixmode == CDT_MIX_ADD) {
+			blend_color_add_byte(tmp_col, dst, src);
+		}
+		else if (mixmode == CDT_MIX_SUB) {
+			blend_color_sub_byte(tmp_col, dst, src);
+		}
+		else if (mixmode == CDT_MIX_MUL) {
+			blend_color_mul_byte(tmp_col, dst, src);
+		}
+		else {
+			memcpy(tmp_col, src, sizeof(tmp_col));
+		}
+		blend_color_interpolate_byte(dst, dst, tmp_col, mixfactor);
+
+		m2->r = (char)dst[0];
+		m2->g = (char)dst[1];
+		m2->b = (char)dst[2];
+	}
 	m2->a = m1->a;
 }
 
-static bool layerEqual_mloopcol(void *data1, void *data2)
+static bool layerEqual_mloopcol(const void *data1, const void *data2)
 {
-	MLoopCol *m1 = data1, *m2 = data2;
+	const MLoopCol *m1 = data1, *m2 = data2;
 	float r, g, b, a;
 
 	r = m1->r - m2->r;
@@ -647,9 +742,10 @@ static void layerMultiply_mloopcol(void *data, float fac)
 	m->a = (float)m->a * fac;
 }
 
-static void layerAdd_mloopcol(void *data1, void *data2)
+static void layerAdd_mloopcol(void *data1, const void *data2)
 {
-	MLoopCol *m = data1, *m2 = data2;
+	MLoopCol *m = data1;
+	const MLoopCol *m2 = data2;
 
 	m->r += m2->r;
 	m->g += m2->g;
@@ -657,9 +753,9 @@ static void layerAdd_mloopcol(void *data1, void *data2)
 	m->a += m2->a;
 }
 
-static void layerDoMinMax_mloopcol(void *data, void *vmin, void *vmax)
+static void layerDoMinMax_mloopcol(const void *data, void *vmin, void *vmax)
 {
-	MLoopCol *m = data;
+	const MLoopCol *m = data;
 	MLoopCol *min = vmin, *max = vmax;
 
 	if (m->r < min->r) min->r = m->r;
@@ -698,8 +794,9 @@ static void layerDefault_mloopcol(void *data, int count)
 
 }
 
-static void layerInterp_mloopcol(void **sources, const float *weights,
-                                 const float *sub_weights, int count, void *dest)
+static void layerInterp_mloopcol(
+        const void **sources, const float *weights,
+        const float *sub_weights, int count, void *dest)
 {
 	MLoopCol *mc = dest;
 	int i;
@@ -715,7 +812,7 @@ static void layerInterp_mloopcol(void **sources, const float *weights,
 	sub_weight = sub_weights;
 	for (i = 0; i < count; ++i) {
 		float weight = weights ? weights[i] : 1;
-		MLoopCol *src = sources[i];
+		const MLoopCol *src = sources[i];
 		if (sub_weights) {
 			col.r += src->r * (*sub_weight) * weight;
 			col.g += src->g * (*sub_weight) * weight;
@@ -745,16 +842,29 @@ static void layerInterp_mloopcol(void **sources, const float *weights,
 	mc->a = (int)col.a;
 }
 
-static void layerCopyValue_mloopuv(void *source, void *dest)
+static int layerMaxNum_mloopcol(void)
 {
-	MLoopUV *luv1 = source, *luv2 = dest;
-
-	copy_v2_v2(luv2->uv, luv1->uv);
+	return MAX_MCOL;
 }
 
-static bool layerEqual_mloopuv(void *data1, void *data2)
+static void layerCopyValue_mloopuv(const void *source, void *dest, const int mixmode, const float mixfactor)
 {
-	MLoopUV *luv1 = data1, *luv2 = data2;
+	const MLoopUV *luv1 = source;
+	MLoopUV *luv2 = dest;
+
+	/* We only support a limited subset of advanced mixing here - namely the mixfactor interpolation. */
+
+	if (mixmode == CDT_MIX_NOMIX) {
+		copy_v2_v2(luv2->uv, luv1->uv);
+	}
+	else {
+		interp_v2_v2v2(luv2->uv, luv2->uv, luv1->uv, mixfactor);
+	}
+}
+
+static bool layerEqual_mloopuv(const void *data1, const void *data2)
+{
+	const MLoopUV *luv1 = data1, *luv2 = data2;
 
 	return len_squared_v2v2(luv1->uv, luv2->uv) < 0.00001f;
 }
@@ -773,22 +883,25 @@ static void layerInitMinMax_mloopuv(void *vmin, void *vmax)
 	INIT_MINMAX2(min->uv, max->uv);
 }
 
-static void layerDoMinMax_mloopuv(void *data, void *vmin, void *vmax)
+static void layerDoMinMax_mloopuv(const void *data, void *vmin, void *vmax)
 {
-	MLoopUV *min = vmin, *max = vmax, *luv = data;
+	const MLoopUV *luv = data;
+	MLoopUV *min = vmin, *max = vmax;
 
 	minmax_v2v2_v2(min->uv, max->uv, luv->uv);
 }
 
-static void layerAdd_mloopuv(void *data1, void *data2)
+static void layerAdd_mloopuv(void *data1, const void *data2)
 {
-	MLoopUV *l1 = data1, *l2 = data2;
+	MLoopUV *l1 = data1;
+	const MLoopUV *l2 = data2;
 
 	add_v2_v2(l1->uv, l2->uv);
 }
 
-static void layerInterp_mloopuv(void **sources, const float *weights,
-                                const float *sub_weights, int count, void *dest)
+static void layerInterp_mloopuv(
+        const void **sources, const float *weights,
+        const float *sub_weights, int count, void *dest)
 {
 	float uv[2];
 	int i;
@@ -799,7 +912,7 @@ static void layerInterp_mloopuv(void **sources, const float *weights,
 		const float *sub_weight = sub_weights;
 		for (i = 0; i < count; i++) {
 			float weight = weights ? weights[i] : 1.0f;
-			MLoopUV *src = sources[i];
+			const MLoopUV *src = sources[i];
 			madd_v2_v2fl(uv, src->uv, (*sub_weight) * weight);
 			sub_weight++;
 		}
@@ -807,7 +920,7 @@ static void layerInterp_mloopuv(void **sources, const float *weights,
 	else {
 		for (i = 0; i < count; i++) {
 			float weight = weights ? weights[i] : 1;
-			MLoopUV *src = sources[i];
+			const MLoopUV *src = sources[i];
 			madd_v2_v2fl(uv, src->uv, weight);
 		}
 	}
@@ -817,16 +930,18 @@ static void layerInterp_mloopuv(void **sources, const float *weights,
 }
 
 /* origspace is almost exact copy of mloopuv's, keep in sync */
-static void layerCopyValue_mloop_origspace(void *source, void *dest)
+static void layerCopyValue_mloop_origspace(const void *source, void *dest,
+                                           const int UNUSED(mixmode), const float UNUSED(mixfactor))
 {
-	OrigSpaceLoop *luv1 = source, *luv2 = dest;
+	const OrigSpaceLoop *luv1 = source;
+	OrigSpaceLoop *luv2 = dest;
 
 	copy_v2_v2(luv2->uv, luv1->uv);
 }
 
-static bool layerEqual_mloop_origspace(void *data1, void *data2)
+static bool layerEqual_mloop_origspace(const void *data1, const void *data2)
 {
-	OrigSpaceLoop *luv1 = data1, *luv2 = data2;
+	const OrigSpaceLoop *luv1 = data1, *luv2 = data2;
 
 	return len_squared_v2v2(luv1->uv, luv2->uv) < 0.00001f;
 }
@@ -845,22 +960,25 @@ static void layerInitMinMax_mloop_origspace(void *vmin, void *vmax)
 	INIT_MINMAX2(min->uv, max->uv);
 }
 
-static void layerDoMinMax_mloop_origspace(void *data, void *vmin, void *vmax)
+static void layerDoMinMax_mloop_origspace(const void *data, void *vmin, void *vmax)
 {
-	OrigSpaceLoop *min = vmin, *max = vmax, *luv = data;
+	const OrigSpaceLoop *luv = data;
+	OrigSpaceLoop *min = vmin, *max = vmax;
 
 	minmax_v2v2_v2(min->uv, max->uv, luv->uv);
 }
 
-static void layerAdd_mloop_origspace(void *data1, void *data2)
+static void layerAdd_mloop_origspace(void *data1, const void *data2)
 {
-	OrigSpaceLoop *l1 = data1, *l2 = data2;
+	OrigSpaceLoop *l1 = data1;
+	const OrigSpaceLoop *l2 = data2;
 
 	add_v2_v2(l1->uv, l2->uv);
 }
 
-static void layerInterp_mloop_origspace(void **sources, const float *weights,
-                                        const float *sub_weights, int count, void *dest)
+static void layerInterp_mloop_origspace(
+        const void **sources, const float *weights,
+        const float *sub_weights, int count, void *dest)
 {
 	float uv[2];
 	int i;
@@ -871,7 +989,7 @@ static void layerInterp_mloop_origspace(void **sources, const float *weights,
 		const float *sub_weight = sub_weights;
 		for (i = 0; i < count; i++) {
 			float weight = weights ? weights[i] : 1.0f;
-			OrigSpaceLoop *src = sources[i];
+			const OrigSpaceLoop *src = sources[i];
 			madd_v2_v2fl(uv, src->uv, (*sub_weight) * weight);
 			sub_weight++;
 		}
@@ -879,7 +997,7 @@ static void layerInterp_mloop_origspace(void **sources, const float *weights,
 	else {
 		for (i = 0; i < count; i++) {
 			float weight = weights ? weights[i] : 1.0f;
-			OrigSpaceLoop *src = sources[i];
+			const OrigSpaceLoop *src = sources[i];
 			madd_v2_v2fl(uv, src->uv, weight);
 		}
 	}
@@ -889,8 +1007,9 @@ static void layerInterp_mloop_origspace(void **sources, const float *weights,
 }
 /* --- end copy */
 
-static void layerInterp_mcol(void **sources, const float *weights,
-                             const float *sub_weights, int count, void *dest)
+static void layerInterp_mcol(
+        const void **sources, const float *weights,
+        const float *sub_weights, int count, void *dest)
 {
 	MCol *mc = dest;
 	int i, j, k;
@@ -911,7 +1030,7 @@ static void layerInterp_mcol(void **sources, const float *weights,
 
 		for (j = 0; j < 4; ++j) {
 			if (sub_weights) {
-				MCol *src = sources[i];
+				const MCol *src = sources[i];
 				for (k = 0; k < 4; ++k, ++sub_weight, ++src) {
 					const float w = (*sub_weight) * weight;
 					col[j].a += src->a * w;
@@ -921,7 +1040,7 @@ static void layerInterp_mcol(void **sources, const float *weights,
 				}
 			}
 			else {
-				MCol *src = sources[i];
+				const MCol *src = sources[i];
 				col[j].a += src[j].a * weight;
 				col[j].r += src[j].r * weight;
 				col[j].g += src[j].g * weight;
@@ -975,8 +1094,9 @@ static void layerDefault_origindex(void *data, int count)
 	fill_vn_i((int *)data, count, ORIGINDEX_NONE);
 }
 
-static void layerInterp_bweight(void **sources, const float *weights,
-                                const float *UNUSED(sub_weights), int count, void *dest)
+static void layerInterp_bweight(
+        const void **sources, const float *weights,
+        const float *UNUSED(sub_weights), int count, void *dest)
 {
 	float f;
 	float **in = (float **)sources;
@@ -1001,8 +1121,9 @@ static void layerInterp_bweight(void **sources, const float *weights,
 	*((float *)dest) = f;
 }
 
-static void layerInterp_shapekey(void **sources, const float *weights,
-                                 const float *UNUSED(sub_weights), int count, void *dest)
+static void layerInterp_shapekey(
+        const void **sources, const float *weights,
+        const float *UNUSED(sub_weights), int count, void *dest)
 {
 	float co[3];
 	float **in = (float **)sources;
@@ -1038,26 +1159,40 @@ static void layerDefault_mvert_skin(void *data, int count)
 	}
 }
 
-static void layerInterp_mvert_skin(void **sources, const float *weights,
-                                   const float *UNUSED(sub_weights),
-                                   int count, void *dest)
+static void layerInterp_mvert_skin(
+        const void **sources, const float *weights,
+        const float *UNUSED(sub_weights),
+        int count, void *dest)
 {
+	MVertSkin *vs_dst = dest;
 	float radius[3], w;
-	MVertSkin *vs;
 	int i;
 
 	zero_v3(radius);
 	for (i = 0; i < count; i++) {
+		const MVertSkin *vs_src = sources[i];
 		w = weights ? weights[i] : 1.0f;
-		vs = sources[i];
 
-		madd_v3_v3fl(radius, vs->radius, w);
+		madd_v3_v3fl(radius, vs_src->radius, w);
 	}
 
 	/* delay writing to the destination incase dest is in sources */
-	vs = dest;
-	copy_v3_v3(vs->radius, radius);
-	vs->flag &= ~MVERT_SKIN_ROOT;
+	vs_dst = dest;
+	copy_v3_v3(vs_dst->radius, radius);
+	vs_dst->flag &= ~MVERT_SKIN_ROOT;
+}
+
+static void layerSwap_flnor(void *data, const int *corner_indices)
+{
+	short (*flnors)[4][3] = data;
+	short nors[4][3];
+	int i = 4;
+
+	while (i--) {
+		copy_v3_v3_short(nors[i], (*flnors)[corner_indices[i]]);
+	}
+
+	memcpy(flnors, nors, sizeof(nors));
 }
 
 static const LayerTypeInfo LAYERTYPEINFO[CD_NUMTYPES] = {
@@ -1074,17 +1209,18 @@ static const LayerTypeInfo LAYERTYPEINFO[CD_NUMTYPES] = {
 	/* 4: CD_MFACE */
 	{sizeof(MFace), "MFace", 1, NULL, NULL, NULL, NULL, NULL, NULL},
 	/* 5: CD_MTFACE */
-	{sizeof(MTFace), "MTFace", 1, N_("UVMap"), layerCopy_tface, NULL,
-	 layerInterp_tface, layerSwap_tface, layerDefault_tface},
+	{sizeof(MTFace), "MTFace", 1, N_("UVMap"), layerCopy_tface, NULL, layerInterp_tface, layerSwap_tface,
+	 layerDefault_tface, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, layerMaxNum_tface},
 	/* 6: CD_MCOL */
 	/* 4 MCol structs per face */
 	{sizeof(MCol) * 4, "MCol", 4, N_("Col"), NULL, NULL, layerInterp_mcol,
-	 layerSwap_mcol, layerDefault_mcol},
+	 layerSwap_mcol, layerDefault_mcol, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, layerMaxNum_mloopcol},
 	/* 7: CD_ORIGINDEX */
 	{sizeof(int), "", 0, NULL, NULL, NULL, NULL, NULL, layerDefault_origindex},
 	/* 8: CD_NORMAL */
 	/* 3 floats per normal vector */
-	{sizeof(float) * 3, "vec3f", 1, NULL, NULL, NULL, NULL, NULL, NULL},
+	{sizeof(float) * 3, "vec3f", 1, NULL, NULL, NULL, layerInterp_normal, NULL, NULL,
+	 NULL, NULL, NULL, NULL, NULL, layerCopyValue_normal},
 	/* 9: CD_POLYINDEX (deprecated) */
 	{sizeof(int), "", 0, NULL, NULL, NULL, NULL, NULL, NULL},
 	/* 10: CD_PROP_FLT */
@@ -1100,15 +1236,16 @@ static const LayerTypeInfo LAYERTYPEINFO[CD_NUMTYPES] = {
 	{sizeof(float) * 3, "", 0, NULL, NULL, NULL, NULL, NULL, NULL},
 	/* 15: CD_MTEXPOLY */
 	/* note, when we expose the UV Map / TexFace split to the user, change this back to face Texture */
-	{sizeof(MTexPoly), "MTexPoly", 1, N_("UVMap") /* "Face Texture" */, NULL, NULL, NULL, NULL, NULL},
+	{sizeof(MTexPoly), "MTexPoly", 1, N_("UVMap") /* "Face Texture" */, NULL, NULL, NULL, NULL, NULL,
+	 NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, layerMaxNum_tface},
 	/* 16: CD_MLOOPUV */
-	{sizeof(MLoopUV), "MLoopUV", 1, N_("UV coord"), NULL, NULL, layerInterp_mloopuv, NULL, NULL,
+	{sizeof(MLoopUV), "MLoopUV", 1, N_("UVMap"), NULL, NULL, layerInterp_mloopuv, NULL, NULL,
 	 layerEqual_mloopuv, layerMultiply_mloopuv, layerInitMinMax_mloopuv, 
-	 layerAdd_mloopuv, layerDoMinMax_mloopuv, layerCopyValue_mloopuv},
+	 layerAdd_mloopuv, layerDoMinMax_mloopuv, layerCopyValue_mloopuv, NULL, NULL, NULL, layerMaxNum_tface},
 	/* 17: CD_MLOOPCOL */
 	{sizeof(MLoopCol), "MLoopCol", 1, N_("Col"), NULL, NULL, layerInterp_mloopcol, NULL,
 	 layerDefault_mloopcol, layerEqual_mloopcol, layerMultiply_mloopcol, layerInitMinMax_mloopcol, 
-	 layerAdd_mloopcol, layerDoMinMax_mloopcol, layerCopyValue_mloopcol},
+	 layerAdd_mloopcol, layerDoMinMax_mloopcol, layerCopyValue_mloopcol, NULL, NULL, NULL, layerMaxNum_mloopcol},
 	/* 18: CD_TANGENT */
 	{sizeof(float) * 4 * 4, "", 0, NULL, NULL, NULL, NULL, NULL, NULL},
 	/* 19: CD_MDISPS */
@@ -1171,6 +1308,10 @@ static const LayerTypeInfo LAYERTYPEINFO[CD_NUMTYPES] = {
 	{sizeof(FreestyleFace), "FreestyleFace", 1, NULL, NULL, NULL, NULL, NULL, NULL},
 	/* 39: CD_MLOOPTANGENT */
 	{sizeof(float[4]), "", 0, NULL, NULL, NULL, NULL, NULL, NULL},
+	/* 40: CD_TESSLOOPNORMAL */
+	{sizeof(short[4][3]), "", 0, NULL, NULL, NULL, NULL, layerSwap_flnor, NULL},
+	/* 41: CD_CUSTOMLOOPNORMAL */
+	{sizeof(short[2]), "vec2s", 1, NULL, NULL, NULL, NULL, NULL, NULL},
 };
 
 /* note, numbers are from trunk and need updating for bmesh */
@@ -1186,7 +1327,8 @@ static const char *LAYERTYPENAMES[CD_NUMTYPES] = {
 	/* 25-29 */ "CDMPoly", "CDMLoop", "CDShapeKeyIndex", "CDShapeKey", "CDBevelWeight",
 	/* 30-34 */ "CDSubSurfCrease", "CDOrigSpaceLoop", "CDPreviewLoopCol", "CDBMElemPyPtr", "CDPaintMask",
 	/* 35-36 */ "CDGridPaintMask", "CDMVertSkin",
-	/* 37-38 */ "CDFreestyleEdge", "CDFreestyleFace", "CDMLoopTangent",
+	/* 37-38 */ "CDFreestyleEdge", "CDFreestyleFace",
+	/* 39-41 */ "CDMLoopTangent", "CDTessLoopNormal", "CDCustomLoopNormal",
 };
 
 
@@ -1198,29 +1340,32 @@ const CustomDataMask CD_MASK_MESH =
     CD_MASK_PROP_FLT | CD_MASK_PROP_INT | CD_MASK_PROP_STR | CD_MASK_MDISPS |
     CD_MASK_MLOOPUV | CD_MASK_MLOOPCOL | CD_MASK_MPOLY | CD_MASK_MLOOP |
     CD_MASK_MTEXPOLY | CD_MASK_RECAST | CD_MASK_PAINT_MASK |
-    CD_MASK_GRID_PAINT_MASK | CD_MASK_MVERT_SKIN | CD_MASK_FREESTYLE_EDGE | CD_MASK_FREESTYLE_FACE;
+    CD_MASK_GRID_PAINT_MASK | CD_MASK_MVERT_SKIN | CD_MASK_FREESTYLE_EDGE | CD_MASK_FREESTYLE_FACE |
+    CD_MASK_CUSTOMLOOPNORMAL;
 const CustomDataMask CD_MASK_EDITMESH =
     CD_MASK_MSTICKY | CD_MASK_MDEFORMVERT | CD_MASK_MTFACE | CD_MASK_MLOOPUV |
     CD_MASK_MLOOPCOL | CD_MASK_MTEXPOLY | CD_MASK_SHAPE_KEYINDEX |
     CD_MASK_MCOL | CD_MASK_PROP_FLT | CD_MASK_PROP_INT | CD_MASK_PROP_STR |
     CD_MASK_MDISPS | CD_MASK_SHAPEKEY | CD_MASK_RECAST | CD_MASK_PAINT_MASK |
-    CD_MASK_GRID_PAINT_MASK | CD_MASK_MVERT_SKIN;
+    CD_MASK_GRID_PAINT_MASK | CD_MASK_MVERT_SKIN | CD_MASK_CUSTOMLOOPNORMAL;
 const CustomDataMask CD_MASK_DERIVEDMESH =
     CD_MASK_MSTICKY | CD_MASK_MDEFORMVERT | CD_MASK_MTFACE |
     CD_MASK_MCOL | CD_MASK_PROP_FLT | CD_MASK_PROP_INT | CD_MASK_CLOTH_ORCO |
     CD_MASK_MLOOPUV | CD_MASK_MLOOPCOL | CD_MASK_MTEXPOLY | CD_MASK_PREVIEW_MLOOPCOL |
     CD_MASK_PROP_STR | CD_MASK_ORIGSPACE | CD_MASK_ORIGSPACE_MLOOP | CD_MASK_ORCO | CD_MASK_TANGENT |
     CD_MASK_PREVIEW_MCOL | CD_MASK_SHAPEKEY | CD_MASK_RECAST |
-    CD_MASK_ORIGINDEX | CD_MASK_MVERT_SKIN | CD_MASK_FREESTYLE_EDGE | CD_MASK_FREESTYLE_FACE;
+    CD_MASK_ORIGINDEX | CD_MASK_MVERT_SKIN | CD_MASK_FREESTYLE_EDGE | CD_MASK_FREESTYLE_FACE |
+    CD_MASK_CUSTOMLOOPNORMAL;
 const CustomDataMask CD_MASK_BMESH =
     CD_MASK_MLOOPUV | CD_MASK_MLOOPCOL | CD_MASK_MTEXPOLY |
     CD_MASK_MSTICKY | CD_MASK_MDEFORMVERT | CD_MASK_PROP_FLT | CD_MASK_PROP_INT |
     CD_MASK_PROP_STR | CD_MASK_SHAPEKEY | CD_MASK_SHAPE_KEYINDEX | CD_MASK_MDISPS |
     CD_MASK_CREASE | CD_MASK_BWEIGHT | CD_MASK_RECAST | CD_MASK_PAINT_MASK |
-    CD_MASK_GRID_PAINT_MASK | CD_MASK_MVERT_SKIN | CD_MASK_FREESTYLE_EDGE | CD_MASK_FREESTYLE_FACE;
-const CustomDataMask CD_MASK_FACECORNERS =
+    CD_MASK_GRID_PAINT_MASK | CD_MASK_MVERT_SKIN | CD_MASK_FREESTYLE_EDGE | CD_MASK_FREESTYLE_FACE |
+    CD_MASK_CUSTOMLOOPNORMAL;
+const CustomDataMask CD_MASK_FACECORNERS =  /* XXX Not used anywhere! */
     CD_MASK_MTFACE | CD_MASK_MCOL | CD_MASK_MTEXPOLY | CD_MASK_MLOOPUV |
-    CD_MASK_MLOOPCOL;
+    CD_MASK_MLOOPCOL | CD_MASK_NORMAL | CD_MASK_MLOOPTANGENT;
 const CustomDataMask CD_MASK_EVERYTHING =
     CD_MASK_MVERT | CD_MASK_MSTICKY /* DEPRECATED */ | CD_MASK_MDEFORMVERT | CD_MASK_MEDGE | CD_MASK_MFACE |
     CD_MASK_MTFACE | CD_MASK_MCOL | CD_MASK_ORIGINDEX | CD_MASK_NORMAL /* | CD_MASK_POLYINDEX */ | CD_MASK_PROP_FLT |
@@ -1230,7 +1375,9 @@ const CustomDataMask CD_MASK_EVERYTHING =
     CD_MASK_MPOLY | CD_MASK_MLOOP | CD_MASK_SHAPE_KEYINDEX | CD_MASK_SHAPEKEY | CD_MASK_BWEIGHT | CD_MASK_CREASE |
     CD_MASK_ORIGSPACE_MLOOP | CD_MASK_PREVIEW_MLOOPCOL | CD_MASK_BM_ELEM_PYPTR |
     /* BMESH ONLY END */
-    CD_MASK_PAINT_MASK | CD_MASK_GRID_PAINT_MASK | CD_MASK_MVERT_SKIN | CD_MASK_FREESTYLE_EDGE | CD_MASK_FREESTYLE_FACE;
+    CD_MASK_PAINT_MASK | CD_MASK_GRID_PAINT_MASK | CD_MASK_MVERT_SKIN |
+    CD_MASK_FREESTYLE_EDGE | CD_MASK_FREESTYLE_FACE |
+    CD_MASK_MLOOPTANGENT | CD_MASK_TESSLOOPNORMAL | CD_MASK_CUSTOMLOOPNORMAL;
 
 static const LayerTypeInfo *layerType_getInfo(int type)
 {
@@ -1282,7 +1429,7 @@ void CustomData_update_typemap(CustomData *data)
 
 /* currently only used in BLI_assert */
 #ifndef NDEBUG
-static int customdata_typemap_is_valid(const CustomData *data)
+static bool customdata_typemap_is_valid(const CustomData *data)
 {
 	CustomData data_copy = *data;
 	CustomData_update_typemap(&data_copy);
@@ -1296,7 +1443,8 @@ bool CustomData_merge(const struct CustomData *source, struct CustomData *dest,
 	/*const LayerTypeInfo *typeInfo;*/
 	CustomDataLayer *layer, *newlayer;
 	void *data;
-	int i, type, number = 0, lasttype = -1, lastactive = 0, lastrender = 0, lastclone = 0, lastmask = 0, lastflag = 0;
+	int i, type, lasttype = -1, lastactive = 0, lastrender = 0, lastclone = 0, lastmask = 0, lastflag = 0;
+	int number = 0, maxnumber = -1;
 	bool changed = false;
 
 	for (i = 0; i < source->totlayer; ++i) {
@@ -1307,6 +1455,7 @@ bool CustomData_merge(const struct CustomData *source, struct CustomData *dest,
 
 		if (type != lasttype) {
 			number = 0;
+			maxnumber = CustomData_layertype_layers_max(type);
 			lastactive = layer->active;
 			lastrender = layer->active_rnd;
 			lastclone = layer->active_clone;
@@ -1319,6 +1468,7 @@ bool CustomData_merge(const struct CustomData *source, struct CustomData *dest,
 
 		if (lastflag & CD_FLAG_NOCOPY) continue;
 		else if (!(mask & CD_TYPE_AS_MASK(type))) continue;
+		else if ((maxnumber != -1) && (number >= maxnumber)) continue;
 		else if (CustomData_get_layer_named(dest, type, layer->name)) continue;
 
 		switch (alloctype) {
@@ -1464,7 +1614,7 @@ int CustomData_get_named_layer_index(const CustomData *data, int type, const cha
 
 	for (i = 0; i < data->totlayer; ++i)
 		if (data->layers[i].type == type)
-			if (strcmp(data->layers[i].name, name) == 0)
+			if (STREQ(data->layers[i].name, name))
 				return i;
 
 	return -1;
@@ -1640,7 +1790,8 @@ static CustomDataLayer *customData_add_layer__internal(CustomData *data, int typ
                                                        int totelem, const char *name)
 {
 	const LayerTypeInfo *typeInfo = layerType_getInfo(type);
-	int size = typeInfo->size * totelem, flag = 0, index = data->totlayer;
+	const int size = totelem * typeInfo->size;
+	int flag = 0, index = data->totlayer;
 	void *newlayerdata = NULL;
 
 	/* Passing a layerdata to copy from with an alloctype that won't copy is
@@ -1649,6 +1800,8 @@ static CustomDataLayer *customData_add_layer__internal(CustomData *data, int typ
 	           (alloctype == CD_ASSIGN) ||
 	           (alloctype == CD_DUPLICATE) ||
 	           (alloctype == CD_REFERENCE));
+
+	BLI_assert(size >= 0);
 
 	if (!typeInfo->defaultname && CustomData_has_layer(data, type))
 		return &data->layers[CustomData_get_layer_index(data, type)];
@@ -1670,7 +1823,7 @@ static CustomDataLayer *customData_add_layer__internal(CustomData *data, int typ
 	}
 	else if (alloctype == CD_DEFAULT) {
 		if (typeInfo->set_default)
-			typeInfo->set_default((char *)newlayerdata, totelem);
+			typeInfo->set_default(newlayerdata, totelem);
 	}
 	else if (alloctype == CD_REFERENCE)
 		flag |= CD_FLAG_NOFREE;
@@ -1756,7 +1909,8 @@ bool CustomData_free_layer(CustomData *data, int type, int totelem, int index)
 	const int n = index - CustomData_get_layer_index(data, type);
 	int i;
 	
-	if (index < 0) return 0;
+	if (index < 0)
+		return false;
 
 	customData_free_layer__internal(&data->layers[index], totelem);
 
@@ -1786,14 +1940,15 @@ bool CustomData_free_layer(CustomData *data, int type, int totelem, int index)
 
 	customData_update_offsets(data);
 
-	return 1;
+	return true;
 }
 
 bool CustomData_free_layer_active(CustomData *data, int type, int totelem)
 {
 	int index = 0;
 	index = CustomData_get_active_layer_index(data, type);
-	if (index == -1) return 0;
+	if (index == -1)
+		return false;
 	return CustomData_free_layer(data, type, totelem, index);
 }
 
@@ -1831,14 +1986,13 @@ int CustomData_number_of_layers_typemask(const CustomData *data, CustomDataMask 
 	return number;
 }
 
-void *CustomData_duplicate_referenced_layer(struct CustomData *data, const int type, const int totelem)
+static void *customData_duplicate_referenced_layer_index(CustomData *data, const int layer_index, const int totelem)
 {
 	CustomDataLayer *layer;
-	int layer_index;
 
-	/* get the layer index of the first layer of type */
-	layer_index = CustomData_get_active_layer_index(data, type);
-	if (layer_index == -1) return NULL;
+	if (layer_index == -1) {
+		return NULL;
+	}
 
 	layer = &data->layers[layer_index];
 
@@ -1850,12 +2004,13 @@ void *CustomData_duplicate_referenced_layer(struct CustomData *data, const int t
 		const LayerTypeInfo *typeInfo = layerType_getInfo(layer->type);
 
 		if (typeInfo->copy) {
-			char *dest_data = MEM_mallocN(typeInfo->size * totelem, "CD duplicate ref layer");
-			typeInfo->copy(layer->data, dest_data, totelem);
-			layer->data = dest_data;
+			void *dst_data = MEM_mallocN(totelem * typeInfo->size, "CD duplicate ref layer");
+			typeInfo->copy(layer->data, dst_data, totelem);
+			layer->data = dst_data;
 		}
-		else
+		else {
 			layer->data = MEM_dupallocN(layer->data);
+		}
 
 		layer->flag &= ~CD_FLAG_NOFREE;
 	}
@@ -1863,37 +2018,34 @@ void *CustomData_duplicate_referenced_layer(struct CustomData *data, const int t
 	return layer->data;
 }
 
-void *CustomData_duplicate_referenced_layer_named(struct CustomData *data,
-                                                  const int type, const char *name, const int totelem)
+void *CustomData_duplicate_referenced_layer(CustomData *data, const int type, const int totelem)
 {
-	CustomDataLayer *layer;
+	int layer_index;
+
+	/* get the layer index of the first layer of type */
+	layer_index = CustomData_get_active_layer_index(data, type);
+
+	return customData_duplicate_referenced_layer_index(data, layer_index, totelem);
+}
+
+void *CustomData_duplicate_referenced_layer_n(CustomData *data, const int type, const int n, const int totelem)
+{
+	int layer_index;
+
+	/* get the layer index of the desired layer */
+	layer_index = CustomData_get_layer_index_n(data, type, n);
+
+	return customData_duplicate_referenced_layer_index(data, layer_index, totelem);
+}
+
+void *CustomData_duplicate_referenced_layer_named(CustomData *data, const int type, const char *name, const int totelem)
+{
 	int layer_index;
 
 	/* get the layer index of the desired layer */
 	layer_index = CustomData_get_named_layer_index(data, type, name);
-	if (layer_index == -1) return NULL;
 
-	layer = &data->layers[layer_index];
-
-	if (layer->flag & CD_FLAG_NOFREE) {
-		/* MEM_dupallocN won't work in case of complex layers, like e.g.
-		 * CD_MDEFORMVERT, which has pointers to allocated data...
-		 * So in case a custom copy function is defined, use it!
-		 */
-		const LayerTypeInfo *typeInfo = layerType_getInfo(layer->type);
-
-		if (typeInfo->copy) {
-			char *dest_data = MEM_mallocN(typeInfo->size * totelem, "CD duplicate ref layer");
-			typeInfo->copy(layer->data, dest_data, totelem);
-			layer->data = dest_data;
-		}
-		else
-			layer->data = MEM_dupallocN(layer->data);
-
-		layer->flag &= ~CD_FLAG_NOFREE;
-	}
-
-	return layer->data;
+	return customData_duplicate_referenced_layer_index(data, layer_index, totelem);
 }
 
 bool CustomData_is_referenced_layer(struct CustomData *data, int type)
@@ -1903,7 +2055,8 @@ bool CustomData_is_referenced_layer(struct CustomData *data, int type)
 
 	/* get the layer index of the first layer of type */
 	layer_index = CustomData_get_active_layer_index(data, type);
-	if (layer_index == -1) return 0;
+	if (layer_index == -1)
+		return false;
 
 	layer = &data->layers[layer_index];
 
@@ -1952,47 +2105,48 @@ void CustomData_set_only_copy(const struct CustomData *data,
 			data->layers[i].flag |= CD_FLAG_NOCOPY;
 }
 
-void CustomData_copy_elements(int type, void *source, void *dest, int count)
+void CustomData_copy_elements(int type, void *src_data_ofs, void *dst_data_ofs, int count)
 {
 	const LayerTypeInfo *typeInfo = layerType_getInfo(type);
 
 	if (typeInfo->copy)
-		typeInfo->copy(source, dest, count);
+		typeInfo->copy(src_data_ofs, dst_data_ofs, count);
 	else
-		memcpy(dest, source, typeInfo->size * count);
+		memcpy(dst_data_ofs, src_data_ofs, count * typeInfo->size);
 }
 
-static void CustomData_copy_data_layer(const CustomData *source, CustomData *dest,
-                                       int src_i, int dest_i,
-                                       int source_index, int dest_index, int count) {
+static void CustomData_copy_data_layer(
+        const CustomData *source, CustomData *dest,
+        int src_i, int dst_i,
+        int src_index, int dst_index, int count) {
 	const LayerTypeInfo *typeInfo;
 	int src_offset;
-	int dest_offset;
+	int dst_offset;
 
-	char *src_data = source->layers[src_i].data;
-	char *dest_data = dest->layers[dest_i].data;
+	const void *src_data = source->layers[src_i].data;
+	void *dst_data = dest->layers[dst_i].data;
 
 	typeInfo = layerType_getInfo(source->layers[src_i].type);
 
-	src_offset = source_index * typeInfo->size;
-	dest_offset = dest_index * typeInfo->size;
+	src_offset = src_index * typeInfo->size;
+	dst_offset = dst_index * typeInfo->size;
 
-	if (!src_data || !dest_data) {
-		if (!(src_data == NULL && dest_data == NULL)) {
+	if (!src_data || !dst_data) {
+		if (!(src_data == NULL && dst_data == NULL)) {
 			printf("%s: warning null data for %s type (%p --> %p), skipping\n",
 				   __func__, layerType_getName(source->layers[src_i].type),
-				   (void *)src_data, (void *)dest_data);
+				   (void *)src_data, (void *)dst_data);
 		}
 		return;
 	}
 
 	if (typeInfo->copy)
-		typeInfo->copy(src_data + src_offset,
-		               dest_data + dest_offset,
+		typeInfo->copy(POINTER_OFFSET(src_data, src_offset),
+		               POINTER_OFFSET(dst_data, dst_offset),
 		               count);
 	else
-		memcpy(dest_data + dest_offset,
-		       src_data + src_offset,
+		memcpy(POINTER_OFFSET(dst_data, dst_offset),
+		       POINTER_OFFSET(src_data, src_offset),
 		       count * typeInfo->size);
 }
 
@@ -2055,10 +2209,9 @@ void CustomData_free_elem(CustomData *data, int index, int count)
 			typeInfo = layerType_getInfo(data->layers[i].type);
 
 			if (typeInfo->free) {
-				int offset = typeInfo->size * index;
+				int offset = index * typeInfo->size;
 
-				typeInfo->free((char *)data->layers[i].data + offset,
-				               count, typeInfo->size);
+				typeInfo->free(POINTER_OFFSET(data->layers[i].data, offset), count, typeInfo->size);
 			}
 		}
 	}
@@ -2071,17 +2224,15 @@ void CustomData_interp(const CustomData *source, CustomData *dest,
                        int count, int dest_index)
 {
 	int src_i, dest_i;
-	int dest_offset;
 	int j;
-	void *source_buf[SOURCE_BUF_SIZE];
-	void **sources = source_buf;
+	const void *source_buf[SOURCE_BUF_SIZE];
+	const void **sources = source_buf;
 
 	/* slow fallback in case we're interpolating a ridiculous number of
 	 * elements
 	 */
 	if (count > SOURCE_BUF_SIZE)
-		sources = MEM_callocN(sizeof(*sources) * count,
-		                      "CustomData_interp sources");
+		sources = MEM_mallocN(sizeof(*sources) * count, __func__);
 
 	/* interpolates a layer at a time */
 	dest_i = 0;
@@ -2104,13 +2255,11 @@ void CustomData_interp(const CustomData *source, CustomData *dest,
 			void *src_data = source->layers[src_i].data;
 
 			for (j = 0; j < count; ++j) {
-				sources[j] = (char *)src_data + typeInfo->size * src_indices[j];
+				sources[j] = POINTER_OFFSET(src_data, src_indices[j] * typeInfo->size);
 			}
 
-			dest_offset = dest_index * typeInfo->size;
-
 			typeInfo->interp(sources, weights, sub_weights, count,
-			                 (char *)dest->layers[dest_i].data + dest_offset);
+			                 POINTER_OFFSET(dest->layers[dest_i].data, dest_index * typeInfo->size));
 
 			/* if there are multiple source & dest layers of the same type,
 			 * we don't want to copy all source layers to the same dest, so
@@ -2132,9 +2281,9 @@ void CustomData_swap(struct CustomData *data, int index, const int *corner_indic
 		typeInfo = layerType_getInfo(data->layers[i].type);
 
 		if (typeInfo->swap) {
-			int offset = typeInfo->size * index;
+			const int offset = index * typeInfo->size;
 
-			typeInfo->swap((char *)data->layers[i].data + offset, corner_indices);
+			typeInfo->swap(POINTER_OFFSET(data->layers[i].data, offset), corner_indices);
 		}
 	}
 }
@@ -2153,7 +2302,7 @@ void *CustomData_get(const CustomData *data, int index, int type)
 	/* get the offset of the desired element */
 	offset = layerType_getInfo(type)->size * index;
 
-	return (char *)data->layers[layer_index].data + offset;
+	return POINTER_OFFSET(data->layers[layer_index].data, offset);
 }
 
 void *CustomData_get_n(const CustomData *data, int type, int index, int n)
@@ -2168,7 +2317,7 @@ void *CustomData_get_n(const CustomData *data, int type, int index, int n)
 	if (layer_index == -1) return NULL;
 
 	offset = layerType_getInfo(type)->size * index;
-	return (char *)data->layers[layer_index + n].data + offset;
+	return POINTER_OFFSET(data->layers[layer_index + n].data, offset);
 }
 
 void *CustomData_get_layer(const CustomData *data, int type)
@@ -2219,14 +2368,21 @@ int CustomData_get_n_offset(const CustomData *data, int type, int n)
 bool CustomData_set_layer_name(const CustomData *data, int type, int n, const char *name)
 {
 	/* get the layer index of the first layer of type */
-	int layer_index = CustomData_get_layer_index_n(data, type, n);
+	const int layer_index = CustomData_get_layer_index_n(data, type, n);
 
-	if (layer_index == -1) return false;
-	if (!name) return false;
+	if ((layer_index == -1) || !name)
+		return false;
 	
 	BLI_strncpy(data->layers[layer_index].name, name, sizeof(data->layers[layer_index].name));
 	
 	return true;
+}
+
+const char *CustomData_get_layer_name(const CustomData *data, int type, int n)
+{
+	const int layer_index = CustomData_get_layer_index_n(data, type, n);
+
+	return (layer_index == -1) ? NULL : data->layers[layer_index].name;
 }
 
 void *CustomData_set_layer(const CustomData *data, int type, void *ptr)
@@ -2252,7 +2408,7 @@ void *CustomData_set_layer_n(const struct CustomData *data, int type, int n, voi
 	return ptr;
 }
 
-void CustomData_set(const CustomData *data, int index, int type, void *source)
+void CustomData_set(const CustomData *data, int index, int type, const void *source)
 {
 	void *dest = CustomData_get(data, index, type);
 	const LayerTypeInfo *typeInfo = layerType_getInfo(type);
@@ -2282,6 +2438,9 @@ void CustomData_to_bmeshpoly(CustomData *fdata, CustomData *pdata, CustomData *l
 		else if (fdata->layers[i].type == CD_MDISPS) {
 			CustomData_add_layer_named(ldata, CD_MDISPS, CD_CALLOC, NULL, totloop, fdata->layers[i].name);
 		}
+		else if (fdata->layers[i].type == CD_TESSLOOPNORMAL) {
+			CustomData_add_layer_named(ldata, CD_NORMAL, CD_CALLOC, NULL, totloop, fdata->layers[i].name);
+		}
 	}
 }
 
@@ -2302,6 +2461,9 @@ void CustomData_from_bmeshpoly(CustomData *fdata, CustomData *pdata, CustomData 
 		}
 		else if (ldata->layers[i].type == CD_ORIGSPACE_MLOOP) {
 			CustomData_add_layer_named(fdata, CD_ORIGSPACE, CD_CALLOC, NULL, total, ldata->layers[i].name);
+		}
+		else if (ldata->layers[i].type == CD_NORMAL) {
+			CustomData_add_layer_named(fdata, CD_TESSLOOPNORMAL, CD_CALLOC, NULL, total, ldata->layers[i].name);
 		}
 	}
 
@@ -2407,12 +2569,13 @@ void CustomData_bmesh_init_pool(CustomData *data, int totelem, const char htype)
 
 	/* If there are no layers, no pool is needed just yet */
 	if (data->totlayer) {
-		data->pool = BLI_mempool_create(data->totsize, totelem, chunksize, BLI_MEMPOOL_SYSMALLOC);
+		data->pool = BLI_mempool_create(data->totsize, totelem, chunksize, BLI_MEMPOOL_NOP);
 	}
 }
 
-bool CustomData_bmesh_merge(CustomData *source, CustomData *dest,
-                            CustomDataMask mask, int alloctype, BMesh *bm, const char htype)
+bool CustomData_bmesh_merge(
+        const CustomData *source, CustomData *dest,
+        CustomDataMask mask, int alloctype, BMesh *bm, const char htype)
 {
 	BMHeader *h;
 	BMIter iter;
@@ -2509,7 +2672,7 @@ void CustomData_bmesh_free_block(CustomData *data, void **block)
 
 			if (typeInfo->free) {
 				int offset = data->layers[i].offset;
-				typeInfo->free((char *)*block + offset, 1, typeInfo->size);
+				typeInfo->free(POINTER_OFFSET(*block, offset), 1, typeInfo->size);
 			}
 		}
 	}
@@ -2523,12 +2686,12 @@ void CustomData_bmesh_free_block(CustomData *data, void **block)
 /**
  * Same as #CustomData_bmesh_free_block but zero the memory rather then freeing.
  */
-void CustomData_bmesh_free_block_data(CustomData *data, void **block)
+void CustomData_bmesh_free_block_data(CustomData *data, void *block)
 {
 	const LayerTypeInfo *typeInfo;
 	int i;
 
-	if (*block == NULL)
+	if (block == NULL)
 		return;
 
 	for (i = 0; i < data->totlayer; ++i) {
@@ -2537,13 +2700,13 @@ void CustomData_bmesh_free_block_data(CustomData *data, void **block)
 
 			if (typeInfo->free) {
 				int offset = data->layers[i].offset;
-				typeInfo->free((char *)*block + offset, 1, typeInfo->size);
+				typeInfo->free(POINTER_OFFSET(block, offset), 1, typeInfo->size);
 			}
 		}
 	}
 
 	if (data->totsize)
-		memset(*block, 0, data->totsize);
+		memset(block, 0, data->totsize);
 }
 
 static void CustomData_bmesh_alloc_block(CustomData *data, void **block)
@@ -2586,10 +2749,10 @@ void CustomData_bmesh_copy_data(const CustomData *source, CustomData *dest,
 
 		/* if we found a matching layer, copy the data */
 		if (dest->layers[dest_i].type == source->layers[src_i].type &&
-		    strcmp(dest->layers[dest_i].name, source->layers[src_i].name) == 0)
+		    STREQ(dest->layers[dest_i].name, source->layers[src_i].name))
 		{
-			char *src_data = (char *)src_block + source->layers[src_i].offset;
-			char *dest_data = (char *)*dest_block + dest->layers[dest_i].offset;
+			const void *src_data = POINTER_OFFSET(src_block, source->layers[src_i].offset);
+			void *dest_data = POINTER_OFFSET(*dest_block, dest->layers[dest_i].offset);
 
 			typeInfo = layerType_getInfo(source->layers[src_i].type);
 
@@ -2616,7 +2779,7 @@ void *CustomData_bmesh_get(const CustomData *data, void *block, int type)
 	layer_index = CustomData_get_active_layer_index(data, type);
 	if (layer_index == -1) return NULL;
 
-	return (char *)block + data->layers[layer_index].offset;
+	return POINTER_OFFSET(block, data->layers[layer_index].offset);
 }
 
 void *CustomData_bmesh_get_n(const CustomData *data, void *block, int type, int n)
@@ -2627,7 +2790,7 @@ void *CustomData_bmesh_get_n(const CustomData *data, void *block, int type, int 
 	layer_index = CustomData_get_layer_index(data, type);
 	if (layer_index == -1) return NULL;
 
-	return (char *)block + data->layers[layer_index + n].offset;
+	return POINTER_OFFSET(block, data->layers[layer_index + n].offset);
 }
 
 /*gets from the layer at physical index n, note: doesn't check type.*/
@@ -2635,10 +2798,10 @@ void *CustomData_bmesh_get_layer_n(const CustomData *data, void *block, int n)
 {
 	if (n < 0 || n >= data->totlayer) return NULL;
 
-	return (char *)block + data->layers[n].offset;
+	return POINTER_OFFSET(block, data->layers[n].offset);
 }
 
-bool CustomData_layer_has_math(struct CustomData *data, int layer_n)
+bool CustomData_layer_has_math(const struct CustomData *data, int layer_n)
 {
 	const LayerTypeInfo *typeInfo = layerType_getInfo(data->layers[layer_n].type);
 	
@@ -2651,7 +2814,7 @@ bool CustomData_layer_has_math(struct CustomData *data, int layer_n)
 	return false;
 }
 
-bool CustomData_layer_has_interp(struct CustomData *data, int layer_n)
+bool CustomData_layer_has_interp(const struct CustomData *data, int layer_n)
 {
 	const LayerTypeInfo *typeInfo = layerType_getInfo(data->layers[layer_n].type);
 
@@ -2662,7 +2825,7 @@ bool CustomData_layer_has_interp(struct CustomData *data, int layer_n)
 	return false;
 }
 
-bool CustomData_has_math(struct CustomData *data)
+bool CustomData_has_math(const struct CustomData *data)
 {
 	int i;
 
@@ -2677,7 +2840,7 @@ bool CustomData_has_math(struct CustomData *data)
 }
 
 /* a non bmesh version would have to check layer->data */
-bool CustomData_bmesh_has_free(struct CustomData *data)
+bool CustomData_bmesh_has_free(const struct CustomData *data)
 {
 	const LayerTypeInfo *typeInfo;
 	int i;
@@ -2693,7 +2856,7 @@ bool CustomData_bmesh_has_free(struct CustomData *data)
 	return false;
 }
 
-bool CustomData_has_interp(struct CustomData *data)
+bool CustomData_has_interp(const struct CustomData *data)
 {
 	int i;
 
@@ -2709,19 +2872,36 @@ bool CustomData_has_interp(struct CustomData *data)
 
 /* copies the "value" (e.g. mloopuv uv or mloopcol colors) from one block to
  * another, while not overwriting anything else (e.g. flags)*/
-void CustomData_data_copy_value(int type, void *source, void *dest)
+void CustomData_data_copy_value(int type, const void *source, void *dest)
 {
 	const LayerTypeInfo *typeInfo = layerType_getInfo(type);
 
 	if (!dest) return;
 
 	if (typeInfo->copyvalue)
-		typeInfo->copyvalue(source, dest);
+		typeInfo->copyvalue(source, dest, CDT_MIX_NOMIX, 0.0f);
 	else
 		memcpy(dest, source, typeInfo->size);
 }
 
-bool CustomData_data_equals(int type, void *data1, void *data2)
+/* Mixes the "value" (e.g. mloopuv uv or mloopcol colors) from one block into
+ * another, while not overwriting anything else (e.g. flags)*/
+void CustomData_data_mix_value(int type, const void *source, void *dest, const int mixmode, const float mixfactor)
+{
+	const LayerTypeInfo *typeInfo = layerType_getInfo(type);
+
+	if (!dest) return;
+
+	if (typeInfo->copyvalue) {
+		typeInfo->copyvalue(source, dest, mixmode, mixfactor);
+	}
+	else {
+		/* Mere copy if no advanced interpolation is supported. */
+		memcpy(dest, source, typeInfo->size);
+	}
+}
+
+bool CustomData_data_equals(int type, const void *data1, const void *data2)
 {
 	const LayerTypeInfo *typeInfo = layerType_getInfo(type);
 
@@ -2739,7 +2919,7 @@ void CustomData_data_initminmax(int type, void *min, void *max)
 }
 
 
-void CustomData_data_dominmax(int type, void *data, void *min, void *max)
+void CustomData_data_dominmax(int type, const void *data, void *min, void *max)
 {
 	const LayerTypeInfo *typeInfo = layerType_getInfo(type);
 
@@ -2757,7 +2937,7 @@ void CustomData_data_multiply(int type, void *data, float fac)
 }
 
 
-void CustomData_data_add(int type, void *data1, void *data2)
+void CustomData_data_add(int type, void *data1, const void *data2)
 {
 	const LayerTypeInfo *typeInfo = layerType_getInfo(type);
 
@@ -2765,7 +2945,7 @@ void CustomData_data_add(int type, void *data1, void *data2)
 		typeInfo->add(data1, data2);
 }
 
-void CustomData_bmesh_set(const CustomData *data, void *block, int type, void *source)
+void CustomData_bmesh_set(const CustomData *data, void *block, int type, const void *source)
 {
 	void *dest = CustomData_bmesh_get(data, block, type);
 	const LayerTypeInfo *typeInfo = layerType_getInfo(type);
@@ -2778,7 +2958,7 @@ void CustomData_bmesh_set(const CustomData *data, void *block, int type, void *s
 		memcpy(dest, source, typeInfo->size);
 }
 
-void CustomData_bmesh_set_n(CustomData *data, void *block, int type, int n, void *source)
+void CustomData_bmesh_set_n(CustomData *data, void *block, int type, int n, const void *source)
 {
 	void *dest = CustomData_bmesh_get_n(data, block, type, n);
 	const LayerTypeInfo *typeInfo = layerType_getInfo(type);
@@ -2791,7 +2971,7 @@ void CustomData_bmesh_set_n(CustomData *data, void *block, int type, int n, void
 		memcpy(dest, source, typeInfo->size);
 }
 
-void CustomData_bmesh_set_layer_n(CustomData *data, void *block, int n, void *source)
+void CustomData_bmesh_set_layer_n(CustomData *data, void *block, int n, const void *source)
 {
 	void *dest = CustomData_bmesh_get_layer_n(data, block, n);
 	const LayerTypeInfo *typeInfo = layerType_getInfo(data->layers[n].type);
@@ -2805,31 +2985,34 @@ void CustomData_bmesh_set_layer_n(CustomData *data, void *block, int n, void *so
 }
 
 /**
- * \param src_blocks must be pointers to the data, offset by layer->offset already.
+ * \note src_blocks_ofs & dst_block_ofs
+ * must be pointers to the data, offset by layer->offset already.
  */
-void CustomData_bmesh_interp_n(CustomData *data, void **src_blocks, const float *weights,
-                               const float *sub_weights, int count, void *dest_block, int n)
+void CustomData_bmesh_interp_n(
+        CustomData *data, const void **src_blocks_ofs,
+        const float *weights, const float *sub_weights,
+        int count, void *dst_block_ofs, int n)
 {
 	CustomDataLayer *layer = &data->layers[n];
 	const LayerTypeInfo *typeInfo = layerType_getInfo(layer->type);
 
-	typeInfo->interp(src_blocks, weights, sub_weights, count,
-	                 (char *)dest_block + layer->offset);
+	typeInfo->interp(src_blocks_ofs, weights, sub_weights, count, dst_block_ofs);
 }
 
-void CustomData_bmesh_interp(CustomData *data, void **src_blocks, const float *weights,
-                             const float *sub_weights, int count, void *dest_block)
+void CustomData_bmesh_interp(
+        CustomData *data, const void **src_blocks,
+        const float *weights, const float *sub_weights,
+        int count, void *dst_block)
 {
 	int i, j;
 	void *source_buf[SOURCE_BUF_SIZE];
-	void **sources = source_buf;
+	const void **sources = (const void **)source_buf;
 
 	/* slow fallback in case we're interpolating a ridiculous number of
 	 * elements
 	 */
 	if (count > SOURCE_BUF_SIZE)
-		sources = MEM_callocN(sizeof(*sources) * count,
-		                      "CustomData_interp sources");
+		sources = MEM_mallocN(sizeof(*sources) * count, __func__);
 
 	/* interpolates a layer at a time */
 	for (i = 0; i < data->totlayer; ++i) {
@@ -2837,13 +3020,16 @@ void CustomData_bmesh_interp(CustomData *data, void **src_blocks, const float *w
 		const LayerTypeInfo *typeInfo = layerType_getInfo(layer->type);
 		if (typeInfo->interp) {
 			for (j = 0; j < count; ++j) {
-				sources[j] = (char *)src_blocks[j] + layer->offset;
+				sources[j] = POINTER_OFFSET(src_blocks[j], layer->offset);
 			}
-			CustomData_bmesh_interp_n(data, sources, weights, sub_weights, count, dest_block, i);
+			CustomData_bmesh_interp_n(
+			        data, sources,
+			        weights, sub_weights, count,
+			        POINTER_OFFSET(dst_block, layer->offset), i);
 		}
 	}
 
-	if (count > SOURCE_BUF_SIZE) MEM_freeN(sources);
+	if (count > SOURCE_BUF_SIZE) MEM_freeN((void *)sources);
 }
 
 static void CustomData_bmesh_set_default_n(CustomData *data, void **block, int n)
@@ -2854,10 +3040,10 @@ static void CustomData_bmesh_set_default_n(CustomData *data, void **block, int n
 	typeInfo = layerType_getInfo(data->layers[n].type);
 
 	if (typeInfo->set_default) {
-		typeInfo->set_default((char *)*block + offset, 1);
+		typeInfo->set_default(POINTER_OFFSET(*block, offset), 1);
 	}
 	else {
-		memset((char *)*block + offset, 0, typeInfo->size);
+		memset(POINTER_OFFSET(*block, offset), 0, typeInfo->size);
 	}
 }
 
@@ -2907,16 +3093,16 @@ void CustomData_to_bmesh_block(const CustomData *source, CustomData *dest,
 		/* if we found a matching layer, copy the data */
 		if (dest->layers[dest_i].type == source->layers[src_i].type) {
 			int offset = dest->layers[dest_i].offset;
-			char *src_data = source->layers[src_i].data;
-			char *dest_data = (char *)*dest_block + offset;
+			const void *src_data = source->layers[src_i].data;
+			void *dest_data = POINTER_OFFSET(*dest_block, offset);
 
 			typeInfo = layerType_getInfo(dest->layers[dest_i].type);
 			src_offset = src_index * typeInfo->size;
 
 			if (typeInfo->copy)
-				typeInfo->copy(src_data + src_offset, dest_data, 1);
+				typeInfo->copy(POINTER_OFFSET(src_data, src_offset), dest_data, 1);
 			else
-				memcpy(dest_data, src_data + src_offset, typeInfo->size);
+				memcpy(dest_data, POINTER_OFFSET(src_data, src_offset), typeInfo->size);
 
 			/* if there are multiple source & dest layers of the same type,
 			 * we don't want to copy all source layers to the same dest, so
@@ -2935,10 +3121,9 @@ void CustomData_to_bmesh_block(const CustomData *source, CustomData *dest,
 }
 
 void CustomData_from_bmesh_block(const CustomData *source, CustomData *dest,
-                                 void *src_block, int dest_index)
+                                 void *src_block, int dst_index)
 {
-	const LayerTypeInfo *typeInfo;
-	int dest_i, src_i, dest_offset;
+	int dest_i, src_i;
 
 	/* copies a layer at a time */
 	dest_i = 0;
@@ -2956,17 +3141,15 @@ void CustomData_from_bmesh_block(const CustomData *source, CustomData *dest,
 
 		/* if we found a matching layer, copy the data */
 		if (dest->layers[dest_i].type == source->layers[src_i].type) {
+			const LayerTypeInfo *typeInfo = layerType_getInfo(dest->layers[dest_i].type);
 			int offset = source->layers[src_i].offset;
-			char *src_data = (char *)src_block + offset;
-			char *dest_data = dest->layers[dest_i].data;
-
-			typeInfo = layerType_getInfo(dest->layers[dest_i].type);
-			dest_offset = dest_index * typeInfo->size;
+			const void *src_data = POINTER_OFFSET(src_block, offset);
+			void *dst_data = POINTER_OFFSET(dest->layers[dest_i].data, dst_index * typeInfo->size);
 
 			if (typeInfo->copy)
-				typeInfo->copy(src_data, dest_data + dest_offset, 1);
+				typeInfo->copy(src_data, dst_data, 1);
 			else
-				memcpy(dest_data + dest_offset, src_data, typeInfo->size);
+				memcpy(dst_data, src_data, typeInfo->size);
 
 			/* if there are multiple source & dest layers of the same type,
 			 * we don't want to copy all source layers to the same dest, so
@@ -3008,6 +3191,24 @@ bool CustomData_layertype_is_singleton(int type)
 	return typeInfo->defaultname == NULL;
 }
 
+/**
+ * \return Maximum number of layers of given \a type, -1 means 'no limit'.
+ */
+int CustomData_layertype_layers_max(const int type)
+{
+	const LayerTypeInfo *typeInfo = layerType_getInfo(type);
+
+	/* Same test as for singleton above. */
+	if (typeInfo->defaultname == NULL) {
+		return 1;
+	}
+	else if (typeInfo->layers_max == NULL) {
+		return -1;
+	}
+
+	return typeInfo->layers_max();
+}
+
 static bool CustomData_is_property_layer(int type)
 {
 	if ((type == CD_PROP_FLT) || (type == CD_PROP_INT) || (type == CD_PROP_STR))
@@ -3024,12 +3225,12 @@ static bool cd_layer_find_dupe(CustomData *data, const char *name, int type, int
 			CustomDataLayer *layer = &data->layers[i];
 			
 			if (CustomData_is_property_layer(type)) {
-				if (CustomData_is_property_layer(layer->type) && strcmp(layer->name, name) == 0) {
+				if (CustomData_is_property_layer(layer->type) && STREQ(layer->name, name)) {
 					return true;
 				}
 			}
 			else {
-				if (i != index && layer->type == type && strcmp(layer->name, name) == 0) {
+				if (i != index && layer->type == type && STREQ(layer->name, name)) {
 					return true;
 				}
 			}
@@ -3398,3 +3599,234 @@ void CustomData_external_remove_object(CustomData *data, ID *id)
 }
 #endif
 
+/* ********** Mesh-to-mesh data transfer ********** */
+static void copy_bit_flag(void *dst, const void *src, const size_t data_size, const uint64_t flag)
+{
+#define COPY_BIT_FLAG(_type, _dst, _src, _f)                    \
+{                                                               \
+	const _type _val = *((_type *)(_src)) & ((_type)(_f));      \
+	*((_type *)(_dst)) &= ~((_type)(_f));                       \
+	*((_type *)(_dst)) |= _val;                                 \
+} (void) 0
+
+	switch (data_size) {
+		case 1:
+			COPY_BIT_FLAG(uint8_t, dst, src, flag);
+			break;
+		case 2:
+			COPY_BIT_FLAG(uint16_t, dst, src, flag);
+			break;
+		case 4:
+			COPY_BIT_FLAG(uint32_t, dst, src, flag);
+			break;
+		case 8:
+			COPY_BIT_FLAG(uint64_t, dst, src, flag);
+			break;
+		default:
+			//printf("ERROR %s: Unknown flags-container size (%zu)\n", __func__, datasize);
+			break;
+	}
+
+#undef COPY_BIT_FLAG
+}
+
+static bool check_bit_flag(const void *data, const size_t data_size, const uint64_t flag)
+{
+	switch (data_size) {
+		case 1:
+			return ((*((uint8_t *)data) & ((uint8_t)flag)) != 0);
+		case 2:
+			return ((*((uint16_t *)data) & ((uint16_t)flag)) != 0);
+		case 4:
+			return ((*((uint32_t *)data) & ((uint32_t)flag)) != 0);
+		case 8:
+			return ((*((uint64_t *)data) & ((uint64_t)flag)) != 0);
+		default:
+			//printf("ERROR %s: Unknown flags-container size (%zu)\n", __func__, datasize);
+			return false;
+	}
+}
+
+static void customdata_data_transfer_interp_generic(
+        const CustomDataTransferLayerMap *laymap, void *data_dst,
+        const void **sources, const float *weights, const int count,
+        const float mix_factor)
+{
+	/* Fake interpolation, we actually copy highest weighted source to dest.
+	 * Note we also handle bitflags here, in which case we rather choose to transfer value of elements totaling
+	 * more than 0.5 of weight. */
+
+	int best_src_idx = 0;
+
+	const int data_type = laymap->data_type;
+	const int mix_mode = laymap->mix_mode;
+
+	size_t data_size;
+	const uint64_t data_flag = laymap->data_flag;
+
+	cd_interp interp_cd = NULL;
+	cd_copy copy_cd = NULL;
+
+	void *tmp_dst;
+
+	if (!sources) {
+		/* Not supported here, abort. */
+		return;
+	}
+
+	if (data_type & CD_FAKE) {
+		data_size = laymap->data_size;
+	}
+	else {
+		const LayerTypeInfo *type_info = layerType_getInfo(data_type);
+
+		data_size = (size_t)type_info->size;
+		interp_cd = type_info->interp;
+		copy_cd = type_info->copy;
+	}
+
+	tmp_dst = MEM_mallocN(data_size, __func__);
+
+	if (count > 1 && !interp_cd) {
+		int i;
+
+		if (data_flag) {
+			/* Boolean case, we can 'interpolate' in two groups, and choose value from highest weighted group. */
+			float tot_weight_true = 0.0f;
+			int item_true_idx = -1, item_false_idx = -1;
+
+			for (i = 0; i < count; i++) {
+				if (check_bit_flag(sources[i], data_size, data_flag)) {
+					tot_weight_true += weights[i];
+					item_true_idx = i;
+				}
+				else {
+					item_false_idx = i;
+				}
+			}
+			best_src_idx = (tot_weight_true >= 0.5f) ? item_true_idx : item_false_idx;
+		}
+		else {
+			/* We just choose highest weighted source. */
+			float max_weight = 0.0f;
+
+			for (i = 0; i < count; i++) {
+				if (weights[i] > max_weight) {
+					max_weight = weights[i];
+					best_src_idx = i;
+				}
+			}
+		}
+	}
+
+	BLI_assert(best_src_idx >= 0);
+
+	if (interp_cd) {
+		interp_cd(sources, weights, NULL, count, tmp_dst);
+	}
+	else if (data_flag) {
+		copy_bit_flag(tmp_dst, sources[best_src_idx], data_size, data_flag);
+	}
+	/* No interpolation, just copy highest weight source element's data. */
+	else if (copy_cd) {
+		copy_cd(sources[best_src_idx], tmp_dst, 1);
+	}
+	else {
+		memcpy(tmp_dst, sources[best_src_idx], data_size);
+	}
+
+	if (data_flag) {
+		/* Bool flags, only copy if dest data is set (resp. unset) - only 'advanced' modes we can support here! */
+		if (mix_factor >= 0.5f &&
+		    ((mix_mode == CDT_MIX_TRANSFER) ||
+		     (mix_mode == CDT_MIX_REPLACE_ABOVE_THRESHOLD && check_bit_flag(data_dst, data_size, data_flag)) ||
+		     (mix_mode == CDT_MIX_REPLACE_BELOW_THRESHOLD && !check_bit_flag(data_dst, data_size, data_flag))))
+		{
+			copy_bit_flag(data_dst, tmp_dst, data_size, data_flag);
+		}
+	}
+	else if (!(data_type & CD_FAKE)) {
+		CustomData_data_mix_value(data_type, tmp_dst, data_dst, mix_mode, mix_factor);
+	}
+	/* Else we can do nothing by default, needs custom interp func!
+	 * Note this is here only for sake of consistency, not expected to be used much actually? */
+	else {
+		if (mix_factor >= 0.5f) {
+			memcpy(data_dst, tmp_dst, data_size);
+		}
+	}
+
+	MEM_freeN(tmp_dst);
+}
+
+void CustomData_data_transfer(const MeshPairRemap *me_remap, const CustomDataTransferLayerMap *laymap)
+{
+	MeshPairRemapItem *mapit = me_remap->items;
+	const int totelem = me_remap->items_num;
+	int i;
+
+	const int data_type = laymap->data_type;
+	const void *data_src = laymap->data_src;
+	void *data_dst = laymap->data_dst;
+
+	size_t data_step;
+	size_t data_size;
+	size_t data_offset;
+
+	cd_datatransfer_interp interp = NULL;
+
+	size_t tmp_buff_size = 32;
+	const void **tmp_data_src = NULL;
+
+	/* Note: NULL data_src may happen and be valid (see vgroups...). */
+	if (!data_dst) {
+		return;
+	}
+
+	if (data_src) {
+		tmp_data_src = MEM_mallocN(sizeof(*tmp_data_src) * tmp_buff_size, __func__);
+	}
+
+	if (data_type & CD_FAKE) {
+		data_step = laymap->elem_size;
+		data_size = laymap->data_size;
+		data_offset = laymap->data_offset;
+	}
+	else {
+		const LayerTypeInfo *type_info = layerType_getInfo(data_type);
+
+		/* Note: we can use 'fake' CDLayers, like e.g. for crease, bweight, etc. :/ */
+		data_size = (size_t)type_info->size;
+		data_step = laymap->elem_size ? laymap->elem_size : data_size;
+		data_offset = laymap->data_offset;
+	}
+
+	interp = laymap->interp ? laymap->interp : customdata_data_transfer_interp_generic;
+
+	for (i = 0; i < totelem; i++, data_dst = POINTER_OFFSET(data_dst, data_step), mapit++) {
+		const int sources_num = mapit->sources_num;
+		const float mix_factor = laymap->mix_weights ? laymap->mix_weights[i] : laymap->mix_factor;
+		int j;
+
+		if (!sources_num) {
+			/* No sources for this element, skip it. */
+			continue;
+		}
+
+		if (tmp_data_src) {
+			if (UNLIKELY(sources_num > tmp_buff_size)) {
+				tmp_buff_size = (size_t)sources_num;
+				tmp_data_src = MEM_reallocN(tmp_data_src, sizeof(*tmp_data_src) * tmp_buff_size);
+			}
+
+			for (j = 0; j < sources_num; j++) {
+				const size_t src_idx = (size_t)mapit->indices_src[j];
+				tmp_data_src[j] = POINTER_OFFSET(data_src, (data_step * src_idx) + data_offset);
+			}
+		}
+
+		interp(laymap, POINTER_OFFSET(data_dst, data_offset), tmp_data_src, mapit->weights_src, sources_num, mix_factor);
+	}
+
+	MEM_SAFE_FREE(tmp_data_src);
+}

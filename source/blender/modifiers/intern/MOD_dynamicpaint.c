@@ -28,11 +28,8 @@
 #include <stddef.h>
 
 #include "DNA_dynamicpaint_types.h"
-#include "DNA_meshdata_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
-
-#include "MEM_guardedalloc.h"
 
 #include "BLI_utildefines.h"
 
@@ -41,8 +38,6 @@
 #include "BKE_modifier.h"
 
 #include "depsgraph_private.h"
-
-#include "MOD_util.h"
 
 
 static void initData(ModifierData *md) 

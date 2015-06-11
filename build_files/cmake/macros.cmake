@@ -118,6 +118,19 @@ macro(target_link_libraries_debug TARGET LIBS)
 	unset(_LIB)
 endmacro()
 
+macro(target_link_libraries_decoupled target libraries_var)
+	if(NOT MSVC)
+		target_link_libraries(${target} ${${libraries_var}})
+	else()
+		# For MSVC we link to different libraries depending whether
+		# release or debug target is being built.
+		file_list_suffix(_libraries_debug "${${libraries_var}}" "_d")
+		target_link_libraries_debug(${target} "${_libraries_debug}")
+		target_link_libraries_optimized(${target} "${${libraries_var}}")
+		unset(_libraries_debug)
+	endif()
+endmacro()
+
 # Nicer makefiles with -I/1/foo/ instead of -I/1/2/3/../../foo/
 # use it instead of include_directories()
 macro(blender_include_dirs
@@ -221,7 +234,7 @@ macro(SETUP_LIBDIRS)
 	if(WITH_PYTHON)  #  AND NOT WITH_PYTHON_MODULE  # WIN32 needs
 		link_directories(${PYTHON_LIBPATH})
 	endif()
-	if(WITH_SDL)
+	if(WITH_SDL AND NOT WITH_SDL_DYNLOAD)
 		link_directories(${SDL_LIBPATH})
 	endif()
 	if(WITH_CODEC_FFMPEG)
@@ -283,9 +296,13 @@ macro(setup_liblinks
 	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${PLATFORM_LINKFLAGS}")
 	set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} ${PLATFORM_LINKFLAGS_DEBUG}")
 
+	set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${PLATFORM_LINKFLAGS}")
+	set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} ${PLATFORM_LINKFLAGS_DEBUG}")
+
+	set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} ${PLATFORM_LINKFLAGS}")
+	set(CMAKE_MODULE_LINKER_FLAGS_DEBUG "${CMAKE_MODULE_LINKER_FLAGS_DEBUG} ${PLATFORM_LINKFLAGS_DEBUG}")
+
 	target_link_libraries(${target}
-			${OPENGL_gl_LIBRARY}
-			${OPENGL_glu_LIBRARY}
 			${PNG_LIBRARIES}
 			${ZLIB_LIBRARIES}
 			${FREETYPE_LIBRARY})
@@ -305,7 +322,7 @@ macro(setup_liblinks
 	endif()
 
 	if(WITH_SYSTEM_GLEW)
-		target_link_libraries(${target} ${GLEW_LIBRARY})
+		target_link_libraries(${target} ${BLENDER_GLEW_LIBRARIES})
 	endif()
 	if(WITH_BULLET AND WITH_SYSTEM_BULLET)
 		target_link_libraries(${target} ${BULLET_LIBRARIES})
@@ -322,7 +339,7 @@ macro(setup_liblinks
 	if(WITH_CODEC_SNDFILE)
 		target_link_libraries(${target} ${SNDFILE_LIBRARIES})
 	endif()
-	if(WITH_SDL)
+	if(WITH_SDL AND NOT WITH_SDL_DYNLOAD)
 		target_link_libraries(${target} ${SDL_LIBRARY})
 	endif()
 	if(WITH_CODEC_QUICKTIME)
@@ -336,6 +353,9 @@ macro(setup_liblinks
 	endif()
 	if(WITH_OPENCOLORIO)
 		target_link_libraries(${target} ${OPENCOLORIO_LIBRARIES})
+	endif()
+	if(WITH_CYCLES_OSL)
+		target_link_libraries(${target} ${OSL_LIBRARIES})
 	endif()
 	if(WITH_BOOST)
 		target_link_libraries(${target} ${BOOST_LIBRARIES})
@@ -358,11 +378,6 @@ macro(setup_liblinks
 		target_link_libraries(${target} ${OPENJPEG_LIBRARIES})
 	endif()
 	if(WITH_CODEC_FFMPEG)
-
-		# Strange!, without this ffmpeg gives linking errors (on linux)
-		# even though its linked above
-		target_link_libraries(${target} ${OPENGL_glu_LIBRARY})
-
 		target_link_libraries(${target} ${FFMPEG_LIBRARIES})
 	endif()
 	if(WITH_OPENCOLLADA)
@@ -400,9 +415,6 @@ macro(setup_liblinks
 	if(WITH_MOD_CLOTH_ELTOPO)
 		target_link_libraries(${target} ${LAPACK_LIBRARIES})
 	endif()
-	if(WITH_CYCLES_OSL)
-		target_link_libraries(${target} ${OSL_LIBRARIES})
-	endif()
 	if(WITH_LLVM)
 		target_link_libraries(${target} ${LLVM_LIBRARY})
 	endif()
@@ -410,7 +422,262 @@ macro(setup_liblinks
 		target_link_libraries(${target} ${PTHREADS_LIBRARIES})
 	endif()
 
+	# We put CLEW and CUEW here because OPENSUBDIV_LIBRARIES dpeends on them..
+	if(WITH_CYCLES OR WITH_COMPOSITOR OR WITH_OPENSUBDIV)
+		target_link_libraries(${target} "extern_clew")
+		target_link_libraries(${target} "extern_cuew")
+	endif()
+
+	#system libraries with no dependencies such as platform link libs or opengl should go last
+	target_link_libraries(${target}
+			${BLENDER_GL_LIBRARIES})
+
 	target_link_libraries(${target} ${PLATFORM_LINKLIBS} ${CMAKE_DL_LIBS})
+endmacro()
+
+macro(SETUP_BLENDER_SORTED_LIBS)
+	get_property(BLENDER_LINK_LIBS GLOBAL PROPERTY BLENDER_LINK_LIBS)
+
+	list(APPEND BLENDER_LINK_LIBS
+		bf_windowmanager
+		bf_render
+	)
+
+	if(WITH_MOD_FLUID)
+		list(APPEND BLENDER_LINK_LIBS bf_intern_elbeem)
+	endif()
+
+	if(WITH_CYCLES)
+		list(APPEND BLENDER_LINK_LIBS
+			cycles_render
+			cycles_bvh
+			cycles_device
+			cycles_kernel
+			cycles_util
+			cycles_subd)
+		if(WITH_CYCLES_OSL)
+			list(APPEND BLENDER_LINK_LIBS cycles_kernel_osl)
+		endif()
+	endif()
+
+	# Sort libraries
+	set(BLENDER_SORTED_LIBS
+		bf_windowmanager
+
+		bf_editor_space_api
+		bf_editor_space_action
+		bf_editor_space_buttons
+		bf_editor_space_console
+		bf_editor_space_file
+		bf_editor_space_graph
+		bf_editor_space_image
+		bf_editor_space_info
+		bf_editor_space_logic
+		bf_editor_space_nla
+		bf_editor_space_node
+		bf_editor_space_outliner
+		bf_editor_space_script
+		bf_editor_space_sequencer
+		bf_editor_space_text
+		bf_editor_space_time
+		bf_editor_space_userpref
+		bf_editor_space_view3d
+		bf_editor_space_clip
+
+		bf_editor_transform
+		bf_editor_util
+		bf_editor_uvedit
+		bf_editor_curve
+		bf_editor_gpencil
+		bf_editor_interface
+		bf_editor_mesh
+		bf_editor_metaball
+		bf_editor_object
+		bf_editor_armature
+		bf_editor_physics
+		bf_editor_render
+		bf_editor_screen
+		bf_editor_sculpt_paint
+		bf_editor_sound
+		bf_editor_animation
+		bf_editor_datafiles
+		bf_editor_mask
+		bf_editor_io
+
+		bf_render
+		bf_python
+		bf_python_ext
+		bf_python_mathutils
+		bf_python_bmesh
+		bf_freestyle
+		bf_ikplugin
+		bf_modifiers
+		bf_bmesh
+		bf_blenkernel
+		bf_physics
+		bf_nodes
+		bf_rna
+		bf_gpu
+		bf_blenloader
+		bf_imbuf
+		bf_blenlib
+		bf_intern_ghost
+		bf_intern_string
+		bf_avi
+		bf_imbuf_cineon
+		bf_imbuf_openexr
+		bf_imbuf_openimageio
+		bf_imbuf_dds
+		bf_collada
+		bf_intern_elbeem
+		bf_intern_memutil
+		bf_intern_guardedalloc
+		bf_intern_ctr
+		bf_intern_utfconv
+		ge_blen_routines
+		ge_converter
+		ge_phys_dummy
+		ge_phys_bullet
+		bf_intern_smoke
+		extern_minilzo
+		extern_lzma
+		extern_colamd
+		ge_logic_ketsji
+		extern_recastnavigation
+		ge_logic
+		ge_rasterizer
+		ge_oglrasterizer
+		ge_logic_expressions
+		ge_scenegraph
+		ge_logic_network
+		ge_logic_ngnetwork
+		ge_logic_loopbacknetwork
+		bf_intern_moto
+		extern_openjpeg
+		extern_redcode
+		ge_videotex
+		bf_dna
+		bf_blenfont
+		bf_intern_audaspace
+		bf_intern_mikktspace
+		bf_intern_dualcon
+		bf_intern_cycles
+		cycles_render
+		cycles_bvh
+		cycles_device
+		cycles_kernel
+		cycles_util
+		cycles_subd
+		bf_intern_raskter
+		bf_intern_opencolorio
+		extern_rangetree
+		extern_wcwidth
+		extern_libmv
+		extern_glog
+		extern_sdlew
+
+		bf_intern_glew_mx
+	)
+
+	if(WITH_COMPOSITOR)
+		# added for opencl compositor
+		list_insert_before(BLENDER_SORTED_LIBS "bf_blenkernel" "bf_compositor")
+		list_insert_after(BLENDER_SORTED_LIBS "bf_compositor" "bf_intern_opencl")
+	endif()
+
+	if(WITH_LIBMV)
+		list(APPEND BLENDER_SORTED_LIBS extern_ceres)
+	endif()
+
+	if(WITH_MOD_CLOTH_ELTOPO)
+		list(APPEND BLENDER_SORTED_LIBS extern_eltopo)
+	endif()
+
+	if(NOT WITH_SYSTEM_GLEW)
+		list(APPEND BLENDER_SORTED_LIBS ${BLENDER_GLEW_LIBRARIES})
+	endif()
+
+	if(WITH_BINRELOC)
+		list(APPEND BLENDER_SORTED_LIBS extern_binreloc)
+	endif()
+
+	if(WITH_CXX_GUARDEDALLOC)
+		list(APPEND BLENDER_SORTED_LIBS bf_intern_guardedalloc_cpp)
+	endif()
+
+	if(WITH_IK_SOLVER)
+		list_insert_after(BLENDER_SORTED_LIBS "bf_intern_elbeem" "bf_intern_iksolver")
+	endif()
+
+	if(WITH_IK_ITASC)
+		list(APPEND BLENDER_SORTED_LIBS bf_intern_itasc)
+	endif()
+
+	if(WITH_CODEC_QUICKTIME)
+		list(APPEND BLENDER_SORTED_LIBS bf_quicktime)
+	endif()
+
+	if(WITH_INPUT_NDOF)
+		list(APPEND BLENDER_SORTED_LIBS bf_intern_ghostndof3dconnexion)
+	endif()
+	
+	if(WITH_MOD_BOOLEAN)
+		list(APPEND BLENDER_SORTED_LIBS extern_carve)
+	endif()
+
+	if(WITH_GHOST_XDND)
+		list(APPEND BLENDER_SORTED_LIBS extern_xdnd)
+	endif()
+
+	if(WITH_CYCLES_OSL)
+		list_insert_after(BLENDER_SORTED_LIBS "cycles_kernel" "cycles_kernel_osl")
+	endif()
+
+	if(WITH_INTERNATIONAL)
+		list(APPEND BLENDER_SORTED_LIBS bf_intern_locale)
+	endif()
+
+	if(WITH_OPENNL)
+		list_insert_after(BLENDER_SORTED_LIBS "bf_render" "bf_intern_opennl")
+	endif()
+
+	if(WITH_BULLET)
+		list_insert_after(BLENDER_SORTED_LIBS "bf_blenkernel" "bf_intern_rigidbody")
+	endif()
+
+	if(WITH_BULLET AND NOT WITH_SYSTEM_BULLET)
+		list_insert_after(BLENDER_SORTED_LIBS "ge_logic_ngnetwork" "extern_bullet")
+	endif()
+
+	if(WITH_VORO)
+		list(APPEND BLENDER_SORTED_LIBS extern_voro)
+	endif()
+
+	foreach(SORTLIB ${BLENDER_SORTED_LIBS})
+		set(REMLIB ${SORTLIB})
+		foreach(SEARCHLIB ${BLENDER_LINK_LIBS})
+			if(${SEARCHLIB} STREQUAL ${SORTLIB})
+				set(REMLIB "")
+			endif()
+		endforeach()
+		if(REMLIB)
+			# message(STATUS "Removing library ${REMLIB} from blender linking because: not configured")
+			list(APPEND REM_MSG ${REMLIB})
+			list(REMOVE_ITEM BLENDER_SORTED_LIBS ${REMLIB})
+		endif()
+	endforeach()
+	if(REM_MSG)
+		list(SORT REM_MSG)
+		message(STATUS "Blender Skipping: (${REM_MSG})")
+	endif()
+
+	unset(SEARCHLIB)
+	unset(SORTLIB)
+	unset(REMLIB)
+	unset(REM_MSG)
+
+	# for top-level tests
+	set_property(GLOBAL PROPERTY BLENDER_SORTED_LIBS_PROP ${BLENDER_SORTED_LIBS})
 endmacro()
 
 macro(TEST_SSE_SUPPORT
@@ -475,12 +742,157 @@ macro(TEST_SSE_SUPPORT
 endmacro()
 
 macro(TEST_STDBOOL_SUPPORT)
+	include(CheckCSourceRuns)
+
 	# This program will compile correctly if and only if
 	# this C compiler supports C99 stdbool.
 	check_c_source_runs("
 		#include <stdbool.h>
 		int main(void) { return (int)false; }"
 	HAVE_STDBOOL_H)
+endmacro()
+
+macro(TEST_UNORDERED_MAP_SUPPORT)
+	# - Detect unordered_map availability
+	# Test if a valid implementation of unordered_map exists
+	# and define the include path
+	# This module defines
+	#  HAVE_UNORDERED_MAP, whether unordered_map implementation was found
+	#  
+	#  HAVE_STD_UNORDERED_MAP_HEADER, <unordered_map.h> was found
+	#  HAVE_UNORDERED_MAP_IN_STD_NAMESPACE, unordered_map is in namespace std
+	#  HAVE_UNORDERED_MAP_IN_TR1_NAMESPACE, unordered_map is in namespace std::tr1
+	#  
+	#  UNORDERED_MAP_INCLUDE_PREFIX, include path prefix for unordered_map, if found
+	#  UNORDERED_MAP_NAMESPACE, namespace for unordered_map, if found
+
+	include(CheckIncludeFileCXX)
+	CHECK_INCLUDE_FILE_CXX("unordered_map" HAVE_STD_UNORDERED_MAP_HEADER)
+	if(HAVE_STD_UNORDERED_MAP_HEADER)
+		# Even so we've found unordered_map header file it doesn't
+		# mean unordered_map and unordered_set will be declared in
+		# std namespace.
+		#
+		# Namely, MSVC 2008 have unordered_map header which declares
+		# unordered_map class in std::tr1 namespace. In order to support
+		# this, we do extra check to see which exactly namespace is
+		# to be used.
+
+		include(CheckCXXSourceCompiles)
+		CHECK_CXX_SOURCE_COMPILES("#include <unordered_map>
+		                          int main() {
+		                            std::unordered_map<int, int> map;
+		                            return 0;
+		                          }"
+		                          HAVE_UNORDERED_MAP_IN_STD_NAMESPACE)
+		if(HAVE_UNORDERED_MAP_IN_STD_NAMESPACE)
+			message(STATUS "Found unordered_map/set in std namespace.")
+
+			set(HAVE_UNORDERED_MAP "TRUE")
+			set(UNORDERED_MAP_INCLUDE_PREFIX "")
+			set(UNORDERED_MAP_NAMESPACE "std")
+		else()
+			CHECK_CXX_SOURCE_COMPILES("#include <unordered_map>
+			                          int main() {
+			                            std::tr1::unordered_map<int, int> map;
+			                            return 0;
+			                          }"
+			                          HAVE_UNORDERED_MAP_IN_TR1_NAMESPACE)
+			if(HAVE_UNORDERED_MAP_IN_TR1_NAMESPACE)
+				message(STATUS "Found unordered_map/set in std::tr1 namespace.")
+
+				set(HAVE_UNORDERED_MAP "TRUE")
+				set(UNORDERED_MAP_INCLUDE_PREFIX "")
+				set(UNORDERED_MAP_NAMESPACE "std::tr1")
+			else()
+				message(STATUS "Found <unordered_map> but cannot find either std::unordered_map "
+				        "or std::tr1::unordered_map.")
+			endif()
+		endif()
+	else()
+		CHECK_INCLUDE_FILE_CXX("tr1/unordered_map" HAVE_UNORDERED_MAP_IN_TR1_NAMESPACE)
+		if(HAVE_UNORDERED_MAP_IN_TR1_NAMESPACE)
+			message(STATUS "Found unordered_map/set in std::tr1 namespace.")
+
+			set(HAVE_UNORDERED_MAP "TRUE")
+			set(UNORDERED_MAP_INCLUDE_PREFIX "tr1")
+			set(UNORDERED_MAP_NAMESPACE "std::tr1")
+		else()
+			message(STATUS "Unable to find <unordered_map> or <tr1/unordered_map>. ")
+		endif()
+	endif()
+endmacro()
+
+macro(TEST_SHARED_PTR_SUPPORT)
+	# This check are coming from Ceres library.
+	#
+	# Find shared pointer header and namespace.
+	#
+	# This module defines the following variables:
+	#
+	# SHARED_PTR_FOUND: TRUE if shared_ptr found.
+	# SHARED_PTR_TR1_MEMORY_HEADER: True if <tr1/memory> header is to be used
+	# for the shared_ptr object, otherwise use <memory>.
+	# SHARED_PTR_TR1_NAMESPACE: TRUE if shared_ptr is defined in std::tr1 namespace,
+	# otherwise it's assumed to be defined in std namespace.
+
+	include(CheckIncludeFileCXX)
+	set(SHARED_PTR_FOUND FALSE)
+	CHECK_INCLUDE_FILE_CXX(memory HAVE_STD_MEMORY_HEADER)
+	if(HAVE_STD_MEMORY_HEADER)
+		# Finding the memory header doesn't mean that shared_ptr is in std
+		# namespace.
+		#
+		# In particular, MSVC 2008 has shared_ptr declared in std::tr1.  In
+		# order to support this, we do an extra check to see which namespace
+		# should be used.
+		include(CheckCXXSourceCompiles)
+		CHECK_CXX_SOURCE_COMPILES("#include <memory>
+		                           int main() {
+		                             std::shared_ptr<int> int_ptr;
+		                             return 0;
+		                           }"
+		                          HAVE_SHARED_PTR_IN_STD_NAMESPACE)
+
+		if(HAVE_SHARED_PTR_IN_STD_NAMESPACE)
+			message("-- Found shared_ptr in std namespace using <memory> header.")
+			set(SHARED_PTR_FOUND TRUE)
+		else()
+			CHECK_CXX_SOURCE_COMPILES("#include <memory>
+			                           int main() {
+			                           std::tr1::shared_ptr<int> int_ptr;
+			                           return 0;
+			                           }"
+			                          HAVE_SHARED_PTR_IN_TR1_NAMESPACE)
+			if(HAVE_SHARED_PTR_IN_TR1_NAMESPACE)
+				message("-- Found shared_ptr in std::tr1 namespace using <memory> header.")
+				set(SHARED_PTR_TR1_NAMESPACE TRUE)
+				set(SHARED_PTR_FOUND TRUE)
+			endif()
+		endif()
+	endif()
+
+	if(NOT SHARED_PTR_FOUND)
+		# Further, gcc defines shared_ptr in std::tr1 namespace and
+		# <tr1/memory> is to be included for this. And what makes things
+		# even more tricky is that gcc does have <memory> header, so
+		# all the checks above wouldn't find shared_ptr.
+		CHECK_INCLUDE_FILE_CXX("tr1/memory" HAVE_TR1_MEMORY_HEADER)
+		if(HAVE_TR1_MEMORY_HEADER)
+			CHECK_CXX_SOURCE_COMPILES("#include <tr1/memory>
+			                           int main() {
+			                           std::tr1::shared_ptr<int> int_ptr;
+			                           return 0;
+			                           }"
+			                           HAVE_SHARED_PTR_IN_TR1_NAMESPACE_FROM_TR1_MEMORY_HEADER)
+			if(HAVE_SHARED_PTR_IN_TR1_NAMESPACE_FROM_TR1_MEMORY_HEADER)
+				message("-- Found shared_ptr in std::tr1 namespace using <tr1/memory> header.")
+				set(SHARED_PTR_TR1_MEMORY_HEADER TRUE)
+				set(SHARED_PTR_TR1_NAMESPACE TRUE)
+				set(SHARED_PTR_FOUND TRUE)
+			endif()
+		endif()
+	endif()
 endmacro()
 
 # when we have warnings as errors applied globally this
@@ -517,6 +929,7 @@ macro(remove_strict_flags)
 		remove_cc_flag("-Wstrict-prototypes")
 		remove_cc_flag("-Wmissing-prototypes")
 		remove_cc_flag("-Wunused-parameter")
+		remove_cc_flag("-Wunused-macros")
 		remove_cc_flag("-Wwrite-strings")
 		remove_cc_flag("-Wredundant-decls")
 		remove_cc_flag("-Wundef")
@@ -606,7 +1019,16 @@ macro(ADD_CHECK_CXX_COMPILER_FLAG
 	endif()
 endmacro()
 
-macro(get_blender_version)
+function(get_blender_version)
+	# extracts header vars and defines them in the parent scope:
+	#
+	# - BLENDER_VERSION (major.minor)
+	# - BLENDER_VERSION_MAJOR
+	# - BLENDER_VERSION_MINOR
+	# - BLENDER_SUBVERSION (used for internal versioning mainly)
+	# - BLENDER_VERSION_CHAR (a, b, c, ...or empty string)
+	# - BLENDER_VERSION_CYCLE (alpha, beta, rc, release)
+
 	# So cmake depends on BKE_blender.h, beware of inf-loops!
 	CONFIGURE_FILE(${CMAKE_SOURCE_DIR}/source/blender/blenkernel/BKE_blender.h
 	               ${CMAKE_BINARY_DIR}/source/blender/blenkernel/BKE_blender.h.done)
@@ -639,33 +1061,29 @@ macro(get_blender_version)
 		message(FATAL_ERROR "Version parsing failed for BLENDER_VERSION_CYCLE")
 	endif()
 
-	math(EXPR BLENDER_VERSION_MAJOR "${_out_version} / 100")
-	math(EXPR BLENDER_VERSION_MINOR "${_out_version} % 100")
-	set(BLENDER_VERSION "${BLENDER_VERSION_MAJOR}.${BLENDER_VERSION_MINOR}")
-
-	set(BLENDER_SUBVERSION ${_out_subversion})
-	set(BLENDER_VERSION_CHAR ${_out_version_char})
-	set(BLENDER_VERSION_CYCLE ${_out_version_cycle})
+	math(EXPR _out_version_major "${_out_version} / 100")
+	math(EXPR _out_version_minor "${_out_version} % 100")
 
 	# for packaging, alpha to numbers
-	string(COMPARE EQUAL "${BLENDER_VERSION_CHAR}" "" _out_version_char_empty)
+	string(COMPARE EQUAL "${_out_version_char}" "" _out_version_char_empty)
 	if(${_out_version_char_empty})
-		set(BLENDER_VERSION_CHAR_INDEX "0")
+		set(_out_version_char_index "0")
 	else()
 		set(_char_ls a b c d e f g h i j k l m n o p q r s t u v w x y z)
-		list(FIND _char_ls ${BLENDER_VERSION_CHAR} _out_version_char_index)
-		math(EXPR BLENDER_VERSION_CHAR_INDEX "${_out_version_char_index} + 1")
-		unset(_char_ls)
-		unset(_out_version_char_index)
+		list(FIND _char_ls ${_out_version_char} _out_version_char_index)
+		math(EXPR _out_version_char_index "${_out_version_char_index} + 1")
 	endif()
 
-	unset(_out_subversion)
-	unset(_out_version_char)
-	unset(_out_version_char_empty)
-	unset(_out_version_cycle)
+	# output vars
+	set(BLENDER_VERSION "${_out_version_major}.${_out_version_minor}" PARENT_SCOPE)
+	set(BLENDER_VERSION_MAJOR "${_out_version_major}" PARENT_SCOPE)
+	set(BLENDER_VERSION_MINOR "${_out_version_minor}" PARENT_SCOPE)
+	set(BLENDER_SUBVERSION "${_out_subversion}" PARENT_SCOPE)
+	set(BLENDER_VERSION_CHAR "${_out_version_char}" PARENT_SCOPE)
+	set(BLENDER_VERSION_CHAR_INDEX "${_out_version_char_index}" PARENT_SCOPE)
+	set(BLENDER_VERSION_CYCLE "${_out_version_cycle}" PARENT_SCOPE)
 
-	# message(STATUS "Version (Internal): ${BLENDER_VERSION}.${BLENDER_SUBVERSION}, Version (external): ${BLENDER_VERSION}${BLENDER_VERSION_CHAR}-${BLENDER_VERSION_CYCLE}")
-endmacro()
+endfunction()
 
 
 # hacks to override initial project settings
@@ -702,7 +1120,7 @@ endmacro()
 macro(blender_project_hack_post)
 	# --------------
 	# MINGW HACK END
-	if (_reset_standard_libraries)
+	if(_reset_standard_libraries)
 		# Must come after projecINCt(...)
 		#
 		# MINGW workaround for -ladvapi32 being included which surprisingly causes
@@ -762,6 +1180,7 @@ macro(delayed_install
 		endif()
 		set_property(GLOBAL APPEND PROPERTY DELAYED_INSTALL_DESTINATIONS ${destination})
 	endforeach()
+	unset(f)
 endmacro()
 
 # note this is a function instead of a macro so that ${BUILD_TYPE} in targetdir
@@ -781,6 +1200,7 @@ function(delayed_do_install
 			list(GET destinations ${i} d)
 			install(FILES ${f} DESTINATION ${targetdir}/${d})
 		endforeach()
+		unset(f)
 	endif()
 endfunction()
 
@@ -935,7 +1355,7 @@ macro(msgfmt_simple
 		OUTPUT  ${_file_to}
 		COMMAND ${CMAKE_COMMAND} -E make_directory ${_file_to_path}
 		COMMAND ${CMAKE_BINARY_DIR}/bin/${CMAKE_CFG_INTDIR}/msgfmt ${_file_from} ${_file_to}
-		DEPENDS msgfmt)
+		DEPENDS msgfmt ${_file_from})
 
 	set_source_files_properties(${_file_to} PROPERTIES GENERATED TRUE)
 
@@ -944,3 +1364,65 @@ macro(msgfmt_simple
 	unset(_file_to)
 	unset(_file_to_path)
 endmacro()
+
+macro(find_python_package
+      package)
+
+	string(TOUPPER ${package} _upper_package)
+
+	# set but invalid
+	if((NOT ${PYTHON_${_upper_package}_PATH} STREQUAL "") AND
+	   (NOT ${PYTHON_${_upper_package}_PATH} MATCHES NOTFOUND))
+#		if(NOT EXISTS "${PYTHON_${_upper_package}_PATH}/${package}")
+#			message(WARNING "PYTHON_${_upper_package}_PATH is invalid, ${package} not found in '${PYTHON_${_upper_package}_PATH}' "
+#			                "WITH_PYTHON_INSTALL_${_upper_package} option will be ignored when installing python")
+#			set(WITH_PYTHON_INSTALL${_upper_package} OFF)
+#		endif()
+	# not set, so initialize
+	else()
+		string(REPLACE "." ";" _PY_VER_SPLIT "${PYTHON_VERSION}")
+		list(GET _PY_VER_SPLIT 0 _PY_VER_MAJOR)
+
+		# re-cache
+		unset(PYTHON_${_upper_package}_PATH CACHE)
+		find_path(PYTHON_${_upper_package}_PATH
+		  NAMES
+		    ${package}
+		  HINTS
+		    "${PYTHON_LIBPATH}/python${PYTHON_VERSION}/"
+		    "${PYTHON_LIBPATH}/python${_PY_VER_MAJOR}/"
+		  PATH_SUFFIXES
+		    site-packages
+		    dist-packages
+		   NO_DEFAULT_PATH
+		)
+
+		 if(NOT EXISTS "${PYTHON_${_upper_package}_PATH}")
+			message(WARNING "'${package}' path could not be found in:\n"
+			                "'${PYTHON_LIBPATH}/python${PYTHON_VERSION}/site-packages/${package}', "
+			                "'${PYTHON_LIBPATH}/python${_PY_VER_MAJOR}/site-packages/${package}', "
+			                "'${PYTHON_LIBPATH}/python${PYTHON_VERSION}/dist-packages/${package}', "
+			                "'${PYTHON_LIBPATH}/python${_PY_VER_MAJOR}/dist-packages/${package}', "
+			                "WITH_PYTHON_INSTALL_${_upper_package} option will be ignored when installing python")
+			set(WITH_PYTHON_INSTALL_${_upper_package} OFF)
+		else()
+			message(STATUS "${package} found at '${PYTHON_${_upper_package}_PATH}'")
+		endif()
+
+		unset(_PY_VER_SPLIT)
+		unset(_PY_VER_MAJOR)
+	  endif()
+
+	  unset(_upper_package)
+endmacro()
+
+# like Python's 'print(dir())'
+macro(print_all_vars)
+	get_cmake_property(_vars VARIABLES)
+	foreach(_var ${_vars})
+		message("${_var}=${${_var}}")
+	endforeach()
+	unset(_vars)
+	unset(_var)
+endmacro()
+

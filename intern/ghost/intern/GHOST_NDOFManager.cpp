@@ -146,8 +146,8 @@ static const NDOF_ButtonT SpaceExplorer_HID_map[] = {
 	NDOF_BUTTON_ROTATE
 };
 
-/* this is the older SpacePilot (sans Pro)
- * thanks to polosson for info about this device */
+// this is the older SpacePilot (sans Pro)
+// thanks to polosson for info about this device
 static const NDOF_ButtonT SpacePilot_HID_map[] = {
 	NDOF_BUTTON_1,
 	NDOF_BUTTON_2,
@@ -189,18 +189,18 @@ static const NDOF_ButtonT Generic_HID_map[] = {
 
 static const int genericButtonCount = sizeof(Generic_HID_map) / sizeof(NDOF_ButtonT);
 
-GHOST_NDOFManager::GHOST_NDOFManager(GHOST_System& sys)
-	: m_system(sys)
-	, m_deviceType(NDOF_UnknownDevice) // each platform has its own device detection code
-	, m_buttonCount(genericButtonCount)
-	, m_buttonMask(0)
-	, m_hidMap(Generic_HID_map)
-	, m_buttons(0)
-	, m_motionTime(0)
-	, m_prevMotionTime(0)
-	, m_motionState(GHOST_kNotStarted)
-	, m_motionEventPending(false)
-	, m_deadZone(0.f)
+GHOST_NDOFManager::GHOST_NDOFManager(GHOST_System &sys)
+	: m_system(sys),
+	  m_deviceType(NDOF_UnknownDevice), // each platform has its own device detection code
+	  m_buttonCount(genericButtonCount),
+	  m_buttonMask(0),
+	  m_hidMap(Generic_HID_map),
+	  m_buttons(0),
+	  m_motionTime(0),
+	  m_prevMotionTime(0),
+	  m_motionState(GHOST_kNotStarted),
+	  m_motionEventPending(false),
+	  m_deadZone(0.0f)
 {
 	// to avoid the rare situation where one triple is updated and
 	// the other is not, initialize them both here:
@@ -228,7 +228,7 @@ bool GHOST_NDOFManager::setDevice(unsigned short vendor_id, unsigned short produ
 	// that I don't have access to. Thanks!
 
 	switch (vendor_id) {
-		case 0x046D: // Logitech (3Dconnexion)
+		case 0x046D: // Logitech (3Dconnexion was a subsidiary)
 			switch (product_id) {
 				// -- current devices --
 				case 0xC626: // full-size SpaceNavigator
@@ -281,6 +281,29 @@ bool GHOST_NDOFManager::setDevice(unsigned short vendor_id, unsigned short produ
 					printf("ndof: unknown Logitech product %04hx\n", product_id);
 			}
 			break;
+		case 0x256F: // 3Dconnexion
+			switch (product_id) {
+				case 0xC62E: // plugged in
+				case 0xC62F: // wireless
+					puts("ndof: using SpaceMouse Wireless");
+					m_deviceType = NDOF_SpaceMouseWireless;
+					m_buttonCount = 2;
+					m_hidMap = Modern3Dx_HID_map;
+					break;
+				case 0xC631: // plugged in
+				case 0xC632: // wireless
+					puts("ndof: using SpaceMouse Pro Wireless");
+					m_deviceType = NDOF_SpaceMouseProWireless;
+					m_buttonCount = 27;
+					// ^^ actually has 15 buttons, but their HID codes range from 0 to 26
+					m_buttonMask = 0x07C0F137;
+					m_hidMap = Modern3Dx_HID_map;
+					break;
+
+				default:
+					printf("ndof: unknown 3Dconnexion product %04hx\n", product_id);
+			}
+			break;
 		default:
 			printf("ndof: unknown device %04hx:%04hx\n", vendor_id, product_id);
 	}
@@ -295,14 +318,14 @@ bool GHOST_NDOFManager::setDevice(unsigned short vendor_id, unsigned short produ
 	return m_deviceType != NDOF_UnknownDevice;
 }
 
-void GHOST_NDOFManager::updateTranslation(short t[3], GHOST_TUns64 time)
+void GHOST_NDOFManager::updateTranslation(const short t[3], GHOST_TUns64 time)
 {
 	memcpy(m_translation, t, sizeof(m_translation));
 	m_motionTime = time;
 	m_motionEventPending = true;
 }
 
-void GHOST_NDOFManager::updateRotation(short r[3], GHOST_TUns64 time)
+void GHOST_NDOFManager::updateRotation(const short r[3], GHOST_TUns64 time)
 {
 	memcpy(m_rotation, r, sizeof(m_rotation));
 	m_motionTime = time;
@@ -390,9 +413,9 @@ void GHOST_NDOFManager::updateButtons(int button_bits, GHOST_TUns64 time)
 
 void GHOST_NDOFManager::setDeadZone(float dz)
 {
-	if (dz < 0.f) {
+	if (dz < 0.0f) {
 		// negative values don't make sense, so clamp at zero
-		dz = 0.f;
+		dz = 0.0f;
 	}
 	else if (dz > 0.5f) {
 		// warn the rogue user/developer, but allow it
@@ -405,14 +428,14 @@ void GHOST_NDOFManager::setDeadZone(float dz)
 
 static bool atHomePosition(GHOST_TEventNDOFMotionData *ndof)
 {
-#define HOME(foo) (ndof->foo == 0.f)
+#define HOME(foo) (ndof->foo == 0.0f)
 	return HOME(tx) && HOME(ty) && HOME(tz) && HOME(rx) && HOME(ry) && HOME(rz);
 #undef HOME
 }
 
 static bool nearHomePosition(GHOST_TEventNDOFMotionData *ndof, float threshold)
 {
-	if (threshold == 0.f) {
+	if (threshold == 0.0f) {
 		return atHomePosition(ndof);
 	}
 	else {
@@ -432,6 +455,7 @@ bool GHOST_NDOFManager::sendMotionEvent()
 	GHOST_IWindow *window = m_system.getWindowManager()->getActiveWindow();
 
 	if (window == NULL) {
+		m_motionState = GHOST_kNotStarted; // avoid large 'dt' times when changing windows
 		return false; // delivery will fail, so don't bother sending
 	}
 
@@ -441,7 +465,7 @@ bool GHOST_NDOFManager::sendMotionEvent()
 	// scale axis values here to normalize them to around +/- 1
 	// they are scaled again for overall sensitivity in the WM based on user prefs
 
-	const float scale = 1.f / 350.f; // 3Dconnexion devices send +/- 350 usually
+	const float scale = 1.0f / 350.0f; // 3Dconnexion devices send +/- 350 usually
 
 	data->tx = scale * m_translation[0];
 	data->ty = scale * m_translation[1];
@@ -452,6 +476,7 @@ bool GHOST_NDOFManager::sendMotionEvent()
 	data->rz = scale * m_rotation[2];
 
 	data->dt = 0.001f * (m_motionTime - m_prevMotionTime); // in seconds
+	m_prevMotionTime = m_motionTime;
 
 	bool weHaveMotion = !nearHomePosition(data, m_deadZone);
 
@@ -468,6 +493,9 @@ bool GHOST_NDOFManager::sendMotionEvent()
 			}
 			else {
 				// send no event and keep current state
+#ifdef DEBUG_NDOF_MOTION
+				printf("ndof motion ignored -- %s\n", progress_string[data->progress]);
+#endif
 				delete event;
 				return false;
 			}
@@ -500,8 +528,6 @@ bool GHOST_NDOFManager::sendMotionEvent()
 #endif
 
 	m_system.pushEvent(event);
-
-	m_prevMotionTime = m_motionTime;
 
 	return true;
 }

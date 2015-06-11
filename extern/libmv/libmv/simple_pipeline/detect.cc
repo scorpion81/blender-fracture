@@ -25,7 +25,6 @@
 #include <stdlib.h>
 #include <memory.h>
 #include <queue>
-#include <third_party/fast/fast.h>
 
 #include "libmv/base/scoped_ptr.h"
 #include "libmv/image/array_nd.h"
@@ -34,6 +33,10 @@
 #include "libmv/logging/logging.h"
 #include "libmv/simple_pipeline/detect.h"
 
+#ifndef LIBMV_NO_FAST_DETECTOR
+#  include <third_party/fast/fast.h>
+#endif
+
 #ifdef __SSE2__
 #  include <emmintrin.h>
 #endif
@@ -41,6 +44,14 @@
 namespace libmv {
 
 namespace {
+
+// Default value for FAST minimal trackness in the DetectOptions structure.
+// TODO(sergey): Think of a better default value here.
+int kDefaultFastMinTrackness = 128;
+
+// Default value for Harris threshold in the DetectOptions structure.
+// TODO(sergey): Think of a better default value here.
+double kDefaultHarrisThreshold = 1e-5;
 
 class FeatureComparison {
  public:
@@ -92,6 +103,7 @@ void FilterFeaturesByDistance(const vector<Feature> &all_features,
 void DetectFAST(const FloatImage &grayscale_image,
                 const DetectOptions &options,
                 vector<Feature> *detected_features) {
+#ifndef LIBMV_NO_FAST_DETECTOR
   const int min_distance = options.min_distance;
   const int min_trackness = options.fast_min_trackness;
   const int margin = options.margin;
@@ -130,16 +142,21 @@ void DetectFAST(const FloatImage &grayscale_image,
   if (num_features) {
     vector<Feature> all_features;
     for (int i = 0; i < num_features; ++i) {
-      Feature new_feature = {(float)nonmax[i].x + margin,
-                             (float)nonmax[i].y + margin,
-                             (float)scores[i],
-                             0};
-      all_features.push_back(new_feature);
+      all_features.push_back(Feature((float)nonmax[i].x + margin,
+                                     (float)nonmax[i].y + margin,
+                                     (float)scores[i],
+                                     9.0));
     }
     FilterFeaturesByDistance(all_features, min_distance, detected_features);
   }
   free(scores);
   free(nonmax);
+#else
+  (void) grayscale_image;  // Ignored.
+  (void) options;  // Ignored.
+  (void) detected_features;  // Ignored.
+  LOG(FATAL) << "FAST detector is disabled in this build.";
+#endif
 }
 
 #ifdef __SSE2__
@@ -223,15 +240,24 @@ void DetectMORAVEC(const FloatImage &grayscale_image,
   int min = 255, total = 0;
   for (; min > 0; min--) {
     int h = histogram[min];
-    if (total+h > count) break;
+    if (total + h > count) {
+      break;
+    }
     total += h;
   }
-  for (int y = 16; y < height-16; y++) {
-    for (int x = 16; x < width-16; x++) {
-      int s = scores[y*width+x];
-      Feature f = { (float)x+8.0f, (float)y+8.0f, (float)s, 16 };
+  for (int y = 16; y < height - 16; y++) {
+    for (int x = 16; x < width - 16; x++) {
+      int s = scores[y * width + x];
       if (s > min) {
-        detected_features->push_back(f);
+        // Currently SAD works with the patterns of 16x16 pixels.
+        //
+        // Score calculation above uses top left corner of the
+        // patch as the origin, here we need to convert this value
+        // to a pattrn center by adding 8 pixels.
+        detected_features->push_back(Feature((float) x + 8.0f,
+                                             (float) y + 8.0f,
+                                             (float) s,
+                                             16.0f));
       }
     }
   }
@@ -278,8 +304,10 @@ void DetectHarris(const FloatImage &grayscale_image,
       double traceA = A.trace();
       double harris_function = detA - alpha * traceA * traceA;
       if (harris_function > threshold) {
-        Feature new_feature = {(float)x, (float)y, (float)harris_function, 0.0f};
-        all_features.push_back(new_feature);
+        all_features.push_back(Feature((float) x,
+                                       (float) y,
+                                       (float) harris_function,
+                                       5.0f));
       }
     }
   }
@@ -293,10 +321,10 @@ DetectOptions::DetectOptions()
   : type(DetectOptions::HARRIS),
     margin(0),
     min_distance(120),
-    fast_min_trackness(128),
+    fast_min_trackness(kDefaultFastMinTrackness),
     moravec_max_count(0),
     moravec_pattern(NULL),
-    harris_threshold(0.0) {}
+    harris_threshold(kDefaultHarrisThreshold) {}
 
 void Detect(const FloatImage &image,
             const DetectOptions &options,
@@ -320,6 +348,14 @@ void Detect(const FloatImage &image,
   } else {
     LOG(FATAL) << "Unknown detector has been passed to featur detection";
   }
+}
+
+std::ostream& operator <<(std::ostream &os,
+                          const Feature &feature) {
+  os << "x: " << feature.x << ", y: " << feature.y;
+  os << ", score: " << feature.score;
+  os << ", size: " << feature.size;
+  return os;
 }
 
 }  // namespace libmv

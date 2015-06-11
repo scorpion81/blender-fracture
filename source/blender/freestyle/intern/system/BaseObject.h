@@ -29,15 +29,13 @@
  *  \date 06/02/2002
  */
 
-#include "FreestyleConfig.h"
-
 #ifdef WITH_CXX_GUARDEDALLOC
 #include "MEM_guardedalloc.h"
 #endif
 
 namespace Freestyle {
 
-class LIB_SYSTEM_EXPORT BaseObject
+class BaseObject
 {
 public:
 	inline BaseObject()

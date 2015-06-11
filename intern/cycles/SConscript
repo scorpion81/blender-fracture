@@ -39,12 +39,13 @@ sources.remove(path.join('kernel', 'kernel_sse2.cpp'))
 sources.remove(path.join('kernel', 'kernel_sse3.cpp'))
 sources.remove(path.join('kernel', 'kernel_sse41.cpp'))
 sources.remove(path.join('kernel', 'kernel_avx.cpp'))
+sources.remove(path.join('kernel', 'kernel_avx2.cpp'))
 
 incs = [] 
 defs = []
 cxxflags = Split(env['CXXFLAGS'])
 
-defs.append('GLEW_STATIC')
+defs += env['BF_GL_DEFINITIONS']
 
 defs.append('CCL_NAMESPACE_BEGIN=namespace ccl {')
 defs.append('CCL_NAMESPACE_END=}')
@@ -58,10 +59,30 @@ if env['WITH_BF_CYCLES_OSL']:
     defs.append('OSL_STATIC_LIBRARY')
     incs.append(cycles['BF_OSL_INC'])
 
+if env['WITH_BF_CYCLES_DEBUG']:
+    defs.append('WITH_CYCLES_DEBUG')
+
+if env['WITH_BF_CYCLES_LOGGING']:
+    defs.append('WITH_CYCLES_LOGGING')
+    defs.append('GOOGLE_GLOG_DLL_DECL=')
+    defs.append('CYCLES_GFLAGS_NAMESPACE=gflags')
+    if env['OURPLATFORM'] in ('win32-vc', 'win32-mingw', 'linuxcross', 'win64-vc', 'win64-mingw'):
+        incs.append('#extern/libmv/third_party/glog/src/windows')
+        incs.append('#extern/libmv/third_party/gflags')
+    else:
+        incs.append('#extern/libmv/third_party/glog/src')
+        incs.append('#extern/libmv/third_party/gflags')
+
 incs.extend('. bvh render device kernel kernel/osl kernel/svm util subd'.split())
 incs.extend('#intern/guardedalloc #source/blender/makesrna #source/blender/makesdna #source/blender/blenlib'.split())
 incs.extend('#source/blender/blenloader ../../source/blender/makesrna/intern'.split())
-incs.extend('#extern/glew/include #intern/mikktspace'.split())
+
+incs.append(env['BF_GLEW_INC'])
+incs.append('#/intern/glew-mx')
+incs.append('#/intern/atomic')
+incs.append('#intern/mikktspace')
+incs.extend('#extern/glew/include #extern/clew/include #extern/cuew/include #intern/mikktspace'.split())
+
 incs.append(cycles['BF_OIIO_INC'])
 incs.append(cycles['BF_BOOST_INC'])
 incs.append(cycles['BF_OPENEXR_INC'].split())
@@ -72,6 +93,12 @@ if env['OURPLATFORM'] in ('win32-vc', 'win64-vc'):
 else:
     cxxflags.append('-ffast-math'.split())
 
+# Warnings
+# XXX Not supported by gcc < 4.9, since we do not have any 'supported flags' test as in cmake,
+#     simpler to comment for now.
+#if env['C_COMPILER_ID'] == 'gcc':
+#    cxxflags.append(['-Werror=float-conversion'])
+
 if env['OURPLATFORM'] in ('win32-vc', 'win32-mingw', 'linuxcross', 'win64-vc', 'win64-mingw'):
     incs.append(env['BF_PTHREADS_INC'])
 
@@ -81,17 +108,18 @@ kernel_flags = {}
 
 if env['OURPLATFORM'] == 'win32-vc':
     # there is no /arch:SSE3, but intrinsics are available anyway
-    kernel_flags['sse2'] = '/arch:SSE /arch:SSE2 -D_CRT_SECURE_NO_WARNINGS /fp:fast /Ox /Gs-'
+    kernel_flags['sse2'] = '/arch:SSE /arch:SSE2 -D_CRT_SECURE_NO_WARNINGS /fp:fast /Ox /GS-'
     kernel_flags['sse3'] = kernel_flags['sse2']
 
 elif env['OURPLATFORM'] == 'win64-vc':
     # /arch:AVX only available from visual studio 2012
-    kernel_flags['sse2'] = '-D_CRT_SECURE_NO_WARNINGS /fp:fast /Ox /Gs-'
+    kernel_flags['sse2'] = '-D_CRT_SECURE_NO_WARNINGS /fp:fast /Ox /GS-'
     kernel_flags['sse3'] = kernel_flags['sse2']
 
-    if env['MSVC_VERSION'] in ('11.0', '12.0'):
+    if env['MSVC_VERSION'] >= '12.0':
         kernel_flags['sse41'] = kernel_flags['sse3']
         kernel_flags['avx'] = kernel_flags['sse41'] + ' /arch:AVX'
+        kernel_flags['avx2'] = kernel_flags['sse41'] + ' /arch:AVX /arch:AVX2'
 else:
     # -mavx only available with relatively new gcc/clang
     kernel_flags['sse2'] = '-ffast-math -msse -msse2 -mfpmath=sse'
@@ -100,6 +128,7 @@ else:
 
     if (env['C_COMPILER_ID'] == 'gcc' and env['CCVERSION'] >= '4.6') or (env['C_COMPILER_ID'] == 'clang' and env['CCVERSION'] >= '3.1'):
         kernel_flags['avx'] = kernel_flags['sse41'] + ' -mavx'
+        kernel_flags['avx2'] = kernel_flags['avx'] + ' -mavx2 -mfma -mlzcnt -mbmi -mbmi2'
 
 for kernel_type in kernel_flags.keys():
     defs.append('WITH_KERNEL_' + kernel_type.upper())

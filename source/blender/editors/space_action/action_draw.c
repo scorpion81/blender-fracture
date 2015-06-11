@@ -38,7 +38,6 @@
 #include <float.h>
 
 #include "BLI_blenlib.h"
-#include "BLI_math.h"
 #include "BLI_utildefines.h"
 
 /* Types --------------------------------------------------------------- */
@@ -113,7 +112,7 @@ void draw_channel_names(bContext *C, bAnimContext *ac, ARegion *ar)
 		}
 	}
 	{   /* second pass: widgets */
-		uiBlock *block = uiBeginBlock(C, ar, __func__, UI_EMBOSS);
+		uiBlock *block = UI_block_begin(C, ar, __func__, UI_EMBOSS);
 		size_t channel_index = 0;
 		
 		y = (float)ACHANNEL_FIRST;
@@ -135,12 +134,12 @@ void draw_channel_names(bContext *C, bAnimContext *ac, ARegion *ar)
 			channel_index++;
 		}
 		
-		uiEndBlock(C, block);
-		uiDrawBlock(C, block);
+		UI_block_end(C, block);
+		UI_block_draw(C, block);
 	}
 	
 	/* free tempolary channels */
-	BLI_freelistN(&anim_data);
+	ANIM_animdata_freelist(&anim_data);
 }
 
 /* ************************************************************************* */
@@ -220,7 +219,7 @@ void draw_channel_strips(bAnimContext *ac, SpaceAction *saction, ARegion *ar)
 				if (acf->has_setting(ac, ale, ACHANNEL_SETTING_SELECT))
 					sel = ANIM_channel_setting_get(ac, ale, ACHANNEL_SETTING_SELECT);
 				
-				if (ELEM3(ac->datatype, ANIMCONT_ACTION, ANIMCONT_DOPESHEET, ANIMCONT_SHAPEKEY)) {
+				if (ELEM(ac->datatype, ANIMCONT_ACTION, ANIMCONT_DOPESHEET, ANIMCONT_SHAPEKEY)) {
 					switch (ale->type) {
 						case ANIMTYPE_SUMMARY:
 						{
@@ -347,7 +346,7 @@ void draw_channel_strips(bAnimContext *ac, SpaceAction *saction, ARegion *ar)
 	}
 	
 	/* free tempolary channels used for drawing */
-	BLI_freelistN(&anim_data);
+	ANIM_animdata_freelist(&anim_data);
 
 	/* black line marking 'current frame' for Time-Slide transform mode */
 	if (saction->flag & SACTION_MOVING) {

@@ -112,6 +112,10 @@ void MESH_OT_screw(struct wmOperatorType *ot);
 /* *** editmesh_inset.c *** */
 void MESH_OT_inset(struct wmOperatorType *ot);
 
+/* *** editmesh_intersect.c *** */
+void MESH_OT_intersect(struct wmOperatorType *ot);
+void MESH_OT_face_split_by_edges(struct wmOperatorType *ot);
+
 
 /* *** editmesh_knife.c *** */
 void MESH_OT_knife_tool(struct wmOperatorType *ot);
@@ -128,10 +132,12 @@ void MESH_OT_loopcut(struct wmOperatorType *ot);
 
 /* *** editmesh_rip.c *** */
 void MESH_OT_rip(struct wmOperatorType *ot);
+void MESH_OT_rip_edge(struct wmOperatorType *ot);
 
 
 /* *** editmesh_select.c *** */
 void MESH_OT_select_similar(struct wmOperatorType *ot);
+void MESH_OT_select_similar_region(struct wmOperatorType *ot);
 void MESH_OT_select_mode(struct wmOperatorType *ot);
 void MESH_OT_loop_multi_select(struct wmOperatorType *ot);
 void MESH_OT_loop_select(struct wmOperatorType *ot);
@@ -169,6 +175,8 @@ void MESH_OT_normals_make_consistent(struct wmOperatorType *ot);
 void MESH_OT_vertices_smooth(struct wmOperatorType *ot);
 void MESH_OT_vertices_smooth_laplacian(struct wmOperatorType *ot);
 void MESH_OT_vert_connect(struct wmOperatorType *ot);
+void MESH_OT_vert_connect_path(struct wmOperatorType *ot);
+void MESH_OT_vert_connect_concave(struct wmOperatorType *ot);
 void MESH_OT_vert_connect_nonplanar(struct wmOperatorType *ot);
 void MESH_OT_edge_split(struct wmOperatorType *ot);
 void MESH_OT_bridge_edge_loops(struct wmOperatorType *ot);
@@ -210,6 +218,7 @@ void MESH_OT_dissolve_edges(struct wmOperatorType *ot);
 void MESH_OT_dissolve_faces(struct wmOperatorType *ot);
 void MESH_OT_dissolve_mode(struct wmOperatorType *ot);
 void MESH_OT_dissolve_limited(struct wmOperatorType *ot);
+void MESH_OT_dissolve_degenerate(struct wmOperatorType *ot);
 void MESH_OT_delete_edgeloop(struct wmOperatorType *ot);
 void MESH_OT_edge_face_add(struct wmOperatorType *ot);
 void MESH_OT_duplicate(struct wmOperatorType *ot);
@@ -230,6 +239,8 @@ void MESH_OT_vertex_color_remove(struct wmOperatorType *ot);
 /* no create_mask yet */
 void MESH_OT_customdata_clear_mask(struct wmOperatorType *ot);
 void MESH_OT_customdata_clear_skin(struct wmOperatorType *ot);
+void MESH_OT_customdata_custom_splitnormals_add(struct wmOperatorType *ot);
+void MESH_OT_customdata_custom_splitnormals_clear(struct wmOperatorType *ot);
 void MESH_OT_drop_named_image(struct wmOperatorType *ot);
 
 

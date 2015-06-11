@@ -30,27 +30,19 @@
  */
 
 #include "DNA_movieclip_types.h"
-#include "DNA_object_types.h"   /* SELECT */
 #include "DNA_scene_types.h"
 
-#include "MEM_guardedalloc.h"
-
 #include "BLI_utildefines.h"
-#include "BLI_math.h"
-#include "BLI_string.h"
-#include "BLI_listbase.h"
 #include "BLI_math.h"
 #include "BLI_rect.h"
 
 #include "BKE_context.h"
 #include "BKE_movieclip.h"
-#include "BKE_tracking.h"
 
 #include "ED_screen.h"
 #include "ED_clip.h"
 
 #include "BIF_gl.h"
-#include "BIF_glutil.h"
 
 #include "WM_types.h"
 
@@ -80,7 +72,7 @@ static void track_channel_color(MovieTrackingTrack *track, float default_color[3
 	}
 }
 
-static void draw_keyframe_shape(float x, float y, float xscale, float yscale, short sel, float alpha)
+static void draw_keyframe_shape(float x, float y, float xscale, float yscale, bool sel, float alpha)
 {
 	/* coordinates for diamond shape */
 	static const float _unit_diamond_shape[4][2] = {
@@ -160,8 +152,9 @@ static void clip_draw_dopesheet_background(ARegion *ar, MovieClip *clip)
 			int start_frame = BKE_movieclip_remap_clip_to_scene_frame(clip, coverage_segment->start_frame);
 			int end_frame = BKE_movieclip_remap_clip_to_scene_frame(clip, coverage_segment->end_frame);
 
-			if (coverage_segment->coverage == TRACKING_COVERAGE_BAD)
+			if (coverage_segment->coverage == TRACKING_COVERAGE_BAD) {
 				glColor4f(1.0f, 0.0f, 0.0f, 0.07f);
+			}
 			else
 				glColor4f(1.0f, 1.0f, 0.0f, 0.07f);
 
@@ -193,7 +186,7 @@ void clip_draw_dopesheet_main(SpaceClip *sc, ARegion *ar, Scene *scene)
 
 		y = (float) CHANNEL_FIRST;
 
-		UI_view2d_getscale(v2d, &xscale, &yscale);
+		UI_view2d_scale_get(v2d, &xscale, &yscale);
 
 		/* setup colors for regular and selected strips */
 		UI_GetThemeColor3fv(TH_STRIP, strip);
@@ -216,7 +209,8 @@ void clip_draw_dopesheet_main(SpaceClip *sc, ARegion *ar, Scene *scene)
 			{
 				MovieTrackingTrack *track = channel->track;
 				float alpha;
-				int i, sel = track->flag & TRACK_DOPE_SEL;
+				int i;
+				bool sel = (track->flag & TRACK_DOPE_SEL) != 0;
 
 				/* selection background */
 				if (sel) {
@@ -288,7 +282,7 @@ void clip_draw_dopesheet_channels(const bContext *C, ARegion *ar)
 	MovieTracking *tracking;
 	MovieTrackingDopesheet *dopesheet;
 	MovieTrackingDopesheetChannel *channel;
-	uiStyle *style = UI_GetStyle();
+	uiStyle *style = UI_style_get();
 	uiBlock *block;
 	int fontid = style->widget.uifont_id;
 	int height;
@@ -329,7 +323,7 @@ void clip_draw_dopesheet_channels(const bContext *C, ARegion *ar)
 		{
 			MovieTrackingTrack *track = channel->track;
 			float font_height, color[3];
-			int sel = track->flag & TRACK_DOPE_SEL;
+			bool sel = (track->flag & TRACK_DOPE_SEL) != 0;
 
 			track_channel_color(track, NULL, color);
 			glColor3fv(color);
@@ -353,7 +347,7 @@ void clip_draw_dopesheet_channels(const bContext *C, ARegion *ar)
 	}
 
 	/* second pass: widgets */
-	block = uiBeginBlock(C, ar, __func__, UI_EMBOSS);
+	block = UI_block_begin(C, ar, __func__, UI_EMBOSS);
 	y = (float) CHANNEL_FIRST;
 
 	/* get RNA properties (once) */
@@ -375,11 +369,11 @@ void clip_draw_dopesheet_channels(const bContext *C, ARegion *ar)
 
 			RNA_pointer_create(&clip->id, &RNA_MovieTrackingTrack, track, &ptr);
 
-			uiBlockSetEmboss(block, UI_EMBOSSN);
-			uiDefIconButR_prop(block, ICONTOG, 1, icon,
+			UI_block_emboss_set(block, UI_EMBOSS_NONE);
+			uiDefIconButR_prop(block, UI_BTYPE_ICON_TOGGLE, 1, icon,
 			                   v2d->cur.xmax - UI_UNIT_X - CHANNEL_PAD, y - UI_UNIT_Y / 2.0f,
 			                   UI_UNIT_X, UI_UNIT_Y, &ptr, chan_prop_lock, 0, 0, 0, 0, 0, NULL);
-			uiBlockSetEmboss(block, UI_EMBOSS);
+			UI_block_emboss_set(block, UI_EMBOSS);
 		}
 
 		/* adjust y-position for next one */
@@ -387,6 +381,6 @@ void clip_draw_dopesheet_channels(const bContext *C, ARegion *ar)
 	}
 	glDisable(GL_BLEND);
 
-	uiEndBlock(C, block);
-	uiDrawBlock(C, block);
+	UI_block_end(C, block);
+	UI_block_draw(C, block);
 }

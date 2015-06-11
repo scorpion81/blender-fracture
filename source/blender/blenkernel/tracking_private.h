@@ -35,9 +35,13 @@
 #ifndef __TRACKING_PRIVATE_H__
 #define __TRACKING_PRIVATE_H__
 
+#include "BLI_threads.h"
+
 struct GHash;
 struct MovieTracking;
 struct MovieTrackingMarker;
+
+struct libmv_CameraIntrinsicsOptions;
 
 /*********************** Tracks map *************************/
 
@@ -54,6 +58,9 @@ typedef struct TracksMap {
 	struct GHash *hash;
 
 	int ptr;
+
+	/* Spin lock is used to sync context during tracking. */
+	SpinLock spin_lock;
 } TracksMap;
 
 struct TracksMap *tracks_map_new(const char *object_name, bool is_camera, int num_tracks, int customdata_size);
@@ -80,5 +87,40 @@ void tracking_set_marker_coords_from_tracking(int frame_width, int frame_height,
 
 void tracking_marker_insert_disabled(struct MovieTrackingTrack *track, const struct MovieTrackingMarker *ref_marker,
                                      bool before, bool overwrite);
+
+void tracking_cameraIntrinscisOptionsFromTracking(struct MovieTracking *tracking,
+                                                  int calibration_width, int calibration_height,
+                                                  struct libmv_CameraIntrinsicsOptions *camera_intrinsics_options);
+
+void tracking_trackingCameraFromIntrinscisOptions(struct MovieTracking *tracking,
+                                                  const struct libmv_CameraIntrinsicsOptions *camera_intrinsics_options);
+
+struct libmv_TrackRegionOptions;
+
+void tracking_configure_tracker(const MovieTrackingTrack *track, float *mask,
+                                struct libmv_TrackRegionOptions *options);
+
+struct MovieTrackingMarker *tracking_get_keyframed_marker(
+	struct MovieTrackingTrack *track,
+	int current_frame,
+	bool backwards);
+
+/*********************** Frame accessr *************************/
+
+struct libmv_FrameAccessor;
+
+#define MAX_ACCESSOR_CLIP 64
+typedef struct TrackingImageAccessor {
+	struct MovieCache *cache;
+	struct MovieClip *clips[MAX_ACCESSOR_CLIP];
+	int num_clips;
+	int start_frame;
+	struct libmv_FrameAccessor *libmv_accessor;
+} TrackingImageAccessor;
+
+TrackingImageAccessor *tracking_image_accessor_new(MovieClip *clips[MAX_ACCESSOR_CLIP],
+                                                   int num_clips,
+                                                   int start_frame);
+void tracking_image_accessor_destroy(TrackingImageAccessor *accessor);
 
 #endif  /* __TRACKING_PRIVATE_H__ */

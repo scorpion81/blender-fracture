@@ -29,29 +29,37 @@
  *  \ingroup edobj
  */
 
-
 #include "DNA_object_types.h"
 
 #include "BKE_context.h"
-#include "BKE_main.h"
-#include "BKE_object.h"
-
-#include "ED_screen.h"
-#include "ED_object.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
 
 #include "RNA_access.h"
 #include "RNA_define.h"
-#include "RNA_enum_types.h"
+
+#include "ED_screen.h"
+#include "ED_object.h"
+
+#ifdef WITH_GAMEENGINE
+#  include "BKE_object.h"
+
+#  include "RNA_enum_types.h"
+#endif
 
 #include "object_intern.h"
 
 static int object_lod_add_exec(bContext *C, wmOperator *UNUSED(op))
 {
 	Object *ob = ED_object_context(C);
+
+#ifdef WITH_GAMEENGINE
 	BKE_object_lod_add(ob);
+#else
+	(void)ob;
+#endif
+
 	return OPERATOR_FINISHED;
 }
 
@@ -64,7 +72,7 @@ void OBJECT_OT_lod_add(wmOperatorType *ot)
 
 	/* api callbacks */
 	ot->exec = object_lod_add_exec;
-	ot->poll = ED_operator_objectmode;
+	ot->poll = ED_operator_object_active;
 
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
@@ -75,8 +83,13 @@ static int object_lod_remove_exec(bContext *C, wmOperator *op)
 	Object *ob = ED_object_context(C);
 	int index = RNA_int_get(op->ptr, "index");
 
+#ifdef WITH_GAMEENGINE
 	if (!BKE_object_lod_remove(ob, index))
 		return OPERATOR_CANCELLED;
+#else
+	(void)ob;
+	(void)index;
+#endif
 
 	WM_event_add_notifier(C, NC_OBJECT | ND_LOD, CTX_wm_view3d(C));
 	return OPERATOR_FINISHED;
@@ -91,7 +104,7 @@ void OBJECT_OT_lod_remove(wmOperatorType *ot)
 
 	/* api callbacks */
 	ot->exec = object_lod_remove_exec;
-	ot->poll = ED_operator_objectmode;
+	ot->poll = ED_operator_object_active;
 
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;

@@ -55,20 +55,21 @@ namespace Freestyle {
  *  \attention In the scripting language, there exists several prototypes depending on the returned value type.
  *  For example, you would inherit from a UnaryFunction1DDouble if you wish to define a function that returns a double.
  *  The different existing prototypes are:
- *    - UnaryFunction1DVoid
- *    - UnaryFunction1DUnsigned
- *    - UnaryFunction1DReal
- *    - UnaryFunction1DFloat
  *    - UnaryFunction1DDouble
+ *    - UnaryFunction1DEdgeNature
+ *    - UnaryFunction1DFloat
+ *    - UnaryFunction1DUnsigned
  *    - UnaryFunction1DVec2f
  *    - UnaryFunction1DVec3f
+ *    - UnaryFunction1DVectorViewShape
+ *    - UnaryFunction1DVoid
  */
 template <class T>
-class /*LIB_VIEW_MAP_EXPORT*/ UnaryFunction1D
+class UnaryFunction1D
 {
 public:
 	T result;
-	PyObject *py_uf1D;
+	void *py_uf1D;
 
 	/*! The type of the value returned by the functor. */
 	typedef T ReturnedValueType;
@@ -104,6 +105,7 @@ public:
 	 *    The Interface1D on which we wish to evaluate the function.
 	 *  \return the result of the function of type T.
 	 */
+	/* FIXME move the implementation to Functions1D.cpp */
 	virtual int operator()(Interface1D& inter)
 	{
 		return Director_BPy_UnaryFunction1D___call__(this, py_uf1D, inter);
@@ -133,7 +135,7 @@ protected:
 class  UnaryFunction1D_void
 {
 public:
-	PyObject *py_uf1D;
+	void *py_uf1D;
 
 	UnaryFunction1D_void()
 	{
@@ -152,6 +154,7 @@ public:
 		return "UnaryFunction1D_void";
 	}
 
+	/* FIXME move the implementation to Functions1D.cpp */
 	int operator()(Interface1D& inter)
 	{
 		return Director_BPy_UnaryFunction1D___call__(this, py_uf1D, inter);
@@ -185,7 +188,7 @@ namespace Functions1D {
 
 // GetXF1D
 /*! Returns the X 3D coordinate of an Interface1D. */
-class LIB_VIEW_MAP_EXPORT GetXF1D : public UnaryFunction1D<real>
+class GetXF1D : public UnaryFunction1D<double>
 {
 private:
 	Functions0D::GetXF0D _func;
@@ -195,7 +198,7 @@ public:
 	 *  \param iType
 	 *    The integration method used to compute a single value from a set of values.
 	 */
-	GetXF1D(IntegrationType iType) : UnaryFunction1D<real>(iType) {}
+	GetXF1D(IntegrationType iType) : UnaryFunction1D<double>(iType) {}
 
 	/*! Returns the string "GetXF1D" */
 	string getName() const
@@ -209,7 +212,7 @@ public:
 
 // GetYF1D
 /*! Returns the Y 3D coordinate of an Interface1D. */
-class LIB_VIEW_MAP_EXPORT GetYF1D : public UnaryFunction1D<real>
+class GetYF1D : public UnaryFunction1D<double>
 {
 private:
 Functions0D::GetYF0D _func;
@@ -219,7 +222,7 @@ public:
 	 *  \param iType
 	 *    The integration method used to compute a single value from a set of values.
 	 */
-	GetYF1D(IntegrationType iType = MEAN) : UnaryFunction1D<real>(iType) {}
+	GetYF1D(IntegrationType iType = MEAN) : UnaryFunction1D<double>(iType) {}
 
 	/*! Returns the string "GetYF1D" */
 	string getName() const
@@ -233,7 +236,7 @@ public:
 
 // GetZF1D
 /*! Returns the Z 3D coordinate of an Interface1D. */
-class LIB_VIEW_MAP_EXPORT GetZF1D : public UnaryFunction1D<real>
+class GetZF1D : public UnaryFunction1D<double>
 {
 private:
 	Functions0D::GetZF0D _func;
@@ -243,7 +246,7 @@ public:
 	 *  \param iType
 	 *    The integration method used to compute a single value from a set of values.
 	 */
-	GetZF1D(IntegrationType iType = MEAN) : UnaryFunction1D<real>(iType) {}
+	GetZF1D(IntegrationType iType = MEAN) : UnaryFunction1D<double>(iType) {}
 
 	/*! Returns the string "GetZF1D" */
 	string getName() const
@@ -257,7 +260,7 @@ public:
 
 // GetProjectedXF1D
 /*! Returns the projected X 3D coordinate of an Interface1D. */
-class LIB_VIEW_MAP_EXPORT GetProjectedXF1D : public UnaryFunction1D<real>
+class GetProjectedXF1D : public UnaryFunction1D<double>
 {
 private:
 	Functions0D::GetProjectedXF0D _func;
@@ -267,7 +270,7 @@ public:
 	 *  \param iType
 	 *    The integration method used to compute a single value from a set of values.
 	 */
-	GetProjectedXF1D(IntegrationType iType = MEAN) : UnaryFunction1D<real>(iType) {}
+	GetProjectedXF1D(IntegrationType iType = MEAN) : UnaryFunction1D<double>(iType) {}
 
 	/*! Returns the string "GetProjectedXF1D" */
 	string getName() const
@@ -281,7 +284,7 @@ public:
 
 // GetProjectedYF1D
 /*! Returns the projected Y 3D coordinate of an Interface1D. */
-class LIB_VIEW_MAP_EXPORT GetProjectedYF1D : public UnaryFunction1D<real>
+class GetProjectedYF1D : public UnaryFunction1D<double>
 {
 private:
 	Functions0D::GetProjectedYF0D _func;
@@ -291,7 +294,7 @@ public:
 	 *  \param iType
 	 *    The integration method used to compute a single value from a set of values.
 	 */
-	GetProjectedYF1D(IntegrationType iType = MEAN) : UnaryFunction1D<real>(iType) {}
+	GetProjectedYF1D(IntegrationType iType = MEAN) : UnaryFunction1D<double>(iType) {}
 
 	/*! Returns the string "GetProjectedYF1D" */
 	string getName() const
@@ -305,7 +308,7 @@ public:
 
 // GetProjectedZF1D
 /*! Returns the projected Z 3D coordinate of an Interface1D. */
-class LIB_VIEW_MAP_EXPORT GetProjectedZF1D : public UnaryFunction1D<real>
+class GetProjectedZF1D : public UnaryFunction1D<double>
 {
 private:
 	Functions0D::GetProjectedZF0D _func;
@@ -315,7 +318,7 @@ public:
 	 *  \param iType
 	 *    The integration method used to compute a single value from a set of values.
 	 */
-	GetProjectedZF1D(IntegrationType iType = MEAN) : UnaryFunction1D<real>(iType) {}
+	GetProjectedZF1D(IntegrationType iType = MEAN) : UnaryFunction1D<double>(iType) {}
 
 	/*! Returns the string "GetProjectedZF1D" */
 	string getName() const
@@ -329,7 +332,7 @@ public:
 
 // Orientation2DF1D
 /*! Returns the 2D orientation as a Vec2f*/
-class LIB_VIEW_MAP_EXPORT Orientation2DF1D : public UnaryFunction1D<Vec2f>
+class Orientation2DF1D : public UnaryFunction1D<Vec2f>
 {
 private:
 	Functions0D::VertexOrientation2DF0D _func;
@@ -353,7 +356,7 @@ public:
 
 // Orientation3DF1D
 /*! Returns the 3D orientation as a Vec3f. */
-class LIB_VIEW_MAP_EXPORT Orientation3DF1D : public UnaryFunction1D<Vec3f>
+class Orientation3DF1D : public UnaryFunction1D<Vec3f>
 {
 private:
 	Functions0D::VertexOrientation3DF0D _func;
@@ -380,7 +383,7 @@ public:
  *  This distance is evaluated in the camera space and normalized between 0 and 1. Therefore, if no object is occluded
  *  by the shape to which the Interface1D belongs to, 1 is returned.
  */
-class LIB_VIEW_MAP_EXPORT ZDiscontinuityF1D : public UnaryFunction1D<real>
+class ZDiscontinuityF1D : public UnaryFunction1D<double>
 {
 private:
 	Functions0D::ZDiscontinuityF0D _func;
@@ -390,7 +393,7 @@ public:
 	 *  \param iType
 	 *    The integration method used to compute a single value from a set of values.
 	 */
-	ZDiscontinuityF1D(IntegrationType iType = MEAN) : UnaryFunction1D<real>(iType) {}
+	ZDiscontinuityF1D(IntegrationType iType = MEAN) : UnaryFunction1D<double>(iType) {}
 
 	/*! Returns the string "ZDiscontinuityF1D" */
 	string getName() const
@@ -408,7 +411,7 @@ public:
  *  results of a chaining (chain, stroke), then it might be made of several 1D elements of different
  *  Quantitative Invisibilities.
  */
-class LIB_VIEW_MAP_EXPORT QuantitativeInvisibilityF1D : public UnaryFunction1D<unsigned>
+class QuantitativeInvisibilityF1D : public UnaryFunction1D<unsigned>
 {
 private:
 	Functions0D::QuantitativeInvisibilityF0D _func;
@@ -436,7 +439,7 @@ public:
  *  Indeed, the Interface1D might result from the gathering of several 1D elements, each one being of a different
  *  nature. An integration method, such as the MEAN, might give, in this case, irrelevant results.
  */
-class LIB_VIEW_MAP_EXPORT CurveNatureF1D : public UnaryFunction1D<Nature::EdgeNature>
+class CurveNatureF1D : public UnaryFunction1D<Nature::EdgeNature>
 {
 private:
 	Functions0D::CurveNatureF0D _func;
@@ -460,7 +463,7 @@ public:
 
 // TimeStampF1D
 /*! Returns the time stamp of the Interface1D. */
-class LIB_VIEW_MAP_EXPORT TimeStampF1D : public UnaryFunction1D_void
+class TimeStampF1D : public UnaryFunction1D_void
 {
 public:
 	/*! Returns the string "TimeStampF1D" */
@@ -475,7 +478,7 @@ public:
 
 // IncrementChainingTimeStampF1D
 /*! Increments the chaining time stamp of the Interface1D. */
-class LIB_VIEW_MAP_EXPORT IncrementChainingTimeStampF1D : public UnaryFunction1D_void
+class IncrementChainingTimeStampF1D : public UnaryFunction1D_void
 {
 public:
 	/*! Returns the string "IncrementChainingTimeStampF1D" */
@@ -490,7 +493,7 @@ public:
 
 // ChainingTimeStampF1D
 /*! Sets the chaining time stamp of the Interface1D. */
-class LIB_VIEW_MAP_EXPORT ChainingTimeStampF1D : public UnaryFunction1D_void
+class ChainingTimeStampF1D : public UnaryFunction1D_void
 {
 public:
 	/*! Returns the string "ChainingTimeStampF1D" */
@@ -506,14 +509,14 @@ public:
 
 // Curvature2DAngleF1D
 /*! Returns the 2D curvature as an angle for an Interface1D. */
-class LIB_VIEW_MAP_EXPORT Curvature2DAngleF1D : public UnaryFunction1D<real>
+class Curvature2DAngleF1D : public UnaryFunction1D<double>
 {
 public:
 	/*! Builds the functor.
 	 *  \param iType
 	 *    The integration method used to compute a single value from a set of values.
 	 */
-	Curvature2DAngleF1D(IntegrationType iType = MEAN) : UnaryFunction1D<real>(iType) {}
+	Curvature2DAngleF1D(IntegrationType iType = MEAN) : UnaryFunction1D<double>(iType) {}
 
 	/*! Returns the string "Curvature2DAngleF1D" */
 	string getName() const
@@ -534,7 +537,7 @@ private:
 
 // Normal2DF1D
 /*! Returns the 2D normal for an interface 1D. */
-class LIB_VIEW_MAP_EXPORT Normal2DF1D : public UnaryFunction1D<Vec2f>
+class Normal2DF1D : public UnaryFunction1D<Vec2f>
 {
 public:
 	/*! Builds the functor.
@@ -562,7 +565,7 @@ private:
 
 // GetShapeF1D
 /*! Returns list of shapes covered by this Interface1D. */
-class LIB_VIEW_MAP_EXPORT GetShapeF1D : public UnaryFunction1D<std::vector<ViewShape*> >
+class GetShapeF1D : public UnaryFunction1D<std::vector<ViewShape*> >
 {
 public:
 	/*! Builds the functor. */
@@ -580,7 +583,7 @@ public:
 
 // GetOccludersF1D
 /*! Returns list of occluding shapes covered by this Interface1D. */
-class LIB_VIEW_MAP_EXPORT GetOccludersF1D : public UnaryFunction1D<std::vector<ViewShape*> >
+class GetOccludersF1D : public UnaryFunction1D<std::vector<ViewShape*> >
 {
 public:
 	/*! Builds the functor. */
@@ -598,7 +601,7 @@ public:
 
 // GetOccludeeF1D
 /*! Returns list of occluded shapes covered by this Interface1D. */
-class LIB_VIEW_MAP_EXPORT GetOccludeeF1D : public UnaryFunction1D<std::vector<ViewShape*> >
+class GetOccludeeF1D : public UnaryFunction1D<std::vector<ViewShape*> >
 {
 public:
 	/*! Builds the functor. */
@@ -618,15 +621,12 @@ public:
 ////////////
 
 // getOccludeeF1D
-LIB_VIEW_MAP_EXPORT
 void getOccludeeF1D(Interface1D& inter, set<ViewShape*>& oShapes);
 
 // getOccludersF1D
-LIB_VIEW_MAP_EXPORT
 void getOccludersF1D(Interface1D& inter, set<ViewShape*>& oShapes);
 
 // getShapeF1D
-LIB_VIEW_MAP_EXPORT
 void getShapeF1D(Interface1D& inter, set<ViewShape*>& oShapes);
 
 } // end of namespace Functions1D

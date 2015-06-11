@@ -111,7 +111,7 @@ static void rna_event_timer_remove(struct wmWindowManager *wm, wmTimer *timer)
 }
 
 /* placeholder data for final implementation of a true progressbar */
-struct wmStaticProgress {
+static struct wmStaticProgress {
 	float min;
 	float max;
 	bool  is_valid;
@@ -235,7 +235,7 @@ static void rna_KeyMap_item_remove(wmKeyMap *km, ReportList *reports, PointerRNA
 {
 	wmKeyMapItem *kmi = kmi_ptr->data;
 
-	if (WM_keymap_remove_item(km, kmi) == FALSE) {
+	if (WM_keymap_remove_item(km, kmi) == false) {
 		BKE_reportf(reports, RPT_ERROR, "KeyMapItem '%s' cannot be removed from '%s'", kmi->idname, km->idname);
 		return;
 	}
@@ -272,7 +272,7 @@ static void rna_KeyMap_remove(wmKeyConfig *keyconfig, ReportList *reports, Point
 {
 	wmKeyMap *keymap = keymap_ptr->data;
 
-	if (WM_keymap_remove(keyconfig, keymap) == FALSE) {
+	if (WM_keymap_remove(keyconfig, keymap) == false) {
 		BKE_reportf(reports, RPT_ERROR, "KeyConfig '%s' cannot be removed", keymap->idname);
 		return;
 	}
@@ -284,7 +284,7 @@ static void rna_KeyConfig_remove(wmWindowManager *wm, ReportList *reports, Point
 {
 	wmKeyConfig *keyconf = keyconf_ptr->data;
 
-	if (WM_keyconfig_remove(wm, keyconf) == FALSE) {
+	if (WM_keyconfig_remove(wm, keyconf) == false) {
 		BKE_reportf(reports, RPT_ERROR, "KeyConfig '%s' cannot be removed", keyconf->idname);
 		return;
 	}
@@ -298,7 +298,7 @@ static PointerRNA rna_PupMenuBegin(bContext *C, const char *title, int icon)
 	PointerRNA r_ptr;
 	void *data;
 
-	data = (void *)uiPupMenuBegin(C, title, icon);
+	data = (void *)UI_popup_menu_begin(C, title, icon);
 
 	RNA_pointer_create(NULL, &RNA_UIPopupMenu, data, &r_ptr);
 
@@ -307,7 +307,25 @@ static PointerRNA rna_PupMenuBegin(bContext *C, const char *title, int icon)
 
 static void rna_PupMenuEnd(bContext *C, PointerRNA *handle)
 {
-	uiPupMenuEnd(C, handle->data);
+	UI_popup_menu_end(C, handle->data);
+}
+
+/* pie menu wrapper */
+static PointerRNA rna_PieMenuBegin(bContext *C, const char *title, int icon, PointerRNA *event)
+{
+	PointerRNA r_ptr;
+	void *data;
+
+	data = (void *)UI_pie_menu_begin(C, title, icon, event->data);
+
+	RNA_pointer_create(NULL, &RNA_UIPieMenu, data, &r_ptr);
+
+	return r_ptr;
+}
+
+static void rna_PieMenuEnd(bContext *C, PointerRNA *handle)
+{
+	UI_pie_menu_end(C, handle->data);
 }
 
 #else
@@ -444,7 +462,7 @@ void RNA_api_wm(StructRNA *srna)
 	rna_generic_op_invoke(func, WM_GEN_INVOKE_EVENT | WM_GEN_INVOKE_RETURN);
 
 
-	/* wrap uiPupMenuBegin */
+	/* wrap UI_popup_menu_begin */
 	func = RNA_def_function(srna, "pupmenu_begin__internal", "rna_PupMenuBegin");
 	RNA_def_function_flag(func, FUNC_NO_SELF | FUNC_USE_CONTEXT);
 	parm = RNA_def_string(func, "title", NULL, 0, "", "");
@@ -456,10 +474,30 @@ void RNA_api_wm(StructRNA *srna)
 	RNA_def_property_flag(parm, PROP_RNAPTR | PROP_NEVER_NULL);
 	RNA_def_function_return(func, parm);
 
-	/* wrap uiPupMenuEnd */
+	/* wrap UI_popup_menu_end */
 	func = RNA_def_function(srna, "pupmenu_end__internal", "rna_PupMenuEnd");
 	RNA_def_function_flag(func, FUNC_NO_SELF | FUNC_USE_CONTEXT);
 	parm = RNA_def_pointer(func, "menu", "UIPopupMenu", "", "");
+	RNA_def_property_flag(parm, PROP_RNAPTR | PROP_NEVER_NULL);
+
+	/* wrap uiPieMenuBegin */
+	func = RNA_def_function(srna, "piemenu_begin__internal", "rna_PieMenuBegin");
+	RNA_def_function_flag(func, FUNC_NO_SELF | FUNC_USE_CONTEXT);
+	parm = RNA_def_string(func, "title", NULL, 0, "", "");
+	RNA_def_property_flag(parm, PROP_REQUIRED);
+	parm = RNA_def_property(func, "icon", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_items(parm, icon_items);
+	parm = RNA_def_pointer(func, "event", "Event", "", "");
+	RNA_def_property_flag(parm, PROP_RNAPTR | PROP_NEVER_NULL);
+	/* return */
+	parm = RNA_def_pointer(func, "menu_pie", "UIPieMenu", "", "");
+	RNA_def_property_flag(parm, PROP_RNAPTR | PROP_NEVER_NULL);
+	RNA_def_function_return(func, parm);
+
+	/* wrap uiPieMenuEnd */
+	func = RNA_def_function(srna, "piemenu_end__internal", "rna_PieMenuEnd");
+	RNA_def_function_flag(func, FUNC_NO_SELF | FUNC_USE_CONTEXT);
+	parm = RNA_def_pointer(func, "menu", "UIPieMenu", "", "");
 	RNA_def_property_flag(parm, PROP_RNAPTR | PROP_NEVER_NULL);
 }
 

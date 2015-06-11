@@ -50,7 +50,6 @@
 #include "BKE_context.h"
 #include "BKE_depsgraph.h"
 #include "BKE_main.h"
-#include "BKE_mesh.h"
 #include "BKE_modifier.h"
 #include "BKE_object.h"
 #include "BKE_report.h"
@@ -65,7 +64,6 @@
 #include "ED_curve.h"
 #include "ED_mesh.h"
 #include "ED_screen.h"
-#include "ED_object.h"
 
 #include "WM_types.h"
 #include "WM_api.h"
@@ -74,7 +72,9 @@
 
 #include "object_intern.h"
 
-static int return_editmesh_indexar(BMEditMesh *em, int *tot, int **indexar, float *cent)
+static int return_editmesh_indexar(
+        BMEditMesh *em,
+        int *r_tot, int **r_indexar, float r_cent[3])
 {
 	BMVert *eve;
 	BMIter iter;
@@ -85,29 +85,29 @@ static int return_editmesh_indexar(BMEditMesh *em, int *tot, int **indexar, floa
 	}
 	if (totvert == 0) return 0;
 	
-	*indexar = index = MEM_mallocN(4 * totvert, "hook indexar");
-	*tot = totvert;
+	*r_indexar = index = MEM_mallocN(4 * totvert, "hook indexar");
+	*r_tot = totvert;
 	nr = 0;
-	zero_v3(cent);
+	zero_v3(r_cent);
 	
 	BM_ITER_MESH (eve, &iter, em->bm, BM_VERTS_OF_MESH) {
 		if (BM_elem_flag_test(eve, BM_ELEM_SELECT)) {
 			*index = nr; index++;
-			add_v3_v3(cent, eve->co);
+			add_v3_v3(r_cent, eve->co);
 		}
 		nr++;
 	}
 	
-	mul_v3_fl(cent, 1.0f / (float)totvert);
+	mul_v3_fl(r_cent, 1.0f / (float)totvert);
 	
 	return totvert;
 }
 
-static bool return_editmesh_vgroup(Object *obedit, BMEditMesh *em, char *name, float *cent)
+static bool return_editmesh_vgroup(Object *obedit, BMEditMesh *em, char *r_name, float r_cent[3])
 {
 	const int cd_dvert_offset = obedit->actdef ? CustomData_get_offset(&em->bm->vdata, CD_MDEFORMVERT) : -1;
 
-	zero_v3(cent);
+	zero_v3(r_cent);
 
 	if (cd_dvert_offset != -1) {
 		const int defgrp_index = obedit->actdef - 1;
@@ -122,14 +122,14 @@ static bool return_editmesh_vgroup(Object *obedit, BMEditMesh *em, char *name, f
 			dvert = BM_ELEM_CD_GET_VOID_P(eve, cd_dvert_offset);
 
 			if (defvert_find_weight(dvert, defgrp_index) > 0.0f) {
-				add_v3_v3(cent, eve->co);
+				add_v3_v3(r_cent, eve->co);
 				totvert++;
 			}
 		}
 		if (totvert) {
 			bDeformGroup *dg = BLI_findlink(&obedit->defbase, defgrp_index);
-			BLI_strncpy(name, dg->name, sizeof(dg->name));
-			mul_v3_fl(cent, 1.0f / (float)totvert);
+			BLI_strncpy(r_name, dg->name, sizeof(dg->name));
+			mul_v3_fl(r_cent, 1.0f / (float)totvert);
 			return true;
 		}
 	}
@@ -150,7 +150,7 @@ static void select_editbmesh_hook(Object *ob, HookModifierData *hmd)
 	
 	BM_ITER_MESH (eve, &iter, em->bm, BM_VERTS_OF_MESH) {
 		if (nr == hmd->indexar[index]) {
-			BM_vert_select_set(em->bm, eve, TRUE);
+			BM_vert_select_set(em->bm, eve, true);
 			if (index < hmd->totindex - 1) index++;
 		}
 
@@ -160,7 +160,9 @@ static void select_editbmesh_hook(Object *ob, HookModifierData *hmd)
 	EDBM_select_flush(em);
 }
 
-static int return_editlattice_indexar(Lattice *editlatt, int *tot, int **indexar, float *cent)
+static int return_editlattice_indexar(
+        Lattice *editlatt,
+        int *r_tot, int **r_indexar, float r_cent[3])
 {
 	BPoint *bp;
 	int *index, nr, totvert = 0, a;
@@ -177,10 +179,10 @@ static int return_editlattice_indexar(Lattice *editlatt, int *tot, int **indexar
 
 	if (totvert == 0) return 0;
 	
-	*indexar = index = MEM_mallocN(4 * totvert, "hook indexar");
-	*tot = totvert;
+	*r_indexar = index = MEM_mallocN(4 * totvert, "hook indexar");
+	*r_tot = totvert;
 	nr = 0;
-	zero_v3(cent);
+	zero_v3(r_cent);
 	
 	a = editlatt->pntsu * editlatt->pntsv * editlatt->pntsw;
 	bp = editlatt->def;
@@ -188,14 +190,14 @@ static int return_editlattice_indexar(Lattice *editlatt, int *tot, int **indexar
 		if (bp->f1 & SELECT) {
 			if (bp->hide == 0) {
 				*index = nr; index++;
-				add_v3_v3(cent, bp->vec);
+				add_v3_v3(r_cent, bp->vec);
 			}
 		}
 		bp++;
 		nr++;
 	}
 	
-	mul_v3_fl(cent, 1.0f / (float)totvert);
+	mul_v3_fl(r_cent, 1.0f / (float)totvert);
 	
 	return totvert;
 }
@@ -220,7 +222,9 @@ static void select_editlattice_hook(Object *obedit, HookModifierData *hmd)
 	}
 }
 
-static int return_editcurve_indexar(Object *obedit, int *tot, int **indexar, float *cent)
+static int return_editcurve_indexar(
+        Object *obedit,
+        int *r_tot, int **r_indexar, float r_cent[3])
 {
 	ListBase *editnurb = object_editcurve_get(obedit);
 	Nurb *nu;
@@ -250,10 +254,10 @@ static int return_editcurve_indexar(Object *obedit, int *tot, int **indexar, flo
 	}
 	if (totvert == 0) return 0;
 	
-	*indexar = index = MEM_mallocN(4 * totvert, "hook indexar");
-	*tot = totvert;
+	*r_indexar = index = MEM_mallocN(4 * totvert, "hook indexar");
+	*r_tot = totvert;
 	nr = 0;
-	zero_v3(cent);
+	zero_v3(r_cent);
 	
 	for (nu = editnurb->first; nu; nu = nu->next) {
 		if (nu->type == CU_BEZIER) {
@@ -262,17 +266,17 @@ static int return_editcurve_indexar(Object *obedit, int *tot, int **indexar, flo
 			while (a--) {
 				if (bezt->f1 & SELECT) {
 					*index = nr; index++;
-					add_v3_v3(cent, bezt->vec[0]);
+					add_v3_v3(r_cent, bezt->vec[0]);
 				}
 				nr++;
 				if (bezt->f2 & SELECT) {
 					*index = nr; index++;
-					add_v3_v3(cent, bezt->vec[1]);
+					add_v3_v3(r_cent, bezt->vec[1]);
 				}
 				nr++;
 				if (bezt->f3 & SELECT) {
 					*index = nr; index++;
-					add_v3_v3(cent, bezt->vec[2]);
+					add_v3_v3(r_cent, bezt->vec[2]);
 				}
 				nr++;
 				bezt++;
@@ -284,7 +288,7 @@ static int return_editcurve_indexar(Object *obedit, int *tot, int **indexar, flo
 			while (a--) {
 				if (bp->f1 & SELECT) {
 					*index = nr; index++;
-					add_v3_v3(cent, bp->vec);
+					add_v3_v3(r_cent, bp->vec);
 				}
 				nr++;
 				bp++;
@@ -292,16 +296,17 @@ static int return_editcurve_indexar(Object *obedit, int *tot, int **indexar, flo
 		}
 	}
 	
-	mul_v3_fl(cent, 1.0f / (float)totvert);
+	mul_v3_fl(r_cent, 1.0f / (float)totvert);
 	
 	return totvert;
 }
 
-static bool object_hook_index_array(Scene *scene, Object *obedit, int *tot, int **indexar, char *name, float *cent_r)
+static bool object_hook_index_array(Scene *scene, Object *obedit,
+                                    int *r_tot, int **r_indexar, char *r_name, float r_cent[3])
 {
-	*indexar = NULL;
-	*tot = 0;
-	name[0] = 0;
+	*r_indexar = NULL;
+	*r_tot = 0;
+	r_name[0] = 0;
 	
 	switch (obedit->type) {
 		case OB_MESH:
@@ -319,18 +324,20 @@ static bool object_hook_index_array(Scene *scene, Object *obedit, int *tot, int 
 			BKE_editmesh_tessface_calc(em);
 
 			/* check selected vertices first */
-			if (return_editmesh_indexar(em, tot, indexar, cent_r) == 0) {
-				return return_editmesh_vgroup(obedit, em, name, cent_r);
+			if (return_editmesh_indexar(em, r_tot, r_indexar, r_cent) == 0) {
+				return return_editmesh_vgroup(obedit, em, r_name, r_cent);
 			}
 			return true;
 		}
 		case OB_CURVE:
 		case OB_SURF:
-			return return_editcurve_indexar(obedit, tot, indexar, cent_r);
+			load_editNurb(obedit);
+			make_editNurb(obedit);
+			return return_editcurve_indexar(obedit, r_tot, r_indexar, r_cent);
 		case OB_LATTICE:
 		{
 			Lattice *lt = obedit->data;
-			return return_editlattice_indexar(lt->editlatt->latt, tot, indexar, cent_r);
+			return return_editlattice_indexar(lt->editlatt->latt, r_tot, r_indexar, r_cent);
 		}
 		default:
 			return false;
@@ -467,7 +474,7 @@ static int add_hook_object(Main *bmain, Scene *scene, Object *obedit, Object *ob
 
 	if (!ok) {
 		BKE_report(reports, RPT_ERROR, "Requires selected vertices or active vertex group");
-		return FALSE;
+		return false;
 	}
 
 	if (mode == OBJECT_ADDHOOK_NEWOB && !ob) {
@@ -496,6 +503,15 @@ static int add_hook_object(Main *bmain, Scene *scene, Object *obedit, Object *ob
 	
 	unit_m4(pose_mat);
 
+	invert_m4_m4(obedit->imat, obedit->obmat);
+	if (mode == OBJECT_ADDHOOK_NEWOB) {
+		/* pass */
+	}
+	else {
+		/* may overwrite with pose-bone location, below */
+		mul_v3_m4v3(cent, obedit->imat, ob->obmat[3]);
+	}
+
 	if (mode == OBJECT_ADDHOOK_SELOB_BONE) {
 		bArmature *arm = ob->data;
 		BLI_assert(ob->type == OB_ARMATURE);
@@ -507,12 +523,17 @@ static int add_hook_object(Main *bmain, Scene *scene, Object *obedit, Object *ob
 			pchan_act = BKE_pose_channel_active(ob);
 			if (LIKELY(pchan_act)) {
 				invert_m4_m4(pose_mat, pchan_act->pose_mat);
+				mul_v3_m4v3(cent, ob->obmat, pchan_act->pose_mat[3]);
+				mul_v3_m4v3(cent, obedit->imat, cent);
 			}
 		}
 		else {
 			BKE_report(reports, RPT_WARNING, "Armature has no active object bone");
 		}
 	}
+
+	copy_v3_v3(hmd->cent, cent);
+
 
 	/* matrix calculus */
 	/* vert x (obmat x hook->imat) x hook->obmat x ob->imat */
@@ -521,12 +542,11 @@ static int add_hook_object(Main *bmain, Scene *scene, Object *obedit, Object *ob
 	
 	invert_m4_m4(ob->imat, ob->obmat);
 	/* apparently this call goes from right to left... */
-	mul_serie_m4(hmd->parentinv, pose_mat, ob->imat, obedit->obmat,
-	             NULL, NULL, NULL, NULL, NULL);
+	mul_m4_series(hmd->parentinv, pose_mat, ob->imat, obedit->obmat);
 	
 	DAG_relations_tag_update(bmain);
 
-	return TRUE;
+	return true;
 }
 
 static int object_add_hook_selob_exec(bContext *C, wmOperator *op)
@@ -535,7 +555,7 @@ static int object_add_hook_selob_exec(bContext *C, wmOperator *op)
 	Scene *scene = CTX_data_scene(C);
 	Object *obedit = CTX_data_edit_object(C);
 	Object *obsel = NULL;
-	const int use_bone = RNA_boolean_get(op->ptr, "use_bone");
+	const bool use_bone = RNA_boolean_get(op->ptr, "use_bone");
 	const int mode = use_bone ? OBJECT_ADDHOOK_SELOB_BONE : OBJECT_ADDHOOK_SELOB;
 	
 	CTX_DATA_BEGIN (C, Object *, ob, selected_objects)
@@ -580,7 +600,7 @@ void OBJECT_OT_hook_add_selob(wmOperatorType *ot)
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
-	RNA_def_boolean(ot->srna, "use_bone", FALSE, "Active Bone",
+	RNA_def_boolean(ot->srna, "use_bone", false, "Active Bone",
 	                "Assign the hook to the hook objects active bone");
 }
 
@@ -687,6 +707,7 @@ void OBJECT_OT_hook_remove(wmOperatorType *ot)
 	/* properties */
 	prop = RNA_def_enum(ot->srna, "modifier", DummyRNA_NULL_items, 0, "Modifier", "Modifier number to remove");
 	RNA_def_enum_funcs(prop, hook_mod_itemf);
+	RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
 	ot->prop = prop;
 }
 
@@ -730,6 +751,7 @@ void OBJECT_OT_hook_reset(wmOperatorType *ot)
 	/* properties */
 	prop = RNA_def_enum(ot->srna, "modifier", DummyRNA_NULL_items, 0, "Modifier", "Modifier number to assign to");
 	RNA_def_enum_funcs(prop, hook_mod_itemf);
+	RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
 }
 
 static int object_hook_recenter_exec(bContext *C, wmOperator *op)
@@ -779,6 +801,7 @@ void OBJECT_OT_hook_recenter(wmOperatorType *ot)
 	/* properties */
 	prop = RNA_def_enum(ot->srna, "modifier", DummyRNA_NULL_items, 0, "Modifier", "Modifier number to assign to");
 	RNA_def_enum_funcs(prop, hook_mod_itemf);
+	RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
 }
 
 static int object_hook_assign_exec(bContext *C, wmOperator *op)
@@ -838,6 +861,7 @@ void OBJECT_OT_hook_assign(wmOperatorType *ot)
 	/* properties */
 	prop = RNA_def_enum(ot->srna, "modifier", DummyRNA_NULL_items, 0, "Modifier", "Modifier number to assign to");
 	RNA_def_enum_funcs(prop, hook_mod_itemf);
+	RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
 }
 
 static int object_hook_select_exec(bContext *C, wmOperator *op)
@@ -880,5 +904,6 @@ void OBJECT_OT_hook_select(wmOperatorType *ot)
 	/* properties */
 	prop = RNA_def_enum(ot->srna, "modifier", DummyRNA_NULL_items, 0, "Modifier", "Modifier number to remove");
 	RNA_def_enum_funcs(prop, hook_mod_itemf);
+	RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
 }
 

@@ -70,7 +70,7 @@ typedef struct ImageSampleInfo {
 	float linearcol[4];
 
 	unsigned char *colp;
-	float *colfp;
+	const float *colfp;
 
 	int draw;
 int color_manage;
@@ -82,7 +82,7 @@ static void sample_draw(const bContext *C, ARegion *ar, void *arg_info)
 	ImageSampleInfo *info = arg_info;
 
 	if (info->draw) {
-		ED_image_draw_info(scene, ar, info->color_manage, FALSE, info->channels,
+		ED_image_draw_info(scene, ar, info->color_manage, false, info->channels,
 		                   info->x, info->y, info->colp, info->colfp,
 		                   info->linearcol, NULL, NULL);
 	}
@@ -110,7 +110,7 @@ static void sample_apply(bContext *C, wmOperator *op, const wmEvent *event)
 	fy += (float) ibuf->y / 2.0f;
 
 	if (fx >= 0.0f && fy >= 0.0f && fx < ibuf->x && fy < ibuf->y) {
-		float *fp;
+		const float *fp;
 		unsigned char *cp;
 		int x = (int) fx, y = (int) fy;
 
@@ -140,7 +140,7 @@ static void sample_apply(bContext *C, wmOperator *op, const wmEvent *event)
 			copy_v4_v4(info->linearcol, info->colf);
 			IMB_colormanagement_colorspace_to_scene_linear_v4(info->linearcol, false, ibuf->rect_colorspace);
 
-			info->color_manage = TRUE;
+			info->color_manage = true;
 		}
 		if (ibuf->rect_float) {
 			fp = (ibuf->rect_float + (ibuf->channels) * (y * ibuf->x + x));
@@ -155,7 +155,7 @@ static void sample_apply(bContext *C, wmOperator *op, const wmEvent *event)
 			copy_v4_v4(info->linearcol, info->colf);
 			BKE_sequencer_pixel_from_sequencer_space_v4(scene, info->linearcol);
 
-			info->color_manage = TRUE;
+			info->color_manage = true;
 		}
 	}
 	else {
@@ -219,7 +219,7 @@ static void sample_cancel(bContext *C, wmOperator *op)
 static int sample_poll(bContext *C)
 {
 	SpaceSeq *sseq = CTX_wm_space_seq(C);
-	return sseq && BKE_sequencer_editing_get(CTX_data_scene(C), FALSE) != NULL;
+	return sseq && BKE_sequencer_editing_get(CTX_data_scene(C), false) != NULL;
 }
 
 void SEQUENCER_OT_sample(wmOperatorType *ot)

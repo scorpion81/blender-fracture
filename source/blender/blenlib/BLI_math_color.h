@@ -55,6 +55,8 @@ extern "C" {
 
 void hsv_to_rgb(float h, float s, float v, float *r, float *g, float *b);
 void hsv_to_rgb_v(const float hsv[3], float r_rgb[3]);
+void hsl_to_rgb(float h, float c, float l, float *r, float *g, float *b);
+void hsl_to_rgb_v(const float hcl[3], float r_rgb[3]);
 void hex_to_rgb(char *hexcol, float *r, float *g, float *b);
 void yuv_to_rgb(float y, float u, float v, float *lr, float *lg, float *lb);
 void ycc_to_rgb(float y, float cb, float cr, float *lr, float *lg, float *lb, int colorspace);
@@ -69,6 +71,8 @@ void rgb_to_hsv(float r, float g, float b, float *lh, float *ls, float *lv);
 void rgb_to_hsv_v(const float rgb[3], float r_hsv[3]);
 void rgb_to_hsl(float r, float g, float b, float *lh, float *ls, float *ll);
 void rgb_to_hsl_v(const float rgb[3], float r_hsl[3]);
+void rgb_to_hsl_compat(float r, float g, float b, float *lh, float *ls, float *ll);
+void rgb_to_hsl_compat_v(const float rgb[3], float r_hsl[3]);
 void rgb_to_hsv_compat(float r, float g, float b, float *lh, float *ls, float *lv);
 void rgb_to_hsv_compat_v(const float rgb[3], float r_hsv[3]);
 void rgb_to_lab(float r, float g, float b, float *ll, float *la, float *lb);
@@ -85,9 +89,6 @@ MINLINE float rgb_to_luma_y(const float rgb[3]);
 
 /**************** Profile Transformations *****************/
 
-void gamma_correct(float *c, float gamma);
-float rec709_to_linearrgb(float c);
-float linearrgb_to_rec709(float c);
 float srgb_to_linearrgb(float c);
 float linearrgb_to_srgb(float c);
 
@@ -123,18 +124,23 @@ MINLINE void premul_float_to_straight_uchar(unsigned char *result, const float c
 
 int constrain_rgb(float *r, float *g, float *b);
 void minmax_rgb(short c[3]);
+void hsv_clamp_v(float hsv[3], float v_max);
 
 void rgb_float_set_hue_float_offset(float *rgb, float hue_offset);
 void rgb_byte_set_hue_float_offset(unsigned char *rgb, float hue_offset);
 
-void rgb_uchar_to_float(float col_r[3], const unsigned char col_ub[3]);
-void rgba_uchar_to_float(float col_r[4], const unsigned char col_ub[4]);
-void rgb_float_to_uchar(unsigned char col_r[3], const float col_f[3]);
-void rgba_float_to_uchar(unsigned char col_r[4], const float col_f[4]);
+void rgb_uchar_to_float(float r_col[3], const unsigned char col_ub[3]);
+void rgba_uchar_to_float(float r_col[4], const unsigned char col_ub[4]);
+void rgb_float_to_uchar(unsigned char r_col[3], const float col_f[3]);
+void rgba_float_to_uchar(unsigned char r_col[4], const float col_f[4]);
 
 void xyz_to_lab(float x, float y, float z, float *l, float *a, float *b);
 
 MINLINE int compare_rgb_uchar(const unsigned char a[3], const unsigned char b[3], const int limit);
+
+MINLINE float dither_random_value(float s, float t);
+MINLINE void float_to_byte_dither_v3(unsigned char b[3], const float f[3], float dither, float s, float t);
+
 
 #define rgba_char_args_set_fl(col, r, g, b, a) \
 	rgba_char_args_set(col, (r) * 255, (g) * 255, (b) * 255, (a) * 255)

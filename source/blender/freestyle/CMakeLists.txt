@@ -38,8 +38,6 @@ set(SRC
 	intern/blender_interface/BlenderStrokeRenderer.cpp
 	intern/blender_interface/BlenderStrokeRenderer.h
 	intern/blender_interface/BlenderStyleModule.h
-	intern/blender_interface/BlenderTextureManager.cpp
-	intern/blender_interface/BlenderTextureManager.h
 	intern/blender_interface/FRS_freestyle.cpp
 	intern/geometry/BBox.h
 	intern/geometry/Bezier.cpp
@@ -185,12 +183,12 @@ set(SRC
 	intern/python/StrokeShader/BPy_BackboneStretcherShader.h
 	intern/python/StrokeShader/BPy_BezierCurveShader.cpp
 	intern/python/StrokeShader/BPy_BezierCurveShader.h
+	intern/python/StrokeShader/BPy_BlenderTextureShader.cpp
+	intern/python/StrokeShader/BPy_BlenderTextureShader.h
 	intern/python/StrokeShader/BPy_CalligraphicShader.cpp
 	intern/python/StrokeShader/BPy_CalligraphicShader.h
 	intern/python/StrokeShader/BPy_ColorNoiseShader.cpp
 	intern/python/StrokeShader/BPy_ColorNoiseShader.h
-	intern/python/StrokeShader/BPy_ColorVariationPatternShader.cpp
-	intern/python/StrokeShader/BPy_ColorVariationPatternShader.h
 	intern/python/StrokeShader/BPy_ConstantColorShader.cpp
 	intern/python/StrokeShader/BPy_ConstantColorShader.h
 	intern/python/StrokeShader/BPy_ConstantThicknessShader.cpp
@@ -211,20 +209,12 @@ set(SRC
 	intern/python/StrokeShader/BPy_SmoothingShader.h
 	intern/python/StrokeShader/BPy_SpatialNoiseShader.cpp
 	intern/python/StrokeShader/BPy_SpatialNoiseShader.h
-	intern/python/StrokeShader/BPy_StrokeTextureShader.cpp
-	intern/python/StrokeShader/BPy_StrokeTextureShader.h
-	intern/python/StrokeShader/BPy_TextureAssignerShader.cpp
-	intern/python/StrokeShader/BPy_TextureAssignerShader.h
+	intern/python/StrokeShader/BPy_StrokeTextureStepShader.cpp
+	intern/python/StrokeShader/BPy_StrokeTextureStepShader.h
 	intern/python/StrokeShader/BPy_ThicknessNoiseShader.cpp
 	intern/python/StrokeShader/BPy_ThicknessNoiseShader.h
-	intern/python/StrokeShader/BPy_ThicknessVariationPatternShader.cpp
-	intern/python/StrokeShader/BPy_ThicknessVariationPatternShader.h
 	intern/python/StrokeShader/BPy_TipRemoverShader.cpp
 	intern/python/StrokeShader/BPy_TipRemoverShader.h
-	intern/python/StrokeShader/BPy_fstreamShader.cpp
-	intern/python/StrokeShader/BPy_fstreamShader.h
-	intern/python/StrokeShader/BPy_streamShader.cpp
-	intern/python/StrokeShader/BPy_streamShader.h
 	intern/python/UnaryFunction0D/BPy_UnaryFunction0DDouble.cpp
 	intern/python/UnaryFunction0D/BPy_UnaryFunction0DDouble.h
 	intern/python/UnaryFunction0D/BPy_UnaryFunction0DEdgeNature.cpp
@@ -402,6 +392,8 @@ set(SRC
 	intern/scene_graph/NodeGroup.h
 	intern/scene_graph/NodeLight.cpp
 	intern/scene_graph/NodeLight.h
+	intern/scene_graph/NodeSceneRenderLayer.cpp
+	intern/scene_graph/NodeSceneRenderLayer.h
 	intern/scene_graph/NodeShape.cpp
 	intern/scene_graph/NodeShape.h
 	intern/scene_graph/NodeTransform.cpp
@@ -410,6 +402,8 @@ set(SRC
 	intern/scene_graph/OrientedLineRep.h
 	intern/scene_graph/Rep.cpp
 	intern/scene_graph/Rep.h
+	intern/scene_graph/SceneHash.cpp
+	intern/scene_graph/SceneHash.h
 	intern/scene_graph/ScenePrettyPrinter.cpp
 	intern/scene_graph/ScenePrettyPrinter.h
 	intern/scene_graph/SceneVisitor.cpp
@@ -445,7 +439,9 @@ set(SRC
 	intern/stroke/Operators.h
 	intern/stroke/PSStrokeRenderer.cpp
 	intern/stroke/PSStrokeRenderer.h
+	intern/stroke/Predicates0D.cpp
 	intern/stroke/Predicates0D.h
+	intern/stroke/Predicates1D.cpp
 	intern/stroke/Predicates1D.h
 	intern/stroke/QInformationMap.h
 	intern/stroke/Stroke.cpp
@@ -460,6 +456,7 @@ set(SRC
 	intern/stroke/StrokeRenderer.h
 	intern/stroke/StrokeRep.cpp
 	intern/stroke/StrokeRep.h
+	intern/stroke/StrokeShader.cpp
 	intern/stroke/StrokeShader.h
 	intern/stroke/StrokeTesselator.cpp
 	intern/stroke/StrokeTesselator.h
@@ -509,7 +506,9 @@ set(SRC
 	intern/view_map/GridDensityProvider.h
 	intern/view_map/HeuristicGridDensityProviderFactory.cpp
 	intern/view_map/HeuristicGridDensityProviderFactory.h
+	intern/view_map/Interface0D.cpp
 	intern/view_map/Interface0D.h
+	intern/view_map/Interface1D.cpp
 	intern/view_map/Interface1D.h
 	intern/view_map/OccluderSource.cpp
 	intern/view_map/OccluderSource.h
@@ -578,6 +577,6 @@ if(WIN32)
 	list(APPEND INC_SYS
 		${PTHREADS_INC}
 	)
-endif(WIN32)
+endif()
 
 blender_add_lib(bf_freestyle "${SRC}" "${INC}" "${INC_SYS}")

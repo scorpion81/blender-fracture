@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 /*
@@ -75,7 +75,7 @@ static bool transform_matrix4_gj_inverse(float R[][4], float M[][4])
 			}
 		}
 
-		if(pivotsize == 0)
+		if(UNLIKELY(pivotsize == 0.0f))
 			return false;
 
 		if(pivot != i) {
@@ -106,7 +106,7 @@ static bool transform_matrix4_gj_inverse(float R[][4], float M[][4])
 	for(int i = 3; i >= 0; --i) {
 		float f;
 
-		if((f = M[i][i]) == 0)
+		if(UNLIKELY((f = M[i][i]) == 0.0f))
 			return false;
 
 		for(int j = 0; j < 4; j++) {
@@ -135,15 +135,16 @@ Transform transform_inverse(const Transform& tfm)
 	memcpy(R, &tfmR, sizeof(R));
 	memcpy(M, &tfm, sizeof(M));
 
-	if(!transform_matrix4_gj_inverse(R, M)) {
+	if(UNLIKELY(!transform_matrix4_gj_inverse(R, M))) {
 		/* matrix is degenerate (e.g. 0 scale on some axis), ideally we should
 		 * never be in this situation, but try to invert it anyway with tweak */
 		M[0][0] += 1e-8f;
 		M[1][1] += 1e-8f;
 		M[2][2] += 1e-8f;
 
-		if(!transform_matrix4_gj_inverse(R, M))
+		if(UNLIKELY(!transform_matrix4_gj_inverse(R, M))) {
 			return transform_identity();
+		}
 	}
 
 	memcpy(&tfmR, R, sizeof(R));

@@ -48,9 +48,9 @@ static int rna_VectorFont_filepath_editable(PointerRNA *ptr)
 {
 	VFont *vfont = ptr->id.data;
 	if (BKE_vfont_is_builtin(vfont)) {
-		return FALSE;
+		return false;
 	}
-	return TRUE;
+	return true;
 }
 
 static void rna_VectorFont_reload_update(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *ptr)
@@ -84,6 +84,8 @@ void RNA_def_vfont(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "packed_file", PROP_POINTER, PROP_NONE);
 	RNA_def_property_pointer_sdna(prop, NULL, "packedfile");
 	RNA_def_property_ui_text(prop, "Packed File", "");
+
+	RNA_api_vfont(srna);
 }
 
 #endif

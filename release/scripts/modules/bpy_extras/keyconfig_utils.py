@@ -32,7 +32,10 @@ KM_HIERARCHY = [
     ('View2D', 'EMPTY', 'WINDOW', []),    # view 2d navigation (per region)
     ('View2D Buttons List', 'EMPTY', 'WINDOW', []),  # view 2d with buttons navigation
     ('Header', 'EMPTY', 'WINDOW', []),    # header stuff (per region)
-    ('Grease Pencil', 'EMPTY', 'WINDOW', []),  # grease pencil stuff (per region)
+
+    ('Grease Pencil', 'EMPTY', 'WINDOW', [  # grease pencil stuff (per region)
+        ('Grease Pencil Stroke Edit Mode', 'EMPTY', 'WINDOW', []),
+        ]),
 
     ('3D View', 'VIEW_3D', 'WINDOW', [  # view 3d navigation and generic stuff (select, transform)
         ('Object Mode', 'EMPTY', 'WINDOW', []),
@@ -52,11 +55,11 @@ KM_HIERARCHY = [
         ('Image Paint', 'EMPTY', 'WINDOW', []),  # image and view3d
         ('Sculpt', 'EMPTY', 'WINDOW', []),
 
-        ('Armature Sketch', 'EMPTY', 'WINDOW', []),
         ('Particle', 'EMPTY', 'WINDOW', []),
 
         ('Knife Tool Modal Map', 'EMPTY', 'WINDOW', []),
         ('Paint Stroke Modal', 'EMPTY', 'WINDOW', []),
+        ('Paint Curve', 'EMPTY', 'WINDOW', []),
 
         ('Object Non-modal', 'EMPTY', 'WINDOW', []),  # mode change
 
@@ -176,7 +179,7 @@ def _export_properties(prefix, properties, kmi_id, lines=None):
             elif properties.is_property_set(pname):
                 value = string_value(value)
                 if value != "":
-                    lines.append("set_kmi_prop(%s, '%s', %s, '%s')\n" % (prefix, pname, value, kmi_id))
+                    lines.append("kmi_props_setattr(%s, '%s', %s)\n" % (prefix, pname, value))
     return lines
 
 
@@ -222,11 +225,14 @@ def keyconfig_export(wm, kc, filepath):
 
     f.write("import bpy\n")
     f.write("import os\n\n")
-    f.write("def set_kmi_prop(kmiprops, prop, value, kmiid):\n"
-            "    if hasattr(kmiprops, prop):\n"
-            "        setattr(kmiprops, prop, value)\n"
-            "    else:\n"
-            "        print(\"Warning: property '%s' not found in keymap item '%s'\" % (prop, kmiid))\n\n")
+    f.write("def kmi_props_setattr(kmi_props, attr, value):\n"
+            "    try:\n"
+            "        setattr(kmi_props, attr, value)\n"
+            "    except AttributeError:\n"
+            "        print(\"Warning: property '%s' not found in keymap item '%s'\" %\n"
+            "              (attr, kmi_props.__class__.__name__))\n"
+            "    except Exception as e:\n"
+            "        print(\"Warning: %r\" % e)\n\n")
     f.write("wm = bpy.context.window_manager\n")
     f.write("kc = wm.keyconfigs.new(os.path.splitext(os.path.basename(__file__))[0])\n\n")  # keymap must be created by caller
 
@@ -239,7 +245,7 @@ def keyconfig_export(wm, kc, filepath):
     # the default blender keyconfig, recreating the current setup from a fresh blender
     # without needing to export keymaps which haven't been edited.
 
-    class FakeKeyConfig():
+    class FakeKeyConfig:
         keymaps = []
     edited_kc = FakeKeyConfig()
     for km in wm.keyconfigs.user.keymaps:

@@ -25,8 +25,6 @@
  *  \ingroup blenloader
  */
 
-#include "zlib.h"
-
 #include "BLI_utildefines.h"
 
 /* allow readfile to use deprecated functionality */
@@ -248,7 +246,7 @@ static void do_versions_nodetree_multi_file_output_format_2_62_1(Scene *sce, bNo
 			/* ugly, need to remove the old inputs list to avoid bad pointer checks when adding new sockets.
 			 * sock->storage is expected to contain path info in ntreeCompositOutputFileAddSocket.
 			 */
-			node->inputs.first = node->inputs.last = NULL;
+			BLI_listbase_clear(&node->inputs);
 
 			node->storage = nimf;
 
@@ -829,7 +827,7 @@ void blo_do_versions_260(FileData *fd, Library *UNUSED(lib), Main *main)
 				for (i = 0; i < 3; i++) {
 					if ( (ob->dsize[i] == 0.0f) || /* simple case, user never touched dsize */
 					     (ob->size[i]  == 0.0f))   /* cant scale the dsize to give a non zero result,
-					                                  so fallback to 1.0f */
+					                                * so fallback to 1.0f */
 					{
 						ob->dscale[i] = 1.0f;
 					}
@@ -921,7 +919,7 @@ void blo_do_versions_260(FileData *fd, Library *UNUSED(lib), Main *main)
 				if (!tracking->settings.object_distance)
 					tracking->settings.object_distance = 1.0f;
 
-				if (tracking->objects.first == NULL)
+				if (BLI_listbase_is_empty(&tracking->objects))
 					BKE_tracking_object_add(tracking, "Camera");
 
 				while (tracking_object) {
@@ -1198,7 +1196,7 @@ void blo_do_versions_260(FileData *fd, Library *UNUSED(lib), Main *main)
 					if (sl->spacetype == SPACE_CLIP) {
 						SpaceClip *sclip = (SpaceClip *)sl;
 						ARegion *ar;
-						int hide = FALSE;
+						bool hide = false;
 
 						for (ar = sa->regionbase.first; ar; ar = ar->next) {
 							if (ar->regiontype == RGN_TYPE_PREVIEW) {
@@ -1207,7 +1205,7 @@ void blo_do_versions_260(FileData *fd, Library *UNUSED(lib), Main *main)
 									ar->v2d.flag &= ~V2D_IS_INITIALISED;
 									ar->alignment = RGN_ALIGN_NONE;
 
-									hide = TRUE;
+									hide = true;
 								}
 							}
 						}
@@ -1530,7 +1528,7 @@ void blo_do_versions_260(FileData *fd, Library *UNUSED(lib), Main *main)
 	if (main->versionfile < 263 || (main->versionfile == 263 && main->subversionfile < 19)) {
 		Scene *scene;
 		Image *ima;
-		int colormanagement_disabled = FALSE;
+		bool colormanagement_disabled = false;
 
 		/* make scenes which are not using color management have got None as display device,
 		 * so they wouldn't perform linear-to-sRGB conversion on display
@@ -1544,7 +1542,7 @@ void blo_do_versions_260(FileData *fd, Library *UNUSED(lib), Main *main)
 
 				}
 
-				colormanagement_disabled = TRUE;
+				colormanagement_disabled = true;
 			}
 		}
 
@@ -1885,7 +1883,7 @@ void blo_do_versions_260(FileData *fd, Library *UNUSED(lib), Main *main)
 			SEQ_END
 
 			if (scene->r.bake_samples == 0)
-			scene->r.bake_samples = 256;
+				scene->r.bake_samples = 256;
 
 			if (scene->world) {
 				World *world = blo_do_versions_newlibadr(fd, scene->id.lib, scene->world);
@@ -2454,9 +2452,9 @@ void blo_do_versions_260(FileData *fd, Library *UNUSED(lib), Main *main)
 					if (sl->spacetype == SPACE_OUTLINER) {
 						SpaceOops *so = (SpaceOops *)sl;
 
-						if (!ELEM11(so->outlinevis, SO_ALL_SCENES, SO_CUR_SCENE, SO_VISIBLE, SO_SELECTED, SO_ACTIVE,
-						                            SO_SAME_TYPE, SO_GROUPS, SO_LIBRARIES, SO_SEQUENCE, SO_DATABLOCKS,
-						                            SO_USERDEF))
+						if (!ELEM(so->outlinevis, SO_ALL_SCENES, SO_CUR_SCENE, SO_VISIBLE, SO_SELECTED, SO_ACTIVE,
+						                          SO_SAME_TYPE, SO_GROUPS, SO_LIBRARIES, SO_SEQUENCE, SO_DATABLOCKS,
+						                          SO_USERDEF))
 						{
 							so->outlinevis = SO_ALL_SCENES;
 						}
@@ -2499,7 +2497,7 @@ void blo_do_versions_260(FileData *fd, Library *UNUSED(lib), Main *main)
 						}
 						else {
 							tmd->quad_method = MOD_TRIANGULATE_QUAD_FIXED;
-							tmd->ngon_method = MOD_TRIANGULATE_NGON_SCANFILL;
+							tmd->ngon_method = MOD_TRIANGULATE_NGON_EARCLIP;
 						}
 					}
 				}
@@ -2672,16 +2670,36 @@ void blo_do_versions_260(FileData *fd, Library *UNUSED(lib), Main *main)
 		}
 	}
 
-	if (!DNA_struct_elem_find(fd->filesdna, "BevelModifierData", "float", "profile")) {
-		Object *ob;
+	if (!MAIN_VERSION_ATLEAST(main, 269, 11)) {
+		bScreen *sc;
 
-		for (ob = main->object.first; ob; ob = ob->id.next) {
-			ModifierData *md;
-			for (md = ob->modifiers.first; md; md = md->next) {
-				if (md->type == eModifierType_Bevel) {
-					BevelModifierData *bmd = (BevelModifierData *)md;
-					bmd->profile = 0.5f;
-					bmd->val_flags = MOD_BEVEL_AMT_OFFSET;
+		for (sc = main->screen.first; sc; sc = sc->id.next) {
+			ScrArea *sa;
+			for (sa = sc->areabase.first; sa; sa = sa->next) {
+				SpaceLink *space_link;
+
+				for (space_link = sa->spacedata.first; space_link; space_link = space_link->next) {
+					if (space_link->spacetype == SPACE_IMAGE) {
+						ARegion *ar;
+						ListBase *lb;
+
+						if (space_link == sa->spacedata.first) {
+							lb = &sa->regionbase;
+						}
+						else {
+							lb = &space_link->regionbase;
+						}
+
+						for (ar = lb->first; ar; ar = ar->next) {
+							if (ar->regiontype == RGN_TYPE_PREVIEW) {
+								ar->regiontype = RGN_TYPE_TOOLS;
+								ar->alignment = RGN_ALIGN_LEFT;
+							}
+							else if (ar->regiontype == RGN_TYPE_UI) {
+								ar->alignment = RGN_ALIGN_RIGHT;
+							}
+						}
+					}
 				}
 			}
 		}

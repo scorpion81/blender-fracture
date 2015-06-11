@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 CCL_NAMESPACE_BEGIN
@@ -22,12 +22,12 @@ ccl_device void svm_node_attr_init(KernelGlobals *kg, ShaderData *sd,
 	uint4 node, NodeAttributeType *type,
 	NodeAttributeType *mesh_type, AttributeElement *elem, int *offset, uint *out_offset)
 {
-	if(sd->object != ~0 && sd->prim != ~0) {
+	if(sd->object != OBJECT_NONE) {
 		/* find attribute by unique id */
 		uint id = node.y;
 		uint attr_offset = sd->object*kernel_data.bvh.attributes_map_stride;
 #ifdef __HAIR__
-		attr_offset = (sd->segment == ~0)? attr_offset: attr_offset + ATTR_PRIM_CURVE;
+		attr_offset = (sd->type & PRIMITIVE_ALL_CURVE)? attr_offset + ATTR_PRIM_CURVE: attr_offset;
 #endif
 		uint4 attr_map = kernel_tex_fetch(__attributes_map, attr_offset);
 		

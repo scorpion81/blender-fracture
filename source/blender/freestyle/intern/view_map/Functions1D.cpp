@@ -26,7 +26,7 @@
  *  \date 01/07/2003
  */
 
-# include "Functions1D.h"
+#include "Functions1D.h"
 
 using namespace std;
 
@@ -198,7 +198,9 @@ int GetOccludeeF1D::operator()(Interface1D& inter)
 	ViewEdge *ve = dynamic_cast<ViewEdge*>(&inter);
 	if (ve) {
 		ViewShape *aShape = ve->aShape();
-		shapesVector.push_back(aShape);
+		if (aShape) {
+			shapesVector.push_back(aShape);
+		}
 	}
 	else {
 		Interface0DIterator it = inter.verticesBegin(), itend = inter.verticesEnd();

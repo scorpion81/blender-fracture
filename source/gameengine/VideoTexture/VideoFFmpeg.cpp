@@ -73,12 +73,12 @@ m_isThreaded(false), m_isStreaming(false), m_stopThread(false), m_cacheStarted(f
 	setFlip(true);
 	// construction is OK
 	*hRslt = S_OK;
-	m_thread.first = m_thread.last = NULL;
+	BLI_listbase_clear(&m_thread);
 	pthread_mutex_init(&m_cacheMutex, NULL);
-	m_frameCacheFree.first = m_frameCacheFree.last = NULL;
-	m_frameCacheBase.first = m_frameCacheBase.last = NULL;
-	m_packetCacheFree.first = m_packetCacheFree.last = NULL;
-	m_packetCacheBase.first = m_packetCacheBase.last = NULL;
+	BLI_listbase_clear(&m_frameCacheFree);
+	BLI_listbase_clear(&m_frameCacheBase);
+	BLI_listbase_clear(&m_packetCacheFree);
+	BLI_listbase_clear(&m_packetCacheBase);
 }
 
 // destructor
@@ -86,6 +86,13 @@ VideoFFmpeg::~VideoFFmpeg ()
 {
 }
 
+void VideoFFmpeg::refresh(void)
+{
+    // a fixed image will not refresh because it is loaded only once at creation
+    if (m_isImage)
+        return;
+    m_avail = false;
+}
 
 // release components
 bool VideoFFmpeg::release()
@@ -545,6 +552,7 @@ void VideoFFmpeg::openFile (char *filename)
 		// but it is really not desirable to seek on http file, so force streaming.
 		// It would be good to find this information from the context but there are no simple indication
 		!strncmp(filename, "http://", 7) ||
+		!strncmp(filename, "rtsp://", 7) ||
 		(m_formatCtx->pb && !m_formatCtx->pb->seekable)
 		)
 	{
@@ -680,6 +688,12 @@ bool VideoFFmpeg::play (void)
 		{
 			// set video position
 			setPositions();
+
+			if (m_isStreaming)
+			{
+				av_read_play(m_formatCtx);
+			}
+
 			// return success
 			return true;
 		}
@@ -696,6 +710,10 @@ bool VideoFFmpeg::pause (void)
 	{
 		if (VideoBase::pause())
 		{
+			if (m_isStreaming)
+			{
+				av_read_pause(m_formatCtx);
+			}
 			return true;
 		}
 	}
@@ -1005,9 +1023,20 @@ AVFrame *VideoFFmpeg::grabFrame(long position)
 	{
 		if (packet.stream_index == m_videoStream) 
 		{
-			avcodec_decode_video2(m_codecCtx, 
-				m_frame, &frameFinished, 
+			if (m_isImage)
+			{
+				// If we're an image, we're probably not going to be here often,
+				// so we don't want to deal with delayed frames from threading.
+				// There might be a better way to handle this, but I'll leave that
+				// for people more knowledgeable with ffmpeg than myself. We don't
+				// need threading for a single image anyways.
+				m_codecCtx->thread_count = 1;
+			}
+
+			avcodec_decode_video2(m_codecCtx,
+				m_frame, &frameFinished,
 				&packet);
+
 			// remember dts to compute exact frame number
 			dts = packet.dts;
 			if (frameFinished && !posFound) 

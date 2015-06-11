@@ -41,6 +41,7 @@ struct bNode;
 struct Brush;
 struct ColorBand;
 struct EnvMap;
+struct FreestyleLineStyle;
 struct HaloRen;
 struct Lamp;
 struct LampRen;
@@ -85,19 +86,21 @@ void BKE_texture_make_local(struct Tex *tex);
 struct Tex *give_current_object_texture(struct Object *ob);
 struct Tex *give_current_material_texture(struct Material *ma);
 struct Tex *give_current_lamp_texture(struct Lamp *la);
+struct Tex *give_current_linestyle_texture(struct FreestyleLineStyle *linestyle);
 struct Tex *give_current_world_texture(struct World *world);
 struct Tex *give_current_brush_texture(struct Brush *br);
 struct Tex *give_current_particle_texture(struct ParticleSettings *part);
 
 struct bNode *give_current_material_texture_node(struct Material *ma);
 
-int  give_active_mtex(struct ID *id, struct MTex ***mtex_ar, short *act);
+bool give_active_mtex(struct ID *id, struct MTex ***mtex_ar, short *act);
 void set_active_mtex(struct ID *id, short act);
 
 void set_current_brush_texture(struct Brush *br, struct Tex *tex);
 void set_current_world_texture(struct World *wo, struct Tex *tex);
 void set_current_material_texture(struct Material *ma, struct Tex *tex);
 void set_current_lamp_texture(struct Lamp *la, struct Tex *tex);
+void set_current_linestyle_texture(struct FreestyleLineStyle *linestyle, struct Tex *tex);
 void set_current_particle_texture(struct ParticleSettings *part, struct Tex *tex);
 
 bool has_current_material_texture(struct Material *ma);
@@ -129,6 +132,7 @@ struct OceanTex *BKE_add_oceantex(void);
 struct OceanTex *BKE_copy_oceantex(struct OceanTex *ot);
 	
 bool    BKE_texture_dependsOnTime(const struct Tex *texture);
+bool    BKE_texture_is_image_user(const struct Tex *tex);
 
 void BKE_texture_get_value(struct Scene *scene, struct Tex *texture, float *tex_co, struct TexResult *texres, bool use_color_management);
 

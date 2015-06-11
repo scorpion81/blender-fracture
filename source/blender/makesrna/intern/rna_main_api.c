@@ -104,6 +104,10 @@
 
 #include "BLF_translation.h"
 
+#ifdef WITH_PYTHON
+#  include "BPY_extern.h"
+#endif
+
 static Camera *rna_Main_cameras_new(Main *bmain, const char *name)
 {
 	ID *id = BKE_camera_add(bmain, name);
@@ -138,7 +142,17 @@ static void rna_Main_scenes_remove(Main *bmain, bContext *C, ReportList *reports
 	{
 		bScreen *sc = CTX_wm_screen(C);
 		if (sc->scene == scene) {
+
+#ifdef WITH_PYTHON
+			BPy_BEGIN_ALLOW_THREADS;
+#endif
+
 			ED_screen_set_scene(C, sc, scene_new);
+
+#ifdef WITH_PYTHON
+			BPy_END_ALLOW_THREADS;
+#endif
+
 		}
 
 		BKE_scene_unlink(bmain, scene, scene_new);
@@ -278,215 +292,19 @@ Mesh *rna_Main_meshes_new_from_object(
         Main *bmain, ReportList *reports, Scene *sce,
         Object *ob, int apply_modifiers, int settings, int calc_tessface, int calc_undeformed)
 {
-	Mesh *tmpmesh;
-	Curve *tmpcu = NULL, *copycu;
-	Object *tmpobj = NULL;
-	int render = settings == eModifierMode_Render, i;
-	int cage = !apply_modifiers;
-
-	/* perform the mesh extraction based on type */
 	switch (ob->type) {
 		case OB_FONT:
 		case OB_CURVE:
 		case OB_SURF:
-		{
-			ListBase dispbase = {NULL, NULL};
-			DerivedMesh *derivedFinal = NULL;
-			int uv_from_orco;
-
-			/* copies object and modifiers (but not the data) */
-			tmpobj = BKE_object_copy_ex(bmain, ob, TRUE);
-			tmpcu = (Curve *)tmpobj->data;
-			tmpcu->id.us--;
-
-			/* if getting the original caged mesh, delete object modifiers */
-			if (cage)
-				BKE_object_free_modifiers(tmpobj);
-
-			/* copies the data */
-			copycu = tmpobj->data = BKE_curve_copy((Curve *) ob->data);
-
-			/* temporarily set edit so we get updates from edit mode, but
-			 * also because for text datablocks copying it while in edit
-			 * mode gives invalid data structures */
-			copycu->editfont = tmpcu->editfont;
-			copycu->editnurb = tmpcu->editnurb;
-
-			/* get updated display list, and convert to a mesh */
-			BKE_displist_make_curveTypes_forRender(sce, tmpobj, &dispbase, &derivedFinal, FALSE, render);
-
-			copycu->editfont = NULL;
-			copycu->editnurb = NULL;
-
-			tmpobj->derivedFinal = derivedFinal;
-
-			/* convert object type to mesh */
-			uv_from_orco = (tmpcu->flag & CU_UV_ORCO) != 0;
-			BKE_mesh_from_nurbs_displist(tmpobj, &dispbase, uv_from_orco);
-
-			tmpmesh = tmpobj->data;
-
-			BKE_displist_free(&dispbase);
-
-			/* BKE_mesh_from_nurbs changes the type to a mesh, check it worked.
-			 * if it didn't the curve did not have any segments or otherwise 
-			 * would have generated an empty mesh */
-			if (tmpobj->type != OB_MESH) {
-				BKE_libblock_free_us(G.main, tmpobj);
-				return NULL;
-			}
-
-			BKE_mesh_texspace_copy_from_object(tmpmesh, ob);
-
-			BKE_libblock_free_us(bmain, tmpobj);
-			break;
-		}
-
 		case OB_MBALL:
-		{
-			/* metaballs don't have modifiers, so just convert to mesh */
-			Object *basis_ob = BKE_mball_basis_find(sce, ob);
-			/* todo, re-generatre for render-res */
-			/* metaball_polygonize(scene, ob) */
-
-			if (ob != basis_ob)
-				return NULL;  /* only do basis metaball */
-
-			tmpmesh = BKE_mesh_add(bmain, "Mesh");
-			/* BKE_mesh_add gives us a user count we don't need */
-			tmpmesh->id.us--;
-
-			if (render) {
-				ListBase disp = {NULL, NULL};
-				/* TODO(sergey): This is gonna to work for until EvaluationContext
-				 *               only contains for_render flag. As soon as CoW is
-				 *               implemented, this is to be rethinked.
-				 */
-				EvaluationContext eval_ctx = {0};
-				eval_ctx.for_render = render;
-				BKE_displist_make_mball_forRender(&eval_ctx, sce, ob, &disp);
-				BKE_mesh_from_metaball(&disp, tmpmesh);
-				BKE_displist_free(&disp);
-			}
-			else {
-				ListBase disp = {NULL, NULL};
-				if (ob->curve_cache) {
-					disp = ob->curve_cache->disp;
-				}
-				BKE_mesh_from_metaball(&disp, tmpmesh);
-			}
-
-			BKE_mesh_texspace_copy_from_object(tmpmesh, ob);
-
-			break;
-
-		}
 		case OB_MESH:
-			/* copies object and modifiers (but not the data) */
-			if (cage) {
-				/* copies the data */
-				tmpmesh = BKE_mesh_copy_ex(bmain, ob->data);
-				/* if not getting the original caged mesh, get final derived mesh */
-			}
-			else {
-				/* Make a dummy mesh, saves copying */
-				DerivedMesh *dm;
-				/* CustomDataMask mask = CD_MASK_BAREMESH|CD_MASK_MTFACE|CD_MASK_MCOL; */
-				CustomDataMask mask = CD_MASK_MESH; /* this seems more suitable, exporter,
-			                                         * for example, needs CD_MASK_MDEFORMVERT */
-
-				if (calc_undeformed)
-					mask |= CD_MASK_ORCO;
-
-				/* Write the display mesh into the dummy mesh */
-				if (render)
-					dm = mesh_create_derived_render(sce, ob, mask);
-				else
-					dm = mesh_create_derived_view(sce, ob, mask);
-
-				tmpmesh = BKE_mesh_add(bmain, "Mesh");
-				DM_to_mesh(dm, tmpmesh, ob, mask);
-				dm->release(dm);
-			}
-
-			/* BKE_mesh_add/copy gives us a user count we don't need */
-			tmpmesh->id.us--;
-
 			break;
 		default:
 			BKE_report(reports, RPT_ERROR, "Object does not have geometry data");
 			return NULL;
 	}
 
-	/* Copy materials to new mesh */
-	switch (ob->type) {
-		case OB_SURF:
-		case OB_FONT:
-		case OB_CURVE:
-			tmpmesh->totcol = tmpcu->totcol;
-
-			/* free old material list (if it exists) and adjust user counts */
-			if (tmpcu->mat) {
-				for (i = tmpcu->totcol; i-- > 0; ) {
-					/* are we an object material or data based? */
-
-					tmpmesh->mat[i] = ob->matbits[i] ? ob->mat[i] : tmpcu->mat[i];
-
-					if (tmpmesh->mat[i]) {
-						tmpmesh->mat[i]->id.us++;
-					}
-				}
-			}
-			break;
-
-#if 0
-		/* Crashes when assigning the new material, not sure why */
-		case OB_MBALL:
-			tmpmb = (MetaBall *)ob->data;
-			tmpmesh->totcol = tmpmb->totcol;
-
-			/* free old material list (if it exists) and adjust user counts */
-			if (tmpmb->mat) {
-				for (i = tmpmb->totcol; i-- > 0; ) {
-					tmpmesh->mat[i] = tmpmb->mat[i]; /* CRASH HERE ??? */
-					if (tmpmesh->mat[i]) {
-						tmpmb->mat[i]->id.us++;
-					}
-				}
-			}
-			break;
-#endif
-
-		case OB_MESH:
-			if (!cage) {
-				Mesh *origmesh = ob->data;
-				tmpmesh->flag = origmesh->flag;
-				tmpmesh->mat = MEM_dupallocN(origmesh->mat);
-				tmpmesh->totcol = origmesh->totcol;
-				tmpmesh->smoothresh = origmesh->smoothresh;
-				if (origmesh->mat) {
-					for (i = origmesh->totcol; i-- > 0; ) {
-						/* are we an object material or data based? */
-						tmpmesh->mat[i] = ob->matbits[i] ? ob->mat[i] : origmesh->mat[i];
-
-						if (tmpmesh->mat[i]) {
-							tmpmesh->mat[i]->id.us++;
-						}
-					}
-				}
-			}
-			break;
-	} /* end copy materials */
-
-	if (calc_tessface) {
-		/* cycles and exporters rely on this still */
-		BKE_mesh_tessface_ensure(tmpmesh);
-	}
-
-	/* make sure materials get updated in objects */
-	test_object_materials(bmain, &tmpmesh->id);
-
-	return tmpmesh;
+	return BKE_mesh_new_from_object(bmain, sce, ob, apply_modifiers, settings, calc_tessface, calc_undeformed);
 }
 
 static void rna_Main_meshes_remove(Main *bmain, ReportList *reports, PointerRNA *mesh_ptr)
@@ -865,14 +683,14 @@ static void rna_Main_grease_pencil_remove(Main *bmain, ReportList *reports, Poin
 		            gpd->id.name + 2, ID_REAL_USERS(gpd));
 }
 
-FreestyleLineStyle *rna_Main_linestyles_new(Main *bmain, const char *name)
+static FreestyleLineStyle *rna_Main_linestyles_new(Main *bmain, const char *name)
 {
-	FreestyleLineStyle *linestyle = BKE_new_linestyle(name, bmain);
+	FreestyleLineStyle *linestyle = BKE_linestyle_new(name, bmain);
 	id_us_min(&linestyle->id);
 	return linestyle;
 }
 
-void rna_Main_linestyles_remove(Main *bmain, ReportList *reports, FreestyleLineStyle *linestyle)
+static void rna_Main_linestyles_remove(Main *bmain, ReportList *reports, FreestyleLineStyle *linestyle)
 {
 	if (ID_REAL_USERS(linestyle) <= 0)
 		BKE_libblock_free(bmain, linestyle);
@@ -916,32 +734,33 @@ static void rna_Main_movieclips_tag(Main *bmain, int value) { BKE_main_id_tag_li
 static void rna_Main_masks_tag(Main *bmain, int value) { BKE_main_id_tag_listbase(&bmain->mask, value); }
 static void rna_Main_linestyle_tag(Main *bmain, int value) { BKE_main_id_tag_listbase(&bmain->linestyle, value); }
 
-static int rna_Main_cameras_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_CA); }
-static int rna_Main_scenes_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_SCE); }
-static int rna_Main_objects_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_OB); }
-static int rna_Main_materials_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_MA); }
-static int rna_Main_node_groups_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_NT); }
-static int rna_Main_meshes_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_ME); }
-static int rna_Main_lamps_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_LA); }
-static int rna_Main_libraries_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_LI); }
-static int rna_Main_screens_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_SCR); }
-static int rna_Main_window_managers_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_WM); }
-static int rna_Main_images_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_IM); }
-static int rna_Main_lattices_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_LT); }
-static int rna_Main_curves_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_CU); }
-static int rna_Main_metaballs_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_MB); }
-static int rna_Main_fonts_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_VF); }
-static int rna_Main_textures_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_TE); }
-static int rna_Main_brushes_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_BR); }
-static int rna_Main_worlds_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_WO); }
-static int rna_Main_groups_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_GR); }
-static int rna_Main_texts_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_TXT); }
-static int rna_Main_speakers_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_SPK); }
-static int rna_Main_sounds_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_SO); }
-static int rna_Main_armatures_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_AR); }
-static int rna_Main_actions_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_AC); }
-static int rna_Main_particles_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_PA); }
-static int rna_Main_gpencil_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_GD); }
+static int rna_Main_cameras_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_CA) != 0; }
+static int rna_Main_scenes_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_SCE) != 0; }
+static int rna_Main_objects_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_OB) != 0; }
+static int rna_Main_materials_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_MA) != 0; }
+static int rna_Main_node_groups_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_NT) != 0; }
+static int rna_Main_meshes_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_ME) != 0; }
+static int rna_Main_lamps_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_LA) != 0; }
+static int rna_Main_libraries_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_LI) != 0; }
+static int rna_Main_screens_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_SCR) != 0; }
+static int rna_Main_window_managers_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_WM) != 0; }
+static int rna_Main_images_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_IM) != 0; }
+static int rna_Main_lattices_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_LT) != 0; }
+static int rna_Main_curves_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_CU) != 0; }
+static int rna_Main_metaballs_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_MB) != 0; }
+static int rna_Main_fonts_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_VF) != 0; }
+static int rna_Main_textures_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_TE) != 0; }
+static int rna_Main_brushes_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_BR) != 0; }
+static int rna_Main_worlds_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_WO) != 0; }
+static int rna_Main_groups_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_GR) != 0; }
+static int rna_Main_texts_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_TXT) != 0; }
+static int rna_Main_speakers_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_SPK) != 0; }
+static int rna_Main_sounds_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_SO) != 0; }
+static int rna_Main_armatures_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_AR) != 0; }
+static int rna_Main_actions_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_AC) != 0; }
+static int rna_Main_particles_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_PA) != 0; }
+static int rna_Main_gpencil_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_GD) != 0; }
+static int rna_Main_linestyle_is_updated_get(PointerRNA *ptr) { return DAG_id_type_tagged(ptr->data, ID_LS) != 0; }
 
 #else
 
@@ -1964,6 +1783,7 @@ void RNA_def_main_linestyles(BlenderRNA *brna, PropertyRNA *cprop)
 	StructRNA *srna;
 	FunctionRNA *func;
 	PropertyRNA *parm;
+	PropertyRNA *prop;
 
 	RNA_def_property_srna(cprop, "BlendDataLineStyles");
 	srna = RNA_def_struct(brna, "BlendDataLineStyles", NULL);
@@ -1987,6 +1807,10 @@ void RNA_def_main_linestyles(BlenderRNA *brna, PropertyRNA *cprop)
 	RNA_def_function_ui_description(func, "Remove a line style instance from the current blendfile");
 	parm = RNA_def_pointer(func, "linestyle", "FreestyleLineStyle", "", "Line style to remove");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
+
+	prop = RNA_def_property(srna, "is_updated", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+	RNA_def_property_boolean_funcs(prop, "rna_Main_linestyle_is_updated_get", NULL);
 }
 
 #endif

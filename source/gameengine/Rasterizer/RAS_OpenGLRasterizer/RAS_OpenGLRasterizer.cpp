@@ -35,15 +35,17 @@
  
 #include "RAS_OpenGLRasterizer.h"
 
-#include "GL/glew.h"
+#include "glew-mx.h"
 
 #include "RAS_ICanvas.h"
 #include "RAS_Rect.h"
 #include "RAS_TexVert.h"
 #include "RAS_MeshObject.h"
 #include "RAS_Polygon.h"
-#include "RAS_LightObject.h"
+#include "RAS_ILightObject.h"
 #include "MT_CmMatrix4x4.h"
+
+#include "RAS_OpenGLLight.h"
 
 #include "RAS_StorageIM.h"
 #include "RAS_StorageVA.h"
@@ -59,7 +61,6 @@ extern "C"{
 
 // XXX Clean these up <<<
 #include "Value.h"
-#include "KX_Light.h"
 #include "KX_Scene.h"
 #include "KX_RayCast.h"
 #include "KX_GameObject.h"
@@ -100,6 +101,7 @@ RAS_OpenGLRasterizer::RAS_OpenGLRasterizer(RAS_ICanvas* canvas, int storage)
 	m_usingoverrideshader(false),
     m_clientobject(NULL),
     m_auxilaryClientInfo(NULL),
+    m_drawingmode(KX_TEXTURED),
 	m_texco_num(0),
 	m_attrib_num(0),
 	//m_last_alphablend(GPU_BLEND_SOLID),
@@ -330,10 +332,9 @@ void RAS_OpenGLRasterizer::Exit()
 	EndFrame();
 }
 
-bool RAS_OpenGLRasterizer::BeginFrame(int drawingmode, double time)
+bool RAS_OpenGLRasterizer::BeginFrame(double time)
 {
 	m_time = time;
-	SetDrawingMode(drawingmode);
 
 	// Blender camera routine destroys the settings
 	if (m_drawingmode < KX_SOLID)
@@ -1187,7 +1188,7 @@ void RAS_OpenGLRasterizer::ProcessLighting(bool uselights, const MT_Transform& v
 		KX_Scene* kxscene = (KX_Scene*)m_auxilaryClientInfo;
 		float glviewmat[16];
 		unsigned int count;
-		std::vector<struct	RAS_LightObject*>::iterator lit = m_lights.begin();
+		std::vector<RAS_OpenGLLight*>::iterator lit = m_lights.begin();
 
 		for (count=0; count<m_numgllights; count++)
 			glDisable((GLenum)(GL_LIGHT0+count));
@@ -1198,10 +1199,9 @@ void RAS_OpenGLRasterizer::ProcessLighting(bool uselights, const MT_Transform& v
 		glLoadMatrixf(glviewmat);
 		for (lit = m_lights.begin(), count = 0; !(lit==m_lights.end()) && count < m_numgllights; ++lit)
 		{
-			RAS_LightObject* lightdata = (*lit);
-			KX_LightObject *kxlight = (KX_LightObject*)lightdata->m_light;
+			RAS_OpenGLLight* light = (*lit);
 
-			if (kxlight->ApplyLight(kxscene, layer, count))
+			if (light->ApplyFixedFunctionLighting(kxscene, layer, count))
 				count++;
 		}
 		glPopMatrix();
@@ -1243,15 +1243,25 @@ void RAS_OpenGLRasterizer::DisableOpenGLLights()
 	m_lastlighting = false;
 }
 
-void RAS_OpenGLRasterizer::AddLight(struct RAS_LightObject* lightobject)
+RAS_ILightObject *RAS_OpenGLRasterizer::CreateLight()
 {
-	m_lights.push_back(lightobject);
+	return new RAS_OpenGLLight(this);
 }
 
-void RAS_OpenGLRasterizer::RemoveLight(struct RAS_LightObject* lightobject)
+void RAS_OpenGLRasterizer::AddLight(RAS_ILightObject* lightobject)
 {
-	std::vector<struct	RAS_LightObject*>::iterator lit =
-		std::find(m_lights.begin(),m_lights.end(),lightobject);
+	RAS_OpenGLLight* gllight = dynamic_cast<RAS_OpenGLLight*>(lightobject);
+	assert(gllight);
+	m_lights.push_back(gllight);
+}
+
+void RAS_OpenGLRasterizer::RemoveLight(RAS_ILightObject* lightobject)
+{
+	RAS_OpenGLLight* gllight = dynamic_cast<RAS_OpenGLLight*>(lightobject);
+	assert(gllight);
+
+	std::vector<RAS_OpenGLLight*>::iterator lit =
+		std::find(m_lights.begin(),m_lights.end(),gllight);
 
 	if (!(lit==m_lights.end()))
 		m_lights.erase(lit);
@@ -1259,28 +1269,32 @@ void RAS_OpenGLRasterizer::RemoveLight(struct RAS_LightObject* lightobject)
 
 bool RAS_OpenGLRasterizer::RayHit(struct KX_ClientObjectInfo *client, KX_RayCast *result, void * const data)
 {
-	double* const oglmatrix = (double* const) data;
+	if (result->m_hitMesh) {
+		double* const oglmatrix = (double* const) data;
 
-	RAS_Polygon* poly = result->m_hitMesh->GetPolygon(result->m_hitPolygon);
-	if (!poly->IsVisible())
+		RAS_Polygon* poly = result->m_hitMesh->GetPolygon(result->m_hitPolygon);
+		if (!poly->IsVisible())
+			return false;
+
+		MT_Vector3 resultnormal(result->m_hitNormal);
+		MT_Vector3 left(oglmatrix[0],oglmatrix[1],oglmatrix[2]);
+		MT_Vector3 dir = -(left.cross(resultnormal)).safe_normalized();
+		left = (dir.cross(resultnormal)).safe_normalized();
+		// for the up vector, we take the 'resultnormal' returned by the physics
+
+		double maat[16] = {left[0],         left[1],         left[2],         0,
+			               dir[0],          dir[1],          dir[2],          0,
+				           resultnormal[0], resultnormal[1], resultnormal[2], 0,
+					       0,               0,               0,               1};
+
+		glTranslated(oglmatrix[12],oglmatrix[13],oglmatrix[14]);
+		//glMultMatrixd(oglmatrix);
+		glMultMatrixd(maat);
+		return true;
+	}
+	else {
 		return false;
-
-	MT_Point3 resultpoint(result->m_hitPoint);
-	MT_Vector3 resultnormal(result->m_hitNormal);
-	MT_Vector3 left(oglmatrix[0],oglmatrix[1],oglmatrix[2]);
-	MT_Vector3 dir = -(left.cross(resultnormal)).safe_normalized();
-	left = (dir.cross(resultnormal)).safe_normalized();
-	// for the up vector, we take the 'resultnormal' returned by the physics
-
-	double maat[16] = {left[0],         left[1],         left[2],         0,
-	                   dir[0],          dir[1],          dir[2],          0,
-	                   resultnormal[0], resultnormal[1], resultnormal[2], 0,
-	                   0,               0,               0,               1};
-
-	glTranslated(resultpoint[0],resultpoint[1],resultpoint[2]);
-	//glMultMatrixd(oglmatrix);
-	glMultMatrixd(maat);
-	return true;
+	}
 }
 
 void RAS_OpenGLRasterizer::applyTransform(double* oglmatrix,int objectdrawmode )
@@ -1365,8 +1379,6 @@ void RAS_OpenGLRasterizer::applyTransform(double* oglmatrix,int objectdrawmode )
 			KX_GameObject *parent = gameobj->GetParent();
 			if (!physics_controller && parent)
 				physics_controller = parent->GetPhysicsController();
-			if (parent)
-				parent->Release();
 
 			KX_RayCast::Callback<RAS_OpenGLRasterizer> callback(this, physics_controller, oglmatrix);
 			if (!KX_RayCast::RayTest(physics_environment, frompoint, topoint, callback))

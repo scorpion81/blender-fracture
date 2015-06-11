@@ -41,6 +41,7 @@
 #include "DNA_scene_types.h"
 
 #include "BKE_context.h"
+#include "BKE_sequencer.h"
 #include "BKE_global.h"
 #include "BKE_main.h"
 #include "BKE_sound.h"
@@ -55,6 +56,7 @@
 
 #include "ED_anim_api.h"
 #include "ED_screen.h"
+#include "ED_sequencer.h"
 
 #include "anim_intern.h"
 
@@ -66,25 +68,25 @@ static int change_frame_poll(bContext *C)
 	ScrArea *sa = CTX_wm_area(C);
 	
 	/* XXX temp? prevent changes during render */
-	if (G.is_rendering) return FALSE;
+	if (G.is_rendering) return false;
 	
 	/* although it's only included in keymaps for regions using ED_KEYMAP_ANIMATION,
 	 * this shouldn't show up in 3D editor (or others without 2D timeline view) via search
 	 */
 	if (sa) {
-		if (ELEM5(sa->spacetype, SPACE_TIME, SPACE_ACTION, SPACE_NLA, SPACE_SEQ, SPACE_CLIP)) {
-			return TRUE;
+		if (ELEM(sa->spacetype, SPACE_TIME, SPACE_ACTION, SPACE_NLA, SPACE_SEQ, SPACE_CLIP)) {
+			return true;
 		}
 		else if (sa->spacetype == SPACE_IPO) {
 			/* NOTE: Graph Editor has special version which does some extra stuff.
 			 * No need to show the generic error message for that case though!
 			 */
-			return FALSE;
+			return false;
 		}
 	}
 	
 	CTX_wm_operator_poll_msg_set(C, "Expected an timeline/animation area to be active");
-	return FALSE;
+	return false;
 }
 
 /* Set the new frame number */
@@ -92,9 +94,15 @@ static void change_frame_apply(bContext *C, wmOperator *op)
 {
 	Main *bmain = CTX_data_main(C);
 	Scene *scene = CTX_data_scene(C);
-	
+	int frame = RNA_int_get(op->ptr, "frame");
+	bool do_snap = RNA_boolean_get(op->ptr, "snap");
+
+	if (do_snap && CTX_wm_space_seq(C)) {
+		frame = BKE_sequencer_find_next_prev_edit(scene, frame, SEQ_SIDE_BOTH, true, false, false);
+	}
+
 	/* set the new frame number */
-	CFRA = RNA_int_get(op->ptr, "frame");
+	CFRA = frame;
 	FRAMENUMBER_MIN_CLAMP(CFRA);
 	SUBFRA = 0.0f;
 	
@@ -124,16 +132,35 @@ static int frame_from_event(bContext *C, const wmEvent *event)
 	int frame;
 
 	/* convert from region coordinates to View2D 'tot' space */
-	UI_view2d_region_to_view(&region->v2d, event->mval[0], event->mval[1], &viewx, NULL);
+	viewx = UI_view2d_region_to_view_x(&region->v2d, event->mval[0]);
 	
 	/* round result to nearest int (frames are ints!) */
 	frame = iroundf(viewx);
-
+	
 	if (scene->r.flag & SCER_LOCK_FRAME_SELECTION) {
 		CLAMP(frame, PSFRA, PEFRA);
 	}
-
+	
 	return frame;
+}
+
+static void change_frame_seq_preview_begin(bContext *C, const wmEvent *event)
+{
+	ScrArea *sa = CTX_wm_area(C);
+	if (sa && sa->spacetype == SPACE_SEQ) {
+		SpaceSeq *sseq = sa->spacedata.first;
+		if (ED_space_sequencer_check_show_strip(sseq)) {
+			ED_sequencer_special_preview_set(C, event->mval);
+		}
+	}
+}
+static void change_frame_seq_preview_end(bContext *C)
+{
+	if (ED_sequencer_special_preview_get() != NULL) {
+		Scene *scene = CTX_data_scene(C);
+		ED_sequencer_special_preview_clear();
+		WM_event_add_notifier(C, NC_SCENE | ND_FRAME, scene);
+	}
 }
 
 /* Modal Operator init */
@@ -144,7 +171,9 @@ static int change_frame_invoke(bContext *C, wmOperator *op, const wmEvent *event
 	 * click-dragging over a range (modal scrubbing).
 	 */
 	RNA_int_set(op->ptr, "frame", frame_from_event(C, event));
-	
+
+	change_frame_seq_preview_begin(C, event);
+
 	change_frame_apply(C, op);
 	
 	/* add temp handler */
@@ -153,14 +182,21 @@ static int change_frame_invoke(bContext *C, wmOperator *op, const wmEvent *event
 	return OPERATOR_RUNNING_MODAL;
 }
 
+static void change_frame_cancel(bContext *C, wmOperator *UNUSED(op))
+{
+	change_frame_seq_preview_end(C);
+}
+
 /* Modal event handling of frame changing */
 static int change_frame_modal(bContext *C, wmOperator *op, const wmEvent *event)
 {
+	int ret = OPERATOR_RUNNING_MODAL;
 	/* execute the events */
 	switch (event->type) {
 		case ESCKEY:
-			return OPERATOR_FINISHED;
-		
+			ret = OPERATOR_FINISHED;
+			break;
+
 		case MOUSEMOVE:
 			RNA_int_set(op->ptr, "frame", frame_from_event(C, event));
 			change_frame_apply(C, op);
@@ -168,19 +204,36 @@ static int change_frame_modal(bContext *C, wmOperator *op, const wmEvent *event)
 		
 		case LEFTMOUSE: 
 		case RIGHTMOUSE:
+		case MIDDLEMOUSE:
 			/* we check for either mouse-button to end, as checking for ACTIONMOUSE (which is used to init 
 			 * the modal op) doesn't work for some reason
 			 */
 			if (event->val == KM_RELEASE)
-				return OPERATOR_FINISHED;
+				ret = OPERATOR_FINISHED;
+			break;
+
+		case LEFTCTRLKEY:
+		case RIGHTCTRLKEY:
+			if (event->val == KM_RELEASE) {
+				RNA_boolean_set(op->ptr, "snap", false);
+			}
+			else if (event->val == KM_PRESS) {
+				RNA_boolean_set(op->ptr, "snap", true);
+			}
 			break;
 	}
 
-	return OPERATOR_RUNNING_MODAL;
+	if (ret != OPERATOR_RUNNING_MODAL) {
+		change_frame_seq_preview_end(C);
+	}
+
+	return ret;
 }
 
 static void ANIM_OT_change_frame(wmOperatorType *ot)
 {
+	PropertyRNA *prop;
+
 	/* identifiers */
 	ot->name = "Change Frame";
 	ot->idname = "ANIM_OT_change_frame";
@@ -189,6 +242,7 @@ static void ANIM_OT_change_frame(wmOperatorType *ot)
 	/* api callbacks */
 	ot->exec = change_frame_exec;
 	ot->invoke = change_frame_invoke;
+	ot->cancel = change_frame_cancel;
 	ot->modal = change_frame_modal;
 	ot->poll = change_frame_poll;
 	
@@ -197,6 +251,8 @@ static void ANIM_OT_change_frame(wmOperatorType *ot)
 
 	/* rna */
 	ot->prop = RNA_def_int(ot->srna, "frame", 0, MINAFRAME, MAXFRAME, "Frame", "", MINAFRAME, MAXFRAME);
+	prop = RNA_def_boolean(ot->srna, "snap", false, "Snap", "");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 }
 
 /* ****************** set preview range operator ****************************/
@@ -212,8 +268,8 @@ static int previewrange_define_exec(bContext *C, wmOperator *op)
 	WM_operator_properties_border_to_rcti(op, &rect);
 	
 	/* convert min/max values to frames (i.e. region to 'tot' rect) */
-	UI_view2d_region_to_view(&ar->v2d, rect.xmin, 0, &sfra, NULL);
-	UI_view2d_region_to_view(&ar->v2d, rect.xmax, 0, &efra, NULL);
+	sfra = UI_view2d_region_to_view_x(&ar->v2d, rect.xmin);
+	efra = UI_view2d_region_to_view_x(&ar->v2d, rect.xmax);
 	
 	/* set start/end frames for preview-range 
 	 *	- must clamp within allowable limits
@@ -276,6 +332,9 @@ static int previewrange_clear_exec(bContext *C, wmOperator *UNUSED(op))
 	scene->r.pefra = 0;
 	
 	ED_area_tag_redraw(curarea);
+	
+	/* send notifiers */
+	WM_event_add_notifier(C, NC_SCENE | ND_FRAME, scene);
 	
 	return OPERATOR_FINISHED;
 } 

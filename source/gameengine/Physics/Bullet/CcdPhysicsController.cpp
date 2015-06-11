@@ -148,9 +148,32 @@ CcdPhysicsController::CcdPhysicsController (const CcdConstructionInfo& ci)
 	m_savedCollisionFilterGroup = 0;
 	m_savedCollisionFilterMask = 0;
 	m_savedMass = 0.0;
+	m_savedDyna = false;
 	m_suspended = false;
 	
 	CreateRigidbody();
+}
+
+void CcdPhysicsController::addCcdConstraintRef(btTypedConstraint* c)
+{
+	int index = m_ccdConstraintRefs.findLinearSearch(c);
+	if (index == m_ccdConstraintRefs.size())
+		m_ccdConstraintRefs.push_back(c);
+}
+
+void CcdPhysicsController::removeCcdConstraintRef(btTypedConstraint* c)
+{
+	m_ccdConstraintRefs.remove(c);
+}
+
+btTypedConstraint* CcdPhysicsController::getCcdConstraintRef(int index)
+{
+	return m_ccdConstraintRefs[index];
+}
+
+int CcdPhysicsController::getNumCcdConstraintRefs() const
+{
+	return m_ccdConstraintRefs.size();
 }
 
 btTransform&	CcdPhysicsController::GetTransformFromMotionState(PHY_IMotionState* motionState)
@@ -207,6 +230,11 @@ btRigidBody* CcdPhysicsController::GetRigidBody()
 {
 	return btRigidBody::upcast(m_object);
 }
+const btRigidBody* CcdPhysicsController::GetRigidBody() const
+{
+	return btRigidBody::upcast(m_object);
+}
+
 btCollisionObject*	CcdPhysicsController::GetCollisionObject()
 {
 	return m_object;
@@ -1063,6 +1091,7 @@ void	CcdPhysicsController::SuspendDynamics(bool ghost)
 
 		m_savedCollisionFlags = body->getCollisionFlags();
 		m_savedMass = GetMass();
+		m_savedDyna = m_cci.m_bDyna;
 		m_savedCollisionFilterGroup = handle->m_collisionFilterGroup;
 		m_savedCollisionFilterMask = handle->m_collisionFilterMask;
 		m_suspended = true;
@@ -1071,6 +1100,7 @@ void	CcdPhysicsController::SuspendDynamics(bool ghost)
 			btCollisionObject::CF_STATIC_OBJECT|((ghost)?btCollisionObject::CF_NO_CONTACT_RESPONSE:(m_savedCollisionFlags&btCollisionObject::CF_NO_CONTACT_RESPONSE)),
 			btBroadphaseProxy::StaticFilter,
 			btBroadphaseProxy::AllFilter ^ btBroadphaseProxy::StaticFilter);
+		m_cci.m_bDyna = false;
 	}
 }
 
@@ -1087,6 +1117,7 @@ void	CcdPhysicsController::RestoreDynamics()
 			m_savedCollisionFilterGroup,
 			m_savedCollisionFilterMask);
 		body->activate();
+		m_cci.m_bDyna = m_savedDyna;
 		m_suspended = false;
 	}
 }
@@ -1309,8 +1340,9 @@ void		CcdPhysicsController::SetLinearVelocity(const MT_Vector3& lin_vel,bool loc
 		}
 	}
 }
-void		CcdPhysicsController::ApplyImpulse(const MT_Point3& attach, const MT_Vector3& impulsein)
+void		CcdPhysicsController::ApplyImpulse(const MT_Point3& attach, const MT_Vector3& impulsein, bool local)
 {
+	btVector3 pos;
 	btVector3 impulse(impulsein.x(), impulsein.y(), impulsein.z());
 
 	if (m_object && impulse.length2() > (SIMD_EPSILON*SIMD_EPSILON))
@@ -1323,7 +1355,19 @@ void		CcdPhysicsController::ApplyImpulse(const MT_Point3& attach, const MT_Vecto
 			return;
 		}
 		
-		btVector3 pos(attach.x(), attach.y(), attach.z());
+		btTransform xform = m_object->getWorldTransform();
+
+		if (local)
+		{
+			pos = btVector3(attach.x(), attach.y(), attach.z());
+			impulse = xform.getBasis() * impulse;
+		}
+		else {
+			/* If the point of impulse application is not equal to the object position
+			 * then an angular momentum is generated in the object*/
+			pos = btVector3(attach.x()-xform.getOrigin().x(), attach.y()-xform.getOrigin().y(), attach.z()-xform.getOrigin().z());
+		}
+
 		btRigidBody* body = GetRigidBody();
 		if (body)
 			body->applyImpulse(impulse,pos);
@@ -1341,6 +1385,42 @@ void		CcdPhysicsController::Jump()
 void		CcdPhysicsController::SetActive(bool active)
 {
 }
+
+float		CcdPhysicsController::GetLinearDamping() const
+{
+	const btRigidBody* body = GetRigidBody();
+	if (body)
+		return body->getLinearDamping();
+	return 0;
+}
+
+float		CcdPhysicsController::GetAngularDamping() const
+{
+	const	btRigidBody* body = GetRigidBody();
+	if (body)
+		return body->getAngularDamping();
+	return 0;
+}
+
+void		CcdPhysicsController::SetLinearDamping(float damping)
+{
+	SetDamping(damping, GetAngularDamping());
+}
+
+void		CcdPhysicsController::SetAngularDamping(float damping)
+{
+	SetDamping(GetLinearDamping(), damping);
+}
+
+void		CcdPhysicsController::SetDamping(float linear, float angular)
+{
+	btRigidBody* body = GetRigidBody();
+	if (!body) return;
+
+	body->setDamping(linear, angular);
+}
+
+
 		// reading out information from physics
 MT_Vector3		CcdPhysicsController::GetLinearVelocity()
 {
@@ -1623,6 +1703,41 @@ PHY_IPhysicsController*	CcdPhysicsController::GetReplicaForSensors()
 
 	CcdPhysicsController* replica = new CcdPhysicsController(cinfo);
 	return replica;
+}
+
+/* Refresh the physics object from either an object or a mesh.
+ * from_gameobj and from_meshobj can be NULL
+ *
+ * when setting the mesh, the following vars get priority
+ * 1) from_meshobj - creates the phys mesh from RAS_MeshObject
+ * 2) from_gameobj - creates the phys mesh from the DerivedMesh where possible, else the RAS_MeshObject
+ * 3) this - update the phys mesh from DerivedMesh or RAS_MeshObject
+ *
+ * Most of the logic behind this is in shapeInfo->UpdateMesh(...)
+ */
+bool CcdPhysicsController::ReinstancePhysicsShape(KX_GameObject *from_gameobj, RAS_MeshObject *from_meshobj)
+{
+	CcdShapeConstructionInfo	*shapeInfo;
+
+	shapeInfo = this->GetShapeInfo();
+
+	if (shapeInfo->m_shapeType != PHY_SHAPE_MESH/* || spc->GetSoftBody()*/)
+		return false;
+
+	this->DeleteControllerShape();
+
+	if (from_gameobj==NULL && from_meshobj==NULL)
+		from_gameobj = KX_GameObject::GetClientObject((KX_ClientObjectInfo*)this->GetNewClientInfo());
+
+	/* updates the arrays used for making the new bullet mesh */
+	shapeInfo->UpdateMesh(from_gameobj, from_meshobj);
+
+	/* create the new bullet mesh */
+	CcdConstructionInfo& cci = this->GetConstructionInfo();
+	btCollisionShape* bm= shapeInfo->CreateBulletShape(cci.m_margin, cci.m_bGimpact, !cci.m_bSoft);
+
+	this->ReplaceControllerShape(bm);
+	return true;
 }
 
 ///////////////////////////////////////////////////////////
@@ -2217,7 +2332,7 @@ bool CcdShapeConstructionInfo::UpdateMesh(class KX_GameObject* gameobj, class RA
 		/* transverts are only used for deformed RAS_Meshes, the RAS_TexVert data
 		 * is too hard to get at, see below for details */
 		float (*transverts)[3] = NULL;
-		int transverts_tot= 0; /* with deformed meshes - should always be greater then the max orginal index, or we get crashes */
+		int transverts_tot= 0; /* with deformed meshes - should always be greater than the max orginal index, or we get crashes */
 
 		if (deformer) {
 			/* map locations from the deformed array

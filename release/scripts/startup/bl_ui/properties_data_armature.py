@@ -22,7 +22,7 @@ from bpy.types import Panel, Menu
 from rna_prop_ui import PropertyPanel
 
 
-class ArmatureButtonsPanel():
+class ArmatureButtonsPanel:
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "data"
@@ -144,6 +144,7 @@ class DATA_PT_bone_groups(ArmatureButtonsPanel, Panel):
             if group.color_set:
                 col = split.column()
                 sub = col.row(align=True)
+                sub.enabled = group.is_custom_color_set  # only custom colors are editable
                 sub.prop(group.colors, "normal", text="")
                 sub.prop(group.colors, "select", text="")
                 sub.prop(group.colors, "active", text="")
@@ -200,10 +201,6 @@ class DATA_PT_pose_library(ArmatureButtonsPanel, Panel):
                 col.operator("poselib.apply_pose", icon='ZOOM_SELECTED', text="").pose_index = poselib.pose_markers.active_index
 
             col.operator("poselib.action_sanitize", icon='HELP', text="")  # XXX: put in menu?
-
-            # properties for active marker
-            if pose_marker_active is not None:
-                layout.prop(pose_marker_active, "name")
 
 
 # TODO: this panel will soon be deprecated too
@@ -281,9 +278,10 @@ class DATA_PT_iksolver_itasc(ArmatureButtonsPanel, Panel):
                 row.prop(itasc, "damping_max", text="Damp", slider=True)
                 row.prop(itasc, "damping_epsilon", text="Eps", slider=True)
 
-from bl_ui.properties_animviz import (MotionPathButtonsPanel,
-                                      OnionSkinButtonsPanel,
-                                      )
+from bl_ui.properties_animviz import (
+        MotionPathButtonsPanel,
+        OnionSkinButtonsPanel,
+        )
 
 
 class DATA_PT_motion_paths(MotionPathButtonsPanel, Panel):
@@ -296,7 +294,7 @@ class DATA_PT_motion_paths(MotionPathButtonsPanel, Panel):
         return (context.object) and (context.armature)
 
     def draw(self, context):
-        layout = self.layout
+        # layout = self.layout
 
         ob = context.object
         avs = ob.pose.animation_visualization

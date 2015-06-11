@@ -30,8 +30,8 @@
 
 #include "BLI_utildefines.h"
 #include "BLI_ghash.h"
+#include "BLI_listbase.h"
 #include "BLI_math.h"
-#include "BLI_string.h"
 #include "BLI_rand.h"
 
 #include "DNA_mesh_types.h"
@@ -42,14 +42,11 @@
 #include "BKE_cdderivedmesh.h"
 #include "BKE_deform.h"
 #include "BKE_library.h"
-#include "BKE_mesh.h"
 #include "BKE_modifier.h"
-#include "BKE_shrinkwrap.h"       /* For SpaceTransform stuff. */
 #include "BKE_texture.h"          /* Texture masking. */
 
 #include "depsgraph_private.h"
 #include "MEM_guardedalloc.h"
-#include "MOD_util.h"
 #include "MOD_weightvg_util.h"
 
 // #define USE_TIMEIT
@@ -74,12 +71,12 @@ static void get_vert2geom_distance(int numVerts, float (*v_cos)[3],
                                    DerivedMesh *target, const SpaceTransform *loc2trgt)
 {
 	int i;
-	BVHTreeFromMesh treeData_v = NULL_BVHTreeFromMesh;
-	BVHTreeFromMesh treeData_e = NULL_BVHTreeFromMesh;
-	BVHTreeFromMesh treeData_f = NULL_BVHTreeFromMesh;
-	BVHTreeNearest nearest_v   = NULL_BVHTreeNearest;
-	BVHTreeNearest nearest_e   = NULL_BVHTreeNearest;
-	BVHTreeNearest nearest_f   = NULL_BVHTreeNearest;
+	BVHTreeFromMesh treeData_v = {NULL};
+	BVHTreeFromMesh treeData_e = {NULL};
+	BVHTreeFromMesh treeData_f = {NULL};
+	BVHTreeNearest nearest_v   = {0};
+	BVHTreeNearest nearest_e   = {0};
+	BVHTreeNearest nearest_f   = {0};
 
 	if (dist_v) {
 		/* Create a bvh-tree of the given target's verts. */
@@ -121,7 +118,7 @@ static void get_vert2geom_distance(int numVerts, float (*v_cos)[3],
 
 		/* Convert the vertex to tree coordinates. */
 		copy_v3_v3(tmp_co, v_cos[i]);
-		space_transform_apply(loc2trgt, tmp_co);
+		BLI_space_transform_apply(loc2trgt, tmp_co);
 
 		/* Use local proximity heuristics (to reduce the nearest search).
 		 *
@@ -380,7 +377,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 	/* Check if we can just return the original mesh.
 	 * Must have verts and therefore verts assigned to vgroups to do anything useful!
 	 */
-	if ((numVerts == 0) || (ob->defbase.first == NULL))
+	if ((numVerts == 0) || BLI_listbase_is_empty(&ob->defbase))
 		return dm;
 
 	/* Get our target object. */
@@ -464,9 +461,9 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 
 		if (use_trgt_verts || use_trgt_edges || use_trgt_faces) {
 			DerivedMesh *target_dm = obr->derivedFinal;
-			short free_target_dm = FALSE;
+			bool free_target_dm = false;
 			if (!target_dm) {
-				if (ELEM3(obr->type, OB_CURVE, OB_SURF, OB_FONT))
+				if (ELEM(obr->type, OB_CURVE, OB_SURF, OB_FONT))
 					target_dm = CDDM_from_curve(obr);
 				else if (obr->type == OB_MESH) {
 					Mesh *me = (Mesh *)obr->data;
@@ -475,7 +472,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 					else
 						target_dm = CDDM_from_mesh(me);
 				}
-				free_target_dm = TRUE;
+				free_target_dm = true;
 			}
 
 			/* We must check that we do have a valid target_dm! */
@@ -485,7 +482,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 				float *dists_e = use_trgt_edges ? MEM_mallocN(sizeof(float) * numIdx, "dists_e") : NULL;
 				float *dists_f = use_trgt_faces ? MEM_mallocN(sizeof(float) * numIdx, "dists_f") : NULL;
 
-				SPACE_TRANSFORM_SETUP(&loc2trgt, ob, obr);
+				BLI_SPACE_TRANSFORM_SETUP(&loc2trgt, ob, obr);
 				get_vert2geom_distance(numIdx, v_cos, dists_v, dists_e, dists_f,
 				                       target_dm, &loc2trgt);
 				for (i = 0; i < numIdx; i++) {
@@ -520,7 +517,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 	                 wmd->mask_tex_map_obj, wmd->mask_tex_uvlayer_name);
 
 	/* Update vgroup. Note we never add nor remove vertices from vgroup here. */
-	weightvg_update_vg(dvert, defgrp_index, dw, numIdx, indices, org_w, FALSE, 0.0f, FALSE, 0.0f);
+	weightvg_update_vg(dvert, defgrp_index, dw, numIdx, indices, org_w, false, 0.0f, false, 0.0f);
 
 	/* If weight preview enabled... */
 #if 0 /* XXX Currently done in mod stack :/ */

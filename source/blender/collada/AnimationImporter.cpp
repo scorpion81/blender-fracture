@@ -648,12 +648,17 @@ void AnimationImporter:: Assign_float_animations(const COLLADAFW::UniqueId& list
 			//Add the curves of the current animation to the object
 			for (iter = animcurves.begin(); iter != animcurves.end(); iter++) {
 				FCurve *fcu = *iter;
-				/* All anim_types whose values are to be converted from Degree to Radians can be ORed here
-				 *XXX What About " rotation " ? */
-				if (BLI_strcaseeq("spot_size", anim_type))	{
-						/* Convert current values to Radians */
+				/* All anim_types whose values are to be converted from Degree to Radians can be ORed here */
+				if (STREQ("spot_size", anim_type)) {
+					/* NOTE: Do NOT convert if imported file was made by blender <= 2.69.10
+					 * Reason: old blender versions stored spot_size in radians (was a bug)
+					 */
+					if (this->import_from_version == "" || BLI_natstrcmp(this->import_from_version.c_str(), "2.69.10") != -1) {
 						fcurve_deg_to_rad(fcu);
+					}
 				}
+				/** XXX What About animtype "rotation" ? */
+
 				BLI_addtail(AnimCurves, fcu);
 			}
 		}
@@ -799,7 +804,7 @@ void AnimationImporter::apply_matrix_curves(Object *ob, std::vector<FCurve *>& a
 			// evaluate_joint_world_transform_at_frame(temp, NULL, node, fra);
 
 			// calc special matrix
-			mul_serie_m4(mat, irest, temp, irest_dae, rest, NULL, NULL, NULL, NULL);
+			mul_m4_series(mat, irest, temp, irest_dae, rest);
 		}
 		else {
 			copy_m4_m4(mat, matfra);
@@ -1205,7 +1210,7 @@ void AnimationImporter::add_bone_animation_sampled(Object *ob, std::vector<FCurv
 		// evaluate_joint_world_transform_at_frame(temp, NULL, node, fra);
 
 		// calc special matrix
-		mul_serie_m4(mat, irest, temp, irest_dae, rest, NULL, NULL, NULL, NULL);
+		mul_m4_series(mat, irest, temp, irest_dae, rest);
 
 		float rot[4], loc[3], scale[3];
 
@@ -1540,7 +1545,7 @@ Object *AnimationImporter::translate_animation_OLD(COLLADAFW::Node *node,
 			// evaluate_joint_world_transform_at_frame(temp, NULL, node, fra);
 
 			// calc special matrix
-			mul_serie_m4(mat, irest, temp, irest_dae, rest, NULL, NULL, NULL, NULL);
+			mul_m4_series(mat, irest, temp, irest_dae, rest);
 		}
 		else {
 			copy_m4_m4(mat, matfra);
@@ -2011,3 +2016,7 @@ void AnimationImporter::add_bezt(FCurve *fcu, float fra, float value)
 	calchandles_fcurve(fcu);
 }
 
+void AnimationImporter::set_import_from_version(std::string import_from_version)
+{
+	this->import_from_version = import_from_version;
+}

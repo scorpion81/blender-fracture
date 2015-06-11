@@ -59,7 +59,7 @@ static TseGroup *tse_group_create(void)
 
 static void tse_group_add(TseGroup *tse_group, TreeStoreElem *elem)
 {
-	if (tse_group->size == tse_group->allocated) {
+	if (UNLIKELY(tse_group->size == tse_group->allocated)) {
 		tse_group->allocated *= 2;
 		tse_group->elems = MEM_reallocN(tse_group->elems, sizeof(TreeStoreElem *) * tse_group->allocated);
 	}
@@ -76,14 +76,22 @@ static void tse_group_free(TseGroup *tse_group)
 static unsigned int tse_hash(const void *ptr)
 {
 	const TreeStoreElem *tse = ptr;
-	unsigned int hash;
+	union {
+		short        h_pair[2];
+		unsigned int u_int;
+	} hash;
+
 	BLI_assert(tse->type || !tse->nr);
-	hash = BLI_ghashutil_inthash(SET_INT_IN_POINTER((tse->nr << 16) + tse->type));
-	hash ^= BLI_ghashutil_inthash(tse->id);
-	return hash;
+
+	hash.h_pair[0] = tse->type;
+	hash.h_pair[1] = tse->nr;
+
+	hash.u_int ^= BLI_ghashutil_ptrhash(tse->id);
+
+	return hash.u_int;
 }
 
-static int tse_cmp(const void *a, const void *b)
+static bool tse_cmp(const void *a, const void *b)
 {
 	const TreeStoreElem *tse_a = a;
 	const TreeStoreElem *tse_b = b;

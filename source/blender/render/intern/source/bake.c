@@ -34,7 +34,6 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_math.h"
-#include "BLI_blenlib.h"
 #include "BLI_threads.h"
 #include "BLI_utildefines.h"
 
@@ -173,7 +172,7 @@ static void bake_shade(void *handle, Object *ob, ShadeInput *shi, int UNUSED(qua
 		
 		/* only do AO for a full bake (and obviously AO bakes)
 		 * AO for light bakes is a leftover and might not be needed */
-		if (ELEM3(bs->type, RE_BAKE_ALL, RE_BAKE_AO, RE_BAKE_LIGHT))
+		if (ELEM(bs->type, RE_BAKE_ALL, RE_BAKE_AO, RE_BAKE_LIGHT))
 			shade_samples_do_AO(ssamp);
 		
 		if (shi->mat->nodetree && shi->mat->use_nodes) {
@@ -302,7 +301,7 @@ static void bake_shade(void *handle, Object *ob, ShadeInput *shi, int UNUSED(qua
 			rgb_float_to_uchar(col, shr.combined);
 		}
 		
-		if (ELEM3(bs->type, RE_BAKE_ALL, RE_BAKE_TEXTURE, RE_BAKE_VERTEX_COLORS)) {
+		if (ELEM(bs->type, RE_BAKE_ALL, RE_BAKE_TEXTURE, RE_BAKE_VERTEX_COLORS)) {
 			col[3] = FTOCHAR(shr.alpha);
 		}
 		else {
@@ -374,7 +373,7 @@ static void bake_displacement(void *handle, ShadeInput *UNUSED(shi), float dist,
 		}
 		else {
 			char *imcol = (char *)(bs->rect + bs->rectx * y + x);
-			copy_v4_v4_char((char *)imcol, (char *)col);
+			copy_v4_v4_char(imcol, (char *)col);
 		}
 	}
 	if (bs->rect_mask) {
@@ -611,6 +610,10 @@ static int get_next_bake_face(BakeShade *bs)
 
 	for (; obi; obi = obi->next, v = 0) {
 		obr = obi->obr;
+
+		/* only allow non instances here */
+		if (obr->flag & R_INSTANCEABLE)
+			continue;
 
 		for (; v < obr->totvlak; v++) {
 			vlr = RE_findOrAddVlak(obr, v);
@@ -936,8 +939,8 @@ void RE_bake_ibuf_filter(ImBuf *ibuf, char *mask, const int filter)
 void RE_bake_ibuf_normalize_displacement(ImBuf *ibuf, float *displacement, char *mask, float displacement_min, float displacement_max)
 {
 	int i;
-	float *current_displacement = displacement;
-	char *current_mask = mask;
+	const float *current_displacement = displacement;
+	const char *current_mask = mask;
 	float max_distance;
 
 	max_distance = max_ff(fabsf(displacement_min), fabsf(displacement_max));
@@ -981,6 +984,7 @@ int RE_bake_shade_all_selected(Render *re, int type, Object *actob, short *do_up
 	int a, vdone = false, result = BAKE_RESULT_OK;
 	bool use_mask = false;
 	bool use_displacement_buffer = false;
+	bool do_manage = BKE_scene_check_color_management_enabled(re->scene);
 	
 	re->scene_color_manage = BKE_scene_check_color_management_enabled(re->scene);
 	
@@ -1040,6 +1044,7 @@ int RE_bake_shade_all_selected(Render *re, int type, Object *actob, short *do_up
 		}
 		handles[a].ssamp.shi[0].combinedflag = ~(SCE_PASS_SPEC);
 		handles[a].ssamp.shi[0].thread = a;
+		handles[a].ssamp.shi[0].do_manage = do_manage;
 		handles[a].ssamp.tot = 1;
 
 		handles[a].type = type;

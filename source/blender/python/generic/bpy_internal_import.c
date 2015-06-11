@@ -34,8 +34,6 @@
 #include <Python.h>
 #include <stddef.h>
 
-#include "bpy_internal_import.h"
-
 #include "MEM_guardedalloc.h"
 
 #include "DNA_text_types.h"
@@ -48,6 +46,10 @@
 /* UNUSED */
 #include "BKE_text.h"  /* txt_to_buf */
 #include "BKE_main.h"
+
+#include "py_capi_utils.h"
+
+#include "bpy_internal_import.h"  /* own include */
 
 static Main *bpy_import_main = NULL;
 static ListBase bpy_import_main_list;
@@ -79,7 +81,7 @@ void bpy_import_init(PyObject *builtins)
 
 	/* move reload here
 	 * XXX, use import hooks */
-	mod = PyImport_ImportModuleLevel("imp", NULL, NULL, NULL, 0);
+	mod = PyImport_ImportModuleLevel("importlib", NULL, NULL, NULL, 0);
 	if (mod) {
 		PyObject *mod_dict = PyModule_GetDict(mod);
 
@@ -91,7 +93,7 @@ void bpy_import_init(PyObject *builtins)
 		Py_DECREF(mod);
 	}
 	else {
-		BLI_assert(!"unable to load 'imp' module.");
+		BLI_assert(!"unable to load 'importlib' module.");
 	}
 }
 
@@ -130,25 +132,44 @@ void bpy_text_filename_get(char *fn, size_t fn_len, Text *text)
 	BLI_snprintf(fn, fn_len, "%s%c%s", ID_BLEND_PATH(bpy_import_main, &text->id), SEP, text->id.name + 2);
 }
 
+bool bpy_text_compile(Text *text)
+{
+	char fn_dummy[FILE_MAX];
+	PyObject *fn_dummy_py;
+	char *buf;
+
+	bpy_text_filename_get(fn_dummy, sizeof(fn_dummy), text);
+
+	/* if previously compiled, free the object */
+	free_compiled_text(text);
+
+	fn_dummy_py = PyC_UnicodeFromByte(fn_dummy);
+
+	buf = txt_to_buf(text);
+	text->compiled = Py_CompileStringObject(buf, fn_dummy_py, Py_file_input, NULL, -1);
+	MEM_freeN(buf);
+
+	Py_DECREF(fn_dummy_py);
+
+	if (PyErr_Occurred()) {
+		PyErr_Print();
+		PyErr_Clear();
+		PySys_SetObject("last_traceback", NULL);
+		free_compiled_text(text);
+		return false;
+	}
+	else {
+		return true;
+	}
+}
+
 PyObject *bpy_text_import(Text *text)
 {
-	char *buf = NULL;
 	char modulename[MAX_ID_NAME + 2];
 	int len;
 
 	if (!text->compiled) {
-		char fn_dummy[256];
-		bpy_text_filename_get(fn_dummy, sizeof(fn_dummy), text);
-
-		buf = txt_to_buf(text);
-		text->compiled = Py_CompileString(buf, fn_dummy, Py_file_input);
-		MEM_freeN(buf);
-
-		if (PyErr_Occurred()) {
-			PyErr_Print();
-			PyErr_Clear();
-			PySys_SetObject("last_traceback", NULL);
-			free_compiled_text(text);
+		if (bpy_text_compile(text) == false) {
 			return NULL;
 		}
 	}
@@ -212,8 +233,7 @@ PyObject *bpy_text_reimport(PyObject *module, int *found)
 {
 	Text *text;
 	const char *name;
-	char *filepath;
-	char *buf = NULL;
+	const char *filepath;
 //XXX	Main *maggie = bpy_import_main ? bpy_import_main:G.main;
 	Main *maggie = bpy_import_main;
 	
@@ -240,35 +260,19 @@ PyObject *bpy_text_reimport(PyObject *module, int *found)
 	else
 		*found = 1;
 
-	/* if previously compiled, free the object */
-	/* (can't see how could be NULL, but check just in case) */ 
-	if (text->compiled) {
-		Py_DECREF((PyObject *)text->compiled);
-	}
-
-	/* compile the buffer */
-	buf = txt_to_buf(text);
-	text->compiled = Py_CompileString(buf, text->id.name + 2, Py_file_input);
-	MEM_freeN(buf);
-
-	/* if compile failed.... return this error */
-	if (PyErr_Occurred()) {
-		PyErr_Print();
-		PyErr_Clear();
-		PySys_SetObject("last_traceback", NULL);
-		free_compiled_text(text);
+	if (bpy_text_compile(text) == false) {
 		return NULL;
 	}
 
 	/* make into a module */
-	return PyImport_ExecCodeModule((char *)name, text->compiled);
+	return PyImport_ExecCodeModule(name, text->compiled);
 }
 
 
 static PyObject *blender_import(PyObject *UNUSED(self), PyObject *args, PyObject *kw)
 {
 	PyObject *exception, *err, *tb;
-	char *name;
+	const char *name;
 	int found = 0;
 	PyObject *globals = NULL, *locals = NULL, *fromlist = NULL;
 	int level = 0; /* relative imports */

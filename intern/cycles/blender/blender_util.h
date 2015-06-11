@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __BLENDER_UTIL_H__
@@ -37,9 +37,19 @@ float *BKE_image_get_float_pixels_for_frame(void *image, int frame);
 
 CCL_NAMESPACE_BEGIN
 
+void python_thread_state_save(void **python_thread_state);
+void python_thread_state_restore(void **python_thread_state);
+
 static inline BL::Mesh object_to_mesh(BL::BlendData data, BL::Object object, BL::Scene scene, bool apply_modifiers, bool render, bool calc_undeformed)
 {
-	return data.meshes.new_from_object(scene, object, apply_modifiers, (render)? 2: 1, true, calc_undeformed);
+	BL::Mesh me = data.meshes.new_from_object(scene, object, apply_modifiers, (render)? 2: 1, false, calc_undeformed);
+	if ((bool)me) {
+		if (me.use_auto_smooth()) {
+			me.calc_normals_split();
+		}
+		me.calc_tessface();
+	}
+	return me;
 }
 
 static inline void colorramp_to_array(BL::ColorRamp ramp, float4 *data, int size)
@@ -47,7 +57,7 @@ static inline void colorramp_to_array(BL::ColorRamp ramp, float4 *data, int size
 	for(int i = 0; i < size; i++) {
 		float color[4];
 
-		ramp.evaluate(i/(float)(size-1), color);
+		ramp.evaluate((float)i/(float)(size-1), color);
 		data[i] = make_float4(color[0], color[1], color[2], color[3]);
 	}
 }
@@ -64,7 +74,7 @@ static inline void curvemapping_color_to_array(BL::CurveMapping cumap, float4 *d
 		BL::CurveMap mapI = cumap.curves[3];
 
 		for(int i = 0; i < size; i++) {
-			float t = i/(float)(size-1);
+			float t = (float)i/(float)(size-1);
 
 			data[i][0] = mapR.evaluate(mapI.evaluate(t));
 			data[i][1] = mapG.evaluate(mapI.evaluate(t));
@@ -73,7 +83,7 @@ static inline void curvemapping_color_to_array(BL::CurveMapping cumap, float4 *d
 	}
 	else {
 		for(int i = 0; i < size; i++) {
-			float t = i/(float)(size-1);
+			float t = (float)i/(float)(size-1);
 
 			data[i][0] = mapR.evaluate(t);
 			data[i][1] = mapG.evaluate(t);
@@ -163,6 +173,11 @@ static inline float3 get_float3(BL::Array<float, 4> array)
 static inline float4 get_float4(BL::Array<float, 4> array)
 {
 	return make_float4(array[0], array[1], array[2], array[3]);
+}
+
+static inline int3 get_int3(BL::Array<int, 3> array)
+{
+	return make_int3(array[0], array[1], array[2]);
 }
 
 static inline int4 get_int4(BL::Array<int, 4> array)
@@ -336,6 +351,52 @@ static inline void mesh_texture_space(BL::Mesh b_mesh, float3& loc, float3& size
 	if(size.z != 0.0f) size.z = 0.5f/size.z;
 
 	loc = loc*size - make_float3(0.5f, 0.5f, 0.5f);
+}
+
+/* object used for motion blur */
+static inline bool object_use_motion(BL::Object b_ob)
+{
+	PointerRNA cobject = RNA_pointer_get(&b_ob.ptr, "cycles");
+	bool use_motion = get_boolean(cobject, "use_motion_blur");
+	
+	return use_motion;
+}
+
+/* object motion steps */
+static inline uint object_motion_steps(BL::Object b_ob)
+{
+	PointerRNA cobject = RNA_pointer_get(&b_ob.ptr, "cycles");
+	uint steps = get_int(cobject, "motion_steps");
+
+	/* use uneven number of steps so we get one keyframe at the current frame,
+	 * and ue 2^(steps - 1) so objects with more/fewer steps still have samples
+	 * at the same times, to avoid sampling at many different times */
+	return (2 << (steps - 1)) + 1;
+}
+
+/* object uses deformation motion blur */
+static inline bool object_use_deform_motion(BL::Object b_ob)
+{
+	PointerRNA cobject = RNA_pointer_get(&b_ob.ptr, "cycles");
+	bool use_deform_motion = get_boolean(cobject, "use_deform_motion");
+	
+	return use_deform_motion;
+}
+
+static inline BL::SmokeDomainSettings object_smoke_domain_find(BL::Object b_ob)
+{
+	BL::Object::modifiers_iterator b_mod;
+
+	for(b_ob.modifiers.begin(b_mod); b_mod != b_ob.modifiers.end(); ++b_mod) {
+		if (b_mod->is_a(&RNA_SmokeModifier)) {
+			BL::SmokeModifier b_smd(*b_mod);
+
+			if(b_smd.smoke_type() == BL::SmokeModifier::smoke_type_DOMAIN)
+				return b_smd.domain_settings();
+		}
+	}
+	
+	return BL::SmokeDomainSettings(PointerRNA_NULL);
 }
 
 /* ID Map

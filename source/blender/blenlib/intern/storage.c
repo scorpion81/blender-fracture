@@ -135,10 +135,10 @@ static int bli_compare(struct direntry *entry1, struct direntry *entry2)
 
 	/* OK, now we know their S_IFMT fields are the same, go on to a name comparison */
 	/* make sure "." and ".." are always first */
-	if (strcmp(entry1->relname, ".") == 0) return (-1);
-	if (strcmp(entry2->relname, ".") == 0) return (1);
-	if (strcmp(entry1->relname, "..") == 0) return (-1);
-	if (strcmp(entry2->relname, "..") == 0) return (1);
+	if (FILENAME_IS_CURRENT(entry1->relname)) return (-1);
+	if (FILENAME_IS_CURRENT(entry2->relname)) return (1);
+	if (FILENAME_IS_PARENT(entry1->relname)) return (-1);
+	if (FILENAME_IS_PARENT(entry2->relname)) return (1);
 
 	return (BLI_natstrcmp(entry1->relname, entry2->relname));
 }
@@ -219,7 +219,6 @@ static void bli_builddir(struct BuildDirCtx *dir_ctx, const char *dirname)
 	DIR *dir;
 
 	if ((dir = opendir(dirname)) != NULL) {
-
 		const struct dirent *fname;
 		while ((fname = readdir(dir)) != NULL) {
 			struct dirlink * const dlink = (struct dirlink *)malloc(sizeof(struct dirlink));
@@ -231,20 +230,19 @@ static void bli_builddir(struct BuildDirCtx *dir_ctx, const char *dirname)
 		}
 
 		if (newnum) {
-
 			if (dir_ctx->files) {
-				void * const tmp = realloc(dir_ctx->files, (dir_ctx->nrfiles + newnum) * sizeof(struct direntry));
+				void * const tmp = MEM_reallocN(dir_ctx->files, (dir_ctx->nrfiles + newnum) * sizeof(struct direntry));
 				if (tmp) {
 					dir_ctx->files = (struct direntry *)tmp;
 				}
 				else { /* realloc fail */
-					free(dir_ctx->files);
+					MEM_freeN(dir_ctx->files);
 					dir_ctx->files = NULL;
 				}
 			}
 			
 			if (dir_ctx->files == NULL)
-				dir_ctx->files = (struct direntry *)malloc(newnum * sizeof(struct direntry));
+				dir_ctx->files = (struct direntry *)MEM_mallocN(newnum * sizeof(struct direntry), __func__);
 
 			if (dir_ctx->files) {
 				struct dirlink * dlink = (struct dirlink *) dirbase.first;
@@ -255,23 +253,9 @@ static void bli_builddir(struct BuildDirCtx *dir_ctx, const char *dirname)
 					file->relname = dlink->name;
 					file->path = BLI_strdupcat(dirname, dlink->name);
 					BLI_join_dirfile(fullname, sizeof(fullname), dirname, dlink->name);
-// use 64 bit file size, only needed for WIN32 and WIN64. 
-// Excluding other than current MSVC compiler until able to test
-#ifdef WIN32
-					{
-						wchar_t *name_16 = alloc_utf16_from_8(fullname, 0);
-#if defined(_MSC_VER) && (_MSC_VER >= 1500)
-						_wstat64(name_16, &file->s);
-#elif defined(__MINGW32__)
-						_stati64(fullname, &file->s);
-#endif
-						free(name_16);
+					if (BLI_stat(fullname, &file->s) != -1) {
+						file->type = file->s.st_mode;
 					}
-
-#else
-					stat(fullname, &file->s);
-#endif
-					file->type = file->s.st_mode;
 					file->flags = 0;
 					dir_ctx->nrfiles++;
 					file++;
@@ -295,7 +279,7 @@ static void bli_builddir(struct BuildDirCtx *dir_ctx, const char *dirname)
 		closedir(dir);
 	}
 	else {
-		printf("%s non-existant directory\n", dirname);
+		printf("%s non-existent directory\n", dirname);
 	}
 }
 
@@ -361,7 +345,7 @@ static void bli_adddirstrings(struct BuildDirCtx *dir_ctx)
 				BLI_strncpy(file->owner, pwuser->pw_name, sizeof(file->owner));
 			}
 			else {
-				BLI_snprintf(file->owner, sizeof(file->owner), "%d", file->s.st_uid);
+				BLI_snprintf(file->owner, sizeof(file->owner), "%u", file->s.st_uid);
 			}
 		}
 #endif
@@ -400,9 +384,11 @@ static void bli_adddirstrings(struct BuildDirCtx *dir_ctx)
 
 /**
  * Scans the contents of the directory named *dirname, and allocates and fills in an
- * array of entries describing them in *filelist. The length of the array is the function result.
+ * array of entries describing them in *filelist.
+ *
+ * \return The length of filelist array.
  */
-unsigned int BLI_dir_contents(const char *dirname,  struct direntry **filelist)
+unsigned int BLI_filelist_dir_contents(const char *dirname,  struct direntry **filelist)
 {
 	struct BuildDirCtx dir_ctx;
 
@@ -418,18 +404,51 @@ unsigned int BLI_dir_contents(const char *dirname,  struct direntry **filelist)
 	else {
 		// keep blender happy. Blender stores this in a variable
 		// where 0 has special meaning.....
-		*filelist = malloc(sizeof(struct direntry));
+		*filelist = MEM_mallocN(sizeof(**filelist), __func__);
 	}
 
 	return dir_ctx.nrfiles;
 }
 
-/* frees storage for an array of direntries, including the array itself. */
-void BLI_free_filelist(struct direntry *filelist, unsigned int nrentries)
+/**
+ * Deep-duplicate of an array of direntries, including the array itself.
+ *
+ * \param dup_poin If given, called for each non-NULL direntry->poin. Otherwise, pointer is always simply copied over.
+ */
+void BLI_filelist_duplicate(
+        struct direntry **dest_filelist, struct direntry *src_filelist, unsigned int nrentries,
+        void *(*dup_poin)(void *))
+{
+	unsigned int i;
+
+	*dest_filelist = MEM_mallocN(sizeof(**dest_filelist) * (size_t)(nrentries), __func__);
+	for (i = 0; i < nrentries; ++i) {
+		struct direntry * const src = &src_filelist[i];
+		struct direntry *dest = &(*dest_filelist)[i];
+		*dest = *src;
+		if (dest->image) {
+			dest->image = IMB_dupImBuf(src->image);
+		}
+		if (dest->relname) {
+			dest->relname = MEM_dupallocN(src->relname);
+		}
+		if (dest->path) {
+			dest->path = MEM_dupallocN(src->path);
+		}
+		if (dest->poin && dup_poin) {
+			dest->poin = dup_poin(src->poin);
+		}
+	}
+}
+
+/**
+ * frees storage for an array of direntries, including the array itself.
+ */
+void BLI_filelist_free(struct direntry *filelist, unsigned int nrentries, void (*free_poin)(void *))
 {
 	unsigned int i;
 	for (i = 0; i < nrentries; ++i) {
-		struct direntry * const entry = filelist + i;
+		struct direntry *entry = filelist + i;
 		if (entry->image) {
 			IMB_freeImBuf(entry->image);
 		}
@@ -437,10 +456,13 @@ void BLI_free_filelist(struct direntry *filelist, unsigned int nrentries)
 			MEM_freeN(entry->relname);
 		if (entry->path)
 			MEM_freeN(entry->path);
-		/* entry->poin assumed not to point to anything needing freeing here */
+		if (entry->poin && free_poin)
+			free_poin(entry->poin);
 	}
 
-	free(filelist);
+	if (filelist != NULL) {
+		MEM_freeN(filelist);
+	}
 }
 
 
@@ -460,7 +482,7 @@ size_t BLI_file_descriptor_size(int file)
  */
 size_t BLI_file_size(const char *path)
 {
-	struct stat stats;
+	BLI_stat_t stats;
 	if (BLI_stat(path, &stats) == -1)
 		return -1;
 	return stats.st_size;
@@ -473,31 +495,36 @@ size_t BLI_file_size(const char *path)
 int BLI_exists(const char *name)
 {
 #if defined(WIN32) 
-#ifndef __MINGW32__
-	struct _stat64i32 st;
-#else
-	struct _stati64 st;
-#endif
-	/* in Windows stat doesn't recognize dir ending on a slash
-	 * To not break code where the ending slash is expected we
-	 * don't mess with the argument name directly here - elubie */
-	wchar_t *tmp_16 = alloc_utf16_from_8(name, 0);
+	BLI_stat_t st;
+	wchar_t *tmp_16 = alloc_utf16_from_8(name, 1);
 	int len, res;
 	unsigned int old_error_mode;
 
 	len = wcslen(tmp_16);
-	if (len > 3 && (tmp_16[len - 1] == L'\\' || tmp_16[len - 1] == L'/'))
+	/* in Windows #stat doesn't recognize dir ending on a slash
+	 * so we remove it here */
+	if (len > 3 && (tmp_16[len - 1] == L'\\' || tmp_16[len - 1] == L'/')) {
 		tmp_16[len - 1] = '\0';
+	}
+	/* two special cases where the trailing slash is needed:
+	 * 1. after the share part of a UNC path
+	 * 2. after the C:\ when the path is the volume only
+	 */
+	if ((len >= 3) && (tmp_16[0] ==  L'\\') && (tmp_16[1] ==  L'\\')) {
+		BLI_cleanup_unc_16(tmp_16);
+	}
+
+	if ((tmp_16[1] ==  L':') && (tmp_16[2] ==  L'\0')) {
+		tmp_16[2] = L'\\';
+		tmp_16[3] = L'\0';
+	}
+
 
 	/* change error mode so user does not get a "no disk in drive" popup
 	 * when looking for a file on an empty CD/DVD drive */
 	old_error_mode = SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
 
-#ifndef __MINGW32__
-	res = _wstat(tmp_16, &st);
-#else
-	res = _wstati64(tmp_16, &st);
-#endif
+	res = BLI_wstat(tmp_16, &st);
 
 	SetErrorMode(old_error_mode);
 
@@ -505,6 +532,7 @@ int BLI_exists(const char *name)
 	if (res == -1) return(0);
 #else
 	struct stat st;
+	BLI_assert(name);
 	if (stat(name, &st)) return(0);
 #endif
 	return(st.st_mode);
@@ -512,20 +540,26 @@ int BLI_exists(const char *name)
 
 
 #ifdef WIN32
-int BLI_stat(const char *path, struct stat *buffer)
+int BLI_stat(const char *path, BLI_stat_t *buffer)
 {
 	int r;
 	UTF16_ENCODE(path);
 
-	/* workaround error in MinGW64 headers, normally, a wstat should work */
-#ifndef __MINGW64__
-	r = _wstat(path_16, buffer);
-#else
-	r = _wstati64(path_16, buffer);
-#endif
+	r = BLI_wstat(path_16, buffer);
 
 	UTF16_UN_ENCODE(path);
 	return r;
+}
+
+int BLI_wstat(const wchar_t *path, BLI_stat_t *buffer)
+{
+#if defined(_MSC_VER) || defined(__MINGW64__)
+	return _wstat64(path, buffer);
+#elif defined(__MINGW32__)
+	return _wstati64(path, buffer);
+#else
+	return _wstat(path, buffer);
+#endif
 }
 #else
 int BLI_stat(const char *path, struct stat *buffer)

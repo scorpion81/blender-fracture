@@ -86,7 +86,7 @@ struct SmartCValueRef
 std::vector<SmartCValueRef> gRefList;
 #endif
 
-#ifdef _DEBUG
+#ifdef DEBUG
 //int gRefCountValue;
 #endif
 
@@ -101,7 +101,7 @@ effect: constucts a CValue
 */
 {
 	//debug(gRefCountValue++)	// debugging
-#ifdef _DEBUG
+#ifdef DEBUG
 	//gRefCountValue++;
 #ifdef CVALUE_DEBUG
 	gRefList.push_back(SmartCValueRef(this));
@@ -460,7 +460,7 @@ void CValue::DisableRefCount()
 	m_refcount--;
 
 	//debug(gRefCountValue--);
-#ifdef _DEBUG
+#ifdef DEBUG
 	//gRefCountValue--;
 #endif
 	m_ValFlags.RefCountDisabled=true;
@@ -472,7 +472,7 @@ void CValue::ProcessReplica() /* was AddDataToReplica in 2.48 */
 {
 	m_refcount = 1;
 	
-#ifdef _DEBUG
+#ifdef DEBUG
 	//gRefCountValue++;
 #endif
 	PyObjectPlus::ProcessReplica();
@@ -493,6 +493,15 @@ void CValue::ProcessReplica() /* was AddDataToReplica in 2.48 */
 		}
 	}
 }
+
+
+
+int CValue::GetValueType()
+{
+	return VALUE_NO_TYPE;
+}
+
+
 
 CValue*	CValue::FindIdentifier(const STR_String& identifiername)
 {
@@ -559,7 +568,7 @@ CValue *CValue::ConvertPythonToValue(PyObject *pyobj, const bool do_type_excepti
 		Py_ssize_t numitems = PyList_GET_SIZE(pyobj);
 		for (i=0;i<numitems;i++)
 		{
-			PyObject *listitem = PyList_GetItem(pyobj,i); /* borrowed ref */
+			PyObject *listitem = PyList_GET_ITEM(pyobj,i); /* borrowed ref */
 			CValue* listitemval = ConvertPythonToValue(listitem, error_prefix);
 			if (listitemval)
 			{

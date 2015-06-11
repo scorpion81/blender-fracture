@@ -23,7 +23,7 @@
 #include "COM_GlareBaseOperation.h"
 #include "BLI_math.h"
 
-GlareBaseOperation::GlareBaseOperation() : SingleThreadedNodeOperation()
+GlareBaseOperation::GlareBaseOperation() : SingleThreadedOperation()
 {
 	this->addInputSocket(COM_DT_COLOR);
 	this->addOutputSocket(COM_DT_COLOR);
@@ -31,14 +31,14 @@ GlareBaseOperation::GlareBaseOperation() : SingleThreadedNodeOperation()
 }
 void GlareBaseOperation::initExecution()
 {
-	SingleThreadedNodeOperation::initExecution();
+	SingleThreadedOperation::initExecution();
 	this->m_inputProgram = getInputSocketReader(0);
 }
 
 void GlareBaseOperation::deinitExecution()
 {
 	this->m_inputProgram = NULL;
-	SingleThreadedNodeOperation::deinitExecution();
+	SingleThreadedOperation::deinitExecution();
 }
 
 MemoryBuffer *GlareBaseOperation::createMemoryBuffer(rcti *rect2)
@@ -49,7 +49,7 @@ MemoryBuffer *GlareBaseOperation::createMemoryBuffer(rcti *rect2)
 	rect.ymin = 0;
 	rect.xmax = getWidth();
 	rect.ymax = getHeight();
-	MemoryBuffer *result = new MemoryBuffer(NULL, &rect);
+	MemoryBuffer *result = new MemoryBuffer(COM_DT_COLOR, &rect);
 	float *data = result->getBuffer();
 	this->generateGlare(data, tile, this->m_settings);
 	return result;

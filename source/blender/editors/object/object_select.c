@@ -33,8 +33,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "MEM_guardedalloc.h"
-
 #include "DNA_anim_types.h"
 #include "DNA_group_types.h"
 #include "DNA_material_types.h"
@@ -47,7 +45,6 @@
 #include "BLI_math.h"
 #include "BLI_listbase.h"
 #include "BLI_rand.h"
-#include "BLI_string.h"
 #include "BLI_utildefines.h"
 
 #include "BLF_translation.h"
@@ -183,7 +180,7 @@ void OBJECT_OT_select_by_type(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
 	/* properties */
-	RNA_def_boolean(ot->srna, "extend", FALSE, "Extend", "Extend selection instead of deselecting everything first");
+	RNA_def_boolean(ot->srna, "extend", false, "Extend", "Extend selection instead of deselecting everything first");
 	ot->prop = RNA_def_enum(ot->srna, "type", object_type_items, 1, "Type", "");
 }
 
@@ -318,22 +315,20 @@ static bool object_select_all_by_dup_group(bContext *C, Object *ob)
 
 static bool object_select_all_by_particle(bContext *C, Object *ob)
 {
+	ParticleSystem *psys_act = psys_get_current(ob);
 	bool changed = false;
 
 	CTX_DATA_BEGIN (C, Base *, base, visible_bases)
 	{
 		if ((base->flag & SELECT) == 0) {
-			/* loop through other, then actives particles*/
+			/* loop through other particles*/
 			ParticleSystem *psys;
-			ParticleSystem *psys_act;
-
+			
 			for (psys = base->object->particlesystem.first; psys; psys = psys->next) {
-				for (psys_act = ob->particlesystem.first; psys_act; psys_act = psys_act->next) {
-					if (psys->part == psys_act->part) {
-						base->flag |= SELECT;
-						changed = true;
-						break;
-					}
+				if (psys->part == psys_act->part) {
+					base->flag |= SELECT;
+					changed = true;
+					break;
 				}
 
 				if (base->flag & SELECT) {
@@ -398,7 +393,7 @@ void ED_object_select_linked_by_id(bContext *C, ID *id)
 		changed = object_select_all_by_obdata(C, id);
 	}
 	else if (idtype == ID_MA) {
-		changed = object_select_all_by_material_texture(C, FALSE, (Material *)id, NULL);
+		changed = object_select_all_by_material_texture(C, false, (Material *)id, NULL);
 	}
 	else if (idtype == ID_LI) {
 		changed = object_select_all_by_library(C, (Library *) id);
@@ -447,12 +442,12 @@ static int object_select_linked_exec(bContext *C, wmOperator *op)
 	else if (nr == OBJECT_SELECT_LINKED_MATERIAL || nr == OBJECT_SELECT_LINKED_TEXTURE) {
 		Material *mat = NULL;
 		Tex *tex = NULL;
-		int use_texture = FALSE;
+		bool use_texture = false;
 
 		mat = give_current_material(ob, ob->actcol);
 		if (mat == NULL) return OPERATOR_CANCELLED;
 		if (nr == OBJECT_SELECT_LINKED_TEXTURE) {
-			use_texture = TRUE;
+			use_texture = true;
 
 			if (mat->mtex[(int)mat->texact]) tex = mat->mtex[(int)mat->texact]->tex;
 			if (tex == NULL) return OPERATOR_CANCELLED;
@@ -467,7 +462,7 @@ static int object_select_linked_exec(bContext *C, wmOperator *op)
 		changed = object_select_all_by_dup_group(C, ob);
 	}
 	else if (nr == OBJECT_SELECT_LINKED_PARTICLE) {
-		if (ob->particlesystem.first == NULL)
+		if (BLI_listbase_is_empty(&ob->particlesystem))
 			return OPERATOR_CANCELLED;
 
 		changed = object_select_all_by_particle(C, ob);
@@ -486,7 +481,7 @@ static int object_select_linked_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 
 	if (changed) {
-		WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, CTX_data_scene(C));
+		WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, scene);
 		return OPERATOR_FINISHED;
 	}
 	
@@ -509,27 +504,42 @@ void OBJECT_OT_select_linked(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
 	/* properties */
-	RNA_def_boolean(ot->srna, "extend", FALSE, "Extend", "Extend selection instead of deselecting everything first");
+	RNA_def_boolean(ot->srna, "extend", false, "Extend", "Extend selection instead of deselecting everything first");
 	ot->prop = RNA_def_enum(ot->srna, "type", prop_select_linked_types, 0, "Type", "");
 }
 
 /*********************** Selected Grouped ********************/
 
+enum {
+	OBJECT_GRPSEL_CHILDREN_RECURSIVE =  0,
+	OBJECT_GRPSEL_CHILDREN           =  1,
+	OBJECT_GRPSEL_PARENT             =  2,
+	OBJECT_GRPSEL_SIBLINGS           =  3,
+	OBJECT_GRPSEL_TYPE               =  4,
+	OBJECT_GRPSEL_LAYER              =  5,
+	OBJECT_GRPSEL_GROUP              =  6,
+	OBJECT_GRPSEL_HOOK               =  7,
+	OBJECT_GRPSEL_PASS               =  8,
+	OBJECT_GRPSEL_COLOR              =  9,
+	OBJECT_GRPSEL_PROPERTIES         = 10,
+	OBJECT_GRPSEL_KEYINGSET          = 11,
+	OBJECT_GRPSEL_LAMP_TYPE          = 12,
+};
+
 static EnumPropertyItem prop_select_grouped_types[] = {
-	{1, "CHILDREN_RECURSIVE", 0, "Children", ""},
-	{2, "CHILDREN", 0, "Immediate Children", ""},
-	{3, "PARENT", 0, "Parent", ""},
-	{4, "SIBLINGS", 0, "Siblings", "Shared Parent"},
-	{5, "TYPE", 0, "Type", "Shared object type"},
-	{6, "LAYER", 0, "Layer", "Shared layers"},
-	{7, "GROUP", 0, "Group", "Shared group"},
-	{8, "HOOK", 0, "Hook", ""},
-	{9, "PASS", 0, "Pass", "Render pass Index"},
-	{10, "COLOR", 0, "Color", "Object Color"},
-	{11, "PROPERTIES", 0, "Properties", "Game Properties"},
-	{12, "KEYINGSET", 0, "Keying Set", "Objects included in active Keying Set"},
-	{13, "LAMP_TYPE", 0, "Lamp Type", "Matching lamp types"},
-	{14, "PASS_INDEX", 0, "Pass Index", "Matching object pass index"},
+	{OBJECT_GRPSEL_CHILDREN_RECURSIVE, "CHILDREN_RECURSIVE", 0, "Children", ""},
+	{OBJECT_GRPSEL_CHILDREN, "CHILDREN", 0, "Immediate Children", ""},
+	{OBJECT_GRPSEL_PARENT, "PARENT", 0, "Parent", ""},
+	{OBJECT_GRPSEL_SIBLINGS, "SIBLINGS", 0, "Siblings", "Shared Parent"},
+	{OBJECT_GRPSEL_TYPE, "TYPE", 0, "Type", "Shared object type"},
+	{OBJECT_GRPSEL_LAYER, "LAYER", 0, "Layer", "Shared layers"},
+	{OBJECT_GRPSEL_GROUP, "GROUP", 0, "Group", "Shared group"},
+	{OBJECT_GRPSEL_HOOK, "HOOK", 0, "Hook", ""},
+	{OBJECT_GRPSEL_PASS, "PASS", 0, "Pass", "Render pass Index"},
+	{OBJECT_GRPSEL_COLOR, "COLOR", 0, "Color", "Object Color"},
+	{OBJECT_GRPSEL_PROPERTIES, "PROPERTIES", 0, "Properties", "Game Properties"},
+	{OBJECT_GRPSEL_KEYINGSET, "KEYINGSET", 0, "Keying Set", "Objects included in active Keying Set"},
+	{OBJECT_GRPSEL_LAMP_TYPE, "LAMP_TYPE", 0, "Lamp Type", "Matching lamp types"},
 	{0, NULL, 0, NULL, NULL}
 };
 
@@ -608,15 +618,15 @@ static bool select_grouped_group(bContext *C, Object *ob)  /* Select objects in 
 	}
 
 	/* build the menu. */
-	pup = uiPupMenuBegin(C, IFACE_("Select Group"), ICON_NONE);
-	layout = uiPupMenuLayout(pup);
+	pup = UI_popup_menu_begin(C, IFACE_("Select Group"), ICON_NONE);
+	layout = UI_popup_menu_layout(pup);
 
 	for (i = 0; i < group_count; i++) {
 		group = ob_groups[i];
 		uiItemStringO(layout, group->id.name + 2, 0, "OBJECT_OT_select_same_group", "group", group->id.name + 2);
 	}
 
-	uiPupMenuEnd(C, pup);
+	UI_popup_menu_end(C, pup);
 	return changed;  /* The operator already handle this! */
 }
 
@@ -661,7 +671,7 @@ static bool select_grouped_siblings(bContext *C, Object *ob)
 	CTX_DATA_END;
 	return changed;
 }
-static bool select_similar_lamps(bContext *C, Object *ob)
+static bool select_grouped_lamptype(bContext *C, Object *ob)
 {
 	Lamp *la = ob->data;
 
@@ -675,20 +685,6 @@ static bool select_similar_lamps(bContext *C, Object *ob)
 				ED_base_object_select(base, BA_SELECT);
 				changed = true;
 			}
-		}
-	}
-	CTX_DATA_END;
-	return changed;
-}
-static bool select_similar_pass_index(bContext *C, Object *ob)
-{
-	bool changed = false;
-
-	CTX_DATA_BEGIN (C, Base *, base, selectable_bases)
-	{
-		if ((base->object->index == ob->index) && !(base->flag & SELECT)) {
-			ED_base_object_select(base, BA_SELECT);
-			changed = true;
 		}
 	}
 	CTX_DATA_END;
@@ -757,11 +753,11 @@ static bool select_grouped_color(bContext *C, Object *ob)
 static bool objects_share_gameprop(Object *a, Object *b)
 {
 	bProperty *prop;
-	/*make a copy of all its properties*/
 
 	for (prop = a->prop.first; prop; prop = prop->next) {
-		if (BKE_bproperty_object_get(b, prop->name) )
+		if (BKE_bproperty_object_get(b, prop->name)) {
 			return 1;
+		}
 	}
 	return 0;
 }
@@ -781,14 +777,29 @@ static bool select_grouped_gameprops(bContext *C, Object *ob)
 	return changed;
 }
 
-static bool select_grouped_keyingset(bContext *C, Object *UNUSED(ob))
+static bool select_grouped_keyingset(bContext *C, Object *UNUSED(ob), ReportList *reports)
 {
 	KeyingSet *ks = ANIM_scene_get_active_keyingset(CTX_data_scene(C));
 	bool changed = false;
 	
 	/* firstly, validate KeyingSet */
-	if ((ks == NULL) || (ANIM_validate_keyingset(C, NULL, ks) != 0))
-		return 0;
+	if (ks == NULL) {
+		BKE_report(reports, RPT_ERROR, "No active Keying Set to use");
+		return false;
+	}
+	else if (ANIM_validate_keyingset(C, NULL, ks) != 0) {
+		if (ks->paths.first == NULL) {
+			if ((ks->flag & KEYINGSET_ABSOLUTE) == 0) {
+				BKE_report(reports, RPT_ERROR, 
+				           "Use another Keying Set, as the active one depends on the currently "
+				           "selected objects or cannot find any targets due to unsuitable context");
+			}
+			else {
+				BKE_report(reports, RPT_ERROR, "Keying Set does not contain any paths");
+			}
+		}
+		return false;
+	}
 	
 	/* select each object that Keying Set refers to */
 	/* TODO: perhaps to be more in line with the rest of these, we should only take objects
@@ -821,11 +832,11 @@ static int object_select_grouped_exec(bContext *C, wmOperator *op)
 {
 	Scene *scene = CTX_data_scene(C);
 	Object *ob;
-	int nr = RNA_enum_get(op->ptr, "type");
+	const int type = RNA_enum_get(op->ptr, "type");
 	bool changed = false, extend;
 
 	extend = RNA_boolean_get(op->ptr, "extend");
-	
+
 	if (extend == 0) {
 		CTX_DATA_BEGIN (C, Base *, base, visible_bases)
 		{
@@ -834,38 +845,66 @@ static int object_select_grouped_exec(bContext *C, wmOperator *op)
 		}
 		CTX_DATA_END;
 	}
-	
+
 	ob = OBACT;
 	if (ob == NULL) {
 		BKE_report(op->reports, RPT_ERROR, "No active object");
 		return OPERATOR_CANCELLED;
 	}
 
-	if (nr == 13 && ob->type != OB_LAMP) {
-		BKE_report(op->reports, RPT_ERROR, "Active object must be a lamp");
-		return OPERATOR_CANCELLED;
+	switch (type) {
+		case OBJECT_GRPSEL_CHILDREN_RECURSIVE:
+			changed = select_grouped_children(C, ob, true);
+			break;
+		case OBJECT_GRPSEL_CHILDREN:
+			changed = select_grouped_children(C, ob, false);
+			break;
+		case OBJECT_GRPSEL_PARENT:
+			changed = select_grouped_parent(C);
+			break;
+		case OBJECT_GRPSEL_SIBLINGS:
+			changed = select_grouped_siblings(C, ob);
+			break;
+		case OBJECT_GRPSEL_TYPE:
+			changed = select_grouped_type(C, ob);
+			break;
+		case OBJECT_GRPSEL_LAYER:
+			changed = select_grouped_layer(C, ob);
+			break;
+		case OBJECT_GRPSEL_GROUP:
+			changed = select_grouped_group(C, ob);
+			break;
+		case OBJECT_GRPSEL_HOOK:
+			changed = select_grouped_object_hooks(C, ob);
+			break;
+		case OBJECT_GRPSEL_PASS:
+			changed = select_grouped_index_object(C, ob);
+			break;
+		case OBJECT_GRPSEL_COLOR:
+			changed = select_grouped_color(C, ob);
+			break;
+		case OBJECT_GRPSEL_PROPERTIES:
+			changed = select_grouped_gameprops(C, ob);
+			break;
+		case OBJECT_GRPSEL_KEYINGSET:
+			changed = select_grouped_keyingset(C, ob, op->reports);
+			break;
+		case OBJECT_GRPSEL_LAMP_TYPE:
+			if (ob->type != OB_LAMP) {
+				BKE_report(op->reports, RPT_ERROR, "Active object must be a lamp");
+				break;
+			}
+			changed = select_grouped_lamptype(C, ob);
+			break;
+		default:
+			break;
 	}
-
-	if      (nr == 1) changed |= select_grouped_children(C, ob, 1);
-	else if (nr == 2) changed |= select_grouped_children(C, ob, 0);
-	else if (nr == 3) changed |= select_grouped_parent(C);
-	else if (nr == 4) changed |= select_grouped_siblings(C, ob);
-	else if (nr == 5) changed |= select_grouped_type(C, ob);
-	else if (nr == 6) changed |= select_grouped_layer(C, ob);
-	else if (nr == 7) changed |= select_grouped_group(C, ob);
-	else if (nr == 8) changed |= select_grouped_object_hooks(C, ob);
-	else if (nr == 9) changed |= select_grouped_index_object(C, ob);
-	else if (nr == 10) changed |= select_grouped_color(C, ob);
-	else if (nr == 11) changed |= select_grouped_gameprops(C, ob);
-	else if (nr == 12) changed |= select_grouped_keyingset(C, ob);
-	else if (nr == 13) changed |= select_similar_lamps(C, ob);
-	else if (nr == 14) changed |= select_similar_pass_index(C, ob);
 
 	if (changed) {
-		WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, CTX_data_scene(C));
+		WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, scene);
 		return OPERATOR_FINISHED;
 	}
-	
+
 	return OPERATOR_CANCELLED;
 }
 
@@ -885,7 +924,7 @@ void OBJECT_OT_select_grouped(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
 	/* properties */
-	RNA_def_boolean(ot->srna, "extend", FALSE, "Extend", "Extend selection instead of deselecting everything first");
+	RNA_def_boolean(ot->srna, "extend", false, "Extend", "Extend selection instead of deselecting everything first");
 	ot->prop = RNA_def_enum(ot->srna, "type", prop_select_grouped_types, 0, "Type", "");
 }
 
@@ -951,7 +990,7 @@ void OBJECT_OT_select_by_layer(wmOperatorType *ot)
 	
 	/* properties */
 	RNA_def_enum(ot->srna, "match", match_items, 0, "Match", "");
-	RNA_def_boolean(ot->srna, "extend", FALSE, "Extend", "Extend selection instead of deselecting everything first");
+	RNA_def_boolean(ot->srna, "extend", false, "Extend", "Extend selection instead of deselecting everything first");
 	RNA_def_int(ot->srna, "layers", 1, 1, 20, "Layer", "", 1, 20);
 }
 
@@ -1099,7 +1138,7 @@ static int object_select_mirror_exec(bContext *C, wmOperator *op)
 	CTX_DATA_END;
 	
 	/* undo? */
-	WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, CTX_data_scene(C));
+	WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, scene);
 	
 	return OPERATOR_FINISHED;
 }

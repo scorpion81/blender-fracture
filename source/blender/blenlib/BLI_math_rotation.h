@@ -69,6 +69,7 @@ float normalize_qt_qt(float q1[4], const float q2[4]);
 bool is_zero_qt(const float q[4]);
 
 /* interpolation */
+void interp_dot_slerp(const float t, const float cosom, float w[2]);
 void interp_qt_qtqt(float q[4], const float a[4], const float b[4], const float t);
 void add_qt_qtqt(float q[4], const float a[4], const float b[4], const float t);
 
@@ -80,11 +81,17 @@ void mat3_to_quat(float q[4], float mat[3][3]);
 void mat4_to_quat(float q[4], float mat[4][4]);
 void tri_to_quat_ex(float quat[4], const float v1[3], const float v2[3], const float v3[3],
                     const float no_orig[3]);
-void tri_to_quat(float q[4], const float a[3], const float b[3], const float c[3]);
-void vec_to_quat(float q[4], const float vec[3], short axis, const short upflag);
+float tri_to_quat(float q[4], const float a[3], const float b[3], const float c[3]);
+void  vec_to_quat(float q[4], const float vec[3], short axis, const short upflag);
 /* note: v1 and v2 must be normalized */
+void rotation_between_vecs_to_mat3(float m[3][3], const float v1[3], const float v2[3]);
 void rotation_between_vecs_to_quat(float q[4], const float v1[3], const float v2[3]);
 void rotation_between_quats_to_quat(float q[4], const float q1[4], const float q2[4]);
+
+float angle_normalized_qt(const float q[4]);
+float angle_normalized_qtqt(const float q1[4], const float q2[4]);
+float angle_qt(const float q[4]);
+float angle_qtqt(const float q1[4], const float q2[4]);
 
 /* TODO: don't what this is, but it's not the same as mat3_to_quat */
 void mat3_to_quat_is_ok(float q[4], float mat[3][3]);
@@ -92,12 +99,16 @@ void mat3_to_quat_is_ok(float q[4], float mat[3][3]);
 /* other */
 void print_qt(const char *str, const float q[4]);
 
+#define print_qt_id(q) print_qt(STRINGIFY(q), q)
+
 /******************************** Axis Angle *********************************/
 
 /* conversion */
 void axis_angle_normalized_to_quat(float r[4], const float axis[3], const float angle);
 void axis_angle_to_quat(float r[4], const float axis[3], const float angle);
 void axis_angle_to_mat3(float R[3][3], const float axis[3], const float angle);
+void axis_angle_normalized_to_mat3_ex(float mat[3][3], const float axis[3],
+                                      const float angle_sin, const float angle_cos);
 void axis_angle_normalized_to_mat3(float R[3][3], const float axis[3], const float angle);
 void axis_angle_to_mat4(float R[4][4], const float axis[3], const float angle);
 
@@ -107,6 +118,11 @@ void mat4_to_axis_angle(float axis[3], float *angle, float M[4][4]);
 
 void axis_angle_to_mat3_single(float R[3][3], const char axis, const float angle);
 void      angle_to_mat2(float R[2][2], const float angle);
+
+/****************************** Exponential Map ******************************/
+void quat_to_expmap(float expmap[3], const float q[4]);
+void quat_normalized_to_expmap(float expmap[3], const float q[4]);
+void expmap_to_quat(float r[4], const float expmap[3]);
 
 /******************************** XYZ Eulers *********************************/
 

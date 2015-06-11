@@ -33,7 +33,6 @@
 #include "DNA_scene_types.h"
 
 #include "BLI_utildefines.h"
-#include "BLI_listbase.h"
 #include "BLI_rect.h"
 
 #include "BKE_armature.h"
@@ -44,10 +43,8 @@
 
 #include "bmesh.h"
 
-#include "ED_mesh.h"
 #include "ED_screen.h"
 #include "ED_armature.h"
-#include "ED_object.h"
 #include "ED_view3d.h"
 
 typedef struct foreachScreenObjectVert_userData {
@@ -370,7 +367,7 @@ void lattice_foreachScreenVert(
 	Lattice *lt = obedit->data;
 	BPoint *bp = lt->editlatt->latt->def;
 	DispList *dl = obedit->curve_cache ? BKE_displist_find(&obedit->curve_cache->disp, DL_VERTS) : NULL;
-	float *co = dl ? dl->verts : NULL;
+	const float *co = dl ? dl->verts : NULL;
 	int i, N = lt->editlatt->latt->pntsu * lt->editlatt->latt->pntsv * lt->editlatt->latt->pntsw;
 
 	ED_view3d_check_mats_rv3d(vc->rv3d);

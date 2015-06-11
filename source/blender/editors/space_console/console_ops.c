@@ -43,7 +43,6 @@
 #include "BLI_math.h"
 
 #include "BKE_context.h"
-#include "BKE_text.h" /* only for character utility funcs */
 
 #include "WM_api.h"
 #include "WM_types.h"
@@ -96,7 +95,7 @@ static void console_scrollback_limit(SpaceConsole *sc)
 	
 	if (U.scrollback < 32) U.scrollback = 256;  // XXX - save in user defaults
 	
-	for (tot = BLI_countlist(&sc->scrollback); tot > U.scrollback; tot--)
+	for (tot = BLI_listbase_count(&sc->scrollback); tot > U.scrollback; tot--)
 		console_scrollback_free(sc, sc->scrollback.first);
 }
 
@@ -108,7 +107,7 @@ static ConsoleLine *console_history_find(SpaceConsole *sc, const char *str, Cons
 		if (cl == cl_ignore)
 			continue;
 
-		if (strcmp(str, cl->line) == 0)
+		if (STREQ(str, cl->line))
 			return cl;
 	}
 
@@ -137,7 +136,7 @@ static void console_lb_debug__internal(ListBase *lb)
 {
 	ConsoleLine *cl;
 
-	printf("%d: ", BLI_countlist(lb));
+	printf("%d: ", BLI_listbase_count(lb));
 	for (cl = lb->first; cl; cl = cl->next)
 		printf("<%s> ", cl->line);
 	printf("\n");
@@ -554,7 +553,7 @@ static int console_delete_exec(bContext *C, wmOperator *op)
 	int stride;
 
 	const short type = RNA_enum_get(op->ptr, "type");
-	int done = FALSE;
+	bool done = false;
 	
 	if (ci->len == 0) {
 		return OPERATOR_CANCELLED;
@@ -573,7 +572,7 @@ static int console_delete_exec(bContext *C, wmOperator *op)
 					memmove(ci->line + ci->cursor, ci->line + ci->cursor + stride, (ci->len - (ci->cursor + stride)) + 1);
 					ci->len -= stride;
 					BLI_assert(ci->len >= 0);
-					done = TRUE;
+					done = true;
 				}
 			}
 			break;
@@ -590,7 +589,7 @@ static int console_delete_exec(bContext *C, wmOperator *op)
 					memmove(ci->line + ci->cursor, ci->line + ci->cursor + stride, (ci->len - (ci->cursor + stride)) + 1);
 					ci->len -= stride;
 					BLI_assert(ci->len >= 0);
-					done = TRUE;
+					done = true;
 				}
 			}
 			break;
@@ -723,7 +722,7 @@ static int console_history_cycle_exec(bContext *C, wmOperator *op)
 	if (ci->prev) {
 		ConsoleLine *ci_prev = (ConsoleLine *)ci->prev;
 
-		if (strcmp(ci->line, ci_prev->line) == 0)
+		if (STREQ(ci->line, ci_prev->line))
 			console_history_free(sc, ci_prev);
 	}
 
@@ -792,7 +791,7 @@ static int console_history_append_exec(bContext *C, wmOperator *op)
 		while ((cl = console_history_find(sc, ci->line, ci)))
 			console_history_free(sc, cl);
 
-		if (strcmp(str, ci->line) == 0) {
+		if (STREQ(str, ci->line)) {
 			MEM_freeN(str);
 			return OPERATOR_FINISHED;
 		}
@@ -889,7 +888,7 @@ static int console_copy_exec(bContext *C, wmOperator *UNUSED(op))
 {
 	SpaceConsole *sc = CTX_wm_space_console(C);
 
-	DynStr *buf_dyn = BLI_dynstr_new();
+	DynStr *buf_dyn;
 	char *buf_str;
 	
 	ConsoleLine *cl;
@@ -897,14 +896,6 @@ static int console_copy_exec(bContext *C, wmOperator *UNUSED(op))
 	int offset = 0;
 
 	ConsoleLine cl_dummy = {NULL};
-
-#if 0
-	/* copy whole file */
-	for (cl = sc->scrollback.first; cl; cl = cl->next) {
-		BLI_dynstr_append(buf_dyn, cl->line);
-		BLI_dynstr_append(buf_dyn, "\n");
-	}
-#endif
 
 	if (sc->sel_start == sc->sel_end)
 		return OPERATOR_CANCELLED;
@@ -920,6 +911,7 @@ static int console_copy_exec(bContext *C, wmOperator *UNUSED(op))
 		return OPERATOR_CANCELLED;
 	}
 
+	buf_dyn = BLI_dynstr_new();
 	offset -= 1;
 	sel[0] = offset - sc->sel_end;
 	sel[1] = offset - sc->sel_start;
@@ -1063,7 +1055,7 @@ static void console_modal_select_apply(bContext *C, wmOperator *op, const wmEven
 	sel_prev[0] = sc->sel_start;
 	sel_prev[1] = sc->sel_end;
 	
-	console_cursor_set_to_pos(sc, ar, scu, mval, TRUE);
+	console_cursor_set_to_pos(sc, ar, scu, mval, true);
 
 	/* only redraw if the selection changed */
 	if (sel_prev[0] != sc->sel_start || sel_prev[1] != sc->sel_end) {

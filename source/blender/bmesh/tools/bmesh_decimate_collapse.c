@@ -30,7 +30,6 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "DNA_scene_types.h"
 
 #include "BLI_math.h"
 #include "BLI_quadric.h"
@@ -146,8 +145,8 @@ static bool bm_edge_collapse_is_degenerate_flip(BMEdge *e, const float optimize_
 
 		BM_ITER_ELEM (l, &liter, v, BM_LOOPS_OF_VERT) {
 			if (l->e != e && l->prev->e != e) {
-				float *co_prev = l->prev->v->co;
-				float *co_next = l->next->v->co;
+				const float *co_prev = l->prev->v->co;
+				const float *co_next = l->next->v->co;
 				float cross_exist[3];
 				float cross_optim[3];
 
@@ -313,11 +312,13 @@ static bool bm_decim_triangulate_begin(BMesh *bm)
 
 		l_iter = l_first = BM_FACE_FIRST_LOOP(f);
 		do {
-			BM_elem_index_set(l_iter, -1);
+			BM_elem_index_set(l_iter, -1);  /* set_dirty */
 		} while ((l_iter = l_iter->next) != l_first);
 
 		// has_quad |= (f->len == 4)
 	}
+
+	bm->elem_index_dirty |= BM_LOOP;
 
 	/* adding new faces as we loop over faces
 	 * is normally best avoided, however in this case its not so bad because any face touched twice
@@ -367,8 +368,8 @@ static bool bm_decim_triangulate_begin(BMesh *bm)
 					/* since we just split theres only ever 2 loops */
 					BLI_assert(BM_edge_is_manifold(l_new->e));
 
-					BM_elem_index_set(l_new, f_index);
-					BM_elem_index_set(l_new->radial_next, f_index);
+					BM_elem_index_set(l_new, f_index);  /* set_dirty */
+					BM_elem_index_set(l_new->radial_next, f_index);  /* set_dirty */
 
 					BM_face_normal_update(f);
 					BM_face_normal_update(f_new);
@@ -413,10 +414,10 @@ static void bm_decim_triangulate_end(BMesh *bm)
 								BM_vert_in_edge(e, l_b->next->v) ? l_b->prev->v : l_b->next->v,
 							};
 
-							BLI_assert(ELEM3(vquad[0], vquad[1], vquad[2], vquad[3]) == false);
-							BLI_assert(ELEM3(vquad[1], vquad[0], vquad[2], vquad[3]) == false);
-							BLI_assert(ELEM3(vquad[2], vquad[1], vquad[0], vquad[3]) == false);
-							BLI_assert(ELEM3(vquad[3], vquad[1], vquad[2], vquad[0]) == false);
+							BLI_assert(ELEM(vquad[0], vquad[1], vquad[2], vquad[3]) == false);
+							BLI_assert(ELEM(vquad[1], vquad[0], vquad[2], vquad[3]) == false);
+							BLI_assert(ELEM(vquad[2], vquad[1], vquad[0], vquad[3]) == false);
+							BLI_assert(ELEM(vquad[3], vquad[1], vquad[2], vquad[0]) == false);
 
 							if (is_quad_convex_v3(vquad[0]->co, vquad[1]->co, vquad[2]->co, vquad[3]->co)) {
 								/* highly unlikely to fail, but prevents possible double-ups */
@@ -518,13 +519,17 @@ static void bm_edge_collapse_loop_customdata(BMesh *bm, BMLoop *l, BMVert *v_cle
 				if (CustomData_layer_has_math(&bm->ldata, i)) {
 					const int offset = bm->ldata.layers[i].offset;
 					const int type = bm->ldata.layers[i].type;
-					void *cd_src[2] = {(char *)src[0] + offset,
-					                   (char *)src[1] + offset};
-					void *cd_iter = (char *)l_iter->head.data + offset;
+					const void *cd_src[2] = {
+					    POINTER_OFFSET(src[0], offset),
+					    POINTER_OFFSET(src[1], offset),
+					};
+					void *cd_iter = POINTER_OFFSET(l_iter->head.data, offset);
 
 					/* detect seams */
 					if (CustomData_data_equals(type, cd_src[0], cd_iter)) {
-						CustomData_bmesh_interp_n(&bm->ldata, cd_src, w, NULL, 2, l_iter->head.data, i);
+						CustomData_bmesh_interp_n(
+						        &bm->ldata, cd_src, w, NULL, ARRAY_SIZE(cd_src),
+						        POINTER_OFFSET(l_iter->head.data, offset), i);
 #ifdef USE_SEAM
 						is_seam = false;
 #endif
@@ -718,6 +723,7 @@ static bool bm_edge_collapse(BMesh *bm, BMEdge *e_clear, BMVert *v_clear, int r_
 		BLI_assert(ok == true);
 		BLI_assert(l_a->f->len == 3);
 		BLI_assert(l_b->f->len == 3);
+		UNUSED_VARS_NDEBUG(ok);
 
 		/* keep 'v_clear' 0th */
 		if (BM_vert_in_edge(l_a->prev->e, v_clear)) {
@@ -1006,7 +1012,7 @@ void BM_mesh_decimate_collapse(BMesh *bm, const float factor, float *vweights, c
 	bm_decim_build_edge_cost(bm, vquadrics, vweights, eheap, eheap_table);
 
 	face_tot_target = bm->totface * factor;
-	bm->elem_index_dirty |= BM_FACE | BM_EDGE | BM_VERT;
+	bm->elem_index_dirty |= BM_ALL;
 
 
 #ifdef USE_CUSTOMDATA

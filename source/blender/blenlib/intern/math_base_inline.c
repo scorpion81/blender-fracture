@@ -44,8 +44,23 @@
 #  define UNLIKELY(x)     (x)
 #endif
 
-/* A few small defines. Keep'em local! */
-#define SMALL_NUMBER  1.e-8f
+/* powf is really slow for raising to integer powers. */
+MINLINE float pow2f(float x)
+{
+	return x * x;
+}
+MINLINE float pow3f(float x)
+{
+	return pow2f(x) * x;
+}
+MINLINE float pow4f(float x)
+{
+	return pow2f(pow2f(x));
+}
+MINLINE float pow7f(float x)
+{
+	return pow2f(pow3f(x)) * x;
+}
 
 MINLINE float sqrt3f(float f)
 {
@@ -111,15 +126,6 @@ MINLINE float interpf(float target, float origin, float fac)
 	return (fac * target) + (1.0f - fac) * origin;
 }
 
-/* useful to calculate an even width shell, by taking the angle between 2 planes.
- * The return value is a scale on the offset.
- * no angle between planes is 1.0, as the angle between the 2 planes approaches 180d
- * the distance gets very high, 180d would be inf, but this case isn't valid */
-MINLINE float shell_angle_to_dist(const float angle)
-{
-	return (UNLIKELY(angle < SMALL_NUMBER)) ? 1.0f : fabsf(1.0f / cosf(angle));
-}
-
 /* used for zoom values*/
 MINLINE float power_of_2(float val)
 {
@@ -149,6 +155,27 @@ MINLINE int power_of_2_min_i(int n)
 		n = n & (n - 1);
 
 	return n;
+}
+
+MINLINE unsigned int power_of_2_max_u(unsigned int x)
+{
+	x -= 1;
+	x |= (x >>  1);
+	x |= (x >>  2);
+	x |= (x >>  4);
+	x |= (x >>  8);
+	x |= (x >> 16);
+	return x + 1;
+}
+
+MINLINE unsigned power_of_2_min_u(unsigned x)
+{
+	x |= (x >>  1);
+	x |= (x >>  2);
+	x |= (x >>  4);
+	x |= (x >>  8);
+	x |= (x >> 16);
+	return x - (x >> 1);
 }
 
 MINLINE int iroundf(float a)
@@ -249,5 +276,18 @@ MINLINE float signf(float f)
 	return (f < 0.f) ? -1.f : 1.f;
 }
 
+MINLINE int signum_i_ex(float a, float eps)
+{
+	if (a >  eps) return  1;
+	if (a < -eps) return -1;
+	else          return  0;
+}
+
+MINLINE int signum_i(float a)
+{
+	if (a > 0.0f) return  1;
+	if (a < 0.0f) return -1;
+	else          return  0;
+}
 
 #endif /* __MATH_BASE_INLINE_C__ */

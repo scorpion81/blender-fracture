@@ -49,7 +49,6 @@
 #include "WM_types.h"
 
 #include "wm.h"
-#include "wm_event_system.h"
 #include "wm_subwindow.h"
 #include "wm_draw.h"
 
@@ -72,9 +71,9 @@ wmGesture *WM_gesture_new(bContext *C, const wmEvent *event, int type)
 	gesture->event_type = event->type;
 	gesture->swinid = ar->swinid;    /* means only in area-region context! */
 	
-	wm_subwindow_getorigin(window, gesture->swinid, &sx, &sy);
+	wm_subwindow_origin_get(window, gesture->swinid, &sx, &sy);
 	
-	if (ELEM5(type, WM_GESTURE_RECT, WM_GESTURE_CROSS_RECT, WM_GESTURE_TWEAK,
+	if (ELEM(type, WM_GESTURE_RECT, WM_GESTURE_CROSS_RECT, WM_GESTURE_TWEAK,
 	          WM_GESTURE_CIRCLE, WM_GESTURE_STRAIGHTLINE))
 	{
 		rcti *rect = MEM_callocN(sizeof(rcti), "gesture rect new");
@@ -247,7 +246,7 @@ static void draw_filled_lasso_px_cb(int x, int y, void *user_data)
 
 static void draw_filled_lasso(wmWindow *win, wmGesture *gt)
 {
-	short *lasso = (short *)gt->customdata;
+	const short *lasso = (short *)gt->customdata;
 	const int tot = gt->points;
 	int (*moves)[2] = MEM_mallocN(sizeof(*moves) * (tot + 1), __func__);
 	int i;
@@ -261,7 +260,7 @@ static void draw_filled_lasso(wmWindow *win, wmGesture *gt)
 
 	BLI_lasso_boundbox(&rect, (const int (*)[2])moves, tot);
 
-	wm_subwindow_getrect(win, gt->swinid, &rect_win);
+	wm_subwindow_rect_get(win, gt->swinid, &rect_win);
 	BLI_rcti_translate(&rect, rect_win.xmin, rect_win.ymin);
 	BLI_rcti_isect(&rect_win, &rect, &rect);
 	BLI_rcti_translate(&rect, -rect_win.xmin, -rect_win.ymin);
@@ -295,7 +294,7 @@ static void draw_filled_lasso(wmWindow *win, wmGesture *gt)
 
 static void wm_gesture_draw_lasso(wmWindow *win, wmGesture *gt, bool filled)
 {
-	short *lasso = (short *)gt->customdata;
+	const short *lasso = (short *)gt->customdata;
 	int i;
 
 	if (filled) {
@@ -382,7 +381,7 @@ void wm_gesture_tag_redraw(bContext *C)
 	ARegion *ar = CTX_wm_region(C);
 	
 	if (screen)
-		screen->do_draw_gesture = TRUE;
+		screen->do_draw_gesture = true;
 
 	wm_tag_redraw_overlay(win, ar);
 }

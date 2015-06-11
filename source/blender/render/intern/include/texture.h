@@ -35,7 +35,7 @@
 
 #define BRICONT                                                           \
 	texres->tin= (texres->tin-0.5f) * tex->contrast+tex->bright-0.5f;     \
-	if(!(tex->flag & TEX_NO_CLAMP)) {                                     \
+	if (!(tex->flag & TEX_NO_CLAMP)) {                                    \
 		if (texres->tin < 0.0f)      texres->tin= 0.0f;                   \
 		else if (texres->tin > 1.0f) texres->tin= 1.0f;                   \
 	}                                                                     \
@@ -44,7 +44,7 @@
 	texres->tr= tex->rfac*((texres->tr-0.5f)*tex->contrast+tex->bright-0.5f); \
 	texres->tg= tex->gfac*((texres->tg-0.5f)*tex->contrast+tex->bright-0.5f); \
 	texres->tb= tex->bfac*((texres->tb-0.5f)*tex->contrast+tex->bright-0.5f); \
-	if(!(tex->flag & TEX_NO_CLAMP)) {                                         \
+	if (!(tex->flag & TEX_NO_CLAMP)) {                                        \
 		if (texres->tr < 0.0f) texres->tr= 0.0f;                              \
 		if (texres->tg < 0.0f) texres->tg= 0.0f;                              \
 		if (texres->tb < 0.0f) texres->tb= 0.0f;                              \
@@ -81,8 +81,8 @@ void render_realtime_texture(struct ShadeInput *shi, struct Image *ima);
 
 /* imagetexture.h */
 
-int imagewraposa(struct Tex *tex, struct Image *ima, struct ImBuf *ibuf, const float texvec[3], const float dxt[2], const float dyt[2], struct TexResult *texres, struct ImagePool *pool);
-int imagewrap(struct Tex *tex, struct Image *ima, struct ImBuf *ibuf, const float texvec[3], struct TexResult *texres, struct ImagePool *pool);
+int imagewraposa(struct Tex *tex, struct Image *ima, struct ImBuf *ibuf, const float texvec[3], const float dxt[2], const float dyt[2], struct TexResult *texres, struct ImagePool *pool, const bool skip_load_image);
+int imagewrap(struct Tex *tex, struct Image *ima, struct ImBuf *ibuf, const float texvec[3], struct TexResult *texres, struct ImagePool *pool, const bool skip_load_image);
 void image_sample(struct Image *ima, float fx, float fy, float dx, float dy, float result[4], struct ImagePool *pool);
 
 #endif /* __TEXTURE_H__ */

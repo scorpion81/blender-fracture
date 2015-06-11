@@ -40,11 +40,8 @@
 #include "BLI_string_utf8.h"
 
 #include "BIF_gl.h"
-#include "BIF_glutil.h"
 
 #include "BKE_text.h"
-
-#include "ED_datafiles.h"
 
 #include "textview.h"
 
@@ -64,7 +61,7 @@ typedef struct ConsoleDrawContext {
 	int *xy; // [2]
 	int *sel; // [2]
 	int *pos_pick; // bottom of view == 0, top of file == combine chars, end of line is lower then start. 
-	int *mval; // [2]
+	const int *mval; // [2]
 	int draw;
 } ConsoleDrawContext;
 
@@ -158,7 +155,7 @@ static int console_draw_string(ConsoleDrawContext *cdc, const char *str, int str
 		MEM_freeN(offsets);
 		return 1;
 	}
-	else if (y_next - cdc->lheight < cdc->ymin) {
+	else if (y_next < cdc->ymin) {
 		/* have not reached the drawable area so don't break */
 		cdc->xy[1] = y_next;
 
@@ -293,8 +290,10 @@ int textview_draw(TextViewContext *tvc, const int draw, int mval[2], void **mous
 	cdc.lheight = tvc->lheight;
 	cdc.lofs = -BLF_descender(mono);
 	/* note, scroll bar must be already subtracted () */
-	cdc.console_width = (tvc->winx - (CONSOLE_DRAW_MARGIN * 2) ) / cdc.cwidth;
-	CLAMP(cdc.console_width, 1, INT_MAX); /* avoid divide by zero on small windows */
+	cdc.console_width = (tvc->winx - (CONSOLE_DRAW_MARGIN * 2)) / cdc.cwidth;
+	/* avoid divide by zero on small windows */
+	if (cdc.console_width < 1)
+		cdc.console_width = 1;
 	cdc.winx = tvc->winx - CONSOLE_DRAW_MARGIN;
 	cdc.ymin = tvc->ymin;
 	cdc.ymax = tvc->ymax;

@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __OBJECT_H__
@@ -27,6 +27,7 @@ CCL_NAMESPACE_BEGIN
 class Device;
 class DeviceScene;
 class Mesh;
+class ParticleSystem;
 class Progress;
 class Scene;
 struct Transform;
@@ -50,15 +51,18 @@ public:
 	float3 dupli_generated;
 	float2 dupli_uv;
 
-	int particle_id;
-
+	ParticleSystem *particle_system;
+	int particle_index;
+	
 	Object();
 	~Object();
 
 	void tag_update(Scene *scene);
 
-	void compute_bounds(bool motion_blur, float shuttertime);
-	void apply_transform();
+	void compute_bounds(bool motion_blur);
+	void apply_transform(bool apply_to_motion);
+
+	vector<float> motion_times();
 };
 
 /* Object Manager */
@@ -66,12 +70,14 @@ public:
 class ObjectManager {
 public:
 	bool need_update;
+	bool need_flags_update;
 
 	ObjectManager();
 	~ObjectManager();
 
 	void device_update(Device *device, DeviceScene *dscene, Scene *scene, Progress& progress);
 	void device_update_transforms(Device *device, DeviceScene *dscene, Scene *scene, uint *object_flag, Progress& progress);
+	void device_update_flags(Device *device, DeviceScene *dscene, Scene *scene, Progress& progress);
 	void device_free(Device *device, DeviceScene *dscene);
 
 	void tag_update(Scene *scene);

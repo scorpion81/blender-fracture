@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include "stdosl.h"
@@ -22,8 +22,8 @@ shader node_fresnel(
 	normal Normal = N,
 	output float Fac = 0.0)
 {
-	float f = max(IOR, 1.0 + 1e-5);
-	float eta = backfacing() ? 1.0 / f: f;
+	float f = max(IOR, 1e-5);
+	float eta = backfacing() ? 1.0 / f : f;
 	float cosi = dot(I, Normal);
 	Fac = fresnel_dielectric_cos(cosi, eta);
 }

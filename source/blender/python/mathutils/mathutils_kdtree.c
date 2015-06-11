@@ -35,6 +35,7 @@
 #include "BLI_kdtree.h"
 
 #include "../generic/py_capi_utils.h"
+#include "../generic/python_utildefines.h"
 
 #include "mathutils.h"
 #include "mathutils_kdtree.h"  /* own include */
@@ -58,9 +59,10 @@ static void kdtree_nearest_to_py_tuple(const KDTreeNearest *nearest, PyObject *p
 	BLI_assert(nearest->index >= 0);
 	BLI_assert(PyTuple_GET_SIZE(py_retval) == 3);
 
-	PyTuple_SET_ITEM(py_retval, 0, Vector_CreatePyObject((float *)nearest->co, 3, Py_NEW, NULL));
-	PyTuple_SET_ITEM(py_retval, 1, PyLong_FromLong(nearest->index));
-	PyTuple_SET_ITEM(py_retval, 2, PyFloat_FromDouble(nearest->dist));
+	PyTuple_SET_ITEMS(py_retval,
+	        Vector_CreatePyObject((float *)nearest->co, 3, NULL),
+	        PyLong_FromLong(nearest->index),
+	        PyFloat_FromDouble(nearest->dist));
 }
 
 static PyObject *kdtree_nearest_to_py(const KDTreeNearest *nearest)
@@ -102,7 +104,7 @@ static int PyKDTree__tp_init(PyKDTree *self, PyObject *args, PyObject *kwargs)
 	unsigned int maxsize;
 	const char *keywords[] = {"size", NULL};
 
-	if (!PyArg_ParseTupleAndKeywords(args, kwargs, (char *)"I:KDTree", (char **)keywords, &maxsize)) {
+	if (!PyArg_ParseTupleAndKeywords(args, kwargs, "I:KDTree", (char **)keywords, &maxsize)) {
 		return -1;
 	}
 
@@ -126,7 +128,7 @@ static void PyKDTree__tp_dealloc(PyKDTree *self)
 }
 
 PyDoc_STRVAR(py_kdtree_insert_doc,
-".. method:: insert(index, co)\n"
+".. method:: insert(co, index)\n"
 "\n"
 "   Insert a point into the KDTree.\n"
 "\n"
@@ -161,7 +163,7 @@ static PyObject *py_kdtree_insert(PyKDTree *self, PyObject *args, PyObject *kwar
 		return NULL;
 	}
 
-	BLI_kdtree_insert(self->obj, index, co, NULL);
+	BLI_kdtree_insert(self->obj, index, co);
 	self->count++;
 
 	Py_RETURN_NONE;
@@ -171,6 +173,10 @@ PyDoc_STRVAR(py_kdtree_balance_doc,
 ".. method:: balance()\n"
 "\n"
 "   Balance the tree.\n"
+"\n"
+".. note::\n"
+"\n"
+"   This builds the entire tree, avoid calling after each insertion.\n"
 );
 static PyObject *py_kdtree_balance(PyKDTree *self)
 {
@@ -213,7 +219,7 @@ static PyObject *py_kdtree_find(PyKDTree *self, PyObject *args, PyObject *kwargs
 
 	nearest.index = -1;
 
-	BLI_kdtree_find_nearest(self->obj, co, NULL, &nearest);
+	BLI_kdtree_find_nearest(self->obj, co, &nearest);
 
 	return kdtree_nearest_to_py_and_check(&nearest);
 }
@@ -261,7 +267,7 @@ static PyObject *py_kdtree_find_n(PyKDTree *self, PyObject *args, PyObject *kwar
 
 	nearest = MEM_mallocN(sizeof(KDTreeNearest) * n, __func__);
 
-	found = BLI_kdtree_find_nearest_n(self->obj, co, NULL, nearest, n);
+	found = BLI_kdtree_find_nearest_n(self->obj, co, nearest, n);
 
 	py_list = PyList_New(found);
 
@@ -316,7 +322,7 @@ static PyObject *py_kdtree_find_range(PyKDTree *self, PyObject *args, PyObject *
 		return NULL;
 	}
 
-	found = BLI_kdtree_range_search(self->obj, co, NULL, &nearest, radius);
+	found = BLI_kdtree_range_search(self->obj, co, &nearest, radius);
 
 	py_list = PyList_New(found);
 
@@ -425,7 +431,7 @@ PyMODINIT_FUNC PyInit_mathutils_kdtree(void)
 	if (PyType_Ready(&PyKDTree_Type)) {
 		return NULL;
 	}
-	PyModule_AddObject(m, (char *)"KDTree", (PyObject *) &PyKDTree_Type);
+	PyModule_AddObject(m, "KDTree", (PyObject *) &PyKDTree_Type);
 
 	return m;
 }

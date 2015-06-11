@@ -48,6 +48,7 @@ struct Object;
 
 struct bDopeSheet;
 
+struct bAction;
 struct bActionGroup;
 struct FCurve;
 struct FModifier;
@@ -110,11 +111,12 @@ typedef struct bAnimListElem {
 	struct bAnimListElem *next, *prev;
 	
 	void    *data;          /* source data this elem represents */
-	int     type;           /* one of the ANIMTYPE_* values */
+	int     type;           /* (eAnim_ChannelType) one of the ANIMTYPE_* values */
 	int     flag;           /* copy of elem's flags for quick access */
-	int     index;          /* for un-named data, the index of the data in it's collection */
+	int     index;          /* for un-named data, the index of the data in its collection */
 	
-	short   datatype;       /* type of motion data to expect */
+	short   update;         /* (eAnim_Update_Flags)  tag the element for updating */
+	short   datatype;       /* (eAnim_KeyType) type of motion data to expect */
 	void   *key_data;       /* motion data - mostly F-Curves, but can be other types too */
 	
 	
@@ -157,12 +159,13 @@ typedef enum eAnim_ChannelType {
 	ANIMTYPE_DSLAT,
 	ANIMTYPE_DSLINESTYLE,
 	ANIMTYPE_DSSPK,
+	ANIMTYPE_DSGPENCIL,
 	
 	ANIMTYPE_SHAPEKEY,
 	
 	ANIMTYPE_GPDATABLOCK,
 	ANIMTYPE_GPLAYER,
-
+	
 	ANIMTYPE_MASKDATABLOCK,
 	ANIMTYPE_MASKLAYER,
 	
@@ -187,6 +190,20 @@ typedef enum eAnim_KeyType {
 	ALE_ACT,            /* Action summary */
 	ALE_GROUP           /* Action Group summary */
 } eAnim_KeyType;
+
+/* Flags for specifying the types of updates (i.e. recalculation/refreshing) that
+ * needs to be performed to the data contained in a channel following editing.
+ * For use with ANIM_animdata_update()
+ */
+typedef enum eAnim_Update_Flags {
+	ANIM_UPDATE_DEPS        = (1 << 0),  /* referenced data and dependencies get refreshed */
+	ANIM_UPDATE_ORDER       = (1 << 1),  /* keyframes need to be sorted */
+	ANIM_UPDATE_HANDLES     = (1 << 2),  /* recalculate handles */
+} eAnim_Update_Flags;
+
+/* used for most tools which change keyframes (flushed by ANIM_animdata_update) */
+#define ANIM_UPDATE_DEFAULT (ANIM_UPDATE_DEPS | ANIM_UPDATE_ORDER | ANIM_UPDATE_HANDLES)
+#define ANIM_UPDATE_DEFAULT_NOHANDLES (ANIM_UPDATE_DEFAULT & ~ANIM_UPDATE_HANDLES)
 
 /* ----------------- Filtering -------------------- */
 
@@ -342,7 +359,7 @@ typedef enum eAnimFilter_Flags {
 /* Obtain list of filtered Animation channels to operate on.
  * Returns the number of channels in the list
  */
-size_t ANIM_animdata_filter(bAnimContext *ac, ListBase *anim_data, int filter_mode, void *data, short datatype);
+size_t ANIM_animdata_filter(bAnimContext *ac, ListBase *anim_data, eAnimFilter_Flags filter_mode, void *data, eAnimCont_Types datatype);
 
 /* Obtain current anim-data context from Blender Context info.
  * Returns whether the operation was successful. 
@@ -355,11 +372,23 @@ bool ANIM_animdata_get_context(const struct bContext *C, bAnimContext *ac);
  */
 bool ANIM_animdata_context_getdata(bAnimContext *ac);
 
+/* Acts on bAnimListElem eAnim_Update_Flags */
+void ANIM_animdata_update(bAnimContext *ac, ListBase *anim_data);
+
+void ANIM_animdata_freelist(ListBase *anim_data);
+
 /* ************************************************ */
 /* ANIMATION CHANNELS LIST */
 /* anim_channels_*.c */
 
 /* ------------------------ Drawing TypeInfo -------------------------- */
+
+/* role or level of animchannel in the hierarchy */
+typedef enum eAnimChannel_Role {
+	ACHANNEL_ROLE_EXPANDER = -1,    /* datablock expander - a "composite" channel type */
+	ACHANNEL_ROLE_SPECIAL  = 0,     /* special purposes - not generally for hierarchy processing */
+	ACHANNEL_ROLE_CHANNEL  = 1      /* data channel - a channel representing one of the actual building blocks of channels */
+} eAnimChannel_Role;
 
 /* flag-setting behavior */
 typedef enum eAnimChannels_SetFlag {
@@ -376,17 +405,20 @@ typedef enum eAnimChannel_Settings {
 	ACHANNEL_SETTING_MUTE     = 2,
 	ACHANNEL_SETTING_EXPAND   = 3,
 	ACHANNEL_SETTING_VISIBLE  = 4,  /* only for Graph Editor */
-	ACHANNEL_SETTING_SOLO     = 5   /* only for NLA Tracks */
+	ACHANNEL_SETTING_SOLO     = 5,  /* only for NLA Tracks */
+	ACHANNEL_SETTING_PINNED   = 6   /* only for NLA Actions */
 } eAnimChannel_Settings;
 
 
 /* Drawing, mouse handling, and flag setting behavior... */
 typedef struct bAnimChannelType {
-	/* type data */
+	/* -- Type data -- */
 	/* name of the channel type, for debugging */
 	const char *channel_type_name;
+	/* "level" or role in hierarchy - for finding the active channel */
+	eAnimChannel_Role channel_role;
 	
-	/* drawing */
+	/* -- Drawing -- */
 	/* get RGB color that is used to draw the majority of the backdrop */
 	void (*get_backdrop_color)(bAnimContext *ac, bAnimListElem *ale, float r_color[3]);
 	/* draw backdrop strip for channel */
@@ -403,16 +435,16 @@ typedef struct bAnimChannelType {
 	/* get icon (for channel lists) */
 	int (*icon)(bAnimListElem *ale);
 	
-	/* settings */
+	/* -- Settings -- */
 	/* check if the given setting is valid in the current context */
-	bool (*has_setting)(bAnimContext *ac, bAnimListElem *ale, int setting);
+	bool (*has_setting)(bAnimContext *ac, bAnimListElem *ale, eAnimChannel_Settings setting);
 	/* get the flag used for this setting */
-	int (*setting_flag)(bAnimContext *ac, int setting, bool *neg);
+	int (*setting_flag)(bAnimContext *ac, eAnimChannel_Settings setting, bool *neg);
 	/* get the pointer to int/short where data is stored,
 	 * with type being  sizeof(ptr_data) which should be fine for runtime use...
 	 *	- assume that setting has been checked to be valid for current context
 	 */
-	void *(*setting_ptr)(bAnimListElem *ale, int setting, short *type);
+	void *(*setting_ptr)(bAnimListElem *ale, eAnimChannel_Settings setting, short *type);
 } bAnimChannelType;
 
 /* ------------------------ Drawing API -------------------------- */
@@ -426,7 +458,7 @@ void ANIM_channel_debug_print_info(bAnimListElem *ale, short indent_level);
 /* Draw the given channel */
 void ANIM_channel_draw(bAnimContext *ac, bAnimListElem *ale, float yminc, float ymaxc);
 /* Draw the widgets for the given channel */
-void ANIM_channel_draw_widgets(struct bContext *C, bAnimContext *ac, bAnimListElem *ale, struct uiBlock *block, float yminc, float ymaxc, size_t channel_index);
+void ANIM_channel_draw_widgets(const struct bContext *C, bAnimContext *ac, bAnimListElem *ale, struct uiBlock *block, float yminc, float ymaxc, size_t channel_index);
 
 
 /* ------------------------ Editing API -------------------------- */
@@ -436,13 +468,13 @@ void ANIM_channel_draw_widgets(struct bContext *C, bAnimContext *ac, bAnimListEl
  *
  *  - setting: eAnimChannel_Settings
  */
-short ANIM_channel_setting_get(bAnimContext *ac, bAnimListElem *ale, int setting);
+short ANIM_channel_setting_get(bAnimContext *ac, bAnimListElem *ale, eAnimChannel_Settings setting);
 
 /* Change value of some setting for a channel 
  *	- setting: eAnimChannel_Settings
  *	- mode: eAnimChannels_SetFlag
  */
-void ANIM_channel_setting_set(bAnimContext *ac, bAnimListElem *ale, int setting, short mode);
+void ANIM_channel_setting_set(bAnimContext *ac, bAnimListElem *ale, eAnimChannel_Settings setting, eAnimChannels_SetFlag mode);
 
 
 /* Flush visibility (for Graph Editor) changes up/down hierarchy for changes in the given setting 
@@ -454,14 +486,14 @@ void ANIM_channel_setting_set(bAnimContext *ac, bAnimListElem *ale, int setting,
  *	- setting: type of setting to set
  *	- on: whether the visibility setting has been enabled or disabled 
  */
-void ANIM_flush_setting_anim_channels(bAnimContext *ac, ListBase *anim_data, bAnimListElem *ale_setting, int setting, short on);
+void ANIM_flush_setting_anim_channels(bAnimContext *ac, ListBase *anim_data, bAnimListElem *ale_setting, eAnimChannel_Settings setting, eAnimChannels_SetFlag mode);
 
 
 /* Deselect all animation channels */
-void ANIM_deselect_anim_channels(bAnimContext *ac, void *data, short datatype, short test, short sel);
+void ANIM_deselect_anim_channels(bAnimContext *ac, void *data, eAnimCont_Types datatype, bool test, eAnimChannels_SetFlag sel);
 
 /* Set the 'active' channel of type channel_type, in the given action */
-void ANIM_set_active_channel(bAnimContext *ac, void *data, short datatype, int filter, void *channel_data, short channel_type);
+void ANIM_set_active_channel(bAnimContext *ac, void *data, eAnimCont_Types datatype, eAnimFilter_Flags filter, void *channel_data, eAnim_ChannelType channel_type);
 
 
 /* Delete the F-Curve from the given AnimData block (if possible), as appropriate according to animation context */
@@ -511,12 +543,12 @@ void free_fmodifiers_copybuf(void);
  * assuming that the buffer has been cleared already with free_fmodifiers_copybuf()
  *	- active: only copy the active modifier
  */
-short ANIM_fmodifiers_copy_to_buf(ListBase *modifiers, short active);
+bool ANIM_fmodifiers_copy_to_buf(ListBase *modifiers, bool active);
 
 /* 'Paste' the F-Modifier(s) from the buffer to the specified list 
  *	- replace: free all the existing modifiers to leave only the pasted ones 
  */
-short ANIM_fmodifiers_paste_from_buf(ListBase *modifiers, short replace);
+bool ANIM_fmodifiers_paste_from_buf(ListBase *modifiers, bool replace);
 
 /* ************************************************* */
 /* ASSORTED TOOLS */
@@ -530,6 +562,14 @@ int getname_anim_fcurve(char *name, struct ID *id, struct FCurve *fcu);
 /* Automatically determine a color for the nth F-Curve */
 void getcolor_fcurve_rainbow(int cur, int tot, float out[3]);
 
+/* ----------------- NLA Drawing ----------------------- */
+/* NOTE: Technically, this is not in the animation module (it's in space_nla)
+ * but these are sometimes needed by various animation apis.
+ */
+
+/* Get color to use for NLA Action channel's background */
+void nla_action_get_color(struct AnimData *adt, struct bAction *act, float color[4]);
+
 /* ----------------- NLA-Mapping ----------------------- */
 /* anim_draw.c */
 
@@ -537,7 +577,7 @@ void getcolor_fcurve_rainbow(int cur, int tot, float out[3]);
 struct AnimData *ANIM_nla_mapping_get(bAnimContext *ac, bAnimListElem *ale);
 
 /* Apply/Unapply NLA mapping to all keyframes in the nominated F-Curve */
-void ANIM_nla_mapping_apply_fcurve(struct AnimData *adt, struct FCurve *fcu, short restore, short only_keys);
+void ANIM_nla_mapping_apply_fcurve(struct AnimData *adt, struct FCurve *fcu, bool restore, bool only_keys);
 
 /* ..... */
 

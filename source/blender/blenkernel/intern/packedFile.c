@@ -59,14 +59,6 @@
 #include "BKE_report.h"
 #include "BKE_sound.h"
 
-#ifdef _WIN32
-#define open _open
-#define close _close
-#define read _read
-#define write _write
-#endif
-
-
 int seekPackedFile(PackedFile *pf, int offset, int whence)
 {
 	int oldseek = -1, seek = 0;
@@ -202,7 +194,7 @@ PackedFile *newPackedFile(ReportList *reports, const char *filename, const char 
 	 * and create a PackedFile structure */
 
 	file = BLI_open(name, O_BINARY | O_RDONLY, 0);
-	if (file < 0) {
+	if (file == -1) {
 		BKE_reportf(reports, RPT_ERROR, "Unable to pack file, source path '%s' not found", name);
 	}
 	else {
@@ -253,7 +245,7 @@ void packAll(Main *bmain, ReportList *reports)
 	}
 
 	for (vfont = bmain->vfont.first; vfont; vfont = vfont->id.next) {
-		if (vfont->packedfile == NULL && vfont->id.lib == NULL && BKE_vfont_is_builtin(vfont) == FALSE) {
+		if (vfont->packedfile == NULL && vfont->id.lib == NULL && BKE_vfont_is_builtin(vfont) == false) {
 			vfont->packedfile = newPackedFile(reports, vfont->name, bmain->name);
 			tot ++;
 		}
@@ -303,8 +295,9 @@ static char *find_new_name(char *name)
 
 int writePackedFile(ReportList *reports, const char *filename, PackedFile *pf, int guimode)
 {
-	int file, number, remove_tmp = FALSE;
+	int file, number;
 	int ret_value = RET_OK;
+	bool remove_tmp = false;
 	char name[FILE_MAX];
 	char tempname[FILE_MAX];
 /*      void *data; */
@@ -319,7 +312,7 @@ int writePackedFile(ReportList *reports, const char *filename, PackedFile *pf, i
 			BLI_snprintf(tempname, sizeof(tempname), "%s.%03d_", name, number);
 			if (!BLI_exists(tempname)) {
 				if (BLI_copy(name, tempname) == RET_OK) {
-					remove_tmp = TRUE;
+					remove_tmp = true;
 				}
 				break;
 			}
@@ -330,7 +323,7 @@ int writePackedFile(ReportList *reports, const char *filename, PackedFile *pf, i
 	BLI_make_existing_file(name);
 	
 	file = BLI_open(name, O_BINARY + O_WRONLY + O_CREAT + O_TRUNC, 0666);
-	if (file < 0) {
+	if (file == -1) {
 		BKE_reportf(reports, RPT_ERROR, "Error creating file '%s'", name);
 		ret_value = RET_ERROR;
 	}
@@ -375,7 +368,7 @@ int writePackedFile(ReportList *reports, const char *filename, PackedFile *pf, i
 
 int checkPackedFile(const char *filename, PackedFile *pf)
 {
-	struct stat st;
+	BLI_stat_t st;
 	int ret_val, i, len, file;
 	char buf[4096];
 	char name[FILE_MAX];
@@ -383,7 +376,7 @@ int checkPackedFile(const char *filename, PackedFile *pf)
 	BLI_strncpy(name, filename, sizeof(name));
 	BLI_path_abs(name, G.main->name);
 	
-	if (BLI_stat(name, &st)) {
+	if (BLI_stat(name, &st) == -1) {
 		ret_val = PF_NOFILE;
 	}
 	else if (st.st_size != pf->size) {
@@ -393,7 +386,7 @@ int checkPackedFile(const char *filename, PackedFile *pf)
 		/* we'll have to compare the two... */
 
 		file = BLI_open(name, O_BINARY | O_RDONLY, 0);
-		if (file < 0) {
+		if (file == -1) {
 			ret_val = PF_NOFILE;
 		}
 		else {
@@ -435,9 +428,6 @@ char *unpackFile(ReportList *reports, const char *abs_name, const char *local_na
 {
 	char *newname = NULL;
 	const char *temp = NULL;
-	
-	// char newabs[FILE_MAX];
-	// char newlocal[FILE_MAX];
 	
 	if (pf != NULL) {
 		switch (how) {
@@ -487,17 +477,54 @@ char *unpackFile(ReportList *reports, const char *abs_name, const char *local_na
 	return newname;
 }
 
+static void unpack_generate_paths(
+        const char *name, ID *id, char *abspath_r, char *relpath_r, size_t abspathlen, size_t relpathlen)
+{
+	char tempname[FILE_MAX];
+	char tempdir[FILE_MAXDIR];
+
+	BLI_split_dirfile(name, tempdir, tempname, sizeof(tempdir), sizeof(tempname));
+
+	if (tempname[0] == '\0') {
+		/* Note: we do not have any real way to re-create extension out of data... */
+		BLI_strncpy(tempname, id->name + 2, sizeof(tempname));
+		printf("%s\n", tempname);
+		BLI_filename_make_safe(tempname);
+		printf("%s\n", tempname);
+	}
+
+	if (tempdir[0] == '\0') {
+		/* Fallback to relative dir. */
+		BLI_strncpy(tempdir, "//", sizeof(tempdir));
+	}
+
+	switch (GS(id->name)) {
+		case ID_VF:
+			BLI_snprintf(relpath_r, relpathlen, "//fonts/%s", tempname);
+			break;
+		case ID_SO:
+			BLI_snprintf(relpath_r, relpathlen, "//sounds/%s", tempname);
+			break;
+		case ID_IM:
+			BLI_snprintf(relpath_r, relpathlen, "//textures/%s", tempname);
+			break;
+	}
+
+	{
+		size_t len = BLI_strncpy_rlen(abspath_r, tempdir, abspathlen);
+		BLI_strncpy(abspath_r + len, tempname, abspathlen - len);
+	}
+}
 
 int unpackVFont(ReportList *reports, VFont *vfont, int how)
 {
-	char localname[FILE_MAX], fi[FILE_MAXFILE];
+	char localname[FILE_MAX], absname[FILE_MAX];
 	char *newname;
 	int ret_value = RET_ERROR;
 	
 	if (vfont != NULL) {
-		BLI_split_file_part(vfont->name, fi, sizeof(fi));
-		BLI_snprintf(localname, sizeof(localname), "//fonts/%s", fi);
-		newname = unpackFile(reports, vfont->name, localname, vfont->packedfile, how);
+		unpack_generate_paths(vfont->name, (ID *)vfont, absname, localname, sizeof(absname), sizeof(localname));
+		newname = unpackFile(reports, absname, localname, vfont->packedfile, how);
 		if (newname != NULL) {
 			ret_value = RET_OK;
 			freePackedFile(vfont->packedfile);
@@ -512,14 +539,13 @@ int unpackVFont(ReportList *reports, VFont *vfont, int how)
 
 int unpackSound(Main *bmain, ReportList *reports, bSound *sound, int how)
 {
-	char localname[FILE_MAXDIR + FILE_MAX], fi[FILE_MAX];
+	char localname[FILE_MAX], absname[FILE_MAX];
 	char *newname;
 	int ret_value = RET_ERROR;
 
 	if (sound != NULL) {
-		BLI_split_file_part(sound->name, fi, sizeof(fi));
-		BLI_snprintf(localname, sizeof(localname), "//sounds/%s", fi);
-		newname = unpackFile(reports, sound->name, localname, sound->packedfile, how);
+		unpack_generate_paths(sound->name, (ID *)sound, absname, localname, sizeof(absname), sizeof(localname));
+		newname = unpackFile(reports, absname, localname, sound->packedfile, how);
 		if (newname != NULL) {
 			BLI_strncpy(sound->name, newname, sizeof(sound->name));
 			MEM_freeN(newname);
@@ -538,14 +564,13 @@ int unpackSound(Main *bmain, ReportList *reports, bSound *sound, int how)
 
 int unpackImage(ReportList *reports, Image *ima, int how)
 {
-	char localname[FILE_MAXDIR + FILE_MAX], fi[FILE_MAX];
+	char localname[FILE_MAX], absname[FILE_MAX];
 	char *newname;
 	int ret_value = RET_ERROR;
 	
 	if (ima != NULL && ima->name[0]) {
-		BLI_split_file_part(ima->name, fi, sizeof(fi));
-		BLI_snprintf(localname, sizeof(localname), "//textures/%s", fi);
-		newname = unpackFile(reports, ima->name, localname, ima->packedfile, how);
+		unpack_generate_paths(ima->name, (ID *)ima, absname, localname, sizeof(absname), sizeof(localname));
+		newname = unpackFile(reports, absname, localname, ima->packedfile, how);
 		if (newname != NULL) {
 			ret_value = RET_OK;
 			freePackedFile(ima->packedfile);
@@ -626,21 +651,27 @@ void unpackAll(Main *bmain, ReportList *reports, int how)
 /* ID should be not NULL, return 1 if there's a packed file */
 bool BKE_pack_check(ID *id)
 {
-	if (GS(id->name) == ID_IM) {
-		Image *ima = (Image *)id;
-		return ima->packedfile != NULL;
-	}
-	if (GS(id->name) == ID_VF) {
-		VFont *vf = (VFont *)id;
-		return vf->packedfile != NULL;
-	}
-	if (GS(id->name) == ID_SO) {
-		bSound *snd = (bSound *)id;
-		return snd->packedfile != NULL;
-	}
-	if (GS(id->name) == ID_LI) {
-		Library *li = (Library *)id;
-		return li->packedfile != NULL;
+	switch (GS(id->name)) {
+		case ID_IM:
+		{
+			Image *ima = (Image *)id;
+			return ima->packedfile != NULL;
+		}
+		case ID_VF:
+		{
+			VFont *vf = (VFont *)id;
+			return vf->packedfile != NULL;
+		}
+		case ID_SO:
+		{
+			bSound *snd = (bSound *)id;
+			return snd->packedfile != NULL;
+		}
+		case ID_LI:
+		{
+			Library *li = (Library *)id;
+			return li->packedfile != NULL;
+		}
 	}
 	return false;
 }
@@ -648,23 +679,36 @@ bool BKE_pack_check(ID *id)
 /* ID should be not NULL */
 void BKE_unpack_id(Main *bmain, ID *id, ReportList *reports, int how)
 {
-	if (GS(id->name) == ID_IM) {
-		Image *ima = (Image *)id;
-		if (ima->packedfile)
-			unpackImage(reports, ima, how);
-	}
-	if (GS(id->name) == ID_VF) {
-		VFont *vf = (VFont *)id;
-		if (vf->packedfile)
-			unpackVFont(reports, vf, how);
-	}
-	if (GS(id->name) == ID_SO) {
-		bSound *snd = (bSound *)id;
-		if (snd->packedfile)
-			unpackSound(bmain, reports, snd, how);
-	}
-	if (GS(id->name) == ID_LI) {
-		Library *li = (Library *)id;
-		BKE_reportf(reports, RPT_ERROR, "Cannot unpack individual Library file, '%s'", li->name);
+	switch (GS(id->name)) {
+		case ID_IM:
+		{
+			Image *ima = (Image *)id;
+			if (ima->packedfile) {
+				unpackImage(reports, ima, how);
+			}
+			break;
+		}
+		case ID_VF:
+		{
+			VFont *vf = (VFont *)id;
+			if (vf->packedfile) {
+				unpackVFont(reports, vf, how);
+			}
+			break;
+		}
+		case ID_SO:
+		{
+			bSound *snd = (bSound *)id;
+			if (snd->packedfile) {
+				unpackSound(bmain, reports, snd, how);
+			}
+			break;
+		}
+		case ID_LI:
+		{
+			Library *li = (Library *)id;
+			BKE_reportf(reports, RPT_ERROR, "Cannot unpack individual Library file, '%s'", li->name);
+			break;
+		}
 	}
 }

@@ -11,19 +11,19 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 /* CPU kernel entry points */
 
-#include "kernel.h"
 #include "kernel_compat_cpu.h"
+#include "kernel.h"
 #include "kernel_math.h"
 #include "kernel_types.h"
 #include "kernel_globals.h"
 #include "kernel_film.h"
 #include "kernel_path.h"
-#include "kernel_displace.h"
+#include "kernel_bake.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -37,7 +37,7 @@ void kernel_const_copy(KernelGlobals *kg, const char *name, void *host, size_t s
 		assert(0);
 }
 
-void kernel_tex_copy(KernelGlobals *kg, const char *name, device_ptr mem, size_t width, size_t height)
+void kernel_tex_copy(KernelGlobals *kg, const char *name, device_ptr mem, size_t width, size_t height, size_t depth, InterpolationType interpolation)
 {
 	if(0) {
 	}
@@ -61,8 +61,8 @@ void kernel_tex_copy(KernelGlobals *kg, const char *name, device_ptr mem, size_t
 
 		if(tex) {
 			tex->data = (float4*)mem;
-			tex->width = width;
-			tex->height = height;
+			tex->dimensions_set(width, height, depth);
+			tex->interpolation = interpolation;
 		}
 	}
 	else if(strstr(name, "__tex_image")) {
@@ -76,8 +76,8 @@ void kernel_tex_copy(KernelGlobals *kg, const char *name, device_ptr mem, size_t
 
 		if(tex) {
 			tex->data = (uchar4*)mem;
-			tex->width = width;
-			tex->height = height;
+			tex->dimensions_set(width, height, depth);
+			tex->interpolation = interpolation;
 		}
 	}
 	else
@@ -120,9 +120,12 @@ void kernel_cpu_convert_to_half_float(KernelGlobals *kg, uchar4 *rgba, float *bu
 
 /* Shader Evaluation */
 
-void kernel_cpu_shader(KernelGlobals *kg, uint4 *input, float4 *output, int type, int i)
+void kernel_cpu_shader(KernelGlobals *kg, uint4 *input, float4 *output, int type, int i, int offset, int sample)
 {
-	kernel_shader_evaluate(kg, input, output, (ShaderEvalType)type, i);
+	if(type >= SHADER_EVAL_BAKE)
+		kernel_bake_evaluate(kg, input, output, (ShaderEvalType)type, i, offset, sample);
+	else
+		kernel_shader_evaluate(kg, input, output, (ShaderEvalType)type, i, sample);
 }
 
 CCL_NAMESPACE_END

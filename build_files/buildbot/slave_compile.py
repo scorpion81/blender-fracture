@@ -33,7 +33,7 @@ builder = sys.argv[1]
 # we run from build/ directory
 blender_dir = '../blender.git'
 
-if builder.find('cmake') != -1:
+if 'cmake' in builder:
     # cmake
 
     # set build options
@@ -46,16 +46,30 @@ if builder.find('cmake') != -1:
     elif builder.endswith('mac_ppc_cmake'):
         cmake_options.append('-DCMAKE_OSX_ARCHITECTURES:STRING=ppc')
 
+    if 'win64' in builder:
+        cmake_options.append(['-G', '"Visual Studio 12 2013 Win64"'])
+    elif 'win32' in builder:
+        cmake_options.append(['-G', '"Visual Studio 12 2013"'])
+
+    cmake_options.append("-C../blender.git/build_files/cmake/config/blender_full.cmake")
+    cmake_options.append("-DWITH_CYCLES_CUDA_BINARIES=1")
     # configure and make
     retcode = subprocess.call(['cmake', blender_dir] + cmake_options)
     if retcode != 0:
         sys.exit(retcode)
-    retcode = subprocess.call(['make', '-s', '-j4', 'install'])
+    if 'win' in builder:
+        retcode = subprocess.call(['msbuild', 'INSTALL.vcxproj', '/p:Configuration=Release'])
+    else:
+        retcode = subprocess.call(['make', '-s', '-j4', 'install'])
     sys.exit(retcode)
 else:
+    python_bin = 'python'
+    if builder.find('linux') != -1:
+        python_bin = '/opt/lib/python-2.7/bin/python2.7'
+
     # scons
     os.chdir(blender_dir)
-    scons_cmd = ['python', 'scons/scons.py']
+    scons_cmd = [python_bin, 'scons/scons.py']
     scons_options = ['BF_FANCY=False']
 
     # We're using the same rules as release builder, so tweak
@@ -64,6 +78,7 @@ else:
     install_dir = os.path.join('..', 'install', builder)
 
     # Clean install directory so we'll be sure there's no
+    # residual libs and files remained from the previous install.
     if os.path.isdir(install_dir):
         shutil.rmtree(install_dir)
 
@@ -143,13 +158,11 @@ else:
             scons_options.append('BF_CYCLES_CUDA_NVCC=nvcc.exe')
             if builder.find('mingw') != -1:
                 scons_options.append('BF_TOOLSET=mingw')
-            if builder.endswith('vc2012'):
-                scons_options.append('MSVS_VERSION=11.0')
             if builder.endswith('vc2013'):
                 scons_options.append('MSVS_VERSION=12.0')
                 scons_options.append('MSVC_VERSION=12.0')
                 scons_options.append('WITH_BF_CYCLES_CUDA_BINARIES=1')
-                scons_options.append('BF_CYCLES_CUDA_NVCC=nvcc')
+                scons_options.append('BF_CYCLES_CUDA_NVCC=nvcc.exe')
             scons_options.append('BF_NUMJOBS=1')
 
         elif builder.find('mac') != -1:
@@ -165,10 +178,6 @@ else:
                 os.makedirs(install_dir)
             if builder.endswith('vc2013'):
                 dlls = ('msvcp120.dll', 'msvcr120.dll', 'vcomp120.dll')
-            elif builder.endswith('vc2012'):
-                dlls = ('msvcp110.dll', 'msvcr110.dll', 'vcomp110.dll')
-            else:
-                dlls = ('msvcm90.dll', 'msvcp90.dll', 'msvcr90.dll', 'vcomp90.dll', 'Microsoft.VC90.CRT.manifest', 'Microsoft.VC90.OpenMP.manifest')
             if builder.find('win64') == -1:
                 dlls_path = '..\\..\\..\\redist\\x86'
             else:
@@ -176,6 +185,6 @@ else:
             for dll in dlls:
                 shutil.copyfile(os.path.join(dlls_path, dll), os.path.join(install_dir, dll))
 
-        retcode = subprocess.call(['python', 'scons/scons.py'] + scons_options)
+        retcode = subprocess.call([python_bin, 'scons/scons.py'] + scons_options)
 
         sys.exit(retcode)

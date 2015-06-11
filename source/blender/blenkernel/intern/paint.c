@@ -37,6 +37,7 @@
 #include "DNA_object_types.h"
 #include "DNA_mesh_types.h"
 #include "DNA_meshdata_types.h"
+#include "DNA_modifier_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_brush_types.h"
 #include "DNA_space_types.h"
@@ -44,13 +45,20 @@
 #include "BLI_bitmap.h"
 #include "BLI_utildefines.h"
 #include "BLI_math_vector.h"
+#include "BLI_listbase.h"
 
 #include "BKE_brush.h"
+#include "BKE_colortools.h"
+#include "BKE_main.h"
 #include "BKE_context.h"
+#include "BKE_crazyspace.h"
 #include "BKE_depsgraph.h"
 #include "BKE_global.h"
 #include "BKE_image.h"
+#include "BKE_key.h"
 #include "BKE_library.h"
+#include "BKE_mesh.h"
+#include "BKE_modifier.h"
 #include "BKE_object.h"
 #include "BKE_paint.h"
 #include "BKE_pbvh.h"
@@ -264,8 +272,100 @@ void BKE_paint_brush_set(Paint *p, Brush *br)
 	}
 }
 
+void BKE_paint_curve_free(PaintCurve *pc)
+{
+	if (pc->points) {
+		MEM_freeN(pc->points);
+		pc->points = NULL;
+		pc->tot_points = 0;
+	}
+}
+
+PaintCurve *BKE_paint_curve_add(Main *bmain, const char *name)
+{
+	PaintCurve *pc;
+
+	pc = BKE_libblock_alloc(bmain, ID_PC, name);
+
+	return pc;
+}
+
+Palette *BKE_paint_palette(Paint *p)
+{
+	return p ? p->palette : NULL;
+}
+
+void BKE_paint_palette_set(Paint *p, Palette *palette)
+{
+	if (p) {
+		id_us_min((ID *)p->palette);
+		id_us_plus((ID *)palette);
+		p->palette = palette;
+	}
+}
+
+void BKE_paint_curve_set(Brush *br, PaintCurve *pc)
+{
+	if (br) {
+		id_us_min((ID *)br->paint_curve);
+		id_us_plus((ID *)pc);
+		br->paint_curve = pc;
+	}
+}
+
+/* remove colour from palette. Must be certain color is inside the palette! */
+void BKE_palette_color_remove(Palette *palette, PaletteColor *color)
+{
+	if (color) {
+		int numcolors = BLI_listbase_count(&palette->colors);
+		if ((numcolors == palette->active_color + 1) && (numcolors != 1))
+			palette->active_color--;
+		
+		BLI_remlink(&palette->colors, color);
+		BLI_addhead(&palette->deleted, color);
+	}
+}
+
+void BKE_palette_cleanup(Palette *palette)
+{
+	BLI_freelistN(&palette->deleted);
+}
+
+
+Palette *BKE_palette_add(Main *bmain, const char *name)
+{
+	Palette *palette;
+
+	palette = BKE_libblock_alloc(bmain, ID_PAL, name);
+
+	/* enable fake user by default */
+	palette->id.flag |= LIB_FAKEUSER;
+
+	return palette;
+}
+
+void BKE_palette_free(Palette *palette)
+{
+	BLI_freelistN(&palette->colors);
+}
+
+PaletteColor *BKE_palette_color_add(Palette *palette)
+{
+	PaletteColor *color = MEM_callocN(sizeof(*color), "Pallete Color");
+	BLI_addtail(&palette->colors, color);
+	palette->active_color = BLI_listbase_count(&palette->colors) - 1;
+	return color;
+}
+
+
+bool BKE_palette_is_empty(const struct Palette *palette)
+{
+	return BLI_listbase_is_empty(&palette->colors);
+}
+
+
 /* are we in vertex paint or weight pain face select mode? */
-bool paint_facesel_test(Object *ob)
+bool BKE_paint_select_face_test(Object *ob)
 {
 	return ( (ob != NULL) &&
 	         (ob->type == OB_MESH) &&
@@ -276,7 +376,7 @@ bool paint_facesel_test(Object *ob)
 }
 
 /* are we in weight paint vertex select mode? */
-bool paint_vertsel_test(Object *ob)
+bool BKE_paint_select_vert_test(Object *ob)
 {
 	return ( (ob != NULL) &&
 	         (ob->type == OB_MESH) &&
@@ -286,7 +386,32 @@ bool paint_vertsel_test(Object *ob)
 	         );
 }
 
-void BKE_paint_init(Paint *p, const char col[3])
+/**
+ * used to check if selection is possible
+ * (when we don't care if its face or vert)
+ */
+bool BKE_paint_select_elem_test(Object *ob)
+{
+	return (BKE_paint_select_vert_test(ob) ||
+	        BKE_paint_select_face_test(ob));
+}
+
+void BKE_paint_cavity_curve_preset(Paint *p, int preset)
+{
+	CurveMap *cm = NULL;
+
+	if (!p->cavity_curve)
+		p->cavity_curve = curvemapping_add(1, 0, 0, 1, 1);
+
+	cm = p->cavity_curve->cm;
+	cm->flag &= ~CUMA_EXTEND_EXTRAPOLATE;
+
+	p->cavity_curve->preset = preset;
+	curvemap_reset(cm, &p->cavity_curve->clipr, p->cavity_curve->preset, CURVEMAP_SLOPE_POSITIVE);
+	curvemapping_changed(p->cavity_curve, false);
+}
+
+void BKE_paint_init(UnifiedPaintSettings *ups, Paint *p, const char col[3])
 {
 	Brush *brush;
 
@@ -298,13 +423,18 @@ void BKE_paint_init(Paint *p, const char col[3])
 
 	memcpy(p->paint_cursor_col, col, 3);
 	p->paint_cursor_col[3] = 128;
-
-	p->flags |= PAINT_SHOW_BRUSH;
+	ups->last_stroke_valid = false;
+	zero_v3(ups->average_stroke_accum);
+	ups->average_stroke_counter = 0;
+	if (!p->cavity_curve)
+		BKE_paint_cavity_curve_preset(p, CURVE_PRESET_LINE);
 }
 
 void BKE_paint_free(Paint *paint)
 {
 	id_us_min((ID *)paint->brush);
+	id_us_min((ID *)paint->palette);
+	curvemapping_free(paint->cavity_curve);
 }
 
 /* called when copying scene settings, so even if 'src' and 'tar' are the same
@@ -315,6 +445,20 @@ void BKE_paint_copy(Paint *src, Paint *tar)
 {
 	tar->brush = src->brush;
 	id_us_plus((ID *)tar->brush);
+	id_us_plus((ID *)tar->palette);
+	tar->cavity_curve = curvemapping_copy(src->cavity_curve);
+}
+
+void BKE_paint_stroke_get_average(Scene *scene, Object *ob, float stroke[3])
+{
+	UnifiedPaintSettings *ups = &scene->toolsettings->unified_paint_settings;
+	if (ups->last_stroke_valid && ups->average_stroke_counter > 0) {
+		float fac = 1.0f / ups->average_stroke_counter;
+		mul_v3_v3fl(stroke, ups->average_stroke_accum, fac);
+	}
+	else {
+		copy_v3_v3(stroke, ob->obmat[3]);
+	}
 }
 
 /* returns non-zero if any of the face's vertices
@@ -334,13 +478,13 @@ bool paint_is_grid_face_hidden(const unsigned int *grid_hidden,
                               int gridsize, int x, int y)
 {
 	/* skip face if any of its corners are hidden */
-	return (BLI_BITMAP_GET(grid_hidden, y * gridsize + x) ||
-	        BLI_BITMAP_GET(grid_hidden, y * gridsize + x + 1) ||
-	        BLI_BITMAP_GET(grid_hidden, (y + 1) * gridsize + x + 1) ||
-	        BLI_BITMAP_GET(grid_hidden, (y + 1) * gridsize + x));
+	return (BLI_BITMAP_TEST(grid_hidden, y * gridsize + x) ||
+	        BLI_BITMAP_TEST(grid_hidden, y * gridsize + x + 1) ||
+	        BLI_BITMAP_TEST(grid_hidden, (y + 1) * gridsize + x + 1) ||
+	        BLI_BITMAP_TEST(grid_hidden, (y + 1) * gridsize + x));
 }
 
-/* Return TRUE if all vertices in the face are visible, FALSE otherwise */
+/* Return true if all vertices in the face are visible, false otherwise */
 bool paint_is_bmesh_face_hidden(BMFace *f)
 {
 	BMLoop *l_iter;
@@ -365,26 +509,55 @@ float paint_grid_paint_mask(const GridPaintMask *gpm, unsigned level,
 	return gpm->data[(y * factor) * gridsize + (x * factor)];
 }
 
-/* threshhold to move before updating the brush rotation */
+/* threshold to move before updating the brush rotation */
 #define RAKE_THRESHHOLD 20
 
-void paint_calculate_rake_rotation(UnifiedPaintSettings *ups, const float mouse_pos[2])
+static void update_brush_rake_rotation(UnifiedPaintSettings *ups, Brush *brush, float rotation)
 {
-	const float u = 0.5f;
-	const float r = RAKE_THRESHHOLD;
+	if (brush->mtex.brush_angle_mode & MTEX_ANGLE_RAKE)
+		ups->brush_rotation = rotation;
+	else
+		ups->brush_rotation = 0.0f;
 
-	float dpos[2];
-	sub_v2_v2v2(dpos, ups->last_rake, mouse_pos);
+	if (brush->mask_mtex.brush_angle_mode & MTEX_ANGLE_RAKE)
+		/* here, translation contains the mouse coordinates. */
+		ups->brush_rotation_sec = rotation;
+	else
+		ups->brush_rotation_sec = 0.0f;
+}
 
-	if (len_squared_v2(dpos) >= r * r) {
-		ups->brush_rotation = atan2(dpos[0], dpos[1]);
+void paint_calculate_rake_rotation(UnifiedPaintSettings *ups, Brush *brush, const float mouse_pos[2])
+{
+	if ((brush->mtex.brush_angle_mode & MTEX_ANGLE_RAKE) || (brush->mask_mtex.brush_angle_mode & MTEX_ANGLE_RAKE)) {
+		const float u = 0.5f;
+		const float r = RAKE_THRESHHOLD;
+		float rotation;
 
-		interp_v2_v2v2(ups->last_rake, ups->last_rake,
-		               mouse_pos, u);
+		float dpos[2];
+		sub_v2_v2v2(dpos, ups->last_rake, mouse_pos);
+
+		if (len_squared_v2(dpos) >= r * r) {
+			rotation = atan2f(dpos[0], dpos[1]);
+
+			interp_v2_v2v2(ups->last_rake, ups->last_rake,
+			               mouse_pos, u);
+
+			ups->last_rake_angle = rotation;
+
+			update_brush_rake_rotation(ups, brush, rotation);
+		}
+		/* make sure we reset here to the last rotation to avoid accumulating
+		 * values in case a random rotation is also added */
+		else {
+			update_brush_rake_rotation(ups, brush, ups->last_rake_angle);
+		}
+	}
+	else {
+		ups->brush_rotation = ups->brush_rotation_sec = 0.0f;
 	}
 }
 
-void free_sculptsession_deformMats(SculptSession *ss)
+void BKE_free_sculptsession_deformMats(SculptSession *ss)
 {
 	if (ss->orig_cos) MEM_freeN(ss->orig_cos);
 	if (ss->deform_cos) MEM_freeN(ss->deform_cos);
@@ -405,17 +578,16 @@ static void sculptsession_bm_to_me_update_data_only(Object *ob, bool reorder)
 			BMIter iter;
 			BMFace *efa;
 			BM_ITER_MESH (efa, &iter, ss->bm, BM_FACES_OF_MESH) {
-				BM_elem_flag_set(efa, BM_ELEM_SMOOTH,
-				                 ss->bm_smooth_shading);
+				BM_elem_flag_set(efa, BM_ELEM_SMOOTH, ss->bm_smooth_shading);
 			}
 			if (reorder)
 				BM_log_mesh_elems_reorder(ss->bm, ss->bm_log);
-			BM_mesh_bm_to_me(ss->bm, ob->data, FALSE);
+			BM_mesh_bm_to_me(ss->bm, ob->data, false);
 		}
 	}
 }
 
-void sculptsession_bm_to_me(Object *ob, int reorder)
+void BKE_sculptsession_bm_to_me(Object *ob, bool reorder)
 {
 	if (ob && ob->sculpt) {
 		sculptsession_bm_to_me_update_data_only(ob, reorder);
@@ -425,7 +597,7 @@ void sculptsession_bm_to_me(Object *ob, int reorder)
 	}
 }
 
-void sculptsession_bm_to_me_for_render(Object *object)
+void BKE_sculptsession_bm_to_me_for_render(Object *object)
 {
 	if (object && object->sculpt) {
 		if (object->sculpt->bm) {
@@ -452,14 +624,14 @@ void sculptsession_bm_to_me_for_render(Object *object)
 	}
 }
 
-void free_sculptsession(Object *ob)
+void BKE_free_sculptsession(Object *ob)
 {
 	if (ob && ob->sculpt) {
 		SculptSession *ss = ob->sculpt;
 		DerivedMesh *dm = ob->derivedFinal;
 
 		if (ss->bm) {
-			sculptsession_bm_to_me(ob, TRUE);
+			BKE_sculptsession_bm_to_me(ob, true);
 			BM_mesh_free(ss->bm);
 		}
 
@@ -491,4 +663,254 @@ void free_sculptsession(Object *ob)
 
 		ob->sculpt = NULL;
 	}
+}
+
+/* Sculpt mode handles multires differently from regular meshes, but only if
+ * it's the last modifier on the stack and it is not on the first level */
+MultiresModifierData *BKE_sculpt_multires_active(Scene *scene, Object *ob)
+{
+	Mesh *me = (Mesh *)ob->data;
+	ModifierData *md;
+	VirtualModifierData virtualModifierData;
+
+	if (ob->sculpt && ob->sculpt->bm) {
+		/* can't combine multires and dynamic topology */
+		return NULL;
+	}
+
+	if (!CustomData_get_layer(&me->ldata, CD_MDISPS)) {
+		/* multires can't work without displacement layer */
+		return NULL;
+	}
+
+	for (md = modifiers_getVirtualModifierList(ob, &virtualModifierData); md; md = md->next) {
+		if (md->type == eModifierType_Multires) {
+			MultiresModifierData *mmd = (MultiresModifierData *)md;
+
+			if (!modifier_isEnabled(scene, md, eModifierMode_Realtime))
+				continue;
+
+			if (mmd->sculptlvl > 0) return mmd;
+			else return NULL;
+		}
+	}
+
+	return NULL;
+}
+
+
+/* Checks if there are any supported deformation modifiers active */
+static bool sculpt_modifiers_active(Scene *scene, Sculpt *sd, Object *ob)
+{
+	ModifierData *md;
+	Mesh *me = (Mesh *)ob->data;
+	MultiresModifierData *mmd = BKE_sculpt_multires_active(scene, ob);
+	VirtualModifierData virtualModifierData;
+
+	if (mmd || ob->sculpt->bm)
+		return false;
+
+	/* non-locked shape keys could be handled in the same way as deformed mesh */
+	if ((ob->shapeflag & OB_SHAPE_LOCK) == 0 && me->key && ob->shapenr)
+		return true;
+
+	md = modifiers_getVirtualModifierList(ob, &virtualModifierData);
+
+	/* exception for shape keys because we can edit those */
+	for (; md; md = md->next) {
+		ModifierTypeInfo *mti = modifierType_getInfo(md->type);
+		if (!modifier_isEnabled(scene, md, eModifierMode_Realtime)) continue;
+		if (ELEM(md->type, eModifierType_ShapeKey, eModifierType_Multires)) continue;
+
+		if (mti->type == eModifierTypeType_OnlyDeform) return true;
+		else if ((sd->flags & SCULPT_ONLY_DEFORM) == 0) return true;
+	}
+
+	return false;
+}
+
+/**
+ * \param need_mask So the DerivedMesh thats returned has mask data
+ */
+void BKE_sculpt_update_mesh_elements(Scene *scene, Sculpt *sd, Object *ob,
+                                     bool need_pmap, bool need_mask)
+{
+	DerivedMesh *dm;
+	SculptSession *ss = ob->sculpt;
+	Mesh *me = ob->data;
+	MultiresModifierData *mmd = BKE_sculpt_multires_active(scene, ob);
+
+	ss->modifiers_active = sculpt_modifiers_active(scene, sd, ob);
+	ss->show_diffuse_color = (sd->flags & SCULPT_SHOW_DIFFUSE) != 0;
+
+	if (need_mask) {
+		if (mmd == NULL) {
+			if (!CustomData_has_layer(&me->vdata, CD_PAINT_MASK)) {
+				BKE_sculpt_mask_layers_ensure(ob, NULL);
+			}
+		}
+		else {
+			if (!CustomData_has_layer(&me->ldata, CD_GRID_PAINT_MASK)) {
+#if 1
+				BKE_sculpt_mask_layers_ensure(ob, mmd);
+#else				/* if we wanted to support adding mask data while multi-res painting, we would need to do this */
+				if ((ED_sculpt_mask_layers_ensure(ob, mmd) & ED_SCULPT_MASK_LAYER_CALC_LOOP)) {
+					/* remake the derived mesh */
+					ob->recalc |= OB_RECALC_DATA;
+					BKE_object_handle_update(scene, ob);
+				}
+#endif
+			}
+		}
+	}
+
+	/* BMESH ONLY --- at some point we should move sculpt code to use polygons only - but for now it needs tessfaces */
+	BKE_mesh_tessface_ensure(me);
+
+	if (!mmd) ss->kb = BKE_keyblock_from_object(ob);
+	else ss->kb = NULL;
+
+	/* needs to be called after we ensure tessface */
+	dm = mesh_get_derived_final(scene, ob, CD_MASK_BAREMESH);
+
+	if (mmd) {
+		ss->multires = mmd;
+		ss->totvert = dm->getNumVerts(dm);
+		ss->totpoly = dm->getNumPolys(dm);
+		ss->mvert = NULL;
+		ss->mpoly = NULL;
+		ss->mloop = NULL;
+		ss->face_normals = NULL;
+	}
+	else {
+		ss->totvert = me->totvert;
+		ss->totpoly = me->totpoly;
+		ss->mvert = me->mvert;
+		ss->mpoly = me->mpoly;
+		ss->mloop = me->mloop;
+		ss->face_normals = NULL;
+		ss->multires = NULL;
+		ss->vmask = CustomData_get_layer(&me->vdata, CD_PAINT_MASK);
+	}
+
+	ss->pbvh = dm->getPBVH(ob, dm);
+	ss->pmap = (need_pmap && dm->getPolyMap) ? dm->getPolyMap(ob, dm) : NULL;
+
+	pbvh_show_diffuse_color_set(ss->pbvh, ss->show_diffuse_color);
+
+	if (ss->modifiers_active) {
+		if (!ss->orig_cos) {
+			int a;
+
+			BKE_free_sculptsession_deformMats(ss);
+
+			ss->orig_cos = (ss->kb) ? BKE_keyblock_convert_to_vertcos(ob, ss->kb) : BKE_mesh_vertexCos_get(me, NULL);
+
+			BKE_crazyspace_build_sculpt(scene, ob, &ss->deform_imats, &ss->deform_cos);
+			BKE_pbvh_apply_vertCos(ss->pbvh, ss->deform_cos);
+
+			for (a = 0; a < me->totvert; ++a) {
+				invert_m3(ss->deform_imats[a]);
+			}
+		}
+	}
+	else {
+		BKE_free_sculptsession_deformMats(ss);
+	}
+
+	if (ss->kb != NULL && ss->deform_cos == NULL) {
+		ss->deform_cos = BKE_keyblock_convert_to_vertcos(ob, ss->kb);
+	}
+
+	/* if pbvh is deformed, key block is already applied to it */
+	if (ss->kb) {
+		bool pbvh_deformd = BKE_pbvh_isDeformed(ss->pbvh);
+		if (!pbvh_deformd || ss->deform_cos == NULL) {
+			float (*vertCos)[3] = BKE_keyblock_convert_to_vertcos(ob, ss->kb);
+
+			if (vertCos) {
+				if (!pbvh_deformd) {
+					/* apply shape keys coordinates to PBVH */
+					BKE_pbvh_apply_vertCos(ss->pbvh, vertCos);
+				}
+				if (ss->deform_cos == NULL) {
+					ss->deform_cos = vertCos;
+				}
+				if (vertCos != ss->deform_cos) {
+					MEM_freeN(vertCos);
+				}
+			}
+		}
+	}
+}
+
+int BKE_sculpt_mask_layers_ensure(Object *ob, MultiresModifierData *mmd)
+{
+	const float *paint_mask;
+	Mesh *me = ob->data;
+	int ret = 0;
+
+	paint_mask = CustomData_get_layer(&me->vdata, CD_PAINT_MASK);
+
+	/* if multires is active, create a grid paint mask layer if there
+	 * isn't one already */
+	if (mmd && !CustomData_has_layer(&me->ldata, CD_GRID_PAINT_MASK)) {
+		GridPaintMask *gmask;
+		int level = max_ii(1, mmd->sculptlvl);
+		int gridsize = BKE_ccg_gridsize(level);
+		int gridarea = gridsize * gridsize;
+		int i, j;
+
+		gmask = CustomData_add_layer(&me->ldata, CD_GRID_PAINT_MASK,
+		                             CD_CALLOC, NULL, me->totloop);
+
+		for (i = 0; i < me->totloop; i++) {
+			GridPaintMask *gpm = &gmask[i];
+
+			gpm->level = level;
+			gpm->data = MEM_callocN(sizeof(float) * gridarea,
+			                        "GridPaintMask.data");
+		}
+
+		/* if vertices already have mask, copy into multires data */
+		if (paint_mask) {
+			for (i = 0; i < me->totpoly; i++) {
+				const MPoly *p = &me->mpoly[i];
+				float avg = 0;
+
+				/* mask center */
+				for (j = 0; j < p->totloop; j++) {
+					const MLoop *l = &me->mloop[p->loopstart + j];
+					avg += paint_mask[l->v];
+				}
+				avg /= (float)p->totloop;
+
+				/* fill in multires mask corner */
+				for (j = 0; j < p->totloop; j++) {
+					GridPaintMask *gpm = &gmask[p->loopstart + j];
+					const MLoop *l = &me->mloop[p->loopstart + j];
+					const MLoop *prev = ME_POLY_LOOP_PREV(me->mloop, p, j);
+					const MLoop *next = ME_POLY_LOOP_NEXT(me->mloop, p, j);
+
+					gpm->data[0] = avg;
+					gpm->data[1] = (paint_mask[l->v] +
+					                paint_mask[next->v]) * 0.5f;
+					gpm->data[2] = (paint_mask[l->v] +
+					                paint_mask[prev->v]) * 0.5f;
+					gpm->data[3] = paint_mask[l->v];
+				}
+			}
+		}
+
+		ret |= SCULPT_MASK_LAYER_CALC_LOOP;
+	}
+
+	/* create vertex paint mask layer if there isn't one already */
+	if (!paint_mask) {
+		CustomData_add_layer(&me->vdata, CD_PAINT_MASK,
+		                     CD_CALLOC, NULL, me->totvert);
+		ret |= SCULPT_MASK_LAYER_CALC_VERT;
+	}
+
+	return ret;
 }

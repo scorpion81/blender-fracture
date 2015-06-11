@@ -50,7 +50,7 @@ void MathBaseOperation::deinitExecution()
 
 void MathBaseOperation::determineResolution(unsigned int resolution[2], unsigned int preferredResolution[2])
 {
-	InputSocket *socket;
+	NodeOperationInput *socket;
 	unsigned int tempPreferredResolution[2] = {0, 0};
 	unsigned int tempResolution[2];
 
@@ -333,3 +333,13 @@ void MathModuloOperation::executePixelSampled(float output[4], float x, float y,
 	clampIfNeeded(output);
 }
 
+void MathAbsoluteOperation::executePixelSampled(float output[4], float x, float y, PixelSampler sampler)
+{
+	float inputValue1[4];
+
+	this->m_inputValue1Operation->readSampled(inputValue1, x, y, sampler);
+
+	output[0] = fabs(inputValue1[0]);
+
+	clampIfNeeded(output);
+}

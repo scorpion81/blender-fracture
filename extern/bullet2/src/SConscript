@@ -19,7 +19,7 @@ elif env['OURPLATFORM'] in ('linux', 'freebsd4', 'freebsd5'):
     cflags += ['-O2']
 elif sys.platform=='darwin':
     defs += ' NDEBUG'
-    cflags += ['-O2','-pipe', '-fPIC', '-funsigned-char', '-ffast-math']
+    cflags += ['-O3','-fPIC']
 
 bullet2_src = env.Glob("LinearMath/*.cpp")
 bullet2_src += env.Glob("BulletCollision/BroadphaseCollision/*.cpp")
@@ -37,7 +37,4 @@ bullet2_src += env.Glob("BulletSoftBody/*.cpp")
 
 incs = '. BulletCollision BulletDynamics LinearMath BulletSoftBody'
 
-if sys.platform=='darwin' and env['CC'][:-2].endswith('4.6'): # workaround for an gcc-4.6 compiler bug
-	env.BlenderLib ( libname = 'extern_bullet2', sources=bullet2_src, includes=Split(incs), defines=Split(defs), libtype=['extern','player'], priority=[20,137], compileflags=cflags, cc_compilerchange='/usr/bin/gcc', cxx_compilerchange='/usr/bin/g++' )
-else:
-	env.BlenderLib ( libname = 'extern_bullet2', sources=bullet2_src, includes=Split(incs), defines=Split(defs), libtype=['extern','player'], priority=[20,137], compileflags=cflags )
+env.BlenderLib ( libname = 'extern_bullet2', sources=bullet2_src, includes=Split(incs), defines=Split(defs), libtype=['extern','player'], priority=[20,137], compileflags=cflags )

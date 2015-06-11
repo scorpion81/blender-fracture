@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include "device.h"
@@ -30,6 +30,7 @@
 #include "osl_shader.h"
 
 #include "util_foreach.h"
+#include "util_logging.h"
 #include "util_md5.h"
 #include "util_path.h"
 #include "util_progress.h"
@@ -188,11 +189,13 @@ void OSLShaderManager::shading_system_init()
 	if(ss_shared_users == 0) {
 		services_shared = new OSLRenderServices();
 
-		ss_shared = OSL::ShadingSystem::create(services_shared, ts_shared, &errhandler);
+		ss_shared = new OSL::ShadingSystem(services_shared, ts_shared, &errhandler);
 		ss_shared->attribute("lockgeom", 1);
 		ss_shared->attribute("commonspace", "world");
 		ss_shared->attribute("searchpath:shader", path_get("shader"));
 		//ss_shared->attribute("greedyjit", 1);
+
+		VLOG(1) << "Using shader search path: " << path_get("shader");
 
 		/* our own ray types */
 		static const char *raytypes[] = {
@@ -203,7 +206,6 @@ void OSLShaderManager::shading_system_init()
 			"glossy",			/* PATH_RAY_GLOSSY */
 			"singular",			/* PATH_RAY_SINGULAR */
 			"transparent",		/* PATH_RAY_TRANSPARENT */
-			"volume_scatter",	/* PATH_RAY_VOLUME_SCATTER */
 			"shadow",			/* PATH_RAY_SHADOW_OPAQUE */
 			"shadow",			/* PATH_RAY_SHADOW_TRANSPARENT */
 
@@ -212,6 +214,8 @@ void OSLShaderManager::shading_system_init()
 			"diffuse_ancestor", /* PATH_RAY_DIFFUSE_ANCESTOR */
 			"glossy_ancestor",  /* PATH_RAY_GLOSSY_ANCESTOR */
 			"bssrdf_ancestor",  /* PATH_RAY_BSSRDF_ANCESTOR */
+			"__unused__",		/* PATH_RAY_SINGLE_PASS_DONE */
+			"volume_scatter",	/* PATH_RAY_VOLUME_SCATTER */
 		};
 
 		const int nraytypes = sizeof(raytypes)/sizeof(raytypes[0]);
@@ -234,7 +238,7 @@ void OSLShaderManager::shading_system_free()
 	ss_shared_users--;
 
 	if(ss_shared_users == 0) {
-		OSL::ShadingSystem::destroy(ss_shared);
+		delete ss_shared;
 		ss_shared = NULL;
 
 		delete services_shared;
@@ -247,20 +251,27 @@ void OSLShaderManager::shading_system_free()
 
 bool OSLShaderManager::osl_compile(const string& inputfile, const string& outputfile)
 {
+#if OSL_LIBRARY_VERSION_CODE < 10602
+	vector<string_view> options;
+#else
 	vector<string> options;
+#endif
 	string stdosl_path;
+	string shader_path = path_get("shader");
 
 	/* specify output file name */
 	options.push_back("-o");
 	options.push_back(outputfile);
 
 	/* specify standard include path */
-	options.push_back("-I" + path_get("shader"));
+	string include_path_arg = string("-I") + shader_path;
+	options.push_back(include_path_arg);
+
 	stdosl_path = path_get("shader/stdosl.h");
 
 	/* compile */
-	OSL::OSLCompiler *compiler = OSL::OSLCompiler::create();
-	bool ok = compiler->compile(inputfile, options, stdosl_path);
+	OSL::OSLCompiler *compiler = new OSL::OSLCompiler();
+	bool ok = compiler->compile(string_view(inputfile), options, string_view(stdosl_path));
 	delete compiler;
 
 	return ok;
@@ -512,16 +523,14 @@ void OSLCompiler::add(ShaderNode *node, const char *name, bool isfilepath)
 		}
 	}
 
-	/* create shader of the appropriate type. we pass "surface" to all shaders,
-	 * because "volume" and "displacement" don't work yet in OSL. the shaders
-	 * work fine, but presumably these values would be used for more strict
-	 * checking, so when that is fixed, we should update the code here too. */
+	/* create shader of the appropriate type. OSL only distinguishes between "surface"
+	 * and "displacement" atm */
 	if(current_type == SHADER_TYPE_SURFACE)
 		ss->Shader("surface", name, id(node).c_str());
 	else if(current_type == SHADER_TYPE_VOLUME)
 		ss->Shader("surface", name, id(node).c_str());
 	else if(current_type == SHADER_TYPE_DISPLACEMENT)
-		ss->Shader("surface", name, id(node).c_str());
+		ss->Shader("displacement", name, id(node).c_str());
 	else
 		assert(0);
 	
@@ -544,7 +553,7 @@ void OSLCompiler::add(ShaderNode *node, const char *name, bool isfilepath)
 	/* test if we shader contains specific closures */
 	OSLShaderInfo *info = ((OSLShaderManager*)manager)->shader_loaded_info(name);
 
-	if(info) {
+	if(info && current_type == SHADER_TYPE_SURFACE) {
 		if(info->has_surface_emission)
 			current_shader->has_surface_emission = true;
 		if(info->has_surface_transparent)
@@ -553,6 +562,14 @@ void OSLCompiler::add(ShaderNode *node, const char *name, bool isfilepath)
 			current_shader->has_surface_bssrdf = true;
 			current_shader->has_bssrdf_bump = true; /* can't detect yet */
 		}
+	}
+	else if(current_type == SHADER_TYPE_VOLUME) {
+		if(node->has_spatial_varying())
+			current_shader->has_heterogeneous_volume = true;
+	}
+
+	if(node->has_object_dependency()) {
+		current_shader->has_object_dependency = true;
 	}
 }
 
@@ -709,14 +726,20 @@ void OSLCompiler::generate_nodes(const set<ShaderNode*>& nodes)
 					node->compile(*this);
 					done.insert(node);
 
-					if(node->has_surface_emission())
-						current_shader->has_surface_emission = true;
-					if(node->has_surface_transparent())
-						current_shader->has_surface_transparent = true;
-					if(node->has_surface_bssrdf()) {
-						current_shader->has_surface_bssrdf = true;
-						if(node->has_bssrdf_bump())
-							current_shader->has_bssrdf_bump = true;
+					if(current_type == SHADER_TYPE_SURFACE) {
+						if(node->has_surface_emission())
+							current_shader->has_surface_emission = true;
+						if(node->has_surface_transparent())
+							current_shader->has_surface_transparent = true;
+						if(node->has_surface_bssrdf()) {
+							current_shader->has_surface_bssrdf = true;
+							if(node->has_bssrdf_bump())
+								current_shader->has_bssrdf_bump = true;
+						}
+					}
+					else if(current_type == SHADER_TYPE_VOLUME) {
+						if(node->has_spatial_varying())
+							current_shader->has_heterogeneous_volume = true;
 					}
 				}
 				else
@@ -732,11 +755,7 @@ OSL::ShadingAttribStateRef OSLCompiler::compile_type(Shader *shader, ShaderGraph
 
 	current_type = type;
 
-#if OSL_LIBRARY_VERSION_CODE >= 10501
 	OSL::ShadingAttribStateRef group = ss->ShaderGroupBegin(shader->name.c_str());
-#else
-	ss->ShaderGroupBegin(shader->name.c_str());
-#endif
 
 	ShaderNode *output = graph->output();
 	set<ShaderNode*> dependencies;
@@ -764,13 +783,7 @@ OSL::ShadingAttribStateRef OSLCompiler::compile_type(Shader *shader, ShaderGraph
 
 	ss->ShaderGroupEnd();
 
-#if OSL_LIBRARY_VERSION_CODE >= 10501
 	return group;
-#else
-	OSL::ShadingAttribStateRef group = ss->state();
-	ss->clear_state();
-	return group;
-#endif
 }
 
 void OSLCompiler::compile(OSLGlobals *og, Shader *shader)
@@ -798,6 +811,8 @@ void OSLCompiler::compile(OSLGlobals *og, Shader *shader)
 		shader->has_bssrdf_bump = false;
 		shader->has_volume = false;
 		shader->has_displacement = false;
+		shader->has_heterogeneous_volume = false;
+		shader->has_object_dependency = false;
 
 		/* generate surface shader */
 		if(shader->used && graph && output->input("Surface")->link) {

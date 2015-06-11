@@ -36,7 +36,7 @@
 static bNodeSocketTemplate sh_node_material_in[] = {
 	{	SOCK_RGBA, 1, N_("Color"),		0.0f, 0.0f, 0.0f, 1.0f},
 	{	SOCK_RGBA, 1, N_("Spec"),		0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_FLOAT, 1, N_("Refl"),		0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
+	{	SOCK_FLOAT, 1, N_("DiffuseIntensity"),		0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
 	{	SOCK_VECTOR, 1, N_("Normal"),	0.0f, 0.0f, 0.0f, 1.0f, -1.0f, 1.0f, PROP_DIRECTION},
 	{	-1, 0, ""	}
 };
@@ -53,13 +53,13 @@ static bNodeSocketTemplate sh_node_material_out[] = {
 static bNodeSocketTemplate sh_node_material_ext_in[] = {
 	{	SOCK_RGBA, 1, N_("Color"),		0.0f, 0.0f, 0.0f, 1.0f},
 	{	SOCK_RGBA, 1, N_("Spec"),		0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_FLOAT, 1, N_("Refl"),		0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
+	{	SOCK_FLOAT, 1, N_("DiffuseIntensity"),		0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
 	{	SOCK_VECTOR, 1, N_("Normal"),	0.0f, 0.0f, 0.0f, 1.0f, -1.0f, 1.0f, PROP_DIRECTION},
 	{	SOCK_RGBA, 1, N_("Mirror"),		0.0f, 0.0f, 0.0f, 1.0f},
 	{	SOCK_FLOAT, 1, N_("Ambient"),	0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
 	{	SOCK_FLOAT, 1, N_("Emit"),		0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_UNSIGNED},
 	{	SOCK_FLOAT, 1, N_("SpecTra"),	0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
-	{	SOCK_FLOAT, 1, N_("Ray Mirror"),	0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, PROP_NONE},
+	{	SOCK_FLOAT, 1, N_("Reflectivity"),	0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, PROP_NONE},
 	{	SOCK_FLOAT, 1, N_("Alpha"),		0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_UNSIGNED},
 	{	SOCK_FLOAT, 1, N_("Translucency"),	0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
 	{	-1, 0, ""	}
@@ -186,7 +186,7 @@ static void node_shader_exec_material(void *data, int UNUSED(thread), bNode *nod
 		if (node->type == SH_NODE_MATERIAL_EXT) {
 			/* Shadow, Reflect, Refract, Radiosity, Speed seem to cause problems inside
 			 * a node tree :( */
-			copy_v3_v3(out[MAT_OUT_DIFFUSE]->vec, shrnode.diff);
+			copy_v3_v3(out[MAT_OUT_DIFFUSE]->vec, shrnode.diffshad);
 			copy_v3_v3(out[MAT_OUT_SPEC]->vec, shrnode.spec);
 			copy_v3_v3(out[MAT_OUT_AO]->vec, shrnode.ao);
 		}
@@ -267,6 +267,8 @@ static int gpu_shader_material(GPUMaterial *mat, bNode *node, bNodeExecData *UNU
 				shi.amb = gpu_get_input_link(&in[MAT_IN_AMB]);
 			if (hasinput[MAT_IN_EMIT])
 				shi.emit = gpu_get_input_link(&in[MAT_IN_EMIT]);
+			if (hasinput[MAT_IN_SPECTRA])
+				shi.spectra = gpu_get_input_link(&in[MAT_IN_SPECTRA]);
 			if (hasinput[MAT_IN_ALPHA])
 				shi.alpha = gpu_get_input_link(&in[MAT_IN_ALPHA]);
 		}

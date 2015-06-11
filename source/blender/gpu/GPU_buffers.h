@@ -32,11 +32,11 @@
 #ifndef __GPU_BUFFERS_H__
 #define __GPU_BUFFERS_H__
 
-#ifdef _DEBUG
-/*#define DEBUG_VBO(X) printf(X)*/
-#define DEBUG_VBO(X)
+#ifdef DEBUG
+/*  #define DEBUG_VBO(X) printf(X)*/
+#  define DEBUG_VBO(X)
 #else
-#define DEBUG_VBO(X)
+#  define DEBUG_VBO(X)
 #endif
 
 struct BMesh;
@@ -54,6 +54,7 @@ typedef struct GPUBuffer {
 	int size;	/* in bytes */
 	void *pointer;	/* used with vertex arrays */
 	unsigned int id;	/* used with vertex buffer objects */
+	bool use_vbo;	/* true for VBOs, false for vertex arrays */
 } GPUBuffer;
 
 typedef struct GPUBufferMaterial {
@@ -85,6 +86,7 @@ typedef struct GPUDrawObject {
 	GPUBuffer *points;
 	GPUBuffer *normals;
 	GPUBuffer *uv;
+	GPUBuffer *uv_tex;
 	GPUBuffer *colors;
 	GPUBuffer *edges;
 	GPUBuffer *uvedges;
@@ -94,9 +96,13 @@ typedef struct GPUDrawObject {
 
 	/* for each original vertex, the list of related points */
 	struct GPUVertPointLink *vert_points;
+
+	/* see: USE_GPU_POINT_LINK define */
+#if 0
 	/* storage for the vert_points lists */
 	struct GPUVertPointLink *vert_points_mem;
 	int vert_points_usage;
+#endif
 	
 	int colType;
 
@@ -109,10 +115,6 @@ typedef struct GPUDrawObject {
 	/* caches of the original DerivedMesh values */
 	int totvert;
 	int totedge;
-
-	/* if there was a failure allocating some buffer, use old
-	 * rendering code */
-	int legacy;
 } GPUDrawObject;
 
 /* used for GLSL materials */
@@ -125,7 +127,7 @@ typedef struct GPUAttrib {
 void GPU_global_buffer_pool_free(void);
 void GPU_global_buffer_pool_free_unused(void);
 
-GPUBuffer *GPU_buffer_alloc(int size);
+GPUBuffer *GPU_buffer_alloc(int size, bool force_vertex_arrays);
 void GPU_buffer_free(GPUBuffer *buffer);
 
 GPUDrawObject *GPU_drawobject_new(struct DerivedMesh *dm);
@@ -135,6 +137,7 @@ void GPU_drawobject_free(struct DerivedMesh *dm);
 void GPU_vertex_setup(struct DerivedMesh *dm);
 void GPU_normal_setup(struct DerivedMesh *dm);
 void GPU_uv_setup(struct DerivedMesh *dm);
+void GPU_texpaint_uv_setup(struct DerivedMesh *dm);
 /* colType is the cddata MCol type to use! */
 void GPU_color_setup(struct DerivedMesh *dm, int colType);
 void GPU_edge_setup(struct DerivedMesh *dm); /* does not mix with other data */
@@ -156,40 +159,47 @@ void GPU_buffer_draw_elements(GPUBuffer *elements, unsigned int mode, int start,
 /* called after drawing */
 void GPU_buffer_unbind(void);
 
-/* used to check whether to use the old (without buffers) code */
-int GPU_buffer_legacy(struct DerivedMesh *dm);
-
 /* Buffers for non-DerivedMesh drawing */
 typedef struct GPU_PBVH_Buffers GPU_PBVH_Buffers;
 
-GPU_PBVH_Buffers *GPU_build_pbvh_mesh_buffers(int (*face_vert_indices)[4],
+/* build */
+GPU_PBVH_Buffers *GPU_build_mesh_pbvh_buffers(int (*face_vert_indices)[4],
                                     struct MFace *mface, struct MVert *mvert,
                                     int *face_indices, int totface);
-
-void GPU_update_mesh_pbvh_buffers(GPU_PBVH_Buffers *buffers, MVert *mvert,
-                             int *vert_indices, int totvert, const float *vmask,
-                             int (*face_vert_indices)[4], int show_diffuse_color);
 
 GPU_PBVH_Buffers *GPU_build_grid_pbvh_buffers(int *grid_indices, int totgrid,
                                     unsigned int **grid_hidden, int gridsize);
 
 GPU_PBVH_Buffers *GPU_build_bmesh_pbvh_buffers(int smooth_shading);
 
+/* update */
+
+void GPU_update_mesh_pbvh_buffers(GPU_PBVH_Buffers *buffers, MVert *mvert,
+							 int *vert_indices, int totvert, const float *vmask,
+							 int (*face_vert_indices)[4], bool show_diffuse_color);
+
 void GPU_update_bmesh_pbvh_buffers(GPU_PBVH_Buffers *buffers,
                               struct BMesh *bm,
-                              struct GHash *bm_faces,
+                              struct GSet *bm_faces,
                               struct GSet *bm_unique_verts,
-                              struct GSet *bm_other_verts);
+                              struct GSet *bm_other_verts,
+                              bool show_diffuse_color);
 
 void GPU_update_grid_pbvh_buffers(GPU_PBVH_Buffers *buffers, struct CCGElem **grids,
                              const struct DMFlagMat *grid_flag_mats,
                              int *grid_indices, int totgrid, const struct CCGKey *key,
-                             int show_diffuse_color);
+                             bool show_diffuse_color);
 
+/* draw */
 void GPU_draw_pbvh_buffers(GPU_PBVH_Buffers *buffers, DMSetMaterial setMaterial,
-					  int wireframe);
+                           bool wireframe);
 
-int GPU_pbvh_buffers_diffuse_changed(GPU_PBVH_Buffers *buffers, int show_diffuse_color);
+/* debug PBVH draw*/
+void GPU_draw_pbvh_BB(float min[3], float max[3], bool leaf);
+void GPU_end_draw_pbvh_BB(void);
+void GPU_init_draw_pbvh_BB(void);
+
+bool GPU_pbvh_buffers_diffuse_changed(GPU_PBVH_Buffers *buffers, struct GSet *bm_faces, bool show_diffuse_color);
 
 void GPU_free_pbvh_buffers(GPU_PBVH_Buffers *buffers);
 

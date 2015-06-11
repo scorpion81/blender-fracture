@@ -39,7 +39,6 @@
 #include "DNA_genfile.h"
 #include "DNA_sdna_types.h"
 
-#include "BLI_utildefines.h"
 #include "BLI_listbase.h"
 #include "BLI_ghash.h"
 
@@ -66,15 +65,15 @@ BlenderDefRNA DefRNA = {NULL, {NULL, NULL}, {NULL, NULL}, NULL, 0, 0, 0, 1, 1};
 
 /* Duplicated code since we can't link in blenkernel or blenlib */
 
-/* pedantic check for '.', do this since its a hassle for translators */
+/* pedantic check for final '.', note '...' are allowed though. */
 #ifndef NDEBUG
-#  define DESCR_CHECK(description, id1, id2)                                  \
-	if (description && (description)[0]) {                                    \
-		int i = strlen(description);                                          \
-		if ((description)[i - 1] == '.') {                                    \
-			fprintf(stderr, "%s: '%s' '%s' description ends with a '.' !\n",  \
-			        __func__, id1 ? id1 : "", id2 ? id2 : "");                \
-		}                                                                     \
+#  define DESCR_CHECK(description, id1, id2)                                       \
+	if (description && (description)[0]) {                                         \
+		int i = strlen(description);                                               \
+		if (i > 3 && (description)[i - 1] == '.' && (description)[i - 3] != '.') { \
+			fprintf(stderr, "%s: '%s' '%s' description ends with a '.' !\n",       \
+			        __func__, id1 ? id1 : "", id2 ? id2 : "");                     \
+		}                                                                          \
 	} (void)0
 
 #else
@@ -110,7 +109,7 @@ PropertyDefRNA *rna_findlink(ListBase *listbase, const char *identifier)
 
 	for (link = listbase->first; link; link = link->next) {
 		PropertyRNA *prop = ((PropertyDefRNA *)link)->prop;
-		if (prop && (strcmp(prop->identifier, identifier) == 0)) {
+		if (prop && (STREQ(prop->identifier, identifier))) {
 			return (PropertyDefRNA *)link;
 		}
 	}
@@ -325,7 +324,7 @@ static int rna_member_cmp(const char *name, const char *oname)
 static int rna_find_sdna_member(SDNA *sdna, const char *structname, const char *membername, DNAStructMember *smember)
 {
 	const char *dnaname;
-	short *sp;
+	const short *sp;
 	int a, b, structnr, totmember, cmp;
 
 	structnr = DNA_struct_find_nr(sdna, structname);
@@ -383,7 +382,7 @@ static int rna_find_sdna_member(SDNA *sdna, const char *structname, const char *
 	return 0;
 }
 
-static int rna_validate_identifier(const char *identifier, char *error, int property)
+static int rna_validate_identifier(const char *identifier, char *error, bool property)
 {
 	int a = 0;
 	
@@ -429,7 +428,7 @@ static int rna_validate_identifier(const char *identifier, char *error, int prop
 	}
 	
 	for (a = 0; kwlist[a]; a++) {
-		if (strcmp(identifier, kwlist[a]) == 0) {
+		if (STREQ(identifier, kwlist[a])) {
 			strcpy(error, "this keyword is reserved by python");
 			return 0;
 		}
@@ -443,7 +442,7 @@ static int rna_validate_identifier(const char *identifier, char *error, int prop
 		};
 
 		for (a = 0; kwlist_prop[a]; a++) {
-			if (strcmp(identifier, kwlist_prop[a]) == 0) {
+			if (STREQ(identifier, kwlist_prop[a])) {
 				strcpy(error, "this keyword is reserved by python");
 				return 0;
 			}
@@ -497,7 +496,7 @@ void RNA_identifier_sanitize(char *identifier, int property)
 	}
 	
 	for (a = 0; kwlist[a]; a++) {
-		if (strcmp(identifier, kwlist[a]) == 0) {
+		if (STREQ(identifier, kwlist[a])) {
 			/* this keyword is reserved by python.
 			 * just replace the last character by '_' to keep it readable.
 			 */
@@ -514,7 +513,7 @@ void RNA_identifier_sanitize(char *identifier, int property)
 		};
 
 		for (a = 0; kwlist_prop[a]; a++) {
-			if (strcmp(identifier, kwlist_prop[a]) == 0) {
+			if (STREQ(identifier, kwlist_prop[a])) {
 				/* this keyword is reserved by python.
 				 * just replace the last character by '_' to keep it readable.
 				 */
@@ -640,7 +639,7 @@ void RNA_struct_free(BlenderRNA *brna, StructRNA *srna)
 	if (srna->flag & STRUCT_RUNTIME)
 		rna_freelinkN(&brna->structs, srna);
 #else
-	(void)brna, (void)srna;
+	UNUSED_VARS(brna, srna);
 #endif
 }
 
@@ -707,7 +706,7 @@ StructRNA *RNA_def_struct_ptr(BlenderRNA *brna, const char *identifier, StructRN
 	if (DefRNA.preprocess) {
 		char error[512];
 
-		if (rna_validate_identifier(identifier, error, FALSE) == 0) {
+		if (rna_validate_identifier(identifier, error, false) == 0) {
 			fprintf(stderr, "%s: struct identifier \"%s\" error - %s\n", __func__, identifier, error);
 			DefRNA.error = 1;
 		}
@@ -815,7 +814,7 @@ StructRNA *RNA_def_struct(BlenderRNA *brna, const char *identifier, const char *
 	if (from) {
 		/* find struct to derive from */
 		for (srnafrom = brna->structs.first; srnafrom; srnafrom = srnafrom->cont.next)
-			if (strcmp(srnafrom->identifier, from) == 0)
+			if (STREQ(srnafrom->identifier, from))
 				break;
 
 		if (!srnafrom) {
@@ -897,7 +896,7 @@ void RNA_def_struct_nested(BlenderRNA *brna, StructRNA *srna, const char *struct
 
 	/* find struct to derive from */
 	for (srnafrom = brna->structs.first; srnafrom; srnafrom = srnafrom->cont.next)
-		if (strcmp(srnafrom->identifier, structname) == 0)
+		if (STREQ(srnafrom->identifier, structname))
 			break;
 
 	if (!srnafrom) {
@@ -1001,7 +1000,7 @@ PropertyRNA *RNA_def_property(StructOrFunctionRNA *cont_, const char *identifier
 	if (DefRNA.preprocess) {
 		char error[512];
 		
-		if (rna_validate_identifier(identifier, error, TRUE) == 0) {
+		if (rna_validate_identifier(identifier, error, true) == 0) {
 			fprintf(stderr, "%s: property identifier \"%s.%s\" - %s\n", __func__,
 			        CONTAINER_RNA_ID(cont), identifier, error);
 			DefRNA.error = 1;
@@ -1021,7 +1020,7 @@ PropertyRNA *RNA_def_property(StructOrFunctionRNA *cont_, const char *identifier
 	else {
 #ifdef DEBUG
 		char error[512];
-		if (rna_validate_identifier(identifier, error, TRUE) == 0) {
+		if (rna_validate_identifier(identifier, error, true) == 0) {
 			fprintf(stderr, "%s: runtime property identifier \"%s.%s\" - %s\n", __func__,
 			        CONTAINER_RNA_ID(cont), identifier, error);
 			DefRNA.error = 1;
@@ -1069,7 +1068,7 @@ PropertyRNA *RNA_def_property(StructOrFunctionRNA *cont_, const char *identifier
 			fprop->hardmax = FLT_MAX;
 
 			if (ELEM(subtype, PROP_COLOR, PROP_COLOR_GAMMA)) {
-				fprop->softmin = 0.0f;
+				fprop->softmin = fprop->hardmin = 0.0f;
 				fprop->softmax = 1.0f;
 			}
 			else if (subtype == PROP_FACTOR) {
@@ -1551,6 +1550,7 @@ void RNA_def_property_boolean_default(PropertyRNA *prop, int value)
 		case PROP_BOOLEAN:
 		{
 			BoolPropertyRNA *bprop = (BoolPropertyRNA *)prop;
+			BLI_assert(ELEM(value, false, true));
 			bprop->defaultvalue = value;
 			break;
 		}
@@ -1872,15 +1872,15 @@ void RNA_def_property_int_sdna(PropertyRNA *prop, const char *structname, const 
 		}
 
 		/* SDNA doesn't pass us unsigned unfortunately .. */
-		if (dp->dnatype && strcmp(dp->dnatype, "char") == 0) {
+		if (dp->dnatype && STREQ(dp->dnatype, "char")) {
 			iprop->hardmin = iprop->softmin = CHAR_MIN;
 			iprop->hardmax = iprop->softmax = CHAR_MAX;
 		}
-		else if (dp->dnatype && strcmp(dp->dnatype, "short") == 0) {
+		else if (dp->dnatype && STREQ(dp->dnatype, "short")) {
 			iprop->hardmin = iprop->softmin = SHRT_MIN;
 			iprop->hardmax = iprop->softmax = SHRT_MAX;
 		}
-		else if (dp->dnatype && strcmp(dp->dnatype, "int") == 0) {
+		else if (dp->dnatype && STREQ(dp->dnatype, "int")) {
 			iprop->hardmin = INT_MIN;
 			iprop->hardmax = INT_MAX;
 
@@ -1924,7 +1924,7 @@ void RNA_def_property_float_sdna(PropertyRNA *prop, const char *structname, cons
 			}
 		}
 
-		if (dp->dnatype && strcmp(dp->dnatype, "char") == 0) {
+		if (dp->dnatype && STREQ(dp->dnatype, "char")) {
 			fprop->hardmin = fprop->softmin = 0.0f;
 			fprop->hardmax = fprop->softmax = 1.0f;
 		}
@@ -2061,7 +2061,7 @@ void RNA_def_property_collection_sdna(PropertyRNA *prop, const char *structname,
 			}
 		}
 
-		if (dp->dnatype && strcmp(dp->dnatype, "ListBase") == 0) {
+		if (dp->dnatype && STREQ(dp->dnatype, "ListBase")) {
 			cprop->next = (PropCollectionNextFunc)"rna_iterator_listbase_next";
 			cprop->get = (PropCollectionGetFunc)"rna_iterator_listbase_get";
 			cprop->end = (PropCollectionEndFunc)"rna_iterator_listbase_end";
@@ -2144,7 +2144,7 @@ void RNA_def_property_update(PropertyRNA *prop, int noteflag, const char *func)
 
 void RNA_def_property_update_runtime(PropertyRNA *prop, const void *func)
 {
-	prop->update = func;
+	prop->update = (void *)func;
 }
 
 void RNA_def_property_dynamic_array_funcs(PropertyRNA *prop, const char *getlength)
@@ -2991,7 +2991,7 @@ static FunctionRNA *rna_def_function(StructRNA *srna, const char *identifier)
 	if (DefRNA.preprocess) {
 		char error[512];
 
-		if (rna_validate_identifier(identifier, error, FALSE) == 0) {
+		if (rna_validate_identifier(identifier, error, false) == 0) {
 			fprintf(stderr, "%s: function identifier \"%s\" - %s\n", __func__, identifier, error);
 			DefRNA.error = 1;
 		}
@@ -3428,7 +3428,7 @@ int RNA_def_property_free_identifier(StructOrFunctionRNA *cont_, const char *ide
 	PropertyRNA *prop;
 	
 	for (prop = cont->properties.first; prop; prop = prop->next) {
-		if (strcmp(prop->identifier, identifier) == 0) {
+		if (STREQ(prop->identifier, identifier)) {
 			if (prop->flag & PROP_RUNTIME) {
 				rna_def_property_free(cont_, prop);
 				return 1;

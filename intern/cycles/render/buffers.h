@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __BUFFERS_H__
@@ -31,6 +31,7 @@
 CCL_NAMESPACE_BEGIN
 
 class Device;
+struct DeviceDrawParams;
 struct float4;
 
 /* Buffer Parameters
@@ -114,7 +115,7 @@ public:
 	void write(Device *device, const string& filename);
 
 	void draw_set(int width, int height);
-	void draw(Device *device);
+	void draw(Device *device, const DeviceDrawParams& draw_params);
 	bool draw_ready();
 
 	device_memory& rgba_data();

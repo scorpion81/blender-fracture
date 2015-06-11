@@ -33,10 +33,10 @@ set(SRC
 
 data_to_c_simple(../../../../release/datafiles/bfont.pfb SRC)
 data_to_c_simple(../../../../release/datafiles/bfont.ttf SRC)
+data_to_c_simple(../../../../release/datafiles/bmonofont.ttf SRC)
 
 if(WITH_BLENDER)
 	# blender only (not player)
-	data_to_c_simple(../../../../release/datafiles/bmonofont.ttf SRC)
 
 	if(NOT WITH_HEADLESS)
 		# blender UI only
@@ -47,6 +47,7 @@ if(WITH_BLENDER)
 
 		# images
 		data_to_c_simple(../../../../release/datafiles/splash.png SRC)
+		data_to_c_simple(../../../../release/datafiles/splash_2x.png SRC)
 		# XXX These are handy, but give nasty "false changes" in svn :/
 		#svg_to_png(../../../../release/datafiles/blender_icons.svg
 		           #../../../../release/datafiles/blender_icons16.png
@@ -92,6 +93,8 @@ if(WITH_BLENDER)
 		data_to_c_simple(../../../../release/datafiles/brushicons/soften.png SRC)
 		data_to_c_simple(../../../../release/datafiles/brushicons/subtract.png SRC)
 		data_to_c_simple(../../../../release/datafiles/brushicons/texdraw.png SRC)
+		data_to_c_simple(../../../../release/datafiles/brushicons/texfill.png SRC)
+		data_to_c_simple(../../../../release/datafiles/brushicons/texmask.png SRC)
 		data_to_c_simple(../../../../release/datafiles/brushicons/thumb.png SRC)
 		data_to_c_simple(../../../../release/datafiles/brushicons/twist.png SRC)
 		data_to_c_simple(../../../../release/datafiles/brushicons/vertexdraw.png SRC)

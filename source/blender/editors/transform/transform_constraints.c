@@ -34,12 +34,6 @@
 #include <string.h>
 #include <math.h>
 
-#ifndef WIN32
-#  include <unistd.h>
-#else
-#  include <io.h>
-#endif
-
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_screen_types.h"
@@ -137,7 +131,7 @@ static void postConstraintChecks(TransInfo *t, float vec[3], float pvec[3])
 
 	snapGridIncrement(t, vec);
 
-	if (t->num.flag & T_NULL_ONE) {
+	if (t->flag & T_NULL_ONE) {
 		if (!(t->con.mode & CON_AXIS0))
 			vec[0] = 1.0f;
 
@@ -148,8 +142,7 @@ static void postConstraintChecks(TransInfo *t, float vec[3], float pvec[3])
 			vec[2] = 1.0f;
 	}
 
-	if (hasNumInput(&t->num)) {
-		applyNumInput(&t->num, vec);
+	if (applyNumInput(&t->num, vec)) {
 		constraintNumInput(t, vec);
 		removeAspectRatio(t, vec);
 	}
@@ -215,7 +208,7 @@ static void axisProjection(TransInfo *t, const float axis[3], const float in[3],
 	viewAxisCorrectCenter(t, t_con_center);
 	
 	angle = fabsf(angle_v3v3(axis, t->viewinv[2]));
-	if (angle > (float)M_PI / 2.0f) {
+	if (angle > (float)M_PI_2) {
 		angle = (float)M_PI - angle;
 	}
 	angle = RAD2DEGF(angle);
@@ -626,8 +619,9 @@ void setUserConstraint(TransInfo *t, short orientation, int mode, const char fte
 	switch (orientation) {
 		case V3D_MANIP_GLOBAL:
 		{
-			float mtx[3][3] = MAT3_UNITY;
+			float mtx[3][3];
 			BLI_snprintf(text, sizeof(text), ftext, IFACE_("global"));
+			unit_m3(mtx);
 			setConstraint(t, mtx, mode, text);
 			break;
 		}
@@ -669,7 +663,7 @@ void drawConstraint(TransInfo *t)
 {
 	TransCon *tc = &(t->con);
 
-	if (!ELEM3(t->spacetype, SPACE_VIEW3D, SPACE_IMAGE, SPACE_NODE))
+	if (!ELEM(t->spacetype, SPACE_VIEW3D, SPACE_IMAGE, SPACE_NODE))
 		return;
 	if (!(tc->mode & CON_APPLY))
 		return;
@@ -761,6 +755,9 @@ void drawPropCircle(const struct bContext *C, TransInfo *t)
 			if (t->options & CTX_MASK) {
 				/* untested - mask aspect is TODO */
 				ED_space_image_get_aspect(t->sa->spacedata.first, &aspx, &aspy);
+			}
+			else if (t->options & CTX_PAINT_CURVE) {
+				aspx = aspy = 1.0;
 			}
 			else {
 				ED_space_image_get_uv_aspect(t->sa->spacedata.first, &aspx, &aspy);
@@ -970,13 +967,13 @@ static void setNearestAxis3d(TransInfo *t)
 		sub_v2_v2v2(axis, axis_2d, t->center2d);
 		axis[2] = 0.0f;
 
-		if (normalize_v3(axis) != 0.0f) {
+		if (normalize_v3(axis) > 1e-3f) {
 			project_v3_v3v3(proj, mvec, axis);
 			sub_v3_v3v3(axis, mvec, proj);
 			len[i] = normalize_v3(axis);
 		}
 		else {
-			len[i] = 10000000000.0f;
+			len[i] = 1e10f;
 		}
 	}
 

@@ -190,7 +190,7 @@ static void rna_Cache_idname_change(Main *UNUSED(bmain), Scene *UNUSED(scene), P
 		for (pid = pidlist.first; pid; pid = pid->next) {
 			if (pid->cache == cache)
 				pid2 = pid;
-			else if (cache->name[0] != '\0' && strcmp(cache->name, pid->cache->name) == 0) {
+			else if (cache->name[0] != '\0' && STREQ(cache->name, pid->cache->name)) {
 				/*TODO: report "name exists" to user */
 				BLI_strncpy(cache->name, cache->prev_name, sizeof(cache->name));
 				new_name = 0;
@@ -243,7 +243,7 @@ static void rna_Cache_active_point_cache_index_range(PointerRNA *ptr, int *min, 
 
 	for (pid = pidlist.first; pid; pid = pid->next) {
 		if (pid->cache == cache) {
-			*max = max_ii(0, BLI_countlist(pid->ptcaches) - 1);
+			*max = max_ii(0, BLI_listbase_count(pid->ptcaches) - 1);
 			break;
 		}
 	}
@@ -598,9 +598,20 @@ static char *rna_FieldSettings_path(PointerRNA *ptr)
 
 static void rna_EffectorWeight_update(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *ptr)
 {
-	DAG_id_tag_update((ID *)ptr->id.data, OB_RECALC_DATA | PSYS_RECALC_RESET);
+	ID *id = ptr->id.data;
 
-	WM_main_add_notifier(NC_OBJECT | ND_DRAW, NULL);
+	if (id && GS(id->name) == ID_SCE) {
+		Scene *scene = (Scene *)id;
+		Base *base;
+
+		for (base = scene->base.first; base; base = base->next) {
+			BKE_ptcache_object_reset(scene, base->object, PTCACHE_RESET_DEPSGRAPH);
+		}
+	}
+	else {
+		DAG_id_tag_update(id, OB_RECALC_DATA | PSYS_RECALC_RESET);
+		WM_main_add_notifier(NC_OBJECT | ND_DRAW, NULL);
+	}
 }
 
 static void rna_EffectorWeight_dependency_update(Main *bmain, Scene *UNUSED(scene), PointerRNA *ptr)
@@ -733,7 +744,7 @@ static EnumPropertyItem *rna_Effector_shape_itemf(bContext *UNUSED(C), PointerRN
 
 		return curve_shape_items;
 	}
-	else if (ELEM3(ob->type, OB_MESH, OB_SURF, OB_FONT)) {
+	else if (ELEM(ob->type, OB_MESH, OB_SURF, OB_FONT)) {
 		if (ob->pd->forcefield == PFIELD_VORTEX)
 			return vortex_shape_items;
 
@@ -946,7 +957,7 @@ static void rna_def_collision(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "thickness_inner", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "pdef_sbift");
 	RNA_def_property_range(prop, 0.001f, 1.0f);
-	RNA_def_property_ui_text(prop, "Inner Thickness", "Inner face thickness");
+	RNA_def_property_ui_text(prop, "Inner Thickness", "Inner face thickness (only used by softbodies)");
 	RNA_def_property_update(prop, 0, "rna_CollisionSettings_update");
 	
 	prop = RNA_def_property(srna, "thickness_outer", PROP_FLOAT, PROP_NONE);

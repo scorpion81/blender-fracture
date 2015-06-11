@@ -60,7 +60,6 @@
 #include "DNA_world_types.h"
 #include "DNA_object_types.h"
 
-#include "BLI_math.h" /* windows needs for M_PI */
 #include "BLI_blenlib.h"
 #include "BLI_dynstr.h"
 #include "BLI_utildefines.h"
@@ -77,6 +76,10 @@
 #include "BKE_sequencer.h"
 
 #include "MEM_guardedalloc.h"
+
+#ifdef WIN32
+#  include "BLI_math_base.h"  /* M_PI */
+#endif
 
 /* *************************************************** */
 /* Old-Data Freeing Tools */
@@ -158,21 +161,24 @@ static AdrBit2Path ma_mode_bits[] = {
 	{ \
 		*tot = sizeof(items) / sizeof(AdrBit2Path); \
 		return items; \
-	}
+	} (void)0
 
 /* This function checks if a Blocktype+Adrcode combo, returning a mapping table */
 static AdrBit2Path *adrcode_bitmaps_to_paths(int blocktype, int adrcode, int *tot)
 {
 	/* Object layers */
-	if ((blocktype == ID_OB) && (adrcode == OB_LAY))
-		RET_ABP(ob_layer_bits)
-	else if ((blocktype == ID_MA) && (adrcode == MA_MODE))
-		RET_ABP(ma_mode_bits)
+	if ((blocktype == ID_OB) && (adrcode == OB_LAY)) {
+		RET_ABP(ob_layer_bits);
+	}
+	else if ((blocktype == ID_MA) && (adrcode == MA_MODE)) {
+		RET_ABP(ma_mode_bits);
+	}
 	// XXX TODO: add other types...
 	
 	/* Normal curve */
 	return NULL;
 }
+#undef RET_ABP
 
 /* *************************************************** */
 /* ADRCODE to RNA-Path Conversion Code  - Standard */
@@ -916,11 +922,11 @@ static char *get_rna_access(int blocktype, int adrcode, char actname[], char con
 		BLI_snprintf(buf, sizeof(buf), "pose.bones[\"%s\"].constraints[\"%s\"]", actname, constname);
 	}
 	else if (actname && actname[0]) {
-		if ((blocktype == ID_OB) && strcmp(actname, "Object") == 0) {
+		if ((blocktype == ID_OB) && STREQ(actname, "Object")) {
 			/* Actionified "Object" IPO's... no extra path stuff needed */
 			buf[0] = '\0'; /* empty string */
 		}
-		else if ((blocktype == ID_KE) && strcmp(actname, "Shape") == 0) {
+		else if ((blocktype == ID_KE) && STREQ(actname, "Shape")) {
 			/* Actionified "Shape" IPO's - these are forced onto object level via the action container there... */
 			strcpy(buf, "data.shape_keys");
 		}
@@ -1305,8 +1311,8 @@ static void icu_to_fcurves(ID *id, ListBase *groups, ListBase *list, IpoCurve *i
 				 *	- they were degrees/10 
 				 *	- we need radians for RNA to do the right thing
 				 */
-				if ( ((icu->blocktype == ID_OB) && ELEM3(icu->adrcode, OB_ROT_X, OB_ROT_Y, OB_ROT_Z)) ||
-				     ((icu->blocktype == ID_PO) && ELEM3(icu->adrcode, AC_EUL_X, AC_EUL_Y, AC_EUL_Z)) )
+				if ( ((icu->blocktype == ID_OB) && ELEM(icu->adrcode, OB_ROT_X, OB_ROT_Y, OB_ROT_Z)) ||
+				     ((icu->blocktype == ID_PO) && ELEM(icu->adrcode, AC_EUL_X, AC_EUL_Y, AC_EUL_Z)) )
 				{
 					const float fac = (float)M_PI / 18.0f; //10.0f * M_PI/180.0f;
 					
@@ -1320,7 +1326,7 @@ static void icu_to_fcurves(ID *id, ListBase *groups, ListBase *list, IpoCurve *i
 				 *	- we now need as 'frames'
 				 */
 				if ( (id) && (icu->blocktype == GS(id->name)) && 
-				     (fcu->rna_path && strcmp(fcu->rna_path, "eval_time") == 0) )
+				     (fcu->rna_path && STREQ(fcu->rna_path, "eval_time")) )
 				{
 					Curve *cu = (Curve *)id;
 					
@@ -1338,7 +1344,7 @@ static void icu_to_fcurves(ID *id, ListBase *groups, ListBase *list, IpoCurve *i
 					DriverVar *dvar = fcu->driver->variables.first;
 					DriverTarget *dtar = &dvar->targets[0];
 					
-					if (ELEM3(dtar->transChan, DTAR_TRANSCHAN_ROTX, DTAR_TRANSCHAN_ROTY, DTAR_TRANSCHAN_ROTZ)) {
+					if (ELEM(dtar->transChan, DTAR_TRANSCHAN_ROTX, DTAR_TRANSCHAN_ROTY, DTAR_TRANSCHAN_ROTZ)) {
 						const float fac = (float)M_PI / 18.0f;
 						
 						dst->vec[0][0] *= fac;
@@ -1385,7 +1391,7 @@ static void ipo_to_animato(ID *id, Ipo *ipo, char actname[], char constname[], S
 	IpoCurve *icu;
 	
 	/* sanity check */
-	if (ELEM3(NULL, ipo, anim, drivers))
+	if (ELEM(NULL, ipo, anim, drivers))
 		return;
 		
 	if (G.debug & G_DEBUG) printf("ipo_to_animato\n");
@@ -1397,9 +1403,9 @@ static void ipo_to_animato(ID *id, Ipo *ipo, char actname[], char constname[], S
 	 *		F-Curves for bones). This may be added later... for now let's just dump without them...
 	 */
 	if (actname) {
-		if ((ipo->blocktype == ID_OB) && (strcmp(actname, "Object") == 0))
+		if ((ipo->blocktype == ID_OB) && STREQ(actname, "Object"))
 			actname = NULL;
-		else if ((ipo->blocktype == ID_OB) && (strcmp(actname, "Shape") == 0))
+		else if ((ipo->blocktype == ID_OB) && STREQ(actname, "Shape"))
 			actname = NULL;
 	}
 	
@@ -1455,7 +1461,7 @@ static void action_to_animato(ID *id, bAction *act, ListBase *groups, ListBase *
 	bConstraintChannel *conchan, *conchann;
 	
 	/* only continue if there are Action Channels (indicating unconverted data) */
-	if (act->chanbase.first == NULL)
+	if (BLI_listbase_is_empty(&act->chanbase))
 		return;
 		
 	/* get rid of all Action Groups */
@@ -1520,7 +1526,7 @@ static void ipo_to_animdata(ID *id, Ipo *ipo, char actname[], char constname[], 
 	if (G.debug & G_DEBUG) {
 		printf("ipo to animdata - ID:%s, IPO:%s, actname:%s constname:%s seqname:%s  curves:%d\n",
 		       id->name + 2, ipo->id.name + 2, (actname) ? actname : "<None>", (constname) ? constname : "<None>", (seq) ? (seq->name + 2) : "<None>",
-		       BLI_countlist(&ipo->curve));
+		       BLI_listbase_count(&ipo->curve));
 	}
 	
 	/* Convert curves to animato system (separated into separate lists of F-Curves for animation and drivers),
@@ -1645,6 +1651,9 @@ static void nlastrips_to_animdata(ID *id, ListBase *strips)
 				nlt = add_nlatrack(adt, NULL);
 				BKE_nlatrack_add_strip(nlt, strip);
 			}
+			
+			/* ensure that strip has a name */
+			BKE_nlastrip_validate_name(adt, strip);
 		}
 		
 		/* modifiers */

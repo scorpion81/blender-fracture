@@ -34,15 +34,10 @@
 #include <string>
 #include <vector>
 
-#include "FreestyleConfig.h"
-
-//soc
 extern "C" {
-
 #include "BKE_utildefines.h"
-
-#include "BLI_blenlib.h"
-
+#include "BLI_string.h"
+#include "BLI_path_util.h"
 }
 
 using namespace std;
@@ -51,7 +46,6 @@ namespace Freestyle {
 
 namespace StringUtils {
 
-LIB_SYSTEM_EXPORT
 void getPathName(const string& path, const string& base, vector<string>& pathnames);
 
 // STL related

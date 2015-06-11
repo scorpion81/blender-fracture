@@ -31,41 +31,48 @@ ViewerNode::ViewerNode(bNode *editorNode) : Node(editorNode)
 	/* pass */
 }
 
-void ViewerNode::convertToOperations(ExecutionSystem *graph, CompositorContext *context)
+void ViewerNode::convertToOperations(NodeConverter &converter, const CompositorContext &context) const
 {
 	bNode *editorNode = this->getbNode();
-	bool is_active = (editorNode->flag & NODE_DO_OUTPUT_RECALC || context->isRendering()) &&
-	                 ((editorNode->flag & NODE_DO_OUTPUT) && this->isInActiveGroup());
+	bool do_output = (editorNode->flag & NODE_DO_OUTPUT_RECALC || context.isRendering()) && (editorNode->flag & NODE_DO_OUTPUT);
+	bool ignore_alpha = (editorNode->custom2 & CMP_NODE_OUTPUT_IGNORE_ALPHA) != 0;
 
-	InputSocket *imageSocket = this->getInputSocket(0);
-	InputSocket *alphaSocket = this->getInputSocket(1);
-	InputSocket *depthSocket = this->getInputSocket(2);
+	NodeInput *imageSocket = this->getInputSocket(0);
+	NodeInput *alphaSocket = this->getInputSocket(1);
+	NodeInput *depthSocket = this->getInputSocket(2);
 	Image *image = (Image *)this->getbNode()->id;
 	ImageUser *imageUser = (ImageUser *) this->getbNode()->storage;
 	ViewerOperation *viewerOperation = new ViewerOperation();
-	viewerOperation->setbNodeTree(context->getbNodeTree());
+	viewerOperation->setbNodeTree(context.getbNodeTree());
 	viewerOperation->setImage(image);
 	viewerOperation->setImageUser(imageUser);
-	viewerOperation->setActive(is_active);
 	viewerOperation->setChunkOrder((OrderOfChunks)editorNode->custom1);
 	viewerOperation->setCenterX(editorNode->custom3);
 	viewerOperation->setCenterY(editorNode->custom4);
-	viewerOperation->setIgnoreAlpha(editorNode->custom2 & CMP_NODE_OUTPUT_IGNORE_ALPHA);
+	/* alpha socket gives either 1 or a custom alpha value if "use alpha" is enabled */
+	viewerOperation->setUseAlphaInput(ignore_alpha || alphaSocket->isLinked());
 
-	viewerOperation->setViewSettings(context->getViewSettings());
-	viewerOperation->setDisplaySettings(context->getDisplaySettings());
+	viewerOperation->setViewSettings(context.getViewSettings());
+	viewerOperation->setDisplaySettings(context.getDisplaySettings());
 
 	viewerOperation->setResolutionInputSocketIndex(0);
-	if (!imageSocket->isConnected()) {
-		if (alphaSocket->isConnected()) {
+	if (!imageSocket->isLinked()) {
+		if (alphaSocket->isLinked()) {
 			viewerOperation->setResolutionInputSocketIndex(1);
 		}
 	}
 
-	imageSocket->relinkConnections(viewerOperation->getInputSocket(0), 0, graph);
-	alphaSocket->relinkConnections(viewerOperation->getInputSocket(1));
-	depthSocket->relinkConnections(viewerOperation->getInputSocket(2));
-	graph->addOperation(viewerOperation);
+	converter.addOperation(viewerOperation);
+	converter.mapInputSocket(imageSocket, viewerOperation->getInputSocket(0));
+	/* only use alpha link if "use alpha" is enabled */
+	if (ignore_alpha)
+		converter.addInputValue(viewerOperation->getInputSocket(1), 1.0f);
+	else
+		converter.mapInputSocket(alphaSocket, viewerOperation->getInputSocket(1));
+	converter.mapInputSocket(depthSocket, viewerOperation->getInputSocket(2));
 
-	addPreviewOperation(graph, context, viewerOperation->getInputSocket(0));
+	converter.addNodeInputPreview(imageSocket);
+
+	if (do_output)
+		converter.registerViewer(viewerOperation);
 }

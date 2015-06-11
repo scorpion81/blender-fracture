@@ -52,12 +52,12 @@
 #include "DNA_key_types.h"
 #include "DNA_lamp_types.h"
 #include "DNA_lattice_types.h"
+#include "DNA_linestyle_types.h"
 #include "DNA_material_types.h"
 #include "DNA_mesh_types.h"
 #include "DNA_meta_types.h"
 #include "DNA_movieclip_types.h"
 #include "DNA_mask_types.h"
-#include "DNA_nla_types.h"
 #include "DNA_node_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_screen_types.h"
@@ -69,9 +69,9 @@
 #include "DNA_world_types.h"
 
 #include "BLI_blenlib.h"
-#include "BLI_dynstr.h"
 #include "BLI_utildefines.h"
 
+#include "BLI_threads.h"
 #include "BLF_translation.h"
 
 #include "BKE_action.h"
@@ -89,7 +89,6 @@
 #include "BKE_group.h"
 #include "BKE_gpencil.h"
 #include "BKE_idprop.h"
-#include "BKE_icons.h"
 #include "BKE_image.h"
 #include "BKE_ipo.h"
 #include "BKE_key.h"
@@ -105,6 +104,7 @@
 #include "BKE_mask.h"
 #include "BKE_node.h"
 #include "BKE_object.h"
+#include "BKE_paint.h"
 #include "BKE_particle.h"
 #include "BKE_packedFile.h"
 #include "BKE_speaker.h"
@@ -134,12 +134,12 @@
  * also note that the id _must_ have a library - campbell */
 void BKE_id_lib_local_paths(Main *bmain, Library *lib, ID *id)
 {
-	char *bpath_user_data[2] = {bmain->name, lib->filepath};
+	const char *bpath_user_data[2] = {bmain->name, lib->filepath};
 
 	BKE_bpath_traverse_id(bmain, id,
 	                      BKE_bpath_relocate_visitor,
 	                      BKE_BPATH_TRAVERSE_SKIP_MULTIFILE,
-	                      bpath_user_data);
+	                      (void *)bpath_user_data);
 }
 
 void id_lib_extern(ID *id)
@@ -283,7 +283,7 @@ bool id_make_local(ID *id, bool test)
 		case ID_GD:
 			return false; /* not implemented */
 		case ID_LS:
-			return 0; /* not implemented */
+			return false; /* not implemented */
 	}
 
 	return false;
@@ -351,7 +351,7 @@ bool id_copy(ID *id, ID **newid, bool test)
 		case ID_VF:
 			return false;  /* not implemented */
 		case ID_TXT:
-			if (!test) *newid = (ID *)BKE_text_copy((Text *)id);
+			if (!test) *newid = (ID *)BKE_text_copy(G.main, (Text *)id);
 			return true;
 		case ID_SCRIPT:
 			return false;  /* deprecated */
@@ -378,13 +378,14 @@ bool id_copy(ID *id, ID **newid, bool test)
 		case ID_WM:
 			return false;  /* can't be copied from here */
 		case ID_GD:
-			return false;  /* not implemented */
+			if (!test) *newid = (ID *)gpencil_data_duplicate((bGPdata *)id, false);
+			return true;
 		case ID_MSK:
 			if (!test) *newid = (ID *)BKE_mask_copy((Mask *)id);
 			return true;
 		case ID_LS:
-			if (!test) *newid = (ID *)BKE_copy_linestyle((FreestyleLineStyle *)id);
-			return 1;
+			if (!test) *newid = (ID *)BKE_linestyle_copy((FreestyleLineStyle *)id);
+			return true;
 	}
 	
 	return false;
@@ -516,6 +517,10 @@ ListBase *which_libbase(Main *mainlib, short type)
 			return &(mainlib->mask);
 		case ID_LS:
 			return &(mainlib->linestyle);
+		case ID_PAL:
+			return &(mainlib->palettes);
+		case ID_PC:
+			return &(mainlib->paintcurves);
 	}
 	return NULL;
 }
@@ -597,22 +602,26 @@ int set_listbasepointers(Main *main, ListBase **lb)
 	lb[a++] = &(main->text);
 	lb[a++] = &(main->sound);
 	lb[a++] = &(main->group);
+	lb[a++] = &(main->palettes);
+	lb[a++] = &(main->paintcurves);
 	lb[a++] = &(main->brush);
 	lb[a++] = &(main->script);
 	lb[a++] = &(main->particle);
 	lb[a++] = &(main->speaker);
 
 	lb[a++] = &(main->world);
+	lb[a++] = &(main->movieclip);
 	lb[a++] = &(main->screen);
 	lb[a++] = &(main->object);
 	lb[a++] = &(main->linestyle); /* referenced by scenes */
 	lb[a++] = &(main->scene);
 	lb[a++] = &(main->library);
 	lb[a++] = &(main->wm);
-	lb[a++] = &(main->movieclip);
 	lb[a++] = &(main->mask);
 	
 	lb[a] = NULL;
+
+	BLI_assert(a + 1 == MAX_LIBARRAY);
 
 	return a;
 }
@@ -732,6 +741,12 @@ static ID *alloc_libblock_notest(short type)
 		case ID_LS:
 			id = MEM_callocN(sizeof(FreestyleLineStyle), "Freestyle Line Style");
 			break;
+		case ID_PAL:
+			id = MEM_callocN(sizeof(Palette), "Palette");
+			break;
+		case ID_PC:
+			id = MEM_callocN(sizeof(PaintCurve), "Paint Curve");
+			break;
 	}
 	return id;
 }
@@ -749,12 +764,14 @@ void *BKE_libblock_alloc(Main *bmain, short type, const char *name)
 	
 	id = alloc_libblock_notest(type);
 	if (id) {
+		BKE_main_lock(bmain);
 		BLI_addtail(lb, id);
 		id->us = 1;
 		id->icon_id = 0;
 		*( (short *)id->name) = type;
 		new_id(lb, id, name);
 		/* alphabetic insertion: is in new_id */
+		BKE_main_unlock(bmain);
 	}
 	DAG_id_type_tag(bmain, type);
 	return id;
@@ -808,6 +825,33 @@ void *BKE_libblock_copy_ex(Main *bmain, ID *id)
 	return idn;
 }
 
+void *BKE_libblock_copy_nolib(ID *id, const bool do_action)
+{
+	ID *idn;
+	size_t idn_len;
+
+	idn = alloc_libblock_notest(GS(id->name));
+	assert(idn != NULL);
+
+	BLI_strncpy(idn->name, id->name, sizeof(idn->name));
+
+	idn_len = MEM_allocN_len(idn);
+	if ((int)idn_len - (int)sizeof(ID) > 0) { /* signed to allow neg result */
+		const char *cp = (const char *)id;
+		char *cpn = (char *)idn;
+
+		memcpy(cpn + sizeof(ID), cp + sizeof(ID), idn_len - sizeof(ID));
+	}
+
+	id->newid = idn;
+	idn->flag |= LIB_NEW;
+	idn->us = 1;
+
+	BKE_libblock_copy_data(idn, id, do_action);
+
+	return idn;
+}
+
 void *BKE_libblock_copy(ID *id)
 {
 	return BKE_libblock_copy_ex(G.main, id);
@@ -857,10 +901,8 @@ static void animdata_dtar_clear_cb(ID *UNUSED(id), AnimData *adt, void *userdata
 	}
 }
 
-void BKE_libblock_free_data(ID *id)
+void BKE_libblock_free_data(Main *bmain, ID *id)
 {
-	Main *bmain = G.main;  /* should eventually be an arg */
-	
 	if (id->properties) {
 		IDP_FreeProperty(id->properties);
 		MEM_freeN(id->properties);
@@ -979,17 +1021,26 @@ void BKE_libblock_free_ex(Main *bmain, void *idv, bool do_id_user)
 			BKE_mask_free(bmain, (Mask *)id);
 			break;
 		case ID_LS:
-			BKE_free_linestyle((FreestyleLineStyle *)id);
+			BKE_linestyle_free((FreestyleLineStyle *)id);
+			break;
+		case ID_PAL:
+			BKE_palette_free((Palette *)id);
+			break;
+		case ID_PC:
+			BKE_paint_curve_free((PaintCurve *)id);
 			break;
 	}
 
 	/* avoid notifying on removed data */
+	BKE_main_lock(bmain);
+
 	if (free_notifier_reference_cb)
 		free_notifier_reference_cb(id);
 
 	BLI_remlink(lb, id);
 
-	BKE_libblock_free_data(id);
+	BKE_libblock_free_data(bmain, id);
+	BKE_main_unlock(bmain);
 
 	MEM_freeN(id);
 }
@@ -1019,7 +1070,10 @@ void BKE_libblock_free_us(Main *bmain, void *idv)      /* test users */
 Main *BKE_main_new(void)
 {
 	Main *bmain = MEM_callocN(sizeof(Main), "new main");
-	bmain->eval_ctx = MEM_callocN(sizeof(EvaluationContext), "EvaluationContext");
+	bmain->eval_ctx = MEM_callocN(sizeof(EvaluationContext),
+	                              "EvaluationContext");
+	bmain->lock = MEM_mallocN(sizeof(SpinLock), "main lock");
+	BLI_spin_init((SpinLock *)bmain->lock);
 	return bmain;
 }
 
@@ -1082,148 +1136,34 @@ void BKE_main_free(Main *mainvar)
 		}
 	}
 
+	BLI_spin_end((SpinLock *)mainvar->lock);
+	MEM_freeN(mainvar->lock);
 	MEM_freeN(mainvar->eval_ctx);
 	MEM_freeN(mainvar);
 }
 
-/* ***************** ID ************************ */
-
-
-ID *BKE_libblock_find_name(const short type, const char *name)      /* type: "OB" or "MA" etc */
+void BKE_main_lock(struct Main *bmain)
 {
-	ListBase *lb = which_libbase(G.main, type);
+	BLI_spin_lock((SpinLock *) bmain->lock);
+}
+
+void BKE_main_unlock(struct Main *bmain)
+{
+	BLI_spin_unlock((SpinLock *) bmain->lock);
+}
+
+/* ***************** ID ************************ */
+ID *BKE_libblock_find_name_ex(struct Main *bmain, const short type, const char *name)
+{
+	ListBase *lb = which_libbase(bmain, type);
 	BLI_assert(lb != NULL);
 	return BLI_findstring(lb, name, offsetof(ID, name) + 2);
 }
-
-#if 0 /* UNUSED */
-#define MAX_IDPUP  60  /* was 24 */
-
-static void get_flags_for_id(ID *id, char *buf) 
+ID *BKE_libblock_find_name(const short type, const char *name)
 {
-	int isfake = id->flag & LIB_FAKEUSER;
-	int isnode = 0;
-	/* Writeout the flags for the entry, note there
-	 * is a small hack that writes 5 spaces instead
-	 * of 4 if no flags are displayed... this makes
-	 * things usually line up ok - better would be
-	 * to have that explicit, oh well - zr
-	 */
-
-	if (GS(id->name) == ID_MA)
-		isnode = ((Material *)id)->use_nodes;
-	if (GS(id->name) == ID_TE)
-		isnode = ((Tex *)id)->use_nodes;
-	
-	if (id->us < 0)
-		strcpy(buf, "-1W ");
-	else if (!id->lib && !isfake && id->us && !isnode)
-		strcpy(buf, "     ");
-	else if (isnode)
-		sprintf(buf, "%c%cN%c ", id->lib ? 'L' : ' ', isfake ? 'F' : ' ', (id->us == 0) ? 'O' : ' ');
-	else
-		sprintf(buf, "%c%c%c ", id->lib ? 'L' : ' ', isfake ? 'F' : ' ', (id->us == 0) ? 'O' : ' ');
+	return BKE_libblock_find_name_ex(G.main, type, name);
 }
 
-#define IDPUP_NO_VIEWER 1
-
-static void IDnames_to_dyn_pupstring(DynStr *pupds, ListBase *lb, ID *link, short *nr, int hideflag)
-{
-	int i, nids = BLI_countlist(lb);
-		
-	if (nr) *nr = -1;
-	
-	if (nr && nids > MAX_IDPUP) {
-		BLI_dynstr_append(pupds, "DataBrowse %x-2");
-		*nr = -2;
-	}
-	else {
-		ID *id;
-		
-		for (i = 0, id = lb->first; id; id = id->next, i++) {
-			char numstr[32];
-			
-			if (nr && id == link) *nr = i + 1;
-
-			if (U.uiflag & USER_HIDE_DOT && id->name[2] == '.')
-				continue;
-			if (hideflag & IDPUP_NO_VIEWER)
-				if (GS(id->name) == ID_IM)
-					if ( ((Image *)id)->source == IMA_SRC_VIEWER)
-						continue;
-			
-			get_flags_for_id(id, numstr);
-				
-			BLI_dynstr_append(pupds, numstr);
-			BLI_dynstr_append(pupds, id->name + 2);
-			BLI_snprintf(numstr, sizeof(numstr), "%%x%d", i + 1);
-			BLI_dynstr_append(pupds, numstr);
-			
-			/* icon */
-			switch (GS(id->name)) {
-				case ID_MA: /* fall through */
-				case ID_TE: /* fall through */
-				case ID_IM: /* fall through */
-				case ID_WO: /* fall through */
-				case ID_LA: /* fall through */
-					BLI_snprintf(numstr, sizeof(numstr), "%%i%d", BKE_icon_getid(id));
-					BLI_dynstr_append(pupds, numstr);
-					break;
-				default:
-					break;
-			}
-			
-			if (id->next)
-				BLI_dynstr_append(pupds, "|");
-		}
-	}
-}
-
-/* used by headerbuttons.c buttons.c editobject.c editseq.c */
-/* if (nr == NULL) no MAX_IDPUP, this for non-header browsing */
-void IDnames_to_pupstring(const char **str, const char *title, const char *extraops, ListBase *lb, ID *link, short *nr)
-{
-	DynStr *pupds = BLI_dynstr_new();
-
-	if (title) {
-		BLI_dynstr_append(pupds, title);
-		BLI_dynstr_append(pupds, "%t|");
-	}
-	
-	if (extraops) {
-		BLI_dynstr_append(pupds, extraops);
-		if (BLI_dynstr_get_len(pupds))
-			BLI_dynstr_append(pupds, "|");
-	}
-
-	IDnames_to_dyn_pupstring(pupds, lb, link, nr, 0);
-	
-	*str = BLI_dynstr_get_cstring(pupds);
-	BLI_dynstr_free(pupds);
-}
-
-/* skips viewer images */
-void IMAnames_to_pupstring(const char **str, const char *title, const char *extraops, ListBase *lb, ID *link, short *nr)
-{
-	DynStr *pupds = BLI_dynstr_new();
-	
-	if (title) {
-		BLI_dynstr_append(pupds, title);
-		BLI_dynstr_append(pupds, "%t|");
-	}
-	
-	if (extraops) {
-		BLI_dynstr_append(pupds, extraops);
-		if (BLI_dynstr_get_len(pupds))
-			BLI_dynstr_append(pupds, "|");
-	}
-	
-	IDnames_to_dyn_pupstring(pupds, lb, link, nr, IDPUP_NO_VIEWER);
-	
-	*str = BLI_dynstr_get_cstring(pupds);
-	BLI_dynstr_free(pupds);
-}
-#endif
 
 void id_sort_by_name(ListBase *lb, ID *id)
 {
@@ -1263,7 +1203,7 @@ static ID *is_dupid(ListBase *lb, ID *id, const char *name)
 			/* do not test alphabetic! */
 			/* optimized */
 			if (idtest->name[2] == name[0]) {
-				if (strcmp(name, idtest->name + 2) == 0) break;
+				if (STREQ(name, idtest->name + 2)) break;
 			}
 		}
 	}
@@ -1321,7 +1261,7 @@ static bool check_for_dupid(ListBase *lb, ID *id, char *name)
 			if ( (id != idtest) &&
 			     (idtest->lib == NULL) &&
 			     (*name == *(idtest->name + 2)) &&
-			     (strncmp(name, idtest->name + 2, left_len) == 0) &&
+			     STREQLEN(name, idtest->name + 2, left_len) &&
 			     (BLI_split_name_num(leftest, &nrtest, idtest->name + 2, '.') == left_len)
 			     )
 			{
@@ -1452,6 +1392,11 @@ void id_clear_lib_data(Main *bmain, ID *id)
 
 	BKE_id_lib_local_paths(bmain, id->lib, id);
 
+	if (id->flag & LIB_FAKEUSER) {
+		id->us--;
+		id->flag &= ~LIB_FAKEUSER;
+	}
+
 	id->lib = NULL;
 	id->flag = LIB_LOCAL;
 	new_id(which_libbase(bmain, GS(id->name)), id, NULL);
@@ -1465,6 +1410,7 @@ void id_clear_lib_data(Main *bmain, ID *id)
 		case ID_LA:		ntree = ((Lamp *)id)->nodetree;			break;
 		case ID_WO:		ntree = ((World *)id)->nodetree;		break;
 		case ID_TE:		ntree = ((Tex *)id)->nodetree;			break;
+		case ID_LS:		ntree = ((FreestyleLineStyle *)id)->nodetree; break;
 	}
 	if (ntree)
 		ntree->id.lib = NULL;
@@ -1626,7 +1572,7 @@ void test_idbutton(char *name)
 	ID *idtest;
 	
 
-	lb = which_libbase(G.main, GS(name) );
+	lb = which_libbase(G.main, GS(name));
 	if (lb == NULL) return;
 	
 	/* search for id */
@@ -1645,7 +1591,7 @@ void rename_id(ID *id, const char *name)
 	ListBase *lb;
 
 	BLI_strncpy(id->name + 2, name, sizeof(id->name) - 2);
-	lb = which_libbase(G.main, GS(id->name) );
+	lb = which_libbase(G.main, GS(id->name));
 	
 	new_id(lb, id, name);
 }

@@ -39,7 +39,6 @@
 #include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
 
-#include "DNA_anim_types.h"
 #include "DNA_packedFile_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_space_types.h"
@@ -73,7 +72,6 @@
 #include "ED_sound.h"
 #include "ED_util.h"
 
-#include "sound_intern.h"
 
 /******************** open sound operator ********************/
 
@@ -88,7 +86,7 @@ static void sound_open_init(bContext *C, wmOperator *op)
 	PropertyPointerRNA *pprop;
 
 	op->customdata = pprop = MEM_callocN(sizeof(PropertyPointerRNA), "OpenPropertyPointerRNA");
-	uiIDContextProperty(C, &pprop->ptr, &pprop->prop);
+	UI_context_active_but_prop_get_templateID(C, &pprop->ptr, &pprop->prop);
 }
 
 #ifdef WITH_AUDASPACE
@@ -144,7 +142,7 @@ static int sound_open_exec(bContext *C, wmOperator *op)
 		RNA_property_update(C, &pprop->ptr, pprop->prop);
 	}
 
-	if (op->customdata) MEM_freeN(op->customdata);
+	MEM_freeN(op->customdata);
 	return OPERATOR_FINISHED;
 }
 
@@ -185,10 +183,10 @@ static void SOUND_OT_open(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	/* properties */
-	WM_operator_properties_filesel(ot, FOLDERFILE | SOUNDFILE | MOVIEFILE, FILE_SPECIAL, FILE_OPENFILE,
+	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_SOUND | FILE_TYPE_MOVIE, FILE_SPECIAL, FILE_OPENFILE,
 	                               WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY);
-	RNA_def_boolean(ot->srna, "cache", FALSE, "Cache", "Cache the sound in memory");
-	RNA_def_boolean(ot->srna, "mono", FALSE, "Mono", "Mixdown the sound to mono");
+	RNA_def_boolean(ot->srna, "cache", false, "Cache", "Cache the sound in memory");
+	RNA_def_boolean(ot->srna, "mono", false, "Mono", "Mixdown the sound to mono");
 }
 
 static void SOUND_OT_open_mono(wmOperatorType *ot)
@@ -207,10 +205,10 @@ static void SOUND_OT_open_mono(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	/* properties */
-	WM_operator_properties_filesel(ot, FOLDERFILE | SOUNDFILE | MOVIEFILE, FILE_SPECIAL, FILE_OPENFILE,
+	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_SOUND | FILE_TYPE_MOVIE, FILE_SPECIAL, FILE_OPENFILE,
 	                               WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY);
-	RNA_def_boolean(ot->srna, "cache", FALSE, "Cache", "Cache the sound in memory");
-	RNA_def_boolean(ot->srna, "mono", TRUE, "Mono", "Mixdown the sound to mono");
+	RNA_def_boolean(ot->srna, "cache", false, "Cache", "Cache the sound in memory");
+	RNA_def_boolean(ot->srna, "mono", true, "Mono", "Mixdown the sound to mono");
 }
 
 /* ******************************************************* */
@@ -244,7 +242,7 @@ static int sound_update_animation_flags_exec(bContext *C, wmOperator *UNUSED(op)
 	}
 	SEQ_END
 
-	    fcu = id_data_find_fcurve(&scene->id, scene, &RNA_Scene, "audio_volume", 0, &driven);
+	fcu = id_data_find_fcurve(&scene->id, scene, &RNA_Scene, "audio_volume", 0, &driven);
 	if (fcu || driven)
 		scene->audio.flag |= AUDIO_VOLUME_ANIMATED;
 	else
@@ -401,7 +399,7 @@ static bool sound_mixdown_check(bContext *UNUSED(C), wmOperator *op)
 		if (item->value == container) {
 			const char **ext = snd_ext_sound;
 			while (*ext != NULL) {
-				if (!strcmp(*ext + 1, item->name)) {
+				if (STREQ(*ext + 1, item->name)) {
 					extension = *ext;
 					break;
 				}
@@ -430,10 +428,10 @@ static bool sound_mixdown_check(bContext *UNUSED(C), wmOperator *op)
 			return check;
 
 		RNA_property_string_set(op->ptr, prop, filepath);
-		return TRUE;
+		return true;
 	}
 
-	return FALSE;
+	return false;
 }
 
 #endif // WITH_AUDASPACE
@@ -451,9 +449,9 @@ static int sound_mixdown_invoke(bContext *C, wmOperator *op, const wmEvent *even
 static bool sound_mixdown_draw_check_prop(PointerRNA *UNUSED(ptr), PropertyRNA *prop)
 {
 	const char *prop_id = RNA_property_identifier(prop);
-	return !(strcmp(prop_id, "filepath") == 0 ||
-	         strcmp(prop_id, "directory") == 0 ||
-	         strcmp(prop_id, "filename") == 0);
+	return !(STREQ(prop_id, "filepath") ||
+	         STREQ(prop_id, "directory") ||
+	         STREQ(prop_id, "filename"));
 }
 
 static void sound_mixdown_draw(bContext *C, wmOperator *op)
@@ -473,12 +471,6 @@ static void sound_mixdown_draw(bContext *C, wmOperator *op)
 	static EnumPropertyItem mp3_format_items[] = {
 		{AUD_FORMAT_S16, "S16", 0, "S16", "16 bit signed"},
 		{AUD_FORMAT_S32, "S32", 0, "S32", "32 bit signed"},
-		{0, NULL, 0, NULL, NULL}
-	};
-
-	static EnumPropertyItem ac3_format_items[] = {
-		{AUD_FORMAT_S16, "S16", 0, "S16", "16 bit signed"},
-		{AUD_FORMAT_FLOAT32, "F32", 0, "F32", "32 bit floating point"},
 		{0, NULL, 0, NULL, NULL}
 	};
 
@@ -527,10 +519,9 @@ static void sound_mixdown_draw(bContext *C, wmOperator *op)
 
 	switch (container) {
 		case AUD_CONTAINER_AC3:
-			RNA_def_property_clear_flag(prop_format, PROP_HIDDEN);
-			RNA_def_property_enum_items(prop_format, ac3_format_items);
 			RNA_def_property_enum_items(prop_codec, all_codec_items);
 			RNA_enum_set(op->ptr, "codec", AUD_CODEC_AC3);
+			RNA_enum_set(op->ptr, "format", AUD_FORMAT_FLOAT32);
 			break;
 		case AUD_CONTAINER_FLAC:
 			RNA_def_property_flag(prop_bitrate, PROP_HIDDEN);
@@ -552,8 +543,7 @@ static void sound_mixdown_draw(bContext *C, wmOperator *op)
 					RNA_enum_set(op->ptr, "format", AUD_FORMAT_S16);
 					break;
 				case AUD_CODEC_AC3:
-					RNA_def_property_enum_items(prop_format, ac3_format_items);
-					RNA_def_property_clear_flag(prop_format, PROP_HIDDEN);
+					RNA_enum_set(op->ptr, "format", AUD_FORMAT_FLOAT32);
 					break;
 				case AUD_CODEC_FLAC:
 					RNA_def_property_flag(prop_bitrate, PROP_HIDDEN);
@@ -660,7 +650,7 @@ static void SOUND_OT_mixdown(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER;
 
 	/* properties */
-	WM_operator_properties_filesel(ot, FOLDERFILE | SOUNDFILE, FILE_SPECIAL, FILE_SAVE,
+	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_SOUND, FILE_SPECIAL, FILE_SAVE,
 	                               WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY);
 #ifdef WITH_AUDASPACE
 	RNA_def_int(ot->srna, "accuracy", 1024, 1, 16777216, "Accuracy", "Sample accuracy, important for animation data (the lower the value, the more accurate)", 1, 16777216);

@@ -44,7 +44,7 @@ public:
 	/* Constructor/Destructor */
 	BVHBuild(
 		const vector<Object*>& objects,
-		vector<int>& prim_segment,
+		vector<int>& prim_type,
 		vector<int>& prim_index,
 		vector<int>& prim_object,
 		const BVHParams& params,
@@ -70,6 +70,17 @@ protected:
 	BVHNode *create_leaf_node(const BVHRange& range);
 	BVHNode *create_object_leaf_nodes(const BVHReference *ref, int start, int num);
 
+	/* Leaf node type splitting. */
+	BVHNode *create_primitive_leaf_node(const int *p_type,
+	                                    const int *p_index,
+	                                    const int *p_object,
+	                                    const BoundBox& bounds,
+	                                    uint visibility,
+	                                    int start,
+	                                    int nun);
+
+	bool range_within_max_leaf_size(const BVHRange& range);
+
 	/* threads */
 	enum { THREAD_TASK_SIZE = 4096 };
 	void thread_build_node(InnerNode *node, int child, BVHObjectBinning *range, int level);
@@ -88,7 +99,7 @@ protected:
 	int num_original_references;
 
 	/* output primitive indexes and objects */
-	vector<int>& prim_segment;
+	vector<int>& prim_type;
 	vector<int>& prim_index;
 	vector<int>& prim_object;
 
@@ -114,4 +125,3 @@ protected:
 CCL_NAMESPACE_END
 
 #endif /* __BVH_BUILD_H__ */
-

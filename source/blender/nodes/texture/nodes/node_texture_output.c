@@ -54,7 +54,7 @@ static void exec(void *data, int UNUSED(thread), bNode *node, bNodeExecData *exe
 			tex_input_rgba(&target->tr, in[1], &params, cdata->thread);
 		else
 			tex_input_rgba(&target->tr, in[0], &params, cdata->thread);
-		tex_do_preview(execdata->preview, params.co, &target->tr);
+		tex_do_preview(execdata->preview, params.co, &target->tr, cdata->do_manage);
 	}
 	else {
 		/* 0 means don't care, so just use first */
@@ -65,7 +65,7 @@ static void exec(void *data, int UNUSED(thread), bNode *node, bNodeExecData *exe
 			tex_input_rgba(&target->tr, in[0], &params, cdata->thread);
 		
 			target->tin = (target->tr + target->tg + target->tb) / 3.0f;
-			target->talpha = TRUE;
+			target->talpha = true;
 		
 			if (target->nor) {
 				if (in[1] && in[1]->hasinput)
@@ -84,7 +84,7 @@ static void unique_name(bNode *node)
 	int new_len = 0;
 	int suffix;
 	bNode *i;
-	char *name = tno->name;
+	const char *name = tno->name;
 	
 	new_name[0] = '\0';
 	i = node;

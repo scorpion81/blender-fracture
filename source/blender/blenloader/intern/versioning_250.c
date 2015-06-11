@@ -25,11 +25,10 @@
  *  \ingroup blenloader
  */
 
-#include "zlib.h"
-
 #ifndef WIN32
 #  include <unistd.h>  /* for read close */
 #else
+#  include <zlib.h>  /* odd include order-issue */
 #  include <io.h> // for open close read
 #  include "winsock2.h"
 #  include "BLI_winstuff.h"
@@ -69,7 +68,6 @@
 #include "BLI_utildefines.h"
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
-#include "BLI_edgehash.h"
 
 #include "BKE_anim.h"
 #include "BKE_armature.h"
@@ -90,17 +88,9 @@
 
 #include "NOD_socket.h"
 
-//XXX #include "BIF_butspace.h" // badlevel, for do_versions, patching event codes
-//XXX #include "BIF_filelist.h" // badlevel too, where to move this? - elubie
-//XXX #include "BIF_previewrender.h" // bedlelvel, for struct RenderInfo
 #include "BLO_readfile.h"
-#include "BLO_undofile.h"
-
-#include "RE_engine.h"
 
 #include "readfile.h"
-
-#include "PIL_time.h"
 
 #include <errno.h>
 
@@ -333,7 +323,7 @@ static void area_add_window_regions(ScrArea *sa, SpaceLink *sl, ListBase *lb)
 					SpaceNla *snla = (SpaceNla *)sl;
 					memcpy(&ar->v2d, &snla->v2d, sizeof(View2D));
 
-					ar->v2d.tot.ymin = (float)(-sa->winy)/3.0f;
+					ar->v2d.tot.ymin = (float)(-sa->winy) / 3.0f;
 					ar->v2d.tot.ymax = 0.0f;
 
 					ar->v2d.scroll |= (V2D_SCROLL_BOTTOM|V2D_SCROLL_SCALE_HORIZONTAL);
@@ -348,8 +338,8 @@ static void area_add_window_regions(ScrArea *sa, SpaceLink *sl, ListBase *lb)
 
 					/* we totally reinit the view for the Action Editor, as some old instances had some weird cruft set */
 					ar->v2d.tot.xmin = -20.0f;
-					ar->v2d.tot.ymin = (float)(-sa->winy)/3.0f;
-					ar->v2d.tot.xmax = (float)((sa->winx > 120)? (sa->winx) : 120);
+					ar->v2d.tot.ymin = (float)(-sa->winy) / 3.0f;
+					ar->v2d.tot.xmax = (float)((sa->winx > 120) ? (sa->winx) : 120);
 					ar->v2d.tot.ymax = 0.0f;
 
 					ar->v2d.cur = ar->v2d.tot;
@@ -934,7 +924,7 @@ void blo_do_versions_250(FileData *fd, Library *lib, Main *main)
 			//BKE_ptcache_ids_from_object(&pidlist, ob);
 
 			//for (pid = pidlist.first; pid; pid = pid->next) {
-			//	if (pid->ptcaches->first == NULL)
+			//	if (BLI_listbase_is_empty(pid->ptcaches))
 			//		pid->ptcaches->first = pid->ptcaches->last = pid->cache;
 			//}
 
@@ -1141,7 +1131,7 @@ void blo_do_versions_250(FileData *fd, Library *lib, Main *main)
 		World *wo;
 		Tex *tex;
 		ParticleSettings *part;
-		int do_gravity = FALSE;
+		bool do_gravity = false;
 
 		for (sce = main->scene.first; sce; sce = sce->id.next)
 			if (sce->unit.scale_length == 0.0f)
@@ -1197,7 +1187,7 @@ void blo_do_versions_250(FileData *fd, Library *lib, Main *main)
 				sce->physics_settings.gravity[0] = sce->physics_settings.gravity[1] = 0.0f;
 				sce->physics_settings.gravity[2] = -9.81f;
 				sce->physics_settings.flag = PHYS_GLOBAL_GRAVITY;
-				do_gravity = TRUE;
+				do_gravity = true;
 			}
 		}
 
@@ -1267,7 +1257,7 @@ void blo_do_versions_250(FileData *fd, Library *lib, Main *main)
 		Lattice *lt;
 		Curve *cu;
 		Key *key;
-		float *data;
+		const float *data;
 		int a, tot;
 
 		/* shape keys are no longer applied to the mesh itself, but rather
@@ -2561,7 +2551,7 @@ void blo_do_versions_250(FileData *fd, Library *lib, Main *main)
 						tex->pd->falloff_curve->preset = CURVE_PRESET_LINE;
 						tex->pd->falloff_curve->cm->flag &= ~CUMA_EXTEND_EXTRAPOLATE;
 						curvemap_reset(tex->pd->falloff_curve->cm, &tex->pd->falloff_curve->clipr, tex->pd->falloff_curve->preset, CURVEMAP_SLOPE_POSITIVE);
-						curvemapping_changed(tex->pd->falloff_curve, FALSE);
+						curvemapping_changed(tex->pd->falloff_curve, false);
 					}
 				}
 			}

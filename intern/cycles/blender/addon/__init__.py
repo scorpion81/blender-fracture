@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
-# limitations under the License
+# limitations under the License.
 #
 
 # <pep8 compliant>
@@ -19,7 +19,7 @@
 bl_info = {
     "name": "Cycles Render Engine",
     "author": "",
-    "blender": (2, 67, 0),
+    "blender": (2, 70, 0),
     "location": "Info header, render engine menu",
     "description": "Cycles Render Engine integration",
     "warning": "",
@@ -31,6 +31,7 @@ bl_info = {
 import bpy
 
 from . import engine
+from . import version_update
 
 
 class CyclesRender(bpy.types.RenderEngine):
@@ -49,23 +50,23 @@ class CyclesRender(bpy.types.RenderEngine):
 
     # final render
     def update(self, data, scene):
-        if self.is_preview:
-            if not self.session:
+        if not self.session:
+            if self.is_preview:
                 cscene = bpy.context.scene.cycles
                 use_osl = cscene.shading_system and cscene.device == 'CPU'
 
                 engine.create(self, data, scene,
                               None, None, None, use_osl)
-        else:
-            if not self.session:
-                engine.create(self, data, scene)
             else:
-                engine.reset(self, data, scene)
-
-        engine.update(self, data, scene)
+                engine.create(self, data, scene)
+        else:
+            engine.reset(self, data, scene)
 
     def render(self, scene):
         engine.render(self)
+
+    def bake(self, scene, obj, pass_type, pixel_array, num_pixels, depth, result):
+        engine.bake(self, obj, pass_type, pixel_array, num_pixels, depth, result)
 
     # viewport render
     def view_update(self, context):
@@ -97,11 +98,15 @@ def register():
     presets.register()
     bpy.utils.register_module(__name__)
 
+    bpy.app.handlers.version_update.append(version_update.do_versions)
+
 
 def unregister():
     from . import ui
     from . import properties
     from . import presets
+
+    bpy.app.handlers.version_update.remove(version_update.do_versions)
 
     ui.unregister()
     properties.unregister()

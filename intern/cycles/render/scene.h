@@ -11,13 +11,14 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __SCENE_H__
 #define __SCENE_H__
 
 #include "image.h"
+#include "shader.h"
 
 #include "device_memory.h"
 
@@ -25,6 +26,7 @@
 
 #include "util_param.h"
 #include "util_string.h"
+#include "util_system.h"
 #include "util_thread.h"
 #include "util_types.h"
 #include "util_vector.h"
@@ -51,6 +53,8 @@ class CurveSystemManager;
 class Shader;
 class ShaderManager;
 class Progress;
+class BakeManager;
+class BakeData;
 
 /* Scene Device Data */
 
@@ -60,13 +64,13 @@ public:
 	device_vector<float4> bvh_nodes;
 	device_vector<uint> object_node;
 	device_vector<float4> tri_woop;
-	device_vector<uint> prim_segment;
+	device_vector<uint> prim_type;
 	device_vector<uint> prim_visibility;
 	device_vector<uint> prim_index;
 	device_vector<uint> prim_object;
 
 	/* mesh */
-	device_vector<float4> tri_normal;
+	device_vector<uint> tri_shader;
 	device_vector<float4> tri_vnormal;
 	device_vector<float4> tri_vindex;
 	device_vector<float4> tri_verts;
@@ -82,6 +86,7 @@ public:
 	device_vector<uint4> attributes_map;
 	device_vector<float> attributes_float;
 	device_vector<float4> attributes_float3;
+	device_vector<uchar4> attributes_uchar4;
 
 	/* lights */
 	device_vector<float4> light_distribution;
@@ -103,8 +108,8 @@ public:
 	/* integrator */
 	device_vector<uint> sobol_directions;
 
-	/* images */
-	device_vector<uchar4> tex_image[TEX_EXTENDED_NUM_IMAGES];
+	/* cpu images */
+	device_vector<uchar4> tex_image[TEX_EXTENDED_NUM_IMAGES_CPU];
 	device_vector<float4> tex_float_image[TEX_EXTENDED_NUM_FLOAT_IMAGES];
 
 	/* opencl images */
@@ -118,7 +123,7 @@ public:
 
 class SceneParams {
 public:
-	enum { OSL, SVM } shadingsystem;
+	ShadingSystem shadingsystem;
 	enum BVHType { BVH_DYNAMIC, BVH_STATIC } bvh_type;
 	bool use_bvh_cache;
 	bool use_bvh_spatial_split;
@@ -127,15 +132,11 @@ public:
 
 	SceneParams()
 	{
-		shadingsystem = SVM;
+		shadingsystem = SHADINGSYSTEM_SVM;
 		bvh_type = BVH_DYNAMIC;
 		use_bvh_cache = false;
 		use_bvh_spatial_split = false;
-#ifdef __QBVH__
-		use_qbvh = true;
-#else
 		use_qbvh = false;
-#endif
 		persistent_data = false;
 	}
 
@@ -174,6 +175,7 @@ public:
 	ObjectManager *object_manager;
 	ParticleSystemManager *particle_system_manager;
 	CurveSystemManager *curve_system_manager;
+	BakeManager *bake_manager;
 
 	/* default shaders */
 	int default_surface;

@@ -22,7 +22,7 @@
  *  \ingroup ketsji
  */
 
-#include "GL/glew.h"
+#include "glew-mx.h"
 
 #include "KX_BlenderMaterial.h"
 #include "BL_Material.h"
@@ -110,6 +110,7 @@ void KX_BlenderMaterial::Initialize(
 	m_flag |= ((mMaterial->ras_mode & USE_LIGHT)!=0)? RAS_MULTILIGHT: 0;
 	m_flag |= (mMaterial->glslmat)? RAS_BLENDERGLSL: 0;
 	m_flag |= ((mMaterial->ras_mode & CAST_SHADOW)!=0)? RAS_CASTSHADOW: 0;
+	m_flag |= ((mMaterial->ras_mode & ONLY_SHADOW)!=0)? RAS_ONLYSHADOW: 0;
 
 	// test the sum of the various modes for equality
 	// so we can ether accept or reject this material
@@ -615,7 +616,7 @@ void KX_BlenderMaterial::ActivateMeshSlot(const RAS_MeshSlot & ms, RAS_IRasteriz
 		/* we do blend modes here, because they can change per object
 		 * with the same material due to obcolor/obalpha */
 		alphablend = mBlenderShader->GetAlphaBlend();
-		if (ELEM3(alphablend, GEMAT_SOLID, GEMAT_ALPHA, GEMAT_ALPHA_SORT) && mMaterial->alphablend != GEMAT_SOLID)
+		if (ELEM(alphablend, GEMAT_SOLID, GEMAT_ALPHA, GEMAT_ALPHA_SORT) && mMaterial->alphablend != GEMAT_SOLID)
 			alphablend = mMaterial->alphablend;
 
 		rasty->SetAlphaBlend(alphablend);

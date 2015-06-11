@@ -27,8 +27,6 @@
  *  \ingroup bke
  */
 
-
-
 #include <math.h>
 #include <stdio.h>
 #include <stddef.h>
@@ -605,7 +603,8 @@ static float fcm_cycles_time(FModifierStackStorage *storage, FCurve *fcu, FModif
 	FMod_Cycles *data = (FMod_Cycles *)fcm->data;
 	float prevkey[2], lastkey[2], cycyofs = 0.0f;
 	short side = 0, mode = 0;
-	int cycles = 0, ofs = 0;
+	int cycles = 0;
+	float ofs = 0;
 	
 	/* check if modifier is first in stack, otherwise disable ourself... */
 	/* FIXME... */
@@ -785,6 +784,7 @@ static void fcm_noise_new_data(void *mdata)
 	data->size = 1.0f;
 	data->strength = 1.0f;
 	data->phase = 1.0f;
+	data->offset = 0.0f;
 	data->depth = 0;
 	data->modification = FCM_NOISE_MODIF_REPLACE;
 }
@@ -798,7 +798,7 @@ static void fcm_noise_evaluate(FCurve *UNUSED(fcu), FModifier *fcm, float *cvalu
 	 *	- 0.1 is passed as the 'z' value, otherwise evaluation fails for size = phase = 1
 	 *	  with evaltime being an integer (which happens when evaluating on frame by frame basis)
 	 */
-	noise = BLI_turbulence(data->size, evaltime, data->phase, 0.1f, data->depth);
+	noise = BLI_turbulence(data->size, evaltime - data->offset, data->phase, 0.1f, data->depth);
 	
 	/* combine the noise with existing motion data */
 	switch (data->modification) {
@@ -1102,7 +1102,7 @@ FModifier *add_fmodifier(ListBase *modifiers, int type)
 	BLI_addtail(modifiers, fcm);
 	
 	/* tag modifier as "active" if no other modifiers exist in the stack yet */
-	if (modifiers->first == modifiers->last)
+	if (BLI_listbase_is_single(modifiers))
 		fcm->flag |= FMODIFIER_FLAG_ACTIVE;
 	
 	/* add modifier's data */
@@ -1149,7 +1149,7 @@ void copy_fmodifiers(ListBase *dst, ListBase *src)
 	if (ELEM(NULL, dst, src))
 		return;
 	
-	dst->first = dst->last = NULL;
+	BLI_listbase_clear(dst);
 	BLI_duplicatelist(dst, src);
 	
 	for (fcm = dst->first, srcfcm = src->first; fcm && srcfcm; srcfcm = srcfcm->next, fcm = fcm->next) {
@@ -1171,7 +1171,7 @@ bool remove_fmodifier(ListBase *modifiers, FModifier *fcm)
 	
 	/* sanity check */
 	if (fcm == NULL)
-		return 0;
+		return false;
 	
 	/* free modifier's special data (stored inside fcm->data) */
 	if (fcm->data) {
@@ -1185,13 +1185,13 @@ bool remove_fmodifier(ListBase *modifiers, FModifier *fcm)
 	/* remove modifier from stack */
 	if (modifiers) {
 		BLI_freelinkN(modifiers, fcm);
-		return 1;
+		return true;
 	}
 	else {
 		/* XXX this case can probably be removed some day, as it shouldn't happen... */
 		printf("remove_fmodifier() - no modifier stack given\n");
 		MEM_freeN(fcm);
-		return 0;
+		return false;
 	}
 }
 
@@ -1262,7 +1262,7 @@ bool list_has_suitable_fmodifier(ListBase *modifiers, int mtype, short acttype)
 		
 	/* sanity checks */
 	if (ELEM(NULL, modifiers, modifiers->first))
-		return 0;
+		return false;
 		
 	/* find the first mdifier fitting these criteria */
 	for (fcm = modifiers->first; fcm; fcm = fcm->next) {
@@ -1277,11 +1277,11 @@ bool list_has_suitable_fmodifier(ListBase *modifiers, int mtype, short acttype)
 			
 		/* if both are ok, we've found a hit */
 		if (mOk && aOk)
-			return 1;
+			return true;
 	}
 	
 	/* no matches */
-	return 0;
+	return false;
 }  
 
 /* Evaluation API --------------------------- */

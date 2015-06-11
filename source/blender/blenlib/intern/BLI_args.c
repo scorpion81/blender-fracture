@@ -49,7 +49,7 @@ typedef struct bArgDoc {
 	const char *short_arg;
 	const char *long_arg;
 	const char *documentation;
-	int done;
+	bool done;
 } bArgDoc;
 
 typedef struct bAKey {
@@ -91,15 +91,17 @@ static unsigned int keyhash(const void *ptr)
 	return case_strhash(k->arg);  /* ^ BLI_ghashutil_inthash((void *)k->pass); */
 }
 
-static int keycmp(const void *a, const void *b)
+static bool keycmp(const void *a, const void *b)
 {
 	const bAKey *ka = a;
 	const bAKey *kb = b;
 	if (ka->pass == kb->pass || ka->pass == -1 || kb->pass == -1) { /* -1 is wildcard for pass */
-		if (ka->case_str == 1 || kb->case_str == 1)
-			return BLI_strcasecmp(ka->arg, kb->arg);
-		else
-			return strcmp(ka->arg, kb->arg);
+		if (ka->case_str == 1 || kb->case_str == 1) {
+			return (BLI_strcasecmp(ka->arg, kb->arg) != 0);
+		}
+		else {
+			return (!STREQ(ka->arg, kb->arg));
+		}
 	}
 	else {
 		return BLI_ghashutil_intcmp((const void *)ka->pass, (const void *)kb->pass);
@@ -122,7 +124,7 @@ bArgs *BLI_argsInit(int argc, const char **argv)
 	bArgs *ba = MEM_callocN(sizeof(bArgs), "bArgs");
 	ba->passes = MEM_callocN(sizeof(int) * argc, "bArgs passes");
 	ba->items = BLI_ghash_new(keyhash, keycmp, "bArgs passes gh");
-	ba->docs.first = ba->docs.last = NULL;
+	BLI_listbase_clear(&ba->docs);
 	ba->argc = argc;
 	ba->argv = argv;
 
@@ -243,7 +245,7 @@ void BLI_argsPrintArgDoc(struct bArgs *ba, const char *arg)
 
 		internalDocPrint(d);
 
-		d->done = TRUE;
+		d->done = true;
 	}
 }
 

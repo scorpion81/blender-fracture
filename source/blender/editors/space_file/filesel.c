@@ -45,7 +45,6 @@
 #  include <unistd.h>
 #  include <sys/times.h>
 #  include <dirent.h>
-#  include <unistd.h>
 #endif
 
 #include "DNA_space_types.h"
@@ -55,12 +54,11 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_blenlib.h"
-#include "BLI_linklist.h"
-#include "BLI_dynstr.h"
 #include "BLI_utildefines.h"
 #include "BLI_fileops_types.h"
 #include "BLI_fnmatch.h"
 
+#include "BKE_appdir.h"
 #include "BKE_context.h"
 #include "BKE_global.h"
 #include "BKE_main.h"
@@ -119,12 +117,14 @@ short ED_fileselect_set_params(SpaceFile *sfile)
 
 		BLI_strncpy_utf8(params->title, RNA_struct_ui_name(op->type->srna), sizeof(params->title));
 
-		if (RNA_struct_find_property(op->ptr, "filemode"))
-			params->type = RNA_int_get(op->ptr, "filemode");
-		else
+		if ((prop = RNA_struct_find_property(op->ptr, "filemode"))) {
+			params->type = RNA_property_int_get(op->ptr, prop);
+		}
+		else {
 			params->type = FILE_SPECIAL;
+		}
 
-		if (is_filepath && RNA_struct_property_is_set_ex(op->ptr, "filepath", FALSE)) {
+		if (is_filepath && RNA_struct_property_is_set_ex(op->ptr, "filepath", false)) {
 			char name[FILE_MAX];
 			RNA_string_get(op->ptr, "filepath", name);
 			if (params->type == FILE_LOADLIB) {
@@ -136,12 +136,12 @@ short ED_fileselect_set_params(SpaceFile *sfile)
 			}
 		}
 		else {
-			if (is_directory && RNA_struct_property_is_set_ex(op->ptr, "directory", FALSE)) {
+			if (is_directory && RNA_struct_property_is_set_ex(op->ptr, "directory", false)) {
 				RNA_string_get(op->ptr, "directory", params->dir);
 				sfile->params->file[0] = '\0';
 			}
 
-			if (is_filename && RNA_struct_property_is_set_ex(op->ptr, "filename", FALSE)) {
+			if (is_filename && RNA_struct_property_is_set_ex(op->ptr, "filename", false)) {
 				RNA_string_get(op->ptr, "filename", params->file);
 			}
 		}
@@ -151,7 +151,7 @@ short ED_fileselect_set_params(SpaceFile *sfile)
 			BLI_path_abs(params->dir, G.main->name);
 		}
 
-		if (is_directory == TRUE && is_filename == FALSE && is_filepath == FALSE && is_files == FALSE) {
+		if (is_directory == true && is_filename == false && is_filepath == false && is_files == false) {
 			params->flag |= FILE_DIRSEL_ONLY;
 		}
 		else {
@@ -160,30 +160,30 @@ short ED_fileselect_set_params(SpaceFile *sfile)
 
 		params->filter = 0;
 		if ((prop = RNA_struct_find_property(op->ptr, "filter_blender")))
-			params->filter |= RNA_property_boolean_get(op->ptr, prop) ? BLENDERFILE : 0;
+			params->filter |= RNA_property_boolean_get(op->ptr, prop) ? FILE_TYPE_BLENDER : 0;
 		if ((prop = RNA_struct_find_property(op->ptr, "filter_backup")))
-			params->filter |= RNA_property_boolean_get(op->ptr, prop) ? BLENDERFILE_BACKUP : 0;
+			params->filter |= RNA_property_boolean_get(op->ptr, prop) ? FILE_TYPE_BLENDER_BACKUP : 0;
 		if ((prop = RNA_struct_find_property(op->ptr, "filter_image")))
-			params->filter |= RNA_property_boolean_get(op->ptr, prop) ? IMAGEFILE : 0;
+			params->filter |= RNA_property_boolean_get(op->ptr, prop) ? FILE_TYPE_IMAGE : 0;
 		if ((prop = RNA_struct_find_property(op->ptr, "filter_movie")))
-			params->filter |= RNA_property_boolean_get(op->ptr, prop) ? MOVIEFILE : 0;
+			params->filter |= RNA_property_boolean_get(op->ptr, prop) ? FILE_TYPE_MOVIE : 0;
 		if ((prop = RNA_struct_find_property(op->ptr, "filter_python")))
-			params->filter |= RNA_property_boolean_get(op->ptr, prop) ? PYSCRIPTFILE : 0;
+			params->filter |= RNA_property_boolean_get(op->ptr, prop) ? FILE_TYPE_PYSCRIPT : 0;
 		if ((prop = RNA_struct_find_property(op->ptr, "filter_font")))
-			params->filter |= RNA_property_boolean_get(op->ptr, prop) ? FTFONTFILE : 0;
+			params->filter |= RNA_property_boolean_get(op->ptr, prop) ? FILE_TYPE_FTFONT : 0;
 		if ((prop = RNA_struct_find_property(op->ptr, "filter_sound")))
-			params->filter |= RNA_property_boolean_get(op->ptr, prop) ? SOUNDFILE : 0;
+			params->filter |= RNA_property_boolean_get(op->ptr, prop) ? FILE_TYPE_SOUND : 0;
 		if ((prop = RNA_struct_find_property(op->ptr, "filter_text")))
-			params->filter |= RNA_property_boolean_get(op->ptr, prop) ? TEXTFILE : 0;
+			params->filter |= RNA_property_boolean_get(op->ptr, prop) ? FILE_TYPE_TEXT : 0;
 		if ((prop = RNA_struct_find_property(op->ptr, "filter_folder")))
-			params->filter |= RNA_property_boolean_get(op->ptr, prop) ? FOLDERFILE : 0;
+			params->filter |= RNA_property_boolean_get(op->ptr, prop) ? FILE_TYPE_FOLDER : 0;
 		if ((prop = RNA_struct_find_property(op->ptr, "filter_btx")))
-			params->filter |= RNA_property_boolean_get(op->ptr, prop) ? BTXFILE : 0;
+			params->filter |= RNA_property_boolean_get(op->ptr, prop) ? FILE_TYPE_BTX : 0;
 		if ((prop = RNA_struct_find_property(op->ptr, "filter_collada")))
-			params->filter |= RNA_property_boolean_get(op->ptr, prop) ? COLLADAFILE : 0;
+			params->filter |= RNA_property_boolean_get(op->ptr, prop) ? FILE_TYPE_COLLADA : 0;
 		if ((prop = RNA_struct_find_property(op->ptr, "filter_glob"))) {
 			RNA_property_string_get(op->ptr, prop, params->filter_glob);
-			params->filter |= (OPERATORFILE | FOLDERFILE);
+			params->filter |= (FILE_TYPE_OPERATOR | FILE_TYPE_FOLDER);
 		}
 		else {
 			params->filter_glob[0] = '\0';
@@ -212,12 +212,13 @@ short ED_fileselect_set_params(SpaceFile *sfile)
 			params->flag |= RNA_boolean_get(op->ptr, "active_layer") ? FILE_ACTIVELAY : 0;
 		}
 
-		if (RNA_struct_find_property(op->ptr, "display_type"))
-			params->display = RNA_enum_get(op->ptr, "display_type");
+		if ((prop = RNA_struct_find_property(op->ptr, "display_type"))) {
+			params->display = RNA_property_enum_get(op->ptr, prop);
+		}
 
 		if (params->display == FILE_DEFAULTDISPLAY) {
 			if (U.uiflag & USER_SHOW_THUMBNAILS) {
-				if (params->filter & (IMAGEFILE | MOVIEFILE))
+				if (params->filter & (FILE_TYPE_IMAGE | FILE_TYPE_MOVIE))
 					params->display = FILE_IMGDISPLAY;
 				else
 					params->display = FILE_SHORTDISPLAY;
@@ -228,8 +229,10 @@ short ED_fileselect_set_params(SpaceFile *sfile)
 		}
 
 		if (is_relative_path) {
-			if (!RNA_struct_property_is_set_ex(op->ptr, "relative_path", FALSE)) {
-				RNA_boolean_set(op->ptr, "relative_path", U.flag & USER_RELPATHS);
+			if ((prop = RNA_struct_find_property(op->ptr, "relative_path"))) {
+				if (!RNA_property_is_set_ex(op->ptr, prop, false)) {
+					RNA_property_boolean_set(op->ptr, prop, (U.flag & USER_RELPATHS) != 0);
+				}
 			}
 		}
 	}
@@ -256,7 +259,7 @@ short ED_fileselect_set_params(SpaceFile *sfile)
 			BLI_split_dir_part(G.main->name, sfile->params->dir, sizeof(sfile->params->dir));
 		}
 		else {
-			const char *doc_path = BLI_getDefaultDocumentFolder();
+			const char *doc_path = BKE_appdir_folder_default();
 			if (doc_path) {
 				BLI_strncpy(sfile->params->dir, doc_path, sizeof(sfile->params->dir));
 			}
@@ -267,7 +270,7 @@ short ED_fileselect_set_params(SpaceFile *sfile)
 
 	/* switching thumbnails needs to recalc layout [#28809] */
 	if (sfile->layout) {
-		sfile->layout->dirty = TRUE;
+		sfile->layout->dirty = true;
 	}
 
 	return 1;
@@ -284,14 +287,28 @@ int ED_fileselect_layout_numfiles(FileLayout *layout, ARegion *ar)
 {
 	int numfiles;
 
+	/* Values in pixels.
+	 *
+	 * - *_item: size of each (row|col), (including padding)
+	 * - *_view: (x|y) size of the view.
+	 * - *_over: extra pixels, to take into account, when the fit isnt exact
+	 *   (needed since you may see the end of the previous column and the beginning of the next).
+	 *
+	 * Could be more clever and take scrolling into account,
+	 * but for now don't bother.
+	 */
 	if (layout->flag & FILE_LAYOUT_HOR) {
-		int width = (int)(BLI_rctf_size_x(&ar->v2d.cur) - 2 * layout->tile_border_x);
-		numfiles = (int)((float)width / (float)layout->tile_w + 0.5f);
+		const int x_item = layout->tile_w + (2 * layout->tile_border_x);
+		const int x_view = (int)(BLI_rctf_size_x(&ar->v2d.cur));
+		const int x_over = x_item - (x_view % x_item);
+		numfiles = (int)((float)(x_view + x_over) / (float)(x_item));
 		return numfiles * layout->rows;
 	}
 	else {
-		int height = (int)(BLI_rctf_size_y(&ar->v2d.cur) - 2 * layout->tile_border_y);
-		numfiles = (int)((float)height / (float)layout->tile_h + 0.5f);
+		const int y_item = layout->tile_h + (2 * layout->tile_border_y);
+		const int y_view = (int)(BLI_rctf_size_y(&ar->v2d.cur));
+		const int y_over = y_item - (y_view % y_item);
+		numfiles = (int)((float)(y_view + y_over) / (float)(y_item));
 		return numfiles * layout->columns;
 	}
 }
@@ -396,7 +413,7 @@ float file_shorten_string(char *string, float w, int front)
 
 	sw = file_string_width(string);
 	if (front == 1) {
-		char *s = string;
+		const char *s = string;
 		BLI_strncpy(temp, "...", 4);
 		pad = file_string_width(temp);
 		while ((*s) && (sw + pad > w)) {
@@ -412,7 +429,7 @@ float file_shorten_string(char *string, float w, int front)
 		}
 	}
 	else {
-		char *s = string;
+		const char *s = string;
 		while (sw > w) {
 			int slen = strlen(string);
 			string[slen - 1] = '\0';
@@ -433,8 +450,8 @@ float file_shorten_string(char *string, float w, int front)
 
 float file_string_width(const char *str)
 {
-	uiStyle *style = UI_GetStyle();
-	uiStyleFontSet(&style->widget);
+	uiStyle *style = UI_style_get();
+	UI_fontstyle_set(&style->widget);
 	return BLF_width(style->widget.uifont_id, str, BLF_DRAW_STR_DUMMY_MAX);
 }
 
@@ -443,13 +460,13 @@ float file_font_pointsize(void)
 #if 0
 	float s;
 	char tmp[2] = "X";
-	uiStyle *style = UI_GetStyle();
-	uiStyleFontSet(&style->widget);
+	uiStyle *style = UI_style_get();
+	UI_fontstyle_set(&style->widget);
 	s = BLF_height(style->widget.uifont_id, tmp);
 	return style->widget.points;
 #else
-	uiStyle *style = UI_GetStyle();
-	uiStyleFontSet(&style->widget);
+	uiStyle *style = UI_style_get();
+	UI_fontstyle_set(&style->widget);
 	return style->widget.points * UI_DPI_FAC;
 #endif
 }
@@ -498,9 +515,9 @@ void ED_fileselect_init_layout(struct SpaceFile *sfile, ARegion *ar)
 
 	if (sfile->layout == NULL) {
 		sfile->layout = MEM_callocN(sizeof(struct FileLayout), "file_layout");
-		sfile->layout->dirty = TRUE;
+		sfile->layout->dirty = true;
 	}
-	else if (sfile->layout->dirty == FALSE) {
+	else if (sfile->layout->dirty == false) {
 		return;
 	}
 
@@ -574,7 +591,7 @@ void ED_fileselect_init_layout(struct SpaceFile *sfile, ARegion *ar)
 		layout->width = sfile->layout->columns * (layout->tile_w + 2 * layout->tile_border_x) + layout->tile_border_x * 2;
 		layout->flag = FILE_LAYOUT_HOR;
 	}
-	layout->dirty = FALSE;
+	layout->dirty = false;
 }
 
 FileLayout *ED_fileselect_get_layout(struct SpaceFile *sfile, ARegion *ar)
@@ -585,14 +602,17 @@ FileLayout *ED_fileselect_get_layout(struct SpaceFile *sfile, ARegion *ar)
 	return sfile->layout;
 }
 
-void file_change_dir(bContext *C, int checkdir)
+void ED_file_change_dir(bContext *C, const bool checkdir)
 {
 	wmWindowManager *wm = CTX_wm_manager(C);
 	SpaceFile *sfile = CTX_wm_space_file(C);
 
 	if (sfile->params) {
-
 		ED_fileselect_clear(wm, sfile);
+
+		/* Clear search string, it is very rare to want to keep that filter while changing dir,
+		 * and usually very annoying to keep it actually! */
+		sfile->params->filter_search[0] = '\0';
 
 		if (checkdir && !BLI_is_dir(sfile->params->dir)) {
 			BLI_strncpy(sfile->params->dir, filelist_dir(sfile->files), sizeof(sfile->params->dir));
@@ -605,7 +625,7 @@ void file_change_dir(bContext *C, int checkdir)
 
 		folderlist_pushdir(sfile->folders_prev, sfile->params->dir);
 
-		file_draw_check_cb(C, NULL, NULL);
+		file_draw_check(C);
 	}
 }
 
@@ -622,8 +642,9 @@ int file_select_match(struct SpaceFile *sfile, const char *pattern, char *matche
 	 */
 	for (i = 0; i < n; i++) {
 		file = filelist_file(sfile->files, i);
-		if (fnmatch(pattern, file->relname, 0) == 0) {
-			file->selflag |= SELECTED_FILE;
+		/* use same rule as 'FileCheckType.CHECK_FILES' */
+		if (S_ISREG(file->type) && (fnmatch(pattern, file->relname, 0) == 0)) {
+			file->selflag |= FILE_SEL_SELECTED;
 			if (!match) {
 				BLI_strncpy(matched_file, file->relname, FILE_MAX);
 			}
@@ -651,28 +672,28 @@ int autocomplete_directory(struct bContext *C, char *str, void *UNUSED(arg_v))
 		dir = opendir(dirname);
 
 		if (dir) {
-			AutoComplete *autocpl = autocomplete_begin(str, FILE_MAX);
+			AutoComplete *autocpl = UI_autocomplete_begin(str, FILE_MAX);
 
 			while ((de = readdir(dir)) != NULL) {
-				if (strcmp(".", de->d_name) == 0 || strcmp("..", de->d_name) == 0) {
+				if (FILENAME_IS_CURRPAR(de->d_name)) {
 					/* pass */
 				}
 				else {
 					char path[FILE_MAX];
-					struct stat status;
+					BLI_stat_t status;
 					
 					BLI_join_dirfile(path, sizeof(path), dirname, de->d_name);
 
 					if (BLI_stat(path, &status) == 0) {
 						if (S_ISDIR(status.st_mode)) { /* is subdir */
-							autocomplete_do_name(autocpl, path);
+							UI_autocomplete_update_name(autocpl, path);
 						}
 					}
 				}
 			}
 			closedir(dir);
 
-			match = autocomplete_end(autocpl, str);
+			match = UI_autocomplete_end(autocpl, str);
 			if (match) {
 				if (match == AUTOCOMPLETE_FULL_MATCH) {
 					BLI_add_slash(str);
@@ -694,17 +715,17 @@ int autocomplete_file(struct bContext *C, char *str, void *UNUSED(arg_v))
 
 	/* search if str matches the beginning of name */
 	if (str[0] && sfile->files) {
-		AutoComplete *autocpl = autocomplete_begin(str, FILE_MAX);
+		AutoComplete *autocpl = UI_autocomplete_begin(str, FILE_MAX);
 		int nentries = filelist_numfiles(sfile->files);
 		int i;
 
 		for (i = 0; i < nentries; ++i) {
 			struct direntry *file = filelist_file(sfile->files, i);
 			if (file && (S_ISREG(file->type) || S_ISDIR(file->type))) {
-				autocomplete_do_name(autocpl, file->relname);
+				UI_autocomplete_update_name(autocpl, file->relname);
 			}
 		}
-		match = autocomplete_end(autocpl, str);
+		match = UI_autocomplete_end(autocpl, str);
 	}
 
 	return match;

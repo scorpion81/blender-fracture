@@ -47,7 +47,6 @@
 
 #include "RNA_define.h"
 #include "RNA_access.h"
-#include "RNA_enum_types.h"
 
 #include "BKE_depsgraph.h"
 #include "BKE_context.h"
@@ -56,7 +55,6 @@
 #include "ED_mball.h"
 #include "ED_screen.h"
 #include "ED_view3d.h"
-#include "ED_transform.h"
 #include "ED_util.h"
 
 #include "WM_api.h"
@@ -131,7 +129,7 @@ static int mball_select_all_exec(bContext *C, wmOperator *op)
 	MetaElem *ml;
 	int action = RNA_enum_get(op->ptr, "action");
 
-	if (mb->editelems->first == NULL)
+	if (BLI_listbase_is_empty(mb->editelems))
 		return OPERATOR_CANCELLED;
 
 	if (action == SEL_TOGGLE) {
@@ -192,7 +190,7 @@ enum {
 static EnumPropertyItem prop_similar_types[] = {
 	{SIMMBALL_TYPE, "TYPE", 0, "Type", ""},
 	{SIMMBALL_RADIUS, "RADIUS", 0, "Radius", ""},
-    {SIMMBALL_STIFFNESS, "STIFFNESS", 0, "Stiffness", ""},
+	{SIMMBALL_STIFFNESS, "STIFFNESS", 0, "Stiffness", ""},
 	{SIMMBALL_ROTATION, "ROTATION", 0, "Rotation", ""},
 	{0, NULL, 0, NULL, NULL}
 };
@@ -502,7 +500,7 @@ static int hide_metaelems_exec(bContext *C, wmOperator *op)
 	Object *obedit = CTX_data_edit_object(C);
 	MetaBall *mb = (MetaBall *)obedit->data;
 	MetaElem *ml;
-	const int invert = RNA_boolean_get(op->ptr, "unselected") ? SELECT : 0;
+	const bool invert = RNA_boolean_get(op->ptr, "unselected") ? SELECT : 0;
 
 	ml = mb->editelems->first;
 
@@ -585,7 +583,7 @@ bool mouse_mball(bContext *C, const int mval[2], bool extend, bool deselect, boo
 	MetaBall *mb = (MetaBall *)obedit->data;
 	MetaElem *ml, *ml_act = NULL;
 	int a, hits;
-	unsigned int buffer[4 * MAXPICKBUF];
+	unsigned int buffer[MAXPICKBUF];
 	rcti rect;
 
 	view3d_set_viewcontext(C, &vc);
@@ -595,7 +593,7 @@ bool mouse_mball(bContext *C, const int mval[2], bool extend, bool deselect, boo
 	rect.ymin = mval[1] - 12;
 	rect.ymax = mval[1] + 12;
 
-	hits = view3d_opengl_select(&vc, buffer, MAXPICKBUF, &rect);
+	hits = view3d_opengl_select(&vc, buffer, MAXPICKBUF, &rect, true);
 
 	/* does startelem exist? */
 	ml = mb->editelems->first;
@@ -702,7 +700,6 @@ static void *editMball_to_undoMball(void *lbe, void *UNUSED(obe))
 
 	/* allocate memory for undo ListBase */
 	lb = MEM_callocN(sizeof(ListBase), "listbase undo");
-	lb->first = lb->last = NULL;
 	
 	/* copy contents of current ListBase to the undo ListBase */
 	ml = editelems->first;
@@ -744,29 +741,4 @@ static void *get_data(bContext *C)
 void undo_push_mball(bContext *C, const char *name)
 {
 	undo_editmode_push(C, name, get_data, free_undoMball, undoMball_to_editMball, editMball_to_undoMball, NULL);
-}
-
-void ED_mball_transform(MetaBall *mb, float mat[4][4])
-{
-	MetaElem *me;
-	float quat[4];
-	const float scale = mat4_to_scale(mat);
-	const float scale_sqrt = sqrtf(scale);
-
-	mat4_to_quat(quat, mat);
-
-	for (me = mb->elems.first; me; me = me->next) {
-		mul_m4_v3(mat, &me->x);
-		mul_qt_qtqt(me->quat, quat, me->quat);
-		me->rad *= scale;
-		/* hrmf, probably elems shouldn't be
-		 * treating scale differently - campbell */
-		if (!MB_TYPE_SIZE_SQUARED(me->type)) {
-			mul_v3_fl(&me->expx, scale);
-		}
-		else {
-			mul_v3_fl(&me->expx, scale_sqrt);
-		}
-	}
-	DAG_id_tag_update(&mb->id, 0);
 }

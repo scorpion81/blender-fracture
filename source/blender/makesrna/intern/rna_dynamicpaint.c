@@ -203,7 +203,7 @@ static void rna_Surface_active_point_range(PointerRNA *ptr, int *min, int *max,
 	DynamicPaintCanvasSettings *canvas = (DynamicPaintCanvasSettings *)ptr->data;
 
 	*min = 0;
-	*max = BLI_countlist(&canvas->surfaces) - 1;
+	*max = BLI_listbase_count(&canvas->surfaces) - 1;
 }
 
 /* uvlayer */
@@ -736,12 +736,12 @@ static void rna_def_canvas_surface(BlenderRNA *brna)
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE | PROP_EDITABLE);
 
 	/* whether this surface has preview data for 3D view */
-	RNA_define_verify_sdna(FALSE);
+	RNA_define_verify_sdna(false);
 	prop = RNA_def_property(srna, "use_color_preview", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_funcs(prop, "rna_DynamicPaint_use_color_preview_get", NULL);
 	RNA_def_property_ui_text(prop, "Use Color Preview", "Whether this surface has some color preview for 3D view");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE | PROP_EDITABLE);
-	RNA_define_verify_sdna(TRUE);
+	RNA_define_verify_sdna(true);
 }
 
 static void rna_def_dynamic_paint_canvas_settings(BlenderRNA *brna)

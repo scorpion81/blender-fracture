@@ -31,7 +31,6 @@
 #include "BLI_sys_types.h"
 
 #include "DNA_anim_types.h"
-#include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_space_types.h"
 #include "DNA_userdef_types.h"
@@ -40,10 +39,8 @@
 #include "BLI_timecode.h"
 
 #include "BKE_context.h"
-#include "BKE_blender.h"
 #include "BKE_global.h"
 #include "BKE_nla.h"
-#include "BKE_object.h"
 
 #include "ED_anim_api.h"
 #include "ED_keyframes_edit.h"
@@ -62,12 +59,13 @@
 /* Draw current frame number in a little green box beside the current frame indicator */
 static void draw_cfra_number(Scene *scene, View2D *v2d, const float cfra, const bool time)
 {
+	const uiFontStyle *fstyle = UI_FSTYLE_WIDGET;
 	float xscale, yscale, x, y;
 	char numstr[32] = "    t";  /* t is the character to start replacing from */
-	short slen;
+	int slen;
 	
 	/* because the frame number text is subject to the same scaling as the contents of the view */
-	UI_view2d_getscale(v2d, &xscale, &yscale);
+	UI_view2d_scale_get(v2d, &xscale, &yscale);
 	glScalef(1.0f / xscale, 1.0f, 1.0f);
 	
 	/* get timecode string 
@@ -81,7 +79,8 @@ static void draw_cfra_number(Scene *scene, View2D *v2d, const float cfra, const 
 	else {
 		BLI_timecode_string_from_time_simple(&numstr[4], sizeof(numstr) - 4, 1, cfra);
 	}
-	slen = (short)UI_GetStringWidth(numstr) - 1;
+
+	slen = UI_fontstyle_string_width(fstyle, numstr) - 1;
 	
 	/* get starting coordinates for drawing */
 	x = cfra * xscale;
@@ -93,7 +92,7 @@ static void draw_cfra_number(Scene *scene, View2D *v2d, const float cfra, const 
 	
 	/* draw current frame number - black text */
 	UI_ThemeColor(TH_TEXT);
-	UI_DrawString(x - 0.25f * U.widget_unit, y + 0.15f * U.widget_unit, numstr);
+	UI_fontstyle_draw_simple(fstyle, x - 0.25f * U.widget_unit, y + 0.15f * U.widget_unit, numstr);
 	
 	/* restore view transform */
 	glScalef(xscale, 1.0, 1.0);
@@ -223,7 +222,7 @@ static short bezt_nlamapping_apply(KeyframeEditData *ked, BezTriple *bezt)
  *	- restore = whether to map points back to non-mapped time 
  *  - only_keys = whether to only adjust the location of the center point of beztriples
  */
-void ANIM_nla_mapping_apply_fcurve(AnimData *adt, FCurve *fcu, short restore, short only_keys)
+void ANIM_nla_mapping_apply_fcurve(AnimData *adt, FCurve *fcu, bool restore, bool only_keys)
 {
 	KeyframeEditData ked = {{NULL}};
 	KeyframeEditFunc map_cb;

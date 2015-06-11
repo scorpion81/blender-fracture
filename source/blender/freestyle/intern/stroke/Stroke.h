@@ -43,6 +43,16 @@
 #include "MEM_guardedalloc.h"
 #endif
 
+extern "C" {
+#include "DNA_material_types.h"
+
+struct bNodeTree;
+}
+
+#ifndef MAX_MTEX
+#define MAX_MTEX	18
+#endif
+
 namespace Freestyle {
 
 //
@@ -53,7 +63,7 @@ namespace Freestyle {
 /*! Class to define an attribute associated to a Stroke Vertex.
  *  This attribute stores the color, alpha and thickness values for a Stroke Vertex.
  */
-class LIB_STROKE_EXPORT StrokeAttribute
+class StrokeAttribute
 {
 public:
 	/*! default constructor */
@@ -314,7 +324,7 @@ private:
 ////////////////////////////////////////////////////////
 
 /*! Class to define a stroke vertex. */
-class LIB_STROKE_EXPORT StrokeVertex : public CurvePoint
+class StrokeVertex : public CurvePoint
 {
 public: // Implementation of Interface0D
 	/*! Returns the string "StrokeVertex" */
@@ -367,14 +377,14 @@ public:
 		return _Point2d[1];
 	}
 
-	/*! Returns the 2D point coordinates as a Vec2d */
-	Vec2f getPoint ()
+	/*! Returns the 2D point coordinates as a Vec2r */
+	inline Vec2r getPoint() const
 	{
-		return Vec2f((float)point2d()[0], (float)point2d()[1]);
+		return getPoint2D();
 	}
 
 	/*! Returns the ith 2D point coordinate (i=0 or 1)*/
-	inline real  operator[](const int i) const
+	inline real operator[](const int i) const
 	{
 		return _Point2d[i];
 	}
@@ -430,7 +440,7 @@ public:
 	}
 
 	/*! sets the 2D x and y values */
-	inline void setPoint(const Vec2f& p)
+	inline void setPoint(const Vec2r& p)
 	{
 		_Point2d[0] = p[0];
 		_Point2d[1] = p[1];
@@ -464,6 +474,10 @@ public:
 
 	/* interface definition */
 	/* inherited */
+
+#ifdef WITH_CXX_GUARDEDALLOC
+	MEM_CXX_CLASS_ALLOC_FUNCS("Freestyle:StrokeVertex")
+#endif
 };
 
 
@@ -489,7 +503,7 @@ class StrokeVertexIterator;
  *  This set of vertices defines the stroke's backbone geometry.
  *  Each of these stroke vertices defines the stroke's shape and appearance at this vertex position.
  */
-class LIB_STROKE_EXPORT Stroke : public Interface1D
+class Stroke : public Interface1D
 {
 public: // Implementation of Interface1D
 	/*! Returns the string "Stroke" */
@@ -528,12 +542,15 @@ private:
 	float _Length; // The stroke length
 	viewedge_container _ViewEdges;
 	float _sampling;
+	float _textureStep;
 	// StrokeRenderer *_renderer; // mark implementation OpenGL renderer
 	MediumType _mediumType;
 	unsigned int _textureId;
+	MTex *_mtex[MAX_MTEX];
+	bNodeTree *_nodeTree;
 	bool _tips;
-	Vec2r _extremityOrientations[2]; // the orientations of the first and last extermity
 	StrokeRep *_rep;
+	Vec2r _extremityOrientations[2]; // the orientations of the first and last extermity
 
 public:
 	/*! default constructor */
@@ -578,7 +595,7 @@ public:
 	 *  \param iNPoints
 	 *    The number of vertices we eventually want in our stroke.
 	 */
-	void Resample(int iNPoints);
+	int Resample(int iNPoints);
 
 	/*! Resampling method.
 	 *  Resamples the curve with a given sampling.
@@ -586,7 +603,7 @@ public:
 	 *  \param iSampling
 	 *    The new sampling value.  
 	 */
-	void Resample(float iSampling);
+	int Resample(float iSampling);
 
     /*! Removes all vertices from the Stroke.
      */
@@ -634,6 +651,26 @@ public:
 
 	/*! Returns the id of the texture used to simulate th marks system for this Stroke */
 	inline unsigned int getTextureId() {return _textureId;}
+
+	/*! Returns the spacing of texture coordinates along the stroke lenght */
+	inline float getTextureStep() {return _textureStep;}
+
+	/*! Returns the texture used at given index to simulate the marks system for this Stroke */
+	inline MTex *getMTex(int idx) {
+		return _mtex[idx];
+	}
+
+	/*! Return the shader node tree to define textures. */
+	inline bNodeTree *getNodeTree()
+	{
+		return _nodeTree;
+	}
+
+	/*! Returns true if this Stroke has textures assigned, false otherwise. */
+	inline bool hasTex() const
+	{
+		return (_mtex[0] != NULL) || _nodeTree;
+	}
 
 	/*! Returns true if this Stroke uses a texture with tips, false otherwise. */
 	inline bool hasTips() const
@@ -725,6 +762,30 @@ public:
 		_textureId = id;
 	}
 
+	/*! sets the spacing of texture coordinates along the stroke lenght. */
+	inline void setTextureStep(float step)
+	{
+		_textureStep = step;
+	}
+
+	/*! assigns a blender texture to the first available slot. */
+	inline int setMTex(MTex *mtex)
+	{
+		for (int a = 0; a < MAX_MTEX; a++) {
+			if (!_mtex[a]) {
+				_mtex[a] = mtex;
+				return 0;
+			}
+		}
+		return -1; /* no free slots */
+	}
+
+	/*! assigns a node tree (of new shading nodes) to define textures. */
+	inline void setNodeTree(bNodeTree *iNodeTree)
+	{
+		_nodeTree = iNodeTree;
+	}
+
 	/*! sets the flag telling whether this stroke is using a texture with tips or not. */
 	inline void setTips(bool iTips)
 	{
@@ -806,6 +867,10 @@ public:
 
 	virtual Interface0DIterator pointsBegin(float t = 0.0f);
 	virtual Interface0DIterator pointsEnd(float t = 0.0f);
+
+#ifdef WITH_CXX_GUARDEDALLOC
+	MEM_CXX_CLASS_ALLOC_FUNCS("Freestyle:Stroke")
+#endif
 };
 
 

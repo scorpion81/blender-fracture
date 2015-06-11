@@ -109,20 +109,22 @@ Nurb *add_nurbs_primitive(bContext *C, Object *obedit, float mat[4][4], int type
 {
 	static int xzproj = 0;   /* this function calls itself... */
 	ListBase *editnurb = object_editcurve_get(obedit);
-	View3D *v3d = CTX_wm_view3d(C);
 	RegionView3D *rv3d = ED_view3d_context_rv3d(C);
 	Nurb *nu = NULL;
 	BezTriple *bezt;
 	BPoint *bp;
 	Curve *cu = (Curve *)obedit->data;
 	float vec[3], zvec[3] = {0.0f, 0.0f, 1.0f};
-	float umat[4][4] = MAT4_UNITY, viewmat[4][4] = MAT4_UNITY;
+	float umat[4][4], viewmat[4][4];
 	float fac;
 	int a, b;
-	const float grid = v3d ? v3d->grid : 1.0f;
+	const float grid = 1.0f;
 	const int cutype = (type & CU_TYPE); // poly, bezier, nurbs, etc
 	const int stype = (type & CU_PRIMITIVE);
 	const int force_3d = ((Curve *)obedit->data)->flag & CU_3D; /* could be adding to an existing 3D curve */
+
+	unit_m4(umat);
+	unit_m4(viewmat);
 
 	if (rv3d) {
 		copy_m4_m4(viewmat, rv3d->viewmat);
@@ -353,10 +355,10 @@ Nurb *add_nurbs_primitive(bContext *C, Object *obedit, float mat[4][4], int type
 
 				mul_mat3_m4_v3(mat, vec);
 
-				ed_editnurb_translate_flag(editnurb, 1, vec);
-				ed_editnurb_extrude_flag(cu->editnurb, 1);
+				ed_editnurb_translate_flag(editnurb, SELECT, vec);
+				ed_editnurb_extrude_flag(cu->editnurb, SELECT);
 				mul_v3_fl(vec, -2.0f);
-				ed_editnurb_translate_flag(editnurb, 1, vec);
+				ed_editnurb_translate_flag(editnurb, SELECT, vec);
 
 				BLI_remlink(editnurb, nu);
 
@@ -458,7 +460,7 @@ Nurb *add_nurbs_primitive(bContext *C, Object *obedit, float mat[4][4], int type
 
 	if (nu) { /* should always be set */
 		nu->flag |= CU_SMOOTH;
-		cu->actnu = BLI_countlist(editnurb);
+		cu->actnu = BLI_listbase_count(editnurb);
 		cu->actvert = CU_ACT_NONE;
 
 		BKE_nurb_test2D(nu);
@@ -527,11 +529,9 @@ static int curvesurf_prim_add(bContext *C, wmOperator *op, int type, int isSurf)
 	if (newob && enter_editmode)
 		ED_undo_push(C, "Enter Editmode");
 
-	ED_object_new_primitive_matrix(C, obedit, loc, rot, mat, false);
+	ED_object_new_primitive_matrix(C, obedit, loc, rot, mat);
 	dia = RNA_float_get(op->ptr, "radius");
-	mat[0][0] *= dia;
-	mat[1][1] *= dia;
-	mat[2][2] *= dia;
+	mul_mat3_m4_fl(mat, dia);
 
 	nu = add_nurbs_primitive(C, obedit, mat, type, newob);
 	editnurb = object_editcurve_get(obedit);

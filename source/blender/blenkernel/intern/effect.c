@@ -30,6 +30,7 @@
  */
 
 #include <stddef.h>
+#include <stdarg.h>
 
 #include <math.h>
 #include <stdlib.h>
@@ -37,15 +38,9 @@
 #include "MEM_guardedalloc.h"
 
 #include "DNA_curve_types.h"
-#include "DNA_effect_types.h"
 #include "DNA_group_types.h"
-#include "DNA_ipo_types.h"
-#include "DNA_key_types.h"
-#include "DNA_lattice_types.h"
 #include "DNA_listBase.h"
-#include "DNA_mesh_types.h"
 #include "DNA_meshdata_types.h"
-#include "DNA_material_types.h"
 #include "DNA_object_types.h"
 #include "DNA_object_force.h"
 #include "DNA_particle_types.h"
@@ -55,33 +50,20 @@
 #include "BLI_math.h"
 #include "BLI_blenlib.h"
 #include "BLI_noise.h"
-#include "BLI_jitter.h"
 #include "BLI_rand.h"
 #include "BLI_utildefines.h"
+#include "BLI_ghash.h"
 
 #include "PIL_time.h"
 
-#include "BKE_action.h"
 #include "BKE_anim.h"		/* needed for where_on_path */
-#include "BKE_armature.h"
-#include "BKE_blender.h"
 #include "BKE_collision.h"
-#include "BKE_constraint.h"
 #include "BKE_curve.h"
-#include "BKE_deform.h"
-#include "BKE_depsgraph.h"
 #include "BKE_displist.h"
 #include "BKE_DerivedMesh.h"
 #include "BKE_cdderivedmesh.h"
 #include "BKE_effect.h"
 #include "BKE_global.h"
-#include "BKE_group.h"
-#include "BKE_ipo.h"
-#include "BKE_key.h"
-#include "BKE_lattice.h"
-#include "BKE_mesh.h"
-#include "BKE_material.h"
-#include "BKE_main.h"
 #include "BKE_modifier.h"
 #include "BKE_object.h"
 #include "BKE_particle.h"
@@ -94,7 +76,6 @@
 
 /* fluid sim particle import */
 #ifdef WITH_MOD_FLUID
-#include "DNA_object_fluidsim.h"
 #include "LBM_fluidsim.h"
 #include <zlib.h>
 #include <string.h>
@@ -166,45 +147,6 @@ void free_partdeflect(PartDeflect *pd)
 	MEM_freeN(pd);
 }
 
-static void precalculate_effector(EffectorCache *eff)
-{
-	unsigned int cfra = (unsigned int)(eff->scene->r.cfra >= 0 ? eff->scene->r.cfra : -eff->scene->r.cfra);
-	if (!eff->pd->rng)
-		eff->pd->rng = BLI_rng_new(eff->pd->seed + cfra);
-	else
-		BLI_rng_srandom(eff->pd->rng, eff->pd->seed + cfra);
-
-	if (eff->pd->forcefield == PFIELD_GUIDE && eff->ob->type==OB_CURVE) {
-		Curve *cu= eff->ob->data;
-		if (cu->flag & CU_PATH) {
-			if (eff->ob->curve_cache == NULL || eff->ob->curve_cache->path==NULL || eff->ob->curve_cache->path->data==NULL)
-				BKE_displist_make_curveTypes(eff->scene, eff->ob, 0);
-
-			if (eff->ob->curve_cache->path && eff->ob->curve_cache->path->data) {
-				where_on_path(eff->ob, 0.0, eff->guide_loc, eff->guide_dir, NULL, &eff->guide_radius, NULL);
-				mul_m4_v3(eff->ob->obmat, eff->guide_loc);
-				mul_mat3_m4_v3(eff->ob->obmat, eff->guide_dir);
-			}
-		}
-	}
-	else if (eff->pd->shape == PFIELD_SHAPE_SURFACE) {
-		eff->surmd = (SurfaceModifierData *)modifiers_findByType( eff->ob, eModifierType_Surface );
-		if (eff->ob->type == OB_CURVE)
-			eff->flag |= PE_USE_NORMAL_DATA;
-	}
-	else if (eff->psys)
-		psys_update_particle_tree(eff->psys, eff->scene->r.cfra);
-
-	/* Store object velocity */
-	if (eff->ob) {
-		float old_vel[3];
-
-		BKE_object_where_is_calc_time(eff->scene, eff->ob, cfra - 1.0f);
-		copy_v3_v3(old_vel, eff->ob->obmat[3]);
-		BKE_object_where_is_calc_time(eff->scene, eff->ob, cfra);
-		sub_v3_v3v3(eff->velocity, eff->ob->obmat[3], old_vel);
-	}
-}
 static EffectorCache *new_effector_cache(Scene *scene, Object *ob, ParticleSystem *psys, PartDeflect *pd)
 {
 	EffectorCache *eff = MEM_callocN(sizeof(EffectorCache), "EffectorCache");
@@ -213,9 +155,6 @@ static EffectorCache *new_effector_cache(Scene *scene, Object *ob, ParticleSyste
 	eff->psys = psys;
 	eff->pd = pd;
 	eff->frame = -1;
-
-	precalculate_effector(eff);
-
 	return eff;
 }
 static void add_object_to_effectors(ListBase **effectors, Scene *scene, EffectorWeights *weights, Object *ob, Object *ob_src)
@@ -264,7 +203,8 @@ static void add_particles_to_effectors(ListBase **effectors, Scene *scene, Effec
 }
 
 /* returns ListBase handle with objects taking part in the effecting */
-ListBase *pdInitEffectors(Scene *scene, Object *ob_src, ParticleSystem *psys_src, EffectorWeights *weights)
+ListBase *pdInitEffectors(Scene *scene, Object *ob_src, ParticleSystem *psys_src,
+                          EffectorWeights *weights, bool precalc)
 {
 	Base *base;
 	unsigned int layer= ob_src->lay;
@@ -291,7 +231,7 @@ ListBase *pdInitEffectors(Scene *scene, Object *ob_src, ParticleSystem *psys_src
 		for (base = scene->base.first; base; base= base->next) {
 			if ( (base->lay & layer) ) {
 				if ( base->object->pd && base->object->pd->forcefield )
-				add_object_to_effectors(&effectors, scene, weights, base->object, ob_src);
+					add_object_to_effectors(&effectors, scene, weights, base->object, ob_src);
 
 				if ( base->object->particlesystem.first ) {
 					ParticleSystem *psys= base->object->particlesystem.first;
@@ -302,6 +242,10 @@ ListBase *pdInitEffectors(Scene *scene, Object *ob_src, ParticleSystem *psys_src
 			}
 		}
 	}
+	
+	if (precalc)
+		pdPrecalculateEffectors(effectors);
+	
 	return effectors;
 }
 
@@ -318,6 +262,55 @@ void pdEndEffectors(ListBase **effectors)
 		BLI_freelistN(*effectors);
 		MEM_freeN(*effectors);
 		*effectors = NULL;
+	}
+}
+
+static void precalculate_effector(EffectorCache *eff)
+{
+	unsigned int cfra = (unsigned int)(eff->scene->r.cfra >= 0 ? eff->scene->r.cfra : -eff->scene->r.cfra);
+	if (!eff->pd->rng)
+		eff->pd->rng = BLI_rng_new(eff->pd->seed + cfra);
+	else
+		BLI_rng_srandom(eff->pd->rng, eff->pd->seed + cfra);
+
+	if (eff->pd->forcefield == PFIELD_GUIDE && eff->ob->type==OB_CURVE) {
+		Curve *cu= eff->ob->data;
+		if (cu->flag & CU_PATH) {
+			if (eff->ob->curve_cache == NULL || eff->ob->curve_cache->path==NULL || eff->ob->curve_cache->path->data==NULL)
+				BKE_displist_make_curveTypes(eff->scene, eff->ob, 0);
+
+			if (eff->ob->curve_cache->path && eff->ob->curve_cache->path->data) {
+				where_on_path(eff->ob, 0.0, eff->guide_loc, eff->guide_dir, NULL, &eff->guide_radius, NULL);
+				mul_m4_v3(eff->ob->obmat, eff->guide_loc);
+				mul_mat3_m4_v3(eff->ob->obmat, eff->guide_dir);
+			}
+		}
+	}
+	else if (eff->pd->shape == PFIELD_SHAPE_SURFACE) {
+		eff->surmd = (SurfaceModifierData *)modifiers_findByType( eff->ob, eModifierType_Surface );
+		if (eff->ob->type == OB_CURVE)
+			eff->flag |= PE_USE_NORMAL_DATA;
+	}
+	else if (eff->psys)
+		psys_update_particle_tree(eff->psys, eff->scene->r.cfra);
+
+	/* Store object velocity */
+	if (eff->ob) {
+		float old_vel[3];
+
+		BKE_object_where_is_calc_time(eff->scene, eff->ob, cfra - 1.0f);
+		copy_v3_v3(old_vel, eff->ob->obmat[3]);
+		BKE_object_where_is_calc_time(eff->scene, eff->ob, cfra);
+		sub_v3_v3v3(eff->velocity, eff->ob->obmat[3], old_vel);
+	}
+}
+
+void pdPrecalculateEffectors(ListBase *effectors)
+{
+	if (effectors) {
+		EffectorCache *eff = effectors->first;
+		for (; eff; eff=eff->next)
+			precalculate_effector(eff);
 	}
 }
 
@@ -640,8 +633,7 @@ int get_effector_data(EffectorCache *eff, EffectorData *efd, EffectedPoint *poin
 	}
 	else {
 		/* use center of object for distance calculus */
-		Object *ob = eff->ob;
-		Object obcopy = *ob;
+		const Object *ob = eff->ob;
 
 		/* use z-axis as normal*/
 		normalize_v3_v3(efd->nor, ob->obmat[2]);
@@ -663,8 +655,6 @@ int get_effector_data(EffectorCache *eff, EffectorData *efd, EffectedPoint *poin
 
 		if (real_velocity)
 			copy_v3_v3(efd->vel, eff->velocity);
-
-		*eff->ob = obcopy;
 
 		efd->size = 0.0f;
 
@@ -767,7 +757,7 @@ static void do_texture_effector(EffectorCache *eff, EffectorData *efd, EffectedP
 
 	scene_color_manage = BKE_scene_check_color_management_enabled(eff->scene);
 
-	hasrgb = multitex_ext(eff->pd->tex, tex_co, NULL, NULL, 0, result, NULL, scene_color_manage);
+	hasrgb = multitex_ext(eff->pd->tex, tex_co, NULL, NULL, 0, result, NULL, scene_color_manage, false);
 
 	if (hasrgb && mode==PFIELD_TEX_RGB) {
 		force[0] = (0.5f - result->tr) * strength;
@@ -778,15 +768,15 @@ static void do_texture_effector(EffectorCache *eff, EffectorData *efd, EffectedP
 		strength/=nabla;
 
 		tex_co[0] += nabla;
-		multitex_ext(eff->pd->tex, tex_co, NULL, NULL, 0, result+1, NULL, scene_color_manage);
+		multitex_ext(eff->pd->tex, tex_co, NULL, NULL, 0, result+1, NULL, scene_color_manage, false);
 
 		tex_co[0] -= nabla;
 		tex_co[1] += nabla;
-		multitex_ext(eff->pd->tex, tex_co, NULL, NULL, 0, result+2, NULL, scene_color_manage);
+		multitex_ext(eff->pd->tex, tex_co, NULL, NULL, 0, result+2, NULL, scene_color_manage, false);
 
 		tex_co[1] -= nabla;
 		tex_co[2] += nabla;
-		multitex_ext(eff->pd->tex, tex_co, NULL, NULL, 0, result+3, NULL, scene_color_manage);
+		multitex_ext(eff->pd->tex, tex_co, NULL, NULL, 0, result+3, NULL, scene_color_manage, false);
 
 		if (mode == PFIELD_TEX_GRAD || !hasrgb) { /* if we don't have rgb fall back to grad */
 			/* generate intensity if texture only has rgb value */
@@ -885,7 +875,7 @@ static void do_physical_effector(EffectorCache *eff, EffectorData *efd, Effected
 		case PFIELD_HARMONIC:
 			mul_v3_fl(force, -strength * efd->falloff);
 			copy_v3_v3(temp, point->vel);
-			mul_v3_fl(temp, -damp * 2.0f * (float)sqrt(fabs(strength)) * point->vel_to_sec);
+			mul_v3_fl(temp, -damp * 2.0f * sqrtf(fabsf(strength)) * point->vel_to_sec);
 			add_v3_v3(force, temp);
 			break;
 		case PFIELD_CHARGE:
@@ -945,7 +935,7 @@ static void do_physical_effector(EffectorCache *eff, EffectorData *efd, Effected
 	if (pd->flag & PFIELD_DO_LOCATION) {
 		madd_v3_v3fl(total_force, force, 1.0f/point->vel_to_sec);
 
-		if (ELEM3(pd->forcefield, PFIELD_HARMONIC, PFIELD_DRAG, PFIELD_SMOKEFLOW)==0 && pd->f_flow != 0.0f) {
+		if (ELEM(pd->forcefield, PFIELD_HARMONIC, PFIELD_DRAG, PFIELD_SMOKEFLOW)==0 && pd->f_flow != 0.0f) {
 			madd_v3_v3fl(total_force, point->vel, -pd->f_flow * efd->falloff);
 		}
 	}
@@ -1034,6 +1024,163 @@ void pdDoEffectors(ListBase *effectors, ListBase *colliders, EffectorWeights *we
 				/* special case for harmonic effector */
 				add_v3_v3v3(impulse, impulse, efd.vel);
 			}
+		}
+	}
+}
+
+/* ======== Simulation Debugging ======== */
+
+SimDebugData *_sim_debug_data = NULL;
+
+unsigned int BKE_sim_debug_data_hash(int i)
+{
+	return BLI_ghashutil_uinthash((unsigned int)i);
+}
+
+unsigned int BKE_sim_debug_data_hash_combine(unsigned int kx, unsigned int ky)
+{
+#define rot(x,k) (((x)<<(k)) | ((x)>>(32-(k))))
+
+	unsigned int a, b, c;
+
+	a = b = c = 0xdeadbeef + (2 << 2) + 13;
+	a += kx;
+	b += ky;
+
+	c ^= b; c -= rot(b,14);
+	a ^= c; a -= rot(c,11);
+	b ^= a; b -= rot(a,25);
+	c ^= b; c -= rot(b,16);
+	a ^= c; a -= rot(c,4);
+	b ^= a; b -= rot(a,14);
+	c ^= b; c -= rot(b,24);
+
+	return c;
+
+#undef rot
+}
+
+static unsigned int debug_element_hash(const void *key)
+{
+	const SimDebugElement *elem = key;
+	return elem->hash;
+}
+
+static bool debug_element_compare(const void *a, const void *b)
+{
+	const SimDebugElement *elem1 = a;
+	const SimDebugElement *elem2 = b;
+
+	if (elem1->hash == elem2->hash) {
+		return 0;
+	}
+	return 1;
+}
+
+static void debug_element_free(void *val)
+{
+	SimDebugElement *elem = val;
+	MEM_freeN(elem);
+}
+
+void BKE_sim_debug_data_set_enabled(bool enable)
+{
+	if (enable) {
+		if (!_sim_debug_data) {
+			_sim_debug_data = MEM_callocN(sizeof(SimDebugData), "sim debug data");
+			_sim_debug_data->gh = BLI_ghash_new(debug_element_hash, debug_element_compare, "sim debug element hash");
+		}
+	}
+	else {
+		BKE_sim_debug_data_free();
+	}
+}
+
+bool BKE_sim_debug_data_get_enabled(void)
+{
+	return _sim_debug_data != NULL;
+}
+
+void BKE_sim_debug_data_free(void)
+{
+	if (_sim_debug_data) {
+		if (_sim_debug_data->gh)
+			BLI_ghash_free(_sim_debug_data->gh, NULL, debug_element_free);
+		MEM_freeN(_sim_debug_data);
+	}
+}
+
+static void debug_data_insert(SimDebugData *debug_data, SimDebugElement *elem)
+{
+	SimDebugElement *old_elem = BLI_ghash_lookup(debug_data->gh, elem);
+	if (old_elem) {
+		*old_elem = *elem;
+		MEM_freeN(elem);
+	}
+	else
+		BLI_ghash_insert(debug_data->gh, elem, elem);
+}
+
+void BKE_sim_debug_data_add_element(int type, const float v1[3], const float v2[3], float r, float g, float b, const char *category, unsigned int hash)
+{
+	unsigned int category_hash = BLI_ghashutil_strhash_p(category);
+	SimDebugElement *elem;
+	
+	if (!_sim_debug_data) {
+		if (G.debug & G_DEBUG_SIMDATA)
+			BKE_sim_debug_data_set_enabled(true);
+		else
+			return;
+	}
+	
+	elem = MEM_callocN(sizeof(SimDebugElement), "sim debug data element");
+	elem->type = type;
+	elem->category_hash = category_hash;
+	elem->hash = hash;
+	elem->color[0] = r;
+	elem->color[1] = g;
+	elem->color[2] = b;
+	copy_v3_v3(elem->v1, v1);
+	copy_v3_v3(elem->v2, v2);
+	
+	debug_data_insert(_sim_debug_data, elem);
+}
+
+void BKE_sim_debug_data_remove_element(unsigned int hash)
+{
+	SimDebugElement dummy;
+	if (!_sim_debug_data)
+		return;
+	
+	dummy.hash = hash;
+	BLI_ghash_remove(_sim_debug_data->gh, &dummy, NULL, debug_element_free);
+}
+
+void BKE_sim_debug_data_clear(void)
+{
+	if (!_sim_debug_data)
+		return;
+	
+	if (_sim_debug_data->gh)
+		BLI_ghash_clear(_sim_debug_data->gh, NULL, debug_element_free);
+}
+
+void BKE_sim_debug_data_clear_category(const char *category)
+{
+	int category_hash = (int)BLI_ghashutil_strhash_p(category);
+	
+	if (!_sim_debug_data)
+		return;
+	
+	if (_sim_debug_data->gh) {
+		GHashIterator iter;
+		BLI_ghashIterator_init(&iter, _sim_debug_data->gh);
+		while (!BLI_ghashIterator_done(&iter)) {
+			SimDebugElement *elem = BLI_ghashIterator_getValue(&iter);
+			BLI_ghashIterator_step(&iter); /* removing invalidates the current iterator, so step before removing */
+			
+			if (elem->category_hash == category_hash)
+				BLI_ghash_remove(_sim_debug_data->gh, elem, NULL, debug_element_free);
 		}
 	}
 }

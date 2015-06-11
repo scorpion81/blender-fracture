@@ -25,7 +25,9 @@
 #ifndef __FREESTYLE_PYTHON_INTERFACE0D_H__
 #define __FREESTYLE_PYTHON_INTERFACE0D_H__
 
+extern "C" {
 #include <Python.h>
+}
 
 #include "../view_map/Interface0D.h"
 
@@ -45,7 +47,7 @@ extern PyTypeObject Interface0D_Type;
 typedef struct {
 	PyObject_HEAD
 	Interface0D *if0D;
-	int borrowed; /* non-zero if *if0D is a borrowed object */
+	bool borrowed; /* true if *if0D is a borrowed object */
 } BPy_Interface0D;
 
 /*---------------------------Python BPy_Interface0D visible prototypes-----------*/

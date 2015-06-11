@@ -37,6 +37,8 @@
 #include "bpy_rna.h"
 #include "bpy_app_handlers.h"
 
+#include "../generic/python_utildefines.h"
+
 #include "BPY_extern.h"
 
 void bpy_app_generic_callback(struct Main *main, struct ID *id, void *arg);
@@ -44,21 +46,24 @@ void bpy_app_generic_callback(struct Main *main, struct ID *id, void *arg);
 static PyTypeObject BlenderAppCbType;
 
 static PyStructSequence_Field app_cb_info_fields[] = {
-	{(char *)"frame_change_pre",  (char *)"Callback list - on frame change for playback and rendering (before)"},
-	{(char *)"frame_change_post", (char *)"Callback list - on frame change for playback and rendering (after)"},
-	{(char *)"render_pre",        (char *)"Callback list - on render (before)"},
-	{(char *)"render_post",       (char *)"Callback list - on render (after)"},
-	{(char *)"render_stats",      (char *)"Callback list - on printing render statistics"},
-	{(char *)"render_complete",   (char *)"Callback list - on completion of render job"},
-	{(char *)"render_cancel",     (char *)"Callback list - on canceling a render job"},
-	{(char *)"load_pre",          (char *)"Callback list - on loading a new blend file (before)"},
-	{(char *)"load_post",         (char *)"Callback list - on loading a new blend file (after)"},
-	{(char *)"save_pre",          (char *)"Callback list - on saving a blend file (before)"},
-	{(char *)"save_post",         (char *)"Callback list - on saving a blend file (after)"},
-	{(char *)"scene_update_pre",  (char *)"Callback list - on updating the scenes data (before)"},
-	{(char *)"scene_update_post", (char *)"Callback list - on updating the scenes data (after)"},
-	{(char *)"game_pre",          (char *)"Callback list - on starting the game engine"},
-	{(char *)"game_post",         (char *)"Callback list - on ending the game engine"},
+	{(char *)"frame_change_pre",  (char *)"on frame change for playback and rendering (before)"},
+	{(char *)"frame_change_post", (char *)"on frame change for playback and rendering (after)"},
+	{(char *)"render_pre",        (char *)"on render (before)"},
+	{(char *)"render_post",       (char *)"on render (after)"},
+	{(char *)"render_write",      (char *)"on writing a render frame (directly after the frame is written)"},
+	{(char *)"render_stats",      (char *)"on printing render statistics"},
+	{(char *)"render_init",       (char *)"on initialization of a render job"},
+	{(char *)"render_complete",   (char *)"on completion of render job"},
+	{(char *)"render_cancel",     (char *)"on canceling a render job"},
+	{(char *)"load_pre",          (char *)"on loading a new blend file (before)"},
+	{(char *)"load_post",         (char *)"on loading a new blend file (after)"},
+	{(char *)"save_pre",          (char *)"on saving a blend file (before)"},
+	{(char *)"save_post",         (char *)"on saving a blend file (after)"},
+	{(char *)"scene_update_pre",  (char *)"on updating the scenes data (before)"},
+	{(char *)"scene_update_post", (char *)"on updating the scenes data (after)"},
+	{(char *)"game_pre",          (char *)"on starting the game engine"},
+	{(char *)"game_post",         (char *)"on ending the game engine"},
+	{(char *)"version_update",    (char *)"on ending the versioning code"},
 
 	/* sets the permanent tag */
 #   define APP_CB_OTHER_FIELDS 1
@@ -69,13 +74,13 @@ static PyStructSequence_Field app_cb_info_fields[] = {
 
 static PyStructSequence_Desc app_cb_info_desc = {
 	(char *)"bpy.app.handlers",     /* name */
-	(char *)"This module contains callbacks",    /* doc */
+	(char *)"This module contains callback lists",  /* doc */
 	app_cb_info_fields,    /* fields */
-	(sizeof(app_cb_info_fields) / sizeof(PyStructSequence_Field)) - 1
+	ARRAY_SIZE(app_cb_info_fields) - 1
 };
 
 #if 0
-#  if (BLI_CB_EVT_TOT != ((sizeof(app_cb_info_fields) / sizeof(PyStructSequence_Field))))
+#  if (BLI_CB_EVT_TOT != ARRAY_SIZE(app_cb_info_fields))
 #    error "Callbacks are out of sync"
 #  endif
 #endif
@@ -174,7 +179,7 @@ static PyObject *py_cb_array[BLI_CB_EVT_TOT] = {NULL};
 static PyObject *make_app_cb_info(void)
 {
 	PyObject *app_cb_info;
-	int pos = 0;
+	int pos;
 
 	app_cb_info = PyStructSequence_New(&BlenderAppCbType);
 	if (app_cb_info == NULL) {
@@ -238,7 +243,10 @@ PyObject *BPY_app_handlers_struct(void)
 
 void BPY_app_handlers_reset(const short do_all)
 {
+	PyGILState_STATE gilstate;
 	int pos = 0;
+
+	gilstate = PyGILState_Ensure();
 
 	if (do_all) {
 		for (pos = 0; pos < BLI_CB_EVT_TOT; pos++) {
@@ -277,6 +285,8 @@ void BPY_app_handlers_reset(const short do_all)
 
 		Py_DECREF(perm_id_str);
 	}
+
+	PyGILState_Release(gilstate);
 }
 
 /* the actual callback - not necessarily called from py */
@@ -298,8 +308,7 @@ void bpy_app_generic_callback(struct Main *UNUSED(main), struct ID *id, void *ar
 			PyTuple_SET_ITEM(args, 0, pyrna_struct_CreatePyObject(&id_ptr));
 		}
 		else {
-			PyTuple_SET_ITEM(args, 0, Py_None);
-			Py_INCREF(Py_None);
+			PyTuple_SET_ITEM(args, 0, Py_INCREF_RET(Py_None));
 		}
 
 		/* Iterate the list and run the callbacks

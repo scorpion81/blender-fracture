@@ -114,7 +114,7 @@ void bmo_edgenet_prepare_exec(BMesh *bm, BMOperator *op)
 	BLI_array_declare(edges1);
 	BLI_array_declare(edges2);
 	BLI_array_declare(edges);
-	int ok = 1;
+	bool ok = true;
 	int i, count;
 
 	BMO_slot_buffer_flag_enable(bm, op->slots_in, "edges", BM_EDGE, EDGE_MARK);
@@ -179,11 +179,11 @@ void bmo_edgenet_prepare_exec(BMesh *bm, BMOperator *op)
 
 		if (!count) {
 			edges1 = edges;
-			BLI_array_length_set(edges1, BLI_array_count(edges));
+			BLI_array_count_set(edges1, BLI_array_count(edges));
 		}
 		else {
 			edges2 = edges;
-			BLI_array_length_set(edges2, BLI_array_count(edges));
+			BLI_array_count_set(edges2, BLI_array_count(edges));
 		}
 
 		BLI_array_empty(edges);

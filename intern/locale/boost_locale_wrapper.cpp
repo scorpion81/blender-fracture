@@ -64,9 +64,8 @@ void bl_locale_set(const char *locale)
 			_locale = gen(locale);
 		}
 		else {
-#ifdef __APPLE__
-			extern char GHOST_user_locale[128]; // pulled from Ghost_SystemCocoa
-			std::string locale_osx = GHOST_user_locale + std::string(".UTF-8");
+#if defined(__APPLE__) && !defined(WITH_HEADLESS) && !defined(WITH_GHOST_SDL)
+			std::string locale_osx = osx_user_locale() + std::string(".UTF-8");
 			_locale = gen(locale_osx.c_str());
 #else
 			_locale = gen("");
@@ -113,7 +112,11 @@ const char *bl_locale_pgettext(const char *msgctxt, const char *msgid)
 			return r;
 		return msgid;
 	}
-	catch(std::exception const &) {
+	catch(std::bad_cast const &e) { /* if std::has_facet<char_message_facet>(l) == false, LC_ALL = "C" case */
+//		std::cout << "bl_locale_pgettext(" << msgid << "): " << e.what() << " \n";
+		return msgid;
+	}
+	catch(std::exception const &e) {
 //		std::cout << "bl_locale_pgettext(" << msgctxt << ", " << msgid << "): " << e.what() << " \n";
 		return msgid;
 	}

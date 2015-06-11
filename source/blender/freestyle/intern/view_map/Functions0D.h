@@ -65,20 +65,24 @@ using namespace Geometry;
  *  \attention In the scripting language, there exists several prototypes depending on the returned value type.
  *  For example, you would inherit from a UnaryFunction0DDouble if you wish to define a function that returns a double.
  *  The different existing prototypes are:
- *    - UnaryFunction0DVoid
- *    - UnaryFunction0DUnsigned
- *    - UnaryFunction0DReal
- *    - UnaryFunction0DFloat
  *    - UnaryFunction0DDouble
+ *    - UnaryFunction0DEdgeNature
+ *    - UnaryFunction0DFloat
+ *    - UnaryFunction0DId
+ *    - UnaryFunction0DMaterial
+ *    - UnaryFunction0DUnsigned
  *    - UnaryFunction0DVec2f
  *    - UnaryFunction0DVec3f
+ *    - UnaryFunction0DVectorViewShape
+ *    - UnaryFunction0DViewShape
+ *    - UnaryFunction0DVoid
  */
 template <class T>
-class /*LIB_VIEW_MAP_EXPORT*/ UnaryFunction0D
+class UnaryFunction0D
 {
 public:
 	T result;
-	PyObject *py_uf0D;
+	void *py_uf0D;
 
 	/*! The type of the value returned by the functor. */
 	typedef T ReturnedValueType;
@@ -103,6 +107,7 @@ public:
 	 *    An Interface0DIterator pointing onto the point at which we wish to evaluate the function.
 	 *  \return the result of the function of type T.
 	 */
+	/* FIXME move the implementation to Functions0D.cpp */
 	virtual int operator()(Interface0DIterator& iter)
 	{
 		return Director_BPy_UnaryFunction0D___call__(this, py_uf0D, iter);
@@ -143,7 +148,7 @@ namespace Functions0D {
 
 // GetXF0D
 /*! Returns the X 3D coordinate of an Interface0D. */
-class LIB_VIEW_MAP_EXPORT GetXF0D : public UnaryFunction0D<real>
+class GetXF0D : public UnaryFunction0D<double>
 {
 public:
 	/*! Returns the string "GetXF0D" */
@@ -162,7 +167,7 @@ public:
 
 // GetYF0D
 /*! Returns the Y 3D coordinate of an Interface0D. */
-class LIB_VIEW_MAP_EXPORT GetYF0D : public UnaryFunction0D<real>
+class GetYF0D : public UnaryFunction0D<double>
 {
 public:
 	/*! Returns the string "GetYF0D" */
@@ -181,7 +186,7 @@ public:
 
 // GetZF0D
 /*! Returns the Z 3D coordinate of an Interface0D. */
-class LIB_VIEW_MAP_EXPORT GetZF0D : public UnaryFunction0D<real>
+class GetZF0D : public UnaryFunction0D<double>
 {
 public:
 	/*! Returns the string "GetZF0D" */
@@ -200,7 +205,7 @@ public:
 
 // GetProjectedXF0D
 /*! Returns the X 3D projected coordinate of an Interface0D. */
-class LIB_VIEW_MAP_EXPORT GetProjectedXF0D : public UnaryFunction0D<real>
+class GetProjectedXF0D : public UnaryFunction0D<double>
 {
 public:
 	/*! Returns the string "GetProjectedXF0D" */
@@ -219,7 +224,7 @@ public:
 
 // GetProjectedYF0D
 /*! Returns the Y projected 3D coordinate of an Interface0D. */
-class LIB_VIEW_MAP_EXPORT GetProjectedYF0D : public UnaryFunction0D<real>
+class GetProjectedYF0D : public UnaryFunction0D<double>
 {
 public:
 	/*! Returns the string "GetProjectedYF0D" */
@@ -238,7 +243,7 @@ public:
 
 // GetProjectedZF0D
 /*! Returns the Z projected 3D coordinate of an Interface0D. */
-class LIB_VIEW_MAP_EXPORT GetProjectedZF0D : public UnaryFunction0D<real>
+class GetProjectedZF0D : public UnaryFunction0D<double>
 {
 public:
 	/*! Returns the string "GetProjectedZF0D" */
@@ -257,7 +262,7 @@ public:
 
 // GetCurvilinearAbscissaF0D
 /*! Returns the curvilinear abscissa of an Interface0D in the context of its 1D element. */
-class LIB_VIEW_MAP_EXPORT GetCurvilinearAbscissaF0D : public UnaryFunction0D<float>
+class GetCurvilinearAbscissaF0D : public UnaryFunction0D<float>
 {
 public:
 	/*! Returns the string "GetCurvilinearAbscissaF0D" */
@@ -276,7 +281,7 @@ public:
 
 // GetParameterF0D
 /*! Returns the parameter of an Interface0D in the context of its 1D element. */
-class LIB_VIEW_MAP_EXPORT GetParameterF0D : public UnaryFunction0D<float>
+class GetParameterF0D : public UnaryFunction0D<float>
 {
 public:
 	/*! Returns the string "GetCurvilinearAbscissaF0D" */
@@ -297,7 +302,7 @@ public:
 /*! Returns a Vec2r giving the 2D oriented tangent to the 1D element to which the Interface0DIterator& belongs to and
  *  evaluated at the Interface0D pointed by this Interface0DIterator&.
  */
-class LIB_VIEW_MAP_EXPORT VertexOrientation2DF0D : public UnaryFunction0D<Vec2f>
+class VertexOrientation2DF0D : public UnaryFunction0D<Vec2f>
 {
 public:
 	/*! Returns the string "VertexOrientation2DF0D" */
@@ -314,7 +319,7 @@ public:
 /*! Returns a Vec3r giving the 3D oriented tangent to the 1D element to which the Interface0DIterator& belongs to and
  *  evaluated at the Interface0D pointed by this Interface0DIterator&.
  */
-class LIB_VIEW_MAP_EXPORT VertexOrientation3DF0D : public UnaryFunction0D<Vec3f>
+class VertexOrientation3DF0D : public UnaryFunction0D<Vec3f>
 {
 public:
 	/*! Returns the string "VertexOrientation3DF0D" */
@@ -331,7 +336,7 @@ public:
 /*! Returns a real giving the 2D curvature (as an angle) of the 1D element to which the Interface0DIterator&
  *  belongs to and evaluated at the Interface0D pointed by this Interface0DIterator&.
  */
-class LIB_VIEW_MAP_EXPORT Curvature2DAngleF0D : public UnaryFunction0D<real>
+class Curvature2DAngleF0D : public UnaryFunction0D<double>
 {
 public:
 	/*! Returns the string "Curvature2DAngleF0D" */
@@ -349,7 +354,7 @@ public:
  *  This distance is evaluated in the camera space and normalized between 0 and 1. Therefore, if no object is occluded
  *  by the shape to which the Interface0D belongs to, 1 is returned.
  */
-class LIB_VIEW_MAP_EXPORT ZDiscontinuityF0D : public UnaryFunction0D<real>
+class ZDiscontinuityF0D : public UnaryFunction0D<double>
 {
 public:
 	/*! Returns the string "ZDiscontinuityF0D" */
@@ -366,7 +371,7 @@ public:
 /*! Returns a Vec2f giving the normalized 2D normal to the 1D element to which the Interface0DIterator& belongs to and
  *  evaluated at the Interface0D pointed by this Interface0DIterator&.
  */
-class LIB_VIEW_MAP_EXPORT Normal2DF0D : public UnaryFunction0D<Vec2f>
+class Normal2DF0D : public UnaryFunction0D<Vec2f>
 {
 public:
 	/*! Returns the string "Normal2DF0D" */
@@ -388,7 +393,7 @@ public:
  *  However, there still can be problematic cases, and the user willing to deal with this cases in a specific way
  *  should implement its own getMaterial functor.
  */
-class LIB_VIEW_MAP_EXPORT MaterialF0D : public UnaryFunction0D<FrsMaterial>
+class MaterialF0D : public UnaryFunction0D<FrsMaterial>
 {
 public:
 	/*! Returns the string "MaterialF0D" */
@@ -409,7 +414,7 @@ public:
  *  However, there still can be problematic cases, and the user willing to deal with this cases in a specific way
  *  should implement its own getShapeIdF0D functor.
  */
-class LIB_VIEW_MAP_EXPORT ShapeIdF0D : public UnaryFunction0D<Id>
+class ShapeIdF0D : public UnaryFunction0D<Id>
 {
 public:
 	/*! Returns the string "ShapeIdF0D" */
@@ -430,7 +435,7 @@ public:
 *  However, there still can be problematic cases, and the user willing to deal with this cases in a specific way
 *  should implement its own getQIF0D functor.
 */
-class LIB_VIEW_MAP_EXPORT QuantitativeInvisibilityF0D : public UnaryFunction0D<unsigned int>
+class QuantitativeInvisibilityF0D : public UnaryFunction0D<unsigned int>
 {
 public:
 	/*! Returns the string "QuantitativeInvisibilityF0D" */
@@ -445,7 +450,7 @@ public:
 
 // CurveNatureF0D
 /*! Returns the Nature::EdgeNature of the 1D element the Interface0DIterator& belongs to. */
-class LIB_VIEW_MAP_EXPORT CurveNatureF0D : public UnaryFunction0D<Nature::EdgeNature>
+class CurveNatureF0D : public UnaryFunction0D<Nature::EdgeNature>
 {
 public:
 	/*! Returns the string "QuantitativeInvisibilityF0D" */
@@ -460,7 +465,7 @@ public:
 
 // GetShapeF0D
 /*! Returns the ViewShape* containing the Interface0D */
-class LIB_VIEW_MAP_EXPORT GetShapeF0D : public UnaryFunction0D< ViewShape*>
+class GetShapeF0D : public UnaryFunction0D< ViewShape*>
 {
 public:
 	/*! Returns the string "GetShapeF0D" */
@@ -475,7 +480,7 @@ public:
 
 // GetOccludersF0D
 /*! Returns a vector containing the ViewShape* occluding the Interface0D */
-class LIB_VIEW_MAP_EXPORT GetOccludersF0D : public UnaryFunction0D< std::vector<ViewShape*> >
+class GetOccludersF0D : public UnaryFunction0D< std::vector<ViewShape*> >
 {
 public:
 	/*! Returns the string "GetOccludersF0D" */
@@ -490,7 +495,7 @@ public:
 
 // GetOccludeeF0D
 /*! Returns the ViewShape* "occluded" by the Interface0D */
-class LIB_VIEW_MAP_EXPORT GetOccludeeF0D: public UnaryFunction0D< ViewShape*>
+class GetOccludeeF0D: public UnaryFunction0D< ViewShape*>
 {
 public:
 	/*! Returns the string "GetOccludeeF0D" */
@@ -507,27 +512,21 @@ public:
 /////////////////////////// Internal ////////////////////////////
 
 // getFEdge
-LIB_VIEW_MAP_EXPORT
 FEdge *getFEdge(Interface0D& it1, Interface0D& it2);
 
 // getFEdges
-LIB_VIEW_MAP_EXPORT
 void getFEdges(Interface0DIterator& it, FEdge *&fe1, FEdge *&fe2);
 
 // getViewEdges
-LIB_VIEW_MAP_EXPORT
 void getViewEdges(Interface0DIterator& it, ViewEdge *&ve1, ViewEdge *&ve2);
 
 // getShapeF0D
-LIB_VIEW_MAP_EXPORT
 ViewShape *getShapeF0D(Interface0DIterator& it);
 
 // getOccludersF0D
-LIB_VIEW_MAP_EXPORT
 void getOccludersF0D(Interface0DIterator& it, std::set<ViewShape*>& oOccluders);
 
 // getOccludeeF0D
-LIB_VIEW_MAP_EXPORT
 ViewShape *getOccludeeF0D(Interface0DIterator& it);
 
 } // end of namespace Functions0D

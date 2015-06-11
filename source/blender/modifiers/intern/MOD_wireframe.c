@@ -20,23 +20,17 @@
 */
 
 /** \file blender/modifiers/intern/MOD_wireframe.c
-*  \ingroup modifiers
-*/
-
-#include "MEM_guardedalloc.h"
+ *  \ingroup modifiers
+ */
 
 #include "DNA_object_types.h"
-#include "DNA_meshdata_types.h"
 
-#include "BLI_math.h"
 #include "BLI_utildefines.h"
-#include "BLI_string.h"
 
 #include "BKE_cdderivedmesh.h"
 #include "BKE_deform.h"
 
 #include "MOD_modifiertypes.h"
-#include "MOD_util.h"
 
 #include "bmesh.h"
 #include "tools/bmesh_wireframe.h"
@@ -60,7 +54,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 
 static bool isDisabled(ModifierData *UNUSED(md), int UNUSED(useRenderParams))
 {
-	return 0;
+	return false;
 }
 
 static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *md)
@@ -75,12 +69,17 @@ static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *md)
 
 }
 
-static DerivedMesh *WireframeModifier_do( WireframeModifierData *wmd, Object *ob, DerivedMesh *dm)
+static bool dependsOnNormals(ModifierData *UNUSED(md))
+{
+	return true;
+}
+
+static DerivedMesh *WireframeModifier_do(WireframeModifierData *wmd, Object *ob, DerivedMesh *dm)
 {
 	DerivedMesh *result;
 	BMesh *bm;
 
-	const int defgrp_index = defgroup_name_index(ob, wmd->defgrp_name);;
+	const int defgrp_index = defgroup_name_index(ob, wmd->defgrp_name);
 
 	bm = DM_to_bmesh(dm, true);
 
@@ -135,7 +134,7 @@ ModifierTypeInfo modifierType_Wireframe = {
 	/* isDisabled */        isDisabled,
 	/* updateDepgraph */    NULL,
 	/* dependsOnTime */     NULL,
-	/* dependsOnNormals */	NULL,
+	/* dependsOnNormals */  dependsOnNormals,
 	/* foreachObjectLink */ NULL,
 	/* foreachIDLink */     NULL,
 	/* foreachTexLink */    NULL,

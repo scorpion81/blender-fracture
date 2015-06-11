@@ -23,7 +23,7 @@ import bpy
 from bpy.types import Operator
 
 DEG_TO_RAD = 0.017453292519943295 # pi/180.0
-SMALL_NUM = 0.000001  # see bug [#31598] why we dont have smaller values
+SMALL_NUM = 0.00000001  # see bug [#31598] why we dont have smaller values
 
 global USER_FILL_HOLES
 global USER_FILL_HOLES_QUALITY
@@ -232,17 +232,29 @@ def islandIntersectUvIsland(source, target, SourceOffset):
     return 0 # NO INTERSECTION
 
 
+def rotate_uvs(uv_points, angle):
+
+    if angle != 0.0:
+        mat = Matrix.Rotation(angle, 2)
+        for uv in uv_points:
+            uv[:] = mat * uv
+
+
 def optiRotateUvIsland(faces):
     uv_points = [uv for f in faces  for uv in f.uv]
     angle = geometry.box_fit_2d(uv_points)
 
     if angle != 0.0:
-        mat = Matrix.Rotation(angle, 2)
-        i = 0 # count the serialized uv/vectors
-        for f in faces:
-            for j, k in enumerate(range(i, len(f.v) + i)):
-                f.uv[j][:] = mat * uv_points[k]
-            i += len(f.v)
+        rotate_uvs(uv_points, angle)
+
+    # orient them vertically (could be an option)
+    minx, miny, maxx, maxy = boundsIsland(faces)
+    w, h = maxx - minx, maxy - miny
+    # use epsilon so we dont randomly rotate (almost) perfect squares.
+    if h + 0.00001 < w:
+        from math import pi
+        angle = pi / 2.0
+        rotate_uvs(uv_points, angle)
 
 
 # Takes an island list and tries to find concave, hollow areas to pack smaller islands into.
@@ -594,10 +606,10 @@ def packIslands(islandList):
             # recalc width and height
             w, h = maxx-minx, maxy-miny
 
-        if w < 0.00001 or h < 0.00001:
-            del islandList[islandIdx]
-            islandIdx -=1
-            continue
+        if w < SMALL_NUM:
+            w = SMALL_NUM
+        if h < SMALL_NUM:
+            h = SMALL_NUM
 
         """Save the offset to be applied later,
         we could apply to the UVs now and allign them to the bottom left hand area
@@ -622,7 +634,7 @@ def packIslands(islandList):
     # print 'Box Packing Time:', time.time() - time1
 
     #if len(pa	ckedLs) != len(islandList):
-    #	raise "Error packed boxes differs from original length"
+    #    raise ValueError("Packed boxes differs from original length")
 
     #print '\tWriting Packed Data to faces'
 #XXX	Window.DrawProgressBar(0.8, "Writing Packed Data to faces")
@@ -658,7 +670,7 @@ def VectoQuat(vec):
     return vec.to_track_quat('Z', 'X' if abs(vec.x) > 0.5 else 'Y').inverted()
 
 
-class thickface(object):
+class thickface:
     __slost__= "v", "uv", "no", "area", "edge_keys"
     def __init__(self, face, uv_layer, mesh_verts):
         self.v = [mesh_verts[i] for i in face.vertices]
@@ -696,6 +708,7 @@ def main(context,
          island_margin,
          projection_limit,
          user_area_weight,
+         use_aspect
          ):
     global USER_FILL_HOLES
     global USER_FILL_HOLES_QUALITY
@@ -707,7 +720,6 @@ def main(context,
 
     global dict_matrix
     dict_matrix = {}
-
 
     # Constants:
     # Takes a list of faces that make up a UV island and rotate
@@ -980,8 +992,30 @@ def main(context,
     print("Smart Projection time: %.2f" % (time.time() - time1))
     # Window.DrawProgressBar(0.9, "Smart Projections done, time: %.2f sec" % (time.time() - time1))
 
+    # aspect correction is only done in edit mode - and only smart unwrap supports currently
     if is_editmode:
         bpy.ops.object.mode_set(mode='EDIT')
+
+        if use_aspect:
+           import bmesh
+           aspect = context.scene.uvedit_aspect(context.active_object)
+           if aspect[0] > aspect[1]:
+               aspect[0] = aspect[1]/aspect[0];
+               aspect[1] = 1.0
+           else:
+               aspect[1] = aspect[0]/aspect[1];
+               aspect[0] = 1.0
+
+           bm = bmesh.from_edit_mesh(me)
+
+           uv_act = bm.loops.layers.uv.active
+
+           faces = [f for f in bm.faces if f.select]
+
+           for f in faces:
+               for l in f.loops:
+                   l[uv_act].uv[0] *= aspect[0]
+                   l[uv_act].uv[1] *= aspect[1]
 
     dict_matrix.clear()
 
@@ -1005,7 +1039,7 @@ def main(context,
     ]
 """
 
-from bpy.props import FloatProperty
+from bpy.props import FloatProperty, BoolProperty
 
 
 class SmartProject(Operator):
@@ -1034,6 +1068,11 @@ class SmartProject(Operator):
             min=0.0, max=1.0,
             default=0.0,
             )
+    use_aspect = BoolProperty(
+            name="Correct Aspect",
+            description="Map UVs taking image aspect ratio into account",
+            default=True
+            )
 
     @classmethod
     def poll(cls, context):
@@ -1044,6 +1083,7 @@ class SmartProject(Operator):
              self.island_margin,
              self.angle_limit,
              self.user_area_weight,
+             self.use_aspect
              )
         return {'FINISHED'}
 

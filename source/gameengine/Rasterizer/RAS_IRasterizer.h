@@ -53,6 +53,7 @@ using namespace std;
 class RAS_ICanvas;
 class RAS_IPolyMaterial;
 class RAS_MeshSlot;
+class RAS_ILightObject;
 
 typedef vector<unsigned short> KX_IndexArray;
 typedef vector<RAS_TexVert> KX_VertexArray;
@@ -195,7 +196,7 @@ public:
 	/**
 	 * BeginFrame is called at the start of each frame.
 	 */
-	virtual bool BeginFrame(int drawingmode, double time) = 0;
+	virtual bool BeginFrame(double time) = 0;
 
 	/**
 	 * ClearColorBuffer clears the color buffer.
@@ -470,9 +471,11 @@ public:
 
 	virtual void PopMatrix() = 0;
 
-	virtual void AddLight(struct RAS_LightObject *lightobject) = 0;
+	virtual RAS_ILightObject *CreateLight() = 0;
 
-	virtual void RemoveLight(struct RAS_LightObject *lightobject) = 0;
+	virtual void AddLight(RAS_ILightObject *lightobject) = 0;
+
+	virtual void RemoveLight(RAS_ILightObject *lightobject) = 0;
 
 	virtual void MotionBlur() = 0;
 

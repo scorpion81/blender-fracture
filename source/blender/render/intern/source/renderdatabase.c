@@ -66,27 +66,20 @@
 #include "BLI_math.h"
 #include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
-#include "BLI_ghash.h"
-#include "BLI_memarena.h"
 
 #include "DNA_material_types.h" 
-#include "DNA_mesh_types.h" 
 #include "DNA_meshdata_types.h" 
 #include "DNA_texture_types.h" 
 
 #include "BKE_customdata.h"
-#include "BKE_texture.h" 
 #include "BKE_DerivedMesh.h"
 
 #include "RE_render_ext.h"	/* externtex */
 
 #include "rayintersection.h"
 #include "rayobject.h"
-#include "renderpipeline.h"
 #include "render_types.h"
 #include "renderdatabase.h"
-#include "texture.h"
-#include "strand.h"
 #include "zbuf.h"
 
 /* ------------------------------------------------------------------------- */
@@ -961,6 +954,7 @@ HaloRen *RE_inithalo(Render *re, ObjectRen *obr, Material *ma,
                      const float vec[3], const float vec1[3],
                      const float *orco, float hasize, float vectsize, int seed)
 {
+	const bool skip_load_image = (re->r.scemode & R_NO_IMAGE_LOAD) != 0;
 	HaloRen *har;
 	MTex *mtex;
 	float tin, tr, tg, tb, ta;
@@ -996,10 +990,10 @@ HaloRen *RE_inithalo(Render *re, ObjectRen *obr, Material *ma,
 		xn=  har->xs - 0.5f*re->winx*(hoco1[0]/hoco1[3]);
 		yn=  har->ys - 0.5f*re->winy*(hoco1[1]/hoco1[3]);
 		if (xn==0.0f || (xn==0.0f && yn==0.0f)) zn= 0.0f;
-		else zn= atan2(yn, xn);
+		else zn = atan2f(yn, xn);
 
-		har->sin= sin(zn);
-		har->cos= cos(zn);
+		har->sin = sinf(zn);
+		har->cos = cosf(zn);
 		zn= len_v3v3(vec1, vec);
 
 		har->hasize= vectsize*zn + (1.0f-vectsize)*hasize;
@@ -1052,7 +1046,7 @@ HaloRen *RE_inithalo(Render *re, ObjectRen *obr, Material *ma,
 				}
 			}
 
-			externtex(mtex, texvec, &tin, &tr, &tg, &tb, &ta, 0, re->pool);
+			externtex(mtex, texvec, &tin, &tr, &tg, &tb, &ta, 0, re->pool, skip_load_image);
 
 			yn= tin*mtex->colfac;
 			//zn= tin*mtex->alphafac;
@@ -1072,6 +1066,7 @@ HaloRen *RE_inithalo(Render *re, ObjectRen *obr, Material *ma,
 	}
 
 	har->pool = re->pool;
+	har->skip_load_image = (re->r.scemode & R_NO_IMAGE_LOAD) != 0;
 
 	return har;
 }
@@ -1080,6 +1075,7 @@ HaloRen *RE_inithalo_particle(Render *re, ObjectRen *obr, DerivedMesh *dm, Mater
                               const float vec[3], const float vec1[3],
                               const float *orco, const float *uvco, float hasize, float vectsize, int seed, const float pa_co[3])
 {
+	const bool skip_load_image = (re->r.scemode & R_NO_IMAGE_LOAD) != 0;
 	HaloRen *har;
 	MTex *mtex;
 	float tin, tr, tg, tb, ta;
@@ -1116,10 +1112,10 @@ HaloRen *RE_inithalo_particle(Render *re, ObjectRen *obr, DerivedMesh *dm, Mater
 		xn=  har->xs - 0.5f*re->winx*(hoco1[0]/hoco1[3]);
 		yn=  har->ys - 0.5f*re->winy*(hoco1[1]/hoco1[3]);
 		if (xn==0.0f || (xn==0.0f && yn==0.0f)) zn= 0.0;
-		else zn= atan2(yn, xn);
+		else zn = atan2f(yn, xn);
 
-		har->sin= sin(zn);
-		har->cos= cos(zn);
+		har->sin = sinf(zn);
+		har->cos = cosf(zn);
 		zn= len_v3v3(vec1, vec)*0.5f;
 
 		har->hasize= vectsize*zn + (1.0f-vectsize)*hasize;
@@ -1183,7 +1179,7 @@ HaloRen *RE_inithalo_particle(Render *re, ObjectRen *obr, DerivedMesh *dm, Mater
 				copy_v3_v3(texvec, orco);
 			}
 
-			hasrgb = externtex(mtex, texvec, &tin, &tr, &tg, &tb, &ta, 0, re->pool);
+			hasrgb = externtex(mtex, texvec, &tin, &tr, &tg, &tb, &ta, 0, re->pool, skip_load_image);
 
 			//yn= tin*mtex->colfac;
 			//zn= tin*mtex->alphafac;
@@ -1227,6 +1223,7 @@ HaloRen *RE_inithalo_particle(Render *re, ObjectRen *obr, DerivedMesh *dm, Mater
 		}
 
 	har->pool = re->pool;
+	har->skip_load_image = (re->r.scemode & R_NO_IMAGE_LOAD) != 0;
 
 	return har;
 }
@@ -1234,13 +1231,13 @@ HaloRen *RE_inithalo_particle(Render *re, ObjectRen *obr, DerivedMesh *dm, Mater
 /* -------------------------- operations on entire database ----------------------- */
 
 /* ugly function for halos in panorama */
-static int panotestclip(Render *re, int do_pano, float v[4])
+static int panotestclip(Render *re, bool do_pano, float v[4])
 {
 	/* part size (ensure we run RE_parts_clamp first) */
 	BLI_assert(re->partx == min_ii(re->r.tilex, re->rectx));
 	BLI_assert(re->party == min_ii(re->r.tiley, re->recty));
 
-	if (do_pano == FALSE) {
+	if (do_pano == false) {
 		return testclip(v);
 	}
 	else {
@@ -1278,7 +1275,7 @@ static int panotestclip(Render *re, int do_pano, float v[4])
 
 void project_renderdata(Render *re,
                         void (*projectfunc)(const float *, float mat[4][4], float *),
-                        int do_pano, float xoffs, int UNUSED(do_buckets))
+                        bool do_pano, float xoffs, bool UNUSED(do_buckets))
 {
 	ObjectRen *obr;
 	HaloRen *har = NULL;
@@ -1288,8 +1285,8 @@ void project_renderdata(Render *re,
 	if (do_pano) {
 		float panophi= xoffs;
 		
-		re->panosi= sin(panophi);
-		re->panoco= cos(panophi);
+		re->panosi = sinf(panophi);
+		re->panoco = cosf(panophi);
 	}
 
 	for (obr=re->objecttable.first; obr; obr=obr->next) {
@@ -1398,7 +1395,7 @@ void RE_makeRenderInstances(Render *re)
 	int tot;
 
 	/* convert list of object instances to an array for index based lookup */
-	tot= BLI_countlist(&re->instancetable);
+	tot= BLI_listbase_count(&re->instancetable);
 	re->objectinstance= MEM_callocN(sizeof(ObjectInstanceRen)*tot, "ObjectInstance");
 	re->totinstance= tot;
 	newlist.first= newlist.last= NULL;

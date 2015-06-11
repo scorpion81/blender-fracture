@@ -37,9 +37,6 @@
 #  include <stddef.h>
 #  include <sys/types.h>
 #  include "mmap_win.h"
-#  define open _open
-#  define read _read
-#  define close _close
 #endif
 
 #include <stdlib.h>
@@ -61,7 +58,7 @@ static void imb_handle_alpha(ImBuf *ibuf, int flags, char colorspace[IM_MAX_SPAC
 	int alpha_flags;
 
 	if (colorspace) {
-		if (ibuf->rect) {
+		if (ibuf->rect != NULL && ibuf->rect_float == NULL) {
 			/* byte buffer is never internally converted to some standard space,
 			 * store pointer to it's color space descriptor instead
 			 */
@@ -215,7 +212,8 @@ ImBuf *IMB_loadiffname(const char *filepath, int flags, char colorspace[IM_MAX_S
 	imb_cache_filename(filepath_tx, filepath, flags);
 
 	file = BLI_open(filepath_tx, O_BINARY | O_RDONLY, 0);
-	if (file < 0) return NULL;
+	if (file == -1)
+		return NULL;
 
 	ibuf = IMB_loadifffile(file, filepath, flags, colorspace, filepath_tx);
 
@@ -242,7 +240,8 @@ ImBuf *IMB_testiffname(const char *filepath, int flags)
 	imb_cache_filename(filepath_tx, filepath, flags);
 
 	file = BLI_open(filepath_tx, O_BINARY | O_RDONLY, 0);
-	if (file < 0) return NULL;
+	if (file == -1)
+		return NULL;
 
 	ibuf = IMB_loadifffile(file, filepath, flags | IB_test | IB_multilayer, colorspace, filepath_tx);
 
@@ -285,7 +284,8 @@ void imb_loadtile(ImBuf *ibuf, int tx, int ty, unsigned int *rect)
 	int file;
 
 	file = BLI_open(ibuf->cachename, O_BINARY | O_RDONLY, 0);
-	if (file < 0) return;
+	if (file == -1)
+		return;
 
 	imb_loadtilefile(ibuf, file, tx, ty, rect);
 

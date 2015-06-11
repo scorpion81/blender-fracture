@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __DEVICE_TASK_H__
@@ -52,10 +52,10 @@ public:
 
 	DeviceTask(Type type = PATH_TRACE);
 
-	void split(list<DeviceTask>& tasks, int num);
-	void split_max_size(list<DeviceTask>& tasks, int max_size);
+	int get_subtask_count(int num, int max_size = 0);
+	void split(list<DeviceTask>& tasks, int num, int max_size = 0);
 
-	void update_progress(RenderTile &rtile);
+	void update_progress(RenderTile *rtile);
 
 	boost::function<bool(Device *device, RenderTile&)> acquire_tile;
 	boost::function<void(void)> update_progress_sample;

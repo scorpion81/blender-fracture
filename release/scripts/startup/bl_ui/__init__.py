@@ -21,9 +21,10 @@
 # note, properties_animviz is a helper module only.
 
 if "bpy" in locals():
-    from imp import reload as _reload
+    from importlib import reload
     for val in _modules_loaded.values():
-        _reload(val)
+        reload(val)
+    del reload
 _modules = [
     "properties_animviz",
     "properties_constraint",
@@ -43,6 +44,7 @@ _modules = [
     "properties_material",
     "properties_object",
     "properties_paint_common",
+    "properties_grease_pencil_common",
     "properties_particle",
     "properties_physics_cloth",
     "properties_physics_common",
@@ -99,10 +101,10 @@ def register():
     def addon_filter_items(self, context):
         import addon_utils
 
-        items = [('All', "All", "All Addons"),
-                 ('User', "User", "All Addons Installed by User"),
-                 ('Enabled', "Enabled", "All Enabled Addons"),
-                 ('Disabled', "Disabled", "All Disabled Addons"),
+        items = [('All', "All", "All Add-ons"),
+                 ('User', "User", "All Add-ons Installed by User"),
+                 ('Enabled', "Enabled", "All Enabled Add-ons"),
+                 ('Disabled', "Disabled", "All Disabled Add-ons"),
                  ]
 
         items_unique = set()
@@ -117,6 +119,7 @@ def register():
     WindowManager.addon_search = StringProperty(
             name="Search",
             description="Search within the selected filter",
+            options={'TEXTEDIT_UPDATE'},
             )
     WindowManager.addon_filter = EnumProperty(
             items=addon_filter_items,
@@ -195,7 +198,6 @@ class UI_UL_list(bpy.types.UIList):
         return a list mapping org_idx -> new_idx,
                or an empty list if no sorting has been done.
         """
-        neworder = [None] * len(items)
         _sort = [(idx, getattr(it, propname, "")) for idx, it in enumerate(items)]
         return cls.sort_items_helper(_sort, lambda e: e[1].lower())
 

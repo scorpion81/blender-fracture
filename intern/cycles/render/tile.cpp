@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include "tile.h"
@@ -200,9 +200,9 @@ list<Tile>::iterator TileManager::next_background_tile(int device, TileOrder til
 			
 			switch (tile_order) {
 				case TILE_CENTER:
-					distx = centx - (cur_tile.x + cur_tile.w);
-					disty = centy - (cur_tile.y + cur_tile.h);
-					distx = (int64_t) sqrt((double)distx * distx + disty * disty);
+					distx = centx - (cur_tile.x + (cur_tile.w / 2));
+					disty = centy - (cur_tile.y + (cur_tile.h / 2));
+					distx = (int64_t)sqrt((double)(distx * distx + disty * disty));
 					break;
 				case TILE_RIGHT_TO_LEFT:
 					distx = cordx - cur_tile.x;

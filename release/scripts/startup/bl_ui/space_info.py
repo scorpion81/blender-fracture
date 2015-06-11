@@ -57,14 +57,15 @@ class INFO_HT_header(Header):
         row = layout.row(align=True)
 
         if bpy.app.autoexec_fail is True and bpy.app.autoexec_fail_quiet is False:
-            layout.operator_context = 'EXEC_DEFAULT'
-            row.label("Auto-run disabled: %s" % bpy.app.autoexec_fail_message, icon='ERROR')
+            row.label("Auto-run disabled", icon='ERROR')
             if bpy.data.is_saved:
-                props = row.operator("wm.open_mainfile", icon='SCREEN_BACK', text="Reload Trusted")
-                props.filepath = bpy.data.filepath
+                props = row.operator("wm.revert_mainfile", icon='SCREEN_BACK', text="Reload Trusted")
                 props.use_scripts = True
 
             row.operator("script.autoexec_warn_clear", text="Ignore")
+
+            # include last so text doesn't push buttons out of the header
+            row.label(bpy.app.autoexec_fail_message)
             return
 
         row.operator("wm.splash", text="", icon='BLENDER', emboss=False)
@@ -124,16 +125,14 @@ class INFO_MT_file(Menu):
 
         layout.operator_context = 'INVOKE_AREA'
         layout.operator("wm.save_homefile", icon='SAVE_PREFS')
-        layout.operator_context = 'EXEC_AREA'
         layout.operator("wm.read_factory_settings", icon='LOAD_FACTORY')
 
         layout.separator()
 
         layout.operator_context = 'INVOKE_AREA'
-        layout.operator("wm.link_append", text="Link", icon='LINK_BLEND')
-        props = layout.operator("wm.link_append", text="Append", icon='APPEND_BLEND')
-        props.link = False
-        props.instance_groups = False
+        layout.operator("wm.link", text="Link", icon='LINK_BLEND')
+        layout.operator("wm.append", text="Append", icon='APPEND_BLEND')
+        layout.menu("INFO_MT_file_previews")
 
         layout.separator()
 
@@ -197,6 +196,15 @@ class INFO_MT_file_external_data(Menu):
         layout.operator("file.find_missing_files")
 
 
+class INFO_MT_file_previews(Menu):
+    bl_label = "Data Previews"
+
+    def draw(self, context):
+        layout = self.layout
+
+        layout.operator("wm.previews_ensure")
+
+
 class INFO_MT_game(Menu):
     bl_label = "Game"
 
@@ -224,18 +232,34 @@ class INFO_MT_render(Menu):
     def draw(self, context):
         layout = self.layout
 
-        layout.operator("render.render", text="Render Image", icon='RENDER_STILL')
-        layout.operator("render.render", text="Render Animation", icon='RENDER_ANIMATION').animation = True
+        layout.operator("render.render", text="Render Image", icon='RENDER_STILL').use_viewport = True
+        props = layout.operator("render.render", text="Render Animation", icon='RENDER_ANIMATION')
+        props.animation = True
+        props.use_viewport = True
 
         layout.separator()
 
         layout.operator("render.opengl", text="OpenGL Render Image")
         layout.operator("render.opengl", text="OpenGL Render Animation").animation = True
+        layout.menu("INFO_MT_opengl_render")
 
         layout.separator()
 
         layout.operator("render.view_show")
         layout.operator("render.play_rendered_anim", icon='PLAY')
+
+
+class INFO_MT_opengl_render(Menu):
+    bl_label = "OpenGL Render Options"
+
+    def draw(self, context):
+        layout = self.layout
+
+        rd = context.scene.render
+
+        layout.prop(rd, "use_antialiasing")
+        layout.prop_menu_enum(rd, "antialiasing_samples")
+        layout.prop_menu_enum(rd, "alpha_mode")
 
 
 class INFO_MT_window(Menu):
@@ -251,8 +275,8 @@ class INFO_MT_window(Menu):
 
         layout.separator()
 
-        layout.operator("screen.screenshot").full = True
-        layout.operator("screen.screencast").full = True
+        layout.operator("screen.screenshot")
+        layout.operator("screen.screencast")
 
         if sys.platform[:3] == "win":
             layout.separator()
@@ -265,8 +289,8 @@ class INFO_MT_help(Menu):
     def draw(self, context):
         layout = self.layout
 
-        layout.operator("wm.url_open", text="Manual", icon='HELP').url = "http://wiki.blender.org/index.php/Doc:2.6/Manual"
-        layout.operator("wm.url_open", text="Release Log", icon='URL').url = "http://wiki.blender.org/index.php/Dev:Ref/Release_Notes/2.70"
+        layout.operator("wm.url_open", text="Manual", icon='HELP').url = "http://www.blender.org/manual"
+        layout.operator("wm.url_open", text="Release Log", icon='URL').url = "http://wiki.blender.org/index.php/Dev:Ref/Release_Notes/%d.%d" % bpy.app.version[:2]
         layout.separator()
 
         layout.operator("wm.url_open", text="Blender Website", icon='URL').url = "http://www.blender.org"

@@ -14,6 +14,21 @@ import sys
 Variables = SCons.Variables
 BoolVariable = SCons.Variables.BoolVariable
 
+def get_command_output(*popenargs, **kwargs):
+    if hasattr(subprocess, "check_output"):
+        return subprocess.check_output(*popenargs, **kwargs)
+    if 'stdout' in kwargs:
+        raise ValueError('stdout argument not allowed, it will be overridden.')
+    process = subprocess.Popen(stdout=subprocess.PIPE, *popenargs, **kwargs)
+    output, unused_err = process.communicate()
+    retcode = process.poll()
+    if retcode:
+        cmd = kwargs.get("args")
+        if cmd is None:
+            cmd = popenargs[0]
+        raise subprocess.CalledProcessError(retcode, cmd)
+    return output
+
 def get_version():
     import re
 
@@ -56,7 +71,14 @@ def get_version():
     raise Exception("%s: missing version string" % fname)
 
 def get_hash():
-    build_hash = os.popen('git rev-parse --short HEAD').read().strip()
+    try:
+        build_hash = get_command_output(['git', 'rev-parse', '--short', 'HEAD']).strip()
+    except OSError:
+        build_hash = None
+        print("WARNING: could not use git to retrieve current Blender repository hash...")
+    except subprocess.CalledProcessError as e:
+        build_hash = None
+        print("WARNING: git errored while retrieving current Blender repository hash (%d)..." % e.returncode)
     if build_hash == '' or build_hash == None:
         build_hash = 'UNKNOWN'
 
@@ -86,7 +108,7 @@ def validate_arguments(args, bc):
     opts_list = [
             'WITH_BF_FREESTYLE', 'WITH_BF_PYTHON', 'WITH_BF_PYTHON_SAFETY', 'WITH_BF_PYTHON_SECURITY', 'BF_PYTHON', 'BF_PYTHON_VERSION', 'BF_PYTHON_INC', 'BF_PYTHON_BINARY', 'BF_PYTHON_LIB', 'BF_PYTHON_LIBPATH', 'BF_PYTHON_LIBPATH_ARCH', 'WITH_BF_STATICPYTHON', 'WITH_OSX_STATICPYTHON', 'BF_PYTHON_LIB_STATIC', 'BF_PYTHON_DLL', 'BF_PYTHON_ABI_FLAGS',
             'WITH_BF_OPENAL', 'BF_OPENAL', 'BF_OPENAL_INC', 'BF_OPENAL_LIB', 'BF_OPENAL_LIBPATH', 'WITH_BF_STATICOPENAL', 'BF_OPENAL_LIB_STATIC',
-            'WITH_BF_SDL', 'BF_SDL', 'BF_SDL_INC', 'BF_SDL_LIB', 'BF_SDL_LIBPATH',
+            'WITH_BF_SDL', 'BF_SDL', 'BF_SDL_INC', 'BF_SDL_LIB', 'BF_SDL_LIBPATH', 'WITH_BF_SDL_DYNLOAD',
             'WITH_BF_JACK', 'BF_JACK', 'BF_JACK_INC', 'BF_JACK_LIB', 'BF_JACK_LIBPATH', 'WITH_BF_JACK_DYNLOAD',
             'WITH_BF_SNDFILE', 'BF_SNDFILE', 'BF_SNDFILE_INC', 'BF_SNDFILE_LIB', 'BF_SNDFILE_LIBPATH', 'WITH_BF_STATICSNDFILE', 'BF_SNDFILE_LIB_STATIC',
             'BF_PTHREADS', 'BF_PTHREADS_INC', 'BF_PTHREADS_LIB', 'BF_PTHREADS_LIBPATH',
@@ -114,6 +136,9 @@ def validate_arguments(args, bc):
             'WITH_BF_QUICKTIME', 'BF_QUICKTIME', 'BF_QUICKTIME_INC', 'BF_QUICKTIME_LIB', 'BF_QUICKTIME_LIBPATH',
             'WITH_BF_FFTW3', 'BF_FFTW3', 'BF_FFTW3_INC', 'BF_FFTW3_LIB', 'BF_FFTW3_LIBPATH', 'WITH_BF_STATICFFTW3', 'BF_FFTW3_LIB_STATIC',
             'WITH_BF_STATICOPENGL', 'BF_OPENGL', 'BF_OPENGL_INC', 'BF_OPENGL_LIB', 'BF_OPENGL_LIBPATH', 'BF_OPENGL_LIB_STATIC',
+            'WITH_BF_EGL', 'WITH_BF_GLEW_ES', 'BF_GLEW_INC', 'WITH_BF_GL_PROFILE_CORE', 'WITH_BF_GL_PROFILE_COMPAT', 'WITH_BF_GL_PROFILE_ES20',
+            'WITH_BF_GLEW_MX', 'WITH_BF_GL_EGL', 'WITH_BF_GL_ANGLE',
+
             'WITH_BF_COLLADA', 'BF_COLLADA', 'BF_COLLADA_INC', 'BF_COLLADA_LIB', 'BF_OPENCOLLADA', 'BF_OPENCOLLADA_INC', 'BF_OPENCOLLADA_LIB', 'BF_OPENCOLLADA_LIBPATH', 'BF_PCRE', 'BF_PCRE_LIB', 'BF_PCRE_LIBPATH', 'BF_EXPAT', 'BF_EXPAT_LIB', 'BF_EXPAT_LIBPATH',
             'WITH_BF_STATICOPENCOLLADA', 'BF_OPENCOLLADA_LIB_STATIC',
             'WITH_BF_PLAYER',
@@ -124,7 +149,8 @@ def validate_arguments(args, bc):
             'BF_CXX', 'WITH_BF_STATICCXX', 'BF_CXX_LIB_STATIC',
             'BF_TWEAK_MODE', 'BF_SPLIT_SRC',
             'WITHOUT_BF_INSTALL',
-            'WITHOUT_BF_PYTHON_INSTALL', 'WITHOUT_BF_PYTHON_UNPACK', 'WITH_BF_PYTHON_INSTALL_NUMPY',
+            'WITHOUT_BF_PYTHON_INSTALL', 'WITHOUT_BF_PYTHON_UNPACK',
+            'WITH_BF_PYTHON_INSTALL_NUMPY', 'WITH_BF_PYTHON_INSTALL_REQUESTS',
             'WITHOUT_BF_OVERWRITE_INSTALL',
             'WITH_BF_OPENMP', 'BF_OPENMP', 'BF_OPENMP_LIBPATH', 'WITH_BF_STATICOPENMP', 'BF_OPENMP_STATIC_STATIC',
             'WITH_GHOST_SDL',
@@ -144,16 +170,18 @@ def validate_arguments(args, bc):
             'WITH_BF_BOOLEAN',
             'WITH_BF_REMESH',
             'WITH_BF_OCEANSIM',
+            'WITH_BF_VORONOI',
             'WITH_BF_SMOKE',
             'WITH_BF_CXX_GUARDEDALLOC',
             'WITH_BF_JEMALLOC', 'WITH_BF_STATICJEMALLOC', 'BF_JEMALLOC', 'BF_JEMALLOC_INC', 'BF_JEMALLOC_LIBPATH', 'BF_JEMALLOC_LIB', 'BF_JEMALLOC_LIB_STATIC',
             'BUILDBOT_BRANCH',
+            'WITH_BF_IME',
             'WITH_BF_3DMOUSE', 'WITH_BF_STATIC3DMOUSE', 'BF_3DMOUSE', 'BF_3DMOUSE_INC', 'BF_3DMOUSE_LIB', 'BF_3DMOUSE_LIBPATH', 'BF_3DMOUSE_LIB_STATIC',
             'WITH_BF_CYCLES', 'WITH_BF_CYCLES_CUDA_BINARIES', 'BF_CYCLES_CUDA_NVCC', 'BF_CYCLES_CUDA_NVCC', 'WITH_BF_CYCLES_CUDA_THREADED_COMPILE', 'BF_CYCLES_CUDA_ENV',
             'WITH_BF_OIIO', 'WITH_BF_STATICOIIO', 'BF_OIIO', 'BF_OIIO_INC', 'BF_OIIO_LIB', 'BF_OIIO_LIB_STATIC', 'BF_OIIO_LIBPATH',
             'WITH_BF_OCIO', 'WITH_BF_STATICOCIO', 'BF_OCIO', 'BF_OCIO_INC', 'BF_OCIO_LIB', 'BF_OCIO_LIB_STATIC', 'BF_OCIO_LIBPATH',
             'WITH_BF_BOOST', 'WITH_BF_STATICBOOST', 'BF_BOOST', 'BF_BOOST_INC', 'BF_BOOST_LIB', 'BF_BOOST_LIB_INTERNATIONAL', 'BF_BOOST_LIB_STATIC', 'BF_BOOST_LIBPATH',
-            'WITH_BF_LIBMV',
+            'WITH_BF_LIBMV', 'WITH_BF_LIBMV_SCHUR_SPECIALIZATIONS',
             'WITH_BF_CYCLES_OSL', 'WITH_BF_STATICOSL', 'BF_OSL', 'BF_OSL_INC', 'BF_OSL_LIB', 'BF_OSL_LIBPATH', 'BF_OSL_LIB_STATIC', 'BF_OSL_COMPILER',
             'WITH_BF_LLVM', 'WITH_BF_STATICLLVM', 'BF_LLVM', 'BF_LLVM_LIB', 'BF_LLVM_LIBPATH', 'BF_LLVM_LIB_STATIC', 'BF_PROGRAM_LINKFLAGS'
             ]
@@ -162,6 +190,7 @@ def validate_arguments(args, bc):
     opts_list_split = [
             'BF_PYTHON_LINKFLAGS',
             'BF_OPENGL_LINKFLAGS',
+            'BF_GL_DEFINITIONS',
             'CFLAGS', 'CCFLAGS', 'CXXFLAGS', 'CPPFLAGS',
             'REL_CFLAGS', 'REL_CCFLAGS', 'REL_CXXFLAGS',
             'BGE_CXXFLAGS',
@@ -169,7 +198,8 @@ def validate_arguments(args, bc):
             'BF_DEBUG_CFLAGS', 'BF_DEBUG_CCFLAGS', 'BF_DEBUG_CXXFLAGS',
             'C_WARN', 'CC_WARN', 'CXX_WARN',
             'LLIBS', 'PLATFORM_LINKFLAGS', 'MACOSX_ARCHITECTURE', 'MACOSX_SDK', 'XCODE_CUR_VER', 'C_COMPILER_ID',
-            'BF_CYCLES_CUDA_BINARIES_ARCH', 'BF_PROGRAM_LINKFLAGS', 'MACOSX_DEPLOYMENT_TARGET'
+            'BF_CYCLES_CUDA_BINARIES_ARCH', 'BF_PROGRAM_LINKFLAGS', 'MACOSX_DEPLOYMENT_TARGET',
+            'WITH_BF_CYCLES_DEBUG', 'WITH_BF_CYCLES_LOGGING'
     ]
 
 
@@ -258,6 +288,7 @@ def read_opts(env, cfg, args):
         (BoolVariable('WITH_BF_REMESH', 'Build with remesh modifier', True)),
         (BoolVariable('WITH_BF_OCEANSIM', 'Build with ocean simulation', False)),
         (BoolVariable('WITH_BF_SMOKE', 'Build with smoke simulation', True)),
+        (BoolVariable('WITH_BF_VORONOI', 'Build with voronoi cells in explo modifier', True)),
         ('BF_PROFILE_FLAGS', 'Profiling compiler flags', ''),
         (BoolVariable('WITH_BF_OPENAL', 'Use OpenAL if true', False)),
         ('BF_OPENAL', 'Base path for OpenAL', ''),
@@ -272,6 +303,7 @@ def read_opts(env, cfg, args):
         ('BF_SDL_INC', 'SDL include path', ''),
         ('BF_SDL_LIB', 'SDL library', ''),
         ('BF_SDL_LIBPATH', 'SDL library path', ''),
+        (BoolVariable('WITH_BF_SDL_DYNLOAD', 'Enable runtime dynamic SDL libraries loading (works only on Linux)', False)),
 
         (BoolVariable('WITH_BF_JACK', 'Enable jack support if true', True)),
         ('BF_JACK', 'jack base path', ''),
@@ -438,6 +470,18 @@ def read_opts(env, cfg, args):
         ('BF_OPENGL_LIB_STATIC', 'OpenGL static libraries', ''),
         ('BF_OPENGL_LINKFLAGS', 'OpenGL link flags', ''),
 
+        (BoolVariable('WITH_BF_GLEW_MX', '', False)),
+        (BoolVariable('WITH_BF_GLEW_ES', '', False)),
+        (BoolVariable('WITH_BF_GL_EGL', '', False)),
+        (BoolVariable('WITH_BF_GL_PROFILE_COMPAT', '', True)),
+        (BoolVariable('WITH_BF_GL_PROFILE_CORE', '', False)),
+        (BoolVariable('WITH_BF_GL_PROFILE_ES20', '', False)),
+        (BoolVariable('WITH_BF_GL_ANGLE', '', False)),
+        ('BF_GL_DEFINITIONS', '', []),
+        ('BF_GLEW_INC', '', ''),
+    ) # end of opts.AddVariables()
+
+    localopts.AddVariables(
         (BoolVariable('WITH_BF_COLLADA', 'Build COLLADA import/export module if true', False)),
         (BoolVariable('WITH_BF_STATICOPENCOLLADA', 'Staticly link to OpenCollada', False)),
         ('BF_COLLADA', 'COLLADA base path', ''),
@@ -465,6 +509,8 @@ def read_opts(env, cfg, args):
 
         (BoolVariable('WITH_BF_PLAYER', 'Build blenderplayer if true', False)),
         (BoolVariable('WITH_BF_NOBLENDER', 'Do not build blender if true', False)),
+
+        (BoolVariable('WITH_BF_IME', 'Enable Input Method Editor (IME) for complex Asian character input', False)),
 
         (BoolVariable('WITH_BF_3DMOUSE', 'Build blender with support of 3D mouses', False)),
         (BoolVariable('WITH_BF_STATIC3DMOUSE', 'Staticly link to 3d mouse library', False)),
@@ -520,7 +566,8 @@ def read_opts(env, cfg, args):
         (BoolVariable('BF_SPLIT_SRC', 'Split src lib into several chunks if true', False)),
         (BoolVariable('WITHOUT_BF_INSTALL', 'dont install if true', False)),
         (BoolVariable('WITHOUT_BF_PYTHON_INSTALL', 'dont install Python modules if true', False)),
-        (BoolVariable('WITH_BF_PYTHON_INSTALL_NUMPY', 'install Python mumpy module', False)),
+        (BoolVariable('WITH_BF_PYTHON_INSTALL_NUMPY', 'install Python numpy module', False)),
+        (BoolVariable('WITH_BF_PYTHON_INSTALL_REQUESTS', 'install Python requests module', False)),
         (BoolVariable('WITHOUT_BF_PYTHON_UNPACK', 'dont remove and unpack Python modules everytime if true', False)),
         (BoolVariable('WITHOUT_BF_OVERWRITE_INSTALL', 'dont remove existing files before breating the new install directory (set to False when making packages for others)', False)),
         (BoolVariable('BF_FANCY', 'Enable fancy output if true', True)),
@@ -532,6 +579,7 @@ def read_opts(env, cfg, args):
         (BoolVariable('WITH_BF_LZMA', 'Enable best LZMA pointcache compression', True)),
 
         (BoolVariable('WITH_BF_LIBMV', 'Enable libmv structure from motion library', True)),
+        (BoolVariable('WITH_BF_LIBMV_SCHUR_SPECIALIZATIONS', 'Enable fixed-size schur specializations', True)),
 
         (BoolVariable('WITH_BF_COMPOSITOR', 'Enable the tile based nodal compositor', True)),
     ) # end of opts.AddOptions()
@@ -561,6 +609,8 @@ def read_opts(env, cfg, args):
         ('BF_CYCLES_CUDA_NVCC', 'CUDA nvcc compiler path', ''),
         ('BF_CYCLES_CUDA_ENV', 'preset environement nvcc will execute in', ''),
         ('BF_CYCLES_CUDA_BINARIES_ARCH', 'CUDA architectures to compile binaries for', []),
+        (BoolVariable('WITH_BF_CYCLES_DEBUG', 'Build Cycles engine with extra debugging capabilities', False)),
+        (BoolVariable('WITH_BF_CYCLES_LOGGING', 'Build Cycles engine with logging support', True)),
 
         (BoolVariable('WITH_BF_OIIO', 'Build with OpenImageIO', False)),
         (BoolVariable('WITH_BF_STATICOIIO', 'Statically link to OpenImageIO', False)),
@@ -678,10 +728,6 @@ def buildslave(target=None, source=None, env=None):
     if platform == 'darwin':
         platform = 'OSX-' + env['MACOSX_DEPLOYMENT_TARGET'] + '-' + env['MACOSX_ARCHITECTURE']
 
-    if env['MSVC_VERSION'] == '11.0':
-        platform = env['OURPLATFORM'] + '11'
-    if env['MSVC_VERSION'] == '12.0':
-        platform = env['OURPLATFORM'] + '12'
 
     branch = env['BUILDBOT_BRANCH']
 

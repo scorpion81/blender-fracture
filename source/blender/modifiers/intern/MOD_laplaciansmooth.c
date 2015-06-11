@@ -34,20 +34,13 @@
 
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
-#include "BLI_string.h"
 
 #include "MEM_guardedalloc.h"
 
 #include "BKE_cdderivedmesh.h"
 #include "BKE_deform.h"
-#include "BKE_displist.h"
-#include "BKE_mesh.h"
 #include "BKE_modifier.h"
-#include "BKE_object.h"
-#include "BKE_particle.h"
-#include "BKE_editmesh.h"
 
-#include "MOD_modifiertypes.h"
 #include "MOD_util.h"
 
 #ifdef WITH_OPENNL
@@ -88,7 +81,6 @@ static CustomDataMask required_data_mask(Object *ob, ModifierData *md);
 static bool is_disabled(ModifierData *md, int useRenderParams);
 static float average_area_quad_v3(float *v1, float *v2, float *v3, float *v4);
 static float compute_volume(float (*vertexCos)[3], MFace *mfaces, int numFaces);
-static float cotan_weight(float *v1, float *v2, float *v3);
 static LaplacianSystem *init_laplacian_system(int a_numEdges, int a_numFaces, int a_numVerts);
 static void copy_data(ModifierData *md, ModifierData *target);
 static void delete_laplacian_system(LaplacianSystem *sys);
@@ -202,22 +194,6 @@ static float average_area_quad_v3(float *v1, float *v2, float *v3, float *v4)
 	float areaq;
 	areaq = area_tri_v3(v1, v2, v3) + area_tri_v3(v1, v2, v4) + area_tri_v3(v1, v3, v4);
 	return areaq / 2.0f;
-}
-
-static float cotan_weight(float *v1, float *v2, float *v3)
-{
-	float a[3], b[3], c[3], clen;
-
-	sub_v3_v3v3(a, v2, v1);
-	sub_v3_v3v3(b, v3, v1);
-	cross_v3_v3v3(c, a, b);
-
-	clen = len_v3(c);
-
-	if (clen == 0.0f)
-		return 0.0f;
-
-	return dot_v3v3(a, b) / clen;
 }
 
 static float compute_volume(float (*vertexCos)[3], MFace *mfaces, int numFaces)
@@ -367,17 +343,17 @@ static void init_laplacian_matrix(LaplacianSystem *sys)
 				v3 = sys->vertexCos[idv3];
 				v4 = sys->vertexCos[idv4];
 
-				w2 = cotan_weight(v4, v1, v2) + cotan_weight(v3, v1, v2);
-				w3 = cotan_weight(v2, v3, v1) + cotan_weight(v4, v1, v3);
-				w4 = cotan_weight(v2, v4, v1) + cotan_weight(v3, v4, v1);
+				w2 = cotangent_tri_weight_v3(v4, v1, v2) + cotangent_tri_weight_v3(v3, v1, v2);
+				w3 = cotangent_tri_weight_v3(v2, v3, v1) + cotangent_tri_weight_v3(v4, v1, v3);
+				w4 = cotangent_tri_weight_v3(v2, v4, v1) + cotangent_tri_weight_v3(v3, v4, v1);
 
 				sys->vweights[idv1] += (w2 + w3 + w4) / 4.0f;
 			}
 		}
 		else {
-			w1 = cotan_weight(v1, v2, v3) / 2.0f;
-			w2 = cotan_weight(v2, v3, v1) / 2.0f;
-			w3 = cotan_weight(v3, v1, v2) / 2.0f;
+			w1 = cotangent_tri_weight_v3(v1, v2, v3) / 2.0f;
+			w2 = cotangent_tri_weight_v3(v2, v3, v1) / 2.0f;
+			w3 = cotangent_tri_weight_v3(v3, v1, v2) / 2.0f;
 
 			sys->fweights[i][0] = sys->fweights[i][0] + w1;
 			sys->fweights[i][1] = sys->fweights[i][1] + w2;
@@ -430,9 +406,9 @@ static void fill_laplacian_matrix(LaplacianSystem *sys)
 				v3 = sys->vertexCos[idv3];
 				v4 = sys->vertexCos[idv4];
 
-				w2 = cotan_weight(v4, v1, v2) + cotan_weight(v3, v1, v2);
-				w3 = cotan_weight(v2, v3, v1) + cotan_weight(v4, v1, v3);
-				w4 = cotan_weight(v2, v4, v1) + cotan_weight(v3, v4, v1);
+				w2 = cotangent_tri_weight_v3(v4, v1, v2) + cotangent_tri_weight_v3(v3, v1, v2);
+				w3 = cotangent_tri_weight_v3(v2, v3, v1) + cotangent_tri_weight_v3(v4, v1, v3);
+				w4 = cotangent_tri_weight_v3(v2, v4, v1) + cotangent_tri_weight_v3(v3, v4, v1);
 
 				w2 = w2 / 4.0f;
 				w3 = w3 / 4.0f;
@@ -490,13 +466,13 @@ static void validate_solution(LaplacianSystem *sys, short flag, float lambda, fl
 		if (sys->zerola[i] == 0) {
 			lam = sys->numNeEd[i] == sys->numNeFa[i] ? (lambda >= 0.0f ? 1.0f : -1.0f) : (lambda_border >= 0.0f ? 1.0f : -1.0f);
 			if (flag & MOD_LAPLACIANSMOOTH_X) {
-				sys->vertexCos[i][0] += lam * (nlGetVariable(0, i) - sys->vertexCos[i][0]);
+				sys->vertexCos[i][0] += lam * ((float)nlGetVariable(0, i) - sys->vertexCos[i][0]);
 			}
 			if (flag & MOD_LAPLACIANSMOOTH_Y) {
-				sys->vertexCos[i][1] += lam * (nlGetVariable(1, i) - sys->vertexCos[i][1]);
+				sys->vertexCos[i][1] += lam * ((float)nlGetVariable(1, i) - sys->vertexCos[i][1]);
 			}
 			if (flag & MOD_LAPLACIANSMOOTH_Z) {
-				sys->vertexCos[i][2] += lam * (nlGetVariable(2, i) - sys->vertexCos[i][2]);
+				sys->vertexCos[i][2] += lam * ((float)nlGetVariable(2, i) - sys->vertexCos[i][2]);
 			}
 		}
 	}
@@ -636,7 +612,7 @@ static void laplaciansmoothModifier_do(
         LaplacianSmoothModifierData *smd, Object *ob, DerivedMesh *dm,
         float (*vertexCos)[3], int numVerts)
 {
-	(void)smd, (void)ob, (void)dm, (void)vertexCos, (void)numVerts;
+	UNUSED_VARS(smd, ob, dm, vertexCos, numVerts);
 }
 #endif  /* WITH_OPENNL */
 

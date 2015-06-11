@@ -27,8 +27,6 @@
 
 #include "../node_shader_util.h"
 
-#include "IMB_colormanagement.h"
-
 /* **************** OUTPUT ******************** */
 
 static bNodeSocketTemplate sh_node_tex_image_in[] = {
@@ -37,8 +35,8 @@ static bNodeSocketTemplate sh_node_tex_image_in[] = {
 };
 
 static bNodeSocketTemplate sh_node_tex_image_out[] = {
-	{	SOCK_RGBA, 0, N_("Color"),		0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_FLOAT, 0, N_("Alpha"),		0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, N_("Color"),		0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, PROP_NONE, SOCK_NO_INTERNAL_LINK},
+	{	SOCK_FLOAT, 0, N_("Alpha"),		0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, PROP_NONE, SOCK_NO_INTERNAL_LINK},
 	{	-1, 0, ""	}
 };
 

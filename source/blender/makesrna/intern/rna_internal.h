@@ -146,7 +146,6 @@ void RNA_def_curve(struct BlenderRNA *brna);
 void RNA_def_dynamic_paint(struct BlenderRNA *brna);
 void RNA_def_fluidsim(struct BlenderRNA *brna);
 void RNA_def_fcurve(struct BlenderRNA *brna);
-void RNA_def_fracture(struct BlenderRNA *brna);
 void RNA_def_gameproperty(struct BlenderRNA *brna);
 void RNA_def_gpencil(struct BlenderRNA *brna);
 void RNA_def_group(struct BlenderRNA *brna);
@@ -202,11 +201,13 @@ void rna_def_motionpath_common(struct StructRNA *srna);
 void rna_def_texmat_common(struct StructRNA *srna, const char *texspace_editable);
 void rna_def_mtex_common(struct BlenderRNA *brna, struct StructRNA *srna, const char *begin, const char *activeget,
                          const char *activeset, const char *activeeditable, const char *structname,
-                         const char *structname_slots, const char *update);
+                         const char *structname_slots, const char *update, const char *update_index);
+void rna_def_texpaint_slots(struct BlenderRNA *brna, struct StructRNA *srna);
 void rna_def_render_layer_common(struct StructRNA *srna, int scene);
 
 void rna_def_actionbone_group_common(struct StructRNA *srna, int update_flag, const char *update_cb);
 void rna_ActionGroup_colorset_set(struct PointerRNA *ptr, int value);
+int rna_ActionGroup_is_custom_colorset_get(struct PointerRNA *ptr);
 
 void rna_ID_name_get(struct PointerRNA *ptr, char *value);
 int rna_ID_name_length(struct PointerRNA *ptr);
@@ -258,6 +259,7 @@ void RNA_api_armature_edit_bone(StructRNA *srna);
 void RNA_api_bone(StructRNA *srna);
 void RNA_api_camera(StructRNA *srna);
 void RNA_api_curve(StructRNA *srna);
+void RNA_api_fcurves(StructRNA *srna);
 void RNA_api_drivers(StructRNA *srna);
 void RNA_api_image(struct StructRNA *srna);
 void RNA_api_lattice(struct StructRNA *srna);
@@ -286,6 +288,7 @@ void RNA_api_ui_layout(struct StructRNA *srna);
 void RNA_api_window(struct StructRNA *srna);
 void RNA_api_wm(struct StructRNA *srna);
 void RNA_api_space_node(struct StructRNA *srna);
+void RNA_api_space_text(struct StructRNA *srna);
 void RNA_api_region_view3d(struct StructRNA *srna);
 void RNA_api_sensor(struct StructRNA *srna);
 void RNA_api_controller(struct StructRNA *srna);
@@ -294,6 +297,8 @@ void RNA_api_texture(struct StructRNA *srna);
 void RNA_api_environment_map(struct StructRNA *srna);
 void RNA_api_sequences(BlenderRNA *brna, PropertyRNA *cprop);
 void RNA_api_sequence_elements(BlenderRNA *brna, PropertyRNA *cprop);
+void RNA_api_sound(struct StructRNA *srna);
+void RNA_api_vfont(struct StructRNA *srna);
 
 /* main collection functions */
 void RNA_def_main_cameras(BlenderRNA *brna, PropertyRNA *cprop);
@@ -356,34 +361,11 @@ int rna_builtin_properties_lookup_string(PointerRNA *ptr, const char *key, Point
 
 /* Iterators */
 
-typedef int (*IteratorSkipFunc)(struct CollectionPropertyIterator *iter, void *data);
-
-typedef struct ListBaseIterator {
-	Link *link;
-	int flag;
-	IteratorSkipFunc skip;
-} ListBaseIterator;
-
 void rna_iterator_listbase_begin(struct CollectionPropertyIterator *iter, struct ListBase *lb, IteratorSkipFunc skip);
 void rna_iterator_listbase_next(struct CollectionPropertyIterator *iter);
 void *rna_iterator_listbase_get(struct CollectionPropertyIterator *iter);
 void rna_iterator_listbase_end(struct CollectionPropertyIterator *iter);
 PointerRNA rna_listbase_lookup_int(PointerRNA *ptr, StructRNA *type, struct ListBase *lb, int index);
-
-typedef struct ArrayIterator {
-	char *ptr;
-	char *endptr;  /* past the last valid pointer, only for comparisons, ignores skipped values */
-	void *free_ptr; /* will be freed if set */
-	int itemsize;
-
-	/* array length with no skip functions applied, take care not to compare against index from animsys
-	 * or python indices */
-	int length;
-
-	/* optional skip function, when set the array as viewed by rna can contain only a subset of the members.
-	 * this changes indices so quick array index lookups are not possible when skip function is used. */
-	IteratorSkipFunc skip;
-} ArrayIterator;
 
 void rna_iterator_array_begin(struct CollectionPropertyIterator *iter, void *ptr, int itemsize, int length,
                               bool free_ptr, IteratorSkipFunc skip);
@@ -434,6 +416,26 @@ void rna_RenderPass_rect_set(PointerRNA *ptr, const float *values);
 #  ifdef __GNUC__
 #    pragma GCC diagnostic ignored "-Wredundant-decls"
 #  endif
+#endif
+
+/* C11 for compile time range checks */
+#if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L)
+#  define USE_RNA_RANGE_CHECK
+#  define TYPEOF_MAX(x) \
+	_Generic((x), \
+		bool: 1, \
+		char: CHAR_MAX, signed char: SCHAR_MAX, unsigned char: UCHAR_MAX, \
+		signed short: SHRT_MAX, unsigned short: USHRT_MAX, \
+		signed int: INT_MAX, unsigned int: UINT_MAX, \
+		float: FLT_MAX, double: DBL_MAX)
+
+#  define TYPEOF_MIN(x) \
+	_Generic((x), \
+		bool: 0, \
+		char: CHAR_MIN, signed char: SCHAR_MIN, unsigned char: 0, \
+		signed short: SHRT_MIN, unsigned short: 0, \
+		signed int: INT_MIN, unsigned int: 0, \
+		float: -FLT_MAX, double: -DBL_MAX)
 #endif
 
 #endif  /* __RNA_INTERNAL_H__ */

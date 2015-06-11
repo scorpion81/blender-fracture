@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 CCL_NAMESPACE_BEGIN
@@ -98,44 +98,44 @@ ccl_device void svm_node_particle_info(KernelGlobals *kg, ShaderData *sd, float 
 {
 	switch(type) {
 		case NODE_INFO_PAR_INDEX: {
-			uint particle_id = object_particle_id(kg, sd->object);
+			int particle_id = object_particle_id(kg, sd->object);
 			stack_store_float(stack, out_offset, particle_index(kg, particle_id));
 			break;
 		}
 		case NODE_INFO_PAR_AGE: {
-			uint particle_id = object_particle_id(kg, sd->object);
+			int particle_id = object_particle_id(kg, sd->object);
 			stack_store_float(stack, out_offset, particle_age(kg, particle_id));
 			break;
 		}
 		case NODE_INFO_PAR_LIFETIME: {
-			uint particle_id = object_particle_id(kg, sd->object);
+			int particle_id = object_particle_id(kg, sd->object);
 			stack_store_float(stack, out_offset, particle_lifetime(kg, particle_id));
 			break;
 		}
 		case NODE_INFO_PAR_LOCATION: {
-			uint particle_id = object_particle_id(kg, sd->object);
+			int particle_id = object_particle_id(kg, sd->object);
 			stack_store_float3(stack, out_offset, particle_location(kg, particle_id));
 			break;
 		}
-		#if 0	/* XXX float4 currently not supported in SVM stack */
+#if 0	/* XXX float4 currently not supported in SVM stack */
 		case NODE_INFO_PAR_ROTATION: {
-			uint particle_id = object_particle_id(kg, sd->object);
+			int particle_id = object_particle_id(kg, sd->object);
 			stack_store_float4(stack, out_offset, particle_rotation(kg, particle_id));
 			break;
 		}
-		#endif
+#endif
 		case NODE_INFO_PAR_SIZE: {
-			uint particle_id = object_particle_id(kg, sd->object);
+			int particle_id = object_particle_id(kg, sd->object);
 			stack_store_float(stack, out_offset, particle_size(kg, particle_id));
 			break;
 		}
 		case NODE_INFO_PAR_VELOCITY: {
-			uint particle_id = object_particle_id(kg, sd->object);
+			int particle_id = object_particle_id(kg, sd->object);
 			stack_store_float3(stack, out_offset, particle_velocity(kg, particle_id));
 			break;
 		}
 		case NODE_INFO_PAR_ANGULAR_VELOCITY: {
-			uint particle_id = object_particle_id(kg, sd->object);
+			int particle_id = object_particle_id(kg, sd->object);
 			stack_store_float3(stack, out_offset, particle_angular_velocity(kg, particle_id));
 			break;
 		}
@@ -153,7 +153,7 @@ ccl_device void svm_node_hair_info(KernelGlobals *kg, ShaderData *sd, float *sta
 
 	switch(type) {
 		case NODE_INFO_CURVE_IS_STRAND: {
-			data = (sd->segment != ~0);
+			data = (sd->type & PRIMITIVE_ALL_CURVE) != 0;
 			stack_store_float(stack, out_offset, data);
 			break;
 		}

@@ -125,12 +125,13 @@ void animviz_free_motionpath(bMotionPath *mpath)
 
 /* ------------------- */
 
-/* Setup motion paths for the given data
- * - Only used when explicitly calculating paths on bones which may/may not be consider already
+/**
+ * Setup motion paths for the given data.
+ * \note Only used when explicitly calculating paths on bones which may/may not be consider already
  *
- * < scene: current scene (for frame ranges, etc.)
- * < ob: object to add paths for (must be provided)
- * < pchan: posechannel to add paths for (optional; if not provided, object-paths are assumed)
+ * \param scene Current scene (for frame ranges, etc.)
+ * \param ob Object to add paths for (must be provided)
+ * \param pchan Posechannel to add paths for (optional; if not provided, object-paths are assumed)
  */
 bMotionPath *animviz_verify_motionpaths(ReportList *reports, Scene *scene, Object *ob, bPoseChannel *pchan)
 {
@@ -315,7 +316,7 @@ static void motionpaths_calc_update_scene(Scene *scene)
 		Base *base, *last = NULL;
 		
 		/* only stuff that moves or needs display still */
-		DAG_scene_update_flags(G.main, scene, scene->lay, TRUE);
+		DAG_scene_update_flags(G.main, scene, scene->lay, true, false);
 		
 		/* find the last object with the tag 
 		 * - all those afterwards are assumed to not be relevant for our calculations
@@ -512,7 +513,7 @@ void calc_curvepath(Object *ob, ListBase *nurbs)
 	dist = (float *)MEM_mallocN(sizeof(float) * (tot + 1), "calcpathdist");
 
 	/* all lengths in *dist */
-	bevp = bevpfirst = (BevPoint *)(bl + 1);
+	bevp = bevpfirst = bl->bevpoints;
 	fp = dist;
 	*fp = 0.0f;
 	for (a = 0; a < tot; a++) {
@@ -535,6 +536,9 @@ void calc_curvepath(Object *ob, ListBase *nurbs)
 	bevp = bevpfirst;
 	bevpn = bevp + 1;
 	bevplast = bevpfirst + (bl->nr - 1);
+	if (UNLIKELY(bevpn > bevplast)) {
+		bevpn = cycl ? bevpfirst : bevplast;
+	}
 	fp = dist + 1;
 	maxdist = dist + tot;
 	fac = 1.0f / ((float)path->len - 1.0f);
@@ -545,17 +549,23 @@ void calc_curvepath(Object *ob, ListBase *nurbs)
 		d = ((float)a) * fac;
 		
 		/* we're looking for location (distance) 'd' in the array */
-		while ((d >= *fp) && fp < maxdist) {
-			fp++;
-			if (bevp < bevplast) bevp++;
-			bevpn = bevp + 1;
-			if (UNLIKELY(bevpn > bevplast)) {
-				bevpn = cycl ? bevpfirst : bevplast;
+		if (LIKELY(tot > 0)) {
+			while ((fp < maxdist) && (d >= *fp)) {
+				fp++;
+				if (bevp < bevplast) bevp++;
+				bevpn = bevp + 1;
+				if (UNLIKELY(bevpn > bevplast)) {
+					bevpn = cycl ? bevpfirst : bevplast;
+				}
 			}
+
+			fac1 = (*(fp) - d) / (*(fp) - *(fp - 1));
+			fac2 = 1.0f - fac1;
 		}
-		
-		fac1 = (*(fp) - d) / (*(fp) - *(fp - 1));
-		fac2 = 1.0f - fac1;
+		else {
+			fac1 = 1.0f;
+			fac2 = 0.0f;
+		}
 
 		interp_v3_v3v3(pp->vec, bevp->vec, bevpn->vec, fac2);
 		pp->vec[3] = fac1 * bevp->alfa   + fac2 * bevpn->alfa;
@@ -616,6 +626,9 @@ int where_on_path(Object *ob, float ctime, float vec[4], float dir[3], float qua
 	if (!bl) return 0;
 	if (!bl->nr) return 0;
 	if (bl->poly > -1) cycl = 1;
+
+	/* values below zero for non-cyclic curves give strange results */
+	BLI_assert(cycl || ctime >= 0.0f);
 
 	ctime *= (path->len - 1);
 	

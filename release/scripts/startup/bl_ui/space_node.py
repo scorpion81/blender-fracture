@@ -19,6 +19,12 @@
 # <pep8 compliant>
 import bpy
 from bpy.types import Header, Menu, Panel
+from bl_ui.properties_grease_pencil_common import (
+        GreasePencilDrawingToolsPanel,
+        GreasePencilStrokeEditPanel,
+        GreasePencilDataPanel,
+        GreasePencilToolsPanel,
+        )
 
 
 class NODE_HT_header(Header):
@@ -66,6 +72,16 @@ class NODE_HT_header(Header):
                 row.template_ID(scene, "world", new="world.new")
                 if snode_id:
                     row.prop(snode_id, "use_nodes")
+
+            if scene.render.use_shading_nodes and snode.shader_type == 'LINESTYLE':
+                rl = context.scene.render.layers.active
+                lineset = rl.freestyle_settings.linesets.active
+                if lineset is not None:
+                    row = layout.row()
+                    row.enabled = not snode.pin
+                    row.template_ID(lineset, "linestyle", new="scene.freestyle_linestyle_new")
+                    if snode_id:
+                        row.prop(snode_id, "use_nodes")
 
         elif snode.tree_type == 'TextureNodeTree':
             layout.prop(snode, "texture_type", text="", expand=True)
@@ -164,13 +180,14 @@ class NODE_MT_view(Menu):
 
             layout.operator("node.backimage_move", text="Backdrop move")
             layout.operator("node.backimage_zoom", text="Backdrop zoom in").factor = 1.2
-            layout.operator("node.backimage_zoom", text="Backdrop zoom out").factor = 0.833
+            layout.operator("node.backimage_zoom", text="Backdrop zoom out").factor = 0.83333
             layout.operator("node.backimage_fit", text="Fit backdrop to available space")
 
         layout.separator()
 
         layout.operator("screen.area_dupli")
-        layout.operator("screen.screen_full_area")
+        layout.operator("screen.screen_full_area", text="Toggle Maximize Area")
+        layout.operator("screen.screen_full_area").use_hide_panels = True
 
 
 class NODE_MT_select(Menu):
@@ -179,7 +196,7 @@ class NODE_MT_select(Menu):
     def draw(self, context):
         layout = self.layout
 
-        layout.operator("node.select_border")
+        layout.operator("node.select_border").tweak = False
         layout.operator("node.select_circle")
 
         layout.separator()
@@ -190,7 +207,7 @@ class NODE_MT_select(Menu):
 
         layout.separator()
 
-        layout.operator("node.select_same_type")
+        layout.operator("node.select_grouped").extend = False
         layout.operator("node.select_same_type_step").prev = True
         layout.operator("node.select_same_type_step").prev = False
 
@@ -222,14 +239,14 @@ class NODE_MT_node(Menu):
 
         layout.separator()
 
-        layout.operator("node.link_make")
+        layout.operator("node.link_make").replace = False
         layout.operator("node.link_make", text="Make and Replace Links").replace = True
         layout.operator("node.links_cut")
         layout.operator("node.links_detach")
 
         layout.separator()
 
-        layout.operator("node.group_edit")
+        layout.operator("node.group_edit").exit = False
         layout.operator("node.group_ungroup")
         layout.operator("node.group_make")
         layout.operator("node.group_insert")
@@ -274,7 +291,6 @@ class NODE_PT_active_node_generic(Panel):
 
     @classmethod
     def poll(cls, context):
-        space = context.space_data
         return context.active_node is not None
 
     def draw(self, context):
@@ -293,7 +309,6 @@ class NODE_PT_active_node_color(Panel):
 
     @classmethod
     def poll(cls, context):
-        space = context.space_data
         return context.active_node is not None
 
     def draw_header(self, context):
@@ -323,7 +338,6 @@ class NODE_PT_active_node_properties(Panel):
 
     @classmethod
     def poll(cls, context):
-        space = context.space_data
         return context.active_node is not None
 
     def draw(self, context):
@@ -429,6 +443,46 @@ class NODE_UL_interface_sockets(bpy.types.UIList):
         elif self.layout_type in {'GRID'}:
             layout.alignment = 'CENTER'
             layout.template_node_socket(color)
+
+
+# Grease Pencil properties
+class NODE_PT_grease_pencil(GreasePencilDataPanel, Panel):
+    bl_space_type = 'NODE_EDITOR'
+    bl_region_type = 'UI'
+
+    # NOTE: this is just a wrapper around the generic GP Panel
+
+    @classmethod
+    def poll(cls, context):
+        snode = context.space_data
+        return snode is not None and snode.node_tree is not None
+
+
+class NODE_PT_grease_pencil_tools(GreasePencilToolsPanel, Panel):
+    bl_space_type = 'NODE_EDITOR'
+    bl_region_type = 'UI'
+    bl_options = {'DEFAULT_CLOSED'}
+
+    # NOTE: this is just a wrapper around the generic GP tools panel
+    # It contains access to some essential tools usually found only in
+    # toolbar, but which may not necessarily be open
+
+
+# Tool Shelf ------------------
+
+
+# Grease Pencil drawing tools
+class NODE_PT_tools_grease_pencil_draw(GreasePencilDrawingToolsPanel, Panel):
+    bl_space_type = 'NODE_EDITOR'
+    bl_region_type = 'TOOLS'
+
+
+# Grease Pencil stroke editing tools
+class NODE_PT_tools_grease_pencil_edit(GreasePencilStrokeEditPanel, Panel):
+    bl_space_type = 'NODE_EDITOR'
+    bl_region_type = 'TOOLS'
+
+# -----------------------------
 
 
 def node_draw_tree_view(layout, context):

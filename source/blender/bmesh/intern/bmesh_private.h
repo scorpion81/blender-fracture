@@ -64,16 +64,16 @@ enum {
 	_FLAG_JF       = (1 << 0),  /* join faces */
 	_FLAG_MF       = (1 << 1),  /* make face */
 	_FLAG_MV       = (1 << 1),  /* make face, vertex */
-	_FLAG_OVERLAP  = (1 << 2)   /* general overlap flag  */
+	_FLAG_OVERLAP  = (1 << 2),  /* general overlap flag  */
+	_FLAG_WALK     = (1 << 3),  /* general walk flag (keep clean) */
 };
 
-#define BM_ELEM_API_FLAG_ENABLE(element, f)  ((element)->head.api_flag |=  (f))
-#define BM_ELEM_API_FLAG_DISABLE(element, f) ((element)->head.api_flag &= ~(f))
-#define BM_ELEM_API_FLAG_TEST(element, f)    ((element)->head.api_flag &   (f))
-#define BM_ELEM_API_FLAG_CLEAR(element)      ((element)->head.api_flag = 0)
+#define BM_ELEM_API_FLAG_ENABLE(element, f)  { ((element)->head.api_flag |=  (f)); } (void)0
+#define BM_ELEM_API_FLAG_DISABLE(element, f) { ((element)->head.api_flag &= ~(f)); } (void)0
+#define BM_ELEM_API_FLAG_TEST(element, f)      ((element)->head.api_flag &   (f))
+#define BM_ELEM_API_FLAG_CLEAR(element)      { ((element)->head.api_flag = 0); } (void)0
 
-void calc_poly_plane(float (*verts)[3], const int nverts);
-void poly_rotate_plane(const float normal[3], float (*verts)[3], const int nverts);
+void poly_rotate_plane(const float normal[3], float (*verts)[3], unsigned const int nverts);
 
 /* include the rest of our private declarations */
 #include "bmesh_structure.h"

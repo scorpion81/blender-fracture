@@ -13,9 +13,6 @@ class MyCustomTree(NodeTree):
     # Label for nice name display
     bl_label = 'Custom Node Tree'
     # Icon identifier
-    # NOTE: If no icon is defined, the node tree will not show up in the editor header!
-    #       This can be used to make additional tree types for groups and similar nodes (see below)
-    #       Only one base tree class is needed in the editor for selecting the general category
     bl_icon = 'NODETREE'
 
 
@@ -49,12 +46,14 @@ class MyCustomSocket(NodeSocket):
     def draw_color(self, context, node):
         return (1.0, 0.4, 0.216, 0.5)
 
+
 # Mix-in class for all custom nodes in this tree type.
 # Defines a poll function to enable instantiation.
-class MyCustomTreeNode :
+class MyCustomTreeNode:
     @classmethod
     def poll(cls, ntree):
         return ntree.bl_idname == 'CustomTreeType'
+
 
 # Derived from the Node base type.
 class MyCustomNode(Node, MyCustomTreeNode):
@@ -123,6 +122,7 @@ class MyCustomNode(Node, MyCustomTreeNode):
 import nodeitems_utils
 from nodeitems_utils import NodeCategory, NodeItem
 
+
 # our own base class with an appropriate poll function,
 # so the categories only show up in our own tree type
 class MyNodeCategory(NodeCategory):
@@ -143,12 +143,12 @@ node_categories = [
         # NB: settings values are stored as string expressions,
         # for this reason they should be converted to strings using repr()
         NodeItem("CustomNodeType", label="Node A", settings={
-            "myStringProperty" : repr("Lorem ipsum dolor sit amet"),
-            "myFloatProperty" : repr(1.0),
+            "myStringProperty": repr("Lorem ipsum dolor sit amet"),
+            "myFloatProperty": repr(1.0),
             }),
         NodeItem("CustomNodeType", label="Node B", settings={
-            "myStringProperty" : repr("consectetur adipisicing elit"),
-            "myFloatProperty" : repr(2.0),
+            "myStringProperty": repr("consectetur adipisicing elit"),
+            "myFloatProperty": repr(2.0),
             }),
         ]),
     ]

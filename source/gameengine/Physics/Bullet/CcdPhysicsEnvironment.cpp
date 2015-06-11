@@ -39,10 +39,22 @@ subject to the following restrictions:
 
 #include "PHY_IMotionState.h"
 #include "PHY_ICharacter.h"
+#include "PHY_Pro.h"
 #include "KX_GameObject.h"
+#include "KX_PythonInit.h" // for KX_RasterizerDrawDebugLine
+#include "KX_BlenderSceneConverter.h"
 #include "RAS_MeshObject.h"
 #include "RAS_Polygon.h"
 #include "RAS_TexVert.h"
+
+#include "DNA_scene_types.h"
+#include "DNA_world_types.h"
+#include "DNA_object_force.h"
+
+extern "C" {
+	#include "BLI_utildefines.h"
+	#include "BKE_object.h"
+}
 
 #define CCD_CONSTRAINT_DISABLE_LINKED_COLLISION 0x80
 
@@ -57,6 +69,7 @@ static btRaycastVehicle::btVehicleTuning	gTuning;
 #include "LinearMath/btAabbUtil2.h"
 #include "MT_Matrix4x4.h"
 #include "MT_Vector3.h"
+#include "MT_MinMax.h"
 
 #ifdef WIN32
 void DrawRasterizerLine(const float* from,const float* to,int color);
@@ -68,6 +81,21 @@ void DrawRasterizerLine(const float* from,const float* to,int color);
 
 #include <stdio.h>
 #include <string.h>		// for memset
+
+// This was copied from the old KX_ConvertPhysicsObjects
+#ifdef WIN32
+#ifdef _MSC_VER
+//only use SIMD Hull code under Win32
+//#define TEST_HULL 1
+#ifdef TEST_HULL
+#define USE_HULL 1
+//#define TEST_SIMD_HULL 1
+
+#include "NarrowPhaseCollision/Hull.h"
+#endif //#ifdef TEST_HULL
+
+#endif //_MSC_VER
+#endif //WIN32
 
 #ifdef NEW_BULLET_VEHICLE_SUPPORT
 class WrapperVehicle : public PHY_IVehicle
@@ -146,26 +174,27 @@ public:
 
 	virtual void	GetWheelPosition(int wheelIndex,float& posX,float& posY,float& posZ) const
 	{
-		btTransform	trans = m_vehicle->getWheelTransformWS(wheelIndex);
-		posX = trans.getOrigin().x();
-		posY = trans.getOrigin().y();
-		posZ = trans.getOrigin().z();
+		if ((wheelIndex>=0) && (wheelIndex< m_vehicle->getNumWheels()))
+		{
+			btVector3 origin = m_vehicle->getWheelTransformWS(wheelIndex).getOrigin();
+
+			posX = origin.x();
+			posY = origin.y();
+			posZ = origin.z();
+		}
 	}
+
 	virtual void	GetWheelOrientationQuaternion(int wheelIndex,float& quatX,float& quatY,float& quatZ,float& quatW) const
 	{
-		btTransform	trans = m_vehicle->getWheelTransformWS(wheelIndex);
-		btQuaternion quat = trans.getRotation();
-		btMatrix3x3 orn2(quat);
+		if ((wheelIndex>=0) && (wheelIndex< m_vehicle->getNumWheels()))
+		{
+			btQuaternion quat = m_vehicle->getWheelTransformWS(wheelIndex).getRotation();
 
-		quatX = trans.getRotation().x();
-		quatY = trans.getRotation().y();
-		quatZ = trans.getRotation().z();
-		quatW = trans.getRotation()[3];
-
-
-		//printf("test");
-
-
+			quatX = quat.x();
+			quatY = quat.y();
+			quatZ = quat.z();
+			quatW = quat.w();
+		}
 	}
 
 	virtual float	GetWheelRotation(int wheelIndex) const
@@ -177,8 +206,8 @@ public:
 			btWheelInfo& info = m_vehicle->getWheelInfo(wheelIndex);
 			rotation = info.m_rotation;
 		}
-		return rotation;
 
+		return rotation;
 	}
 
 
@@ -195,12 +224,16 @@ public:
 
 	virtual	void	SetSteeringValue(float steering,int wheelIndex)
 	{
-		m_vehicle->setSteeringValue(steering,wheelIndex);
+		if ((wheelIndex>=0) && (wheelIndex< m_vehicle->getNumWheels())) {
+			m_vehicle->setSteeringValue(steering,wheelIndex);
+		}
 	}
 
 	virtual	void	ApplyEngineForce(float force,int wheelIndex)
 	{
-		m_vehicle->applyEngineForce(force,wheelIndex);
+		if ((wheelIndex>=0) && (wheelIndex< m_vehicle->getNumWheels())) {
+			m_vehicle->applyEngineForce(force,wheelIndex);
+		}
 	}
 
 	virtual	void	ApplyBraking(float braking,int wheelIndex)
@@ -268,6 +301,44 @@ public:
 
 
 
+};
+
+class BlenderVehicleRaycaster: public btDefaultVehicleRaycaster
+{
+	btDynamicsWorld*	m_dynamicsWorld;
+public:
+	BlenderVehicleRaycaster(btDynamicsWorld* world)
+		:btDefaultVehicleRaycaster(world), m_dynamicsWorld(world)
+	{
+	}
+
+	virtual void* castRay(const btVector3& from,const btVector3& to, btVehicleRaycasterResult& result)
+	{
+	//	RayResultCallback& resultCallback;
+
+		btCollisionWorld::ClosestRayResultCallback rayCallback(from,to);
+
+		// We override btDefaultVehicleRaycaster so we can set this flag, otherwise our
+		// vehicles go crazy (http://bulletphysics.org/Bullet/phpBB3/viewtopic.php?t=9662)
+		rayCallback.m_flags |= btTriangleRaycastCallback::kF_UseSubSimplexConvexCastRaytest;
+
+		m_dynamicsWorld->rayTest(from, to, rayCallback);
+
+		if (rayCallback.hasHit())
+		{
+
+			const btRigidBody* body = btRigidBody::upcast(rayCallback.m_collisionObject);
+			if (body && body->hasContactResponse())
+			{
+				result.m_hitPointInWorld = rayCallback.m_hitPointWorld;
+				result.m_hitNormalInWorld = rayCallback.m_hitNormalWorld;
+				result.m_hitNormalInWorld.normalize();
+				result.m_distFraction = rayCallback.m_closestHitFraction;
+				return (void*)body;
+			}
+		}
+		return 0;
+	}
 };
 #endif //NEW_BULLET_VEHICLE_SUPPORT
 
@@ -438,11 +509,13 @@ bool	CcdPhysicsEnvironment::RemoveCcdPhysicsController(CcdPhysicsController* ctr
 	btRigidBody* body = ctrl->GetRigidBody();
 	if (body)
 	{
-		for (int i=body->getNumConstraintRefs()-1;i>=0;i--)
+		for (int i = ctrl->getNumCcdConstraintRefs() - 1; i >= 0; i--)
 		{
-			btTypedConstraint* con = body->getConstraintRef(i);
+			btTypedConstraint* con = ctrl->getCcdConstraintRef(i);
+			con->getRigidBodyA().activate();
+			con->getRigidBodyB().activate();
 			m_dynamicsWorld->removeConstraint(con);
-			body->removeConstraintRef(con);
+			ctrl->removeCcdConstraintRef(con);
 			//delete con; //might be kept by python KX_ConstraintWrapper
 		}
 		m_dynamicsWorld->removeRigidBody(ctrl->GetRigidBody());
@@ -810,6 +883,14 @@ void	CcdPhysicsEnvironment::ProcessFhSprings(double curTime,float interval)
 			}
 		}
 	}
+}
+
+int			CcdPhysicsEnvironment::GetDebugMode() const
+{
+	if (m_debugDrawer) {
+		return m_debugDrawer->getDebugMode();
+	}
+	return 0;
 }
 
 void		CcdPhysicsEnvironment::SetDebugMode(int debugMode)
@@ -1871,8 +1952,14 @@ btDispatcher*	CcdPhysicsEnvironment::GetDispatcher()
 	return m_dynamicsWorld->getDispatcher();
 }
 
-void CcdPhysicsEnvironment::MergeEnvironment(CcdPhysicsEnvironment *other)
+void CcdPhysicsEnvironment::MergeEnvironment(PHY_IPhysicsEnvironment *other_env)
 {
+	CcdPhysicsEnvironment *other = dynamic_cast<CcdPhysicsEnvironment*>(other_env);
+	if (other == NULL) {
+		printf("KX_Scene::MergeScene: Other scene is not using Bullet physics, not merging physics.\n");
+		return;
+	}
+
 	std::set<CcdPhysicsController*>::iterator it;
 
 	while (other->m_controllers.begin() != other->m_controllers.end())
@@ -2014,7 +2101,7 @@ void	CcdPhysicsEnvironment::SetConstraintParam(int constraintId,int param,float 
 
 			case 12: case 13: case 14: case 15: case 16: case 17:
 			{
-				//param 13-17 are for motorized springs on each of the degrees of freedom
+				//param 12-17 are for motorized springs on each of the degrees of freedom
 					btGeneric6DofSpringConstraint* genCons = (btGeneric6DofSpringConstraint*)typedConstraint;
 					int springIndex = param-12;
 					if (value0!=0.f)
@@ -2171,64 +2258,77 @@ bool CcdPhysicsEnvironment::RequestCollisionCallback(PHY_IPhysicsController* ctr
 
 void	CcdPhysicsEnvironment::CallbackTriggers()
 {
-	if (m_triggerCallbacks[PHY_OBJECT_RESPONSE] || (m_debugDrawer && (m_debugDrawer->getDebugMode() & btIDebugDraw::DBG_DrawContactPoints)))
+	bool draw_contact_points = m_debugDrawer && (m_debugDrawer->getDebugMode() & btIDebugDraw::DBG_DrawContactPoints);
+
+	if (!m_triggerCallbacks[PHY_OBJECT_RESPONSE] && !draw_contact_points)
+		return;
+
+	//walk over all overlapping pairs, and if one of the involved bodies is registered for trigger callback, perform callback
+	btDispatcher* dispatcher = m_dynamicsWorld->getDispatcher();
+	int numManifolds = dispatcher->getNumManifolds();
+	for (int i=0;i<numManifolds;i++)
 	{
-		//walk over all overlapping pairs, and if one of the involved bodies is registered for trigger callback, perform callback
-		btDispatcher* dispatcher = m_dynamicsWorld->getDispatcher();
-		int numManifolds = dispatcher->getNumManifolds();
-		for (int i=0;i<numManifolds;i++)
+		bool colliding_ctrl0 = true;
+		btPersistentManifold* manifold = dispatcher->getManifoldByIndexInternal(i);
+		int numContacts = manifold->getNumContacts();
+		if (!numContacts) continue;
+
+		const btRigidBody* rb0 = static_cast<const btRigidBody*>(manifold->getBody0());
+		const btRigidBody* rb1 = static_cast<const btRigidBody*>(manifold->getBody1());
+		if (draw_contact_points)
 		{
-			btPersistentManifold* manifold = dispatcher->getManifoldByIndexInternal(i);
-			int numContacts = manifold->getNumContacts();
-			if (numContacts)
+			for (int j=0;j<numContacts;j++)
 			{
-				const btRigidBody* rb0 = static_cast<const btRigidBody*>(manifold->getBody0());
-				const btRigidBody* rb1 = static_cast<const btRigidBody*>(manifold->getBody1());
-				if (m_debugDrawer && (m_debugDrawer->getDebugMode() & btIDebugDraw::DBG_DrawContactPoints))
-				{
-					for (int j=0;j<numContacts;j++)
-					{
-						btVector3 color(1,0,0);
-						const btManifoldPoint& cp = manifold->getContactPoint(j);
-						if (m_debugDrawer)
-							m_debugDrawer->drawContactPoint(cp.m_positionWorldOnB,cp.m_normalWorldOnB,cp.getDistance(),cp.getLifeTime(),color);
-					}
-				}
-				const btRigidBody* obj0 = rb0;
-				const btRigidBody* obj1 = rb1;
-
-				//m_internalOwner is set in 'addPhysicsController'
-				CcdPhysicsController* ctrl0 = static_cast<CcdPhysicsController*>(obj0->getUserPointer());
-				CcdPhysicsController* ctrl1 = static_cast<CcdPhysicsController*>(obj1->getUserPointer());
-
-				std::set<CcdPhysicsController*>::const_iterator i = m_triggerControllers.find(ctrl0);
-				if (i == m_triggerControllers.end())
-				{
-					i = m_triggerControllers.find(ctrl1);
-				}
-
-				if (!(i == m_triggerControllers.end()))
-				{
-					m_triggerCallbacks[PHY_OBJECT_RESPONSE](m_triggerCallbacksUserPtrs[PHY_OBJECT_RESPONSE],
-						ctrl0,ctrl1,0);
-				}
-				// Bullet does not refresh the manifold contact point for object without contact response
-				// may need to remove this when a newer Bullet version is integrated
-				if (!dispatcher->needsResponse(rb0, rb1))
-				{
-					// Refresh algorithm fails sometimes when there is penetration 
-					// (usuall the case with ghost and sensor objects)
-					// Let's just clear the manifold, in any case, it is recomputed on each frame.
-					manifold->clearManifold(); //refreshContactPoints(rb0->getCenterOfMassTransform(),rb1->getCenterOfMassTransform());
-				}
+				btVector3 color(1,1,0);
+				const btManifoldPoint& cp = manifold->getContactPoint(j);
+				m_debugDrawer->drawContactPoint(cp.m_positionWorldOnB,
+				                                cp.m_normalWorldOnB,
+				                                cp.getDistance(),
+				                                cp.getLifeTime(),
+				                                color);
 			}
 		}
 
+		//m_internalOwner is set in 'addPhysicsController'
+		CcdPhysicsController* ctrl0 = static_cast<CcdPhysicsController*>(rb0->getUserPointer());
+		CcdPhysicsController* ctrl1 = static_cast<CcdPhysicsController*>(rb1->getUserPointer());
 
+		std::set<CcdPhysicsController*>::const_iterator iter = m_triggerControllers.find(ctrl0);
+		if (iter == m_triggerControllers.end())
+		{
+			iter = m_triggerControllers.find(ctrl1);
+			colliding_ctrl0 = false;
+		}
 
+		if (iter != m_triggerControllers.end())
+		{
+			static PHY_CollData coll_data;
+			const btManifoldPoint &cp = manifold->getContactPoint(0);
+
+			/* Make sure that "point1" is always on the object we report on, and
+			 * "point2" on the other object. Also ensure the normal is oriented
+			 * correctly. */
+			btVector3 point1 = colliding_ctrl0 ? cp.m_positionWorldOnA : cp.m_positionWorldOnB;
+			btVector3 point2 = colliding_ctrl0 ? cp.m_positionWorldOnB : cp.m_positionWorldOnA;
+			btVector3 normal = colliding_ctrl0 ? -cp.m_normalWorldOnB : cp.m_normalWorldOnB;
+
+			coll_data.m_point1 = MT_Vector3(point1.m_floats);
+			coll_data.m_point2 = MT_Vector3(point2.m_floats);
+			coll_data.m_normal = MT_Vector3(normal.m_floats);
+
+			m_triggerCallbacks[PHY_OBJECT_RESPONSE](m_triggerCallbacksUserPtrs[PHY_OBJECT_RESPONSE],
+				ctrl0, ctrl1, &coll_data);
+		}
+		// Bullet does not refresh the manifold contact point for object without contact response
+		// may need to remove this when a newer Bullet version is integrated
+		if (!dispatcher->needsResponse(rb0, rb1))
+		{
+			// Refresh algorithm fails sometimes when there is penetration
+			// (usuall the case with ghost and sensor objects)
+			// Let's just clear the manifold, in any case, it is recomputed on each frame.
+			manifold->clearManifold(); //refreshContactPoints(rb0->getCenterOfMassTransform(),rb1->getCenterOfMassTransform());
+		}
 	}
-
-
 }
 
 // This call back is called before a pair is added in the cache
@@ -2544,7 +2644,6 @@ int			CcdPhysicsEnvironment::CreateConstraint(class PHY_IPhysicsController* ctrl
 	if (!rb0)
 		return 0;
 
-	
 	btVector3 pivotInB = rb1 ? rb1->getCenterOfMassTransform().inverse()(rb0->getCenterOfMassTransform()(pivotInA)) : 
 		rb0->getCenterOfMassTransform() * pivotInA;
 	btVector3 axisInA(axisX,axisY,axisZ);
@@ -2556,6 +2655,8 @@ int			CcdPhysicsEnvironment::CreateConstraint(class PHY_IPhysicsController* ctrl
 	{
 	case PHY_POINT2POINT_CONSTRAINT:
 		{
+			// If either of the controllers is missing, we can't do anything.
+			if (!c0 || !c1) return 0;
 
 			btPoint2PointConstraint* p2p = 0;
 
@@ -2569,6 +2670,8 @@ int			CcdPhysicsEnvironment::CreateConstraint(class PHY_IPhysicsController* ctrl
 					pivotInA);
 			}
 
+			c0->addCcdConstraintRef(p2p);
+			c1->addCcdConstraintRef(p2p);
 			m_dynamicsWorld->addConstraint(p2p,disableCollisionBetweenLinkedBodies);
 //			m_constraints.push_back(p2p);
 
@@ -2582,6 +2685,9 @@ int			CcdPhysicsEnvironment::CreateConstraint(class PHY_IPhysicsController* ctrl
 
 	case PHY_GENERIC_6DOF_CONSTRAINT:
 		{
+			// If either of the controllers is missing, we can't do anything.
+			if (!c0 || !c1) return 0;
+
 			btGeneric6DofConstraint* genericConstraint = 0;
 
 			if (rb1)
@@ -2635,10 +2741,12 @@ int			CcdPhysicsEnvironment::CreateConstraint(class PHY_IPhysicsController* ctrl
 					*rb0,s_fixedObject2,
 					frameInA,frameInB,useReferenceFrameA);
 			}
-			
+
 			if (genericConstraint)
 			{
 				//m_constraints.push_back(genericConstraint);
+				c0->addCcdConstraintRef(genericConstraint);
+				c1->addCcdConstraintRef(genericConstraint);
 				m_dynamicsWorld->addConstraint(genericConstraint,disableCollisionBetweenLinkedBodies);
 				genericConstraint->setUserConstraintId(gConstraintUid++);
 				genericConstraint->setUserConstraintType(type);
@@ -2650,6 +2758,9 @@ int			CcdPhysicsEnvironment::CreateConstraint(class PHY_IPhysicsController* ctrl
 		}
 	case PHY_CONE_TWIST_CONSTRAINT:
 		{
+			// If either of the controllers is missing, we can't do anything.
+			if (!c0 || !c1) return 0;
+
 			btConeTwistConstraint* coneTwistContraint = 0;
 
 			
@@ -2701,10 +2812,12 @@ int			CcdPhysicsEnvironment::CreateConstraint(class PHY_IPhysicsController* ctrl
 					*rb0,s_fixedObject2,
 					frameInA,frameInB);
 			}
-			
+
 			if (coneTwistContraint)
 			{
 				//m_constraints.push_back(genericConstraint);
+				c0->addCcdConstraintRef(coneTwistContraint);
+				c1->addCcdConstraintRef(coneTwistContraint);
 				m_dynamicsWorld->addConstraint(coneTwistContraint,disableCollisionBetweenLinkedBodies);
 				coneTwistContraint->setUserConstraintId(gConstraintUid++);
 				coneTwistContraint->setUserConstraintType(type);
@@ -2722,6 +2835,9 @@ int			CcdPhysicsEnvironment::CreateConstraint(class PHY_IPhysicsController* ctrl
 
 	case PHY_LINEHINGE_CONSTRAINT:
 		{
+			// If either of the controllers is missing, we can't do anything.
+			if (!c0 || !c1) return 0;
+
 			btHingeConstraint* hinge = 0;
 
 			if (rb1)
@@ -2778,6 +2894,8 @@ int			CcdPhysicsEnvironment::CreateConstraint(class PHY_IPhysicsController* ctrl
 			hinge->setAngularOnly(angularOnly);
 
 			//m_constraints.push_back(hinge);
+			c0->addCcdConstraintRef(hinge);
+			c1->addCcdConstraintRef(hinge);
 			m_dynamicsWorld->addConstraint(hinge,disableCollisionBetweenLinkedBodies);
 			hinge->setUserConstraintId(gConstraintUid++);
 			hinge->setUserConstraintType(type);
@@ -2791,7 +2909,7 @@ int			CcdPhysicsEnvironment::CreateConstraint(class PHY_IPhysicsController* ctrl
 		{
 			btRaycastVehicle::btVehicleTuning* tuning = new btRaycastVehicle::btVehicleTuning();
 			btRigidBody* chassis = rb0;
-			btDefaultVehicleRaycaster* raycaster = new btDefaultVehicleRaycaster(m_dynamicsWorld);
+			btDefaultVehicleRaycaster* raycaster = new BlenderVehicleRaycaster(m_dynamicsWorld);
 			btRaycastVehicle* vehicle = new btRaycastVehicle(*tuning,chassis,raycaster);
 			WrapperVehicle* wrapperVehicle = new WrapperVehicle(vehicle,ctrl0);
 			m_wrapperVehicles.push_back(wrapperVehicle);
@@ -2891,3 +3009,593 @@ void	CcdPhysicsEnvironment::ExportFile(const char* filename)
 	}
 }
 
+struct	BlenderDebugDraw : public btIDebugDraw
+{
+	BlenderDebugDraw () :
+		m_debugMode(0)
+	{
+	}
+
+	int m_debugMode;
+
+	virtual void	drawLine(const btVector3& from,const btVector3& to,const btVector3& color)
+	{
+		if (m_debugMode >0)
+		{
+			MT_Vector3 kxfrom(from[0],from[1],from[2]);
+			MT_Vector3 kxto(to[0],to[1],to[2]);
+			MT_Vector3 kxcolor(color[0],color[1],color[2]);
+
+			KX_RasterizerDrawDebugLine(kxfrom,kxto,kxcolor);
+		}
+	}
+
+	virtual void	reportErrorWarning(const char* warningString)
+	{
+
+	}
+
+	virtual void	drawContactPoint(const btVector3& PointOnB,const btVector3& normalOnB,float distance,int lifeTime,const btVector3& color)
+	{
+		drawLine(PointOnB, PointOnB + normalOnB, color);
+		drawSphere(PointOnB, 0.1, color);
+	}
+
+	virtual void	setDebugMode(int debugMode)
+	{
+		m_debugMode = debugMode;
+	}
+	virtual int		getDebugMode() const
+	{
+		return m_debugMode;
+	}
+	///todo: find out if Blender can do this
+	virtual void	draw3dText(const btVector3& location,const char* textString)
+	{
+
+	}
+
+};
+
+CcdPhysicsEnvironment *CcdPhysicsEnvironment::Create(Scene *blenderscene, bool visualizePhysics)
+{
+	CcdPhysicsEnvironment* ccdPhysEnv = new CcdPhysicsEnvironment((blenderscene->gm.mode & WO_DBVT_CULLING) != 0);
+	ccdPhysEnv->SetDebugDrawer(new BlenderDebugDraw());
+	ccdPhysEnv->SetDeactivationLinearTreshold(blenderscene->gm.lineardeactthreshold);
+	ccdPhysEnv->SetDeactivationAngularTreshold(blenderscene->gm.angulardeactthreshold);
+	ccdPhysEnv->SetDeactivationTime(blenderscene->gm.deactivationtime);
+
+	if (visualizePhysics)
+		ccdPhysEnv->SetDebugMode(btIDebugDraw::DBG_DrawWireframe|btIDebugDraw::DBG_DrawAabb|btIDebugDraw::DBG_DrawContactPoints|btIDebugDraw::DBG_DrawText|btIDebugDraw::DBG_DrawConstraintLimits|btIDebugDraw::DBG_DrawConstraints);
+
+	return ccdPhysEnv;
+}
+
+void CcdPhysicsEnvironment::ConvertObject(KX_GameObject *gameobj, RAS_MeshObject *meshobj, DerivedMesh *dm, KX_Scene *kxscene, PHY_ShapeProps *shapeprops, PHY_MaterialProps *smmaterial, PHY_IMotionState *motionstate, int activeLayerBitInfo, bool isCompoundChild, bool hasCompoundChildren)
+{
+	Object* blenderobject = gameobj->GetBlenderObject();
+
+	bool isbulletdyna = (blenderobject->gameflag & OB_DYNAMIC) != 0;;
+	bool isbulletsensor = (blenderobject->gameflag & OB_SENSOR) != 0;
+	bool isbulletchar = (blenderobject->gameflag & OB_CHARACTER) != 0;
+	bool isbulletsoftbody = (blenderobject->gameflag & OB_SOFT_BODY) != 0;
+	bool isbulletrigidbody = (blenderobject->gameflag & OB_RIGID_BODY) != 0;
+	bool useGimpact = false;
+	CcdConstructionInfo ci;
+	class CcdShapeConstructionInfo *shapeInfo = new CcdShapeConstructionInfo();
+
+	// get Root Parent of blenderobject
+	Object *blenderparent = blenderobject->parent;
+	while (blenderparent && blenderparent->parent) {
+		blenderparent = blenderparent->parent;
+	}
+
+	KX_GameObject *parent = NULL;
+	if (blenderparent)
+	{
+		KX_BlenderSceneConverter *converter = (KX_BlenderSceneConverter*)KX_GetActiveEngine()->GetSceneConverter();
+		parent = converter->FindGameObject(blenderparent);
+		isbulletdyna = false;
+		isbulletsoftbody = false;
+		shapeprops->m_mass = 0.f;
+	}
+
+	if (!isbulletdyna)
+	{
+		ci.m_collisionFlags |= btCollisionObject::CF_STATIC_OBJECT;
+	}
+	if ((blenderobject->gameflag & (OB_GHOST | OB_SENSOR | OB_CHARACTER)) != 0)
+	{
+		ci.m_collisionFlags |= btCollisionObject::CF_NO_CONTACT_RESPONSE;
+	}
+
+	ci.m_MotionState = motionstate;
+	ci.m_gravity = btVector3(0,0,0);
+	ci.m_linearFactor = btVector3(((blenderobject->gameflag2 & OB_LOCK_RIGID_BODY_X_AXIS) !=0)? 0 : 1,
+									((blenderobject->gameflag2 & OB_LOCK_RIGID_BODY_Y_AXIS) !=0)? 0 : 1,
+									((blenderobject->gameflag2 & OB_LOCK_RIGID_BODY_Z_AXIS) !=0)? 0 : 1);
+	ci.m_angularFactor = btVector3(((blenderobject->gameflag2 & OB_LOCK_RIGID_BODY_X_ROT_AXIS) !=0)? 0 : 1,
+									((blenderobject->gameflag2 & OB_LOCK_RIGID_BODY_Y_ROT_AXIS) !=0)? 0 : 1,
+									((blenderobject->gameflag2 & OB_LOCK_RIGID_BODY_Z_ROT_AXIS) !=0)? 0 : 1);
+	ci.m_localInertiaTensor =btVector3(0,0,0);
+	ci.m_mass = isbulletdyna ? shapeprops->m_mass : 0.f;
+	ci.m_clamp_vel_min = shapeprops->m_clamp_vel_min;
+	ci.m_clamp_vel_max = shapeprops->m_clamp_vel_max;
+	ci.m_stepHeight = isbulletchar ? shapeprops->m_step_height : 0.f;
+	ci.m_jumpSpeed = isbulletchar ? shapeprops->m_jump_speed : 0.f;
+	ci.m_fallSpeed = isbulletchar ? shapeprops->m_fall_speed : 0.f;
+
+	//mmm, for now, take this for the size of the dynamicobject
+	// Blender uses inertia for radius of dynamic object
+	shapeInfo->m_radius = ci.m_radius = blenderobject->inertia;
+	useGimpact = ((isbulletdyna || isbulletsensor) && !isbulletsoftbody);
+
+	if (isbulletsoftbody)
+	{
+		if (blenderobject->bsoft)
+		{
+			ci.m_margin = blenderobject->bsoft->margin;
+			ci.m_gamesoftFlag = blenderobject->bsoft->flag;
+
+			ci.m_soft_linStiff = blenderobject->bsoft->linStiff;
+			ci.m_soft_angStiff = blenderobject->bsoft->angStiff;		/* angular stiffness 0..1 */
+			ci.m_soft_volume = blenderobject->bsoft->volume;			/* volume preservation 0..1 */
+
+			ci.m_soft_viterations = blenderobject->bsoft->viterations;		/* Velocities solver iterations */
+			ci.m_soft_piterations = blenderobject->bsoft->piterations;		/* Positions solver iterations */
+			ci.m_soft_diterations = blenderobject->bsoft->diterations;		/* Drift solver iterations */
+			ci.m_soft_citerations = blenderobject->bsoft->citerations;		/* Cluster solver iterations */
+
+			ci.m_soft_kSRHR_CL = blenderobject->bsoft->kSRHR_CL;		/* Soft vs rigid hardness [0,1] (cluster only) */
+			ci.m_soft_kSKHR_CL = blenderobject->bsoft->kSKHR_CL;		/* Soft vs kinetic hardness [0,1] (cluster only) */
+			ci.m_soft_kSSHR_CL = blenderobject->bsoft->kSSHR_CL;		/* Soft vs soft hardness [0,1] (cluster only) */
+			ci.m_soft_kSR_SPLT_CL = blenderobject->bsoft->kSR_SPLT_CL;	/* Soft vs rigid impulse split [0,1] (cluster only) */
+
+			ci.m_soft_kSK_SPLT_CL = blenderobject->bsoft->kSK_SPLT_CL;	/* Soft vs rigid impulse split [0,1] (cluster only) */
+			ci.m_soft_kSS_SPLT_CL = blenderobject->bsoft->kSS_SPLT_CL;	/* Soft vs rigid impulse split [0,1] (cluster only) */
+			ci.m_soft_kVCF = blenderobject->bsoft->kVCF;			/* Velocities correction factor (Baumgarte) */
+			ci.m_soft_kDP = blenderobject->bsoft->kDP;			/* Damping coefficient [0,1] */
+
+			ci.m_soft_kDG = blenderobject->bsoft->kDG;			/* Drag coefficient [0,+inf] */
+			ci.m_soft_kLF = blenderobject->bsoft->kLF;			/* Lift coefficient [0,+inf] */
+			ci.m_soft_kPR = blenderobject->bsoft->kPR;			/* Pressure coefficient [-inf,+inf] */
+			ci.m_soft_kVC = blenderobject->bsoft->kVC;			/* Volume conversation coefficient [0,+inf] */
+
+			ci.m_soft_kDF = blenderobject->bsoft->kDF;			/* Dynamic friction coefficient [0,1] */
+			ci.m_soft_kMT = blenderobject->bsoft->kMT;			/* Pose matching coefficient [0,1] */
+			ci.m_soft_kCHR = blenderobject->bsoft->kCHR;			/* Rigid contacts hardness [0,1] */
+			ci.m_soft_kKHR = blenderobject->bsoft->kKHR;			/* Kinetic contacts hardness [0,1] */
+
+			ci.m_soft_kSHR = blenderobject->bsoft->kSHR;			/* Soft contacts hardness [0,1] */
+			ci.m_soft_kAHR = blenderobject->bsoft->kAHR;			/* Anchors hardness [0,1] */
+			ci.m_soft_collisionflags = blenderobject->bsoft->collisionflags;	/* Vertex/Face or Signed Distance Field(SDF) or Clusters, Soft versus Soft or Rigid */
+			ci.m_soft_numclusteriterations = blenderobject->bsoft->numclusteriterations;	/* number of iterations to refine collision clusters*/
+
+		}
+		else
+		{
+			ci.m_margin = 0.f;
+			ci.m_gamesoftFlag = OB_BSB_BENDING_CONSTRAINTS | OB_BSB_SHAPE_MATCHING | OB_BSB_AERO_VPOINT;
+
+			ci.m_soft_linStiff = 0.5;
+			ci.m_soft_angStiff = 1.f;	/* angular stiffness 0..1 */
+			ci.m_soft_volume = 1.f;	  /* volume preservation 0..1 */
+
+			ci.m_soft_viterations = 0;
+			ci.m_soft_piterations = 1;
+			ci.m_soft_diterations = 0;
+			ci.m_soft_citerations = 4;
+
+			ci.m_soft_kSRHR_CL = 0.1f;
+			ci.m_soft_kSKHR_CL = 1.f;
+			ci.m_soft_kSSHR_CL = 0.5;
+			ci.m_soft_kSR_SPLT_CL = 0.5f;
+
+			ci.m_soft_kSK_SPLT_CL = 0.5f;
+			ci.m_soft_kSS_SPLT_CL = 0.5f;
+			ci.m_soft_kVCF = 1;
+			ci.m_soft_kDP = 0;
+
+			ci.m_soft_kDG = 0;
+			ci.m_soft_kLF = 0;
+			ci.m_soft_kPR = 0;
+			ci.m_soft_kVC = 0;
+
+			ci.m_soft_kDF = 0.2f;
+			ci.m_soft_kMT = 0.05f;
+			ci.m_soft_kCHR = 1.0f;
+			ci.m_soft_kKHR = 0.1f;
+
+			ci.m_soft_kSHR = 1.f;
+			ci.m_soft_kAHR = 0.7f;
+			ci.m_soft_collisionflags = OB_BSB_COL_SDF_RS + OB_BSB_COL_VF_SS;
+			ci.m_soft_numclusteriterations = 16;
+		}
+	}
+	else
+	{
+		ci.m_margin = blenderobject->margin;
+	}
+
+	ci.m_localInertiaTensor = btVector3(ci.m_mass/3.f,ci.m_mass/3.f,ci.m_mass/3.f);
+
+	btCollisionShape* bm = 0;
+
+	char bounds = isbulletdyna ? OB_BOUND_SPHERE : OB_BOUND_TRIANGLE_MESH;
+	if (!(blenderobject->gameflag & OB_BOUNDS))
+	{
+		if (blenderobject->gameflag & OB_SOFT_BODY)
+			bounds = OB_BOUND_TRIANGLE_MESH;
+		else if (blenderobject->gameflag & OB_CHARACTER)
+			bounds = OB_BOUND_SPHERE;
+	}
+	else
+	{
+		if (ELEM(blenderobject->collision_boundtype, OB_BOUND_CONVEX_HULL, OB_BOUND_TRIANGLE_MESH)
+		    && blenderobject->type != OB_MESH)
+		{
+			// Can't use triangle mesh or convex hull on a non-mesh object, fall-back to sphere
+			bounds = OB_BOUND_SPHERE;
+		}
+		else
+			bounds = blenderobject->collision_boundtype;
+	}
+
+	// Get bounds information
+	float bounds_center[3], bounds_extends[3];
+	BoundBox *bb= BKE_object_boundbox_get(blenderobject);
+	if (bb==NULL)
+	{
+		bounds_center[0] = bounds_center[1] = bounds_center[2] = 0.0;
+		bounds_extends[0] = bounds_extends[1] = bounds_extends[2] = 1.0;
+	}
+	else
+	{
+		bounds_extends[0] = 0.5f * fabsf(bb->vec[0][0] - bb->vec[4][0]);
+		bounds_extends[1] = 0.5f * fabsf(bb->vec[0][1] - bb->vec[2][1]);
+		bounds_extends[2] = 0.5f * fabsf(bb->vec[0][2] - bb->vec[1][2]);
+
+		bounds_center[0] = 0.5f * (bb->vec[0][0] + bb->vec[4][0]);
+		bounds_center[1] = 0.5f * (bb->vec[0][1] + bb->vec[2][1]);
+		bounds_center[2] = 0.5f * (bb->vec[0][2] + bb->vec[1][2]);
+	}
+
+	switch (bounds)
+	{
+	case OB_BOUND_SPHERE:
+		{
+			//float radius = objprop->m_radius;
+			//btVector3 inertiaHalfExtents (
+			//	radius,
+			//	radius,
+			//	radius);
+
+			//blender doesn't support multisphere, but for testing:
+
+			//bm = new MultiSphereShape(inertiaHalfExtents,,&trans.getOrigin(),&radius,1);
+			shapeInfo->m_shapeType = PHY_SHAPE_SPHERE;
+			// XXX We calculated the radius but didn't use it?
+			// objprop.m_boundobject.c.m_radius = MT_max(bb.m_extends[0], MT_max(bb.m_extends[1], bb.m_extends[2]));
+			bm = shapeInfo->CreateBulletShape(ci.m_margin);
+			break;
+		};
+	case OB_BOUND_BOX:
+		{
+			shapeInfo->m_halfExtend.setValue(
+					2.f * bounds_extends[0],
+			        2.f * bounds_extends[1],
+			        2.f * bounds_extends[2]);
+
+			shapeInfo->m_halfExtend /= 2.0;
+			shapeInfo->m_halfExtend = shapeInfo->m_halfExtend.absolute();
+			shapeInfo->m_shapeType = PHY_SHAPE_BOX;
+			bm = shapeInfo->CreateBulletShape(ci.m_margin);
+			break;
+		};
+	case OB_BOUND_CYLINDER:
+		{
+			float radius = MT_max(bounds_extends[0], bounds_extends[1]);
+			shapeInfo->m_halfExtend.setValue(
+				radius,
+				radius,
+				bounds_extends[2]
+			);
+			shapeInfo->m_shapeType = PHY_SHAPE_CYLINDER;
+			bm = shapeInfo->CreateBulletShape(ci.m_margin);
+			break;
+		}
+
+	case OB_BOUND_CONE:
+		{
+			shapeInfo->m_radius = MT_max(bounds_extends[0], bounds_extends[1]);
+			shapeInfo->m_height = 2.f * bounds_extends[2];
+			shapeInfo->m_shapeType = PHY_SHAPE_CONE;
+			bm = shapeInfo->CreateBulletShape(ci.m_margin);
+			break;
+		}
+	case OB_BOUND_CONVEX_HULL:
+		{
+			shapeInfo->SetMesh(meshobj, dm,true);
+			bm = shapeInfo->CreateBulletShape(ci.m_margin);
+			break;
+		}
+	case OB_BOUND_CAPSULE:
+		{
+			shapeInfo->m_radius = MT_max(bounds_extends[0], bounds_extends[1]);
+			shapeInfo->m_height = 2.f * (bounds_extends[2] - shapeInfo->m_radius);
+			if (shapeInfo->m_height < 0.f)
+				shapeInfo->m_height = 0.f;
+			shapeInfo->m_shapeType = PHY_SHAPE_CAPSULE;
+			bm = shapeInfo->CreateBulletShape(ci.m_margin);
+			break;
+		}
+	case OB_BOUND_TRIANGLE_MESH:
+		{
+			// mesh shapes can be shared, check first if we already have a shape on that mesh
+			class CcdShapeConstructionInfo *sharedShapeInfo = CcdShapeConstructionInfo::FindMesh(meshobj, dm, false);
+			if (sharedShapeInfo != NULL)
+			{
+				shapeInfo->Release();
+				shapeInfo = sharedShapeInfo;
+				shapeInfo->AddRef();
+			} else
+			{
+				shapeInfo->SetMesh(meshobj, dm, false);
+			}
+
+			// Soft bodies can benefit from welding, don't do it on non-soft bodies
+			if (isbulletsoftbody)
+			{
+				// disable welding: it doesn't bring any additional stability and it breaks the relation between soft body collision shape and graphic mesh
+				// shapeInfo->setVertexWeldingThreshold1((blenderobject->bsoft) ? blenderobject->bsoft->welding ? 0.f);
+				shapeInfo->setVertexWeldingThreshold1(0.f); //todo: expose this to the UI
+			}
+
+			bm = shapeInfo->CreateBulletShape(ci.m_margin, useGimpact, !isbulletsoftbody);
+			//should we compute inertia for dynamic shape?
+			//bm->calculateLocalInertia(ci.m_mass,ci.m_localInertiaTensor);
+
+			break;
+		}
+	}
+
+
+//	ci.m_localInertiaTensor.setValue(0.1f,0.1f,0.1f);
+
+	if (!bm)
+	{
+		delete motionstate;
+		shapeInfo->Release();
+		return;
+	}
+
+	//bm->setMargin(ci.m_margin);
+
+
+		if (isCompoundChild)
+		{
+			//find parent, compound shape and add to it
+			//take relative transform into account!
+			CcdPhysicsController* parentCtrl = (CcdPhysicsController*)parent->GetPhysicsController();
+			assert(parentCtrl);
+
+			// only makes compound shape if parent has a physics controller (i.e not an empty, etc)
+			if (parentCtrl) {
+				CcdShapeConstructionInfo* parentShapeInfo = parentCtrl->GetShapeInfo();
+				btRigidBody* rigidbody = parentCtrl->GetRigidBody();
+				btCollisionShape* colShape = rigidbody->getCollisionShape();
+				assert(colShape->isCompound());
+				btCompoundShape* compoundShape = (btCompoundShape*)colShape;
+
+				// compute the local transform from parent, this may include several node in the chain
+				SG_Node* gameNode = gameobj->GetSGNode();
+				SG_Node* parentNode = parent->GetSGNode();
+				// relative transform
+				MT_Vector3 parentScale = parentNode->GetWorldScaling();
+				parentScale[0] = MT_Scalar(1.0)/parentScale[0];
+				parentScale[1] = MT_Scalar(1.0)/parentScale[1];
+				parentScale[2] = MT_Scalar(1.0)/parentScale[2];
+				MT_Vector3 relativeScale = gameNode->GetWorldScaling() * parentScale;
+				MT_Matrix3x3 parentInvRot = parentNode->GetWorldOrientation().transposed();
+				MT_Vector3 relativePos = parentInvRot*((gameNode->GetWorldPosition()-parentNode->GetWorldPosition())*parentScale);
+				MT_Matrix3x3 relativeRot = parentInvRot*gameNode->GetWorldOrientation();
+
+				shapeInfo->m_childScale.setValue(relativeScale[0],relativeScale[1],relativeScale[2]);
+				bm->setLocalScaling(shapeInfo->m_childScale);
+				shapeInfo->m_childTrans.getOrigin().setValue(relativePos[0],relativePos[1],relativePos[2]);
+				float rot[12];
+				relativeRot.getValue(rot);
+				shapeInfo->m_childTrans.getBasis().setFromOpenGLSubMatrix(rot);
+
+				parentShapeInfo->AddShape(shapeInfo);
+				compoundShape->addChildShape(shapeInfo->m_childTrans,bm);
+				//do some recalc?
+				//recalc inertia for rigidbody
+				if (!rigidbody->isStaticOrKinematicObject())
+				{
+					btVector3 localInertia;
+					float mass = 1.f/rigidbody->getInvMass();
+					compoundShape->calculateLocalInertia(mass,localInertia);
+					rigidbody->setMassProps(mass,localInertia);
+				}
+				shapeInfo->Release();
+				// delete motionstate as it's not used
+				delete motionstate;
+			}
+			return;
+		}
+
+		if (hasCompoundChildren)
+		{
+			// create a compound shape info
+			CcdShapeConstructionInfo *compoundShapeInfo = new CcdShapeConstructionInfo();
+			compoundShapeInfo->m_shapeType = PHY_SHAPE_COMPOUND;
+			compoundShapeInfo->AddShape(shapeInfo);
+			// create the compound shape manually as we already have the child shape
+			btCompoundShape* compoundShape = new btCompoundShape();
+			compoundShape->addChildShape(shapeInfo->m_childTrans,bm);
+			// now replace the shape
+			bm = compoundShape;
+			shapeInfo->Release();
+			shapeInfo = compoundShapeInfo;
+		}
+
+
+
+
+
+
+#ifdef TEST_SIMD_HULL
+	if (bm->IsPolyhedral())
+	{
+		PolyhedralConvexShape* polyhedron = static_cast<PolyhedralConvexShape*>(bm);
+		if (!polyhedron->m_optionalHull)
+		{
+			//first convert vertices in 'Point3' format
+			int numPoints = polyhedron->GetNumVertices();
+			Point3* points = new Point3[numPoints+1];
+			//first 4 points should not be co-planar, so add central point to satisfy MakeHull
+			points[0] = Point3(0.f,0.f,0.f);
+
+			btVector3 vertex;
+			for (int p=0;p<numPoints;p++)
+			{
+				polyhedron->GetVertex(p,vertex);
+				points[p+1] = Point3(vertex.getX(),vertex.getY(),vertex.getZ());
+			}
+
+			Hull* hull = Hull::MakeHull(numPoints+1,points);
+			polyhedron->m_optionalHull = hull;
+		}
+
+	}
+#endif //TEST_SIMD_HULL
+
+
+	ci.m_collisionShape = bm;
+	ci.m_shapeInfo = shapeInfo;
+	ci.m_friction = smmaterial->m_friction;//tweak the friction a bit, so the default 0.5 works nice
+	ci.m_restitution = smmaterial->m_restitution;
+	ci.m_physicsEnv = this;
+	// drag / damping is inverted
+	ci.m_linearDamping = 1.f - shapeprops->m_lin_drag;
+	ci.m_angularDamping = 1.f - shapeprops->m_ang_drag;
+	//need a bit of damping, else system doesn't behave well
+	ci.m_inertiaFactor = shapeprops->m_inertia/0.4f;//defaults to 0.4, don't want to change behavior
+
+	ci.m_do_anisotropic = shapeprops->m_do_anisotropic;
+	ci.m_anisotropicFriction.setValue(shapeprops->m_friction_scaling[0],shapeprops->m_friction_scaling[1],shapeprops->m_friction_scaling[2]);
+
+
+//////////
+	//do Fh, do Rot Fh
+	ci.m_do_fh = shapeprops->m_do_fh;
+	ci.m_do_rot_fh = shapeprops->m_do_rot_fh;
+	ci.m_fh_damping = smmaterial->m_fh_damping;
+	ci.m_fh_distance = smmaterial->m_fh_distance;
+	ci.m_fh_normal = smmaterial->m_fh_normal;
+	ci.m_fh_spring = smmaterial->m_fh_spring;
+
+	ci.m_collisionFilterGroup =
+		(isbulletsensor) ? short(CcdConstructionInfo::SensorFilter) :
+		(isbulletdyna) ? short(CcdConstructionInfo::DefaultFilter) :
+		(isbulletchar) ? short(CcdConstructionInfo::CharacterFilter) :
+		short(CcdConstructionInfo::StaticFilter);
+	ci.m_collisionFilterMask =
+		(isbulletsensor) ? short(CcdConstructionInfo::AllFilter ^ CcdConstructionInfo::SensorFilter) :
+		(isbulletdyna) ? short(CcdConstructionInfo::AllFilter) :
+		(isbulletchar) ? short(CcdConstructionInfo::AllFilter) :
+		short(CcdConstructionInfo::AllFilter ^ CcdConstructionInfo::StaticFilter);
+	ci.m_bRigid = isbulletdyna && isbulletrigidbody;
+	ci.m_bSoft = isbulletsoftbody;
+	ci.m_bDyna = isbulletdyna;
+	ci.m_bSensor = isbulletsensor;
+	ci.m_bCharacter = isbulletchar;
+	ci.m_bGimpact = useGimpact;
+	MT_Vector3 scaling = gameobj->NodeGetWorldScaling();
+	ci.m_scaling.setValue(scaling[0], scaling[1], scaling[2]);
+	CcdPhysicsController* physicscontroller = new CcdPhysicsController(ci);
+	// shapeInfo is reference counted, decrement now as we don't use it anymore
+	if (shapeInfo)
+		shapeInfo->Release();
+
+	gameobj->SetPhysicsController(physicscontroller,isbulletdyna);
+
+	// record animation for dynamic objects
+	if (isbulletdyna)
+		gameobj->SetRecordAnimation(true);
+
+	// don't add automatically sensor object, they are added when a collision sensor is registered
+	if (!isbulletsensor && (blenderobject->lay & activeLayerBitInfo) != 0)
+	{
+		this->AddCcdPhysicsController( physicscontroller);
+	}
+	physicscontroller->SetNewClientInfo(gameobj->getClientInfo());
+	{
+		btRigidBody* rbody = physicscontroller->GetRigidBody();
+
+		if (rbody)
+		{
+			if (isbulletrigidbody)
+			{
+				rbody->setLinearFactor(ci.m_linearFactor);
+				rbody->setAngularFactor(ci.m_angularFactor);
+			}
+
+			if (rbody && (blenderobject->gameflag & OB_COLLISION_RESPONSE) != 0)
+			{
+				rbody->setActivationState(DISABLE_DEACTIVATION);
+			}
+		}
+	}
+
+	CcdPhysicsController* parentCtrl = parent ? (CcdPhysicsController*)parent->GetPhysicsController() : 0;
+	physicscontroller->SetParentCtrl(parentCtrl);
+
+
+	//Now done directly in ci.m_collisionFlags so that it propagates to replica
+	//if (objprop->m_ghost)
+	//{
+	//	rbody->setCollisionFlags(rbody->getCollisionFlags() | btCollisionObject::CF_NO_CONTACT_RESPONSE);
+	//}
+
+	if (isbulletdyna && !isbulletrigidbody)
+	{
+#if 0
+		//setting the inertia could achieve similar results to constraint the up
+		//but it is prone to instability, so use special 'Angular' constraint
+		btVector3 inertia = physicscontroller->GetRigidBody()->getInvInertiaDiagLocal();
+		inertia.setX(0.f);
+		inertia.setZ(0.f);
+
+		physicscontroller->GetRigidBody()->setInvInertiaDiagLocal(inertia);
+		physicscontroller->GetRigidBody()->updateInertiaTensor();
+#endif
+
+		//this->createConstraint(physicscontroller,0,PHY_ANGULAR_CONSTRAINT,0,0,0,0,0,1);
+
+		//Now done directly in ci.m_bRigid so that it propagates to replica
+		//physicscontroller->GetRigidBody()->setAngularFactor(0.f);
+		;
+	}
+
+
+	STR_String materialname;
+	if (meshobj)
+		materialname = meshobj->GetMaterialName(0);
+
+
+#if 0
+	///test for soft bodies
+	if (objprop->m_softbody && physicscontroller)
+	{
+		btSoftBody* softBody = physicscontroller->GetSoftBody();
+		if (softBody && gameobj->GetMesh(0))//only the first mesh, if any
+		{
+			//should be a mesh then, so add a soft body deformer
+			KX_SoftBodyDeformer* softbodyDeformer = new KX_SoftBodyDeformer( gameobj->GetMesh(0),(BL_DeformableGameObject*)gameobj);
+			gameobj->SetDeformer(softbodyDeformer);
+		}
+	}
+#endif
+}

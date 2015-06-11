@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __UTIL_VIEW_H__
@@ -27,11 +27,12 @@ typedef void (*ViewExitFunc)(void);
 typedef void (*ViewResizeFunc)(int width, int height);
 typedef void (*ViewDisplayFunc)(void);
 typedef void (*ViewKeyboardFunc)(unsigned char key);
+typedef void (*ViewMotionFunc)(int x, int y, int button);
 
 void view_main_loop(const char *title, int width, int height,
 	ViewInitFunc initf, ViewExitFunc exitf,
 	ViewResizeFunc resize, ViewDisplayFunc display,
-	ViewKeyboardFunc keyboard);
+	ViewKeyboardFunc keyboard, ViewMotionFunc motion);
 
 void view_display_info(const char *info);
 void view_display_help();

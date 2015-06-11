@@ -33,6 +33,7 @@ set(INC
 	../imbuf
 	../makesdna
 	../makesrna
+	../physics
 	../../../intern/guardedalloc
 	../../../intern/mikktspace
 	../../../intern/smoke/extern
@@ -48,16 +49,15 @@ set(SRC
 	intern/raytrace/rayobject_octree.cpp
 	intern/raytrace/rayobject_raycounter.cpp
 	intern/raytrace/rayobject_svbvh.cpp
-	intern/raytrace/rayobject_blibvh.cpp
 	intern/raytrace/rayobject_instance.cpp
 	intern/raytrace/rayobject_qbvh.cpp
 	intern/raytrace/rayobject_rtbuild.cpp
 	intern/raytrace/rayobject_vbvh.cpp
 	intern/source/bake.c
+	intern/source/bake_api.c
 	intern/source/convertblender.c
 	intern/source/envmap.c
 	intern/source/external_engine.c
-	intern/source/gammaCorrectionTables.c
 	intern/source/imagetexture.c
 	intern/source/initrender.c
 	intern/source/multires_bake.c
@@ -84,12 +84,12 @@ set(SRC
 	intern/source/zbuf.c
 
 	extern/include/RE_engine.h
+	extern/include/RE_bake.h
 	extern/include/RE_multires_bake.h
 	extern/include/RE_pipeline.h
 	extern/include/RE_render_ext.h
 	extern/include/RE_shader_ext.h
 	intern/include/envmap.h
-	intern/include/gammaCorrectionTables.h
 	intern/include/initrender.h
 	intern/include/occlusion.h
 	intern/include/pixelblending.h
@@ -161,6 +161,10 @@ endif()
 
 if(WITH_INTERNATIONAL)
 	add_definitions(-DWITH_INTERNATIONAL)
+endif()
+
+if(WITH_CYCLES AND WITH_CYCLES_DEBUG)
+	add_definitions(-DWITH_CYCLES_DEBUG)
 endif()
 
 if(APPLE)

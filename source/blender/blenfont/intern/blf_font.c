@@ -54,8 +54,6 @@
 #include "BLI_string_utf8.h"
 #include "BLI_threads.h"
 #include "BLI_alloca.h"
-#include "BLI_linklist.h"  /* linknode */
-#include "BLI_strict_flags.h"
 
 #include "BIF_gl.h"
 #include "BLF_api.h"
@@ -64,6 +62,12 @@
 
 #include "blf_internal_types.h"
 #include "blf_internal.h"
+
+#include "BLI_strict_flags.h"
+
+#ifdef WIN32
+#  define FT_New_Face FT_New_Face__win32_compat
+#endif
 
 /* freetype2 handle ONLY for this file!. */
 static FT_Library ft_lib;
@@ -149,10 +153,10 @@ static void blf_font_ensure_ascii_table(FontBLF *font)
 
 
 #define BLF_KERNING_VARS(_font, _has_kerning, _kern_mode)                        \
-	const short _has_kerning = FT_HAS_KERNING((_font)->face);                    \
+	const bool _has_kerning = FT_HAS_KERNING((_font)->face);                     \
 	const FT_UInt _kern_mode = (_has_kerning == 0) ? 0 :                         \
 	                         (((_font)->flags & BLF_KERNING_DEFAULT) ?           \
-	                          ft_kerning_default : FT_KERNING_UNFITTED)          \
+	                          ft_kerning_default : (FT_UInt)FT_KERNING_UNFITTED) \
 
 
 #define BLF_KERNING_STEP(_font, _kern_mode, _g_prev, _g, _delta, _pen_x)         \
@@ -186,9 +190,9 @@ void blf_font_draw(FontBLF *font, const char *str, size_t len)
 	while ((i < len) && str[i]) {
 		BLF_UTF8_NEXT_FAST(font, g, str, i, c, glyph_ascii_table);
 
-		if (c == BLI_UTF8_ERR)
+		if (UNLIKELY(c == BLI_UTF8_ERR))
 			break;
-		if (g == NULL)
+		if (UNLIKELY(g == NULL))
 			continue;
 		if (has_kerning)
 			BLF_KERNING_STEP(font, kern_mode, g_prev, g, delta, pen_x);
@@ -196,7 +200,7 @@ void blf_font_draw(FontBLF *font, const char *str, size_t len)
 		/* do not return this loop if clipped, we want every character tested */
 		blf_glyph_render(font, g, (float)pen_x, (float)pen_y);
 
-		pen_x += (int)g->advance;
+		pen_x += g->advance_i;
 		g_prev = g;
 	}
 }
@@ -224,7 +228,7 @@ void blf_font_draw_ascii(FontBLF *font, const char *str, size_t len)
 		/* do not return this loop if clipped, we want every character tested */
 		blf_glyph_render(font, g, (float)pen_x, (float)pen_y);
 
-		pen_x += (int)g->advance;
+		pen_x += g->advance_i;
 		g_prev = g;
 	}
 }
@@ -244,9 +248,9 @@ int blf_font_draw_mono(FontBLF *font, const char *str, size_t len, int cwidth)
 	while ((i < len) && str[i]) {
 		BLF_UTF8_NEXT_FAST(font, g, str, i, c, glyph_ascii_table);
 
-		if (c == BLI_UTF8_ERR)
+		if (UNLIKELY(c == BLI_UTF8_ERR))
 			break;
-		if (g == NULL)
+		if (UNLIKELY(g == NULL))
 			continue;
 
 		/* do not return this loop if clipped, we want every character tested */
@@ -303,9 +307,9 @@ void blf_font_buffer(FontBLF *font, const char *str)
 	while (str[i]) {
 		BLF_UTF8_NEXT_FAST(font, g, str, i, c, glyph_ascii_table);
 
-		if (c == BLI_UTF8_ERR)
+		if (UNLIKELY(c == BLI_UTF8_ERR))
 			break;
-		if (g == NULL)
+		if (UNLIKELY(g == NULL))
 			continue;
 		if (has_kerning)
 			BLF_KERNING_STEP(font, kern_mode, g_prev, g, delta, pen_x);
@@ -415,7 +419,7 @@ void blf_font_buffer(FontBLF *font, const char *str)
 			}
 		}
 
-		pen_x += (int)g->advance;
+		pen_x += g->advance_i;
 		g_prev = g;
 	}
 }
@@ -438,14 +442,14 @@ size_t blf_font_width_to_strlen(FontBLF *font, const char *str, size_t len, floa
 	while ((i_prev = i), (width_new = pen_x), ((i < len) && str[i])) {
 		BLF_UTF8_NEXT_FAST(font, g, str, i, c, glyph_ascii_table);
 
-		if (c == BLI_UTF8_ERR)
+		if (UNLIKELY(c == BLI_UTF8_ERR))
 			break;
-		if (g == NULL)
+		if (UNLIKELY(g == NULL))
 			continue;
 		if (has_kerning)
 			BLF_KERNING_STEP(font, kern_mode, g_prev, g, delta, pen_x);
 
-		pen_x += (int)g->advance;
+		pen_x += g->advance_i;
 
 		if (width_i < pen_x) {
 			break;
@@ -501,14 +505,14 @@ size_t blf_font_width_to_rstrlen(FontBLF *font, const char *str, size_t len, flo
 	while ((i < len) && str[i]) {
 		BLF_UTF8_NEXT_FAST(font, g, str, i, c, glyph_ascii_table);
 
-		if (c == BLI_UTF8_ERR)
+		if (UNLIKELY(c == BLI_UTF8_ERR))
 			break;
-		if (g == NULL)
+		if (UNLIKELY(g == NULL))
 			continue;
 		if (has_kerning)
 			BLF_KERNING_STEP(font, kern_mode, g_prev, g, delta, pen_x);
 
-		pen_x += (int)g->advance;
+		pen_x += g->advance_i;
 
 		width_accum[width_accum_ofs][0] = (int)i;
 		width_accum[width_accum_ofs][1] = pen_x;
@@ -570,9 +574,9 @@ void blf_font_boundbox(FontBLF *font, const char *str, size_t len, rctf *box)
 	while ((i < len) && str[i]) {
 		BLF_UTF8_NEXT_FAST(font, g, str, i, c, glyph_ascii_table);
 
-		if (c == BLI_UTF8_ERR)
+		if (UNLIKELY(c == BLI_UTF8_ERR))
 			break;
-		if (g == NULL)
+		if (UNLIKELY(g == NULL))
 			continue;
 		if (has_kerning)
 			BLF_KERNING_STEP(font, kern_mode, g_prev, g, delta, pen_x);
@@ -588,7 +592,7 @@ void blf_font_boundbox(FontBLF *font, const char *str, size_t len, rctf *box)
 		if (gbox.xmax > box->xmax) box->xmax = gbox.xmax;
 		if (gbox.ymax > box->ymax) box->ymax = gbox.ymax;
 
-		pen_x += (int)g->advance;
+		pen_x += g->advance_i;
 		g_prev = g;
 	}
 
@@ -701,8 +705,7 @@ static void blf_font_fill(FontBLF *font)
 	font->flags = 0;
 	font->dpi = 0;
 	font->size = 0;
-	font->cache.first = NULL;
-	font->cache.last = NULL;
+	BLI_listbase_clear(&font->cache);
 	font->glyph_cache = NULL;
 	font->blur = 0;
 	font->max_tex_size = -1;

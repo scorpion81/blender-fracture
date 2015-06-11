@@ -34,6 +34,7 @@ extern "C" {
 #include "BLI_compiler_attrs.h"
 
 char        *BLI_strncpy_utf8(char *__restrict dst, const char *__restrict src, size_t maxncpy) ATTR_NONNULL();
+size_t       BLI_strncpy_utf8_rlen(char *__restrict dst, const char *__restrict src, size_t maxncpy) ATTR_NONNULL();
 char        *BLI_strncat_utf8(char *__restrict dst, const char *__restrict src, size_t maxncpy) ATTR_NONNULL();
 int          BLI_utf8_invalid_byte(const char *str, int length) ATTR_NONNULL();
 int          BLI_utf8_invalid_strip(char *str, int length) ATTR_NONNULL();
@@ -65,6 +66,10 @@ int          BLI_wcwidth(wchar_t ucs);
 int          BLI_wcswidth(const wchar_t *pwcs, size_t n) ATTR_NONNULL();
 int          BLI_str_utf8_char_width(const char *p) ATTR_NONNULL(); /* warning, can return -1 on bad chars */
 int          BLI_str_utf8_char_width_safe(const char *p) ATTR_NONNULL();
+
+size_t       BLI_str_partition_utf8(const char *str, const unsigned int delim[], char **sep, char **suf) ATTR_NONNULL();
+size_t       BLI_str_rpartition_utf8(const char *str, const unsigned int delim[], char **sep, char **suf) ATTR_NONNULL();
+size_t       BLI_str_partition_ex_utf8(const char *str, const unsigned int delim[], char **sep, char **suf, const bool from_right) ATTR_NONNULL();
 
 #define      BLI_UTF8_MAX 6        /* mem */
 #define      BLI_UTF8_WIDTH_MAX 2  /* columns */

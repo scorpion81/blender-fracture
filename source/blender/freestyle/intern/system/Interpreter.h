@@ -38,7 +38,7 @@ using namespace std;
 
 namespace Freestyle {
 
-class LIB_SYSTEM_EXPORT Interpreter
+class Interpreter
 {
 public:
 	Interpreter()
@@ -46,7 +46,7 @@ public:
 		_language = "Unknown";
 	}
 
-	virtual ~Interpreter() {}; //soc
+	virtual ~Interpreter() {}
 
 	virtual int interpretFile(const string& filename) = 0;
 

@@ -42,6 +42,7 @@
 #include "KX_WorldInfo.h"
 #include <vector>
 
+struct TaskScheduler;
 class KX_TimeCategoryLogger;
 
 #define LEFT_EYE  1
@@ -127,12 +128,7 @@ private:
 
 	int					m_exitcode;
 	STR_String			m_exitstring;
-		/**
-		 * Some drawing parameters, the drawing mode
-		 * (wire/flat/texture), and the camera zoom
-		 * factor.
-		 */
-	int				m_drawingmode;
+
 	float			m_cameraZoom;
 	
 	bool			m_overrideCam;
@@ -179,8 +175,10 @@ private:
 	bool					m_showProperties;
 	/** Show background behind text for readability? */
 	bool					m_showBackground;
-
+	/** Show debug properties on the game display*/
 	bool					m_show_debug_properties;
+	/** Automatic add debug properties to the debug list*/
+	bool					m_autoAddDebugProperties;
 
 	/** record physics into keyframes */
 	bool					m_animation_record;
@@ -199,6 +197,9 @@ private:
 
 	/** Settings that doesn't go away with Game Actuator */
 	GlobalSettings m_globalsettings;
+
+	/** Task scheduler for multi-threading */
+	TaskScheduler* m_taskscheduler;
 
 	void					RenderFrame(KX_Scene* scene, KX_Camera* cam);
 	void					PostRenderScene(KX_Scene* scene);
@@ -223,12 +224,15 @@ public:
 	PyObject*		GetPyProfileDict();
 #endif
 	void			SetSceneConverter(KX_ISceneConverter* sceneconverter);
+	KX_ISceneConverter* GetSceneConverter() { return m_sceneconverter; }
 	void			SetAnimRecordMode(bool animation_record, int startFrame);
 
 	RAS_IRasterizer*		GetRasterizer() { return m_rasterizer; }
 	RAS_ICanvas*		    GetCanvas() { return m_canvas; }
 	SCA_IInputDevice*		GetKeyboardDevice() { return m_keyboarddevice; }
 	SCA_IInputDevice*		GetMouseDevice() { return m_mousedevice; }
+
+	TaskScheduler*			GetTaskScheduler() { return m_taskscheduler; }
 
 	/// Dome functions
 	void			InitDome(short res, short mode, short angle, float resbuf, short tilt, struct Text* text); 
@@ -255,14 +259,11 @@ public:
 	void			ConvertAndAddScene(const STR_String& scenename,bool overlay);
 
 	void			RemoveScene(const STR_String& scenename);
-	void			ReplaceScene(const STR_String& oldscene,const STR_String& newscene);
+    bool			ReplaceScene(const STR_String& oldscene,const STR_String& newscene);
 	void			SuspendScene(const STR_String& scenename);
 	void			ResumeScene(const STR_String& scenename);
 
 	void			GetSceneViewport(KX_Scene* scene, KX_Camera* cam, RAS_Rect& area, RAS_Rect& viewport);
-
-	void SetDrawType(int drawingtype);
-	int  GetDrawType() { return m_drawingmode; }
 
 	void SetCameraZoom(float camzoom);
 	
@@ -354,6 +355,46 @@ public:
 	static void SetExitKey(short key);
 
 	static short GetExitKey();
+
+	/**
+	 * \Sets the display for frame rate on or off.
+	 */
+	void SetShowFramerate(bool frameRate);
+
+	/**
+	 * \Gets the display for frame rate on or off.
+	 */
+	bool GetShowFramerate();
+
+	/**
+	 * \Sets the display for individual components on or off.
+	 */
+	void SetShowProfile(bool profile);
+
+	/**
+	 * \Gets the display for individual components on or off.
+	 */
+	bool GetShowProfile();
+
+	/**
+	 * \Sets the display of scene object debug properties on or off.
+	 */
+	void SetShowProperties(bool properties);
+
+	/**
+	 * \Gets the display of scene object debug properties on or off.
+	 */
+	bool GetShowProperties();
+
+	/**
+	 * \Sets if the auto adding of scene object debug properties on or off.
+	 */
+	bool GetAutoAddDebugProperties();
+
+	/**
+	 * \Sets the auto adding of scene object debug properties on or off.
+	 */
+	void SetAutoAddDebugProperties(bool add);
 
 	/**
 	 * Activates or deactivates timing information display.

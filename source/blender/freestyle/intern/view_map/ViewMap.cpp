@@ -28,8 +28,8 @@
 #include <float.h>
 
 #include "ViewMap.h"
-#include "ViewMapAdvancedIterators.h"
 #include "ViewMapIterators.h"
+#include "ViewMapAdvancedIterators.h"
 
 #include "../geometry/GeomUtils.h"
 
@@ -61,6 +61,30 @@ ViewMap::~ViewMap()
 	_FEdges.clear();
 	_SVertices.clear();
 	_VEdges.clear();
+}
+
+void ViewMap::Clean()
+{
+	vector<FEdge*> tmpEdges;
+
+	for (vector<ViewShape*>::iterator vs = _VShapes.begin(), vsend = _VShapes.end(); vs != vsend; vs++) {
+		vector<FEdge*>& edges = (*vs)->sshape()->getEdgeList();
+		for (vector<FEdge*>::iterator it = edges.begin(), itend = edges.end(); it != itend; it++) {
+			if ((*it)->isTemporary()) {
+				(*it)->setTemporary(false); // avoid being counted multiple times
+				tmpEdges.push_back(*it);
+			}
+		}
+	}
+
+	for (vector<FEdge*>::iterator it = tmpEdges.begin(), itend = tmpEdges.end(); it != itend; it++) {
+		for (vector<ViewShape*>::iterator vs = _VShapes.begin(), vsend = _VShapes.end(); vs != vsend; vs++) {
+			(*vs)->sshape()->RemoveEdge(*it);
+		}
+		(*it)->vertexA()->RemoveFEdge(*it);
+		(*it)->vertexB()->RemoveFEdge(*it);
+		delete (*it);
+	}
 }
 
 ViewShape *ViewMap::viewShape(unsigned id)

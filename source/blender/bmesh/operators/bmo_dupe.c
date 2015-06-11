@@ -109,7 +109,7 @@ static BMEdge *bmo_edge_copy(BMOperator *op,
 
 	/* add to new/old edge map if necassary */
 	if (rlen < 2) {
-		/* not sure what non-manifold cases of greater then three
+		/* not sure what non-manifold cases of greater than three
 		 * radial should do. */
 		BMO_slot_map_elem_insert(op, slot_boundarymap_out, e_src, e_dst);
 	}
@@ -183,6 +183,7 @@ static BMFace *bmo_face_copy(BMOperator *op,
  */
 static void bmo_mesh_copy(BMOperator *op, BMesh *bm_dst, BMesh *bm_src)
 {
+	const bool use_select_history = BMO_slot_bool_get(op->slots_in, "use_select_history");
 
 	BMVert *v = NULL, *v2;
 	BMEdge *e = NULL;
@@ -285,6 +286,16 @@ static void bmo_mesh_copy(BMOperator *op, BMesh *bm_dst, BMesh *bm_src)
 	/* free pointer hashes */
 	BLI_ghash_free(vhash, NULL, NULL);
 	BLI_ghash_free(ehash, NULL, NULL);
+
+	if (use_select_history) {
+		BLI_assert(bm_src == bm_dst);
+		BMO_mesh_selected_remap(
+		        bm_dst,
+		        slot_vert_map_out,
+		        slot_edge_map_out,
+		        slot_face_map_out,
+		        false);
+	}
 }
 
 /**

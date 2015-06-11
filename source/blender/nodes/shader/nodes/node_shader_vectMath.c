@@ -29,10 +29,7 @@
  *  \ingroup shdnodes
  */
 
-
-
 #include "node_shader_util.h"
-
 
 /* **************** VECTOR MATH ******************** */ 
 static bNodeSocketTemplate sh_node_vect_math_in[] = {
@@ -59,14 +56,14 @@ static void node_shader_exec_vect_math(void *UNUSED(data), int UNUSED(thread), b
 		out[0]->vec[1] = vec1[1] + vec2[1];
 		out[0]->vec[2] = vec1[2] + vec2[2];
 		
-		out[1]->vec[0] = (fabs(out[0]->vec[0]) + fabs(out[0]->vec[0]) + fabs(out[0]->vec[0])) / 3;
+		out[1]->vec[0] = (fabsf(out[0]->vec[0]) + fabsf(out[0]->vec[1]) + fabsf(out[0]->vec[2])) / 3.0f;
 	}
 	else if (node->custom1 == 1) {	/* Subtract */
 		out[0]->vec[0] = vec1[0] - vec2[0];
 		out[0]->vec[1] = vec1[1] - vec2[1];
 		out[0]->vec[2] = vec1[2] - vec2[2];
 		
-		out[1]->vec[0] = (fabs(out[0]->vec[0]) + fabs(out[0]->vec[0]) + fabs(out[0]->vec[0])) / 3;
+		out[1]->vec[0] = (fabsf(out[0]->vec[0]) + fabsf(out[0]->vec[1]) + fabsf(out[0]->vec[2])) / 3.0f;
 	}
 	else if (node->custom1 == 2) {	/* Average */
 		out[0]->vec[0] = vec1[0] + vec2[0];
@@ -147,7 +144,7 @@ void register_node_type_sh_vect_math(void)
 	node_type_compatibility(&ntype, NODE_OLD_SHADING | NODE_NEW_SHADING);
 	node_type_socket_templates(&ntype, sh_node_vect_math_in, sh_node_vect_math_out);
 	node_type_label(&ntype, node_vect_math_label);
-	node_type_storage(&ntype, "node_vect_math", NULL, NULL);
+	node_type_storage(&ntype, "", NULL, NULL);
 	node_type_exec(&ntype, NULL, NULL, node_shader_exec_vect_math);
 	node_type_gpu(&ntype, gpu_shader_vect_math);
 

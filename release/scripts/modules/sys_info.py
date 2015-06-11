@@ -118,6 +118,18 @@ def write_sysinfo(op):
     else:
         output.write("Blender was built without FFmpeg support\n")
 
+    if bpy.app.build_options.sdl:
+        output.write("\nSDL\n")
+        output.write(lilies)
+        output.write("Version: %s\n" % bpy.app.sdl.version_string)
+        output.write("Loading method: ")
+        if bpy.app.build_options.sdl_dynload:
+            output.write("dynamically loaded by Blender (WITH_SDL_DYNLOAD=ON)\n")
+        else:
+            output.write("linked (WITH_SDL_DYNLOAD=OFF)\n")
+        if not bpy.app.sdl.available:
+            output.write("WARNING: Blender could not load SDL library\n")
+
     output.write("\nOther Libraries:\n")
     output.write(lilies)
     ocio = bpy.app.ocio
@@ -133,7 +145,7 @@ def write_sysinfo(op):
 
     oiio = bpy.app.oiio
     output.write("OpenImageIO: ")
-    if ocio.supported :
+    if ocio.supported:
         output.write("%s\n" % (oiio.version_string))
     else:
         output.write("Blender was built without OpenImageIO support\n")
@@ -148,12 +160,16 @@ def write_sysinfo(op):
     else:
         output.write("Blender was built without Cycles support\n")
 
+    if not bpy.app.build_options.sdl:
+        output.write("SDL: Blender was built without SDL support\n")
+
     if bpy.app.background:
         output.write("\nOpenGL: missing, background mode\n")
     else:
         output.write("\nOpenGL\n")
         output.write(lilies)
-        output.write("renderer:\t%r\n" % (bgl.glGetString(bgl.GL_RENDERER)))
+        version = bgl.glGetString(bgl.GL_RENDERER)
+        output.write("renderer:\t%r\n" % version)
         output.write("vendor:\t\t%r\n" % (bgl.glGetString(bgl.GL_VENDOR)))
         output.write("version:\t%r\n" % (bgl.glGetString(bgl.GL_VERSION)))
         output.write("extensions:\n")
@@ -162,6 +178,35 @@ def write_sysinfo(op):
         glext = textWrap(glext, 70)
         for l in glext:
             output.write("\t\t%r\n" % (l))
+
+        output.write("\nImplementation Dependent OpenGL Limits:\n")
+        output.write(lilies)
+        limit = bgl.Buffer(bgl.GL_INT, 1)
+        bgl.glGetIntegerv(bgl.GL_MAX_TEXTURE_UNITS, limit)
+        output.write("Maximum Fixed Function Texture Units:\t%d\n" % limit[0])
+
+        output.write("\nGLSL:\n")
+        if version[0] > '1':
+            bgl.glGetIntegerv(bgl.GL_MAX_VARYING_FLOATS, limit)
+            output.write("Maximum Varying Floats:\t%d\n" % limit[0])
+            bgl.glGetIntegerv(bgl.GL_MAX_VERTEX_ATTRIBS, limit)
+            output.write("Maximum Vertex Attributes:\t%d\n" % limit[0])
+            bgl.glGetIntegerv(bgl.GL_MAX_VERTEX_UNIFORM_COMPONENTS, limit)
+            output.write("Maximum Vertex Uniform Components:\t%d\n" % limit[0])
+            bgl.glGetIntegerv(bgl.GL_MAX_FRAGMENT_UNIFORM_COMPONENTS, limit)
+            output.write("Maximum Fragment Uniform Components:\t%d\n" % limit[0])
+            bgl.glGetIntegerv(bgl.GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS, limit)
+            output.write("Maximum Vertex Image Units:\t%d\n" % limit[0])
+            bgl.glGetIntegerv(bgl.GL_MAX_TEXTURE_IMAGE_UNITS, limit)
+            output.write("Maximum Fragment Image Units:\t%d\n" % limit[0])
+            bgl.glGetIntegerv(bgl.GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, limit)
+            output.write("Maximum Pipeline Image Units:\t%d\n" % limit[0])
+
+    if bpy.app.build_options.cycles:
+        import cycles
+        output.write("\nCycles\n")
+        output.write(lilies)
+        output.write(cycles.engine.system_info())
 
     output.current_line_index = 0
 

@@ -33,7 +33,6 @@
 
 #include "BLI_utildefines.h"
 
-#include "RNA_define.h"
 #include "RNA_access.h"
 #include "RNA_define.h"
 
@@ -314,6 +313,7 @@ static Sequence *rna_Sequences_new_effect(ID *id, Editing *ed, ReportList *repor
 
 	seq->flag |= SEQ_USE_EFFECT_DEFAULT_FADE;
 
+	BKE_sequence_calc(scene, seq);
 	BKE_sequence_calc_disp(scene, seq);
 
 	WM_main_add_notifier(NC_SCENE | ND_SEQUENCER, scene);
@@ -326,7 +326,7 @@ static void rna_Sequences_remove(ID *id, Editing *ed, ReportList *reports, Point
 	Sequence *seq = seq_ptr->data;
 	Scene *scene = (Scene *)id;
 
-	if (BLI_remlink_safe(&ed->seqbase, seq) == FALSE) {
+	if (BLI_remlink_safe(&ed->seqbase, seq) == false) {
 		BKE_reportf(reports, RPT_ERROR, "Sequence '%s' not in scene '%s'", seq->name + 2, scene->id.name + 2);
 		return;
 	}
@@ -337,7 +337,7 @@ static void rna_Sequences_remove(ID *id, Editing *ed, ReportList *reports, Point
 	WM_main_add_notifier(NC_SCENE | ND_SEQUENCER, scene);
 }
 
-static StripElem *rna_SequenceElements_push(ID *id, Sequence *seq, const char *filename)
+static StripElem *rna_SequenceElements_append(ID *id, Sequence *seq, const char *filename)
 {
 	Scene *scene = (Scene *)id;
 	StripElem *se;
@@ -403,7 +403,7 @@ void RNA_api_sequence_strip(StructRNA *srna)
 	func = RNA_def_function(srna, "update", "rna_Sequence_update_rnafunc");
 	RNA_def_function_flag(func, FUNC_USE_SELF_ID);
 	RNA_def_function_ui_description(func, "Update the strip dimensions");
-	parm = RNA_def_boolean(func, "data", false, "Frame",
+	parm = RNA_def_boolean(func, "data", false, "Data",
 	                       "Update strip data");
 
 	func = RNA_def_function(srna, "strip_elem_from_frame", "BKE_sequencer_give_stripelem");
@@ -431,7 +431,7 @@ void RNA_api_sequence_elements(BlenderRNA *brna, PropertyRNA *cprop)
 	RNA_def_struct_sdna(srna, "Sequence");
 	RNA_def_struct_ui_text(srna, "SequenceElements", "Collection of SequenceElement");
 
-	func = RNA_def_function(srna, "push", "rna_SequenceElements_push");
+	func = RNA_def_function(srna, "append", "rna_SequenceElements_append");
 	RNA_def_function_flag(func, FUNC_USE_SELF_ID);
 	RNA_def_function_ui_description(func, "Push an image from ImageSequence.directory");
 	parm = RNA_def_string(func, "filename", "File", 0, "", "Filepath to image");
@@ -469,6 +469,7 @@ void RNA_api_sequences(BlenderRNA *brna, PropertyRNA *cprop)
 		{SEQ_TYPE_SPEED, "SPEED", 0, "Speed", ""},
 		{SEQ_TYPE_MULTICAM, "MULTICAM", 0, "Multicam Selector", ""},
 		{SEQ_TYPE_ADJUSTMENT, "ADJUSTMENT", 0, "Adjustment Layer", ""},
+		{SEQ_TYPE_GAUSSIAN_BLUR, "GAUSSIAN_BLUR", 0, "Gaussian Blur", ""},
 		{0, NULL, 0, NULL, NULL}
 	};
 
@@ -484,8 +485,8 @@ void RNA_api_sequences(BlenderRNA *brna, PropertyRNA *cprop)
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 	parm = RNA_def_pointer(func, "clip", "MovieClip", "", "Movie clip to add");
 	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL);
-	parm = RNA_def_int(func, "channel", 0, 0, MAXSEQ - 1, "Channel",
-	                   "The channel for the new sequence", 0, MAXSEQ - 1);
+	parm = RNA_def_int(func, "channel", 0, 1, MAXSEQ, "Channel",
+	                   "The channel for the new sequence", 1, MAXSEQ);
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 	parm = RNA_def_int(func, "frame_start", 0, -MAXFRAME, MAXFRAME, "",
 	                   "The start frame for the new sequence", -MAXFRAME, MAXFRAME);
@@ -501,8 +502,8 @@ void RNA_api_sequences(BlenderRNA *brna, PropertyRNA *cprop)
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 	parm = RNA_def_pointer(func, "mask", "Mask", "", "Mask to add");
 	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL);
-	parm = RNA_def_int(func, "channel", 0, 0, MAXSEQ - 1, "Channel",
-	                   "The channel for the new sequence", 0, MAXSEQ - 1);
+	parm = RNA_def_int(func, "channel", 0, 1, MAXSEQ, "Channel",
+	                   "The channel for the new sequence", 1, MAXSEQ);
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 	parm = RNA_def_int(func, "frame_start", 0, -MAXFRAME, MAXFRAME, "",
 	                   "The start frame for the new sequence", -MAXFRAME, MAXFRAME);
@@ -518,8 +519,8 @@ void RNA_api_sequences(BlenderRNA *brna, PropertyRNA *cprop)
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 	parm = RNA_def_pointer(func, "scene", "Scene", "", "Scene to add");
 	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL);
-	parm = RNA_def_int(func, "channel", 0, 0, MAXSEQ - 1, "Channel",
-	                   "The channel for the new sequence", 0, MAXSEQ - 1);
+	parm = RNA_def_int(func, "channel", 0, 1, MAXSEQ, "Channel",
+	                   "The channel for the new sequence", 1, MAXSEQ);
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 	parm = RNA_def_int(func, "frame_start", 0, -MAXFRAME, MAXFRAME, "",
 	                   "The start frame for the new sequence", -MAXFRAME, MAXFRAME);
@@ -535,8 +536,8 @@ void RNA_api_sequences(BlenderRNA *brna, PropertyRNA *cprop)
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 	parm = RNA_def_string(func, "filepath", "File", 0, "", "Filepath to image");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
-	parm = RNA_def_int(func, "channel", 0, 0, MAXSEQ - 1, "Channel",
-	                   "The channel for the new sequence", 0, MAXSEQ - 1);
+	parm = RNA_def_int(func, "channel", 0, 1, MAXSEQ, "Channel",
+	                   "The channel for the new sequence", 1, MAXSEQ);
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 	parm = RNA_def_int(func, "frame_start", 0, -MAXFRAME, MAXFRAME, "",
 	                   "The start frame for the new sequence", -MAXFRAME, MAXFRAME);
@@ -552,8 +553,8 @@ void RNA_api_sequences(BlenderRNA *brna, PropertyRNA *cprop)
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 	parm = RNA_def_string(func, "filepath", "File", 0, "", "Filepath to movie");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
-	parm = RNA_def_int(func, "channel", 0, 0, MAXSEQ - 1, "Channel",
-	                   "The channel for the new sequence", 0, MAXSEQ - 1);
+	parm = RNA_def_int(func, "channel", 0, 1, MAXSEQ, "Channel",
+	                   "The channel for the new sequence", 1, MAXSEQ);
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 	parm = RNA_def_int(func, "frame_start", 0, -MAXFRAME, MAXFRAME, "",
 	                   "The start frame for the new sequence", -MAXFRAME, MAXFRAME);
@@ -569,8 +570,8 @@ void RNA_api_sequences(BlenderRNA *brna, PropertyRNA *cprop)
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 	parm = RNA_def_string(func, "filepath", "File", 0, "", "Filepath to movie");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
-	parm = RNA_def_int(func, "channel", 0, 0, MAXSEQ - 1, "Channel",
-	                   "The channel for the new sequence", 0, MAXSEQ - 1);
+	parm = RNA_def_int(func, "channel", 0, 1, MAXSEQ, "Channel",
+	                   "The channel for the new sequence", 1, MAXSEQ);
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 	parm = RNA_def_int(func, "frame_start", 0, -MAXFRAME, MAXFRAME, "",
 	                   "The start frame for the new sequence", -MAXFRAME, MAXFRAME);
@@ -587,8 +588,8 @@ void RNA_api_sequences(BlenderRNA *brna, PropertyRNA *cprop)
 	parm = RNA_def_enum(func, "type", seq_effect_items, 0, "Type",
 	                    "type for the new sequence");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
-	parm = RNA_def_int(func, "channel", 0, 0, MAXSEQ - 1, "Channel",
-	                   "The channel for the new sequence", 0, MAXSEQ - 1);
+	parm = RNA_def_int(func, "channel", 0, 1, MAXSEQ, "Channel",
+	                   "The channel for the new sequence", 1, MAXSEQ);
 	/* don't use MAXFRAME since it makes importer scripts fail */
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 	parm = RNA_def_int(func, "frame_start", 0, INT_MIN, INT_MAX, "",

@@ -104,6 +104,7 @@ typedef struct TreeElement {
 #define TSE_KEYMAP          34
 #define TSE_KEYMAP_ITEM     35
 #define TSE_ID_BASE			36
+#define TSE_GP_LAYER        37
 
 /* button events */
 #define OL_NAMEBUTTON       1
@@ -162,11 +163,11 @@ typedef enum {
 
 /* outliner_tree.c ----------------------------------------------- */
 
-void outliner_rebuild_treehash(struct SpaceOops *soops);
 void outliner_free_tree(ListBase *lb);
 void outliner_cleanup_tree(struct SpaceOops *soops);
 
 TreeElement *outliner_find_tse(struct SpaceOops *soops, TreeStoreElem *tse);
+TreeElement *outliner_find_tree_element(ListBase *lb, TreeStoreElem *store_elem);
 TreeElement *outliner_find_id(struct SpaceOops *soops, ListBase *lb, struct ID *id);
 struct ID *outliner_search_back(SpaceOops *soops, TreeElement *te, short idcode);
 
@@ -181,9 +182,8 @@ void restrictbutton_gr_restrict_flag(void *poin, void *poin2, int flag);
 eOLDrawState tree_element_type_active(
         struct bContext *C, struct Scene *scene, struct SpaceOops *soops,
         TreeElement *te, TreeStoreElem *tselem, const eOLSetState set, bool recursive);
-eOLDrawState tree_element_active(
-        struct bContext *C, struct Scene *scene, SpaceOops *soops,
-        TreeElement *te, const eOLSetState set);
+eOLDrawState tree_element_active(struct bContext *C, struct Scene *scene, SpaceOops *soops,
+                                 TreeElement *te, const eOLSetState set, const bool handle_all_types);
 int outliner_item_do_activate(struct bContext *C, int x, int y, bool extend, bool recursive);
 
 /* outliner_edit.c ---------------------------------------------- */
@@ -207,7 +207,7 @@ void group_toggle_renderability_cb(struct bContext *C, struct Scene *scene, Tree
 
 void item_rename_cb(struct bContext *C, struct Scene *scene, TreeElement *te, struct TreeStoreElem *tsep, struct TreeStoreElem *tselem);
 
-TreeElement *outliner_dropzone_find(const struct SpaceOops *soops, const float fmval[2], const int children);
+TreeElement *outliner_dropzone_find(const struct SpaceOops *soops, const float fmval[2], const bool children);
 /* ...................................................... */
 
 void OUTLINER_OT_item_activate(struct wmOperatorType *ot);
@@ -235,10 +235,13 @@ void OUTLINER_OT_keyingset_remove_selected(struct wmOperatorType *ot);
 void OUTLINER_OT_drivers_add_selected(struct wmOperatorType *ot);
 void OUTLINER_OT_drivers_delete_selected(struct wmOperatorType *ot);
 
+void OUTLINER_OT_orphans_purge(struct wmOperatorType *ot);
+
 void OUTLINER_OT_parent_drop(struct wmOperatorType *ot);
 void OUTLINER_OT_parent_clear(struct wmOperatorType *ot);
 void OUTLINER_OT_scene_drop(struct wmOperatorType *ot);
 void OUTLINER_OT_material_drop(struct wmOperatorType *ot);
+void OUTLINER_OT_group_link(struct wmOperatorType *ot);
 
 /* outliner_tools.c ---------------------------------------------- */
 
@@ -249,7 +252,8 @@ void OUTLINER_OT_id_operation(struct wmOperatorType *ot);
 void OUTLINER_OT_data_operation(struct wmOperatorType *ot);
 void OUTLINER_OT_animdata_operation(struct wmOperatorType *ot);
 void OUTLINER_OT_action_set(struct wmOperatorType *ot);
-
+void OUTLINER_OT_constraint_operation(struct wmOperatorType *ot);
+void OUTLINER_OT_modifier_operation(struct wmOperatorType *ot);
 /* ---------------------------------------------------------------- */
 
 /* outliner_ops.c */

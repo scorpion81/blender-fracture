@@ -29,15 +29,11 @@
  *  \ingroup render
  */
 
-
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include <float.h>
 
-#include "MEM_guardedalloc.h"
-
-#include "BLI_blenlib.h"
 #include "BLI_math.h"
 #include "BLI_rand.h"
 #include "BLI_voxel.h"
@@ -50,7 +46,6 @@
 #include "DNA_lamp_types.h"
 #include "DNA_meta_types.h"
 
-#include "BKE_global.h"
 
 #include "render_types.h"
 #include "pixelshading.h"
@@ -504,7 +499,7 @@ static void vol_shade_one_lamp(struct ShadeInput *shi, const float co[3], const 
 	if (shi->mat->vol.shade_type == MA_VOL_SHADE_SHADOWED) {
 		mul_v3_fl(lacol, vol_get_shadow(shi, lar, co));
 	}
-	else if (ELEM3(shi->mat->vol.shade_type, MA_VOL_SHADE_SHADED, MA_VOL_SHADE_MULTIPLE, MA_VOL_SHADE_SHADEDPLUSMULTIPLE)) {
+	else if (ELEM(shi->mat->vol.shade_type, MA_VOL_SHADE_SHADED, MA_VOL_SHADE_MULTIPLE, MA_VOL_SHADE_SHADEDPLUSMULTIPLE)) {
 		Isect is;
 		
 		if (shi->mat->vol.shadeflag & MA_VOL_RECV_EXT_SHADOW) {
@@ -661,7 +656,7 @@ static void volumeintegrate(struct ShadeInput *shi, float col[4], const float co
 static void volume_trace(struct ShadeInput *shi, struct ShadeResult *shr, int inside_volume)
 {
 	float hitco[3], col[4] = {0.f, 0.f, 0.f, 0.f};
-	float *startco, *endco;
+	const float *startco, *endco;
 	int trace_behind = 1;
 	const int ztransp = ((shi->depth == 0) && (shi->mat->mode & MA_TRANSP) && (shi->mat->mode & MA_ZTRANSP));
 	Isect is;
@@ -748,6 +743,7 @@ static void volume_trace(struct ShadeInput *shi, struct ShadeResult *shr, int in
 	shr->alpha = col[3];
 	
 	copy_v3_v3(shr->diff, shr->combined);
+	copy_v3_v3(shr->diffshad, shr->diff);
 }
 
 /* Traces a shadow through the object, 
@@ -757,7 +753,7 @@ void shade_volume_shadow(struct ShadeInput *shi, struct ShadeResult *shr, struct
 	float hitco[3];
 	float tr[3] = {1.0, 1.0, 1.0};
 	Isect is = {{0}};
-	float *startco, *endco;
+	const float *startco, *endco;
 
 	memset(shr, 0, sizeof(ShadeResult));
 	

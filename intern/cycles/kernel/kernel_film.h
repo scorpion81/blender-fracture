@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 CCL_NAMESPACE_BEGIN
@@ -75,17 +75,15 @@ ccl_device void kernel_film_convert_to_half_float(KernelGlobals *kg,
 
 	float exposure = kernel_data.film.exposure;
 
-	if(exposure == 1.0f) {
-		float4_store_half(out, in, sample_scale);
-	}
-	else {
-		float4 rgba = *in;
-		rgba.x *= exposure;
-		rgba.y *= exposure;
-		rgba.z *= exposure;
+	float4 rgba_in = *in;
 
-		float4_store_half(out, &rgba, sample_scale);
+	if(exposure != 1.0f) {
+		rgba_in.x *= exposure;
+		rgba_in.y *= exposure;
+		rgba_in.z *= exposure;
 	}
+
+	float4_store_half(out, rgba_in, sample_scale);
 }
 
 CCL_NAMESPACE_END

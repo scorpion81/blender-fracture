@@ -41,7 +41,9 @@
 #include "DNA_scene_types.h"
 #include "DNA_packedFile_types.h"
 
-#include "BLI_blenlib.h"
+#include "BLI_utildefines.h"
+#include "BLI_string.h"
+#include "BLI_path_util.h"
 
 #include "BIF_gl.h"
 #include "BIF_glutil.h"
@@ -59,7 +61,7 @@
 #include "ED_image.h"
 #include "ED_mesh.h"
 #include "ED_object.h"
-#include "ED_sculpt.h"
+#include "ED_paint.h"
 #include "ED_space_api.h"
 #include "ED_util.h"
 
@@ -82,14 +84,20 @@ void ED_editors_init(bContext *C)
 	Object *ob, *obact = (sce && sce->basact) ? sce->basact->object : NULL;
 	ID *data;
 
+	/* This is called during initialization, so we don't want to store any reports */
+	ReportList *reports = CTX_wm_reports(C);
+	int reports_flag_prev = reports->flag & ~RPT_STORE;
+
+	SWAP(int, reports->flag, reports_flag_prev);
+
 	/* toggle on modes for objects that were saved with these enabled. for
 	 * e.g. linked objects we have to ensure that they are actually the
 	 * active object in this scene. */
 	for (ob = bmain->object.first; ob; ob = ob->id.next) {
 		int mode = ob->mode;
 
-		if (mode && (mode != OB_MODE_POSE)) {
-			ob->mode = 0;
+		if (!ELEM(mode, OB_MODE_OBJECT, OB_MODE_POSE)) {
+			ob->mode = OB_MODE_OBJECT;
 			data = ob->data;
 
 			if (ob == obact && !ob->id.lib && !(data && data->lib))
@@ -101,6 +109,8 @@ void ED_editors_init(bContext *C)
 	if (sce) {
 		ED_space_image_paint_update(wm, sce->toolsettings);
 	}
+
+	SWAP(int, reports->flag, reports_flag_prev);
 }
 
 /* frees all editmode stuff */
@@ -137,35 +147,45 @@ void ED_editors_exit(bContext *C)
 	}
 
 	/* global in meshtools... */
-	mesh_octree_table(NULL, NULL, NULL, 'e');
-	mesh_mirrtopo_table(NULL, 'e');
+	ED_mesh_mirror_spatial_table(NULL, NULL, NULL, 'e');
+	ED_mesh_mirror_topo_table(NULL, 'e');
 }
 
 /* flush any temp data from object editing to DNA before writing files,
  * rendering, copying, etc. */
-void ED_editors_flush_edits(const bContext *C, bool for_render)
+bool ED_editors_flush_edits(const bContext *C, bool for_render)
 {
-	Object *obact = CTX_data_active_object(C);
-	Object *obedit = CTX_data_edit_object(C);
+	bool has_edited = false;
+	Object *ob;
+	Main *bmain = CTX_data_main(C);
 
-	/* get editmode results */
-	if (obedit)
-		ED_object_editmode_load(obedit);
+	/* loop through all data to find edit mode or object mode, because during
+	 * exiting we might not have a context for edit object and multiple sculpt
+	 * objects can exist at the same time */
+	for (ob = bmain->object.first; ob; ob = ob->id.next) {
+		if (ob->mode & OB_MODE_SCULPT) {
+			/* flush multires changes (for sculpt) */
+			multires_force_update(ob);
+			has_edited = true;
 
-	if (obact && (obact->mode & OB_MODE_SCULPT)) {
-		/* flush multires changes (for sculpt) */
-		multires_force_update(obact);
-
-		if (for_render) {
-			/* flush changes from dynamic topology sculpt */
-			sculptsession_bm_to_me_for_render(obact);
+			if (for_render) {
+				/* flush changes from dynamic topology sculpt */
+				BKE_sculptsession_bm_to_me_for_render(ob);
+			}
+			else {
+				/* Set reorder=false so that saving the file doesn't reorder
+				 * the BMesh's elements */
+				BKE_sculptsession_bm_to_me(ob, false);
+			}
 		}
-		else {
-			/* Set reorder=false so that saving the file doesn't reorder
-			 * the BMesh's elements */
-			sculptsession_bm_to_me(obact, FALSE);
+		else if (ob->mode & OB_MODE_EDIT) {
+			/* get editmode results */
+			has_edited = true;
+			ED_object_editmode_load(ob);
 		}
 	}
+
+	return has_edited;
 }
 
 /* ***** XXX: functions are using old blender names, cleanup later ***** */
@@ -198,8 +218,8 @@ void unpack_menu(bContext *C, const char *opname, const char *id_name, const cha
 	char line[FILE_MAX + 100];
 	wmOperatorType *ot = WM_operatortype_find(opname, 1);
 
-	pup = uiPupMenuBegin(C, IFACE_("Unpack File"), ICON_NONE);
-	layout = uiPupMenuLayout(pup);
+	pup = UI_popup_menu_begin(C, IFACE_("Unpack File"), ICON_NONE);
+	layout = UI_popup_menu_layout(pup);
 
 	props_ptr = uiItemFullO_ptr(layout, ot, IFACE_("Remove Pack"), ICON_NONE,
 	                            NULL, WM_OP_EXEC_DEFAULT, UI_ITEM_O_RETURN_PROPS);
@@ -211,7 +231,7 @@ void unpack_menu(bContext *C, const char *opname, const char *id_name, const cha
 
 		BLI_split_file_part(abs_name, fi, sizeof(fi));
 		BLI_snprintf(local_name, sizeof(local_name), "//%s/%s", folder, fi);
-		if (strcmp(abs_name, local_name) != 0) {
+		if (!STREQ(abs_name, local_name)) {
 			switch (checkPackedFile(local_name, pf)) {
 				case PF_NOFILE:
 					BLI_snprintf(line, sizeof(line), IFACE_("Create %s"), local_name);
@@ -275,7 +295,7 @@ void unpack_menu(bContext *C, const char *opname, const char *id_name, const cha
 			break;
 	}
 
-	uiPupMenuEnd(C, pup);
+	UI_popup_menu_end(C, pup);
 }
 
 /* ********************* generic callbacks for drawcall api *********************** */
@@ -290,7 +310,7 @@ void ED_region_draw_mouse_line_cb(const bContext *C, ARegion *ar, void *arg_info
 	const int mval_dst[2] = {win->eventstate->x - ar->winrct.xmin,
 	                         win->eventstate->y - ar->winrct.ymin};
 
-	UI_ThemeColor(TH_WIRE);
+	UI_ThemeColor(TH_VIEW_OVERLAY);
 	setlinestyle(3);
 	glBegin(GL_LINE_STRIP);
 	glVertex2iv(mval_dst);

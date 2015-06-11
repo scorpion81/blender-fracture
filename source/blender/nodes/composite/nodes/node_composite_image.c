@@ -39,8 +39,6 @@
 #include "BKE_global.h"
 #include "BKE_main.h"
 
-#include "RNA_access.h"
-
 /* **************** IMAGE (and RenderResult, multilayer image) ******************** */
 
 static bNodeSocketTemplate cmp_node_rlayers_out[] = {
@@ -184,6 +182,14 @@ static void cmp_node_image_add_multilayer_outputs(bNodeTree *ntree, bNode *node,
 		
 		sockdata->pass_index = index;
 		sockdata->pass_flag = rpass->passtype;
+
+		if (STREQ(rpass->chan_id, "RGBA")) {
+			sock = nodeAddStaticSocket(ntree, node, SOCK_OUT, SOCK_FLOAT, PROP_NONE, "Alpha", "Alpha");
+			sockdata = MEM_callocN(sizeof(NodeImageLayer), "node image layer");
+			sock->storage = sockdata;
+			sockdata->pass_index = index;
+			sockdata->pass_flag = rpass->passtype;
+		}
 	}
 }
 
@@ -269,7 +275,7 @@ static void cmp_node_image_verify_outputs(bNodeTree *ntree, bNode *node)
 	
 	/* store current nodes in oldsocklist, then clear socket list */
 	oldsocklist = node->outputs;
-	node->outputs.first = node->outputs.last = NULL;
+	BLI_listbase_clear(&node->outputs);
 	
 	/* XXX make callback */
 	cmp_node_image_create_outputs(ntree, node);
@@ -397,7 +403,7 @@ void node_cmp_rlayers_force_hidden_passes(bNode *node)
 	
 	set_output_visible(node, passflag, RRES_OUT_IMAGE,                  SCE_PASS_COMBINED);
 	set_output_visible(node, passflag, RRES_OUT_ALPHA,                  SCE_PASS_COMBINED);
-	                                                                    
+
 	set_output_visible(node, passflag, RRES_OUT_Z,                      SCE_PASS_Z);
 	set_output_visible(node, passflag, RRES_OUT_NORMAL,                 SCE_PASS_NORMAL);
 	set_output_visible(node, passflag, RRES_OUT_VEC,                    SCE_PASS_VECTOR);
@@ -441,7 +447,7 @@ static void node_composit_init_rlayers(const bContext *C, PointerRNA *ptr)
 
 static int node_composit_poll_rlayers(bNodeType *UNUSED(ntype), bNodeTree *ntree)
 {
-	if (strcmp(ntree->idname, "CompositorNodeTree") == 0) {
+	if (STREQ(ntree->idname, "CompositorNodeTree")) {
 		Scene *scene;
 		
 		/* XXX ugly: check if ntree is a local scene node tree.

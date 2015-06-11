@@ -30,12 +30,6 @@
  *  \ingroup bli
  */
 
-
-#ifdef _MSC_VER
-#  pragma warning (disable:4244)  /* "conversion from double to float" */
-#  pragma warning (disable:4305)  /* "truncation from const double to float" */
-#endif
-
 #include <math.h>
 
 #include "BLI_noise.h"
@@ -284,8 +278,8 @@ static float npfade(float t)
 static float grad(int hash_val, float x, float y, float z)
 {
 	int h = hash_val & 15;                 /* CONVERT LO 4 BITS OF HASH CODE */
-	float u = h < 8 ? x : y,               /* INTO 12 GRADIENT DIRECTIONS. */
-	      v = h < 4 ? y : h == 12 || h == 14 ? x : z;
+	float u = h < 8 ? x : y;               /* INTO 12 GRADIENT DIRECTIONS. */
+	float v = h < 4 ? y : h == 12 || h == 14 ? x : z;
 	return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
 }
 
@@ -1413,7 +1407,7 @@ float cellNoise(float x, float y, float z)
 }
 
 /* returns a vector/point/color in ca, using point hasharray directly */
-void cellNoiseV(float x, float y, float z, float *ca)
+void cellNoiseV(float x, float y, float z, float ca[3])
 {
 	int xi = (int)(floor(x));
 	int yi = (int)(floor(y));

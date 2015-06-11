@@ -26,10 +26,10 @@ BF_FFMPEG_LIBPATH='${BF_FFMPEG}/lib'
 BF_FFMPEG_LIB = 'avcodec avdevice avformat avutil mp3lame swscale x264 xvidcore theora theoradec theoraenc vorbis vorbisenc vorbisfile ogg bz2'
 #bz2 is a standard osx dynlib
 
-BF_PYTHON_VERSION = '3.3'
+BF_PYTHON_VERSION = '3.4'
 WITH_OSX_STATICPYTHON = True
 
-# python 3.3 uses precompiled libraries in bf svn /lib by default
+# python 3.4 uses precompiled libraries in bf svn /lib by default
 BF_PYTHON = LIBDIR + '/python'
 BF_PYTHON_INC = '${BF_PYTHON}/include/python${BF_PYTHON_VERSION}m'
 # BF_PYTHON_BINARY = '${BF_PYTHON}/bin/python${BF_PYTHON_VERSION}'
@@ -68,7 +68,7 @@ BF_SNDFILE_LIBPATH = '${BF_SNDFILE}/lib ${BF_FFMPEG}/lib' #ogg libs are stored i
 WITH_BF_SDL = True
 BF_SDL = LIBDIR + '/sdl' #$(shell sdl-config --prefix)
 BF_SDL_INC = '${BF_SDL}/include' #$(shell $(BF_SDL)/bin/sdl-config --cflags)
-BF_SDL_LIB = 'SDL' #BF_SDL #$(shell $(BF_SDL)/bin/sdl-config --libs) -lSDL_mixer
+BF_SDL_LIB = 'SDL2' #BF_SDL #$(shell $(BF_SDL)/bin/sdl-config --libs) -lSDL_mixer
 BF_SDL_LIBPATH = '${BF_SDL}/lib'
 
 WITH_BF_OPENEXR = True
@@ -82,18 +82,17 @@ BF_OPENEXR_LIB_STATIC = '${BF_OPENEXR}/lib/libHalf.a ${BF_OPENEXR}/lib/libIlmImf
 
 WITH_BF_DDS = True
 
-#Color Management System
-WITH_BF_LCMS = False
-BF_LCMS = LIBDIR + '/lcms'
-BF_LCMS_INC = '${BF_LCMS}/include'
-BF_LCMS_LIB = 'lcms'
-BF_LCMS_LIBPATH = '${BF_LCMS}/lib'
-
 WITH_BF_JPEG = True
 BF_JPEG = LIBDIR + '/jpeg'
 BF_JPEG_INC = '${BF_JPEG}/include'
 BF_JPEG_LIB = 'jpeg'
 BF_JPEG_LIBPATH = '${BF_JPEG}/lib'
+
+WITH_BF_OPENJPEG = True
+BF_OPENJPEG = '#extern/libopenjpeg'
+BF_OPENJPEG_LIB = ''
+BF_OPENJPEG_INC = '${BF_OPENJPEG}'
+BF_OPENJPEG_LIBPATH='${BF_OPENJPEG}/lib'
 
 WITH_BF_PNG = True
 BF_PNG = LIBDIR + '/png'
@@ -109,7 +108,7 @@ BF_TIFF_LIBPATH = '${BF_TIFF}/lib'
 
 WITH_BF_ZLIB = True
 BF_ZLIB = '/usr'
-BF_ZLIB_INC = '${BF_ZLIB}/include'
+#BF_ZLIB_INC = '${BF_ZLIB}/include' # don't use this, it breaks -isysroot ${MACOSX_SDK}
 BF_ZLIB_LIB = 'z'
 
 WITH_BF_INTERNATIONAL = True
@@ -155,7 +154,7 @@ BF_COLLADA_INC = '${BF_COLLADA}'
 BF_COLLADA_LIB = 'bf_collada'
 BF_OPENCOLLADA = LIBDIR + '/opencollada'
 BF_OPENCOLLADA_INC = '${BF_OPENCOLLADA}/include'
-BF_OPENCOLLADA_LIB = 'OpenCOLLADASaxFrameworkLoader OpenCOLLADAFramework OpenCOLLADABaseUtils OpenCOLLADAStreamWriter MathMLSolver GeneratedSaxParser UTF xml2 buffer ftoa'
+BF_OPENCOLLADA_LIB = 'OpenCOLLADASaxFrameworkLoader OpenCOLLADAFramework OpenCOLLADABaseUtils OpenCOLLADAStreamWriter MathMLSolver GeneratedSaxParser xml2 buffer ftoa'
 BF_OPENCOLLADA_LIBPATH = LIBDIR + '/opencollada'
 BF_PCRE = LIBDIR + '/opencollada'
 BF_PCRE_LIB = 'pcre'
@@ -182,7 +181,7 @@ WITH_BF_LLVM = True
 BF_LLVM = LIBDIR + '/llvm'
 BF_LLVM_LIB = 'LLVMBitReader LLVMJIT LLVMipo LLVMVectorize LLVMBitWriter LLVMX86CodeGen LLVMX86Desc LLVMX86Info LLVMX86AsmPrinter ' + \
     'LLVMX86Utils LLVMSelectionDAG LLVMCodeGen LLVMScalarOpts LLVMInstCombine LLVMTransformUtils LLVMipa LLVMAnalysis LLVMExecutionEngine ' + \
-    'LLVMTarget LLVMMC LLVMCore LLVMSupport'
+    'LLVMTarget LLVMMC LLVMCore LLVMSupport LLVMObject'
 BF_LLVM_LIBPATH = '${BF_LLVM}/lib'
 
 WITH_BF_OIIO = True
@@ -206,7 +205,7 @@ BF_BOOST_LIBPATH = '${BF_BOOST}/lib'
 
 WITH_BF_CYCLES_CUDA_BINARIES = False
 BF_CYCLES_CUDA_NVCC = '/usr/local/cuda/bin/nvcc'
-BF_CYCLES_CUDA_BINARIES_ARCH = ['sm_20', 'sm_21', 'sm_30', 'sm_35']
+BF_CYCLES_CUDA_BINARIES_ARCH = ['sm_20', 'sm_21', 'sm_30', 'sm_35', 'sm_50', 'sm_52']
 
 #Freestyle
 WITH_BF_FREESTYLE = True
@@ -238,7 +237,7 @@ LLIBS = ['stdc++']
 
 REL_CFLAGS = []
 REL_CXXFLAGS = []
-REL_CCFLAGS = ['-DNDEBUG', '-O2']
+REL_CCFLAGS = ['-O2']
 
 CC_WARN = ['-Wall']
 C_WARN = ['-Wno-char-subscripts', '-Wpointer-arith', '-Wcast-align', '-Wdeclaration-after-statement', '-Wno-unknown-pragmas', '-Wstrict-prototypes']
@@ -254,7 +253,7 @@ BF_PROFILE_LINKFLAGS = ['-pg']
 BF_PROFILE = False
 
 BF_DEBUG = False
-BF_DEBUG_CCFLAGS = ['-g', '-D_DEBUG']
+BF_DEBUG_CCFLAGS = ['-g']
 
 #############################################################################
 ###################           Output directories           ##################

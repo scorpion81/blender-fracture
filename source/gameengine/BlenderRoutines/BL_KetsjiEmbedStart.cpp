@@ -40,7 +40,7 @@
 #  pragma warning (disable:4786)
 #endif
 
-#include "GL/glew.h"
+#include "glew-mx.h"
 
 #include "KX_BlenderCanvas.h"
 #include "KX_BlenderKeyboardDevice.h"
@@ -67,6 +67,7 @@
 
 
 extern "C" {
+	#include "DNA_object_types.h"
 	#include "DNA_view3d_types.h"
 	#include "DNA_screen_types.h"
 	#include "DNA_userdef_types.h"
@@ -91,6 +92,11 @@ extern "C" {
 
 	#include "../../blender/windowmanager/WM_types.h"
 	#include "../../blender/windowmanager/wm_window.h"
+
+/* avoid more includes (not used by BGE) */
+typedef void * wmUIHandlerFunc;
+typedef void * wmUIHandlerRemoveFunc;
+
 	#include "../../blender/windowmanager/wm_event_system.h"
 }
 
@@ -181,6 +187,8 @@ static int BL_KetsjiNextFrame(KX_KetsjiEngine *ketsjiengine, bContext *C, wmWind
 	return exitrequested;
 }
 
+
+#ifdef WITH_PYTHON
 static struct BL_KetsjiNextFrameState {
 	class KX_KetsjiEngine* ketsjiengine;
 	struct bContext *C;
@@ -205,6 +213,8 @@ static int BL_KetsjiPyNextFrame(void *state0)
 		state->mousedevice, 
 		state->draw_letterbox);
 }
+#endif
+
 
 extern "C" void StartKetsjiShell(struct bContext *C, struct ARegion *ar, rcti *cam_frame, int always_use_expand_framing)
 {
@@ -270,9 +280,13 @@ extern "C" void StartKetsjiShell(struct bContext *C, struct ARegion *ar, rcti *c
 		bool nodepwarnings = (SYS_GetCommandLineInt(syshandle, "ignore_deprecation_warnings", 0) != 0);
 #endif
 		// bool novertexarrays = (SYS_GetCommandLineInt(syshandle, "novertexarrays", 0) != 0);
-		bool mouse_state = startscene->gm.flag & GAME_SHOW_MOUSE;
-		bool restrictAnimFPS = startscene->gm.flag & GAME_RESTRICT_ANIM_UPDATES;
+		bool mouse_state = (startscene->gm.flag & GAME_SHOW_MOUSE) != 0;
+		bool restrictAnimFPS = (startscene->gm.flag & GAME_RESTRICT_ANIM_UPDATES) != 0;
 
+		short drawtype = v3d->drawtype;
+		
+		/* we do not support material mode in game engine, force change to texture mode */
+		if (drawtype == OB_MATERIAL) drawtype = OB_TEXTURE;
 		if (animation_record) usefixed= false; /* override since you don't want to run full-speed for sim recording */
 
 		// create the canvas and rasterizer
@@ -285,7 +299,8 @@ extern "C" void StartKetsjiShell(struct bContext *C, struct ARegion *ar, rcti *c
 			canvas->SetMouseState(RAS_ICanvas::MOUSE_INVISIBLE);
 
 		// Setup vsync
-		int previous_vsync = canvas->GetSwapInterval();
+		int previous_vsync = 0;
+		canvas->GetSwapInterval(previous_vsync);
 		if (startscene->gm.vsync == VSYNC_ADAPTIVE)
 			canvas->SetSwapInterval(-1);
 		else
@@ -361,8 +376,7 @@ extern "C" void StartKetsjiShell(struct bContext *C, struct ARegion *ar, rcti *c
 			camzoom = 2.0;
 		}
 
-
-		ketsjiengine->SetDrawType(v3d->drawtype);
+		rasterizer->SetDrawingMode(drawtype);
 		ketsjiengine->SetCameraZoom(camzoom);
 		
 		// if we got an exitcode 3 (KX_EXIT_REQUEST_START_OTHER_GAME) load a different file
@@ -443,21 +457,13 @@ extern "C" void StartKetsjiShell(struct bContext *C, struct ARegion *ar, rcti *c
 				ketsjiengine->SetCameraOverrideUseOrtho((rv3d->persp == RV3D_ORTHO));
 				ketsjiengine->SetCameraOverrideProjectionMatrix(MT_CmMatrix4x4(rv3d->winmat));
 				ketsjiengine->SetCameraOverrideViewMatrix(MT_CmMatrix4x4(rv3d->viewmat));
-				if (rv3d->persp == RV3D_ORTHO)
-				{
-					ketsjiengine->SetCameraOverrideClipping(v3d->near, v3d->far);
-				}
-				else
-				{
-					ketsjiengine->SetCameraOverrideClipping(v3d->near, v3d->far);
-				}
+				ketsjiengine->SetCameraOverrideClipping(v3d->near, v3d->far);
 				ketsjiengine->SetCameraOverrideLens(v3d->lens);
 			}
 			
 			// create a scene converter, create and convert the startingscene
 			KX_ISceneConverter* sceneconverter = new KX_BlenderSceneConverter(blenderdata, ketsjiengine);
 			ketsjiengine->SetSceneConverter(sceneconverter);
-			sceneconverter->addInitFromFrame=false;
 			if (always_use_expand_framing)
 				sceneconverter->SetAlwaysUseExpandFraming(true);
 

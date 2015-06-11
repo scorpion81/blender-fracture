@@ -75,7 +75,7 @@ def main():
     for l in fsrc:
         l = l[:-1]
         # weak but ok
-        if ("BMOpDefine" in l and l.split()[1] == "BMOpDefine") and not "bmo_opdefines[]" in l:
+        if ("BMOpDefine" in l and l.split()[1] == "BMOpDefine") and "bmo_opdefines[]" not in l:
             is_block = True
             block_ctx = []
             blocks.append((comment_ctx, block_ctx))
@@ -113,7 +113,7 @@ def main():
     fsrc.close()
     del fsrc
 
-   # namespace hack
+    # namespace hack
     vars = (
         "BMO_OP_SLOT_ELEMENT_BUF",
         "BMO_OP_SLOT_BOOL",
@@ -145,6 +145,7 @@ def main():
         "BMO_OPTYPE_FLAG_NORMALS_CALC",
         "BMO_OPTYPE_FLAG_UNTAN_MULTIRES",
         "BMO_OPTYPE_FLAG_SELECT_FLUSH",
+        "BMO_OPTYPE_FLAG_SELECT_VALIDATE",
         "BMO_OPTYPE_FLAG_NOP",
     )
     vars_dict = {}
