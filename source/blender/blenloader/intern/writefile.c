@@ -1668,6 +1668,7 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 			writedata(wd, DATA, sizeof(float)*lmd->total_verts * 3, lmd->vertexco);
 		}
 
+#if 0
 		else if (md->type==eModifierType_Fracture) {
 			FractureModifierData *fmd = (FractureModifierData*)md;
 			FracMesh* fm = NULL;
@@ -1703,7 +1704,6 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 					}
 				}
 			}
-#if 0
 			else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 			{
 				ShardSequence *ssq;
@@ -1727,7 +1727,7 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 				}
 			}
 #endif
-		}
+
 	}
 }
 

@@ -33,8 +33,9 @@
 #define DNA_FRACTURE_TYPES_H
 
 #include "BLI_utildefines.h"
-#include "DNA_mesh_types.h"
-#include "DNA_object_types.h"
+#include "DNA_listBase.h"
+#include "DNA_defs.h"
+#include "DNA_customdata_types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -42,6 +43,8 @@ extern "C" {
 
 struct DerivedMesh;
 struct KDTree;
+struct PointCache;
+struct DerivedMesh;
 
 enum {
 	SHARD_INTACT   = 1 << 0,
@@ -88,6 +91,218 @@ typedef struct FracMesh {
 	int progress_counter;   /* counts progress */
 	int last_expected_shards;
 } FracMesh;
+
+typedef struct FractureContainer {
+	/*keep one cache per state */
+	ListBase states;
+	struct FractureState* current;
+
+	ListBase ptcaches;
+	struct PointCache *cache;
+
+	struct Group *cluster_group; // hmm maybe index, but which group ?
+	struct Group *extra_group;
+	struct Group *cutter_group;
+	struct Material *inner_material;
+
+	char thresh_defgrp_name[64];  /* MAX_VGROUP_NAME */
+	char ground_defgrp_name[64];  /* MAX_VGROUP_NAME */
+	char inner_defgrp_name[64];  /* MAX_VGROUP_NAME */
+
+	/*volatile storage*/
+	/* store original vertices here (coords), to find them later and reuse their normals */
+	struct KDTree *nor_tree;
+
+	/* store pairs of adjacent faces, for autohide*/
+	struct GHash *face_pairs;
+
+	/* used for constraint building based on vertex proximity, temporary data */
+	struct GHash *vertex_island_map;
+
+	/*volatile storage of shards being "hit" or fractured currently, needs to be cleaned up after usage! */
+	ListBase fracture_ids;
+
+	/* values */
+	float splinter_length;
+	float nor_range;
+	float fractal_amount;
+	float physics_mesh_scale;
+	float grease_offset;
+	float dynamic_force;
+	float autohide_dist;
+
+	int constraint_count;
+	int frac_algorithm;
+	int shard_count;
+	int point_source;
+	int point_seed;
+	int percentage;
+	int splinter_axis;
+	int fractal_cuts;
+	int fractal_iterations;
+	int grease_decimate;
+	int cutter_axis;
+	int id;
+	int fracture_mode;
+	int cluster_count;
+
+	/*flags*/
+	int flag;
+
+	/* internal values */
+	float max_vol;
+
+} FractureContainer;
+
+typedef struct FractureState {
+	struct FractureState *next, *prev;
+	FracMesh* frac_mesh;
+	struct DerivedMesh *visual_mesh;
+	ListBase island_map;
+	int frame;
+	int flag;
+
+} FractureState;
+
+typedef struct ConstraintContainer {
+	ListBase meshConstraints;
+
+	struct Object *partner1;
+	struct Object *partner2;
+
+	float breaking_angle;
+	float breaking_distance;
+	float cluster_breaking_angle;
+	float cluster_breaking_distance;
+	float breaking_threshold;
+	float cluster_breaking_threshold;
+	float contact_dist;
+
+	int constraint_limit;
+	int solver_iterations_override;
+	int cluster_solver_iterations_override;
+	int breaking_percentage;
+	int cluster_breaking_percentage;
+	int cluster_constraint_type;
+	int constraint_target;
+
+	int flag;
+
+} ConstraintContainer;
+
+typedef struct MeshIsland {
+	struct MeshIsland *next, *prev;
+	struct BMVert **vertices DNA_DEPRECATED;
+	struct MVert **vertices_cached;
+	float *vertco DNA_DEPRECATED;
+	short *vertno DNA_DEPRECATED;
+	float (*vertcos)[3];
+	short (*vertnos)[3];
+
+	struct DerivedMesh *physics_mesh; /*for quick lookup, so only need to convert once */
+	struct Shard *temp DNA_DEPRECATED; /* storage for physics mesh, better omit derivedmesh here...*/
+	struct Shard *shard;
+	struct RigidBodyOb *rigidbody;
+	int *neighbor_ids DNA_DEPRECATED;
+	int *vertex_indices DNA_DEPRECATED;
+	struct BoundBox *bb;
+	struct RigidBodyShardCon **participating_constraints;
+	float *locs DNA_DEPRECATED;
+	float *rots DNA_DEPRECATED;
+
+	int start_frame DNA_DEPRECATED;
+	int frame_count DNA_DEPRECATED;
+	int participating_constraint_count;
+	int vertex_count DNA_DEPRECATED, id DNA_DEPRECATED, neighbor_count DNA_DEPRECATED;
+	float centroid[3];
+	float rot[4]; /*hrm, need this for constraints probably */
+	float thresh_weight, ground_weight;
+	int linear_index;  /* index in rigidbody world */
+	int particle_index; /*used for clustering */
+	char pad[4];
+} MeshIsland;
+
+/* Fracture Modifier */
+enum {
+	MOD_FRACTURE_BISECT_FAST      = (1 << 0),
+	MOD_FRACTURE_BISECT_FAST_FILL = (1 << 1),
+	MOD_FRACTURE_BOOLEAN          = (1 << 2),
+	MOD_FRACTURE_BISECT_FILL      = (1 << 3),
+	MOD_FRACTURE_BISECT           = (1 << 4),
+	MOD_FRACTURE_BOOLEAN_FRACTAL  = (1 << 5),
+};
+
+enum {
+	MOD_FRACTURE_OWN_VERTS       = (1 << 0),
+	MOD_FRACTURE_OWN_PARTICLES   = (1 << 1),
+	MOD_FRACTURE_EXTRA_VERTS     = (1 << 2),
+	MOD_FRACTURE_EXTRA_PARTICLES = (1 << 3),
+	MOD_FRACTURE_GREASEPENCIL    = (1 << 4),
+	MOD_FRACTURE_UNIFORM         = (1 << 5),
+};
+
+enum {
+	MOD_FRACTURE_SPLINTER_X      = (1 << 0),
+	MOD_FRACTURE_SPLINTER_Y      = (1 << 1),
+	MOD_FRACTURE_SPLINTER_Z      = (1 << 2),
+};
+
+enum {
+	MOD_FRACTURE_CUTTER_X      = (1 << 0),
+	MOD_FRACTURE_CUTTER_Y      = (1 << 1),
+	MOD_FRACTURE_CUTTER_Z      = (1 << 2),
+};
+
+enum {
+	MOD_FRACTURE_CENTROID      = (1 << 0),
+	MOD_FRACTURE_VERTEX        = (1 << 1),
+};
+
+enum {
+	MOD_FRACTURE_PREFRACTURED      = (1 << 0),
+	MOD_FRACTURE_DYNAMIC           = (1 << 1),
+};
+
+/*fracture flags*/
+enum {
+	FM_FLAG_USE_SMOOTH                    = (1 << 0),
+	FM_FLAG_USE_GREASEPENCIL_EDGES        = (1 << 1),
+	FM_FLAG_USE_PARTICLE_BIRTH_COORDS     = (1 << 2),
+
+	FM_FLAG_SHARDS_TO_ISLANDS             = (1 << 3),
+	FM_FLAG_FIX_NORMALS                   = (1 << 4),
+	FM_FLAG_AUTO_EXECUTE                  = (1 << 5),
+
+	FM_FLAG_LIMIT_IMPACT                  = (1 << 6),
+	FM_FLAG_USE_FRACMESH                  = (1 << 7),
+
+	FM_FLAG_REFRESH                       = (1 << 8),
+	FM_FLAG_REFRESH_AUTOHIDE              = (1 << 9),
+	FM_FLAG_RESET_SHARDS                  = (1 << 10),
+	FM_FLAG_REFRESH_IMAGES                = (1 << 11),
+	FM_FLAG_UPDATE_DYNAMIC                = (1 << 12),
+	FM_FLAG_REFRESH_CONSTRAINTS           = (1 << 13),
+};
+
+/*constraint flags*/
+enum {
+	FMC_FLAG_USE_CONSTRAINTS               = (1 << 0),
+	FMC_FLAG_USE_BREAKING                  = (1 << 1),
+
+	FMC_FLAG_BREAKING_ANGLE_WEIGHTED       = (1 << 2),
+	FMC_FLAG_BREAKING_DISTANCE_WEIGHTED    = (1 << 3),
+	FMC_FLAG_BREAKING_PERCENTAGE_WEIGHTED  = (1 << 4),
+
+	FMC_FLAG_USE_MASS_DEPENDENT_THRESHOLDS = (1 << 5),
+};
+
+/*internal flags, global */
+enum {
+	FMG_FLAG_USE_EXPERIMENTAL    = (1 << 0),
+	FMG_FLAG_EXECUTE_THREADED    = (1 << 1),
+	FMG_FLAG_REFRESH             = (1 << 2),
+	FMG_FLAG_REFRESH_IMAGES      = (1 << 3),
+};
 
 #ifdef __cplusplus
 }

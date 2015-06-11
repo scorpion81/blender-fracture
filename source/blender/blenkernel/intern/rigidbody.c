@@ -89,11 +89,6 @@ static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED(rbw), Mes
 	}
 }
 
-static bool isModifierActive(FractureModifierData *rmd) {
-	return ((rmd != NULL) && (rmd->modifier.mode & (eModifierMode_Realtime | eModifierMode_Render)) &&
-	        (!(rmd->fracture->flag & FM_FLAG_REFRESH) || rmd->fracture_mode == MOD_FRACTURE_DYNAMIC));
-}
-
 static void calc_dist_angle(RigidBodyShardCon *con, float *dist, float *angle)
 {
 	float q1[4], q2[4], qdiff[4], axis[3];
@@ -123,64 +118,51 @@ void BKE_rigidbody_start_dist_angle(RigidBodyShardCon *con)
 
 float BKE_rigidbody_calc_max_con_mass(Object *ob)
 {
-	FractureModifierData *rmd;
-	ModifierData *md;
+	ConstraintContainer *cc = ob->fracture_constraints;
 	RigidBodyShardCon *con;
 	float max_con_mass = 0, con_mass;
 
-	for (md = ob->modifiers.first; md; md = md->next) {
-		if (md->type == eModifierType_Fracture) {
-			rmd = (FractureModifierData *)md;
-			for (con = rmd->constraint->meshConstraints.first; con; con = con->next) {
-				if ((con->mi1 != NULL && con->mi1->rigidbody != NULL) &&
-				    (con->mi2 != NULL && con->mi2->rigidbody != NULL)) {
-					con_mass = con->mi1->rigidbody->mass + con->mi2->rigidbody->mass;
-					if (con_mass > max_con_mass) {
-						max_con_mass = con_mass;
-					}
-				}
+	for (con = cc->meshConstraints.first; con; con = con->next) {
+		if ((con->mi1 != NULL && con->mi1->rigidbody != NULL) &&
+			(con->mi2 != NULL && con->mi2->rigidbody != NULL)) {
+			con_mass = con->mi1->rigidbody->mass + con->mi2->rigidbody->mass;
+			if (con_mass > max_con_mass) {
+				max_con_mass = con_mass;
 			}
-
-			return max_con_mass;
 		}
 	}
 
-	return 0;
+	return max_con_mass;
 }
 
 float BKE_rigidbody_calc_min_con_dist(Object *ob)
 {
-	FractureModifierData *rmd;
-	ModifierData *md;
+	ConstraintContainer* cc = ob->fracture_constraints;
 	RigidBodyShardCon *con;
 	float min_con_dist = FLT_MAX, con_dist, con_vec[3];
 
-	for (md = ob->modifiers.first; md; md = md->next) {
-		if (md->type == eModifierType_Fracture) {
-			rmd = (FractureModifierData *)md;
-			for (con = rmd->constraint->meshConstraints.first; con; con = con->next) {
-				if ((con->mi1 != NULL && con->mi1->rigidbody != NULL) &&
-				    (con->mi2 != NULL && con->mi2->rigidbody != NULL)) {
-					sub_v3_v3v3(con_vec, con->mi1->centroid, con->mi2->centroid);
-					con_dist = len_v3(con_vec);
-					if (con_dist < min_con_dist) {
-						min_con_dist = con_dist;
-					}
-				}
+	for (con = cc->meshConstraints.first; con; con = con->next) {
+		if ((con->mi1 != NULL && con->mi1->rigidbody != NULL) &&
+			(con->mi2 != NULL && con->mi2->rigidbody != NULL)) {
+			sub_v3_v3v3(con_vec, con->mi1->centroid, con->mi2->centroid);
+			con_dist = len_v3(con_vec);
+			if (con_dist < min_con_dist) {
+				min_con_dist = con_dist;
 			}
-
-			return min_con_dist;
 		}
 	}
 
-	return FLT_MAX;
+	return min_con_dist;
+
 }
 
 
-void BKE_rigidbody_calc_threshold(float max_con_mass, FractureModifierData *rmd, RigidBodyShardCon *con) {
+void BKE_rigidbody_calc_threshold(float max_con_mass, Object *ob, RigidBodyShardCon *con) {
+
+	ConstraintContainer *cc = ob->fracture_constraints;
 
 	float max_thresh, thresh = 0.0f, con_mass;
-	if ((max_con_mass == 0) && (rmd->constraint->flag & FMC_FLAG_USE_MASS_DEPENDENT_THRESHOLDS)) {
+	if ((max_con_mass == 0) && (cc->flag & FMC_FLAG_USE_MASS_DEPENDENT_THRESHOLDS)) {
 		return;
 	}
 
@@ -188,11 +170,11 @@ void BKE_rigidbody_calc_threshold(float max_con_mass, FractureModifierData *rmd,
 		return;
 	}
 
-	max_thresh = rmd->constraint->breaking_threshold;
+	max_thresh = cc->breaking_threshold;
 	if ((con->mi1->rigidbody != NULL) && (con->mi2->rigidbody != NULL)) {
 		con_mass = con->mi1->rigidbody->mass + con->mi2->rigidbody->mass;
 
-		if (rmd->constraint->flag & FMC_FLAG_USE_MASS_DEPENDENT_THRESHOLDS)
+		if (cc->flag & FMC_FLAG_USE_MASS_DEPENDENT_THRESHOLDS)
 		{
 			thresh = (con_mass / max_con_mass) * max_thresh;
 		}

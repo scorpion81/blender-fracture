@@ -1023,6 +1023,10 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 		RB_body_get_position(rbo->physics_object, rbo->pos);
 		RB_body_get_orientation(rbo->physics_object, rbo->orn);
 #endif
+
+		PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, rbo->pos);
+		PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, rbo->orn);
+#if 0
 		if (!fmd || fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
 		{
 			PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, rbo->pos);
@@ -1049,6 +1053,7 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 			PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, rbo->pos);
 			PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, rbo->orn);
 		}
+#endif
 	}
 
 	return 1;
@@ -1057,10 +1062,6 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfr
 {
 	RigidBodyWorld *rbw = rb_v;
 	RigidBodyOb *rbo = NULL;
-
-	/* clumsy, clumsy, but we need to access our own (meshisland based) cache here in case of dynamic fracture*/
-	Object* ob = NULL;
-	FractureModifierData *fmd;
 	
 	rbo = rbw->cache_index_map[index];
 	
@@ -1068,6 +1069,18 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfr
 		return;
 	}
 
+	if (rbo && rbo->type == RBO_TYPE_ACTIVE) {
+		if (old_data) {
+			memcpy(rbo->pos, data, 3 * sizeof(float));
+			memcpy(rbo->orn, data + 3, 4 * sizeof(float));
+		}
+		else {
+			PTCACHE_DATA_TO(data, BPHYS_DATA_LOCATION, 0, rbo->pos);
+			PTCACHE_DATA_TO(data, BPHYS_DATA_ROTATION, 0, rbo->orn);
+		}
+	}
+
+#if 0
 	ob = rbw->objects[rbw->cache_offset_map[index]];
 	fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
 	if (!fmd || fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
@@ -1107,6 +1120,7 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfr
 			rbo->orn[3] = mi->rots[4*frame+3];
 		}
 	}
+#endif
 }
 static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, float cfra, float cfra1, float cfra2, float *old_data)
 {
@@ -1114,22 +1128,17 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 	RigidBodyOb *rbo = NULL;
 	ParticleKey keys[4];
 	float dfra;
-	Object* ob;
-	FractureModifierData *fmd;
 	
 	rbo = rbw->cache_index_map[index];
 	if (rbo == NULL) {
 		return;
 	}
 
-	ob = rbw->objects[rbw->cache_offset_map[index]];
-	fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
-
 	if (rbo->type == RBO_TYPE_ACTIVE) {
 
 		copy_v3_v3(keys[1].co, rbo->pos);
 		copy_qt_qt(keys[1].rot, rbo->orn);
-
+#if 0
 		if (!fmd || fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
 		{
 			if (old_data) {
@@ -1159,6 +1168,15 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 
 			copy_v3_v3(keys[2].co, loc);
 			copy_qt_qt(keys[2].rot, rot);
+		}
+#endif
+
+		if (old_data) {
+			memcpy(keys[2].co, data, 3 * sizeof(float));
+			memcpy(keys[2].rot, data + 3, 4 * sizeof(float));
+		}
+		else {
+			BKE_ptcache_make_particle_key(keys+2, 0, data, cfra2);
 		}
 
 		dfra = cfra2 - cfra1;

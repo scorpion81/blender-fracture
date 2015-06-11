@@ -1311,14 +1311,6 @@ bool object_remove_material_slot(Object *ob)
 		}
 	}
 
-	/* also check the Fracture Modifier stored Derivedmesh, its polys may point to invalid index by now */
-	fmd = (FractureModifierData *)modifiers_findByType(ob, eModifierType_Fracture);
-	if (fmd && fmd->fracture->visible_mesh_cached) {
-		/* this effectively removes materials, but regenerates atleast 2 of them (as being necessary for modifier,
-		 * thus avoiding crashes and messing up the mesh, an ugly solution but better than crash... */
-		fmd->fracture->flag |= FM_FLAG_REFRESH;
-	}
-
 	return true;
 }
 

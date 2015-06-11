@@ -57,6 +57,8 @@ struct DerivedMesh;
 struct SculptSession;
 struct bGPdata;
 struct RigidBodyOb;
+struct FractureContainer;
+struct ConstraintContainer;
 
 
 /* Vertex Groups - Name Info */
@@ -284,8 +286,10 @@ typedef struct Object {
 	ListBase pc_ids;
 	ListBase *duplilist;	/* for temporary dupli list storage, only for use by RNA API */
 	
-	struct RigidBodyOb *rigidbody_object;		/* settings for Bullet rigid body */
-	struct RigidBodyCon *rigidbody_constraint;	/* settings for Bullet constraint */
+	struct RigidBodyOb *rigidbody_object DNA_DEPRECATED;		/* settings for Bullet rigid body */
+	struct RigidBodyCon *rigidbody_constraint DNA_DEPRECATED;	/* settings for Bullet constraint */
+	struct FractureContainer *fracture_objects;
+	struct ConstraintContainer *fracture_constraints;
 
 	float ima_ofs[2];		/* offset for image empties */
 	ImageUser *iuser;		/* must be non-null when oject is an empty image */

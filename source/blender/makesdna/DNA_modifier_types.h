@@ -1365,41 +1365,6 @@ enum {
 	MOD_MESHCACHE_PLAY_EVAL = 1,
 };
 
-typedef struct MeshIsland {
-	struct MeshIsland *next, *prev;
-	struct BMVert **vertices;
-	struct MVert **vertices_cached;
-	float *vertco;
-	short *vertno;
-	struct DerivedMesh *physics_mesh;
-	struct Shard *temp; /* storage for physics mesh, better omit derivedmesh here...*/
-	struct RigidBodyOb *rigidbody;
-	int *neighbor_ids;
-	int *vertex_indices;
-	struct BoundBox *bb;
-	struct RigidBodyShardCon **participating_constraints;
-	float *locs;
-	float *rots;
-
-	int start_frame;
-	int frame_count;
-	int participating_constraint_count;
-	int vertex_count, id, neighbor_count;
-	float centroid[3], start_co[3];
-	float rot[4]; /*hrm, need this for constraints probably */
-	float thresh_weight, ground_weight;
-	int linear_index;  /* index in rigidbody world */
-	int particle_index; /*used for clustering */
-	int setting_id;
-	char pad[4];
-} MeshIsland;
-
-
-enum {
-	MOD_RIGIDBODY_CENTROIDS = 0,
-	MOD_RIGIDBODY_VERTICES = 1,
-};
-
 typedef struct LaplacianDeformModifierData {
 	ModifierData modifier;
 	char anchor_grp_name[64];  /* MAX_VGROUP_NAME */
@@ -1436,239 +1401,19 @@ enum {
 	MOD_WIREFRAME_CREASE        = (1 << 5),
 };
 
-/* Fracture Modifier */
-enum {
-	MOD_FRACTURE_BISECT_FAST      = (1 << 0),
-	MOD_FRACTURE_BISECT_FAST_FILL = (1 << 1),
-	MOD_FRACTURE_BOOLEAN          = (1 << 2),
-	MOD_FRACTURE_BISECT_FILL      = (1 << 3),
-	MOD_FRACTURE_BISECT           = (1 << 4),
-	MOD_FRACTURE_BOOLEAN_FRACTAL  = (1 << 5),
-};
-
-enum {
-	MOD_FRACTURE_OWN_VERTS       = (1 << 0),
-	MOD_FRACTURE_OWN_PARTICLES   = (1 << 1),
-	MOD_FRACTURE_EXTRA_VERTS     = (1 << 2),
-	MOD_FRACTURE_EXTRA_PARTICLES = (1 << 3),
-	MOD_FRACTURE_GREASEPENCIL    = (1 << 4),
-	MOD_FRACTURE_UNIFORM         = (1 << 5),
-};
-
-enum {
-	MOD_FRACTURE_SPLINTER_X      = (1 << 0),
-	MOD_FRACTURE_SPLINTER_Y      = (1 << 1),
-	MOD_FRACTURE_SPLINTER_Z      = (1 << 2),
-};
-
-enum {
-	MOD_FRACTURE_CUTTER_X      = (1 << 0),
-	MOD_FRACTURE_CUTTER_Y      = (1 << 1),
-	MOD_FRACTURE_CUTTER_Z      = (1 << 2),
-};
-
-enum {
-	MOD_FRACTURE_CENTROID      = (1 << 0),
-	MOD_FRACTURE_VERTEX        = (1 << 1),
-};
-
-enum {
-	MOD_FRACTURE_PREFRACTURED      = (1 << 0),
-	MOD_FRACTURE_DYNAMIC           = (1 << 1),
-};
-
-typedef struct ShardSequence {
-	struct ShardSequence *next, *prev;
-	struct FracMesh *frac_mesh;
-	int frame;
-	int is_new;
-} ShardSequence;
-
-typedef struct MeshIslandSequence {
-	struct MeshIslandSequence *next, *prev;
-	struct DerivedMesh *visible_dm;
-	ListBase meshIslands;
-	int frame;
-	int is_new;
-} MeshIslandSequence;
-
-typedef struct FractureID {
-	struct FractureID *next, *prev;
-	int shardID;
-	char pad[4];
-} FractureID;
-
-/*fracture flags*/
-enum {
-	FM_FLAG_USE_SMOOTH                    = (1 << 0),
-	FM_FLAG_USE_GREASEPENCIL_EDGES        = (1 << 1),
-	FM_FLAG_USE_PARTICLE_BIRTH_COORDS     = (1 << 2),
-
-	FM_FLAG_SHARDS_TO_ISLANDS             = (1 << 3),
-	FM_FLAG_FIX_NORMALS                   = (1 << 4),
-	FM_FLAG_AUTO_EXECUTE                  = (1 << 5),
-
-	FM_FLAG_LIMIT_IMPACT                  = (1 << 6),
-	FM_FLAG_USE_FRACMESH                  = (1 << 7),
-
-	FM_FLAG_REFRESH                       = (1 << 8),
-	FM_FLAG_REFRESH_AUTOHIDE              = (1 << 9),
-	FM_FLAG_RESET_SHARDS                  = (1 << 10),
-	FM_FLAG_REFRESH_IMAGES                = (1 << 11),
-	FM_FLAG_UPDATE_DYNAMIC                = (1 << 12),
-	FM_FLAG_REFRESH_CONSTRAINTS           = (1 << 13),
-};
-
-/*constraint flags*/
-enum {
-	FMC_FLAG_USE_CONSTRAINTS               = (1 << 0),
-	FMC_FLAG_USE_BREAKING                  = (1 << 1),
-
-	FMC_FLAG_BREAKING_ANGLE_WEIGHTED       = (1 << 2),
-	FMC_FLAG_BREAKING_DISTANCE_WEIGHTED    = (1 << 3),
-	FMC_FLAG_BREAKING_PERCENTAGE_WEIGHTED  = (1 << 4),
-
-	FMC_FLAG_USE_MASS_DEPENDENT_THRESHOLDS = (1 << 5),
-};
-
-/*internal flags, global */
-enum {
-	FMG_FLAG_USE_EXPERIMENTAL    = (1 << 0),
-	FMG_FLAG_EXECUTE_THREADED    = (1 << 1),
-	FMG_FLAG_REFRESH             = (1 << 2),
-	FMG_FLAG_REFRESH_IMAGES      = (1 << 3),
-};
-
-typedef struct FractureSetting {
-	struct FractureSetting *next, *prev;
-
-	/*input structs */
-	struct Group *extra_group;
-	struct Group *cutter_group;
-	struct DerivedMesh *start_mesh;
-
-	char thresh_defgrp_name[64];  /* MAX_VGROUP_NAME */
-	char ground_defgrp_name[64];  /* MAX_VGROUP_NAME */
-	char inner_defgrp_name[64];  /* MAX_VGROUP_NAME */
-	char name[64];	/* MAX_VGROUP_NAME */
-
-	struct Material *inner_material;
-
-	/*permanent storage*/
-	struct FracMesh *frac_mesh; /* store only the current fracmesh here first, later maybe an entire history...*/
-	struct ConstraintSetting **constraint_set;	/* this is the current constraint "working set", means all mapped constraint sets for this fracture working set */
-
-	ListBase meshIslands;
-	ListBase islandShards;
-	ListBase shard_sequence; /* used as mesh cache / history for dynamic fracturing, for shards (necessary for conversion to DM) */
-	ListBase meshIsland_sequence; /* used as mesh cache / history for dynamic fracturing, for meshIslands (necessary for loc/rot "pointcache") */
-	ShardSequence *current_shard_entry; /*volatile storage of current shard entry, so we dont have to search in the list */
-	MeshIslandSequence *current_mi_entry; /*analogous to current shard entry */
-
-	/*volatile storage*/
-	struct DerivedMesh *dm;
-	struct BMesh *visible_mesh;
-	struct DerivedMesh *visible_mesh_cached;
-	struct DerivedMesh *final_mesh; //autohide processed mesh, just as temp storage
-	struct KDTree *nor_tree; /* store original vertices here (coords), to find them later and reuse their normals */
-	struct GHash *face_pairs;
-	struct GHash *vertex_island_map; /* used for constraint building based on vertex proximity, temporary data */
-	ListBase fracture_ids; /*volatile storage of shards being "hit" or fractured currently, needs to be cleaned up after usage! */
-
-	/* values */
-	float splinter_length;
-	float nor_range;
-	float fractal_amount;
-	float physics_mesh_scale;
-	float grease_offset;
-	float dynamic_force;
-	float autohide_dist;
-
-	int constraint_count;
-	int frac_algorithm;
-	int shard_count;
-	int point_source;
-	int point_seed;
-	int percentage;
-	int splinter_axis;
-	int fractal_cuts;
-	int fractal_iterations;
-	int grease_decimate;
-	int cutter_axis;
-	int id;
-
-	/*flags*/
-	int flag;
-
-	/* internal values */
-	float max_vol;
-
-	char pad[4];
-
-} FractureSetting;
-
-typedef struct ConstraintSetting {
-	struct ConstraintSetting *next, *prev;
-
-	struct Group *cluster_group;
-	ListBase fracture_mapping;
-	ListBase meshConstraints;
-
-	struct FractureSetting *partner1;
-	struct FractureSetting *partner2;
-
-	char name[64];	/* MAX_VGROUP_NAME */
-
-	float breaking_angle;
-	float breaking_distance;
-	float cluster_breaking_angle;
-	float cluster_breaking_distance;
-	float breaking_threshold;
-	float cluster_breaking_threshold;
-	float contact_dist;
-
-	int cluster_count;
-	int constraint_limit;
-	int solver_iterations_override;
-	int cluster_solver_iterations_override;
-	int breaking_percentage;
-	int cluster_breaking_percentage;
-	int cluster_constraint_type;
-	int constraint_target;
-
-	int flag;
-
-} ConstraintSetting;
-
 typedef struct FractureModifierData {
 	ModifierData modifier;
 
-	struct Group *dm_group;	 /* this is a global group for the entire FM */
-	struct GHash *vert_index_map; /*used for autoconversion of former objects to clusters, marks object membership of each vert*/
-
-	/*settings*/
-	ListBase fracture_settings;
-	ListBase constraint_settings;
-	struct FractureSetting *fracture;
-	struct ConstraintSetting *constraint; /*this is the current constraint setting */
-
 	/* values */
-	float origmat[4][4];
-	int fracture_mode;
-	int last_frame;
-	int active_setting;
-	int active_constraint_setting;
-
-	/*flags*/
-	int flag;
-
-	char pad[4];
+	float origmat[4][4] DNA_DEPRECATED;
+	int fracture_mode DNA_DEPRECATED;
 
 	/* LOTS of deprecated stuff ahead, but all for the backwards compat.... */
 	struct FracMesh *frac_mesh DNA_DEPRECATED; /* store only the current fracmesh here first, later maybe an entire history...*/
 	struct DerivedMesh *dm	DNA_DEPRECATED;
 	struct Group *extra_group DNA_DEPRECATED;
 	struct Group *cluster_group DNA_DEPRECATED;
+	struct Group *dm_group DNA_DEPRECATED;
 	struct Group *cutter_group DNA_DEPRECATED;
 	struct BMesh *visible_mesh DNA_DEPRECATED;
 	struct DerivedMesh *visible_mesh_cached DNA_DEPRECATED;
@@ -1682,11 +1427,7 @@ typedef struct FractureModifierData {
 	struct Material *inner_material DNA_DEPRECATED;
 	struct GHash *face_pairs DNA_DEPRECATED;
 	struct GHash *vertex_island_map DNA_DEPRECATED; /* used for constraint building based on vertex proximity, temporary data */
-	ListBase shard_sequence DNA_DEPRECATED; /* used as mesh cache / history for dynamic fracturing, for shards (necessary for conversion to DM) */
-	ListBase meshIsland_sequence DNA_DEPRECATED; /* used as mesh cache / history for dynamic fracturing, for meshIslands (necessary for loc/rot "pointcache") */
-	ShardSequence *current_shard_entry DNA_DEPRECATED; /*volatile storage of current shard entry, so we dont have to search in the list */
-	MeshIslandSequence *current_mi_entry DNA_DEPRECATED; /*analogous to current shard entry */
-	ListBase fracture_ids DNA_DEPRECATED; /*volatile storage of shards being "hit" or fractured currently, needs to be cleaned up after usage! */
+	struct GHash *vert_index_map DNA_DEPRECATED;
 
 	/* values */
 	int frac_algorithm DNA_DEPRECATED;
