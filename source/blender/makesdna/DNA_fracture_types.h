@@ -98,7 +98,7 @@ typedef struct FractureContainer {
 	struct FractureState* current;
 
 	ListBase ptcaches;
-	struct PointCache *cache;
+	struct PointCache *pointcache;
 
 	struct Group *cluster_group; // hmm maybe index, but which group ?
 	struct Group *extra_group;

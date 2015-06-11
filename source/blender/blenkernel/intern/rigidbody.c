@@ -3523,88 +3523,110 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 {
 	float timestep;
 	RigidBodyWorld *rbw = scene->rigidbody_world;
-	PointCache *cache;
-	PTCacheID pid;
-	int startframe, endframe;
+	GroupObject *go;
 
-	BKE_ptcache_id_from_rigidbody(&pid, NULL, rbw);
-	BKE_ptcache_id_time(&pid, scene, ctime, &startframe, &endframe, NULL);
-	cache = rbw->pointcache;
-
-	/*trigger dynamic update*/
-	if ((rbw->flag & RBW_FLAG_OBJECT_CHANGED))
+	for (go = rbw->group->gobject.first; go; go = go->next)
 	{
-		rbw->flag &= ~RBW_FLAG_OBJECT_CHANGED;
-		rigidbody_update_simulation(scene, rbw, true);
-		rbw->flag &= ~RBW_FLAG_REFRESH_MODIFIERS;
-	}
+		PointCache *cache;
+		int startframe, endframe;
+		PTCacheID pid;
 
-	if (ctime <= startframe) {
-		/* rebuild constraints */
-		rbw->flag |= RBW_FLAG_REBUILD_CONSTRAINTS;
+		Object *ob = go->ob;
+		FractureContainer *fc = ob->fracture_objects;
+		BKE_ptcache_id_from_rigidbody(&pid, ob, rbw);
+		BKE_ptcache_id_time(&pid, scene, ctime, &startframe, &endframe, NULL);
+		cache = fc->pointcache;
 
-		rbw->ltime = startframe;
-		if (rbw->flag & RBW_FLAG_OBJECT_CHANGED)
-		{       /* flag modifier refresh at their next execution XXX TODO -> still used ? */
-			rbw->flag |= RBW_FLAG_REFRESH_MODIFIERS;
+		if (rbw->ltime == -1)
+			rbw->ltime = startframe;
+
+		/*trigger dynamic update*/
+		if ((rbw->flag & RBW_FLAG_OBJECT_CHANGED))
+		{
 			rbw->flag &= ~RBW_FLAG_OBJECT_CHANGED;
-			rigidbody_update_simulation(scene, rbw, true);
+			rigidbody_update_simulation(ob, rbw, true);
+			rbw->flag &= ~RBW_FLAG_REFRESH_MODIFIERS;
 		}
-		return;
-	}
-	/* make sure we don't go out of cache frame range */
-	else if (ctime > endframe) {
-		ctime = endframe;
+
+		if (ctime <= startframe) {
+			/* rebuild constraints */
+			rbw->flag |= RBW_FLAG_REBUILD_CONSTRAINTS;
+
+			rbw->ltime = startframe;
+			if (rbw->flag & RBW_FLAG_OBJECT_CHANGED)
+			{       /* flag modifier refresh at their next execution XXX TODO -> still used ? */
+				rbw->flag |= RBW_FLAG_REFRESH_MODIFIERS;
+				rbw->flag &= ~RBW_FLAG_OBJECT_CHANGED;
+				rigidbody_update_simulation(ob, rbw, true);
+			}
+			continue;
+		}
+		/* make sure we don't go out of cache frame range */
+		else if (ctime > endframe) {
+			ctime = endframe;
+		}
+
+		/* don't try to run the simulation if we don't have a world yet but allow reading baked cache */
+		if (rbw->physics_world == NULL && !(cache->flag & PTCACHE_BAKED))
+			continue;
+		else if ((rbw->objects == NULL) || (rbw->cache_index_map == NULL))
+			rigidbody_update_ob_array(rbw);
+
+		/* try to read from cache */
+		// RB_TODO deal with interpolated, old and baked results
+		if (BKE_ptcache_read(&pid, ctime)) {
+			//printf("Cache read:  %d\n", (int)ctime);
+			BKE_ptcache_validate(cache, (int)ctime);
+
+			rbw->ltime = ctime;
+			continue;
+		}
+		else if (rbw->ltime == startframe)
+		{
+			restoreKinematic(ob, rbw);
+			rigidbody_update_simulation(ob, rbw, true);
+		}
+
+		/* advance simulation, we can only step one frame forward */
+		if ((ctime == rbw->ltime + 1) && !(cache->flag & PTCACHE_BAKED)) {
+			/* write cache for first frame when on second frame */
+			if (rbw->ltime == startframe && (cache->flag & PTCACHE_OUTDATED || cache->last_exact == 0)) {
+				BKE_ptcache_write(&pid, startframe);
+			}
+
+			if (rbw->ltime > startframe) {
+				rbw->flag &= ~RBW_FLAG_REBUILD_CONSTRAINTS;
+			}
+
+			/* update and validate simulation */
+			rigidbody_update_simulation(ob, rbw, false);
+		}
 	}
 
-	/* don't try to run the simulation if we don't have a world yet but allow reading baked cache */
-	if (rbw->physics_world == NULL && !(cache->flag & PTCACHE_BAKED))
-		return;
-	else if ((rbw->objects == NULL) || (rbw->cache_index_map == NULL))
-		rigidbody_update_ob_array(rbw);
+	/* calculate how much time elapsed since last step in seconds */
+	timestep = 1.0f / (float)FPS * (ctime - rbw->ltime) * rbw->time_scale;
+	/* step simulation by the requested timestep, steps per second are adjusted to take time scale into account */
+	RB_dworld_step_simulation(rbw->physics_world, timestep, INT_MAX, 1.0f / (float)rbw->steps_per_second * min_ff(rbw->time_scale, 1.0f));
 
-	/* try to read from cache */
-	// RB_TODO deal with interpolated, old and baked results
-	if (BKE_ptcache_read(&pid, ctime)) {
-		printf("Cache read:  %d\n", (int)ctime);
-		BKE_ptcache_validate(cache, (int)ctime);
-
-		rbw->ltime = ctime;
-		return;
-	}
-	else if (rbw->ltime == startframe)
+	for (go = rbw->group->gobject.first; go; go = go->next)
 	{
-		restoreKinematic(rbw);
-		rigidbody_update_simulation(scene, rbw, true);
-	}
+		PTCacheID pid;
+		Object *ob = go->ob;
+		FractureContainer *fc = ob->fracture_objects;
+		int startframe, endframe;
 
-	/* advance simulation, we can only step one frame forward */
-	if (ctime == rbw->ltime + 1 && !(cache->flag & PTCACHE_BAKED)) {
-		/* write cache for first frame when on second frame */
-		if (rbw->ltime == startframe && (cache->flag & PTCACHE_OUTDATED || cache->last_exact == 0)) {
-			BKE_ptcache_write(&pid, startframe);
-		}
+		BKE_ptcache_id_from_rigidbody(&pid, ob, rbw);
+		BKE_ptcache_id_time(&pid, scene, ctime, &startframe, &endframe, NULL);
+		cache = fc->pointcache;
 
-		if (rbw->ltime > startframe) {
-			rbw->flag &= ~RBW_FLAG_REBUILD_CONSTRAINTS;
-		}
-
-		/* update and validate simulation */
-		rigidbody_update_simulation(scene, rbw, false);
-
-		/* calculate how much time elapsed since last step in seconds */
-		timestep = 1.0f / (float)FPS * (ctime - rbw->ltime) * rbw->time_scale;
-		/* step simulation by the requested timestep, steps per second are adjusted to take time scale into account */
-		RB_dworld_step_simulation(rbw->physics_world, timestep, INT_MAX, 1.0f / (float)rbw->steps_per_second * min_ff(rbw->time_scale, 1.0f));
-
-		rigidbody_update_simulation_post_step(rbw);
+		rigidbody_update_simulation_post_step(ob, rbw);
 
 		/* write cache for current frame */
 		BKE_ptcache_validate(cache, (int)ctime);
 		BKE_ptcache_write(&pid, (unsigned int)ctime);
-
-		rbw->ltime = ctime;
 	}
+
+	rbw->ltime = ctime;
 }
 /* ************************************** */
 

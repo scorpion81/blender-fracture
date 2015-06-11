@@ -2362,7 +2362,7 @@ static int fracture_refresh_exec(bContext *C, wmOperator *UNUSED(op))
 
 	if (scene->rigidbody_world != NULL)
 	{
-		start = (double)scene->rigidbody_world->pointcache->startframe;
+		start = (double)fc->pointcache->startframe;
 	}
 
 	BKE_scene_frame_set(scene, start);

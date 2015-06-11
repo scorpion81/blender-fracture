@@ -4735,10 +4735,14 @@ static void read_meshIsland(FileData *fd, MeshIsland **address)
 	mi->vertices_cached = NULL;
 	mi->vertco = newdataadr(fd, mi->vertco);
 	mi->temp = newdataadr(fd, mi->temp);
-	read_shard(fd, &(mi->temp));
-	mi->physics_mesh = BKE_shard_create_dm(mi->temp, true);
-	BKE_shard_free(mi->temp, true);
-	mi->temp = NULL;
+	if (mi->temp)
+	{
+		read_shard(fd, &(mi->temp));
+		mi->physics_mesh = BKE_shard_create_dm(mi->temp, true);
+		BKE_shard_free(mi->temp, true);
+		mi->temp = NULL;
+	}
+
 	mi->vertno = newdataadr(fd, mi->vertno);
 
 	mi->rigidbody = newdataadr(fd, mi->rigidbody);
@@ -4749,10 +4753,6 @@ static void read_meshIsland(FileData *fd, MeshIsland **address)
 
 	mi->neighbor_ids = newdataadr(fd, mi->neighbor_ids );
 	mi->bb = newdataadr(fd, mi->bb);
-	mi->vertex_indices = newdataadr(fd, mi->vertex_indices);
-
-	mi->locs = newdataadr(fd, mi->locs);
-	mi->rots = newdataadr(fd, mi->rots);
 
 	/* will be refreshed on the fly */
 	mi->participating_constraint_count = 0;
@@ -5360,6 +5360,17 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb, Object *ob)
 	}
 }
 
+static MVert* expand_visual_mesh(Object* ob, FractureState *fs)
+{
+	/* re-init cached verts here... before rebuild a visual mesh on the fly */
+	fs->visual_mesh = BKE_fracture_create_dm(ob, true, true);
+	DM_ensure_tessface(fs->visual_mesh);
+	DM_ensure_normals(fs->visual_mesh);
+	DM_update_tessface_data(fs->visual_mesh);
+
+	return CDDM_get_verts(fs->visual_mesh);
+}
+
 static void direct_link_object(FileData *fd, Object *ob)
 {
 	PartEff *paf;
@@ -5491,7 +5502,8 @@ static void direct_link_object(FileData *fd, Object *ob)
 	}
 	ob->bsoft = newdataadr(fd, ob->bsoft);
 	ob->fluidsimSettings= newdataadr(fd, ob->fluidsimSettings); /* NT */
-	
+
+#if 0
 	ob->rigidbody_object = newdataadr(fd, ob->rigidbody_object);
 	if (ob->rigidbody_object) {
 		RigidBodyOb *rbo = ob->rigidbody_object;
@@ -5505,6 +5517,46 @@ static void direct_link_object(FileData *fd, Object *ob)
 	ob->rigidbody_constraint = newdataadr(fd, ob->rigidbody_constraint);
 	if (ob->rigidbody_constraint)
 		ob->rigidbody_constraint->physics_constraint = NULL;
+#endif
+
+	ob->fracture_objects = newdataadr(fd, ob->fracture_objects);
+	if (ob->fracture_objects) {
+
+		FractureContainer *fc = ob->fracture_objects;
+		FractureState *fs;
+
+		link_list(fd, &fc->states);
+
+		for (fs = fc->states.first; fs; fs = fs->next)
+		{
+			FracMesh *fm = fs->frac_mesh = newdataadr(fd, fs->frac_mesh);
+			Shard *s;
+			MeshIsland *mi;
+			int vertstart = 0;
+			MVert* mverts = NULL;
+
+			link_list(fd, &fm->shard_map);
+			for (s = fm->shard_map.first; s; s = s->next)
+			{
+				read_shard(fd, &s);
+			}
+
+			mverts = expand_visual_mesh(ob, fs);
+			s = fm->shard_map.first;
+
+			link_list(fd, &fs->island_map);
+			for (mi = fs->island_map.first; mi; mi = mi->next)
+			{
+				read_meshIsland(fd, &mi);
+				mi->shard = s;
+				s = s->next;
+				mi->physics_mesh = BKE_shard_create_dm(s, true);
+				vertstart += BKE_initialize_meshisland(ob, &mi, mverts, vertstart);
+			}
+		}
+
+		direct_link_pointcache_list(fd, &fc->ptcaches, &fc->pointcache, false);
+	}
 
 	link_list(fd, &ob->particlesystem);
 	direct_link_particlesystems(fd, &ob->particlesystem);
@@ -6148,12 +6200,15 @@ static void direct_link_scene(FileData *fd, Scene *sce)
 		if (!rbw->effector_weights)
 			rbw->effector_weights = BKE_add_effector_weights(NULL);
 
+#if 0
 		/* link cache */
 		direct_link_pointcache_list(fd, &rbw->ptcaches, &rbw->pointcache, false);
 		/* make sure simulation starts from the beginning after loading file */
 		if (rbw->pointcache) {
 			rbw->ltime = (float)rbw->pointcache->startframe;
 		}
+#endif
+		rbw->ltime = -1;
 	}
 }
 
@@ -9170,9 +9225,18 @@ static void expand_object(FileData *fd, Main *mainvar, Object *ob)
 	if (ob->pd && ob->pd->tex)
 		expand_doit(fd, mainvar, ob->pd->tex);
 
+#if 0
 	if (ob->rigidbody_constraint) {
 		expand_doit(fd, mainvar, ob->rigidbody_constraint->ob1);
 		expand_doit(fd, mainvar, ob->rigidbody_constraint->ob2);
+	}
+#endif
+
+	if (ob->fracture_constraints)
+	{
+		ConstraintContainer *cc = ob->fracture_constraints;
+		expand_doit(fd, mainvar, cc->partner1);
+		expand_doit(fd, mainvar, cc->partner2);
 	}
 
 	if (ob->currentlod) {

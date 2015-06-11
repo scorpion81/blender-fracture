@@ -5580,89 +5580,19 @@ void BKE_free_fracture_container(Object *ob)
 	}
 }
 
-#if 0
-void initialize_meshisland(FractureContainer* fc, MeshIsland** mii, MVert* mverts, int vertstart,
-                                 Object *ob, ShardID parent_id, ShardID shard_id)
+int BKE_initialize_meshisland(Object* ob, MeshIsland** mii, MVert* mverts, int vertstart)
 {
-	MVert *mv;
 	int k = 0;
 	MeshIsland* mi = *mii;
+	FractureContainer *fc = ob->fracture_objects;
 
 	mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * mi->vertex_count, "mi->vertices_cached readfile");
-	mv = mi->physics_mesh->getVertArray(mi->physics_mesh);
 
 	for (k = 0; k < mi->vertex_count; k++) {
 		MVert* v = mverts + vertstart + k ;
-		MVert* v2 = mv + k;
 		mi->vertices_cached[k] = v;
-		if (mi->vertex_indices) {
-			mi->vertex_indices[k] = vertstart + k;
-		}
-		mi->vertco[k*3] = v->co[0];
-		mi->vertco[k*3+1] = v->co[1];
-		mi->vertco[k*3+2] = v->co[2];
-
-		if (fs)
-		{
-			if (mi->vertno != NULL && (fs->flag & FM_FLAG_FIX_NORMALS)) {
-				short sno[3];
-				sno[0] = mi->vertno[k*3];
-				sno[1] = mi->vertno[k*3+1];
-				sno[2] = mi->vertno[k*3+2];
-				copy_v3_v3_short(v->no, sno);
-				copy_v3_v3_short(v2->no, sno);
-			}
-		}
-		else
-		{
-			if (mi->vertno != NULL && fmd->fix_normals) {
-				short sno[3];
-				sno[0] = mi->vertno[k*3];
-				sno[1] = mi->vertno[k*3+1];
-				sno[2] = mi->vertno[k*3+2];
-				copy_v3_v3_short(v->no, sno);
-				copy_v3_v3_short(v2->no, sno);
-			}
-		}
-	}
-
-	if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
-	{
-		MeshIslandSequence *prev = NULL;
-
-		if (fs)
-		{
-			if (fs->current_mi_entry) {
-				prev = fs->current_mi_entry->prev;
-			}
-		}
-		else
-		{
-			if (fmd->current_mi_entry) {
-				prev = fmd->current_mi_entry->prev;
-			}
-		}
-
-		if (prev)
-		{
-			MeshIsland *par = NULL;
-			int frame = prev->frame;
-
-			par = find_meshisland(&prev->meshIslands, parent_id);
-			if (par)
-			{
-				frame -= par->start_frame;
-				BKE_match_vertex_coords(mi, par, ob, frame, true);
-			}
-			else
-			{
-				par = find_meshisland(&prev->meshIslands, shard_id);
-				if (par)
-				{
-					frame -= par->start_frame;
-					BKE_match_vertex_coords(mi, par, ob, frame, false);
-				}
-			}
+		if ((mi->vertnos != NULL) && (fc->flag & FM_FLAG_FIX_NORMALS)) {
+			copy_v3_v3_short(v->no, mi->vertnos[k]);
 		}
 	}
 

@@ -116,5 +116,6 @@ void BKE_select_linked(struct BMesh **bm_in);
 void BKE_prefracture_mesh(struct Object *ob, struct DerivedMesh *derivedData);
 void BKE_free_fracture_modifier(struct FractureModifierData *fmd, bool do_free_seq);
 struct DerivedMesh *BKE_dynamic_fracture_mesh(struct FractureModifierData *fmd, struct Object *ob, struct DerivedMesh *derivedData);
+int BKE_initialize_meshisland(struct Object* ob, struct MeshIsland** mii, struct MVert* mverts, int vertstart);
 
 #endif /* BKE_FRACTURE_H */

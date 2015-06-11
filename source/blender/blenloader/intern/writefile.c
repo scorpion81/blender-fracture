@@ -1516,29 +1516,14 @@ static void write_shard(WriteData* wd, Shard* s)
 
 static void write_meshIsland(WriteData* wd, MeshIsland* mi)
 {
-	DerivedMesh *dm = mi->physics_mesh;
-	mi->temp = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
-	                                        dm->getNumVerts(dm), dm->getNumPolys(dm), dm->getNumLoops(dm), true);
-	mi->temp = BKE_custom_data_to_shard(mi->temp, dm);
-
 	writestruct(wd, DATA, "MeshIsland", 1, mi);
-	writedata(wd, DATA, sizeof(float) * 3 * mi->vertex_count, mi->vertco);
-	/* write derivedmesh as shard... */
-	mi->temp->next = NULL;
-	mi->temp->prev = NULL;
-	write_shard(wd, mi->temp);
-	BKE_shard_free(mi->temp, true);
-	mi->temp = NULL;
-
-	writedata(wd, DATA, sizeof(short) * 3 * mi->vertex_count, mi->vertno);
+	writedata(wd, DATA, sizeof(float) * 3 * mi->vertex_count, mi->vertcos);
+	writedata(wd, DATA, sizeof(short) * 3 * mi->vertex_count, mi->vertnos);
 
 	writestruct(wd, DATA, "RigidBodyOb", 1, mi->rigidbody);
 	writedata(wd, DATA, sizeof(int) * mi->neighbor_count, mi->neighbor_ids);
 	writestruct(wd, DATA, "BoundBox", 1, mi->bb);
 	writedata(wd, DATA, sizeof(int) * mi->vertex_count, mi->vertex_indices);
-
-	writedata(wd, DATA, sizeof(float) * 3 * mi->frame_count, mi->locs);
-	writedata(wd, DATA, sizeof(float) * 4 * mi->frame_count, mi->rots);
 }
 
 static void write_modifiers(WriteData *wd, ListBase *modbase)
@@ -1667,67 +1652,6 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 
 			writedata(wd, DATA, sizeof(float)*lmd->total_verts * 3, lmd->vertexco);
 		}
-
-#if 0
-		else if (md->type==eModifierType_Fracture) {
-			FractureModifierData *fmd = (FractureModifierData*)md;
-			FracMesh* fm = NULL;
-			MeshIsland *mi;
-			Shard *s;
-			FractureSetting *fs = NULL;
-
-			for (fs = fmd->fracture_settings.first; fs; fs = fs->next)
-			{
-				fmd->fracture = fs;
-				fm = fmd->fracture->frac_mesh;
-
-				if (fm && fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
-				{
-					if (fm->running == 0 && !fmd->dm_group)
-					{
-						if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
-						{
-							writestruct(wd, DATA, "FracMesh", 1, fm);
-
-							for (s = fm->shard_map.first; s; s = s->next) {
-								write_shard(wd, s);
-							}
-
-							for (s = fmd->fracture->islandShards.first; s; s = s->next) {
-								write_shard(wd, s);
-							}
-
-							for (mi = fmd->fracture->meshIslands.first; mi; mi = mi->next) {
-								write_meshIsland(wd, mi);
-							}
-						}
-					}
-				}
-			}
-			else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
-			{
-				ShardSequence *ssq;
-				MeshIslandSequence *msq;
-
-				for (ssq = fmd->shard_sequence.first; ssq; ssq = ssq->next)
-				{
-					writestruct(wd, DATA, "ShardSequence", 1, ssq);
-					writestruct(wd, DATA, "FracMesh", 1, ssq->frac_mesh);
-					for (s = ssq->frac_mesh->shard_map.first; s; s = s->next) {
-						write_shard(wd, s);
-					}
-				}
-
-				for (msq = fmd->meshIsland_sequence.first; msq; msq = msq->next)
-				{
-					writestruct(wd, DATA, "MeshIslandSequence", 1, msq);
-					for (mi = msq->meshIslands.first; mi; mi = mi->next) {
-						write_meshIsland(wd, mi);
-					}
-				}
-			}
-#endif
-
 	}
 }
 
@@ -1775,13 +1699,46 @@ static void write_objects(WriteData *wd, ListBase *idbase)
 				writestruct(wd, DATA, "EffectorWeights", 1, ob->soft->effector_weights);
 			}
 			writestruct(wd, DATA, "BulletSoftBody", 1, ob->bsoft);
-			
+
+#if 0
 			if (ob->rigidbody_object) {
 				// TODO: if any extra data is added to handle duplis, will need separate function then
 				writestruct(wd, DATA, "RigidBodyOb", 1, ob->rigidbody_object);
 			}
 			if (ob->rigidbody_constraint) {
 				writestruct(wd, DATA, "RigidBodyCon", 1, ob->rigidbody_constraint);
+			}
+#endif
+
+			if (ob->fracture_objects) {
+				FractureContainer *fc = ob->fracture_objects;
+				FractureState *fs;
+
+				writestruct(wd, DATA, "FractureContainer", 1, fc);
+
+				for (fs = fc->states.first; fs; fs = fs->next)
+				{
+					Shard* s;
+					MeshIsland *mi;
+					FracMesh *fm = fs->frac_mesh;
+					writestruct(wd, DATA, "FracMesh", 1, fm);
+
+					for (s = fm->shard_map.first; s; s = s->next)
+					{
+						write_shard(wd, s);
+					}
+
+					for (mi = fs->island_map.first; mi; mi = mi->next)
+					{
+						write_meshIsland(wd, mi);
+					}
+				}
+
+				write_pointcaches(wd, &fc->ptcaches);
+			}
+
+			if (ob->fracture_constraints) {
+				writestruct(wd, DATA, "ConstraintContainer", 1, ob->fracture_constraints);
 			}
 
 			if (ob->type == OB_EMPTY && ob->empty_drawtype == OB_EMPTY_IMAGE) {
@@ -2595,7 +2552,7 @@ static void write_scenes(WriteData *wd, ListBase *scebase)
 		if (sce->rigidbody_world) {
 			writestruct(wd, DATA, "RigidBodyWorld", 1, sce->rigidbody_world);
 			writestruct(wd, DATA, "EffectorWeights", 1, sce->rigidbody_world->effector_weights);
-			write_pointcaches(wd, &(sce->rigidbody_world->ptcaches));
+			//write_pointcaches(wd, &(sce->rigidbody_world->ptcaches));
 		}
 		
 		sce= sce->id.next;
