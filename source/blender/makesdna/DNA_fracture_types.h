@@ -45,6 +45,7 @@ struct DerivedMesh;
 struct KDTree;
 struct PointCache;
 struct RigidBodyOb;
+struct MeshIsland;
 
 enum {
 	SHARD_INTACT   = 1 << 0,
@@ -161,6 +162,7 @@ typedef struct FractureState {
 	FracMesh *frac_mesh;
 	struct DerivedMesh *visual_mesh;
 	ListBase island_map;
+	struct MeshIsland **islands; //for faster access
 	int frame;
 	int flag;
 

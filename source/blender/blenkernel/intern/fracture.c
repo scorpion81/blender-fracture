@@ -2481,7 +2481,7 @@ static void do_refresh(Scene* scene, Object *ob)
 	FractureContainer *fc = ob->fracture_objects;
 
 	//pre-halving... making shards (NOT islands, watch it !)
-	do_halving(scene, ob);
+	//do_halving(scene, ob);
 
 	if (fc->flag & FM_FLAG_FIX_NORMALS)
 	{
@@ -4847,7 +4847,7 @@ void BKE_fracture_prefracture_mesh(Scene *scene, Object *ob)
 	//operate on existing shards
 	do_modifier(scene, ob);
 	do_simulate(scene, ob);
-	do_clear(ob);
+	//do_clear(ob); wtf....
 
 #if 0
 	if (ob->type != OB_MESH)
@@ -4900,6 +4900,8 @@ void BKE_fracture_container_create(Scene* scene, Object *ob)
 {
 	FractureContainer *fc = MEM_callocN(sizeof(FractureContainer) ,"fracture_objects");
 	FractureState *fs = MEM_callocN(sizeof(FractureState), "states.first");
+	int count, i = 0;
+	MeshIsland *mi;
 
 	//init fracmesh with entire shard from ob->derivedFinal (ensure it)
 	float mat[4][4]; //wood splinter scaling matrix, here it is unit_m4
@@ -4945,6 +4947,16 @@ void BKE_fracture_container_create(Scene* scene, Object *ob)
 
 	//create meshislands
 	BKE_fracture_prefracture_mesh(scene, ob);
+
+	//create fast access array
+	count = fs->frac_mesh->shard_count;
+	fs->islands = MEM_callocN(sizeof(MeshIsland*) * count, "fs->islands");
+
+	for (mi = fs->island_map.first; mi; mi = mi->next)
+	{
+		fs->islands[i] = mi;
+		i++;
+	}
 }
 
 void BKE_fracture_container_free(Object *ob)

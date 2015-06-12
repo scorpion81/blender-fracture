@@ -68,6 +68,8 @@ typedef struct rbConstraint rbConstraint;
 
 /* Collision feedback (manifolds and contact points */
 typedef struct rbContactPoint {
+	void *contact_obA;
+	void *contact_obB;
 	float contact_force;
 	int contact_body_indexA;
 	int contact_body_indexB;

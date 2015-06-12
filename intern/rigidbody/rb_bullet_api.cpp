@@ -96,10 +96,10 @@ bool MyRigidBody::isKinematicObject()
 {
 	if (m_kinematicCallback) {
 		if (m_kinematicCallback(m_userPointer)) {
-			return btRigidBody::isKinematicObject();
+			return true;
 		}
 		else {
-			return false;
+			return btRigidBody::isKinematicObject();
 		}
 	}
 	return btRigidBody::isKinematicObject();
@@ -132,6 +132,7 @@ class TickDiscreteDynamicsWorld : public btDiscreteDynamicsWorld
 		                          rbContactCallback cont_callback, void *bworld);
 		rbContactPoint* make_contact_point(btManifoldPoint& point, const btCollisionObject *body0, const btCollisionObject *body1);
 		rbContactCallback m_contactCallback;
+		virtual void saveKinematicState(btScalar timeStep);
 		void* m_bworld;
 };
 
@@ -176,6 +177,28 @@ TickDiscreteDynamicsWorld::TickDiscreteDynamicsWorld(btDispatcher* dispatcher,bt
 	m_bworld = bworld;
 }
 
+//need a virtual method to override
+void	TickDiscreteDynamicsWorld::saveKinematicState(btScalar timeStep)
+{
+///would like to iterate over m_nonStaticRigidBodies, but unfortunately old API allows
+///to switch status _after_ adding kinematic objects to the world
+///fix it for Bullet 3.x release
+	for (int i=0;i<m_collisionObjects.size();i++)
+	{
+		btCollisionObject* colObj = m_collisionObjects[i];
+		MyRigidBody* body = (MyRigidBody*)colObj;
+		if (body && body->getActivationState() != ISLAND_SLEEPING)
+		{
+			if (body->isKinematicObject())
+			{
+				//to calculate velocities next frame
+				body->saveKinematicState(timeStep);
+			}
+		}
+	}
+
+}
+
 rbContactPoint* TickDiscreteDynamicsWorld::make_contact_point(btManifoldPoint& point, const btCollisionObject* body0, const btCollisionObject* body1)
 {
 	rbContactPoint *cp = new rbContactPoint;
@@ -183,12 +206,15 @@ rbContactPoint* TickDiscreteDynamicsWorld::make_contact_point(btManifoldPoint& p
 	btRigidBody* bodyB = (btRigidBody*)(body1);
 	rbRigidBody* rbA = (rbRigidBody*)(bodyA->getUserPointer());
 	rbRigidBody* rbB = (rbRigidBody*)(bodyB->getUserPointer());
-	if (rbA)
+	if (rbA) {
 		cp->contact_body_indexA = rbA->linear_index;
+		cp->contact_obA = rbA->blenderOb;
+	}
 
-	if (rbB)
+	if (rbB) {
 		cp->contact_body_indexB = rbB->linear_index;
-
+		cp->contact_obB = rbB->blenderOb;
+	}
 	cp->contact_force = point.getAppliedImpulse();
 	copy_v3_btvec3(cp->contact_pos_world_onA, point.getPositionWorldOnA());
 	copy_v3_btvec3(cp->contact_pos_world_onB, point.getPositionWorldOnB());

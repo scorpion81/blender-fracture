@@ -4898,7 +4898,7 @@ static void ObjectToTransData(TransInfo *t, TransData *td, Object *ob)
 		float ctime = BKE_scene_frame_get(scene);
 
 		/* only use rigid body transform if simulation is running, avoids problems with initial setup of rigid bodies */
-		if (BKE_rigidbody_check_sim_running(scene->rigidbody_world, ctime)) {
+		if (BKE_rigidbody_check_sim_running(scene->rigidbody_world, ob, ctime)) {
 
 			/* save original object transform */
 			copy_v3_v3(td->ext->oloc, ob->loc);
@@ -6002,7 +6002,7 @@ void special_aftertrans_update(bContext *C, TransInfo *t)
 				float ctime = BKE_scene_frame_get(t->scene);
 				ModifierData* md = modifiers_findByType(ob, eModifierType_Fracture);
 				FractureModifierData *fmd;
-				if (BKE_rigidbody_check_sim_running(t->scene->rigidbody_world, ctime))
+				if (BKE_rigidbody_check_sim_running(t->scene->rigidbody_world, ob, ctime))
 					BKE_rigidbody_aftertrans_update(ob, td->ext->oloc, td->ext->orot, td->ext->oquat, td->ext->orotAxis, td->ext->orotAngle);
 				
 				if (md != NULL) {

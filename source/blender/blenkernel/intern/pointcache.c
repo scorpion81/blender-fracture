@@ -994,16 +994,13 @@ static int ptcache_dynamicpaint_read(PTCacheFile *pf, void *dp_v)
 }
 
 /* Rigid Body functions */
-static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra)
+static int ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra)
 {
-	RigidBodyWorld *rbw = rb_v;
-	RigidBodyOb *rbo = NULL;
+	FractureContainer *fc = rb_v;
+	RigidBodyShardOb *rbo = NULL;
+	FractureState* fs = fc->current;
 
-	/* clumsy, clumsy, but we need to access our own (meshisland based) cache here in case of dynamic fracture*/
-	Object* ob = NULL;
-	FractureModifierData *fmd = NULL;
-
-	rbo = rbw->cache_index_map[index];
+	rbo = fs->islands[index]->rigidbody;
 	
 	if (rbo == NULL) {
 		float dummyloc[3] = {FLT_MIN, FLT_MIN, FLT_MIN};
@@ -1015,8 +1012,6 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 		return 1;
 	}
 
-	ob = rbw->objects[rbw->cache_offset_map[index]];
-	fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
 
 	if (rbo && rbo->type == RBO_TYPE_ACTIVE && rbo->physics_object)
 	{
@@ -1027,44 +1022,17 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 
 		PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, rbo->pos);
 		PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, rbo->orn);
-#if 0
-		if (!fmd || fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
-		{
-			PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, rbo->pos);
-			PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, rbo->orn);
-		}
-		else if (fmd && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
-		{
-			MeshIsland *mi = BLI_findlink(&fmd->fracture->meshIslands, rbo->meshisland_index);
-			int frame = (int)floor(cfra);
-			frame =  frame - mi->start_frame;
-
-			//printf("Writing frame %d %d %d %d\n", (int)cfra, mi->start_frame, frame, fmd->last_frame);
-
-			mi->locs[3*frame] = rbo->pos[0];
-			mi->locs[3*frame+1] = rbo->pos[1];
-			mi->locs[3*frame+2] = rbo->pos[2];
-
-			mi->rots[4*frame] = rbo->orn[0];
-			mi->rots[4*frame+1] = rbo->orn[1];
-			mi->rots[4*frame+2] = rbo->orn[2];
-			mi->rots[4*frame+3] = rbo->orn[3];
-
-			//dummy data
-			PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, rbo->pos);
-			PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, rbo->orn);
-		}
-#endif
 	}
 
 	return 1;
 }
 static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfra, float *old_data)
 {
-	RigidBodyWorld *rbw = rb_v;
-	RigidBodyOb *rbo = NULL;
-	
-	rbo = rbw->cache_index_map[index];
+	FractureContainer *fc = rb_v;
+	RigidBodyShardOb *rbo = NULL;
+	FractureState* fs = fc->current;
+
+	rbo = fs->islands[index]->rigidbody;
 	
 	if (rbo == NULL) {
 		return;
@@ -1080,48 +1048,6 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfr
 			PTCACHE_DATA_TO(data, BPHYS_DATA_ROTATION, 0, rbo->orn);
 		}
 	}
-
-#if 0
-	ob = rbw->objects[rbw->cache_offset_map[index]];
-	fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
-	if (!fmd || fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
-	{
-		if (rbo && rbo->type == RBO_TYPE_ACTIVE) {
-			if (old_data) {
-				memcpy(rbo->pos, data, 3 * sizeof(float));
-				memcpy(rbo->orn, data + 3, 4 * sizeof(float));
-			}
-			else {
-				PTCACHE_DATA_TO(data, BPHYS_DATA_LOCATION, 0, rbo->pos);
-				PTCACHE_DATA_TO(data, BPHYS_DATA_ROTATION, 0, rbo->orn);
-			}
-		}
-	}
-	else if (fmd && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
-	{
-		if (rbo && rbo->type == RBO_TYPE_ACTIVE)
-		{
-			//damn, slow listbase based lookup
-			//TODO, need to speed this up.... array, hash ?
-
-			//modifier should have "switched" this to current set of meshislands already.... so access it
-			MeshIsland *mi = BLI_findlink(&fmd->fracture->meshIslands, rbo->meshisland_index);
-			int frame = (int)floor(cfra);
-			frame = frame - mi->start_frame;
-
-			//printf("Reading frame %d %d %d %d\n", (int)cfra, mi->start_frame, frame, fmd->last_frame);
-
-			rbo->pos[0] = mi->locs[3*frame];
-			rbo->pos[1] = mi->locs[3*frame+1];
-			rbo->pos[2] = mi->locs[3*frame+2];
-
-			rbo->orn[0] = mi->rots[4*frame];
-			rbo->orn[1] = mi->rots[4*frame+1];
-			rbo->orn[2] = mi->rots[4*frame+2];
-			rbo->orn[3] = mi->rots[4*frame+3];
-		}
-	}
-#endif
 }
 static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, float cfra, float cfra1, float cfra2, float *old_data)
 {
@@ -1193,9 +1119,8 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 }
 static int ptcache_rigidbody_totpoint(void *rb_v, int UNUSED(cfra))
 {
-	RigidBodyWorld *rbw = rb_v;
-	
-	return rbw->numbodies;
+	FractureContainer *fc = rb_v;
+	return fc->current->frac_mesh->shard_count;
 }
 
 static void ptcache_rigidbody_error(void *UNUSED(rb_v), const char *UNUSED(message))

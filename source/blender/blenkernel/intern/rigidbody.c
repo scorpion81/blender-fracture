@@ -75,7 +75,7 @@
 
 static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int rebuild, int transfer_speed);
 
-static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED(rbw), MeshIsland *UNUSED(mi), Object *UNUSED(ob))
+static void activateRigidbody(RigidBodyShardOb* rbo, RigidBodyWorld *UNUSED(rbw), MeshIsland *UNUSED(mi), Object *UNUSED(ob))
 {
 	if (rbo->flag & RBO_FLAG_KINEMATIC && rbo->type == RBO_TYPE_ACTIVE)
 	{
@@ -1881,11 +1881,12 @@ static bool check_shard_size(Object* ob, int id, float impact_loc[3], Object* co
 	return true;
 }
 
-static void check_fracture(rbContactPoint* cp, Scene* scene, Object* ob1, Object *ob2)
+static void check_fracture(rbContactPoint* cp, Scene* scene)
 {
 	int linear_index1, linear_index2;
 	FractureContainer *fc1, *fc2;
 	float force;
+	Object* ob1, *ob2;
 
 	if (cp == NULL)
 		return;
@@ -1894,6 +1895,9 @@ static void check_fracture(rbContactPoint* cp, Scene* scene, Object* ob1, Object
 
 	linear_index1 = cp->contact_body_indexA; //this is only INSIDE object now !!! TODO
 	linear_index2 = cp->contact_body_indexB;
+
+	ob1 = cp->contact_obA;
+	ob2 = cp->contact_obB;
 
 	if (linear_index1 > -1 && ob1 && ob2)
 	{
@@ -1926,12 +1930,10 @@ static void check_fracture(rbContactPoint* cp, Scene* scene, Object* ob1, Object
 	cp = NULL;
 }
 
-static void contactCallback(rbContactPoint* cp, void* sc, void *ob1, void *ob2)
+static void contactCallback(rbContactPoint* cp, void* sc)
 {
 	Scene *scene = (Scene*)sc;
-	Object *obj1 = (Object*)ob1;
-	Object *obj2 = (Object*)ob2;
-	check_fracture(cp, scene, obj1, obj2);
+	check_fracture(cp, scene);
 }
 
 /* --------------------- */
@@ -1948,7 +1950,7 @@ void BKE_rigidbody_validate_sim_world(Scene *scene, RigidBodyWorld *rbw, bool re
 	if (rebuild || rbw->physics_world == NULL) {
 		if (rbw->physics_world)
 			RB_dworld_delete(rbw->physics_world);
-		rbw->physics_world = RB_dworld_new(scene->physics_settings.gravity, rbw, filterCallback, contactCallback);
+		rbw->physics_world = RB_dworld_new(scene->physics_settings.gravity, scene, NULL, contactCallback);
 	}
 
 	RB_dworld_set_solver_iterations(rbw->physics_world, rbw->num_solver_iterations);
@@ -3066,10 +3068,12 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 	}
 }
 
-bool BKE_rigidbody_check_sim_running(RigidBodyWorld *rbw, float ctime)
+bool BKE_rigidbody_check_sim_running(RigidBodyWorld *rbw, Object* ob, float ctime)
 {
 	//test pointcache of first participant, if any.... TODO
-	return (rbw && (rbw->flag & RBW_FLAG_MUTED) == 0 && ctime > rbw->pointcache->startframe);
+	FractureContainer *fc = ob->fracture_objects;
+
+	return (rbw && (rbw->flag & RBW_FLAG_MUTED) == 0 && ctime > fc->pointcache->startframe);
 }
 
 static void do_sync_container(Object *ob, RigidBodyWorld *rbw, float ctime)
@@ -3106,22 +3110,22 @@ static void do_sync_container(Object *ob, RigidBodyWorld *rbw, float ctime)
 		}
 
 		/* use rigid body transform after cache start frame if objects is not being transformed */
-		if (BKE_rigidbody_check_sim_running(rbw, ctime) && !(ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
+		if (BKE_rigidbody_check_sim_running(rbw, ob, ctime) && !(ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
 
-		/* keep original transform when the simulation is muted */
-		if (rbw->flag & RBW_FLAG_MUTED)
-			return true;
+			/* keep original transform when the simulation is muted */
+			if (rbw->flag & RBW_FLAG_MUTED) {
+				return true;
+			}
+			/* otherwise set rigid body transform to current obmat*/
+			else {
+				mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
+				mat4_to_size(size, ob->obmat);
+				copy_v3_v3(centr, mi->centroid);
+				mul_v3_v3(centr, size);
+				mul_qt_v3(rbo->orn, centr);
+				add_v3_v3(rbo->pos, centr);
+			}
 		}
-		/* otherwise set rigid body transform to current obmat*/
-		else {
-			mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
-			mat4_to_size(size, ob->obmat);
-			copy_v3_v3(centr, mi->centroid);
-			mul_v3_v3(centr, size);
-			mul_qt_v3(rbo->orn, centr);
-			add_v3_v3(rbo->pos, centr);
-		}
-
 		BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn, (int)ctime);
 	}
 }
