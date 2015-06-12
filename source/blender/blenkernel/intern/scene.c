@@ -1764,7 +1764,7 @@ void BKE_scene_update_for_newframe_ex(EvaluationContext *eval_ctx, Main *bmain, 
 	 * this needs to be done on start frame but animation playback usually starts one frame later
 	 * we need to do it here to avoid rebuilding the world on every simulation change, which can be very expensive
 	 */
-	scene_rebuild_rbw_recursive(sce, ctime);
+	//scene_rebuild_rbw_recursive(sce, ctime); TODO
 
 	sound_set_cfra(sce->r.cfra);
 	

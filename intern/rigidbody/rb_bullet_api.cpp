@@ -74,8 +74,40 @@ subject to the following restrictions:
 #include "BulletCollision/CollisionShapes/btScaledBvhTriangleMeshShape.h"
 #include "BulletCollision/CollisionDispatch/btCollisionWorld.h"
 
+typedef bool (*rbKinematicCallback)(void *user_pointer);
+
+class MyRigidBody : public btRigidBody
+{
+	public:
+		MyRigidBody(btRigidBodyConstructionInfo &info, rbKinematicCallback callback, void *user_ptr);
+		rbKinematicCallback m_kinematicCallback;
+		void *m_userPointer;
+		bool isKinematicObject();
+};
+
+MyRigidBody::MyRigidBody(btRigidBody::btRigidBodyConstructionInfo& info,
+                         rbKinematicCallback callback, void *user_ptr) : btRigidBody(info)
+{
+	m_kinematicCallback = callback;
+	m_userPointer = user_ptr;
+}
+
+bool MyRigidBody::isKinematicObject()
+{
+	if (m_kinematicCallback) {
+		if (m_kinematicCallback(m_userPointer)) {
+			return btRigidBody::isKinematicObject();
+		}
+		else {
+			return false;
+		}
+	}
+	return btRigidBody::isKinematicObject();
+}
+
+
 struct rbRigidBody {
-	btRigidBody *body;
+	MyRigidBody *body;
 	int col_groups;
 	int linear_index;
 	void *meshIsland;
@@ -562,7 +594,7 @@ void RB_world_convex_sweep_test(
 
 /* ............ */
 
-rbRigidBody *RB_body_new(rbCollisionShape *shape, const float loc[3], const float rot[4])
+rbRigidBody *RB_body_new(rbCollisionShape *shape, const float loc[3], const float rot[4], bool (*kinematic_callback)(void *user_pointer))
 {
 	rbRigidBody *object = new rbRigidBody;
 	/* current transform */
@@ -576,7 +608,7 @@ rbRigidBody *RB_body_new(rbCollisionShape *shape, const float loc[3], const floa
 	/* make rigidbody */
 	btRigidBody::btRigidBodyConstructionInfo rbInfo(1.0f, motionState, shape->cshape);
 	
-	object->body = new btRigidBody(rbInfo);
+	object->body = new MyRigidBody(rbInfo, kinematic_callback, object->blenderOb);
 	
 	object->body->setUserPointer(object);
 	
