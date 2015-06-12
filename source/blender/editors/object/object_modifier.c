@@ -2269,7 +2269,7 @@ typedef struct FractureJob {
 	int current_frame, total_progress;
 	int start, end;
 	struct Object *ob;
-	struct DerivedMesh *derivedData;
+	struct Scene *scene;
 } FractureJob;
 
 
@@ -2313,6 +2313,7 @@ static void fracture_startjob(void *customdata, short *stop, short *do_update, f
 	FractureJob *fj = customdata;
 	Object *ob = fj->ob;
 	FractureContainer *fc = ob->fracture_objects;
+	Scene* scene = fj->scene;
 
 	fj->stop = stop;
 	fj->do_update = do_update;
@@ -2330,7 +2331,7 @@ static void fracture_startjob(void *customdata, short *stop, short *do_update, f
 	if (fc->fracture_mode == MOD_FRACTURE_PREFRACTURED)
 	{
 		//perhaps copy...
-		BKE_prefracture_mesh(ob);
+		BKE_prefracture_mesh(scene, ob);
 	}
 }
 
@@ -2373,7 +2374,7 @@ static int fracture_refresh_exec(bContext *C, wmOperator *UNUSED(op))
 
 		//perhaps trigger modifier eval before, but probably this is updated correctly...
 		//makeDerivedMesh(scene, obact, NULL, CD_MASK_BAREMESH, 0);
-		BKE_prefracture_mesh(obact);
+		BKE_prefracture_mesh(scene, obact);
 
 		//do we need this still ? TODO
 		DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
@@ -2389,7 +2390,7 @@ static int fracture_refresh_exec(bContext *C, wmOperator *UNUSED(op))
 							 WM_JOB_PROGRESS, WM_JOB_TYPE_OBJECT_FRACTURE);
 		fj = MEM_callocN(sizeof(FractureJob), "object fracture job");
 		fj->ob = obact;
-		fj->derivedData = obact->derivedFinal; //copy ?
+		fj->scene = scene;
 
 		/* if we have shards, totalprogress = shards + islands
 		 * if we dont have shards, then calculate number of processed halving steps

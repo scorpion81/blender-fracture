@@ -1404,10 +1404,6 @@ enum {
 typedef struct FractureModifierData {
 	ModifierData modifier;
 
-	/* values */
-	float origmat[4][4] DNA_DEPRECATED;
-	int fracture_mode DNA_DEPRECATED;
-
 	/* LOTS of deprecated stuff ahead, but all for the backwards compat.... */
 	struct FracMesh *frac_mesh DNA_DEPRECATED; /* store only the current fracmesh here first, later maybe an entire history...*/
 	struct DerivedMesh *dm	DNA_DEPRECATED;
@@ -1497,6 +1493,12 @@ typedef struct FractureModifierData {
 
 	/* internal values */
 	float max_vol DNA_DEPRECATED;
+
+	/* values */
+	float origmat[4][4] DNA_DEPRECATED;
+	int fracture_mode DNA_DEPRECATED;
+
+	char pad[4];
 
 } FractureModifierData ;
 

@@ -34,6 +34,7 @@
 #define __DNA_RIGIDBODY_TYPES_H__
 
 #include "DNA_listBase.h"
+#include "DNA_defs.h"
 
 struct Group;
 
@@ -50,7 +51,7 @@ typedef struct RigidBodyOb RigidBodyOb;
 
 typedef struct RigidBodyWorld {
 	/* Sim World Settings ------------------------------------------------------------- */
-	struct EffectorWeights *effector_weights; /* effectors info */
+	struct EffectorWeights *effector_weights DNA_DEPRECATED; /* effectors info */
 
 	struct Group *group;		/* Group containing objects to use for Rigid Bodies */
 	struct Object **objects;	/* Array to access group objects by index, only used at runtime */
@@ -61,8 +62,8 @@ typedef struct RigidBodyWorld {
 	float ltime;				/* last frame world was evaluated for (internal) */
 	
 	/* cache */
-	//struct PointCache *pointcache;
-	//struct ListBase ptcaches;
+	struct PointCache *pointcache DNA_DEPRECATED;
+	struct ListBase ptcaches DNA_DEPRECATED;
 	int numbodies;              /* number of objects in rigid body group */
 	
 	short steps_per_second;		/* number of simulation steps thaken per second */
@@ -73,8 +74,8 @@ typedef struct RigidBodyWorld {
 	
 	/* References to Physics Sim objects. Exist at runtime only ---------------------- */
 	void *physics_world;		/* Physics sim world (i.e. btDiscreteDynamicsWorld) */
-	RigidBodyOb **cache_index_map;		/* Maps the linear RigidbodyOb index to the nested Object(Modifier) Index, at runtime*/
-	int *cache_offset_map;		/* Maps the linear RigidbodyOb index to the nested Object(Modifier) cell offset, at runtime, so it does not need to be calced in cache*/
+	RigidBodyOb **cache_index_map DNA_DEPRECATED;		/* Maps the linear RigidbodyOb index to the nested Object(Modifier) Index, at runtime*/
+	int *cache_offset_map DNA_DEPRECATED;		/* Maps the linear RigidbodyOb index to the nested Object(Modifier) cell offset, at runtime, so it does not need to be calced in cache*/
 	//char pad2[4];
 } RigidBodyWorld;
 

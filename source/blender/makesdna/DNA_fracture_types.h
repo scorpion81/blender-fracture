@@ -95,7 +95,7 @@ typedef struct FracMesh {
 typedef struct FractureContainer {
 	/*keep one cache per state */
 	ListBase states;
-	struct FractureState* current;
+	struct FractureState *current;
 
 	ListBase ptcaches;
 	struct PointCache *pointcache;
@@ -118,9 +118,6 @@ typedef struct FractureContainer {
 
 	/* used for constraint building based on vertex proximity, temporary data */
 	struct GHash *vertex_island_map;
-
-	/*volatile storage of shards being "hit" or fractured currently, needs to be cleaned up after usage! */
-	ListBase fracture_ids;
 
 	/* values */
 	float splinter_length;
@@ -152,11 +149,13 @@ typedef struct FractureContainer {
 	/* internal values */
 	float max_vol;
 
+	char pad[4];
+
 } FractureContainer;
 
 typedef struct FractureState {
 	struct FractureState *next, *prev;
-	FracMesh* frac_mesh;
+	FracMesh *frac_mesh;
 	struct DerivedMesh *visual_mesh;
 	ListBase island_map;
 	int frame;
@@ -187,6 +186,8 @@ typedef struct ConstraintContainer {
 	int constraint_target;
 
 	int flag;
+
+	char pad[4];
 
 } ConstraintContainer;
 
@@ -220,7 +221,7 @@ typedef struct MeshIsland {
 	int linear_index DNA_DEPRECATED;  /* index in rigidbody world */
 	int particle_index; /*used for clustering */
 	short partner_index; /* is 1 or 2, to determine the partner object*/
-	char pad[4];
+	char pad[2];
 } MeshIsland;
 
 /* Fracture Modifier */

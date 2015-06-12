@@ -30,6 +30,7 @@
 #include <stdlib.h>
 
 #include "DNA_armature_types.h"
+#include "DNA_fracture_types.h"
 #include "DNA_mesh_types.h"
 #include "DNA_modifier_types.h"
 #include "DNA_object_types.h"

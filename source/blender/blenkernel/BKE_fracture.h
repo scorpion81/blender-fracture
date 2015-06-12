@@ -90,7 +90,7 @@ void BKE_shard_free(struct Shard *s, bool doCustomData);
 
 
 /* DerivedMesh */
-struct DerivedMesh *BKE_fracture_create_dm(struct Object *ob, bool doCustomData, bool join_result);
+struct DerivedMesh *BKE_fracture_create_dm(struct Object *ob, bool doCustomData);
 struct DerivedMesh *BKE_shard_create_dm(struct Shard *s, bool doCustomData);
 
 /* create shards from base mesh and a list of points */
@@ -101,22 +101,13 @@ void BKE_fracture_shard_by_planes(struct Object *obj, short inner_material_index
 void BKE_fracture_shard_by_greasepencil(struct Object *obj, short inner_material_index, float mat[4][4]);
 
 void BKE_match_vertex_coords(struct MeshIsland* mi, struct MeshIsland *par, struct Object *ob, int frame, bool is_parent);
-bool BKE_lookup_mesh_state(struct FractureModifierData *fmd, int frame, int do_lookup);
-void BKE_get_prev_entries(struct FractureModifierData *fmd);
-void BKE_get_next_entries(struct FractureModifierData *fmd);
-void BKE_free_constraints(struct FractureModifierData *fmd);
-
-struct ConstraintSetting* BKE_fracture_constraint_setting_new(struct FractureModifierData *fmd, const char name[64]);
-void BKE_fracture_constraint_setting_remove(struct FractureModifierData *fmd, struct ConstraintSetting *setting);
-void BKE_fracture_constraint_setting_remove_all(struct FractureModifierData *fmd);
-void BKE_initialize_from_vertex_groups(struct FractureModifierData *fmd, struct Object *ob);
 void BKE_mesh_separate_selected(struct BMesh **bm_work, struct BMesh **bm_out, struct BMVert **orig_work, struct BMVert ***orig_out1, struct BMVert ***orig_out2);
 void BKE_select_linked(struct BMesh **bm_in);
 
-void BKE_prefracture_mesh(struct Object *ob);
-void BKE_free_fracture_modifier(struct FractureModifierData *fmd, bool do_free_seq);
-struct DerivedMesh *BKE_dynamic_fracture_mesh(struct FractureModifierData *fmd, struct Object *ob, struct DerivedMesh *derivedData);
+void BKE_prefracture_mesh(struct Scene* scene, struct Object *ob);
+void BKE_dynamic_fracture_mesh(struct Scene* scene, struct Object *ob);
 int BKE_initialize_meshisland(struct Object* ob, struct MeshIsland** mii, struct MVert* mverts, int vertstart);
 struct DerivedMesh *BKE_autohide_inner(struct Object* ob);
+void BKE_free_constraint_container(struct Scene* scene, struct Object *ob);
 
 #endif /* BKE_FRACTURE_H */

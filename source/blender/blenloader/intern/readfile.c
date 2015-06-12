@@ -5363,7 +5363,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb, Object *ob)
 static MVert* expand_visual_mesh(Object* ob, FractureState *fs)
 {
 	/* re-init cached verts here... before rebuild a visual mesh on the fly */
-	fs->visual_mesh = BKE_fracture_create_dm(ob, true, true);
+	fs->visual_mesh = BKE_fracture_create_dm(ob, true);
 	DM_ensure_tessface(fs->visual_mesh);
 	DM_ensure_normals(fs->visual_mesh);
 	DM_update_tessface_data(fs->visual_mesh);
