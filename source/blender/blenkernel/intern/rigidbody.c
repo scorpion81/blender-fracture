@@ -1973,8 +1973,8 @@ RigidBodyWorld *BKE_rigidbody_create_world(Scene *scene)
 	rbw->steps_per_second = 60; /* Bullet default (60 Hz) */
 	rbw->num_solver_iterations = 10; /* 10 is bullet default */
 
-	rbw->pointcache = BKE_ptcache_add(&(rbw->ptcaches));
-	rbw->pointcache->step = 1;
+	//rbw->pointcache = BKE_ptcache_add(&(rbw->ptcaches));
+	//rbw->pointcache->step = 1;
 	rbw->flag &=~ RBW_FLAG_OBJECT_CHANGED;
 	rbw->flag &=~ RBW_FLAG_REFRESH_MODIFIERS;
 
@@ -2088,16 +2088,17 @@ void BKE_rigidbody_world_groups_relink(RigidBodyWorld *rbw)
 /* Add rigid body settings to the specified object */
 RigidBodyOb *BKE_rigidbody_create_object(Scene *scene, Object *ob, short type)
 {
+	FractureContainer *fc = ob->fracture_objects;
+
 	RigidBodyOb *rbo;
 	RigidBodyWorld *rbw = scene->rigidbody_world;
-	FractureModifierData *fmd = NULL;
 
 	/* sanity checks
 	 *	- rigidbody world must exist
 	 *	- object must exist
 	 *	- cannot add rigid body if it already exists
 	 */
-	if (ob == NULL || (ob->rigidbody_object != NULL))
+	if (ob == NULL || fc == NULL || (fc->rb_settings != NULL))
 		return NULL;
 
 	/* create new settings data, and link it up */
@@ -2139,8 +2140,8 @@ RigidBodyOb *BKE_rigidbody_create_object(Scene *scene, Object *ob, short type)
 	zero_v3(rbo->lin_vel);
 	zero_v3(rbo->ang_vel);
 
-	fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
-	if (fmd && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+
+	if (fc && fc->fracture_mode == MOD_FRACTURE_DYNAMIC)
 	{	//keep cache here
 		return rbo;
 	}
@@ -3145,7 +3146,7 @@ static void do_sync_container(Object *ob, RigidBodyWorld *rbw, float ctime)
 
 	for (mi = fs->island_map.first; mi; mi = mi->next)
 	{
-		RigidBodyOb *rbo = mi->rigidbody;
+		RigidBodyShardOb *rbo = mi->rigidbody;
 		if ((ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) ||
 			((rbo) && (rbo->flag & RBO_FLAG_KINEMATIC)))
 		{
@@ -3284,7 +3285,15 @@ static void restoreKinematic(RigidBodyWorld *rbw)
 void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw)
 {
 	if (rbw) {
-		rbw->pointcache->flag |= PTCACHE_OUTDATED;
+		GroupObject* go;
+		for (go = rbw->group->gobject.first; go; go = go->next)
+		{
+			Object *ob = go->ob;
+			FractureContainer *fc = ob->fracture_objects;
+
+			//go over all pointcaches.... for now only the 1st one
+			fc->pointcache->flag |= PTCACHE_OUTDATED;
+		}
 		//restoreKinematic(rbw);
 	}
 }
@@ -3335,6 +3344,9 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	GroupObject *go;
 
+	//rebuild world here once if.... (cache frames ?)
+
+	//iterate over objects, process caches
 	for (go = rbw->group->gobject.first; go; go = go->next)
 	{
 		PointCache *cache;
@@ -3382,13 +3394,15 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 		else if ((rbw->objects == NULL) || (rbw->cache_index_map == NULL))
 			rigidbody_update_ob_array(rbw);
 
-		/* try to read from cache */
+		/* try to read from caches */
 		// RB_TODO deal with interpolated, old and baked results
 		if (BKE_ptcache_read(&pid, ctime)) {
 			//printf("Cache read:  %d\n", (int)ctime);
 			BKE_ptcache_validate(cache, (int)ctime);
 
 			rbw->ltime = ctime;
+
+			//tag this container as to be skipped in step (kinematic, but cache driven ?)
 			continue;
 		}
 #if 0

@@ -849,7 +849,15 @@ static void do_fracture(Scene *scene, Object *obj, ShardID id)
 			return;
 		}
 
-		BKE_fracture_create_dm(obj, true);
+		//watch it when overwriting this... free it better before
+		if (fs->visual_mesh)
+		{
+			fs->visual_mesh->needsFree = 1;
+			DM_release(fs->visual_mesh);
+			fs->visual_mesh = NULL;
+		}
+
+		fs->visual_mesh = BKE_fracture_create_dm(obj, true);
 
 		cleanup_splinters(obj, mat);
 		fc->flag &= ~FM_FLAG_RESET_SHARDS;
@@ -1143,7 +1151,9 @@ static void mesh_separate_tagged(Scene *scene, Object *ob, BMesh *bm_work)
 	}
 
 	//calculate volume here optionally too
-	do_island_from_shard(scene, ob, s, 0, thresh_defgrp_index, ground_defgrp_index, 0);
+	//need to distinguish between prehalving and posthalving, omit meshislands in prehalving, or better...
+	//create only after post halving....
+//	do_island_from_shard(scene, ob, s, 0, thresh_defgrp_index, ground_defgrp_index, 0);
 
 	/* deselect loose data - this used to get deleted,
 	 * we could de-select edges and verts only, but this turns out to be less complicated
@@ -2226,6 +2236,7 @@ static void do_island_from_shard(Scene *scene, Object *ob, Shard* s, int i, int 
 	mi->ground_weight = 0;
 	mi->vertex_count = s->totvert;
 
+	//call this later, when the DM has been built... hmmmmmm or rebuild... but vertrefs will be useless then
 	do_verts_weights(ob, s, mi, vertstart, thresh_defgrp_index, ground_defgrp_index);
 
 	/*copy fixed normals to physics mesh too (needed for convert to objects)*/
@@ -2275,8 +2286,8 @@ static void do_island_from_shard(Scene *scene, Object *ob, Shard* s, int i, int 
 	BKE_boundbox_init_from_minmax(mi->bb, s->min, s->max);
 
 	mi->particle_index = -1;
-	mi->neighbor_ids = s->neighbor_ids;
-	mi->neighbor_count = s->neighbor_count;
+	//mi->neighbor_ids = s->neighbor_ids;
+	//mi->neighbor_count = s->neighbor_count;
 
 	//TODO, what was it good for ?
 	//rb_type = do_vert_index_map(fmd, mi);
@@ -4820,7 +4831,7 @@ void BKE_build_constraints(Scene* scene, Object *ob)
 	BLI_ghash_free(vertex_island_map, NULL, NULL);
 }
 
-void BKE_prefracture_mesh(Scene *scene, Object *ob)
+void BKE_fracture_prefracture_mesh(Scene *scene, Object *ob)
 {
 	FractureContainer *fc = ob->fracture_objects;
 	FractureState *fs = fc->current;
@@ -4863,7 +4874,7 @@ void BKE_prefracture_mesh(Scene *scene, Object *ob)
 void BKE_dynamic_fracture_mesh(Scene* scene, Object *ob)
 {
 	add_fracture_state(scene, ob);
-	BKE_prefracture_mesh(scene, ob);
+	BKE_fracture_prefracture_mesh(scene, ob);
 }
 
 void BKE_create_constraint_container(Object* ob)
@@ -4877,7 +4888,7 @@ void BKE_create_constraint_container(Object* ob)
 	cc->constraint_target = MOD_FRACTURE_CENTROID;
 }
 
-void BKE_free_constraint_container(Scene*scene, Object *ob)
+void BKE_constraint_container_free(Scene*scene, Object *ob)
 {
 	if (ob->fracture_constraints) {
 		free_constraint_container(scene, ob);
@@ -4885,12 +4896,24 @@ void BKE_free_constraint_container(Scene*scene, Object *ob)
 	}
 }
 
-void BKE_create_fracture_container(Object *ob)
+void BKE_fracture_container_create(Scene* scene, Object *ob)
 {
 	FractureContainer *fc = MEM_callocN(sizeof(FractureContainer) ,"fracture_objects");
 	FractureState *fs = MEM_callocN(sizeof(FractureState), "states.first");
 
+	//init fracmesh with entire shard from ob->derivedFinal (ensure it)
+	float mat[4][4]; //wood splinter scaling matrix, here it is unit_m4
+	DerivedMesh *dm = ob->derivedFinal;
+	Shard *s = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
+	                                     dm->numVertData, dm->numPolyData, dm->numLoopData, true);
+	s = BKE_custom_data_to_shard(s, dm);
+	fs->frac_mesh = BKE_create_fracmesh();
+	unit_m4(mat);
+	add_shard(fs->frac_mesh, s, mat);
+
 	//init pointcaches.... TODO...
+	fc->pointcache = BKE_ptcache_add(&(fc->ptcaches));
+	fc->pointcache->step = 1;
 
 	//set useful defaults...
 	fc->frac_algorithm = MOD_FRACTURE_BOOLEAN;
@@ -4917,10 +4940,14 @@ void BKE_create_fracture_container(Object *ob)
 	fc->dynamic_force = 10.0f;
 
 	BLI_addtail(&fc->states, fs);
+	fc->current = fs;
 	ob->fracture_objects = fc;
+
+	//create meshislands
+	BKE_fracture_prefracture_mesh(scene, ob);
 }
 
-void BKE_free_fracture_container(Object *ob)
+void BKE_fracture_container_free(Object *ob)
 {
 	if (ob->fracture_objects) {
 		free_fracture_container(ob->fracture_objects);

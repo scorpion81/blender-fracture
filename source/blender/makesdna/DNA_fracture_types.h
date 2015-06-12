@@ -44,6 +44,7 @@ extern "C" {
 struct DerivedMesh;
 struct KDTree;
 struct PointCache;
+struct RigidBodyOb;
 
 enum {
 	SHARD_INTACT   = 1 << 0,
@@ -103,7 +104,7 @@ typedef struct FractureContainer {
 	struct Group *extra_group;
 	struct Group *cutter_group;
 	struct Material *inner_material;
-	struct RigidbodyOb *rb_settings;
+	struct RigidBodyOb *rb_settings;
 
 	char thresh_defgrp_name[64];  /* MAX_VGROUP_NAME */
 	char ground_defgrp_name[64];  /* MAX_VGROUP_NAME */

@@ -34,6 +34,7 @@
 #include <string.h>
 
 
+#include "DNA_fracture_types.h"
 #include "DNA_object_types.h"
 #include "DNA_rigidbody_types.h"
 #include "DNA_scene_types.h"
@@ -44,6 +45,7 @@
 
 #include "BKE_context.h"
 #include "BKE_depsgraph.h"
+#include "BKE_fracture.h"
 #include "BKE_global.h"
 #include "BKE_group.h"
 #include "BKE_report.h"
@@ -114,11 +116,9 @@ bool ED_rigidbody_object_add(Scene *scene, Object *ob, int type, ReportList *rep
 	}
 
 	/* make rigidbody object settings */
-	if (ob->rigidbody_object == NULL) {
-		ob->rigidbody_object = BKE_rigidbody_create_object(scene, ob, type);
-	}
-	ob->rigidbody_object->type = type;
-	ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_VALIDATE;
+	BKE_fracture_container_create(scene, ob);
+	ob->fracture_objects->rb_settings = BKE_rigidbody_create_object(scene, ob, type);
+	ob->fracture_objects->rb_settings->flag |= RBO_FLAG_NEEDS_VALIDATE;
 
 	/* add object to rigid body group */
 	BKE_group_object_add(rbw->group, ob, scene, NULL);
