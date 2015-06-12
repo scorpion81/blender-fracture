@@ -106,19 +106,18 @@ typedef enum eRigidBodyWorld_Flag {
  */
 typedef struct RigidBodyOb {
 	/* References to Physics Sim objects. Exist at runtime only */
-	void *physics_object;	/* Physics object representation (i.e. btRigidBody) */
-	void *physics_shape;	/* Collision shape used by physics sim (i.e. btCollisionShape) */
+	void *physics_object DNA_DEPRECATED;	/* Physics object representation (i.e. btRigidBody) */
+	void *physics_shape DNA_DEPRECATED;	/* Collision shape used by physics sim (i.e. btCollisionShape) */
 	
 	/* General Settings for this RigidBodyOb */
 	short type;				/* (eRigidBodyOb_Type) role of RigidBody in sim  */
-	short shape;			/* (eRigidBody_Shape) collision shape to use */ 
+	short shape;			/* (eRigidBody_Shape) collision shape to use */
 	
 	int flag;				/* (eRigidBodyOb_Flag) */
-	int col_groups;			/* Collision groups that determines wich rigid bodies can collide with each other */
-	int meshisland_index;	/* determines "offset" inside an objects meshisland list, -1 for regular rigidbodies */
+	int col_groups; 			/* Collision groups that determines wich rigid bodies can collide with each other */
+	int meshisland_index DNA_DEPRECATED;	/* determines "offset" inside an objects meshisland list, -1 for regular rigidbodies */
 	short mesh_source;		/* (eRigidBody_MeshSource) mesh source for mesh based collision shapes */
 	short pad;
-	char pad2[4];
 	
 	/* Physics Parameters */
 	float mass;				/* how much object 'weighs' (i.e. absolute 'amount of stuff' it holds) */
@@ -126,21 +125,39 @@ typedef struct RigidBodyOb {
 	float friction;			/* resistance of object to movement */
 	float restitution;		/* how 'bouncy' object is when it collides */
 	
-	float margin;			/* tolerance for detecting collisions */ 
+	float margin;			/* tolerance for detecting collisions */
 	
-	float lin_damping;		/* damping for linear velocities */
-	float ang_damping;		/* damping for angular velocities */
+	float lin_damping ;		/* damping for linear velocities */
+	float ang_damping ;		/* damping for angular velocities */
 	
 	float lin_sleep_thresh;	/* deactivation threshold for linear velocities */
 	float ang_sleep_thresh;	/* deactivation threshold for angular velocities */
 	
+	float orn[4] DNA_DEPRECATED;			/* rigid body orientation */
+	float pos[3] DNA_DEPRECATED;			/* rigid body position */
+	float lin_vel[3] DNA_DEPRECATED;		/* rigid body linear velocity, important for dynamic fracture*/
+	float ang_vel[3 ]DNA_DEPRECATED;		/* rigid body angular velocity, important for dynamic fracture*/
+	float pad1;
+} RigidBodyOb;
+
+typedef struct RigidBodyShardOb {
+	/* References to Physics Sim objects. Exist at runtime only */
+	void *physics_object;	/* Physics object representation (i.e. btRigidBody) */
+	void *physics_shape;	/* Collision shape used by physics sim (i.e. btCollisionShape) */
+
+	/* Physics Parameters */
+	float mass;				/* how much object 'weighs' (i.e. absolute 'amount of stuff' it holds) */
 	float orn[4];			/* rigid body orientation */
 	float pos[3];			/* rigid body position */
 	float lin_vel[3];		/* rigid body linear velocity, important for dynamic fracture*/
 	float ang_vel[3];		/* rigid body angular velocity, important for dynamic fracture*/
-	float pad1;
-} RigidBodyOb;
 
+	/* General Settings for this RigidBodyOb */
+	int flag;				/* (eRigidBodyOb_Flag) */
+	short type;				/* (eRigidBodyOb_Type) role of RigidBodyShard in sim  */
+
+	char pad[2];
+} RigidBodyShardOb;
 
 /* Participation types for RigidBodyOb */
 typedef enum eRigidBodyOb_Type {
@@ -217,8 +234,8 @@ typedef enum eRigidBody_MeshSource {
  * Represents an constraint connecting two rigid bodies.
  */
 typedef struct RigidBodyCon {
-	struct Object *ob1;			/* First object influenced by the constraint */
-	struct Object *ob2;			/* Second object influenced by the constraint */
+	struct Object *ob1 DNA_DEPRECATED;			/* First object influenced by the constraint */
+	struct Object *ob2 DNA_DEPRECATED;			/* Second object influenced by the constraint */
 
 	/* General Settings for this RigidBodyCon */
 	short type;					/* (eRigidBodyCon_Type) role of RigidBody in sim  */
@@ -262,7 +279,7 @@ typedef struct RigidBodyCon {
 	float motor_ang_max_impulse;		/* maximum force used to reach angular target velocity */
 
 	/* References to Physics Sim object. Exist at runtime only */
-	void *physics_constraint;	/* Physics object representation (i.e. btTypedConstraint) */
+	void *physics_constraint DNA_DEPRECATED;	/* Physics object representation (i.e. btTypedConstraint) */
 } RigidBodyCon;
 
 /* RigidBodyConstraint (rbc)

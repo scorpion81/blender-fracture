@@ -44,7 +44,6 @@ extern "C" {
 struct DerivedMesh;
 struct KDTree;
 struct PointCache;
-struct DerivedMesh;
 
 enum {
 	SHARD_INTACT   = 1 << 0,
@@ -104,6 +103,7 @@ typedef struct FractureContainer {
 	struct Group *extra_group;
 	struct Group *cutter_group;
 	struct Material *inner_material;
+	struct RigidbodyOb *rb_settings;
 
 	char thresh_defgrp_name[64];  /* MAX_VGROUP_NAME */
 	char ground_defgrp_name[64];  /* MAX_VGROUP_NAME */
@@ -118,6 +118,10 @@ typedef struct FractureContainer {
 
 	/* used for constraint building based on vertex proximity, temporary data */
 	struct GHash *vertex_island_map;
+
+	/* determine which constraint container objects we participate in */
+	int *constraint_containers;
+	int constraint_container_count;
 
 	/* values */
 	float splinter_length;
@@ -149,8 +153,6 @@ typedef struct FractureContainer {
 	/* internal values */
 	float max_vol;
 
-	char pad[4];
-
 } FractureContainer;
 
 typedef struct FractureState {
@@ -166,8 +168,9 @@ typedef struct FractureState {
 typedef struct ConstraintContainer {
 	ListBase constraint_map;
 
-	struct Object *partner1;
-	struct Object *partner2;
+	struct Object *partner1;			/* First object influenced by the constraint container */
+	struct Object *partner2;			/* Second object influenced by the constraint container */
+	struct RigidbodyCon *con_settings;
 
 	float breaking_angle;
 	float breaking_distance;
@@ -203,7 +206,7 @@ typedef struct MeshIsland {
 	struct DerivedMesh *physics_mesh; /*for quick lookup, so only need to convert once */
 	struct Shard *temp DNA_DEPRECATED; /* storage for physics mesh, better omit derivedmesh here...*/
 	struct Shard *shard;
-	struct RigidBodyOb *rigidbody;
+	struct RigidBodyShardOb *rigidbody;
 	int *neighbor_ids DNA_DEPRECATED;
 	int *vertex_indices;
 	struct BoundBox *bb;
@@ -218,7 +221,7 @@ typedef struct MeshIsland {
 	float centroid[3];
 	float rot[4]; /*hrm, need this for constraints probably */
 	float thresh_weight, ground_weight;
-	int linear_index DNA_DEPRECATED;  /* index in rigidbody world */
+	int linear_index;  /* index in rigidbody world */
 	int particle_index; /*used for clustering */
 	short partner_index; /* is 1 or 2, to determine the partner object*/
 	char pad[2];
@@ -284,6 +287,7 @@ enum {
 	FM_FLAG_REFRESH_IMAGES                = (1 << 11),
 	FM_FLAG_UPDATE_DYNAMIC                = (1 << 12),
 	FM_FLAG_REFRESH_CONSTRAINTS           = (1 << 13),
+	FM_FLAG_REFRESH_SHAPE                 = (1 << 14),
 };
 
 /*constraint flags*/

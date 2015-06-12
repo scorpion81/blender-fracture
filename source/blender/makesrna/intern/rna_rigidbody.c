@@ -33,6 +33,7 @@
 
 #include "rna_internal.h"
 
+#include "DNA_fracture_types.h"
 #include "DNA_group_types.h"
 #include "DNA_object_types.h"
 #include "DNA_rigidbody_types.h"
@@ -94,6 +95,7 @@ static EnumPropertyItem rigidbody_mesh_source_items[] = {
 
 #include "BKE_depsgraph.h"
 #include "BKE_rigidbody.h"
+#include "BKE_fracture.h"
 
 #include "WM_api.h"
 
@@ -150,252 +152,88 @@ static void rna_RigidBodyWorld_split_impulse_set(PointerRNA *ptr, int value)
 
 /* ------------------------------------------ */
 
-void foreach_shard_float(Object* ob, float value, void (*func)(RigidBodyOb *rbo, float value))
-{
-	ModifierData *md;
-	FractureModifierData* rmd;
-	MeshIsland* mi;
-	for (md = ob->modifiers.first; md; md = md->next) {
-		if (md->type == eModifierType_Fracture) {
-			rmd = (FractureModifierData*)md;
-			for (mi = rmd->fracture->meshIslands.first; mi; mi = mi->next) {
-				if (mi->rigidbody != NULL) {
-					func(mi->rigidbody, value);
-				}
-			}
-		}
-	}
-}
-
-void foreach_shard_mass(Object *ob)
-{
-	ModifierData *md;
-	FractureModifierData* rmd;
-	MeshIsland* mi;
-
-	for (md = ob->modifiers.first; md; md = md->next) {
-		if (md->type == eModifierType_Fracture) {
-			rmd = (FractureModifierData*)md;
-			for (mi = rmd->fracture->meshIslands.first; mi; mi = mi->next) {
-				if (mi->rigidbody != NULL) {
-					BKE_rigidbody_calc_shard_mass(ob, mi, NULL);
-				}
-			}
-		}
-	}
-}
-
-void foreach_shard_int(Object *ob, int value, void (*func)(RigidBodyOb *rbo, int value))
-{
-	ModifierData *md;
-	FractureModifierData* rmd;
-	MeshIsland* mi;
-	for (md = ob->modifiers.first; md; md = md->next) {
-		if (md->type == eModifierType_Fracture) {
-			rmd = (FractureModifierData*)md;
-			for (mi = rmd->fracture->meshIslands.first; mi; mi = mi->next) {
-				if (mi->rigidbody != NULL) {
-					func(mi->rigidbody, value);
-				}
-			}
-		}
-	}
-}
-
-void foreach_shard_ints(Object *ob, const int *value, void (*func)(RigidBodyOb *rbo, const int *value))
-{
-	ModifierData *md;
-	FractureModifierData* rmd;
-	MeshIsland *mi;
-
-	for (md = ob->modifiers.first; md; md = md->next) {
-		if (md->type == eModifierType_Fracture) {
-			rmd = (FractureModifierData*)md;
-			for (mi = rmd->fracture->meshIslands.first; mi; mi = mi->next) {
-				if (mi->rigidbody != NULL) {
-					func(mi->rigidbody, value);
-				}
-			}
-		}
-	}
-}
-
-void foreach_shard_flag_shape(Object *ob, int flag, short shape, bool reset)
-{
-	ModifierData *md;
-	FractureModifierData *rmd;
-	MeshIsland *mi;
-
-	for (md = ob->modifiers.first; md; md = md->next) {
-		if (md->type == eModifierType_Fracture) {
-			rmd = (FractureModifierData*)md;
-			for (mi = rmd->fracture->meshIslands.first; mi; mi = mi->next) {
-				if (mi->rigidbody != NULL) {
-					mi->rigidbody->flag = flag;
-					mi->rigidbody->shape = shape;
-					if (reset) {
-						if (mi->rigidbody->physics_shape)
-							mi->rigidbody->flag |= RBO_FLAG_NEEDS_RESHAPE;
-					}
-				}
-			}
-		}
-	}
-}
-
-
-static void rna_RigidBodyOb_reset(Main *UNUSED(bmain), Scene *scene, PointerRNA *ptr)
+static void rna_FractureContainer_reset(Main *UNUSED(bmain), Scene *scene, PointerRNA *ptr)
 {
 	RigidBodyWorld *rbw = scene->rigidbody_world;
-	Object *ob = ptr->id.data;
-	RigidBodyOb* rbo = ptr->data;
-	foreach_shard_flag_shape(ob, rbo->flag, rbo->shape, false);
+	FractureContainer *fc = ptr->data;
+	RigidBodyOb *rbo = fc->rb_settings;
+	fc->flag |= (FM_FLAG_REFRESH | FM_FLAG_RESET_SHARDS);
+	rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 
 	BKE_rigidbody_cache_reset(rbw);
 }
 
-static void rna_RigidBodyOb_shape_update(Main *bmain, Scene *scene, PointerRNA *ptr)
+static void rna_FractureContainer_rigidbody_reset(Main *UNUSED(bmain), Scene *scene, PointerRNA *ptr)
+{
+	RigidBodyWorld *rbw = scene->rigidbody_world;
+	RigidBodyOb *rbo = ptr->data;
+	rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+
+	BKE_rigidbody_cache_reset(rbw);
+}
+
+static void rna_ConstraintContainer_reset(Main *UNUSED(bmain), Scene *scene, PointerRNA *ptr)
+{
+	RigidBodyWorld *rbw = scene->rigidbody_world;
+	ConstraintContainer *cc = ptr->data;
+	RigidBodyCon *rbc = cc->con_settings;
+	rbc->flag |= RBC_FLAG_NEEDS_VALIDATE;
+
+	BKE_rigidbody_cache_reset(rbw);
+}
+
+static void rna_FractureContainer_shape_update(Main *bmain, Scene *scene, PointerRNA *ptr)
 {
 	Object *ob = ptr->id.data;
-	
-	rna_RigidBodyOb_reset(bmain, scene, ptr);
-	
+
+	rna_FractureContainer_reset(bmain, scene, ptr);
+
 	WM_main_add_notifier(NC_OBJECT | ND_DRAW, ob);
 }
 
-static void rna_RigidBodyOb_shape_reset(Main *UNUSED(bmain), Scene *scene, PointerRNA *ptr)
+static void rna_FractureContainer_cluster_update(Main *bmain, Scene *scene, PointerRNA *ptr)
 {
 	RigidBodyWorld *rbw = scene->rigidbody_world;
-	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	Object *ob = ptr->id.data;
+	FractureContainer *fc = ptr->data;
+	int i = 0;
+	/* likely we have only a few containers with many shards instead of many containers with little shards*/
+	/* so this should be a short list to iterate through */
+	for (i = 0; i < fc->constraint_container_count; i++)
+	{
+		Object* ob = rbw->objects[fc->constraint_containers[i]];
+		ConstraintContainer *cc = ob->fracture_constraints;
+		cc->flag |= FM_FLAG_REFRESH_CONSTRAINTS;
+	}
 
-	foreach_shard_flag_shape(ob, rbo->flag, rbo->shape, true);
-	BKE_rigidbody_cache_reset(rbw);
-	if (rbo->physics_shape)
-		rbo->flag |= RBO_FLAG_NEEDS_RESHAPE;
+	rna_FractureContainer_reset(bmain, scene, ptr);
 }
 
-static char *rna_RigidBodyOb_path(PointerRNA *UNUSED(ptr))
+static void rna_FractureContainer_shape_reset(Main *UNUSED(bmain), Scene *scene, PointerRNA *ptr)
+{
+	RigidBodyWorld *rbw = scene->rigidbody_world;
+	FractureContainer *fc = ptr->data;
+	RigidBodyOb *rbo = fc->rb_settings;
+	rbo->flag |= RBO_FLAG_NEEDS_RESHAPE;
+
+	BKE_rigidbody_cache_reset(rbw);
+}
+
+static char *rna_FractureContainer_path(PointerRNA *UNUSED(ptr))
 {
 	/* NOTE: this hardcoded path should work as long as only Objects have this */
-	return BLI_sprintfN("rigid_body");
+	return BLI_sprintfN("fracture_objects");
 }
 
-static void set_type(RigidBodyOb* rbo, int value) {
-	rbo->type = value;
-	rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
-}
-
-static void rna_RigidBodyOb_type_set(PointerRNA *ptr, int value)
+static char *rna_ConstraintContainer_path(PointerRNA *UNUSED(ptr))
 {
-	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	Object* ob = ptr->id.data;
-	set_type(rbo, value);
-	foreach_shard_int(ob, value, set_type);
+	/* NOTE: this hardcoded path should work as long as only Objects have this */
+	return BLI_sprintfN("fracture_constraints");
 }
 
-
-
-static void set_disabled(RigidBodyOb* rbo, int value) {
-
-	int flag = value;
-	flag = !flag;
-
-	RB_FLAG_SET(rbo->flag, flag, RBO_FLAG_DISABLED);
-
-#ifdef WITH_BULLET
-	/* update kinematic state if necessary - only needed for active bodies */
-	if ((rbo->physics_object) && (rbo->type == RBO_TYPE_ACTIVE)) {
-		RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
-		RB_body_set_kinematic_state(rbo->physics_object, flag);
-		rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
-	}
-#endif
-}
-
-static void rna_RigidBodyOb_disabled_set(PointerRNA *ptr, int value)
+static char *rna_FractureContainer_rb_settings_path(PointerRNA *UNUSED(ptr))
 {
-	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	Object *ob = ptr->id.data;
-	set_disabled(rbo, value);
-	foreach_shard_int(ob, value, set_disabled);
-}
-
-
-void set_mass(RigidBodyOb* rbo, float value)
-{
-	rbo->mass = value;
-
-#ifdef WITH_BULLET
-	/* only active bodies need mass update */
-	if ((rbo->physics_object) && (rbo->type == RBO_TYPE_ACTIVE)) {
-		RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
-	}
-#endif
-}
-
-static void rna_RigidBodyOb_mass_set(PointerRNA *ptr, float value)
-{
-	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	Object* ob = ptr->id.data;
-	set_mass(rbo, value);
-	//foreach_shard_float(ob, value, set_mass);
-	foreach_shard_mass(ob);
-}
-
-void set_friction(RigidBodyOb* rbo, float value)
-{
-	rbo->friction = value;
-
-#ifdef WITH_BULLET
-	if (rbo->physics_object) {
-		RB_body_set_friction(rbo->physics_object, value);
-	}
-#endif
-}
-
-static void rna_RigidBodyOb_friction_set(PointerRNA *ptr, float value)
-{
-	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	Object* ob = ptr->id.data;
-	set_friction(rbo, value);
-	foreach_shard_float(ob, value, set_friction);
-}
-
-void set_restitution(RigidBodyOb *rbo, float value)
-{
-	rbo->restitution = value;
-#ifdef WITH_BULLET
-	if (rbo->physics_object) {
-		RB_body_set_restitution(rbo->physics_object, value);
-	}
-#endif
-}
-
-static void rna_RigidBodyOb_restitution_set(PointerRNA *ptr, float value)
-{
-	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	Object* ob = ptr->id.data;
-	set_restitution(rbo, value);
-	foreach_shard_float(ob, value, set_restitution);
-}
-
-void set_collision_margin(RigidBodyOb* rbo, float value)
-{
-	rbo->margin = value;
-
-#ifdef WITH_BULLET
-	if (rbo->physics_shape) {
-		RB_shape_set_margin(rbo->physics_shape, RBO_GET_MARGIN(rbo));
-	}
-#endif
-}
-static void rna_RigidBodyOb_collision_margin_set(PointerRNA *ptr, float value)
-{
-	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	Object *ob = ptr->id.data;
-	set_collision_margin(rbo, value);
-	foreach_shard_float(ob, value, set_collision_margin);
+	/* NOTE: this hardcoded path should work as long as only Objects have this */
+	return BLI_sprintfN("fracture_objects/rb_settings");
 }
 
 void set_collision_groups(RigidBodyOb* rbo, const int *values)
@@ -414,404 +252,24 @@ void set_collision_groups(RigidBodyOb* rbo, const int *values)
 static void rna_RigidBodyOb_collision_groups_set(PointerRNA *ptr, const int *values)
 {
 	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	Object *ob = ptr->id.data;
-
 	set_collision_groups(rbo, values);
-	foreach_shard_ints(ob, values, set_collision_groups);
 }
 
-void set_kinematic(RigidBodyOb *rbo, int value)
-{
-	int flag = value;
-	RB_FLAG_SET(rbo->flag, flag, RBO_FLAG_KINEMATIC);
-
-#ifdef WITH_BULLET
-	/* update kinematic state if necessary */
-	if (rbo->physics_object) {
-		RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
-		RB_body_set_kinematic_state(rbo->physics_object, flag);
-		rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
-	}
-#endif
-}
-
-static void rna_RigidBodyOb_kinematic_state_set(PointerRNA *ptr, int value)
-{
-	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	Object* ob = ptr->id.data;
-	set_kinematic(rbo, value); //stupid casting but need only 1 function...
-	foreach_shard_int(ob, value, set_kinematic);
-}
-
-void set_activation(RigidBodyOb* rbo, int value)
-{
-	RB_FLAG_SET(rbo->flag, value, RBO_FLAG_USE_DEACTIVATION);
-
-#ifdef WITH_BULLET
-	/* update activation state if necessary - only active bodies can be deactivated */
-	if ((rbo->physics_object) && (rbo->type == RBO_TYPE_ACTIVE)) {
-		RB_body_set_activation_state(rbo->physics_object, value);
-	}
-#endif
-}
-
-static void rna_RigidBodyOb_activation_state_set(PointerRNA *ptr, int value)
-{
-	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	Object *ob = ptr->id.data;
-	set_activation(rbo, value);
-	foreach_shard_int(ob, value, set_activation);
-}
-
-void set_linear_sleepThresh(RigidBodyOb *rbo, float value)
-{
-	rbo->lin_sleep_thresh = value;
-
-#ifdef WITH_BULLET
-	/* only active bodies need sleep threshold update */
-	if ((rbo->physics_object) && (rbo->type == RBO_TYPE_ACTIVE)) {
-		RB_body_set_linear_sleep_thresh(rbo->physics_object, value);
-	}
-#endif
-}
-
-static void rna_RigidBodyOb_linear_sleepThresh_set(PointerRNA *ptr, float value)
-{
-	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	Object *ob = ptr->id.data;
-	set_linear_sleepThresh(rbo, value);
-	foreach_shard_float(ob, value, set_linear_sleepThresh);
-}
-
-void set_angular_sleepThresh(RigidBodyOb *rbo, float value)
-{
-	rbo->ang_sleep_thresh = value;
-
-#ifdef WITH_BULLET
-	/* only active bodies need sleep threshold update */
-	if ((rbo->physics_object) && (rbo->type == RBO_TYPE_ACTIVE)) {
-		RB_body_set_angular_sleep_thresh(rbo->physics_object, value);
-	}
-#endif
-}
-
-static void rna_RigidBodyOb_angular_sleepThresh_set(PointerRNA *ptr, float value)
-{
-	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	Object *ob = ptr->id.data;
-	set_angular_sleepThresh(rbo, value);
-	foreach_shard_float(ob, value, set_angular_sleepThresh);
-}
-
-void set_linear_damping(RigidBodyOb *rbo, float value)
-{
-	rbo->lin_damping = value;
-
-#ifdef WITH_BULLET
-	/* only active bodies need damping update */
-	if ((rbo->physics_object) && (rbo->type == RBO_TYPE_ACTIVE)) {
-		RB_body_set_linear_damping(rbo->physics_object, value);
-	}
-#endif
-}
-
-static void rna_RigidBodyOb_linear_damping_set(PointerRNA *ptr, float value)
-{
-	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	Object *ob = ptr->id.data;
-	set_linear_damping(rbo, value);
-	foreach_shard_float(ob, value, set_linear_damping);
-}
-
-void set_angular_damping(RigidBodyOb *rbo, float value)
-{
-	rbo->ang_damping = value;
-
-#ifdef WITH_BULLET
-	/* only active bodies need damping update */
-	if ((rbo->physics_object) && (rbo->type == RBO_TYPE_ACTIVE)) {
-		RB_body_set_angular_damping(rbo->physics_object, value);
-	}
-#endif
-}
-
-static void rna_RigidBodyOb_angular_damping_set(PointerRNA *ptr, float value)
-{
-	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
-	Object *ob = ptr->id.data;
-	set_angular_damping(rbo, value);
-	foreach_shard_float(ob, value, set_angular_damping);
-}
-
-static char *rna_RigidBodyCon_path(PointerRNA *UNUSED(ptr))
+static char *rna_ConstraintContainer_con_settings_path(PointerRNA *UNUSED(ptr))
 {
 	/* NOTE: this hardcoded path should work as long as only Objects have this */
-	return BLI_sprintfN("rigid_body_constraint");
+	return BLI_sprintfN("fracture_constraint/con_settings");
 }
 
-static void rna_RigidBodyCon_type_set(PointerRNA *ptr, int value)
-{
-	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
-
-	rbc->type = value;
-	rbc->flag |= RBC_FLAG_NEEDS_VALIDATE;
-}
-
-static void rna_RigidBodyCon_enabled_set(PointerRNA *ptr, int value)
-{
-	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
-
-	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_ENABLED);
-
-#ifdef WITH_BULLET
-	if (rbc->physics_constraint) {
-		RB_constraint_set_enabled(rbc->physics_constraint, value);
-	}
-#endif
-}
-
-static void rna_RigidBodyCon_disable_collisions_set(PointerRNA *ptr, int value)
-{
-	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
-
-	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_DISABLE_COLLISIONS);
-
-	rbc->flag |= RBC_FLAG_NEEDS_VALIDATE;
-}
-
-static void rna_RigidBodyCon_use_breaking_set(PointerRNA *ptr, int value)
-{
-	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
-
-	if (value) {
-		rbc->flag |= RBC_FLAG_USE_BREAKING;
-#ifdef WITH_BULLET
-		if (rbc->physics_constraint) {
-			RB_constraint_set_breaking_threshold(rbc->physics_constraint, rbc->breaking_threshold);
-		}
-#endif
-	}
-	else {
-		rbc->flag &= ~RBC_FLAG_USE_BREAKING;
-#ifdef WITH_BULLET
-		if (rbc->physics_constraint) {
-			RB_constraint_set_breaking_threshold(rbc->physics_constraint, FLT_MAX);
-		}
-#endif
-	}
-}
-
-static void rna_RigidBodyCon_breaking_threshold_set(PointerRNA *ptr, float value)
-{
-	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
-
-	rbc->breaking_threshold = value;
-
-#ifdef WITH_BULLET
-	if (rbc->physics_constraint && (rbc->flag & RBC_FLAG_USE_BREAKING)) {
-		RB_constraint_set_breaking_threshold(rbc->physics_constraint, value);
-	}
-#endif
-}
-
-static void rna_RigidBodyCon_override_solver_iterations_set(PointerRNA *ptr, int value)
-{
-	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
-
-	if (value) {
-		rbc->flag |= RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS;
-#ifdef WITH_BULLET
-		if (rbc->physics_constraint) {
-			RB_constraint_set_solver_iterations(rbc->physics_constraint, rbc->num_solver_iterations);
-		}
-#endif
-	}
-	else {
-		rbc->flag &= ~RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS;
-#ifdef WITH_BULLET
-		if (rbc->physics_constraint) {
-			RB_constraint_set_solver_iterations(rbc->physics_constraint, -1);
-		}
-#endif
-	}
-}
-
-static void rna_RigidBodyCon_num_solver_iterations_set(PointerRNA *ptr, int value)
-{
-	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
-
-	rbc->num_solver_iterations = value;
-
-#ifdef WITH_BULLET
-	if (rbc->physics_constraint && (rbc->flag & RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS)) {
-		RB_constraint_set_solver_iterations(rbc->physics_constraint, value);
-	}
-#endif
-}
-
-static void rna_RigidBodyCon_spring_stiffness_x_set(PointerRNA *ptr, float value)
-{
-	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
-
-	rbc->spring_stiffness_x = value;
-
-#ifdef WITH_BULLET
-	if (rbc->physics_constraint && rbc->type == RBC_TYPE_6DOF_SPRING && (rbc->flag & RBC_FLAG_USE_SPRING_X)) {
-		RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, value);
-	}
-#endif
-}
-
-static void rna_RigidBodyCon_spring_stiffness_y_set(PointerRNA *ptr, float value)
-{
-	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
-
-	rbc->spring_stiffness_y = value;
-
-#ifdef WITH_BULLET
-	if (rbc->physics_constraint && rbc->type == RBC_TYPE_6DOF_SPRING && (rbc->flag & RBC_FLAG_USE_SPRING_Y)) {
-		RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Y, value);
-	}
-#endif
-}
-
-static void rna_RigidBodyCon_spring_stiffness_z_set(PointerRNA *ptr, float value)
-{
-	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
-
-	rbc->spring_stiffness_z = value;
-
-#ifdef WITH_BULLET
-	if (rbc->physics_constraint && rbc->type == RBC_TYPE_6DOF_SPRING && (rbc->flag & RBC_FLAG_USE_SPRING_Z)) {
-		RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, value);
-	}
-#endif
-}
-
-static void rna_RigidBodyCon_spring_damping_x_set(PointerRNA *ptr, float value)
-{
-	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
-
-	rbc->spring_damping_x = value;
-
-#ifdef WITH_BULLET
-	if (rbc->physics_constraint && rbc->type == RBC_TYPE_6DOF_SPRING && (rbc->flag & RBC_FLAG_USE_SPRING_X)) {
-		RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, value);
-	}
-#endif
-}
-
-static void rna_RigidBodyCon_spring_damping_y_set(PointerRNA *ptr, float value)
-{
-	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
-
-	rbc->spring_damping_y = value;
-#ifdef WITH_BULLET
-	if (rbc->physics_constraint && rbc->type == RBC_TYPE_6DOF_SPRING && (rbc->flag & RBC_FLAG_USE_SPRING_Y)) {
-		RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Y, value);
-	}
-#endif
-}
-
-static void rna_RigidBodyCon_spring_damping_z_set(PointerRNA *ptr, float value)
-{
-	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
-
-	rbc->spring_damping_z = value;
-#ifdef WITH_BULLET
-	if (rbc->physics_constraint && rbc->type == RBC_TYPE_6DOF_SPRING && (rbc->flag & RBC_FLAG_USE_SPRING_Z)) {
-		RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, value);
-	}
-#endif
-}
-
-static void rna_RigidBodyCon_motor_lin_max_impulse_set(PointerRNA *ptr, float value)
-{
-	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
-
-	rbc->motor_lin_max_impulse = value;
-
-#ifdef WITH_BULLET
-	if (rbc->physics_constraint && rbc->type == RBC_TYPE_MOTOR) {
-		RB_constraint_set_max_impulse_motor(rbc->physics_constraint, value, rbc->motor_ang_max_impulse);
-	}
-#endif
-}
-
-static void rna_RigidBodyCon_use_motor_lin_set(PointerRNA *ptr, int value)
-{
-	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
-
-	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_MOTOR_LIN);
-
-#ifdef WITH_BULLET
-	if (rbc->physics_constraint) {
-		RB_constraint_set_enable_motor(rbc->physics_constraint, rbc->flag & RBC_FLAG_USE_MOTOR_LIN, rbc->flag & RBC_FLAG_USE_MOTOR_ANG);
-	}
-#endif
-}
-
-static void rna_RigidBodyCon_use_motor_ang_set(PointerRNA *ptr, int value)
-{
-	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
-
-	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_MOTOR_ANG);
-
-#ifdef WITH_BULLET
-	if (rbc->physics_constraint) {
-		RB_constraint_set_enable_motor(rbc->physics_constraint, rbc->flag & RBC_FLAG_USE_MOTOR_LIN, rbc->flag & RBC_FLAG_USE_MOTOR_ANG);
-	}
-#endif
-}
-
-static void rna_RigidBodyCon_motor_lin_target_velocity_set(PointerRNA *ptr, float value)
-{
-	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
-
-	rbc->motor_lin_target_velocity = value;
-
-#ifdef WITH_BULLET
-	if (rbc->physics_constraint && rbc->type == RBC_TYPE_MOTOR) {
-		RB_constraint_set_target_velocity_motor(rbc->physics_constraint, value, rbc->motor_ang_target_velocity);
-	}
-#endif
-}
-
-static void rna_RigidBodyCon_motor_ang_max_impulse_set(PointerRNA *ptr, float value)
-{
-	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
-
-	rbc->motor_ang_max_impulse = value;
-
-#ifdef WITH_BULLET
-	if (rbc->physics_constraint && rbc->type == RBC_TYPE_MOTOR) {
-		RB_constraint_set_max_impulse_motor(rbc->physics_constraint, rbc->motor_lin_max_impulse, value);
-	}
-#endif
-}
-
-static void rna_RigidBodyCon_motor_ang_target_velocity_set(PointerRNA *ptr, float value)
-{
-	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
-
-	rbc->motor_ang_target_velocity = value;
-
-#ifdef WITH_BULLET
-	if (rbc->physics_constraint && rbc->type == RBC_TYPE_MOTOR) {
-		RB_constraint_set_target_velocity_motor(rbc->physics_constraint, rbc->motor_lin_target_velocity, value);
-	}
-#endif
-}
-
-/* Sweep test */
+/* Sweep test, take 1st island only */
 static void rna_RigidBodyWorld_convex_sweep_test(
         RigidBodyWorld *rbw, ReportList *reports,
         Object *object, float ray_start[3], float ray_end[3],
         float r_location[3], float r_hitpoint[3], float r_normal[3], int *r_hit)
 {
 #ifdef WITH_BULLET
-	RigidBodyOb *rob = object->rigidbody_object;
-
+	MeshIsland *mi = object->fracture_objects->current->island_map.first;
+	RigidBodyShardOb *rob = mi->rigidbody;
 	if (rbw->physics_world != NULL && rob->physics_object != NULL) {
 		RB_world_convex_sweep_test(rbw->physics_world, rob->physics_object, ray_start, ray_end,
 		                           r_location, r_hitpoint, r_normal, r_hit);
@@ -953,76 +411,71 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	StructRNA *srna;
 	PropertyRNA *prop;
 	
-	
 	srna = RNA_def_struct(brna, "RigidBodyObject", NULL);
 	RNA_def_struct_sdna(srna, "RigidBodyOb");
 	RNA_def_struct_ui_text(srna, "Rigid Body Object", "Settings for object participating in Rigid Body Simulation");
-	RNA_def_struct_path_func(srna, "rna_RigidBodyOb_path");
+	RNA_def_struct_path_func(srna, "rna_FractureContainer_rb_settings_path");
 	
 	/* Enums */
 	prop = RNA_def_property(srna, "type", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "type");
 	RNA_def_property_enum_items(prop, rigidbody_object_type_items);
-	RNA_def_property_enum_funcs(prop, NULL, "rna_RigidBodyOb_type_set", NULL);
 	RNA_def_property_ui_text(prop, "Type", "Role of object in Rigid Body Simulations");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 	
 	prop = RNA_def_property(srna, "mesh_source", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "mesh_source");
 	RNA_def_property_enum_items(prop, rigidbody_mesh_source_items);
 	RNA_def_property_ui_text(prop, "Mesh Source", "Source of the mesh used to create collision shape");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 	
 	/* booleans */
 	prop = RNA_def_property(srna, "enabled", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_negative_sdna(prop, NULL, "flag", RBO_FLAG_DISABLED);
-	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyOb_disabled_set");
 	RNA_def_property_ui_text(prop, "Enabled", "Rigid Body actively participates to the simulation");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 	
 	prop = RNA_def_property(srna, "collision_shape", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "shape");
 	RNA_def_property_enum_items(prop, rigidbody_object_shape_items);
 	RNA_def_property_ui_text(prop, "Collision Shape", "Collision Shape of object in Rigid Body Simulations");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_shape_update");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_shape_update");
 	
 	prop = RNA_def_property(srna, "kinematic", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_KINEMATIC);
-	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyOb_kinematic_state_set");
 	RNA_def_property_ui_text(prop, "Kinematic", "Allow rigid body to be controlled by the animation system");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 	
 	prop = RNA_def_property(srna, "use_deform", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_USE_DEFORM);
 	RNA_def_property_ui_text(prop, "Deforming", "Rigid body deforms during simulation");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "use_kinematic_deactivation", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
 	RNA_def_property_ui_text(prop, "Kinematic Deactivation", "Allow kinematic state being reset by collisions");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "is_ghost", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_IS_GHOST);
 	RNA_def_property_ui_text(prop, "Ghost", "Do not collide with object, but can activate other animated objects");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "is_trigger", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_IS_TRIGGER);
 	RNA_def_property_ui_text(prop, "Trigger", "Can trigger activation of other animated objects, which are set up to be triggered");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 	
 	/* Physics Parameters */
 	prop = RNA_def_property(srna, "mass", PROP_FLOAT, PROP_UNIT_MASS);
 	RNA_def_property_float_sdna(prop, NULL, "mass");
 	RNA_def_property_range(prop, 0.001f, FLT_MAX); // range must always be positive (and non-zero)
 	RNA_def_property_float_default(prop, 1.0f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyOb_mass_set", NULL);
 	RNA_def_property_ui_text(prop, "Mass", "How much the object 'weighs' irrespective of gravity");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 	
 	/* Dynamics Parameters - Activation */
 	// TODO: define and figure out how to implement these
@@ -1031,52 +484,47 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "use_deactivation", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_USE_DEACTIVATION);
 	RNA_def_property_boolean_default(prop, true);
-	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyOb_activation_state_set");
 	RNA_def_property_ui_text(prop, "Enable Deactivation",
 	                         "Enable deactivation of resting rigid bodies (increases performance and stability "
 	                         "but can cause glitches)");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 	
 	prop = RNA_def_property(srna, "use_start_deactivated", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_START_DEACTIVATED);
 	RNA_def_property_ui_text(prop, "Start Deactivated", "Deactivate rigid body at the start of the simulation");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 	
 	prop = RNA_def_property(srna, "deactivate_linear_velocity", PROP_FLOAT, PROP_UNIT_VELOCITY);
 	RNA_def_property_float_sdna(prop, NULL, "lin_sleep_thresh");
 	RNA_def_property_range(prop, FLT_MIN, FLT_MAX); // range must always be positive (and non-zero)
 	RNA_def_property_float_default(prop, 0.4f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyOb_linear_sleepThresh_set", NULL);
 	RNA_def_property_ui_text(prop, "Linear Velocity Deactivation Threshold",
 	                         "Linear Velocity below which simulation stops simulating object");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 	
 	prop = RNA_def_property(srna, "deactivate_angular_velocity", PROP_FLOAT, PROP_UNIT_VELOCITY);
 	RNA_def_property_float_sdna(prop, NULL, "ang_sleep_thresh");
 	RNA_def_property_range(prop, FLT_MIN, FLT_MAX); // range must always be positive (and non-zero)
 	RNA_def_property_float_default(prop, 0.5f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyOb_angular_sleepThresh_set", NULL);
 	RNA_def_property_ui_text(prop, "Angular Velocity Deactivation Threshold",
 	                         "Angular Velocity below which simulation stops simulating object");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 	
 	/* Dynamics Parameters - Damping Parameters */
 	prop = RNA_def_property(srna, "linear_damping", PROP_FLOAT, PROP_FACTOR);
 	RNA_def_property_float_sdna(prop, NULL, "lin_damping");
 	RNA_def_property_range(prop, 0.0f, 1.0f);
 	RNA_def_property_float_default(prop, 0.04f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyOb_linear_damping_set", NULL);
 	RNA_def_property_ui_text(prop, "Linear Damping", "Amount of linear velocity that is lost over time");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 	
 	prop = RNA_def_property(srna, "angular_damping", PROP_FLOAT, PROP_FACTOR);
 	RNA_def_property_float_sdna(prop, NULL, "ang_damping");
 	RNA_def_property_range(prop, 0.0f, 1.0f);
 	RNA_def_property_float_default(prop, 0.1f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyOb_angular_damping_set", NULL);
 	RNA_def_property_ui_text(prop, "Angular Damping", "Amount of angular velocity that is lost over time");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 	
 	/* Collision Parameters - Surface Parameters */
 	prop = RNA_def_property(srna, "friction", PROP_FLOAT, PROP_FACTOR);
@@ -1084,20 +532,18 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_ui_range(prop, 0.0f, 1.0f, 1, 3);
 	RNA_def_property_float_default(prop, 0.5f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyOb_friction_set", NULL);
 	RNA_def_property_ui_text(prop, "Friction", "Resistance of object to movement");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 	
 	prop = RNA_def_property(srna, "restitution", PROP_FLOAT, PROP_FACTOR);
 	RNA_def_property_float_sdna(prop, NULL, "restitution");
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_ui_range(prop, 0.0f, 1.0f, 1, 3);
 	RNA_def_property_float_default(prop, 0.0f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyOb_restitution_set", NULL);
 	RNA_def_property_ui_text(prop, "Restitution",
 	                         "Tendency of object to bounce after colliding with another "
 	                         "(0 = stays still, 1 = perfectly elastic)");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 	
 	/* Collision Parameters - Sensitivity */
 	prop = RNA_def_property(srna, "use_margin", PROP_BOOLEAN, PROP_NONE);
@@ -1105,25 +551,24 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	RNA_def_property_boolean_default(prop, false);
 	RNA_def_property_ui_text(prop, "Collision Margin",
 	                         "Use custom collision margin (some shapes will have a visible gap around them)");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_shape_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_shape_reset");
 	
 	prop = RNA_def_property(srna, "collision_margin", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "margin");
 	RNA_def_property_range(prop, 0.0f, 1.0f);
 	RNA_def_property_ui_range(prop, 0.0f, 1.0f, 0.01, 3);
 	RNA_def_property_float_default(prop, 0.04f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyOb_collision_margin_set", NULL);
 	RNA_def_property_ui_text(prop, "Collision Margin",
 	                         "Threshold of distance near surface where collisions are still considered "
 	                         "(best results when non-zero)");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_shape_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_shape_reset");
 	
 	prop = RNA_def_property(srna, "collision_groups", PROP_BOOLEAN, PROP_LAYER_MEMBER);
 	RNA_def_property_boolean_sdna(prop, NULL, "col_groups", 1);
 	RNA_def_property_array(prop, 20);
 	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyOb_collision_groups_set");
 	RNA_def_property_ui_text(prop, "Collision Groups", "Collision Groups Rigid Body belongs to");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 	RNA_def_property_flag(prop, PROP_LIB_EXCEPTION);
 }
 
@@ -1136,302 +581,638 @@ static void rna_def_rigidbody_constraint(BlenderRNA *brna)
 	RNA_def_struct_sdna(srna, "RigidBodyCon");
 	RNA_def_struct_ui_text(srna, "Rigid Body Constraint",
 	                       "Constraint influencing Objects inside Rigid Body Simulation");
-	RNA_def_struct_path_func(srna, "rna_RigidBodyCon_path");
+	RNA_def_struct_path_func(srna, "rna_ConstraintContainer_con_settings_path");
 
 	/* Enums */
 	prop = RNA_def_property(srna, "type", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "type");
 	RNA_def_property_enum_items(prop, rigidbody_constraint_type_items);
-	RNA_def_property_enum_funcs(prop, NULL, "rna_RigidBodyCon_type_set", NULL);
 	RNA_def_property_ui_text(prop, "Type", "Type of Rigid Body Constraint");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "enabled", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_ENABLED);
-	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyCon_enabled_set");
 	RNA_def_property_ui_text(prop, "Enabled", "Enable this constraint");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "disable_collisions", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_DISABLE_COLLISIONS);
-	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyCon_disable_collisions_set");
 	RNA_def_property_ui_text(prop, "Disable Collisions", "Disable collisions between constrained rigid bodies");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 
-	prop = RNA_def_property(srna, "object1", PROP_POINTER, PROP_NONE);
-	RNA_def_property_pointer_sdna(prop, NULL, "ob1");
-	RNA_def_property_flag(prop, PROP_EDITABLE);
-	RNA_def_property_ui_text(prop, "Object 1", "First Rigid Body Object to be constrained");
-	RNA_def_property_flag(prop, PROP_EDITABLE);
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
-
-	prop = RNA_def_property(srna, "object2", PROP_POINTER, PROP_NONE);
-	RNA_def_property_pointer_sdna(prop, NULL, "ob2");
-	RNA_def_property_flag(prop, PROP_EDITABLE);
-	RNA_def_property_ui_text(prop, "Object 2", "Second Rigid Body Object to be constrained");
-	RNA_def_property_flag(prop, PROP_EDITABLE);
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
 
 	/* Breaking Threshold */
 	prop = RNA_def_property(srna, "use_breaking", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_BREAKING);
-	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyCon_use_breaking_set");
 	RNA_def_property_ui_text(prop, "Breakable",
 	                         "Constraint can be broken if it receives an impulse above the threshold");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "breaking_threshold", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "breaking_threshold");
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_ui_range(prop, 0.0f, 1000.0f, 100.0, 2);
 	RNA_def_property_float_default(prop, 10.0f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_breaking_threshold_set", NULL);
 	RNA_def_property_ui_text(prop, "Breaking Threshold",
 	                         "Impulse threshold that must be reached for the constraint to break");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 
 	/* Solver Iterations */
 	prop = RNA_def_property(srna, "use_override_solver_iterations", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS);
-	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyCon_override_solver_iterations_set");
 	RNA_def_property_ui_text(prop, "Override Solver Iterations",
 	                         "Override the number of solver iterations for this constraint");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "solver_iterations", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "num_solver_iterations");
 	RNA_def_property_range(prop, 1, 1000);
 	RNA_def_property_ui_range(prop, 1, 100, 1, 0);
 	RNA_def_property_int_default(prop, 10);
-	RNA_def_property_int_funcs(prop, NULL, "rna_RigidBodyCon_num_solver_iterations_set", NULL);
 	RNA_def_property_ui_text(prop, "Solver Iterations",
 	                         "Number of constraint solver iterations made per simulation step (higher values are more "
 	                         "accurate but slower)");
-	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_FractureContainer_rigidbody_reset");
 
 	/* Limits */
 	prop = RNA_def_property(srna, "use_limit_lin_x", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_LIMIT_LIN_X);
 	RNA_def_property_ui_text(prop, "X Axis", "Limit translation on X axis");
-	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "use_limit_lin_y", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_LIMIT_LIN_Y);
 	RNA_def_property_ui_text(prop, "Y Axis", "Limit translation on Y axis");
-	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "use_limit_lin_z", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_LIMIT_LIN_Z);
 	RNA_def_property_ui_text(prop, "Z Axis", "Limit translation on Z axis");
-	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "use_limit_ang_x", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_LIMIT_ANG_X);
 	RNA_def_property_ui_text(prop, "X Angle", "Limit rotation around X axis");
-	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "use_limit_ang_y", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_LIMIT_ANG_Y);
 	RNA_def_property_ui_text(prop, "Y Angle", "Limit rotation around Y axis");
-	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "use_limit_ang_z", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_LIMIT_ANG_Z);
 	RNA_def_property_ui_text(prop, "Z Angle", "Limit rotation around Z axis");
-	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "use_spring_x", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_SPRING_X);
 	RNA_def_property_ui_text(prop, "X Spring", "Enable spring on X axis");
-	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "use_spring_y", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_SPRING_Y);
 	RNA_def_property_ui_text(prop, "Y Spring", "Enable spring on Y axis");
-	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "use_spring_z", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_SPRING_Z);
 	RNA_def_property_ui_text(prop, "Z Spring", "Enable spring on Z axis");
-	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "use_motor_lin", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_MOTOR_LIN);
-	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyCon_use_motor_lin_set");
 	RNA_def_property_ui_text(prop, "Linear Motor", "Enable linear motor");
-	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "use_motor_ang", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_MOTOR_ANG);
-	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyCon_use_motor_ang_set");
 	RNA_def_property_ui_text(prop, "Angular Motor", "Enable angular motor");
-	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "limit_lin_x_lower", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "limit_lin_x_lower");
 	RNA_def_property_float_default(prop, -1.0f);
 	RNA_def_property_ui_text(prop, "Lower X Limit", "Lower limit of X axis translation");
-	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "limit_lin_x_upper", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "limit_lin_x_upper");
 	RNA_def_property_float_default(prop, 1.0f);
 	RNA_def_property_ui_text(prop, "Upper X Limit", "Upper limit of X axis translation");
-	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "limit_lin_y_lower", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "limit_lin_y_lower");
 	RNA_def_property_float_default(prop, -1.0f);
 	RNA_def_property_ui_text(prop, "Lower Y Limit", "Lower limit of Y axis translation");
-	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "limit_lin_y_upper", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "limit_lin_y_upper");
 	RNA_def_property_float_default(prop, 1.0f);
 	RNA_def_property_ui_text(prop, "Upper Y Limit", "Upper limit of Y axis translation");
-	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "limit_lin_z_lower", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "limit_lin_z_lower");
 	RNA_def_property_float_default(prop, -1.0f);
 	RNA_def_property_ui_text(prop, "Lower Z Limit", "Lower limit of Z axis translation");
-	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "limit_lin_z_upper", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "limit_lin_z_upper");
 	RNA_def_property_float_default(prop, 1.0f);
 	RNA_def_property_ui_text(prop, "Upper Z Limit", "Upper limit of Z axis translation");
-	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "limit_ang_x_lower", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "limit_ang_x_lower");
 	RNA_def_property_range(prop, -M_PI * 2, M_PI * 2);
 	RNA_def_property_float_default(prop, -M_PI_4);
 	RNA_def_property_ui_text(prop, "Lower X Angle Limit", "Lower limit of X axis rotation");
-	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "limit_ang_x_upper", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "limit_ang_x_upper");
 	RNA_def_property_range(prop, -M_PI * 2, M_PI * 2);
 	RNA_def_property_float_default(prop, M_PI_4);
 	RNA_def_property_ui_text(prop, "Upper X Angle Limit", "Upper limit of X axis rotation");
-	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "limit_ang_y_lower", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "limit_ang_y_lower");
 	RNA_def_property_range(prop, -M_PI * 2, M_PI * 2);
 	RNA_def_property_float_default(prop, -M_PI_4);
 	RNA_def_property_ui_text(prop, "Lower Y Angle Limit", "Lower limit of Y axis rotation");
-	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "limit_ang_y_upper", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "limit_ang_y_upper");
 	RNA_def_property_range(prop, -M_PI * 2, M_PI * 2);
 	RNA_def_property_float_default(prop, M_PI_4);
 	RNA_def_property_ui_text(prop, "Upper Y Angle Limit", "Upper limit of Y axis rotation");
-	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "limit_ang_z_lower", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "limit_ang_z_lower");
 	RNA_def_property_range(prop, -M_PI * 2, M_PI * 2);
 	RNA_def_property_float_default(prop, -M_PI_4);
 	RNA_def_property_ui_text(prop, "Lower Z Angle Limit", "Lower limit of Z axis rotation");
-	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "limit_ang_z_upper", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "limit_ang_z_upper");
 	RNA_def_property_range(prop, -M_PI * 2, M_PI * 2);
 	RNA_def_property_float_default(prop, M_PI_4);
 	RNA_def_property_ui_text(prop, "Upper Z Angle Limit", "Upper limit of Z axis rotation");
-	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "spring_stiffness_x", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "spring_stiffness_x");
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_ui_range(prop, 0.0f, 100.0f, 1, 3);
 	RNA_def_property_float_default(prop, 10.0f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_spring_stiffness_x_set", NULL);
 	RNA_def_property_ui_text(prop, "X Axis Stiffness", "Stiffness on the X axis");
-	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "spring_stiffness_y", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "spring_stiffness_y");
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_ui_range(prop, 0.0f, 100.0f, 1, 3);
 	RNA_def_property_float_default(prop, 10.0f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_spring_stiffness_y_set", NULL);
 	RNA_def_property_ui_text(prop, "Y Axis Stiffness", "Stiffness on the Y axis");
-	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "spring_stiffness_z", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "spring_stiffness_z");
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_ui_range(prop, 0.0f, 100.0f, 1, 3);
 	RNA_def_property_float_default(prop, 10.0f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_spring_stiffness_z_set", NULL);
 	RNA_def_property_ui_text(prop, "Z Axis Stiffness", "Stiffness on the Z axis");
-	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "spring_damping_x", PROP_FLOAT, PROP_FACTOR);
 	RNA_def_property_float_sdna(prop, NULL, "spring_damping_x");
 	RNA_def_property_range(prop, 0.0f, 1.0f);
 	RNA_def_property_float_default(prop, 0.5f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_spring_damping_x_set", NULL);
 	RNA_def_property_ui_text(prop, "Damping X", "Damping on the X axis");
-	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "spring_damping_y", PROP_FLOAT, PROP_FACTOR);
 	RNA_def_property_float_sdna(prop, NULL, "spring_damping_y");
 	RNA_def_property_range(prop, 0.0f, 1.0f);
 	RNA_def_property_float_default(prop, 0.5f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_spring_damping_y_set", NULL);
 	RNA_def_property_ui_text(prop, "Damping Y", "Damping on the Y axis");
-	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "spring_damping_z", PROP_FLOAT, PROP_FACTOR);
 	RNA_def_property_float_sdna(prop, NULL, "spring_damping_z");
 	RNA_def_property_range(prop, 0.0f, 1.0f);
 	RNA_def_property_float_default(prop, 0.5f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_spring_damping_z_set", NULL);
 	RNA_def_property_ui_text(prop, "Damping Z", "Damping on the Z axis");
-	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "motor_lin_target_velocity", PROP_FLOAT, PROP_UNIT_VELOCITY);
 	RNA_def_property_float_sdna(prop, NULL, "motor_lin_target_velocity");
 	RNA_def_property_range(prop, -FLT_MAX, FLT_MAX);
 	RNA_def_property_ui_range(prop, -100.0f, 100.0f, 1, 3);
 	RNA_def_property_float_default(prop, 1.0f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_motor_lin_target_velocity_set", NULL);
 	RNA_def_property_ui_text(prop, "Target Velocity", "Target linear motor velocity");
-	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "motor_lin_max_impulse", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "motor_lin_max_impulse");
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_ui_range(prop, 0.0f, 100.0f, 1, 3);
 	RNA_def_property_float_default(prop, 1.0f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_motor_lin_max_impulse_set", NULL);
 	RNA_def_property_ui_text(prop, "Max Impulse", "Maximum linear motor impulse");
-	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "motor_ang_target_velocity", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "motor_ang_target_velocity");
 	RNA_def_property_range(prop, -FLT_MAX, FLT_MAX);
 	RNA_def_property_ui_range(prop, -100.0f, 100.0f, 1, 3);
 	RNA_def_property_float_default(prop, 1.0f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_motor_ang_target_velocity_set", NULL);
 	RNA_def_property_ui_text(prop, "Target Velocity", "Target angular motor velocity");
-	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "motor_ang_max_impulse", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "motor_ang_max_impulse");
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_ui_range(prop, 0.0f, 100.0f, 1, 3);
 	RNA_def_property_float_default(prop, 1.0f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_motor_ang_max_impulse_set", NULL);
 	RNA_def_property_ui_text(prop, "Max Impulse", "Maximum angular motor impulse");
-	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_FractureContainer_rigidbody_reset");
+}
+
+static void rna_def_rigidbody_constraint_container(BlenderRNA *brna)
+{
+	StructRNA *srna;
+	PropertyRNA *prop;
+
+	static EnumPropertyItem prop_constraint_targets[] = {
+		{MOD_FRACTURE_CENTROID, "CENTROID", 0, "Centroid", "Build constraints based on distances between centroids"},
+		{MOD_FRACTURE_VERTEX, "VERTEX", 0, "Vertex", "Build constraints based on distances between vertices (use lower values here)"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
+	srna = RNA_def_struct(brna, "ConstraintContainer", NULL);
+	RNA_def_struct_ui_text(srna, "Constraint Container", "Container of rigidbody constraints");
+	RNA_def_struct_sdna(srna, "ConstraintContainer");
+	RNA_def_struct_path_func(srna, "rna_ConstraintContainer_path");
+
+	prop = RNA_def_property(srna, "breaking_threshold", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "breaking_threshold");
+	RNA_def_property_range(prop, 0.0f, FLT_MAX);
+	RNA_def_property_ui_text(prop, "Inner Breaking threshold", "Threshold to break constraints between shards in the same object");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
+
+	prop = RNA_def_property(srna, "use_constraints", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", FMC_FLAG_USE_CONSTRAINTS);
+	RNA_def_property_ui_text(prop, "Use Constraints", "Create constraints between all shards");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "contact_dist", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_range(prop, 0.0f, FLT_MAX);
+	RNA_def_property_float_default(prop, 1.0f);
+	RNA_def_property_ui_text(prop, "Search Radius", "Limit search radius up to which two mesh islands are being connected, 0 for entire boundingbox");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
+
+	prop = RNA_def_property(srna, "use_mass_dependent_thresholds", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", FMC_FLAG_USE_MASS_DEPENDENT_THRESHOLDS);
+	RNA_def_property_ui_text(prop, "Use Mass Dependent Thresholds", "Match the breaking threshold according to the masses of the constrained shards");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "constraint_limit", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "constraint_limit");
+	RNA_def_property_range(prop, 0, INT_MAX);
+	RNA_def_property_ui_text(prop, "Constraint Search Limit", "Maximum number of neighbors being searched per mesh island during constraint creation, 0 for unlimited");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
+
+	prop = RNA_def_property(srna, "breaking_percentage", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "breaking_percentage");
+	RNA_def_property_range(prop, 0, 100);
+	RNA_def_property_ui_text(prop, "Breaking Percentage", "Percentage of broken constraints per island which leads to breaking of all others");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "breaking_angle", PROP_FLOAT, PROP_ANGLE);
+	RNA_def_property_float_sdna(prop, NULL, "breaking_angle");
+	RNA_def_property_range(prop, 0, DEG2RADF(360.0));
+	RNA_def_property_ui_text(prop, "Breaking Angle", "Angle in degrees above which constraint should break");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "breaking_distance", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "breaking_distance");
+	RNA_def_property_range(prop, 0, FLT_MAX);
+	RNA_def_property_ui_text(prop, "Breaking Distance", "Distance above which constraint should break");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "cluster_breaking_threshold", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "cluster_breaking_threshold");
+	RNA_def_property_range(prop, 0.0f, FLT_MAX);
+	RNA_def_property_ui_text(prop, "Cluster Breaking threshold", "Threshold to break constraints INSIDE a cluster of shards");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
+
+	prop = RNA_def_property(srna, "solver_iterations_override", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "solver_iterations_override");
+	RNA_def_property_range(prop, 0, INT_MAX);
+	RNA_def_property_ui_text(prop, "Solver Iterations Override", "Override the world constraint solver iteration value with this value, 0 means no override");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "breaking_percentage_weighted", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", FMC_FLAG_BREAKING_PERCENTAGE_WEIGHTED);
+	RNA_def_property_ui_text(prop, "Weighted Percentage", "Modify breaking percentage by threshold weights");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "breaking_angle_weighted", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", FMC_FLAG_BREAKING_ANGLE_WEIGHTED);
+	RNA_def_property_ui_text(prop, "Weighted Angle", "Modify breaking angle by threshold weights");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "breaking_distance_weighted", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", FMC_FLAG_BREAKING_DISTANCE_WEIGHTED);
+	RNA_def_property_ui_text(prop, "Weighted Distance", "Modify breaking distance by threshold weights");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "cluster_solver_iterations_override", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "cluster_solver_iterations_override");
+	RNA_def_property_range(prop, 0, INT_MAX);
+	RNA_def_property_ui_text(prop, "Cluster Solver Iterations Override",
+	                         "Override the world constraint solver iteration value for INSIDE clusters with this value, 0 means no override");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "cluster_breaking_percentage", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "cluster_breaking_percentage");
+	RNA_def_property_range(prop, 0, 100);
+	RNA_def_property_ui_text(prop, "Cluster Breaking Percentage", "Percentage of broken constraints per cluster which leads to breaking of all others");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "cluster_breaking_angle", PROP_FLOAT, PROP_ANGLE);
+	RNA_def_property_float_sdna(prop, NULL, "cluster_breaking_angle");
+	RNA_def_property_range(prop, 0, DEG2RADF(360.0));
+	RNA_def_property_ui_text(prop, "Cluster Breaking Angle", "Angle in degrees above which constraint should break");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	//RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
+
+	prop = RNA_def_property(srna, "cluster_breaking_distance", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "cluster_breaking_distance");
+	RNA_def_property_range(prop, 0, FLT_MAX);
+	RNA_def_property_ui_text(prop, "Cluster Breaking Distance", "Distance above which constraint should break");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	//RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
+
+	/*Breakable constraints*/
+	prop = RNA_def_property(srna, "use_breaking", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", FMC_FLAG_USE_BREAKING);
+	RNA_def_property_ui_text(prop, "Breakable",
+	                         "Constraints can be broken if it receives an impulse above the threshold");
+	//RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
+
+	prop = RNA_def_property(srna, "cluster_constraint_type", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_sdna(prop, NULL, "cluster_constraint_type");
+	RNA_def_property_enum_items(prop, rigidbody_constraint_type_items);
+	RNA_def_property_ui_text(prop, "Cluster Constraint Type", "Type of Rigid Body Constraint between clusters");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
+
+	prop = RNA_def_property(srna, "constraint_target", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_items(prop, prop_constraint_targets);
+	RNA_def_property_enum_default(prop, MOD_FRACTURE_CENTROID);
+	RNA_def_property_ui_text(prop, "Constraint Method", "Method to build constraints");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
+}
+
+static void rna_def_rigidbody_fracture_container(BlenderRNA *brna)
+{
+	StructRNA *srna;
+	PropertyRNA *prop;
+
+	static EnumPropertyItem prop_fracture_modes[] = {
+		{MOD_FRACTURE_PREFRACTURED, "PREFRACTURED", 0, "Prefractured", "Fracture the mesh once prior to the simulation"},
+		{MOD_FRACTURE_DYNAMIC, "DYNAMIC", 0, "Dynamic", "Fracture the mesh dynamically during the simulation"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
+	static EnumPropertyItem prop_fracture_algorithm[] = {
+		{MOD_FRACTURE_BISECT_FAST, "BISECT_FAST", 0, "Fast Bisect", "Use a faster but more inaccurate bisection algorithm, also creates uglier shards."},
+		{MOD_FRACTURE_BISECT_FAST_FILL, "BISECT_FAST_FILL", 0, "Fast Bisect + Fill ", "Use the faster but different bisection algorithm and fill cut faces"},
+		{MOD_FRACTURE_BOOLEAN, "BOOLEAN", 0, "Voronoi + Boolean", "Use voronoi and boolean intersection as fracture algorithm"},
+		{MOD_FRACTURE_BISECT_FILL, "BISECT_FILL", 0, "Voronoi + Bisect + Fill", "Use voronoi and mesh bisect as fracture algorithm, fill cut faces"},
+		{MOD_FRACTURE_BISECT, "BISECT", 0, "Voronoi + Bisect", "Use voronoi and mesh bisect as fracture algorithm, don't fill cut faces"},
+		{MOD_FRACTURE_BOOLEAN_FRACTAL, "BOOLEAN_FRACTAL", 0, "Voronoi + Fractal Boolean", "Use voronoi and boolean intersection with fractally subdivided cells" },
+		{0, NULL, 0, NULL, NULL}
+	};
+
+	static EnumPropertyItem prop_point_source_items[] = {
+		{MOD_FRACTURE_OWN_PARTICLES, "OWN_PARTICLES", 0, "Own Particles", "Use own particles as point cloud"},
+		{MOD_FRACTURE_OWN_VERTS, "OWN_VERTS", 0, "Own Vertices", "Use own vertices as point cloud"},
+		{MOD_FRACTURE_EXTRA_PARTICLES, "EXTRA_PARTICLES", 0, "Extra Particles", "Use particles of group objects as point cloud"},
+		{MOD_FRACTURE_EXTRA_VERTS, "EXTRA_VERTS", 0, "Extra Vertices", "Use vertices of group objects as point cloud"},
+		{MOD_FRACTURE_GREASEPENCIL, "GREASE_PENCIL", 0, "Grease Pencil", "Use grease pencil points as point cloud"},
+		{MOD_FRACTURE_UNIFORM, "UNIFORM", 0, "Uniform", "Use a random uniform pointcloud generated over the bounding box"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
+	static EnumPropertyItem prop_splinter_axises[] = {
+		{MOD_FRACTURE_SPLINTER_X, "SPLINTER_X", 0, "Splinter X", "Splinters in X Direction"},
+		{MOD_FRACTURE_SPLINTER_Y, "SPLINTER_Y", 0, "Splinter Y", "Splinters in Y Direction"},
+		{MOD_FRACTURE_SPLINTER_Z, "SPLINTER_Z", 0, "Splinter Z", "Splinters in Z Direction"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
+	static EnumPropertyItem prop_cutter_axises[] = {
+		{MOD_FRACTURE_CUTTER_X, "CUTTER_X", 0, "Cutter X", "Cut in X Direction"},
+		{MOD_FRACTURE_CUTTER_Y, "CUTTER_Y", 0, "Cutter Y", "Cut in Y Direction"},
+		{MOD_FRACTURE_CUTTER_Z, "CUTTER_Z", 0, "Cutter Z", "Cut in Z Direction"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
+	srna = RNA_def_struct(brna, "FractureContainer", NULL);
+	RNA_def_struct_ui_text(srna, "Fracture Container", "Add a fracture container to this object");
+	RNA_def_struct_sdna(srna, "FractureContainer");
+	RNA_def_struct_path_func(srna, "rna_FractureContainer_path");
+
+	prop = RNA_def_property(srna, "use_experimental", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", FMG_FLAG_USE_EXPERIMENTAL);
+	RNA_def_property_ui_text(prop, "Use Experimental", "Experimental features, work in progress. Use at own risk!");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "execute_threaded", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", FMG_FLAG_EXECUTE_THREADED);
+	RNA_def_property_ui_text(prop, "Execute as threaded job (WIP)", "Execute the fracture as threaded job, Warning: WIP, still may crash");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "fracture_mode", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_items(prop, prop_fracture_modes);
+	RNA_def_property_enum_default(prop, MOD_FRACTURE_PREFRACTURED);
+	RNA_def_property_ui_text(prop, "Fracture Mode", "Determines how to fracture the mesh");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "frac_algorithm", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_items(prop, prop_fracture_algorithm);
+	RNA_def_property_ui_text(prop, "Fracture Algorithm", "Select type of fracture algorithm");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "shard_count", PROP_INT, PROP_NONE);
+	RNA_def_property_range(prop, 1, 100000);
+	RNA_def_property_int_default(prop, 10);
+	RNA_def_property_ui_text(prop, "Shard Count", "How many sub-shards should be generated from the current shard");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "cluster_count", PROP_INT, PROP_NONE);
+	RNA_def_property_range(prop, 0, 100000);
+	RNA_def_property_ui_text(prop, "Cluster Count", "Amount of clusters built from existing shards, 0 for none");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	//RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_Modifier_update"); //Cluster update ? TODO
+
+	prop = RNA_def_property(srna, "point_source", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_items(prop, prop_point_source_items);
+	RNA_def_property_flag(prop, PROP_ENUM_FLAG);
+	RNA_def_property_enum_default(prop, MOD_FRACTURE_UNIFORM);
+	RNA_def_property_ui_text(prop, "Point Source", "Source of point cloud");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "point_seed", PROP_INT, PROP_NONE);
+	RNA_def_property_range(prop, 0, 100000);
+	RNA_def_property_ui_text(prop, "Seed", "Seed for uniform pointcloud");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "percentage", PROP_INT, PROP_NONE);
+	RNA_def_property_range(prop, 0, 100);
+	RNA_def_property_ui_text(prop, "Percentage", "Percentage of the sum of points of all selected pointsources to actually use for fracture");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "extra_group", PROP_POINTER, PROP_NONE);
+	RNA_def_property_ui_text(prop, "Extra Group", "");
+	RNA_def_property_flag(prop, PROP_EDITABLE);
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "cluster_group", PROP_POINTER, PROP_NONE);
+	RNA_def_property_ui_text(prop, "Cluster Group", "Centroids of objects in this group determine where cluster centers will be");
+	RNA_def_property_flag(prop, PROP_EDITABLE);
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	//RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
+
+	prop = RNA_def_property(srna, "thresh_vertex_group", PROP_STRING, PROP_NONE);
+	RNA_def_property_string_sdna(prop, NULL, "thresh_defgrp_name");
+	RNA_def_property_ui_text(prop, "Threshold Vertex Group", "Vertex group name for defining weighted thresholds on different mesh parts");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "ground_vertex_group", PROP_STRING, PROP_NONE);
+	RNA_def_property_string_sdna(prop, NULL, "ground_defgrp_name");
+	RNA_def_property_ui_text(prop, "Passive Vertex Group", "Vertex group name for defining passive mesh parts (will remain static during rigidbody simulation");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "fix_normals", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", FM_FLAG_FIX_NORMALS);
+	RNA_def_property_ui_text(prop, "Fix normals (WIP)", "Fix normals of fractured smooth objects, to let cracks nearly disappear");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "inner_material", PROP_POINTER, PROP_NONE);
+	RNA_def_property_ui_text(prop, "Inner Material", "");
+	RNA_def_property_flag(prop, PROP_EDITABLE);
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "inner_vertex_group", PROP_STRING, PROP_NONE);
+	RNA_def_property_string_sdna(prop, NULL, "inner_defgrp_name");
+	RNA_def_property_ui_text(prop, "Inner Vertex Group",
+	                         "Vertex group name for defining inner vertices (will contain vertices of inner faces (Boolean, Bisect + Fill only) ");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "autohide_dist", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "autohide_dist");
+	RNA_def_property_range(prop, 0.0f, 10.0f);
+	RNA_def_property_ui_text(prop, "Autohide Distance", "Distance between faces below which both faces should be hidden");
+	RNA_def_property_update(prop, NC_OBJECT | ND_MODIFIER, 0);
+
+	prop = RNA_def_property(srna, "use_particle_birth_coordinates", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", FM_FLAG_USE_PARTICLE_BIRTH_COORDS);
+	RNA_def_property_ui_text(prop, "Use Particle Birth Coordinates", "Use birth or simulated state particle coordinates");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "splinter_axis", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_items(prop, prop_splinter_axises);
+	RNA_def_property_flag(prop, PROP_ENUM_FLAG);
+	RNA_def_property_enum_default(prop, MOD_FRACTURE_SPLINTER_Z);
+	RNA_def_property_ui_text(prop, "Splinter Axis", "Global direction of splinters");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "splinter_length", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_range(prop, 1.0f, FLT_MAX);
+	RNA_def_property_ui_text(prop, "Splinter length", "Length of splinters");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "nor_range", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_range(prop, 0.0f, FLT_MAX);
+	RNA_def_property_ui_text(prop, "Normal Search Radius", "Radius in which to search for valid normals");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "use_smooth", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", FM_FLAG_USE_SMOOTH);
+	RNA_def_property_ui_text(prop, "Smooth Inner Faces", "Set Inner Faces to Smooth Shading (needs refracture)");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "fractal_cuts", PROP_INT, PROP_NONE);
+	RNA_def_property_range(prop, 1, 10);
+	RNA_def_property_ui_text(prop, "Fractal Grid Cuts", "Number of fractal cuts on each cell");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "fractal_amount", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_range(prop, 0, 20);
+	RNA_def_property_ui_text(prop, "Fractal Displacement", "Amount of fractal displacement on each cell");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "fractal_iterations", PROP_INT, PROP_NONE);
+	RNA_def_property_range(prop, 1, 10);
+	RNA_def_property_ui_text(prop, "Fractal Iterations", "Number of times the number of cuts will be made to the grid, with the given fractal amount");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "cutter_group", PROP_POINTER, PROP_NONE);
+	RNA_def_property_ui_text(prop, "Cutter Group", "A set of objects to make boolean cuts against");
+	RNA_def_property_flag(prop, PROP_EDITABLE);
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "use_greasepencil_edges", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", FM_FLAG_USE_GREASEPENCIL_EDGES);
+	RNA_def_property_ui_text(prop, "Use Greasepencil Edges", "Use edges instead of points from Greasepencil strokes");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "grease_offset", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_range(prop, 0.0f, FLT_MAX);
+	RNA_def_property_ui_text(prop, "Greasepencil Offset", "Extrusion offset of greasepencil stroke, to create a mesh from it");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "grease_decimate", PROP_INT, PROP_NONE);
+	RNA_def_property_range(prop, 0, 100);
+	RNA_def_property_ui_text(prop, "Greasepencil Decimate", "Decimate Factor in percent for greasepencil strokes");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "cutter_axis", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_items(prop, prop_cutter_axises);
+	RNA_def_property_enum_default(prop, MOD_FRACTURE_CUTTER_Z);
+	RNA_def_property_ui_text(prop, "Cutter Axis", "Global direction of cutters");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "dynamic_force", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_range(prop, 0.0f, FLT_MAX);
+	RNA_def_property_ui_text(prop, "Dynamic force threshold", "Only break dynamically when force is above this threshold");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+
+	prop = RNA_def_property(srna, "limit_impact", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", FM_FLAG_LIMIT_IMPACT);
+	RNA_def_property_ui_text(prop, "Limit Impact", "Activates only shards within the impact object size approximately");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	//RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_reset");
+
 }
 
 void RNA_def_rigidbody(BlenderRNA *brna)
@@ -1439,6 +1220,8 @@ void RNA_def_rigidbody(BlenderRNA *brna)
 	rna_def_rigidbody_world(brna);
 	rna_def_rigidbody_object(brna);
 	rna_def_rigidbody_constraint(brna);
+	rna_def_rigidbody_fracture_container(brna);
+	rna_def_rigidbody_constraint_container(brna);
 }
 
 

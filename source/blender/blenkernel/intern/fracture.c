@@ -973,7 +973,7 @@ static void do_rigidbody(Scene *scene, Object *ob, MeshIsland* mi, short rb_type
 	mi->rigidbody = NULL;
 	mi->rigidbody = BKE_rigidbody_create_shard(scene, ob, mi);
 	mi->rigidbody->type = rb_type;
-	mi->rigidbody->meshisland_index = i;
+	//mi->rigidbody->meshisland_index = i;
 	BKE_rigidbody_calc_shard_mass(ob, mi, ob->derivedFinal);
 }
 
