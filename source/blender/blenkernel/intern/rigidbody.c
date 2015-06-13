@@ -1716,8 +1716,11 @@ static void do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBo
 	{
 		for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 		{
+			bool same_cluster = (mi->particle_index != -1) &&
+			                    (mi->particle_index == mi_compare->particle_index);
+
 			RigidBodyOb* rbo = mi->rigidbody;
-			if ((rbo->flag & RBO_FLAG_KINEMATIC) && ((mi_compare == mi)))
+			if ((rbo->flag & RBO_FLAG_KINEMATIC) && ((mi_compare == mi) || same_cluster))
 			{
 				if (rbo->physics_object) {
 					activateRigidbody(rbo, rbw, mi, ob);
