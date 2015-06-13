@@ -110,6 +110,7 @@ typedef struct FractureContainer {
 	struct Group *cutter_group;
 	struct Material *inner_material;
 	struct RigidBodyOb *rb_settings;
+	struct DerivedMesh *raw_mesh;
 
 	char thresh_defgrp_name[64];  /* MAX_VGROUP_NAME */
 	char ground_defgrp_name[64];  /* MAX_VGROUP_NAME */

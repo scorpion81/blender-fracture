@@ -423,6 +423,28 @@ bool modifier_isEnabled(struct Scene *scene, ModifierData *md, int required_mode
 	return true;
 }
 
+
+bool modifier_stopWhenDisabled(struct Scene *scene, struct Object *ob, struct ModifierData *md)
+{
+	ModifierTypeInfo *mti = modifierType_getInfo(md->type);
+	md->scene = scene;
+
+	/* cant use isDisabled because its signature doesnt contain the necessary object pointer sigh.... */
+	/* but we get a CustomDataMask, if its CD_MASK_MSTICKY stop here (this is a deprecated value, so change this later TODO */
+	if ((mti->flags & eModifierTypeFlag_StopWhenDisabled))
+	{
+		CustomDataMask *mask = CD_MASK_MSTICKY;
+		if (mti->requiredDataMask && mti->requiredDataMask(ob, md) == mask)
+		{
+			return true;
+		}
+
+		return false;
+	}
+
+	return false;
+}
+
 CDMaskLink *modifiers_calcDataMasks(struct Scene *scene, Object *ob, ModifierData *md,
                                     CustomDataMask dataMask, int required_mode,
                                     ModifierData *previewmd, CustomDataMask previewmask)

@@ -111,6 +111,7 @@ static void parse_cell_loops(cell c, MLoop *mloop, int totloop, MPoly *mpoly, in
 static void parse_cell_neighbors(cell c, int *neighbors, int totpoly);
 static void do_island_from_shard(Scene *scene, Object *ob, Shard* s, int i, int thresh_defgrp_index, int ground_defgrp_index, int vertstart);
 static void do_island_vertex_index_map(Object *ob, GHash **vertex_index_map);
+static DerivedMesh* ensure_mesh(Scene *scene, Object* ob);
 
 static FracMesh* copy_fracmesh(FracMesh* fm)
 {
@@ -2070,13 +2071,13 @@ DerivedMesh *BKE_autohide_inner(Object* ob)
 	return result;
 }
 
-static void do_fix_normals_physics_mesh(Object* ob, Shard* s, MeshIsland* mi, int i)
+static void do_fix_normals_physics_mesh(Scene *scene, Object* ob, Shard* s, MeshIsland* mi, int i)
 {
 	FractureContainer *fc = ob->fracture_objects;
 	MVert *mv, *verts;
 	int totvert;
 	int j;
-	DerivedMesh *orig_dm = ob->derivedFinal; // copy this !
+	DerivedMesh *orig_dm = ensure_mesh(scene, ob);
 
 	mi->physics_mesh = BKE_shard_create_dm(s, true);
 	totvert = mi->physics_mesh->getNumVerts(mi->physics_mesh);
@@ -2254,7 +2255,7 @@ static void do_island_from_shard(Scene *scene, Object *ob, Shard* s, int i, int 
 
 	/*copy fixed normals to physics mesh too (needed for convert to objects)*/
 
-	do_fix_normals_physics_mesh(ob, s, mi, i);
+	do_fix_normals_physics_mesh(scene, ob, s, mi, i);
 
 	BKE_shard_calc_minmax(s);
 	copy_v3_v3(mi->centroid, s->centroid);
@@ -4922,11 +4923,16 @@ void BKE_fracture_container_create(Scene* scene, Object *ob, int type)
 	unit_m4(mat);
 	add_shard(fs->frac_mesh, s, mat);
 
+	BLI_addtail(&fc->states, fs);
+	fc->current = fs;
+	ob->fracture_objects = fc;
+
 	//init pointcaches.... TODO...
 	fc->pointcache = BKE_ptcache_add(&(fc->ptcaches));
 	fc->pointcache->step = 1;
 
 	//init settings object
+	fc->rb_settings = NULL;
 	fc->rb_settings = BKE_rigidbody_create_object(scene, ob, type);
 
 	//set useful defaults...
@@ -4954,10 +4960,6 @@ void BKE_fracture_container_create(Scene* scene, Object *ob, int type)
 	fc->dynamic_force = 10.0f;
 
 	fc->effector_weights = BKE_add_effector_weights(NULL);
-
-	BLI_addtail(&fc->states, fs);
-	fc->current = fs;
-	ob->fracture_objects = fc;
 
 	//create meshislands
 	BKE_fracture_prefracture_mesh(scene, ob);
@@ -5148,18 +5150,32 @@ ConstraintContainer *BKE_fracture_constraint_container_copy(Object *ob)
 }
 
 /* get the appropriate DerivedMesh based on rigid body mesh source */
-static DerivedMesh *ensure_mesh(Object *ob)
+static DerivedMesh *ensure_mesh(Scene* scene, Object *ob)
 {
+	CustomDataMask mask = CD_MASK_BAREMESH;
+
 	FractureContainer *fc = ob->fracture_objects;
-	if (fc->rb_settings->mesh_source == RBO_MESH_DEFORM) {
-		return ob->derivedDeform;
+
+	if (!fc->raw_mesh)
+	{
+		if (fc->rb_settings->mesh_source == RBO_MESH_DEFORM) {
+			fc->flag |= FM_FLAG_REFRESH;
+			mesh_get_derived_deform(scene, ob, mask);
+			fc->flag &= ~FM_FLAG_REFRESH;
+			fc->raw_mesh = CDDM_copy(ob->derivedDeform);
+		}
+		else if (fc->rb_settings->mesh_source == RBO_MESH_FINAL) {
+			fc->flag |= FM_FLAG_REFRESH;
+			mesh_get_derived_final(scene, ob, mask);
+			fc->flag &= ~FM_FLAG_REFRESH;
+			fc->raw_mesh = CDDM_copy(ob->derivedFinal);
+		}
+		else {
+			fc->raw_mesh = CDDM_from_mesh(ob->data);
+		}
 	}
-	else if (fc->rb_settings->mesh_source == RBO_MESH_FINAL) {
-		return ob->derivedFinal;
-	}
-	else {
-		return CDDM_from_mesh(ob->data);
-	}
+
+	return fc->raw_mesh;
 }
 
 

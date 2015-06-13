@@ -1612,6 +1612,7 @@ static void mesh_calc_modifiers(Scene *scene, Object *ob, float (*inputVertexCos
 
 		md->scene = scene;
 
+		if (modifier_stopWhenDisabled(scene, ob, md)) break;
 		if (!modifier_isEnabled(scene, md, required_mode)) continue;
 		if (mti->type == eModifierTypeType_OnlyDeform && !useDeform) continue;
 		if ((mti->flags & eModifierTypeFlag_RequiresOriginalData) && dm) {

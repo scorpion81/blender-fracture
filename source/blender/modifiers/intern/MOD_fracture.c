@@ -60,10 +60,17 @@ static bool dependsOnNormals(ModifierData *UNUSED(md))
 	return true;
 }
 
-static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *UNUSED(md))
+static CustomDataMask requiredDataMask(Object* ob, ModifierData md)
 {
+	FractureContainer *fc = ob->fracture_objects;
 	CustomDataMask dataMask = 0;
-	dataMask |= CD_MASK_MDEFORMVERT;
+	if (fc && (fc->flag & FM_FLAG_REFRESH))
+	{
+		/* indicate modifier evaluation stop, yuck, just because we need an object ref here,
+		 * we have to workaround by returning an old unused CustomdataMask */
+		dataMask |= CD_MASK_MSTICKY;
+	}
+
 	return dataMask;
 }
 
@@ -97,7 +104,8 @@ ModifierTypeInfo modifierType_Fracture = {
 	eModifierTypeFlag_Single |
 	eModifierTypeFlag_SupportsEditmode |
 	eModifierTypeFlag_SupportsMapping |
-	eModifierTypeFlag_UsesPreview,
+	eModifierTypeFlag_UsesPreview |
+    eModifierTypeFlag_StopWhenDisabled,
 	/* copyData */ NULL,
 	/* deformVerts */ NULL,
 	/* deformMatrices */ NULL,

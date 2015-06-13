@@ -100,7 +100,11 @@ typedef enum {
 	eModifierTypeFlag_NoUserAdd = (1 << 8),
 
 	/* For modifiers that use CD_PREVIEW_MCOL for preview. */
-	eModifierTypeFlag_UsesPreview = (1 << 9)
+	eModifierTypeFlag_UsesPreview = (1 << 9),
+
+	/* For modifiers which ignore following modifiers and stop stack evaluation before they are evaluated
+	 * depending on their isDisabled() function */
+	eModifierTypeFlag_StopWhenDisabled = (1 << 10),
 } ModifierTypeFlag;
 
 typedef void (*ObjectWalkFunc)(void *userData, struct Object *ob, struct Object **obpoin);
@@ -331,6 +335,7 @@ bool          modifier_isCorrectableDeformed(struct ModifierData *md);
 bool          modifier_isSameTopology(ModifierData *md);
 bool          modifier_isNonGeometrical(ModifierData *md);
 bool          modifier_isEnabled(struct Scene *scene, struct ModifierData *md, int required_mode);
+bool          modifier_stopWhenDisabled(struct Scene *scene, struct Object* ob, struct ModifierData *md);
 void          modifier_setError(struct ModifierData *md, const char *format, ...) ATTR_PRINTF_FORMAT(2, 3);
 bool          modifier_isPreview(struct ModifierData *md);
 
