@@ -67,7 +67,7 @@ static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *UNUSED(
 	return dataMask;
 }
 
-static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
+static DerivedMesh *applyModifier(ModifierData *UNUSED(md), Object *ob,
                                   DerivedMesh *derivedData,
                                   ModifierApplyFlag UNUSED(flag))
 {

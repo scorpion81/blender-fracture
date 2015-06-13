@@ -40,6 +40,7 @@
 #include "DNA_armature_types.h"
 #include "DNA_camera_types.h"
 #include "DNA_constraint_types.h"
+#include "DNA_fracture_types.h"
 #include "DNA_group_types.h"
 #include "DNA_key_types.h"
 #include "DNA_lamp_types.h"
@@ -85,6 +86,7 @@
 #include "BKE_curve.h"
 #include "BKE_displist.h"
 #include "BKE_effect.h"
+#include "BKE_fracture.h"
 #include "BKE_fcurve.h"
 #include "BKE_group.h"
 #include "BKE_key.h"
@@ -1530,8 +1532,8 @@ Object *BKE_object_copy_ex(Main *bmain, Object *ob, bool copy_caches)
 	}
 	obn->soft = copy_softbody(ob->soft, copy_caches);
 	obn->bsoft = copy_bulletsoftbody(ob->bsoft);
-	obn->rigidbody_object = BKE_rigidbody_copy_object(ob);
-	obn->rigidbody_constraint = BKE_rigidbody_copy_constraint(ob);
+	obn->fracture_objects = BKE_fracture_container_copy(ob);
+	obn->fracture_constraints = BKE_fracture_constraint_container_copy(ob);
 
 	BKE_object_copy_particlesystems(obn, ob);
 	
@@ -3719,8 +3721,11 @@ void BKE_object_relink(Object *ob)
 	if (ob->adt)
 		BKE_relink_animdata(ob->adt);
 	
-	if (ob->rigidbody_constraint)
-		BKE_rigidbody_relink_constraint(ob->rigidbody_constraint);
+	if (ob->fracture_constraints)
+	{
+		ID_NEW(ob->fracture_constraints->partner1);
+		ID_NEW(ob->fracture_constraints->partner2);
+	}
 
 	ID_NEW(ob->parent);
 

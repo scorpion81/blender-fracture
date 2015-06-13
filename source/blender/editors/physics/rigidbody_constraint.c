@@ -33,6 +33,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "DNA_fracture_types.h"
 #include "DNA_object_types.h"
 #include "DNA_rigidbody_types.h"
 #include "DNA_scene_types.h"
@@ -41,6 +42,7 @@
 #include "BLI_listbase.h"
 
 #include "BKE_context.h"
+#include "BKE_fracture.h"
 #include "BKE_depsgraph.h"
 #include "BKE_global.h"
 #include "BKE_group.h"
@@ -66,7 +68,7 @@ static int ED_operator_rigidbody_con_active_poll(bContext *C)
 {
 	if (ED_operator_object_active_editable(C)) {
 		Object *ob = CTX_data_active_object(C);
-		return (ob && ob->rigidbody_constraint);
+		return (ob && ob->fracture_constraints);
 	}
 	else
 		return 0;
@@ -78,7 +80,7 @@ bool ED_rigidbody_constraint_add(Scene *scene, Object *ob, int type, ReportList 
 	RigidBodyWorld *rbw = BKE_rigidbody_get_world(scene);
 
 	/* check that object doesn't already have a constraint */
-	if (ob->rigidbody_constraint) {
+	if (ob->fracture_constraints) {
 		BKE_reportf(reports, RPT_INFO, "Object '%s' already has a Rigid Body Constraint", ob->id.name + 2);
 		return false;
 	}
@@ -87,8 +89,9 @@ bool ED_rigidbody_constraint_add(Scene *scene, Object *ob, int type, ReportList 
 		rbw->constraints = BKE_group_add(G.main, "RigidBodyConstraints");
 	}
 	/* make rigidbody constraint settings */
-	ob->rigidbody_constraint = BKE_rigidbody_create_constraint(scene, ob, type);
-	ob->rigidbody_constraint->flag |= RBC_FLAG_NEEDS_VALIDATE;
+
+	BKE_fracture_constraint_container_create(scene, ob, type);
+	//ob->fracture_constraints->con_settings->flag |= RBC_FLAG_NEEDS_VALIDATE;
 
 	/* add constraint to rigid body constraint group */
 	BKE_group_object_add(rbw->constraints, ob, scene, NULL);
@@ -101,7 +104,7 @@ void ED_rigidbody_constraint_remove(Scene *scene, Object *ob)
 {
 	RigidBodyWorld *rbw = BKE_rigidbody_get_world(scene);
 
-	BKE_rigidbody_remove_constraint(scene, ob);
+	BKE_fracture_constraint_container_free(scene, ob);
 	if (rbw)
 		BKE_group_object_unlink(rbw->constraints, ob, scene, NULL);
 
@@ -171,7 +174,7 @@ static int rigidbody_con_remove_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 
 	/* apply to active object */
-	if (ELEM(NULL, ob, ob->rigidbody_constraint)) {
+	if (ELEM(NULL, ob, ob->fracture_constraints)) {
 		BKE_report(op->reports, RPT_ERROR, "Object has no Rigid Body Constraint to remove");
 		return OPERATOR_CANCELLED;
 	}
@@ -211,7 +214,7 @@ static int rigidbody_constraints_remove_exec(bContext *C, wmOperator *UNUSED(op)
 	/* apply this to all selected objects... */
 	CTX_DATA_BEGIN(C, Object *, ob, selected_objects)
 	{
-		if (ob->rigidbody_constraint) {
+		if (ob->fracture_constraints) {
 			ED_rigidbody_constraint_remove(scene, ob);
 			change = true;
 		}

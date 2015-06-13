@@ -136,7 +136,7 @@ class TickDiscreteDynamicsWorld : public btDiscreteDynamicsWorld
 		void* m_bworld;
 };
 
-void tickCallback(btDynamicsWorld *world, btScalar timeStep)
+static void tickCallback(btDynamicsWorld *world, btScalar timeStep)
 {
 	int numManifolds = world->getDispatcher()->getNumManifolds();
 	for (int i=0;i<numManifolds;i++)

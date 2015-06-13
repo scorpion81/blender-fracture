@@ -228,7 +228,7 @@ typedef struct OldNewMap {
 
 /* local prototypes */
 static void *read_struct(FileData *fd, BHead *bh, const char *blockname);
-static void direct_link_modifiers(FileData *fd, ListBase *lb, Object* ob);
+static void direct_link_modifiers(FileData *fd, ListBase *lb);
 static void convert_tface_mt(FileData *fd, Main *main);
 
 /* this function ensures that reports are printed,
@@ -4759,25 +4759,7 @@ static void read_meshIsland(FileData *fd, MeshIsland **address)
 	mi->participating_constraints = NULL;
 }
 
-/*inlined from MOD_fracture.c*/
-static MeshIsland* find_meshisland(ListBase* meshIslands, int id)
-{
-	MeshIsland* mi = meshIslands->first;
-	while (mi)
-	{
-		if (mi->id == id)
-		{
-			return mi;
-		}
-
-		mi = mi->next;
-	}
-
-	return NULL;
-}
-
-static int initialize_meshisland(FractureModifierData* fmd, MeshIsland** mii, MVert* mverts, int vertstart,
-                                 Object *ob, ShardID parent_id, ShardID shard_id)
+static int initialize_meshisland(FractureModifierData* fmd, MeshIsland** mii, MVert* mverts, int vertstart)
 {
 	MVert *mv;
 	int k = 0;
@@ -4854,7 +4836,6 @@ static DerivedMesh* do_create(FractureModifierData *fmd, int num_verts, int num_
 
 	int shard_count = 0;
 	ListBase *shardlist;
-	ListBase joinlist;
 	Shard *shard;
 
 	int vertstart, polystart, loopstart;
@@ -4974,7 +4955,7 @@ static DerivedMesh *create_dm(FractureModifierData *fmd, bool doCustomData)
 }
 
 /*refactor this loading routine out, for better readability*/
-static void load_legacy_fracture_modifier(FileData* fd, FractureModifierData *fmd, Object* ob)
+static void load_legacy_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 {
 	FracMesh* fm;
 
@@ -5066,7 +5047,7 @@ static void load_legacy_fracture_modifier(FileData* fd, FractureModifierData *fm
 
 			for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 				read_meshIsland(fd, &mi);
-				vertstart += initialize_meshisland(fmd, &mi, mverts, vertstart, ob, -1, -1);
+				vertstart += initialize_meshisland(fmd, &mi, mverts, vertstart);
 			}
 		}
 
@@ -5078,7 +5059,7 @@ static void load_legacy_fracture_modifier(FileData* fd, FractureModifierData *fm
 	}
 }
 
-static void direct_link_modifiers(FileData *fd, ListBase *lb, Object *ob)
+static void direct_link_modifiers(FileData *fd, ListBase *lb)
 {
 	ModifierData *md;
 	
@@ -5100,7 +5081,8 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb, Object *ob)
 		}
 
 		if (md->type == eModifierType_Fracture) {
-			load_legacy_fracture_modifier(fd, md, ob);
+			FractureModifierData *fmd = (FractureModifierData*)md;
+			load_legacy_fracture_modifier(fd, fmd);
 		}
 			
 		else if (md->type == eModifierType_Subsurf) {
@@ -5421,7 +5403,7 @@ static void direct_link_object(FileData *fd, Object *ob)
 	ob->matbits= newdataadr(fd, ob->matbits);
 	
 	/* do it here, below old data gets converted */
-	direct_link_modifiers(fd, &ob->modifiers, ob);
+	direct_link_modifiers(fd, &ob->modifiers);
 	
 	link_list(fd, &ob->effect);
 	paf= ob->effect.first;

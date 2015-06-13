@@ -47,6 +47,7 @@
 #include "DNA_anim_types.h"
 #include "DNA_armature_types.h"
 #include "DNA_constraint_types.h"
+#include "DNA_fracture_types.h"
 #include "DNA_key_types.h"
 #include "DNA_material_types.h"
 #include "DNA_scene_types.h"
@@ -668,7 +669,8 @@ static bool visualkey_can_use(PointerRNA *ptr, PropertyRNA *prop)
 	if (ptr->type == &RNA_Object) {
 		/* Object */
 		Object *ob = (Object *)ptr->data;
-		RigidBodyOb *rbo = ob->rigidbody_object;
+		FractureContainer *fc = ob->fracture_objects;
+		RigidBodyOb *rbo = fc ? fc->rb_settings : NULL;
 		
 		con = ob->constraints.first;
 		identifier = RNA_property_identifier(prop);

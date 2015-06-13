@@ -45,6 +45,7 @@ struct DerivedMesh;
 struct KDTree;
 struct PointCache;
 struct RigidBodyOb;
+struct RigidBodyCon;
 struct MeshIsland;
 
 enum {
@@ -100,6 +101,9 @@ typedef struct FractureContainer {
 
 	ListBase ptcaches;
 	struct PointCache *pointcache;
+
+	/* make each container respond individually */
+	struct EffectorWeights *effector_weights;
 
 	struct Group *cluster_group; // hmm maybe index, but which group ?
 	struct Group *extra_group;
@@ -173,7 +177,7 @@ typedef struct ConstraintContainer {
 
 	struct Object *partner1;			/* First object influenced by the constraint container */
 	struct Object *partner2;			/* Second object influenced by the constraint container */
-	struct RigidbodyCon *con_settings;
+	struct RigidBodyCon *con_settings;
 
 	float breaking_angle;
 	float breaking_distance;

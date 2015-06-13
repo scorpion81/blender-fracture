@@ -51,7 +51,7 @@ typedef struct RigidBodyOb RigidBodyOb;
 
 typedef struct RigidBodyWorld {
 	/* Sim World Settings ------------------------------------------------------------- */
-	struct EffectorWeights *effector_weights DNA_DEPRECATED; /* effectors info */
+	struct EffectorWeights *effector_weights; /* effectors info */
 
 	struct Group *group;		/* Group containing objects to use for Rigid Bodies */
 	struct Object **objects;	/* Array to access group objects by index, only used at runtime */
@@ -302,38 +302,6 @@ typedef struct RigidBodyShardCon {
 	float start_angle;			//needed for breaking by angle and dist
 	float start_dist;
 	float pad;
-
-	/* limits */
-	/* translation limits */
-	float limit_lin_x_lower;
-	float limit_lin_x_upper;
-	float limit_lin_y_lower;
-	float limit_lin_y_upper;
-	float limit_lin_z_lower;
-	float limit_lin_z_upper;
-	/* rotation limits */
-	float limit_ang_x_lower;
-	float limit_ang_x_upper;
-	float limit_ang_y_lower;
-	float limit_ang_y_upper;
-	float limit_ang_z_lower;
-	float limit_ang_z_upper;
-
-	/* spring settings */
-	/* resistance to deformation */
-	float spring_stiffness_x;
-	float spring_stiffness_y;
-	float spring_stiffness_z;
-	/* amount of velocity lost over time */
-	float spring_damping_x;
-	float spring_damping_y;
-	float spring_damping_z;
-
-	/* motor settings */
-	float motor_lin_target_velocity;	/* linear velocity the motor tries to hold */
-	float motor_ang_target_velocity;	/* angular velocity the motor tries to hold */
-	float motor_lin_max_impulse;		/* maximum force used to reach linear target velocity */
-	float motor_ang_max_impulse;		/* maximum force used to reach angular target velocity */
 
 	/* References to Physics Sim object. Exist at runtime only */
 	void *physics_constraint;	/* Physics object representation (i.e. btTypedConstraint) */

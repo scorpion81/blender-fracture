@@ -67,6 +67,7 @@
 #include "BKE_colortools.h"
 #include "BKE_depsgraph.h"
 #include "BKE_editmesh.h"
+#include "BKE_fracture.h"
 #include "BKE_fcurve.h"
 #include "BKE_freestyle.h"
 #include "BKE_global.h"
@@ -365,7 +366,7 @@ void BKE_scene_free(Scene *sce)
 	BKE_keyingsets_free(&sce->keyingsets);
 	
 	if (sce->rigidbody_world)
-		BKE_rigidbody_free_world(sce->rigidbody_world);
+		BKE_rigidbody_free_world(sce);
 	
 	if (sce->r.avicodecdata) {
 		free_avicodecdata(sce->r.avicodecdata);
@@ -1088,12 +1089,12 @@ Base *BKE_scene_base_add(Scene *sce, Object *ob)
 
 void BKE_scene_base_unlink(Scene *sce, Base *base)
 {
-	/* remove rigid body constraint from world before removing object */
-	if (base->object->rigidbody_constraint)
-		BKE_rigidbody_remove_constraint(sce, base->object);
-	/* remove rigid body object from world before removing object */
-	if (base->object->rigidbody_object)
-		BKE_rigidbody_remove_object(sce, base->object);
+	/* remove constraintcontainer from world before removing object */
+	if (base->object->fracture_constraints)
+		BKE_fracture_constraint_container_free(sce, base->object);
+	/* remove fracturecontainer from world before removing object */
+	if (base->object->fracture_objects)
+		BKE_fracture_container_free(sce, base->object);
 	
 	BLI_remlink(&sce->base, base);
 }
@@ -1764,7 +1765,7 @@ void BKE_scene_update_for_newframe_ex(EvaluationContext *eval_ctx, Main *bmain, 
 	 * this needs to be done on start frame but animation playback usually starts one frame later
 	 * we need to do it here to avoid rebuilding the world on every simulation change, which can be very expensive
 	 */
-	//scene_rebuild_rbw_recursive(sce, ctime); TODO
+	scene_rebuild_rbw_recursive(sce, ctime);
 
 	sound_set_cfra(sce->r.cfra);
 	

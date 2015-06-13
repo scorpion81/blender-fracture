@@ -57,6 +57,7 @@ struct DerivedMesh;
 struct SculptSession;
 struct bGPdata;
 struct RigidBodyOb;
+struct RigidBodyCon;
 struct FractureContainer;
 struct ConstraintContainer;
 

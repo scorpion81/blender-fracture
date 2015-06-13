@@ -74,7 +74,7 @@ static int ED_operator_rigidbody_active_poll(bContext *C)
 {
 	if (ED_operator_object_active_editable(C)) {
 		Object *ob = ED_object_active_context(C);
-		return (ob && ob->rigidbody_object);
+		return (ob && ob->fracture_objects);
 	}
 	else
 		return 0;
@@ -132,7 +132,7 @@ void ED_rigidbody_object_remove(Scene *scene, Object *ob)
 {
 	RigidBodyWorld *rbw = BKE_rigidbody_get_world(scene);
 
-	BKE_rigidbody_remove_object(scene, ob);
+	BKE_fracture_container_free(scene, ob);
 	if (rbw)
 		BKE_group_object_unlink(rbw->group, ob, scene, NULL);
 
@@ -194,7 +194,7 @@ static int rigidbody_object_remove_exec(bContext *C, wmOperator *op)
 	bool changed = false;
 
 	/* apply to active object */
-	if (!ELEM(NULL, ob, ob->rigidbody_object)) {
+	if (!ELEM(NULL, ob, ob->fracture_objects)) {
 		ED_rigidbody_object_remove(scene, ob);
 		changed = true;
 	}
@@ -286,7 +286,7 @@ static int rigidbody_objects_remove_exec(bContext *C, wmOperator *UNUSED(op))
 	/* apply this to all selected objects... */
 	CTX_DATA_BEGIN(C, Object *, ob, selected_objects)
 	{
-		if (ob->rigidbody_object) {
+		if (ob->fracture_objects) {
 			ED_rigidbody_object_remove(scene, ob);
 			changed = true;
 		}
@@ -334,11 +334,11 @@ static int rigidbody_objects_shape_change_exec(bContext *C, wmOperator *op)
 	/* apply this to all selected objects... */
 	CTX_DATA_BEGIN(C, Object *, ob, selected_objects)
 	{
-		if (ob->rigidbody_object) {
+		if (ob->fracture_objects->rb_settings) {
 			PointerRNA ptr;
 
 			/* use RNA-system to change the property and perform all necessary changes */
-			RNA_pointer_create(&ob->id, &RNA_RigidBodyObject, ob->rigidbody_object, &ptr);
+			RNA_pointer_create(&ob->id, &RNA_RigidBodyObject, ob->fracture_objects->rb_settings, &ptr);
 			RNA_enum_set(&ptr, "collision_shape", shape);
 
 			DAG_id_tag_update(&ob->id, OB_RECALC_OB);
@@ -506,9 +506,10 @@ static int rigidbody_objects_calc_mass_exec(bContext *C, wmOperator *op)
 	/* apply this to all selected objects (with rigidbodies)... */
 	CTX_DATA_BEGIN(C, Object *, ob, selected_objects)
 	{
-		if (ob->rigidbody_object) {
+		if (ob->fracture_objects->rb_settings) {
 			PointerRNA ptr;
 			DerivedMesh* dm_ob;
+			RigidBodyOb* rbo = ob->fracture_objects->rb_settings;
 
 			float volume; /* m^3 */
 			float mass;   /* kg */
@@ -520,7 +521,7 @@ static int rigidbody_objects_calc_mass_exec(bContext *C, wmOperator *op)
 			if (ob->type == OB_MESH) {
 				/* if we have a mesh, determine its volume */
 				dm_ob = CDDM_from_mesh(ob->data);
-				volume = BKE_rigidbody_calc_volume(dm_ob, ob->rigidbody_object);
+				volume = BKE_rigidbody_calc_volume(dm_ob, rbo);
 			}
 			else {
 				float dim[3];
@@ -534,7 +535,7 @@ static int rigidbody_objects_calc_mass_exec(bContext *C, wmOperator *op)
 			mass = volume * density;
 
 			/* use RNA-system to change the property and perform all necessary changes */
-			RNA_pointer_create(&ob->id, &RNA_RigidBodyObject, ob->rigidbody_object, &ptr);
+			RNA_pointer_create(&ob->id, &RNA_RigidBodyObject, rbo, &ptr);
 			RNA_float_set(&ptr, "mass", mass);
 
 			DAG_id_tag_update(&ob->id, OB_RECALC_OB);
