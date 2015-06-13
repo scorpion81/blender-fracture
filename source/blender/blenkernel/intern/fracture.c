@@ -775,7 +775,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 		return;
 	}
 
-	if (reset)
+	if (mode == MOD_FRACTURE_PREFRACTURED && reset)
 	{
 		while (fm->shard_map.first)
 		{
