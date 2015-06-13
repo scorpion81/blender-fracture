@@ -114,7 +114,7 @@ static int rigidbody_world_remove_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 
-	BKE_rigidbody_free_world(rbw);
+	BKE_rigidbody_free_world(scene);
 	scene->rigidbody_world = NULL;
 
 	/* done */

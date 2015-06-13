@@ -111,7 +111,7 @@ void BKE_fracture_constraint_container_free(struct Scene* scene, struct Object *
 void BKE_fracture_constraint_container_create(struct Scene *scene, struct Object* ob, int type);
 
 void BKE_fracture_container_free(struct Scene *scene, struct Object *ob);
-void BKE_fracture_container_create(struct Scene *scene, struct Object *ob);
+void BKE_fracture_container_create(struct Scene *scene, struct Object *ob, int type);
 void BKE_lookup_mesh_state(struct Object* ob, int frame);
 
 struct ConstraintContainer *BKE_fracture_constraint_container_copy(struct Object *ob);

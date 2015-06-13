@@ -116,8 +116,7 @@ bool ED_rigidbody_object_add(Scene *scene, Object *ob, int type, ReportList *rep
 	}
 
 	/* make rigidbody object settings */
-	BKE_fracture_container_create(scene, ob);
-	ob->fracture_objects->rb_settings = BKE_rigidbody_create_object(scene, ob, type);
+	BKE_fracture_container_create(scene, ob, type);
 	ob->fracture_objects->rb_settings->flag |= RBO_FLAG_NEEDS_VALIDATE;
 
 	/* add object to rigid body group */

@@ -4450,7 +4450,7 @@ static void rna_def_modifier_normaledit(BlenderRNA *brna)
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
-void rna_def_modifier_fracture(brna)
+static void rna_def_modifier_fracture(BlenderRNA *brna)
 {
 	StructRNA *srna;
 	srna = RNA_def_struct(brna, "FractureModifier", "Modifier");

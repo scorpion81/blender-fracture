@@ -4905,7 +4905,7 @@ void BKE_fracture_constraint_container_free(Scene*scene, Object *ob)
 	}
 }
 
-void BKE_fracture_container_create(Scene* scene, Object *ob)
+void BKE_fracture_container_create(Scene* scene, Object *ob, int type)
 {
 	FractureContainer *fc = MEM_callocN(sizeof(FractureContainer) ,"fracture_objects");
 	FractureState *fs = MEM_callocN(sizeof(FractureState), "states.first");
@@ -4925,6 +4925,9 @@ void BKE_fracture_container_create(Scene* scene, Object *ob)
 	//init pointcaches.... TODO...
 	fc->pointcache = BKE_ptcache_add(&(fc->ptcaches));
 	fc->pointcache->step = 1;
+
+	//init settings object
+	fc->rb_settings = BKE_rigidbody_create_object(scene, ob, type);
 
 	//set useful defaults...
 	fc->frac_algorithm = MOD_FRACTURE_BOOLEAN;
