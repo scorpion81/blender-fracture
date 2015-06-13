@@ -155,8 +155,8 @@ static int rigidbody_object_add_exec(bContext *C, wmOperator *op)
 
 	if (changed) {
 		/* send updates */
-		WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
-		WM_event_add_notifier(C, NC_OBJECT | ND_POINTCACHE, NULL);
+	//	WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
+	//	WM_event_add_notifier(C, NC_OBJECT | ND_POINTCACHE, NULL);
 
 		/* done */
 		return OPERATOR_FINISHED;

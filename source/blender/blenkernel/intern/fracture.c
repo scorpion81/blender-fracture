@@ -640,7 +640,7 @@ static FracPointCloud get_points_global(Scene* scene, Object *ob, ShardID id)
 		int count = fc->shard_count;
 		INIT_MINMAX(min, max);
 		//ensure ob->derivedFinal ?
-		BKE_get_shard_minmax(fs->frac_mesh, id, min, max, ob->derivedFinal); //id 0 should be entire mesh
+		BKE_get_shard_minmax(fs->frac_mesh, id, min, max); //id 0 should be entire mesh
 		printf("min, max: (%f %f %f), (%f %f %f)\n", min[0], min[1], min[2], max[0], max[1], max[2]);
 
 		if (fc->frac_algorithm == MOD_FRACTURE_BISECT_FAST || fc->frac_algorithm == MOD_FRACTURE_BISECT_FAST_FILL ||
@@ -2205,7 +2205,7 @@ static void set_rigidbody_type(Object *ob, Shard *s, MeshIsland *mi)
 
 		if (prev && (prev->prev == NULL)) //only affect primary fracture
 		{
-			Shard *par = BKE_shard_by_id(prev->frac_mesh, s->parent_id, NULL);
+			Shard *par = BKE_shard_by_id(prev->frac_mesh, s->parent_id);
 			if (par)
 			{
 				float impact_loc[3], impact_size[3];
@@ -2337,7 +2337,7 @@ static MDeformVert* do_islands_from_shards(Scene* scene, Object* ob)
 	const int ground_defgrp_index = defgroup_name_index(ob, fc->ground_defgrp_name);
 
 	/*XXX should rename this... this marks the fracture case, to distinguish from halving case */
-	fc->flag |= FM_FLAG_USE_FRACMESH;
+	//fc->flag |= FM_FLAG_USE_FRACMESH;
 
 	if (fc->fracture_mode == MOD_FRACTURE_PREFRACTURED)
 	{
@@ -2599,7 +2599,8 @@ static void do_modifier(Scene* scene, Object* ob)
 	/*HERE we must know which shard(s) to fracture... hmm shards... we should "merge" states which happen in the same frame automatically !*/
 	if (fc->fracture_mode == MOD_FRACTURE_PREFRACTURED)
 	{
-		do_fracture(scene, ob, -1);
+		//have a shard 0 here...
+		do_fracture(scene, ob, 0);
 	}
 
 	//hmm better call this from Rigidbody system directly... TODO
@@ -3095,22 +3096,22 @@ float BKE_shard_calc_minmax(Shard *shard)
 
 
 /*access shard directly by index / id*/
-Shard *BKE_shard_by_id(FracMesh *mesh, ShardID id, DerivedMesh *dm) {
-	if (/*(id < mesh->shard_count) && */(id >= 0)) {
-		//return mesh->shard_map[id];
-		//return (Shard *)BLI_findlink(&mesh->shard_map, id);
-		Shard *s = mesh->shard_map.first;
-		while (s)
-		{
-			if (s->shard_id == id)
-			{
-				return s;
-			}
-			s = s->next;
-		}
+Shard *BKE_shard_by_id(FracMesh *mesh, ShardID id) {
 
-		return NULL;
+	Shard *s = mesh->shard_map.first;
+	while (s)
+	{
+		if (s->shard_id == id)
+		{
+			return s;
+		}
+		s = s->next;
 	}
+
+	return NULL;
+}
+
+#if 0
 	else if (id == -1 && dm != NULL)
 	{
 		/* create temporary shard covering the entire mesh */
@@ -3124,10 +3125,11 @@ Shard *BKE_shard_by_id(FracMesh *mesh, ShardID id, DerivedMesh *dm) {
 	
 	return NULL;
 }
+#endif
 
-void BKE_get_shard_minmax(FracMesh *mesh, ShardID id, float min_r[3], float max_r[3], DerivedMesh *dm)
+void BKE_get_shard_minmax(FracMesh *mesh, ShardID id, float min_r[3], float max_r[3])
 {
-	Shard *shard = BKE_shard_by_id(mesh, id, dm);
+	Shard *shard = BKE_shard_by_id(mesh, id);
 	if (shard != NULL) {
 		BKE_shard_calc_minmax(shard);
 		copy_v3_v3(min_r, shard->min);
@@ -3168,7 +3170,7 @@ Shard *BKE_create_fracture_shard(MVert *mvert, MPoly *mpoly, MLoop *mloop, int t
 		shard->mloop = mloop;
 	}
 
-	shard->shard_id = -1;
+	shard->shard_id = 0;
 	shard->flag = SHARD_INTACT;
 	BKE_shard_calc_minmax(shard);
 
@@ -3561,7 +3563,6 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Obj
 	FractureContainer *fc = obj->fracture_objects;
 	FractureState *fs = fc->current;
 	FracMesh *fm = fs->frac_mesh;
-	DerivedMesh *dm = obj->derivedFinal;
 	int algorithm = fc->frac_algorithm;
 	bool reset = fc->flag & FM_FLAG_RESET_SHARDS;
 	int mode = fc->fracture_mode;
@@ -3572,7 +3573,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Obj
 
 	/*Parse voronoi raw data*/
 	int i = 0, j = 0, count = 0;
-	Shard *p = BKE_shard_by_id(fm, parent_id, dm); // *t;
+	Shard *p = BKE_shard_by_id(fm, parent_id); // *t;
 	float obmat[4][4]; /* use unit matrix for now */
 	float centroid[3], pcentroid[3] = {0,0,0};
 	BMesh *bm_parent = NULL;
@@ -4270,7 +4271,7 @@ void BKE_fracture_shard_by_points(Object *obj, ShardID id, FracPointCloud *point
 	double time_start;
 #endif
 	
-	shard = BKE_shard_by_id(fmesh, id, dm);
+	shard = BKE_shard_by_id(fmesh, id);
 	if (!shard || shard->flag & SHARD_FRACTURED)
 		return;
 
@@ -4848,7 +4849,7 @@ void BKE_fracture_prefracture_mesh(Scene *scene, Object *ob)
 		return;
 	}
 
-	preprocess_dm(ob);
+//	preprocess_dm(ob);
 	//perform intial halving... or do clean...
 
 	//operate on existing shards
@@ -4915,25 +4916,28 @@ void BKE_fracture_container_create(Scene* scene, Object *ob, int type)
 
 	//init fracmesh with entire shard from ob->derivedFinal (ensure it)
 	float mat[4][4]; //wood splinter scaling matrix, here it is unit_m4
-	DerivedMesh *dm = ob->derivedFinal;
-	Shard *s = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
-	                                     dm->numVertData, dm->numPolyData, dm->numLoopData, true);
-	s = BKE_custom_data_to_shard(s, dm);
-	fs->frac_mesh = BKE_create_fracmesh();
-	unit_m4(mat);
-	add_shard(fs->frac_mesh, s, mat);
+	DerivedMesh *dm;
+	Shard *s;
 
 	BLI_addtail(&fc->states, fs);
 	fc->current = fs;
 	ob->fracture_objects = fc;
 
+	//init settings object
+	fc->rb_settings = BKE_rigidbody_create_object(scene, ob, type);
+
+	dm = ensure_mesh(scene, ob);
+	s = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
+	                              dm->getNumVerts(dm), dm->getNumPolys(dm), dm->getNumLoops(dm), true);
+
+	s = BKE_custom_data_to_shard(s, dm);
+	fs->frac_mesh = BKE_create_fracmesh();
+	unit_m4(mat);
+	add_shard(fs->frac_mesh, s, mat);
+
 	//init pointcaches.... TODO...
 	fc->pointcache = BKE_ptcache_add(&(fc->ptcaches));
 	fc->pointcache->step = 1;
-
-	//init settings object
-	fc->rb_settings = NULL;
-	fc->rb_settings = BKE_rigidbody_create_object(scene, ob, type);
 
 	//set useful defaults...
 	fc->frac_algorithm = MOD_FRACTURE_BOOLEAN;
@@ -5177,5 +5181,3 @@ static DerivedMesh *ensure_mesh(Scene* scene, Object *ob)
 
 	return fc->raw_mesh;
 }
-
-

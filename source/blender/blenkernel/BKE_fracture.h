@@ -69,10 +69,10 @@ typedef struct FractureID {
 } FractureID;
 
 /* direct access */
-struct Shard *BKE_shard_by_id(struct FracMesh *mesh, ShardID id, struct DerivedMesh *dm);
+struct Shard *BKE_shard_by_id(struct FracMesh *mesh, ShardID id);
 
 /* detailed info to the particular shards */
-void BKE_get_shard_minmax(struct FracMesh *mesh, ShardID id, float min_r[3], float max_r[3], struct DerivedMesh *dm);
+void BKE_get_shard_minmax(struct FracMesh *mesh, ShardID id, float min_r[3], float max_r[3]);
 
 /* container object handling functions */
 struct FracMesh *BKE_create_fracmesh(void);
