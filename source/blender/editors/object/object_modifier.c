@@ -753,6 +753,13 @@ static int modifier_add_exec(bContext *C, wmOperator *op)
 	if (!ED_object_modifier_add(op->reports, bmain, scene, ob, NULL, type))
 		return OPERATOR_CANCELLED;
 
+	/* fracture modifier needs a rigidbody system too, else it does nothing, so add too*/
+	if (type == eModifierType_Fracture) {
+		ED_rigidbody_object_add(scene, ob, RBO_TYPE_ACTIVE , op->reports);
+		WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
+		WM_event_add_notifier(C, NC_OBJECT | ND_POINTCACHE, NULL);
+	}
+
 	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
 	
 	return OPERATOR_FINISHED;
@@ -893,6 +900,9 @@ static int modifier_remove_exec(bContext *C, wmOperator *op)
 	
 	if (!md || !ED_object_modifier_remove(op->reports, bmain, ob, md))
 		return OPERATOR_CANCELLED;
+
+	/*if a fracture modifier was removed, remove the rigidbody system as well */
+	//FM_TODO
 
 	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
 

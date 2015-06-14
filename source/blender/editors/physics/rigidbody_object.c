@@ -46,6 +46,8 @@
 #include "BKE_context.h"
 #include "BKE_depsgraph.h"
 #include "BKE_fracture.h"
+#include "BKE_main.h"
+#include "BKE_modifier.h"
 #include "BKE_global.h"
 #include "BKE_group.h"
 #include "BKE_report.h"
@@ -146,6 +148,7 @@ void ED_rigidbody_object_remove(Scene *scene, Object *ob)
 static int rigidbody_object_add_exec(bContext *C, wmOperator *op)
 {
 	Scene *scene = CTX_data_scene(C);
+	Main *bmain = CTX_data_main(C);
 	Object *ob = ED_object_active_context(C);
 	int type = RNA_enum_get(op->ptr, "type");
 	bool changed;
@@ -155,6 +158,11 @@ static int rigidbody_object_add_exec(bContext *C, wmOperator *op)
 
 	if (changed) {
 		/* send updates */
+
+		/* add a fracture modifier too, since else no motion is displayed ! */
+		ED_object_modifier_add(op->reports, bmain, scene, ob, NULL, eModifierType_Fracture);
+
+		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, NULL);
 		WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
 		WM_event_add_notifier(C, NC_OBJECT | ND_POINTCACHE, NULL);
 
@@ -234,6 +242,7 @@ void RIGIDBODY_OT_object_remove(wmOperatorType *ot)
 
 static int rigidbody_objects_add_exec(bContext *C, wmOperator *op)
 {
+	Main *bmain = CTX_data_main(C);
 	Scene *scene = CTX_data_scene(C);
 	int type = RNA_enum_get(op->ptr, "type");
 	bool changed = false;
@@ -241,6 +250,7 @@ static int rigidbody_objects_add_exec(bContext *C, wmOperator *op)
 	/* create rigid body objects and add them to the world's group */
 	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
 		changed |= ED_rigidbody_object_add(scene, ob, type, op->reports);
+		ED_object_modifier_add(op->reports, bmain, scene, ob, NULL, eModifierType_Fracture);
 	}
 	CTX_DATA_END;
 
@@ -288,6 +298,9 @@ static int rigidbody_objects_remove_exec(bContext *C, wmOperator *UNUSED(op))
 		if (ob->fracture_objects) {
 			ED_rigidbody_object_remove(scene, ob);
 			changed = true;
+
+			/*if the rigidbodysystem is removed, remove the fracture modifier as well*/
+			//FM_TODO
 		}
 	}
 	CTX_DATA_END;

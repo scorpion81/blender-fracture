@@ -105,7 +105,7 @@ ModifierTypeInfo modifierType_Fracture = {
 	eModifierTypeFlag_SupportsEditmode |
 	eModifierTypeFlag_SupportsMapping |
 	eModifierTypeFlag_UsesPreview |
-    eModifierTypeFlag_StopWhenDisabled,
+	eModifierTypeFlag_StopWhenDisabled,
 	/* copyData */ NULL,
 	/* deformVerts */ NULL,
 	/* deformMatrices */ NULL,

@@ -781,9 +781,9 @@ static bool flag_as_kinematic(void *object)
 
 	is_kinematic = (fc->flag & FM_FLAG_SKIP_STEPPING);
 
-	//printf("Is Kinematic %d \n", is_kinematic);
-	//return is_kinematic;
-	return false;
+	printf("Is Kinematic %d \n", is_kinematic);
+	return is_kinematic;
+	//return false;
 }
 
 /* Create physics sim representation of shard given RigidBody settings
@@ -2428,7 +2428,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 		/* try to read from caches */
 		// RB_TODO deal with interpolated, old and baked results
 		if (BKE_ptcache_read(&pid, ctime)) {
-			//printf("Cache read:  %d\n", (int)ctime);
+			printf("Cache read:  %d\n", (int)ctime);
 			BKE_ptcache_validate(cache, (int)ctime);
 
 			rbw->ltime = ctime;

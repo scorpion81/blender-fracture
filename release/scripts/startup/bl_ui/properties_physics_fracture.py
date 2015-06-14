@@ -37,7 +37,7 @@ class PhysicButtonsPanel():
     def poll(cls, context):
         ob = context.object
         rd = context.scene.render
-        return (ob and (ob.type == 'MESH' or ob.type == 'CURVE' or ob.type == 'SURFACE' or ob.type == 'FONT')) and (not rd.use_game_engine) and (context.fracture)
+        return (ob and (ob.type in {'MESH', 'CURVE', 'SURFACE', 'FONT'}) and (not rd.use_game_engine))
 
 class FRACTURE_UL_fracture_settings(UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
@@ -50,6 +50,13 @@ class FRACTURE_UL_fracture_settings(UIList):
 
 class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
     bl_label = "Fracture"
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.object
+        rd = context.scene.render
+        base = (ob and (ob.type in {'MESH', 'CURVE', 'SURFACE', 'FONT'}) and (not rd.use_game_engine))
+        return base and context.object.fracture_container
 
     def icon(self, bool):
         if bool:
@@ -124,6 +131,13 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
 class PHYSICS_PT_fracture_constraint(PhysicButtonsPanel, Panel):
     bl_label = "Fracture Constraints"
 
+    @classmethod
+    def poll(cls, context):
+        ob = context.object
+        rd = context.scene.render
+        base = (ob and (ob.type in {'MESH', 'CURVE', 'SURFACE', 'FONT'}) and (not rd.use_game_engine))
+        return base and context.object.constraint_container
+
     def draw(self, context):
         layout = self.layout
         ob = context.object
@@ -173,6 +187,13 @@ class PHYSICS_PT_fracture_constraint(PhysicButtonsPanel, Panel):
 
 class PHYSICS_PT_fracture_utilities(PhysicButtonsPanel, Panel):
     bl_label = "Fracture Utilities"
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.object
+        rd = context.scene.render
+        base = (ob and (ob.type in {'MESH', 'CURVE', 'SURFACE', 'FONT'}) and (not rd.use_game_engine))
+        return base and context.object.fracture_container
 
     def draw(self, context):
         layout = self.layout
