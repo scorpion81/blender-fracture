@@ -2556,15 +2556,15 @@ static void rna_def_object(BlenderRNA *brna)
 	rna_def_object_particle_systems(brna, prop);
 
 	
-	prop = RNA_def_property(srna, "rigid_body", PROP_POINTER, PROP_NONE);
-	RNA_def_property_pointer_sdna(prop, NULL, "rigidbody_object");
-	RNA_def_property_struct_type(prop, "RigidBodyObject");
-	RNA_def_property_ui_text(prop, "Rigid Body Settings", "Settings for rigid body simulation");
+	prop = RNA_def_property(srna, "fracture_container", PROP_POINTER, PROP_NONE);
+	RNA_def_property_pointer_sdna(prop, NULL, "fracture_objects");
+	RNA_def_property_struct_type(prop, "FractureContainer");
+	RNA_def_property_ui_text(prop, "Fracture Container", "Container for fractured rigid bodies");
 
-	prop = RNA_def_property(srna, "rigid_body_constraint", PROP_POINTER, PROP_NONE);
-	RNA_def_property_pointer_sdna(prop, NULL, "rigidbody_constraint");
-	RNA_def_property_struct_type(prop, "RigidBodyConstraint");
-	RNA_def_property_ui_text(prop, "Rigid Body Constraint", "Constraint constraining rigid bodies");
+	prop = RNA_def_property(srna, "constraint_container", PROP_POINTER, PROP_NONE);
+	RNA_def_property_pointer_sdna(prop, NULL, "fracture_constraints");
+	RNA_def_property_struct_type(prop, "ConstraintContainer");
+	RNA_def_property_ui_text(prop, "Constraint Container", "Container for rigidbody constraints");
 	
 	/* restrict */
 	prop = RNA_def_property(srna, "hide", PROP_BOOLEAN, PROP_NONE);

@@ -161,10 +161,14 @@ static void freeMeshIsland(Scene* scene, MeshIsland *mi)
 	}
 
 	if (mi->rigidbody) {
-		RigidBodyWorld *rbw = scene->rigidbody_world;
-		RigidBodyShardOb *rbo = mi->rigidbody;
-		if (rbo->physics_object)
-			RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
+		if (scene != NULL)
+		{
+			RigidBodyWorld *rbw = scene->rigidbody_world;
+			RigidBodyShardOb *rbo = mi->rigidbody;
+			if (rbo->physics_object && rbw->physics_world)
+				RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
+		}
+
 		MEM_freeN(mi->rigidbody);
 		mi->rigidbody = NULL;
 	}
@@ -244,8 +248,10 @@ static void free_fracture_state(Scene *scene, FractureState *fs, bool delete_sha
 static void free_fracture_container(Scene* scene, FractureContainer *fc)
 {
 	FractureState *fs;
-	for (fs = fc->states.first; fs; fs = fs->next)
+	while (fc->states.first)
 	{
+		fs = fc->states.first;
+		BLI_remlink_safe(&fc->states, fs);
 		free_fracture_state(scene, fs, fc->fracture_mode == MOD_FRACTURE_PREFRACTURED);
 	}
 
@@ -693,10 +699,10 @@ static Material* find_material(const char* name)
 	return BKE_material_add(G.main, name);
 }
 
-static void do_splinters(Object* ob, FracPointCloud points, float(*mat)[4][4])
+static void do_splinters(Scene *scene, Object* ob, FracPointCloud points, float(*mat)[4][4])
 {
 	float imat[4][4];
-	DerivedMesh *dm = ob->derivedFinal; //copy this better... hmmm
+	DerivedMesh *dm = ensure_mesh(scene, ob);
 	FractureContainer *fc = ob->fracture_objects;
 
 	unit_m4(*mat);
@@ -804,10 +810,10 @@ static short do_materials(Object* obj)
 	return mat_index;
 }
 
-static void cleanup_splinters(Object* ob, float mat[4][4])
+static void cleanup_splinters(Scene *scene, Object* ob, float mat[4][4])
 {
 	FractureContainer *fc = ob->fracture_objects;
-	DerivedMesh *dm = ob->derivedFinal;
+	DerivedMesh *dm = ensure_mesh(scene, ob);
 
 	if ((fc->splinter_axis & MOD_FRACTURE_SPLINTER_X) ||
 		(fc->splinter_axis & MOD_FRACTURE_SPLINTER_Y) ||
@@ -836,7 +842,7 @@ static void do_fracture(Scene *scene, Object *obj, ShardID id)
 		float mat[4][4];
 
 		/*splinters... just global axises and a length, for rotation rotate the object */
-		do_splinters(obj, points, &mat);
+		do_splinters(scene, obj, points, &mat);
 
 		mat_index = do_materials(obj);
 		mat_index = mat_index > 0 ? mat_index - 1 : mat_index;
@@ -872,7 +878,7 @@ static void do_fracture(Scene *scene, Object *obj, ShardID id)
 
 		fs->visual_mesh = BKE_fracture_create_dm(obj, true);
 
-		cleanup_splinters(obj, mat);
+		cleanup_splinters(scene, obj, mat);
 		fc->flag &= ~FM_FLAG_RESET_SHARDS;
 	}
 	MEM_freeN(points.points);
@@ -1211,7 +1217,7 @@ static void bm_mesh_hflag_flush_vert(BMesh *bm, const char hflag)
 	}
 }
 
-static void handle_vert(Object* ob, BMVert* vert, BMVert** orig_work,
+static void handle_vert(Scene *scene, Object* ob, BMVert* vert, BMVert** orig_work,
                         float **startco, short **startno, BMVert*** v_tag, int *tot, int *tag_counter)
 {
 	/* treat the specified vert and put it into the tagged array, also store its coordinates and normals
@@ -1220,7 +1226,7 @@ static void handle_vert(Object* ob, BMVert* vert, BMVert** orig_work,
 	short no[3];
 	short vno[3];
 	FractureContainer *fc = ob->fracture_objects;
-	DerivedMesh *dm = ob->derivedFinal;
+	DerivedMesh *dm = ensure_mesh(scene, ob);
 
 	if (*v_tag == NULL)
 		*v_tag = MEM_callocN(sizeof(BMVert *), "v_tag");
@@ -1298,7 +1304,7 @@ static void mesh_separate_loose_partition(Scene *scene, Object *ob, BMesh *bm_wo
 		}
 		/* Select the seed explicitly, in case it has no edges */
 		if (!BM_elem_flag_test(v_seed, BM_ELEM_TAG) && !BM_elem_flag_test(v_seed, BM_ELEM_INTERNAL_TAG)) {
-			handle_vert(ob, v_seed, orig_work, &startco, &startno, &v_tag, &tot, &tag_counter);
+			handle_vert(scene, ob, v_seed, orig_work, &startco, &startno, &v_tag, &tot, &tag_counter);
 		}
 
 		/* Walk from the single vertex, selecting everything connected
@@ -1311,10 +1317,10 @@ static void mesh_separate_loose_partition(Scene *scene, Object *ob, BMesh *bm_wo
 		e = BMW_begin(&walker, v_seed);
 		for (; e; e = BMW_step(&walker)) {
 			if (!BM_elem_flag_test(e->v1, BM_ELEM_TAG) && !BM_elem_flag_test(e->v1, BM_ELEM_INTERNAL_TAG)) {
-				handle_vert(ob, e->v1, orig_work, &startco, &startno, &v_tag, &tot, &tag_counter);
+				handle_vert(scene, ob, e->v1, orig_work, &startco, &startno, &v_tag, &tot, &tag_counter);
 			}
 			if (!BM_elem_flag_test(e->v2, BM_ELEM_TAG) && !BM_elem_flag_test(e->v2, BM_ELEM_INTERNAL_TAG)) {
-				handle_vert(ob, e->v2, orig_work, &startco, &startno, &v_tag, &tot, &tag_counter);
+				handle_vert(scene, ob, e->v2, orig_work, &startco, &startno, &v_tag, &tot, &tag_counter);
 			}
 		}
 		BMW_end(&walker);
@@ -1413,7 +1419,7 @@ static void mesh_separate_loose(Scene *scene, Object *ob)
 	BMesh *bm_work;
 	BMVert *vert, **orig_start;
 	BMIter iter;
-	DerivedMesh *dm = ob->derivedFinal;
+	DerivedMesh *dm = ensure_mesh(scene, ob);
 
 	bm_work = DM_to_bmesh(dm, true);
 	BM_mesh_elem_hflag_disable_all(bm_work, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, false);
@@ -2568,7 +2574,7 @@ static void add_fracture_state(Scene* scene, Object *ob)
 {
 	FractureContainer *fc = ob->fracture_objects;
 	FractureState *fs = MEM_callocN(sizeof(FractureState), "add_fracture_state");
-	DerivedMesh *dm = ob->derivedFinal; //prehalve this
+	DerivedMesh *dm = ensure_mesh(scene, ob); //prehalve this
 	float frame = BKE_scene_frame_get(scene);
 
 	if (BLI_listbase_is_empty(&fc->states))
@@ -2650,14 +2656,17 @@ static void do_modifier(Scene* scene, Object* ob)
 #endif
 }
 
-static void preprocess_dm(Object *ob)
+static void preprocess_dm(Scene* scene, Object *ob)
 {
+	FractureContainer *fc = ob->fracture_objects;
+
 	/* may have messed up meshes from conversion */
 	if (ob->type == OB_FONT || ob->type == OB_CURVE || ob->type == OB_SURF) {
 		DerivedMesh *result = NULL;
 
+		DerivedMesh *dm = ensure_mesh(scene, ob);
 		/* convert to BMesh, remove doubles, limited dissolve and convert back */
-		BMesh *bm = DM_to_bmesh(ob->derivedFinal, true);
+		BMesh *bm = DM_to_bmesh(dm, true);
 
 		BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 		             "remove_doubles verts=%av dist=%f", BM_VERTS_OF_MESH, 0.0001, false);
@@ -2666,7 +2675,14 @@ static void preprocess_dm(Object *ob)
 		result = CDDM_from_bmesh(bm, true);
 		BM_mesh_free(bm);
 
-		ob->derivedFinal = result; // overwrite this... temporarily...
+		if (fc->raw_mesh)
+		{
+			fc->raw_mesh->needsFree = 1;
+			DM_release(fc->raw_mesh);
+			fc->raw_mesh = NULL;
+		}
+
+		fc->raw_mesh = result;
 	}
 }
 
@@ -3727,7 +3743,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Obj
 	}
 
 
-	if (p->shard_id == -2)
+	if (mode == MOD_FRACTURE_DYNAMIC && p->shard_id == -2)
 	{
 		BKE_shard_free(p, true);
 	}
@@ -4265,7 +4281,6 @@ void BKE_fracture_shard_by_points(Object *obj, ShardID id, FracPointCloud *point
 	FractureContainer *fc = obj->fracture_objects;
 	FractureState *fs = fc->current;
 	FracMesh *fmesh = fs->frac_mesh;
-	DerivedMesh *dm = obj->derivedFinal;
 
 #ifdef USE_DEBUG_TIMER
 	double time_start;
@@ -4942,7 +4957,7 @@ void BKE_fracture_container_create(Scene* scene, Object *ob, int type)
 	//set useful defaults...
 	fc->frac_algorithm = MOD_FRACTURE_BOOLEAN;
 	fc->point_source = MOD_FRACTURE_UNIFORM;
-	fc->shard_count = 10;
+	fc->shard_count = 2;
 	fc->percentage = 100;
 
 	/* XXX needed because of messy particle cache, shows incorrect positions when start/end on frame 1

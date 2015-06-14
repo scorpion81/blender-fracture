@@ -2067,7 +2067,7 @@ static void dag_object_time_update_flags(Main *bmain, Scene *scene, Object *ob)
 	if ((ob->pose) && (ob->pose->flag & POSE_CONSTRAINTS_TIMEDEPEND)) ob->recalc |= OB_RECALC_DATA;
 	
 	// XXX: scene here may not be the scene that contains the rigidbody world affecting this!
-	if (ob->rigidbody_object && BKE_scene_check_rigidbody_active(scene))
+	if (ob->fracture_objects && BKE_scene_check_rigidbody_active(scene))
 		ob->recalc |= OB_RECALC_OB;
 	
 	{

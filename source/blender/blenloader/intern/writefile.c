@@ -1520,7 +1520,7 @@ static void write_meshIsland(WriteData* wd, MeshIsland* mi)
 	writedata(wd, DATA, sizeof(float) * 3 * mi->vertex_count, mi->vertcos);
 	writedata(wd, DATA, sizeof(short) * 3 * mi->vertex_count, mi->vertnos);
 
-	writestruct(wd, DATA, "RigidBodyOb", 1, mi->rigidbody);
+	writestruct(wd, DATA, "RigidBodyShardOb", 1, mi->rigidbody);
 	writestruct(wd, DATA, "BoundBox", 1, mi->bb);
 	writedata(wd, DATA, sizeof(int) * mi->vertex_count, mi->vertex_indices);
 }

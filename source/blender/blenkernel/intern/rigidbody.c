@@ -825,7 +825,7 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 		copy_v3_v3(loc, rbo->pos);
 		copy_v4_v4(rot, rbo->orn);
 		
-		rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot, flag_as_kinematic);
+		rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot, flag_as_kinematic, ob);
 
 		RB_body_set_friction(rbo->physics_object, rb->friction);
 		RB_body_set_restitution(rbo->physics_object, rb->restitution);
@@ -1331,7 +1331,7 @@ RigidBodyWorld *BKE_rigidbody_create_world(Scene *scene)
 	rbw = MEM_callocN(sizeof(RigidBodyWorld), "RigidBodyWorld");
 
 	/* set default settings */
-	//rbw->effector_weights = BKE_add_effector_weights(NULL);
+	rbw->effector_weights = BKE_add_effector_weights(NULL);
 
 	rbw->ltime = PSFRA;
 
@@ -1393,7 +1393,7 @@ RigidBodyShardOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIslan
 
 	/* since we are always member of an object, dupe its settings,
 	 * create new settings data, and link it up */
-	rbo = MEM_callocN(sizeof(RigidBodyShardOb*), "RigidBodyShardOb create");
+	rbo = MEM_callocN(sizeof(RigidBodyShardOb), "RigidBodyShardOb create");
 	rbo->type = mi->ground_weight > 0.5f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
 
 	/* set initial transform */
@@ -1489,7 +1489,7 @@ RigidBodyOb *BKE_rigidbody_create_object(Scene *scene, Object *ob, short type)
 #endif
 
 	/* flag cache as outdated */
-	BKE_rigidbody_cache_reset(rbw);
+	//BKE_rigidbody_cache_reset(rbw);
 
 	/* return this object */
 	return rbo;
@@ -1547,7 +1547,7 @@ RigidBodyCon *BKE_rigidbody_create_constraint(Scene *scene, Object *ob, short ty
 	rbc->motor_ang_target_velocity = 1.0f;
 
 	/* flag cache as outdated */
-	BKE_rigidbody_cache_reset(rbw);
+	//BKE_rigidbody_cache_reset(rbw);
 
 	/* return this object */
 	return rbc;
@@ -2110,10 +2110,12 @@ static void rigidbody_update_simulation_object(Scene *scene, Object* ob, RigidBo
 	}
 
 	if (ob && (ob->type == OB_MESH || ob->type == OB_CURVE || ob->type == OB_SURF || ob->type == OB_FONT)) {
-		do_update_container(scene, ob, rbw, rebuild);
+		if (ob->fracture_objects)
+			do_update_container(scene, ob, rbw, rebuild);
 	}
 
-	do_update_constraint_container(scene, ob, rebuild);
+	if (ob->fracture_constraints)
+		do_update_constraint_container(scene, ob, rebuild);
 
 	//perhaps do this if we only have 1 island, to mimic old behavior ? TODO (move object with it)
 	rbw->flag &= ~RBW_FLAG_REFRESH_MODIFIERS;
@@ -2216,7 +2218,7 @@ static void do_sync_container(Object *ob, RigidBodyWorld *rbw, float ctime)
 /* Sync rigid body and object transformations */
 void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 {
-	if (rbw == NULL)
+	if (rbw == NULL || ob->fracture_objects == NULL)
 		return;
 
 	do_sync_container(ob, rbw, ctime);
@@ -2494,6 +2496,9 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 		Object *ob = go->ob;
 		FractureContainer *fc = ob->fracture_objects;
 		int startframe, endframe;
+
+		if (fc->flag & FM_FLAG_SKIP_STEPPING)
+			continue;
 
 		BKE_ptcache_id_from_rigidbody(&pid, ob, fc);
 		BKE_ptcache_id_time(&pid, scene, ctime, &startframe, &endframe, NULL);

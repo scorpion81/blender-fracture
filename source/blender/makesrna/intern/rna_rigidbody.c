@@ -863,6 +863,11 @@ static void rna_def_rigidbody_constraint_container(BlenderRNA *brna)
 	RNA_def_struct_sdna(srna, "ConstraintContainer");
 	RNA_def_struct_path_func(srna, "rna_ConstraintContainer_path");
 
+	prop = RNA_def_property(srna, "con_settings", PROP_POINTER, PROP_NONE);
+	RNA_def_property_pointer_sdna(prop, NULL, "con_settings");
+	RNA_def_property_struct_type(prop, "RigidBodyConstraint");
+	RNA_def_property_ui_text(prop, "Rigid Body Constraint settings", "Settings for rigidbody constraints");
+
 	prop = RNA_def_property(srna, "breaking_threshold", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "breaking_threshold");
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
@@ -1041,6 +1046,11 @@ static void rna_def_rigidbody_fracture_container(BlenderRNA *brna)
 	RNA_def_struct_sdna(srna, "FractureContainer");
 	RNA_def_struct_path_func(srna, "rna_FractureContainer_path");
 
+	prop = RNA_def_property(srna, "rb_settings", PROP_POINTER, PROP_NONE);
+	RNA_def_property_pointer_sdna(prop, NULL, "rb_settings");
+	RNA_def_property_struct_type(prop, "RigidBodyObject");
+	RNA_def_property_ui_text(prop, "Rigid Body Settings", "Settings for fractured rigid bodies");
+
 	prop = RNA_def_property(srna, "use_experimental", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", FMG_FLAG_USE_EXPERIMENTAL);
 	RNA_def_property_ui_text(prop, "Use Experimental", "Experimental features, work in progress. Use at own risk!");
@@ -1218,10 +1228,10 @@ static void rna_def_rigidbody_fracture_container(BlenderRNA *brna)
 void RNA_def_rigidbody(BlenderRNA *brna)
 {
 	rna_def_rigidbody_world(brna);
-	rna_def_rigidbody_object(brna);
-	rna_def_rigidbody_constraint(brna);
 	rna_def_rigidbody_fracture_container(brna);
 	rna_def_rigidbody_constraint_container(brna);
+	rna_def_rigidbody_object(brna);
+	rna_def_rigidbody_constraint(brna);
 }
 
 

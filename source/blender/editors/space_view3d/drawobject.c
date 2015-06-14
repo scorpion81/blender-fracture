@@ -32,6 +32,7 @@
 #include "DNA_camera_types.h"
 #include "DNA_curve_types.h"
 #include "DNA_constraint_types.h"  /* for drawing constraint */
+#include "DNA_fracture_types.h"
 #include "DNA_lamp_types.h"
 #include "DNA_lattice_types.h"
 #include "DNA_material_types.h"
@@ -7264,7 +7265,7 @@ static void draw_rigidbody_shape(Object *ob)
 	if (bb == NULL)
 		return;
 
-	switch (ob->rigidbody_object->shape) {
+	switch (ob->fracture_objects->rb_settings->shape) {
 		case RB_SHAPE_BOX:
 			BKE_boundbox_calc_size_aabb(bb, size);
 			
@@ -7801,7 +7802,7 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 				setlinestyle(0);
 			}
 		}
-		if (ob->rigidbody_object) {
+		if (ob->fracture_objects) {
 			draw_rigidbody_shape(ob);
 		}
 
@@ -7911,7 +7912,7 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 	/* not for sets, duplicators or picking */
 	if (dflag == 0 && (v3d->flag & V3D_HIDE_HELPLINES) == 0 && !render_override) {
 		ListBase *list;
-		RigidBodyCon *rbc = ob->rigidbody_constraint;
+		ConstraintContainer *cc = ob->fracture_constraints;
 		
 		/* draw hook center and offset line */
 		if (ob != scene->obedit)
@@ -8002,17 +8003,17 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 			BKE_constraints_clear_evalob(cob);
 		}
 		/* draw rigid body constraint lines */
-		if (rbc) {
+		if (cc) {
 			UI_ThemeColor(TH_WIRE);
 			setlinestyle(3);
 			glBegin(GL_LINES);
-			if (rbc->ob1) {
+			if (cc->partner1) {
 				glVertex3fv(ob->obmat[3]);
-				glVertex3fv(rbc->ob1->obmat[3]);
+				glVertex3fv(cc->partner1->obmat[3]);
 			}
-			if (rbc->ob2) {
+			if (cc->partner2) {
 				glVertex3fv(ob->obmat[3]);
-				glVertex3fv(rbc->ob2->obmat[3]);
+				glVertex3fv(cc->partner2->obmat[3]);
 			}
 			glEnd();
 			setlinestyle(0);

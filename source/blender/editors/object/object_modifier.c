@@ -287,8 +287,6 @@ static bool object_modifier_safe_to_delete(Main *bmain, Object *ob,
 static bool object_modifier_remove(Main *bmain, Object *ob, ModifierData *md,
                                    bool *r_sort_depsgraph)
 {
-	/* keep some data from modifier which is necessary for the afterwards cleanup */
-	bool do_rigidbody_cleanup = (md->type == eModifierType_Fracture);
 	Scene *scene = md->scene;
 
 	/* It seems on rapid delete it is possible to
@@ -341,17 +339,6 @@ static bool object_modifier_remove(Main *bmain, Object *ob, ModifierData *md,
 
 	BLI_remlink(&ob->modifiers, md);
 	modifier_free(md);
-
-	if (do_rigidbody_cleanup)
-	{
-		/* need to clean up modifier remainders inside the rigidbody world
-		 * AFTER the modifier is gone...  but only from the operator ?*/
-		if (scene->rigidbody_world)
-		{
-			BKE_rigidbody_rebuild_world(scene, -1);
-		}
-		BKE_scene_frame_set(scene, 1.0);
-	}
 
 	return 1;
 }

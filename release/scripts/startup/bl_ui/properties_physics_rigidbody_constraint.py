@@ -34,13 +34,13 @@ class PHYSICS_PT_rigid_body_constraint(PHYSICS_PT_rigidbody_constraint_panel, Pa
     def poll(cls, context):
         ob = context.object
         rd = context.scene.render
-        return (ob and ob.rigid_body_constraint and (not rd.use_game_engine))
+        return (ob and ob.constraint_container and (not rd.use_game_engine))
 
     def draw(self, context):
         layout = self.layout
 
         ob = context.object
-        rbc = ob.rigid_body_constraint
+        rbc = ob.constraint_container.con_settings
 
         layout.prop(rbc, "type")
 

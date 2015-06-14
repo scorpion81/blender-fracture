@@ -48,20 +48,6 @@ class FRACTURE_UL_fracture_settings(UIList):
             layout.alignment = 'CENTER'
             layout.label(text="", icon_value=icon)
 
-class PHYSICS_PT_fracture_settings(PhysicButtonsPanel, Panel):
-    bl_label = "Fracture Settings"
-
-    def draw(self, context):
-        layout = self.layout
-
-        md = context.fracture
-        ob = context.object
-        layout.prop(md, "fracture_mode")
-
-        row = layout.row()
-        row.template_list("FRACTURE_UL_fracture_settings", "", md, "fracture_settings", md.fracture_settings, "active_index", rows=2)
-        layout.prop(md, "dm_group")
-
 class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
     bl_label = "Fracture"
 
@@ -74,8 +60,8 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
     def draw(self, context):
         layout = self.layout
 
-        md = context.fracture.fracture;
         ob = context.object
+        md = ob.fracture_container
 
         layout.label(text="Presets:")
         sub = layout.row(align=True)
@@ -83,6 +69,7 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         sub.operator("fracture.preset_add", text="", icon='ZOOMIN')
         sub.operator("fracture.preset_add", text="", icon='ZOOMOUT').remove_active = True
 
+        layout.prop(md, "fracture_mode")
         if context.fracture.fracture_mode == 'DYNAMIC':
             layout.prop(md, "dynamic_force")
             layout.prop(md, "limit_impact")
@@ -102,10 +89,7 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
             row.prop(md, "fractal_iterations")
             row = col.row(align=True)
             row.prop(md, "fractal_amount")
-            row.prop(md, "physics_mesh_scale")
         row = layout.row()
-        row.prop(md, "shards_to_islands")
-        row.prop(md, "auto_execute")
         row.prop(md, "use_smooth")
         row = layout.row(align=True)
         row.prop(md, "splinter_axis")
@@ -137,29 +121,13 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
 
         layout.operator("object.fracture_refresh", text="Execute Fracture", icon='MOD_EXPLODE')
 
-class PHYSICS_PT_fracture_constraint_settings(PhysicButtonsPanel, Panel):
-    bl_label = "Fracture Constraint Settings"
-
-    def draw(self, context):
-        layout = self.layout
-
-        md = context.fracture
-        ob = context.object
-
-        row = layout.row()
-        row.template_list("FRACTURE_UL_fracture_settings", "", md, "constraint_settings", md.constraint_settings, "active_index", rows=2)
-
-        col = row.column(align=True)
-        col.operator("object.fracture_constraint_setting_add", icon='ZOOMIN', text="")
-        col.operator("object.fracture_constraint_setting_remove", icon='ZOOMOUT', text="").all = False
-
 class PHYSICS_PT_fracture_constraint(PhysicButtonsPanel, Panel):
     bl_label = "Fracture Constraints"
 
     def draw(self, context):
         layout = self.layout
-        md = context.fracture.constraint
         ob = context.object
+        md = ob.constraint_container.con_settings
 
         layout.label("Constraint Building Settings")
         row = layout.row()
@@ -208,16 +176,16 @@ class PHYSICS_PT_fracture_utilities(PhysicButtonsPanel, Panel):
 
     def draw(self, context):
         layout = self.layout
-        md = context.fracture.fracture
+        ob = context.object
+        md = ob.fracture_container
         layout.prop(md, "autohide_dist")
         row = layout.row()
         row.prop(md, "fix_normals")
         row.prop(md, "nor_range")
-        if not(md.refresh):
-           layout.prop(context.fracture, "execute_threaded")
+        layout.prop(context.fracture, "execute_threaded")
 
-        layout.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")
-        layout.operator("object.rigidbody_convert_to_keyframes", text = "Convert To Keyframed Objects")
+        #layout.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")
+        #layout.operator("object.rigidbody_convert_to_keyframes", text = "Convert To Keyframed Objects")
 
 if __name__ == "__main__":  # only for live edit.
     bpy.utils.register_module(__name__)

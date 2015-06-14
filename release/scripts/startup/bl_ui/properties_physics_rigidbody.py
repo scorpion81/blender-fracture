@@ -33,14 +33,14 @@ class PHYSICS_PT_rigid_body(PHYSICS_PT_rigidbody_panel, Panel):
     @classmethod
     def poll(cls, context):
         obj = context.object
-        return (obj and obj.rigid_body and
+        return (obj and obj.fracture_container and
                 (not context.scene.render.use_game_engine))
 
     def draw(self, context):
         layout = self.layout
 
         ob = context.object
-        rbo = ob.rigid_body
+        rbo = ob.fracture_container.rb_settings
 
         if rbo is not None:
             layout.prop(rbo, "type", text="Type")
@@ -65,14 +65,14 @@ class PHYSICS_PT_rigid_body_collisions(PHYSICS_PT_rigidbody_panel, Panel):
     @classmethod
     def poll(cls, context):
         obj = context.object
-        return (obj and obj.rigid_body and
+        return (obj and obj.fracture_container and
                 (not context.scene.render.use_game_engine))
 
     def draw(self, context):
         layout = self.layout
 
         ob = context.object
-        rbo = ob.rigid_body
+        rbo = ob.fracture_container.rb_settings
 
         layout.prop(rbo, "collision_shape", text="Shape")
 
@@ -109,15 +109,15 @@ class PHYSICS_PT_rigid_body_dynamics(PHYSICS_PT_rigidbody_panel, Panel):
     @classmethod
     def poll(cls, context):
         obj = context.object
-        return (obj and obj.rigid_body and
-                obj.rigid_body.type == 'ACTIVE' and
+        return (obj and obj.fracture_container and
+                obj.fracture_container.rb_settings.type == 'ACTIVE' and
                 (not context.scene.render.use_game_engine))
 
     def draw(self, context):
         layout = self.layout
 
         ob = context.object
-        rbo = ob.rigid_body
+        rbo = ob.fracture_container.rb_settings
 
         #col = layout.column(align=1)
         #col.label(text="Activation:")

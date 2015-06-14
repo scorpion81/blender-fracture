@@ -620,7 +620,7 @@ void RB_world_convex_sweep_test(
 
 /* ............ */
 
-rbRigidBody *RB_body_new(rbCollisionShape *shape, const float loc[3], const float rot[4], bool (*kinematic_callback)(void *user_pointer))
+rbRigidBody *RB_body_new(rbCollisionShape *shape, const float loc[3], const float rot[4], bool (*kinematic_callback)(void *user_pointer), void* user_pointer)
 {
 	rbRigidBody *object = new rbRigidBody;
 	/* current transform */
@@ -634,6 +634,7 @@ rbRigidBody *RB_body_new(rbCollisionShape *shape, const float loc[3], const floa
 	/* make rigidbody */
 	btRigidBody::btRigidBodyConstructionInfo rbInfo(1.0f, motionState, shape->cshape);
 	
+	object->blenderOb = user_pointer;
 	object->body = new MyRigidBody(rbInfo, kinematic_callback, object->blenderOb);
 	
 	object->body->setUserPointer(object);

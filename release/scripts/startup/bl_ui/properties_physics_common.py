@@ -89,19 +89,19 @@ class PHYSICS_PT_add(PhysicButtonsPanel, Panel):
             physics_add(self, col, context.fluid, "Fluid", 'FLUID_SIMULATION', 'MOD_FLUIDSIM', True)
             physics_add(self, col, context.smoke, "Smoke", 'SMOKE', 'MOD_SMOKE', True)
 
-            physics_add_special(self, col, obj.rigid_body, "Rigid Body",
+            physics_add_special(self, col, obj.fracture_container, "Rigid Body",
                                 "rigidbody.object_add",
                                 "rigidbody.object_remove",
                                 'MESH_ICOSPHERE')  # XXX: need dedicated icon
 
         if obj.type == 'CURVE' or obj.type == 'SURFACE' or obj.type == 'FONT': #works with fracture modifier
-            physics_add_special(self, col, obj.rigid_body, "Rigid Body",
+            physics_add_special(self, col, obj.fracture_container, "Rigid Body",
                                 "rigidbody.object_add",
                                 "rigidbody.object_remove",
                                 'MESH_ICOSPHERE')  # XXX: need dedicated icon
 
         # all types of objects can have rigid body constraint
-        physics_add_special(self, col, obj.rigid_body_constraint, "Rigid Body Constraint",
+        physics_add_special(self, col, obj.constraint_container, "Rigid Body Constraint",
                             "rigidbody.constraint_add",
                             "rigidbody.constraint_remove",
                             'CONSTRAINT')  # RB_TODO needs better icon
