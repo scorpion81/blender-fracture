@@ -4901,6 +4901,12 @@ void BKE_fracture_prefracture_mesh(Scene *scene, Object *ob, ShardID id)
 
 	update_islands(ob);
 
+	//here reset all caches
+	BKE_rigidbody_cache_reset(scene->rigidbody_world);
+
+	//sync to be sure
+	fs->frac_mesh->shard_count = BLI_listbase_count(&fs->frac_mesh->shard_map);
+
 #if 0
 	if (ob->type != OB_MESH)
 	{
@@ -4978,7 +4984,7 @@ static void update_islands(Object *ob)
 	MeshIsland *mi;
 
 	//create fast access array
-	count = fs->frac_mesh->shard_count;
+	count = BLI_listbase_count(&fs->island_map);
 	fs->islands = MEM_callocN(sizeof(MeshIsland*) * count, "fs->islands");
 
 	for (mi = fs->island_map.first; mi; mi = mi->next)
@@ -4986,6 +4992,8 @@ static void update_islands(Object *ob)
 		fs->islands[i] = mi;
 		i++;
 	}
+
+	fs->island_count = count;
 }
 
 void BKE_fracture_container_create(Scene* scene, Object *ob, int type)

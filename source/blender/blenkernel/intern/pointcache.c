@@ -1126,7 +1126,7 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 static int ptcache_rigidbody_totpoint(void *rb_v, int UNUSED(cfra))
 {
 	FractureContainer *fc = rb_v;
-	return fc->current->frac_mesh->shard_count;
+	return fc->current->island_count;
 }
 
 static void ptcache_rigidbody_error(void *UNUSED(rb_v), const char *UNUSED(message))

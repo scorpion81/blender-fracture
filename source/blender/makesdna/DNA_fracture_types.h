@@ -168,9 +168,10 @@ typedef struct FractureState {
 	struct DerivedMesh *visual_mesh;
 	ListBase island_map;
 	struct MeshIsland **islands; //for faster access
+	int island_count;
 	int frame;
 	int flag;
-
+	char pad[4];
 } FractureState;
 
 typedef struct ConstraintContainer {
