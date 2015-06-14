@@ -1000,7 +1000,7 @@ static void do_rigidbody(Scene *scene, Object *ob, MeshIsland* mi, short rb_type
 	mi->rigidbody = NULL;
 	mi->rigidbody = BKE_rigidbody_create_shard(scene, ob, mi);
 	mi->rigidbody->type = rb_type;
-	//mi->rigidbody->meshisland_index = i;
+	mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 	BKE_rigidbody_calc_shard_mass(ob, mi);
 }
 
@@ -4957,7 +4957,7 @@ void BKE_fracture_container_create(Scene* scene, Object *ob, int type)
 	//set useful defaults...
 	fc->frac_algorithm = MOD_FRACTURE_BOOLEAN;
 	fc->point_source = MOD_FRACTURE_UNIFORM;
-	fc->shard_count = 2;
+	fc->shard_count = 1;
 	fc->percentage = 100;
 
 	/* XXX needed because of messy particle cache, shows incorrect positions when start/end on frame 1

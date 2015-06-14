@@ -781,8 +781,9 @@ static bool flag_as_kinematic(void *object)
 
 	is_kinematic = (fc->flag & FM_FLAG_SKIP_STEPPING);
 
-	printf("Is Kinematic %d \n", is_kinematic);
-	return is_kinematic;
+	//printf("Is Kinematic %d \n", is_kinematic);
+	//return is_kinematic;
+	return false;
 }
 
 /* Create physics sim representation of shard given RigidBody settings
@@ -2101,7 +2102,6 @@ static void do_update_container(Scene* scene, Object* ob, RigidBodyWorld *rbw, b
  */
 static void rigidbody_update_simulation_object(Scene *scene, Object* ob, RigidBodyWorld *rbw, bool rebuild)
 {
-
 	/* update world but only once !!! TODO*/
 	if (rebuild && rbw->flag & RBW_FLAG_NEEDS_REBUILD) {
 		BKE_rigidbody_validate_sim_world(scene, rbw, true);
@@ -2121,38 +2121,31 @@ static void rigidbody_update_simulation_object(Scene *scene, Object* ob, RigidBo
 	rbw->flag &= ~RBW_FLAG_REFRESH_MODIFIERS;
 }
 
-static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
+static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw, Object *ob)
 {
 	GroupObject *go;
 	RigidBodyShardOb *rbo;
 	MeshIsland *mi;
-	FractureContainer *fc;
-	FractureState *fs;
+	FractureContainer *fc = ob->fracture_objects;
+	FractureState *fs = fc->current;
 
-	for (go = rbw->group->gobject.first; go; go = go->next) {
+	for (mi = fs->island_map.first; mi; mi = mi->next) {
+		rbo = mi->rigidbody;
 
-		Object *ob = go->ob;
-		fc = ob->fracture_objects;
-		fs = fc->current;
+		/* reset kinematic state for transformed objects */
+		if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) {
+			RB_body_set_kinematic_state(rbo->physics_object, rbo->flag & RBO_FLAG_KINEMATIC || rbo->flag & RBO_FLAG_DISABLED);
+			RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
+			/* deactivate passive objects so they don't interfere with deactivation of active objects */
+			if (rbo->type == RBO_TYPE_PASSIVE)
+				RB_body_deactivate(rbo->physics_object);
+		}
 
-		for (mi = fs->island_map.first; mi; mi = mi->next) {
-			rbo = mi->rigidbody;
-
-			/* reset kinematic state for transformed objects */
-			if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) {
-				RB_body_set_kinematic_state(rbo->physics_object, rbo->flag & RBO_FLAG_KINEMATIC || rbo->flag & RBO_FLAG_DISABLED);
-				RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
-				/* deactivate passive objects so they don't interfere with deactivation of active objects */
-				if (rbo->type == RBO_TYPE_PASSIVE)
-					RB_body_deactivate(rbo->physics_object);
-			}
-
-			/* update stored velocities, can be set again after sim rebuild */
-			if (fc->fracture_mode == MOD_FRACTURE_DYNAMIC)
-			{
-				RB_body_get_linear_velocity(rbo->physics_object, rbo->lin_vel);
-				RB_body_get_angular_velocity(rbo->physics_object, rbo->ang_vel);
-			}
+		/* update stored velocities, can be set again after sim rebuild */
+		if (fc->fracture_mode == MOD_FRACTURE_DYNAMIC)
+		{
+			RB_body_get_linear_velocity(rbo->physics_object, rbo->lin_vel);
+			RB_body_get_angular_velocity(rbo->physics_object, rbo->ang_vel);
 		}
 	}
 }
@@ -2195,7 +2188,7 @@ static void do_sync_container(Object *ob, RigidBodyWorld *rbw, float ctime)
 		}
 
 		/* use rigid body transform after cache start frame if objects is not being transformed */
-		if (BKE_rigidbody_check_sim_running(rbw, ob, ctime) && !(ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
+		if (BKE_rigidbody_check_sim_running(rbw, ob, ctime) && (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
 
 			/* keep original transform when the simulation is muted */
 			if (rbw->flag & RBW_FLAG_MUTED) {
@@ -2356,7 +2349,7 @@ void BKE_rigidbody_rebuild_world(Scene *scene, float ctime)
 
 		/* flag cache as outdated if we don't have a world or number of objects in the simulation has changed */
 		//rigidbody_group_count_items(&rbw->group->gobject, &shards, &objects);
-		if (rbw->physics_world == NULL || rbw->numbodies != objects) {
+		if (rbw->physics_world == NULL /*|| rbw->numbodies != objects*/) {
 			cache->flag |= PTCACHE_OUTDATED;
 		}
 
@@ -2398,23 +2391,6 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 
 		if (rbw->ltime == -1)
 			rbw->ltime = startframe;
-
-		//rebuild world here once if.... (cache frames ?)
-		/* flag cache as outdated if we don't have a world or number of objects in the simulation has changed */
-		//rigidbody_group_count_items(&rbw->group->gobject, &shards, &objects);
-		if (rbw->physics_world == NULL /*|| rbw->numbodies != (shards + objects)*/) {
-			cache->flag |= PTCACHE_OUTDATED;
-		}
-
-		if (ctime == startframe + 1 && rbw->ltime == startframe) {
-			if (cache->flag & PTCACHE_OUTDATED) {
-				BKE_ptcache_id_reset(scene, &pid, PTCACHE_RESET_OUTDATED);
-				rigidbody_update_simulation_object(scene, ob, rbw, true); // only the object and the world, please !
-				BKE_ptcache_validate(cache, (int)ctime);
-				cache->last_exact = 0;
-				cache->flag &= ~PTCACHE_REDO_NEEDED;
-			}
-		}
 
 		/*trigger dynamic update*/
 		if ((rbw->flag & RBW_FLAG_OBJECT_CHANGED))
@@ -2504,7 +2480,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 		BKE_ptcache_id_time(&pid, scene, ctime, &startframe, &endframe, NULL);
 		cache = fc->pointcache;
 
-		rigidbody_update_simulation_post_step(rbw);
+		rigidbody_update_simulation_post_step(rbw, ob);
 
 		/* write cache for current frame */
 		BKE_ptcache_validate(cache, (int)ctime);

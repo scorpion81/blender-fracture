@@ -1051,12 +1051,13 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfr
 }
 static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, float cfra, float cfra1, float cfra2, float *old_data)
 {
-	RigidBodyWorld *rbw = rb_v;
-	RigidBodyOb *rbo = NULL;
+	FractureContainer *fc = rb_v;
+	RigidBodyShardOb *rbo = NULL;
+	FractureState* fs = fc->current;
 	ParticleKey keys[4];
 	float dfra;
 	
-	rbo = rbw->cache_index_map[index];
+	rbo = fs->islands[index]->rigidbody;
 	if (rbo == NULL) {
 		return;
 	}

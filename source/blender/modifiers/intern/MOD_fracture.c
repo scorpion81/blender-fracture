@@ -60,7 +60,7 @@ static bool dependsOnNormals(ModifierData *UNUSED(md))
 	return true;
 }
 
-static CustomDataMask requiredDataMask(Object* ob, ModifierData md)
+static CustomDataMask requiredDataMask(Object* ob, ModifierData *UNUSED(md))
 {
 	FractureContainer *fc = ob->fracture_objects;
 	CustomDataMask dataMask = 0;
