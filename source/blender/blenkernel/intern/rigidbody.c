@@ -2188,21 +2188,22 @@ static void do_sync_container(Object *ob, RigidBodyWorld *rbw, float ctime)
 		}
 
 		/* use rigid body transform after cache start frame if objects is not being transformed */
-		if (BKE_rigidbody_check_sim_running(rbw, ob, ctime) && (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
+		if (BKE_rigidbody_check_sim_running(rbw, ob, ctime) && !(ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
 
 			/* keep original transform when the simulation is muted */
 			if (rbw->flag & RBW_FLAG_MUTED) {
 				return;
 			}
+		}
+		else
+		{
 			/* otherwise set rigid body transform to current obmat*/
-			else {
-				mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
-				mat4_to_size(size, ob->obmat);
-				copy_v3_v3(centr, mi->centroid);
-				mul_v3_v3(centr, size);
-				mul_qt_v3(rbo->orn, centr);
-				add_v3_v3(rbo->pos, centr);
-			}
+			mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
+			mat4_to_size(size, ob->obmat);
+			copy_v3_v3(centr, mi->centroid);
+			mul_v3_v3(centr, size);
+			mul_qt_v3(rbo->orn, centr);
+			add_v3_v3(rbo->pos, centr);
 		}
 		BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn);
 	}
