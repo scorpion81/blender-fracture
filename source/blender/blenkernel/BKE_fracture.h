@@ -103,8 +103,8 @@ void BKE_match_vertex_coords(struct MeshIsland* mi, struct MeshIsland *par, stru
 void BKE_mesh_separate_selected(struct BMesh **bm_work, struct BMesh **bm_out, struct BMVert **orig_work, struct BMVert ***orig_out1, struct BMVert ***orig_out2);
 void BKE_select_linked(struct BMesh **bm_in);
 
-void BKE_fracture_prefracture_mesh(struct Scene* scene, struct Object *ob);
-void BKE_dynamic_fracture_mesh(struct Scene* scene, struct Object *ob);
+void BKE_fracture_prefracture_mesh(struct Scene* scene, struct Object *ob, ShardID id);
+void BKE_dynamic_fracture_mesh(struct Scene* scene, struct Object *ob, ShardID id);
 int BKE_initialize_meshisland(struct Object* ob, struct MeshIsland** mii, struct MVert* mverts, int vertstart);
 struct DerivedMesh *BKE_autohide_inner(struct Object* ob);
 void BKE_fracture_constraint_container_free(struct Scene* scene, struct Object *ob);

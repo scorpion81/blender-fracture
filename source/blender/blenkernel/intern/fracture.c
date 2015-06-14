@@ -112,6 +112,8 @@ static void parse_cell_neighbors(cell c, int *neighbors, int totpoly);
 static void do_island_from_shard(Scene *scene, Object *ob, Shard* s, int i, int thresh_defgrp_index, int ground_defgrp_index, int vertstart);
 static void do_island_vertex_index_map(Object *ob, GHash **vertex_index_map);
 static DerivedMesh* ensure_mesh(Scene *scene, Object* ob);
+static void initialize_shard(Scene *scene, Object *ob);
+static void update_islands(Object *ob);
 
 static FracMesh* copy_fracmesh(FracMesh* fm)
 {
@@ -230,19 +232,29 @@ static void free_shards(FracMesh *fm)
 	fm = NULL;
 }
 
-static void free_fracture_state(Scene *scene, FractureState *fs, bool delete_shards)
+static void free_fracture_state(Scene *scene, FractureState *fs, bool delete_all)
 {
 	free_meshislands(scene, &fs->island_map);
-	if (delete_shards)
-	{
-		free_shards(fs->frac_mesh);
+
+	if (fs->islands) {
+		MEM_freeN(fs->islands);
+		fs->islands = NULL;
 	}
 
-	//free dm ?
-	fs->visual_mesh = NULL;
+	if (delete_all)
+	{
+		free_shards(fs->frac_mesh);
+		if (fs->visual_mesh)
+		{
+			fs->visual_mesh->needsFree = 1;
+			DM_release(fs->visual_mesh);
+			fs->visual_mesh = NULL;
+		}
 
-	MEM_freeN(fs);
-	fs = NULL;
+		//do elsewhere FM_TODO
+		//MEM_freeN(fs);
+		//fs = NULL;
+	}
 }
 
 static void free_fracture_container(Scene* scene, FractureContainer *fc)
@@ -4287,7 +4299,7 @@ void BKE_fracture_shard_by_points(Object *obj, ShardID id, FracPointCloud *point
 #endif
 	
 	shard = BKE_shard_by_id(fmesh, id);
-	if (!shard || shard->flag & SHARD_FRACTURED)
+	if (!shard /*|| shard->flag & SHARD_FRACTURED*/)
 		return;
 
 	printf("Fracturing with %d points...\n", pointcloud->totpoints);
@@ -4854,14 +4866,29 @@ static void build_constraints(Scene* scene, Object *ob)
 	BLI_ghash_free(vertex_island_map, NULL, NULL);
 }
 
-void BKE_fracture_prefracture_mesh(Scene *scene, Object *ob)
+void BKE_fracture_prefracture_mesh(Scene *scene, Object *ob, ShardID id)
 {
 	FractureContainer *fc = ob->fracture_objects;
 	FractureState *fs = fc->current;
 
+	//disable hardcoded for now, FM_TODO
+	fc->flag &= ~FMG_FLAG_EXECUTE_THREADED;
+
 	if ((fs->frac_mesh) && fs->frac_mesh->running == 1 && (fc->flag & FMG_FLAG_EXECUTE_THREADED)) {
 		/* skip fracture execution when fracture job is running */
 		return;
+	}
+
+	//first, delete all rigidbody data (?)
+	if (id == 0)
+	{
+		//restore from original mesh....
+		free_fracture_state(scene, fs, true);
+		initialize_shard(scene, ob);
+	}
+	else
+	{
+		free_fracture_state(scene, fs, false);
 	}
 
 //	preprocess_dm(ob);
@@ -4871,6 +4898,8 @@ void BKE_fracture_prefracture_mesh(Scene *scene, Object *ob)
 	do_modifier(scene, ob);
 	do_simulate(scene, ob);
 	//do_clear(ob); wtf....
+
+	update_islands(ob);
 
 #if 0
 	if (ob->type != OB_MESH)
@@ -4894,10 +4923,10 @@ void BKE_fracture_prefracture_mesh(Scene *scene, Object *ob)
 
 }
 
-void BKE_dynamic_fracture_mesh(Scene* scene, Object *ob)
+void BKE_dynamic_fracture_mesh(Scene* scene, Object *ob, ShardID id)
 {
 	add_fracture_state(scene, ob);
-	BKE_fracture_prefracture_mesh(scene, ob);
+	BKE_fracture_prefracture_mesh(scene, ob, id);
 }
 
 void BKE_fracture_constraint_container_create(Scene *scene, Object* ob, int type)
@@ -4922,17 +4951,47 @@ void BKE_fracture_constraint_container_free(Scene*scene, Object *ob)
 	}
 }
 
+static void initialize_shard(Scene *scene, Object *ob)
+{
+	FractureContainer *fc = ob->fracture_objects;
+	FractureState *fs = fc->current;
+	DerivedMesh *dm = ensure_mesh(scene, ob);
+
+	//init fracmesh with entire shard from ob->derivedFinal (ensure it)
+	float mat[4][4]; //wood splinter scaling matrix, here it is unit_m4
+	Shard *s;
+
+	s = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
+	                              dm->getNumVerts(dm), dm->getNumPolys(dm), dm->getNumLoops(dm), true);
+
+	s = BKE_custom_data_to_shard(s, dm);
+	fs->frac_mesh = BKE_create_fracmesh();
+	unit_m4(mat);
+	add_shard(fs->frac_mesh, s, mat);
+}
+
+static void update_islands(Object *ob)
+{
+	FractureContainer *fc = ob->fracture_objects;
+	FractureState *fs = fc->current;
+	int count, i = 0;
+	MeshIsland *mi;
+
+	//create fast access array
+	count = fs->frac_mesh->shard_count;
+	fs->islands = MEM_callocN(sizeof(MeshIsland*) * count, "fs->islands");
+
+	for (mi = fs->island_map.first; mi; mi = mi->next)
+	{
+		fs->islands[i] = mi;
+		i++;
+	}
+}
+
 void BKE_fracture_container_create(Scene* scene, Object *ob, int type)
 {
 	FractureContainer *fc = MEM_callocN(sizeof(FractureContainer) ,"fracture_objects");
 	FractureState *fs = MEM_callocN(sizeof(FractureState), "states.first");
-	int count, i = 0;
-	MeshIsland *mi;
-
-	//init fracmesh with entire shard from ob->derivedFinal (ensure it)
-	float mat[4][4]; //wood splinter scaling matrix, here it is unit_m4
-	DerivedMesh *dm;
-	Shard *s;
 
 	BLI_addtail(&fc->states, fs);
 	fc->current = fs;
@@ -4941,16 +5000,10 @@ void BKE_fracture_container_create(Scene* scene, Object *ob, int type)
 	//init settings object
 	fc->rb_settings = BKE_rigidbody_create_object(scene, ob, type);
 
-	dm = ensure_mesh(scene, ob);
-	s = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
-	                              dm->getNumVerts(dm), dm->getNumPolys(dm), dm->getNumLoops(dm), true);
+	//init first shard
+	//initialize_shard(scene, ob);
 
-	s = BKE_custom_data_to_shard(s, dm);
-	fs->frac_mesh = BKE_create_fracmesh();
-	unit_m4(mat);
-	add_shard(fs->frac_mesh, s, mat);
-
-	//init pointcaches.... TODO...
+	//init pointcaches.... FM_TODO...
 	fc->pointcache = BKE_ptcache_add(&(fc->ptcaches));
 	fc->pointcache->step = 1;
 
@@ -4962,6 +5015,7 @@ void BKE_fracture_container_create(Scene* scene, Object *ob, int type)
 
 	/* XXX needed because of messy particle cache, shows incorrect positions when start/end on frame 1
 	 * default use case is with this flag being enabled, disable at own risk */
+	fc->flag = 0;
 	fc->flag |= FM_FLAG_USE_PARTICLE_BIRTH_COORDS;
 	fc->splinter_length = 1.0f;
 	fc->nor_range = 1.0f;
@@ -4981,17 +5035,9 @@ void BKE_fracture_container_create(Scene* scene, Object *ob, int type)
 	fc->effector_weights = BKE_add_effector_weights(NULL);
 
 	//create meshislands
-	BKE_fracture_prefracture_mesh(scene, ob);
+	BKE_fracture_prefracture_mesh(scene, ob, 0);
 
-	//create fast access array
-	count = fs->frac_mesh->shard_count;
-	fs->islands = MEM_callocN(sizeof(MeshIsland*) * count, "fs->islands");
 
-	for (mi = fs->island_map.first; mi; mi = mi->next)
-	{
-		fs->islands[i] = mi;
-		i++;
-	}
 }
 
 void BKE_fracture_container_free(Scene* scene, Object *ob)
@@ -5144,7 +5190,6 @@ static FractureContainer *copy_fracture_container(FractureContainer *fc)
 	fcN->pointcache->step = 1;
 
 	//more ?
-
 	return fcN;
 }
 
@@ -5153,6 +5198,9 @@ FractureContainer *BKE_fracture_container_copy(Object *ob)
 	if (ob->fracture_objects)
 	{
 		return copy_fracture_container(ob->fracture_objects);
+
+		//FM_TODO for now recreate all, later maybe copy shards and only recreate islands (faster)
+		//have to leave out stuff which needs a scene....
 	}
 
 	return NULL;

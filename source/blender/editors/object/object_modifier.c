@@ -2328,7 +2328,7 @@ static void fracture_startjob(void *customdata, short *stop, short *do_update, f
 	if (fc->fracture_mode == MOD_FRACTURE_PREFRACTURED)
 	{
 		//perhaps copy...
-		BKE_fracture_prefracture_mesh(scene, ob);
+		BKE_fracture_prefracture_mesh(scene, ob, 0);
 	}
 }
 
@@ -2371,7 +2371,7 @@ static int fracture_refresh_exec(bContext *C, wmOperator *UNUSED(op))
 
 		//perhaps trigger modifier eval before, but probably this is updated correctly...
 		//makeDerivedMesh(scene, obact, NULL, CD_MASK_BAREMESH, 0);
-		BKE_fracture_prefracture_mesh(scene, obact);
+		BKE_fracture_prefracture_mesh(scene, obact, 0);
 
 		//do we need this still ? TODO
 		DAG_id_tag_update(&obact->id, OB_RECALC_DATA);

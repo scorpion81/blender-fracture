@@ -445,7 +445,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 		vert = mi->vertices_cached[j];
 		//if (vert == NULL) break;
 		//if (vert->co == NULL) break;
-		//if (rmd->refresh == true) break;
+		//if (fc->flag & FM_FLAG_REFRESH) break;
 
 		copy_v3_v3(startco, mi->vertcos[j]);
 
@@ -1261,7 +1261,7 @@ static void check_fracture(rbContactPoint* cp, Scene* scene)
 			if (force > fc1->dynamic_force) {
 				if(check_shard_size(ob1, linear_index1, cp->contact_pos_world_onA, ob2))
 				{
-					BKE_dynamic_fracture_mesh(scene, ob1);
+					BKE_dynamic_fracture_mesh(scene, ob1, linear_index1);
 					fc1->flag |= FM_FLAG_UPDATE_DYNAMIC;
 				}
 			}
@@ -1275,7 +1275,7 @@ static void check_fracture(rbContactPoint* cp, Scene* scene)
 			if (force > fc2->dynamic_force) {
 				if(check_shard_size(ob2, linear_index2, cp->contact_pos_world_onB, ob1))
 				{
-					BKE_dynamic_fracture_mesh(scene, ob2);
+					BKE_dynamic_fracture_mesh(scene, ob2, linear_index2);
 					fc2->flag |= FM_FLAG_UPDATE_DYNAMIC;
 				}
 			}
@@ -1675,7 +1675,7 @@ static void rigidbody_update_sim_world(Scene *scene, RigidBodyWorld *rbw)
 	/* adjust gravity to take effector weights into account  do this somehow per object*/
 	if (scene->physics_settings.flag & PHYS_GLOBAL_GRAVITY) {
 		copy_v3_v3(adj_gravity, scene->physics_settings.gravity);
-		//mul_v3_fl(adj_gravity, fc->effector_weights->global_gravity * fc->effector_weights->weight[0]);
+		mul_v3_fl(adj_gravity, rbw->effector_weights->global_gravity * rbw->effector_weights->weight[0]);
 	}
 	else {
 		zero_v3(adj_gravity);
@@ -2338,11 +2338,13 @@ void BKE_rigidbody_rebuild_world(Scene *scene, float ctime)
 	{
 		FractureContainer *fc = go->ob->fracture_objects;
 
+#if 0
 		if (ctime == -1)
 		{
 			rigidbody_update_simulation_object(scene, go->ob, rbw, true);
 			continue;
 		}
+#endif
 
 		BKE_ptcache_id_from_rigidbody(&pid, go->ob, fc);
 		BKE_ptcache_id_time(&pid, scene, ctime, &startframe, &endframe, NULL);
@@ -2411,8 +2413,8 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 				rbw->flag |= RBW_FLAG_REFRESH_MODIFIERS;
 				rbw->flag &= ~RBW_FLAG_OBJECT_CHANGED;
 				rigidbody_update_simulation_object(scene, ob, rbw, true);
+				continue;
 			}
-			continue;
 		}
 		/* make sure we don't go out of cache frame range */
 		else if (ctime > endframe) {

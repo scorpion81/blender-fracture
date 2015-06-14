@@ -1000,7 +1000,9 @@ static int ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra)
 	RigidBodyShardOb *rbo = NULL;
 	FractureState* fs = fc->current;
 
-	rbo = fs->islands[index]->rigidbody;
+	if (fs->islands) {
+		rbo = fs->islands[index]->rigidbody;
+	}
 	
 	if (rbo == NULL) {
 		float dummyloc[3] = {FLT_MIN, FLT_MIN, FLT_MIN};
@@ -1031,6 +1033,9 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfr
 	FractureContainer *fc = rb_v;
 	RigidBodyShardOb *rbo = NULL;
 	FractureState* fs = fc->current;
+
+	if (!fs->islands)
+		return;
 
 	rbo = fs->islands[index]->rigidbody;
 	
@@ -1441,7 +1446,7 @@ void BKE_ptcache_ids_from_object(ListBase *lb, Object *ob, Scene *scene, int dup
 	if (scene && ob->fracture_objects) {
 		pid = MEM_callocN(sizeof(PTCacheID), "PTCacheID");
 		BKE_ptcache_id_from_rigidbody(pid, ob, ob->fracture_objects);
-		//maybe add all dynamic caches here ? TODO....
+		//maybe add all dynamic caches here ? FM_TODO....
 		BLI_addtail(lb, pid);
 	}
 
@@ -2997,14 +3002,14 @@ int  BKE_ptcache_object_reset(Scene *scene, Object *ob, int mode)
 		}
 		else
 		{
-			if (ob->rigidbody_object)
-				ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_RESHAPE;
-			BKE_ptcache_id_from_rigidbody(&pid, ob, scene->rigidbody_world);
-			/* only flag as outdated, resetting should happen on start frame */
-			pid.cache->flag |= PTCACHE_OUTDATED;
-		}
-	}
 #endif
+	if (ob->fracture_objects) {
+		ob->fracture_objects->flag |= RBO_FLAG_NEEDS_RESHAPE;
+		BKE_ptcache_id_from_rigidbody(&pid, ob, ob->fracture_objects);
+		/* only flag as outdated, resetting should happen on start frame */
+		pid.cache->flag |= PTCACHE_OUTDATED;
+	}
+
 
 	if (ob->type == OB_ARMATURE)
 		BIK_clear_cache(ob->pose);

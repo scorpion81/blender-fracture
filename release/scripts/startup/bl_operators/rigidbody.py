@@ -54,7 +54,7 @@ class CopyRigidbodySettings(Operator):
     @classmethod
     def poll(cls, context):
         obj = context.object
-        return (obj and obj.rigid_body)
+        return (obj and obj.fracture_container)
 
     def execute(self, context):
         obj_act = context.object
@@ -72,10 +72,10 @@ class CopyRigidbodySettings(Operator):
 
         objects = context.selected_objects
         if objects:
-            rb_from = obj_act.rigid_body
+            rb_from = obj_act.fracture_container.rb_settings
             # copy settings
             for o in objects:
-                rb_to = o.rigid_body
+                rb_to = o.fracture_container.rb_settings
                 if o == obj_act:
                     continue
                 for attr in self._attrs:
@@ -83,7 +83,7 @@ class CopyRigidbodySettings(Operator):
 
         return {'FINISHED'}
 
-
+#FM TODO, either expose this to py or better to in C, faster....
 class BakeToKeyframes(Operator):
     '''Bake rigid body transformations of selected objects to keyframes'''
     bl_idname = "rigidbody.bake_to_keyframes"
@@ -112,15 +112,7 @@ class BakeToKeyframes(Operator):
     @classmethod
     def poll(cls, context):
         obj = context.object
-        return (obj and obj.rigid_body)
-
-    def has_fracture_modifier(self, ob, report=False):
-        for m in ob.modifiers:
-            if m.type == 'FRACTURE':
-               if (report == True):
-                   self.report({'WARNING'}, "Object '%s' has a fracture modifier, use 'Convert to Objects' before 'Bake to Keyframes'" % ob.name)
-               return True
-        return False
+        return (obj and obj.fracture_objects)
 
     def execute(self, context):
         bake = []
@@ -183,11 +175,7 @@ class BakeToKeyframes(Operator):
                 bpy.ops.anim.keyframe_insert(type='BUILTIN_KSI_LocRot', confirm_success=False)
 
             # remove baked objects from simulation, only if no Fracture Modifier is detected (messes up bake possibly)!
-            hasFracture = False
-            for obj in bpy.data.objects:
-                 if (self.has_fracture_modifier(obj)):
-                     hasFracture = True
-                     break
+            hasFracture = False # FM_TODO
 
             if (hasFracture == False):
                 #remove (selected) constraints first
@@ -273,7 +261,7 @@ class ConnectRigidBodies(Operator):
     @classmethod
     def poll(cls, context):
         obj = context.object
-        return (obj and obj.rigid_body)
+        return (obj and obj.fracture_container)
 
     def _add_constraint(self, context, object1, object2):
         if object1 == object2:

@@ -77,14 +77,16 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         sub.operator("fracture.preset_add", text="", icon='ZOOMOUT').remove_active = True
 
         layout.prop(md, "fracture_mode")
-        if context.fracture.fracture_mode == 'DYNAMIC':
+        if md.fracture_mode == 'DYNAMIC':
             layout.prop(md, "dynamic_force")
             layout.prop(md, "limit_impact")
 
         layout.prop(md, "frac_algorithm")
         col = layout.column(align=True)
         col.prop(md, "shard_count")
+        col.prop(md, "cluster_count")
         col.prop(md, "point_seed")
+        layout.prop(md, "cluster_group")
 
         if md.frac_algorithm == 'BOOLEAN' or md.frac_algorithm == 'BISECT_FILL' or md.frac_algorithm == 'BISECT_FAST_FILL':
             layout.prop(md, "inner_material")
@@ -103,8 +105,8 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         layout.prop(md, "splinter_length")
 
         box = layout.box()
-        box.prop(context.fracture, "use_experimental", text="Advanced Fracture Settings", icon=self.icon(context.fracture.use_experimental), emboss = False)
-        if context.fracture.use_experimental:
+        box.prop(md, "use_experimental", text="Advanced Fracture Settings", icon=self.icon(md.use_experimental), emboss = False)
+        if md.use_experimental:
             box.label("Fracture Point Source:")
             col = box.column()
             col.prop(md, "point_source")
@@ -141,7 +143,7 @@ class PHYSICS_PT_fracture_constraint(PhysicButtonsPanel, Panel):
     def draw(self, context):
         layout = self.layout
         ob = context.object
-        md = ob.constraint_container.con_settings
+        md = ob.constraint_container
 
         layout.label("Constraint Building Settings")
         row = layout.row()
@@ -152,8 +154,6 @@ class PHYSICS_PT_fracture_constraint(PhysicButtonsPanel, Panel):
         col.prop(md, "constraint_limit", text="Constraint limit, per MeshIsland")
         col.prop(md, "contact_dist")
 
-        layout.prop(md, "cluster_count")
-        layout.prop(md, "cluster_group")
         layout.prop(md, "cluster_constraint_type")
 
         layout.label("Constraint Breaking Settings")
@@ -203,7 +203,7 @@ class PHYSICS_PT_fracture_utilities(PhysicButtonsPanel, Panel):
         row = layout.row()
         row.prop(md, "fix_normals")
         row.prop(md, "nor_range")
-        layout.prop(context.fracture, "execute_threaded")
+        layout.prop(md, "execute_threaded")
 
         #layout.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")
         #layout.operator("object.rigidbody_convert_to_keyframes", text = "Convert To Keyframed Objects")
