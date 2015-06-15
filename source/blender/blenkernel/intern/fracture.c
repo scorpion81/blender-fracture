@@ -5346,24 +5346,40 @@ DerivedMesh *BKE_fracture_ensure_mesh(Scene* scene, Object* ob)
 	FractureContainer *fc = ob->fracture_objects;
 	DerivedMesh *dm = NULL;
 
-	if (!fc->raw_mesh)
-	{
-		if (fc->rb_settings->mesh_source == RBO_MESH_DEFORM) {
-			fc->flag |= FM_FLAG_REFRESH;
-			dm = mesh_get_derived_deform(scene, ob, mask);
-			fc->flag &= ~FM_FLAG_REFRESH;
-			fc->raw_mesh = CDDM_copy(dm);
-		}
-		else if (fc->rb_settings->mesh_source == RBO_MESH_FINAL) {
-			fc->flag |= FM_FLAG_REFRESH;
-			dm = mesh_get_derived_final(scene, ob, mask);
-			fc->flag &= ~FM_FLAG_REFRESH;
-			fc->raw_mesh = CDDM_copy(dm);
-		}
-		else {
-			fc->raw_mesh = CDDM_from_mesh(ob->data);
-		}
-	}
+	if (fc->rb_settings->mesh_source == RBO_MESH_DEFORM) {
+		fc->flag |= FM_FLAG_REFRESH;
 
-	return fc->raw_mesh;
+		if (ob->derivedDeform)
+		{
+			ob->derivedDeform->needsFree = 1;
+			DM_release(ob->derivedDeform);
+			ob->derivedDeform = NULL;
+		}
+
+		dm = mesh_get_derived_deform(scene, ob, mask);
+
+		fc->flag &= ~FM_FLAG_REFRESH;
+
+		return CDDM_copy(dm);
+	}
+	else if (fc->rb_settings->mesh_source == RBO_MESH_FINAL) {
+
+		fc->flag |= FM_FLAG_REFRESH;
+
+		if (ob->derivedFinal)
+		{
+			ob->derivedFinal->needsFree = 1;
+			DM_release(ob->derivedFinal);
+			ob->derivedFinal = NULL;
+		}
+
+		dm = mesh_get_derived_final(scene, ob, mask);
+
+		fc->flag &= ~FM_FLAG_REFRESH;
+
+		return CDDM_copy(dm);
+	}
+	else {
+		return CDDM_from_mesh(ob->data);
+	}
 }
