@@ -2328,9 +2328,9 @@ void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw)
 		{
 			Object *ob = go->ob;
 			FractureContainer *fc = ob->fracture_objects;
-
-			//go over all pointcaches.... for now only the 1st one
-			fc->pointcache->flag |= PTCACHE_OUTDATED;
+			if (fc)
+				//go over all pointcaches.... for now only the 1st one
+				fc->pointcache->flag |= PTCACHE_OUTDATED;
 		}
 		//restoreKinematic(rbw);
 	}
@@ -2361,6 +2361,9 @@ void BKE_rigidbody_rebuild_world(Scene *scene, float ctime)
 			continue;
 		}
 #endif
+
+		if (!fc)
+			continue;
 
 		BKE_ptcache_id_from_rigidbody(&pid, go->ob, fc);
 		BKE_ptcache_id_time(&pid, scene, ctime, &startframe, &endframe, NULL);

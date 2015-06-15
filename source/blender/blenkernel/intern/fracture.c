@@ -5015,15 +5015,15 @@ void BKE_fracture_container_create(Scene* scene, Object *ob, int type)
 	fc->current = fs;
 	ob->fracture_objects = fc;
 
+	//init pointcaches.... FM_TODO...
+	fc->pointcache = BKE_ptcache_add(&(fc->ptcaches));
+	fc->pointcache->step = 1;
+
 	//init settings object
 	fc->rb_settings = BKE_rigidbody_create_object(scene, ob, type);
 
 	//init first shard
 	//initialize_shard(scene, ob);
-
-	//init pointcaches.... FM_TODO...
-	fc->pointcache = BKE_ptcache_add(&(fc->ptcaches));
-	fc->pointcache->step = 1;
 
 	//set useful defaults...
 	fc->frac_algorithm = MOD_FRACTURE_BOOLEAN;

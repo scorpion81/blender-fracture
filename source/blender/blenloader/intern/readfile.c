@@ -4733,6 +4733,7 @@ static void read_meshIsland(FileData *fd, MeshIsland **address)
 	mi = *address;
 	mi->vertices = NULL;
 	mi->vertices_cached = NULL;
+	mi->vertex_indices = NULL;
 	mi->vertco = newdataadr(fd, mi->vertco);
 	mi->temp = newdataadr(fd, mi->temp);
 	if (mi->temp)
@@ -5027,7 +5028,7 @@ static void load_legacy_fracture_modifier(FileData* fd, FractureModifierData *fm
 			}
 
 			/* ugly ugly, need only the shard... the rest is to be generated on demand... */
-			create_dm(fmd, true);
+			fmd->dm = create_dm(fmd, true);
 
 			if (fm->shard_count == 0) {
 				fmd->shards_to_islands = false;

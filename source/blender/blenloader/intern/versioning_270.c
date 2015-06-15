@@ -52,10 +52,13 @@
 
 #include "DNA_genfile.h"
 
+#include "BKE_fracture.h"
 #include "BKE_main.h"
 #include "BKE_modifier.h"
 #include "BKE_node.h"
+#include "BKE_rigidbody.h"
 #include "BKE_screen.h"
+#include "BKE_scene.h"
 
 #include "BLI_math.h"
 #include "BLI_listbase.h"
@@ -71,8 +74,8 @@
 static void patch_fracture_modifier_struct(FractureModifierData *fmd, Object* ob)
 {
 	ConstraintContainer *cc = ob->fracture_constraints;
-	FractureContainer *fc = ob->fracture_objects; //should exist already...
-	FractureState *fs = fc->states.first;
+	FractureContainer *fc = ob->fracture_objects;
+	FractureState *fs;
 
 	/* fracture values */
 	fc->max_vol = fmd->max_vol;
@@ -799,13 +802,35 @@ void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 	}
 
 	if (!MAIN_VERSION_ATLEAST(main, 275, 0)) {
+		Scene *sce;
 		Object *ob;
-		for (ob = main->object.first; ob != NULL; ob = ob->id.next) {
-			/*initialize older blends to useful values */
-			FractureModifierData *fmd = (FractureModifierData* )modifiers_findByType(ob, eModifierType_Fracture);
-			if (fmd != NULL)
-			{
-				patch_fracture_modifier_struct(fmd, ob);
+		for (ob = main->object.first; ob; ob = ob->id.next)
+		{
+			for (sce = main->scene.first; sce; sce = sce->id.next) {
+				if (BKE_scene_base_find(sce, ob))
+				{
+					/*optionally init FM too */
+					/*initialize older blends to useful values */
+					FractureModifierData *fmd = (FractureModifierData* )modifiers_findByType(ob, eModifierType_Fracture);
+
+					/*initialize new rigidbody system */
+					if (ob->rigidbody_object)
+					{
+						BKE_fracture_container_create(sce, ob, RBO_TYPE_ACTIVE);
+					}
+
+					if (ob->rigidbody_constraint || fmd)
+					{
+						BKE_fracture_constraint_container_create(sce, ob, RBC_TYPE_FIXED);
+						ob->fracture_constraints->partner1 = ob;
+						ob->fracture_constraints->partner1 = ob;
+					}
+
+					if (fmd != NULL)
+					{
+						patch_fracture_modifier_struct(fmd, ob);
+					}
+				}
 			}
 		}
 	}
