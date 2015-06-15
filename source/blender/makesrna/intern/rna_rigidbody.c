@@ -151,6 +151,35 @@ static void rna_RigidBodyWorld_split_impulse_set(PointerRNA *ptr, int value)
 
 
 /* ------------------------------------------ */
+static void rna_RigidBodyOb_kinematic_set(PointerRNA *ptr, int value)
+{
+	RigidBodyOb *rbo = ptr->data;
+	RB_FLAG_SET(rbo->flag, value, RBO_FLAG_KINEMATIC);
+	rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+}
+
+
+static void rna_RigidBodyOb_triggered_set(PointerRNA *ptr, int value)
+{
+	RigidBodyOb *rbo = ptr->data;
+	RB_FLAG_SET(rbo->flag, value, RBO_FLAG_KINEMATIC_REBUILD);
+	rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+}
+
+static void rna_RigidBodyOb_trigger_set(PointerRNA *ptr, int value)
+{
+	RigidBodyOb *rbo = ptr->data;
+	RB_FLAG_SET(rbo->flag, value, RBO_FLAG_IS_TRIGGER);
+	rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+}
+
+static void rna_RigidBodyOb_ghost_set(PointerRNA *ptr, int value)
+{
+	RigidBodyOb *rbo = ptr->data;
+	RB_FLAG_SET(rbo->flag, value, RBO_FLAG_IS_GHOST);
+	rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+}
+
 
 static void rna_FractureContainer_reset(Main *UNUSED(bmain), Scene *scene, PointerRNA *ptr)
 {
@@ -221,19 +250,19 @@ static void rna_FractureContainer_shape_reset(Main *UNUSED(bmain), Scene *scene,
 static char *rna_FractureContainer_path(PointerRNA *UNUSED(ptr))
 {
 	/* NOTE: this hardcoded path should work as long as only Objects have this */
-	return BLI_sprintfN("fracture_objects");
+	return BLI_sprintfN("fracture_container");
 }
 
 static char *rna_ConstraintContainer_path(PointerRNA *UNUSED(ptr))
 {
 	/* NOTE: this hardcoded path should work as long as only Objects have this */
-	return BLI_sprintfN("fracture_constraints");
+	return BLI_sprintfN("constraint_container");
 }
 
 static char *rna_FractureContainer_rb_settings_path(PointerRNA *UNUSED(ptr))
 {
 	/* NOTE: this hardcoded path should work as long as only Objects have this */
-	return BLI_sprintfN("fracture_objects/rb_settings");
+	return BLI_sprintfN("fracture_container.rb_settings");
 }
 
 void set_collision_groups(RigidBodyOb* rbo, const int *values)
@@ -258,7 +287,7 @@ static void rna_RigidBodyOb_collision_groups_set(PointerRNA *ptr, const int *val
 static char *rna_ConstraintContainer_con_settings_path(PointerRNA *UNUSED(ptr))
 {
 	/* NOTE: this hardcoded path should work as long as only Objects have this */
-	return BLI_sprintfN("fracture_constraint/con_settings");
+	return BLI_sprintfN("constraint_container.con_settings");
 }
 
 /* Sweep test, take 1st island only */
@@ -446,6 +475,7 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	
 	prop = RNA_def_property(srna, "kinematic", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_KINEMATIC);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyOb_kinematic_set");
 	RNA_def_property_ui_text(prop, "Kinematic", "Allow rigid body to be controlled by the animation system");
 	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 	
@@ -456,16 +486,19 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "use_kinematic_deactivation", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
+	//RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyOb_triggered_set");
 	RNA_def_property_ui_text(prop, "Kinematic Deactivation", "Allow kinematic state being reset by collisions");
 	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "is_ghost", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_IS_GHOST);
+	//RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyOb_ghost_set");
 	RNA_def_property_ui_text(prop, "Ghost", "Do not collide with object, but can activate other animated objects");
 	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 
 	prop = RNA_def_property(srna, "is_trigger", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_IS_TRIGGER);
+	//RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyOb_trigger_set");
 	RNA_def_property_ui_text(prop, "Trigger", "Can trigger activation of other animated objects, which are set up to be triggered");
 	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 	

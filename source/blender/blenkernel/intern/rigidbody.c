@@ -814,7 +814,7 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 		BKE_rigidbody_validate_sim_shard_shape(mi, ob, true);
 	
 	if (rbo->physics_object) {
-		if (rebuild == false || mi->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD)
+		if (rebuild == false || rb->flag & RBO_FLAG_KINEMATIC_REBUILD)
 			RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
 	}
 	if (!rbo->physics_object || rebuild) {
@@ -849,7 +849,7 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 		                           (ob->protectflag & OB_LOCK_ROTZ) == 0);
 
 		RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
-		RB_body_set_kinematic_state(rbo->physics_object, rbo->flag & RBO_FLAG_KINEMATIC || rbo->flag & RBO_FLAG_DISABLED);
+		RB_body_set_kinematic_state(rbo->physics_object, rbo->flag & RBO_FLAG_KINEMATIC || rb->flag & RBO_FLAG_DISABLED);
 
 		if (transfer_speeds)
 		{
@@ -1111,21 +1111,28 @@ static void do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBo
 {
 	FractureContainer *fc = ob->fracture_objects;
 	FractureContainer *fc2 = ob2->fracture_objects;
+	RigidBodyOb *rbo = fc->rb_settings;
+	RigidBodyOb *rbo2 = fc2->rb_settings;
+
 	bool valid = true;
 	MeshIsland *mi;
 
 	valid = valid && (fc != NULL);
+	valid = valid && (fc2 != NULL);
 
 	//TODO, add flag definitions to container as well, applies for all contained rigidbodies
-	valid = valid && (fc->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
-	valid = valid && (fc2->flag & RBO_FLAG_IS_TRIGGER);
+	valid = valid && (rbo->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
+	valid = valid && (rbo2->flag & RBO_FLAG_IS_TRIGGER);
 
 	if (valid)
 	{
 		for (mi = fc->current->island_map.first; mi; mi = mi->next)
 		{
-			RigidBodyShardOb* rbo = mi->rigidbody; //TODO... those flags are individual !!!!
-			if ((rbo->flag & RBO_FLAG_KINEMATIC) && ((mi_compare == mi)))
+			bool same_cluster = (mi->particle_index != -1) &&
+						                    (mi->particle_index == mi_compare->particle_index);
+
+			RigidBodyShardOb* rbo = mi->rigidbody;
+			if ((rbo->flag & RBO_FLAG_KINEMATIC) && ((mi_compare == mi) || same_cluster))
 			{
 				if (rbo->physics_object) {
 					activateRigidbody(rbo, rbw, mi, ob);
@@ -2125,19 +2132,21 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw, Object *o
 {
 	GroupObject *go;
 	RigidBodyShardOb *rbo;
+	RigidBodyOb *rb;
 	MeshIsland *mi;
 	FractureContainer *fc = ob->fracture_objects;
 	FractureState *fs = fc->current;
+	rb = fc->rb_settings;
 
 	for (mi = fs->island_map.first; mi; mi = mi->next) {
 		rbo = mi->rigidbody;
 
 		/* reset kinematic state for transformed objects */
 		if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) {
-			RB_body_set_kinematic_state(rbo->physics_object, rbo->flag & RBO_FLAG_KINEMATIC || rbo->flag & RBO_FLAG_DISABLED);
+			RB_body_set_kinematic_state(rbo->physics_object, rb->flag & RBO_FLAG_KINEMATIC || rb->flag & RBO_FLAG_DISABLED);
 			RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
 			/* deactivate passive objects so they don't interfere with deactivation of active objects */
-			if (rbo->type == RBO_TYPE_PASSIVE)
+			if (rb->type == RBO_TYPE_PASSIVE)
 				RB_body_deactivate(rbo->physics_object);
 		}
 
@@ -2271,38 +2280,35 @@ void BKE_rigidbody_aftertrans_update(Object *ob, float loc[3], float rot[3], flo
 	}
 }
 
-#if 0
-static void restoreKinematic(RigidBodyWorld *rbw)
+static void restoreKinematic(Object *ob)
 {
-	GroupObject *go;
-
-	/*restore kinematic state of shards if object is kinematic, need to store old state in container now....TODO */
-	for (go = rbw->group->gobject.first; go; go = go->next)	{
-		if ((go->ob) && (go->ob->rigidbody_object) && (go->ob->rigidbody_object->flag & (RBO_FLAG_KINEMATIC | RBO_FLAG_USE_KINEMATIC_DEACTIVATION)))
+	/*restore kinematic state of shards if object is kinematic, need to store old state in container now....FM_TODO */
+	FractureContainer* fc = ob->fracture_objects;
+	if (fc) {
+		RigidBodyOb *rb = fc->rb_settings;
+		MeshIsland* mi;
+		for (mi = fc->current->island_map.first; mi; mi = mi->next)
 		{
-			FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(go->ob, eModifierType_Fracture);
-			if (fmd && go->ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC)
+			RigidBodyShardOb *rbo = mi->rigidbody;
+			if (rbo)
 			{
-				MeshIsland* mi;
-				for (mi = fmd->fracture->meshIslands.first; mi; mi = mi->next)
+				if ((rb->flag & RBO_FLAG_KINEMATIC) != (rbo->flag & RBO_FLAG_KINEMATIC))
 				{
-					if (mi->rigidbody)
+					if (rb->flag & RBO_FLAG_KINEMATIC)
 					{
-						mi->rigidbody->flag |= RBO_FLAG_KINEMATIC;
-						mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+						rbo->flag |= RBO_FLAG_KINEMATIC;
 					}
+					else
+					{
+						rbo->flag &= ~RBO_FLAG_KINEMATIC;
+					}
+
+					rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 				}
-			}
-			else if (go->ob->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
-			{	/* restore regular triggered objects back to kinematic at all, they very likely were kinematic before...
-				 * user has to disable triggered if behavior is not desired */
-				go->ob->rigidbody_object->flag |= RBO_FLAG_KINEMATIC;
-				go->ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_VALIDATE;
 			}
 		}
 	}
 }
-#endif
 
 void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw)
 {
@@ -2439,13 +2445,12 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 			fc->flag |= FM_FLAG_SKIP_STEPPING;
 			continue;
 		}
-#if 0
-		else if (rbw->ltime == startframe)
+		else if (rbw->ltime == startframe || fc->rb_settings->flag & RBO_FLAG_NEEDS_VALIDATE)
 		{
-			restoreKinematic(ob, rbw);
-			rigidbody_update_simulation(ob, rbw, true);
+			restoreKinematic(ob);
+			rigidbody_update_simulation_object(scene, ob, rbw, true);
+			fc->rb_settings->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
 		}
-#endif
 
 		/* advance simulation, we can only step one frame forward */
 		if ((ctime == rbw->ltime + 1) && !(cache->flag & PTCACHE_BAKED)) {
