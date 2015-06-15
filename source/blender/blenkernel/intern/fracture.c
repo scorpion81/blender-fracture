@@ -115,33 +115,40 @@ static DerivedMesh* ensure_mesh(Scene *scene, Object* ob);
 static void initialize_shard(Scene *scene, Object *ob);
 static void update_islands(Object *ob);
 
+static void copy_shard(Shard *t, Shard *s)
+{
+	t->mvert = MEM_mallocN(sizeof(MVert) * t->totvert, "shard vertices");
+	t->mpoly = MEM_mallocN(sizeof(MPoly) * t->totpoly, "shard polys");
+	t->mloop = MEM_mallocN(sizeof(MLoop) * t->totloop, "shard loops");
+	memcpy(t->mvert,s->mvert, sizeof(MVert) * t->totvert);
+	memcpy(t->mpoly,s->mpoly, sizeof(MPoly) * t->totpoly);
+	memcpy(t->mloop,s->mloop, sizeof(MLoop) * t->totloop);
+
+	CustomData_reset(&t->vertData);
+	CustomData_reset(&t->loopData);
+	CustomData_reset(&t->polyData);
+
+	CustomData_add_layer(&t->vertData, CD_MDEFORMVERT, CD_DUPLICATE,
+	                     CustomData_get_layer(&s->vertData, CD_MDEFORMVERT), s->totvert);
+	CustomData_add_layer(&t->loopData, CD_MLOOPUV, CD_DUPLICATE,
+	                     CustomData_get_layer(&s->loopData, CD_MLOOPUV), s->totloop);
+	CustomData_add_layer(&t->polyData, CD_MTEXPOLY, CD_DUPLICATE,
+	                     CustomData_get_layer(&s->polyData, CD_MTEXPOLY), s->totpoly);
+}
+
 static FracMesh* copy_fracmesh(FracMesh* fm)
 {
 	FracMesh *fmesh;
 	Shard* s, *t;
-	int i = 0;
 
 	fmesh = MEM_mallocN(sizeof(FracMesh), __func__);
-	//BLI_duplicatelist(&fmesh->shard_map, &fm->shard_map);
-	fmesh->shard_map.first = NULL;
-	fmesh->shard_map.last = NULL;
+	BLI_duplicatelist(&fmesh->shard_map, &fm->shard_map);
 
-	for (s = fm->shard_map.first; s; s = s->next)
+	s = fm->shard_map.first;
+	for (t = fmesh->shard_map.first; t; t = t->next)
 	{
-		t = BKE_create_fracture_shard(s->mvert, s->mpoly, s->mloop, s->totvert, s->totpoly, s->totloop, true);
-		t->parent_id = s->parent_id;
-		t->shard_id = s->shard_id;
-
-		CustomData_reset(&t->vertData);
-		CustomData_reset(&t->loopData);
-		CustomData_reset(&t->polyData);
-
-		CustomData_add_layer(&t->vertData, CD_MDEFORMVERT, CD_DUPLICATE, CustomData_get_layer(&s->vertData, CD_MDEFORMVERT), s->totvert);
-		CustomData_add_layer(&t->loopData, CD_MLOOPUV, CD_DUPLICATE, CustomData_get_layer(&s->loopData, CD_MLOOPUV), s->totloop);
-		CustomData_add_layer(&t->polyData, CD_MTEXPOLY, CD_DUPLICATE, CustomData_get_layer(&s->polyData, CD_MTEXPOLY), s->totpoly);
-
-		BLI_addtail(&fmesh->shard_map, t);
-		i++;
+		copy_shard(t, s);
+		s = s->next;
 	}
 
 	fmesh->shard_count = fm->shard_count;
@@ -5190,7 +5197,7 @@ static ConstraintContainer *copy_constraint_container(ConstraintContainer *cc)
 	return ccN;
 }
 
-static void copy_mesh_island(Scene *scene, Object *ob, MeshIsland *miN, MeshIsland *mi)
+static void copy_mesh_island(Scene *scene, Object *ob, MeshIsland *miN, MeshIsland *mi, float centroid[3])
 {
 	miN->vertcos = NULL;
 	miN->vertnos = NULL;
@@ -5200,6 +5207,9 @@ static void copy_mesh_island(Scene *scene, Object *ob, MeshIsland *miN, MeshIsla
 	miN->bb = MEM_dupallocN(mi->bb);
 	miN->physics_mesh = CDDM_copy(mi->physics_mesh);
 	miN->participating_constraints = MEM_dupallocN(miN->participating_constraints);
+
+	//this has been recalculated in the shards, need to update this here too FM_TODO
+	copy_v3_v3(mi->centroid, centroid);
 
 	miN->rigidbody = NULL;
 	miN->rigidbody = BKE_rigidbody_create_shard(scene, ob, miN);
@@ -5211,7 +5221,8 @@ static void copy_fracture_state(FractureState *fsN, FractureState *fs, Object *o
 {
 	MeshIsland *mi, *miN;
 	MVert *mvert;
-	int vertstart = 0, i = 0;
+	int vertstart = 0;
+	Shard *s;
 
 	//copy shards, meshislands.... and stuff TODO or just nullify! no, need a copy !!!
 	fsN->frac_mesh = copy_fracmesh(fs->frac_mesh);
@@ -5220,11 +5231,14 @@ static void copy_fracture_state(FractureState *fsN, FractureState *fs, Object *o
 	BLI_duplicatelist(&fsN->island_map, &fs->island_map);
 	mi = fs->island_map.first;
 
+	s = fsN->frac_mesh->shard_map.first;
+
 	for (miN = fsN->island_map.first; miN; miN = miN->next)
 	{
-		copy_mesh_island(scene, obN, miN, mi);
+		copy_mesh_island(scene, obN, miN, mi, s->centroid);
 		vertstart += BKE_initialize_meshisland(obN, &miN, mvert, vertstart);
 		mi = mi->next;
+		s = s->next;
 	}
 
 	fsN->islands = MEM_dupallocN(fs->islands);
@@ -5238,6 +5252,8 @@ static FractureContainer *copy_fracture_container(Object* ob, Object *obN, Scene
 	FractureState *fsN, *fs;
 
 	obN->fracture_objects = fcN;
+	fcN->raw_mesh = NULL;
+
 	BLI_duplicatelist(&fcN->states, &fc->states);
 
 	fs = fc->states.first;
@@ -5248,7 +5264,7 @@ static FractureContainer *copy_fracture_container(Object* ob, Object *obN, Scene
 	}
 
 	fcN->rb_settings = MEM_dupallocN(fc->rb_settings);
-	fcN->rb_settings->flag |= (RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_KINEMATIC_REBUILD);
+	fcN->rb_settings->flag |= (RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_KINEMATIC_REBUILD | RBO_FLAG_NEEDS_RESHAPE);
 	fc->rb_settings->flag |= (RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_KINEMATIC_REBUILD);
 
 	fcN->pointcache = BKE_ptcache_copy_list(&fcN->ptcaches, &fc->ptcaches, false);
