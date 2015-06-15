@@ -142,13 +142,14 @@ static FracMesh* copy_fracmesh(FracMesh* fm)
 	Shard* s, *t;
 
 	fmesh = MEM_mallocN(sizeof(FracMesh), __func__);
-	BLI_duplicatelist(&fmesh->shard_map, &fm->shard_map);
+	fmesh->shard_map.first = NULL;
+	fmesh->shard_map.last = NULL;
 
-	s = fm->shard_map.first;
-	for (t = fmesh->shard_map.first; t; t = t->next)
+	for (s = fm->shard_map.first; s; s = s->next)
 	{
+		t = MEM_callocN(sizeof(Shard), "copy_fracmesh");
 		copy_shard(t, s);
-		s = s->next;
+		BLI_addtail(&fmesh->shard_map, t);
 	}
 
 	fmesh->shard_count = fm->shard_count;
@@ -5197,55 +5198,65 @@ static ConstraintContainer *copy_constraint_container(ConstraintContainer *cc)
 	return ccN;
 }
 
-static void copy_mesh_island(Scene *scene, Object *ob, MeshIsland *miN, MeshIsland *mi, float centroid[3])
+static void copy_mesh_island(Scene *scene, Object *ob, MeshIsland *miN, MeshIsland *mi)
 {
 	miN->vertcos = NULL;
 	miN->vertnos = NULL;
 	miN->vertex_indices = NULL;
 	miN->vertices_cached = NULL;
+	miN->vertex_count = mi->vertex_count;
 
 	miN->bb = MEM_dupallocN(mi->bb);
 	miN->physics_mesh = CDDM_copy(mi->physics_mesh);
-	miN->participating_constraints = MEM_dupallocN(miN->participating_constraints);
+	miN->participating_constraints = MEM_dupallocN(mi->participating_constraints);
+	miN->participating_constraint_count = mi->participating_constraint_count;
+	miN->linear_index = mi->linear_index;
+	miN->thresh_weight = mi->thresh_weight;
+	copy_v3_v3(miN->centroid, mi->centroid);
+	miN->id = mi->id;
+	miN->partner_index = mi->partner_index;
+	miN->ground_weight = mi->ground_weight;
+	miN->particle_index = mi->particle_index;
 
 	//this has been recalculated in the shards, need to update this here too FM_TODO
-	copy_v3_v3(mi->centroid, centroid);
+	//copy_v3_v3(mi->centroid, centroid);
 
 	miN->rigidbody = NULL;
 	miN->rigidbody = BKE_rigidbody_create_shard(scene, ob, miN);
 	miN->rigidbody->type = mi->rigidbody->type;
 	miN->rigidbody->flag = mi->rigidbody->flag;
+	miN->rigidbody->mass = mi->rigidbody->mass;
 }
 
 static void copy_fracture_state(FractureState *fsN, FractureState *fs, Object *obN, Scene *scene)
 {
 	MeshIsland *mi, *miN;
 	MVert *mvert;
-	int vertstart = 0;
+	int vertstart = 0, i = 0;
 	Shard *s;
 
 	//copy shards, meshislands.... and stuff TODO or just nullify! no, need a copy !!!
 	fsN->frac_mesh = copy_fracmesh(fs->frac_mesh);
+	fsN->visual_mesh = NULL;
 	mvert = BKE_copy_visual_mesh(obN, fsN);
 
-	BLI_duplicatelist(&fsN->island_map, &fs->island_map);
-	mi = fs->island_map.first;
+	//s = fsN->frac_mesh->shard_map.first;
+	fsN->islands = MEM_callocN(sizeof(MeshIsland*) * fs->island_count, "fsN->islands");
+	fsN->island_count = fs->island_count;
 
-	s = fsN->frac_mesh->shard_map.first;
-
-	for (miN = fsN->island_map.first; miN; miN = miN->next)
+	for (mi = fs->island_map.first; mi; mi = mi->next)
 	{
-		copy_mesh_island(scene, obN, miN, mi, s->centroid);
+		miN = MEM_callocN(sizeof(MeshIsland), "copy_fracture_state, mi");
+		copy_mesh_island(scene, obN, miN, mi /*s->centroid*/);
 		vertstart += BKE_initialize_meshisland(obN, &miN, mvert, vertstart);
-		mi = mi->next;
-		s = s->next;
+		BLI_addtail(&fsN->island_map, miN);
+		fsN->islands[i] = miN;
+		i++;
 	}
-
-	fsN->islands = MEM_dupallocN(fs->islands);
 }
 
 
-static FractureContainer *copy_fracture_container(Object* ob, Object *obN, Scene *scene)
+static void copy_fracture_container(Object* ob, Object *obN, Scene *scene)
 {
 	FractureContainer *fc = ob->fracture_objects;
 	FractureContainer *fcN = MEM_dupallocN(fc);
@@ -5253,27 +5264,27 @@ static FractureContainer *copy_fracture_container(Object* ob, Object *obN, Scene
 
 	obN->fracture_objects = fcN;
 	fcN->raw_mesh = NULL;
+	fcN->states.first = NULL;
+	fcN->states.last = NULL;
 
-	BLI_duplicatelist(&fcN->states, &fc->states);
-
-	fs = fc->states.first;
-	for (fsN = fcN->states.first; fsN; fsN = fsN->next)
+	//fs = fc->states.first;
+	for (fs = fc->states.first; fs; fs = fs->next)
 	{
+		fsN = MEM_callocN(sizeof(FractureState), "fsN");
 		copy_fracture_state(fsN, fs, obN, scene);
-		fs = fs->next;
+		BLI_addtail(&fcN->states, fsN);
 	}
 
+	fcN->current = fcN->states.first;
+
 	fcN->rb_settings = MEM_dupallocN(fc->rb_settings);
-	fcN->rb_settings->flag |= (RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_KINEMATIC_REBUILD | RBO_FLAG_NEEDS_RESHAPE);
-	fc->rb_settings->flag |= (RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_KINEMATIC_REBUILD);
+	fcN->rb_settings->flag |= (RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
 
 	fcN->pointcache = BKE_ptcache_copy_list(&fcN->ptcaches, &fc->ptcaches, false);
 	fcN->effector_weights = MEM_dupallocN(fc->effector_weights);
 	make_face_pairs(obN);
 
 	BKE_rigidbody_cache_reset(scene->rigidbody_world);
-
-	return fcN;
 }
 
 void BKE_fracture_container_copy(Main *bmain, Object *ob, Object *obN)
@@ -5306,22 +5317,22 @@ ConstraintContainer *BKE_fracture_constraint_container_copy(Object *ob)
 static DerivedMesh *ensure_mesh(Scene* scene, Object *ob)
 {
 	CustomDataMask mask = CD_MASK_BAREMESH;
-
 	FractureContainer *fc = ob->fracture_objects;
+	DerivedMesh *dm = NULL;
 
 	if (!fc->raw_mesh)
 	{
 		if (fc->rb_settings->mesh_source == RBO_MESH_DEFORM) {
 			fc->flag |= FM_FLAG_REFRESH;
-			mesh_get_derived_deform(scene, ob, mask);
+			dm = mesh_get_derived_deform(scene, ob, mask);
 			fc->flag &= ~FM_FLAG_REFRESH;
-			fc->raw_mesh = CDDM_copy(ob->derivedDeform);
+			fc->raw_mesh = CDDM_copy(dm);
 		}
 		else if (fc->rb_settings->mesh_source == RBO_MESH_FINAL) {
 			fc->flag |= FM_FLAG_REFRESH;
-			mesh_get_derived_final(scene, ob, mask);
+			dm = mesh_get_derived_final(scene, ob, mask);
 			fc->flag &= ~FM_FLAG_REFRESH;
-			fc->raw_mesh = CDDM_copy(ob->derivedFinal);
+			fc->raw_mesh = CDDM_copy(dm);
 		}
 		else {
 			fc->raw_mesh = CDDM_from_mesh(ob->data);

@@ -68,7 +68,7 @@ static CustomDataMask requiredDataMask(Object* ob, ModifierData *UNUSED(md))
 	{
 		/* indicate modifier evaluation stop, yuck, just because we need an object ref here,
 		 * we have to workaround by returning an old unused CustomdataMask */
-		dataMask |= CD_MASK_MSTICKY;
+		dataMask = 0;//|= CD_MASK_MSTICKY;
 	}
 
 	return dataMask;

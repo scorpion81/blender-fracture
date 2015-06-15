@@ -1808,26 +1808,29 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 
 static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int rebuild, int transfer_speed)
 {
+	FractureContainer *fc = ob->fracture_objects;
+	RigidBodyOb *rb = fc->rb_settings;
+
 	if (mi == NULL || mi->rigidbody == NULL) {
 		return;
 	}
 
-	if (rebuild || (mi->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD)) {
+	if (rebuild || (rb->flag & RBO_FLAG_KINEMATIC_REBUILD)) {
 		/* World has been rebuilt so rebuild object */
 		BKE_rigidbody_validate_sim_shard(rbw, mi, ob, true, transfer_speed);
 	}
-	else if (mi->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE) {
+	else if (rb->flag & RBO_FLAG_NEEDS_VALIDATE) {
 		BKE_rigidbody_validate_sim_shard(rbw, mi, ob, false, transfer_speed);
 	}
 	/* refresh shape... */
-	if (mi->rigidbody->flag & RBO_FLAG_NEEDS_RESHAPE) {
+	if (rb->flag & RBO_FLAG_NEEDS_RESHAPE) {
 		/* mesh/shape data changed, so force shape refresh */
 		BKE_rigidbody_validate_sim_shard_shape(mi, ob, true);
 		/* now tell RB sim about it */
 		// XXX: we assume that this can only get applied for active/passive shapes that will be included as rigidbodies
 		RB_body_set_collision_shape(mi->rigidbody->physics_object, mi->rigidbody->physics_shape);
 	}
-	mi->rigidbody->flag &= ~(RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
+	rb->flag &= ~(RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
 }
 
 static void handle_breaking_percentage(Object *ob, MeshIsland *mi, RigidBodyWorld *rbw, int breaking_percentage)
