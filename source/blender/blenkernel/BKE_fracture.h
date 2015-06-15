@@ -42,6 +42,8 @@ struct DerivedMesh;
 struct Object;
 struct Group;
 struct MeshIsland;
+struct Main;
+struct FractureState;
 
 struct BoundBox;
 struct MVert;
@@ -115,6 +117,7 @@ void BKE_fracture_container_create(struct Scene *scene, struct Object *ob, int t
 void BKE_lookup_mesh_state(struct Object* ob, int frame);
 
 struct ConstraintContainer *BKE_fracture_constraint_container_copy(struct Object *ob);
-struct FractureContainer *BKE_fracture_container_copy(struct Object *ob);
+void BKE_fracture_container_copy(struct Main *bmain, struct Object *ob, struct Object *obN);
+struct MVert* BKE_copy_visual_mesh(struct Object* ob, struct FractureState *fs);
 
 #endif /* BKE_FRACTURE_H */

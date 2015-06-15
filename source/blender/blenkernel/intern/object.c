@@ -1532,13 +1532,14 @@ Object *BKE_object_copy_ex(Main *bmain, Object *ob, bool copy_caches)
 	}
 	obn->soft = copy_softbody(ob->soft, copy_caches);
 	obn->bsoft = copy_bulletsoftbody(ob->bsoft);
-	obn->fracture_objects = BKE_fracture_container_copy(ob);
-	obn->fracture_constraints = BKE_fracture_constraint_container_copy(ob);
 
 	BKE_object_copy_particlesystems(obn, ob);
 	
 	obn->derivedDeform = NULL;
 	obn->derivedFinal = NULL;
+
+	BKE_fracture_container_copy(bmain, ob, obn);
+	obn->fracture_constraints = BKE_fracture_constraint_container_copy(ob);
 
 	BLI_listbase_clear(&obn->gpulamp);
 	BLI_listbase_clear(&obn->pc_ids);

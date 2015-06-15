@@ -1944,6 +1944,8 @@ static void make_face_pairs(Object *ob)
 	KDTree *tree = BLI_kdtree_new(totpoly);
 	int i = 0;
 
+	fc->face_pairs = BLI_ghash_int_new("face_pairs");
+
 	//printf("Make Face Pairs\n");
 
 	for (i = 0, mp = mpoly; i < totpoly; mp++, i++) {
@@ -2245,13 +2247,15 @@ static void set_rigidbody_type(Object *ob, Shard *s, MeshIsland *mi)
 
 static void do_island_from_shard(Scene *scene, Object *ob, Shard* s, int i, int thresh_defgrp_index, int ground_defgrp_index, int vertstart)
 {
+	FractureContainer *fc = ob->fracture_objects;
+	RigidBodyOb *rb = fc->rb_settings;
+	FractureState *fs = fc->current;
+
 	MeshIsland *mi;
 	MeshIsland *par = NULL;
 //	bool is_parent = false;
-	short rb_type = RBO_TYPE_ACTIVE;
+	short rb_type = rb->type;
 	float dummyloc[3], rot[4];
-	FractureContainer *fc = ob->fracture_objects;
-	FractureState *fs = fc->current;
 
 	if (s->totvert == 0) {
 		return;
@@ -2481,8 +2485,6 @@ static void do_refresh_autohide(Object *ob)
 		BLI_ghash_free(fc->face_pairs, NULL, NULL);
 		fc->face_pairs = NULL;
 	}
-
-	fc->face_pairs = BLI_ghash_int_new("face_pairs");
 
 	if (fc->current->visual_mesh)
 	{
@@ -5044,8 +5046,6 @@ void BKE_fracture_container_create(Scene* scene, Object *ob, int type)
 
 	//create meshislands
 	BKE_fracture_prefracture_mesh(scene, ob, 0);
-
-
 }
 
 void BKE_fracture_container_free(Scene* scene, Object *ob)
@@ -5057,6 +5057,17 @@ void BKE_fracture_container_free(Scene* scene, Object *ob)
 	}
 }
 
+MVert* BKE_copy_visual_mesh(Object* ob, FractureState *fs)
+{
+	/* re-init cached verts here... before rebuild a visual mesh on the fly */
+	fs->visual_mesh = BKE_fracture_create_dm(ob, true);
+	DM_ensure_tessface(fs->visual_mesh);
+	DM_ensure_normals(fs->visual_mesh);
+	DM_update_tessface_data(fs->visual_mesh);
+
+	return CDDM_get_verts(fs->visual_mesh);
+}
+
 int BKE_initialize_meshisland(Object* ob, MeshIsland** mii, MVert* mverts, int vertstart)
 {
 	int k = 0;
@@ -5064,13 +5075,22 @@ int BKE_initialize_meshisland(Object* ob, MeshIsland** mii, MVert* mverts, int v
 	FractureContainer *fc = ob->fracture_objects;
 
 	mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * mi->vertex_count, "mi->vertices_cached readfile");
+	mi->vertex_indices = MEM_mallocN(sizeof(int) * mi->vertex_count, "mi->vertex_indices");
+	mi->vertcos = MEM_callocN(sizeof(float) * 3 * mi->vertex_count, "mi->vertcos");
+	mi->vertnos = MEM_callocN(sizeof(short) * 3 * mi->vertex_count, "mi->vertnos");
 
 	for (k = 0; k < mi->vertex_count; k++) {
 		MVert* v = mverts + vertstart + k ;
 		mi->vertices_cached[k] = v;
+		mi->vertex_indices[k] = vertstart + k;
+
+		/*
 		if ((mi->vertnos != NULL) && (fc->flag & FM_FLAG_FIX_NORMALS)) {
 			copy_v3_v3_short(v->no, mi->vertnos[k]);
-		}
+		}*/
+
+		copy_v3_v3(mi->vertcos[k], v->co);
+		copy_v3_v3_short(mi->vertnos[k], v->no);
 	}
 
 	return mi->vertex_count;
@@ -5170,48 +5190,90 @@ static ConstraintContainer *copy_constraint_container(ConstraintContainer *cc)
 	return ccN;
 }
 
-static FractureState *copy_fracture_state(FractureState *fs)
+static void copy_mesh_island(Scene *scene, Object *ob, MeshIsland *miN, MeshIsland *mi)
 {
-	FractureState *fsN = MEM_dupallocN(fs);
+	miN->vertcos = NULL;
+	miN->vertnos = NULL;
+	miN->vertex_indices = NULL;
+	miN->vertices_cached = NULL;
+
+	miN->bb = MEM_dupallocN(mi->bb);
+	miN->physics_mesh = CDDM_copy(mi->physics_mesh);
+	miN->participating_constraints = MEM_dupallocN(miN->participating_constraints);
+
+	miN->rigidbody = NULL;
+	miN->rigidbody = BKE_rigidbody_create_shard(scene, ob, miN);
+	miN->rigidbody->type = mi->rigidbody->type;
+	miN->rigidbody->flag = mi->rigidbody->flag;
+}
+
+static void copy_fracture_state(FractureState *fsN, FractureState *fs, Object *obN, Scene *scene)
+{
+	MeshIsland *mi, *miN;
+	MVert *mvert;
+	int vertstart = 0, i = 0;
+
 	//copy shards, meshislands.... and stuff TODO or just nullify! no, need a copy !!!
 	fsN->frac_mesh = copy_fracmesh(fs->frac_mesh);
+	mvert = BKE_copy_visual_mesh(obN, fsN);
 
-	return fsN;
+	BLI_duplicatelist(&fsN->island_map, &fs->island_map);
+	mi = fs->island_map.first;
+
+	for (miN = fsN->island_map.first; miN; miN = miN->next)
+	{
+		copy_mesh_island(scene, obN, miN, mi);
+		vertstart += BKE_initialize_meshisland(obN, &miN, mvert, vertstart);
+		mi = mi->next;
+	}
+
+	fsN->islands = MEM_dupallocN(fs->islands);
 }
 
 
-static FractureContainer *copy_fracture_container(FractureContainer *fc)
+static FractureContainer *copy_fracture_container(Object* ob, Object *obN, Scene *scene)
 {
+	FractureContainer *fc = ob->fracture_objects;
 	FractureContainer *fcN = MEM_dupallocN(fc);
 	FractureState *fsN, *fs;
 
-	for (fs = fc->states.first; fs; fs = fs->next)
+	obN->fracture_objects = fcN;
+	BLI_duplicatelist(&fcN->states, &fc->states);
+
+	fs = fc->states.first;
+	for (fsN = fcN->states.first; fsN; fsN = fsN->next)
 	{
-		fsN = copy_fracture_state(fs);
-		BLI_addtail(&fcN->states, fsN);
+		copy_fracture_state(fsN, fs, obN, scene);
+		fs = fs->next;
 	}
 
 	fcN->rb_settings = MEM_dupallocN(fc->rb_settings);
-	fcN->rb_settings->flag |= RBO_FLAG_NEEDS_VALIDATE;
+	fcN->rb_settings->flag |= (RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_KINEMATIC_REBUILD);
+	fc->rb_settings->flag |= (RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_KINEMATIC_REBUILD);
 
-	fcN->pointcache = BKE_ptcache_add(&fcN->ptcaches);
-	fcN->pointcache->step = 1;
+	fcN->pointcache = BKE_ptcache_copy_list(&fcN->ptcaches, &fc->ptcaches, false);
+	fcN->effector_weights = MEM_dupallocN(fc->effector_weights);
+	make_face_pairs(obN);
 
-	//more ?
+	BKE_rigidbody_cache_reset(scene->rigidbody_world);
+
 	return fcN;
 }
 
-FractureContainer *BKE_fracture_container_copy(Object *ob)
+void BKE_fracture_container_copy(Main *bmain, Object *ob, Object *obN)
 {
 	if (ob->fracture_objects)
 	{
-		return copy_fracture_container(ob->fracture_objects);
-
-		//FM_TODO for now recreate all, later maybe copy shards and only recreate islands (faster)
-		//have to leave out stuff which needs a scene....
+		Scene *scene;
+		for (scene = bmain->scene.first; scene; scene = scene->id.next)
+		{
+			if (BKE_scene_base_find(scene, ob))
+			{
+				copy_fracture_container(ob, obN, scene);
+				break; //FM_TODO handle linked objects !
+			}
+		}
 	}
-
-	return NULL;
 }
 
 ConstraintContainer *BKE_fracture_constraint_container_copy(Object *ob)

@@ -5342,17 +5342,6 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 	}
 }
 
-static MVert* expand_visual_mesh(Object* ob, FractureState *fs)
-{
-	/* re-init cached verts here... before rebuild a visual mesh on the fly */
-	fs->visual_mesh = BKE_fracture_create_dm(ob, true);
-	DM_ensure_tessface(fs->visual_mesh);
-	DM_ensure_normals(fs->visual_mesh);
-	DM_update_tessface_data(fs->visual_mesh);
-
-	return CDDM_get_verts(fs->visual_mesh);
-}
-
 static void direct_link_object(FileData *fd, Object *ob)
 {
 	PartEff *paf;
@@ -5523,7 +5512,7 @@ static void direct_link_object(FileData *fd, Object *ob)
 				read_shard(fd, &s);
 			}
 
-			mverts = expand_visual_mesh(ob, fs);
+			mverts = BKE_copy_visual_mesh(ob, fs);
 			s = fm->shard_map.first;
 
 			link_list(fd, &fs->island_map);

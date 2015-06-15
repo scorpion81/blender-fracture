@@ -117,7 +117,7 @@ typedef struct FractureContainer {
 	char inner_defgrp_name[64];  /* MAX_VGROUP_NAME */
 
 	/*volatile storage*/
-	/* store original vertices here (coords), to find them later and reuse their normals */
+	/* store original vertices here (coords), to find them later and reuse their normals, temporary data */
 	struct KDTree *nor_tree;
 
 	/* store pairs of adjacent faces, for autohide*/

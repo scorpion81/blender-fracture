@@ -471,6 +471,8 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 		sub_v3_v3(vert->co, centr);
 		add_v3_v3(vert->co, loc);
 		mul_m4_v3(ob->imat, vert->co);
+
+		printf("Vertex Co: %d -> (%.2f, %.2f, %.2f) \n", j, mi->centroid[0], mi->centroid[1], mi->centroid[2]);
 	}
 
 	ob->recalc |= OB_RECALC_ALL;
@@ -814,8 +816,11 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 		BKE_rigidbody_validate_sim_shard_shape(mi, ob, true);
 	
 	if (rbo->physics_object) {
-		if (rebuild == false || rb->flag & RBO_FLAG_KINEMATIC_REBUILD)
+		if ((rebuild == false) || (rb->flag & RBO_FLAG_KINEMATIC_REBUILD) ||
+		        (rbw->flag & RBW_FLAG_OBJECT_CHANGED))
+		{
 			RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
+		}
 	}
 	if (!rbo->physics_object || rebuild) {
 		/* remove rigid body if it already exists before creating a new one */
@@ -1637,7 +1642,7 @@ void BKE_rigidbody_remove_shard(Scene *scene, MeshIsland *mi)
 			BKE_rigidbody_remove_shard_con(scene, con);
 		}
 		
-		if (rbw->physics_world && mi->rigidbody && mi->rigidbody->physics_object)
+		if (rbw->physics_world && mi->rigidbody->physics_object)
 			RB_dworld_remove_body(rbw->physics_world, mi->rigidbody->physics_object);
 
 		if (mi->rigidbody->physics_object) {
@@ -1747,7 +1752,7 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 	}
 
 	/* update rigid body location and rotation for kinematic bodies */
-	if (rbo->flag & RBO_FLAG_KINEMATIC || (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
+	if (rb->flag & RBO_FLAG_KINEMATIC || (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
 		mul_v3_v3(centr, scale);
 		mul_qt_v3(rot, centr);
 		add_v3_v3(loc, centr);
@@ -2102,6 +2107,7 @@ static void do_update_container(Scene* scene, Object* ob, RigidBodyWorld *rbw, b
 		/* update simulation object... */
 		rigidbody_update_sim_ob(scene, rbw, ob, mi->rigidbody, mi->centroid);
 	}
+	rbw->flag &= ~RBW_FLAG_OBJECT_CHANGED;
 }
 
 /* Updates and validates world, bodies and shapes.

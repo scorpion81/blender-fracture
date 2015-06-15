@@ -112,7 +112,7 @@ class BakeToKeyframes(Operator):
     @classmethod
     def poll(cls, context):
         obj = context.object
-        return (obj and obj.fracture_objects)
+        return (obj and obj.fracture_container)
 
     def execute(self, context):
         bake = []
