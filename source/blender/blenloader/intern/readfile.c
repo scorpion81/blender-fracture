@@ -5475,7 +5475,6 @@ static void direct_link_object(FileData *fd, Object *ob)
 	ob->bsoft = newdataadr(fd, ob->bsoft);
 	ob->fluidsimSettings= newdataadr(fd, ob->fluidsimSettings); /* NT */
 
-#if 0
 	ob->rigidbody_object = newdataadr(fd, ob->rigidbody_object);
 	if (ob->rigidbody_object) {
 		RigidBodyOb *rbo = ob->rigidbody_object;
@@ -5489,7 +5488,6 @@ static void direct_link_object(FileData *fd, Object *ob)
 	ob->rigidbody_constraint = newdataadr(fd, ob->rigidbody_constraint);
 	if (ob->rigidbody_constraint)
 		ob->rigidbody_constraint->physics_constraint = NULL;
-#endif
 
 	ob->fracture_objects = newdataadr(fd, ob->fracture_objects);
 	if (ob->fracture_objects) {
@@ -5523,11 +5521,11 @@ static void direct_link_object(FileData *fd, Object *ob)
 				mi->shard = s;
 				s = s->next;
 				mi->physics_mesh = BKE_shard_create_dm(s, true);
-				vertstart += BKE_initialize_meshisland(ob, &mi, mverts, vertstart);
+				vertstart += BKE_initialize_meshisland(&mi, mverts, vertstart);
 			}
 		}
 
-		direct_link_pointcache_list(fd, &fc->ptcaches, &fc->pointcache, false);
+		direct_link_pointcache_list(fd, &fc->ptcaches, &fc->pointcache, 0);
 	}
 
 	link_list(fd, &ob->particlesystem);
@@ -9197,12 +9195,11 @@ static void expand_object(FileData *fd, Main *mainvar, Object *ob)
 	if (ob->pd && ob->pd->tex)
 		expand_doit(fd, mainvar, ob->pd->tex);
 
-#if 0
+	/* FM DEPRECATED */
 	if (ob->rigidbody_constraint) {
 		expand_doit(fd, mainvar, ob->rigidbody_constraint->ob1);
 		expand_doit(fd, mainvar, ob->rigidbody_constraint->ob2);
 	}
-#endif
 
 	if (ob->fracture_objects)
 	{

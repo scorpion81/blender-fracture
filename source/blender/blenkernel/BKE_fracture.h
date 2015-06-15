@@ -105,19 +105,22 @@ void BKE_match_vertex_coords(struct MeshIsland* mi, struct MeshIsland *par, stru
 void BKE_mesh_separate_selected(struct BMesh **bm_work, struct BMesh **bm_out, struct BMVert **orig_work, struct BMVert ***orig_out1, struct BMVert ***orig_out2);
 void BKE_select_linked(struct BMesh **bm_in);
 
-void BKE_fracture_prefracture_mesh(struct Scene* scene, struct Object *ob, ShardID id);
+void BKE_fracture_prefracture_mesh(struct Scene *scene, struct Object *ob, ShardID id);
 void BKE_dynamic_fracture_mesh(struct Scene* scene, struct Object *ob, ShardID id);
-int BKE_initialize_meshisland(struct Object* ob, struct MeshIsland** mii, struct MVert* mverts, int vertstart);
+int BKE_initialize_meshisland(struct MeshIsland** mii, struct MVert* mverts, int vertstart);
 struct DerivedMesh *BKE_autohide_inner(struct Object* ob);
-void BKE_fracture_constraint_container_free(struct Scene* scene, struct Object *ob);
-void BKE_fracture_constraint_container_create(struct Scene *scene, struct Object* ob, int type);
+void BKE_fracture_constraint_container_free(struct Object *ob);
+void BKE_fracture_constraint_container_create(struct Object* ob, int type);
 
-void BKE_fracture_container_free(struct Scene *scene, struct Object *ob);
-void BKE_fracture_container_create(struct Scene *scene, struct Object *ob, int type);
+void BKE_fracture_container_free(struct Object *ob);
+void BKE_fracture_container_create(struct Object *ob, int type);
 void BKE_lookup_mesh_state(struct Object* ob, int frame);
 
 struct ConstraintContainer *BKE_fracture_constraint_container_copy(struct Object *ob);
 void BKE_fracture_container_copy(struct Main *bmain, struct Object *ob, struct Object *obN);
 struct MVert* BKE_copy_visual_mesh(struct Object* ob, struct FractureState *fs);
+struct FracMesh* BKE_copy_fracmesh(struct FracMesh* fm);
+struct DerivedMesh *BKE_fracture_ensure_mesh(struct Scene* scene, struct Object* ob);
+void BKE_fracture_container_initialize(struct Object* ob, struct DerivedMesh *dm);
 
 #endif /* BKE_FRACTURE_H */

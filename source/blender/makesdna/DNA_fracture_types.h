@@ -298,6 +298,7 @@ enum {
 	FM_FLAG_REFRESH_CONSTRAINTS           = (1 << 13),
 	FM_FLAG_REFRESH_SHAPE                 = (1 << 14),
 	FM_FLAG_SKIP_STEPPING                 = (1 << 15),
+	FM_FLAG_SKIP_MASS_CALC                = (1 << 16),
 };
 
 /*constraint flags*/

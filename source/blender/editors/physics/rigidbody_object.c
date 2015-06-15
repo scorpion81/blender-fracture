@@ -118,7 +118,10 @@ bool ED_rigidbody_object_add(Scene *scene, Object *ob, int type, ReportList *rep
 	}
 
 	/* make rigidbody object settings */
-	BKE_fracture_container_create(scene, ob, type);
+	BKE_fracture_container_create(ob, type);
+	/* first shard is the entire mesh */
+	BKE_fracture_prefracture_mesh(scene, ob, 0);
+	BKE_rigidbody_cache_reset(rbw);
 	ob->fracture_objects->rb_settings->flag |= RBO_FLAG_NEEDS_VALIDATE;
 
 	/* add object to rigid body group */
@@ -133,7 +136,7 @@ void ED_rigidbody_object_remove(Scene *scene, Object *ob)
 {
 	RigidBodyWorld *rbw = BKE_rigidbody_get_world(scene);
 
-	BKE_fracture_container_free(scene, ob);
+	BKE_fracture_container_free(ob);
 	if (rbw)
 		BKE_group_object_unlink(rbw->group, ob, scene, NULL);
 

@@ -390,8 +390,8 @@ void BKE_object_free_ex(Object *ob, bool do_id_user)
 	BKE_constraints_free_ex(&ob->constraints, do_id_user);
 	
 	free_partdeflect(ob->pd);
-	BKE_fracture_container_free(NULL, ob);
-	BKE_fracture_constraint_container_free(NULL, ob);
+	BKE_fracture_container_free(ob);
+	BKE_fracture_constraint_container_free(ob);
 
 	if (ob->soft) sbFree(ob->soft);
 	if (ob->bsoft) bsbFree(ob->bsoft);

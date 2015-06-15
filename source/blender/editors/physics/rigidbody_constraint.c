@@ -90,7 +90,7 @@ bool ED_rigidbody_constraint_add(Scene *scene, Object *ob, int type, ReportList 
 	}
 	/* make rigidbody constraint settings */
 
-	BKE_fracture_constraint_container_create(scene, ob, type);
+	BKE_fracture_constraint_container_create(ob, type);
 	//ob->fracture_constraints->con_settings->flag |= RBC_FLAG_NEEDS_VALIDATE;
 
 	/* add constraint to rigid body constraint group */
@@ -104,7 +104,7 @@ void ED_rigidbody_constraint_remove(Scene *scene, Object *ob)
 {
 	RigidBodyWorld *rbw = BKE_rigidbody_get_world(scene);
 
-	BKE_fracture_constraint_container_free(scene, ob);
+	BKE_fracture_constraint_container_free(ob);
 	if (rbw)
 		BKE_group_object_unlink(rbw->constraints, ob, scene, NULL);
 

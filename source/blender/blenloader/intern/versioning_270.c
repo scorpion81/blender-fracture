@@ -52,6 +52,8 @@
 
 #include "DNA_genfile.h"
 
+#include "BKE_cdderivedmesh.h"
+#include "BKE_DerivedMesh.h"
 #include "BKE_fracture.h"
 #include "BKE_main.h"
 #include "BKE_modifier.h"
@@ -70,12 +72,47 @@
 
 #include "MEM_guardedalloc.h"
 
-#
+static int initialize_meshisland(FractureModifierData* fmd, MeshIsland** mii, MVert* mverts, int vertstart)
+{
+	MVert *mv;
+	int k = 0;
+	MeshIsland* mi = *mii;
+
+	mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * mi->vertex_count, "mi->vertices_cached readfile");
+	mv = mi->physics_mesh->getVertArray(mi->physics_mesh);
+
+	for (k = 0; k < mi->vertex_count; k++) {
+		MVert* v = mverts + vertstart + k ;
+		MVert* v2 = mv + k;
+		mi->vertices_cached[k] = v;
+		if (mi->vertex_indices) {
+			mi->vertex_indices[k] = vertstart + k;
+		}
+		mi->vertco[k*3] = v->co[0];
+		mi->vertco[k*3+1] = v->co[1];
+		mi->vertco[k*3+2] = v->co[2];
+
+		if (mi->vertno != NULL && fmd->fix_normals) {
+			short sno[3];
+			sno[0] = mi->vertno[k*3];
+			sno[1] = mi->vertno[k*3+1];
+			sno[2] = mi->vertno[k*3+2];
+			copy_v3_v3_short(v->no, sno);
+			copy_v3_v3_short(v2->no, sno);
+		}
+	}
+
+	return mi->vertex_count;
+}
+
 static void patch_fracture_modifier_struct(FractureModifierData *fmd, Object* ob)
 {
 	ConstraintContainer *cc = ob->fracture_constraints;
 	FractureContainer *fc = ob->fracture_objects;
-	FractureState *fs;
+	FractureState *fs = fc->current;
+	MVert *mverts;
+	int vertstart = 0, count, i = 0;
+	MeshIsland *mi;
 
 	/* fracture values */
 	fc->max_vol = fmd->max_vol;
@@ -168,16 +205,82 @@ static void patch_fracture_modifier_struct(FractureModifierData *fmd, Object* ob
 	if (fmd->breaking_percentage_weighted)
 		cc->flag |= FMC_FLAG_BREAKING_PERCENTAGE_WEIGHTED;
 
-	fs->island_map = fmd->meshIslands;
-	fs->visual_mesh = fmd->visible_mesh_cached;
-	fs->frac_mesh = fmd->frac_mesh;
+	fs->frac_mesh = BKE_copy_fracmesh(fmd->frac_mesh);
+	fs->visual_mesh = CDDM_copy(fmd->dm);
+	DM_ensure_tessface(fs->visual_mesh);
+	DM_ensure_normals(fs->visual_mesh);
+	DM_update_tessface_data(fs->visual_mesh);
 
-	fc->cluster_group = fmd->cluster_group;
-	fc->extra_group = fmd->extra_group;
-	fc->cutter_group = fmd->cutter_group;
+	/* re-init cached verts here... */
+	mverts = CDDM_get_verts(fs->visual_mesh);
+	count = BLI_listbase_count(&fmd->meshIslands);
+	fs->islands = MEM_callocN(sizeof(MeshIsland*) * count, "fmd->fs meshislands");
+
+	for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
+		MeshIsland *miN = MEM_dupallocN(mi);
+		vertstart += initialize_meshisland(fmd, &miN, mverts, vertstart);
+		BLI_addtail(&fs->island_map, miN);
+		fs->islands[i] = miN;
+		i++;
+	}
+
+	fc->inner_material = NULL; //fmd->inner_material;
+	fc->cluster_group = NULL; //fmd->cluster_group;
+	fc->extra_group = NULL; //fmd->extra_group;
+	fc->cutter_group = NULL;//fmd->cutter_group;
 	BLI_strncpy(fc->thresh_defgrp_name, fmd->thresh_defgrp_name, sizeof(fc->thresh_defgrp_name));
 	BLI_strncpy(fc->ground_defgrp_name, fmd->ground_defgrp_name, sizeof(fc->ground_defgrp_name));
 	BLI_strncpy(fc->inner_defgrp_name, fmd->inner_defgrp_name, sizeof(fc->inner_defgrp_name));
+}
+
+static void load_fracture_system(Main* main)
+{
+	Object *ob;
+	for (ob = main->object.first; ob; ob = ob->id.next)
+	{
+		/*optionally init FM too */
+		/*initialize older blends to useful values */
+		FractureModifierData *fmd = (FractureModifierData* )modifiers_findByType(ob, eModifierType_Fracture);
+
+		/*initialize new rigidbody system */
+		if (ob->rigidbody_object)
+		{
+			DerivedMesh *dm;
+			BKE_fracture_container_create(ob, ob->rigidbody_object->type);
+			if (fmd)
+			{
+				dm = CDDM_copy(fmd->visible_mesh_cached);
+				ob->fracture_objects->flag |= FM_FLAG_SKIP_MASS_CALC;
+				BKE_fracture_container_initialize(ob, dm);
+			}
+			else
+			{
+				ob->fracture_objects->flag |= FM_FLAG_REFRESH_SHAPE;
+				//get the shape later, this is for old rigidbodies
+			}
+		}
+
+		if (ob->rigidbody_constraint || fmd)
+		{
+			if (ob->rigidbody_constraint)
+			{
+				BKE_fracture_constraint_container_create(ob, ob->rigidbody_constraint->type);
+				ob->fracture_constraints->partner1 = ob->rigidbody_constraint->ob1;
+				ob->fracture_constraints->partner2 = ob->rigidbody_constraint->ob2;
+			}
+			else
+			{
+				BKE_fracture_constraint_container_create(ob, RBC_TYPE_FIXED);
+				ob->fracture_constraints->partner1 = ob;
+				ob->fracture_constraints->partner2 = ob;
+			}
+		}
+
+		if (fmd != NULL)
+		{
+			patch_fracture_modifier_struct(fmd, ob);
+		}
+	}
 }
 
 static void do_version_constraints_radians_degrees_270_1(ListBase *lb)
@@ -771,6 +874,10 @@ void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 			}
 		}
 	}
+	else
+	{
+		load_fracture_system(main);
+	}
 
 	if (!MAIN_VERSION_ATLEAST(main, 274, 3)) {
 		FOREACH_NODETREE(main, ntree, id)
@@ -799,39 +906,5 @@ void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 			}
 		}
 		FOREACH_NODETREE_END
-	}
-
-	if (!MAIN_VERSION_ATLEAST(main, 275, 0)) {
-		Scene *sce;
-		Object *ob;
-		for (ob = main->object.first; ob; ob = ob->id.next)
-		{
-			for (sce = main->scene.first; sce; sce = sce->id.next) {
-				if (BKE_scene_base_find(sce, ob))
-				{
-					/*optionally init FM too */
-					/*initialize older blends to useful values */
-					FractureModifierData *fmd = (FractureModifierData* )modifiers_findByType(ob, eModifierType_Fracture);
-
-					/*initialize new rigidbody system */
-					if (ob->rigidbody_object)
-					{
-						BKE_fracture_container_create(sce, ob, RBO_TYPE_ACTIVE);
-					}
-
-					if (ob->rigidbody_constraint || fmd)
-					{
-						BKE_fracture_constraint_container_create(sce, ob, RBC_TYPE_FIXED);
-						ob->fracture_constraints->partner1 = ob;
-						ob->fracture_constraints->partner1 = ob;
-					}
-
-					if (fmd != NULL)
-					{
-						patch_fracture_modifier_struct(fmd, ob);
-					}
-				}
-			}
-		}
 	}
 }

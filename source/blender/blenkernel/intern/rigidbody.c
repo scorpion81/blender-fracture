@@ -296,24 +296,29 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland *mi)
 	FractureContainer *fc = ob->fracture_objects;
 	DerivedMesh *dm_ob = ob->derivedFinal, *dm_mi;
 	float vol_mi = 0, mass_mi = 0, vol_ob = 0, mass_ob = 0;
+	bool skip = fc->flag & (FM_FLAG_REFRESH_SHAPE | FM_FLAG_SKIP_MASS_CALC);
 
-	if (dm_ob == NULL) {
-		/* fallback method */
-		if (ob->type == OB_MESH) {
-			/* if we have a mesh, determine its volume */
-			dm_ob = CDDM_from_mesh(ob->data);
+	if (!skip)
+	{
+		if (dm_ob == NULL) {
+			/* fallback method */
+
+			if ((ob->type == OB_MESH)) {
+				/* if we have a mesh, determine its volume */
+				dm_ob = CDDM_from_mesh(ob->data);
+				vol_ob = BKE_rigidbody_calc_volume(dm_ob, fc->rb_settings);
+			}
+			else {
+				/* else get object boundbox as last resort */
+				float dim[3];
+				BKE_object_dimensions_get(ob, dim);
+				vol_ob = dim[0] * dim[1] * dim[2];
+			}
+		}
+		else
+		{
 			vol_ob = BKE_rigidbody_calc_volume(dm_ob, fc->rb_settings);
 		}
-		else {
-			/* else get object boundbox as last resort */
-			float dim[3];
-			BKE_object_dimensions_get(ob, dim);
-			vol_ob = dim[0] * dim[1] * dim[2];
-		}
-	}
-	else
-	{
-		vol_ob = BKE_rigidbody_calc_volume(dm_ob, fc->rb_settings);
 	}
 
 	mass_ob = fc->rb_settings->mass;
@@ -498,14 +503,14 @@ void BKE_rigidbody_free_world(Scene* scene)
 		if (rbw->constraints) {
 			for (go = rbw->constraints->gobject.first; go; go = go->next) {
 				if (go->ob && go->ob->fracture_constraints) {
-					BKE_fracture_constraint_container_free(scene, go->ob);
+					BKE_fracture_constraint_container_free(go->ob);
 				}
 			}
 		}
 		if (rbw->group) {
 			for (go = rbw->group->gobject.first; go; go = go->next) {
 				if (go->ob && go->ob->fracture_objects) {
-					BKE_fracture_container_free(scene, go->ob);
+					BKE_fracture_container_free(go->ob);
 				}
 			}
 		}
@@ -1367,10 +1372,10 @@ RigidBodyWorld *BKE_rigidbody_create_world(Scene *scene)
 }
 
 /* Add rigid body settings to the specified shard */
-RigidBodyShardOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi)
+RigidBodyShardOb *BKE_rigidbody_create_shard(Object *ob, MeshIsland *mi)
 {
 	RigidBodyShardOb *rbo;
-	RigidBodyWorld *rbw = BKE_rigidbody_get_world(scene);
+	//RigidBodyWorld *rbw = BKE_rigidbody_get_world(scene);
 	float centr[3], size[3];
 
 	/* sanity checks
@@ -1385,24 +1390,11 @@ RigidBodyShardOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIslan
 		return NULL;
 	}
 	
+#if 0
 	if ((ob->type == OB_MESH) && (((Mesh *)ob->data)->totvert == 0)) {
 		return NULL;
 	}
-
-	/* Add rigid body world and group if they don't exist for convenience */
-	if (rbw == NULL) {
-		rbw = BKE_rigidbody_create_world(scene);
-		BKE_rigidbody_validate_sim_world(scene, rbw, false);
-		scene->rigidbody_world = rbw;
-	}
-	if (rbw->group == NULL) {
-		rbw->group = BKE_group_add(G.main, "RigidBodyWorld");
-	}
-
-	if (!BKE_group_object_exists(rbw->group, ob))
-		BKE_group_object_add(rbw->group, ob, scene, NULL);
-
-	DAG_id_tag_update(&ob->id, OB_RECALC_OB);
+#endif
 
 	/* since we are always member of an object, dupe its settings,
 	 * create new settings data, and link it up */
@@ -1448,18 +1440,11 @@ void BKE_rigidbody_world_groups_relink(RigidBodyWorld *rbw)
 }
 
 /* Add rigid body settings to the specified object */
-RigidBodyOb *BKE_rigidbody_create_object(Scene *scene, Object *ob, short type)
+RigidBodyOb *BKE_rigidbody_create_object(Object *ob, short type)
 {
 	FractureContainer *fc = ob->fracture_objects;
-
 	RigidBodyOb *rbo;
-	RigidBodyWorld *rbw = scene->rigidbody_world;
 
-	/* sanity checks
-	 *	- rigidbody world must exist
-	 *	- object must exist
-	 *	- cannot add rigid body if it already exists
-	 */
 	if (ob == NULL || fc == NULL || (fc->rb_settings != NULL))
 		return NULL;
 
@@ -1494,25 +1479,14 @@ RigidBodyOb *BKE_rigidbody_create_object(Scene *scene, Object *ob, short type)
 
 	rbo->mesh_source = RBO_MESH_DEFORM;
 
-#if 0
-	if (fc && fc->fracture_mode == MOD_FRACTURE_DYNAMIC)
-	{	//keep cache here
-		return rbo;
-	}
-#endif
-
-	/* flag cache as outdated */
-	//BKE_rigidbody_cache_reset(rbw);
-
 	/* return this object */
 	return rbo;
 }
 
 /* Add rigid body constraint to the specified object */
-RigidBodyCon *BKE_rigidbody_create_constraint(Scene *scene, Object *ob, short type)
+RigidBodyCon *BKE_rigidbody_create_constraint(Object *ob, short type)
 {
 	RigidBodyCon *rbc;
-	RigidBodyWorld *rbw = scene->rigidbody_world;
 
 	/* sanity checks
 	 *	- rigidbody world must exist
@@ -1559,24 +1533,14 @@ RigidBodyCon *BKE_rigidbody_create_constraint(Scene *scene, Object *ob, short ty
 	rbc->motor_ang_max_impulse = 1.0f;
 	rbc->motor_ang_target_velocity = 1.0f;
 
-	/* flag cache as outdated */
-	//BKE_rigidbody_cache_reset(rbw);
-
 	/* return this object */
 	return rbc;
 }
 
 /* Add rigid body constraint to the specified object */
-RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(Scene* scene, short type)
+RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(short type)
 {
 	RigidBodyShardCon *rbc;
-	RigidBodyWorld *rbw = scene->rigidbody_world;
-
-	/* sanity checks
-	 *	- rigidbody world must exist
-	 *	- object must exist
-	 *	- cannot add constraint if it already exists
-	 */
 
 	/* create new settings data, and link it up */
 	rbc = MEM_callocN(sizeof(RigidBodyShardCon), "RigidBodyCon");
@@ -1595,7 +1559,7 @@ RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(Scene* scene, short typ
 	rbc->num_solver_iterations = 10; /* 10 is Bullet default */
 
 	/* flag all caches as outdated */
-	BKE_rigidbody_cache_reset(rbw);
+	//BKE_rigidbody_cache_reset(rbw); //FM_TODO do elsewhere
 
 	/* return this object */
 	return rbc;
@@ -2186,6 +2150,11 @@ static void do_sync_container(Object *ob, RigidBodyWorld *rbw, float ctime)
 	float centr[3];
 	int i = 0;
 
+	if (fc->flag & (FM_FLAG_REFRESH_SHAPE | FM_FLAG_SKIP_MASS_CALC))
+	{
+		return;
+	}
+
 	for (mi = fs->island_map.first; mi; mi = mi->next)
 	{
 		RigidBodyShardOb *rbo = mi->rigidbody;
@@ -2411,6 +2380,15 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 		cache = fc->pointcache;
 		fc->flag &= ~FM_FLAG_SKIP_STEPPING;
 
+		if ((ob->type == OB_MESH) && (fc->flag & FM_FLAG_REFRESH_SHAPE))
+		{
+			//this is meant for backwards compat, couldnt get shape in do_version yet (no ref to ob->data)
+			//so do this here
+			DerivedMesh *dm = CDDM_from_mesh(ob->data);
+			BKE_fracture_container_initialize(ob, dm);
+			fc->flag &= ~FM_FLAG_REFRESH_SHAPE;
+		}
+
 		if (rbw->ltime == -1)
 			rbw->ltime = startframe;
 
@@ -2444,7 +2422,13 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 
 		/* don't try to run the simulation if we don't have a world yet but allow reading baked cache */
 		if (rbw->physics_world == NULL && !(cache->flag & PTCACHE_BAKED))
+		{
+			if (rbw->flag & RBW_FLAG_NEEDS_REBUILD)
+			{
+				BKE_rigidbody_validate_sim_world(scene, rbw, false);
+			}
 			continue;
+		}
 		else if (rbw->objects == NULL)
 			rigidbody_update_ob_array(rbw);
 

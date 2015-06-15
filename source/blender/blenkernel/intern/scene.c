@@ -1091,10 +1091,10 @@ void BKE_scene_base_unlink(Scene *sce, Base *base)
 {
 	/* remove constraintcontainer from world before removing object */
 	if (base->object->fracture_constraints)
-		BKE_fracture_constraint_container_free(sce, base->object);
+		BKE_fracture_constraint_container_free(base->object);
 	/* remove fracturecontainer from world before removing object */
 	if (base->object->fracture_objects)
-		BKE_fracture_container_free(sce, base->object);
+		BKE_fracture_container_free(base->object);
 	
 	BLI_remlink(&sce->base, base);
 }

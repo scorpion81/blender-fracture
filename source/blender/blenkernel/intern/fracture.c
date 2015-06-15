@@ -109,10 +109,9 @@ static void parse_cell_verts(cell c, MVert *mvert, int totvert);
 static void parse_cell_polys(cell c, MPoly *mpoly, int totpoly, int *r_totloop);
 static void parse_cell_loops(cell c, MLoop *mloop, int totloop, MPoly *mpoly, int totpoly);
 static void parse_cell_neighbors(cell c, int *neighbors, int totpoly);
-static void do_island_from_shard(Scene *scene, Object *ob, Shard* s, int i, int thresh_defgrp_index, int ground_defgrp_index, int vertstart);
+static void do_island_from_shard(Object *ob, Shard* s, int i, int thresh_defgrp_index, int ground_defgrp_index, int vertstart);
 static void do_island_vertex_index_map(Object *ob, GHash **vertex_index_map);
-static DerivedMesh* ensure_mesh(Scene *scene, Object* ob);
-static void initialize_shard(Scene *scene, Object *ob);
+static void initialize_shard(Object *ob);
 static void update_islands(Object *ob);
 
 static void copy_shard(Shard *t, Shard *s)
@@ -136,7 +135,7 @@ static void copy_shard(Shard *t, Shard *s)
 	                     CustomData_get_layer(&s->polyData, CD_MTEXPOLY), s->totpoly);
 }
 
-static FracMesh* copy_fracmesh(FracMesh* fm)
+FracMesh* BKE_copy_fracmesh(FracMesh* fm)
 {
 	FracMesh *fmesh;
 	Shard* s, *t;
@@ -162,7 +161,7 @@ static FracMesh* copy_fracmesh(FracMesh* fm)
 	return fmesh;
 }
 
-static void freeMeshIsland(Scene* scene, MeshIsland *mi)
+static void freeMeshIsland(MeshIsland *mi)
 {
 	if (mi->physics_mesh) {
 		mi->physics_mesh->needsFree = 1;
@@ -171,6 +170,7 @@ static void freeMeshIsland(Scene* scene, MeshIsland *mi)
 	}
 
 	if (mi->rigidbody) {
+#if 0
 		if (scene != NULL)
 		{
 			RigidBodyWorld *rbw = scene->rigidbody_world;
@@ -178,6 +178,7 @@ static void freeMeshIsland(Scene* scene, MeshIsland *mi)
 			if (rbo->physics_object && rbw->physics_world)
 				RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
 		}
+#endif
 
 		MEM_freeN(mi->rigidbody);
 		mi->rigidbody = NULL;
@@ -218,14 +219,14 @@ static void freeMeshIsland(Scene* scene, MeshIsland *mi)
 	mi = NULL;
 }
 
-static void free_meshislands(Scene* scene, ListBase* meshIslands)
+static void free_meshislands(ListBase* meshIslands)
 {
 	MeshIsland *mi;
 
 	while (meshIslands->first) {
 		mi = meshIslands->first;
 		BLI_remlink(meshIslands, mi);
-		freeMeshIsland(scene, mi);
+		freeMeshIsland(mi);
 		mi = NULL;
 	}
 
@@ -240,9 +241,9 @@ static void free_shards(FracMesh *fm)
 	fm = NULL;
 }
 
-static void free_fracture_state(Scene *scene, FractureState *fs, bool delete_all)
+static void free_fracture_state(FractureState *fs, bool delete_all)
 {
-	free_meshislands(scene, &fs->island_map);
+	free_meshislands(&fs->island_map);
 
 	if (fs->islands) {
 		MEM_freeN(fs->islands);
@@ -265,14 +266,14 @@ static void free_fracture_state(Scene *scene, FractureState *fs, bool delete_all
 	}
 }
 
-static void free_fracture_container(Scene* scene, FractureContainer *fc)
+static void free_fracture_container(FractureContainer *fc)
 {
 	FractureState *fs;
 	while (fc->states.first)
 	{
 		fs = fc->states.first;
 		BLI_remlink_safe(&fc->states, fs);
-		free_fracture_state(scene, fs, fc->fracture_mode == MOD_FRACTURE_PREFRACTURED);
+		free_fracture_state(fs, fc->fracture_mode == MOD_FRACTURE_PREFRACTURED);
 	}
 
 	BKE_ptcache_free_list(&(fc->ptcaches));
@@ -719,11 +720,11 @@ static Material* find_material(const char* name)
 	return BKE_material_add(G.main, name);
 }
 
-static void do_splinters(Scene *scene, Object* ob, FracPointCloud points, float(*mat)[4][4])
+static void do_splinters(Object* ob, FracPointCloud points, float(*mat)[4][4])
 {
 	float imat[4][4];
-	DerivedMesh *dm = ensure_mesh(scene, ob);
 	FractureContainer *fc = ob->fracture_objects;
+	DerivedMesh *dm = fc->raw_mesh;
 
 	unit_m4(*mat);
 
@@ -830,10 +831,10 @@ static short do_materials(Object* obj)
 	return mat_index;
 }
 
-static void cleanup_splinters(Scene *scene, Object* ob, float mat[4][4])
+static void cleanup_splinters(Object* ob, float mat[4][4])
 {
 	FractureContainer *fc = ob->fracture_objects;
-	DerivedMesh *dm = ensure_mesh(scene, ob);
+	DerivedMesh *dm = fc->raw_mesh;
 
 	if ((fc->splinter_axis & MOD_FRACTURE_SPLINTER_X) ||
 		(fc->splinter_axis & MOD_FRACTURE_SPLINTER_Y) ||
@@ -862,7 +863,7 @@ static void do_fracture(Scene *scene, Object *obj, ShardID id)
 		float mat[4][4];
 
 		/*splinters... just global axises and a length, for rotation rotate the object */
-		do_splinters(scene, obj, points, &mat);
+		do_splinters(obj, points, &mat);
 
 		mat_index = do_materials(obj);
 		mat_index = mat_index > 0 ? mat_index - 1 : mat_index;
@@ -883,11 +884,12 @@ static void do_fracture(Scene *scene, Object *obj, ShardID id)
 		if (fs->frac_mesh->cancel == 1)
 		{
 			fs->frac_mesh->running = 0;
-			free_fracture_state(scene, fs, true);
+			free_fracture_state(fs, true);
 			MEM_freeN(points.points);
 			return;
 		}
 
+#if 0
 		//watch it when overwriting this... free it better before
 		if (fs->visual_mesh)
 		{
@@ -897,8 +899,9 @@ static void do_fracture(Scene *scene, Object *obj, ShardID id)
 		}
 
 		fs->visual_mesh = BKE_fracture_create_dm(obj, true);
+#endif
 
-		cleanup_splinters(scene, obj, mat);
+		cleanup_splinters(obj, mat);
 		fc->flag &= ~FM_FLAG_RESET_SHARDS;
 	}
 	MEM_freeN(points.points);
@@ -1015,10 +1018,10 @@ static Shard* do_shard_to_island(Object* ob, BMesh* bm_new)
 	return s;
 }
 
-static void do_rigidbody(Scene *scene, Object *ob, MeshIsland* mi, short rb_type)
+static void do_rigidbody(Object *ob, MeshIsland* mi, short rb_type)
 {
 	mi->rigidbody = NULL;
-	mi->rigidbody = BKE_rigidbody_create_shard(scene, ob, mi);
+	mi->rigidbody = BKE_rigidbody_create_shard(ob, mi);
 	mi->rigidbody->type = rb_type;
 	mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 	BKE_rigidbody_calc_shard_mass(ob, mi);
@@ -1237,7 +1240,7 @@ static void bm_mesh_hflag_flush_vert(BMesh *bm, const char hflag)
 	}
 }
 
-static void handle_vert(Scene *scene, Object* ob, BMVert* vert, BMVert** orig_work,
+static void handle_vert(Object* ob, BMVert* vert, BMVert** orig_work,
                         float **startco, short **startno, BMVert*** v_tag, int *tot, int *tag_counter)
 {
 	/* treat the specified vert and put it into the tagged array, also store its coordinates and normals
@@ -1246,7 +1249,7 @@ static void handle_vert(Scene *scene, Object* ob, BMVert* vert, BMVert** orig_wo
 	short no[3];
 	short vno[3];
 	FractureContainer *fc = ob->fracture_objects;
-	DerivedMesh *dm = ensure_mesh(scene, ob);
+	DerivedMesh *dm = fc->raw_mesh;
 
 	if (*v_tag == NULL)
 		*v_tag = MEM_callocN(sizeof(BMVert *), "v_tag");
@@ -1324,7 +1327,7 @@ static void mesh_separate_loose_partition(Scene *scene, Object *ob, BMesh *bm_wo
 		}
 		/* Select the seed explicitly, in case it has no edges */
 		if (!BM_elem_flag_test(v_seed, BM_ELEM_TAG) && !BM_elem_flag_test(v_seed, BM_ELEM_INTERNAL_TAG)) {
-			handle_vert(scene, ob, v_seed, orig_work, &startco, &startno, &v_tag, &tot, &tag_counter);
+			handle_vert(ob, v_seed, orig_work, &startco, &startno, &v_tag, &tot, &tag_counter);
 		}
 
 		/* Walk from the single vertex, selecting everything connected
@@ -1337,10 +1340,10 @@ static void mesh_separate_loose_partition(Scene *scene, Object *ob, BMesh *bm_wo
 		e = BMW_begin(&walker, v_seed);
 		for (; e; e = BMW_step(&walker)) {
 			if (!BM_elem_flag_test(e->v1, BM_ELEM_TAG) && !BM_elem_flag_test(e->v1, BM_ELEM_INTERNAL_TAG)) {
-				handle_vert(scene, ob, e->v1, orig_work, &startco, &startno, &v_tag, &tot, &tag_counter);
+				handle_vert(ob, e->v1, orig_work, &startco, &startno, &v_tag, &tot, &tag_counter);
 			}
 			if (!BM_elem_flag_test(e->v2, BM_ELEM_TAG) && !BM_elem_flag_test(e->v2, BM_ELEM_INTERNAL_TAG)) {
-				handle_vert(scene, ob, e->v2, orig_work, &startco, &startno, &v_tag, &tot, &tag_counter);
+				handle_vert(ob, e->v2, orig_work, &startco, &startno, &v_tag, &tot, &tag_counter);
 			}
 		}
 		BMW_end(&walker);
@@ -1439,7 +1442,8 @@ static void mesh_separate_loose(Scene *scene, Object *ob)
 	BMesh *bm_work;
 	BMVert *vert, **orig_start;
 	BMIter iter;
-	DerivedMesh *dm = ensure_mesh(scene, ob);
+	FractureContainer *fc = ob->fracture_objects;
+	DerivedMesh *dm = fc->raw_mesh;
 
 	bm_work = DM_to_bmesh(dm, true);
 	BM_mesh_elem_hflag_disable_all(bm_work, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, false);
@@ -1476,14 +1480,14 @@ static void mesh_separate_loose(Scene *scene, Object *ob)
 
 }
 
-static void do_constraint(Scene* scene, Object* ob, MeshIsland *mi1, MeshIsland *mi2, int con_type, float thresh)
+static void do_constraint(Object* ob, MeshIsland *mi1, MeshIsland *mi2, int con_type, float thresh)
 {
 	RigidBodyShardCon *rbsc;
 	ConstraintContainer *cc = ob->fracture_constraints;
 	FractureContainer *fc1 = cc->partner1->fracture_objects;
 	FractureContainer *fc2 = cc->partner2->fracture_objects;
 
-	rbsc = BKE_rigidbody_create_shard_constraint(scene, con_type);
+	rbsc = BKE_rigidbody_create_shard_constraint(con_type);
 	rbsc->mi1 = mi1;
 	rbsc->mi2 = mi2;
 	if (thresh == 0 || !(cc->flag & FMC_FLAG_USE_BREAKING)){
@@ -1541,7 +1545,7 @@ static void do_constraint(Scene* scene, Object* ob, MeshIsland *mi1, MeshIsland 
 	mi2->participating_constraint_count++;
 }
 
-static void connect_meshislands(Scene* scene, Object* ob, MeshIsland *mi1, MeshIsland *mi2, int con_type, float thresh)
+static void connect_meshislands(Object* ob, MeshIsland *mi1, MeshIsland *mi2, int con_type, float thresh)
 {
 	ConstraintContainer *cc = ob->fracture_constraints;
 	int con_found = false;
@@ -1573,11 +1577,11 @@ static void connect_meshislands(Scene* scene, Object* ob, MeshIsland *mi1, MeshI
 	}
 
 	if (!con_found && ok) {
-		do_constraint(scene, ob, mi1, mi2, con_type, thresh);
+		do_constraint(ob, mi1, mi2, con_type, thresh);
 	}
 }
 
-static void search_tree_based(Scene* scene, Object* ob, MeshIsland *mi, MeshIsland **meshIslands,
+static void search_tree_based(Object* ob, MeshIsland *mi, MeshIsland **meshIslands,
                               KDTree **combined_tree, GHash* vertex_island_map, float co[3])
 {
 	int r = 0, limit = 0, i = 0;
@@ -1616,7 +1620,7 @@ static void search_tree_based(Scene* scene, Object* ob, MeshIsland *mi, MeshIsla
 				break;
 			}
 
-			connect_meshislands(scene, ob, mi, mi2, con_type, thresh);
+			connect_meshislands(ob, mi, mi2, con_type, thresh);
 		}
 	}
 
@@ -1660,7 +1664,7 @@ static void prepareConstraintSearch(Object *ob, MeshIsland ***mesh_islands, KDTr
 	}
 }
 
-static void create_constraints(Scene *scene, Object *ob, MeshIsland **mesh_islands, int count, KDTree *coord_tree, GHash* vertex_island_map, int target)
+static void create_constraints(Object *ob, MeshIsland **mesh_islands, int count, KDTree *coord_tree, GHash* vertex_island_map, int target)
 {
 	FractureContainer *fc = ob->fracture_objects;
 	FractureState *fs = fc->current;
@@ -1668,14 +1672,14 @@ static void create_constraints(Scene *scene, Object *ob, MeshIsland **mesh_islan
 
 	for (i = 0; i < count; i++) {
 		if (target == MOD_FRACTURE_CENTROID) {
-			search_tree_based(scene, ob, mesh_islands[i], mesh_islands, &coord_tree, vertex_island_map, NULL);
+			search_tree_based(ob, mesh_islands[i], mesh_islands, &coord_tree, vertex_island_map, NULL);
 		}
 		else if (target == MOD_FRACTURE_VERTEX) {
 			MVert mv;
 			MeshIsland *mi = NULL;
 			fs->visual_mesh->getVert(fs->visual_mesh, i, &mv);
 			mi = BLI_ghash_lookup(vertex_island_map, SET_INT_IN_POINTER(i));
-			search_tree_based(scene, ob, mi, mesh_islands, &coord_tree, vertex_island_map, mv.co);
+			search_tree_based(ob, mi, mesh_islands, &coord_tree, vertex_island_map, mv.co);
 		}
 	}
 }
@@ -2099,13 +2103,13 @@ DerivedMesh *BKE_autohide_inner(Object* ob)
 	return result;
 }
 
-static void do_fix_normals_physics_mesh(Scene *scene, Object* ob, Shard* s, MeshIsland* mi, int i)
+static void do_fix_normals_physics_mesh(Object* ob, Shard* s, MeshIsland* mi, int i)
 {
 	FractureContainer *fc = ob->fracture_objects;
 	MVert *mv, *verts;
 	int totvert;
 	int j;
-	DerivedMesh *orig_dm = ensure_mesh(scene, ob);
+	DerivedMesh *orig_dm = fc->raw_mesh;
 
 	mi->physics_mesh = BKE_shard_create_dm(s, true);
 	totvert = mi->physics_mesh->getNumVerts(mi->physics_mesh);
@@ -2253,7 +2257,7 @@ static void set_rigidbody_type(Object *ob, Shard *s, MeshIsland *mi)
 	}
 }
 
-static void do_island_from_shard(Scene *scene, Object *ob, Shard* s, int i, int thresh_defgrp_index, int ground_defgrp_index, int vertstart)
+static void do_island_from_shard(Object *ob, Shard* s, int i, int thresh_defgrp_index, int ground_defgrp_index, int vertstart)
 {
 	FractureContainer *fc = ob->fracture_objects;
 	RigidBodyOb *rb = fc->rb_settings;
@@ -2285,7 +2289,7 @@ static void do_island_from_shard(Scene *scene, Object *ob, Shard* s, int i, int 
 
 	/*copy fixed normals to physics mesh too (needed for convert to objects)*/
 
-	do_fix_normals_physics_mesh(scene, ob, s, mi, i);
+	do_fix_normals_physics_mesh(ob, s, mi, i);
 
 	BKE_shard_calc_minmax(s);
 	copy_v3_v3(mi->centroid, s->centroid);
@@ -2337,7 +2341,7 @@ static void do_island_from_shard(Scene *scene, Object *ob, Shard* s, int i, int 
 
 	//TODO, what was it good for ?
 	//rb_type = do_vert_index_map(fmd, mi);
-	do_rigidbody(scene, ob, mi, rb_type);
+	do_rigidbody(ob, mi, rb_type);
 
 	if (fc->fracture_mode == MOD_FRACTURE_DYNAMIC)
 	{
@@ -2354,7 +2358,7 @@ static void do_island_from_shard(Scene *scene, Object *ob, Shard* s, int i, int 
 	}
 }
 
-static MDeformVert* do_islands_from_shards(Scene* scene, Object* ob)
+static MDeformVert* do_islands_from_shards(Object* ob)
 {
 	/* can be created without shards even, when using fracturemethod = NONE (re-using islands)*/
 	Shard *s;
@@ -2403,7 +2407,7 @@ static MDeformVert* do_islands_from_shards(Scene* scene, Object* ob)
 	shardlist = fc->current->frac_mesh->shard_map;
 
 	for (s = shardlist.first; s; s = s->next) {
-		do_island_from_shard(scene, ob, s, i, thresh_defgrp_index, ground_defgrp_index, vertstart);
+		do_island_from_shard(ob, s, i, thresh_defgrp_index, ground_defgrp_index, vertstart);
 		vertstart += s->totvert;
 		i++;
 	}
@@ -2465,7 +2469,7 @@ static void do_post_island_creation(Object *ob)
 
 
 	/* need to ensure images are correct after loading... */
-	if (fc->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+	if ((fc->fracture_mode == MOD_FRACTURE_PREFRACTURED) && (!(fc->flag & FM_FLAG_SKIP_MASS_CALC)))
 	{
 		refresh_customdata_image(ob->data, &dm->polyData, dm->getNumPolys(dm));
 		DM_update_tessface_data(dm);
@@ -2510,14 +2514,25 @@ static void do_halving(Scene* scene, Object* ob)
 	printf("Splitting to islands done, %g \n", PIL_check_seconds_timer() - start);
 }
 
-static void do_refresh(Scene* scene, Object *ob)
+static void do_refresh(Object *ob)
 {
 	double start = 0.0;
 	MDeformVert *ivert = NULL;
 	FractureContainer *fc = ob->fracture_objects;
+	FractureState* fs = fc->current;
 
 	//pre-halving... making shards (NOT islands, watch it !)
 	//do_halving(scene, ob);
+
+	//watch it when overwriting this... free it better before
+	if (fs->visual_mesh)
+	{
+		fs->visual_mesh->needsFree = 1;
+		DM_release(fs->visual_mesh);
+		fs->visual_mesh = NULL;
+	}
+
+	fs->visual_mesh = BKE_fracture_create_dm(ob, true);
 
 	if (fc->flag & FM_FLAG_FIX_NORMALS)
 	{
@@ -2525,7 +2540,7 @@ static void do_refresh(Scene* scene, Object *ob)
 	}
 
 	//shards -> islands;
-	ivert = do_islands_from_shards(scene, ob);
+	ivert = do_islands_from_shards(ob);
 
 	//post halving ? TODO
 
@@ -2583,20 +2598,20 @@ static void do_island_vertex_index_map(Object *ob, GHash** vertex_island_map)
 }
 
 
-static void do_simulate(Scene* scene, Object *ob)
+static void do_simulate(Object *ob)
 {
-	do_refresh(scene, ob);
+	do_refresh(ob);
 	do_post_island_creation(ob);
 	do_refresh_autohide(ob);
 	//do_island_index_map(ob); //TODO... what was this good for ?
 	do_clusters(ob);
 }
 
-static void add_fracture_state(Scene* scene, Object *ob)
+static void add_fracture_state(Scene *scene, Object *ob)
 {
 	FractureContainer *fc = ob->fracture_objects;
 	FractureState *fs = MEM_callocN(sizeof(FractureState), "add_fracture_state");
-	DerivedMesh *dm = ensure_mesh(scene, ob); //prehalve this
+	DerivedMesh *dm = fc->raw_mesh;
 	float frame = BKE_scene_frame_get(scene);
 
 	if (BLI_listbase_is_empty(&fc->states))
@@ -2610,7 +2625,7 @@ static void add_fracture_state(Scene* scene, Object *ob)
 		add_shard(fs->frac_mesh, s, mat);
 
 		//make meshslands
-		do_refresh(scene, ob);
+		do_refresh(ob);
 	}
 
 	BLI_addtail(&fc->states, fs);
@@ -2620,7 +2635,7 @@ static void add_fracture_state(Scene* scene, Object *ob)
 	fc->current = fs;
 }
 
-static void do_modifier(Scene* scene, Object* ob)
+static void do_modifier(Scene *scene, Object* ob)
 {
 	FractureContainer *fc = ob->fracture_objects;
 
@@ -2678,7 +2693,7 @@ static void do_modifier(Scene* scene, Object* ob)
 #endif
 }
 
-static void preprocess_dm(Scene* scene, Object *ob)
+static void preprocess_dm(Object *ob)
 {
 	FractureContainer *fc = ob->fracture_objects;
 
@@ -2686,7 +2701,7 @@ static void preprocess_dm(Scene* scene, Object *ob)
 	if (ob->type == OB_FONT || ob->type == OB_CURVE || ob->type == OB_SURF) {
 		DerivedMesh *result = NULL;
 
-		DerivedMesh *dm = ensure_mesh(scene, ob);
+		DerivedMesh *dm = fc->raw_mesh;
 		/* convert to BMesh, remove doubles, limited dissolve and convert back */
 		BMesh *bm = DM_to_bmesh(dm, true);
 
@@ -2704,7 +2719,7 @@ static void preprocess_dm(Scene* scene, Object *ob)
 			fc->raw_mesh = NULL;
 		}
 
-		fc->raw_mesh = result;
+		fc->raw_mesh = result; //FM_TODO, maybe make a copy
 	}
 }
 
@@ -4667,7 +4682,7 @@ void BKE_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, int fr
 }
 #endif
 
-static void free_constraint_container(Scene* scene, Object* ob)
+static void free_constraint_container(Object* ob)
 {
 	MeshIsland *mi = NULL;
 	RigidBodyShardCon *rbsc = NULL;
@@ -4704,7 +4719,7 @@ static void free_constraint_container(Scene* scene, Object* ob)
 	while (cc->constraint_map.first) {
 		rbsc = cc->constraint_map.first;
 		BLI_remlink(&cc->constraint_map, rbsc);
-		BKE_rigidbody_remove_shard_con(scene, rbsc);
+		//BKE_rigidbody_remove_shard_con(scene, rbsc);
 		MEM_freeN(rbsc);
 		rbsc = NULL;
 	}
@@ -4816,7 +4831,7 @@ void BKE_mesh_separate_selected(BMesh **bm_work, BMesh **bm_out, BMVert **orig_w
 	BM_mesh_normals_update(bm_new);
 }
 
-static void build_constraints(Scene* scene, Object *ob)
+static void build_constraints(Object *ob)
 {
 	GHash *vertex_island_map = NULL;
 	KDTree *coord_tree = NULL;
@@ -4867,7 +4882,7 @@ static void build_constraints(Scene* scene, Object *ob)
 	printf("Preparing constraints done, %g\n", PIL_check_seconds_timer() - start);
 
 	start = PIL_check_seconds_timer();
-	create_constraints(scene, ob, mesh_islands, count, coord_tree, vertex_island_map, cc->constraint_target); /* check for actually creating the constraints inside*/
+	create_constraints(ob, mesh_islands, count, coord_tree, vertex_island_map, cc->constraint_target); /* check for actually creating the constraints inside*/
 	printf("Building constraints done, %g\n", PIL_check_seconds_timer() - start);
 	printf("Constraints: %d\n", BLI_listbase_count(&cc->constraint_map));
 
@@ -4876,10 +4891,11 @@ static void build_constraints(Scene* scene, Object *ob)
 	BLI_ghash_free(vertex_island_map, NULL, NULL);
 }
 
-void BKE_fracture_prefracture_mesh(Scene *scene, Object *ob, ShardID id)
+void BKE_fracture_prefracture_mesh(Scene* scene, Object *ob, ShardID id)
 {
 	FractureContainer *fc = ob->fracture_objects;
 	FractureState *fs = fc->current;
+	fc->raw_mesh = BKE_fracture_ensure_mesh(scene, ob);
 
 	//disable hardcoded for now, FM_TODO
 	fc->flag &= ~FMG_FLAG_EXECUTE_THREADED;
@@ -4893,12 +4909,12 @@ void BKE_fracture_prefracture_mesh(Scene *scene, Object *ob, ShardID id)
 	if (id == 0)
 	{
 		//restore from original mesh....
-		free_fracture_state(scene, fs, true);
-		initialize_shard(scene, ob);
+		free_fracture_state(fs, true);
+		initialize_shard(ob);
 	}
 	else
 	{
-		free_fracture_state(scene, fs, false);
+		free_fracture_state(fs, false);
 	}
 
 //	preprocess_dm(ob);
@@ -4906,13 +4922,13 @@ void BKE_fracture_prefracture_mesh(Scene *scene, Object *ob, ShardID id)
 
 	//operate on existing shards
 	do_modifier(scene, ob);
-	do_simulate(scene, ob);
+	do_simulate(ob);
 	//do_clear(ob); wtf....
 
 	update_islands(ob);
 
-	//here reset all caches
-	BKE_rigidbody_cache_reset(scene->rigidbody_world);
+	//here reset all caches FM_TODO (elsewhere)
+	//BKE_rigidbody_cache_reset(scene->rigidbody_world);
 
 	//sync to be sure
 	fs->frac_mesh->shard_count = BLI_listbase_count(&fs->frac_mesh->shard_map);
@@ -4945,10 +4961,10 @@ void BKE_dynamic_fracture_mesh(Scene* scene, Object *ob, ShardID id)
 	BKE_fracture_prefracture_mesh(scene, ob, id);
 }
 
-void BKE_fracture_constraint_container_create(Scene *scene, Object* ob, int type)
+void BKE_fracture_constraint_container_create(Object* ob, int type)
 {
 	ConstraintContainer *cc = MEM_callocN(sizeof(ConstraintContainer) ,"fracture_constraints");
-	RigidBodyCon *rbc = BKE_rigidbody_create_constraint(scene, ob, type);
+	RigidBodyCon *rbc = BKE_rigidbody_create_constraint(ob, type);
 	cc->breaking_threshold = 10.0f;
 	cc->contact_dist = 1.0f;
 	cc->constraint_limit = 50;
@@ -4957,21 +4973,22 @@ void BKE_fracture_constraint_container_create(Scene *scene, Object* ob, int type
 	cc->constraint_target = MOD_FRACTURE_CENTROID;
 	rbc->flag |= RBC_FLAG_NEEDS_VALIDATE;
 	cc->con_settings = rbc;
+	ob->fracture_constraints = cc;
 }
 
-void BKE_fracture_constraint_container_free(Scene*scene, Object *ob)
+void BKE_fracture_constraint_container_free(Object *ob)
 {
 	if (ob->fracture_constraints) {
-		free_constraint_container(scene, ob);
+		free_constraint_container(ob);
 		ob->fracture_constraints = NULL;
 	}
 }
 
-static void initialize_shard(Scene *scene, Object *ob)
+static void initialize_shard(Object *ob)
 {
 	FractureContainer *fc = ob->fracture_objects;
 	FractureState *fs = fc->current;
-	DerivedMesh *dm = ensure_mesh(scene, ob);
+	DerivedMesh *dm = fc->raw_mesh;
 
 	//init fracmesh with entire shard from ob->derivedFinal (ensure it)
 	float mat[4][4]; //wood splinter scaling matrix, here it is unit_m4
@@ -5006,7 +5023,7 @@ static void update_islands(Object *ob)
 	fs->island_count = count;
 }
 
-void BKE_fracture_container_create(Scene* scene, Object *ob, int type)
+void BKE_fracture_container_create(Object *ob, int type)
 {
 	FractureContainer *fc = MEM_callocN(sizeof(FractureContainer) ,"fracture_objects");
 	FractureState *fs = MEM_callocN(sizeof(FractureState), "states.first");
@@ -5020,7 +5037,7 @@ void BKE_fracture_container_create(Scene* scene, Object *ob, int type)
 	fc->pointcache->step = 1;
 
 	//init settings object
-	fc->rb_settings = BKE_rigidbody_create_object(scene, ob, type);
+	fc->rb_settings = BKE_rigidbody_create_object(ob, type);
 
 	//init first shard
 	//initialize_shard(scene, ob);
@@ -5051,16 +5068,27 @@ void BKE_fracture_container_create(Scene* scene, Object *ob, int type)
 	fc->dynamic_force = 10.0f;
 
 	fc->effector_weights = BKE_add_effector_weights(NULL);
-
-	//create meshislands
-	BKE_fracture_prefracture_mesh(scene, ob, 0);
 }
 
-void BKE_fracture_container_free(Scene* scene, Object *ob)
+void BKE_fracture_container_initialize(Object* ob, DerivedMesh *dm)
+{
+	FractureContainer *fc = ob->fracture_objects;
+	if (fc)
+	{
+		fc->raw_mesh = dm; //borrowed only
+		//create meshislands
+		//BKE_fracture_prefracture_mesh(scene, ob, 0);
+		initialize_shard(ob);
+		do_simulate(ob); //FM_TODO rename this like initialize_islands()
+		update_islands(ob);
+	}
+}
+
+void BKE_fracture_container_free(Object *ob)
 {
 	if (ob->fracture_objects) {
 		BKE_rigidbody_free_object(ob);
-		free_fracture_container(scene, ob->fracture_objects);
+		free_fracture_container(ob->fracture_objects);
 		ob->fracture_objects = NULL;
 	}
 }
@@ -5076,11 +5104,10 @@ MVert* BKE_copy_visual_mesh(Object* ob, FractureState *fs)
 	return CDDM_get_verts(fs->visual_mesh);
 }
 
-int BKE_initialize_meshisland(Object* ob, MeshIsland** mii, MVert* mverts, int vertstart)
+int BKE_initialize_meshisland(MeshIsland** mii, MVert* mverts, int vertstart)
 {
 	int k = 0;
 	MeshIsland* mi = *mii;
-	FractureContainer *fc = ob->fracture_objects;
 
 	mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * mi->vertex_count, "mi->vertices_cached readfile");
 	mi->vertex_indices = MEM_mallocN(sizeof(int) * mi->vertex_count, "mi->vertex_indices");
@@ -5198,7 +5225,7 @@ static ConstraintContainer *copy_constraint_container(ConstraintContainer *cc)
 	return ccN;
 }
 
-static void copy_mesh_island(Scene *scene, Object *ob, MeshIsland *miN, MeshIsland *mi)
+static void copy_mesh_island(Object *ob, MeshIsland *miN, MeshIsland *mi)
 {
 	miN->vertcos = NULL;
 	miN->vertnos = NULL;
@@ -5222,21 +5249,20 @@ static void copy_mesh_island(Scene *scene, Object *ob, MeshIsland *miN, MeshIsla
 	//copy_v3_v3(mi->centroid, centroid);
 
 	miN->rigidbody = NULL;
-	miN->rigidbody = BKE_rigidbody_create_shard(scene, ob, miN);
+	miN->rigidbody = BKE_rigidbody_create_shard(ob, miN);
 	miN->rigidbody->type = mi->rigidbody->type;
 	miN->rigidbody->flag = mi->rigidbody->flag;
 	miN->rigidbody->mass = mi->rigidbody->mass;
 }
 
-static void copy_fracture_state(FractureState *fsN, FractureState *fs, Object *obN, Scene *scene)
+static void copy_fracture_state(FractureState *fsN, FractureState *fs, Object *obN)
 {
 	MeshIsland *mi, *miN;
 	MVert *mvert;
 	int vertstart = 0, i = 0;
-	Shard *s;
 
 	//copy shards, meshislands.... and stuff TODO or just nullify! no, need a copy !!!
-	fsN->frac_mesh = copy_fracmesh(fs->frac_mesh);
+	fsN->frac_mesh = BKE_copy_fracmesh(fs->frac_mesh);
 	fsN->visual_mesh = NULL;
 	mvert = BKE_copy_visual_mesh(obN, fsN);
 
@@ -5247,8 +5273,8 @@ static void copy_fracture_state(FractureState *fsN, FractureState *fs, Object *o
 	for (mi = fs->island_map.first; mi; mi = mi->next)
 	{
 		miN = MEM_callocN(sizeof(MeshIsland), "copy_fracture_state, mi");
-		copy_mesh_island(scene, obN, miN, mi /*s->centroid*/);
-		vertstart += BKE_initialize_meshisland(obN, &miN, mvert, vertstart);
+		copy_mesh_island(obN, miN, mi /*s->centroid*/);
+		vertstart += BKE_initialize_meshisland(&miN, mvert, vertstart);
 		BLI_addtail(&fsN->island_map, miN);
 		fsN->islands[i] = miN;
 		i++;
@@ -5271,7 +5297,7 @@ static void copy_fracture_container(Object* ob, Object *obN, Scene *scene)
 	for (fs = fc->states.first; fs; fs = fs->next)
 	{
 		fsN = MEM_callocN(sizeof(FractureState), "fsN");
-		copy_fracture_state(fsN, fs, obN, scene);
+		copy_fracture_state(fsN, fs, obN);
 		BLI_addtail(&fcN->states, fsN);
 	}
 
@@ -5314,7 +5340,7 @@ ConstraintContainer *BKE_fracture_constraint_container_copy(Object *ob)
 }
 
 /* get the appropriate DerivedMesh based on rigid body mesh source */
-static DerivedMesh *ensure_mesh(Scene* scene, Object *ob)
+DerivedMesh *BKE_fracture_ensure_mesh(Scene* scene, Object* ob)
 {
 	CustomDataMask mask = CD_MASK_BAREMESH;
 	FractureContainer *fc = ob->fracture_objects;

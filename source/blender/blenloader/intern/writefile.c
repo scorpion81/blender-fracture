@@ -1720,16 +1720,20 @@ static void write_objects(WriteData *wd, ListBase *idbase)
 					Shard* s;
 					MeshIsland *mi;
 					FracMesh *fm = fs->frac_mesh;
-					writestruct(wd, DATA, "FracMesh", 1, fm);
 
-					for (s = fm->shard_map.first; s; s = s->next)
+					if (fm)
 					{
-						write_shard(wd, s);
-					}
+						writestruct(wd, DATA, "FracMesh", 1, fm);
 
-					for (mi = fs->island_map.first; mi; mi = mi->next)
-					{
-						write_meshIsland(wd, mi);
+						for (s = fm->shard_map.first; s; s = s->next)
+						{
+							write_shard(wd, s);
+						}
+
+						for (mi = fs->island_map.first; mi; mi = mi->next)
+						{
+							write_meshIsland(wd, mi);
+						}
 					}
 				}
 
