@@ -477,7 +477,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 		add_v3_v3(vert->co, loc);
 		mul_m4_v3(ob->imat, vert->co);
 
-		printf("Vertex Co: %d -> (%.2f, %.2f, %.2f) \n", j, loc[0], loc[1], loc[2]);
+		//printf("Vertex Co: %d -> (%.2f, %.2f, %.2f) \n", j, loc[0], loc[1], loc[2]);
 	}
 
 	ob->recalc |= OB_RECALC_ALL;

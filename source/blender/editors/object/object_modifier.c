@@ -2372,6 +2372,7 @@ static int fracture_refresh_exec(bContext *C, wmOperator *UNUSED(op))
 		//perhaps trigger modifier eval before, but probably this is updated correctly...
 		//makeDerivedMesh(scene, obact, NULL, CD_MASK_BAREMESH, 0);
 		BKE_fracture_prefracture_mesh(scene, obact, 0);
+		BKE_rigidbody_cache_reset(scene->rigidbody_world);
 
 		//do we need this still ? TODO
 		DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
