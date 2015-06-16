@@ -5560,6 +5560,11 @@ static void direct_link_object(FileData *fd, Object *ob)
 
 		direct_link_pointcache_list(fd, &fc->ptcaches, &fc->pointcache, 0);
 		fc->flag |= FM_FLAG_REFRESH_AUTOHIDE;
+
+		/* set effector weights */
+		fc->effector_weights = newdataadr(fd, fc->effector_weights);
+		if (!fc->effector_weights)
+			fc->effector_weights = BKE_add_effector_weights(NULL);
 	}
 
 	if (ob->fracture_constraints)

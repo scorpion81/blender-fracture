@@ -212,11 +212,11 @@ static void rna_ConstraintContainer_reset(Main *UNUSED(bmain), Scene *scene, Poi
 	BKE_rigidbody_cache_reset(rbw);
 }
 
-static void rna_FractureContainer_shape_update(Main *bmain, Scene *scene, PointerRNA *ptr)
+static void rna_FractureContainer_rigidbody_shape_update(Main *bmain, Scene *scene, PointerRNA *ptr)
 {
 	Object *ob = ptr->id.data;
 
-	rna_FractureContainer_reset(bmain, scene, ptr);
+	rna_FractureContainer_rigidbody_reset(bmain, scene, ptr);
 
 	WM_main_add_notifier(NC_OBJECT | ND_DRAW, ob);
 }
@@ -478,7 +478,7 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	RNA_def_property_enum_items(prop, rigidbody_object_shape_items);
 	RNA_def_property_ui_text(prop, "Collision Shape", "Collision Shape of object in Rigid Body Simulations");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_shape_update");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_shape_update");
 	
 	prop = RNA_def_property(srna, "kinematic", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_KINEMATIC);
