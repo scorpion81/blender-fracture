@@ -5083,7 +5083,10 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 
 		if (md->type == eModifierType_Fracture) {
 			FractureModifierData *fmd = (FractureModifierData*)md;
-			load_legacy_fracture_modifier(fd, fmd);
+			if (!DNA_struct_elem_find(fd->filesdna, "Object", "FractureContainer", "fracture_objects"))
+			{
+				load_legacy_fracture_modifier(fd, fmd);
+			}
 		}
 			
 		else if (md->type == eModifierType_Subsurf) {
@@ -5490,10 +5493,18 @@ static void direct_link_object(FileData *fd, Object *ob)
 		ob->rigidbody_constraint->physics_constraint = NULL;
 
 	ob->fracture_objects = newdataadr(fd, ob->fracture_objects);
+
 	if (ob->fracture_objects) {
 
 		FractureContainer *fc = ob->fracture_objects;
 		FractureState *fs;
+		fc->face_pairs = NULL;
+
+		fc->rb_settings = newdataadr(fd, fc->rb_settings);
+		fc->inner_material = newdataadr(fd, fc->inner_material);
+		fc->cluster_group = newdataadr(fd, fc->cluster_group);
+		fc->cutter_group = newdataadr(fd, fc->cutter_group);
+		fc->extra_group = newdataadr(fd, fc->extra_group);
 
 		link_list(fd, &fc->states);
 
@@ -5504,6 +5515,7 @@ static void direct_link_object(FileData *fd, Object *ob)
 			MeshIsland *mi;
 			int vertstart = 0;
 			MVert* mverts = NULL;
+			int count = 0, i = 0;
 
 			link_list(fd, &fm->shard_map);
 			for (s = fm->shard_map.first; s; s = s->next)
@@ -5511,21 +5523,35 @@ static void direct_link_object(FileData *fd, Object *ob)
 				read_shard(fd, &s);
 			}
 
+			fc->current = fs; /*temporarily set for copy visual mesh*/
 			mverts = BKE_copy_visual_mesh(ob, fs);
 			s = fm->shard_map.first;
 
 			link_list(fd, &fs->island_map);
+
+			count = BLI_listbase_count(&fs->island_map);
+			fs->islands = MEM_callocN(sizeof(MeshIsland*) * count, "fs->islands, readfile");
+
 			for (mi = fs->island_map.first; mi; mi = mi->next)
 			{
 				read_meshIsland(fd, &mi);
-				mi->shard = s;
-				s = s->next;
 				mi->physics_mesh = BKE_shard_create_dm(s, true);
 				vertstart += BKE_initialize_meshisland(&mi, mverts, vertstart);
+				s = s->next;
+				fs->islands[i] = mi;
+				i++;
 			}
 		}
 
+		fc->current = fc->states.first;
+
 		direct_link_pointcache_list(fd, &fc->ptcaches, &fc->pointcache, 0);
+	}
+
+	if (ob->fracture_constraints)
+	{
+		ob->fracture_constraints = newdataadr(fd, ob->fracture_constraints);
+		ob->fracture_constraints->con_settings = newdataadr(fd, ob->fracture_constraints->con_settings);
 	}
 
 	link_list(fd, &ob->particlesystem);
@@ -9204,6 +9230,7 @@ static void expand_object(FileData *fd, Main *mainvar, Object *ob)
 	if (ob->fracture_objects)
 	{
 		FractureContainer *fc = ob->fracture_objects;
+		expand_doit(fd, mainvar, fc->inner_material);
 		expand_doit(fd, mainvar, fc->extra_group);
 		expand_doit(fd, mainvar, fc->cutter_group);
 		expand_doit(fd, mainvar, fc->cluster_group);

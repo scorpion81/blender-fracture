@@ -109,10 +109,6 @@ static void patch_fracture_modifier_struct(FractureModifierData *fmd, Object* ob
 {
 	ConstraintContainer *cc = ob->fracture_constraints;
 	FractureContainer *fc = ob->fracture_objects;
-	FractureState *fs = fc->current;
-	MVert *mverts;
-	int vertstart = 0, count, i = 0;
-	MeshIsland *mi;
 
 	/* fracture values */
 	fc->max_vol = fmd->max_vol;
@@ -205,6 +201,7 @@ static void patch_fracture_modifier_struct(FractureModifierData *fmd, Object* ob
 	if (fmd->breaking_percentage_weighted)
 		cc->flag |= FMC_FLAG_BREAKING_PERCENTAGE_WEIGHTED;
 
+#if 0
 	fs->frac_mesh = BKE_copy_fracmesh(fmd->frac_mesh);
 	fs->visual_mesh = CDDM_copy(fmd->dm);
 	DM_ensure_tessface(fs->visual_mesh);
@@ -223,6 +220,7 @@ static void patch_fracture_modifier_struct(FractureModifierData *fmd, Object* ob
 		fs->islands[i] = miN;
 		i++;
 	}
+#endif
 
 	fc->inner_material = NULL; //fmd->inner_material;
 	fc->cluster_group = NULL; //fmd->cluster_group;
@@ -245,13 +243,21 @@ static void load_fracture_system(Main* main)
 		/*initialize new rigidbody system */
 		if (ob->rigidbody_object)
 		{
-			DerivedMesh *dm;
+
 			BKE_fracture_container_create(ob, ob->rigidbody_object->type);
+
+			/*hack, avoids to change function here AND allows to transfer data easily*/
+			MEM_freeN(ob->fracture_objects->rb_settings);
+			ob->fracture_objects->rb_settings = MEM_dupallocN(ob->rigidbody_object);
+
+			ob->fracture_objects->rb_settings->mesh_source = RBO_MESH_FINAL;
+			ob->fracture_objects->rb_settings->flag |= (RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
+
 			if (fmd)
 			{
-				dm = CDDM_copy(fmd->visible_mesh_cached);
 				ob->fracture_objects->flag |= FM_FLAG_SKIP_MASS_CALC;
-				BKE_fracture_container_initialize(ob, dm);
+				ob->fracture_objects->current->frac_mesh = BKE_copy_fracmesh(fmd->frac_mesh);
+				BKE_fracture_create_islands(ob);
 			}
 			else
 			{
@@ -265,20 +271,22 @@ static void load_fracture_system(Main* main)
 			if (ob->rigidbody_constraint)
 			{
 				BKE_fracture_constraint_container_create(ob, ob->rigidbody_constraint->type);
+
+				/* same freeing hack as above */
+				MEM_freeN(ob->fracture_constraints->con_settings);
+				ob->fracture_constraints->con_settings = MEM_dupallocN(ob->rigidbody_constraint);
+
 				ob->fracture_constraints->partner1 = ob->rigidbody_constraint->ob1;
 				ob->fracture_constraints->partner2 = ob->rigidbody_constraint->ob2;
+
 			}
 			else
 			{
 				BKE_fracture_constraint_container_create(ob, RBC_TYPE_FIXED);
 				ob->fracture_constraints->partner1 = ob;
 				ob->fracture_constraints->partner2 = ob;
+				patch_fracture_modifier_struct(fmd, ob);
 			}
-		}
-
-		if (fmd != NULL)
-		{
-			patch_fracture_modifier_struct(fmd, ob);
 		}
 	}
 }
@@ -874,7 +882,7 @@ void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 			}
 		}
 	}
-	else
+	else if (!DNA_struct_elem_find(fd->filesdna, "Object", "FractureContainer", "*fracture_objects"))
 	{
 		load_fracture_system(main);
 	}

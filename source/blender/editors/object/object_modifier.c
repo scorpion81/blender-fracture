@@ -754,7 +754,7 @@ static int modifier_add_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 
 	/* fracture modifier needs a rigidbody system too, else it does nothing, so add too*/
-	if (type == eModifierType_Fracture) {
+	if (type == eModifierType_Fracture && !ob->fracture_objects) {
 		ED_rigidbody_object_add(scene, ob, RBO_TYPE_ACTIVE , op->reports);
 		WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
 		WM_event_add_notifier(C, NC_OBJECT | ND_POINTCACHE, NULL);

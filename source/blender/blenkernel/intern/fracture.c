@@ -116,6 +116,10 @@ static void update_islands(Object *ob);
 
 static void copy_shard(Shard *t, Shard *s)
 {
+	t->totvert = s->totvert;
+	t->totpoly = s->totpoly;
+	t->totloop = s->totloop;
+
 	t->mvert = MEM_mallocN(sizeof(MVert) * t->totvert, "shard vertices");
 	t->mpoly = MEM_mallocN(sizeof(MPoly) * t->totpoly, "shard polys");
 	t->mloop = MEM_mallocN(sizeof(MLoop) * t->totloop, "shard loops");
@@ -280,8 +284,10 @@ static void free_fracture_container(FractureContainer *fc)
 	fc->pointcache = NULL;
 
 	/* free effector weights */
-	if (fc->effector_weights)
+	if (fc->effector_weights) {
 		MEM_freeN(fc->effector_weights);
+		fc->effector_weights = NULL;
+	}
 
 	//maybe make those temporary.... and dont store ?
 	if (fc->vertex_island_map) {
@@ -2488,7 +2494,7 @@ static void do_post_island_creation(Object *ob)
 	}
 }
 
-void BKE_prepare_autohide(Object *ob)
+void do_prepare_autohide(Object *ob)
 {
 	FractureContainer *fc = ob->fracture_objects;
 	/*HERE make a kdtree of the fractured derivedmesh,
@@ -2598,13 +2604,14 @@ static void do_island_vertex_index_map(Object *ob, GHash** vertex_island_map)
 }
 
 
-static void do_simulate(Object *ob)
+void BKE_fracture_create_islands(Object *ob)
 {
 	do_refresh(ob);
 	do_post_island_creation(ob);
-	BKE_prepare_autohide(ob);
+	do_prepare_autohide(ob);
 	//do_island_index_map(ob); //TODO... what was this good for ?
 	do_clusters(ob);
+	update_islands(ob);
 }
 
 static void add_fracture_state(Scene *scene, Object *ob)
@@ -2958,6 +2965,11 @@ static void add_shard(FracMesh *fm, Shard *s, float mat[4][4])
 {
 	MVert *mv;
 	int i = 0;
+
+	if (s->totvert == 0)
+	{
+		return; //skip this shard
+	}
 
 	for (i = 0, mv = s->mvert; i < s->totvert; i++, mv++ )
 	{
@@ -4691,26 +4703,32 @@ static void free_constraint_container(Object* ob)
 	FractureContainer *fc2 = cc->partner2->fracture_objects;
 	FractureState *fs;
 
-	for (fs = fc1->states.first; fs; fs = fs->next)
+	if (fc1)
 	{
-		for (mi = fs->island_map.first; mi; mi = mi->next) {
-			if (mi->participating_constraints != NULL) {
-				MEM_freeN(mi->participating_constraints);
-				mi->participating_constraints = NULL;
-				mi->participating_constraint_count = 0;
-			}
-		}
-	}
-
-	if (cc->partner1 != cc->partner2)
-	{
-		for (fs = fc2->states.first; fs; fs = fs->next)
+		for (fs = fc1->states.first; fs; fs = fs->next)
 		{
 			for (mi = fs->island_map.first; mi; mi = mi->next) {
 				if (mi->participating_constraints != NULL) {
 					MEM_freeN(mi->participating_constraints);
 					mi->participating_constraints = NULL;
 					mi->participating_constraint_count = 0;
+				}
+			}
+		}
+	}
+
+	if (fc2)
+	{
+		if (cc->partner1 != cc->partner2)
+		{
+			for (fs = fc2->states.first; fs; fs = fs->next)
+			{
+				for (mi = fs->island_map.first; mi; mi = mi->next) {
+					if (mi->participating_constraints != NULL) {
+						MEM_freeN(mi->participating_constraints);
+						mi->participating_constraints = NULL;
+						mi->participating_constraint_count = 0;
+					}
 				}
 			}
 		}
@@ -4922,7 +4940,7 @@ void BKE_fracture_prefracture_mesh(Scene* scene, Object *ob, ShardID id)
 
 	//operate on existing shards
 	do_modifier(scene, ob);
-	do_simulate(ob);
+	BKE_fracture_create_islands(ob);
 	//do_clear(ob); wtf....
 
 	update_islands(ob);
@@ -5038,6 +5056,8 @@ void BKE_fracture_container_create(Object *ob, int type)
 
 	//init settings object
 	fc->rb_settings = BKE_rigidbody_create_object(ob, type);
+	fc->rb_settings->mesh_source = RBO_MESH_FINAL;
+	fc->rb_settings->flag |= (RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
 
 	//init first shard
 	//initialize_shard(scene, ob);
@@ -5079,8 +5099,7 @@ void BKE_fracture_container_initialize(Object* ob, DerivedMesh *dm)
 		//create meshislands
 		//BKE_fracture_prefracture_mesh(scene, ob, 0);
 		initialize_shard(ob);
-		do_simulate(ob); //FM_TODO rename this like initialize_islands()
-		update_islands(ob);
+		BKE_fracture_create_islands(ob); //FM_TODO rename this like initialize_islands()
 	}
 }
 
