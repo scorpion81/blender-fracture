@@ -207,6 +207,7 @@ static void rna_ConstraintContainer_reset(Main *UNUSED(bmain), Scene *scene, Poi
 	ConstraintContainer *cc = ptr->data;
 	RigidBodyCon *rbc = cc->con_settings;
 	rbc->flag |= RBC_FLAG_NEEDS_VALIDATE;
+	cc->flag |= FM_FLAG_REFRESH_CONSTRAINTS;
 
 	BKE_rigidbody_cache_reset(rbw);
 }
@@ -245,6 +246,12 @@ static void rna_FractureContainer_shape_reset(Main *UNUSED(bmain), Scene *scene,
 	rbo->flag |= RBO_FLAG_NEEDS_RESHAPE;
 
 	BKE_rigidbody_cache_reset(rbw);
+}
+
+static void rna_FractureContainer_autohide_update(Main *UNUSED(bmain), Scene *scene, PointerRNA *ptr)
+{
+	DAG_id_tag_update(ptr->id.data, OB_RECALC_DATA);
+	WM_main_add_notifier(NC_OBJECT | ND_MODIFIER, ptr->id.data);
 }
 
 static char *rna_FractureContainer_path(PointerRNA *UNUSED(ptr))
@@ -896,6 +903,18 @@ static void rna_def_rigidbody_constraint_container(BlenderRNA *brna)
 	RNA_def_struct_sdna(srna, "ConstraintContainer");
 	RNA_def_struct_path_func(srna, "rna_ConstraintContainer_path");
 
+	prop = RNA_def_property(srna, "partner1", PROP_POINTER, PROP_NONE);
+	RNA_def_property_pointer_sdna(prop, NULL, "partner1");
+	RNA_def_property_struct_type(prop, "Object");
+	RNA_def_property_flag(prop, PROP_EDITABLE);
+	RNA_def_property_ui_text(prop, "Partner 1", "First constraint partner");
+
+	prop = RNA_def_property(srna, "partner2", PROP_POINTER, PROP_NONE);
+	RNA_def_property_pointer_sdna(prop, NULL, "partner2");
+	RNA_def_property_struct_type(prop, "Object");
+	RNA_def_property_flag(prop, PROP_EDITABLE);
+	RNA_def_property_ui_text(prop, "Partner 2", "Second constraint partner");
+
 	prop = RNA_def_property(srna, "con_settings", PROP_POINTER, PROP_NONE);
 	RNA_def_property_pointer_sdna(prop, NULL, "con_settings");
 	RNA_def_property_struct_type(prop, "RigidBodyConstraint");
@@ -1085,12 +1104,12 @@ static void rna_def_rigidbody_fracture_container(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Rigid Body Settings", "Settings for fractured rigid bodies");
 
 	prop = RNA_def_property(srna, "use_experimental", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "flag", FMG_FLAG_USE_EXPERIMENTAL);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", FM_FLAG_USE_EXPERIMENTAL);
 	RNA_def_property_ui_text(prop, "Use Experimental", "Experimental features, work in progress. Use at own risk!");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 
 	prop = RNA_def_property(srna, "execute_threaded", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "flag", FMG_FLAG_EXECUTE_THREADED);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", FM_FLAG_EXECUTE_THREADED);
 	RNA_def_property_ui_text(prop, "Execute as threaded job (WIP)", "Execute the fracture as threaded job, Warning: WIP, still may crash");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 
@@ -1175,7 +1194,7 @@ static void rna_def_rigidbody_fracture_container(BlenderRNA *brna)
 	RNA_def_property_float_sdna(prop, NULL, "autohide_dist");
 	RNA_def_property_range(prop, 0.0f, 10.0f);
 	RNA_def_property_ui_text(prop, "Autohide Distance", "Distance between faces below which both faces should be hidden");
-	RNA_def_property_update(prop, NC_OBJECT | ND_MODIFIER, 0);
+	RNA_def_property_update(prop, 0, "rna_FractureContainer_autohide_update");
 
 	prop = RNA_def_property(srna, "use_particle_birth_coordinates", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", FM_FLAG_USE_PARTICLE_BIRTH_COORDS);

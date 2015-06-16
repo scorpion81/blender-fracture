@@ -299,6 +299,8 @@ enum {
 	FM_FLAG_REFRESH_SHAPE                 = (1 << 14),
 	FM_FLAG_SKIP_STEPPING                 = (1 << 15),
 	FM_FLAG_SKIP_MASS_CALC                = (1 << 16),
+	FM_FLAG_USE_EXPERIMENTAL              = (1 << 17),
+	FM_FLAG_EXECUTE_THREADED              = (1 << 18),
 };
 
 /*constraint flags*/
@@ -313,13 +315,6 @@ enum {
 	FMC_FLAG_USE_MASS_DEPENDENT_THRESHOLDS = (1 << 5),
 };
 
-/*internal flags, global */
-enum {
-	FMG_FLAG_USE_EXPERIMENTAL    = (1 << 0),
-	FMG_FLAG_EXECUTE_THREADED    = (1 << 1),
-	FMG_FLAG_REFRESH             = (1 << 2),
-	FMG_FLAG_REFRESH_IMAGES      = (1 << 3),
-};
 
 #ifdef __cplusplus
 }

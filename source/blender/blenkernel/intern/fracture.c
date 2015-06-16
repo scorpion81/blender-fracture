@@ -2037,7 +2037,7 @@ static void find_other_face(Object* ob, int i, BMesh* bm, BMFace ***faces, int *
 	BM_face_calc_center_mean(f2, f_centr_other);
 
 
-	if ((len_squared_v3v3(f_centr, f_centr_other) < (fc->autohide_dist)) && (f1 != f2) &&
+	if ((len_squared_v3v3(f_centr, f_centr_other) < fc->autohide_dist * fc->autohide_dist) && (f1 != f2) &&
 	    (f1->mat_nr == 1) && (f2->mat_nr == 1))
 	{
 		/*intact face pairs */
@@ -2048,7 +2048,7 @@ static void find_other_face(Object* ob, int i, BMesh* bm, BMFace ***faces, int *
 	}
 }
 
-DerivedMesh *BKE_autohide_inner(Object* ob)
+DerivedMesh *BKE_fracture_autohide(Object* ob)
 {
 	FractureContainer *fc = ob->fracture_objects;
 	DerivedMesh *dm = fc->current->visual_mesh;
@@ -2488,11 +2488,13 @@ static void do_post_island_creation(Object *ob)
 	}
 #endif //TODO, necessary still ?
 
-	if (fc->flag & FMG_FLAG_EXECUTE_THREADED) {
+	if (fc->flag & FM_FLAG_EXECUTE_THREADED) {
 		/* job done */
 		fc->current->frac_mesh->running = 0;
 	}
 }
+
+
 
 void do_prepare_autohide(Object *ob)
 {
@@ -2507,6 +2509,16 @@ void do_prepare_autohide(Object *ob)
 	if (fc->current->visual_mesh)
 	{
 		make_face_pairs(ob);
+	}
+}
+
+void BKE_fracture_prepare_autohide(Object *ob)
+{
+	FractureContainer *fc = ob->fracture_objects;
+	if (fc && fc->flag & FM_FLAG_REFRESH_AUTOHIDE)
+	{
+		do_prepare_autohide(ob);
+		fc->flag &= ~FM_FLAG_REFRESH_AUTOHIDE;
 	}
 }
 
@@ -2539,6 +2551,9 @@ static void do_refresh(Object *ob)
 	}
 
 	fs->visual_mesh = BKE_fracture_create_dm(ob, true);
+	DM_ensure_tessface(fs->visual_mesh);
+	DM_ensure_normals(fs->visual_mesh);
+	DM_update_tessface_data(fs->visual_mesh);
 
 	if (fc->flag & FM_FLAG_FIX_NORMALS)
 	{
@@ -4699,12 +4714,13 @@ static void free_constraint_container(Object* ob)
 	MeshIsland *mi = NULL;
 	RigidBodyShardCon *rbsc = NULL;
 	ConstraintContainer *cc = ob->fracture_constraints;
-	FractureContainer *fc1 = cc->partner1->fracture_objects;
-	FractureContainer *fc2 = cc->partner2->fracture_objects;
+	Object *ob1 = cc->partner1;
+	Object *ob2 = cc->partner2;
 	FractureState *fs;
 
-	if (fc1)
+	if (ob1 && ob1->fracture_objects)
 	{
+		FractureContainer *fc1 = ob1->fracture_objects;
 		for (fs = fc1->states.first; fs; fs = fs->next)
 		{
 			for (mi = fs->island_map.first; mi; mi = mi->next) {
@@ -4717,9 +4733,10 @@ static void free_constraint_container(Object* ob)
 		}
 	}
 
-	if (fc2)
+	if (ob2 && ob2->fracture_objects)
 	{
-		if (cc->partner1 != cc->partner2)
+		FractureContainer *fc2 = ob2->fracture_objects;
+		if (ob1 != ob2)
 		{
 			for (fs = fc2->states.first; fs; fs = fs->next)
 			{
@@ -4856,17 +4873,27 @@ static void build_constraints(Object *ob)
 	int count = 0;
 	MeshIsland **mesh_islands = NULL;
 	ConstraintContainer *cc = ob->fracture_constraints;
-	FractureContainer *fc1 = cc->partner1->fracture_objects;
-	FractureContainer *fc2 = cc->partner2->fracture_objects;
+	Object* ob1 = cc->partner1;
+	Object* ob2 = cc->partner2;
 	bool outer = cc->partner1 != cc->partner2;
-	int totvert1 = fc1->current->visual_mesh->numVertData;
-	int totvert2 = fc2->current->visual_mesh->numVertData;
+	FractureContainer* fc1, *fc2;
+	int totvert1, totvert2;
 	double start;
 
 	if (!(cc->flag & FMC_FLAG_USE_CONSTRAINTS))
 	{
 		return;
 	}
+
+	if (!ob1 || !ob2)
+	{
+		return;
+	}
+
+	fc1 = ob1->fracture_objects;
+	fc2 = ob2->fracture_objects;
+	totvert1 = fc1->current->visual_mesh->numVertData;
+	totvert2 = fc2->current->visual_mesh->numVertData;
 
 	//execute this on constraint object (without modifier)
 	start = PIL_check_seconds_timer();
@@ -4909,6 +4936,20 @@ static void build_constraints(Object *ob)
 	BLI_ghash_free(vertex_island_map, NULL, NULL);
 }
 
+void BKE_fracture_constraint_container_update(Object* ob)
+{
+	ConstraintContainer *cc = ob->fracture_constraints;
+	if (cc && (cc->flag & FM_FLAG_REFRESH_CONSTRAINTS))
+	{
+		do_clusters(cc->partner1);
+		if (cc->partner1 != cc->partner2)
+			do_clusters(cc->partner2);
+		build_constraints(ob);
+		cc->flag &= ~FM_FLAG_REFRESH_CONSTRAINTS;
+	}
+}
+
+
 void BKE_fracture_prefracture_mesh(Scene* scene, Object *ob, ShardID id)
 {
 	FractureContainer *fc = ob->fracture_objects;
@@ -4916,9 +4957,9 @@ void BKE_fracture_prefracture_mesh(Scene* scene, Object *ob, ShardID id)
 	fc->raw_mesh = BKE_fracture_ensure_mesh(scene, ob);
 
 	//disable hardcoded for now, FM_TODO
-	fc->flag &= ~FMG_FLAG_EXECUTE_THREADED;
+	fc->flag &= ~FM_FLAG_EXECUTE_THREADED;
 
-	if ((fs->frac_mesh) && fs->frac_mesh->running == 1 && (fc->flag & FMG_FLAG_EXECUTE_THREADED)) {
+	if ((fs->frac_mesh) && fs->frac_mesh->running == 1 && (fc->flag & FM_FLAG_EXECUTE_THREADED)) {
 		/* skip fracture execution when fracture job is running */
 		return;
 	}
@@ -4943,7 +4984,7 @@ void BKE_fracture_prefracture_mesh(Scene* scene, Object *ob, ShardID id)
 	BKE_fracture_create_islands(ob);
 	//do_clear(ob); wtf....
 
-	update_islands(ob);
+	//update_islands(ob);
 
 	//here reset all caches FM_TODO (elsewhere)
 	//BKE_rigidbody_cache_reset(scene->rigidbody_world);

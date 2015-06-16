@@ -2367,7 +2367,7 @@ static int fracture_refresh_exec(bContext *C, wmOperator *UNUSED(op))
 	WM_event_add_notifier(C, NC_OBJECT | ND_PARENT, NULL);
 	WM_event_add_notifier(C, NC_SCENE | ND_FRAME, NULL);
 
-	if (!(fc->flag & FMG_FLAG_EXECUTE_THREADED)) {
+	if (!(fc->flag & FM_FLAG_EXECUTE_THREADED)) {
 
 		//perhaps trigger modifier eval before, but probably this is updated correctly...
 		//makeDerivedMesh(scene, obact, NULL, CD_MASK_BAREMESH, 0);

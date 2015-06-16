@@ -155,10 +155,10 @@ static void patch_fracture_modifier_struct(FractureModifierData *fmd, Object* ob
 
 	/* global flags */
 	if (fmd->execute_threaded)
-		fc->flag |= FMG_FLAG_EXECUTE_THREADED;
+		fc->flag |= FM_FLAG_EXECUTE_THREADED;
 
 	if (fmd->use_experimental)
-		fc->flag |= FMG_FLAG_USE_EXPERIMENTAL;
+		fc->flag |= FM_FLAG_USE_EXPERIMENTAL;
 
 	/* fracture flags */
 	if (fmd->use_particle_birth_coordinates)
@@ -222,10 +222,10 @@ static void patch_fracture_modifier_struct(FractureModifierData *fmd, Object* ob
 	}
 #endif
 
-	fc->inner_material = NULL; //fmd->inner_material;
-	fc->cluster_group = NULL; //fmd->cluster_group;
-	fc->extra_group = NULL; //fmd->extra_group;
-	fc->cutter_group = NULL;//fmd->cutter_group;
+	fc->inner_material = fmd->inner_material;
+	fc->cluster_group = fmd->cluster_group;
+	fc->extra_group = fmd->extra_group;
+	fc->cutter_group = fmd->cutter_group;
 	BLI_strncpy(fc->thresh_defgrp_name, fmd->thresh_defgrp_name, sizeof(fc->thresh_defgrp_name));
 	BLI_strncpy(fc->ground_defgrp_name, fmd->ground_defgrp_name, sizeof(fc->ground_defgrp_name));
 	BLI_strncpy(fc->inner_defgrp_name, fmd->inner_defgrp_name, sizeof(fc->inner_defgrp_name));
@@ -255,9 +255,19 @@ static void load_fracture_system(Main* main)
 
 			if (fmd)
 			{
+				int i = 0;
+				MeshIsland *mi;
+
 				ob->fracture_objects->flag |= FM_FLAG_SKIP_MASS_CALC;
 				ob->fracture_objects->current->frac_mesh = BKE_copy_fracmesh(fmd->frac_mesh);
 				BKE_fracture_create_islands(ob);
+				ob->fracture_objects->flag |= FM_FLAG_REFRESH_AUTOHIDE;
+
+				for (i = 0; i < ob->fracture_objects->current->island_count; i++)
+				{
+					mi = ob->fracture_objects->current->islands[i];
+					mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+				}
 			}
 			else
 			{

@@ -1711,37 +1711,38 @@ static void write_objects(WriteData *wd, ListBase *idbase)
 
 			if (ob->fracture_objects) {
 				FractureContainer *fc = ob->fracture_objects;
-				FractureState *fs;
+				FractureState *fs = fc->current;
 
-				writestruct(wd, DATA, "FractureContainer", 1, fc);
-				writestruct(wd, DATA, "RigidBodyOb", 1, fc->rb_settings);
-
-				writestruct(wd, DATA, "Material", 1, fc->inner_material);
-				writestruct(wd, DATA, "Group", 1, fc->cluster_group);
-				writestruct(wd, DATA, "Group", 1, fc->cutter_group);
-				writestruct(wd, DATA, "Group", 1, fc->extra_group);
-
-				for (fs = fc->states.first; fs; fs = fs->next)
+				if (fc->current->frac_mesh)
 				{
-					Shard* s;
-					MeshIsland *mi;
-					FracMesh *fm = fs->frac_mesh;
+					/* old rigidbodies dont have a fracmesh, and its not easily initalizable here without
+					 * knowing the mesh of the object, so postpone init for later.... and DONT write anything
+					 * here if we dont have a fracmesh yet */
+					writestruct(wd, DATA, "FractureContainer", 1, fc);
+					writestruct(wd, DATA, "RigidBodyOb", 1, fc->rb_settings);
 
-					writestruct(wd, DATA, "FractureState", 1, fs);
-					writestruct(wd, DATA, "FracMesh", 1, fm);
-
-					for (s = fm->shard_map.first; s; s = s->next)
+					for (fs = fc->states.first; fs; fs = fs->next)
 					{
-						write_shard(wd, s);
+						Shard* s;
+						MeshIsland *mi;
+						FracMesh *fm = fs->frac_mesh;
+
+						writestruct(wd, DATA, "FractureState", 1, fs);
+						writestruct(wd, DATA, "FracMesh", 1, fm);
+
+						for (s = fm->shard_map.first; s; s = s->next)
+						{
+							write_shard(wd, s);
+						}
+
+						for (mi = fs->island_map.first; mi; mi = mi->next)
+						{
+							write_meshIsland(wd, mi);
+						}
 					}
 
-					for (mi = fs->island_map.first; mi; mi = mi->next)
-					{
-						write_meshIsland(wd, mi);
-					}
+					write_pointcaches(wd, &fc->ptcaches);
 				}
-
-				write_pointcaches(wd, &fc->ptcaches);
 			}
 
 			if (ob->fracture_constraints) {

@@ -40,7 +40,9 @@ class PHYSICS_PT_rigid_body_constraint(PHYSICS_PT_rigidbody_constraint_panel, Pa
         layout = self.layout
 
         ob = context.object
-        rbc = ob.constraint_container.con_settings
+        cc = ob.constraint_container
+        rbc = cc.con_settings
+
 
         layout.prop(rbc, "type")
 
@@ -48,8 +50,8 @@ class PHYSICS_PT_rigid_body_constraint(PHYSICS_PT_rigidbody_constraint_panel, Pa
         row.prop(rbc, "enabled")
         row.prop(rbc, "disable_collisions")
 
-        layout.prop(rbc, "object1")
-        layout.prop(rbc, "object2")
+        layout.prop(cc, "partner1")
+        layout.prop(cc, "partner2")
 
         if rbc.type != 'MOTOR':
             row = layout.row()

@@ -1796,7 +1796,7 @@ static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int r
 		// XXX: we assume that this can only get applied for active/passive shapes that will be included as rigidbodies
 		RB_body_set_collision_shape(mi->rigidbody->physics_object, mi->rigidbody->physics_shape);
 	}
-	rb->flag &= ~(RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
+	mi->rigidbody->flag &= ~(RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
 }
 
 static void handle_breaking_percentage(Object *ob, MeshIsland *mi, RigidBodyWorld *rbw, int breaking_percentage)
@@ -2428,6 +2428,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 			if (rbw->flag & RBW_FLAG_NEEDS_REBUILD)
 			{
 				BKE_rigidbody_validate_sim_world(scene, rbw, false);
+				rbw->flag &= ~RBW_FLAG_NEEDS_REBUILD;
 			}
 			continue;
 		}

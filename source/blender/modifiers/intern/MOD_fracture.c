@@ -80,7 +80,10 @@ static DerivedMesh *applyModifier(ModifierData *UNUSED(md), Object *ob,
 {
 	if (ob->fracture_objects)
 	{
-		return BKE_autohide_inner(ob);
+		BKE_fracture_constraint_container_update(ob);
+		BKE_fracture_prepare_autohide(ob); /*in case after loading rebuild facepairs,
+											* this GHash is a runtime struct ONLY*/
+		return BKE_fracture_autohide(ob);
 	}
 
 	return derivedData;

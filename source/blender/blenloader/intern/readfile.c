@@ -4631,6 +4631,24 @@ static void lib_link_object(FileData *fd, Main *main)
 				ob->rigidbody_constraint->ob2 = newlibadr(fd, ob->id.lib, ob->rigidbody_constraint->ob2);
 			}
 
+			/*tag those for library expansion later (?) */
+			if (ob->fracture_objects)
+			{
+				FractureContainer *fc = ob->fracture_objects;
+
+				fc->inner_material = newlibadr(fd, ob->id.lib, fc->inner_material);
+				fc->cluster_group = newlibadr(fd, ob->id.lib, fc->cluster_group);
+				fc->cutter_group = newlibadr(fd, ob->id.lib, fc->cutter_group);
+				fc->extra_group = newlibadr(fd, ob->id.lib, fc->extra_group);
+			}
+
+			if (ob->fracture_constraints)
+			{
+				ConstraintContainer *cc = ob->fracture_constraints;
+				cc->partner1 = newlibadr(fd, ob->id.lib, cc->partner1);
+				cc->partner2 = newlibadr(fd, ob->id.lib, cc->partner2);
+			}
+
 			{
 				LodLevel *level;
 				for (level = ob->lodlevels.first; level; level = level->next) {
@@ -5083,7 +5101,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 
 		if (md->type == eModifierType_Fracture) {
 			FractureModifierData *fmd = (FractureModifierData*)md;
-			if (!DNA_struct_elem_find(fd->filesdna, "Object", "FractureContainer", "fracture_objects"))
+			if (!DNA_struct_elem_find(fd->filesdna, "Object", "FractureContainer", "*fracture_objects"))
 			{
 				load_legacy_fracture_modifier(fd, fmd);
 			}
@@ -5501,11 +5519,6 @@ static void direct_link_object(FileData *fd, Object *ob)
 		fc->face_pairs = NULL;
 
 		fc->rb_settings = newdataadr(fd, fc->rb_settings);
-		fc->inner_material = newdataadr(fd, fc->inner_material);
-		fc->cluster_group = newdataadr(fd, fc->cluster_group);
-		fc->cutter_group = newdataadr(fd, fc->cutter_group);
-		fc->extra_group = newdataadr(fd, fc->extra_group);
-
 		link_list(fd, &fc->states);
 
 		for (fs = fc->states.first; fs; fs = fs->next)
@@ -5546,6 +5559,7 @@ static void direct_link_object(FileData *fd, Object *ob)
 		fc->current = fc->states.first;
 
 		direct_link_pointcache_list(fd, &fc->ptcaches, &fc->pointcache, 0);
+		fc->flag |= FM_FLAG_REFRESH_AUTOHIDE;
 	}
 
 	if (ob->fracture_constraints)
