@@ -122,5 +122,6 @@ struct MVert* BKE_copy_visual_mesh(struct Object* ob, struct FractureState *fs);
 struct FracMesh* BKE_copy_fracmesh(struct FracMesh* fm);
 struct DerivedMesh *BKE_fracture_ensure_mesh(struct Scene* scene, struct Object* ob);
 void BKE_fracture_container_initialize(struct Object* ob, struct DerivedMesh *dm);
+void BKE_prepare_autohide(struct Object *ob);
 
 #endif /* BKE_FRACTURE_H */

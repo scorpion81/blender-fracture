@@ -2488,7 +2488,7 @@ static void do_post_island_creation(Object *ob)
 	}
 }
 
-static void do_refresh_autohide(Object *ob)
+void BKE_prepare_autohide(Object *ob)
 {
 	FractureContainer *fc = ob->fracture_objects;
 	/*HERE make a kdtree of the fractured derivedmesh,
@@ -2602,7 +2602,7 @@ static void do_simulate(Object *ob)
 {
 	do_refresh(ob);
 	do_post_island_creation(ob);
-	do_refresh_autohide(ob);
+	BKE_prepare_autohide(ob);
 	//do_island_index_map(ob); //TODO... what was this good for ?
 	do_clusters(ob);
 }
