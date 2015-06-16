@@ -109,7 +109,6 @@ typedef struct FractureContainer {
 	struct Group *extra_group;
 	struct Group *cutter_group;
 	struct Material *inner_material;
-	struct RigidBodyOb *rb_settings;
 	struct DerivedMesh *raw_mesh;
 
 	char thresh_defgrp_name[64];  /* MAX_VGROUP_NAME */
@@ -176,10 +175,6 @@ typedef struct FractureState {
 
 typedef struct ConstraintContainer {
 	ListBase constraint_map;
-
-	struct Object *partner1;			/* First object influenced by the constraint container */
-	struct Object *partner2;			/* Second object influenced by the constraint container */
-	struct RigidBodyCon *con_settings;
 
 	float breaking_angle;
 	float breaking_distance;

@@ -1443,9 +1443,9 @@ void BKE_ptcache_ids_from_object(ListBase *lb, Object *ob, Scene *scene, int dup
 		}
 	}
 	
-	if (scene && ob->fracture_objects) {
+	if (scene && ob->rigidbody_object->fracture_objects) {
 		pid = MEM_callocN(sizeof(PTCacheID), "PTCacheID");
-		BKE_ptcache_id_from_rigidbody(pid, ob, ob->fracture_objects);
+		BKE_ptcache_id_from_rigidbody(pid, ob, ob->rigidbody_object->fracture_objects);
 		//maybe add all dynamic caches here ? FM_TODO....
 		BLI_addtail(lb, pid);
 	}

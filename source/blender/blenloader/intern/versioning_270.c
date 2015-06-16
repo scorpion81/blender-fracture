@@ -107,8 +107,8 @@ static int initialize_meshisland(FractureModifierData* fmd, MeshIsland** mii, MV
 
 static void patch_fracture_modifier_struct(FractureModifierData *fmd, Object* ob)
 {
-	ConstraintContainer *cc = ob->fracture_constraints;
-	FractureContainer *fc = ob->fracture_objects;
+	ConstraintContainer *cc = ob->rigidbody_constraint->fracture_constraints;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 
 	/* fracture values */
 	fc->max_vol = fmd->max_vol;
@@ -240,63 +240,9 @@ static void load_fracture_system(Main* main)
 		/*initialize older blends to useful values */
 		FractureModifierData *fmd = (FractureModifierData* )modifiers_findByType(ob, eModifierType_Fracture);
 
-		/*initialize new rigidbody system */
-		if (ob->rigidbody_object)
+		if (fmd)
 		{
-
-			BKE_fracture_container_create(ob, ob->rigidbody_object->type);
-
-			/*hack, avoids to change function here AND allows to transfer data easily*/
-			MEM_freeN(ob->fracture_objects->rb_settings);
-			ob->fracture_objects->rb_settings = MEM_dupallocN(ob->rigidbody_object);
-
-			ob->fracture_objects->rb_settings->mesh_source = RBO_MESH_FINAL;
-			ob->fracture_objects->rb_settings->flag |= (RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
-
-			if (fmd)
-			{
-				int i = 0;
-				MeshIsland *mi;
-
-				ob->fracture_objects->flag |= FM_FLAG_SKIP_MASS_CALC;
-				ob->fracture_objects->current->frac_mesh = BKE_copy_fracmesh(fmd->frac_mesh);
-				BKE_fracture_create_islands(ob);
-				ob->fracture_objects->flag |= FM_FLAG_REFRESH_AUTOHIDE;
-
-				for (i = 0; i < ob->fracture_objects->current->island_count; i++)
-				{
-					mi = ob->fracture_objects->current->islands[i];
-					mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
-				}
-			}
-			else
-			{
-				ob->fracture_objects->flag |= FM_FLAG_REFRESH_SHAPE;
-				//get the shape later, this is for old rigidbodies
-			}
-		}
-
-		if (ob->rigidbody_constraint || fmd)
-		{
-			if (ob->rigidbody_constraint)
-			{
-				BKE_fracture_constraint_container_create(ob, ob->rigidbody_constraint->type);
-
-				/* same freeing hack as above */
-				MEM_freeN(ob->fracture_constraints->con_settings);
-				ob->fracture_constraints->con_settings = MEM_dupallocN(ob->rigidbody_constraint);
-
-				ob->fracture_constraints->partner1 = ob->rigidbody_constraint->ob1;
-				ob->fracture_constraints->partner2 = ob->rigidbody_constraint->ob2;
-
-			}
-			else
-			{
-				BKE_fracture_constraint_container_create(ob, RBC_TYPE_FIXED);
-				ob->fracture_constraints->partner1 = ob;
-				ob->fracture_constraints->partner2 = ob;
-				patch_fracture_modifier_struct(fmd, ob);
-			}
+			patch_fracture_modifier_struct(fmd, ob);
 		}
 	}
 }

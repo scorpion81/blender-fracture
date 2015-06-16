@@ -357,7 +357,7 @@ static void do_cluster_count(FractureContainer *fc)
 
 static void do_cluster_group(Object* obj)
 {
-	FractureContainer *fc = obj->fracture_objects;
+	FractureContainer *fc = obj->rigidbody_object->fracture_objects;
 	FractureState *fs = fc->current;
 	KDTree *tree;
 	MeshIsland *mi;
@@ -399,7 +399,7 @@ static void do_cluster_group(Object* obj)
 
 static void do_clusters(Object* obj)
 {
-	FractureContainer *fc = obj->fracture_objects;
+	FractureContainer *fc = obj->rigidbody_object->fracture_objects;
 
 	/*grow clusters from all meshIslands */
 	if (fc->cluster_group)
@@ -484,7 +484,7 @@ static int getGroupObjects(Group *gr, Object ***obs, int g_exist)
 
 static void points_from_verts(Object **ob, int totobj, Scene *scene,Object *obj, float thresh, FracPointCloud *points)
 {
-	FractureContainer *fc = obj->fracture_objects;
+	FractureContainer *fc = obj->rigidbody_object->fracture_objects;
 	int v, o, pt = points->totpoints;
 	float co[3];
 
@@ -531,7 +531,7 @@ static void points_from_particles(Object **ob, int totobj, Scene *scene, Object 
 	ParticleSimulationData sim = {NULL};
 	ParticleKey birth;
 	ModifierData *mod;
-	FractureContainer *fc = obj->fracture_objects;
+	FractureContainer *fc = obj->rigidbody_object->fracture_objects;
 
 	for (o = 0; o < totobj; o++) {
 		for (mod = ob[o]->modifiers.first; mod; mod = mod->next) {
@@ -623,7 +623,7 @@ static void points_from_greasepencil(Object **ob, int totobj, Object* obj, float
 static FracPointCloud get_points_global(Scene* scene, Object *ob, ShardID id)
 {
 	FracPointCloud points;
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	FractureState *fs = fc->current;
 
 	/* global settings, for first fracture only, or global secondary and so on fracture, apply to entire fracmesh */
@@ -729,7 +729,7 @@ static Material* find_material(const char* name)
 static void do_splinters(Object* ob, FracPointCloud points, float(*mat)[4][4])
 {
 	float imat[4][4];
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	DerivedMesh *dm = fc->raw_mesh;
 
 	unit_m4(*mat);
@@ -770,7 +770,7 @@ static void do_splinters(Object* ob, FracPointCloud points, float(*mat)[4][4])
 
 static short do_materials(Object* obj)
 {
-	FractureContainer *fc = obj->fracture_objects;
+	FractureContainer *fc = obj->rigidbody_object->fracture_objects;
 	short mat_index = 0;
 
 	if (fc->inner_material) {
@@ -839,7 +839,7 @@ static short do_materials(Object* obj)
 
 static void cleanup_splinters(Object* ob, float mat[4][4])
 {
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	DerivedMesh *dm = fc->raw_mesh;
 
 	if ((fc->splinter_axis & MOD_FRACTURE_SPLINTER_X) ||
@@ -859,7 +859,7 @@ static void do_fracture(Scene *scene, Object *obj, ShardID id)
 {
 	/* dummy point cloud, random */
 	FracPointCloud points;
-	FractureContainer *fc = obj->fracture_objects;
+	FractureContainer *fc = obj->rigidbody_object->fracture_objects;
 	FractureState *fs = fc->current;
 
 	points = get_points_global(scene, obj, id);
@@ -998,7 +998,7 @@ static int BM_mesh_minmax(BMesh *bm, float r_min[3], float r_max[3], int tagged)
 
 static Shard* do_shard_to_island(Object* ob, BMesh* bm_new)
 {
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	FractureState *fs = fc->current;
 	FracMesh *fm = fs->frac_mesh;
 
@@ -1035,7 +1035,7 @@ static void do_rigidbody(Object *ob, MeshIsland* mi, short rb_type)
 
 static void do_fix_normals(Object* ob, MeshIsland *mi)
 {
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 
 	/* copy fixed normals to physicsmesh too, for convert to objects */
 	if (fc->flag & FM_FLAG_FIX_NORMALS) {
@@ -1163,7 +1163,7 @@ static void mesh_separate_tagged(Scene *UNUSED(scene), Object *ob, BMesh *bm_wor
 	BMVert *v;
 	BMIter iter;
 //	Shard *s;
-	FractureContainer* fc = ob->fracture_objects;
+	FractureContainer* fc = ob->rigidbody_object->fracture_objects;
 	FractureState *fs = fc->current;
 
 	//const int thresh_defgrp_index = defgroup_name_index(ob, fc->thresh_defgrp_name);
@@ -1254,7 +1254,7 @@ static void handle_vert(Object* ob, BMVert* vert, BMVert** orig_work,
 
 	short no[3];
 	short vno[3];
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	DerivedMesh *dm = fc->raw_mesh;
 
 	if (*v_tag == NULL)
@@ -1301,7 +1301,7 @@ static void mesh_separate_loose_partition(Scene *scene, Object *ob, BMesh *bm_wo
 	BMIter iter;
 	float *startco = NULL;
 	short *startno = NULL;
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	FractureState *fs = fc->current;
 
 	if (max_iter > 0) {
@@ -1386,7 +1386,7 @@ static void halve(Scene *scene, Object *ob, int minsize, BMesh **bm_work, BMVert
 	BMVert *v;
 	BMesh *bm_old = *bm_work;
 	BMesh *bm_new = NULL;
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	separated = false;
 
 	if (fc->current->frac_mesh->cancel == 1) {
@@ -1448,7 +1448,7 @@ static void mesh_separate_loose(Scene *scene, Object *ob)
 	BMesh *bm_work;
 	BMVert *vert, **orig_start;
 	BMIter iter;
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	DerivedMesh *dm = fc->raw_mesh;
 
 	bm_work = DM_to_bmesh(dm, true);
@@ -1489,9 +1489,9 @@ static void mesh_separate_loose(Scene *scene, Object *ob)
 static void do_constraint(Object* ob, MeshIsland *mi1, MeshIsland *mi2, int con_type, float thresh)
 {
 	RigidBodyShardCon *rbsc;
-	ConstraintContainer *cc = ob->fracture_constraints;
-	FractureContainer *fc1 = cc->partner1->fracture_objects;
-	FractureContainer *fc2 = cc->partner2->fracture_objects;
+	ConstraintContainer *cc = ob->rigidbody_constraint->fracture_constraints;
+	FractureContainer *fc1 = ob->rigidbody_constraint->ob1->rigidbody_object->fracture_objects;
+	FractureContainer *fc2 = ob->rigidbody_constraint->ob2->rigidbody_object->fracture_objects;
 
 	rbsc = BKE_rigidbody_create_shard_constraint(con_type);
 	rbsc->mi1 = mi1;
@@ -1553,7 +1553,7 @@ static void do_constraint(Object* ob, MeshIsland *mi1, MeshIsland *mi2, int con_
 
 static void connect_meshislands(Object* ob, MeshIsland *mi1, MeshIsland *mi2, int con_type, float thresh)
 {
-	ConstraintContainer *cc = ob->fracture_constraints;
+	ConstraintContainer *cc = ob->rigidbody_constraint->fracture_constraints;
 	int con_found = false;
 	RigidBodyShardCon *con;
 	bool ok = mi1 && mi1->rigidbody;
@@ -1593,7 +1593,7 @@ static void search_tree_based(Object* ob, MeshIsland *mi, MeshIsland **meshIslan
 	int r = 0, limit = 0, i = 0;
 	KDTreeNearest *n3 = NULL;
 	float dist, obj_centr[3];
-	ConstraintContainer* cc = ob->fracture_constraints;
+	ConstraintContainer* cc = ob->rigidbody_constraint->fracture_constraints;
 
 	limit = cc->constraint_limit;
 	dist = cc->contact_dist;
@@ -1638,7 +1638,7 @@ static void search_tree_based(Object* ob, MeshIsland *mi, MeshIsland **meshIslan
 static void prepareConstraintSearch(Object *ob, MeshIsland ***mesh_islands, KDTree **combined_tree, GHash** vertex_index_map, int start, int target)
 {
 	MeshIsland *mi;
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	FractureState *fs = fc->current;
 	int i = 0;
 
@@ -1672,7 +1672,7 @@ static void prepareConstraintSearch(Object *ob, MeshIsland ***mesh_islands, KDTr
 
 static void create_constraints(Object *ob, MeshIsland **mesh_islands, int count, KDTree *coord_tree, GHash* vertex_island_map, int target)
 {
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	FractureState *fs = fc->current;
 	int i = 0;
 
@@ -1692,7 +1692,7 @@ static void create_constraints(Object *ob, MeshIsland **mesh_islands, int count,
 
 static void fill_vgroup(Object *ob, MDeformVert *dvert)
 {
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	DerivedMesh *dm = fc->current->visual_mesh;
 
 	/* use fallback over inner material (no more, now directly via tagged verts) */
@@ -1950,7 +1950,7 @@ static void do_match_normals(MPoly *mp, MPoly *other_mp, MVert *mvert, MLoop *ml
 
 static void make_face_pairs(Object *ob)
 {
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	DerivedMesh *dm = fc->current->visual_mesh; // for all post fracture ops use this, else ob->derivedFinal, make an ensure function!!!
 
 	/* make kdtree of all faces of dm, then find closest face for each face*/
@@ -2016,7 +2016,7 @@ static void make_face_pairs(Object *ob)
 
 static void find_other_face(Object* ob, int i, BMesh* bm, BMFace ***faces, int *del_faces)
 {
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	float f_centr[3], f_centr_other[3];
 	BMFace *f1, *f2;
 	int other = GET_INT_FROM_POINTER(BLI_ghash_lookup(fc->face_pairs, SET_INT_IN_POINTER(i)));
@@ -2050,7 +2050,7 @@ static void find_other_face(Object* ob, int i, BMesh* bm, BMFace ***faces, int *
 
 DerivedMesh *BKE_fracture_autohide(Object* ob)
 {
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	DerivedMesh *dm = fc->current->visual_mesh;
 	int i = 0;
 	BMesh *bm;
@@ -2111,7 +2111,7 @@ DerivedMesh *BKE_fracture_autohide(Object* ob)
 
 static void do_fix_normals_physics_mesh(Object* ob, Shard* s, MeshIsland* mi, int i)
 {
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	MVert *mv, *verts;
 	int totvert;
 	int j;
@@ -2156,7 +2156,7 @@ static void do_verts_weights(Object* ob, Shard *s, MeshIsland *mi, int vertstart
 {
 	MVert *mverts;
 	int k;
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	DerivedMesh *dm = fc->current->visual_mesh;
 	MDeformVert *dvert = dm->getVertDataArray(dm, CD_MDEFORMVERT);
 
@@ -2234,7 +2234,7 @@ static bool contains(float loc[3], float size[3], float point[3])
 
 static void set_rigidbody_type(Object *ob, Shard *s, MeshIsland *mi)
 {
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	FractureState *fs = fc->current;
 	//how far is impact location away from this shard, if beyond a bbox, keep passive
 	if (fs)
@@ -2265,8 +2265,8 @@ static void set_rigidbody_type(Object *ob, Shard *s, MeshIsland *mi)
 
 static void do_island_from_shard(Object *ob, Shard* s, int i, int thresh_defgrp_index, int ground_defgrp_index, int vertstart)
 {
-	FractureContainer *fc = ob->fracture_objects;
-	RigidBodyOb *rb = fc->rb_settings;
+	RigidBodyOb *rb = ob->rigidbody_object;
+	FractureContainer *fc = rb->fracture_objects;
 	FractureState *fs = fc->current;
 
 	MeshIsland *mi;
@@ -2369,7 +2369,7 @@ static MDeformVert* do_islands_from_shards(Object* ob)
 	/* can be created without shards even, when using fracturemethod = NONE (re-using islands)*/
 	Shard *s;
 	int i = 0, vertstart = 0;
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 
 	MDeformVert *ivert = NULL;
 	ListBase shardlist;
@@ -2461,7 +2461,7 @@ static DerivedMesh *output_dm(Object *ob DerivedMesh *dm, bool exploOK)
 
 static void do_post_island_creation(Object *ob)
 {
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	DerivedMesh *dm = fc->current->visual_mesh;
 
 	/* fallback, this branch is executed when the modifier data has been loaded via readfile.c,
@@ -2498,7 +2498,7 @@ static void do_post_island_creation(Object *ob)
 
 void do_prepare_autohide(Object *ob)
 {
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	/*HERE make a kdtree of the fractured derivedmesh,
 	 * store pairs of faces (MPoly) here (will be most likely the inner faces) */
 	if (fc->face_pairs != NULL) {
@@ -2514,7 +2514,7 @@ void do_prepare_autohide(Object *ob)
 
 void BKE_fracture_prepare_autohide(Object *ob)
 {
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	if (fc && fc->flag & FM_FLAG_REFRESH_AUTOHIDE)
 	{
 		do_prepare_autohide(ob);
@@ -2536,7 +2536,7 @@ static void do_refresh(Object *ob)
 {
 	double start = 0.0;
 	MDeformVert *ivert = NULL;
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	FractureState* fs = fc->current;
 
 	//pre-halving... making shards (NOT islands, watch it !)
@@ -2589,7 +2589,7 @@ static void do_refresh(Object *ob)
 static void do_island_vertex_index_map(Object *ob, GHash** vertex_island_map)
 {
 	MeshIsland *mi;
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	FractureState *fs = fc->current;
 	int start = 0;
 
@@ -2631,7 +2631,7 @@ void BKE_fracture_create_islands(Object *ob)
 
 static void add_fracture_state(Scene *scene, Object *ob)
 {
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	FractureState *fs = MEM_callocN(sizeof(FractureState), "add_fracture_state");
 	DerivedMesh *dm = fc->raw_mesh;
 	float frame = BKE_scene_frame_get(scene);
@@ -2659,7 +2659,7 @@ static void add_fracture_state(Scene *scene, Object *ob)
 
 static void do_modifier(Scene *scene, Object* ob)
 {
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 
 	/*HERE we must know which shard(s) to fracture... hmm shards... we should "merge" states which happen in the same frame automatically !*/
 	if (fc->fracture_mode == MOD_FRACTURE_PREFRACTURED)
@@ -2717,7 +2717,7 @@ static void do_modifier(Scene *scene, Object* ob)
 
 static void preprocess_dm(Object *ob)
 {
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 
 	/* may have messed up meshes from conversion */
 	if (ob->type == OB_FONT || ob->type == OB_CURVE || ob->type == OB_SURF) {
@@ -3640,7 +3640,7 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 /* parse the voro++ cell data */
 static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Object *obj, short inner_material_index, float mat[4][4])
 {
-	FractureContainer *fc = obj->fracture_objects;
+	FractureContainer *fc = obj->rigidbody_object->fracture_objects;
 	FractureState *fs = fc->current;
 	FracMesh *fm = fs->frac_mesh;
 	int algorithm = fc->frac_algorithm;
@@ -3979,7 +3979,7 @@ static void parse_cell_neighbors(cell c, int *neighbors, int totpoly)
 
 static void stroke_to_faces(Object *ob, BMesh** bm, bGPDstroke *gps, int inner_material_index)
 {
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	BMVert *lastv1 = NULL;
 	BMVert *lastv2 = NULL;
 	int p = 0;
@@ -4062,7 +4062,7 @@ static void do_intersect(Object* ob, Shard *t, short inner_mat_index,
                          bool is_zero, float mat[4][4], int **shard_counts, int* count,
                          int k, DerivedMesh **dm_parent, bool keep_other_shard)
 {
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	FractureState *fs = fc->current;
 
 	/*just keep appending items at the end here */
@@ -4131,7 +4131,7 @@ static void do_intersect(Object* ob, Shard *t, short inner_mat_index,
 static void intersect_shards_by_dm(Object *ob, Object *ob2, DerivedMesh *d, short inner_mat_index, float mat[4][4],
                                    bool keep_other_shard)
 {
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	FractureState *fs = fc->current;
 
 	Shard *t = NULL;
@@ -4247,7 +4247,7 @@ void BKE_fracture_shard_by_greasepencil(Object *obj, short inner_material_index,
 
 void BKE_fracture_shard_by_planes(Object *obj, short inner_material_index, float mat[4][4])
 {
-	FractureContainer *fc = obj->fracture_objects;
+	FractureContainer *fc = obj->rigidbody_object->fracture_objects;
 	if (fc->frac_algorithm == MOD_FRACTURE_BOOLEAN && fc->cutter_group != NULL && obj->type == OB_MESH)
 	{
 		GroupObject* go;
@@ -4263,7 +4263,7 @@ void BKE_fracture_shard_by_planes(Object *obj, short inner_material_index, float
 			/*simple case....one cutter object per object*/
 			if (ob->type == OB_MESH) {
 
-				FractureContainer *fc2 = ob->fracture_objects;
+				FractureContainer *fc2 = ob->rigidbody_object->fracture_objects;
 				FractureState *fs2 = fc2->current;
 				FracMesh *fm = fs2->frac_mesh;
 				if (fc2 && BLI_listbase_count(&fm->shard_map) > 0)
@@ -4342,7 +4342,7 @@ void BKE_fracture_shard_by_points(Object *obj, ShardID id, FracPointCloud *point
 	particle_order *voro_particle_order;
 	cell *voro_cells;
 
-	FractureContainer *fc = obj->fracture_objects;
+	FractureContainer *fc = obj->rigidbody_object->fracture_objects;
 	FractureState *fs = fc->current;
 	FracMesh *fmesh = fs->frac_mesh;
 
@@ -4434,7 +4434,7 @@ void BKE_fracmesh_free(FracMesh *fm, bool doCustomData)
 
 static void do_marking(Object* ob, DerivedMesh *result)
 {
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 
 	MEdge *medge = result->getEdgeArray(result);
 	MPoly *mpoly = result->getPolyArray(result), *mp = NULL;
@@ -4476,7 +4476,7 @@ static DerivedMesh* do_create(Object *ob, int num_verts, int num_loops, int num_
                               bool doCustomData)
 {
 
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	FractureState *fs = fc->current;
 
 	int shard_count = 0;
@@ -4556,7 +4556,7 @@ static DerivedMesh* do_create(Object *ob, int num_verts, int num_loops, int num_
 /* DerivedMesh */
 DerivedMesh *BKE_fracture_create_dm(Object *ob, bool doCustomData)
 {
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	FractureState *fs = fc->current;
 
 	Shard *s;
@@ -4622,7 +4622,7 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 
 void BKE_lookup_mesh_state(Object* ob, int frame)
 {
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	FractureState *fs = fc->states.first;
 
 	//TODO, simple but slow... maybe create a GHash ? or rebuild a quick access array when adding ? realloc and add
@@ -4713,14 +4713,14 @@ static void free_constraint_container(Object* ob)
 {
 	MeshIsland *mi = NULL;
 	RigidBodyShardCon *rbsc = NULL;
-	ConstraintContainer *cc = ob->fracture_constraints;
-	Object *ob1 = cc->partner1;
-	Object *ob2 = cc->partner2;
+	ConstraintContainer *cc = ob->rigidbody_constraint->fracture_constraints;
+	Object *ob1 = ob->rigidbody_constraint->ob1;
+	Object *ob2 = ob->rigidbody_constraint->ob2;
 	FractureState *fs;
 
-	if (ob1 && ob1->fracture_objects)
+	if (ob1 && ob1->rigidbody_object && ob1->rigidbody_object->fracture_objects)
 	{
-		FractureContainer *fc1 = ob1->fracture_objects;
+		FractureContainer *fc1 = ob1->rigidbody_object->fracture_objects;
 		for (fs = fc1->states.first; fs; fs = fs->next)
 		{
 			for (mi = fs->island_map.first; mi; mi = mi->next) {
@@ -4733,9 +4733,9 @@ static void free_constraint_container(Object* ob)
 		}
 	}
 
-	if (ob2 && ob2->fracture_objects)
+	if (ob2 && ob2->rigidbody_object && ob2->rigidbody_object->fracture_objects)
 	{
-		FractureContainer *fc2 = ob2->fracture_objects;
+		FractureContainer *fc2 = ob2->rigidbody_object->fracture_objects;
 		if (ob1 != ob2)
 		{
 			for (fs = fc2->states.first; fs; fs = fs->next)
@@ -4872,10 +4872,10 @@ static void build_constraints(Object *ob)
 	KDTree *coord_tree = NULL;
 	int count = 0;
 	MeshIsland **mesh_islands = NULL;
-	ConstraintContainer *cc = ob->fracture_constraints;
-	Object* ob1 = cc->partner1;
-	Object* ob2 = cc->partner2;
-	bool outer = cc->partner1 != cc->partner2;
+	ConstraintContainer *cc = ob->rigidbody_constraint->fracture_constraints;
+	Object* ob1 = ob->rigidbody_constraint->ob1;
+	Object* ob2 = ob->rigidbody_constraint->ob2;
+	bool outer = ob1 != ob2;
 	FractureContainer* fc1, *fc2;
 	int totvert1, totvert2;
 	double start;

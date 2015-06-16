@@ -62,7 +62,7 @@ static bool dependsOnNormals(ModifierData *UNUSED(md))
 
 static CustomDataMask requiredDataMask(Object* ob, ModifierData *UNUSED(md))
 {
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	CustomDataMask dataMask = 0;
 	if (fc && (fc->flag & FM_FLAG_REFRESH))
 	{
@@ -78,7 +78,7 @@ static DerivedMesh *applyModifier(ModifierData *UNUSED(md), Object *ob,
                                   DerivedMesh *derivedData,
                                   ModifierApplyFlag UNUSED(flag))
 {
-	if (ob->fracture_objects)
+	if (ob->rigidbody_object->fracture_objects)
 	{
 		BKE_fracture_constraint_container_update(ob);
 		BKE_fracture_prepare_autohide(ob); /*in case after loading rebuild facepairs,

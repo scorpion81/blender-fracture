@@ -1699,27 +1699,18 @@ static void write_objects(WriteData *wd, ListBase *idbase)
 			}
 			writestruct(wd, DATA, "BulletSoftBody", 1, ob->bsoft);
 
-#if 0
-			if (ob->rigidbody_object) {
-				// TODO: if any extra data is added to handle duplis, will need separate function then
-				writestruct(wd, DATA, "RigidBodyOb", 1, ob->rigidbody_object);
-			}
-			if (ob->rigidbody_constraint) {
-				writestruct(wd, DATA, "RigidBodyCon", 1, ob->rigidbody_constraint);
-			}
-#endif
-
-			if (ob->fracture_objects) {
-				FractureContainer *fc = ob->fracture_objects;
+			if (ob->rigidbody_object->fracture_objects) {
+				FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 				FractureState *fs = fc->current;
 
+				// TODO: if any extra data is added to handle duplis, will need separate function then
+				writestruct(wd, DATA, "RigidBodyOb", 1, ob->rigidbody_object);
 				if (fc->current->frac_mesh)
 				{
 					/* old rigidbodies dont have a fracmesh, and its not easily initalizable here without
 					 * knowing the mesh of the object, so postpone init for later.... and DONT write anything
 					 * here if we dont have a fracmesh yet */
 					writestruct(wd, DATA, "FractureContainer", 1, fc);
-					writestruct(wd, DATA, "RigidBodyOb", 1, fc->rb_settings);
 
 					for (fs = fc->states.first; fs; fs = fs->next)
 					{
@@ -1745,10 +1736,10 @@ static void write_objects(WriteData *wd, ListBase *idbase)
 				}
 			}
 
-			if (ob->fracture_constraints) {
-				ConstraintContainer *cc = ob->fracture_constraints;
+			if (ob->rigidbody_constraint) {
+				ConstraintContainer *cc = ob->rigidbody_constraint->fracture_constraints;
+				writestruct(wd, DATA, "RigidBodyCon", 1, ob->rigidbody_constraint);
 				writestruct(wd, DATA, "ConstraintContainer", 1, cc);
-				writestruct(wd, DATA, "RigidBodyCon", 1, cc->con_settings);
 			}
 
 			if (ob->type == OB_EMPTY && ob->empty_drawtype == OB_EMPTY_IMAGE) {

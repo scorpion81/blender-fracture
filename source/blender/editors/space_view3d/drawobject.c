@@ -7265,7 +7265,7 @@ static void draw_rigidbody_shape(Object *ob)
 	if (bb == NULL)
 		return;
 
-	switch (ob->fracture_objects->rb_settings->shape) {
+	switch (ob->rigidbody_object->shape) {
 		case RB_SHAPE_BOX:
 			BKE_boundbox_calc_size_aabb(bb, size);
 			
@@ -7802,7 +7802,7 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 				setlinestyle(0);
 			}
 		}
-		if (ob->fracture_objects) {
+		if (ob->rigidbody_object) {
 			draw_rigidbody_shape(ob);
 		}
 
@@ -7912,7 +7912,7 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 	/* not for sets, duplicators or picking */
 	if (dflag == 0 && (v3d->flag & V3D_HIDE_HELPLINES) == 0 && !render_override) {
 		ListBase *list;
-		ConstraintContainer *cc = ob->fracture_constraints;
+		RigidBodyCon *con = ob->rigidbody_constraint;
 		
 		/* draw hook center and offset line */
 		if (ob != scene->obedit)
@@ -8003,17 +8003,17 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 			BKE_constraints_clear_evalob(cob);
 		}
 		/* draw rigid body constraint lines */
-		if (cc) {
+		if (con) {
 			UI_ThemeColor(TH_WIRE);
 			setlinestyle(3);
 			glBegin(GL_LINES);
-			if (cc->partner1) {
+			if (con->ob1) {
 				glVertex3fv(ob->obmat[3]);
-				glVertex3fv(cc->partner1->obmat[3]);
+				glVertex3fv(con->ob1->obmat[3]);
 			}
-			if (cc->partner2) {
+			if (con->ob2) {
 				glVertex3fv(ob->obmat[3]);
-				glVertex3fv(cc->partner2->obmat[3]);
+				glVertex3fv(con->ob2->obmat[3]);
 			}
 			glEnd();
 			setlinestyle(0);

@@ -669,8 +669,7 @@ static bool visualkey_can_use(PointerRNA *ptr, PropertyRNA *prop)
 	if (ptr->type == &RNA_Object) {
 		/* Object */
 		Object *ob = (Object *)ptr->data;
-		FractureContainer *fc = ob->fracture_objects;
-		RigidBodyOb *rbo = fc ? fc->rb_settings : NULL;
+		RigidBodyOb *rbo = ob ? ob->rigidbody_object : NULL;
 		
 		con = ob->constraints.first;
 		identifier = RNA_property_identifier(prop);

@@ -68,7 +68,7 @@ static int ED_operator_rigidbody_con_active_poll(bContext *C)
 {
 	if (ED_operator_object_active_editable(C)) {
 		Object *ob = CTX_data_active_object(C);
-		return (ob && ob->fracture_constraints);
+		return (ob && ob->rigidbody_constraint);
 	}
 	else
 		return 0;
@@ -80,7 +80,7 @@ bool ED_rigidbody_constraint_add(Scene *scene, Object *ob, int type, ReportList 
 	RigidBodyWorld *rbw = BKE_rigidbody_get_world(scene);
 
 	/* check that object doesn't already have a constraint */
-	if (ob->fracture_constraints) {
+	if (ob->rigidbody_constraint) {
 		BKE_reportf(reports, RPT_INFO, "Object '%s' already has a Rigid Body Constraint", ob->id.name + 2);
 		return false;
 	}
@@ -174,7 +174,7 @@ static int rigidbody_con_remove_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 
 	/* apply to active object */
-	if (ELEM(NULL, ob, ob->fracture_constraints)) {
+	if (ELEM(NULL, ob, ob->rigidbody_constraint)) {
 		BKE_report(op->reports, RPT_ERROR, "Object has no Rigid Body Constraint to remove");
 		return OPERATOR_CANCELLED;
 	}
@@ -214,7 +214,7 @@ static int rigidbody_constraints_remove_exec(bContext *C, wmOperator *UNUSED(op)
 	/* apply this to all selected objects... */
 	CTX_DATA_BEGIN(C, Object *, ob, selected_objects)
 	{
-		if (ob->fracture_constraints) {
+		if (ob->rigidbody_constraint) {
 			ED_rigidbody_constraint_remove(scene, ob);
 			change = true;
 		}

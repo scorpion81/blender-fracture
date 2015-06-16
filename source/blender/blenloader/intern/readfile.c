@@ -4632,21 +4632,14 @@ static void lib_link_object(FileData *fd, Main *main)
 			}
 
 			/*tag those for library expansion later (?) */
-			if (ob->fracture_objects)
+			if (ob->rigidbody_object->fracture_objects)
 			{
-				FractureContainer *fc = ob->fracture_objects;
+				FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 
 				fc->inner_material = newlibadr(fd, ob->id.lib, fc->inner_material);
 				fc->cluster_group = newlibadr(fd, ob->id.lib, fc->cluster_group);
 				fc->cutter_group = newlibadr(fd, ob->id.lib, fc->cutter_group);
 				fc->extra_group = newlibadr(fd, ob->id.lib, fc->extra_group);
-			}
-
-			if (ob->fracture_constraints)
-			{
-				ConstraintContainer *cc = ob->fracture_constraints;
-				cc->partner1 = newlibadr(fd, ob->id.lib, cc->partner1);
-				cc->partner2 = newlibadr(fd, ob->id.lib, cc->partner2);
 			}
 
 			{
@@ -5510,15 +5503,15 @@ static void direct_link_object(FileData *fd, Object *ob)
 	if (ob->rigidbody_constraint)
 		ob->rigidbody_constraint->physics_constraint = NULL;
 
-	ob->fracture_objects = newdataadr(fd, ob->fracture_objects);
+	ob->rigidbody_object = newdataadr(fd, ob->rigidbody_object);
 
-	if (ob->fracture_objects) {
-
-		FractureContainer *fc = ob->fracture_objects;
+	if (ob->rigidbody_object) {
+		FractureContainer *fc;
 		FractureState *fs;
+		ob->rigidbody_object->fracture_objects = newdataadr(fd, ob->rigidbody_object->fracture_objects);
+		fc = ob->rigidbody_object->fracture_objects;
 		fc->face_pairs = NULL;
 
-		fc->rb_settings = newdataadr(fd, fc->rb_settings);
 		link_list(fd, &fc->states);
 
 		for (fs = fc->states.first; fs; fs = fs->next)
@@ -5567,10 +5560,10 @@ static void direct_link_object(FileData *fd, Object *ob)
 			fc->effector_weights = BKE_add_effector_weights(NULL);
 	}
 
-	if (ob->fracture_constraints)
+	if (ob->rigidbody_constraint)
 	{
-		ob->fracture_constraints = newdataadr(fd, ob->fracture_constraints);
-		ob->fracture_constraints->con_settings = newdataadr(fd, ob->fracture_constraints->con_settings);
+		ob->rigidbody_constraint = newdataadr(fd, ob->rigidbody_constraint);
+		ob->rigidbody_constraint->fracture_constraints = newdataadr(fd, ob->rigidbody_constraint->fracture_constraints);
 	}
 
 	link_list(fd, &ob->particlesystem);
@@ -9240,27 +9233,20 @@ static void expand_object(FileData *fd, Main *mainvar, Object *ob)
 	if (ob->pd && ob->pd->tex)
 		expand_doit(fd, mainvar, ob->pd->tex);
 
-	/* FM DEPRECATED */
 	if (ob->rigidbody_constraint) {
 		expand_doit(fd, mainvar, ob->rigidbody_constraint->ob1);
 		expand_doit(fd, mainvar, ob->rigidbody_constraint->ob2);
 	}
 
-	if (ob->fracture_objects)
+	if (ob->rigidbody_object && ob->rigidbody_object->fracture_objects)
 	{
-		FractureContainer *fc = ob->fracture_objects;
+		FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 		expand_doit(fd, mainvar, fc->inner_material);
 		expand_doit(fd, mainvar, fc->extra_group);
 		expand_doit(fd, mainvar, fc->cutter_group);
 		expand_doit(fd, mainvar, fc->cluster_group);
 	}
 
-	if (ob->fracture_constraints)
-	{
-		ConstraintContainer *cc = ob->fracture_constraints;
-		expand_doit(fd, mainvar, cc->partner1);
-		expand_doit(fd, mainvar, cc->partner2);
-	}
 
 	if (ob->currentlod) {
 		LodLevel *level;

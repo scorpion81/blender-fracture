@@ -108,6 +108,8 @@ typedef struct RigidBodyOb {
 	/* References to Physics Sim objects. Exist at runtime only */
 	void *physics_object DNA_DEPRECATED;	/* Physics object representation (i.e. btRigidBody) */
 	void *physics_shape DNA_DEPRECATED;	/* Collision shape used by physics sim (i.e. btCollisionShape) */
+
+	struct FractureContainer *fracture_objects;
 	
 	/* General Settings for this RigidBodyOb */
 	short type;				/* (eRigidBodyOb_Type) role of RigidBody in sim  */
@@ -234,8 +236,10 @@ typedef enum eRigidBody_MeshSource {
  * Represents an constraint connecting two rigid bodies.
  */
 typedef struct RigidBodyCon {
-	struct Object *ob1 DNA_DEPRECATED;			/* First object influenced by the constraint */
-	struct Object *ob2 DNA_DEPRECATED;			/* Second object influenced by the constraint */
+	struct Object *ob1;			/* First object influenced by the constraint */
+	struct Object *ob2;			/* Second object influenced by the constraint */
+
+	struct ConstraintContainer *fracture_constraints;
 
 	/* General Settings for this RigidBodyCon */
 	short type;					/* (eRigidBodyCon_Type) role of RigidBody in sim  */

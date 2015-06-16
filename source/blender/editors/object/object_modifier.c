@@ -754,7 +754,7 @@ static int modifier_add_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 
 	/* fracture modifier needs a rigidbody system too, else it does nothing, so add too*/
-	if (type == eModifierType_Fracture && !ob->fracture_objects) {
+	if (type == eModifierType_Fracture && !ob->rigidbody_object) {
 		ED_rigidbody_object_add(scene, ob, RBO_TYPE_ACTIVE , op->reports);
 		WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
 		WM_event_add_notifier(C, NC_OBJECT | ND_POINTCACHE, NULL);
@@ -2289,7 +2289,7 @@ static void fracture_update(void *customdata)
 	float progress;
 
 	/*threaded fracture only in prefracture mode !*/
-	FractureState *fs = fj->ob->fracture_objects->states.first;
+	FractureState *fs = fj->ob->rigidbody_object->fracture_objects->states.first;
 
 	if (fs->frac_mesh == NULL)
 		(*fj->progress) = 0.0f;
@@ -2309,7 +2309,7 @@ static void fracture_startjob(void *customdata, short *stop, short *do_update, f
 {
 	FractureJob *fj = customdata;
 	Object *ob = fj->ob;
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	Scene* scene = fj->scene;
 
 	fj->stop = stop;
@@ -2354,7 +2354,7 @@ static int fracture_refresh_exec(bContext *C, wmOperator *UNUSED(op))
 	double start = 1.0;
 	FractureJob *fj;
 	wmJob* wm_job;
-	FractureContainer *fc = obact->fracture_objects;
+	FractureContainer *fc = obact->rigidbody_object->fracture_objects;
 
 	if (scene->rigidbody_world != NULL)
 	{
