@@ -91,6 +91,14 @@ bool ED_rigidbody_constraint_add(Scene *scene, Object *ob, int type, ReportList 
 	/* make rigidbody constraint settings */
 
 	ob->rigidbody_constraint = BKE_rigidbody_create_constraint(ob, RBC_TYPE_FIXED);
+	if (ob->rigidbody_object) {
+		/* set ourself as both partners by default, if we are on a rigidbody object */
+		/* mostly we want inner constraints, this is the default for that */
+		ob->rigidbody_constraint->ob1 = ob;
+		ob->rigidbody_constraint->ob2 = ob;
+	}
+
+	rbw->flag |= RBW_FLAG_OBJECT_CHANGED;
 
 	/* add constraint to rigid body constraint group */
 	BKE_group_object_add(rbw->constraints, ob, scene, NULL);

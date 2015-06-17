@@ -137,6 +137,7 @@
 #include "BKE_particle.h"
 #include "BKE_pointcache.h"
 #include "BKE_report.h"
+#include "BKE_rigidbody.h"
 #include "BKE_sca.h" // for init_actuator
 #include "BKE_scene.h"
 #include "BKE_screen.h"
@@ -4757,6 +4758,9 @@ static void read_meshIsland(FileData *fd, MeshIsland **address)
 
 	mi->vertno = newdataadr(fd, mi->vertno);
 
+	mi->vertcos = newdataadr(fd, mi->vertcos);
+	mi->vertnos = newdataadr(fd, mi->vertnos);
+
 	mi->rigidbody = newdataadr(fd, mi->rigidbody);
 	mi->rigidbody->physics_object = newdataadr(fd, mi->rigidbody->physics_object);
 	mi->rigidbody->physics_shape = newdataadr(fd, mi->rigidbody->physics_shape);
@@ -5534,12 +5538,26 @@ static void direct_link_object(FileData *fd, Object *ob)
 				count = BLI_listbase_count(&fs->island_map);
 				fs->islands = MEM_callocN(sizeof(MeshIsland*) * count, "fs->islands, readfile");
 
+				invert_m4_m4(ob->imat, ob->obmat);
 				for (mi = fs->island_map.first; mi; mi = mi->next)
 				{
+					MVert* mvert;
+					int nverts, j;
 					read_meshIsland(fd, &mi);
+
 					mi->physics_mesh = BKE_shard_create_dm(s, true);
+					nverts = mi->physics_mesh->getNumVerts(mi->physics_mesh);
+					mvert = mi->physics_mesh->getVertArray(mi->physics_mesh);
+
 					vertstart += BKE_initialize_meshisland(&mi, mverts, vertstart);
 					s = s->next;
+					for (j = 0; j < nverts ; j++)
+					{
+						sub_v3_v3(mvert[j].co, mi->centroid);
+					}
+
+					//BKE_rigidbody_set_initial_transform(ob, mi, mi->rigidbody);
+
 					fs->islands[i] = mi;
 					i++;
 				}

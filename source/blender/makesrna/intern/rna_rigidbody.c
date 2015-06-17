@@ -617,15 +617,17 @@ static void rna_def_rigidbody_constraint(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "object1", PROP_POINTER, PROP_NONE);
 	RNA_def_property_pointer_sdna(prop, NULL, "ob1");
-	RNA_def_property_struct_type(prop, "Object");
+	//RNA_def_property_struct_type(prop, "Object");
 	RNA_def_property_flag(prop, PROP_EDITABLE);
 	RNA_def_property_ui_text(prop, "Object 1", "First constraint object");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
 
 	prop = RNA_def_property(srna, "object2", PROP_POINTER, PROP_NONE);
 	RNA_def_property_pointer_sdna(prop, NULL, "ob2");
-	RNA_def_property_struct_type(prop, "Object");
+	//RNA_def_property_struct_type(prop, "Object");
 	RNA_def_property_flag(prop, PROP_EDITABLE);
 	RNA_def_property_ui_text(prop, "Object 2", "Second constraint object");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
 
 	/* Enums */
 	prop = RNA_def_property(srna, "type", PROP_ENUM, PROP_NONE);

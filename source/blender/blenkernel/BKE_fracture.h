@@ -91,7 +91,7 @@ void BKE_shard_free(struct Shard *s, bool doCustomData);
 
 
 /* DerivedMesh */
-struct DerivedMesh *BKE_fracture_create_dm(struct Object *ob, bool doCustomData);
+struct DerivedMesh *BKE_fracture_create_dm(struct Object *ob, struct FracMesh *fm, bool doCustomData);
 struct DerivedMesh *BKE_shard_create_dm(struct Shard *s, bool doCustomData);
 
 /* create shards from base mesh and a list of points */

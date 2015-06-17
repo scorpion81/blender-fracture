@@ -1640,19 +1640,19 @@ static void prepareConstraintSearch(Object *ob, MeshIsland ***mesh_islands, KDTr
 	MeshIsland *mi;
 	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	FractureState *fs = fc->current;
-	int i = 0;
+	int j = 0;
 
 	do_island_vertex_index_map(ob, vertex_index_map);
 
 	for (mi = fs->island_map.first; mi; mi = mi->next)
 	{
-		(*mesh_islands)[start + i] = mi;
+		(*mesh_islands)[start + j] = mi;
 
 		if (target == MOD_FRACTURE_CENTROID)
 		{
 			float obj_centr[3];
-			mul_v3_m4v3(obj_centr, ob->obmat, (*mesh_islands)[start + i]->centroid);
-			BLI_kdtree_insert(*combined_tree, start+i, obj_centr);
+			mul_v3_m4v3(obj_centr, ob->obmat, (*mesh_islands)[start + j]->centroid);
+			BLI_kdtree_insert(*combined_tree, start+j, obj_centr);
 		}
 		else if (target == MOD_FRACTURE_VERTEX)
 		{
@@ -1667,13 +1667,38 @@ static void prepareConstraintSearch(Object *ob, MeshIsland ***mesh_islands, KDTr
 				BLI_kdtree_insert(*combined_tree, i, co);
 			}
 		}
+		j++;
 	}
+}
+static DerivedMesh* combine_dm(DerivedMesh *dm1, DerivedMesh *dm2)
+{
+	DerivedMesh *dm = NULL;
+	float mat[4][4]; /*splinter matrix, leave as unit_m4 for now, should be applied to visual mesh already*/
+	FracMesh *fm = BKE_create_fracmesh();
+	/*sigh, need to combine DMs too */
+	Shard *s1 = BKE_create_fracture_shard(dm1->getVertArray(dm1), dm1->getPolyArray(dm1), dm1->getLoopArray(dm1),
+	                                      dm1->numVertData, dm1->numPolyData, dm1->numLoopData, true);
+
+	Shard *s2 = BKE_create_fracture_shard(dm2->getVertArray(dm2), dm2->getPolyArray(dm2), dm2->getLoopArray(dm2),
+	                                      dm2->numVertData, dm2->numPolyData, dm2->numLoopData, true);
+	unit_m4(mat);
+	add_shard(fm, s1, mat);
+	add_shard(fm, s2, mat);
+
+	dm = BKE_fracture_create_dm(NULL, fm, false);
+	BKE_fracmesh_free(fm, false);
+
+	return dm;
 }
 
 static void create_constraints(Object *ob, MeshIsland **mesh_islands, int count, KDTree *coord_tree, GHash* vertex_island_map, int target)
 {
-	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
-	FractureState *fs = fc->current;
+	RigidBodyCon *rbc = ob->rigidbody_constraint;
+	RigidBodyOb *rb1 = rbc->ob1->rigidbody_object;
+	RigidBodyOb *rb2 = rbc->ob2->rigidbody_object;
+	DerivedMesh *dm1 = rb1->fracture_objects->current->visual_mesh;
+	DerivedMesh *dm2 = rb1->fracture_objects->current->visual_mesh;
+	DerivedMesh *dm = combine_dm(dm1, dm2);
 	int i = 0;
 
 	for (i = 0; i < count; i++) {
@@ -1683,10 +1708,16 @@ static void create_constraints(Object *ob, MeshIsland **mesh_islands, int count,
 		else if (target == MOD_FRACTURE_VERTEX) {
 			MVert mv;
 			MeshIsland *mi = NULL;
-			fs->visual_mesh->getVert(fs->visual_mesh, i, &mv);
+			dm->getVert(dm, i, &mv);
 			mi = BLI_ghash_lookup(vertex_island_map, SET_INT_IN_POINTER(i));
 			search_tree_based(ob, mi, mesh_islands, &coord_tree, vertex_island_map, mv.co);
 		}
+	}
+
+	if (dm)
+	{
+		dm->needsFree = 1;
+		DM_release(dm);
 	}
 }
 
@@ -2550,7 +2581,7 @@ static void do_refresh(Object *ob)
 		fs->visual_mesh = NULL;
 	}
 
-	fs->visual_mesh = BKE_fracture_create_dm(ob, true);
+	fs->visual_mesh = BKE_fracture_create_dm(ob, fs->frac_mesh, true);
 	DM_ensure_tessface(fs->visual_mesh);
 	DM_ensure_normals(fs->visual_mesh);
 	DM_update_tessface_data(fs->visual_mesh);
@@ -2593,7 +2624,7 @@ static void do_island_vertex_index_map(Object *ob, GHash** vertex_island_map)
 	FractureState *fs = fc->current;
 	int start = 0;
 
-	if (!vertex_island_map)
+	if (!(*vertex_island_map))
 	{
 		if (fc->vertex_island_map) {
 			BLI_ghash_free(fc->vertex_island_map, NULL, NULL);
@@ -4472,13 +4503,9 @@ static void do_marking(Object* ob, DerivedMesh *result)
 	}
 }
 
-static DerivedMesh* do_create(Object *ob, int num_verts, int num_loops, int num_polys,
+static DerivedMesh* do_create(FracMesh *frac_mesh, int num_verts, int num_loops, int num_polys,
                               bool doCustomData)
 {
-
-	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
-	FractureState *fs = fc->current;
-
 	int shard_count = 0;
 	ListBase *shardlist;
 	Shard *shard;
@@ -4491,7 +4518,7 @@ static DerivedMesh* do_create(Object *ob, int num_verts, int num_loops, int num_
 
 	DerivedMesh *result = NULL;
 
-	shard_count = BLI_listbase_count(&fs->frac_mesh->shard_map);
+	shard_count = BLI_listbase_count(&frac_mesh->shard_map);
 
 	result = CDDM_new(num_verts, 0, 0, num_loops, num_polys);
 	mverts = CDDM_get_verts(result);
@@ -4499,7 +4526,7 @@ static DerivedMesh* do_create(Object *ob, int num_verts, int num_loops, int num_
 	mpolys = CDDM_get_polys(result);
 
 	if (doCustomData && shard_count > 0) {
-		Shard *s = fs->frac_mesh->shard_map.first;
+		Shard *s = frac_mesh->shard_map.first;
 
 		CustomData_merge(&s->vertData, &result->vertData, CD_MASK_MDEFORMVERT, CD_CALLOC, num_verts);
 		CustomData_merge(&s->polyData, &result->polyData, CD_MASK_MTEXPOLY, CD_CALLOC, num_polys);
@@ -4507,7 +4534,7 @@ static DerivedMesh* do_create(Object *ob, int num_verts, int num_loops, int num_
 	}
 
 	vertstart = polystart = loopstart = 0;
-	shardlist = &fs->frac_mesh->shard_map;
+	shardlist = &frac_mesh->shard_map;
 
 	for (shard = shardlist->first; shard; shard = shard->next)
 	{
@@ -4554,29 +4581,27 @@ static DerivedMesh* do_create(Object *ob, int num_verts, int num_loops, int num_
 }
 
 /* DerivedMesh */
-DerivedMesh *BKE_fracture_create_dm(Object *ob, bool doCustomData)
+DerivedMesh *BKE_fracture_create_dm(Object *ob, FracMesh *fm, bool doCustomData)
 {
-	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
-	FractureState *fs = fc->current;
-
 	Shard *s;
 	int num_verts, num_polys, num_loops;
 	DerivedMesh *result;
 	
 	num_verts = num_polys = num_loops = 0;
 
-	for (s = fs->frac_mesh->shard_map.first; s; s = s->next) {
+	for (s = fm->shard_map.first; s; s = s->next) {
 		num_verts += s->totvert;
 		num_polys += s->totpoly;
 		num_loops += s->totloop;
 	}
 	
-	result = do_create(ob, num_verts, num_loops, num_polys, doCustomData);
+	result = do_create(fm, num_verts, num_loops, num_polys, doCustomData);
 
 	CustomData_free(&result->edgeData, 0);
 	CDDM_calc_edges(result);
 
-	do_marking(ob, result);
+	if (ob)
+		do_marking(ob, result);
 	
 	result->dirty |= DM_DIRTY_NORMALS;
 	CDDM_calc_normals_mapping(result);
@@ -4877,7 +4902,7 @@ static void build_constraints(Object *ob)
 	Object* ob2 = ob->rigidbody_constraint->ob2;
 	bool outer = ob1 != ob2;
 	FractureContainer* fc1, *fc2;
-	int totvert1, totvert2;
+	int totvert1, totvert2, island_count1 = 0, island_count2 = 0;
 	double start;
 
 	if (!(cc->flag & FMC_FLAG_USE_CONSTRAINTS) && !(ob->rigidbody_constraint->flag & RBC_FLAG_ENABLED))
@@ -4897,6 +4922,11 @@ static void build_constraints(Object *ob)
 
 	//execute this on constraint object (without modifier)
 	start = PIL_check_seconds_timer();
+
+	island_count1 = fc1->current->island_count;
+	if (outer) {
+		island_count2 = fc2->current->island_count;
+	}
 
 	if (cc->constraint_target == MOD_FRACTURE_CENTROID)
 	{
@@ -4919,21 +4949,30 @@ static void build_constraints(Object *ob)
 	}
 
 	coord_tree = BLI_kdtree_new(count);
+	mesh_islands = MEM_callocN(sizeof(MeshIsland*) * (island_count1 + island_count2), "mesh_islands(constraints)");
 	prepareConstraintSearch(ob1, &mesh_islands, &coord_tree, &vertex_island_map, 0, cc->constraint_target);
 	if (outer) {
-		prepareConstraintSearch(ob2, &mesh_islands, &coord_tree, &vertex_island_map, totvert1, cc->constraint_target);
+		prepareConstraintSearch(ob2, &mesh_islands, &coord_tree, &vertex_island_map, island_count1, cc->constraint_target);
 	}
 
 	printf("Preparing constraints done, %g\n", PIL_check_seconds_timer() - start);
 
 	start = PIL_check_seconds_timer();
-	create_constraints(ob, mesh_islands, count, coord_tree, vertex_island_map, cc->constraint_target); /* check for actually creating the constraints inside*/
+	create_constraints(ob, mesh_islands, count, coord_tree, vertex_island_map, cc->constraint_target);
+	/* check for actually creating the constraints inside*/
 	printf("Building constraints done, %g\n", PIL_check_seconds_timer() - start);
 	printf("Constraints: %d\n", BLI_listbase_count(&cc->constraint_map));
 
 	BLI_kdtree_free(coord_tree);
 	MEM_freeN(mesh_islands);
-	BLI_ghash_free(vertex_island_map, NULL, NULL);
+	if ((vertex_island_map != fc1->vertex_island_map) && (vertex_island_map != fc2->vertex_island_map))
+	{
+		if (vertex_island_map)
+		{
+			BLI_ghash_free(vertex_island_map, NULL, NULL);
+			vertex_island_map = NULL;
+		}
+	}
 }
 
 void BKE_fracture_constraint_container_update(Object* ob)
@@ -5151,7 +5190,7 @@ void BKE_fracture_container_free(Object *ob)
 MVert* BKE_copy_visual_mesh(Object* ob, FractureState *fs)
 {
 	/* re-init cached verts here... before rebuild a visual mesh on the fly */
-	fs->visual_mesh = BKE_fracture_create_dm(ob, true);
+	fs->visual_mesh = BKE_fracture_create_dm(ob, fs->frac_mesh, true);
 	DM_ensure_tessface(fs->visual_mesh);
 	DM_ensure_normals(fs->visual_mesh);
 	DM_update_tessface_data(fs->visual_mesh);
@@ -5166,21 +5205,20 @@ int BKE_initialize_meshisland(MeshIsland** mii, MVert* mverts, int vertstart)
 
 	mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * mi->vertex_count, "mi->vertices_cached readfile");
 	mi->vertex_indices = MEM_mallocN(sizeof(int) * mi->vertex_count, "mi->vertex_indices");
-	mi->vertcos = MEM_callocN(sizeof(float) * 3 * mi->vertex_count, "mi->vertcos");
-	mi->vertnos = MEM_callocN(sizeof(short) * 3 * mi->vertex_count, "mi->vertnos");
 
 	for (k = 0; k < mi->vertex_count; k++) {
 		MVert* v = mverts + vertstart + k ;
 		mi->vertices_cached[k] = v;
 		mi->vertex_indices[k] = vertstart + k;
 
-		/*
+#if 0
 		if ((mi->vertnos != NULL) && (fc->flag & FM_FLAG_FIX_NORMALS)) {
 			copy_v3_v3_short(v->no, mi->vertnos[k]);
-		}*/
+		}
+#endif
 
-		copy_v3_v3(mi->vertcos[k], v->co);
-		copy_v3_v3_short(mi->vertnos[k], v->no);
+		//copy_v3_v3(mi->vertcos[k], v->co);
+		//copy_v3_v3_short(mi->vertnos[k], v->no);
 	}
 
 	return mi->vertex_count;

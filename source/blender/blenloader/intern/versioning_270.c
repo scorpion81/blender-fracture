@@ -86,6 +86,8 @@ static void patch_fracture_modifier_struct(FractureModifierData *fmd, Object* ob
 	fc = rbo->fracture_objects;
 	fs = fc->current;
 
+	cc = BKE_fracture_constraint_container_create(ob);
+
 	fc->flag |= (FM_FLAG_REFRESH_AUTOHIDE | FM_FLAG_SKIP_MASS_CALC);
 
 	fs->frac_mesh = BKE_copy_fracmesh(fmd->frac_mesh);
@@ -94,7 +96,9 @@ static void patch_fracture_modifier_struct(FractureModifierData *fmd, Object* ob
 	for (i = 0; i < fs->island_count; i++)
 	{
 		mi = fs->islands[i];
+		mi->rigidbody->flag = rbo->flag;
 		mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+		mul_m4_v3(ob->obmat, mi->centroid);
 	}
 
 	if (!rbc)
@@ -201,6 +205,8 @@ static void patch_fracture_modifier_struct(FractureModifierData *fmd, Object* ob
 	BLI_strncpy(fc->thresh_defgrp_name, fmd->thresh_defgrp_name, sizeof(fc->thresh_defgrp_name));
 	BLI_strncpy(fc->ground_defgrp_name, fmd->ground_defgrp_name, sizeof(fc->ground_defgrp_name));
 	BLI_strncpy(fc->inner_defgrp_name, fmd->inner_defgrp_name, sizeof(fc->inner_defgrp_name));
+
+	//DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
 }
 
 static void load_fracture_system(Main* main)

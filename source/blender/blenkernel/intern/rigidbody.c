@@ -80,7 +80,7 @@ static void activateRigidbody(RigidBodyShardOb* rbo, RigidBodyWorld *rbw, MeshIs
 	RigidBodyOb *rb = ob->rigidbody_object;
 	FractureContainer *fc = rb->fracture_objects;
 
-	if (rbo->flag & RBO_FLAG_KINEMATIC && rbo->type == RBO_TYPE_ACTIVE)
+	if ((rb->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION) && (rbo->flag & RBO_FLAG_KINEMATIC) && (rbo->type == RBO_TYPE_ACTIVE))
 	{
 		rbo->flag &= ~RBO_FLAG_KINEMATIC;
 		//RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
@@ -1389,12 +1389,26 @@ RigidBodyWorld *BKE_rigidbody_create_world(Scene *scene)
 	return rbw;
 }
 
+void BKE_rigidbody_set_initial_transform(Object *ob, MeshIsland *mi, RigidBodyShardOb *rbo)
+{
+	float size[3], centr[3];
+
+	/* set initial transform */
+	mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
+	mat4_to_size(size, ob->obmat);
+
+	//add initial "offset" (centroid), maybe subtract ob->obmat ?? (not sure)
+	copy_v3_v3(centr, mi->centroid);
+	mul_v3_v3(centr, size);
+	mul_qt_v3(rbo->orn, centr);
+	add_v3_v3(rbo->pos, centr);
+}
+
 /* Add rigid body settings to the specified shard */
 RigidBodyShardOb *BKE_rigidbody_create_shard(Object *ob, MeshIsland *mi)
 {
 	RigidBodyShardOb *rbo;
 	//RigidBodyWorld *rbw = BKE_rigidbody_get_world(scene);
-	float centr[3], size[3];
 
 	/* sanity checks
 	 *	- rigidbody world must exist
@@ -1419,15 +1433,7 @@ RigidBodyShardOb *BKE_rigidbody_create_shard(Object *ob, MeshIsland *mi)
 	rbo = MEM_callocN(sizeof(RigidBodyShardOb), "RigidBodyShardOb create");
 	rbo->type = mi->ground_weight > 0.5f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
 
-	/* set initial transform */
-	mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
-	mat4_to_size(size, ob->obmat);
-
-	//add initial "offset" (centroid), maybe subtract ob->obmat ?? (not sure)
-	copy_v3_v3(centr, mi->centroid);
-	mul_v3_v3(centr, size);
-	mul_qt_v3(rbo->orn, centr);
-	add_v3_v3(rbo->pos, centr);
+	BKE_rigidbody_set_initial_transform(ob, mi, rbo);
 
 	/* return this object */
 	return rbo;
@@ -2345,6 +2351,13 @@ void BKE_rigidbody_rebuild_world(Scene *scene, float ctime)
 	PointCache *cache;
 	PTCacheID pid;
 	int startframe, endframe;
+
+#if 0
+	if (!(rbw->flag & RBW_FLAG_NEEDS_REBUILD))
+	{
+		return;
+	}
+#endif
 
 	for (go = rbw->group->gobject.first; go; go = go->next)
 	{

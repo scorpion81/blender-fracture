@@ -69,6 +69,7 @@ struct RigidBodyShardOb *BKE_rigidbody_create_shard(struct Object *ob, struct Me
 struct RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(short type);
 
 void BKE_rigidbody_world_groups_relink(struct RigidBodyWorld *rbw);
+void BKE_rigidbody_set_initial_transform(struct Object *ob, struct MeshIsland *mi, struct RigidBodyShardOb *rbo);
 
 
 /* 'validate' (i.e. make new or replace old) Physics-Engine objects */
