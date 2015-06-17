@@ -87,7 +87,7 @@ static void activateRigidbody(RigidBodyShardOb* rbo, RigidBodyWorld *rbw, MeshIs
 		RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
 		RB_body_set_kinematic_state(rbo->physics_object, false);
 		//RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rb->col_groups, mi, ob, mi->linear_index);
-		RB_body_activate(rbo->physics_object);
+		//RB_body_activate(rbo->physics_object);
 		rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 	}
 }
@@ -1496,7 +1496,7 @@ RigidBodyOb *BKE_rigidbody_create_object(Object *ob, short type)
 	else
 		rbo->shape = RB_SHAPE_TRIMESH;
 
-	rbo->mesh_source = RBO_MESH_DEFORM;
+	rbo->mesh_source = RBO_MESH_FINAL;
 
 	/* return this object */
 	return rbo;
@@ -2168,16 +2168,18 @@ static void do_sync_container(Object *ob, RigidBodyWorld *rbw, float ctime)
 {
 	RigidBodyOb *rb = ob->rigidbody_object;
 	FractureContainer *fc = rb->fracture_objects;
-	FractureState *fs = fc->current;
+	FractureState *fs;
 	MeshIsland *mi;
 	float size[3] = {1, 1, 1};
 	float centr[3];
 	int i = 0;
 
-	if (fc->flag & (FM_FLAG_REFRESH_SHAPE | FM_FLAG_SKIP_MASS_CALC))
+	if (!fc || (fc && fc->flag & (FM_FLAG_REFRESH_SHAPE | FM_FLAG_SKIP_MASS_CALC)))
 	{
 		return;
 	}
+
+	fs = fc->current;
 
 	for (mi = fs->island_map.first; mi; mi = mi->next)
 	{

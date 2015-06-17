@@ -5496,8 +5496,8 @@ static void direct_link_object(FileData *fd, Object *ob)
 		FractureState *fs;
 		RigidBodyOb *rbo = ob->rigidbody_object;
 
-		ob->rigidbody_object->fracture_objects = newdataadr(fd, ob->rigidbody_object->fracture_objects);
-		fc = ob->rigidbody_object->fracture_objects;
+		rbo->fracture_objects = newdataadr(fd, rbo->fracture_objects);
+		fc = rbo->fracture_objects;
 
 		/* must nullify the references to physics sim objects, since they no-longer exist
 		 * (and will need to be recalculated)
@@ -5560,7 +5560,8 @@ static void direct_link_object(FileData *fd, Object *ob)
 	ob->rigidbody_constraint = newdataadr(fd, ob->rigidbody_constraint);
 	if (ob->rigidbody_constraint) {
 		ob->rigidbody_constraint->physics_constraint = NULL;
-		ob->rigidbody_constraint->fracture_constraints = newdataadr(fd, ob->rigidbody_constraint->fracture_constraints);
+		ob->rigidbody_constraint->fracture_constraints =
+		        newdataadr(fd, ob->rigidbody_constraint->fracture_constraints);
 	}
 
 	link_list(fd, &ob->particlesystem);

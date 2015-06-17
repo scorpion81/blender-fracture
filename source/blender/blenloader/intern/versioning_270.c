@@ -78,8 +78,24 @@ static void patch_fracture_modifier_struct(FractureModifierData *fmd, Object* ob
 	RigidBodyCon *rbc = ob->rigidbody_constraint;
 	FractureContainer *fc;
 	ConstraintContainer *cc;
+	FractureState *fs;
+	MeshIsland *mi;
+	int i = 0;
 
 	rbo->fracture_objects = BKE_fracture_container_create(ob);
+	fc = rbo->fracture_objects;
+	fs = fc->current;
+
+	fc->flag |= (FM_FLAG_REFRESH_AUTOHIDE | FM_FLAG_SKIP_MASS_CALC);
+
+	fs->frac_mesh = BKE_copy_fracmesh(fmd->frac_mesh);
+	BKE_fracture_create_islands(ob);
+
+	for (i = 0; i < fs->island_count; i++)
+	{
+		mi = fs->islands[i];
+		mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+	}
 
 	if (!rbc)
 	{
@@ -199,6 +215,19 @@ static void load_fracture_system(Main* main)
 		if (fmd)
 		{
 			patch_fracture_modifier_struct(fmd, ob);
+		}
+		else
+		{
+			if (ob->rigidbody_object) {
+				ob->rigidbody_object->fracture_objects = BKE_fracture_container_create(ob);
+				ob->rigidbody_object->fracture_objects->flag |= FM_FLAG_REFRESH_SHAPE;
+				/*postpone shape init for later, cant do here without ob->data or scene */
+			}
+
+			if (ob->rigidbody_constraint) {
+				ob->rigidbody_constraint->fracture_constraints = BKE_fracture_constraint_container_create(ob);
+				/* FM TODO, put 1 constraint into container */
+			}
 		}
 	}
 }
@@ -794,7 +823,7 @@ void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 			}
 		}
 	}
-	else if (!DNA_struct_elem_find(fd->filesdna, "Object", "FractureContainer", "*fracture_objects"))
+	else if (!DNA_struct_elem_find(fd->filesdna, "RigidBodyOb", "FractureContainer", "*fracture_objects"))
 	{
 		load_fracture_system(main);
 	}

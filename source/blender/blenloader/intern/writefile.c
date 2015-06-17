@@ -1701,14 +1701,14 @@ static void write_objects(WriteData *wd, ListBase *idbase)
 
 			if (ob->rigidbody_object) {
 				FractureContainer *fc = ob->rigidbody_object->fracture_objects;
-				FractureState *fs = fc->current;
 
 				// TODO: if any extra data is added to handle duplis, will need separate function then
 				writestruct(wd, DATA, "RigidBodyOb", 1, ob->rigidbody_object);
 
 				/* in undo there is a write attempt here with an empty frac mesh, skip! */
-				if (fc && fs->frac_mesh)
+				if (fc)
 				{
+					FractureState *fs = fc->current;
 					writestruct(wd, DATA, "FractureContainer", 1, fc);
 
 					for (fs = fc->states.first; fs; fs = fs->next)
@@ -1718,16 +1718,20 @@ static void write_objects(WriteData *wd, ListBase *idbase)
 						FracMesh *fm = fs->frac_mesh;
 
 						writestruct(wd, DATA, "FractureState", 1, fs);
-						writestruct(wd, DATA, "FracMesh", 1, fm);
+						if (fm)
+						{	/*due to later mesh initialization, it can happen we dont have a fracmesh here yet */
+							/*so dont attempt to write it */
+							writestruct(wd, DATA, "FracMesh", 1, fm);
 
-						for (s = fm->shard_map.first; s; s = s->next)
-						{
-							write_shard(wd, s);
-						}
+							for (s = fm->shard_map.first; s; s = s->next)
+							{
+								write_shard(wd, s);
+							}
 
-						for (mi = fs->island_map.first; mi; mi = mi->next)
-						{
-							write_meshIsland(wd, mi);
+							for (mi = fs->island_map.first; mi; mi = mi->next)
+							{
+								write_meshIsland(wd, mi);
+							}
 						}
 					}
 

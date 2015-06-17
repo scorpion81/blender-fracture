@@ -54,7 +54,7 @@ class CopyRigidbodySettings(Operator):
     @classmethod
     def poll(cls, context):
         obj = context.object
-        return (obj and obj.fracture_container)
+        return (obj and obj.rigidbody_object)
 
     def execute(self, context):
         obj_act = context.object
@@ -112,7 +112,7 @@ class BakeToKeyframes(Operator):
     @classmethod
     def poll(cls, context):
         obj = context.object
-        return (obj and obj.fracture_container)
+        return (obj and obj.rigidbody_object)
 
     def execute(self, context):
         bake = []
@@ -261,7 +261,7 @@ class ConnectRigidBodies(Operator):
     @classmethod
     def poll(cls, context):
         obj = context.object
-        return (obj and obj.fracture_container)
+        return (obj and obj.rigidbody_object)
 
     def _add_constraint(self, context, object1, object2):
         if object1 == object2:
