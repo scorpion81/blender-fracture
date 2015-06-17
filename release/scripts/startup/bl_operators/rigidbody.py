@@ -127,7 +127,7 @@ class BakeToKeyframes(Operator):
         for obj in context.selected_objects:
             if (not obj.rigid_body or obj.rigid_body.type != 'ACTIVE' or self.has_fracture_modifier(obj, True)):
                 obj.select = False
-            if (obj.rigid_body_constraint):
+            if (obj.rigidbody_constraint):
                constraints.append(obj)
 
         objects = context.selected_objects
@@ -283,7 +283,7 @@ class ConnectRigidBodies(Operator):
         bpy.ops.rigidbody.constraint_add()
         con_obj = context.active_object
         con_obj.empty_draw_type = 'ARROWS'
-        con = con_obj.rigid_body_constraint
+        con = con_obj.rigidbody_constraint
         con.type = self.con_type
 
         con.object1 = object1

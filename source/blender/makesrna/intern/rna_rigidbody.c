@@ -204,7 +204,10 @@ static void rna_ConstraintContainer_reset(Main *UNUSED(bmain), Scene *scene, Poi
 {
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	ConstraintContainer *cc = ptr->data;
+	Object *ob = ptr->id.data;
 	cc->flag |= FM_FLAG_REFRESH_CONSTRAINTS;
+	BKE_fracture_constraint_container_update(ob);
+	cc->flag &= ~FM_FLAG_REFRESH_CONSTRAINTS;
 
 	BKE_rigidbody_cache_reset(rbw);
 }
@@ -630,12 +633,12 @@ static void rna_def_rigidbody_constraint(BlenderRNA *brna)
 	RNA_def_property_enum_items(prop, rigidbody_constraint_type_items);
 	RNA_def_property_ui_text(prop, "Type", "Type of Rigid Body Constraint");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
 
 	prop = RNA_def_property(srna, "enabled", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_ENABLED);
 	RNA_def_property_ui_text(prop, "Enabled", "Enable this constraint");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
 
 	prop = RNA_def_property(srna, "disable_collisions", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_DISABLE_COLLISIONS);
@@ -648,7 +651,7 @@ static void rna_def_rigidbody_constraint(BlenderRNA *brna)
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_BREAKING);
 	RNA_def_property_ui_text(prop, "Breakable",
 	                         "Constraint can be broken if it receives an impulse above the threshold");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
 
 	prop = RNA_def_property(srna, "breaking_threshold", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "breaking_threshold");
@@ -916,6 +919,7 @@ static void rna_def_rigidbody_constraint_container(BlenderRNA *brna)
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", FMC_FLAG_USE_CONSTRAINTS);
 	RNA_def_property_ui_text(prop, "Use Constraints", "Create constraints between all shards");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
 
 	prop = RNA_def_property(srna, "contact_dist", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);

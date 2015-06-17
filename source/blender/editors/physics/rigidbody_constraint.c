@@ -90,7 +90,7 @@ bool ED_rigidbody_constraint_add(Scene *scene, Object *ob, int type, ReportList 
 	}
 	/* make rigidbody constraint settings */
 
-	BKE_rigidbody_create_constraint(ob, RBC_TYPE_FIXED);
+	ob->rigidbody_constraint = BKE_rigidbody_create_constraint(ob, RBC_TYPE_FIXED);
 
 	/* add constraint to rigid body constraint group */
 	BKE_group_object_add(rbw->constraints, ob, scene, NULL);

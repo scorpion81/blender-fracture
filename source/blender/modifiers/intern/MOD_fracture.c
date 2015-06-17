@@ -78,9 +78,8 @@ static DerivedMesh *applyModifier(ModifierData *UNUSED(md), Object *ob,
                                   DerivedMesh *derivedData,
                                   ModifierApplyFlag UNUSED(flag))
 {
-	if (ob->rigidbody_object->fracture_objects)
+	if (ob->rigidbody_object)
 	{
-		BKE_fracture_constraint_container_update(ob);
 		BKE_fracture_prepare_autohide(ob); /*in case after loading rebuild facepairs,
 											* this GHash is a runtime struct ONLY*/
 		return BKE_fracture_autohide(ob);

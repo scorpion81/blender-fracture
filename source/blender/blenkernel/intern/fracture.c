@@ -4880,7 +4880,7 @@ static void build_constraints(Object *ob)
 	int totvert1, totvert2;
 	double start;
 
-	if (!(cc->flag & FMC_FLAG_USE_CONSTRAINTS))
+	if (!(cc->flag & FMC_FLAG_USE_CONSTRAINTS) && !(ob->rigidbody_constraint->flag & RBC_FLAG_ENABLED))
 	{
 		return;
 	}
@@ -4939,7 +4939,7 @@ static void build_constraints(Object *ob)
 void BKE_fracture_constraint_container_update(Object* ob)
 {
 	RigidBodyCon *rbc = ob->rigidbody_constraint;
-	if (rbc)
+	if (rbc && rbc->ob1 && rbc->ob2)
 	{
 		ConstraintContainer *cc = rbc->fracture_constraints;
 		if (cc->flag & FM_FLAG_REFRESH_CONSTRAINTS) {

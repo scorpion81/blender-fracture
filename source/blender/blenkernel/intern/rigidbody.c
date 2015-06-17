@@ -1519,6 +1519,7 @@ RigidBodyCon *BKE_rigidbody_create_constraint(Object *ob, short type)
 	rbc = MEM_callocN(sizeof(RigidBodyCon), "RigidBodyCon");
 
 	rbc->fracture_constraints = BKE_fracture_constraint_container_create(ob);
+	rbc->fracture_constraints->flag |= FM_FLAG_REFRESH_CONSTRAINTS;
 
 	/* set default settings */
 	rbc->type = type;
