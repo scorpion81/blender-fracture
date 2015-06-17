@@ -3003,9 +3003,9 @@ int  BKE_ptcache_object_reset(Scene *scene, Object *ob, int mode)
 		else
 		{
 #endif
-	if (ob->fracture_objects) {
-		ob->fracture_objects->flag |= RBO_FLAG_NEEDS_RESHAPE;
-		BKE_ptcache_id_from_rigidbody(&pid, ob, ob->fracture_objects);
+	if (ob->rigidbody_object && ob->rigidbody_object->fracture_objects) {
+		ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_RESHAPE;
+		BKE_ptcache_id_from_rigidbody(&pid, ob, ob->rigidbody_object->fracture_objects);
 		/* only flag as outdated, resetting should happen on start frame */
 		pid.cache->flag |= PTCACHE_OUTDATED;
 	}

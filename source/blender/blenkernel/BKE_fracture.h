@@ -116,7 +116,6 @@ void BKE_fracture_container_free(struct Object *ob);
 void BKE_fracture_container_create(struct Object *ob, int type);
 void BKE_lookup_mesh_state(struct Object* ob, int frame);
 
-struct ConstraintContainer *BKE_fracture_constraint_container_copy(struct Object *ob);
 void BKE_fracture_container_copy(struct Main *bmain, struct Object *ob, struct Object *obN);
 struct MVert* BKE_copy_visual_mesh(struct Object* ob, struct FractureState *fs);
 struct FracMesh* BKE_copy_fracmesh(struct FracMesh* fm);

@@ -77,8 +77,9 @@ static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int r
 
 static void activateRigidbody(RigidBodyShardOb* rbo, RigidBodyWorld *rbw, MeshIsland *mi, Object *ob)
 {
-	FractureContainer *fc = ob->fracture_objects;
-	RigidBodyOb *rb = fc->rb_settings;
+	RigidBodyOb *rb = ob->rigidbody_object;
+	FractureContainer *fc = rb->fracture_objects;
+
 	if (rbo->flag & RBO_FLAG_KINEMATIC && rbo->type == RBO_TYPE_ACTIVE)
 	{
 		rbo->flag &= ~RBO_FLAG_KINEMATIC;
@@ -120,7 +121,8 @@ void BKE_rigidbody_start_dist_angle(RigidBodyShardCon *con)
 
 float BKE_rigidbody_calc_max_con_mass(Object *ob)
 {
-	ConstraintContainer *cc = ob->fracture_constraints;
+	RigidBodyCon* rbc = ob->rigidbody_constraint;
+	ConstraintContainer *cc = rbc->fracture_constraints;
 	RigidBodyShardCon *con;
 	float max_con_mass = 0, con_mass;
 
@@ -139,7 +141,8 @@ float BKE_rigidbody_calc_max_con_mass(Object *ob)
 
 float BKE_rigidbody_calc_min_con_dist(Object *ob)
 {
-	ConstraintContainer* cc = ob->fracture_constraints;
+	RigidBodyCon *rbc = ob->rigidbody_constraint;
+	ConstraintContainer* cc = rbc->fracture_constraints;
 	RigidBodyShardCon *con;
 	float min_con_dist = FLT_MAX, con_dist, con_vec[3];
 
@@ -161,7 +164,8 @@ float BKE_rigidbody_calc_min_con_dist(Object *ob)
 
 void BKE_rigidbody_calc_threshold(float max_con_mass, Object *ob, RigidBodyShardCon *con) {
 
-	ConstraintContainer *cc = ob->fracture_constraints;
+	RigidBodyCon* rbc = ob->rigidbody_constraint;
+	ConstraintContainer *cc = rbc->fracture_constraints;
 
 	float max_thresh, thresh = 0.0f, con_mass;
 	if ((max_con_mass == 0) && (cc->flag & FMC_FLAG_USE_MASS_DEPENDENT_THRESHOLDS)) {
@@ -295,7 +299,8 @@ float BKE_rigidbody_calc_volume(DerivedMesh *dm, RigidBodyOb *rbo)
 
 void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland *mi)
 {
-	FractureContainer *fc = ob->fracture_objects;
+	RigidBodyOb *rb = ob->rigidbody_object;
+	FractureContainer *fc = rb->fracture_objects;
 	DerivedMesh *dm_ob = ob->derivedFinal, *dm_mi;
 	float vol_mi = 0, mass_mi = 0, vol_ob = 0, mass_ob = 0;
 	bool skip = fc->flag & (FM_FLAG_REFRESH_SHAPE | FM_FLAG_SKIP_MASS_CALC);
@@ -308,7 +313,7 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland *mi)
 			if ((ob->type == OB_MESH)) {
 				/* if we have a mesh, determine its volume */
 				dm_ob = CDDM_from_mesh(ob->data);
-				vol_ob = BKE_rigidbody_calc_volume(dm_ob, fc->rb_settings);
+				vol_ob = BKE_rigidbody_calc_volume(dm_ob, rb);
 			}
 			else {
 				/* else get object boundbox as last resort */
@@ -319,15 +324,15 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland *mi)
 		}
 		else
 		{
-			vol_ob = BKE_rigidbody_calc_volume(dm_ob, fc->rb_settings);
+			vol_ob = BKE_rigidbody_calc_volume(dm_ob, rb);
 		}
 	}
 
-	mass_ob = fc->rb_settings->mass;
+	mass_ob = rb->mass;
 
 	if (vol_ob > 0) {
 		dm_mi = mi->physics_mesh;
-		vol_mi = BKE_rigidbody_calc_volume(dm_mi, fc->rb_settings);
+		vol_mi = BKE_rigidbody_calc_volume(dm_mi, rb);
 		mass_mi = (vol_mi / vol_ob) * mass_ob;
 		mi->rigidbody->mass = mass_mi;
 	}
@@ -401,7 +406,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 	short startno[3];
 	int j;
 	bool invalidData;
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 
 #if 0 // TODO MOVE init normals elsewhere !
 	/* hrm have to init Normals HERE, because we cant do this in readfile.c in case the file is loaded (have no access to the Object there)*/
@@ -504,15 +509,15 @@ void BKE_rigidbody_free_world(Scene* scene)
 		GroupObject *go;
 		if (rbw->constraints) {
 			for (go = rbw->constraints->gobject.first; go; go = go->next) {
-				if (go->ob && go->ob->fracture_constraints) {
-					BKE_fracture_constraint_container_free(go->ob);
+				if (go->ob && go->ob->rigidbody_constraint) {
+					BKE_rigidbody_free_constraint(go->ob);
 				}
 			}
 		}
 		if (rbw->group) {
 			for (go = rbw->group->gobject.first; go; go = go->next) {
-				if (go->ob && go->ob->fracture_objects) {
-					BKE_fracture_container_free(go->ob);
+				if (go->ob && go->ob->rigidbody_object) {
+					BKE_rigidbody_free_object(go->ob);
 				}
 			}
 		}
@@ -530,29 +535,33 @@ void BKE_rigidbody_free_world(Scene* scene)
 /* Free RigidBody settings and sim instances */
 void BKE_rigidbody_free_object(Object *ob)
 {
-	RigidBodyOb *rbo = (ob) ? ob->fracture_objects->rb_settings : NULL;
+	RigidBodyOb *rbo = (ob) ? ob->rigidbody_object : NULL;
 
 	/* sanity check */
 	if (rbo == NULL)
 		return;
 
+	BKE_fracture_container_free(ob);
+
 	/* free data itself */
 	MEM_freeN(rbo);
-	ob->fracture_objects->rb_settings = NULL;
+	ob->rigidbody_object = NULL;
 }
 
 /* Free RigidBody constraint and sim instance */
 void BKE_rigidbody_free_constraint(Object *ob)
 {
-	RigidBodyCon *rbc = (ob) ? (RigidBodyCon*)ob->fracture_constraints->con_settings : NULL;
+	RigidBodyCon *rbc = (ob) ? (RigidBodyCon*)ob->rigidbody_constraint : NULL;
 
 	/* sanity check */
 	if (rbc == NULL)
 		return;
 
+	BKE_fracture_constraint_container_free(ob);
+
 	/* free data itself */
 	MEM_freeN(rbc);
-	ob->fracture_constraints->con_settings = NULL;
+	ob->rigidbody_constraint = NULL;
 }
 
 /* ************************************** */
@@ -676,7 +685,7 @@ static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh_shard(MeshIsland 
 void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short rebuild)
 {
 	RigidBodyShardOb *rbo = mi->rigidbody;
-	RigidBodyOb *rb = ob->fracture_objects->rb_settings;
+	RigidBodyOb *rb = ob->rigidbody_object;
 	rbCollisionShape *new_shape = NULL;
 	float size[3] = {1.0f, 1.0f, 1.0f}, loc[3] = {0.0f, 0.0f, 0.0f};
 	float radius = 1.0f;
@@ -786,7 +795,7 @@ static bool flag_as_kinematic(void *object)
 {
 	bool is_kinematic = false;
 	Object* ob = (Object*)object;
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 
 	is_kinematic = (fc->flag & FM_FLAG_SKIP_STEPPING);
 
@@ -801,7 +810,7 @@ static bool flag_as_kinematic(void *object)
 void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, short rebuild, int transfer_speeds)
 {
 	RigidBodyShardOb *rbo = (mi) ? mi->rigidbody : NULL;
-	RigidBodyOb *rb = ob->fracture_objects->rb_settings;
+	RigidBodyOb *rb = ob->rigidbody_object;
 
 	float loc[3];
 	float rot[4];
@@ -912,7 +921,7 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, Object *ob
 	float ang_upper;
 	rbRigidBody *rb1;
 	rbRigidBody *rb2;
-	RigidBodyCon *con = (RigidBodyCon*)ob->fracture_constraints->con_settings;
+	RigidBodyCon *con = (RigidBodyCon*)ob->rigidbody_constraint;
 
 	/* sanity checks:
 	 *	- object should have a rigid body constraint
@@ -1121,10 +1130,11 @@ static bool colgroup_check(int group1, int group2)
 
 static void do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBodyWorld *rbw)
 {
-	FractureContainer *fc = ob->fracture_objects;
-	FractureContainer *fc2 = ob2->fracture_objects;
-	RigidBodyOb *rb = fc->rb_settings;
-	RigidBodyOb *rb2 = fc2->rb_settings;
+	RigidBodyOb *rb = ob->rigidbody_object;
+	RigidBodyOb *rb2 = ob2->rigidbody_object;
+
+	FractureContainer *fc = rb->fracture_objects;
+	FractureContainer *fc2 = rb2->fracture_objects;
 
 	bool valid = true;
 	MeshIsland *mi;
@@ -1157,11 +1167,12 @@ static void do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBo
 static int check_colgroup_ghost(Object* ob1, Object *ob2)
 {
 	int ret = 0;
-	FractureContainer *fc1 = ob1->fracture_objects;
-	FractureContainer *fc2 = ob2->fracture_objects;
+	RigidBodyOb *rb1 = ob1->rigidbody_object;
+	RigidBodyOb *rb2 = ob2->rigidbody_object;
+
 	// TODO colgroups will be added to container as well, for convenience ?
-	ret = colgroup_check(fc1->rb_settings->col_groups, fc2->rb_settings->col_groups);
-	return ret && (!(fc1->rb_settings->flag & RBO_FLAG_IS_GHOST) && !(fc2->rb_settings->flag & RBO_FLAG_IS_GHOST));
+	ret = colgroup_check(rb1->col_groups, rb2->col_groups);
+	return ret && (!(rb1->flag & RBO_FLAG_IS_GHOST) && !(rb2->flag & RBO_FLAG_IS_GHOST));
 }
 
 /* this allows partial object activation, only some shards will be activated, called from bullet(!) */
@@ -1169,6 +1180,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	MeshIsland* mi1, *mi2;
 	RigidBodyWorld *rbw = (RigidBodyWorld*)world;
 	Object* ob1, *ob2;
+	RigidBodyOb *rb1, *rb2;
 	FractureContainer *fc1, *fc2;
 	bool validOb = false;
 
@@ -1176,8 +1188,12 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	mi2 = (MeshIsland*)island2;
 	ob1 = blenderOb1;
 	ob2 = blenderOb2;
-	fc1 = ob1->fracture_objects;
-	fc2 = ob2->fracture_objects;
+
+	rb1 = ob1->rigidbody_object;
+	rb2 = ob2->rigidbody_object;
+
+	fc1 = rb1->fracture_objects;
+	fc2 = rb2->fracture_objects;
 
 	if (rbw == NULL || fc1->fracture_mode == MOD_FRACTURE_DYNAMIC || fc2->fracture_mode == MOD_FRACTURE_DYNAMIC)
 	{
@@ -1186,19 +1202,19 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	}
 
 	if ((mi1 != NULL) && (mi2 != NULL)) {
-		validOb = (ob1 != ob2 && colgroup_check(fc1->rb_settings->col_groups, fc1->rb_settings->col_groups) &&
-		          ((fc1->rb_settings->flag & RBO_FLAG_KINEMATIC) || (fc1->rb_settings->flag & RBO_FLAG_KINEMATIC)) &&
+		validOb = (ob1 != ob2 && colgroup_check(rb1->col_groups, rb2->col_groups) &&
+		          ((rb1->flag & RBO_FLAG_KINEMATIC) || (rb2->flag & RBO_FLAG_KINEMATIC)) &&
 		          ((mi1->rigidbody->type == RBO_TYPE_ACTIVE) && (mi2->rigidbody->type == RBO_TYPE_ACTIVE)));
 	}
 
 	if (validOb)
 	{
-		if (fc1->rb_settings->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
+		if (rb1->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
 			do_activate(ob1, ob2, mi1, rbw);
 		}
 
-		if (fc1->rb_settings->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
+		if (rb2->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
 			do_activate(ob2, ob1, mi2, rbw);
 		}
@@ -1209,7 +1225,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 
 static bool check_shard_size(Object* ob, int id, float impact_loc[3], Object* collider)
 {
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	FractureState *fs = fc->current;
 	float size = 0.1f;
 	Shard *t = fs->frac_mesh->shard_map.first;
@@ -1275,7 +1291,7 @@ static void check_fracture(rbContactPoint* cp, Scene* scene)
 
 	if (linear_index1 > -1 && ob1 && ob2)
 	{
-		fc1 = ob1->fracture_objects;
+		fc1 = ob1->rigidbody_object->fracture_objects;
 		if (fc1 && fc1->fracture_mode == MOD_FRACTURE_DYNAMIC) {
 			if (force > fc1->dynamic_force) {
 				if(check_shard_size(ob1, linear_index1, cp->contact_pos_world_onA, ob2))
@@ -1289,7 +1305,7 @@ static void check_fracture(rbContactPoint* cp, Scene* scene)
 
 	if (linear_index2 > -1 && ob1 && ob2)
 	{
-		fc2 = ob2->fracture_objects;
+		fc2 = ob2->rigidbody_object->fracture_objects;
 		if (fc2 && fc2->fracture_mode == MOD_FRACTURE_DYNAMIC) {
 			if (force > fc2->dynamic_force) {
 				if(check_shard_size(ob2, linear_index2, cp->contact_pos_world_onB, ob1))
@@ -1444,10 +1460,9 @@ void BKE_rigidbody_world_groups_relink(RigidBodyWorld *rbw)
 /* Add rigid body settings to the specified object */
 RigidBodyOb *BKE_rigidbody_create_object(Object *ob, short type)
 {
-	FractureContainer *fc = ob->fracture_objects;
 	RigidBodyOb *rbo;
 
-	if (ob == NULL || fc == NULL || (fc->rb_settings != NULL))
+	if (ob == NULL || (ob->rigidbody_object != NULL))
 		return NULL;
 
 	/* create new settings data, and link it up */
@@ -1495,7 +1510,7 @@ RigidBodyCon *BKE_rigidbody_create_constraint(Object *ob, short type)
 	 *	- object must exist
 	 *	- cannot add constraint if it already exists
 	 */
-	if (ob == NULL || (ob->fracture_constraints != NULL))
+	if (ob == NULL || (ob->rigidbody_constraint != NULL))
 		return NULL;
 
 	/* create new settings data, and link it up */
@@ -1671,21 +1686,21 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 {
 	float loc[3];
 	float rot[4];
-	float scale[3], centr[3];
-	FractureContainer *fc = ob->fracture_objects;
-	RigidBodyOb *rb = fc->rb_settings;
+	float scale[3], centr[3], adj_gravity[3];
+
+	RigidBodyOb *rb = ob->rigidbody_object;
 
 	/* adjust gravity to take effector weights into account  do this somehow per object hrm maybe keep the gravity setting (effector weights
-		to make quick global adjustments TODO*/
-#if 0
+		to make quick global adjustments*/
+
 	if (scene->physics_settings.flag & PHYS_GLOBAL_GRAVITY) {
 		copy_v3_v3(adj_gravity, scene->physics_settings.gravity);
-		mul_v3_fl(adj_gravity, fc->effector_weights->global_gravity * fc->effector_weights->weight[0]);
+		mul_v3_fl(adj_gravity, rbw->effector_weights->global_gravity * rbw->effector_weights->weight[0]);
+		//FM_TODO -> override with fc->effector_weights
 	}
 	else {
 		zero_v3(adj_gravity);
 	}
-#endif
 
 	/* only update if rigid body exists */
 	if (rbo->physics_object == NULL)
@@ -1774,8 +1789,7 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 
 static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int rebuild, int transfer_speed)
 {
-	FractureContainer *fc = ob->fracture_objects;
-	RigidBodyOb *rb = fc->rb_settings;
+	RigidBodyOb *rb = ob->rigidbody_object;
 
 	if (mi == NULL || mi->rigidbody == NULL) {
 		return;
@@ -1801,7 +1815,8 @@ static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int r
 
 static void handle_breaking_percentage(Object *ob, MeshIsland *mi, RigidBodyWorld *rbw, int breaking_percentage)
 {
-	ConstraintContainer *cc = ob->fracture_constraints;
+	RigidBodyCon *rbc = ob->rigidbody_constraint;
+	ConstraintContainer *cc = rbc->fracture_constraints;
 	int broken_cons = 0, cons = 0, i = 0, cluster_cons = 0, broken_cluster_cons = 0;
 	RigidBodyShardCon *con;
 
@@ -1875,7 +1890,8 @@ static void handle_breaking_percentage(Object *ob, MeshIsland *mi, RigidBodyWorl
 static void handle_breaking_angle(Object *ob, RigidBodyShardCon *rbsc, RigidBodyWorld *rbw,
                                   float anglediff, float weight, float breaking_angle)
 {
-	ConstraintContainer *cc = ob->fracture_constraints;
+	RigidBodyCon *rbc = ob->rigidbody_constraint;
+	ConstraintContainer *cc = rbc->fracture_constraints;
 
 	if ((cc->breaking_angle > 0 || ((cc->flag & FMC_FLAG_BREAKING_ANGLE_WEIGHTED) && weight > 0)) &&
 		(anglediff > breaking_angle))
@@ -1918,7 +1934,8 @@ static void handle_breaking_angle(Object *ob, RigidBodyShardCon *rbsc, RigidBody
 static void handle_breaking_distance(Object *ob, RigidBodyShardCon *rbsc, RigidBodyWorld *rbw,
                                      float distdiff, float weight, float breaking_distance)
 {
-	ConstraintContainer *cc = ob->fracture_constraints;
+	RigidBodyCon *rbc = ob->rigidbody_constraint;
+	ConstraintContainer *cc = rbc->fracture_constraints;
 
 	if ((cc->breaking_distance > 0 || ((cc->flag & FMC_FLAG_BREAKING_DISTANCE_WEIGHTED) && weight > 0)) &&
 		(distdiff > breaking_distance))
@@ -1960,7 +1977,8 @@ static void handle_breaking_distance(Object *ob, RigidBodyShardCon *rbsc, RigidB
 static void do_update_constraint_container(Scene* scene, Object *ob, bool rebuild)
 {
 	RigidBodyWorld *rbw = scene->rigidbody_world;
-	ConstraintContainer *cc = ob->fracture_constraints;
+	RigidBodyCon *rbc = ob->rigidbody_constraint;
+	ConstraintContainer *cc = rbc->fracture_constraints;
 	RigidBodyShardCon *con;
 	float max_con_mass = 0;
 
@@ -2051,7 +2069,8 @@ static void do_update_constraint_container(Scene* scene, Object *ob, bool rebuil
 
 static void do_update_container(Scene* scene, Object* ob, RigidBodyWorld *rbw, bool rebuild)
 {
-	FractureContainer *fc = ob->fracture_objects;
+	RigidBodyOb *rb = ob->rigidbody_object;
+	FractureContainer *fc = rb->fracture_objects;
 	FractureState *fs = fc->current;
 	MeshIsland *mi;
 
@@ -2092,11 +2111,11 @@ static void rigidbody_update_simulation_object(Scene *scene, Object* ob, RigidBo
 	}
 
 	if (ob && (ob->type == OB_MESH || ob->type == OB_CURVE || ob->type == OB_SURF || ob->type == OB_FONT)) {
-		if (ob->fracture_objects)
+		if (ob->rigidbody_object)
 			do_update_container(scene, ob, rbw, rebuild);
 	}
 
-	if (ob->fracture_constraints)
+	if (ob->rigidbody_constraint)
 		do_update_constraint_container(scene, ob, rebuild);
 
 	//perhaps do this if we only have 1 island, to mimic old behavior ? TODO (move object with it)
@@ -2107,11 +2126,10 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw, Object *o
 {
 	GroupObject *go;
 	RigidBodyShardOb *rbo;
-	RigidBodyOb *rb;
+	RigidBodyOb *rb = ob->rigidbody_object;
 	MeshIsland *mi;
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = rb->fracture_objects;
 	FractureState *fs = fc->current;
-	rb = fc->rb_settings;
 
 	for (mi = fs->island_map.first; mi; mi = mi->next) {
 		rbo = mi->rigidbody;
@@ -2137,16 +2155,16 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw, Object *o
 bool BKE_rigidbody_check_sim_running(RigidBodyWorld *rbw, Object* ob, float ctime)
 {
 	//test pointcache of first participant, if any.... TODO
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 
 	return (rbw && (rbw->flag & RBW_FLAG_MUTED) == 0 && ctime > fc->pointcache->startframe);
 }
 
 static void do_sync_container(Object *ob, RigidBodyWorld *rbw, float ctime)
 {
-	FractureContainer *fc = ob->fracture_objects;
+	RigidBodyOb *rb = ob->rigidbody_object;
+	FractureContainer *fc = rb->fracture_objects;
 	FractureState *fs = fc->current;
-	RigidBodyOb *rb = fc->rb_settings;
 	MeshIsland *mi;
 	float size[3] = {1, 1, 1};
 	float centr[3];
@@ -2202,12 +2220,12 @@ static void do_sync_container(Object *ob, RigidBodyWorld *rbw, float ctime)
 /* Sync rigid body and object transformations */
 void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 {
-	if (rbw == NULL || ob->fracture_objects == NULL)
+	if (rbw == NULL || ob->rigidbody_object == NULL)
 		return;
 
 	do_sync_container(ob, rbw, ctime);
 
-#if 0
+#if 0 //FM_TODO
 	/* keep original transform for kinematic and passive objects */
 	if (ELEM(NULL, rbw, rbo) || rbo->flag & RBO_FLAG_KINEMATIC || rbo->type == RBO_TYPE_PASSIVE)
 		return;
@@ -2249,7 +2267,7 @@ static void do_reset_rigidbody(RigidBodyShardOb *rbo, Object *ob, MeshIsland* mi
 void BKE_rigidbody_aftertrans_update(Object *ob, float loc[3], float rot[3], float quat[4], float rotAxis[3], float rotAngle)
 {
 	RigidBodyShardOb *rbo;
-	FractureContainer *fc = ob->fracture_objects;
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	FractureState *fs = fc->current;
 	MeshIsland *mi;
 
@@ -2264,9 +2282,9 @@ void BKE_rigidbody_aftertrans_update(Object *ob, float loc[3], float rot[3], flo
 static void restoreKinematic(Object *ob)
 {
 	/*restore kinematic state of shards if object is kinematic, need to store old state in container now....FM_TODO */
-	FractureContainer* fc = ob->fracture_objects;
-	if (fc) {
-		RigidBodyOb *rb = fc->rb_settings;
+	RigidBodyOb *rb = ob->rigidbody_object;
+	if (rb) {
+		FractureContainer* fc = rb->fracture_objects;
 		MeshIsland* mi;
 		for (mi = fc->current->island_map.first; mi; mi = mi->next)
 		{
@@ -2298,10 +2316,11 @@ void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw)
 		for (go = rbw->group->gobject.first; go; go = go->next)
 		{
 			Object *ob = go->ob;
-			FractureContainer *fc = ob->fracture_objects;
-			if (fc)
-				//go over all pointcaches.... for now only the 1st one
-				fc->pointcache->flag |= PTCACHE_OUTDATED;
+			RigidBodyOb *rb = ob->rigidbody_object;
+			if (rb) {
+				FractureContainer *fc = rb->fracture_objects;
+				fc->pointcache->flag |= PTCACHE_OUTDATED; //FM TODO flag all caches in list (dynamic) as outdated
+			}
 		}
 		//restoreKinematic(rbw);
 	}
@@ -2319,11 +2338,11 @@ void BKE_rigidbody_rebuild_world(Scene *scene, float ctime)
 	PointCache *cache;
 	PTCacheID pid;
 	int startframe, endframe;
-	int objects = BLI_listbase_count(&rbw->group->gobject);
 
 	for (go = rbw->group->gobject.first; go; go = go->next)
 	{
-		FractureContainer *fc = go->ob->fracture_objects;
+		RigidBodyOb *rb = go->ob->rigidbody_object;
+		FractureContainer *fc = rb->fracture_objects;
 
 #if 0
 		if (ctime == -1)
@@ -2376,7 +2395,8 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 		PTCacheID pid;
 
 		Object *ob = go->ob;
-		FractureContainer *fc = ob->fracture_objects;
+		RigidBodyOb *rb = ob->rigidbody_object;
+		FractureContainer *fc = rb->fracture_objects;
 		BKE_ptcache_id_from_rigidbody(&pid, ob, fc);
 		BKE_ptcache_id_time(&pid, scene, ctime, &startframe, &endframe, NULL);
 		cache = fc->pointcache;
@@ -2447,11 +2467,11 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 			fc->flag |= FM_FLAG_SKIP_STEPPING;
 			continue;
 		}
-		else if (rbw->ltime == startframe || fc->rb_settings->flag & RBO_FLAG_NEEDS_VALIDATE)
+		else if (rbw->ltime == startframe || rb->flag & RBO_FLAG_NEEDS_VALIDATE)
 		{
 			restoreKinematic(ob);
 			rigidbody_update_simulation_object(scene, ob, rbw, true);
-			fc->rb_settings->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
+			rb->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
 		}
 
 		/* advance simulation, we can only step one frame forward */
@@ -2480,7 +2500,8 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 		PointCache *cache;
 		PTCacheID pid;
 		Object *ob = go->ob;
-		FractureContainer *fc = ob->fracture_objects;
+		RigidBodyOb *rb = ob->rigidbody_object;
+		FractureContainer *fc = rb->fracture_objects;
 		int startframe, endframe;
 
 		if (fc->flag & FM_FLAG_SKIP_STEPPING)
@@ -2500,6 +2521,11 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	rbw->ltime = ctime;
 }
 /* ************************************** */
+
+RigidBodyCon *BKE_rigidbody_copy_constraint(Object *ob)
+{
+	return NULL; //FM_TODO old implementation !!!!
+}
 
 #else  /* WITH_BULLET */
 

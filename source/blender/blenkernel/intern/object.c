@@ -1538,8 +1538,8 @@ Object *BKE_object_copy_ex(Main *bmain, Object *ob, bool copy_caches)
 	obn->derivedDeform = NULL;
 	obn->derivedFinal = NULL;
 
-	BKE_fracture_container_copy(bmain, ob, obn);
-	obn->fracture_constraints = BKE_fracture_constraint_container_copy(ob);
+	obn->rigidbody_object = BKE_rigidbody_copy_object(ob);
+	obn->rigidbody_constraint = BKE_rigidbody_copy_constraint(ob);
 
 	BLI_listbase_clear(&obn->gpulamp);
 	BLI_listbase_clear(&obn->pc_ids);
@@ -3722,10 +3722,10 @@ void BKE_object_relink(Object *ob)
 	if (ob->adt)
 		BKE_relink_animdata(ob->adt);
 	
-	if (ob->fracture_constraints)
+	if (ob->rigidbody_constraint)
 	{
-		ID_NEW(ob->fracture_constraints->partner1);
-		ID_NEW(ob->fracture_constraints->partner2);
+		ID_NEW(ob->rigidbody_constraint->ob1);
+		ID_NEW(ob->rigidbody_constraint->ob2);
 	}
 
 	ID_NEW(ob->parent);

@@ -185,28 +185,25 @@ static void rna_FractureContainer_reset(Main *UNUSED(bmain), Scene *scene, Point
 {
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	FractureContainer *fc = ptr->data;
-	RigidBodyOb *rbo = fc->rb_settings;
 	fc->flag |= (FM_FLAG_REFRESH | FM_FLAG_RESET_SHARDS);
-	rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 
 	BKE_rigidbody_cache_reset(rbw);
 }
 
-static void rna_FractureContainer_rigidbody_reset(Main *UNUSED(bmain), Scene *scene, PointerRNA *ptr)
+static void rna_FractureContainer_rigidbody_reset(Main *bmain, Scene *scene, PointerRNA *ptr)
 {
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	RigidBodyOb *rbo = ptr->data;
 	rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 
 	BKE_rigidbody_cache_reset(rbw);
+	rna_FractureContainer_reset(bmain, scene, ptr);
 }
 
 static void rna_ConstraintContainer_reset(Main *UNUSED(bmain), Scene *scene, PointerRNA *ptr)
 {
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	ConstraintContainer *cc = ptr->data;
-	RigidBodyCon *rbc = cc->con_settings;
-	rbc->flag |= RBC_FLAG_NEEDS_VALIDATE;
 	cc->flag |= FM_FLAG_REFRESH_CONSTRAINTS;
 
 	BKE_rigidbody_cache_reset(rbw);
@@ -221,28 +218,10 @@ static void rna_FractureContainer_rigidbody_shape_update(Main *bmain, Scene *sce
 	WM_main_add_notifier(NC_OBJECT | ND_DRAW, ob);
 }
 
-static void rna_FractureContainer_cluster_update(Main *bmain, Scene *scene, PointerRNA *ptr)
+static void rna_RigidBodyOb_shape_reset(Main *UNUSED(bmain), Scene *scene, PointerRNA *ptr)
 {
 	RigidBodyWorld *rbw = scene->rigidbody_world;
-	FractureContainer *fc = ptr->data;
-	int i = 0;
-	/* likely we have only a few containers with many shards instead of many containers with little shards*/
-	/* so this should be a short list to iterate through */
-	for (i = 0; i < fc->constraint_container_count; i++)
-	{
-		Object* ob = rbw->objects[fc->constraint_containers[i]];
-		ConstraintContainer *cc = ob->fracture_constraints;
-		cc->flag |= FM_FLAG_REFRESH_CONSTRAINTS;
-	}
-
-	rna_FractureContainer_reset(bmain, scene, ptr);
-}
-
-static void rna_FractureContainer_shape_reset(Main *UNUSED(bmain), Scene *scene, PointerRNA *ptr)
-{
-	RigidBodyWorld *rbw = scene->rigidbody_world;
-	FractureContainer *fc = ptr->data;
-	RigidBodyOb *rbo = fc->rb_settings;
+	RigidBodyOb *rbo = ptr->data;
 	rbo->flag |= RBO_FLAG_NEEDS_RESHAPE;
 
 	BKE_rigidbody_cache_reset(rbw);
@@ -257,19 +236,19 @@ static void rna_FractureContainer_autohide_update(Main *UNUSED(bmain), Scene *sc
 static char *rna_FractureContainer_path(PointerRNA *UNUSED(ptr))
 {
 	/* NOTE: this hardcoded path should work as long as only Objects have this */
-	return BLI_sprintfN("fracture_container");
+	return BLI_sprintfN("rigidbody_object.fracture_container");
 }
 
 static char *rna_ConstraintContainer_path(PointerRNA *UNUSED(ptr))
 {
 	/* NOTE: this hardcoded path should work as long as only Objects have this */
-	return BLI_sprintfN("constraint_container");
+	return BLI_sprintfN("rigidbody_constraint.constraint_container");
 }
 
-static char *rna_FractureContainer_rb_settings_path(PointerRNA *UNUSED(ptr))
+static char *rna_RigidBodyOb_path(PointerRNA *UNUSED(ptr))
 {
 	/* NOTE: this hardcoded path should work as long as only Objects have this */
-	return BLI_sprintfN("fracture_container.rb_settings");
+	return BLI_sprintfN("rigidbody_object");
 }
 
 void set_collision_groups(RigidBodyOb* rbo, const int *values)
@@ -291,10 +270,10 @@ static void rna_RigidBodyOb_collision_groups_set(PointerRNA *ptr, const int *val
 	set_collision_groups(rbo, values);
 }
 
-static char *rna_ConstraintContainer_con_settings_path(PointerRNA *UNUSED(ptr))
+static char *rna_RigidBodyCon_path(PointerRNA *UNUSED(ptr))
 {
 	/* NOTE: this hardcoded path should work as long as only Objects have this */
-	return BLI_sprintfN("constraint_container.con_settings");
+	return BLI_sprintfN("rigidbody_constraint");
 }
 
 /* Sweep test, take 1st island only */
@@ -304,7 +283,7 @@ static void rna_RigidBodyWorld_convex_sweep_test(
         float r_location[3], float r_hitpoint[3], float r_normal[3], int *r_hit)
 {
 #ifdef WITH_BULLET
-	MeshIsland *mi = object->fracture_objects->current->island_map.first;
+	MeshIsland *mi = object->rigidbody_object->fracture_objects->current->island_map.first;
 	RigidBodyShardOb *rob = mi->rigidbody;
 	if (rbw->physics_world != NULL && rob->physics_object != NULL) {
 		RB_world_convex_sweep_test(rbw->physics_world, rob->physics_object, ray_start, ray_end,
@@ -450,7 +429,12 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	srna = RNA_def_struct(brna, "RigidBodyObject", NULL);
 	RNA_def_struct_sdna(srna, "RigidBodyOb");
 	RNA_def_struct_ui_text(srna, "Rigid Body Object", "Settings for object participating in Rigid Body Simulation");
-	RNA_def_struct_path_func(srna, "rna_FractureContainer_rb_settings_path");
+	RNA_def_struct_path_func(srna, "rna_RigidBodyOb_path");
+
+	prop = RNA_def_property(srna, "fracture_container", PROP_POINTER, PROP_NONE);
+	RNA_def_property_pointer_sdna(prop, NULL, "fracture_objects");
+	RNA_def_property_struct_type(prop, "FractureContainer");
+	RNA_def_property_ui_text(prop, "Fracture Container", "Container for fractured rigid bodies");
 	
 	/* Enums */
 	prop = RNA_def_property(srna, "type", PROP_ENUM, PROP_NONE);
@@ -591,7 +575,7 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	RNA_def_property_boolean_default(prop, false);
 	RNA_def_property_ui_text(prop, "Collision Margin",
 	                         "Use custom collision margin (some shapes will have a visible gap around them)");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_shape_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_shape_reset");
 	
 	prop = RNA_def_property(srna, "collision_margin", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "margin");
@@ -601,7 +585,7 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Collision Margin",
 	                         "Threshold of distance near surface where collisions are still considered "
 	                         "(best results when non-zero)");
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_shape_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_shape_reset");
 	
 	prop = RNA_def_property(srna, "collision_groups", PROP_BOOLEAN, PROP_LAYER_MEMBER);
 	RNA_def_property_boolean_sdna(prop, NULL, "col_groups", 1);
@@ -621,7 +605,24 @@ static void rna_def_rigidbody_constraint(BlenderRNA *brna)
 	RNA_def_struct_sdna(srna, "RigidBodyCon");
 	RNA_def_struct_ui_text(srna, "Rigid Body Constraint",
 	                       "Constraint influencing Objects inside Rigid Body Simulation");
-	RNA_def_struct_path_func(srna, "rna_ConstraintContainer_con_settings_path");
+	RNA_def_struct_path_func(srna, "rna_RigidBodyCon_path");
+
+	prop = RNA_def_property(srna, "constraint_container", PROP_POINTER, PROP_NONE);
+	RNA_def_property_pointer_sdna(prop, NULL, "fracture_constraints");
+	RNA_def_property_struct_type(prop, "ConstraintContainer");
+	RNA_def_property_ui_text(prop, "Constraint Container", "Container for fracture constraints");
+
+	prop = RNA_def_property(srna, "object1", PROP_POINTER, PROP_NONE);
+	RNA_def_property_pointer_sdna(prop, NULL, "ob1");
+	RNA_def_property_struct_type(prop, "Object");
+	RNA_def_property_flag(prop, PROP_EDITABLE);
+	RNA_def_property_ui_text(prop, "Object 1", "First constraint object");
+
+	prop = RNA_def_property(srna, "object2", PROP_POINTER, PROP_NONE);
+	RNA_def_property_pointer_sdna(prop, NULL, "ob2");
+	RNA_def_property_struct_type(prop, "Object");
+	RNA_def_property_flag(prop, PROP_EDITABLE);
+	RNA_def_property_ui_text(prop, "Object 2", "Second constraint object");
 
 	/* Enums */
 	prop = RNA_def_property(srna, "type", PROP_ENUM, PROP_NONE);
@@ -903,22 +904,6 @@ static void rna_def_rigidbody_constraint_container(BlenderRNA *brna)
 	RNA_def_struct_sdna(srna, "ConstraintContainer");
 	RNA_def_struct_path_func(srna, "rna_ConstraintContainer_path");
 
-	prop = RNA_def_property(srna, "partner1", PROP_POINTER, PROP_NONE);
-	RNA_def_property_pointer_sdna(prop, NULL, "partner1");
-	RNA_def_property_struct_type(prop, "Object");
-	RNA_def_property_flag(prop, PROP_EDITABLE);
-	RNA_def_property_ui_text(prop, "Partner 1", "First constraint partner");
-
-	prop = RNA_def_property(srna, "partner2", PROP_POINTER, PROP_NONE);
-	RNA_def_property_pointer_sdna(prop, NULL, "partner2");
-	RNA_def_property_struct_type(prop, "Object");
-	RNA_def_property_flag(prop, PROP_EDITABLE);
-	RNA_def_property_ui_text(prop, "Partner 2", "Second constraint partner");
-
-	prop = RNA_def_property(srna, "con_settings", PROP_POINTER, PROP_NONE);
-	RNA_def_property_pointer_sdna(prop, NULL, "con_settings");
-	RNA_def_property_struct_type(prop, "RigidBodyConstraint");
-	RNA_def_property_ui_text(prop, "Rigid Body Constraint settings", "Settings for rigidbody constraints");
 
 	prop = RNA_def_property(srna, "breaking_threshold", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "breaking_threshold");
@@ -1097,11 +1082,6 @@ static void rna_def_rigidbody_fracture_container(BlenderRNA *brna)
 	RNA_def_struct_ui_text(srna, "Fracture Container", "Add a fracture container to this object");
 	RNA_def_struct_sdna(srna, "FractureContainer");
 	RNA_def_struct_path_func(srna, "rna_FractureContainer_path");
-
-	prop = RNA_def_property(srna, "rb_settings", PROP_POINTER, PROP_NONE);
-	RNA_def_property_pointer_sdna(prop, NULL, "rb_settings");
-	RNA_def_property_struct_type(prop, "RigidBodyObject");
-	RNA_def_property_ui_text(prop, "Rigid Body Settings", "Settings for fractured rigid bodies");
 
 	prop = RNA_def_property(srna, "use_experimental", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", FM_FLAG_USE_EXPERIMENTAL);

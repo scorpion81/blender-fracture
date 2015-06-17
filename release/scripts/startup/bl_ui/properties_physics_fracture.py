@@ -56,7 +56,7 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         ob = context.object
         rd = context.scene.render
         base = (ob and (ob.type in {'MESH', 'CURVE', 'SURFACE', 'FONT'}) and (not rd.use_game_engine))
-        return base and context.object.fracture_container
+        return base and context.object.rigidbody_object.fracture_container
 
     def icon(self, bool):
         if bool:
@@ -68,7 +68,7 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         layout = self.layout
 
         ob = context.object
-        md = ob.fracture_container
+        md = ob.rigidbody_object.fracture_container
 
         layout.label(text="Presets:")
         sub = layout.row(align=True)
@@ -138,12 +138,12 @@ class PHYSICS_PT_fracture_constraint(PhysicButtonsPanel, Panel):
         ob = context.object
         rd = context.scene.render
         base = (ob and (ob.type in {'MESH', 'CURVE', 'SURFACE', 'FONT'}) and (not rd.use_game_engine))
-        return base and context.object.constraint_container
+        return base and context.object.rigidbody_constraint.constraint_container
 
     def draw(self, context):
         layout = self.layout
         ob = context.object
-        md = ob.constraint_container
+        md = ob.rigidbody_constraint.constraint_container
 
         layout.label("Constraint Building Settings")
         row = layout.row()
@@ -193,12 +193,12 @@ class PHYSICS_PT_fracture_utilities(PhysicButtonsPanel, Panel):
         ob = context.object
         rd = context.scene.render
         base = (ob and (ob.type in {'MESH', 'CURVE', 'SURFACE', 'FONT'}) and (not rd.use_game_engine))
-        return base and context.object.fracture_container
+        return base and context.object.rigidbody_object.fracture_container
 
     def draw(self, context):
         layout = self.layout
         ob = context.object
-        md = ob.fracture_container
+        md = ob.rigidbody_object.fracture_container
         layout.prop(md, "autohide_dist")
         row = layout.row()
         row.prop(md, "fix_normals")
