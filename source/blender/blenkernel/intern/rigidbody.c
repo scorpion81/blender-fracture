@@ -1609,9 +1609,8 @@ RigidBodyWorld *BKE_rigidbody_get_world(Scene *scene)
 	return scene->rigidbody_world;
 }
 
-void BKE_rigidbody_remove_shard_con(Scene *scene, RigidBodyShardCon *con)
+void BKE_rigidbody_remove_shard_con(RigidBodyWorld *rbw, RigidBodyShardCon *con)
 {
-	RigidBodyWorld *rbw = scene->rigidbody_world;
 	if (rbw && rbw->physics_world && con->physics_constraint) {
 		RB_dworld_remove_constraint(rbw->physics_world, con->physics_constraint);
 		RB_constraint_delete(con->physics_constraint);
@@ -1992,14 +1991,31 @@ static void do_update_constraint_container(Scene* scene, Object *ob, bool rebuil
 	ConstraintContainer *cc = rbc->fracture_constraints;
 	RigidBodyShardCon *con;
 	float max_con_mass = 0;
+	RigidBodyShardCon *rbsc;
 
 	if (cc->flag & FMC_FLAG_USE_MASS_DEPENDENT_THRESHOLDS) {
 		max_con_mass = BKE_rigidbody_calc_max_con_mass(ob);
 	}
 
+	rbsc = cc->constraint_map.first;
+	while (rbsc) {
+		if (rbsc->flag & RBC_FLAG_PURGE_ON_VALIDATE || rbsc->mi1 == NULL || rbsc->mi2 == NULL)
+		{
+			printf("Purging constraint...\n");
+			BLI_remlink(&cc->constraint_map, rbsc);
+			BKE_rigidbody_remove_shard_con(rbw, rbsc);
+			MEM_freeN(rbsc);
+			rbsc = NULL;
+		}
+		else
+		{
+			rbsc = rbsc->next;
+		}
+	}
+
 	for (con = cc->constraint_map.first; con; con = con->next)
 	{
-		if (cc->flag & FMC_FLAG_USE_BREAKING)
+		if (cc->flag & FMC_FLAG_USE_BREAKING && con->mi1 != NULL && con->mi2 != NULL)
 		{
 			int iterations;
 			float breaking_angle, breaking_distance;

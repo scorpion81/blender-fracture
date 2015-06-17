@@ -90,7 +90,7 @@ bool ED_rigidbody_constraint_add(Scene *scene, Object *ob, int type, ReportList 
 	}
 	/* make rigidbody constraint settings */
 
-	ob->rigidbody_constraint = BKE_rigidbody_create_constraint(ob, RBC_TYPE_FIXED);
+	ob->rigidbody_constraint = BKE_rigidbody_create_constraint(ob, type);
 	if (ob->rigidbody_object) {
 		/* set ourself as both partners by default, if we are on a rigidbody object */
 		/* mostly we want inner constraints, this is the default for that */

@@ -209,6 +209,17 @@ static void freeMeshIsland(MeshIsland *mi)
 	}
 
 	if (mi->participating_constraints != NULL) {
+		int count = mi->participating_constraint_count;
+		int i = 0;
+		for (i = 0; i < count; i++)
+		{
+			RigidBodyShardCon *con = mi->participating_constraints[i];
+			/*tag for removal */
+			con->flag |= RBC_FLAG_PURGE_ON_VALIDATE;
+			con->mi1 = NULL;
+			con->mi2 = NULL; //purge those as well
+		}
+
 		MEM_freeN(mi->participating_constraints);
 		mi->participating_constraints = NULL;
 		mi->participating_constraint_count = 0;
@@ -1670,7 +1681,7 @@ static void prepareConstraintSearch(Object *ob, MeshIsland ***mesh_islands, KDTr
 		j++;
 	}
 }
-static DerivedMesh* combine_dm(DerivedMesh *dm1, DerivedMesh *dm2)
+static DerivedMesh* combine_dm(Object* ob1, Object *ob2, DerivedMesh *dm1, DerivedMesh *dm2)
 {
 	DerivedMesh *dm = NULL;
 	float mat[4][4]; /*splinter matrix, leave as unit_m4 for now, should be applied to visual mesh already*/
@@ -1681,9 +1692,20 @@ static DerivedMesh* combine_dm(DerivedMesh *dm1, DerivedMesh *dm2)
 
 	Shard *s2 = BKE_create_fracture_shard(dm2->getVertArray(dm2), dm2->getPolyArray(dm2), dm2->getLoopArray(dm2),
 	                                      dm2->numVertData, dm2->numPolyData, dm2->numLoopData, true);
+	int i = 0;
 	unit_m4(mat);
 	add_shard(fm, s1, mat);
 	add_shard(fm, s2, mat);
+
+	for (i = 0; i < s1->totvert; i++)
+	{
+		mul_m4_v3(ob1->obmat, s1->mvert[i].co);
+	}
+
+	for (i = 0; i < s2->totvert; i++)
+	{
+		mul_m4_v3(ob2->obmat, s2->mvert[i].co);
+	}
 
 	dm = BKE_fracture_create_dm(NULL, fm, false);
 	BKE_fracmesh_free(fm, false);
@@ -1698,7 +1720,7 @@ static void create_constraints(Object *ob, MeshIsland **mesh_islands, int count,
 	RigidBodyOb *rb2 = rbc->ob2->rigidbody_object;
 	DerivedMesh *dm1 = rb1->fracture_objects->current->visual_mesh;
 	DerivedMesh *dm2 = rb1->fracture_objects->current->visual_mesh;
-	DerivedMesh *dm = combine_dm(dm1, dm2);
+	DerivedMesh *dm = combine_dm(rbc->ob1, rbc->ob2, dm1, dm2);
 	int i = 0;
 
 	for (i = 0; i < count; i++) {
@@ -4778,8 +4800,9 @@ static void free_constraint_container(Object* ob)
 
 	while (cc->constraint_map.first) {
 		rbsc = cc->constraint_map.first;
+		rbsc->flag |= RBC_FLAG_PURGE_ON_VALIDATE;
 		BLI_remlink(&cc->constraint_map, rbsc);
-		//BKE_rigidbody_remove_shard_con(scene, rbsc);
+		//BKE_rigidbody_remove_shard_con(rbsc);
 		MEM_freeN(rbsc);
 		rbsc = NULL;
 	}
@@ -4955,6 +4978,7 @@ static void build_constraints(Object *ob)
 		prepareConstraintSearch(ob2, &mesh_islands, &coord_tree, &vertex_island_map, island_count1, cc->constraint_target);
 	}
 
+	BLI_kdtree_balance(coord_tree);
 	printf("Preparing constraints done, %g\n", PIL_check_seconds_timer() - start);
 
 	start = PIL_check_seconds_timer();
@@ -4982,6 +5006,7 @@ void BKE_fracture_constraint_container_update(Object* ob)
 	{
 		ConstraintContainer *cc = rbc->fracture_constraints;
 		if (cc->flag & FM_FLAG_REFRESH_CONSTRAINTS) {
+			BKE_fracture_constraint_container_free(ob);
 			do_clusters(rbc->ob1);
 			if (rbc->ob1 != rbc->ob2)
 				do_clusters(rbc->ob2);
@@ -4994,8 +5019,10 @@ void BKE_fracture_constraint_container_update(Object* ob)
 
 void BKE_fracture_prefracture_mesh(Scene* scene, Object *ob, ShardID id)
 {
+	RigidBodyWorld *rbw = scene->rigidbody_world;
 	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	FractureState *fs = fc->current;
+	int i = 0;
 	fc->raw_mesh = BKE_fracture_ensure_mesh(scene, ob);
 
 	//disable hardcoded for now, FM_TODO
@@ -5005,6 +5032,17 @@ void BKE_fracture_prefracture_mesh(Scene* scene, Object *ob, ShardID id)
 		/* skip fracture execution when fracture job is running */
 		return;
 	}
+
+#if 0
+	//very first, purge constraints... we are member in
+	for (i = 0; i < fc->constraint_container_count; i++)
+	{
+		if (rbw && rbw->objects)
+		{
+			Object *ob = rbw->objects[fc->constraint_containers[i]];
+		}
+	}
+#endif
 
 	//first, delete all rigidbody data (?)
 	if (id == 0)
@@ -5077,8 +5115,11 @@ ConstraintContainer* BKE_fracture_constraint_container_create(Object* ob)
 void BKE_fracture_constraint_container_free(Object *ob)
 {
 	if (ob->rigidbody_constraint->fracture_constraints) {
-		free_constraint_container(ob);
-		ob->rigidbody_constraint->fracture_constraints = NULL;
+		if (ob->rigidbody_constraint->fracture_constraints->flag & FM_FLAG_REFRESH_CONSTRAINTS)
+		{
+			free_constraint_container(ob);
+			//ob->rigidbody_constraint->fracture_constraints = NULL;
+		}
 	}
 }
 

@@ -368,6 +368,10 @@ typedef enum eRigidBodyCon_Flag {
 	RBC_FLAG_USE_MOTOR_ANG				= (1 << 15),
 	/* prevent multiple removal and crash with kinematic deactivation */
 	RBC_FLAG_USE_KINEMATIC_DEACTIVATION = (1 << 16),
+
+	/* sigh, we dont have a world or scene reference at hand when we need to delete ourselves */
+	/* so flag removal and postpone deletion */
+	RBC_FLAG_PURGE_ON_VALIDATE			= (1 << 17),
 } eRigidBodyCon_Flag;
 
 /* ******************************** */
