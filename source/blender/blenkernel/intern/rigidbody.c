@@ -417,7 +417,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 	
 	invalidData = (loc[0] == FLT_MIN) || (rot[0] == FLT_MIN);
 	
-	if (invalidData) {
+	if (invalidData || !mi) {
 		return;
 	}
 
@@ -455,8 +455,9 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 		}
 		
 		vert = mi->vertices_cached[j];
-		//if (vert == NULL) break;
-		//if (vert->co == NULL) break;
+		if (vert == NULL) break;
+		if (vert->co == NULL) break;
+		if (mi->vertcos == NULL) break;
 		//if (fc->flag & FM_FLAG_REFRESH) break;
 
 		copy_v3_v3(startco, mi->vertcos[j]);
@@ -831,18 +832,19 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 	if (rbo->physics_shape == NULL || rebuild)
 		BKE_rigidbody_validate_sim_shard_shape(mi, ob, true);
 	
-	if (rbo->physics_object) {
-		if ((rebuild == false) || (rb->flag & RBO_FLAG_KINEMATIC_REBUILD) ||
-		        (rbw->flag & RBW_FLAG_OBJECT_CHANGED))
+	if (rbo->physics_object && rebuild) {
+/*		if ((rebuild == false) || (rb->flag & RBO_FLAG_KINEMATIC_REBUILD) ||
+		        (rbw->flag & RBW_FLAG_OBJECT_CHANGED))*/
 		{
 			RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
-		}
-	}
-	if (!rbo->physics_object || rebuild) {
-		/* remove rigid body if it already exists before creating a new one */
-		if (rbo->physics_object) {
 			RB_body_delete(rbo->physics_object);
 		}
+	}
+	else if (!rbo->physics_object || !rebuild) /* || rebuild*)*/ {
+		/* remove rigid body if it already exists before creating a new one */
+/*		if (rbo->physics_object) {
+			RB_body_delete(rbo->physics_object);
+		}*/
 
 		copy_v3_v3(loc, rbo->pos);
 		copy_v4_v4(rot, rbo->orn);
@@ -1326,6 +1328,59 @@ static void contactCallback(rbContactPoint* cp, void* sc)
 	check_fracture(cp, scene);
 }
 
+static void cleanupWorld(RigidBodyWorld *rbw)
+{
+	GroupObject *go;
+
+	/*attempt to remove constraint and object remainders... */
+	if (rbw->constraints)
+	{
+		for (go = rbw->constraints->gobject.first; go; go = go->next)
+		{
+			Object *ob = go->ob;
+			RigidBodyCon *rbc = ob->rigidbody_constraint;
+			ConstraintContainer *cc = rbc->fracture_constraints;
+			RigidBodyShardCon *con;
+
+			for (con = cc->constraint_map.first; con; con = con->next)
+			{
+				if (con->physics_constraint)
+				{
+					RB_dworld_remove_constraint(rbw->physics_world, con->physics_constraint);
+					RB_constraint_delete(con->physics_constraint);
+					con->physics_constraint = NULL;
+				}
+			}
+		}
+	}
+
+	if (rbw->group)
+	{
+		for (go = rbw->group->gobject.first; go; go = go->next)
+		{
+			Object *ob = go->ob;
+			RigidBodyOb *rbo = ob->rigidbody_object;
+			FractureContainer *fc = rbo->fracture_objects;
+			FractureState *fs;
+
+			for (fs = fc->states.first; fs; fs = fs->next)
+			{
+				MeshIsland *mi;
+				for (mi = fs->island_map.first; mi; mi = mi->next)
+				{
+					RigidBodyShardOb *rbo = mi->rigidbody;
+					if (rbo->physics_object)
+					{
+						RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
+						RB_body_delete(rbo->physics_object);
+						rbo->physics_object = NULL;
+					}
+				}
+			}
+		}
+	}
+}
+
 /* --------------------- */
 
 /* Create physics sim world given RigidBody world settings */
@@ -1339,7 +1394,10 @@ void BKE_rigidbody_validate_sim_world(Scene *scene, RigidBodyWorld *rbw, bool re
 	/* create new sim world */
 	if (rebuild || rbw->physics_world == NULL) {
 		if (rbw->physics_world)
+		{
+			cleanupWorld(rbw);
 			RB_dworld_delete(rbw->physics_world);
+		}
 		rbw->physics_world = RB_dworld_new(scene->physics_settings.gravity, scene, filterCallback, contactCallback);
 	}
 
@@ -1434,6 +1492,9 @@ RigidBodyShardOb *BKE_rigidbody_create_shard(Object *ob, MeshIsland *mi)
 	rbo->type = mi->ground_weight > 0.5f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
 
 	BKE_rigidbody_set_initial_transform(ob, mi, rbo);
+
+	rbo->physics_object = NULL;
+	rbo->physics_shape = NULL;
 
 	/* return this object */
 	return rbo;
@@ -1630,7 +1691,7 @@ void BKE_rigidbody_remove_shard(Scene *scene, MeshIsland *mi)
 		RigidBodyShardCon *con;
 		for (i = 0; i < mi->participating_constraint_count; i++) {
 			con = mi->participating_constraints[i];
-			BKE_rigidbody_remove_shard_con(scene, con);
+			BKE_rigidbody_remove_shard_con(scene->rigidbody_world, con);
 		}
 		
 		if (rbw->physics_world && mi->rigidbody->physics_object)
@@ -2038,7 +2099,7 @@ static void do_update_constraint_container(Scene* scene, Object *ob, bool rebuil
 				iterations = rbw->num_solver_iterations;
 			}
 			else {
-				//TODO, check whether we are in same object as well (index might be same, but in different objs)
+				//FM_TODO, check whether we are in same object as well (index might be same, but in different objs)
 				if ((con->mi1->particle_index != -1) && (con->mi1->particle_index == con->mi2->particle_index)) {
 					iterations = cc->cluster_solver_iterations_override;
 				}
@@ -2130,6 +2191,7 @@ static void do_update_container(Scene* scene, Object* ob, RigidBodyWorld *rbw, b
  */
 static void rigidbody_update_simulation_object(Scene *scene, Object* ob, RigidBodyWorld *rbw, bool rebuild)
 {
+
 	/* update world but only once !!! TODO*/
 	if (rebuild && rbw->flag & RBW_FLAG_NEEDS_REBUILD) {
 		BKE_rigidbody_validate_sim_world(scene, rbw, true);
@@ -2241,6 +2303,7 @@ static void do_sync_container(Object *ob, RigidBodyWorld *rbw, float ctime)
 			mul_v3_v3(centr, size);
 			mul_qt_v3(rbo->orn, centr);
 			add_v3_v3(rbo->pos, centr);
+			rbw->flag |= RBW_FLAG_OBJECT_CHANGED;
 		}
 		BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn);
 	}
@@ -2252,7 +2315,20 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 	if (rbw == NULL || ob->rigidbody_object == NULL)
 		return;
 
-	do_sync_container(ob, rbw, ctime);
+	if (ob->rigidbody_object)
+	{
+		RigidBodyOb *rbo = ob->rigidbody_object;
+		if (rbo && rbo->fracture_objects)
+		{
+			FracMesh *fm = rbo->fracture_objects->current->frac_mesh;
+			if (fm && fm->running == 0)
+			{
+				do_sync_container(ob, rbw, ctime);
+			}
+		}
+	}
+
+	//do_sync_container(ob, rbw, ctime);
 
 #if 0 //FM_TODO
 	/* keep original transform for kinematic and passive objects */
@@ -2375,6 +2451,17 @@ void BKE_rigidbody_rebuild_world(Scene *scene, float ctime)
 	}
 #endif
 
+#if 0
+	//flag this once, so it doesnt get called every time in the loop
+	rbw->flag |= RBW_FLAG_NEEDS_REBUILD;
+	/* update world but only once !!! TODO*/
+	if (rbw->flag & RBW_FLAG_NEEDS_REBUILD) {
+		BKE_rigidbody_validate_sim_world(scene, rbw, true);
+		rigidbody_update_sim_world(scene, rbw);
+		rbw->flag &= ~RBW_FLAG_NEEDS_REBUILD;
+	}
+#endif
+
 	for (go = rbw->group->gobject.first; go; go = go->next)
 	{
 		RigidBodyOb *rb = go->ob->rigidbody_object;
@@ -2468,8 +2555,8 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 			if (rbw->flag & RBW_FLAG_OBJECT_CHANGED)
 			{       /* flag modifier refresh at their next execution XXX TODO -> still used ? */
 				rbw->flag |= RBW_FLAG_REFRESH_MODIFIERS;
-				rbw->flag &= ~RBW_FLAG_OBJECT_CHANGED;
 				rigidbody_update_simulation_object(scene, ob, rbw, true);
+				rbw->flag &= ~RBW_FLAG_OBJECT_CHANGED;
 				continue;
 			}
 		}

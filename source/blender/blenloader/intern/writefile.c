@@ -1718,7 +1718,7 @@ static void write_objects(WriteData *wd, ListBase *idbase)
 						FracMesh *fm = fs->frac_mesh;
 
 						writestruct(wd, DATA, "FractureState", 1, fs);
-						if (fm)
+						if (fm && fm->running == 0)
 						{	/*due to later mesh initialization, it can happen we dont have a fracmesh here yet */
 							/*so dont attempt to write it */
 							writestruct(wd, DATA, "FracMesh", 1, fm);

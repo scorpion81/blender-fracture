@@ -78,11 +78,16 @@ static DerivedMesh *applyModifier(ModifierData *UNUSED(md), Object *ob,
                                   DerivedMesh *derivedData,
                                   ModifierApplyFlag UNUSED(flag))
 {
-	if (ob->rigidbody_object)
+	RigidBodyOb *rb = ob->rigidbody_object;
+	if (rb && rb->fracture_objects)
 	{
-		BKE_fracture_prepare_autohide(ob); /*in case after loading rebuild facepairs,
-											* this GHash is a runtime struct ONLY*/
-		return BKE_fracture_autohide(ob);
+		FractureState *fs = rb->fracture_objects->current;
+		if (fs->visual_mesh)
+		{
+			BKE_fracture_prepare_autohide(ob); /*in case after loading rebuild facepairs,
+												* this GHash is a runtime struct ONLY*/
+			return BKE_fracture_autohide(ob);
+		}
 	}
 
 	return derivedData;

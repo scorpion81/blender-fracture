@@ -196,7 +196,6 @@ void	TickDiscreteDynamicsWorld::saveKinematicState(btScalar timeStep)
 			}
 		}
 	}
-
 }
 
 rbContactPoint* TickDiscreteDynamicsWorld::make_contact_point(btManifoldPoint& point, const btCollisionObject* body0, const btCollisionObject* body1)
@@ -280,7 +279,7 @@ struct rbFilterCallback : public btOverlapFilterCallback
 	{
 		rbRigidBody *rb0 = (rbRigidBody *)((btRigidBody *)proxy0->m_clientObject)->getUserPointer();
 		rbRigidBody *rb1 = (rbRigidBody *)((btRigidBody *)proxy1->m_clientObject)->getUserPointer();
-		
+
 		bool collides;
 		collides = (proxy0->m_collisionFilterGroup & proxy1->m_collisionFilterMask) != 0;
 		collides = collides && (proxy1->m_collisionFilterGroup & proxy0->m_collisionFilterMask);
@@ -506,15 +505,23 @@ void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *object, int col_gro
 	object->world = world;
 	object->blenderOb = blenderOb;
 	object->linear_index = linear_index;
-	
+
+	world->pairCache->getOverlappingPairCache()->setOverlapFilterCallback(NULL);
+
 	world->dynamicsWorld->addRigidBody(body);
+
+	world->pairCache->getOverlappingPairCache()->setOverlapFilterCallback(world->filterCallback);
 }
 
 void RB_dworld_remove_body(rbDynamicsWorld *world, rbRigidBody *object)
 {
 	btRigidBody *body = object->body;
-	
+
+	world->pairCache->getOverlappingPairCache()->setOverlapFilterCallback(NULL);
+
 	world->dynamicsWorld->removeRigidBody(body);
+
+	world->pairCache->getOverlappingPairCache()->setOverlapFilterCallback(world->filterCallback);
 }
 
 /* Collision detection */

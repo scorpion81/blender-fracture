@@ -2346,7 +2346,7 @@ static int fracture_poll(bContext *C)
 	return edit_modifier_poll_generic(C, &RNA_FractureModifier, 0);
 }
 
-static int fracture_refresh_exec(bContext *C, wmOperator *UNUSED(op))
+static int fracture_refresh_exec(bContext *C, wmOperator *op)
 {
 	Object *obact = ED_object_active_context(C);
 	Scene *scene = CTX_data_scene(C);
@@ -2369,6 +2369,7 @@ static int fracture_refresh_exec(bContext *C, wmOperator *UNUSED(op))
 
 	if (!(fc->flag & FM_FLAG_EXECUTE_THREADED)) {
 
+		op->type->flag |= OPTYPE_UNDO;
 		//perhaps trigger modifier eval before, but probably this is updated correctly...
 		//makeDerivedMesh(scene, obact, NULL, CD_MASK_BAREMESH, 0);
 		BKE_fracture_prefracture_mesh(scene, obact, 0);
@@ -2382,6 +2383,7 @@ static int fracture_refresh_exec(bContext *C, wmOperator *UNUSED(op))
 		/* job stuff */
 		int factor, verts, shardprogress, halvingprogress, totalprogress;
 		scene->r.cfra = cfra;
+		op->type->flag &= ~OPTYPE_UNDO; //forget about undo here, this will crash
 
 		/* setup job */
 		wm_job = WM_jobs_get(CTX_wm_manager(C), CTX_wm_window(C), scene, "Fracture",

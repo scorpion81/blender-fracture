@@ -289,7 +289,12 @@ static void free_fracture_container(FractureContainer *fc)
 		fs = fc->states.first;
 		BLI_remlink_safe(&fc->states, fs);
 		free_fracture_state(fs, fc->fracture_mode == MOD_FRACTURE_PREFRACTURED);
+		MEM_freeN(fs);
+		fs = NULL;
 	}
+
+	fc->states.first = NULL;
+	fc->states.last = NULL;
 
 	BKE_ptcache_free_list(&(fc->ptcaches));
 	fc->pointcache = NULL;
@@ -1605,12 +1610,18 @@ static void search_tree_based(Object* ob, MeshIsland *mi, MeshIsland **meshIslan
 	KDTreeNearest *n3 = NULL;
 	float dist, obj_centr[3];
 	ConstraintContainer* cc = ob->rigidbody_constraint->fracture_constraints;
+	bool outer = ob->rigidbody_constraint->ob1 == ob->rigidbody_constraint->ob2;
 
 	limit = cc->constraint_limit;
 	dist = cc->contact_dist;
 
 	if (cc->constraint_target == MOD_FRACTURE_CENTROID) {
 		mul_v3_m4v3(obj_centr, ob->obmat, mi->centroid);
+		if (outer) {
+			/* for outer constraints use constraint objects center point */
+			/* FM_TODO unsure what to do with vertexbased method */
+			copy_v3_v3(obj_centr, ob->loc);
+		}
 	}
 	else if (cc->constraint_target == MOD_FRACTURE_VERTEX){
 		mul_v3_m4v3(obj_centr, ob->obmat, co);
@@ -1655,30 +1666,30 @@ static void prepareConstraintSearch(Object *ob, MeshIsland ***mesh_islands, KDTr
 
 	do_island_vertex_index_map(ob, vertex_index_map);
 
-	for (mi = fs->island_map.first; mi; mi = mi->next)
+	if (target == MOD_FRACTURE_CENTROID)
 	{
-		(*mesh_islands)[start + j] = mi;
-
-		if (target == MOD_FRACTURE_CENTROID)
+		for (mi = fs->island_map.first; mi; mi = mi->next)
 		{
 			float obj_centr[3];
+			(*mesh_islands)[start + j] = mi;
 			mul_v3_m4v3(obj_centr, ob->obmat, (*mesh_islands)[start + j]->centroid);
 			BLI_kdtree_insert(*combined_tree, start+j, obj_centr);
-		}
-		else if (target == MOD_FRACTURE_VERTEX)
-		{
-			int i = 0;
-			int totvert = fs->visual_mesh->numVertData;
-			MVert *mvert = fs->visual_mesh->getVertArray(fs->visual_mesh);
-			MVert *mv;
 
-			for (i = 0, mv = mvert; i < totvert; i++, mv++) {
-				float co[3];
-				mul_v3_m4v3(co, ob->obmat, mv->co);
-				BLI_kdtree_insert(*combined_tree, i, co);
-			}
+			j++;
 		}
-		j++;
+	}
+	else if (target == MOD_FRACTURE_VERTEX)
+	{
+		int i = 0;
+		int totvert = fs->visual_mesh->numVertData;
+		MVert *mvert = fs->visual_mesh->getVertArray(fs->visual_mesh);
+		MVert *mv;
+
+		for (i = 0, mv = mvert; i < totvert; i++, mv++) {
+			float co[3];
+			mul_v3_m4v3(co, ob->obmat, mv->co);
+			BLI_kdtree_insert(*combined_tree, i, co);
+		}
 	}
 }
 static DerivedMesh* combine_dm(Object* ob1, Object *ob2, DerivedMesh *dm1, DerivedMesh *dm2)
@@ -5026,7 +5037,7 @@ void BKE_fracture_prefracture_mesh(Scene* scene, Object *ob, ShardID id)
 	fc->raw_mesh = BKE_fracture_ensure_mesh(scene, ob);
 
 	//disable hardcoded for now, FM_TODO
-	fc->flag &= ~FM_FLAG_EXECUTE_THREADED;
+	//fc->flag &= ~FM_FLAG_EXECUTE_THREADED;
 
 	if ((fs->frac_mesh) && fs->frac_mesh->running == 1 && (fc->flag & FM_FLAG_EXECUTE_THREADED)) {
 		/* skip fracture execution when fracture job is running */
@@ -5060,6 +5071,11 @@ void BKE_fracture_prefracture_mesh(Scene* scene, Object *ob, ShardID id)
 	//perform intial halving... or do clean...
 
 	//operate on existing shards
+	if (fs->frac_mesh && fs->frac_mesh->cancel)
+	{
+		return;
+	}
+
 	do_modifier(scene, ob);
 	BKE_fracture_create_islands(ob);
 	//do_clear(ob); wtf....
@@ -5361,8 +5377,8 @@ static ConstraintContainer *copy_constraint_container(ConstraintContainer *cc)
 
 static void copy_mesh_island(Object *ob, MeshIsland *miN, MeshIsland *mi)
 {
-	miN->vertcos = NULL;
-	miN->vertnos = NULL;
+	miN->vertcos = MEM_dupallocN(miN->vertcos);
+	miN->vertnos = MEM_dupallocN(miN->vertnos);
 	miN->vertex_indices = NULL;
 	miN->vertices_cached = NULL;
 	miN->vertex_count = mi->vertex_count;
