@@ -87,7 +87,7 @@ static void activateRigidbody(RigidBodyShardOb* rbo, RigidBodyWorld *rbw, MeshIs
 		RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
 		RB_body_set_kinematic_state(rbo->physics_object, false);
 		//RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rb->col_groups, mi, ob, mi->linear_index);
-		//RB_body_activate(rbo->physics_object);
+		RB_body_activate(rbo->physics_object);
 		rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 	}
 }
@@ -822,34 +822,31 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 	if (rbo == NULL)
 		return;
 
-	/* at validation, reset frame count as well */
-	/* XXX removed due to dynamic, HACK !!! */
-//	mi->start_frame = rbw->pointcache->startframe;
-//	mi->frame_count = 0;
-
 	/* make sure collision shape exists */
 	/* FIXME we shouldn't always have to rebuild collision shapes when rebuilding objects, but it's needed for constraints to update correctly */
 	if (rbo->physics_shape == NULL || rebuild)
 		BKE_rigidbody_validate_sim_shard_shape(mi, ob, true);
 	
-	if (rbo->physics_object && rebuild) {
-/*		if ((rebuild == false) || (rb->flag & RBO_FLAG_KINEMATIC_REBUILD) ||
-		        (rbw->flag & RBW_FLAG_OBJECT_CHANGED))*/
+	if (rbo->physics_object) {
+		if ((rebuild == false) || (rb->flag & RBO_FLAG_KINEMATIC_REBUILD) ||
+		        (rbw->flag & RBW_FLAG_OBJECT_CHANGED))
 		{
 			RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
-			RB_body_delete(rbo->physics_object);
 		}
 	}
-	else if (!rbo->physics_object || !rebuild) /* || rebuild*)*/ {
+
+	if (!rbo->physics_object || rebuild) {
 		/* remove rigid body if it already exists before creating a new one */
-/*		if (rbo->physics_object) {
+		if (rbo->physics_object) {
 			RB_body_delete(rbo->physics_object);
-		}*/
+			rbo->physics_object = NULL;
+		}
 
 		copy_v3_v3(loc, rbo->pos);
 		copy_v4_v4(rot, rbo->orn);
 		
-		rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot, NULL, ob);
+		if (!rbo->physics_object)
+			rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot, NULL, ob);
 
 		RB_body_set_friction(rbo->physics_object, rb->friction);
 		RB_body_set_restitution(rbo->physics_object, rb->restitution);

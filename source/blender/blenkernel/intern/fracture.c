@@ -856,7 +856,7 @@ static short do_materials(Object* obj)
 static void cleanup_splinters(Object* ob, float mat[4][4])
 {
 	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
-	DerivedMesh *dm = fc->raw_mesh;
+	DerivedMesh *dm = fc->current->visual_mesh;
 
 	if ((fc->splinter_axis & MOD_FRACTURE_SPLINTER_X) ||
 		(fc->splinter_axis & MOD_FRACTURE_SPLINTER_Y) ||
@@ -911,7 +911,6 @@ static void do_fracture(Scene *scene, Object *obj, ShardID id)
 			return;
 		}
 
-#if 0
 		//watch it when overwriting this... free it better before
 		if (fs->visual_mesh)
 		{
@@ -920,8 +919,7 @@ static void do_fracture(Scene *scene, Object *obj, ShardID id)
 			fs->visual_mesh = NULL;
 		}
 
-		fs->visual_mesh = BKE_fracture_create_dm(obj, true);
-#endif
+		fs->visual_mesh = BKE_fracture_create_dm(obj, fs->frac_mesh, true);
 
 		cleanup_splinters(obj, mat);
 		fc->flag &= ~FM_FLAG_RESET_SHARDS;
@@ -2596,7 +2594,7 @@ static void do_halving(Scene* scene, Object* ob)
 	printf("Splitting to islands done, %g \n", PIL_check_seconds_timer() - start);
 }
 
-static void do_refresh(Object *ob)
+static void do_refresh(Object *ob, bool do_rebuild)
 {
 	double start = 0.0;
 	MDeformVert *ivert = NULL;
@@ -2606,15 +2604,19 @@ static void do_refresh(Object *ob)
 	//pre-halving... making shards (NOT islands, watch it !)
 	//do_halving(scene, ob);
 
-	//watch it when overwriting this... free it better before
-	if (fs->visual_mesh)
+	if (do_rebuild)
 	{
-		fs->visual_mesh->needsFree = 1;
-		DM_release(fs->visual_mesh);
-		fs->visual_mesh = NULL;
+		//watch it when overwriting this... free it better before
+		if (fs->visual_mesh)
+		{
+			fs->visual_mesh->needsFree = 1;
+			DM_release(fs->visual_mesh);
+			fs->visual_mesh = NULL;
+		}
+
+		fs->visual_mesh = BKE_fracture_create_dm(ob, fs->frac_mesh, true);
 	}
 
-	fs->visual_mesh = BKE_fracture_create_dm(ob, fs->frac_mesh, true);
 	DM_ensure_tessface(fs->visual_mesh);
 	DM_ensure_normals(fs->visual_mesh);
 	DM_update_tessface_data(fs->visual_mesh);
@@ -2683,9 +2685,9 @@ static void do_island_vertex_index_map(Object *ob, GHash** vertex_island_map)
 }
 
 
-void BKE_fracture_create_islands(Object *ob)
+void BKE_fracture_create_islands(Object *ob, bool rebuild)
 {
-	do_refresh(ob);
+	do_refresh(ob, rebuild);
 	do_post_island_creation(ob);
 	do_prepare_autohide(ob);
 	//do_island_index_map(ob); //TODO... what was this good for ?
@@ -2711,7 +2713,7 @@ static void add_fracture_state(Scene *scene, Object *ob)
 		add_shard(fs->frac_mesh, s, mat);
 
 		//make meshslands
-		do_refresh(ob);
+		do_refresh(ob, true);
 	}
 
 	BLI_addtail(&fc->states, fs);
@@ -5077,7 +5079,7 @@ void BKE_fracture_prefracture_mesh(Scene* scene, Object *ob, ShardID id)
 	}
 
 	do_modifier(scene, ob);
-	BKE_fracture_create_islands(ob);
+	BKE_fracture_create_islands(ob, false);
 	//do_clear(ob); wtf....
 
 	//update_islands(ob);
@@ -5232,7 +5234,7 @@ void BKE_fracture_container_initialize(Object* ob, DerivedMesh *dm)
 		//create meshislands
 		//BKE_fracture_prefracture_mesh(scene, ob, 0);
 		initialize_shard(ob);
-		BKE_fracture_create_islands(ob); //FM_TODO rename this like initialize_islands()
+		BKE_fracture_create_islands(ob, true); //FM_TODO rename this like initialize_islands()
 	}
 }
 

@@ -91,7 +91,7 @@ static void patch_fracture_modifier_struct(FractureModifierData *fmd, Object* ob
 	fc->flag |= (FM_FLAG_REFRESH_AUTOHIDE | FM_FLAG_SKIP_MASS_CALC);
 
 	fs->frac_mesh = BKE_copy_fracmesh(fmd->frac_mesh);
-	BKE_fracture_create_islands(ob);
+	BKE_fracture_create_islands(ob, true);
 
 	for (i = 0; i < fs->island_count; i++)
 	{
