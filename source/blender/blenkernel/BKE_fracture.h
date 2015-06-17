@@ -110,13 +110,13 @@ void BKE_dynamic_fracture_mesh(struct Scene* scene, struct Object *ob, ShardID i
 int BKE_initialize_meshisland(struct MeshIsland** mii, struct MVert* mverts, int vertstart);
 struct DerivedMesh *BKE_fracture_autohide(struct Object* ob);
 void BKE_fracture_constraint_container_free(struct Object *ob);
-void BKE_fracture_constraint_container_create(struct Object* ob, int type);
+struct ConstraintContainer *BKE_fracture_constraint_container_create(struct Object* ob);
 
 void BKE_fracture_container_free(struct Object *ob);
-void BKE_fracture_container_create(struct Object *ob, int type);
+struct FractureContainer *BKE_fracture_container_create(struct Object *ob);
 void BKE_lookup_mesh_state(struct Object* ob, int frame);
 
-void BKE_fracture_container_copy(struct Main *bmain, struct Object *ob, struct Object *obN);
+struct FractureContainer *BKE_fracture_container_copy(struct Object *ob, struct Object *obN);
 struct MVert* BKE_copy_visual_mesh(struct Object* ob, struct FractureState *fs);
 struct FracMesh* BKE_copy_fracmesh(struct FracMesh* fm);
 struct DerivedMesh *BKE_fracture_ensure_mesh(struct Scene* scene, struct Object* ob);

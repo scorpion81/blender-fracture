@@ -54,8 +54,9 @@ void BKE_rigidbody_free_constraint(struct Object *ob);
 
 /* ...... */
 struct RigidBodyWorld *BKE_rigidbody_world_copy(struct RigidBodyWorld *rbw);
-struct RigidBodyOb *BKE_rigidbody_copy_object(struct Object *ob);
+struct RigidBodyOb *BKE_rigidbody_copy_object(struct Object *ob, struct Object *obN);
 struct RigidBodyCon *BKE_rigidbody_copy_constraint(struct Object *ob);
+void BKE_rigidbody_relink_constraint(struct RigidBodyCon *con);
 
 /* -------------- */
 /* Setup */

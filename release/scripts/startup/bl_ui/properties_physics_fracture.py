@@ -56,7 +56,7 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         ob = context.object
         rd = context.scene.render
         base = (ob and (ob.type in {'MESH', 'CURVE', 'SURFACE', 'FONT'}) and (not rd.use_game_engine))
-        return base and context.object.rigidbody_object.fracture_container
+        return base and context.object.rigidbody_object
 
     def icon(self, bool):
         if bool:
@@ -138,7 +138,7 @@ class PHYSICS_PT_fracture_constraint(PhysicButtonsPanel, Panel):
         ob = context.object
         rd = context.scene.render
         base = (ob and (ob.type in {'MESH', 'CURVE', 'SURFACE', 'FONT'}) and (not rd.use_game_engine))
-        return base and context.object.rigidbody_constraint.constraint_container
+        return base and context.object.rigidbody_constraint
 
     def draw(self, context):
         layout = self.layout
@@ -193,7 +193,7 @@ class PHYSICS_PT_fracture_utilities(PhysicButtonsPanel, Panel):
         ob = context.object
         rd = context.scene.render
         base = (ob and (ob.type in {'MESH', 'CURVE', 'SURFACE', 'FONT'}) and (not rd.use_game_engine))
-        return base and context.object.rigidbody_object.fracture_container
+        return base and context.object.rigidbody_object
 
     def draw(self, context):
         layout = self.layout

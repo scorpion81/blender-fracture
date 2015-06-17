@@ -1699,17 +1699,16 @@ static void write_objects(WriteData *wd, ListBase *idbase)
 			}
 			writestruct(wd, DATA, "BulletSoftBody", 1, ob->bsoft);
 
-			if (ob->rigidbody_object->fracture_objects) {
+			if (ob->rigidbody_object) {
 				FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 				FractureState *fs = fc->current;
 
 				// TODO: if any extra data is added to handle duplis, will need separate function then
 				writestruct(wd, DATA, "RigidBodyOb", 1, ob->rigidbody_object);
-				if (fc->current->frac_mesh)
+
+				/* in undo there is a write attempt here with an empty frac mesh, skip! */
+				if (fc && fs->frac_mesh)
 				{
-					/* old rigidbodies dont have a fracmesh, and its not easily initalizable here without
-					 * knowing the mesh of the object, so postpone init for later.... and DONT write anything
-					 * here if we dont have a fracmesh yet */
 					writestruct(wd, DATA, "FractureContainer", 1, fc);
 
 					for (fs = fc->states.first; fs; fs = fs->next)

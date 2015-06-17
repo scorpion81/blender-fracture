@@ -1468,6 +1468,8 @@ RigidBodyOb *BKE_rigidbody_create_object(Object *ob, short type)
 	/* create new settings data, and link it up */
 	rbo = MEM_callocN(sizeof(RigidBodyOb), "RigidBodyOb");
 
+	rbo->fracture_objects = BKE_fracture_container_create(ob);
+
 	/* set default settings */
 	rbo->type = type;
 
@@ -1515,6 +1517,8 @@ RigidBodyCon *BKE_rigidbody_create_constraint(Object *ob, short type)
 
 	/* create new settings data, and link it up */
 	rbc = MEM_callocN(sizeof(RigidBodyCon), "RigidBodyCon");
+
+	rbc->fracture_constraints = BKE_fracture_constraint_container_create(ob);
 
 	/* set default settings */
 	rbc->type = type;
@@ -2521,10 +2525,59 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	rbw->ltime = ctime;
 }
 /* ************************************** */
+/* Copying Methods --------------------- */
+
+/* These just copy the data, clearing out references to physics objects.
+ * Anything that uses them MUST verify that the copied object will
+ * be added to relevant groups later...
+ */
+
+RigidBodyOb *BKE_rigidbody_copy_object(Object *ob, Object* obN)
+{
+	RigidBodyOb *rboN = NULL;
+
+	if (ob->rigidbody_object) {
+		/* just duplicate the whole struct first (to catch all the settings) */
+		rboN = MEM_dupallocN(ob->rigidbody_object);
+
+		/* tag object as needing to be verified */
+		rboN->flag |= RBO_FLAG_NEEDS_VALIDATE;
+
+		/* clear out all the fields which need to be revalidated later */
+		//rboN->physics_object = NULL;
+		//rboN->physics_shape = NULL;
+
+		rboN->fracture_objects = BKE_fracture_container_copy(ob, obN);
+	}
+
+	/* return new copy of settings */
+	return rboN;
+}
 
 RigidBodyCon *BKE_rigidbody_copy_constraint(Object *ob)
 {
-	return NULL; //FM_TODO old implementation !!!!
+	RigidBodyCon *rbcN = NULL;
+
+	if (ob->rigidbody_constraint) {
+		/* just duplicate the whole struct first (to catch all the settings) */
+		rbcN = MEM_dupallocN(ob->rigidbody_constraint);
+
+		/* tag object as needing to be verified */
+		rbcN->flag |= RBC_FLAG_NEEDS_VALIDATE;
+
+		/* clear out all the fields which need to be revalidated later */
+		//rbcN->physics_constraint = NULL;
+	}
+
+	/* return new copy of settings */
+	return rbcN;
+}
+
+/* preserve relationships between constraints and rigid bodies after duplication */
+void BKE_rigidbody_relink_constraint(RigidBodyCon *rbc)
+{
+	ID_NEW(rbc->ob1);
+	ID_NEW(rbc->ob2);
 }
 
 #else  /* WITH_BULLET */

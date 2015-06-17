@@ -118,7 +118,7 @@ bool ED_rigidbody_object_add(Scene *scene, Object *ob, int type, ReportList *rep
 	}
 
 	/* make rigidbody object settings */
-	BKE_fracture_container_create(ob, type);
+	ob->rigidbody_object = BKE_rigidbody_create_object(ob, type);
 	/* first shard is the entire mesh */
 	BKE_fracture_prefracture_mesh(scene, ob, 0);
 	BKE_rigidbody_cache_reset(rbw);

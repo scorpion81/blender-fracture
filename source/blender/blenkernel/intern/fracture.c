@@ -4939,14 +4939,16 @@ static void build_constraints(Object *ob)
 void BKE_fracture_constraint_container_update(Object* ob)
 {
 	RigidBodyCon *rbc = ob->rigidbody_constraint;
-	ConstraintContainer *cc = rbc->fracture_constraints;
-	if (cc && (cc->flag & FM_FLAG_REFRESH_CONSTRAINTS))
+	if (rbc)
 	{
-		do_clusters(rbc->ob1);
-		if (rbc->ob1 != rbc->ob2)
-			do_clusters(rbc->ob2);
-		build_constraints(ob);
-		cc->flag &= ~FM_FLAG_REFRESH_CONSTRAINTS;
+		ConstraintContainer *cc = rbc->fracture_constraints;
+		if (cc->flag & FM_FLAG_REFRESH_CONSTRAINTS) {
+			do_clusters(rbc->ob1);
+			if (rbc->ob1 != rbc->ob2)
+				do_clusters(rbc->ob2);
+			build_constraints(ob);
+			cc->flag &= ~FM_FLAG_REFRESH_CONSTRAINTS;
+		}
 	}
 }
 
@@ -5021,19 +5023,16 @@ void BKE_dynamic_fracture_mesh(Scene* scene, Object *ob, ShardID id)
 	BKE_fracture_prefracture_mesh(scene, ob, id);
 }
 
-void BKE_fracture_constraint_container_create(Object* ob, int type)
+ConstraintContainer* BKE_fracture_constraint_container_create(Object* ob)
 {
 	ConstraintContainer *cc = MEM_callocN(sizeof(ConstraintContainer) ,"fracture_constraints");
-	RigidBodyCon *rbc = BKE_rigidbody_create_constraint(ob, type);
 	cc->breaking_threshold = 10.0f;
 	cc->contact_dist = 1.0f;
 	cc->constraint_limit = 50;
 	cc->cluster_breaking_threshold = 1000.0f;
 	cc->flag |= FMC_FLAG_USE_BREAKING;
 	cc->constraint_target = MOD_FRACTURE_CENTROID;
-	rbc->flag |= RBC_FLAG_NEEDS_VALIDATE;
-	rbc->fracture_constraints = cc;
-	ob->rigidbody_constraint = rbc;
+	return cc;
 }
 
 void BKE_fracture_constraint_container_free(Object *ob)
@@ -5083,19 +5082,13 @@ static void update_islands(Object *ob)
 	fs->island_count = count;
 }
 
-void BKE_fracture_container_create(Object *ob, int type)
+FractureContainer* BKE_fracture_container_create(Object *ob)
 {
 	FractureContainer *fc = MEM_callocN(sizeof(FractureContainer) ,"fracture_objects");
 	FractureState *fs = MEM_callocN(sizeof(FractureState), "states.first");
 
-	//init settings object
-	ob->rigidbody_object = BKE_rigidbody_create_object(ob, type);
-	ob->rigidbody_object->mesh_source = RBO_MESH_FINAL;
-	ob->rigidbody_object->flag |= (RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
-
 	BLI_addtail(&fc->states, fs);
 	fc->current = fs;
-	ob->rigidbody_object->fracture_objects = fc;
 
 	//init pointcaches.... FM_TODO...
 	fc->pointcache = BKE_ptcache_add(&(fc->ptcaches));
@@ -5130,6 +5123,8 @@ void BKE_fracture_container_create(Object *ob, int type)
 	fc->dynamic_force = 10.0f;
 
 	fc->effector_weights = BKE_add_effector_weights(NULL);
+
+	return fc;
 }
 
 void BKE_fracture_container_initialize(Object* ob, DerivedMesh *dm)
@@ -5150,7 +5145,6 @@ void BKE_fracture_container_free(Object *ob)
 	if (ob->rigidbody_object->fracture_objects) {
 		free_fracture_container(ob->rigidbody_object->fracture_objects);
 		ob->rigidbody_object->fracture_objects = NULL;
-		BKE_rigidbody_free_object(ob);
 	}
 }
 
@@ -5343,7 +5337,7 @@ static void copy_fracture_state(FractureState *fsN, FractureState *fs, Object *o
 }
 
 
-static void copy_fracture_container(Object* ob, Object *obN, Scene *scene)
+static FractureContainer* copy_fracture_container(Object* ob, Object *obN)
 {
 	RigidBodyOb *rb = ob->rigidbody_object;
 	FractureContainer *fc = rb->fracture_objects;
@@ -5368,25 +5362,12 @@ static void copy_fracture_container(Object* ob, Object *obN, Scene *scene)
 	fcN->effector_weights = MEM_dupallocN(fc->effector_weights);
 	make_face_pairs(obN);
 
-	BKE_rigidbody_cache_reset(scene->rigidbody_world);
-
-	obN->rigidbody_object->fracture_objects = fcN;
+	return fcN;
 }
 
-void BKE_fracture_container_copy(Main *bmain, Object *ob, Object *obN)
+FractureContainer *BKE_fracture_container_copy(Object *ob, Object *obN)
 {
-	if (ob->rigidbody_object->fracture_objects)
-	{
-		Scene *scene;
-		for (scene = bmain->scene.first; scene; scene = scene->id.next)
-		{
-			if (BKE_scene_base_find(scene, ob))
-			{
-				copy_fracture_container(ob, obN, scene);
-				break; //FM_TODO handle linked objects !
-			}
-		}
-	}
+	return copy_fracture_container(ob, obN);
 }
 
 /* get the appropriate DerivedMesh based on rigid body mesh source */

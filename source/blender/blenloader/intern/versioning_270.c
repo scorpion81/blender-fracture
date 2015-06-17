@@ -72,43 +72,20 @@
 
 #include "MEM_guardedalloc.h"
 
-static int initialize_meshisland(FractureModifierData* fmd, MeshIsland** mii, MVert* mverts, int vertstart)
-{
-	MVert *mv;
-	int k = 0;
-	MeshIsland* mi = *mii;
-
-	mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * mi->vertex_count, "mi->vertices_cached readfile");
-	mv = mi->physics_mesh->getVertArray(mi->physics_mesh);
-
-	for (k = 0; k < mi->vertex_count; k++) {
-		MVert* v = mverts + vertstart + k ;
-		MVert* v2 = mv + k;
-		mi->vertices_cached[k] = v;
-		if (mi->vertex_indices) {
-			mi->vertex_indices[k] = vertstart + k;
-		}
-		mi->vertco[k*3] = v->co[0];
-		mi->vertco[k*3+1] = v->co[1];
-		mi->vertco[k*3+2] = v->co[2];
-
-		if (mi->vertno != NULL && fmd->fix_normals) {
-			short sno[3];
-			sno[0] = mi->vertno[k*3];
-			sno[1] = mi->vertno[k*3+1];
-			sno[2] = mi->vertno[k*3+2];
-			copy_v3_v3_short(v->no, sno);
-			copy_v3_v3_short(v2->no, sno);
-		}
-	}
-
-	return mi->vertex_count;
-}
-
 static void patch_fracture_modifier_struct(FractureModifierData *fmd, Object* ob)
 {
-	ConstraintContainer *cc = ob->rigidbody_constraint->fracture_constraints;
-	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
+	RigidBodyOb *rbo = ob->rigidbody_object;
+	RigidBodyCon *rbc = ob->rigidbody_constraint;
+	FractureContainer *fc;
+	ConstraintContainer *cc;
+
+	rbo->fracture_objects = BKE_fracture_container_create(ob);
+
+	if (!rbc)
+	{
+		rbc = BKE_rigidbody_create_constraint(ob, RBC_TYPE_FIXED);
+		cc = rbc->fracture_constraints;
+	}
 
 	/* fracture values */
 	fc->max_vol = fmd->max_vol;
@@ -200,27 +177,6 @@ static void patch_fracture_modifier_struct(FractureModifierData *fmd, Object* ob
 
 	if (fmd->breaking_percentage_weighted)
 		cc->flag |= FMC_FLAG_BREAKING_PERCENTAGE_WEIGHTED;
-
-#if 0
-	fs->frac_mesh = BKE_copy_fracmesh(fmd->frac_mesh);
-	fs->visual_mesh = CDDM_copy(fmd->dm);
-	DM_ensure_tessface(fs->visual_mesh);
-	DM_ensure_normals(fs->visual_mesh);
-	DM_update_tessface_data(fs->visual_mesh);
-
-	/* re-init cached verts here... */
-	mverts = CDDM_get_verts(fs->visual_mesh);
-	count = BLI_listbase_count(&fmd->meshIslands);
-	fs->islands = MEM_callocN(sizeof(MeshIsland*) * count, "fmd->fs meshislands");
-
-	for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
-		MeshIsland *miN = MEM_dupallocN(mi);
-		vertstart += initialize_meshisland(fmd, &miN, mverts, vertstart);
-		BLI_addtail(&fs->island_map, miN);
-		fs->islands[i] = miN;
-		i++;
-	}
-#endif
 
 	fc->inner_material = fmd->inner_material;
 	fc->cluster_group = fmd->cluster_group;

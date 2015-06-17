@@ -4632,7 +4632,7 @@ static void lib_link_object(FileData *fd, Main *main)
 			}
 
 			/*tag those for library expansion later (?) */
-			if (ob->rigidbody_object->fracture_objects)
+			if (ob->rigidbody_object && ob->rigidbody_object->fracture_objects)
 			{
 				FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 
@@ -5490,79 +5490,76 @@ static void direct_link_object(FileData *fd, Object *ob)
 	ob->fluidsimSettings= newdataadr(fd, ob->fluidsimSettings); /* NT */
 
 	ob->rigidbody_object = newdataadr(fd, ob->rigidbody_object);
-	if (ob->rigidbody_object) {
-		RigidBodyOb *rbo = ob->rigidbody_object;
-		
-		/* must nullify the references to physics sim objects, since they no-longer exist 
-		 * (and will need to be recalculated) 
-		 */
-		rbo->physics_object = NULL;
-		rbo->physics_shape = NULL;
-	}
-	ob->rigidbody_constraint = newdataadr(fd, ob->rigidbody_constraint);
-	if (ob->rigidbody_constraint)
-		ob->rigidbody_constraint->physics_constraint = NULL;
-
-	ob->rigidbody_object = newdataadr(fd, ob->rigidbody_object);
 
 	if (ob->rigidbody_object) {
 		FractureContainer *fc;
 		FractureState *fs;
+		RigidBodyOb *rbo = ob->rigidbody_object;
+
 		ob->rigidbody_object->fracture_objects = newdataadr(fd, ob->rigidbody_object->fracture_objects);
 		fc = ob->rigidbody_object->fracture_objects;
-		fc->face_pairs = NULL;
 
-		link_list(fd, &fc->states);
+		/* must nullify the references to physics sim objects, since they no-longer exist
+		 * (and will need to be recalculated)
+		 */
+		rbo->physics_object = NULL;
+		rbo->physics_shape = NULL;
 
-		for (fs = fc->states.first; fs; fs = fs->next)
-		{
-			FracMesh *fm = fs->frac_mesh = newdataadr(fd, fs->frac_mesh);
-			Shard *s;
-			MeshIsland *mi;
-			int vertstart = 0;
-			MVert* mverts = NULL;
-			int count = 0, i = 0;
+		if (fc) {
+			fc->face_pairs = NULL;
 
-			link_list(fd, &fm->shard_map);
-			for (s = fm->shard_map.first; s; s = s->next)
+			link_list(fd, &fc->states);
+
+			for (fs = fc->states.first; fs; fs = fs->next)
 			{
-				read_shard(fd, &s);
+				FracMesh *fm = fs->frac_mesh = newdataadr(fd, fs->frac_mesh);
+				Shard *s;
+				MeshIsland *mi;
+				int vertstart = 0;
+				MVert* mverts = NULL;
+				int count = 0, i = 0;
+
+				link_list(fd, &fm->shard_map);
+				for (s = fm->shard_map.first; s; s = s->next)
+				{
+					read_shard(fd, &s);
+				}
+
+				fc->current = fs; /*temporarily set for copy visual mesh*/
+				mverts = BKE_copy_visual_mesh(ob, fs);
+				s = fm->shard_map.first;
+
+				link_list(fd, &fs->island_map);
+
+				count = BLI_listbase_count(&fs->island_map);
+				fs->islands = MEM_callocN(sizeof(MeshIsland*) * count, "fs->islands, readfile");
+
+				for (mi = fs->island_map.first; mi; mi = mi->next)
+				{
+					read_meshIsland(fd, &mi);
+					mi->physics_mesh = BKE_shard_create_dm(s, true);
+					vertstart += BKE_initialize_meshisland(&mi, mverts, vertstart);
+					s = s->next;
+					fs->islands[i] = mi;
+					i++;
+				}
 			}
 
-			fc->current = fs; /*temporarily set for copy visual mesh*/
-			mverts = BKE_copy_visual_mesh(ob, fs);
-			s = fm->shard_map.first;
+			fc->current = fc->states.first;
 
-			link_list(fd, &fs->island_map);
+			direct_link_pointcache_list(fd, &fc->ptcaches, &fc->pointcache, 0);
+			fc->flag |= FM_FLAG_REFRESH_AUTOHIDE;
 
-			count = BLI_listbase_count(&fs->island_map);
-			fs->islands = MEM_callocN(sizeof(MeshIsland*) * count, "fs->islands, readfile");
-
-			for (mi = fs->island_map.first; mi; mi = mi->next)
-			{
-				read_meshIsland(fd, &mi);
-				mi->physics_mesh = BKE_shard_create_dm(s, true);
-				vertstart += BKE_initialize_meshisland(&mi, mverts, vertstart);
-				s = s->next;
-				fs->islands[i] = mi;
-				i++;
-			}
+			/* set effector weights */
+			fc->effector_weights = newdataadr(fd, fc->effector_weights);
+			if (!fc->effector_weights)
+				fc->effector_weights = BKE_add_effector_weights(NULL);
 		}
-
-		fc->current = fc->states.first;
-
-		direct_link_pointcache_list(fd, &fc->ptcaches, &fc->pointcache, 0);
-		fc->flag |= FM_FLAG_REFRESH_AUTOHIDE;
-
-		/* set effector weights */
-		fc->effector_weights = newdataadr(fd, fc->effector_weights);
-		if (!fc->effector_weights)
-			fc->effector_weights = BKE_add_effector_weights(NULL);
 	}
 
-	if (ob->rigidbody_constraint)
-	{
-		ob->rigidbody_constraint = newdataadr(fd, ob->rigidbody_constraint);
+	ob->rigidbody_constraint = newdataadr(fd, ob->rigidbody_constraint);
+	if (ob->rigidbody_constraint) {
+		ob->rigidbody_constraint->physics_constraint = NULL;
 		ob->rigidbody_constraint->fracture_constraints = newdataadr(fd, ob->rigidbody_constraint->fracture_constraints);
 	}
 

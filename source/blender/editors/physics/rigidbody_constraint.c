@@ -90,8 +90,7 @@ bool ED_rigidbody_constraint_add(Scene *scene, Object *ob, int type, ReportList 
 	}
 	/* make rigidbody constraint settings */
 
-	BKE_fracture_constraint_container_create(ob, type);
-	//ob->fracture_constraints->con_settings->flag |= RBC_FLAG_NEEDS_VALIDATE;
+	BKE_rigidbody_create_constraint(ob, RBC_TYPE_FIXED);
 
 	/* add constraint to rigid body constraint group */
 	BKE_group_object_add(rbw->constraints, ob, scene, NULL);

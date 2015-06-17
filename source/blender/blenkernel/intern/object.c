@@ -390,8 +390,8 @@ void BKE_object_free_ex(Object *ob, bool do_id_user)
 	BKE_constraints_free_ex(&ob->constraints, do_id_user);
 	
 	free_partdeflect(ob->pd);
-	BKE_fracture_container_free(ob);
-	BKE_fracture_constraint_container_free(ob);
+	BKE_rigidbody_free_constraint(ob);
+	BKE_rigidbody_free_object(ob);
 
 	if (ob->soft) sbFree(ob->soft);
 	if (ob->bsoft) bsbFree(ob->bsoft);
@@ -1538,7 +1538,7 @@ Object *BKE_object_copy_ex(Main *bmain, Object *ob, bool copy_caches)
 	obn->derivedDeform = NULL;
 	obn->derivedFinal = NULL;
 
-	obn->rigidbody_object = BKE_rigidbody_copy_object(ob);
+	obn->rigidbody_object = BKE_rigidbody_copy_object(ob, obn);
 	obn->rigidbody_constraint = BKE_rigidbody_copy_constraint(ob);
 
 	BLI_listbase_clear(&obn->gpulamp);
@@ -3724,8 +3724,7 @@ void BKE_object_relink(Object *ob)
 	
 	if (ob->rigidbody_constraint)
 	{
-		ID_NEW(ob->rigidbody_constraint->ob1);
-		ID_NEW(ob->rigidbody_constraint->ob2);
+		 BKE_rigidbody_relink_constraint(ob->rigidbody_constraint);
 	}
 
 	ID_NEW(ob->parent);
