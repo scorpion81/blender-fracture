@@ -126,5 +126,7 @@ void BKE_fracture_constraint_container_update(struct Object* ob);
 void BKE_fracture_prepare_autohide(struct Object *ob);
 void BKE_fracture_constraint_container_empty(struct Scene *scene, struct Object *ob);
 void BKE_fracture_container_empty(struct Scene *scene, struct Object *ob);
+void BKE_fracture_relink_cache(struct Scene *scene, struct Object *ob, bool remove);
+void BKE_fracture_synchronize_caches(struct Scene* scene);
 
 #endif /* BKE_FRACTURE_H */

@@ -6233,7 +6233,6 @@ static void direct_link_scene(FileData *fd, Scene *sce)
 			rbw->ltime = (float)rbw->pointcache->startframe;
 		}
 #endif
-		rbw->ltime = -1;
 	}
 }
 
@@ -9331,8 +9330,25 @@ static void expand_scene(FileData *fd, Main *mainvar, Scene *sce)
 	}
 	
 	if (sce->rigidbody_world) {
+		Object *ob;
 		expand_doit(fd, mainvar, sce->rigidbody_world->group);
 		expand_doit(fd, mainvar, sce->rigidbody_world->constraints);
+
+		if (sce->rigidbody_world->group)
+		{
+			ob = sce->rigidbody_world->group->gobject.first;
+			if (ob && ob->rigidbody_object)
+			{
+				FractureContainer *fc = ob->rigidbody_object->fracture_objects;
+				if (fc && fc->pointcache)
+				{
+					//allow central cache control, all other caches must be kept sync, or
+					//maybe better use 1 cache again... FM_TODO
+					sce->rigidbody_world->pointcache = fc->pointcache;
+					sce->rigidbody_world->ltime = fc->pointcache->startframe;
+				}
+			}
+		}
 	}
 
 #ifdef DURIAN_CAMERA_SWITCH

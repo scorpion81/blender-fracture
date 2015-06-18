@@ -1096,6 +1096,7 @@ void BKE_scene_base_unlink(Scene *sce, Base *base)
 		BKE_rigidbody_free_constraint(base->object);
 	/* remove rigidbody object from world before removing object */
 	if (base->object->rigidbody_object)
+		BKE_fracture_relink_cache(sce, base->object, true);
 		BKE_fracture_container_empty(sce, base->object);
 		BKE_rigidbody_free_object(base->object);
 	

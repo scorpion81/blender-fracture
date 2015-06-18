@@ -870,8 +870,11 @@ void BKE_rigidbody_validate_sim_shard(Scene* scene, MeshIsland *mi, Object *ob, 
 		                           (ob->protectflag & OB_LOCK_ROTY) == 0,
 		                           (ob->protectflag & OB_LOCK_ROTZ) == 0);
 
-		BKE_rigidbody_calc_shard_mass(scene, ob, mi);
-		//RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
+		if (rbo->type == RBO_TYPE_ACTIVE)
+			BKE_rigidbody_calc_shard_mass(scene, ob, mi);
+		else
+			RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
+
 		RB_body_set_kinematic_state(rbo->physics_object, rb->flag & RBO_FLAG_KINEMATIC || rb->flag & RBO_FLAG_DISABLED);
 
 		if (transfer_speeds)
@@ -1542,12 +1545,11 @@ RigidBodyOb *BKE_rigidbody_create_object(Object *ob, short type)
 	/* create new settings data, and link it up */
 	rbo = MEM_callocN(sizeof(RigidBodyOb), "RigidBodyOb");
 
-	rbo->fracture_objects = BKE_fracture_container_create(ob);
-
 	/* set default settings */
 	rbo->type = type;
-
 	rbo->mass = 1.0f;
+
+	rbo->fracture_objects = BKE_fracture_container_create(ob);
 
 	rbo->friction = 0.5f; /* best when non-zero. 0.5 is Bullet default */
 	rbo->restitution = 0.0f; /* best when zero. 0.0 is Bullet default */
@@ -2401,7 +2403,7 @@ static void restoreKinematic(Object *ob)
 {
 	/*restore kinematic state of shards if object is kinematic, need to store old state in container now....FM_TODO */
 	RigidBodyOb *rb = ob->rigidbody_object;
-	if (rb) {
+	if (rb && (rb->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)) {
 		FractureContainer* fc = rb->fracture_objects;
 		MeshIsland* mi;
 		for (mi = fc->current->island_map.first; mi; mi = mi->next)
@@ -2547,8 +2549,10 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 			fc->flag &= ~FM_FLAG_REFRESH_SHAPE;
 		}
 
-		if (rbw->ltime == -1)
+		if (rbw->ltime == -1) {
 			rbw->ltime = startframe;
+			rigidbody_update_simulation_object(scene, ob, rbw, true);
+		}
 
 		/*trigger dynamic update FM_TODO, use other flag*/
 #if 0

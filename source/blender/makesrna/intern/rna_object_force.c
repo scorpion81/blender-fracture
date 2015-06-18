@@ -90,15 +90,64 @@ static EnumPropertyItem empty_vortex_shape_items[] = {
 
 #include "MEM_guardedalloc.h"
 
+#include "DNA_group_types.h"
 #include "DNA_modifier_types.h"
+#include "DNA_rigidbody_types.h"
 #include "DNA_texture_types.h"
 
 #include "BKE_context.h"
+#include "BKE_fracture.h"
 #include "BKE_modifier.h"
 #include "BKE_pointcache.h"
 #include "BKE_depsgraph.h"
 
 #include "ED_object.h"
+
+static void rna_Cache_framerange_sync(Main *UNUSED(bmain), Scene *scene, PointerRNA *ptr)
+{
+	Object *ob;
+	PointCache *cache = (PointCache *)ptr->data;
+	PTCacheID *pid = NULL;
+	ListBase pidlist;
+	RigidBodyWorld *rbw = scene->rigidbody_world;
+	GroupObject* first;
+
+	if (!rbw || ! rbw->group)
+	{
+		return;
+	}
+
+	first = rbw->group->gobject.first;
+	if (!first || !first->ob)
+	{
+		return;
+	}
+
+	ob = first->ob;
+
+	if (!ob)
+		return;
+
+	BKE_ptcache_ids_from_object(&pidlist, ob, NULL, 0);
+
+	for (pid = pidlist.first; pid; pid = pid->next) {
+		if (pid->cache == cache)
+			break;
+	}
+
+	if (pid) {
+		/* Just make sure this wasn't changed. */
+		if (pid->type == PTCACHE_TYPE_RIGIDBODY)
+		{
+			BKE_fracture_synchronize_caches(scene);
+		}
+		BKE_ptcache_update_info(pid);
+	}
+
+	DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
+
+	BLI_freelistN(&pidlist);
+}
 
 static void rna_Cache_change(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *ptr)
 {
@@ -803,11 +852,15 @@ static void rna_def_pointcache(BlenderRNA *brna)
 	RNA_def_property_range(prop, -MAXFRAME, MAXFRAME);
 	RNA_def_property_ui_range(prop, 1, MAXFRAME, 1, 1);
 	RNA_def_property_ui_text(prop, "Start", "Frame on which the simulation starts");
-	
+	RNA_def_property_update(prop, NC_OBJECT, "rna_Cache_framerange_sync");
+
+
 	prop = RNA_def_property(srna, "frame_end", PROP_INT, PROP_TIME);
 	RNA_def_property_int_sdna(prop, NULL, "endframe");
 	RNA_def_property_range(prop, 1, MAXFRAME);
 	RNA_def_property_ui_text(prop, "End", "Frame on which the simulation stops");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_Cache_framerange_sync");
+
 
 	prop = RNA_def_property(srna, "frame_step", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "step");

@@ -126,6 +126,7 @@ bool ED_rigidbody_object_add(Scene *scene, Object *ob, int type, ReportList *rep
 
 	/* add object to rigid body group */
 	BKE_group_object_add(rbw->group, ob, scene, NULL);
+	BKE_fracture_relink_cache(scene, ob, false);
 
 	DAG_id_tag_update(&ob->id, OB_RECALC_OB);
 
@@ -138,7 +139,10 @@ void ED_rigidbody_object_remove(Scene *scene, Object *ob)
 
 	BKE_rigidbody_free_object(ob);
 	if (rbw)
+	{
+		BKE_fracture_relink_cache(scene, ob, true);
 		BKE_group_object_unlink(rbw->group, ob, scene, NULL);
+	}
 
 	DAG_id_tag_update(&ob->id, OB_RECALC_OB);
 }

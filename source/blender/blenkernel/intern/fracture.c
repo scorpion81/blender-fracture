@@ -5535,3 +5535,62 @@ void BKE_fracture_container_empty(Scene *scene, Object *ob)
 {
 	free_constraint_container(scene, ob);
 }
+
+void BKE_fracture_relink_cache(Scene *scene, Object *ob, bool remove)
+{
+	RigidBodyWorld *rbw = scene->rigidbody_world;
+
+	if (rbw && rbw->group)
+	{
+		GroupObject *first = rbw->group->gobject.first;
+		if (first && (first->ob != ob || !remove))
+		{
+			if (first->ob && first->ob->rigidbody_object)
+			{
+				FractureContainer *fc = first->ob->rigidbody_object->fracture_objects;
+				if (fc)
+				{
+					rbw->pointcache = fc->pointcache;
+					return;
+				}
+			}
+		}
+	}
+
+	rbw->pointcache = NULL;
+}
+
+void BKE_fracture_synchronize_caches(Scene* scene)
+{
+	//set start and endframe equally to all involved caches
+	RigidBodyWorld *rbw = scene->rigidbody_world;
+	PointCache *cache = rbw->pointcache;
+	if (rbw && rbw->group && cache)
+	{
+		GroupObject *go;
+		for (go = rbw->group->gobject.first; go; go = go->next)
+		{
+			if (go->ob && go->ob->rigidbody_object)
+			{
+				FractureContainer *fc = go->ob->rigidbody_object->fracture_objects;
+				if (fc && (fc->pointcache != rbw->pointcache))
+				{
+					PTCacheID *pid = NULL;
+
+					pid = MEM_callocN(sizeof(PTCacheID), "PTCacheID");
+					BKE_ptcache_id_from_rigidbody(pid, go->ob, fc);
+
+					pid->cache->startframe = cache->startframe;
+					pid->cache->endframe = cache->endframe;
+					pid->cache->flag |= PTCACHE_OUTDATED;
+
+					MEM_freeN(pid);
+
+					DAG_id_tag_update(&go->ob->id, OB_RECALC_ALL);
+				}
+			}
+		}
+
+		BKE_scene_frame_set(scene, cache->startframe);
+	}
+}

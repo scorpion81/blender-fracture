@@ -629,7 +629,12 @@ void RB_body_delete(rbRigidBody *object)
 
 void RB_body_set_collision_shape(rbRigidBody *object, rbCollisionShape *shape)
 {
-	btRigidBody *body = object->body;
+	btRigidBody *body;
+
+	if (!object)
+		return;
+
+	body = object->body;
 	
 	/* set new collision shape */
 	body->setCollisionShape(shape->cshape);

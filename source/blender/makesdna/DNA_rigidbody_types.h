@@ -62,7 +62,7 @@ typedef struct RigidBodyWorld {
 	float ltime;				/* last frame world was evaluated for (internal) */
 	
 	/* cache */
-	struct PointCache *pointcache DNA_DEPRECATED;
+	struct PointCache *pointcache;
 	struct ListBase ptcaches DNA_DEPRECATED;
 	int numbodies;              /* number of objects in rigid body group */
 	
