@@ -852,14 +852,14 @@ static void rna_def_pointcache(BlenderRNA *brna)
 	RNA_def_property_range(prop, -MAXFRAME, MAXFRAME);
 	RNA_def_property_ui_range(prop, 1, MAXFRAME, 1, 1);
 	RNA_def_property_ui_text(prop, "Start", "Frame on which the simulation starts");
-	RNA_def_property_update(prop, NC_OBJECT, "rna_Cache_framerange_sync");
+	RNA_def_property_update(prop, NC_SCENE | ND_FRAME, "rna_Cache_framerange_sync");
 
 
 	prop = RNA_def_property(srna, "frame_end", PROP_INT, PROP_TIME);
 	RNA_def_property_int_sdna(prop, NULL, "endframe");
 	RNA_def_property_range(prop, 1, MAXFRAME);
 	RNA_def_property_ui_text(prop, "End", "Frame on which the simulation stops");
-	RNA_def_property_update(prop, NC_OBJECT, "rna_Cache_framerange_sync");
+	RNA_def_property_update(prop, NC_SCENE | ND_FRAME, "rna_Cache_framerange_sync");
 
 
 	prop = RNA_def_property(srna, "frame_step", PROP_INT, PROP_NONE);

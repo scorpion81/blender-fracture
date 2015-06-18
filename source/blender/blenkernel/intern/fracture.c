@@ -5533,7 +5533,7 @@ void BKE_fracture_constraint_container_empty(Scene *scene, Object *ob)
 
 void BKE_fracture_container_empty(Scene *scene, Object *ob)
 {
-	free_constraint_container(scene, ob);
+	free_fracture_container(scene, ob->rigidbody_object->fracture_objects);
 }
 
 void BKE_fracture_relink_cache(Scene *scene, Object *ob, bool remove)
@@ -5592,5 +5592,6 @@ void BKE_fracture_synchronize_caches(Scene* scene)
 		}
 
 		BKE_scene_frame_set(scene, cache->startframe);
+		DAG_id_tag_update(&scene->id, 0);
 	}
 }
