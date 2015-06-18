@@ -947,18 +947,21 @@ static void rna_def_rigidbody_constraint_container(BlenderRNA *brna)
 	RNA_def_property_range(prop, 0, 100);
 	RNA_def_property_ui_text(prop, "Breaking Percentage", "Percentage of broken constraints per island which leads to breaking of all others");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
 
 	prop = RNA_def_property(srna, "breaking_angle", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "breaking_angle");
 	RNA_def_property_range(prop, 0, DEG2RADF(360.0));
 	RNA_def_property_ui_text(prop, "Breaking Angle", "Angle in degrees above which constraint should break");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
 
 	prop = RNA_def_property(srna, "breaking_distance", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "breaking_distance");
 	RNA_def_property_range(prop, 0, FLT_MAX);
 	RNA_def_property_ui_text(prop, "Breaking Distance", "Distance above which constraint should break");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
 
 	prop = RNA_def_property(srna, "cluster_breaking_threshold", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "cluster_breaking_threshold");
@@ -972,21 +975,25 @@ static void rna_def_rigidbody_constraint_container(BlenderRNA *brna)
 	RNA_def_property_range(prop, 0, INT_MAX);
 	RNA_def_property_ui_text(prop, "Solver Iterations Override", "Override the world constraint solver iteration value with this value, 0 means no override");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
 
 	prop = RNA_def_property(srna, "breaking_percentage_weighted", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", FMC_FLAG_BREAKING_PERCENTAGE_WEIGHTED);
 	RNA_def_property_ui_text(prop, "Weighted Percentage", "Modify breaking percentage by threshold weights");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
 
 	prop = RNA_def_property(srna, "breaking_angle_weighted", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", FMC_FLAG_BREAKING_ANGLE_WEIGHTED);
 	RNA_def_property_ui_text(prop, "Weighted Angle", "Modify breaking angle by threshold weights");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
 
 	prop = RNA_def_property(srna, "breaking_distance_weighted", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", FMC_FLAG_BREAKING_DISTANCE_WEIGHTED);
 	RNA_def_property_ui_text(prop, "Weighted Distance", "Modify breaking distance by threshold weights");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
 
 	prop = RNA_def_property(srna, "cluster_solver_iterations_override", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "cluster_solver_iterations_override");
@@ -994,28 +1001,28 @@ static void rna_def_rigidbody_constraint_container(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Cluster Solver Iterations Override",
 	                         "Override the world constraint solver iteration value for INSIDE clusters with this value, 0 means no override");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
-	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
 
 	prop = RNA_def_property(srna, "cluster_breaking_percentage", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "cluster_breaking_percentage");
 	RNA_def_property_range(prop, 0, 100);
 	RNA_def_property_ui_text(prop, "Cluster Breaking Percentage", "Percentage of broken constraints per cluster which leads to breaking of all others");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
-	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
 
 	prop = RNA_def_property(srna, "cluster_breaking_angle", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "cluster_breaking_angle");
 	RNA_def_property_range(prop, 0, DEG2RADF(360.0));
 	RNA_def_property_ui_text(prop, "Cluster Breaking Angle", "Angle in degrees above which constraint should break");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
-	//RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
 
 	prop = RNA_def_property(srna, "cluster_breaking_distance", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "cluster_breaking_distance");
 	RNA_def_property_range(prop, 0, FLT_MAX);
 	RNA_def_property_ui_text(prop, "Cluster Breaking Distance", "Distance above which constraint should break");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
-	//RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_ConstraintContainer_reset");
 
 	/*Breakable constraints*/
 	prop = RNA_def_property(srna, "use_breaking", PROP_BOOLEAN, PROP_NONE);

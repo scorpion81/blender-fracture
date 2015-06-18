@@ -110,7 +110,7 @@ static void parse_cell_polys(cell c, MPoly *mpoly, int totpoly, int *r_totloop);
 static void parse_cell_loops(cell c, MLoop *mloop, int totloop, MPoly *mpoly, int totpoly);
 static void parse_cell_neighbors(cell c, int *neighbors, int totpoly);
 static void do_island_from_shard(Object *ob, Shard* s, int i, int thresh_defgrp_index, int ground_defgrp_index, int vertstart);
-static void do_island_vertex_index_map(Object *ob, GHash **vertex_index_map);
+static void do_island_vertex_index_map(Object *ob, GHash **vertex_index_map, int partner_index);
 static void initialize_shard(Object *ob);
 static void update_islands(Object *ob);
 
@@ -1640,7 +1640,7 @@ static void search_tree_based(Object* ob, MeshIsland *mi, MeshIsland **meshIslan
 		}
 		if ((mi != mi2) && (mi2 != NULL)) {
 			float thresh = cc->breaking_threshold;
-			int con_type = RBC_TYPE_FIXED;
+			int con_type = ob->rigidbody_constraint->type;
 
 			if ((i >= limit) && (limit > 0)) {
 				break;
@@ -1655,20 +1655,21 @@ static void search_tree_based(Object* ob, MeshIsland *mi, MeshIsland **meshIslan
 		n3 = NULL;
 	}
 }
-static void prepareConstraintSearch(Object *ob, MeshIsland ***mesh_islands, KDTree **combined_tree, GHash** vertex_index_map, int start, int target)
+static void do_prepare_constraint_search(Object *ob, MeshIsland ***mesh_islands, KDTree **combined_tree, GHash** vertex_index_map, int start, int target, int partner_index)
 {
 	MeshIsland *mi;
 	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	FractureState *fs = fc->current;
 	int j = 0;
 
-	do_island_vertex_index_map(ob, vertex_index_map);
+	do_island_vertex_index_map(ob, vertex_index_map, partner_index);
 
 	if (target == MOD_FRACTURE_CENTROID)
 	{
 		for (mi = fs->island_map.first; mi; mi = mi->next)
 		{
 			float obj_centr[3];
+			mi->partner_index = partner_index;
 			(*mesh_islands)[start + j] = mi;
 			mul_v3_m4v3(obj_centr, ob->obmat, (*mesh_islands)[start + j]->centroid);
 			BLI_kdtree_insert(*combined_tree, start+j, obj_centr);
@@ -2652,7 +2653,7 @@ static void do_refresh(Object *ob, bool do_rebuild)
 #endif //TODO, move states from rigidbody system...
 }
 
-static void do_island_vertex_index_map(Object *ob, GHash** vertex_island_map)
+static void do_island_vertex_index_map(Object *ob, GHash** vertex_island_map, int partner_index)
 {
 	MeshIsland *mi;
 	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
@@ -2674,6 +2675,7 @@ static void do_island_vertex_index_map(Object *ob, GHash** vertex_island_map)
 
 	for (mi = fs->island_map.first; mi; mi = mi->next){
 		int i = 0;
+		mi->partner_index = partner_index;
 		if (mi->vertex_indices != NULL)
 		{	/* might not existing yet for older files ! */
 			for (i = 0; i < mi->vertex_count; i++)
@@ -4986,9 +4988,9 @@ static void build_constraints(Object *ob)
 
 	coord_tree = BLI_kdtree_new(count);
 	mesh_islands = MEM_callocN(sizeof(MeshIsland*) * (island_count1 + island_count2), "mesh_islands(constraints)");
-	prepareConstraintSearch(ob1, &mesh_islands, &coord_tree, &vertex_island_map, 0, cc->constraint_target);
+	do_prepare_constraint_search(ob1, &mesh_islands, &coord_tree, &vertex_island_map, 0, cc->constraint_target, 1);
 	if (outer) {
-		prepareConstraintSearch(ob2, &mesh_islands, &coord_tree, &vertex_island_map, island_count1, cc->constraint_target);
+		do_prepare_constraint_search(ob2, &mesh_islands, &coord_tree, &vertex_island_map, island_count1, cc->constraint_target, 2);
 	}
 
 	BLI_kdtree_balance(coord_tree);
