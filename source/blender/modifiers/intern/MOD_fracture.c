@@ -82,6 +82,7 @@ static DerivedMesh *applyModifier(ModifierData *UNUSED(md), Object *ob,
 	if (rb && rb->fracture_objects)
 	{
 		FractureState *fs = rb->fracture_objects->current;
+		rb->fracture_objects->flag &= ~FM_FLAG_UPDATE_AUTOHIDE;
 		if (fs->visual_mesh)
 		{
 			BKE_fracture_prepare_autohide(ob); /*in case after loading rebuild facepairs,

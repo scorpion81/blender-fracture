@@ -165,7 +165,7 @@ FracMesh* BKE_copy_fracmesh(FracMesh* fm)
 	return fmesh;
 }
 
-static void freeMeshIsland(MeshIsland *mi)
+static void freeMeshIsland(Scene *scene, MeshIsland *mi)
 {
 	if (mi->physics_mesh) {
 		mi->physics_mesh->needsFree = 1;
@@ -174,7 +174,6 @@ static void freeMeshIsland(MeshIsland *mi)
 	}
 
 	if (mi->rigidbody) {
-#if 0
 		if (scene != NULL)
 		{
 			RigidBodyWorld *rbw = scene->rigidbody_world;
@@ -182,7 +181,6 @@ static void freeMeshIsland(MeshIsland *mi)
 			if (rbo->physics_object && rbw->physics_world)
 				RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
 		}
-#endif
 
 		MEM_freeN(mi->rigidbody);
 		mi->rigidbody = NULL;
@@ -214,10 +212,10 @@ static void freeMeshIsland(MeshIsland *mi)
 		for (i = 0; i < count; i++)
 		{
 			RigidBodyShardCon *con = mi->participating_constraints[i];
-			/*tag for removal */
-			con->flag |= RBC_FLAG_PURGE_ON_VALIDATE;
 			con->mi1 = NULL;
 			con->mi2 = NULL; //purge those as well
+			if (scene)
+				BKE_rigidbody_remove_shard_con(scene->rigidbody_world, con);
 		}
 
 		MEM_freeN(mi->participating_constraints);
@@ -234,14 +232,14 @@ static void freeMeshIsland(MeshIsland *mi)
 	mi = NULL;
 }
 
-static void free_meshislands(ListBase* meshIslands)
+static void free_meshislands(Scene *scene, ListBase* meshIslands)
 {
 	MeshIsland *mi;
 
 	while (meshIslands->first) {
 		mi = meshIslands->first;
 		BLI_remlink(meshIslands, mi);
-		freeMeshIsland(mi);
+		freeMeshIsland(scene, mi);
 		mi = NULL;
 	}
 
@@ -256,9 +254,9 @@ static void free_shards(FracMesh *fm)
 	fm = NULL;
 }
 
-static void free_fracture_state(FractureState *fs, bool delete_all)
+static void free_fracture_state(Scene *scene, FractureState *fs, bool delete_all)
 {
-	free_meshislands(&fs->island_map);
+	free_meshislands(scene, &fs->island_map);
 
 	if (fs->islands) {
 		MEM_freeN(fs->islands);
@@ -281,14 +279,14 @@ static void free_fracture_state(FractureState *fs, bool delete_all)
 	}
 }
 
-static void free_fracture_container(FractureContainer *fc)
+static void free_fracture_container(Scene *scene, FractureContainer *fc)
 {
 	FractureState *fs;
 	while (fc->states.first)
 	{
 		fs = fc->states.first;
 		BLI_remlink_safe(&fc->states, fs);
-		free_fracture_state(fs, fc->fracture_mode == MOD_FRACTURE_PREFRACTURED);
+		free_fracture_state(scene, fs, fc->fracture_mode == MOD_FRACTURE_PREFRACTURED);
 		MEM_freeN(fs);
 		fs = NULL;
 	}
@@ -902,11 +900,11 @@ static void do_fracture(Scene *scene, Object *obj, ShardID id)
 			BKE_fracture_shard_by_planes(obj, mat_index, mat);
 		}
 
-		/* job has been cancelled, throw away all data */
+		/* job has been cancelled, throw away all data FM_TODO, really ?*/
 		if (fs->frac_mesh->cancel == 1)
 		{
 			fs->frac_mesh->running = 0;
-			free_fracture_state(fs, true);
+			free_fracture_state(scene, fs, true);
 			MEM_freeN(points.points);
 			return;
 		}
@@ -1044,7 +1042,7 @@ static void do_rigidbody(Object *ob, MeshIsland* mi, short rb_type)
 	mi->rigidbody = BKE_rigidbody_create_shard(ob, mi);
 	mi->rigidbody->type = rb_type;
 	mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
-	BKE_rigidbody_calc_shard_mass(ob, mi);
+	//BKE_rigidbody_calc_shard_mass(ob, mi);
 }
 
 static void do_fix_normals(Object* ob, MeshIsland *mi)
@@ -4771,7 +4769,7 @@ void BKE_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, int fr
 }
 #endif
 
-static void free_constraint_container(Object* ob)
+static void free_constraint_container(Scene *scene, Object* ob)
 {
 	MeshIsland *mi = NULL;
 	RigidBodyShardCon *rbsc = NULL;
@@ -4780,7 +4778,7 @@ static void free_constraint_container(Object* ob)
 	Object *ob2 = ob->rigidbody_constraint->ob2;
 	FractureState *fs;
 
-	if (ob1 && ob1->rigidbody_object && ob1->rigidbody_object->fracture_objects)
+	if (ob1 && ob1->rigidbody_object && ob1->rigidbody_object->fracture_objects && !scene)
 	{
 		FractureContainer *fc1 = ob1->rigidbody_object->fracture_objects;
 		for (fs = fc1->states.first; fs; fs = fs->next)
@@ -4795,7 +4793,7 @@ static void free_constraint_container(Object* ob)
 		}
 	}
 
-	if (ob2 && ob2->rigidbody_object && ob2->rigidbody_object->fracture_objects)
+	if (ob2 && ob2->rigidbody_object && ob2->rigidbody_object->fracture_objects && !scene)
 	{
 		FractureContainer *fc2 = ob2->rigidbody_object->fracture_objects;
 		if (ob1 != ob2)
@@ -4813,17 +4811,26 @@ static void free_constraint_container(Object* ob)
 		}
 	}
 
-	while (cc->constraint_map.first) {
-		rbsc = cc->constraint_map.first;
-		rbsc->flag |= RBC_FLAG_PURGE_ON_VALIDATE;
-		BLI_remlink(&cc->constraint_map, rbsc);
-		//BKE_rigidbody_remove_shard_con(rbsc);
-		MEM_freeN(rbsc);
-		rbsc = NULL;
+	rbsc = cc->constraint_map.first;
+	while (rbsc) {
+		if (scene)
+		{
+			BKE_rigidbody_remove_shard_con(scene->rigidbody_world, rbsc);
+			rbsc = rbsc->next;
+		}
+		else
+		{
+			BLI_remlink(&cc->constraint_map, rbsc);
+			MEM_freeN(rbsc);
+			rbsc = cc->constraint_map.first;
+		}
 	}
 
-	cc->constraint_map.first = NULL;
-	cc->constraint_map.last = NULL;
+	if (!scene)
+	{
+		cc->constraint_map.first = NULL;
+		cc->constraint_map.last = NULL;
+	}
 }
 
 /* inlined select_linked functionality here, because not easy to reach without modifications */
@@ -5063,12 +5070,12 @@ void BKE_fracture_prefracture_mesh(Scene* scene, Object *ob, ShardID id)
 	if (id == 0)
 	{
 		//restore from original mesh....
-		free_fracture_state(fs, true);
+		free_fracture_state(scene, fs, true);
 		initialize_shard(ob);
 	}
 	else
 	{
-		free_fracture_state(fs, false);
+		free_fracture_state(scene, fs, false);
 	}
 
 //	preprocess_dm(ob);
@@ -5137,7 +5144,7 @@ void BKE_fracture_constraint_container_free(Object *ob)
 	if (ob->rigidbody_constraint->fracture_constraints) {
 		if (ob->rigidbody_constraint->fracture_constraints->flag & FM_FLAG_REFRESH_CONSTRAINTS)
 		{
-			free_constraint_container(ob);
+			free_constraint_container(NULL, ob);
 			//ob->rigidbody_constraint->fracture_constraints = NULL;
 		}
 	}
@@ -5223,6 +5230,7 @@ FractureContainer* BKE_fracture_container_create(Object *ob)
 	fc->dynamic_force = 10.0f;
 
 	fc->effector_weights = BKE_add_effector_weights(NULL);
+	fc->raw_mesh = NULL;
 
 	return fc;
 }
@@ -5243,7 +5251,7 @@ void BKE_fracture_container_initialize(Object* ob, DerivedMesh *dm)
 void BKE_fracture_container_free(Object *ob)
 {
 	if (ob->rigidbody_object->fracture_objects) {
-		free_fracture_container(ob->rigidbody_object->fracture_objects);
+		free_fracture_container(NULL, ob->rigidbody_object->fracture_objects);
 		ob->rigidbody_object->fracture_objects = NULL;
 	}
 }
@@ -5461,6 +5469,8 @@ static FractureContainer* copy_fracture_container(Object* ob, Object *obN)
 	fcN->effector_weights = MEM_dupallocN(fc->effector_weights);
 	make_face_pairs(obN);
 
+	rb->flag |= RBO_FLAG_NEEDS_VALIDATE;
+
 	return fcN;
 }
 
@@ -5513,4 +5523,15 @@ DerivedMesh *BKE_fracture_ensure_mesh(Scene* scene, Object* ob)
 	else {
 		return CDDM_from_mesh(ob->data);
 	}
+}
+
+
+void BKE_fracture_constraint_container_empty(Scene *scene, Object *ob)
+{
+	free_constraint_container(scene, ob);
+}
+
+void BKE_fracture_container_empty(Scene *scene, Object *ob)
+{
+	free_constraint_container(scene, ob);
 }

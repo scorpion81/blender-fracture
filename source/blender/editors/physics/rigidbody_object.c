@@ -136,7 +136,7 @@ void ED_rigidbody_object_remove(Scene *scene, Object *ob)
 {
 	RigidBodyWorld *rbw = BKE_rigidbody_get_world(scene);
 
-	BKE_fracture_container_free(ob);
+	BKE_rigidbody_free_object(ob);
 	if (rbw)
 		BKE_group_object_unlink(rbw->group, ob, scene, NULL);
 

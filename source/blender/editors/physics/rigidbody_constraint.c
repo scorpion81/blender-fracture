@@ -111,7 +111,7 @@ void ED_rigidbody_constraint_remove(Scene *scene, Object *ob)
 {
 	RigidBodyWorld *rbw = BKE_rigidbody_get_world(scene);
 
-	BKE_fracture_constraint_container_free(ob);
+	BKE_rigidbody_free_constraint(ob);
 	if (rbw)
 		BKE_group_object_unlink(rbw->constraints, ob, scene, NULL);
 

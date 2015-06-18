@@ -296,6 +296,7 @@ enum {
 	FM_FLAG_SKIP_MASS_CALC                = (1 << 16),
 	FM_FLAG_USE_EXPERIMENTAL              = (1 << 17),
 	FM_FLAG_EXECUTE_THREADED              = (1 << 18),
+	FM_FLAG_UPDATE_AUTOHIDE               = (1 << 19),
 };
 
 /*constraint flags*/

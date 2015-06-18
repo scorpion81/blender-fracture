@@ -5511,6 +5511,7 @@ static void direct_link_object(FileData *fd, Object *ob)
 
 		if (fc) {
 			fc->face_pairs = NULL;
+			fc->raw_mesh = NULL;
 
 			link_list(fd, &fc->states);
 

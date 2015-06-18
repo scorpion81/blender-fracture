@@ -73,12 +73,12 @@
 
 #ifdef WITH_BULLET
 
-static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int rebuild, int transfer_speed);
+static void validateShard(Scene *scene, MeshIsland *mi, Object *ob, int rebuild, int transfer_speed);
 
-static void activateRigidbody(RigidBodyShardOb* rbo, RigidBodyWorld *rbw, MeshIsland *mi, Object *ob)
+static void activateRigidbody(RigidBodyShardOb* rbo, RigidBodyWorld *UNUSED(rbw), MeshIsland *UNUSED(mi), Object *ob)
 {
 	RigidBodyOb *rb = ob->rigidbody_object;
-	FractureContainer *fc = rb->fracture_objects;
+	//FractureContainer *fc = rb->fracture_objects;
 
 	if ((rb->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION) && (rbo->flag & RBO_FLAG_KINEMATIC) && (rbo->type == RBO_TYPE_ACTIVE))
 	{
@@ -297,11 +297,12 @@ float BKE_rigidbody_calc_volume(DerivedMesh *dm, RigidBodyOb *rbo)
 	return volume;
 }
 
-void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland *mi)
+void BKE_rigidbody_calc_shard_mass(Scene *scene, Object *ob, MeshIsland *mi)
 {
 	RigidBodyOb *rb = ob->rigidbody_object;
 	FractureContainer *fc = rb->fracture_objects;
-	DerivedMesh *dm_ob = ob->derivedFinal, *dm_mi;
+	/*FM TODO, this might differ here*/
+	DerivedMesh *dm_ob = (fc->raw_mesh != NULL ? fc->raw_mesh : BKE_fracture_ensure_mesh(scene, ob)), *dm_mi;
 	float vol_mi = 0, mass_mi = 0, vol_ob = 0, mass_ob = 0;
 	bool skip = fc->flag & (FM_FLAG_REFRESH_SHAPE | FM_FLAG_SKIP_MASS_CALC);
 
@@ -808,8 +809,9 @@ static bool flag_as_kinematic(void *object)
 /* Create physics sim representation of shard given RigidBody settings
  * < rebuild: even if an instance already exists, replace it
  */
-void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, short rebuild, int transfer_speeds)
+void BKE_rigidbody_validate_sim_shard(Scene* scene, MeshIsland *mi, Object *ob, short rebuild, int transfer_speeds)
 {
+	RigidBodyWorld *rbw = scene->rigidbody_world;
 	RigidBodyShardOb *rbo = (mi) ? mi->rigidbody : NULL;
 	RigidBodyOb *rb = ob->rigidbody_object;
 
@@ -819,7 +821,7 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 	/* sanity checks:
 	 *	- object doesn't have RigidBody info already: then why is it here?
 	 */
-	if (rbo == NULL)
+	if (rbo == NULL || rbw == NULL)
 		return;
 
 	/* make sure collision shape exists */
@@ -868,7 +870,8 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 		                           (ob->protectflag & OB_LOCK_ROTY) == 0,
 		                           (ob->protectflag & OB_LOCK_ROTZ) == 0);
 
-		RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
+		BKE_rigidbody_calc_shard_mass(scene, ob, mi);
+		//RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
 		RB_body_set_kinematic_state(rbo->physics_object, rb->flag & RBO_FLAG_KINEMATIC || rb->flag & RBO_FLAG_DISABLED);
 
 		if (transfer_speeds)
@@ -1464,6 +1467,7 @@ RigidBodyShardOb *BKE_rigidbody_create_shard(Object *ob, MeshIsland *mi)
 {
 	RigidBodyShardOb *rbo;
 	//RigidBodyWorld *rbw = BKE_rigidbody_get_world(scene);
+	RigidBodyOb *rb = ob->rigidbody_object;
 
 	/* sanity checks
 	 *	- rigidbody world must exist
@@ -1486,12 +1490,15 @@ RigidBodyShardOb *BKE_rigidbody_create_shard(Object *ob, MeshIsland *mi)
 	/* since we are always member of an object, dupe its settings,
 	 * create new settings data, and link it up */
 	rbo = MEM_callocN(sizeof(RigidBodyShardOb), "RigidBodyShardOb create");
-	rbo->type = mi->ground_weight > 0.5f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
+	rbo->type = rb->type;
+	if (rbo->type == RBO_TYPE_ACTIVE)
+		rbo->type = mi->ground_weight > 0.5f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
 
 	BKE_rigidbody_set_initial_transform(ob, mi, rbo);
 
 	rbo->physics_object = NULL;
 	rbo->physics_shape = NULL;
+	rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 
 	/* return this object */
 	return rbo;
@@ -1526,8 +1533,11 @@ RigidBodyOb *BKE_rigidbody_create_object(Object *ob, short type)
 {
 	RigidBodyOb *rbo;
 
-	if (ob == NULL || (ob->rigidbody_object != NULL))
+	if (ob == NULL)
 		return NULL;
+
+	if (ob->rigidbody_object)
+		return ob->rigidbody_object;
 
 	/* create new settings data, and link it up */
 	rbo = MEM_callocN(sizeof(RigidBodyOb), "RigidBodyOb");
@@ -1576,8 +1586,11 @@ RigidBodyCon *BKE_rigidbody_create_constraint(Object *ob, short type)
 	 *	- object must exist
 	 *	- cannot add constraint if it already exists
 	 */
-	if (ob == NULL || (ob->rigidbody_constraint != NULL))
+	if (ob == NULL)
 		return NULL;
+
+	if (ob->rigidbody_constraint)
+		return ob->rigidbody_constraint;
 
 	/* create new settings data, and link it up */
 	rbc = MEM_callocN(sizeof(RigidBodyCon), "RigidBodyCon");
@@ -1855,20 +1868,21 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 	 */
 }
 
-static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int rebuild, int transfer_speed)
+static void validateShard(Scene *scene, MeshIsland *mi, Object *ob, int rebuild, int transfer_speed)
 {
 	RigidBodyOb *rb = ob->rigidbody_object;
+	RigidBodyWorld *rbw = scene->rigidbody_world;
 
-	if (mi == NULL || mi->rigidbody == NULL) {
+	if (mi == NULL || mi->rigidbody == NULL || rbw == NULL) {
 		return;
 	}
 
 	if (rebuild || (rb->flag & RBO_FLAG_KINEMATIC_REBUILD)) {
 		/* World has been rebuilt so rebuild object */
-		BKE_rigidbody_validate_sim_shard(rbw, mi, ob, true, transfer_speed);
+		BKE_rigidbody_validate_sim_shard(scene, mi, ob, true, transfer_speed);
 	}
 	else if (rb->flag & RBO_FLAG_NEEDS_VALIDATE || mi->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE) {
-		BKE_rigidbody_validate_sim_shard(rbw, mi, ob, false, transfer_speed);
+		BKE_rigidbody_validate_sim_shard(scene, mi, ob, false, transfer_speed);
 	}
 	/* refresh shape... */
 	if (rb->flag & RBO_FLAG_NEEDS_RESHAPE) {
@@ -2055,6 +2069,7 @@ static void do_update_constraint_container(Scene* scene, Object *ob, bool rebuil
 		max_con_mass = BKE_rigidbody_calc_max_con_mass(ob);
 	}
 
+#if 0
 	rbsc = cc->constraint_map.first;
 	while (rbsc) {
 		if (rbsc->flag & RBC_FLAG_PURGE_ON_VALIDATE || rbsc->mi1 == NULL || rbsc->mi2 == NULL)
@@ -2070,6 +2085,7 @@ static void do_update_constraint_container(Scene* scene, Object *ob, bool rebuil
 			rbsc = rbsc->next;
 		}
 	}
+#endif
 
 	for (con = cc->constraint_map.first; con; con = con->next)
 	{
@@ -2175,7 +2191,7 @@ static void do_update_container(Scene* scene, Object* ob, RigidBodyWorld *rbw, b
 		/* perform simulation data updates as tagged */
 		/* refresh object... */
 		int do_rebuild = rebuild;
-		validateShard(rbw, mi, ob, do_rebuild, fc->fracture_mode == MOD_FRACTURE_DYNAMIC);
+		validateShard(scene, mi, ob, do_rebuild, fc->fracture_mode == MOD_FRACTURE_DYNAMIC);
 
 		/* update simulation object... */
 		rigidbody_update_sim_ob(scene, rbw, ob, mi->rigidbody, mi->centroid);
@@ -2208,9 +2224,9 @@ static void rigidbody_update_simulation_object(Scene *scene, Object* ob, RigidBo
 	rbw->flag &= ~RBW_FLAG_REFRESH_MODIFIERS;
 }
 
-static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw, Object *ob)
+static void rigidbody_update_simulation_post_step(Object *ob)
 {
-	GroupObject *go;
+	//GroupObject *go;
 	RigidBodyShardOb *rbo;
 	RigidBodyOb *rb = ob->rigidbody_object;
 	MeshIsland *mi;
@@ -2223,7 +2239,7 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw, Object *o
 		/* reset kinematic state for transformed objects */
 		if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) {
 			RB_body_set_kinematic_state(rbo->physics_object, rb->flag & RBO_FLAG_KINEMATIC || rb->flag & RBO_FLAG_DISABLED);
-			RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
+			RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo)); /*mass should be calculated already and stored in rbo */
 			/* deactivate passive objects so they don't interfere with deactivation of active objects */
 			if (rb->type == RBO_TYPE_PASSIVE)
 				RB_body_deactivate(rbo->physics_object);
@@ -2631,7 +2647,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 		BKE_ptcache_id_time(&pid, scene, ctime, &startframe, &endframe, NULL);
 		cache = fc->pointcache;
 
-		rigidbody_update_simulation_post_step(rbw, ob);
+		rigidbody_update_simulation_post_step(ob);
 
 		/* write cache for current frame */
 		BKE_ptcache_validate(cache, (int)ctime);

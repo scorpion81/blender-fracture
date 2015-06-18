@@ -124,5 +124,7 @@ void BKE_fracture_container_initialize(struct Object* ob, struct DerivedMesh *dm
 void BKE_fracture_create_islands(struct Object *ob, bool rebuild);
 void BKE_fracture_constraint_container_update(struct Object* ob);
 void BKE_fracture_prepare_autohide(struct Object *ob);
+void BKE_fracture_constraint_container_empty(struct Scene *scene, struct Object *ob);
+void BKE_fracture_container_empty(struct Scene *scene, struct Object *ob);
 
 #endif /* BKE_FRACTURE_H */

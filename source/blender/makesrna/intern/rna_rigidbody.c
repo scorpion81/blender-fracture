@@ -196,7 +196,7 @@ static void rna_FractureContainer_rigidbody_reset(Main *bmain, Scene *scene, Poi
 	RigidBodyOb *rbo = ptr->data;
 	rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 
-	BKE_rigidbody_cache_reset(rbw);
+	//BKE_rigidbody_cache_reset(rbw);
 	rna_FractureContainer_reset(bmain, scene, ptr);
 }
 
@@ -232,6 +232,8 @@ static void rna_RigidBodyOb_shape_reset(Main *UNUSED(bmain), Scene *scene, Point
 
 static void rna_FractureContainer_autohide_update(Main *UNUSED(bmain), Scene *scene, PointerRNA *ptr)
 {
+	FractureContainer *fc = ptr->data;
+	fc->flag |= FM_FLAG_UPDATE_AUTOHIDE;
 	DAG_id_tag_update(ptr->id.data, OB_RECALC_DATA);
 	WM_main_add_notifier(NC_OBJECT | ND_MODIFIER, ptr->id.data);
 }

@@ -2985,29 +2985,16 @@ int  BKE_ptcache_object_reset(Scene *scene, Object *ob, int mode)
 		}
 	}
 
-#if 0 //TODO, what was this good for ?
-	if (scene->rigidbody_world && (ob->rigidbody_object || ob->rigidbody_constraint)) {
-		ModifierData *md = modifiers_findByType(ob, eModifierType_Fracture);
-		if (md && md->type == eModifierType_Fracture)
-		{
-			FractureModifierData *fmd = (FractureModifierData*)md;
-			if (!(fmd->flag & FM_FLAG_REFRESH_AUTOHIDE))
-			{
-				if (ob->rigidbody_object)
-					ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_RESHAPE;
-				BKE_ptcache_id_from_rigidbody(&pid, ob, scene->rigidbody_world);
-				/* only flag as outdated, resetting should happen on start frame */
-				pid.cache->flag |= PTCACHE_OUTDATED;
-			}
-		}
-		else
-		{
-#endif
 	if (ob->rigidbody_object && ob->rigidbody_object->fracture_objects) {
-		ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_RESHAPE;
-		BKE_ptcache_id_from_rigidbody(&pid, ob, ob->rigidbody_object->fracture_objects);
-		/* only flag as outdated, resetting should happen on start frame */
-		pid.cache->flag |= PTCACHE_OUTDATED;
+		FractureContainer *fc = ob->rigidbody_object->fracture_objects;
+		if (!(fc->flag & FM_FLAG_UPDATE_AUTOHIDE)) {
+			ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_RESHAPE;
+			//BKE_ptcache_id_from_rigidbody(&pid, ob, ob->rigidbody_object->fracture_objects);
+			/* only flag as outdated, resetting should happen on start frame */
+			//pid.cache->flag |= PTCACHE_OUTDATED;
+			/* to keep all caches in sync, reset them all */
+			BKE_rigidbody_cache_reset(scene->rigidbody_world);
+		}
 	}
 
 

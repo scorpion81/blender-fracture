@@ -371,7 +371,7 @@ typedef enum eRigidBodyCon_Flag {
 
 	/* sigh, we dont have a world or scene reference at hand when we need to delete ourselves */
 	/* so flag removal and postpone deletion */
-	RBC_FLAG_PURGE_ON_VALIDATE			= (1 << 17),
+//	RBC_FLAG_PURGE_ON_VALIDATE			= (1 << 17),
 } eRigidBodyCon_Flag;
 
 /* ******************************** */
