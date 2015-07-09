@@ -2623,6 +2623,7 @@ static void do_refresh(Object *ob, bool do_rebuild)
 	if (fc->flag & FM_FLAG_FIX_NORMALS)
 	{
 		start = PIL_check_seconds_timer();
+		fc->nor_tree = build_nor_tree(fc->raw_mesh);
 	}
 
 	//shards -> islands;
