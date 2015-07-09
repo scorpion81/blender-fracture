@@ -418,12 +418,6 @@ macro(setup_liblinks
 	if(WITH_LLVM)
 		target_link_libraries(${target} ${LLVM_LIBRARY})
 	endif()
-	if(WITH_ALEMBIC)
-		target_link_libraries(${target} ${ALEMBIC_LIBRARIES})
-	endif()
-	if(WITH_HDF5)
-		target_link_libraries(${target} ${HDF5_LIBRARIES})
-	endif()
 	if(WIN32 AND NOT UNIX)
 		target_link_libraries(${target} ${PTHREADS_LIBRARIES})
 	endif()
@@ -564,8 +558,6 @@ macro(SETUP_BLENDER_SORTED_LIBS)
 		ge_videotex
 		bf_dna
 		bf_blenfont
-		bf_pointcache_alembic
-		bf_pointcache
 		bf_intern_audaspace
 		bf_intern_mikktspace
 		bf_intern_dualcon
