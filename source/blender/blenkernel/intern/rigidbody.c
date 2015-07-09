@@ -2549,10 +2549,10 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 			fc->flag &= ~FM_FLAG_REFRESH_SHAPE;
 		}
 
-		if (rbw->ltime == -1) {
+/*		if (rbw->ltime == -1) {
 			rbw->ltime = startframe;
 			rigidbody_update_simulation_object(scene, ob, rbw, true);
-		}
+		}*/
 
 		/*trigger dynamic update FM_TODO, use other flag*/
 #if 0
@@ -2653,9 +2653,13 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 
 		rigidbody_update_simulation_post_step(ob);
 
-		/* write cache for current frame */
-		BKE_ptcache_validate(cache, (int)ctime);
-		BKE_ptcache_write(&pid, (unsigned int)ctime);
+		/* write cache for current frame, but not when its baked already (here accidentally a write happened on startframe for 1 object */
+		if (!(cache->flag & PTCACHE_BAKED))
+		{
+			printf("Write cache: %s  %.2f\n", ob->id.name + 2, ctime);
+			BKE_ptcache_validate(cache, (int)ctime);
+			BKE_ptcache_write(&pid, (unsigned int)ctime);
+		}
 	}
 
 	rbw->ltime = ctime;

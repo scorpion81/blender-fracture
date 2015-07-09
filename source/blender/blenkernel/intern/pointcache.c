@@ -63,6 +63,7 @@
 #include "BKE_blender.h"
 #include "BKE_cloth.h"
 #include "BKE_dynamicpaint.h"
+#include "BKE_fracture.h"
 #include "BKE_global.h"
 #include "BKE_main.h"
 #include "BKE_modifier.h"
@@ -994,7 +995,7 @@ static int ptcache_dynamicpaint_read(PTCacheFile *pf, void *dp_v)
 }
 
 /* Rigid Body functions */
-static int ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra)
+static int ptcache_rigidbody_write(int index, void *rb_v, void **data, int UNUSED(cfra))
 {
 	FractureContainer *fc = rb_v;
 	RigidBodyShardOb *rbo = NULL;
@@ -1028,7 +1029,7 @@ static int ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra)
 
 	return 1;
 }
-static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfra, float *old_data)
+static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float UNUSED(cfra), float *old_data)
 {
 	FractureContainer *fc = rb_v;
 	RigidBodyShardOb *rbo = NULL;
@@ -3365,6 +3366,9 @@ void BKE_ptcache_bake(PTCacheBaker *baker)
 	thread_data.thread_ended = false;
 	old_progress = -1;
 
+	/*always sync the distributed rigidbody caches after frame change*/
+	BKE_fracture_synchronize_caches(scene);
+
 	WM_cursor_wait(1);
 	
 	if (G.background) {
@@ -3445,6 +3449,7 @@ void BKE_ptcache_bake(PTCacheBaker *baker)
 	
 	if (bake) { /* already on cfra unless baking */
 		BKE_scene_update_for_newframe(bmain->eval_ctx, bmain, scene, scene->lay);
+		BKE_fracture_synchronize_caches(scene);
 	}
 
 	if (thread_data.break_operation)
