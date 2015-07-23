@@ -4757,6 +4757,7 @@ static void read_meshIsland(FileData *fd, MeshIsland **address)
 	/* will be refreshed on the fly */
 	mi->participating_constraint_count = 0;
 	mi->participating_constraints = NULL;
+	mi->particle_index = -1;
 }
 
 /*inlined from MOD_fracture.c*/

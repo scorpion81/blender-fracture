@@ -1587,6 +1587,7 @@ static float do_setup_meshisland(FractureModifierData *fmd, Object *ob, int totv
 		mi->rots = MEM_mallocN(sizeof(float)*4* mi->frame_count, "mi->rots");
 	}
 
+	mi->particle_index = -1;
 	mi->thresh_weight = 0;
 	mi->vertices = verts; /*those are temporary only !!! */
 	mi->vertco = MEM_mallocN(sizeof(float) * 3 * totvert, "mi->vertco");
