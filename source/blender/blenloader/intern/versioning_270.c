@@ -658,6 +658,9 @@ void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 				fmd->cluster_constraint_type = RBC_TYPE_FIXED;
 				fmd->constraint_target = MOD_FRACTURE_CENTROID;
 				fmd->use_breaking = true;
+			}
+		}
+	}
 				
 	if (!MAIN_VERSION_ATLEAST(main, 274, 1)) {
 		/* particle systems need to be forced to redistribute for jitter mode fix */
@@ -686,7 +689,6 @@ void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 			Scene *scene;
 			for (scene = main->scene.first; scene; scene = scene->id.next) {
 				scene->gm.scehysteresis = 10;
->>>>>>> refs/remotes/origin/master
 			}
 		}
 	}

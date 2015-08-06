@@ -1502,21 +1502,41 @@ static void write_defgroups(WriteData *wd, ListBase *defbase)
 }
 
 /* need a prototype of that here...*/
-static void write_customdata(WriteData *wd, ID *id, int count, CustomData *data, int partial_type, int partial_count);
+static void write_customdata(WriteData *wd, ID *id, int count, CustomData *data, CustomDataLayer* layers, int partial_type, int partial_count);
 
 static void write_shard(WriteData* wd, Shard* s)
 {
+	CustomDataLayer *vlayers = NULL, vlayers_buff[CD_TEMP_CHUNK_SIZE];
+	CustomDataLayer *llayers = NULL, llayers_buff[CD_TEMP_CHUNK_SIZE];
+	CustomDataLayer *players = NULL, players_buff[CD_TEMP_CHUNK_SIZE];
+
 	writestruct(wd, DATA, "Shard", 1, s);
 	writestruct(wd, DATA, "MVert", s->totvert, s->mvert);
 	writestruct(wd, DATA, "MPoly", s->totpoly, s->mpoly);
 	writestruct(wd, DATA, "MLoop", s->totloop, s->mloop);
 
-	write_customdata(wd, NULL, s->totvert, &s->vertData, -1, s->totvert);
-	write_customdata(wd, NULL, s->totloop, &s->loopData, -1, s->totloop);
-	write_customdata(wd, NULL, s->totpoly, &s->polyData, -1, s->totpoly);
+	CustomData_file_write_prepare(&s->vertData, &vlayers, vlayers_buff, ARRAY_SIZE(vlayers_buff));
+	CustomData_file_write_prepare(&s->loopData, &llayers, llayers_buff, ARRAY_SIZE(llayers_buff));
+	CustomData_file_write_prepare(&s->polyData, &players, players_buff, ARRAY_SIZE(players_buff));
+
+	write_customdata(wd, NULL, s->totvert, &s->vertData, vlayers, -1, s->totvert);
+	write_customdata(wd, NULL, s->totloop, &s->loopData, llayers, -1, s->totloop);
+	write_customdata(wd, NULL, s->totpoly, &s->polyData, players, -1, s->totpoly);
 
 	writedata(wd, DATA, sizeof(int)*s->neighbor_count, s->neighbor_ids);
 	writedata(wd, DATA, sizeof(int), s->cluster_colors);
+
+	if (vlayers && vlayers != vlayers_buff) {
+		MEM_freeN(vlayers);
+	}
+
+	if (llayers && llayers != llayers_buff) {
+		MEM_freeN(llayers);
+	}
+
+	if (players && players != players_buff) {
+		MEM_freeN(players);
+	}
 }
 
 static void write_meshIsland(WriteData* wd, MeshIsland* mi)

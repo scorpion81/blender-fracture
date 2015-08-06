@@ -1040,7 +1040,7 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 	float hull_margin = 0.0f;
 	bool can_embed = true;
 	bool has_volume;
-	float min[3], max[3];
+	float min[3], max[3], volume;
 	
 	/* sanity check */
 	if (rbo == NULL)
@@ -1149,6 +1149,7 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 				volume = size[0] * size[1] * size[2];
 			}
 			break;
+		}
 	}
 	/* assign new collision shape if creation was successful */
 	if (new_shape) {
@@ -1168,7 +1169,6 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 			volume = 0.0f;
 			break;
 #endif
-
 /* --------------------- */
 
 /* Create physics sim representation of shard given RigidBody settings

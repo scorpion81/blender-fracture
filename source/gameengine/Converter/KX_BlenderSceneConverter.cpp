@@ -80,6 +80,7 @@ extern "C"
 #include "DNA_material_types.h"
 #include "BLI_blenlib.h"
 #include "MEM_guardedalloc.h"
+#include "BKE_fcurve.h"
 #include "BKE_global.h"
 #include "BKE_animsys.h"
 #include "BKE_library.h"
@@ -750,8 +751,8 @@ void KX_BlenderSceneConverter::TestHandlesPhysicsObjectToAnimationIpo()
 					testhandles_ipocurve(findIpoCurve((IpoCurve *)ipo->curve.first,"RotX"));
 					testhandles_ipocurve(findIpoCurve((IpoCurve *)ipo->curve.first,"RotY"));
 					testhandles_ipocurve(findIpoCurve((IpoCurve *)ipo->curve.first,"RotZ"));
-				}
 #endif
+				}
 			}
 		}
 	}

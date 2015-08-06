@@ -1021,6 +1021,12 @@ static void rna_FractureModifier_splinter_length_set(PointerRNA* ptr, float valu
 	rmd->reset_shards = true;
 }
 
+static void rna_FractureModifier_splinter_axis_set(PointerRNA* ptr, int value)
+{
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
+	rmd->splinter_axis = value;
+	rmd->reset_shards = true;
+}
 
 static void rna_FractureModifier_nor_range_set(PointerRNA* ptr, float value)
 {
@@ -4903,7 +4909,7 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_enum_items(prop, prop_splinter_axises);
 	RNA_def_property_flag(prop, PROP_ENUM_FLAG);
 	RNA_def_property_enum_default(prop, MOD_FRACTURE_SPLINTER_Z);
-	RNA_def_property_enum_funcs(prop, NULL, "rna_FractureModifier_point_seed_set", NULL);
+	RNA_def_property_enum_funcs(prop, NULL, "rna_FractureModifier_splinter_axis_set", NULL);
 	RNA_def_property_ui_text(prop, "Splinter Axis", "Global direction of splinters");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");

@@ -636,18 +636,18 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 	    algorithm == MOD_FRACTURE_BISECT_FAST_FILL ||
 	    algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL)
 	{
-		fill_vn_i(deletemap, fm->shard_count, 1);
+		copy_vn_i(deletemap, fm->shard_count, 1);
 	}
 
 	if (fm->last_shard_tree)
 	{
 		if (expected_shards <= fm->last_expected_shards)
 		{
-			fill_vn_i(deletemap, fm->shard_count, 1);
+			copy_vn_i(deletemap, fm->shard_count, 1);
 		}
 		else
 		{
-			fill_vn_i(skipmap, expected_shards, 1);
+			copy_vn_i(skipmap, expected_shards, 1);
 		}
 
 		for (i = 0; i < expected_shards; i++)

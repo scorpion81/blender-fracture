@@ -2667,7 +2667,7 @@ static Object* do_convert_meshisland_to_object(MeshIsland *mi, Scene* scene, Gro
 	else {
 #endif
 
-	ob_new = BKE_object_add_named(G.main, scene, OB_MESH, name);
+	ob_new = BKE_object_add(G.main, scene, OB_MESH, name);
 	/*set by BKE_object_add ! */
 	*base = scene->basact;
 
@@ -2721,7 +2721,7 @@ static Object* do_convert_meshisland_to_object(MeshIsland *mi, Scene* scene, Gro
 	me = (Mesh*)ob_new->data;
 	me->edit_btmesh = NULL;
 
-	DM_to_mesh(mi->physics_mesh, me, ob_new, CD_MASK_MESH);
+	DM_to_mesh(mi->physics_mesh, me, ob_new, CD_MASK_MESH, false);
 
 	/*set origin to centroid*/
 	copy_v3_v3(cent, mi->centroid);
@@ -2800,7 +2800,7 @@ static Object* do_convert_constraints(FractureModifierData *fmd, RigidBodyShardC
 	Object* ob1 = objs[index1];
 	Object* ob2 = objs[index2];
 	char *name = BLI_strdupcat(ob->id.name + 2, "_con");
-	Object* rbcon = BKE_object_add_named(G.main, scene, OB_EMPTY, name);
+	Object* rbcon = BKE_object_add(G.main, scene, OB_EMPTY, name);
 	int iterations;
 
 	*base = scene->basact;
@@ -3037,7 +3037,7 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 		return NULL;
 	}
 
-	ob_new = BKE_object_add_named(G.main, scene, OB_MESH, name);
+	ob_new = BKE_object_add(G.main, scene, OB_MESH, name);
 	*base = scene->basact;
 
 	//MEM_freeN((void*)name);
@@ -3057,7 +3057,7 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 	me = (Mesh*)ob_new->data;
 	me->edit_btmesh = NULL;
 
-	DM_to_mesh(mi->physics_mesh, me, ob_new, CD_MASK_MESH);
+	DM_to_mesh(mi->physics_mesh, me, ob_new, CD_MASK_MESH, false);
 
 	ED_rigidbody_object_add(scene, ob_new, RBO_TYPE_ACTIVE, NULL);
 	ob_new->rigidbody_object->flag |= RBO_FLAG_KINEMATIC;
@@ -3184,7 +3184,7 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 		is_baked = true;
 	}
 
-	parent = BKE_object_add_named(G.main, scene, OB_EMPTY, name);
+	parent = BKE_object_add(G.main, scene, OB_EMPTY, name);
 	BKE_mesh_center_centroid(ob->data, obloc);
 	copy_v3_v3(parent->loc, ob->loc);
 	sub_v3_v3v3(diff, obloc, parent->loc);

@@ -5378,6 +5378,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb, Object *ob)
 		else if (md->type == eModifierType_Fracture) {
 			FractureModifierData *fmd = (FractureModifierData *)md;
 			load_fracture_modifier(fd, fmd, ob);
+		}
 		else if (md->type == eModifierType_CorrectiveSmooth) {
 			CorrectiveSmoothModifierData *csmd = (CorrectiveSmoothModifierData*)md;
 

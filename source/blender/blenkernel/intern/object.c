@@ -1054,43 +1054,11 @@ Object *BKE_object_add_only_object(Main *bmain, int type, const char *name)
 
 /* general add: to scene, with layer from area and default name */
 /* creates minimum required data, but without vertices etc. */
-Object *BKE_object_add_named(Main *bmain, Scene *scene, int type, char *custname)
+Object *BKE_object_add(Main *bmain, Scene *scene, int type, const char *name)
 {
 	Object *ob;
 	Base *base;
-	char name[MAX_ID_NAME];
 
-	if (custname) {
-		BLI_strncpy(name, custname, sizeof(name));
-		MEM_freeN(custname);
-	}
-	else {
-		BLI_strncpy(name, get_obdata_defname(type), sizeof(name));
-	}
-
-	ob = BKE_object_add_only_object(bmain, type, name);
-
-	ob->data = BKE_object_obdata_add_from_type(bmain, type);
-
-	ob->lay = scene->lay;
-
-	base = BKE_scene_base_add(scene, ob);
-	BKE_scene_base_deselect_all(scene);
-	BKE_scene_base_select(scene, base);
-	DAG_id_tag_update_ex(bmain, &ob->id, OB_RECALC_OB | OB_RECALC_DATA | OB_RECALC_TIME);
-
-	return ob;
-}
-
-/* general add: to scene, with layer from area and default name */
-/* creates minimum required data, but without vertices etc. */
-Object *BKE_object_add(Main *bmain, Scene *scene, int type)
-{
-	Object *ob;
-	Base *base;
-	char name[MAX_ID_NAME];
-
-	BLI_strncpy(name, get_obdata_defname(type), sizeof(name));
 	ob = BKE_object_add_only_object(bmain, type, name);
 
 	ob->data = BKE_object_obdata_add_from_type(bmain, type, name);

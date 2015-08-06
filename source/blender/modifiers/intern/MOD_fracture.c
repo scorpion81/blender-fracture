@@ -3345,6 +3345,7 @@ static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *UNUSED(
 }
 
 static void updateDepgraph(ModifierData *md, DagForest *forest,
+                           struct Main *UNUSED(bmain),
                            struct Scene *UNUSED(scene),
                            Object *UNUSED(ob),
                            DagNode *obNode)
@@ -3742,8 +3743,10 @@ ModifierTypeInfo modifierType_Fracture = {
 	/* freeData */ freeData,
 	/* isDisabled */ NULL,
 	/* updateDepgraph */ updateDepgraph,
+	/* updateDepsgraph */ NULL,
 	/* dependsOnTime */ dependsOnTime,
 	/* dependsOnNormals */ dependsOnNormals,
 	/* foreachObjectLink */ foreachObjectLink,
 	/* foreachIDLink */ foreachIDLink,
+	/* foreachTexLink */ NULL,
 };

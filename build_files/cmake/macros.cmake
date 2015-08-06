@@ -689,10 +689,10 @@ function(SETUP_BLENDER_SORTED_LIBS)
 
 	if(WITH_VORO)
 		list(APPEND BLENDER_SORTED_LIBS extern_voro)
+	endif()
 		
 	if(WITH_OPENSUBDIV)
 		list(APPEND BLENDER_SORTED_LIBS bf_intern_opensubdiv)
-		
 	endif()
 
 	foreach(SORTLIB ${BLENDER_SORTED_LIBS})
