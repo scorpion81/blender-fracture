@@ -4663,7 +4663,7 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 
 	static EnumPropertyItem prop_fracture_modes[] = {
 		{MOD_FRACTURE_PREFRACTURED, "PREFRACTURED", 0, "Prefractured", "Fracture the mesh once prior to the simulation"},
-		{MOD_FRACTURE_DYNAMIC, "DYNAMIC", 0, "Dynamic", "Fracture the mesh dynamically during the simulation"},
+		{MOD_FRACTURE_DYNAMIC, "DYNAMIC", 0, "Dynamic (WIP)", "Fracture the mesh dynamically during the simulation"},
 		{0, NULL, 0, NULL, NULL}
 	};
 
