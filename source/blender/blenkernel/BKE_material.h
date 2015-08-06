@@ -40,8 +40,6 @@ struct Main;
 struct Material;
 struct ID;
 struct Object;
-struct Mesh;
-struct MTFace;
 struct Scene;
 
 /* materials */
@@ -52,6 +50,7 @@ void BKE_material_free_ex(struct Material *ma, bool do_id_user);
 void test_object_materials(struct Main *bmain, struct ID *id);
 void BKE_material_resize_object(struct Object *ob, const short totcol, bool do_id_user);
 void init_material(struct Material *ma);
+void BKE_material_remap_object(struct Object *ob, const unsigned int *remap);
 struct Material *BKE_material_add(struct Main *bmain, const char *name);
 struct Material *BKE_material_copy(struct Material *ma);
 struct Material *localize_material(struct Material *ma);

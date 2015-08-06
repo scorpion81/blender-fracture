@@ -112,6 +112,7 @@ static void foreachObjectLink(
 }
 
 static void updateDepgraph(ModifierData *md, DagForest *forest,
+                           struct Main *UNUSED(bmain),
                            struct Scene *UNUSED(scene),
                            Object *UNUSED(ob),
                            DagNode *obNode)
@@ -125,6 +126,25 @@ static void updateDepgraph(ModifierData *md, DagForest *forest,
 			dag_add_relation(forest, curNode, obNode, DAG_RL_OB_DATA | DAG_RL_DATA_DATA, "Hook Modifier");
 		else
 			dag_add_relation(forest, curNode, obNode, DAG_RL_OB_DATA, "Hook Modifier");
+	}
+}
+
+static void updateDepsgraph(ModifierData *md,
+                            struct Main *UNUSED(bmain),
+                            struct Scene *UNUSED(scene),
+                            Object *UNUSED(ob),
+                            struct DepsNodeHandle *node)
+{
+	HookModifierData *hmd = (HookModifierData *)md;
+	if (hmd->object != NULL) {
+		if (hmd->subtarget[0]) {
+			/* TODO(sergey): Hpw do we add relation to bone here? */
+			//DEG_add_object_relation(node, hmd->object, DEG_OB_COMP_EVAL_POSE, "Hook Modifier");
+			DEG_add_bone_relation(node, hmd->object, hmd->subtarget, DEG_OB_COMP_BONE, "Hook Modifier");
+		}
+		else {
+			DEG_add_object_relation(node, hmd->object, DEG_OB_COMP_TRANSFORM, "Hook Modifier");
+		}
 	}
 }
 
@@ -402,6 +422,7 @@ ModifierTypeInfo modifierType_Hook = {
 	/* freeData */          freeData,
 	/* isDisabled */        isDisabled,
 	/* updateDepgraph */    updateDepgraph,
+	/* updateDepsgraph */   updateDepsgraph,
 	/* dependsOnTime */     NULL,
 	/* dependsOnNormals */	NULL,
 	/* foreachObjectLink */ foreachObjectLink,

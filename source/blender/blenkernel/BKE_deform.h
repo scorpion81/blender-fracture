@@ -41,6 +41,9 @@ struct Object;
 struct ListBase;
 struct bDeformGroup;
 struct MDeformVert;
+struct MEdge;
+struct MLoop;
+struct MPoly;
 
 struct bDeformGroup *BKE_defgroup_new(struct Object *ob, const char *name);
 void                 defgroup_copy_list(struct ListBase *lb1, struct ListBase *lb2);

@@ -68,7 +68,6 @@
 #include "RNA_access.h"
 
 #include "ED_armature.h"
-#include "ED_gpencil.h"
 #include "ED_mesh.h"
 #include "ED_screen.h"
 
@@ -200,7 +199,7 @@ static void v3d_editvertex_buts(uiLayout *layout, View3D *v3d, Object *ob, float
 	bool has_skinradius = false;
 	PointerRNA data_ptr;
 
-	fill_vn_fl(median, NBR_TRANSFORM_PROPERTIES, 0.0f);
+	copy_vn_fl(median, NBR_TRANSFORM_PROPERTIES, 0.0f);
 	tot = totedgedata = totcurvedata = totlattdata = totcurvebweight = 0;
 
 	/* make sure we got storage */

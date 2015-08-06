@@ -79,6 +79,8 @@ PyC_FlagSet bpy_bm_htype_all_flags[] = {
 	{0, NULL}
 };
 
+#define BPY_BM_HFLAG_ALL_STR "('SELECT', 'HIDE', 'SEAM', 'SMOOTH', 'TAG')"
+
 PyC_FlagSet bpy_bm_hflag_all_flags[] = {
 	{BM_ELEM_SELECT,  "SELECT"},
 	{BM_ELEM_HIDDEN,  "HIDE"},
@@ -1128,7 +1130,7 @@ PyDoc_STRVAR(bpy_bmesh_transform_doc,
 "\n"
 "   :arg matrix: transform matrix.\n"
 "   :type matrix: 4x4 :class:`mathutils.Matrix`\n"
-"   :arg filter: set of values in ('SELECT', 'HIDE', 'SEAM', 'SMOOTH', 'TAG').\n"
+"   :arg filter: set of values in " BPY_BM_HFLAG_ALL_STR ".\n"
 "   :type filter: set\n"
 );
 static PyObject *bpy_bmesh_transform(BPy_BMElem *self, PyObject *args, PyObject *kw)
@@ -3251,17 +3253,17 @@ static PyObject *bpy_bmloop_repr(BPy_BMLoop *self)
 /* Types
  * ===== */
 
-PyTypeObject BPy_BMesh_Type     = {{{0}}};
-PyTypeObject BPy_BMVert_Type    = {{{0}}};
-PyTypeObject BPy_BMEdge_Type    = {{{0}}};
-PyTypeObject BPy_BMFace_Type    = {{{0}}};
-PyTypeObject BPy_BMLoop_Type    = {{{0}}};
-PyTypeObject BPy_BMElemSeq_Type = {{{0}}};
-PyTypeObject BPy_BMVertSeq_Type = {{{0}}};
-PyTypeObject BPy_BMEdgeSeq_Type = {{{0}}};
-PyTypeObject BPy_BMFaceSeq_Type = {{{0}}};
-PyTypeObject BPy_BMLoopSeq_Type = {{{0}}};
-PyTypeObject BPy_BMIter_Type    = {{{0}}};
+PyTypeObject BPy_BMesh_Type;
+PyTypeObject BPy_BMVert_Type;
+PyTypeObject BPy_BMEdge_Type;
+PyTypeObject BPy_BMFace_Type;
+PyTypeObject BPy_BMLoop_Type;
+PyTypeObject BPy_BMElemSeq_Type;
+PyTypeObject BPy_BMVertSeq_Type;
+PyTypeObject BPy_BMEdgeSeq_Type;
+PyTypeObject BPy_BMFaceSeq_Type;
+PyTypeObject BPy_BMLoopSeq_Type;
+PyTypeObject BPy_BMIter_Type;
 
 
 
@@ -3757,104 +3759,120 @@ void bpy_bm_generic_invalidate(BPy_BMGeneric *self)
  *
  * The 'bm_r' value is assigned when empty, and used when set.
  */
-void *BPy_BMElem_PySeq_As_Array(BMesh **r_bm, PyObject *seq, Py_ssize_t min, Py_ssize_t max, Py_ssize_t *r_size,
-                                const char htype,
-                                const bool do_unique_check, const bool do_bm_check,
-                                const char *error_prefix)
+void *BPy_BMElem_PySeq_As_Array_FAST(
+        BMesh **r_bm, PyObject *seq_fast, Py_ssize_t min, Py_ssize_t max, Py_ssize_t *r_size,
+        const char htype,
+        const bool do_unique_check, const bool do_bm_check,
+        const char *error_prefix)
 {
 	BMesh *bm = (r_bm && *r_bm) ? *r_bm : NULL;
-	PyObject *seq_fast;
+	PyObject **seq_fast_items = PySequence_Fast_ITEMS(seq_fast);
+	const Py_ssize_t seq_len = PySequence_Fast_GET_SIZE(seq_fast);
+	Py_ssize_t i;
+
+	BPy_BMElem *item;
+	BMElem **alloc;
+
 	*r_size = 0;
+
+	if (seq_len < min || seq_len > max) {
+		PyErr_Format(PyExc_TypeError,
+		             "%s: sequence incorrect size, expected [%d - %d], given %d",
+		             error_prefix, min, max, seq_len);
+		return NULL;
+	}
+
+	/* from now on, use goto */
+	alloc = PyMem_MALLOC(seq_len * sizeof(BPy_BMElem **));
+
+	for (i = 0; i < seq_len; i++) {
+		item = (BPy_BMElem *)seq_fast_items[i];
+
+		if (!BPy_BMElem_CheckHType(Py_TYPE(item), htype)) {
+			PyErr_Format(PyExc_TypeError,
+			             "%s: expected %.200s, not '%.200s'",
+			             error_prefix, BPy_BMElem_StringFromHType(htype), Py_TYPE(item)->tp_name);
+			goto err_cleanup;
+		}
+		else if (!BPY_BM_IS_VALID(item)) {
+			PyErr_Format(PyExc_TypeError,
+			             "%s: %d %s has been removed",
+			             error_prefix, i, Py_TYPE(item)->tp_name);
+			goto err_cleanup;
+		}
+		/* trick so we can ensure all items have the same mesh,
+		 * and allows us to pass the 'bm' as NULL. */
+		else if (do_bm_check && (bm && bm != item->bm)) {
+			PyErr_Format(PyExc_ValueError,
+			             "%s: %d %s is from another mesh",
+			             error_prefix, i, BPy_BMElem_StringFromHType(htype));
+			goto err_cleanup;
+		}
+
+		if (bm == NULL) {
+			bm = item->bm;
+		}
+
+		alloc[i] = item->ele;
+
+		if (do_unique_check) {
+			BM_elem_flag_enable(item->ele, BM_ELEM_INTERNAL_TAG);
+		}
+	}
+
+	if (do_unique_check) {
+		/* check for double verts! */
+		bool ok = true;
+		for (i = 0; i < seq_len; i++) {
+			if (UNLIKELY(BM_elem_flag_test(alloc[i], BM_ELEM_INTERNAL_TAG) == false)) {
+				ok = false;
+			}
+
+			/* ensure we don't leave this enabled */
+			BM_elem_flag_disable(alloc[i], BM_ELEM_INTERNAL_TAG);
+		}
+
+		if (ok == false) {
+			PyErr_Format(PyExc_ValueError,
+			             "%s: found the same %.200s used multiple times",
+			             error_prefix, BPy_BMElem_StringFromHType(htype));
+			goto err_cleanup;
+		}
+	}
+
+	*r_size = seq_len;
+	if (r_bm) *r_bm = bm;
+	return alloc;
+
+err_cleanup:
+	PyMem_FREE(alloc);
+	return NULL;
+
+}
+
+void *BPy_BMElem_PySeq_As_Array(
+        BMesh **r_bm, PyObject *seq, Py_ssize_t min, Py_ssize_t max, Py_ssize_t *r_size,
+        const char htype,
+        const bool do_unique_check, const bool do_bm_check,
+        const char *error_prefix)
+{
+	PyObject *seq_fast;
+	PyObject *ret;
 
 	if (!(seq_fast = PySequence_Fast(seq, error_prefix))) {
 		return NULL;
 	}
-	else {
-		Py_ssize_t seq_len;
-		Py_ssize_t i;
 
-		BPy_BMElem *item;
-		BMElem **alloc;
+	ret = BPy_BMElem_PySeq_As_Array_FAST(
+	        r_bm, seq_fast, min, max, r_size,
+	        htype,
+	        do_unique_check, do_bm_check,
+	        error_prefix);
 
-		seq_len = PySequence_Fast_GET_SIZE(seq_fast);
-
-		if (seq_len < min || seq_len > max) {
-			PyErr_Format(PyExc_TypeError,
-			             "%s: sequence incorrect size, expected [%d - %d], given %d",
-			             error_prefix, min, max, seq_len);
-			return NULL;
-		}
-
-
-		/* from now on, use goto */
-		alloc = PyMem_MALLOC(seq_len * sizeof(BPy_BMElem **));
-
-		for (i = 0; i < seq_len; i++) {
-			item = (BPy_BMElem *)PySequence_Fast_GET_ITEM(seq_fast, i);
-
-			if (!BPy_BMElem_CheckHType(Py_TYPE(item), htype)) {
-				PyErr_Format(PyExc_TypeError,
-				             "%s: expected %.200s, not '%.200s'",
-				             error_prefix, BPy_BMElem_StringFromHType(htype), Py_TYPE(item)->tp_name);
-				goto err_cleanup;
-			}
-			else if (!BPY_BM_IS_VALID(item)) {
-				PyErr_Format(PyExc_TypeError,
-				             "%s: %d %s has been removed",
-				             error_prefix, i, Py_TYPE(item)->tp_name);
-				goto err_cleanup;
-			}
-			/* trick so we can ensure all items have the same mesh,
-			 * and allows us to pass the 'bm' as NULL. */
-			else if (do_bm_check && (bm && bm != item->bm)) {
-				PyErr_Format(PyExc_ValueError,
-				             "%s: %d %s is from another mesh",
-				             error_prefix, i, BPy_BMElem_StringFromHType(htype));
-				goto err_cleanup;
-			}
-
-			if (bm == NULL) {
-				bm = item->bm;
-			}
-
-			alloc[i] = item->ele;
-
-			if (do_unique_check) {
-				BM_elem_flag_enable(item->ele, BM_ELEM_INTERNAL_TAG);
-			}
-		}
-
-		if (do_unique_check) {
-			/* check for double verts! */
-			bool ok = true;
-			for (i = 0; i < seq_len; i++) {
-				if (UNLIKELY(BM_elem_flag_test(alloc[i], BM_ELEM_INTERNAL_TAG) == false)) {
-					ok = false;
-				}
-
-				/* ensure we don't leave this enabled */
-				BM_elem_flag_disable(alloc[i], BM_ELEM_INTERNAL_TAG);
-			}
-
-			if (ok == false) {
-				PyErr_Format(PyExc_ValueError,
-				             "%s: found the same %.200s used multiple times",
-				             error_prefix, BPy_BMElem_StringFromHType(htype));
-				goto err_cleanup;
-			}
-		}
-
-		Py_DECREF(seq_fast);
-		*r_size = seq_len;
-		if (r_bm) *r_bm = bm;
-		return alloc;
-
-err_cleanup:
-		Py_DECREF(seq_fast);
-		PyMem_FREE(alloc);
-		return NULL;
-	}
+	Py_DECREF(seq_fast);
+	return ret;
 }
+
 
 PyObject *BPy_BMElem_Array_As_Tuple(BMesh *bm, BMHeader **elem, Py_ssize_t elem_len)
 {

@@ -45,6 +45,7 @@ set(DEFSRC
 	rna_context.c
 	rna_controller.c
 	rna_curve.c
+	rna_depsgraph.c
 	rna_dynamicpaint.c
 	rna_fcurve.c
 	rna_fluidsim.c
@@ -67,6 +68,7 @@ set(DEFSRC
 	rna_object.c
 	rna_object_force.c
 	rna_packedfile.c
+	rna_palette.c
 	rna_particle.c
 	rna_pose.c
 	rna_property.c
@@ -124,6 +126,9 @@ set(APISRC
 )
 
 string(REGEX REPLACE "rna_([a-zA-Z0-9_-]*).c" "${CMAKE_CURRENT_BINARY_DIR}/rna_\\1_gen.c" GENSRC "${DEFSRC}")
+list(APPEND GENSRC
+	"${CMAKE_CURRENT_BINARY_DIR}/rna_prototypes_gen.h"
+)
 set_source_files_properties(${GENSRC} PROPERTIES GENERATED TRUE)
 
 # --------------------------
@@ -219,7 +224,11 @@ if(WITH_IMAGE_FRAMESERVER)
 endif()
 
 if(WITH_AUDASPACE)
-	add_definitions(-DWITH_AUDASPACE)
+	add_definitions(${AUDASPACE_DEFINITIONS})
+
+	list(APPEND INC_SYS
+		${AUDASPACE_C_INCLUDE_DIRS}
+	)
 endif()
 
 if(WITH_CODEC_QUICKTIME)
@@ -295,6 +304,13 @@ if(WITH_FREESTYLE)
 	add_definitions(-DWITH_FREESTYLE)
 endif()
 
+if(WITH_OPENSUBDIV)
+	list(APPEND INC
+		../../../../intern/opensubdiv
+	)
+	add_definitions(-DWITH_OPENSUBDIV)
+endif()
+
 # Build makesrna executable
 blender_include_dirs(
 	.
@@ -303,6 +319,7 @@ blender_include_dirs(
 	../../blenlib
 	../../bmesh
 	../../blenfont
+	../../depsgraph
 	../../gpu
 	../../imbuf
 	../../ikplugin
@@ -312,7 +329,6 @@ blender_include_dirs(
 	../../windowmanager
 	../../editors/include
 	../../render/extern/include
-	../../../../intern/audaspace/intern
 	../../../../intern/cycles/blender
 	../../../../intern/guardedalloc
 	../../../../intern/glew-mx

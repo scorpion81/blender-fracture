@@ -470,6 +470,19 @@ enum InterpolationType {
 	INTERPOLATION_SMART = 3,
 };
 
+/* Extension types for textures.
+ *
+ * Defines how the image is extrapolated past its original bounds.
+ */
+enum ExtensionType {
+	/* Cause the image to repeat horizontally and vertically. */
+	EXTENSION_REPEAT = 0,
+	/* Extend by repeating edge pixels of the image. */
+	EXTENSION_EXTEND = 1,
+	/* Clip to image size and set exterior pixels as transparent. */
+	EXTENSION_CLIP = 2,
+};
+
 /* macros */
 
 /* hints for branch prediction, only use in code that runs a _lot_ */
@@ -481,18 +494,32 @@ enum InterpolationType {
 #  define UNLIKELY(x)     (x)
 #endif
 
+#if defined(__cplusplus) && ((__cplusplus >= 201103L) || (defined(_MSC_VER) && _MSC_VER >= 1800))
+#  define HAS_CPP11_FEATURES
+#endif
+
+#if defined(__GNUC__) || defined(__clang__)
+#  if defined(HAS_CPP11_FEATURES)
+/* Some magic to be sure we don't have reference in the type. */
+template<typename T> static inline T decltype_helper(T x) { return x; }
+#    define TYPEOF(x) decltype(decltype_helper(x))
+#  else
+#    define TYPEOF(x) typeof(x)
+#  endif
+#endif
+
 /* Causes warning:
  * incompatible types when assigning to type 'Foo' from type 'Bar'
  * ... the compiler optimizes away the temp var */
 #ifdef __GNUC__
 #define CHECK_TYPE(var, type)  {  \
-	typeof(var) *__tmp;         \
+	TYPEOF(var) *__tmp;         \
 	__tmp = (type *)NULL;         \
 	(void)__tmp;                  \
 } (void)0
 
 #define CHECK_TYPE_PAIR(var_a, var_b)  {  \
-	typeof(var_a) *__tmp;                 \
+	TYPEOF(var_a) *__tmp;                 \
 	__tmp = (typeof(var_b) *)NULL;        \
 	(void)__tmp;                          \
 } (void)0

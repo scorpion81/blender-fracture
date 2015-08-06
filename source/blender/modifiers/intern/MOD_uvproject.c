@@ -51,7 +51,9 @@
 #include "MOD_modifiertypes.h"
 
 #include "MEM_guardedalloc.h"
+
 #include "depsgraph_private.h"
+#include "DEG_depsgraph_build.h"
 
 static void initData(ModifierData *md)
 {
@@ -104,6 +106,7 @@ static void foreachIDLink(ModifierData *md, Object *ob,
 }
 
 static void updateDepgraph(ModifierData *md, DagForest *forest,
+                           struct Main *UNUSED(bmain),
                            struct Scene *UNUSED(scene),
                            Object *UNUSED(ob),
                            DagNode *obNode)
@@ -117,6 +120,21 @@ static void updateDepgraph(ModifierData *md, DagForest *forest,
 
 			dag_add_relation(forest, curNode, obNode,
 			                 DAG_RL_DATA_DATA | DAG_RL_OB_DATA, "UV Project Modifier");
+		}
+	}
+}
+
+static void updateDepsgraph(ModifierData *md,
+                            struct Main *UNUSED(bmain),
+                            struct Scene *UNUSED(scene),
+                            Object *UNUSED(ob),
+                            struct DepsNodeHandle *node)
+{
+	UVProjectModifierData *umd = (UVProjectModifierData *)md;
+	int i;
+	for (i = 0; i < umd->num_projectors; ++i) {
+		if (umd->projectors[i] != NULL) {
+			DEG_add_object_relation(node, umd->projectors[i], DEG_OB_COMP_TRANSFORM, "UV Project Modifier");
 		}
 	}
 }
@@ -138,7 +156,7 @@ static DerivedMesh *uvprojectModifier_do(UVProjectModifierData *umd,
 	Image *image = umd->image;
 	MPoly *mpoly, *mp;
 	MLoop *mloop;
-	int override_image = ((umd->flags & MOD_UVPROJECT_OVERRIDEIMAGE) != 0);
+	const bool override_image = (umd->flags & MOD_UVPROJECT_OVERRIDEIMAGE) != 0;
 	Projector projectors[MOD_UVPROJECT_MAXPROJECTORS];
 	int num_projectors = 0;
 	char uvname[MAX_CUSTOMDATA_LAYER_NAME];
@@ -368,6 +386,7 @@ ModifierTypeInfo modifierType_UVProject = {
 	/* freeData */          NULL,
 	/* isDisabled */        NULL,
 	/* updateDepgraph */    updateDepgraph,
+	/* updateDepsgraph */   updateDepsgraph,
 	/* dependsOnTime */     NULL,
 	/* dependsOnNormals */	NULL,
 	/* foreachObjectLink */ foreachObjectLink,

@@ -89,6 +89,7 @@ int     BLI_system_num_threads_override_get(void);
 #define LOCK_MOVIECLIP  7
 #define LOCK_COLORMANAGE 8
 #define LOCK_FFTW       9
+#define LOCK_VIEW3D     10
 
 void    BLI_lock_thread(int type);
 void    BLI_unlock_thread(int type);
@@ -174,6 +175,7 @@ void BLI_thread_queue_push(ThreadQueue *queue, void *work);
 void *BLI_thread_queue_pop(ThreadQueue *queue);
 void *BLI_thread_queue_pop_timeout(ThreadQueue *queue, int ms);
 int BLI_thread_queue_size(ThreadQueue *queue);
+bool BLI_thread_queue_is_empty(ThreadQueue *queue);
 
 void BLI_thread_queue_wait_finish(ThreadQueue *queue);
 void BLI_thread_queue_nowait(ThreadQueue *queue);

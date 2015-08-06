@@ -150,6 +150,7 @@ static bool isDisabled(ModifierData *md, int UNUSED(useRenderParams))
 }
 
 static void updateDepgraph(ModifierData *md, DagForest *forest,
+                           struct Main *UNUSED(bmain),
                            struct Scene *UNUSED(scene),
                            Object *UNUSED(ob),
                            DagNode *obNode)
@@ -168,6 +169,21 @@ static void updateDepgraph(ModifierData *md, DagForest *forest,
 		dag_add_relation(forest, obNode, obNode,
 		                 DAG_RL_DATA_DATA | DAG_RL_OB_DATA, "Displace Modifier");
 	
+}
+
+static void updateDepsgraph(ModifierData *md,
+                            struct Main *UNUSED(bmain),
+                            struct Scene *UNUSED(scene),
+                            Object *ob,
+                            struct DepsNodeHandle *node)
+{
+	DisplaceModifierData *dmd = (DisplaceModifierData *)md;
+	if (dmd->map_object != NULL && dmd->texmapping == MOD_DISP_MAP_OBJECT) {
+		DEG_add_object_relation(node, dmd->map_object, DEG_OB_COMP_TRANSFORM, "Displace Modifier");
+	}
+	if (dmd->texmapping == MOD_DISP_MAP_GLOBAL) {
+		DEG_add_object_relation(node, ob, DEG_OB_COMP_TRANSFORM, "Displace Modifier");
+	}
 }
 
 /* dm must be a CDDerivedMesh */
@@ -301,6 +317,7 @@ ModifierTypeInfo modifierType_Displace = {
 	/* freeData */          freeData,
 	/* isDisabled */        isDisabled,
 	/* updateDepgraph */    updateDepgraph,
+	/* updateDepsgraph */   updateDepsgraph,
 	/* dependsOnTime */     dependsOnTime,
 	/* dependsOnNormals */	dependsOnNormals,
 	/* foreachObjectLink */ foreachObjectLink,

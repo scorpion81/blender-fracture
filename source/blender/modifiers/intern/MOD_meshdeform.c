@@ -123,6 +123,7 @@ static void foreachObjectLink(
 }
 
 static void updateDepgraph(ModifierData *md, DagForest *forest,
+                           struct Main *UNUSED(bmain),
                            struct Scene *UNUSED(scene),
                            Object *UNUSED(ob),
                            DagNode *obNode)
@@ -135,6 +136,19 @@ static void updateDepgraph(ModifierData *md, DagForest *forest,
 		dag_add_relation(forest, curNode, obNode,
 		                 DAG_RL_DATA_DATA | DAG_RL_OB_DATA | DAG_RL_DATA_OB | DAG_RL_OB_OB,
 		                 "Mesh Deform Modifier");
+	}
+}
+
+static void updateDepsgraph(ModifierData *md,
+                            struct Main *UNUSED(bmain),
+                            struct Scene *UNUSED(scene),
+                            Object *UNUSED(ob),
+                            struct DepsNodeHandle *node)
+{
+	MeshDeformModifierData *mmd = (MeshDeformModifierData *)md;
+	if (mmd->object != NULL) {
+		/* TODO(sergey): Do we need transform component here? */
+		DEG_add_object_relation(node, mmd->object, DEG_OB_COMP_GEOMETRY, "Mesh Deform Modifier");
 	}
 }
 
@@ -304,7 +318,7 @@ static void meshdeformModifier_do(
 	 */
 	if (mmd->object == md->scene->obedit) {
 		BMEditMesh *em = BKE_editmesh_from_object(mmd->object);
-		tmpdm = editbmesh_get_derived_cage_and_final(md->scene, mmd->object, em, &cagedm, 0);
+		tmpdm = editbmesh_get_derived_cage_and_final(md->scene, mmd->object, em, 0, &cagedm);
 		if (tmpdm)
 			tmpdm->release(tmpdm);
 	}
@@ -520,6 +534,7 @@ ModifierTypeInfo modifierType_MeshDeform = {
 	/* freeData */          freeData,
 	/* isDisabled */        isDisabled,
 	/* updateDepgraph */    updateDepgraph,
+	/* updateDepsgraph */   updateDepsgraph,
 	/* dependsOnTime */     NULL,
 	/* dependsOnNormals */  NULL,
 	/* foreachObjectLink */ foreachObjectLink,

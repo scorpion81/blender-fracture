@@ -53,6 +53,7 @@
 #include "BKE_anim.h"
 #include "BKE_cdderivedmesh.h"
 #include "BKE_curve.h"
+#include "BKE_depsgraph.h"
 #include "BKE_displist.h"
 #include "BKE_global.h"
 #include "BKE_key.h"
@@ -307,7 +308,7 @@ void BKE_lattice_free(Lattice *lt)
 	
 	/* free animation data */
 	if (lt->adt) {
-		BKE_free_animdata(&lt->id);
+		BKE_animdata_free(&lt->id);
 		lt->adt = NULL;
 	}
 }
@@ -725,8 +726,9 @@ static bool calc_curve_deform(Scene *scene, Object *par, float co[3],
 	return false;
 }
 
-void curve_deform_verts(Scene *scene, Object *cuOb, Object *target, DerivedMesh *dm, float (*vertexCos)[3],
-                        int numVerts, const char *vgroup, short defaxis)
+void curve_deform_verts(
+        Scene *scene, Object *cuOb, Object *target, DerivedMesh *dm, float (*vertexCos)[3],
+        int numVerts, const char *vgroup, short defaxis)
 {
 	Curve *cu;
 	int a;
@@ -1068,7 +1070,7 @@ void BKE_lattice_modifiers_calc(Scene *scene, Object *ob)
 	}
 
 	for (; md; md = md->next) {
-		ModifierTypeInfo *mti = modifierType_getInfo(md->type);
+		const ModifierTypeInfo *mti = modifierType_getInfo(md->type);
 
 		md->scene = scene;
 		
@@ -1203,5 +1205,12 @@ void BKE_lattice_translate(Lattice *lt, float offset[3], bool do_keys)
 			}
 		}
 	}
+}
+
+/* **** Depsgraph evaluation **** */
+
+void BKE_lattice_eval_geometry(EvaluationContext *UNUSED(eval_ctx),
+                               Lattice *UNUSED(latt))
+{
 }
 

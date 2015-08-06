@@ -301,7 +301,7 @@ static void wm_init_userdef(bContext *C, const bool from_memory)
 	UI_init_userdef();
 	
 	MEM_CacheLimiter_set_maximum(((size_t)U.memcachelimit) * 1024 * 1024);
-	sound_init(bmain);
+	BKE_sound_init(bmain);
 
 	/* needed so loading a file from the command line respects user-pref [#26156] */
 	BKE_BIT_TEST_SET(G.fileflags, U.flag & USER_FILENOUI, G_FILE_NO_UI);
@@ -506,13 +506,13 @@ bool WM_file_read(bContext *C, const char *filepath, ReportList *reports)
 		}
 #endif
 
-		BKE_reset_undo();
-		BKE_write_undo(C, "original");  /* save current state */
+		BKE_undo_reset();
+		BKE_undo_write(C, "original");  /* save current state */
 
 		success = true;
 	}
 	else if (retval == BKE_READ_EXOTIC_OK_OTHER)
-		BKE_write_undo(C, "Import file");
+		BKE_undo_write(C, "Import file");
 	else if (retval == BKE_READ_EXOTIC_FAIL_OPEN) {
 		BKE_reportf(reports, RPT_ERROR, "Cannot read file '%s': %s", filepath,
 		            errno ? strerror(errno) : TIP_("unable to open the file"));
@@ -660,8 +660,8 @@ int wm_homefile_read(bContext *C, ReportList *reports, bool from_memory, const c
 //	refresh_interface_font();
 	
 //	undo_editmode_clear();
-	BKE_reset_undo();
-	BKE_write_undo(C, "original");  /* save current state */
+	BKE_undo_reset();
+	BKE_undo_write(C, "original");  /* save current state */
 
 	ED_editors_init(C);
 	DAG_on_visible_update(CTX_data_main(C), true);
@@ -745,7 +745,8 @@ void wm_read_history(void)
 	/* read list of recent opened files from recent-files.txt to memory */
 	for (l = lines, num = 0; l && (num < U.recent_files); l = l->next) {
 		line = l->link;
-		if (line[0] && BLI_exists(line)) {
+		/* don't check if files exist, causes slow startup for remote/external drives */
+		if (line[0]) {
 			recent = (RecentFile *)MEM_mallocN(sizeof(RecentFile), "RecentFile");
 			BLI_addtail(&(G.recent_files), recent);
 			recent->filepath = BLI_strdup(line);
@@ -846,11 +847,11 @@ static ImBuf *blend_file_thumb(Scene *scene, bScreen *screen, int **thumb_pt)
 	if (scene->camera) {
 		ibuf = ED_view3d_draw_offscreen_imbuf_simple(scene, scene->camera,
 		                                             BLEN_THUMB_SIZE * 2, BLEN_THUMB_SIZE * 2,
-		                                             IB_rect, OB_SOLID, false, false, false, R_ALPHAPREMUL, err_out);
+		                                             IB_rect, OB_SOLID, false, false, false, R_ALPHAPREMUL, NULL, err_out);
 	}
 	else {
 		ibuf = ED_view3d_draw_offscreen_imbuf(scene, v3d, ar, BLEN_THUMB_SIZE * 2, BLEN_THUMB_SIZE * 2,
-		                                      IB_rect, false, R_ALPHAPREMUL, err_out);
+		                                      IB_rect, false, R_ALPHAPREMUL, NULL, err_out);
 	}
 
 	if (ibuf) {
@@ -860,7 +861,7 @@ static ImBuf *blend_file_thumb(Scene *scene, bScreen *screen, int **thumb_pt)
 		IMB_scaleImBuf(ibuf, BLEN_THUMB_SIZE, BLEN_THUMB_SIZE);
 
 		/* add pretty overlay */
-		IMB_overlayblend_thumb(ibuf->rect, ibuf->x, ibuf->y, aspect);
+		IMB_thumb_overlay_blend(ibuf->rect, ibuf->x, ibuf->y, aspect);
 		
 		/* first write into thumb buffer */
 		thumb = MEM_mallocN(((2 + (BLEN_THUMB_SIZE * BLEN_THUMB_SIZE))) * sizeof(int), "write_file thumb");
@@ -951,7 +952,7 @@ int wm_file_write(bContext *C, const char *filepath, int fileflags, ReportList *
 	/* operator now handles overwrite checks */
 
 	if (G.fileflags & G_AUTOPACK) {
-		packAll(G.main, reports);
+		packAll(G.main, reports, false);
 	}
 
 	/* don't forget not to return without! */
@@ -991,7 +992,7 @@ int wm_file_write(bContext *C, const char *filepath, int fileflags, ReportList *
 		/* run this function after because the file cant be written before the blend is */
 		if (ibuf_thumb) {
 			IMB_thumb_delete(filepath, THB_FAIL); /* without this a failed thumb overrides */
-			ibuf_thumb = IMB_thumb_create(filepath, THB_NORMAL, THB_SOURCE_BLEND, ibuf_thumb);
+			ibuf_thumb = IMB_thumb_create(filepath, THB_LARGE, THB_SOURCE_BLEND, ibuf_thumb);
 			IMB_freeImBuf(ibuf_thumb);
 		}
 
@@ -1035,7 +1036,7 @@ int wm_homefile_write_exec(bContext *C, wmOperator *op)
 	ED_editors_flush_edits(C, false);
 
 	/*  force save as regular blend file */
-	fileflags = G.fileflags & ~(G_FILE_COMPRESS | G_FILE_AUTOPLAY | G_FILE_LOCK | G_FILE_SIGN | G_FILE_HISTORY);
+	fileflags = G.fileflags & ~(G_FILE_COMPRESS | G_FILE_AUTOPLAY | G_FILE_HISTORY);
 
 	if (BLO_write_file(CTX_data_main(C), filepath, fileflags | G_FILE_USERPREFS, op->reports, NULL) == 0) {
 		printf("fail\n");
@@ -1086,7 +1087,7 @@ void wm_autosave_location(char *filepath)
 	if (G.main && G.relbase_valid) {
 		const char *basename = BLI_path_basename(G.main->name);
 		int len = strlen(basename) - 6;
-		BLI_snprintf(path, sizeof(path), "%.*s-%d.blend", len, basename, pid);
+		BLI_snprintf(path, sizeof(path), "%.*s.blend", len, basename);
 	}
 	else {
 		BLI_snprintf(path, sizeof(path), "%d.blend", pid);
@@ -1137,8 +1138,6 @@ void wm_autosave_timer(const bContext *C, wmWindowManager *wm, wmTimer *UNUSED(w
 		}
 	}
 
-	ED_editors_flush_edits(C, false);
-
 	wm_autosave_location(filepath);
 
 	if (U.uiflag & USER_GLOBALUNDO) {
@@ -1147,7 +1146,9 @@ void wm_autosave_timer(const bContext *C, wmWindowManager *wm, wmTimer *UNUSED(w
 	}
 	else {
 		/*  save as regular blend file */
-		int fileflags = G.fileflags & ~(G_FILE_COMPRESS | G_FILE_AUTOPLAY | G_FILE_LOCK | G_FILE_SIGN | G_FILE_HISTORY);
+		int fileflags = G.fileflags & ~(G_FILE_COMPRESS | G_FILE_AUTOPLAY | G_FILE_HISTORY);
+
+		ED_editors_flush_edits(C, false);
 
 		/* no error reporting to console */
 		BLO_write_file(CTX_data_main(C), filepath, fileflags, NULL, NULL);

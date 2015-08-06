@@ -136,7 +136,9 @@ static void foreachTexLink(ModifierData *md, Object *ob, TexWalkFunc walk, void 
 	walk(userData, ob, md, "texture");
 }
 
-static void updateDepgraph(ModifierData *md, DagForest *forest, struct Scene *UNUSED(scene),
+static void updateDepgraph(ModifierData *md, DagForest *forest,
+                           struct Main *UNUSED(bmain),
+                           struct Scene *UNUSED(scene),
                            Object *UNUSED(ob), DagNode *obNode)
 {
 	WarpModifierData *wmd = (WarpModifierData *) md;
@@ -152,6 +154,22 @@ static void updateDepgraph(ModifierData *md, DagForest *forest, struct Scene *UN
 	if ((wmd->texmapping == MOD_DISP_MAP_OBJECT) && wmd->map_object) {
 		DagNode *curNode = dag_get_node(forest, wmd->map_object);
 		dag_add_relation(forest, curNode, obNode, DAG_RL_DATA_DATA | DAG_RL_OB_DATA, "Warp Modifier3");
+	}
+}
+
+static void updateDepsgraph(ModifierData *md,
+                            struct Main *UNUSED(bmain),
+                            struct Scene *UNUSED(scene),
+                            Object *UNUSED(ob),
+                            struct DepsNodeHandle *node)
+{
+	WarpModifierData *wmd = (WarpModifierData *) md;
+	if (wmd->object_from != NULL && wmd->object_to != NULL) {
+		DEG_add_object_relation(node, wmd->object_from, DEG_OB_COMP_TRANSFORM, "Warp Modifier from");
+		DEG_add_object_relation(node, wmd->object_to, DEG_OB_COMP_TRANSFORM, "Warp Modifier to");
+	}
+	if ((wmd->texmapping == MOD_DISP_MAP_OBJECT) && wmd->map_object != NULL) {
+		DEG_add_object_relation(node, wmd->map_object, DEG_OB_COMP_TRANSFORM, "Warp Modifier map");
 	}
 }
 
@@ -370,6 +388,7 @@ ModifierTypeInfo modifierType_Warp = {
 	/* freeData */          freeData,
 	/* isDisabled */        isDisabled,
 	/* updateDepgraph */    updateDepgraph,
+	/* updateDepsgraph */   updateDepsgraph,
 	/* dependsOnTime */     dependsOnTime,
 	/* dependsOnNormals */  NULL,
 	/* foreachObjectLink */ foreachObjectLink,

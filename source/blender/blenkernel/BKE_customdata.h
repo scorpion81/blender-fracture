@@ -46,7 +46,6 @@ extern "C" {
 struct BMesh;
 struct ID;
 struct CustomData;
-struct CustomDataLayer;
 typedef uint64_t CustomDataMask;
 
 /*a data type large enough to hold 1 element from any customdata layer type*/
@@ -96,6 +95,11 @@ bool CustomData_has_math(const struct CustomData *data);
 bool CustomData_has_interp(const struct CustomData *data);
 bool CustomData_bmesh_has_free(const struct CustomData *data);
 
+/**
+ * Checks if any of the customdata layers is referenced.
+ */
+bool CustomData_has_referenced(const struct CustomData *data);
+
 /* copies the "value" (e.g. mloopuv uv or mloopcol colors) from one block to
  * another, while not overwriting anything else (e.g. flags).  probably only
  * implemented for mloopuv/mloopcol, for now.*/
@@ -141,6 +145,9 @@ void CustomData_reset(struct CustomData *data);
  * itself, though)
  */
 void CustomData_free(struct CustomData *data, int totelem);
+
+/* same as above, but only frees layers which matches the given mask. */
+void CustomData_free_typemask(struct CustomData *data, int totelem, CustomDataMask mask);
 
 /* frees all layers with CD_FLAG_TEMPORARY */
 void CustomData_free_temporary(struct CustomData *data, int totelem);
@@ -337,6 +344,9 @@ void CustomData_to_bmesh_block(const struct CustomData *source,
 void CustomData_from_bmesh_block(const struct CustomData *source, 
                                  struct CustomData *dest, void *src_block, int dest_index);
 
+void CustomData_file_write_prepare(
+        struct CustomData *data,
+        struct CustomDataLayer **r_write_layers, struct CustomDataLayer *write_layers_buff, size_t write_layers_size);
 
 /* query info over types */
 void CustomData_file_write_info(int type, const char **structname, int *structnum);

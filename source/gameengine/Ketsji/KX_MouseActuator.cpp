@@ -278,7 +278,10 @@ bool KX_MouseActuator::Update()
 					setposition[1] = center_y;
 				}
 
-				setMousePosition(setposition[0], setposition[1]);
+				// only trigger mouse event when it is necessary
+				if (m_oldposition[0] != position[0] || m_oldposition[1] != position[1]) {
+					setMousePosition(setposition[0], setposition[1]);
+				}
 
 				m_oldposition[0] = position[0];
 				m_oldposition[1] = position[1];
@@ -334,7 +337,7 @@ void KX_MouseActuator::setMousePosition(float fx, float fy)
 	m_canvas->SetMousePosition(x, y);
 }
 
-#ifndef DISABLE_PYTHON
+#ifdef WITH_PYTHON
 
 /* ------------------------------------------------------------------------- */
 /* Python functions                                                          */
@@ -533,4 +536,4 @@ PyObject* KX_MouseActuator::PyReset()
 	Py_RETURN_NONE;
 }
 
-#endif
+#endif  /* WITH_PYTHON */
