@@ -1149,6 +1149,10 @@ static void stroke_to_faces(FractureModifierData *fmd, BMesh** bm, bGPDstroke *g
 		{
 			sub_v3_v3(v->co, half);
 		}
+
+		BM_mesh_elem_hflag_enable_all(*bm, BM_FACE | BM_EDGE | BM_VERT, BM_ELEM_SELECT, false);
+		BMO_op_callf(*bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+		             "remove_doubles verts=%av dist=%f", BM_VERTS_OF_MESH, 0.01, false);
 	}
 }
 
