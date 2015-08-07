@@ -1295,11 +1295,31 @@ static void intersect_shards_by_dm(FractureModifierData *fmd, DerivedMesh *d, Ob
 	BKE_shard_free(t, true);
 }
 
+static void reset_shards(FractureModifierData *fmd)
+{
+	if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED && fmd->reset_shards)
+	{
+		FracMesh *fm = fmd->frac_mesh;
+		while (fm && fm->shard_map.first)
+		{
+			Shard *t = fm->shard_map.first;
+			BLI_remlink_safe(&fm->shard_map, t);
+			printf("Resetting shard (Greasepencil/Cutter Plane): %d\n", t->shard_id);
+			BKE_shard_free(t, true);
+		}
+		fm->shard_count = 0;
+		/* do not reset again afterwards, in case we have multiple point sources */
+		fmd->reset_shards = false;
+	}
+}
+
 void BKE_fracture_shard_by_greasepencil(FractureModifierData *fmd, Object *obj, short inner_material_index, float mat[4][4])
 {
 	bGPDlayer *gpl;
 	bGPDframe *gpf;
 	bGPDstroke *gps;
+
+	reset_shards(fmd);
 
 	if ((obj->gpd) && (obj->gpd->layers.first)) {
 
@@ -1345,6 +1365,7 @@ void BKE_fracture_shard_by_planes(FractureModifierData *fmd, Object *obj, short 
 		GroupObject* go;
 		float imat[4][4];
 
+		reset_shards(fmd);
 		invert_m4_m4(imat, obj->obmat);
 
 		for (go = fmd->cutter_group->gobject.first; go; go = go->next)

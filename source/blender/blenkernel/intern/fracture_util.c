@@ -559,8 +559,23 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 		other_dm = NewBooleanDerivedMesh(left_dm, obj, right_dm, obj, 3);
 
 		/*check for watertightness again, true means do return NULL here*/
-		if (do_check_watertight_other(&other_dm, &output_dm, other, right_dm, &left_dm, mat))
+		if (!other_dm || do_check_watertight_other(&other_dm, &output_dm, other, right_dm, &left_dm, mat))
 		{
+			if (!other_dm) {
+				/* in case of failed boolean op, clean up other dms too before returning NULL */
+				if (left_dm) {
+					left_dm->needsFree = 1;
+					left_dm->release(left_dm);
+					left_dm = NULL;
+				}
+
+				if (output_dm) {
+					output_dm->needsFree = 1;
+					output_dm->release(left_dm);
+					output_dm = NULL;
+				}
+			}
+
 			return NULL;
 		}
 
