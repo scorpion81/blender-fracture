@@ -1606,7 +1606,7 @@ static void search_tree_based(Object* ob, MeshIsland *mi, MeshIsland **meshIslan
 	KDTreeNearest *n3 = NULL;
 	float dist, obj_centr[3];
 	ConstraintContainer* cc = ob->rigidbody_constraint->fracture_constraints;
-	bool outer = ob->rigidbody_constraint->ob1 == ob->rigidbody_constraint->ob2;
+	bool outer = ob->rigidbody_constraint->ob1 != ob->rigidbody_constraint->ob2;
 
 	limit = cc->constraint_limit;
 	dist = cc->contact_dist;
@@ -1727,7 +1727,7 @@ static void create_constraints(Object *ob, MeshIsland **mesh_islands, int count,
 	RigidBodyOb *rb1 = rbc->ob1->rigidbody_object;
 	RigidBodyOb *rb2 = rbc->ob2->rigidbody_object;
 	DerivedMesh *dm1 = rb1->fracture_objects->current->visual_mesh;
-	DerivedMesh *dm2 = rb1->fracture_objects->current->visual_mesh;
+	DerivedMesh *dm2 = rb2->fracture_objects->current->visual_mesh;
 	DerivedMesh *dm = combine_dm(rbc->ob1, rbc->ob2, dm1, dm2);
 	int i = 0;
 
@@ -3689,11 +3689,14 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 		if (deletemap[i])
 		{
 			Shard *t = fm->last_shards[i];
-			BLI_remlink_safe(&fm->shard_map, t);
-			BKE_shard_free(t, true);
-			fm->last_shards[i] = NULL;
+			if (t->shard_id > -2)
+			{
+				BLI_remlink_safe(&fm->shard_map, t);
+				BKE_shard_free(t, true);
+				fm->last_shards[i] = NULL;
 
-			printf("Deleting shard: %d\n", i);
+				printf("Deleting shard: %d\n", i);
+			}
 		}
 	}
 
@@ -3751,6 +3754,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Obj
 
 	if (reset)
 	{
+		//TODO, add this to fracture by greasepencil and fracture by planes, too !!!!
 		while (fm->shard_map.first)
 		{
 			Shard *t = fm->shard_map.first;
@@ -3758,6 +3762,12 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Obj
 			printf("Resetting shard: %d\n", t->shard_id);
 			BKE_shard_free(t, true);
 		}
+
+		/* if we reset all shards, we have to re-initialize the 1st one */
+		BKE_fracmesh_free(fm, true);
+		initialize_shard(obj);
+		fm = fs->frac_mesh;
+		p = BKE_shard_by_id(fm, 0);
 	}
 
 	if (mode == MOD_FRACTURE_PREFRACTURED && !reset)
@@ -3803,6 +3813,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Obj
 
 	tempshards = MEM_callocN(sizeof(Shard *) * expected_shards, "tempshards");
 	tempresults = MEM_callocN(sizeof(Shard *) * expected_shards, "tempresults");
+
 
 	p->flag = 0;
 	p->flag |= SHARD_FRACTURED;
@@ -3878,6 +3889,13 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Obj
 	{
 		BKE_shard_free(p, true);
 	}
+	else if (mode == MOD_FRACTURE_PREFRACTURED && reset)
+	{
+		//now the original shard seems to be in the way, delete it from shardmap, but keep pointer
+		BLI_remlink_safe(&fm->shard_map, p);
+		fm->shard_count--;
+		BKE_shard_free(p, true);
+	}
 
 	fm->shard_count = 0; /* may be not matching with expected shards, so reset... did increment this for
 	                      *progressbar only */
@@ -3890,7 +3908,6 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Obj
 		{
 			j += ((Shard*)(fm->shard_map.last))->shard_id;
 		}
-
 	}
 	else
 	{
@@ -5566,6 +5583,14 @@ void BKE_fracture_synchronize_caches(Scene* scene)
 	//set start and endframe equally to all involved caches
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	PointCache *cache = rbw->pointcache;
+
+	if (rbw && rbw->group && !cache)
+	{
+		GroupObject *go = rbw->group->gobject.first;
+		FractureContainer *fc = go->ob->rigidbody_object->fracture_objects;
+		rbw->pointcache = cache = fc->pointcache;
+	}
+
 	if (rbw && rbw->group && cache)
 	{
 		GroupObject *go;

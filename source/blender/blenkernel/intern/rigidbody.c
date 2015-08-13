@@ -2219,6 +2219,7 @@ static void rigidbody_update_simulation_object(Scene *scene, Object* ob, RigidBo
 			do_update_container(scene, ob, rbw, rebuild);
 	}
 
+	//here we have "inner" constraints... but should we make such a distinction at all.... ?
 	if (ob->rigidbody_constraint)
 		do_update_constraint_container(scene, ob, rebuild);
 
@@ -2521,24 +2522,26 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	float timestep;
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	GroupObject *go;
+	//bool is_baked = false;
 
 	//flag this once, so it doesnt get called every time in the loop
 	rbw->flag |= RBW_FLAG_NEEDS_REBUILD;
 
-	//iterate over objects, process caches
+	//iterate over objects (rigidbodies), process caches
 	for (go = rbw->group->gobject.first; go; go = go->next)
 	{
 		PointCache *cache;
 		int startframe, endframe;
 		PTCacheID pid;
-
 		Object *ob = go->ob;
 		RigidBodyOb *rb = ob->rigidbody_object;
 		FractureContainer *fc = rb->fracture_objects;
+
 		BKE_ptcache_id_from_rigidbody(&pid, ob, fc);
 		BKE_ptcache_id_time(&pid, scene, ctime, &startframe, &endframe, NULL);
 		cache = fc->pointcache;
 		fc->flag &= ~FM_FLAG_SKIP_STEPPING;
+		//is_baked = cache->flag & PTCACHE_BAKED;
 
 		if ((ob->type == OB_MESH) && (fc->flag & FM_FLAG_REFRESH_SHAPE))
 		{
@@ -2573,6 +2576,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 			{       /* flag modifier refresh at their next execution XXX TODO -> still used ? */
 				rbw->flag |= RBW_FLAG_REFRESH_MODIFIERS;
 				rigidbody_update_simulation_object(scene, ob, rbw, true);
+
 				rbw->flag &= ~RBW_FLAG_OBJECT_CHANGED;
 				continue;
 			}
@@ -2627,6 +2631,19 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 
 			/* update and validate simulation */
 			rigidbody_update_simulation_object(scene, ob, rbw, false);
+		}
+	}
+
+	if (rbw->constraints)
+	{
+		for (go = rbw->constraints->gobject.first; go; go = go->next)
+		{
+			Object *ob = go->ob;
+			//if ((ctime == rbw->ltime + 1) && !is_baked && ob->type == OB_EMPTY)
+			{
+				if (ob->rigidbody_constraint)
+					do_update_constraint_container(scene, ob, ob->rigidbody_constraint->flag & RBC_FLAG_NEEDS_VALIDATE);
+			}
 		}
 	}
 

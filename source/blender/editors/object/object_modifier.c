@@ -2348,37 +2348,53 @@ static int fracture_poll(bContext *C)
 
 static int fracture_refresh_exec(bContext *C, wmOperator *op)
 {
-	Object *obact = ED_object_active_context(C);
+	//Object *obact = ED_object_active_context(C);
 	Scene *scene = CTX_data_scene(C);
-	float cfra = BKE_scene_frame_get(scene);
+	//float cfra = BKE_scene_frame_get(scene);
 	double start = 1.0;
 	FractureJob *fj;
-	wmJob* wm_job;
-	FractureContainer *fc = obact->rigidbody_object->fracture_objects;
+	//wmJob* wm_job;
+	Object* selob = NULL;
 
-	if (scene->rigidbody_world != NULL)
+	CTX_DATA_BEGIN(C, Object *, selob, selected_objects)
 	{
-		start = (double)fc->pointcache->startframe;
+		FractureContainer *fc = NULL;
+		if (selob->rigidbody_object)
+		{
+			fc = selob->rigidbody_object->fracture_objects;
+
+			if (!fc)
+				continue;
+
+			if (scene->rigidbody_world != NULL)
+			{
+				start = (double)fc->pointcache->startframe;
+			}
+
+			BKE_scene_frame_set(scene, start);
+			DAG_relations_tag_update(G.main);
+			WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
+			WM_event_add_notifier(C, NC_OBJECT | ND_PARENT, NULL);
+			WM_event_add_notifier(C, NC_SCENE | ND_FRAME, NULL);
+
+			//if (!(fc->flag & FM_FLAG_EXECUTE_THREADED)) {
+			{
+				op->type->flag |= OPTYPE_UNDO;
+				//perhaps trigger modifier eval before, but probably this is updated correctly...
+				//makeDerivedMesh(scene, obact, NULL, CD_MASK_BAREMESH, 0);
+				BKE_fracture_prefracture_mesh(scene, selob, 0);
+				BKE_rigidbody_cache_reset(scene->rigidbody_world);
+
+				//do we need this still ? TODO
+				DAG_id_tag_update(&selob->id, OB_RECALC_DATA);
+				WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, selob);
+			}
+		}
 	}
 
-	BKE_scene_frame_set(scene, start);
-	DAG_relations_tag_update(G.main);
-	WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
-	WM_event_add_notifier(C, NC_OBJECT | ND_PARENT, NULL);
-	WM_event_add_notifier(C, NC_SCENE | ND_FRAME, NULL);
+	CTX_DATA_END;
 
-	if (!(fc->flag & FM_FLAG_EXECUTE_THREADED)) {
-
-		op->type->flag |= OPTYPE_UNDO;
-		//perhaps trigger modifier eval before, but probably this is updated correctly...
-		//makeDerivedMesh(scene, obact, NULL, CD_MASK_BAREMESH, 0);
-		BKE_fracture_prefracture_mesh(scene, obact, 0);
-		BKE_rigidbody_cache_reset(scene->rigidbody_world);
-
-		//do we need this still ? TODO
-		DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
-		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
-	}
+#if 0
 	else {
 		/* job stuff */
 		int factor, verts, shardprogress, halvingprogress, totalprogress;
@@ -2416,6 +2432,7 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 
 		WM_jobs_start(CTX_wm_manager(C), wm_job);
 	}
+#endif
 
 	return OPERATOR_FINISHED;
 }

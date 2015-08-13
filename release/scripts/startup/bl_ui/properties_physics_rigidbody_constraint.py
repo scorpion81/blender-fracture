@@ -28,13 +28,14 @@ class PHYSICS_PT_rigidbody_constraint_panel:
 
 
 class PHYSICS_PT_rigid_body_constraint(PHYSICS_PT_rigidbody_constraint_panel, Panel):
-    bl_label = "Rigid Body Constraint"
+    bl_label = "Outer Rigid Body Constraint"
 
     @classmethod
     def poll(cls, context):
         ob = context.object
         rd = context.scene.render
-        return (ob and ob.rigidbody_constraint and (not rd.use_game_engine))
+        #EMPTIES denote outer constraint objects, between rigidbodies
+        return (ob and ob.type == 'EMPTY' and ob.rigidbody_constraint and (not rd.use_game_engine))
 
     def draw(self, context):
         layout = self.layout
@@ -46,24 +47,24 @@ class PHYSICS_PT_rigid_body_constraint(PHYSICS_PT_rigidbody_constraint_panel, Pa
         layout.prop(rbc, "type")
 
         row = layout.row()
-        row.prop(rbc, "enabled")
+        #row.prop(rbc, "enabled")
         row.prop(rbc, "disable_collisions")
 
         layout.prop(rbc, "object1")
         layout.prop(rbc, "object2")
 
-        if rbc.type != 'MOTOR':
-            row = layout.row()
-            row.prop(rbc, "use_breaking")
-            sub = row.row()
-            sub.active = rbc.use_breaking
-            sub.prop(rbc, "breaking_threshold", text="Threshold")
+        #if rbc.type != 'MOTOR':
+        #    row = layout.row()
+        #    row.prop(rbc, "use_breaking")
+        #    sub = row.row()
+        #    sub.active = rbc.use_breaking
+        #    sub.prop(rbc, "breaking_threshold", text="Threshold")
 
-        row = layout.row()
-        row.prop(rbc, "use_override_solver_iterations", text="Override Iterations")
-        sub = row.row()
-        sub.active = rbc.use_override_solver_iterations
-        sub.prop(rbc, "solver_iterations", text="Iterations")
+        #row = layout.row()
+        #row.prop(rbc, "use_override_solver_iterations", text="Override Iterations")
+        #sub = row.row()
+        #sub.active = rbc.use_override_solver_iterations
+        #sub.prop(rbc, "solver_iterations", text="Iterations")
 
         if rbc.type == 'HINGE':
             col = layout.column(align=True)
