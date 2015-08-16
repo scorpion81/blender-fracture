@@ -80,7 +80,7 @@ static void activateRigidbody(RigidBodyShardOb* rbo, RigidBodyWorld *UNUSED(rbw)
 	RigidBodyOb *rb = ob->rigidbody_object;
 	//FractureContainer *fc = rb->fracture_objects;
 
-	if ((rb->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION) && (rbo->flag & RBO_FLAG_KINEMATIC) && (rbo->type == RBO_TYPE_ACTIVE))
+	if ((!rb || (rb->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)) && (rbo->flag & RBO_FLAG_KINEMATIC) && (rbo->type == RBO_TYPE_ACTIVE))
 	{
 		rbo->flag &= ~RBO_FLAG_KINEMATIC;
 		//RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
@@ -2168,6 +2168,7 @@ static void do_update_constraint_container(Scene* scene, Object *ob, bool rebuil
 			con->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
 		}
 	}
+	rbc->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
 }
 
 static void do_update_container(Scene* scene, Object* ob, RigidBodyWorld *rbw, bool rebuild)
@@ -2220,8 +2221,8 @@ static void rigidbody_update_simulation_object(Scene *scene, Object* ob, RigidBo
 	}
 
 	//here we have "inner" constraints... but should we make such a distinction at all.... ?
-	if (ob->rigidbody_constraint)
-		do_update_constraint_container(scene, ob, rebuild);
+	//if (ob->rigidbody_constraint)
+	//	do_update_constraint_container(scene, ob, rebuild);
 
 	//perhaps do this if we only have 1 island, to mimic old behavior ? TODO (move object with it)
 	rbw->flag &= ~RBW_FLAG_REFRESH_MODIFIERS;

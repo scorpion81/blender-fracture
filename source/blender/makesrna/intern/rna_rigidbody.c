@@ -218,6 +218,8 @@ static void rna_ConstraintContainer_reset(Main *UNUSED(bmain), Scene *scene, Poi
 	Object *ob = ptr->id.data;
 
 	constraint_container_reset(cc, rbw, ob);
+	rbw->pointcache = NULL;
+	BKE_fracture_synchronize_caches(scene);
 }
 
 static void rna_ConstraintContainer_constraint_reset(Main *UNUSED(bmain), Scene *scene, PointerRNA *ptr)
