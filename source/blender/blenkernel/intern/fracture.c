@@ -5045,6 +5045,7 @@ void BKE_fracture_constraint_container_update(Object* ob)
 	if (rbc && rbc->ob1 && rbc->ob2)
 	{
 		ConstraintContainer *cc = rbc->fracture_constraints;
+		rbc->flag |= RBC_FLAG_NEEDS_VALIDATE;
 		if (cc->flag & FM_FLAG_REFRESH_CONSTRAINTS) {
 			BKE_fracture_constraint_container_free(ob);
 			do_clusters(rbc->ob1);
