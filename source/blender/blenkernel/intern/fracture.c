@@ -1606,21 +1606,25 @@ static void search_tree_based(Object* ob, MeshIsland *mi, MeshIsland **meshIslan
 	KDTreeNearest *n3 = NULL;
 	float dist, obj_centr[3];
 	ConstraintContainer* cc = ob->rigidbody_constraint->fracture_constraints;
-	bool outer = ob->rigidbody_constraint->ob1 != ob->rigidbody_constraint->ob2;
+	//bool outer = ob->rigidbody_constraint->ob1 != ob->rigidbody_constraint->ob2;
+	//need to multiply with constraint obmat, not the rigidbody obs so its found in tree properly
 
 	limit = cc->constraint_limit;
 	dist = cc->contact_dist;
 
 	if (cc->constraint_target == MOD_FRACTURE_CENTROID) {
 		mul_v3_m4v3(obj_centr, ob->obmat, mi->centroid);
+#if 0
 		if (outer) {
 			/* for outer constraints use constraint objects center point */
 			/* FM_TODO unsure what to do with vertexbased method */
 			copy_v3_v3(obj_centr, ob->loc);
 		}
+#endif
 	}
 	else if (cc->constraint_target == MOD_FRACTURE_VERTEX){
-		mul_v3_m4v3(obj_centr, ob->obmat, co);
+		//mul_v3_m4v3(obj_centr, ob->obmat, co);
+		copy_v3_v3(obj_centr, co);
 	}
 
 	r = BLI_kdtree_range_search(*combined_tree, obj_centr, &n3, dist);
@@ -1653,12 +1657,30 @@ static void search_tree_based(Object* ob, MeshIsland *mi, MeshIsland **meshIslan
 		n3 = NULL;
 	}
 }
-static void do_prepare_constraint_search(Object *ob, MeshIsland ***mesh_islands, KDTree **combined_tree, GHash** vertex_index_map, int start, int target, int partner_index)
+static void do_prepare_constraint_search(Object *obj, MeshIsland ***mesh_islands, KDTree **combined_tree, GHash** vertex_index_map, int start, int target, int partner_index)
 {
 	MeshIsland *mi;
-	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
-	FractureState *fs = fc->current;
+	FractureContainer *fc = NULL;
+	FractureState *fs = NULL;
+	Object* ob = NULL;
+
 	int j = 0;
+
+	if (!obj->rigidbody_constraint)
+		return;
+
+	if (partner_index == 1) {
+		ob = obj->rigidbody_constraint->ob1;
+	}
+	else if (partner_index == 2) {
+		ob = obj->rigidbody_constraint->ob2;
+	}
+
+	if (!ob)
+		return;
+
+	fc = ob->rigidbody_object->fracture_objects;
+	fs = fc->current;
 
 	do_island_vertex_index_map(ob, vertex_index_map, partner_index);
 
@@ -1669,7 +1691,7 @@ static void do_prepare_constraint_search(Object *ob, MeshIsland ***mesh_islands,
 			float obj_centr[3];
 			mi->partner_index = partner_index;
 			(*mesh_islands)[start + j] = mi;
-			mul_v3_m4v3(obj_centr, ob->obmat, (*mesh_islands)[start + j]->centroid);
+			mul_v3_m4v3(obj_centr, obj->obmat, (*mesh_islands)[start + j]->centroid);
 			BLI_kdtree_insert(*combined_tree, start+j, obj_centr);
 
 			j++;
@@ -1684,8 +1706,8 @@ static void do_prepare_constraint_search(Object *ob, MeshIsland ***mesh_islands,
 
 		for (i = 0, mv = mvert; i < totvert; i++, mv++) {
 			float co[3];
-			mul_v3_m4v3(co, ob->obmat, mv->co);
-			BLI_kdtree_insert(*combined_tree, i, co);
+			mul_v3_m4v3(co, obj->obmat, mv->co);
+			BLI_kdtree_insert(*combined_tree, start+i, co);
 		}
 	}
 }
@@ -1728,7 +1750,9 @@ static void create_constraints(Object *ob, MeshIsland **mesh_islands, int count,
 	RigidBodyOb *rb2 = rbc->ob2->rigidbody_object;
 	DerivedMesh *dm1 = rb1->fracture_objects->current->visual_mesh;
 	DerivedMesh *dm2 = rb2->fracture_objects->current->visual_mesh;
-	DerivedMesh *dm = combine_dm(rbc->ob1, rbc->ob2, dm1, dm2);
+	//DerivedMesh *dm = combine_dm(rbc->ob1, rbc->ob2, dm1, dm2);
+	//FM_TODO, try with constraint object here....
+	DerivedMesh *dm = combine_dm(ob, ob, dm1, dm2);
 	int i = 0;
 
 	for (i = 0; i < count; i++) {
@@ -5013,9 +5037,9 @@ static void build_constraints(Object *ob)
 
 	coord_tree = BLI_kdtree_new(count);
 	mesh_islands = MEM_callocN(sizeof(MeshIsland*) * (island_count1 + island_count2), "mesh_islands(constraints)");
-	do_prepare_constraint_search(ob1, &mesh_islands, &coord_tree, &vertex_island_map, 0, cc->constraint_target, 1);
+	do_prepare_constraint_search(ob, &mesh_islands, &coord_tree, &vertex_island_map, 0, cc->constraint_target, 1);
 	if (outer) {
-		do_prepare_constraint_search(ob2, &mesh_islands, &coord_tree, &vertex_island_map, island_count1, cc->constraint_target, 2);
+		do_prepare_constraint_search(ob, &mesh_islands, &coord_tree, &vertex_island_map, island_count1, cc->constraint_target, 2);
 	}
 
 	BLI_kdtree_balance(coord_tree);
@@ -5042,7 +5066,7 @@ static void build_constraints(Object *ob)
 void BKE_fracture_constraint_container_update(Object* ob)
 {
 	RigidBodyCon *rbc = ob->rigidbody_constraint;
-	if (rbc && rbc->ob1 && rbc->ob2)
+	if (rbc && rbc->ob1 && rbc->ob2 && rbc->ob1->rigidbody_object && rbc->ob2->rigidbody_object)
 	{
 		ConstraintContainer *cc = rbc->fracture_constraints;
 		rbc->flag |= RBC_FLAG_NEEDS_VALIDATE;
