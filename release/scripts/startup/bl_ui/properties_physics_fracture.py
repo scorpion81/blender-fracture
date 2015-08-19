@@ -99,6 +99,7 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
             row = col.row(align=True)
             row.prop(md, "fractal_amount")
         row = layout.row()
+        row.prop(md, "shards_to_islands")
         row.prop(md, "use_smooth")
         row = layout.row(align=True)
         row.prop(md, "splinter_axis")

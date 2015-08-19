@@ -8402,6 +8402,41 @@ static BHead *read_userdef(BlendFileData *bfd, FileData *fd, BHead *bhead)
 	return bhead;
 }
 
+static void init_rigidbody_world_caches(Main *main)
+{
+	/* here we need to "attach" one of the distributed caches to the rigidbody control panel
+	 * (they all are supposed to be framewise equal anyway and synchronization between them is enforced
+	 * when changes occur, this is done here because we need to know which objects belong to which scenes
+	 * in order to make proper intializations */
+
+	Scene* sc;
+
+	for (sc = main->scene.first; sc; sc = sc->id.next)
+	{
+		/* need to test all scenes, but can jump out at first found rigidbody object with appropriate cache */
+		Base* bas;
+		Object *ob;
+
+		if (sc->rigidbody_world)
+		{
+			for (bas = sc->base.first; bas; bas = bas->next)
+			{
+				/* first cache will suffice */
+				ob = bas->object;
+				if (ob->rigidbody_object)
+				{
+					FractureContainer *fc = ob->rigidbody_object->fracture_objects;
+					if (fc)
+					{
+						sc->rigidbody_world->pointcache = fc->pointcache;
+						break;
+					}
+				}
+			}
+		}
+	}
+}
+
 BlendFileData *blo_read_file_internal(FileData *fd, const char *filepath)
 {
 	BHead *bhead = blo_firstbhead(fd);
@@ -8482,6 +8517,8 @@ BlendFileData *blo_read_file_internal(FileData *fd, const char *filepath)
 	//do_versions_after_linking(fd, NULL, bfd->main); // XXX: not here (or even in this function at all)! this causes crashes on many files - Aligorith (July 04, 2010)
 	lib_verify_nodetree(bfd->main, true);
 	fix_relpaths_library(fd->relabase, bfd->main); /* make all relative paths, relative to the open blend file */
+
+	init_rigidbody_world_caches(bfd->main);
 	
 	link_global(fd, bfd);	/* as last */
 	

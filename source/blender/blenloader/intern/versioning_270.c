@@ -83,6 +83,8 @@ static void patch_fracture_modifier_struct(FractureModifierData *fmd, Object* ob
 	int i = 0;
 
 	rbo->fracture_objects = BKE_fracture_container_create(ob);
+	//this is (mostly) necessary now to properly function
+	rbo->mesh_source = RBO_MESH_FINAL;
 	fc = rbo->fracture_objects;
 	fs = fc->current;
 
@@ -829,6 +831,7 @@ void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 			}
 		}
 	}
+	//FM_TODO bump this to after 2.75.4 as we have a release with this out
 	else if (!DNA_struct_elem_find(fd->filesdna, "RigidBodyOb", "FractureContainer", "*fracture_objects"))
 	{
 		load_fracture_system(main);
