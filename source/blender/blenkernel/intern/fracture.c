@@ -5645,4 +5645,17 @@ void BKE_fracture_synchronize_caches(Scene* scene)
 		BKE_scene_frame_set(scene, cache->startframe);
 		DAG_id_tag_update(&scene->id, 0);
 	}
+
+	if (rbw && rbw->constraints)
+	{
+		//atleast revalidate all constraints in this cache sync case....
+		GroupObject *go;
+		for (go = rbw->constraints->gobject.first; go; go = go->next)
+		{
+			if (go->ob && go->ob->rigidbody_constraint)
+			{
+				go->ob->rigidbody_constraint->flag |= RBC_FLAG_NEEDS_VALIDATE;
+			}
+		}
+	}
 }

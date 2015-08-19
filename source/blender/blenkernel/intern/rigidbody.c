@@ -1599,6 +1599,7 @@ RigidBodyCon *BKE_rigidbody_create_constraint(Object *ob, short type)
 
 	rbc->fracture_constraints = BKE_fracture_constraint_container_create(ob);
 	rbc->fracture_constraints->flag |= FM_FLAG_REFRESH_CONSTRAINTS;
+	rbc->fracture_constraints->flag |= FMC_FLAG_USE_CONSTRAINTS;
 
 	/* set default settings */
 	rbc->type = type;
