@@ -182,7 +182,9 @@ static void rna_RigidBodyOb_ghost_set(PointerRNA *ptr, int value)
 
 static void fracture_container_reset(FractureContainer *fc, RigidBodyWorld *rbw)
 {
-	fc->flag |= (FM_FLAG_REFRESH | FM_FLAG_RESET_SHARDS);
+	//this caused the modifier to abort execution when animation was enabled and disabled again
+	//fc->flag |= (FM_FLAG_REFRESH | FM_FLAG_RESET_SHARDS);
+	fc->flag |= FM_FLAG_RESET_SHARDS;
 	BKE_rigidbody_cache_reset(rbw);
 }
 
@@ -191,6 +193,7 @@ static void rna_FractureContainer_reset(Main *UNUSED(bmain), Scene *scene, Point
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	FractureContainer *fc = ptr->data;
 	fracture_container_reset(fc, rbw);
+	BKE_fracture_synchronize_caches(scene);
 }
 
 static void rna_FractureContainer_rigidbody_reset(Main *bmain, Scene *scene, PointerRNA *ptr)
@@ -201,6 +204,7 @@ static void rna_FractureContainer_rigidbody_reset(Main *bmain, Scene *scene, Poi
 	rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 
 	fracture_container_reset(fc, rbw);
+	BKE_fracture_synchronize_caches(scene);
 }
 
 static void constraint_container_reset(ConstraintContainer *cc, RigidBodyWorld *rbw, Object* ob)
@@ -493,7 +497,7 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	
 	prop = RNA_def_property(srna, "kinematic", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_KINEMATIC);
-	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyOb_kinematic_set");
+	//RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyOb_kinematic_set");
 	RNA_def_property_ui_text(prop, "Kinematic", "Allow rigid body to be controlled by the animation system");
 	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_rigidbody_reset");
 	

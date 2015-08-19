@@ -600,17 +600,18 @@ class AddPresetFracture(AddPresetBase, Operator):
     preset_menu = "FRACTURE_MT_presets"
 
     preset_defines = [
-        "fracture = bpy.context.fracture.fracture"
-        "constraint = bpy.context.fracture.constraint"
-        "fm = bpy.context.fracture"
+        "fracture = bpy.context.object.rigidbody_object.fracture_container",
+        #"constraint = bpy.context.object.rigidbody_constraint.constraint_container",
+        #"TODO separate constraints settings out to own preset
     ]
 
     preset_values = [
+        "fracture.fracture_mode",
+        "fracture.execute_threaded",
         "fracture.frac_algorithm",
         "fracture.shard_count",
         "fracture.point_seed",
         "fracture.shards_to_islands",
-        "fracture.auto_execute",
         "fracture.point_source",
         "fracture.extra_group",
         "fracture.use_particle_birth_coordinates",
@@ -628,32 +629,29 @@ class AddPresetFracture(AddPresetBase, Operator):
         "fracture.use_greasepencil_edges",
         "fracture.cutter_axis",
         "fracture.dynamic_force",
-        "fracture.limit_impact"
-        "constraint.breaking_percentage",
-        "constraint.breaking_percentage_weighted",
-        "constraint.breaking_angle",
-        "constraint.breaking_angle_weighted",
-        "constraint.breaking_distance",
-        "constraint.breaking_distance_weighted",
-        "constraint.cluster_breaking_percentage",
-        "constraint.cluster_breaking_angle",
-        "constraint.cluster_breaking_distance",
-        "constraint.solver_iterations_override",
-        "constraint.use_mass_dependent_thresholds",
-        "constraint.use_breaking",
-        "constraint.cluster_group",
-        "constraint.cutter_group",
-        "constraint.cluster_constraint_type",
-        "constraint.constraint_target",
-        "constraint.cluster_count",
-        "constraint.use_constraints",
-        "constraint.constraint_limit",
-        "constraint.contact_dist",
-        "constraint.breaking_threshold",
-        "constraint.cluster_breaking_threshold",
-        "fm.fracture_mode",
-        "fm.dm_group",
-        "fm.execute_threaded",
+        "fracture.limit_impact",
+       # "constraint.breaking_percentage",
+       # "constraint.breaking_percentage_weighted",
+       # "constraint.breaking_angle",
+       # "constraint.breaking_angle_weighted",
+       # "constraint.breaking_distance",
+       # "constraint.breaking_distance_weighted",
+       # "constraint.cluster_breaking_percentage",
+       # "constraint.cluster_breaking_angle",
+       # "constraint.cluster_breaking_distance",
+       # "constraint.solver_iterations_override",
+       # "constraint.use_mass_dependent_thresholds",
+       # "constraint.use_breaking",
+       # "constraint.cluster_group",
+       # "constraint.cutter_group",
+       # "constraint.cluster_constraint_type",
+       # "constraint.constraint_target",
+       # "constraint.cluster_count",
+       # "constraint.use_constraints",
+       # "constraint.constraint_limit",
+       # "constraint.contact_dist",
+       # "constraint.breaking_threshold",
+       # "constraint.cluster_breaking_threshold",
     ]
 
     preset_subdir = "fracture"

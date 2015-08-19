@@ -433,7 +433,7 @@ bool modifier_stopWhenDisabled(struct Scene *scene, struct Object *ob, struct Mo
 	/* but we get a CustomDataMask, if its CD_MASK_MSTICKY stop here (this is a deprecated value, so change this later TODO */
 	if ((mti->flags & eModifierTypeFlag_StopWhenDisabled))
 	{
-		CustomDataMask *mask = CD_MASK_MSTICKY;
+		CustomDataMask mask = CD_MASK_MSTICKY;
 		if (mti->requiredDataMask && mti->requiredDataMask(ob, md) == mask)
 		{
 			return true;

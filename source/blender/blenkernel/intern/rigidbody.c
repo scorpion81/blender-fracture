@@ -302,9 +302,17 @@ void BKE_rigidbody_calc_shard_mass(Scene *scene, Object *ob, MeshIsland *mi)
 	RigidBodyOb *rb = ob->rigidbody_object;
 	FractureContainer *fc = rb->fracture_objects;
 	/*FM TODO, this might differ here*/
-	DerivedMesh *dm_ob = (fc->raw_mesh != NULL ? fc->raw_mesh : BKE_fracture_ensure_mesh(scene, ob)), *dm_mi;
+	DerivedMesh *dm_ob = NULL, *dm_mi;
 	float vol_mi = 0, mass_mi = 0, vol_ob = 0, mass_ob = 0;
 	bool skip = fc->flag & (FM_FLAG_REFRESH_SHAPE | FM_FLAG_SKIP_MASS_CALC);
+
+	if (fc->raw_mesh != NULL) {
+		dm_ob = fc->raw_mesh;
+	}
+	else {
+		fc->raw_mesh = BKE_fracture_ensure_mesh(scene, ob);
+		fc->flag &= ~FM_FLAG_REFRESH;
+	}
 
 	if (!skip)
 	{
@@ -2615,6 +2623,8 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 		}
 		else if (rbw->ltime == startframe || rb->flag & RBO_FLAG_NEEDS_VALIDATE)
 		{
+			//ensure flag if not set... hmmm FM_TODO
+			//rb->flag |= RBO_FLAG_NEEDS_VALIDATE;
 			restoreKinematic(ob);
 			rigidbody_update_simulation_object(scene, ob, rbw, true);
 			rb->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
