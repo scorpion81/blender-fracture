@@ -80,6 +80,7 @@ static void activateRigidbody(RigidBodyShardOb* rbo, RigidBodyWorld *UNUSED(rbw)
 	RigidBodyOb *rb = ob->rigidbody_object;
 	//FractureContainer *fc = rb->fracture_objects;
 
+	// !rb can happen when being called from a constraints partner meshisland
 	if ((!rb || (rb->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)) && (rbo->flag & RBO_FLAG_KINEMATIC) && (rbo->type == RBO_TYPE_ACTIVE))
 	{
 		rbo->flag &= ~RBO_FLAG_KINEMATIC;
@@ -306,16 +307,18 @@ void BKE_rigidbody_calc_shard_mass(Scene *scene, Object *ob, MeshIsland *mi)
 	float vol_mi = 0, mass_mi = 0, vol_ob = 0, mass_ob = 0;
 	bool skip = fc->flag & (FM_FLAG_REFRESH_SHAPE | FM_FLAG_SKIP_MASS_CALC);
 
-	if (fc->raw_mesh != NULL) {
-		dm_ob = fc->raw_mesh;
-	}
-	else {
-		fc->raw_mesh = BKE_fracture_ensure_mesh(scene, ob);
-		fc->flag &= ~FM_FLAG_REFRESH;
-	}
-
 	if (!skip)
 	{
+		if (fc->raw_mesh != NULL) {
+			dm_ob = fc->raw_mesh;
+		}
+		//XXX TODO seems to be a bit problematic, because modifier eval stops here and flag might
+		// not be reset properly... so take an potential inaccurate mass here as fallback
+		/*else {
+			fc->raw_mesh = BKE_fracture_ensure_mesh(scene, ob);
+			fc->flag &= ~FM_FLAG_REFRESH;
+		}*/
+
 		if (dm_ob == NULL) {
 			/* fallback method */
 

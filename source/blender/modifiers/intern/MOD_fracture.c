@@ -67,7 +67,9 @@ static CustomDataMask requiredDataMask(Object* ob, ModifierData *UNUSED(md))
 	if (fc && (fc->flag & FM_FLAG_REFRESH))
 	{
 		/* indicate modifier evaluation stop, yuck, just because we need an object ref here,
-		 * we have to workaround by returning an old unused CustomdataMask */
+		 * we have to workaround by returning an old unused CustomdataMask, cant use isDisabled here
+		 * because we dont get an Object passed into it, and changing the function pointer would mean changing it globally
+		 */
 		dataMask |= CD_MASK_MSTICKY;
 	}
 
@@ -113,7 +115,7 @@ ModifierTypeInfo modifierType_Fracture = {
 	eModifierTypeFlag_SupportsEditmode |
 	eModifierTypeFlag_SupportsMapping |
 	eModifierTypeFlag_UsesPreview |
-	eModifierTypeFlag_StopWhenDisabled,
+	eModifierTypeFlag_StopWhenDisabled, //this is a new flag; if set the modifier stack will stop evaluation right before the 1st modifier which has this flag set
 	/* copyData */ NULL,
 	/* deformVerts */ NULL,
 	/* deformMatrices */ NULL,

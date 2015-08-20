@@ -5568,6 +5568,7 @@ static void direct_link_object(FileData *fd, Object *ob)
 
 			direct_link_pointcache_list(fd, &fc->ptcaches, &fc->pointcache, 0);
 			fc->flag |= FM_FLAG_REFRESH_AUTOHIDE;
+			rbo->flag |= (RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
 
 			/* set effector weights */
 			fc->effector_weights = newdataadr(fd, fc->effector_weights);
@@ -5581,6 +5582,7 @@ static void direct_link_object(FileData *fd, Object *ob)
 		ob->rigidbody_constraint->physics_constraint = NULL;
 		ob->rigidbody_constraint->fracture_constraints =
 		        newdataadr(fd, ob->rigidbody_constraint->fracture_constraints);
+		ob->rigidbody_constraint->flag |= RBC_FLAG_NEEDS_VALIDATE;
 	}
 
 	link_list(fd, &ob->particlesystem);
@@ -8429,6 +8431,9 @@ static void init_rigidbody_world_caches(Main *main)
 					if (fc)
 					{
 						sc->rigidbody_world->pointcache = fc->pointcache;
+						//this triggering is necessary to "initialize" the rigidbody simulation after loading, apparently
+						if (BKE_scene_check_rigidbody_active(sc))
+							BKE_rigidbody_do_simulation(sc, fc->pointcache->startframe);
 						break;
 					}
 				}
@@ -9371,6 +9376,8 @@ static void expand_scene(FileData *fd, Main *mainvar, Scene *sce)
 		expand_doit(fd, mainvar, sce->rigidbody_world->group);
 		expand_doit(fd, mainvar, sce->rigidbody_world->constraints);
 
+		/*sigh... objects MIGHT be expanded AFTER scenes... but need objects here... so this wont work */
+#if 0
 		if (sce->rigidbody_world->group)
 		{
 			ob = sce->rigidbody_world->group->gobject.first;
@@ -9383,9 +9390,11 @@ static void expand_scene(FileData *fd, Main *mainvar, Scene *sce)
 					//maybe better use 1 cache again... FM_TODO
 					sce->rigidbody_world->pointcache = fc->pointcache;
 					sce->rigidbody_world->ltime = fc->pointcache->startframe;
+					BKE_fracture_synchronize_caches(sce);
 				}
 			}
 		}
+#endif
 	}
 
 #ifdef DURIAN_CAMERA_SWITCH

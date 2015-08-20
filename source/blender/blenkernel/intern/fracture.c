@@ -1166,7 +1166,7 @@ static float do_setup_meshisland(FractureModifierData *fmd, Object *ob, int totv
 }
 #endif
 
-static void mesh_separate_tagged(Scene *UNUSED(scene), Object *ob, BMesh *bm_work)
+static void mesh_separate_tagged(Object *ob, BMesh *bm_work)
 {
 	BMesh *bm_new;
 	BMesh *bm_old = bm_work;
@@ -1174,12 +1174,12 @@ static void mesh_separate_tagged(Scene *UNUSED(scene), Object *ob, BMesh *bm_wor
 
 	BMVert *v;
 	BMIter iter;
-//	Shard *s;
+	Shard *s;
 	FractureContainer* fc = ob->rigidbody_object->fracture_objects;
 	FractureState *fs = fc->current;
 
-	//const int thresh_defgrp_index = defgroup_name_index(ob, fc->thresh_defgrp_name);
-	//const int ground_defgrp_index = defgroup_name_index(ob, fc->ground_defgrp_name);
+	const int thresh_defgrp_index = defgroup_name_index(ob, fc->thresh_defgrp_name);
+	const int ground_defgrp_index = defgroup_name_index(ob, fc->ground_defgrp_name);
 
 	if (fs->frac_mesh->cancel == 1)
 		return;
@@ -1203,7 +1203,7 @@ static void mesh_separate_tagged(Scene *UNUSED(scene), Object *ob, BMesh *bm_wor
 	BM_calc_center_centroid(bm_new, centroid, false);
 	BM_mesh_elem_index_ensure(bm_new, BM_VERT | BM_EDGE | BM_FACE);
 
-	/*s =*/ do_shard_to_island(ob, bm_new);
+	s = do_shard_to_island(ob, bm_new);
 
 	BM_ITER_MESH (v, &iter, bm_new, BM_VERTS_OF_MESH) {
 		/* eliminate centroid in vertex coords */
@@ -1213,7 +1213,7 @@ static void mesh_separate_tagged(Scene *UNUSED(scene), Object *ob, BMesh *bm_wor
 	//calculate volume here optionally too
 	//need to distinguish between prehalving and posthalving, omit meshislands in prehalving, or better...
 	//create only after post halving....
-//	do_island_from_shard(scene, ob, s, 0, thresh_defgrp_index, ground_defgrp_index, 0);
+	do_island_from_shard(ob, s, 0, thresh_defgrp_index, ground_defgrp_index, 0);
 
 	/* deselect loose data - this used to get deleted,
 	 * we could de-select edges and verts only, but this turns out to be less complicated
@@ -1301,7 +1301,7 @@ static void handle_vert(Object* ob, BMVert* vert, BMVert** orig_work,
 	(*tag_counter)++;
 }
 
-static void mesh_separate_loose_partition(Scene *scene, Object *ob, BMesh *bm_work, BMVert **orig_work)
+static void mesh_separate_loose_partition(Object *ob, BMesh *bm_work, BMVert **orig_work)
 {
 	int i, tag_counter = 0;
 	BMEdge *e;
@@ -1371,7 +1371,7 @@ static void mesh_separate_loose_partition(Scene *scene, Object *ob, BMesh *bm_wo
 		bm_mesh_hflag_flush_vert(bm_old, BM_ELEM_TAG);
 
 		/* Move selection into a separate object */
-		mesh_separate_tagged(scene, ob, bm_old);
+		mesh_separate_tagged(ob, bm_old);
 
 		MEM_freeN(v_tag);
 		v_tag = NULL;
@@ -1388,7 +1388,7 @@ static void mesh_separate_loose_partition(Scene *scene, Object *ob, BMesh *bm_wo
 	}
 }
 
-static void halve(Scene *scene, Object *ob, int minsize, BMesh **bm_work, BMVert ***orig_work, bool separated)
+static void halve(Object *ob, int minsize, BMesh **bm_work, BMVert ***orig_work, bool separated)
 {
 
 	int half;
@@ -1430,21 +1430,21 @@ static void halve(Scene *scene, Object *ob, int minsize, BMesh **bm_work, BMVert
 
 	printf("Old New: %d %d\n", bm_old->totvert, bm_new->totvert);
 	if ((bm_old->totvert <= minsize && bm_old->totvert > 0) || (bm_new->totvert == 0)) {
-		mesh_separate_loose_partition(scene, ob, bm_old, orig_mod);
+		mesh_separate_loose_partition(ob, bm_old, orig_mod);
 		separated = true;
 	}
 
 	if ((bm_new->totvert <= minsize && bm_new->totvert > 0) || (bm_old->totvert == 0)) {
-		mesh_separate_loose_partition(scene, ob, bm_new, orig_new);
+		mesh_separate_loose_partition(ob, bm_new, orig_new);
 		separated = true;
 	}
 
 	if ((bm_old->totvert > minsize && bm_new->totvert > 0) || (bm_new->totvert == 0 && !separated)) {
-		halve(scene, ob, minsize, &bm_old, &orig_mod, separated);
+		halve(ob, minsize, &bm_old, &orig_mod, separated);
 	}
 
 	if ((bm_new->totvert > minsize && bm_old->totvert > 0) || (bm_old->totvert == 0 && !separated)) {
-		halve(scene, ob, minsize, &bm_new, &orig_new, separated);
+		halve(ob, minsize, &bm_new, &orig_new, separated);
 	}
 
 
@@ -1454,7 +1454,7 @@ static void halve(Scene *scene, Object *ob, int minsize, BMesh **bm_work, BMVert
 	bm_new = NULL;
 }
 
-static void mesh_separate_loose(Scene *scene, Object *ob)
+static void mesh_separate_loose(Object *ob)
 {
 	int minsize = 1000;
 	BMesh *bm_work;
@@ -1489,7 +1489,7 @@ static void mesh_separate_loose(Scene *scene, Object *ob)
 	rmd->fracture->islandShards.last = NULL;
 #endif
 
-	halve(scene, ob, minsize, &bm_work, &orig_start, false);
+	halve(ob, minsize, &bm_work, &orig_start, false);
 
 	MEM_freeN(orig_start);
 	orig_start = NULL;
@@ -2607,13 +2607,13 @@ void BKE_fracture_prepare_autohide(Object *ob)
 	}
 }
 
-static void do_halving(Scene* scene, Object* ob)
+static void do_halving(Object* ob)
 {
 	double start;
 
 	start = PIL_check_seconds_timer();
 	//printf("Steps: %d \n", fmd->fracture->frac_mesh->progress_counter);
-	mesh_separate_loose(scene, ob);
+	mesh_separate_loose(ob);
 	printf("Splitting to islands done, %g \n", PIL_check_seconds_timer() - start);
 }
 
@@ -2625,7 +2625,8 @@ static void do_refresh(Object *ob, bool do_rebuild)
 	FractureState* fs = fc->current;
 
 	//pre-halving... making shards (NOT islands, watch it !)
-	//do_halving(scene, ob);
+	if (fc->flag & FM_FLAG_SHARDS_TO_ISLANDS)
+		do_halving(ob);
 
 	if (do_rebuild)
 	{
