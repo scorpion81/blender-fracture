@@ -326,6 +326,10 @@ void BKE_rigidbody_calc_shard_mass(Scene *scene, Object *ob, MeshIsland *mi)
 				/* if we have a mesh, determine its volume */
 				dm_ob = CDDM_from_mesh(ob->data);
 				vol_ob = BKE_rigidbody_calc_volume(dm_ob, rb);
+
+				dm_ob->needsFree = 1;
+				dm_ob->release(dm_ob);
+				dm_ob = NULL;
 			}
 			else {
 				/* else get object boundbox as last resort */
@@ -2537,7 +2541,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	float timestep;
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	GroupObject *go;
-	//bool is_baked = false;
+	bool is_cached = false;
 
 	//flag this once, so it doesnt get called every time in the loop
 	rbw->flag |= RBW_FLAG_NEEDS_REBUILD;
@@ -2556,7 +2560,6 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 		BKE_ptcache_id_time(&pid, scene, ctime, &startframe, &endframe, NULL);
 		cache = fc->pointcache;
 		fc->flag &= ~FM_FLAG_SKIP_STEPPING;
-		//is_baked = cache->flag & PTCACHE_BAKED;
 
 		if ((ob->type == OB_MESH) && (fc->flag & FM_FLAG_REFRESH_SHAPE))
 		{
@@ -2619,13 +2622,14 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 		/* try to read from caches */
 		// RB_TODO deal with interpolated, old and baked results
 		if (BKE_ptcache_read(&pid, ctime)) {
-			printf("Cache read:  %d\n", (int)ctime);
+			//printf("Cache read:  %d\n", (int)ctime);
 			BKE_ptcache_validate(cache, (int)ctime);
 
 			rbw->ltime = ctime;
 
 			//tag this container as to be skipped in step (kinematic, but cache driven ?)
 			fc->flag |= FM_FLAG_SKIP_STEPPING;
+			is_cached = true;
 			continue;
 		}
 		else if (rbw->ltime == startframe /* || rb->flag & RBO_FLAG_NEEDS_VALIDATE*/)
@@ -2653,7 +2657,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 		}
 	}
 
-	if (rbw->constraints)
+	if (rbw->constraints && !is_cached)
 	{
 		for (go = rbw->constraints->gobject.first; go; go = go->next)
 		{
@@ -2691,7 +2695,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 		/* write cache for current frame, but not when its baked already (here accidentally a write happened on startframe for 1 object */
 		if ((ctime > rbw->ltime) && !(cache->flag & PTCACHE_BAKED))
 		{
-			printf("Write cache: %s  %.2f\n", ob->id.name + 2, ctime);
+			//printf("Write cache: %s  %.2f\n", ob->id.name + 2, ctime);
 			BKE_ptcache_validate(cache, (int)ctime);
 			BKE_ptcache_write(&pid, (unsigned int)ctime);
 		}

@@ -8464,6 +8464,7 @@ static void init_rigidbody_world_caches(Main *main)
 				}
 			}
 
+#if 0
 			if (sc->rigidbody_world->group)
 			{
 				for (go = sc->rigidbody_world->group->gobject.first; go; go = go->next)
@@ -8483,6 +8484,7 @@ static void init_rigidbody_world_caches(Main *main)
 					}
 				}
 			}
+#endif
 		}
 	}
 }
