@@ -2332,6 +2332,8 @@ static void do_sync_container(Object *ob, RigidBodyWorld *rbw, float ctime)
 			mul_v3_v3(centr, size);
 			mul_qt_v3(rbo->orn, centr);
 			add_v3_v3(rbo->pos, centr);
+
+			//if ((!(rb->flag & RBO_FLAG_KINEMATIC) && rb->type == RBO_TYPE_ACTIVE))
 			rbw->flag |= RBW_FLAG_OBJECT_CHANGED;
 		}
 		BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn);
@@ -2579,8 +2581,10 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 			rbw->flag &= ~RBW_FLAG_REFRESH_MODIFIERS;
 		}
 #endif
+		if (ctime < startframe)
+			ctime = startframe;
 
-		if (ctime <= startframe) {
+		if ((ctime == startframe) && (cache->flag == PTCACHE_OUTDATED)) {
 			/* rebuild constraints */
 			rbw->flag |= RBW_FLAG_REBUILD_CONSTRAINTS;
 
@@ -2624,7 +2628,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 			fc->flag |= FM_FLAG_SKIP_STEPPING;
 			continue;
 		}
-		else if (rbw->ltime == startframe || rb->flag & RBO_FLAG_NEEDS_VALIDATE)
+		else if (rbw->ltime == startframe /* || rb->flag & RBO_FLAG_NEEDS_VALIDATE*/)
 		{
 			//ensure flag if not set... hmmm FM_TODO
 			//rb->flag |= RBO_FLAG_NEEDS_VALIDATE;
@@ -2656,8 +2660,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 			Object *ob = go->ob;
 			//if ((ctime == rbw->ltime + 1) && !is_baked && ob->type == OB_EMPTY)
 			{
-				if (ob->rigidbody_constraint)
-					do_update_constraint_container(scene, ob, ob->rigidbody_constraint->flag & RBC_FLAG_NEEDS_VALIDATE);
+				do_update_constraint_container(scene, ob, ob->rigidbody_constraint->flag & RBC_FLAG_NEEDS_VALIDATE);
 			}
 		}
 	}
@@ -2686,7 +2689,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 		rigidbody_update_simulation_post_step(ob);
 
 		/* write cache for current frame, but not when its baked already (here accidentally a write happened on startframe for 1 object */
-		if (!(cache->flag & PTCACHE_BAKED))
+		if ((ctime > rbw->ltime) && !(cache->flag & PTCACHE_BAKED))
 		{
 			printf("Write cache: %s  %.2f\n", ob->id.name + 2, ctime);
 			BKE_ptcache_validate(cache, (int)ctime);

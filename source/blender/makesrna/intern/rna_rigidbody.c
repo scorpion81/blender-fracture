@@ -193,7 +193,7 @@ static void rna_FractureContainer_reset(Main *UNUSED(bmain), Scene *scene, Point
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	FractureContainer *fc = ptr->data;
 	fracture_container_reset(fc, rbw);
-	//BKE_fracture_synchronize_caches(scene);
+//	BKE_fracture_synchronize_caches(scene);
 }
 
 static void rna_FractureContainer_rigidbody_reset(Main *bmain, Scene *scene, PointerRNA *ptr)
@@ -204,7 +204,7 @@ static void rna_FractureContainer_rigidbody_reset(Main *bmain, Scene *scene, Poi
 	rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 
 	fracture_container_reset(fc, rbw);
-	//BKE_fracture_synchronize_caches(scene);
+//	BKE_fracture_synchronize_caches(scene);
 }
 
 static void constraint_container_reset(ConstraintContainer *cc, RigidBodyWorld *rbw, Object* ob)

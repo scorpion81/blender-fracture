@@ -5579,10 +5579,15 @@ static void direct_link_object(FileData *fd, Object *ob)
 
 	ob->rigidbody_constraint = newdataadr(fd, ob->rigidbody_constraint);
 	if (ob->rigidbody_constraint) {
+
 		ob->rigidbody_constraint->physics_constraint = NULL;
 		ob->rigidbody_constraint->fracture_constraints =
 		        newdataadr(fd, ob->rigidbody_constraint->fracture_constraints);
-		ob->rigidbody_constraint->flag |= RBC_FLAG_NEEDS_VALIDATE;
+
+		if (ob->rigidbody_constraint->fracture_constraints) {
+			ob->rigidbody_constraint->fracture_constraints->constraint_map.first = NULL;
+			ob->rigidbody_constraint->fracture_constraints->constraint_map.last = NULL;
+		}
 	}
 
 	link_list(fd, &ob->particlesystem);
@@ -8416,25 +8421,65 @@ static void init_rigidbody_world_caches(Main *main)
 	for (sc = main->scene.first; sc; sc = sc->id.next)
 	{
 		/* need to test all scenes, but can jump out at first found rigidbody object with appropriate cache */
-		Base* bas;
 		Object *ob;
+		GroupObject *go;
 
 		if (sc->rigidbody_world)
 		{
-			for (bas = sc->base.first; bas; bas = bas->next)
+			if (sc->rigidbody_world->group)
 			{
-				/* first cache will suffice */
-				ob = bas->object;
-				if (ob->rigidbody_object)
+				for (go = sc->rigidbody_world->group->gobject.first; go; go = go->next)
 				{
-					FractureContainer *fc = ob->rigidbody_object->fracture_objects;
-					if (fc)
+					/* first cache will suffice */
+					ob = go->ob;
+					if (ob->rigidbody_object)
 					{
-						sc->rigidbody_world->pointcache = fc->pointcache;
-						//this triggering is necessary to "initialize" the rigidbody simulation after loading, apparently
-						if (BKE_scene_check_rigidbody_active(sc))
-							BKE_rigidbody_do_simulation(sc, fc->pointcache->startframe);
-						break;
+						FractureContainer *fc = ob->rigidbody_object->fracture_objects;
+						if (fc)
+						{
+							sc->rigidbody_world->pointcache = fc->pointcache;
+							break;
+						}
+					}
+				}
+			}
+
+			if (sc->rigidbody_world->constraints)
+			{
+				for (go = sc->rigidbody_world->constraints->gobject.first; go; go = go->next)
+				{
+					ob = go->ob;
+					if (ob->rigidbody_constraint) {
+						if (ob->rigidbody_constraint->fracture_constraints &&
+						    ob->rigidbody_constraint->fracture_constraints->constraint_map.first == NULL)
+						{
+							/*rebuild constraints now (after loading the blend we come here),
+							 * so they are ready for the simulation*/
+							ob->rigidbody_constraint->fracture_constraints->flag |= FM_FLAG_REFRESH_CONSTRAINTS;
+							BKE_fracture_constraint_container_update(ob);
+							ob->rigidbody_constraint->fracture_constraints->flag &= ~FM_FLAG_REFRESH_CONSTRAINTS;
+							ob->rigidbody_constraint->flag |= RBC_FLAG_NEEDS_VALIDATE;
+						}
+					}
+				}
+			}
+
+			if (sc->rigidbody_world->group)
+			{
+				for (go = sc->rigidbody_world->group->gobject.first; go; go = go->next)
+				{
+					/* first cache will suffice */
+					ob = go->ob;
+					if (ob->rigidbody_object)
+					{
+						FractureContainer *fc = ob->rigidbody_object->fracture_objects;
+						if (fc)
+						{
+							//this triggering is necessary to "initialize" the rigidbody simulation after loading, apparently
+							if (BKE_scene_check_rigidbody_active(sc))
+								BKE_rigidbody_do_simulation(sc, fc->pointcache->startframe);
+							break;
+						}
 					}
 				}
 			}

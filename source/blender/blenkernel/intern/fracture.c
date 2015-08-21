@@ -4821,6 +4821,12 @@ static void free_constraint_container(Scene *scene, Object* ob)
 	Object *ob2 = ob->rigidbody_constraint->ob2;
 	FractureState *fs;
 
+	if (cc->constraint_map.first == NULL)
+	{
+		/* we just loaded the blend and dont have any constraints yet, so dont attempt to free here*/
+		return;
+	}
+
 	if (ob1 && ob1->rigidbody_object && ob1->rigidbody_object->fracture_objects && !scene)
 	{
 		FractureContainer *fc1 = ob1->rigidbody_object->fracture_objects;
