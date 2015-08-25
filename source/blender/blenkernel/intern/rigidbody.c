@@ -720,6 +720,9 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 	/* don't create a new shape if we already have one and don't want to rebuild it */
 	if (rbo->physics_shape && !rebuild)
 		return;
+
+	if (mi->physics_mesh == NULL)
+		return;
 	
 	/* if automatically determining dimensions, use the Object's boundbox
 	 *	- assume that all quadrics are standing upright on local z-axis
@@ -1380,6 +1383,9 @@ static void cleanupWorld(RigidBodyWorld *rbw)
 			RigidBodyOb *rbo = ob->rigidbody_object;
 			FractureContainer *fc = rbo->fracture_objects;
 			FractureState *fs;
+
+			if (fc->flag & FM_FLAG_EXECUTE_THREADED)
+				continue;
 
 			for (fs = fc->states.first; fs; fs = fs->next)
 			{
@@ -2555,6 +2561,14 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 		Object *ob = go->ob;
 		RigidBodyOb *rb = ob->rigidbody_object;
 		FractureContainer *fc = rb->fracture_objects;
+		FractureState *fs = fc->current;
+
+		if ((fs->frac_mesh->running == 1 || fs->frac_mesh->cancel == 1) && (fs->flag & FM_FLAG_EXECUTE_THREADED))
+		{
+			// do not even think of simulate when still fracturing....
+			rbw->flag &= ~RBW_FLAG_NEEDS_REBUILD;
+			return;
+		}
 
 		BKE_ptcache_id_from_rigidbody(&pid, ob, fc);
 		BKE_ptcache_id_time(&pid, scene, ctime, &startframe, &endframe, NULL);

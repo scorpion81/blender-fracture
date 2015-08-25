@@ -2332,14 +2332,12 @@ static void fracture_startjob(void *customdata, short *stop, short *do_update, f
 	}
 }
 
-#if 0
 static void fracture_endjob(void *customdata)
 {
 	FractureJob *fj = customdata;
-	FractureModifierData *fmd = fj->fmd;
-	fmd->fracture->flag &= ~FM_FLAG_REFRESH;
+	Object *ob = fj->ob;
+	DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
 }
-#endif
 
 static int fracture_poll(bContext *C)
 {
@@ -2348,12 +2346,10 @@ static int fracture_poll(bContext *C)
 
 static int fracture_refresh_exec(bContext *C, wmOperator *op)
 {
-	//Object *obact = ED_object_active_context(C);
 	Scene *scene = CTX_data_scene(C);
-	//float cfra = BKE_scene_frame_get(scene);
 	double start = 1.0;
 	FractureJob *fj;
-	//wmJob* wm_job;
+	wmJob* wm_job;
 	Object* selob = NULL;
 
 	CTX_DATA_BEGIN(C, Object *, selob, selected_objects)
@@ -2377,7 +2373,7 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 			WM_event_add_notifier(C, NC_OBJECT | ND_PARENT, NULL);
 			WM_event_add_notifier(C, NC_SCENE | ND_FRAME, NULL);
 
-			//if (!(fc->flag & FM_FLAG_EXECUTE_THREADED)) {
+			if (!(fc->flag & FM_FLAG_EXECUTE_THREADED))
 			{
 				op->type->flag |= OPTYPE_UNDO;
 				//perhaps trigger modifier eval before, but probably this is updated correctly...
@@ -2389,50 +2385,48 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 				DAG_id_tag_update(&selob->id, OB_RECALC_DATA);
 				WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, selob);
 			}
+			else
+			{
+				/* job stuff */
+				int factor, verts, shardprogress, halvingprogress, totalprogress;
+				scene->r.cfra = start;
+				op->type->flag &= ~OPTYPE_UNDO; /*forget about undo here, this will crash*/
+
+				/* setup job */
+				wm_job = WM_jobs_get(CTX_wm_manager(C), CTX_wm_window(C), scene, "Fracture",
+									 WM_JOB_PROGRESS, WM_JOB_TYPE_OBJECT_FRACTURE);
+				fj = MEM_callocN(sizeof(FractureJob), "object fracture job");
+				fj->ob = selob;
+				fj->scene = scene;
+
+				/* if we have shards, totalprogress = shards + islands
+				 * if we dont have shards, then calculate number of processed halving steps
+				 * if we split island to shards, add both */
+				factor = (fc->frac_algorithm == MOD_FRACTURE_BISECT_FAST) ? 4 : 2;
+				shardprogress = fc->shard_count * (factor+1); /* +1 for the meshisland creation */
+
+				if (selob->derivedFinal) {
+					verts = selob->derivedFinal->getNumVerts(selob->derivedFinal);
+				}
+				else {
+					verts = ((Mesh*)selob->data)->totvert;
+				}
+
+				halvingprogress = (int)(verts / 1000) + (fc->shard_count * factor); /*-> 1000 size of each partitioned separate loose*/
+				totalprogress = ((fc->flag & FM_FLAG_SHARDS_TO_ISLANDS) ||
+								  fc->point_source != MOD_FRACTURE_UNIFORM) ? shardprogress + halvingprogress : shardprogress;
+				fj->total_progress = totalprogress;
+
+				WM_jobs_customdata_set(wm_job, fj, fracture_free);
+				WM_jobs_timer(wm_job, 0.1, NC_WM | ND_JOB, NC_OBJECT | ND_MODIFIER);
+				WM_jobs_callbacks(wm_job, fracture_startjob, NULL, fracture_update, fracture_endjob);
+
+				WM_jobs_start(CTX_wm_manager(C), wm_job);
+			}
 		}
 	}
 
 	CTX_DATA_END;
-
-#if 0
-	else {
-		/* job stuff */
-		int factor, verts, shardprogress, halvingprogress, totalprogress;
-		scene->r.cfra = cfra;
-		op->type->flag &= ~OPTYPE_UNDO; //forget about undo here, this will crash
-
-		/* setup job */
-		wm_job = WM_jobs_get(CTX_wm_manager(C), CTX_wm_window(C), scene, "Fracture",
-							 WM_JOB_PROGRESS, WM_JOB_TYPE_OBJECT_FRACTURE);
-		fj = MEM_callocN(sizeof(FractureJob), "object fracture job");
-		fj->ob = obact;
-		fj->scene = scene;
-
-		/* if we have shards, totalprogress = shards + islands
-		 * if we dont have shards, then calculate number of processed halving steps
-		 * if we split island to shards, add both */
-		factor = (fc->frac_algorithm == MOD_FRACTURE_BISECT_FAST) ? 4 : 2;
-		shardprogress = fc->shard_count * (factor+1); /* +1 for the meshisland creation */
-
-		if (obact->derivedFinal) {
-			verts = obact->derivedFinal->getNumVerts(obact->derivedFinal);
-		}
-		else {
-			verts = ((Mesh*)obact->data)->totvert;
-		}
-
-		halvingprogress = (int)(verts / 1000) + (fc->shard_count * factor); /*-> 1000 size of each partitioned separate loose*/
-		totalprogress = ((fc->flag & FM_FLAG_SHARDS_TO_ISLANDS) ||
-		                  fc->point_source != MOD_FRACTURE_UNIFORM) ? shardprogress + halvingprogress : shardprogress;
-		fj->total_progress = totalprogress;
-
-		WM_jobs_customdata_set(wm_job, fj, fracture_free);
-		WM_jobs_timer(wm_job, 0.1, NC_WM | ND_JOB, NC_OBJECT | ND_MODIFIER);
-		WM_jobs_callbacks(wm_job, fracture_startjob, NULL, fracture_update, NULL);
-
-		WM_jobs_start(CTX_wm_manager(C), wm_job);
-	}
-#endif
 
 	return OPERATOR_FINISHED;
 }

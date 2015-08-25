@@ -36,6 +36,7 @@
 #include "BLI_sys_types.h"
 #include "BLI_string.h"
 #include "BLI_math.h"
+#include "BLI_threads.h"
 #include "MEM_guardedalloc.h"
 
 #include "BKE_cdderivedmesh.h"
@@ -76,6 +77,8 @@ static CustomDataMask requiredDataMask(Object* ob, ModifierData *UNUSED(md))
 	return dataMask;
 }
 
+static ThreadMutex fracture_modifier_lock = BLI_MUTEX_INITIALIZER;
+
 static DerivedMesh *applyModifier(ModifierData *UNUSED(md), Object *ob,
                                   DerivedMesh *derivedData,
                                   ModifierApplyFlag UNUSED(flag))
@@ -87,9 +90,18 @@ static DerivedMesh *applyModifier(ModifierData *UNUSED(md), Object *ob,
 		rb->fracture_objects->flag &= ~FM_FLAG_UPDATE_AUTOHIDE;
 		if (fs->visual_mesh)
 		{
+			DerivedMesh *dm = NULL;
+
+			//argh, this happens in a threaded environment too, and may interfere with threaded fracture, so lock here to prevent
+			//crashes on freed memory access
+			BLI_mutex_lock(&fracture_modifier_lock);
+
 			BKE_fracture_prepare_autohide(ob); /*in case after loading rebuild facepairs,
 												* this GHash is a runtime struct ONLY*/
-			return BKE_fracture_autohide(ob);
+			dm = BKE_fracture_autohide(ob);
+
+			BLI_mutex_unlock(&fracture_modifier_lock);
+			return dm;
 		}
 	}
 

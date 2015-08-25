@@ -70,6 +70,7 @@
 #include "BLI_rand.h"
 #include "BLI_sort.h"
 #include "BLI_string.h"
+#include "BLI_threads.h"
 #include "BLI_utildefines.h"
 
 #include "DNA_curve_types.h"
@@ -113,6 +114,29 @@ static void do_island_from_shard(Object *ob, Shard* s, int i, int thresh_defgrp_
 static void do_island_vertex_index_map(Object *ob, GHash **vertex_index_map, int partner_index);
 static void initialize_shard(Object *ob);
 static void update_islands(Object *ob);
+
+static bool thread_sentinel(Object *ob)
+{
+	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
+	FractureState* fs = NULL;
+
+	if (fc == NULL)
+		return true;
+
+	fs = fc->current;
+
+	if (fs == NULL)
+		return true;
+
+	if ((fs->frac_mesh) && (fs->frac_mesh->running == 1 || fs->frac_mesh->cancel == 1) &&
+	    (fc->flag & FM_FLAG_EXECUTE_THREADED))
+	{
+		/* skip fracture execution when fracture job is running or cancel has been requested */
+		return true;
+	}
+
+	return false;
+}
 
 static void copy_shard(Shard *t, Shard *s)
 {
@@ -254,8 +278,11 @@ static void free_shards(FracMesh *fm)
 	fm = NULL;
 }
 
+//static ThreadMutex free_fracture_state_lock = BLI_MUTEX_INITIALIZER;
 static void free_fracture_state(Scene *scene, FractureState *fs, bool delete_all)
 {
+	//BLI_mutex_lock(&free_fracture_state_lock);
+
 	free_meshislands(scene, &fs->island_map);
 
 	if (fs->islands) {
@@ -277,6 +304,8 @@ static void free_fracture_state(Scene *scene, FractureState *fs, bool delete_all
 		//MEM_freeN(fs);
 		//fs = NULL;
 	}
+
+	//BLI_mutex_unlock(&free_fracture_state_lock);
 }
 
 static void free_fracture_container(Scene *scene, FractureContainer *fc)
@@ -904,7 +933,7 @@ static void do_fracture(Scene *scene, Object *obj, ShardID id)
 		if (fs->frac_mesh->cancel == 1)
 		{
 			fs->frac_mesh->running = 0;
-			free_fracture_state(scene, fs, true);
+			//free_fracture_state(scene, fs, true);
 			MEM_freeN(points.points);
 			return;
 		}
@@ -2713,6 +2742,9 @@ static void do_island_vertex_index_map(Object *ob, GHash** vertex_island_map, in
 
 void BKE_fracture_create_islands(Object *ob, bool rebuild)
 {
+	if (thread_sentinel(ob))
+		return;
+
 	do_refresh(ob, rebuild);
 	do_post_island_creation(ob);
 	do_prepare_autohide(ob);
@@ -2752,6 +2784,9 @@ static void add_fracture_state(Scene *scene, Object *ob)
 static void do_modifier(Scene *scene, Object* ob)
 {
 	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
+
+	if (thread_sentinel(ob))
+		return;
 
 	/*HERE we must know which shard(s) to fracture... hmm shards... we should "merge" states which happen in the same frame automatically !*/
 	if (fc->fracture_mode == MOD_FRACTURE_PREFRACTURED)
@@ -5088,22 +5123,15 @@ void BKE_fracture_constraint_container_update(Object* ob)
 	}
 }
 
-
 void BKE_fracture_prefracture_mesh(Scene* scene, Object *ob, ShardID id)
 {
-	RigidBodyWorld *rbw = scene->rigidbody_world;
 	FractureContainer *fc = ob->rigidbody_object->fracture_objects;
 	FractureState *fs = fc->current;
-	int i = 0;
-	fc->raw_mesh = BKE_fracture_ensure_mesh(scene, ob);
 
-	//disable hardcoded for now, FM_TODO
-	//fc->flag &= ~FM_FLAG_EXECUTE_THREADED;
-
-	if ((fs->frac_mesh) && fs->frac_mesh->running == 1 && (fc->flag & FM_FLAG_EXECUTE_THREADED)) {
-		/* skip fracture execution when fracture job is running */
+	if (thread_sentinel(ob))
 		return;
-	}
+
+	fc->raw_mesh = BKE_fracture_ensure_mesh(scene, ob);
 
 #if 0
 	//very first, purge constraints... we are member in
@@ -5120,23 +5148,19 @@ void BKE_fracture_prefracture_mesh(Scene* scene, Object *ob, ShardID id)
 	if (id == 0)
 	{
 		//restore from original mesh....
-		free_fracture_state(scene, fs, true);
+		//if scene is NULL here dont touch rigidbodies at free (crashes)
+		free_fracture_state((fc->flag & FM_FLAG_EXECUTE_THREADED) ? NULL : scene, fs, true);
 		initialize_shard(ob);
 	}
 	else
-	{
+	{	//dynamic case
 		free_fracture_state(scene, fs, false);
 	}
 
 //	preprocess_dm(ob);
 	//perform intial halving... or do clean...
 
-	//operate on existing shards
-	if (fs->frac_mesh && fs->frac_mesh->cancel)
-	{
-		return;
-	}
-
+	//operate on existing shard;
 	do_modifier(scene, ob);
 	BKE_fracture_create_islands(ob, false);
 	//do_clear(ob); wtf....

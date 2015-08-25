@@ -1145,6 +1145,7 @@ static void rna_def_rigidbody_fracture_container(BlenderRNA *brna)
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", FM_FLAG_EXECUTE_THREADED);
 	RNA_def_property_ui_text(prop, "Execute as threaded job (WIP)", "Execute the fracture as threaded job, Warning: WIP, still may crash");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_FractureContainer_reset");
 
 	prop = RNA_def_property(srna, "fracture_mode", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_items(prop, prop_fracture_modes);
