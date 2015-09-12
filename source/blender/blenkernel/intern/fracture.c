@@ -723,7 +723,7 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 
 	for (i = 0; i < fm->shard_count; i++)
 	{
-		if (deletemap[i])
+		if (deletemap[i] && fm->last_shards)
 		{
 			Shard *t = fm->last_shards[i];
 			BLI_remlink_safe(&fm->shard_map, t);
