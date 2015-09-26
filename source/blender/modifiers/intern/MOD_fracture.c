@@ -160,6 +160,7 @@ static void initData(ModifierData *md)
 	fmd->auto_execute = false;
 	fmd->face_pairs = NULL;
 	fmd->autohide_dist = 0.0f;
+	fmd->automerge_dist = 0.0f;
 
 	fmd->breaking_percentage_weighted = false;
 	fmd->breaking_angle_weighted = false;
@@ -1351,6 +1352,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 
 	trmd->auto_execute = rmd->auto_execute;
 	trmd->autohide_dist = rmd->autohide_dist;
+	trmd->automerge_dist = rmd->automerge_dist;
 
 	trmd->solver_iterations_override = rmd->solver_iterations_override;
 
@@ -2654,9 +2656,13 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm)
 	}
 
 	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "delete_keep_normals geom=%hf context=%i", BM_ELEM_SELECT, DEL_FACES);
-	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+
+	if (fmd->automerge_dist > 0) {
+		//separate this, because it costs performance and might not work so well with thin objects, but its useful for smooth objects
+		BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 	             "automerge_keep_normals verts=%hv dist=%f", BM_ELEM_SELECT,
-	             fmd->autohide_dist * 10); /*need to merge larger cracks*/
+	             fmd->automerge_dist); /*need to merge larger cracks*/
+	}
 
 	//dissolve sharp edges with limit dissolve
 	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "dissolve_limit_keep_normals "

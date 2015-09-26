@@ -1594,7 +1594,9 @@ typedef struct FractureModifierData {
 	float origmat[4][4];
 	float breaking_threshold;
 	float cluster_breaking_threshold;
-	float contact_dist, autohide_dist;
+	float contact_dist;
+	float autohide_dist;
+	float automerge_dist;
 	float splinter_length;
 	float nor_range;
 	float fractal_amount;
@@ -1636,7 +1638,7 @@ typedef struct FractureModifierData {
 	float max_vol;
 	int last_frame;
 
-	//char pad[4];
+	char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

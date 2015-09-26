@@ -181,7 +181,9 @@ class PHYSICS_PT_fracture_utilities(PhysicButtonsPanel, Panel):
     def draw(self, context):
         layout = self.layout
         md = context.fracture
-        layout.prop(md, "autohide_dist")
+        col = layout.column(align=True)
+        col.prop(md, "autohide_dist")
+        col.prop(md, "automerge_dist")
         row = layout.row()
         row.prop(md, "fix_normals")
         row.prop(md, "nor_range")

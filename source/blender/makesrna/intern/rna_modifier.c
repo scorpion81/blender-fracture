@@ -894,6 +894,13 @@ static void rna_RigidBodyModifier_autohide_dist_set(PointerRNA *ptr, float value
 	rmd->refresh_autohide = true;
 }
 
+static void rna_RigidBodyModifier_automerge_dist_set(PointerRNA *ptr, float value)
+{
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
+	rmd->automerge_dist = value;
+	rmd->refresh_autohide = true;
+}
+
 static void rna_RigidBodyModifier_cluster_breaking_angle_set(PointerRNA *ptr, float value)
 {
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
@@ -4885,6 +4892,14 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_autohide_dist_set", NULL);
 	RNA_def_property_range(prop, 0.0f, 10.0f);
 	RNA_def_property_ui_text(prop, "Autohide Distance", "Distance between faces below which both faces should be hidden");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "automerge_dist", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "automerge_dist");
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyModifier_automerge_dist_set", NULL);
+	RNA_def_property_range(prop, 0.0f, 10.0f);
+	RNA_def_property_ui_text(prop, "Automerge Distance",
+ "Distance between faces below which vertices of both faces should be merged; (costs performance, use with smooth objects and fix normals to better hide cracks)");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "breaking_percentage_weighted", PROP_BOOLEAN, PROP_NONE);
