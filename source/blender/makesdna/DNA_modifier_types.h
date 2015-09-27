@@ -1559,6 +1559,7 @@ typedef struct FractureModifierData {
 	struct GHash *face_pairs;
 	struct GHash *vert_index_map; /*used for autoconversion of former objects to clusters, marks object membership of each vert*/
 	struct GHash *vertex_island_map; /* used for constraint building based on vertex proximity, temporary data */
+	int *autohide_deletion_map; /* store which shards broke and dont reconnect them again, means dont delete this face again */
 	ListBase shard_sequence; /* used as mesh cache / history for dynamic fracturing, for shards (necessary for conversion to DM) */
 	ListBase meshIsland_sequence; /* used as mesh cache / history for dynamic fracturing, for meshIslands (necessary for loc/rot "pointcache") */
 	ShardSequence *current_shard_entry; /*volatile storage of current shard entry, so we dont have to search in the list */

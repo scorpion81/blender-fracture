@@ -210,6 +210,7 @@ static void initData(ModifierData *md)
 	fmd->update_dynamic = false;
 	fmd->limit_impact = false;
 	fmd->reset_shards = false;
+	fmd->autohide_deletion_map = NULL;
 }
 
 static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
@@ -388,6 +389,11 @@ static void free_modifier(FractureModifierData *fmd, bool do_free_seq)
 	if (fmd->face_pairs != NULL) {
 		BLI_ghash_free(fmd->face_pairs, NULL, NULL);
 		fmd->face_pairs = NULL;
+	}
+
+	if (fmd->autohide_deletion_map != NULL){
+		MEM_freeN(fmd->autohide_deletion_map);
+		fmd->autohide_deletion_map = NULL;
 	}
 
 	//called on deleting modifier, object or quitting blender...
@@ -1400,6 +1406,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->dynamic_force = rmd->dynamic_force;
 	trmd->update_dynamic = false;
 	trmd->reset_shards = false;
+	trmd->autohide_deletion_map = NULL;
 }
 
 /* mi->bb, its for volume fraction calculation.... */
@@ -2600,6 +2607,18 @@ static void find_other_face(FractureModifierData *fmd, int i, BMesh* bm, BMFace 
 		return;
 	}
 
+	if (fmd->autohide_deletion_map == NULL)
+	{
+		int num_polys = fmd->visible_mesh_cached->getNumPolys(fmd->visible_mesh_cached);
+		fmd->autohide_deletion_map = MEM_callocN(sizeof(int) * num_polys, "autohide_deletion_map");
+	}
+
+	if (fmd->autohide_deletion_map[i] || fmd->autohide_deletion_map[other])
+	{
+		/* do not delete this facepair again, keep it */
+		return;
+	}
+
 	f1 = BM_face_at_index(bm, i);
 	f2 = BM_face_at_index(bm, other);
 
@@ -2610,7 +2629,6 @@ static void find_other_face(FractureModifierData *fmd, int i, BMesh* bm, BMFace 
 	BM_face_calc_center_mean(f1, f_centr);
 	BM_face_calc_center_mean(f2, f_centr_other);
 
-
 	if ((len_squared_v3v3(f_centr, f_centr_other) < (fmd->autohide_dist)) && (f1 != f2) &&
 	    (f1->mat_nr == 1) && (f2->mat_nr == 1))
 	{
@@ -2619,6 +2637,12 @@ static void find_other_face(FractureModifierData *fmd, int i, BMesh* bm, BMFace 
 		(*faces)[*del_faces] = f1;
 		(*faces)[(*del_faces) + 1] = f2;
 		(*del_faces) += 2;
+	}
+	else
+	{
+		/* broken face pairs */
+		fmd->autohide_deletion_map[i] = true;
+		fmd->autohide_deletion_map[other] = true;
 	}
 }
 
