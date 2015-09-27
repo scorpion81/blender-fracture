@@ -4932,7 +4932,6 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 	fmd->face_pairs = NULL;
 	fmd->vert_index_map = NULL;
 	fmd->vertex_island_map = NULL;
-	fmd->autohide_deletion_map = NULL;
 
 	/*HARDCODING this for now, until we can version it properly, say with 2.75 ? */
 	if (fd->fileversion < 275) {

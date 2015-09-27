@@ -74,41 +74,6 @@
 
 #ifdef WITH_BULLET
 
-static void do_refresh_autohide_deletion_map(FractureModifierData *fmd)
-{
-	//length of deletion map = poly count of shattered mesh !
-	if (fmd->visible_mesh_cached)
-	{
-		int num_polys = fmd->visible_mesh_cached->getNumPolys(fmd->visible_mesh_cached);
-		int i = 0;
-
-		if (fmd->autohide_deletion_map == NULL)
-		{
-			fmd->autohide_deletion_map = MEM_callocN(sizeof(int) * num_polys, "autohide_deletion_map");
-		}
-		else
-		{
-			for (i = 0; i < num_polys; i++)
-			{
-				fmd->autohide_deletion_map[i] = 0;
-			}
-		}
-	}
-}
-
-static void reset_autohide(RigidBodyWorld *rbw)
-{
-	GroupObject *go;
-
-	/*reset autohide deletion states of all modifier objects in the rigidbody world*/
-	for (go = rbw->group->gobject.first; go; go = go->next)	{
-		FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(go->ob, eModifierType_Fracture);
-		if (fmd) {
-			do_refresh_autohide_deletion_map(fmd);
-		}
-	}
-}
-
 static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int rebuild, int transfer_speed);
 
 static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED(rbw), MeshIsland *UNUSED(mi), Object *UNUSED(ob))
@@ -3571,9 +3536,6 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	if (ctime <= startframe) {
 		/* rebuild constraints */
 		rbw->flag |= RBW_FLAG_REBUILD_CONSTRAINTS;
-
-		/* reset autohide deletion state */
-		reset_autohide(rbw);
 
 		rbw->ltime = startframe;
 		if (rbw->flag & RBW_FLAG_OBJECT_CHANGED)
