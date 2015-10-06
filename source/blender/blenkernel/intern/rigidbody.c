@@ -2681,7 +2681,15 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 		return;
 
 	if (rbo->shape == RB_SHAPE_TRIMESH && rbo->flag & RBO_FLAG_USE_DEFORM) {
-		DerivedMesh *dm = ob->derivedDeform;
+		DerivedMesh *dm = NULL;
+
+		if (rbo->mesh_source == RBO_MESH_DEFORM) {
+			ob->derivedDeform;
+		}
+		else if (rbo->mesh_source == RBO_MESH_FINAL) {
+			dm = ob->derivedFinal;
+		}
+
 		if (dm) {
 			MVert *mvert = dm->getVertArray(dm);
 			int totvert = dm->getNumVerts(dm);
@@ -2690,6 +2698,7 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 			RB_shape_trimesh_update(rbo->physics_shape, (float *)mvert, totvert, sizeof(MVert), bb->vec[0], bb->vec[6]);
 		}
 	}
+
 	copy_v3_v3(centr, centroid);
 	
 	mat4_decompose(loc, rot, scale, ob->obmat);
