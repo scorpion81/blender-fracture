@@ -126,8 +126,8 @@ class PHYSICS_PT_fluid(PhysicButtonsPanel, Panel):
             col = split.column()
             subsplit = col.split()
             subcol = subsplit.column()
-            if fluid.use_animated_mesh:
-                subcol.enabled = False
+            #if fluid.use_animated_mesh:
+            #    subcol.enabled = False
             subcol.label(text="Slip Type:")
             subcol.prop(fluid, "slip_type", text="")
             if fluid.slip_type == 'PARTIALSLIP':
