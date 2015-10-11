@@ -752,7 +752,8 @@ static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh_shard(MeshIsland 
 		int tottri;
 		const MLoop *mloop;
 		
-		dm = rigidbody_get_mesh(ob);
+		//dm = rigidbody_get_mesh(ob);
+		dm = mi->physics_mesh;
 
 		/* ensure mesh validity, then grab data */
 		if (dm == NULL)
@@ -815,12 +816,15 @@ static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh_shard(MeshIsland 
 			}
 		}
 
+#if 0
 		/* cleanup temp data */
 		if (dm && ob->rigidbody_object->mesh_source == RBO_MESH_BASE) {
 			dm->needsFree = 1;
 			dm->release(dm);
 			dm = NULL;
 		}
+#endif
+
 	}
 	else {
 		printf("ERROR: cannot make Triangular Mesh collision shape for non-Mesh object\n");
@@ -2700,11 +2704,11 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 			int totvert = dm->getNumVerts(dm);
 			BoundBox *bb = BKE_object_boundbox_get(ob);
 
-			if (RB_shape_get_num_verts(rbo->physics_shape) != totvert || rbo->mesh_source == RBO_MESH_FINAL)
+			if (RB_shape_get_num_verts(rbo->physics_shape) != totvert)
 			{
 				if (mi != NULL)
 				{
-					//fracture modifier case
+					//fracture modifier case TODO, update mi->physicsmesh somehow and redraw
 					rbo->flag |= RBO_FLAG_NEEDS_RESHAPE;
 					validateShard(rbw, mi, ob, false, false);
 				}
