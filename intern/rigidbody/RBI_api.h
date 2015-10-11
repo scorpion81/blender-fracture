@@ -254,6 +254,8 @@ rbCollisionShape *RB_shape_new_trimesh(rbMeshData *mesh);
 /* 2b - GImpact Meshes */
 rbCollisionShape *RB_shape_new_gimpact_mesh(rbMeshData *mesh);
 
+int RB_shape_get_num_verts(rbCollisionShape *shape);
+
 
 /* Cleanup --------------------------- */
 

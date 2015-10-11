@@ -816,9 +816,9 @@ static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh_shard(MeshIsland 
 		}
 
 		/* cleanup temp data */
-		if (dm /*&& ob->rigidbody_object->mesh_source == RBO_MESH_BASE*/) {
+		if (dm && ob->rigidbody_object->mesh_source == RBO_MESH_BASE) {
 			dm->needsFree = 1;
-		dm->release(dm);
+			dm->release(dm);
 			dm = NULL;
 		}
 	}
@@ -1115,6 +1115,10 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 			break;
 		case RB_SHAPE_TRIMESH:
 		{
+			new_shape = rigidbody_get_shape_trimesh_from_mesh_shard(mi, ob);
+			break;
+#if 0
+			//wtf, seems a merge gone wrong....
 			if (ob->type == OB_MESH) {
 				DerivedMesh *dm = rigidbody_get_mesh(ob);
 				MVert *mvert;
@@ -1149,6 +1153,7 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 				volume = size[0] * size[1] * size[2];
 			}
 			break;
+#endif
 		}
 	}
 	/* assign new collision shape if creation was successful */
@@ -2670,7 +2675,7 @@ static void rigidbody_update_sim_world(Scene *scene, RigidBodyWorld *rbw)
 		rigidbody_update_ob_array(rbw);
 }
 
-static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *ob, RigidBodyOb *rbo, float centroid[3])
+static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *ob, RigidBodyOb *rbo, float centroid[3], MeshIsland *mi)
 {
 	float loc[3];
 	float rot[4];
@@ -2695,7 +2700,25 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 			int totvert = dm->getNumVerts(dm);
 			BoundBox *bb = BKE_object_boundbox_get(ob);
 
-			RB_shape_trimesh_update(rbo->physics_shape, (float *)mvert, totvert, sizeof(MVert), bb->vec[0], bb->vec[6]);
+			if (RB_shape_get_num_verts(rbo->physics_shape) != totvert || rbo->mesh_source == RBO_MESH_FINAL)
+			{
+				if (mi != NULL)
+				{
+					//fracture modifier case
+					rbo->flag |= RBO_FLAG_NEEDS_RESHAPE;
+					validateShard(rbw, mi, ob, false, false);
+				}
+				else
+				{
+					//regular rigidbody case
+					rigidbody_validate_sim_shape(ob, true);
+					RB_body_set_collision_shape(rbo->physics_object, rbo->physics_shape);
+				}
+			}
+			else
+			{
+				RB_shape_trimesh_update(rbo->physics_shape, (float *)mvert, totvert, sizeof(MVert), bb->vec[0], bb->vec[6]);
+			}
 		}
 	}
 
@@ -3001,7 +3024,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 			}
 
 			/* update simulation object... */
-			rigidbody_update_sim_ob(scene, rbw, ob, mi->rigidbody, mi->centroid);
+			rigidbody_update_sim_ob(scene, rbw, ob, mi->rigidbody, mi->centroid, mi);
 		}
 
 		if (fmd->use_mass_dependent_thresholds) {
@@ -3140,7 +3163,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 			}
 
 			/* update simulation object... */
-			rigidbody_update_sim_ob(scene, rbw, ob, rbo, centroid);
+			rigidbody_update_sim_ob(scene, rbw, ob, rbo, centroid, NULL);
 		}
 
 		rbw->flag &= ~RBW_FLAG_REFRESH_MODIFIERS;

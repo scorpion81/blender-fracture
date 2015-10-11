@@ -1065,6 +1065,17 @@ rbCollisionShape *RB_shape_new_gimpact_mesh(rbMeshData *mesh)
 	return shape;
 }
 
+/* needed to rebuild mesh on demand */
+int RB_shape_get_num_verts(rbCollisionShape *shape)
+{
+	if (shape->mesh)
+	{
+		return shape->mesh->num_vertices;
+	}
+
+	return 0;
+}
+
 /* Cleanup --------------------------- */
 
 void RB_shape_delete(rbCollisionShape *shape)
