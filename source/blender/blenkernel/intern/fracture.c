@@ -1843,6 +1843,7 @@ void BKE_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, int fr
 	float mat[4][4];
 	float quat[4] = {1.0f, 0.0f, 0.0f, 0.0f};
 	float qrot[4] = {1.0f, 0.0f, 0.0f, 0.0f};
+	float crot[4];
 
 	invert_m4_m4(mat, ob->obmat);
 
@@ -1855,9 +1856,18 @@ void BKE_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, int fr
 	mi->rots[2] = rot[2] = par->rots[4*frame+2];
 	mi->rots[3] = rot[3] = par->rots[4*frame+3];
 
+	mi->rots[0] = rot[0] = par->rots[4*frame];
+	mi->rots[1] = rot[1] = par->rots[4*frame+1];
+	mi->rots[2] = rot[2] = par->rots[4*frame+2];
+	mi->rots[3] = rot[3] = par->rots[4*frame+3];
+
 	mul_m4_v3(mat, loc);
 	mat4_to_quat(quat, mat);
-	mul_qt_qtqt(qrot, quat, rot);
+
+	//combine
+	mul_qt_qtqt(qrot, rot, quat);
+	conjugate_qt_qt(crot, rot);
+	mul_qt_qtqt(qrot, qrot, crot);
 
 	if (is_parent)
 	{
@@ -1903,7 +1913,7 @@ void BKE_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, int fr
 
 	//init rigidbody properly ?
 	copy_v3_v3(mi->centroid, centr);
-	copy_qt_qt(mi->rot, qrot);
+	copy_qt_qt(mi->rot, rot);
 }
 
 void BKE_free_constraints(FractureModifierData *fmd)
