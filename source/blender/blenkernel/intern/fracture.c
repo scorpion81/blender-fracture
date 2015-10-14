@@ -1835,41 +1835,34 @@ bool BKE_lookup_mesh_state(FractureModifierData *fmd, int frame, int do_lookup)
 void BKE_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, int frame, bool is_parent)
 {
 	float loc[3] = {0.0f, 0.0f, 0.0f};
-	float rot[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+	float rot[4] = {1.0f, 0.0f, 0.0f, 0.0f};
 	int j = 0;
-	//float irot[4];
+
 	float centr[3] = {0.0f, 0.0f, 0.0f};
 
-	invert_m4_m4(ob->imat, ob->obmat);
+	float mat[4][4];
+	float quat[4] = {1.0f, 0.0f, 0.0f, 0.0f};
+	float qrot[4] = {1.0f, 0.0f, 0.0f, 0.0f};
 
-	loc[0] = par->locs[3*frame];
-	loc[1] = par->locs[3*frame+1];
-	loc[2] = par->locs[3*frame+2];
+	invert_m4_m4(mat, ob->obmat);
 
-	rot[0] = par->rots[4*frame];
-	rot[1] = par->rots[4*frame+1];
-	rot[2] = par->rots[4*frame+2];
-	rot[3] = par->rots[4*frame+3];
+	mi->locs[0] = loc[0] = par->locs[3*frame];
+	mi->locs[1] = loc[1] = par->locs[3*frame+1];
+	mi->locs[2] = loc[2] = par->locs[3*frame+2];
 
-	mi->locs[0] = loc[0];
-	mi->locs[1] = loc[1];
-	mi->locs[2] = loc[2];
+	mi->rots[0] = rot[0] = par->rots[4*frame];
+	mi->rots[1] = rot[1] = par->rots[4*frame+1];
+	mi->rots[2] = rot[2] = par->rots[4*frame+2];
+	mi->rots[3] = rot[3] = par->rots[4*frame+3];
 
-	mi->rots[0] = rot[0];
-	mi->rots[1] = rot[1];
-	mi->rots[2] = rot[2];
-	mi->rots[3] = rot[3];
-
-	mul_m4_v3(ob->imat, loc);
-	//mat4_to_quat(irot, ob->imat);
-	//mul_qt_qtqt(rot, rot, irot);
-
-	mul_qt_qtqt(rot, rot, par->rot);
+	mul_m4_v3(mat, loc);
+	mat4_to_quat(quat, mat);
+	mul_qt_qtqt(qrot, quat, rot);
 
 	if (is_parent)
 	{
 		copy_v3_v3(centr, mi->centroid);
-		mul_qt_v3(rot, centr);
+		mul_qt_v3(qrot, centr);
 		add_v3_v3(centr, loc);
 	}
 	else
@@ -1883,27 +1876,34 @@ void BKE_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, int fr
 
 		//first add vert to centroid, then rotate
 		copy_v3_v3(co, mi->vertices_cached[j]->co);
+
 		sub_v3_v3(co, mi->centroid);
-		mul_qt_v3(rot, co);
+		mul_qt_v3(qrot, co);
 		add_v3_v3(co, centr);
+
 		copy_v3_v3(mi->vertices_cached[j]->co, co);
-
-		co[0] = mi->vertco[3*j];
-		co[1] = mi->vertco[3*j+1];
-		co[2] = mi->vertco[3*j+2];
-
-		sub_v3_v3(co, mi->centroid);
-		mul_qt_v3(rot, co);
-		add_v3_v3(co, centr);
 
 		mi->vertco[3*j]   = co[0];
 		mi->vertco[3*j+1] = co[1];
 		mi->vertco[3*j+2] = co[2];
 	}
 
+	{
+		DerivedMesh *dm = mi->physics_mesh;
+		MVert* mv, *mvert = dm->getVertArray(dm);
+		int numVert = dm->getNumVerts(dm);
+
+		for (j = 0, mv = mvert; j < numVert; j++, mv++)
+		{
+			//also rotate physicsmesh (shouldnt be necessary,
+			//but lets do it to check whether its correct then)
+			mul_qt_v3(qrot, mv->co);
+		}
+	}
+
 	//init rigidbody properly ?
 	copy_v3_v3(mi->centroid, centr);
-	copy_qt_qt(mi->rot, rot);
+	copy_qt_qt(mi->rot, qrot);
 }
 
 void BKE_free_constraints(FractureModifierData *fmd)

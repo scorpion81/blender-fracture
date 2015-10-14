@@ -2908,10 +2908,18 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 		/*take care of previous transformation, if any*/
 		MeshIslandSequence *prev = NULL;
 
+		if (fmd->current_mi_entry) {
+			prev = fmd->current_mi_entry->prev;
+		}
 
 		/*also take over the UNFRACTURED last shards transformation !!! */
 		if (s->parent_id == 0)
 		{
+			//float quat[4];
+
+			//TODO, scale ?
+			//mat4_to_quat(quat, ob->obmat);
+
 			mi->locs[0] = mi->centroid[0];
 			mi->locs[1] = mi->centroid[1];
 			mi->locs[2] = mi->centroid[2];
@@ -2920,10 +2928,6 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 			mi->rots[1] = mi->rot[1];
 			mi->rots[2] = mi->rot[2];
 			mi->rots[3] = mi->rot[3];
-		}
-
-		if (fmd->current_mi_entry) {
-			prev = fmd->current_mi_entry->prev;
 		}
 
 		if (prev)
