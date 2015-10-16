@@ -1539,6 +1539,76 @@ typedef struct FractureID {
 	char pad[4];
 } FractureID;
 
+/* fracture settings for different mesh parts, applies to prefracture only */
+typedef struct FractureSetting {
+	struct FractureSetting *next, *prev;
+
+	struct Group *extra_group;
+	struct Group *cluster_group;
+	struct Group *cutter_group;
+	struct Material *inner_material;
+
+	char name[64]; /* MAX_VGROUP_NAME, because this is the vgroup name (a copy)
+					  only to help determining what is what, index is used */
+	char thresh_defgrp_name[64];  /* MAX_VGROUP_NAME */
+	char ground_defgrp_name[64];  /* MAX_VGROUP_NAME */
+	char inner_defgrp_name[64];  /* MAX_VGROUP_NAME */
+
+	/* values */
+	int frac_algorithm;
+	int shard_count;
+	int point_source;
+	int point_seed;
+	int percentage;
+	int cluster_count;
+
+	int constraint_limit;
+	int solver_iterations_override;
+	int cluster_solver_iterations_override;
+	int breaking_percentage;
+	int cluster_breaking_percentage;
+	int splinter_axis;
+	int fractal_cuts;
+	int fractal_iterations;
+	int grease_decimate;
+	int cutter_axis;
+	int cluster_constraint_type;
+
+	float breaking_angle;
+	float breaking_distance;
+	float cluster_breaking_angle;
+	float cluster_breaking_distance;
+	float breaking_threshold;
+	float cluster_breaking_threshold;
+	float contact_dist;
+	float splinter_length;
+	float nor_range;
+	float fractal_amount;
+	float physics_mesh_scale;
+	float grease_offset;
+
+	int use_constraints;
+	int use_mass_dependent_thresholds;
+	int use_particle_birth_coordinates;
+	int use_breaking;
+	int use_smooth;
+	int use_greasepencil_edges;
+
+	int shards_to_islands;
+	int fix_normals;
+
+	int breaking_distance_weighted;
+	int breaking_angle_weighted;
+	int breaking_percentage_weighted;
+	int constraint_target; //type of constraints.... make this a list ?
+	int limit_impact;
+
+	/* internal flags */
+	int use_experimental;
+
+	char pad[4];
+} FractureSetting;
+
 typedef struct FractureModifierData {
 	ModifierData modifier;
 	struct FracMesh *frac_mesh; /* store only the current fracmesh here first, later maybe an entire history...*/
@@ -1564,6 +1634,9 @@ typedef struct FractureModifierData {
 	ShardSequence *current_shard_entry; /*volatile storage of current shard entry, so we dont have to search in the list */
 	MeshIslandSequence *current_mi_entry; /*analogous to current shard entry */
 	ListBase fracture_ids; /*volatile storage of shards being "hit" or fractured currently, needs to be cleaned up after usage! */
+	ListBase fracture_settings;
+
+	int active_setting;
 
 	/* values */
 	int frac_algorithm;
@@ -1627,6 +1700,7 @@ typedef struct FractureModifierData {
 	int breaking_percentage_weighted;
 	int constraint_target;
 	int limit_impact;
+	int fracture_all;
 
 	/* internal flags */
 	int use_experimental;

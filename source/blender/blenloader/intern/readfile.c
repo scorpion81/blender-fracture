@@ -4940,6 +4940,14 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 		fmd->shard_sequence.last = NULL;
 		fmd->meshIsland_sequence.first = NULL;
 		fmd->meshIsland_sequence.last = NULL;
+
+		fmd->fracture_settings.first = NULL;
+		fmd->fracture_settings.last = NULL;
+		fmd->active_setting = 0;
+	}
+	else
+	{
+		link_list(fd, &fmd->fracture_settings);
 	}
 
 	if (fm == NULL || fmd->dm_group) {

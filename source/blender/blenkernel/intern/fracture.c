@@ -279,6 +279,17 @@ float BKE_shard_calc_minmax(Shard *shard)
 	return len_v3(diff);
 }
 
+Shard* BKE_create_initial_shard(DerivedMesh *dm)
+{
+	/* create temporary shard covering the entire mesh */
+	Shard *s = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
+	                                     dm->numVertData, dm->numPolyData, dm->numLoopData, true);
+	s = BKE_custom_data_to_shard(s, dm);
+	s->flag = SHARD_INTACT;
+	s->shard_id = -2;
+	return s;
+}
+
 
 /*access shard directly by index / id*/
 Shard *BKE_shard_by_id(FracMesh *mesh, ShardID id, DerivedMesh *dm) {
@@ -300,18 +311,13 @@ Shard *BKE_shard_by_id(FracMesh *mesh, ShardID id, DerivedMesh *dm) {
 	else if (id == -1 && dm != NULL)
 	{
 		/* create temporary shard covering the entire mesh */
-		Shard *s = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
-		                                     dm->numVertData, dm->numPolyData, dm->numLoopData, true);
-		s = BKE_custom_data_to_shard(s, dm);
-		s->flag = SHARD_INTACT;
-		s->shard_id = -2;
-		return s;
+		return BKE_create_initial_shard(dm);
 	}
 	
 	return NULL;
 }
 
-void BKE_get_shard_minmax(FracMesh *mesh, ShardID id, float min_r[3], float max_r[3], DerivedMesh *dm)
+bool BKE_get_shard_minmax(FracMesh *mesh, ShardID id, float min_r[3], float max_r[3], DerivedMesh *dm)
 {
 	Shard *shard = BKE_shard_by_id(mesh, id, dm);
 	if (shard != NULL) {
@@ -323,11 +329,10 @@ void BKE_get_shard_minmax(FracMesh *mesh, ShardID id, float min_r[3], float max_
 		{
 			BKE_shard_free(shard, true);
 		}
+
+		return true;
 	}
-	else
-	{
-		printf("OOOOPS: %d is NULL!!!\n", id);
-	}
+	return false;
 }
 
 Shard *BKE_create_fracture_shard(MVert *mvert, MPoly *mpoly, MLoop *mloop, int totvert, int totpoly, int totloop, bool copy)
@@ -726,11 +731,18 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 		if (deletemap[i] && fm->last_shards)
 		{
 			Shard *t = fm->last_shards[i];
-			BLI_remlink_safe(&fm->shard_map, t);
-			BKE_shard_free(t, true);
-			fm->last_shards[i] = NULL;
 
-			printf("Deleting shard: %d\n", i);
+			if (t->parent_id == p->shard_id)
+			{
+				BLI_remlink_safe(&fm->shard_map, t);
+				BKE_shard_free(t, true);
+				fm->last_shards[i] = NULL;
+				printf("Deleting shard: %d\n", i);
+			}
+			else
+			{
+				printf("NOT Deleting shard: %d\n", i);
+			}
 		}
 	}
 
@@ -742,7 +754,9 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 
 
 /* parse the voro++ cell data */
-static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, FracMesh *fm, int algorithm, Object *obj, DerivedMesh *dm, short inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode, bool reset)
+static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, FracMesh *fm, int algorithm, Object *obj, DerivedMesh *dm,
+                        short inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode,
+                        bool reset)
 {
 	/*Parse voronoi raw data*/
 	int i = 0, j = 0, count = 0;
@@ -819,6 +833,8 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 			{
 				BLI_kdtree_balance(fm->last_shard_tree);
 			}
+
+			p->flag |= SHARD_DELETE;
 		}
 	}
 	else
@@ -902,7 +918,8 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 	}
 
 
-	if (p->shard_id == -2)
+	//if (p->shard_id == -2)
+	if (p && parent_id == -2)
 	{
 		BKE_shard_free(p, true);
 	}
@@ -1001,7 +1018,7 @@ static Shard *parse_cell(cell c)
 
 	s = BKE_create_fracture_shard(mvert, mpoly, mloop, totvert, totpoly, totloop, false);
 
-	s->flag &= ~(SHARD_SKIP | SHARD_DELETE);
+	//s->flag &= ~(SHARD_SKIP | SHARD_DELETE);
 	s->neighbor_ids = neighbors;
 	s->neighbor_count = totpoly;
 	copy_v3_v3(s->centroid, centr);
@@ -1440,7 +1457,9 @@ void BKE_fracture_shard_by_planes(FractureModifierData *fmd, Object *obj, short 
 }
 
 void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud, int algorithm, Object *obj, DerivedMesh *dm, short
-                                  inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode, bool reset) {
+                                  inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode,
+                                  bool reset)
+{
 	int n_size = 8;
 	
 	Shard *shard;
@@ -1458,8 +1477,17 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 #endif
 	
 	shard = BKE_shard_by_id(fmesh, id, dm);
-	if (!shard || shard->flag & SHARD_FRACTURED)
-		return;
+	if (!shard || shard->flag & SHARD_FRACTURED) {
+		if (id == 0)
+		{
+			//fallback to entire mesh
+			shard = BKE_shard_by_id(fmesh, -1 , dm);
+		}
+		else
+		{
+			return;
+		}
+	}
 
 	printf("Fracturing with %d points...\n", pointcloud->totpoints);
 	/* calculate bounding box with theta margin */
@@ -1942,4 +1970,135 @@ void BKE_free_constraints(FractureModifierData *fmd)
 
 	fmd->meshConstraints.first = NULL;
 	fmd->meshConstraints.last = NULL;
+}
+
+void BKE_fracture_load_settings(FractureModifierData *fmd, FractureSetting *fs)
+{
+	/*copy settings values to FM itself....*/
+
+	/* vgroups  XXX TODO non ascii strings ?*/
+	strncpy(fmd->thresh_defgrp_name, fs->thresh_defgrp_name, strlen(fs->thresh_defgrp_name));
+	strncpy(fmd->ground_defgrp_name, fs->ground_defgrp_name, strlen(fs->ground_defgrp_name));
+	strncpy(fmd->inner_defgrp_name, fs->inner_defgrp_name, strlen(fs->inner_defgrp_name));
+
+	fmd->inner_material = fs->inner_material;
+	fmd->extra_group = fs->extra_group;
+	fmd->cluster_group = fs->cluster_group;
+	fmd->cutter_group = fs->cutter_group;
+
+	fmd->breaking_threshold = fs->breaking_threshold;
+	fmd->use_constraints = fs->use_constraints;
+	fmd->contact_dist = fs->contact_dist;
+	fmd->use_mass_dependent_thresholds = fs->use_mass_dependent_thresholds;
+
+	fmd->constraint_limit = fs->constraint_limit;
+	fmd->breaking_angle = fs->breaking_angle;
+	fmd->breaking_distance = fs->breaking_distance;
+	fmd->breaking_percentage = fs->breaking_percentage;
+	fmd->use_experimental = fs->use_experimental;
+
+	fmd->cluster_count = fs->cluster_count;
+	fmd->cluster_breaking_threshold = fs->cluster_breaking_threshold;
+	fmd->solver_iterations_override = fs->solver_iterations_override;
+	fmd->shards_to_islands = fs->shards_to_islands;
+
+	fmd->shard_count = fs->shard_count;
+	fmd->frac_algorithm = fs->frac_algorithm;
+
+	fmd->solver_iterations_override = fs->solver_iterations_override;
+
+	fmd->breaking_angle_weighted = fs->breaking_angle_weighted;
+	fmd->breaking_distance_weighted = fs->breaking_distance_weighted;
+	fmd->breaking_percentage_weighted = fs->breaking_percentage_weighted;
+
+	fmd->point_seed = fs->point_seed;
+	fmd->point_source = fs->point_source;
+
+	fmd->use_particle_birth_coordinates = fs->use_particle_birth_coordinates;
+	fmd->splinter_length = fs->splinter_length;
+	fmd->cluster_solver_iterations_override = fs->cluster_solver_iterations_override;
+
+	fmd->cluster_breaking_angle = fs->cluster_breaking_angle;
+	fmd->cluster_breaking_distance = fs->cluster_breaking_distance;
+	fmd->cluster_breaking_percentage = fs->cluster_breaking_percentage;
+
+	fmd->use_breaking = fs->use_breaking;
+	fmd->use_smooth = fs->use_smooth;
+	fmd->fractal_cuts = fs->fractal_cuts;
+	fmd->fractal_amount = fs->fractal_amount;
+
+	fmd->grease_decimate = fs->grease_decimate;
+	fmd->grease_offset = fs->grease_offset;
+	fmd->use_greasepencil_edges = fs->use_greasepencil_edges;
+	fmd->cutter_axis = fs->cutter_axis;
+
+	// add more constraint types, as in special ones (3x generic and so on)
+	fmd->cluster_constraint_type = fs->cluster_constraint_type;
+	fmd->constraint_target = fs->constraint_target;
+}
+
+void BKE_fracture_store_settings(FractureModifierData *fs, FractureSetting *fmd)
+{
+	//just invert fmd and fs here, same variables
+	/*copy settings values to FM itself....*/
+
+	/* vgroups  XXX TODO non ascii strings ?*/
+	strncpy(fmd->thresh_defgrp_name, fs->thresh_defgrp_name, strlen(fs->thresh_defgrp_name));
+	strncpy(fmd->ground_defgrp_name, fs->ground_defgrp_name, strlen(fs->ground_defgrp_name));
+	strncpy(fmd->inner_defgrp_name, fs->inner_defgrp_name, strlen(fs->inner_defgrp_name));
+
+	fmd->inner_material = fs->inner_material;
+	fmd->extra_group = fs->extra_group;
+	fmd->cluster_group = fs->cluster_group;
+	fmd->cutter_group = fs->cutter_group;
+
+	fmd->breaking_threshold = fs->breaking_threshold;
+	fmd->use_constraints = fs->use_constraints;
+	fmd->contact_dist = fs->contact_dist;
+	fmd->use_mass_dependent_thresholds = fs->use_mass_dependent_thresholds;
+
+	fmd->constraint_limit = fs->constraint_limit;
+	fmd->breaking_angle = fs->breaking_angle;
+	fmd->breaking_distance = fs->breaking_distance;
+	fmd->breaking_percentage = fs->breaking_percentage;
+	fmd->use_experimental = fs->use_experimental;
+
+	fmd->cluster_count = fs->cluster_count;
+	fmd->cluster_breaking_threshold = fs->cluster_breaking_threshold;
+	fmd->solver_iterations_override = fs->solver_iterations_override;
+	fmd->shards_to_islands = fs->shards_to_islands;
+
+	fmd->shard_count = fs->shard_count;
+	fmd->frac_algorithm = fs->frac_algorithm;
+
+	fmd->solver_iterations_override = fs->solver_iterations_override;
+
+	fmd->breaking_angle_weighted = fs->breaking_angle_weighted;
+	fmd->breaking_distance_weighted = fs->breaking_distance_weighted;
+	fmd->breaking_percentage_weighted = fs->breaking_percentage_weighted;
+
+	fmd->point_seed = fs->point_seed;
+	fmd->point_source = fs->point_source;
+
+	fmd->use_particle_birth_coordinates = fs->use_particle_birth_coordinates;
+	fmd->splinter_length = fs->splinter_length;
+	fmd->cluster_solver_iterations_override = fs->cluster_solver_iterations_override;
+
+	fmd->cluster_breaking_angle = fs->cluster_breaking_angle;
+	fmd->cluster_breaking_distance = fs->cluster_breaking_distance;
+	fmd->cluster_breaking_percentage = fs->cluster_breaking_percentage;
+
+	fmd->use_breaking = fs->use_breaking;
+	fmd->use_smooth = fs->use_smooth;
+	fmd->fractal_cuts = fs->fractal_cuts;
+	fmd->fractal_amount = fs->fractal_amount;
+
+	fmd->grease_decimate = fs->grease_decimate;
+	fmd->grease_offset = fs->grease_offset;
+	fmd->use_greasepencil_edges = fs->use_greasepencil_edges;
+	fmd->cutter_axis = fs->cutter_axis;
+
+	// add more constraint types, as in special ones (3x generic and so on)
+	fmd->cluster_constraint_type = fs->cluster_constraint_type;
+	fmd->constraint_target = fs->constraint_target;
 }

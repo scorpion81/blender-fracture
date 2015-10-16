@@ -273,6 +273,7 @@ EnumPropertyItem DT_layers_select_dst_items[] = {
 #include "BKE_particle.h"
 #include "BKE_deform.h"
 #include "BKE_DerivedMesh.h"
+#include "BKE_fracture.h"
 
 static void rna_UVProject_projectors_begin(CollectionPropertyIterator *iter, PointerRNA *ptr)
 {
@@ -434,9 +435,15 @@ static void rna_Modifier_update(Main *UNUSED(bmain), Scene *UNUSED(scene), Point
 	if (md && md->type == eModifierType_Fracture)
 	{
 		FractureModifierData *fmd = (FractureModifierData*)md;
-		if (fmd->refresh && fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+		if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
 		{
-			return;
+			FractureSetting* fs = BLI_findlink(&fmd->fracture_settings, fmd->active_setting);
+			BKE_fracture_store_settings(fmd, fs);
+
+			if (fmd->refresh)
+			{
+				return;
+			}
 		}
 		else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
@@ -457,9 +464,40 @@ static void rna_Modifier_update_and_keep(Main *UNUSED(bmain), Scene *UNUSED(scen
 	if (md && md->type == eModifierType_Fracture)
 	{
 		FractureModifierData *fmd = (FractureModifierData*)md;
-		if (fmd->refresh)
+		if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
 		{
-			return;
+			FractureSetting* fs = BLI_findlink(&fmd->fracture_settings, fmd->active_setting);
+			BKE_fracture_store_settings(fmd, fs);
+
+			if (fmd->refresh)
+			{
+				return;
+			}
+		}
+	}
+
+	DAG_id_tag_update(ptr->id.data, OB_RECALC_DATA);
+	WM_main_add_notifier(NC_OBJECT | ND_MODIFIER, ptr->id.data);
+}
+
+static void rna_Modifier_update_index(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *ptr)
+{
+	FractureModifierData *fmd = NULL;
+	ModifierData* md = ptr->data;
+
+	if (md && md->type == eModifierType_Fracture)
+	{
+		FractureModifierData *fmd = (FractureModifierData*)md;
+
+		if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+		{
+			FractureSetting* fs = BLI_findlink(&fmd->fracture_settings, fmd->active_setting);
+			BKE_fracture_load_settings(fmd, fs);
+
+			if (fmd->refresh)
+			{
+				return;
+			}
 		}
 	}
 
@@ -4630,6 +4668,23 @@ static void rna_def_modifier_wireframe(BlenderRNA *brna)
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
+static void rna_def_fracture_settings(BlenderRNA *brna, PropertyRNA *cprop)
+{
+	StructRNA *srna;
+	PropertyRNA *prop;
+
+	RNA_def_property_srna(cprop, "FractureSettings");
+	srna = RNA_def_struct(brna, "FractureSettings", NULL);
+	RNA_def_struct_sdna(srna, "FractureSetting");
+	RNA_def_struct_ui_text(srna, "Fracture Setting", "Collection of fracture settings");
+	RNA_def_struct_ui_icon(srna, ICON_MOD_EXPLODE);
+
+	prop = RNA_def_property(srna, "name", PROP_STRING, PROP_NONE);
+	RNA_def_property_ui_text(prop, "Name", "Name of according vertex group");
+	RNA_def_property_string_sdna(prop, NULL, "name");
+	//RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+}
+
 static void rna_def_modifier_fracture(BlenderRNA *brna)
 {
 	StructRNA *srna;
@@ -5106,6 +5161,17 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Limit Impact", "Activates only shards within the impact object size approximately");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update_and_keep");
+
+	prop = RNA_def_property(srna, "fracture_settings", PROP_COLLECTION, PROP_NONE);
+	RNA_def_property_struct_type(prop, "FractureSettings");
+	RNA_def_property_collection_sdna(prop, NULL, "fracture_settings", NULL);
+	RNA_def_property_ui_text(prop, "Fracture Settings", "Settings defining the fracture and constraint parameters per island vertex group");
+	rna_def_fracture_settings(brna, prop);
+
+	prop = RNA_def_property(srna, "active_setting", PROP_INT, PROP_UNSIGNED);
+	RNA_def_property_int_sdna(prop, NULL, "active_setting");
+	RNA_def_property_ui_text(prop, "Active Fracture Setting", "Index of active fracture setting");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update_index");
 }
 
 static void rna_def_modifier_datatransfer(BlenderRNA *brna)

@@ -40,7 +40,7 @@ class PhysicButtonsPanel():
         rd = context.scene.render
         return (ob and (ob.type == 'MESH' or ob.type == 'CURVE' or ob.type == 'SURFACE' or ob.type == 'FONT')) and (not rd.use_game_engine) and (context.fracture)
 
-class FRACTURE_UL_fracture_levels(UIList):
+class FRACTURE_UL_fracture_settings(UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         fl = item
         if self.layout_type in {'DEFAULT', 'COMPACT'}:
@@ -49,8 +49,17 @@ class FRACTURE_UL_fracture_levels(UIList):
             layout.alignment = 'CENTER'
             layout.label(text="", icon_value=icon)
 
-class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
+class PHYSICS_PT_fracture_settings(PhysicButtonsPanel, Panel):
     bl_label = "Fracture Settings"
+
+    def draw(self, context):
+       layout = self.layout
+       md = context.fracture
+
+       layout.template_list("FRACTURE_UL_fracture_settings", "", md, "fracture_settings", md, "active_setting", rows=3)
+
+class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
+    bl_label = "Active Fracture Settings"
 
     def icon(self, bool):
         if bool:

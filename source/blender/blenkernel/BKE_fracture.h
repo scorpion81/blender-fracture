@@ -38,6 +38,7 @@ struct FracMesh;
 struct Shard;
 
 struct FractureModifierData;
+struct FractureSetting;
 struct DerivedMesh;
 struct Object;
 struct Group;
@@ -63,7 +64,7 @@ typedef struct FracPointCloud {
 struct Shard *BKE_shard_by_id(struct FracMesh *mesh, ShardID id, struct DerivedMesh *dm);
 
 /* detailed info to the particular shards */
-void BKE_get_shard_minmax(struct FracMesh *mesh, ShardID id, float min_r[3], float max_r[3], struct DerivedMesh *dm);
+bool BKE_get_shard_minmax(struct FracMesh *mesh, ShardID id, float min_r[3], float max_r[3], struct DerivedMesh *dm);
 
 /* container object handling functions */
 struct FracMesh *BKE_create_fracture_container(void);
@@ -97,5 +98,8 @@ bool BKE_lookup_mesh_state(struct FractureModifierData *fmd, int frame, int do_l
 void BKE_get_prev_entries(struct FractureModifierData *fmd);
 void BKE_get_next_entries(struct FractureModifierData *fmd);
 void BKE_free_constraints(struct FractureModifierData *fmd);
+void BKE_fracture_load_settings(struct FractureModifierData *fmd, struct FractureSetting *fs);
+void BKE_fracture_store_settings(struct FractureModifierData *fs, struct FractureSetting *fmd);
+struct Shard* BKE_create_initial_shard(struct DerivedMesh *dm);
 
 #endif /* BKE_FRACTURE_H */
