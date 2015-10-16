@@ -3633,7 +3633,7 @@ static FractureSetting* create_default_setting(bDeformGroup *vgroup)
 	return fs;
 }
 
-static void detect_vgroups(FractureModifierData *fmd, Object *ob)
+static bool detect_vgroups(FractureModifierData *fmd, Object *ob)
 {
 	//use silly name prefix... S_, because other vgroups may exist too
 	bDeformGroup *vgroup;
@@ -3682,6 +3682,8 @@ static void detect_vgroups(FractureModifierData *fmd, Object *ob)
 			BLI_addtail(&fmd->fracture_settings, fs);
 		}
 	}
+
+	return vgroups > 0;
 }
 
 static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
@@ -3695,7 +3697,7 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 			free_modifier(fmd, true);
 		}
 
-		if (BLI_listbase_is_empty(&fmd->fracture_settings))
+		if (BLI_listbase_is_empty(&fmd->fracture_settings) && !detect_vgroups(fmd, ob))
 		{
 			if (fmd->dm != NULL) {
 				fmd->dm->needsFree = 1;
@@ -3769,8 +3771,9 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 		//if vgroups > settings, insert new settings
 		//if vgroups = settings, keep....
 		//if vgroups < settings, delete last settings
-		detect_vgroups(fmd, ob);
-		do_prehalving(fmd, ob, dm);
+		if (detect_vgroups(fmd, ob))
+			//attempt to halve here...
+			do_prehalving(fmd, ob, dm);
 
 		//then check settings
 		if (BLI_listbase_is_empty(&fmd->fracture_settings))
@@ -4012,10 +4015,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 	if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
 	{
-		if (BLI_listbase_is_empty(&fmd->fracture_settings))
+		if (BLI_listbase_is_empty(&fmd->fracture_settings) && detect_vgroups(fmd, ob))
 		{
-			detect_vgroups(fmd, ob);
-
 			//attempt to halve here...
 			do_prehalving(fmd, ob, derivedData);
 		}
@@ -4025,10 +4026,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			//rigidbody_object_add(md->scene, ob, RBO_TYPE_ACTIVE);
 		}
 #endif
-		else
-		{
-			final_dm = do_prefractured(fmd, ob, derivedData);
-		}
+		final_dm = do_prefractured(fmd, ob, derivedData);
 	}
 	else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 	{
