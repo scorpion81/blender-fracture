@@ -1130,10 +1130,21 @@ static Material* find_material(const char* name)
 	return BKE_material_add(G.main, name);
 }
 
-static void do_splinters(FractureModifierData *fmd, FracPointCloud points, DerivedMesh *dm, float(*mat)[4][4])
+static Shard* do_splinters(FractureModifierData *fmd, FracPointCloud points, float(*mat)[4][4], ShardID id, DerivedMesh *dm)
 {
 	float imat[4][4];
+
+	/*need to add island / shard centroid...*/
+	Shard *s = BKE_shard_by_id(fmd->frac_mesh, id, NULL);
+
 	unit_m4(*mat);
+
+	/* copy location to matrix */
+	if (s) {
+		(*mat)[3][0] = s->centroid[0];
+		(*mat)[3][1] = s->centroid[1];
+		(*mat)[3][2] = s->centroid[2];
+	}
 
 	/*splinters... just global axises and a length, for rotation rotate the object */
 	if (fmd->splinter_axis & MOD_FRACTURE_SPLINTER_X)
@@ -1153,20 +1164,32 @@ static void do_splinters(FractureModifierData *fmd, FracPointCloud points, Deriv
 		(fmd->splinter_axis & MOD_FRACTURE_SPLINTER_Y) ||
 		(fmd->splinter_axis & MOD_FRACTURE_SPLINTER_Z))
 	{
-		int i = 0;
-		MVert* mvert = dm->getVertArray(dm), *mv;
+		int i = 0, num_verts = 0;
+		MVert* mvert = NULL, *mv;
 		invert_m4_m4(imat, *mat);
+
+		if (s) {
+			mvert = s->mvert;
+			num_verts = s->totvert;
+		}
+		else
+		{
+			mvert = dm->getVertArray(dm);
+			num_verts = dm->getNumVerts(dm);
+		}
 
 		for (i = 0; i < points.totpoints; i++)
 		{
 			mul_m4_v3(imat, points.points[i].co);
 		}
 
-		for (i = 0, mv = mvert; i < dm->getNumVerts(dm); i++, mv++)
+		for (i = 0, mv = mvert; i < num_verts; i++, mv++)
 		{
 			mul_m4_v3(imat, mv->co);
 		}
 	}
+
+	return s;
 }
 
 static short do_materials(FractureModifierData *fmd, Object* obj)
@@ -1237,15 +1260,26 @@ static short do_materials(FractureModifierData *fmd, Object* obj)
 	return mat_index;
 }
 
-static void cleanup_splinters(FractureModifierData *fmd, DerivedMesh *dm, float mat[4][4])
+static void cleanup_splinters(FractureModifierData *fmd, float mat[4][4], Shard *s, DerivedMesh *dm)
 {
 	if ((fmd->splinter_axis & MOD_FRACTURE_SPLINTER_X) ||
 		(fmd->splinter_axis & MOD_FRACTURE_SPLINTER_Y) ||
 		(fmd->splinter_axis & MOD_FRACTURE_SPLINTER_Z))
 	{
-		int i = 0;
-		MVert* mvert = dm->getVertArray(dm), *mv;
-		for (i = 0, mv = mvert; i < dm->getNumVerts(dm); i++, mv++)
+		int i = 0, num_verts = 0;
+		MVert* mvert = NULL, *mv;
+
+		if (s) {
+			mvert = s->mvert;
+			num_verts = s->totvert;
+		}
+		else
+		{
+			mvert = dm->getVertArray(dm);
+			num_verts = dm->getNumVerts(dm);
+		}
+
+		for (i = 0, mv = mvert; i < num_verts; i++, mv++)
 		{
 			mul_m4_v3(mat, mv->co);
 		}
@@ -1263,9 +1297,10 @@ static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, Deri
 		bool temp = fmd->shards_to_islands;
 		short mat_index = 0;
 		float mat[4][4];
+		Shard *s = NULL;
 
 		/*splinters... just global axises and a length, for rotation rotate the object */
-		do_splinters(fmd, points, dm, &mat);
+		s = do_splinters(fmd, points, &mat, id, dm);
 
 		mat_index = do_materials(fmd, obj);
 		mat_index = mat_index > 0 ? mat_index - 1 : mat_index;
@@ -1302,7 +1337,7 @@ static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, Deri
 		BKE_fracture_create_dm(fmd, true);
 		fmd->shards_to_islands = temp;
 
-		cleanup_splinters(fmd, dm, mat);
+		cleanup_splinters(fmd, mat, s, dm);
 		fmd->reset_shards = false;
 	}
 	MEM_freeN(points.points);

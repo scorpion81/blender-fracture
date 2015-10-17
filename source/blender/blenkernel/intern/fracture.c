@@ -795,18 +795,25 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 		return;
 	}
 
-	if (mode == MOD_FRACTURE_PREFRACTURED && reset)
+/*	if (mode == MOD_FRACTURE_PREFRACTURED && reset)
 	{
-		while (fm->shard_map.first)
+		Shard *t = fm->shard_map.first, *next = NULL;
+		while (t && t->next)
 		{
-			Shard *t = fm->shard_map.first;
-			BLI_remlink_safe(&fm->shard_map, t);
-			printf("Resetting shard: %d\n", t->shard_id);
-			BKE_shard_free(t, true);
-		}
-	}
+			next = t->next;
 
-	if (mode == MOD_FRACTURE_PREFRACTURED && !reset)
+			if (t != p)
+			{
+				BLI_remlink_safe(&fm->shard_map, t);
+				printf("Resetting shard: %d\n", t->shard_id);
+				BKE_shard_free(t, true);
+			}
+
+			t = next;
+		}
+	}*/
+
+	if (mode == MOD_FRACTURE_PREFRACTURED /*&& !reset*/)
 	{
 		//rebuild tree
 		if (!fm->last_shard_tree && (fm->shard_count > 0) && mode == MOD_FRACTURE_PREFRACTURED)
@@ -2026,6 +2033,7 @@ void BKE_fracture_load_settings(FractureModifierData *fmd, FractureSetting *fs)
 	fmd->point_source = fs->point_source;
 
 	fmd->use_particle_birth_coordinates = fs->use_particle_birth_coordinates;
+	fmd->splinter_axis = fs->splinter_axis;
 	fmd->splinter_length = fs->splinter_length;
 	fmd->cluster_solver_iterations_override = fs->cluster_solver_iterations_override;
 
@@ -2096,6 +2104,7 @@ void BKE_fracture_store_settings(FractureModifierData *fs, FractureSetting *fmd)
 
 	fmd->use_particle_birth_coordinates = fs->use_particle_birth_coordinates;
 	fmd->splinter_length = fs->splinter_length;
+	fmd->splinter_axis = fs->splinter_axis;
 	fmd->cluster_solver_iterations_override = fs->cluster_solver_iterations_override;
 
 	fmd->cluster_breaking_angle = fs->cluster_breaking_angle;
