@@ -4943,7 +4943,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 
 		fmd->fracture_settings.first = NULL;
 		fmd->fracture_settings.last = NULL;
-		fmd->active_setting = 0;
+		fmd->active_setting = -1;
 	}
 	else
 	{

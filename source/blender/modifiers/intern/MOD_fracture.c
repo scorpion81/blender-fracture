@@ -85,6 +85,7 @@
 
 static DerivedMesh* do_prefractured(FractureModifierData *fmd, Object *ob, DerivedMesh *derivedData);
 static void do_prehalving(FractureModifierData *fmd, Object* ob, DerivedMesh* derivedData);
+static Shard* copy_shard(Shard *s);
 
 static FracMesh* copy_fracmesh(FracMesh* fm)
 {
@@ -99,18 +100,7 @@ static FracMesh* copy_fracmesh(FracMesh* fm)
 
 	for (s = fm->shard_map.first; s; s = s->next)
 	{
-		t = BKE_create_fracture_shard(s->mvert, s->mpoly, s->mloop, s->totvert, s->totpoly, s->totloop, true);
-		t->parent_id = s->parent_id;
-		t->shard_id = s->shard_id;
-
-		CustomData_reset(&t->vertData);
-		CustomData_reset(&t->loopData);
-		CustomData_reset(&t->polyData);
-
-		CustomData_add_layer(&t->vertData, CD_MDEFORMVERT, CD_DUPLICATE, CustomData_get_layer(&s->vertData, CD_MDEFORMVERT), s->totvert);
-		CustomData_add_layer(&t->loopData, CD_MLOOPUV, CD_DUPLICATE, CustomData_get_layer(&s->loopData, CD_MLOOPUV), s->totloop);
-		CustomData_add_layer(&t->polyData, CD_MTEXPOLY, CD_DUPLICATE, CustomData_get_layer(&s->polyData, CD_MTEXPOLY), s->totpoly);
-
+		t = copy_shard(s);
 		BLI_addtail(&fmesh->shard_map, t);
 		i++;
 	}
@@ -214,6 +204,7 @@ static void initData(ModifierData *md)
 	fmd->update_dynamic = false;
 	fmd->limit_impact = false;
 	fmd->reset_shards = false;
+	fmd->active_setting = -1;
 }
 
 static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
@@ -1282,7 +1273,7 @@ static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, Deri
 		if (points.totpoints > 0) {
 			BKE_fracture_shard_by_points(fmd->frac_mesh, id, &points, fmd->frac_algorithm, obj, dm, mat_index, mat,
 			                             fmd->fractal_cuts, fmd->fractal_amount, fmd->use_smooth, fmd->fractal_iterations,
-			                             fmd->fracture_mode, fmd->reset_shards);
+			                             fmd->fracture_mode, fmd->reset_shards, fmd->active_setting);
 		}
 
 		/*TODO, limit this to settings shards !*/
@@ -1513,6 +1504,7 @@ static void do_shard_to_island(FractureModifierData *fmd, BMesh* bm_new)
 		s = BKE_custom_data_to_shard(s, dmtemp);
 		id = BLI_listbase_count(&fmd->islandShards);
 		s->shard_id = id;
+		s->parent_id = -1;
 		BLI_addtail(&fmd->islandShards, s);
 
 		dmtemp->needsFree = 1;
@@ -3202,11 +3194,11 @@ static void do_clear(FractureModifierData* fmd)
 	}
 }
 
-static void do_halving(FractureModifierData *fmd, Object* ob, DerivedMesh *dm, DerivedMesh *orig_dm)
+static void do_halving(FractureModifierData *fmd, Object* ob, DerivedMesh *dm, DerivedMesh *orig_dm, bool is_prehalving)
 {
 	double start;
 
-	if (fmd->dm && fmd->shards_to_islands) {
+	if (fmd->dm && fmd->shards_to_islands && !is_prehalving) {
 		fmd->visible_mesh = DM_to_bmesh(fmd->dm, true);
 	}
 	else {
@@ -3250,7 +3242,7 @@ static void do_refresh(FractureModifierData *fmd, Object *ob, DerivedMesh* dm, D
 		}
 		else {
 			if (fmd->visible_mesh == NULL) {
-				do_halving(fmd, ob, dm, orig_dm);
+				do_halving(fmd, ob, dm, orig_dm, false);
 			}
 			fmd->explo_shared = false;
 		}
@@ -3648,13 +3640,6 @@ static bool detect_vgroups(FractureModifierData *fmd, Object *ob)
 		}
 	}
 
-	/*if (settings > 0)
-	{
-		FractureSetting *fs = fmd->fracture_settings.first;
-		BKE_fracture_copy_settings(fmd, fs);
-		fmd->active_setting = 0; //or 1 ?
-	}*/
-
 	if (vgroups < settings)
 	{
 		//delete last settings
@@ -3683,6 +3668,10 @@ static bool detect_vgroups(FractureModifierData *fmd, Object *ob)
 		}
 	}
 
+	//was zero and is nonzero now ?
+	if (settings == 0 && vgroups > 0)
+		fmd->active_setting = 0;
+
 	return vgroups > 0;
 }
 
@@ -3697,7 +3686,7 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 			free_modifier(fmd, true);
 		}
 
-		if (BLI_listbase_is_empty(&fmd->fracture_settings) && !detect_vgroups(fmd, ob))
+		//if (BLI_listbase_is_empty(&fmd->fracture_settings) && !detect_vgroups(fmd, ob))
 		{
 			if (fmd->dm != NULL) {
 				fmd->dm->needsFree = 1;
@@ -3948,13 +3937,46 @@ static Shard* copy_shard(Shard *s)
 	return t;
 }
 
+static bool check_first_shards(FractureModifierData *fmd)
+{
+	int num_settings = BLI_listbase_count(&fmd->fracture_settings);
+
+	if (fmd->frac_mesh)
+	{
+		Shard *s;
+		for (s = fmd->frac_mesh->shard_map.first; s; s = s->next)
+		{
+			if (s->shard_id < num_settings)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	return false;
+}
+
+static void dump_shardmap(FractureModifierData *fmd)
+{
+	Shard *s;
+	printf("SHARD DUMP: \n");
+	for (s = fmd->frac_mesh->shard_map.first; s; s = s->next)
+	{
+		printf("%d ", s->shard_id);
+	}
+	printf("\n");
+}
+
 static void do_prehalving(FractureModifierData *fmd, Object* ob, DerivedMesh* derivedData)
 {
 	DerivedMesh *final_dm = derivedData;
 	DerivedMesh *group_dm = get_group_dm(fmd, derivedData, ob);
 	DerivedMesh *clean_dm = get_clean_dm(ob, group_dm);
 	bool shards_to_islands = fmd->shards_to_islands;
-	Shard *s;
+	Shard *s, *next = NULL;
+	int num_settings = BLI_listbase_count(&fmd->fracture_settings);
 
 	if (fmd->visible_mesh != NULL) {
 		BM_mesh_free(fmd->visible_mesh);
@@ -3962,34 +3984,83 @@ static void do_prehalving(FractureModifierData *fmd, Object* ob, DerivedMesh* de
 	}
 
 	fmd->shards_to_islands = true;
-
-	if (fmd->dm)
-		do_halving(fmd, ob, fmd->dm, clean_dm);
-	else
-		do_halving(fmd, ob, clean_dm, clean_dm);
-
+	do_halving(fmd, ob, clean_dm, clean_dm, true);
 	fmd->shards_to_islands = shards_to_islands;
 
-	if (fmd->dm != NULL) {
-		fmd->dm->needsFree = 1;
-		fmd->dm->release(fmd->dm);
-		fmd->dm = NULL;
-	}
+	/* replace shattered shards by re-halved ones in fracmesh, if refreshing */
+	/* here this means adding the appropriate origshard again for the active setting */
 
-	/*overwrite shards with same ID in fracmesh*/
 	if (fmd->frac_mesh == NULL)
 	{
 		fmd->frac_mesh = BKE_create_fracture_container();
-
-		/* dupe shards ... stupid listbases */
-		for (s = fmd->islandShards.first; s; s = s->next)
-		{
-			Shard *t = copy_shard(s);
-			BLI_addtail(&fmd->frac_mesh->shard_map, t);
-		}
-
-		fmd->frac_mesh->shard_count = BLI_listbase_count(&fmd->frac_mesh->shard_map);
 	}
+
+	/* dupe shards ... stupid listbases */
+	for (s = fmd->islandShards.first; s; s = s->next)
+	{
+		if ((s->shard_id == fmd->active_setting) && fmd->refresh || (!fmd->refresh))
+		{
+			MDeformVert *dvert = NULL;
+			Shard *t = copy_shard(s);
+
+			BLI_addtail(&fmd->frac_mesh->shard_map, t);
+
+			/*set ID properly...*/
+			dvert = CustomData_get(&s->vertData, 0, CD_MDEFORMVERT);
+			if (dvert && dvert->dw)
+			{
+				t->setting_id = dvert->dw->def_nr;
+			}
+			else
+			{
+				t->setting_id = -1;
+			}
+
+			printf("Adding shard: %d %d \n", t->shard_id, t->setting_id);
+		}
+	}
+
+	{
+		//dump_shardmap(fmd);
+		//int j = 0;
+		s = fmd->frac_mesh->shard_map.first;
+
+		/* delete ONLY ALL (!) subshards of active shard(s) */
+		while (s && s->next)
+		{
+			//MDeformVert *dvert = NULL;
+			//int i = 0;
+			next = s->next;
+
+			if (s->setting_id == fmd->active_setting && s->shard_id >= num_settings)
+			{
+				printf("Pre-Deleting shard: %d %d \n", s->shard_id, s->setting_id);
+				BLI_remlink(&fmd->frac_mesh->shard_map, s);
+				BKE_shard_free(s, true);
+
+#if 0
+				for (i = 0; i < s->totvert; i++)
+				{
+					dvert = CustomData_get(&s->vertData, i, CD_MDEFORMVERT);
+					if (dvert && defvert_find_index(dvert, fmd->active_setting))
+					{
+						printf("Pre-Deleting shard: %d %d \n", s->shard_id, s->parent_id);
+						BLI_remlink(&fmd->frac_mesh->shard_map, s);
+						BKE_shard_free(s, true);
+						if (fmd->frac_mesh->last_shards)
+							fmd->frac_mesh->last_shards[j] = NULL;
+						break;
+					}
+				}
+#endif
+			}
+
+			s = next;
+			//j++;
+		}
+	}
+
+	fmd->frac_mesh->shard_count = BLI_listbase_count(&fmd->frac_mesh->shard_map);
 
 	/* free newly created derivedmeshes only, but keep derivedData and final_dm*/
 	if ((clean_dm != group_dm) && (clean_dm != derivedData) && (clean_dm != final_dm))
@@ -4015,18 +4086,21 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 	if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
 	{
+		bool init = false;
+
 		if (BLI_listbase_is_empty(&fmd->fracture_settings) && detect_vgroups(fmd, ob))
 		{
 			//attempt to halve here...
 			do_prehalving(fmd, ob, derivedData);
+			fmd->refresh = true;
+			fmd->shard_count = 1;
+			init = true;
 		}
-#if 0
-		if (ob->rigidbody_object == NULL) {
-			//initialize rigidbody here once
-			//rigidbody_object_add(md->scene, ob, RBO_TYPE_ACTIVE);
-		}
-#endif
+
 		final_dm = do_prefractured(fmd, ob, derivedData);
+
+		if (init)
+			fmd->shard_count = 10;
 	}
 	else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 	{

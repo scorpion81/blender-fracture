@@ -72,10 +72,11 @@ typedef struct Shard {
 	int neighbor_count; /* counts of neighbor islands */
 	int parent_id;      /* the shard from which this shard originates, we keep all shards in the shardmap */
 	int flag;           /* flag for fracture state (INTACT, FRACTURED)*/
+	int setting_id;     /* to which setting this shard belongs, -1 for none or no settings available*/
 	float raw_volume;
 	float impact_loc[3]; /* last impact location on this shard */
 	float impact_size[3]; /* size of impact area (simplified) */
-	char pad2[4];
+	//char pad2[4];
 } Shard;
 
 typedef struct FracMesh {

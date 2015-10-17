@@ -360,6 +360,9 @@ Shard *BKE_create_fracture_shard(MVert *mvert, MPoly *mpoly, MLoop *mloop, int t
 	}
 
 	shard->shard_id = -1;
+	shard->setting_id = -1;
+	shard->parent_id = -1;
+
 	shard->flag = SHARD_INTACT;
 	BKE_shard_calc_minmax(shard);
 
@@ -612,7 +615,7 @@ static bool handle_boolean_bisect(FracMesh *fm, Object *obj, int expected_shards
 }
 
 static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int algorithm, Shard *p, float (*centroid)[3],
-                             DerivedMesh **dm_parent, BMesh** bm_parent, Shard ***tempshards, Shard ***tempresults)
+                             DerivedMesh **dm_parent, BMesh** bm_parent, Shard ***tempshards, Shard ***tempresults, int active_setting)
 {
 	int i;
 	Shard *s = NULL;
@@ -732,16 +735,19 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 		{
 			Shard *t = fm->last_shards[i];
 
-			if (t->parent_id == p->shard_id)
+			if (!t)
+				continue;
+
+			if (/*t->parent_id == p->shard_id ||*/ t->setting_id == active_setting)
 			{
+				printf("Deleting shard: %d %d %d\n", i, t->shard_id, t->setting_id);
 				BLI_remlink_safe(&fm->shard_map, t);
 				BKE_shard_free(t, true);
 				fm->last_shards[i] = NULL;
-				printf("Deleting shard: %d\n", i);
 			}
 			else
 			{
-				printf("NOT Deleting shard: %d\n", i);
+				printf("NOT Deleting shard: %d %d %d\n", i, t->shard_id, t->setting_id);
 			}
 		}
 	}
@@ -756,7 +762,7 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 /* parse the voro++ cell data */
 static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, FracMesh *fm, int algorithm, Object *obj, DerivedMesh *dm,
                         short inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode,
-                        bool reset)
+                        bool reset, int active_setting)
 {
 	/*Parse voronoi raw data*/
 	int i = 0, j = 0, count = 0;
@@ -861,7 +867,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 
 	unit_m4(obmat);
 
-	do_prepare_cells(fm, cells, expected_shards, algorithm, p, &centroid, &dm_parent, &bm_parent, &tempshards, &tempresults);
+	do_prepare_cells(fm, cells, expected_shards, algorithm, p, &centroid, &dm_parent, &bm_parent, &tempshards, &tempresults, active_setting);
 
 	if (fm->last_shard_tree)
 	{
@@ -917,25 +923,29 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 		dm_p = NULL;
 	}
 
-
 	//if (p->shard_id == -2)
-	if (p && parent_id == -2)
+	if (p && (parent_id == -2 /*|| parent_id == -1*/))
 	{
+		BLI_remlink_safe(&fm->shard_map, p);
 		BKE_shard_free(p, true);
+		p = NULL;
 	}
 
 	fm->shard_count = 0; /* may be not matching with expected shards, so reset... did increment this for
 	                      *progressbar only */
 
 	//keep empty ids... need to catch this later
-	if (mode == MOD_FRACTURE_DYNAMIC)
+	if (mode == MOD_FRACTURE_DYNAMIC || active_setting > -1)
 	{
-		j = 1;
+		j = 0;
+
+		if (mode == MOD_FRACTURE_DYNAMIC)
+			j = 1;
+
 		if (fm->shard_map.last)
 		{
 			j += ((Shard*)(fm->shard_map.last))->shard_id;
 		}
-
 	}
 	else
 	{
@@ -950,7 +960,8 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 			add_shard(fm, s, mat);
 			s->shard_id += j+1;
 			s->parent_id = parent_id;
-			//printf("ADDED: %d %d %d\n", i, j, s->shard_id);
+			s->setting_id = active_setting;
+			printf("ADDED: %d %d %d\n", i, j, s->shard_id);
 			if (parent_id > -1)
 			{
 				int i = 0;
@@ -1458,7 +1469,7 @@ void BKE_fracture_shard_by_planes(FractureModifierData *fmd, Object *obj, short 
 
 void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud, int algorithm, Object *obj, DerivedMesh *dm, short
                                   inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode,
-                                  bool reset)
+                                  bool reset, int active_setting)
 {
 	int n_size = 8;
 	
@@ -1529,7 +1540,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 
 	/*Evaluate result*/
 	parse_cells(voro_cells, pointcloud->totpoints, id, fmesh, algorithm, obj, dm, inner_material_index, mat,
-	            num_cuts, fractal, smooth, num_levels, mode, reset);
+	            num_cuts, fractal, smooth, num_levels, mode, reset, active_setting);
 
 	/*Free structs in C++ area of memory */
 	cells_free(voro_cells, pointcloud->totpoints);
@@ -2043,6 +2054,9 @@ void BKE_fracture_store_settings(FractureModifierData *fs, FractureSetting *fmd)
 	/*copy settings values to FM itself....*/
 
 	/* vgroups  XXX TODO non ascii strings ?*/
+	if (!fmd || !fs)
+		return;
+
 	strncpy(fmd->thresh_defgrp_name, fs->thresh_defgrp_name, strlen(fs->thresh_defgrp_name));
 	strncpy(fmd->ground_defgrp_name, fs->ground_defgrp_name, strlen(fs->ground_defgrp_name));
 	strncpy(fmd->inner_defgrp_name, fs->inner_defgrp_name, strlen(fs->inner_defgrp_name));
