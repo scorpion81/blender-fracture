@@ -3998,24 +3998,23 @@ static void do_prehalving(FractureModifierData *fmd, Object* ob, DerivedMesh* de
 	/* dupe shards ... stupid listbases */
 	for (s = fmd->islandShards.first; s; s = s->next)
 	{
-		if ((s->shard_id == fmd->active_setting) && fmd->refresh || (!fmd->refresh))
+		MDeformVert *dvert = NULL;
+		Shard *t = copy_shard(s);
+
+		/*set ID properly...*/
+		dvert = CustomData_get(&s->vertData, 0, CD_MDEFORMVERT);
+		if (dvert && dvert->dw)
 		{
-			MDeformVert *dvert = NULL;
-			Shard *t = copy_shard(s);
+			t->setting_id = dvert->dw->def_nr;
+		}
+		else
+		{
+			t->setting_id = -1;
+		}
 
+		if (((t->setting_id == fmd->active_setting) && fmd->refresh) || (!fmd->refresh))
+		{
 			BLI_addtail(&fmd->frac_mesh->shard_map, t);
-
-			/*set ID properly...*/
-			dvert = CustomData_get(&s->vertData, 0, CD_MDEFORMVERT);
-			if (dvert && dvert->dw)
-			{
-				t->setting_id = dvert->dw->def_nr;
-			}
-			else
-			{
-				t->setting_id = -1;
-			}
-
 			printf("Adding shard: %d %d \n", t->shard_id, t->setting_id);
 		}
 	}
