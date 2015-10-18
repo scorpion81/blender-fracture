@@ -482,7 +482,6 @@ static void rna_Modifier_update_and_keep(Main *UNUSED(bmain), Scene *UNUSED(scen
 
 static void rna_Modifier_update_index(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *ptr)
 {
-	FractureModifierData *fmd = NULL;
 	ModifierData* md = ptr->data;
 
 	if (md && md->type == eModifierType_Fracture)

@@ -1139,13 +1139,6 @@ static Shard* do_splinters(FractureModifierData *fmd, FracPointCloud points, flo
 
 	unit_m4(*mat);
 
-	/* copy location to matrix */
-	if (s) {
-		(*mat)[3][0] = s->centroid[0];
-		(*mat)[3][1] = s->centroid[1];
-		(*mat)[3][2] = s->centroid[2];
-	}
-
 	/*splinters... just global axises and a length, for rotation rotate the object */
 	if (fmd->splinter_axis & MOD_FRACTURE_SPLINTER_X)
 	{
@@ -1166,17 +1159,23 @@ static Shard* do_splinters(FractureModifierData *fmd, FracPointCloud points, flo
 	{
 		int i = 0, num_verts = 0;
 		MVert* mvert = NULL, *mv;
-		invert_m4_m4(imat, *mat);
+
 
 		if (s) {
 			mvert = s->mvert;
 			num_verts = s->totvert;
+			/* copy location to matrix */
+			/*(*mat)[3][0] = s->centroid[0];
+			(*mat)[3][1] = s->centroid[1];
+			(*mat)[3][2] = s->centroid[2];*/
 		}
 		else
 		{
 			mvert = dm->getVertArray(dm);
 			num_verts = dm->getNumVerts(dm);
 		}
+
+		invert_m4_m4(imat, *mat);
 
 		for (i = 0; i < points.totpoints; i++)
 		{
@@ -1290,6 +1289,7 @@ static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, Deri
 {
 	/* dummy point cloud, random */
 	FracPointCloud points;
+	int num_settings = BLI_listbase_count(&fmd->fracture_settings);
 
 	points = get_points_global(fmd, obj, dm, id);
 
@@ -1308,7 +1308,7 @@ static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, Deri
 		if (points.totpoints > 0) {
 			BKE_fracture_shard_by_points(fmd->frac_mesh, id, &points, fmd->frac_algorithm, obj, dm, mat_index, mat,
 			                             fmd->fractal_cuts, fmd->fractal_amount, fmd->use_smooth, fmd->fractal_iterations,
-			                             fmd->fracture_mode, fmd->reset_shards, fmd->active_setting);
+			                             fmd->fracture_mode, fmd->reset_shards, fmd->active_setting, num_settings);
 		}
 
 		/*TODO, limit this to settings shards !*/
@@ -1337,7 +1337,8 @@ static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, Deri
 		BKE_fracture_create_dm(fmd, true);
 		fmd->shards_to_islands = temp;
 
-		cleanup_splinters(fmd, mat, s, dm);
+		if (!s)
+			cleanup_splinters(fmd, mat, s, dm);
 		fmd->reset_shards = false;
 	}
 	MEM_freeN(points.points);
@@ -4012,6 +4013,7 @@ static void do_prehalving(FractureModifierData *fmd, Object* ob, DerivedMesh* de
 	bool shards_to_islands = fmd->shards_to_islands;
 	Shard *s, *next = NULL;
 	int num_settings = BLI_listbase_count(&fmd->fracture_settings);
+	bool check = check_first_shards(fmd);
 
 	if (fmd->visible_mesh != NULL) {
 		BM_mesh_free(fmd->visible_mesh);
@@ -4047,7 +4049,7 @@ static void do_prehalving(FractureModifierData *fmd, Object* ob, DerivedMesh* de
 			t->setting_id = -1;
 		}
 
-		if (((t->setting_id == fmd->active_setting) && fmd->refresh) || (!fmd->refresh))
+		if (((t->setting_id == fmd->active_setting) && fmd->refresh && !check) || (!fmd->refresh))
 		{
 			BLI_addtail(&fmd->frac_mesh->shard_map, t);
 			printf("Adding shard: %d %d \n", t->shard_id, t->setting_id);
@@ -4055,7 +4057,7 @@ static void do_prehalving(FractureModifierData *fmd, Object* ob, DerivedMesh* de
 	}
 
 	{
-		//dump_shardmap(fmd);
+		dump_shardmap(fmd);
 		//int j = 0;
 		s = fmd->frac_mesh->shard_map.first;
 
