@@ -1588,6 +1588,7 @@ typedef struct FractureSetting {
 	float grease_offset;
 
 	int use_constraints;
+	int use_compounds;
 	int use_mass_dependent_thresholds;
 	int use_particle_birth_coordinates;
 	int use_breaking;
@@ -1606,7 +1607,7 @@ typedef struct FractureSetting {
 	/* internal flags */
 	int use_experimental;
 
-	char pad[4];
+	//char pad[4];
 } FractureSetting;
 
 typedef struct FractureModifierData {
@@ -1684,6 +1685,7 @@ typedef struct FractureModifierData {
 	int reset_shards;
 
 	int use_constraints;
+	int use_compounds;
 	int use_mass_dependent_thresholds;
 	int use_particle_birth_coordinates;
 	int use_breaking;
@@ -1712,7 +1714,7 @@ typedef struct FractureModifierData {
 	float max_vol;
 	int last_frame;
 
-	char pad[4];
+	//char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

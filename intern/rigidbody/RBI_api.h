@@ -84,10 +84,12 @@ typedef struct rbContactPoint {
 
 /* Setup ---------------------------- */
 
+void RB_dworld_init_compounds(rbDynamicsWorld *world);
+
 /* Create a new dynamics world instance */
 // TODO: add args to set the type of constraint solvers, etc.
 rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, int (*callback)(void*, void*, void*, void*, void*),
-							     void (*contactCallback)(rbContactPoint *, void *));
+								void (*contactCallback)(rbContactPoint*, void *), void (*idCallbackOut)(void*, void*, int*, int*));
 
 /* Delete the given dynamics world, and free any extra data it may require */
 void RB_dworld_delete(rbDynamicsWorld *world);
@@ -256,6 +258,8 @@ rbCollisionShape *RB_shape_new_gimpact_mesh(rbMeshData *mesh);
 
 int RB_shape_get_num_verts(rbCollisionShape *shape);
 
+rbCollisionShape *RB_shape_new_compound();
+void RB_shape_add_compound_child(rbCollisionShape** compound, rbCollisionShape* child, float loc[3], float rot[4]);
 
 /* Cleanup --------------------------- */
 
@@ -288,6 +292,7 @@ rbConstraint *RB_constraint_new_piston(float pivot[3], float orn[4], rbRigidBody
 rbConstraint *RB_constraint_new_6dof(float pivot[3], float orn[4], rbRigidBody *rb1, rbRigidBody *rb2);
 rbConstraint *RB_constraint_new_6dof_spring(float pivot[3], float orn[4], rbRigidBody *rb1, rbRigidBody *rb2);
 rbConstraint *RB_constraint_new_motor(float pivot[3], float orn[4], rbRigidBody *rb1, rbRigidBody *rb2);
+rbConstraint *RB_constraint_new_compound(rbRigidBody *rb1, rbRigidBody *rb2);
 
 /* ............ */
 

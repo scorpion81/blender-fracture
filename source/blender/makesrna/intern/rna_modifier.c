@@ -868,6 +868,13 @@ static void rna_RigidBodyModifier_use_constraints_set(PointerRNA* ptr, int value
 	rmd->refresh_constraints = true;
 }
 
+static void rna_RigidBodyModifier_use_compounds_set(PointerRNA* ptr, int value)
+{
+	FractureModifierData *rmd = (FractureModifierData *)ptr->data;
+	rmd->use_compounds = value;
+	rmd->refresh_constraints = true;
+}
+
 static void rna_RigidBodyModifier_mass_dependent_thresholds_set(PointerRNA* ptr, int value)
 {
 	FractureModifierData *rmd = (FractureModifierData *)ptr->data;
@@ -5171,6 +5178,12 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_int_sdna(prop, NULL, "active_setting");
 	RNA_def_property_ui_text(prop, "Active Fracture Setting", "Index of active fracture setting");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update_index");
+
+	prop = RNA_def_property(srna, "use_compounds", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyModifier_use_compounds_set");
+	RNA_def_property_ui_text(prop, "Use Compounds", "Use compounds instead of fixed constraints (supposed to be faster and not wobbling)");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 static void rna_def_modifier_datatransfer(BlenderRNA *brna)

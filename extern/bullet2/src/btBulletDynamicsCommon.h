@@ -34,6 +34,7 @@ subject to the following restrictions:
 #include "BulletDynamics/ConstraintSolver/btHinge2Constraint.h"
 #include "BulletDynamics/ConstraintSolver/btGearConstraint.h"
 #include "BulletDynamics/ConstraintSolver/btFixedConstraint.h"
+#include "BulletDynamics/ConstraintSolver/btCompoundConstraint.h"
 
 
 #include "BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolver.h"

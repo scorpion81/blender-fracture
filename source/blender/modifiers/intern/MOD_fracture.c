@@ -134,6 +134,7 @@ static void initData(ModifierData *md)
 	zero_m4(fmd->origmat);
 	fmd->breaking_threshold = 10.0f;
 	fmd->use_constraints = false;
+	fmd->use_compounds = false;
 	fmd->contact_dist = 1.0f;
 	fmd->use_mass_dependent_thresholds = false;
 	fmd->explo_shared = false;
@@ -2220,7 +2221,7 @@ static void search_tree_based(FractureModifierData *rmd, MeshIsland *mi, MeshIsl
 		}
 		if ((mi != mi2) && (mi2 != NULL)) {
 			float thresh = rmd->breaking_threshold;
-			int con_type = RBC_TYPE_FIXED;
+			int con_type = rmd->use_compounds ? RBC_TYPE_COMPOUND : RBC_TYPE_FIXED;
 
 			if ((i >= limit) && (limit > 0)) {
 				break;
@@ -2284,6 +2285,7 @@ static void create_constraints(FractureModifierData *rmd)
 	KDTree *coord_tree = NULL;
 	MeshIsland **mesh_islands = MEM_mallocN(sizeof(MeshIsland *), "mesh_islands");
 	int count, i = 0;
+	RigidBodyWorld *rbw;
 
 	if (rmd->visible_mesh_cached && rmd->contact_dist == 0.0f) {
 		/* extend contact dist to bbox max dimension here, in case we enter 0 */

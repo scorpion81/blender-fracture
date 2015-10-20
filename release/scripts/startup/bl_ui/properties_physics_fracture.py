@@ -150,6 +150,7 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
         row = layout.row()
         row.prop(md, "use_constraints")
         row.prop(md, "use_breaking")
+        row.prop(md, "use_compounds")
         layout.prop(md, "constraint_target")
         col = layout.column(align=True)
         col.prop(md, "constraint_limit", text="Constraint limit, per MeshIsland")

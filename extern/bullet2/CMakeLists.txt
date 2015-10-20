@@ -143,8 +143,11 @@ set(SRC
 	src/BulletDynamics/ConstraintSolver/btUniversalConstraint.cpp
 	src/BulletDynamics/ConstraintSolver/btGearConstraint.cpp
 	src/BulletDynamics/ConstraintSolver/btFixedConstraint.cpp
+	src/BulletDynamics/ConstraintSolver/btCompoundConstraint.cpp
 	src/BulletDynamics/Dynamics/btDiscreteDynamicsWorld.cpp
+	src/BulletDynamics/Dynamics/btFractureDynamicsWorld.cpp
 	src/BulletDynamics/Dynamics/btRigidBody.cpp
+	src/BulletDynamics/Dynamics/btFractureBody.cpp
 	src/BulletDynamics/Dynamics/btSimpleDynamicsWorld.cpp
 	src/BulletDynamics/Dynamics/Bullet-C-API.cpp
 	src/BulletDynamics/Vehicle/btRaycastVehicle.cpp
@@ -323,11 +326,14 @@ set(SRC
 	src/BulletDynamics/ConstraintSolver/btUniversalConstraint.h
 	src/BulletDynamics/ConstraintSolver/btGearConstraint.h
 	src/BulletDynamics/ConstraintSolver/btFixedConstraint.h
+	src/BulletDynamics/ConstraintSolver/btCompoundConstraint.h
 	src/BulletDynamics/Dynamics/btActionInterface.h
 	src/BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h
 	src/BulletDynamics/Dynamics/btDynamicsWorld.h
 	src/BulletDynamics/Dynamics/btSimpleDynamicsWorld.h
 	src/BulletDynamics/Dynamics/btRigidBody.h
+	src/BulletDynamics/Dynamics/btFractureBody.h
+	src/BulletDynamics/Dynamics/btFractureDynamicsWorld.h
 	src/BulletDynamics/Vehicle/btRaycastVehicle.h
 	src/BulletDynamics/Vehicle/btVehicleRaycaster.h
 	src/BulletDynamics/Vehicle/btWheelInfo.h

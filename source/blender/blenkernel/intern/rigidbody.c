@@ -1687,6 +1687,9 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 					RB_constraint_set_max_impulse_motor(rbc->physics_constraint, rbc->motor_lin_max_impulse, rbc->motor_ang_max_impulse);
 					RB_constraint_set_target_velocity_motor(rbc->physics_constraint, rbc->motor_lin_target_velocity, rbc->motor_ang_target_velocity);
 					break;
+				case RBC_TYPE_COMPOUND:
+					rbc->physics_constraint = RB_constraint_new_compound(rb1, rb2);
+					break;
 			}
 		}
 		else { /* can't create constraint without both rigid bodies */
@@ -2010,6 +2013,15 @@ static void contactCallback(rbContactPoint* cp, void* world)
 	check_fracture(cp, rbw);
 }
 
+static void idCallback(void *world, void* island, int* objectId, int* islandId)
+{
+	MeshIsland *mi = (MeshIsland*)island;
+	RigidBodyWorld *rbw = (RigidBodyWorld*)world;
+
+	*objectId = rbw->cache_offset_map[mi->linear_index];
+	*islandId = mi->id;
+}
+
 /* --------------------- */
 
 /* Create physics sim world given RigidBody world settings */
@@ -2024,7 +2036,7 @@ void BKE_rigidbody_validate_sim_world(Scene *scene, RigidBodyWorld *rbw, bool re
 	if (rebuild || rbw->physics_world == NULL) {
 		if (rbw->physics_world)
 			RB_dworld_delete(rbw->physics_world);
-		rbw->physics_world = RB_dworld_new(scene->physics_settings.gravity, rbw, filterCallback, contactCallback);
+		rbw->physics_world = RB_dworld_new(scene->physics_settings.gravity, rbw, filterCallback, contactCallback, idCallback);
 	}
 
 	RB_dworld_set_solver_iterations(rbw->physics_world, rbw->num_solver_iterations);
@@ -3005,6 +3017,10 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 
 		count = BLI_listbase_count(&fmd->meshIslands);
 
+		//if (fmd->use_compounds && rebuild)
+			/*create compound */
+		//	compound = RB_shape_new_compound();
+
 		for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 			if (mi->rigidbody == NULL) {
 				continue;
@@ -3025,6 +3041,16 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				}
 
 				validateShard(rbw, count == 0 ? NULL : mi, ob, do_rebuild, fmd->fracture_mode == MOD_FRACTURE_DYNAMIC);
+
+				/*build compound shape from child shapes*/
+				/*if (fmd->use_compounds && rebuild)
+				{
+					if (mi != parent)
+					{
+						float rot[4] = {1.0f, 0.0f, 0.0f, 0.0f};
+						RB_shape_add_compound_child(compound, mi->rigidbody->physics_shape, mi->centroid, rot);
+					}
+				}*/
 			}
 
 			/* update simulation object... */
@@ -3170,8 +3196,13 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 			rigidbody_update_sim_ob(scene, rbw, ob, rbo, centroid, NULL);
 		}
 
-		rbw->flag &= ~RBW_FLAG_REFRESH_MODIFIERS;
+
 	}
+
+	if (rbw->physics_world && rbw->flag & RBW_FLAG_REBUILD_CONSTRAINTS)
+		RB_dworld_init_compounds(rbw->physics_world);
+
+	rbw->flag &= ~RBW_FLAG_REFRESH_MODIFIERS;
 
 	/* update constraints */
 	if (rbw->constraints == NULL) /* no constraints, move on */
@@ -3615,7 +3646,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 			BKE_ptcache_write(&pid, startframe);
 		}
 
-		if (rbw->ltime > startframe) {
+		if (ctime >= startframe) {
 			rbw->flag &= ~RBW_FLAG_REBUILD_CONSTRAINTS;
 		}
 

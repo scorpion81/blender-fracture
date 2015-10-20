@@ -74,14 +74,25 @@ subject to the following restrictions:
 #include "BulletCollision/CollisionShapes/btScaledBvhTriangleMeshShape.h"
 #include "BulletCollision/CollisionDispatch/btCollisionWorld.h"
 
+#include "BulletDynamics/Dynamics/btFractureBody.h"
+#include "BulletDynamics/Dynamics/btFractureDynamicsWorld.h"
+
 struct rbRigidBody {
-	btRigidBody *body;
+	btFractureBody *body;
 	int col_groups;
 	int linear_index;
 	void *meshIsland;
 	void *blenderOb;
 	rbDynamicsWorld *world;
 };
+
+typedef void (*IdOutCallback)(void *world, void *meshisland, int *objectId, int *shardId);
+
+static btFractureBody* getBodyFromShape(void *shapePtr)
+{
+	rbRigidBody *body = (rbRigidBody*)shapePtr;
+	return body->body;
+}
 
 static inline void copy_v3_btvec3(float vec[3], const btVector3 &btvec)
 {
@@ -92,12 +103,12 @@ static inline void copy_v3_btvec3(float vec[3], const btVector3 &btvec)
 
 typedef void (*rbContactCallback)(rbContactPoint * cp, void *bworld);
 
-class TickDiscreteDynamicsWorld : public btDiscreteDynamicsWorld
+class TickDiscreteDynamicsWorld : public btFractureDynamicsWorld
 {
 	public:
 		TickDiscreteDynamicsWorld(btDispatcher* dispatcher,btBroadphaseInterface* pairCache,
 		                          btConstraintSolver* constraintSolver,btCollisionConfiguration* collisionConfiguration,
-		                          rbContactCallback cont_callback, void *bworld);
+		                          rbContactCallback cont_callback, void *bworld, IdCallback id_callback);
 		rbContactPoint* make_contact_point(btManifoldPoint& point, const btCollisionObject *body0, const btCollisionObject *body1);
 		rbContactCallback m_contactCallback;
 		void* m_bworld;
@@ -105,6 +116,9 @@ class TickDiscreteDynamicsWorld : public btDiscreteDynamicsWorld
 
 void tickCallback(btDynamicsWorld *world, btScalar timeStep)
 {
+	btFractureDynamicsWorld *fworld = (btFractureDynamicsWorld*)world;
+	fworld->updateBodies();
+
 	int numManifolds = world->getDispatcher()->getNumManifolds();
 	for (int i=0;i<numManifolds;i++)
 	{
@@ -136,8 +150,9 @@ void tickCallback(btDynamicsWorld *world, btScalar timeStep)
 
 TickDiscreteDynamicsWorld::TickDiscreteDynamicsWorld(btDispatcher* dispatcher,btBroadphaseInterface* pairCache,
                                                      btConstraintSolver* constraintSolver,btCollisionConfiguration* collisionConfiguration,
-                                                     rbContactCallback cont_callback, void *bworld) :
-                                                     btDiscreteDynamicsWorld(dispatcher, pairCache, constraintSolver, collisionConfiguration)
+                                                     rbContactCallback cont_callback, void *bworld, IdCallback id_callback) :
+                                                     btFractureDynamicsWorld(dispatcher, pairCache, constraintSolver, collisionConfiguration,
+                                                                             id_callback, getBodyFromShape)
 {
 	m_internalTickCallback = tickCallback;
 	m_contactCallback = cont_callback;
@@ -147,8 +162,8 @@ TickDiscreteDynamicsWorld::TickDiscreteDynamicsWorld(btDispatcher* dispatcher,bt
 rbContactPoint* TickDiscreteDynamicsWorld::make_contact_point(btManifoldPoint& point, const btCollisionObject* body0, const btCollisionObject* body1)
 {
 	rbContactPoint *cp = new rbContactPoint;
-	btRigidBody* bodyA = (btRigidBody*)(body0);
-	btRigidBody* bodyB = (btRigidBody*)(body1);
+	btFractureBody* bodyA = (btFractureBody*)(body0);
+	btFractureBody* bodyB = (btFractureBody*)(body1);
 	rbRigidBody* rbA = (rbRigidBody*)(bodyA->getUserPointer());
 	rbRigidBody* rbB = (rbRigidBody*)(bodyB->getUserPointer());
 	if (rbA)
@@ -165,7 +180,7 @@ rbContactPoint* TickDiscreteDynamicsWorld::make_contact_point(btManifoldPoint& p
 }
 
 struct rbDynamicsWorld {
-	btDiscreteDynamicsWorld *dynamicsWorld;
+	btFractureDynamicsWorld *dynamicsWorld;
 	btDefaultCollisionConfiguration *collisionConfiguration;
 	btDispatcher *dispatcher;
 	btBroadphaseInterface *pairCache;
@@ -173,6 +188,7 @@ struct rbDynamicsWorld {
 	btOverlapFilterCallback *filterCallback;
 	void *blenderWorld;
 	//struct rbContactCallback *contactCallback;
+	IdOutCallback idOutCallback;
 };
 
 struct rbVert {
@@ -193,6 +209,7 @@ struct rbMeshData {
 struct rbCollisionShape {
 	btCollisionShape *cshape;
 	rbMeshData *mesh;
+	rbRigidBody *body;
 };
 
 struct myResultCallback : public btCollisionWorld::ClosestRayResultCallback
@@ -220,12 +237,15 @@ struct rbFilterCallback : public btOverlapFilterCallback
 
 	virtual bool needBroadphaseCollision(btBroadphaseProxy *proxy0, btBroadphaseProxy *proxy1) const
 	{
-		rbRigidBody *rb0 = (rbRigidBody *)((btRigidBody *)proxy0->m_clientObject)->getUserPointer();
-		rbRigidBody *rb1 = (rbRigidBody *)((btRigidBody *)proxy1->m_clientObject)->getUserPointer();
+		rbRigidBody *rb0 = (rbRigidBody *)((btFractureBody *)proxy0->m_clientObject)->getUserPointer();
+		rbRigidBody *rb1 = (rbRigidBody *)((btFractureBody *)proxy1->m_clientObject)->getUserPointer();
 		
 		bool collides;
 		collides = (proxy0->m_collisionFilterGroup & proxy1->m_collisionFilterMask) != 0;
 		collides = collides && (proxy1->m_collisionFilterGroup & proxy0->m_collisionFilterMask);
+		if (!rb0 || !rb1)
+			return collides;
+
 		collides = collides && (rb0->col_groups & rb1->col_groups);
 		if (this->callback != NULL) {
 			int result = 0;
@@ -339,8 +359,8 @@ bool rbContactCallback::handle_contacts(btManifoldPoint& point, btCollisionObjec
 	if (rbContactCallback::callback)
 	{
 		rbContactPoint *cp = new rbContactPoint;
-		btRigidBody* bodyA = (btRigidBody*)(body0);
-		btRigidBody* bodyB = (btRigidBody*)(body1);
+		btFractureBody* bodyA = (btFractureBody*)(body0);
+		btFractureBody* bodyB = (btFractureBody*)(body1);
 		rbRigidBody* rbA = (rbRigidBody*)(bodyA->getUserPointer());
 		rbRigidBody* rbB = (rbRigidBody*)(bodyB->getUserPointer());
 		if (rbA)
@@ -366,9 +386,25 @@ bool rbContactCallback::handle_contacts(btManifoldPoint& point, btCollisionObjec
 
 /* Setup ---------------------------- */
 
+void RB_dworld_init_compounds(rbDynamicsWorld *world)
+{
+	world->dynamicsWorld->glueCallback();
+}
+
+static void idCallback(void *userPtr, int* objectId, int* shardId)
+{
+	rbRigidBody *body = (rbRigidBody*)userPtr;
+	if (body)
+	{
+		rbDynamicsWorld *world = body->world;
+		if (world->idOutCallback)
+			world->idOutCallback(world->blenderWorld, body->meshIsland, objectId, shardId);
+	}
+}
+
 //yuck, but need a handle for the world somewhere for collision callback...
 rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, int (*callback)(void *, void *, void *, void *, void *),
-							   void (*contactCallback)(rbContactPoint* cp, void *bworld))
+							   void (*contactCallback)(rbContactPoint* cp, void *bworld), void (*idCallbackOut)(void*, void*, int*, int*))
 {
 	rbDynamicsWorld *world = new rbDynamicsWorld;
 	
@@ -390,11 +426,12 @@ rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, int (
 	                                                                  world->pairCache,
 	                                                      world->constraintSolver,
 	                                                      world->collisionConfiguration,
-	                                                      contactCallback, blenderWorld);
+	                                                      contactCallback, blenderWorld, idCallback);
 
 	/* world */
-	world->dynamicsWorld = (btDiscreteDynamicsWorld*)tworld;
+	world->dynamicsWorld = (btFractureDynamicsWorld*)tworld;
 	world->blenderWorld = blenderWorld;
+	world->idOutCallback = idCallbackOut;
 
 	RB_dworld_set_gravity(world, gravity);
 
@@ -490,7 +527,9 @@ void RB_dworld_export(rbDynamicsWorld *world, const char *filename)
 
 void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *object, int col_groups, void* meshIsland, void* blenderOb, int linear_index)
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
+	body->setWorld(world->dynamicsWorld);
+
 	object->col_groups = col_groups;
 	object->meshIsland = meshIsland;
 	object->world = world;
@@ -502,7 +541,7 @@ void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *object, int col_gro
 
 void RB_dworld_remove_body(rbDynamicsWorld *world, rbRigidBody *object)
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	
 	world->dynamicsWorld->removeRigidBody(body);
 }
@@ -514,7 +553,7 @@ void RB_world_convex_sweep_test(
         const float loc_start[3], const float loc_end[3],
         float v_location[3],  float v_hitpoint[3],  float v_normal[3], int *r_hit)
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	btCollisionShape *collisionShape = body->getCollisionShape();
 	/* only convex shapes are supported, but user can specify a non convex shape */
 	if (collisionShape->isConvex()) {
@@ -574,18 +613,20 @@ rbRigidBody *RB_body_new(rbCollisionShape *shape, const float loc[3], const floa
 	btDefaultMotionState *motionState = new btDefaultMotionState(trans);
 	
 	/* make rigidbody */
-	btRigidBody::btRigidBodyConstructionInfo rbInfo(1.0f, motionState, shape->cshape);
+	btFractureBody::btRigidBodyConstructionInfo rbInfo(1.0f, motionState, shape->cshape);
 	
-	object->body = new btRigidBody(rbInfo);
+	object->body = new btFractureBody(rbInfo);
 	
+	/* user pointers */
 	object->body->setUserPointer(object);
-	
+	shape->cshape->setUserPointer(object);
+
 	return object;
 }
 
 void RB_body_delete(rbRigidBody *object)
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	
 	/* motion state */
 	btMotionState *ms = body->getMotionState();
@@ -611,7 +652,10 @@ void RB_body_delete(rbRigidBody *object)
 
 void RB_body_set_collision_shape(rbRigidBody *object, rbCollisionShape *shape)
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
+
+	/* user pointer */
+	shape->cshape->setUserPointer(object);
 	
 	/* set new collision shape */
 	body->setCollisionShape(shape->cshape);
@@ -624,7 +668,7 @@ void RB_body_set_collision_shape(rbRigidBody *object, rbCollisionShape *shape)
 
 float RB_body_get_mass(rbRigidBody *object)
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	
 	/* there isn't really a mass setting, but rather 'inverse mass'  
 	 * which we convert back to mass by taking the reciprocal again 
@@ -639,7 +683,7 @@ float RB_body_get_mass(rbRigidBody *object)
 
 void RB_body_set_mass(rbRigidBody *object, float value)
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	btVector3 localInertia(0, 0, 0);
 	
 	/* calculate new inertia if non-zero mass */
@@ -655,33 +699,33 @@ void RB_body_set_mass(rbRigidBody *object, float value)
 
 float RB_body_get_friction(rbRigidBody *object)
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	return body->getFriction();
 }
 
 void RB_body_set_friction(rbRigidBody *object, float value)
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	body->setFriction(value);
 }
 
 
 float RB_body_get_restitution(rbRigidBody *object)
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	return body->getRestitution();
 }
 
 void RB_body_set_restitution(rbRigidBody *object, float value)
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	body->setRestitution(value);
 }
 
 
 float RB_body_get_linear_damping(rbRigidBody *object)
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	return body->getLinearDamping();
 }
 
@@ -692,7 +736,7 @@ void RB_body_set_linear_damping(rbRigidBody *object, float value)
 
 float RB_body_get_angular_damping(rbRigidBody *object)
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	return body->getAngularDamping();
 }
 
@@ -703,14 +747,14 @@ void RB_body_set_angular_damping(rbRigidBody *object, float value)
 
 void RB_body_set_damping(rbRigidBody *object, float linear, float angular)
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	body->setDamping(linear, angular);
 }
 
 
 float RB_body_get_linear_sleep_thresh(rbRigidBody *object)
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	return body->getLinearSleepingThreshold();
 }
 
@@ -721,7 +765,7 @@ void RB_body_set_linear_sleep_thresh(rbRigidBody *object, float value)
 
 float RB_body_get_angular_sleep_thresh(rbRigidBody *object)
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	return body->getAngularSleepingThreshold();
 }
 
@@ -732,7 +776,7 @@ void RB_body_set_angular_sleep_thresh(rbRigidBody *object, float value)
 
 void RB_body_set_sleep_thresh(rbRigidBody *object, float linear, float angular)
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	body->setSleepingThresholds(linear, angular);
 }
 
@@ -740,14 +784,14 @@ void RB_body_set_sleep_thresh(rbRigidBody *object, float linear, float angular)
 
 void RB_body_get_linear_velocity(rbRigidBody *object, float v_out[3])
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	
 	copy_v3_btvec3(v_out, body->getLinearVelocity());
 }
 
 void RB_body_set_linear_velocity(rbRigidBody *object, const float v_in[3])
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	
 	body->setLinearVelocity(btVector3(v_in[0], v_in[1], v_in[2]));
 }
@@ -755,27 +799,27 @@ void RB_body_set_linear_velocity(rbRigidBody *object, const float v_in[3])
 
 void RB_body_get_angular_velocity(rbRigidBody *object, float v_out[3])
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	
 	copy_v3_btvec3(v_out, body->getAngularVelocity());
 }
 
 void RB_body_set_angular_velocity(rbRigidBody *object, const float v_in[3])
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	
 	body->setAngularVelocity(btVector3(v_in[0], v_in[1], v_in[2]));
 }
 
 void RB_body_set_linear_factor(rbRigidBody *object, float x, float y, float z)
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	body->setLinearFactor(btVector3(x, y, z));
 }
 
 void RB_body_set_angular_factor(rbRigidBody *object, float x, float y, float z)
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	body->setAngularFactor(btVector3(x, y, z));
 }
 
@@ -783,7 +827,7 @@ void RB_body_set_angular_factor(rbRigidBody *object, float x, float y, float z)
 
 void RB_body_set_kinematic_state(rbRigidBody *object, int kinematic)
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	if (kinematic)
 		body->setCollisionFlags(body->getCollisionFlags() | btCollisionObject::CF_KINEMATIC_OBJECT);
 	else
@@ -794,7 +838,7 @@ void RB_body_set_kinematic_state(rbRigidBody *object, int kinematic)
 
 void RB_body_set_activation_state(rbRigidBody *object, int use_deactivation)
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	if (use_deactivation)
 		body->forceActivationState(ACTIVE_TAG);
 	else
@@ -802,18 +846,18 @@ void RB_body_set_activation_state(rbRigidBody *object, int use_deactivation)
 }
 void RB_body_activate(rbRigidBody *object)
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	body->setActivationState(ACTIVE_TAG);
 }
 void RB_body_deactivate(rbRigidBody *object)
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	body->setActivationState(ISLAND_SLEEPING);
 }
 
 int RB_body_get_activation_state(rbRigidBody* object)
 {
-	btRigidBody* body = object->body;
+	btFractureBody* body = object->body;
 	return body->getActivationState();
 }
 
@@ -829,7 +873,7 @@ int RB_body_get_activation_state(rbRigidBody* object)
 
 void RB_body_get_transform_matrix(rbRigidBody *object, float m_out[4][4])
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	btMotionState *ms = body->getMotionState();
 	
 	btTransform trans;
@@ -840,7 +884,7 @@ void RB_body_get_transform_matrix(rbRigidBody *object, float m_out[4][4])
 
 void RB_body_set_loc_rot(rbRigidBody *object, const float loc[3], const float rot[4])
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	btMotionState *ms = body->getMotionState();
 	
 	/* set transform matrix */
@@ -853,7 +897,7 @@ void RB_body_set_loc_rot(rbRigidBody *object, const float loc[3], const float ro
 
 void RB_body_set_scale(rbRigidBody *object, const float scale[3])
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	
 	/* apply scaling factor from matrix above to the collision shape */
 	btCollisionShape *cshape = body->getCollisionShape();
@@ -871,14 +915,14 @@ void RB_body_set_scale(rbRigidBody *object, const float scale[3])
 
 void RB_body_get_position(rbRigidBody *object, float v_out[3])
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	
 	copy_v3_btvec3(v_out, body->getWorldTransform().getOrigin());
 }
 
 void RB_body_get_orientation(rbRigidBody *object, float v_out[4])
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	
 	copy_quat_btquat(v_out, body->getWorldTransform().getRotation());
 }
@@ -888,21 +932,21 @@ void RB_body_get_orientation(rbRigidBody *object, float v_out[4])
 
 void RB_body_apply_central_force(rbRigidBody *object, const float v_in[3])
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 	
 	body->applyCentralForce(btVector3(v_in[0], v_in[1], v_in[2]));
 }
 
 void RB_body_apply_impulse(rbRigidBody* object, const float impulse[3], const float pos[3])
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 
 	body->applyImpulse(btVector3(impulse[0], impulse[1], impulse[2]), btVector3(pos[0], pos[1], pos[2]));
 }
 
 void RB_body_apply_force(rbRigidBody* object, const float force[3], const float pos[3])
 {
-	btRigidBody *body = object->body;
+	btFractureBody *body = object->body;
 
 	body->applyForce(btVector3(force[0], force[1], force[2]), btVector3(pos[0], pos[1], pos[2]));
 }
@@ -1076,6 +1120,26 @@ int RB_shape_get_num_verts(rbCollisionShape *shape)
 	return 0;
 }
 
+//compound shapes
+rbCollisionShape *RB_shape_new_compound()
+{
+	rbCollisionShape *shape = new rbCollisionShape;
+	shape->cshape = new btCompoundShape();
+	shape->mesh = NULL;
+	return shape;
+}
+
+void RB_shape_add_compound_child(rbCollisionShape** compound, rbCollisionShape* child, float loc[3], float rot[4])
+{
+	btCompoundShape *comp = reinterpret_cast<btCompoundShape*>((*compound)->cshape);
+	btCollisionShape* ch = child->cshape;
+	btTransform trans;
+	trans.setOrigin(btVector3(loc[0], loc[1], loc[2]));
+	trans.setRotation(btQuaternion(rot[1], rot[2], rot[3], rot[0]));
+
+	comp->addChildShape(trans, ch);
+}
+
 /* Cleanup --------------------------- */
 
 void RB_shape_delete(rbCollisionShape *shape)
@@ -1128,7 +1192,7 @@ void RB_dworld_remove_constraint(rbDynamicsWorld *world, rbConstraint *con)
 
 /* ............ */
 
-static void make_constraint_transforms(btTransform &transform1, btTransform &transform2, btRigidBody *body1, btRigidBody *body2, float pivot[3], float orn[4])
+static void make_constraint_transforms(btTransform &transform1, btTransform &transform2, btFractureBody *body1, btFractureBody *body2, float pivot[3], float orn[4])
 {
 	btTransform pivot_transform = btTransform();
 	pivot_transform.setOrigin(btVector3(pivot[0], pivot[1], pivot[2]));
@@ -1140,8 +1204,8 @@ static void make_constraint_transforms(btTransform &transform1, btTransform &tra
 
 rbConstraint *RB_constraint_new_point(float pivot[3], rbRigidBody *rb1, rbRigidBody *rb2)
 {
-	btRigidBody *body1 = rb1->body;
-	btRigidBody *body2 = rb2->body;
+	btFractureBody *body1 = rb1->body;
+	btFractureBody *body2 = rb2->body;
 	
 	btVector3 pivot1 = body1->getWorldTransform().inverse() * btVector3(pivot[0], pivot[1], pivot[2]);
 	btVector3 pivot2 = body2->getWorldTransform().inverse() * btVector3(pivot[0], pivot[1], pivot[2]);
@@ -1153,8 +1217,8 @@ rbConstraint *RB_constraint_new_point(float pivot[3], rbRigidBody *rb1, rbRigidB
 
 rbConstraint *RB_constraint_new_fixed(float pivot[3], float orn[4], rbRigidBody *rb1, rbRigidBody *rb2)
 {
-	btRigidBody *body1 = rb1->body;
-	btRigidBody *body2 = rb2->body;
+	btFractureBody *body1 = rb1->body;
+	btFractureBody *body2 = rb2->body;
 	btTransform transform1;
 	btTransform transform2;
 	
@@ -1167,8 +1231,8 @@ rbConstraint *RB_constraint_new_fixed(float pivot[3], float orn[4], rbRigidBody 
 
 rbConstraint *RB_constraint_new_hinge(float pivot[3], float orn[4], rbRigidBody *rb1, rbRigidBody *rb2)
 {
-	btRigidBody *body1 = rb1->body;
-	btRigidBody *body2 = rb2->body;
+	btFractureBody *body1 = rb1->body;
+	btFractureBody *body2 = rb2->body;
 	btTransform transform1;
 	btTransform transform2;
 	
@@ -1181,8 +1245,8 @@ rbConstraint *RB_constraint_new_hinge(float pivot[3], float orn[4], rbRigidBody 
 
 rbConstraint *RB_constraint_new_slider(float pivot[3], float orn[4], rbRigidBody *rb1, rbRigidBody *rb2)
 {
-	btRigidBody *body1 = rb1->body;
-	btRigidBody *body2 = rb2->body;
+	btFractureBody *body1 = rb1->body;
+	btFractureBody *body2 = rb2->body;
 	btTransform transform1;
 	btTransform transform2;
 	
@@ -1195,8 +1259,8 @@ rbConstraint *RB_constraint_new_slider(float pivot[3], float orn[4], rbRigidBody
 
 rbConstraint *RB_constraint_new_piston(float pivot[3], float orn[4], rbRigidBody *rb1, rbRigidBody *rb2)
 {
-	btRigidBody *body1 = rb1->body;
-	btRigidBody *body2 = rb2->body;
+	btFractureBody *body1 = rb1->body;
+	btFractureBody *body2 = rb2->body;
 	btTransform transform1;
 	btTransform transform2;
 	
@@ -1210,8 +1274,8 @@ rbConstraint *RB_constraint_new_piston(float pivot[3], float orn[4], rbRigidBody
 
 rbConstraint *RB_constraint_new_6dof(float pivot[3], float orn[4], rbRigidBody *rb1, rbRigidBody *rb2)
 {
-	btRigidBody *body1 = rb1->body;
-	btRigidBody *body2 = rb2->body;
+	btFractureBody *body1 = rb1->body;
+	btFractureBody *body2 = rb2->body;
 	btTransform transform1;
 	btTransform transform2;
 	
@@ -1224,8 +1288,8 @@ rbConstraint *RB_constraint_new_6dof(float pivot[3], float orn[4], rbRigidBody *
 
 rbConstraint *RB_constraint_new_6dof_spring(float pivot[3], float orn[4], rbRigidBody *rb1, rbRigidBody *rb2)
 {
-	btRigidBody *body1 = rb1->body;
-	btRigidBody *body2 = rb2->body;
+	btFractureBody *body1 = rb1->body;
+	btFractureBody *body2 = rb2->body;
 	btTransform transform1;
 	btTransform transform2;
 	
@@ -1238,8 +1302,8 @@ rbConstraint *RB_constraint_new_6dof_spring(float pivot[3], float orn[4], rbRigi
 
 rbConstraint *RB_constraint_new_motor(float pivot[3], float orn[4], rbRigidBody *rb1, rbRigidBody *rb2)
 {
-	btRigidBody *body1 = rb1->body;
-	btRigidBody *body2 = rb2->body;
+	btFractureBody *body1 = rb1->body;
+	btFractureBody *body2 = rb2->body;
 	btTransform transform1;
 	btTransform transform2;
 	
@@ -1254,6 +1318,16 @@ rbConstraint *RB_constraint_new_motor(float pivot[3], float orn[4], rbRigidBody 
 	/* unlock motor axes */
 	con->getTranslationalLimitMotor()->m_upperLimit.setValue(-1.0f, -1.0f, -1.0f);
 	
+	return (rbConstraint *)con;
+}
+
+rbConstraint *RB_constraint_new_compound(rbRigidBody *rb1, rbRigidBody *rb2)
+{
+	btFractureBody *body1 = rb1->body;
+	btFractureBody *body2 = rb2->body;
+
+	btCompoundConstraint *con = new btCompoundConstraint(*body1, *body2);
+
 	return (rbConstraint *)con;
 }
 

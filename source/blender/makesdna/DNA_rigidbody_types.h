@@ -347,7 +347,9 @@ typedef enum eRigidBodyCon_Type {
 	/* Simplified spring constraint with only once axis that's automatically placed between the connected bodies */
 	RBC_TYPE_SPRING,
 	/* dirves bodies by applying linear and angular forces */
-	RBC_TYPE_MOTOR
+	RBC_TYPE_MOTOR,
+	/* uses a compound internally, but needs connection info to build / manage it at fracturing */
+	RBC_TYPE_COMPOUND,
 } eRigidBodyCon_Type;
 
 /* Flags for RigidBodyCon */
