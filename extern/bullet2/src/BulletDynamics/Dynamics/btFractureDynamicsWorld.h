@@ -35,7 +35,9 @@ public:
 	btAlignedObjectArray<btFractureBody*> m_fractureBodies;
 
 	IdCallback m_idCallback;
+
 	ShapeBodyCallback m_shapeBodyCallback;
+
 	btHashMap<btHashInt, int> *m_childIndexHash;
 
 	virtual void	addRigidBody(btRigidBody* body);
@@ -63,6 +65,8 @@ public:
 	void fractureCallback();
 
 	void updateBodies();
+
+	void propagateDamage(btFractureBody *body, btScalar *impulse, int connection_index, bool *needsBreakingCheck);
 };
 
 #endif //_BT_FRACTURE_DYNAMICS_WORLD_H

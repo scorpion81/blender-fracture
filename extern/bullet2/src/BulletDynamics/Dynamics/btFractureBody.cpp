@@ -68,10 +68,10 @@ void btFractureBody::recomputeConnectivityByConstraints(btCollisionWorld *world1
 
 	if (world->m_idCallback != NULL)
 	{
-		int i;
+		int i, size = world->m_compoundConstraints.size();
 		m_connections.clear();
 
-		for (i=0; i<world->m_compoundConstraints.size();i++)
+		for (i=0; i<size;i++)
 		{
 			btCompoundConstraint *con = world->m_compoundConstraints[i];
 
@@ -104,6 +104,26 @@ void btFractureBody::recomputeConnectivityByConstraints(btCollisionWorld *world1
 
 					//break;
 				}
+			}
+		}
+
+		//build a connection map
+		m_connection_map->clear();
+
+		size = m_connections.size();
+		for (i=0; i < size; i++)
+		{
+			btConnection con = m_connections[i];
+			btAlignedObjectArray<int> *adjacents = m_connection_map->find(con.m_childIndex0);
+			if (!adjacents) {
+				btAlignedObjectArray<int> adj;
+				adj.push_back(con.m_childIndex1);
+				m_connection_map->insert(con.m_childIndex0, adj);
+			}
+			else
+			{
+				if (adjacents->size() != adjacents->findLinearSearch(con.m_childIndex1))
+					adjacents->push_back(con.m_childIndex1);
 			}
 		}
 	}

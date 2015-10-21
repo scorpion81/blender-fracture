@@ -9,6 +9,7 @@ class btCompoundShape;
 class btManifoldPoint;
 
 #include "LinearMath/btAlignedObjectArray.h"
+#include "LinearMath/btHashMap.h"
 #include "BulletDynamics/Dynamics/btRigidBody.h"
 
 #define CUSTOM_FRACTURE_TYPE (btRigidBody::CO_USER_TYPE+1)
@@ -31,13 +32,15 @@ public:
 
 	btDynamicsWorld*	m_world;
 	btAlignedObjectArray<btScalar>	m_masses;
-	btAlignedObjectArray<btConnection>	m_connections;
+	btAlignedObjectArray<btConnection> m_connections;
+	btHashMap<btHashInt, btAlignedObjectArray<int> > *m_connection_map;
 
 
 
 	btFractureBody(	const btRigidBodyConstructionInfo& constructionInfo)
 		:btRigidBody(constructionInfo),
-		m_world(0)
+		m_world(0),
+		m_connection_map(NULL)
 	{
 		m_masses.push_back(constructionInfo.m_mass);
 		m_internalType=CUSTOM_FRACTURE_TYPE+CO_RIGID_BODY;
@@ -56,6 +59,7 @@ public:
 			m_masses.push_back(masses[i]);
 
 		m_internalType=CUSTOM_FRACTURE_TYPE+CO_RIGID_BODY;
+		m_connection_map = new btHashMap<btHashInt, btAlignedObjectArray<int> >();
 	}
 
 	void setWorld(btDynamicsWorld *world)
@@ -74,6 +78,10 @@ public:
 	
 	static bool collisionCallback(btManifoldPoint& cp,	const btCollisionObject* colObj0,int partId0,int index0,const btCollisionObject* colObj1,int partId1,int index1);
 
+	~btFractureBody()
+	{
+		delete m_connection_map;
+	}
 };
 
 

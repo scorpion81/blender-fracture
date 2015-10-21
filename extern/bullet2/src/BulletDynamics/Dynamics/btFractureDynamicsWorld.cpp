@@ -515,12 +515,12 @@ void	btFractureDynamicsWorld::breakDisconnectedParts( btFractureBody* fracObj)
 	for (i=0;i<fracObj->m_connections.size();i++)
 	{
 		btConnection& connection = fracObj->m_connections[i];
-		/*if (connection.m_childIndex0 >= tags.size() ||
+		if (connection.m_childIndex0 >= tags.size() ||
 		    connection.m_childIndex1 >= tags.size() )
 		{
 			//fracObj->m_connections.remove(connection);
 			continue;
-		}*/
+		}
 
 		if (connection.m_strength > 0.)
 		{
@@ -612,10 +612,36 @@ void	btFractureDynamicsWorld::breakDisconnectedParts( btFractureBody* fracObj)
 
 #include <stdio.h>
 
-/*void btFractureDynamicsWorld::propagateWeaken(btFractureBody *body, btManifoldPoint *pt)
+void btFractureDynamicsWorld::propagateDamage(btFractureBody *body, btScalar *impulse, int connection_index, bool* needsBreakingCheck)
 {
+	//min break impulse, todo expose
+	if (*impulse > 0.5f)
+	{
+		btConnection& connection = body->m_connections[connection_index];
+		connection.m_strength -= *impulse;
+		//printf("strengthp=%f %f\n",connection.m_strength, *impulse);
 
-}*/
+		if (connection.m_strength<0)
+		{
+			//remove or set to zero
+			connection.m_strength=0.f;
+			*needsBreakingCheck = true;
+		}
+
+		//impulse dampening, todo expose
+		*impulse *= 0.85f;
+
+		btAlignedObjectArray<int> *adjacents = body->m_connection_map->find(connection_index);
+		if (adjacents)
+		{
+			int i, size = adjacents->size();
+			for (i=0;i<size;i++)
+			{
+				propagateDamage(body, impulse, adjacents->at(i), needsBreakingCheck);
+			}
+		}
+	}
+}
 
 void btFractureDynamicsWorld::fractureCallback( )
 {
@@ -653,7 +679,7 @@ void btFractureDynamicsWorld::fractureCallback( )
 			maxImpact = totalImpact;
 
 		//some threshold otherwise resting contact would break objects after a while
-		if (totalImpact < 0.1f) //40.f
+		if (totalImpact < 1.f) //40.f
 			continue;
 
 		//		printf("strong impact\n");
@@ -789,14 +815,13 @@ void btFractureDynamicsWorld::fractureCallback( )
 							{
 								for (int f=0;f<sFracturePairs[i].m_fracObj->m_connections.size();f++)
 								{
+									//direct damage
 									btConnection& connection = sFracturePairs[i].m_fracObj->m_connections[f];
 									if ((connection.m_childIndex0 == pt.m_index0) ||
 										(connection.m_childIndex1 == pt.m_index0))
-									    //(connection.m_childIndex0 == pt.m_index1) ||
-									    //(connection.m_childIndex1 == pt.m_index1))
 									{
 										connection.m_strength -= pt.m_appliedImpulse;
-										printf("strength0=%f\n",connection.m_strength);
+										//printf("strength0=%f\n",connection.m_strength);
 
 										if (connection.m_strength<0)
 										{	
@@ -805,19 +830,26 @@ void btFractureDynamicsWorld::fractureCallback( )
 											needsBreakingCheck = true;
 										}
 									}
+
+									//propagated damage
+									if (pt.m_appliedImpulse > 0.f) {
+										btScalar impulse = pt.m_appliedImpulse;
+										propagateDamage(sFracturePairs[i].m_fracObj,&impulse, connection.m_childIndex0, &needsBreakingCheck);
+
+										impulse = pt.m_appliedImpulse;
+										propagateDamage(sFracturePairs[i].m_fracObj,&impulse, connection.m_childIndex1, &needsBreakingCheck);
+									}
 								}
 							} else
 							{
-								//propagate
+								//direct damage
 								for (int f=0;f<sFracturePairs[i].m_fracObj->m_connections.size();f++)
 								{
 									btConnection& connection = sFracturePairs[i].m_fracObj->m_connections[f];
 									if ((connection.m_childIndex0 == pt.m_index1) ||
 									       (connection.m_childIndex1 == pt.m_index1))
-									//	   (connection.m_childIndex0 == pt.m_index0) ||
-									//       (connection.m_childIndex1 == pt.m_index0))
 									{
-										printf("strength1=%f\n",connection.m_strength);
+										//printf("strength1=%f\n",connection.m_strength);
 										connection.m_strength -= pt.m_appliedImpulse;
 										if (connection.m_strength<0)
 										{
@@ -825,6 +857,15 @@ void btFractureDynamicsWorld::fractureCallback( )
 											connection.m_strength=0.f;
 											needsBreakingCheck = true;
 										}
+									}
+
+									//propagated damage
+									if (pt.m_appliedImpulse > 0.f) {
+										btScalar impulse = pt.m_appliedImpulse;
+										propagateDamage(sFracturePairs[i].m_fracObj, &impulse, connection.m_childIndex0, &needsBreakingCheck);
+
+										impulse = pt.m_appliedImpulse;
+										propagateDamage(sFracturePairs[i].m_fracObj, &impulse, connection.m_childIndex1, &needsBreakingCheck);
 									}
 								}
 							}
