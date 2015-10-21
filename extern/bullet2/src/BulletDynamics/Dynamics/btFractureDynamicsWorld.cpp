@@ -12,7 +12,12 @@ m_fracturingMode(true),
 m_idCallback(callback),
 m_shapeBodyCallback(shapebodycallback)
 {
+	m_childIndexHash = new btHashMap<btHashInt, int>();
+}
 
+btFractureDynamicsWorld::~btFractureDynamicsWorld()
+{
+	delete m_childIndexHash;
 }
 
 void btFractureDynamicsWorld::updateBodies()
@@ -35,9 +40,10 @@ void btFractureDynamicsWorld::updateBodies()
 
 					//find out to which body the shape belonged originally... and update it
 
-					//int objectIndexA, shardIndexA, objectIndexB, shardIndexB;
-					//m_idCallback(cshape->getUserPointer(), &objectIndexA, &shardIndexA);
+					int objectIndexA, shardIndexA; //, objectIndexB, shardIndexB;
+					m_idCallback(cshape->getUserPointer(), &objectIndexA, &shardIndexA);
 					//m_idCallback(body->getUserPointer(), &objectIndexB, &shardIndexB );
+					m_childIndexHash->insert(shardIndexA, j);
 
 					//if ((objectIndexA == objectIndexB) && (shardIndexA != shardIndexB))
 					btTransform trans;
@@ -301,9 +307,24 @@ void btFractureDynamicsWorld::glueCallback()
 			btVector3 localInertia;
 			newCompound->calculateLocalInertia(totalMass,localInertia);
 			btFractureBody* newBody = new btFractureBody(totalMass,0,newCompound,localInertia, &massArray[0], numChildren,this);
-			newBody->recomputeConnectivity(this);
+			//newBody->recomputeConnectivity(this);
 			//newBody->recomputeConnectivityByConstraints(this);
 			newBody->setWorldTransform(fracObj->getWorldTransform()*shift);
+
+			int objectIndex, shardIndex;
+			//pass user pointer from old compound parent to new one
+			newBody->setUserPointer(fracObj->getUserPointer());
+			m_idCallback(newBody->getUserPointer(), &objectIndex, &shardIndex);
+
+			for (int i=0; i<numChildren; i++)
+			{
+				int obIndex, shIndex;
+				btCollisionShape *cshape = newCompound->getChildShape(i);
+				m_idCallback(cshape->getUserPointer(), &obIndex, &shIndex);
+				m_childIndexHash->insert(shIndex, i);
+			}
+
+			newBody->recomputeConnectivityByConstraints(this);
 
 			//now the linear/angular velocity is still zero, apply the impulses
 
@@ -315,6 +336,9 @@ void btFractureDynamicsWorld::glueCallback()
 			}
 
 			addRigidBody(newBody);
+
+			//newbody is a compound parent, hmmmm, so set its childindex to 0 or -1
+			m_childIndexHash->insert(shardIndex, -1);
 
 
 		}
@@ -383,8 +407,8 @@ btFractureBody* btFractureDynamicsWorld::addNewBody(const btTransform& oldTransf
 	//newCompound->calculateLocalInertia(totalMass,localInertia);
 
 	btFractureBody* newBody = new btFractureBody(totalMass,0,newCompound,localInertia, masses,newCompound->getNumChildShapes(), this);
-	newBody->recomputeConnectivity(this);
-	//newBody->recomputeConnectivityByConstraints(this);
+	//newBody->recomputeConnectivity(this);
+	newBody->recomputeConnectivityByConstraints(this);
 
 	newBody->setCollisionFlags(newBody->getCollisionFlags()|btCollisionObject::CF_CUSTOM_MATERIAL_CALLBACK);
 	newBody->setWorldTransform(oldTransform*shift);
@@ -491,12 +515,12 @@ void	btFractureDynamicsWorld::breakDisconnectedParts( btFractureBody* fracObj)
 	for (i=0;i<fracObj->m_connections.size();i++)
 	{
 		btConnection& connection = fracObj->m_connections[i];
-		if (connection.m_childIndex0 >= tags.size() ||
+		/*if (connection.m_childIndex0 >= tags.size() ||
 		    connection.m_childIndex1 >= tags.size() )
 		{
 			//fracObj->m_connections.remove(connection);
 			continue;
-		}
+		}*/
 
 		if (connection.m_strength > 0.)
 		{
@@ -554,9 +578,24 @@ void	btFractureDynamicsWorld::breakDisconnectedParts( btFractureBody* fracObj)
 		}
 		if (numShapes)
 		{
+			int objectIndex, shardIndex;
 			btFractureBody* newBody = addNewBody(fracObj->getWorldTransform(),&masses[0],newCompound);
 			newBody->setLinearVelocity(fracObj->getLinearVelocity());
 			newBody->setAngularVelocity(fracObj->getAngularVelocity());
+
+			//pass user pointer from old compound parent to new one
+			newBody->setUserPointer(fracObj->getUserPointer());
+			m_idCallback(newBody->getUserPointer(), &objectIndex, &shardIndex);
+			m_childIndexHash->insert(shardIndex, -1);
+			int numChildren = newCompound->getNumChildShapes();
+
+			for (int i=0; i<numChildren; i++)
+			{
+				int obIndex, shIndex;
+				btCollisionShape *cshape = newCompound->getChildShape(i);
+				m_idCallback(cshape->getUserPointer(), &obIndex, &shIndex);
+				m_childIndexHash->insert(shIndex, i);
+			}
 
 			numIslands++;
 		}
@@ -573,6 +612,10 @@ void	btFractureDynamicsWorld::breakDisconnectedParts( btFractureBody* fracObj)
 
 #include <stdio.h>
 
+/*void btFractureDynamicsWorld::propagateWeaken(btFractureBody *body, btManifoldPoint *pt)
+{
+
+}*/
 
 void btFractureDynamicsWorld::fractureCallback( )
 {
@@ -748,13 +791,12 @@ void btFractureDynamicsWorld::fractureCallback( )
 								{
 									btConnection& connection = sFracturePairs[i].m_fracObj->m_connections[f];
 									if ((connection.m_childIndex0 == pt.m_index0) ||
-										(connection.m_childIndex1 == pt.m_index1) ||
-									    (connection.m_childIndex0 == pt.m_index1) ||
-									    (connection.m_childIndex1 == pt.m_index0)
-										)
+										(connection.m_childIndex1 == pt.m_index0))
+									    //(connection.m_childIndex0 == pt.m_index1) ||
+									    //(connection.m_childIndex1 == pt.m_index1))
 									{
 										connection.m_strength -= pt.m_appliedImpulse;
-										printf("strength=%f\n",connection.m_strength);
+										printf("strength0=%f\n",connection.m_strength);
 
 										if (connection.m_strength<0)
 										{	
@@ -766,16 +808,16 @@ void btFractureDynamicsWorld::fractureCallback( )
 								}
 							} else
 							{
+								//propagate
 								for (int f=0;f<sFracturePairs[i].m_fracObj->m_connections.size();f++)
 								{
 									btConnection& connection = sFracturePairs[i].m_fracObj->m_connections[f];
-									if ((connection.m_childIndex0 == pt.m_index0) ||
-									       (connection.m_childIndex1 == pt.m_index1) ||
-									       (connection.m_childIndex0 == pt.m_index1) ||
-									       (connection.m_childIndex1 == pt.m_index0)
-										   )
+									if ((connection.m_childIndex0 == pt.m_index1) ||
+									       (connection.m_childIndex1 == pt.m_index1))
+									//	   (connection.m_childIndex0 == pt.m_index0) ||
+									//       (connection.m_childIndex1 == pt.m_index0))
 									{
-										printf("strength=%f\n",connection.m_strength);
+										printf("strength1=%f\n",connection.m_strength);
 										connection.m_strength -= pt.m_appliedImpulse;
 										if (connection.m_strength<0)
 										{
@@ -792,6 +834,7 @@ void btFractureDynamicsWorld::fractureCallback( )
 					if (needsBreakingCheck)
 					{
 						breakDisconnectedParts(sFracturePairs[i].m_fracObj);
+						//glueCallback();
 					}
 				}
 

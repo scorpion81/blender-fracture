@@ -81,18 +81,28 @@ void btFractureBody::recomputeConnectivityByConstraints(btCollisionWorld *world1
 				btFractureBody *obA = (btFractureBody*)&con->getRigidBodyA();
 				btFractureBody *obB = (btFractureBody*)&con->getRigidBodyB();
 
-				world->m_idCallback(obA->getUserPointer(), &obIdA, &shardIdA);
-				world->m_idCallback(obB->getUserPointer(), &obIdB, &shardIdB);
-
-				if ((obIdA == obIdB) && (shardIdA != shardIdB))
+				//if (this == obA || this == obB)
 				{
-					btConnection tmp;
-					tmp.m_childIndex0 = shardIdA;
-					tmp.m_childIndex1 = shardIdB;
-					tmp.m_childShape0 = obA->getCollisionShape();
-					tmp.m_childShape1 = obB->getCollisionShape();
-					tmp.m_strength = con->getBreakingImpulseThreshold();
-					m_connections.push_back(tmp);
+					int *index0 = NULL, *index1 = NULL;
+					world->m_idCallback(obA->getUserPointer(), &obIdA, &shardIdA);
+					world->m_idCallback(obB->getUserPointer(), &obIdB, &shardIdB);
+
+					index0 = world->m_childIndexHash->find(shardIdA);
+					index1 = world->m_childIndexHash->find(shardIdB);
+
+					if ((obIdA == obIdB) && (shardIdA != shardIdB) &&
+					    index0 && index1 && *index0 > -1 && *index1 > -1)
+					{
+						btConnection tmp;
+						tmp.m_childIndex0 = *index0;
+						tmp.m_childIndex1 = *index1;
+						tmp.m_childShape0 = obA->getCollisionShape();
+						tmp.m_childShape1 = obB->getCollisionShape();
+						tmp.m_strength = con->getBreakingImpulseThreshold();
+						m_connections.push_back(tmp);
+					}
+
+					//break;
 				}
 			}
 		}

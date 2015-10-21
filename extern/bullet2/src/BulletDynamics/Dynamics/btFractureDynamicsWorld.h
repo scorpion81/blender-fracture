@@ -4,6 +4,7 @@
 #include "btBulletDynamicsCommon.h"
 #include "BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h"
 #include "LinearMath/btAlignedObjectArray.h"
+#include "LinearMath/btHashMap.h"
 
 class btFractureBody;
 class btCompoundShape;
@@ -28,11 +29,14 @@ public:
 
 	btFractureDynamicsWorld ( btDispatcher* dispatcher,btBroadphaseInterface* pairCache,btConstraintSolver* constraintSolver,btCollisionConfiguration* collisionConfiguration, IdCallback callback, ShapeBodyCallback shapebodycallback);
 
+	~btFractureDynamicsWorld();
+
 	btAlignedObjectArray<btCompoundConstraint*>	m_compoundConstraints;
 	btAlignedObjectArray<btFractureBody*> m_fractureBodies;
 
 	IdCallback m_idCallback;
 	ShapeBodyCallback m_shapeBodyCallback;
+	btHashMap<btHashInt, int> *m_childIndexHash;
 
 	virtual void	addRigidBody(btRigidBody* body);
 

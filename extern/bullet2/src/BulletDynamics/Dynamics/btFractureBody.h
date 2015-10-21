@@ -32,14 +32,12 @@ public:
 	btDynamicsWorld*	m_world;
 	btAlignedObjectArray<btScalar>	m_masses;
 	btAlignedObjectArray<btConnection>	m_connections;
-	int m_childIndex;
 
 
 
 	btFractureBody(	const btRigidBodyConstructionInfo& constructionInfo)
 		:btRigidBody(constructionInfo),
-		m_world(0),
-		m_childIndex(-1)
+		m_world(0)
 	{
 		m_masses.push_back(constructionInfo.m_mass);
 		m_internalType=CUSTOM_FRACTURE_TYPE+CO_RIGID_BODY;
