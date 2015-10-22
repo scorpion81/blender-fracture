@@ -702,7 +702,7 @@ void	btFractureDynamicsWorld::breakDisconnectedParts( btFractureBody* fracObj)
 void btFractureDynamicsWorld::propagateDamage(btFractureBody *body, btScalar *impulse, int connection_index, bool* needsBreakingCheck)
 {
 	//min break impulse, todo expose
-	if (*impulse > 0.5f)
+	if (*impulse > 0.5f && body->m_connections.size() > connection_index)
 	{
 		btConnection& connection = body->m_connections[connection_index];
 		connection.m_strength -= *impulse;
