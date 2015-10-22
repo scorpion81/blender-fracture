@@ -25,6 +25,8 @@ class btFractureDynamicsWorld : public btDiscreteDynamicsWorld
 
 	void	breakDisconnectedParts( btFractureBody* fracObj);
 
+	bool	m_addBroadPhaseHandle;
+
 public:
 
 	btFractureDynamicsWorld ( btDispatcher* dispatcher,btBroadphaseInterface* pairCache,btConstraintSolver* constraintSolver,btCollisionConfiguration* collisionConfiguration, IdCallback callback, ShapeBodyCallback shapebodycallback);
@@ -67,6 +69,8 @@ public:
 	void updateBodies();
 
 	void propagateDamage(btFractureBody *body, btScalar *impulse, int connection_index, bool *needsBreakingCheck);
+
+	virtual void updateAabbs();
 };
 
 #endif //_BT_FRACTURE_DYNAMICS_WORLD_H

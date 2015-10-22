@@ -975,7 +975,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 			s->shard_id += j+1;
 			s->parent_id = parent_id;
 			s->setting_id = active_setting;
-			printf("ADDED: %d %d %d\n", i, j, s->shard_id);
+			//printf("ADDED: %d %d %d\n", i, j, s->shard_id);
 			if (parent_id > -1)
 			{
 				int i = 0;

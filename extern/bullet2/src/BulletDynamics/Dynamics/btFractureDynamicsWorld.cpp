@@ -10,7 +10,8 @@ btFractureDynamicsWorld::btFractureDynamicsWorld (btDispatcher* dispatcher, btBr
 :btDiscreteDynamicsWorld(dispatcher,pairCache,constraintSolver,collisionConfiguration),
 m_fracturingMode(true),
 m_idCallback(callback),
-m_shapeBodyCallback(shapebodycallback)
+m_shapeBodyCallback(shapebodycallback),
+m_addBroadPhaseHandle(false)
 {
 	m_childIndexHash = new btHashMap<btHashInt, int>();
 }
@@ -53,6 +54,32 @@ void btFractureDynamicsWorld::updateBodies()
 					fbody->setWorldTransform(trans);
 				}
 			}
+			else
+			{
+				btCollisionShape *cshape = (btCollisionShape*)body->getCollisionShape();
+
+				//non compounds have a child index of -1, (and will have a broadphase handle)
+				int objectIndexA, shardIndexA;
+				m_idCallback(cshape->getUserPointer(), &objectIndexA, &shardIndexA);
+				m_childIndexHash->insert(shardIndexA, -1);
+			}
+		}
+	}
+}
+
+void	btFractureDynamicsWorld::updateAabbs()
+{
+	BT_PROFILE("updateAabbs");
+
+	//btTransform predictedTrans;
+	for ( int i=0;i<m_collisionObjects.size();i++)
+	{
+		btCollisionObject* colObj = m_collisionObjects[i];
+
+		//only update aabb of active objects
+		if ((m_forceUpdateAllAabbs || colObj->isActive()) && colObj->getBroadphaseHandle() != NULL)
+		{
+			updateSingleAabb(colObj);
 		}
 	}
 }
@@ -61,7 +88,7 @@ void btFractureDynamicsWorld::updateBodies()
 void btFractureDynamicsWorld::glueCallback()
 {
 
-	int numManifolds = getDispatcher()->getNumManifolds();
+	//int numManifolds = getDispatcher()->getNumManifolds();
 
 	///first build the islands based on axis aligned bounding box overlap
 
@@ -80,7 +107,8 @@ void btFractureDynamicsWorld::glueCallback()
 			if (!collisionObject->isStaticOrKinematicObject())
 			{
 				collisionObject->setIslandTag(index++);
-			} else
+			}
+			else
 			{
 				collisionObject->setIslandTag(-1);
 			}
@@ -125,6 +153,7 @@ void btFractureDynamicsWorld::glueCallback()
 	}
 #endif
 
+#if 0
 	int numConstraints = m_compoundConstraints.size();
 	for (int i=0;i<numConstraints;i++)
 	{
@@ -143,12 +172,27 @@ void btFractureDynamicsWorld::glueCallback()
 			unionFind.unite(tag0, tag1);
 		}
 	}
+#endif
 
-
-
+	for (int ai=0;ai<getCollisionObjectArray().size();ai++)
+	{
+		btCollisionObject* collisionObject= getCollisionObjectArray()[ai];
+		if (!collisionObject->isStaticOrKinematicObject())
+		{
+			if (collisionObject->getInternalType() & CUSTOM_FRACTURE_TYPE)
+			{
+				//ensure 1 compound per object, so shard id 0 becomes parent always.... sure that it is first ?
+				int objectId, shardId, islandTag;
+				islandTag = collisionObject->getIslandTag();
+				btFractureBody *body = (btFractureBody*)collisionObject;
+				m_idCallback(body->getUserPointer(),&objectId, &shardId);
+				if (objectId > -1)
+					unionFind.unite(objectId, islandTag);
+			}
+		}
+	}
 
 	numElem = unionFind.getNumElements();
-
 
 
 	index=0;
@@ -227,7 +271,7 @@ void btFractureDynamicsWorld::glueCallback()
 			btScalar totalMass = 0.f;
 
 
-			btCompoundShape* compound = new btCompoundShape();
+			btCompoundShape* compound = new btCompoundShape(false);
 			if (fracObj->getCollisionShape()->isCompound())
 			{
 				btTransform tr;
@@ -335,7 +379,9 @@ void btFractureDynamicsWorld::glueCallback()
 				newBody->applyImpulse(imp, rel_pos);
 			}
 
+			m_addBroadPhaseHandle = true;
 			addRigidBody(newBody);
+			m_addBroadPhaseHandle = false;
 
 			//newbody is a compound parent, hmmmm, so set its childindex to 0 or -1
 			m_childIndexHash->insert(shardIndex, -1);
@@ -412,7 +458,9 @@ btFractureBody* btFractureDynamicsWorld::addNewBody(const btTransform& oldTransf
 
 	newBody->setCollisionFlags(newBody->getCollisionFlags()|btCollisionObject::CF_CUSTOM_MATERIAL_CALLBACK);
 	newBody->setWorldTransform(oldTransform*shift);
+	m_addBroadPhaseHandle = true;
 	addRigidBody(newBody);
+	m_addBroadPhaseHandle = false;
 	return newBody;
 }
 
@@ -450,12 +498,51 @@ void btFractureDynamicsWorld::removeConstraint(btTypedConstraint *constraint)
 
 void btFractureDynamicsWorld::addRigidBody(btRigidBody* body)
 {
+	bool addBroadPhaseHandle = true;
+
 	if (body->getInternalType() & CUSTOM_FRACTURE_TYPE)
 	{
+		int objectId, shardId;
 		btFractureBody* fbody = (btFractureBody*)body;
 		m_fractureBodies.push_back(fbody);
+		m_idCallback(fbody->getUserPointer(), &objectId, &shardId);
+		if (objectId > 0 && shardId > 1)
+			addBroadPhaseHandle = false;
 	}
-	btDiscreteDynamicsWorld::addRigidBody(body);
+
+	//m_addBroadPhaseHandle is an override switch (for new, fractured objects)
+	if (addBroadPhaseHandle || m_addBroadPhaseHandle)
+	{
+		btDiscreteDynamicsWorld::addRigidBody(body);
+	}
+	else
+	{
+		//inlined from DiscreteDynamicsWorld::addRigidbody(if broadphase handle is omitted)
+		if (!body->isStaticOrKinematicObject() && !(body->getFlags() &BT_DISABLE_WORLD_GRAVITY))
+		{
+			body->setGravity(m_gravity);
+		}
+
+		if (body->getCollisionShape())
+		{
+			if (!body->isStaticObject())
+			{
+				m_nonStaticRigidBodies.push_back(body);
+			} else
+			{
+				body->setActivationState(ISLAND_SLEEPING);
+			}
+
+			btCollisionObject* collisionObject = (btCollisionObject*)body;
+
+			//its inside a compound and collision is disabled, so need no broadphase handle for children
+			//removing the broadphase stuff is N^2 and slow, only adding if necessary !
+			collisionObject->setBroadphaseHandle(NULL);
+
+			btAssert( m_collisionObjects.findLinearSearch(collisionObject)  == m_collisionObjects.size());
+			m_collisionObjects.push_back(collisionObject);
+		}
+	}
 }
 
 void	btFractureDynamicsWorld::removeRigidBody(btRigidBody* body)
@@ -563,7 +650,7 @@ void	btFractureDynamicsWorld::breakDisconnectedParts( btFractureBody* fracObj)
 		int numShapes=0;
 
 
-		btCompoundShape* newCompound = new btCompoundShape();
+		btCompoundShape* newCompound = new btCompoundShape(false);
 		btAlignedObjectArray<btScalar> masses;
 
 		int idx;

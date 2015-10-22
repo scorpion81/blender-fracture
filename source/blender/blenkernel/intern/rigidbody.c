@@ -71,6 +71,7 @@
 #include "BKE_modifier.h"
 #include "BKE_depsgraph.h"
 #include "BKE_scene.h"
+#include "PIL_time.h"
 
 #ifdef WITH_BULLET
 
@@ -1185,6 +1186,7 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
  */
 void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, short rebuild, int transfer_speeds)
 {
+	FractureModifierData *fmd = NULL;
 	RigidBodyOb *rbo = (mi) ? mi->rigidbody : NULL;
 	float loc[3];
 	float rot[4];
@@ -1199,6 +1201,10 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 	/* XXX removed due to dynamic, HACK !!! */
 //	mi->start_frame = rbw->pointcache->startframe;
 //	mi->frame_count = 0;
+
+
+
+	fmd = (FractureModifierData*) modifiers_findByType(ob, eModifierType_Fracture);
 
 	/* make sure collision shape exists */
 	/* FIXME we shouldn't always have to rebuild collision shapes when rebuilding objects, but it's needed for constraints to update correctly */
@@ -1218,7 +1224,7 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 		copy_v3_v3(loc, rbo->pos);
 		copy_v4_v4(rot, rbo->orn);
 		
-		rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot);
+		rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot, fmd->use_compounds);
 
 		RB_body_set_friction(rbo->physics_object, rbo->friction);
 		RB_body_set_restitution(rbo->physics_object, rbo->restitution);
@@ -1311,7 +1317,7 @@ static void rigidbody_validate_sim_object(RigidBodyWorld *rbw, Object *ob, bool 
 
 		mat4_to_loc_quat(loc, rot, ob->obmat);
 
-		rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot);
+		rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot, false);
 
 		RB_body_set_friction(rbo->physics_object, rbo->friction);
 		RB_body_set_restitution(rbo->physics_object, rbo->restitution);
@@ -2018,8 +2024,14 @@ static void idCallback(void *world, void* island, int* objectId, int* islandId)
 	MeshIsland *mi = (MeshIsland*)island;
 	RigidBodyWorld *rbw = (RigidBodyWorld*)world;
 
-	*objectId = rbw->cache_offset_map[mi->linear_index];
-	*islandId = mi->id;
+	*objectId = -1;
+	*islandId = -1;
+
+	if (mi)
+	{
+		*objectId = rbw->cache_offset_map[mi->linear_index];
+		*islandId = mi->id;
+	}
 }
 
 /* --------------------- */
@@ -3200,7 +3212,11 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 	}
 
 	if (rbw->physics_world && rbw->flag & RBW_FLAG_REBUILD_CONSTRAINTS)
+	{
+		double start = PIL_check_seconds_timer();
 		RB_dworld_init_compounds(rbw->physics_world);
+		printf("Building compounds done, %g\n", PIL_check_seconds_timer() - start);
+	}
 
 	rbw->flag &= ~RBW_FLAG_REFRESH_MODIFIERS;
 
@@ -3501,9 +3517,10 @@ void BKE_rigidbody_aftertrans_update(Object *ob, float loc[3], float rot[3], flo
 	// RB_TODO update rigid body physics object's loc/rot for dynamic objects here as well (needs to be done outside bullet's update loop)
 }
 
-static void restoreKinematic(RigidBodyWorld *rbw)
+static bool restoreKinematic(RigidBodyWorld *rbw)
 {
 	GroupObject *go;
+	bool did_it = false;
 
 	/*restore kinematic state of shards if object is kinematic*/
 	for (go = rbw->group->gobject.first; go; go = go->next)	{
@@ -3519,6 +3536,7 @@ static void restoreKinematic(RigidBodyWorld *rbw)
 					{
 						mi->rigidbody->flag |= RBO_FLAG_KINEMATIC;
 						mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+						did_it = true;
 					}
 				}
 			}
@@ -3527,9 +3545,12 @@ static void restoreKinematic(RigidBodyWorld *rbw)
 				 * user has to disable triggered if behavior is not desired */
 				go->ob->rigidbody_object->flag |= RBO_FLAG_KINEMATIC;
 				go->ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_VALIDATE;
+				did_it = true;
 			}
 		}
 	}
+
+	return did_it;
 }
 
 void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw)
@@ -3635,8 +3656,9 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	}
 	else if (rbw->ltime == startframe)
 	{
-		restoreKinematic(rbw);
-		rigidbody_update_simulation(scene, rbw, true);
+		bool did_it = restoreKinematic(rbw);
+		if (did_it)
+			rigidbody_update_simulation(scene, rbw, true);
 	}
 
 	/* advance simulation, we can only step one frame forward */
