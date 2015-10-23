@@ -610,7 +610,7 @@ void RB_world_convex_sweep_test(
 
 /* ............ */
 
-rbRigidBody *RB_body_new(rbCollisionShape *shape, const float loc[3], const float rot[4], bool use_compounds)
+rbRigidBody *RB_body_new(rbCollisionShape *shape, const float loc[3], const float rot[4], bool use_compounds, float dampening, float factor, float min_impulse)
 {
 	rbRigidBody *object = new rbRigidBody;
 	/* current transform */
@@ -626,7 +626,11 @@ rbRigidBody *RB_body_new(rbCollisionShape *shape, const float loc[3], const floa
 	
 	if (use_compounds)
 	{
-		object->body = new btFractureBody(rbInfo);
+		btPropagationParameter param;
+		param.m_impulse_dampening = dampening;
+		param.m_directional_factor = factor;
+		param.m_minimum_impulse = min_impulse;
+		object->body = new btFractureBody(rbInfo, param);
 	}
 	else
 	{

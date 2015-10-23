@@ -15,6 +15,7 @@ class btManifoldPoint;
 #define CUSTOM_FRACTURE_TYPE (btRigidBody::CO_USER_TYPE+1)
 
 
+
 struct btConnection
 {
 	
@@ -23,6 +24,13 @@ struct btConnection
 	int	m_childIndex0;
 	int	m_childIndex1;
 	btScalar	m_strength;
+};
+
+struct btPropagationParameter
+{
+	btScalar m_impulse_dampening;
+	btScalar m_directional_factor;
+	btScalar m_minimum_impulse;
 };
 
 class btFractureBody : public btRigidBody
@@ -34,13 +42,13 @@ public:
 	btAlignedObjectArray<btScalar>	m_masses;
 	btAlignedObjectArray<btConnection> m_connections;
 	btHashMap<btHashInt, btAlignedObjectArray<int> > *m_connection_map;
+	btPropagationParameter m_propagationParameter;
 
-
-
-	btFractureBody(	const btRigidBodyConstructionInfo& constructionInfo)
+	btFractureBody(	const btRigidBodyConstructionInfo& constructionInfo, btPropagationParameter parameter)
 		:btRigidBody(constructionInfo),
 		m_world(0),
-		m_connection_map(NULL)
+		m_connection_map(NULL),
+		m_propagationParameter(parameter)
 	{
 		m_masses.push_back(constructionInfo.m_mass);
 		m_internalType=CUSTOM_FRACTURE_TYPE+CO_RIGID_BODY;
@@ -50,9 +58,10 @@ public:
 
 	///btRigidBody constructor for backwards compatibility. 
 	///To specify friction (etc) during rigid body construction, please use the other constructor (using btRigidBodyConstructionInfo)
-	btFractureBody(	btScalar mass, btMotionState* motionState, btCollisionShape* collisionShape, const btVector3& localInertia, btScalar* masses, int numMasses, btDynamicsWorld*	world)
+	btFractureBody(	btScalar mass, btMotionState* motionState, btCollisionShape* collisionShape, const btVector3& localInertia, btScalar* masses, int numMasses, btDynamicsWorld*	world, btPropagationParameter parameter)
 		:btRigidBody(mass,motionState,collisionShape,localInertia),
-		m_world(world)
+		m_world(world),
+		m_propagationParameter(parameter)
 	{
 
 		for (int i=0;i<numMasses;i++)

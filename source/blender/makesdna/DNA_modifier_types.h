@@ -1678,6 +1678,10 @@ typedef struct FractureModifierData {
 	float grease_offset;
 	float dynamic_force;
 
+	float impulse_dampening;
+	float minimum_impulse;
+	float directional_factor;
+
 	/* flags */
 	int refresh;
 	int refresh_constraints;
@@ -1714,7 +1718,7 @@ typedef struct FractureModifierData {
 	float max_vol;
 	int last_frame;
 
-	//char pad[4];
+	char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

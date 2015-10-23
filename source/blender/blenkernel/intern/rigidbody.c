@@ -1224,7 +1224,7 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 		copy_v3_v3(loc, rbo->pos);
 		copy_v4_v4(rot, rbo->orn);
 		
-		rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot, fmd->use_compounds);
+		rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot, fmd->use_compounds, fmd->impulse_dampening, fmd->directional_factor, fmd->minimum_impulse);
 
 		RB_body_set_friction(rbo->physics_object, rbo->friction);
 		RB_body_set_restitution(rbo->physics_object, rbo->restitution);
@@ -1317,7 +1317,7 @@ static void rigidbody_validate_sim_object(RigidBodyWorld *rbw, Object *ob, bool 
 
 		mat4_to_loc_quat(loc, rot, ob->obmat);
 
-		rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot, false);
+		rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot, false, 0.0f, 0.0f, 0.0f);
 
 		RB_body_set_friction(rbo->physics_object, rbo->friction);
 		RB_body_set_restitution(rbo->physics_object, rbo->restitution);

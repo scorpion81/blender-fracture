@@ -206,6 +206,10 @@ static void initData(ModifierData *md)
 	fmd->limit_impact = false;
 	fmd->reset_shards = false;
 	fmd->active_setting = -1;
+
+	fmd->impulse_dampening = 0.05f;
+	fmd->directional_factor = 0.0f;
+	fmd->minimum_impulse = 0.1f;
 }
 
 static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
@@ -1441,6 +1445,10 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->dynamic_force = rmd->dynamic_force;
 	trmd->update_dynamic = false;
 	trmd->reset_shards = false;
+
+	trmd->impulse_dampening = rmd->impulse_dampening;
+	trmd->directional_factor = rmd->directional_factor;
+	trmd->minimum_impulse = rmd->minimum_impulse;
 }
 
 /* mi->bb, its for volume fraction calculation.... */

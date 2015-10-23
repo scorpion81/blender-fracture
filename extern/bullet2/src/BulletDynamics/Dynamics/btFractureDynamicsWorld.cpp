@@ -341,6 +341,7 @@ void btFractureDynamicsWorld::glueCallback()
 			}
 
 
+			//btFractureBody* fracObj = (btFractureBody*)getCollisionObjectArray()[fractureObjectIndex];
 
 			btTransform shift;
 			shift.setIdentity();
@@ -350,7 +351,7 @@ void btFractureDynamicsWorld::glueCallback()
 
 			btVector3 localInertia;
 			newCompound->calculateLocalInertia(totalMass,localInertia);
-			btFractureBody* newBody = new btFractureBody(totalMass,0,newCompound,localInertia, &massArray[0], numChildren,this);
+			btFractureBody* newBody = new btFractureBody(totalMass,0,newCompound,localInertia, &massArray[0], numChildren,this, fracObj->m_propagationParameter);
 			//newBody->recomputeConnectivity(this);
 			//newBody->recomputeConnectivityByConstraints(this);
 			newBody->setWorldTransform(fracObj->getWorldTransform()*shift);
@@ -439,7 +440,7 @@ void btFractureDynamicsWorld::solveConstraints(btContactSolverInfo& solverInfo)
 	fractureCallback();
 }
 
-btFractureBody* btFractureDynamicsWorld::addNewBody(const btTransform& oldTransform,btScalar* masses, btCompoundShape* oldCompound)
+btFractureBody* btFractureDynamicsWorld::addNewBody(const btTransform& oldTransform,btScalar* masses, btCompoundShape* oldCompound, btPropagationParameter& param)
 {
 	int i;
 
@@ -452,7 +453,7 @@ btFractureBody* btFractureDynamicsWorld::addNewBody(const btTransform& oldTransf
 		totalMass += masses[i];
 	//newCompound->calculateLocalInertia(totalMass,localInertia);
 
-	btFractureBody* newBody = new btFractureBody(totalMass,0,newCompound,localInertia, masses,newCompound->getNumChildShapes(), this);
+	btFractureBody* newBody = new btFractureBody(totalMass,0,newCompound,localInertia, masses,newCompound->getNumChildShapes(), this, param);
 	//newBody->recomputeConnectivity(this);
 	newBody->recomputeConnectivityByConstraints(this);
 
@@ -613,6 +614,8 @@ void	btFractureDynamicsWorld::breakDisconnectedParts( btFractureBody* fracObj)
 		{
 			int tag0 = tags[connection.m_childIndex0];
 			int tag1 = tags[connection.m_childIndex1];
+
+			//printf("Uniting: %d %d\n",connection.m_childIndex0, connection.m_childIndex1);
 			unionFind.unite(tag0, tag1);
 		}
 	}
@@ -666,7 +669,7 @@ void	btFractureDynamicsWorld::breakDisconnectedParts( btFractureBody* fracObj)
 		if (numShapes)
 		{
 			int objectIndex, shardIndex;
-			btFractureBody* newBody = addNewBody(fracObj->getWorldTransform(),&masses[0],newCompound);
+			btFractureBody* newBody = addNewBody(fracObj->getWorldTransform(),&masses[0],newCompound, fracObj->m_propagationParameter);
 			newBody->setLinearVelocity(fracObj->getLinearVelocity());
 			newBody->setAngularVelocity(fracObj->getAngularVelocity());
 
@@ -699,24 +702,41 @@ void	btFractureDynamicsWorld::breakDisconnectedParts( btFractureBody* fracObj)
 
 #include <stdio.h>
 
-void btFractureDynamicsWorld::propagateDamage(btFractureBody *body, btScalar *impulse, int connection_index, bool* needsBreakingCheck)
+void btFractureDynamicsWorld::propagateDamage(btFractureBody *body, btScalar *impulse, int connection_index,
+                                              bool* needsBreakingCheck, btVector3& direction)
 {
 	//min break impulse, todo expose
-	if (*impulse > 0.5f && body->m_connections.size() > connection_index)
+	if (*impulse > body->m_propagationParameter.m_minimum_impulse && body->m_connections.size() > connection_index)
 	{
 		btConnection& connection = body->m_connections[connection_index];
-		connection.m_strength -= *impulse;
-		//printf("strengthp=%f %f\n",connection.m_strength, *impulse);
+		btCollisionShape* shape0 = connection.m_childShape0;
+		btCollisionShape* shape1 = connection.m_childShape1;
 
-		if (connection.m_strength<0)
+		btFractureBody *fbody0 = m_shapeBodyCallback(shape0->getUserPointer());
+		btFractureBody *fbody1 = m_shapeBodyCallback(shape1->getUserPointer());
+
+		//calculate dot product between body->fbody and direction, if > say 0.75 then roughly same direction ?
+
+		btScalar factor = body->m_propagationParameter.m_directional_factor;
+		btVector3 dir = fbody0->getWorldTransform().getOrigin() - fbody1->getWorldTransform().getOrigin();
+		if (dir.dot(direction) > factor)
 		{
-			//remove or set to zero
-			connection.m_strength=0.f;
-			*needsBreakingCheck = true;
+			//printf("FACTOR: %f\n", dir.dot(direction));
+
+			connection.m_strength -= *impulse;
+			//printf("strengthp=%f %f\n",connection.m_strength, *impulse);
+
+			if (connection.m_strength<0)
+			{
+				//remove or set to zero
+				//printf("Breaking: %d %d\n",connection.m_childIndex0, connection.m_childIndex1);
+				connection.m_strength=0.f;
+				*needsBreakingCheck = true;
+			}
 		}
 
 		//impulse dampening, todo expose
-		*impulse *= 0.85f;
+		*impulse *= (1.0f - body->m_propagationParameter.m_impulse_dampening);
 
 		btAlignedObjectArray<int> *adjacents = body->m_connection_map->find(connection_index);
 		if (adjacents)
@@ -724,7 +744,8 @@ void btFractureDynamicsWorld::propagateDamage(btFractureBody *body, btScalar *im
 			int i, size = adjacents->size();
 			for (i=0;i<size;i++)
 			{
-				propagateDamage(body, impulse, adjacents->at(i), needsBreakingCheck);
+				if (size > 1)
+					propagateDamage(body, impulse, adjacents->at(i), needsBreakingCheck, direction);
 			}
 		}
 	}
@@ -766,7 +787,7 @@ void btFractureDynamicsWorld::fractureCallback( )
 			maxImpact = totalImpact;
 
 		//some threshold otherwise resting contact would break objects after a while
-		if (totalImpact < 1.f) //40.f
+		if (totalImpact < 1.0f) //40.f
 			continue;
 
 		//		printf("strong impact\n");
@@ -921,10 +942,14 @@ void btFractureDynamicsWorld::fractureCallback( )
 									//propagated damage
 									if (pt.m_appliedImpulse > 0.f) {
 										btScalar impulse = pt.m_appliedImpulse;
-										propagateDamage(sFracturePairs[i].m_fracObj,&impulse, connection.m_childIndex0, &needsBreakingCheck);
+										btVector3 direction = manifold->getBody0()->getWorldTransform().getOrigin()-
+										                      manifold->getBody1()->getWorldTransform().getOrigin();
+										propagateDamage(sFracturePairs[i].m_fracObj,&impulse, connection.m_childIndex0,
+										                &needsBreakingCheck, direction);
 
 										impulse = pt.m_appliedImpulse;
-										propagateDamage(sFracturePairs[i].m_fracObj,&impulse, connection.m_childIndex1, &needsBreakingCheck);
+										propagateDamage(sFracturePairs[i].m_fracObj,&impulse, connection.m_childIndex1,
+										                &needsBreakingCheck, direction);
 									}
 								}
 							} else
@@ -949,10 +974,14 @@ void btFractureDynamicsWorld::fractureCallback( )
 									//propagated damage
 									if (pt.m_appliedImpulse > 0.f) {
 										btScalar impulse = pt.m_appliedImpulse;
-										propagateDamage(sFracturePairs[i].m_fracObj, &impulse, connection.m_childIndex0, &needsBreakingCheck);
+										btVector3 direction = manifold->getBody0()->getWorldTransform().getOrigin()-
+										                      manifold->getBody1()->getWorldTransform().getOrigin();
+										propagateDamage(sFracturePairs[i].m_fracObj, &impulse, connection.m_childIndex0,
+										                &needsBreakingCheck, direction);
 
 										impulse = pt.m_appliedImpulse;
-										propagateDamage(sFracturePairs[i].m_fracObj, &impulse, connection.m_childIndex1, &needsBreakingCheck);
+										propagateDamage(sFracturePairs[i].m_fracObj, &impulse, connection.m_childIndex1,
+										                &needsBreakingCheck, direction);
 									}
 								}
 							}

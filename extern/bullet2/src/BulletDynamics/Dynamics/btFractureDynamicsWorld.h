@@ -9,6 +9,7 @@
 class btFractureBody;
 class btCompoundShape;
 class btTransform;
+struct btPropagationParameter;
 
 //callback to retrieve id from user application (blender)
 typedef void (*IdCallback)(void *userPtr, int* object_id, int* shard_id);
@@ -21,7 +22,7 @@ class btFractureDynamicsWorld : public btDiscreteDynamicsWorld
 {
 	bool	m_fracturingMode;
 
-	btFractureBody* addNewBody(const btTransform& oldTransform,btScalar* masses, btCompoundShape* oldCompound);
+	btFractureBody* addNewBody(const btTransform& oldTransform, btScalar* masses, btCompoundShape* oldCompound, btPropagationParameter &param);
 
 	void	breakDisconnectedParts( btFractureBody* fracObj);
 
@@ -68,7 +69,8 @@ public:
 
 	void updateBodies();
 
-	void propagateDamage(btFractureBody *body, btScalar *impulse, int connection_index, bool *needsBreakingCheck);
+	void propagateDamage(btFractureBody *body, btScalar *impulse, int connection_index, bool *needsBreakingCheck,
+	                     btVector3 &direction);
 
 	virtual void updateAabbs();
 };

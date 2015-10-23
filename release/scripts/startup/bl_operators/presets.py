@@ -668,7 +668,11 @@ class AddPresetFracture(AddPresetBase, Operator):
         "fracture.constraint_target",
         "fracture.fracture_mode",
         "fracture.dynamic_force",
-        "fracture.limit_impact"
+        "fracture.limit_impact",
+        "fracture.use_compounds",
+        "fracture.impulse_dampening",
+        "fracture.directional_factor",
+        "fracture.minimum_impulse"
     ]
 
     preset_subdir = "fracture"
