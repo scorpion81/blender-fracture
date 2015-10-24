@@ -13,7 +13,14 @@ m_idCallback(callback),
 m_shapeBodyCallback(shapebodycallback),
 m_addBroadPhaseHandle(false)
 {
-	m_childIndexHash = new btHashMap<btHashInt, int>();
+	m_childIndexHash = new btHashMap<btHashString, int>();
+}
+
+char* to_str(int objectId, int shardId)
+{
+	std::ostringstream oss;
+	oss << objectId << shardId;
+	return strdup(oss.str().c_str());
 }
 
 btFractureDynamicsWorld::~btFractureDynamicsWorld()
@@ -76,11 +83,12 @@ void btFractureDynamicsWorld::updateBodies()
 					int objectIndexA, shardIndexA; //, objectIndexB, shardIndexB;
 					m_idCallback(cshape->getUserPointer(), &objectIndexA, &shardIndexA);
 					//m_idCallback(body->getUserPointer(), &objectIndexB, &shardIndexB );
-					m_childIndexHash->insert(shardIndexA, j);
+
+					m_childIndexHash->insert(to_str(objectIndexA, shardIndexA), j);
 
 					//if ((objectIndexA == objectIndexB) && (shardIndexA != shardIndexB))
 					btTransform trans;
-					btFractureBody *fbody = m_shapeBodyCallback(cshape->getUserPointer());
+					btRigidBody *fbody = m_shapeBodyCallback(cshape->getUserPointer());
 
 					trans = body->getWorldTransform()*shape->getChildTransform(j);
 					fbody->setWorldTransform(trans);
@@ -93,7 +101,7 @@ void btFractureDynamicsWorld::updateBodies()
 				//non compounds have a child index of -1, (and will have a broadphase handle)
 				int objectIndexA, shardIndexA;
 				m_idCallback(cshape->getUserPointer(), &objectIndexA, &shardIndexA);
-				m_childIndexHash->insert(shardIndexA, -1);
+				m_childIndexHash->insert(to_str(objectIndexA, shardIndexA), -1);
 			}
 		}
 	}
@@ -120,13 +128,13 @@ void	btFractureDynamicsWorld::updateAabbs()
 void btFractureDynamicsWorld::glueCallback()
 {
 
-	//int numManifolds = getDispatcher()->getNumManifolds();
+	int numManifolds = getDispatcher()->getNumManifolds();
 
 	///first build the islands based on axis aligned bounding box overlap
 
 
-	btAlignedObjectArray<int> objectIds;
-	btHashMap<btHashInt, btAlignedObjectArray<btCollisionObject*> >objectMap;
+	//btAlignedObjectArray<int> objectIds;
+	//btHashMap<btHashInt, btAlignedObjectArray<int> >objectMap;
 
 	int index = 0;
 	{
@@ -140,25 +148,25 @@ void btFractureDynamicsWorld::glueCallback()
 //			if (!collisionObject->isStaticOrKinematicObject())
 			if (collisionObject->getInternalType() & CUSTOM_FRACTURE_TYPE)
 			{
-				int objectId, shardId;
+				//int objectId, shardId;
 				collisionObject->setIslandTag(index++);
-				btFractureBody *body = (btFractureBody*)collisionObject;
+				/*btFractureBody *body = (btFractureBody*)collisionObject;
 				m_idCallback(body->getUserPointer(),&objectId, &shardId);
 				if (objectId > -1)
 				{
-					btAlignedObjectArray<btCollisionObject*> *objects = objectMap.find(objectId);
+					btAlignedObjectArray<int> *objects = objectMap.find(objectId);
 					if (!objects)
 					{
-						btAlignedObjectArray<btCollisionObject*> obj;
-						obj.push_back(collisionObject);
+						btAlignedObjectArray<int> obj;
+						obj.push_back(i);
 						objectMap.insert(objectId, obj);
 						objectIds.push_back(objectId);
 					}
 					else
 					{
-						objects->push_back(collisionObject);
+						objects->push_back(i);
 					}
-				}
+				}*/
 			}
 			else
 			{
@@ -170,40 +178,47 @@ void btFractureDynamicsWorld::glueCallback()
 #endif
 		}
 	}
+	btUnionFind unionFind;
+	unionFind.reset(index);
 
-/*	unionFind.reset(index);
+	//int numElem = unionFind.getNumElements();
 
-	int numElem = unionFind.getNumElements();*/
-
-#if 0
+	printf("Manifolds: %d\n", numManifolds);
 	for (int i=0;i<numManifolds;i++)
 	{
 		btPersistentManifold* manifold = getDispatcher()->getManifoldByIndexInternal(i);
-		if (!manifold->getNumContacts())
+		/*if (!manifold->getNumContacts())
+		{
+			printf("Manifold %d has NO CONTACT POINT!!\n", i);
 			continue;
+		}*/
 
-		btScalar minDist = 1e30f;
+		/*btScalar minDist = 1e30f;
 		for (int v=0;v<manifold->getNumContacts();v++)
 		{
 			minDist = btMin(minDist,manifold->getContactPoint(v).getDistance());
 		}
-		if (minDist>0.)
-			continue;
+		if (minDist>0.5)
+			continue;*/
 		
 		btCollisionObject* colObj0 = (btCollisionObject*)manifold->getBody0();
 		btCollisionObject* colObj1 = (btCollisionObject*)manifold->getBody1();
 		int tag0 = (colObj0)->getIslandTag();
 		int tag1 = (colObj1)->getIslandTag();
-		//btRigidBody* body0 = btRigidBody::upcast(colObj0);
-		//btRigidBody* body1 = btRigidBody::upcast(colObj1);
 
+		btRigidBody* body0 = btRigidBody::upcast(colObj0);
+		btRigidBody* body1 = btRigidBody::upcast(colObj1);
 
-		if (!colObj0->isStaticOrKinematicObject() && !colObj1->isStaticOrKinematicObject())
+		int objectId0, objectId1, shardId0, shardId1;
+		m_idCallback(body0->getUserPointer(),&objectId0, &shardId0);
+		m_idCallback(body1->getUserPointer(),&objectId1, &shardId1);
+
+		//if (!colObj0->isStaticOrKinematicObject() && !colObj1->isStaticOrKinematicObject())
+		if (objectId0 == objectId1 && objectId0 > -1 && tag0 > -1 && tag1 > -1)
 		{
 			unionFind.unite(tag0, tag1);
 		}
 	}
-#endif
 
 #if 0
 	int numConstraints = m_compoundConstraints.size();
@@ -230,15 +245,16 @@ void btFractureDynamicsWorld::glueCallback()
 	}
 #endif
 
+#if 0
 	for (int ai=0;ai<objectIds.size();ai++)
 	{
 		btUnionFind unionFind;
-		btAlignedObjectArray<btCollisionObject*> *objects = objectMap.find(objectIds[ai]);
-		unionFind.reset(objects->size());
+		btAlignedObjectArray<int> *objects = objectMap.find(objectIds[ai]);
+		unionFind.reset(index);
 
 		for (int j=0;j<objects->size();j++)
 		{
-			btCollisionObject* collisionObject = objects->at(j);
+			btCollisionObject* collisionObject = getCollisionObjectArray()[objects->at(j)];
 			if (collisionObject->getInternalType() & CUSTOM_FRACTURE_TYPE)
 			{
 				//ensure 1 compound per object, so shard id 0 becomes parent always.... sure that it is first ?
@@ -246,278 +262,283 @@ void btFractureDynamicsWorld::glueCallback()
 				islandTag = collisionObject->getIslandTag();
 				btFractureBody *body = (btFractureBody*)collisionObject;
 				m_idCallback(body->getUserPointer(),&objectId, &shardId);
-				if (objectId > -1 && islandTag < objects->size())
+				if (objectId > -1 /*&& islandTag < objects->size()*/)
 				{
 					unionFind.unite(objectId, islandTag);
 				}
 			}
 		}
+#endif
 
-		int numElem = unionFind.getNumElements();
+	int numElem = unionFind.getNumElements();
 
-
-		index=0;
-		for (int ai=0;ai<objects->size();ai++)
+	index=0;
+	for (int ai=0;ai<getCollisionObjectArray().size();ai++)
+	{
+		btCollisionObject* collisionObject=  getCollisionObjectArray()[ai];
+		//if (!collisionObject->isStaticOrKinematicObject())
+		if (collisionObject->getInternalType() & CUSTOM_FRACTURE_TYPE)
 		{
-			btCollisionObject* collisionObject= objects->at(ai);
-			//if (!collisionObject->isStaticOrKinematicObject())
-			if (collisionObject->getInternalType() & CUSTOM_FRACTURE_TYPE)
-			{
-				int tag = unionFind.find(index);
+			int tag = unionFind.find(index);
 
-				collisionObject->setIslandTag( tag);
+			collisionObject->setIslandTag( tag);
 
-				//Set the correct object offset in Collision Object Array
+			//Set the correct object offset in Collision Object Array
 #if STATIC_SIMULATION_ISLAND_OPTIMIZATION
-				unionFind.getElement(index).m_sz = ai;
+			unionFind.getElement(index).m_sz = ai;
 #endif //STATIC_SIMULATION_ISLAND_OPTIMIZATION
 
-				index++;
-			}
+			index++;
 		}
-		unionFind.sortIslands();
+	}
+	unionFind.sortIslands();
 
 
 
-		int endIslandIndex=1;
-		int startIslandIndex;
+	int endIslandIndex=1;
+	int startIslandIndex;
 
-		btAlignedObjectArray<btCollisionObject*> removedObjects;
-		btAlignedObjectArray<btCollisionObject*> newObjects;
+	btAlignedObjectArray<btCollisionObject*> removedObjects;
+	btAlignedObjectArray<btCollisionObject*> newObjects;
 
-		///iterate over all islands
-		for ( startIslandIndex=0;startIslandIndex<numElem;startIslandIndex = endIslandIndex)
+	///iterate over all islands
+	for ( startIslandIndex=0;startIslandIndex<numElem;startIslandIndex = endIslandIndex)
+	{
+		int islandId = unionFind.getElement(startIslandIndex).m_id;
+		for (endIslandIndex = startIslandIndex+1;(endIslandIndex<numElem) && (unionFind.getElement(endIslandIndex).m_id == islandId);endIslandIndex++)
 		{
-			int islandId = unionFind.getElement(startIslandIndex).m_id;
-			for (endIslandIndex = startIslandIndex+1;(endIslandIndex<numElem) && (unionFind.getElement(endIslandIndex).m_id == islandId);endIslandIndex++)
+		}
+
+		int fractureObjectIndex = -1;
+
+		int numObjects=0;
+
+		int idx;
+		for (idx=startIslandIndex;idx<endIslandIndex;idx++)
+		{
+			int i = unionFind.getElement(idx).m_sz;
+
+			/*if (i >= getCollisionObjectArray().size())
 			{
+				fractureObjectIndex = -1;
+				continue;
+			}*/
+
+
+			btCollisionObject* colObj0 = getCollisionObjectArray()[i];
+			/*if (colObj0->getInternalType()& CUSTOM_FRACTURE_TYPE)
+			{*/
+				fractureObjectIndex = i;
+			/*}*
+			else
+			{
+				fractureObjectIndex = -1;
+				continue;
+			}*/
+
+			btRigidBody* otherObject = btRigidBody::upcast(colObj0);
+			if (!otherObject || !otherObject->getInvMass()) /*!(otherObject->getInternalType() & CUSTOM_FRACTURE_TYPE))*/
+			{
+				printf("Col Obj %d NOT THERE ?!\n", i);
+				continue;
+			}
+			numObjects++;
+		}
+
+		///Then for each island that contains at least two objects and one fracture object
+		if (fractureObjectIndex>=0 && numObjects>1)
+		{
+
+			btFractureBody* fracObj = (btFractureBody*)getCollisionObjectArray()[fractureObjectIndex];
+
+			///glueing objects means creating a new compound and removing the old objects
+			///delay the removal of old objects to avoid array indexing problems
+			removedObjects.push_back(fracObj);
+			//m_fractureBodies.remove(fracObj);
+
+			btAlignedObjectArray<btScalar> massArray;
+
+			btAlignedObjectArray<btVector3> oldImpulses;
+			btAlignedObjectArray<btVector3> oldCenterOfMassesWS;
+
+			oldImpulses.push_back(fracObj->getLinearVelocity()/1./fracObj->getInvMass());
+			oldCenterOfMassesWS.push_back(fracObj->getCenterOfMassPosition());
+
+			btScalar totalMass = 0.f;
+
+
+			btCompoundShape* compound = new btCompoundShape(false);
+			if (fracObj->getCollisionShape()->isCompound())
+			{
+				btTransform tr;
+				tr.setIdentity();
+				btCompoundShape* oldCompound = (btCompoundShape*)fracObj->getCollisionShape();
+				for (int c=0;c<oldCompound->getNumChildShapes();c++)
+				{
+					compound->addChildShape(oldCompound->getChildTransform(c),oldCompound->getChildShape(c));
+					massArray.push_back(fracObj->m_masses[c]);
+					totalMass+=fracObj->m_masses[c];
+				}
+
+			} else
+			{
+				btTransform tr;
+				tr.setIdentity();
+				compound->addChildShape(tr,fracObj->getCollisionShape());
+				massArray.push_back(fracObj->m_masses[0]);
+				totalMass+=fracObj->m_masses[0];
 			}
 
-			int fractureObjectIndex = -1;
-
-			int numObjects=0;
-
-			int idx;
 			for (idx=startIslandIndex;idx<endIslandIndex;idx++)
 			{
+
 				int i = unionFind.getElement(idx).m_sz;
 
-				if (i >= getCollisionObjectArray().size())
+				if (i==fractureObjectIndex)
+					continue;
+
+				btCollisionObject* otherCollider = getCollisionObjectArray()[i];
+
+				btRigidBody* otherObject = btRigidBody::upcast(otherCollider);
+				//don't glue/merge with static objects right now, otherwise everything gets stuck to the ground
+				///todo: expose this as a callback
+				if (!otherObject || !otherObject->getInvMass() /*|| !(otherObject->getInternalType() & CUSTOM_FRACTURE_TYPE)*/)
 				{
-					fractureObjectIndex = -1;
+					printf("Col Obj %d NOT THERE ?!\n", i);
 					continue;
 				}
 
 
-				btCollisionObject* colObj0 = getCollisionObjectArray()[i];
-				if (colObj0->getInternalType()& CUSTOM_FRACTURE_TYPE)
-				{
-					fractureObjectIndex = i;
-				}
-				else
-				{
-					fractureObjectIndex = -1;
-					continue;
-				}
+				oldImpulses.push_back(otherObject->getLinearVelocity()*(1.f/otherObject->getInvMass()));
+				oldCenterOfMassesWS.push_back(otherObject->getCenterOfMassPosition());
 
-				btRigidBody* otherObject = btRigidBody::upcast(colObj0);
-				if (!otherObject || !otherObject->getInvMass())
-					continue;
-				numObjects++;
-			}
+				removedObjects.push_back(otherObject);
+				//m_fractureBodies.remove((btFractureBody*)otherObject);
 
-			///Then for each island that contains at least two objects and one fracture object
-			if (fractureObjectIndex>=0 && numObjects>1)
-			{
-
-				btFractureBody* fracObj = (btFractureBody*)getCollisionObjectArray()[fractureObjectIndex];
-
-				///glueing objects means creating a new compound and removing the old objects
-				///delay the removal of old objects to avoid array indexing problems
-				removedObjects.push_back(fracObj);
-				//m_fractureBodies.remove(fracObj);
-
-				btAlignedObjectArray<btScalar> massArray;
-
-				btAlignedObjectArray<btVector3> oldImpulses;
-				btAlignedObjectArray<btVector3> oldCenterOfMassesWS;
-
-				oldImpulses.push_back(fracObj->getLinearVelocity()/1./fracObj->getInvMass());
-				oldCenterOfMassesWS.push_back(fracObj->getCenterOfMassPosition());
-
-				btScalar totalMass = 0.f;
+				btScalar curMass = 1.f/otherObject->getInvMass();
 
 
-				btCompoundShape* compound = new btCompoundShape(false);
-				if (fracObj->getCollisionShape()->isCompound())
+				if (otherObject->getCollisionShape()->isCompound())
 				{
 					btTransform tr;
-					tr.setIdentity();
-					btCompoundShape* oldCompound = (btCompoundShape*)fracObj->getCollisionShape();
+					btCompoundShape* oldCompound = (btCompoundShape*)otherObject->getCollisionShape();
 					for (int c=0;c<oldCompound->getNumChildShapes();c++)
 					{
-						compound->addChildShape(oldCompound->getChildTransform(c),oldCompound->getChildShape(c));
-						massArray.push_back(fracObj->m_masses[c]);
-						totalMass+=fracObj->m_masses[c];
-					}
+						tr = fracObj->getWorldTransform().inverseTimes(
+								 otherObject->getWorldTransform()*oldCompound->getChildTransform(c));
+						compound->addChildShape(tr,oldCompound->getChildShape(c));
+						massArray.push_back(curMass/(btScalar)oldCompound->getNumChildShapes());
 
+					}
 				} else
 				{
 					btTransform tr;
-					tr.setIdentity();
-					compound->addChildShape(tr,fracObj->getCollisionShape());
-					massArray.push_back(fracObj->m_masses[0]);
-					totalMass+=fracObj->m_masses[0];
+					tr = fracObj->getWorldTransform().inverseTimes(otherObject->getWorldTransform());
+					compound->addChildShape(tr,otherObject->getCollisionShape());
+					massArray.push_back(curMass);
 				}
-
-				for (idx=startIslandIndex;idx<endIslandIndex;idx++)
-				{
-
-					int i = unionFind.getElement(idx).m_sz;
-
-					if (i==fractureObjectIndex || i >= getCollisionObjectArray().size())
-						continue;
-
-					btCollisionObject* otherCollider = getCollisionObjectArray()[i];
-
-					btRigidBody* otherObject = btRigidBody::upcast(otherCollider);
-					//don't glue/merge with static objects right now, otherwise everything gets stuck to the ground
-					///todo: expose this as a callback
-					if (!otherObject || !otherObject->getInvMass())
-						continue;
-
-
-					oldImpulses.push_back(otherObject->getLinearVelocity()*(1.f/otherObject->getInvMass()));
-					oldCenterOfMassesWS.push_back(otherObject->getCenterOfMassPosition());
-
-					removedObjects.push_back(otherObject);
-					//m_fractureBodies.remove((btFractureBody*)otherObject);
-
-					btScalar curMass = 1.f/otherObject->getInvMass();
-
-
-					if (otherObject->getCollisionShape()->isCompound())
-					{
-						btTransform tr;
-						btCompoundShape* oldCompound = (btCompoundShape*)otherObject->getCollisionShape();
-						for (int c=0;c<oldCompound->getNumChildShapes();c++)
-						{
-							tr = fracObj->getWorldTransform().inverseTimes(
-									 otherObject->getWorldTransform()*oldCompound->getChildTransform(c));
-							compound->addChildShape(tr,oldCompound->getChildShape(c));
-							massArray.push_back(curMass/(btScalar)oldCompound->getNumChildShapes());
-
-						}
-					} else
-					{
-						btTransform tr;
-						tr = fracObj->getWorldTransform().inverseTimes(otherObject->getWorldTransform());
-						compound->addChildShape(tr,otherObject->getCollisionShape());
-						massArray.push_back(curMass);
-					}
-					totalMass+=curMass;
-				}
-
-
-				//btFractureBody* fracObj = (btFractureBody*)getCollisionObjectArray()[fractureObjectIndex];
-
-				btTransform shift;
-				shift.setIdentity();
-				btCompoundShape* newCompound = btFractureBody::shiftTransformDistributeMass(compound,totalMass,shift);
-				int numChildren = newCompound->getNumChildShapes();
-				btAssert(numChildren == massArray.size());
-
-				btVector3 localInertia;
-				newCompound->calculateLocalInertia(totalMass,localInertia);
-				btFractureBody* newBody = new btFractureBody(totalMass,0,newCompound,localInertia, &massArray[0],
-															 numChildren,this, fracObj->m_propagationParameter);
-				//newBody->recomputeConnectivity(this);
-				//newBody->recomputeConnectivityByConstraints(this);
-				newBody->setWorldTransform(fracObj->getWorldTransform()*shift);
-
-				int objectIndex, shardIndex;
-				//pass user pointer from old compound parent to new one
-				newBody->setUserPointer(fracObj->getUserPointer());
-				m_idCallback(newBody->getUserPointer(), &objectIndex, &shardIndex);
-
-				for (int i=0; i<numChildren; i++)
-				{
-					int obIndex, shIndex;
-					btCollisionShape *cshape = newCompound->getChildShape(i);
-					m_idCallback(cshape->getUserPointer(), &obIndex, &shIndex);
-					m_childIndexHash->insert(shIndex, i);
-				}
-
-				newBody->recomputeConnectivityByConstraints(this);
-
-				//now the linear/angular velocity is still zero, apply the impulses
-
-				for (int i=0;i<oldImpulses.size();i++)
-				{
-					btVector3 rel_pos = oldCenterOfMassesWS[i]-newBody->getCenterOfMassPosition();
-					const btVector3& imp = oldImpulses[i];
-					newBody->applyImpulse(imp, rel_pos);
-				}
-
-				m_addBroadPhaseHandle = true;
-				addRigidBody(newBody);
-				m_addBroadPhaseHandle = false;
-
-				//newbody is a compound parent, hmmmm, so set its childindex to 0 or -1
-				m_childIndexHash->insert(shardIndex, -1);
-
-				newObjects.push_back(newBody);
-
+				totalMass+=curMass;
 			}
+
+
+			//btFractureBody* fracObj = (btFractureBody*)getCollisionObjectArray()[fractureObjectIndex];
+
+			btTransform shift;
+			shift.setIdentity();
+			btCompoundShape* newCompound = btFractureBody::shiftTransformDistributeMass(compound,totalMass,shift);
+			int numChildren = newCompound->getNumChildShapes();
+			btAssert(numChildren == massArray.size());
+
+			btVector3 localInertia;
+			newCompound->calculateLocalInertia(totalMass,localInertia);
+			btFractureBody* newBody = new btFractureBody(totalMass,0,newCompound,localInertia, &massArray[0],
+														 numChildren,this, fracObj->m_propagationParameter);
+			//newBody->recomputeConnectivity(this);
+			//newBody->recomputeConnectivityByConstraints(this);
+			newBody->setWorldTransform(fracObj->getWorldTransform()*shift);
+
+			int objectIndex, shardIndex;
+			//pass user pointer from old compound parent to new one
+			newBody->setUserPointer(fracObj->getUserPointer());
+			m_idCallback(newBody->getUserPointer(), &objectIndex, &shardIndex);
+
+			for (int i=0; i<numChildren; i++)
+			{
+				int obIndex, shIndex;
+				btCollisionShape *cshape = newCompound->getChildShape(i);
+				m_idCallback(cshape->getUserPointer(), &obIndex, &shIndex);
+				m_childIndexHash->insert(to_str(obIndex, shIndex), i);
+			}
+
+			newBody->recomputeConnectivityByConstraints(this);
+
+			//now the linear/angular velocity is still zero, apply the impulses
+
+			for (int i=0;i<oldImpulses.size();i++)
+			{
+				btVector3 rel_pos = oldCenterOfMassesWS[i]-newBody->getCenterOfMassPosition();
+				const btVector3& imp = oldImpulses[i];
+				newBody->applyImpulse(imp, rel_pos);
+			}
+
+			m_addBroadPhaseHandle = true;
+			addRigidBody(newBody);
+			m_addBroadPhaseHandle = false;
+
+			//newbody is a compound parent, hmmmm, so set its childindex to 0 or -1
+			m_childIndexHash->insert(to_str(objectIndex, shardIndex), -1);
+
+			newObjects.push_back(newBody);
+
 		}
+	}
 
-		//HERE remove ALL pairs where proxies are NOT in
-		btOverlappingPairCache *paircache = getBroadphase()->getOverlappingPairCache();
-		btBroadphasePairArray& pairs = paircache->getOverlappingPairArray();
+	//HERE remove ALL pairs where proxies are NOT in
+	btOverlappingPairCache *paircache = getBroadphase()->getOverlappingPairCache();
+	btBroadphasePairArray& pairs = paircache->getOverlappingPairArray();
 
-		//printf("Pair size: %d\n", pairs.size());
-		for (int i=0;i<pairs.size();i++)
+	//printf("Pair size: %d\n", pairs.size());
+	for (int i=0;i<pairs.size();i++)
+	{
+		bool isValid = true;
+		for (int j=0; j<newObjects.size();j++)
 		{
-			bool isValid = true;
-			for (int j=0; j<newObjects.size();j++)
-			{
-				btBroadphaseProxy* bp = newObjects[j]->getBroadphaseHandle();
+			btBroadphaseProxy* bp = newObjects[j]->getBroadphaseHandle();
 
-				if (bp == pairs[i].m_pProxy0 || bp == pairs[i].m_pProxy1)
-				{
-					isValid = false;
-					break;
-				}
-			}
-
-			if (!isValid)
+			if (bp == pairs[i].m_pProxy0 || bp == pairs[i].m_pProxy1)
 			{
-				paircache->cleanOverlappingPair(pairs[i], m_dispatcher1);
-				paircache->removeOverlappingPair(pairs[i].m_pProxy0, pairs[i].m_pProxy1, m_dispatcher1);
+				isValid = false;
+				break;
 			}
 		}
 
-		//remove the objects from the world at the very end,
-		//otherwise the island tags would not match the world collision object array indices anymore
-		while (removedObjects.size())
+		if (!isValid)
 		{
-			btCollisionObject* otherCollider = removedObjects[removedObjects.size()-1];
-			removedObjects.pop_back();
-
-			btRigidBody* otherObject = btRigidBody::upcast(otherCollider);
-			if (!otherObject || !otherObject->getInvMass())
-				continue;
-
-			btBroadphaseProxy* bp = otherCollider->getBroadphaseHandle();
-			if (bp)
-			{
-				//printf("Destroy Proxy: %d\n", i);
-				getBroadphase()->destroyProxy(bp,m_dispatcher1);
-				otherCollider->setBroadphaseHandle(0);
-			}
-
-			removeRigidBody(otherObject);
+			paircache->cleanOverlappingPair(pairs[i], m_dispatcher1);
+			paircache->removeOverlappingPair(pairs[i].m_pProxy0, pairs[i].m_pProxy1, m_dispatcher1);
 		}
+	}
+
+	//remove the objects from the world at the very end,
+	//otherwise the island tags would not match the world collision object array indices anymore
+	while (removedObjects.size())
+	{
+		btCollisionObject* otherCollider = removedObjects[removedObjects.size()-1];
+		removedObjects.pop_back();
+
+		btRigidBody* otherObject = btRigidBody::upcast(otherCollider);
+		if (!otherObject || !otherObject->getInvMass())
+			continue;
+
+		btBroadphaseProxy* bp = otherCollider->getBroadphaseHandle();
+		if (bp)
+		{
+			//printf("Destroy Proxy: %d\n", i);
+			getBroadphase()->destroyProxy(bp,m_dispatcher1);
+			otherCollider->setBroadphaseHandle(0);
+		}
+
+		removeRigidBody(otherObject);
 	}
 }
 
@@ -786,7 +807,8 @@ void	btFractureDynamicsWorld::breakDisconnectedParts( btFractureBody* fracObj)
 			//pass user pointer from old compound parent to new one
 			newBody->setUserPointer(fracObj->getUserPointer());
 			m_idCallback(newBody->getUserPointer(), &objectIndex, &shardIndex);
-			m_childIndexHash->insert(shardIndex, -1);
+			m_childIndexHash->insert(to_str(objectIndex, shardIndex), -1);
+
 			int numChildren = newCompound->getNumChildShapes();
 
 			for (int i=0; i<numChildren; i++)
@@ -794,7 +816,7 @@ void	btFractureDynamicsWorld::breakDisconnectedParts( btFractureBody* fracObj)
 				int obIndex, shIndex;
 				btCollisionShape *cshape = newCompound->getChildShape(i);
 				m_idCallback(cshape->getUserPointer(), &obIndex, &shIndex);
-				m_childIndexHash->insert(shIndex, i);
+				m_childIndexHash->insert(to_str(obIndex, shardIndex), i);
 			}
 
 			numIslands++;
@@ -822,8 +844,8 @@ void btFractureDynamicsWorld::propagateDamage(btFractureBody *body, btScalar *im
 		btCollisionShape* shape0 = connection.m_childShape0;
 		btCollisionShape* shape1 = connection.m_childShape1;
 
-		btFractureBody *fbody0 = m_shapeBodyCallback(shape0->getUserPointer());
-		btFractureBody *fbody1 = m_shapeBodyCallback(shape1->getUserPointer());
+		btRigidBody *fbody0 = m_shapeBodyCallback(shape0->getUserPointer());
+		btRigidBody *fbody1 = m_shapeBodyCallback(shape1->getUserPointer());
 
 		//calculate dot product between body->fbody and direction, if > say 0.75 then roughly same direction ?
 
@@ -869,7 +891,8 @@ void btFractureDynamicsWorld::fractureCallback( )
 	if (!m_fracturingMode)
 	{
 		glueCallback();
-		return;
+		m_fracturingMode = true;
+		//return;
 	}
 
 	int numManifolds = getDispatcher()->getNumManifolds();

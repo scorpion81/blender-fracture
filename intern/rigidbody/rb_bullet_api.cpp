@@ -88,15 +88,15 @@ struct rbRigidBody {
 
 typedef void (*IdOutCallback)(void *world, void *meshisland, int *objectId, int *shardId);
 
-static btFractureBody* getBodyFromShape(void *shapePtr)
+static btRigidBody* getBodyFromShape(void *shapePtr)
 {
 	rbRigidBody *body = (rbRigidBody*)shapePtr;
-	if (body->body->getInternalType() & CUSTOM_FRACTURE_TYPE)
+/*	if (body->body->getInternalType() & CUSTOM_FRACTURE_TYPE)
 	{
 		btFractureBody* fbody = (btFractureBody*)body->body;
 		return fbody;
-	}
-	return NULL;
+	}*/
+	return body->body;
 }
 
 static inline void copy_v3_btvec3(float vec[3], const btVector3 &btvec)
@@ -393,7 +393,9 @@ bool rbContactCallback::handle_contacts(btManifoldPoint& point, btCollisionObjec
 
 void RB_dworld_init_compounds(rbDynamicsWorld *world)
 {
-	world->dynamicsWorld->glueCallback();
+	//world->dynamicsWorld->glueCallback();
+	world->dynamicsWorld->m_fracturingMode = false;
+	//trigger the glueing only at beginning ?!
 }
 
 static void idCallback(void *userPtr, int* objectId, int* shardId)

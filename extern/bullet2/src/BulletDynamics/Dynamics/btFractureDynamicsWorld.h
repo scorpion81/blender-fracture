@@ -5,6 +5,8 @@
 #include "BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h"
 #include "LinearMath/btAlignedObjectArray.h"
 #include "LinearMath/btHashMap.h"
+#include <string>
+#include <sstream>
 
 class btFractureBody;
 class btCompoundShape;
@@ -13,15 +15,13 @@ struct btPropagationParameter;
 
 //callback to retrieve id from user application (blender)
 typedef void (*IdCallback)(void *userPtr, int* object_id, int* shard_id);
-typedef btFractureBody* (*ShapeBodyCallback)(void *userPtr);
-
+typedef btRigidBody* (*ShapeBodyCallback)(void *userPtr);
+char *to_str(int objectId, int shardId);
 
 ///The btFractureDynamicsWorld class enabled basic glue and fracture of objects. 
 ///If/once this implementation is stablized/tested we might merge it into btDiscreteDynamicsWorld and remove the class.
 class btFractureDynamicsWorld : public btDiscreteDynamicsWorld
 {
-	bool	m_fracturingMode;
-
 	btFractureBody* addNewBody(const btTransform& oldTransform, btScalar* masses, btCompoundShape* oldCompound, btPropagationParameter &param);
 
 	void	breakDisconnectedParts( btFractureBody* fracObj);
@@ -36,12 +36,13 @@ public:
 
 	btAlignedObjectArray<btCompoundConstraint*>	m_compoundConstraints;
 	btAlignedObjectArray<btFractureBody*> m_fractureBodies;
+	bool	m_fracturingMode;
 
 	IdCallback m_idCallback;
 
 	ShapeBodyCallback m_shapeBodyCallback;
 
-	btHashMap<btHashInt, int> *m_childIndexHash;
+	btHashMap<btHashString, int> *m_childIndexHash;
 
 	virtual void	addRigidBody(btRigidBody* body);
 

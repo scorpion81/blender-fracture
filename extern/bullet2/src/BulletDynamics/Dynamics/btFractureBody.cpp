@@ -87,8 +87,8 @@ void btFractureBody::recomputeConnectivityByConstraints(btCollisionWorld *world1
 					world->m_idCallback(obA->getUserPointer(), &obIdA, &shardIdA);
 					world->m_idCallback(obB->getUserPointer(), &obIdB, &shardIdB);
 
-					index0 = world->m_childIndexHash->find(shardIdA);
-					index1 = world->m_childIndexHash->find(shardIdB);
+					index0 = world->m_childIndexHash->find(to_str(obIdA, shardIdA));
+					index1 = world->m_childIndexHash->find(to_str(obIdB, shardIdB));
 
 					if ((obIdA == obIdB) && (shardIdA != shardIdB) &&
 					    index0 && index1 && *index0 > -1 && *index1 > -1)
