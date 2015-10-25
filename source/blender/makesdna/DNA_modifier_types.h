@@ -1587,6 +1587,11 @@ typedef struct FractureSetting {
 	float physics_mesh_scale;
 	float grease_offset;
 
+	float impulse_dampening;
+	float minimum_impulse;
+	float directional_factor;
+	float mass_threshold_factor;
+
 	int use_constraints;
 	int use_compounds;
 	int use_mass_dependent_thresholds;
@@ -1681,6 +1686,7 @@ typedef struct FractureModifierData {
 	float impulse_dampening;
 	float minimum_impulse;
 	float directional_factor;
+	float mass_threshold_factor;
 
 	/* flags */
 	int refresh;
@@ -1718,7 +1724,7 @@ typedef struct FractureModifierData {
 	float max_vol;
 	int last_frame;
 
-	char pad[4];
+	//char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

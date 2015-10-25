@@ -5207,6 +5207,14 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	                         "Determines how strong the remaining impulse must be for continuing damage propagation");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "mass_threshold_factor", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "mass_threshold_factor");
+	RNA_def_property_range(prop, 0.0f, 1.0f);
+	RNA_def_property_ui_text(prop, "Stability Factor",
+	                         "Determines how 'stable' an object is, by multiplying threshold * mass * this factor, 0 means disabled, 1 means highest mass					                          dependent stability");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 static void rna_def_modifier_datatransfer(BlenderRNA *brna)

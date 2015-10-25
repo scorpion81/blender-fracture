@@ -136,7 +136,7 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
             box.label("Inner Vertex Group:")
             box.prop_search(md, "inner_vertex_group", ob, "vertex_groups", text = "")
 
-        layout.operator("object.fracture_refresh", text="Execute Fracture", icon='MOD_EXPLODE')
+        layout.operator("object.fracture_refresh", text="Execute Fracture", icon='MOD_EXPLODE').reset = True
 
 class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
     bl_label = "Fracture Constraint Settings"
@@ -191,6 +191,7 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
         col.prop(md, "solver_iterations_override")
         col.prop(md, "cluster_solver_iterations_override")
         layout.prop(md, "use_mass_dependent_thresholds")
+        layout.prop(md, "mass_threshold_factor")
 
 class PHYSICS_PT_fracture_utilities(PhysicButtonsPanel, Panel):
     bl_label = "Fracture Utilities"

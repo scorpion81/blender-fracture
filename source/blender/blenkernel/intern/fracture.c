@@ -785,7 +785,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 					algorithm != MOD_FRACTURE_BISECT_FAST_FILL &&
 					algorithm != MOD_FRACTURE_BOOLEAN_FRACTAL);
 
-	if (p == NULL)
+	if (p == NULL || reset)
 	{
 		if (fm->last_shard_tree)
 		{
@@ -799,28 +799,22 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 			fm->last_shards = NULL;
 		}
 
-		return;
+		if (!p)
+			return;
 	}
 
-/*	if (mode == MOD_FRACTURE_PREFRACTURED && reset)
+	if (mode == MOD_FRACTURE_PREFRACTURED && reset)
 	{
-		Shard *t = fm->shard_map.first, *next = NULL;
-		while (t && t->next)
+		while (fm->shard_map.first)
 		{
-			next = t->next;
-
-			if (t != p)
-			{
-				BLI_remlink_safe(&fm->shard_map, t);
-				printf("Resetting shard: %d\n", t->shard_id);
-				BKE_shard_free(t, true);
-			}
-
-			t = next;
+			Shard *t = fm->shard_map.first;
+			BLI_remlink_safe(&fm->shard_map, t);
+			printf("Resetting shard: %d\n", t->shard_id);
+			BKE_shard_free(t, true);
 		}
-	}*/
+	}
 
-	if (mode == MOD_FRACTURE_PREFRACTURED /*&& !reset*/)
+	if (mode == MOD_FRACTURE_PREFRACTURED && !reset)
 	{
 		//rebuild tree
 		if (!fm->last_shard_tree && (fm->shard_count > 0) && mode == MOD_FRACTURE_PREFRACTURED)
@@ -2061,6 +2055,12 @@ void BKE_fracture_load_settings(FractureModifierData *fmd, FractureSetting *fs)
 	// add more constraint types, as in special ones (3x generic and so on)
 	fmd->cluster_constraint_type = fs->cluster_constraint_type;
 	fmd->constraint_target = fs->constraint_target;
+
+	fmd->impulse_dampening = fs->impulse_dampening;
+	fmd->minimum_impulse = fs->minimum_impulse;
+	fmd->directional_factor = fs->directional_factor;
+	fmd->mass_threshold_factor = fs->mass_threshold_factor;
+	fmd->use_compounds = fs->use_compounds;
 }
 
 void BKE_fracture_store_settings(FractureModifierData *fs, FractureSetting *fmd)
@@ -2131,4 +2131,10 @@ void BKE_fracture_store_settings(FractureModifierData *fs, FractureSetting *fmd)
 	// add more constraint types, as in special ones (3x generic and so on)
 	fmd->cluster_constraint_type = fs->cluster_constraint_type;
 	fmd->constraint_target = fs->constraint_target;
+
+	fmd->impulse_dampening = fs->impulse_dampening;
+	fmd->minimum_impulse = fs->minimum_impulse;
+	fmd->directional_factor = fs->directional_factor;
+	fmd->mass_threshold_factor = fs->mass_threshold_factor;
+	fmd->use_compounds = fs->use_compounds;
 }

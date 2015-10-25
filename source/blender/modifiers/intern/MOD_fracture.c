@@ -134,7 +134,6 @@ static void initData(ModifierData *md)
 	zero_m4(fmd->origmat);
 	fmd->breaking_threshold = 10.0f;
 	fmd->use_constraints = false;
-	fmd->use_compounds = false;
 	fmd->contact_dist = 1.0f;
 	fmd->use_mass_dependent_thresholds = false;
 	fmd->explo_shared = false;
@@ -207,9 +206,11 @@ static void initData(ModifierData *md)
 	fmd->reset_shards = false;
 	fmd->active_setting = -1;
 
+	fmd->use_compounds = false;
 	fmd->impulse_dampening = 0.05f;
 	fmd->directional_factor = 0.0f;
 	fmd->minimum_impulse = 0.1f;
+	fmd->mass_threshold_factor = 0.0f;
 }
 
 static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
@@ -1449,6 +1450,8 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->impulse_dampening = rmd->impulse_dampening;
 	trmd->directional_factor = rmd->directional_factor;
 	trmd->minimum_impulse = rmd->minimum_impulse;
+	trmd->mass_threshold_factor = rmd->mass_threshold_factor;
+	trmd->use_compounds = rmd->use_compounds;
 }
 
 /* mi->bb, its for volume fraction calculation.... */

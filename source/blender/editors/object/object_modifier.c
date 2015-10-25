@@ -2420,7 +2420,7 @@ static int fracture_poll(bContext *C)
 	return edit_modifier_poll_generic(C, &RNA_FractureModifier, 0);
 }
 
-static int fracture_refresh_exec(bContext *C, wmOperator *UNUSED(op))
+static int fracture_refresh_exec(bContext *C, wmOperator *op)
 {
 	Object *obact = ED_object_active_context(C);
 	Scene *scene = CTX_data_scene(C);
@@ -2432,6 +2432,7 @@ static int fracture_refresh_exec(bContext *C, wmOperator *UNUSED(op))
 	//RegionView3D *rv3d = CTX_wm_region_view3d(C);
 
 	rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
+	rmd->reset_shards = RNA_boolean_get(op->ptr, "reset");
 
 	if (scene->rigidbody_world != NULL)
 	{
@@ -2563,6 +2564,8 @@ void OBJECT_OT_fracture_refresh(wmOperatorType *ot)
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 	edit_modifier_properties(ot);
+
+	RNA_def_boolean(ot->srna, "reset", false, "Reset Shards", "Reset all shards in next refracture, instead of keeping similar ones");
 }
 
 /****************** rigidbody constraint refresh operator *********************/

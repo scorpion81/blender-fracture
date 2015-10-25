@@ -189,13 +189,18 @@ void BKE_rigidbody_calc_threshold(float max_con_mass, FractureModifierData *rmd,
 		return;
 	}
 
-	max_thresh = rmd->breaking_threshold;
+	max_thresh = thresh = rmd->breaking_threshold;
 	if ((con->mi1->rigidbody != NULL) && (con->mi2->rigidbody != NULL)) {
 		con_mass = con->mi1->rigidbody->mass + con->mi2->rigidbody->mass;
 
 		if (rmd->use_mass_dependent_thresholds)
 		{
 			thresh = (con_mass / max_con_mass) * max_thresh;
+		}
+
+		if (rmd->mass_threshold_factor > 0.0f)
+		{
+			thresh = thresh * con_mass * rmd->mass_threshold_factor;
 		}
 
 		con->breaking_threshold = thresh;
@@ -3096,7 +3101,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				rbsc->num_solver_iterations = iterations;
 			}
 
-			if ((fmd->use_mass_dependent_thresholds)) {
+			if ((fmd->use_mass_dependent_thresholds || fmd->mass_threshold_factor > 0.0f)) {
 				BKE_rigidbody_calc_threshold(max_con_mass, fmd, rbsc);
 			}
 
