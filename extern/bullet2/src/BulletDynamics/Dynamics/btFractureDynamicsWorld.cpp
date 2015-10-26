@@ -840,9 +840,9 @@ void btFractureDynamicsWorld::propagateDamage(btFractureBody *body, btScalar *im
 	//min break impulse, todo expose
 	if (*impulse > body->m_propagationParameter.m_minimum_impulse && body->m_connections.size() > connection_index)
 	{
-		btConnection& connection = body->m_connections[connection_index];
-		btCollisionShape* shape0 = connection.m_childShape0;
-		btCollisionShape* shape1 = connection.m_childShape1;
+		btConnection* connection = &body->m_connections[connection_index];
+		btCollisionShape* shape0 = connection->m_childShape0;
+		btCollisionShape* shape1 = connection->m_childShape1;
 
 		btRigidBody *fbody0 = m_shapeBodyCallback(shape0->getUserPointer());
 		btRigidBody *fbody1 = m_shapeBodyCallback(shape1->getUserPointer());
@@ -850,19 +850,19 @@ void btFractureDynamicsWorld::propagateDamage(btFractureBody *body, btScalar *im
 		//calculate dot product between body->fbody and direction, if > say 0.75 then roughly same direction ?
 
 		btScalar factor = body->m_propagationParameter.m_directional_factor;
-		btVector3 dir = fbody0->getWorldTransform().getOrigin() - fbody1->getWorldTransform().getOrigin();
+		const btVector3& dir = fbody0->getWorldTransform().getOrigin() - fbody1->getWorldTransform().getOrigin();
 		if (dir.dot(direction) > factor)
 		{
 			//printf("FACTOR: %f\n", dir.dot(direction));
 
-			connection.m_strength -= *impulse;
+			connection->m_strength -= *impulse;
 			//printf("strengthp=%f %f\n",connection.m_strength, *impulse);
 
-			if (connection.m_strength<0)
+			if (connection->m_strength<0)
 			{
 				//remove or set to zero
 				//printf("Breaking: %d %d\n",connection.m_childIndex0, connection.m_childIndex1);
-				connection.m_strength=0.f;
+				connection->m_strength=0.f;
 				*needsBreakingCheck = true;
 			}
 		}
@@ -876,7 +876,7 @@ void btFractureDynamicsWorld::propagateDamage(btFractureBody *body, btScalar *im
 			int i, size = adjacents->size();
 			for (i=0;i<size;i++)
 			{
-				if (size > 1)
+				if(size > 2)
 					propagateDamage(body, impulse, adjacents->at(i), needsBreakingCheck, direction);
 			}
 		}
