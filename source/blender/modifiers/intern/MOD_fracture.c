@@ -1537,7 +1537,7 @@ static int BM_mesh_minmax(BMesh *bm, float r_min[3], float r_max[3], int tagged)
 	return (bm->totvert != 0);
 }
 
-static void do_shard_to_island(FractureModifierData *fmd, BMesh* bm_new)
+static int do_shard_to_island(FractureModifierData *fmd, BMesh* bm_new)
 {
 	DerivedMesh *dmtemp;
 	Shard *s;
@@ -1558,7 +1558,11 @@ static void do_shard_to_island(FractureModifierData *fmd, BMesh* bm_new)
 		dmtemp->needsFree = 1;
 		dmtemp->release(dmtemp);
 		dmtemp = NULL;
+
+		return id;
 	}
+
+	return -1;
 }
 
 static void do_rigidbody(FractureModifierData *fmd, MeshIsland* mi, Object* ob, DerivedMesh *orig_dm, short rb_type, int i)
@@ -1610,7 +1614,7 @@ static void do_fix_normals(FractureModifierData *fmd, MeshIsland *mi)
 }
 
 static float do_setup_meshisland(FractureModifierData *fmd, Object *ob, int totvert, float centroid[3],
-                                 BMVert **verts, float *vertco, short *vertno, BMesh **bm_new, DerivedMesh *orig_dm)
+                                 BMVert **verts, float *vertco, short *vertno, BMesh **bm_new, DerivedMesh *orig_dm, int id)
 {
 	MeshIsland *mi;
 	DerivedMesh *dm;
@@ -1648,6 +1652,7 @@ static float do_setup_meshisland(FractureModifierData *fmd, Object *ob, int totv
 
 	mi->particle_index = -1;
 	mi->thresh_weight = 0;
+	mi->id = id;
 	mi->vertices = verts; /*those are temporary only !!! */
 	mi->vertco = MEM_mallocN(sizeof(float) * 3 * totvert, "mi->vertco");
 	memcpy(mi->vertco, vertco, 3 * totvert * sizeof(float));
@@ -1705,6 +1710,7 @@ static float mesh_separate_tagged(FractureModifierData *fmd, Object *ob, BMVert 
 	BMesh *bm_old = bm_work;
 	float centroid[3];
 	float vol;
+	int id;
 
 	BMVert *v;
 	BMIter iter;
@@ -1731,14 +1737,14 @@ static float mesh_separate_tagged(FractureModifierData *fmd, Object *ob, BMVert 
 	BM_calc_center_centroid(bm_new, centroid, false);
 	BM_mesh_elem_index_ensure(bm_new, BM_VERT | BM_EDGE | BM_FACE);
 
-	do_shard_to_island(fmd, bm_new);
+	id = do_shard_to_island(fmd, bm_new);
 
 	BM_ITER_MESH (v, &iter, bm_new, BM_VERTS_OF_MESH) {
 		/* eliminate centroid in vertex coords */
 		sub_v3_v3(v->co, centroid);
 	}
 
-	vol = do_setup_meshisland(fmd, ob, v_count, centroid, v_tag, startco, startno, &bm_new, orig_dm);
+	vol = do_setup_meshisland(fmd, ob, v_count, centroid, v_tag, startco, startno, &bm_new, orig_dm, id);
 
 	/* deselect loose data - this used to get deleted,
 	 * we could de-select edges and verts only, but this turns out to be less complicated
