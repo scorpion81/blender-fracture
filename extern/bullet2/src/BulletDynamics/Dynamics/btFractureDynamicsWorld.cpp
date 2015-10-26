@@ -920,8 +920,8 @@ void btFractureDynamicsWorld::fractureCallback( )
 			maxImpact = totalImpact;
 
 		//some threshold otherwise resting contact would break objects after a while
-		if (totalImpact < 1.0f) //40.f
-			continue;
+		//if (totalImpact < 10.0f) //40.f
+		//	continue;
 
 		//		printf("strong impact\n");
 
@@ -1041,11 +1041,25 @@ void btFractureDynamicsWorld::fractureCallback( )
 				if (oldCompound->getNumChildShapes()>1)
 				{
 					bool needsBreakingCheck = false;
-
+					btScalar totalObjImpact = 0.0f;
 
 					//weaken/break the connections
 
 					//@todo: propagate along the connection graph
+
+					for (int j=0;j<sFracturePairs[i].m_contactManifolds.size();j++)
+					{
+						btPersistentManifold* manifold = sFracturePairs[i].m_contactManifolds[j];
+						for (int k=0;k<manifold->getNumContacts();k++)
+						{
+							btManifoldPoint& pt = manifold->getContactPoint(k);
+							totalObjImpact += pt.m_appliedImpulse;
+						}
+					}
+
+					if (totalObjImpact < sFracturePairs[i].m_fracObj->m_propagationParameter.m_minimum_impulse)
+						continue;
+
 					for (int j=0;j<sFracturePairs[i].m_contactManifolds.size();j++)
 					{
 						btPersistentManifold* manifold = sFracturePairs[i].m_contactManifolds[j];

@@ -187,9 +187,10 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             row.prop(md, "breaking_angle_weighted")
             row.prop(md, "breaking_distance_weighted")
 
-        col = layout.column(align=True)
-        col.prop(md, "solver_iterations_override")
-        col.prop(md, "cluster_solver_iterations_override")
+            col = layout.column(align=True)
+            col.prop(md, "solver_iterations_override")
+            col.prop(md, "cluster_solver_iterations_override")
+
         layout.prop(md, "use_mass_dependent_thresholds")
         layout.prop(md, "mass_threshold_factor")
 
