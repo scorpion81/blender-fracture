@@ -1165,6 +1165,34 @@ static void rna_FractureModifier_dm_group_set(PointerRNA* ptr, PointerRNA value)
 	rmd->reset_shards = true;
 }
 
+static void rna_FractureModifier_impulse_dampening_set(PointerRNA *ptr, float value)
+{
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
+	rmd->impulse_dampening = value;
+	rmd->refresh_constraints = true;
+}
+
+static void rna_FractureModifier_directional_factor_set(PointerRNA *ptr, float value)
+{
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
+	rmd->directional_factor = value;
+	rmd->refresh_constraints = true;
+}
+
+static void rna_FractureModifier_minimum_impulse_set(PointerRNA *ptr, float value)
+{
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
+	rmd->minimum_impulse = value;
+	rmd->refresh_constraints = true;
+}
+
+static void rna_FractureModifier_mass_threshold_factor_set(PointerRNA *ptr, float value)
+{
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
+	rmd->mass_threshold_factor = value;
+	rmd->refresh_constraints = true;
+}
+
 /* NOTE: Curve and array modifiers requires curve path to be evaluated,
  * dependency graph will make sure that curve eval would create such a path,
  * but if curve was already evaluated we might miss path.
@@ -5187,6 +5215,7 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "impulse_dampening", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "impulse_dampening");
+	RNA_def_property_float_funcs(prop, NULL, "rna_FractureModifier_impulse_dampening_set", NULL);
 	RNA_def_property_range(prop, 0.0f, 1.0f);
 	RNA_def_property_ui_text(prop, "Impulse Dampening", "Determines how strong the impulse is dampened during damage propagation steps");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
@@ -5194,6 +5223,7 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "directional_factor", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "directional_factor");
+	RNA_def_property_float_funcs(prop, NULL, "rna_FractureModifier_directional_factor_set", NULL);
 	RNA_def_property_range(prop, -1.0f, 1.0f);
 	RNA_def_property_ui_text(prop, "Directional Factor",
 	                         "Determines how much the damage propagation depends on impact direction; -1 means not at all, 1 fully (dot product)");
@@ -5202,6 +5232,7 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "minimum_impulse", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "minimum_impulse");
+	RNA_def_property_float_funcs(prop, NULL, "rna_FractureModifier_minimum_impulse_set", NULL);
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_ui_text(prop, "Minimum Impulse",
 	                         "Determines how strong the remaining impulse must be for continuing damage propagation");
@@ -5210,6 +5241,7 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "mass_threshold_factor", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "mass_threshold_factor");
+	RNA_def_property_float_funcs(prop, NULL, "rna_FractureModifier_mass_threshold_factor_set", NULL);
 	RNA_def_property_range(prop, 0.0f, 1.0f);
 	RNA_def_property_ui_text(prop, "Stability Factor",
 	                         "Determines how 'stable' an object is, by multiplying threshold * mass * this factor, 0 means disabled, 1 means highest mass dependent stability");

@@ -184,63 +184,70 @@ void btFractureDynamicsWorld::glueCallback()
 	//int numElem = unionFind.getNumElements();
 
 	printf("Manifolds: %d\n", numManifolds);
-	for (int i=0;i<numManifolds;i++)
+
+	//if (numManifolds > 0)
 	{
-		btPersistentManifold* manifold = getDispatcher()->getManifoldByIndexInternal(i);
-		/*if (!manifold->getNumContacts())
+		for (int i=0;i<numManifolds;i++)
 		{
-			printf("Manifold %d has NO CONTACT POINT!!\n", i);
-			continue;
-		}*/
+			btPersistentManifold* manifold = getDispatcher()->getManifoldByIndexInternal(i);
+			/*if (!manifold->getNumContacts())
+			{
+				printf("Manifold %d has NO CONTACT POINT!!\n", i);
+				continue;
+			}*/
 
-		/*btScalar minDist = 1e30f;
-		for (int v=0;v<manifold->getNumContacts();v++)
-		{
-			minDist = btMin(minDist,manifold->getContactPoint(v).getDistance());
-		}
-		if (minDist>0.5)
-			continue;*/
-		
-		btCollisionObject* colObj0 = (btCollisionObject*)manifold->getBody0();
-		btCollisionObject* colObj1 = (btCollisionObject*)manifold->getBody1();
-		int tag0 = (colObj0)->getIslandTag();
-		int tag1 = (colObj1)->getIslandTag();
+			/*btScalar minDist = 1e30f;
+			for (int v=0;v<manifold->getNumContacts();v++)
+			{
+				minDist = btMin(minDist,manifold->getContactPoint(v).getDistance());
+			}
+			if (minDist>0.5)
+				continue;*/
 
-		btRigidBody* body0 = btRigidBody::upcast(colObj0);
-		btRigidBody* body1 = btRigidBody::upcast(colObj1);
+			btCollisionObject* colObj0 = (btCollisionObject*)manifold->getBody0();
+			btCollisionObject* colObj1 = (btCollisionObject*)manifold->getBody1();
+			int tag0 = (colObj0)->getIslandTag();
+			int tag1 = (colObj1)->getIslandTag();
 
-		int objectId0, objectId1, shardId0, shardId1;
-		m_idCallback(body0->getUserPointer(),&objectId0, &shardId0);
-		m_idCallback(body1->getUserPointer(),&objectId1, &shardId1);
+			btRigidBody* body0 = btRigidBody::upcast(colObj0);
+			btRigidBody* body1 = btRigidBody::upcast(colObj1);
 
-		//if (!colObj0->isStaticOrKinematicObject() && !colObj1->isStaticOrKinematicObject())
-		if (objectId0 == objectId1 && objectId0 > -1 && tag0 > -1 && tag1 > -1)
-		{
-			unionFind.unite(tag0, tag1);
+			int objectId0, objectId1, shardId0, shardId1;
+			m_idCallback(body0->getUserPointer(),&objectId0, &shardId0);
+			m_idCallback(body1->getUserPointer(),&objectId1, &shardId1);
+
+			//if (!colObj0->isStaticOrKinematicObject() && !colObj1->isStaticOrKinematicObject())
+			if (objectId0 == objectId1 && objectId0 > -1 && tag0 > -1 && tag1 > -1)
+			{
+				unionFind.unite(tag0, tag1);
+			}
 		}
 	}
 
 #if 0
-	int numConstraints = m_compoundConstraints.size();
-	for (int i=0;i<numConstraints;i++)
+	else //fallback if no manifolds are there (kinematic)
 	{
-		btTypedConstraint *con = m_compoundConstraints[i];
-
-		btCollisionObject* colObj0 = (btCollisionObject*)&con->getRigidBodyA();
-		btCollisionObject* colObj1 = (btCollisionObject*)&con->getRigidBodyB();
-		int tag0 = (colObj0)->getIslandTag();
-		int tag1 = (colObj1)->getIslandTag();
-		btFractureBody* body0 = (btFractureBody*)colObj0;
-		btFractureBody* body1 = (btFractureBody*)colObj1;
-
-		int objectId0, shardId0, objectId1, shardId1;
-		m_idCallback(body0->getUserPointer(),&objectId0, &shardId0);
-		m_idCallback(body1->getUserPointer(),&objectId1, &shardId1);
-
-		//if (!colObj0->isStaticOrKinematicObject() && !colObj1->isStaticOrKinematicObject())
-		if (objectId0 == objectId1 && objectId0 > -1)
+		int numConstraints = m_compoundConstraints.size();
+		for (int i=0;i<numConstraints;i++)
 		{
-			unionFind.unite(tag0, tag1);
+			btTypedConstraint *con = m_compoundConstraints[i];
+
+			btCollisionObject* colObj0 = (btCollisionObject*)&con->getRigidBodyA();
+			btCollisionObject* colObj1 = (btCollisionObject*)&con->getRigidBodyB();
+			int tag0 = (colObj0)->getIslandTag();
+			int tag1 = (colObj1)->getIslandTag();
+			btFractureBody* body0 = (btFractureBody*)colObj0;
+			btFractureBody* body1 = (btFractureBody*)colObj1;
+
+			int objectId0, shardId0, objectId1, shardId1;
+			m_idCallback(body0->getUserPointer(),&objectId0, &shardId0);
+			m_idCallback(body1->getUserPointer(),&objectId1, &shardId1);
+
+			//if (!colObj0->isStaticOrKinematicObject() && !colObj1->isStaticOrKinematicObject())
+			if (objectId0 == objectId1 && objectId0 > -1)
+			{
+				unionFind.unite(tag0, tag1);
+			}
 		}
 	}
 #endif
@@ -342,6 +349,7 @@ void btFractureDynamicsWorld::glueCallback()
 				printf("Col Obj %d NOT THERE ?!\n", i);
 				continue;
 			}
+
 			numObjects++;
 		}
 
@@ -361,7 +369,15 @@ void btFractureDynamicsWorld::glueCallback()
 			btAlignedObjectArray<btVector3> oldImpulses;
 			btAlignedObjectArray<btVector3> oldCenterOfMassesWS;
 
-			oldImpulses.push_back(fracObj->getLinearVelocity()/1./fracObj->getInvMass());
+			if (!fracObj->getInvMass())
+			{
+				oldImpulses.push_back(btVector3(0, 0, 0));
+			}
+			else
+			{
+				oldImpulses.push_back(fracObj->getLinearVelocity()/1./fracObj->getInvMass());
+			}
+
 			oldCenterOfMassesWS.push_back(fracObj->getCenterOfMassPosition());
 
 			btScalar totalMass = 0.f;
@@ -398,24 +414,32 @@ void btFractureDynamicsWorld::glueCallback()
 					continue;
 
 				btCollisionObject* otherCollider = getCollisionObjectArray()[i];
-
 				btRigidBody* otherObject = btRigidBody::upcast(otherCollider);
+
 				//don't glue/merge with static objects right now, otherwise everything gets stuck to the ground
 				///todo: expose this as a callback
-				if (!otherObject || !otherObject->getInvMass() /*|| !(otherObject->getInternalType() & CUSTOM_FRACTURE_TYPE)*/)
+				if (!otherObject || !otherObject->getInvMass())/*|| !(otherObject->getInternalType() & CUSTOM_FRACTURE_TYPE)*/
 				{
-					printf("Col Obj %d NOT THERE ?!\n", i);
 					continue;
 				}
 
 
-				oldImpulses.push_back(otherObject->getLinearVelocity()*(1.f/otherObject->getInvMass()));
+				if (!otherObject->getInvMass())
+				{
+					oldImpulses.push_back(btVector3(0, 0, 0));
+				}
+				else
+				{
+					oldImpulses.push_back(otherObject->getLinearVelocity()*(1.f/otherObject->getInvMass()));
+				}
 				oldCenterOfMassesWS.push_back(otherObject->getCenterOfMassPosition());
 
 				removedObjects.push_back(otherObject);
 				//m_fractureBodies.remove((btFractureBody*)otherObject);
 
-				btScalar curMass = 1.f/otherObject->getInvMass();
+				btScalar curMass = 0.f;
+				if (otherObject->getInvMass())
+					curMass = 1.f/otherObject->getInvMass();
 
 
 				if (otherObject->getCollisionShape()->isCompound())
@@ -527,7 +551,7 @@ void btFractureDynamicsWorld::glueCallback()
 		removedObjects.pop_back();
 
 		btRigidBody* otherObject = btRigidBody::upcast(otherCollider);
-		if (!otherObject || !otherObject->getInvMass())
+		if (!otherObject /* || !otherObject->getInvMass()*/)
 			continue;
 
 		btBroadphaseProxy* bp = otherCollider->getBroadphaseHandle();
@@ -584,7 +608,7 @@ btFractureBody* btFractureDynamicsWorld::addNewBody(const btTransform& oldTransf
 	btScalar totalMass = 0;
 	for (i=0;i<newCompound->getNumChildShapes();i++)
 		totalMass += masses[i];
-	//newCompound->calculateLocalInertia(totalMass,localInertia);
+	newCompound->calculateLocalInertia(totalMass,localInertia);
 
 	btFractureBody* newBody = new btFractureBody(totalMass,0,newCompound,localInertia, masses,newCompound->getNumChildShapes(), this, param);
 	//newBody->recomputeConnectivity(this);
@@ -605,8 +629,8 @@ void btFractureDynamicsWorld::addConstraint(btTypedConstraint *constraint, bool 
 		//keep those dummy constraints away from solver, they are just there to track their breaking state manually
 		btCompoundConstraint *con = (btCompoundConstraint*)constraint;
 		m_compoundConstraints.push_back(con);
-		constraint->getRigidBodyA().addConstraintRef(constraint);
-		constraint->getRigidBodyB().addConstraintRef(constraint);
+		//constraint->getRigidBodyA().addConstraintRef(constraint);
+		//constraint->getRigidBodyB().addConstraintRef(constraint);
 	}
 	else
 	{
@@ -620,8 +644,8 @@ void btFractureDynamicsWorld::removeConstraint(btTypedConstraint *constraint)
 	{
 		btCompoundConstraint *con = (btCompoundConstraint*)constraint;
 		m_compoundConstraints.remove(con);
-		constraint->getRigidBodyA().removeConstraintRef(constraint);
-		constraint->getRigidBodyB().removeConstraintRef(constraint);
+		//constraint->getRigidBodyA().removeConstraintRef(constraint);
+		//constraint->getRigidBodyB().removeConstraintRef(constraint);
 	}
 	else
 	{
@@ -835,10 +859,12 @@ void	btFractureDynamicsWorld::breakDisconnectedParts( btFractureBody* fracObj)
 #include <stdio.h>
 
 void btFractureDynamicsWorld::propagateDamage(btFractureBody *body, btScalar *impulse, int connection_index,
-                                              bool* needsBreakingCheck, btVector3& direction)
+                                              bool* needsBreakingCheck, const btVector3& direction)
 {
 	//min break impulse, todo expose
-	if (*impulse > body->m_propagationParameter.m_minimum_impulse && body->m_connections.size() > connection_index)
+	if (body->m_propagationParameter.m_minimum_impulse > 0 &&
+	   (*impulse > body->m_propagationParameter.m_minimum_impulse) &&
+	   (body->m_connections.size() > connection_index))
 	{
 		btConnection* connection = &body->m_connections[connection_index];
 		btCollisionShape* shape0 = connection->m_childShape0;
@@ -871,13 +897,17 @@ void btFractureDynamicsWorld::propagateDamage(btFractureBody *body, btScalar *im
 		*impulse *= (1.0f - body->m_propagationParameter.m_impulse_dampening);
 
 		btAlignedObjectArray<int> *adjacents = body->m_connection_map->find(connection_index);
-		if (adjacents)
+		if (adjacents && (*impulse > body->m_propagationParameter.m_minimum_impulse))
 		{
 			int i, size = adjacents->size();
-			for (i=0;i<size;i++)
+			//clamp size... else too much recursion going on, leading to crashes
+			if (size > 1)
 			{
-				if(size > 2)
-					propagateDamage(body, impulse, adjacents->at(i), needsBreakingCheck, direction);
+				for (i=0;i<size;i++)
+				{
+					if(body->m_connections[adjacents->at(i)].m_strength > 0.f)
+						propagateDamage(body, impulse, adjacents->at(i), needsBreakingCheck, direction);
+				}
 			}
 		}
 	}
@@ -951,9 +981,9 @@ void btFractureDynamicsWorld::fractureCallback( )
 			int j=f0;
 
 			btCollisionObject* colOb = (btCollisionObject*)manifold->getBody1();
-	//		btRigidBody* otherOb = btRigidBody::upcast(colOb);
-			//	if (!otherOb->getInvMass())
-			//		continue;
+			btRigidBody* otherOb = btRigidBody::upcast(colOb);
+				if (!otherOb->getInvMass())
+					continue;
 
 			int pi=-1;
 
@@ -985,8 +1015,8 @@ void btFractureDynamicsWorld::fractureCallback( )
 			{
 				btCollisionObject* colOb = (btCollisionObject*)manifold->getBody0();
 				btRigidBody* otherOb = btRigidBody::upcast(colOb);
-				//	if (!otherOb->getInvMass())
-				//		continue;
+					if (!otherOb->getInvMass())
+						continue;
 
 
 				int pi=-1;
@@ -1071,31 +1101,31 @@ void btFractureDynamicsWorld::fractureCallback( )
 								for (int f=0;f<sFracturePairs[i].m_fracObj->m_connections.size();f++)
 								{
 									//direct damage
-									btConnection& connection = sFracturePairs[i].m_fracObj->m_connections[f];
-									if ((connection.m_childIndex0 == pt.m_index0) ||
-										(connection.m_childIndex1 == pt.m_index0))
+									btConnection* connection = &sFracturePairs[i].m_fracObj->m_connections[f];
+									if ((connection->m_childIndex0 == pt.m_index0) ||
+										(connection->m_childIndex1 == pt.m_index0))
 									{
-										connection.m_strength -= pt.m_appliedImpulse;
+										connection->m_strength -= pt.m_appliedImpulse;
 										//printf("strength0=%f\n",connection.m_strength);
 
-										if (connection.m_strength<0)
+										if (connection->m_strength<0)
 										{	
 											//remove or set to zero
-											connection.m_strength=0.f;
+											connection->m_strength=0.f;
 											needsBreakingCheck = true;
 										}
 									}
 
 									//propagated damage
-									if (pt.m_appliedImpulse > 0.f) {
+									if (pt.m_appliedImpulse > sFracturePairs[i].m_fracObj->m_propagationParameter.m_minimum_impulse) {
 										btScalar impulse = pt.m_appliedImpulse;
-										btVector3 direction = manifold->getBody0()->getWorldTransform().getOrigin()-
+										const btVector3& direction = manifold->getBody0()->getWorldTransform().getOrigin()-
 										                      manifold->getBody1()->getWorldTransform().getOrigin();
-										propagateDamage(sFracturePairs[i].m_fracObj,&impulse, connection.m_childIndex0,
+										propagateDamage(sFracturePairs[i].m_fracObj,&impulse, connection->m_childIndex0,
 										                &needsBreakingCheck, direction);
 
 										impulse = pt.m_appliedImpulse;
-										propagateDamage(sFracturePairs[i].m_fracObj,&impulse, connection.m_childIndex1,
+										propagateDamage(sFracturePairs[i].m_fracObj,&impulse, connection->m_childIndex1,
 										                &needsBreakingCheck, direction);
 									}
 								}
@@ -1104,30 +1134,30 @@ void btFractureDynamicsWorld::fractureCallback( )
 								//direct damage
 								for (int f=0;f<sFracturePairs[i].m_fracObj->m_connections.size();f++)
 								{
-									btConnection& connection = sFracturePairs[i].m_fracObj->m_connections[f];
-									if ((connection.m_childIndex0 == pt.m_index1) ||
-									       (connection.m_childIndex1 == pt.m_index1))
+									btConnection* connection = &sFracturePairs[i].m_fracObj->m_connections[f];
+									if ((connection->m_childIndex0 == pt.m_index1) ||
+									       (connection->m_childIndex1 == pt.m_index1))
 									{
 										//printf("strength1=%f\n",connection.m_strength);
-										connection.m_strength -= pt.m_appliedImpulse;
-										if (connection.m_strength<0)
+										connection->m_strength -= pt.m_appliedImpulse;
+										if (connection->m_strength<0)
 										{
 											//remove or set to zero
-											connection.m_strength=0.f;
+											connection->m_strength=0.f;
 											needsBreakingCheck = true;
 										}
 									}
 
 									//propagated damage
-									if (pt.m_appliedImpulse > 0.f) {
+									if (pt.m_appliedImpulse > sFracturePairs[i].m_fracObj->m_propagationParameter.m_minimum_impulse) {
 										btScalar impulse = pt.m_appliedImpulse;
-										btVector3 direction = manifold->getBody0()->getWorldTransform().getOrigin()-
+										const btVector3& direction = manifold->getBody0()->getWorldTransform().getOrigin()-
 										                      manifold->getBody1()->getWorldTransform().getOrigin();
-										propagateDamage(sFracturePairs[i].m_fracObj, &impulse, connection.m_childIndex0,
+										propagateDamage(sFracturePairs[i].m_fracObj, &impulse, connection->m_childIndex0,
 										                &needsBreakingCheck, direction);
 
 										impulse = pt.m_appliedImpulse;
-										propagateDamage(sFracturePairs[i].m_fracObj, &impulse, connection.m_childIndex1,
+										propagateDamage(sFracturePairs[i].m_fracObj, &impulse, connection->m_childIndex1,
 										                &needsBreakingCheck, direction);
 									}
 								}

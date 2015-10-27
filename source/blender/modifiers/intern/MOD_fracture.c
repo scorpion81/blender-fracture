@@ -2604,6 +2604,7 @@ static void make_face_pairs(FractureModifierData *fmd, DerivedMesh *dm)
 	int i = 0;
 
 	//printf("Make Face Pairs\n");
+	int faces = 0, pairs = 0;
 
 	for (i = 0, mp = mpoly; i < totpoly; mp++, i++) {
 		float co[3];
@@ -2611,6 +2612,7 @@ static void make_face_pairs(FractureModifierData *fmd, DerivedMesh *dm)
 		if (mp->mat_nr == 1)
 		{
 			BLI_kdtree_insert(tree, i, co);
+			faces++;
 		}
 	}
 
@@ -2625,7 +2627,8 @@ static void make_face_pairs(FractureModifierData *fmd, DerivedMesh *dm)
 			float co[3];
 
 			DM_face_calc_center_mean(dm, mp, co);
-			r = BLI_kdtree_range_search(tree, co, &n, fmd->autohide_dist * 4);
+			r = BLI_kdtree_range_search(tree, co, &n, fmd->autohide_dist);
+			//r = BLI_kdtree_find_nearest_n(tree, co, n, 2);
 			/*2nd nearest means not ourselves...*/
 			if (r == 0)
 				continue;
@@ -2633,11 +2636,13 @@ static void make_face_pairs(FractureModifierData *fmd, DerivedMesh *dm)
 			index = n[0].index;
 			while ((j < r) && i == index) {
 				index = n[j].index;
+				//printf("I, INDEX %d %d %f\n", i, index, n[j].dist);
 				j++;
 			}
 
 			if (!BLI_ghash_haskey(fmd->face_pairs, SET_INT_IN_POINTER(index))) {
 				BLI_ghash_insert(fmd->face_pairs, SET_INT_IN_POINTER(i), SET_INT_IN_POINTER(index));
+				pairs++;
 				/*match normals...*/
 				if (fmd->fix_normals) {
 					do_match_normals(mp, mpoly+index, mvert, mloop);
@@ -2650,6 +2655,7 @@ static void make_face_pairs(FractureModifierData *fmd, DerivedMesh *dm)
 		}
 	}
 
+	printf("faces, pairs: %d %d\n", faces, pairs);
 	BLI_kdtree_free(tree);
 }
 
@@ -2661,6 +2667,17 @@ static void find_other_face(FractureModifierData *fmd, int i, BMesh* bm, BMFace 
 
 	if (other == i)
 	{
+		//printf("other == i %d \n", i);
+		f1 = BM_face_at_index(bm, i);
+
+		if (f1->mat_nr == 1)
+		{
+			/*is this a remainder face ? */
+			*faces = MEM_reallocN(*faces, sizeof(BMFace *) * ((*del_faces) + 1));
+			(*faces)[*del_faces] = f1;
+			(*del_faces) += 1;
+		}
+
 		return;
 	}
 
@@ -3370,7 +3387,7 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 		}
 	}
 
-	if (fmd->refresh_autohide) {
+	if (fmd->refresh_autohide && fmd->autohide_dist > 0) {
 		do_refresh_autohide(fmd);
 	}
 
