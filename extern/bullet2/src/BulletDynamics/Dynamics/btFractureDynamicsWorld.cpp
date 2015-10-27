@@ -901,7 +901,7 @@ void btFractureDynamicsWorld::propagateDamage(btFractureBody *body, btScalar *im
 		{
 			int i, size = adjacents->size();
 			//clamp size... else too much recursion going on, leading to crashes
-			if (size > 1)
+			if (size > 2)
 			{
 				for (i=0;i<size;i++)
 				{

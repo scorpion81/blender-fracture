@@ -3387,7 +3387,7 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 		}
 	}
 
-	if (fmd->refresh_autohide && fmd->autohide_dist > 0) {
+	if (fmd->refresh_autohide) {
 		do_refresh_autohide(fmd);
 	}
 
