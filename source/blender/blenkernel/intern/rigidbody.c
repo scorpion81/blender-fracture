@@ -197,7 +197,7 @@ void BKE_rigidbody_calc_threshold(float max_con_mass, FractureModifierData *rmd,
 			float min_mass = MIN2(con->mi1->rigidbody->mass, con->mi2->rigidbody->mass);
 			float max_mass = MAX2(con->mi1->rigidbody->mass, con->mi2->rigidbody->mass);
 
-			thresh = (min_mass + (rmd->mass_threshold_factor * max_mass) / min_mass + max_mass) * max_thresh;
+			thresh = ((min_mass + (rmd->mass_threshold_factor * max_mass)) / (min_mass + max_mass)) * max_thresh;
 		}
 		else
 		{
