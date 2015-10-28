@@ -18,7 +18,15 @@ class btManifoldPoint;
 
 struct btConnection
 {
-	
+	bool operator==(const btConnection& con)
+	{
+		return this->m_childIndex0 == con.m_childIndex0 &&
+		       this->m_childIndex1 == con.m_childIndex1 &&
+		       this->m_childShape0 == con.m_childShape0 &&
+		       this->m_childShape1 == con.m_childShape1 &&
+		       this->m_strength == con.m_strength;
+	}
+
 	btCollisionShape*	m_childShape0;
 	btCollisionShape*	m_childShape1;
 	int	m_childIndex0;

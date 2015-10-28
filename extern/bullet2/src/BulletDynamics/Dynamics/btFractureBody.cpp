@@ -113,7 +113,7 @@ void btFractureBody::recomputeConnectivityByConstraints(btCollisionWorld *world1
 		size = m_connections.size();
 		for (i=0; i < size; i++)
 		{
-			btConnection con = m_connections[i];
+			btConnection& con = m_connections[i];
 			btAlignedObjectArray<int> *adjacents = m_connection_map->find(con.m_childIndex0);
 			if (!adjacents) {
 				btAlignedObjectArray<int> adj;

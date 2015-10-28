@@ -71,7 +71,7 @@ public:
 	void updateBodies();
 
 	void propagateDamage(btFractureBody *body, btScalar *impulse, int connection_index, bool *needsBreakingCheck,
-	                     const btVector3 &direction);
+	                     const btVector3 &direction, int *depth);
 
 	virtual void updateAabbs();
 };

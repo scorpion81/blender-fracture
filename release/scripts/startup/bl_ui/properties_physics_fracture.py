@@ -165,8 +165,8 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             layout.label("Compound Damage Propagation Settings")
             col = layout.column(align=True)
             col.prop(md, "minimum_impulse")
-            col.prop(md, "impulse_dampening")
-            col.prop(md, "directional_factor")
+            #col.prop(md, "impulse_dampening")
+            #col.prop(md, "directional_factor")
         else:
             layout.label("Constraint Special Breaking Settings")
             col = layout.column(align=True)
