@@ -156,17 +156,22 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
         col.prop(md, "constraint_limit", text="Constraint limit, per MeshIsland")
         col.prop(md, "contact_dist")
 
-        layout.label("Constraint Breaking Settings")
+        if md.use_compounds:
+            layout.label("Compound Breaking Settings")
+        else:
+            layout.label("Constraint Breaking Settings")
+
         col = layout.column(align=True)
         col.prop(md, "breaking_threshold", text="Threshold")
         col.prop(md, "cluster_breaking_threshold")
 
         if md.use_compounds:
-            layout.label("Compound Damage Propagation Settings")
+            #layout.label("Compound Damage Propagation Settings")
             col = layout.column(align=True)
             col.prop(md, "minimum_impulse")
             #col.prop(md, "impulse_dampening")
             #col.prop(md, "directional_factor")
+            col.prop(md, "mass_threshold_factor")
         else:
             layout.label("Constraint Special Breaking Settings")
             col = layout.column(align=True)
@@ -190,9 +195,7 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             col = layout.column(align=True)
             col.prop(md, "solver_iterations_override")
             col.prop(md, "cluster_solver_iterations_override")
-
-        layout.prop(md, "use_mass_dependent_thresholds")
-        layout.prop(md, "mass_threshold_factor")
+            layout.prop(md, "use_mass_dependent_thresholds")
 
 class PHYSICS_PT_fracture_utilities(PhysicButtonsPanel, Panel):
     bl_label = "Fracture Utilities"
