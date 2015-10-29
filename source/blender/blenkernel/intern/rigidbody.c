@@ -295,8 +295,6 @@ float BKE_rigidbody_calc_volume(DerivedMesh *dm, RigidBodyOb *rbo)
 		 * NOTE: this may overestimate the volume, but other methods are overkill
 		 */
 		case RB_SHAPE_BOX:
-		case RB_SHAPE_CONVEXH:
-		case RB_SHAPE_TRIMESH:
 			volume = size[0] * size[1] * size[2];
 			if (size[0] == 0) {
 				volume = size[1] * size[2];
@@ -308,6 +306,22 @@ float BKE_rigidbody_calc_volume(DerivedMesh *dm, RigidBodyOb *rbo)
 				volume = size[0] * size[1];
 			}
 			break;
+
+		case RB_SHAPE_CONVEXH:
+		case RB_SHAPE_TRIMESH:
+		{
+			MVert *mvert = dm->getVertArray(dm);
+			int totvert = dm->getNumVerts(dm);
+			MLoopTri *mlooptri = dm->getLoopTriArray(dm);
+			int tottri = dm->getNumLoopTri(dm);
+			MLoop *mloop = dm->getLoopArray(dm);
+
+			BKE_mesh_calc_volume(mvert, totvert, mlooptri, tottri, mloop, &volume, NULL);
+
+			if (volume == 0.0f)
+				volume = 0.00001f;
+			break;
+		}
 
 #if 0 // XXX: not defined yet
 		case RB_SHAPE_COMPOUND:
