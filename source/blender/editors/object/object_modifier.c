@@ -3079,74 +3079,89 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 		end = mi->start_frame + mi->frame_count;
 	}
 
-	for (i = start; i < end; i++)
+	if (mi->rigidbody->type == RBO_TYPE_ACTIVE)
 	{
-		float size[3];
-		copy_v3_v3(size, ob->size);
-
-		/*move object (loc, rot)*/
-		if (i > start)
+		for (i = start; i < end; i++)
 		{
-			float loc[3] = {0.0f, 0.0f, 0.0f}, rot[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-			float mat[4][4];
+			float size[3];
+			copy_v3_v3(size, ob->size);
 
-			//is there a bake, if yes... use that (disabled for now, odd probs...)
-			if (is_baked)
+			/*move object (loc, rot)*/
+			if (i > start)
 			{
-				BKE_ptcache_id_time(pid, scene, (float)i, NULL, NULL, NULL);
-				if (BKE_ptcache_read(pid, (float)i))
+				float loc[3] = {0.0f, 0.0f, 0.0f}, rot[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+				float mat[4][4];
+
+				//is there a bake, if yes... use that (disabled for now, odd probs...)
+				if (is_baked)
 				{
-					BKE_ptcache_validate(cache, i);
-					copy_v3_v3(loc, mi->rigidbody->pos);
-					copy_qt_qt(rot, mi->rigidbody->orn);
+					BKE_ptcache_id_time(pid, scene, (float)i, NULL, NULL, NULL);
+					if (BKE_ptcache_read(pid, (float)i))
+					{
+						BKE_ptcache_validate(cache, i);
+						copy_v3_v3(loc, mi->rigidbody->pos);
+						copy_qt_qt(rot, mi->rigidbody->orn);
+					}
 				}
+				else
+				{
+					loc[0] = mi->locs[i*3];
+					loc[1] = mi->locs[i*3+1];
+					loc[2] = mi->locs[i*3+2];
+
+					rot[0] = mi->rots[i*4];
+					rot[1] = mi->rots[i*4+1];
+					rot[2] = mi->rots[i*4+2];
+					rot[3] = mi->rots[i*4+3];
+				}
+
+				sub_v3_v3(loc, obloc);
+				add_v3_v3(loc, diff);
+
+				loc_quat_size_to_mat4(mat, loc, rot, size);
+				BKE_scene_frame_set(scene, (double)i);
+
+				copy_m4_m4(ob_new->obmat, mat);
+
+				copy_v3_v3(ob_new->loc, loc);
+				copy_qt_qt(ob_new->quat, rot);
+				quat_to_eul(ob_new->rot, rot);
 			}
 			else
 			{
-				loc[0] = mi->locs[i*3];
-				loc[1] = mi->locs[i*3+1];
-				loc[2] = mi->locs[i*3+2];
+				mul_m4_v3(ob->obmat, ob_new->loc);
+				sub_v3_v3(ob_new->loc, obloc);
+				add_v3_v3(ob_new->loc, diff);
 
-				rot[0] = mi->rots[i*4];
-				rot[1] = mi->rots[i*4+1];
-				rot[2] = mi->rots[i*4+2];
-				rot[3] = mi->rots[i*4+3];
+				copy_qt_qt(ob_new->quat, ob->quat);
+				copy_v3_v3(ob_new->rot, ob->rot);
+				copy_v3_v3(ob_new->size, size);
 			}
 
-			sub_v3_v3(loc, obloc);
-			add_v3_v3(loc, diff);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 0, i, 32);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 1, i, 32);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 2, i, 32);
 
-			loc_quat_size_to_mat4(mat, loc, rot, size);
-			BKE_scene_frame_set(scene, (double)i);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 0, i, 32);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 1, i, 32);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 2, i, 32);
 
-			copy_m4_m4(ob_new->obmat, mat);
-
-			copy_v3_v3(ob_new->loc, loc);
-			copy_qt_qt(ob_new->quat, rot);
-			quat_to_eul(ob_new->rot, rot);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 0, i, 32);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 1, i, 32);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 2, i, 32);
 		}
-		else
-		{
-			mul_m4_v3(ob->obmat, ob_new->loc);
-			sub_v3_v3(ob_new->loc, obloc);
-			add_v3_v3(ob_new->loc, diff);
+	}
+	else
+	{
+		printf("Skipping keyframing for passive shard...\n");
 
-			copy_qt_qt(ob_new->quat, ob->quat);
-			copy_v3_v3(ob_new->rot, ob->rot);
-			copy_v3_v3(ob_new->size, size);
-		}
+		mul_m4_v3(ob->obmat, ob_new->loc);
+		sub_v3_v3(ob_new->loc, obloc);
+		add_v3_v3(ob_new->loc, diff);
 
-		insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 0, i, 32);
-		insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 1, i, 32);
-		insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 2, i, 32);
-
-		insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 0, i, 32);
-		insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 1, i, 32);
-		insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 2, i, 32);
-
-		insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 0, i, 32);
-		insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 1, i, 32);
-		insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 2, i, 32);
+		copy_qt_qt(ob_new->quat, ob->quat);
+		copy_v3_v3(ob_new->rot, ob->rot);
+		copy_v3_v3(ob_new->size, ob->size);
 	}
 
 	(*j)++;
