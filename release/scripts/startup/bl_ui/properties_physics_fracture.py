@@ -136,6 +136,7 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
             box.label("Inner Vertex Group:")
             box.prop_search(md, "inner_vertex_group", ob, "vertex_groups", text = "")
 
+        layout.context_pointer_set("modifier", md)
         layout.operator("object.fracture_refresh", text="Execute Fracture", icon='MOD_EXPLODE').reset = True
 
 class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
@@ -212,6 +213,7 @@ class PHYSICS_PT_fracture_utilities(PhysicButtonsPanel, Panel):
         if not(md.refresh):
            layout.prop(md, "execute_threaded")
 
+        layout.context_pointer_set("modifier", md)
         layout.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")
         layout.operator("object.rigidbody_convert_to_keyframes", text = "Convert To Keyframed Objects")
 

@@ -898,7 +898,7 @@ void ACTION_OT_delete(wmOperatorType *ot)
 
 /* ******************** Clean Keyframes Operator ************************* */
 
-static void clean_action_keys(bAnimContext *ac, float thresh, bool clean_chan)
+void clean_action_keys(bAnimContext *ac, float thresh, bool clean_chan)
 {	
 	ListBase anim_data = {NULL, NULL};
 	bAnimListElem *ale;
