@@ -1855,7 +1855,7 @@ bool BKE_lookup_mesh_state(FractureModifierData *fmd, int frame, int do_lookup)
 				   (fmd->current_mi_entry->next->is_new == false) &&
 				   frame > fmd->current_mi_entry->frame)
 			{
-				printf("Jumping forward because %d is greater/equal than %d\n", frame, fmd->current_mi_entry->frame);
+				printf("Jumping forward because %d is greater than %d\n", frame, fmd->current_mi_entry->frame);
 				changed = true;
 				BKE_free_constraints(fmd);
 				BKE_get_next_entries(fmd);

@@ -2914,7 +2914,6 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 	bool is_parent = false;
 	short rb_type = RBO_TYPE_ACTIVE;
 	float dummyloc[3], rot[4];
-	//float linvel[3], angvel[3];
 
 	if (s->totvert == 0) {
 		return;

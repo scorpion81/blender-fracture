@@ -72,6 +72,7 @@
 #include "BKE_smoke.h"
 #include "BKE_softbody.h"
 #include "BKE_rigidbody.h"
+#include "BKE_fracture.h"
 
 #include "BIK_api.h"
 
@@ -1095,9 +1096,14 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfr
 			//TODO, need to speed this up.... array, hash ?
 
 			//modifier should have "switched" this to current set of meshislands already.... so access it
-			MeshIsland *mi = BLI_findlink(&fmd->meshIslands, rbo->meshisland_index);
+			MeshIsland *mi = NULL;
 			int frame = (int)floor(cfra);
+
+			mi = BLI_findlink(&fmd->meshIslands, rbo->meshisland_index);
 			frame = frame - mi->start_frame;
+
+			if (frame < 0)
+				frame = 0; //grrr, why does this happen ?!
 
 			//printf("Reading frame %d %d %d %d\n", (int)cfra, mi->start_frame, frame, fmd->last_frame);
 

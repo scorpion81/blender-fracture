@@ -1721,7 +1721,6 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 					}
 				}
 			}
-#if 0
 			else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 			{
 				ShardSequence *ssq;
@@ -1744,7 +1743,6 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 					}
 				}
 			}
-#endif
 		}
 	}
 }

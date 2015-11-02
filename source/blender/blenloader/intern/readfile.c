@@ -4871,9 +4871,13 @@ static int initialize_meshisland(FractureModifierData* fmd, MeshIsland** mii, MV
 		if (mi->vertex_indices) {
 			mi->vertex_indices[k] = vertstart + k;
 		}
-		mi->vertco[k*3] = v->co[0];
-		mi->vertco[k*3+1] = v->co[1];
-		mi->vertco[k*3+2] = v->co[2];
+
+		if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+		{
+			mi->vertco[k*3] = v->co[0];
+			mi->vertco[k*3+1] = v->co[1];
+			mi->vertco[k*3+2] = v->co[2];
+		}
 
 		if (mi->vertno != NULL && fmd->fix_normals) {
 			short sno[3];
@@ -4885,6 +4889,7 @@ static int initialize_meshisland(FractureModifierData* fmd, MeshIsland** mii, MV
 		}
 	}
 
+#if 0
 	if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 	{
 		MeshIslandSequence *prev = NULL;
@@ -4915,6 +4920,7 @@ static int initialize_meshisland(FractureModifierData* fmd, MeshIsland** mii, MV
 			}
 		}
 	}
+#endif
 
 	return mi->vertex_count;
 }
@@ -4934,7 +4940,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 	fmd->vertex_island_map = NULL;
 
 	/*HARDCODING this for now, until we can version it properly, say with 2.75 ? */
-	if (fd->fileversion < 276) {
+	if (fd->fileversion < 275) {
 		fmd->fracture_mode = MOD_FRACTURE_PREFRACTURED;
 		fmd->shard_sequence.first = NULL;
 		fmd->shard_sequence.last = NULL;
@@ -4944,6 +4950,9 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 		fmd->fracture_settings.first = NULL;
 		fmd->fracture_settings.last = NULL;
 		fmd->active_setting = -1;
+
+		fmd->current_mi_entry = NULL;
+		fmd->current_shard_entry = NULL;
 	}
 	else
 	{
@@ -5028,7 +5037,6 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 				vertstart += initialize_meshisland(fmd, &mi, mverts, vertstart, ob, -1, -1);
 			}
 		}
-#if 0
 		else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
 			ShardSequence *ssq = NULL;
@@ -5097,7 +5105,6 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 				fmd->current_mi_entry = msq;
 			}
 		}
-#endif
 
 		fmd->refresh_constraints = true;
 		fmd->meshConstraints.first = NULL;

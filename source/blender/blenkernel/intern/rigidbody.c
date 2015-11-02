@@ -75,6 +75,7 @@
 
 #ifdef WITH_BULLET
 
+static void resetDynamic(RigidBodyWorld *rbw);
 static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int rebuild, int transfer_speed);
 
 static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED(rbw), MeshIsland *UNUSED(mi), Object *UNUSED(ob))
@@ -2640,7 +2641,7 @@ static int rigidbody_group_count_items(const ListBase *group, int *r_num_objects
 /* Simulation Interface - Bullet */
 
 /* Update object array and rigid body count so they're in sync with the rigid body group */
-static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
+void BKE_rigidbody_update_ob_array(RigidBodyWorld *rbw)
 {
 	GroupObject *go;
 	ModifierData *md;
@@ -2724,7 +2725,9 @@ static void rigidbody_update_sim_world(Scene *scene, RigidBodyWorld *rbw)
 
 	/* update object array in case there are changes */
 	if (!(rbw->flag & RBW_FLAG_REFRESH_MODIFIERS))
-		rigidbody_update_ob_array(rbw);
+	{
+		BKE_rigidbody_update_ob_array(rbw);
+	}
 }
 
 static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *ob, RigidBodyOb *rbo, float centroid[3], MeshIsland *mi)
@@ -3047,7 +3050,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 			int frame = (int)BKE_scene_frame_get(scene);
 			if (BKE_lookup_mesh_state(fmd, frame, true))
 			{
-				rigidbody_update_ob_array(rbw);
+				BKE_rigidbody_update_ob_array(rbw);
 			}
 		}
 
@@ -3378,16 +3381,19 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 				}
 			}
 
-			if (!is_zero_m4(fmd->origmat) && rbw && !(rbw->flag & RBW_FLAG_OBJECT_CHANGED)) {
+			if (!is_zero_m4(fmd->origmat) && rbw && !(rbw->flag & RBW_FLAG_OBJECT_CHANGED))
+			{
+				//if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
 				copy_m4_m4(ob->obmat, fmd->origmat);
 			}
 
 			if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 			{
 				int frame = (int)ctime;
+
 				if (BKE_lookup_mesh_state(fmd, frame, true))
 				{
-					rigidbody_update_ob_array(rbw);
+					BKE_rigidbody_update_ob_array(rbw);
 				}
 			}
 
@@ -3577,11 +3583,32 @@ static bool restoreKinematic(RigidBodyWorld *rbw)
 	return did_it;
 }
 
+static void resetDynamic(RigidBodyWorld *rbw)
+{
+	GroupObject *go;
+	for (go = rbw->group->gobject.first; go; go = go->next)
+	{
+		FractureModifierData *fmd = modifiers_findByType(go->ob, eModifierType_Fracture);
+		if (fmd && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+		{
+			Scene *scene = fmd->modifier.scene;
+			fmd->last_frame = INT_MAX;
+			fmd->refresh = true;
+
+			//need really to trigger modifier stack evaluation here at once, next depgraph tag is too late
+			//apparently
+			makeDerivedMesh(scene, go->ob, NULL, scene->customdata_mask | CD_MASK_BAREMESH, 0);
+		}
+	}
+}
+
 void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw)
 {
 	if (rbw) {
 		rbw->pointcache->flag |= PTCACHE_OUTDATED;
 		//restoreKinematic(rbw);
+		if (!(rbw->pointcache->flag & PTCACHE_BAKED))
+			resetDynamic(rbw);
 	}
 }
 
@@ -3615,6 +3642,10 @@ void BKE_rigidbody_rebuild_world(Scene *scene, float ctime)
 
 	if (ctime == startframe + 1 && rbw->ltime == startframe) {
 		if (cache->flag & PTCACHE_OUTDATED) {
+			//if we destroy the cache, also reset dynamic data (if not baked)
+			if (!(cache->flag & PTCACHE_BAKED))
+				resetDynamic(rbw);
+
 			BKE_ptcache_id_reset(scene, &pid, PTCACHE_RESET_OUTDATED);
 			rigidbody_update_simulation(scene, rbw, true);
 			BKE_ptcache_validate(cache, (int)ctime);
@@ -3641,7 +3672,9 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	if ((rbw->flag & RBW_FLAG_OBJECT_CHANGED))
 	{
 		rbw->flag &= ~RBW_FLAG_OBJECT_CHANGED;
-		rigidbody_update_simulation(scene, rbw, true);
+		if (!(cache->flag & PTCACHE_BAKED))
+			/* dont mess with baked data */
+			rigidbody_update_simulation(scene, rbw, true);
 		rbw->flag &= ~RBW_FLAG_REFRESH_MODIFIERS;
 	}
 
@@ -3667,7 +3700,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	if (rbw->physics_world == NULL && !(cache->flag & PTCACHE_BAKED))
 		return;
 	else if ((rbw->objects == NULL) || (rbw->cache_index_map == NULL))
-		rigidbody_update_ob_array(rbw);
+		BKE_rigidbody_update_ob_array(rbw);
 
 	/* try to read from cache */
 	// RB_TODO deal with interpolated, old and baked results
