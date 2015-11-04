@@ -49,17 +49,17 @@ class FRACTURE_UL_fracture_settings(UIList):
             layout.alignment = 'CENTER'
             layout.label(text="", icon_value=icon)
 
-class PHYSICS_PT_fracture_settings(PhysicButtonsPanel, Panel):
-    bl_label = "Fracture Settings"
+#class PHYSICS_PT_fracture_settings(PhysicButtonsPanel, Panel):
+#    bl_label = "Fracture Settings"
 
-    def draw(self, context):
-       layout = self.layout
-       md = context.fracture
+#    def draw(self, context):
+#       layout = self.layout
+#       md = context.fracture
 
-       layout.template_list("FRACTURE_UL_fracture_settings", "", md, "fracture_settings", md, "active_setting", rows=3)
+#       layout.template_list("FRACTURE_UL_fracture_settings", "", md, "fracture_settings", md, "active_setting", rows=3)
 
 class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
-    bl_label = "Active Fracture Settings"
+    bl_label = "Fracture Settings"
 
     def icon(self, bool):
         if bool:

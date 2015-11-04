@@ -3711,6 +3711,7 @@ static FractureSetting* create_default_setting(bDeformGroup *vgroup)
 	return fs;
 }
 
+#if 0
 static bool detect_vgroups(FractureModifierData *fmd, Object *ob)
 {
 	//use silly name prefix... S_, because other vgroups may exist too
@@ -3760,6 +3761,7 @@ static bool detect_vgroups(FractureModifierData *fmd, Object *ob)
 
 	return vgroups > 0;
 }
+#endif
 
 static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 {
@@ -3842,6 +3844,8 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 	/*HERE we must know which shard(s) to fracture... hmm shards... we should "merge" states which happen in the same frame automatically !*/
 	if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
 	{
+
+#if 0
 		//detect all vgroups(nameprefix ?) and make default settings first....
 		//if vgroups > settings, insert new settings
 		//if vgroups = settings, keep....
@@ -3849,6 +3853,7 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 		if (detect_vgroups(fmd, ob))
 			//attempt to halve here...
 			do_prehalving(fmd, ob, dm);
+#endif
 
 		//then check settings
 		if (BLI_listbase_is_empty(&fmd->fracture_settings))
@@ -4177,7 +4182,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
 	{
 		bool init = false;
-
+		//deactivate multiple settings for now, not working properly XXX TODO (also deactivated in RNA and python)
+#if 0
 		if (BLI_listbase_is_empty(&fmd->fracture_settings) && detect_vgroups(fmd, ob))
 		{
 			//attempt to halve here...
@@ -4186,6 +4192,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			fmd->shard_count = 1;
 			init = true;
 		}
+#endif
 
 		final_dm = do_prefractured(fmd, ob, derivedData);
 

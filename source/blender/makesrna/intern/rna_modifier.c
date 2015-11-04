@@ -5197,6 +5197,7 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update_and_keep");
 
+#if 0
 	prop = RNA_def_property(srna, "fracture_settings", PROP_COLLECTION, PROP_NONE);
 	RNA_def_property_struct_type(prop, "FractureSettings");
 	RNA_def_property_collection_sdna(prop, NULL, "fracture_settings", NULL);
@@ -5207,6 +5208,7 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_int_sdna(prop, NULL, "active_setting");
 	RNA_def_property_ui_text(prop, "Active Fracture Setting", "Index of active fracture setting");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update_index");
+#endif
 
 	prop = RNA_def_property(srna, "use_compounds", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyModifier_use_compounds_set");
