@@ -42,6 +42,7 @@ incs = [
     '../blenkernel',
     '../blenlib',
     '../blenloader',
+    '../blentranslation',
     '../compositor',
     '../editors/include',
     '../gpu',
@@ -55,7 +56,8 @@ incs = [
     ]
 incs = ' '.join(incs)
 
-defs = env['BF_GL_DEFINITIONS']
+defs = []
+defs += env['BF_GL_DEFINITIONS']
 
 if env['WITH_BF_PYTHON']:
     defs.append('WITH_PYTHON')

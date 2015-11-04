@@ -995,6 +995,7 @@ public:
 				VLOG(2) << "Loaded kernel from " << clbin << ".";
 			}
 			else {
+				VLOG(2) << "Kernel file " << clbin << " either doesn't exist or failed to be loaded by driver.";
 				string init_kernel_source = "#include \"kernels/opencl/kernel.cl\" // " + kernel_md5 + "\n";
 
 				/* If does not exist or loading binary failed, compile kernel. */
@@ -1605,7 +1606,7 @@ protected:
 		 * mega kernel is not getting feature-based optimizations.
 		 *
 		 * Ideally we need always compile kernel with as less features
-		 * enabed as possible to keep performance at it's max.
+		 * enabled as possible to keep performance at it's max.
 		 */
 		return "";
 	}

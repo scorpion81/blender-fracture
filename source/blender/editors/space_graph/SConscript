@@ -34,9 +34,9 @@ incs = [
     env['BF_GLEW_INC'],
     '#/intern/glew-mx',
     '../include',
-    '../../blenfont',
     '../../blenkernel',
     '../../blenlib',
+    '../../blentranslation',
     '../../gpu',
     '../../imbuf',
     '../../makesdna',
@@ -44,7 +44,8 @@ incs = [
     '../../windowmanager',
     ]
 
-defs = env['BF_GL_DEFINITIONS']
+defs = []
+defs += env['BF_GL_DEFINITIONS']
 
 if env['WITH_BF_AUDASPACE']:
     defs += env['BF_AUDASPACE_DEF']

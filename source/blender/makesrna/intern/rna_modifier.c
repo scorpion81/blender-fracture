@@ -41,7 +41,7 @@
 
 #include "BLI_math.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "BKE_animsys.h"
 #include "BKE_data_transfer.h"
@@ -94,7 +94,7 @@ EnumPropertyItem modifier_type_items[] = {
 	{0, "", 0, N_("Deform"), ""},
 	{eModifierType_Armature, "ARMATURE", ICON_MOD_ARMATURE, "Armature", ""},
 	{eModifierType_Cast, "CAST", ICON_MOD_CAST, "Cast", ""},
-    {eModifierType_CorrectiveSmooth, "CORRECTIVE_SMOOTH", ICON_MOD_SMOOTH, "Corrective Smooth", ""},
+	{eModifierType_CorrectiveSmooth, "CORRECTIVE_SMOOTH", ICON_MOD_SMOOTH, "Corrective Smooth", ""},
 	{eModifierType_Curve, "CURVE", ICON_MOD_CURVE, "Curve", ""},
 	{eModifierType_Displace, "DISPLACE", ICON_MOD_DISPLACE, "Displace", ""},
 	{eModifierType_Hook, "HOOK", ICON_HOOK, "Hook", ""},
@@ -628,9 +628,11 @@ RNA_MOD_OBJECT_SET(Shrinkwrap, auxTarget, OB_MESH);
 static void rna_HookModifier_object_set(PointerRNA *ptr, PointerRNA value)
 {
 	HookModifierData *hmd = ptr->data;
+	Object *ob = (Object *)value.data;
 
-	hmd->object = (Object *)value.data;
-	BKE_object_modifier_hook_reset((Object *)ptr->id.data, hmd);
+	hmd->object = ob;
+	id_lib_extern((ID *)ob);
+	BKE_object_modifier_hook_reset(ob, hmd);
 }
 
 static PointerRNA rna_UVProjector_object_get(PointerRNA *ptr)
@@ -641,8 +643,10 @@ static PointerRNA rna_UVProjector_object_get(PointerRNA *ptr)
 
 static void rna_UVProjector_object_set(PointerRNA *ptr, PointerRNA value)
 {
-	Object **ob = (Object **)ptr->data;
-	*ob = value.data;
+	Object **ob_p = (Object **)ptr->data;
+	Object *ob = (Object *)value.data;
+	id_lib_extern((ID *)ob);
+	*ob_p = ob;
 }
 
 #undef RNA_MOD_OBJECT_SET
@@ -1643,7 +1647,7 @@ static void rna_def_modifier_warp(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "falloff_type", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_items(prop, modifier_warp_falloff_items);
 	RNA_def_property_ui_text(prop, "Falloff Type", "");
-	RNA_def_property_translation_context(prop, BLF_I18NCONTEXT_ID_CURVE); /* Abusing id_curve :/ */
+	RNA_def_property_translation_context(prop, BLT_I18NCONTEXT_ID_CURVE); /* Abusing id_curve :/ */
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "falloff_radius", PROP_FLOAT, PROP_UNSIGNED | PROP_DISTANCE);
@@ -1942,7 +1946,7 @@ static void rna_def_modifier_decimate(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "angle_limit", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "angle");
 	RNA_def_property_range(prop, 0, DEG2RAD(180));
-	RNA_def_property_ui_range(prop, 0, DEG2RAD(180), 100, 2);
+	RNA_def_property_ui_range(prop, 0, DEG2RAD(180), 10, 2);
 	RNA_def_property_ui_text(prop, "Angle Limit", "Only dissolve angles below this (planar only)");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
@@ -2189,7 +2193,7 @@ static void rna_def_modifier_hook(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "falloff_type", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_items(prop, modifier_warp_falloff_items);  /* share the enum */
 	RNA_def_property_ui_text(prop, "Falloff Type", "");
-	RNA_def_property_translation_context(prop, BLF_I18NCONTEXT_ID_CURVE); /* Abusing id_curve :/ */
+	RNA_def_property_translation_context(prop, BLT_I18NCONTEXT_ID_CURVE); /* Abusing id_curve :/ */
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "falloff_radius", PROP_FLOAT, PROP_DISTANCE);
@@ -2413,7 +2417,7 @@ static void rna_def_modifier_edgesplit(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "split_angle", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_range(prop, 0.0f, DEG2RADF(180.0f));
-	RNA_def_property_ui_range(prop, 0.0f, DEG2RADF(180.0f), 100, 2);
+	RNA_def_property_ui_range(prop, 0.0f, DEG2RADF(180.0f), 10, 2);
 	RNA_def_property_ui_text(prop, "Split Angle", "Angle above which to split edges");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
@@ -2438,9 +2442,11 @@ static void rna_def_modifier_displace(BlenderRNA *brna)
 		{MOD_DISP_DIR_Y, "Y", 0, "Y", "Use the texture's intensity value to displace in the Y direction"},
 		{MOD_DISP_DIR_Z, "Z", 0, "Z", "Use the texture's intensity value to displace in the Z direction"},
 		{MOD_DISP_DIR_NOR, "NORMAL", 0, "Normal",
-		                   "Use the texture's intensity value to displace in the normal direction"},
+		 "Use the texture's intensity value to displace along the vertex normal"},
+		{MOD_DISP_DIR_CLNOR, "CUSTOM_NORMAL", 0, "Custom Normal",
+		 "Use the texture's intensity value to displace along the (averaged) custom normal (falls back to vertex)"},
 		{MOD_DISP_DIR_RGB_XYZ, "RGB_TO_XYZ", 0, "RGB to XYZ",
-		                       "Use the texture's RGB values to displace the mesh in the XYZ direction"},
+		 "Use the texture's RGB values to displace the mesh in the XYZ direction"},
 		{0, NULL, 0, NULL, NULL}
 	};
 
@@ -3248,7 +3254,7 @@ static void rna_def_modifier_bevel(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "angle_limit", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "bevel_angle");
 	RNA_def_property_range(prop, 0.0f, DEG2RADF(180.0f));
-	RNA_def_property_ui_range(prop, 0.0f, DEG2RADF(180.0f), 100, 2);
+	RNA_def_property_ui_range(prop, 0.0f, DEG2RADF(180.0f), 10, 2);
 	RNA_def_property_ui_text(prop, "Angle", "Angle above which to bevel edges");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
@@ -3498,7 +3504,7 @@ static void rna_def_modifier_simpledeform(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "factor", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_range(prop, -FLT_MAX, FLT_MAX);
-	RNA_def_property_ui_range(prop, -10, 10, 1, 3);
+	RNA_def_property_ui_range(prop, -10.0, 10.0, 1.0, 3);
 	RNA_def_property_ui_text(prop, "Factor", "Amount to deform object");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
@@ -3506,7 +3512,7 @@ static void rna_def_modifier_simpledeform(BlenderRNA *brna)
 	RNA_def_property_float_sdna(prop, NULL, "factor");
 	RNA_def_property_range(prop, -FLT_MAX, FLT_MAX);
 	RNA_def_property_float_default(prop, DEG2RADF(45.0f));
-	RNA_def_property_ui_range(prop, -M_PI, M_PI, DEG2RAD(1), 3);
+	RNA_def_property_ui_range(prop, DEG2RAD(-360.0), DEG2RAD(360.0), 10.0, 3);
 	RNA_def_property_ui_text(prop, "Angle", "Angle of deformation");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
@@ -3702,7 +3708,7 @@ static void rna_def_modifier_screw(BlenderRNA *brna)
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "angle", PROP_FLOAT, PROP_ANGLE);
-	RNA_def_property_ui_range(prop, -M_PI * 2, M_PI * 2, 2, -1);
+	RNA_def_property_ui_range(prop, -M_PI * 2, M_PI * 2, 10, -1);
 	RNA_def_property_range(prop, -FLT_MAX, FLT_MAX);
 	RNA_def_property_ui_text(prop, "Angle", "Angle of revolution");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
@@ -3919,7 +3925,7 @@ static void rna_def_modifier_weightvgedit(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "falloff_type", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_items(prop, weightvg_edit_falloff_type_items);
 	RNA_def_property_ui_text(prop, "Falloff Type", "How weights are mapped to their new values");
-	RNA_def_property_translation_context(prop, BLF_I18NCONTEXT_ID_CURVE); /* Abusing id_curve :/ */
+	RNA_def_property_translation_context(prop, BLT_I18NCONTEXT_ID_CURVE); /* Abusing id_curve :/ */
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "use_add", PROP_BOOLEAN, PROP_NONE);
@@ -4125,7 +4131,7 @@ static void rna_def_modifier_weightvgproximity(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "falloff_type", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_items(prop, weightvg_proximity_falloff_type_items);
 	RNA_def_property_ui_text(prop, "Falloff Type", "How weights are mapped to their new values");
-	RNA_def_property_translation_context(prop, BLF_I18NCONTEXT_ID_CURVE); /* Abusing id_curve :/ */
+	RNA_def_property_translation_context(prop, BLT_I18NCONTEXT_ID_CURVE); /* Abusing id_curve :/ */
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	/* Common masking properties. */

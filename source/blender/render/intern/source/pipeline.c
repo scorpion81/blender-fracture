@@ -55,7 +55,7 @@
 #include "BLI_rand.h"
 #include "BLI_callbacks.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "BKE_animsys.h"  /* <------ should this be here?, needed for sequencer update */
 #include "BKE_camera.h"
@@ -531,6 +531,17 @@ void RE_FreeAllRender(void)
 	/* finalize Freestyle */
 	FRS_exit();
 #endif
+}
+
+void RE_FreeAllPersistentData(void)
+{
+	Render *re;
+	for (re = RenderGlobal.renderlist.first; re != NULL; re = re->next) {
+		if ((re->r.mode & R_PERSISTENT_DATA) != 0 && re->engine != NULL) {
+			RE_engine_free(re->engine);
+			re->engine = NULL;
+		}
+	}
 }
 
 /* on file load, free all re */
@@ -1270,8 +1281,11 @@ static void main_render_result_new(Render *re)
 
 	BLI_rw_mutex_unlock(&re->resultmutex);
 
-	if (re->result->do_exr_tile)
-		render_result_exr_file_begin(re);
+	if (re->result) {
+		if (re->result->do_exr_tile) {
+			render_result_exr_file_begin(re);
+		}
+	}
 }
 
 static void threaded_tile_processor(Render *re)
@@ -2094,9 +2108,10 @@ static void ntree_render_scenes(Render *re)
 /* bad call... need to think over proper method still */
 static void render_composit_stats(void *UNUSED(arg), const char *str)
 {
-	R.i.infostr = str;
-	R.stats_draw(R.sdh, &R.i);
-	R.i.infostr = NULL;
+	RenderStats i;
+	memcpy(&i, &R.i, sizeof(i));
+	i.infostr = str;
+	R.stats_draw(R.sdh, &i);
 }
 
 #ifdef WITH_FREESTYLE
@@ -3154,11 +3169,17 @@ void RE_RenderFreestyleStrokes(Render *re, Main *bmain, Scene *scene, int render
 void RE_RenderFreestyleExternal(Render *re)
 {
 	if (!re->test_break(re->tbh)) {
-		RE_Database_FromScene(re, re->main, re->scene, re->lay, 1);
-		RE_Database_Preprocess(re);
+		RenderView *rv;
+
 		init_freestyle(re);
-		add_freestyle(re, 1);
-		RE_Database_Free(re);
+
+		for (rv = re->result->views.first; rv; rv = rv->next) {
+			RE_SetActiveRenderView(re, rv->name);
+			RE_Database_FromScene(re, re->main, re->scene, re->lay, 1);
+			RE_Database_Preprocess(re);
+			add_freestyle(re, 1);
+			RE_Database_Free(re);
+		}
 	}
 }
 #endif
@@ -3466,6 +3487,18 @@ static void get_videos_dimensions(Render *re, RenderData *rd, size_t *r_width, s
 	BKE_scene_multiview_videos_dimensions_get(rd, width, height, r_width, r_height);
 }
 
+static void re_movie_free_all(Render *re, bMovieHandle *mh, size_t totvideos)
+{
+	size_t i;
+
+	for (i = 0; i < totvideos; i++) {
+		mh->end_movie(re->movie_ctx_arr[i]);
+		mh->context_free(re->movie_ctx_arr[i]);
+	}
+
+	MEM_SAFE_FREE(re->movie_ctx_arr);
+}
+
 /* saves images to disk */
 void RE_BlenderAnim(Render *re, Main *bmain, Scene *scene, Object *camera_override,
                     unsigned int lay_override, int sfra, int efra, int tfra)
@@ -3490,15 +3523,10 @@ void RE_BlenderAnim(Render *re, Main *bmain, Scene *scene, Object *camera_overri
 		BKE_report(re->reports, RPT_ERROR, "Frame Server only support stereo output for multiview rendering");
 		return;
 	}
-	
-	/* ugly global still... is to prevent renderwin events and signal subsurfs etc to make full resol */
-	/* is also set by caller renderwin.c */
-	G.is_rendering = true;
-
-	re->flag |= R_ANIMATION;
 
 	if (is_movie) {
 		size_t i, width, height;
+		bool is_error = false;
 
 		get_videos_dimensions(re, &rd, &width, &height);
 
@@ -3510,10 +3538,24 @@ void RE_BlenderAnim(Render *re, Main *bmain, Scene *scene, Object *camera_overri
 
 			re->movie_ctx_arr[i] = mh->context_create();
 
-			if (!mh->start_movie(re->movie_ctx_arr[i], scene, &re->r, width, height, re->reports, false, suffix))
-				G.is_break = true;
+			if (!mh->start_movie(re->movie_ctx_arr[i], scene, &re->r, width, height, re->reports, false, suffix)) {
+				is_error = true;
+				break;
+			}
+		}
+
+		if (is_error) {
+			/* report is handled above */
+			re_movie_free_all(re, mh, i + 1);
+			return;
 		}
 	}
+
+	/* ugly global still... is to prevent renderwin events and signal subsurfs etc to make full resol */
+	/* is also set by caller renderwin.c */
+	G.is_rendering = true;
+
+	re->flag |= R_ANIMATION;
 
 	if (mh && mh->get_next_frame) {
 		/* MULTIVIEW_TODO:
@@ -3698,15 +3740,7 @@ void RE_BlenderAnim(Render *re, Main *bmain, Scene *scene, Object *camera_overri
 	
 	/* end movie */
 	if (is_movie) {
-		size_t i;
-		for (i = 0; i < totvideos; i++) {
-			mh->end_movie(re->movie_ctx_arr[i]);
-			mh->context_free(re->movie_ctx_arr[i]);
-		}
-
-		if (re->movie_ctx_arr) {
-			MEM_freeN(re->movie_ctx_arr);
-		}
+		re_movie_free_all(re, mh, totvideos);
 	}
 	
 	if (totskipped && totrendered == 0)

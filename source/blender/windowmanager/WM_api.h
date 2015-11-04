@@ -130,6 +130,7 @@ void		WM_paint_cursor_end(struct wmWindowManager *wm, void *handle);
 void		WM_paint_cursor_tag_redraw(struct wmWindow *win, struct ARegion *ar);
 
 void		WM_cursor_warp		(struct wmWindow *win, int x, int y);
+void		WM_cursor_compatible_xy(wmWindow *win, int *x, int *y);
 float		WM_cursor_pressure	(const struct wmWindow *win);
 
 			/* event map */
@@ -208,7 +209,9 @@ void wm_event_init_from_window(struct wmWindow *win, struct wmEvent *event);
 
 			/* at maximum, every timestep seconds it triggers event_type events */
 struct wmTimer *WM_event_add_timer(struct wmWindowManager *wm, struct wmWindow *win, int event_type, double timestep);
+struct wmTimer *WM_event_add_timer_notifier(struct wmWindowManager *wm, struct wmWindow *win, unsigned int type, double timestep);
 void		WM_event_remove_timer(struct wmWindowManager *wm, struct wmWindow *win, struct wmTimer *timer);
+void		WM_event_remove_timer_notifier(struct wmWindowManager *wm, struct wmWindow *win, struct wmTimer *timer);
 void        WM_event_timer_sleep(struct wmWindowManager *wm, struct wmWindow *win, struct wmTimer *timer, bool do_sleep);
 
 		/* operator api, default callbacks */
@@ -276,7 +279,7 @@ void		WM_operator_properties_create(struct PointerRNA *ptr, const char *opstring
 void		WM_operator_properties_create_ptr(struct PointerRNA *ptr, struct wmOperatorType *ot);
 void        WM_operator_properties_clear(struct PointerRNA *ptr);
 void		WM_operator_properties_free(struct PointerRNA *ptr);
-void		WM_operator_properties_filesel(struct wmOperatorType *ot, int filter, short type, short action, short flag, short display);
+void		WM_operator_properties_filesel(struct wmOperatorType *ot, int filter, short type, short action, short flag, short display, short sort);
 void        WM_operator_properties_border(struct wmOperatorType *ot);
 void        WM_operator_properties_border_to_rcti(struct wmOperator *op, struct rcti *rect);
 void        WM_operator_properties_border_to_rctf(struct wmOperator *op, rctf *rect);
@@ -415,7 +418,7 @@ enum {
 	WM_JOB_TYPE_OBJECT_SIM_FLUID,
 	WM_JOB_TYPE_OBJECT_BAKE_TEXTURE,
 	WM_JOB_TYPE_OBJECT_BAKE,
-	WM_JOB_TYPE_FILESEL_THUMBNAIL,
+	WM_JOB_TYPE_FILESEL_READDIR,
 	WM_JOB_TYPE_CLIP_BUILD_PROXY,
 	WM_JOB_TYPE_CLIP_TRACK_MARKERS,
 	WM_JOB_TYPE_CLIP_SOLVE_CAMERA,

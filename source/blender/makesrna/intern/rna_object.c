@@ -545,11 +545,14 @@ static void rna_Object_dup_group_set(PointerRNA *ptr, PointerRNA value)
 	/* must not let this be set if the object belongs in this group already,
 	 * thus causing a cycle/infinite-recursion leading to crashes on load [#25298]
 	 */
-	if (BKE_group_object_exists(grp, ob) == 0)
+	if (BKE_group_object_exists(grp, ob) == 0) {
 		ob->dup_group = grp;
-	else
+		id_lib_extern((ID *)grp);
+	}
+	else {
 		BKE_report(NULL, RPT_ERROR,
 		           "Cannot set dupli-group as object belongs in group being instanced, thus causing a cycle");
+	}
 }
 
 static void rna_VertexGroup_name_set(PointerRNA *ptr, const char *value)
@@ -720,7 +723,7 @@ static void rna_Object_active_material_set(PointerRNA *ptr, PointerRNA value)
 	Object *ob = (Object *)ptr->id.data;
 
 	DAG_id_tag_update(value.data, 0);
-	assign_material(ob, value.data, ob->actcol, BKE_MAT_ASSIGN_USERPREF);
+	assign_material(ob, value.data, ob->actcol, BKE_MAT_ASSIGN_EXISTING);
 }
 
 static int rna_Object_active_material_editable(PointerRNA *ptr)
@@ -892,7 +895,7 @@ static void rna_MaterialSlot_material_set(PointerRNA *ptr, PointerRNA value)
 	Object *ob = (Object *)ptr->id.data;
 	int index = (Material **)ptr->data - ob->mat;
 
-	assign_material(ob, value.data, index + 1, BKE_MAT_ASSIGN_USERPREF);
+	assign_material(ob, value.data, index + 1, BKE_MAT_ASSIGN_EXISTING);
 }
 
 static int rna_MaterialSlot_link_get(PointerRNA *ptr)

@@ -85,6 +85,11 @@ public:
 	float GetActionFrame(short layer);
 
 	/**
+	 * Gets the name of the current action
+	 */        
+	const char *GetActionName(short layer);
+
+	/**
 	 * Sets the current frame of an action
 	 */
 	void SetActionFrame(short layer, float frame);
@@ -123,11 +128,6 @@ public:
 	 * Update any running actions
 	 */
 	void Update(float);
-
-	/**
-	 * Update object IPOs (note: not thread-safe!)
-	 */
-	void UpdateIPOs();
 
 #ifdef WITH_CXX_GUARDEDALLOC
 	MEM_CXX_CLASS_ALLOC_FUNCS("GE:BL_ActionManager")

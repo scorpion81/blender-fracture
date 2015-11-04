@@ -277,6 +277,11 @@ public:
 	float GetActionFrame(short layer);
 
 	/**
+	 * Gets the name of the current action
+	 */
+	const char *GetActionName(short layer);
+
+	/**
 	 * Sets the current frame of an action
 	 */
 	void SetActionFrame(short layer, float frame);
@@ -315,12 +320,6 @@ public:
 	 * Kick the object's action manager
 	 */
 	void UpdateActionManager(float curtime);
-
-	/**
-	 * Have the action manager update IPOs
-	 * note: not thread-safe!
-	 */
-	void UpdateActionIPOs();
 
 	/*********************************
 	 * End Animation API
@@ -1037,6 +1036,7 @@ public:
 	KX_PYMETHOD_DOC(KX_GameObject, playAction);
 	KX_PYMETHOD_DOC(KX_GameObject, stopAction);
 	KX_PYMETHOD_DOC(KX_GameObject, getActionFrame);
+	KX_PYMETHOD_DOC(KX_GameObject, getActionName);
 	KX_PYMETHOD_DOC(KX_GameObject, setActionFrame);
 	KX_PYMETHOD_DOC(KX_GameObject, isPlayingAction);
 	

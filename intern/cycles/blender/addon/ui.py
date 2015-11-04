@@ -438,6 +438,7 @@ class CyclesRender_PT_layer_passes(CyclesButtonsPanel, Panel):
 class CyclesRender_PT_views(CyclesButtonsPanel, Panel):
     bl_label = "Views"
     bl_context = "render_layer"
+    bl_options = {'DEFAULT_CLOSED'}
 
     def draw_header(self, context):
         rd = context.scene.render
@@ -1163,12 +1164,16 @@ class CyclesMaterial_PT_settings(CyclesButtonsPanel, Panel):
         col.prop(mat, "alpha")
 
         col.separator()
-        col.prop(mat, "pass_index")
+        col.label("Viewport Alpha:")
+        col.prop(mat.game_settings, "alpha_blend", text="")
 
         col = split.column(align=True)
         col.label("Viewport Specular:")
         col.prop(mat, "specular_color", text="")
         col.prop(mat, "specular_hardness", text="Hardness")
+
+        col.separator()
+        col.prop(mat, "pass_index")
 
 
 class CyclesTexture_PT_context(CyclesButtonsPanel, Panel):

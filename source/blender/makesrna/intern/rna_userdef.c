@@ -49,7 +49,7 @@
 #include "WM_api.h"
 #include "WM_types.h"
 
-#include "BLF_translation.h"
+#include "BLT_lang.h"
 #include "GPU_buffers.h"
 
 #ifdef WITH_CYCLES
@@ -157,7 +157,7 @@ static void rna_userdef_virtual_pixel_update(Main *UNUSED(bmain), Scene *UNUSED(
 static void rna_userdef_language_update(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *UNUSED(ptr))
 {
 	BLF_cache_clear();
-	BLF_lang_set(NULL);
+	BLT_lang_set(NULL);
 	UI_reinit_font();
 }
 
@@ -646,6 +646,9 @@ static EnumPropertyItem *rna_userdef_audio_device_itemf(bContext *UNUSED(C), Poi
 #endif
 #endif
 
+	/* may be unused */
+	UNUSED_VARS(index, audio_device_items);
+
 	RNA_enum_item_end(&item, &totitem);
 	*r_free = true;
 
@@ -656,7 +659,7 @@ static EnumPropertyItem *rna_userdef_audio_device_itemf(bContext *UNUSED(C), Poi
 static EnumPropertyItem *rna_lang_enum_properties_itemf(bContext *UNUSED(C), PointerRNA *UNUSED(ptr),
                                                         PropertyRNA *UNUSED(prop), bool *UNUSED(r_free))
 {
-	return BLF_RNA_lang_enum_properties();
+	return BLT_lang_RNA_enum_properties();
 }
 #endif
 
@@ -4294,7 +4297,7 @@ static void rna_def_userdef_system(BlenderRNA *brna)
 	RNA_def_property_enum_sdna(prop, NULL, "opensubdiv_compute_type");
 	RNA_def_property_enum_items(prop, opensubdiv_compute_type_items);
 	RNA_def_property_enum_funcs(prop, NULL, NULL, "rna_userdef_opensubdiv_compute_type_itemf");
-	RNA_def_property_ui_text(prop, "OpenSubdiv Compute Type", "Type of computer backend used with OpenSubdiv");
+	RNA_def_property_ui_text(prop, "OpenSubdiv Compute Type", "Type of computer back-end used with OpenSubdiv");
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_PROPERTIES, "rna_userdef_opensubdiv_update");
 #endif
 }

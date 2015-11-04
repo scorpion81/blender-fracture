@@ -53,7 +53,7 @@
 #include "BLI_blenlib.h"
 #include "BLI_array.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "BKE_context.h"
 #include "BKE_customdata.h"
@@ -4119,7 +4119,13 @@ static int uv_seams_from_islands_exec(bContext *C, wmOperator *op)
 		}
 	}
 
-	me->drawflag |= ME_DRAWSEAMS;
+	if (mark_seams) {
+		me->drawflag |= ME_DRAWSEAMS;
+	}
+	if (mark_sharp) {
+		me->drawflag |= ME_DRAWSHARP;
+	}
+
 
 	BM_uv_vert_map_free(vmap);
 
@@ -4189,12 +4195,16 @@ static int uv_mark_seam_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSE
 	uiPopupMenu *pup;
 	uiLayout *layout;
 
+	if (RNA_struct_property_is_set(op->ptr, "clear")) {
+		return uv_mark_seam_exec(C, op);
+	}
+
 	pup = UI_popup_menu_begin(C, IFACE_("Edges"), ICON_NONE);
 	layout = UI_popup_menu_layout(pup);
 
 	uiLayoutSetOperatorContext(layout, WM_OP_EXEC_DEFAULT);
-	uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Mark Seam"), ICON_NONE, op->type->idname, "clear", false);
-	uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Clear Seam"), ICON_NONE, op->type->idname, "clear", true);
+	uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Mark Seam"), ICON_NONE, op->type->idname, "clear", false);
+	uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Clear Seam"), ICON_NONE, op->type->idname, "clear", true);
 
 	UI_popup_menu_end(C, pup);
 

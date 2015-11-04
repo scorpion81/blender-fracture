@@ -74,6 +74,7 @@
 #include "BKE_particle.h"
 #include "BKE_pointcache.h"
 #include "BKE_scene.h"
+#include "BKE_subsurf.h"
 #include "BKE_unit.h"
 #include "BKE_tracking.h"
 
@@ -4027,9 +4028,15 @@ static void draw_mesh_fancy(Scene *scene, ARegion *ar, View3D *v3d, RegionView3D
 	}
 	
 	/* check polys instead of tessfaces because of dyntopo where tessfaces don't exist */
-	no_edges = (dm->getNumEdges(dm) == 0);
-	no_faces = (dm->getNumPolys(dm) == 0);
-	
+	if (dm->type == DM_TYPE_CCGDM) {
+		no_edges = !subsurf_has_edges(dm);
+		no_faces = !subsurf_has_faces(dm);
+	}
+	else {
+		no_edges = (dm->getNumEdges(dm) == 0);
+		no_faces = (dm->getNumPolys(dm) == 0);
+	}
+
 	/* vertexpaint, faceselect wants this, but it doesnt work for shaded? */
 	glFrontFace((ob->transflag & OB_NEG_SCALE) ? GL_CW : GL_CCW);
 
@@ -7226,6 +7233,9 @@ static void draw_bounding_volume(Object *ob, char type)
 	else if (ob->type == OB_ARMATURE) {
 		bb = BKE_armature_boundbox_get(ob);
 	}
+	else if (ob->type == OB_LATTICE) {
+		bb = BKE_lattice_boundbox_get(ob);
+	}
 	else {
 		const float min[3] = {-1.0f, -1.0f, -1.0f}, max[3] = {1.0f, 1.0f, 1.0f};
 		bb = &bb_local;
@@ -7643,7 +7653,9 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 		}
 	}
 
-	if ((md = modifiers_findByType(ob, eModifierType_Smoke)) && (modifier_isEnabled(scene, md, eModifierMode_Realtime))) {
+	if (((base->flag & OB_FROMDUPLI) == 0) &&
+	    (md = modifiers_findByType(ob, eModifierType_Smoke)) &&
+	    (modifier_isEnabled(scene, md, eModifierMode_Realtime))) {
 		smd = (SmokeModifierData *)md;
 
 		if (smd->domain) {

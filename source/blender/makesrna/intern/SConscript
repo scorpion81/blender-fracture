@@ -53,7 +53,8 @@ makesrna_tool = env.Clone()
 rna = env.Clone()
 makesrna_tool.Append(CCFLAGS = '-DBASE_HEADER="\\"source/blender/makesrna/\\"" ')
 
-defs = env['BF_GL_DEFINITIONS']
+defs = []
+defs += env['BF_GL_DEFINITIONS']
 
 incs = [
     '#/intern/guardedalloc',
@@ -64,6 +65,7 @@ incs = [
     '../../blenfont',
     '../../blenkernel',
     '../../blenlib',
+    '../../blentranslation',
     '../../bmesh',
     '../../depsgraph',
     '../../editors/include',
@@ -160,6 +162,9 @@ if env['WITH_BF_FREESTYLE']:
 if env['WITH_BF_OPENSUBDIV']:
     defs.append('WITH_OPENSUBDIV')
     incs += ' #intern/opensubdiv'
+
+if env['WITH_BF_AUDASPACE']:
+    defs.append('WITH_AUDASPACE')
 
 if env['OURPLATFORM'] == 'linux':
     cflags='-pthread'

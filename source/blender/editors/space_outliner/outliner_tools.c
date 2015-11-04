@@ -263,7 +263,90 @@ static void outliner_do_libdata_operation(bContext *C, Scene *scene, SpaceOops *
 	}
 }
 
-/* */
+/* ******************************************** */
+typedef enum eOutliner_PropSceneOps {
+	OL_SCENE_OP_DELETE = 1
+} eOutliner_PropSceneOps;
+
+static EnumPropertyItem prop_scene_op_types[] = {
+	{OL_SCENE_OP_DELETE, "DELETE", ICON_X, "Delete", ""},
+	{0, NULL, 0, NULL, NULL}
+};
+
+static bool outliner_do_scene_operation(
+        bContext *C, eOutliner_PropSceneOps event, ListBase *lb,
+        bool (*operation_cb)(bContext *, eOutliner_PropSceneOps, TreeElement *, TreeStoreElem *))
+{
+	TreeElement *te;
+	TreeStoreElem *tselem;
+	bool success = false;
+
+	for (te = lb->first; te; te = te->next) {
+		tselem = TREESTORE(te);
+		if (tselem->flag & TSE_SELECTED) {
+			if (operation_cb(C, event, te, tselem)) {
+				success = true;
+			}
+		}
+	}
+
+	return success;
+}
+
+static bool scene_cb(bContext *C, eOutliner_PropSceneOps event, TreeElement *UNUSED(te), TreeStoreElem *tselem)
+{
+	Scene *scene = (Scene *)tselem->id;
+
+	if (event == OL_SCENE_OP_DELETE) {
+		if (ED_screen_delete_scene(C, scene)) {
+			WM_event_add_notifier(C, NC_SCENE | NA_REMOVED, scene);
+		}
+		else {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+static int outliner_scene_operation_exec(bContext *C, wmOperator *op)
+{
+	SpaceOops *soops = CTX_wm_space_outliner(C);
+	const eOutliner_PropSceneOps event = RNA_enum_get(op->ptr, "type");
+
+	if (outliner_do_scene_operation(C, event, &soops->tree, scene_cb) == false) {
+		return OPERATOR_CANCELLED;
+	}
+
+	if (event == OL_SCENE_OP_DELETE) {
+		outliner_cleanup_tree(soops);
+		ED_undo_push(C, "Delete Scene(s)");
+	}
+	else {
+		BLI_assert(0);
+		return OPERATOR_CANCELLED;
+	}
+
+	return OPERATOR_FINISHED;
+}
+
+void OUTLINER_OT_scene_operation(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Outliner Scene Operation";
+	ot->idname = "OUTLINER_OT_scene_operation";
+	ot->description = "Context menu for scene operations";
+
+	/* callbacks */
+	ot->invoke = WM_menu_invoke;
+	ot->exec = outliner_scene_operation_exec;
+	ot->poll = ED_operator_outliner_active;
+
+	ot->flag = 0;
+
+	ot->prop = RNA_def_enum(ot->srna, "type", prop_scene_op_types, 0, "Scene Operation", "");
+}
+/* ******************************************** */
 
 static void object_select_cb(bContext *UNUSED(C), Scene *scene, TreeElement *te,
                              TreeStoreElem *UNUSED(tsep), TreeStoreElem *tselem)
@@ -433,15 +516,20 @@ static void group_instance_cb(bContext *C, Scene *scene, TreeElement *UNUSED(te)
 	id_lib_extern(&group->id);
 }
 
-void outliner_do_object_operation(bContext *C, Scene *scene_act, SpaceOops *soops, ListBase *lb, 
-                                  void (*operation_cb)(bContext *C, Scene *scene, TreeElement *,
-                                                       TreeStoreElem *, TreeStoreElem *))
+/**
+ * \param select_recurse: Set to false for operations which are already recursively operating on their children.
+ */
+void outliner_do_object_operation_ex(
+        bContext *C, Scene *scene_act, SpaceOops *soops, ListBase *lb,
+        void (*operation_cb)(bContext *C, Scene *scene, TreeElement *,
+                             TreeStoreElem *, TreeStoreElem *),
+        bool select_recurse)
 {
 	TreeElement *te;
-	TreeStoreElem *tselem;
 	
 	for (te = lb->first; te; te = te->next) {
-		tselem = TREESTORE(te);
+		TreeStoreElem *tselem = TREESTORE(te);
+		bool select_handled = false;
 		if (tselem->flag & TSE_SELECTED) {
 			if (tselem->type == 0 && te->idcode == ID_OB) {
 				// when objects selected in other scenes... dunno if that should be allowed
@@ -453,12 +541,23 @@ void outliner_do_object_operation(bContext *C, Scene *scene_act, SpaceOops *soop
 				 * only use 'scene_act' when 'scene_owner' is NULL, which can happen when the
 				 * outliner isn't showing scenes: Visible Layer draw mode for eg. */
 				operation_cb(C, scene_owner ? scene_owner : scene_act, te, NULL, tselem);
+				select_handled = true;
 			}
 		}
 		if (TSELEM_OPEN(tselem, soops)) {
-			outliner_do_object_operation(C, scene_act, soops, &te->subtree, operation_cb);
+			if ((select_handled == false) || select_recurse) {
+				outliner_do_object_operation_ex(C, scene_act, soops, &te->subtree, operation_cb, select_recurse);
+			}
 		}
 	}
+}
+
+void outliner_do_object_operation(
+        bContext *C, Scene *scene_act, SpaceOops *soops, ListBase *lb,
+        void (*operation_cb)(bContext *C, Scene *scene, TreeElement *,
+                             TreeStoreElem *, TreeStoreElem *))
+{
+	outliner_do_object_operation_ex(C, scene_act, soops, lb, operation_cb, true);
 }
 
 /* ******************************************** */
@@ -793,7 +892,7 @@ static int outliner_object_operation_exec(bContext *C, wmOperator *op)
 	}
 	else if (event == OL_OP_SELECT_HIERARCHY) {
 		Scene *sce = scene;  // to be able to delete, scenes are set...
-		outliner_do_object_operation(C, scene, soops, &soops->tree, object_select_hierarchy_cb);
+		outliner_do_object_operation_ex(C, scene, soops, &soops->tree, object_select_hierarchy_cb, false);
 		if (scene != sce) {
 			ED_screen_set_scene(C, CTX_wm_screen(C), sce);
 		}	
@@ -820,7 +919,7 @@ static int outliner_object_operation_exec(bContext *C, wmOperator *op)
 		WM_event_add_notifier(C, NC_SCENE | ND_OB_ACTIVE, scene);
 	}
 	else if (event == OL_OP_DELETE_HIERARCHY) {
-		outliner_do_object_operation(C, scene, soops, &soops->tree, object_delete_hierarchy_cb);
+		outliner_do_object_operation_ex(C, scene, soops, &soops->tree, object_delete_hierarchy_cb, false);
 
 		/* XXX: See OL_OP_DELETE comment above. */
 		outliner_cleanup_tree(soops);
@@ -1593,8 +1692,12 @@ static int do_outliner_operation_event(bContext *C, Scene *scene, ARegion *ar, S
 		set_operation_types(soops, &soops->tree, &scenelevel, &objectlevel, &idlevel, &datalevel);
 		
 		if (scenelevel) {
-			//if (objectlevel || datalevel || idlevel) error("Mixed selection");
-			//else pupmenu("Scene Operations%t|Delete");
+			if (objectlevel || datalevel || idlevel) {
+				BKE_report(reports, RPT_WARNING, "Mixed selection");
+			}
+			else {
+				WM_operator_name_call(C, "OUTLINER_OT_scene_operation", WM_OP_INVOKE_REGION_WIN, NULL);
+			}
 		}
 		else if (objectlevel) {
 			WM_operator_name_call(C, "OUTLINER_OT_object_operation", WM_OP_INVOKE_REGION_WIN, NULL);

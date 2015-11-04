@@ -215,6 +215,12 @@ bool ccgSubSurf_prepareGLMesh(CCGSubSurf *ss, bool use_osd_glsl);
 void ccgSubSurf_drawGLMesh(CCGSubSurf *ss, bool fill_quads,
                            int start_partition, int num_partitions);
 
+/* Get number of base faces in a particular GL mesh. */
+int ccgSubSurf_getNumGLMeshBaseFaces(CCGSubSurf *ss);
+
+/* Get number of vertices in base faces in a particular GL mesh. */
+int ccgSubSurf_getNumGLMeshBaseFaceVerts(CCGSubSurf *ss, int face);
+
 /* Controls whether CCG are needed (Cmeaning CPU evaluation) or fully GPU compute
  * and draw is allowed.
  */
@@ -233,6 +239,10 @@ void ccgSubSurf_evaluatorFVarUV(CCGSubSurf *ss,
                                 int face_index, int S,
                                 float grid_u, float grid_v,
                                 float uv[2]);
+
+void ccgSubSurf_free_osd_mesh(CCGSubSurf *ss);
+
+void ccgSubSurf_getMinMax(CCGSubSurf *ss, float r_min[3], float r_max[3]);
 
 #endif
 

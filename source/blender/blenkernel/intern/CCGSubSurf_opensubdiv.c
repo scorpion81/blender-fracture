@@ -262,9 +262,9 @@ bool ccgSubSurf_prepareGLMesh(CCGSubSurf *ss, bool use_osd_glsl)
 		}
 
 		ccgSubSurf__updateGLMeshCoords(ss);
-
 		openSubdiv_osdGLMeshRefine(ss->osd_mesh);
 		openSubdiv_osdGLMeshSynchronize(ss->osd_mesh);
+		ss->osd_coarse_coords_invalid = false;
 
 		glBindVertexArray(ss->osd_vao);
 		glBindBuffer(GL_ARRAY_BUFFER,
@@ -306,6 +306,37 @@ void ccgSubSurf_drawGLMesh(CCGSubSurf *ss, bool fill_quads,
 		glBindBuffer(GL_ARRAY_BUFFER, 0);
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 	}
+}
+
+int ccgSubSurf_getNumGLMeshBaseFaces(CCGSubSurf *ss)
+{
+	const OpenSubdiv_TopologyRefinerDescr *topology_refiner;
+	if (ss->osd_topology_refiner != NULL) {
+		topology_refiner = ss->osd_topology_refiner;
+	}
+	else if (ss->osd_mesh != NULL) {
+		topology_refiner = openSubdiv_getGLMeshTopologyRefiner(ss->osd_mesh);
+	}
+	else {
+		return 0;
+	}
+	return openSubdiv_topologyRefinerGetNumFaces(topology_refiner);
+}
+
+/* Get number of vertices in base faces in a particular GL mesh. */
+int ccgSubSurf_getNumGLMeshBaseFaceVerts(CCGSubSurf *ss, int face)
+{
+	const OpenSubdiv_TopologyRefinerDescr *topology_refiner;
+	if (ss->osd_topology_refiner != NULL) {
+		topology_refiner = ss->osd_topology_refiner;
+	}
+	else if (ss->osd_mesh != NULL) {
+		topology_refiner = openSubdiv_getGLMeshTopologyRefiner(ss->osd_mesh);
+	}
+	else {
+		return 0;
+	}
+	return openSubdiv_topologyRefinerGetNumFaceVerts(topology_refiner, face);
 }
 
 void ccgSubSurf_setSkipGrids(CCGSubSurf *ss, bool skip_grids)
@@ -861,6 +892,33 @@ void ccgSubSurf__sync_opensubdiv(CCGSubSurf *ss)
 #ifdef DUMP_RESULT_GRIDS
 	ccgSubSurf__dumpCoords(ss);
 #endif
+}
+
+void ccgSubSurf_free_osd_mesh(CCGSubSurf *ss)
+{
+	if (ss->osd_mesh != NULL) {
+		/* TODO(sergey): Make sure free happens form the main thread! */
+		openSubdiv_deleteOsdGLMesh(ss->osd_mesh);
+		ss->osd_mesh = NULL;
+	}
+	if (ss->osd_vao != 0) {
+		glDeleteVertexArrays(1, &ss->osd_vao);
+		ss->osd_vao = 0;
+	}
+}
+
+void ccgSubSurf_getMinMax(CCGSubSurf *ss, float r_min[3], float r_max[3])
+{
+	int i;
+	BLI_assert(ss->skip_grids == true);
+	if (ss->osd_num_coarse_coords == 0) {
+		zero_v3(r_min);
+		zero_v3(r_max);
+	}
+	for (i = 0; i < ss->osd_num_coarse_coords; i++) {
+		/* Coarse coordinates has normals interleaved into the array. */
+		DO_MINMAX(ss->osd_coarse_coords[2 * i], r_min, r_max);
+	}
 }
 
 #endif  /* WITH_OPENSUBDIV */

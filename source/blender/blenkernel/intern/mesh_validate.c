@@ -241,6 +241,7 @@ bool BKE_mesh_validate_arrays(Mesh *mesh,
 		struct {
 			int verts : 1;
 			int verts_weight : 1;
+			int loops_edge : 1;
 		};
 		int as_flag;
 	} fix_flag;
@@ -564,6 +565,7 @@ bool BKE_mesh_validate_arrays(Mesh *mesh,
 						if (do_fixes) {
 							int prev_e = ml->e;
 							ml->e = GET_INT_FROM_POINTER(BLI_edgehash_lookup(edge_hash, v1, v2));
+							fix_flag.loops_edge = true;
 							PRINT_ERR("\tLoop %u has invalid edge reference (%d), fixed using edge %u\n",
 							          sp->loopstart + j, prev_e, ml->e);
 						}
@@ -580,6 +582,7 @@ bool BKE_mesh_validate_arrays(Mesh *mesh,
 							if (do_fixes) {
 								int prev_e = ml->e;
 								ml->e = GET_INT_FROM_POINTER(BLI_edgehash_lookup(edge_hash, v1, v2));
+								fix_flag.loops_edge = true;
 								PRINT_ERR("\tPoly %u has invalid edge reference (%d), fixed using edge %u\n",
 								          sp->index, prev_e, ml->e);
 							}
@@ -978,6 +981,24 @@ bool BKE_mesh_validate_all_customdata(CustomData *vdata, CustomData *edata,
 	if (tot_vcolloop > MAX_MCOL) {
 		PRINT_ERR("\tMore VCol layers than %d allowed, %d last ones won't be available for render, shaders, etc.\n",
 		          MAX_MCOL, tot_vcolloop - MAX_MCOL);
+	}
+
+	/* check indices of clone/stencil */
+	if (do_fixes && CustomData_get_clone_layer(pdata, CD_MTEXPOLY) >= tot_texpoly) {
+		CustomData_set_layer_clone(pdata, CD_MTEXPOLY, 0);
+		is_change_p = true;
+	}
+	if (do_fixes && CustomData_get_clone_layer(ldata, CD_MLOOPUV) >= tot_uvloop) {
+		CustomData_set_layer_clone(ldata, CD_MLOOPUV, 0);
+		is_change_l = true;
+	}
+	if (do_fixes && CustomData_get_stencil_layer(pdata, CD_MTEXPOLY) >= tot_texpoly) {
+		CustomData_set_layer_stencil(pdata, CD_MTEXPOLY, 0);
+		is_change_p = true;
+	}
+	if (do_fixes && CustomData_get_stencil_layer(ldata, CD_MLOOPUV) >= tot_uvloop) {
+		CustomData_set_layer_stencil(ldata, CD_MLOOPUV, 0);
+		is_change_l = true;
 	}
 
 	*r_change = (is_change_v || is_change_e || is_change_l || is_change_p);

@@ -620,7 +620,7 @@ ccl_device void lamp_light_sample(KernelGlobals *kg, int lamp,
 	}
 }
 
-#if defined(__KERNEL_CUDA__) && (defined(i386) || defined(_M_IX86))
+#if defined(__KERNEL_CUDA__) && (__CUDA_ARCH__ >= 500) && (defined(i386) || defined(_M_IX86))
 ccl_device_noinline
 #else
 ccl_device

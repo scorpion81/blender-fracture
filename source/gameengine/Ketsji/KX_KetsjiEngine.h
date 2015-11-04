@@ -225,6 +225,9 @@ public:
 	KX_ISceneConverter* GetSceneConverter() { return m_sceneconverter; }
 	void			SetAnimRecordMode(bool animation_record, int startFrame);
 
+	int getAnimRecordFrame() const;
+	void setAnimRecordFrame(int framenr);
+
 	RAS_IRasterizer*		GetRasterizer() { return m_rasterizer; }
 	RAS_ICanvas*		    GetCanvas() { return m_canvas; }
 	SCA_IInputDevice*		GetKeyboardDevice() { return m_keyboarddevice; }
@@ -257,7 +260,7 @@ public:
 	void			ConvertAndAddScene(const STR_String& scenename,bool overlay);
 
 	void			RemoveScene(const STR_String& scenename);
-    bool			ReplaceScene(const STR_String& oldscene,const STR_String& newscene);
+	bool			ReplaceScene(const STR_String& oldscene,const STR_String& newscene);
 	void			SuspendScene(const STR_String& scenename);
 	void			ResumeScene(const STR_String& scenename);
 

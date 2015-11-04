@@ -41,9 +41,9 @@ incs = [
     '#/intern/guardedalloc',
     env['BF_GLEW_INC'],
     '#/intern/glew-mx',
-    '../blenfont',
     '../blenkernel',
     '../blenlib',
+    '../blentranslation',
     '../gpu',
     '../imbuf',
     '../makesdna',
@@ -53,7 +53,8 @@ incs = [
     ]
 incs = ' '.join(incs)
 
-defs = env['BF_GL_DEFINITIONS']
+defs = []
+defs += env['BF_GL_DEFINITIONS']
 
 if env['WITH_BF_PYTHON']:
     incs += ' ' + env['BF_PYTHON_INC']

@@ -57,7 +57,7 @@
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "BKE_anim.h"
 #include "BKE_image.h"
@@ -343,7 +343,7 @@ static void do_versions_mesh_mloopcol_swap_2_62_1(Mesh *me)
 		if (layer->type == CD_MLOOPCOL) {
 			mloopcol = (MLoopCol *)layer->data;
 			for (i = 0; i < me->totloop; i++, mloopcol++) {
-				SWAP(char, mloopcol->r, mloopcol->b);
+				SWAP(unsigned char, mloopcol->r, mloopcol->b);
 			}
 		}
 	}

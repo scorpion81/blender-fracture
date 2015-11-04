@@ -62,7 +62,7 @@
 #include "UI_view2d.h"
 
 #include "BLF_api.h"
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "ED_screen.h"
 
@@ -107,15 +107,22 @@ static int rna_property_enum_step(const bContext *C, PointerRNA *ptr, PropertyRN
 	return value;
 }
 
+bool ui_but_menu_step_poll(const uiBut *but)
+{
+	BLI_assert(but->type == UI_BTYPE_MENU);
+
+	/* currenly only RNA buttons */
+	return (but->rnaprop && RNA_property_type(but->rnaprop) == PROP_ENUM);
+}
+
 int ui_but_menu_step(uiBut *but, int direction)
 {
-	/* currenly only RNA buttons */
-	if ((but->rnaprop == NULL) || (RNA_property_type(but->rnaprop) != PROP_ENUM)) {
-		printf("%s: cannot cycle button '%s'\n", __func__, but->str);
-		return 0;
+	if (ui_but_menu_step_poll(but)) {
+		return rna_property_enum_step(but->block->evil_C, &but->rnapoin, but->rnaprop, direction);
 	}
 
-	return rna_property_enum_step(but->block->evil_C, &but->rnapoin, but->rnaprop, direction);
+	printf("%s: cannot cycle button '%s'\n", __func__, but->str);
+	return 0;
 }
 
 /******************** Creating Temporary regions ******************/
@@ -513,9 +520,10 @@ ARegion *ui_tooltip_create(bContext *C, ARegion *butregion, uiBut *but)
 			}
 
 			if (data_path) {
+				const char *data_delim = (data_path[0] == '[') ? "" : ".";
 				BLI_snprintf(data->lines[data->totline], sizeof(data->lines[0]),
-				             "%s.%s",  /* no need to translate */
-				             id_path, data_path);
+				             "%s%s%s",  /* no need to translate */
+				             id_path, data_delim, data_path);
 				MEM_freeN(data_path);
 			}
 			else if (prop) {
@@ -1119,6 +1127,7 @@ ARegion *ui_searchbox_create(bContext *C, ARegion *butregion, uiBut *but)
 	float aspect = but->block->aspect;
 	rctf rect_fl;
 	rcti rect_i;
+	const int margin = UI_POPUP_MARGIN;
 	int winx /*, winy */, ofsx, ofsy;
 	int i;
 	
@@ -1160,8 +1169,6 @@ ARegion *ui_searchbox_create(bContext *C, ARegion *butregion, uiBut *but)
 	
 	/* compute position */
 	if (but->block->flag & UI_BLOCK_SEARCH_MENU) {
-		const int margin_x = UI_POPUP_MARGIN;
-		const int margin_y = MENU_TOP;
 		const int search_but_h = BLI_rctf_size_y(&but->rect) + 10;
 		/* this case is search menu inside other menu */
 		/* we copy region size */
@@ -1169,11 +1176,10 @@ ARegion *ui_searchbox_create(bContext *C, ARegion *butregion, uiBut *but)
 		ar->winrct = butregion->winrct;
 		
 		/* widget rect, in region coords */
-		data->bbox.xmin = margin_x;
-		data->bbox.xmax = BLI_rcti_size_x(&ar->winrct) - margin_x;
-		/* Do not use shadow width for height, gives insane margin with big shadows, and issue T41548 with small ones */
-		data->bbox.ymin = margin_y;
-		data->bbox.ymax = BLI_rcti_size_y(&ar->winrct) - margin_y;
+		data->bbox.xmin = margin;
+		data->bbox.xmax = BLI_rcti_size_x(&ar->winrct) - margin;
+		data->bbox.ymin = margin;
+		data->bbox.ymax = BLI_rcti_size_y(&ar->winrct) - margin;
 		
 		/* check if button is lower half */
 		if (but->rect.ymax < BLI_rctf_cent_y(&but->block->rect)) {
@@ -1185,7 +1191,6 @@ ARegion *ui_searchbox_create(bContext *C, ARegion *butregion, uiBut *but)
 	}
 	else {
 		const int searchbox_width = UI_searchbox_size_x();
-		const int margin = UI_POPUP_MARGIN;
 
 		rect_fl.xmin = but->rect.xmin - 5;   /* align text with button */
 		rect_fl.xmax = but->rect.xmax + 5;   /* symmetrical */

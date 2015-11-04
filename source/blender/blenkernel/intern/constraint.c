@@ -43,7 +43,7 @@
 #include "BLI_kdopbvh.h"
 #include "BLI_utildefines.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "DNA_armature_types.h"
 #include "DNA_constraint_types.h"
@@ -133,7 +133,20 @@ bConstraintOb *BKE_constraints_make_evalob(Scene *scene, Object *ob, void *subda
 			if (ob) {
 				cob->ob = ob;
 				cob->type = datatype;
-				cob->rotOrder = EULER_ORDER_DEFAULT; // TODO: when objects have rotation order too, use that
+				
+				if (cob->ob->rotmode > 0) {
+					/* Should be some kind of Euler order, so use it */
+					/* NOTE: Versions <= 2.76 assumed that "default" order
+					 *       would always get used, so we may seem some rig
+					 *       breakage as a result. However, this change here
+					 *       is needed to fix T46599
+					 */
+					cob->rotOrder = ob->rotmode;
+				}
+				else {
+					/* Quats/Axis-Angle, so Eulers should just use default order */
+					cob->rotOrder = EULER_ORDER_DEFAULT;
+				}
 				copy_m4_m4(cob->matrix, ob->obmat);
 			}
 			else
@@ -4106,6 +4119,7 @@ static void followtrack_evaluate(bConstraint *con, bConstraintOb *cob, ListBase 
 					mul_v3_m4v3(ray_end, imat, cob->matrix[3]);
 
 					sub_v3_v3v3(ray_nor, ray_end, ray_start);
+					normalize_v3(ray_nor);
 
 					bvhtree_from_mesh_looptri(&treeData, target, 0.0f, 4, 6);
 

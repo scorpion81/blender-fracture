@@ -467,10 +467,11 @@ int     UI_but_return_value_get(uiBut *but);
 
 void    UI_but_drag_set_id(uiBut *but, struct ID *id);
 void    UI_but_drag_set_rna(uiBut *but, struct PointerRNA *ptr);
-void    UI_but_drag_set_path(uiBut *but, const char *path);
+void    UI_but_drag_set_path(uiBut *but, const char *path, const bool use_free);
 void    UI_but_drag_set_name(uiBut *but, const char *name);
 void    UI_but_drag_set_value(uiBut *but);
-void    UI_but_drag_set_image(uiBut *but, const char *path, int icon, struct ImBuf *ima, float scale);
+void    UI_but_drag_set_image(
+                uiBut *but, const char *path, int icon, struct ImBuf *ima, float scale, const bool use_free);
 
 bool    UI_but_active_drop_name(struct bContext *C);
 bool    UI_but_active_drop_color(struct bContext *C);
@@ -954,6 +955,7 @@ PointerRNA uiItemFullO(uiLayout *layout, const char *idname, const char *name, i
 
 void uiItemR(uiLayout *layout, struct PointerRNA *ptr, const char *propname, int flag, const char *name, int icon);
 void uiItemFullR(uiLayout *layout, struct PointerRNA *ptr, struct PropertyRNA *prop, int index, int value, int flag, const char *name, int icon);
+void uiItemEnumR_prop(uiLayout *layout, const char *name, int icon, struct PointerRNA *ptr, PropertyRNA *prop, int value);
 void uiItemEnumR(uiLayout *layout, const char *name, int icon, struct PointerRNA *ptr, const char *propname, int value);
 void uiItemEnumR_string(uiLayout *layout, struct PointerRNA *ptr, const char *propname, const char *value, const char *name, int icon);
 void uiItemsEnumR(uiLayout *layout, struct PointerRNA *ptr, const char *propname);
@@ -1038,6 +1040,8 @@ void UI_butstore_unregister(uiButStore *bs_handle, uiBut **but_p);
 
 /* Float precision helpers */
 #define UI_PRECISION_FLOAT_MAX 7
+/* For float buttons the 'step' (or a1), is scaled */
+#define UI_PRECISION_FLOAT_SCALE 0.01f
 
 /* Typical UI text */
 #define UI_FSTYLE_WIDGET (const uiFontStyle *)&(UI_style_get()->widget)

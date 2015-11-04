@@ -39,7 +39,7 @@
 
 #include "BLI_blenlib.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "PIL_time.h"
 
@@ -301,7 +301,7 @@ void TEXT_OT_open(wmOperatorType *ot)
 	
 	/* properties */
 	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_TEXT | FILE_TYPE_PYSCRIPT, FILE_SPECIAL, FILE_OPENFILE,
-	                               WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY);  //XXX TODO, relative_path
+	                               WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);  //XXX TODO, relative_path
 	RNA_def_boolean(ot->srna, "internal", 0, "Make internal", "Make text file internal after loading");
 }
 
@@ -578,7 +578,7 @@ void TEXT_OT_save_as(wmOperatorType *ot)
 
 	/* properties */
 	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_TEXT | FILE_TYPE_PYSCRIPT, FILE_SPECIAL, FILE_SAVE,
-	                               WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY);  //XXX TODO, relative_path
+	                               WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);  //XXX TODO, relative_path
 }
 
 /******************* run script operator *********************/
@@ -1921,7 +1921,7 @@ void TEXT_OT_jump(wmOperatorType *ot)
 
 	/* properties */
 	prop = RNA_def_int(ot->srna, "line", 1, 1, INT_MAX, "Line", "Line number to jump to", 1, 10000);
-	RNA_def_property_translation_context(prop, BLF_I18NCONTEXT_ID_TEXT);
+	RNA_def_property_translation_context(prop, BLT_I18NCONTEXT_ID_TEXT);
 }
 
 /******************* delete operator **********************/

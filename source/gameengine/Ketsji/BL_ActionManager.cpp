@@ -68,6 +68,12 @@ float BL_ActionManager::GetActionFrame(short layer)
 	return action ? action->GetFrame() : 0.f;
 }
 
+const char *BL_ActionManager::GetActionName(short layer)
+{
+	BL_Action *action = GetAction(layer);
+	return action ? action->GetName() : "";
+}
+
 void BL_ActionManager::SetActionFrame(short layer, float frame)
 {
 	BL_Action *action = GetAction(layer);
@@ -162,15 +168,5 @@ void BL_ActionManager::Update(float curtime)
 			it->second->Update(curtime);
 			++it;
 		}
-	}
-}
-
-void BL_ActionManager::UpdateIPOs()
-{
-	BL_ActionMap::iterator it;
-	for (it = m_layers.begin(); it != m_layers.end(); ++it)
-	{
-		if (!it->second->IsDone())
-			it->second->UpdateIPOs();
 	}
 }

@@ -57,7 +57,7 @@
 #include "UI_view2d.h"
 #include "UI_resources.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "node_intern.h"  /* own include */
 
@@ -1320,7 +1320,7 @@ void ED_node_link_intersect_test(ScrArea *sa, int test)
 	bNode *select;
 	SpaceNode *snode;
 	bNodeLink *link, *selink = NULL;
-	float mcoords[6][2];
+	float dist_best = FLT_MAX;
 
 	if (!ed_node_link_conditions(sa, test, &snode, &select)) return;
 
@@ -1330,34 +1330,40 @@ void ED_node_link_intersect_test(ScrArea *sa, int test)
 
 	if (test == 0) return;
 
-	/* okay, there's 1 node, without links, now intersect */
-	mcoords[0][0] = select->totr.xmin;
-	mcoords[0][1] = select->totr.ymin;
-	mcoords[1][0] = select->totr.xmax;
-	mcoords[1][1] = select->totr.ymin;
-	mcoords[2][0] = select->totr.xmax;
-	mcoords[2][1] = select->totr.ymax;
-	mcoords[3][0] = select->totr.xmin;
-	mcoords[3][1] = select->totr.ymax;
-	mcoords[4][0] = select->totr.xmin;
-	mcoords[4][1] = select->totr.ymin;
-	mcoords[5][0] = select->totr.xmax;
-	mcoords[5][1] = select->totr.ymax;
-
-	/* we only tag a single link for intersect now */
-	/* idea; use header dist when more? */
+	/* find link to select/highlight */
 	for (link = snode->edittree->links.first; link; link = link->next) {
+		float coord_array[NODE_LINK_RESOL + 1][2];
+
 		if (nodeLinkIsHidden(link))
 			continue;
-		
-		if (cut_links_intersect(link, mcoords, 5)) { /* intersect code wants edges */
-			if (selink)
-				break;
-			selink = link;
+
+		if (node_link_bezier_points(NULL, NULL, link, coord_array, NODE_LINK_RESOL)) {
+			float dist = FLT_MAX;
+			int i;
+
+			/* loop over link coords to find shortest dist to upper left node edge of a intersected line segment */
+			for (i = 0; i < NODE_LINK_RESOL; i++) {
+				/* check if the node rect intersetcts the line from this point to next one */
+				if (BLI_rctf_isect_segment(&select->totr, coord_array[i], coord_array[i + 1])) {
+					/* store the shortest distance to the upper left edge of all intersetctions found so far */
+					const float node_xy[] = {select->totr.xmin, select->totr.ymax};
+
+					/* to be precise coord_array should be clipped by select->totr,
+					 * but not done since there's no real noticeable difference */
+					dist = min_ff(dist_squared_to_line_segment_v2(node_xy, coord_array[i], coord_array[i + 1]),
+					                   dist);
+				}
+			}
+
+			/* we want the link with the shortest distance to node center */
+			if (dist < dist_best) {
+				dist_best = dist;
+				selink = link;
+			}
 		}
 	}
 
-	if (link == NULL && selink)
+	if (selink)
 		selink->flag |= NODE_LINKFLAG_HILITE;
 }
 
@@ -1430,7 +1436,7 @@ static void node_parent_offset_apply(NodeInsertOfsData *data, bNode *parent, con
 #define NODE_INSOFS_ANIM_DURATION 0.25f
 
 /**
- * Callback that applies NodeInsertOfsData.offset_x to a node or its parent, similiar
+ * Callback that applies NodeInsertOfsData.offset_x to a node or its parent, similar
  * to node_link_insert_offset_output_chain_cb below, but with slightly different logic
  */
 static bool node_link_insert_offset_frame_chain_cb(
@@ -1594,7 +1600,7 @@ static void node_link_insert_offset_ntree(
 				node_offset_apply(offs_node, addval);
 			}
 			else if (!insert->parent && offs_node->parent) {
-				node_offset_apply(offs_node->parent, addval);
+				node_offset_apply(nodeFindRootParent(offs_node), addval);
 			}
 			margin = addval;
 		}
@@ -1627,10 +1633,35 @@ static int node_insert_offset_modal(bContext *C, wmOperator *UNUSED(op), const w
 	SpaceNode *snode = CTX_wm_space_node(C);
 	NodeInsertOfsData *iofsd = snode->iofsd;
 	bNode *node;
-	const float duration = (float)iofsd->anim_timer->duration;
+	float duration;
+	bool redraw = false;
 
 	if (!snode || event->type != TIMER || iofsd->anim_timer != event->customdata)
 		return OPERATOR_PASS_THROUGH;
+
+	duration = (float)iofsd->anim_timer->duration;
+
+	/* handle animation - do this before possibly aborting due to duration, since
+	 * main thread might be so busy that node hasn't reached final position yet */
+	for (node = snode->edittree->nodes.first; node; node = node->next) {
+		if (UNLIKELY(node->anim_ofsx)) {
+			const float endval = node->anim_init_locx + node->anim_ofsx;
+			if (IS_EQF(node->locx, endval) == false) {
+				node->locx = BLI_easing_cubic_ease_in_out(duration, node->anim_init_locx, node->anim_ofsx,
+				                                          NODE_INSOFS_ANIM_DURATION);
+				if (node->anim_ofsx < 0) {
+					CLAMP_MIN(node->locx, endval);
+				}
+				else {
+					CLAMP_MAX(node->locx, endval);
+				}
+				redraw = true;
+			}
+		}
+	}
+	if (redraw) {
+		ED_region_tag_redraw(CTX_wm_region(C));
+	}
 
 	/* end timer + free insert offset data */
 	if (duration > NODE_INSOFS_ANIM_DURATION) {
@@ -1645,15 +1676,6 @@ static int node_insert_offset_modal(bContext *C, wmOperator *UNUSED(op), const w
 
 		return (OPERATOR_FINISHED | OPERATOR_PASS_THROUGH);
 	}
-
-	/* handle animation */
-	for (node = snode->edittree->nodes.first; node; node = node->next) {
-		if (node->anim_ofsx) {
-			node->locx = BLI_easing_cubic_ease_in_out(duration, node->anim_init_locx, node->anim_ofsx,
-			                                          NODE_INSOFS_ANIM_DURATION);
-		}
-	}
-	ED_region_tag_redraw(CTX_wm_region(C));
 
 	return OPERATOR_RUNNING_MODAL;
 }

@@ -90,7 +90,7 @@ BL_ActionActuator::BL_ActionActuator(SCA_IObject *gameobj,
 	m_stridelength(stride),
 	m_layer_weight(layer_weight),
 	m_playtype(playtype),
-    m_blendmode(blend_mode),
+	m_blendmode(blend_mode),
 	m_priority(priority),
 	m_layer(layer),
 	m_ipo_flags(ipo_flags),
@@ -307,6 +307,7 @@ bool BL_ActionActuator::Update(double curtime, bool frame)
 		}
 
 		switch (m_playtype) {
+			case ACT_ACTION_FROM_PROP:
 			case ACT_ACTION_LOOP_STOP:
 				obj->StopAction(m_layer); // Stop the action after getting the frame
 

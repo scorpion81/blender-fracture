@@ -110,7 +110,7 @@
 #include "BLI_threads.h"
 #include "BLI_mempool.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "BKE_action.h"
 #include "BKE_armature.h"
@@ -318,6 +318,56 @@ void blo_do_versions_oldnewmap_insert(OldNewMap *onm, void *oldaddr, void *newad
 	oldnewmap_insert(onm, oldaddr, newaddr, nr);
 }
 
+/**
+ * Do a full search (no state).
+ *
+ * \param lasthit: Use as a reference position to avoid a full search
+ * from either end of the array, giving more efficient lookups.
+ *
+ * \note This would seem an ideal case for hash or btree lookups.
+ * However the data is written in-order, using the \a lasthit will normally avoid calling this function.
+ * Creating a btree/hash structure adds overhead for the common-case to optimize the corner-case
+ * (since most entries will never be retrieved).
+ * So just keep full lookups as a fall-back.
+ */
+static int oldnewmap_lookup_entry_full(const OldNewMap *onm, const void *addr, int lasthit)
+{
+	const int nentries = onm->nentries;
+	const OldNew *entries = onm->entries;
+	int i;
+
+	/* search relative to lasthit where possible */
+	if (lasthit >= 0 && lasthit < nentries) {
+
+		/* search forwards */
+		i = lasthit;
+		while (++i != nentries) {
+			if (entries[i].old == addr) {
+				return i;
+			}
+		}
+
+		/* search backwards */
+		i = lasthit + 1;
+		while (i--) {
+			if (entries[i].old == addr) {
+				return i;
+			}
+		}
+	}
+	else {
+		/* search backwards (full) */
+		i = nentries;
+		while (i--) {
+			if (entries[i].old == addr) {
+				return i;
+			}
+		}
+	}
+
+	return -1;
+}
+
 static void *oldnewmap_lookup_and_inc(OldNewMap *onm, void *addr, bool increase_users) 
 {
 	int i;
@@ -334,16 +384,14 @@ static void *oldnewmap_lookup_and_inc(OldNewMap *onm, void *addr, bool increase_
 		}
 	}
 	
-	for (i = 0; i < onm->nentries; i++) {
+	i = oldnewmap_lookup_entry_full(onm, addr, onm->lasthit);
+	if (i != -1) {
 		OldNew *entry = &onm->entries[i];
-		
-		if (entry->old == addr) {
-			onm->lasthit = i;
-			
-			if (increase_users)
-				entry->nr++;
-			return entry->newp;
-		}
+		BLI_assert(entry->old == addr);
+		onm->lasthit = i;
+		if (increase_users)
+			entry->nr++;
+		return entry->newp;
 	}
 	
 	return NULL;
@@ -373,16 +421,13 @@ static void *oldnewmap_liblookup(OldNewMap *onm, void *addr, void *lib)
 	}
 	else {
 		/* note, this can be a bottle neck when loading some files */
-		unsigned int nentries = (unsigned int)onm->nentries;
-		unsigned int i;
-		OldNew *entry;
-
-		for (i = 0, entry = onm->entries; i < nentries; i++, entry++) {
-			if (entry->old == addr) {
-				ID *id = entry->newp;
-				if (id && (!lib || id->lib)) {
-					return id;
-				}
+		const int i = oldnewmap_lookup_entry_full(onm, addr, -1);
+		if (i != -1) {
+			OldNew *entry = &onm->entries[i];
+			ID *id = entry->newp;
+			BLI_assert(entry->old == addr);
+			if (id && (!lib || id->lib)) {
+				return id;
 			}
 		}
 	}
@@ -578,7 +623,9 @@ static Main *blo_find_main(FileData *fd, const char *filepath, const char *relab
 	m = BKE_main_new();
 	BLI_addtail(mainlist, m);
 	
-	lib = BKE_libblock_alloc(m, ID_LI, "lib");
+	/* Add library datablock itself to 'main' Main, since libraries are **never** linked data.
+	 * Fixes bug where you could end with all ID_LI datablocks having the same name... */
+	lib = BKE_libblock_alloc(mainlist->first, ID_LI, "Lib");
 	BLI_strncpy(lib->name, filepath, sizeof(lib->name));
 	BLI_strncpy(lib->filepath, name1, sizeof(lib->filepath));
 	
@@ -877,6 +924,41 @@ static int read_file_dna(FileData *fd)
 	return 0;
 }
 
+static int *read_file_thumbnail(FileData *fd)
+{
+	BHead *bhead;
+	int *blend_thumb = NULL;
+
+	for (bhead = blo_firstbhead(fd); bhead; bhead = blo_nextbhead(fd, bhead)) {
+		if (bhead->code == TEST) {
+			const bool do_endian_swap = (fd->flags & FD_FLAGS_SWITCH_ENDIAN) != 0;
+			int *data = (int *)(bhead + 1);
+
+			if (bhead->len < (2 * sizeof(int))) {
+				break;
+			}
+
+			if (do_endian_swap) {
+				BLI_endian_switch_int32(&data[0]);
+				BLI_endian_switch_int32(&data[1]);
+			}
+
+			if (bhead->len < BLEN_THUMB_MEMSIZE_FILE(data[0], data[1])) {
+				break;
+			}
+
+			blend_thumb = data;
+			break;
+		}
+		else if (bhead->code != REND) {
+			/* Thumbnail is stored in TEST immediately after first REND... */
+			break;
+		}
+	}
+
+	return blend_thumb;
+}
+
 static int fd_read_from_file(FileData *filedata, void *buffer, unsigned int size)
 {
 	int readsize = read(filedata->filedes, buffer, size);
@@ -1040,6 +1122,33 @@ FileData *blo_openblenderfile(const char *filepath, ReportList *reports)
 	}
 }
 
+/**
+ * Same as blo_openblenderfile(), but does not reads DNA data, only header. Use it for light access
+ * (e.g. thumbnail reading).
+ */
+static FileData *blo_openblenderfile_minimal(const char *filepath)
+{
+	gzFile gzfile;
+	errno = 0;
+	gzfile = BLI_gzopen(filepath, "rb");
+
+	if (gzfile != (gzFile)Z_NULL) {
+		FileData *fd = filedata_new();
+		fd->gzfiledes = gzfile;
+		fd->read = fd_read_gzip_from_file;
+
+		decode_blender_header(fd);
+
+		if (fd->flags & FD_FLAGS_FILE_OK) {
+			return fd;
+		}
+
+		blo_freefiledata(fd);
+	}
+
+	return NULL;
+}
+
 static int fd_read_gzip_from_memory(FileData *filedata, void *buffer, unsigned int size)
 {
 	int err;
@@ -1194,47 +1303,87 @@ bool BLO_has_bfile_extension(const char *str)
 	return BLI_testextensie_array(str, ext_test);
 }
 
-bool BLO_is_a_library(const char *path, char *dir, char *group)
+bool BLO_library_path_explode(const char *path, char *r_dir, char **r_group, char **r_name)
 {
-	/* return ok when a blenderfile, in dir is the filename,
-	 * in group the type of libdata
-	 */
-	int len;
-	char *fd;
-	
-	/* if path leads to a directory we can be sure we're not in a library */
-	if (BLI_is_dir(path)) return 0;
+	/* We might get some data names with slashes, so we have to go up in path until we find blend file itself,
+	 * then we now next path item is group, and everything else is data name. */
+	char *slash = NULL, *prev_slash = NULL, c = '\0';
 
-	strcpy(dir, path);
-	len = strlen(dir);
-	if (len < 7) return 0;
-	if ((dir[len - 1] != '/') && (dir[len - 1] != '\\')) return 0;
-	
-	group[0] = '\0';
-	dir[len - 1] = '\0';
+	r_dir[0] = '\0';
+	if (r_group) {
+		*r_group = NULL;
+	}
+	if (r_name) {
+		*r_name = NULL;
+	}
 
-	/* Find the last slash */
-	fd = (char *)BLI_last_slash(dir);
+	/* if path leads to an existing directory, we can be sure we're not (in) a library */
+	if (BLI_is_dir(path)) {
+		return false;
+	}
 
-	if (fd == NULL) return 0;
-	*fd = 0;
-	if (BLO_has_bfile_extension(fd+1)) {
-		/* the last part of the dir is a .blend file, no group follows */
-		*fd = '/'; /* put back the removed slash separating the dir and the .blend file name */
+	strcpy(r_dir, path);
+
+	while ((slash = (char *)BLI_last_slash(r_dir))) {
+		char tc = *slash;
+		*slash = '\0';
+		if (BLO_has_bfile_extension(r_dir)) {
+			break;
+		}
+
+		if (prev_slash) {
+			*prev_slash = c;
+		}
+		prev_slash = slash;
+		c = tc;
+	}
+
+	if (!slash) {
+		return false;
+	}
+
+	if (slash[1] != '\0') {
+		BLI_assert(strlen(slash + 1) < BLO_GROUP_MAX);
+		if (r_group) {
+			*r_group = slash + 1;
+		}
+	}
+
+	if (prev_slash && (prev_slash[1] != '\0')) {
+		BLI_assert(strlen(prev_slash + 1) < MAX_ID_NAME - 2);
+		if (r_name) {
+			*r_name = prev_slash + 1;
+		}
+	}
+
+	return true;
+}
+
+BlendThumbnail *BLO_thumbnail_from_file(const char *filepath)
+{
+	FileData *fd;
+	BlendThumbnail *data;
+	int *fd_data;
+
+	fd = blo_openblenderfile_minimal(filepath);
+	fd_data = fd ? read_file_thumbnail(fd) : NULL;
+
+	if (fd_data) {
+		const size_t sz = BLEN_THUMB_MEMSIZE(fd_data[0], fd_data[1]);
+		data = MEM_mallocN(sz, __func__);
+
+		BLI_assert((sz - sizeof(*data)) == (BLEN_THUMB_MEMSIZE_FILE(fd_data[0], fd_data[1]) - (sizeof(*fd_data) * 2)));
+		data->width = fd_data[0];
+		data->height = fd_data[1];
+		memcpy(data->rect, &fd_data[2], sz - sizeof(*data));
 	}
 	else {
-		const char * const gp = fd + 1; // in case we have a .blend file, gp points to the group
-		
-		/* Find the last slash */
-		fd = (char *)BLI_last_slash(dir);
-		if (!fd || !BLO_has_bfile_extension(fd+1)) return 0;
-		
-		/* now we know that we are in a blend file and it is safe to 
-		 * assume that gp actually points to a group */
-		if (!STREQ("Screen", gp))
-			BLI_strncpy(group, gp, BLO_GROUP_MAX);
+		data = NULL;
 	}
-	return 1;
+
+	blo_freefiledata(fd);
+
+	return data;
 }
 
 /* ************** OLD POINTERS ******************* */
@@ -1242,6 +1391,31 @@ bool BLO_is_a_library(const char *path, char *dir, char *group)
 static void *newdataadr(FileData *fd, void *adr)		/* only direct databocks */
 {
 	return oldnewmap_lookup_and_inc(fd->datamap, adr, true);
+}
+
+/* This is a special version of newdataadr() which allows us to keep lasthit of
+ * map unchanged. In certain cases this makes file loading time significantly
+ * faster.
+ *
+ * Use this function in cases like restoring pointer from one list element to
+ * another list element, but keep lasthit value so we can continue restoring
+ * pointers efficiently.
+ *
+ * Example of this could be found in direct_link_fcurves() which restores the
+ * fcurve group pointer and keeps lasthit optimal for linking all further
+ * fcurves.
+ */
+static void *newdataadr_ex(FileData *fd, void *adr, bool increase_lasthit)		/* only direct databocks */
+{
+	if (increase_lasthit) {
+		return newdataadr(fd, adr);
+	}
+	else {
+		int lasthit = fd->datamap->lasthit;
+		void *newadr = newdataadr(fd, adr);
+		fd->datamap->lasthit = lasthit;
+		return newadr;
+	}
 }
 
 static void *newdataadr_no_us(FileData *fd, void *adr)		/* only direct databocks */
@@ -1660,22 +1834,35 @@ static void *read_struct(FileData *fd, BHead *bh, const char *blockname)
 	return temp;
 }
 
-static void link_list(FileData *fd, ListBase *lb)		/* only direct data */
+typedef void (*link_list_cb)(FileData *fd, void *data);
+
+static void link_list_ex(FileData *fd, ListBase *lb, link_list_cb callback)		/* only direct data */
 {
 	Link *ln, *prev;
 	
 	if (BLI_listbase_is_empty(lb)) return;
 	
 	lb->first = newdataadr(fd, lb->first);
+	if (callback != NULL) {
+		callback(fd, lb->first);
+	}
 	ln = lb->first;
 	prev = NULL;
 	while (ln) {
 		ln->next = newdataadr(fd, ln->next);
+		if (ln->next != NULL && callback != NULL) {
+			callback(fd, ln->next);
+		}
 		ln->prev = prev;
 		prev = ln;
 		ln = ln->next;
 	}
 	lb->last = prev;
+}
+
+static void link_list(FileData *fd, ListBase *lb)		/* only direct data */
+{
+	link_list_ex(fd, lb, NULL);
 }
 
 static void link_glob_list(FileData *fd, ListBase *lb)		/* for glob data */
@@ -1887,6 +2074,25 @@ static void IDP_LibLinkProperty(IDProperty *UNUSED(prop), int UNUSED(switch_endi
 {
 }
 
+/* ************ READ IMAGE PREVIEW *************** */
+
+static PreviewImage *direct_link_preview_image(FileData *fd, PreviewImage *old_prv)
+{
+	PreviewImage *prv = newdataadr(fd, old_prv);
+	
+	if (prv) {
+		int i;
+		for (i = 0; i < NUM_ICON_SIZES; ++i) {
+			if (prv->rect[i]) {
+				prv->rect[i] = newdataadr(fd, prv->rect[i]);
+			}
+			prv->gputexture[i] = NULL;
+		}
+	}
+	
+	return prv;
+}
+
 /* ************ READ ID *************** */
 
 static void direct_link_id(FileData *fd, ID *id)
@@ -1930,6 +2136,7 @@ static void lib_link_brush(FileData *fd, Main *main)
 			brush->mtex.tex = newlibadr_us(fd, brush->id.lib, brush->mtex.tex);
 			brush->mask_mtex.tex = newlibadr_us(fd, brush->id.lib, brush->mask_mtex.tex);
 			brush->clone.image = newlibadr_us(fd, brush->id.lib, brush->clone.image);
+			brush->toggle_brush = newlibadr(fd, brush->id.lib, brush->toggle_brush);
 			brush->paint_curve = newlibadr_us(fd, brush->id.lib, brush->paint_curve);
 		}
 	}
@@ -2007,25 +2214,6 @@ static PackedFile *direct_link_packedfile(FileData *fd, PackedFile *oldpf)
 	}
 	
 	return pf;
-}
-
-/* ************ READ IMAGE PREVIEW *************** */
-
-static PreviewImage *direct_link_preview_image(FileData *fd, PreviewImage *old_prv)
-{
-	PreviewImage *prv = newdataadr(fd, old_prv);
-	
-	if (prv) {
-		int i;
-		for (i = 0; i < NUM_ICON_SIZES; ++i) {
-			if (prv->rect[i]) {
-				prv->rect[i] = newdataadr(fd, prv->rect[i]);
-			}
-			prv->gputexture[i] = NULL;
-		}
-	}
-	
-	return prv;
 }
 
 /* ************ READ ANIMATION STUFF ***************** */
@@ -2211,7 +2399,7 @@ static void direct_link_fcurves(FileData *fd, ListBase *list)
 		fcu->rna_path = newdataadr(fd, fcu->rna_path);
 		
 		/* group */
-		fcu->grp = newdataadr(fd, fcu->grp);
+		fcu->grp = newdataadr_ex(fd, fcu->grp, false);
 		
 		/* clear disabled flag - allows disabled drivers to be tried again ([#32155]),
 		 * but also means that another method for "reviving disabled F-Curves" exists
@@ -3711,35 +3899,34 @@ static const char *ptcache_data_struct[] = {
 	"", // BPHYS_DATA_TIMES:
 	"BoidData" // case BPHYS_DATA_BOIDS:
 };
+
+static void direct_link_pointcache_cb(FileData *fd, void *data)
+{
+	PTCacheMem *pm = data;
+	PTCacheExtra *extra;
+	int i;
+	for (i = 0; i < BPHYS_TOT_DATA; i++) {
+		pm->data[i] = newdataadr(fd, pm->data[i]);
+
+		/* the cache saves non-struct data without DNA */
+		if (pm->data[i] && ptcache_data_struct[i][0]=='\0' && (fd->flags & FD_FLAGS_SWITCH_ENDIAN)) {
+			int tot = (BKE_ptcache_data_size (i) * pm->totpoint) / sizeof(int); /* data_size returns bytes */
+			int *poin = pm->data[i];
+
+			BLI_endian_switch_int32_array(poin, tot);
+		}
+	}
+
+	link_list(fd, &pm->extradata);
+
+	for (extra=pm->extradata.first; extra; extra=extra->next)
+		extra->data = newdataadr(fd, extra->data);
+}
+
 static void direct_link_pointcache(FileData *fd, PointCache *cache)
 {
 	if ((cache->flag & PTCACHE_DISK_CACHE)==0) {
-		PTCacheMem *pm;
-		PTCacheExtra *extra;
-		int i;
-		
-		link_list(fd, &cache->mem_cache);
-		
-		pm = cache->mem_cache.first;
-		
-		for (; pm; pm=pm->next) {
-			for (i=0; i<BPHYS_TOT_DATA; i++) {
-				pm->data[i] = newdataadr(fd, pm->data[i]);
-				
-				/* the cache saves non-struct data without DNA */
-				if (pm->data[i] && ptcache_data_struct[i][0]=='\0' && (fd->flags & FD_FLAGS_SWITCH_ENDIAN)) {
-					int tot = (BKE_ptcache_data_size (i) * pm->totpoint) / sizeof(int); /* data_size returns bytes */
-					int *poin = pm->data[i];
-					
-					BLI_endian_switch_int32_array(poin, tot);
-				}
-			}
-			
-			link_list(fd, &pm->extradata);
-			
-			for (extra=pm->extradata.first; extra; extra=extra->next)
-				extra->data = newdataadr(fd, extra->data);
-		}
+		link_list_ex(fd, &cache->mem_cache, direct_link_pointcache_cb);
 	}
 	else
 		BLI_listbase_clear(&cache->mem_cache);
@@ -3949,7 +4136,7 @@ static void lib_link_particlesystems(FileData *fd, Object *ob, ID *id, ListBase 
 			
 			if (psys->clmd) {
 				/* XXX - from reading existing code this seems correct but intended usage of
-				 * pointcache should /w cloth should be added in 'ParticleSystem' - campbell */
+				 * pointcache /w cloth should be added in 'ParticleSystem' - campbell */
 				psys->clmd->point_cache = psys->pointcache;
 				psys->clmd->ptcaches.first = psys->clmd->ptcaches.last= NULL;
 				psys->clmd->coll_parms->group = newlibadr(fd, id->lib, psys->clmd->coll_parms->group);
@@ -4017,8 +4204,6 @@ static void direct_link_particlesystems(FileData *fd, ListBase *particles)
 		psys->pdd = NULL;
 		psys->renderdata = NULL;
 		
-		direct_link_pointcache_list(fd, &psys->ptcaches, &psys->pointcache, 0);
-		
 		if (psys->clmd) {
 			psys->clmd = newdataadr(fd, psys->clmd);
 			psys->clmd->clothObject = NULL;
@@ -4035,10 +4220,13 @@ static void direct_link_particlesystems(FileData *fd, ListBase *particles)
 			
 			psys->hair_in_dm = psys->hair_out_dm = NULL;
 			psys->clmd->solver_result = NULL;
-			
+		}
+
+		direct_link_pointcache_list(fd, &psys->ptcaches, &psys->pointcache, 0);
+		if (psys->clmd) {
 			psys->clmd->point_cache = psys->pointcache;
 		}
-		
+
 		psys->tree = NULL;
 		psys->bvhtree = NULL;
 	}
@@ -5651,6 +5839,8 @@ static void direct_link_object(FileData *fd, Object *ob)
 
 	link_list(fd, &ob->lodlevels);
 	ob->currentlod = ob->lodlevels.first;
+
+	ob->preview = direct_link_preview_image(fd, ob->preview);
 }
 
 /* ************ READ SCENE ***************** */
@@ -6210,6 +6400,8 @@ static void direct_link_scene(FileData *fd, Scene *sce)
 			rbw->ltime = (float)rbw->pointcache->startframe;
 		}
 	}
+
+	sce->preview = direct_link_preview_image(fd, sce->preview);
 }
 
 /* ************ READ WM ***************** */
@@ -6745,6 +6937,7 @@ void blo_lib_link_screen_restore(Main *newmain, bScreen *curscreen, Scene *cursc
 				else if (sl->spacetype == SPACE_FILE) {
 					SpaceFile *sfile = (SpaceFile *)sl;
 					sfile->op = NULL;
+					sfile->previews_timer = NULL;
 				}
 				else if (sl->spacetype == SPACE_ACTION) {
 					SpaceAction *saction = (SpaceAction *)sl;
@@ -6828,7 +7021,13 @@ void blo_lib_link_screen_restore(Main *newmain, bScreen *curscreen, Scene *cursc
 
 						BLI_mempool_iternew(so->treestore, &iter);
 						while ((tselem = BLI_mempool_iterstep(&iter))) {
-							tselem->id = restore_pointer_by_name(newmain, tselem->id, USER_IGNORE);
+							/* Do not try to restore pointers to drivers/sequence/etc., can crash in undo case! */
+							if (TSE_IS_REAL_ID(tselem)) {
+								tselem->id = restore_pointer_by_name(newmain, tselem->id, USER_IGNORE);
+							}
+							else {
+								tselem->id = NULL;
+							}
 						}
 						if (so->treehash) {
 							/* rebuild hash table, because it depends on ids too */
@@ -7274,6 +7473,7 @@ static bool direct_link_screen(FileData *fd, bScreen *sc)
 				sfile->files = NULL;
 				sfile->layout = NULL;
 				sfile->op = NULL;
+				sfile->previews_timer = NULL;
 				sfile->params = newdataadr(fd, sfile->params);
 			}
 			else if (sl->spacetype == SPACE_CLIP) {
@@ -7456,6 +7656,8 @@ static void lib_link_sound(FileData *fd, Main *main)
 static void direct_link_group(FileData *fd, Group *group)
 {
 	link_list(fd, &group->gobject);
+
+	group->preview = direct_link_preview_image(fd, group->preview);
 }
 
 static void lib_link_group(FileData *fd, Main *main)
@@ -8496,6 +8698,24 @@ BlendFileData *blo_read_file_internal(FileData *fd, const char *filepath)
 	bfd->type = BLENFILETYPE_BLEND;
 	BLI_strncpy(bfd->main->name, filepath, sizeof(bfd->main->name));
 
+	if (G.background) {
+		/* We only read & store .blend thumbnail in background mode
+		 * (because we cannot re-generate it, no OpenGL available).
+		 */
+		const int *data = read_file_thumbnail(fd);
+
+		if (data) {
+			const size_t sz = BLEN_THUMB_MEMSIZE(data[0], data[1]);
+			bfd->main->blen_thumb = MEM_mallocN(sz, __func__);
+
+			BLI_assert((sz - sizeof(*bfd->main->blen_thumb)) ==
+			           (BLEN_THUMB_MEMSIZE_FILE(data[0], data[1]) - (sizeof(*data) * 2)));
+			bfd->main->blen_thumb->width = data[0];
+			bfd->main->blen_thumb->height = data[1];
+			memcpy(bfd->main->blen_thumb->rect, &data[2], sz - sizeof(*bfd->main->blen_thumb));
+		}
+	}
+
 	while (bhead) {
 		switch (bhead->code) {
 		case DATA:
@@ -8546,10 +8766,10 @@ BlendFileData *blo_read_file_internal(FileData *fd, const char *filepath)
 	}
 	
 	/* do before read_libraries, but skip undo case */
-	if (fd->memfile==NULL)
+	if (fd->memfile == NULL) {
 		do_versions(fd, NULL, bfd->main);
-	
-	do_versions_userdef(fd, bfd);
+		do_versions_userdef(fd, bfd);
+	}
 	
 	read_libraries(fd, &mainlist);
 	
@@ -8565,6 +8785,8 @@ BlendFileData *blo_read_file_internal(FileData *fd, const char *filepath)
 	
 	link_global(fd, bfd);	/* as last */
 	
+	fd->mainlist = NULL;  /* Safety, this is local variable, shall not be used afterward. */
+
 	return bfd;
 }
 

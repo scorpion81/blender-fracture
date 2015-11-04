@@ -45,6 +45,7 @@ incs = [
     '../blenfont',
     '../blenkernel',
     '../blenlib',
+    '../blentranslation',
     '../bmesh',
     '../depsgraph',
     '../editors/include',
@@ -59,7 +60,8 @@ incs = [
     ]
 incs = ' '.join(incs)
 
-defs = env['BF_GL_DEFINITIONS']
+defs = []
+defs += env['BF_GL_DEFINITIONS']
 
 if env['WITH_BF_SMOKE']:
     defs.append('WITH_SMOKE')
@@ -145,6 +147,9 @@ if env['WITH_BF_FREESTYLE']:
 if env['WITH_BF_OPENSUBDIV']:
     incs += ' #/intern/opensubdiv'
     defs.append('WITH_OPENSUBDIV')
+
+if env['WITH_BF_AUDASPACE']:
+    defs.append('WITH_AUDASPACE')
 
 if env['OURPLATFORM'] == 'linux':
     cflags='-pthread'

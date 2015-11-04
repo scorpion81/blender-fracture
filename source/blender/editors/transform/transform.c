@@ -86,7 +86,7 @@
 #include "RNA_access.h"
 
 #include "BLF_api.h"
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "transform.h"
 
@@ -1037,6 +1037,7 @@ int transformEvent(TransInfo *t, const wmEvent *event)
 							}
 							/* vert slide can fail on unconnected vertices (rare but possible) */
 							if (t->state == TRANS_CANCEL) {
+								t->mode = TFM_TRANSLATION;
 								t->state = TRANS_STARTING;
 								restoreTransObjects(t);
 								resetTransRestrictions(t);
@@ -1063,15 +1064,14 @@ int transformEvent(TransInfo *t, const wmEvent *event)
 				/* only switch when... */
 				if (!(t->options & CTX_TEXTURE) && !(t->options & (CTX_MOVIECLIP | CTX_MASK))) {
 					if (ELEM(t->mode, TFM_ROTATION, TFM_RESIZE, TFM_TRACKBALL, TFM_TRANSLATION, TFM_EDGE_SLIDE, TFM_VERT_SLIDE)) {
+						restoreTransObjects(t);
 						resetTransModal(t);
 						resetTransRestrictions(t);
 						
 						if (t->mode == TFM_ROTATION) {
-							restoreTransObjects(t);
 							initTrackball(t);
 						}
 						else {
-							restoreTransObjects(t);
 							initRotation(t);
 						}
 						initSnapping(t, NULL); // need to reinit after mode change
@@ -1363,15 +1363,14 @@ int transformEvent(TransInfo *t, const wmEvent *event)
 				/* only switch when... */
 				if (!(t->options & CTX_TEXTURE)) {
 					if (ELEM(t->mode, TFM_ROTATION, TFM_RESIZE, TFM_TRACKBALL, TFM_TRANSLATION)) {
+						restoreTransObjects(t);
 						resetTransModal(t);
 						resetTransRestrictions(t);
 
 						if (t->mode == TFM_ROTATION) {
-							restoreTransObjects(t);
 							initTrackball(t);
 						}
 						else {
-							restoreTransObjects(t);
 							initRotation(t);
 						}
 						initSnapping(t, NULL); // need to reinit after mode change
@@ -2077,47 +2076,41 @@ bool initTransform(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *eve
 		t->launch_event = LEFTMOUSE;
 	}
 
+	unit_m3(t->spacemtx);
+
 	initTransInfo(C, t, op, event);
+	initTransformOrientation(C, t);
 
 	if (t->spacetype == SPACE_VIEW3D) {
-		initTransformOrientation(C, t);
-
 		t->draw_handle_apply = ED_region_draw_cb_activate(t->ar->type, drawTransformApply, t, REGION_DRAW_PRE_VIEW);
 		t->draw_handle_view = ED_region_draw_cb_activate(t->ar->type, drawTransformView, t, REGION_DRAW_POST_VIEW);
 		t->draw_handle_pixel = ED_region_draw_cb_activate(t->ar->type, drawTransformPixel, t, REGION_DRAW_POST_PIXEL);
 		t->draw_handle_cursor = WM_paint_cursor_activate(CTX_wm_manager(C), helpline_poll, drawHelpline, t);
 	}
 	else if (t->spacetype == SPACE_IMAGE) {
-		unit_m3(t->spacemtx);
 		t->draw_handle_view = ED_region_draw_cb_activate(t->ar->type, drawTransformView, t, REGION_DRAW_POST_VIEW);
 		//t->draw_handle_pixel = ED_region_draw_cb_activate(t->ar->type, drawTransformPixel, t, REGION_DRAW_POST_PIXEL);
 		t->draw_handle_cursor = WM_paint_cursor_activate(CTX_wm_manager(C), helpline_poll, drawHelpline, t);
 	}
 	else if (t->spacetype == SPACE_CLIP) {
-		unit_m3(t->spacemtx);
 		t->draw_handle_view = ED_region_draw_cb_activate(t->ar->type, drawTransformView, t, REGION_DRAW_POST_VIEW);
 		t->draw_handle_cursor = WM_paint_cursor_activate(CTX_wm_manager(C), helpline_poll, drawHelpline, t);
 	}
 	else if (t->spacetype == SPACE_NODE) {
-		unit_m3(t->spacemtx);
 		/*t->draw_handle_apply = ED_region_draw_cb_activate(t->ar->type, drawTransformApply, t, REGION_DRAW_PRE_VIEW);*/
 		t->draw_handle_view = ED_region_draw_cb_activate(t->ar->type, drawTransformView, t, REGION_DRAW_POST_VIEW);
 		t->draw_handle_cursor = WM_paint_cursor_activate(CTX_wm_manager(C), helpline_poll, drawHelpline, t);
 	}
 	else if (t->spacetype == SPACE_IPO) {
-		unit_m3(t->spacemtx);
 		t->draw_handle_view = ED_region_draw_cb_activate(t->ar->type, drawTransformView, t, REGION_DRAW_POST_VIEW);
 		//t->draw_handle_pixel = ED_region_draw_cb_activate(t->ar->type, drawTransformPixel, t, REGION_DRAW_POST_PIXEL);
 		t->draw_handle_cursor = WM_paint_cursor_activate(CTX_wm_manager(C), helpline_poll, drawHelpline, t);
 	}
 	else if (t->spacetype == SPACE_ACTION) {
-		unit_m3(t->spacemtx);
 		t->draw_handle_view = ED_region_draw_cb_activate(t->ar->type, drawTransformView, t, REGION_DRAW_POST_VIEW);
 		//t->draw_handle_pixel = ED_region_draw_cb_activate(t->ar->type, drawTransformPixel, t, REGION_DRAW_POST_PIXEL);
 		t->draw_handle_cursor = WM_paint_cursor_activate(CTX_wm_manager(C), helpline_poll, drawHelpline, t);
 	}
-	else
-		unit_m3(t->spacemtx);
 
 	createTransData(C, t);          // make TransData structs from selection
 
@@ -3092,6 +3085,7 @@ static void applyShear(TransInfo *t, const int UNUSED(mval[2]))
 	float value;
 	int i;
 	char str[MAX_INFO_LEN];
+	const bool is_local_center = transdata_check_local_center(t, t->around);
 	
 	copy_m3_m4(persmat, t->viewmat);
 	invert_m3_m3(persinv, persmat);
@@ -3127,8 +3121,10 @@ static void applyShear(TransInfo *t, const int UNUSED(mval[2]))
 	
 	mul_m3_m3m3(tmat, smat, persmat);
 	mul_m3_m3m3(totmat, persinv, tmat);
-	
+
 	for (i = 0; i < t->total; i++, td++) {
+		const float *center, *co;
+
 		if (td->flag & TD_NOACTION)
 			break;
 		
@@ -3143,12 +3139,22 @@ static void applyShear(TransInfo *t, const int UNUSED(mval[2]))
 		else {
 			copy_m3_m3(tmat, totmat);
 		}
-		sub_v3_v3v3(vec, td->center, t->center);
+
+		if (is_local_center) {
+			center = td->center;
+			co = td->loc;
+		}
+		else {
+			center = t->center;
+			co = td->center;
+		}
+
+		sub_v3_v3v3(vec, co, center);
 		
 		mul_m3_v3(tmat, vec);
 		
-		add_v3_v3(vec, t->center);
-		sub_v3_v3(vec, td->center);
+		add_v3_v3(vec, center);
+		sub_v3_v3(vec, co);
 		
 		mul_v3_fl(vec, td->factor);
 		
