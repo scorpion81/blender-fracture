@@ -670,8 +670,8 @@ class AddPresetFracture(AddPresetBase, Operator):
         "fracture.dynamic_force",
         "fracture.limit_impact",
         "fracture.use_compounds",
-        "fracture.impulse_dampening",
-        "fracture.directional_factor",
+       # "fracture.impulse_dampening",
+       # "fracture.directional_factor",
         "fracture.minimum_impulse",
         "fracture.mass_threshold_factor"
     ]
