@@ -175,13 +175,18 @@ static int shard_sortsize(const void *s1, const void *s2, void* UNUSED(context))
 
 Shard *BKE_custom_data_to_shard(Shard *s, DerivedMesh *dm)
 {
+	/*
 	CustomData_reset(&s->vertData);
 	CustomData_reset(&s->loopData);
 	CustomData_reset(&s->polyData);
 
 	CustomData_add_layer(&s->vertData, CD_MDEFORMVERT, CD_DUPLICATE, CustomData_get_layer(&dm->vertData, CD_MDEFORMVERT), s->totvert);
 	CustomData_add_layer(&s->loopData, CD_MLOOPUV, CD_DUPLICATE, CustomData_get_layer(&dm->loopData, CD_MLOOPUV), s->totloop);
-	CustomData_add_layer(&s->polyData, CD_MTEXPOLY, CD_DUPLICATE, CustomData_get_layer(&dm->polyData, CD_MTEXPOLY), s->totpoly);
+	CustomData_add_layer(&s->polyData, CD_MTEXPOLY, CD_DUPLICATE, CustomData_get_layer(&dm->polyData, CD_MTEXPOLY), s->totpoly);*/
+
+	CustomData_copy(&dm->vertData, &s->vertData, CD_MASK_MDEFORMVERT, CD_DUPLICATE, s->totvert);
+	CustomData_copy(&dm->loopData, &s->loopData, CD_MASK_MLOOPUV, CD_DUPLICATE, s->totloop);
+	CustomData_copy(&dm->polyData, &s->polyData, CD_MASK_MTEXPOLY, CD_DUPLICATE, s->totpoly);
 
 	return s;
 }
@@ -395,7 +400,8 @@ FracMesh *BKE_create_fracture_container(void)
 }
 
 static void handle_fast_bisect(FracMesh *fm, int expected_shards, int algorithm, BMesh** bm_parent, float obmat[4][4],
-                               float centroid[3], short inner_material_index, int parent_id, Shard **tempshards, Shard ***tempresults)
+                               float centroid[3], short inner_material_index, int parent_id, Shard **tempshards, Shard ***tempresults,
+                               char uv_layer[64])
 {
 	int i = 0;
 
@@ -430,8 +436,10 @@ static void handle_fast_bisect(FracMesh *fm, int expected_shards, int algorithm,
 		printf("Bisecting cell %d...\n", i);
 		printf("Bisecting cell %d...\n", i + 1);
 
-		s = BKE_fracture_shard_bisect(*bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FAST_FILL, false, true, index, centroid, inner_material_index);
-		s2 = BKE_fracture_shard_bisect(*bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FAST_FILL, true, false, index, centroid, inner_material_index);
+		s = BKE_fracture_shard_bisect(*bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FAST_FILL,
+		                              false, true, index, centroid, inner_material_index, uv_layer);
+		s2 = BKE_fracture_shard_bisect(*bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FAST_FILL,
+		                               true, false, index, centroid, inner_material_index, uv_layer);
 
 		if (s != NULL && s2 != NULL && tempresults != NULL) {
 			int j = 0;
@@ -474,7 +482,7 @@ static void handle_fast_bisect(FracMesh *fm, int expected_shards, int algorithm,
 
 static void handle_boolean_fractal(Shard* s, Shard* t, int expected_shards, DerivedMesh* dm_parent, Object *obj, short inner_material_index,
                                    int num_cuts, float fractal, int num_levels, bool smooth,int parent_id, int* i, Shard ***tempresults,
-                                   DerivedMesh **dm_p)
+                                   DerivedMesh **dm_p, char uv_layer[64])
 {
 	/* physics shard and fractalized shard, so we need to booleanize twice */
 	/* and we need both halves, so twice again */
@@ -513,7 +521,7 @@ static void handle_boolean_fractal(Shard* s, Shard* t, int expected_shards, Deri
 		loc_eul_size_to_mat4(matrix, loc, eul, one);
 
 		/*visual shards next, fractalized cuts */
-		s = BKE_fracture_shard_boolean(obj, *dm_p, t, inner_material_index, num_cuts,fractal, &s2, matrix, radius, smooth, num_levels);
+		s = BKE_fracture_shard_boolean(obj, *dm_p, t, inner_material_index, num_cuts,fractal, &s2, matrix, radius, smooth, num_levels, uv_layer);
 
 		if (index < max_retries)
 		{
@@ -565,7 +573,7 @@ static void handle_boolean_fractal(Shard* s, Shard* t, int expected_shards, Deri
 
 static bool handle_boolean_bisect(FracMesh *fm, Object *obj, int expected_shards, int algorithm, int parent_id, Shard **tempshards,
                                   DerivedMesh *dm_parent, BMesh* bm_parent, float obmat[4][4], short inner_material_index, int num_cuts,
-                                  int num_levels, float fractal, int *i, bool smooth, Shard*** tempresults, DerivedMesh **dm_p)
+                                  int num_levels, float fractal, int *i, bool smooth, Shard*** tempresults, DerivedMesh **dm_p, char uv_layer[64])
 {
 	Shard *s = NULL, *t = NULL;
 	if (fm->cancel == 1)
@@ -587,16 +595,16 @@ static bool handle_boolean_bisect(FracMesh *fm, Object *obj, int expected_shards
 
 	/* XXX TODO, need object for material as well, or atleast a material index... */
 	if (algorithm == MOD_FRACTURE_BOOLEAN) {
-		s = BKE_fracture_shard_boolean(obj, dm_parent, t, inner_material_index, 0, 0.0f, NULL, NULL, 0.0f, false, 0);
+		s = BKE_fracture_shard_boolean(obj, dm_parent, t, inner_material_index, 0, 0.0f, NULL, NULL, 0.0f, false, 0, uv_layer);
 	}
 	else if (algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL) {
 		handle_boolean_fractal(s, t, expected_shards, dm_parent, obj, inner_material_index, num_cuts, fractal,
-		                       num_levels, smooth, parent_id, i, tempresults, dm_p);
+		                       num_levels, smooth, parent_id, i, tempresults, dm_p, uv_layer);
 	}
 	else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL) {
 		float co[3] = {0, 0, 0};
 		printf("Bisecting cell %d...\n", *i);
-		s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, false, true, 0, co, inner_material_index);
+		s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, false, true, 0, co, inner_material_index, uv_layer);
 	}
 	else {
 		/* do not fracture case */
@@ -769,7 +777,7 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 /* parse the voro++ cell data */
 static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, FracMesh *fm, int algorithm, Object *obj, DerivedMesh *dm,
                         short inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode,
-                        bool reset, int active_setting, int num_settings)
+                        bool reset, int active_setting, int num_settings, char uv_layer[64])
 {
 	/*Parse voronoi raw data*/
 	int i = 0, j = 0, count = 0;
@@ -893,7 +901,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 		for (i = 0; i < expected_shards; i++) {
 			bool stop = handle_boolean_bisect(fm, obj, expected_shards, algorithm, parent_id, tempshards, dm_parent,
 			                      bm_parent, obmat, inner_material_index, num_cuts, num_levels, fractal,
-			                      &i, smooth, &tempresults, &dm_p);
+			                      &i, smooth, &tempresults, &dm_p, uv_layer);
 			//if (stop)
 			//	break;
 		}
@@ -909,7 +917,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 		else
 		{
 			handle_fast_bisect(fm, expected_shards, algorithm, &bm_parent, obmat, centroid, inner_material_index, parent_id,
-			                   tempshards, &tempresults);
+			                   tempshards, &tempresults, uv_layer);
 		}
 	}
 
@@ -1217,11 +1225,11 @@ static void do_intersect(FractureModifierData *fmd, Object* ob, Shard *t, short 
 
 	if (keep_other_shard)
 	{
-		s = BKE_fracture_shard_boolean(ob, *dm_parent, t, inner_mat_index, 0, 0.0f, &s2, NULL, 0.0f, false, 0);
+		s = BKE_fracture_shard_boolean(ob, *dm_parent, t, inner_mat_index, 0, 0.0f, &s2, NULL, 0.0f, false, 0, fmd->uvlayer_name);
 	}
 	else
 	{
-		s = BKE_fracture_shard_boolean(ob, *dm_parent, t, inner_mat_index, 0, 0.0f, NULL, NULL, 0.0f, false, 0);
+		s = BKE_fracture_shard_boolean(ob, *dm_parent, t, inner_mat_index, 0, 0.0f, NULL, NULL, 0.0f, false, 0, fmd->uvlayer_name);
 	}
 
 	//printf("Fractured: %d\n", k);
@@ -1477,7 +1485,7 @@ void BKE_fracture_shard_by_planes(FractureModifierData *fmd, Object *obj, short 
 
 void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud, int algorithm, Object *obj, DerivedMesh *dm, short
                                   inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode,
-                                  bool reset, int active_setting, int num_settings)
+                                  bool reset, int active_setting, int num_settings, char uv_layer[64])
 {
 	int n_size = 8;
 	
@@ -1548,7 +1556,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 
 	/*Evaluate result*/
 	parse_cells(voro_cells, pointcloud->totpoints, id, fmesh, algorithm, obj, dm, inner_material_index, mat,
-	            num_cuts, fractal, smooth, num_levels, mode, reset, active_setting, num_settings);
+	            num_cuts, fractal, smooth, num_levels, mode, reset, active_setting, num_settings, uv_layer);
 
 	/*Free structs in C++ area of memory */
 	cells_free(voro_cells, pointcloud->totpoints);
@@ -1782,13 +1790,16 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 
 	if (doCustomData) {
 		if (s->totvert > 1) {
-			CustomData_add_layer(&dm->vertData, CD_MDEFORMVERT, CD_DUPLICATE, CustomData_get_layer(&s->vertData, CD_MDEFORMVERT), s->totvert);
+			//CustomData_add_layer(&dm->vertData, CD_MDEFORMVERT, CD_DUPLICATE, CustomData_get_layer(&s->vertData, CD_MDEFORMVERT), s->totvert);
+			CustomData_copy(&s->vertData, &dm->vertData, CD_MASK_MDEFORMVERT, CD_DUPLICATE, s->totvert);
 		}
 		if (s->totloop > 0) {
-			CustomData_add_layer(&dm->loopData, CD_MLOOPUV, CD_DUPLICATE, CustomData_get_layer(&s->loopData, CD_MLOOPUV), s->totloop);
+			//CustomData_add_layer(&dm->loopData, CD_MLOOPUV, CD_DUPLICATE, CustomData_get_layer(&s->loopData, CD_MLOOPUV), s->totloop);
+			CustomData_copy(&s->loopData, &dm->loopData, CD_MASK_MLOOPUV, CD_DUPLICATE, s->totloop);
 		}
 		if (s->totpoly > 0) {
-			CustomData_add_layer(&dm->polyData, CD_MTEXPOLY, CD_DUPLICATE, CustomData_get_layer(&s->polyData, CD_MTEXPOLY), s->totpoly);
+			//CustomData_add_layer(&dm->polyData, CD_MTEXPOLY, CD_DUPLICATE, CustomData_get_layer(&s->polyData, CD_MTEXPOLY), s->totpoly);
+			CustomData_copy(&s->polyData, &dm->polyData, CD_MASK_MTEXPOLY, CD_DUPLICATE, s->totpoly);
 		}
 	}
 

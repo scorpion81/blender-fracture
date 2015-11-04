@@ -61,7 +61,7 @@ void uv_bbox(float uv[][2], int num_uv, float minv[2], float maxv[2]);
 void uv_translate(float uv[][2], int num_uv, float trans[2]);
 void uv_scale(float uv[][2], int num_uv, float scale);
 void uv_transform(float uv[][2], int num_uv, float mat[2][2]);
-void unwrap_shard_dm(DerivedMesh *dm);
+void unwrap_shard_dm(DerivedMesh *dm, char uv_layer[]);
 
 /* UV Helpers */
 void uv_bbox(float uv[][2], int num_uv, float minv[2], float maxv[2])
@@ -97,6 +97,29 @@ void uv_transform(float uv[][2], int num_uv, float mat[2][2])
 	int v;
 	for (v = 0; v < num_uv; v++) {
 		mul_m2v2(mat, uv[v]);
+	}
+}
+
+static void do_clean_uv(DerivedMesh *dm, char uv_layer[64])
+{
+	MLoopUV* mluv = CustomData_get_layer_named(&dm->loopData, CD_MLOOPUV, uv_layer);
+	int i, totpoly = dm->getNumPolys(dm);
+	MPoly *mp, *mpoly = dm->getPolyArray(dm);
+
+	if (mluv)
+	{
+		for (i = 0, mp = mpoly; i < totpoly; i++, mp++)
+		{
+			if (mp->mat_nr != 1)
+			{	//clean up (set uv coords to zero) all except inner faces (material based)
+				int j;
+				for (j = mp->loopstart; j < mp->loopstart + mp->totloop; j++)
+				{
+					mluv[j].uv[0] = 0.0f;
+					mluv[j].uv[1] = 0.0f;
+				}
+			}
+		}
 	}
 }
 
@@ -158,7 +181,7 @@ static void do_unwrap(MPoly *mp, MVert *mvert, MLoop* mloop, int i, MLoopUV **ml
 	MEM_freeN(verts);
 }
 
-void unwrap_shard_dm(DerivedMesh *dm)
+void unwrap_shard_dm(DerivedMesh *dm, char uv_layer[64])
 {
 	MVert *mvert;
 	MLoop *mloop;
@@ -203,8 +226,8 @@ void unwrap_shard_dm(DerivedMesh *dm)
 
 	MEM_freeN(boxpack);
 
-	CustomData_add_layer_named(&dm->loopData, CD_MLOOPUV, CD_ASSIGN, mluv, dm->numLoopData, "InnerUV");
-	CustomData_add_layer_named(&dm->polyData, CD_MTEXPOLY, CD_CALLOC, NULL, totpoly, "InnerUV");
+	CustomData_add_layer_named(&dm->loopData, CD_MLOOPUV, CD_ASSIGN, mluv, dm->numLoopData, uv_layer);
+	CustomData_add_layer_named(&dm->polyData, CD_MTEXPOLY, CD_CALLOC, NULL, totpoly, uv_layer);
 }
 
 static bool check_non_manifold(DerivedMesh* dm)
@@ -525,7 +548,8 @@ static void do_set_inner_material(Shard **other, float mat[4][4], DerivedMesh* l
 }
 
 Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *child, short inner_material_index,
-                                  int num_cuts, float fractal, Shard** other, float mat[4][4], float radius, bool use_smooth_inner, int num_levels)
+                                  int num_cuts, float fractal, Shard** other, float mat[4][4], float radius,
+                                  bool use_smooth_inner, int num_levels, char uv_layer[64])
 {
 	DerivedMesh *left_dm = NULL, *right_dm, *output_dm, *other_dm;
 	BMesh* bm = NULL;
@@ -537,8 +561,10 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 	else
 	{
 		left_dm = BKE_shard_create_dm(child, false);
-		unwrap_shard_dm(left_dm);
+		//unwrap_shard_dm(left_dm);
 	}
+
+	unwrap_shard_dm(left_dm, uv_layer);
 
 	do_set_inner_material(other, mat, left_dm, inner_material_index);
 
@@ -595,13 +621,14 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 
 	if (output_dm)
 	{
+		do_clean_uv(output_dm, uv_layer);
 		return do_output_shard_dm(&output_dm, child, num_cuts, fractal, other);
 	}
 
 	return NULL;
 }
 
-static Shard *do_output_shard(BMesh* bm_parent, Shard *child)
+static Shard *do_output_shard(BMesh* bm_parent, Shard *child, char uv_layer[64])
 {
 	Shard *output_s = NULL;
 	DerivedMesh *dm_out;
@@ -609,6 +636,10 @@ static Shard *do_output_shard(BMesh* bm_parent, Shard *child)
 	if (bm_parent->totvert >= 3)
 	{	/* atleast 3 verts form a face, so strip out invalid stuff */
 		dm_out = CDDM_from_bmesh(bm_parent, true);
+
+		//"cleanup" dm here, set UVs to 0,0 whose poly->mat_nr = 1 (i cant find where its originally created... grrr)
+		do_clean_uv(dm_out, uv_layer);
+
 		output_s = BKE_create_fracture_shard(dm_out->getVertArray(dm_out),
 											 dm_out->getPolyArray(dm_out),
 											 dm_out->getLoopArray(dm_out),
@@ -757,7 +788,7 @@ static void do_bisect(BMesh* bm_parent, BMesh* bm_child, float obmat[4][4], bool
 
 
 Shard *BKE_fracture_shard_bisect(BMesh *bm_orig, Shard *child, float obmat[4][4], bool use_fill, bool clear_inner,
-                                 bool clear_outer, int cutlimit, float centroid[3], short inner_mat_index)
+                                 bool clear_outer, int cutlimit, float centroid[3], short inner_mat_index, char uv_layer[64])
 {
 
 	Shard *output_s;
@@ -766,8 +797,7 @@ Shard *BKE_fracture_shard_bisect(BMesh *bm_orig, Shard *child, float obmat[4][4]
 	BMesh *bm_parent = BM_mesh_copy(bm_orig);
 	BMesh *bm_child;
 
-
-	unwrap_shard_dm(dm_child);
+	unwrap_shard_dm(dm_child, uv_layer);
 	bm_child = DM_to_bmesh(dm_child, true);
 
 
@@ -775,7 +805,7 @@ Shard *BKE_fracture_shard_bisect(BMesh *bm_orig, Shard *child, float obmat[4][4]
 
 	do_bisect(bm_parent, bm_child, obmat, use_fill, clear_inner, clear_outer, cutlimit, centroid, inner_mat_index);
 
-	output_s = do_output_shard(bm_parent, child);
+	output_s = do_output_shard(bm_parent, child, uv_layer);
 
 	BM_mesh_free(bm_child);
 	BM_mesh_free(bm_parent);

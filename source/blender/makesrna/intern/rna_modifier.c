@@ -579,6 +579,7 @@ static void rna_##_type##Modifier_##_prop##_set(PointerRNA *ptr, const char *val
 	rna_object_uvlayer_name_set(ptr, value, tmd->_prop, sizeof(tmd->_prop));                \
 }
 
+RNA_MOD_UVLAYER_NAME_SET(Fracture, uvlayer_name);
 RNA_MOD_UVLAYER_NAME_SET(MappingInfo, uvlayer_name);
 RNA_MOD_UVLAYER_NAME_SET(UVProject, uvlayer_name);
 RNA_MOD_UVLAYER_NAME_SET(UVWarp, uvlayer_name);
@@ -5213,6 +5214,7 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
+#if 0
 	prop = RNA_def_property(srna, "impulse_dampening", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "impulse_dampening");
 	RNA_def_property_float_funcs(prop, NULL, "rna_FractureModifier_impulse_dampening_set", NULL);
@@ -5229,6 +5231,7 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	                         "Determines how much the damage propagation depends on impact direction; -1 means not at all, 1 fully (dot product)");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+#endif
 
 	prop = RNA_def_property(srna, "minimum_impulse", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "minimum_impulse");
@@ -5246,6 +5249,12 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Stability Factor",
 	                         "Determines how 'stable' an object is 0 means min_mass / min_mass + max_mass, 1 means maximal threshold everywhere");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "uv_layer", PROP_STRING, PROP_NONE);
+	RNA_def_property_string_sdna(prop, NULL, "uvlayer_name");
+	RNA_def_property_ui_text(prop, "Inner UV Map", "Name of UV map for inner faces");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_FractureModifier_uvlayer_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 

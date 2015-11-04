@@ -1311,10 +1311,25 @@ static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, Deri
 		mat_index = do_materials(fmd, obj);
 		mat_index = mat_index > 0 ? mat_index - 1 : mat_index;
 
+#if 0
+		if (fmd->uvlayer_name[0] && obj->type == OB_MESH)
+		{
+			//const char *name = "InnerUV";
+			//create default uv layer (both on mesh and DM ?) and use it
+			//ED_mesh_uv_texture_ensure((Mesh*)ob->data, name);
+			int index = CustomData_get_named_layer_index(&dm->loopData, CD_MLOOPUV, fmd->uvlayer_name);
+			if (index > -1)
+				CustomData_free_layer(&dm->loopData, CD_MLOOPUV, dm->numLoopData,index);
+
+			CustomData_add_layer_named(&dm->loopData, CD_MLOOPUV, CD_CALLOC, NULL, dm->numLoopData, fmd->uvlayer_name);
+			//BLI_strncpy(fmd->uvlayer_name, name, sizeof(name));
+		}
+#endif
+
 		if (points.totpoints > 0) {
 			BKE_fracture_shard_by_points(fmd->frac_mesh, id, &points, fmd->frac_algorithm, obj, dm, mat_index, mat,
 			                             fmd->fractal_cuts, fmd->fractal_amount, fmd->use_smooth, fmd->fractal_iterations,
-			                             fmd->fracture_mode, fmd->reset_shards, fmd->active_setting, num_settings);
+			                             fmd->fracture_mode, fmd->reset_shards, fmd->active_setting, num_settings, fmd->uvlayer_name);
 		}
 
 		/*TODO, limit this to settings shards !*/
@@ -3992,9 +4007,13 @@ static Shard* copy_shard(Shard *s)
 	CustomData_reset(&t->loopData);
 	CustomData_reset(&t->polyData);
 
-	CustomData_add_layer(&t->vertData, CD_MDEFORMVERT, CD_DUPLICATE, CustomData_get_layer(&s->vertData, CD_MDEFORMVERT), s->totvert);
+	/*CustomData_add_layer(&t->vertData, CD_MDEFORMVERT, CD_DUPLICATE, CustomData_get_layer(&s->vertData, CD_MDEFORMVERT), s->totvert);
 	CustomData_add_layer(&t->loopData, CD_MLOOPUV, CD_DUPLICATE, CustomData_get_layer(&s->loopData, CD_MLOOPUV), s->totloop);
-	CustomData_add_layer(&t->polyData, CD_MTEXPOLY, CD_DUPLICATE, CustomData_get_layer(&s->polyData, CD_MTEXPOLY), s->totpoly);
+	CustomData_add_layer(&t->polyData, CD_MTEXPOLY, CD_DUPLICATE, CustomData_get_layer(&s->polyData, CD_MTEXPOLY), s->totpoly);*/
+
+	CustomData_copy(&s->vertData, &t->vertData, CD_MASK_MDEFORMVERT, CD_DUPLICATE, s->totvert);
+	CustomData_copy(&s->loopData, &t->loopData, CD_MASK_MLOOPUV, CD_DUPLICATE, s->totloop);
+	CustomData_copy(&s->polyData, &t->polyData, CD_MASK_MTEXPOLY, CD_DUPLICATE, s->totpoly);
 
 	t->neighbor_count = t->neighbor_count;
 	t->neighbor_ids = MEM_mallocN(sizeof(int) * s->neighbor_count, __func__);
