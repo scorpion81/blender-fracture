@@ -102,5 +102,6 @@ void BKE_free_constraints(struct FractureModifierData *fmd);
 void BKE_fracture_load_settings(struct FractureModifierData *fmd, struct FractureSetting *fs);
 void BKE_fracture_store_settings(struct FractureModifierData *fs, struct FractureSetting *fmd);
 struct Shard* BKE_create_initial_shard(struct DerivedMesh *dm);
+void BKE_copy_customdata_layers(struct CustomData* dest, struct CustomData *src, int type, int count);
 
 #endif /* BKE_FRACTURE_H */

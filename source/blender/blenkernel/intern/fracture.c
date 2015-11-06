@@ -175,14 +175,9 @@ static int shard_sortsize(const void *s1, const void *s2, void* UNUSED(context))
 
 Shard *BKE_custom_data_to_shard(Shard *s, DerivedMesh *dm)
 {
-	/*
 	CustomData_reset(&s->vertData);
 	CustomData_reset(&s->loopData);
 	CustomData_reset(&s->polyData);
-
-	CustomData_add_layer(&s->vertData, CD_MDEFORMVERT, CD_DUPLICATE, CustomData_get_layer(&dm->vertData, CD_MDEFORMVERT), s->totvert);
-	CustomData_add_layer(&s->loopData, CD_MLOOPUV, CD_DUPLICATE, CustomData_get_layer(&dm->loopData, CD_MLOOPUV), s->totloop);
-	CustomData_add_layer(&s->polyData, CD_MTEXPOLY, CD_DUPLICATE, CustomData_get_layer(&dm->polyData, CD_MTEXPOLY), s->totpoly);*/
 
 	CustomData_copy(&dm->vertData, &s->vertData, CD_MASK_MDEFORMVERT, CD_DUPLICATE, s->totvert);
 	CustomData_copy(&dm->loopData, &s->loopData, CD_MASK_MLOOPUV, CD_DUPLICATE, s->totloop);
@@ -1766,6 +1761,18 @@ void BKE_fracture_create_dm(FractureModifierData *fmd, bool doCustomData)
 	fmd->dm = dm_final;
 }
 
+void BKE_copy_customdata_layers(CustomData* dest, CustomData *src, int type, int count)
+{
+	int layer;
+	for (layer = 0; layer < src->totlayer; layer++)
+	{
+		if (src->layers[layer].type == type)
+		{
+			CustomData_add_layer(dest, type, CD_DUPLICATE, src->layers[layer].data, count);
+		}
+	}
+}
+
 DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 {
 	DerivedMesh *dm;
@@ -1790,16 +1797,13 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 
 	if (doCustomData) {
 		if (s->totvert > 1) {
-			//CustomData_add_layer(&dm->vertData, CD_MDEFORMVERT, CD_DUPLICATE, CustomData_get_layer(&s->vertData, CD_MDEFORMVERT), s->totvert);
-			CustomData_copy(&s->vertData, &dm->vertData, CD_MASK_MDEFORMVERT, CD_DUPLICATE, s->totvert);
+			BKE_copy_customdata_layers(&dm->vertData, &s->vertData, CD_MDEFORMVERT, s->totvert);
 		}
 		if (s->totloop > 0) {
-			//CustomData_add_layer(&dm->loopData, CD_MLOOPUV, CD_DUPLICATE, CustomData_get_layer(&s->loopData, CD_MLOOPUV), s->totloop);
-			CustomData_copy(&s->loopData, &dm->loopData, CD_MASK_MLOOPUV, CD_DUPLICATE, s->totloop);
+			BKE_copy_customdata_layers(&dm->loopData, &s->loopData, CD_MLOOPUV, s->totloop);
 		}
 		if (s->totpoly > 0) {
-			//CustomData_add_layer(&dm->polyData, CD_MTEXPOLY, CD_DUPLICATE, CustomData_get_layer(&s->polyData, CD_MTEXPOLY), s->totpoly);
-			CustomData_copy(&s->polyData, &dm->polyData, CD_MASK_MTEXPOLY, CD_DUPLICATE, s->totpoly);
+			BKE_copy_customdata_layers(&dm->polyData, &s->polyData, CD_MTEXPOLY, s->totpoly);
 		}
 	}
 
