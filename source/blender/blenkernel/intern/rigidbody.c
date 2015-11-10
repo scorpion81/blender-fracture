@@ -1314,7 +1314,7 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
  *
  * < rebuild: even if an instance already exists, replace it
  */
-static void rigidbody_validate_sim_object(RigidBodyWorld *rbw, Object *ob, bool rebuild)
+static void rigidbody_validate_sim_object(RigidBodyWorld *rbw, Object *ob, bool rebuild, bool transfer_speeds)
 {
 	RigidBodyOb *rbo = (ob) ? ob->rigidbody_object : NULL;
 	float loc[3];
@@ -1366,6 +1366,21 @@ static void rigidbody_validate_sim_object(RigidBodyWorld *rbw, Object *ob, bool 
 
 		RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
 		RB_body_set_kinematic_state(rbo->physics_object, rbo->flag & RBO_FLAG_KINEMATIC || rbo->flag & RBO_FLAG_DISABLED);
+
+		if (transfer_speeds)
+		{
+			if ((len_squared_v3(rbo->lin_vel) > (rbo->lin_sleep_thresh * rbo->lin_sleep_thresh)))
+			{
+				//printf("Setting linear velocity (%f, %f, %f)\n", rbo->lin_vel[0], rbo->lin_vel[1], rbo->lin_vel[2]);
+				RB_body_set_linear_velocity(rbo->physics_object, rbo->lin_vel);
+			}
+
+			if ((len_squared_v3(rbo->ang_vel) > (rbo->ang_sleep_thresh * rbo->ang_sleep_thresh)))
+			{
+				//printf("Setting angular velocity (%f, %f, %f)\n", rbo->ang_vel[0], rbo->ang_vel[1], rbo->ang_vel[2]);
+				RB_body_set_angular_velocity(rbo->physics_object, rbo->ang_vel);
+			}
+		}
 	}
 
 	if (rbw && rbw->physics_world)
@@ -1822,11 +1837,12 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	int ob_index1, ob_index2;
 	bool validOb = true;
 
-	FractureModifierData *fmd1 = (FractureModifierData*)modifiers_findByType((Object*)blenderOb1, eModifierType_Fracture);
-	FractureModifierData *fmd2 = (FractureModifierData*)modifiers_findByType((Object*)blenderOb2, eModifierType_Fracture);
-
 	mi1 = (MeshIsland*)island1;
 	mi2 = (MeshIsland*)island2;
+
+#if 0
+	FractureModifierData *fmd1 = (FractureModifierData*)modifiers_findByType((Object*)blenderOb1, eModifierType_Fracture);
+	FractureModifierData *fmd2 = (FractureModifierData*)modifiers_findByType((Object*)blenderOb2, eModifierType_Fracture);
 
 	if ((fmd1 && fmd1->fracture_mode == MOD_FRACTURE_DYNAMIC) ||
 	   (fmd2 && fmd2->fracture_mode == MOD_FRACTURE_DYNAMIC))
@@ -1837,6 +1853,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 		ob2 = blenderOb2;
 		return check_colgroup_ghost(ob1, ob2);
 	}
+#endif
 
 	if (rbw == NULL)
 	{
@@ -3069,6 +3086,14 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				/* refresh object... */
 				int do_rebuild = rebuild;
 
+				if ((rbw->flag & RBW_FLAG_REBUILD_CONSTRAINTS) && fmd->fracture_mode != MOD_FRACTURE_DYNAMIC)
+				{
+					//reset speeds
+					//printf("ZEROIZING speed (shard)\n");
+					zero_v3(mi->rigidbody->lin_vel);
+					zero_v3(mi->rigidbody->ang_vel);
+				}
+
 				if (fmd->use_breaking)
 				{
 					float weight = mi->thresh_weight;
@@ -3079,17 +3104,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 					}
 				}
 
-				validateShard(rbw, count == 0 ? NULL : mi, ob, do_rebuild, fmd->fracture_mode == MOD_FRACTURE_DYNAMIC);
-
-				/*build compound shape from child shapes*/
-				/*if (fmd->use_compounds && rebuild)
-				{
-					if (mi != parent)
-					{
-						float rot[4] = {1.0f, 0.0f, 0.0f, 0.0f};
-						RB_shape_add_compound_child(compound, mi->rigidbody->physics_shape, mi->centroid, rot);
-					}
-				}*/
+				validateShard(rbw, count == 0 ? NULL : mi, ob, do_rebuild, true); //fmd->fracture_mode == MOD_FRACTURE_DYNAMIC);
 			}
 
 			/* update simulation object... */
@@ -3200,13 +3215,21 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 			/* update transformation matrix of the object so we don't get a frame of lag for simple animations */
 			BKE_object_where_is_calc(scene, ob);
 
+			if (rbw->flag & RBW_FLAG_REBUILD_CONSTRAINTS)
+			{
+				//reset speeds
+				//printf("ZEROIZING speed (object)\n");
+				zero_v3(rbo->lin_vel);
+				zero_v3(rbo->ang_vel);
+			}
+
 			if (rbo == NULL) {
 				/* Since this object is included in the sim group but doesn't have
 				 * rigid body settings (perhaps it was added manually), add!
 				 *	- assume object to be active? That is the default for newly added settings...
 				 */
 				ob->rigidbody_object = BKE_rigidbody_create_object(scene, ob, RBO_TYPE_ACTIVE);
-				rigidbody_validate_sim_object(rbw, ob, true);
+				rigidbody_validate_sim_object(rbw, ob, true, true);
 
 				rbo = ob->rigidbody_object;
 			}
@@ -3215,10 +3238,10 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 				/* refresh object... */
 				if (rebuild) {
 					/* World has been rebuilt so rebuild object */
-					rigidbody_validate_sim_object(rbw, ob, true);
+					rigidbody_validate_sim_object(rbw, ob, true, true);
 				}
 				else if (rbo->flag & RBO_FLAG_NEEDS_VALIDATE) {
-					rigidbody_validate_sim_object(rbw, ob, false);
+					rigidbody_validate_sim_object(rbw, ob, false, true);
 				}
 				/* refresh shape... */
 				if (rbo->flag & RBO_FLAG_NEEDS_RESHAPE) {
@@ -3313,7 +3336,8 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 						}
 
 						/* update stored velocities, can be set again after sim rebuild */
-						if (rmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+						//if (rmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+						if (!(rbo->flag & RBO_FLAG_KINEMATIC))
 						{
 							RB_body_get_linear_velocity(rbo->physics_object, rbo->lin_vel);
 							RB_body_get_angular_velocity(rbo->physics_object, rbo->ang_vel);
@@ -3335,6 +3359,12 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 				/* deactivate passive objects so they don't interfere with deactivation of active objects */
 				if (rbo->type == RBO_TYPE_PASSIVE)
 					RB_body_deactivate(rbo->physics_object);
+			}
+
+			if (!(rbo->flag & RBO_FLAG_KINEMATIC))
+			{
+				RB_body_get_linear_velocity(rbo->physics_object, rbo->lin_vel);
+				RB_body_get_angular_velocity(rbo->physics_object, rbo->ang_vel);
 			}
 		}
 		modFound = false;
@@ -3588,7 +3618,7 @@ static void resetDynamic(RigidBodyWorld *rbw)
 	GroupObject *go;
 	for (go = rbw->group->gobject.first; go; go = go->next)
 	{
-		FractureModifierData *fmd = modifiers_findByType(go->ob, eModifierType_Fracture);
+		FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(go->ob, eModifierType_Fracture);
 		if (fmd && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
 			Scene *scene = fmd->modifier.scene;

@@ -3059,15 +3059,16 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 
 	if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 	{
-		if (fmd->limit_impact)
-		{
-			set_rigidbody_type(fmd, s, mi);
-		}
-
 		if (par != NULL)
 		{
 			copy_v3_v3(mi->rigidbody->lin_vel, par->rigidbody->lin_vel);
 			copy_v3_v3(mi->rigidbody->ang_vel, par->rigidbody->ang_vel);
+			mi->rigidbody->flag = par->rigidbody->flag;
+		}
+
+		if (fmd->limit_impact)
+		{
+			set_rigidbody_type(fmd, s, mi);
 		}
 	}
 }
