@@ -5007,10 +5007,15 @@ static void read_meshIsland(FileData *fd, MeshIsland **address)
 	mi->vertno = newdataadr(fd, mi->vertno);
 
 	mi->rigidbody = newdataadr(fd, mi->rigidbody);
-	mi->rigidbody->physics_object = newdataadr(fd, mi->rigidbody->physics_object);
-	mi->rigidbody->physics_shape = newdataadr(fd, mi->rigidbody->physics_shape);
-	mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
-	mi->rigidbody->flag |= RBO_FLAG_NEEDS_RESHAPE;
+	if (mi->rigidbody)
+	{
+		/*should not happen that a mesh island has no rigidbody... */
+		/*maybe the modifier was inactive while saving ?*/
+		mi->rigidbody->physics_object = newdataadr(fd, mi->rigidbody->physics_object);
+		mi->rigidbody->physics_shape = newdataadr(fd, mi->rigidbody->physics_shape);
+		mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+		mi->rigidbody->flag |= RBO_FLAG_NEEDS_RESHAPE;
+	}
 
 	mi->neighbor_ids = newdataadr(fd, mi->neighbor_ids );
 	mi->bb = newdataadr(fd, mi->bb);
