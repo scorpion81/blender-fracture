@@ -87,8 +87,8 @@ static void InputTrackBall(TransInfo *UNUSED(t), MouseInput *mi, const double mv
 	output[0] = (float)(mi->imval[1] - mval[1]);
 	output[1] = (float)(mval[0] - mi->imval[0]);
 
-	add_v2_v2(data->value_accum, dxy_accum);
-	mul_v2_v2fl(output, data->value_accum, mi->factor);
+	//add_v2_v2(data->value_accum, dxy_accum);
+	//mul_v2_v2fl(output, data->value_accum, mi->factor);
 }
 
 static void InputHorizontalRatio(TransInfo *t, MouseInput *UNUSED(mi), const double mval[2], float output[3])

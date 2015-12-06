@@ -2850,7 +2850,6 @@ bool BKE_image_is_multilayer(Image *ima)
 }
 
 bool BKE_image_is_multiview(Image *ima)
-<<<<<<< HEAD
 {
 	return (BLI_listbase_count_ex(&ima->views, 2) > 1);
 }
@@ -2864,21 +2863,6 @@ bool BKE_image_is_stereo(Image *ima)
 
 static void image_view_from_render_view(ImageView *iv_dst, RenderView *rv_src)
 {
-=======
-{
-	return (BLI_listbase_count_ex(&ima->views, 2) > 1);
-}
-
-bool BKE_image_is_stereo(Image *ima)
-{
-	return BKE_image_is_multiview(ima) &&
-	       (BLI_findstring(&ima->views, STEREO_LEFT_NAME, offsetof(ImageView, name)) &&
-            BLI_findstring(&ima->views, STEREO_RIGHT_NAME, offsetof(ImageView, name)));
-}
-
-static void image_view_from_render_view(ImageView *iv_dst, RenderView *rv_src)
-{
->>>>>>> refs/remotes/origin/master
 	BLI_strncpy(iv_dst->name, rv_src->name, sizeof(iv_dst->name));
 }
 

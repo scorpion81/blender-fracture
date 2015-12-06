@@ -167,6 +167,9 @@ void Pass::add(PassType type, vector<Pass>& passes)
 			pass.exposure = false;
 			break;
 #endif
+		case PASS_SHADOWCATCHER:
+			pass.components = 4;
+			break;
 	}
 
 	passes.push_back(pass);
@@ -267,6 +270,7 @@ Film::Film()
 {
 	exposure = 0.8f;
 	Pass::add(PASS_COMBINED, passes);
+	Pass::add(PASS_SHADOWCATCHER, passes);
 	pass_alpha_threshold = 0.5f;
 
 	filter_type = FILTER_BOX;
@@ -415,6 +419,10 @@ void Film::device_update(Device *device, DeviceScene *dscene, Scene *scene)
 				kfilm->pass_ray_bounces = kfilm->pass_stride;
 				break;
 #endif
+
+			case PASS_SHADOWCATCHER:
+				kfilm->pass_shadowcatcher = kfilm->pass_stride;
+				break;
 
 			case PASS_NONE:
 				break;

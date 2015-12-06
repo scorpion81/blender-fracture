@@ -3668,6 +3668,7 @@ static void registerShaderNodes(void)
 	register_node_type_sh_bsdf_hair();
 	register_node_type_sh_emission();
 	register_node_type_sh_holdout();
+	register_node_type_sh_shadow_catcher();
 	register_node_type_sh_volume_absorption();
 	register_node_type_sh_volume_scatter();
 	register_node_type_sh_subsurface_scattering();
@@ -3693,6 +3694,7 @@ static void registerShaderNodes(void)
 	register_node_type_sh_tex_checker();
 	register_node_type_sh_tex_brick();
 	register_node_type_sh_tex_pointdensity();
+	register_node_type_sh_ieslight();
 }
 
 static void registerTextureNodes(void)
