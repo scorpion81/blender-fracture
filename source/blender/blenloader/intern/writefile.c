@@ -152,6 +152,7 @@
 #include "BKE_constraint.h"
 #include "BKE_fracture.h" // for writing a derivedmesh as shard
 #include "BKE_global.h" // for G
+#include "BKE_idcode.h"
 #include "BKE_library.h" // for  set_listbasepointers
 #include "BKE_main.h"
 #include "BKE_node.h"
@@ -293,11 +294,10 @@ static void ww_handle_init(eWriteWrapType ww_type, WriteWrap *r_ww)
 typedef struct {
 	struct SDNA *sdna;
 
-	int file;
 	unsigned char *buf;
 	MemFile *compare, *current;
 	
-	int tot, count, error, memsize;
+	int tot, count, error;
 
 	/* Wrap writing, so we can use zlib or
 	 * other compression types later, see: G_FILE_COMPRESS
@@ -1358,9 +1358,6 @@ static void write_actuators(WriteData *wd, ListBase *lb)
 			break;
 		case ACT_OBJECT:
 			writestruct(wd, DATA, "bObjectActuator", 1, act->data);
-			break;
-		case ACT_IPO:
-			writestruct(wd, DATA, "bIpoActuator", 1, act->data);
 			break;
 		case ACT_PROPERTY:
 			writestruct(wd, DATA, "bPropertyActuator", 1, act->data);
@@ -2689,6 +2686,7 @@ static void write_scenes(WriteData *wd, ListBase *scebase)
 		}
 		
 		write_previews(wd, sce->preview);
+		write_curvemapping_curves(wd, &sce->r.mblur_shutter_curve);
 
 		sce= sce->id.next;
 	}
@@ -3037,6 +3035,11 @@ static void write_libraries(WriteData *wd, Main *main)
 			while (a--) {
 				for (id= lbarray[a]->first; id; id= id->next) {
 					if (id->us>0 && (id->flag & LIB_EXTERN)) {
+						if (!BKE_idcode_is_linkable(GS(id->name))) {
+							printf("ERROR: write file: datablock '%s' from lib '%s' is not linkable "
+							       "but is flagged as directly linked", id->name, main->curlib->filepath);
+							BLI_assert(0);
+						}
 						writestruct(wd, ID_ID, "ID", 1, id);
 					}
 				}
@@ -3323,18 +3326,6 @@ static void write_paintcurves(WriteData *wd, ListBase *idbase)
 
 			writestruct(wd, DATA, "PaintCurvePoint", pc->tot_points, pc->points);
 			if (pc->id.properties) IDP_WriteProperty(pc->id.properties, wd);
-		}
-	}
-}
-
-static void write_scripts(WriteData *wd, ListBase *idbase)
-{
-	Script *script;
-	
-	for (script=idbase->first; script; script= script->id.next) {
-		if (script->id.us>0 || wd->current) {
-			writestruct(wd, ID_SCRIPT, "Script", 1, script);
-			if (script->id.properties) IDP_WriteProperty(script->id.properties, wd);
 		}
 	}
 }
@@ -3875,7 +3866,6 @@ static int write_file_handle(
 	write_brushes  (wd, &mainvar->brush);
 	write_palettes (wd, &mainvar->palettes);
 	write_paintcurves (wd, &mainvar->paintcurves);
-	write_scripts  (wd, &mainvar->script);
 	write_gpencils (wd, &mainvar->gpencil);
 	write_linestyles(wd, &mainvar->linestyle);
 	write_libraries(wd,  mainvar->next);

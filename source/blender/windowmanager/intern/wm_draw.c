@@ -69,6 +69,10 @@
 #include "wm_window.h"
 #include "wm_event_system.h"
 
+#ifdef WITH_OPENSUBDIV
+#  include "BKE_subsurf.h"
+#endif
+
 /* swap */
 #define WIN_NONE_OK     0
 #define WIN_BACK_OK     1
@@ -482,8 +486,6 @@ static int wm_triple_gen_textures(wmWindow *win, wmDrawTriple *triple)
 			glTexImage2D(triple->target, 0, GL_RGB8, triple->x[x], triple->y[y], 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 			glTexParameteri(triple->target, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 			glTexParameteri(triple->target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-			/* The current color is ignored if the GL_REPLACE texture environment is used. */
-			// glTexEnvi(triple->target, GL_TEXTURE_ENV_MODE, GL_REPLACE);
 			glBindTexture(triple->target, 0);
 
 			/* not sure if this works everywhere .. */
@@ -1001,6 +1003,10 @@ void wm_draw_update(bContext *C)
 	wmWindowManager *wm = CTX_wm_manager(C);
 	wmWindow *win;
 	int drawmethod;
+
+#ifdef WITH_OPENSUBDIV
+	BKE_subsurf_free_unused_buffers();
+#endif
 
 	GPU_free_unused_buffers();
 	

@@ -152,7 +152,6 @@ void UI_fontstyle_draw_ex(
         const uiFontStyle *fs, const rcti *rect, const char *str,
         size_t len, float *r_xofs, float *r_yofs)
 {
-	float height;
 	int xofs = 0, yofs;
 	int font_flag = BLF_CLIPPING;
 	
@@ -167,11 +166,20 @@ void UI_fontstyle_draw_ex(
 	if (fs->kerning == 1) {
 		font_flag |= BLF_KERNING_DEFAULT;
 	}
+	if (fs->word_wrap == 1) {
+		font_flag |= BLF_WORD_WRAP;
+	}
 
 	BLF_enable(fs->uifont_id, font_flag);
 
-	height = BLF_ascender(fs->uifont_id);
-	yofs = ceil(0.5f * (BLI_rcti_size_y(rect) - height));
+	if (fs->word_wrap == 1) {
+		/* draw from boundbox top */
+		yofs = BLI_rcti_size_y(rect) - BLF_height_max(fs->uifont_id);
+	}
+	else {
+		/* draw from boundbox center */
+		yofs = ceil(0.5f * (BLI_rcti_size_y(rect) - BLF_ascender(fs->uifont_id)));
+	}
 
 	if (fs->align == UI_STYLE_TEXT_CENTER) {
 		xofs = floor(0.5f * (BLI_rcti_size_x(rect) - BLF_width(fs->uifont_id, str, len)));
@@ -402,6 +410,11 @@ void uiStyleInit(void)
 		BLF_unload_id(font->blf_id);
 	}
 
+	if (blf_mono_font != -1) {
+		BLF_unload_id(blf_mono_font);
+		blf_mono_font = -1;
+	}
+
 	font = U.uifonts.first;
 
 	/* default builtin */
@@ -490,14 +503,17 @@ void uiStyleInit(void)
 	}
 
 	/* reload */
-	BLF_unload("monospace");
-	blf_mono_font = -1;
 	blf_mono_font_render = -1;
 #endif
 
 	/* XXX, this should be moved into a style, but for now best only load the monospaced font once. */
-	if (blf_mono_font == -1)
+	BLI_assert(blf_mono_font == -1);
+	if (U.font_path_ui_mono[0]) {
+		blf_mono_font = BLF_load_unique(U.font_path_ui_mono);
+	}
+	if (blf_mono_font == -1) {
 		blf_mono_font = BLF_load_mem_unique("monospace", monofont_ttf, monofont_size);
+	}
 
 	BLF_size(blf_mono_font, 12 * U.pixelsize, 72);
 	

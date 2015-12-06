@@ -336,7 +336,6 @@ static int load_tex(Brush *br, ViewContext *vc, float zoom, bool col, bool prima
 
 	glEnable(GL_TEXTURE_2D);
 
-	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
@@ -460,7 +459,6 @@ static int load_tex_cursor(Brush *br, ViewContext *vc, float zoom)
 
 	glEnable(GL_TEXTURE_2D);
 
-	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
@@ -524,38 +522,44 @@ static int project_brush_radius(ViewContext *vc,
 static bool sculpt_get_brush_geometry(
         bContext *C, ViewContext *vc,
         int x, int y, int *pixel_radius,
-        float location[3])
+        float location[3], UnifiedPaintSettings *ups)
 {
 	Scene *scene = CTX_data_scene(C);
 	Paint *paint = BKE_paint_get_active_from_context(C);
 	float mouse[2];
-	bool hit;
+	bool hit = false;
 
 	mouse[0] = x;
 	mouse[1] = y;
 
-	if (vc->obact->sculpt && vc->obact->sculpt->pbvh &&
-	    sculpt_stroke_get_location(C, location, mouse))
-	{
+	if (vc->obact->sculpt && vc->obact->sculpt->pbvh) {
+		if (!ups->stroke_active) {
+			hit = sculpt_stroke_get_location(C, location, mouse);
+		}
+		else {
+			hit = ups->last_hit;
+			copy_v3_v3(location, ups->last_location);
+		}
+	}
+
+	if (hit) {
 		Brush *brush = BKE_paint_brush(paint);
+
 		*pixel_radius =
-		    project_brush_radius(vc,
-		                         BKE_brush_unprojected_radius_get(scene, brush),
-		                         location);
+		        project_brush_radius(vc,
+		                             BKE_brush_unprojected_radius_get(scene, brush),
+		                             location);
 
 		if (*pixel_radius == 0)
 			*pixel_radius = BKE_brush_size_get(scene, brush);
 
 		mul_m4_v3(vc->obact->obmat, location);
-
-		hit = 1;
 	}
 	else {
 		Sculpt *sd    = CTX_data_tool_settings(C)->sculpt;
 		Brush *brush = BKE_paint_brush(&sd->paint);
 
 		*pixel_radius = BKE_brush_size_get(scene, brush);
-		hit = 0;
 	}
 
 	return hit;
@@ -644,9 +648,9 @@ static void paint_draw_tex_overlay(UnifiedPaintSettings *ups, Brush *brush,
 			glMatrixMode(GL_MODELVIEW);
 			glPushMatrix();
 			if (primary)
-				glTranslatef(brush->stencil_pos[0], brush->stencil_pos[1], 0);
+				glTranslate2fv(brush->stencil_pos);
 			else
-				glTranslatef(brush->mask_stencil_pos[0], brush->mask_stencil_pos[1], 0);
+				glTranslate2fv(brush->mask_stencil_pos);
 			glRotatef(RAD2DEGF(mtex->rot), 0, 0, 1);
 			glMatrixMode(GL_TEXTURE);
 		}
@@ -725,7 +729,7 @@ static void paint_draw_cursor_overlay(UnifiedPaintSettings *ups, Brush *brush,
 			do_pop = true;
 			glPushMatrix();
 			glLoadIdentity();
-			glTranslatef(center[0], center[1], 0);
+			glTranslate2fv(center);
 			glScalef(ups->size_pressure_value, ups->size_pressure_value, 1);
 			glTranslatef(-center[0], -center[1], 0);
 		}
@@ -1020,7 +1024,7 @@ static void paint_draw_cursor(bContext *C, int x, int y, void *UNUSED(unused))
 		bool hit;
 
 		/* test if brush is over the mesh */
-		hit = sculpt_get_brush_geometry(C, &vc, x, y, &pixel_radius, location);
+		hit = sculpt_get_brush_geometry(C, &vc, x, y, &pixel_radius, location, ups);
 
 		if (BKE_brush_use_locked_size(scene, brush))
 			BKE_brush_size_set(scene, brush, pixel_radius);
@@ -1056,7 +1060,7 @@ static void paint_draw_cursor(bContext *C, int x, int y, void *UNUSED(unused))
 	glColor4f(outline_col[0], outline_col[1], outline_col[2], outline_alpha);
 
 	/* draw brush outline */
-	glTranslatef(translation[0], translation[1], 0);
+	glTranslate2fv(translation);
 
 	/* draw an inner brush */
 	if (ups->stroke_active && BKE_brush_use_size_pressure(scene, brush)) {

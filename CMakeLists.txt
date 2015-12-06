@@ -47,11 +47,6 @@ endif()
 
 cmake_minimum_required(VERSION 2.8)
 
-if(NOT (${CMAKE_VERSION} VERSION_LESS 3.0))
-	# keep until CMake-3.0 is min requirement
-	cmake_policy(SET CMP0043 OLD)
-endif()
-
 if(NOT EXECUTABLE_OUTPUT_PATH)
 	set(FIRST_RUN TRUE)
 else()
@@ -68,10 +63,21 @@ set(CMAKE_BUILD_TYPE_INIT "Release")
 # set_property(GLOBAL PROPERTY RULE_MESSAGES OFF)
 
 # global compile definitions since add_definitions() adds for all.
-set_property(DIRECTORY APPEND PROPERTY COMPILE_DEFINITIONS_DEBUG           DEBUG _DEBUG)
-set_property(DIRECTORY APPEND PROPERTY COMPILE_DEFINITIONS_RELEASE         NDEBUG)
-set_property(DIRECTORY APPEND PROPERTY COMPILE_DEFINITIONS_MINSIZEREL      NDEBUG)
-set_property(DIRECTORY APPEND PROPERTY COMPILE_DEFINITIONS_RELWITHDEBINFO  NDEBUG)
+
+if(NOT (${CMAKE_VERSION} VERSION_LESS 3.0))
+	set_property(DIRECTORY APPEND PROPERTY COMPILE_DEFINITIONS
+		$<$<CONFIG:Debug>:DEBUG;_DEBUG>
+		$<$<CONFIG:Release>:NDEBUG>
+		$<$<CONFIG:MinSizeRel>:NDEBUG>
+		$<$<CONFIG:RelWithDebInfo>:NDEBUG>
+	)
+else()
+	# keep until CMake-3.0 is min requirement
+	set_property(DIRECTORY APPEND PROPERTY COMPILE_DEFINITIONS_DEBUG           DEBUG _DEBUG)
+	set_property(DIRECTORY APPEND PROPERTY COMPILE_DEFINITIONS_RELEASE         NDEBUG)
+	set_property(DIRECTORY APPEND PROPERTY COMPILE_DEFINITIONS_MINSIZEREL      NDEBUG)
+	set_property(DIRECTORY APPEND PROPERTY COMPILE_DEFINITIONS_RELWITHDEBINFO  NDEBUG)
+endif()
 
 #-----------------------------------------------------------------------------
 # Set policy
@@ -262,6 +268,10 @@ if(NOT WITH_AUDASPACE)
 endif()
 
 option(WITH_OPENMP        "Enable OpenMP (has to be supported by the compiler)" ON)
+if(UNIX AND NOT APPLE)
+	option(WITH_OPENMP_STATIC "Link OpenMP statically (only used by the release environment)" OFF)
+	mark_as_advanced(WITH_OPENMP_STATIC)
+endif()
 
 if(WITH_X11)
 	option(WITH_X11_XINPUT    "Enable X11 Xinput (tablet support and unicode input)"  ON)
@@ -533,13 +543,11 @@ if(APPLE)
 	else()
 		set(OSX_SYSTEM unsupported)
 	endif()
-	message(STATUS "Detected system-version: " ${OSX_SYSTEM})
 	
 	# workaround for incorrect cmake xcode lookup for developer previews - XCODE_VERSION does not take xcode-select path into accout
 	# but would always look into /Applications/Xcode.app while dev versions are named Xcode<version>-DP<preview_number>
 	execute_process(COMMAND xcode-select --print-path  OUTPUT_VARIABLE XCODE_CHECK OUTPUT_STRIP_TRAILING_WHITESPACE)
 	string(REPLACE "/Contents/Developer" "" XCODE_BUNDLE ${XCODE_CHECK}) # truncate to bundlepath in any case
-	message(STATUS "Xcode-bundle : " ${XCODE_BUNDLE})
 	
 	if(${CMAKE_GENERATOR} MATCHES "Xcode")
 	
@@ -567,8 +575,8 @@ if(APPLE)
 		string(SUBSTRING "${XCODE_VERS_BUILD_NR}" 6 3 XCODE_VERSION) # truncate away build-nr
 		unset(XCODE_VERS_BUILD_NR)
 	endif()
-	
-	message(STATUS "Detected Xcode-version: " ${XCODE_VERSION})
+
+	message(STATUS "Detected OS X ${OSX_SYSTEM} and Xcode ${XCODE_VERSION} at ${XCODE_BUNDLE}")
 
 	if(${XCODE_VERSION} VERSION_LESS 4.3)
 		set(CMAKE_OSX_SYSROOT /Developer/SDKs/MacOSX${OSX_SYSTEM}.sdk CACHE PATH "" FORCE)  # use guaranteed existing sdk
@@ -807,14 +815,14 @@ set(PLATFORM_LINKFLAGS_DEBUG "")
 # For alternate Python locations the commandline can be used to override detected/default cache settings, e.g:
 # On Unix:
 #   cmake ../blender \
-#         -D PYTHON_VERSION=3.4 \
-#         -D PYTHON_INCLUDE_DIR=/opt/py34/include/python3.4d \
-#         -D PYTHON_LIBRARY=/opt/py34/lib/libpython3.4d.so
+#         -D PYTHON_VERSION=3.5 \
+#         -D PYTHON_INCLUDE_DIR=/opt/py35/include/python3.5d \
+#         -D PYTHON_LIBRARY=/opt/py35/lib/libpython3.5d.so
 #
 # On Macs:
 #   cmake ../blender \
-#         -D PYTHON_INCLUDE_DIR=/System/Library/Frameworks/Python.framework/Versions/3.4/include/python3.4 \
-#         -D PYTHON_LIBPATH=/System/Library/Frameworks/Python.framework/Versions/3.4/lib/python3.4/config \
+#         -D PYTHON_INCLUDE_DIR=/System/Library/Frameworks/Python.framework/Versions/3.5/include/python3.5 \
+#         -D PYTHON_LIBPATH=/System/Library/Frameworks/Python.framework/Versions/3.5/lib/python3.5/config \
 #         -G Xcode
 #
 # When changing any of this remember to update the notes in doc/build_systems/cmake.txt
@@ -862,13 +870,9 @@ endif()
 if(UNIX AND NOT APPLE)
 	macro(find_package_wrapper)
 		if(WITH_STATIC_LIBS)
-			set(_cmake_find_library_suffixes_back ${CMAKE_FIND_LIBRARY_SUFFIXES})
-			set(CMAKE_FIND_LIBRARY_SUFFIXES .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
-		endif()
-		find_package(${ARGV})
-		if(WITH_STATIC_LIBS)
-			set(CMAKE_FIND_LIBRARY_SUFFIXES ${_cmake_find_library_suffixes_back})
-			unset(_cmake_find_library_suffixes_back)
+			find_package_static(${ARGV})
+		else()
+			find_package(${ARGV})
 		endif()
 	endmacro()
 
@@ -893,10 +897,10 @@ if(UNIX AND NOT APPLE)
 	# else values are set below for all platforms
 
 	if(WITH_PYTHON)
-		# No way to set py34. remove for now.
+		# No way to set py35, remove for now.
 		# find_package(PythonLibs)
 
-		# Use our own instead, since wothout py is such a rare case,
+		# Use our own instead, since without py is such a rare case,
 		# require this package
 		# XXX Linking errors with debian static python :/
 #		find_package_wrapper(PythonLibsUnix REQUIRED)
@@ -1186,12 +1190,6 @@ if(UNIX AND NOT APPLE)
 	if(CMAKE_COMPILER_IS_GNUCC)
 		set(PLATFORM_CFLAGS "-pipe -fPIC -funsigned-char -fno-strict-aliasing")
 
-		if(NOT "${CMAKE_C_COMPILER_VERSION}" VERSION_LESS "5.0")
-			# GCC5 uses gnu11, until we update, force c89
-			# though some c11 features can still be used.
-			set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu89")
-		endif()
-
 		# use ld.gold linker if available, could make optional
 		execute_process(
 		        COMMAND ${CMAKE_C_COMPILER} -fuse-ld=gold -Wl,--version
@@ -1271,26 +1269,17 @@ elseif(WIN32)
 		set(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP TRUE)
 		include(InstallRequiredSystemLibraries)
 
-		set(CMAKE_CXX_FLAGS "/nologo /J /Gd /EHsc /MP" CACHE STRING "MSVC MT C++ flags " FORCE)
-		set(CMAKE_C_FLAGS   "/nologo /J /Gd /MP"       CACHE STRING "MSVC MT C++ flags " FORCE)
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /nologo /J /Gd /MP /EHsc")
+		set(CMAKE_C_FLAGS     "${CMAKE_C_FLAGS} /nologo /J /Gd /MP")
 
-		if(CMAKE_CL_64)
-			set(CMAKE_CXX_FLAGS_DEBUG "/Od /RTC1 /MTd /Zi /MP" CACHE STRING "MSVC MT flags " FORCE)
-		else()
-			set(CMAKE_CXX_FLAGS_DEBUG "/Od /RTC1 /MTd /ZI /MP" CACHE STRING "MSVC MT flags " FORCE)
-		endif()
-		set(CMAKE_CXX_FLAGS_RELEASE "/O2 /Ob2 /MT /MP" CACHE STRING "MSVC MT flags " FORCE)
-		set(CMAKE_CXX_FLAGS_MINSIZEREL "/O1 /Ob1 /MT /MP" CACHE STRING "MSVC MT flags " FORCE)
-		set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "/O2 /Ob1 /MT /Zi /MP" CACHE STRING "MSVC MT flags " FORCE)
-		if(CMAKE_CL_64)
-			set(CMAKE_C_FLAGS_DEBUG "/Od /RTC1 /MTd /Zi /MP" CACHE STRING "MSVC MT flags " FORCE)
-		else()
-			set(CMAKE_C_FLAGS_DEBUG "/Od /RTC1 /MTd /ZI /MP" CACHE STRING "MSVC MT flags " FORCE)
-		endif()
-		set(CMAKE_C_FLAGS_RELEASE "/O2 /Ob2 /MT /MP" CACHE STRING "MSVC MT flags " FORCE)
-		set(CMAKE_C_FLAGS_MINSIZEREL "/O1 /Ob1 /MT /MP" CACHE STRING "MSVC MT flags " FORCE)
-		set(CMAKE_C_FLAGS_RELWITHDEBINFO "/O2 /Ob1 /MT /Zi /MP" CACHE STRING "MSVC MT flags " FORCE)
-
+		set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
+		set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} /MTd")
+		set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
+		set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /MT")
+		set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /MT")
+		set(CMAKE_C_FLAGS_MINSIZEREL "${CMAKE_C_FLAGS_MINSIZEREL} /MT")
+		set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /MT")
+		set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} /MT")
 
 		set(PLATFORM_LINKFLAGS "/SUBSYSTEM:CONSOLE /STACK:2097152 /INCREMENTAL:NO /NODEFAULTLIB:msvcrt.lib /NODEFAULTLIB:msvcmrt.lib /NODEFAULTLIB:msvcurt.lib /NODEFAULTLIB:msvcrtd.lib")
 
@@ -1456,7 +1445,7 @@ elseif(WIN32)
 		endif()
 
 		if(WITH_PYTHON)
-			set(PYTHON_VERSION 3.4) # CACHE STRING)
+			set(PYTHON_VERSION 3.5) # CACHE STRING)
 
 			string(REPLACE "." "" _PYTHON_VERSION_NO_DOTS ${PYTHON_VERSION})
 			# Use shared libs for vc2008 and vc2010 until we actually have vc2010 libs
@@ -1746,7 +1735,7 @@ elseif(WIN32)
 
 		if(WITH_PYTHON)
 			# normally cached but not since we include them with blender
-			set(PYTHON_VERSION 3.4) #  CACHE STRING)
+			set(PYTHON_VERSION 3.5) #  CACHE STRING)
 			string(REPLACE "." "" _PYTHON_VERSION_NO_DOTS ${PYTHON_VERSION})
 			set(PYTHON_INCLUDE_DIR "${LIBDIR}/python/include/python${PYTHON_VERSION}")  # CACHE PATH)
 			set(PYTHON_LIBRARY "${LIBDIR}/python/lib/python${_PYTHON_VERSION_NO_DOTS}mw.lib")  # CACHE FILEPATH)
@@ -1951,8 +1940,8 @@ elseif(APPLE)
 	endif()
 
 	if(WITH_PYTHON)
-		# we use precompiled libraries for py 3.4 and up by default
-		set(PYTHON_VERSION 3.4)
+		# we use precompiled libraries for py 3.5 and up by default
+		set(PYTHON_VERSION 3.5)
 		if(NOT WITH_PYTHON_MODULE AND NOT WITH_PYTHON_FRAMEWORK)
 			# normally cached but not since we include them with blender
 			set(PYTHON_INCLUDE_DIR "${LIBDIR}/python/include/python${PYTHON_VERSION}m")
@@ -2470,8 +2459,18 @@ endif()
 if(WITH_OPENMP)
 	find_package(OpenMP)
 	if(OPENMP_FOUND)
-		set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
-		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+		if(NOT WITH_OPENMP_STATIC)
+			set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+			set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+		else()
+			# Typically avoid adding flags as defines but we can't
+			# ass OpenMP flags to the linker for static builds, meaning
+			# we can't add any OpenMP related flags to CFLAGS variables
+			# since they're passed to the linker as well.
+			add_definitions("${OpenMP_C_FLAGS}")
+
+			find_library_static(OpenMP_LIBRARIES gomp ${CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES})
+		endif()
 	else()
 		set(WITH_OPENMP OFF)
 	endif()
@@ -2583,9 +2582,9 @@ if(CMAKE_COMPILER_IS_GNUCC)
 
 	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_ALL -Wall)
 	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_CAST_ALIGN -Wcast-align)
-	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_ERROR_DECLARATION_AFTER_STATEMENT -Werror=declaration-after-statement)
 	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_ERROR_IMPLICIT_FUNCTION_DECLARATION -Werror=implicit-function-declaration)
 	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_ERROR_RETURN_TYPE  -Werror=return-type)
+	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_ERROR_VLA -Werror=vla)
 	# system headers sometimes do this, disable for now, was: -Werror=strict-prototypes
 	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_STRICT_PROTOTYPES  -Wstrict-prototypes)
 	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_MISSING_PROTOTYPES -Wmissing-prototypes)
@@ -2614,6 +2613,11 @@ if(CMAKE_COMPILER_IS_GNUCC)
 		ADD_CHECK_CXX_COMPILER_FLAG(CXX_WARNINGS CXX_WARN_REDUNDANT_DECLS -Wredundant-decls)
 	endif()
 
+	# versions before gcc4.8 include global name-space.
+	if(NOT "${CMAKE_C_COMPILER_VERSION}" VERSION_LESS "4.8")
+		ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_SHADOW -Wshadow)
+	endif()
+
 	# disable because it gives warnings for printf() & friends.
 	# ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_DOUBLE_PROMOTION -Wdouble-promotion -Wno-error=double-promotion)
 
@@ -2630,7 +2634,6 @@ if(CMAKE_COMPILER_IS_GNUCC)
 	ADD_CHECK_CXX_COMPILER_FLAG(CXX_WARNINGS CXX_WARN_NO_DIV_BY_ZERO -Wno-div-by-zero)
 	ADD_CHECK_CXX_COMPILER_FLAG(CXX_WARNINGS CXX_WARN_TYPE_LIMITS -Wtype-limits)
 	ADD_CHECK_CXX_COMPILER_FLAG(CXX_WARNINGS CXX_WARN_ERROR_RETURN_TYPE  -Werror=return-type)
-	ADD_CHECK_CXX_COMPILER_FLAG(CXX_WARNINGS CXX_WARN_ERROR_DECLARATION_AFTER_STATEMENT -Werror=declaration-after-statement)
 	ADD_CHECK_CXX_COMPILER_FLAG(CXX_WARNINGS CXX_WARN_ERROR_IMPLICIT_FUNCTION_DECLARATION -Werror=implicit-function-declaration)
 	ADD_CHECK_CXX_COMPILER_FLAG(CXX_WARNINGS CXX_WARN_NO_CHAR_SUBSCRIPTS -Wno-char-subscripts)
 	ADD_CHECK_CXX_COMPILER_FLAG(CXX_WARNINGS CXX_WARN_NO_UNKNOWN_PRAGMAS -Wno-unknown-pragmas)
@@ -2667,7 +2670,6 @@ elseif(CMAKE_C_COMPILER_ID MATCHES "Clang")
 
 	# strange, clang complains these are not supported, but then yses them.
 	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_ALL -Wall)
-	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_ERROR_DECLARATION_AFTER_STATEMENT -Werror=declaration-after-statement)
 	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_ERROR_IMPLICIT_FUNCTION_DECLARATION -Werror=implicit-function-declaration)
 	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_ERROR_RETURN_TYPE  -Werror=return-type)
 	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_NO_AUTOLOGICAL_COMPARE -Wno-tautological-compare)
@@ -2780,6 +2782,12 @@ if(WITH_CPP11)
 	else()
 		message(FATAL_ERROR "Compiler ${CMAKE_C_COMPILER_ID} is not supported for C++11 build yet")
 	endif()
+endif()
+
+# Visual Studio has all standards it supports available by default
+if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID MATCHES "Clang" OR CMAKE_C_COMPILER_ID MATCHES "Intel")
+	# Use C99 + GNU extensions, works with GCC, Clang, ICC
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99")
 endif()
 
 # Include warnings first, so its possible to disable them with user defined flags

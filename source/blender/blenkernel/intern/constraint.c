@@ -460,7 +460,7 @@ static void contarget_get_mesh_mat(Object *ob, const char *substring, float mat[
 			copy_v3_v3(plane, tmat[1]);
 			
 			cross_v3_v3v3(mat[0], normal, plane);
-			if (len_v3(mat[0]) < 1e-3f) {
+			if (len_squared_v3(mat[0]) < SQUARE(1e-3f)) {
 				copy_v3_v3(plane, tmat[0]);
 				cross_v3_v3v3(mat[0], normal, plane);
 			}
@@ -2730,8 +2730,8 @@ static void stretchto_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *t
 				float hard = min_ff(bulge, bulge_max);
 				
 				float range = bulge_max - 1.0f;
-				float scale = (range > 0.0f) ? 1.0f / range : 0.0f;
-				float soft = 1.0f + range * atanf((bulge - 1.0f) * scale) / (float)M_PI_2;
+				float scale_fac = (range > 0.0f) ? 1.0f / range : 0.0f;
+				float soft = 1.0f + range * atanf((bulge - 1.0f) * scale_fac) / (float)M_PI_2;
 				
 				bulge = interpf(soft, hard, data->bulge_smooth);
 			}
@@ -2742,8 +2742,8 @@ static void stretchto_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *t
 				float hard = max_ff(bulge, bulge_min);
 				
 				float range = 1.0f - bulge_min;
-				float scale = (range > 0.0f) ? 1.0f / range : 0.0f;
-				float soft = 1.0f - range * atanf((1.0f - bulge) * scale) / (float)M_PI_2;
+				float scale_fac = (range > 0.0f) ? 1.0f / range : 0.0f;
+				float soft = 1.0f - range * atanf((1.0f - bulge) * scale_fac) / (float)M_PI_2;
 				
 				bulge = interpf(soft, hard, data->bulge_smooth);
 			}
@@ -3876,7 +3876,7 @@ static void pivotcon_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *ta
 
 
 	/* correct the pivot by the rotation axis otherwise the pivot translates when it shouldnt */
-	mat3_to_axis_angle(axis, &angle, rotMat);
+	mat3_normalized_to_axis_angle(axis, &angle, rotMat);
 	if (angle) {
 		float dvec[3];
 		sub_v3_v3v3(vec, pivot, cob->matrix[3]);
@@ -4895,11 +4895,12 @@ void BKE_constraints_solve(ListBase *conlist, bConstraintOb *cob, float ctime)
 		 *    since some constraints may not convert the solution back to the input space before blending
 		 *    but all are guaranteed to end up in good "worldspace" result
 		 */
-		/* Note: all kind of stuff here before (caused trouble), much easier to just interpolate, or did I miss something? -jahka (r.32105) */
+		/* Note: all kind of stuff here before (caused trouble), much easier to just interpolate,
+		 * or did I miss something? -jahka (r.32105) */
 		if (enf < 1.0f) {
 			float solution[4][4];
 			copy_m4_m4(solution, cob->matrix);
-			blend_m4_m4m4(cob->matrix, oldmat, solution, enf);
+			interp_m4_m4m4(cob->matrix, oldmat, solution, enf);
 		}
 	}
 }

@@ -380,6 +380,10 @@ void EDBM_mesh_make(ToolSettings *ts, Object *ob)
 	EDBM_selectmode_flush(me->edit_btmesh);
 }
 
+/**
+ * \warning This can invalidate the #DerivedMesh cache of other objects (for linked duplicates).
+ * Most callers should run #DAG_id_tag_update on \a ob->data, see: T46738, T46913
+ */
 void EDBM_mesh_load(Object *ob)
 {
 	Mesh *me = ob->data;
@@ -671,7 +675,7 @@ UvVertMap *BM_uv_vert_map_create(
 			float (*tf_uv)[2];
 
 			if (use_winding) {
-				tf_uv = (float (*)[2])BLI_buffer_resize_data(&tf_uv_buf, vec2f, efa->len);
+				tf_uv = (float (*)[2])BLI_buffer_reinit_data(&tf_uv_buf, vec2f, efa->len);
 			}
 
 			BM_ITER_ELEM_INDEX(l, &liter, efa, BM_LOOPS_OF_FACE, i) {
@@ -764,8 +768,6 @@ UvMapVert *BM_uv_vert_map_at_index(UvVertMap *vmap, unsigned int v)
 	return vmap->vert[v];
 }
 
-/* from editmesh_lib.c in trunk */
-
 
 /* A specialized vert map used by stitch operator */
 UvElementMap *BM_uv_element_map_create(
@@ -823,7 +825,7 @@ UvElementMap *BM_uv_element_map_create(
 			float (*tf_uv)[2];
 
 			if (use_winding) {
-				tf_uv = (float (*)[2])BLI_buffer_resize_data(&tf_uv_buf, vec2f, efa->len);
+				tf_uv = (float (*)[2])BLI_buffer_reinit_data(&tf_uv_buf, vec2f, efa->len);
 			}
 
 			BM_ITER_ELEM_INDEX (l, &liter, efa, BM_LOOPS_OF_FACE, i) {

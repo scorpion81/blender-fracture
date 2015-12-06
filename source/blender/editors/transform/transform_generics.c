@@ -73,6 +73,7 @@
 #include "BKE_depsgraph.h"
 #include "BKE_fcurve.h"
 #include "BKE_lattice.h"
+#include "BKE_library.h"
 #include "BKE_nla.h"
 #include "BKE_context.h"
 #include "BKE_paint.h"
@@ -278,7 +279,7 @@ static void animrecord_check_state(Scene *scene, ID *id, wmTimer *animtimer)
 					NlaStrip *strip = add_nlastrip_to_stack(adt, adt->action);
 					
 					/* clear reference to action now that we've pushed it onto the stack */
-					adt->action->id.us--;
+					id_us_min(&adt->action->id);
 					adt->action = NULL;
 					
 					/* adjust blending + extend so that they will behave correctly */
@@ -950,7 +951,13 @@ static void recalcData_sequencer(TransInfo *t)
 		Sequence *seq = tdsq->seq;
 
 		if (seq != seq_prev) {
-			BKE_sequence_invalidate_dependent(t->scene, seq);
+			if (BKE_sequence_tx_fullupdate_test(seq)) {
+				/* A few effect strip types need a complete recache on transform. */
+				BKE_sequence_invalidate_cache(t->scene, seq);
+			}
+			else {
+				BKE_sequence_invalidate_dependent(t->scene, seq);
+			}
 		}
 
 		seq_prev = seq;
@@ -1112,19 +1119,20 @@ void initTransInfo(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *eve
 	t->redraw = TREDRAW_HARD;  /* redraw first time */
 	
 	if (event) {
-		copy_v2_v2_int(t->imval, event->mval);
 		t->event_type = event->type;
+		t->mouse.imval[0] = event->mval[0];
+		t->mouse.imval[1] = event->mval[1];
 	}
 	else {
-		t->imval[0] = 0;
-		t->imval[1] = 0;
+		t->mouse.imval[0] = 0;
+		t->mouse.imval[1] = 0;
 	}
 	
-	t->con.imval[0] = t->imval[0];
-	t->con.imval[1] = t->imval[1];
+	t->con.imval[0] = t->mouse.imval[0];
+	t->con.imval[1] = t->mouse.imval[1];
 	
-	t->mval[0] = t->imval[0];
-	t->mval[1] = t->imval[1];
+	t->mval[0] = t->mouse.imval[0];
+	t->mval[1] = t->mouse.imval[1];
 	
 	t->transform        = NULL;
 	t->handleEvent      = NULL;
@@ -1204,13 +1212,13 @@ void initTransInfo(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *eve
 		
 		/* bend always uses the cursor */
 		if (t->mode == TFM_BEND) {
-			t->around = V3D_CURSOR;
+			t->around = V3D_AROUND_CURSOR;
 		}
 
 		t->current_orientation = v3d->twmode;
 
 		/* exceptional case */
-		if (t->around == V3D_LOCAL) {
+		if (t->around == V3D_AROUND_LOCAL_ORIGINS) {
 			if (ELEM(t->mode, TFM_ROTATION, TFM_RESIZE, TFM_TRACKBALL)) {
 				const bool use_island = transdata_check_local_islands(t, t->around);
 
@@ -1266,7 +1274,7 @@ void initTransInfo(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *eve
 	else if (t->spacetype == SPACE_NODE) {
 		// XXX for now, get View2D from the active region
 		t->view = &ar->v2d;
-		t->around = V3D_CENTER;
+		t->around = V3D_AROUND_CENTER_BOUNDS;
 	}
 	else if (t->spacetype == SPACE_IPO) {
 		SpaceIpo *sipo = sa->spacedata.first;
@@ -1292,7 +1300,7 @@ void initTransInfo(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *eve
 		else {
 			t->view = NULL;
 		}
-		t->around = V3D_CENTER;
+		t->around = V3D_AROUND_CENTER_BOUNDS;
 	}
 
 	if (op && ((prop = RNA_struct_find_property(op->ptr, "constraint_orientation")) &&
@@ -1665,8 +1673,14 @@ void calculateCenterCursorGraph2D(TransInfo *t, float r_center[2])
 	Scene *scene = t->scene;
 	
 	/* cursor is combination of current frame, and graph-editor cursor value */
-	r_center[0] = (float)(scene->r.cfra);
-	r_center[1] = sipo->cursorVal;
+	if (sipo->mode == SIPO_MODE_DRIVERS) {
+		r_center[0] = sipo->cursorTime;
+		r_center[1] = sipo->cursorVal;
+	}
+	else {
+		r_center[0] = (float)(scene->r.cfra);
+		r_center[1] = sipo->cursorVal;
+	}
 }
 
 void calculateCenterMedian(TransInfo *t, float r_center[3])
@@ -1757,13 +1771,13 @@ bool calculateCenterActive(TransInfo *t, bool select_only, float r_center[3])
 void calculateCenter(TransInfo *t)
 {
 	switch (t->around) {
-		case V3D_CENTER:
+		case V3D_AROUND_CENTER_BOUNDS:
 			calculateCenterBound(t, t->center);
 			break;
-		case V3D_CENTROID:
+		case V3D_AROUND_CENTER_MEAN:
 			calculateCenterMedian(t, t->center);
 			break;
-		case V3D_CURSOR:
+		case V3D_AROUND_CURSOR:
 			if (ELEM(t->spacetype, SPACE_IMAGE, SPACE_CLIP))
 				calculateCenterCursor2D(t, t->center);
 			else if (t->spacetype == SPACE_IPO)
@@ -1771,11 +1785,11 @@ void calculateCenter(TransInfo *t)
 			else
 				calculateCenterCursor(t, t->center);
 			break;
-		case V3D_LOCAL:
+		case V3D_AROUND_LOCAL_ORIGINS:
 			/* Individual element center uses median center for helpline and such */
 			calculateCenterMedian(t, t->center);
 			break;
-		case V3D_ACTIVE:
+		case V3D_AROUND_ACTIVE:
 		{
 			if (calculateCenterActive(t, false, t->center)) {
 				/* pass */

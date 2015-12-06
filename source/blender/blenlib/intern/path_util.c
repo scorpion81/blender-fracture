@@ -307,14 +307,15 @@ static int BLI_path_unc_prefix_len(const char *path); /* defined below in same f
 
 /* ******************** string encoding ***************** */
 
-/* This is quite an ugly function... its purpose is to
- * take the dir name, make it absolute, and clean it up, replacing
- * excess file entry stuff (like /tmp/../tmp/../)
- * note that dir isn't protected for max string names... 
- * 
- * If relbase is NULL then its ignored
+/**
+ * Remove redundant characters from \a path and optionally make absolute.
+ *
+ * \param relbase: The path this is relative to, or ignored when NULL.
+ * \param path: Can be any input, and this function converts it to a regular full path.
+ * Also removes garbage from directory paths, like `/../` or double slashes etc.
+ *
+ * \note \a path isn't protected for max string names...
  */
-
 void BLI_cleanup_path(const char *relabase, char *path)
 {
 	ptrdiff_t a;
@@ -403,6 +404,9 @@ void BLI_cleanup_path(const char *relabase, char *path)
 #endif
 }
 
+/**
+ * Cleanup filepath ensuring a trailing slash.
+ */
 void BLI_cleanup_dir(const char *relabase, char *dir)
 {
 	BLI_cleanup_path(relabase, dir);
@@ -410,6 +414,9 @@ void BLI_cleanup_dir(const char *relabase, char *dir)
 
 }
 
+/**
+ * Cleanup filepath ensuring no trailing slash.
+ */
 void BLI_cleanup_file(const char *relabase, char *path)
 {
 	BLI_cleanup_path(relabase, path);
@@ -510,7 +517,7 @@ bool BLI_filename_make_safe(char *fname)
 bool BLI_path_make_safe(char *path)
 {
 	/* Simply apply BLI_filename_make_safe() over each component of the path.
-	 * Luckily enough, same 'sfae' rules applies to filenames and dirnames. */
+	 * Luckily enough, same 'safe' rules applies to filenames and dirnames. */
 	char *curr_slash, *curr_path = path;
 	bool changed = false;
 	bool skip_first = false;
@@ -954,7 +961,7 @@ bool BLI_path_frame_range(char *path, int sta, int end, int digits)
  */
 bool BLI_path_frame_get(char *path, int *r_frame, int *r_numdigits)
 {
-	if (path && *path) {
+	if (*path) {
 		char *file = (char *)BLI_last_slash(path);
 		char *c;
 		int len, numdigits;
@@ -1003,9 +1010,9 @@ bool BLI_path_frame_get(char *path, int *r_frame, int *r_numdigits)
 	return false;
 }
 
-void BLI_path_frame_strip(char *path, bool setsharp, char *ext)
+void BLI_path_frame_strip(char *path, bool set_frame_char, char *ext)
 {
-	if (path && *path) {
+	if (*path) {
 		char *file = (char *)BLI_last_slash(path);
 		char *c, *suffix;
 		int len;
@@ -1040,15 +1047,12 @@ void BLI_path_frame_strip(char *path, bool setsharp, char *ext)
 		if (numdigits) {
 			/* replace the number with the suffix and terminate the string */
 			while (numdigits--) {
-				if (ext) *ext++ = *suffix;
-
-				if (setsharp) *c++ = '#';
-				else *c++ = *suffix;
-
+				*ext++ = *suffix;
+				*c++ = set_frame_char ? '#' : *suffix;
 				suffix++;
 			}
-			*c = 0;
-			if (ext) *ext = 0;
+			*c = '\0';
+			*ext = '\0';
 		}
 	}
 }
@@ -1064,9 +1068,14 @@ bool BLI_path_frame_check_chars(const char *path)
 }
 
 /**
- * If path begins with "//", strips that and replaces it with basepath directory. Also converts
- * a drive-letter prefix to something more sensible if this is a non-drive-letter-based system.
- * Returns true if "//" prefix expansion was done.
+ * If path begins with "//", strips that and replaces it with basepath directory.
+ *
+ * \note Also converts drive-letter prefix to something more sensible
+ * if this is a non-drive-letter-based system.
+ *
+ * \param path: The path to convert.
+ * \param basepath: The directory to base relative paths with.
+ * \return true if the path was relative (started with "//").
  */
 bool BLI_path_abs(char *path, const char *basepath)
 {
@@ -1179,7 +1188,7 @@ bool BLI_path_abs(char *path, const char *basepath)
  * \note Should only be done with command line paths.
  * this is _not_ something blenders internal paths support like the "//" prefix
  */
-bool BLI_path_cwd(char *path)
+bool BLI_path_cwd(char *path, const size_t maxlen)
 {
 	bool wasrelative = true;
 	const int filelen = strlen(path);
@@ -1193,24 +1202,15 @@ bool BLI_path_cwd(char *path)
 #endif
 	
 	if (wasrelative) {
-		char cwd[FILE_MAX] = "";
-		BLI_current_working_dir(cwd, sizeof(cwd)); /* in case the full path to the blend isn't used */
-		
-		if (cwd[0] == '\0') {
-			printf("Could not get the current working directory - $PWD for an unknown reason.\n");
-		}
-		else {
-			/* uses the blend path relative to cwd important for loading relative linked files.
-			 *
-			 * cwd should contain c:\ etc on win32 so the relbase can be NULL
-			 * relbase being NULL also prevents // being misunderstood as relative to the current
-			 * blend file which isn't a feature we want to use in this case since were dealing
-			 * with a path from the command line, rather than from inside Blender */
-
+		char cwd[FILE_MAX];
+		/* in case the full path to the blend isn't used */
+		if (BLI_current_working_dir(cwd, sizeof(cwd))) {
 			char origpath[FILE_MAX];
 			BLI_strncpy(origpath, path, FILE_MAX);
-			
-			BLI_make_file_string(NULL, path, cwd, origpath); 
+			BLI_join_dirfile(path, maxlen, cwd, origpath);
+		}
+		else {
+			printf("Could not get the current working directory - $PWD for an unknown reason.\n");
 		}
 	}
 	
@@ -1761,7 +1761,7 @@ void BLI_join_dirfile(char *__restrict dst, const size_t maxlen, const char *__r
 	}
 
 	/* inline BLI_add_slash */
-	if ((dirlen > 0) && (dst[dirlen - 1] != SEP)) {
+	if ((dirlen > 0) && !ELEM(dst[dirlen - 1], SEP, ALTSEP)) {
 		dst[dirlen++] = SEP;
 		dst[dirlen] = '\0';
 	}
@@ -1991,38 +1991,3 @@ void BLI_path_native_slash(char *path)
 	BLI_str_replace_char(path + BLI_path_unc_prefix_len(path), '\\', '/');
 #endif
 }
-
-
-#ifdef WITH_ICONV
-
-/**
- * Converts a string encoded in the charset named by *code to UTF-8.
- * Opens a new iconv context each time it is run, which is probably not the
- * most efficient. */
-void BLI_string_to_utf8(char *original, char *utf_8, const char *code)
-{
-	size_t inbytesleft = strlen(original);
-	size_t outbytesleft = 512;
-	size_t rv = 0;
-	iconv_t cd;
-	
-	if (NULL == code) {
-		code = locale_charset();
-	}
-	cd = iconv_open("UTF-8", code);
-
-	if (cd == (iconv_t)(-1)) {
-		printf("iconv_open Error");
-		*utf_8 = '\0';
-		return;
-	}
-	rv = iconv(cd, &original, &inbytesleft, &utf_8, &outbytesleft);
-	if (rv == (size_t) -1) {
-		printf("iconv Error\n");
-		iconv_close(cd);
-		return;
-	}
-	*utf_8 = '\0';
-	iconv_close(cd);
-}
-#endif // WITH_ICONV

@@ -401,7 +401,7 @@ static int apply_objects_internal(bContext *C, ReportList *reports, bool apply_l
 	/* first check if we can execute */
 	CTX_DATA_BEGIN (C, Object *, ob, selected_editable_objects)
 	{
-		if (ELEM(ob->type, OB_MESH, OB_ARMATURE, OB_LATTICE, OB_MBALL, OB_CURVE, OB_SURF)) {
+		if (ELEM(ob->type, OB_MESH, OB_ARMATURE, OB_LATTICE, OB_MBALL, OB_CURVE, OB_SURF, OB_FONT)) {
 			ID *obdata = ob->data;
 			if (ID_REAL_USERS(obdata) > 1) {
 				BKE_reportf(reports, RPT_ERROR,
@@ -434,6 +434,15 @@ static int apply_objects_internal(bContext *C, ReportList *reports, bool apply_l
 				BKE_reportf(reports, RPT_ERROR,
 				            "Can't apply to a curve with shape-keys: Object \"%s\", %s \"%s\", aborting",
 				            ob->id.name + 2, BKE_idcode_to_name(GS(obdata->name)), obdata->name + 2);
+				changed = false;
+			}
+		}
+
+		if (ob->type == OB_FONT) {
+			if (apply_rot || apply_loc) {
+				BKE_reportf(reports, RPT_ERROR,
+				            "Font's can only have scale applied: \"%s\"",
+				            ob->id.name + 2);
 				changed = false;
 			}
 		}
@@ -516,6 +525,22 @@ static int apply_objects_internal(bContext *C, ReportList *reports, bool apply_l
 			Curve *cu = ob->data;
 			scale = mat3_to_scale(rsmat);
 			BKE_curve_transform_ex(cu, mat, true, scale);
+		}
+		else if (ob->type == OB_FONT) {
+			Curve *cu = ob->data;
+			int i;
+
+			scale = mat3_to_scale(rsmat);
+
+			for (i = 0; i < cu->totbox; i++) {
+				TextBox *tb = &cu->tb[i];
+				tb->x *= scale;
+				tb->y *= scale;
+				tb->w *= scale;
+				tb->h *= scale;
+			}
+
+			cu->fsize *= scale;
 		}
 		else if (ob->type == OB_CAMERA) {
 			MovieClip *clip = BKE_object_movieclip_get(scene, ob, false);
@@ -717,7 +742,7 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 				mul_m4_v3(obedit->imat, cent);
 			}
 			else {
-				if (around == V3D_CENTROID) {
+				if (around == V3D_AROUND_CENTER_MEAN) {
 					if (em->bm->totvert) {
 						const float total_div = 1.0f / (float)em->bm->totvert;
 						BM_ITER_MESH (eve, &iter, em->bm, BM_VERTS_OF_MESH) {
@@ -826,9 +851,9 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 				Mesh *me = ob->data;
 
 				if (centermode == ORIGIN_TO_CURSOR) { /* done */ }
-				else if (centermode == ORIGIN_TO_CENTER_OF_MASS) { BKE_mesh_center_centroid(me, cent); }
-				else if (around == V3D_CENTROID)                 { BKE_mesh_center_median(me, cent); }
-				else                                             { BKE_mesh_center_bounds(me, cent); }
+				else if (centermode == ORIGIN_TO_CENTER_OF_MASS)    { BKE_mesh_center_centroid(me, cent); }
+				else if (around == V3D_AROUND_CENTER_MEAN)          { BKE_mesh_center_median(me, cent); }
+				else                                                { BKE_mesh_center_bounds(me, cent); }
 
 				negate_v3_v3(cent_neg, cent);
 				BKE_mesh_translate(me, cent_neg, 1);
@@ -840,9 +865,9 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 			else if (ELEM(ob->type, OB_CURVE, OB_SURF)) {
 				Curve *cu = ob->data;
 
-				if      (centermode == ORIGIN_TO_CURSOR) { /* done */ }
-				else if (around == V3D_CENTROID) { BKE_curve_center_median(cu, cent); }
-				else                             { BKE_curve_center_bounds(cu, cent);   }
+				if      (centermode == ORIGIN_TO_CURSOR)    { /* done */ }
+				else if (around == V3D_AROUND_CENTER_MEAN)  { BKE_curve_center_median(cu, cent); }
+				else                                        { BKE_curve_center_bounds(cu, cent); }
 
 				/* don't allow Z change if curve is 2D */
 				if ((ob->type == OB_CURVE) && !(cu->flag & CU_3D))
@@ -922,9 +947,9 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 			else if (ob->type == OB_MBALL) {
 				MetaBall *mb = ob->data;
 
-				if      (centermode == ORIGIN_TO_CURSOR) { /* done */ }
-				else if (around == V3D_CENTROID) { BKE_mball_center_median(mb, cent); }
-				else                             { BKE_mball_center_bounds(mb, cent); }
+				if      (centermode == ORIGIN_TO_CURSOR)    { /* done */ }
+				else if (around == V3D_AROUND_CENTER_MEAN)  { BKE_mball_center_median(mb, cent); }
+				else                                        { BKE_mball_center_bounds(mb, cent); }
 
 				negate_v3_v3(cent_neg, cent);
 				BKE_mball_translate(mb, cent_neg);
@@ -943,9 +968,9 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 			else if (ob->type == OB_LATTICE) {
 				Lattice *lt = ob->data;
 
-				if      (centermode == ORIGIN_TO_CURSOR) { /* done */ }
-				else if (around == V3D_CENTROID) { BKE_lattice_center_median(lt, cent); }
-				else                             { BKE_lattice_center_bounds(lt, cent); }
+				if      (centermode == ORIGIN_TO_CURSOR)    { /* done */ }
+				else if (around == V3D_AROUND_CENTER_MEAN)  { BKE_lattice_center_median(lt, cent); }
+				else                                        { BKE_lattice_center_bounds(lt, cent); }
 
 				negate_v3_v3(cent_neg, cent);
 				BKE_lattice_translate(lt, cent_neg, 1);
@@ -1045,8 +1070,8 @@ void OBJECT_OT_origin_set(wmOperatorType *ot)
 	};
 	
 	static EnumPropertyItem prop_set_bounds_types[] = {
-		{V3D_CENTROID, "MEDIAN", 0, "Median Center", ""},
-		{V3D_CENTER, "BOUNDS", 0, "Bounds Center", ""},
+		{V3D_AROUND_CENTER_MEAN, "MEDIAN", 0, "Median Center", ""},
+		{V3D_AROUND_CENTER_BOUNDS, "BOUNDS", 0, "Bounds Center", ""},
 		{0, NULL, 0, NULL, NULL}
 	};
 	
@@ -1065,5 +1090,5 @@ void OBJECT_OT_origin_set(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
 	ot->prop = RNA_def_enum(ot->srna, "type", prop_set_center_types, 0, "Type", "");
-	RNA_def_enum(ot->srna, "center", prop_set_bounds_types, V3D_CENTROID, "Center", "");
+	RNA_def_enum(ot->srna, "center", prop_set_bounds_types, V3D_AROUND_CENTER_MEAN, "Center", "");
 }

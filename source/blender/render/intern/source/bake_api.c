@@ -444,7 +444,6 @@ static TriTessFace *mesh_calc_tri_tessface(
 
 			if (calculate_normal) {
 				if (lt->poly != mpoly_prev) {
-					const MPoly *mp = &me->mpoly[lt->poly];
 					BKE_mesh_calc_poly_normal(mp, &me->mloop[mp->loopstart], me->mvert, no);
 					mpoly_prev = lt->poly;
 				}
@@ -628,6 +627,18 @@ void RE_bake_pixels_populate(
 	if (me->edit_btmesh)
 		return;
 
+	if ((uv_layer == NULL) || (uv_layer[0] == '\0')) {
+		mloopuv = CustomData_get_layer(&me->ldata, CD_MLOOPUV);
+	}
+	else {
+		int uv_id = CustomData_get_named_layer(&me->ldata, CD_MLOOPUV, uv_layer);
+		mloopuv = CustomData_get_layer_n(&me->ldata, CD_MTFACE, uv_id);
+	}
+
+	if (mloopuv == NULL)
+		return;
+
+
 	bd.pixel_array = pixel_array;
 	bd.zspan = MEM_callocN(sizeof(ZSpan) * bake_images->size, "bake zspan");
 
@@ -640,16 +651,6 @@ void RE_bake_pixels_populate(
 		zbuf_alloc_span(&bd.zspan[i], bake_images->data[i].width, bake_images->data[i].height, R.clipcrop);
 	}
 
-	if ((uv_layer == NULL) || (uv_layer[0] == '\0')) {
-		mloopuv = CustomData_get_layer(&me->ldata, CD_MLOOPUV);
-	}
-	else {
-		int uv_id = CustomData_get_named_layer(&me->ldata, CD_MLOOPUV, uv_layer);
-		mloopuv = CustomData_get_layer_n(&me->ldata, CD_MTFACE, uv_id);
-	}
-
-	if (mloopuv == NULL)
-		return;
 
 	looptri = MEM_mallocN(sizeof(*looptri) * tottri, __func__);
 

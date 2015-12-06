@@ -286,7 +286,6 @@ static void draw_movieclip_buffer(const bContext *C, SpaceClip *sc, ARegion *ar,
 	MovieClip *clip = ED_space_clip_get_clip(sc);
 	int filter = GL_LINEAR;
 	int x, y;
-	rctf frame;
 
 	/* find window pixel coordinates of origin */
 	UI_view2d_view_to_region(&ar->v2d, 0.0f, 0.0f, &x, &y);
@@ -313,10 +312,12 @@ static void draw_movieclip_buffer(const bContext *C, SpaceClip *sc, ARegion *ar,
 	/* reset zoom */
 	glPixelZoom(1.0f, 1.0f);
 
-	BLI_rctf_init(&frame, 0.0f, ibuf->x, 0.0f, ibuf->y);
 
-	if (sc->flag & SC_SHOW_METADATA)
-		ED_region_image_metadata_draw(x, y, ibuf, frame, zoomx * width / ibuf->x, zoomy * height / ibuf->y);
+	if (sc->flag & SC_SHOW_METADATA) {
+		rctf frame;
+		BLI_rctf_init(&frame, 0.0f, ibuf->x, 0.0f, ibuf->y);
+		ED_region_image_metadata_draw(x, y, ibuf, &frame, zoomx * width / ibuf->x, zoomy * height / ibuf->y);
+	}
 
 	if (ibuf->planes == 32)
 		glDisable(GL_BLEND);
@@ -520,7 +521,7 @@ static void draw_marker_outline(SpaceClip *sc, MovieTrackingTrack *track, MovieT
 
 	/* pattern and search outline */
 	glPushMatrix();
-	glTranslatef(marker_pos[0], marker_pos[1], 0);
+	glTranslate2fv(marker_pos);
 
 	if (!tiny)
 		glLineWidth(3.0f);
@@ -652,7 +653,7 @@ static void draw_marker_areas(SpaceClip *sc, MovieTrackingTrack *track, MovieTra
 
 	/* pattern */
 	glPushMatrix();
-	glTranslatef(marker_pos[0], marker_pos[1], 0);
+	glTranslate2fv(marker_pos);
 
 	if (tiny) {
 		glLineStipple(3, 0xaaaa);
@@ -805,7 +806,7 @@ static void draw_marker_slide_zones(SpaceClip *sc, MovieTrackingTrack *track, Mo
 	}
 
 	glPushMatrix();
-	glTranslatef(marker_pos[0], marker_pos[1], 0);
+	glTranslate2fv(marker_pos);
 
 	dx = 6.0f / width / sc->zoom;
 	dy = 6.0f / height / sc->zoom;
@@ -1062,7 +1063,7 @@ static void draw_plane_marker_image(Scene *scene,
 		}
 
 		if (display_buffer) {
-			GLuint texid, last_texid;
+			GLuint texid;
 			float frame_corners[4][2] = {{0.0f, 0.0f},
 			                             {1.0f, 0.0f},
 			                             {1.0f, 1.0f},
@@ -1082,10 +1083,8 @@ static void draw_plane_marker_image(Scene *scene,
 				glBlendFunc(GL_SRC_ALPHA,  GL_ONE_MINUS_SRC_ALPHA);
 			}
 
-			glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
 			glColor4f(1.0, 1.0, 1.0, plane_track->image_opacity);
 
-			last_texid = glaGetOneInteger(GL_TEXTURE_2D);
 			glEnable(GL_TEXTURE_2D);
 			glGenTextures(1, (GLuint *)&texid);
 
@@ -1109,7 +1108,7 @@ static void draw_plane_marker_image(Scene *scene,
 
 			glPopMatrix();
 
-			glBindTexture(GL_TEXTURE_2D, last_texid);
+			glBindTexture(GL_TEXTURE_2D, 0);
 			glDisable(GL_TEXTURE_2D);
 
 			if (transparent) {
@@ -1259,7 +1258,7 @@ static void draw_tracking_tracks(SpaceClip *sc, Scene *scene, ARegion *ar, Movie
 	/* ** find window pixel coordinates of origin ** */
 
 	/* UI_view2d_view_to_region_no_clip return integer values, this could
-	 * lead to 1px flickering when view is locked to selection during playbeck.
+	 * lead to 1px flickering when view is locked to selection during playback.
 	 * to avoid this flickering, calculate base point in the same way as it happens
 	 * in UI_view2d_view_to_region_no_clip, but do it in floats here */
 
@@ -1786,7 +1785,7 @@ void clip_draw_grease_pencil(bContext *C, int onlyv2d)
 					int framenr = ED_space_clip_get_clip_frame_number(sc);
 					MovieTrackingMarker *marker = BKE_tracking_marker_get(track, framenr);
 
-					glTranslatef(marker->pos[0], marker->pos[1], 0.0f);
+					glTranslate2fv(marker->pos);
 				}
 			}
 

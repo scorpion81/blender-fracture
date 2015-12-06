@@ -290,7 +290,7 @@ static int rna_NlaStrip_action_editable(PointerRNA *ptr)
 		return 0;
 		
 	/* should be ok, though we may still miss some cases */
-	return 1;
+	return PROP_EDITABLE;
 }
 
 static void rna_NlaStrip_action_start_frame_set(PointerRNA *ptr, float value)
@@ -459,7 +459,7 @@ static void rna_NlaTrack_solo_set(PointerRNA *ptr, int value)
 #else
 
 /* enum defines exported for rna_animation.c */
-EnumPropertyItem nla_mode_blend_items[] = {
+EnumPropertyItem rna_enum_nla_mode_blend_items[] = {
 	{NLASTRIP_MODE_REPLACE, "REPLACE", 0, "Replace",
 	                        "Result strip replaces the accumulated results by amount specified by influence"},
 	{NLASTRIP_MODE_ADD, "ADD", 0, "Add", "Weighted result of strip is added to the accumulated results"},
@@ -470,7 +470,7 @@ EnumPropertyItem nla_mode_blend_items[] = {
 	{0, NULL, 0, NULL, NULL}
 };
 
-EnumPropertyItem nla_mode_extend_items[] = {
+EnumPropertyItem rna_enum_nla_mode_extend_items[] = {
 	{NLASTRIP_EXTEND_NOTHING, "NOTHING", 0, "Nothing", "Strip has no influence past its extents"},
 	{NLASTRIP_EXTEND_HOLD, "HOLD", 0, "Hold",
 	                       "Hold the first frame if no previous strips in track, and always hold last frame"},
@@ -540,13 +540,13 @@ static void rna_def_nlastrip(BlenderRNA *brna)
 	
 	prop = RNA_def_property(srna, "extrapolation", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "extendmode");
-	RNA_def_property_enum_items(prop, nla_mode_extend_items);
+	RNA_def_property_enum_items(prop, rna_enum_nla_mode_extend_items);
 	RNA_def_property_ui_text(prop, "Extrapolation", "Action to take for gaps past the strip extents");
 	RNA_def_property_update(prop, NC_ANIMATION | ND_NLA, NULL); /* this will do? */
 	
 	prop = RNA_def_property(srna, "blend_type", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "blendmode");
-	RNA_def_property_enum_items(prop, nla_mode_blend_items);
+	RNA_def_property_enum_items(prop, rna_enum_nla_mode_blend_items);
 	RNA_def_property_ui_text(prop, "Blending", "Method used for combining strip's result with accumulated result");
 	RNA_def_property_update(prop, NC_ANIMATION | ND_NLA, NULL); /* this will do? */
 	
@@ -614,7 +614,7 @@ static void rna_def_nlastrip(BlenderRNA *brna)
 	 * (minimum should still be > 0 though) if needed... */
 	RNA_def_property_range(prop, 0.1f, 1000.0f);
 	RNA_def_property_ui_text(prop, "Repeat", "Number of times to repeat the action range");
-	RNA_def_property_update(prop, NC_ANIMATION | ND_NLA, NULL); /* this will do? */
+	RNA_def_property_update(prop, 0, "rna_NlaStrip_transform_update");
 	
 	prop = RNA_def_property(srna, "scale", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "scale");

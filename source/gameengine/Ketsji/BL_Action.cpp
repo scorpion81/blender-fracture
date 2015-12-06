@@ -74,8 +74,7 @@ BL_Action::BL_Action(class KX_GameObject* gameobj)
 	m_obj(gameobj),
 	m_startframe(0.f),
 	m_endframe(0.f),
-	m_endtime(0.f),
-	m_localtime(0.f),
+	m_localframe(0.f),
 	m_blendin(0.f),
 	m_blendframe(0.f),
 	m_blendstart(0.f),
@@ -85,7 +84,8 @@ BL_Action::BL_Action(class KX_GameObject* gameobj)
 	m_blendmode(ACT_BLEND_BLEND),
 	m_ipo_flags(0),
 	m_done(true),
-	m_calc_localtime(true)
+	m_calc_localtime(true),
+	m_initializedTime(false)
 {
 }
 
@@ -261,25 +261,20 @@ bool BL_Action::Play(const char* name,
 
 	// Now that we have an action, we have something we can play
 	m_starttime = -1.f; // We get the start time on our first update
-	m_startframe = m_localtime = start;
+	m_startframe = m_localframe = start;
 	m_endframe = end;
 	m_blendin = blendin;
 	m_playmode = play_mode;
 	m_blendmode = blend_mode;
-	m_endtime = 0.f;
 	m_blendframe = 0.f;
 	m_blendstart = 0.f;
 	m_speed = playback_speed;
 	m_layer_weight = layer_weight;
 	
 	m_done = false;
+	m_initializedTime = false;
 
 	return true;
-}
-
-void BL_Action::Stop()
-{
-	m_done = true;
 }
 
 bool BL_Action::IsDone()
@@ -307,7 +302,7 @@ bAction *BL_Action::GetAction()
 
 float BL_Action::GetFrame()
 {
-	return m_localtime;
+	return m_localframe;
 }
 
 const char *BL_Action::GetName()
@@ -330,7 +325,7 @@ void BL_Action::SetFrame(float frame)
 	else if (frame > max(m_startframe, m_endframe))
 		frame = max(m_startframe, m_endframe);
 	
-	m_localtime = frame;
+	m_localframe = frame;
 	m_calc_localtime = false;
 }
 
@@ -352,12 +347,12 @@ void BL_Action::SetLocalTime(float curtime)
 	if (m_endframe < m_startframe)
 		dt = -dt;
 
-	m_localtime = m_startframe + dt;
+	m_localframe = m_startframe + dt;
 }
 
 void BL_Action::ResetStartTime(float curtime)
 {
-	float dt = (m_localtime > m_startframe) ? m_localtime - m_startframe : m_startframe - m_localtime;
+	float dt = (m_localframe > m_startframe) ? m_localframe - m_startframe : m_startframe - m_localframe;
 
 	m_starttime = curtime - dt / (KX_KetsjiEngine::GetAnimFrameRate()*m_speed);
 	SetLocalTime(curtime);
@@ -405,10 +400,12 @@ void BL_Action::Update(float curtime)
 
 	curtime -= KX_KetsjiEngine::GetSuspendedDelta();
 
-	// Grab the start time here so we don't end up with a negative m_localtime when
+	// Grab the start time here so we don't end up with a negative m_localframe when
 	// suspending and resuming scenes.
-	if (m_starttime < 0)
+	if (!m_initializedTime) {
 		m_starttime = curtime;
+		m_initializedTime = true;
+	}
 
 	if (m_calc_localtime)
 		SetLocalTime(curtime);
@@ -419,16 +416,16 @@ void BL_Action::Update(float curtime)
 	}
 
 	// Handle wrap around
-	if (m_localtime < min(m_startframe, m_endframe) || m_localtime > max(m_startframe, m_endframe)) {
+	if (m_localframe < min(m_startframe, m_endframe) || m_localframe > max(m_startframe, m_endframe)) {
 		switch (m_playmode) {
 			case ACT_MODE_PLAY:
 				// Clamp
-				m_localtime = m_endframe;
+				m_localframe = m_endframe;
 				m_done = true;
 				break;
 			case ACT_MODE_LOOP:
 				// Put the time back to the beginning
-				m_localtime = m_startframe;
+				m_localframe = m_startframe;
 				m_starttime = curtime;
 				break;
 			case ACT_MODE_PING_PONG:
@@ -451,7 +448,7 @@ void BL_Action::Update(float curtime)
 			obj->GetPose(&m_blendpose);
 
 		// Extract the pose from the action
-		obj->SetPoseByAction(m_tmpaction, m_localtime);
+		obj->SetPoseByAction(m_tmpaction, m_localframe);
 
 		// Handle blending between armature actions
 		if (m_blendin && m_blendframe<m_blendin)
@@ -485,7 +482,7 @@ void BL_Action::Update(float curtime)
 			PointerRNA ptrrna;
 			RNA_id_pointer_create(&key->id, &ptrrna);
 
-			animsys_evaluate_action(&ptrrna, m_tmpaction, NULL, m_localtime);
+			animsys_evaluate_action(&ptrrna, m_tmpaction, NULL, m_localframe);
 
 			// Handle blending between shape actions
 			if (m_blendin && m_blendframe < m_blendin)
@@ -519,7 +516,7 @@ void BL_Action::Update(float curtime)
 	/* This function is not thread safe because of recursive scene graph transform
 	 * updates on children. e.g: If an object and one of its children is animated,
 	 * the both can write transform at the same time. A thread lock avoid problems. */
-	m_obj->UpdateIPO(m_localtime, m_ipo_flags & ACT_IPOFLAG_CHILD);
+	m_obj->UpdateIPO(m_localframe, m_ipo_flags & ACT_IPOFLAG_CHILD);
 	BLI_spin_unlock(&BL_ActionLock);
 
 	if (m_done)

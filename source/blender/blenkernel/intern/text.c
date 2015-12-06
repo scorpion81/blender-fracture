@@ -171,14 +171,12 @@ void BKE_text_free(Text *text)
 #endif
 }
 
-Text *BKE_text_add(Main *bmain, const char *name) 
+void BKE_text_init(Text *ta)
 {
-	Text *ta;
 	TextLine *tmp;
-	
-	ta = BKE_libblock_alloc(bmain, ID_TXT, name);
-	ta->id.us = 1;
-	
+
+	BLI_assert(MEMCMP_STRUCT_OFS_IS_ZERO(ta, id));
+
 	ta->name = NULL;
 
 	init_undo_text(ta);
@@ -206,6 +204,15 @@ Text *BKE_text_add(Main *bmain, const char *name)
 	ta->curc = 0;
 	ta->sell = ta->lines.first;
 	ta->selc = 0;
+}
+
+Text *BKE_text_add(Main *bmain, const char *name)
+{
+	Text *ta;
+
+	ta = BKE_libblock_alloc(bmain, ID_TXT, name);
+
+	BKE_text_init(ta);
 
 	return ta;
 }
@@ -421,7 +428,6 @@ Text *BKE_text_load_ex(Main *bmain, const char *file, const char *relpath, const
 	}
 
 	ta = BKE_libblock_alloc(bmain, ID_TXT, BLI_path_basename(str));
-	ta->id.us = 1;
 
 	BLI_listbase_clear(&ta->lines);
 	ta->curl = ta->sell = NULL;
@@ -2109,7 +2115,7 @@ void txt_do_undo(Text *text)
 {
 	int op = text->undo_buf[text->undo_pos];
 	int prev_flags;
-	unsigned int linep, i;
+	unsigned int linep;
 	unsigned int uchar;
 	unsigned int curln, selln;
 	unsigned short curc, selc;
@@ -2178,6 +2184,8 @@ void txt_do_undo(Text *text)
 			break;
 
 		case UNDO_DBLOCK:
+		{
+			int i;
 			/* length of the string in the buffer */
 			linep = txt_undo_read_uint32(text->undo_buf, &text->undo_pos);
 
@@ -2207,8 +2215,10 @@ void txt_do_undo(Text *text)
 			text->undo_pos--;
 			
 			break;
-
+		}
 		case UNDO_IBLOCK:
+		{
+			int i;
 			/* length of the string in the buffer */
 			linep = txt_undo_read_uint32(text->undo_buf, &text->undo_pos);
 			
@@ -2246,6 +2256,7 @@ void txt_do_undo(Text *text)
 			
 			text->undo_pos--;
 			break;
+		}
 		case UNDO_INDENT:
 		case UNDO_COMMENT:
 		case UNDO_DUPLICATE:

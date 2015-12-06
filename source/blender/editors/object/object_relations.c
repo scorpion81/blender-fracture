@@ -139,6 +139,8 @@ static int vertex_parent_set_exec(bContext *C, wmOperator *op)
 		EDBM_mesh_load(obedit);
 		EDBM_mesh_make(scene->toolsettings, obedit);
 
+		DAG_id_tag_update(obedit->data, 0);
+
 		em = me->edit_btmesh;
 
 		EDBM_mesh_normals_update(em);
@@ -1561,7 +1563,7 @@ static int make_links_data_exec(bContext *C, wmOperator *op)
 
 				switch (type) {
 					case MAKE_LINKS_OBDATA: /* obdata */
-						obdata_id->us--;
+						id_us_min(obdata_id);
 
 						obdata_id = ob_src->data;
 						id_us_plus(obdata_id);
@@ -1630,16 +1632,20 @@ static int make_links_data_exec(bContext *C, wmOperator *op)
 							break;
 						}
 
-						if (cu_dst->vfont) cu_dst->vfont->id.us--;
+						if (cu_dst->vfont)
+							id_us_min(&cu_dst->vfont->id);
 						cu_dst->vfont = cu_src->vfont;
 						id_us_plus((ID *)cu_dst->vfont);
-						if (cu_dst->vfontb) cu_dst->vfontb->id.us--;
+						if (cu_dst->vfontb)
+							id_us_min(&cu_dst->vfontb->id);
 						cu_dst->vfontb = cu_src->vfontb;
 						id_us_plus((ID *)cu_dst->vfontb);
-						if (cu_dst->vfonti) cu_dst->vfonti->id.us--;
+						if (cu_dst->vfonti)
+							id_us_min(&cu_dst->vfonti->id);
 						cu_dst->vfonti = cu_src->vfonti;
 						id_us_plus((ID *)cu_dst->vfonti);
-						if (cu_dst->vfontbi) cu_dst->vfontbi->id.us--;
+						if (cu_dst->vfontbi)
+							id_us_min(&cu_dst->vfontbi->id);
 						cu_dst->vfontbi = cu_src->vfontbi;
 						id_us_plus((ID *)cu_dst->vfontbi);
 
@@ -1764,7 +1770,7 @@ static void single_object_users(Main *bmain, Scene *scene, View3D *v3d, const in
 				}
 				base->flag = obn->flag;
 
-				ob->id.us--;
+				id_us_min(&ob->id);
 			}
 		}
 	}
@@ -1800,7 +1806,7 @@ static void single_object_users(Main *bmain, Scene *scene, View3D *v3d, const in
 
 	/* object and group pointers */
 	for (base = FIRSTBASE; base; base = base->next) {
-		BKE_object_relink(base->object);
+		BKE_libblock_relink(&base->object->id);
 	}
 
 	set_sca_new_poins();
@@ -1832,11 +1838,11 @@ static void new_id_matar(Material **matar, const int totcol)
 			if (id->newid) {
 				matar[a] = (Material *)id->newid;
 				id_us_plus(id->newid);
-				id->us--;
+				id_us_min(id);
 			}
 			else if (id->us > 1) {
 				matar[a] = BKE_material_copy(matar[a]);
-				id->us--;
+				id_us_min(id);
 				id->newid = (ID *)matar[a];
 			}
 		}
@@ -1918,7 +1924,7 @@ static void single_obdata_users(Main *bmain, Scene *scene, const int flag)
 				 */
 				BKE_animdata_copy_id_action((ID *)ob->data);
 
-				id->us--;
+				id_us_min(id);
 				id->newid = ob->data;
 			}
 		}
@@ -1972,7 +1978,7 @@ static void single_mat_users(Scene *scene, const int flag, const bool do_texture
 							for (b = 0; b < MAX_MTEX; b++) {
 								if (ma->mtex[b] && (tex = ma->mtex[b]->tex)) {
 									if (tex->id.us > 1) {
-										tex->id.us--;
+										id_us_min(&tex->id);
 										tex = BKE_texture_copy(tex);
 										BKE_animdata_copy_id_action(&tex->id);
 										man->mtex[b]->tex = tex;
@@ -1997,13 +2003,13 @@ static void do_single_tex_user(Tex **from)
 	if (tex->id.newid) {
 		*from = (Tex *)tex->id.newid;
 		id_us_plus(tex->id.newid);
-		tex->id.us--;
+		id_us_min(&tex->id);
 	}
 	else if (tex->id.us > 1) {
 		texn = BKE_texture_copy(tex);
 		BKE_animdata_copy_id_action(&texn->id);
 		tex->id.newid = (ID *)texn;
-		tex->id.us--;
+		id_us_min(&tex->id);
 		*from = texn;
 	}
 }
@@ -2134,7 +2140,6 @@ static bool tag_localizable_looper(void *UNUSED(user_data), ID **id_pointer, con
 static void tag_localizable_objects(bContext *C, const int mode)
 {
 	Main *bmain = CTX_data_main(C);
-	Object *object;
 
 	BKE_main_id_tag_all(bmain, false);
 
@@ -2158,7 +2163,7 @@ static void tag_localizable_objects(bContext *C, const int mode)
 	/* Also forbid making objects local if other library objects are using
 	 * them for modifiers or constraints.
 	 */
-	for (object = bmain->object.first; object; object = object->id.next) {
+	for (Object *object = bmain->object.first; object; object = object->id.next) {
 		if ((object->id.flag & LIB_DOIT) == 0) {
 			BKE_library_foreach_ID_link(&object->id, tag_localizable_looper, NULL, IDWALK_READONLY);
 		}
@@ -2186,10 +2191,7 @@ static bool make_local_all__instance_indirect_unused(Main *bmain, Scene *scene)
 		if (ob->id.lib && (ob->id.us == 0)) {
 			Base *base;
 
-			ob->id.us = 1;
-
-			/* not essential, but for correctness */
-			id_lib_extern(&ob->id);
+			id_us_plus(&ob->id);
 
 			base = BKE_scene_base_add(scene, ob);
 			base->flag |= SELECT;

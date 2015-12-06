@@ -492,6 +492,8 @@ const unsigned char *UI_ThemeGetColorPtr(bTheme *btheme, int spacetype, int colo
 					cp = ts->transition; break;
 				case TH_SEQ_META:
 					cp = ts->meta; break;
+				case TH_SEQ_TEXT:
+					cp = ts->text_strip; break;
 				case TH_SEQ_PREVIEW:
 					cp = ts->preview_back; break;
 
@@ -1062,6 +1064,7 @@ void ui_theme_init_default(void)
 	rgba_char_args_set(btheme->tseq.effect,     169, 84, 124, 255);
 	rgba_char_args_set(btheme->tseq.transition, 162, 95, 111, 255);
 	rgba_char_args_set(btheme->tseq.meta,   109, 145, 131, 255);
+	rgba_char_args_set(btheme->tseq.text_strip,   162, 151, 0, 255);
 	rgba_char_args_set(btheme->tseq.preview_back,   0, 0, 0, 255);
 	rgba_char_args_set(btheme->tseq.grid,   64, 64, 64, 255);
 
@@ -1077,7 +1080,7 @@ void ui_theme_init_default(void)
 	rgba_char_args_set(btheme->tima.face,   255, 255, 255, 10);
 	rgba_char_args_set(btheme->tima.face_select, 255, 133, 0, 60);
 	rgba_char_args_set(btheme->tima.editmesh_active, 255, 255, 255, 128);
-	rgba_char_args_set_fl(btheme->tima.preview_back,    0.45, 0.45, 0.45, 1.0);
+	rgba_char_args_set_fl(btheme->tima.preview_back,        0.0, 0.0, 0.0, 0.3);
 	rgba_char_args_set_fl(btheme->tima.preview_stitch_face, 0.5, 0.5, 0.0, 0.2);
 	rgba_char_args_set_fl(btheme->tima.preview_stitch_edge, 1.0, 0.0, 1.0, 0.2);
 	rgba_char_args_set_fl(btheme->tima.preview_stitch_vert, 0.0, 0.0, 1.0, 0.2);
@@ -1380,6 +1383,23 @@ int UI_GetThemeValue(int colorid)
 	
 	cp = UI_ThemeGetColorPtr(theme_active, theme_spacetype, colorid);
 	return ((int) cp[0]);
+}
+
+/* versions of the function above, which take a space-type */
+float UI_GetThemeValueTypef(int colorid, int spacetype)
+{
+	const unsigned char *cp;
+
+	cp = UI_ThemeGetColorPtr(theme_active, spacetype, colorid);
+	return ((float)cp[0]);
+}
+
+int UI_GetThemeValueType(int colorid, int spacetype)
+{
+	const unsigned char *cp;
+
+	cp = UI_ThemeGetColorPtr(theme_active, spacetype, colorid);
+	return ((int)cp[0]);
 }
 
 
@@ -1921,10 +1941,6 @@ void init_userdef_do_versions(void)
 			U.audioformat = 0x24;
 		if (U.audiorate == 0)
 			U.audiorate = 44100;
-	}
-
-	if (!USER_VERSION_ATLEAST(250, 3)) {
-		U.gameflags |= USER_DISABLE_VBO;
 	}
 	
 	if (!USER_VERSION_ATLEAST(250, 8)) {
@@ -2637,6 +2653,29 @@ void init_userdef_do_versions(void)
 
 	if (!USER_VERSION_ATLEAST(275, 4)) {
 		U.node_margin = 80;
+	}
+
+	if (!USER_VERSION_ATLEAST(276, 1)) {
+		bTheme *btheme;
+		for (btheme = U.themes.first; btheme; btheme = btheme->next) {
+			rgba_char_args_set_fl(btheme->tima.preview_back, 0.0f, 0.0f, 0.0f, 0.3f);
+		}
+	}
+
+	if (!USER_VERSION_ATLEAST(276, 2)) {
+		bTheme *btheme;
+		for (btheme = U.themes.first; btheme; btheme = btheme->next) {
+			rgba_char_args_set(btheme->tclip.gp_vertex, 0, 0, 0, 255);
+			rgba_char_args_set(btheme->tclip.gp_vertex_select, 255, 133, 0, 255);
+			btheme->tclip.gp_vertex_size = 3;
+		}
+	}
+
+	if (!USER_VERSION_ATLEAST(276, 3)) {
+		bTheme *btheme;
+		for (btheme = U.themes.first; btheme; btheme = btheme->next) {
+			rgba_char_args_set(btheme->tseq.text_strip, 162, 151, 0, 255);
+		}
 	}
 
 	if (U.pixelsize == 0.0f)

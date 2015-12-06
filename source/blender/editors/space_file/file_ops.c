@@ -237,6 +237,49 @@ static bool file_is_any_selected(struct FileList *files)
 	return false;
 }
 
+/**
+ * If \a file is outside viewbounds, this adjusts view to make sure it's inside
+ */
+static void file_ensure_inside_viewbounds(ARegion *ar, SpaceFile *sfile, const int file)
+{
+	FileLayout *layout = ED_fileselect_get_layout(sfile, ar);
+	rctf *cur = &ar->v2d.cur;
+	rcti rect;
+	bool changed = true;
+
+	file_tile_boundbox(ar, layout, file, &rect);
+
+	/* down - also use if tile is higher than viewbounds so view is aligned to file name */
+	if (cur->ymin > rect.ymin || layout->tile_h > ar->winy) {
+		cur->ymin = rect.ymin - (2 * layout->tile_border_y);
+		cur->ymax = cur->ymin + ar->winy;
+	}
+	/* up */
+	else if (cur->ymax < rect.ymax) {
+		cur->ymax = rect.ymax + layout->tile_border_y;
+		cur->ymin = cur->ymax - ar->winy;
+	}
+	/* left - also use if tile is wider than viewbounds so view is aligned to file name */
+	else if (cur->xmin > rect.xmin || layout->tile_w > ar->winx) {
+		cur->xmin = rect.xmin - layout->tile_border_x;
+		cur->xmax = cur->xmin + ar->winx;
+	}
+	/* right */
+	else if (cur->xmax < rect.xmax) {
+		cur->xmax = rect.xmax + (2 * layout->tile_border_x);
+		cur->xmin = cur->xmax - ar->winx;
+	}
+	else {
+		BLI_assert(cur->xmin <= rect.xmin && cur->xmax >= rect.xmax &&
+		           cur->ymin <= rect.ymin && cur->ymax >= rect.ymax);
+		changed = false;
+	}
+
+	if (changed) {
+		UI_view2d_curRect_validate(&ar->v2d);
+	}
+}
+
 
 static FileSelect file_select(bContext *C, const rcti *rect, FileSelType select, bool fill, bool do_diropen)
 {
@@ -261,6 +304,20 @@ static FileSelect file_select(bContext *C, const rcti *rect, FileSelType select,
 
 	if (select != FILE_SEL_ADD && !file_is_any_selected(sfile->files)) {
 		sfile->params->active_file = -1;
+	}
+	else {
+		ARegion *ar = CTX_wm_region(C);
+		const FileLayout *layout = ED_fileselect_get_layout(sfile, ar);
+
+		/* Adjust view to display selection. Doing iterations for first and last
+		 * selected item makes view showing as much of the selection possible.
+		 * Not really useful if tiles are (almost) bigger than viewbounds though. */
+		if (((layout->flag & FILE_LAYOUT_HOR) && ar->winx > (1.2f * layout->tile_w)) ||
+		    ((layout->flag & FILE_LAYOUT_VER) && ar->winy > (2.0f * layout->tile_h)))
+		{
+			file_ensure_inside_viewbounds(ar, sfile, sel.last);
+			file_ensure_inside_viewbounds(ar, sfile, sel.first);
+		}
 	}
 
 	/* update operator for name change event */
@@ -573,6 +630,9 @@ static bool file_walk_select_selection_set(
 
 	BLI_assert(IN_RANGE(active, -1, numfiles));
 	fileselect_file_set(sfile, params->active_file);
+
+	/* ensure newly selected file is inside viewbounds */
+	file_ensure_inside_viewbounds(CTX_wm_region(C), sfile, params->active_file);
 
 	/* selection changed */
 	return true;
@@ -1128,7 +1188,7 @@ void FILE_OT_cancel(struct wmOperatorType *ot)
 }
 
 
-void file_sfile_to_operator(wmOperator *op, SpaceFile *sfile, char *filepath)
+void file_sfile_to_operator_ex(wmOperator *op, SpaceFile *sfile, char *filepath)
 {
 	PropertyRNA *prop;
 
@@ -1198,6 +1258,12 @@ void file_sfile_to_operator(wmOperator *op, SpaceFile *sfile, char *filepath)
 
 	}
 }
+void file_sfile_to_operator(wmOperator *op, SpaceFile *sfile)
+{
+	char filepath[FILE_MAX];
+
+	file_sfile_to_operator_ex(op, sfile, filepath);
+}
 
 void file_operator_to_sfile(SpaceFile *sfile, wmOperator *op)
 {
@@ -1225,14 +1291,35 @@ void file_operator_to_sfile(SpaceFile *sfile, wmOperator *op)
 	/* XXX, files and dirs updates missing, not really so important though */
 }
 
+/**
+ * Use to set the file selector path from some arbitrary source.
+ */
+void file_sfile_filepath_set(SpaceFile *sfile, const char *filepath)
+{
+	BLI_assert(BLI_exists(filepath));
+
+	if (BLI_is_dir(filepath)) {
+		BLI_strncpy(sfile->params->dir, filepath, sizeof(sfile->params->dir));
+		sfile->params->file[0] = '\0';
+	}
+	else {
+		if ((sfile->params->flag & FILE_DIRSEL_ONLY) == 0) {
+			BLI_split_dirfile(filepath, sfile->params->dir, sfile->params->file,
+			                  sizeof(sfile->params->dir), sizeof(sfile->params->file));
+		}
+		else {
+			BLI_split_dir_part(filepath, sfile->params->dir, sizeof(sfile->params->dir));
+		}
+	}
+}
+
 void file_draw_check(bContext *C)
 {
 	SpaceFile *sfile = CTX_wm_space_file(C);
 	wmOperator *op = sfile->op;
 	if (op) { /* fail on reload */
 		if (op->type->check) {
-			char filepath[FILE_MAX];
-			file_sfile_to_operator(op, sfile, filepath);
+			file_sfile_to_operator(op, sfile);
 			
 			/* redraw */
 			if (op->type->check(C, op)) {
@@ -1315,7 +1402,7 @@ int file_exec(bContext *C, wmOperator *exec_op)
 		
 		sfile->op = NULL;
 
-		file_sfile_to_operator(op, sfile, filepath);
+		file_sfile_to_operator_ex(op, sfile, filepath);
 
 		if (BLI_exists(sfile->params->dir)) {
 			fsmenu_insert_entry(ED_fsmenu_get(), FS_CATEGORY_RECENT, sfile->params->dir, NULL,
@@ -1591,6 +1678,45 @@ void FILE_OT_smoothscroll(wmOperatorType *ot)
 	ot->poll = ED_operator_file_active;
 }
 
+
+static int filepath_drop_exec(bContext *C, wmOperator *op)
+{
+	SpaceFile *sfile = CTX_wm_space_file(C);
+
+	if (sfile) {
+		char filepath[FILE_MAX];
+
+		RNA_string_get(op->ptr, "filepath", filepath);
+		if (!BLI_exists(filepath)) {
+			BKE_report(op->reports, RPT_ERROR, "File does not exist");
+			return OPERATOR_CANCELLED;
+		}
+
+		file_sfile_filepath_set(sfile, filepath);
+
+		if (sfile->op) {
+			file_sfile_to_operator(sfile->op, sfile);
+			file_draw_check(C);
+		}
+
+		WM_event_add_notifier(C, NC_SPACE | ND_SPACE_FILE_PARAMS, NULL);
+		return OPERATOR_FINISHED;
+	}
+
+	return OPERATOR_CANCELLED;
+}
+
+void FILE_OT_filepath_drop(wmOperatorType *ot)
+{
+	ot->name = "File Selector Drop";
+	ot->description = "";
+	ot->idname = "FILE_OT_filepath_drop";
+
+	ot->exec = filepath_drop_exec;
+	ot->poll = WM_operator_winactive;
+
+	RNA_def_string_file_path(ot->srna, "filepath", "Path", FILE_MAX, "", "");
+}
 
 /* create a new, non-existing folder name, returns 1 if successful, 0 if name couldn't be created.
  * The actual name is returned in 'name', 'folder' contains the complete path, including the new folder name.
