@@ -1198,6 +1198,13 @@ static void rna_FractureModifier_mass_threshold_factor_set(PointerRNA *ptr, floa
 	rmd->refresh_constraints = true;
 }
 
+static void rna_FractureModifier_autohide_filter_group_set(PointerRNA* ptr, PointerRNA value)
+{
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
+	rmd->autohide_filter_group = value.data;
+	//rmd->reset_shards = true;
+}
+
 /* NOTE: Curve and array modifiers requires curve path to be evaluated,
  * dependency graph will make sure that curve eval would create such a path,
  * but if curve was already evaluated we might miss path.
@@ -5263,6 +5270,13 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_string_sdna(prop, NULL, "uvlayer_name");
 	RNA_def_property_ui_text(prop, "Inner UV Map", "Name of UV map for inner faces");
 	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_FractureModifier_uvlayer_name_set");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "autohide_filter_group", PROP_POINTER, PROP_NONE);
+	RNA_def_property_ui_text(prop, "Autohide Filter Group", "");
+	RNA_def_property_pointer_funcs(prop, NULL, "rna_FractureModifier_autohide_filter_group_set", NULL, NULL);
+	RNA_def_property_flag(prop, PROP_EDITABLE);
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 

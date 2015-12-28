@@ -211,6 +211,8 @@ static void initData(ModifierData *md)
 	fmd->directional_factor = 0.0f;
 	fmd->minimum_impulse = 0.1f;
 	fmd->mass_threshold_factor = 0.0f;
+
+	fmd->autohide_filter_group = NULL;
 }
 
 static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
@@ -1467,6 +1469,8 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->minimum_impulse = rmd->minimum_impulse;
 	trmd->mass_threshold_factor = rmd->mass_threshold_factor;
 	trmd->use_compounds = rmd->use_compounds;
+
+	trmd->autohide_filter_group = rmd->autohide_filter_group;
 }
 
 /* mi->bb, its for volume fraction calculation.... */
@@ -2674,7 +2678,7 @@ static void make_face_pairs(FractureModifierData *fmd, DerivedMesh *dm)
 	BLI_kdtree_free(tree);
 }
 
-static void find_other_face(FractureModifierData *fmd, int i, BMesh* bm, BMFace ***faces, int *del_faces)
+static void find_other_face(FractureModifierData *fmd, int i, BMesh* bm, Object* ob, BMFace ***faces, int *del_faces)
 {
 	float f_centr[3], f_centr_other[3];
 	BMFace *f1, *f2;
@@ -2710,15 +2714,48 @@ static void find_other_face(FractureModifierData *fmd, int i, BMesh* bm, BMFace 
 	if ((len_squared_v3v3(f_centr, f_centr_other) < (fmd->autohide_dist)) && (f1 != f2) &&
 	    (f1->mat_nr == 1) && (f2->mat_nr == 1))
 	{
-		/*intact face pairs */
-		*faces = MEM_reallocN(*faces, sizeof(BMFace *) * ((*del_faces) + 2));
-		(*faces)[*del_faces] = f1;
-		(*faces)[(*del_faces) + 1] = f2;
-		(*del_faces) += 2;
+		bool in_filter = false;
+
+		/*filter out face pairs, if we have an autohide filter group */
+		if (fmd->autohide_filter_group){
+			GroupObject *go;
+			for (go = fmd->autohide_filter_group->gobject.first; go; go = go->next) {
+				/*check location and scale (maximum size if nonuniform) for now */
+				/*if not in any filter range, delete... else keep */
+				Object* obj = go->ob;
+				float f1_loc[3], f2_loc[3];
+				float radius = MAX3(obj->size[0], obj->size[1], obj->size[2]);
+
+				/* TODO XXX watch out if go->ob is parented to ob (Transformation error ?) */
+				mul_v3_m4v3(f1_loc, ob->obmat, f_centr);
+				mul_v3_m4v3(f2_loc, ob->obmat, f_centr_other);
+				radius = radius * radius;
+
+				if ((len_squared_v3v3(f1_loc, obj->loc) < radius) &&
+					(len_squared_v3v3(f2_loc, obj->loc) < radius))
+				{
+					in_filter = true;
+					break;
+				}
+				else
+				{
+					in_filter = false;
+				}
+			}
+		}
+
+		if (!fmd->autohide_filter_group || !in_filter)
+		{
+			/*intact face pairs */
+			*faces = MEM_reallocN(*faces, sizeof(BMFace *) * ((*del_faces) + 2));
+			(*faces)[*del_faces] = f1;
+			(*faces)[(*del_faces) + 1] = f2;
+			(*del_faces) += 2;
+		}
 	}
 }
 
-static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm)
+static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Object *ob)
 {
 	int totpoly = dm->getNumPolys(dm);
 	int i = 0;
@@ -2734,7 +2771,7 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm)
 	BM_mesh_elem_hflag_disable_all(bm, BM_FACE | BM_EDGE | BM_VERT , BM_ELEM_SELECT, false);
 
 	for (i = 0; i < totpoly; i++) {
-		find_other_face(fmd, i, bm,  &faces, &del_faces);
+		find_other_face(fmd, i, bm, ob,  &faces, &del_faces);
 	}
 
 	for (i = 0; i < del_faces; i++) {
@@ -3123,14 +3160,14 @@ static MDeformVert* do_islands_from_shards(FractureModifierData* fmd, Object* ob
 	return ivert;
 }
 
-static DerivedMesh *output_dm(FractureModifierData* fmd, DerivedMesh *dm, bool exploOK)
+static DerivedMesh *output_dm(FractureModifierData* fmd, DerivedMesh *dm, Object* ob, bool exploOK)
 {
 	if ((fmd->visible_mesh_cached != NULL) && exploOK) {
 		DerivedMesh *dm_final;
 
 		if (fmd->autohide_dist > 0 && fmd->face_pairs) {
-			//printf("Autohide2 \n");
-			dm_final = do_autoHide(fmd, fmd->visible_mesh_cached);
+			//printf("Autohide \n");
+			dm_final = do_autoHide(fmd, fmd->visible_mesh_cached, ob);
 		}
 		else {
 			dm_final = CDDM_copy(fmd->visible_mesh_cached);
@@ -3418,7 +3455,7 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 		do_clear(fmd);
 	}
 
-	return output_dm(fmd, dm, exploOK);
+	return output_dm(fmd, dm, ob, exploOK);
 }
 
 static bool dependsOnTime(ModifierData *UNUSED(md))
@@ -3442,6 +3479,7 @@ static void foreachIDLink(ModifierData *md, Object *ob,
 	walk(userData, ob, (ID **)&fmd->dm_group);
 	walk(userData, ob, (ID **)&fmd->cluster_group);
 	walk(userData, ob, (ID **)&fmd->cutter_group);
+	walk(userData, ob, (ID **)&fmd->autohide_filter_group);
 
 	for (fs = fmd->fracture_settings.first; fs; fs = fs->next)
 	{
@@ -3474,7 +3512,19 @@ static void updateDepgraph(ModifierData *md, DagForest *forest,
 			{
 				DagNode *curNode = dag_get_node(forest, go->ob);
 				dag_add_relation(forest, curNode, obNode,
-				                 DAG_RL_DATA_DATA | DAG_RL_OB_DATA, "Fracture Modifier");
+				                 DAG_RL_DATA_DATA | DAG_RL_OB_DATA, "Fracture Modifier Extra Group");
+			}
+		}
+	}
+
+	if (fmd->autohide_filter_group) {
+		GroupObject *go;
+		for (go = fmd->autohide_filter_group->gobject.first; go; go = go->next) {
+			if (go->ob)
+			{
+				DagNode *curNode = dag_get_node(forest, go->ob);
+				dag_add_relation(forest, curNode, obNode,
+				                 DAG_RL_DATA_DATA | DAG_RL_OB_DATA, "Fracture Modifier Autohide Filter Group");
 			}
 		}
 	}
@@ -3506,6 +3556,15 @@ static void foreachObjectLink(
 	}
 
 	//TODO, walking over fracture settings, too ?
+
+	if (fmd->autohide_filter_group) {
+		GroupObject *go;
+		for (go = fmd->autohide_filter_group->gobject.first; go; go = go->next) {
+			if (go->ob) {
+				walk(userData, ob, &go->ob);
+			}
+		}
+	}
 }
 
 static ShardSequence* shard_sequence_add(FractureModifierData* fmd, float frame, DerivedMesh* dm)

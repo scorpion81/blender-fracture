@@ -673,7 +673,8 @@ class AddPresetFracture(AddPresetBase, Operator):
        # "fracture.impulse_dampening",
        # "fracture.directional_factor",
         "fracture.minimum_impulse",
-        "fracture.mass_threshold_factor"
+        "fracture.mass_threshold_factor",
+        "fracture.autohide_filter_group"
     ]
 
     preset_subdir = "fracture"

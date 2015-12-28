@@ -1540,6 +1540,7 @@ typedef struct FractureID {
 	char pad[4];
 } FractureID;
 
+/* TODO, UNUSED currently !!!! */
 /* fracture settings for different mesh parts, applies to prefracture only */
 typedef struct FractureSetting {
 	struct FractureSetting *next, *prev;
@@ -1624,6 +1625,7 @@ typedef struct FractureModifierData {
 	struct Group *dm_group;
 	struct Group *cluster_group;
 	struct Group *cutter_group;
+	struct Group *autohide_filter_group;
 	struct BMesh *visible_mesh;
 	struct DerivedMesh *visible_mesh_cached;
 	ListBase meshIslands, meshConstraints;
