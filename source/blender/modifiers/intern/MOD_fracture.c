@@ -2795,12 +2795,19 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 		BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 	             "automerge_keep_normals verts=%hv dist=%f", BM_ELEM_SELECT,
 	             fmd->automerge_dist); /*need to merge larger cracks*/
-	}
 
-	//dissolve sharp edges with limit dissolve
-	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "dissolve_limit_keep_normals "
-	             "angle_limit=%f use_dissolve_boundaries=%b verts=%av edges=%ae delimit=%i",
-	             DEG2RADF(1.0f), false, 0);
+		if (fmd->fix_normals) {
+			/* dissolve sharp edges with limit dissolve
+			 * this causes massive flicker with displacements and possibly with glass too when autohide is enabled
+			 * so use this only when fix normals has been requested and automerge is enabled
+			 * for glass in most cases autohide is enough, for displacements too, fix normals and automerge are for special cases where you
+			 * want to clear off nearly all cracks (with smooth objects for example), in those cases you still might experience flickering
+			 * when using glass or displacements */
+			BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "dissolve_limit_keep_normals "
+						 "angle_limit=%f use_dissolve_boundaries=%b verts=%av edges=%ae delimit=%i",
+						 DEG2RADF(1.0f), false, 0);
+		}
+	}
 
 	result = CDDM_from_bmesh(bm, true);
 	BM_mesh_free(bm);
