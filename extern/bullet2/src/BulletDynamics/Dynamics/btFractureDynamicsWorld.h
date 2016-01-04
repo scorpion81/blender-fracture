@@ -73,6 +73,8 @@ public:
 	void propagateDamage(btFractureBody *body, btScalar *impulse, int connection_index, bool *needsBreakingCheck,
 	                     const btVector3 &direction, int *depth);
 
+	void breakNeighborhood(btFractureBody *body, int connection_index);
+
 	virtual void updateAabbs();
 };
 

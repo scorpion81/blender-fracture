@@ -39,6 +39,7 @@ struct btPropagationParameter
 	btScalar m_impulse_dampening;
 	btScalar m_directional_factor;
 	btScalar m_minimum_impulse;
+	btScalar m_stability_factor;
 };
 
 class btFractureBody : public btRigidBody

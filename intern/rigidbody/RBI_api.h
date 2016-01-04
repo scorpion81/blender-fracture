@@ -136,7 +136,8 @@ void RB_world_convex_sweep_test(
 /* ............ */
 
 /* Create new RigidBody instance */
-rbRigidBody *RB_body_new(rbCollisionShape *shape, const float loc[3], const float rot[4], bool use_compounds, float dampening, float factor, float min_impulse);
+rbRigidBody *RB_body_new(rbCollisionShape *shape, const float loc[3], const float rot[4], bool use_compounds, float dampening, float factor,
+                         float min_impulse, float stability_factor);
 
 /* Delete the given RigidBody instance */
 void RB_body_delete(rbRigidBody *body);

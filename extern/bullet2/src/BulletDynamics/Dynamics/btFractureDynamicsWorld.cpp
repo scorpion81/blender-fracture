@@ -1,4 +1,7 @@
 
+#include <cstdlib>
+#include <ctime>
+
 #include "btBulletDynamicsCommon.h"
 #include "btFractureDynamicsWorld.h"
 #include "btFractureBody.h"
@@ -926,6 +929,36 @@ void btFractureDynamicsWorld::propagateDamage(btFractureBody *body, btScalar *im
 	}
 }
 
+void btFractureDynamicsWorld::breakNeighborhood(btFractureBody *body, int connection_index)
+{
+	if (body->m_connections.size() > connection_index)
+	{
+		btAlignedObjectArray<int> *adjacents = body->m_connection_map->find(connection_index);
+		if (adjacents)
+		{
+			int i, size = adjacents->size();
+			float thresh = (1.0f - body->m_propagationParameter.m_stability_factor);
+			//clamp size... else too much recursion going on, leading to crashes
+			//if (size > 2)
+			{
+				for (i=0;i<size;i++)
+				{
+					float rnd = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+					if (rnd < thresh)
+					{
+						//printf("Breaking neighbor %d\n", i);
+						btConnection& con = body->m_connections[adjacents->at(i)];
+						con.m_strength = 0;
+						//*needsBreakingCheck = true;
+						body->m_connections.remove(con);
+						breakNeighborhood(body, adjacents->at(i));
+					}
+				}
+			}
+		}
+	}
+}
+
 void btFractureDynamicsWorld::fractureCallback( )
 {
 
@@ -941,6 +974,9 @@ void btFractureDynamicsWorld::fractureCallback( )
 	int numManifolds = getDispatcher()->getNumManifolds();
 
 	sFracturePairs.clear();
+
+	// seed for random from time
+	srand (static_cast <unsigned> (time(0)));
 
 
 	for (int i=0;i<numManifolds;i++)
@@ -1139,6 +1175,8 @@ void btFractureDynamicsWorld::fractureCallback( )
 												connection.m_strength=0.f;
 												needsBreakingCheck = true;
 												sFracturePairs[i].m_fracObj->m_connections.remove(connection);
+
+												breakNeighborhood(sFracturePairs[i].m_fracObj, pt.m_index0);
 											}
 										}
 									}
@@ -1159,6 +1197,8 @@ void btFractureDynamicsWorld::fractureCallback( )
 												connection.m_strength=0.f;
 												needsBreakingCheck = true;
 												sFracturePairs[i].m_fracObj->m_connections.remove(connection);
+
+												breakNeighborhood(sFracturePairs[i].m_fracObj, pt.m_index1);
 											}
 										}
 									}
