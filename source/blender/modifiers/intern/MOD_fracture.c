@@ -2226,14 +2226,23 @@ static void connect_meshislands(FractureModifierData *fmd, MeshIsland *mi1, Mesh
 	}
 }
 
-static void search_tree_based(FractureModifierData *rmd, MeshIsland *mi, MeshIsland **meshIslands, KDTree **combined_tree, float co[3])
+static void search_tree_based(FractureModifierData *rmd, MeshIsland *mi, MeshIsland **meshIslands, KDTree **combined_tree, float co[3], float max_mass)
 {
 	int r = 0, limit = 0, i = 0;
 	KDTreeNearest *n3 = NULL;
-	float dist, obj_centr[3];
+	float dist, obj_centr[3], factor;
 
 	limit = rmd->constraint_limit;
 	dist = rmd->contact_dist;
+	factor = 1.0f - rmd->mass_threshold_factor;
+
+	if (factor > 0.0f && rmd->mass_threshold_factor > 0.0f && rmd->use_compounds) {
+		if (mi->rigidbody->mass > 0.0f && max_mass > 0.0f) {
+			float ratio = mi->rigidbody->mass / max_mass;
+			dist *= (factor * ratio);
+			limit *= (factor * ratio);
+		}
+	}
 
 	if (rmd->constraint_target == MOD_FRACTURE_CENTROID) {
 		mul_v3_m4v3(obj_centr, rmd->origmat, mi->centroid);
@@ -2321,7 +2330,8 @@ static void create_constraints(FractureModifierData *rmd)
 	KDTree *coord_tree = NULL;
 	MeshIsland **mesh_islands = MEM_mallocN(sizeof(MeshIsland *), "mesh_islands");
 	int count, i = 0;
-	RigidBodyWorld *rbw;
+	MeshIsland *mi;
+	float max_mass = 0.0f;
 
 	if (rmd->visible_mesh_cached && rmd->contact_dist == 0.0f) {
 		/* extend contact dist to bbox max dimension here, in case we enter 0 */
@@ -2334,19 +2344,25 @@ static void create_constraints(FractureModifierData *rmd)
 		MEM_freeN(bb);
 	}
 
+	for (mi = rmd->meshIslands.first; mi; mi = mi->next)
+	{
+		if (mi->rigidbody->mass > max_mass)
+			max_mass = mi->rigidbody->mass;
+	}
+
 
 	count = prepareConstraintSearch(rmd, &mesh_islands, &coord_tree);
 
 	for (i = 0; i < count; i++) {
 		if (rmd->constraint_target == MOD_FRACTURE_CENTROID) {
-			search_tree_based(rmd, mesh_islands[i], mesh_islands, &coord_tree, NULL);
+			search_tree_based(rmd, mesh_islands[i], mesh_islands, &coord_tree, NULL, max_mass);
 		}
 		else if (rmd->constraint_target == MOD_FRACTURE_VERTEX) {
 			MVert mv;
 			MeshIsland *mi = NULL;
 			rmd->visible_mesh_cached->getVert(rmd->visible_mesh_cached, i, &mv);
 			mi = BLI_ghash_lookup(rmd->vertex_island_map, SET_INT_IN_POINTER(i));
-			search_tree_based(rmd, mi, mesh_islands, &coord_tree, mv.co);
+			search_tree_based(rmd, mi, mesh_islands, &coord_tree, mv.co, max_mass);
 		}
 	}
 
