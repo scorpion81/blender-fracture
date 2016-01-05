@@ -2234,9 +2234,9 @@ static void search_tree_based(FractureModifierData *rmd, MeshIsland *mi, MeshIsl
 
 	limit = rmd->constraint_limit;
 	dist = rmd->contact_dist;
-	factor = 1.0f - rmd->mass_threshold_factor;
+	factor = rmd->mass_threshold_factor;
 
-	if (factor > 0.0f && rmd->mass_threshold_factor > 0.0f && rmd->use_compounds) {
+	if (factor > 0.0f && rmd->use_compounds) {
 		if (mi->rigidbody->mass > 0.0f && max_mass > 0.0f) {
 			float ratio = mi->rigidbody->mass / max_mass;
 			dist *= (factor * ratio);
