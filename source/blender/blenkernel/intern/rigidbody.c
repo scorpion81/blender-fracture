@@ -78,6 +78,7 @@
 static void resetDynamic(RigidBodyWorld *rbw);
 static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int rebuild, int transfer_speed);
 
+
 static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED(rbw), MeshIsland *UNUSED(mi), Object *UNUSED(ob))
 {
 	if (rbo->flag & RBO_FLAG_KINEMATIC && rbo->type == RBO_TYPE_ACTIVE)
@@ -2190,7 +2191,7 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi
 	/* since we are always member of an object, dupe its settings,
 	 * create new settings data, and link it up */
 	rbo = BKE_rigidbody_copy_object(ob);
-	rbo->type = mi->ground_weight > 0.5f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
+	rbo->type = mi->ground_weight > 0.0f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
 
 	/* set initial transform */
 	mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);

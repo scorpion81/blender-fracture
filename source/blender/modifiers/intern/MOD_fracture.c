@@ -1595,7 +1595,7 @@ static void do_rigidbody(FractureModifierData *fmd, MeshIsland* mi, Object* ob, 
 
 static short do_vert_index_map(FractureModifierData *fmd, MeshIsland *mi)
 {
-	short rb_type = mi->ground_weight > 0.5f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
+	short rb_type = mi->ground_weight > 0.0f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
 
 	if (fmd->vert_index_map && fmd->dm_group && fmd->cluster_count == 0 && mi->vertex_indices)
 	{
@@ -1670,7 +1670,8 @@ static float do_setup_meshisland(FractureModifierData *fmd, Object *ob, int totv
 	}
 
 	mi->particle_index = -1;
-	mi->thresh_weight = 0;
+	mi->thresh_weight = 0.0f;
+	mi->ground_weight = 0.0f;
 	mi->id = id;
 	mi->vertices = verts; /*those are temporary only !!! */
 	mi->vertco = MEM_mallocN(sizeof(float) * 3 * totvert, "mi->vertco");
@@ -2540,7 +2541,7 @@ static DerivedMesh *createCache(FractureModifierData *fmd, Object *ob, DerivedMe
 
 		/*disable for dm_group, cannot paint onto this mesh at all */
 		if (mi->rigidbody != NULL && fmd->dm_group == NULL) {
-			mi->rigidbody->type = mi->ground_weight > 0.5f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
+			mi->rigidbody->type = mi->ground_weight > 0.0f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
 		}
 
 		/* use fallback over inner material*/
@@ -3041,8 +3042,8 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 
 	mi->participating_constraints = NULL;
 	mi->participating_constraint_count = 0;
-	mi->thresh_weight = 0;
-	mi->ground_weight = 0;
+	mi->thresh_weight = 0.0f;
+	mi->ground_weight = 0.0f;
 	mi->vertex_count = s->totvert;
 
 	do_verts_weights(fmd, s, mi, vertstart, thresh_defgrp_index, ground_defgrp_index);
