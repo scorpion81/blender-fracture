@@ -134,6 +134,8 @@ class PHYSICS_PT_rigid_body_dynamics(PHYSICS_PT_rigidbody_panel, Panel):
         sub.prop(rbo, "deactivate_linear_velocity", text="Linear Vel")
         sub.prop(rbo, "deactivate_angular_velocity", text="Angular Vel")
         # TODO: other params such as time?
+        col.label(text="Activation:")
+        col.prop(rbo, "force_threshold", text="Force Thresh")
 
         col = split.column()
         col.label(text="Damping:")

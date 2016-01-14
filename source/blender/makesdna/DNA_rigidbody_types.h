@@ -132,12 +132,13 @@ typedef struct RigidBodyOb {
 	
 	float lin_sleep_thresh;	/* deactivation threshold for linear velocities */
 	float ang_sleep_thresh;	/* deactivation threshold for angular velocities */
+	float force_thresh;		/* activation threshold for activation by force */
 	
 	float orn[4];			/* rigid body orientation */
 	float pos[3];			/* rigid body position */
 	float lin_vel[3];		/* rigid body linear velocity, important for dynamic fracture*/
 	float ang_vel[3];		/* rigid body angular velocity, important for dynamic fracture*/
-	float pad1;
+	//float pad1;
 } RigidBodyOb;
 
 

@@ -84,12 +84,12 @@ static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED(rbw), Mes
 	if (rbo->flag & RBO_FLAG_KINEMATIC && rbo->type == RBO_TYPE_ACTIVE)
 	{
 		rbo->flag &= ~RBO_FLAG_KINEMATIC;
+		rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 		//RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
 		RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
 		RB_body_set_kinematic_state(rbo->physics_object, false);
 		//RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups, mi, ob);
-		//RB_body_activate(rbo->physics_object);
-		rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+		RB_body_activate(rbo->physics_object);
 	}
 }
 
@@ -2270,6 +2270,7 @@ RigidBodyOb *BKE_rigidbody_create_object(Scene *scene, Object *ob, short type)
 
 	rbo->lin_sleep_thresh = 0.4f; /* 0.4 is half of Bullet default */
 	rbo->ang_sleep_thresh = 0.5f; /* 0.5 is half of Bullet default */
+	rbo->force_thresh = 0.0f; /*dont activate by force by default */
 
 	rbo->lin_damping = 0.04f; /* 0.04 is game engine default */
 	rbo->ang_damping = 0.1f; /* 0.1 is game engine default */
@@ -2813,7 +2814,7 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 	}
 
 	/* update rigid body location and rotation for kinematic bodies */
-	if (rbo->flag & RBO_FLAG_KINEMATIC || (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
+	if ((rbo->flag & RBO_FLAG_KINEMATIC && rbo->force_thresh == 0.0f) || (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
 		mul_v3_v3(centr, scale);
 		mul_qt_v3(rot, centr);
 		add_v3_v3(loc, centr);
@@ -2832,6 +2833,7 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 		if (effectors) {
 			float eff_force[3] = {0.0f, 0.0f, 0.0f};
 			float eff_loc[3], eff_vel[3];
+			float thresh = rbo->force_thresh * rbo->force_thresh; /*use this to compare against squared length of vector */
 
 			/* create dummy 'point' which represents last known position of object as result of sim */
 			// XXX: this can create some inaccuracies with sim position, but is probably better than using unsimulated vals?
@@ -2847,12 +2849,29 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 			 *	- we use 'central force' since apply force requires a "relative position" which we don't have...
 			 */
 			pdDoEffectors(effectors, NULL, effector_weights, &epoint, eff_force, NULL);
-			if (G.f & G_DEBUG)
-				printf("\tapplying force (%f,%f,%f) to '%s'\n", eff_force[0], eff_force[1], eff_force[2], ob->id.name + 2);
-			/* activate object in case it is deactivated */
-			if (!is_zero_v3(eff_force))
+			if ((rbo->flag & RBO_FLAG_KINEMATIC) && (thresh < len_squared_v3(eff_force)))
+			{
+				activateRigidbody(rbo, NULL, NULL, NULL);
+				RB_body_apply_central_force(rbo->physics_object, eff_force);
+			}
+			else if (rbo->flag & RBO_FLAG_KINEMATIC)
+			{
+				/* do the same here as above, but here we needed the eff_force value to compare against threshold */
+				mul_v3_v3(centr, scale);
+				mul_qt_v3(rot, centr);
+				add_v3_v3(loc, centr);
 				RB_body_activate(rbo->physics_object);
-			RB_body_apply_central_force(rbo->physics_object, eff_force);
+				RB_body_set_loc_rot(rbo->physics_object, loc, rot);
+			}
+			else
+			{
+				if (G.f & G_DEBUG)
+					printf("\tapplying force (%f,%f,%f) to '%s'\n", eff_force[0], eff_force[1], eff_force[2], ob->id.name + 2);
+				/* activate object in case it is deactivated */
+				if (!is_zero_v3(eff_force))
+					RB_body_activate(rbo->physics_object);
+				RB_body_apply_central_force(rbo->physics_object, eff_force);
+			}
 		}
 		else if (G.f & G_DEBUG)
 			printf("\tno forces to apply to '%s'\n", ob->id.name + 2);

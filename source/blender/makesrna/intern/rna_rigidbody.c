@@ -543,6 +543,19 @@ static void rna_RigidBodyOb_angular_damping_set(PointerRNA *ptr, float value)
 	foreach_shard_float(ob, value, set_angular_damping);
 }
 
+void set_force_threshold(RigidBodyOb *rbo, float value)
+{
+	rbo->force_thresh = value;
+}
+
+static void rna_RigidBodyOb_force_threshold_set(PointerRNA *ptr, float value)
+{
+	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
+	Object *ob = ptr->id.data;
+	rbo->force_thresh = value;
+	foreach_shard_float(ob, value, set_force_threshold);
+}
+
 static char *rna_RigidBodyCon_path(PointerRNA *UNUSED(ptr))
 {
 	/* NOTE: this hardcoded path should work as long as only Objects have this */
@@ -1125,6 +1138,14 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Collision Groups", "Collision Groups Rigid Body belongs to");
 	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
 	RNA_def_property_flag(prop, PROP_LIB_EXCEPTION);
+
+	prop = RNA_def_property(srna, "force_threshold", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "force_thresh");
+	RNA_def_property_range(prop, 0.0f, 100000.0f);
+	RNA_def_property_float_default(prop, 0.1f);
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyOb_force_threshold_set", NULL);
+	RNA_def_property_ui_text(prop, "Activation Force Threshold", "Strength of force necessary to activate this kinematic object");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
 }
 
 static void rna_def_rigidbody_constraint(BlenderRNA *brna)
