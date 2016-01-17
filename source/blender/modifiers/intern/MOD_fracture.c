@@ -1524,7 +1524,7 @@ static int do_shard_to_island(FractureModifierData *fmd, BMesh* bm_new)
 static void do_rigidbody(FractureModifierData *fmd, MeshIsland* mi, Object* ob, DerivedMesh *orig_dm, short rb_type, int i)
 {
 	mi->rigidbody = NULL;
-	mi->rigidbody = BKE_rigidbody_create_shard(fmd->modifier.scene, ob, mi);
+	mi->rigidbody = BKE_rigidbody_create_shard(fmd->modifier.scene, ob, NULL, mi);
 	mi->rigidbody->type = rb_type;
 	mi->rigidbody->meshisland_index = i;
 	BKE_rigidbody_calc_shard_mass(ob, mi, orig_dm);

@@ -2138,7 +2138,7 @@ RigidBodyWorld *BKE_rigidbody_create_world(Scene *scene)
 }
 
 /* Add rigid body settings to the specified shard */
-RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi)
+RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, Object *target, MeshIsland *mi)
 {
 	RigidBodyOb *rbo;
 	RigidBodyWorld *rbw = BKE_rigidbody_get_world(scene);
@@ -2186,7 +2186,10 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, MeshIsland *mi
 
 	/* since we are always member of an object, dupe its settings,
 	 * create new settings data, and link it up */
-	rbo = BKE_rigidbody_copy_object(ob);
+	if (target && target->rigidbody_object)
+		rbo = BKE_rigidbody_copy_object(target);
+	else
+		rbo = BKE_rigidbody_copy_object(ob);
 	rbo->type = mi->ground_weight > 0.0f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
 
 	/* set initial transform */
@@ -2765,7 +2768,7 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 		DerivedMesh *dm = NULL;
 
 		if (rbo->mesh_source == RBO_MESH_DEFORM) {
-			ob->derivedDeform;
+			dm = ob->derivedDeform;
 		}
 		else if (rbo->mesh_source == RBO_MESH_FINAL) {
 			dm = ob->derivedFinal;
@@ -3075,9 +3078,9 @@ static bool can_next(RigidBodyShardCon *rbsc, MeshIsland *mi1, MeshIsland *mi2)
 	return rbsc && rbsc->next && rbsc->next->mi1 == mi1 && rbsc->next->mi2 == mi2;
 }
 
-static void handle_plastic_breaking(RigidBodyShardCon *rbsc)
+static void handle_plastic_breaking(FractureModifierData *fmd, RigidBodyShardCon *rbsc)
 {
-	if (rbsc->physics_constraint && !RB_constraint_is_enabled(rbsc->physics_constraint))
+	if (rbsc->physics_constraint && !(RB_constraint_is_enabled(rbsc->physics_constraint)))
 	{
 		//go back until pair changes, break all
 		RigidBodyShardCon *con = rbsc;
@@ -3086,13 +3089,16 @@ static void handle_plastic_breaking(RigidBodyShardCon *rbsc)
 
 		while (can_prev(con, mi1, mi2))
 		{
-			if (con->flag & RBC_FLAG_PLASTIC)
+			if ((con->flag & RBC_FLAG_PLASTIC) && fmd->use_special_breaking)
 			{
 				con->flag |= RBC_FLAG_ENABLED;
 			}
 			else
 			{
 				con->flag &= ~RBC_FLAG_ENABLED;
+				if (con->physics_constraint) {
+					RB_constraint_set_enabled(con->physics_constraint, false);
+				}
 			}
 			con->flag |= RBC_FLAG_NEEDS_VALIDATE;
 			con = con->prev;
@@ -3100,17 +3106,67 @@ static void handle_plastic_breaking(RigidBodyShardCon *rbsc)
 
 		while (can_next(con, mi1, mi2))
 		{
-			if (con->flag & RBC_FLAG_PLASTIC)
+			if ((con->flag & RBC_FLAG_PLASTIC) && fmd->use_special_breaking)
 			{
 				con->flag |= RBC_FLAG_ENABLED;
 			}
 			else
 			{
 				con->flag &= ~RBC_FLAG_ENABLED;
+				if (con->physics_constraint) {
+					RB_constraint_set_enabled(con->physics_constraint, false);
+				}
 			}
 			con->flag |= RBC_FLAG_NEEDS_VALIDATE;
 			con = con->next;
 		}
+	}
+}
+
+static void handle_regular_breaking(FractureModifierData *fmd, Object *ob, RigidBodyWorld *rbw, RigidBodyShardCon *rbsc, float max_con_mass)
+{
+	float weight = MIN2(rbsc->mi1->thresh_weight, rbsc->mi2->thresh_weight);
+	float breaking_angle = fmd->breaking_angle_weighted ? fmd->breaking_angle * weight : fmd->breaking_angle;
+	float breaking_distance = fmd->breaking_distance_weighted ? fmd->breaking_distance * weight : fmd->breaking_distance;
+	int iterations;
+
+	if (fmd->solver_iterations_override == 0) {
+		iterations = rbw->num_solver_iterations;
+	}
+	else {
+		if ((rbsc->mi1->particle_index != -1) && (rbsc->mi1->particle_index == rbsc->mi2->particle_index)) {
+			iterations = fmd->cluster_solver_iterations_override;
+		}
+		else {
+			iterations = fmd->solver_iterations_override;
+		}
+	}
+
+	if (iterations > 0) {
+		rbsc->flag |= RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS;
+		rbsc->num_solver_iterations = iterations;
+	}
+
+	if ((fmd->use_mass_dependent_thresholds || fmd->mass_threshold_factor > 0.0f)) {
+		BKE_rigidbody_calc_threshold(max_con_mass, fmd, rbsc);
+	}
+
+	if (((fmd->breaking_angle) > 0) || (fmd->breaking_angle_weighted && weight > 0) ||
+		(((fmd->breaking_distance > 0) || (fmd->breaking_distance_weighted && weight > 0)) ||
+		 (fmd->cluster_breaking_angle > 0 || fmd->cluster_breaking_distance > 0)) /*&& !rebuild*/)
+	{
+		float dist, angle, distdiff, anglediff;
+		calc_dist_angle(rbsc, &dist, &angle);
+
+		anglediff = fabs(angle - rbsc->start_angle);
+		distdiff = fabs(dist - rbsc->start_dist);
+
+		/* Treat angles here */
+		handle_breaking_angle(fmd, ob, rbsc, rbw, anglediff, weight, breaking_angle);
+
+		/* Treat distances here */
+		handle_breaking_distance(fmd, ob, rbsc, rbw, distdiff, weight, breaking_distance);
+
 	}
 }
 
@@ -3187,54 +3243,14 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 		}
 
 		for (rbsc = fmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
-			float weight = MIN2(rbsc->mi1->thresh_weight, rbsc->mi2->thresh_weight);
-			float breaking_angle = fmd->breaking_angle_weighted ? fmd->breaking_angle * weight : fmd->breaking_angle;
-			float breaking_distance = fmd->breaking_distance_weighted ? fmd->breaking_distance * weight : fmd->breaking_distance;
-			int iterations;
-
-			if (fmd->solver_iterations_override == 0) {
-				iterations = rbw->num_solver_iterations;
-			}
-			else {
-				if ((rbsc->mi1->particle_index != -1) && (rbsc->mi1->particle_index == rbsc->mi2->particle_index)) {
-					iterations = fmd->cluster_solver_iterations_override;
-				}
-				else {
-					iterations = fmd->solver_iterations_override;
-				}
-			}
-
-			if (iterations > 0) {
-				rbsc->flag |= RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS;
-				rbsc->num_solver_iterations = iterations;
-			}
-
-			if ((fmd->use_mass_dependent_thresholds || fmd->mass_threshold_factor > 0.0f)) {
-				BKE_rigidbody_calc_threshold(max_con_mass, fmd, rbsc);
-			}
-
-			if (((fmd->breaking_angle) > 0) || (fmd->breaking_angle_weighted && weight > 0) ||
-				(((fmd->breaking_distance > 0) || (fmd->breaking_distance_weighted && weight > 0)) ||
-				 (fmd->cluster_breaking_angle > 0 || fmd->cluster_breaking_distance > 0)) && !rebuild )
+			if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
 			{
-				float dist, angle, distdiff, anglediff;
-				calc_dist_angle(rbsc, &dist, &angle);
-
-				anglediff = fabs(angle - rbsc->start_angle);
-				distdiff = fabs(dist - rbsc->start_dist);
-
-				/* Treat angles here */
-				handle_breaking_angle(fmd, ob, rbsc, rbw, anglediff, weight, breaking_angle);
-
-				/* Treat distances here */
-				handle_breaking_distance(fmd, ob, rbsc, rbw, distdiff, weight, breaking_distance);
-
+				handle_regular_breaking(fmd, ob, rbw, rbsc, max_con_mass);
 			}
-
-			if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL && fmd->use_special_breaking)
+			else
 			{
 				//hmm maybe enable "special" constraint behavior
-				handle_plastic_breaking(rbsc);
+				handle_plastic_breaking(fmd, rbsc);
 			}
 
 			if (rebuild || rbsc->mi1->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD ||

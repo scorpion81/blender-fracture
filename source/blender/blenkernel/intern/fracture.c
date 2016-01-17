@@ -2160,7 +2160,7 @@ static Shard* fracture_object_to_shard( Object *own, Object* target)
 	MPoly* mpoly;
 	MLoop* mloop;
 	SpaceTransform trans;
-	//float mat[4][4];
+	float mat[4][4];
 
 	int totvert, totpoly, totloop, v;
 	bool do_free = false;
@@ -2172,10 +2172,9 @@ static Shard* fracture_object_to_shard( Object *own, Object* target)
 		do_free = true;
 	}
 
-	//copy_m4_m4(mat, own->obmat);
-	//take centroid into account ? hmmmm
-	//BLI_space_transform_from_matrices(&trans, target->obmat, mat);
-	BLI_SPACE_TRANSFORM_SETUP(&trans, target, own);
+	unit_m4(mat);
+	BLI_space_transform_from_matrices(&trans, target->obmat, mat);
+	//BLI_SPACE_TRANSFORM_SETUP(&trans, target, own);
 
 	mvert = dm->getVertArray(dm);
 	mpoly = dm->getPolyArray(dm);
@@ -2377,7 +2376,7 @@ MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own,
 
 	//lets see whether we need to add loc here too XXX TODO
 
-	mi->rigidbody = BKE_rigidbody_create_shard(fmd->modifier.scene, own, mi);
+	mi->rigidbody = BKE_rigidbody_create_shard(fmd->modifier.scene, own, target, mi);
 	if (mi->rigidbody)
 		mi->rigidbody->meshisland_index = mi->id;
 

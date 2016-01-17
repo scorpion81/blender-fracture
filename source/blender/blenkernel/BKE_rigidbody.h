@@ -64,7 +64,7 @@ void BKE_rigidbody_relink_constraint(struct RigidBodyCon *rbc);
 struct RigidBodyWorld *BKE_rigidbody_create_world(struct Scene *scene);
 struct RigidBodyOb *BKE_rigidbody_create_object(struct Scene *scene, struct Object *ob, short type);
 struct RigidBodyCon *BKE_rigidbody_create_constraint(struct Scene *scene, struct Object *ob, short type);
-struct RigidBodyOb *BKE_rigidbody_create_shard(struct Scene *scene, struct Object *ob, struct MeshIsland *mi);
+struct RigidBodyOb *BKE_rigidbody_create_shard(struct Scene *scene, struct Object *ob, struct Object *target, struct MeshIsland *mi);
 struct RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(struct Scene *scene, short type);
 
 /* copy */
