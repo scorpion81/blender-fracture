@@ -1729,7 +1729,10 @@ typedef struct FractureModifierData {
 	float max_vol;
 	int last_frame;
 
-	//char pad[4];
+	/*TODO XXX this is subject to change, a very experimental constraint breaking mode*/
+	int use_special_breaking;
+
+	char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

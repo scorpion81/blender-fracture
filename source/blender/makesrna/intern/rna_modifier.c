@@ -1378,6 +1378,33 @@ static void rna_MeshCon_breaking_threshold_set(PointerRNA *ptr, float value)
 #endif
 }
 
+static void rna_MeshCon_position_set(PointerRNA *ptr, float value[3])
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	copy_v3_v3(rbc->pos, value);
+
+	rbc->flag |= RBC_FLAG_NEEDS_VALIDATE;
+}
+
+static void rna_MeshCon_orientation_set(PointerRNA *ptr, float value[4])
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	copy_qt_qt(rbc->orn, value);
+
+	rbc->flag |= RBC_FLAG_NEEDS_VALIDATE;
+}
+
+static void rna_MeshCon_plastic_set(PointerRNA *ptr, int value)
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_PLASTIC);
+
+	rbc->flag |= RBC_FLAG_NEEDS_VALIDATE;
+}
+
 static void rna_MeshCon_override_solver_iterations_set(PointerRNA *ptr, int value)
 {
 	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
@@ -5204,7 +5231,7 @@ static void rna_def_mesh_island_vertex(BlenderRNA* brna)
 	RNA_def_property_float_sdna(prop, NULL, "no");
 	RNA_def_property_array(prop, 3);
 	RNA_def_property_range(prop, -1.0f, 1.0f);
-	/* RNA_def_property_float_funcs(prop, "rna_MeshVertex_normal_get", "rna_MeshVertex_normal_set", NULL); *
+	RNA_def_property_float_funcs(prop, "rna_MeshVertex_normal_get", "rna_MeshVertex_normal_set", NULL);
 	RNA_def_property_ui_text(prop, "Normal", "Vertex Normal");*/
 
 }
@@ -5264,6 +5291,24 @@ static void rna_def_mesh_constraint(BlenderRNA *brna)
 	RNA_def_struct_sdna(srna, "RigidBodyShardCon");
 	RNA_def_struct_ui_text(srna, "Mesh Constraint", "A connection between two mesh islands in Fracture Modifier");
 	RNA_def_struct_path_func(srna, "rna_MeshConstraint_path");
+
+	prop = RNA_def_property(srna, "location", PROP_FLOAT, PROP_TRANSLATION);
+	RNA_def_property_float_sdna(prop, NULL, "pos");
+	RNA_def_property_array(prop, 3);
+	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_position_set", NULL);
+	RNA_def_property_ui_text(prop, "Location", "Position of the mesh constraint");
+
+	prop = RNA_def_property(srna, "rotation", PROP_FLOAT, PROP_QUATERNION);
+	RNA_def_property_float_sdna(prop, NULL, "orn");
+	RNA_def_property_array(prop, 4);
+	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_orientation_set", NULL);
+	RNA_def_property_ui_text(prop, "Rotation", "Quaternion rotation of the mesh constraint");
+
+	prop = RNA_def_property(srna, "plastic", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_PLASTIC);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_plastic_set");
+	RNA_def_property_ui_text(prop, "Plastic", "This constraint belongs to a plastic connection");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "type", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "type");
@@ -6203,6 +6248,12 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Mesh Constraints", "A connection between two Mesh Islands inside the modifier");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 	rna_def_fracture_meshconstraints(brna, prop);
+
+	prop = RNA_def_property(srna, "use_special_breaking", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "use_special_breaking", false);
+	RNA_def_property_ui_text(prop, "Special Constraint Breaking", "Enables a more accurate way of constraint breaking handling");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 static void rna_def_modifier_datatransfer(BlenderRNA *brna)

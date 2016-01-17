@@ -285,7 +285,10 @@ typedef struct RigidBodyShardCon {
 	float breaking_threshold;	/* breaking impulse threshold */
 	float start_angle;			//needed for breaking by angle and dist
 	float start_dist;
-	//float pad;
+
+	float orn[4];
+	float pos[3];
+	float pad;
 
 	/* limits */
 	/* translation limits */
@@ -382,6 +385,7 @@ typedef enum eRigidBodyCon_Flag {
 	RBC_FLAG_USE_MOTOR_ANG				= (1 << 15),
 	/* prevent multiple removal and crash with kinematic deactivation */
 	RBC_FLAG_USE_KINEMATIC_DEACTIVATION = (1 << 16),
+	RBC_FLAG_PLASTIC					= (1 << 17),
 } eRigidBodyCon_Flag;
 
 /* ******************************** */

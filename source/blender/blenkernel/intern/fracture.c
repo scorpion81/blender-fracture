@@ -2524,6 +2524,20 @@ RigidBodyShardCon *BKE_fracture_mesh_islands_connect(FractureModifierData *fmd, 
 	rbsc->mi1 = mi1;
 	rbsc->mi2 = mi2;
 
+	/* moved default meshconstraint pos calculation here to creation, so you can override it later on*/
+	/* do this for all constraints */
+	/* location for fixed constraints doesnt matter, so keep old setting */
+	if (rbsc->type == RBC_TYPE_FIXED) {
+		copy_v3_v3(rbsc->pos, rbsc->mi1->rigidbody->pos);
+	}
+	else {
+		/* else set location to center */
+		add_v3_v3v3(rbsc->pos, rbsc->mi1->rigidbody->pos, rbsc->mi2->rigidbody->pos);
+		mul_v3_fl(rbsc->pos, 0.5f);
+	}
+
+	copy_qt_qt(rbsc->orn, rbsc->mi1->rigidbody->orn);
+
 	BLI_addtail(&fmd->meshConstraints, rbsc);
 
 	if (index > -1)
