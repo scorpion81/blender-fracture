@@ -43,6 +43,7 @@
 #include "BKE_mesh.h"
 #include "BKE_modifier.h"
 #include "BKE_object.h"
+#include "BKE_pointcache.h"
 #include "BKE_rigidbody.h"
 
 #include "BLI_kdtree.h"
@@ -2148,4 +2149,458 @@ void BKE_fracture_store_settings(FractureModifierData *fs, FractureSetting *fmd)
 	fmd->directional_factor = fs->directional_factor;
 	fmd->mass_threshold_factor = fs->mass_threshold_factor;
 	fmd->use_compounds = fs->use_compounds;
+}
+
+static Shard* fracture_object_to_shard( Object *own, Object* target)
+{
+	DerivedMesh *dm;
+	Shard *s = NULL;
+
+	MVert* mvert, *mv;
+	MPoly* mpoly;
+	MLoop* mloop;
+	SpaceTransform trans;
+	//float mat[4][4];
+
+	int totvert, totpoly, totloop, v;
+	bool do_free = false;
+
+	dm = target->derivedFinal;
+	if (!dm)
+	{	//fallback if no derivedFinal available
+		dm = CDDM_from_mesh((Mesh*)target->data);
+		do_free = true;
+	}
+
+	//copy_m4_m4(mat, own->obmat);
+	//take centroid into account ? hmmmm
+	//BLI_space_transform_from_matrices(&trans, target->obmat, mat);
+	BLI_SPACE_TRANSFORM_SETUP(&trans, target, own);
+
+	mvert = dm->getVertArray(dm);
+	mpoly = dm->getPolyArray(dm);
+	mloop = dm->getLoopArray(dm);
+	totvert = dm->getNumVerts(dm);
+	totpoly = dm->getNumPolys(dm);
+	totloop = dm->getNumLoops(dm);
+
+	// create temp shard -> that necessary at all ?
+	s = BKE_create_fracture_shard(mvert, mpoly, mloop, totvert, totpoly, totloop, true);
+
+	for(v = 0, mv = s->mvert; v < s->totvert; v++, mv++)
+	{
+		BLI_space_transform_apply(&trans, mv->co);
+	}
+
+	BLI_space_transform_apply(&trans, s->centroid);
+
+	s = BKE_custom_data_to_shard(s, dm);
+	BKE_shard_calc_minmax(s);
+
+	if (do_free && dm)
+	{
+		dm->needsFree = 1;
+		dm->release(dm);
+	}
+
+	return s;
+}
+
+static void fracture_update_shards(FractureModifierData *fmd, Shard *s, int index)
+{
+	FracMesh* fm;
+
+	if (!fmd->frac_mesh)
+		fmd->frac_mesh = BKE_create_fracture_container();
+
+	fm = fmd->frac_mesh;
+	BLI_addtail(&fm->shard_map, s);
+	s->shard_id = fm->shard_count;
+	fm->shard_count++;
+
+	//set custom index ?
+	if (index > -1)
+		s->shard_id = index;
+
+}
+
+static MeshIsland* fracture_shard_to_island(FractureModifierData *fmd, Shard *s, int vertstart)
+{
+	MeshIsland *mi;
+	int k = 0, j = 0, totvert;
+	MVert *mverts, *verts, *mv;
+
+	//create mesh island and intialize
+	mi = MEM_callocN(sizeof(MeshIsland), "meshIsland");
+	BLI_addtail(&fmd->meshIslands, mi);
+	mi->participating_constraints = NULL;
+	mi->participating_constraint_count = 0;
+	mi->thresh_weight = 0.0f;
+	mi->ground_weight = 0.0f;
+	mi->vertex_count = s->totvert;
+
+	//link up the visual mesh verts
+	mi->vertices_cached = MEM_mallocN(sizeof(MVert *) * s->totvert, "vert_cache");
+	mverts = CDDM_get_verts(fmd->visible_mesh_cached);
+	mi->vertex_indices = MEM_mallocN(sizeof(int) * mi->vertex_count, "mi->vertex_indices");
+
+	for (k = 0; k < s->totvert; k++) {
+		mi->vertices_cached[k] = mverts + vertstart + k;
+		mi->vertex_indices[k] = vertstart + k;
+	}
+
+	//some dummy setup, necessary here ?
+	mi->locs = MEM_mallocN(sizeof(float)*3, "mi->locs");
+	mi->rots = MEM_mallocN(sizeof(float)*4, "mi->rots");
+	mi->frame_count = 0;
+	if (fmd->modifier.scene->rigidbody_world)
+	{
+		mi->start_frame = fmd->modifier.scene->rigidbody_world->pointcache->startframe;
+	}
+	else
+	{
+		mi->start_frame = 1;
+	}
+
+	mi->physics_mesh = BKE_shard_create_dm(s, true);
+	totvert = mi->physics_mesh->getNumVerts(mi->physics_mesh);
+	verts = mi->physics_mesh->getVertArray(mi->physics_mesh);
+
+	mi->vertco = MEM_mallocN(sizeof(float) * 3 * totvert, "vertco");
+	mi->vertno = MEM_mallocN(sizeof(short) * 3 * totvert, "vertno");
+
+	for (mv = verts, j = 0; j < totvert; mv++, j++) {
+		short no[3];
+
+		mi->vertco[j * 3] = mv->co[0];
+		mi->vertco[j * 3 + 1] = mv->co[1];
+		mi->vertco[j * 3 + 2] = mv->co[2];
+
+		mi->vertno[j * 3] = no[0];
+		mi->vertno[j * 3 + 1] = no[1];
+		mi->vertno[j * 3 + 2] = no[2];
+
+		/* then eliminate centroid in vertex coords*/
+		sub_v3_v3(mv->co, s->centroid);
+	}
+
+	copy_v3_v3(mi->centroid, s->centroid);
+	mi->id = s->shard_id;
+	mi->bb = BKE_boundbox_alloc_unit();
+	BKE_boundbox_init_from_minmax(mi->bb, s->min, s->max);
+	mi->particle_index = -1;
+
+	//this info isnt necessary here... constraints will be provided too !
+	mi->neighbor_ids = s->neighbor_ids;
+	mi->neighbor_count = s->neighbor_count;
+
+	return mi;
+}
+
+static int fracture_update_visual_mesh(FractureModifierData *fmd, bool do_custom_data)
+{
+	MeshIsland *mi;
+	DerivedMesh *dm = fmd->visible_mesh_cached;
+	int vertstart = 0, totvert = 0;
+	MVert *mv = NULL;
+
+	if (dm)
+	{
+		vertstart = dm->getNumVerts(dm);
+		dm->needsFree = 1;
+		dm->release(dm);
+		dm = fmd->visible_mesh_cached = NULL;
+	}
+
+	fmd->visible_mesh_cached = create_dm(fmd, do_custom_data);
+	dm = fmd->visible_mesh_cached;
+	mv = dm->getVertArray(dm);
+	totvert = dm->getNumVerts(dm);
+
+	//update existing island's vert refs, if any...should have used indexes instead :S
+	for (mi = fmd->meshIslands.first; mi; mi = mi->next)
+	{
+		int i = 0;
+		for (i = 0; i < mi->vertex_count; i++)
+		{
+			//just update pointers, dont need to reallocate something
+			MVert *v = NULL;
+			int index;
+
+			//also correct indexes
+			if (mi->vertex_indices[i] >= totvert)
+			{
+				index = mi->vertex_indices[i];
+				mi->vertex_indices[i] -= (vertstart - totvert);
+				printf("I: %d, O: %d, N: %d\n", i, index, mi->vertex_indices[i]);
+			}
+
+			index = mi->vertex_indices[i];
+			v = mv + index;
+			mi->vertices_cached[i] = v;
+
+			//printf("%d %d\n", index, dm->getNumVerts(dm));
+
+			//hrm perhaps we need to update rest coordinates, too...
+			mi->vertco[3*i] = v->co[0];
+			mi->vertco[3*i+1] = v->co[1];
+			mi->vertco[3*i+2] = v->co[2];
+
+			mi->vertno[3*i] = v->no[0];
+			mi->vertno[3*i+1] = v->no[1];
+			mi->vertno[3*i+2] = v->no[2];
+		}
+	}
+
+	return vertstart;
+}
+
+MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own, Object *target, int index)
+{
+	MeshIsland *mi;
+	Shard *s;
+	int vertstart;
+	float loc[3], rot[4];
+
+	if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL || own->type != OB_MESH)
+		return NULL;
+
+	s = fracture_object_to_shard(own, target);
+	fracture_update_shards(fmd, s, index);
+	vertstart = fracture_update_visual_mesh(fmd, true);
+
+	//hrm need to rebuild ALL islands since vertex refs are bonkers now after mesh has changed
+	mi = fracture_shard_to_island(fmd, s, vertstart);
+
+	mat4_to_loc_quat(loc, rot, target->obmat);
+	copy_v3_v3(mi->rot, rot);
+
+	//lets see whether we need to add loc here too XXX TODO
+
+	mi->rigidbody = BKE_rigidbody_create_shard(fmd->modifier.scene, own, mi);
+	if (mi->rigidbody)
+		mi->rigidbody->meshisland_index = mi->id;
+
+	return mi;
+}
+
+void BKE_fracture_free_mesh_island(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
+{
+	if (mi->physics_mesh) {
+		mi->physics_mesh->needsFree = 1;
+		mi->physics_mesh->release(mi->physics_mesh);
+		mi->physics_mesh = NULL;
+	}
+
+	if (mi->rigidbody) {
+		if (remove_rigidbody)
+			BKE_rigidbody_remove_shard(rmd->modifier.scene, mi);
+		MEM_freeN(mi->rigidbody);
+		mi->rigidbody = NULL;
+	}
+
+	if (mi->vertco) {
+		MEM_freeN(mi->vertco);
+		mi->vertco = NULL;
+	}
+
+	if (mi->vertno) {
+		MEM_freeN(mi->vertno);
+		mi->vertno = NULL;
+	}
+
+	if (mi->vertices) {
+		//MEM_freeN(mi->vertices);
+		mi->vertices = NULL; /*borrowed only !!!*/
+	}
+
+	if (mi->vertices_cached) {
+		MEM_freeN(mi->vertices_cached);
+		mi->vertices_cached = NULL;
+	}
+
+	if (mi->bb != NULL) {
+		MEM_freeN(mi->bb);
+		mi->bb = NULL;
+	}
+
+	if (mi->participating_constraints != NULL) {
+		MEM_freeN(mi->participating_constraints);
+		mi->participating_constraints = NULL;
+		mi->participating_constraint_count = 0;
+	}
+
+	if (mi->vertex_indices) {
+		MEM_freeN(mi->vertex_indices);
+		mi->vertex_indices = NULL;
+	}
+
+	if (mi->rots) {
+		MEM_freeN(mi->rots);
+		mi->rots = NULL;
+	}
+
+	if (mi->locs) {
+		MEM_freeN(mi->locs);
+		mi->locs = NULL;
+	}
+
+	mi->frame_count = 0;
+
+	MEM_freeN(mi);
+	mi = NULL;
+}
+
+void BKE_fracture_mesh_island_remove(FractureModifierData *fmd, MeshIsland *mi)
+{
+	if (BLI_listbase_is_single(&fmd->meshIslands))
+	{
+		BKE_fracture_mesh_island_remove_all(fmd);
+		return;
+	}
+
+	if (fmd->frac_mesh && mi)
+	{
+		int index = BLI_findindex(&fmd->meshIslands, mi);
+		Shard *s = BLI_findlink(&fmd->frac_mesh->shard_map, index);
+		if (s)
+		{
+			int i;
+			BLI_remlink(&fmd->frac_mesh->shard_map, s);
+			BKE_shard_free(s, true);
+			fmd->frac_mesh->shard_count--;
+
+			BLI_remlink(&fmd->meshIslands, mi);
+			for (i = 0; i < mi->participating_constraint_count; i++)
+			{
+				RigidBodyShardCon *con = mi->participating_constraints[i];
+				BLI_remlink(&fmd->meshConstraints, con);
+				BKE_rigidbody_remove_shard_con(fmd->modifier.scene, con);
+			}
+
+			BKE_fracture_free_mesh_island(fmd, mi, true);
+
+			fracture_update_visual_mesh(fmd, true);
+		}
+	}
+}
+
+void BKE_fracture_mesh_island_remove_all(FractureModifierData *fmd)
+{
+	MeshIsland *mi;
+
+	//free all shards
+	BKE_fracmesh_free(fmd->frac_mesh, true);
+	MEM_freeN(fmd->frac_mesh);
+	fmd->frac_mesh = NULL;
+
+	//free all constraints first
+	BKE_free_constraints(fmd);
+
+	//free all meshislands
+	while (fmd->meshIslands.first) {
+		mi = fmd->meshIslands.first;
+		BLI_remlink(&fmd->meshIslands, mi);
+		BKE_fracture_free_mesh_island(fmd, mi, true);
+	}
+
+	fmd->meshIslands.first = NULL;
+	fmd->meshIslands.last = NULL;
+
+	//free visual_mesh
+	if (fmd->visible_mesh_cached)
+	{
+		fmd->visible_mesh_cached->needsFree = 1;
+		fmd->visible_mesh_cached->release(fmd->visible_mesh_cached);
+		fmd->visible_mesh_cached = NULL;
+	}
+}
+
+RigidBodyShardCon *BKE_fracture_mesh_islands_connect(FractureModifierData *fmd, MeshIsland *mi1, MeshIsland *mi2, short con_type, int index)
+{
+	RigidBodyShardCon *rbsc;
+
+	rbsc = BKE_rigidbody_create_shard_constraint(fmd->modifier.scene, con_type);
+	rbsc->mi1 = mi1;
+	rbsc->mi2 = mi2;
+
+	BLI_addtail(&fmd->meshConstraints, rbsc);
+
+	if (index > -1)
+	{
+		rbsc->id = index;
+	}
+	else
+	{
+		rbsc->id = BLI_listbase_count(&fmd->meshConstraints) - 1;
+	}
+
+#if 0
+	first = fmd->meshConstraints.first;
+	last = fmd->meshConstraints.last;
+	index = (last-first) / sizeof(RigidBodyShardCon);
+	rbsc->id = index;
+#endif
+
+	/* store constraints per meshisland too, to allow breaking percentage */
+	if (mi1->participating_constraints == NULL) {
+		mi1->participating_constraints = MEM_callocN(sizeof(RigidBodyShardCon *), "part_constraints_mi1");
+		mi1->participating_constraint_count = 0;
+	}
+
+	mi1->participating_constraints = MEM_reallocN(mi1->participating_constraints, sizeof(RigidBodyShardCon *) * (mi1->participating_constraint_count + 1));
+	mi1->participating_constraints[mi1->participating_constraint_count] = rbsc;
+	mi1->participating_constraint_count++;
+
+	if (mi2->participating_constraints == NULL) {
+		mi2->participating_constraints = MEM_callocN(sizeof(RigidBodyShardCon *), "part_constraints_mi2");
+		mi2->participating_constraint_count = 0;
+	}
+
+	mi2->participating_constraints = MEM_reallocN(mi2->participating_constraints, sizeof(RigidBodyShardCon *) * (mi2->participating_constraint_count + 1));
+	mi2->participating_constraints[mi2->participating_constraint_count] = rbsc;
+	mi2->participating_constraint_count++;
+
+	return rbsc;
+}
+
+static void remove_participants(RigidBodyShardCon* con, MeshIsland *mi)
+{
+	RigidBodyShardCon **cons;
+	/* Probably wrong, would need to shrink array size... listbase would have been better here */
+	/* info not necessary so omit */
+	int count = mi->participating_constraint_count;
+
+	if (count > 1)
+	{
+		int i, j = 0;
+		mi->participating_constraint_count--;
+		cons = MEM_callocN(sizeof(RigidBodyShardCon *) * (count-1) , "temp cons");
+		for (i = 0; i < mi->participating_constraint_count; i++)
+		{
+			if (mi->participating_constraints[i] != con)
+			{
+				cons[j] = con;
+				j++;
+			}
+		}
+
+		MEM_freeN(mi->participating_constraints);
+		mi->participating_constraints = cons;
+	}
+}
+
+void BKE_fracture_mesh_constraint_remove(FractureModifierData *fmd, RigidBodyShardCon* con)
+{
+	remove_participants(con, con->mi1);
+	remove_participants(con, con->mi2);
+
+	BLI_remlink(&fmd->meshConstraints, con);
+	BKE_rigidbody_remove_shard_con(fmd->modifier.scene, con);
+	MEM_freeN(con);
+}
+
+void BKE_fracture_mesh_constraint_remove_all(FractureModifierData *fmd)
+{
+	BKE_free_constraints(fmd);
 }

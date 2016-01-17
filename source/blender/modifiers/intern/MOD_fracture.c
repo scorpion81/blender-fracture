@@ -215,73 +215,6 @@ static void initData(ModifierData *md)
 	fmd->autohide_filter_group = NULL;
 }
 
-static void freeMeshIsland(FractureModifierData *rmd, MeshIsland *mi, bool remove_rigidbody)
-{
-	if (mi->physics_mesh) {
-		mi->physics_mesh->needsFree = 1;
-		mi->physics_mesh->release(mi->physics_mesh);
-		mi->physics_mesh = NULL;
-	}
-
-	if (mi->rigidbody) {
-		if (remove_rigidbody)
-			BKE_rigidbody_remove_shard(rmd->modifier.scene, mi);
-		MEM_freeN(mi->rigidbody);
-		mi->rigidbody = NULL;
-	}
-
-	if (mi->vertco) {
-		MEM_freeN(mi->vertco);
-		mi->vertco = NULL;
-	}
-
-	if (mi->vertno) {
-		MEM_freeN(mi->vertno);
-		mi->vertno = NULL;
-	}
-
-	if (mi->vertices) {
-		//MEM_freeN(mi->vertices);
-		mi->vertices = NULL; /*borrowed only !!!*/
-	}
-
-	if (mi->vertices_cached) {
-		MEM_freeN(mi->vertices_cached);
-		mi->vertices_cached = NULL;
-	}
-
-	if (mi->bb != NULL) {
-		MEM_freeN(mi->bb);
-		mi->bb = NULL;
-	}
-
-	if (mi->participating_constraints != NULL) {
-		MEM_freeN(mi->participating_constraints);
-		mi->participating_constraints = NULL;
-		mi->participating_constraint_count = 0;
-	}
-
-	if (mi->vertex_indices) {
-		MEM_freeN(mi->vertex_indices);
-		mi->vertex_indices = NULL;
-	}
-
-	if (mi->rots) {
-		MEM_freeN(mi->rots);
-		mi->rots = NULL;
-	}
-
-	if (mi->locs) {
-		MEM_freeN(mi->locs);
-		mi->locs = NULL;
-	}
-
-	mi->frame_count = 0;
-
-	MEM_freeN(mi);
-	mi = NULL;
-}
-
 static void free_meshislands(FractureModifierData* fmd, ListBase* meshIslands)
 {
 	MeshIsland *mi;
@@ -289,7 +222,7 @@ static void free_meshislands(FractureModifierData* fmd, ListBase* meshIslands)
 	while (meshIslands->first) {
 		mi = meshIslands->first;
 		BLI_remlink(meshIslands, mi);
-		freeMeshIsland(fmd, mi, false);
+		BKE_fracture_free_mesh_island(fmd, mi, false);
 		mi = NULL;
 	}
 
@@ -401,7 +334,7 @@ static void free_modifier(FractureModifierData *fmd, bool do_free_seq)
 		fmd->dm = NULL;
 	}
 
-	if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED/* || do_free_seq*/)
+	if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED || fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
 	{
 		if (fmd->visible_mesh_cached) {
 			fmd->visible_mesh_cached->needsFree = 1;
@@ -438,7 +371,7 @@ static void freeData_internal(FractureModifierData *fmd, bool do_free_seq)
 		/* free entire modifier or when job has been cancelled */
 		free_modifier(fmd, do_free_seq);
 
-		if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED/* || do_free_seq*/)
+		if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED || fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
 		{
 			if (fmd->visible_mesh_cached && !fmd->shards_to_islands)
 			{
@@ -451,7 +384,8 @@ static void freeData_internal(FractureModifierData *fmd, bool do_free_seq)
 	}
 	else if (!fmd->refresh_constraints) {
 		/* refreshing all simulation data only, no refracture */
-		free_simulation(fmd, fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED); // in this case keep the meshisland sequence!
+		free_simulation(fmd, fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED ||
+		                     fmd->fracture_mode == MOD_FRACTURE_EXTERNAL); // in this case keep the meshisland sequence!
 	}
 	else if (fmd->refresh_constraints) {
 		/* refresh constraints only */
@@ -4288,6 +4222,13 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		}
 
 		final_dm = do_dynamic(fmd, ob, derivedData);
+	}
+	else if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
+	{
+		fmd->refresh = false;
+		fmd->shards_to_islands = false;
+		if (fmd->visible_mesh_cached)
+			return CDDM_copy(fmd->visible_mesh_cached);
 	}
 
 	return final_dm;

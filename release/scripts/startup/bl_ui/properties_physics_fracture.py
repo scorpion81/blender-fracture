@@ -73,14 +73,22 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         md = context.fracture
         ob = context.object
 
-        layout.label(text="Presets:")
-        sub = layout.row(align=True)
-        sub.menu("FRACTURE_MT_presets", text=bpy.types.FRACTURE_MT_presets.bl_label)
-        sub.operator("fracture.preset_add", text="", icon='ZOOMIN')
-        sub.operator("fracture.preset_add", text="", icon='ZOOMOUT').remove_active = True
+        if md.fracture_mode != 'EXTERNAL':
+            layout.label(text="Presets:")
+            sub = layout.row(align=True)
+            sub.menu("FRACTURE_MT_presets", text=bpy.types.FRACTURE_MT_presets.bl_label)
+            sub.operator("fracture.preset_add", text="", icon='ZOOMIN')
+            sub.operator("fracture.preset_add", text="", icon='ZOOMOUT').remove_active = True
+        else:
+            layout.label(text="No UI controls here!")
+            layout.label(text="Control happens via Python")
 
         row = layout.row()
         row.prop(md, "fracture_mode")
+
+        if md.fracture_mode == 'EXTERNAL':
+           return
+
         if md.fracture_mode == 'DYNAMIC':
             layout.prop(md, "dynamic_force")
             layout.prop(md, "limit_impact")
@@ -143,6 +151,11 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
 class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
     bl_label = "Fracture Constraint Settings"
 
+    @classmethod
+    def poll(cls, context):
+        md = context.fracture
+        return PhysicButtonsPanel.poll(context) and md.fracture_mode != 'EXTERNAL'
+
     def draw(self, context):
         layout = self.layout
         md = context.fracture
@@ -201,6 +214,11 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
 
 class PHYSICS_PT_fracture_utilities(PhysicButtonsPanel, Panel):
     bl_label = "Fracture Utilities"
+
+    @classmethod
+    def poll(cls, context):
+        md = context.fracture
+        return PhysicButtonsPanel.poll(context) and md.fracture_mode != 'EXTERNAL'
 
     def draw(self, context):
         layout = self.layout

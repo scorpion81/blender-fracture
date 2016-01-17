@@ -1028,7 +1028,7 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 		RB_body_get_position(rbo->physics_object, rbo->pos);
 		RB_body_get_orientation(rbo->physics_object, rbo->orn);
 #endif
-		if (!fmd || fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+		if (!fmd || fmd->fracture_mode != MOD_FRACTURE_DYNAMIC)
 		{
 			PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, rbo->pos);
 			PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, rbo->orn);
@@ -1075,7 +1075,7 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfr
 
 	ob = rbw->objects[rbw->cache_offset_map[index]];
 	fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
-	if (!fmd || fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+	if (!fmd || fmd->fracture_mode != MOD_FRACTURE_DYNAMIC)
 	{
 		if (rbo && rbo->type == RBO_TYPE_ACTIVE) {
 			if (old_data) {
@@ -1140,7 +1140,7 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 		copy_v3_v3(keys[1].co, rbo->pos);
 		copy_qt_qt(keys[1].rot, rbo->orn);
 
-		if (!fmd || fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+		if (!fmd || fmd->fracture_mode != MOD_FRACTURE_DYNAMIC)
 		{
 			if (old_data) {
 				memcpy(keys[2].co, data, 3 * sizeof(float));

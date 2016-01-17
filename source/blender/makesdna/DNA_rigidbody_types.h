@@ -280,11 +280,12 @@ typedef struct RigidBodyShardCon {
 	short num_solver_iterations;/* number of constraint solver iterations made per simulation step */
 
 	int flag;					/* (eRigidBodyCon_Flag) */
+	int id;
 
 	float breaking_threshold;	/* breaking impulse threshold */
 	float start_angle;			//needed for breaking by angle and dist
 	float start_dist;
-	float pad;
+	//float pad;
 
 	/* limits */
 	/* translation limits */

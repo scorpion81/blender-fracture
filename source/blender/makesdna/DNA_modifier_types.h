@@ -1517,6 +1517,7 @@ enum {
 enum {
 	MOD_FRACTURE_PREFRACTURED      = (1 << 0),
 	MOD_FRACTURE_DYNAMIC           = (1 << 1),
+	MOD_FRACTURE_EXTERNAL          = (1 << 2),
 };
 
 typedef struct ShardSequence {

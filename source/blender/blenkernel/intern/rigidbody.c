@@ -2421,6 +2421,7 @@ RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(Scene *scene, short typ
 	rbc->motor_lin_target_velocity = 1.0f;
 	rbc->motor_ang_max_impulse = 1.0f;
 	rbc->motor_ang_target_velocity = 1.0f;
+	rbc->id = -1;
 
 	/* flag cache as outdated */
 	BKE_rigidbody_cache_reset(rbw);
@@ -2489,6 +2490,8 @@ void BKE_rigidbody_remove_shard(Scene *scene, MeshIsland *mi)
 		 * rigidbody world */
 		if ((rbw->cache_index_map != NULL) && (rbw->numbodies > 0))
 			rbw->cache_index_map[mi->linear_index] = NULL;
+
+		BKE_rigidbody_update_ob_array(rbw);
 	}
 }
 

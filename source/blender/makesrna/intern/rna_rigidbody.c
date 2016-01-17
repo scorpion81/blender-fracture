@@ -94,6 +94,8 @@ static EnumPropertyItem rigidbody_mesh_source_items[] = {
 
 #include "BKE_depsgraph.h"
 #include "BKE_rigidbody.h"
+#include "BKE_modifier.h"
+#include "RNA_access.h"
 
 #include "WM_api.h"
 
@@ -158,11 +160,15 @@ void foreach_shard_float(Object* ob, float value, void (*func)(RigidBodyOb *rbo,
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_Fracture) {
 			rmd = (FractureModifierData*)md;
-			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
-				if (mi->rigidbody != NULL) {
-					func(mi->rigidbody, value);
+			if (rmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
+			{
+				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+					if (mi->rigidbody != NULL) {
+						func(mi->rigidbody, value);
+					}
 				}
 			}
+			break;
 		}
 	}
 }
@@ -176,11 +182,15 @@ void foreach_shard_mass(Object *ob)
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_Fracture) {
 			rmd = (FractureModifierData*)md;
-			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
-				if (mi->rigidbody != NULL) {
-					BKE_rigidbody_calc_shard_mass(ob, mi, NULL);
+			if (rmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
+			{
+				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+					if (mi->rigidbody != NULL) {
+						BKE_rigidbody_calc_shard_mass(ob, mi, NULL);
+					}
 				}
 			}
+			break;
 		}
 	}
 }
@@ -193,11 +203,15 @@ void foreach_shard_int(Object *ob, int value, void (*func)(RigidBodyOb *rbo, int
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_Fracture) {
 			rmd = (FractureModifierData*)md;
-			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
-				if (mi->rigidbody != NULL) {
-					func(mi->rigidbody, value);
+			if (rmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
+			{
+				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+					if (mi->rigidbody != NULL) {
+						func(mi->rigidbody, value);
+					}
 				}
 			}
+			break;
 		}
 	}
 }
@@ -211,11 +225,15 @@ void foreach_shard_ints(Object *ob, const int *value, void (*func)(RigidBodyOb *
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_Fracture) {
 			rmd = (FractureModifierData*)md;
-			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
-				if (mi->rigidbody != NULL) {
-					func(mi->rigidbody, value);
+			if (rmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
+			{
+				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+					if (mi->rigidbody != NULL) {
+						func(mi->rigidbody, value);
+					}
 				}
 			}
+			break;
 		}
 	}
 }
@@ -229,16 +247,20 @@ void foreach_shard_flag_shape(Object *ob, int flag, short shape, bool reset)
 	for (md = ob->modifiers.first; md; md = md->next) {
 		if (md->type == eModifierType_Fracture) {
 			rmd = (FractureModifierData*)md;
-			for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
-				if (mi->rigidbody != NULL) {
-					mi->rigidbody->flag = flag;
-					mi->rigidbody->shape = shape;
-					if (reset) {
-						if (mi->rigidbody->physics_shape)
-							mi->rigidbody->flag |= RBO_FLAG_NEEDS_RESHAPE;
+			if (rmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
+			{
+				for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
+					if (mi->rigidbody != NULL) {
+						mi->rigidbody->flag = flag;
+						mi->rigidbody->shape = shape;
+						if (reset) {
+							if (mi->rigidbody->physics_shape)
+								mi->rigidbody->flag |= RBO_FLAG_NEEDS_RESHAPE;
+						}
 					}
 				}
 			}
+			break;
 		}
 	}
 }
@@ -275,10 +297,22 @@ static void rna_RigidBodyOb_shape_reset(Main *UNUSED(bmain), Scene *scene, Point
 		rbo->flag |= RBO_FLAG_NEEDS_RESHAPE;
 }
 
-static char *rna_RigidBodyOb_path(PointerRNA *UNUSED(ptr))
+static char *rna_RigidBodyOb_path(PointerRNA *ptr)
 {
-	/* NOTE: this hardcoded path should work as long as only Objects have this */
-	return BLI_sprintfN("rigid_body");
+	RigidBodyOb* rbo = ptr->data;
+	Object* ob = ptr->id.data;
+	ModifierData *md = modifiers_findByType(ob, eModifierType_Fracture);
+	if (md && rbo->meshisland_index > -1)
+	{
+		char name_esc[sizeof(md->name) * 2];
+		BLI_strescape(name_esc, md->name, sizeof(name_esc));
+		return BLI_sprintfN("modifiers[\"%s\"].mesh_islands[%d].rigidbody", name_esc, rbo->meshisland_index);
+	}
+	else
+	{
+		/* NOTE: this hardcoded path should work as long as only Objects have this */
+		return BLI_sprintfN("rigid_body");
+	}
 }
 
 static void set_type(RigidBodyOb* rbo, int value) {
@@ -1146,6 +1180,15 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyOb_force_threshold_set", NULL);
 	RNA_def_property_ui_text(prop, "Activation Force Threshold", "Strength of force necessary to activate this kinematic object");
 	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+
+	//expose location, rotation too !!!
+	prop = RNA_def_property(srna, "location", PROP_FLOAT, PROP_TRANSLATION);
+	RNA_def_property_float_sdna(prop, NULL, "pos");
+	RNA_def_property_ui_text(prop, "Location", "Position of the rigidbody object");
+
+	prop = RNA_def_property(srna, "rotation", PROP_FLOAT, PROP_QUATERNION);
+	RNA_def_property_float_sdna(prop, NULL, "orn");
+	RNA_def_property_ui_text(prop, "Rotation", "Quaternion rotation of the rigidbody object");
 }
 
 static void rna_def_rigidbody_constraint(BlenderRNA *brna)
