@@ -5599,6 +5599,20 @@ static void rna_def_mesh_constraint(BlenderRNA *brna)
 	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_motor_ang_max_impulse_set", NULL);
 	RNA_def_property_ui_text(prop, "Max Impulse", "Maximum angular motor impulse");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "breaking_distance", PROP_FLOAT, PROP_DISTANCE);
+	RNA_def_property_float_sdna(prop, NULL, "breaking_dist");
+	RNA_def_property_float_default(prop, 0.0f);
+	RNA_def_property_range(prop, 0.0f, FLT_MAX);
+	RNA_def_property_ui_text(prop, "Breaking Distance", "Breaking Distance Tolerance of this constraint, 0 disables");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "breaking_angle", PROP_FLOAT, PROP_ANGLE);
+	RNA_def_property_float_sdna(prop, NULL, "breaking_angle");
+	RNA_def_property_float_default(prop, 0.0f);
+	RNA_def_property_range(prop, DEG2RADF(-360.0), DEG2RADF(360.0));
+	RNA_def_property_ui_text(prop, "Breaking Angle", "Breaking Angle Tolerance of this constraint, 0 disables");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 static void rna_def_fracture_meshislands(BlenderRNA *brna, PropertyRNA *cprop)

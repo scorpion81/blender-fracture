@@ -2424,6 +2424,8 @@ RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(Scene *scene, short typ
 	rbc->id = -1;
 	zero_v3(rbc->pos);
 	unit_qt(rbc->orn);
+	rbc->breaking_angle = 0.0f;
+	rbc->breaking_dist = 0.0f;
 
 	/* flag cache as outdated */
 	BKE_rigidbody_cache_reset(rbw);
@@ -3081,7 +3083,17 @@ static bool can_next(RigidBodyShardCon *rbsc, MeshIsland *mi1, MeshIsland *mi2)
 
 static void handle_plastic_breaking_participants(RigidBodyShardCon *rbsc)
 {
-	if (rbsc->physics_constraint && !(RB_constraint_is_enabled(rbsc->physics_constraint)))
+	float dist, angle, distdiff, anglediff;
+	bool exceeded = false;
+	calc_dist_angle(rbsc, &dist, &angle);
+
+	anglediff = fabs(angle - rbsc->start_angle);
+	distdiff = fabs(dist - rbsc->start_dist);
+
+	exceeded = (rbsc->breaking_angle > 0.0f && anglediff > rbsc->breaking_angle);
+	exceeded = exceeded || (rbsc->breaking_dist > 0.0f && distdiff > rbsc->breaking_dist);
+
+	if (rbsc->physics_constraint && (!(RB_constraint_is_enabled(rbsc->physics_constraint)) || exceeded))
 	{
 		//go back until pair changes, break all
 		MeshIsland *mi1 = rbsc->mi1;
@@ -3099,7 +3111,7 @@ static void handle_plastic_breaking_participants(RigidBodyShardCon *rbsc)
 				}
 				else {
 					RB_constraint_set_enabled(con->physics_constraint, false);
-
+#if 0
 					RB_constraint_set_breaking_threshold(con->physics_constraint, 0);
 					if (con->type == RBC_TYPE_6DOF_SPRING)
 					{
@@ -3118,6 +3130,7 @@ static void handle_plastic_breaking_participants(RigidBodyShardCon *rbsc)
 
 						RB_constraint_set_equilibrium_6dof_spring(rbc->physics_constraint);
 					}
+#endif
 				}
 			}
 		}
@@ -3134,6 +3147,7 @@ static void handle_plastic_breaking_participants(RigidBodyShardCon *rbsc)
 				else {
 					RB_constraint_set_enabled(con->physics_constraint, false);
 
+#if 0
 					RB_constraint_set_breaking_threshold(con->physics_constraint, 0);
 
 					if (con->type == RBC_TYPE_6DOF_SPRING)
@@ -3153,6 +3167,7 @@ static void handle_plastic_breaking_participants(RigidBodyShardCon *rbsc)
 
 						RB_constraint_set_equilibrium_6dof_spring(rbc->physics_constraint);
 					}
+#endif
 				}
 			}
 		}
@@ -3343,7 +3358,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				rbsc->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD) {
 				/* World has been rebuilt so rebuild constraint */
 				BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd,  ob,  rbsc, true);
-				BKE_rigidbody_start_dist_angle(rbsc);
+				BKE_rigidbody_start_dist_angle(rbsc); //TODO ensure evaluation on transform change too
 			}
 
 			else if (rbsc->flag & RBC_FLAG_NEEDS_VALIDATE) {
