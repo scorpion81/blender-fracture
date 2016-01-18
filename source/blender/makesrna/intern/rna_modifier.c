@@ -1396,7 +1396,7 @@ static void rna_MeshCon_plastic_set(PointerRNA *ptr, int value)
 {
 	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
 
-	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_PLASTIC);
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_PLASTIC);
 
 	rbc->flag |= RBC_FLAG_NEEDS_VALIDATE;
 }
@@ -5301,7 +5301,7 @@ static void rna_def_mesh_constraint(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Rotation", "Quaternion rotation of the mesh constraint");
 
 	prop = RNA_def_property(srna, "plastic", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_PLASTIC);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_PLASTIC);
 	RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_plastic_set");
 	RNA_def_property_ui_text(prop, "Plastic", "This constraint belongs to a plastic connection");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
