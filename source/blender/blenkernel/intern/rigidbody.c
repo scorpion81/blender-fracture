@@ -3079,52 +3079,142 @@ static bool can_next(RigidBodyShardCon *rbsc, MeshIsland *mi1, MeshIsland *mi2)
 	return rbsc && rbsc->next && rbsc->next->mi1 == mi1 && rbsc->next->mi2 == mi2;
 }
 
+static void handle_plastic_breaking_participants(RigidBodyShardCon *rbsc)
+{
+	if (rbsc->physics_constraint && !(RB_constraint_is_enabled(rbsc->physics_constraint)))
+	{
+		//go back until pair changes, break all
+		MeshIsland *mi1 = rbsc->mi1;
+		MeshIsland *mi2 = rbsc->mi2;
+		int i;
+
+		for (i = 0; i < mi1->participating_constraint_count; i++)
+		{
+			RigidBodyShardCon *con = mi1->participating_constraints[i];
+			bool same = (((con->mi1 == mi1 && con->mi2 == mi2) || (con->mi1 == mi2 && con->mi2 == mi1)));
+			if (con->physics_constraint && same)
+			{
+				if (con->flag & RBC_FLAG_PLASTIC) {
+					RB_constraint_set_enabled(con->physics_constraint, true);
+				}
+				else {
+					RB_constraint_set_enabled(con->physics_constraint, false);
+
+					RB_constraint_set_breaking_threshold(con->physics_constraint, 0);
+					if (con->type == RBC_TYPE_6DOF_SPRING)
+					{
+						RigidBodyShardCon* rbc = con;
+						RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, false);
+						RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, 0);
+						RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, 0);
+
+						RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Y, false);
+						RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Y, 0);
+						RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Y, 0);
+
+						RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, false);
+						RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, 0);
+						RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, 0);
+
+						RB_constraint_set_equilibrium_6dof_spring(rbc->physics_constraint);
+					}
+				}
+			}
+		}
+
+		for (i = 0; i < mi2->participating_constraint_count; i++)
+		{
+			RigidBodyShardCon *con = mi2->participating_constraints[i];
+			bool same = (((con->mi1 == mi1 && con->mi2 == mi2) || (con->mi1 == mi2 && con->mi2 == mi1)));
+			if (con->physics_constraint && same)
+			{
+				if (con->flag & RBC_FLAG_PLASTIC) {
+					RB_constraint_set_enabled(con->physics_constraint, true);
+				}
+				else {
+					RB_constraint_set_enabled(con->physics_constraint, false);
+
+					RB_constraint_set_breaking_threshold(con->physics_constraint, 0);
+
+					if (con->type == RBC_TYPE_6DOF_SPRING)
+					{
+						RigidBodyShardCon* rbc = con;
+						RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, false);
+						RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, 0);
+						RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, 0);
+
+						RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Y, false);
+						RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Y, 0);
+						RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Y, 0);
+
+						RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, false);
+						RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, 0);
+						RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, 0);
+
+						RB_constraint_set_equilibrium_6dof_spring(rbc->physics_constraint);
+					}
+				}
+			}
+		}
+	}
+}
+
 static void handle_plastic_breaking(FractureModifierData *fmd, RigidBodyShardCon *rbsc)
 {
 	if (rbsc->physics_constraint && !(RB_constraint_is_enabled(rbsc->physics_constraint)))
 	{
 		//go back until pair changes, break all
 		RigidBodyShardCon *con = rbsc;
-		MeshIsland *mi1 = con->mi1;
-		MeshIsland *mi2 = con->mi2;
+		MeshIsland *mi1 = rbsc->mi1;
+		MeshIsland *mi2 = rbsc->mi2;
 
-		while (can_prev(con, mi1, mi2))
+		while (can_prev(con, mi1, mi2) && fmd->use_special_breaking)
 		{
-			if ((con->flag & RBC_FLAG_PLASTIC) && fmd->use_special_breaking)
+			if ((con->flag & RBC_FLAG_PLASTIC))
 			{
-				con->flag |= RBC_FLAG_ENABLED;
+				if (con->physics_constraint) {
+					//con->flag |= RBC_FLAG_ENABLED;
+					RB_constraint_set_enabled(con->physics_constraint, true);
+					//con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+				}
 			}
 			else
 			{
-				con->flag &= ~RBC_FLAG_ENABLED;
 				if (con->physics_constraint) {
+					//con->flag &= ~RBC_FLAG_ENABLED;
 					RB_constraint_set_enabled(con->physics_constraint, false);
+					//con->flag |= RBC_FLAG_NEEDS_VALIDATE;
 				}
 			}
-			con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+
 			con = con->prev;
 		}
 
-		while (can_next(con, mi1, mi2))
+		while (can_next(con, mi1, mi2) && fmd->use_special_breaking)
 		{
-			if ((con->flag & RBC_FLAG_PLASTIC) && fmd->use_special_breaking)
+			if ((con->flag & RBC_FLAG_PLASTIC))
 			{
-				con->flag |= RBC_FLAG_ENABLED;
+				if (con->physics_constraint) {
+					//con->flag |= RBC_FLAG_ENABLED;
+					RB_constraint_set_enabled(con->physics_constraint, true);
+					//con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+				}
 			}
 			else
 			{
-				con->flag &= ~RBC_FLAG_ENABLED;
 				if (con->physics_constraint) {
+					//con->flag &= ~RBC_FLAG_ENABLED;
 					RB_constraint_set_enabled(con->physics_constraint, false);
+					//con->flag |= RBC_FLAG_NEEDS_VALIDATE;
 				}
 			}
-			con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+
 			con = con->next;
 		}
 	}
 }
 
-static void handle_regular_breaking(FractureModifierData *fmd, Object *ob, RigidBodyWorld *rbw, RigidBodyShardCon *rbsc, float max_con_mass)
+static void handle_regular_breaking(FractureModifierData *fmd, Object *ob, RigidBodyWorld *rbw, RigidBodyShardCon *rbsc, float max_con_mass, bool rebuild)
 {
 	float weight = MIN2(rbsc->mi1->thresh_weight, rbsc->mi2->thresh_weight);
 	float breaking_angle = fmd->breaking_angle_weighted ? fmd->breaking_angle * weight : fmd->breaking_angle;
@@ -3154,7 +3244,7 @@ static void handle_regular_breaking(FractureModifierData *fmd, Object *ob, Rigid
 
 	if (((fmd->breaking_angle) > 0) || (fmd->breaking_angle_weighted && weight > 0) ||
 		(((fmd->breaking_distance > 0) || (fmd->breaking_distance_weighted && weight > 0)) ||
-		 (fmd->cluster_breaking_angle > 0 || fmd->cluster_breaking_distance > 0)) /*&& !rebuild*/)
+		 (fmd->cluster_breaking_angle > 0 || fmd->cluster_breaking_distance > 0)) && !rebuild)
 	{
 		float dist, angle, distdiff, anglediff;
 		calc_dist_angle(rbsc, &dist, &angle);
@@ -3246,12 +3336,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 		for (rbsc = fmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
 			if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
 			{
-				handle_regular_breaking(fmd, ob, rbw, rbsc, max_con_mass);
-			}
-			else
-			{
-				//hmm maybe enable "special" constraint behavior
-				handle_plastic_breaking(fmd, rbsc);
+				handle_regular_breaking(fmd, ob, rbw, rbsc, max_con_mass, rebuild);
 			}
 
 			if (rebuild || rbsc->mi1->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD ||
@@ -3266,7 +3351,16 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 			}
 
 			if (rbsc->physics_constraint && rbw && (rbw->flag & RBW_FLAG_REBUILD_CONSTRAINTS)) {
-				RB_constraint_set_enabled(rbsc->physics_constraint, true);
+				//printf("Rebuilding constraints\n");
+				RB_constraint_set_enabled(rbsc->physics_constraint, rbsc->flag & RBC_FLAG_ENABLED);
+			}
+
+			if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
+			{
+				//hmm maybe enable "special" constraint behavior
+				//handle_plastic_breaking(fmd, rbsc);
+				if (fmd->use_special_breaking)
+					handle_plastic_breaking_participants(rbsc);
 			}
 
 			rbsc->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
