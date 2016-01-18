@@ -76,7 +76,8 @@ void BKE_rigidbody_validate_sim_world(struct Scene *scene, struct RigidBodyWorld
 void BKE_rigidbody_validate_sim_object(struct RigidBodyWorld *rbw, struct Object *ob, short rebuild);
 void BKE_rigidbody_validate_sim_shape(struct Object *ob, short rebuild);
 void BKE_rigidbody_validate_sim_constraint(struct RigidBodyWorld *rbw, struct Object *ob, short rebuild);
-void BKE_rigidbody_validate_sim_shard_constraint(struct RigidBodyWorld *rbw, struct RigidBodyShardCon *rbsc, short rebuild);
+void BKE_rigidbody_validate_sim_shard_constraint(struct RigidBodyWorld *rbw, struct FractureModifierData* fmd, struct Object*,
+                                                 struct RigidBodyShardCon *rbsc, short rebuild);
 
 void BKE_rigidbody_validate_sim_shard(struct RigidBodyWorld *rbw, struct MeshIsland *mi, struct Object *ob, short rebuild, int transfer_speeds);
 void BKE_rigidbody_validate_sim_shard_shape(struct MeshIsland *mi, struct Object *ob, short rebuild);

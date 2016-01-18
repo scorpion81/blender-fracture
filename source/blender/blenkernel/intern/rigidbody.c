@@ -1563,7 +1563,7 @@ static void rigidbody_validate_sim_constraint(RigidBodyWorld *rbw, Object *ob, b
 	}
 }
 
-static void rigidbody_create_shard_physics_constraint(RigidBodyShardCon *rbc)
+static void rigidbody_create_shard_physics_constraint(FractureModifierData* fmd, Object* ob, RigidBodyShardCon *rbc)
 {
 	float loc[3];
 	float rot[4];
@@ -1585,8 +1585,9 @@ static void rigidbody_create_shard_physics_constraint(RigidBodyShardCon *rbc)
 		return;
 	}
 
-	copy_v3_v3(loc, rbc->pos);
-	copy_v3_v3(rot, rbc->orn);
+	mul_v3_m4v3(loc, ob->obmat, rbc->pos);
+	mat4_to_quat(rot, ob->obmat);
+	mul_qt_qtqt(rot, rot, rbc->orn);
 
 	if (rb1 && rb2) {
 		switch (rbc->type) {
@@ -1714,7 +1715,7 @@ static void rigidbody_create_shard_physics_constraint(RigidBodyShardCon *rbc)
 /* Create physics sim representation of constraint given rigid body constraint settings
  * < rebuild: even if an instance already exists, replace it
  */
-void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyShardCon *rbc, short rebuild)
+void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, FractureModifierData *fmd, Object* ob, RigidBodyShardCon *rbc, short rebuild)
 {
 	/* sanity checks:
 	 *	- object should have a rigid body constraint
@@ -1750,7 +1751,7 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, RigidBodyS
 			rbc->physics_constraint = NULL;
 		}
 
-		rigidbody_create_shard_physics_constraint(rbc);
+		rigidbody_create_shard_physics_constraint(fmd, ob, rbc);
 	}
 
 	if ((rbw && rbw->physics_world && rbc->physics_constraint)) {
@@ -3256,12 +3257,12 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 			if (rebuild || rbsc->mi1->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD ||
 				rbsc->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD) {
 				/* World has been rebuilt so rebuild constraint */
-				BKE_rigidbody_validate_sim_shard_constraint(rbw, rbsc, true);
+				BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd,  ob,  rbsc, true);
 				BKE_rigidbody_start_dist_angle(rbsc);
 			}
 
 			else if (rbsc->flag & RBC_FLAG_NEEDS_VALIDATE) {
-				BKE_rigidbody_validate_sim_shard_constraint(rbw, rbsc, false);
+				BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, rbsc, false);
 			}
 
 			if (rbsc->physics_constraint && rbw && (rbw->flag & RBW_FLAG_REBUILD_CONSTRAINTS)) {
