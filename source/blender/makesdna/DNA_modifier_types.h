@@ -1657,6 +1657,7 @@ typedef struct FractureModifierData {
 	int point_seed;
 	int percentage;
 	int cluster_count;
+	int constraint_count;
 
 	int constraint_limit;
 	int solver_iterations_override;
@@ -1732,7 +1733,7 @@ typedef struct FractureModifierData {
 	/*TODO XXX this is subject to change, a very experimental constraint breaking mode*/
 	int use_special_breaking;
 
-	char pad[4];
+	//char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

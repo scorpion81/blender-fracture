@@ -214,6 +214,7 @@ static void initData(ModifierData *md)
 
 	fmd->autohide_filter_group = NULL;
 	fmd->use_special_breaking = false;
+	fmd->constraint_count = 0;
 }
 
 static void free_meshislands(FractureModifierData* fmd, ListBase* meshIslands)

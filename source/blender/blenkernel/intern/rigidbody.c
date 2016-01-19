@@ -2221,10 +2221,15 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, Object *target
 	/* since we are always member of an object, dupe its settings,
 	 * create new settings data, and link it up */
 	if (target && target->rigidbody_object)
+	{
 		rbo = BKE_rigidbody_copy_object(target);
+	}
 	else
+	{
+		/* regular FM case */
 		rbo = BKE_rigidbody_copy_object(ob);
-	rbo->type = mi->ground_weight > 0.0f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
+		rbo->type = mi->ground_weight > 0.0f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
+	}
 
 	/* set initial transform */
 	mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);

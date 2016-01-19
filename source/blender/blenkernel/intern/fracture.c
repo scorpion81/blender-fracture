@@ -2537,7 +2537,13 @@ RigidBodyShardCon *BKE_fracture_mesh_islands_connect(FractureModifierData *fmd, 
 
 	copy_qt_qt(rbsc->orn, rbsc->mi1->rigidbody->orn);
 
+	if (BLI_listbase_is_empty(&fmd->meshConstraints))
+	{
+		fmd->constraint_count = 0;
+	}
+
 	BLI_addtail(&fmd->meshConstraints, rbsc);
+	fmd->constraint_count++;
 
 	if (index > -1)
 	{
@@ -2545,15 +2551,8 @@ RigidBodyShardCon *BKE_fracture_mesh_islands_connect(FractureModifierData *fmd, 
 	}
 	else
 	{
-		rbsc->id = BLI_listbase_count(&fmd->meshConstraints) - 1;
+		rbsc->id = fmd->constraint_count-1;
 	}
-
-#if 0
-	first = fmd->meshConstraints.first;
-	last = fmd->meshConstraints.last;
-	index = (last-first) / sizeof(RigidBodyShardCon);
-	rbsc->id = index;
-#endif
 
 	/* store constraints per meshisland too, to allow breaking percentage */
 	if (mi1->participating_constraints == NULL) {
@@ -2611,9 +2610,14 @@ void BKE_fracture_mesh_constraint_remove(FractureModifierData *fmd, RigidBodySha
 	BLI_remlink(&fmd->meshConstraints, con);
 	BKE_rigidbody_remove_shard_con(fmd->modifier.scene, con);
 	MEM_freeN(con);
+	if (fmd->constraint_count > 0)
+	{
+		fmd->constraint_count--;
+	}
 }
 
 void BKE_fracture_mesh_constraint_remove_all(FractureModifierData *fmd)
 {
 	BKE_free_constraints(fmd);
+	fmd->constraint_count = 0;
 }
