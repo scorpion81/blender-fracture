@@ -2546,7 +2546,7 @@ RigidBodyShardCon *BKE_fracture_mesh_islands_connect(FractureModifierData *fmd, 
 {
 	RigidBodyShardCon *rbsc;
 
-	rbsc = BKE_rigidbody_create_shard_constraint(fmd->modifier.scene, con_type);
+	rbsc = BKE_rigidbody_create_shard_constraint(fmd->modifier.scene, con_type, false);
 	rbsc->mi1 = mi1;
 	rbsc->mi2 = mi2;
 

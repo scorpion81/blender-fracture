@@ -2408,7 +2408,7 @@ RigidBodyCon *BKE_rigidbody_create_constraint(Scene *scene, Object *ob, short ty
 }
 
 /* Add rigid body constraint to the specified object */
-RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(Scene *scene, short type)
+RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(Scene *scene, short type, bool reset)
 {
 	RigidBodyShardCon *rbc;
 	RigidBodyWorld *rbw = scene->rigidbody_world;
@@ -2466,7 +2466,8 @@ RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(Scene *scene, short typ
 	rbc->breaking_dist = 0.0f;
 
 	/* flag cache as outdated */
-	BKE_rigidbody_cache_reset(rbw);
+	if (reset)
+		BKE_rigidbody_cache_reset(rbw);
 
 	/* return this object */
 	return rbc;

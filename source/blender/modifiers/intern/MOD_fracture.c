@@ -2075,7 +2075,7 @@ static void mesh_separate_loose(FractureModifierData *rmd, Object *ob, DerivedMe
 static void do_constraint(FractureModifierData* fmd, MeshIsland *mi1, MeshIsland *mi2, int con_type, float thresh)
 {
 	RigidBodyShardCon *rbsc;
-	rbsc = BKE_rigidbody_create_shard_constraint(fmd->modifier.scene, con_type);
+	rbsc = BKE_rigidbody_create_shard_constraint(fmd->modifier.scene, con_type, true);
 	rbsc->mi1 = mi1;
 	rbsc->mi2 = mi2;
 	if (thresh == 0 || fmd->use_breaking == false) {
