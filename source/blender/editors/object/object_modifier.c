@@ -2433,6 +2433,9 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 	//RegionView3D *rv3d = CTX_wm_region_view3d(C);
 
 	rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
+	if (!rmd)
+		return OPERATOR_CANCELLED;
+
 	rmd->reset_shards = RNA_boolean_get(op->ptr, "reset");
 
 	if (scene->rigidbody_world != NULL)
