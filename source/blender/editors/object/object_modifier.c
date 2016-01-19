@@ -62,6 +62,7 @@
 #include "BKE_displist.h"
 #include "BKE_DerivedMesh.h"
 #include "BKE_effect.h"
+#include "BKE_fracture.h"
 #include "BKE_global.h"
 #include "BKE_key.h"
 #include "BKE_lattice.h"
@@ -2437,6 +2438,19 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 
 	rmd->reset_shards = RNA_boolean_get(op->ptr, "reset");
+
+	if (rmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
+	{
+		DerivedMesh *dm = rmd->visible_mesh_cached;
+		if (dm)
+		{
+			dm->needsFree = 1;
+			dm->release(dm);
+			dm = rmd->visible_mesh_cached = NULL;
+		}
+
+		BKE_fracture_update_visual_mesh(rmd, true);
+	}
 
 	if (scene->rigidbody_world != NULL)
 	{

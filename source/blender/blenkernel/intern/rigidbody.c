@@ -486,8 +486,8 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 		}
 		
 		vert = mi->vertices_cached[j];
-		//if (vert == NULL) break;
-		//if (vert->co == NULL) break;
+		if (vert == NULL) break;
+		if (vert->co == NULL) break;
 		//if (rmd->refresh == true) break;
 
 		startco[0] = mi->vertco[j * 3];

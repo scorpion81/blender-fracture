@@ -4231,6 +4231,12 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	{
 		fmd->refresh = false;
 		fmd->shards_to_islands = false;
+
+		if (!fmd->visible_mesh_cached)
+		{
+			BKE_fracture_update_visual_mesh(fmd, true);
+		}
+
 		if (fmd->visible_mesh_cached)
 			return CDDM_copy(fmd->visible_mesh_cached);
 	}

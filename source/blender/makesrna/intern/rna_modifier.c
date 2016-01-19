@@ -1216,7 +1216,7 @@ static MeshIsland *rna_FractureModifier_mesh_island_new(ID* id, FractureModifier
 	Object *owner = (Object*)id;
 	if (ob != owner)
 	{
-		MeshIsland* mi = BKE_fracture_mesh_island_add(fmd, owner, ob, index);
+		MeshIsland* mi = BKE_fracture_mesh_island_add(fmd, owner, ob, index, update);
 
 		if (update)
 		{
@@ -1239,7 +1239,7 @@ static void rna_FractureModifier_mesh_island_remove(ID *id, FractureModifierData
 		return;
 	}
 
-	BKE_fracture_mesh_island_remove(fmd, mi);
+	BKE_fracture_mesh_island_remove(fmd, mi, update);
 	RNA_POINTER_INVALIDATE(mi_ptr);
 
 	if (update)

@@ -1729,6 +1729,10 @@ static DerivedMesh *create_dm(FractureModifierData *fmd, bool doCustomData)
 		}
 	}
 	else {
+
+		if (!fmd->frac_mesh)
+			return NULL;
+
 		for (s = fmd->frac_mesh->shard_map.first; s; s = s->next) {
 			num_verts += s->totvert;
 			num_polys += s->totpoly;
@@ -2210,7 +2214,10 @@ static void fracture_update_shards(FractureModifierData *fmd, Shard *s, int inde
 	FracMesh* fm;
 
 	if (!fmd->frac_mesh)
+	{
 		fmd->frac_mesh = BKE_create_fracture_container();
+		fmd->frac_mesh->progress_counter = 0; //XXXX ABUSE this for vertstart now, threading doesnt work anyway yet
+	}
 
 	fm = fmd->frac_mesh;
 	BLI_addtail(&fm->shard_map, s);
@@ -2227,7 +2234,7 @@ static MeshIsland* fracture_shard_to_island(FractureModifierData *fmd, Shard *s,
 {
 	MeshIsland *mi;
 	int k = 0, j = 0, totvert;
-	MVert *mverts, *verts, *mv;
+	MVert *mverts = NULL, *verts, *mv;
 
 	//create mesh island and intialize
 	mi = MEM_callocN(sizeof(MeshIsland), "meshIsland");
@@ -2240,11 +2247,19 @@ static MeshIsland* fracture_shard_to_island(FractureModifierData *fmd, Shard *s,
 
 	//link up the visual mesh verts
 	mi->vertices_cached = MEM_mallocN(sizeof(MVert *) * s->totvert, "vert_cache");
-	mverts = CDDM_get_verts(fmd->visible_mesh_cached);
+	if (fmd->visible_mesh_cached) /*ensure to be NULL in "pack, unpack" methods */
+		mverts = CDDM_get_verts(fmd->visible_mesh_cached);
 	mi->vertex_indices = MEM_mallocN(sizeof(int) * mi->vertex_count, "mi->vertex_indices");
 
 	for (k = 0; k < s->totvert; k++) {
-		mi->vertices_cached[k] = mverts + vertstart + k;
+		if (mverts)
+		{
+			mi->vertices_cached[k] = mverts + vertstart + k;
+		}
+		else
+		{
+			mi->vertices_cached[k] = NULL;
+		}
 		mi->vertex_indices[k] = vertstart + k;
 	}
 
@@ -2296,7 +2311,7 @@ static MeshIsland* fracture_shard_to_island(FractureModifierData *fmd, Shard *s,
 	return mi;
 }
 
-static int fracture_update_visual_mesh(FractureModifierData *fmd, bool do_custom_data)
+int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, bool do_custom_data)
 {
 	MeshIsland *mi;
 	DerivedMesh *dm = fmd->visible_mesh_cached;
@@ -2312,6 +2327,10 @@ static int fracture_update_visual_mesh(FractureModifierData *fmd, bool do_custom
 	}
 
 	fmd->visible_mesh_cached = create_dm(fmd, do_custom_data);
+
+	if (!fmd->visible_mesh_cached)
+		return 0;
+
 	dm = fmd->visible_mesh_cached;
 	mv = dm->getVertArray(dm);
 	totvert = dm->getNumVerts(dm);
@@ -2354,11 +2373,11 @@ static int fracture_update_visual_mesh(FractureModifierData *fmd, bool do_custom
 	return vertstart;
 }
 
-MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own, Object *target, int index)
+MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own, Object *target, int index, bool update)
 {
 	MeshIsland *mi;
 	Shard *s;
-	int vertstart;
+	int vertstart = 0;
 	float loc[3], rot[4];
 
 	if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL || own->type != OB_MESH)
@@ -2366,7 +2385,14 @@ MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own,
 
 	s = fracture_object_to_shard(own, target);
 	fracture_update_shards(fmd, s, index);
-	vertstart = fracture_update_visual_mesh(fmd, true);
+	if (update) {
+		vertstart = BKE_fracture_update_visual_mesh(fmd, true);
+	}
+	else
+	{
+		vertstart = fmd->frac_mesh->progress_counter;
+		fmd->frac_mesh->progress_counter += s->totvert;
+	}
 
 	//hrm need to rebuild ALL islands since vertex refs are bonkers now after mesh has changed
 	mi = fracture_shard_to_island(fmd, s, vertstart);
@@ -2450,7 +2476,7 @@ void BKE_fracture_free_mesh_island(FractureModifierData *rmd, MeshIsland *mi, bo
 	mi = NULL;
 }
 
-void BKE_fracture_mesh_island_remove(FractureModifierData *fmd, MeshIsland *mi)
+void BKE_fracture_mesh_island_remove(FractureModifierData *fmd, MeshIsland *mi, bool update)
 {
 	if (BLI_listbase_is_single(&fmd->meshIslands))
 	{
@@ -2479,7 +2505,8 @@ void BKE_fracture_mesh_island_remove(FractureModifierData *fmd, MeshIsland *mi)
 
 			BKE_fracture_free_mesh_island(fmd, mi, true);
 
-			fracture_update_visual_mesh(fmd, true);
+			if (update)
+				BKE_fracture_update_visual_mesh(fmd, true);
 		}
 	}
 }
