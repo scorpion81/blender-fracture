@@ -44,6 +44,7 @@ struct Object;
 struct Group;
 struct MeshIsland;
 struct RigidBodyShardCon;
+struct GHash;
 
 struct BoundBox;
 struct MVert;
@@ -115,5 +116,6 @@ void BKE_fracture_mesh_constraint_remove_all(struct FractureModifierData *fmd);
 
 void BKE_fracture_free_mesh_island(struct FractureModifierData *rmd, struct MeshIsland *mi, bool remove_rigidbody);
 int BKE_fracture_update_visual_mesh(struct FractureModifierData *fmd, bool do_custom_data);
+short BKE_fracture_collect_materials(struct Object* o, struct Object* ob, short matstart, struct GHash** mat_index_map);
 
 #endif /* BKE_FRACTURE_H */

@@ -313,6 +313,13 @@ static void free_modifier(FractureModifierData *fmd, bool do_free_seq)
 {
 	free_simulation(fmd, do_free_seq);
 
+	if (fmd->material_index_map)
+	{
+		BLI_ghash_free(fmd->material_index_map, NULL, NULL);
+		fmd->material_index_map = NULL;
+		fmd->matstart = 1;
+	}
+
 	if (fmd->vertex_island_map) {
 		BLI_ghash_free(fmd->vertex_island_map, NULL, NULL);
 		fmd->vertex_island_map = NULL;
@@ -615,6 +622,7 @@ static DerivedMesh* get_object_dm(Object* o)
 	return dm_ob;
 }
 
+#if 0
 static short collect_materials(Object* o, Object* ob, short matstart, GHash** mat_index_map)
 {
 	short *totcolp = NULL, k = 0;
@@ -640,6 +648,7 @@ static short collect_materials(Object* o, Object* ob, short matstart, GHash** ma
 
 	return *totcolp;
 }
+#endif
 
 static void adjustPolys(MPoly **mpoly, DerivedMesh *dm_ob, GHash *mat_index_map, short matstart, int loopstart, int polystart, DerivedMesh* result)
 {
@@ -725,7 +734,7 @@ static void collect_derivedmeshes(FractureModifierData* fmd, Object *ob, MVert**
 			return;
 		}
 
-		totcol = collect_materials(o, ob, matstart, mat_index_map);
+		totcol = BKE_fracture_collect_materials(o, ob, matstart, mat_index_map);
 
 		mv = mverts + vertstart;
 		memcpy(mv, dm_ob->getVertArray(dm_ob), dm_ob->getNumVerts(dm_ob) * sizeof(MVert));

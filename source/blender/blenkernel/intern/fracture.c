@@ -40,6 +40,7 @@
 #include "BKE_fracture.h"
 #include "BKE_fracture_util.h"
 #include "BKE_global.h"
+#include "BKE_material.h"
 #include "BKE_mesh.h"
 #include "BKE_modifier.h"
 #include "BKE_object.h"
@@ -59,6 +60,7 @@
 #include "DNA_fracture_types.h"
 #include "DNA_gpencil_types.h"
 #include "DNA_group_types.h"
+#include "DNA_material_types.h"
 #include "DNA_meshdata_types.h"
 #include "DNA_modifier_types.h"
 #include "DNA_rigidbody_types.h"
@@ -2217,6 +2219,7 @@ static void fracture_update_shards(FractureModifierData *fmd, Shard *s, int inde
 	{
 		fmd->frac_mesh = BKE_create_fracture_container();
 		fmd->frac_mesh->progress_counter = 0; //XXXX ABUSE this for vertstart now, threading doesnt work anyway yet
+		fmd->matstart = 1; //TODO, is this 1-based ?
 	}
 
 	fm = fmd->frac_mesh;
@@ -2315,8 +2318,10 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, bool do_custom_da
 {
 	MeshIsland *mi;
 	DerivedMesh *dm = fmd->visible_mesh_cached;
-	int vertstart = 0, totvert = 0;
+	int vertstart = 0, totvert = 0, totpoly = 0, polystart = 0, matstart = 1;
 	MVert *mv = NULL;
+	MPoly *mp = NULL, *mpoly = NULL;
+	int j = 0;
 
 	if (dm)
 	{
@@ -2334,6 +2339,7 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, bool do_custom_da
 	dm = fmd->visible_mesh_cached;
 	mv = dm->getVertArray(dm);
 	totvert = dm->getNumVerts(dm);
+	mpoly = dm->getPolyArray(dm);
 
 	//update existing island's vert refs, if any...should have used indexes instead :S
 	for (mi = fmd->meshIslands.first; mi; mi = mi->next)
@@ -2368,9 +2374,48 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, bool do_custom_da
 			mi->vertno[3*i+1] = v->no[1];
 			mi->vertno[3*i+2] = v->no[2];
 		}
+
+		totpoly = mi->physics_mesh->getNumPolys(mi->physics_mesh);
+		for (j = 0, mp = mpoly + polystart; j < totpoly; j++, mp++)
+		{
+			/* material index lookup and correction, avoid having the same material in different slots */
+			int index = GET_INT_FROM_POINTER(BLI_ghash_lookup(fmd->material_index_map,
+			                                 SET_INT_IN_POINTER(mp->mat_nr + matstart)));
+			mp->mat_nr = index-1;
+		}
+
+		/* fortunately we know how many faces "belong" to this meshisland, too */
+		polystart += totpoly;
+		matstart += mi->totcol;
 	}
 
 	return vertstart;
+}
+
+short BKE_fracture_collect_materials(Object* o, Object* ob, short matstart, GHash** mat_index_map)
+{
+	short *totcolp = NULL, k = 0;
+	Material ***matarar = NULL;
+	int j;
+
+	/* append materials to target object, if not existing yet */
+	totcolp = give_totcolp(o);
+	matarar = give_matarar(o);
+
+	for (j = 0; j < *totcolp; j++)
+	{
+		int index = find_material_index(ob, (*matarar)[j]);
+		if (index == 0)
+		{
+			assign_material(ob, (*matarar)[j], matstart + k, BKE_MAT_ASSIGN_USERPREF);
+			index = matstart + k;
+			k++;
+		}
+
+		BLI_ghash_insert(*mat_index_map, SET_INT_IN_POINTER(matstart+j), SET_INT_IN_POINTER(index));
+	}
+
+	return *totcolp;
 }
 
 MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own, Object *target, int index, bool update)
@@ -2379,6 +2424,7 @@ MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own,
 	Shard *s;
 	int vertstart = 0;
 	float loc[3], rot[4];
+	short totcol = 0;
 
 	if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL || own->type != OB_MESH)
 		return NULL;
@@ -2405,6 +2451,21 @@ MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own,
 	mi->rigidbody = BKE_rigidbody_create_shard(fmd->modifier.scene, own, target, mi);
 	if (mi->rigidbody)
 		mi->rigidbody->meshisland_index = mi->id;
+
+	//handle materials
+	if (!fmd->material_index_map)
+	{
+		fmd->material_index_map = BLI_ghash_int_new("mat_index_map");
+		fmd->matstart = 1;
+	}
+
+	totcol = BKE_fracture_collect_materials(target, own, (short)fmd->matstart, &fmd->material_index_map);
+	if (totcol < 0)
+	    totcol = 0;
+	fmd->matstart += totcol;
+	mi->totcol = totcol;
+
+	/*XXXXX TODO deal with material deletion, and reorder (in material code) */
 
 	return mi;
 }
@@ -2539,6 +2600,13 @@ void BKE_fracture_mesh_island_remove_all(FractureModifierData *fmd)
 		fmd->visible_mesh_cached->needsFree = 1;
 		fmd->visible_mesh_cached->release(fmd->visible_mesh_cached);
 		fmd->visible_mesh_cached = NULL;
+	}
+
+	if (fmd->material_index_map)
+	{
+		BLI_ghash_free(fmd->material_index_map, NULL, NULL);
+		fmd->material_index_map = NULL;
+		fmd->matstart = 1;
 	}
 }
 
