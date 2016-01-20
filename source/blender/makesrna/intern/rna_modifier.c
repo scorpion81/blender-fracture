@@ -5291,328 +5291,328 @@ static void rna_def_mesh_constraint(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "location", PROP_FLOAT, PROP_TRANSLATION);
 	RNA_def_property_float_sdna(prop, NULL, "pos");
 	RNA_def_property_array(prop, 3);
-	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_position_set", NULL);
+	//RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_position_set", NULL);
 	RNA_def_property_ui_text(prop, "Location", "Position of the mesh constraint");
 
 	prop = RNA_def_property(srna, "rotation", PROP_FLOAT, PROP_QUATERNION);
 	RNA_def_property_float_sdna(prop, NULL, "orn");
 	RNA_def_property_array(prop, 4);
-	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_orientation_set", NULL);
+	//RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_orientation_set", NULL);
 	RNA_def_property_ui_text(prop, "Rotation", "Quaternion rotation of the mesh constraint");
 
 	prop = RNA_def_property(srna, "plastic", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_PLASTIC);
-	RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_plastic_set");
+	//RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_plastic_set");
 	RNA_def_property_ui_text(prop, "Plastic", "This constraint belongs to a plastic connection");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "type", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "type");
 	RNA_def_property_enum_items(prop, rigidbody_constraint_type_items);
-	RNA_def_property_enum_funcs(prop, NULL, "rna_MeshCon_type_set", NULL);
+	//RNA_def_property_enum_funcs(prop, NULL, "rna_MeshCon_type_set", NULL);
 	RNA_def_property_ui_text(prop, "Type", "Type of Rigid Body Constraint");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "island1", PROP_POINTER, PROP_NONE);
 	RNA_def_property_pointer_sdna(prop, NULL, "mi1");
 	RNA_def_property_flag(prop, PROP_EDITABLE);
 	RNA_def_property_ui_text(prop, "Mesh Island 1", "First Mesh Island to be constrained");
 	RNA_def_property_flag(prop, PROP_EDITABLE);
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "island2", PROP_POINTER, PROP_NONE);
 	RNA_def_property_pointer_sdna(prop, NULL, "mi2");
 	RNA_def_property_flag(prop, PROP_EDITABLE);
 	RNA_def_property_ui_text(prop, "Mesh Island 2", "Second MeshIsland to be constrained");
 	RNA_def_property_flag(prop, PROP_EDITABLE);
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "enabled", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_ENABLED);
-	RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_enabled_set");
+	//RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_enabled_set");
 	RNA_def_property_ui_text(prop, "Enabled", "Enable this constraint");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "disable_collisions", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_DISABLE_COLLISIONS);
-	RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_disable_collisions_set");
+	//RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_disable_collisions_set");
 	RNA_def_property_ui_text(prop, "Disable Collisions", "Disable collisions between constrained rigid bodies");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	/* Breaking Threshold */
 	prop = RNA_def_property(srna, "use_breaking", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_BREAKING);
-	RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_use_breaking_set");
+	//RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_use_breaking_set");
 	RNA_def_property_ui_text(prop, "Breakable",
 	                         "Constraint can be broken if it receives an impulse above the threshold");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "breaking_threshold", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "breaking_threshold");
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_ui_range(prop, 0.0f, 1000.0f, 100.0, 2);
 	RNA_def_property_float_default(prop, 10.0f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_breaking_threshold_set", NULL);
+	//RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_breaking_threshold_set", NULL);
 	RNA_def_property_ui_text(prop, "Breaking Threshold",
 	                         "Impulse threshold that must be reached for the constraint to break");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	/* Solver Iterations */
 	prop = RNA_def_property(srna, "use_override_solver_iterations", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS);
-	RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_override_solver_iterations_set");
+	//RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_override_solver_iterations_set");
 	RNA_def_property_ui_text(prop, "Override Solver Iterations",
 	                         "Override the number of solver iterations for this constraint");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "solver_iterations", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "num_solver_iterations");
 	RNA_def_property_range(prop, 1, 1000);
 	RNA_def_property_ui_range(prop, 1, 100, 1, 0);
 	RNA_def_property_int_default(prop, 10);
-	RNA_def_property_int_funcs(prop, NULL, "rna_MeshCon_num_solver_iterations_set", NULL);
+	//RNA_def_property_int_funcs(prop, NULL, "rna_MeshCon_num_solver_iterations_set", NULL);
 	RNA_def_property_ui_text(prop, "Solver Iterations",
 	                         "Number of constraint solver iterations made per simulation step (higher values are more "
 	                         "accurate but slower)");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	/* Limits */
 	prop = RNA_def_property(srna, "use_limit_lin_x", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_LIMIT_LIN_X);
 	RNA_def_property_ui_text(prop, "X Axis", "Limit translation on X axis");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "use_limit_lin_y", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_LIMIT_LIN_Y);
 	RNA_def_property_ui_text(prop, "Y Axis", "Limit translation on Y axis");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "use_limit_lin_z", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_LIMIT_LIN_Z);
 	RNA_def_property_ui_text(prop, "Z Axis", "Limit translation on Z axis");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "use_limit_ang_x", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_LIMIT_ANG_X);
 	RNA_def_property_ui_text(prop, "X Angle", "Limit rotation around X axis");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "use_limit_ang_y", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_LIMIT_ANG_Y);
 	RNA_def_property_ui_text(prop, "Y Angle", "Limit rotation around Y axis");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "use_limit_ang_z", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_LIMIT_ANG_Z);
 	RNA_def_property_ui_text(prop, "Z Angle", "Limit rotation around Z axis");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "use_spring_x", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_SPRING_X);
 	RNA_def_property_ui_text(prop, "X Spring", "Enable spring on X axis");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "use_spring_y", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_SPRING_Y);
 	RNA_def_property_ui_text(prop, "Y Spring", "Enable spring on Y axis");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "use_spring_z", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_SPRING_Z);
 	RNA_def_property_ui_text(prop, "Z Spring", "Enable spring on Z axis");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "use_motor_lin", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_MOTOR_LIN);
-	RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_use_motor_lin_set");
+	//RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_use_motor_lin_set");
 	RNA_def_property_ui_text(prop, "Linear Motor", "Enable linear motor");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "use_motor_ang", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_MOTOR_ANG);
-	RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_use_motor_ang_set");
+	//RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_use_motor_ang_set");
 	RNA_def_property_ui_text(prop, "Angular Motor", "Enable angular motor");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "limit_lin_x_lower", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "limit_lin_x_lower");
 	RNA_def_property_float_default(prop, -1.0f);
 	RNA_def_property_ui_text(prop, "Lower X Limit", "Lower limit of X axis translation");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "limit_lin_x_upper", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "limit_lin_x_upper");
 	RNA_def_property_float_default(prop, 1.0f);
 	RNA_def_property_ui_text(prop, "Upper X Limit", "Upper limit of X axis translation");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "limit_lin_y_lower", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "limit_lin_y_lower");
 	RNA_def_property_float_default(prop, -1.0f);
 	RNA_def_property_ui_text(prop, "Lower Y Limit", "Lower limit of Y axis translation");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "limit_lin_y_upper", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "limit_lin_y_upper");
 	RNA_def_property_float_default(prop, 1.0f);
 	RNA_def_property_ui_text(prop, "Upper Y Limit", "Upper limit of Y axis translation");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "limit_lin_z_lower", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "limit_lin_z_lower");
 	RNA_def_property_float_default(prop, -1.0f);
 	RNA_def_property_ui_text(prop, "Lower Z Limit", "Lower limit of Z axis translation");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "limit_lin_z_upper", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "limit_lin_z_upper");
 	RNA_def_property_float_default(prop, 1.0f);
 	RNA_def_property_ui_text(prop, "Upper Z Limit", "Upper limit of Z axis translation");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "limit_ang_x_lower", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "limit_ang_x_lower");
 	RNA_def_property_range(prop, -M_PI * 2, M_PI * 2);
 	RNA_def_property_float_default(prop, -M_PI_4);
 	RNA_def_property_ui_text(prop, "Lower X Angle Limit", "Lower limit of X axis rotation");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "limit_ang_x_upper", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "limit_ang_x_upper");
 	RNA_def_property_range(prop, -M_PI * 2, M_PI * 2);
 	RNA_def_property_float_default(prop, M_PI_4);
 	RNA_def_property_ui_text(prop, "Upper X Angle Limit", "Upper limit of X axis rotation");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "limit_ang_y_lower", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "limit_ang_y_lower");
 	RNA_def_property_range(prop, -M_PI * 2, M_PI * 2);
 	RNA_def_property_float_default(prop, -M_PI_4);
 	RNA_def_property_ui_text(prop, "Lower Y Angle Limit", "Lower limit of Y axis rotation");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "limit_ang_y_upper", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "limit_ang_y_upper");
 	RNA_def_property_range(prop, -M_PI * 2, M_PI * 2);
 	RNA_def_property_float_default(prop, M_PI_4);
 	RNA_def_property_ui_text(prop, "Upper Y Angle Limit", "Upper limit of Y axis rotation");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "limit_ang_z_lower", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "limit_ang_z_lower");
 	RNA_def_property_range(prop, -M_PI * 2, M_PI * 2);
 	RNA_def_property_float_default(prop, -M_PI_4);
 	RNA_def_property_ui_text(prop, "Lower Z Angle Limit", "Lower limit of Z axis rotation");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "limit_ang_z_upper", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "limit_ang_z_upper");
 	RNA_def_property_range(prop, -M_PI * 2, M_PI * 2);
 	RNA_def_property_float_default(prop, M_PI_4);
 	RNA_def_property_ui_text(prop, "Upper Z Angle Limit", "Upper limit of Z axis rotation");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "spring_stiffness_x", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "spring_stiffness_x");
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_ui_range(prop, 0.0f, 100.0f, 1, 3);
 	RNA_def_property_float_default(prop, 10.0f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_spring_stiffness_x_set", NULL);
+	//RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_spring_stiffness_x_set", NULL);
 	RNA_def_property_ui_text(prop, "X Axis Stiffness", "Stiffness on the X axis");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "spring_stiffness_y", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "spring_stiffness_y");
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_ui_range(prop, 0.0f, 100.0f, 1, 3);
 	RNA_def_property_float_default(prop, 10.0f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_spring_stiffness_y_set", NULL);
+	//RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_spring_stiffness_y_set", NULL);
 	RNA_def_property_ui_text(prop, "Y Axis Stiffness", "Stiffness on the Y axis");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "spring_stiffness_z", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "spring_stiffness_z");
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_ui_range(prop, 0.0f, 100.0f, 1, 3);
 	RNA_def_property_float_default(prop, 10.0f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_spring_stiffness_z_set", NULL);
+	//RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_spring_stiffness_z_set", NULL);
 	RNA_def_property_ui_text(prop, "Z Axis Stiffness", "Stiffness on the Z axis");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "spring_damping_x", PROP_FLOAT, PROP_FACTOR);
 	RNA_def_property_float_sdna(prop, NULL, "spring_damping_x");
 	RNA_def_property_range(prop, 0.0f, 1.0f);
 	RNA_def_property_float_default(prop, 0.5f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_spring_damping_x_set", NULL);
+	//RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_spring_damping_x_set", NULL);
 	RNA_def_property_ui_text(prop, "Damping X", "Damping on the X axis");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "spring_damping_y", PROP_FLOAT, PROP_FACTOR);
 	RNA_def_property_float_sdna(prop, NULL, "spring_damping_y");
 	RNA_def_property_range(prop, 0.0f, 1.0f);
 	RNA_def_property_float_default(prop, 0.5f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_spring_damping_y_set", NULL);
+	//RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_spring_damping_y_set", NULL);
 	RNA_def_property_ui_text(prop, "Damping Y", "Damping on the Y axis");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "spring_damping_z", PROP_FLOAT, PROP_FACTOR);
 	RNA_def_property_float_sdna(prop, NULL, "spring_damping_z");
 	RNA_def_property_range(prop, 0.0f, 1.0f);
 	RNA_def_property_float_default(prop, 0.5f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_spring_damping_z_set", NULL);
+	//RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_spring_damping_z_set", NULL);
 	RNA_def_property_ui_text(prop, "Damping Z", "Damping on the Z axis");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "motor_lin_target_velocity", PROP_FLOAT, PROP_UNIT_VELOCITY);
 	RNA_def_property_float_sdna(prop, NULL, "motor_lin_target_velocity");
 	RNA_def_property_range(prop, -FLT_MAX, FLT_MAX);
 	RNA_def_property_ui_range(prop, -100.0f, 100.0f, 1, 3);
 	RNA_def_property_float_default(prop, 1.0f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_motor_lin_target_velocity_set", NULL);
+	//RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_motor_lin_target_velocity_set", NULL);
 	RNA_def_property_ui_text(prop, "Target Velocity", "Target linear motor velocity");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "motor_lin_max_impulse", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "motor_lin_max_impulse");
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_ui_range(prop, 0.0f, 100.0f, 1, 3);
 	RNA_def_property_float_default(prop, 1.0f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_motor_lin_max_impulse_set", NULL);
+	//RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_motor_lin_max_impulse_set", NULL);
 	RNA_def_property_ui_text(prop, "Max Impulse", "Maximum linear motor impulse");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "motor_ang_target_velocity", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "motor_ang_target_velocity");
 	RNA_def_property_range(prop, -FLT_MAX, FLT_MAX);
 	RNA_def_property_ui_range(prop, -100.0f, 100.0f, 1, 3);
 	RNA_def_property_float_default(prop, 1.0f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_motor_ang_target_velocity_set", NULL);
+	//RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_motor_ang_target_velocity_set", NULL);
 	RNA_def_property_ui_text(prop, "Target Velocity", "Target angular motor velocity");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "motor_ang_max_impulse", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "motor_ang_max_impulse");
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_ui_range(prop, 0.0f, 100.0f, 1, 3);
 	RNA_def_property_float_default(prop, 1.0f);
-	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_motor_ang_max_impulse_set", NULL);
+	//RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_motor_ang_max_impulse_set", NULL);
 	RNA_def_property_ui_text(prop, "Max Impulse", "Maximum angular motor impulse");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "breaking_distance", PROP_FLOAT, PROP_DISTANCE);
 	RNA_def_property_float_sdna(prop, NULL, "breaking_dist");
 	RNA_def_property_float_default(prop, 0.0f);
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_ui_text(prop, "Breaking Distance", "Breaking Distance Tolerance of this constraint, 0 disables");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "breaking_angle", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "breaking_angle");
 	RNA_def_property_float_default(prop, 0.0f);
 	RNA_def_property_range(prop, DEG2RADF(-360.0), DEG2RADF(360.0));
 	RNA_def_property_ui_text(prop, "Breaking Angle", "Breaking Angle Tolerance of this constraint, 0 disables");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 static void rna_def_fracture_meshislands(BlenderRNA *brna, PropertyRNA *cprop)
