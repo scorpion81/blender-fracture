@@ -87,7 +87,9 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         row.prop(md, "fracture_mode")
 
         if md.fracture_mode == 'EXTERNAL':
-           return
+            layout.context_pointer_set("modifier", md)
+            layout.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")
+            return
 
         if md.fracture_mode == 'DYNAMIC':
             layout.prop(md, "dynamic_force")

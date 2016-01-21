@@ -2677,14 +2677,17 @@ static bool do_unchecked_constraint_add(Scene *scene, Object *ob, int type, Repo
 }
 
 static Object* do_convert_meshisland_to_object(MeshIsland *mi, Scene* scene, Group* g, Object* ob,
-                                            RigidBodyWorld *rbw, int i, Object*** objs, KDTree **objtree, Base** base)
+                                            RigidBodyWorld *rbw, int i, Object*** objs, KDTree **objtree, Base** base,
+                                             FractureModifierData *fmd)
 {
 	float cent[3];
 	Mesh* me;
 	ModifierData *md;
 	bool foundFracture = false;
 	Object* ob_new = NULL;
-	char *name = BLI_strdupcat(ob->id.name + 2, "_shard");
+	bool mode = fmd->fracture_mode == MOD_FRACTURE_EXTERNAL;
+
+	char *name = mode ? BLI_strdupn(mi->name, MAX_ID_NAME) : BLI_strdupcat(ob->id.name + 2, "_shard");
 
 	/* create separate objects for meshislands */
 #if 0
@@ -2889,7 +2892,6 @@ static void convert_modifier_to_objects(ReportList *reports, Scene* scene, Objec
 	RigidBodyShardCon* con;
 	int i = 0, j = 0;
 	RigidBodyWorld *rbw = scene->rigidbody_world;
-
 	const char *name = BLI_strdupcat(ob->id.name, "_conv");
 	Group *g = BKE_group_add(G.main, name);
 
@@ -2914,7 +2916,7 @@ static void convert_modifier_to_objects(ReportList *reports, Scene* scene, Objec
 	start = PIL_check_seconds_timer();
 
 	for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
-		Object* obj = do_convert_meshisland_to_object(mi, scene, g, ob, rbw, i, &objs, &objtree, &basarray_old[i]);
+		Object* obj = do_convert_meshisland_to_object(mi, scene, g, ob, rbw, i, &objs, &objtree, &basarray_old[i], rmd);
 		if (!obj) {
 			return;
 		}
@@ -2947,7 +2949,7 @@ static void convert_modifier_to_objects(ReportList *reports, Scene* scene, Objec
 	//bgscene = BKE_scene_add(G.main, "Conversion");
 	//basarray = MEM_mallocN(sizeof(Base*) * count, "conversion_tempbases_island_constraints");
 
-	if (rmd->use_constraints)
+	if (rmd->use_constraints || rmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
 	{
 		for (con = rmd->meshConstraints.first; con; con = con->next) {
 			Object* obj = do_convert_constraints(rmd, con, scene, ob, objtree, objs, max_con_mass, reports, &basarray_old[i]);
@@ -2979,7 +2981,9 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 {
 	Object *obact = ED_object_active_context(C);
 	Scene *scene = CTX_data_scene(C);
-	//Main* bmain = CTX_data_main(C);
+	Main* bmain = CTX_data_main(C);
+	wmWindowManager *wm = CTX_wm_manager(C);
+	wmWindow *win;
 	float cfra = BKE_scene_frame_get(scene);
 	FractureModifierData *rmd;
 	RigidBodyWorld *rbw = scene->rigidbody_world;
@@ -2988,6 +2992,9 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 	if (rmd && rmd->refresh) {
 		return OPERATOR_CANCELLED;
 	}
+
+	if (!rmd)
+		return OPERATOR_CANCELLED;
 
 	if (rmd && scene->rigidbody_world && cfra == scene->rigidbody_world->pointcache->startframe) {
 		convert_modifier_to_objects(op->reports, scene, obact, rmd);
@@ -3016,10 +3023,34 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 		
 		scene->rigidbody_world = rbwn;
 	}
-	
-	//DAG_relations_tag_update(bmain);
-	WM_event_add_notifier(C, NC_SCENE | ND_OB_ACTIVE, scene);
-	WM_event_add_notifier(C, NC_SCENE | ND_LAYER_CONTENT, scene);
+
+	if (rmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
+	{
+		Base *bas = BKE_scene_base_find(scene, obact);
+		bas->object->flag &= ~SELECT;
+		ED_base_object_free_and_unlink(bmain, scene, bas);
+
+		/* delete has to handle all open scenes, copied from delete operator */
+		BKE_main_id_flag_listbase(&bmain->scene, LIB_DOIT, 1);
+		for (win = wm->windows.first; win; win = win->next) {
+			scene = win->screen->scene;
+
+			if (scene->id.flag & LIB_DOIT) {
+				scene->id.flag &= ~LIB_DOIT;
+
+				DAG_relations_tag_update(bmain);
+
+				WM_event_add_notifier(C, NC_SCENE | ND_OB_ACTIVE, scene);
+				WM_event_add_notifier(C, NC_SCENE | ND_LAYER_CONTENT, scene);
+			}
+		}
+	}
+	else
+	{
+		//DAG_relations_tag_update(bmain);
+		WM_event_add_notifier(C, NC_SCENE | ND_OB_ACTIVE, scene);
+		WM_event_add_notifier(C, NC_SCENE | ND_LAYER_CONTENT, scene);
+	}
 	
 	return OPERATOR_FINISHED;
 }

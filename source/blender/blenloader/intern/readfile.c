@@ -5131,6 +5131,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 	fmd->face_pairs = NULL;
 	fmd->vert_index_map = NULL;
 	fmd->vertex_island_map = NULL;
+	fmd->material_index_map = NULL;
 
 	/*HARDCODING this for now, until we can version it properly, say with 2.75 ? */
 	if (fd->fileversion < 275) {
@@ -5179,7 +5180,8 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 		fm->last_shard_tree = NULL;
 		fm->last_shards = NULL;
 
-		if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+		if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED ||
+		    fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
 		{
 			link_list(fd, &fmd->frac_mesh->shard_map);
 			for (s = fmd->frac_mesh->shard_map.first; s; s = s->next) {
@@ -5228,6 +5230,20 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 			for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 				read_meshIsland(fd, &mi);
 				vertstart += initialize_meshisland(fmd, &mi, mverts, vertstart, ob, -1, -1);
+			}
+
+			if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
+			{
+				RigidBodyShardCon *con;
+				link_list(fd, &fmd->meshConstraints);
+
+				for (con = fmd->meshConstraints.first; con; con = con->next)
+				{
+					con->mi1 = newdataadr(fd, con->mi1);
+					con->mi2 = newdataadr(fd, con->mi2);
+					con->physics_constraint = NULL;
+					con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+				}
 			}
 		}
 		else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
@@ -5299,9 +5315,12 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 			}
 		}
 
-		fmd->refresh_constraints = true;
-		fmd->meshConstraints.first = NULL;
-		fmd->meshConstraints.last = NULL;
+		if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
+		{
+			fmd->refresh_constraints = true;
+			fmd->meshConstraints.first = NULL;
+			fmd->meshConstraints.last = NULL;
+		}
 
 		fmd->refresh_images = true;
 	}

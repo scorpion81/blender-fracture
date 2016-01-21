@@ -53,6 +53,7 @@
 #include "BLI_mempool.h"
 #include "BLI_path_util.h"
 #include "BLI_rand.h"
+#include "BLI_string.h"
 #include "BLI_sort.h"
 #include "BLI_utildefines.h"
 
@@ -2454,6 +2455,8 @@ MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own,
 		mi->rigidbody->meshisland_index = mi->id;
 		copy_qt_qt(mi->rigidbody->orn, rot);
 	}
+
+	BLI_strncpy(mi->name, target->id.name + 2, MAX_ID_NAME - 2);
 
 	//handle materials
 	if (!fmd->material_index_map)

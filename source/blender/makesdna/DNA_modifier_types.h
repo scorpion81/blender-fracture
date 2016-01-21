@@ -1424,6 +1424,9 @@ typedef struct MeshIsland {
 	float *locs;
 	float *rots;
 
+	char name[66]; /* MAX_ID_NAME */
+	char pad1[2];
+
 	int start_frame;
 	int frame_count;
 	int participating_constraint_count;
@@ -1434,7 +1437,7 @@ typedef struct MeshIsland {
 	int linear_index;  /* index in rigidbody world */
 	int particle_index;
 	int totcol; /*store number of used materials here, from the original object*/
-	char pad[4];
+	char pad[8];
 } MeshIsland;
 
 
