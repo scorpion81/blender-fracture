@@ -5603,29 +5603,29 @@ static void rna_def_mesh_constraint(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "breaking_distance", PROP_FLOAT, PROP_DISTANCE);
 	RNA_def_property_float_sdna(prop, NULL, "breaking_dist");
 	RNA_def_property_float_default(prop, 0.0f);
-	RNA_def_property_range(prop, 0.0f, FLT_MAX);
-	RNA_def_property_ui_text(prop, "Breaking Distance", "Breaking Distance Tolerance of this constraint, 0 disables");
+	RNA_def_property_range(prop, -1.0f, FLT_MAX);
+	RNA_def_property_ui_text(prop, "Breaking Distance", "Breaking Distance Tolerance of this constraint, -1 disables");
 	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "breaking_angle", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "breaking_angle");
 	RNA_def_property_float_default(prop, 0.0f);
-	RNA_def_property_range(prop, DEG2RADF(-360.0), DEG2RADF(360.0));
-	RNA_def_property_ui_text(prop, "Breaking Angle", "Breaking Angle Tolerance of this constraint, 0 disables");
+	RNA_def_property_range(prop, -1.0f, DEG2RADF(360.0));
+	RNA_def_property_ui_text(prop, "Breaking Angle", "Breaking Angle Tolerance of this constraint, -1 disables");
 	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "plastic_distance", PROP_FLOAT, PROP_DISTANCE);
 	RNA_def_property_float_sdna(prop, NULL, "plastic_dist");
 	RNA_def_property_float_default(prop, 0.0f);
-	RNA_def_property_range(prop, 0.0f, FLT_MAX);
-	RNA_def_property_ui_text(prop, "Plastic Distance", "Distance Tolerance of this constraint, when exceeded enter plastic mode, 0 disables");
+	RNA_def_property_range(prop, -1.0f, FLT_MAX);
+	RNA_def_property_ui_text(prop, "Plastic Distance", "Distance Tolerance of this constraint, when exceeded enter plastic mode, -1 disables");
 	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "plastic_angle", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "plastic_angle");
 	RNA_def_property_float_default(prop, 0.0f);
-	RNA_def_property_range(prop, DEG2RADF(-360.0), DEG2RADF(360.0));
-	RNA_def_property_ui_text(prop, "Plastic Angle", "Angle Tolerance of this constraint, when exceeded enter plastic mode, 0 disables");
+	RNA_def_property_range(prop, -1.0f, DEG2RADF(360.0));
+	RNA_def_property_ui_text(prop, "Plastic Angle", "Angle Tolerance of this constraint, when exceeded enter plastic mode, -1 disables");
 	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 

@@ -115,15 +115,19 @@ static void calc_dist_angle(RigidBodyShardCon *con, float *dist, float *angle, b
 	if (exact)
 	{
 		rotation_between_quats_to_quat(qdiff, q1, q2);
+		normalize_qt(qdiff);
+		*angle = 2.0f * saacos(qdiff[0]);
+		if (!finite(*angle)) {
+			*angle = 0.0f;
+		}
 	}
 	else
 	{
 		//XXX TODO probably very wrong here
 		invert_qt(q1);
 		mul_qt_qtqt(qdiff, q1, q2);
+		quat_to_axis_angle(axis, angle, qdiff);
 	}
-
-	quat_to_axis_angle(axis, &angle, qdiff);
 }
 
 void BKE_rigidbody_start_dist_angle(RigidBodyShardCon *con, bool exact)
@@ -1630,9 +1634,30 @@ static void rigidbody_create_shard_physics_constraint(FractureModifierData* fmd,
 		return;
 	}
 
-	mul_v3_m4v3(loc, ob->obmat, rbc->pos);
-	mat4_to_quat(rot, ob->obmat);
-	mul_qt_qtqt(rot, rot, rbc->orn);
+	if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
+	{
+		mul_v3_m4v3(loc, ob->obmat, rbc->pos);
+		mat4_to_quat(rot, ob->obmat);
+		mul_qt_qtqt(rot, rot, rbc->orn);
+	}
+	else
+	{
+		/* keep old constraint calculation for other fracture modes ! */
+		/* do this for all constraints */
+		/* location for fixed constraints doesnt matter, so keep old setting */
+		if (rbc->type == RBC_TYPE_FIXED) {
+			copy_v3_v3(rbc->pos, rbc->mi1->rigidbody->pos);
+		}
+		else {
+			/* else set location to center */
+			add_v3_v3v3(rbc->pos, rbc->mi1->rigidbody->pos, rbc->mi2->rigidbody->pos);
+			mul_v3_fl(rbc->pos, 0.5f);
+		}
+
+		copy_qt_qt(rbc->orn, rbc->mi1->rigidbody->orn);
+		copy_v3_v3(loc, rbc->pos);
+		copy_qt_qt(rot, rbc->orn);
+	}
 
 	if (rb1 && rb2) {
 		switch (rbc->type) {
@@ -3134,6 +3159,8 @@ static void handle_plastic_breaking(RigidBodyShardCon *rbsc)
 	/* TODO, ensure rigidbody orn is equal to quaternion of object !!! */
 	// The construct "asin(sin(x))" is a triangle function to achieve a seamless rotation loop from input
 	anglediff = asin(sin(abs(rbsc->start_angle - angle) * 0.5f));
+	if (anglediff > 0.0f)
+		printf("Angles %f %f\n", anglediff, rbsc->breaking_angle);
 
 	exceededAngle = ((rbsc->breaking_angle >= 0.0f) && (anglediff > rbsc->breaking_angle));
 	exceededDist = ((rbsc->breaking_dist >= 0.0f) && (distdiff > (rbsc->breaking_dist + (anglediff / M_PI))));
