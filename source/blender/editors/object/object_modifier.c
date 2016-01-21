@@ -2854,17 +2854,31 @@ static Object* do_convert_constraints(FractureModifierData *fmd, RigidBodyShardC
 		BKE_rigidbody_calc_threshold(max_con_mass, fmd, con);
 	}
 
-	/*use same settings as in modifier
-	 *XXX Maybe use the CENTER between objects ? Might be correct for Non fixed constraints*/
-	/* location for fixed constraints doesnt matter, so keep old setting */
-	/* keep in sync with rigidbody.c, BKE_rigidbody_validate_sim_shard_constraint() */
-	if (con->type == RBC_TYPE_FIXED) {
-		copy_v3_v3(rbcon->loc, ob1->loc);
+	if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
+	{
+		/*TODO XXX, take own transform into account too*/
+		float loc[3], rot[4], mat[4][4], size[3] = {1.0f, 1.0f, 1.0f};
+
+		copy_v3_v3(rbcon->loc, con->pos);
+		copy_qt_qt(rbcon->quat, con->orn);
+
+		loc_quat_size_to_mat4(mat, loc, rot, size);
+		copy_m4_m4(rbcon->obmat, mat);
 	}
-	else {
-		/* else set location to center */
-		add_v3_v3v3(rbcon->loc, ob1->loc, ob2->loc);
-		mul_v3_fl(rbcon->loc, 0.5f);
+	else
+	{
+		/*use same settings as in modifier
+		 *XXX Maybe use the CENTER between objects ? Might be correct for Non fixed constraints*/
+		/* location for fixed constraints doesnt matter, so keep old setting */
+		/* keep in sync with rigidbody.c, BKE_rigidbody_validate_sim_shard_constraint() */
+		if (con->type == RBC_TYPE_FIXED) {
+			copy_v3_v3(rbcon->loc, ob1->loc);
+		}
+		else {
+			/* else set location to center */
+			add_v3_v3v3(rbcon->loc, ob1->loc, ob2->loc);
+			mul_v3_fl(rbcon->loc, 0.5f);
+		}
 	}
 
 	/*omit check for existing objects in group, since this seems very slow, and should not be necessary in this internal function*/
