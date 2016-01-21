@@ -2444,13 +2444,16 @@ MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own,
 	mi = fracture_shard_to_island(fmd, s, vertstart);
 
 	mat4_to_loc_quat(loc, rot, target->obmat);
-	copy_v3_v3(mi->rot, rot);
+	copy_qt_qt(mi->rot, rot);
 
 	//lets see whether we need to add loc here too XXX TODO
 
 	mi->rigidbody = BKE_rigidbody_create_shard(fmd->modifier.scene, own, target, mi);
 	if (mi->rigidbody)
+	{
 		mi->rigidbody->meshisland_index = mi->id;
+		copy_qt_qt(mi->rigidbody->orn, rot);
+	}
 
 	//handle materials
 	if (!fmd->material_index_map)

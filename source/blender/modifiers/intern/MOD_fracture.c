@@ -213,7 +213,6 @@ static void initData(ModifierData *md)
 	fmd->mass_threshold_factor = 0.0f;
 
 	fmd->autohide_filter_group = NULL;
-	fmd->use_special_breaking = false;
 	fmd->constraint_count = 0;
 }
 
@@ -1416,8 +1415,6 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->use_compounds = rmd->use_compounds;
 
 	trmd->autohide_filter_group = rmd->autohide_filter_group;
-
-	rmd->use_special_breaking = rmd->use_special_breaking;
 }
 
 /* mi->bb, its for volume fraction calculation.... */

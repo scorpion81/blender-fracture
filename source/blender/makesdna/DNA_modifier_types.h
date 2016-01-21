@@ -1732,14 +1732,11 @@ typedef struct FractureModifierData {
 	float max_vol;
 	int last_frame;
 
-	/*TODO XXX this is subject to change, a very experimental constraint breaking mode*/
-	int use_special_breaking;
-
 	/*DANGER... what happens if the new compound object has more materials than fit into 1 short ? shouldnt happen but can...*/
 	/*so reserve an int here better */
 	int matstart;
 
-	char pad[4];
+	//char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

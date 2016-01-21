@@ -393,9 +393,6 @@ typedef enum eRigidBodyCon_Flag {
 	/* mark this constraint to be able to go into "plastic" mode */
 	RBC_FLAG_USE_PLASTIC				= (1 << 17),
 
-	/*wtf cant query the set stiffness from bullet ? have to manage this state here ...*/
-	RBC_FLAG_PLASTIC_ACTIVE				= (1 << 18)
-
 } eRigidBodyCon_Flag;
 
 /* ******************************** */

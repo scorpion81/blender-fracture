@@ -6272,12 +6272,6 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Mesh Constraints", "A connection between two Mesh Islands inside the modifier");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 	rna_def_fracture_meshconstraints(brna, prop);
-
-	prop = RNA_def_property(srna, "use_special_breaking", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "use_special_breaking", false);
-	RNA_def_property_ui_text(prop, "Special Constraint Breaking", "Enables a more accurate way of constraint breaking handling");
-	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 static void rna_def_modifier_datatransfer(BlenderRNA *brna)

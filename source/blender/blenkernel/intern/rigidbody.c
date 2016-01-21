@@ -97,7 +97,7 @@ static bool isModifierActive(FractureModifierData *rmd) {
 	return ((rmd != NULL) && (rmd->modifier.mode & (eModifierMode_Realtime | eModifierMode_Render)) && (rmd->refresh == false || rmd->fracture_mode == MOD_FRACTURE_DYNAMIC));
 }
 
-static void calc_dist_angle(RigidBodyShardCon *con, float *dist, float *angle)
+static void calc_dist_angle(RigidBodyShardCon *con, float *dist, float *angle, bool exact)
 {
 	float q1[4], q2[4], qdiff[4], axis[3];
 	if ((con->mi1->rigidbody == NULL) || (con->mi2->rigidbody == NULL)) {
@@ -105,21 +105,32 @@ static void calc_dist_angle(RigidBodyShardCon *con, float *dist, float *angle)
 		*angle = 0;
 		return;
 	}
-	
+
 	sub_v3_v3v3(axis, con->mi1->rigidbody->pos, con->mi2->rigidbody->pos);
 	*dist = len_v3(axis);
+
 	copy_qt_qt(q1, con->mi1->rigidbody->orn);
 	copy_qt_qt(q2, con->mi2->rigidbody->orn);
-	invert_qt(q1);
-	mul_qt_qtqt(qdiff, q1, q2);
-	quat_to_axis_angle(axis, angle, qdiff);
+	
+	if (exact)
+	{
+		rotation_between_quats_to_quat(qdiff, q1, q2);
+	}
+	else
+	{
+		//XXX TODO probably very wrong here
+		invert_qt(q1);
+		mul_qt_qtqt(qdiff, q1, q2);
+	}
+
+	quat_to_axis_angle(axis, &angle, qdiff);
 }
 
-void BKE_rigidbody_start_dist_angle(RigidBodyShardCon *con)
+void BKE_rigidbody_start_dist_angle(RigidBodyShardCon *con, bool exact)
 {
 	/* store starting angle and distance per constraint*/
 	float dist, angle;
-	calc_dist_angle(con, &dist, &angle);
+	calc_dist_angle(con, &dist, &angle, exact);
 	con->start_dist = dist;
 	con->start_angle = angle;
 }
@@ -1669,7 +1680,7 @@ static void rigidbody_create_shard_physics_constraint(FractureModifierData* fmd,
 			case RBC_TYPE_6DOF_SPRING:
 				rbc->physics_constraint = RB_constraint_new_6dof_spring(loc, rot, rb1, rb2);
 
-				if (rbc->flag & RBC_FLAG_USE_PLASTIC && !rbc->flag & RBC_FLAG_PLASTIC_ACTIVE)
+				if (rbc->flag & RBC_FLAG_USE_PLASTIC)
 				{	/* set to inactive plastic here, needs to be activated */
 					rigidbody_set_springs_active(rbc, false);
 				}
@@ -3110,171 +3121,50 @@ static void handle_breaking_distance(FractureModifierData *fmd, Object *ob, Rigi
 	}
 }
 
-static void handle_plastic_breaking_constraint(RigidBodyShardCon *rbsc, RigidBodyShardCon *con, bool broken, bool exceeded_plastic, bool exceeded)
-{
-	bool same = (((con->mi1 == rbsc->mi1 && con->mi2 == rbsc->mi2)) || ((con->mi1 == rbsc->mi2 && con->mi2 == rbsc->mi1)));
-	if (con->physics_constraint && same)
-	{
-		if (rbsc->type == RBC_TYPE_6DOF_SPRING)
-		{
-			if (rbsc->flag & RBC_FLAG_USE_PLASTIC)
-			{
-				/* I am plastic, the other is... */
-				/* doesnt matter, nothing should happen to the other con */
-			}
-			else
-			{	/* I am NOT plastic and a spring */
-				/* so the other needs to break */
-				if (broken || exceeded)
-					RB_constraint_set_enabled(con->physics_constraint, false);
-			}
-		}
-		else
-		{
-			/*I am no spring and the other is plastic*/
-			/*if i am broken, activate the other if inactive, else break it */
-			if (con->type == RBC_TYPE_6DOF_SPRING && con->flag & RBC_FLAG_USE_PLASTIC)
-			{
-				if (con->flag & RBC_FLAG_PLASTIC_ACTIVE)
-				{
-					/*Other is plastic active, break it*/
-					if (broken || exceeded)
-						RB_constraint_set_enabled(con->physics_constraint, false);
-				}
-				else
-				{
-					/* activate other plastic */
-					if (broken || exceeded_plastic)
-					{
-						con->flag |= RBC_FLAG_PLASTIC_ACTIVE;
-						rigidbody_set_springs_active(con, true);
-					}
-				}
-			}
-			else
-			{
-				/*other is not plastic, break it */
-				if (broken || exceeded)
-					RB_constraint_set_enabled(con->physics_constraint, false);
-			}
-		}
-	}
-}
-
-static void handle_plastic_breaking_participants(FractureModifierData *fmd, RigidBodyShardCon *rbsc)
+static void handle_plastic_breaking(RigidBodyShardCon *rbsc)
 {
 	float dist, angle, distdiff, anglediff;
-	bool exceeded = false, exceeded_plastic = false, broken = false;
-	calc_dist_angle(rbsc, &dist, &angle);
+	bool exceededAngle = false, exceededDist = false;
 
-	anglediff = fabs(angle - rbsc->start_angle);
-	distdiff = fabs(dist - rbsc->start_dist);
+	calc_dist_angle(rbsc, &dist, &angle, true);
 
-	if (fmd->use_special_breaking) {
-		//need distdiff in range 0...1, so norm it here
-		distdiff /= rbsc->start_dist;
-	}
+	/* note, relative change in percentage is expected, -1 disables */
+	distdiff = fabs(1 -(rbsc->start_dist/dist));
 
-	exceeded = (rbsc->breaking_angle > 0.0f && anglediff > rbsc->breaking_angle);
-	exceeded = exceeded || (rbsc->breaking_dist > 0.0f && distdiff > rbsc->breaking_dist);
+	/* TODO, ensure rigidbody orn is equal to quaternion of object !!! */
+	// The construct "asin(sin(x))" is a triangle function to achieve a seamless rotation loop from input
+	anglediff = asin(sin(abs(rbsc->start_angle - angle) * 0.5f));
 
-	if (exceeded && rbsc->physics_constraint)
+	exceededAngle = ((rbsc->breaking_angle >= 0.0f) && (anglediff > rbsc->breaking_angle));
+	exceededDist = ((rbsc->breaking_dist >= 0.0f) && (distdiff > (rbsc->breaking_dist + (anglediff / M_PI))));
+
+	if (exceededDist || exceededAngle)
 	{
-		RB_constraint_set_enabled(rbsc->physics_constraint, false);
+		if (rbsc->type == RBC_TYPE_6DOF_SPRING && rbsc->flag & RBC_FLAG_USE_PLASTIC)
+		{
+			rigidbody_set_springs_active(rbsc, true);
+		}
+		else if (rbsc->physics_constraint)
+		{
+			RB_constraint_set_enabled(rbsc->physics_constraint, false);
+		}
 	}
 
-	if (!fmd->use_special_breaking)
-		return;
+	exceededAngle = ((rbsc->plastic_angle >= 0.0f) && (anglediff > rbsc->plastic_angle));
+	exceededDist = ((rbsc->plastic_dist >= 0.0f) && (distdiff > (rbsc->plastic_dist + (anglediff / M_PI))));
 
-	exceeded_plastic = (rbsc->plastic_angle > 0.0f && anglediff > rbsc->plastic_angle);
-	exceeded_plastic = exceeded_plastic || (rbsc->plastic_dist > 0.0f && distdiff > rbsc->plastic_dist);
-	broken = rbsc->physics_constraint && !(RB_constraint_is_enabled(rbsc->physics_constraint));
-
-	/* is there a break event on THIS constraint ? */
-	if (broken || exceeded_plastic || exceeded)
+	/* break plastic connections */
+	if (exceededDist || exceededAngle)
 	{
-		int i;
-		for (i = 0; i < rbsc->mi1->participating_constraint_count; i++)
+		if (rbsc->type == RBC_TYPE_6DOF_SPRING && rbsc->flag & RBC_FLAG_USE_PLASTIC)
 		{
-			RigidBodyShardCon *con = rbsc->mi1->participating_constraints[i];
-			handle_plastic_breaking_constraint(rbsc, con, broken, exceeded_plastic, exceeded);
-		}
-
-		for (i = 0; i < rbsc->mi2->participating_constraint_count; i++)
-		{
-			RigidBodyShardCon *con = rbsc->mi2->participating_constraints[i];
-			handle_plastic_breaking_constraint(rbsc, con, broken, exceeded_plastic, exceeded);
+			if (rbsc->physics_constraint)
+			{
+				RB_constraint_set_enabled(rbsc->physics_constraint, false);
+			}
 		}
 	}
 }
-
-#if 0
-
-static bool can_prev(RigidBodyShardCon *rbsc, MeshIsland *mi1, MeshIsland *mi2)
-{
-	return rbsc && rbsc->prev && rbsc->prev->mi1 == mi1 && rbsc->prev->mi2 == mi2;
-}
-
-static bool can_next(RigidBodyShardCon *rbsc, MeshIsland *mi1, MeshIsland *mi2)
-{
-	return rbsc && rbsc->next && rbsc->next->mi1 == mi1 && rbsc->next->mi2 == mi2;
-}
-
-static void handle_plastic_breaking(FractureModifierData *fmd, RigidBodyShardCon *rbsc)
-{
-	if (rbsc->physics_constraint && !(RB_constraint_is_enabled(rbsc->physics_constraint)))
-	{
-		//go back until pair changes, break all
-		RigidBodyShardCon *con = rbsc;
-		MeshIsland *mi1 = rbsc->mi1;
-		MeshIsland *mi2 = rbsc->mi2;
-
-		while (can_prev(con, mi1, mi2) && fmd->use_special_breaking)
-		{
-			if ((con->flag & RBC_FLAG_USE_PLASTIC))
-			{
-				if (con->physics_constraint) {
-					//con->flag |= RBC_FLAG_ENABLED;
-					RB_constraint_set_enabled(con->physics_constraint, true);
-					//con->flag |= RBC_FLAG_NEEDS_VALIDATE;
-				}
-			}
-			else
-			{
-				if (con->physics_constraint) {
-					//con->flag &= ~RBC_FLAG_ENABLED;
-					RB_constraint_set_enabled(con->physics_constraint, false);
-					//con->flag |= RBC_FLAG_NEEDS_VALIDATE;
-				}
-			}
-
-			con = con->prev;
-		}
-
-		while (can_next(con, mi1, mi2) && fmd->use_special_breaking)
-		{
-			if ((con->flag & RBC_FLAG_USE_PLASTIC))
-			{
-				if (con->physics_constraint) {
-					//con->flag |= RBC_FLAG_ENABLED;
-					RB_constraint_set_enabled(con->physics_constraint, true);
-					//con->flag |= RBC_FLAG_NEEDS_VALIDATE;
-				}
-			}
-			else
-			{
-				if (con->physics_constraint) {
-					//con->flag &= ~RBC_FLAG_ENABLED;
-					RB_constraint_set_enabled(con->physics_constraint, false);
-					//con->flag |= RBC_FLAG_NEEDS_VALIDATE;
-				}
-			}
-
-			con = con->next;
-		}
-	}
-}
-#endif
 
 static void handle_regular_breaking(FractureModifierData *fmd, Object *ob, RigidBodyWorld *rbw, RigidBodyShardCon *rbsc, float max_con_mass, bool rebuild)
 {
@@ -3309,7 +3199,7 @@ static void handle_regular_breaking(FractureModifierData *fmd, Object *ob, Rigid
 		 (fmd->cluster_breaking_angle > 0 || fmd->cluster_breaking_distance > 0)) && !rebuild)
 	{
 		float dist, angle, distdiff, anglediff;
-		calc_dist_angle(rbsc, &dist, &angle);
+		calc_dist_angle(rbsc, &dist, &angle, false);
 
 		anglediff = fabs(angle - rbsc->start_angle);
 		distdiff = fabs(dist - rbsc->start_dist);
@@ -3405,7 +3295,8 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				rbsc->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD) {
 				/* World has been rebuilt so rebuild constraint */
 				BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd,  ob,  rbsc, true);
-				BKE_rigidbody_start_dist_angle(rbsc); //TODO ensure evaluation on transform change too
+				BKE_rigidbody_start_dist_angle(rbsc, fmd->fracture_mode == MOD_FRACTURE_EXTERNAL);
+				//TODO ensure evaluation on transform change too
 			}
 
 			else if (rbsc->flag & RBC_FLAG_NEEDS_VALIDATE) {
@@ -3418,17 +3309,13 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL && rbsc->flag & RBC_FLAG_USE_PLASTIC)
 				{
 					/*reset plastic constraints, by deactivating them*/
-					rbsc->flag &= ~RBC_FLAG_PLASTIC_ACTIVE;
 					rigidbody_set_springs_active(rbsc, false);
 				}
 			}
 
 			if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
 			{
-				//hmm maybe enable "special" constraint behavior
-				//handle_plastic_breaking(fmd, rbsc);
-				//if (fmd->use_special_breaking)
-				handle_plastic_breaking_participants(fmd, rbsc);
+				handle_plastic_breaking(rbsc);
 			}
 
 			rbsc->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
