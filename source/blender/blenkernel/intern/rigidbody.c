@@ -1598,17 +1598,17 @@ static void rigidbody_set_springs_active(RigidBodyShardCon *rbc, bool active)
 		}
 		else
 		{
-			RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, rbc->flag & RBC_FLAG_USE_SPRING_X);
+			RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, false);
 			RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, 0);
-			RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, rbc->spring_damping_x);
+			RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, 0);
 
-			RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Y, rbc->flag & RBC_FLAG_USE_SPRING_Y);
+			RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Y, false);
 			RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Y, 0);
-			RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Y, rbc->spring_damping_y);
+			RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Y, 0);
 
-			RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->flag & RBC_FLAG_USE_SPRING_Z);
+			RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, false);
 			RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, 0);
-			RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->spring_damping_z);
+			RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, 0);
 		}
 	}
 }
@@ -1707,15 +1707,15 @@ static void rigidbody_create_shard_physics_constraint(FractureModifierData* fmd,
 
 				if (rbc->flag & RBC_FLAG_USE_PLASTIC)
 				{	/* set to inactive plastic here, needs to be activated */
+					rbc->flag &= ~RBC_FLAG_PLASTIC_ACTIVE;
 					rigidbody_set_springs_active(rbc, false);
 				}
 				else
 				{
 					/* not plastic springs, activate now */
 					rigidbody_set_springs_active(rbc, true);
+					RB_constraint_set_equilibrium_6dof_spring(rbc->physics_constraint);
 				}
-
-				RB_constraint_set_equilibrium_6dof_spring(rbc->physics_constraint);
 
 			/* fall through */
 			case RBC_TYPE_6DOF:
@@ -3149,30 +3149,43 @@ static void handle_breaking_distance(FractureModifierData *fmd, Object *ob, Rigi
 static void handle_plastic_breaking(RigidBodyShardCon *rbsc)
 {
 	float dist, angle, distdiff, anglediff;
-	bool exceededAngle = false, exceededDist = false;
+	bool exceededAngle = false, exceededDist = false, broken = false;
 
 	calc_dist_angle(rbsc, &dist, &angle, true);
 
 	/* note, relative change in percentage is expected, -1 disables */
-	distdiff = fabs(1 -(rbsc->start_dist/dist));
+	distdiff = fabs(1.0f -(rbsc->start_dist/dist));
 
 	/* TODO, ensure rigidbody orn is equal to quaternion of object !!! */
 	// The construct "asin(sin(x))" is a triangle function to achieve a seamless rotation loop from input
-	anglediff = asin(sin(abs(rbsc->start_angle - angle) * 0.5f));
-	if (anglediff > 0.0f)
-		printf("Angles %f %f\n", anglediff, rbsc->breaking_angle);
+	anglediff = asin(sin(fabs(rbsc->start_angle - angle) * 0.5f));
+	//if (anglediff > 0.0f)
+	//	printf("Angles %f %f\n", anglediff, rbsc->breaking_angle);
 
 	exceededAngle = ((rbsc->breaking_angle >= 0.0f) && (anglediff > rbsc->breaking_angle));
 	exceededDist = ((rbsc->breaking_dist >= 0.0f) && (distdiff > (rbsc->breaking_dist + (anglediff / M_PI))));
+	broken = rbsc->physics_constraint && !(RB_constraint_is_enabled(rbsc->physics_constraint));
 
-	if (exceededDist || exceededAngle)
+	if (exceededDist || exceededAngle || broken)
 	{
 		if (rbsc->type == RBC_TYPE_6DOF_SPRING && rbsc->flag & RBC_FLAG_USE_PLASTIC)
 		{
-			rigidbody_set_springs_active(rbsc, true);
+			if (!(rbsc->flag & RBC_FLAG_PLASTIC_ACTIVE) && !(rbsc->flag & RBC_FLAG_NEEDS_VALIDATE))
+			{
+				/* activate only once */
+				rbsc->flag |= RBC_FLAG_PLASTIC_ACTIVE;
+				rigidbody_set_springs_active(rbsc, true);
+				RB_constraint_set_equilibrium_6dof_spring(rbsc->physics_constraint);
+			}
+			else if (rbsc->physics_constraint && RB_constraint_is_enabled(rbsc->physics_constraint))
+			{
+				rigidbody_set_springs_active(rbsc, false);
+				RB_constraint_set_enabled(rbsc->physics_constraint, false);
+			}
 		}
-		else if (rbsc->physics_constraint)
+		else if (rbsc->physics_constraint && RB_constraint_is_enabled(rbsc->physics_constraint))
 		{
+			rigidbody_set_springs_active(rbsc, false);
 			RB_constraint_set_enabled(rbsc->physics_constraint, false);
 		}
 	}
@@ -3185,8 +3198,9 @@ static void handle_plastic_breaking(RigidBodyShardCon *rbsc)
 	{
 		if (rbsc->type == RBC_TYPE_6DOF_SPRING && rbsc->flag & RBC_FLAG_USE_PLASTIC)
 		{
-			if (rbsc->physics_constraint)
+			if (rbsc->physics_constraint && RB_constraint_is_enabled(rbsc->physics_constraint))
 			{
+				rigidbody_set_springs_active(rbsc, false);
 				RB_constraint_set_enabled(rbsc->physics_constraint, false);
 			}
 		}
@@ -3257,7 +3271,9 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 
 	if (isModifierActive(fmd)) {
 		float max_con_mass = 0;
-		int count = 0;//BLI_listbase_count(&fmd->meshIslands);
+		bool is_empty = BLI_listbase_is_empty(&fmd->meshIslands);
+		int count = 0, brokencount = 0, plastic = 0;
+		float frame = 0;
 
 		if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
@@ -3268,7 +3284,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 			}
 		}
 
-		count = BLI_listbase_count(&fmd->meshIslands);
+		//count = BLI_listbase_count(&fmd->meshIslands);
 
 		//if (fmd->use_compounds && rebuild)
 			/*create compound */
@@ -3301,7 +3317,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 					}
 				}
 
-				validateShard(rbw, count == 0 ? NULL : mi, ob, do_rebuild, true); //fmd->fracture_mode == MOD_FRACTURE_DYNAMIC);
+				validateShard(rbw, is_empty ? NULL : mi, ob, do_rebuild, true); //fmd->fracture_mode == MOD_FRACTURE_DYNAMIC);
 			}
 
 			/* update simulation object... */
@@ -3313,6 +3329,19 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 		}
 
 		for (rbsc = fmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
+
+			if (rbsc->physics_constraint && !(RB_constraint_is_enabled(rbsc->physics_constraint)))
+			{
+				brokencount++;
+			}
+
+			if (rbsc->type == RBC_TYPE_6DOF_SPRING && (rbsc->flag & RBC_FLAG_PLASTIC_ACTIVE))
+			{
+				plastic++;
+			}
+
+			count++;
+
 			if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
 			{
 				handle_regular_breaking(fmd, ob, rbw, rbsc, max_con_mass, rebuild);
@@ -3336,6 +3365,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL && rbsc->flag & RBC_FLAG_USE_PLASTIC)
 				{
 					/*reset plastic constraints, by deactivating them*/
+					rbsc->flag &= ~RBC_FLAG_PLASTIC_ACTIVE;
 					rigidbody_set_springs_active(rbsc, false);
 				}
 			}
@@ -3347,6 +3377,9 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 
 			rbsc->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
 		}
+
+		frame = BKE_scene_frame_get(scene);
+		printf("Constraints: Frame %d , Total %d,  Intact %d,  Broken %d, Plastic %d\n", (int)frame, count, count-brokencount, brokencount, plastic);
 
 		return true;
 	}

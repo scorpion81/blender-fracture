@@ -392,6 +392,8 @@ typedef enum eRigidBodyCon_Flag {
 
 	/* mark this constraint to be able to go into "plastic" mode */
 	RBC_FLAG_USE_PLASTIC				= (1 << 17),
+	/* mark already active plastic constraints */
+	RBC_FLAG_PLASTIC_ACTIVE				= (1 << 18)
 
 } eRigidBodyCon_Flag;
 
