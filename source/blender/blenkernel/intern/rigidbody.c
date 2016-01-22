@@ -2396,7 +2396,7 @@ RigidBodyOb *BKE_rigidbody_create_object(Scene *scene, Object *ob, short type)
 }
 
 /* Add rigid body constraint to the specified object */
-RigidBodyCon *BKE_rigidbody_create_constraint(Scene *scene, Object *ob, short type)
+RigidBodyCon *BKE_rigidbody_create_constraint(Scene *scene, Object *ob, short type, RigidBodyShardCon *con)
 {
 	RigidBodyCon *rbc;
 	RigidBodyWorld *rbw = scene->rigidbody_world;
@@ -2421,33 +2421,67 @@ RigidBodyCon *BKE_rigidbody_create_constraint(Scene *scene, Object *ob, short ty
 	rbc->flag |= RBC_FLAG_ENABLED;
 	rbc->flag |= RBC_FLAG_DISABLE_COLLISIONS;
 
-	rbc->breaking_threshold = 10.0f; /* no good default here, just use 10 for now */
-	rbc->num_solver_iterations = 10; /* 10 is Bullet default */
+	if (con)
+	{
+		rbc->flag = con->flag;
+		rbc->breaking_threshold = con->breaking_threshold;
+		rbc->num_solver_iterations = con->num_solver_iterations;
 
-	rbc->limit_lin_x_lower = -1.0f;
-	rbc->limit_lin_x_upper = 1.0f;
-	rbc->limit_lin_y_lower = -1.0f;
-	rbc->limit_lin_y_upper = 1.0f;
-	rbc->limit_lin_z_lower = -1.0f;
-	rbc->limit_lin_z_upper = 1.0f;
-	rbc->limit_ang_x_lower = -M_PI_4;
-	rbc->limit_ang_x_upper = M_PI_4;
-	rbc->limit_ang_y_lower = -M_PI_4;
-	rbc->limit_ang_y_upper = M_PI_4;
-	rbc->limit_ang_z_lower = -M_PI_4;
-	rbc->limit_ang_z_upper = M_PI_4;
+		rbc->limit_lin_x_lower = con->limit_lin_x_lower;
+		rbc->limit_lin_x_upper = con->limit_lin_x_upper;
+		rbc->limit_lin_y_lower = con->limit_lin_y_lower;
+		rbc->limit_lin_y_upper = con->limit_lin_y_upper;
+		rbc->limit_lin_z_lower = con->limit_lin_z_lower;
+		rbc->limit_lin_z_upper = con->limit_lin_z_upper;
+		rbc->limit_ang_x_lower = con->limit_ang_x_lower;
+		rbc->limit_ang_x_upper = con->limit_ang_x_upper;
+		rbc->limit_ang_y_lower = con->limit_ang_y_lower;
+		rbc->limit_ang_y_upper = con->limit_ang_y_upper;
+		rbc->limit_ang_z_lower = con->limit_ang_z_lower;
+		rbc->limit_ang_z_upper = con->limit_ang_z_upper;
 
-	rbc->spring_damping_x = 0.5f;
-	rbc->spring_damping_y = 0.5f;
-	rbc->spring_damping_z = 0.5f;
-	rbc->spring_stiffness_x = 10.0f;
-	rbc->spring_stiffness_y = 10.0f;
-	rbc->spring_stiffness_z = 10.0f;
+		rbc->spring_damping_x = con->spring_damping_x;
+		rbc->spring_damping_y = con->spring_damping_y;
+		rbc->spring_damping_z = con->spring_damping_z;
+		rbc->spring_stiffness_x = con->spring_stiffness_x;
+		rbc->spring_stiffness_y = con->spring_stiffness_y;
+		rbc->spring_stiffness_z = con->spring_stiffness_z;
 
-	rbc->motor_lin_max_impulse = 1.0f;
-	rbc->motor_lin_target_velocity = 1.0f;
-	rbc->motor_ang_max_impulse = 1.0f;
-	rbc->motor_ang_target_velocity = 1.0f;
+		rbc->motor_lin_max_impulse = con->motor_lin_max_impulse;
+		rbc->motor_lin_target_velocity = con->motor_lin_target_velocity;
+		rbc->motor_ang_max_impulse = con->motor_ang_max_impulse;
+		rbc->motor_ang_target_velocity = con->motor_ang_target_velocity;
+	}
+	else
+	{
+		rbc->breaking_threshold = 10.0f; /* no good default here, just use 10 for now */
+		rbc->num_solver_iterations = 10; /* 10 is Bullet default */
+
+		rbc->limit_lin_x_lower = -1.0f;
+		rbc->limit_lin_x_upper = 1.0f;
+		rbc->limit_lin_y_lower = -1.0f;
+		rbc->limit_lin_y_upper = 1.0f;
+		rbc->limit_lin_z_lower = -1.0f;
+		rbc->limit_lin_z_upper = 1.0f;
+		rbc->limit_ang_x_lower = -M_PI_4;
+		rbc->limit_ang_x_upper = M_PI_4;
+		rbc->limit_ang_y_lower = -M_PI_4;
+		rbc->limit_ang_y_upper = M_PI_4;
+		rbc->limit_ang_z_lower = -M_PI_4;
+		rbc->limit_ang_z_upper = M_PI_4;
+
+		rbc->spring_damping_x = 0.5f;
+		rbc->spring_damping_y = 0.5f;
+		rbc->spring_damping_z = 0.5f;
+		rbc->spring_stiffness_x = 10.0f;
+		rbc->spring_stiffness_y = 10.0f;
+		rbc->spring_stiffness_z = 10.0f;
+
+		rbc->motor_lin_max_impulse = 1.0f;
+		rbc->motor_lin_target_velocity = 1.0f;
+		rbc->motor_ang_max_impulse = 1.0f;
+		rbc->motor_ang_target_velocity = 1.0f;
+	}
 
 	/* flag cache as outdated */
 	BKE_rigidbody_cache_reset(rbw);
@@ -3500,7 +3534,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 				/* Since this object is included in the group but doesn't have
 				 * constraint settings (perhaps it was added manually), add!
 				 */
-				ob->rigidbody_constraint = BKE_rigidbody_create_constraint(scene, ob, RBC_TYPE_FIXED);
+				ob->rigidbody_constraint = BKE_rigidbody_create_constraint(scene, ob, RBC_TYPE_FIXED, NULL);
 				rigidbody_validate_sim_constraint(rbw, ob, true);
 
 				rbc = ob->rigidbody_constraint;

@@ -2651,7 +2651,7 @@ static void do_add_group_unchecked(Group* group, Object *ob, Base *bas)
 	bas->flag |= OB_FROMGROUP;
 }
 
-static bool do_unchecked_constraint_add(Scene *scene, Object *ob, int type, ReportList *reports, Base* base)
+static bool do_unchecked_constraint_add(Scene *scene, Object *ob, RigidBodyShardCon *con, ReportList *reports, Base* base)
 {
 	RigidBodyWorld *rbw = BKE_rigidbody_get_world(scene);
 
@@ -2665,7 +2665,7 @@ static bool do_unchecked_constraint_add(Scene *scene, Object *ob, int type, Repo
 		rbw->constraints = BKE_group_add(G.main, "RigidBodyConstraints");
 	}
 	/* make rigidbody constraint settings */
-	ob->rigidbody_constraint = BKE_rigidbody_create_constraint(scene, ob, type);
+	ob->rigidbody_constraint = BKE_rigidbody_create_constraint(scene, ob, con->type, con);
 	ob->rigidbody_constraint->flag |= RBC_FLAG_NEEDS_VALIDATE;
 
 	/* add constraint to rigid body constraint group */
@@ -2845,7 +2845,7 @@ static Object* do_convert_constraints(FractureModifierData *fmd, RigidBodyShardC
 		iterations = fmd->solver_iterations_override;
 	}
 
-	if (iterations > 0) {
+	if (iterations > 0 && fmd->fracture_mode != MOD_FRACTURE_EXTERNAL) {
 		con->flag |= RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS;
 		con->num_solver_iterations = iterations;
 	}
@@ -2882,12 +2882,12 @@ static Object* do_convert_constraints(FractureModifierData *fmd, RigidBodyShardC
 	}
 
 	/*omit check for existing objects in group, since this seems very slow, and should not be necessary in this internal function*/
-	do_unchecked_constraint_add(scene, rbcon, con->type, reports, *base);
+	do_unchecked_constraint_add(scene, rbcon, con, reports, *base);
 
 	rbcon->rigidbody_constraint->ob1 = ob1;
 	rbcon->rigidbody_constraint->ob2 = ob2;
-	rbcon->rigidbody_constraint->breaking_threshold = con->breaking_threshold;
-	rbcon->rigidbody_constraint->flag |= RBC_FLAG_USE_BREAKING;
+	//rbcon->rigidbody_constraint->breaking_threshold = con->breaking_threshold;
+	//rbcon->rigidbody_constraint->flag |= RBC_FLAG_USE_BREAKING;
 
 	if (con->flag & RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS) {
 		rbcon->rigidbody_constraint->flag |= RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS;
