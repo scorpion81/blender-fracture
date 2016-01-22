@@ -2397,7 +2397,7 @@ short BKE_fracture_collect_materials(Object* o, Object* ob, short matstart, GHas
 {
 	short *totcolp = NULL, k = 0;
 	Material ***matarar = NULL;
-	int j;
+	int j, l = 0;
 
 	/* append materials to target object, if not existing yet */
 	totcolp = give_totcolp(o);
@@ -2412,11 +2412,19 @@ short BKE_fracture_collect_materials(Object* o, Object* ob, short matstart, GHas
 			index = matstart + k;
 			k++;
 		}
+		else
+		{
+			/* dont assign slots for other multi-user materials if already assigned */
+			if ((*matarar)[j]->id.us > 1)
+			{
+				l++;
+			}
+		}
 
 		BLI_ghash_insert(*mat_index_map, SET_INT_IN_POINTER(matstart+j), SET_INT_IN_POINTER(index));
 	}
 
-	return *totcolp;
+	return (*totcolp) - l;
 }
 
 MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own, Object *target, int index, bool update)
