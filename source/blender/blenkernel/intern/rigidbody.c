@@ -1717,18 +1717,15 @@ static void rigidbody_create_shard_physics_constraint(FractureModifierData* fmd,
 						/*plastic mode, activate depending on flag */
 						/* mark immediate activation, so we dont activate again */
 
-						if (rbw->ltime > rbw->pointcache->startframe)
+						if (rbc->flag & RBC_FLAG_USE_PLASTIC)
 						{
-							if (rbc->flag & RBC_FLAG_USE_PLASTIC)
-							{
-								rbc->flag |= RBC_FLAG_PLASTIC_ACTIVE;
-								rigidbody_set_springs_active(rbc, true);
-							}
-							else
-							{
-								rbc->flag &= ~RBC_FLAG_PLASTIC_ACTIVE;
-								rigidbody_set_springs_active(rbc, false);
-							}
+							rbc->flag |= RBC_FLAG_PLASTIC_ACTIVE;
+							rigidbody_set_springs_active(rbc, true);
+						}
+						else
+						{
+							rbc->flag &= ~RBC_FLAG_PLASTIC_ACTIVE;
+							rigidbody_set_springs_active(rbc, false);
 						}
 					}
 				}
@@ -3396,6 +3393,11 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				handle_regular_breaking(fmd, ob, rbw, rbsc, max_con_mass, rebuild);
 			}
 
+			if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
+			{
+				handle_plastic_breaking(rbsc);
+			}
+
 			if (rebuild || rbsc->mi1->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD ||
 				rbsc->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD) {
 				/* World has been rebuilt so rebuild constraint */
@@ -3434,11 +3436,6 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 						}
 					}
 				}
-			}
-
-			if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
-			{
-				handle_plastic_breaking(rbsc);
 			}
 
 			rbsc->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
