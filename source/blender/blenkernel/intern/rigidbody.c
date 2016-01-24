@@ -3200,10 +3200,18 @@ static void handle_breaking_distance(FractureModifierData *fmd, Object *ob, Rigi
 	}
 }
 
-static void handle_plastic_breaking(RigidBodyShardCon *rbsc)
+static void handle_plastic_breaking(RigidBodyShardCon *rbsc, RigidBodyWorld* rbw, short laststeps, float lastscale)
 {
 	float dist, angle, distdiff, anglediff;
 	bool exceededAngle = false, exceededDist = false;
+
+	/*match breaking threshold according to timescale and steps */
+	if (rbsc->physics_constraint)
+	{
+		float step_ratio = (float)rbw->steps_per_second / (float)laststeps;
+		float time_ratio = lastscale / rbw->time_scale;
+		RB_constraint_set_breaking_threshold(rbsc->physics_constraint, (rbsc->breaking_threshold / step_ratio) * time_ratio);
+	}
 
 	calc_dist_angle(rbsc, &dist, &angle, true);
 
@@ -3219,7 +3227,7 @@ static void handle_plastic_breaking(RigidBodyShardCon *rbsc)
 
 	if (exceededDist || exceededAngle)
 	{
-		if (rbsc->type == RBC_TYPE_6DOF_SPRING)
+		if (rbsc->type == RBC_TYPE_6DOF_SPRING && rbsc->plastic_dist >= 0.0f && rbsc->plastic_angle >= 0.0f)
 		{
 			if (!(rbsc->flag & RBC_FLAG_PLASTIC_ACTIVE))
 			{
@@ -3227,7 +3235,10 @@ static void handle_plastic_breaking(RigidBodyShardCon *rbsc)
 				rbsc->flag |= RBC_FLAG_PLASTIC_ACTIVE;
 				rigidbody_set_springs_active(rbsc, true);
 				if (rbsc->physics_constraint)
+				{
 					RB_constraint_set_equilibrium_6dof_spring(rbsc->physics_constraint);
+					RB_constraint_set_enabled(rbsc->physics_constraint, true);
+				}
 			}
 		}
 		else if (rbsc->physics_constraint)
@@ -3306,6 +3317,9 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 	FractureModifierData *fmd = NULL;
 	MeshIsland *mi;
 	RigidBodyShardCon *rbsc;
+	short laststeps = rbw->steps_per_second;
+	float lastscale = rbw->time_scale;
+
 
 	/* check for fractured objects which want to participate first, then handle other normal objects*/
 	for (md = ob->modifiers.first; md; md = md->next) {
@@ -3395,7 +3409,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 
 			if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
 			{
-				handle_plastic_breaking(rbsc);
+				handle_plastic_breaking(rbsc, rbw, laststeps, lastscale);
 			}
 
 			if (rebuild || rbsc->mi1->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD ||
@@ -3439,6 +3453,8 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 			}
 
 			rbsc->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
+			lastscale = rbw->time_scale;
+			laststeps = rbw->steps_per_second;
 		}
 
 		frame = BKE_scene_frame_get(scene);
