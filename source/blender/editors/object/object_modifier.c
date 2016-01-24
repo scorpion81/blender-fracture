@@ -2882,6 +2882,10 @@ static Object* do_convert_constraints(FractureModifierData *fmd, RigidBodyShardC
 	}
 	else
 	{
+		if ((fmd->use_mass_dependent_thresholds)) {
+			BKE_rigidbody_calc_threshold(max_con_mass, fmd, con);
+		}
+
 		/*use same settings as in modifier
 		 *XXX Maybe use the CENTER between objects ? Might be correct for Non fixed constraints*/
 		/* location for fixed constraints doesnt matter, so keep old setting */

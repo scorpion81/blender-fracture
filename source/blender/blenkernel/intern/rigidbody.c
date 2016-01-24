@@ -2354,6 +2354,13 @@ RigidBodyOb *BKE_rigidbody_create_object(Scene *scene, Object *ob, short type, M
 
 	if (mi != NULL && mi->rigidbody != NULL)
 	{
+		rbo->flag = mi->rigidbody->flag;
+
+		rbo->physics_object = NULL;
+		rbo->physics_shape = NULL;
+
+		rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+
 		rbo->type = mi->rigidbody->type;
 		rbo->mass = mi->rigidbody->mass;
 
@@ -3433,7 +3440,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				handle_regular_breaking(fmd, ob, rbw, rbsc, max_con_mass, rebuild);
 			}
 
-			if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
+			if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL && (rbsc->flag & RBC_FLAG_USE_BREAKING))
 			{
 				handle_plastic_breaking(rbsc, rbw, laststeps, lastscale);
 			}
