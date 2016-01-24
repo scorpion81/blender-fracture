@@ -2868,9 +2868,14 @@ static Object* do_convert_constraints(FractureModifierData *fmd, RigidBodyShardC
 	{
 		/*TODO XXX, take own transform into account too*/
 		float loc[3], rot[4], mat[4][4], size[3] = {1.0f, 1.0f, 1.0f};
+		mat4_to_quat(rot, ob->obmat);
+		mul_v3_m4v3(loc, ob->obmat, con->pos);
+		mul_qt_qtqt(rot, rot, con->orn);
 
-		copy_v3_v3(rbcon->loc, con->pos);
-		copy_qt_qt(rbcon->quat, con->orn);
+		copy_v3_v3(rbcon->loc, loc);
+		copy_qt_qt(rbcon->quat, rot);
+		quat_to_eul(rbcon->rot, rot);
+		quat_to_axis_angle(rbcon->rotAxis, &rbcon->rotAngle, rot);
 
 		loc_quat_size_to_mat4(mat, loc, rot, size);
 		copy_m4_m4(rbcon->obmat, mat);
