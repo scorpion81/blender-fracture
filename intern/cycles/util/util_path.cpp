@@ -69,7 +69,13 @@ void path_init(const string& path, const string& user_path)
 
 #ifdef _MSC_VER
 	// fix for https://svn.boost.org/trac/boost/ticket/6320
-	boost::filesystem::path::imbue( std::locale( "" ) );
+
+	/* Note, std::locale("") changes the global locale under windows and this causes a slowdown in
+	 * string operations, noticeable when creating many objects for example,
+	 * so changing to std::locale::classic() instead, seems to work with umlauts for example, too,
+	 * this was a fix for https://developer.blender.org/T37817 */
+
+	boost::filesystem::path::imbue( std::locale::classic() );
 #endif
 }
 
