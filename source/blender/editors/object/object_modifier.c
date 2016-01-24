@@ -2713,9 +2713,9 @@ static Object* do_convert_meshisland_to_object(MeshIsland *mi, Scene* scene, Gro
 		rbw->pointcache->flag |= PTCACHE_OUTDATED;
 		/* make rigidbody object settings */
 		if (ob_new->rigidbody_object == NULL) {
-			ob_new->rigidbody_object = BKE_rigidbody_create_object(scene, ob_new, RBO_TYPE_ACTIVE);
+			ob_new->rigidbody_object = BKE_rigidbody_create_object(scene, ob_new, RBO_TYPE_ACTIVE, mi);
 		}
-		ob_new->rigidbody_object->type = RBO_TYPE_ACTIVE;
+		//ob_new->rigidbody_object->type = RBO_TYPE_ACTIVE;
 		ob_new->rigidbody_object->flag |= RBO_FLAG_NEEDS_VALIDATE;
 
 		/* add object to rigid body group */
@@ -2754,13 +2754,23 @@ static Object* do_convert_meshisland_to_object(MeshIsland *mi, Scene* scene, Gro
 
 	DM_to_mesh(mi->physics_mesh, me, ob_new, CD_MASK_MESH, false);
 
-	/*set origin to centroid*/
-	copy_v3_v3(cent, mi->centroid);
-	mul_m4_v3(ob_new->obmat, cent);
-	copy_v3_v3(ob_new->loc, cent);
+	if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
+	{
+		/*set origin to centroid*/
+		copy_v3_v3(cent, mi->centroid);
+		mul_m4_v3(ob_new->obmat, cent);
+		copy_v3_v3(ob_new->loc, cent);
+	}
+	else
+	{
+		float size[3] = {1.0f, 1.0f, 1.0f};
+		copy_v3_v3(ob_new->loc, mi->rigidbody->pos);
+		copy_qt_qt(ob_new->quat, mi->rigidbody->orn);
+		loc_quat_size_to_mat4(ob_new->obmat, ob_new->loc, ob_new->quat, size);
+	}
 
 	/*set mass*/
-	ob_new->rigidbody_object->mass = mi->rigidbody->mass;
+	//ob_new->rigidbody_object->mass = mi->rigidbody->mass;
 
 	/*store obj indexes in kdtree and objs in array*/
 	BLI_kdtree_insert(*objtree, i, mi->centroid);
@@ -3007,12 +3017,13 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 
-	if (!rmd)
+	if (!rmd || (scene->rigidbody_world && cfra != scene->rigidbody_world->pointcache->startframe))
+	{
+		BKE_report(op->reports, RPT_WARNING, "Unable to convert to objects, either no Fracture Modifier present or not on startframe" );
 		return OPERATOR_CANCELLED;
-
-	if (rmd && scene->rigidbody_world && cfra == scene->rigidbody_world->pointcache->startframe) {
-		convert_modifier_to_objects(op->reports, scene, obact, rmd);
 	}
+
+	convert_modifier_to_objects(op->reports, scene, obact, rmd);
 
 	if (rbw) {
 		/* flatten the cache and throw away all traces of the modifiers */

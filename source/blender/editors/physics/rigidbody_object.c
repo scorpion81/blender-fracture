@@ -115,7 +115,7 @@ bool ED_rigidbody_object_add(Scene *scene, Object *ob, int type, ReportList *rep
 
 	/* make rigidbody object settings */
 	if (ob->rigidbody_object == NULL) {
-		ob->rigidbody_object = BKE_rigidbody_create_object(scene, ob, type);
+		ob->rigidbody_object = BKE_rigidbody_create_object(scene, ob, type, NULL);
 	}
 	ob->rigidbody_object->type = type;
 	ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_VALIDATE;

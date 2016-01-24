@@ -62,7 +62,7 @@ void BKE_rigidbody_relink_constraint(struct RigidBodyCon *rbc);
 
 /* create Blender-side settings data - physics objects not initialized yet */
 struct RigidBodyWorld *BKE_rigidbody_create_world(struct Scene *scene);
-struct RigidBodyOb *BKE_rigidbody_create_object(struct Scene *scene, struct Object *ob, short type);
+struct RigidBodyOb *BKE_rigidbody_create_object(struct Scene *scene, struct Object *ob, short type, struct MeshIsland *mi);
 struct RigidBodyCon *BKE_rigidbody_create_constraint(struct Scene *scene, struct Object *ob, short type, struct RigidBodyShardCon *con);
 struct RigidBodyOb *BKE_rigidbody_create_shard(struct Scene *scene, struct Object *ob, struct Object *target, struct MeshIsland *mi);
 struct RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(struct Scene *scene, short type, bool reset);

@@ -2262,7 +2262,7 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, Object *target
 
 	/* make rigidbody object settings */
 	if (ob->rigidbody_object == NULL) {
-		ob->rigidbody_object = BKE_rigidbody_create_object(scene, ob, RBO_TYPE_ACTIVE);
+		ob->rigidbody_object = BKE_rigidbody_create_object(scene, ob, RBO_TYPE_ACTIVE, NULL);
 	}
 	else {
 		ob->rigidbody_object->type = RBO_TYPE_ACTIVE;
@@ -2335,7 +2335,7 @@ void BKE_rigidbody_world_groups_relink(RigidBodyWorld *rbw)
 }
 
 /* Add rigid body settings to the specified object */
-RigidBodyOb *BKE_rigidbody_create_object(Scene *scene, Object *ob, short type)
+RigidBodyOb *BKE_rigidbody_create_object(Scene *scene, Object *ob, short type, MeshIsland *mi)
 {
 	RigidBodyOb *rbo;
 	RigidBodyWorld *rbw = scene->rigidbody_world;
@@ -2352,39 +2352,65 @@ RigidBodyOb *BKE_rigidbody_create_object(Scene *scene, Object *ob, short type)
 	/* create new settings data, and link it up */
 	rbo = MEM_callocN(sizeof(RigidBodyOb), "RigidBodyOb");
 
-	/* set default settings */
-	rbo->type = type;
+	if (mi != NULL && mi->rigidbody != NULL)
+	{
+		rbo->type = mi->rigidbody->type;
+		rbo->mass = mi->rigidbody->mass;
 
-	rbo->mass = 1.0f;
+		rbo->friction = mi->rigidbody->friction;
+		rbo->restitution = mi->rigidbody->restitution;
 
-	rbo->friction = 0.5f; /* best when non-zero. 0.5 is Bullet default */
-	rbo->restitution = 0.0f; /* best when zero. 0.0 is Bullet default */
+		rbo->margin = mi->rigidbody->margin;
 
-	rbo->margin = 0.04f; /* 0.04 (in meters) is Bullet default */
+		rbo->lin_sleep_thresh = mi->rigidbody->lin_sleep_thresh;
+		rbo->ang_sleep_thresh = mi->rigidbody->ang_sleep_thresh;
+		rbo->force_thresh = mi->rigidbody->force_thresh;
 
-	rbo->lin_sleep_thresh = 0.4f; /* 0.4 is half of Bullet default */
-	rbo->ang_sleep_thresh = 0.5f; /* 0.5 is half of Bullet default */
-	rbo->force_thresh = 0.0f; /*dont activate by force by default */
+		rbo->col_groups = mi->rigidbody->col_groups;
 
-	rbo->lin_damping = 0.04f; /* 0.04 is game engine default */
-	rbo->ang_damping = 0.1f; /* 0.1 is game engine default */
-
-	rbo->col_groups = 1;
-
-	/* use triangle meshes for passive objects
-	 * use convex hulls for active objects since dynamic triangle meshes are very unstable
-	 */
-	if (type == RBO_TYPE_ACTIVE)
-		rbo->shape = RB_SHAPE_CONVEXH;
+		rbo->shape = mi->rigidbody->shape;
+		rbo->mesh_source = mi->rigidbody->mesh_source;
+		rbo->meshisland_index = mi->rigidbody->meshisland_index;
+		copy_v3_v3(rbo->pos, mi->rigidbody->pos);
+		copy_qt_qt(rbo->orn, mi->rigidbody->orn);
+		//mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
+	}
 	else
-		rbo->shape = RB_SHAPE_TRIMESH;
+	{
+		/* set default settings */
+		rbo->type = type;
 
-	rbo->mesh_source = RBO_MESH_DEFORM;
+		rbo->mass = 1.0f;
 
-	/* set initial transform */
-	mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
+		rbo->friction = 0.5f; /* best when non-zero. 0.5 is Bullet default */
+		rbo->restitution = 0.0f; /* best when zero. 0.0 is Bullet default */
 
-	rbo->meshisland_index = -1;
+		rbo->margin = 0.04f; /* 0.04 (in meters) is Bullet default */
+
+		rbo->lin_sleep_thresh = 0.4f; /* 0.4 is half of Bullet default */
+		rbo->ang_sleep_thresh = 0.5f; /* 0.5 is half of Bullet default */
+		rbo->force_thresh = 0.0f; /*dont activate by force by default */
+
+		rbo->lin_damping = 0.04f; /* 0.04 is game engine default */
+		rbo->ang_damping = 0.1f; /* 0.1 is game engine default */
+
+		rbo->col_groups = 1;
+
+		/* use triangle meshes for passive objects
+		 * use convex hulls for active objects since dynamic triangle meshes are very unstable
+		 */
+		if (type == RBO_TYPE_ACTIVE)
+			rbo->shape = RB_SHAPE_CONVEXH;
+		else
+			rbo->shape = RB_SHAPE_TRIMESH;
+
+		rbo->mesh_source = RBO_MESH_DEFORM;
+
+		/* set initial transform */
+		mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
+
+		rbo->meshisland_index = -1;
+	}
 
 	zero_v3(rbo->lin_vel);
 	zero_v3(rbo->ang_vel);
@@ -3510,7 +3536,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 				 * rigid body settings (perhaps it was added manually), add!
 				 *	- assume object to be active? That is the default for newly added settings...
 				 */
-				ob->rigidbody_object = BKE_rigidbody_create_object(scene, ob, RBO_TYPE_ACTIVE);
+				ob->rigidbody_object = BKE_rigidbody_create_object(scene, ob, RBO_TYPE_ACTIVE, NULL);
 				rigidbody_validate_sim_object(rbw, ob, true, true);
 
 				rbo = ob->rigidbody_object;
