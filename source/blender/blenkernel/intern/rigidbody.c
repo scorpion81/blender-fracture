@@ -3375,7 +3375,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 		int count = 0, brokencount = 0, plastic = 0;
 		float frame = 0;
 
-		if (rebuild)
+		if (rebuild || is_zero_m4(fmd->passive_parent_mat))
 		{
 			copy_m4_m4(fmd->passive_parent_mat, ob->obmat);
 		}
@@ -3797,8 +3797,10 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 
 			if (!is_zero_m4(fmd->origmat) && rbw && !(rbw->flag & RBW_FLAG_OBJECT_CHANGED))
 			{
-				//if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
-				copy_m4_m4(ob->obmat, fmd->origmat);
+				if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
+				{
+					copy_m4_m4(ob->obmat, fmd->origmat);
+				}
 			}
 
 			return modFound;

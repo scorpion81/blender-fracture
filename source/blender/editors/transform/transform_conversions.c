@@ -6358,7 +6358,14 @@ void special_aftertrans_update(bContext *C, TransInfo *t)
 				if (md != NULL) {
 					//reset original matrix of modifier
 					fmd = (FractureModifierData*)md;
-					copy_m4_m4(fmd->origmat, td->ext->obmat);
+					if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
+					{
+						copy_m4_m4(fmd->origmat, td->ext->obmat);
+					}
+					else
+					{
+						zero_m4(fmd->origmat);
+					}
 				}
 			}
 		}
