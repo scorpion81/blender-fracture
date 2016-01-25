@@ -1682,6 +1682,7 @@ typedef struct FractureModifierData {
 	float cluster_breaking_angle;
 	float cluster_breaking_distance;
 	float origmat[4][4];
+	float passive_parent_mat[4][4];
 	float breaking_threshold;
 	float cluster_breaking_threshold;
 	float contact_dist;

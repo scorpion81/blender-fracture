@@ -214,6 +214,7 @@ static void rna_Object_internal_update(Main *UNUSED(bmain), Scene *UNUSED(scene)
 	FractureModifierData *fmd = (FractureModifierData*) modifiers_findByType(ob, eModifierType_Fracture);
 	if (fmd) {
 		zero_m4(fmd->origmat);
+		zero_m4(fmd->passive_parent_mat);
 	}
 
 	DAG_id_tag_update(ptr->id.data, OB_RECALC_OB);

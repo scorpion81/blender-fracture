@@ -82,6 +82,7 @@ static void reset_fracturemodifier_matrix(Object* ob, bool do_refresh)
 
 	if (fmd) {
 		zero_m4(fmd->origmat);
+		zero_m4(fmd->passive_parent_mat);
 		fmd->refresh = do_refresh;
 	}
 }

@@ -5160,6 +5160,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 		fmd->visible_mesh = NULL;
 		fmd->visible_mesh_cached = NULL;
 		zero_m4(fmd->origmat);
+		zero_m4(fmd->passive_parent_mat);
 		fmd->meshConstraints.first = NULL;
 		fmd->meshConstraints.last = NULL;
 		fmd->explo_shared = false;
