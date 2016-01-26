@@ -36,6 +36,7 @@
 
 #include "BKE_cdderivedmesh.h"
 #include "BKE_customdata.h"
+#include "BKE_deform.h"
 #include "BKE_DerivedMesh.h"
 #include "BKE_fracture.h"
 #include "BKE_fracture_util.h"
@@ -1658,9 +1659,20 @@ static DerivedMesh* do_create(FractureModifierData *fmd, int num_verts, int num_
 			s = (Shard *)fmd->frac_mesh->shard_map.first;
 		}
 
-		CustomData_merge(&s->vertData, &result->vertData, CD_MASK_MDEFORMVERT, CD_CALLOC, num_verts);
-		CustomData_merge(&s->polyData, &result->polyData, CD_MASK_MTEXPOLY, CD_CALLOC, num_polys);
-		CustomData_merge(&s->loopData, &result->loopData, CD_MASK_MLOOPUV, CD_CALLOC, num_loops);
+		if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
+		{
+			/*keep old behavior for now for older modes */
+			CustomData_merge(&s->vertData, &result->vertData, CD_MASK_MDEFORMVERT, CD_CALLOC, num_verts);
+			CustomData_merge(&s->polyData, &result->polyData, CD_MASK_MTEXPOLY, CD_CALLOC, num_polys);
+			CustomData_merge(&s->loopData, &result->loopData, CD_MASK_MLOOPUV, CD_CALLOC, num_loops);
+		}
+		else
+		{
+			/*just create new empty layers */
+			CustomData_add_layer(&result->vertData, CD_MDEFORMVERT, CD_CALLOC, NULL, num_verts);
+			CustomData_add_layer(&result->polyData, CD_MTEXPOLY, CD_CALLOC, NULL, num_polys);
+			CustomData_add_layer(&result->loopData, CD_MLOOPUV, CD_CALLOC, NULL, num_loops);
+		}
 	}
 
 	vertstart = polystart = loopstart = 0;
@@ -2248,6 +2260,8 @@ static MeshIsland* fracture_shard_to_island(FractureModifierData *fmd, Shard *s,
 	mi->thresh_weight = 0.0f;
 	mi->ground_weight = 0.0f;
 	mi->vertex_count = s->totvert;
+	mi->totcol = 0;
+	mi->totdef = 0;
 
 	//link up the visual mesh verts
 	mi->vertices_cached = MEM_mallocN(sizeof(MVert *) * s->totvert, "vert_cache");
@@ -2315,14 +2329,15 @@ static MeshIsland* fracture_shard_to_island(FractureModifierData *fmd, Shard *s,
 	return mi;
 }
 
-int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, bool do_custom_data)
+int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool do_custom_data)
 {
 	MeshIsland *mi;
 	DerivedMesh *dm = fmd->visible_mesh_cached;
-	int vertstart = 0, totvert = 0, totpoly = 0, polystart = 0, matstart = 1;
+	int vertstart = 0, totvert = 0, totpoly = 0, polystart = 0, matstart = 1, defstart = 0;
 	MVert *mv = NULL;
 	MPoly *mp = NULL, *mpoly = NULL;
-	int j = 0;
+	int i = 0, j = 0;
+	MDeformVert *dvert = NULL;
 
 	if (dm)
 	{
@@ -2341,11 +2356,11 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, bool do_custom_da
 	mv = dm->getVertArray(dm);
 	totvert = dm->getNumVerts(dm);
 	mpoly = dm->getPolyArray(dm);
+	dvert = CustomData_get_layer(&dm->vertData, CD_MDEFORMVERT);
 
 	//update existing island's vert refs, if any...should have used indexes instead :S
 	for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 	{
-		int i = 0;
 		for (i = 0; i < mi->vertex_count; i++)
 		{
 			//just update pointers, dont need to reallocate something
@@ -2374,7 +2389,28 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, bool do_custom_da
 			mi->vertno[3*i] = v->no[0];
 			mi->vertno[3*i+1] = v->no[1];
 			mi->vertno[3*i+2] = v->no[2];
+
+			if (ob && dvert)
+			{
+				int l;
+				MDeformVert *dv = dvert + mi->vertex_indices[i];
+				if (dv && dv->dw)
+				{
+					for (l = 0; l < dv->totweight; l++)
+					{
+						MDeformWeight *dw = dv->dw;
+						//refill mapping data, to make it accessible for each vert (for dumb mapping function)
+						int key = defstart + l;
+						int index = GET_INT_FROM_POINTER(BLI_ghash_lookup(fmd->defgrp_index_map, SET_INT_IN_POINTER(key)));
+						//printf("Got: %d %d\n", key, index);
+						if (dw->def_nr == l)
+							dw->def_nr = index;
+					}
+				}
+			}
 		}
+
+		defstart += mi->totdef;
 
 		totpoly = mi->physics_mesh->getNumPolys(mi->physics_mesh);
 		for (j = 0, mp = mpoly + polystart; j < totpoly; j++, mp++)
@@ -2387,7 +2423,6 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, bool do_custom_da
 				index--;
 
 			mp->mat_nr = index;
-
 		}
 
 		/* fortunately we know how many faces "belong" to this meshisland, too */
@@ -2396,6 +2431,36 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, bool do_custom_da
 	}
 
 	return vertstart;
+}
+
+short fracture_collect_defgrp(Object* o, Object* ob, short defstart, GHash** def_index_map)
+{
+	bDeformGroup *vgroup, *ngroup;
+	int k = 0;
+
+	/* create vertexgroups on new object, if they dont exist already there*/
+	for (vgroup = o->defbase.first; vgroup; vgroup = vgroup->next) {
+		int index = defgroup_name_index(ob, vgroup->name);
+		int key = defstart + k;
+
+		if (index == -1) {
+			// old group index + defstart to make it somehow linearized
+			ngroup = MEM_callocN(sizeof(bDeformGroup), "collect deformGroup");
+			memcpy(ngroup, vgroup, sizeof(bDeformGroup));
+			BLI_addtail(&ob->defbase, ngroup);
+			index = BLI_listbase_count(&ob->defbase)-1;
+		}
+
+		if (!BLI_ghash_haskey(*def_index_map, SET_INT_IN_POINTER(key)))
+			BLI_ghash_insert(*def_index_map, SET_INT_IN_POINTER(key), SET_INT_IN_POINTER(index));
+
+		k++;
+	}
+
+	if (ob->defbase.first && ob->actdef == 0)
+		ob->actdef = 1;
+
+	return k;
 }
 
 short BKE_fracture_collect_materials(Object* o, Object* ob, short matstart, GHash** mat_index_map)
@@ -2410,6 +2475,7 @@ short BKE_fracture_collect_materials(Object* o, Object* ob, short matstart, GHas
 
 	for (j = 0; j < *totcolp; j++)
 	{
+		void *key;
 		int index = find_material_index(ob, (*matarar)[j]);
 		if (index == 0)
 		{
@@ -2426,7 +2492,9 @@ short BKE_fracture_collect_materials(Object* o, Object* ob, short matstart, GHas
 			}
 		}
 
-		BLI_ghash_insert(*mat_index_map, SET_INT_IN_POINTER(matstart+j), SET_INT_IN_POINTER(index));
+		key = SET_INT_IN_POINTER(matstart+j);
+		if (!BLI_ghash_haskey(*mat_index_map, key))
+			BLI_ghash_insert(*mat_index_map, key, SET_INT_IN_POINTER(index));
 	}
 
 	return (*totcolp) - l;
@@ -2438,15 +2506,20 @@ MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own,
 	Shard *s;
 	int vertstart = 0;
 	float loc[3], rot[4];
-	short totcol = 0;
+	short totcol = 0, totdef = 0;
 
-	if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL || own->type != OB_MESH)
+	if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL || own->type != OB_MESH || !own->data)
+		return NULL;
+
+	if (target->type != OB_MESH || !target->data)
 		return NULL;
 
 	s = fracture_object_to_shard(own, target);
 	fracture_update_shards(fmd, s, index);
+
+	//XXXXX TODO, remove update parameter again, it causes trouble and is almost never used
 	if (update) {
-		vertstart = BKE_fracture_update_visual_mesh(fmd, true);
+		vertstart = BKE_fracture_update_visual_mesh(fmd, own, true);
 	}
 	else
 	{
@@ -2485,6 +2558,21 @@ MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own,
 	mi->totcol = totcol;
 
 	/*XXXXX TODO deal with material deletion, and reorder (in material code) */
+
+	//handle vertexgroups, too
+	if (!fmd->defgrp_index_map)
+	{
+		fmd->defgrp_index_map = BLI_ghash_int_new("defgrp_index_map");
+		fmd->defstart = 0;
+	}
+
+	totdef = fracture_collect_defgrp(target, own, fmd->defstart, &fmd->defgrp_index_map);
+	if (totdef < 0)
+		totdef = 0;
+	fmd->defstart += totdef;
+	mi->totdef = totdef;
+
+	//XXX TODO handle UVs, shapekeys and more ?
 
 	return mi;
 }
@@ -2586,7 +2674,7 @@ void BKE_fracture_mesh_island_remove(FractureModifierData *fmd, MeshIsland *mi, 
 			BKE_fracture_free_mesh_island(fmd, mi, true);
 
 			if (update)
-				BKE_fracture_update_visual_mesh(fmd, true);
+				BKE_fracture_update_visual_mesh(fmd, NULL, true);
 		}
 	}
 }
@@ -2626,6 +2714,13 @@ void BKE_fracture_mesh_island_remove_all(FractureModifierData *fmd)
 		BLI_ghash_free(fmd->material_index_map, NULL, NULL);
 		fmd->material_index_map = NULL;
 		fmd->matstart = 1;
+	}
+
+	if (fmd->defgrp_index_map)
+	{
+		BLI_ghash_free(fmd->defgrp_index_map, NULL, NULL);
+		fmd->defgrp_index_map = NULL;
+		fmd->defstart = 0;
 	}
 }
 

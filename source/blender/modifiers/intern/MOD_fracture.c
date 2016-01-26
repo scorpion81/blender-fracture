@@ -283,7 +283,9 @@ static void free_shards(FractureModifierData *fmd)
 {
 	if (fmd->frac_mesh) {
 
-		if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED) {
+		if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED ||
+		    fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
+		{
 			BKE_fracmesh_free(fmd->frac_mesh, true);
 			MEM_freeN(fmd->frac_mesh);
 			fmd->frac_mesh = NULL;
@@ -319,6 +321,13 @@ static void free_modifier(FractureModifierData *fmd, bool do_free_seq)
 		fmd->matstart = 1;
 	}
 
+	if (fmd->defgrp_index_map)
+	{
+		BLI_ghash_free(fmd->defgrp_index_map, NULL, NULL);
+		fmd->defgrp_index_map = NULL;
+		fmd->defstart = 0;
+	}
+
 	if (fmd->vertex_island_map) {
 		BLI_ghash_free(fmd->vertex_island_map, NULL, NULL);
 		fmd->vertex_island_map = NULL;
@@ -349,6 +358,9 @@ static void free_modifier(FractureModifierData *fmd, bool do_free_seq)
 			fmd->visible_mesh_cached->release(fmd->visible_mesh_cached);
 			fmd->visible_mesh_cached = NULL;
 		}
+
+		if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
+			free_shards(fmd);
 	}
 	else
 	{
@@ -4240,7 +4252,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 		if (!fmd->visible_mesh_cached)
 		{
-			BKE_fracture_update_visual_mesh(fmd, true);
+			BKE_fracture_update_visual_mesh(fmd, ob, true);
 		}
 
 		if (fmd->visible_mesh_cached)

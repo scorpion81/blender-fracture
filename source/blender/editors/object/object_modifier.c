@@ -2449,7 +2449,7 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 			dm = rmd->visible_mesh_cached = NULL;
 		}
 
-		BKE_fracture_update_visual_mesh(rmd, true);
+		BKE_fracture_update_visual_mesh(rmd, obact, true);
 	}
 
 	if (scene->rigidbody_world != NULL)

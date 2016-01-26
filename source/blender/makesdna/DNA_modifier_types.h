@@ -1437,7 +1437,8 @@ typedef struct MeshIsland {
 	int linear_index;  /* index in rigidbody world */
 	int particle_index;
 	int totcol; /*store number of used materials here, from the original object*/
-	char pad[8];
+	int totdef; /*store number of used vertexgroups here, from the original object*/
+	char pad[4];
 } MeshIsland;
 
 
@@ -1645,6 +1646,7 @@ typedef struct FractureModifierData {
 	struct GHash *vert_index_map; /*used for autoconversion of former objects to clusters, marks object membership of each vert*/
 	struct GHash *vertex_island_map; /* used for constraint building based on vertex proximity, temporary data */
 	struct GHash *material_index_map; /* used to collect materials from objects to be packed, temporary data */
+	struct GHash *defgrp_index_map; /*used to collect vertexgroups from objects to be packed, temporary data */
 	ListBase shard_sequence; /* used as mesh cache / history for dynamic fracturing, for shards (necessary for conversion to DM) */
 	ListBase meshIsland_sequence; /* used as mesh cache / history for dynamic fracturing, for meshIslands (necessary for loc/rot "pointcache") */
 	ShardSequence *current_shard_entry; /*volatile storage of current shard entry, so we dont have to search in the list */
@@ -1739,8 +1741,9 @@ typedef struct FractureModifierData {
 	/*DANGER... what happens if the new compound object has more materials than fit into 1 short ? shouldnt happen but can...*/
 	/*so reserve an int here better */
 	int matstart;
+	int defstart;
 
-	//char pad[4];
+	char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

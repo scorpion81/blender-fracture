@@ -2922,6 +2922,37 @@ static void rigidbody_update_sim_world(Scene *scene, RigidBodyWorld *rbw)
 	}
 }
 
+static void rigidbody_passive_fake_hook(MeshIsland *mi, MVert *mv)
+{
+	//no reshape necessary as vertcount didnt change, but update rbo->pos / orn ? according to change of 1st vertex
+	//fake hook system
+	if (mv && mi->rigidbody->type == RBO_TYPE_PASSIVE &&
+	    mi->rigidbody->physics_object && !(mi->rigidbody->flag & RBO_FLAG_KINEMATIC))
+	{
+		float oldloc[3], loc[3], diff[3], pos[3];
+		oldloc[0] = mi->vertco[0];
+		oldloc[1] = mi->vertco[1];
+		oldloc[2] = mi->vertco[2];
+
+		//this location comes from the final DM, which might be changed by hook modifiers for example
+		//XXX TODO maybe need a proper switch for this behavior, too
+		copy_v3_v3(loc, mv->co);
+		sub_v3_v3v3(diff, oldloc, loc);
+		//sub_v3_v3(diff, mi->centroid);
+
+		//RB_body_get_position(mi->rigidbody->physics_object, pos);
+		copy_v3_v3(pos, mi->rigidbody->pos);
+		//print_v3("Pos:", pos);
+		//print_v3("Diff", diff);
+
+		sub_v3_v3(pos, diff);
+		RB_body_set_kinematic_state(mi->rigidbody->physics_object, true);
+
+		//XXX TODO how to handle rotation properly ? and omit if kinematic, else it will interfere
+		RB_body_set_loc_rot(mi->rigidbody->physics_object, pos, mi->rigidbody->orn);
+	}
+}
+
 static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *ob, RigidBodyOb *rbo, float centroid[3], MeshIsland *mi)
 {
 	float loc[3];
@@ -2951,9 +2982,17 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 			{
 				if (mi != NULL)
 				{
-					//fracture modifier case TODO, update mi->physicsmesh somehow and redraw
-					rbo->flag |= RBO_FLAG_NEEDS_RESHAPE;
-					validateShard(rbw, mi, ob, false, false);
+					if (mi->rigidbody->type == RBO_TYPE_PASSIVE)
+					{
+						MVert *mv = mvert + mi->vertex_indices[0];
+						rigidbody_passive_fake_hook(mi, mv);
+					}
+					else
+					{
+						//fracture modifier case TODO, update mi->physicsmesh somehow and redraw
+						rbo->flag |= RBO_FLAG_NEEDS_RESHAPE;
+						validateShard(rbw, mi, ob, false, false);
+					}
 				}
 				else
 				{
@@ -3911,6 +3950,7 @@ void rigidbody_passive_fake_parenting(FractureModifierData *fmd, Object *ob, Rig
 		mul_m4_v3(ob->obmat, rbo->pos);
 		mul_qt_qtqt(rbo->orn, quat, rbo->orn);
 
+		RB_body_set_kinematic_state(rbo->physics_object, true);
 		RB_body_set_loc_rot(rbo->physics_object, rbo->pos, rbo->orn);
 	}
 }
@@ -3957,7 +3997,7 @@ static bool restoreKinematic(RigidBodyWorld *rbw)
 		if ((go->ob) && (go->ob->rigidbody_object) && (go->ob->rigidbody_object->flag & (RBO_FLAG_KINEMATIC | RBO_FLAG_USE_KINEMATIC_DEACTIVATION)))
 		{
 			FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(go->ob, eModifierType_Fracture);
-			if (fmd && go->ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC)
+			if (fmd && fmd->fracture_mode != MOD_FRACTURE_EXTERNAL && go->ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC)
 			{
 				MeshIsland* mi;
 				for (mi = fmd->meshIslands.first; mi; mi = mi->next)
