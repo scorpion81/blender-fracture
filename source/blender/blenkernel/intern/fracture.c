@@ -2382,7 +2382,12 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, bool do_custom_da
 			/* material index lookup and correction, avoid having the same material in different slots */
 			int index = GET_INT_FROM_POINTER(BLI_ghash_lookup(fmd->material_index_map,
 			                                 SET_INT_IN_POINTER(mp->mat_nr + matstart)));
-			mp->mat_nr = index-1;
+
+			if (index > 0)
+				index--;
+
+			mp->mat_nr = index;
+
 		}
 
 		/* fortunately we know how many faces "belong" to this meshisland, too */
@@ -2627,6 +2632,9 @@ void BKE_fracture_mesh_island_remove_all(FractureModifierData *fmd)
 RigidBodyShardCon *BKE_fracture_mesh_islands_connect(FractureModifierData *fmd, MeshIsland *mi1, MeshIsland *mi2, short con_type, int index)
 {
 	RigidBodyShardCon *rbsc;
+
+	if (mi1 == NULL || mi2 == NULL)
+		return NULL;
 
 	rbsc = BKE_rigidbody_create_shard_constraint(fmd->modifier.scene, con_type, false);
 	rbsc->mi1 = mi1;
