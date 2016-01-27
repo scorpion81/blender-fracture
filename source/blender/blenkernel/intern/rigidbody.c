@@ -3767,6 +3767,8 @@ static void rigidbody_passive_hook(FractureModifierData *fmd, MeshIsland *mi, Ob
 		if (dm)
 		{
 			int totvert = dm->getNumVerts(dm);
+			float acc[3];
+			dm->getVertCo(dm, mi->vertex_indices[0], acc);
 
 			for (md = ob->modifiers.first; md; md = md->next)
 			{
@@ -3781,7 +3783,7 @@ static void rigidbody_passive_hook(FractureModifierData *fmd, MeshIsland *mi, Ob
 				//only eval following hookmodifiers, based on our derivedmesh
 				if (md->type == eModifierType_Hook && found)
 				{
-					float (*vertexCos)[3];
+					float (*vertexCos)[3], old[3], diff[3];
 					const ModifierTypeInfo *mti = modifierType_getInfo(md->type);
 					HookModifierData *hmd = (HookModifierData*)md;
 
@@ -3791,13 +3793,17 @@ static void rigidbody_passive_hook(FractureModifierData *fmd, MeshIsland *mi, Ob
 
 					vertexCos = MEM_callocN(sizeof(float) * 3 * totvert, "Vertex Cos");
 					dm->getVertCos(dm, vertexCos);
+					copy_v3_v3(old, vertexCos[mi->vertex_indices[0]]);
 
 					mti->deformVerts(md, ob, dm, vertexCos, totvert, 0);
-					rigidbody_passive_fake_hook(mi, vertexCos[mi->vertex_indices[0]]);
 
+					sub_v3_v3v3(diff, vertexCos[mi->vertex_indices[0]], old);
+					add_v3_v3(acc, diff);
 					MEM_freeN(vertexCos);
 				}
 			}
+
+			rigidbody_passive_fake_hook(mi, acc);
 		}
 	}
 }
