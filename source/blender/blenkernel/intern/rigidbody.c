@@ -3757,6 +3757,7 @@ bool BKE_rigidbody_check_sim_running(RigidBodyWorld *rbw, float ctime)
 static void rigidbody_passive_hook(FractureModifierData *fmd, MeshIsland *mi, Object* ob)
 {
 	RigidBodyOb *rbo = mi->rigidbody;
+	Scene *scene = fmd->modifier.scene;
 
 	if (rbo->type == RBO_TYPE_PASSIVE && !(rbo->flag & RBO_FLAG_KINEMATIC))
 	{
@@ -3790,6 +3791,8 @@ static void rigidbody_passive_hook(FractureModifierData *fmd, MeshIsland *mi, Ob
 					//skip hook modifiers which were just added and arent valid yet
 					if (!hmd->object)
 						continue;
+
+					BKE_object_where_is_calc(scene, hmd->object);
 
 					vertexCos = MEM_callocN(sizeof(float) * 3 * totvert, "Vertex Cos");
 					dm->getVertCos(dm, vertexCos);
