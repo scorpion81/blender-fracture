@@ -87,6 +87,7 @@ static DerivedMesh* do_prefractured(FractureModifierData *fmd, Object *ob, Deriv
 static void do_prehalving(FractureModifierData *fmd, Object* ob, DerivedMesh* derivedData);
 static Shard* copy_shard(Shard *s);
 
+//TODO XXX Make BKE
 static FracMesh* copy_fracmesh(FracMesh* fm)
 {
 	FracMesh *fmesh;
@@ -94,7 +95,6 @@ static FracMesh* copy_fracmesh(FracMesh* fm)
 	int i = 0;
 
 	fmesh = MEM_mallocN(sizeof(FracMesh), __func__);
-	//BLI_duplicatelist(&fmesh->shard_map, &fm->shard_map);
 	fmesh->shard_map.first = NULL;
 	fmesh->shard_map.last = NULL;
 
@@ -216,6 +216,7 @@ static void initData(ModifierData *md)
 	fmd->constraint_count = 0;
 }
 
+//XXX TODO, freeing functionality should be in BKE too
 static void free_meshislands(FractureModifierData* fmd, ListBase* meshIslands)
 {
 	MeshIsland *mi;
@@ -424,6 +425,7 @@ static void freeData(ModifierData *md)
 	free_shards(fmd);
 }
 
+//XXX TODO move cluster handling to BKE too
 static void do_cluster_count(FractureModifierData *fmd)
 {
 	int k = 0;
@@ -525,6 +527,7 @@ static void do_clusters(FractureModifierData *fmd, Object* obj)
 	}
 }
 
+//XXXX TODO same applies for autohide prep and normals fixing, latter could be a separate operator or so, called from refresh op
 static KDTree *build_nor_tree(DerivedMesh *dm)
 {
 	int i = 0, totvert = dm->getNumVerts(dm);
@@ -577,6 +580,7 @@ static void find_normal(DerivedMesh *dm, KDTree *tree, float co[3], short no[3],
 	copy_v3_v3_short(rno, mvert.no);
 }
 
+//Move to BKE too, TODO XXXX
 static DerivedMesh *get_clean_dm(Object *ob, DerivedMesh *dm)
 {
 	/* may have messed up meshes from conversion */
@@ -599,6 +603,7 @@ static DerivedMesh *get_clean_dm(Object *ob, DerivedMesh *dm)
 	return dm;
 }
 
+//XXX TODO plan is to get rid of this, since we have a packing mechanism now, but wrap that functionality to useful op (via C, python api is optional)
 static int getGroupObjects(Group *gr, Object ***obs, int g_exist)
 {
 	int ctr = g_exist;
@@ -632,34 +637,6 @@ static DerivedMesh* get_object_dm(Object* o)
 
 	return dm_ob;
 }
-
-#if 0
-static short collect_materials(Object* o, Object* ob, short matstart, GHash** mat_index_map)
-{
-	short *totcolp = NULL, k = 0;
-	Material ***matarar = NULL;
-	int j;
-
-	/* append materials to target object, if not existing yet */
-	totcolp = give_totcolp(o);
-	matarar = give_matarar(o);
-
-	for (j = 0; j < *totcolp; j++)
-	{
-		int index = find_material_index(ob, (*matarar)[j]);
-		if (index == 0)
-		{
-			assign_material(ob, (*matarar)[j], matstart + k, BKE_MAT_ASSIGN_USERPREF);
-			index = matstart + k;
-			k++;
-		}
-
-		BLI_ghash_insert(*mat_index_map, SET_INT_IN_POINTER(matstart+j), SET_INT_IN_POINTER(index));
-	}
-
-	return *totcolp;
-}
-#endif
 
 static void adjustPolys(MPoly **mpoly, DerivedMesh *dm_ob, GHash *mat_index_map, short matstart, int loopstart, int polystart, DerivedMesh* result)
 {
@@ -846,6 +823,7 @@ static DerivedMesh *get_group_dm(FractureModifierData *fmd, DerivedMesh *dm, Obj
 	return dm;
 }
 
+//XXX MOve to BKE_Fracture.h / fracture.c, prefracture stuff should be a function called from op, or in dynamic case from Rigidbody system callback
 static void points_from_verts(Object **ob, int totobj, FracPointCloud *points, float mat[4][4], float thresh, FractureModifierData *emd, DerivedMesh *dm, Object *obj)
 {
 	int v, o, pt = points->totpoints;
@@ -875,7 +853,7 @@ static void points_from_verts(Object **ob, int totobj, FracPointCloud *points, f
 
 					copy_v3_v3(co, vert[v].co);
 
-
+					//XXXX TODO, own verts transform seems to have a bug here as well
 					if (emd->point_source & MOD_FRACTURE_EXTRA_VERTS) {
 						mul_m4_v3(ob[o]->obmat, co);
 					}
@@ -951,6 +929,7 @@ static void points_from_particles(Object **ob, int totobj, Scene *scene, FracPoi
 	points->totpoints = pt;
 }
 
+//XXX TODO maybe remove, hardly used
 static void points_from_greasepencil(Object **ob, int totobj, FracPointCloud *points, float mat[4][4], float thresh)
 {
 	bGPDlayer *gpl;
@@ -1094,6 +1073,7 @@ static Material* find_material(const char* name)
 	return BKE_material_add(G.main, name);
 }
 
+//splinter handling is a case for BKE too
 static Shard* do_splinters(FractureModifierData *fmd, FracPointCloud points, float(*mat)[4][4], ShardID id, DerivedMesh *dm)
 {
 	float imat[4][4];
@@ -1155,6 +1135,7 @@ static Shard* do_splinters(FractureModifierData *fmd, FracPointCloud points, flo
 	return s;
 }
 
+//so is material handling too, XXX TODO move to BKE
 static short do_materials(FractureModifierData *fmd, Object* obj)
 {
 	short mat_index = 0;
@@ -1249,6 +1230,7 @@ static void cleanup_splinters(FractureModifierData *fmd, float mat[4][4], Shard 
 	}
 }
 
+//this is the main fracture function, outsource to BKE, so op or rb system can call it
 static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, DerivedMesh *dm)
 {
 	/* dummy point cloud, random */
@@ -1323,7 +1305,7 @@ static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, Deri
 	MEM_freeN(points.points);
 }
 
-
+//XXX todo, simplify to copy generic stuff, maybe take shards over even, but re-init the meshisland verts as in packing system
 static void copyData(ModifierData *md, ModifierData *target)
 {
 	FractureModifierData *rmd  = (FractureModifierData *)md;
@@ -1429,6 +1411,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->autohide_filter_group = rmd->autohide_filter_group;
 }
 
+//XXXX TODO, is BB really useds still ? aint there exact volume calc now ?
 /* mi->bb, its for volume fraction calculation.... */
 static float bbox_vol(BoundBox *bb)
 {
@@ -1454,6 +1437,7 @@ static void bbox_dim(BoundBox *bb, float dim[3])
 	dim[2] = len_v3(z);
 }
 
+//This still necessary ? if yes move to fracture.c for now
 static int BM_calc_center_centroid(BMesh *bm, float cent[3], int tagged)
 {
 	BMFace *f;
@@ -1485,6 +1469,8 @@ static int BM_calc_center_centroid(BMesh *bm, float cent[3], int tagged)
 	return (bm->totface != 0);
 }
 
+
+//XXX THose are double functionality.... one should be enough
 static int DM_mesh_minmax(DerivedMesh *dm, float r_min[3], float r_max[3])
 {
 	MVert *v;
@@ -1512,6 +1498,7 @@ static int BM_mesh_minmax(BMesh *bm, float r_min[3], float r_max[3], int tagged)
 	return (bm->totvert != 0);
 }
 
+//XXX BKE
 static int do_shard_to_island(FractureModifierData *fmd, BMesh* bm_new)
 {
 	DerivedMesh *dmtemp;
@@ -1540,6 +1527,7 @@ static int do_shard_to_island(FractureModifierData *fmd, BMesh* bm_new)
 	return -1;
 }
 
+//bke
 static void do_rigidbody(FractureModifierData *fmd, MeshIsland* mi, Object* ob, DerivedMesh *orig_dm, short rb_type, int i)
 {
 	mi->rigidbody = NULL;
@@ -3638,6 +3626,7 @@ static void add_new_entries(FractureModifierData* fmd, DerivedMesh *dm, Object* 
 	fmd->meshIslands = fmd->current_mi_entry->meshIslands;
 }
 
+#if 0
 static void check_shard_vertexgroup(ListBase *lb, Shard*s, int index)
 {
 	//check first vertex's group...
@@ -3751,7 +3740,6 @@ static FractureSetting* create_default_setting(bDeformGroup *vgroup)
 	return fs;
 }
 
-#if 0
 static bool detect_vgroups(FractureModifierData *fmd, Object *ob)
 {
 	//use silly name prefix... S_, because other vgroups may exist too
@@ -3805,6 +3793,7 @@ static bool detect_vgroups(FractureModifierData *fmd, Object *ob)
 
 static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 {
+	/*TODO_1 refresh, move to BKE and just call from operator for prefractured case*/
 	if (fmd->refresh)
 	{
 		printf("ADD NEW 1: %s \n", ob->id.name);
@@ -3824,16 +3813,8 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 		}
 
 		if (fmd->frac_mesh != NULL) {
-			if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED) {
-				/* in prefracture case, we can free this */
-#if 0
-				BKE_fracmesh_free(fmd->frac_mesh, true);
-				MEM_freeN(fmd->frac_mesh);
-				fmd->frac_mesh = NULL;
-#endif
-			}
-			else
-			{	/*MOD_FRACTURE_DYNAMIC*/
+			if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC) {
+			{
 				/* in dynamic case, we add a sequence step here and move the "current" pointers*/
 				if (!fmd->dm) {
 					BKE_fracture_create_dm(fmd, true);
@@ -3846,12 +3827,9 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 		if (fmd->frac_mesh == NULL) {
 			if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
 			{
-				if (!fmd->frac_mesh)
-				{
-					fmd->frac_mesh = BKE_create_fracture_container();
-				}
+				fmd->frac_mesh = BKE_create_fracture_container();
 			}
-			else /*(fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)*/ {
+			else {
 				add_new_entries(fmd, dm, ob);
 			}
 
@@ -3896,10 +3874,11 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 #endif
 
 		//then check settings
-		if (BLI_listbase_is_empty(&fmd->fracture_settings))
+//		if (BLI_listbase_is_empty(&fmd->fracture_settings))
 		{
 			do_fracture(fmd, -1, ob, dm);
 		}
+#if 0
 		else
 		{
 			//fracture all settings
@@ -3922,10 +3901,12 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 				//fracture only active index
 				fracture_per_setting(fmd, ob, dm, fmd->active_setting);
 			}
+#endif
 		}
 	}
 	else
 	{
+		/* TODO_2 dynamic, this is called from rigidbody system only !!! so move out of the md loop as well, to BKE */
 		int frame = (int)BKE_scene_frame_get(fmd->modifier.scene);
 
 		if (!(BKE_lookup_mesh_state(fmd, frame, false)))
@@ -3974,6 +3955,8 @@ static DerivedMesh *do_prefractured(FractureModifierData *fmd, Object *ob, Deriv
 	DerivedMesh *group_dm = get_group_dm(fmd, derivedData, ob);
 	DerivedMesh *clean_dm = get_clean_dm(ob, group_dm);
 
+	/* TODO_3, this must not be needed, for interactive preview make sure this gets called from transform ops, or keep here as exception for now,
+	 * this might be simpler */
 	/* disable that automatically if sim is started, but must be re-enabled manually */
 	if (BKE_rigidbody_check_sim_running(fmd->modifier.scene->rigidbody_world, BKE_scene_frame_get(fmd->modifier.scene))) {
 		fmd->auto_execute = false;
@@ -3983,6 +3966,9 @@ static DerivedMesh *do_prefractured(FractureModifierData *fmd, Object *ob, Deriv
 		fmd->refresh = true;
 	}
 
+	/* TODO_4, for proper threading / job support make sure to use locks, spinlocks, and if possible remove those running / cancel flags */
+	/* make this local data in job struct maybe, fracturing could perhaps run parallel, but assembling the shards to a derivedmesh not, since
+	* addition order matters */
 	if (fmd->frac_mesh != NULL && fmd->frac_mesh->running == 1 && fmd->execute_threaded) {
 		/* skip modifier execution when fracture job is running */
 		return final_dm;
@@ -3997,6 +3983,8 @@ static DerivedMesh *do_prefractured(FractureModifierData *fmd, Object *ob, Deriv
 		}
 	}
 
+	/* TODO_5, get rid of fmd->dm and perhaps of fmd->visible_mesh (BMESH!) too, the latter should be runtime data for creating islands ONLY */
+	/* we should ideally only have one cached derivedmesh */
 	if (fmd->dm && fmd->frac_mesh && (fmd->dm->getNumPolys(fmd->dm) > 0)) {
 		final_dm = doSimulate(fmd, ob, fmd->dm, clean_dm);
 	}
@@ -4011,6 +3999,7 @@ static DerivedMesh *do_prefractured(FractureModifierData *fmd, Object *ob, Deriv
 		clean_dm->release(clean_dm);
 	}
 
+	/* TODO_6 get rid of combine FM Meshes, either replace by external constraints (hard) or rely on packing mechanism and convert to objects before (via C) */
 	if ((group_dm != derivedData) && (group_dm != final_dm))
 	{
 		group_dm->needsFree = 1;
@@ -4068,6 +4057,7 @@ static Shard* copy_shard(Shard *s)
 	return t;
 }
 
+#if 0
 static bool check_first_shards(FractureModifierData *fmd)
 {
 	int num_settings = BLI_listbase_count(&fmd->fracture_settings);
@@ -4206,6 +4196,7 @@ static void do_prehalving(FractureModifierData *fmd, Object* ob, DerivedMesh* de
 		group_dm->release(group_dm);
 	}
 }
+#endif
 
 static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
                                   DerivedMesh *derivedData,

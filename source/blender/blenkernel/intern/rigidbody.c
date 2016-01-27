@@ -78,6 +78,7 @@
 static void resetDynamic(RigidBodyWorld *rbw);
 static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int rebuild, int transfer_speed);
 static void rigidbody_passive_fake_parenting(FractureModifierData *fmd, Object *ob, RigidBodyOb *rbo);
+static void handle_passive_transform(FractureModifierData *fmd, MeshIsland *mi, Object* ob);
 
 
 static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED(rbw), MeshIsland *UNUSED(mi), Object *UNUSED(ob))
@@ -475,7 +476,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 	invert_m4_m4(ob->imat, ob->obmat);
 	mat4_to_size(size, ob->obmat);
 
-	if (rmd->fracture_mode == MOD_FRACTURE_PREFRACTURED) {
+	if (rmd->fracture_mode == MOD_FRACTURE_PREFRACTURED && frame > -1) {
 		/*record only in prefracture case here, when you want to convert to keyframes*/
 		n = frame - mi->start_frame + 1;
 
@@ -2922,11 +2923,11 @@ static void rigidbody_update_sim_world(Scene *scene, RigidBodyWorld *rbw)
 	}
 }
 
-static void rigidbody_passive_fake_hook(MeshIsland *mi, MVert *mv)
+static void rigidbody_passive_fake_hook(MeshIsland *mi, float co[3], FractureModifierData *fmd, Object *ob)
 {
 	//no reshape necessary as vertcount didnt change, but update rbo->pos / orn ? according to change of 1st vertex
 	//fake hook system
-	if (mv && mi->rigidbody->type == RBO_TYPE_PASSIVE &&
+	if (mi->rigidbody->type == RBO_TYPE_PASSIVE &&
 	    mi->rigidbody->physics_object && !(mi->rigidbody->flag & RBO_FLAG_KINEMATIC))
 	{
 		float oldloc[3], loc[3], diff[3], pos[3];
@@ -2936,7 +2937,7 @@ static void rigidbody_passive_fake_hook(MeshIsland *mi, MVert *mv)
 
 		//this location comes from the final DM, which might be changed by hook modifiers for example
 		//XXX TODO maybe need a proper switch for this behavior, too
-		copy_v3_v3(loc, mv->co);
+		copy_v3_v3(loc, co);
 		sub_v3_v3v3(diff, oldloc, loc);
 		//sub_v3_v3(diff, mi->centroid);
 
@@ -2949,7 +2950,9 @@ static void rigidbody_passive_fake_hook(MeshIsland *mi, MVert *mv)
 		RB_body_set_kinematic_state(mi->rigidbody->physics_object, true);
 
 		//XXX TODO how to handle rotation properly ? and omit if kinematic, else it will interfere
+		//copy_v3_v3(mi->rigidbody->pos, pos);
 		RB_body_set_loc_rot(mi->rigidbody->physics_object, pos, mi->rigidbody->orn);
+		//BKE_rigidbody_update_cell(mi, ob, pos, mi->rigidbody->orn, fmd, -1);
 	}
 }
 
@@ -2982,12 +2985,14 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 			{
 				if (mi != NULL)
 				{
+#if 0
 					if (mi->rigidbody->type == RBO_TYPE_PASSIVE)
 					{
 						MVert *mv = mvert + mi->vertex_indices[0];
 						rigidbody_passive_fake_hook(mi, mv);
 					}
 					else
+#endif
 					{
 						//fracture modifier case TODO, update mi->physicsmesh somehow and redraw
 						rbo->flag |= RBO_FLAG_NEEDS_RESHAPE;
@@ -3414,16 +3419,6 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 		int count = 0, brokencount = 0, plastic = 0;
 		float frame = 0;
 
-		if (rebuild || is_zero_m4(fmd->passive_parent_mat))
-		{
-			copy_m4_m4(fmd->passive_parent_mat, ob->obmat);
-		}
-
-		//print_m4("Obmat: \n", ob->obmat);
-		//print_m4("Passivemat: \n", fmd->passive_parent_mat);
-
-		BKE_object_where_is_calc(scene, ob);
-
 		if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
 			int frame = (int)BKE_scene_frame_get(scene);
@@ -3432,12 +3427,18 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				BKE_rigidbody_update_ob_array(rbw);
 			}
 		}
+		else
+		{
+			if (rebuild || is_zero_m4(fmd->passive_parent_mat))
+			{
+				copy_m4_m4(fmd->passive_parent_mat, ob->obmat);
+			}
 
-		//count = BLI_listbase_count(&fmd->meshIslands);
+			//print_m4("Obmat: \n", ob->obmat);
+			//print_m4("Passivemat: \n", fmd->passive_parent_mat);
 
-		//if (fmd->use_compounds && rebuild)
-			/*create compound */
-		//	compound = RB_shape_new_compound();
+			BKE_object_where_is_calc(scene, ob);
+		}
 
 		for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 			if (mi->rigidbody == NULL) {
@@ -3455,6 +3456,8 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 					zero_v3(mi->rigidbody->lin_vel);
 					zero_v3(mi->rigidbody->ang_vel);
 				}
+
+				handle_passive_transform(fmd, mi, ob);
 
 				if (fmd->use_breaking)
 				{
@@ -3751,6 +3754,61 @@ bool BKE_rigidbody_check_sim_running(RigidBodyWorld *rbw, float ctime)
 	return (rbw && (rbw->flag & RBW_FLAG_MUTED) == 0 && ctime > rbw->pointcache->startframe);
 }
 
+static void handle_passive_transform(FractureModifierData *fmd, MeshIsland *mi, Object* ob)
+{
+	RigidBodyOb *rbo = mi->rigidbody;
+
+	if (rbo->type == RBO_TYPE_PASSIVE)
+	{
+		if (rbo->flag & RBO_FLAG_KINEMATIC)
+		{
+			rigidbody_passive_fake_parenting(fmd, ob, rbo);
+		}
+		else
+		{
+			DerivedMesh *dm = fmd->visible_mesh_cached;
+			ModifierData *md;
+			bool found = false;
+
+			if (dm)
+			{
+				int totvert = dm->getNumVerts(dm);
+
+				for (md = ob->modifiers.first; md; md = md->next)
+				{
+					if (md->type == eModifierType_Fracture)
+					{
+						if ((FractureModifierData*)md == fmd)
+						{
+							found = true;
+						}
+					}
+
+					//only eval following hookmodifiers, based on our derivedmesh
+					if (md->type == eModifierType_Hook && found)
+					{
+						float (*vertexCos)[3];
+						const ModifierTypeInfo *mti = modifierType_getInfo(md->type);
+						HookModifierData *hmd = (HookModifierData*)md;
+
+						//skip hook modifiers which were just added and arent valid yet
+						if (!hmd->object)
+							continue;
+
+						vertexCos = MEM_callocN(sizeof(float) * 3 * totvert, "Vertex Cos");
+						dm->getVertCos(dm, vertexCos);
+
+						mti->deformVerts(md, ob, dm, vertexCos, totvert, 0);
+						rigidbody_passive_fake_hook(mi, vertexCos[mi->vertex_indices[0]], fmd, ob);
+
+						MEM_freeN(vertexCos);
+					}
+				}
+			}
+		}
+	}
+}
+
 static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, float ctime)
 {
 	bool modFound = false;
@@ -3788,7 +3846,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 					continue;
 				}
 
-				rigidbody_passive_fake_parenting(fmd, ob, rbo);
+				//handle_passive_transform(fmd, mi, ob);
 
 				/* use rigid body transform after cache start frame if objects is not being transformed */
 				if (BKE_rigidbody_check_sim_running(rbw, ctime) && !(ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
@@ -3971,8 +4029,11 @@ void BKE_rigidbody_aftertrans_update(Object *ob, float loc[3], float rot[3], flo
 		{
 			rbo = mi->rigidbody;
 			do_reset_rigidbody(rbo, ob, mi, loc, rot, quat, rotAxis, rotAngle);
-			rigidbody_passive_fake_parenting(rmd, ob, rbo);
+			handle_passive_transform(rmd, mi, ob);
 		}
+
+		//then update origmat
+		copy_m4_m4(rmd->origmat, ob->obmat);
 	}
 	else {
 		rbo = ob->rigidbody_object;
@@ -3980,9 +4041,6 @@ void BKE_rigidbody_aftertrans_update(Object *ob, float loc[3], float rot[3], flo
 
 		// RB_TODO update rigid body physics object's loc/rot for dynamic objects here as well (needs to be done outside bullet's update loop)
 	}
-
-	//then update origmat
-	copy_m4_m4(rmd->origmat, ob->obmat);
 
 	// RB_TODO update rigid body physics object's loc/rot for dynamic objects here as well (needs to be done outside bullet's update loop)
 }
@@ -4047,8 +4105,8 @@ void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw)
 	if (rbw) {
 		rbw->pointcache->flag |= PTCACHE_OUTDATED;
 		//restoreKinematic(rbw);
-		if (!(rbw->pointcache->flag & PTCACHE_BAKED))
-			resetDynamic(rbw);
+		//if (!(rbw->pointcache->flag & PTCACHE_BAKED))
+		//	resetDynamic(rbw);
 	}
 }
 
