@@ -3813,7 +3813,7 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 		}
 
 		if (fmd->frac_mesh != NULL) {
-			if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC) {
+			if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 			{
 				/* in dynamic case, we add a sequence step here and move the "current" pointers*/
 				if (!fmd->dm) {
@@ -3902,7 +3902,6 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 				fracture_per_setting(fmd, ob, dm, fmd->active_setting);
 			}
 #endif
-		}
 	}
 	else
 	{
