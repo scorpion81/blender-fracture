@@ -78,7 +78,7 @@
 static void resetDynamic(RigidBodyWorld *rbw);
 static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int rebuild, int transfer_speed);
 static void rigidbody_passive_fake_parenting(FractureModifierData *fmd, Object *ob, RigidBodyOb *rbo);
-static void handle_passive_transform(FractureModifierData *fmd, MeshIsland *mi, Object* ob);
+static void rigidbody_passive_hook(FractureModifierData *fmd, MeshIsland *mi, Object* ob);
 
 
 static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED(rbw), MeshIsland *UNUSED(mi), Object *UNUSED(ob))
@@ -2923,7 +2923,7 @@ static void rigidbody_update_sim_world(Scene *scene, RigidBodyWorld *rbw)
 	}
 }
 
-static void rigidbody_passive_fake_hook(MeshIsland *mi, float co[3], FractureModifierData *fmd, Object *ob)
+static void rigidbody_passive_fake_hook(MeshIsland *mi, float co[3])
 {
 	//no reshape necessary as vertcount didnt change, but update rbo->pos / orn ? according to change of 1st vertex
 	//fake hook system
@@ -3457,7 +3457,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 					zero_v3(mi->rigidbody->ang_vel);
 				}
 
-				handle_passive_transform(fmd, mi, ob);
+				rigidbody_passive_hook(fmd, mi, ob);
 
 				if (fmd->use_breaking)
 				{
@@ -3754,55 +3754,48 @@ bool BKE_rigidbody_check_sim_running(RigidBodyWorld *rbw, float ctime)
 	return (rbw && (rbw->flag & RBW_FLAG_MUTED) == 0 && ctime > rbw->pointcache->startframe);
 }
 
-static void handle_passive_transform(FractureModifierData *fmd, MeshIsland *mi, Object* ob)
+static void rigidbody_passive_hook(FractureModifierData *fmd, MeshIsland *mi, Object* ob)
 {
 	RigidBodyOb *rbo = mi->rigidbody;
 
-	if (rbo->type == RBO_TYPE_PASSIVE)
+	if (rbo->type == RBO_TYPE_PASSIVE && !(rbo->flag & RBO_FLAG_KINEMATIC))
 	{
-		if (rbo->flag & RBO_FLAG_KINEMATIC)
-		{
-			rigidbody_passive_fake_parenting(fmd, ob, rbo);
-		}
-		else
-		{
-			DerivedMesh *dm = fmd->visible_mesh_cached;
-			ModifierData *md;
-			bool found = false;
+		DerivedMesh *dm = fmd->visible_mesh_cached;
+		ModifierData *md;
+		bool found = false;
 
-			if (dm)
+		if (dm)
+		{
+			int totvert = dm->getNumVerts(dm);
+
+			for (md = ob->modifiers.first; md; md = md->next)
 			{
-				int totvert = dm->getNumVerts(dm);
-
-				for (md = ob->modifiers.first; md; md = md->next)
+				if (md->type == eModifierType_Fracture)
 				{
-					if (md->type == eModifierType_Fracture)
+					if ((FractureModifierData*)md == fmd)
 					{
-						if ((FractureModifierData*)md == fmd)
-						{
-							found = true;
-						}
+						found = true;
 					}
+				}
 
-					//only eval following hookmodifiers, based on our derivedmesh
-					if (md->type == eModifierType_Hook && found)
-					{
-						float (*vertexCos)[3];
-						const ModifierTypeInfo *mti = modifierType_getInfo(md->type);
-						HookModifierData *hmd = (HookModifierData*)md;
+				//only eval following hookmodifiers, based on our derivedmesh
+				if (md->type == eModifierType_Hook && found)
+				{
+					float (*vertexCos)[3];
+					const ModifierTypeInfo *mti = modifierType_getInfo(md->type);
+					HookModifierData *hmd = (HookModifierData*)md;
 
-						//skip hook modifiers which were just added and arent valid yet
-						if (!hmd->object)
-							continue;
+					//skip hook modifiers which were just added and arent valid yet
+					if (!hmd->object)
+						continue;
 
-						vertexCos = MEM_callocN(sizeof(float) * 3 * totvert, "Vertex Cos");
-						dm->getVertCos(dm, vertexCos);
+					vertexCos = MEM_callocN(sizeof(float) * 3 * totvert, "Vertex Cos");
+					dm->getVertCos(dm, vertexCos);
 
-						mti->deformVerts(md, ob, dm, vertexCos, totvert, 0);
-						rigidbody_passive_fake_hook(mi, vertexCos[mi->vertex_indices[0]], fmd, ob);
+					mti->deformVerts(md, ob, dm, vertexCos, totvert, 0);
+					rigidbody_passive_fake_hook(mi, vertexCos[mi->vertex_indices[0]]);
 
-						MEM_freeN(vertexCos);
-					}
+					MEM_freeN(vertexCos);
 				}
 			}
 		}
@@ -3846,7 +3839,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 					continue;
 				}
 
-				//handle_passive_transform(fmd, mi, ob);
+				rigidbody_passive_fake_parenting(fmd, ob, rbo);
 
 				/* use rigid body transform after cache start frame if objects is not being transformed */
 				if (BKE_rigidbody_check_sim_running(rbw, ctime) && !(ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
@@ -4029,7 +4022,14 @@ void BKE_rigidbody_aftertrans_update(Object *ob, float loc[3], float rot[3], flo
 		{
 			rbo = mi->rigidbody;
 			do_reset_rigidbody(rbo, ob, mi, loc, rot, quat, rotAxis, rotAngle);
-			handle_passive_transform(rmd, mi, ob);
+			if (rbo->flag & RBO_FLAG_KINEMATIC)
+			{
+				rigidbody_passive_fake_parenting(rmd, ob, rbo);
+			}
+			else
+			{
+				rigidbody_passive_hook(rmd, mi, ob);
+			}
 		}
 
 		//then update origmat
