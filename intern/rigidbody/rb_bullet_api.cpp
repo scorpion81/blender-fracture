@@ -1370,6 +1370,7 @@ void RB_constraint_set_enabled(rbConstraint *con, int enabled)
 	btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint*>(con);
 	
 	constraint->setEnabled(enabled);
+	constraint->enableFeedback(enabled);
 }
 
 int RB_constraint_is_enabled(rbConstraint *con)
@@ -1377,6 +1378,12 @@ int RB_constraint_is_enabled(rbConstraint *con)
 	btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint*>(con);
 
 	return constraint->isEnabled();
+}
+
+float RB_constraint_get_applied_impulse(rbConstraint *con)
+{
+	btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint*>(con);
+	return (float)constraint->getAppliedImpulse();
 }
 
 void RB_constraint_set_limits_hinge(rbConstraint *con, float lower, float upper)

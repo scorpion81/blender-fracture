@@ -4115,7 +4115,7 @@ static void resetDynamic(RigidBodyWorld *rbw)
 				MeshIsland *mi;
 				//mti->freeData((ModifierData*)fmd);
 				//BKE_object_where_is_calc(scene, go->ob);
-				//fmd->last_frame = INT_MAX;
+
 				for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 				{
 					BKE_rigidbody_remove_shard(scene, mi);
@@ -4123,6 +4123,7 @@ static void resetDynamic(RigidBodyWorld *rbw)
 
 				fmd->refresh = true;
 				fmd->reset_shards = true;
+				fmd->last_frame = INT_MAX;
 
 				DAG_id_tag_update(go->ob, OB_RECALC_ALL);
 				WM_main_add_notifier(NC_OBJECT | ND_MODIFIER, go->ob);
@@ -4137,8 +4138,8 @@ void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw)
 	if (rbw) {
 		rbw->pointcache->flag |= PTCACHE_OUTDATED;
 		//restoreKinematic(rbw);
-		if (!(rbw->pointcache->flag & PTCACHE_BAKED))
-			resetDynamic(rbw);
+		//if (!(rbw->pointcache->flag & PTCACHE_BAKED))
+		resetDynamic(rbw);
 	}
 }
 
@@ -4202,7 +4203,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	if ((rbw->flag & RBW_FLAG_OBJECT_CHANGED))
 	{
 		rbw->flag &= ~RBW_FLAG_OBJECT_CHANGED;
-		if (!(cache->flag & PTCACHE_BAKED))
+		//if (!(cache->flag & PTCACHE_BAKED))
 		{
 			/* dont mess with baked data */
 			//if (ctime <= startframe)

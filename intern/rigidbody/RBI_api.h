@@ -306,6 +306,7 @@ void RB_constraint_delete(rbConstraint *con);
 /* Enable or disable constraint */
 void RB_constraint_set_enabled(rbConstraint *con, int enabled);
 int RB_constraint_is_enabled(rbConstraint *con);
+float RB_constraint_get_applied_impulse(rbConstraint *con);
 
 /* Limits */
 #define RB_LIMIT_LIN_X 0

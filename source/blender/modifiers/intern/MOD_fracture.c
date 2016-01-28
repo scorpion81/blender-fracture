@@ -425,7 +425,7 @@ static void freeData(ModifierData *md)
 
 	/*force deletion of meshshards here, it slips through improper state detection*/
 	/*here we know the modifier is about to be deleted completely*/
-	//free_shards(fmd);
+	free_shards(fmd);
 }
 
 //XXX TODO move cluster handling to BKE too

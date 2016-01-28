@@ -1306,6 +1306,15 @@ static void rna_FractureModifier_mesh_constraint_clear(ID *id, FractureModifierD
 	}
 }
 
+static float rna_MeshCon_get_applied_impulse(RigidBodyShardCon *con)
+{
+#ifdef WITH_BULLET
+	if (con && con->physics_constraint)
+		return RB_constraint_get_applied_impulse(con->physics_constraint);
+#endif
+	return 0.0f;
+}
+
 #define RB_FLAG_SET(dest, value, flag) { \
 	if (value) \
 		dest |= flag; \
@@ -5280,8 +5289,8 @@ static void rna_def_mesh_island(BlenderRNA *brna)
 static void rna_def_mesh_constraint(BlenderRNA *brna)
 {
 	StructRNA *srna;
-	PropertyRNA *prop;
-	//FunctionRNA *func;
+	PropertyRNA *prop, *parm;
+	FunctionRNA *func;
 
 	srna = RNA_def_struct(brna, "MeshConstraint", NULL);
 	RNA_def_struct_sdna(srna, "RigidBodyShardCon");
@@ -5627,6 +5636,11 @@ static void rna_def_mesh_constraint(BlenderRNA *brna)
 	RNA_def_property_range(prop, -1.0f, DEG2RADF(360.0));
 	RNA_def_property_ui_text(prop, "Plastic Angle", "Angle Tolerance of this constraint, when exceeded enter plastic mode, -1 disables");
 	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	//do as function, dont need an dna value for storage, instead query from bullet directly
+	func = RNA_def_function(srna, "appliedImpulse", "rna_MeshCon_get_applied_impulse");
+	parm = RNA_def_float(func, "impulse", 0, -FLT_MAX, FLT_MAX, "Applied Impulse", "The currently applied impulse on this constraint", -FLT_MIN, FLT_MAX);
+	RNA_def_function_return(func, parm);
 }
 
 static void rna_def_fracture_meshislands(BlenderRNA *brna, PropertyRNA *cprop)
