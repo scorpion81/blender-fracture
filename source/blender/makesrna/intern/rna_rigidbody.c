@@ -106,6 +106,15 @@ static EnumPropertyItem rigidbody_mesh_source_items[] = {
 		dest &= ~flag; \
 }
 
+static float rna_RigidBodyCon_get_applied_impulse(RigidBodyCon *con)
+{
+#ifdef WITH_BULLET
+	if (con && con->physics_constraint)
+		return RB_constraint_get_applied_impulse(con->physics_constraint);
+#endif
+	return 0.0f;
+}
+
 
 /* ******************************** */
 
@@ -1194,7 +1203,8 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 static void rna_def_rigidbody_constraint(BlenderRNA *brna)
 {
 	StructRNA *srna;
-	PropertyRNA *prop;
+	PropertyRNA *prop, *parm;
+	FunctionRNA *func;
 
 	srna = RNA_def_struct(brna, "RigidBodyConstraint", NULL);
 	RNA_def_struct_sdna(srna, "RigidBodyCon");
@@ -1496,6 +1506,11 @@ static void rna_def_rigidbody_constraint(BlenderRNA *brna)
 	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_motor_ang_max_impulse_set", NULL);
 	RNA_def_property_ui_text(prop, "Max Impulse", "Maximum angular motor impulse");
 	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+
+	//do as function, dont need an dna value for storage, instead query from bullet directly
+	func = RNA_def_function(srna, "appliedImpulse", "rna_RigidBodyCon_get_applied_impulse");
+	parm = RNA_def_float(func, "impulse", 0, -FLT_MAX, FLT_MAX, "Applied Impulse", "The currently applied impulse on this constraint", -FLT_MIN, FLT_MAX);
+	RNA_def_function_return(func, parm);
 }
 
 void RNA_def_rigidbody(BlenderRNA *brna)
