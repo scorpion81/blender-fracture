@@ -1847,7 +1847,7 @@ void BKE_get_next_entries(FractureModifierData *fmd)
 void BKE_get_prev_entries(FractureModifierData *fmd)
 {
 	/*meshislands and shards SHOULD be synchronized !!!!*/
-	if (fmd->current_mi_entry->prev != NULL) {
+	if (fmd->current_mi_entry && fmd->current_mi_entry->prev) {
 
 		fmd->current_mi_entry = fmd->current_mi_entry->prev;
 		fmd->current_shard_entry = fmd->current_shard_entry->prev;
@@ -1873,7 +1873,7 @@ bool BKE_lookup_mesh_state(FractureModifierData *fmd, int frame, int do_lookup)
 		if (do_lookup)
 		{
 			while (fmd->current_mi_entry && fmd->current_mi_entry->prev &&
-				   frame <= fmd->current_mi_entry->prev->frame)
+				   frame < fmd->current_mi_entry->prev->frame)
 			{
 				printf("Jumping backward because %d is smaller than %d\n", frame, fmd->current_mi_entry->prev->frame);
 				changed = true;
@@ -2586,7 +2586,7 @@ void BKE_fracture_free_mesh_island(FractureModifierData *rmd, MeshIsland *mi, bo
 	}
 
 	if (mi->rigidbody) {
-		if (remove_rigidbody)
+		if (remove_rigidbody && rmd->modifier.scene)
 			BKE_rigidbody_remove_shard(rmd->modifier.scene, mi);
 		MEM_freeN(mi->rigidbody);
 		mi->rigidbody = NULL;

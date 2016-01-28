@@ -1024,12 +1024,13 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 
 	if (rbo && rbo->type == RBO_TYPE_ACTIVE && rbo->physics_object)
 	{
-#ifdef WITH_BULLET
-		RB_body_get_position(rbo->physics_object, rbo->pos);
-		RB_body_get_orientation(rbo->physics_object, rbo->orn);
-#endif
 		if (!fmd || fmd->fracture_mode != MOD_FRACTURE_DYNAMIC)
 		{
+
+#ifdef WITH_BULLET
+			RB_body_get_position(rbo->physics_object, rbo->pos);
+			RB_body_get_orientation(rbo->physics_object, rbo->orn);
+#endif
 			PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, rbo->pos);
 			PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, rbo->orn);
 		}
@@ -1037,6 +1038,17 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 		{
 			MeshIsland *mi = BLI_findlink(&fmd->meshIslands, rbo->meshisland_index);
 			int frame = (int)floor(cfra);
+
+			if (!mi)
+				return 0;
+
+			rbo = mi->rigidbody;
+
+#ifdef WITH_BULLET
+			RB_body_get_position(rbo->physics_object, rbo->pos);
+			RB_body_get_orientation(rbo->physics_object, rbo->orn);
+#endif
+
 			frame =  frame - mi->start_frame;
 
 			//printf("Writing frame %d %d %d %d\n", (int)cfra, mi->start_frame, frame, fmd->last_frame);
@@ -1053,6 +1065,7 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 			//dummy data
 			PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, rbo->pos);
 			PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, rbo->orn);
+
 		}
 	}
 
@@ -1100,10 +1113,16 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfr
 			int frame = (int)floor(cfra);
 
 			mi = BLI_findlink(&fmd->meshIslands, rbo->meshisland_index);
+
+			if (!mi)
+				return;
+
 			frame = frame - mi->start_frame;
 
 			if (frame < 0)
+			{
 				frame = 0; //grrr, why does this happen ?!
+			}
 
 			//printf("Reading frame %d %d %d %d\n", (int)cfra, mi->start_frame, frame, fmd->last_frame);
 

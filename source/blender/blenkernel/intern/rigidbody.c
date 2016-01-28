@@ -73,6 +73,9 @@
 #include "BKE_scene.h"
 #include "PIL_time.h"
 
+#include "WM_types.h"
+#include "WM_api.h"
+
 #ifdef WITH_BULLET
 
 static void resetDynamic(RigidBodyWorld *rbw);
@@ -2636,6 +2639,7 @@ void BKE_rigidbody_remove_shard(Scene *scene, MeshIsland *mi)
 	if (mi->rigidbody != NULL && rbw != NULL) {
 		
 		RigidBodyShardCon *con;
+
 		for (i = 0; i < mi->participating_constraint_count; i++) {
 			con = mi->participating_constraints[i];
 			BKE_rigidbody_remove_shard_con(scene, con);
@@ -2653,15 +2657,18 @@ void BKE_rigidbody_remove_shard(Scene *scene, MeshIsland *mi)
 			RB_shape_delete(mi->rigidbody->physics_shape);
 			mi->rigidbody->physics_shape = NULL;
 		}
-		
-		/* this SHOULD be the correct global index */
+
+		/* this SHOULD be the correct global index, mark with NULL as 'dirty' BEFORE deleting */
 		/* need to check whether we didnt create the rigidbody world manually already, prior to fracture, in this
 		 * case cache_index_map might be not initialized ! checking numbodies here, they should be 0 in a fresh
 		 * rigidbody world */
-		if ((rbw->cache_index_map != NULL) && (rbw->numbodies > 0))
-			rbw->cache_index_map[mi->linear_index] = NULL;
 
-		BKE_rigidbody_update_ob_array(rbw);
+		if ((rbw->cache_index_map != NULL) && (rbw->numbodies > 0) && mi->linear_index < rbw->numbodies) {
+			//mi->rigidbody = NULL;
+			rbw->cache_index_map[mi->linear_index] = NULL;
+		}
+
+		//BKE_rigidbody_update_ob_array(rbw);
 	}
 }
 
@@ -2814,7 +2821,7 @@ static int rigidbody_group_count_items(const ListBase *group, int *r_num_objects
 		for (md = gob->ob->modifiers.first; md; md = md->next) {
 			if (md->type == eModifierType_Fracture) {
 				rmd = (FractureModifierData *)md;
-				if (isModifierActive(rmd))
+				if (isModifierActive(rmd) && rmd->meshIslands.first != NULL)
 				{
 					found_modifiers = true;
 					*r_num_shards += BLI_listbase_count(&rmd->meshIslands);
@@ -2879,7 +2886,8 @@ void BKE_rigidbody_update_ob_array(RigidBodyWorld *rbw)
 						rbw->cache_index_map[counter] = mi->rigidbody; /* map all shards of an object to this object index*/
 						rbw->cache_offset_map[counter] = i;
 						mi->linear_index = counter;
-						mi->rigidbody->meshisland_index = j;
+						if (mi->rigidbody)
+							mi->rigidbody->meshisland_index = j;
 						counter++;
 						j++;
 					}
@@ -3436,9 +3444,9 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 
 			//print_m4("Obmat: \n", ob->obmat);
 			//print_m4("Passivemat: \n", fmd->passive_parent_mat);
-
-			BKE_object_where_is_calc(scene, ob);
 		}
+
+		BKE_object_where_is_calc(scene, ob);
 
 		for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 			if (mi->rigidbody == NULL) {
@@ -4098,13 +4106,28 @@ static void resetDynamic(RigidBodyWorld *rbw)
 		FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(go->ob, eModifierType_Fracture);
 		if (fmd && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
+			//const ModifierTypeInfo *mti = modifierType_getInfo(fmd->modifier.type);
 			Scene *scene = fmd->modifier.scene;
-			fmd->last_frame = INT_MAX;
-			fmd->refresh = true;
 
-			//need really to trigger modifier stack evaluation here at once, next depgraph tag is too late
-			//apparently
-			makeDerivedMesh(scene, go->ob, NULL, scene->customdata_mask | CD_MASK_BAREMESH, 0);
+			//free modifier data "by hand", right now
+			if (BLI_listbase_count(&fmd->meshIslands) > 1)
+			{
+				MeshIsland *mi;
+				//mti->freeData((ModifierData*)fmd);
+				//BKE_object_where_is_calc(scene, go->ob);
+				//fmd->last_frame = INT_MAX;
+				for (mi = fmd->meshIslands.first; mi; mi = mi->next)
+				{
+					BKE_rigidbody_remove_shard(scene, mi);
+				}
+
+				fmd->refresh = true;
+				fmd->reset_shards = true;
+
+				DAG_id_tag_update(go->ob, OB_RECALC_ALL);
+				WM_main_add_notifier(NC_OBJECT | ND_MODIFIER, go->ob);
+				WM_main_add_notifier(NC_OBJECT | ND_TRANSFORM, go->ob);
+			}
 		}
 	}
 }
@@ -4114,8 +4137,8 @@ void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw)
 	if (rbw) {
 		rbw->pointcache->flag |= PTCACHE_OUTDATED;
 		//restoreKinematic(rbw);
-		//if (!(rbw->pointcache->flag & PTCACHE_BAKED))
-		//	resetDynamic(rbw);
+		if (!(rbw->pointcache->flag & PTCACHE_BAKED))
+			resetDynamic(rbw);
 	}
 }
 
@@ -4180,8 +4203,12 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	{
 		rbw->flag &= ~RBW_FLAG_OBJECT_CHANGED;
 		if (!(cache->flag & PTCACHE_BAKED))
+		{
 			/* dont mess with baked data */
+			//if (ctime <= startframe)
+			//	BKE_rigidbody_cache_reset(rbw);
 			rigidbody_update_simulation(scene, rbw, true);
+		}
 		rbw->flag &= ~RBW_FLAG_REFRESH_MODIFIERS;
 	}
 

@@ -1759,7 +1759,7 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 					}
 				}
 			}
-			else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+			else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && !wd->current)
 			{
 				ShardSequence *ssq;
 				MeshIslandSequence *msq;

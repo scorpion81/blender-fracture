@@ -217,14 +217,14 @@ static void initData(ModifierData *md)
 }
 
 //XXX TODO, freeing functionality should be in BKE too
-static void free_meshislands(FractureModifierData* fmd, ListBase* meshIslands)
+static void free_meshislands(FractureModifierData* fmd, ListBase* meshIslands, bool do_free_rigidbody)
 {
 	MeshIsland *mi;
 
 	while (meshIslands->first) {
 		mi = meshIslands->first;
 		BLI_remlink(meshIslands, mi);
-		BKE_fracture_free_mesh_island(fmd, mi, false);
+		BKE_fracture_free_mesh_island(fmd, mi, do_free_rigidbody);
 		mi = NULL;
 	}
 
@@ -250,17 +250,21 @@ static void free_simulation(FractureModifierData *fmd, bool do_free_seq)
 	/* when freeing meshislands, we MUST get rid of constraints before too !!!! */
 	BKE_free_constraints(fmd);
 
-	if (!do_free_seq || fmd->meshIsland_sequence.first == NULL) {
-		free_meshislands(fmd, &fmd->meshIslands);
+	if (!do_free_seq || BLI_listbase_is_single(&fmd->meshIsland_sequence)) {
+		free_meshislands(fmd, &fmd->meshIslands, true);
+
+		fmd->meshIslands.first = NULL;
+		fmd->meshIslands.last = NULL;
 	}
 	else
 	{	
 		/* in dynamic mode we have to get rid of the entire Meshisland sequence */
 		MeshIslandSequence *msq;
+
 		while (fmd->meshIsland_sequence.first) {
 			msq = fmd->meshIsland_sequence.first;
 			BLI_remlink(&fmd->meshIsland_sequence, msq);
-			free_meshislands(fmd, &msq->meshIslands);
+			free_meshislands(fmd, &msq->meshIslands, true);
 			MEM_freeN(msq);
 			msq = NULL;
 		}
@@ -405,8 +409,7 @@ static void freeData_internal(FractureModifierData *fmd, bool do_free_seq)
 	}
 	else if (!fmd->refresh_constraints) {
 		/* refreshing all simulation data only, no refracture */
-		free_simulation(fmd, fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED ||
-		                     fmd->fracture_mode == MOD_FRACTURE_EXTERNAL); // in this case keep the meshisland sequence!
+		free_simulation(fmd, do_free_seq); // in this case keep the meshisland sequence!
 	}
 	else if (fmd->refresh_constraints) {
 		/* refresh constraints only */
@@ -422,7 +425,7 @@ static void freeData(ModifierData *md)
 
 	/*force deletion of meshshards here, it slips through improper state detection*/
 	/*here we know the modifier is about to be deleted completely*/
-	free_shards(fmd);
+	//free_shards(fmd);
 }
 
 //XXX TODO move cluster handling to BKE too
@@ -3957,9 +3960,9 @@ static DerivedMesh *do_prefractured(FractureModifierData *fmd, Object *ob, Deriv
 	/* TODO_3, this must not be needed, for interactive preview make sure this gets called from transform ops, or keep here as exception for now,
 	 * this might be simpler */
 	/* disable that automatically if sim is started, but must be re-enabled manually */
-	if (BKE_rigidbody_check_sim_running(fmd->modifier.scene->rigidbody_world, BKE_scene_frame_get(fmd->modifier.scene))) {
+/*	if (BKE_rigidbody_check_sim_running(fmd->modifier.scene->rigidbody_world, BKE_scene_frame_get(fmd->modifier.scene))) {
 		fmd->auto_execute = false;
-	}
+	}*/
 
 	if (fmd->auto_execute) {
 		fmd->refresh = true;

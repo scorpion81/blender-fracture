@@ -5122,9 +5122,12 @@ static int initialize_meshisland(FractureModifierData* fmd, MeshIsland** mii, MV
 static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Object* ob)
 {
 	FracMesh* fm;
+	bool autoexec = false;
 
 	fm = fmd->frac_mesh = newdataadr(fd, fmd->frac_mesh);
 
+	autoexec = fmd->auto_execute;
+	fmd->auto_execute = false;
 	fmd->refresh = false;  /* do not execute modifier here yet*/
 	fmd->refresh_constraints = false;
 	fmd->nor_tree = NULL;
@@ -5248,7 +5251,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 				}
 			}
 		}
-		else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+		else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && !fd->memfile)
 		{
 			ShardSequence *ssq = NULL;
 			MeshIslandSequence *msq = NULL;
@@ -5325,6 +5328,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 		}
 
 		fmd->refresh_images = true;
+		fmd->auto_execute = autoexec;
 	}
 }
 
