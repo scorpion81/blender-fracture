@@ -1509,7 +1509,7 @@ static void rna_def_rigidbody_constraint(BlenderRNA *brna)
 
 	//do as function, dont need an dna value for storage, instead query from bullet directly
 	func = RNA_def_function(srna, "appliedImpulse", "rna_RigidBodyCon_get_applied_impulse");
-	parm = RNA_def_float(func, "impulse", 0, -FLT_MAX, FLT_MAX, "Applied Impulse", "The currently applied impulse on this constraint", -FLT_MIN, FLT_MAX);
+	parm = RNA_def_float(func, "impulse", 0, -FLT_MAX, FLT_MAX, "Applied Impulse", "The currently applied impulse on this constraint", -FLT_MAX, FLT_MAX);
 	RNA_def_function_return(func, parm);
 }
 
