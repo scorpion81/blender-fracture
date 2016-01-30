@@ -223,7 +223,7 @@ static void free_meshislands(FractureModifierData* fmd, ListBase* meshIslands, b
 
 	while (meshIslands->first) {
 		mi = meshIslands->first;
-		BLI_remlink(meshIslands, mi);
+		BLI_remlink_safe(meshIslands, mi);
 		BKE_fracture_free_mesh_island(fmd, mi, do_free_rigidbody);
 		mi = NULL;
 	}
@@ -232,7 +232,7 @@ static void free_meshislands(FractureModifierData* fmd, ListBase* meshIslands, b
 	meshIslands->last = NULL;
 }
 
-static void free_simulation(FractureModifierData *fmd, bool do_free_seq)
+static void free_simulation(FractureModifierData *fmd, bool do_free_seq, bool do_free_rigidbody)
 {
 	/* what happens with this in dynamic fracture ? worst case, we need a sequence for this too*/
 	if (fmd->shards_to_islands) {
@@ -250,21 +250,141 @@ static void free_simulation(FractureModifierData *fmd, bool do_free_seq)
 	/* when freeing meshislands, we MUST get rid of constraints before too !!!! */
 	BKE_free_constraints(fmd);
 
-	if (!do_free_seq || BLI_listbase_is_single(&fmd->meshIsland_sequence)) {
-		free_meshislands(fmd, &fmd->meshIslands, true);
+	if (!do_free_seq) {
 
-		fmd->meshIslands.first = NULL;
-		fmd->meshIslands.last = NULL;
+		if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+		{
+			//delete all except first sequence elem (really ?)
+			MeshIslandSequence *msq = fmd->meshIsland_sequence.first;
+			ShardSequence *ssq = fmd->shard_sequence.first;
+
+			if (msq)
+				msq = msq->next;
+
+			while (msq && msq != fmd->meshIsland_sequence.first)
+			{
+				BLI_remlink(&fmd->meshIsland_sequence, msq);
+				free_meshislands(fmd, &msq->meshIslands, do_free_rigidbody);
+				MEM_freeN(msq);
+				msq = fmd->meshIsland_sequence.first;
+				if (msq)
+					msq = msq->next;
+			}
+
+			msq = fmd->meshIsland_sequence.first;
+			if (msq)
+			{
+				//MeshIsland *mi;
+				//RigidBodyWorld *rbw = fmd->modifier.scene->rigidbody_world;
+				msq->is_new = true;
+				fmd->current_mi_entry = msq;
+				fmd->meshIslands = msq->meshIslands;
+				fmd->visible_mesh_cached = msq->visible_dm;
+#if 0
+				//re-init mi->verts, to be sure
+				for (mi = fmd->meshIslands.first; mi; mi = mi->next)
+				{
+					int i, start = 1, end = 250;
+					MVert *mv = fmd->visible_mesh_cached->getVertArray(fmd->visible_mesh_cached);
+					for (i = 0; i < mi->vertex_count; i++)
+					{
+						float loc[3];
+						short no[3];
+
+						loc[0] = mi->vertco[3*i];
+						loc[1] = mi->vertco[3*i+1];
+						loc[2] = mi->vertco[3*i+2];
+
+						no[0] = mi->vertno[3*i];
+						no[1] = mi->vertno[3*i+1];
+						no[2] = mi->vertno[3*i+2];
+
+						mi->vertices_cached[i] = mv + mi->vertex_indices[i];
+						copy_v3_v3(mi->vertices_cached[i]->co, loc);
+						copy_v3_v3_short(mi->vertices_cached[i]->no, no);
+
+					}
+					zero_v3(mi->rigidbody->lin_vel);
+					zero_v3(mi->rigidbody->ang_vel);
+
+					MEM_freeN(mi->locs);
+					MEM_freeN(mi->rots);
+
+					if (rbw && rbw->pointcache)
+					{
+						start = rbw->pointcache->startframe;
+						end = rbw->pointcache->endframe;
+					}
+
+					fmd->current_mi_entry->frame = end;
+
+					mi->frame_count = end - start + 1;
+					mi->start_frame = start;
+					mi->locs = MEM_mallocN(sizeof(float)*3* mi->frame_count, "mi->locs");
+					mi->rots = MEM_mallocN(sizeof(float)*4* mi->frame_count, "mi->rots");
+
+					BKE_rigidbody_remove_shard(fmd->modifier.scene, mi);
+				}
+#endif
+
+				//BKE_rigidbody_update_ob_array(rbw);
+			}
+			else
+			{
+				fmd->meshIsland_sequence.first = NULL;
+				fmd->meshIsland_sequence.last = NULL;
+
+				fmd->meshIslands.first = NULL;
+				fmd->meshIslands.last = NULL;
+
+				fmd->current_mi_entry = NULL;
+			}
+
+			if (ssq)
+				ssq = ssq->next;
+
+			while (ssq && ssq != fmd->shard_sequence.first)
+			{
+				BLI_remlink(&fmd->shard_sequence, ssq);
+				BKE_fracmesh_free(ssq->frac_mesh, true);
+				MEM_freeN(ssq->frac_mesh);
+				MEM_freeN(ssq);
+
+				ssq = fmd->shard_sequence.first;
+				if (ssq)
+					ssq = ssq->next;
+			}
+
+			if (ssq)
+			{
+				fmd->current_shard_entry = ssq;
+				fmd->frac_mesh = ssq->frac_mesh;
+			}
+			else
+			{
+				fmd->shard_sequence.first = NULL;
+				fmd->shard_sequence.last = NULL;
+				fmd->current_shard_entry = NULL;
+				fmd->frac_mesh = NULL;
+			}
+		}
+		else
+		{
+			free_meshislands(fmd, &fmd->meshIslands, do_free_rigidbody);
+			fmd->meshIslands.first = NULL;
+			fmd->meshIslands.last = NULL;
+		}
 	}
 	else
 	{	
 		/* in dynamic mode we have to get rid of the entire Meshisland sequence */
 		MeshIslandSequence *msq;
+		ShardSequence *ssq;
 
 		while (fmd->meshIsland_sequence.first) {
 			msq = fmd->meshIsland_sequence.first;
 			BLI_remlink(&fmd->meshIsland_sequence, msq);
-			free_meshislands(fmd, &msq->meshIslands, true);
+			free_meshislands(fmd, &msq->meshIslands, do_free_rigidbody);
 			MEM_freeN(msq);
 			msq = NULL;
 		}
@@ -276,6 +396,20 @@ static void free_simulation(FractureModifierData *fmd, bool do_free_seq)
 		fmd->meshIslands.last = NULL;
 
 		fmd->current_mi_entry = NULL;
+
+		while (fmd->shard_sequence.first)
+		{
+			ssq = fmd->shard_sequence.first;
+			BLI_remlink(&fmd->shard_sequence, ssq);
+			BKE_fracmesh_free(ssq->frac_mesh, true);
+			MEM_freeN(ssq->frac_mesh);
+			MEM_freeN(ssq);
+		}
+
+		fmd->shard_sequence.first = NULL;
+		fmd->shard_sequence.last = NULL;
+		fmd->current_shard_entry = NULL;
+		fmd->frac_mesh = NULL;
 	}
 
 	if (!fmd->explo_shared && fmd->visible_mesh != NULL) {
@@ -317,7 +451,14 @@ static void free_shards(FractureModifierData *fmd)
 
 static void free_modifier(FractureModifierData *fmd, bool do_free_seq)
 {
-	free_simulation(fmd, do_free_seq);
+	if (fmd->fracture_mode != MOD_FRACTURE_DYNAMIC)
+	{
+		free_simulation(fmd, do_free_seq, false);
+	}
+	else if (!do_free_seq)
+	{
+		free_simulation(fmd, true, false);
+	}
 
 	if (fmd->material_index_map)
 	{
@@ -367,10 +508,12 @@ static void free_modifier(FractureModifierData *fmd, bool do_free_seq)
 		if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
 			free_shards(fmd);
 	}
+#if 0
 	else
 	{
 		free_shards(fmd);
 	}
+#endif
 
 	if (fmd->vert_index_map != NULL) {
 		BLI_ghash_free(fmd->vert_index_map, NULL, NULL);
@@ -409,7 +552,8 @@ static void freeData_internal(FractureModifierData *fmd, bool do_free_seq)
 	}
 	else if (!fmd->refresh_constraints) {
 		/* refreshing all simulation data only, no refracture */
-		free_simulation(fmd, do_free_seq); // in this case keep the meshisland sequence!
+		if (fmd->fracture_mode != MOD_FRACTURE_DYNAMIC)
+			free_simulation(fmd, true, true); // in this case keep the meshisland sequence!
 	}
 	else if (fmd->refresh_constraints) {
 		/* refresh constraints only */
@@ -3797,16 +3941,47 @@ static bool detect_vgroups(FractureModifierData *fmd, Object *ob)
 static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 {
 	/*TODO_1 refresh, move to BKE and just call from operator for prefractured case*/
+
 	if (fmd->refresh)
 	{
 		printf("ADD NEW 1: %s \n", ob->id.name);
 		if (fmd->last_frame == INT_MAX && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
-			//data purge hack
-			free_modifier(fmd, true);
+#if 0
+			RigidBodyWorld *rbw;
+			int frame = (int)BKE_scene_frame_get(fmd->modifier.scene);
+			rbw = fmd->modifier.scene->rigidbody_world;
+#endif
+
+			if (fmd->reset_shards)
+			{
+				free_simulation(fmd, true, true);
+				free_modifier(fmd, true);
+				fmd->last_frame = 1;
+			}
+			else
+			{
+				free_simulation(fmd, false, true);
+				fmd->last_frame = 1;
+			}
+
+#if 0
+			if (rbw)
+				BKE_rigidbody_update_ob_array(rbw);
+
+			if (!fmd->reset_shards)
+			{
+				fmd->refresh = false;
+				fmd->reset_shards = true;
+				fmd->last_frame = frame;
+				rbw->flag |= RBW_FLAG_OBJECT_CHANGED;
+				return;
+			}
+#endif
 		}
 
 		//if (BLI_listbase_is_empty(&fmd->fracture_settings) && !detect_vgroups(fmd, ob))
+		//if (fmd->fracture_mode != MOD_FRACTURE_DYNAMIC)
 		{
 			if (fmd->dm != NULL) {
 				fmd->dm->needsFree = 1;
@@ -3815,24 +3990,26 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 			}
 		}
 
-		if (fmd->frac_mesh != NULL) {
+		if (fmd->frac_mesh != NULL /*&& fmd->reset_shards*/) {
 			if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 			{
 				/* in dynamic case, we add a sequence step here and move the "current" pointers*/
 				if (!fmd->dm) {
 					BKE_fracture_create_dm(fmd, true);
 				}
+				//if (fmd->reset_shards)
 				add_new_entries(fmd, dm, ob);
 			}
 		}
 
 		/* here we just create the fracmesh, in dynamic case we add the first sequence entry as well */
 		if (fmd->frac_mesh == NULL) {
-			if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+			if (fmd->fracture_mode != MOD_FRACTURE_DYNAMIC)
 			{
 				fmd->frac_mesh = BKE_create_fracture_container();
 			}
-			else {
+			else
+			{
 				add_new_entries(fmd, dm, ob);
 			}
 
@@ -3919,13 +4096,14 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 			 * we need to loop over those shard IDs here, but lookup of shard ids might be slow, but fracturing of many shards is slower...
 			 * should not have a visible effect in general */
 
-			int count = 0;
+			int count = 0; //BLI_listbase_count(&fmd->fracture_ids);
 
 			if (fmd->update_dynamic)
 			{
 				BKE_free_constraints(fmd);
 				printf("ADD NEW 2: %s \n", ob->id.name);
 				fmd->update_dynamic = false;
+				//if (count > 0)
 				add_new_entries(fmd, dm, ob);
 			}
 
@@ -3942,7 +4120,9 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 				BKE_free_constraints(fmd);
 				printf("REFRESH: %s \n", ob->id.name);
 				fmd->modifier.scene->rigidbody_world->flag |= RBW_FLAG_OBJECT_CHANGED;
+				fmd->modifier.scene->rigidbody_world->flag &= ~RBW_FLAG_REFRESH_MODIFIERS;
 				fmd->refresh = true;
+				//fmd->update_dynamic = false;
 				//fmd->current_shard_entry->is_new = false;
 			}
 		}

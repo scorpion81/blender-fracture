@@ -1659,7 +1659,7 @@ static DerivedMesh* do_create(FractureModifierData *fmd, int num_verts, int num_
 			s = (Shard *)fmd->frac_mesh->shard_map.first;
 		}
 
-		if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
+		if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
 		{
 			/*keep old behavior for now for older modes */
 			CustomData_merge(&s->vertData, &result->vertData, CD_MASK_MDEFORMVERT, CD_CALLOC, num_verts);
@@ -1833,28 +1833,34 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 void BKE_get_next_entries(FractureModifierData *fmd)
 {
 	/*meshislands and shards SHOULD be synchronized !!!!*/
-	if (fmd->current_mi_entry->next != NULL) { // && fmd->current_mi_entry->next->is_new == false) {
-
+	if (fmd->current_mi_entry && fmd->current_mi_entry->next)
+	{ // && fmd->current_mi_entry->next->is_new == false) {
 		fmd->current_mi_entry = fmd->current_mi_entry->next;
-		fmd->current_shard_entry = fmd->current_shard_entry->next;
-
 		fmd->meshIslands = fmd->current_mi_entry->meshIslands;
-		fmd->frac_mesh = fmd->current_shard_entry->frac_mesh;
 		fmd->visible_mesh_cached = fmd->current_mi_entry->visible_dm;
+	}
+
+	if (fmd->current_shard_entry && fmd->current_shard_entry->next)
+	{
+		fmd->current_shard_entry = fmd->current_shard_entry->next;
+		fmd->frac_mesh = fmd->current_shard_entry->frac_mesh;
 	}
 }
 
 void BKE_get_prev_entries(FractureModifierData *fmd)
 {
 	/*meshislands and shards SHOULD be synchronized !!!!*/
-	if (fmd->current_mi_entry && fmd->current_mi_entry->prev) {
-
+	if (fmd->current_mi_entry && fmd->current_mi_entry->prev)
+	{
 		fmd->current_mi_entry = fmd->current_mi_entry->prev;
-		fmd->current_shard_entry = fmd->current_shard_entry->prev;
-
 		fmd->meshIslands = fmd->current_mi_entry->meshIslands;
-		fmd->frac_mesh = fmd->current_shard_entry->frac_mesh;
 		fmd->visible_mesh_cached = fmd->current_mi_entry->visible_dm;
+	}
+
+	if (fmd->current_shard_entry && fmd->current_shard_entry->prev)
+	{
+		fmd->current_shard_entry = fmd->current_shard_entry->prev;
+		fmd->frac_mesh = fmd->current_shard_entry->frac_mesh;
 	}
 }
 
@@ -1866,14 +1872,14 @@ bool BKE_lookup_mesh_state(FractureModifierData *fmd, int frame, int do_lookup)
 
 	backward = ((fmd->last_frame > frame) && fmd->current_mi_entry && fmd->current_mi_entry->prev);
 	forward = ((fmd->last_frame < frame) && (fmd->current_mi_entry) && (fmd->current_mi_entry->next != NULL) &&
-	           (fmd->current_mi_entry->next->is_new == false));
+	           (fmd->current_mi_entry->is_new == false));
 
 	if (backward)
 	{
 		if (do_lookup)
 		{
 			while (fmd->current_mi_entry && fmd->current_mi_entry->prev &&
-				   frame < fmd->current_mi_entry->prev->frame)
+				   frame <= fmd->current_mi_entry->prev->frame)
 			{
 				printf("Jumping backward because %d is smaller than %d\n", frame, fmd->current_mi_entry->prev->frame);
 				changed = true;
@@ -1887,7 +1893,7 @@ bool BKE_lookup_mesh_state(FractureModifierData *fmd, int frame, int do_lookup)
 		if (do_lookup)
 		{
 			while ((fmd->current_mi_entry) && (fmd->current_mi_entry->next != NULL) &&
-				   (fmd->current_mi_entry->next->is_new == false) &&
+				   (fmd->current_mi_entry->is_new == false) &&
 				   frame > fmd->current_mi_entry->frame)
 			{
 				printf("Jumping forward because %d is greater than %d\n", frame, fmd->current_mi_entry->frame);
@@ -2530,8 +2536,7 @@ MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own,
 	//hrm need to rebuild ALL islands since vertex refs are bonkers now after mesh has changed
 	mi = fracture_shard_to_island(fmd, s, vertstart);
 
-	mat4_to_loc_quat(loc, rot, target->obmat);
-	copy_qt_qt(mi->rot, rot);
+	//mat4_to_loc_quat(loc, rot, target->obmat);
 
 	//lets see whether we need to add loc here too XXX TODO
 
@@ -2539,7 +2544,8 @@ MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own,
 	if (mi->rigidbody)
 	{
 		mi->rigidbody->meshisland_index = mi->id;
-		copy_qt_qt(mi->rigidbody->orn, rot);
+		copy_qt_qt(mi->rot, mi->rigidbody->orn);
+		copy_v3_v3(mi->centroid, mi->rigidbody->pos);
 	}
 
 	BLI_strncpy(mi->name, target->id.name + 2, MAX_ID_NAME - 2);

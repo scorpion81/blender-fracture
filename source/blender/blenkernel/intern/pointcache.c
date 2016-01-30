@@ -1007,6 +1007,9 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 	Object* ob = NULL;
 	FractureModifierData *fmd = NULL;
 
+	//if (!rbw->cache_index_map || !rbw->cache_offset_map)
+	//	return 1;
+
 	rbo = rbw->cache_index_map[index];
 	
 	if (rbo == NULL) {
@@ -1039,8 +1042,8 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 			MeshIsland *mi = BLI_findlink(&fmd->meshIslands, rbo->meshisland_index);
 			int frame = (int)floor(cfra);
 
-			if (!mi)
-				return 0;
+//			if (!mi)
+//				return 0;
 
 			rbo = mi->rigidbody;
 
@@ -1052,6 +1055,8 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 			frame =  frame - mi->start_frame;
 
 			//printf("Writing frame %d %d %d %d\n", (int)cfra, mi->start_frame, frame, fmd->last_frame);
+//			if (frame < 0) // GAAAAH!
+//				frame = 0;
 
 			mi->locs[3*frame] = rbo->pos[0];
 			mi->locs[3*frame+1] = rbo->pos[1];
@@ -1114,15 +1119,15 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfr
 
 			mi = BLI_findlink(&fmd->meshIslands, rbo->meshisland_index);
 
-			if (!mi)
-				return;
+//			if (!mi)
+//				return;
 
 			frame = frame - mi->start_frame;
 
-			if (frame < 0)
-			{
-				frame = 0; //grrr, why does this happen ?!
-			}
+			//if (frame < 0)
+			//{
+			//	frame = 0; //grrr, why does this happen ?!
+			//}
 
 			//printf("Reading frame %d %d %d %d\n", (int)cfra, mi->start_frame, frame, fmd->last_frame);
 
