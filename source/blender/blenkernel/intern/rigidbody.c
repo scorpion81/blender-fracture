@@ -40,6 +40,7 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_blenlib.h"
+#include "BLI_callbacks.h"
 #include "BLI_math.h"
 #include "BLI_kdtree.h"
 #include "BLI_utildefines.h"
@@ -2171,6 +2172,15 @@ static void idCallback(void *world, void* island, int* objectId, int* islandId)
 	}
 }
 
+static void tickCallback(float timestep, void *scene)
+{
+	Scene* sce = (Scene*)scene;
+	RigidBodyWorld *rbw = sce->rigidbody_world;
+	rbw->internal_tick = timestep;
+
+	BLI_callback_exec(G.main, &sce->id, BLI_CB_EVT_BULLET_TICK);
+}
+
 /* --------------------- */
 
 /* Create physics sim world given RigidBody world settings */
@@ -2185,7 +2195,7 @@ void BKE_rigidbody_validate_sim_world(Scene *scene, RigidBodyWorld *rbw, bool re
 	if (rebuild || rbw->physics_world == NULL) {
 		if (rbw->physics_world)
 			RB_dworld_delete(rbw->physics_world);
-		rbw->physics_world = RB_dworld_new(scene->physics_settings.gravity, rbw, filterCallback, contactCallback, idCallback);
+		rbw->physics_world = RB_dworld_new(scene->physics_settings.gravity, rbw, scene, filterCallback, contactCallback, idCallback, tickCallback);
 	}
 
 	RB_dworld_set_solver_iterations(rbw->physics_world, rbw->num_solver_iterations);

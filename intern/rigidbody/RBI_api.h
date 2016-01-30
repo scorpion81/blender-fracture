@@ -88,8 +88,9 @@ void RB_dworld_init_compounds(rbDynamicsWorld *world);
 
 /* Create a new dynamics world instance */
 // TODO: add args to set the type of constraint solvers, etc.
-rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, int (*callback)(void*, void*, void*, void*, void*),
-								void (*contactCallback)(rbContactPoint*, void *), void (*idCallbackOut)(void*, void*, int*, int*));
+rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, void *blenderScene, int (*callback)(void*, void*, void*, void*, void*),
+								void (*contactCallback)(rbContactPoint*, void *), void (*idCallbackOut)(void*, void*, int*, int*),
+								void (*tickCallback)(float, void *));
 
 /* Delete the given dynamics world, and free any extra data it may require */
 void RB_dworld_delete(rbDynamicsWorld *world);

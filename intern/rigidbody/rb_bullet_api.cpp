@@ -107,22 +107,27 @@ static inline void copy_v3_btvec3(float vec[3], const btVector3 &btvec)
 }
 
 typedef void (*rbContactCallback)(rbContactPoint * cp, void *bworld);
+typedef void (*rbTickCallback)(btScalar timeStep, void *bworld);
 
 class TickDiscreteDynamicsWorld : public btFractureDynamicsWorld
 {
 	public:
-		TickDiscreteDynamicsWorld(btDispatcher* dispatcher,btBroadphaseInterface* pairCache,
-		                          btConstraintSolver* constraintSolver,btCollisionConfiguration* collisionConfiguration,
-		                          rbContactCallback cont_callback, void *bworld, IdCallback id_callback);
+		TickDiscreteDynamicsWorld(btDispatcher* dispatcher, btBroadphaseInterface* pairCache,
+		                          btConstraintSolver* constraintSolver, btCollisionConfiguration* collisionConfiguration,
+		                          rbContactCallback cont_callback, void *bworld, void *bScene, IdCallback id_callback, rbTickCallback tick_callback);
 		rbContactPoint* make_contact_point(btManifoldPoint& point, const btCollisionObject *body0, const btCollisionObject *body1);
 		rbContactCallback m_contactCallback;
+		rbTickCallback m_tickCallback;
 		void* m_bworld;
+		void* m_bscene;
 };
 
 void tickCallback(btDynamicsWorld *world, btScalar timeStep)
 {
 	btFractureDynamicsWorld *fworld = (btFractureDynamicsWorld*)world;
 	fworld->updateBodies();
+
+	TickDiscreteDynamicsWorld* tworld = (TickDiscreteDynamicsWorld*)world;
 
 	int numManifolds = world->getDispatcher()->getNumManifolds();
 	for (int i=0;i<numManifolds;i++)
@@ -141,7 +146,7 @@ void tickCallback(btDynamicsWorld *world, btScalar timeStep)
 				const btVector3& ptB = pt.getPositionWorldOnB();
 				const btVector3& normalOnB = pt.m_normalWorldOnB;*/
 
-				TickDiscreteDynamicsWorld* tworld = (TickDiscreteDynamicsWorld*)world;
+				//TickDiscreteDynamicsWorld* tworld = (TickDiscreteDynamicsWorld*)world;
 				if (tworld->m_contactCallback)
 				{
 					rbContactPoint* cp = tworld->make_contact_point(pt, obA, obB);
@@ -151,17 +156,26 @@ void tickCallback(btDynamicsWorld *world, btScalar timeStep)
 			}
 		}
 	}
+
+	if (tworld->m_tickCallback)
+	{
+		tworld->m_tickCallback(timeStep, tworld->m_bscene);
+	}
 }
 
-TickDiscreteDynamicsWorld::TickDiscreteDynamicsWorld(btDispatcher* dispatcher,btBroadphaseInterface* pairCache,
-                                                     btConstraintSolver* constraintSolver,btCollisionConfiguration* collisionConfiguration,
-                                                     rbContactCallback cont_callback, void *bworld, IdCallback id_callback) :
+TickDiscreteDynamicsWorld::TickDiscreteDynamicsWorld(btDispatcher* dispatcher, btBroadphaseInterface* pairCache,
+                                                     btConstraintSolver* constraintSolver, btCollisionConfiguration* collisionConfiguration,
+                                                     rbContactCallback cont_callback, void *bworld, void *bScene, IdCallback id_callback,
+                                                     rbTickCallback tick_callback) :
+
                                                      btFractureDynamicsWorld(dispatcher, pairCache, constraintSolver, collisionConfiguration,
                                                                              id_callback, getBodyFromShape)
 {
 	m_internalTickCallback = tickCallback;
 	m_contactCallback = cont_callback;
 	m_bworld = bworld;
+	m_bscene = bScene;
+	m_tickCallback = tick_callback;
 }
 
 rbContactPoint* TickDiscreteDynamicsWorld::make_contact_point(btManifoldPoint& point, const btCollisionObject* body0, const btCollisionObject* body1)
@@ -194,6 +208,7 @@ struct rbDynamicsWorld {
 	void *blenderWorld;
 	//struct rbContactCallback *contactCallback;
 	IdOutCallback idOutCallback;
+	void *blenderScene; // ouch, very very clumsy approach, this is just a borrowed pointer
 };
 
 struct rbVert {
@@ -410,8 +425,9 @@ static void idCallback(void *userPtr, int* objectId, int* shardId)
 }
 
 //yuck, but need a handle for the world somewhere for collision callback...
-rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, int (*callback)(void *, void *, void *, void *, void *),
-							   void (*contactCallback)(rbContactPoint* cp, void *bworld), void (*idCallbackOut)(void*, void*, int*, int*))
+rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, void* blenderScene, int (*callback)(void *, void *, void *, void *, void *),
+							   void (*contactCallback)(rbContactPoint* cp, void *bworld), void (*idCallbackOut)(void*, void*, int*, int*),
+							   void (*tickCallback)(float timestep, void *bworld))
 {
 	rbDynamicsWorld *world = new rbDynamicsWorld;
 	
@@ -433,7 +449,7 @@ rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, int (
 	                                                                  world->pairCache,
 	                                                      world->constraintSolver,
 	                                                      world->collisionConfiguration,
-	                                                      contactCallback, blenderWorld, idCallback);
+	                                                      contactCallback, blenderWorld, blenderScene, idCallback, tickCallback);
 
 	/* world */
 	world->dynamicsWorld = (btFractureDynamicsWorld*)tworld;

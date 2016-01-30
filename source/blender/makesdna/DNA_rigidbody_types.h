@@ -75,7 +75,8 @@ typedef struct RigidBodyWorld {
 	void *physics_world;		/* Physics sim world (i.e. btDiscreteDynamicsWorld) */
 	RigidBodyOb **cache_index_map;		/* Maps the linear RigidbodyOb index to the nested Object(Modifier) Index, at runtime*/
 	int *cache_offset_map;		/* Maps the linear RigidbodyOb index to the nested Object(Modifier) cell offset, at runtime, so it does not need to be calced in cache*/
-	//char pad2[4];
+	float internal_tick;		/* this is the current ? internal bullet time step, clumsy to put here but cannot expose custom callback parameters */
+	char pad2[4];
 } RigidBodyWorld;
 
 /* Flags for RigidBodyWorld */

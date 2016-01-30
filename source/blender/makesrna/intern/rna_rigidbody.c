@@ -1002,6 +1002,11 @@ static void rna_def_rigidbody_world(BlenderRNA *brna)
 
 	prop = RNA_def_int(func, "has_hit", 0, 0, 0, "", "If the function has found collision point, value is 1, otherwise 0", 0, 0);
 	RNA_def_function_output(func, prop);
+
+	prop = RNA_def_property(srna, "bullet_step", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "internal_tick");
+	RNA_def_property_float_default(prop, 0.0f);
+	RNA_def_property_ui_text(prop, "Bullet Step", "The current bullet step value (read only, as writing it has no effect)");
 }
 
 static void rna_def_rigidbody_object(BlenderRNA *brna)
