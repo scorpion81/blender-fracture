@@ -4150,6 +4150,7 @@ static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always)
 		{
 			RigidBodyShardCon *rbsc;
 			MeshIsland *mi;
+			Scene *scene = fmd->modifier.scene;
 
 			if (do_reset_always)
 			{
@@ -4167,6 +4168,7 @@ static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always)
 					{
 						copy_v3_v3(mi->rigidbody->pos, loc);
 						copy_qt_qt(mi->rigidbody->orn, rot);
+						BKE_rigidbody_remove_shard(scene, mi);
 						validateShard(rbw, mi, ob, false, false);
 					}
 				}

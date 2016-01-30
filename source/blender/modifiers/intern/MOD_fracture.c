@@ -453,11 +453,11 @@ static void free_modifier(FractureModifierData *fmd, bool do_free_seq)
 {
 	if (fmd->fracture_mode != MOD_FRACTURE_DYNAMIC)
 	{
-		free_simulation(fmd, do_free_seq, false);
+		free_simulation(fmd, false, false);
 	}
 	else if (!do_free_seq)
 	{
-		free_simulation(fmd, true, false);
+		free_simulation(fmd, true, true);
 	}
 
 	if (fmd->material_index_map)
