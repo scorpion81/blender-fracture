@@ -1158,7 +1158,7 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 			break;
 	
 		case RB_SHAPE_CONVEXH:
-			/* try to emged collision margin */
+			/* try to embed collision margin */
 			has_volume = (MIN3(size[0], size[1], size[2]) > 0.0f);
 
 			if (!(rbo->flag & RBO_FLAG_USE_MARGIN) && has_volume)
@@ -1171,43 +1171,6 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 		{
 			new_shape = rigidbody_get_shape_trimesh_from_mesh_shard(mi, ob);
 			break;
-#if 0
-			//wtf, seems a merge gone wrong....
-			if (ob->type == OB_MESH) {
-				DerivedMesh *dm = rigidbody_get_mesh(ob);
-				MVert *mvert;
-				const MLoopTri *lt = NULL;
-				int totvert, tottri = 0;
-				const MLoop *mloop = NULL;
-				
-				/* ensure mesh validity, then grab data */
-				if (dm == NULL)
-					return;
-			
-				DM_ensure_looptri(dm);
-			
-				mvert   = dm->getVertArray(dm);
-				totvert = dm->getNumVerts(dm);
-				lt = dm->getLoopTriArray(dm);
-				tottri = dm->getNumLoopTri(dm);
-				mloop = dm->getLoopArray(dm);
-				
-				if (totvert > 0 && tottri > 0) {
-					BKE_mesh_calc_volume(mvert, totvert, lt, tottri, mloop, &volume, NULL);
-				}
-				
-				/* cleanup temp data */
-				if (ob->rigidbody_object->mesh_source == RBO_MESH_BASE) {
-					dm->release(dm);
-				}
-			}
-			else {
-				/* rough estimate from boundbox as fallback */
-				/* XXX could implement other types of geometry here (curves, etc.) */
-				volume = size[0] * size[1] * size[2];
-			}
-			break;
-#endif
 		}
 	}
 	/* assign new collision shape if creation was successful */
@@ -1590,7 +1553,7 @@ static void rigidbody_set_springs_active(RigidBodyShardCon *rbc, bool active)
 {
 	if (rbc && rbc->physics_constraint && rbc->type == RBC_TYPE_6DOF_SPRING)
 	{
-		if (active)
+		if (active) //XXX TEST purpose only
 		{
 			RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, rbc->flag & RBC_FLAG_USE_SPRING_X);
 			RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, rbc->spring_stiffness_x);
@@ -1733,7 +1696,7 @@ static void rigidbody_create_shard_physics_constraint(FractureModifierData* fmd,
 						else
 						{
 							rbc->flag &= ~RBC_FLAG_PLASTIC_ACTIVE;
-							//rigidbody_set_springs_active(rbc, false);
+							rigidbody_set_springs_active(rbc, false);
 						}
 					}
 				}
@@ -1979,6 +1942,9 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 		ob2 = blenderOb2;
 		ob_index2 = -1;
 	}
+
+	if (!ob1 || !ob2)
+		return false;
 
 	if ((mi1 != NULL) && (mi2 != NULL) && ob_index1 != -1 && ob_index2 != -1) {
 		validOb = (ob_index1 != ob_index2 && colgroup_check(ob1->rigidbody_object->col_groups, ob2->rigidbody_object->col_groups) &&
@@ -2389,6 +2355,9 @@ RigidBodyOb *BKE_rigidbody_create_object(Scene *scene, Object *ob, short type, M
 		rbo->lin_sleep_thresh = mi->rigidbody->lin_sleep_thresh;
 		rbo->ang_sleep_thresh = mi->rigidbody->ang_sleep_thresh;
 		rbo->force_thresh = mi->rigidbody->force_thresh;
+
+		rbo->lin_damping = mi->rigidbody->lin_damping;
+		rbo->ang_damping = mi->rigidbody->ang_damping;
 
 		rbo->col_groups = mi->rigidbody->col_groups;
 
@@ -3134,7 +3103,7 @@ static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int r
 		BKE_rigidbody_validate_sim_shard(rbw, mi, ob, false, transfer_speed);
 	}
 	/* refresh shape... */
-	if (mi->rigidbody->flag & RBO_FLAG_NEEDS_RESHAPE) {
+	if (mi->rigidbody->physics_object && (mi->rigidbody->flag & RBO_FLAG_NEEDS_RESHAPE)) {
 		/* mesh/shape data changed, so force shape refresh */
 		BKE_rigidbody_validate_sim_shard_shape(mi, ob, true);
 		/* now tell RB sim about it */
@@ -3298,10 +3267,25 @@ static void handle_breaking_distance(FractureModifierData *fmd, Object *ob, Rigi
 	}
 }
 
+static void enable_plastic(RigidBodyShardCon *rbsc)
+{
+	if (!(rbsc->flag & RBC_FLAG_PLASTIC_ACTIVE) && rbsc->plastic_dist >= 0.0f && rbsc->plastic_angle >= 0.0f)
+	{
+		if (rbsc->physics_constraint)
+		{
+			/* activate only once */
+			rbsc->flag |= RBC_FLAG_PLASTIC_ACTIVE;
+			rigidbody_set_springs_active(rbsc, true);
+			RB_constraint_set_equilibrium_6dof_spring(rbsc->physics_constraint);
+			RB_constraint_set_enabled(rbsc->physics_constraint, true);
+		}
+	}
+}
+
 static void handle_plastic_breaking(RigidBodyShardCon *rbsc, RigidBodyWorld* rbw, short laststeps, float lastscale)
 {
 	float dist, angle, distdiff, anglediff;
-	bool exceededAngle = false, exceededDist = false;
+	bool exceededAngle = false, exceededDist = false, regularBroken = false;
 
 	/*match breaking threshold according to timescale and steps */
 	if (rbsc->physics_constraint)
@@ -3324,22 +3308,40 @@ static void handle_plastic_breaking(RigidBodyShardCon *rbsc, RigidBodyWorld* rbw
 
 	exceededAngle = ((rbsc->breaking_angle >= 0.0f) && (anglediff > rbsc->breaking_angle));
 	exceededDist = ((rbsc->breaking_dist >= 0.0f) && (distdiff > (rbsc->breaking_dist + (anglediff / M_PI))));
+	regularBroken = (rbsc->type != RBC_TYPE_6DOF_SPRING && rbsc->physics_constraint &&
+	                !(RB_constraint_is_enabled(rbsc->physics_constraint)));
 
-	if (exceededDist || exceededAngle)
+#if 0
+	if (regularBroken)
+	{
+		//XXX hack, if a regular constraint breaks threshold based, enable associated springs asap so the support does not collapse
+		RigidBodyShardCon *con;
+		int i;
+		for (i = 0; i < rbsc->mi1->participating_constraint_count; i++)
+		{
+			con = rbsc->mi1->participating_constraints[i];
+			if (con->mi1 == rbsc->mi1 && con->mi2 == rbsc->mi2)
+			{
+				enable_plastic(con);
+			}
+		}
+
+		for (i = 0; i < rbsc->mi2->participating_constraint_count; i++)
+		{
+			con = rbsc->mi2->participating_constraints[i];
+			if (con->mi1 == rbsc->mi1 && con->mi2 == rbsc->mi2)
+			{
+				enable_plastic(con);
+			}
+		}
+	}
+#endif
+
+	if (exceededDist || exceededAngle) //|| regularBroken)
 	{
 		if (rbsc->type == RBC_TYPE_6DOF_SPRING)
 		{
-			if (!(rbsc->flag & RBC_FLAG_PLASTIC_ACTIVE) && rbsc->plastic_dist >= 0.0f && rbsc->plastic_angle >= 0.0f)
-			{
-				if (rbsc->physics_constraint)
-				{
-					/* activate only once */
-					rbsc->flag |= RBC_FLAG_PLASTIC_ACTIVE;
-					rigidbody_set_springs_active(rbsc, true);
-					RB_constraint_set_equilibrium_6dof_spring(rbsc->physics_constraint);
-					RB_constraint_set_enabled(rbsc->physics_constraint, true);
-				}
-			}
+			enable_plastic(rbsc);
 		}
 		else if (rbsc->physics_constraint)
 		{
@@ -3352,13 +3354,13 @@ static void handle_plastic_breaking(RigidBodyShardCon *rbsc, RigidBodyWorld* rbw
 	exceededDist = ((rbsc->plastic_dist >= 0.0f) && (distdiff > (rbsc->plastic_dist + (anglediff / M_PI))));
 
 	/* break plastic connections */
-	if (exceededDist || exceededAngle)
+	if ((exceededDist || exceededAngle) /*&& !regularBroken*/)
 	{
 		if (rbsc->type == RBC_TYPE_6DOF_SPRING && rbsc->flag & RBC_FLAG_PLASTIC_ACTIVE)
 		{
 			if (rbsc->physics_constraint)
 			{
-				//rigidbody_set_springs_active(rbsc, false);
+				rigidbody_set_springs_active(rbsc, false);
 				RB_constraint_set_enabled(rbsc->physics_constraint, rbsc->flag & RBC_FLAG_ENABLED);
 				//rbsc->flag &= ~RBC_FLAG_PLASTIC_ACTIVE;
 			}
@@ -3575,7 +3577,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				handle_regular_breaking(fmd, ob, rbw, rbsc, max_con_mass, rebuild);
 			}
 
-			if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL && (rbsc->flag & RBC_FLAG_USE_BREAKING) /* && !rebuild*/)
+			if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL && (rbsc->flag & RBC_FLAG_USE_BREAKING) && !rebuild)
 			{
 				handle_plastic_breaking(rbsc, rbw, laststeps, lastscale);
 			}
@@ -4193,7 +4195,7 @@ static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always)
 						}
 						else
 						{
-							//rigidbody_set_springs_active(rbsc, false);
+							rigidbody_set_springs_active(rbsc, false);
 							rbsc->flag &= ~RBC_FLAG_PLASTIC_ACTIVE;
 							if (rbsc->physics_constraint)
 								RB_constraint_set_enabled(rbsc->physics_constraint, false);

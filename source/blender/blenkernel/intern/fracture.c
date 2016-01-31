@@ -1687,11 +1687,23 @@ static DerivedMesh* do_create(FractureModifierData *fmd, int num_verts, int num_
 	{
 		MPoly *mp;
 		MLoop *ml;
+		MVert *mv;
 		int i;
 
 		memcpy(mverts + vertstart, shard->mvert, shard->totvert * sizeof(MVert));
 		memcpy(mpolys + polystart, shard->mpoly, shard->totpoly * sizeof(MPoly));
 
+#if 0
+		if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
+		{
+			for (i = 0, mv = mverts + vertstart; i < shard->totvert; i++, mv++)
+			{
+				sub_v3_v3(mv->co, shard->centroid);
+				mul_v3_v3(mv->co, shard->raw_centroid);
+				add_v3_v3(mv->co, shard->centroid);
+			}
+		}
+#endif
 
 		for (i = 0, mp = mpolys + polystart; i < shard->totpoly; ++i, ++mp) {
 			/* adjust loopstart index */
@@ -2200,6 +2212,9 @@ static Shard* fracture_object_to_shard( Object *own, Object* target)
 	unit_m4(mat);
 	BLI_space_transform_from_matrices(&trans, target->obmat, mat);
 	//BLI_SPACE_TRANSFORM_SETUP(&trans, target, own);
+	//mat4_to_size(size, target->obmat);
+
+	//ABUSE raw_centroid here for size, its not used in this mode !!!;
 
 	mvert = dm->getVertArray(dm);
 	mpoly = dm->getPolyArray(dm);
@@ -2211,7 +2226,17 @@ static Shard* fracture_object_to_shard( Object *own, Object* target)
 	// create temp shard -> that necessary at all ?
 	s = BKE_create_fracture_shard(mvert, mpoly, mloop, totvert, totpoly, totloop, true);
 
-	for(v = 0, mv = s->mvert; v < s->totvert; v++, mv++)
+#if 0
+	//ABUSE raw_centroid here for size, its not used in this mode !!!;
+	//needed to compensate scaling (smaller physicsmesh, but original mesh size or vice versa, lets test)
+	inv_size[0] = 1.0f;// / size[0];
+	inv_size[1] = 1.0f;// / size[1];
+	inv_size[2] = 1.0f;// / size[2];
+
+	copy_v3_v3(s->raw_centroid, inv_size);
+#endif
+
+	for (v = 0, mv = s->mvert; v < s->totvert; v++, mv++)
 	{
 		BLI_space_transform_apply(&trans, mv->co);
 	}
@@ -2317,6 +2342,13 @@ static MeshIsland* fracture_shard_to_island(FractureModifierData *fmd, Shard *s,
 		mi->vertno[j * 3] = no[0];
 		mi->vertno[j * 3 + 1] = no[1];
 		mi->vertno[j * 3 + 2] = no[2];
+
+#if 0
+		if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
+		{
+			mul_v3_v3(mv->co, s->raw_centroid);
+		}
+#endif
 
 		/* then eliminate centroid in vertex coords*/
 		sub_v3_v3(mv->co, s->centroid);
@@ -2511,7 +2543,6 @@ MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own,
 	MeshIsland *mi;
 	Shard *s;
 	int vertstart = 0;
-	float loc[3], rot[4];
 	short totcol = 0, totdef = 0;
 
 	if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL || own->type != OB_MESH || !own->data)
@@ -2535,8 +2566,6 @@ MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own,
 
 	//hrm need to rebuild ALL islands since vertex refs are bonkers now after mesh has changed
 	mi = fracture_shard_to_island(fmd, s, vertstart);
-
-	//mat4_to_loc_quat(loc, rot, target->obmat);
 
 	//lets see whether we need to add loc here too XXX TODO
 
