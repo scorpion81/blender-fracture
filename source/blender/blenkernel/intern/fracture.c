@@ -2197,7 +2197,7 @@ static Shard* fracture_object_to_shard( Object *own, Object* target)
 	MPoly* mpoly;
 	MLoop* mloop;
 	SpaceTransform trans;
-	float mat[4][4];
+	float mat[4][4], size[3]; //, inv_size[3];
 
 	int totvert, totpoly, totloop, v;
 	bool do_free = false;
@@ -2212,7 +2212,7 @@ static Shard* fracture_object_to_shard( Object *own, Object* target)
 	unit_m4(mat);
 	BLI_space_transform_from_matrices(&trans, target->obmat, mat);
 	//BLI_SPACE_TRANSFORM_SETUP(&trans, target, own);
-	//mat4_to_size(size, target->obmat);
+	mat4_to_size(size, target->obmat);
 
 	//ABUSE raw_centroid here for size, its not used in this mode !!!;
 
@@ -2229,12 +2229,12 @@ static Shard* fracture_object_to_shard( Object *own, Object* target)
 #if 0
 	//ABUSE raw_centroid here for size, its not used in this mode !!!;
 	//needed to compensate scaling (smaller physicsmesh, but original mesh size or vice versa, lets test)
-	inv_size[0] = 1.0f;// / size[0];
-	inv_size[1] = 1.0f;// / size[1];
-	inv_size[2] = 1.0f;// / size[2];
-
-	copy_v3_v3(s->raw_centroid, inv_size);
+	inv_size[0] = 1.0f / size[0];
+	inv_size[1] = 1.0f / size[1];
+	inv_size[2] = 1.0f / size[2];
 #endif
+
+	copy_v3_v3(s->raw_centroid, size);
 
 	for (v = 0, mv = s->mvert; v < s->totvert; v++, mv++)
 	{
@@ -2343,13 +2343,6 @@ static MeshIsland* fracture_shard_to_island(FractureModifierData *fmd, Shard *s,
 		mi->vertno[j * 3 + 1] = no[1];
 		mi->vertno[j * 3 + 2] = no[2];
 
-#if 0
-		if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
-		{
-			mul_v3_v3(mv->co, s->raw_centroid);
-		}
-#endif
-
 		/* then eliminate centroid in vertex coords*/
 		sub_v3_v3(mv->co, s->centroid);
 	}
@@ -2399,11 +2392,18 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 	//update existing island's vert refs, if any...should have used indexes instead :S
 	for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 	{
+		MVert *pvert = mi->physics_mesh->getVertArray(mi->physics_mesh);
+		//Shard *s = BLI_findlink(&fmd->frac_mesh->shard_map, mi->id);
+
 		for (i = 0; i < mi->vertex_count; i++)
 		{
 			//just update pointers, dont need to reallocate something
 			MVert *v = NULL;
 			int index;
+			float mat[4][4], imat[4][4];
+			float size[3] = {1.0f, 1.0f, 1.0f};
+			float loc[3] = {0.0f, 0.0f, 0.0f};
+			MVert *pv = NULL;
 
 			//also correct indexes
 			if (mi->vertex_indices[i] >= totvert)
@@ -2417,6 +2417,28 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 			v = mv + index;
 			mi->vertices_cached[i] = v;
 
+#if 0
+			//transform vertex properly ?
+			if (s)
+				loc_quat_size_to_mat4(mat, loc , mi->rot, s->raw_centroid);
+			else //fallback, so no crash, but visual difference to get notified of problem
+				loc_quat_size_to_mat4(mat, loc , mi->rot, size);
+
+			invert_m4_m4(imat, mat);
+			//pv = pvert + i;
+			//add_v3_v3(pv->co, mi->centroid);
+			//mul_m4_v3(imat, pv->co);
+			//sub_v3_v3(pv->co, mi->centroid);
+#endif
+
+			loc_quat_size_to_mat4(mat, loc, mi->rot, size);
+			invert_m4_m4(imat, mat);
+			pv = pvert + i;
+			mul_m4_v3(imat, pv->co);
+
+			sub_v3_v3(v->co, mi->centroid);
+			mul_m4_v3(mat, v->co);
+			add_v3_v3(v->co, mi->centroid);
 			//printf("%d %d\n", index, dm->getNumVerts(dm));
 
 			//hrm perhaps we need to update rest coordinates, too...
