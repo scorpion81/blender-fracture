@@ -2764,32 +2764,33 @@ static Object* do_convert_meshisland_to_object(MeshIsland *mi, Scene* scene, Gro
 	else
 	{
 		int i;
-		float size[3] = {1.0f, 1.0f, 1.0f}, inv_size[3] = {1.0f, 1.0f, 1.0f};
+		float size[3] = {1.0f, 1.0f, 1.0f};
+		float loc[3] = {0.0f, 0.0f, 0.0f}, mat[4][4], imat[4][4];
+
 		Shard *s = BLI_findlink(&fmd->frac_mesh->shard_map, mi->id);
 		if (s)
 		{
 			//AGAIN, used raw_centroid FOR NOW XXX TODO
 			copy_v3_v3(ob_new->size,s->raw_centroid);
-			inv_size[0] = 1.0f / s->raw_centroid[0];
-			inv_size[1] = 1.0f / s->raw_centroid[1];
-			inv_size[2] = 1.0f / s->raw_centroid[2];
 		}
 		else
 		{
 			copy_v3_v3(ob_new->size, size);
 		}
-		copy_v3_v3(ob_new->loc, mi->rigidbody->pos);
-		copy_qt_qt(ob_new->quat, mi->rigidbody->orn);
 
-		//compensate size; loc and rot should be dealt with already in physmesh
+		copy_v3_v3(ob_new->loc, mi->centroid);
+		copy_qt_qt(ob_new->quat, mi->rot);
+		loc_quat_size_to_mat4(ob_new->obmat, ob_new->loc, ob_new->quat, ob_new->size);
+		invert_m4_m4(ob_new->imat, ob_new->obmat);
+
+		loc_quat_size_to_mat4(mat, loc, ob_new->quat, ob_new->size);
+		invert_m4_m4(imat, mat);
+		//compensate for rot, size
 		for (i = 0; i < me->totvert; i++)
 		{
-			mul_v3_v3(me->mvert[i].co, inv_size);
+			mul_m4_v3(imat, me->mvert[i].co);
 		}
 
-		//copy_v3_v3(ob_new->loc, mi->centroid);
-		//copy_qt_qt(ob_new->quat, mi->rot); // does bullet reset the start orientation ? maybe i do in the code somewhere...
-		loc_quat_size_to_mat4(ob_new->obmat, ob_new->loc, ob_new->quat, ob_new->size);
 		mat4_to_axis_angle(ob_new->rotAxis, &ob_new->rotAngle, ob_new->obmat);
 		mat4_to_eulO(ob_new->rot, ob_new->rotmode, ob_new->obmat);
 	}

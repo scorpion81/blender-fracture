@@ -2393,7 +2393,7 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 	for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 	{
 		MVert *pvert = mi->physics_mesh->getVertArray(mi->physics_mesh);
-		//Shard *s = BLI_findlink(&fmd->frac_mesh->shard_map, mi->id);
+		Shard *s = BLI_findlink(&fmd->frac_mesh->shard_map, mi->id);
 
 		for (i = 0; i < mi->vertex_count; i++)
 		{
@@ -2425,21 +2425,18 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 				loc_quat_size_to_mat4(mat, loc , mi->rot, size);
 
 			invert_m4_m4(imat, mat);
-			//pv = pvert + i;
-			//add_v3_v3(pv->co, mi->centroid);
-			//mul_m4_v3(imat, pv->co);
-			//sub_v3_v3(pv->co, mi->centroid);
-#endif
-
-			loc_quat_size_to_mat4(mat, loc, mi->rot, size);
-			invert_m4_m4(imat, mat);
 			pv = pvert + i;
 			mul_m4_v3(imat, pv->co);
 
+			loc_quat_size_to_mat4(mat, loc , mi->rot, size);
+			invert_m4_m4(imat, mat);
+
 			sub_v3_v3(v->co, mi->centroid);
-			mul_m4_v3(mat, v->co);
+			mul_m4_v3(imat, v->co);
 			add_v3_v3(v->co, mi->centroid);
+
 			//printf("%d %d\n", index, dm->getNumVerts(dm));
+#endif
 
 			//hrm perhaps we need to update rest coordinates, too...
 			mi->vertco[3*i] = v->co[0];
@@ -2449,6 +2446,12 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 			mi->vertno[3*i] = v->no[0];
 			mi->vertno[3*i+1] = v->no[1];
 			mi->vertno[3*i+2] = v->no[2];
+
+#if 0
+			sub_v3_v3(v->co, mi->centroid);
+			mul_m4_v3(mat, v->co);
+			add_v3_v3(v->co, mi->centroid);
+#endif
 
 			if (ob && dvert)
 			{

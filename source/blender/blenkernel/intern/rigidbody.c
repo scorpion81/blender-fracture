@@ -480,12 +480,6 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 	invert_m4_m4(ob->imat, ob->obmat);
 	mat4_to_size(size, ob->obmat);
 
-	if (rmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
-	{
-		//take mi->rot into account too
-		mul_qt_qtqt(rot, rot, mi->rot);
-	}
-
 	if (rmd->fracture_mode == MOD_FRACTURE_PREFRACTURED && frame > -1) {
 		/*record only in prefracture case here, when you want to convert to keyframes*/
 		n = frame - mi->start_frame + 1;
@@ -3598,7 +3592,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				handle_regular_breaking(fmd, ob, rbw, rbsc, max_con_mass, rebuild);
 			}
 
-			if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL && (rbsc->flag & RBC_FLAG_USE_BREAKING) && 0)// /*&& !rebuild*/)
+			if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL && (rbsc->flag & RBC_FLAG_USE_BREAKING) && !rebuild)
 			{
 				handle_plastic_breaking(rbsc, rbw, laststeps, lastscale);
 			}
@@ -3939,6 +3933,19 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 
 				//frame = (int)BKE_scene_frame_get(md->scene);
 				//print_v3("RBO POS:", rbo->pos);
+#if 0
+				if (mode)
+				{
+					float rot[4];
+					copy_qt_qt(rot, mi->rot);
+					mul_qt_qtqt(rot, rot, rbo->orn);
+					BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn, fmd, (int)ctime);
+				}
+				else
+				{
+					BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn, fmd, (int)ctime);
+				}
+#endif
 				BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn, fmd, (int)ctime);
 			}
 
@@ -4173,7 +4180,7 @@ static bool restoreKinematic(RigidBodyWorld *rbw)
 	return did_it;
 }
 
-static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always)
+static void resetExternal(RigidBodyWorld *rbw)
 {
 	GroupObject *go;
 
@@ -4187,51 +4194,45 @@ static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always)
 			RigidBodyShardCon *rbsc;
 			MeshIsland *mi;
 			Scene *scene = fmd->modifier.scene;
+			float frame = BKE_scene_frame_get(scene);
 
-			BKE_object_where_is_calc(scene, ob);
-
-			if (do_reset_always)
+			for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 			{
-				for (mi = fmd->meshIslands.first; mi; mi = mi->next)
+				float loc[3], rot[4], quat[4] = {1.0f, 0.0f, 0.0f, 0.0f};
+
+				copy_v3_v3(loc, mi->centroid);
+				copy_qt_qt(rot, mi->rot);
+
+				if (mi->rigidbody)
 				{
-					float loc[3], rot[4], quat[4];
-					mat4_to_quat(quat, ob->obmat);
+					int i;
+					float loc2[3] = {0.0f, 0.0f, 0.0f};
+					float size[3] = {1.0f, 1.0f, 1.0};
+					float mat[4][4], imat[4][4];
+					loc_quat_size_to_mat4(mat, loc2, mi->rot, size);
+					invert_m4_m4(imat, mat);
 
-					//mul_v3_m4v3(loc, ob->obmat, mi->centroid);
-					//mul_qt_qtqt(rot, quat, mi->rot);
-					copy_v3_v3(loc, mi->centroid);
-					copy_qt_qt(rot, mi->rot);
+					copy_v3_v3(mi->rigidbody->pos, loc);
+					copy_qt_qt(mi->rigidbody->orn, rot);
+					BKE_rigidbody_remove_shard(scene, mi);
+					validateShard(rbw, mi, ob, false, false);
+					//BKE_rigidbody_update_cell(mi, ob, mi->centroid, quat, fmd, (int)frame);
 
-					if (mi->rigidbody)
+					for (i = 0; i < mi->vertex_count; i++)
 					{
-						int i;
-						float loc2[3] = {0.0f, 0.0f, 0.0f};
-						float size[3] = {1.0f, 1.0f, 1.0};
-						float mat[4][4], imat[4][4];
-						loc_quat_size_to_mat4(mat, loc2, mi->rot, size);
-						invert_m4_m4(imat, mat);
-
-						//copy_v3_v3(mi->rigidbody->pos, loc);
-						//copy_qt_qt(mi->rigidbody->orn, rot);
-						BKE_rigidbody_remove_shard(scene, mi);
-						validateShard(rbw, mi, ob, false, false);
-
-						for (i = 0; i < mi->vertex_count; i++)
+						MVert *v = mi->vertices_cached[i];
+						if (v)
 						{
-							MVert *v = mi->vertices_cached[i];
-							if (v)
-							{
-								int x;
-								//dont change initial meshislands
-								sub_v3_v3(v->co, mi->centroid);
-								mul_m4_v3(mat, v->co);
-								add_v3_v3(v->co, mi->centroid);
-								x = 1;
-							}
+							//dont change initial meshislands
+							sub_v3_v3(v->co, mi->centroid);
+							mul_m4_v3(imat, v->co);
+							add_v3_v3(v->co, mi->centroid);
 						}
 					}
 				}
 			}
+
+			//BKE_object_where_is_calc(scene, ob);
 
 			for (rbsc = fmd->meshConstraints.first; rbsc; rbsc = rbsc->next)
 			{
@@ -4268,6 +4269,17 @@ static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always)
 				rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
 			}
 		}
+	}
+}
+
+static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always)
+{
+	GroupObject *go;
+
+	for (go = rbw->group->gobject.first; go; go = go->next)
+	{
+		Object *ob = go->ob;
+		FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
 
 		if (fmd && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
@@ -4395,6 +4407,7 @@ void BKE_rigidbody_rebuild_world(Scene *scene, float ctime)
 			if (!(cache->flag & PTCACHE_BAKED))
 			{
 				resetDynamic(rbw, true);
+				//resetExternal(rbw);
 			}
 
 			BKE_ptcache_id_reset(scene, &pid, PTCACHE_RESET_OUTDATED);
