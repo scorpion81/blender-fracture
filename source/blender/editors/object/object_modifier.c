@@ -2764,35 +2764,30 @@ static Object* do_convert_meshisland_to_object(MeshIsland *mi, Scene* scene, Gro
 	else
 	{
 		int i;
-		float size[3] = {1.0f, 1.0f, 1.0f};
 		float loc[3] = {0.0f, 0.0f, 0.0f}, mat[4][4], imat[4][4];
 
 		Shard *s = BLI_findlink(&fmd->frac_mesh->shard_map, mi->id);
 		if (s)
 		{
-			//AGAIN, used raw_centroid FOR NOW XXX TODO
-			copy_v3_v3(ob_new->size,s->raw_centroid);
-		}
-		else
-		{
-			copy_v3_v3(ob_new->size, size);
-		}
+			copy_v3_v3(ob_new->size, s->impact_size);
+			copy_v3_v3(ob_new->loc, mi->centroid);
+			copy_qt_qt(ob_new->quat, mi->rot);
+			loc_quat_size_to_mat4(ob_new->obmat, ob_new->loc, ob_new->quat, ob_new->size);
+			invert_m4_m4(ob_new->imat, ob_new->obmat);
 
-		copy_v3_v3(ob_new->loc, mi->centroid);
-		copy_qt_qt(ob_new->quat, mi->rot);
-		loc_quat_size_to_mat4(ob_new->obmat, ob_new->loc, ob_new->quat, ob_new->size);
-		invert_m4_m4(ob_new->imat, ob_new->obmat);
+			loc_quat_size_to_mat4(mat, loc, ob_new->quat, ob_new->size);
+			invert_m4_m4(imat, mat);
+			//compensate for rot, size
+			for (i = 0; i < me->totvert; i++)
+			{
+				sub_v3_v3(me->mvert[i].co, mi->centroid);
+				add_v3_v3(me->mvert[i].co, s->raw_centroid);
+				mul_m4_v3(imat, me->mvert[i].co);
+			}
 
-		loc_quat_size_to_mat4(mat, loc, ob_new->quat, ob_new->size);
-		invert_m4_m4(imat, mat);
-		//compensate for rot, size
-		for (i = 0; i < me->totvert; i++)
-		{
-			mul_m4_v3(imat, me->mvert[i].co);
+			mat4_to_axis_angle(ob_new->rotAxis, &ob_new->rotAngle, ob_new->obmat);
+			mat4_to_eulO(ob_new->rot, ob_new->rotmode, ob_new->obmat);
 		}
-
-		mat4_to_axis_angle(ob_new->rotAxis, &ob_new->rotAngle, ob_new->obmat);
-		mat4_to_eulO(ob_new->rot, ob_new->rotmode, ob_new->obmat);
 	}
 
 	/*set mass*/
@@ -2900,7 +2895,7 @@ static Object* do_convert_constraints(FractureModifierData *fmd, RigidBodyShardC
 
 		copy_v3_v3(rbcon->loc, loc);
 		copy_qt_qt(rbcon->quat, rot);
-		quat_to_eul(rbcon->rot, rot);
+		quat_to_eulO(rbcon->rot, rbcon->rotmode, rot);
 		quat_to_axis_angle(rbcon->rotAxis, &rbcon->rotAngle, rot);
 
 		loc_quat_size_to_mat4(mat, loc, rot, size);

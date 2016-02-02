@@ -1007,6 +1007,11 @@ static void rna_def_rigidbody_world(BlenderRNA *brna)
 	RNA_def_property_float_sdna(prop, NULL, "internal_tick");
 	RNA_def_property_float_default(prop, 0.0f);
 	RNA_def_property_ui_text(prop, "Bullet Step", "The current bullet step value (read only, as writing it has no effect)");
+
+	prop = RNA_def_property(srna, "visualize_physics", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBW_FLAG_VISUALIZE_PHYSICS);
+	RNA_def_property_ui_text(prop, "Visualize Physics", "Visualizes the actual bullet physics data in this rigidbody world");
+	RNA_def_property_update(prop, NC_SCENE | ND_DRAW, NULL);
 }
 
 static void rna_def_rigidbody_object(BlenderRNA *brna)

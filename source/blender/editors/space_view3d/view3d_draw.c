@@ -40,6 +40,7 @@
 #include "DNA_mesh_types.h"
 #include "DNA_key_types.h"
 #include "DNA_lamp_types.h"
+#include "DNA_rigidbody_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_world_types.h"
 #include "DNA_brush_types.h"
@@ -67,6 +68,8 @@
 #include "BKE_screen.h"
 #include "BKE_unit.h"
 #include "BKE_movieclip.h"
+
+#include "../../../../intern/rigidbody/RBI_api.h"
 
 #include "RE_engine.h"
 
@@ -2845,6 +2848,14 @@ static void view3d_draw_objects(
 						draw_object(scene, ar, v3d, base, 0);
 				}
 			}
+		}
+
+		if (scene->rigidbody_world)
+		{
+			/* debug physics meshes */
+			RigidBodyWorld *rbw = scene->rigidbody_world;
+			if (rbw && rbw->physics_world && (rbw->flag & RBW_FLAG_VISUALIZE_PHYSICS))
+				RB_dworld_debug_draw(rbw->physics_world);
 		}
 
 		/* mask out localview */

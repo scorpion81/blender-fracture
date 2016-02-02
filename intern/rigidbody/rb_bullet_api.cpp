@@ -77,6 +77,59 @@ subject to the following restrictions:
 #include "BulletDynamics/Dynamics/btFractureBody.h"
 #include "BulletDynamics/Dynamics/btFractureDynamicsWorld.h"
 
+#include "../glew-mx/glew-mx.h"
+
+
+struct	ViewportDebugDraw : public btIDebugDraw
+{
+	ViewportDebugDraw () :
+		m_debugMode(0)
+	{
+	}
+
+	int m_debugMode;
+
+	virtual void	drawLine(const btVector3& from,const btVector3& to,const btVector3& color)
+	{
+		if (m_debugMode >0)
+		{
+			//draw lines
+			glBegin(GL_LINES);
+				glColor4f(color[0], color[1], color[2], 1.0f);
+				glVertex3fv(from);
+				glVertex3fv(to);
+			glEnd();
+		}
+	}
+
+	virtual void	reportErrorWarning(const char* warningString)
+	{
+
+	}
+
+	virtual void	drawContactPoint(const btVector3& PointOnB,const btVector3& normalOnB,float distance,int lifeTime,const btVector3& color)
+	{
+		drawLine(PointOnB, PointOnB + normalOnB, color);
+		drawSphere(PointOnB, 0.1, color);
+	}
+
+	virtual void	setDebugMode(int debugMode)
+	{
+		m_debugMode = debugMode;
+	}
+	virtual int		getDebugMode() const
+	{
+		return m_debugMode;
+	}
+	///todo: find out if Blender can do this
+	virtual void	draw3dText(const btVector3& location,const char* textString)
+	{
+
+	}
+
+};
+
+
 struct rbRigidBody {
 	btRigidBody *body;
 	int col_groups;
@@ -458,6 +511,14 @@ rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, void*
 
 	RB_dworld_set_gravity(world, gravity);
 
+
+	/*debug drawer*/
+	world->dynamicsWorld->setDebugDrawer(new ViewportDebugDraw());
+	world->dynamicsWorld->getDebugDrawer()->setDebugMode(
+	            btIDebugDraw::DBG_DrawWireframe|btIDebugDraw::DBG_DrawAabb|
+	            btIDebugDraw::DBG_DrawContactPoints|btIDebugDraw::DBG_DrawText|
+	            btIDebugDraw::DBG_DrawConstraints/*|btIDebugDraw::DBG_DrawConstraintLimits*/);
+
 	/*contact callback */
 /*
 	if (contactCallback)
@@ -514,6 +575,11 @@ void RB_dworld_set_split_impulse(rbDynamicsWorld *world, int split_impulse)
 void RB_dworld_step_simulation(rbDynamicsWorld *world, float timeStep, int maxSubSteps, float timeSubStep)
 {
 	world->dynamicsWorld->stepSimulation(timeStep, maxSubSteps, timeSubStep);
+}
+
+void RB_dworld_debug_draw(rbDynamicsWorld *world)
+{
+	world->dynamicsWorld->debugDrawWorld();
 }
 
 /* Export -------------------------- */

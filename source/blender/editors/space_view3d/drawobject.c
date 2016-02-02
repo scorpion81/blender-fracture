@@ -7561,6 +7561,7 @@ static void draw_rigidbody_shape(Object *ob)
 {
 	BoundBox *bb = NULL;
 	float size[3], vec[8][3];
+	DerivedMesh *dm = ob->derivedFinal;
 
 	if (ob->type == OB_MESH) {
 		bb = BKE_mesh_boundbox_get(ob);
@@ -7594,6 +7595,89 @@ static void draw_rigidbody_shape(Object *ob)
 		case RB_SHAPE_CAPSULE:
 			draw_bb_quadric(bb, OB_BOUND_CAPSULE, true);
 			break;
+#if 0
+		case RB_SHAPE_CONVEXH:
+		case RB_SHAPE_TRIMESH:
+			if (dm)
+			{
+				DM_update_materials(dm, ob);
+				dm->drawEdges(dm, true, true);
+			}
+			break;
+#endif
+	}
+}
+
+static void draw_rigidbody_pivot(float loc[3], float rot[4], const char* axis_str[3],
+                                  const short dflag, const unsigned char ob_wire_col[4])
+{
+	int axis;
+	float mat[4][4];
+
+	quat_to_mat4(mat, rot);
+	glLineWidth(4.0f);
+	setlinestyle(2);
+	for (axis = 0; axis < 3; axis++) {
+		float dir[3] = {0, 0, 0};
+		float v[3];
+
+		copy_v3_v3(v, loc);
+
+		dir[axis] = 1.0f;
+		glBegin(GL_LINES);
+		mul_m4_v3(mat, dir);
+		add_v3_v3(v, dir);
+		glVertex3fv(loc);
+		glVertex3fv(v);
+		glEnd();
+
+		/* when const color is set wirecolor is NULL - we could get the current color but
+		 * with selection and group instancing its not needed to draw the text */
+		if ((dflag & DRAW_CONSTCOLOR) == 0) {
+			view3d_cached_text_draw_add(v, axis_str[axis], 2, 0, V3D_CACHE_TEXT_ASCII, ob_wire_col);
+		}
+	}
+	glLineWidth(1.0f);
+	setlinestyle(0);
+}
+
+static void draw_fracture_physics_shape(Object *ob, FractureModifierData *fmd, const short dflag, const unsigned char ob_wire_col[4])
+{
+	//draw all physicsmeshs (dm)
+	DerivedMesh *dm = NULL;
+	MeshIsland *mi;
+	RigidBodyShardCon *con;
+
+	const char *rb_str[3] = {"rx", "ry", "rz"};
+	const char *con_str[3] = {"cx", "cy", "cz"};
+
+	for (mi = fmd->meshIslands.first; mi; mi = mi->next)
+	{
+		dm = mi->physics_mesh;
+		draw_rigidbody_pivot(mi->rigidbody->pos, mi->rigidbody->orn, rb_str, dflag, ob_wire_col);
+		if (dm)
+		{
+			//just add centroid to each physmesh to visualize it (TESTING ONLY)
+			MVert *mv = dm->getVertArray(dm);
+			int i;
+			for (i = 0; i < dm->numVertData; i++)
+			{
+				add_v3_v3(mv[i].co, mi->centroid);
+			}
+
+			DM_update_materials(dm, ob);
+			dm->drawEdges(dm, true, true);
+
+			for (i = 0; i < dm->numVertData; i++)
+			{
+				sub_v3_v3(mv[i].co, mi->centroid);
+			}
+		}
+	}
+
+	for (con = fmd->meshConstraints.first; con; con = con->next)
+	{
+		draw_rigidbody_pivot(con->pos, con->orn, con_str, dflag, ob_wire_col);
 	}
 }
 
@@ -8107,6 +8191,7 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 
 	if (!render_override) {
 		bConstraint *con;
+		FractureModifierData *fmd;
 
 		for (con = ob->constraints.first; con; con = con->next) {
 			if (con->type == CONSTRAINT_TYPE_RIGIDBODYJOINT) {
@@ -8125,6 +8210,12 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 		}
 		if (ob->rigidbody_object) {
 			draw_rigidbody_shape(ob);
+		}
+
+		fmd = modifiers_findByType(ob, eModifierType_Fracture);
+		if (fmd)
+		{
+			//draw_fracture_physics_shape(ob, fmd, dflag, ob_wire_col);
 		}
 
 		/* draw extra: after normal draw because of makeDispList */

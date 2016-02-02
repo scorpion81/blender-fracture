@@ -142,7 +142,7 @@ void BKE_rigidbody_start_dist_angle(RigidBodyShardCon *con, bool exact)
 	float dist, angle;
 	calc_dist_angle(con, &dist, &angle, exact);
 
-//	printf("Start Values(dist, angle) %f %f %f %f\n", con->start_dist, con->start_angle, dist, angle);
+	//printf("Start Values(dist, angle) %f %f %f %f\n", con->start_dist, con->start_angle, dist, angle);
 	con->start_dist = dist;
 	con->start_angle = angle;
 }
@@ -2272,7 +2272,7 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, Object *target
 	if (target && target->rigidbody_object)
 	{
 		rbo = BKE_rigidbody_copy_object(target);
-		mat4_to_loc_quat(rbo->pos, rbo->orn, target->obmat);
+		//mat4_to_loc_quat(rbo->pos, rbo->orn, target->obmat);
 
 	}
 	else
@@ -2280,17 +2280,17 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, Object *target
 		/* regular FM case */
 		rbo = BKE_rigidbody_copy_object(ob);
 		rbo->type = mi->ground_weight > 0.0f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
-
-		/* set initial transform */
-		mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
-		mat4_to_size(size, ob->obmat);
-
-		//add initial "offset" (centroid), maybe subtract ob->obmat ?? (not sure)
-		copy_v3_v3(centr, mi->centroid);
-		mul_v3_v3(centr, size);
-		mul_qt_v3(rbo->orn, centr);
-		add_v3_v3(rbo->pos, centr);
 	}
+
+	/* set initial transform */
+	mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
+	mat4_to_size(size, ob->obmat);
+
+	//add initial "offset" (centroid), maybe subtract ob->obmat ?? (not sure)
+	copy_v3_v3(centr, mi->centroid);
+	mul_v3_v3(centr, size);
+	mul_qt_v3(rbo->orn, centr);
+	add_v3_v3(rbo->pos, centr);
 
 	/* return this object */
 	return rbo;
@@ -2958,7 +2958,7 @@ static void rigidbody_passive_fake_hook(MeshIsland *mi, float co[3])
 	}
 }
 
-static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *ob, RigidBodyOb *rbo, float centroid[3], MeshIsland *mi)
+static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *ob, RigidBodyOb *rbo, float centroid[3], MeshIsland *mi, float size[3])
 {
 	float loc[3];
 	float rot[4];
@@ -3016,8 +3016,8 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 	}
 
 	copy_v3_v3(centr, centroid);
-	
 	mat4_decompose(loc, rot, scale, ob->obmat);
+	mul_v3_v3(scale, size);
 
 	/* update scale for all objects */
 	RB_body_set_scale(rbo->physics_object, scale);
@@ -3033,11 +3033,14 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 
 	/* update rigid body location and rotation for kinematic bodies */
 	if ((rbo->flag & RBO_FLAG_KINEMATIC && rbo->force_thresh == 0.0f) || (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
-		mul_v3_v3(centr, scale);
-		mul_qt_v3(rot, centr);
-		add_v3_v3(loc, centr);
-		RB_body_activate(rbo->physics_object);
-		RB_body_set_loc_rot(rbo->physics_object, loc, rot);
+		if (rbo->type == RBO_TYPE_ACTIVE || mi == NULL)
+		{
+			mul_v3_v3(centr, scale);
+			mul_qt_v3(rot, centr);
+			add_v3_v3(loc, centr);
+			RB_body_activate(rbo->physics_object);
+			RB_body_set_loc_rot(rbo->physics_object, loc, rot);
+		}
 	}
 	/* update influence of effectors - but don't do it on an effector */
 	/* only dynamic bodies need effector update */
@@ -3323,34 +3326,6 @@ static void handle_plastic_breaking(RigidBodyShardCon *rbsc, RigidBodyWorld* rbw
 
 	exceededAngle = ((rbsc->breaking_angle >= 0.0f) && (anglediff > rbsc->breaking_angle));
 	exceededDist = ((rbsc->breaking_dist >= 0.0f) && (distdiff > (rbsc->breaking_dist + (anglediff / M_PI))));
-	regularBroken = (rbsc->type != RBC_TYPE_6DOF_SPRING && rbsc->physics_constraint &&
-	                !(RB_constraint_is_enabled(rbsc->physics_constraint)));
-
-#if 0
-	if (regularBroken)
-	{
-		//XXX hack, if a regular constraint breaks threshold based, enable associated springs asap so the support does not collapse
-		RigidBodyShardCon *con;
-		int i;
-		for (i = 0; i < rbsc->mi1->participating_constraint_count; i++)
-		{
-			con = rbsc->mi1->participating_constraints[i];
-			if (con->mi1 == rbsc->mi1 && con->mi2 == rbsc->mi2)
-			{
-				enable_plastic(con);
-			}
-		}
-
-		for (i = 0; i < rbsc->mi2->participating_constraint_count; i++)
-		{
-			con = rbsc->mi2->participating_constraints[i];
-			if (con->mi1 == rbsc->mi1 && con->mi2 == rbsc->mi2)
-			{
-				enable_plastic(con);
-			}
-		}
-	}
-#endif
 
 	if (exceededDist || exceededAngle) //|| regularBroken)
 	{
@@ -3454,6 +3429,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 		bool is_empty = BLI_listbase_is_empty(&fmd->meshIslands);
 		int count = 0, brokencount = 0, plastic = 0;
 		float frame = 0;
+		float size[3] = {1.0f, 1.0f, 1.0f};
 
 		if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
@@ -3492,6 +3468,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 					//printf("ZEROIZING speed (shard)\n");
 					zero_v3(mi->rigidbody->lin_vel);
 					zero_v3(mi->rigidbody->ang_vel);
+					mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 				}
 
 				rigidbody_passive_hook(fmd, mi, ob);
@@ -3510,7 +3487,13 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 			}
 
 			/* update simulation object... */
-			rigidbody_update_sim_ob(scene, rbw, ob, mi->rigidbody, mi->centroid, mi);
+			if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
+			{
+				Shard *s = BLI_findlink(&fmd->frac_mesh->shard_map, mi->id);
+				copy_v3_v3(size, s->impact_size);
+			}
+
+			rigidbody_update_sim_ob(scene, rbw, ob, mi->rigidbody, mi->centroid, mi, size);
 		}
 
 		if (fmd->use_mass_dependent_thresholds) {
@@ -3539,8 +3522,8 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 
 			count++;
 
-#if 0
-			if (rbsc->physics_constraint && rbw && (rbw->flag & RBW_FLAG_REBUILD_CONSTRAINTS) /* && !rebuild*/) {
+
+			if (rbsc->physics_constraint && rbw && (rbw->flag & RBW_FLAG_REBUILD_CONSTRAINTS) && !rebuild) {
 				printf("Rebuilding constraints\n");
 				//RB_constraint_set_enabled(rbsc->physics_constraint, rbsc->flag & RBC_FLAG_ENABLED);
 				rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
@@ -3566,12 +3549,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 						}
 					}
 				}
-				else
-				{
-
-				}
 			}
-#endif
 
 			if (rebuild || rbsc->mi1->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD ||
 				rbsc->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD) {
@@ -3583,8 +3561,8 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 
 			else if (rbsc->flag & RBC_FLAG_NEEDS_VALIDATE) {
 				BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, rbsc, false);
-				if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
-					BKE_rigidbody_start_dist_angle(rbsc, true);
+				//if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
+				//	BKE_rigidbody_start_dist_angle(rbsc, true);
 			}
 
 			if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
@@ -3592,7 +3570,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				handle_regular_breaking(fmd, ob, rbw, rbsc, max_con_mass, rebuild);
 			}
 
-			if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL && (rbsc->flag & RBC_FLAG_USE_BREAKING) && !rebuild)
+			if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL && (rbsc->flag & RBC_FLAG_USE_BREAKING) && !rebuild && 0)
 			{
 				handle_plastic_breaking(rbsc, rbw, laststeps, lastscale);
 			}
@@ -3613,9 +3591,9 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				print_v3("Mi2 Loc", rbsc->mi2->rigidbody->pos);
 				print_qt("Mi2 Rot", rbsc->mi2->rigidbody->orn);
 			}
+#endif
 
 			i++;
-#endif
 		}
 
 		printf("Constraints: Frame %d , Total %d,  Intact %d,  Broken %d, Plastic %d\n", (int)frame, count, count-brokencount, brokencount, plastic);
@@ -3637,6 +3615,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 	GroupObject *go;
 	bool did_modifier = false;
 	float centroid[3] = {0, 0, 0};
+	float size[3] = {1.0f, 1.0f, 1.0f};
 
 	/* update world */
 	if (rebuild) {
@@ -3698,7 +3677,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 			}
 
 			/* update simulation object... */
-			rigidbody_update_sim_ob(scene, rbw, ob, rbo, centroid, NULL);
+			rigidbody_update_sim_ob(scene, rbw, ob, rbo, centroid, NULL, size);
 		}
 	}
 
@@ -3777,11 +3756,13 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 						}
 
 						/* update stored velocities, can be set again after sim rebuild */
-						//if (rmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
-						if (!(rbo->flag & RBO_FLAG_KINEMATIC))
+						if (rmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 						{
-							RB_body_get_linear_velocity(rbo->physics_object, rbo->lin_vel);
-							RB_body_get_angular_velocity(rbo->physics_object, rbo->ang_vel);
+							if (!(rbo->flag & RBO_FLAG_KINEMATIC))
+							{
+								RB_body_get_linear_velocity(rbo->physics_object, rbo->lin_vel);
+								RB_body_get_angular_velocity(rbo->physics_object, rbo->ang_vel);
+							}
 						}
 					}
 					modFound = true;
@@ -4180,6 +4161,44 @@ static bool restoreKinematic(RigidBodyWorld *rbw)
 	return did_it;
 }
 
+
+static void resetPrefractured(RigidBodyWorld *rbw)
+{
+	GroupObject *go;
+
+	for (go = rbw->group->gobject.first; go; go = go->next)
+	{
+		Object *ob = go->ob;
+		FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
+
+		if (fmd && (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED || fmd->fracture_mode == MOD_FRACTURE_EXTERNAL))
+		{
+			MeshIsland* mi;
+			RigidBodyShardCon *con;
+			Scene *scene = fmd->modifier.scene;
+
+			for (con = fmd->meshConstraints.first; con; con = con->next)
+			{
+				BKE_rigidbody_remove_shard_con(scene, con);
+				con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+				//BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, con, false);
+			}
+
+			for (mi = fmd->meshIslands.first; mi; mi = mi->next)
+			{
+				BKE_rigidbody_remove_shard(scene, mi);
+				if (mi->rigidbody)
+				{
+					mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+					//validateShard(rbw, mi, ob, false, false);
+				}
+			}
+
+			//BKE_rigidbody_update_ob_array(rbw);
+		}
+	}
+}
+
 static void resetExternal(RigidBodyWorld *rbw)
 {
 	GroupObject *go;
@@ -4369,6 +4388,7 @@ void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw)
 		//restoreKinematic(rbw);
 		//if (!(rbw->pointcache->flag & PTCACHE_BAKED))
 		resetDynamic(rbw, true);
+		resetPrefractured(rbw);
 	}
 }
 
@@ -4408,6 +4428,7 @@ void BKE_rigidbody_rebuild_world(Scene *scene, float ctime)
 			{
 				resetDynamic(rbw, true);
 				//resetExternal(rbw);
+				resetPrefractured(rbw);
 			}
 
 			BKE_ptcache_id_reset(scene, &pid, PTCACHE_RESET_OUTDATED);

@@ -93,6 +93,8 @@ typedef enum eRigidBodyWorld_Flag {
 	RBW_FLAG_REFRESH_MODIFIERS	= (1 << 4),
 	/* Flag rebuild of constraints in fracture modifier objects */
 	RBW_FLAG_REBUILD_CONSTRAINTS = (1 << 5),
+	/* Visualize physics objects like in game engine*/
+	RBW_FLAG_VISUALIZE_PHYSICS = (1 << 6),
 } eRigidBodyWorld_Flag;
 
 /* ******************************** */
