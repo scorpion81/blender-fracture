@@ -77,7 +77,7 @@ subject to the following restrictions:
 #include "BulletDynamics/Dynamics/btFractureBody.h"
 #include "BulletDynamics/Dynamics/btFractureDynamicsWorld.h"
 
-#include "../glew-mx/glew-mx.h"
+#include "../../extern/glew/include/GL/glew.h"
 
 
 struct	ViewportDebugDraw : public btIDebugDraw
