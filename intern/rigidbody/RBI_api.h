@@ -78,6 +78,7 @@ typedef struct rbContactPoint {
 /*Subclass because of Internal Tick Callback... sigh why doesnt this work with a simple collision callback ? */
 
 
+typedef void (*draw_string)(float loc[3], const char *str, const size_t len, float color[3]);
 
 /* ********************************** */
 /* Dynamics World Methods */
@@ -111,7 +112,7 @@ void RB_dworld_set_split_impulse(rbDynamicsWorld *world, int split_impulse);
 /* Step the simulation by the desired amount (in seconds) with extra controls on substep sizes and maximum substeps */
 void RB_dworld_step_simulation(rbDynamicsWorld *world, float timeStep, int maxSubSteps, float timeSubStep);
 
-void RB_dworld_debug_draw(rbDynamicsWorld *world);
+void RB_dworld_debug_draw(rbDynamicsWorld *world, draw_string str_callback);
 
 /* Export -------------------------- */
 
@@ -345,6 +346,8 @@ void RB_constraint_set_solver_iterations(rbConstraint *con, int num_solver_itera
 
 /* Set breaking impulse threshold, if constraint shouldn't break it can be set to FLT_MAX */
 void RB_constraint_set_breaking_threshold(rbConstraint *con, float threshold);
+
+void RB_constraint_set_id(rbConstraint *con, char id[64]);
 
 /* ********************************** */
 

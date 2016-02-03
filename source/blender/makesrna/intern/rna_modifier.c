@@ -1210,76 +1210,50 @@ static void rna_FractureModifier_autohide_filter_group_set(PointerRNA* ptr, Poin
 }
 
 
-static MeshIsland *rna_FractureModifier_mesh_island_new(ID* id, FractureModifierData *fmd, PointerRNA* source_ptr, int index, int update)
+static MeshIsland *rna_FractureModifier_mesh_island_new(ID* id, FractureModifierData *fmd, PointerRNA* source_ptr)
 {
 	Object *ob = source_ptr->data;
 	Object *owner = (Object*)id;
 	if (ob != owner)
 	{
-		MeshIsland* mi = BKE_fracture_mesh_island_add(fmd, owner, ob, index, update);
-
-		if (update)
-		{
-			DAG_id_tag_update(id, OB_RECALC_DATA);
-			WM_main_add_notifier(NC_OBJECT | ND_MODIFIER, id);
-		}
-
+		MeshIsland* mi = BKE_fracture_mesh_island_add(fmd, owner, ob);
 		return mi;
 	}
 
 	return NULL;
 }
 
-static void rna_FractureModifier_mesh_island_remove(ID *id, FractureModifierData *fmd, ReportList *reports, PointerRNA *mi_ptr, int update)
+static void rna_FractureModifier_mesh_island_remove(ID *id, FractureModifierData *fmd, ReportList *reports, PointerRNA *mi_ptr)
 {
 	MeshIsland *mi = mi_ptr->data;
 
 	if (BLI_findindex(&fmd->meshIslands, mi) == -1) {
-		BKE_reportf(reports, RPT_ERROR, "MeshIsland '%d' not in this fracture modifier", mi->id);
+		BKE_reportf(reports, RPT_ERROR, "MeshIsland '%s' not in this fracture modifier", mi->id);
 		return;
 	}
 
-	BKE_fracture_mesh_island_remove(fmd, mi, update);
+	BKE_fracture_mesh_island_remove(fmd, mi);
 	RNA_POINTER_INVALIDATE(mi_ptr);
-
-	if (update)
-	{
-		DAG_id_tag_update(id, OB_RECALC_DATA);
-		WM_main_add_notifier(NC_OBJECT | ND_MODIFIER, id);
-	}
 }
 
-static void rna_FractureModifier_mesh_island_clear(ID *id, FractureModifierData *fmd, int update)
+static void rna_FractureModifier_mesh_island_clear(ID *id, FractureModifierData *fmd)
 {
 	BKE_fracture_mesh_island_remove_all(fmd);
-
-	if (update)
-	{
-		DAG_id_tag_update(id, OB_RECALC_DATA);
-		WM_main_add_notifier(NC_OBJECT | ND_MODIFIER, id);
-	}
 }
 
 static RigidBodyShardCon *rna_FractureModifier_mesh_constraint_new(ID* id, FractureModifierData *fmd,
-                                                                   MeshIsland* mi1, MeshIsland* mi2, int type, int index, int update)
+                                                                   MeshIsland* mi1, MeshIsland* mi2, int type)
 {
-	RigidBodyShardCon* con = BKE_fracture_mesh_islands_connect(fmd, mi1, mi2, type, index);
-
-	if (update)
-	{
-		DAG_id_tag_update(id, OB_RECALC_DATA);
-		WM_main_add_notifier(NC_OBJECT | ND_MODIFIER, id);
-	}
-
+	RigidBodyShardCon* con = BKE_fracture_mesh_islands_connect(fmd, mi1, mi2, type);
 	return con;
 }
 
-static void rna_FractureModifier_mesh_constraint_remove(ID *id, FractureModifierData *fmd, ReportList *reports, PointerRNA *con_ptr, int update)
+static void rna_FractureModifier_mesh_constraint_remove(ID *id, FractureModifierData *fmd, ReportList *reports, PointerRNA *con_ptr)
 {
 	RigidBodyShardCon *con = con_ptr->data;
 
 	if (con && BLI_findindex(&fmd->meshConstraints, con) == -1) {
-		BKE_reportf(reports, RPT_ERROR, "MeshConstraint '%d' not in this fracture modifier", con->id);
+		BKE_reportf(reports, RPT_ERROR, "MeshConstraint '%s' not in this fracture modifier", con->id);
 		return;
 	}
 
@@ -1287,23 +1261,11 @@ static void rna_FractureModifier_mesh_constraint_remove(ID *id, FractureModifier
 		BKE_fracture_mesh_constraint_remove(fmd, con);
 
 	RNA_POINTER_INVALIDATE(con_ptr);
-
-	if (update)
-	{
-		DAG_id_tag_update(id, OB_RECALC_DATA);
-		WM_main_add_notifier(NC_OBJECT | ND_MODIFIER, id);
-	}
 }
 
-static void rna_FractureModifier_mesh_constraint_clear(ID *id, FractureModifierData *fmd, int update)
+static void rna_FractureModifier_mesh_constraint_clear(ID *id, FractureModifierData *fmd)
 {
 	BKE_fracture_mesh_constraint_remove_all(fmd);
-
-	if (update)
-	{
-		DAG_id_tag_update(id, OB_RECALC_DATA);
-		WM_main_add_notifier(NC_OBJECT | ND_MODIFIER, id);
-	}
 }
 
 static float rna_MeshCon_get_applied_impulse(RigidBodyShardCon *con)
@@ -5266,10 +5228,10 @@ static void rna_def_mesh_island(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Rigid Body", "Rigidbody object of this mesh island");
 	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 
-	prop = RNA_def_property(srna, "id", PROP_INT, PROP_NONE);
-	RNA_def_property_int_sdna(prop, NULL, "id");
-	RNA_def_property_ui_text(prop, "MeshIsland ID", "A numerical index or id of this mesh island");
-	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+	prop = RNA_def_property(srna, "id", PROP_STRING, PROP_NONE);
+	RNA_def_property_string_sdna(prop, NULL, "id");
+	RNA_def_property_ui_text(prop, "MeshIsland ID", "A name or id of this mesh island");
+	//RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 
 	prop = RNA_def_property(srna, "centroid", PROP_FLOAT, PROP_XYZ);
 	RNA_def_property_float_sdna(prop, NULL, "centroid");
@@ -5296,6 +5258,10 @@ static void rna_def_mesh_constraint(BlenderRNA *brna)
 	RNA_def_struct_sdna(srna, "RigidBodyShardCon");
 	RNA_def_struct_ui_text(srna, "Mesh Constraint", "A connection between two mesh islands in Fracture Modifier");
 	RNA_def_struct_path_func(srna, "rna_MeshConstraint_path");
+
+	prop = RNA_def_property(srna, "id", PROP_STRING, PROP_NONE);
+	RNA_def_property_string_sdna(prop, NULL, "id");
+	RNA_def_property_ui_text(prop, "Constraint ID", "A name or id of this mesh constraint");
 
 	prop = RNA_def_property(srna, "location", PROP_FLOAT, PROP_TRANSLATION);
 	RNA_def_property_float_sdna(prop, NULL, "pos");
@@ -5662,8 +5628,8 @@ static void rna_def_fracture_meshislands(BlenderRNA *brna, PropertyRNA *cprop)
 	parm = RNA_def_pointer(func, "source_object", "Object", "Object", "Source Mesh Object for this mesh island");
 	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL | PROP_RNAPTR);
 
-	RNA_def_int(func, "index", -1, -1, INT_MAX, "Index", "Optional index for mesh island, -1 for automatic", -1, INT_MAX);
-	RNA_def_boolean(func, "update", false, "update", "Update immediately");
+	//RNA_def_int(func, "index", -1, -1, INT_MAX, "Index", "Optional index for mesh island, -1 for automatic", -1, INT_MAX);
+	//RNA_def_boolean(func, "update", false, "update", "Update immediately");
 	parm = RNA_def_pointer(func, "mesh_island", "MeshIsland", "", "New mesh island");
 	RNA_def_function_return(func, parm);
 
@@ -5672,12 +5638,12 @@ static void rna_def_fracture_meshislands(BlenderRNA *brna, PropertyRNA *cprop)
 	RNA_def_function_ui_description(func, "Delete mesh island from fracture modifier");
 	parm = RNA_def_pointer(func, "mesh_island", "MeshIsland", "", "Mesh Island to remove");
 	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL | PROP_RNAPTR);
-	RNA_def_boolean(func, "update", false, "update", "Update immediately");
+	//RNA_def_boolean(func, "update", false, "update", "Update immediately");
 	RNA_def_property_clear_flag(parm, PROP_THICK_WRAP);
 
 	func = RNA_def_function(srna, "clear", "rna_FractureModifier_mesh_island_clear");
 	RNA_def_function_flag(func, FUNC_USE_SELF_ID);
-	RNA_def_boolean(func, "update", false, "update", "Update immediately");
+	//RNA_def_boolean(func, "update", false, "update", "Update immediately");
 	RNA_def_function_ui_description(func, "Delete all mesh islands from fracture modifier");
 }
 
@@ -5703,9 +5669,9 @@ static void rna_def_fracture_meshconstraints(BlenderRNA *brna, PropertyRNA *cpro
 	parm = RNA_def_enum(func, "type", rigidbody_constraint_type_items, RBC_TYPE_FIXED, "Constraint Type", "Type of constraint");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 
-	RNA_def_int(func, "index", -1, -1, INT_MAX, "Index", "Optional index for mesh constraint, -1 for automatic", -1, INT_MAX);
+	//RNA_def_int(func, "index", -1, -1, INT_MAX, "Index", "Optional index for mesh constraint, -1 for automatic", -1, INT_MAX);
+	//RNA_def_boolean(func, "update", false, "update", "Update immediately");
 
-	RNA_def_boolean(func, "update", false, "update", "Update immediately");
 	parm = RNA_def_pointer(func, "mesh_constraint", "MeshConstraint", "", "New mesh constraint");
 	RNA_def_function_return(func, parm);
 
@@ -5715,11 +5681,11 @@ static void rna_def_fracture_meshconstraints(BlenderRNA *brna, PropertyRNA *cpro
 	parm = RNA_def_pointer(func, "mesh_constraint", "MeshConstraint", "", "Mesh Constraint to remove");
 	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL | PROP_RNAPTR);
 	RNA_def_property_clear_flag(parm, PROP_THICK_WRAP);
-	RNA_def_boolean(func, "update", false, "update", "Update immediately");
+	//RNA_def_boolean(func, "update", false, "update", "Update immediately");
 
 	func = RNA_def_function(srna, "clear", "rna_FractureModifier_mesh_constraint_clear");
 	RNA_def_function_flag(func, FUNC_USE_SELF_ID);
-	RNA_def_boolean(func, "update", false, "update", "Update immediately");
+	//RNA_def_boolean(func, "update", false, "update", "Update immediately");
 	RNA_def_function_ui_description(func, "Delete all mesh constraints from fracture modifier");
 }
 

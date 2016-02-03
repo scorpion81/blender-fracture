@@ -278,12 +278,15 @@ typedef struct RigidBodyShardCon {
 	struct MeshIsland *mi1;			/* First meshisland influenced by the constraint */
 	struct MeshIsland *mi2;			/* Second meshisland influenced by the constraint */
 
+	/* References to Physics Sim object. Exist at runtime only */
+	void *physics_constraint;	/* Physics object representation (i.e. btTypedConstraint) */
+
 	/* General Settings for this RigidBodyCon */
 	short type;					/* (eRigidBodyCon_Type) role of RigidBody in sim  */
 	short num_solver_iterations;/* number of constraint solver iterations made per simulation step */
 
 	int flag;					/* (eRigidBodyCon_Flag) */
-	int id;
+	char id[64];
 
 	float breaking_threshold;	/* breaking impulse threshold */
 	float start_angle;			//needed for breaking by angle and dist
@@ -295,7 +298,6 @@ typedef struct RigidBodyShardCon {
 
 	float orn[4];
 	float pos[3];
-	float pad;
 
 	/* limits */
 	/* translation limits */
@@ -329,8 +331,6 @@ typedef struct RigidBodyShardCon {
 	float motor_lin_max_impulse;		/* maximum force used to reach linear target velocity */
 	float motor_ang_max_impulse;		/* maximum force used to reach angular target velocity */
 
-	/* References to Physics Sim object. Exist at runtime only */
-	void *physics_constraint;	/* Physics object representation (i.e. btTypedConstraint) */
 } RigidBodyShardCon;
 
 

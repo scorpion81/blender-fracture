@@ -2561,7 +2561,7 @@ short BKE_fracture_collect_materials(Object* o, Object* ob, short matstart, GHas
 	return (*totcolp) - l;
 }
 
-MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own, Object *target, int index, bool update)
+MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own, Object *target)
 {
 	MeshIsland *mi;
 	Shard *s;
@@ -2578,15 +2578,8 @@ MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own,
 	s = fracture_object_to_shard(own, target);
 	fracture_update_shards(fmd, s, index);
 
-	//XXXXX TODO, remove update parameter again, it causes trouble and is almost never used
-	if (update) {
-		vertstart = BKE_fracture_update_visual_mesh(fmd, own, true);
-	}
-	else
-	{
-		vertstart = fmd->frac_mesh->progress_counter;
-		fmd->frac_mesh->progress_counter += s->totvert;
-	}
+	vertstart = fmd->frac_mesh->progress_counter;
+	fmd->frac_mesh->progress_counter += s->totvert;
 
 	//hrm need to rebuild ALL islands since vertex refs are bonkers now after mesh has changed
 	mi = fracture_shard_to_island(fmd, s, vertstart);
@@ -2705,7 +2698,7 @@ void BKE_fracture_free_mesh_island(FractureModifierData *rmd, MeshIsland *mi, bo
 	mi = NULL;
 }
 
-void BKE_fracture_mesh_island_remove(FractureModifierData *fmd, MeshIsland *mi, bool update)
+void BKE_fracture_mesh_island_remove(FractureModifierData *fmd, MeshIsland *mi)
 {
 	if (BLI_listbase_is_single(&fmd->meshIslands))
 	{
@@ -2733,9 +2726,6 @@ void BKE_fracture_mesh_island_remove(FractureModifierData *fmd, MeshIsland *mi, 
 			}
 
 			BKE_fracture_free_mesh_island(fmd, mi, true);
-
-			if (update)
-				BKE_fracture_update_visual_mesh(fmd, NULL, true);
 		}
 	}
 }
@@ -2785,7 +2775,7 @@ void BKE_fracture_mesh_island_remove_all(FractureModifierData *fmd)
 	}
 }
 
-RigidBodyShardCon *BKE_fracture_mesh_islands_connect(FractureModifierData *fmd, MeshIsland *mi1, MeshIsland *mi2, short con_type, int index)
+RigidBodyShardCon *BKE_fracture_mesh_islands_connect(FractureModifierData *fmd, MeshIsland *mi1, MeshIsland *mi2, short con_type)
 {
 	RigidBodyShardCon *rbsc;
 
@@ -2818,6 +2808,7 @@ RigidBodyShardCon *BKE_fracture_mesh_islands_connect(FractureModifierData *fmd, 
 	BLI_addtail(&fmd->meshConstraints, rbsc);
 	fmd->constraint_count++;
 
+#if 0
 	if (index > -1)
 	{
 		rbsc->id = index;
@@ -2826,6 +2817,7 @@ RigidBodyShardCon *BKE_fracture_mesh_islands_connect(FractureModifierData *fmd, 
 	{
 		rbsc->id = fmd->constraint_count-1;
 	}
+#endif
 
 	/* store constraints per meshisland too, to allow breaking percentage */
 	if (mi1->participating_constraints == NULL) {

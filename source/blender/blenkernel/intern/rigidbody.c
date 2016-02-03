@@ -1094,7 +1094,7 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 	float hull_margin = 0.0f;
 	bool can_embed = true;
 	bool has_volume;
-	float min[3], max[3], volume;
+	float min[3], max[3];
 	
 	/* sanity check */
 	if (rbo == NULL)
@@ -1186,11 +1186,6 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 	}
 }
 
-#if 0 // XXX: not defined yet
-		case RB_SHAPE_COMPOUND:
-			volume = 0.0f;
-			break;
-#endif
 /* --------------------- */
 
 /* Create physics sim representation of shard given RigidBody settings
@@ -1297,13 +1292,6 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 	rbo->flag &= ~RBO_FLAG_KINEMATIC_REBUILD;
 }
 
-
-
-#if 0 // XXX: not defined yet
-		case RB_SHAPE_COMPOUND:
-			volume = 0.0f;
-			break;
-#endif
 
 /* --------------------- */
 
@@ -1557,6 +1545,26 @@ static void rigidbody_validate_sim_constraint(RigidBodyWorld *rbw, Object *ob, b
 	if (rbw && rbw->physics_world && rbc->physics_constraint) {
 		RB_dworld_add_constraint(rbw->physics_world, rbc->physics_constraint, rbc->flag & RBC_FLAG_DISABLE_COLLISIONS);
 	}
+
+	if (rbc->physics_constraint)
+	{
+		/*
+		char id[64];
+		char *rest = id;
+		char *ptr;
+		char ptr2[64] = "0";
+
+		strncpy(id, ob->id.name + 2, strlen(ob->id.name) - 2);
+
+		ptr = strtok_r(id, ".", &rest);
+		while (ptr != NULL)
+		{
+			strncpy(ptr2, ptr, strlen(ptr));
+			ptr = strtok_r(NULL, ".", &rest);
+		}*/
+
+		RB_constraint_set_id(rbc->physics_constraint, ob->id.name + 2);
+	}
 }
 
 static void rigidbody_set_springs_active(RigidBodyShardCon *rbc, bool active)
@@ -1780,6 +1788,13 @@ static void rigidbody_create_shard_physics_constraint(FractureModifierData* fmd,
 		RB_constraint_set_solver_iterations(rbc->physics_constraint, rbc->num_solver_iterations);
 	else
 		RB_constraint_set_solver_iterations(rbc->physics_constraint, -1);
+
+	if (rbc->physics_constraint)
+	{
+		//char id[64];
+		//sprintf(id, "%d", rbc->id);
+		RB_constraint_set_id(rbc->physics_constraint, rbc->id);
+	}
 }
 
 /* Create physics sim representation of constraint given rigid body constraint settings
@@ -2580,7 +2595,7 @@ RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(Scene *scene, short typ
 	rbc->motor_lin_target_velocity = 1.0f;
 	rbc->motor_ang_max_impulse = 1.0f;
 	rbc->motor_ang_target_velocity = 1.0f;
-	rbc->id = -1;
+	strcpy(rbc->id, "");
 	zero_v3(rbc->pos);
 	unit_qt(rbc->orn);
 	rbc->breaking_angle = 0.0f;
@@ -2869,7 +2884,8 @@ void BKE_rigidbody_update_ob_array(RigidBodyWorld *rbw)
 
 	for (go = rbw->group->gobject.first, i = 0; go; go = go->next, i++) {
 		Object *ob = go->ob;
-		rbw->objects[i] = ob;
+		if (ob->rigidbody_object)
+			rbw->objects[i] = ob;
 
 		for (md = ob->modifiers.first; md; md = md->next) {
 
@@ -2894,7 +2910,8 @@ void BKE_rigidbody_update_ob_array(RigidBodyWorld *rbw)
 		if (!ismapped) {
 			rbw->cache_index_map[counter] = ob->rigidbody_object; /*1 object 1 index here (normal case)*/
 			rbw->cache_offset_map[counter] = i;
-			ob->rigidbody_object->meshisland_index = counter;
+			if (ob->rigidbody_object)
+				ob->rigidbody_object->meshisland_index = counter;
 			counter++;
 		}
 
@@ -3637,7 +3654,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 			/* update transformation matrix of the object so we don't get a frame of lag for simple animations */
 			BKE_object_where_is_calc(scene, ob);
 
-			if (rbw->flag & RBW_FLAG_REBUILD_CONSTRAINTS)
+			if (rbw->flag & RBW_FLAG_REBUILD_CONSTRAINTS && rbo)
 			{
 				//reset speeds
 				//printf("ZEROIZING speed (object)\n");
@@ -4165,6 +4182,8 @@ static bool restoreKinematic(RigidBodyWorld *rbw)
 static void resetPrefractured(RigidBodyWorld *rbw)
 {
 	GroupObject *go;
+	if (!rbw->group)
+		return;
 
 	for (go = rbw->group->gobject.first; go; go = go->next)
 	{
@@ -4294,6 +4313,8 @@ static void resetExternal(RigidBodyWorld *rbw)
 static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always)
 {
 	GroupObject *go;
+	if (!rbw->group)
+		return;
 
 	for (go = rbw->group->gobject.first; go; go = go->next)
 	{

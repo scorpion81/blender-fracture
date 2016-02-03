@@ -58,6 +58,7 @@ subject to the following restrictions:
 
 #include <stdio.h>
 #include <errno.h>
+#include <iomanip>
 
 #include "RBI_api.h"
 
@@ -80,12 +81,24 @@ subject to the following restrictions:
 #include "../../extern/glew/include/GL/glew.h"
 
 
+typedef struct rbConstraint
+{
+	btTypedConstraint *con;
+	btTransform pivot;
+	char id[64];
+} rbConstraint;
+
+
 struct	ViewportDebugDraw : public btIDebugDraw
 {
 	ViewportDebugDraw () :
 		m_debugMode(0)
 	{
 	}
+
+	enum DebugDrawModes2 {
+		DBG_DrawImpulses = 1 << 15,
+	};
 
 	int m_debugMode;
 
@@ -173,6 +186,8 @@ class TickDiscreteDynamicsWorld : public btFractureDynamicsWorld
 		rbTickCallback m_tickCallback;
 		void* m_bworld;
 		void* m_bscene;
+		virtual void debugDrawConstraints(rbConstraint *con, draw_string str_callback);
+		virtual void debugDrawWorld(draw_string str_callback);
 };
 
 void tickCallback(btDynamicsWorld *world, btScalar timeStep)
@@ -251,8 +266,278 @@ rbContactPoint* TickDiscreteDynamicsWorld::make_contact_point(btManifoldPoint& p
 	return cp;
 }
 
+void TickDiscreteDynamicsWorld::debugDrawWorld(draw_string str_callback)
+{
+	BT_PROFILE("debugDrawWorld");
+
+	btCollisionWorld::debugDrawWorld();
+
+	bool drawConstraints = false;
+	if (getDebugDrawer())
+	{
+		int mode = getDebugDrawer()->getDebugMode();
+		if(mode  & (btIDebugDraw::DBG_DrawConstraints | btIDebugDraw::DBG_DrawConstraintLimits))
+		{
+			drawConstraints = true;
+		}
+	}
+	if(drawConstraints)
+	{
+		for(int i = getNumConstraints()-1; i>=0 ;i--)
+		{
+			btTypedConstraint* constraint = getConstraint(i);
+			rbConstraint *con = (rbConstraint*)constraint->getUserConstraintPtr();
+			debugDrawConstraints(con, str_callback);
+		}
+	}
+
+
+
+    if (getDebugDrawer() && (getDebugDrawer()->getDebugMode() & (btIDebugDraw::DBG_DrawWireframe | btIDebugDraw::DBG_DrawAabb | btIDebugDraw::DBG_DrawNormals)))
+	{
+		int i;
+
+		if (getDebugDrawer() && getDebugDrawer()->getDebugMode())
+		{
+			for (i=0;i<m_actions.size();i++)
+			{
+				m_actions[i]->debugDraw(m_debugDrawer);
+			}
+		}
+	}
+}
+
+const char* val_to_str(float value, int precision, int *length)
+{
+	std::ostringstream oss;
+	oss << std::fixed << std::setprecision(precision) << value;
+	*length = oss.str().length();
+	return oss.str().c_str();
+}
+
+void TickDiscreteDynamicsWorld::debugDrawConstraints(rbConstraint* con , draw_string str_callback)
+{
+	btTypedConstraint *constraint = con->con;
+	bool drawFrames = (getDebugDrawer()->getDebugMode() & btIDebugDraw::DBG_DrawConstraints) != 0;
+	bool drawLimits = (getDebugDrawer()->getDebugMode() & btIDebugDraw::DBG_DrawConstraintLimits) != 0;
+	bool drawImpulses = str_callback != NULL; // && (getDebugDrawer()->getDebugMode() & ViewportDebugDraw::DBG_DrawImpulses) != 0;
+	btScalar dbgDrawSize = constraint->getDbgDrawSize();
+	int p = 0;
+
+	//color code the load on the constraint
+	float color[3] = {1.0f, 1.0f, 1.0f};
+	btScalar imp = constraint->getAppliedImpulse();
+	btScalar thr = constraint->getBreakingImpulseThreshold();
+	float ratio = fabs(imp) / thr;
+	int len = strlen(con->id);
+	//const char *str = val_to_str(imp, p, &len);
+	const char *str = con->id;
+	float loc[3];
+
+	copy_v3_btvec3(loc, con->pivot.getOrigin());
+
+	if (ratio <= 0.5f)
+	{
+		//green -> yellow
+		color[0] = 2 * ratio;
+		color[1] = 1.0f;
+		color[2] = 0.0f;
+	}
+	else if (ratio > 0.5f && ratio <= 1.0f)
+	{
+		//yellow -> red
+		color[0] = 1.0f;
+		color[1] = 1.0f - 2 * (1.0f - ratio);
+		color[2] = 0.0f;
+	}
+
+	if (!constraint->isEnabled())
+	{
+		color[0] = 0.0f;
+		color[1] = 0.0f;
+		color[2] = 0.0f;
+	}
+
+
+	if(dbgDrawSize <= btScalar(0.f))
+	{
+		return;
+	}
+
+	if(drawImpulses) str_callback(loc, str, len, color);
+
+	switch(constraint->getConstraintType())
+	{
+		case POINT2POINT_CONSTRAINT_TYPE:
+			{
+				btPoint2PointConstraint* p2pC = (btPoint2PointConstraint*)constraint;
+				btTransform tr;
+				tr.setIdentity();
+				btVector3 pivot = p2pC->getPivotInA();
+				pivot = p2pC->getRigidBodyA().getCenterOfMassTransform() * pivot;
+				tr.setOrigin(pivot);
+				getDebugDrawer()->drawTransform(tr, dbgDrawSize);
+				// that ideally should draw the same frame
+				pivot = p2pC->getPivotInB();
+				pivot = p2pC->getRigidBodyB().getCenterOfMassTransform() * pivot;
+				tr.setOrigin(pivot);
+			}
+			break;
+		case HINGE_CONSTRAINT_TYPE:
+			{
+				btHingeConstraint* pHinge = (btHingeConstraint*)constraint;
+				btTransform tr = pHinge->getRigidBodyA().getCenterOfMassTransform() * pHinge->getAFrame();
+				if(drawFrames) getDebugDrawer()->drawTransform(tr, dbgDrawSize);
+				tr = pHinge->getRigidBodyB().getCenterOfMassTransform() * pHinge->getBFrame();
+				if(drawFrames) getDebugDrawer()->drawTransform(tr, dbgDrawSize);
+				btScalar minAng = pHinge->getLowerLimit();
+				btScalar maxAng = pHinge->getUpperLimit();
+				if(minAng == maxAng)
+				{
+					break;
+				}
+				bool drawSect = true;
+				if(minAng > maxAng)
+				{
+					minAng = btScalar(0.f);
+					maxAng = SIMD_2_PI;
+					drawSect = false;
+				}
+				if(drawLimits)
+				{
+					btVector3& center = tr.getOrigin();
+					btVector3 normal = tr.getBasis().getColumn(2);
+					btVector3 axis = tr.getBasis().getColumn(0);
+					getDebugDrawer()->drawArc(center, normal, axis, dbgDrawSize, dbgDrawSize, minAng, maxAng, btVector3(0,0,0), drawSect);
+				}
+			}
+			break;
+		case CONETWIST_CONSTRAINT_TYPE:
+			{
+				btConeTwistConstraint* pCT = (btConeTwistConstraint*)constraint;
+				btTransform tr = pCT->getRigidBodyA().getCenterOfMassTransform() * pCT->getAFrame();
+				if(drawFrames) getDebugDrawer()->drawTransform(tr, dbgDrawSize);
+				tr = pCT->getRigidBodyB().getCenterOfMassTransform() * pCT->getBFrame();
+				if(drawFrames) getDebugDrawer()->drawTransform(tr, dbgDrawSize);
+				if(drawLimits)
+				{
+					//const btScalar length = btScalar(5);
+					const btScalar length = dbgDrawSize;
+					static int nSegments = 8*4;
+					btScalar fAngleInRadians = btScalar(2.*3.1415926) * (btScalar)(nSegments-1)/btScalar(nSegments);
+					btVector3 pPrev = pCT->GetPointForAngle(fAngleInRadians, length);
+					pPrev = tr * pPrev;
+					for (int i=0; i<nSegments; i++)
+					{
+						fAngleInRadians = btScalar(2.*3.1415926) * (btScalar)i/btScalar(nSegments);
+						btVector3 pCur = pCT->GetPointForAngle(fAngleInRadians, length);
+						pCur = tr * pCur;
+						getDebugDrawer()->drawLine(pPrev, pCur, btVector3(0,0,0));
+
+						if (i%(nSegments/8) == 0)
+							getDebugDrawer()->drawLine(tr.getOrigin(), pCur, btVector3(0,0,0));
+
+						pPrev = pCur;
+					}
+					btScalar tws = pCT->getTwistSpan();
+					btScalar twa = pCT->getTwistAngle();
+					bool useFrameB = (pCT->getRigidBodyB().getInvMass() > btScalar(0.f));
+					if(useFrameB)
+					{
+						tr = pCT->getRigidBodyB().getCenterOfMassTransform() * pCT->getBFrame();
+					}
+					else
+					{
+						tr = pCT->getRigidBodyA().getCenterOfMassTransform() * pCT->getAFrame();
+					}
+					btVector3 pivot = tr.getOrigin();
+					btVector3 normal = tr.getBasis().getColumn(0);
+					btVector3 axis1 = tr.getBasis().getColumn(1);
+					getDebugDrawer()->drawArc(pivot, normal, axis1, dbgDrawSize, dbgDrawSize, -twa-tws, -twa+tws, btVector3(0,0,0), true);
+
+				}
+			}
+			break;
+		case D6_SPRING_CONSTRAINT_TYPE:
+		case D6_CONSTRAINT_TYPE:
+			{
+				btGeneric6DofConstraint* p6DOF = (btGeneric6DofConstraint*)constraint;
+				btTransform tr = p6DOF->getCalculatedTransformA();
+				if(drawFrames) getDebugDrawer()->drawTransform(tr, dbgDrawSize);
+				tr = p6DOF->getCalculatedTransformB();
+				if(drawFrames) getDebugDrawer()->drawTransform(tr, dbgDrawSize);
+				if(drawLimits)
+				{
+					tr = p6DOF->getCalculatedTransformA();
+					const btVector3& center = p6DOF->getCalculatedTransformB().getOrigin();
+					btVector3 up = tr.getBasis().getColumn(2);
+					btVector3 axis = tr.getBasis().getColumn(0);
+					btScalar minTh = p6DOF->getRotationalLimitMotor(1)->m_loLimit;
+					btScalar maxTh = p6DOF->getRotationalLimitMotor(1)->m_hiLimit;
+					btScalar minPs = p6DOF->getRotationalLimitMotor(2)->m_loLimit;
+					btScalar maxPs = p6DOF->getRotationalLimitMotor(2)->m_hiLimit;
+					getDebugDrawer()->drawSpherePatch(center, up, axis, dbgDrawSize * btScalar(.9f), minTh, maxTh, minPs, maxPs, btVector3(0,0,0));
+					axis = tr.getBasis().getColumn(1);
+					btScalar ay = p6DOF->getAngle(1);
+					btScalar az = p6DOF->getAngle(2);
+					btScalar cy = btCos(ay);
+					btScalar sy = btSin(ay);
+					btScalar cz = btCos(az);
+					btScalar sz = btSin(az);
+					btVector3 ref;
+					ref[0] = cy*cz*axis[0] + cy*sz*axis[1] - sy*axis[2];
+					ref[1] = -sz*axis[0] + cz*axis[1];
+					ref[2] = cz*sy*axis[0] + sz*sy*axis[1] + cy*axis[2];
+					tr = p6DOF->getCalculatedTransformB();
+					btVector3 normal = -tr.getBasis().getColumn(0);
+					btScalar minFi = p6DOF->getRotationalLimitMotor(0)->m_loLimit;
+					btScalar maxFi = p6DOF->getRotationalLimitMotor(0)->m_hiLimit;
+					if(minFi > maxFi)
+					{
+						getDebugDrawer()->drawArc(center, normal, ref, dbgDrawSize, dbgDrawSize, -SIMD_PI, SIMD_PI, btVector3(0,0,0), false);
+					}
+					else if(minFi < maxFi)
+					{
+						getDebugDrawer()->drawArc(center, normal, ref, dbgDrawSize, dbgDrawSize, minFi, maxFi, btVector3(0,0,0), true);
+					}
+					tr = p6DOF->getCalculatedTransformA();
+					btVector3 bbMin = p6DOF->getTranslationalLimitMotor()->m_lowerLimit;
+					btVector3 bbMax = p6DOF->getTranslationalLimitMotor()->m_upperLimit;
+					getDebugDrawer()->drawBox(bbMin, bbMax, tr, btVector3(0,0,0));
+				}
+			}
+			break;
+		case SLIDER_CONSTRAINT_TYPE:
+			{
+				btSliderConstraint* pSlider = (btSliderConstraint*)constraint;
+				btTransform tr = pSlider->getCalculatedTransformA();
+				if(drawFrames) getDebugDrawer()->drawTransform(tr, dbgDrawSize);
+				tr = pSlider->getCalculatedTransformB();
+				if(drawFrames) getDebugDrawer()->drawTransform(tr, dbgDrawSize);
+				if(drawLimits)
+				{
+					btTransform tr = pSlider->getUseLinearReferenceFrameA() ? pSlider->getCalculatedTransformA() : pSlider->getCalculatedTransformB();
+					btVector3 li_min = tr * btVector3(pSlider->getLowerLinLimit(), 0.f, 0.f);
+					btVector3 li_max = tr * btVector3(pSlider->getUpperLinLimit(), 0.f, 0.f);
+					getDebugDrawer()->drawLine(li_min, li_max, btVector3(0, 0, 0));
+					btVector3 normal = tr.getBasis().getColumn(0);
+					btVector3 axis = tr.getBasis().getColumn(1);
+					btScalar a_min = pSlider->getLowerAngLimit();
+					btScalar a_max = pSlider->getUpperAngLimit();
+					const btVector3& center = pSlider->getCalculatedTransformB().getOrigin();
+					getDebugDrawer()->drawArc(center, normal, axis, dbgDrawSize, dbgDrawSize, a_min, a_max, btVector3(0,0,0), true);
+				}
+
+			}
+			break;
+		default :
+			break;
+	}
+	return;
+}
+
 struct rbDynamicsWorld {
-	btFractureDynamicsWorld *dynamicsWorld;
+	TickDiscreteDynamicsWorld *dynamicsWorld;
 	btDefaultCollisionConfiguration *collisionConfiguration;
 	btDispatcher *dispatcher;
 	btBroadphaseInterface *pairCache;
@@ -505,7 +790,7 @@ rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, void*
 	                                                      contactCallback, blenderWorld, blenderScene, idCallback, tickCallback);
 
 	/* world */
-	world->dynamicsWorld = (btFractureDynamicsWorld*)tworld;
+	world->dynamicsWorld = tworld;
 	world->blenderWorld = blenderWorld;
 	world->idOutCallback = idCallbackOut;
 
@@ -517,7 +802,8 @@ rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, void*
 	world->dynamicsWorld->getDebugDrawer()->setDebugMode(
 	            btIDebugDraw::DBG_DrawWireframe|btIDebugDraw::DBG_DrawAabb|
 	            btIDebugDraw::DBG_DrawContactPoints|btIDebugDraw::DBG_DrawText|
-	            btIDebugDraw::DBG_DrawConstraints/*|btIDebugDraw::DBG_DrawConstraintLimits*/);
+	            btIDebugDraw::DBG_DrawConstraints| /*btIDebugDraw::DBG_DrawConstraintLimits*/
+	            ViewportDebugDraw::DBG_DrawImpulses);
 
 	/*contact callback */
 /*
@@ -577,9 +863,9 @@ void RB_dworld_step_simulation(rbDynamicsWorld *world, float timeStep, int maxSu
 	world->dynamicsWorld->stepSimulation(timeStep, maxSubSteps, timeSubStep);
 }
 
-void RB_dworld_debug_draw(rbDynamicsWorld *world)
+void RB_dworld_debug_draw(rbDynamicsWorld *world, draw_string str_callback)
 {
-	world->dynamicsWorld->debugDrawWorld();
+	world->dynamicsWorld->debugDrawWorld(str_callback);
 }
 
 /* Export -------------------------- */
@@ -1284,20 +1570,19 @@ void RB_shape_set_margin(rbCollisionShape *shape, float value)
 
 void RB_dworld_add_constraint(rbDynamicsWorld *world, rbConstraint *con, int disable_collisions)
 {
-	btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint*>(con);
+	btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint*>(con->con);
 	
 	world->dynamicsWorld->addConstraint(constraint, disable_collisions);
 }
 
 void RB_dworld_remove_constraint(rbDynamicsWorld *world, rbConstraint *con)
 {
-	btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint*>(con);
+	btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint*>(con->con);
 	
 	world->dynamicsWorld->removeConstraint(constraint);
 }
 
 /* ............ */
-
 static void make_constraint_transforms(btTransform &transform1, btTransform &transform2, btRigidBody *body1, btRigidBody *body2, float pivot[3], float orn[4])
 {
 	btTransform pivot_transform = btTransform();
@@ -1317,8 +1602,14 @@ rbConstraint *RB_constraint_new_point(float pivot[3], rbRigidBody *rb1, rbRigidB
 	btVector3 pivot2 = body2->getWorldTransform().inverse() * btVector3(pivot[0], pivot[1], pivot[2]);
 	
 	btTypedConstraint *con = new btPoint2PointConstraint(*body1, *body2, pivot1, pivot2);
+
+	rbConstraint *rbc = new rbConstraint();
+	rbc->con = con;
+
+	btVector3 vec(pivot[0], pivot[1], pivot[2]);
+	rbc->pivot.setOrigin(vec);
 	
-	return (rbConstraint *)con;
+	return rbc;
 }
 
 rbConstraint *RB_constraint_new_fixed(float pivot[3], float orn[4], rbRigidBody *rb1, rbRigidBody *rb2)
@@ -1332,7 +1623,14 @@ rbConstraint *RB_constraint_new_fixed(float pivot[3], float orn[4], rbRigidBody 
 	
 	btFixedConstraint *con = new btFixedConstraint(*body1, *body2, transform1, transform2);
 	
-	return (rbConstraint *)con;
+	rbConstraint *rbc = new rbConstraint();
+	rbc->con = con;
+	con->setUserConstraintPtr(rbc);
+
+	btVector3 vec(pivot[0], pivot[1], pivot[2]);
+	rbc->pivot.setOrigin(vec);
+
+	return rbc;
 }
 
 rbConstraint *RB_constraint_new_hinge(float pivot[3], float orn[4], rbRigidBody *rb1, rbRigidBody *rb2)
@@ -1346,7 +1644,14 @@ rbConstraint *RB_constraint_new_hinge(float pivot[3], float orn[4], rbRigidBody 
 	
 	btHingeConstraint *con = new btHingeConstraint(*body1, *body2, transform1, transform2);
 	
-	return (rbConstraint *)con;
+	rbConstraint *rbc = new rbConstraint();
+	rbc->con = con;
+	con->setUserConstraintPtr(rbc);
+
+	btVector3 vec(pivot[0], pivot[1], pivot[2]);
+	rbc->pivot.setOrigin(vec);
+
+	return rbc;
 }
 
 rbConstraint *RB_constraint_new_slider(float pivot[3], float orn[4], rbRigidBody *rb1, rbRigidBody *rb2)
@@ -1359,8 +1664,15 @@ rbConstraint *RB_constraint_new_slider(float pivot[3], float orn[4], rbRigidBody
 	make_constraint_transforms(transform1, transform2, body1, body2, pivot, orn);
 	
 	btSliderConstraint *con = new btSliderConstraint(*body1, *body2, transform1, transform2, true);
-	
-	return (rbConstraint *)con;
+
+	rbConstraint *rbc = new rbConstraint();
+	rbc->con = con;
+	con->setUserConstraintPtr(rbc);
+
+	btVector3 vec(pivot[0], pivot[1], pivot[2]);
+	rbc->pivot.setOrigin(vec);
+
+	return rbc;
 }
 
 rbConstraint *RB_constraint_new_piston(float pivot[3], float orn[4], rbRigidBody *rb1, rbRigidBody *rb2)
@@ -1375,7 +1687,14 @@ rbConstraint *RB_constraint_new_piston(float pivot[3], float orn[4], rbRigidBody
 	btSliderConstraint *con = new btSliderConstraint(*body1, *body2, transform1, transform2, true);
 	con->setUpperAngLimit(-1.0f); // unlock rotation axis
 	
-	return (rbConstraint *)con;
+	rbConstraint *rbc = new rbConstraint();
+	rbc->con = con;
+	con->setUserConstraintPtr(rbc);
+
+	btVector3 vec(pivot[0], pivot[1], pivot[2]);
+	rbc->pivot.setOrigin(vec);
+
+	return rbc;
 }
 
 rbConstraint *RB_constraint_new_6dof(float pivot[3], float orn[4], rbRigidBody *rb1, rbRigidBody *rb2)
@@ -1389,7 +1708,14 @@ rbConstraint *RB_constraint_new_6dof(float pivot[3], float orn[4], rbRigidBody *
 	
 	btTypedConstraint *con = new btGeneric6DofConstraint(*body1, *body2, transform1, transform2, true);
 	
-	return (rbConstraint *)con;
+	rbConstraint *rbc = new rbConstraint();
+	rbc->con = con;
+	con->setUserConstraintPtr(rbc);
+
+	btVector3 vec(pivot[0], pivot[1], pivot[2]);
+	rbc->pivot.setOrigin(vec);
+
+	return rbc;
 }
 
 rbConstraint *RB_constraint_new_6dof_spring(float pivot[3], float orn[4], rbRigidBody *rb1, rbRigidBody *rb2)
@@ -1402,8 +1728,15 @@ rbConstraint *RB_constraint_new_6dof_spring(float pivot[3], float orn[4], rbRigi
 	make_constraint_transforms(transform1, transform2, body1, body2, pivot, orn);
 	
 	btTypedConstraint *con = new btGeneric6DofSpringConstraint(*body1, *body2, transform1, transform2, true);
-	
-	return (rbConstraint *)con;
+
+	rbConstraint *rbc = new rbConstraint();
+	rbc->con = con;
+	con->setUserConstraintPtr(rbc);
+
+	btVector3 vec(pivot[0], pivot[1], pivot[2]);
+	rbc->pivot.setOrigin(vec);
+
+	return rbc;
 }
 
 rbConstraint *RB_constraint_new_motor(float pivot[3], float orn[4], rbRigidBody *rb1, rbRigidBody *rb2)
@@ -1424,7 +1757,14 @@ rbConstraint *RB_constraint_new_motor(float pivot[3], float orn[4], rbRigidBody 
 	/* unlock motor axes */
 	con->getTranslationalLimitMotor()->m_upperLimit.setValue(-1.0f, -1.0f, -1.0f);
 	
-	return (rbConstraint *)con;
+	rbConstraint *rbc = new rbConstraint();
+	rbc->con = con;
+	con->setUserConstraintPtr(rbc);
+
+	btVector3 vec(pivot[0], pivot[1], pivot[2]);
+	rbc->pivot.setOrigin(vec);
+
+	return rbc;
 }
 
 rbConstraint *RB_constraint_new_compound(rbRigidBody *rb1, rbRigidBody *rb2)
@@ -1434,22 +1774,27 @@ rbConstraint *RB_constraint_new_compound(rbRigidBody *rb1, rbRigidBody *rb2)
 
 	btCompoundConstraint *con = new btCompoundConstraint(*body1, *body2);
 
-	return (rbConstraint *)con;
+	rbConstraint *rbc = new rbConstraint();
+	rbc->con = con;
+	rbc->pivot.setOrigin(btVector3(0, 0, 0));
+
+	return rbc;
 }
 
 /* Cleanup ----------------------------- */
 
 void RB_constraint_delete(rbConstraint *con)
 {
-	btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint*>(con);
+	btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint*>(con->con);
 	delete constraint;
+	delete con;
 }
 
 /* Settings ------------------------- */
 
 void RB_constraint_set_enabled(rbConstraint *con, int enabled)
 {
-	btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint*>(con);
+	btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint*>(con->con);
 	
 	constraint->setEnabled(enabled);
 	constraint->enableFeedback(enabled);
@@ -1457,20 +1802,20 @@ void RB_constraint_set_enabled(rbConstraint *con, int enabled)
 
 int RB_constraint_is_enabled(rbConstraint *con)
 {
-	btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint*>(con);
+	btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint*>(con->con);
 
 	return constraint->isEnabled();
 }
 
 float RB_constraint_get_applied_impulse(rbConstraint *con)
 {
-	btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint*>(con);
+	btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint*>(con->con);
 	return (float)constraint->getAppliedImpulse();
 }
 
 void RB_constraint_set_limits_hinge(rbConstraint *con, float lower, float upper)
 {
-	btHingeConstraint *constraint = reinterpret_cast<btHingeConstraint*>(con);
+	btHingeConstraint *constraint = reinterpret_cast<btHingeConstraint*>(con->con);
 	
 	// RB_TODO expose these
 	float softness = 0.9f;
@@ -1482,7 +1827,7 @@ void RB_constraint_set_limits_hinge(rbConstraint *con, float lower, float upper)
 
 void RB_constraint_set_limits_slider(rbConstraint *con, float lower, float upper)
 {
-	btSliderConstraint *constraint = reinterpret_cast<btSliderConstraint*>(con);
+	btSliderConstraint *constraint = reinterpret_cast<btSliderConstraint*>(con->con);
 	
 	constraint->setLowerLinLimit(lower);
 	constraint->setUpperLinLimit(upper);
@@ -1490,7 +1835,7 @@ void RB_constraint_set_limits_slider(rbConstraint *con, float lower, float upper
 
 void RB_constraint_set_limits_piston(rbConstraint *con, float lin_lower, float lin_upper, float ang_lower, float ang_upper)
 {
-	btSliderConstraint *constraint = reinterpret_cast<btSliderConstraint*>(con);
+	btSliderConstraint *constraint = reinterpret_cast<btSliderConstraint*>(con->con);
 	
 	constraint->setLowerLinLimit(lin_lower);
 	constraint->setUpperLinLimit(lin_upper);
@@ -1500,21 +1845,21 @@ void RB_constraint_set_limits_piston(rbConstraint *con, float lin_lower, float l
 
 void RB_constraint_set_limits_6dof(rbConstraint *con, int axis, float lower, float upper)
 {
-	btGeneric6DofConstraint *constraint = reinterpret_cast<btGeneric6DofConstraint*>(con);
+	btGeneric6DofConstraint *constraint = reinterpret_cast<btGeneric6DofConstraint*>(con->con);
 	
 	constraint->setLimit(axis, lower, upper);
 }
 
 void RB_constraint_set_stiffness_6dof_spring(rbConstraint *con, int axis, float stiffness)
 {
-	btGeneric6DofSpringConstraint *constraint = reinterpret_cast<btGeneric6DofSpringConstraint*>(con);
+	btGeneric6DofSpringConstraint *constraint = reinterpret_cast<btGeneric6DofSpringConstraint*>(con->con);
 	
 	constraint->setStiffness(axis, stiffness);
 }
 
 void RB_constraint_set_damping_6dof_spring(rbConstraint *con, int axis, float damping)
 {
-	btGeneric6DofSpringConstraint *constraint = reinterpret_cast<btGeneric6DofSpringConstraint*>(con);
+	btGeneric6DofSpringConstraint *constraint = reinterpret_cast<btGeneric6DofSpringConstraint*>(con->con);
 	
 	// invert damping range so that 0 = no damping
 	constraint->setDamping(axis, 1.0f - damping);
@@ -1522,35 +1867,35 @@ void RB_constraint_set_damping_6dof_spring(rbConstraint *con, int axis, float da
 
 void RB_constraint_set_spring_6dof_spring(rbConstraint *con, int axis, int enable)
 {
-	btGeneric6DofSpringConstraint *constraint = reinterpret_cast<btGeneric6DofSpringConstraint*>(con);
+	btGeneric6DofSpringConstraint *constraint = reinterpret_cast<btGeneric6DofSpringConstraint*>(con->con);
 	
 	constraint->enableSpring(axis, enable);
 }
 
 void RB_constraint_set_equilibrium_6dof_spring(rbConstraint *con)
 {
-	btGeneric6DofSpringConstraint *constraint = reinterpret_cast<btGeneric6DofSpringConstraint*>(con);
+	btGeneric6DofSpringConstraint *constraint = reinterpret_cast<btGeneric6DofSpringConstraint*>(con->con);
 	
 	constraint->setEquilibriumPoint();
 }
 
 void RB_constraint_set_solver_iterations(rbConstraint *con, int num_solver_iterations)
 {
-	btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint*>(con);
+	btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint*>(con->con);
 	
 	constraint->setOverrideNumSolverIterations(num_solver_iterations);
 }
 
 void RB_constraint_set_breaking_threshold(rbConstraint *con, float threshold)
 {
-	btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint*>(con);
+	btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint*>(con->con);
 	
 	constraint->setBreakingImpulseThreshold(threshold);
 }
 
 void RB_constraint_set_enable_motor(rbConstraint *con, int enable_lin, int enable_ang)
 {
-	btGeneric6DofConstraint *constraint = reinterpret_cast<btGeneric6DofConstraint*>(con);
+	btGeneric6DofConstraint *constraint = reinterpret_cast<btGeneric6DofConstraint*>(con->con);
 	
 	constraint->getTranslationalLimitMotor()->m_enableMotor[0] = enable_lin;
 	constraint->getRotationalLimitMotor(0)->m_enableMotor = enable_ang;
@@ -1558,7 +1903,7 @@ void RB_constraint_set_enable_motor(rbConstraint *con, int enable_lin, int enabl
 
 void RB_constraint_set_max_impulse_motor(rbConstraint *con, float max_impulse_lin, float max_impulse_ang)
 {
-	btGeneric6DofConstraint *constraint = reinterpret_cast<btGeneric6DofConstraint*>(con);
+	btGeneric6DofConstraint *constraint = reinterpret_cast<btGeneric6DofConstraint*>(con->con);
 	
 	constraint->getTranslationalLimitMotor()->m_maxMotorForce.setX(max_impulse_lin);
 	constraint->getRotationalLimitMotor(0)->m_maxMotorForce = max_impulse_ang;
@@ -1566,10 +1911,15 @@ void RB_constraint_set_max_impulse_motor(rbConstraint *con, float max_impulse_li
 
 void RB_constraint_set_target_velocity_motor(rbConstraint *con, float velocity_lin, float velocity_ang)
 {
-	btGeneric6DofConstraint *constraint = reinterpret_cast<btGeneric6DofConstraint*>(con);
+	btGeneric6DofConstraint *constraint = reinterpret_cast<btGeneric6DofConstraint*>(con->con);
 	
 	constraint->getTranslationalLimitMotor()->m_targetVelocity.setX(velocity_lin);
 	constraint->getRotationalLimitMotor(0)->m_targetVelocity = velocity_ang;
+}
+
+void RB_constraint_set_id(rbConstraint *con, char id[64])
+{
+	strncpy(con->id, id, strlen(id));
 }
 
 /* ********************************** */

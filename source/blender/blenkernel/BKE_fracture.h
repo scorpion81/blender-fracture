@@ -106,11 +106,11 @@ void BKE_fracture_store_settings(struct FractureModifierData *fs, struct Fractur
 struct Shard* BKE_create_initial_shard(struct DerivedMesh *dm);
 void BKE_copy_customdata_layers(struct CustomData* dest, struct CustomData *src, int type, int count);
 
-struct MeshIsland *BKE_fracture_mesh_island_add(struct FractureModifierData *fmd, struct Object *own, struct Object *target, int index, bool update);
-void BKE_fracture_mesh_island_remove(struct FractureModifierData *fmd, struct MeshIsland *mi, bool update);
+struct MeshIsland *BKE_fracture_mesh_island_add(struct FractureModifierData *fmd, struct Object *own, struct Object *target);
+void BKE_fracture_mesh_island_remove(struct FractureModifierData *fmd, struct MeshIsland *mi);
 void BKE_fracture_mesh_island_remove_all(struct FractureModifierData *fmd);
 
-struct RigidBodyShardCon* BKE_fracture_mesh_islands_connect(struct FractureModifierData *fmd, struct MeshIsland *mi1, struct MeshIsland *mi2, short con_type, int index);
+struct RigidBodyShardCon* BKE_fracture_mesh_islands_connect(struct FractureModifierData *fmd, struct MeshIsland *mi1, struct MeshIsland *mi2, short con_type);
 void BKE_fracture_mesh_constraint_remove(struct FractureModifierData* fmd, struct RigidBodyShardCon *con);
 void BKE_fracture_mesh_constraint_remove_all(struct FractureModifierData *fmd);
 

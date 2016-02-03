@@ -2863,9 +2863,20 @@ static Object* do_convert_constraints(FractureModifierData *fmd, RigidBodyShardC
 	int index2 =  BLI_kdtree_find_nearest(objtree, con->mi2->centroid, NULL);
 	Object* ob1 = objs[index1];
 	Object* ob2 = objs[index2];
-	char *name = BLI_strdupcat(ob->id.name + 2, "_con");
-	Object* rbcon = BKE_object_add(G.main, scene, OB_EMPTY, name);
+	char *name;
+	Object* rbcon;
 	int iterations;
+
+	if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
+	{
+		name = BLI_strdupn(con->id, MAX_ID_NAME);
+	}
+	else
+	{
+		name = BLI_strdupcat(ob->id.name + 2, "_con");
+	}
+
+	rbcon = BKE_object_add(G.main, scene, OB_EMPTY, name);
 
 	*base = scene->basact;
 

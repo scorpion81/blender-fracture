@@ -2719,6 +2719,14 @@ void ED_view3d_update_viewmat(Scene *scene, View3D *v3d, ARegion *ar, float view
 	}
 }
 
+void view3d_draw_string(float loc[3], const char *str, const size_t len, float color[3])
+{
+	// why is this char[] vs char* stuff necessary here ?
+	unsigned char col[3];
+	rgba_float_to_uchar(col , color);
+	view3d_cached_text_draw_add(loc, str, len, 0, V3D_CACHE_TEXT_ASCII | V3D_CACHE_TEXT_GLOBALSPACE , col);
+}
+
 /**
  * Shared by #ED_view3d_draw_offscreen and #view3d_main_area_draw_objects
  *
@@ -2855,7 +2863,11 @@ static void view3d_draw_objects(
 			/* debug physics meshes */
 			RigidBodyWorld *rbw = scene->rigidbody_world;
 			if (rbw && rbw->physics_world && (rbw->flag & RBW_FLAG_VISUALIZE_PHYSICS))
-				RB_dworld_debug_draw(rbw->physics_world);
+			{
+				view3d_cached_text_draw_begin();
+				RB_dworld_debug_draw(rbw->physics_world, view3d_draw_string);
+				view3d_cached_text_draw_end(v3d, ar, 0, NULL);
+			}
 		}
 
 		/* mask out localview */
