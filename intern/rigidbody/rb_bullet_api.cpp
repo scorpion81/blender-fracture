@@ -80,7 +80,6 @@ subject to the following restrictions:
 
 #include "../../extern/glew/include/GL/glew.h"
 
-
 typedef struct rbConstraint
 {
 	btTypedConstraint *con;
@@ -186,7 +185,7 @@ class TickDiscreteDynamicsWorld : public btFractureDynamicsWorld
 		rbTickCallback m_tickCallback;
 		void* m_bworld;
 		void* m_bscene;
-		virtual void debugDrawConstraints(rbConstraint *con, draw_string str_callback);
+		virtual void debugDrawConstraints(rbConstraint *con, draw_string str_callback, float loc[]);
 		virtual void debugDrawWorld(draw_string str_callback);
 };
 
@@ -283,11 +282,27 @@ void TickDiscreteDynamicsWorld::debugDrawWorld(draw_string str_callback)
 	}
 	if(drawConstraints)
 	{
+		btVector3 lastVec(0,0,0);
+		btVector3 drawVec(0,0,0);
+		btVector3 offset(0, 0, 0.1);
 		for(int i = getNumConstraints()-1; i>=0 ;i--)
 		{
+			float loc[3];
 			btTypedConstraint* constraint = getConstraint(i);
 			rbConstraint *con = (rbConstraint*)constraint->getUserConstraintPtr();
-			debugDrawConstraints(con, str_callback);
+
+			if (lastVec == con->pivot.getOrigin())
+			{
+				drawVec += offset;
+			}
+			else
+			{
+				drawVec = con->pivot.getOrigin();
+			}
+			copy_v3_btvec3(loc, drawVec);
+			debugDrawConstraints(con, str_callback, loc);
+			lastVec = con->pivot.getOrigin();
+
 		}
 	}
 
@@ -307,15 +322,15 @@ void TickDiscreteDynamicsWorld::debugDrawWorld(draw_string str_callback)
 	}
 }
 
-const char* val_to_str(float value, int precision, int *length)
+const char* val_to_str(rbConstraint* con, int precision, int *length)
 {
 	std::ostringstream oss;
-	oss << std::fixed << std::setprecision(precision) << value;
+	oss << std::fixed << std::setprecision(precision) << con->id << ":" << con->con->getAppliedImpulse() << ":" << con->con->getBreakingImpulseThreshold();
 	*length = oss.str().length();
 	return oss.str().c_str();
 }
 
-void TickDiscreteDynamicsWorld::debugDrawConstraints(rbConstraint* con , draw_string str_callback)
+void TickDiscreteDynamicsWorld::debugDrawConstraints(rbConstraint* con , draw_string str_callback, float loc[3])
 {
 	btTypedConstraint *constraint = con->con;
 	bool drawFrames = (getDebugDrawer()->getDebugMode() & btIDebugDraw::DBG_DrawConstraints) != 0;
@@ -329,12 +344,11 @@ void TickDiscreteDynamicsWorld::debugDrawConstraints(rbConstraint* con , draw_st
 	btScalar imp = constraint->getAppliedImpulse();
 	btScalar thr = constraint->getBreakingImpulseThreshold();
 	float ratio = fabs(imp) / thr;
-	int len = strlen(con->id);
-	//const char *str = val_to_str(imp, p, &len);
-	const char *str = con->id;
-	float loc[3];
-
-	copy_v3_btvec3(loc, con->pivot.getOrigin());
+	int len = 0; // strlen(con->id);
+	const char *str = val_to_str(con, p, &len);
+	//const char *str = con->id;
+	//float loc[3];
+	//copy_v3_btvec3(loc, con->pivot.getOrigin());
 
 	if (ratio <= 0.5f)
 	{
