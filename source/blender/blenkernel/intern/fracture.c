@@ -1687,7 +1687,6 @@ static DerivedMesh* do_create(FractureModifierData *fmd, int num_verts, int num_
 	{
 		MPoly *mp;
 		MLoop *ml;
-		MVert *mv;
 		int i;
 
 		memcpy(mverts + vertstart, shard->mvert, shard->totvert * sizeof(MVert));
@@ -2256,7 +2255,7 @@ static Shard* fracture_object_to_shard( Object *own, Object* target)
 	return s;
 }
 
-static void fracture_update_shards(FractureModifierData *fmd, Shard *s, int index)
+static void fracture_update_shards(FractureModifierData *fmd, Shard *s)
 {
 	FracMesh* fm;
 
@@ -2271,11 +2270,6 @@ static void fracture_update_shards(FractureModifierData *fmd, Shard *s, int inde
 	BLI_addtail(&fm->shard_map, s);
 	s->shard_id = fm->shard_count;
 	fm->shard_count++;
-
-	//set custom index ?
-	if (index > -1)
-		s->shard_id = index;
-
 }
 
 static MeshIsland* fracture_shard_to_island(FractureModifierData *fmd, Shard *s, int vertstart)
@@ -2576,7 +2570,7 @@ MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own,
 		return NULL;
 
 	s = fracture_object_to_shard(own, target);
-	fracture_update_shards(fmd, s, index);
+	fracture_update_shards(fmd, s);
 
 	vertstart = fmd->frac_mesh->progress_counter;
 	fmd->frac_mesh->progress_counter += s->totvert;
