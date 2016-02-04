@@ -42,6 +42,7 @@
 #include "BLI_rand.h"
 #include "BLI_utildefines.h"
 #include "BLI_string.h"
+#include "BLI_threads.h"
 
 
 #include "BKE_cdderivedmesh.h"
@@ -4392,6 +4393,7 @@ static void do_prehalving(FractureModifierData *fmd, Object* ob, DerivedMesh* de
 }
 #endif
 
+static ThreadMutex dynamic_lock = BLI_MUTEX_INITIALIZER;
 static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
                                   DerivedMesh *derivedData,
                                   ModifierApplyFlag UNUSED(flag))
@@ -4428,7 +4430,9 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			//rigidbody_object_add(md->scene, ob, RBO_TYPE_ACTIVE);
 		}
 
+		BLI_mutex_lock(&dynamic_lock);
 		final_dm = do_dynamic(fmd, ob, derivedData);
+		BLI_mutex_unlock(&dynamic_lock);
 	}
 	else if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
 	{

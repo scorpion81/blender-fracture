@@ -3744,6 +3744,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 	}
 }
 
+static ThreadMutex post_step_lock = BLI_MUTEX_INITIALIZER;
 static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 {
 	GroupObject *go;
@@ -3757,6 +3758,7 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 
 		Object *ob = go->ob;
 		//handle fractured rigidbodies, maybe test for psys as well ?
+		BLI_mutex_lock(&post_step_lock);
 		for (md = ob->modifiers.first; md; md = md->next) {
 			if (md->type == eModifierType_Fracture) {
 				rmd = (FractureModifierData *)md;
@@ -3765,7 +3767,7 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 						rbo = mi->rigidbody;
 						if (!rbo) continue;
 						/* reset kinematic state for transformed objects */
-						if (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) {
+						if (rbo->physics_object && ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) {
 							RB_body_set_kinematic_state(rbo->physics_object, rbo->flag & RBO_FLAG_KINEMATIC || rbo->flag & RBO_FLAG_DISABLED);
 							RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
 							/* deactivate passive objects so they don't interfere with deactivation of active objects */
@@ -3774,7 +3776,7 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 						}
 
 						/* update stored velocities, can be set again after sim rebuild */
-						if (rmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+						if (rmd->fracture_mode == MOD_FRACTURE_DYNAMIC && rbo->physics_object)
 						{
 							if (!(rbo->flag & RBO_FLAG_KINEMATIC))
 							{
@@ -3788,6 +3790,7 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 				}
 			}
 		}
+		BLI_mutex_unlock(&post_step_lock);
 
 		/* handle regular rigidbodies */
 		if (ob && !modFound) {
@@ -4314,6 +4317,7 @@ static void resetExternal(RigidBodyWorld *rbw)
 	}
 }
 
+static ThreadMutex reset_lock = BLI_MUTEX_INITIALIZER;
 static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always)
 {
 	GroupObject *go;
@@ -4350,6 +4354,7 @@ static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always)
 					return;
 				}
 
+				BLI_mutex_lock(&reset_lock);
 				fmd->refresh = true;
 				fmd->reset_shards = true;
 				fmd->last_frame = INT_MAX;
@@ -4391,6 +4396,7 @@ static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always)
 						break;
 					}
 				}
+				BLI_mutex_unlock(&reset_lock);
 
 				//DAG_id_tag_update(go->ob, OB_RECALC_ALL);
 				//WM_main_add_notifier(NC_OBJECT | ND_MODIFIER, go->ob);
