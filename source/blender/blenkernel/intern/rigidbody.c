@@ -4185,7 +4185,7 @@ static bool restoreKinematic(RigidBodyWorld *rbw)
 	return did_it;
 }
 
-
+#if 0
 static void resetPrefractured(RigidBodyWorld *rbw)
 {
 	GroupObject *go;
@@ -4316,6 +4316,7 @@ static void resetExternal(RigidBodyWorld *rbw)
 		}
 	}
 }
+#endif
 
 static ThreadMutex reset_lock = BLI_MUTEX_INITIALIZER;
 static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always)
@@ -4419,7 +4420,7 @@ void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw)
 		//restoreKinematic(rbw);
 		//if (!(rbw->pointcache->flag & PTCACHE_BAKED))
 		resetDynamic(rbw, true);
-		resetPrefractured(rbw);
+		//resetPrefractured(rbw);
 	}
 }
 
@@ -4459,7 +4460,7 @@ void BKE_rigidbody_rebuild_world(Scene *scene, float ctime)
 			{
 				resetDynamic(rbw, true);
 				//resetExternal(rbw);
-				resetPrefractured(rbw);
+				//resetPrefractured(rbw);
 			}
 
 			BKE_ptcache_id_reset(scene, &pid, PTCACHE_RESET_OUTDATED);
