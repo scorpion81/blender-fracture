@@ -43,6 +43,7 @@
 #include "BLI_callbacks.h"
 #include "BLI_math.h"
 #include "BLI_kdtree.h"
+#include "BLI_threads.h"
 #include "BLI_utildefines.h"
 
 #ifdef WITH_BULLET
@@ -3892,7 +3893,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 		if (isModifierActive(fmd) && exploOK) {
 			modFound = true;
 
-			if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+			if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && !(ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ))
 			{
 				int frame = (int)ctime;
 
@@ -3985,6 +3986,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 }
 
 /* Sync rigid body and object transformations */
+static ThreadMutex modifier_lock = BLI_MUTEX_INITIALIZER;
 void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 {
 	RigidBodyOb *rbo = NULL;
@@ -3994,11 +3996,13 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 	if (rbw == NULL)
 		return;
 
+	BLI_mutex_lock(&modifier_lock);
 	for (md = ob->modifiers.first; md; md = md->next) {
 		modFound = do_sync_modifier(md, ob, rbw, ctime);
 		if (modFound)
 			break;
 	}
+	BLI_mutex_unlock(&modifier_lock);
 
 	if (!modFound)
 	{
