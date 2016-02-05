@@ -1253,7 +1253,7 @@ static void rna_FractureModifier_mesh_constraint_remove(ID *id, FractureModifier
 	RigidBodyShardCon *con = con_ptr->data;
 
 	if (con && BLI_findindex(&fmd->meshConstraints, con) == -1) {
-		BKE_reportf(reports, RPT_ERROR, "MeshConstraint '%s' not in this fracture modifier", con->id);
+		BKE_reportf(reports, RPT_ERROR, "MeshConstraint '%s' not in this fracture modifier", con->name);
 		return;
 	}
 
@@ -1578,17 +1578,19 @@ static char *rna_MeshIsland_path(PointerRNA *ptr)
 	if (fmd)
 	{
 		ModifierData *md = (ModifierData*)fmd;
-		int index = mi->id;
+		//int index = mi->id;
 		char name_esc[sizeof(md->name) * 2];
 		BLI_strescape(name_esc, md->name, sizeof(name_esc));
-
+#if 0
 		if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
 		{
 			/* in regular fracture modes, meshisland index is 1-based */
 			index--;
+			return BLI_sprintfN("modifiers[\"%s\"].mesh_islands[%d]", name_esc, index);
 		}
+#endif
 
-		return BLI_sprintfN("modifiers[\"%s\"].mesh_islands[%d]", name_esc, index);
+		return BLI_sprintfN("modifiers[\'%s\'].mesh_islands[\'%s\']", name_esc, mi->name);
 	}
 	else
 	{	/*should not happen yet, meshislands only exist in modifier*/
@@ -1652,13 +1654,25 @@ static char *rna_MeshConstraint_path(PointerRNA *ptr)
 	{
 		char name_esc[sizeof(md->name) * 2];
 		BLI_strescape(name_esc, md->name, sizeof(name_esc));
-		return BLI_sprintfN("modifiers[\"%s\"].mesh_constraints[%d]", name_esc, con->id);
+		return BLI_sprintfN("modifiers[\'%s\'].mesh_constraints[\'%s\']", name_esc, con->name);
 	}
 	else
 	{	/*should not happen yet, meshconstraints only exist in modifier*/
-		return BLI_sprintfN("mesh_constraints[%d]", con->id);
+		return BLI_sprintfN("mesh_constraints[%s]", con->name);
 	}
 }
+
+#if 0
+int rna_FractureModifier_meshIsland_get_int(PointerRNA *ptr, int index, PointerRNA *r_ptr)
+{
+
+}
+
+int rna_FractureModifier_meshConstraint_get_int(PointerRNA *ptr, int index, PointerRNA *r_ptr)
+{
+
+}
+#endif
 
 static void rna_CurveModifier_dependency_update(Main *bmain, Scene *scene, PointerRNA *ptr)
 {
@@ -5228,9 +5242,10 @@ static void rna_def_mesh_island(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Rigid Body", "Rigidbody object of this mesh island");
 	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 
-	prop = RNA_def_property(srna, "id", PROP_STRING, PROP_NONE);
-	RNA_def_property_string_sdna(prop, NULL, "id");
-	RNA_def_property_ui_text(prop, "MeshIsland ID", "A name or id of this mesh island");
+	prop = RNA_def_property(srna, "name", PROP_STRING, PROP_NONE);
+	RNA_def_property_string_sdna(prop, NULL, "name");
+	RNA_def_property_ui_text(prop, "MeshIsland Name", "A name or id of this mesh island");
+	RNA_def_struct_name_property(srna, prop);
 	//RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 
 	prop = RNA_def_property(srna, "centroid", PROP_FLOAT, PROP_XYZ);
@@ -5259,9 +5274,10 @@ static void rna_def_mesh_constraint(BlenderRNA *brna)
 	RNA_def_struct_ui_text(srna, "Mesh Constraint", "A connection between two mesh islands in Fracture Modifier");
 	RNA_def_struct_path_func(srna, "rna_MeshConstraint_path");
 
-	prop = RNA_def_property(srna, "id", PROP_STRING, PROP_NONE);
-	RNA_def_property_string_sdna(prop, NULL, "id");
-	RNA_def_property_ui_text(prop, "Constraint ID", "A name or id of this mesh constraint");
+	prop = RNA_def_property(srna, "name", PROP_STRING, PROP_NONE);
+	RNA_def_property_string_sdna(prop, NULL, "name");
+	RNA_def_property_ui_text(prop, "Constraint Name", "A name or id of this mesh constraint");
+	RNA_def_struct_name_property(srna, prop);
 
 	prop = RNA_def_property(srna, "location", PROP_FLOAT, PROP_TRANSLATION);
 	RNA_def_property_float_sdna(prop, NULL, "pos");
@@ -6241,6 +6257,7 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "mesh_islands", PROP_COLLECTION, PROP_NONE);
 	RNA_def_property_struct_type(prop, "MeshIsland");
 	RNA_def_property_collection_sdna(prop, NULL, "meshIslands", NULL);
+	//RNA_def_property_collection_funcs(prop, NULL, NULL, NULL, NULL, NULL, "rna_FractureModifier_meshIsland_get_int", NULL, NULL);
 	RNA_def_property_ui_text(prop, "Mesh Islands", "A single entity inside the modifier, representing a single shard");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 	rna_def_fracture_meshislands(brna, prop);
@@ -6249,6 +6266,7 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "mesh_constraints", PROP_COLLECTION, PROP_NONE);
 	RNA_def_property_struct_type(prop, "MeshConstraint");
 	RNA_def_property_collection_sdna(prop, NULL, "meshConstraints", NULL);
+	//RNA_def_property_collection_funcs(prop, NULL, NULL, NULL, NULL, NULL, "rna_FractureModifier_meshConstraint_get_int", NULL, NULL);
 	RNA_def_property_ui_text(prop, "Mesh Constraints", "A connection between two Mesh Islands inside the modifier");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 	rna_def_fracture_meshconstraints(brna, prop);

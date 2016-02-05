@@ -1794,7 +1794,7 @@ static void rigidbody_create_shard_physics_constraint(FractureModifierData* fmd,
 	{
 		//char id[64];
 		//sprintf(id, "%d", rbc->id);
-		RB_constraint_set_id(rbc->physics_constraint, rbc->id);
+		RB_constraint_set_id(rbc->physics_constraint, rbc->name);
 	}
 }
 
@@ -2596,7 +2596,7 @@ RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(Scene *scene, short typ
 	rbc->motor_lin_target_velocity = 1.0f;
 	rbc->motor_ang_max_impulse = 1.0f;
 	rbc->motor_ang_target_velocity = 1.0f;
-	strcpy(rbc->id, "");
+	strcpy(rbc->name, "");
 	zero_v3(rbc->pos);
 	unit_qt(rbc->orn);
 	rbc->breaking_angle = 0.0f;

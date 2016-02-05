@@ -2869,7 +2869,7 @@ static Object* do_convert_constraints(FractureModifierData *fmd, RigidBodyShardC
 
 	if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
 	{
-		name = BLI_strdupn(con->id, MAX_ID_NAME);
+		name = BLI_strdupn(con->name, MAX_ID_NAME);
 	}
 	else
 	{

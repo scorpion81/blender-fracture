@@ -286,7 +286,8 @@ typedef struct RigidBodyShardCon {
 	short num_solver_iterations;/* number of constraint solver iterations made per simulation step */
 
 	int flag;					/* (eRigidBodyCon_Flag) */
-	char id[64];
+	char name[66]; /* MAX_ID_NAME */
+	char pad[2];
 
 	float breaking_threshold;	/* breaking impulse threshold */
 	float start_angle;			//needed for breaking by angle and dist
@@ -331,6 +332,7 @@ typedef struct RigidBodyShardCon {
 	float motor_lin_max_impulse;		/* maximum force used to reach linear target velocity */
 	float motor_ang_max_impulse;		/* maximum force used to reach angular target velocity */
 
+	char pad2[4];
 } RigidBodyShardCon;
 
 
