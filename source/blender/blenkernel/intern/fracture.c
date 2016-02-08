@@ -2520,31 +2520,22 @@ short fracture_collect_defgrp(Object* o, Object* ob, short defstart, GHash** def
 
 short BKE_fracture_collect_materials(Object* o, Object* ob, short matstart, GHash** mat_index_map)
 {
-	short *totcolp = NULL, k = 0;
+	short *totcolp = NULL;
 	Material ***matarar = NULL;
-	int j, l = 0;
+	int j;
 
 	/* append materials to target object, if not existing yet */
 	totcolp = give_totcolp(o);
 	matarar = give_matarar(o);
 
-	for (j = 0; j < *totcolp; j++)
+	for (j = 0; j < (*totcolp); j++)
 	{
 		void *key;
 		int index = find_material_index(ob, (*matarar)[j]);
 		if (index == 0)
 		{
-			assign_material(ob, (*matarar)[j], matstart + k, BKE_MAT_ASSIGN_USERPREF);
-			index = matstart + k;
-			k++;
-		}
-		else
-		{
-			/* dont assign slots for other multi-user materials if already assigned */
-			if ((*matarar)[j]->id.us > 1)
-			{
-				l++;
-			}
+			index = ob->totcol+1;
+			assign_material(ob, (*matarar)[j], index, BKE_MAT_ASSIGN_USERPREF);
 		}
 
 		key = SET_INT_IN_POINTER(matstart+j);
@@ -2552,7 +2543,7 @@ short BKE_fracture_collect_materials(Object* o, Object* ob, short matstart, GHas
 			BLI_ghash_insert(*mat_index_map, key, SET_INT_IN_POINTER(index));
 	}
 
-	return (*totcolp) - l;
+	return (*totcolp);
 }
 
 MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own, Object *target)
