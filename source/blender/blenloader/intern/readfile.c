@@ -373,6 +373,22 @@ static void *oldnewmap_lookup_and_inc(OldNewMap *onm, void *addr, bool increase_
 	int i;
 	
 	if (addr == NULL) return NULL;
+
+	/* try sorted approach here too, maybe it helps */
+	if (onm->sorted) {
+		OldNew entry_s, *entry = NULL;
+
+		entry_s.old = addr;
+
+		entry = bsearch(&entry_s, onm->entries, onm->nentries, sizeof(OldNew), verg_oldnewmap);
+		if (entry) {
+			if (increase_users)
+				entry->nr++;
+			return entry->newp;
+		}
+
+		return NULL;
+	}
 	
 	if (onm->lasthit < onm->nentries-1) {
 		OldNew *entry = &onm->entries[++onm->lasthit];
@@ -1836,20 +1852,20 @@ static void *read_struct(FileData *fd, BHead *bh, const char *blockname)
 
 typedef void (*link_list_cb)(FileData *fd, void *data);
 
-static void link_list_ex(FileData *fd, ListBase *lb, link_list_cb callback)		/* only direct data */
+static void link_list_ex(FileData *fd, ListBase *lb, link_list_cb callback, bool increase_lasthit)		/* only direct data */
 {
 	Link *ln, *prev;
 	
 	if (BLI_listbase_is_empty(lb)) return;
 	
-	lb->first = newdataadr(fd, lb->first);
+	lb->first = newdataadr_ex(fd, lb->first, increase_lasthit);
 	if (callback != NULL) {
 		callback(fd, lb->first);
 	}
 	ln = lb->first;
 	prev = NULL;
 	while (ln) {
-		ln->next = newdataadr(fd, ln->next);
+		ln->next = newdataadr_ex(fd, ln->next, increase_lasthit);
 		if (ln->next != NULL && callback != NULL) {
 			callback(fd, ln->next);
 		}
@@ -1862,7 +1878,7 @@ static void link_list_ex(FileData *fd, ListBase *lb, link_list_cb callback)		/* 
 
 static void link_list(FileData *fd, ListBase *lb)		/* only direct data */
 {
-	link_list_ex(fd, lb, NULL);
+	link_list_ex(fd, lb, NULL, true);
 }
 
 static void link_glob_list(FileData *fd, ListBase *lb)		/* for glob data */
@@ -3926,7 +3942,7 @@ static void direct_link_pointcache_cb(FileData *fd, void *data)
 static void direct_link_pointcache(FileData *fd, PointCache *cache)
 {
 	if ((cache->flag & PTCACHE_DISK_CACHE)==0) {
-		link_list_ex(fd, &cache->mem_cache, direct_link_pointcache_cb);
+		link_list_ex(fd, &cache->mem_cache, direct_link_pointcache_cb, true);
 	}
 	else
 		BLI_listbase_clear(&cache->mem_cache);
@@ -5000,9 +5016,11 @@ static void read_meshIsland(FileData *fd, MeshIsland **address)
 	mi->vertices_cached = NULL;
 	mi->vertco = newdataadr(fd, mi->vertco);
 	mi->temp = newdataadr(fd, mi->temp);
+#if 0
 	read_shard(fd, &(mi->temp));
 	mi->physics_mesh = BKE_shard_create_dm(mi->temp, true);
 	BKE_shard_free(mi->temp, true);
+#endif
 	mi->temp = NULL;
 	mi->vertno = newdataadr(fd, mi->vertno);
 
@@ -5179,7 +5197,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 		MeshIsland *mi;
 		MVert *mverts;
 		int vertstart = 0;
-		Shard *s;
+		Shard *s, **shards = NULL;
 		int count = 0;
 
 		fm->last_shard_tree = NULL;
@@ -5188,17 +5206,28 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 		if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED ||
 		    fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
 		{
+			/*create temp array for quicker lookups*/
+			int count = 0;
+			int i = 0;
+
 			link_list(fd, &fmd->frac_mesh->shard_map);
+			link_list(fd, &fmd->islandShards);
+			count = BLI_listbase_count(&fmd->frac_mesh->shard_map) + BLI_listbase_count(&fmd->islandShards);
+
+			shards = MEM_callocN(sizeof(Shard*) * count, "readfile shard_lookup_array");
 			for (s = fmd->frac_mesh->shard_map.first; s; s = s->next) {
 				read_shard(fd, &s);
+				shards[i] = s;
+				i++;
 			}
 
 			fmd->dm = NULL;
 			fmd->visible_mesh = NULL;
 
-			link_list(fd, &fmd->islandShards);
 			for (s = fmd->islandShards.first; s; s = s->next) {
 				read_shard(fd, &s);
+				shards[i] = s;
+				i++;
 			}
 
 			link_list(fd, &fmd->meshIslands);
@@ -5232,9 +5261,17 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 			/* re-init cached verts here... */
 			mverts = CDDM_get_verts(fmd->visible_mesh_cached);
 
+			i = 0;
 			for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
-				read_meshIsland(fd, &mi);
-				vertstart += initialize_meshisland(fmd, &mi, mverts, vertstart, ob, -1, -1);
+				Shard *s = NULL;
+				s = shards[i];
+				if (s)
+				{
+					mi->physics_mesh = BKE_shard_create_dm(s, true);
+					read_meshIsland(fd, &mi);
+					vertstart += initialize_meshisland(fmd, &mi, mverts, vertstart, ob, -1, -1);
+				}
+				i++;
 			}
 
 			if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
@@ -5250,19 +5287,23 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 					con->flag |= RBC_FLAG_NEEDS_VALIDATE;
 				}
 			}
+
+			MEM_freeN(shards);
 		}
 		else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && !fd->memfile)
 		{
 			ShardSequence *ssq = NULL;
 			MeshIslandSequence *msq = NULL;
-			fmd->dm = NULL;
 
+			fmd->dm = NULL;
 			link_list(fd, &fmd->shard_sequence);
+
 			for (ssq = fmd->shard_sequence.first; ssq; ssq = ssq->next)
 			{
 				ssq->is_new = false;
 				ssq->frac_mesh = newdataadr(fd, ssq->frac_mesh);
 				link_list(fd, &ssq->frac_mesh->shard_map);
+
 				for (s = ssq->frac_mesh->shard_map.first; s; s = s->next) {
 					read_shard(fd, &s);
 				}
@@ -5289,6 +5330,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd, Obje
 				link_list(fd, &msq->meshIslands);
 				for (mi = msq->meshIslands.first; mi; mi = mi->next) {
 					read_meshIsland(fd, &mi);
+					mi->physics_mesh = BKE_shard_create_dm(sh, true);
 					vertstart += initialize_meshisland(fmd, &mi, mverts, vertstart, ob, sh->parent_id, sh->shard_id);
 					sh = sh->next;
 				}
@@ -8267,6 +8309,9 @@ static BHead *read_data_into_oldnewmap(FileData *fd, BHead *bhead, const char *a
 		
 		bhead = blo_nextbhead(fd, bhead);
 	}
+
+	qsort(fd->datamap->entries, fd->datamap->nentries, sizeof(OldNew), verg_oldnewmap);
+	fd->datamap->sorted = 1;
 	
 	return bhead;
 }

@@ -1821,6 +1821,7 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 	memcpy(mloops, s->mloop, s->totloop * sizeof(MLoop));
 	memcpy(mpolys, s->mpoly, s->totpoly * sizeof(MPoly));
 
+	CustomData_free(&dm->edgeData, 0);
 	CDDM_calc_edges(dm);
 
 	dm->dirty |= DM_DIRTY_NORMALS;
@@ -2361,7 +2362,7 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 	DerivedMesh *dm = fmd->visible_mesh_cached;
 	int vertstart = 0, totvert = 0, totpoly = 0, polystart = 0, matstart = 1, defstart = 0;
 	MVert *mv = NULL;
-	MPoly *mp = NULL, *mpoly = NULL;
+	MPoly *mp = NULL, *mpoly = NULL, *ppoly = NULL, *pp = NULL;
 	int i = 0, j = 0;
 	MDeformVert *dvert = NULL;
 
@@ -2461,6 +2462,8 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 						if (dw->def_nr == l)
 							dw->def_nr = index;
 					}
+
+					//XXX TODO store this on physics mesh too ? to be able to reload it from blend
 				}
 			}
 		}
@@ -2468,7 +2471,8 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 		defstart += mi->totdef;
 
 		totpoly = mi->physics_mesh->getNumPolys(mi->physics_mesh);
-		for (j = 0, mp = mpoly + polystart; j < totpoly; j++, mp++)
+		ppoly = s->mpoly;
+		for (j = 0, mp = mpoly + polystart, pp = ppoly; j < totpoly; j++, mp++, pp++)
 		{
 			/* material index lookup and correction, avoid having the same material in different slots */
 			int index = GET_INT_FROM_POINTER(BLI_ghash_lookup(fmd->material_index_map,
@@ -2478,6 +2482,9 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 				index--;
 
 			mp->mat_nr = index;
+			//store this on physics mesh as well, so for being able to reload it from blend later (without
+			// having a materialmap then)
+			pp->mat_nr = index;
 		}
 
 		/* fortunately we know how many faces "belong" to this meshisland, too */
