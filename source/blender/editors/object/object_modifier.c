@@ -429,7 +429,8 @@ int ED_object_modifier_move_down(ReportList *reports, Object *ob, ModifierData *
 		if (mti->flags & eModifierTypeFlag_RequiresOriginalData) {
 			const ModifierTypeInfo *nmti = modifierType_getInfo(md->next->type);
 
-			if ((nmti->type != eModifierTypeType_OnlyDeform) && (md->next->type != eModifierType_Fracture)) {
+			/*make an exception here for fluidsim, in case: it is beyond a fracture modifier and this may have some other mods above it*/
+			if ((nmti->type != eModifierTypeType_OnlyDeform) && (md->type != eModifierType_Fluidsim)) {
 				BKE_report(reports, RPT_WARNING, "Cannot move beyond a non-deforming modifier");
 				return 0;
 			}
