@@ -10,8 +10,9 @@ set(INC_SYS
 
 set(SRC
 	util_aligned_malloc.cpp
-	util_cache.cpp
+	util_debug.cpp
 	util_logging.cpp
+	util_math_cdf.cpp
 	util_md5.cpp
 	util_path.cpp
 	util_string.cpp
@@ -38,10 +39,11 @@ set(SRC_HEADERS
 	util_args.h
 	util_atomic.h
 	util_boundbox.h
-	util_cache.h
 	util_debug.h
+	util_guarded_allocator.cpp
 	util_foreach.h
 	util_function.h
+	util_guarded_allocator.h
 	util_half.h
 	util_hash.h
 	util_image.h
@@ -49,6 +51,7 @@ set(SRC_HEADERS
 	util_logging.h
 	util_map.h
 	util_math.h
+	util_math_cdf.h
 	util_math_fast.h
 	util_md5.h
 	util_opengl.h
@@ -56,8 +59,12 @@ set(SRC_HEADERS
 	util_param.h
 	util_path.h
 	util_progress.h
+	util_queue.h
 	util_set.h
 	util_simd.h
+	util_sky_model.cpp
+	util_sky_model.h
+	util_sky_model_data.h
 	util_sseb.h
 	util_ssef.h
 	util_ssei.h
@@ -71,17 +78,9 @@ set(SRC_HEADERS
 	util_types.h
 	util_vector.h
 	util_view.h
+	util_windows.h
 	util_xml.h
 )
-
-if(WITH_CYCLES_DEBUG)
-	list(APPEND SRC
-		util_guarded_allocator.cpp
-	)
-	list(APPEND SRC_HEADERS
-		util_guarded_allocator.h
-	)
-endif()
 
 include_directories(${INC})
 include_directories(SYSTEM ${INC_SYS})

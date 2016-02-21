@@ -384,6 +384,7 @@ typedef struct bNodeTree {
 	
 	/* callbacks */
 	void (*progress)(void *, float progress);
+	/** \warning may be called by different threads */
 	void (*stats_draw)(void *, const char *str);
 	int (*test_break)(void *);
 	void (*update_draw)(void *);
@@ -502,7 +503,8 @@ enum {
 };
 
 enum {
-	CMP_NODEFLAG_BLUR_VARIABLE_SIZE = (1 << 0)
+	CMP_NODEFLAG_BLUR_VARIABLE_SIZE = (1 << 0),
+	CMP_NODEFLAG_BLUR_EXTEND_BOUNDS = (1 << 1),
 };
 
 typedef struct NodeFrame {
@@ -748,6 +750,8 @@ typedef struct NodeTexEnvironment {
 	ImageUser iuser;
 	int color_space;
 	int projection;
+	int interpolation;
+	int pad;
 } NodeTexEnvironment;
 
 typedef struct NodeTexGradient {
@@ -775,7 +779,7 @@ typedef struct NodeTexMusgrave {
 typedef struct NodeTexWave {
 	NodeTexBase base;
 	int wave_type;
-	int pad;
+	int wave_profile;
 } NodeTexWave;
 
 typedef struct NodeTexMagic {
@@ -804,6 +808,7 @@ typedef struct NodeShaderTexPointDensity {
 	short interpolation;
 	short color_source;
 	short pad2;
+	PointDensity pd;
 } NodeShaderTexPointDensity;
 
 /* TEX_output */
@@ -968,6 +973,9 @@ typedef struct NodeSunBeams {
 #define SHD_WAVE_BANDS		0
 #define SHD_WAVE_RINGS		1
 
+#define SHD_WAVE_PROFILE_SIN	0
+#define SHD_WAVE_PROFILE_SAW	1
+
 /* sky texture */
 #define SHD_SKY_OLD		0
 #define SHD_SKY_NEW		1
@@ -1049,6 +1057,7 @@ enum {
 #endif
 	SHD_SUBSURFACE_CUBIC			= 1,
 	SHD_SUBSURFACE_GAUSSIAN			= 2,
+	SHD_SUBSURFACE_BURLEY			= 3,
 };
 
 /* blur node */
@@ -1106,6 +1115,11 @@ enum {
 /* Plane track deform node */
 enum {
 	CMP_NODEFLAG_PLANETRACKDEFORM_MOTION_BLUR = 1,
+};
+
+/* Stabilization node */
+enum {
+	CMP_NODEFLAG_STABILIZE_INVERSE = 1,
 };
 
 #define CMP_NODE_PLANETRACKDEFORM_MBLUR_SAMPLES_MAX 64

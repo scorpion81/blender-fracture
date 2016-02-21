@@ -34,12 +34,9 @@
 #include "tables.h"
 
 #include "util_foreach.h"
+#include "util_guarded_allocator.h"
+#include "util_logging.h"
 #include "util_progress.h"
-
-#ifdef WITH_CYCLES_DEBUG
-#  include "util_guarded_allocator.h"
-#  include "util_logging.h"
-#endif
 
 CCL_NAMESPACE_BEGIN
 
@@ -97,7 +94,7 @@ void Scene::free_memory(bool final)
 	particle_systems.clear();
 
 	if(device) {
-		camera->device_free(device, &dscene);
+		camera->device_free(device, &dscene, this);
 		film->device_free(device, &dscene, this);
 		background->device_free(device, &dscene);
 		integrator->device_free(device, &dscene);
@@ -245,11 +242,9 @@ void Scene::device_update(Device *device_, Progress& progress)
 		device->const_copy_to("__data", &dscene.data, sizeof(dscene.data));
 	}
 
-#ifdef WITH_CYCLES_DEBUG
 	VLOG(1) << "System memory statistics after full device sync:\n"
 	        << "  Usage: " << util_guarded_get_mem_used() << "\n"
 	        << "  Peak: " << util_guarded_get_mem_peak();
-#endif
 }
 
 Scene::MotionType Scene::need_motion(bool advanced_shading)

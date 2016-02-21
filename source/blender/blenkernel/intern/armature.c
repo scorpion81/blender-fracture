@@ -38,7 +38,9 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_math.h"
-#include "BLI_blenlib.h"
+#include "BLI_listbase.h"
+#include "BLI_string.h"
+#include "BLI_ghash.h"
 #include "BLI_utildefines.h"
 
 #include "DNA_anim_types.h"
@@ -89,6 +91,16 @@ bArmature *BKE_armature_from_object(Object *ob)
 	if (ob->type == OB_ARMATURE)
 		return (bArmature *)ob->data;
 	return NULL;
+}
+
+int BKE_armature_bonelist_count(ListBase *lb)
+{
+	int i = 0;
+	for (Bone *bone = lb->first; bone; bone = bone->next) {
+		i += 1 + BKE_armature_bonelist_count(&bone->childbase);
+	}
+
+	return i;
 }
 
 void BKE_armature_bonelist_free(ListBase *lb)
@@ -169,8 +181,8 @@ void BKE_armature_make_local(bArmature *arm)
 			if (ob->data == arm) {
 				if (ob->id.lib == NULL) {
 					ob->data = arm_new;
-					arm_new->id.us++;
-					arm->id.us--;
+					id_us_plus(&arm_new->id);
+					id_us_min(&arm->id);
 				}
 			}
 		}
@@ -229,15 +241,15 @@ bArmature *BKE_armature_copy(bArmature *arm)
 	return newArm;
 }
 
-static Bone *get_named_bone_bonechildren(Bone *bone, const char *name)
+static Bone *get_named_bone_bonechildren(ListBase *lb, const char *name)
 {
 	Bone *curBone, *rbone;
 
-	if (STREQ(bone->name, name))
-		return bone;
+	for (curBone = lb->first; curBone; curBone = curBone->next) {
+		if (STREQ(curBone->name, name))
+			return curBone;
 
-	for (curBone = bone->childbase.first; curBone; curBone = curBone->next) {
-		rbone = get_named_bone_bonechildren(curBone, name);
+		rbone = get_named_bone_bonechildren(&curBone->childbase, name);
 		if (rbone)
 			return rbone;
 	}
@@ -246,21 +258,38 @@ static Bone *get_named_bone_bonechildren(Bone *bone, const char *name)
 }
 
 
-/* Walk the list until the bone is found */
+/**
+ * Walk the list until the bone is found (slow!),
+ * use #BKE_armature_bone_from_name_map for multiple lookups.
+ */
 Bone *BKE_armature_find_bone_name(bArmature *arm, const char *name)
 {
-	Bone *bone = NULL, *curBone;
-
 	if (!arm)
 		return NULL;
 
-	for (curBone = arm->bonebase.first; curBone; curBone = curBone->next) {
-		bone = get_named_bone_bonechildren(curBone, name);
-		if (bone)
-			return bone;
-	}
+	return get_named_bone_bonechildren(&arm->bonebase, name);
+}
 
-	return bone;
+static void armature_bone_from_name_insert_recursive(GHash *bone_hash, ListBase *lb)
+{
+	for (Bone *bone = lb->first; bone; bone = bone->next) {
+		BLI_ghash_insert(bone_hash, bone->name, bone);
+		armature_bone_from_name_insert_recursive(bone_hash, &bone->childbase);
+	}
+}
+
+/**
+ * Create a (name -> bone) map.
+ *
+ * \note typically #bPose.chanhash us used via #BKE_pose_channel_find_name
+ * this is for the cases we can't use pose channels.
+ */
+GHash *BKE_armature_bone_from_name_map(bArmature *arm)
+{
+	const int bones_count = BKE_armature_bonelist_count(&arm->bonebase);
+	GHash *bone_hash = BLI_ghash_str_new_ex(__func__, bones_count);
+	armature_bone_from_name_insert_recursive(bone_hash, &arm->bonebase);
+	return bone_hash;
 }
 
 bool BKE_armature_bone_flag_test_recursive(const Bone *bone, int flag)
@@ -1325,18 +1354,20 @@ void BKE_armature_mat_pose_to_bone_ex(Object *ob, bPoseChannel *pchan, float inm
 /* same as BKE_object_mat3_to_rot() */
 void BKE_pchan_mat3_to_rot(bPoseChannel *pchan, float mat[3][3], bool use_compat)
 {
+	BLI_ASSERT_UNIT_M3(mat);
+
 	switch (pchan->rotmode) {
 		case ROT_MODE_QUAT:
-			mat3_to_quat(pchan->quat, mat);
+			mat3_normalized_to_quat(pchan->quat, mat);
 			break;
 		case ROT_MODE_AXISANGLE:
-			mat3_to_axis_angle(pchan->rotAxis, &pchan->rotAngle, mat);
+			mat3_normalized_to_axis_angle(pchan->rotAxis, &pchan->rotAngle, mat);
 			break;
 		default: /* euler */
 			if (use_compat)
-				mat3_to_compatible_eulO(pchan->eul, pchan->eul, pchan->rotmode, mat);
+				mat3_normalized_to_compatible_eulO(pchan->eul, pchan->eul, pchan->rotmode, mat);
 			else
-				mat3_to_eulO(pchan->eul, pchan->rotmode, mat);
+				mat3_normalized_to_eulO(pchan->eul, pchan->rotmode, mat);
 			break;
 	}
 }
@@ -2189,8 +2220,10 @@ static void boundbox_armature(Object *ob)
 	BoundBox *bb;
 	float min[3], max[3];
 
-	if (ob->bb == NULL)
+	if (ob->bb == NULL) {
 		ob->bb = MEM_mallocN(sizeof(BoundBox), "Armature boundbox");
+		ob->bb->flag = 0;
+	}
 	bb = ob->bb;
 
 	INIT_MINMAX(min, max);
@@ -2229,7 +2262,7 @@ bool BKE_pose_minmax(Object *ob, float r_min[3], float r_max[3], bool use_hidden
 				                      BKE_object_boundbox_get(pchan->custom) : NULL;
 				if (bb_custom) {
 					float mat[4][4], smat[4][4];
-					scale_m4_fl(smat, pchan->bone->length);
+					scale_m4_fl(smat, PCHAN_CUSTOM_DRAW_SIZE(pchan));
 					mul_m4_series(mat, ob->obmat, pchan_tx->pose_mat, smat);
 					BKE_boundbox_minmax(bb_custom, mat, r_min, r_max);
 				}

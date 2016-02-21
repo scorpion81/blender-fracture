@@ -332,10 +332,10 @@ static PyObject *bpy_lib_exit(BPy_Library *self, PyObject *UNUSED(args))
 	Main *mainl = NULL;
 	int err = 0;
 
-	BKE_main_id_flag_all(bmain, LIB_PRE_EXISTING, true);
+	BKE_main_id_tag_all(bmain, LIB_TAG_PRE_EXISTING, true);
 
 	/* here appending/linking starts */
-	mainl = BLO_library_append_begin(bmain, &(self->blo_handle), self->relpath);
+	mainl = BLO_library_link_begin(bmain, &(self->blo_handle), self->relpath);
 
 	{
 		int idcode_step = 0, idcode;
@@ -358,7 +358,7 @@ static PyObject *bpy_lib_exit(BPy_Library *self, PyObject *UNUSED(args))
 						// printf("  %s\n", item_str);
 
 						if (item_str) {
-							ID *id = BLO_library_append_named_part(mainl, &(self->blo_handle), item_str, idcode);
+							ID *id = BLO_library_link_named_part(mainl, &(self->blo_handle), idcode, item_str);
 							if (id) {
 #ifdef USE_RNA_DATABLOCKS
 								/* swap name for pointer to the id */
@@ -400,12 +400,12 @@ static PyObject *bpy_lib_exit(BPy_Library *self, PyObject *UNUSED(args))
 		/* exception raised above, XXX, this leaks some memory */
 		BLO_blendhandle_close(self->blo_handle);
 		self->blo_handle = NULL;
-		BKE_main_id_flag_all(bmain, LIB_PRE_EXISTING, false);
+		BKE_main_id_tag_all(bmain, LIB_TAG_PRE_EXISTING, false);
 		return NULL;
 	}
 	else {
 		Library *lib = mainl->curlib; /* newly added lib, assign before append end */
-		BLO_library_append_end(NULL, mainl, &(self->blo_handle), 0, self->flag);
+		BLO_library_link_end(mainl, &(self->blo_handle), self->flag, NULL, NULL);
 		BLO_blendhandle_close(self->blo_handle);
 		self->blo_handle = NULL;
 
@@ -416,11 +416,11 @@ static PyObject *bpy_lib_exit(BPy_Library *self, PyObject *UNUSED(args))
 
 			/* append, rather than linking */
 			if ((self->flag & FILE_LINK) == 0) {
-				BKE_library_make_local(bmain, lib, true);
+				BKE_library_make_local(bmain, lib, true, false);
 			}
 		}
 
-		BKE_main_id_flag_all(bmain, LIB_PRE_EXISTING, false);
+		BKE_main_id_tag_all(bmain, LIB_TAG_PRE_EXISTING, false);
 
 		/* finally swap the capsules for real bpy objects
 		 * important since BLO_library_append_end initializes NodeTree types used by srna->refine */

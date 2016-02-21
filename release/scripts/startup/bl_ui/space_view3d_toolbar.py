@@ -21,7 +21,8 @@ import bpy
 from bpy.types import Menu, Panel, UIList
 from bl_ui.properties_grease_pencil_common import (
         GreasePencilDrawingToolsPanel,
-        GreasePencilStrokeEditPanel
+        GreasePencilStrokeEditPanel,
+        GreasePencilStrokeSculptPanel
         )
 from bl_ui.properties_paint_common import (
         UnifiedPaintPanel,
@@ -248,6 +249,7 @@ class VIEW3D_PT_tools_animation(View3DPanel, Panel):
         row = col.row(align=True)
         row.operator("object.paths_calculate", text="Calculate")
         row.operator("object.paths_clear", text="Clear")
+        col.operator("object.paths_update", text="Update")
 
         col.separator()
 
@@ -774,6 +776,7 @@ class VIEW3D_PT_tools_posemode(View3DPanel, Panel):
         row = col.row(align=True)
         row.operator("pose.paths_calculate", text="Calculate")
         row.operator("pose.paths_clear", text="Clear")
+        col.operator("pose.paths_update", text="Update")
 
 
 class VIEW3D_PT_tools_posemode_options(View3DPanel, Panel):
@@ -949,6 +952,12 @@ class VIEW3D_PT_tools_brush(Panel, View3DPaintPanel):
                 col.separator()
                 row = col.row(align=True)
                 row.prop(brush, "crease_pinch_factor", slider=True, text="Pinch")
+
+            # rake_factor
+            if capabilities.has_rake_factor:
+                col.separator()
+                row = col.row(align=True)
+                row.prop(brush, "rake_factor", slider=True)
 
             # use_original_normal and sculpt_plane
             if capabilities.has_sculpt_plane:
@@ -1569,7 +1578,7 @@ class VIEW3D_PT_tools_brush_appearance(Panel, View3DPaintPanel):
     @classmethod
     def poll(cls, context):
         settings = cls.paint_settings(context)
-        return settings
+        return (settings is not None) and (not isinstance(settings, bpy.types.ParticleEdit))
 
     def draw(self, context):
         layout = self.layout
@@ -1653,7 +1662,6 @@ class VIEW3D_PT_tools_weightpaint_options(Panel, View3DPaintPanel):
 
         col.label("Show Zero Weights:")
         sub = col.row()
-        sub.active = (not tool_settings.use_multipaint)
         sub.prop(tool_settings, "vertex_group_user", expand=True)
 
         self.unified_paint_settings(col, context)
@@ -1872,6 +1880,11 @@ class VIEW3D_PT_tools_grease_pencil_draw(GreasePencilDrawingToolsPanel, Panel):
 
 # Grease Pencil stroke editing tools
 class VIEW3D_PT_tools_grease_pencil_edit(GreasePencilStrokeEditPanel, Panel):
+    bl_space_type = 'VIEW_3D'
+
+
+# Grease Pencil stroke sculpting tools
+class VIEW3D_PT_tools_grease_pencil_sculpt(GreasePencilStrokeSculptPanel, Panel):
     bl_space_type = 'VIEW_3D'
 
 

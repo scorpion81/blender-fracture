@@ -35,7 +35,6 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_blenlib.h"
-#include "BLI_fileops.h"
 #include "BLI_ghash.h"
 #include "BLI_math.h"
 #include "BLI_timecode.h"
@@ -44,6 +43,7 @@
 #include "BLT_translation.h"
 
 #include "DNA_scene_types.h"
+#include "DNA_sound_types.h"
 
 #include "BKE_context.h"
 #include "BKE_global.h"
@@ -932,37 +932,6 @@ static bool sequence_offset_after_frame(Scene *scene, const int delta, const int
 	return done;
 }
 
-static void UNUSED_FUNCTION(touch_seq_files) (Scene *scene)
-{
-	Sequence *seq;
-	Editing *ed = BKE_sequencer_editing_get(scene, false);
-	char str[256];
-
-	/* touch all strips with movies */
-	
-	if (ed == NULL) return;
-
-	// XXX25 if (okee("Touch and print selected movies")==0) return;
-
-	WM_cursor_wait(1);
-
-	SEQP_BEGIN (ed, seq)
-	{
-		if (seq->flag & SELECT) {
-			if (seq->type == SEQ_TYPE_MOVIE) {
-				if (seq->strip && seq->strip->stripdata) {
-					BLI_make_file_string(G.main->name, str, seq->strip->dir, seq->strip->stripdata->name);
-					BLI_file_touch(seq->name);
-				}
-			}
-
-		}
-	}
-	SEQ_END
-
-	WM_cursor_wait(0);
-}
-
 #if 0
 static void set_filter_seq(Scene *scene)
 {
@@ -1210,6 +1179,7 @@ static int sequencer_snap_exec(bContext *C, wmOperator *op)
 					BKE_sequence_tx_set_final_right(seq, snap_frame);
 				}
 				BKE_sequence_tx_handle_xlimits(seq, seq->flag & SEQ_LEFTSEL, seq->flag & SEQ_RIGHTSEL);
+				BKE_sequence_single_fix(seq);
 			}
 			BKE_sequence_calc(scene, seq);
 		}
@@ -2222,7 +2192,7 @@ void SEQUENCER_OT_duplicate(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
 	/* to give to transform */
-	RNA_def_enum(ot->srna, "mode", transform_mode_types, TFM_TRANSLATION, "Mode", "");
+	RNA_def_enum(ot->srna, "mode", rna_enum_transform_mode_types, TFM_TRANSLATION, "Mode", "");
 }
 
 /* delete operator */
@@ -2390,7 +2360,7 @@ static int sequencer_separate_images_exec(bContext *C, wmOperator *op)
 			/* remove seq so overlap tests don't conflict,
 			 * see seq_free_sequence below for the real free'ing */
 			BLI_remlink(ed->seqbasep, seq);
-			/* if (seq->ipo) seq->ipo->id.us--; */
+			/* if (seq->ipo) id_us_min(&seq->ipo->id); */
 			/* XXX, remove fcurve and assign to split image strips */
 
 			start_ofs = cfra = BKE_sequence_tx_get_final_left(seq, false);
@@ -2460,7 +2430,7 @@ void SEQUENCER_OT_images_separate(wmOperatorType *ot)
 	
 	/* api callbacks */
 	ot->exec = sequencer_separate_images_exec;
-	ot->invoke = WM_operator_props_popup;
+	ot->invoke = WM_operator_props_popup_confirm;
 	ot->poll = sequencer_edit_poll;
 	
 	/* flags */
@@ -2520,6 +2490,7 @@ static int sequencer_meta_toggle_exec(bContext *C, wmOperator *UNUSED(op))
 #if 1
 		BKE_sequence_tx_set_final_left(ms->parseq, ms->disp_range[0]);
 		BKE_sequence_tx_set_final_right(ms->parseq, ms->disp_range[1]);
+		BKE_sequence_single_fix(ms->parseq);
 		BKE_sequence_calc(scene, ms->parseq);
 #else
 		if (BKE_sequence_test_overlap(ed->seqbasep, ms->parseq))
@@ -3776,6 +3747,16 @@ static int sequencer_change_path_exec(bContext *C, wmOperator *op)
 		/* important else we don't get the imbuf cache flushed */
 		BKE_sequencer_free_imbuf(scene, &ed->seqbase, false);
 	}
+	else if (ELEM(seq->type, SEQ_TYPE_SOUND_RAM, SEQ_TYPE_SOUND_HD)) {
+		bSound *sound = seq->sound;
+		if (sound == NULL) {
+			return OPERATOR_CANCELLED;
+		}
+		char filepath[FILE_MAX];
+		RNA_string_get(op->ptr, "filepath", filepath);
+		BLI_strncpy(sound->name, filepath, sizeof(sound->name));
+		BKE_sound_load(bmain, sound);
+	}
 	else {
 		/* lame, set rna filepath */
 		PointerRNA seq_ptr;
@@ -3834,9 +3815,10 @@ void SEQUENCER_OT_change_path(struct wmOperatorType *ot)
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
-	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_IMAGE | FILE_TYPE_MOVIE, FILE_SPECIAL, FILE_OPENFILE,
-	                               WM_FILESEL_DIRECTORY | WM_FILESEL_RELPATH | WM_FILESEL_FILEPATH | WM_FILESEL_FILES,
-	                               FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
+	WM_operator_properties_filesel(
+	        ot, FILE_TYPE_FOLDER, FILE_SPECIAL, FILE_OPENFILE,
+	        WM_FILESEL_DIRECTORY | WM_FILESEL_RELPATH | WM_FILESEL_FILEPATH | WM_FILESEL_FILES,
+	        FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
 	RNA_def_boolean(ot->srna, "use_placeholders", false, "Use Placeholders", "Use placeholders for missing frames of the strip");
 }
 
@@ -3862,8 +3844,7 @@ static int sequencer_export_subtitles_invoke(bContext *C, wmOperator *op, const 
 static int sequencer_export_subtitles_exec(bContext *C, wmOperator *op)
 {
 	Scene *scene = CTX_data_scene(C);
-	Sequence *seq = BKE_sequencer_active_get(scene);
-	Sequence *seq_next;
+	Sequence *seq, *seq_next;
 	Editing *ed = BKE_sequencer_editing_get(scene, false);
 	ListBase text_seq = {0};
 	int iter = 0;
@@ -3915,9 +3896,9 @@ static int sequencer_export_subtitles_exec(bContext *C, wmOperator *op)
 		char timecode_str_end[32];
 
 		BLI_timecode_string_from_time(timecode_str_start, sizeof(timecode_str_start),
-									  -2, FRA2TIME(seq->startdisp), FPS, USER_TIMECODE_SUBRIP);
+		                              -2, FRA2TIME(seq->startdisp), FPS, USER_TIMECODE_SUBRIP);
 		BLI_timecode_string_from_time(timecode_str_end, sizeof(timecode_str_end),
-									  -2, FRA2TIME(seq->enddisp), FPS, USER_TIMECODE_SUBRIP);
+		                              -2, FRA2TIME(seq->enddisp), FPS, USER_TIMECODE_SUBRIP);
 
 		fprintf(file, "%d\n%s --> %s\n%s\n\n", iter++, timecode_str_start, timecode_str_end, data->text);
 
@@ -3952,6 +3933,7 @@ void SEQUENCER_OT_export_subtitles(struct wmOperatorType *ot)
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
-	WM_operator_properties_filesel(ot,  FILE_TYPE_FOLDER, FILE_BLENDER, FILE_SAVE,
-	                               WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
+	WM_operator_properties_filesel(
+	        ot,  FILE_TYPE_FOLDER, FILE_BLENDER, FILE_SAVE,
+	        WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
 }

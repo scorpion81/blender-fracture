@@ -261,6 +261,7 @@ else:
         "bpy.utils.previews",
         "bpy_extras",
         "gpu",
+        "gpu.offscreen",
         "mathutils",
         "mathutils.geometry",
         "mathutils.bvhtree",
@@ -1344,7 +1345,10 @@ def pyrna2sphinx(basepath):
                     descr = prop.description
                     if not descr:
                         descr = prop.name
-                    fw("         `%s`, %s, %s\n\n" % (prop.identifier, descr, type_descr))
+                    # In rare cases descr may be empty
+                    fw("         `%s`, %s\n\n" %
+                       (prop.identifier,
+                        ", ".join((val for val in (descr, type_descr) if val))))
 
             write_example_ref("      ", fw, "bpy.types." + struct_id + "." + func.identifier)
 
@@ -1659,7 +1663,9 @@ def write_rst_contents(basepath):
         # mathutils
         "mathutils", "mathutils.geometry", "mathutils.bvhtree", "mathutils.kdtree", "mathutils.noise",
         # misc
-        "freestyle", "bgl", "blf", "gpu", "aud", "bpy_extras",
+        "freestyle", "bgl", "blf",
+        "gpu", "gpu.offscreen",
+        "aud", "bpy_extras",
         # bmesh, submodules are in own page
         "bmesh",
         )
@@ -1799,6 +1805,7 @@ def write_rst_importable_modules(basepath):
         # C_modules
         "aud"                  : "Audio System",
         "blf"                  : "Font Drawing",
+        "gpu.offscreen"        : "GPU Off-Screen Buffer",
         "bmesh"                : "BMesh Module",
         "bmesh.types"          : "BMesh Types",
         "bmesh.utils"          : "BMesh Utilities",

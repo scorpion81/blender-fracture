@@ -345,6 +345,7 @@ static bool object_modifier_remove(Main *bmain, Object *ob, ModifierData *md,
 
 	BLI_remlink(&ob->modifiers, md);
 	modifier_free(md);
+	BKE_object_free_derived_caches(ob);
 
 	if (do_rigidbody_cleanup)
 	{
@@ -742,6 +743,8 @@ int ED_object_modifier_apply(ReportList *reports, Scene *scene, Object *ob, Modi
 	BLI_remlink(&ob->modifiers, md);
 	modifier_free(md);
 
+	BKE_object_free_derived_caches(ob);
+
 	return 1;
 }
 
@@ -782,10 +785,10 @@ static EnumPropertyItem *modifier_add_itemf(bContext *C, PointerRNA *UNUSED(ptr)
 	int totitem = 0, a;
 	
 	if (!ob)
-		return modifier_type_items;
+		return rna_enum_object_modifier_type_items;
 
-	for (a = 0; modifier_type_items[a].identifier; a++) {
-		md_item = &modifier_type_items[a];
+	for (a = 0; rna_enum_object_modifier_type_items[a].identifier; a++) {
+		md_item = &rna_enum_object_modifier_type_items[a];
 
 		if (md_item->identifier[0]) {
 			mti = modifierType_getInfo(md_item->value);
@@ -835,7 +838,7 @@ void OBJECT_OT_modifier_add(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
 	/* properties */
-	prop = RNA_def_enum(ot->srna, "type", modifier_type_items, eModifierType_Subsurf, "Type", "");
+	prop = RNA_def_enum(ot->srna, "type", rna_enum_object_modifier_type_items, eModifierType_Subsurf, "Type", "");
 	RNA_def_enum_funcs(prop, modifier_add_itemf);
 	ot->prop = prop;
 }
@@ -1398,8 +1401,9 @@ void OBJECT_OT_multires_external_save(wmOperatorType *ot)
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
-	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_BTX, FILE_SPECIAL, FILE_SAVE,
-	                               WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
+	WM_operator_properties_filesel(
+	        ot, FILE_TYPE_FOLDER | FILE_TYPE_BTX, FILE_SPECIAL, FILE_SAVE,
+	        WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
 	edit_modifier_properties(ot);
 }
 

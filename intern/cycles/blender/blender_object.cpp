@@ -36,7 +36,7 @@ CCL_NAMESPACE_BEGIN
 
 /* Utilities */
 
-bool BlenderSync::BKE_object_is_modified(BL::Object b_ob)
+bool BlenderSync::BKE_object_is_modified(BL::Object& b_ob)
 {
 	/* test if we can instance or if the object is modified */
 	if(b_ob.type() == BL::Object::type_META) {
@@ -58,7 +58,7 @@ bool BlenderSync::BKE_object_is_modified(BL::Object b_ob)
 	return false;
 }
 
-bool BlenderSync::object_is_mesh(BL::Object b_ob)
+bool BlenderSync::object_is_mesh(BL::Object& b_ob)
 {
 	BL::ID b_ob_data = b_ob.data();
 
@@ -66,14 +66,14 @@ bool BlenderSync::object_is_mesh(BL::Object b_ob)
 		b_ob_data.is_a(&RNA_Curve) || b_ob_data.is_a(&RNA_MetaBall)));
 }
 
-bool BlenderSync::object_is_light(BL::Object b_ob)
+bool BlenderSync::object_is_light(BL::Object& b_ob)
 {
 	BL::ID b_ob_data = b_ob.data();
 
 	return (b_ob_data && b_ob_data.is_a(&RNA_Lamp));
 }
 
-static uint object_ray_visibility(BL::Object b_ob)
+static uint object_ray_visibility(BL::Object& b_ob)
 {
 	PointerRNA cvisibility = RNA_pointer_get(&b_ob.ptr, "cycles_visibility");
 	uint flag = 0;
@@ -90,7 +90,11 @@ static uint object_ray_visibility(BL::Object b_ob)
 
 /* Light */
 
-void BlenderSync::sync_light(BL::Object b_parent, int persistent_id[OBJECT_PERSISTENT_ID_SIZE], BL::Object b_ob, Transform& tfm, bool *use_portal)
+void BlenderSync::sync_light(BL::Object& b_parent,
+                             int persistent_id[OBJECT_PERSISTENT_ID_SIZE],
+                             BL::Object& b_ob,
+                             Transform& tfm,
+                             bool *use_portal)
 {
 	/* test if we need to sync */
 	Light *light;
@@ -208,8 +212,8 @@ void BlenderSync::sync_background_light(bool use_portal)
 			ObjectKey key(b_world, 0, b_world);
 
 			if(light_map.sync(&light, b_world, b_world, key) ||
-				world_recalc ||
-				b_world.ptr.data != world_map)
+			    world_recalc ||
+			    b_world.ptr.data != world_map)
 			{
 				light->type = LIGHT_BACKGROUND;
 				light->map_resolution  = get_int(cworld, "sample_map_resolution");
@@ -239,7 +243,7 @@ void BlenderSync::sync_background_light(bool use_portal)
  * to reduce number of objects which are wrongly considered visible.
  */
 static bool object_boundbox_clip(Scene *scene,
-                                 BL::Object b_ob,
+                                 BL::Object& b_ob,
                                  Transform& tfm,
                                  float margin)
 {
@@ -275,9 +279,9 @@ static bool object_boundbox_clip(Scene *scene,
 	return true;
 }
 
-Object *BlenderSync::sync_object(BL::Object b_parent,
+Object *BlenderSync::sync_object(BL::Object& b_parent,
                                  int persistent_id[OBJECT_PERSISTENT_ID_SIZE],
-                                 BL::DupliObject b_dupli_ob,
+                                 BL::DupliObject& b_dupli_ob,
                                  Transform& tfm,
                                  uint layer_flag,
                                  float motion_time,
@@ -439,7 +443,8 @@ Object *BlenderSync::sync_object(BL::Object b_parent,
 	return object;
 }
 
-static bool object_render_hide_original(BL::Object::type_enum ob_type, BL::Object::dupli_type_enum dupli_type)
+static bool object_render_hide_original(BL::Object::type_enum ob_type,
+                                        BL::Object::dupli_type_enum dupli_type)
 {
 	/* metaball exception, they duplicate self */
 	if(ob_type == BL::Object::type_META)
@@ -450,7 +455,10 @@ static bool object_render_hide_original(BL::Object::type_enum ob_type, BL::Objec
 	        dupli_type == BL::Object::dupli_type_FRAMES);
 }
 
-static bool object_render_hide(BL::Object b_ob, bool top_level, bool parent_hide, bool& hide_triangles)
+static bool object_render_hide(BL::Object& b_ob,
+                               bool top_level,
+                               bool parent_hide,
+                               bool& hide_triangles)
 {
 	/* check if we should render or hide particle emitter */
 	BL::Object::particle_systems_iterator b_psys;
@@ -507,7 +515,7 @@ static bool object_render_hide(BL::Object b_ob, bool top_level, bool parent_hide
 	}
 }
 
-static bool object_render_hide_duplis(BL::Object b_ob)
+static bool object_render_hide_duplis(BL::Object& b_ob)
 {
 	BL::Object parent = b_ob.parent();
 
@@ -516,7 +524,7 @@ static bool object_render_hide_duplis(BL::Object b_ob)
 
 /* Object Loop */
 
-void BlenderSync::sync_objects(BL::SpaceView3D b_v3d, float motion_time)
+void BlenderSync::sync_objects(BL::SpaceView3D& b_v3d, float motion_time)
 {
 	/* layer data */
 	uint scene_layer = render_layer.scene_layer;
@@ -558,11 +566,20 @@ void BlenderSync::sync_objects(BL::SpaceView3D b_v3d, float motion_time)
 	bool cancel = false;
 	bool use_portal = false;
 
+	uint layer_override = get_layer(b_engine.layer_override());
 	for(; b_sce && !cancel; b_sce = b_sce.background_set()) {
+		/* Render layer's scene_layer is affected by local view already,
+		 * which is not a desired behavior here.
+		 */
+		uint scene_layers = layer_override ? layer_override : get_layer(b_scene.layers());
 		for(b_sce.object_bases.begin(b_base); b_base != b_sce.object_bases.end() && !cancel; ++b_base) {
 			BL::Object b_ob = b_base->object();
 			bool hide = (render_layer.use_viewport_visibility)? b_ob.hide(): b_ob.hide_render();
-			uint ob_layer = get_layer(b_base->layers(), b_base->layers_local_view(), render_layer.use_localview, object_is_light(b_ob));
+			uint ob_layer = get_layer(b_base->layers(),
+			                          b_base->layers_local_view(),
+			                          render_layer.use_localview,
+			                          object_is_light(b_ob),
+			                          scene_layers);
 			hide = hide || !(ob_layer & scene_layer);
 
 			if(!hide) {
@@ -622,9 +639,10 @@ void BlenderSync::sync_objects(BL::SpaceView3D b_v3d, float motion_time)
 				if(!object_render_hide(b_ob, true, true, hide_tris)) {
 					/* object itself */
 					Transform tfm = get_transform(b_ob.matrix_world());
+					BL::DupliObject b_empty_dupli_ob(PointerRNA_NULL);
 					sync_object(b_ob,
 					            NULL,
-					            PointerRNA_NULL,
+					            b_empty_dupli_ob,
 					            tfm,
 					            ob_layer,
 					            motion_time,
@@ -659,9 +677,9 @@ void BlenderSync::sync_objects(BL::SpaceView3D b_v3d, float motion_time)
 		mesh_motion_synced.clear();
 }
 
-void BlenderSync::sync_motion(BL::RenderSettings b_render,
-                              BL::SpaceView3D b_v3d,
-                              BL::Object b_override,
+void BlenderSync::sync_motion(BL::RenderSettings& b_render,
+                              BL::SpaceView3D& b_v3d,
+                              BL::Object& b_override,
                               int width, int height,
                               void **python_thread_state)
 {
@@ -676,6 +694,28 @@ void BlenderSync::sync_motion(BL::RenderSettings b_render,
 	Camera prevcam = *(scene->camera);
 
 	int frame_center = b_scene.frame_current();
+	float frame_center_delta = 0.0f;
+
+	if(scene->need_motion() != Scene::MOTION_PASS &&
+	   scene->camera->motion_position != Camera::MOTION_POSITION_CENTER)
+	{
+		float shuttertime = scene->camera->shuttertime;
+		if(scene->camera->motion_position == Camera::MOTION_POSITION_END) {
+			frame_center_delta = -shuttertime * 0.5f;
+		}
+		else {
+			assert(scene->camera->motion_position == Camera::MOTION_POSITION_START);
+			frame_center_delta = shuttertime * 0.5f;
+		}
+		float time = frame_center + frame_center_delta;
+		int frame = (int)floorf(time);
+		float subframe = time - frame;
+		python_thread_state_restore(python_thread_state);
+		b_engine.frame_set(frame, subframe);
+		python_thread_state_save(python_thread_state);
+		sync_camera_motion(b_render, b_cam, width, height, 0.0f);
+		sync_objects(b_v3d, 0.0f);
+	}
 
 	/* always sample these times for camera motion */
 	motion_times.insert(-1.0f);
@@ -695,7 +735,7 @@ void BlenderSync::sync_motion(BL::RenderSettings b_render,
 			shuttertime = scene->camera->shuttertime;
 
 		/* compute frame and subframe time */
-		float time = frame_center + relative_time * shuttertime * 0.5f;
+		float time = frame_center + frame_center_delta + relative_time * shuttertime * 0.5f;
 		int frame = (int)floorf(time);
 		float subframe = time - frame;
 

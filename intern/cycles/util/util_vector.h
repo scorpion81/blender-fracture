@@ -24,11 +24,8 @@
 #include <vector>
 
 #include "util_aligned_malloc.h"
+#include "util_guarded_allocator.h"
 #include "util_types.h"
-
-#ifdef WITH_CYCLES_DEBUG
-#  include "util_guarded_allocator.h"
-#endif
 
 CCL_NAMESPACE_BEGIN
 
@@ -36,18 +33,12 @@ CCL_NAMESPACE_BEGIN
  *
  * Own subclass-ed vestion of std::vector. Subclass is needed because:
  *
- * - When building with WITH_CYCLES_DEBUG we need to use own allocator which
- *   keeps track of used/peak memory.
+ * - Use own allocator which keeps track of used/peak memory.
  *
  * - Have method to ensure capacity is re-set to 0.
  */
 template<typename value_type,
-#ifdef WITH_CYCLES_DEBUG
-         typename allocator_type = GuardedAllocator<value_type>
-#else
-         typename allocator_type = std::allocator<value_type>
-#endif
-        >
+         typename allocator_type = GuardedAllocator<value_type> >
 class vector : public std::vector<value_type, allocator_type>
 {
 public:
@@ -84,7 +75,7 @@ public:
 	/* Some external API might demand working with std::vector. */
 	operator std::vector<value_type>()
 	{
-		return std::vector<value_type>(*this);
+		return std::vector<value_type>(this->begin(), this->end());
 	}
 };
 
@@ -163,7 +154,7 @@ public:
 		util_aligned_free(data);
 	}
 
-	void resize(size_t newsize)
+	T* resize(size_t newsize)
 	{
 		if(newsize == 0) {
 			clear();
@@ -171,7 +162,12 @@ public:
 		else if(newsize != datasize) {
 			if(newsize > capacity) {
 				T *newdata = (T*)util_aligned_malloc(sizeof(T)*newsize, alignment);
-				if(data) {
+				if(newdata == NULL) {
+					/* Allocation failed, likely out of memory. */
+					clear();
+					return NULL;
+				}
+				else if(data) {
 					memcpy(newdata, data, ((datasize < newsize)? datasize: newsize)*sizeof(T));
 					util_aligned_free(data);
 				}
@@ -180,12 +176,15 @@ public:
 			}
 			datasize = newsize;
 		}
+		return data;
 	}
 
 	void clear()
 	{
-		util_aligned_free(data);
-		data = NULL;
+		if(data != NULL) {
+			util_aligned_free(data);
+			data = NULL;
+		}
 		datasize = 0;
 		capacity = 0;
 	}

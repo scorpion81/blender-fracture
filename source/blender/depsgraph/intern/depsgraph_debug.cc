@@ -59,8 +59,6 @@ extern "C" {
 /* ****************** */
 /* Graphviz Debugging */
 
-static SpinLock lock;
-
 #define NL "\r\n"
 
 /* Only one should be enabled, defines whether graphviz nodes
@@ -328,7 +326,8 @@ static void deg_debug_graphviz_node_fillcolor(const DebugContext &ctx,
 	int color_index = deg_debug_node_color_index(node);
 	const char *base_color = color_index < 0 ? defaultcolor : deg_debug_colors_light[color_index % deg_debug_max_colors];
 	if (ctx.show_tags &&
-	    (node->flag & (DEPSNODE_FLAG_DIRECTLY_MODIFIED | DEPSNODE_FLAG_NEEDS_UPDATE))) {
+	    (node->flag & (DEPSNODE_FLAG_DIRECTLY_MODIFIED | DEPSNODE_FLAG_NEEDS_UPDATE)))
+	{
 		deg_debug_fprintf(ctx, "\"");
 		for (int i = 0; i < num_stripes; ++i) {
 			if (i > 0) {
@@ -345,9 +344,11 @@ static void deg_debug_graphviz_node_fillcolor(const DebugContext &ctx,
 #endif
 
 static void deg_debug_graphviz_relation_color(const DebugContext &ctx,
-                                              const DepsRelation *UNUSED(rel))
+                                              const DepsRelation *rel)
 {
-	const char *defaultcolor = "black";
+	const char *color_default = "black";
+	const char *color_error = "red4";
+	const char *color = color_default;
 #if 0 /* disabled for now, edge colors are hardly distinguishable */
 	int color = deg_debug_relation_type_color_index(rel->type);
 	if (color < 0) {
@@ -357,7 +358,10 @@ static void deg_debug_graphviz_relation_color(const DebugContext &ctx,
 		deg_debug_fprintf(ctx, "\"%s\"", deg_debug_colors_dark[color % deg_debug_max_colors]);
 	}
 #else
-	deg_debug_fprintf(ctx, "%s", defaultcolor);
+	if (rel->flag & DEPSREL_FLAG_CYCLIC)
+		color = color_error;
+	
+	deg_debug_fprintf(ctx, "%s", color);
 #endif
 }
 
@@ -439,6 +443,7 @@ static void deg_debug_graphviz_node_cluster_begin(const DebugContext &ctx,
 	deg_debug_fprintf(ctx, "label=<%s>;" NL, name.c_str());
 	deg_debug_fprintf(ctx, "fontname=\"%s\";" NL, deg_debug_graphviz_fontname);
 	deg_debug_fprintf(ctx, "fontsize=%f;" NL, deg_debug_graphviz_node_label_size);
+	deg_debug_fprintf(ctx, "margin=\"%d\";" NL, 16);
 	deg_debug_fprintf(ctx, "style="); deg_debug_graphviz_node_style(ctx, node); deg_debug_fprintf(ctx, ";" NL);
 	deg_debug_fprintf(ctx, "color="); deg_debug_graphviz_node_color(ctx, node); deg_debug_fprintf(ctx, ";" NL);
 	deg_debug_fprintf(ctx, "fillcolor="); deg_debug_graphviz_node_fillcolor(ctx, node); deg_debug_fprintf(ctx, ";" NL);
@@ -508,6 +513,7 @@ static void deg_debug_graphviz_node(const DebugContext &ctx,
 		case DEPSNODE_TYPE_EVAL_POSE:
 		case DEPSNODE_TYPE_BONE:
 		case DEPSNODE_TYPE_SHADING:
+		case DEPSNODE_TYPE_EVAL_PARTICLES:
 		{
 			ComponentDepsNode *comp_node = (ComponentDepsNode *)node;
 			if (!comp_node->operations.empty()) {
@@ -592,6 +598,8 @@ static void deg_debug_graphviz_node_relations(const DebugContext &ctx,
 {
 	DEPSNODE_RELATIONS_ITER_BEGIN(node->inlinks, rel)
 	{
+		float penwidth = 2.0f;
+		
 		const DepsNode *tail = rel->to; /* same as node */
 		const DepsNode *head = rel->from;
 		deg_debug_fprintf(ctx, "// %s -> %s\n",
@@ -602,9 +610,20 @@ static void deg_debug_graphviz_node_relations(const DebugContext &ctx,
 		deg_debug_fprintf(ctx, "\"node_%p\"", tail);
 
 		deg_debug_fprintf(ctx, "[");
+		/* XXX labels on relations are not very helpful:
+		 * - they tend to appear too far away to be associated with the edge lines
+		 * - names are mostly redundant, reflecting simply their from/to nodes
+		 * - no behavior or typing of relations themselves to justify labels
+		 */
+#if 0
 		deg_debug_fprintf(ctx, "label=\"%s\"", rel->name);
 		deg_debug_fprintf(ctx, ",fontname=\"%s\"", deg_debug_graphviz_fontname);
+#else
+		/* Note: without label an id seem necessary to avoid bugs in graphviz/dot */
+		deg_debug_fprintf(ctx, "id=\"%s\"", rel->name);
+#endif
 		deg_debug_fprintf(ctx, ",color="); deg_debug_graphviz_relation_color(ctx, rel);
+		deg_debug_fprintf(ctx, ",penwidth=\"%f\"", penwidth);
 		/* NOTE: edge from node to own cluster is not possible and gives graphviz
 		 * warning, avoid this here by just linking directly to the invisible
 		 * placeholder node

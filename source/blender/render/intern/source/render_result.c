@@ -32,6 +32,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 #include "MEM_guardedalloc.h"
 
@@ -485,7 +486,7 @@ static void set_pass_name(char *passname, int passtype, int channel, const char 
 
 static RenderPass *render_layer_add_pass(RenderResult *rr, RenderLayer *rl, int channels, int passtype, const char *viewname)
 {
-	const size_t view_id = BLI_findstringindex(&rr->views, viewname, offsetof(RenderView, name));
+	const int view_id = BLI_findstringindex(&rr->views, viewname, offsetof(RenderView, name));
 	const char *typestr = name_from_passtype(passtype, -1);
 	RenderPass *rpass = MEM_callocN(sizeof(RenderPass), typestr);
 	size_t rectsize = ((size_t)rr->rectx) * rr->recty * channels;
@@ -1134,6 +1135,8 @@ bool RE_WriteRenderResult(ReportList *reports, RenderResult *rr, const char *fil
 		}
 	}
 
+	errno = 0;
+
 	BLI_make_existing_file(filename);
 
 	if (IMB_exr_begin_write(exrhandle, filename, width, height, compress, rr->stamp_data)) {
@@ -1142,7 +1145,7 @@ bool RE_WriteRenderResult(ReportList *reports, RenderResult *rr, const char *fil
 	}
 	else {
 		/* TODO, get the error from openexr's exception */
-		BKE_report(reports, RPT_ERROR, "Error writing render result (see console)");
+		BKE_reportf(reports, RPT_ERROR, "Error writing render result, %s (see console)", strerror(errno));
 		success = false;
 	}
 
@@ -1527,7 +1530,7 @@ ImBuf *render_result_rect_to_ibuf(RenderResult *rr, RenderData *rd, const int vi
 	return ibuf;
 }
 
-void render_result_rect_from_ibuf(RenderResult *rr, RenderData *UNUSED(rd), ImBuf *ibuf, const int view_id)
+void RE_render_result_rect_from_ibuf(RenderResult *rr, RenderData *UNUSED(rd), ImBuf *ibuf, const int view_id)
 {
 	RenderView *rv = RE_RenderViewGetById(rr, view_id);
 

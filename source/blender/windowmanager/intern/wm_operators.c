@@ -59,10 +59,13 @@
 #include "PIL_time.h"
 
 #include "BLI_blenlib.h"
+#include "BLI_bitmap.h"
 #include "BLI_dial.h"
 #include "BLI_dynstr.h" /*for WM_operator_pystring */
+#include "BLI_linklist.h"
 #include "BLI_linklist_stack.h"
 #include "BLI_math.h"
+#include "BLI_memarena.h"
 #include "BLI_utildefines.h"
 #include "BLI_ghash.h"
 
@@ -102,6 +105,7 @@
 #include "ED_util.h"
 #include "ED_view3d.h"
 
+#include "GPU_basic_shader.h"
 #include "GPU_material.h"
 
 #include "RNA_access.h"
@@ -1206,199 +1210,6 @@ bool WM_operator_filesel_ensure_ext_imtype(wmOperator *op, const struct ImageFor
 	return false;
 }
 
-/* default properties for fileselect */
-void WM_operator_properties_filesel(wmOperatorType *ot, int filter, short type, short action, short flag, short display, short sort)
-{
-	PropertyRNA *prop;
-
-	static EnumPropertyItem file_display_items[] = {
-		{FILE_DEFAULTDISPLAY, "FILE_DEFAULTDISPLAY", 0, "Default", "Automatically determine display type for files"},
-		{FILE_SHORTDISPLAY, "FILE_SHORTDISPLAY", ICON_SHORTDISPLAY, "Short List", "Display files as short list"},
-		{FILE_LONGDISPLAY, "FILE_LONGDISPLAY", ICON_LONGDISPLAY, "Long List", "Display files as a detailed list"},
-		{FILE_IMGDISPLAY, "FILE_IMGDISPLAY", ICON_IMGDISPLAY, "Thumbnails", "Display files as thumbnails"},
-		{0, NULL, 0, NULL, NULL}
-	};
-
-	if (flag & WM_FILESEL_FILEPATH)
-		RNA_def_string_file_path(ot->srna, "filepath", NULL, FILE_MAX, "File Path", "Path to file");
-
-	if (flag & WM_FILESEL_DIRECTORY)
-		RNA_def_string_dir_path(ot->srna, "directory", NULL, FILE_MAX, "Directory", "Directory of the file");
-
-	if (flag & WM_FILESEL_FILENAME)
-		RNA_def_string_file_name(ot->srna, "filename", NULL, FILE_MAX, "File Name", "Name of the file");
-
-	if (flag & WM_FILESEL_FILES)
-		RNA_def_collection_runtime(ot->srna, "files", &RNA_OperatorFileListElement, "Files", "");
-
-	if (action == FILE_SAVE) {
-		/* note, this is only used to check if we should highlight the filename area red when the
-		 * filepath is an existing file. */
-		prop = RNA_def_boolean(ot->srna, "check_existing", true, "Check Existing",
-		                       "Check and warn on overwriting existing files");
-		RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-	}
-	
-	prop = RNA_def_boolean(ot->srna, "filter_blender", (filter & FILE_TYPE_BLENDER) != 0, "Filter .blend files", "");
-	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-	prop = RNA_def_boolean(ot->srna, "filter_backup", (filter & FILE_TYPE_BLENDER_BACKUP) != 0, "Filter .blend files", "");
-	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-	prop = RNA_def_boolean(ot->srna, "filter_image", (filter & FILE_TYPE_IMAGE) != 0, "Filter image files", "");
-	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-	prop = RNA_def_boolean(ot->srna, "filter_movie", (filter & FILE_TYPE_MOVIE) != 0, "Filter movie files", "");
-	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-	prop = RNA_def_boolean(ot->srna, "filter_python", (filter & FILE_TYPE_PYSCRIPT) != 0, "Filter python files", "");
-	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-	prop = RNA_def_boolean(ot->srna, "filter_font", (filter & FILE_TYPE_FTFONT) != 0, "Filter font files", "");
-	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-	prop = RNA_def_boolean(ot->srna, "filter_sound", (filter & FILE_TYPE_SOUND) != 0, "Filter sound files", "");
-	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-	prop = RNA_def_boolean(ot->srna, "filter_text", (filter & FILE_TYPE_TEXT) != 0, "Filter text files", "");
-	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-	prop = RNA_def_boolean(ot->srna, "filter_btx", (filter & FILE_TYPE_BTX) != 0, "Filter btx files", "");
-	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-	prop = RNA_def_boolean(ot->srna, "filter_collada", (filter & FILE_TYPE_COLLADA) != 0, "Filter COLLADA files", "");
-	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-	prop = RNA_def_boolean(ot->srna, "filter_folder", (filter & FILE_TYPE_FOLDER) != 0, "Filter folders", "");
-	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-	prop = RNA_def_boolean(ot->srna, "filter_blenlib", (filter & FILE_TYPE_BLENDERLIB) != 0, "Filter Blender IDs", "");
-	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-
-	prop = RNA_def_int(ot->srna, "filemode", type, FILE_LOADLIB, FILE_SPECIAL,
-	                   "File Browser Mode", "The setting for the file browser mode to load a .blend file, a library or a special file",
-	                   FILE_LOADLIB, FILE_SPECIAL);
-	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-
-	if (flag & WM_FILESEL_RELPATH)
-		RNA_def_boolean(ot->srna, "relative_path", true, "Relative Path", "Select the file relative to the blend file");
-
-	if ((filter & FILE_TYPE_IMAGE) || (filter & FILE_TYPE_MOVIE)) {
-		prop = RNA_def_boolean(ot->srna, "show_multiview", 0, "Enable Multi-View", "");
-		RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-		prop = RNA_def_boolean(ot->srna, "use_multiview", 0, "Use Multi-View", "");
-		RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-	}
-
-	prop = RNA_def_enum(ot->srna, "display_type", file_display_items, display, "Display Type", "");
-	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-
-	prop = RNA_def_enum(ot->srna, "sort_method", file_sort_items, sort, "File sorting mode", "");
-	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-
-}
-
-static void wm_operator_properties_select_action_ex(wmOperatorType *ot, int default_action,
-                                                    const EnumPropertyItem *select_actions)
-{
-	RNA_def_enum(ot->srna, "action", select_actions, default_action, "Action", "Selection action to execute");
-}
-
-void WM_operator_properties_select_action(wmOperatorType *ot, int default_action)
-{
-	static EnumPropertyItem select_actions[] = {
-		{SEL_TOGGLE, "TOGGLE", 0, "Toggle", "Toggle selection for all elements"},
-		{SEL_SELECT, "SELECT", 0, "Select", "Select all elements"},
-		{SEL_DESELECT, "DESELECT", 0, "Deselect", "Deselect all elements"},
-		{SEL_INVERT, "INVERT", 0, "Invert", "Invert selection of all elements"},
-		{0, NULL, 0, NULL, NULL}
-	};
-
-	wm_operator_properties_select_action_ex(ot, default_action, select_actions);
-}
-
-/**
- * only SELECT/DESELECT
- */
-void WM_operator_properties_select_action_simple(wmOperatorType *ot, int default_action)
-{
-	static EnumPropertyItem select_actions[] = {
-		{SEL_SELECT, "SELECT", 0, "Select", "Select all elements"},
-		{SEL_DESELECT, "DESELECT", 0, "Deselect", "Deselect all elements"},
-		{0, NULL, 0, NULL, NULL}
-	};
-
-	wm_operator_properties_select_action_ex(ot, default_action, select_actions);
-}
-
-void WM_operator_properties_select_all(wmOperatorType *ot)
-{
-	WM_operator_properties_select_action(ot, SEL_TOGGLE);
-}
-
-void WM_operator_properties_border(wmOperatorType *ot)
-{
-	PropertyRNA *prop;
-
-	prop = RNA_def_int(ot->srna, "xmin", 0, INT_MIN, INT_MAX, "X Min", "", INT_MIN, INT_MAX);
-	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-	prop = RNA_def_int(ot->srna, "xmax", 0, INT_MIN, INT_MAX, "X Max", "", INT_MIN, INT_MAX);
-	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-	prop = RNA_def_int(ot->srna, "ymin", 0, INT_MIN, INT_MAX, "Y Min", "", INT_MIN, INT_MAX);
-	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-	prop = RNA_def_int(ot->srna, "ymax", 0, INT_MIN, INT_MAX, "Y Max", "", INT_MIN, INT_MAX);
-	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-}
-
-void WM_operator_properties_border_to_rcti(struct wmOperator *op, rcti *rect)
-{
-	rect->xmin = RNA_int_get(op->ptr, "xmin");
-	rect->ymin = RNA_int_get(op->ptr, "ymin");
-	rect->xmax = RNA_int_get(op->ptr, "xmax");
-	rect->ymax = RNA_int_get(op->ptr, "ymax");
-}
-
-void WM_operator_properties_border_to_rctf(struct wmOperator *op, rctf *rect)
-{
-	rcti rect_i;
-	WM_operator_properties_border_to_rcti(op, &rect_i);
-	BLI_rctf_rcti_copy(rect, &rect_i);
-}
-
-void WM_operator_properties_gesture_border(wmOperatorType *ot, bool extend)
-{
-	RNA_def_int(ot->srna, "gesture_mode", 0, INT_MIN, INT_MAX, "Gesture Mode", "", INT_MIN, INT_MAX);
-
-	WM_operator_properties_border(ot);
-
-	if (extend) {
-		RNA_def_boolean(ot->srna, "extend", true, "Extend", "Extend selection instead of deselecting everything first");
-	}
-}
-
-void WM_operator_properties_mouse_select(wmOperatorType *ot)
-{
-	PropertyRNA *prop;
-	
-	prop = RNA_def_boolean(ot->srna, "extend", false, "Extend",
-	                       "Extend selection instead of deselecting everything first");
-	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
-	prop = RNA_def_boolean(ot->srna, "deselect", false, "Deselect", "Remove from selection");
-	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
-	prop = RNA_def_boolean(ot->srna, "toggle", false, "Toggle Selection", "Toggle the selection");
-	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
-}
-
-void WM_operator_properties_gesture_straightline(wmOperatorType *ot, int cursor)
-{
-	PropertyRNA *prop;
-
-	prop = RNA_def_int(ot->srna, "xstart", 0, INT_MIN, INT_MAX, "X Start", "", INT_MIN, INT_MAX);
-	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-	prop = RNA_def_int(ot->srna, "xend", 0, INT_MIN, INT_MAX, "X End", "", INT_MIN, INT_MAX);
-	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-	prop = RNA_def_int(ot->srna, "ystart", 0, INT_MIN, INT_MAX, "Y Start", "", INT_MIN, INT_MAX);
-	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-	prop = RNA_def_int(ot->srna, "yend", 0, INT_MIN, INT_MAX, "Y End", "", INT_MIN, INT_MAX);
-	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-	
-	if (cursor) {
-		prop = RNA_def_int(ot->srna, "cursor", cursor, 0, INT_MAX,
-		                   "Cursor", "Mouse cursor style to use during the modal operator", 0, INT_MAX);
-		RNA_def_property_flag(prop, PROP_HIDDEN);
-	}
-}
-
-
 /* op->poll */
 int WM_operator_winactive(bContext *C)
 {
@@ -1539,6 +1350,8 @@ static uiBlock *wm_block_create_redo(bContext *C, ARegion *ar, void *arg_op)
 	if (op->type->flag & OPTYPE_MACRO) {
 		for (op = op->macro.first; op; op = op->next) {
 			uiLayoutOperatorButs(C, layout, op, NULL, 'H', UI_LAYOUT_OP_SHOW_TITLE);
+			if (op->next)
+				uiItemS(layout);
 		}
 	}
 	else {
@@ -2226,6 +2039,17 @@ static int wm_operator_winactive_normal(bContext *C)
 	return 1;
 }
 
+/* included for script-access */
+static void WM_OT_window_close(wmOperatorType *ot)
+{
+	ot->name = "Close Window";
+	ot->idname = "WM_OT_window_close";
+	ot->description = "Close the current Blender window";
+
+	ot->exec = wm_window_close_exec;
+	ot->poll = WM_operator_winactive;
+}
+
 static void WM_OT_window_duplicate(wmOperatorType *ot)
 {
 	ot->name = "Duplicate Window";
@@ -2496,8 +2320,9 @@ static void WM_OT_open_mainfile(wmOperatorType *ot)
 	ot->ui = wm_open_mainfile_ui;
 	/* omit window poll so this can work in background mode */
 
-	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_BLENDER, FILE_BLENDER, FILE_OPENFILE,
-	                               WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
+	WM_operator_properties_filesel(
+	        ot, FILE_TYPE_FOLDER | FILE_TYPE_BLENDER, FILE_BLENDER, FILE_OPENFILE,
+	        WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
 
 	RNA_def_boolean(ot->srna, "load_ui", true, "Load UI", "Load user interface setup in the .blend file");
 	RNA_def_boolean(ot->srna, "use_scripts", true, "Trusted Source",
@@ -2588,106 +2413,150 @@ static int wm_link_append_invoke(bContext *C, wmOperator *op, const wmEvent *UNU
 
 static short wm_link_append_flag(wmOperator *op)
 {
+	PropertyRNA *prop;
 	short flag = 0;
 
-	if (RNA_boolean_get(op->ptr, "autoselect")) flag |= FILE_AUTOSELECT;
-	if (RNA_boolean_get(op->ptr, "active_layer")) flag |= FILE_ACTIVELAY;
-	if (RNA_struct_find_property(op->ptr, "relative_path") && RNA_boolean_get(op->ptr, "relative_path")) flag |= FILE_RELPATH;
-	if (RNA_boolean_get(op->ptr, "link")) flag |= FILE_LINK;
-	if (RNA_boolean_get(op->ptr, "instance_groups")) flag |= FILE_GROUP_INSTANCE;
+	if (RNA_boolean_get(op->ptr, "autoselect"))
+		flag |= FILE_AUTOSELECT;
+	if (RNA_boolean_get(op->ptr, "active_layer"))
+		flag |= FILE_ACTIVELAY;
+	if ((prop = RNA_struct_find_property(op->ptr, "relative_path")) && RNA_property_boolean_get(op->ptr, prop))
+		flag |= FILE_RELPATH;
+	if (RNA_boolean_get(op->ptr, "link"))
+		flag |= FILE_LINK;
+	if (RNA_boolean_get(op->ptr, "instance_groups"))
+		flag |= FILE_GROUP_INSTANCE;
 
 	return flag;
 }
 
-/* Helper.
- *     if `name` is non-NULL, we assume a single-item link/append.
- *     else if `*todo_libraries` is NULL we assume first-run.
- */
-static void wm_link_append_do_libgroup(
-        bContext *C, wmOperator *op, const char *root, const char *libname, char *group, char *name,
-        const short flag, GSet **todo_libraries)
+typedef struct WMLinkAppendDataItem {
+	char *name;
+	BLI_bitmap *libraries;  /* All libs (from WMLinkAppendData.libraries) to try to load this ID from. */
+	short idcode;
+
+	ID *new_id;
+	void *customdata;
+} WMLinkAppendDataItem;
+
+typedef struct WMLinkAppendData {
+	LinkNodePair libraries;
+	LinkNodePair items;
+	int num_libraries;
+	int num_items;
+	short flag;
+
+	/* Internal 'private' data */
+	MemArena *memarena;
+} WMLinkAppendData;
+
+static WMLinkAppendData *wm_link_append_data_new(const int flag)
 {
-	Main *bmain = CTX_data_main(C);
+	MemArena *ma = BLI_memarena_new(BLI_MEMARENA_STD_BUFSIZE, __func__);
+	WMLinkAppendData *lapp_data = BLI_memarena_calloc(ma, sizeof(*lapp_data));
+
+	lapp_data->flag = flag;
+	lapp_data->memarena = ma;
+
+	return lapp_data;
+}
+
+static void wm_link_append_data_free(WMLinkAppendData *lapp_data)
+{
+	BLI_memarena_free(lapp_data->memarena);
+}
+
+/* WARNING! *Never* call wm_link_append_data_library_add() after having added some items! */
+
+static void wm_link_append_data_library_add(WMLinkAppendData *lapp_data, const char *libname)
+{
+	size_t len = strlen(libname) + 1;
+	char *libpath = BLI_memarena_alloc(lapp_data->memarena, len);
+
+	BLI_strncpy(libpath, libname, len);
+	BLI_linklist_append_arena(&lapp_data->libraries, libpath, lapp_data->memarena);
+	lapp_data->num_libraries++;
+}
+
+static WMLinkAppendDataItem *wm_link_append_data_item_add(
+        WMLinkAppendData *lapp_data, const char *idname, const short idcode, void *customdata)
+{
+	WMLinkAppendDataItem *item = BLI_memarena_alloc(lapp_data->memarena, sizeof(*item));
+	size_t len = strlen(idname) + 1;
+
+	item->name = BLI_memarena_alloc(lapp_data->memarena, len);
+	BLI_strncpy(item->name, idname, len);
+	item->idcode = idcode;
+	item->libraries = BLI_BITMAP_NEW_MEMARENA(lapp_data->memarena, lapp_data->num_libraries);
+
+	item->new_id = NULL;
+	item->customdata = customdata;
+
+	BLI_linklist_append_arena(&lapp_data->items, item, lapp_data->memarena);
+	lapp_data->num_items++;
+
+	return item;
+}
+
+static void wm_link_do(
+        WMLinkAppendData *lapp_data, ReportList *reports, Main *bmain, Scene *scene, View3D *v3d)
+{
 	Main *mainl;
 	BlendHandle *bh;
 	Library *lib;
 
-	char path[FILE_MAX_LIBEXTRA], relname[FILE_MAX];
-	int idcode;
-	const bool is_first_run = (*todo_libraries == NULL);
+	const int flag = lapp_data->flag;
 
-	BLI_assert(group);
-	idcode = BKE_idcode_from_name(group);
+	LinkNode *liblink, *itemlink;
+	int lib_idx, item_idx;
 
-	bh = BLO_blendhandle_from_file(libname, op->reports);
+	BLI_assert(lapp_data->num_items && lapp_data->num_libraries);
 
-	if (bh == NULL) {
-		/* unlikely since we just browsed it, but possible
-		 * error reports will have been made by BLO_blendhandle_from_file() */
-		return;
-	}
+	for (lib_idx = 0, liblink = lapp_data->libraries.list; liblink; lib_idx++, liblink = liblink->next) {
+		char *libname = liblink->link;
 
-	/* here appending/linking starts */
-	mainl = BLO_library_append_begin(bmain, &bh, libname);
-	lib = mainl->curlib;
-	BLI_assert(lib);
+		bh = BLO_blendhandle_from_file(libname, reports);
 
-	if (mainl->versionfile < 250) {
-		BKE_reportf(op->reports, RPT_WARNING,
-		            "Linking or appending from a very old .blend file format (%d.%d), no animation conversion will "
-		            "be done! You may want to re-save your lib file with current Blender",
-		            mainl->versionfile, mainl->subversionfile);
-	}
-
-	if (name) {
-		BLO_library_append_named_part_ex(C, mainl, &bh, name, idcode, flag);
-	}
-	else {
-		if (is_first_run) {
-			*todo_libraries = BLI_gset_new(BLI_ghashutil_strhash_p, BLI_ghashutil_strcmp, __func__);
+		if (bh == NULL) {
+			/* Unlikely since we just browsed it, but possible
+			 * Error reports will have been made by BLO_blendhandle_from_file() */
+			continue;
 		}
 
-		RNA_BEGIN (op->ptr, itemptr, "files")
-		{
-			char curr_libname[FILE_MAX];
-			int curr_idcode;
+		/* here appending/linking starts */
+		mainl = BLO_library_link_begin(bmain, &bh, libname);
+		lib = mainl->curlib;
+		BLI_assert(lib);
+		UNUSED_VARS_NDEBUG(lib);
 
-			RNA_string_get(&itemptr, "name", relname);
+		if (mainl->versionfile < 250) {
+			BKE_reportf(reports, RPT_WARNING,
+			            "Linking or appending from a very old .blend file format (%d.%d), no animation conversion will "
+			            "be done! You may want to re-save your lib file with current Blender",
+			            mainl->versionfile, mainl->subversionfile);
+		}
 
-			BLI_join_dirfile(path, sizeof(path), root, relname);
+		/* For each lib file, we try to link all items belonging to that lib,
+		 * and tag those successful to not try to load them again with the other libs. */
+		for (item_idx = 0, itemlink = lapp_data->items.list; itemlink; item_idx++, itemlink = itemlink->next) {
+			WMLinkAppendDataItem *item = itemlink->link;
+			ID *new_id;
 
-			if (BLO_library_path_explode(path, curr_libname, &group, &name)) {
-				if (!group || !name) {
-					continue;
-				}
+			if (!BLI_BITMAP_TEST(item->libraries, lib_idx)) {
+				continue;
+			}
 
-				curr_idcode = BKE_idcode_from_name(group);
-
-				if ((idcode == curr_idcode) && (BLI_path_cmp(curr_libname, libname) == 0)) {
-					BLO_library_append_named_part_ex(C, mainl, &bh, name, idcode, flag);
-				}
-				else if (is_first_run) {
-					BLI_join_dirfile(path, sizeof(path), curr_libname, group);
-					if (!BLI_gset_haskey(*todo_libraries, path)) {
-						BLI_gset_insert(*todo_libraries, BLI_strdup(path));
-					}
-				}
+			new_id = BLO_library_link_named_part_ex(mainl, &bh, item->idcode, item->name, flag, scene, v3d);
+			if (new_id) {
+				/* If the link is sucessful, clear item's libs 'todo' flags.
+				 * This avoids trying to link same item with other libraries to come. */
+				BLI_BITMAP_SET_ALL(item->libraries, false, lapp_data->num_libraries);
+				item->new_id = new_id;
 			}
 		}
-		RNA_END;
-	}
-	BLO_library_append_end(C, mainl, &bh, idcode, flag);
 
-	BLO_blendhandle_close(bh);
-
-	/* mark all library linked objects to be updated */
-	BKE_main_lib_objects_recalc_all(bmain);
-	IMB_colormanagement_check_file_config(bmain);
-
-	/* append, rather than linking */
-	if ((flag & FILE_LINK) == 0) {
-		BLI_assert(BLI_findindex(&bmain->library, lib) != -1);
-		BKE_library_make_local(bmain, lib, true);
+		BLO_library_link_end(mainl, &bh, flag, scene, v3d);
+		BLO_blendhandle_close(bh);
 	}
 }
 
@@ -2696,12 +2565,11 @@ static int wm_link_append_exec(bContext *C, wmOperator *op)
 	Main *bmain = CTX_data_main(C);
 	Scene *scene = CTX_data_scene(C);
 	PropertyRNA *prop;
+	WMLinkAppendData *lapp_data;
 	char path[FILE_MAX_LIBEXTRA], root[FILE_MAXDIR], libname[FILE_MAX], relname[FILE_MAX];
 	char *group, *name;
 	int totfiles = 0;
 	short flag;
-
-	GSet *todo_libraries = NULL;
 
 	RNA_string_get(op->ptr, "filename", relname);
 	RNA_string_get(op->ptr, "directory", root);
@@ -2710,15 +2578,15 @@ static int wm_link_append_exec(bContext *C, wmOperator *op)
 
 	/* test if we have a valid data */
 	if (!BLO_library_path_explode(path, libname, &group, &name)) {
-		BKE_report(op->reports, RPT_ERROR, "Not a library");
+		BKE_reportf(op->reports, RPT_ERROR, "'%s': not a library", path);
 		return OPERATOR_CANCELLED;
 	}
 	else if (!group) {
-		BKE_report(op->reports, RPT_ERROR, "Nothing indicated");
+		BKE_reportf(op->reports, RPT_ERROR, "'%s': nothing indicated", path);
 		return OPERATOR_CANCELLED;
 	}
 	else if (BLI_path_cmp(bmain->name, libname) == 0) {
-		BKE_report(op->reports, RPT_ERROR, "Cannot use current file as library");
+		BKE_reportf(op->reports, RPT_ERROR, "'%s': cannot use current file as library", path);
 		return OPERATOR_CANCELLED;
 	}
 
@@ -2728,60 +2596,118 @@ static int wm_link_append_exec(bContext *C, wmOperator *op)
 		totfiles = RNA_property_collection_length(op->ptr, prop);
 		if (totfiles == 0) {
 			if (!name) {
-				BKE_report(op->reports, RPT_ERROR, "Nothing indicated");
+				BKE_reportf(op->reports, RPT_ERROR, "'%s': nothing indicated", path);
 				return OPERATOR_CANCELLED;
 			}
 		}
 	}
 	else if (!name) {
-		BKE_report(op->reports, RPT_ERROR, "Nothing indicated");
+		BKE_reportf(op->reports, RPT_ERROR, "'%s': nothing indicated", path);
 		return OPERATOR_CANCELLED;
 	}
 
 	flag = wm_link_append_flag(op);
 
 	/* sanity checks for flag */
-	if (scene->id.lib && (flag & FILE_GROUP_INSTANCE)) {
-		/* TODO, user never gets this message */
-		BKE_reportf(op->reports, RPT_WARNING, "Scene '%s' is linked, group instance disabled", scene->id.name + 2);
+	if (scene && scene->id.lib) {
+		BKE_reportf(op->reports, RPT_WARNING,
+		            "Scene '%s' is linked, instantiation of objects & groups is disabled", scene->id.name + 2);
 		flag &= ~FILE_GROUP_INSTANCE;
+		scene = NULL;
 	}
 
 	/* from here down, no error returns */
 
-	/* now we have or selected, or an indicated file */
-	if (RNA_boolean_get(op->ptr, "autoselect"))
+	if (scene && RNA_boolean_get(op->ptr, "autoselect")) {
 		BKE_scene_base_deselect_all(scene);
+	}
 	
 	/* tag everything, all untagged data can be made local
 	 * its also generally useful to know what is new
 	 *
-	 * take extra care BKE_main_id_flag_all(LIB_LINK_TAG, false) is called after! */
-	BKE_main_id_flag_all(bmain, LIB_PRE_EXISTING, 1);
+	 * take extra care BKE_main_id_flag_all(bmain, LIB_TAG_PRE_EXISTING, false) is called after! */
+	BKE_main_id_tag_all(bmain, LIB_TAG_PRE_EXISTING, true);
 
+	/* We define our working data...
+	 * Note that here, each item 'uses' one library, and only one. */
+	lapp_data = wm_link_append_data_new(flag);
 	if (totfiles != 0) {
-		name = NULL;
+		GHash *libraries = BLI_ghash_new(BLI_ghashutil_strhash_p, BLI_ghashutil_strcmp, __func__);
+		int lib_idx = 0;
+
+		RNA_BEGIN (op->ptr, itemptr, "files")
+		{
+			RNA_string_get(&itemptr, "name", relname);
+
+			BLI_join_dirfile(path, sizeof(path), root, relname);
+
+			if (BLO_library_path_explode(path, libname, &group, &name)) {
+				if (!group || !name) {
+					continue;
+				}
+
+				if (!BLI_ghash_haskey(libraries, libname)) {
+					BLI_ghash_insert(libraries, BLI_strdup(libname), SET_INT_IN_POINTER(lib_idx));
+					lib_idx++;
+					wm_link_append_data_library_add(lapp_data, libname);
+				}
+			}
+		}
+		RNA_END;
+
+		RNA_BEGIN (op->ptr, itemptr, "files")
+		{
+			RNA_string_get(&itemptr, "name", relname);
+
+			BLI_join_dirfile(path, sizeof(path), root, relname);
+
+			if (BLO_library_path_explode(path, libname, &group, &name)) {
+				WMLinkAppendDataItem *item;
+				if (!group || !name) {
+					printf("skipping %s\n", path);
+					continue;
+				}
+
+				lib_idx = GET_INT_FROM_POINTER(BLI_ghash_lookup(libraries, libname));
+
+				item = wm_link_append_data_item_add(lapp_data, name, BKE_idcode_from_name(group), NULL);
+				BLI_BITMAP_ENABLE(item->libraries, lib_idx);
+			}
+		}
+		RNA_END;
+
+		BLI_ghash_free(libraries, MEM_freeN, NULL);
+	}
+	else {
+		WMLinkAppendDataItem *item;
+
+		wm_link_append_data_library_add(lapp_data, libname);
+		item = wm_link_append_data_item_add(lapp_data, name, BKE_idcode_from_name(group), NULL);
+		BLI_BITMAP_ENABLE(item->libraries, 0);
 	}
 
-	wm_link_append_do_libgroup(C, op, root, libname, group, name, flag, &todo_libraries);
+	/* XXX We'd need re-entrant locking on Main for this to work... */
+	/* BKE_main_lock(bmain); */
 
-	if (todo_libraries) {
-		GSetIterator libs_it;
+	wm_link_do(lapp_data, op->reports, bmain, scene, CTX_wm_view3d(C));
 
-		GSET_ITER(libs_it, todo_libraries) {
-			char *libpath = (char *)BLI_gsetIterator_getKey(&libs_it);
+	/* BKE_main_unlock(bmain); */
 
-			BLO_library_path_explode(libpath, libname, &group, NULL);
+	wm_link_append_data_free(lapp_data);
 
-			wm_link_append_do_libgroup(C, op, root, libname, group, NULL, flag, &todo_libraries);
-		}
+	/* mark all library linked objects to be updated */
+	BKE_main_lib_objects_recalc_all(bmain);
+	IMB_colormanagement_check_file_config(bmain);
 
-		BLI_gset_free(todo_libraries, MEM_freeN);
+	/* append, rather than linking */
+	if ((flag & FILE_LINK) == 0) {
+		bool set_fake = RNA_boolean_get(op->ptr, "set_fake");
+		BKE_library_make_local(bmain, NULL, true, set_fake);
 	}
 
 	/* important we unset, otherwise these object wont
 	 * link into other scenes from this blend file */
-	BKE_main_id_flag_all(bmain, LIB_PRE_EXISTING, false);
+	BKE_main_id_tag_all(bmain, LIB_TAG_PRE_EXISTING, false);
 
 	/* recreate dependency graph to include new objects */
 	DAG_scene_relations_rebuild(bmain, scene);
@@ -2850,11 +2776,12 @@ static void WM_OT_append(wmOperatorType *ot)
 	ot->flag |= OPTYPE_UNDO;
 
 	WM_operator_properties_filesel(
-		ot, FILE_TYPE_FOLDER | FILE_TYPE_BLENDER | FILE_TYPE_BLENDERLIB, FILE_LOADLIB, FILE_OPENFILE,
-		WM_FILESEL_FILEPATH | WM_FILESEL_DIRECTORY | WM_FILESEL_FILENAME | WM_FILESEL_FILES,
-		FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
+	        ot, FILE_TYPE_FOLDER | FILE_TYPE_BLENDER | FILE_TYPE_BLENDERLIB, FILE_LOADLIB, FILE_OPENFILE,
+	        WM_FILESEL_FILEPATH | WM_FILESEL_DIRECTORY | WM_FILESEL_FILENAME | WM_FILESEL_FILES,
+	        FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
 
 	wm_link_append_properties_common(ot, false);
+	RNA_def_boolean(ot->srna, "set_fake", false, "Fake User", "Set Fake User for appended items (except Objects and Groups)");
 }
 
 /* *************** recover last session **************** */
@@ -2942,8 +2869,9 @@ static void WM_OT_recover_auto_save(wmOperatorType *ot)
 	ot->exec = wm_recover_auto_save_exec;
 	ot->invoke = wm_recover_auto_save_invoke;
 
-	WM_operator_properties_filesel(ot, FILE_TYPE_BLENDER, FILE_BLENDER, FILE_OPENFILE,
-	                               WM_FILESEL_FILEPATH, FILE_LONGDISPLAY, FILE_SORT_TIME);
+	WM_operator_properties_filesel(
+	        ot, FILE_TYPE_BLENDER, FILE_BLENDER, FILE_OPENFILE,
+	        WM_FILESEL_FILEPATH, FILE_LONGDISPLAY, FILE_SORT_TIME);
 }
 
 /* *************** save file as **************** */
@@ -3075,8 +3003,9 @@ static void WM_OT_save_as_mainfile(wmOperatorType *ot)
 	ot->check = blend_save_check;
 	/* omit window poll so this can work in background mode */
 
-	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_BLENDER, FILE_BLENDER, FILE_SAVE,
-	                               WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
+	WM_operator_properties_filesel(
+	        ot, FILE_TYPE_FOLDER | FILE_TYPE_BLENDER, FILE_BLENDER, FILE_SAVE,
+	        WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
 	RNA_def_boolean(ot->srna, "compress", false, "Compress", "Write compressed .blend file");
 	RNA_def_boolean(ot->srna, "relative_remap", true, "Remap Relative",
 	                "Remap relative paths when saving in a different directory");
@@ -3142,8 +3071,9 @@ static void WM_OT_save_mainfile(wmOperatorType *ot)
 	ot->check = blend_save_check;
 	/* omit window poll so this can work in background mode */
 	
-	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_BLENDER, FILE_BLENDER, FILE_SAVE,
-	                               WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
+	WM_operator_properties_filesel(
+	        ot, FILE_TYPE_FOLDER | FILE_TYPE_BLENDER, FILE_BLENDER, FILE_SAVE,
+	        WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
 	RNA_def_boolean(ot->srna, "compress", false, "Compress", "Write compressed .blend file");
 	RNA_def_boolean(ot->srna, "relative_remap", false, "Remap Relative",
 	                "Remap relative paths when saving in a different directory");
@@ -3936,7 +3866,9 @@ typedef struct {
 	PropertyType type;
 	PropertySubType subtype;
 	PointerRNA ptr, col_ptr, fill_col_ptr, rot_ptr, zoom_ptr, image_id_ptr;
+	PointerRNA fill_col_override_ptr, fill_col_override_test_ptr;
 	PropertyRNA *prop, *col_prop, *fill_col_prop, *rot_prop, *zoom_prop;
+	PropertyRNA *fill_col_override_prop, *fill_col_override_test_prop;
 	StructRNA *image_id_srna;
 	float initial_value, current_value, min_value, max_value;
 	int initial_mouse[2];
@@ -4012,7 +3944,7 @@ static void radial_control_set_tex(RadialControl *rc)
 			if ((ibuf = BKE_brush_gen_radial_control_imbuf(rc->image_id_ptr.data, rc->use_secondary_tex))) {
 				glGenTextures(1, &rc->gltex);
 				glBindTexture(GL_TEXTURE_2D, rc->gltex);
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, ibuf->x, ibuf->y, 0,
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA8, ibuf->x, ibuf->y, 0,
 				             GL_ALPHA, GL_FLOAT, ibuf->rect_float);
 				MEM_freeN(ibuf->rect_float);
 				MEM_freeN(ibuf);
@@ -4029,8 +3961,23 @@ static void radial_control_paint_tex(RadialControl *rc, float radius, float alph
 	float rot;
 
 	/* set fill color */
-	if (rc->fill_col_prop)
-		RNA_property_float_get_array(&rc->fill_col_ptr, rc->fill_col_prop, col);
+	if (rc->fill_col_prop) {
+		PointerRNA *fill_ptr;
+		PropertyRNA *fill_prop;
+
+		if (rc->fill_col_override_prop &&
+		    RNA_property_boolean_get(&rc->fill_col_override_test_ptr, rc->fill_col_override_test_prop))
+		{
+			fill_ptr = &rc->fill_col_override_ptr;
+			fill_prop = rc->fill_col_override_prop;
+		}
+		else {
+			fill_ptr = &rc->fill_col_ptr;
+			fill_prop = rc->fill_col_prop;
+		}
+
+		RNA_property_float_get_array(fill_ptr, fill_prop, col);
+	}
 	glColor4f(col[0], col[1], col[2], alpha);
 
 	if (rc->gltex) {
@@ -4047,7 +3994,7 @@ static void radial_control_paint_tex(RadialControl *rc, float radius, float alph
 		}
 
 		/* draw textured quad */
-		glEnable(GL_TEXTURE_2D);
+		GPU_basic_shader_bind(GPU_SHADER_TEXTURE_2D | GPU_SHADER_USE_COLOR);
 		glBegin(GL_QUADS);
 		glTexCoord2f(0, 0);
 		glVertex2f(-radius, -radius);
@@ -4058,7 +4005,7 @@ static void radial_control_paint_tex(RadialControl *rc, float radius, float alph
 		glTexCoord2f(0, 1);
 		glVertex2f(-radius, radius);
 		glEnd();
-		glDisable(GL_TEXTURE_2D);
+		GPU_basic_shader_bind(GPU_SHADER_USE_COLOR);
 
 		/* undo rotation */
 		if (rc->rot_prop)
@@ -4294,9 +4241,27 @@ static int radial_control_get_properties(bContext *C, wmOperator *op)
 		return 0;
 	if (!radial_control_get_path(&ctx_ptr, op, "color_path", &rc->col_ptr, &rc->col_prop, 3, RC_PROP_REQUIRE_FLOAT))
 		return 0;
-	if (!radial_control_get_path(&ctx_ptr, op, "fill_color_path", &rc->fill_col_ptr, &rc->fill_col_prop, 3, RC_PROP_REQUIRE_FLOAT))
+
+
+	if (!radial_control_get_path(
+	        &ctx_ptr, op, "fill_color_path", &rc->fill_col_ptr, &rc->fill_col_prop, 3, RC_PROP_REQUIRE_FLOAT))
+	{
 		return 0;
-	
+	}
+
+	if (!radial_control_get_path(
+	        &ctx_ptr, op, "fill_color_override_path",
+	        &rc->fill_col_override_ptr, &rc->fill_col_override_prop, 3, RC_PROP_REQUIRE_FLOAT))
+	{
+		return 0;
+	}
+	if (!radial_control_get_path(
+	        &ctx_ptr, op, "fill_color_override_test_path",
+	        &rc->fill_col_override_test_ptr, &rc->fill_col_override_test_prop, 0, RC_PROP_REQUIRE_BOOL))
+	{
+		return 0;
+	}
+
 	/* slightly ugly; allow this property to not resolve
 	 * correctly. needed because 3d texture paint shares the same
 	 * keymap as 2d image paint */
@@ -4650,6 +4615,9 @@ static void WM_OT_radial_control(wmOperatorType *ot)
 
 	RNA_def_string(ot->srna, "fill_color_path", NULL, 0, "Fill Color Path", "Path of property used to set the fill color of the control");
 
+	RNA_def_string(ot->srna, "fill_color_override_path", NULL, 0, "Fill Color Override Path", "");
+	RNA_def_string(ot->srna, "fill_color_override_test_path", NULL, 0, "Fill Color Override Test", "");
+
 	RNA_def_string(ot->srna, "zoom_path", NULL, 0, "Zoom Path", "Path of property used to set the zoom level for the control");
 
 	RNA_def_string(ot->srna, "image_id", NULL, 0, "Image ID", "Path of ID that is used to generate an image for the control");
@@ -4891,11 +4859,11 @@ static bool previews_id_ensure_callback(void *todo_v, ID **idptr, int UNUSED(cd_
 	PreviewsIDEnsureStack *todo = todo_v;
 	ID *id = *idptr;
 
-	if (id && (id->flag & LIB_DOIT)) {
+	if (id && (id->tag & LIB_TAG_DOIT)) {
 		if (ELEM(GS(id->name), ID_MA, ID_TE, ID_IM, ID_WO, ID_LA)) {
 			previews_id_ensure(todo->C, todo->scene, id);
 		}
-		id->flag &= ~LIB_DOIT;  /* Tag the ID as done in any case. */
+		id->tag &= ~LIB_TAG_DOIT;  /* Tag the ID as done in any case. */
 		BLI_LINKSTACK_PUSH(todo->id_stack, id);
 	}
 
@@ -4911,8 +4879,8 @@ static int previews_ensure_exec(bContext *C, wmOperator *UNUSED(op))
 	ID *id;
 	int i;
 
-	/* We use LIB_DOIT to check whether we have already handled a given ID or not. */
-	BKE_main_id_flag_all(bmain, LIB_DOIT, true);
+	/* We use LIB_TAG_DOIT to check whether we have already handled a given ID or not. */
+	BKE_main_id_tag_all(bmain, LIB_TAG_DOIT, true);
 
 	BLI_LINKSTACK_INIT(preview_id_stack.id_stack);
 
@@ -5011,7 +4979,7 @@ static void WM_OT_previews_clear(wmOperatorType *ot)
 
 	ot->prop = RNA_def_enum_flag(ot->srna, "id_type", preview_id_type_items,
 	                             FILTER_ID_SCE | FILTER_ID_OB | FILTER_ID_GR |
-		                         FILTER_ID_MA | FILTER_ID_LA | FILTER_ID_WO | FILTER_ID_TE | FILTER_ID_IM,
+	                             FILTER_ID_MA | FILTER_ID_LA | FILTER_ID_WO | FILTER_ID_TE | FILTER_ID_IM,
 	                             "DataBlock Type", "Which datablock previews to clear");
 }
 
@@ -5084,11 +5052,11 @@ static void WM_OT_stereo3d_set(wmOperatorType *ot)
 	ot->check = wm_stereo3d_set_check;
 	ot->cancel = wm_stereo3d_set_cancel;
 
-	prop = RNA_def_enum(ot->srna, "display_mode", stereo3d_display_items, S3D_DISPLAY_ANAGLYPH, "Display Mode", "");
+	prop = RNA_def_enum(ot->srna, "display_mode", rna_enum_stereo3d_display_items, S3D_DISPLAY_ANAGLYPH, "Display Mode", "");
 	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
-	prop = RNA_def_enum(ot->srna, "anaglyph_type", stereo3d_anaglyph_type_items, S3D_ANAGLYPH_REDCYAN, "Anaglyph Type", "");
+	prop = RNA_def_enum(ot->srna, "anaglyph_type", rna_enum_stereo3d_anaglyph_type_items, S3D_ANAGLYPH_REDCYAN, "Anaglyph Type", "");
 	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
-	prop = RNA_def_enum(ot->srna, "interlace_type", stereo3d_interlace_type_items, S3D_INTERLACE_ROW, "Interlace Type", "");
+	prop = RNA_def_enum(ot->srna, "interlace_type", rna_enum_stereo3d_interlace_type_items, S3D_INTERLACE_ROW, "Interlace Type", "");
 	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 	prop = RNA_def_boolean(ot->srna, "use_interlace_swap", false, "Swap Left/Right",
 	                       "Swap left and right stereo channels");
@@ -5112,6 +5080,7 @@ void wm_operatortype_init(void)
 	/* reserve size is set based on blender default setup */
 	global_ops_hash = BLI_ghash_str_new_ex("wm_operatortype_init gh", 2048);
 
+	WM_operatortype_append(WM_OT_window_close);
 	WM_operatortype_append(WM_OT_window_duplicate);
 	WM_operatortype_append(WM_OT_read_history);
 	WM_operatortype_append(WM_OT_read_homefile);

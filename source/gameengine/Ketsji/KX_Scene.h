@@ -93,7 +93,7 @@ class KX_ObstacleSimulation;
 #endif
 
 /* for ID freeing */
-#define IS_TAGGED(_id) ((_id) && (((ID *)_id)->flag & LIB_DOIT))
+#define IS_TAGGED(_id) ((_id) && (((ID *)_id)->tag & LIB_TAG_DOIT))
 
 /**
  * The KX_Scene holds all data for an independent scene. It relates
@@ -339,6 +339,7 @@ public:
 	void RemoveNodeDestructObject(SG_IObject* node,
 	                              CValue* gameobj);
 	void RemoveObject(CValue* gameobj);
+	void RemoveDupliGroup(CValue *gameobj);
 	void DelayedRemoveObject(CValue* gameobj);
 	
 	int NewRemoveObject(CValue* gameobj);

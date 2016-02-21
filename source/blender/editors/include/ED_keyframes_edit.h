@@ -82,7 +82,8 @@ typedef enum eEditKeyframes_Snap {
 	SNAP_KEYS_NEARSEC,
 	SNAP_KEYS_NEARMARKER,
 	SNAP_KEYS_HORIZONTAL,
-	SNAP_KEYS_VALUE
+	SNAP_KEYS_VALUE,
+	SNAP_KEYS_TIME,
 } eEditKeyframes_Snap;
 
 /* mirroring tools */
@@ -91,7 +92,8 @@ typedef enum eEditKeyframes_Mirror {
 	MIRROR_KEYS_YAXIS,
 	MIRROR_KEYS_XAXIS,
 	MIRROR_KEYS_MARKER,
-	MIRROR_KEYS_VALUE
+	MIRROR_KEYS_VALUE,
+	MIRROR_KEYS_TIME,
 } eEditKeyframes_Mirror;
 
 /* use with BEZT_OK_REGION_LASSO */
@@ -130,8 +132,19 @@ typedef struct KeyframeEditData {
 
 	/* flags */
 	short curflags;             /* current flags for the keyframe we're reached in the iteration process */
-	short iterflags; /* settings for iteration process */            // XXX: unused...
+	short iterflags;            /* settings for iteration process */
 } KeyframeEditData;
+
+/* Flags for controlling the iteration process (to supply additional capabilities, etc.) */
+typedef enum eKeyframeEditData_IterFlags {
+	/* Perform NLA time remapping (global -> strip) for the "f1" parameter
+	 * (e.g. used for selection tools on summary tracks)
+	 */
+	KED_F1_NLA_UNMAP = (1 << 0),
+	
+	/* Perform NLA time remapping (global -> strip) for the "f2" parameter */
+	KED_F2_NLA_UNMAP = (1 << 1),
+} eKeyframeEditData_IterFlags;
 
 /* ------- Function Pointer Typedefs ---------------- */
 

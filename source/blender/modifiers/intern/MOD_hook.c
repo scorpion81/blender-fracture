@@ -41,6 +41,7 @@
 
 #include "BKE_action.h"
 #include "BKE_cdderivedmesh.h"
+#include "BKE_library_query.h"
 #include "BKE_modifier.h"
 #include "BKE_deform.h"
 #include "BKE_colortools.h"
@@ -65,6 +66,13 @@ static void copyData(ModifierData *md, ModifierData *target)
 {
 	HookModifierData *hmd = (HookModifierData *) md;
 	HookModifierData *thmd = (HookModifierData *) target;
+
+	if (thmd->curfalloff != NULL) {
+		curvemapping_free(thmd->curfalloff);
+	}
+	if (thmd->indexar != NULL) {
+		MEM_freeN(thmd->indexar);
+	}
 
 	modifier_copyData_generic(md, target);
 
@@ -103,12 +111,11 @@ static bool isDisabled(ModifierData *md, int UNUSED(useRenderParams))
 
 static void foreachObjectLink(
         ModifierData *md, Object *ob,
-        void (*walk)(void *userData, Object *ob, Object **obpoin),
-        void *userData)
+        ObjectWalkFunc walk, void *userData)
 {
 	HookModifierData *hmd = (HookModifierData *) md;
 
-	walk(userData, ob, &hmd->object);
+	walk(userData, ob, &hmd->object, IDWALK_NOP);
 }
 
 static void updateDepgraph(ModifierData *md, DagForest *forest,

@@ -117,8 +117,6 @@ static void ringsel_draw(const bContext *C, ARegion *UNUSED(ar), void *arg)
 			glVertexPointer(3, GL_FLOAT, 0, lcd->points);
 			glDrawArrays(GL_POINTS, 0, lcd->totpoint);
 			glDisableClientState(GL_VERTEX_ARRAY);
-
-			glPointSize(1.0f);
 		}
 
 		glPopMatrix();
@@ -401,7 +399,7 @@ static void ringsel_finish(bContext *C, wmOperator *op)
 {
 	RingSelOpData *lcd = op->customdata;
 	const int cuts = RNA_int_get(op->ptr, "number_cuts");
-	const float smoothness = 0.292f * RNA_float_get(op->ptr, "smoothness");
+	const float smoothness = RNA_float_get(op->ptr, "smoothness");
 	const int smooth_falloff = RNA_enum_get(op->ptr, "falloff");
 #ifdef BMW_EDGERING_NGON
 	const bool use_only_quads = false;
@@ -854,7 +852,7 @@ void MESH_OT_loopcut(wmOperatorType *ot)
 	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 
 	prop = RNA_def_property(ot->srna, "falloff", PROP_ENUM, PROP_NONE);
-	RNA_def_property_enum_items(prop, proportional_falloff_curve_only_items);
+	RNA_def_property_enum_items(prop, rna_enum_proportional_falloff_curve_only_items);
 	RNA_def_property_enum_default(prop, PROP_INVSQUARE);
 	RNA_def_property_ui_text(prop, "Falloff", "Falloff type the feather");
 	RNA_def_property_translation_context(prop, BLT_I18NCONTEXT_ID_CURVE); /* Abusing id_curve :/ */

@@ -353,7 +353,8 @@ void ImageManager::remove_image(const string& filename,
 			                                      filename,
 			                                      builtin_data,
 			                                      interpolation,
-			                                      extension)) {
+			                                      extension))
+			{
 				remove_image(slot);
 				break;
 			}
@@ -377,7 +378,8 @@ void ImageManager::tag_reload_image(const string& filename,
 		                                filename,
 		                                builtin_data,
 		                                interpolation,
-		                                extension)) {
+		                                extension))
+		{
 			images[slot]->need_load = true;
 			break;
 		}
@@ -390,7 +392,8 @@ void ImageManager::tag_reload_image(const string& filename,
 			                                      filename,
 			                                      builtin_data,
 			                                      interpolation,
-			                                      extension)) {
+			                                      extension))
+			{
 				float_images[slot]->need_load = true;
 				break;
 			}
@@ -450,6 +453,9 @@ bool ImageManager::file_load_image(Image *img, device_vector<uchar4>& tex_img)
 
 	/* read RGBA pixels */
 	uchar *pixels = (uchar*)tex_img.resize(width, height, depth);
+	if(pixels == NULL) {
+		return false;
+	}
 	bool cmyk = false;
 
 	if(in) {
@@ -573,6 +579,9 @@ bool ImageManager::file_load_float_image(Image *img, device_vector<float4>& tex_
 
 	/* read RGBA pixels */
 	float *pixels = (float*)tex_img.resize(width, height, depth);
+	if(pixels == NULL) {
+		return false;
+	}
 	bool cmyk = false;
 
 	if(in) {
